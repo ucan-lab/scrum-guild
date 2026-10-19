@@ -23,9 +23,11 @@ Backlog や GitHub に散らばった自分のタスクを1か所に集め、次
 | 稼働先 | Cloudflare Workers |
 | DB | Cloudflare D1 |
 | API | Hono |
-| 画面 | Svelte |
+| 画面 | Svelte の SPA（Vite でビルドし、Workers Static Assets で配る） |
 | 認証 | GitHub OAuth |
 | 定期処理 | Cron Triggers |
+
+API（`/api/*`）、画面の配信、定期処理を1つの Worker にまとめる。デプロイの単位は1つで、利用者は D1 の作成、シークレットの登録、デプロイの3手順で立てられる。
 
 ## 概念
 
@@ -85,7 +87,6 @@ Backlog や GitHub に散らばった自分のタスクを1か所に集め、次
 
 ## 未決の論点
 
-5. 画面の構成（Svelte 単体の SPA を Workers から配るか、SvelteKit を使うか）
 6. チーム共有時の権限（閲覧だけのメンバーを持つか）
 7. ライセンスと、公開の時期（初版から公開リポジトリにするか）
 8. スマホからの利用をどこまで想定するか
