@@ -14,12 +14,6 @@
 | スタイルタイル（見た目の3案。決定の記録） | `design/style-tiles.html` |
 | 最初のモック（役目を終えたもの） | `mock/` |
 
-見本は claude.ai の Artifact にも公開してある（非公開。持ち主のアカウントでだけ開ける）。
-
-- カタログと全画面: https://claude.ai/artifact/V18YAuNMU83vzopPifJet1
-- 自分の今日: https://claude.ai/artifact/FiCW7FnB1z9CoJZRF3ej4V
-- スタイルタイル: https://claude.ai/artifact/U3hvppHQiC4kWiJdTfXXVg
-
 ## 確認してほしいこと
 
 ### 見本の全体
@@ -53,7 +47,7 @@
 
 - [x] GitHub のリポジトリ名を `ucan-lab/scrum-quest` から `ucan-lab/team-leveling` に変えた（2026-10-20）。手元の作業コピーは `git remote set-url origin https://github.com/ucan-lab/team-leveling` で直す
 - [ ] ドメイン `team-leveling.dev` を取る（2026-10-20 に空きを確かめた）
-- [ ] claude.ai の Artifact に公開した見本は古い名前のまま。必要なら公開し直す
+- [x] claude.ai の Artifact に公開していた見本は消した（2026-10-20）。見本は `design/index.html` をブラウザで開いて見る
 
 ## 次にやること
 
