@@ -370,16 +370,16 @@ h1, h2, h3 { margin: 0; text-wrap: balance; }
   </div>
 </header>
 <main class="tiles" id="tiles"></main>
-<p class="foot-note">部品: 色、文字、ボタン、状態の印、タスクの行、クエストのカード、レベルと積載量。言葉づかいを切り替えて、どの案でも崩れないかも確かめられます。</p>
+<p class="foot-note">部品: 色、文字、ボタン、状態の印、タスクの行、レイドのカード、レベルと積載量。言葉づかいを切り替えて、どの案でも崩れないかも確かめられます。</p>
 
 <script>
 "use strict";
 const WORDS = {
-  epic: ["クエスト", "エピック"], requester: ["依頼主", "作成者"], party: ["パーティ", "参加者"],
+  epic: ["レイド", "エピック"], requester: ["依頼主", "作成者"], party: ["パーティ", "参加者"],
   accept: ["受注する", "参加する"], detail: ["手配書", "詳細"], points: ["難易度", "ポイント"],
   due: ["期限", "期日"], capacity: ["積載量", "作業量と基準"], over: ["重量オーバー", "超過"],
   done: ["完遂", "完了"], complete: ["完遂にする", "完了にする"], reward: ["クリア報酬", "完了の報酬"],
-  task: ["ミッション", "タスク"], sprint: ["遠征", "スプリント"],
+  task: ["クエスト", "タスク"], sprint: ["遠征", "スプリント"],
 };
 let vocab = 0;
 const w = (k) => WORDS[k][vocab];

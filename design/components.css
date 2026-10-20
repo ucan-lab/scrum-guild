@@ -258,7 +258,7 @@ h1, h2, h3 { text-wrap: balance; }
   color: var(--color-stamp); font-family: var(--font-display); font-weight: var(--weight-display); font-size: 10px; border-radius: var(--radius-1);
 }
 
-/* ===== 貼り紙（スプリントゴール、クエスト） ===== */
+/* ===== 貼り紙（スプリントゴール、レイド） ===== */
 .notice-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: var(--space-4); }
 .notice {
   background: var(--surface-panel); border: 1px solid var(--color-line); border-top: 5px solid var(--color-accent);
@@ -497,7 +497,7 @@ details[open] > summary .tree-caret { transform: rotate(90deg); }
 .table .is-num { text-align: right; font-family: var(--font-mono); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .table a { color: var(--color-fg); }
 
-/* ===== クエストの詳細 ===== */
+/* ===== レイドの詳細 ===== */
 .quest-body { display: grid; gap: var(--space-3); max-width: 66ch; }
 .quest-body p { line-height: 1.85; }
 .party-list { display: grid; gap: var(--space-2); margin: 0; padding: 0; list-style: none; }

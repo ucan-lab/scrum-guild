@@ -72,7 +72,7 @@ const { D, t, icon, avatar, avatarOf, emblem, pts, dueChip, tier, book, sprintNo
 const COLORS = [
   ["地と線", [["地", "--color-bg", "画面の地"], ["面", "--color-surface", "台帳、面、入力欄"], ["一段下", "--color-sunken", "メニュー、列、タグ"], ["枠", "--color-line", "枠の線"], ["罫", "--color-rule", "行を分ける線"]]],
   ["文字", [["文字", "--color-fg", "本文"], ["弱", "--color-muted", "補足、ラベル"], ["淡", "--color-faint", "押す前の操作、未入力"]]],
-  ["役割", [["操作", "--color-accent", "操作、選択、進み"], ["操作の淡", "--color-accent-soft", "選択の地"], ["完了", "--color-done", "完了の印、クリア"], ["印", "--color-stamp", "依頼主の印、通知の数"], ["経験値", "--color-xp", "経験値とレベル、クエストだけ"], ["経験値の淡", "--color-xp-soft", "今日やるの地"]]],
+  ["役割", [["操作", "--color-accent", "操作、選択、進み"], ["操作の淡", "--color-accent-soft", "選択の地"], ["完了", "--color-done", "完了の印、クリア"], ["印", "--color-stamp", "依頼主の印、通知の数"], ["経験値", "--color-xp", "経験値とレベル、レイドだけ"], ["経験値の淡", "--color-xp-soft", "今日やるの地"]]],
   ["状態", [["危", "--color-danger", "期限切れ、重量オーバー"], ["注", "--color-warn", "今週が期限、未記入"], ["良", "--color-ok", "取り込み元で完了、余力あり"]]],
   ["クリア報酬の段階", [["小", "--color-tier-small", ""], ["中", "--color-tier-medium", ""], ["大", "--color-tier-large", ""]]],
 ];
@@ -123,7 +123,7 @@ const SECTIONS = [
   ["screens", "画面の見本", () => block("screens", "画面の見本", "部品だけで組んだ画面。メニューから行き来でき、タスクを押すと詳細が開く。",
     `<div class="screens">${SCREENS.map(([href, name, note]) => `<a href="${href}"><b>${typeof name === "function" ? name() : name}</b><span>${note}</span></a>`).join("")}</div>`)],
   ["colors", "色", () => block("colors", "色", "色は役割で名前を付ける。部品は tokens.css の変数だけを使い、素の値を書かない。テーマを切り替えると、同じ名前のまま値が入れ替わる。",
-    colorBlock(), ["完了の色は完了の印とクリアだけ、経験値の色は経験値とレベルとクエストだけに使い、他の意味を持たせない。", "状態の色は、必ずアイコンか文字と一緒に使う（色だけで区別しない）。", "操作の色は操作と選択と進みの色。飾りには使わない。"])],
+    colorBlock(), ["完了の色は完了の印とクリアだけ、経験値の色は経験値とレベルとレイドだけに使い、他の意味を持たせない。", "状態の色は、必ずアイコンか文字と一緒に使う（色だけで区別しない）。", "操作の色は操作と選択と進みの色。飾りには使わない。"])],
   ["type", "文字", () => block("type", "文字", "書体は役割で4つに分ける。",
     `<div>
       <div class="type-row"><span class="cat-name">--font-display<br>2xl / --weight-display</span><span class="page-title">自分の今日</span></div>
@@ -217,9 +217,9 @@ const SECTIONS = [
     `<div class="tree">${treeEpic("e2")}${treeStory("s4", true)}</div>`,
     ["右端の数は「完了 / 全体」のポイント。", "完了したタスクは折りたたみ、件数だけ出す。"],
     ".tree .tree-group .tree-row .is-epic .is-story .is-root .tree-caret .tree-title .tree-ratio .tree-children .tree-folded")],
-  ["notices", "貼り紙", () => block("notices", "貼り紙", "掲示する物（スプリントゴール、クエスト）は、上辺に太い線を引いた紙として見せる。クエストは金、クリア済みは朱。",
+  ["notices", "貼り紙", () => block("notices", "貼り紙", "掲示する物（スプリントゴール、レイド）は、上辺に太い線を引いた紙として見せる。レイドは金、クリア済みは朱。",
     `<div class="notice-grid">${sprintNotice("sp14")}${questNotice("e1")}${questNotice("e2", { cleared: true })}</div>`,
-    ["依頼主の名前の横に朱の「印」を添える。", "クリアしたクエストには「済」の判子を押す。"], ".notice .is-quest .is-cleared / .notice-label .notice-title .notice-meta .notice-facts .notice-foot / .day-ticks / .progress / .seal")],
+    ["依頼主の名前の横に朱の「印」を添える。", "クリアしたレイドには「済」の判子を押す。"], ".notice .is-quest .is-cleared / .notice-label .notice-title .notice-meta .notice-facts .notice-foot / .day-ticks / .progress / .seal")],
   ["records", "記録", () => block("records", "記録（レベルと積載量）", "計器の見た目。経験値のゲージは10の目盛り、積載量は5%の目盛りで、許容幅の両端を縦線で示す。",
     `<div class="two">${levelPanel()}<section class="panel"><div class="panel-title"><b>${t("capacity")}</b>判定の5つ</div>${capacityRows()}${load("社内ツール", "配分 40%", 30.4, 30.0, { lead: avatarOf("u1") })}</section></div>`,
     ["判定は重量オーバー（赤）、範囲内（藍）、余力あり（緑）、未見積もりあり（灰）、配分未設定（斜線）。必ず文字を添える。", "未見積もりのタスクが1件でもあれば、余力ありの色は付けない。", "時間は0.1時間に丸めて出す。"],

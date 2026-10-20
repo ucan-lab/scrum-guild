@@ -9,14 +9,14 @@
   // ---- 言葉の辞書（ゲームの言葉 / スクラムの言葉） ----
   const DICT = {
     workspace: ["冒険者ギルド", "ワークスペース"], inbox: ["届いた便り", "受信箱"], backlog: ["掲示板", "バックログ"],
-    sprint: ["遠征", "スプリント"], plan: ["遠征の計画", "計画"], epic: ["クエスト", "エピック"], story: ["達成目標", "ストーリー"],
-    task: ["ミッション", "タスク"], archive: ["保管庫", "アーカイブ"], connection: ["便りの経路", "接続"],
+    sprint: ["遠征", "スプリント"], plan: ["遠征の計画", "計画"], epic: ["レイド", "エピック"], story: ["達成目標", "ストーリー"],
+    task: ["クエスト", "タスク"], archive: ["保管庫", "アーカイブ"], connection: ["便りの経路", "接続"],
     sprintGoal: ["遠征の目的", "スプリントゴール"], detail: ["手配書", "詳細"], ac: ["達成条件", "受け入れ基準"],
     due: ["期限", "期日"], points: ["難易度", "ポイント"], assignee: ["担い手", "担当"], category: ["系統", "区分"],
     capacity: ["積載量", "作業量と基準"], over: ["重量オーバー", "超過"], done: ["完遂", "完了"], column: ["行程", "列"],
     doneToday: ["今日の完遂", "今日の完了"], complete: ["完遂にする", "完了にする"],
     requester: ["依頼主", "作成者"], party: ["パーティ", "参加者"], accept: ["受注する", "参加する"], leave: ["パーティを抜ける", "参加をやめる"],
-    reward: ["クリア報酬", "完了の報酬"], clear: ["クエストをクリアする", "エピックを完了にする"], create: ["依頼を出す", "起票"],
+    reward: ["クリア報酬", "完了の報酬"], clear: ["レイドをクリアする", "エピックを完了にする"], create: ["依頼を出す", "起票"],
     leader: ["ギルドマスター", "リーダー"], member: ["冒険者", "メンバー"], dod: ["ギルドの掟", "完成の定義"],
     vocab: ["ゲームの言葉", "スクラムの言葉"],
   };
@@ -243,7 +243,7 @@
       <div class="day-ticks" role="img" aria-label="${s.days} 日のうち ${s.dayIndex + 1} 日目">${ticks}</div>
     </article>`;
   }
-  // クエストの貼り紙（一覧や計画の中で使う小さな形）
+  // レイドの貼り紙（一覧や計画の中で使う小さな形）
   function questNotice(eid, opts = {}) {
     const q = D.epics[eid];
     const p = epicPts(eid);
@@ -439,7 +439,7 @@
     el.append(item);
     setTimeout(() => item.remove(), 4000);
   }
-  // クエストのクリアの演出。判子が押されて、報酬を知らせる。動きを減らす設定では動かさない
+  // レイドのクリアの演出。判子が押されて、報酬を知らせる。動きを減らす設定では動かさない
   function celebrate(title, reward) {
     const el = document.getElementById("celebrate");
     el.innerHTML = `<div class="celebrate-sheet" role="status">

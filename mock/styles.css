@@ -379,7 +379,7 @@ details[open] > summary .caret { transform: rotate(90deg); }
 .progress { height: 6px; border-radius: 3px; background: var(--surface-2); overflow: hidden; min-width: 80px; }
 .progress span { display: block; height: 100%; background: var(--accent); }
 
-/* ---- クエスト ---- */
+/* ---- レイド ---- */
 .quest-hero { padding: 20px; display: grid; gap: 14px; }
 .quest-hero .eyebrow { display: flex; gap: 8px; align-items: center; font-size: var(--fs-xs); color: var(--gold); font-weight: 700; letter-spacing: 0.06em; }
 .quest-hero h2 { font-size: 1.4rem; }

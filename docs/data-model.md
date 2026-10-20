@@ -413,7 +413,7 @@ GitHub OAuth の state と PKCE の code_verifier。
 | id | TEXT | PK | |
 | workspace_id | TEXT | NOT NULL、FK workspaces | |
 | title | TEXT | NOT NULL | |
-| body_md | TEXT | | クエストの説明。経験値は付かない |
+| body_md | TEXT | | レイドの説明。経験値は付かない |
 | category_id | TEXT | FK categories | 配下のストーリーとタスクが引き継ぐ |
 | due_on | TEXT | | |
 | link_url | TEXT | | http と https だけ |

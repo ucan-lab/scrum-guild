@@ -50,7 +50,7 @@ SQ.mount("settings", () => `
       <div class="field"><span class="field-label">週の始まり</span><div class="segmented" role="radiogroup">${WEEK.map((w, i) => `<label><input type="radio" name="ws" ${i === D.settings.weekStart ? "checked" : ""}><span>${w}</span></label>`).join("")}</div></div>`)}
     ${setting("言葉づかい", `切り替わるのは言葉だけで、経験値や報酬の仕組みはどちらでも同じです。`, `
       <div class="choice-list">
-        <label class="choice"><input type="radio" name="vocab" checked><div><b>ゲームの言葉</b><span>クエスト、達成目標、ミッション、遠征、パーティ、依頼主、受注</span></div></label>
+        <label class="choice"><input type="radio" name="vocab" checked><div><b>ゲームの言葉</b><span>レイド、達成目標、クエスト、遠征、パーティ、依頼主、受注</span></div></label>
         <label class="choice"><input type="radio" name="vocab"><div><b>スクラムの言葉</b><span>エピック、ストーリー、タスク、スプリント、参加者、作成者、参加</span></div></label>
       </div>`)}
     ${setting(t("column"), `${t("sprint")}の${t("column")}。名前は言葉づかいを切り替えても訳しません。${t("task")}が残っている${t("column")}を削除するときは移し先を選びます。`,
