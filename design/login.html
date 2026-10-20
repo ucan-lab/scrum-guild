@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>scrum-quest ログイン</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=BIZ+UDPGothic:wght@400;700&family=Chakra+Petch:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500&family=Zen+Old+Mincho:wght@700;900&display=swap">
+<link rel="stylesheet" href="tokens.css">
+<link rel="stylesheet" href="components.css">
+</head>
+<body>
+<div id="gate"></div>
+<script src="icons.js"></script>
+<script src="sample-data.js"></script>
+<script src="kit.js"></script>
+<script>
+"use strict";
+
+// ログインと、ログインできないとき、招待の承諾
+const { t, icon, esc } = SQ;
+function render() {
+  document.getElementById("gate").innerHTML = `<div class="gate"><div style="display:grid;gap:var(--space-6);width:min(440px,100%)">
+    <section class="gate-sheet">
+      <div class="gate-brand"><span class="brand-seal" aria-hidden="true">冒</span><span class="brand-name">scrum-quest</span></div>
+      <h1 class="gate-title">ログイン</h1>
+      <p>この王国に所属しているか、招待されている人がログインできます。</p>
+      <button class="btn is-primary is-wide" type="button">${icon("git")}GitHub でログイン</button>
+      <p class="gate-note">GitHub には本人確認だけを頼み、プロフィールを読む権限（read:user）より広い権限は求めません。</p>
+    </section>
+    <section class="gate-sheet">
+      <div class="callout is-warn">${icon("alert")}<span>ログインできませんでした。どの${t("workspace")}にも所属しておらず、招待も届いていません。${t("leader")}に GitHub のユーザー名で招待してもらってください。</span></div>
+      <p class="gate-note">ログインできないときの表示の見本です。</p>
+    </section>
+    <section class="gate-sheet">
+      <h2 class="dialog-title">届いた招待</h2>
+      <div class="panel" style="gap:var(--space-2)">
+        <b>デザイン相談室</b>
+        <span class="props-note">ハルカさんから・一般・10/19</span>
+        <div class="form-actions"><button class="btn is-primary is-sm" type="button">承諾する</button><button class="btn is-quiet is-sm" type="button">辞退する</button></div>
+      </div>
+      <p class="gate-note">ログインした直後に、承諾していない招待があれば出します。</p>
+    </section>
+    <p class="gate-note" style="text-align:center"><a href="index.html">デザインシステムのカタログへ戻る</a></p>
+  </div></div>`;
+}
+SQ.applyTheme();
+render();
+
+</script>
+</body>
+</html>

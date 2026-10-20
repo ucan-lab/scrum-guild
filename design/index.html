@@ -58,6 +58,9 @@
 </div>
 <div class="scrim" id="scrim" data-close-drawer hidden></div>
 <aside class="drawer" id="drawer" role="dialog" aria-modal="true" aria-labelledby="drawer-title" hidden></aside>
+<div class="dialog" id="dialog" hidden></div>
+<div class="celebrate" id="celebrate" hidden></div>
+<div class="toasts" id="toasts" aria-live="polite"></div>
 <script src="icons.js"></script>
 <script src="sample-data.js"></script>
 <script src="kit.js"></script>
@@ -74,11 +77,23 @@ const COLORS = [
   ["クリア報酬の段階", [["小", "--color-tier-small", ""], ["中", "--color-tier-medium", ""], ["大", "--color-tier-large", ""]]],
 ];
 const SCREENS = [
+  ["login.html", "ログイン", "ログイン、ログインできないとき、届いた招待"],
   ["today.html", "自分の今日", "全ワークスペースの自分のタスク、レベル、積載量"],
+  ["notifications.html", "通知", "画面の中の知らせ、既読"],
+  ["me.html", "自分の設定", "1日の基準、休み、経験値の明細、招待"],
+  ["admin.html", "王国の管理", "ユーザー、ワークスペース、王国の休日"],
+  ["inbox.html", () => t("inbox"), "取り込んだものの仕分け"],
   ["backlog.html", () => t("backlog"), "エピック、ストーリー、タスクの木"],
-  ["sprint.html", () => t("sprint"), "列とカード、ゴール、完成の定義"],
+  ["sprint.html", () => t("sprint"), "列とカード、ゴール、延長と終了"],
   ["plan.html", () => t("plan"), "ベロシティ、先のスプリント、積載量"],
   ["epic.html", () => t("epic"), "依頼書、パーティ、達成目標"],
+  ["capacity.html", () => t("capacity"), "メンバー × 月、スプリント"],
+  ["records.html", "完了の記録", "区分と計上月、記録の修正"],
+  ["archive.html", () => t("archive"), "扱わない取り込んだタスク"],
+  ["connections.html", () => t("connection"), "取り込み元の状態と登録"],
+  ["members.html", "メンバー", "ロール、配分、招待"],
+  ["settings.html", "設定", "列、決まった欄、完成の定義、区分ほか"],
+  ["history.html", "変更の履歴", "権限、配分、接続などの変更"],
 ];
 const SAMPLE = ["t1", "t8", "t11", "t12", "t9", "t14"].map(SQ.task);
 
@@ -221,6 +236,49 @@ const SECTIONS = [
     `<div class="table-wrap"><table class="table"><thead><tr><th>${t("epic")}</th><th class="is-num">残り（pt）</th><th>進み</th><th>${t("due")}</th></tr></thead>
       <tbody>${Object.keys(D.epics).map((id) => { const p = SQ.epicPts(id); return `<tr><td><a href="epic.html">${SQ.esc(D.epics[id].title)}</a></td><td class="is-num">${p.all - p.done}</td><td>${progress(p.done, p.all)}</td><td>${dueChip(D.epics[id].due)}</td></tr>`; }).join("")}</tbody></table></div>`,
     ["表の見出しの下は二重罫。"], ".table-wrap .table .is-num")],
+  ["dialogs", "ダイアログと演出", () => block("dialogs", "ダイアログと演出", "押すと本物と同じものが開く。Esc か外側を押すと閉じ、開いた元のボタンに戻る。確認が要るのは、取り消せない操作と、まとめて状態を変える操作だけ。",
+    `<div class="cat-row">
+      <button class="btn" type="button" data-dialog="sprintStart">${t("sprint")}を始める</button>
+      <button class="btn" type="button" data-dialog="sprintExtend">${t("sprint")}を延ばす</button>
+      <button class="btn" type="button" data-dialog="sprintEnd">${t("sprint")}を終える</button>
+      <button class="btn" type="button" data-dialog="createTask">${t("create")}</button>
+      <button class="btn" type="button" data-dialog="editRecord">完了の記録を直す</button>
+      <button class="btn is-danger" type="button" data-dialog="deleteEpic">${t("epic")}を削除する</button>
+    </div>
+    <div class="cat-row">
+      <button class="btn is-primary" type="button" data-celebrate="e2">${icon("check")}クリアの演出を見る</button>
+      <button class="btn" type="button" data-toast="${t("backlog")}の末尾に足しました">知らせ（トースト）を出す</button>
+    </div>
+    <div class="banner">${icon("refresh")}<span>新しい版が出ています。画面を読み込み直してください。</span><button class="btn is-sm" type="button">読み込み直す</button></div>`,
+    ["主ボタンは右端。危ない操作のダイアログは上辺を赤にし、主ボタンを is-danger にする。", "クリアの演出は判子が1回押されるだけ。動きを減らす設定では動かさない。", "知らせ（トースト）は操作の結果を短く伝え、数秒で消える。大事なことはトーストだけで伝えない。", "版のずれの帯は、デプロイの直後に画面と API の版が違うときだけ出す。"],
+    ".dialog .dialog-sheet .is-danger .dialog-head .dialog-title .dialog-body .dialog-foot / .celebrate .celebrate-sheet .celebrate-stamp / .toasts .toast / .banner")],
+  ["choices", "選ぶ部品", () => block("choices", "選ぶ部品", "",
+    `<div class="two">
+      <div class="field"><span class="field-label">並んだ選択肢（segmented）</span><div class="segmented" role="radiogroup"><label><input type="radio" name="cs" checked><span>完了した月</span></label><label><input type="radio" name="cs"><span>計上月</span></label></div></div>
+      <div class="field"><span class="field-label">スイッチ</span><label class="toggle"><input type="checkbox" checked><span>月ごとに計上する</span></label></div>
+      <div class="field"><span class="field-label">曜日</span><div class="weekdays">${["日", "月", "火", "水", "木", "金", "土"].map((w, i) => `<label><input type="checkbox" ${i > 0 && i < 6 ? "checked" : ""} aria-label="${w}曜日"><span>${w}</span></label>`).join("")}</div></div>
+      <div class="choice-list"><label class="choice"><input type="radio" name="cc" checked><div><b>次の${t("sprint")}へ持ち越す</b><span>同じ${t("task")}をそのまま移します。</span></div></label><label class="choice"><input type="radio" name="cc"><div><b>${t("backlog")}へ戻す</b><span>どの${t("sprint")}にも入っていない状態にします。</span></div></label></div>
+    </div>`,
+    ["2〜7個の短い選択肢は segmented、説明が要る選択肢は choice、その場で効くオンとオフはスイッチ。"], ".segmented / .toggle / .weekdays / .choice-list .choice")],
+  ["settings", "設定の節と並べ替え", () => block("settings", "設定の節と並べ替え", "設定の画面は、左に説明、右に入力を置く節を縦に並べる。並べ替えられる一覧は、ドラッグの他に上下のボタンを持つ。",
+    `<div class="settings"><section class="setting"><div class="setting-head"><h3 class="setting-title">${t("column")}</h3><p class="setting-desc">名前は言葉づかいを切り替えても訳しません。</p></div><div class="setting-body">
+      <ol class="order-list">${D.columns.filter((c) => !c.done).map((c, i, a) => `<li><span class="grip">${icon("grip")}</span><input class="input" value="${c.name}" aria-label="名前"><span class="order-actions"><button class="icon-btn" type="button" aria-label="上へ" ${i === 0 ? "disabled" : ""}>${icon("up")}</button><button class="icon-btn" type="button" aria-label="下へ" ${i === a.length - 1 ? "disabled" : ""}>${icon("down")}</button><button class="icon-btn is-danger" type="button" aria-label="削除">${icon("trash")}</button></span></li>`).join("")}
+        <li><span></span><span class="fixed">${icon("check")} ${t("done")}</span><span class="props-note">常に末尾</span></li></ol></div></section></div>`,
+    null, ".settings .setting .setting-head .setting-title .setting-desc .setting-body / .order-list .grip .fixed .order-actions / .icon-btn .is-danger / .form-row .form-actions")],
+  ["steps", "手順", () => block("steps", "手順", "順番に進める入力にだけ番号を付ける（接続の登録など）。",
+    `<ol class="steps"><li class="step is-done"><div class="step-body"><span class="step-title">取り込み元を選ぶ</span><span class="props-note">Backlog</span></div></li><li class="step"><div class="step-body"><span class="step-title">認証情報を入れる</span><label class="field" for="k0"><span class="field-label">API キー</span><input class="input" id="k0" type="password"></label></div></li><li class="step"><div class="step-body"><span class="step-title">取り込む範囲を選ぶ</span></div></li></ol>`,
+    null, ".steps .step .is-done .step-body .step-title")],
+  ["status", "状態と事実の並び", () => block("status", "状態と事実の並び", "接続などの状態は、色と文字の両方で示す。事実は見出しと値の組で並べる。",
+    `<div class="cat-row"><span class="state-badge is-ok">有効</span><span class="state-badge is-error">エラー</span><span class="state-badge is-stopped">停止</span><span class="state-badge is-muted">下書き</span></div>
+     <dl class="facts"><div><dt>取り込み元</dt><dd>Backlog・<span class="mono">acme.backlog.jp</span></dd></div><div><dt>最後に成功</dt><dd class="mono">10/20 10:00</dd></div><div><dt>認証情報</dt><dd class="mono">••••q9Zt</dd></div><div><dt>取り込む範囲</dt><dd><span class="tag">SHOP（ECサイト）</span></dd></div></dl>`,
+    ["保存した認証情報は末尾の4文字だけを出す。"], ".state-badge .is-ok .is-error .is-stopped .is-muted / .facts")],
+  ["feed", "知らせの一覧と空の状態", () => block("feed", "知らせの一覧と空の状態", "",
+    `<ul class="feed">${D.notifications.slice(0, 3).map((n) => `<li class="${n.read ? "" : "is-unread"}"><span class="feed-icon">${icon("bell")}</span><span class="feed-main"><span class="feed-text">${SQ.esc(n.text)}</span><span class="feed-at">${n.at}</span></span><button class="btn is-sm is-quiet" type="button">既読にする</button></li>`).join("")}</ul>
+     <div class="empty">${icon("inbox")}<b>届いたものはありません</b><span>次の同期で新しく取り込んだ${t("task")}がここに届きます。</span></div>`,
+    ["未読は太字と淡い藍の地。", "空の状態は、何が出る場所かと、次に何が起きるかを書く。"], ".feed .is-unread .feed-icon .feed-main .feed-text .feed-at / .empty")],
+  ["monthly", "月の積載量", () => block("monthly", "月の積載量", "メンバー × 月の表のセル。",
+    `<div class="cat-row" style="align-items:flex-start">${[[103.2, 118, 0], [172, 168, 0], [86, 60, 1], [80, 60, 0], "unset", null].map((c) => `<div class="panel" style="padding:var(--space-3)">${SQ.miniCap(c)}</div>`).join("")}</div>`,
+    ["スプリントが1つもない月は、余力ありではなく「計画なし」と出す。"], ".mini-cap .is-none .mini-cap-num / .cap.is-mini")],
   ["drawer", "引き出し", () => block("drawer", "引き出し（タスクの詳細）", "タスクの詳細は、どの画面からでも右から出る引き出しで開く。Esc か外側を押すと閉じ、開いた元の行に戻る。",
     drawerDemo(),
     ["取り込み元の属性（タイトル、状態、期限）は、ここでは変えられないことを添える。", "完了の操作の横に完成の定義を出す。確認のダイアログは挟まない。", "感謝は押した状態を is-on で示し、完了までは取り消せる。"],

@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>scrum-quest 受信箱</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=BIZ+UDPGothic:wght@400;700&family=Chakra+Petch:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500&family=Zen+Old+Mincho:wght@700;900&display=swap">
+<link rel="stylesheet" href="tokens.css">
+<link rel="stylesheet" href="components.css">
+</head>
+<body>
+<div id="app"></div>
+<script src="icons.js"></script>
+<script src="sample-data.js"></script>
+<script src="kit.js"></script>
+<script>
+"use strict";
+// 受信箱: 新しく取り込んだタスクを、バックログへ入れるかアーカイブするか選ぶ
+const { D, t, icon, esc, pageHead, entry, user } = SQ;
+const items = D.inbox;
+const connName = (id) => D.connections.find((c) => c.id === id).name;
+
+SQ.mount("inbox", () => {
+  const actions = (x) => `<button class="btn is-primary is-sm" type="button" data-move="${x.id}">${t("backlog")}へ</button>
+    <button class="btn is-quiet is-sm" type="button" data-arch="${x.id}">${t("archive")}</button>`;
+  const opts = {
+    lead: `<input type="checkbox" class="row-check" aria-label="選ぶ">`, noLink: true, hidePts: true, showAssignee: true, showParent: false,
+    meta: (x) => `<span>届いた ${esc(x.arrivedAt)}</span><span>${esc(connName(x.conn))}</span>`,
+    actions,
+  };
+  return `
+    ${pageHead(D.workspaces.wa.name, t("inbox"), [
+      ["", "inbox", "届いたもの", items.length],
+      ["is-ok", "check", "取り込み元で完了", items.filter((x) => x.srcDone).length],
+    ])}
+    <div class="callout is-info">${icon("refresh")}<span>最後の同期 10/20 10:00。<a href="connections.html">${t("connection")}</a>のうち「ミナトの GitHub」は失敗が続いています。届いたものは${t("workspace")}の全員に見えます。</span></div>
+    ${items.length ? `
+    <div class="toolbar">
+      <label class="toggle" for="all"><input type="checkbox" id="all"><span>すべて選ぶ</span></label>
+      <button class="btn is-sm" type="button" data-toast="選んだものを${t("backlog")}へ入れました">選んだものを${t("backlog")}へ</button>
+      <button class="btn is-sm is-quiet" type="button" data-toast="選んだものを${t("archive")}へ移しました">選んだものを${t("archive")}へ</button>
+    </div>
+    <div class="book">${items.map((x) => entry(x, opts)).join("")}</div>
+    <p class="action-note">${t("backlog")}へ入れたものは末尾に並びます。${t("archive")}したものは、検索や${t("capacity")}に出なくなり、${t("archive")}の画面から戻せます。</p>`
+    : `<div class="empty">${icon("inbox")}<b>届いたものはありません</b><span>次の同期で新しく取り込んだ${t("task")}がここに届きます。</span></div>`}`;
+});
+
+document.addEventListener("click", (ev) => {
+  const m = ev.target.closest("[data-move], [data-arch]");
+  if (!m) return;
+  const id = m.dataset.move || m.dataset.arch;
+  const i = items.findIndex((x) => x.id === id);
+  const [x] = items.splice(i, 1);
+  SQ.redraw();
+  SQ.toast(`${icon("check")}「${esc(x.title)}」を${m.dataset.move ? t("backlog") + "へ入れました" : t("archive") + "へ移しました"}`);
+});
+</script>
+</body>
+</html>

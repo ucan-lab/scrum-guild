@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>scrum-quest 接続</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=BIZ+UDPGothic:wght@400;700&family=Chakra+Petch:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500&family=Zen+Old+Mincho:wght@700;900&display=swap">
+<link rel="stylesheet" href="tokens.css">
+<link rel="stylesheet" href="components.css">
+</head>
+<body>
+<div id="app"></div>
+<script src="icons.js"></script>
+<script src="sample-data.js"></script>
+<script src="kit.js"></script>
+<script>
+"use strict";
+// 接続: 取り込み元の一覧と、新しい接続の登録
+const { D, t, icon, esc, pageHead, avatarOf, user } = SQ;
+const STATE = { active: ["is-ok", "有効"], error: ["is-error", "エラー"], stopped: ["is-stopped", "停止"] };
+const PROVIDER = { backlog: ["link", "Backlog"], github: ["git", "GitHub"] };
+
+function conn(c) {
+  const mine = c.owner === D.me;
+  const [cls, label] = STATE[c.status];
+  return `<section class="panel conn">
+    <div class="conn-head">
+      <span class="kind is-story">${icon(PROVIDER[c.provider][0])}</span>
+      <h2 class="conn-name">${esc(c.name)}</h2>
+      <span class="state-badge ${cls}">${label}</span>
+      <span class="conn-actions">
+        ${mine ? `<button class="btn is-sm" type="button" data-toast="同期を始めました。数分で届きます">${icon("refresh")}今すぐ同期</button><button class="btn is-sm is-quiet" type="button">編集</button>`
+          : `<button class="btn is-sm is-quiet" type="button">止める</button><button class="btn is-sm is-quiet is-danger" type="button">削除</button>`}
+      </span>
+    </div>
+    ${c.error ? `<div class="callout is-warn">${icon("alert")}<span>${esc(c.error)}（${esc(c.errorAt)}、${c.failures} 回続けて失敗）</span></div>` : ""}
+    ${c.stoppedReason ? `<div class="callout is-warn" style="color:var(--color-danger);background:var(--color-danger-soft)">${icon("alert")}<span>${esc(c.stoppedReason)}</span></div>` : ""}
+    <dl class="facts">
+      <div><dt>登録した人</dt><dd>${avatarOf(c.owner)}${esc(user(c.owner).name)}</dd></div>
+      <div><dt>取り込み元</dt><dd>${PROVIDER[c.provider][1]}・<span class="mono">${esc(c.host)}</span></dd></div>
+      <div><dt>${c.scope.mode === "include" ? "取り込む範囲" : "除外する範囲"}</dt><dd>${c.scope.items.map((s) => `<span class="tag">${esc(s)}</span>`).join("")}</dd></div>
+      <div><dt>最後に成功</dt><dd class="mono">${esc(c.lastSuccess)}</dd></div>
+      <div><dt>認証情報</dt><dd class="mono">••••${esc(c.last4)}</dd></div>
+      <div><dt>状態から${t("column")}への対応</dt><dd>${c.mappings.length ? c.mappings.map(([a, b]) => `<span class="tag">${esc(a)} → ${esc(b)}</span>`).join("") : "なし（先頭の列に置く）"}</dd></div>
+    </dl>
+  </section>`;
+}
+
+function register() {
+  return `<section class="section" aria-labelledby="new"><div class="section-head"><h2 class="section-title" id="new">新しい${t("connection")}を登録する</h2><span class="section-hint">自分の認証情報で、自分の担当分を取り込みます</span></div>
+  <div class="panel"><ol class="steps">
+    <li class="step is-done"><div class="step-body"><span class="step-title">取り込み元を選ぶ</span>
+      <div class="choice-list" style="grid-template-columns:repeat(auto-fit,minmax(200px,1fr))">
+        <label class="choice"><input type="radio" name="prov" checked><div><b>Backlog</b><span>課題を取り込みます</span></div></label>
+        <label class="choice"><input type="radio" name="prov"><div><b>GitHub</b><span>Issue、PR、自分宛てのレビュー依頼を取り込みます</span></div></label>
+      </div></div></li>
+    <li class="step"><div class="step-body"><span class="step-title">認証情報を入れる</span>
+      <div class="form-row">
+        <label class="field" for="host"><span class="field-label">スペースのドメイン</span><input class="input" id="host" value="acme.backlog.jp"></label>
+        <label class="field" for="key"><span class="field-label">API キー</span><input class="input" id="key" type="password" autocomplete="off" placeholder="Backlog の個人設定で発行したもの"></label>
+      </div>
+      <span class="field-hint">認証情報は暗号化して保存し、画面には末尾の4文字しか出しません。他の人の認証情報は預かりません。</span></div></li>
+    <li class="step"><div class="step-body"><span class="step-title">取り込む範囲を選ぶ</span>
+      <div class="segmented" role="radiogroup"><label><input type="radio" name="mode" checked><span>対象を挙げる</span></label><label><input type="radio" name="mode"><span>すべてから除外を挙げる</span></label></div>
+      <div class="choice-list">
+        <label class="toggle"><input type="checkbox" checked><span>SHOP（ECサイト）</span></label>
+        <label class="toggle"><input type="checkbox"><span>ADMIN（管理画面）</span></label>
+        <label class="toggle"><input type="checkbox"><span>SANDBOX</span></label>
+      </div>
+      <div class="callout is-warn">${icon("alert")}<span>取り込んだ内容は、private なものも含めて${t("workspace")}の全員に見えます。範囲を選ぶまでは何も取り込みません。</span></div></div></li>
+    <li class="step"><div class="step-body"><span class="step-title">取り込み元の状態を${t("column")}に対応させる</span>
+      <div class="table-wrap"><table class="table"><thead><tr><th>取り込み元の状態</th><th>${t("sprint")}に入れたときの${t("column")}</th></tr></thead><tbody>
+        ${["未対応", "処理中", "処理済み", "完了"].map((st, i) => `<tr><td>${st}</td><td>${st === "完了" ? `<span class="props-note">完了の${t("column")}には対応させません</span>` : `<select class="select" aria-label="${st}の${t("column")}">${D.columns.filter((c) => !c.done).map((c, j) => `<option ${i === j ? "selected" : ""}>${esc(c.name)}</option>`).join("")}</select>`}</td></tr>`).join("")}
+      </tbody></table></div>
+      <label class="toggle"><input type="checkbox"><span>取り込み元の期限を使わない</span></label></div></li>
+    <li class="step"><div class="step-body"><span class="step-title">名前を付けて登録する</span>
+      <div class="form-row"><label class="field" for="cname"><span class="field-label">表示名</span><input class="input" id="cname" value="ミナトの Backlog（管理画面）"></label></div>
+      <div class="form-actions"><button class="btn is-primary" type="button" data-toast="登録しました。最初の同期で未完了のものだけを取り込みます">登録する</button></div></div></li>
+  </ol></div></section>`;
+}
+
+SQ.mount("connection", () => `
+  ${pageHead(D.workspaces.wa.name, t("connection"), [
+    ["is-ok", "check", "有効", D.connections.filter((c) => c.status === "active").length],
+    ["is-warn", "alert", "エラー", D.connections.filter((c) => c.status === "error").length],
+    ["is-danger", "alert", "停止", D.connections.filter((c) => c.status === "stopped").length],
+  ])}
+  <p class="action-note">取り込みは15分ごと。「今すぐ同期」は登録した本人が、${t("connection")}ごとに5分に1回まで押せます。${t("leader")}は他のメンバーの${t("connection")}を止めたり削除したりできますが、範囲は変えられません。</p>
+  ${D.connections.map(conn).join("")}
+  ${register()}`);
+</script>
+</body>
+</html>

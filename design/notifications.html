@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>scrum-quest 通知</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=BIZ+UDPGothic:wght@400;700&family=Chakra+Petch:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500&family=Zen+Old+Mincho:wght@700;900&display=swap">
+<link rel="stylesheet" href="tokens.css">
+<link rel="stylesheet" href="components.css">
+</head>
+<body>
+<div id="app"></div>
+<script src="icons.js"></script>
+<script src="sample-data.js"></script>
+<script src="kit.js"></script>
+<script>
+"use strict";
+// 通知: 画面の中だけの知らせ。メールや Slack には送らない
+const { D, t, icon, esc, pageHead } = SQ;
+const ICON = { srcDone: "check", comment: "pen", party: "users", error: "alert", thanks: "heart", reward: "flag" };
+let unreadOnly = false;
+
+SQ.mount("notifications", () => {
+  const list = D.notifications.filter((n) => !unreadOnly || !n.read);
+  const unread = D.notifications.filter((n) => !n.read).length;
+  return `
+    ${pageHead("すべての" + t("workspace"), "通知", [["", "bell", "未読", unread]],
+      `<button class="btn" type="button" data-read-all ${unread ? "" : "disabled"}>すべて既読にする</button>`)}
+    <div class="toolbar"><div class="segmented" role="radiogroup" aria-label="表示">
+      <label><input type="radio" name="f" data-filter="all" ${unreadOnly ? "" : "checked"}><span>すべて</span></label>
+      <label><input type="radio" name="f" data-filter="unread" ${unreadOnly ? "checked" : ""}><span>未読だけ</span></label></div></div>
+    ${list.length ? `<ul class="feed">${list.map((n, i) => `<li class="${n.read ? "" : "is-unread"}">
+        <span class="feed-icon">${icon(ICON[n.kind])}</span>
+        <span class="feed-main"><span class="feed-text">${esc(n.text)}</span><span class="feed-at">${esc(n.at)}${n.read ? "" : "・未読"}</span></span>
+        ${n.task ? `<a class="btn is-sm" href="#" data-task="${n.task}" data-read="${D.notifications.indexOf(n)}">開く</a>` : n.read ? "" : `<button class="btn is-sm is-quiet" type="button" data-read="${D.notifications.indexOf(n)}">既読にする</button>`}
+      </li>`).join("")}</ul>`
+      : `<div class="empty">${icon("bell")}<b>未読の通知はありません</b></div>`}
+    <p class="action-note">知らせるのは、取り込み元での完了と開き直し、取り込み元で見つからない${t("task")}、自分の${t("connection")}の失敗、自分の${t("task")}へのコメント、担当への割り当て、${t("party")}への割り振り、${t("reward")}の変更、届いた感謝です。</p>`;
+});
+
+document.addEventListener("click", (ev) => {
+  const r = ev.target.closest("[data-read]");
+  if (r) { D.notifications[+r.dataset.read].read = true; if (!r.dataset.task) SQ.redraw(); else setTimeout(SQ.redraw); }
+  if (ev.target.closest("[data-read-all]")) { D.notifications.forEach((n) => (n.read = true)); SQ.redraw(); }
+  const f = ev.target.closest("[data-filter]");
+  if (f) { unreadOnly = f.dataset.filter === "unread"; SQ.redraw(); }
+});
+</script>
+</body>
+</html>

@@ -74,6 +74,7 @@ SQ.mount("epic", () => {
             <button class="btn" type="button">${t("reward")}を変える</button>
             <button class="btn is-primary" type="button" ${allDone ? "" : "disabled"}>${icon("check")}${t("clear")}</button>
             ${allDone ? "" : `<span class="action-note">配下がすべて完了すると押せます（あと ${p.all - p.done} pt）</span>`}
+            <button class="btn is-quiet is-danger" type="button" data-dialog="deleteEpic">${icon("trash")}${t("epic")}を削除する</button>
           </div>
         </section>
         <section class="section">

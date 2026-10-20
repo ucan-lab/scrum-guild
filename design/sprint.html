@@ -24,8 +24,8 @@ SQ.mount("sprint", () => {
   const s = D.sprints.sp14;
   const list = SQ.tasksWhere((x) => x.sprint === "sp14");
   const done = sumPts(list.filter((x) => x.doneAt)), all = sumPts(list);
-  const actions = `<button class="btn" type="button">延長する</button>
-    <button class="btn" type="button" disabled title="最終日（10/26）を過ぎると押せます">終了する</button>`;
+  const actions = `<button class="btn" type="button" data-dialog="sprintExtend">延長する</button>
+    <button class="btn" type="button" data-dialog="sprintEnd">終える</button>`;
   return `
     ${pageHead(`${s.start} 〜 ${s.end}・14 日のうち 8 日目`, SQ.sprintLabel("sp14"), [
       ["", "check", "完了", `${done} / ${all} pt`],

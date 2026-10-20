@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>scrum-quest アーカイブ</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=BIZ+UDPGothic:wght@400;700&family=Chakra+Petch:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500&family=Zen+Old+Mincho:wght@700;900&display=swap">
+<link rel="stylesheet" href="tokens.css">
+<link rel="stylesheet" href="components.css">
+</head>
+<body>
+<div id="app"></div>
+<script src="icons.js"></script>
+<script src="sample-data.js"></script>
+<script src="kit.js"></script>
+<script>
+"use strict";
+// アーカイブ: 自分たちで扱わない取り込んだタスク。受信箱へ戻せる
+const { D, t, icon, esc, pageHead, entry, avatarOf, user } = SQ;
+const items = D.archive;
+
+SQ.mount("archive", () => {
+  const opts = {
+    lead: "", noLink: true, showAssignee: true, showParent: false,
+    meta: (x) => `<span>${esc(user(x.archivedBy).name)}が ${esc(x.archivedAt)} に${t("archive")}</span>${x.missing ? `<span class="chip is-danger">${icon("alert")}取り込み元で見つからない（${esc(x.missing)} から）</span>` : ""}`,
+    actions: (x) => `<button class="btn is-sm" type="button" data-back="${x.id}">${t("inbox")}へ戻す</button>`,
+  };
+  return `
+    ${pageHead(D.workspaces.wa.name, t("archive"), [["", "archive", `${t("archive")}したもの`, items.length]])}
+    <p class="action-note">取り込んだ${t("task")}のうち、この${t("workspace")}で扱わないもの。検索、${t("capacity")}、自分の今日には出ません。同期で取り込み元の属性は更新しますが、完了しても知らせません。</p>
+    ${items.length ? `<div class="book">${items.map((x) => entry(x, opts)).join("")}</div>`
+      : `<div class="empty">${icon("archive")}<b>${t("archive")}は空です</b></div>`}`;
+});
+
+document.addEventListener("click", (ev) => {
+  const b = ev.target.closest("[data-back]");
+  if (!b) return;
+  const i = items.findIndex((x) => x.id === b.dataset.back);
+  const [x] = items.splice(i, 1);
+  SQ.redraw();
+  SQ.toast(`${icon("check")}「${esc(x.title)}」を${t("inbox")}へ戻しました`);
+});
+</script>
+</body>
+</html>

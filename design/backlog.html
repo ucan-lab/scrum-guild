@@ -24,7 +24,7 @@ SQ.mount("backlog", () => {
   const open = SQ.tasksWhere((x) => x.ws === "wa" && !x.doneAt);
   const rootTasks = SQ.tasksWhere((x) => x.ws === "wa" && !x.story && !x.doneAt);
   const rootDone = SQ.tasksWhere((x) => x.ws === "wa" && !x.story && x.doneAt).length;
-  const actions = `<button class="btn is-primary" type="button">${icon("plus")}${t("create")}</button>`;
+  const actions = `<button class="btn is-primary" type="button" data-dialog="createTask">${icon("plus")}${t("create")}</button>`;
   return `
     ${pageHead(D.workspaces.wa.name, t("backlog"), [
       ["", "board", `未完了の${t("task")}`, open.length],

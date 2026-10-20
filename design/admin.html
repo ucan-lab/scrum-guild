@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>scrum-quest 王国の管理</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=BIZ+UDPGothic:wght@400;700&family=Chakra+Petch:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500&family=Zen+Old+Mincho:wght@700;900&display=swap">
+<link rel="stylesheet" href="tokens.css">
+<link rel="stylesheet" href="components.css">
+</head>
+<body>
+<div id="app"></div>
+<script src="icons.js"></script>
+<script src="sample-data.js"></script>
+<script src="kit.js"></script>
+<script>
+"use strict";
+// 王国の管理（管理者）: ユーザー、ワークスペース、王国の休日、言葉づかい、配分の合計
+const { D, t, icon, esc, pageHead, avatarOf, user } = SQ;
+const A = D.admin;
+function setting(title, desc, body) {
+  return `<section class="setting"><div class="setting-head"><h2 class="setting-title">${title}</h2><p class="setting-desc">${desc}</p></div><div class="setting-body">${body}</div></section>`;
+}
+
+SQ.mount("admin", () => `
+  ${pageHead("管理者だけが見られます", "王国の管理", [
+    ["", "users", "ユーザー", A.users.filter((u) => !u.disabled).length],
+    ["", "shield", "管理者", A.users.filter((u) => u.admin).length],
+    ["", "", t("workspace"), A.workspaces.filter((w) => !w.closed).length],
+  ], `<button class="btn is-primary" type="button" data-dialog="createWorkspace">${icon("plus")}${t("workspace")}を作る</button>`)}
+  <div class="settings">
+    ${setting("ユーザー", `管理者は他のユーザーを管理者にでき、解除もできます。最後の管理者は解除できません。退会はユーザーを無効にして行い、その人の${t("connection")}の認証情報を消します。名前、完了の記録、経験値は残ります。`, `
+      <div class="table-wrap"><table class="table"><thead><tr><th>名前</th><th>管理者</th><th class="is-num">所属</th><th>最後のログイン</th><th></th></tr></thead>
+        <tbody>${A.users.map((r) => `<tr>
+          <td><span class="person">${avatarOf(r.who)}${esc(user(r.who).name)}</span>${r.disabled ? ` <span class="chip">無効</span>` : ""}</td>
+          <td><label class="toggle"><input type="checkbox" ${r.admin ? "checked" : ""} ${r.disabled ? "disabled" : ""} aria-label="${esc(user(r.who).name)}を管理者にする"></label></td>
+          <td class="is-num">${r.wss}</td><td class="mono">${r.lastLogin}</td>
+          <td>${r.disabled ? `<button class="btn is-sm is-quiet" type="button">有効に戻す</button>` : r.who === D.me ? "" : `<button class="btn is-sm is-quiet is-danger" type="button">無効にする</button>`}</td></tr>`).join("")}</tbody></table></div>`)}
+    ${setting(t("workspace"), `閉じた${t("workspace")}は読み取り専用になり、${t("connection")}はすべて止まります。開き直せます。`, `
+      <div class="table-wrap"><table class="table"><thead><tr><th>名前</th><th class="is-num">メンバー</th><th class="is-num">${t("leader")}</th><th>作った日</th><th></th></tr></thead>
+        <tbody>${A.workspaces.map((w) => `<tr><td>${esc(w.name)}${w.closed ? ` <span class="chip">閉じた ${w.closed}</span>` : ""}${!w.closed && !w.leaders ? ` <span class="chip is-warn">${t("leader")}がいない</span>` : ""}</td>
+          <td class="is-num">${w.members}</td><td class="is-num">${w.leaders}</td><td class="mono">${w.created}</td>
+          <td>${w.closed ? `<button class="btn is-sm is-quiet" type="button">開き直す</button>` : `<button class="btn is-sm is-quiet" type="button">閉じる</button>`}</td></tr>`).join("")}</tbody></table></div>`)}
+    ${setting("王国の休日", `祝日など、すべての${t("workspace")}に効く休日。日付の一覧を貼り付けて、まとめて登録できます。`, `
+      <label class="field" for="paste"><span class="field-label">貼り付けて登録</span><textarea class="textarea" id="paste" placeholder="2027-02-11 建国記念の日&#10;2027-02-23 天皇誕生日"></textarea><span class="field-hint">1行に1日。日付のあとに名前を書けます。登録済みの日付は飛ばします。</span></label>
+      <div class="form-actions"><button class="btn" type="button" data-toast="2 日を登録しました">登録する</button></div>
+      <ul class="party-list">${A.holidays.map(([d, n]) => `<li><span class="mono">${d}</span><span>${esc(n)}</span><button class="icon-btn is-danger" type="button" aria-label="${d} を消す" style="margin-left:auto">${icon("trash")}</button></li>`).join("")}</ul>`)}
+    ${setting(`${t("workspace")}の外の言葉づかい`, `「王国」「国王」などの言葉。${t("workspace")}の中の言葉づかいは、それぞれの${t("leader")}が決めます。`, `
+      <div class="choice-list">
+        <label class="choice"><input type="radio" name="kv" checked><div><b>ゲームの言葉</b><span>王国、国王</span></div></label>
+        <label class="choice"><input type="radio" name="kv"><div><b>スクラムの言葉</b><span>全体、管理者</span></div></label></div>`)}
+    ${setting("配分の合計", `ユーザーごとの、すべての${t("workspace")}の配分の合計。100% を超えた月は本人にも知らせています。`, `
+      <div class="table-wrap"><table class="table"><thead><tr><th>名前</th><th class="is-num">10月</th><th class="is-num">11月</th></tr></thead>
+        <tbody>${A.allocTotals.map(([n, a, b]) => `<tr><td>${esc(n)}</td>${[a, b].map((v) => `<td class="is-num" ${v > 100 ? 'style="color:var(--color-danger)"' : ""}>${v > 100 ? "▲ " : ""}${v}%</td>`).join("")}</tr>`).join("")}</tbody></table></div>`)}
+  </div>`);
+</script>
+</body>
+</html>

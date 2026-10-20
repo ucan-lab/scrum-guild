@@ -137,19 +137,22 @@
   function entry(x, opts = {}) {
     const showParent = opts.showParent !== false;
     const parent = x.story ? D.stories[x.story].title : null;
+    const lead = opts.lead !== undefined ? opts.lead
+      : `<button class="sun" type="button" data-sun="${x.id}" aria-pressed="${x.todayOn === D.today}" aria-label="今日やる" title="今日やる">${icon("sun")}</button>`;
+    const title = opts.noLink ? `<span class="entry-title">${titleOf(x)}</span>` : `<a class="entry-title" href="#" data-task="${x.id}">${titleOf(x)}</a>`;
     return `<div class="entry ${x.doneAt ? "is-done" : ""}">
-      <button class="sun" type="button" data-sun="${x.id}" aria-pressed="${x.todayOn === D.today}" aria-label="今日やる" title="今日やる">${icon("sun")}</button>
+      ${lead}
       <div class="entry-main">
-        <a class="entry-title" href="#" data-task="${x.id}">${titleOf(x)}</a>
+        ${title}
         <span class="entry-meta">
           ${opts.showWs ? `<span class="tag">${esc(D.workspaces[x.ws].name)}</span>` : ""}
           ${sourceKey(x)}
           ${showParent && parent ? `<span>${icon("flag")} ${esc(parent)}</span>` : ""}
           ${x.doneAt ? `<span>${t("done")} ${esc(x.doneAt)}</span>` : colName(x) ? `<span class="status-dot">${esc(colName(x))}</span>` : ""}
-          ${taskFlags(x)}
+          ${taskFlags(x)}${opts.meta ? opts.meta(x) : ""}
         </span>
       </div>
-      <div class="entry-end">${taskDue(x)}${pts(x.pts)}${opts.showAssignee ? avatarOf(x.who) : ""}${doneControl(x)}</div>
+      <div class="entry-end">${taskDue(x)}${opts.hidePts ? "" : pts(x.pts)}${opts.showAssignee ? avatarOf(x.who) : ""}${opts.actions ? opts.actions(x) : doneControl(x)}</div>
     </div>`;
   }
   function book(list, opts) {
@@ -405,25 +408,152 @@
     else { el.innerHTML = ""; el.hidden = true; scrim.hidden = true; }
   }
 
+  // ---- ダイアログ ----
+  // html は中身。閉じる操作は data-close-dialog。開いた元の要素にフォーカスを戻す
+  let dialogOpener = null;
+  function openDialog(title, body, foot) {
+    dialogOpener = document.activeElement;
+    const el = document.getElementById("dialog");
+    el.innerHTML = `<div class="dialog-sheet" role="dialog" aria-modal="true" aria-labelledby="dialog-title">
+      <div class="dialog-head"><h2 class="dialog-title" id="dialog-title">${title}</h2>
+        <button class="pill" type="button" data-close-dialog aria-label="閉じる">${icon("x")}</button></div>
+      <div class="dialog-body">${body}</div>
+      <div class="dialog-foot">${foot}</div></div>`;
+    el.hidden = false;
+    (el.querySelector("input, textarea, select, .btn.is-primary") || el.querySelector("[data-close-dialog]")).focus();
+  }
+  function closeDialog() {
+    const el = document.getElementById("dialog");
+    if (!el || el.hidden) return false;
+    el.hidden = true; el.innerHTML = "";
+    if (dialogOpener && dialogOpener.focus) dialogOpener.focus();
+    return true;
+  }
+  // 短い知らせ。数秒で消える
+  function toast(html) {
+    const el = document.getElementById("toasts");
+    const item = document.createElement("div");
+    item.className = "toast"; item.setAttribute("role", "status"); item.innerHTML = html;
+    el.append(item);
+    setTimeout(() => item.remove(), 4000);
+  }
+  // クエストのクリアの演出。判子が押されて、報酬を知らせる。動きを減らす設定では動かさない
+  function celebrate(title, reward) {
+    const el = document.getElementById("celebrate");
+    el.innerHTML = `<div class="celebrate-sheet" role="status">
+      <span class="celebrate-stamp" aria-hidden="true">クリア</span>
+      <p class="celebrate-title">${esc(title)}</p>
+      <p class="celebrate-reward">${reward}</p>
+      <button class="btn" type="button" data-close-celebrate>閉じる</button></div>`;
+    el.hidden = false;
+    el.querySelector("[data-close-celebrate]").focus();
+  }
+  function closeCelebrate() { const el = document.getElementById("celebrate"); if (el && !el.hidden) { el.hidden = true; el.innerHTML = ""; return true; } return false; }
+
+  // 月の積載量の小さなセル。cell = [基準, 作業量, 未見積もり] か "unset" か null（計画なし）
+  function miniCap(cell) {
+    if (cell === null) return `<span class="mini-cap is-none">計画なし</span>`;
+    if (cell === "unset") return `<span class="mini-cap is-none">配分未設定</span>`;
+    const [base, work, none] = cell;
+    const hi = base * 1.125, lo = base * 0.875;
+    const key = work > hi ? "is-over" : work < lo ? (none ? "is-unknown" : "is-free") : "";
+    const label = work > hi ? t("over") : work < lo ? (none ? `未見積もり ${none}` : "余力あり") : "範囲内";
+    const max = Math.max(hi, work) * 1.12;
+    return `<span class="mini-cap">
+      <span class="mini-cap-num">${work.toFixed(1)}<small> / ${base.toFixed(1)}</small></span>
+      <span class="cap is-mini ${key}" role="img" aria-label="基準 ${base} 時間、作業量 ${work} 時間"><span class="cap-band" style="left:${(lo / max) * 100}%;width:${((hi - lo) / max) * 100}%"></span><span class="cap-fill" style="width:${(work / max) * 100}%"></span></span>
+      <span class="verdict ${key}">${key === "is-over" ? icon("alert") : ""}${label}</span></span>`;
+  }
+
+  // ---- 画面で使うダイアログ。data-dialog="名前" のボタンで開く ----
+  const DIALOGS = {
+    sprintStart: () => openDialog(`${t("sprint")}を始める`,
+      `<p>${sprintLabel("sp15")}（${md(D.sprints.sp15.start)}〜${md(D.sprints.sp15.end)}）を始めます。入っている${t("task")}は 3 件、11 pt です。</p>
+       <div class="callout is-warn">${icon("alert")}<span>未見積もりが 1 件、${t("detail")}が未記入のものが 2 件あります。始めることはできます。</span></div>
+       <label class="field" for="d-goal"><span class="field-label">${t("sprintGoal")}</span><textarea class="textarea" id="d-goal" placeholder="この${t("sprint")}で何ができるようになるか"></textarea><span class="field-hint">空でも始められます。計画、${t("sprint")}、自分の今日の画面に出ます。</span></label>`,
+      `<button class="btn is-quiet" type="button" data-close-dialog>やめる</button><button class="btn is-primary" type="button" data-close-dialog data-toast="${t("sprint")}を始めました">始める</button>`),
+    sprintExtend: () => openDialog(`${t("sprint")}を延ばす`,
+      `<div class="form-row"><label class="field" for="d-days"><span class="field-label">延ばす日数</span><input class="input" id="d-days" type="number" min="1" value="2"></label>
+         <div class="field"><span class="field-label">新しい最終日</span><span class="mono">2026-10-28（水）</span></div></div>
+       <div class="callout is-info">${icon("calendar")}<span>次の ${sprintLabel("sp15")} と重なるので、${sprintLabel("sp15")} と ${sprintLabel("sp16")} を同じく 2 日ずつ後ろへずらします。</span></div>
+       <p class="field-hint">延ばした${t("sprint")}は、計画の画面のベロシティから除きます。</p>`,
+      `<button class="btn is-quiet" type="button" data-close-dialog>やめる</button><button class="btn is-primary" type="button" data-close-dialog data-toast="2 日延ばしました">2 日延ばす</button>`),
+    sprintEnd: () => openDialog(`${t("sprint")}を終える`,
+      `<p>${sprintLabel("sp14")} を終えます。終えた${t("sprint")}の期間と中身は、あとから変えられません。</p>
+       <fieldset class="field" style="border:0;padding:0;margin:0"><legend class="field-label">終わらなかった${t("task")} 7 件の行き先</legend>
+         <div class="choice-list">
+           <label class="choice"><input type="radio" name="d-carry" checked><div><b>次の ${sprintLabel("sp15")} へ持ち越す</b><span>同じ${t("task")}をそのまま移します。</span></div></label>
+           <label class="choice"><input type="radio" name="d-carry"><div><b>${t("backlog")}へ戻す</b><span>どの${t("sprint")}にも入っていない状態にします。</span></div></label>
+         </div></fieldset>
+       <div class="field"><span class="field-label">${t("sprintGoal")}は達成できましたか</span>
+         <p class="props-note">${esc(D.sprints.sp14.goal)}</p>
+         <div class="segmented" role="radiogroup"><label><input type="radio" name="d-goal" checked><span>達成した</span></label><label><input type="radio" name="d-goal"><span>達成していない</span></label></div></div>
+       <div class="ac-box"><b>終えると確定する経験値</b><ul><li>起票: 6 件</li><li>${t("detail")}を書いた: 5 件</li></ul></div>`,
+      `<button class="btn is-quiet" type="button" data-close-dialog>やめる</button><button class="btn is-primary" type="button" data-close-dialog data-toast="${sprintLabel("sp14")} を終えました。経験値が確定しました">終える</button>`),
+    createTask: () => openDialog(`${t("create")}`,
+      `<label class="field" for="d-title"><span class="field-label">タイトル</span><input class="input" id="d-title" placeholder="何をするか"></label>
+       <div class="form-row">
+         <label class="field" for="d-parent"><span class="field-label">親の${t("story")}</span><select class="select" id="d-parent"><option>なし</option>${Object.values(D.stories).map((x) => `<option>${esc(x.title)}</option>`).join("")}</select></label>
+         <label class="field" for="d-who"><span class="field-label">${t("assignee")}</span><select class="select" id="d-who"><option>担当なし</option>${Object.values(D.users).filter((u) => !u.left).map((u) => `<option>${esc(u.name)}</option>`).join("")}</select></label>
+       </div>
+       <div class="field"><span class="field-label">${t("points")}</span>
+         <div class="segmented" role="radiogroup">${["未", 0, 1, 2, 3, 5, 8, 13].map((v, i) => `<label><input type="radio" name="d-pts" ${i === 0 ? "checked" : ""}><span>${v}</span></label>`).join("")}</div>
+         <span class="field-hint">「未」は未見積もり。起票の経験値は、1 以上のポイントが振られたまま${t("sprint")}を終えると付きます。</span></div>`,
+      `<button class="btn is-quiet" type="button" data-close-dialog>やめる</button><button class="btn is-primary" type="button" data-close-dialog data-toast="${t("backlog")}の末尾に足しました">${t("create")}</button>`),
+    deleteEpic: () => {
+      openDialog(`${t("epic")}を削除する`,
+        `<p>「${esc(D.epics.e1.title)}」を削除します。削除したものは画面から消え、この版では戻せません。</p>
+         <div class="choice-list">
+           <label class="choice"><input type="radio" name="d-del" checked><div><b>配下を親なしで残す</b><span>${t("story")} 2 件と${t("task")} 6 件は、そのまま${t("backlog")}に残ります。</span></div></label>
+           <label class="choice"><input type="radio" name="d-del"><div><b>配下もまとめて削除する</b><span>取り込んだ${t("task")}は削除せず、${t("archive")}へ移します。経験値は残ります。</span></div></label>
+         </div>`,
+        `<button class="btn is-quiet" type="button" data-close-dialog>やめる</button><button class="btn is-danger" type="button" data-close-dialog data-toast="削除しました">削除する</button>`);
+      document.querySelector(".dialog-sheet").classList.add("is-danger");
+    },
+    editRecord: () => openDialog("完了の記録を直す",
+      `<p class="props-note">「ランク表示の文言を直す」の記録です。直しても経験値は動きません。直したことは変更の履歴に残ります。</p>
+       <div class="form-row">
+         <label class="field" for="d-rp"><span class="field-label">${t("points")}</span><select class="select" id="d-rp">${[0, 1, 2, 3, 5, 8, 13].map((v) => `<option ${v === 1 ? "selected" : ""}>${v}</option>`).join("")}</select></label>
+         <label class="field" for="d-rat"><span class="field-label">完了日時</span><input class="input" id="d-rat" value="2026-10-07 10:30"></label>
+         <label class="field" for="d-rm"><span class="field-label">計上月</span><input class="input" id="d-rm" value="2026-10"></label>
+       </div>`,
+      `<button class="btn is-quiet" type="button" data-close-dialog>やめる</button><button class="btn is-primary" type="button" data-close-dialog data-toast="記録を直しました">直す</button>`),
+    createWorkspace: () => openDialog(`${t("workspace")}を作る`,
+      `<label class="field" for="d-wn"><span class="field-label">名前</span><input class="input" id="d-wn" placeholder="例: 保守チーム"></label>
+       <label class="field" for="d-wl"><span class="field-label">最初の${t("leader")}</span><select class="select" id="d-wl">${Object.values(D.users).filter((u) => !u.left).map((u) => `<option>${esc(u.name)}</option>`).join("")}</select><span class="field-hint">自分でもかまいません。あとから${t("leader")}を足せます。</span></label>
+       <p class="field-hint">列は「出発前、遂行中、査定中、${t("done")}」、換算は 1 ${t("points")} = 4 時間、週の始まりは月曜で作ります。あとから設定で変えられます。</p>`,
+      `<button class="btn is-quiet" type="button" data-close-dialog>やめる</button><button class="btn is-primary" type="button" data-close-dialog data-toast="${t("workspace")}を作りました">作る</button>`),
+  };
+
   // ---- 画面の枠 ----
+  // [id, アイコン, 名前, ファイル, 件数]。文字列だけの行は見出し
   const PAGES = [
     ["today", "sun", () => "自分の今日", "today.html"],
-    null,
-    ["inbox", "inbox", () => t("inbox"), null, 3],
+    ["notifications", "bell", () => "通知", "notifications.html", 3],
+    ["me", "users", () => "自分の設定", "me.html"],
+    ["admin", "shield", () => "王国の管理", "admin.html"],
+    "workspace",
+    ["inbox", "inbox", () => t("inbox"), "inbox.html", 4],
     ["backlog", "board", () => t("backlog"), "backlog.html"],
     ["sprint", "columns", () => t("sprint"), "sprint.html"],
     ["plan", "calendar", () => t("plan"), "plan.html"],
     ["epic", "flag", () => t("epic"), "epic.html"],
-    ["archive", "archive", () => t("archive"), null],
-    ["connection", "link", () => t("connection"), null],
-    ["settings", "gear", () => "設定", null],
+    "記録",
+    ["capacity", "trend", () => t("capacity"), "capacity.html"],
+    ["records", "check", () => "完了の記録", "records.html"],
+    ["archive", "archive", () => t("archive"), "archive.html"],
+    "管理",
+    ["connection", "link", () => t("connection"), "connections.html"],
+    ["members", "users", () => "メンバー", "members.html"],
+    ["settings", "gear", () => "設定", "settings.html"],
+    ["history", "clock", () => "変更の履歴", "history.html"],
   ];
   function navHtml(current) {
     return PAGES.map((p) => {
-      if (!p) return `<div class="nav-group">${t("workspace")}</div>
+      if (p === "workspace") return `<div class="nav-group">${t("workspace")}</div>
         <label class="ws-select" for="ws"><span>${t("workspace")}</span><select id="ws"><option>${esc(D.workspaces.wa.name)}</option><option>${esc(D.workspaces.wb.name)}</option></select></label>`;
+      if (typeof p === "string") return `<div class="nav-group">${p}</div>`;
       const [id, ic, label, href, badge] = p;
-      if (!href) return `<span class="nav-item is-later" aria-disabled="true" title="この見本にはまだありません">${icon(ic)}<span>${label()}</span>${badge ? `<span class="nav-badge">${badge}</span>` : ""}</span>`;
       return `<a class="nav-item" href="${href}" ${current === id ? 'aria-current="page"' : ""}>${icon(ic)}<span>${label()}</span>${badge ? `<span class="nav-badge">${badge}</span>` : ""}</a>`;
     }).join("");
   }
@@ -458,7 +588,10 @@
       </div>
     </div>
     <div class="scrim" id="scrim" data-close-drawer hidden></div>
-    <aside class="drawer" id="drawer" role="dialog" aria-modal="true" aria-labelledby="drawer-title" hidden></aside>`;
+    <aside class="drawer" id="drawer" role="dialog" aria-modal="true" aria-labelledby="drawer-title" hidden></aside>
+    <div class="dialog" id="dialog" hidden></div>
+    <div class="celebrate" id="celebrate" hidden></div>
+    <div class="toasts" id="toasts" aria-live="polite"></div>`;
     document.querySelector("[data-switch='vocab']").addEventListener("click", toggleVocab);
     document.querySelector("[data-switch='theme']").addEventListener("click", cycleTheme);
     onChange(redraw);
@@ -499,9 +632,23 @@
     }
     if ((el = hit("data-tab"))) { drawer.tab = el.dataset.tab; renderDrawer(); return; }
     if (hit("data-close-drawer")) { closeDrawer(); return; }
+    if ((el = hit("data-dialog"))) { DIALOGS[el.dataset.dialog](); return; }
+    if ((el = hit("data-celebrate"))) {
+      const e = D.epics[el.dataset.celebrate];
+      celebrate(e.title, `${t("party")}の ${e.party.length} 人に ${{ small: 100, medium: 300, large: 600 }[e.tier]} XP`); return;
+    }
+    if ((el = hit("data-close-dialog")) || ev.target.id === "dialog") {
+      const msg = el && el.dataset.toast; closeDialog(); if (msg) toast(`${icon("check")}${esc(msg)}`); return;
+    }
+    if ((el = hit("data-toast"))) { toast(`${icon("check")}${esc(el.dataset.toast)}`); return; }
+    if (hit("data-close-celebrate") || ev.target.id === "celebrate") { closeCelebrate(); return; }
     if ((el = hit("data-task"))) { ev.preventDefault(); openDrawer(el.dataset.task, el.dataset.task); return; }
   });
-  document.addEventListener("keydown", (ev) => { if (ev.key === "Escape" && drawer.id) closeDrawer(); });
+  document.addEventListener("keydown", (ev) => {
+    if (ev.key !== "Escape") return;
+    if (closeCelebrate() || closeDialog()) return;
+    if (drawer.id) closeDrawer();
+  });
   const extraRedraws = [];
   function redrawAll() { redraw(); extraRedraws.forEach((fn) => fn()); }
 
@@ -528,5 +675,6 @@
     user, task, tasksWhere, sprintLabel, colName, categoryOf, storyPts, epicPts, dueOf,
     avatar, avatarOf, emblem, pts, dueChip, taskDue, tier, sourceKey, entry, book, section, pageHead,
     card, board, treeStory, treeEpic, sprintNotice, questNotice, progress, levelPanel, load, capacityRows,
+    openDialog, closeDialog, toast, celebrate, miniCap, redraw: () => redrawAll(), DIALOGS,
   };
 })();

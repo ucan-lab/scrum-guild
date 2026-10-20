@@ -130,3 +130,128 @@ window.SQ_DATA = (function () {
     hoursPerPoint: 4,
   };
 })();
+
+// ---- 残りの画面の例のデータ ----
+Object.assign(window.SQ_DATA, {
+  // 受信箱とアーカイブ（取り込んだが、まだバックログに入れていないもの）
+  inbox: [
+    { id: "i1", ws: "wa", title: "管理者のパスワード再設定メールが届かない", who: "u1", pts: null,
+      src: { kind: "backlog", key: "SHOP-133", status: "未対応", due: "2026-10-23" }, conn: "c1", arrivedAt: "10/20 08:15" },
+    { id: "i2", ws: "wa", title: "Node 22 に上げる", who: "u1", pts: null,
+      src: { kind: "issue", key: "acme/shop#420", status: "open" }, conn: "c2", arrivedAt: "10/20 08:15" },
+    { id: "i3", ws: "wa", title: "商品画像の遅延読み込み", who: "u1", pts: null, review: true,
+      src: { kind: "review", key: "acme/shop#421", status: "レビュー待ち" }, conn: "c2", arrivedAt: "10/19 17:30" },
+    { id: "i4", ws: "wa", title: "請求先住所の郵便番号が7桁で切れる", who: "u4", pts: null,
+      src: { kind: "backlog", key: "SHOP-129", status: "完了" }, srcDone: true, conn: "c3", arrivedAt: "10/18 09:00" },
+  ],
+  archive: [
+    { id: "a1", ws: "wa", title: "社内勉強会の資料置き場を作る", who: "u1", pts: null, src: { kind: "issue", key: "acme/handbook#33", status: "open" }, archivedAt: "10/14", archivedBy: "u2" },
+    { id: "a2", ws: "wa", title: "デザインの古いトークンを消す", who: "u3", pts: 2, src: { kind: "pr", key: "acme/web#88", status: "closed" }, archivedAt: "10/02", archivedBy: "u3", missing: "10/18" },
+  ],
+
+  connections: [
+    { id: "c1", owner: "u1", provider: "backlog", name: "ミナトの Backlog", host: "acme.backlog.jp", status: "active",
+      lastSuccess: "10/20 10:00", scope: { mode: "include", items: ["SHOP（ECサイト）"] }, last4: "q9Zt", mappings: [["未対応", "出発前"], ["処理中", "遂行中"], ["処理済み", "査定中"]] },
+    { id: "c2", owner: "u1", provider: "github", name: "ミナトの GitHub", host: "github.com", status: "error",
+      lastSuccess: "10/20 08:15", error: "GitHub の応答が遅れています（503）。次の同期で再試行します。", errorAt: "10/20 10:00", failures: 2,
+      scope: { mode: "include", items: ["acme/shop", "acme/web"] }, last4: "Xk2c", mappings: [["open", "出発前"]] },
+    { id: "c3", owner: "u4", provider: "backlog", name: "リンの Backlog", host: "acme.backlog.jp", status: "stopped",
+      stoppedReason: "認証に失敗したので止めました。本人が API キーを登録し直すと再開します。", lastSuccess: "10/17 18:00",
+      scope: { mode: "exclude", items: ["SANDBOX"] }, last4: "7hQe", mappings: [] },
+  ],
+
+  members: [
+    { who: "u1", role: "leader", joined: "2025-04-01", alloc: 60 },
+    { who: "u2", role: "leader", joined: "2025-04-01", alloc: 100 },
+    { who: "u3", role: "member", joined: "2025-09-16", alloc: 50 },
+    { who: "u4", role: "member", joined: "2026-02-02", alloc: null },
+    { who: "u5", role: "member", joined: "2025-04-01", left: "2026-08-31", alloc: null },
+  ],
+  invitations: [
+    { login: "kotone-dev", role: "member", by: "u1", at: "10/18" },
+  ],
+
+  detailFields: ["達成条件", "確かめ方"],
+  pointRates: [["2026-04", 4], ["2025-04", 3]],
+  workspaceHolidays: [["2026-12-29", "年末休業"], ["2026-12-30", "年末休業"], ["2026-12-31", "年末休業"]],
+  settings: { timezone: "Asia/Tokyo", weekStart: 1, vocab: 0 },
+
+  // 完了の記録（10月）
+  completions: [
+    { at: "10/20 09:40", task: "決済通知のメール文面を直す", by: "u1", who: "u1", pts: 1, sprint: "第14回", cat: "保守", month: null },
+    { at: "10/16 15:20", task: "タイムアウトの閾値を見直す", by: "u4", who: "u4", pts: 2, sprint: "第14回", cat: "保守", month: null },
+    { at: "10/15 11:02", task: "依存パッケージを更新する", by: "u3", who: "u3", pts: 2, sprint: "第14回", cat: "保守", month: null },
+    { at: "10/10 17:45", task: "ポイントの付与率を設定できるようにする", by: "u2", who: "u2", pts: 5, sprint: "第13回", cat: "追加案件", month: "2026-10" },
+    { at: "10/09 12:10", task: "会員ランクの判定を夜間に回す", by: "u1", who: "u1", pts: 8, sprint: "第13回", cat: "追加案件", month: "2026-10" },
+    { at: "10/07 10:30", task: "ランク表示の文言を直す", by: "u3", who: "u3", pts: 1, sprint: "第13回", cat: "追加案件", month: "2026-10", edited: true },
+    { at: "10/02 16:00", task: "問い合わせフォームの迷惑投稿を減らす", by: "u4", who: "u4", pts: 3, sprint: null, cat: null, month: null },
+  ],
+
+  // 変更の履歴（リーダーと管理者だけが見る分）
+  audit: [
+    ["10/20 09:12", "u1", "配分", "ソウタ・11月", "なし → 50%"],
+    ["10/18 14:03", "u1", "招待", "kotone-dev", "一般で招待"],
+    ["10/17 18:00", null, "接続", "リンの Backlog", "認証の失敗で停止"],
+    ["10/12 11:40", "u2", "完了の記録", "ランク表示の文言を直す", "ポイント 2 → 1"],
+    ["09/01 09:00", "u2", "ロール", "ミナト", "一般 → リーダー"],
+    ["08/31 18:20", "u2", "離脱", "カイ", "メンバーから外す"],
+  ],
+
+  // 月の積載量（メンバー × 月）。[基準, 作業量, 未見積もり件数]、null は計画なし
+  monthly: {
+    months: ["2026-09", "2026-10", "2026-11", "2026-12"],
+    rows: [
+      { who: "u1", cells: [[96.0, 92.0, 0], [103.2, 118.0, 0], [96.0, 64.0, 1], null] },
+      { who: "u2", cells: [[160.0, 150.0, 0], [172.0, 168.0, 0], [160.0, 120.0, 0], null] },
+      { who: "u3", cells: [[80.0, 70.0, 0], [86.0, 60.0, 1], [80.0, 44.0, 2], null] },
+      { who: "u4", cells: ["unset", "unset", "unset", null] },
+    ],
+  },
+
+  notifications: [
+    { kind: "srcDone", at: "10/20 10:00", read: false, text: "SHOP-131「請求書 PDF の文字化けを直す」が取り込み元で完了になりました", task: "t12" },
+    { kind: "comment", at: "10/16 09:06", read: false, who: "u3", text: "ソウタさんが「ポイント付与のバッチを作る」にコメントしました", task: "t1" },
+    { kind: "party", at: "10/15 13:20", read: false, who: "u2", text: "ハルカさんがあなたをクエスト「会員ポイント制度を公開する」のパーティに割り振りました" },
+    { kind: "error", at: "10/20 10:00", read: true, text: "接続「ミナトの GitHub」の取り込みに失敗しています（503）。次の同期で再試行します" },
+    { kind: "thanks", at: "10/14 18:30", read: true, who: "u4", text: "リンさんから「障害時の連絡手順を書く」で感謝が届きました" },
+    { kind: "reward", at: "10/10 10:00", read: true, who: "u2", text: "クエスト「会員ポイント制度を公開する」のクリア報酬が 中 から 大 に変わりました" },
+  ],
+  receivedInvites: [
+    { ws: "デザイン相談室", by: "ハルカ", role: "member", at: "10/19" },
+  ],
+
+  // 自分の設定（自分は me のユーザー）
+  mine: {
+    capacityHistory: [["2026-10", 8, 12.5, "月・火・水・木・金"], ["2026-04", 6, 12.5, "月・火・水・木"]],
+    weekdays: [1, 2, 3, 4, 5],
+    workStart: "2025-04-01", workEnd: null,
+    timeOff: [["2026-10-23", "半日"], ["2026-11-02", "終日"], ["2026-11-24", "終日"]],
+    overrides: [["2026-12", 120]],
+    allocTotals: [["2026-10", 100], ["2026-11", 110]],
+    xp: [
+      ["10/20 09:40", "完了", "決済通知のメール文面を直す", 20],
+      ["10/13 10:00", "起票", "障害時の連絡手順を書く（第13回の確定）", 10],
+      ["10/13 10:00", "詳細", "会員ランクの判定を夜間に回す（第13回の確定）", 15],
+      ["10/09 12:10", "完了", "会員ランクの判定を夜間に回す", 20],
+      ["10/06 16:00", "手助け", "ハルカさんへの感謝", 15],
+      ["10/03 11:00", "打ち消し", "完了を戻した: ログ出力の整理", -20],
+    ],
+  },
+
+  admin: {
+    users: [
+      { who: "u1", admin: true, wss: 2, lastLogin: "10/20" },
+      { who: "u2", admin: true, wss: 1, lastLogin: "10/20" },
+      { who: "u3", admin: false, wss: 1, lastLogin: "10/19" },
+      { who: "u4", admin: false, wss: 2, lastLogin: "10/17" },
+      { who: "u5", admin: false, wss: 0, lastLogin: "08/31", disabled: true },
+    ],
+    workspaces: [
+      { name: "受託開発チーム", members: 4, leaders: 2, created: "2025-04-01" },
+      { name: "社内ツール", members: 2, leaders: 1, created: "2025-10-01" },
+      { name: "旧サイト保守", members: 0, leaders: 0, created: "2024-04-01", closed: "2026-03-31" },
+    ],
+    holidays: [["2026-11-03", "文化の日"], ["2026-11-23", "勤労感謝の日"], ["2027-01-01", "元日"], ["2027-01-11", "成人の日"]],
+    allocTotals: [["ミナト", 100, 100], ["リン", 0, 110], ["ハルカ", 100, 100]],
+  },
+});

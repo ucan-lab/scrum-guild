@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>scrum-quest 積載量</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=BIZ+UDPGothic:wght@400;700&family=Chakra+Petch:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500&family=Zen+Old+Mincho:wght@700;900&display=swap">
+<link rel="stylesheet" href="tokens.css">
+<link rel="stylesheet" href="components.css">
+</head>
+<body>
+<div id="app"></div>
+<script src="icons.js"></script>
+<script src="sample-data.js"></script>
+<script src="kit.js"></script>
+<script>
+"use strict";
+// 積載量: メンバーごとの月とスプリントの作業量を、基準と並べる
+const { D, t, icon, esc, pageHead, avatarOf, user, capacityRows, miniCap } = SQ;
+const MONTH = (m) => `${+m.slice(5)}月`;
+
+SQ.mount("capacity", () => {
+  const m = D.monthly;
+  return `
+    ${pageHead(D.workspaces.wa.name, t("capacity"), [
+      ["is-danger", "alert", `10月に${t("over")}`, 1],
+      ["", "", "配分未設定", 1],
+    ])}
+    <p class="action-note">作業量は、担当する${t("task")}の${t("points")}を時間に直したもの（1 ${t("points")} = ${D.hoursPerPoint} 時間）。基準は、1日の時間 × 配分 × その${t("workspace")}に所属していた稼働日。許容幅は ±12.5%。知らせるだけで、${t("sprint")}に入れる操作は止めません。</p>
+    <section class="section"><div class="section-head"><h2 class="section-title">月ごと</h2><span class="section-hint">${t("sprint")}のある稼働日の分だけ比べます</span></div>
+      <div class="table-wrap"><table class="table">
+        <thead><tr><th>${t("member")}</th>${m.months.map((x) => `<th>${MONTH(x)}</th>`).join("")}</tr></thead>
+        <tbody>${m.rows.map((r) => `<tr><td><span class="person">${avatarOf(r.who)}${esc(user(r.who).name)}</span></td>${r.cells.map((c) => `<td>${miniCap(c)}</td>`).join("")}</tr>`).join("")}</tbody>
+      </table></div>
+    </section>
+    <section class="section"><div class="section-head"><h2 class="section-title">${SQ.sprintLabel("sp14")}</h2><span class="section-hint">10/13〜10/26</span></div>
+      <div class="panel"><div class="grid-2">${capacityRows()}</div></div>
+    </section>
+    <section class="section"><div class="section-head"><h2 class="section-title">この先の休み</h2></div>
+      <div class="panel"><ul class="party-list">${[["u1", "10/23", "半日"], ["u3", "10/30", "終日"], ["u2", "11/02", "終日"]].map(([u, d, k]) => `<li>${avatarOf(u)}<span>${esc(user(u).name)}</span><span class="mono">${d}</span><span class="props-note">${k}</span></li>`).join("")}</ul></div>
+    </section>`;
+});
+</script>
+</body>
+</html>

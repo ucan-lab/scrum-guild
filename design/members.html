@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>scrum-quest メンバー</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=BIZ+UDPGothic:wght@400;700&family=Chakra+Petch:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500&family=Zen+Old+Mincho:wght@700;900&display=swap">
+<link rel="stylesheet" href="tokens.css">
+<link rel="stylesheet" href="components.css">
+</head>
+<body>
+<div id="app"></div>
+<script src="icons.js"></script>
+<script src="sample-data.js"></script>
+<script src="kit.js"></script>
+<script>
+"use strict";
+// メンバー: ロール、配分、招待
+const { D, t, icon, esc, pageHead, avatarOf, emblem, user } = SQ;
+const fmt = (d) => d.replaceAll("-", "/");
+
+SQ.mount("members", () => {
+  const now = D.members.filter((m) => !m.left);
+  const rows = D.members.map((m) => {
+    const u = user(m.who);
+    const allocOptions = `<option ${m.alloc == null ? "selected" : ""}>未設定</option>` + Array.from({ length: 21 }, (_, i) => i * 5).map((v) => `<option ${m.alloc === v ? "selected" : ""}>${v}%</option>`).join("");
+    return `<tr>
+      <td><span class="person">${avatarOf(m.who)}${esc(u.name)}${emblem(u.level, true)}</span></td>
+      <td>${m.left ? `<span class="props-note">離脱済み</span>` : `<select class="select" aria-label="${esc(u.name)}のロール"><option ${m.role === "leader" ? "selected" : ""}>${t("leader")}</option><option ${m.role === "member" ? "selected" : ""}>一般</option></select>`}</td>
+      <td class="is-num">${fmt(m.joined)}${m.left ? `〜${fmt(m.left)}` : ""}</td>
+      <td>${m.left ? "—" : `<select class="select" aria-label="${esc(u.name)}の11月の配分">${allocOptions}</select>`}</td>
+      <td>${m.left ? "" : m.who === D.me ? `<button class="btn is-sm is-quiet" type="button">抜ける</button>` : `<button class="btn is-sm is-quiet is-danger" type="button">外す</button>`}</td>
+    </tr>`;
+  }).join("");
+  return `
+    ${pageHead(D.workspaces.wa.name, "メンバー", [
+      ["", "users", "所属", now.length],
+      ["", "", t("leader"), now.filter((m) => m.role === "leader").length],
+      ["is-warn", "", "11月の配分が未設定", now.filter((m) => m.alloc == null).length],
+      ["", "mail", "招待中", D.invitations.length],
+    ])}
+    <section class="section"><div class="section-head"><h2 class="section-title">所属している人</h2><span class="section-hint">配分は11月の値。他の${t("workspace")}の配分は見えません</span></div>
+      <div class="table-wrap"><table class="table"><thead><tr><th>名前</th><th>ロール</th><th class="is-num">所属</th><th>配分（11月）</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>
+      <p class="action-note">外すと、その人の未完了の${t("task")}は担当なしに戻り、${t("party")}からも外れます。完了の記録と経験値は残ります。</p>
+    </section>
+    <section class="section"><div class="section-head"><h2 class="section-title">招待する</h2></div>
+      <div class="panel">
+        <div class="form-row">
+          <label class="field" for="login"><span class="field-label">GitHub のユーザー名</span><input class="input" id="login" placeholder="例: kotone-dev"></label>
+          <div class="field"><span class="field-label">ロール</span><div class="segmented" role="radiogroup"><label><input type="radio" name="role" checked><span>一般</span></label><label><input type="radio" name="role"><span>${t("leader")}</span></label></div></div>
+          <button class="btn is-primary" type="button" data-toast="招待しました。URL を本人に伝えてください">${icon("mail")}招待する</button>
+        </div>
+        <span class="field-hint">scrum-quest は招待をメールで送りません。この画面の URL を本人に伝えてください。本人が GitHub でログインすると招待が見えます。</span>
+        ${D.invitations.map((i) => `<div class="load-foot" style="padding-top:var(--space-3);border-top:1px solid var(--color-rule)"><span><span class="mono">${esc(i.login)}</span>・${i.role === "member" ? "一般" : t("leader")}・${esc(user(i.by).name)}が ${esc(i.at)} に招待</span><button class="btn is-sm is-quiet" type="button" data-toast="招待を取り消しました">取り消す</button></div>`).join("")}
+      </div>
+    </section>`;
+});
+</script>
+</body>
+</html>

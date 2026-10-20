@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>scrum-quest 完了の記録</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=BIZ+UDPGothic:wght@400;700&family=Chakra+Petch:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500&family=Zen+Old+Mincho:wght@700;900&display=swap">
+<link rel="stylesheet" href="tokens.css">
+<link rel="stylesheet" href="components.css">
+</head>
+<body>
+<div id="app"></div>
+<script src="icons.js"></script>
+<script src="sample-data.js"></script>
+<script src="kit.js"></script>
+<script>
+"use strict";
+// 完了の記録: 振り返りと請求の根拠。区分と計上月で見る
+const { D, t, icon, esc, pageHead, avatarOf, user } = SQ;
+
+SQ.mount("records", () => {
+  const recs = D.completions;
+  const byCat = {};
+  recs.forEach((r) => { const k = r.cat || `${t("category")}なし`; byCat[k] = byCat[k] || [0, 0]; byCat[k][0]++; byCat[k][1] += r.pts; });
+  const total = recs.reduce((a, r) => a + r.pts, 0);
+  return `
+    ${pageHead(D.workspaces.wa.name, "完了の記録", [
+      ["", "check", "10月の完了", `${recs.length} 件`],
+      ["", "", t("points"), `${total} pt`],
+    ], `<button class="btn" type="button" data-toast="CSV を書き出しました（見本なので保存はしません）">CSV で書き出す</button>`)}
+    <div class="toolbar">
+      <select class="select" id="m" aria-label="月"><option>2026年10月</option><option>2026年9月</option></select>
+      <div class="segmented" role="radiogroup" aria-label="月の数え方"><label><input type="radio" name="by" checked><span>完了した月</span></label><label><input type="radio" name="by"><span>計上月</span></label></div>
+      <select class="select" id="c" aria-label="${t("category")}"><option>${t("category")}: すべて</option>${Object.values(D.categories).map((c) => `<option>${esc(c.name)}</option>`).join("")}<option>${t("category")}なし</option></select>
+    </div>
+    <div class="table-wrap"><table class="table"><thead><tr><th>${t("category")}</th><th class="is-num">件数</th><th class="is-num">${t("points")}</th></tr></thead>
+      <tbody>${Object.entries(byCat).map(([k, [n, p]]) => `<tr><td>${esc(k)}</td><td class="is-num">${n}</td><td class="is-num">${p}</td></tr>`).join("")}
+      <tr><td><b>合計</b></td><td class="is-num"><b>${recs.length}</b></td><td class="is-num"><b>${total}</b></td></tr></tbody></table></div>
+    <div class="table-wrap"><table class="table">
+      <thead><tr><th>完了日時</th><th>${t("task")}</th><th>${t("assignee")}</th><th class="is-num">${t("points")}</th><th>${t("sprint")}</th><th>${t("category")}</th><th>計上月</th><th></th></tr></thead>
+      <tbody>${recs.map((r) => `<tr>
+        <td class="mono">${esc(r.at)}</td>
+        <td>${esc(r.task)}${r.edited ? ` <span class="chip">${icon("pen")}直した</span>` : ""}</td>
+        <td><span class="person">${avatarOf(r.who)}${esc(user(r.who).name)}</span></td>
+        <td class="is-num">${r.pts}</td>
+        <td>${r.sprint ? esc(`${t("sprint")} ${r.sprint}`) : `<span class="props-note">なし</span>`}</td>
+        <td>${r.cat ? esc(r.cat) : `<span class="props-note">${t("category")}なし</span>`}</td>
+        <td class="mono">${r.month || "—"}</td>
+        <td><button class="btn is-sm is-quiet" type="button" data-dialog="editRecord">直す</button></td>
+      </tr>`).join("")}</tbody></table></div>
+    <p class="action-note">記録は完了にした時点の${t("assignee")}、${t("points")}、${t("sprint")}、${t("category")}を残したものです。${t("leader")}は${t("points")}、完了日時、計上月を直せます。直しても経験値は動きません。</p>`;
+});
+</script>
+</body>
+</html>

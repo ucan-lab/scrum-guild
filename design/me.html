@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>scrum-quest 自分の設定</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=BIZ+UDPGothic:wght@400;700&family=Chakra+Petch:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500&family=Zen+Old+Mincho:wght@700;900&display=swap">
+<link rel="stylesheet" href="tokens.css">
+<link rel="stylesheet" href="components.css">
+</head>
+<body>
+<div id="app"></div>
+<script src="icons.js"></script>
+<script src="sample-data.js"></script>
+<script src="kit.js"></script>
+<script>
+"use strict";
+// 自分の設定: 稼働の基準、休み、全ワークスペースの積載量、経験値の明細、届いた招待
+const { D, t, icon, esc, pageHead, load, levelPanel } = SQ;
+const M = D.mine;
+const WEEK = ["日", "月", "火", "水", "木", "金", "土"];
+function setting(title, desc, body) {
+  return `<section class="setting"><div class="setting-head"><h2 class="setting-title">${title}</h2><p class="setting-desc">${desc}</p></div><div class="setting-body">${body}</div></section>`;
+}
+
+SQ.mount("me", () => `
+  ${pageHead("ミナト", "自分の設定", [], `<button class="btn is-primary" type="button" data-toast="保存しました">保存する</button>`)}
+  ${D.receivedInvites.map((i) => `<div class="callout is-info">${icon("mail")}<span>${esc(i.by)}さんから「${esc(i.ws)}」への招待が届いています（${i.role === "member" ? "一般" : t("leader")}、${esc(i.at)}）。</span>
+    <span style="margin-left:auto;display:flex;gap:var(--space-2)"><button class="btn is-sm is-primary" type="button" data-toast="「${esc(i.ws)}」に参加しました">承諾する</button><button class="btn is-sm is-quiet" type="button" data-toast="辞退しました">辞退する</button></span></div>`).join("")}
+  ${M.allocTotals.filter(([, v]) => v > 100).map(([m, v]) => `<div class="callout is-warn">${icon("alert")}<span>${+m.slice(5)}月は、所属する${t("workspace")}の配分の合計が ${v}% です。各${t("leader")}に相談してください。この知らせは本人にだけ見えています。</span></div>`).join("")}
+  <div class="layout-aside">
+    <div class="layout-main">
+      <div class="settings">
+        ${setting("1日の基準", `${t("capacity")}の基準になる、1日に働く時間と許容幅、稼働する曜日。適用を始める月を付けて変えるので、過去の月の値は動きません。`, `
+          <div class="form-row">
+            <label class="field" for="hours"><span class="field-label">1日の時間</span><input class="input" id="hours" type="number" value="8" step="0.5" min="0" max="24"></label>
+            <label class="field" for="tol"><span class="field-label">許容幅（±%）</span><input class="input" id="tol" type="number" value="12.5" step="0.5" min="0" max="100"></label>
+            <label class="field" for="from"><span class="field-label">適用を始める月</span><input class="input" id="from" value="2026-11"></label>
+          </div>
+          <div class="field"><span class="field-label">稼働する曜日</span><div class="weekdays">${WEEK.map((w, i) => `<label><input type="checkbox" ${M.weekdays.includes(i) ? "checked" : ""} aria-label="${w}曜日"><span>${w}</span></label>`).join("")}</div></div>
+          <div class="table-wrap"><table class="table"><thead><tr><th>適用を始めた月</th><th class="is-num">1日</th><th class="is-num">許容幅</th><th>曜日</th></tr></thead>
+            <tbody>${M.capacityHistory.map(([m, h, tl, wd]) => `<tr><td class="mono">${m}</td><td class="is-num">${h} 時間</td><td class="is-num">±${tl}%</td><td>${wd}</td></tr>`).join("")}</tbody></table></div>`)}
+        ${setting("稼働期間", `入った日と抜ける日。期間の外の日は基準に数えません。空なら区切りません。本人と管理者が変えられます。`, `
+          <div class="form-row">
+            <label class="field" for="ws"><span class="field-label">稼働開始日</span><input class="input" id="ws" type="date" value="${M.workStart}"></label>
+            <label class="field" for="we"><span class="field-label">稼働終了日</span><input class="input" id="we" type="date"></label>
+          </div>`)}
+        ${setting("休み", `所属するすべての${t("workspace")}に効きます。半日は稼働日 0.5 日と数えます。理由は書きません。`, `
+          <ul class="party-list">${M.timeOff.map(([d, k]) => `<li><span class="mono">${d}</span><span class="tag">${k}</span><button class="icon-btn is-danger" type="button" aria-label="${d} の休みを消す" style="margin-left:auto">${icon("trash")}</button></li>`).join("")}</ul>
+          <div class="form-row"><label class="field" for="off"><span class="field-label">日付</span><input class="input" id="off" type="date"></label>
+            <div class="field"><span class="field-label">長さ</span><div class="segmented" role="radiogroup"><label><input type="radio" name="k" checked><span>終日</span></label><label><input type="radio" name="k"><span>半日</span></label></div></div>
+            <button class="btn" type="button" data-toast="休みを足しました">足す</button></div>`)}
+        ${setting("月の基準の上書き", `按分では合わない月だけ、その月の基準を時間で決めます。`, `
+          <ul class="party-list">${M.overrides.map(([m, h]) => `<li><span class="mono">${m}</span><span>${h} 時間</span><button class="icon-btn is-danger" type="button" aria-label="${m} の上書きを消す" style="margin-left:auto">${icon("trash")}</button></li>`).join("")}</ul>
+          <div class="form-row"><label class="field" for="om"><span class="field-label">月</span><input class="input" id="om" placeholder="2027-01"></label><label class="field" for="oh"><span class="field-label">時間</span><input class="input" id="oh" type="number"></label><button class="btn" type="button">足す</button></div>`)}
+        ${setting("経験値の明細", `本人だけが見られます。打ち消しは負の値で残ります。手で足し引きする操作はありません。`, `
+          <div class="table-wrap"><table class="table"><thead><tr><th>確定日時</th><th>行動</th><th>内容</th><th class="is-num">XP</th></tr></thead>
+            <tbody>${M.xp.map(([at, a, w, v]) => `<tr><td class="mono">${at}</td><td><span class="tag">${a}</span></td><td>${esc(w)}</td><td class="is-num" style="color:${v < 0 ? "var(--color-danger)" : "var(--color-xp)"}">${v > 0 ? "+" : ""}${v}</td></tr>`).join("")}</tbody></table></div>`)}
+      </div>
+    </div>
+    <aside class="layout-side">
+      ${levelPanel()}
+      <section class="panel"><div class="panel-title"><b>${t("capacity")}の合計</b>10月・すべての${t("workspace")}</div>
+        ${load(D.workspaces.wa.name, "配分 60%", 103.2, 118.0)}
+        ${load(D.workspaces.wb.name, "配分 40%", 68.8, 50.0)}
+        ${load("合計", "ユーザーの基準", 172.0, 168.0)}
+      </section>
+    </aside>
+  </div>`);
+</script>
+</body>
+</html>

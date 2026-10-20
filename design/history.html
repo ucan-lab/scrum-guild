@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>scrum-quest 変更の履歴</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=BIZ+UDPGothic:wght@400;700&family=Chakra+Petch:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500&family=Zen+Old+Mincho:wght@700;900&display=swap">
+<link rel="stylesheet" href="tokens.css">
+<link rel="stylesheet" href="components.css">
+</head>
+<body>
+<div id="app"></div>
+<script src="icons.js"></script>
+<script src="sample-data.js"></script>
+<script src="kit.js"></script>
+<script>
+"use strict";
+// 変更の履歴: 権限、配分、接続、完了の記録の修正、削除（リーダーと管理者）
+const { D, t, icon, esc, pageHead, avatarOf, user } = SQ;
+
+SQ.mount("history", () => `
+  ${pageHead(D.workspaces.wa.name, "変更の履歴", [["", "clock", "直近30日", D.audit.length]])}
+  <p class="action-note">${t("leader")}と管理者だけが見られます。${t("task")}、${t("story")}、${t("epic")}の属性の変更は、それぞれの詳細の「変更の履歴」に出ます。</p>
+  <div class="toolbar"><select class="select" id="kind" aria-label="種類"><option>種類: すべて</option><option>ロール</option><option>招待</option><option>離脱</option><option>配分</option><option>接続</option><option>完了の記録</option><option>削除</option></select></div>
+  <div class="table-wrap"><table class="table">
+    <thead><tr><th>日時</th><th>した人</th><th>種類</th><th>対象</th><th>内容</th></tr></thead>
+    <tbody>${D.audit.map(([at, who, kind, target, what]) => `<tr>
+      <td class="mono">${at}</td>
+      <td>${who ? `<span class="person">${avatarOf(who)}${esc(user(who).name)}</span>` : `<span class="props-note">定期処理</span>`}</td>
+      <td><span class="tag">${esc(kind)}</span></td><td>${esc(target)}</td><td>${esc(what)}</td></tr>`).join("")}</tbody>
+  </table></div>`);
+</script>
+</body>
+</html>

@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>scrum-quest 設定</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=BIZ+UDPGothic:wght@400;700&family=Chakra+Petch:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500&family=Zen+Old+Mincho:wght@700;900&display=swap">
+<link rel="stylesheet" href="tokens.css">
+<link rel="stylesheet" href="components.css">
+</head>
+<body>
+<div id="app"></div>
+<script src="icons.js"></script>
+<script src="sample-data.js"></script>
+<script src="kit.js"></script>
+<script>
+"use strict";
+// ワークスペースの設定（リーダー）
+const { D, t, icon, esc, pageHead } = SQ;
+const TZ = ["Asia/Tokyo", "Asia/Seoul", "Asia/Singapore", "Europe/London", "America/Los_Angeles", "UTC"];
+const WEEK = ["日", "月", "火", "水", "木", "金", "土"];
+
+function orderList(items, opts = {}) {
+  const n = items.length;
+  return `<ol class="order-list">${items.map((it, i) => `<li>
+      <span class="grip" title="ドラッグで並べ替え">${icon("grip")}</span>
+      ${typeof it === "string" ? `<input class="input" value="${esc(it)}" aria-label="名前">` : it.html}
+      <span class="order-actions">
+        <button class="icon-btn" type="button" aria-label="上へ" ${i === 0 ? "disabled" : ""}>${icon("up")}</button>
+        <button class="icon-btn" type="button" aria-label="下へ" ${i === n - 1 ? "disabled" : ""}>${icon("down")}</button>
+        <button class="icon-btn is-danger" type="button" aria-label="削除" ${opts.lockLast && n === 1 ? "disabled" : ""}>${icon("trash")}</button>
+      </span></li>`).join("")}
+    ${opts.fixed ? `<li><span></span><span class="fixed">${opts.fixed}</span><span class="props-note">常に末尾</span></li>` : ""}
+  </ol>`;
+}
+function setting(title, desc, body) {
+  return `<section class="setting"><div class="setting-head"><h2 class="setting-title">${title}</h2><p class="setting-desc">${desc}</p></div><div class="setting-body">${body}</div></section>`;
+}
+
+SQ.mount("settings", () => `
+  ${pageHead(D.workspaces.wa.name, "設定", [], `<button class="btn is-primary" type="button" data-toast="保存しました">保存する</button>`)}
+  <div class="settings">
+    ${setting("一般", `今日、今週、完了した月は、ここのタイムゾーンで決めます。`, `
+      <div class="form-row">
+        <label class="field" for="wsname"><span class="field-label">名前</span><input class="input" id="wsname" value="${esc(D.workspaces.wa.name)}"></label>
+        <label class="field" for="tz"><span class="field-label">タイムゾーン</span><select class="select" id="tz">${TZ.map((z) => `<option ${z === D.settings.timezone ? "selected" : ""}>${z}</option>`).join("")}</select></label>
+      </div>
+      <div class="field"><span class="field-label">週の始まり</span><div class="segmented" role="radiogroup">${WEEK.map((w, i) => `<label><input type="radio" name="ws" ${i === D.settings.weekStart ? "checked" : ""}><span>${w}</span></label>`).join("")}</div></div>`)}
+    ${setting("言葉づかい", `切り替わるのは言葉だけで、経験値や報酬の仕組みはどちらでも同じです。`, `
+      <div class="choice-list">
+        <label class="choice"><input type="radio" name="vocab" checked><div><b>ゲームの言葉</b><span>クエスト、達成目標、ミッション、遠征、パーティ、依頼主、受注</span></div></label>
+        <label class="choice"><input type="radio" name="vocab"><div><b>スクラムの言葉</b><span>エピック、ストーリー、タスク、スプリント、参加者、作成者、参加</span></div></label>
+      </div>`)}
+    ${setting(t("column"), `${t("sprint")}の${t("column")}。名前は言葉づかいを切り替えても訳しません。${t("task")}が残っている${t("column")}を削除するときは移し先を選びます。`,
+      orderList(D.columns.filter((c) => !c.done).map((c) => c.name), { fixed: `${icon("check")} ${t("done")}`, lockLast: true }) +
+      `<div><button class="btn is-sm" type="button">${icon("plus")}${t("column")}を足す</button></div>`)}
+    ${setting(`${t("detail")}の決まった欄`, `${t("task")}ごとに書く欄。すべて埋まったまま${t("sprint")}を終えると、最後に書いた人に経験値が付きます。`,
+      orderList(D.detailFields) + `<div><button class="btn is-sm" type="button">${icon("plus")}欄を足す</button></div>`)}
+    ${setting(t("dod"), `すべての${t("task")}に共通する完了の基準。完了の${t("column")}と完了の操作の横に出します。`, `
+      <label class="field" for="dod"><span class="field-label">Markdown</span><textarea class="textarea" id="dod">${D.definitionOfDone.map((d) => `- ${esc(d)}`).join("\n")}</textarea></label>`)}
+    ${setting(t("category"), `${t("epic")}に振ると配下が引き継ぎます。「月ごとに計上する」${t("category")}は、完了の記録に計上月を持ちます。`,
+      orderList(Object.values(D.categories).map((c) => ({ html: `<span style="display:flex;gap:var(--space-3);align-items:center;flex-wrap:wrap"><input class="input" value="${esc(c.name)}" aria-label="名前" style="flex:1 1 140px"><label class="toggle"><input type="checkbox" ${c.monthly ? "checked" : ""}><span>月ごとに計上する</span></label></span>` }))) +
+      `<div><button class="btn is-sm" type="button">${icon("plus")}${t("category")}を足す</button></div>`)}
+    ${setting(`${t("points")}の換算`, `${t("capacity")}で、${t("points")}を時間に直す比率。適用を始める月を付けて変えるので、過去の月の値は動きません。`, `
+      <div class="form-row">
+        <label class="field" for="rate"><span class="field-label">1 ${t("points")} あたり（時間）</span><input class="input" id="rate" type="number" value="4" min="0.5" step="0.5"></label>
+        <label class="field" for="rate-from"><span class="field-label">適用を始める月</span><input class="input" id="rate-from" value="2026-11"></label>
+      </div>
+      <div class="table-wrap"><table class="table"><thead><tr><th>適用を始めた月</th><th class="is-num">1 ${t("points")}</th></tr></thead><tbody>${D.pointRates.map(([m, h]) => `<tr><td class="mono">${m}</td><td class="is-num">${h} 時間</td></tr>`).join("")}</tbody></table></div>`)}
+    ${setting(`${t("workspace")}の休日`, `この${t("workspace")}だけの休日。王国の休日（祝日など）は管理者が登録します。`, `
+      <ul class="party-list">${D.workspaceHolidays.map(([d, n]) => `<li><span class="mono">${d}</span><span>${esc(n)}</span><button class="icon-btn is-danger" type="button" aria-label="${d} を消す" style="margin-left:auto">${icon("trash")}</button></li>`).join("")}</ul>
+      <div class="form-row"><label class="field" for="hd"><span class="field-label">日付</span><input class="input" id="hd" type="date"></label><label class="field" for="hn"><span class="field-label">名前</span><input class="input" id="hn"></label><button class="btn" type="button">足す</button></div>`)}
+  </div>`);
+</script>
+</body>
+</html>
