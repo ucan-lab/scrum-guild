@@ -1,6 +1,6 @@
 # scrum-quest データモデル
 
-状態: 草案。要件定義（`requirements.md`）を D1 のテーブルに落としたもの。最後の「未決の論点」を決めたら確定にし、最初のマイグレーションを書く
+状態: 確定。要件定義（`requirements.md`）を D1 のテーブルに落としたもの。次は最初のマイグレーションを書く
 
 ## 決まりごと
 
@@ -61,7 +61,6 @@
 | name | TEXT | NOT NULL | 表示名。初回は GitHub の名前かログイン名 |
 | avatar_url | TEXT | | |
 | is_admin | INTEGER | NOT NULL、既定 0 | 管理者（国王） |
-| working_weekdays | INTEGER | NOT NULL、既定 62 | 稼働する曜日。日曜を 1、月曜を 2 … 土曜を 64 とするビットの和。既定は月〜金 |
 | work_start_on | TEXT | | 稼働開始日。空なら区切らない |
 | work_end_on | TEXT | | 稼働終了日。空なら区切らない |
 | disabled_at | TEXT | | 無効にした日時。入っていればログインできない |
@@ -127,7 +126,7 @@ GitHub OAuth の state と PKCE の code_verifier。
 
 ### user_capacity_settings
 
-1日の時間と許容幅の履歴。
+1日の時間、許容幅、稼働する曜日の履歴。
 
 | 列 | 型 | 制約 | 説明 |
 | --- | --- | --- | --- |
@@ -135,9 +134,10 @@ GitHub OAuth の state と PKCE の code_verifier。
 | effective_month | TEXT | PK | 適用開始月 |
 | daily_hours | REAL | NOT NULL、0〜24 | 1日の時間 |
 | tolerance_percent | REAL | NOT NULL、0〜100 | 許容幅（基準に対する割合） |
+| working_weekdays | INTEGER | NOT NULL、1〜127 | 稼働する曜日。日曜を 1、月曜を 2 … 土曜を 64 とするビットの和 |
 | created_at | TEXT | NOT NULL | |
 
-- 行がなければ、8時間と 12.5% を使う。片方だけ変えたときも、両方を入れた行を作る。
+- 行がなければ、8時間、12.5%、月〜金（62）を使う。1つだけ変えたときも、すべてを入れた行を作る。
 - ある月の値は、`effective_month <= その月` のうち最も新しい行。
 
 ### user_monthly_overrides
@@ -301,6 +301,9 @@ GitHub OAuth の state と PKCE の code_verifier。
 | deleted_at | TEXT | | |
 | created_at、updated_at | TEXT | NOT NULL | |
 
+- 削除は論理削除にする。完了の記録と変更の履歴が指したまま残り、集計では元の名前で出す。
+- 削除したら、その区分を振っていたエピック、ストーリー、タスクの `category_id` を空にして区分なしに戻す。削除と同じバッチで書く。
+
 ## 接続
 
 ### connections
@@ -371,6 +374,7 @@ GitHub OAuth の state と PKCE の code_verifier。
 | id | TEXT | PK | |
 | workspace_id | TEXT | NOT NULL、FK workspaces | |
 | title | TEXT | NOT NULL | |
+| body_md | TEXT | | クエストの説明。経験値は付かない |
 | category_id | TEXT | FK categories | 配下のストーリーとタスクが引き継ぐ |
 | due_on | TEXT | | |
 | link_url | TEXT | | http と https だけ |
@@ -677,7 +681,7 @@ GitHub OAuth の state と PKCE の code_verifier。
 | created_at | TEXT | NOT NULL | |
 
 - 索引: `(user_id, created_at)`、`(user_id) WHERE read_at IS NULL`。
-- 古い通知を消すかは「未決の論点」に挙げる。
+- 既読にしてから90日たった通知は Cron で消す。未読は消さない。
 
 ### change_logs
 
@@ -697,6 +701,7 @@ GitHub OAuth の state と PKCE の code_verifier。
 - 索引: `(entity_type, entity_id, created_at)`、`(workspace_id, created_at)`。
 - タスク、ストーリー、エピックの履歴はメンバー全員が、それ以外はリーダーと管理者が見られる。見られる範囲は `entity_type` で決める。
 - 同期による取り込み元の属性の書き換えは残さない。量が多く、取り込み元で見られるため。
+- 期間で消さず、残し続ける。容量が気になったら、手順書の `wrangler d1 export` で退避する。
 
 ## 書き込みの単位
 
@@ -717,15 +722,11 @@ D1 は対話的なトランザクションを持たないため、まとめて�
 
 要件定義に書いていないが、テーブルにするために決めたこと。
 
-- 稼働する曜日は履歴を持たず、`users` に今の値だけを持つ。変えると過去の月の積載量も変わる。
+- 稼働する曜日も、1日の時間と同じく適用開始月付きの履歴で持つ。変えても過去の月の積載量は動かない。
 - ストーリーとエピックの完了は、行の `completed_at` と `completed_by` だけで持ち、`completions` には入れない。請求と振り返りはタスクの完了の記録で足りるため。
-- エピックは本文を持たない。説明はリンクで示す。
+- エピックは Markdown の本文を1つ持つ。経験値は付かない。
 - 感謝の取り消しと、パーティから抜けることは行の削除で表し、記録は `change_logs` に残す。
 - 招待は承諾したときにユーザーの行を作る。
+- 既読の通知は90日で消す。変更の履歴は消さない。
+- 区分を削除したら、振っていたものは区分なしに戻す。完了の記録は削除した区分を指したまま残す。
 
-## 未決の論点
-
-- 通知と変更の履歴の保存期間。5万件のタスクで履歴が増え続けると D1 の容量（Free は 500MB）に効く。期間で消すか、残し続けるか。
-- 稼働する曜日を履歴にするか（上の補いを確かめる）。
-- エピックに本文を持たせるか（同上）。
-- 区分の削除。完了の記録が指す区分を論理削除にするのはよいとして、削除した区分を振っていたエピック、ストーリー、タスクを「区分なし」にするか。
