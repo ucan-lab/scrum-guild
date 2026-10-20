@@ -8,319 +8,11 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=BIZ+UDPGothic:wght@400;700&family=Chakra+Petch:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500&family=Zen+Old+Mincho:wght@700;900&display=swap">
 <link rel="stylesheet" href="tokens.css">
-<style>
-/* 左に帳面の綴じ（メニュー）、右に今日の台帳。台帳の右に自分の記録（レベルと積載量）を添える */
-
-/* ---- 土台 ---- */
-* { box-sizing: border-box; }
-html, body { min-height: 100%; }
-body {
-  margin: 0; background: var(--color-bg); color: var(--color-fg);
-  font-family: var(--font-body); font-size: var(--text-md); line-height: var(--leading-body);
-  -webkit-font-smoothing: antialiased;
-}
-button, input, select { font: inherit; color: inherit; }
-button { cursor: pointer; }
-:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; }
-h1, h2, h3 { margin: 0; text-wrap: balance; }
-.sprite { display: none; }
-.ico { width: 1.05em; height: 1.05em; flex: none; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; vertical-align: -0.16em; }
-.visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
-
-/* ---- 枠 ---- */
-.app { display: grid; grid-template-columns: 240px minmax(0, 1fr); min-height: 100vh; }
-.binding { background: var(--color-sunken); border-right: var(--rule-double); }
-.binding-inner {
-  padding-block: var(--space-5);
-  padding-left: max(var(--space-4), env(safe-area-inset-left, 0px));
-  padding-right: var(--space-4);
-  display: flex; flex-direction: column; gap: var(--space-5);
-  position: sticky; top: 0; height: 100vh;
-}
-.brand { display: flex; align-items: center; gap: var(--space-2); padding-inline: var(--space-2); }
-.brand-seal {
-  display: inline-grid; place-items: center; width: 26px; height: 26px;
-  border: 1.5px solid var(--color-stamp); color: var(--color-stamp); border-radius: var(--radius-1);
-  font-family: var(--font-display); font-weight: 900; font-size: 13px; line-height: 1;
-}
-.brand-name { font-family: var(--font-display); font-weight: 900; font-size: var(--text-lg); letter-spacing: 0.02em; }
-.nav { display: grid; gap: 1px; }
-.nav-group { font-size: var(--text-xs); color: var(--color-muted); letter-spacing: var(--tracking-label); padding: var(--space-4) var(--space-2) var(--space-1); }
-.nav a {
-  display: flex; align-items: center; gap: var(--space-3);
-  padding: 7px var(--space-2); border-radius: var(--radius-1);
-  color: var(--color-fg); text-decoration: none;
-}
-.nav a:hover { background: var(--color-rule); }
-.nav a[aria-current="page"] { background: var(--color-surface); font-weight: 700; box-shadow: 0 0 0 1px var(--color-line); }
-.nav a .ico { color: var(--color-muted); }
-.nav a[aria-current="page"] .ico { color: var(--color-accent); }
-.nav .badge { margin-left: auto; font-family: var(--font-mono); font-size: var(--text-xs); color: var(--color-muted); }
-.ws-select {
-  display: grid; gap: 2px; padding: var(--space-2); border-radius: var(--radius-1);
-  border: 1px solid var(--color-line); background: var(--color-surface);
-}
-.ws-select span { font-size: var(--text-xs); color: var(--color-muted); }
-.ws-select select { border: 0; background: none; padding: 0; font-weight: 700; }
-.binding-foot { margin-top: auto; font-size: var(--text-xs); color: var(--color-faint); padding-inline: var(--space-2); }
-
-.sheet { min-width: 0; display: flex; flex-direction: column; }
-.topbar {
-  display: flex; align-items: center; justify-content: flex-end; gap: var(--space-2); flex-wrap: wrap;
-  padding-block: var(--space-3);
-  padding-left: max(var(--space-8), env(safe-area-inset-left, 0px));
-  padding-right: max(var(--space-8), env(safe-area-inset-right, 0px));
-}
-.pill {
-  display: inline-flex; align-items: center; gap: 6px;
-  border: 1px solid var(--color-line); background: var(--color-surface); border-radius: var(--radius-1);
-  padding: 4px 10px; font-size: var(--text-sm); position: relative;
-}
-.pill:hover { border-color: var(--color-muted); }
-.pill .count {
-  position: absolute; top: -7px; right: -7px; min-width: 17px; height: 17px; padding: 0 4px;
-  background: var(--color-stamp); color: var(--color-on-accent); border-radius: var(--radius-full);
-  font-family: var(--font-mono); font-size: 10px; line-height: 17px; text-align: center;
-}
-.me { display: inline-flex; align-items: center; gap: var(--space-2); font-size: var(--text-sm); padding-left: var(--space-2); }
-
-.content {
-  padding-block: var(--space-2) var(--space-10);
-  padding-left: max(var(--space-8), env(safe-area-inset-left, 0px));
-  padding-right: max(var(--space-8), env(safe-area-inset-right, 0px));
-  display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: var(--space-8); align-items: start;
-  max-width: 1320px; width: 100%;
-}
-.ledger { display: grid; gap: var(--space-8); min-width: 0; }
-.records { display: grid; gap: var(--space-5); position: sticky; top: var(--space-4); }
-
-/* ---- 画面の見出しと集計 ---- */
-.page-head { display: grid; gap: var(--space-3); padding-bottom: var(--space-5); border-bottom: var(--rule-double); }
-.page-head .date { font-family: var(--font-mono); font-size: var(--text-sm); color: var(--color-muted); letter-spacing: 0.04em; }
-.page-head h1 { font-family: var(--font-display); font-weight: 900; font-size: var(--text-2xl); line-height: var(--leading-tight); letter-spacing: 0.04em; }
-.tally { display: flex; flex-wrap: wrap; gap: var(--space-2) var(--space-6); margin: 0; }
-.tally div { display: flex; align-items: baseline; gap: var(--space-2); }
-.tally dt { font-size: var(--text-sm); color: var(--color-muted); display: inline-flex; align-items: center; gap: 4px; }
-.tally dd { margin: 0; font-family: var(--font-mono); font-size: var(--text-lg); font-weight: 500; font-variant-numeric: tabular-nums; }
-.tally .is-danger dt, .tally .is-danger dd { color: var(--color-danger); }
-.tally .is-warn dt, .tally .is-warn dd { color: var(--color-warn); }
-.tally .is-ok dt, .tally .is-ok dd { color: var(--color-ok); }
-
-/* ---- スプリントゴール（貼り出した紙） ---- */
-.notices { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: var(--space-4); }
-.notice {
-  background: var(--color-surface); border: 1px solid var(--color-line); border-top: 5px solid var(--color-accent);
-  box-shadow: var(--shadow-sheet); border-radius: var(--radius-1);
-  padding: var(--space-3) var(--space-4) var(--space-4); display: grid; gap: var(--space-2);
-}
-.notice-label { font-size: var(--text-xs); color: var(--color-accent); font-weight: 700; letter-spacing: 0.3em; }
-.notice-goal { font-family: var(--font-display); font-weight: 700; font-size: var(--text-lg); line-height: 1.5; }
-.notice-meta { display: flex; flex-wrap: wrap; gap: var(--space-2) var(--space-4); font-size: var(--text-xs); color: var(--color-muted); }
-.notice-meta .mono { font-family: var(--font-mono); }
-.days { display: flex; gap: 2px; margin-top: 2px; }
-.days i { flex: 1; height: 4px; background: var(--color-rule); }
-.days i.past { background: var(--color-accent); opacity: 0.55; }
-.days i.today { background: var(--color-accent); }
-
-/* ---- 台帳の節 ---- */
-.section { display: grid; gap: var(--space-3); min-width: 0; }
-.section-head { display: flex; align-items: baseline; gap: var(--space-3); }
-.section-head h2 { font-family: var(--font-display); font-weight: 900; font-size: var(--text-xl); letter-spacing: 0.04em; }
-.section-head .n { font-family: var(--font-mono); font-size: var(--text-sm); color: var(--color-muted); }
-.section-head .hint { margin-left: auto; font-size: var(--text-xs); color: var(--color-muted); }
-
-.book { background: var(--color-surface); border: 1px solid var(--color-line); border-left: var(--rule-double); border-radius: var(--radius-1); }
-.entry {
-  display: grid; grid-template-columns: 32px minmax(0, 1fr) auto; gap: var(--space-3); align-items: center;
-  padding: var(--space-3) var(--space-4) var(--space-3) var(--space-2); position: relative; min-height: 60px;
-}
-.entry + .entry { border-top: 1px solid var(--color-rule); }
-.entry:hover { background: color-mix(in srgb, var(--color-accent-soft) 45%, transparent); }
-.entry-main { display: grid; gap: 4px; min-width: 0; }
-.entry-title { font-weight: 700; font-size: var(--text-md); overflow-wrap: anywhere; color: var(--color-fg); text-decoration: none; }
-.entry-title:hover { text-decoration: underline; text-underline-offset: 3px; }
-.entry-meta { display: flex; flex-wrap: wrap; gap: 4px var(--space-3); align-items: center; font-size: var(--text-xs); color: var(--color-muted); }
-.entry-meta .key { font-family: var(--font-mono); }
-.entry-end { display: flex; align-items: center; gap: var(--space-2); }
-.entry.is-done .entry-title { color: var(--color-muted); font-weight: 400; }
-.empty { padding: var(--space-4); color: var(--color-muted); font-size: var(--text-sm); }
-
-.sun {
-  display: inline-grid; place-items: center; width: 30px; height: 30px; border-radius: var(--radius-1);
-  border: 0; background: none; color: var(--color-faint);
-}
-.sun:hover { color: var(--color-xp); background: var(--color-xp-soft); }
-.sun[aria-pressed="true"] { color: var(--color-xp); }
-.sun[aria-pressed="true"] .ico { fill: currentColor; }
-
-.ws {
-  font-size: var(--text-xs); padding: 0 6px; border-radius: var(--radius-1);
-  background: var(--color-sunken); color: var(--color-fg); line-height: 1.8;
-}
-.chip {
-  display: inline-flex; align-items: center; gap: 4px; white-space: nowrap;
-  font-size: var(--text-xs); line-height: 1.75; padding: 0 7px; border-radius: var(--radius-1);
-  border: 1px solid var(--color-line); color: var(--color-muted); background: var(--color-surface);
-}
-.chip.is-danger { color: var(--color-danger); background: var(--color-danger-soft); border-color: currentColor; }
-.chip.is-warn { color: var(--color-warn); background: var(--color-warn-soft); border-color: currentColor; }
-.chip.is-todo { color: var(--color-warn); border-color: currentColor; border-style: dashed; }
-.chip.is-ok { color: var(--color-ok); background: var(--color-ok-soft); border-color: currentColor; }
-.chip.is-carry { color: var(--color-muted); border-style: dashed; }
-.col { font-size: var(--text-xs); color: var(--color-muted); white-space: nowrap; }
-.col::before { content: "● "; color: var(--color-accent); font-size: 8px; vertical-align: 2px; }
-.pts {
-  display: inline-grid; place-items: center; min-width: 28px; height: 24px; padding: 0 6px;
-  border: 1px solid var(--color-accent); color: var(--color-accent); border-radius: var(--radius-1);
-  font-family: var(--font-mono); font-size: var(--text-xs); font-weight: 500;
-}
-.pts.is-none { border-style: dashed; border-color: var(--color-faint); color: var(--color-muted); font-family: var(--font-body); }
-
-.done-btn {
-  display: inline-grid; place-items: center; width: 34px; height: 34px; border-radius: 50%;
-  border: 1.5px dashed var(--color-line); background: var(--color-surface); color: var(--color-faint);
-  position: relative;
-}
-.done-btn:hover { border-color: var(--color-stamp); color: var(--color-stamp); border-style: solid; }
-.hanko {
-  display: inline-grid; place-items: center; width: 40px; height: 40px; border-radius: 50%;
-  border: 2px solid var(--color-stamp); color: var(--color-stamp);
-  font-family: var(--font-display); font-weight: 900; font-size: 18px; line-height: 1;
-  rotate: -12deg; opacity: 0.88; margin: -3px;
-}
-.hanko.is-new { animation: stamp var(--duration-stamp) var(--ease-out) 1; }
-@keyframes stamp {
-  0% { transform: scale(1.8); opacity: 0; }
-  60% { transform: scale(0.92); opacity: 1; }
-  100% { transform: scale(1); }
-}
-.undo { border: 0; background: none; font-size: var(--text-xs); color: var(--color-muted); text-decoration: underline; padding: 0; }
-
-/* ---- 記録（レベルと積載量。装備画面の表現） ---- */
-.panel { background: var(--color-surface); border: 1px solid var(--color-line); border-radius: var(--radius-1); padding: var(--space-4); display: grid; gap: var(--space-3); }
-.panel-title { font-size: var(--text-xs); color: var(--color-muted); letter-spacing: var(--tracking-label); display: flex; align-items: center; gap: var(--space-2); }
-.panel-title b { color: var(--color-fg); font-weight: 700; letter-spacing: 0.04em; font-size: var(--text-sm); }
-.panel-note { font-size: var(--text-xs); color: var(--color-muted); margin: 0; }
-
-.level { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: var(--space-3); align-items: center; }
-.emblem {
-  display: grid; place-items: center; width: 52px; height: 58px;
-  clip-path: polygon(50% 0, 100% 22%, 100% 70%, 50% 100%, 0 70%, 0 22%);
-  background: var(--color-xp); color: var(--color-surface);
-  font-family: var(--font-stat); font-weight: 700; line-height: 1; text-align: center;
-}
-.emblem small { display: block; font-size: 9px; letter-spacing: 0.14em; font-weight: 600; }
-.emblem span { font-size: 22px; }
-.emblem.is-sm { width: 24px; height: 27px; }
-.emblem.is-sm span { font-size: 11px; }
-.xp-num { font-family: var(--font-stat); font-weight: 700; font-size: var(--text-stat); line-height: 1; font-variant-numeric: tabular-nums; }
-.xp-num small { font-size: var(--text-sm); color: var(--color-muted); font-weight: 600; margin-left: 4px; }
-.xp-sub { font-size: var(--text-xs); color: var(--color-muted); }
-.xp-sub b { font-family: var(--font-stat); color: var(--color-xp); font-weight: 700; }
-
-.gauge { position: relative; height: 12px; background: var(--color-gauge); border-radius: var(--radius-1); overflow: hidden; display: flex; }
-.gauge::after {
-  content: ""; position: absolute; inset: 0; pointer-events: none;
-  background: repeating-linear-gradient(90deg, transparent 0 calc(10% - 2px), var(--color-surface) calc(10% - 2px) 10%);
-}
-.gauge .got { background: var(--color-xp); }
-.gauge .soon { background: repeating-linear-gradient(135deg, var(--color-xp) 0 3px, transparent 3px 6px); opacity: 0.6; }
-.gauge-legend { display: flex; gap: var(--space-4); font-size: var(--text-xs); color: var(--color-muted); flex-wrap: wrap; }
-.gauge-legend i { display: inline-block; width: 10px; height: 10px; margin-right: 4px; vertical-align: -1px; }
-.gauge-legend .k-got { background: var(--color-xp); }
-.gauge-legend .k-soon { background: repeating-linear-gradient(135deg, var(--color-xp) 0 2px, transparent 2px 4px); }
-
-.split { margin: 0; display: grid; gap: 6px; padding-top: var(--space-3); border-top: 1px solid var(--color-rule); }
-.split div { display: flex; justify-content: space-between; gap: var(--space-3); font-size: var(--text-sm); }
-.split dt { color: var(--color-muted); }
-.split dd { margin: 0; font-family: var(--font-stat); font-weight: 600; font-variant-numeric: tabular-nums; }
-.split .total dt { color: var(--color-fg); font-weight: 700; }
-
-.load { display: grid; gap: 6px; }
-.load + .load { padding-top: var(--space-3); border-top: 1px solid var(--color-rule); }
-.load-top { display: flex; align-items: baseline; gap: var(--space-2); flex-wrap: wrap; }
-.load-name { font-size: var(--text-sm); font-weight: 700; }
-.load-sub { font-size: var(--text-xs); color: var(--color-muted); }
-.load-val { margin-left: auto; font-family: var(--font-stat); font-weight: 600; font-variant-numeric: tabular-nums; font-size: var(--text-md); }
-.load-val small { color: var(--color-muted); font-weight: 500; }
-.cap { position: relative; height: 14px; background: var(--color-gauge); border-radius: var(--radius-1); }
-.cap::after {
-  content: ""; position: absolute; inset: 0; pointer-events: none;
-  background: repeating-linear-gradient(90deg, transparent 0 calc(5% - 2px), var(--color-surface) calc(5% - 2px) 5%);
-}
-.cap .fill { position: absolute; inset: 0 auto 0 0; border-radius: var(--radius-1); }
-.cap .fill.is-over { background: var(--color-danger); }
-.cap .fill.is-in { background: var(--color-accent); }
-.cap .fill.is-free { background: var(--color-ok); }
-.cap .fill.is-none { background: var(--color-faint); }
-.cap .band { position: absolute; top: -4px; bottom: -4px; border-left: 2px solid var(--color-fg); border-right: 2px solid var(--color-fg); z-index: 1; }
-.state { display: inline-flex; align-items: center; gap: 4px; font-size: var(--text-xs); font-weight: 700; }
-.state.is-over { color: var(--color-danger); }
-.state.is-in { color: var(--color-accent); }
-.state.is-free { color: var(--color-ok); }
-.state.is-none { color: var(--color-muted); font-weight: 400; }
-.state-row { display: flex; justify-content: space-between; gap: var(--space-2); align-items: center; flex-wrap: wrap; }
-.offs { display: flex; gap: var(--space-2); flex-wrap: wrap; font-size: var(--text-xs); color: var(--color-muted); }
-.offs .mono { font-family: var(--font-mono); color: var(--color-fg); }
-
-.avatar {
-  display: inline-grid; place-items: center; width: 26px; height: 26px; border-radius: 50%;
-  background: hsl(var(--h) 40% 38%); color: #fff; font-size: 11px; font-weight: 700; flex: none;
-}
-
-/* ---- 狭い画面 ---- */
-@media (max-width: 1080px) {
-  .content { grid-template-columns: minmax(0, 1fr); }
-  .records { position: static; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); }
-}
-@media (max-width: 760px) {
-  .app { grid-template-columns: minmax(0, 1fr); }
-  .binding { border-right: 0; border-bottom: var(--rule-double); }
-  .binding-inner {
-    position: static; height: auto;
-    flex-direction: row; flex-wrap: wrap; align-items: center; gap: var(--space-3);
-    padding-block: var(--space-3);
-    padding-left: max(var(--space-4), env(safe-area-inset-left, 0px));
-    padding-right: max(var(--space-4), env(safe-area-inset-right, 0px));
-  }
-  .ws-select { display: none; }
-  .nav { display: flex; overflow-x: auto; width: 100%; gap: var(--space-1); }
-  .nav-group, .binding-foot { display: none; }
-  .nav a { white-space: nowrap; }
-  .topbar, .content {
-    padding-left: max(var(--space-4), env(safe-area-inset-left, 0px));
-    padding-right: max(var(--space-4), env(safe-area-inset-right, 0px));
-  }
-  .topbar { justify-content: flex-start; }
-  .entry { grid-template-columns: 32px minmax(0, 1fr); }
-  .entry-end { grid-column: 2; flex-wrap: wrap; }
-}
-@media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after { animation: none !important; transition: none !important; }
-}
-</style>
+<link rel="stylesheet" href="components.css">
 </head>
 <body>
-<svg class="sprite" aria-hidden="true" xmlns="http://www.w3.org/2000/svg">
-  <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></symbol>
-  <symbol id="i-inbox" viewBox="0 0 24 24"><path d="M3 13l3-8h12l3 8v6H3z"/><path d="M3 13h5l1 3h6l1-3h5"/></symbol>
-  <symbol id="i-board" viewBox="0 0 24 24"><path d="M4 4h16v16H4z"/><path d="M8 8h8M8 12h8M8 16h5"/></symbol>
-  <symbol id="i-columns" viewBox="0 0 24 24"><path d="M4 4h4v16H4zM10 4h4v11h-4zM16 4h4v7h-4z"/></symbol>
-  <symbol id="i-calendar" viewBox="0 0 24 24"><path d="M4 6h16v14H4zM4 10h16M8 3v5M16 3v5"/></symbol>
-  <symbol id="i-flag" viewBox="0 0 24 24"><path d="M5 21V4M5 4h11l-2 4 2 4H5"/></symbol>
-  <symbol id="i-archive" viewBox="0 0 24 24"><path d="M3 4h18v4H3zM5 8v12h14V8M10 12h4"/></symbol>
-  <symbol id="i-link" viewBox="0 0 24 24"><path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1"/><path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/></symbol>
-  <symbol id="i-git" viewBox="0 0 24 24"><circle cx="6" cy="6" r="2"/><circle cx="6" cy="18" r="2"/><circle cx="18" cy="12" r="2"/><path d="M6 8v8M8 6h4a4 4 0 0 1 4 4"/></symbol>
-  <symbol id="i-bell" viewBox="0 0 24 24"><path d="M6 16V11a6 6 0 0 1 12 0v5l2 2H4z"/><path d="M10 20a2 2 0 0 0 4 0"/></symbol>
-  <symbol id="i-alert" viewBox="0 0 24 24"><path d="M12 3l10 18H2z"/><path d="M12 10v5M12 18v.01"/></symbol>
-  <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></symbol>
-  <symbol id="i-check" viewBox="0 0 24 24"><path d="M5 12l5 5 9-10"/></symbol>
-  <symbol id="i-pen" viewBox="0 0 24 24"><path d="M4 20l4-1 11-11-3-3L5 16z"/></symbol>
-  <symbol id="i-swap" viewBox="0 0 24 24"><path d="M4 8h13l-3-3M20 16H7l3 3"/></symbol>
-  <symbol id="i-moon" viewBox="0 0 24 24"><path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z"/></symbol>
-  <symbol id="i-gear" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2l1.5 2.6 3-.6.6 3L20 9l-1.4 3L20 15l-2.9 1.9-.6 3-3-.6L12 22l-1.5-2.6-3 .6-.6-3L4 15l1.4-3L4 9l2.9-1.9.6-3 3 .6z"/></symbol>
-  <symbol id="i-redo" viewBox="0 0 24 24"><path d="M20 8H9a5 5 0 0 0 0 10h3"/><path d="M16 4l4 4-4 4"/></symbol>
-</svg>
+<script src="icons.js"></script>
+<script src="kit.js"></script>
 
 <div class="app">
   <aside class="binding" aria-label="メニュー"><div class="binding-inner">
@@ -331,16 +23,10 @@ h1, h2, h3 { margin: 0; text-wrap: balance; }
 
   <div class="sheet">
     <div class="topbar">
-      <button class="pill" type="button" id="vocab-btn">
-        <svg class="ico" aria-hidden="true"><use href="#i-swap"/></svg><span id="vocab-label"></span>
-      </button>
-      <button class="pill" type="button" id="theme-btn">
-        <svg class="ico" aria-hidden="true"><use href="#i-moon"/></svg><span id="theme-label"></span>
-      </button>
-      <button class="pill" type="button" aria-label="通知 3件">
-        <svg class="ico" aria-hidden="true"><use href="#i-bell"/></svg><span class="count">3</span>
-      </button>
-      <span class="me"><span class="avatar" style="--h:172">ミ</span>ミナト<span class="emblem is-sm" aria-label="レベル 7"><span>7</span></span></span>
+      <button class="pill" type="button" data-switch="vocab"><svg class="ico" aria-hidden="true"><use href="#i-swap"/></svg><span data-vocab-label></span></button>
+      <button class="pill" type="button" data-switch="theme"><svg class="ico" aria-hidden="true"><use href="#i-moon"/></svg><span data-theme-label></span></button>
+      <button class="pill" type="button" aria-label="通知 3件"><svg class="ico" aria-hidden="true"><use href="#i-bell"/></svg><span class="pill-count">3</span></button>
+      <span class="me" id="me"></span>
     </div>
     <main class="content" id="content"></main>
   </div>
@@ -348,229 +34,99 @@ h1, h2, h3 { margin: 0; text-wrap: balance; }
 
 <script>
 "use strict";
-// ---- 言葉の辞書（ゲーム / スクラム） ----
-const DICT = {
-  workspace: ["冒険者ギルド", "ワークスペース"], inbox: ["届いた便り", "受信箱"], backlog: ["掲示板", "バックログ"],
-  sprint: ["遠征", "スプリント"], plan: ["遠征の計画", "計画"], epic: ["クエスト", "エピック"], archive: ["保管庫", "アーカイブ"],
-  connection: ["便りの経路", "接続"], sprintGoal: ["遠征の目的", "スプリントゴール"], detail: ["手配書", "詳細"],
-  due: ["期限", "期日"], points: ["難易度", "ポイント"], capacity: ["積載量", "作業量と基準"], over: ["重量オーバー", "超過"],
-  done: ["完遂", "完了"], doneToday: ["今日の完遂", "今日の完了"], complete: ["完遂にする", "完了にする"], task: ["ミッション", "タスク"],
-  vocab: ["ゲームの言葉", "スクラムの言葉"],
-};
-let vocab = 0;
-const t = (k) => DICT[k][vocab];
-const icon = (id) => `<svg class="ico" aria-hidden="true"><use href="#i-${id}"/></svg>`;
-const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const { t, icon, avatar, emblem, book, section, sprintNotice, levelPanel, load } = SQ;
 
 // ---- 例のデータ（今日は 2026-10-20 火曜。週の始まりは月曜） ----
-const TODAY = "2026-10-20", WEEK_END = "2026-10-25";
-const md = (d) => `${+d.slice(5, 7)}/${+d.slice(8, 10)}`;
-const WS = { a: "受託開発チーム", b: "社内ツール" };
+const CTX = { today: "2026-10-20", weekEnd: "2026-10-25", stamped: new Set() };
 const SPRINTS = [
-  { ws: "a", name: "第14回", start: "2026-10-13", days: 14, dayIndex: 7, goal: "会員ポイントの付与を管理画面で確かめられる所まで進め、決済の障害の検知を入れる" },
-  { ws: "b", name: null, start: "2026-10-14", days: 14, dayIndex: 6, goal: "勤怠の月次の締めを手作業なしで回す" },
+  { ws: "受託開発チーム", name: "第14回", start: "2026-10-13", end: "2026-10-26", days: 14, dayIndex: 7, goal: "会員ポイントの付与を管理画面で確かめられる所まで進め、決済の障害の検知を入れる" },
+  { ws: "社内ツール", name: null, start: "2026-10-14", end: "2026-10-27", days: 14, dayIndex: 6, goal: "勤怠の月次の締めを手作業なしで回す" },
 ];
 const TASKS = [
-  { id: 1, ws: "a", title: "ポイント付与のバッチを作る", parent: "ポイントの付与と失効を管理画面で確かめられる", col: "遂行中", pts: 5, today: TODAY },
-  { id: 2, ws: "a", title: "クーポンの併用制限", review: true, src: "acme/shop#418", srcIcon: "git", col: "出発前", pts: 1, today: TODAY },
-  { id: 3, ws: "a", title: "障害時の連絡手順を書く", parent: "決済の失敗をすぐ検知できる", col: "出発前", pts: 1, due: "2026-10-17", today: "2026-10-19" },
-  { id: 4, ws: "b", title: "勤怠の CSV 出力で締め日を選べるようにする", col: "遂行中", pts: 3, due: "2026-10-22" },
-  { id: 5, ws: "a", title: "請求書 PDF の文字化けを直す", src: "SHOP-131", srcIcon: "link", col: "査定中", pts: 2, srcDone: true },
-  { id: 6, ws: "b", title: "有給の残日数を一覧に出す", col: "出発前", pts: null, unfilled: true },
-  { id: 7, ws: "a", title: "決済通知のメール文面を直す", src: "SHOP-126", srcIcon: "link", col: "完遂", pts: 1, doneAt: "09:40", stamped: true },
+  { id: 1, ws: "受託開発チーム", title: "ポイント付与のバッチを作る", parent: "ポイントの付与と失効を管理画面で確かめられる", col: "遂行中", pts: 5, todayOn: "2026-10-20" },
+  { id: 2, ws: "受託開発チーム", title: "クーポンの併用制限", review: true, srcKey: "acme/shop#418", srcIcon: "git", col: "出発前", pts: 1, todayOn: "2026-10-20" },
+  { id: 3, ws: "受託開発チーム", title: "障害時の連絡手順を書く", parent: "決済の失敗をすぐ検知できる", col: "出発前", pts: 1, due: "2026-10-17", todayOn: "2026-10-19" },
+  { id: 4, ws: "社内ツール", title: "勤怠の CSV 出力で締め日を選べるようにする", col: "遂行中", pts: 3, due: "2026-10-22" },
+  { id: 5, ws: "受託開発チーム", title: "請求書 PDF の文字化けを直す", srcKey: "SHOP-131", col: "査定中", pts: 2, srcDone: true },
+  { id: 6, ws: "社内ツール", title: "有給の残日数を一覧に出す", col: "出発前", pts: null, unfilled: true },
+  { id: 7, ws: "受託開発チーム", title: "決済通知のメール文面を直す", srcKey: "SHOP-126", pts: 1, doneAt: "09:40" },
 ];
-const justStamped = new Set();
-
-// ---- 部品 ----
-function dueChip(x) {
-  if (!x.due || x.doneAt) return "";
-  if (x.due < TODAY) return `<span class="chip is-danger">${icon("alert")}${t("due")}切れ ${md(x.due)}</span>`;
-  if (x.due === TODAY) return `<span class="chip is-warn">${icon("clock")}今日まで</span>`;
-  if (x.due <= WEEK_END) return `<span class="chip is-warn">${icon("clock")}今週 ${md(x.due)}</span>`;
-  return `<span class="chip">${icon("clock")}${md(x.due)}</span>`;
-}
-function pts(p) {
-  return p == null ? `<span class="pts is-none" title="未見積もり">未</span>` : `<span class="pts" title="${t("points")} ${p}">${p}</span>`;
-}
-function entry(x) {
-  const isToday = x.today === TODAY;
-  const carried = x.today && x.today < TODAY && !x.doneAt;
-  const title = `${x.review ? "レビュー: " : ""}${esc(x.title)}`;
-  const end = x.doneAt
-    ? `<span class="hanko ${justStamped.has(x.id) ? "is-new" : ""}" role="img" aria-label="${t("done")}">完</span>
-       <button class="undo" type="button" data-undo="${x.id}">戻す</button>`
-    : `<button class="done-btn" type="button" data-done="${x.id}" aria-label="${t("complete")}" title="${t("complete")}">${icon("check")}</button>`;
-  return `<div class="entry ${x.doneAt ? "is-done" : ""}">
-    <button class="sun" type="button" data-sun="${x.id}" aria-pressed="${isToday}" aria-label="今日やる" title="今日やる">${icon("sun")}</button>
-    <div class="entry-main">
-      <a class="entry-title" href="#task-${x.id}">${title}</a>
-      <span class="entry-meta">
-        <span class="ws">${WS[x.ws]}</span>
-        ${x.src ? `<span class="key">${icon(x.srcIcon)} ${esc(x.src)}</span>` : ""}
-        ${x.parent ? `<span>${icon("flag")} ${esc(x.parent)}</span>` : ""}
-        ${x.doneAt ? `<span>${t("done")} ${x.doneAt}</span>` : `<span class="col">${esc(x.col)}</span>`}
-        ${carried ? `<span class="chip is-carry">${icon("redo")}昨日から持ち越し</span>` : ""}
-        ${x.unfilled ? `<span class="chip is-todo">${icon("pen")}${t("detail")} 未記入</span>` : ""}
-        ${x.srcDone && !x.doneAt ? `<span class="chip is-ok">${icon("check")}取り込み元で完了</span>` : ""}
-      </span>
-    </div>
-    <div class="entry-end">${dueChip(x)}${pts(x.pts)}${end}</div>
-  </div>`;
-}
-function book(list) {
-  return `<div class="book">${list.length ? list.map(entry).join("") : `<div class="empty">ありません</div>`}</div>`;
-}
-function section(id, title, list, hint = "") {
-  return `<section class="section" aria-labelledby="${id}">
-    <div class="section-head"><h2 id="${id}">${title}</h2><span class="n">${list.length} 件</span>${hint ? `<span class="hint">${hint}</span>` : ""}</div>
-    ${book(list)}
-  </section>`;
-}
-function notice(s) {
-  const end = new Date(s.start); end.setDate(end.getDate() + s.days - 1);
-  const endStr = `${end.getMonth() + 1}/${end.getDate()}`;
-  const name = s.name ? `${t("sprint")} ${s.name}` : `${t("sprint")} ${md(s.start)}〜${endStr}`;
-  const days = Array.from({ length: s.days }, (_, i) => `<i class="${i < s.dayIndex ? "past" : i === s.dayIndex ? "today" : ""}"></i>`).join("");
-  return `<article class="notice">
-    <span class="notice-label">${t("sprintGoal")}</span>
-    <p class="notice-goal" style="margin:0">${esc(s.goal)}</p>
-    <div class="notice-meta"><span>${WS[s.ws]}</span><span>${name}</span>${s.name ? `<span class="mono">${md(s.start)}〜${endStr}</span>` : ""}<span>残り ${s.days - s.dayIndex} 日</span></div>
-    <div class="days" role="img" aria-label="${s.days} 日のうち ${s.dayIndex + 1} 日目">${days}</div>
-  </article>`;
-}
-
-// 積載量の1行。基準と許容幅（±12.5%）の帯に作業量を重ねる
-function load(name, sub, base, work, none = 0) {
-  const hi = base * 1.125, lo = base * 0.875;
-  const max = Math.max(hi, work) * 1.12;
-  const key = work > hi ? "is-over" : work < lo ? (none ? "is-none" : "is-free") : "is-in";
-  const label = work > hi ? `${icon("alert")}${t("over")}` : work < lo ? (none ? `未見積もり ${none} 件あり` : `${icon("check")}余力あり`) : `${icon("check")}範囲内`;
-  return `<div class="load">
-    <div class="load-top"><span class="load-name">${name}</span><span class="load-sub">${sub}</span>
-      <span class="load-val">${work.toFixed(1)}<small> / ${base.toFixed(1)} h</small></span></div>
-    <div class="cap" role="img" aria-label="基準 ${base.toFixed(1)} 時間、作業量 ${work.toFixed(1)} 時間">
-      <span class="band" style="left:${(lo / max) * 100}%;width:${((hi - lo) / max) * 100}%"></span>
-      <span class="fill ${key}" style="width:${(work / max) * 100}%"></span></div>
-    <div class="state-row"><span class="state ${key}">${label}</span><span class="load-sub">許容幅 ${(lo).toFixed(1)}〜${(hi).toFixed(1)} h</span></div>
-  </div>`;
-}
+const LEVEL = { level: 7, xp: 1240, toNext: 160, soon: 90, gotPct: 64, soonPct: 20, rows: [["受託開発チーム", 1240], ["社内ツール", 770]], total: 2010 };
 
 function renderNav() {
-  const items = [
-    ["sun", "自分の今日", true], null,
-    ["inbox", t("inbox"), false, 3], ["board", t("backlog")], ["columns", t("sprint")], ["calendar", t("plan")],
-    ["flag", t("epic")], ["archive", t("archive")], ["link", t("connection")], ["gear", "設定"],
-  ];
-  document.getElementById("nav").innerHTML = items.map((it) => {
-    if (!it) return `<div class="nav-group">${t("workspace")}</div>
-      <label class="ws-select" for="ws"><span>${t("workspace")}</span><select id="ws"><option>受託開発チーム</option><option>社内ツール</option></select></label>`;
-    const [ic, label, cur, badge] = it;
-    return `<a href="#" ${cur ? 'aria-current="page"' : ""}>${icon(ic)}<span>${label}</span>${badge ? `<span class="badge">${badge}</span>` : ""}</a>`;
-  }).join("");
+  const item = (ic, label, cur, badge) =>
+    `<a class="nav-item" href="#" ${cur ? 'aria-current="page"' : ""}>${icon(ic)}<span>${label}</span>${badge ? `<span class="nav-badge">${badge}</span>` : ""}</a>`;
+  document.getElementById("nav").innerHTML = `
+    ${item("sun", "自分の今日", true)}
+    <div class="nav-group">${t("workspace")}</div>
+    <label class="ws-select" for="ws"><span>${t("workspace")}</span><select id="ws"><option>受託開発チーム</option><option>社内ツール</option></select></label>
+    ${item("inbox", t("inbox"), false, 3)}${item("board", t("backlog"))}${item("columns", t("sprint"))}${item("calendar", t("plan"))}
+    ${item("flag", t("epic"))}${item("archive", t("archive"))}${item("link", t("connection"))}${item("gear", "設定")}`;
+  document.getElementById("me").innerHTML = `${avatar("ミナト", 172)}ミナト${emblem(7, true)}`;
 }
 
 function render() {
   const open = TASKS.filter((x) => !x.doneAt);
-  const todayList = open.filter((x) => x.today);
-  const dueList = open.filter((x) => !x.today && x.due && x.due <= WEEK_END);
-  const restList = open.filter((x) => !x.today && !(x.due && x.due <= WEEK_END));
+  const inWeek = (x) => x.due && x.due <= CTX.weekEnd;
+  const todayList = open.filter((x) => x.todayOn);
+  const dueList = open.filter((x) => !x.todayOn && inWeek(x));
+  const restList = open.filter((x) => !x.todayOn && !inWeek(x));
   const doneList = TASKS.filter((x) => x.doneAt);
-  const overdue = open.filter((x) => x.due && x.due < TODAY).length;
-  const thisWeek = open.filter((x) => x.due && x.due >= TODAY && x.due <= WEEK_END).length;
+  const overdue = open.filter((x) => x.due && x.due < CTX.today).length;
+  const thisWeek = open.filter((x) => x.due && x.due >= CTX.today && x.due <= CTX.weekEnd).length;
   const srcDone = open.filter((x) => x.srcDone).length;
+  const tally = (cls, ic, label, n) => `<div class="${n ? cls : ""}"><dt>${icon(ic)}${label}</dt><dd>${n}</dd></div>`;
 
-  document.getElementById("vocab-label").textContent = `言葉: ${t("vocab")}`;
   renderNav();
   document.getElementById("content").innerHTML = `
-  <div class="ledger">
-    <header class="page-head">
-      <span class="date">2026年10月20日（火）</span>
-      <h1>自分の今日</h1>
-      <dl class="tally">
-        <div><dt>${icon("sun")}今日やる</dt><dd>${todayList.length}</dd></div>
-        <div class="${overdue ? "is-danger" : ""}"><dt>${icon("alert")}${t("due")}切れ</dt><dd>${overdue}</dd></div>
-        <div class="${thisWeek ? "is-warn" : ""}"><dt>${icon("clock")}今週が${t("due")}</dt><dd>${thisWeek}</dd></div>
-        <div class="${srcDone ? "is-ok" : ""}"><dt>${icon("check")}取り込み元で完了</dt><dd>${srcDone}</dd></div>
-        <div><dt>${icon("check")}${t("doneToday")}</dt><dd>${doneList.length}</dd></div>
-      </dl>
-    </header>
-    <div class="notices">${SPRINTS.map(notice).join("")}</div>
-    ${section("s-today", "今日やる", todayList, "日付が変わると印は外れます")}
-    ${section("s-due", `今週が${t("due")}`, dueList)}
-    ${section("s-sprint", `進行中の${t("sprint")}`, restList)}
-    ${section("s-done", t("doneToday"), doneList)}
-  </div>
-
-  <aside class="records" aria-label="自分の記録">
-    <section class="panel">
-      <div class="panel-title"><b>レベル</b>経験値は本人だけに見えます</div>
-      <div class="level">
-        <span class="emblem" role="img" aria-label="レベル 7"><span><small>LV</small>7</span></span>
-        <div>
-          <div class="xp-num">1,240<small>XP</small></div>
-          <div class="xp-sub">次のレベルまで <b>160</b>・見込み <b>+90</b></div>
-        </div>
-      </div>
-      <div class="gauge" role="img" aria-label="次のレベルまでの 64% を確定、20% が見込み"><span class="got" style="width:64%"></span><span class="soon" style="width:20%"></span></div>
-      <div class="gauge-legend"><span><i class="k-got"></i>確定</span><span><i class="k-soon"></i>見込み（${t("sprint")}の終了で確定）</span></div>
-      <dl class="split">
-        <div><dt>受託開発チーム</dt><dd>1,240</dd></div>
-        <div><dt>社内ツール</dt><dd>770</dd></div>
-        <div class="total"><dt>すべての${t("workspace")}</dt><dd>2,010</dd></div>
-      </dl>
-    </section>
-
-    <section class="panel">
-      <div class="panel-title"><b>${t("capacity")}</b>今の${t("sprint")}</div>
-      ${load("受託開発チーム", "配分 60%", 45.6, 56.0)}
-      ${load("社内ツール", "配分 40%", 30.4, 12.0, 1)}
-      ${load("10月の合計", "ユーザーの基準", 172.0, 168.0)}
-      <div class="offs"><span>休み</span><span class="mono">10/23</span><span>半日</span></div>
-    </section>
-  </aside>`;
-  justStamped.clear();
+  <div class="layout-aside">
+    <div class="layout-main">
+      <header class="page-head">
+        <span class="page-eyebrow">2026年10月20日（火）</span>
+        <h1 class="page-title">自分の今日</h1>
+        <dl class="tally">
+          ${tally("", "sun", "今日やる", todayList.length)}
+          ${tally("is-danger", "alert", `${t("due")}切れ`, overdue)}
+          ${tally("is-warn", "clock", `今週が${t("due")}`, thisWeek)}
+          ${tally("is-ok", "check", "取り込み元で完了", srcDone)}
+          ${tally("", "check", t("doneToday"), doneList.length)}
+        </dl>
+      </header>
+      <div class="notice-grid">${SPRINTS.map(sprintNotice).join("")}</div>
+      ${section("s-today", "今日やる", todayList.length, book(todayList, CTX), "日付が変わると印は外れます")}
+      ${section("s-due", `今週が${t("due")}`, dueList.length, book(dueList, CTX))}
+      ${section("s-sprint", `進行中の${t("sprint")}`, restList.length, book(restList, CTX))}
+      ${section("s-done", t("doneToday"), doneList.length, book(doneList, CTX))}
+    </div>
+    <aside class="layout-side" aria-label="自分の記録">
+      ${levelPanel(LEVEL)}
+      <section class="panel">
+        <div class="panel-title"><b>${t("capacity")}</b>今の${t("sprint")}</div>
+        ${load("受託開発チーム", "配分 60%", 45.6, 56.0)}
+        ${load("社内ツール", "配分 40%", 30.4, 12.0, { none: 1 })}
+        ${load("10月の合計", "ユーザーの基準", 172.0, 168.0)}
+        <p class="panel-note">休み <span class="mono">10/23</span> 半日</p>
+      </section>
+    </aside>
+  </div>`;
+  CTX.stamped.clear();
 }
 
-// ---- 操作 ----
 document.addEventListener("click", (ev) => {
-  const sun = ev.target.closest("[data-sun]");
-  if (sun) {
-    const x = TASKS.find((x) => x.id === +sun.dataset.sun);
-    x.today = x.today === TODAY ? null : TODAY;
-    render(); return;
-  }
-  const done = ev.target.closest("[data-done]");
-  if (done) {
-    const x = TASKS.find((x) => x.id === +done.dataset.done);
-    x.doneAt = "10:12"; justStamped.add(x.id);
-    render();
+  const find = (attr) => { const el = ev.target.closest(`[${attr}]`); return el && TASKS.find((x) => x.id === +el.getAttribute(attr)); };
+  let x;
+  if ((x = find("data-sun"))) { x.todayOn = x.todayOn === CTX.today ? null : CTX.today; render(); return; }
+  if ((x = find("data-done"))) {
+    x.doneAt = "10:12"; CTX.stamped.add(x.id); render();
     document.querySelector(`[data-undo="${x.id}"]`)?.focus();
     return;
   }
-  const undo = ev.target.closest("[data-undo]");
-  if (undo) {
-    const x = TASKS.find((x) => x.id === +undo.dataset.undo);
-    x.doneAt = null; render(); return;
-  }
-  if (ev.target.closest(".entry-title, .nav a")) ev.preventDefault();
+  if ((x = find("data-undo"))) { x.doneAt = null; render(); return; }
+  if (ev.target.closest(".entry-title, .nav-item")) ev.preventDefault();
 });
-document.getElementById("vocab-btn").addEventListener("click", () => { vocab = vocab ? 0 : 1; render(); });
 
-const THEMES = [null, "light", "dark"];
-const THEME_LABEL = { null: "OS に合わせる", light: "ライト", dark: "ダーク" };
-let theme = null;
-try { theme = localStorage.getItem("sq-design-theme"); } catch (e) { /* なくても動く */ }
-if (!THEMES.includes(theme)) theme = null;
-function applyTheme() {
-  if (theme) document.documentElement.dataset.theme = theme; else delete document.documentElement.dataset.theme;
-  document.getElementById("theme-label").textContent = `配色: ${THEME_LABEL[theme]}`;
-}
-document.getElementById("theme-btn").addEventListener("click", () => {
-  theme = THEMES[(THEMES.indexOf(theme) + 1) % THEMES.length];
-  try { theme ? localStorage.setItem("sq-design-theme", theme) : localStorage.removeItem("sq-design-theme"); } catch (e) { /* 同上 */ }
-  applyTheme();
-});
-applyTheme();
+SQ.onChange(render);
+SQ.wireSwitches();
 render();
 </script>
 </body>
