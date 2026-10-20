@@ -51,7 +51,7 @@
 
 ### 名前の変更（scrum-quest から Team Leveling へ）
 
-- [ ] GitHub のリポジトリ名を `ucan-lab/scrum-quest` から `ucan-lab/team-leveling` に変える（設定画面から。変えたあとは手元の `git remote` も直す）
+- [x] GitHub のリポジトリ名を `ucan-lab/scrum-quest` から `ucan-lab/team-leveling` に変えた（2026-10-20）。手元の作業コピーは `git remote set-url origin https://github.com/ucan-lab/team-leveling` で直す。Claude Code のクラウドのセッションは、新しい名前で始め直すまで古い URL（GitHub が転送する）で push する
 - [ ] ドメイン `team-leveling.dev` を取る（2026-10-20 に空きを確かめた）
 - [ ] claude.ai の Artifact に公開した見本は古い名前のまま。必要なら公開し直す
 
