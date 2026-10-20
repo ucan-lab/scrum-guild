@@ -244,13 +244,13 @@
     </article>`;
   }
   // レイドの貼り紙（一覧や計画の中で使う小さな形）
-  function questNotice(eid, opts = {}) {
+  function raidNotice(eid, opts = {}) {
     const q = D.epics[eid];
     const p = epicPts(eid);
     const cleared = opts.cleared ?? q.cleared;
     const joined = q.party.includes(D.me);
     const pct = p.all ? Math.round((p.done / p.all) * 100) : 0;
-    return `<article class="notice is-quest ${cleared ? "is-cleared" : ""}">
+    return `<article class="notice is-raid ${cleared ? "is-cleared" : ""}">
       <span class="notice-label"><span class="orn-medieval">依 頼 書</span><span class="orn-plain">${t("epic")}</span>　·　${esc(D.categories[q.cat].name)}</span>
       <a class="notice-title notice-link" href="epic.html">${esc(q.title)}</a>
       <dl class="notice-facts">
@@ -695,7 +695,7 @@
     onRedraw: (fn) => extraRedraws.push(fn), openDrawer, drawerHtml, drawerState: drawer,
     user, task, tasksWhere, sprintLabel, colName, categoryOf, storyPts, epicPts, dueOf,
     avatar, avatarOf, emblem, pts, dueChip, taskDue, tier, sourceKey, entry, book, section, pageHead,
-    card, board, treeStory, treeEpic, sprintNotice, questNotice, progress, levelPanel, load, capacityRows,
+    card, board, treeStory, treeEpic, sprintNotice, raidNotice, progress, levelPanel, load, capacityRows,
     openDialog, closeDialog, toast, celebrate, miniCap, redraw: () => redrawAll(), DIALOGS,
   };
 })();

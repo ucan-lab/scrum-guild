@@ -66,7 +66,7 @@
 <script src="kit.js"></script>
 <script>
 "use strict";
-const { D, t, icon, avatar, avatarOf, emblem, pts, dueChip, tier, book, sprintNotice, questNotice, levelPanel, load, capacityRows,
+const { D, t, icon, avatar, avatarOf, emblem, pts, dueChip, tier, book, sprintNotice, raidNotice, levelPanel, load, capacityRows,
   board, treeEpic, treeStory, progress, pageHead } = SQ;
 
 const COLORS = [
@@ -218,8 +218,8 @@ const SECTIONS = [
     ["右端の数は「完了 / 全体」のポイント。", "完了したタスクは折りたたみ、件数だけ出す。"],
     ".tree .tree-group .tree-row .is-epic .is-story .is-root .tree-caret .tree-title .tree-ratio .tree-children .tree-folded")],
   ["notices", "貼り紙", () => block("notices", "貼り紙", "掲示する物（スプリントゴール、レイド）は、上辺に太い線を引いた紙として見せる。レイドは金、クリア済みは朱。",
-    `<div class="notice-grid">${sprintNotice("sp14")}${questNotice("e1")}${questNotice("e2", { cleared: true })}</div>`,
-    ["依頼主の名前の横に朱の「印」を添える。", "クリアしたレイドには「済」の判子を押す。"], ".notice .is-quest .is-cleared / .notice-label .notice-title .notice-meta .notice-facts .notice-foot / .day-ticks / .progress / .seal")],
+    `<div class="notice-grid">${sprintNotice("sp14")}${raidNotice("e1")}${raidNotice("e2", { cleared: true })}</div>`,
+    ["依頼主の名前の横に朱の「印」を添える。", "クリアしたレイドには「済」の判子を押す。"], ".notice .is-raid .is-cleared / .notice-label .notice-title .notice-meta .notice-facts .notice-foot / .day-ticks / .progress / .seal")],
   ["records", "記録", () => block("records", "記録（レベルと積載量）", "計器の見た目。経験値のゲージは10の目盛り、積載量は5%の目盛りで、許容幅の両端を縦線で示す。",
     `<div class="two">${levelPanel()}<section class="panel"><div class="panel-title"><b>${t("capacity")}</b>判定の5つ</div>${capacityRows()}${load("社内ツール", "配分 40%", 30.4, 30.0, { lead: avatarOf("u1") })}</section></div>`,
     ["判定は重量オーバー（赤）、範囲内（藍）、余力あり（緑）、未見積もりあり（灰）、配分未設定（斜線）。必ず文字を添える。", "未見積もりのタスクが1件でもあれば、余力ありの色は付けない。", "時間は0.1時間に丸めて出す。"],

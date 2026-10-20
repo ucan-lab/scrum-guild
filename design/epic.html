@@ -18,7 +18,7 @@
 <script>
 "use strict";
 // エピック（レイド）の詳細
-const { D, t, icon, esc, pageHead, avatarOf, emblem, tier, dueChip, progress, book, storyPts, questNotice } = SQ;
+const { D, t, icon, esc, pageHead, avatarOf, emblem, tier, dueChip, progress, book, storyPts, raidNotice } = SQ;
 const ID = "e1";
 
 SQ.mount("epic", () => {
@@ -40,7 +40,7 @@ SQ.mount("epic", () => {
     <div class="layout-aside">
       <div class="layout-main">
         <section class="section">
-          <div class="quest-body">${e.body.map((b) => `<p>${esc(b)}</p>`).join("")}
+          <div class="raid-body">${e.body.map((b) => `<p>${esc(b)}</p>`).join("")}
             ${e.link ? `<span class="source-key">${icon("link")} ${esc(e.link)}</span>` : ""}</div>
         </section>
         ${stories.map((s) => {
@@ -79,7 +79,7 @@ SQ.mount("epic", () => {
         </section>
         <section class="section">
           <div class="section-head"><h2 class="section-title" style="font-size:var(--text-lg)">他の${t("epic")}</h2></div>
-          ${questNotice("e2")}
+          ${raidNotice("e2")}
         </section>
       </aside>
     </div>`;

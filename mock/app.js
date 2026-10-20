@@ -272,7 +272,7 @@ const VIEWS = {
   backlog: { title: () => t("backlog"), icon: "board", render: renderBacklog },
   sprint: { title: () => t("sprint"), icon: "columns", render: renderSprint },
   plan: { title: () => t("plan"), icon: "calendar", render: renderPlan },
-  quest: { title: () => t("epic"), icon: "flag", render: renderQuest },
+  raid: { title: () => t("epic"), icon: "flag", render: renderRaid },
   archive: { title: () => t("archive"), icon: "archive", later: true },
   connections: { title: () => t("connection"), icon: "link", later: true },
   settings: { title: () => "設定", icon: "gear", later: true },
@@ -287,7 +287,7 @@ function renderNav() {
   document.getElementById("nav").innerHTML = `
     ${item("today")}
     <div class="nav-group">${t("workspace")}</div>
-    ${item("inbox")}${item("backlog")}${item("sprint")}${item("plan")}${item("quest")}
+    ${item("inbox")}${item("backlog")}${item("sprint")}${item("plan")}${item("raid")}
     ${item("archive")}${item("connections")}${item("settings")}`;
 }
 
@@ -478,7 +478,7 @@ function renderPlan() {
   const epicRows = Object.entries(EPICS).map(([id, e]) => {
     const p = epicPts(id);
     return `<tr>
-      <td><a href="#quest" data-epic="${id}" style="color:inherit">${esc(e.title)}</a></td>
+      <td><a href="#raid" data-epic="${id}" style="color:inherit">${esc(e.title)}</a></td>
       <td class="n">${p.all - p.done}</td>
       <td><div class="progress" role="img" aria-label="完了 ${p.done} / ${p.all}"><span style="width:${p.all ? (p.done / p.all) * 100 : 0}%"></span></div></td>
       <td>${dueChip({ due: e.due })}</td>
@@ -506,7 +506,7 @@ function renderPlan() {
   </section>`;
 }
 
-function renderQuest() {
+function renderRaid() {
   const id = state.epicId;
   const e = EPICS[id];
   const p = epicPts(id);
@@ -515,10 +515,10 @@ function renderQuest() {
   const allDone = p.all > 0 && p.done === p.all;
   const others = Object.keys(EPICS).filter((x) => x !== id);
   return `
-  <div class="panel quest-hero">
+  <div class="panel raid-hero">
     <div class="eyebrow">${icon("flag")}${t("epic")}・${CATEGORIES[e.cat].name}</div>
     <h2>${esc(e.title)}</h2>
-    <div class="quest-facts">
+    <div class="raid-facts">
       <div class="fact"><span class="k">${t("requester")}</span><span class="v">${avatar(e.requester)}${esc(USERS[e.requester].name)}</span></div>
       <div class="fact"><span class="k">クリア報酬</span><span class="v"><span class="reward">${e.tier}・${e.reward} XP</span><span class="muted" style="font-size:var(--fs-xs)">${t("party")}全員に同額</span></span></div>
       <div class="fact"><span class="k">${t("due")}</span><span class="v">${dueChip({ due: e.due })}</span></div>
@@ -526,14 +526,14 @@ function renderQuest() {
     </div>
     <div class="fact"><span class="k">${t("party")}（${e.party.length}人）</span>
       <div class="party">${e.party.map((u) => `<span class="member">${avatar(u)}${esc(USERS[u].name)} ${lv(u)}</span>`).join("")}</div></div>
-    <div class="quest-actions">
+    <div class="raid-actions">
       <button class="btn ${joined ? "" : "primary"}" type="button" id="join-btn">${joined ? t("leave") : t("accept")}</button>
       <button class="btn" type="button">${t("party")}に割り振る</button>
       <button class="btn" type="button">報酬を変える</button>
       <button class="btn primary" type="button" ${allDone ? "" : "disabled"} title="${allDone ? "" : "配下がすべて完了すると押せます"}">${icon("check")}${t("clear")}</button>
       <span class="muted" style="font-size:var(--fs-xs)">${allDone ? "" : `配下がすべて完了すると押せます`}</span>
     </div>
-    <div class="quest-body">${e.body.map((b) => `<p>${esc(b)}</p>`).join("")}
+    <div class="raid-body">${e.body.map((b) => `<p>${esc(b)}</p>`).join("")}
       ${e.link ? `<p class="src">${icon("link")}<span class="mono">${esc(e.link)}</span></p>` : ""}</div>
   </div>
   <section class="section">
@@ -549,7 +549,7 @@ function renderQuest() {
       </div>`;
     }).join("")}
   </section>
-  <p class="muted" style="font-size:var(--fs-sm);margin:0">他の${t("epic")}: ${others.map((o) => `<a href="#quest" data-epic="${o}" style="color:var(--accent)">${esc(EPICS[o].title)}</a>`).join("、")}</p>`;
+  <p class="muted" style="font-size:var(--fs-sm);margin:0">他の${t("epic")}: ${others.map((o) => `<a href="#raid" data-epic="${o}" style="color:var(--accent)">${esc(EPICS[o].title)}</a>`).join("、")}</p>`;
 }
 
 function renderLater() {
@@ -690,7 +690,7 @@ document.addEventListener("click", (ev) => {
   const tab = el.closest("[data-tab]");
   if (tab) { state.drawerTab = tab.dataset.tab; render(); return; }
   const epicLink = el.closest("[data-epic]");
-  if (epicLink) { ev.preventDefault(); state.epicId = epicLink.dataset.epic; location.hash = "quest"; go("quest"); return; }
+  if (epicLink) { ev.preventDefault(); state.epicId = epicLink.dataset.epic; location.hash = "raid"; go("raid"); return; }
   const nav = el.closest("[data-view]");
   if (nav) { ev.preventDefault(); location.hash = nav.dataset.view; go(nav.dataset.view); return; }
   if (el.closest("#join-btn")) {
