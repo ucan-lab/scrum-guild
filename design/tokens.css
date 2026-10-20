@@ -1,50 +1,17 @@
 /*
  * Team Leveling のデザイントークン
- * 見立ては「ギルドの帳簿」（案 A）。レベルと積載量だけ「装備画面」（案 B）の表現を使う。
+ * テーマは5つ。html の data-theme で選ぶ（なければシンプル（自動））。
+ *   simple        シンプル（自動）。OS の明暗に合わせる
+ *   simple_light  シンプル（ライト）
+ *   simple_dark   シンプル（ダーク）
+ *   medieval      中世風。ギルドの帳簿（紙と墨、判子）。ライトだけ
+ *   modern        現代風。ハンターに届くシステムのウィンドウ（暗い地に光る枠）。ダークだけ
  * 色は役割で名前を付ける。部品は素の色の値を直接使わず、ここの変数だけを使う。
+ * テーマで変わるのは、色、書体、角、線、影だけ。テーマごとの飾りは components.css の末尾にまとめる。
  */
+
+/* ===== テーマによらない値 ===== */
 :root {
-  /* ---- 色: 地と線 ---- */
-  --color-bg: #f3f4f1;          /* 紙 */
-  --color-surface: #fbfbf8;     /* 帳面 */
-  --color-sunken: #e9ebe6;      /* メニューなど一段下がった面 */
-  --color-line: #c9cfd3;        /* 枠の線 */
-  --color-rule: #dfe5e8;        /* 行を分ける罫 */
-
-  /* ---- 色: 文字 ---- */
-  --color-fg: #1c2633;          /* 墨 */
-  --color-muted: #5b6672;
-  --color-faint: #8a939c;
-
-  /* ---- 色: 役割 ---- */
-  --color-accent: #1f3a5f;      /* 藍。操作と選択 */
-  --color-on-accent: #ffffff;
-  --color-accent-soft: #e2e8f0;
-  --color-stamp: #c8352b;       /* 朱。完了の判子と依頼主の印だけに使う */
-  --color-xp: #8a6418;          /* 金。経験値とレベルだけに使う */
-  --color-xp-soft: #f2e8d2;
-
-  /* ---- 色: 状態 ---- */
-  --color-danger: #b42318;
-  --color-danger-soft: #f9e3e1;
-  --color-warn: #9a5208;
-  --color-warn-soft: #f8ead7;
-  --color-ok: #2d6a3a;
-  --color-ok-soft: #e1efe3;
-
-  /* ---- 色: ゲージとクリア報酬の段階 ---- */
-  --color-gauge: #dde2e4;
-  --color-gauge-tick: var(--color-bg);
-  --color-tier-small: #6b7785;
-  --color-tier-medium: #2f5f9e;
-  --color-tier-large: #8a6418;
-
-  /* ---- 文字 ---- */
-  --font-display: "Zen Old Mincho", "Hiragino Mincho ProN", "Yu Mincho", serif;
-  --font-body: "BIZ UDPGothic", "Hiragino Sans", "Yu Gothic UI", "Noto Sans JP", sans-serif;
-  --font-mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;  /* キー、日付、ポイント */
-  --font-stat: "Chakra Petch", "IBM Plex Mono", ui-monospace, sans-serif;          /* レベル、経験値、積載量の数字 */
-
   --text-xs: 0.75rem;    /* 12 */
   --text-sm: 0.8125rem;  /* 13 */
   --text-md: 0.875rem;   /* 14 本文 */
@@ -67,77 +34,216 @@
   --space-8: 32px;
   --space-10: 40px;
 
-  /* ---- 形 ---- */
-  --radius-1: 2px;       /* 帳簿の角。ほぼ角張らせる */
-  --radius-2: 4px;
   --radius-full: 999px;
-  --rule-double: 3px double var(--color-line);
-  --shadow-sheet: 0 1px 0 var(--color-line), 3px 4px 0 -1px var(--color-rule);  /* 貼り出した紙 */
-  --shadow-float: 0 10px 30px -10px rgb(20 30 45 / 0.35);
 
   /* ---- 動き ---- */
   --duration-fast: 120ms;
   --duration-stamp: 260ms;
   --ease-out: cubic-bezier(0.2, 0.8, 0.2, 1);
+
+  /* ---- 書体の候補 ---- */
+  --family-gothic: "BIZ UDPGothic", "Hiragino Sans", "Yu Gothic UI", "Noto Sans JP", sans-serif;
+  --family-mincho: "Zen Old Mincho", "Hiragino Mincho ProN", "Yu Mincho", serif;
+  --family-mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+  --family-tech: "Chakra Petch", "IBM Plex Mono", ui-monospace, sans-serif;
+  --family-tech-gothic: "Chakra Petch", "BIZ UDPGothic", "Hiragino Sans", "Yu Gothic UI", "Noto Sans JP", sans-serif;  /* 英数字は Chakra Petch、かなと漢字はゴシック */
 }
 
+/* ===== シンプル（ライト）。data-theme がないときもこれ ===== */
+:root {
+  /* ---- 色: 地と線 ---- */
+  --color-bg: #f5f6f8;
+  --color-surface: #ffffff;
+  --color-sunken: #eceef2;      /* メニューなど一段下がった面 */
+  --color-line: #d3d8df;        /* 枠の線 */
+  --color-rule: #e6e9ee;        /* 行を分ける罫 */
+
+  /* ---- 色: 文字 ---- */
+  --color-fg: #1f2328;
+  --color-muted: #57606a;
+  --color-faint: #8b949e;
+
+  /* ---- 色: 役割 ---- */
+  --color-accent: #1f5bd8;      /* 操作と選択 */
+  --color-on-accent: #ffffff;
+  --color-accent-soft: #e6edfc;
+  --color-stamp: #cf222e;       /* 依頼主の印と通知の数 */
+  --color-done: var(--color-ok);  /* 完了の印とクリア */
+  --color-xp: #8a5a00;          /* 経験値とレベルだけに使う */
+  --color-xp-soft: #f6ecd6;
+
+  /* ---- 色: 状態 ---- */
+  --color-danger: #b42318;
+  --color-danger-soft: #fbe5e3;
+  --color-warn: #9a5208;
+  --color-warn-soft: #f9ecd9;
+  --color-ok: #1f7a3d;
+  --color-ok-soft: #e2f2e6;
+
+  /* ---- 色: ゲージとクリア報酬の段階 ---- */
+  --color-gauge: #e1e5ea;
+  --color-gauge-tick: var(--color-bg);
+  --color-tier-small: #66717d;
+  --color-tier-medium: #1f5bd8;
+  --color-tier-large: #8a5a00;
+
+  /* ---- 文字 ---- */
+  --font-display: var(--family-gothic);   /* 画面と節の見出し */
+  --font-body: var(--family-gothic);
+  --font-mono: var(--family-mono);        /* キー、日付、ポイント */
+  --font-stat: var(--family-gothic);      /* レベル、経験値、積載量の数字 */
+  --weight-display: 700;
+
+  /* ---- 形 ---- */
+  --radius-1: 6px;
+  --radius-2: 8px;
+  --rule-double: 1px solid var(--color-line);   /* 台帳の左や見出しの下の区切り */
+  --shadow-sheet: 0 1px 2px rgb(20 30 45 / 0.08);  /* 貼り紙 */
+  --shadow-panel: none;                            /* 面の外側の光や影 */
+  --surface-panel: var(--color-surface);           /* 面の地 */
+  --shadow-float: 0 12px 32px -12px rgb(20 30 45 / 0.3);
+  color-scheme: light;
+}
+
+/* ===== シンプル（ダーク）。自動で OS がダークのときもこれ ===== */
 @media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) {
-    --color-bg: #141a21;
-    --color-surface: #1b222b;
-    --color-sunken: #10151b;
-    --color-line: #323d4a;
-    --color-rule: #232c36;
-    --color-fg: #e4e8ed;
-    --color-muted: #9aa6b3;
-    --color-faint: #6c7886;
-    --color-accent: #9bb6dc;
-    --color-on-accent: #101820;
-    --color-accent-soft: #233042;
-    --color-stamp: #ef6a5e;
-    --color-xp: #e0b65c;
-    --color-xp-soft: #362b14;
-    --color-danger: #f0857b;
-    --color-danger-soft: #3a1f1e;
-    --color-warn: #eda65a;
-    --color-warn-soft: #382a18;
-    --color-ok: #7cc28a;
-    --color-ok-soft: #1c3122;
-    --color-gauge: #26303b;
-    --color-tier-small: #9aa6b4;
-    --color-tier-medium: #7fa9e6;
-    --color-tier-large: #e0b65c;
-    --shadow-sheet: 0 1px 0 var(--color-line), 3px 4px 0 -1px #0b0f14;
-    --shadow-float: 0 10px 30px -10px rgb(0 0 0 / 0.7);
+  :root:not([data-theme]), :root[data-theme="simple"] {
+    --color-bg: #15181c;
+    --color-surface: #1c2026;
+    --color-sunken: #111317;
+    --color-line: #353c45;
+    --color-rule: #262b32;
+    --color-fg: #e6e9ed;
+    --color-muted: #9da5ae;
+    --color-faint: #6e7781;
+    --color-accent: #7ea6ff;
+    --color-on-accent: #0b1220;
+    --color-accent-soft: #1f2b45;
+    --color-stamp: #ff7b72;
+    --color-xp: #e3b341;
+    --color-xp-soft: #3a2e12;
+    --color-danger: #ff8178;
+    --color-danger-soft: #3d1f1d;
+    --color-warn: #f0a85a;
+    --color-warn-soft: #3a2a17;
+    --color-ok: #6fcf8a;
+    --color-ok-soft: #1b3324;
+    --color-gauge: #2b3139;
+    --color-tier-small: #9da5ae;
+    --color-tier-medium: #7ea6ff;
+    --color-tier-large: #e3b341;
+    --shadow-sheet: 0 1px 2px rgb(0 0 0 / 0.4);
+    --shadow-float: 0 12px 32px -12px rgb(0 0 0 / 0.7);
     color-scheme: dark;
   }
 }
-:root[data-theme="dark"] {
-  --color-bg: #141a21;
-  --color-surface: #1b222b;
-  --color-sunken: #10151b;
-  --color-line: #323d4a;
-  --color-rule: #232c36;
-  --color-fg: #e4e8ed;
-  --color-muted: #9aa6b3;
-  --color-faint: #6c7886;
-  --color-accent: #9bb6dc;
-  --color-on-accent: #101820;
-  --color-accent-soft: #233042;
-  --color-stamp: #ef6a5e;
-  --color-xp: #e0b65c;
-  --color-xp-soft: #362b14;
-  --color-danger: #f0857b;
-  --color-danger-soft: #3a1f1e;
-  --color-warn: #eda65a;
-  --color-warn-soft: #382a18;
-  --color-ok: #7cc28a;
-  --color-ok-soft: #1c3122;
-  --color-gauge: #26303b;
-  --color-tier-small: #9aa6b4;
-  --color-tier-medium: #7fa9e6;
-  --color-tier-large: #e0b65c;
-  --shadow-sheet: 0 1px 0 var(--color-line), 3px 4px 0 -1px #0b0f14;
-  --shadow-float: 0 10px 30px -10px rgb(0 0 0 / 0.7);
+:root[data-theme="simple_dark"] {
+  --color-bg: #15181c;
+  --color-surface: #1c2026;
+  --color-sunken: #111317;
+  --color-line: #353c45;
+  --color-rule: #262b32;
+  --color-fg: #e6e9ed;
+  --color-muted: #9da5ae;
+  --color-faint: #6e7781;
+  --color-accent: #7ea6ff;
+  --color-on-accent: #0b1220;
+  --color-accent-soft: #1f2b45;
+  --color-stamp: #ff7b72;
+  --color-xp: #e3b341;
+  --color-xp-soft: #3a2e12;
+  --color-danger: #ff8178;
+  --color-danger-soft: #3d1f1d;
+  --color-warn: #f0a85a;
+  --color-warn-soft: #3a2a17;
+  --color-ok: #6fcf8a;
+  --color-ok-soft: #1b3324;
+  --color-gauge: #2b3139;
+  --color-tier-small: #9da5ae;
+  --color-tier-medium: #7ea6ff;
+  --color-tier-large: #e3b341;
+  --shadow-sheet: 0 1px 2px rgb(0 0 0 / 0.4);
+  --shadow-float: 0 12px 32px -12px rgb(0 0 0 / 0.7);
+  color-scheme: dark;
+}
+
+/* ===== 中世風。ギルドの帳簿 ===== */
+:root[data-theme="medieval"] {
+  --color-bg: #f3f4f1;          /* 紙 */
+  --color-surface: #fbfbf8;     /* 帳面 */
+  --color-sunken: #e9ebe6;
+  --color-line: #c9cfd3;
+  --color-rule: #dfe5e8;
+  --color-fg: #1c2633;          /* 墨 */
+  --color-muted: #5b6672;
+  --color-faint: #8a939c;
+  --color-accent: #1f3a5f;      /* 藍 */
+  --color-on-accent: #ffffff;
+  --color-accent-soft: #e2e8f0;
+  --color-stamp: #c8352b;       /* 朱。完了の判子と依頼主の印だけに使う */
+  --color-done: var(--color-stamp);
+  --color-xp: #8a6418;          /* 金 */
+  --color-xp-soft: #f2e8d2;
+  --color-danger: #b42318;
+  --color-danger-soft: #f9e3e1;
+  --color-warn: #9a5208;
+  --color-warn-soft: #f8ead7;
+  --color-ok: #2d6a3a;
+  --color-ok-soft: #e1efe3;
+  --color-gauge: #dde2e4;
+  --color-tier-small: #6b7785;
+  --color-tier-medium: #2f5f9e;
+  --color-tier-large: #8a6418;
+
+  --font-display: var(--family-mincho);
+  --font-stat: var(--family-tech);
+  --weight-display: 900;
+
+  --radius-1: 2px;              /* 帳簿の角。ほぼ角張らせる */
+  --radius-2: 4px;
+  --rule-double: 3px double var(--color-line);
+  --shadow-sheet: 0 1px 0 var(--color-line), 3px 4px 0 -1px var(--color-rule);  /* 貼り出した紙 */
+  --shadow-float: 0 10px 30px -10px rgb(20 30 45 / 0.35);
+  color-scheme: light;
+}
+
+/* ===== 現代風。システムのウィンドウ ===== */
+:root[data-theme="modern"] {
+  --color-bg: #060a12;
+  --color-surface: #0b1322;
+  --color-sunken: #070d18;
+  --color-line: #1f3b5c;
+  --color-rule: #142740;
+  --color-fg: #dce9f7;
+  --color-muted: #8ea6c0;
+  --color-faint: #5c7591;
+  --color-accent: #4cc8ff;      /* 光る青。操作と選択、ウィンドウの枠 */
+  --color-on-accent: #04121c;
+  --color-accent-soft: #0e2a44;
+  --color-stamp: #ff6f8e;
+  --color-xp: #b69cff;          /* 紫。経験値とレベルだけに使う */
+  --color-xp-soft: #231b42;
+  --color-danger: #ff7a7a;
+  --color-danger-soft: #3a1520;
+  --color-warn: #ffb35c;
+  --color-warn-soft: #34230f;
+  --color-ok: #5ee6a8;
+  --color-ok-soft: #0f2e25;
+  --color-gauge: #12233a;
+  --color-tier-small: #8ea6c0;
+  --color-tier-medium: #4cc8ff;
+  --color-tier-large: #b69cff;
+
+  --font-display: var(--family-tech-gothic);
+  --font-stat: var(--family-tech);
+  --weight-display: 700;
+
+  --radius-1: 2px;
+  --radius-2: 3px;
+  --rule-double: 1px solid var(--color-line);
+  --shadow-sheet: 0 0 0 1px rgb(76 200 255 / 0.25), 0 0 18px -6px rgb(76 200 255 / 0.55);
+  --shadow-panel: 0 0 0 1px rgb(76 200 255 / 0.18), 0 0 22px -10px rgb(76 200 255 / 0.6);
+  --surface-panel: linear-gradient(180deg, rgb(76 200 255 / 0.07), transparent 60%), var(--color-surface);
+  --shadow-float: 0 0 0 1px rgb(76 200 255 / 0.35), 0 0 40px -8px rgb(76 200 255 / 0.45);
   color-scheme: dark;
 }

@@ -44,10 +44,10 @@ h1, h2, h3 { text-wrap: balance; }
 .brand { display: flex; align-items: center; gap: var(--space-2); padding-inline: var(--space-2); }
 .brand-seal {
   display: inline-grid; place-items: center; width: 26px; height: 26px;
-  border: 1.5px solid var(--color-stamp); color: var(--color-stamp); border-radius: var(--radius-1);
-  font-family: var(--font-display); font-weight: 900; font-size: 13px; line-height: 1;
+  background: var(--color-accent); color: var(--color-on-accent); border-radius: var(--radius-1);
+  font-family: var(--font-display); font-weight: var(--weight-display); font-size: 11px; line-height: 1; letter-spacing: 0.02em;
 }
-.brand-name { font-family: var(--font-display); font-weight: 900; font-size: var(--text-lg); letter-spacing: 0.02em; }
+.brand-name { font-family: var(--font-display); font-weight: var(--weight-display); font-size: var(--text-lg); letter-spacing: 0.02em; }
 
 .nav { display: grid; gap: 1px; }
 .nav-group { font-size: var(--text-xs); color: var(--color-muted); letter-spacing: var(--tracking-label); padding: var(--space-4) var(--space-2) var(--space-1); }
@@ -92,7 +92,7 @@ h1, h2, h3 { text-wrap: balance; }
 /* ===== 画面の見出しと集計 ===== */
 .page-head { display: grid; gap: var(--space-3); padding-bottom: var(--space-5); border-bottom: var(--rule-double); }
 .page-eyebrow { font-family: var(--font-mono); font-size: var(--text-sm); color: var(--color-muted); letter-spacing: 0.04em; }
-.page-title { font-family: var(--font-display); font-weight: 900; font-size: var(--text-2xl); line-height: var(--leading-tight); letter-spacing: 0.04em; }
+.page-title { font-family: var(--font-display); font-weight: var(--weight-display); font-size: var(--text-2xl); line-height: var(--leading-tight); letter-spacing: 0.04em; }
 .tally { display: flex; flex-wrap: wrap; gap: var(--space-2) var(--space-6); margin: 0; }
 .tally > div { display: flex; align-items: baseline; gap: var(--space-2); }
 .tally dt { font-size: var(--text-sm); color: var(--color-muted); display: inline-flex; align-items: center; gap: 4px; }
@@ -104,7 +104,7 @@ h1, h2, h3 { text-wrap: balance; }
 /* ===== 節 ===== */
 .section { display: grid; gap: var(--space-3); min-width: 0; }
 .section-head { display: flex; align-items: baseline; gap: var(--space-3); flex-wrap: wrap; }
-.section-title { font-family: var(--font-display); font-weight: 900; font-size: var(--text-xl); letter-spacing: 0.04em; }
+.section-title { font-family: var(--font-display); font-weight: var(--weight-display); font-size: var(--text-xl); letter-spacing: 0.04em; }
 .section-count { font-family: var(--font-mono); font-size: var(--text-sm); color: var(--color-muted); }
 .section-hint { margin-left: auto; font-size: var(--text-xs); color: var(--color-muted); }
 
@@ -239,13 +239,14 @@ h1, h2, h3 { text-wrap: balance; }
   display: inline-grid; place-items: center; width: 34px; height: 34px; border-radius: 50%;
   border: 1.5px dashed var(--color-line); background: var(--color-surface); color: var(--color-faint);
 }
-.done-btn:hover { border-color: var(--color-stamp); color: var(--color-stamp); border-style: solid; }
+.done-btn:hover { border-color: var(--color-done); color: var(--color-done); border-style: solid; }
+/* 完了の印。シンプルと現代風はチェック、中世風は朱の判子（末尾のテーマの飾り） */
 .hanko {
-  display: inline-grid; place-items: center; width: 40px; height: 40px; border-radius: 50%;
-  border: 2px solid var(--color-stamp); color: var(--color-stamp);
-  font-family: var(--font-display); font-weight: 900; font-size: 18px; line-height: 1;
-  rotate: -12deg; opacity: 0.88; margin: -3px;
+  display: inline-grid; place-items: center; width: 30px; height: 30px; border-radius: 50%;
+  border: 1.5px solid var(--color-done); color: var(--color-done); background: var(--color-ok-soft);
+  line-height: 1;
 }
+.hanko > b { display: none; }
 .hanko.is-new { animation: hanko-press var(--duration-stamp) var(--ease-out) 1; }
 @keyframes hanko-press {
   0% { transform: scale(1.8); opacity: 0; }
@@ -253,14 +254,14 @@ h1, h2, h3 { text-wrap: balance; }
   100% { transform: scale(1); }
 }
 .seal {
-  display: inline-grid; place-items: center; width: 20px; height: 20px; border: 1.5px solid var(--color-stamp);
-  color: var(--color-stamp); font-family: var(--font-display); font-weight: 900; font-size: 10px; border-radius: var(--radius-1);
+  display: none; place-items: center; width: 20px; height: 20px; border: 1.5px solid var(--color-stamp);
+  color: var(--color-stamp); font-family: var(--font-display); font-weight: var(--weight-display); font-size: 10px; border-radius: var(--radius-1);
 }
 
 /* ===== 貼り紙（スプリントゴール、クエスト） ===== */
 .notice-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: var(--space-4); }
 .notice {
-  background: var(--color-surface); border: 1px solid var(--color-line); border-top: 5px solid var(--color-accent);
+  background: var(--surface-panel); border: 1px solid var(--color-line); border-top: 5px solid var(--color-accent);
   box-shadow: var(--shadow-sheet); border-radius: var(--radius-1);
   padding: var(--space-3) var(--space-4) var(--space-4); display: grid; gap: var(--space-2);
 }
@@ -274,7 +275,7 @@ h1, h2, h3 { text-wrap: balance; }
 .notice-foot { display: flex; gap: var(--space-3); align-items: center; flex-wrap: wrap; padding-top: var(--space-2); }
 .notice.is-quest { border-top-color: var(--color-xp); }
 .notice.is-quest .notice-label { color: var(--color-xp); }
-.notice.is-cleared { border-top-color: var(--color-stamp); }
+.notice.is-cleared { border-top-color: var(--color-done); }
 
 /* 日の目盛り（スプリントの何日目か） */
 .day-ticks { display: flex; gap: 2px; }
@@ -289,7 +290,7 @@ h1, h2, h3 { text-wrap: balance; }
 .progress-num { font-family: var(--font-mono); font-size: var(--text-xs); color: var(--color-muted); white-space: nowrap; }
 
 /* ===== 記録の面（レベル、積載量） ===== */
-.panel { background: var(--color-surface); border: 1px solid var(--color-line); border-radius: var(--radius-1); padding: var(--space-4); display: grid; gap: var(--space-3); }
+.panel { background: var(--surface-panel); box-shadow: var(--shadow-panel); border: 1px solid var(--color-line); border-radius: var(--radius-1); padding: var(--space-4); display: grid; gap: var(--space-3); }
 .panel-title { font-size: var(--text-xs); color: var(--color-muted); letter-spacing: var(--tracking-label); display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
 .panel-title b { color: var(--color-fg); font-weight: 700; letter-spacing: 0.04em; font-size: var(--text-sm); }
 .panel-note { font-size: var(--text-xs); color: var(--color-muted); }
@@ -408,10 +409,10 @@ a.brand { color: inherit; text-decoration: none; }
 .board { display: grid; grid-template-columns: repeat(4, minmax(232px, 1fr)); gap: var(--space-3); min-width: 960px; align-items: start; }
 .board-col { background: var(--color-sunken); border: 1px solid var(--color-line); border-radius: var(--radius-1); padding: var(--space-3); display: grid; gap: var(--space-2); }
 .board-col-head { display: flex; align-items: baseline; gap: var(--space-2); padding: 0 var(--space-1) var(--space-2); border-bottom: var(--rule-double); }
-.board-col-name { font-family: var(--font-display); font-weight: 900; font-size: var(--text-lg); letter-spacing: 0.06em; }
+.board-col-name { font-family: var(--font-display); font-weight: var(--weight-display); font-size: var(--text-lg); letter-spacing: 0.06em; }
 .board-col-n { font-family: var(--font-mono); font-size: var(--text-xs); color: var(--color-muted); }
 .board-col-pts { margin-left: auto; font-family: var(--font-mono); font-size: var(--text-xs); color: var(--color-muted); }
-.board-col.is-done .board-col-head .ico { color: var(--color-stamp); align-self: center; }
+.board-col.is-done .board-col-head .ico { color: var(--color-done); align-self: center; }
 .board-empty { font-size: var(--text-xs); color: var(--color-faint); padding: var(--space-2); }
 .dod { font-size: var(--text-xs); color: var(--color-muted); background: var(--color-surface); border: 1px dashed var(--color-line); border-radius: var(--radius-1); padding: 6px var(--space-3); }
 .dod summary { cursor: pointer; color: var(--color-fg); font-weight: 700; }
@@ -426,7 +427,6 @@ a.brand { color: inherit; text-decoration: none; }
 .card-foot { display: flex; align-items: center; gap: var(--space-2); }
 .card-end { margin-left: auto; display: flex; align-items: center; gap: var(--space-2); }
 .card .done-btn { width: 30px; height: 30px; }
-.card .hanko { width: 34px; height: 34px; font-size: 15px; }
 .card.is-done .card-title { color: var(--color-muted); font-weight: 400; }
 
 /* ===== バックログの木 ===== */
@@ -437,7 +437,7 @@ a.brand { color: inherit; text-decoration: none; }
 .tree-row { display: grid; grid-template-columns: 20px 24px minmax(0, 1fr) auto; gap: var(--space-2); align-items: center; padding: var(--space-3) var(--space-4) var(--space-3) var(--space-2); }
 .tree-row:hover { background: color-mix(in srgb, var(--color-accent-soft) 45%, transparent); }
 .tree-row.is-epic { background: var(--color-sunken); }
-.tree-row.is-epic .tree-title { font-family: var(--font-display); font-weight: 900; font-size: var(--text-lg); letter-spacing: 0.03em; }
+.tree-row.is-epic .tree-title { font-family: var(--font-display); font-weight: var(--weight-display); font-size: var(--text-lg); letter-spacing: 0.03em; }
 .tree-row.is-story .tree-title { font-weight: 700; }
 .tree-children .tree-row.is-story { padding-left: var(--space-8); border-top: 1px solid var(--color-rule); }
 .tree-children .entry { padding-left: var(--space-10); border-top: 1px solid var(--color-rule); }
@@ -460,7 +460,7 @@ details[open] > summary .tree-caret { transform: rotate(90deg); }
 .lane { background: var(--color-surface); border: 1px solid var(--color-line); border-top: 5px solid var(--color-line); border-radius: var(--radius-1); padding: var(--space-3) var(--space-4) var(--space-4); display: grid; gap: var(--space-2); }
 .lane.is-active { border-top-color: var(--color-accent); }
 .lane-head { display: flex; align-items: baseline; gap: var(--space-2); flex-wrap: wrap; }
-.lane-title { font-family: var(--font-display); font-weight: 900; font-size: var(--text-lg); }
+.lane-title { font-family: var(--font-display); font-weight: var(--weight-display); font-size: var(--text-lg); }
 .lane-sub { display: flex; flex-wrap: wrap; gap: 4px var(--space-3); font-size: var(--text-xs); color: var(--color-muted); }
 .lane-row { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: var(--space-2); align-items: center; padding: 6px 0; border-top: 1px solid var(--color-rule); font-size: var(--text-sm); }
 .lane-row a { color: var(--color-fg); text-decoration: none; overflow-wrap: anywhere; }
@@ -526,7 +526,7 @@ details[open] > summary .tree-caret { transform: rotate(90deg); }
 }
 .drawer-top { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
 .drawer-close { margin-left: auto; }
-.drawer-title { font-family: var(--font-display); font-weight: 900; font-size: var(--text-xl); line-height: var(--leading-tight); overflow-wrap: anywhere; }
+.drawer-title { font-family: var(--font-display); font-weight: var(--weight-display); font-size: var(--text-xl); line-height: var(--leading-tight); overflow-wrap: anywhere; }
 .props { margin: 0; display: grid; gap: var(--space-2); }
 .props > div { display: grid; grid-template-columns: 7em minmax(0, 1fr); gap: var(--space-3); align-items: center; padding-bottom: var(--space-2); border-bottom: 1px solid var(--color-rule); font-size: var(--text-sm); }
 .props dt { color: var(--color-muted); }
@@ -573,12 +573,12 @@ a.notice-title.notice-link:hover { text-decoration: underline; text-underline-of
 .dialog { position: fixed; inset: 0; z-index: 30; background: rgb(10 15 20 / 0.45); display: grid; place-items: center; padding: var(--space-4); }
 .dialog-sheet {
   width: min(560px, 100%); max-height: calc(100vh - 2 * var(--space-4)); overflow-y: auto;
-  background: var(--color-surface); border: 1px solid var(--color-line); border-top: 5px solid var(--color-accent);
+  background: var(--surface-panel); border: 1px solid var(--color-line); border-top: 5px solid var(--color-accent);
   border-radius: var(--radius-1); box-shadow: var(--shadow-float);
   display: grid; gap: var(--space-4); padding: var(--space-5) var(--space-6) var(--space-6);
 }
 .dialog-head { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-3); }
-.dialog-title { font-family: var(--font-display); font-weight: 900; font-size: var(--text-xl); line-height: var(--leading-tight); }
+.dialog-title { font-family: var(--font-display); font-weight: var(--weight-display); font-size: var(--text-xl); line-height: var(--leading-tight); }
 .dialog-body { display: grid; gap: var(--space-4); font-size: var(--text-sm); }
 .dialog-foot { display: flex; justify-content: flex-end; gap: var(--space-2); flex-wrap: wrap; padding-top: var(--space-2); border-top: 1px solid var(--color-rule); }
 .dialog-sheet.is-danger { border-top-color: var(--color-danger); }
@@ -626,7 +626,7 @@ a.notice-title.notice-link:hover { text-decoration: underline; text-underline-of
 .settings { display: grid; gap: 0; }
 .setting { display: grid; grid-template-columns: 260px minmax(0, 1fr); gap: var(--space-6); padding-block: var(--space-6); border-bottom: 1px solid var(--color-rule); }
 .setting-head { display: grid; gap: var(--space-1); align-content: start; }
-.setting-title { font-family: var(--font-display); font-weight: 900; font-size: var(--text-lg); }
+.setting-title { font-family: var(--font-display); font-weight: var(--weight-display); font-size: var(--text-lg); }
 .setting-desc { font-size: var(--text-xs); color: var(--color-muted); line-height: 1.7; }
 .setting-body { display: grid; gap: var(--space-4); min-width: 0; align-content: start; }
 .form-row { display: flex; gap: var(--space-3); flex-wrap: wrap; align-items: flex-end; }
@@ -687,7 +687,7 @@ a.notice-title.notice-link:hover { text-decoration: underline; text-underline-of
 .gate-sheet { width: min(440px, 100%); display: grid; gap: var(--space-5); background: var(--color-surface); border: 1px solid var(--color-line); border-top: 5px solid var(--color-accent); box-shadow: var(--shadow-sheet); padding: var(--space-8) var(--space-6); border-radius: var(--radius-1); }
 .gate-brand { display: flex; align-items: center; gap: var(--space-2); }
 .gate-brand .brand-seal { width: 34px; height: 34px; font-size: 17px; }
-.gate-title { font-family: var(--font-display); font-weight: 900; font-size: var(--text-2xl); line-height: var(--leading-tight); }
+.gate-title { font-family: var(--font-display); font-weight: var(--weight-display); font-size: var(--text-2xl); line-height: var(--leading-tight); }
 .gate-note { font-size: var(--text-xs); color: var(--color-muted); }
 .btn.is-wide { width: 100%; padding-block: 10px; }
 
@@ -698,14 +698,14 @@ a.notice-title.notice-link:hover { text-decoration: underline; text-underline-of
 
 /* ===== クリアの演出 ===== */
 .celebrate { position: fixed; inset: 0; z-index: 35; display: grid; place-items: center; background: rgb(10 15 20 / 0.5); padding: var(--space-4); }
-.celebrate-sheet { width: min(420px, 100%); display: grid; gap: var(--space-3); justify-items: center; text-align: center; background: var(--color-surface); border: 1px solid var(--color-line); border-top: 5px solid var(--color-xp); box-shadow: var(--shadow-float); padding: var(--space-8) var(--space-6) var(--space-6); border-radius: var(--radius-1); }
+.celebrate-sheet { width: min(420px, 100%); display: grid; gap: var(--space-3); justify-items: center; text-align: center; background: var(--surface-panel); border: 1px solid var(--color-line); border-top: 5px solid var(--color-xp); box-shadow: var(--shadow-float); padding: var(--space-8) var(--space-6) var(--space-6); border-radius: var(--radius-1); }
 .celebrate-stamp {
-  display: grid; place-items: center; width: 120px; height: 120px; border-radius: 50%;
-  border: 4px double var(--color-stamp); color: var(--color-stamp);
-  font-family: var(--font-display); font-weight: 900; font-size: 26px; letter-spacing: 0.1em;
-  rotate: -14deg; animation: hanko-press 420ms var(--ease-out) 1;
+  display: grid; place-items: center; width: 112px; height: 112px; border-radius: 50%;
+  border: 3px solid var(--color-done); color: var(--color-done); background: var(--color-ok-soft);
+  font-family: var(--font-display); font-weight: var(--weight-display); font-size: 24px; letter-spacing: 0.1em;
+  animation: hanko-press 420ms var(--ease-out) 1;
 }
-.celebrate-title { font-family: var(--font-display); font-weight: 900; font-size: var(--text-xl); }
+.celebrate-title { font-family: var(--font-display); font-weight: var(--weight-display); font-size: var(--text-xl); }
 .celebrate-reward { font-family: var(--font-stat); font-weight: 700; font-size: var(--text-lg); color: var(--color-xp); }
 
 /* ===== 上に出る帯（版のずれ） ===== */
@@ -716,3 +716,45 @@ a.notice-title.notice-link:hover { text-decoration: underline; text-underline-of
   .setting { grid-template-columns: minmax(0, 1fr); gap: var(--space-3); }
 }
 .person { display: inline-flex; align-items: center; gap: var(--space-2); white-space: nowrap; }
+
+/* ===== テーマの飾り =====
+ * テーマの違いは tokens.css の変数で表す。変数で表せない飾りだけをここに置き、この一覧から増やさない。
+ * 完了の印、ロゴの印、依頼主の印、クリアの演出、現代風の光。
+ * 中世風と他とで文字が変わる飾りは .orn-medieval と .orn-plain の両方を書き、片方を隠す。
+ */
+.orn-medieval { display: none; }
+:root[data-theme="medieval"] .orn-medieval { display: revert; }
+:root[data-theme="medieval"] .orn-plain { display: none; }
+
+/* 中世風: 朱の判子と印 */
+:root[data-theme="medieval"] .hanko {
+  width: 40px; height: 40px; border-width: 2px; background: none;
+  font-family: var(--font-display); font-weight: 900; font-size: 18px;
+  rotate: -12deg; opacity: 0.88; margin: -3px;
+}
+:root[data-theme="medieval"] .hanko > b { display: inline; }
+:root[data-theme="medieval"] .hanko > .ico { display: none; }
+:root[data-theme="medieval"] .card .hanko { width: 34px; height: 34px; font-size: 15px; }
+:root[data-theme="medieval"] .brand-seal { background: none; border: 1.5px solid var(--color-stamp); color: var(--color-stamp); font-size: 13px; }
+:root[data-theme="medieval"] .seal { display: inline-grid; }
+:root[data-theme="medieval"] .celebrate-stamp { width: 120px; height: 120px; border: 4px double var(--color-stamp); background: none; font-size: 26px; rotate: -14deg; }
+
+/* 現代風: システムのウィンドウの光 */
+:root[data-theme="modern"] body { background: radial-gradient(1200px 600px at 75% -10%, rgb(76 200 255 / 0.09), transparent 70%) fixed, var(--color-bg); }
+:root[data-theme="modern"] .brand-seal { background: none; border: 1px solid var(--color-accent); color: var(--color-accent); box-shadow: 0 0 10px -2px var(--color-accent); }
+:root[data-theme="modern"] .hanko { background: none; box-shadow: 0 0 10px -3px var(--color-done); }
+:root[data-theme="modern"] .emblem { filter: drop-shadow(0 0 6px var(--color-xp)); }
+:root[data-theme="modern"] .gauge-got { box-shadow: 0 0 10px var(--color-xp); }
+:root[data-theme="modern"] .xp-num, :root[data-theme="modern"] .stat-num { text-shadow: 0 0 14px color-mix(in srgb, var(--color-xp) 60%, transparent); }
+:root[data-theme="modern"] .panel-title b, :root[data-theme="modern"] .notice-label { text-shadow: 0 0 8px color-mix(in srgb, currentColor 70%, transparent); }
+:root[data-theme="modern"] .notice, :root[data-theme="modern"] .dialog-sheet, :root[data-theme="modern"] .celebrate-sheet, :root[data-theme="modern"] .gate-sheet { border-top-width: 1px; }
+:root[data-theme="modern"] .celebrate-stamp {
+  width: auto; height: auto; border-radius: var(--radius-1); padding: var(--space-3) var(--space-6);
+  border: 1px solid var(--color-accent); color: var(--color-accent); background: var(--color-accent-soft);
+  box-shadow: 0 0 24px -4px var(--color-accent); text-shadow: 0 0 10px var(--color-accent);
+  animation: system-in 420ms var(--ease-out) 1;
+}
+@keyframes system-in {
+  0% { opacity: 0; transform: scaleY(0.2); filter: brightness(2); }
+  100% { opacity: 1; transform: none; filter: none; }
+}

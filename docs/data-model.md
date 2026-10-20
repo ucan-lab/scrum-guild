@@ -48,6 +48,7 @@
 | --- | --- | --- | --- |
 | id | INTEGER | PK、`CHECK (id = 1)` | 1行に限る |
 | vocabulary | TEXT | NOT NULL、`game` か `scrum`、既定 `game` | ワークスペースの外の言葉づかい |
+| theme | TEXT | NOT NULL、`simple`、`simple_light`、`simple_dark`、`medieval`、`modern` のどれか、既定 `simple` | 王国の既定のテーマ。`simple` は OS の明暗に合わせる |
 | updated_at | TEXT | NOT NULL | |
 
 最初のマイグレーションで1行を入れる。
@@ -66,6 +67,7 @@
 | work_end_on | TEXT | | 稼働終了日。空なら区切らない |
 | disabled_at | TEXT | | 無効にした日時。入っていればログインできない |
 | last_login_at | TEXT | | |
+| theme | TEXT | `kingdom.theme` と同じ値か NULL | 自分で選んだテーマ。NULL なら王国の既定に従う |
 | created_at、updated_at | TEXT | NOT NULL | |
 
 - 立てた人の GitHub ユーザー ID はシークレットに持つ。その人がログインしたら `is_admin = 1` に書く。

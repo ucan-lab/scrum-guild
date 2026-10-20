@@ -55,6 +55,11 @@ SQ.mount("me", () => `
         ${setting("月の基準の上書き", `按分では合わない月だけ、その月の基準を時間で決めます。`, `
           <ul class="party-list">${M.overrides.map(([m, h]) => `<li><span class="mono">${m}</span><span>${h} 時間</span><button class="icon-btn is-danger" type="button" aria-label="${m} の上書きを消す" style="margin-left:auto">${icon("trash")}</button></li>`).join("")}</ul>
           <div class="form-row"><label class="field" for="om"><span class="field-label">月</span><input class="input" id="om" placeholder="2027-01"></label><label class="field" for="oh"><span class="field-label">時間</span><input class="input" id="oh" type="number"></label><button class="btn" type="button">足す</button></div>`)}
+        ${setting("テーマ", `画面の見た目。選ぶとすぐに変わります。自分で選ばなければ、管理者が決めた王国の既定に従います。言葉づかいとは別に選べます。`, `
+          <div class="choice-list">
+            <label class="choice"><input type="radio" name="my-theme" value="" data-pick-theme><div><b>王国の既定に従う</b><span>今はシンプル（自動）</span></div></label>
+            ${SQ.THEMES.map((v) => `<label class="choice"><input type="radio" name="my-theme" value="${v}" data-pick-theme><div><b>${SQ.THEME_LABEL[v]}</b><span>${SQ.THEME_NOTE[v]}</span></div></label>`).join("")}
+          </div>`)}
         ${setting("経験値の明細", `本人だけが見られます。打ち消しは負の値で残ります。手で足し引きする操作はありません。`, `
           <div class="table-wrap"><table class="table"><thead><tr><th>確定日時</th><th>行動</th><th>内容</th><th class="is-num">XP</th></tr></thead>
             <tbody>${M.xp.map(([at, a, w, v]) => `<tr><td class="mono">${at}</td><td><span class="tag">${a}</span></td><td>${esc(w)}</td><td class="is-num" style="color:${v < 0 ? "var(--color-danger)" : "var(--color-xp)"}">${v > 0 ? "+" : ""}${v}</td></tr>`).join("")}</tbody></table></div>`)}

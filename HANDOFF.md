@@ -26,8 +26,10 @@
 
 - [ ] 初版の全画面（カタログの「画面の見本」から開く17画面）を見て、足りない画面や情報がないか
 - [ ] ゲームの言葉とスクラムの言葉を切り替えて、どちらでも崩れないか
-- [ ] ライトとダークの両方で読みやすいか
-- [ ] 本来の書体（Zen Old Mincho、BIZ UDPGothic、IBM Plex Mono、Chakra Petch）での見え方。作った環境では Google Fonts を読み込めず、代わりの書体でしか確かめていない
+- [ ] 4つの見た目（シンプルのライトとダーク、中世風、現代風）のどれでも読みやすいか。カタログの先頭か、画面の上の「テーマ」で切り替えられる
+- [ ] 現代風の光の強さと、光らせる所（レベル、積載量、貼り紙、ダイアログ、クリアの演出だけ）がちょうどよいか
+- [ ] シンプルの完了の印（緑の丸にチェック）とロゴの印（TL）でよいか
+- [ ] 本来の書体（Zen Old Mincho、BIZ UDPGothic、IBM Plex Mono、Chakra Petch）での見え方。現代風の見出しは Chakra Petch が要になる。作った環境では Google Fonts を読み込めず、代わりの書体でしか確かめていない
 - [ ] スマホ幅で崩れないか（PC が対象で、スマホは崩れない程度でよい）
 - [ ] ダイアログ（スプリントの開始、延長、終了、起票、エピックの削除、完了の記録の修正、ワークスペースの作成）の文言と選択肢
 - [ ] クリアの演出（カタログの「ダイアログと演出」から見られる）の強さ
@@ -58,7 +60,7 @@
 1. 上の確認の結果を `docs/design.md` と `docs/requirements.md` に反映する
 2. リポジトリの土台を作る（Hono、Svelte、Vite、wrangler の雛形、Docker の雛形、稼働先のアダプター）
 3. `docs/data-model.md` から最初のマイグレーションを書く
-4. `design/tokens.css` と `design/components.css` を本番の画面に持ち込み、`design/kit.js` の関数を1つずつ Svelte のコンポーネントにする
+4. `design/tokens.css` と `design/components.css` を本番の画面に持ち込み、`design/kit.js` の関数を1つずつ Svelte のコンポーネントにする。`html` の `data-theme` には、`users.theme`、なければ `kingdom.theme` の値を入れる
 
 ## 覚えておくこと
 

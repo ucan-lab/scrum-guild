@@ -1,4 +1,4 @@
-// 部品の HTML を作る関数、画面の枠、言葉づかいと配色の切り替え。
+// 部品の HTML を作る関数、画面の枠、言葉づかいとテーマの切り替え。
 // カタログ（index.html）と画面の見本が同じ関数を使い、見た目がずれないようにする。
 // 本番の Svelte では、ここの関数がそれぞれ1つのコンポーネントになる。
 // sample-data.js を先に読み込んでおくこと。
@@ -79,6 +79,8 @@
   const titleOf = (x) => `${x.src && x.src.kind === "review" ? "レビュー: " : ""}${esc(x.title)}`;
 
   // ---- 部品 ----
+  // ロゴの印。中世風は「冒」、他は頭文字
+  const brandSeal = `<span class="brand-seal" aria-hidden="true"><span class="orn-medieval">冒</span><span class="orn-plain">TL</span></span>`;
   function avatar(name, hue, opts = {}) {
     if (!name) return `<span class="avatar is-none ${opts.lg ? "is-lg" : ""}" title="担当なし">?</span>`;
     return `<span class="avatar ${opts.lg ? "is-lg" : ""} ${opts.left ? "is-left" : ""}" style="--h:${hue}" title="${esc(name)}${opts.left ? "（離脱済み）" : ""}">${esc(name[0])}</span>`;
@@ -128,7 +130,7 @@
   const stamped = new Set();
   function doneControl(x) {
     return x.doneAt
-      ? `<span class="hanko ${stamped.has(x.id) ? "is-new" : ""}" role="img" aria-label="${t("done")}">完</span>
+      ? `<span class="hanko ${stamped.has(x.id) ? "is-new" : ""}" role="img" aria-label="${t("done")}">${icon("check")}<b>完</b></span>
          <button class="link-btn" type="button" data-undo="${x.id}">戻す</button>`
       : `<button class="done-btn" type="button" data-done="${x.id}" aria-label="${t("complete")}" title="${t("complete")}">${icon("check")}</button>`;
   }
@@ -249,7 +251,7 @@
     const joined = q.party.includes(D.me);
     const pct = p.all ? Math.round((p.done / p.all) * 100) : 0;
     return `<article class="notice is-quest ${cleared ? "is-cleared" : ""}">
-      <span class="notice-label">依 頼 書　·　${esc(D.categories[q.cat].name)}</span>
+      <span class="notice-label"><span class="orn-medieval">依 頼 書</span><span class="orn-plain">${t("epic")}</span>　·　${esc(D.categories[q.cat].name)}</span>
       <a class="notice-title notice-link" href="epic.html">${esc(q.title)}</a>
       <dl class="notice-facts">
         <div><dt>${t("requester")}</dt><dd>${avatarOf(q.requester)}${esc(user(q.requester).name)}<span class="seal" aria-hidden="true">印</span></dd></div>
@@ -259,7 +261,7 @@
       </dl>
       <div class="notice-foot">
         ${progress(p.done, p.all)}
-        ${cleared ? `<span class="hanko" role="img" aria-label="クリア済み">済</span>` : `<button class="btn ${joined ? "" : "is-primary"} is-sm" type="button" data-join="${eid}">${joined ? t("leave") : t("accept")}</button>`}
+        ${cleared ? `<span class="hanko" role="img" aria-label="クリア済み">${icon("check")}<b>済</b></span>` : `<button class="btn ${joined ? "" : "is-primary"} is-sm" type="button" data-join="${eid}">${joined ? t("leave") : t("accept")}</button>`}
       </div>
     </article>`;
   }
@@ -362,7 +364,7 @@
         <div class="doc-box">${x.src ? `<p class="props-note">取り込み元の本文は <span class="mono">${esc(x.src.key)}</span> で開いて読みます。ここには Team Leveling のメモを書けます。</p>` : (x.body || ["まだ書かれていません。"]).map((b) => `<p>${esc(b)}</p>`).join("")}</div>
       </div>
       <div class="done-bar">
-        ${x.doneAt ? `<span class="hanko" role="img" aria-label="${t("done")}">完</span><span>${t("done")} ${esc(x.doneAt)}</span><button class="link-btn" type="button" data-undo="${x.id}">戻す</button>`
+        ${x.doneAt ? `<span class="hanko" role="img" aria-label="${t("done")}">${icon("check")}<b>完</b></span><span>${t("done")} ${esc(x.doneAt)}</span><button class="link-btn" type="button" data-undo="${x.id}">戻す</button>`
           : `<button class="btn is-primary" type="button" data-done="${x.id}">${icon("check")}${t("complete")}</button>`}
         <span class="done-bar-dod"><b>${t("dod")}</b>${D.definitionOfDone.map(esc).join("・")}</span>
       </div>
@@ -563,6 +565,7 @@
     document.getElementById("nav").innerHTML = navHtml(page.current);
     document.querySelectorAll("[data-vocab-label]").forEach((el) => (el.textContent = `言葉: ${t("vocab")}`));
     document.getElementById("content").innerHTML = page.render();
+    applyTheme();
     renderDrawer();
     stamped.clear();
   }
@@ -573,7 +576,7 @@
     document.getElementById("app").innerHTML = `
     <div class="app">
       <aside class="binding" aria-label="メニュー"><div class="binding-inner">
-        <a class="brand" href="index.html" title="デザインシステムのカタログへ"><span class="brand-seal" aria-hidden="true">冒</span><span class="brand-name">Team Leveling</span></a>
+        <a class="brand" href="index.html" title="デザインシステムのカタログへ">${brandSeal}<span class="brand-name">Team Leveling</span></a>
         <nav class="nav" id="nav"></nav>
         <p class="binding-foot">デザインの見本。データはすべて架空の例です</p>
       </div></aside>
@@ -644,6 +647,9 @@
     if (hit("data-close-celebrate") || ev.target.id === "celebrate") { closeCelebrate(); return; }
     if ((el = hit("data-task"))) { ev.preventDefault(); openDrawer(el.dataset.task, el.dataset.task); return; }
   });
+  document.addEventListener("change", (ev) => {
+    if (ev.target.matches("[data-pick-theme]")) setTheme(ev.target.value || null);
+  });
   document.addEventListener("keydown", (ev) => {
     if (ev.key !== "Escape") return;
     if (closeCelebrate() || closeDialog()) return;
@@ -652,25 +658,40 @@
   const extraRedraws = [];
   function redrawAll() { redraw(); extraRedraws.forEach((fn) => fn()); }
 
-  // ---- 配色の切り替え（OS に合わせる → ライト → ダーク） ----
-  const THEMES = [null, "light", "dark"];
-  const THEME_LABEL = { null: "OS に合わせる", light: "ライト", dark: "ダーク" };
+  // ---- テーマの切り替え（シンプル（自動）→ シンプル（ライト）→ シンプル（ダーク）→ 中世風 → 現代風） ----
+  // 値は DB の列挙と同じ。null は自分で選んでいない状態で、見本では王国の既定のシンプル（自動）として出す。
+  // 本番では、ユーザーが選んだテーマか王国の既定を data-theme に入れる
+  const THEMES = ["simple", "simple_light", "simple_dark", "medieval", "modern"];
+  const THEME_LABEL = { simple: "シンプル（自動）", simple_light: "シンプル（ライト）", simple_dark: "シンプル（ダーク）", medieval: "中世風", modern: "現代風" };
+  const THEME_NOTE = {
+    simple: "業務の道具として落ち着いた見た目。OS のライトとダークに合わせる",
+    simple_light: "業務の道具として落ち着いた見た目。いつも明るい地",
+    simple_dark: "業務の道具として落ち着いた見た目。いつも暗い地",
+    medieval: "冒険者ギルドの帳簿。紙と墨、完了に朱の判子",
+    modern: "ハンターに届くシステムのウィンドウ。暗い地に光る枠",
+  };
   let theme = null;
   try { theme = localStorage.getItem("sq-design-theme"); } catch (e) { /* なくても動く */ }
   if (!THEMES.includes(theme)) theme = null;
   function applyTheme() {
     if (theme) document.documentElement.dataset.theme = theme;
     else delete document.documentElement.dataset.theme;
-    document.querySelectorAll("[data-theme-label]").forEach((el) => (el.textContent = `配色: ${THEME_LABEL[theme]}`));
+    document.querySelectorAll("[data-theme-label]").forEach((el) => (el.textContent = `テーマ: ${THEME_LABEL[theme || "simple"]}`));
+    // 「王国の既定に従う」（値が空）の選択肢がない並びでは、選んでいない状態をシンプル（自動）として示す
+    document.querySelectorAll("[data-pick-theme]").forEach((el) => {
+      const hasDefault = !!document.querySelector(`[data-pick-theme][name="${el.name}"][value=""]`);
+      el.checked = el.value === (theme || (hasDefault ? "" : "simple"));
+    });
   }
-  function cycleTheme() {
-    theme = THEMES[(THEMES.indexOf(theme) + 1) % THEMES.length];
+  function cycleTheme() { setTheme(THEMES[(THEMES.indexOf(theme) + 1) % THEMES.length]); }
+  function setTheme(v) {
+    theme = THEMES.includes(v) ? v : null;
     try { theme ? localStorage.setItem("sq-design-theme", theme) : localStorage.removeItem("sq-design-theme"); } catch (e) { /* 同上 */ }
     applyTheme();
   }
 
   window.SQ = {
-    D, t, setVocab, toggleVocab, onChange, esc, icon, md, sumPts, cycleTheme, applyTheme, mount,
+    D, t, brandSeal, THEMES, THEME_LABEL, THEME_NOTE, setVocab, toggleVocab, onChange, esc, icon, md, sumPts, cycleTheme, setTheme, applyTheme, mount,
     onRedraw: (fn) => extraRedraws.push(fn), openDrawer, drawerHtml, drawerState: drawer,
     user, task, tasksWhere, sprintLabel, colName, categoryOf, storyPts, epicPts, dueOf,
     avatar, avatarOf, emblem, pts, dueChip, taskDue, tier, sourceKey, entry, book, section, pageHead,

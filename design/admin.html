@@ -17,7 +17,7 @@
 <script src="kit.js"></script>
 <script>
 "use strict";
-// 王国の管理（管理者）: ユーザー、ワークスペース、王国の休日、言葉づかい、配分の合計
+// 王国の管理（管理者）: ユーザー、ワークスペース、王国の休日、言葉づかい、既定のテーマ、配分の合計
 const { D, t, icon, esc, pageHead, avatarOf, user } = SQ;
 const A = D.admin;
 function setting(title, desc, body) {
@@ -51,6 +51,9 @@ SQ.mount("admin", () => `
       <div class="choice-list">
         <label class="choice"><input type="radio" name="kv" checked><div><b>ゲームの言葉</b><span>王国、国王</span></div></label>
         <label class="choice"><input type="radio" name="kv"><div><b>スクラムの言葉</b><span>全体、管理者</span></div></label></div>`)}
+    ${setting("既定のテーマ", `画面の見た目の既定。自分で選んでいないユーザーに効きます。会社で使うならシンプルが無難です。`, `
+      <div class="choice-list">
+        ${SQ.THEMES.map((v, i) => `<label class="choice"><input type="radio" name="kt" ${i === 0 ? "checked" : ""}><div><b>${SQ.THEME_LABEL[v]}</b><span>${SQ.THEME_NOTE[v]}</span></div></label>`).join("")}</div>`)}
     ${setting("配分の合計", `ユーザーごとの、すべての${t("workspace")}の配分の合計。100% を超えた月は本人にも知らせています。`, `
       <div class="table-wrap"><table class="table"><thead><tr><th>名前</th><th class="is-num">10月</th><th class="is-num">11月</th></tr></thead>
         <tbody>${A.allocTotals.map(([n, a, b]) => `<tr><td>${esc(n)}</td>${[a, b].map((v) => `<td class="is-num" ${v > 100 ? 'style="color:var(--color-danger)"' : ""}>${v > 100 ? "▲ " : ""}${v}%</td>`).join("")}</tr>`).join("")}</tbody></table></div>`)}
