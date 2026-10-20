@@ -7,6 +7,7 @@
 | もの | 置き場所 |
 | --- | --- |
 | 要件定義 | `docs/requirements.md` |
+| 名前の決定の記録 | `docs/naming.md` |
 | データモデル | `docs/data-model.md` |
 | デザインの原則、画面一覧、主なフロー、決めた方向 | `docs/design.md` |
 | デザインシステムと画面の見本 | `design/`。`design/index.html` をブラウザで開く（ビルド不要） |
@@ -62,6 +63,6 @@
 ## 覚えておくこと
 
 - コミットは `main` に直接入れてよい（このセッションで決めた）。
-- 名前は Team Leveling。表記の決まりと改めた理由は `docs/requirements.md` の「名前」。npm、GitHub、J-PlatPat（Team Leveling、チームレベリング）で重なりがないことを 2026-10-20 に確かめた。
+- 名前は Team Leveling。表記の決まりは `docs/requirements.md` の「名前」、経緯と重なりの確認は `docs/naming.md`。
 - 見本は、画面ごとの CSS を持たない決まり。足りない部品は先に `design/components.css` とカタログに足す。
 - 見本の例のデータ（`design/sample-data.js`）はすべて架空。公開前の点検で、実在の名前が混ざっていないかを見る。

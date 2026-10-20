@@ -6,7 +6,7 @@
 
 Team Leveling（チームレベリング）。画面の見出しや文書では `Team Leveling`、リポジトリ、パッケージ、ドメイン（`team-leveling.dev`）やコードの中では `team-leveling` と書く。
 
-はじめは scrum-quest と呼んでいたが、スクラムを学ぶ同名の Web コンテンツ「SCRUM QUEST」があったため改めた。
+はじめは scrum-quest と呼んでいたが、スクラムを学ぶ同名の Web コンテンツ「SCRUM QUEST」があったため改めた。候補、決めた理由、重なりの確認は `naming.md` に残した。
 
 ## 目的
 
