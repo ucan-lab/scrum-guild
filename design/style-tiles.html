@@ -1,0 +1,521 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>scrum-quest スタイルタイル</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=BIZ+UDPGothic:wght@400;700&family=Chakra+Petch:wght@500;600;700&family=IBM+Plex+Mono:wght@500&family=JetBrains+Mono:wght@500&family=Noto+Sans+JP:wght@400;500;700&family=Zen+Kaku+Gothic+New:wght@400;700;900&family=Zen+Old+Mincho:wght@700;900&display=swap">
+<style>
+/* 3つの案を同じ部品で横に並べる。ページの枠は無彩色にして、各タイルの色を邪魔しない */
+:root {
+  --page-bg: #e9ebee;
+  --page-fg: #1e2328;
+  --page-muted: #5d6670;
+  --page-line: #cfd4da;
+  --page-surface: #f7f8f9;
+
+  /* A. ギルドの帳簿: 青みの紙、墨、朱の判子 */
+  --a-bg: #f3f4f1;
+  --a-surface: #fbfbf8;
+  --a-line: #c9cfd3;
+  --a-rule: #dfe5e8;
+  --a-fg: #1c2633;
+  --a-muted: #5b6672;
+  --a-accent: #1f3a5f;
+  --a-on-accent: #ffffff;
+  --a-accent-soft: #e2e8f0;
+  --a-stamp: #c8352b;
+  --a-xp: #8a6418;
+  --a-danger: #b42318;
+  --a-danger-soft: #f9e3e1;
+  --a-warn: #9a5208;
+  --a-warn-soft: #f8ead7;
+  --a-ok: #2d6a3a;
+  --a-ok-soft: #e1efe3;
+
+  /* B. 冒険者の装備画面: 鋼の地、青緑の光、レア度の色 */
+  --b-bg: #e7ecf1;
+  --b-surface: #f6f8fb;
+  --b-panel-hi: #ffffff;
+  --b-line: #b9c4d0;
+  --b-fg: #18222e;
+  --b-muted: #566474;
+  --b-accent: #0b7285;
+  --b-on-accent: #ffffff;
+  --b-accent-soft: #d6eef2;
+  --b-xp: #a66d00;
+  --b-gauge-bg: #d5dde6;
+  --b-rare-1: #6b7785;
+  --b-rare-2: #1f6fd1;
+  --b-rare-3: #b8860b;
+  --b-danger: #c0262d;
+  --b-danger-soft: #fbe1e2;
+  --b-warn: #b05a00;
+  --b-warn-soft: #fdebd5;
+  --b-ok: #237a45;
+  --b-ok-soft: #dcf1e4;
+
+  /* C. 静かな作戦室: ほぼ無彩色に、コバルト1色 */
+  --c-bg: #fafafa;
+  --c-surface: #ffffff;
+  --c-line: #e4e4e7;
+  --c-fg: #18181b;
+  --c-muted: #6b6b74;
+  --c-accent: #3451d1;
+  --c-on-accent: #ffffff;
+  --c-accent-soft: #eaeefc;
+  --c-xp: #3451d1;
+  --c-danger: #c4271c;
+  --c-danger-soft: #fdecea;
+  --c-warn: #a35a00;
+  --c-warn-soft: #fdf1e0;
+  --c-ok: #237a3b;
+  --c-ok-soft: #e6f4ea;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --page-bg: #0f1215; --page-fg: #e3e7ec; --page-muted: #919ba6; --page-line: #2a3038; --page-surface: #171b20;
+    --a-bg: #141a21; --a-surface: #1b222b; --a-line: #323d4a; --a-rule: #232c36; --a-fg: #e4e8ed; --a-muted: #9aa6b3;
+    --a-accent: #9bb6dc; --a-on-accent: #101820; --a-accent-soft: #233042; --a-stamp: #ef6a5e; --a-xp: #d8ae55;
+    --a-danger: #f0857b; --a-danger-soft: #3a1f1e; --a-warn: #eda65a; --a-warn-soft: #382a18; --a-ok: #7cc28a; --a-ok-soft: #1c3122;
+    --b-bg: #0c1118; --b-surface: #141c26; --b-panel-hi: #223041; --b-line: #2b3a4c; --b-fg: #e1e8f0; --b-muted: #8e9cad;
+    --b-accent: #3cc6d8; --b-on-accent: #061317; --b-accent-soft: #0f3139; --b-xp: #f0b93f; --b-gauge-bg: #1d2836;
+    --b-rare-1: #9aa6b4; --b-rare-2: #5aa3ff; --b-rare-3: #f0b93f;
+    --b-danger: #ff6b6b; --b-danger-soft: #3b1618; --b-warn: #ffa94d; --b-warn-soft: #3a2611; --b-ok: #63d08b; --b-ok-soft: #12301f;
+    --c-bg: #111113; --c-surface: #18181b; --c-line: #2a2a30; --c-fg: #ececef; --c-muted: #9b9ba5;
+    --c-accent: #8ea2ff; --c-on-accent: #0d1233; --c-accent-soft: #1d2345; --c-xp: #8ea2ff;
+    --c-danger: #f58a80; --c-danger-soft: #3a1c1a; --c-warn: #f2ac5a; --c-warn-soft: #36270f; --c-ok: #7dcf8f; --c-ok-soft: #173020;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --page-bg: #0f1215; --page-fg: #e3e7ec; --page-muted: #919ba6; --page-line: #2a3038; --page-surface: #171b20;
+  --a-bg: #141a21; --a-surface: #1b222b; --a-line: #323d4a; --a-rule: #232c36; --a-fg: #e4e8ed; --a-muted: #9aa6b3;
+  --a-accent: #9bb6dc; --a-on-accent: #101820; --a-accent-soft: #233042; --a-stamp: #ef6a5e; --a-xp: #d8ae55;
+  --a-danger: #f0857b; --a-danger-soft: #3a1f1e; --a-warn: #eda65a; --a-warn-soft: #382a18; --a-ok: #7cc28a; --a-ok-soft: #1c3122;
+  --b-bg: #0c1118; --b-surface: #141c26; --b-panel-hi: #223041; --b-line: #2b3a4c; --b-fg: #e1e8f0; --b-muted: #8e9cad;
+  --b-accent: #3cc6d8; --b-on-accent: #061317; --b-accent-soft: #0f3139; --b-xp: #f0b93f; --b-gauge-bg: #1d2836;
+  --b-rare-1: #9aa6b4; --b-rare-2: #5aa3ff; --b-rare-3: #f0b93f;
+  --b-danger: #ff6b6b; --b-danger-soft: #3b1618; --b-warn: #ffa94d; --b-warn-soft: #3a2611; --b-ok: #63d08b; --b-ok-soft: #12301f;
+  --c-bg: #111113; --c-surface: #18181b; --c-line: #2a2a30; --c-fg: #ececef; --c-muted: #9b9ba5;
+  --c-accent: #8ea2ff; --c-on-accent: #0d1233; --c-accent-soft: #1d2345; --c-xp: #8ea2ff;
+  --c-danger: #f58a80; --c-danger-soft: #3a1c1a; --c-warn: #f2ac5a; --c-warn-soft: #36270f; --c-ok: #7dcf8f; --c-ok-soft: #173020;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+body {
+  margin: 0; background: var(--page-bg); color: var(--page-fg);
+  font-family: "Noto Sans JP", "Hiragino Sans", "Yu Gothic UI", system-ui, sans-serif;
+  font-size: 14px; line-height: 1.6;
+}
+button { font: inherit; color: inherit; cursor: pointer; }
+:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
+h1, h2, h3 { margin: 0; text-wrap: balance; }
+.ico { width: 1em; height: 1em; flex: none; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; vertical-align: -0.14em; }
+.sprite { display: none; }
+
+.page-head {
+  padding-block: 28px 20px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  max-width: 1480px; margin: 0 auto;
+  display: flex; flex-wrap: wrap; gap: 16px; align-items: end; justify-content: space-between;
+}
+.page-head h1 { font-size: 1.5rem; font-weight: 700; }
+.page-head p { margin: 4px 0 0; color: var(--page-muted); max-width: 62ch; }
+.switches { display: flex; gap: 8px; flex-wrap: wrap; }
+.switch {
+  border: 1px solid var(--page-line); background: var(--page-surface); border-radius: 999px;
+  padding: 5px 14px; font-size: 13px;
+}
+.tiles {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 16px;
+  max-width: 1480px; margin: 0 auto;
+  padding-block: 0 48px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+
+/* ---- 各タイルの共通の骨格。色と形は案ごとの変数で決める ---- */
+.tile {
+  background: var(--bg); color: var(--fg); font-family: var(--body);
+  border-radius: var(--tile-r); overflow: hidden;
+  display: grid; align-content: start;
+  min-width: 0;
+}
+.tile-head { padding: 20px 20px 16px; display: grid; gap: 4px; border-bottom: 1px solid var(--line); }
+.tile-letter { font-family: var(--num); font-size: 12px; color: var(--muted); letter-spacing: 0.12em; }
+.tile-name { font-family: var(--head); font-size: 1.5rem; font-weight: var(--head-w); line-height: 1.3; }
+.tile-concept { color: var(--muted); font-size: 13px; }
+.blk { padding: 16px 20px; display: grid; gap: 10px; border-bottom: 1px solid var(--line); }
+.blk:last-child { border-bottom: 0; }
+.lbl { font-size: 11px; color: var(--muted); letter-spacing: 0.1em; }
+
+.swatches { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 6px; }
+.sw { display: grid; gap: 4px; font-size: 10px; color: var(--muted); min-width: 0; }
+.sw i { display: block; aspect-ratio: 1; max-width: 100%; border-radius: var(--r); border: 1px solid var(--line); }
+
+.type-h { font-family: var(--head); font-weight: var(--head-w); font-size: 1.3rem; line-height: 1.35; }
+.type-b { font-size: 14px; }
+.type-n { font-family: var(--num); font-size: 15px; font-variant-numeric: tabular-nums; }
+
+.btns, .chips { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  border: 1px solid var(--line); background: var(--surface); color: var(--fg);
+  border-radius: var(--r); padding: 6px 12px; font-size: 13px; font-weight: 600;
+}
+.btn.primary { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
+.btn.ghost { border-color: transparent; background: transparent; color: var(--muted); }
+.btn:disabled { opacity: 0.45; cursor: not-allowed; }
+
+.chip {
+  display: inline-flex; align-items: center; gap: 4px; white-space: nowrap;
+  font-size: 12px; line-height: 1.7; padding: 0 7px; border-radius: var(--r);
+  border: 1px solid var(--line); color: var(--muted); background: var(--surface);
+}
+.chip.over { color: var(--danger); background: var(--danger-soft); border-color: currentColor; }
+.chip.week { color: var(--warn); background: var(--warn-soft); border-color: currentColor; }
+.chip.todo { color: var(--warn); border-color: currentColor; border-style: dashed; }
+.chip.srcdone { color: var(--ok); background: var(--ok-soft); border-color: currentColor; }
+.pts {
+  display: inline-grid; place-items: center; min-width: 26px; height: 22px; padding: 0 6px;
+  font-family: var(--num); font-size: 12px; border-radius: var(--r);
+  background: var(--accent-soft); color: var(--accent); font-weight: 600;
+}
+.avatar {
+  display: inline-grid; place-items: center; width: 24px; height: 24px; border-radius: 50%;
+  background: hsl(var(--h) 42% 40%); color: #fff; font-size: 11px; font-weight: 700; flex: none;
+  box-shadow: 0 0 0 2px var(--surface);
+}
+
+.rows { border: 1px solid var(--line); border-radius: var(--r); background: var(--surface); overflow: hidden; }
+.row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 10px 12px; position: relative; }
+.row + .row { border-top: 1px solid var(--line); }
+.row-t { display: grid; gap: 3px; min-width: 0; }
+.row-t b { font-weight: 600; font-size: 14px; overflow-wrap: anywhere; }
+.row-meta { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; font-size: 12px; color: var(--muted); }
+.key { font-family: var(--num); font-size: 12px; color: var(--muted); }
+.row-end { display: flex; gap: 8px; align-items: center; }
+.row.done b { color: var(--muted); }
+
+.quest { border: 1px solid var(--line); background: var(--surface); border-radius: var(--r); padding: 14px; display: grid; gap: 10px; position: relative; }
+.quest-top { display: flex; gap: 8px; align-items: center; font-size: 12px; color: var(--muted); }
+.quest-title { font-family: var(--head); font-weight: var(--head-w); font-size: 1.1rem; line-height: 1.4; }
+.quest-facts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; font-size: 12px; }
+.quest-facts dt { color: var(--muted); }
+.quest-facts dd { margin: 0; display: flex; gap: 6px; align-items: center; flex-wrap: wrap; font-size: 13px; }
+.quest-facts dl { margin: 0; display: grid; gap: 2px; }
+.reward { font-family: var(--num); font-weight: 700; }
+.party { display: flex; }
+.party .avatar + .avatar { margin-left: -6px; }
+.quest-foot { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.progress { flex: 1; min-width: 90px; height: 6px; border-radius: 3px; background: var(--line); overflow: hidden; }
+.progress span { display: block; height: 100%; background: var(--accent); }
+
+.meters { display: grid; gap: 14px; }
+.meter { display: grid; gap: 6px; }
+.meter-top { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.meter-top .v { margin-left: auto; font-family: var(--num); font-size: 13px; font-variant-numeric: tabular-nums; }
+.lv { font-family: var(--num); font-weight: 700; color: var(--xp); }
+.bar { position: relative; height: 10px; border-radius: 5px; background: var(--line); overflow: hidden; display: flex; }
+.bar .got { background: var(--xp); }
+.bar .soon { background: repeating-linear-gradient(135deg, var(--xp) 0 3px, transparent 3px 6px); opacity: 0.55; }
+.cap { position: relative; height: 12px; border-radius: 6px; background: var(--line); }
+.cap .band { position: absolute; top: -3px; bottom: -3px; border-left: 2px solid var(--fg); border-right: 2px solid var(--fg); opacity: 0.35; }
+.cap .fill { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 6px; background: var(--danger); }
+.state { display: inline-flex; gap: 4px; align-items: center; font-size: 12px; font-weight: 700; color: var(--danger); }
+.note { font-size: 12px; color: var(--muted); }
+
+/* ================= A. ギルドの帳簿 ================= */
+.tile[data-tile="a"] {
+  --bg: var(--a-bg); --surface: var(--a-surface); --line: var(--a-line); --fg: var(--a-fg); --muted: var(--a-muted);
+  --accent: var(--a-accent); --on-accent: var(--a-on-accent); --accent-soft: var(--a-accent-soft); --xp: var(--a-xp);
+  --danger: var(--a-danger); --danger-soft: var(--a-danger-soft); --warn: var(--a-warn); --warn-soft: var(--a-warn-soft);
+  --ok: var(--a-ok); --ok-soft: var(--a-ok-soft);
+  --head: "Zen Old Mincho", "Hiragino Mincho ProN", "Yu Mincho", serif; --head-w: 900;
+  --body: "BIZ UDPGothic", "Hiragino Sans", "Yu Gothic UI", sans-serif;
+  --num: "IBM Plex Mono", ui-monospace, monospace;
+  --r: 2px; --tile-r: 2px;
+  border: 1px solid var(--a-line);
+}
+.tile[data-tile="a"] .tile-head { border-bottom: 3px double var(--a-line); }
+.tile[data-tile="a"] .rows { border-left: 3px double var(--a-line); }
+.tile[data-tile="a"] .row + .row { border-top: 1px solid var(--a-rule); }
+.tile[data-tile="a"] .row { min-height: 48px; }
+.tile[data-tile="a"] .pts { background: transparent; border: 1px solid var(--a-accent); }
+.tile[data-tile="a"] .btn.primary { letter-spacing: 0.08em; }
+.tile[data-tile="a"] .quest {
+  border-top: 6px solid var(--a-accent);
+  box-shadow: 0 1px 0 var(--a-line), 3px 4px 0 -1px var(--a-rule);
+}
+.tile[data-tile="a"] .quest-top { letter-spacing: 0.3em; color: var(--a-accent); font-weight: 700; }
+.tile[data-tile="a"] .hanko {
+  position: absolute; right: 70px; top: 50%; translate: 0 -50%; rotate: -12deg;
+  width: 40px; height: 40px; border: 2px solid var(--a-stamp); border-radius: 50%;
+  display: grid; place-items: center; color: var(--a-stamp);
+  font-family: var(--head); font-weight: 900; font-size: 17px; line-height: 1;
+  opacity: 0.85; pointer-events: none;
+}
+.tile[data-tile="a"] .seal {
+  display: inline-grid; place-items: center; width: 22px; height: 22px; border: 1.5px solid var(--a-stamp);
+  color: var(--a-stamp); font-family: var(--head); font-weight: 900; font-size: 11px; border-radius: 2px;
+}
+.tile[data-tile="a"] .bar, .tile[data-tile="a"] .cap { border-radius: 0; height: 8px; }
+.tile[data-tile="a"] .cap .fill { border-radius: 0; }
+.tile[data-tile="a"] .progress { border-radius: 0; }
+
+/* ================= B. 冒険者の装備画面 ================= */
+.tile[data-tile="b"] {
+  --bg: var(--b-bg); --surface: var(--b-surface); --line: var(--b-line); --fg: var(--b-fg); --muted: var(--b-muted);
+  --accent: var(--b-accent); --on-accent: var(--b-on-accent); --accent-soft: var(--b-accent-soft); --xp: var(--b-xp);
+  --danger: var(--b-danger); --danger-soft: var(--b-danger-soft); --warn: var(--b-warn); --warn-soft: var(--b-warn-soft);
+  --ok: var(--b-ok); --ok-soft: var(--b-ok-soft);
+  --head: "Zen Kaku Gothic New", "Hiragino Sans", sans-serif; --head-w: 900;
+  --body: "Zen Kaku Gothic New", "Hiragino Sans", "Yu Gothic UI", sans-serif;
+  --num: "Chakra Petch", "Zen Kaku Gothic New", sans-serif;
+  --r: 4px; --tile-r: 10px;
+  border: 1px solid var(--b-line);
+}
+.tile[data-tile="b"] .rows, .tile[data-tile="b"] .quest, .tile[data-tile="b"] .btn {
+  box-shadow: inset 0 1px 0 var(--b-panel-hi);
+}
+.tile[data-tile="b"] .tile-name { letter-spacing: 0.04em; }
+.tile[data-tile="b"] .lbl { font-family: var(--num); text-transform: uppercase; letter-spacing: 0.16em; }
+.tile[data-tile="b"] .pts { font-weight: 700; clip-path: polygon(6px 0, 100% 0, calc(100% - 6px) 100%, 0 100%); border-radius: 0; padding: 0 10px; }
+.tile[data-tile="b"] .bar, .tile[data-tile="b"] .cap { border-radius: 2px; background: var(--b-gauge-bg); height: 12px; }
+.tile[data-tile="b"] .bar::after, .tile[data-tile="b"] .cap::after {
+  content: ""; position: absolute; inset: 0;
+  background: repeating-linear-gradient(90deg, transparent 0 calc(10% - 2px), var(--b-bg) calc(10% - 2px) 10%);
+  pointer-events: none;
+}
+.tile[data-tile="b"] .cap .fill { border-radius: 2px; }
+.tile[data-tile="b"] .emblem {
+  display: inline-grid; place-items: center; width: 40px; height: 44px;
+  clip-path: polygon(50% 0, 100% 22%, 100% 70%, 50% 100%, 0 70%, 0 22%);
+  background: var(--b-xp); color: var(--b-bg);
+  font-family: var(--num); font-weight: 700; font-size: 16px; line-height: 1;
+}
+.tile[data-tile="b"] .quest { border-left: 4px solid var(--rarity); }
+.tile[data-tile="b"] .rarity { font-family: var(--num); font-weight: 700; letter-spacing: 0.12em; color: var(--rarity); font-size: 11px; }
+.tile[data-tile="b"] .tiers { display: flex; gap: 6px; flex-wrap: wrap; }
+.tile[data-tile="b"] .tier { font-family: var(--num); font-size: 11px; font-weight: 700; padding: 1px 8px; border: 1px solid var(--rarity); color: var(--rarity); border-radius: 2px; letter-spacing: 0.08em; }
+.tile[data-tile="b"] .reward { color: var(--b-rare-3); }
+.tile[data-tile="b"] .stat-num { font-family: var(--num); font-size: 1.6rem; font-weight: 700; line-height: 1; }
+
+/* ================= C. 静かな作戦室 ================= */
+.tile[data-tile="c"] {
+  --bg: var(--c-bg); --surface: var(--c-surface); --line: var(--c-line); --fg: var(--c-fg); --muted: var(--c-muted);
+  --accent: var(--c-accent); --on-accent: var(--c-on-accent); --accent-soft: var(--c-accent-soft); --xp: var(--c-xp);
+  --danger: var(--c-danger); --danger-soft: var(--c-danger-soft); --warn: var(--c-warn); --warn-soft: var(--c-warn-soft);
+  --ok: var(--c-ok); --ok-soft: var(--c-ok-soft);
+  --head: "Noto Sans JP", "Hiragino Sans", sans-serif; --head-w: 700;
+  --body: "Noto Sans JP", "Hiragino Sans", "Yu Gothic UI", sans-serif;
+  --num: "JetBrains Mono", ui-monospace, monospace;
+  --r: 5px; --tile-r: 8px;
+  border: 1px solid var(--c-line);
+  font-size: 13px;
+}
+.tile[data-tile="c"] .tile-name { font-size: 1.25rem; letter-spacing: -0.01em; }
+.tile[data-tile="c"] .type-h { font-size: 1.15rem; }
+.tile[data-tile="c"] .row { padding: 7px 10px; }
+.tile[data-tile="c"] .row-t b { font-weight: 500; font-size: 13px; }
+.tile[data-tile="c"] .chip { background: transparent; }
+.tile[data-tile="c"] .chip.over, .tile[data-tile="c"] .chip.week, .tile[data-tile="c"] .chip.srcdone { border-color: transparent; }
+.tile[data-tile="c"] .pts { background: transparent; color: var(--muted); border: 1px solid var(--c-line); font-weight: 500; }
+.tile[data-tile="c"] .bar, .tile[data-tile="c"] .cap { height: 4px; }
+.tile[data-tile="c"] .cap .band { top: -4px; bottom: -4px; }
+.tile[data-tile="c"] .lv { font-size: 12px; }
+.tile[data-tile="c"] .toast {
+  display: flex; gap: 10px; align-items: center;
+  border: 1px solid var(--c-line); background: var(--c-surface); border-radius: var(--r);
+  padding: 10px 12px; font-size: 13px; box-shadow: 0 6px 20px -8px rgb(0 0 0 / 0.25);
+}
+.tile[data-tile="c"] .toast .spark { color: var(--c-accent); animation: spark 1.6s ease-out 1; }
+.tile[data-tile="c"] .toast b { font-weight: 700; }
+@keyframes spark { 0% { transform: scale(0.4) rotate(-40deg); opacity: 0; } 40% { transform: scale(1.3) rotate(10deg); opacity: 1; } 100% { transform: none; } }
+@media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
+
+.foot-note {
+  max-width: 1480px; margin: 0 auto; padding-block: 0 40px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  color: var(--page-muted); font-size: 13px;
+}
+</style>
+</head>
+<body>
+<svg class="sprite" aria-hidden="true" xmlns="http://www.w3.org/2000/svg">
+  <symbol id="i-alert" viewBox="0 0 24 24"><path d="M12 3l10 18H2z"/><path d="M12 10v5M12 18v.01"/></symbol>
+  <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="M5 12l5 5 9-10"/></symbol>
+  <symbol id="i-pen" viewBox="0 0 24 24"><path d="M4 20l4-1 11-11-3-3L5 16z"/></symbol>
+  <symbol id="i-flag" viewBox="0 0 24 24"><path d="M5 21V4M5 4h11l-2 4 2 4H5"/></symbol>
+  <symbol id="i-link" viewBox="0 0 24 24"><path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1"/><path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/></symbol>
+  <symbol id="i-git" viewBox="0 0 24 24"><circle cx="6" cy="6" r="2"/><circle cx="6" cy="18" r="2"/><circle cx="18" cy="12" r="2"/><path d="M6 8v8M8 6h4a4 4 0 0 1 4 4"/></symbol>
+  <symbol id="i-spark" viewBox="0 0 24 24"><path d="M12 2v6M12 16v6M2 12h6M16 12h6M5 5l3.5 3.5M15.5 15.5L19 19M5 19l3.5-3.5M15.5 8.5L19 5"/></symbol>
+</svg>
+
+<header class="page-head">
+  <div>
+    <h1>スタイルタイル</h1>
+    <p>見た目の方向の3案。どれも同じ部品と同じ例のデータで作ってあるので、横に見比べて選んでください。データはすべて架空の例です。</p>
+  </div>
+  <div class="switches">
+    <button class="switch" id="vocab" type="button"></button>
+    <button class="switch" id="theme" type="button"></button>
+  </div>
+</header>
+<main class="tiles" id="tiles"></main>
+<p class="foot-note">部品: 色、文字、ボタン、状態の印、タスクの行、クエストのカード、レベルと積載量。言葉づかいを切り替えて、どの案でも崩れないかも確かめられます。</p>
+
+<script>
+"use strict";
+const WORDS = {
+  epic: ["クエスト", "エピック"], requester: ["依頼主", "作成者"], party: ["パーティ", "参加者"],
+  accept: ["受注する", "参加する"], detail: ["手配書", "詳細"], points: ["難易度", "ポイント"],
+  due: ["期限", "期日"], capacity: ["積載量", "作業量と基準"], over: ["重量オーバー", "超過"],
+  done: ["完遂", "完了"], complete: ["完遂にする", "完了にする"], reward: ["クリア報酬", "完了の報酬"],
+  task: ["ミッション", "タスク"], sprint: ["遠征", "スプリント"],
+};
+let vocab = 0;
+const w = (k) => WORDS[k][vocab];
+const icon = (id) => `<svg class="ico" aria-hidden="true"><use href="#i-${id}"/></svg>`;
+const av = (ch, h) => `<span class="avatar" style="--h:${h}">${ch}</span>`;
+
+const TILES = [
+  { id: "a", name: "ギルドの帳簿", concept: "依頼書と台帳。罫線と表で記録の確かさを出し、完了には判子を押す。",
+    sw: [["紙", "--a-bg"], ["墨", "--a-fg"], ["藍", "--a-accent"], ["朱", "--a-stamp"], ["金", "--a-xp"], ["罫", "--a-line"]] },
+  { id: "b", name: "冒険者の装備画面", concept: "ステータス画面を落ち着かせたもの。数字とゲージが主役で、報酬はレア度の色で示す。",
+    sw: [["地", "--b-bg"], ["盤", "--b-surface"], ["光", "--b-accent"], ["並", "--b-rare-1"], ["稀", "--b-rare-2"], ["伝", "--b-rare-3"]] },
+  { id: "c", name: "静かな作戦室", concept: "密度の高い道具。ほぼ無彩色に1色だけ。ゲームらしさは言葉と短い演出に寄せる。",
+    sw: [["地", "--c-bg"], ["面", "--c-surface"], ["線", "--c-line"], ["文字", "--c-fg"], ["弱", "--c-muted"], ["藍", "--c-accent"]] },
+];
+
+function tile(T) {
+  const a = T.id === "a", b = T.id === "b", c = T.id === "c";
+  const levelBlock = b
+    ? `<div class="meter"><div class="meter-top"><span class="emblem">7</span><div><div class="lbl">Level</div><div class="note">次のレベルまで 160</div></div><span class="v"><span class="stat-num">1,240</span> XP</span></div>
+       <div class="bar" role="img" aria-label="経験値 64%、見込み 20%"><span class="got" style="width:64%"></span><span class="soon" style="width:20%"></span></div>
+       <span class="note">縞は見込み（${w("sprint")}の終了で確定）+90</span></div>`
+    : `<div class="meter"><div class="meter-top"><span class="lv">Lv 7</span><span class="note">次まで 160</span><span class="v">1,240 XP</span></div>
+       <div class="bar" role="img" aria-label="経験値 64%、見込み 20%"><span class="got" style="width:64%"></span><span class="soon" style="width:20%"></span></div>
+       <span class="note">縞は見込み（${w("sprint")}の終了で確定）+90</span></div>`;
+  const questRarity = b ? ` style="--rarity:var(--b-rare-3)"` : "";
+  return `
+  <section class="tile" data-tile="${T.id}" aria-label="案 ${T.id.toUpperCase()}">
+    <div class="tile-head">
+      <span class="tile-letter">案 ${T.id.toUpperCase()}</span>
+      <h2 class="tile-name">${T.name}</h2>
+      <span class="tile-concept">${T.concept}</span>
+    </div>
+
+    <div class="blk">
+      <span class="lbl">色</span>
+      <div class="swatches">${T.sw.map(([n, v]) => `<span class="sw"><i style="background:var(${v})"></i>${n}</span>`).join("")}</div>
+    </div>
+
+    <div class="blk">
+      <span class="lbl">文字</span>
+      <span class="type-h">会員ポイント制度を公開する</span>
+      <span class="type-b">購入額に応じてポイントを付け、次の購入で使えるようにする。年内の公開が先方との約束。</span>
+      <span class="type-n">56.0 / 45.6 時間 · SHOP-128 · 10/13〜10/26</span>
+    </div>
+
+    <div class="blk">
+      <span class="lbl">ボタンと印</span>
+      <div class="btns">
+        <button class="btn primary" type="button">${icon("check")}${w("complete")}</button>
+        <button class="btn" type="button">${w("accept")}</button>
+        <button class="btn ghost" type="button">あとで</button>
+        <button class="btn" type="button" disabled>終了する</button>
+      </div>
+      <div class="chips">
+        <span class="chip over">${icon("alert")}${w("due")}切れ 10/17</span>
+        <span class="chip week">${icon("clock")}今週 10/24</span>
+        <span class="chip todo">${icon("pen")}${w("detail")} 未記入</span>
+        <span class="chip srcdone">${icon("check")}取り込み元で完了</span>
+        <span class="pts" title="${w("points")}">5</span>
+      </div>
+      ${b ? `<div class="tiers"><span class="tier" style="--rarity:var(--b-rare-1)">小 · 100</span><span class="tier" style="--rarity:var(--b-rare-2)">中 · 300</span><span class="tier" style="--rarity:var(--b-rare-3)">大 · 600</span></div>` : ""}
+    </div>
+
+    <div class="blk">
+      <span class="lbl">${w("task")}の行</span>
+      <div class="rows">
+        <div class="row">
+          <div class="row-t"><b>決済 Webhook の再送を監視する</b>
+            <span class="row-meta"><span class="key">${icon("link")} SHOP-128</span><span class="chip week">${icon("clock")}今日（取り込み元）</span></span></div>
+          <div class="row-end"><span class="pts">3</span>${av("リ", 320)}</div>
+        </div>
+        <div class="row">
+          <div class="row-t"><b>管理画面にポイント履歴の一覧を出す</b>
+            <span class="row-meta"><span>${icon("flag")} ポイントの付与と失効を確かめられる</span><span class="chip todo">${icon("pen")}${w("detail")} 未記入</span></span></div>
+          <div class="row-end"><span class="pts">5</span>${av("ハ", 28)}</div>
+        </div>
+        <div class="row done">
+          <div class="row-t"><b>タイムアウトの閾値を見直す</b>
+            <span class="row-meta"><span>${w("done")} 10/16</span></span></div>
+          ${a ? `<span class="hanko" aria-hidden="true">完</span>` : ""}
+          <div class="row-end">${c ? `<span class="chip srcdone">${icon("check")}${w("done")}</span>` : b ? `<span class="chip srcdone">${icon("check")}+20 XP</span>` : ""}<span class="pts">2</span>${av("リ", 320)}</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="blk">
+      <span class="lbl">${w("epic")}のカード</span>
+      <div class="quest"${questRarity}>
+        <div class="quest-top">${a ? "依 頼 書" : b ? `<span class="rarity">LEGENDARY · 大</span>` : `${icon("flag")}${w("epic")}・追加案件`}</div>
+        <div class="quest-title">会員ポイント制度を公開する</div>
+        <div class="quest-facts">
+          <dl><dt>${w("requester")}</dt><dd>${av("ハ", 28)}ハルカ ${a ? `<span class="seal" aria-hidden="true">印</span>` : ""}</dd></dl>
+          <dl><dt>${w("reward")}</dt><dd><span class="reward">大 · 600 XP</span></dd></dl>
+          <dl><dt>${w("due")}</dt><dd><span class="chip">${icon("clock")}11/20</span></dd></dl>
+          <dl><dt>${w("party")}</dt><dd><span class="party">${av("ハ", 28)}${av("ミ", 172)}${av("ソ", 220)}</span></dd></dl>
+        </div>
+        <div class="quest-foot"><span class="key">4 / 24 pt</span><span class="progress"><span style="width:17%"></span></span>
+          <button class="btn ${c ? "" : "primary"}" type="button">${w("accept")}</button></div>
+      </div>
+    </div>
+
+    <div class="blk meters">
+      <span class="lbl">レベルと${w("capacity")}</span>
+      ${levelBlock}
+      <div class="meter">
+        <div class="meter-top"><span>${w("capacity")}・${w("sprint")} 第14回</span><span class="v">56.0 / 45.6 h</span></div>
+        <div class="cap" role="img" aria-label="基準 45.6 時間、作業量 56.0 時間"><span class="band" style="left:69%;width:20%"></span><span class="fill" style="width:89%"></span></div>
+        <span class="state">${icon("alert")}${w("over")}</span>
+      </div>
+      ${c ? `<div class="toast" role="status"><span class="spark">${icon("spark")}</span><span><b>${w("epic")}をクリアしました</b>　${w("party")}の3人に 600 XP</span></div>` : ""}
+    </div>
+  </section>`;
+}
+
+function render() {
+  document.getElementById("tiles").innerHTML = TILES.map(tile).join("");
+  document.getElementById("vocab").textContent = `言葉: ${vocab ? "スクラム" : "ゲーム"}`;
+}
+document.getElementById("vocab").addEventListener("click", () => { vocab = vocab ? 0 : 1; render(); });
+
+const THEMES = [null, "light", "dark"];
+const LABEL = { null: "OS に合わせる", light: "ライト", dark: "ダーク" };
+let theme = null;
+try { theme = localStorage.getItem("sq-tiles-theme"); } catch (e) { /* なくても動く */ }
+if (!THEMES.includes(theme)) theme = null;
+function applyTheme() {
+  if (theme) document.documentElement.dataset.theme = theme; else delete document.documentElement.dataset.theme;
+  document.getElementById("theme").textContent = `配色: ${LABEL[theme]}`;
+}
+document.getElementById("theme").addEventListener("click", () => {
+  theme = THEMES[(THEMES.indexOf(theme) + 1) % THEMES.length];
+  try { theme ? localStorage.setItem("sq-tiles-theme", theme) : localStorage.removeItem("sq-tiles-theme"); } catch (e) { /* 同上 */ }
+  applyTheme();
+});
+applyTheme();
+render();
+</script>
+</body>
+</html>
