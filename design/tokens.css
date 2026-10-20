@@ -1,0 +1,143 @@
+/*
+ * scrum-quest のデザイントークン
+ * 見立ては「ギルドの帳簿」（案 A）。レベルと積載量だけ「装備画面」（案 B）の表現を使う。
+ * 色は役割で名前を付ける。部品は素の色の値を直接使わず、ここの変数だけを使う。
+ */
+:root {
+  /* ---- 色: 地と線 ---- */
+  --color-bg: #f3f4f1;          /* 紙 */
+  --color-surface: #fbfbf8;     /* 帳面 */
+  --color-sunken: #e9ebe6;      /* メニューなど一段下がった面 */
+  --color-line: #c9cfd3;        /* 枠の線 */
+  --color-rule: #dfe5e8;        /* 行を分ける罫 */
+
+  /* ---- 色: 文字 ---- */
+  --color-fg: #1c2633;          /* 墨 */
+  --color-muted: #5b6672;
+  --color-faint: #8a939c;
+
+  /* ---- 色: 役割 ---- */
+  --color-accent: #1f3a5f;      /* 藍。操作と選択 */
+  --color-on-accent: #ffffff;
+  --color-accent-soft: #e2e8f0;
+  --color-stamp: #c8352b;       /* 朱。完了の判子と依頼主の印だけに使う */
+  --color-xp: #8a6418;          /* 金。経験値とレベルだけに使う */
+  --color-xp-soft: #f2e8d2;
+
+  /* ---- 色: 状態 ---- */
+  --color-danger: #b42318;
+  --color-danger-soft: #f9e3e1;
+  --color-warn: #9a5208;
+  --color-warn-soft: #f8ead7;
+  --color-ok: #2d6a3a;
+  --color-ok-soft: #e1efe3;
+
+  /* ---- 色: ゲージとクリア報酬の段階 ---- */
+  --color-gauge: #dde2e4;
+  --color-gauge-tick: var(--color-bg);
+  --color-tier-small: #6b7785;
+  --color-tier-medium: #2f5f9e;
+  --color-tier-large: #8a6418;
+
+  /* ---- 文字 ---- */
+  --font-display: "Zen Old Mincho", "Hiragino Mincho ProN", "Yu Mincho", serif;
+  --font-body: "BIZ UDPGothic", "Hiragino Sans", "Yu Gothic UI", "Noto Sans JP", sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;  /* キー、日付、ポイント */
+  --font-stat: "Chakra Petch", "IBM Plex Mono", ui-monospace, sans-serif;          /* レベル、経験値、積載量の数字 */
+
+  --text-xs: 0.75rem;    /* 12 */
+  --text-sm: 0.8125rem;  /* 13 */
+  --text-md: 0.875rem;   /* 14 本文 */
+  --text-lg: 1rem;       /* 16 */
+  --text-xl: 1.25rem;    /* 20 節の見出し */
+  --text-2xl: 1.625rem;  /* 26 画面の見出し */
+  --text-stat: 2rem;     /* 32 経験値の大きな数字 */
+
+  --leading-tight: 1.35;
+  --leading-body: 1.65;
+  --tracking-label: 0.12em;
+
+  /* ---- 余白（4px 刻み） ---- */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+
+  /* ---- 形 ---- */
+  --radius-1: 2px;       /* 帳簿の角。ほぼ角張らせる */
+  --radius-2: 4px;
+  --radius-full: 999px;
+  --rule-double: 3px double var(--color-line);
+  --shadow-sheet: 0 1px 0 var(--color-line), 3px 4px 0 -1px var(--color-rule);  /* 貼り出した紙 */
+  --shadow-float: 0 10px 30px -10px rgb(20 30 45 / 0.35);
+
+  /* ---- 動き ---- */
+  --duration-fast: 120ms;
+  --duration-stamp: 260ms;
+  --ease-out: cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --color-bg: #141a21;
+    --color-surface: #1b222b;
+    --color-sunken: #10151b;
+    --color-line: #323d4a;
+    --color-rule: #232c36;
+    --color-fg: #e4e8ed;
+    --color-muted: #9aa6b3;
+    --color-faint: #6c7886;
+    --color-accent: #9bb6dc;
+    --color-on-accent: #101820;
+    --color-accent-soft: #233042;
+    --color-stamp: #ef6a5e;
+    --color-xp: #e0b65c;
+    --color-xp-soft: #362b14;
+    --color-danger: #f0857b;
+    --color-danger-soft: #3a1f1e;
+    --color-warn: #eda65a;
+    --color-warn-soft: #382a18;
+    --color-ok: #7cc28a;
+    --color-ok-soft: #1c3122;
+    --color-gauge: #26303b;
+    --color-tier-small: #9aa6b4;
+    --color-tier-medium: #7fa9e6;
+    --color-tier-large: #e0b65c;
+    --shadow-sheet: 0 1px 0 var(--color-line), 3px 4px 0 -1px #0b0f14;
+    --shadow-float: 0 10px 30px -10px rgb(0 0 0 / 0.7);
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --color-bg: #141a21;
+  --color-surface: #1b222b;
+  --color-sunken: #10151b;
+  --color-line: #323d4a;
+  --color-rule: #232c36;
+  --color-fg: #e4e8ed;
+  --color-muted: #9aa6b3;
+  --color-faint: #6c7886;
+  --color-accent: #9bb6dc;
+  --color-on-accent: #101820;
+  --color-accent-soft: #233042;
+  --color-stamp: #ef6a5e;
+  --color-xp: #e0b65c;
+  --color-xp-soft: #362b14;
+  --color-danger: #f0857b;
+  --color-danger-soft: #3a1f1e;
+  --color-warn: #eda65a;
+  --color-warn-soft: #382a18;
+  --color-ok: #7cc28a;
+  --color-ok-soft: #1c3122;
+  --color-gauge: #26303b;
+  --color-tier-small: #9aa6b4;
+  --color-tier-medium: #7fa9e6;
+  --color-tier-large: #e0b65c;
+  --shadow-sheet: 0 1px 0 var(--color-line), 3px 4px 0 -1px #0b0f14;
+  --shadow-float: 0 10px 30px -10px rgb(0 0 0 / 0.7);
+  color-scheme: dark;
+}
