@@ -1,6 +1,6 @@
 # scrum-quest データモデル
 
-状態: 確定。要件定義（`requirements.md`）を D1 のテーブルに落としたもの。次は最初のマイグレーションを書く
+状態: 確定。要件定義（`requirements.md`）を SQLite のテーブル（Cloudflare では D1、Docker では SQLite のファイル）に落としたもの。次は最初のマイグレーションを書く
 
 ## 決まりごと
 
@@ -14,7 +14,8 @@
 - JSON は `TEXT` に `CHECK (json_valid(x))` を付け、列名は `_json` で終える。
 - 本文とコメントは `CHECK (length(x) <= 100000)` で10万字に抑える。
 - 論理削除は `deleted_at` で持つ。一覧の索引は `deleted_at IS NULL` の部分索引にする。
-- 外部キーは張る（D1 は外部キーの検査が有効）。`ON DELETE` は付けず、物理削除はアプリが順に行う。
+- SQL は SQLite の方言で1通り書き、D1 と SQLite のファイルの両方で通る機能（部分索引、`json_valid`、`date()`、CHECK）だけを使う。
+- 外部キーは張る。D1 は検査が有効で、SQLite のファイルでは接続のたびに `PRAGMA foreign_keys = ON` にする。`ON DELETE` は付けず、物理削除はアプリが順に行う。
 - 作成日時と更新日時は `created_at`、`updated_at` で、更新はアプリが書く。
 - 手で並べ替える並びは、分数の並び（fractional indexing）の文字列 `position` で持つ。間に入れても他の行を書き換えない。新しく入ったものは末尾の値を取る。
 - 集計（積載量、経験値の合計、ポイントの合計、ベロシティ）は保存せず、読むたびに計算する。
@@ -83,7 +84,7 @@
 
 - 索引: `(user_id)`。ログアウト、無効化、ログインできる条件を失ったときに、その人の行を消す。
 - 書き込みを減らすため、`last_used_at` は前回から1時間以上たったときだけ書き直す。
-- 切れた行は Cron で消す。
+- 切れた行は定期処理で消す。
 
 ### oauth_states
 
@@ -96,7 +97,7 @@ GitHub OAuth の state と PKCE の code_verifier。
 | return_to | TEXT | | ログイン後に戻る画面のパス |
 | expires_at | TEXT | NOT NULL | 作ってから10分 |
 
-使ったら消す。切れた行は Cron で消す。
+使ったら消す。切れた行は定期処理で消す。
 
 ### rate_limits
 
@@ -109,7 +110,7 @@ GitHub OAuth の state と PKCE の code_verifier。
 | count | INTEGER | NOT NULL | |
 
 - 手動の同期の「接続ごとに5分に1回」は、この表ではなく `connections.last_manual_sync_at` で判定する。
-- 窓を過ぎた行は Cron で消す。
+- 窓を過ぎた行は定期処理で消す。
 
 ### kingdom_holidays
 
@@ -335,7 +336,7 @@ GitHub OAuth の state と PKCE の code_verifier。
 | created_at、updated_at | TEXT | NOT NULL | |
 
 - 索引: `(workspace_id) WHERE deleted_at IS NULL`、`(owner_user_id) WHERE deleted_at IS NULL`。
-- Cron は `status IN ('active', 'error') AND deleted_at IS NULL` を `last_success_at` の古い順に処理する。
+- 定期処理は `status IN ('active', 'error') AND deleted_at IS NULL` を `last_success_at` の古い順に処理する。
 - 削除は論理削除にする。取り込んだタスクが `task_sources.connection_id` で指すため。削除したら認証情報の列を消す。
 - `credential_*` と `sync_state_json` は API で返さない。返すのは `credential_last4` まで。
 - 鍵の入れ替えは `credential_key_version` が古い行を選んで書き直す。
@@ -509,7 +510,7 @@ GitHub OAuth の state と PKCE の code_verifier。
 | is_truncated | INTEGER | NOT NULL、既定 0 | |
 | updated_at | TEXT | NOT NULL | |
 
-切り詰めは D1 の行の上限（2MB）より十分小さい 512KB を目安にする。
+切り詰めは D1 の行の上限（2MB）より十分小さい 512KB を目安にし、Docker でも同じ値で切る。
 
 ### task_field_values
 
@@ -681,7 +682,7 @@ GitHub OAuth の state と PKCE の code_verifier。
 | created_at | TEXT | NOT NULL | |
 
 - 索引: `(user_id, created_at)`、`(user_id) WHERE read_at IS NULL`。
-- 既読にしてから90日たった通知は Cron で消す。未読は消さない。
+- 既読にしてから90日たった通知は定期処理で消す。未読は消さない。
 
 ### change_logs
 
@@ -701,11 +702,11 @@ GitHub OAuth の state と PKCE の code_verifier。
 - 索引: `(entity_type, entity_id, created_at)`、`(workspace_id, created_at)`。
 - タスク、ストーリー、エピックの履歴はメンバー全員が、それ以外はリーダーと管理者が見られる。見られる範囲は `entity_type` で決める。
 - 同期による取り込み元の属性の書き換えは残さない。量が多く、取り込み元で見られるため。
-- 期間で消さず、残し続ける。容量が気になったら、手順書の `wrangler d1 export` で退避する。
+- 期間で消さず、残し続ける。容量が気になったら、手順書のエクスポート（Cloudflare では `wrangler d1 export`、Docker では sqlite3 の `.backup`）で退避する。
 
 ## 書き込みの単位
 
-D1 は対話的なトランザクションを持たないため、まとめて書く操作は `batch()` で1回に送る。`batch()` の中の文は1つのトランザクションとして全部が通るか全部が戻る。主な操作と、1回のバッチで書くもの。
+D1 は対話的なトランザクションを持たない。どちらの稼働先でも同じコードで動かすため、まとめて書く操作は DB のアダプターの `batch()` で1回に送る。`batch()` の中の文は1つのトランザクションとして全部が通るか全部が戻る。Cloudflare では D1 の `batch()` を呼び、Docker では文を1つのトランザクションに包んで流す。主な操作と、1回のバッチで書くもの。
 
 | 操作 | 書くもの |
 | --- | --- |
