@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>scrum-quest バックログ</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=BIZ+UDPGothic:wght@400;700&family=Chakra+Petch:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500&family=Zen+Old+Mincho:wght@700;900&display=swap">
+<link rel="stylesheet" href="tokens.css">
+<link rel="stylesheet" href="components.css">
+</head>
+<body>
+<div id="app"></div>
+<script src="icons.js"></script>
+<script src="sample-data.js"></script>
+<script src="kit.js"></script>
+<script>
+"use strict";
+// バックログ: エピック、ストーリー、タスクの木。並びが優先順位
+const { D, t, icon, pageHead, treeEpic, treeStory, entry } = SQ;
+
+SQ.mount("backlog", () => {
+  const open = SQ.tasksWhere((x) => x.ws === "wa" && !x.doneAt);
+  const rootTasks = SQ.tasksWhere((x) => x.ws === "wa" && !x.story && !x.doneAt);
+  const rootDone = SQ.tasksWhere((x) => x.ws === "wa" && !x.story && x.doneAt).length;
+  const actions = `<button class="btn is-primary" type="button">${icon("plus")}${t("create")}</button>`;
+  return `
+    ${pageHead(D.workspaces.wa.name, t("backlog"), [
+      ["", "board", `未完了の${t("task")}`, open.length],
+      ["is-warn", "pen", `${t("detail")} 未記入`, open.filter((x) => x.unfilled).length],
+      ["is-warn", "", "未見積もり", open.filter((x) => x.pts == null).length],
+      ["", "", `${t("sprint")}に入っていない`, open.filter((x) => !x.sprint).length],
+    ], actions)}
+    <div class="toolbar" role="search">
+      <label class="search" for="q">${icon("search")}<input id="q" type="search" placeholder="タイトルや SHOP-128 で探す"></label>
+      <select class="select" id="f-who" aria-label="${t("assignee")}"><option>${t("assignee")}: すべて</option><option>ミナト</option><option>担当なし</option></select>
+      <select class="select" id="f-cat" aria-label="${t("category")}"><option>${t("category")}: すべて</option><option>追加案件</option><option>保守</option><option>${t("category")}なし</option></select>
+      <select class="select" id="f-epic" aria-label="${t("epic")}"><option>${t("epic")}: すべて</option><option>会員ポイント制度を公開する</option><option>決済まわりの障害を減らす</option></select>
+      <select class="select" id="f-conn" aria-label="${t("connection")}"><option>${t("connection")}: すべて</option><option>ミナトの Backlog</option><option>ミナトの GitHub</option></select>
+    </div>
+    <div class="tree">
+      ${treeEpic("e1")}
+      ${treeEpic("e2")}
+      ${treeStory("s4", true)}
+      <div>${rootTasks.map((x) => entry(x, { showAssignee: true })).join("")}
+        ${rootDone ? `<p class="tree-folded" style="padding-left:var(--space-4)">親のない完了 ${rootDone} 件を折りたたんでいます</p>` : ""}</div>
+    </div>
+    <p class="action-note">上にあるものほど優先します。行はドラッグで、キーボードでは行を選んで Alt と ↑ ↓ で並べ替えます。</p>`;
+});
+</script>
+</body>
+</html>

@@ -37,6 +37,12 @@
 .space-row i { display: block; height: 10px; background: var(--color-accent); }
 .icon-cell { display: grid; justify-items: center; gap: 6px; padding: var(--space-3); border: 1px solid var(--color-rule); background: var(--color-surface); border-radius: var(--radius-1); font-size: var(--text-xs); color: var(--color-muted); }
 .icon-cell .ico { width: 22px; height: 22px; color: var(--color-fg); }
+.screens { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: var(--space-3); }
+.screens a { display: grid; gap: 2px; padding: var(--space-3) var(--space-4); background: var(--color-surface); border: 1px solid var(--color-line); border-top: 4px solid var(--color-accent); color: var(--color-fg); text-decoration: none; }
+.screens a:hover { border-color: var(--color-muted); }
+.screens b { font-family: var(--font-display); font-weight: 900; }
+.screens span { font-size: var(--text-xs); color: var(--color-muted); }
+.cat-drawer { position: static; width: 100%; max-width: 620px; box-shadow: var(--shadow-sheet); border: 1px solid var(--color-line); border-left: var(--rule-double); padding: var(--space-5); overflow: visible; }
 .two { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: var(--space-4); align-items: start; }
 @media (max-width: 860px) {
   .cat { grid-template-columns: minmax(0, 1fr); padding-left: max(var(--space-4), env(safe-area-inset-left, 0px)); padding-right: max(var(--space-4), env(safe-area-inset-right, 0px)); }
@@ -46,37 +52,35 @@
 </style>
 </head>
 <body>
-<script src="icons.js"></script>
-<script src="kit.js"></script>
-
 <div class="cat">
   <nav class="cat-toc" aria-label="目次" id="toc"></nav>
   <main class="cat-main" id="main"></main>
 </div>
-
+<div class="scrim" id="scrim" data-close-drawer hidden></div>
+<aside class="drawer" id="drawer" role="dialog" aria-modal="true" aria-labelledby="drawer-title" hidden></aside>
+<script src="icons.js"></script>
+<script src="sample-data.js"></script>
+<script src="kit.js"></script>
 <script>
 "use strict";
-const { t, icon, esc, avatar, emblem, pts, dueChip, tier, book, sprintNotice, questNotice, levelPanel, load } = SQ;
-const CTX = { today: "2026-10-20", weekEnd: "2026-10-25", stamped: new Set() };
+const { D, t, icon, avatar, avatarOf, emblem, pts, dueChip, tier, book, sprintNotice, questNotice, levelPanel, load, capacityRows,
+  board, treeEpic, treeStory, progress, pageHead } = SQ;
 
 const COLORS = [
-  ["地と線", [["紙", "--color-bg", "画面の地"], ["帳面", "--color-surface", "台帳、面、入力欄"], ["一段下", "--color-sunken", "メニュー、タグ"], ["枠", "--color-line", "枠の線"], ["罫", "--color-rule", "行を分ける線"]]],
+  ["地と線", [["紙", "--color-bg", "画面の地"], ["帳面", "--color-surface", "台帳、面、入力欄"], ["一段下", "--color-sunken", "メニュー、列、タグ"], ["枠", "--color-line", "枠の線"], ["罫", "--color-rule", "行を分ける線"]]],
   ["文字", [["墨", "--color-fg", "本文"], ["弱", "--color-muted", "補足、ラベル"], ["淡", "--color-faint", "押す前の操作、未入力"]]],
-  ["役割", [["藍", "--color-accent", "操作、選択、進み"], ["藍の淡", "--color-accent-soft", "選択の地"], ["朱", "--color-stamp", "判子と印だけ"], ["金", "--color-xp", "経験値とレベルだけ"], ["金の淡", "--color-xp-soft", "今日やるの地"]]],
+  ["役割", [["藍", "--color-accent", "操作、選択、進み"], ["藍の淡", "--color-accent-soft", "選択の地"], ["朱", "--color-stamp", "判子と印だけ"], ["金", "--color-xp", "経験値とレベル、クエストだけ"], ["金の淡", "--color-xp-soft", "今日やるの地"]]],
   ["状態", [["危", "--color-danger", "期限切れ、重量オーバー"], ["注", "--color-warn", "今週が期限、未記入"], ["良", "--color-ok", "取り込み元で完了、余力あり"]]],
   ["クリア報酬の段階", [["小", "--color-tier-small", ""], ["中", "--color-tier-medium", ""], ["大", "--color-tier-large", ""]]],
 ];
-
-const TASKS = [
-  { id: 1, ws: "受託開発チーム", title: "ポイント付与のバッチを作る", parent: "ポイントの付与と失効を管理画面で確かめられる", col: "遂行中", pts: 5, todayOn: "2026-10-20" },
-  { id: 2, title: "障害時の連絡手順を書く", col: "出発前", pts: 1, due: "2026-10-17", todayOn: "2026-10-19", assignee: ["リン", 320] },
-  { id: 3, title: "クーポンの併用制限", review: true, srcKey: "acme/shop#418", srcIcon: "git", col: "出発前", pts: 1, due: "2026-10-22", assignee: ["ミナト", 172] },
-  { id: 4, title: "請求書 PDF の文字化けを直す", srcKey: "SHOP-131", col: "査定中", pts: 2, srcDone: true, assignee: ["ソウタ", 220] },
-  { id: 5, title: "有給の残日数を一覧に出す", col: "出発前", pts: null, unfilled: true },
-  { id: 6, title: "決済通知のメール文面を直す", srcKey: "SHOP-126", pts: 1, doneAt: "09:40", assignee: ["ハルカ", 28] },
+const SCREENS = [
+  ["today.html", "自分の今日", "全ワークスペースの自分のタスク、レベル、積載量"],
+  ["backlog.html", () => t("backlog"), "エピック、ストーリー、タスクの木"],
+  ["sprint.html", () => t("sprint"), "列とカード、ゴール、完成の定義"],
+  ["plan.html", () => t("plan"), "ベロシティ、先のスプリント、積載量"],
+  ["epic.html", () => t("epic"), "依頼書、パーティ、達成目標"],
 ];
-const QUEST = { title: "会員ポイント制度を公開する", category: "追加案件", requester: ["ハルカ", 28], tier: "large", due: "2026-11-20",
-  party: [["ハルカ", 28], ["ミナト", 172], ["ソウタ", 220]], done: 4, all: 24, joined: false };
+const SAMPLE = ["t1", "t8", "t11", "t12", "t9", "t14"].map(SQ.task);
 
 function block(id, title, intro, demo, rules, names) {
   return `<section class="cat-block" id="${id}">
@@ -87,16 +91,24 @@ function block(id, title, intro, demo, rules, names) {
     ${rules ? `<ul class="cat-rules">${rules.map((r) => `<li>${r}</li>`).join("")}</ul>` : ""}
   </section>`;
 }
-
 function colorBlock() {
   const cs = getComputedStyle(document.documentElement);
   return COLORS.map(([group, list]) => `<div class="field"><span class="field-label">${group}</span><div class="cat-grid">${list.map(([n, v, use]) =>
     `<div class="swatch"><i style="background:var(${v})"></i><b>${n}</b><code>${v}</code><code>${cs.getPropertyValue(v).trim()}</code>${use ? `<span>${use}</span>` : ""}</div>`).join("")}</div></div>`).join("");
 }
+function drawerDemo() {
+  const st = SQ.drawerState;
+  const keep = st.id; st.id = "t1";
+  const html = SQ.drawerHtml().replace('id="drawer-title"', 'id="demo-drawer-title"').replace(/data-close-drawer/g, "disabled");
+  st.id = keep;
+  return `<div class="drawer cat-drawer">${html}</div>`;
+}
 
 const SECTIONS = [
+  ["screens", "画面の見本", () => block("screens", "画面の見本", "部品だけで組んだ画面。メニューから行き来でき、タスクを押すと詳細が開く。",
+    `<div class="screens">${SCREENS.map(([href, name, note]) => `<a href="${href}"><b>${typeof name === "function" ? name() : name}</b><span>${note}</span></a>`).join("")}</div>`)],
   ["colors", "色", () => block("colors", "色", "色は役割で名前を付ける。部品は tokens.css の変数だけを使い、素の値を書かない。ダークの値も同じ名前で入れ替わる。",
-    colorBlock(), ["朱は完了の判子と依頼主の印だけ、金は経験値とレベルだけに使い、他の意味を持たせない。", "状態の色は、必ずアイコンか文字と一緒に使う（色だけで区別しない）。", "藍は操作と選択と進みの色。飾りには使わない。"])],
+    colorBlock(), ["朱は完了の判子と依頼主の印だけ、金は経験値とレベルとクエストだけに使い、他の意味を持たせない。", "状態の色は、必ずアイコンか文字と一緒に使う（色だけで区別しない）。", "藍は操作と選択と進みの色。飾りには使わない。"])],
   ["type", "文字", () => block("type", "文字", "書体は役割で4つに分ける。",
     `<div>
       <div class="type-row"><span class="cat-name">--font-display<br>2xl / 900</span><span class="page-title">自分の今日</span></div>
@@ -107,7 +119,7 @@ const SECTIONS = [
       <div class="type-row"><span class="cat-name">--font-mono</span><span class="mono">SHOP-128 · acme/shop#412 · 2026-10-13 〜 10/26 · 5 pt</span></div>
       <div class="type-row"><span class="cat-name">--font-stat</span><span class="xp-num">1,240<small>XP</small></span></div>
     </div>`,
-    ["明朝は画面と節の見出し、貼り紙の題だけ。本文やボタンには使わない。", "キー、日付、ポイントは mono、レベルと経験値と積載量の数字は stat。数字が縦に並ぶ所は等幅の数字にする。"])],
+    ["明朝は画面と節の見出し、貼り紙と引き出しの題、列の名前だけ。本文やボタンには使わない。", "キー、日付、ポイントは mono、レベルと経験値と積載量の数字は stat。数字が縦に並ぶ所は等幅の数字にする。"])],
   ["space", "余白と形", () => block("space", "余白と形", "余白は 4px 刻み。角はほぼ立てて帳簿らしくする。",
     `<div class="two"><div class="field">${[1, 2, 3, 4, 5, 6, 8, 10].map((n) => `<div class="space-row"><span class="cat-name" style="width:80px">--space-${n}</span><i style="width:var(--space-${n})"></i></div>`).join("")}</div>
      <div class="field">
@@ -115,10 +127,14 @@ const SECTIONS = [
        <div class="cat-row"><span class="cat-name" style="width:110px">--rule-double</span><span style="width:120px;height:0;border-top:var(--rule-double)"></span></div>
        <div class="cat-row"><span class="cat-name" style="width:110px">--shadow-sheet</span><span style="width:120px;height:44px;background:var(--color-surface);border:1px solid var(--color-line);box-shadow:var(--shadow-sheet)"></span></div>
      </div></div>`,
-    ["影は「貼り出した紙」（--shadow-sheet）と、上に浮く物（--shadow-float）の2つだけ。", "二重罫は、画面の見出しの下、メニューの境、台帳の左端に使う。"])],
+    ["影は「貼り出した紙」（--shadow-sheet）と、上に浮く物（--shadow-float、引き出しなど）の2つだけ。", "二重罫は、画面の見出しの下、メニューの境、台帳と木の左端、列の見出しの下に使う。"])],
   ["icons", "アイコン", () => block("icons", "アイコン", "24px の格子に線だけで描く。icons.js を読み込むとスプライトが入る。",
     `<div class="cat-grid" style="grid-template-columns:repeat(auto-fill,minmax(96px,1fr))">${(window.SQ_ICONS || []).map((n) => `<div class="icon-cell">${icon(n)}<span>${n}</span></div>`).join("")}</div>`,
     ["アイコンは文字の代わりにしない。意味のある操作には文字か aria-label を付ける。", "本番では、同じ描き方の OSS のアイコンセット（Lucide など）に置き換えてよい。"], `&lt;svg class="ico"&gt;&lt;use href="#i-sun"/&gt;&lt;/svg&gt;`)],
+  ["heads", "見出しと集計", () => block("heads", "画面の見出しと集計", "画面の先頭には、見出しと「今気にすること」の件数を置く。画面の主な操作は見出しの右。",
+    `${pageHead(D.todayLabel, SQ.sprintLabel("sp14"), [["", "check", "完了", "4 / 24 pt"], ["is-danger", "alert", `${t("due")}切れ`, 1], ["is-warn", "pen", `${t("detail")} 未記入`, 1], ["is-ok", "check", "取り込み元で完了", 0]], `<button class="btn" type="button">延長する</button>`)}
+     <div class="section-head"><h2 class="section-title">今日やる</h2><span class="section-count">3 件</span><span class="section-hint">日付が変わると印は外れます</span></div>`,
+    ["件数が0の集計は色を付けない。"], ".page-head .page-eyebrow .page-head-row .page-title .page-actions .tally / .section-head .section-title .section-count .section-hint")],
   ["buttons", "ボタン", () => block("buttons", "ボタン", "1つの面に主ボタン（is-primary）は1つまで。",
     `<div class="cat-row">
       <button class="btn is-primary" type="button">${icon("check")}${t("complete")}</button>
@@ -126,30 +142,29 @@ const SECTIONS = [
       <button class="btn is-quiet" type="button">あとで</button>
       <button class="btn is-danger" type="button">削除する</button>
       <button class="btn" type="button" disabled>終了する</button>
-      <button class="btn is-primary is-sm" type="button">${icon("plus")}${t("create")}</button>
+      <button class="btn is-sm is-on" type="button" aria-pressed="true">${avatar("ハルカ", 28)}ハルカ に送った</button>
       <button class="link-btn" type="button">戻す</button>
     </div>
     <div class="cat-row">
       <button class="pill" type="button">${icon("swap")}言葉: ${t("vocab")}</button>
       <button class="pill" type="button" aria-label="通知 3件">${icon("bell")}<span class="pill-count">3</span></button>
     </div>`,
-    ["文言は押すと起きることをそのまま書く（「完遂にする」「受注する」）。", "押せない理由がある無効のボタンは、title か横の文で理由を示す。", "取り消せない操作（削除）は is-danger にし、確認は画面の中のダイアログで行う。"],
-    ".btn .is-primary .is-quiet .is-danger .is-sm / .link-btn / .pill .pill-count")],
-  ["forms", "入力", () => block("forms", "入力", "",
-    `<div class="two">
+    ["文言は押すと起きることをそのまま書く（「完遂にする」「受注する」）。", "押せない理由がある無効のボタンは、title か横の文で理由を示す。", "取り消せない操作（削除）は is-danger にし、確認は画面の中のダイアログで行う。", "切り替えのボタンは aria-pressed を持ち、押した状態は is-on で示す。"],
+    ".btn .is-primary .is-quiet .is-danger .is-sm .is-on / .link-btn / .pill .pill-count")],
+  ["forms", "入力と道具の帯", () => block("forms", "入力と道具の帯", "",
+    `<div class="toolbar"><label class="search" for="q0">${icon("search")}<input id="q0" type="search" placeholder="タイトルや SHOP-128 で探す"></label>
+      <select class="select" id="f0" aria-label="${t("assignee")}"><option>${t("assignee")}: すべて</option></select>
+      <select class="select" id="f00" aria-label="${t("category")}"><option>${t("category")}: すべて</option></select></div>
+    <div class="two">
       <label class="field" for="f1"><span class="field-label">タイトル</span><input class="input" id="f1" value="ポイント付与のバッチを作る"><span class="field-hint">取り込み元のタイトルはここでは変えられません</span></label>
       <label class="field is-invalid" for="f2"><span class="field-label">${t("points")}</span><input class="input" id="f2" value="4" aria-invalid="true"><span class="field-error">${icon("alert")}0、1、2、3、5、8、13 のどれかにしてください</span></label>
       <label class="field" for="f3"><span class="field-label">${t("category")}</span><select class="select" id="f3"><option>追加案件</option><option>保守</option><option>${t("category")}なし</option></select></label>
-      <label class="search" for="f4">${icon("search")}<input id="f4" type="search" placeholder="タイトルや SHOP-128 で探す"></label>
-      <label class="field" for="f5" style="grid-column:1/-1"><span class="field-label">${t("ac")}</span><textarea class="textarea" id="f5">- 購入の確定でポイントが付く&#10;- 失効日を過ぎたポイントが残高から消える</textarea></label>
+      <label class="field" for="f5"><span class="field-label">${t("ac")}</span><textarea class="textarea" id="f5">- 購入の確定でポイントが付く&#10;- 失効日を過ぎたポイントが残高から消える</textarea></label>
     </div>`,
-    ["ラベルは入力欄の上に置き、プレースホルダーをラベルの代わりにしない。", "誤りは欄の下に、何が違うかと直し方を書く。"], ".field .field-label .field-hint .field-error .input .select .textarea .search / .field.is-invalid")],
-  ["tabs", "タブ", () => block("tabs", "タブ", "",
-    `<div class="tabs" role="tablist"><button class="tab" role="tab" aria-selected="true" type="button">コメント 3</button><button class="tab" role="tab" aria-selected="false" type="button">変更の履歴</button></div>`,
-    null, ".tabs .tab[aria-selected]")],
-  ["chips", "印", () => block("chips", "印", "状態を小さく添える。どれもアイコンか文字で意味が分かる。",
+    ["ラベルは入力欄の上に置き、プレースホルダーをラベルの代わりにしない。", "誤りは欄の下に、何が違うかと直し方を書く。", "絞り込みは道具の帯にまとめ、画面の見出しのすぐ下に置く。"], ".toolbar / .field .field-label .field-hint .field-error .input .select .textarea .search / .field.is-invalid")],
+  ["chips", "印と囲みの知らせ", () => block("chips", "印と囲みの知らせ", "状態を小さく添える。どれもアイコンか文字で意味が分かる。",
     `<div class="cat-row">
-      ${dueChip("2026-10-17", CTX.today, CTX.weekEnd)}${dueChip("2026-10-20", CTX.today, CTX.weekEnd, { fromSource: true })}${dueChip("2026-10-22", CTX.today, CTX.weekEnd)}${dueChip("2026-11-20", CTX.today, CTX.weekEnd)}
+      ${dueChip("2026-10-17")}${dueChip("2026-10-20", { fromSource: true })}${dueChip("2026-10-22")}${dueChip("2026-11-20")}
     </div>
     <div class="cat-row">
       <span class="chip is-todo">${icon("pen")}${t("detail")} 未記入</span>
@@ -162,44 +177,54 @@ const SECTIONS = [
       <span class="source-key">${icon("link")} SHOP-128</span><span class="source-key">${icon("git")} acme/shop#412</span>
       ${pts(0)}${pts(5)}${pts(13)}${pts(null)}
       ${tier("small")}${tier("medium")}${tier("large")}
-    </div>`,
+      <span class="kind is-epic">${icon("flag")}</span><span class="kind is-story">${icon("check")}</span>
+    </div>
+    <div class="callout is-ok">${icon("check")}<span>取り込み元で完了になりました。完了にするかはここで決めます。</span></div>
+    <div class="callout is-warn">${icon("alert")}<span>10月は配分の合計が 110% です。本人にだけ見えています。</span></div>`,
     ["期日の印は、期限切れが赤、今日と今週が橙、それより先は色なし。完了したら色を付けない。", "取り込み元の期限には「（取り込み元）」を添える。", "ポイントは枠付きの数字、未見積もりは点線の「未」。", "クリア報酬の段階（小・中・大）は、ポイントと混ざらないよう別の形（tier）にする。"],
-    ".chip .is-danger .is-warn .is-todo .is-ok .is-carry / .tag / .status-dot / .source-key / .pts .is-none / .tier .is-small .is-medium .is-large")],
+    ".chip .is-danger .is-warn .is-todo .is-ok .is-carry / .tag / .status-dot / .source-key / .pts .is-none / .tier / .kind .is-epic .is-story / .callout .is-ok .is-warn .is-info")],
   ["people", "人とレベル", () => block("people", "人とレベル", "他の人に見せるのはレベルだけ。経験値の数字は本人だけ。",
     `<div class="cat-row">
-      ${avatar("ミナト", 172)}${avatar("ハルカ", 28, { lg: true })}${avatar(null)}${avatar("カイ", 90, { left: true })}
-      <span class="avatar-stack">${avatar("ハルカ", 28)}${avatar("ミナト", 172)}${avatar("ソウタ", 220)}</span>
+      ${avatarOf("u1")}${avatarOf("u2", { lg: true })}${avatar(null)}${avatarOf("u5")}
+      <span class="avatar-stack">${avatarOf("u2")}${avatarOf("u1")}${avatarOf("u3")}</span>
       ${emblem(7, true)}${emblem(7)}${emblem(12)}
     </div>`,
     ["離脱した人は薄くし、title に「離脱済み」を出す。", "紋章の大は自分の記録の面だけ、小は名前の横に添える。"], ".avatar .is-lg .is-none .is-left / .avatar-stack / .emblem .is-sm")],
-  ["ledger", "台帳", () => block("ledger", "台帳（タスクの一覧）", "タスクの一覧はすべてこの形。左に今日やるの印、右に期日、ポイント、担当、完了の操作。右端の丸を押すと判子が押される。",
-    book(TASKS, CTX),
+  ["ledger", "台帳", () => block("ledger", "台帳（タスクの一覧）", "タスクの一覧はすべてこの形。左に今日やるの印、右に期日、ポイント、担当、完了の操作。右端の丸を押すと判子が押される。題を押すと詳細が開く。",
+    book(SAMPLE, { showAssignee: true }),
     ["行の左端の太陽は「今日やる」。押すと金色になる。", "完了は判子で示し、すぐ横に「戻す」を置く。", "取り込んだタスクは、キーと取り込み元のアイコンを必ず添える。"],
     ".book .entry .is-done .entry-main .entry-title .entry-meta .entry-end / .sun[aria-pressed] / .done-btn / .hanko .is-new")],
+  ["board", "列とカード", () => block("board", "列とカード", "スプリントの列。列の名前は明朝。完了の列にだけ完成の定義を添える。狭いときは横に送る。",
+    board("sp14"),
+    ["列の名前はリーダーが付けたもので、言葉づかいを切り替えても訳さない。完了の列だけは「完遂」か「完了」と出す。", "カードの操作（列の移動）は、ドラッグの他にキーボードでもできるようにする。"],
+    ".board-wrap .board .board-col .is-done .board-col-head .board-col-name / .dod / .card .card-parent .card-title .card-meta .card-foot .card-end")],
+  ["tree", "木", () => block("tree", "木（バックログ）", "エピック、ストーリー、タスクの階層。エピックの行は一段下の地と明朝で区切る。",
+    `<div class="tree">${treeEpic("e2")}${treeStory("s4", true)}</div>`,
+    ["右端の数は「完了 / 全体」のポイント。", "完了したタスクは折りたたみ、件数だけ出す。"],
+    ".tree .tree-group .tree-row .is-epic .is-story .is-root .tree-caret .tree-title .tree-ratio .tree-children .tree-folded")],
   ["notices", "貼り紙", () => block("notices", "貼り紙", "掲示する物（スプリントゴール、クエスト）は、上辺に太い線を引いた紙として見せる。クエストは金、クリア済みは朱。",
-    `<div class="notice-grid">
-      ${sprintNotice({ ws: "受託開発チーム", name: "第14回", start: "2026-10-13", end: "2026-10-26", days: 14, dayIndex: 7, goal: "会員ポイントの付与を管理画面で確かめられる所まで進め、決済の障害の検知を入れる" })}
-      ${questNotice(QUEST, CTX)}
-      ${questNotice({ ...QUEST, title: "決済まわりの障害を減らす", category: "保守", tier: "medium", due: "2026-10-24", done: 6, all: 6, cleared: true, party: [["ミナト", 172], ["リン", 320]] }, CTX)}
-    </div>`,
+    `<div class="notice-grid">${sprintNotice("sp14")}${questNotice("e1")}${questNotice("e2", { cleared: true })}</div>`,
     ["依頼主の名前の横に朱の「印」を添える。", "クリアしたクエストには「済」の判子を押す。"], ".notice .is-quest .is-cleared / .notice-label .notice-title .notice-meta .notice-facts .notice-foot / .day-ticks / .progress / .seal")],
-  ["records", "記録（レベルと積載量）", () => block("records", "記録（レベルと積載量）", "計器の見た目。経験値のゲージは10の目盛り、積載量は5%の目盛りで、許容幅の両端を縦線で示す。",
-    `<div class="two">
-      ${levelPanel({ level: 7, xp: 1240, toNext: 160, soon: 90, gotPct: 64, soonPct: 20, rows: [["受託開発チーム", 1240], ["社内ツール", 770]], total: 2010 })}
-      <section class="panel"><div class="panel-title"><b>${t("capacity")}</b>判定の4つ</div>
-        ${load("ミナト", "配分 60%", 45.6, 56.0)}
-        ${load("ハルカ", "配分 100%", 80.0, 76.0)}
-        ${load("ソウタ", "配分 50%", 40.0, 24.0)}
-        ${load("リン", "配分 40%", 30.4, 12.0, { none: 1 })}
-      </section>
-    </div>`,
-    ["判定は重量オーバー（赤）、範囲内（藍）、余力あり（緑）、未見積もりあり（灰）の4つ。必ず文字を添える。", "未見積もりのタスクが1件でもあれば、余力ありの色は付けない。", "時間は0.1時間に丸めて出す。"],
-    ".panel .panel-title / .level .emblem .xp-num .xp-sub / .gauge .gauge-got .gauge-soon .legend / .breakdown / .load .cap .is-over .is-free .is-unknown .cap-band .cap-fill .verdict")],
-  ["heads", "見出しと集計", () => block("heads", "画面の見出しと集計", "画面の先頭には、見出しと「今気にすること」の件数を置く。",
-    `<header class="page-head"><span class="page-eyebrow">2026年10月20日（火）</span><h1 class="page-title">自分の今日</h1>
-      <dl class="tally"><div><dt>${icon("sun")}今日やる</dt><dd>3</dd></div><div class="is-danger"><dt>${icon("alert")}${t("due")}切れ</dt><dd>1</dd></div><div class="is-warn"><dt>${icon("clock")}今週が${t("due")}</dt><dd>1</dd></div><div class="is-ok"><dt>${icon("check")}取り込み元で完了</dt><dd>1</dd></div></dl></header>
-     <div class="section-head"><h2 class="section-title">今日やる</h2><span class="section-count">3 件</span><span class="section-hint">日付が変わると印は外れます</span></div>`,
-    ["件数が0の集計は色を付けない。"], ".page-head .page-eyebrow .page-title .tally / .section-head .section-title .section-count .section-hint")],
+  ["records", "記録", () => block("records", "記録（レベルと積載量）", "計器の見た目。経験値のゲージは10の目盛り、積載量は5%の目盛りで、許容幅の両端を縦線で示す。",
+    `<div class="two">${levelPanel()}<section class="panel"><div class="panel-title"><b>${t("capacity")}</b>判定の5つ</div>${capacityRows()}${load("社内ツール", "配分 40%", 30.4, 30.0, { lead: avatarOf("u1") })}</section></div>`,
+    ["判定は重量オーバー（赤）、範囲内（藍）、余力あり（緑）、未見積もりあり（灰）、配分未設定（斜線）。必ず文字を添える。", "未見積もりのタスクが1件でもあれば、余力ありの色は付けない。", "時間は0.1時間に丸めて出す。"],
+    ".panel .panel-title / .level .emblem .xp-num .xp-sub / .gauge .gauge-got .gauge-soon .legend / .breakdown / .load .cap .is-over .is-free .is-unknown .is-unset .cap-band .cap-fill .verdict")],
+  ["plan", "速度とレーン", () => block("plan", "速度とレーン", "計画の画面の部品。ベロシティの棒は、除外した回を斜線で示す。レーンは1本のスプリントで、入れたポイントとベロシティを比べる。",
+    `<div class="panel"><div class="velocity"><div class="stat"><span class="stat-label">ベロシティ</span><span class="stat-num">31.7<small>pt</small></span></div>
+      <div><div class="bars"><span class="bars-avg" style="bottom:63px"><span>平均 31.7</span></span><div class="bar-col"><b>32</b><i style="height:64px"></i></div><div class="bar-col is-excluded"><b>41</b><i style="height:82px"></i></div><div class="bar-col"><b>29</b><i style="height:58px"></i></div></div>
+      <div class="bars-labels"><span>第11回</span><span>第12回<br>延長・除外</span><span>第13回</span></div></div></div></div>
+     <div class="lanes" style="grid-template-columns:repeat(auto-fit,minmax(260px,1fr))"><section class="lane is-active"><div class="lane-head"><h3 class="lane-title">${SQ.sprintLabel("sp14")}</h3><span class="chip is-ok">進行中</span></div>
+      <div class="lane-fill"><div class="lane-fill-bar"><span style="width:62%"></span><i style="left:80%"></i></div><div class="lane-fill-text"><span>入れた 25 pt</span><span>ベロシティ 31.7</span></div></div>
+      <div class="lane-row">${pts(5)}<a href="#" data-task="t1">ポイント付与のバッチを作る</a>${avatarOf("u1")}</div><div class="lane-row">${pts(null)}<a href="#" data-task="t13">ポイント失効の通知メールを作る</a>${avatarOf(null)}</div></section></div>`,
+    null, ".velocity .stat .stat-label .stat-num / .bars .bars-avg .bar-col .is-excluded .bars-labels / .lanes .lane .is-active .lane-head .lane-title .lane-sub .lane-fill .lane-fill-bar .is-over .lane-row")],
+  ["table", "表", () => block("table", "表", "数が並ぶ一覧は表にする。数の列は右に揃える。",
+    `<div class="table-wrap"><table class="table"><thead><tr><th>${t("epic")}</th><th class="is-num">残り（pt）</th><th>進み</th><th>${t("due")}</th></tr></thead>
+      <tbody>${Object.keys(D.epics).map((id) => { const p = SQ.epicPts(id); return `<tr><td><a href="epic.html">${SQ.esc(D.epics[id].title)}</a></td><td class="is-num">${p.all - p.done}</td><td>${progress(p.done, p.all)}</td><td>${dueChip(D.epics[id].due)}</td></tr>`; }).join("")}</tbody></table></div>`,
+    ["表の見出しの下は二重罫。"], ".table-wrap .table .is-num")],
+  ["drawer", "引き出し", () => block("drawer", "引き出し（タスクの詳細）", "タスクの詳細は、どの画面からでも右から出る引き出しで開く。Esc か外側を押すと閉じ、開いた元の行に戻る。",
+    drawerDemo(),
+    ["取り込み元の属性（タイトル、状態、期限）は、ここでは変えられないことを添える。", "完了の操作の横に完成の定義を出す。確認のダイアログは挟まない。", "感謝は押した状態を is-on で示し、完了までは取り消せる。"],
+    ".drawer .scrim .drawer-top .drawer-close .drawer-title / .props .props-note / .doc-box .is-empty / .done-bar .done-bar-dod / .thanks / .tabs .tab / .thread .comment .is-deleted / .history")],
 ];
 
 function render() {
@@ -209,7 +234,7 @@ function render() {
       <div class="page-head" style="border:0;padding:0">
         <span class="page-eyebrow">scrum-quest</span>
         <h1 class="page-title">デザインシステム</h1>
-        <p class="cat-lead">見立ては「ギルドの帳簿」。レベルと積載量だけ「装備画面」の計器の表現を使う。画面は、ここにある部品だけで組む。足りない部品は先にここへ足す。読み込む順は tokens.css、components.css、icons.js、kit.js。</p>
+        <p class="cat-lead">見立ては「ギルドの帳簿」。レベルと積載量だけ「装備画面」の計器の表現を使う。画面は、ここにある部品だけで組む。足りない部品は先にここへ足す。読み込む順は tokens.css、components.css、icons.js、sample-data.js、kit.js。</p>
       </div>
       <div class="cat-row">
         <button class="pill" type="button" data-switch="vocab">${icon("swap")}<span data-vocab-label></span></button>
@@ -217,32 +242,13 @@ function render() {
       </div>
     </header>
     ${SECTIONS.map(([, , fn]) => fn()).join("")}`;
-  wire();
-}
-
-// 見出しごと描き直すので、切り替えのボタンは描くたびに配線する
-function wire() {
   document.querySelectorAll("[data-switch='vocab']").forEach((b) => (b.onclick = SQ.toggleVocab));
   document.querySelectorAll("[data-switch='theme']").forEach((b) => (b.onclick = SQ.cycleTheme));
   document.querySelectorAll("[data-vocab-label]").forEach((el) => (el.textContent = `言葉: ${t("vocab")}`));
   SQ.applyTheme();
 }
-
-document.addEventListener("click", (ev) => {
-  const find = (attr) => { const el = ev.target.closest(`[${attr}]`); return el && TASKS.find((x) => x.id === +el.getAttribute(attr)); };
-  let x;
-  if ((x = find("data-sun"))) { x.todayOn = x.todayOn === CTX.today ? null : CTX.today; rerenderLedger(); return; }
-  if ((x = find("data-done"))) { x.doneAt = "10:12"; CTX.stamped.add(x.id); rerenderLedger(); return; }
-  if ((x = find("data-undo"))) { x.doneAt = null; rerenderLedger(); return; }
-  if (ev.target.closest(".entry-title")) ev.preventDefault();
-});
-function rerenderLedger() {
-  document.querySelector("#ledger .cat-demo").innerHTML = book(TASKS, CTX);
-  CTX.stamped.clear();
-}
-
 SQ.onChange(render);
-// 配色を変えたら色の値の表示を描き直す
+SQ.onRedraw(render);
 new MutationObserver(() => { const el = document.querySelector("#colors .cat-demo"); if (el) el.innerHTML = colorBlock(); })
   .observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
 render();

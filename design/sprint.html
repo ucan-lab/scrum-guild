@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>scrum-quest スプリント</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=BIZ+UDPGothic:wght@400;700&family=Chakra+Petch:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500&family=Zen+Old+Mincho:wght@700;900&display=swap">
+<link rel="stylesheet" href="tokens.css">
+<link rel="stylesheet" href="components.css">
+</head>
+<body>
+<div id="app"></div>
+<script src="icons.js"></script>
+<script src="sample-data.js"></script>
+<script src="kit.js"></script>
+<script>
+"use strict";
+// スプリント: 進行中のスプリントの列とカード
+const { D, t, icon, pageHead, sprintNotice, board, capacityRows, sumPts } = SQ;
+
+SQ.mount("sprint", () => {
+  const s = D.sprints.sp14;
+  const list = SQ.tasksWhere((x) => x.sprint === "sp14");
+  const done = sumPts(list.filter((x) => x.doneAt)), all = sumPts(list);
+  const actions = `<button class="btn" type="button">延長する</button>
+    <button class="btn" type="button" disabled title="最終日（10/26）を過ぎると押せます">終了する</button>`;
+  return `
+    ${pageHead(`${s.start} 〜 ${s.end}・14 日のうち 8 日目`, SQ.sprintLabel("sp14"), [
+      ["", "check", "完了", `${done} / ${all} pt`],
+      ["", "clock", "残り", `${s.days - s.dayIndex} 日`],
+      ["is-warn", "pen", `${t("detail")} 未記入`, list.filter((x) => x.unfilled && !x.doneAt).length],
+      ["is-ok", "check", "取り込み元で完了", list.filter((x) => x.srcDone && !x.doneAt).length],
+    ], actions)}
+    ${sprintNotice("sp14", { showWs: false })}
+    ${board("sp14")}
+    <p class="action-note">カードはドラッグで列を移せます。キーボードでは、カードを選んで Alt と ← → で移せます。</p>
+    <section class="section" aria-labelledby="cap">
+      <div class="section-head"><h2 class="section-title" id="cap">この${t("sprint")}の${t("capacity")}</h2><span class="section-hint">1 ${t("points")} = ${D.hoursPerPoint} 時間・許容幅 ±12.5%</span></div>
+      <div class="panel"><div class="grid-2">${capacityRows()}</div></div>
+    </section>`;
+});
+</script>
+</body>
+</html>

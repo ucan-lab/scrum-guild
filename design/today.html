@@ -11,123 +11,53 @@
 <link rel="stylesheet" href="components.css">
 </head>
 <body>
+<div id="app"></div>
 <script src="icons.js"></script>
+<script src="sample-data.js"></script>
 <script src="kit.js"></script>
-
-<div class="app">
-  <aside class="binding" aria-label="メニュー"><div class="binding-inner">
-    <div class="brand"><span class="brand-seal" aria-hidden="true">冒</span><span class="brand-name">scrum-quest</span></div>
-    <nav class="nav" id="nav"></nav>
-    <p class="binding-foot">デザインの見本。データはすべて架空の例です</p>
-  </div></aside>
-
-  <div class="sheet">
-    <div class="topbar">
-      <button class="pill" type="button" data-switch="vocab"><svg class="ico" aria-hidden="true"><use href="#i-swap"/></svg><span data-vocab-label></span></button>
-      <button class="pill" type="button" data-switch="theme"><svg class="ico" aria-hidden="true"><use href="#i-moon"/></svg><span data-theme-label></span></button>
-      <button class="pill" type="button" aria-label="通知 3件"><svg class="ico" aria-hidden="true"><use href="#i-bell"/></svg><span class="pill-count">3</span></button>
-      <span class="me" id="me"></span>
-    </div>
-    <main class="content" id="content"></main>
-  </div>
-</div>
-
 <script>
 "use strict";
-const { t, icon, avatar, emblem, book, section, sprintNotice, levelPanel, load } = SQ;
+// 自分の今日: 所属するすべてのワークスペースから、自分が担当するタスクを並べる
+const { D, t, book, section, pageHead, sprintNotice, levelPanel, load } = SQ;
 
-// ---- 例のデータ（今日は 2026-10-20 火曜。週の始まりは月曜） ----
-const CTX = { today: "2026-10-20", weekEnd: "2026-10-25", stamped: new Set() };
-const SPRINTS = [
-  { ws: "受託開発チーム", name: "第14回", start: "2026-10-13", end: "2026-10-26", days: 14, dayIndex: 7, goal: "会員ポイントの付与を管理画面で確かめられる所まで進め、決済の障害の検知を入れる" },
-  { ws: "社内ツール", name: null, start: "2026-10-14", end: "2026-10-27", days: 14, dayIndex: 6, goal: "勤怠の月次の締めを手作業なしで回す" },
-];
-const TASKS = [
-  { id: 1, ws: "受託開発チーム", title: "ポイント付与のバッチを作る", parent: "ポイントの付与と失効を管理画面で確かめられる", col: "遂行中", pts: 5, todayOn: "2026-10-20" },
-  { id: 2, ws: "受託開発チーム", title: "クーポンの併用制限", review: true, srcKey: "acme/shop#418", srcIcon: "git", col: "出発前", pts: 1, todayOn: "2026-10-20" },
-  { id: 3, ws: "受託開発チーム", title: "障害時の連絡手順を書く", parent: "決済の失敗をすぐ検知できる", col: "出発前", pts: 1, due: "2026-10-17", todayOn: "2026-10-19" },
-  { id: 4, ws: "社内ツール", title: "勤怠の CSV 出力で締め日を選べるようにする", col: "遂行中", pts: 3, due: "2026-10-22" },
-  { id: 5, ws: "受託開発チーム", title: "請求書 PDF の文字化けを直す", srcKey: "SHOP-131", col: "査定中", pts: 2, srcDone: true },
-  { id: 6, ws: "社内ツール", title: "有給の残日数を一覧に出す", col: "出発前", pts: null, unfilled: true },
-  { id: 7, ws: "受託開発チーム", title: "決済通知のメール文面を直す", srcKey: "SHOP-126", pts: 1, doneAt: "09:40" },
-];
-const LEVEL = { level: 7, xp: 1240, toNext: 160, soon: 90, gotPct: 64, soonPct: 20, rows: [["受託開発チーム", 1240], ["社内ツール", 770]], total: 2010 };
-
-function renderNav() {
-  const item = (ic, label, cur, badge) =>
-    `<a class="nav-item" href="#" ${cur ? 'aria-current="page"' : ""}>${icon(ic)}<span>${label}</span>${badge ? `<span class="nav-badge">${badge}</span>` : ""}</a>`;
-  document.getElementById("nav").innerHTML = `
-    ${item("sun", "自分の今日", true)}
-    <div class="nav-group">${t("workspace")}</div>
-    <label class="ws-select" for="ws"><span>${t("workspace")}</span><select id="ws"><option>受託開発チーム</option><option>社内ツール</option></select></label>
-    ${item("inbox", t("inbox"), false, 3)}${item("board", t("backlog"))}${item("columns", t("sprint"))}${item("calendar", t("plan"))}
-    ${item("flag", t("epic"))}${item("archive", t("archive"))}${item("link", t("connection"))}${item("gear", "設定")}`;
-  document.getElementById("me").innerHTML = `${avatar("ミナト", 172)}ミナト${emblem(7, true)}`;
-}
-
-function render() {
-  const open = TASKS.filter((x) => !x.doneAt);
-  const inWeek = (x) => x.due && x.due <= CTX.weekEnd;
+SQ.mount("today", () => {
+  const mine = SQ.tasksWhere((x) => x.who === D.me);
+  const open = mine.filter((x) => !x.doneAt);
+  const inWeek = (x) => { const d = SQ.dueOf(x); return d && d.date <= D.weekEnd; };
   const todayList = open.filter((x) => x.todayOn);
   const dueList = open.filter((x) => !x.todayOn && inWeek(x));
-  const restList = open.filter((x) => !x.todayOn && !inWeek(x));
-  const doneList = TASKS.filter((x) => x.doneAt);
-  const overdue = open.filter((x) => x.due && x.due < CTX.today).length;
-  const thisWeek = open.filter((x) => x.due && x.due >= CTX.today && x.due <= CTX.weekEnd).length;
-  const srcDone = open.filter((x) => x.srcDone).length;
-  const tally = (cls, ic, label, n) => `<div class="${n ? cls : ""}"><dt>${icon(ic)}${label}</dt><dd>${n}</dd></div>`;
-
-  renderNav();
-  document.getElementById("content").innerHTML = `
-  <div class="layout-aside">
+  const restList = open.filter((x) => !x.todayOn && !inWeek(x) && x.sprint && D.sprints[x.sprint].status === "active");
+  const doneList = mine.filter((x) => x.doneAt && x.doneAt.startsWith("10/20"));
+  const overdue = open.filter((x) => { const d = SQ.dueOf(x); return d && d.date < D.today; }).length;
+  const thisWeek = open.filter((x) => { const d = SQ.dueOf(x); return d && d.date >= D.today && d.date <= D.weekEnd; }).length;
+  const opts = { showWs: true };
+  return `<div class="layout-aside">
     <div class="layout-main">
-      <header class="page-head">
-        <span class="page-eyebrow">2026年10月20日（火）</span>
-        <h1 class="page-title">自分の今日</h1>
-        <dl class="tally">
-          ${tally("", "sun", "今日やる", todayList.length)}
-          ${tally("is-danger", "alert", `${t("due")}切れ`, overdue)}
-          ${tally("is-warn", "clock", `今週が${t("due")}`, thisWeek)}
-          ${tally("is-ok", "check", "取り込み元で完了", srcDone)}
-          ${tally("", "check", t("doneToday"), doneList.length)}
-        </dl>
-      </header>
-      <div class="notice-grid">${SPRINTS.map(sprintNotice).join("")}</div>
-      ${section("s-today", "今日やる", todayList.length, book(todayList, CTX), "日付が変わると印は外れます")}
-      ${section("s-due", `今週が${t("due")}`, dueList.length, book(dueList, CTX))}
-      ${section("s-sprint", `進行中の${t("sprint")}`, restList.length, book(restList, CTX))}
-      ${section("s-done", t("doneToday"), doneList.length, book(doneList, CTX))}
+      ${pageHead(D.todayLabel, "自分の今日", [
+        ["", "sun", "今日やる", todayList.length],
+        ["is-danger", "alert", `${t("due")}切れ`, overdue],
+        ["is-warn", "clock", `今週が${t("due")}`, thisWeek],
+        ["is-ok", "check", "取り込み元で完了", open.filter((x) => x.srcDone).length],
+        ["", "check", t("doneToday"), doneList.length],
+      ])}
+      <div class="notice-grid">${sprintNotice("sp14")}${sprintNotice("spb")}</div>
+      ${section("s-today", "今日やる", todayList.length, book(todayList, opts), "日付が変わると印は外れます")}
+      ${section("s-due", `今週が${t("due")}`, dueList.length, book(dueList, opts))}
+      ${section("s-sprint", `進行中の${t("sprint")}`, restList.length, book(restList, opts))}
+      ${section("s-done", t("doneToday"), doneList.length, book(doneList, opts))}
     </div>
     <aside class="layout-side" aria-label="自分の記録">
-      ${levelPanel(LEVEL)}
+      ${levelPanel()}
       <section class="panel">
         <div class="panel-title"><b>${t("capacity")}</b>今の${t("sprint")}</div>
-        ${load("受託開発チーム", "配分 60%", 45.6, 56.0)}
-        ${load("社内ツール", "配分 40%", 30.4, 12.0, { none: 1 })}
+        ${load(D.workspaces.wa.name, "配分 60%", 45.6, 56.0)}
+        ${load(D.workspaces.wb.name, "配分 40%", 30.4, 12.0, { none: 1 })}
         ${load("10月の合計", "ユーザーの基準", 172.0, 168.0)}
         <p class="panel-note">休み <span class="mono">10/23</span> 半日</p>
       </section>
     </aside>
   </div>`;
-  CTX.stamped.clear();
-}
-
-document.addEventListener("click", (ev) => {
-  const find = (attr) => { const el = ev.target.closest(`[${attr}]`); return el && TASKS.find((x) => x.id === +el.getAttribute(attr)); };
-  let x;
-  if ((x = find("data-sun"))) { x.todayOn = x.todayOn === CTX.today ? null : CTX.today; render(); return; }
-  if ((x = find("data-done"))) {
-    x.doneAt = "10:12"; CTX.stamped.add(x.id); render();
-    document.querySelector(`[data-undo="${x.id}"]`)?.focus();
-    return;
-  }
-  if ((x = find("data-undo"))) { x.doneAt = null; render(); return; }
-  if (ev.target.closest(".entry-title, .nav-item")) ev.preventDefault();
 });
-
-SQ.onChange(render);
-SQ.wireSwitches();
-render();
 </script>
 </body>
 </html>

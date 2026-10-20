@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>scrum-quest エピック</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=BIZ+UDPGothic:wght@400;700&family=Chakra+Petch:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500&family=Zen+Old+Mincho:wght@700;900&display=swap">
+<link rel="stylesheet" href="tokens.css">
+<link rel="stylesheet" href="components.css">
+</head>
+<body>
+<div id="app"></div>
+<script src="icons.js"></script>
+<script src="sample-data.js"></script>
+<script src="kit.js"></script>
+<script>
+"use strict";
+// エピック（クエスト）の詳細
+const { D, t, icon, esc, pageHead, avatarOf, emblem, tier, dueChip, progress, book, storyPts, questNotice } = SQ;
+const ID = "e1";
+
+SQ.mount("epic", () => {
+  const e = D.epics[ID];
+  const p = SQ.epicPts(ID);
+  const joined = e.party.includes(D.me);
+  const allDone = p.all > 0 && p.done === p.all;
+  const stories = Object.keys(D.stories).filter((s) => D.stories[s].epic === ID);
+  const party = e.party.map((u) => {
+    const x = SQ.user(u);
+    return `<li>${avatarOf(u)}<span>${esc(x.name)}</span>${u === e.requester ? `<span class="role">${t("requester")}</span>` : ""}${emblem(x.level, true)}</li>`;
+  }).join("");
+  return `
+    ${pageHead(`${t("epic")}・${esc(D.categories[e.cat].name)}`, esc(e.title), [
+      ["", "check", "完了", `${p.done} / ${p.all} pt`],
+      ["", "", "残り", `${p.all - p.done} pt`],
+      ["", "users", t("party"), `${e.party.length} 人`],
+    ])}
+    <div class="layout-aside">
+      <div class="layout-main">
+        <section class="section">
+          <div class="quest-body">${e.body.map((b) => `<p>${esc(b)}</p>`).join("")}
+            ${e.link ? `<span class="source-key">${icon("link")} ${esc(e.link)}</span>` : ""}</div>
+        </section>
+        ${stories.map((s) => {
+          const st = D.stories[s];
+          const sp = storyPts(s);
+          const list = SQ.tasksWhere((x) => x.story === s);
+          return `<section class="story-block" aria-labelledby="st-${s}">
+            <div class="story-head"><span class="kind is-story">${icon("check")}</span><h2 class="story-title" id="st-${s}">${esc(st.title)}</h2>${progress(sp.done, sp.all)}</div>
+            <div class="ac-box"><b>${t("ac")}</b><ul>${st.ac.map((a) => `<li>${esc(a)}</li>`).join("")}</ul></div>
+            ${book(list, { showParent: false, showAssignee: true })}
+          </section>`;
+        }).join("")}
+      </div>
+      <aside class="layout-side">
+        <section class="panel">
+          <div class="panel-title"><b>依頼書</b></div>
+          <dl class="props">
+            <div><dt>${t("requester")}</dt><dd>${avatarOf(e.requester)}${esc(SQ.user(e.requester).name)}<span class="seal" aria-hidden="true">印</span></dd></div>
+            <div><dt>${t("reward")}</dt><dd>${tier(e.tier)}</dd></div>
+            <div><dt>${t("due")}</dt><dd>${dueChip(e.due)}</dd></div>
+            <div><dt>${t("category")}</dt><dd>${esc(D.categories[e.cat].name)}</dd></div>
+          </dl>
+          <p class="panel-note">${t("reward")}は、クリアした時点の${t("party")}全員に同じ額が入ります。</p>
+        </section>
+        <section class="panel">
+          <div class="panel-title"><b>${t("party")}</b>${e.party.length} 人</div>
+          <ul class="party-list">${party}</ul>
+          <div class="actions-col">
+            <button class="btn ${joined ? "" : "is-primary"}" type="button" data-join="${ID}">${icon("users")}${joined ? t("leave") : t("accept")}</button>
+            <button class="btn" type="button">${t("party")}に割り振る</button>
+            <button class="btn" type="button">${t("reward")}を変える</button>
+            <button class="btn is-primary" type="button" ${allDone ? "" : "disabled"}>${icon("check")}${t("clear")}</button>
+            ${allDone ? "" : `<span class="action-note">配下がすべて完了すると押せます（あと ${p.all - p.done} pt）</span>`}
+          </div>
+        </section>
+        <section class="section">
+          <div class="section-head"><h2 class="section-title" style="font-size:var(--text-lg)">他の${t("epic")}</h2></div>
+          ${questNotice("e2")}
+        </section>
+      </aside>
+    </div>`;
+});
+</script>
+</body>
+</html>

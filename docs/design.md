@@ -1,6 +1,6 @@
 # scrum-quest デザイン
 
-状態: 草案。見た目の方向を決め、デザインシステムの最初の版を作った。次は残りの画面を部品だけで組む
+状態: 草案。デザインシステムで主要な5画面を組んだ。次は受信箱、接続、設定などの残りの画面
 
 ## 進め方
 
@@ -110,10 +110,11 @@
 | `design/tokens.css` | 色、文字、余白、形、動きの変数。ライトとダークの値 |
 | `design/components.css` | 部品の CSS。tokens.css の変数だけを使う |
 | `design/icons.js` | アイコンの定義。読み込むと SVG のスプライトが入る |
-| `design/kit.js` | 部品の HTML を作る関数、言葉の辞書、配色の切り替え |
+| `design/sample-data.js` | 見本の画面が共有する例のデータ（すべて架空） |
+| `design/kit.js` | 部品の HTML を作る関数、画面の枠、タスクの詳細の引き出し、言葉の辞書、配色の切り替え |
 | `design/index.html` | 部品のカタログ。色、文字、各部品の見本と使い方の決まり |
-| `design/today.html` | 自分の今日の見本。部品だけで組んであり、画面に固有の CSS を持たない |
+| `design/today.html` ほか | 画面の見本（自分の今日、バックログ、スプリント、計画、エピック）。部品だけで組んであり、画面に固有の CSS を持たない。タスクを押すと詳細の引き出しが開く |
 
-- 読み込む順は tokens.css、components.css、icons.js、kit.js。
+- 読み込む順は tokens.css、components.css、icons.js、sample-data.js、kit.js。
 - 画面に固有の CSS を書かない。足りない部品は components.css とカタログに先に足す。
 - 本番の Svelte では、tokens.css と components.css をそのまま読み込み、kit.js の関数を1つずつコンポーネントにする。

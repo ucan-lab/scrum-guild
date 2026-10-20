@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>scrum-quest 計画</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=BIZ+UDPGothic:wght@400;700&family=Chakra+Petch:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500&family=Zen+Old+Mincho:wght@700;900&display=swap">
+<link rel="stylesheet" href="tokens.css">
+<link rel="stylesheet" href="components.css">
+</head>
+<body>
+<div id="app"></div>
+<script src="icons.js"></script>
+<script src="sample-data.js"></script>
+<script src="kit.js"></script>
+<script>
+"use strict";
+// 計画: ベロシティ、先のスプリント、積載量、エピックごとの残り
+const { D, t, icon, esc, md, pageHead, pts, avatarOf, capacityRows, sumPts, progress, dueChip } = SQ;
+
+function velocity() {
+  const ids = ["sp10", "sp11", "sp12", "sp13"];
+  const used = ids.filter((id) => !D.sprints[id].extended);
+  const avg = used.reduce((a, id) => a + D.sprints[id].donePts, 0) / used.length;
+  const max = 45;
+  return { avg, html: `<div class="velocity">
+    <div class="stat"><span class="stat-label">ベロシティ（直近3回の平均）</span><span class="stat-num">${avg.toFixed(1)}<small>pt</small></span>
+      <span class="stat-label">延長した${t("sprint")}は除く</span></div>
+    <div>
+      <div class="bars" role="img" aria-label="${ids.map((id) => `${D.sprints[id].name} ${D.sprints[id].donePts} pt${D.sprints[id].extended ? "（延長のため除外）" : ""}`).join("、")}">
+        <span class="bars-avg" style="bottom:${(avg / max) * 90}px"><span>平均 ${avg.toFixed(1)}</span></span>
+        ${ids.map((id) => { const s = D.sprints[id]; return `<div class="bar-col ${s.extended ? "is-excluded" : ""}"><b>${s.donePts}</b><i style="height:${(s.donePts / max) * 90}px"></i></div>`; }).join("")}
+      </div>
+      <div class="bars-labels">${ids.map((id) => { const s = D.sprints[id]; return `<span>${s.name}${s.extended ? `<br>延長 ${s.extended} 日・除外` : ""}</span>`; }).join("")}</div>
+    </div>
+  </div>` };
+}
+
+function lane(id, avg) {
+  const s = D.sprints[id];
+  const list = SQ.tasksWhere((x) => x.sprint === id);
+  const total = sumPts(list);
+  const none = list.filter((x) => x.pts == null).length;
+  const unfilled = list.filter((x) => x.unfilled && !x.doneAt).length;
+  const max = Math.max(total, avg) * 1.15;
+  return `<section class="lane ${s.status === "active" ? "is-active" : ""}">
+    <div class="lane-head"><h2 class="lane-title">${SQ.sprintLabel(id)}</h2>${s.status === "active" ? `<span class="chip is-ok">進行中</span>` : ""}</div>
+    <div class="lane-sub"><span class="mono">${md(s.start)}〜${md(s.end)}</span>${none ? `<span>未見積もり ${none} 件</span>` : ""}${unfilled ? `<span>${t("detail")} 未記入 ${unfilled} 件</span>` : ""}</div>
+    <div class="lane-fill">
+      <div class="lane-fill-bar ${total > avg * 1.125 ? "is-over" : ""}" role="img" aria-label="入れた ${total} pt、ベロシティ ${avg.toFixed(1)} pt"><span style="width:${(total / max) * 100}%"></span><i style="left:${(avg / max) * 100}%"></i></div>
+      <div class="lane-fill-text"><span>入れた ${total} pt</span><span>ベロシティ ${avg.toFixed(1)}</span></div>
+    </div>
+    ${list.map((x) => `<div class="lane-row ${x.doneAt ? "is-done" : ""}">${pts(x.pts)}<a href="#" data-task="${x.id}">${esc(x.title)}</a>${avatarOf(x.who)}</div>`).join("") || `<p class="action-note">まだ何も入っていません</p>`}
+    <button class="btn is-sm" type="button">${icon("plus")}${t("backlog")}から入れる</button>
+  </section>`;
+}
+
+SQ.mount("plan", () => {
+  const v = velocity();
+  const epicRows = Object.keys(D.epics).map((id) => {
+    const e = D.epics[id]; const p = SQ.epicPts(id);
+    return `<tr><td><a href="epic.html">${esc(e.title)}</a></td><td class="is-num">${p.all - p.done}</td><td>${progress(p.done, p.all)}</td><td>${dueChip(e.due)}</td></tr>`;
+  }).join("");
+  const unestimated = SQ.tasksWhere((x) => x.ws === "wa" && !x.doneAt && x.pts == null).length;
+  return `
+    ${pageHead(D.workspaces.wa.name, t("plan"), [
+      ["", "trend", "ベロシティ", `${v.avg.toFixed(1)} pt`],
+      ["is-danger", "alert", t("over"), 1],
+      ["is-warn", "", "未見積もり", unestimated],
+    ])}
+    <section class="panel">${v.html}</section>
+    <div class="lanes">${lane("sp14", v.avg)}${lane("sp15", v.avg)}${lane("sp16", v.avg)}</div>
+    <section class="section" aria-labelledby="cap">
+      <div class="section-head"><h2 class="section-title" id="cap">${t("capacity")}・${SQ.sprintLabel("sp14")}</h2><span class="section-hint">1 ${t("points")} = ${D.hoursPerPoint} 時間・許容幅 ±12.5%</span></div>
+      <div class="panel"><div class="grid-2">${capacityRows()}</div></div>
+    </section>
+    <section class="section" aria-labelledby="ep">
+      <div class="section-head"><h2 class="section-title" id="ep">${t("epic")}ごとの残り</h2></div>
+      <div class="table-wrap"><table class="table">
+        <thead><tr><th>${t("epic")}</th><th class="is-num">残り（pt）</th><th>進み</th><th>${t("due")}</th></tr></thead>
+        <tbody>${epicRows}</tbody></table></div>
+    </section>`;
+});
+</script>
+</body>
+</html>
