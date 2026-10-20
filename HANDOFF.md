@@ -46,6 +46,12 @@
 - [ ] `mock/` を消してよいか（デザインシステムの見本で置き換えた）
 - [ ] GitHub でリモートの作業ブランチ `claude/focused-wright-vdqz0g` を消す（内容はすべて `main` に入っている。手元のブランチは消した。作業した環境からはリモートのブランチを消せなかった）
 
+### 名前の変更（scrum-quest から Team Leveling へ）
+
+- [ ] GitHub のリポジトリ名を `ucan-lab/scrum-quest` から `ucan-lab/team-leveling` に変える（設定画面から。変えたあとは手元の `git remote` も直す）
+- [ ] ドメイン `team-leveling.dev` を取る（2026-10-20 に空きを確かめた）
+- [ ] claude.ai の Artifact に公開した見本は古い名前のまま。必要なら公開し直す
+
 ## 次にやること
 
 1. 上の確認の結果を `docs/design.md` と `docs/requirements.md` に反映する
@@ -56,5 +62,6 @@
 ## 覚えておくこと
 
 - コミットは `main` に直接入れてよい（このセッションで決めた）。
+- 名前は Team Leveling。表記の決まりと改めた理由は `docs/requirements.md` の「名前」。npm、GitHub、J-PlatPat（Team Leveling、チームレベリング）で重なりがないことを 2026-10-20 に確かめた。
 - 見本は、画面ごとの CSS を持たない決まり。足りない部品は先に `design/components.css` とカタログに足す。
 - 見本の例のデータ（`design/sample-data.js`）はすべて架空。公開前の点検で、実在の名前が混ざっていないかを見る。

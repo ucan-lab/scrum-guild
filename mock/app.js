@@ -1,4 +1,4 @@
-// scrum-quest のモック。データはすべて架空の例で、操作は保存しない
+// Team Leveling のモック。データはすべて架空の例で、操作は保存しない
 "use strict";
 
 // ---- 言葉の辞書（ゲームの言葉 / スクラムの言葉） ----
@@ -582,7 +582,7 @@ function renderDrawer() {
     <dt>${t("column")}</dt><dd>${x.col && x.col !== "x" ? esc(colName(x.col)) : "—"}</dd>
     <dt>${t("assignee")}</dt><dd>${avatar(x.who)}${x.who ? esc(USERS[x.who].name) : "担当なし"}</dd>
     <dt>${t("points")}</dt><dd>${pts(x.pts)}${x.pts == null ? `<span class="muted">未見積もり</span>` : ""}</dd>
-    <dt>${t("due")}</dt><dd>${d ? `${dueChip(x)}<span class="muted" style="font-size:var(--fs-xs)">${d.from === "src" ? "取り込み元の期限" : "scrum-quest で振った" + t("due")}</span>` : "—"}</dd>
+    <dt>${t("due")}</dt><dd>${d ? `${dueChip(x)}<span class="muted" style="font-size:var(--fs-xs)">${d.from === "src" ? "取り込み元の期限" : "Team Leveling で振った" + t("due")}</span>` : "—"}</dd>
     <dt>親</dt><dd>${parent ? `${icon("flag")}${esc(parent.title)}${epic ? `<span class="muted">（${esc(epic.title)}）</span>` : ""}` : "なし"}</dd>
     <dt>${t("sprint")}</dt><dd>${x.sprint && SPRINTS[x.sprint] ? esc(sprintName(x.sprint)) : x.sprint === "x" ? "社内ツールの進行中の" + t("sprint") : `${t("backlog")}`}</dd>
     <dt>${t("category")}</dt><dd>${catName(x) ? esc(catName(x)) + (parent ? `<span class="muted" style="font-size:var(--fs-xs)">親から引き継ぎ</span>` : "") : `${t("category")}なし`}</dd>
@@ -594,7 +594,7 @@ function renderDrawer() {
   </div>
   <div class="field">
     <span class="field-label">本文</span>
-    <div class="field-box">${x.src ? `<p class="muted">取り込み元の本文は <span class="mono">${esc(x.src.key)}</span> で開いて読みます。ここには scrum-quest のメモを書けます。</p>` : `<p>確定とキャンセルのイベントを夜間にまとめて処理する。付与率は会員ランクごとの設定値を使う。</p><p>参考: 管理画面の設計メモ https://example.com/notes/42</p>`}</div>
+    <div class="field-box">${x.src ? `<p class="muted">取り込み元の本文は <span class="mono">${esc(x.src.key)}</span> で開いて読みます。ここには Team Leveling のメモを書けます。</p>` : `<p>確定とキャンセルのイベントを夜間にまとめて処理する。付与率は会員ランクごとの設定値を使う。</p><p>参考: 管理画面の設計メモ https://example.com/notes/42</p>`}</div>
   </div>
   <div class="done-bar">
     <button class="btn primary" type="button">${icon("check")}完了にする</button>
@@ -629,7 +629,7 @@ function renderDrawer() {
 function render() {
   const v = VIEWS[state.view] || VIEWS.today;
   document.getElementById("page-title").textContent = v.title();
-  document.title = `${v.title()} · scrum-quest モック`;
+  document.title = `${v.title()} · Team Leveling モック`;
   document.querySelectorAll("[data-t]").forEach((el) => (el.textContent = t(el.dataset.t)));
   document.getElementById("vocab-label").textContent = `言葉: ${t("vocabName")}`;
   document.getElementById("me-chip").innerHTML = `${avatar(ME)}${esc(USERS[ME].name)} ${lv(ME)}`;

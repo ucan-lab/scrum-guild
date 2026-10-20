@@ -64,7 +64,7 @@
     const list = tasksWhere((x) => x.story && D.stories[x.story].epic === eid);
     return { done: sumPts(list.filter((x) => x.doneAt)), all: sumPts(list) };
   }
-  // 表示する期日。scrum-quest で振った期日、なければ取り込み元の期限
+  // 表示する期日。Team Leveling で振った期日、なければ取り込み元の期限
   function dueOf(x) {
     if (x.due) return { date: x.due, fromSource: false };
     if (x.src && x.src.due) return { date: x.src.due, fromSource: true };
@@ -347,7 +347,7 @@
         <div><dt>${t("column")}</dt><dd>${colName(x) ? `<span class="status-dot">${esc(colName(x))}</span>` : "—"}</dd></div>
         <div><dt>${t("assignee")}</dt><dd>${avatarOf(x.who)}${x.who ? esc(user(x.who).name) : "担当なし"}</dd></div>
         <div><dt>${t("points")}</dt><dd>${pts(x.pts)}${x.pts == null ? `<span class="props-note">未見積もり</span>` : ""}</dd></div>
-        <div><dt>${t("due")}</dt><dd>${d ? `${taskDue(x)}<span class="props-note">${d.fromSource ? "取り込み元の期限。ここでは変えられません" : "scrum-quest で振った" + t("due")}</span>` : "—"}</dd></div>
+        <div><dt>${t("due")}</dt><dd>${d ? `${taskDue(x)}<span class="props-note">${d.fromSource ? "取り込み元の期限。ここでは変えられません" : "Team Leveling で振った" + t("due")}</span>` : "—"}</dd></div>
         <div><dt>親</dt><dd>${parent ? `${icon("flag")} ${esc(parent.title)}${epic ? `<span class="props-note">${esc(epic.title)}</span>` : ""}` : "なし"}</dd></div>
         <div><dt>${t("sprint")}</dt><dd>${x.sprint ? esc(sprintLabel(x.sprint)) : t("backlog")}</dd></div>
         <div><dt>${t("category")}</dt><dd>${cat ? `${esc(D.categories[cat.id].name)}${cat.inherited ? `<span class="props-note">親から引き継ぎ</span>` : ""}` : `${t("category")}なし`}</dd></div>
@@ -359,7 +359,7 @@
       </div>
       <div class="field">
         <span class="field-label">本文</span>
-        <div class="doc-box">${x.src ? `<p class="props-note">取り込み元の本文は <span class="mono">${esc(x.src.key)}</span> で開いて読みます。ここには scrum-quest のメモを書けます。</p>` : (x.body || ["まだ書かれていません。"]).map((b) => `<p>${esc(b)}</p>`).join("")}</div>
+        <div class="doc-box">${x.src ? `<p class="props-note">取り込み元の本文は <span class="mono">${esc(x.src.key)}</span> で開いて読みます。ここには Team Leveling のメモを書けます。</p>` : (x.body || ["まだ書かれていません。"]).map((b) => `<p>${esc(b)}</p>`).join("")}</div>
       </div>
       <div class="done-bar">
         ${x.doneAt ? `<span class="hanko" role="img" aria-label="${t("done")}">完</span><span>${t("done")} ${esc(x.doneAt)}</span><button class="link-btn" type="button" data-undo="${x.id}">戻す</button>`
@@ -573,7 +573,7 @@
     document.getElementById("app").innerHTML = `
     <div class="app">
       <aside class="binding" aria-label="メニュー"><div class="binding-inner">
-        <a class="brand" href="index.html" title="デザインシステムのカタログへ"><span class="brand-seal" aria-hidden="true">冒</span><span class="brand-name">scrum-quest</span></a>
+        <a class="brand" href="index.html" title="デザインシステムのカタログへ"><span class="brand-seal" aria-hidden="true">冒</span><span class="brand-name">Team Leveling</span></a>
         <nav class="nav" id="nav"></nav>
         <p class="binding-foot">デザインの見本。データはすべて架空の例です</p>
       </div></aside>
