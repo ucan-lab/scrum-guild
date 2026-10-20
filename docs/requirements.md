@@ -1,6 +1,6 @@
 # scrum-quest 要件定義
 
-状態: 確定。データモデルは `data-model.md`。次は画面構成の設計
+状態: 確定。データモデルは `data-model.md`、画面とデザインは `design.md`。引き継ぎはリポジトリ直下の `HANDOFF.md`
 
 ## 目的
 
