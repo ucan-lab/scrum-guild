@@ -1,6 +1,6 @@
 # 引き継ぎ
 
-2026-10-20 時点。要件定義、データモデル、デザイン（原則、画面一覧、デザインシステム、初版の全画面の見本）まで進んだ。実装はまだ始めていない。
+2026-10-21 時点。要件定義、データモデル、デザイン（原則、画面一覧、デザインシステム、初版の全画面の見本）まで進んだ。OSS をやめてサービスにし、稼働先を Cloudflare だけに絞った。実装はまだ始めていない。
 
 ## 文書と置き場所
 
@@ -8,6 +8,7 @@
 | --- | --- |
 | 要件定義 | `docs/requirements.md` |
 | 名前の決定の記録 | `docs/naming.md` |
+| サービスにする方針と進め方 | `docs/business.md` |
 | データモデル | `docs/data-model.md` |
 | デザインの原則、画面一覧、主なフロー、決めた方向 | `docs/design.md` |
 | デザインシステムと画面の見本 | `design/`。`design/index.html` をブラウザで開く（ビルド不要） |
@@ -38,6 +39,12 @@
 - [ ] 届いた招待は、ログインした直後と自分の設定の画面に出す
 - [ ] 「完了の記録」を画面として持つ（要件定義では画面として書いていない）
 
+### サービスにするための決めごと（`docs/business.md`）
+
+- [ ] 1つのアプリに複数の王国を入れるか、顧客ごとに Worker と D1 を立てるか。決めたら `docs/requirements.md` の管理者の節と `docs/data-model.md` に反映する
+- [ ] 顧客のデータ（private なリポジトリの課題や PR）を預かって運用してよいか
+- [ ] 最初に声をかけるチーム
+
 ### 片付け
 
 - [ ] `mock/` を消してよいか（デザインシステムの見本で置き換えた）
@@ -52,7 +59,7 @@
 ## 次にやること
 
 1. 上の確認の結果を `docs/design.md` と `docs/requirements.md` に反映する
-2. リポジトリの土台を作る（Hono、Svelte、Vite、wrangler の雛形、Docker の雛形、稼働先のアダプター）
+2. リポジトリの土台を作る（Hono、Svelte、Vite、wrangler の設定）
 3. `docs/data-model.md` から最初のマイグレーションを書く
 4. `design/tokens.css` と `design/components.css` を本番の画面に持ち込み、`design/kit.js` の関数を1つずつ Svelte のコンポーネントにする。`html` の `data-theme` には、`users.theme`、なければ `kingdom.theme` の値を入れる
 
@@ -61,4 +68,5 @@
 - コミットは `main` に直接入れてよい（このセッションで決めた）。
 - 名前は Team Leveling。表記の決まりは `docs/requirements.md` の「名前」、経緯と重なりの確認は `docs/naming.md`。
 - 見本は、画面ごとの CSS を持たない決まり。足りない部品は先に `design/components.css` とカタログに足す。
-- 見本の例のデータ（`design/sample-data.js`）はすべて架空。公開前の点検で、実在の名前が混ざっていないかを見る。
+- 見本の例のデータ（`design/sample-data.js`）はすべて架空。実在の名前を混ぜない。
+- OSS にはせず、自分たちで運用するサービスにする。稼働先は Cloudflare だけ（2026-10-21 に決めた。経緯は `docs/business.md`）。
