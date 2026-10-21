@@ -115,12 +115,13 @@ GitHub OAuth の state と PKCE の code_verifier。
 | vocabulary | TEXT | NOT NULL、`game` か `scrum`、既定 `game` | ワークスペースの外の言葉づかい |
 | theme | TEXT | NOT NULL、`simple`、`simple_light`、`simple_dark`、`medieval`、`modern` のどれか、既定 `simple` | 王国の既定のテーマ。`simple` は OS の明暗に合わせる |
 | suspended_at | TEXT | | 停止した日時。入っていれば誰も入れず、定期処理も止める |
+| purge_on | TEXT | | 解約で停止したときの、データを消す予定日（停止から30日後）。一時的な停止では空 |
 | created_by_github_user_id | INTEGER | NOT NULL | 作った運用者 |
 | created_at、updated_at | TEXT | NOT NULL | |
 
 - 運用者の画面で作る。作るときに最初の管理者の `users` を同じバッチで入れる（アカウントがまだなければ、`users` の代わりに管理者の招待を持つ。下の `users` を参照）。
 - アプリが使う名前（`api`、`login`、`operator` など）を slug にできないことは、アプリが検査する。
-- 解約した王国は、停止から30日後に運用の手順でこの王国の行をすべて消す。
+- 解約した王国は、`purge_on` を過ぎたら運用の手順でこの王国の行をすべて消す。再開したら `suspended_at` と `purge_on` を空に戻す。
 
 ### users
 
@@ -731,7 +732,8 @@ GitHub OAuth の state と PKCE の code_verifier。
 | id | TEXT | PK | |
 | kingdom_id | TEXT | NOT NULL、FK kingdoms | |
 | workspace_id | TEXT | FK workspaces | 王国の変更（管理者の指名、ユーザーの無効化、王国の休日）では空 |
-| actor_user_id | TEXT | FK users | 空なら同期などの定期処理 |
+| actor_user_id | TEXT | FK users | 空なら同期などの定期処理か運用者の操作 |
+| operator_github_user_id | INTEGER | | 運用者の操作（管理者の指名し直しなど）のときの運用者 |
 | entity_type | TEXT | NOT NULL | `task`、`story`、`epic`、`sprint`、`membership`、`invitation`、`allocation`、`connection`、`completion`、`user`、`workspace` など |
 | entity_id | TEXT | NOT NULL | |
 | action | TEXT | NOT NULL | `create`、`update`、`delete`、`complete`、`reopen`、`archive` など |

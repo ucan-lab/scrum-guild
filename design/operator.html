@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Team Leveling 運用</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=BIZ+UDPGothic:wght@400;700&family=Chakra+Petch:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500&family=Zen+Old+Mincho:wght@700;900&display=swap">
+<link rel="stylesheet" href="tokens.css">
+<link rel="stylesheet" href="components.css">
+</head>
+<body>
+<div id="app"></div>
+<script src="icons.js"></script>
+<script src="sample-data.js"></script>
+<script src="kit.js"></script>
+<script>
+"use strict";
+// 運用（運用者）: 王国の一覧、作成、停止と再開、国王の指名し直し。王国の中のデータは出さない
+const { D, t, icon, esc, pageHead } = SQ;
+const K = D.operator.kingdoms;
+
+SQ.mount("operator", () => `
+  ${pageHead("運用者だけが見られます", "運用", [
+    ["", "", t("kingdom"), K.filter((k) => !k.suspended).length],
+    ["", "", "停止中", K.filter((k) => k.suspended).length],
+    [K.some((k) => !k.admins) ? "is-danger" : "", "", `${t("king")}がいない`, K.filter((k) => !k.admins).length],
+  ], `<button class="btn is-primary" type="button" data-dialog="createKingdom">${icon("plus")}${t("kingdom")}を作る</button>`)}
+  <div class="callout is-info">${icon("shield")}<span>運用者は${t("kingdom")}の中（タスク、メンバー、記録など）を見られません。ここに出すのは数と日時だけです。</span></div>
+  <div class="table-wrap"><table class="table"><thead><tr><th>${t("kingdom")}</th><th>slug</th><th class="is-num">ユーザー</th><th class="is-num">${t("workspace")}</th><th class="is-num">${t("task")}</th><th>最後に使われた</th><th></th></tr></thead>
+    <tbody>${K.map((k) => `<tr>
+      <td>${esc(k.name)}${k.suspended ? ` <span class="chip is-warn">停止 ${esc(k.suspended)}</span>` : ""}${k.purgeOn ? ` <span class="chip is-danger">${esc(k.purgeOn)} に消す</span>` : ""}${!k.admins ? ` <span class="chip is-danger">${t("king")}がいない</span>` : ""}</td>
+      <td class="mono">${esc(k.slug)}</td>
+      <td class="is-num">${k.users}</td><td class="is-num">${k.wss}</td><td class="is-num">${k.tasks.toLocaleString()}</td>
+      <td class="mono">${esc(k.lastUsed)}</td>
+      <td><span class="table-actions">
+        <button class="btn is-sm is-quiet" type="button" data-dialog="reassignKing">${t("king")}を指名</button>
+        ${k.suspended ? `<button class="btn is-sm is-quiet" type="button" data-toast="再開しました">再開する</button>` : `<button class="btn is-sm is-quiet is-danger" type="button" data-dialog="suspendKingdom">停止する</button>`}
+      </span></td></tr>`).join("")}</tbody></table></div>
+  <p class="props-note">${t("kingdom")}を消す作業はこの画面では行わず、運用の手順書に沿って行います。</p>`, { operator: true });
+</script>
+</body>
+</html>

@@ -18,7 +18,7 @@
     requester: ["依頼主", "作成者"], party: ["パーティ", "参加者"], accept: ["受注する", "参加する"], leave: ["パーティを抜ける", "参加をやめる"],
     reward: ["クリア報酬", "完了の報酬"], clear: ["レイドをクリアする", "エピックを完了にする"], create: ["依頼を出す", "起票"],
     leader: ["ギルドマスター", "リーダー"], member: ["冒険者", "メンバー"], dod: ["ギルドの掟", "完成の定義"],
-    vocab: ["ゲームの言葉", "スクラムの言葉"],
+    vocab: ["ゲームの言葉", "スクラムの言葉"], kingdom: ["王国", "組織"], king: ["国王", "管理者"],
   };
   let vocab = 0;
   const listeners = [];
@@ -525,11 +525,34 @@
        <label class="field" for="d-wl"><span class="field-label">最初の${t("leader")}</span><select class="select" id="d-wl">${Object.values(D.users).filter((u) => !u.left).map((u) => `<option>${esc(u.name)}</option>`).join("")}</select><span class="field-hint">自分でもかまいません。あとから${t("leader")}を足せます。</span></label>
        <p class="field-hint">列は「出発前、遂行中、査定中、${t("done")}」、換算は 1 ${t("points")} = 4 時間、週の始まりは月曜で作ります。あとから設定で変えられます。</p>`,
       `<button class="btn is-quiet" type="button" data-close-dialog>やめる</button><button class="btn is-primary" type="button" data-close-dialog data-toast="${t("workspace")}を作りました">作る</button>`),
+    createKingdom: () => openDialog(`${t("kingdom")}を作る`,
+      `<label class="field" for="d-ks"><span class="field-label">URL の名前（slug）</span><input class="input mono" id="d-ks" placeholder="例: sakura-dev"><span class="field-hint">英小文字、数字、ハイフンで 2〜40 字。あとから変えられません。</span></label>
+         <label class="field" for="d-kn"><span class="field-label">表示名</span><input class="input" id="d-kn" placeholder="例: さくら開発"></label>
+       <label class="field" for="d-ka"><span class="field-label">最初の${t("king")}の GitHub ユーザー名</span><input class="input mono" id="d-ka" placeholder="例: sakura-taro"><span class="field-hint">作るときに GitHub のユーザー ID に解決します。その人が GitHub でログインすると、この${t("kingdom")}の${t("king")}として入れます。</span></label>
+       <div class="callout is-info">${icon("link")}<span>URL は <span class="mono">team-leveling.dev/&lt;slug&gt;/</span> になります。この URL を${t("king")}に伝えてください。</span></div>`,
+      `<button class="btn is-quiet" type="button" data-close-dialog>やめる</button><button class="btn is-primary" type="button" data-close-dialog data-toast="${t("kingdom")}を作りました">作る</button>`),
+    reassignKing: () => openDialog(`${t("king")}を指名し直す`,
+      `<p>くもラボには今${t("king")}がいません。新しい${t("king")}を GitHub のユーザー名で指名します。</p>
+       <label class="field" for="d-ra"><span class="field-label">GitHub ユーザー名</span><input class="input mono" id="d-ra" placeholder="例: kumo-hanako"><span class="field-hint">この${t("kingdom")}のユーザーでなくてもかまいません。指名しても、運用者はこの${t("kingdom")}の中を見られるようにはなりません。</span></label>
+       <p class="field-hint">指名は${t("kingdom")}の変更の履歴に、運用者の操作として残ります。</p>`,
+      `<button class="btn is-quiet" type="button" data-close-dialog>やめる</button><button class="btn is-primary" type="button" data-close-dialog data-toast="${t("king")}を指名しました">指名する</button>`),
+    suspendKingdom: () => {
+      openDialog(`${t("kingdom")}を停止する`,
+      `<p>ひばり工房を停止します。停止すると誰も入れなくなり、取り込みと日をまたぐ処理も止まります。データは残り、再開すれば元どおりに使えます。</p>
+       <fieldset class="field" style="border:0;padding:0;margin:0"><legend class="field-label">停止の理由</legend>
+         <div class="choice-list">
+           <label class="choice"><input type="radio" name="d-why" checked><div><b>一時的に止める</b><span>支払いの遅れなど。消す予定は立てません。</span></div></label>
+           <label class="choice"><input type="radio" name="d-why"><div><b>解約</b><span>停止から 30 日後に、運用の手順でデータをすべて消します。それまでは再開できます。</span></div></label>
+         </div></fieldset>`,
+      `<button class="btn is-quiet" type="button" data-close-dialog>やめる</button><button class="btn is-danger" type="button" data-close-dialog data-toast="${t("kingdom")}を停止しました">停止する</button>`);
+      document.querySelector(".dialog-sheet").classList.add("is-danger");
+    },
   };
 
   // ---- 画面の枠 ----
   // [id, アイコン, 名前, ファイル, 件数]。文字列だけの行は見出し
   const PAGES = [
+    "kingdom",
     ["today", "sun", () => "自分の今日", "today.html"],
     ["notifications", "bell", () => "通知", "notifications.html", 3],
     ["me", "users", () => "自分の設定", "me.html"],
@@ -550,8 +573,14 @@
     ["settings", "gear", () => "設定", "settings.html"],
     ["history", "clock", () => "変更の履歴", "history.html"],
   ];
-  function navHtml(current) {
-    return PAGES.map((p) => {
+  // 運用者の画面。王国の外にあり、王国の中の画面へは行けない
+  const OPERATOR_PAGES = [
+    ["operator", "shield", () => "運用", "operator.html"],
+  ];
+  function navHtml(current, pages) {
+    return pages.map((p) => {
+      // 入れる王国が2つ以上のときだけ出す。選び直すと王国の選択の画面へ
+      if (p === "kingdom") return D.kingdoms.length < 2 ? "" : `<label class="ws-select" for="kd"><span>${t("kingdom")}</span><select id="kd" onchange="location.href='kingdoms.html'">${D.kingdoms.map((k) => `<option ${k.slug === D.kingdom ? "selected" : ""}>${esc(k.name)}</option>`).join("")}<option>${t("kingdom")}の一覧へ</option></select></label>`;
       if (p === "workspace") return `<div class="nav-group">${t("workspace")}</div>
         <label class="ws-select" for="ws"><span>${t("workspace")}</span><select id="ws"><option>${esc(D.workspaces.wa.name)}</option><option>${esc(D.workspaces.wb.name)}</option></select></label>`;
       if (typeof p === "string") return `<div class="nav-group">${p}</div>`;
@@ -562,17 +591,22 @@
   let page = null;
   function redraw() {
     if (!page) return;
-    document.getElementById("nav").innerHTML = navHtml(page.current);
+    document.getElementById("nav").innerHTML = navHtml(page.current, page.operator ? OPERATOR_PAGES : PAGES);
     document.querySelectorAll("[data-vocab-label]").forEach((el) => (el.textContent = `言葉: ${t("vocab")}`));
     document.getElementById("content").innerHTML = page.render();
     applyTheme();
     renderDrawer();
     stamped.clear();
   }
-  // 画面の見本を組み立てる。render は中身の HTML を返す関数
-  function mount(current, render) {
-    page = { current, render };
+  // 画面の見本を組み立てる。render は中身の HTML を返す関数。
+  // opts.operator なら運用者の画面の枠にする（王国のメニュー、通知、レベルを出さない）
+  function mount(current, render, opts = {}) {
+    page = { current, render, operator: !!opts.operator };
     const me = user(D.me);
+    const who = page.operator
+      ? `<span class="me">${avatar(D.operator.name, 0)}${esc(D.operator.name)}<span class="chip">運用者</span></span>`
+      : `<button class="pill" type="button" aria-label="通知 3件">${icon("bell")}<span class="pill-count">3</span></button>
+          <span class="me">${avatarOf(D.me)}${esc(me.name)}${emblem(me.level, true)}</span>`;
     document.getElementById("app").innerHTML = `
     <div class="app">
       <aside class="binding" aria-label="メニュー"><div class="binding-inner">
@@ -584,8 +618,7 @@
         <div class="topbar">
           <button class="pill" type="button" data-switch="vocab">${icon("swap")}<span data-vocab-label></span></button>
           <button class="pill" type="button" data-switch="theme">${icon("moon")}<span data-theme-label></span></button>
-          <button class="pill" type="button" aria-label="通知 3件">${icon("bell")}<span class="pill-count">3</span></button>
-          <span class="me">${avatarOf(D.me)}${esc(me.name)}${emblem(me.level, true)}</span>
+          ${who}
         </div>
         <main class="content" id="content"></main>
       </div>

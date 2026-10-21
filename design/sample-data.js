@@ -10,6 +10,13 @@ window.SQ_DATA = (function () {
     todayLabel: "2026年10月20日（火）",
     me: "u1",
     workspace: "wa",
+    kingdom: "aoba",
+
+    // 自分が入れる王国。王国ごとに名前、レベル、経験値が別になる
+    kingdoms: [
+      { slug: "aoba", name: "あおば開発", wss: 2, level: 7, admin: true, lastSeen: "10/20" },
+      { slug: "hibari", name: "ひばり工房", wss: 1, level: 3, lastSeen: "10/14" },
+    ],
 
     users: {
       u1: { name: "ミナト", hue: 172, level: 7, role: "leader" },
@@ -217,7 +224,7 @@ Object.assign(window.SQ_DATA, {
     { kind: "reward", at: "10/10 10:00", read: true, who: "u2", text: "レイド「会員ポイント制度を公開する」のクリア報酬が 中 から 大 に変わりました" },
   ],
   receivedInvites: [
-    { ws: "デザイン相談室", by: "ハルカ", role: "member", at: "10/19" },
+    { kingdom: "ひばり工房", ws: "デザイン相談室", by: "ユイ", role: "member", at: "10/19" },
   ],
 
   // 自分の設定（自分は me のユーザー）
@@ -253,5 +260,16 @@ Object.assign(window.SQ_DATA, {
     ],
     holidays: [["2026-11-03", "文化の日"], ["2026-11-23", "勤労感謝の日"], ["2027-01-01", "元日"], ["2027-01-11", "成人の日"]],
     allocTotals: [["ミナト", 100, 100], ["リン", 0, 110], ["ハルカ", 100, 100]],
+  },
+
+  // 運用者の画面。王国の中のデータは持たず、数と日時だけ
+  operator: {
+    name: "運用担当",
+    kingdoms: [
+      { slug: "aoba", name: "あおば開発", users: 5, wss: 3, tasks: 1284, lastUsed: "10/20 09:12", created: "2026-06-01", admins: 2 },
+      { slug: "hibari", name: "ひばり工房", users: 3, wss: 1, tasks: 212, lastUsed: "10/19 18:40", created: "2026-09-15", admins: 1 },
+      { slug: "kumo-lab", name: "くもラボ", users: 8, wss: 4, tasks: 3410, lastUsed: "10/18 11:03", created: "2026-07-10", admins: 0 },
+      { slug: "nagi", name: "なぎ設計", users: 2, wss: 1, tasks: 96, lastUsed: "09/02 15:21", created: "2026-08-01", admins: 1, suspended: "2026-09-30", purgeOn: "2026-10-30" },
+    ],
   },
 });
