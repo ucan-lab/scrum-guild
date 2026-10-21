@@ -19,12 +19,14 @@
 - 作成日時と更新日時は `created_at`、`updated_at` で、更新はアプリが書く。
 - 手で並べ替える並びは、分数の並び（fractional indexing）の文字列 `position` で持つ。間に入れても他の行を書き換えない。新しく入ったものは末尾の値を取る。
 - 集計（積載量、経験値の合計、ポイントの合計、ベロシティ）は保存せず、読むたびに計算する。
+- 1つの D1 に複数の王国を入れる。王国の中の行は、リクエストの王国から辿って引く。ID だけで行を引かず、必ず `kingdom_id` か、王国を確かめた `workspace_id` で絞る。他の王国の行が見えないことはテストで確かめる。
 
 ## 全体の構成
 
 | まとまり | テーブル |
 | --- | --- |
-| 王国 | `kingdom`、`users`、`sessions`、`oauth_states`、`rate_limits`、`kingdom_holidays` |
+| アカウント | `accounts`、`sessions`、`oauth_states`、`rate_limits` |
+| 王国 | `kingdoms`、`users`、`kingdom_holidays` |
 | ユーザーの稼働 | `user_capacity_settings`、`user_monthly_overrides`、`user_time_off` |
 | ワークスペース | `workspaces`、`workspace_point_rates`、`workspace_holidays`、`memberships`、`invitations`、`allocations` |
 | ワークスペースの定義 | `board_columns`、`detail_fields`、`categories` |
@@ -34,57 +36,44 @@
 
 親子の向きの要点。
 
-- ワークスペースの中のものは、すべて `workspace_id` を持つ。権限の検査と絞り込みを1つの列で行うため、親から辿れるものにも持たせる。
+- アカウントは GitHub のアカウントごとに1行で、王国をまたぐ。ログインとセッションはアカウントに付く。
+- ユーザーは王国ごとの人で、アカウントと王国の組に1行。王国の中の表はすべてユーザーを指し、アカウントは指さない。
+- 王国の直下のもの（`users`、`workspaces`、`kingdom_holidays`、`change_logs`）は `kingdom_id` を持つ。
+- ワークスペースの中のものは、すべて `workspace_id` を持つ。権限の検査と絞り込みを1つの列で行うため、親から辿れるものにも持たせる。`kingdom_id` は持たせず、`workspaces.kingdom_id` で王国を確かめる。
 - タスクの親はストーリーだけ（`tasks.story_id`）、ストーリーの親はエピックだけ（`stories.epic_id`）。
 - 取り込んだタスクは `tasks` の1行に `task_sources` の1行が付く。手で作ったタスクには付かない。
 
-## 王国
+## アカウント
 
-### kingdom
+### accounts
 
-王国の設定。1行だけ持つ。
-
-| 列 | 型 | 制約 | 説明 |
-| --- | --- | --- | --- |
-| id | INTEGER | PK、`CHECK (id = 1)` | 1行に限る |
-| vocabulary | TEXT | NOT NULL、`game` か `scrum`、既定 `game` | ワークスペースの外の言葉づかい |
-| theme | TEXT | NOT NULL、`simple`、`simple_light`、`simple_dark`、`medieval`、`modern` のどれか、既定 `simple` | 王国の既定のテーマ。`simple` は OS の明暗に合わせる |
-| updated_at | TEXT | NOT NULL | |
-
-最初のマイグレーションで1行を入れる。
-
-### users
+GitHub のアカウントごとの1行。王国をまたぐ。
 
 | 列 | 型 | 制約 | 説明 |
 | --- | --- | --- | --- |
 | id | TEXT | PK | |
 | github_user_id | INTEGER | NOT NULL、UNIQUE | 突き合わせに使う不変の ID |
 | github_login | TEXT | NOT NULL | ログインのたびに書き直す表示用の名前 |
-| name | TEXT | NOT NULL | 表示名。初回は GitHub の名前かログイン名 |
+| github_name | TEXT | | GitHub の名前。王国で初めてユーザーを作るときの表示名の既定 |
 | avatar_url | TEXT | | |
-| is_admin | INTEGER | NOT NULL、既定 0 | 管理者（国王） |
-| work_start_on | TEXT | | 稼働開始日。空なら区切らない |
-| work_end_on | TEXT | | 稼働終了日。空なら区切らない |
-| disabled_at | TEXT | | 無効にした日時。入っていればログインできない |
 | last_login_at | TEXT | | |
-| theme | TEXT | `kingdom.theme` と同じ値か NULL | 自分で選んだテーマ。NULL なら王国の既定に従う |
 | created_at、updated_at | TEXT | NOT NULL | |
 
-- 運用者の GitHub ユーザー ID はシークレットに持つ。その人がログインしたら `is_admin = 1` に書く。
-- 最後の管理者を解除できないことはアプリが検査する。
-- 招待された人は、承諾した時点で行を作る。招待の時点では `invitations` に GitHub の ID だけを持つ。
+- 初めてログインできたときに行を作る。入れる王国が1つもない人の行は作らない。
+- 運用者かどうかは、この表ではなくシークレットの GitHub ユーザー ID の一覧で決める。
 
 ### sessions
 
 | 列 | 型 | 制約 | 説明 |
 | --- | --- | --- | --- |
 | token_hash | TEXT | PK | Cookie に入れたランダムな ID の SHA-256 |
-| user_id | TEXT | NOT NULL、FK users | |
+| account_id | TEXT | NOT NULL、FK accounts | |
 | created_at | TEXT | NOT NULL | |
 | last_used_at | TEXT | NOT NULL | 使うたびに書き直す |
 | expires_at | TEXT | NOT NULL | `last_used_at` の30日後 |
 
-- 索引: `(user_id)`。ログアウト、無効化、ログインできる条件を失ったときに、その人の行を消す。
+- 索引: `(account_id)`。ログアウトと、ログインできる条件を失ったとき（入れる王国が1つもなくなったとき）に、その人の行を消す。
+- 王国に入れるかは、リクエストのたびにその王国の `users`、`memberships`、`invitations` で確かめる。1つの王国で無効にされても、セッションは消さない。
 - 書き込みを減らすため、`last_used_at` は前回から1時間以上たったときだけ書き直す。
 - 切れた行は定期処理で消す。
 
@@ -114,10 +103,56 @@ GitHub OAuth の state と PKCE の code_verifier。
 - 手動の同期の「接続ごとに5分に1回」は、この表ではなく `connections.last_manual_sync_at` で判定する。
 - 窓を過ぎた行は定期処理で消す。
 
+## 王国
+
+### kingdoms
+
+| 列 | 型 | 制約 | 説明 |
+| --- | --- | --- | --- |
+| id | TEXT | PK | |
+| slug | TEXT | NOT NULL、UNIQUE、`CHECK (slug GLOB '[a-z0-9]*' AND slug NOT GLOB '*[^a-z0-9-]*' AND length(slug) BETWEEN 2 AND 40)` | URL の先頭に入れる名前。後から変えない |
+| name | TEXT | NOT NULL | 王国の表示名 |
+| vocabulary | TEXT | NOT NULL、`game` か `scrum`、既定 `game` | ワークスペースの外の言葉づかい |
+| theme | TEXT | NOT NULL、`simple`、`simple_light`、`simple_dark`、`medieval`、`modern` のどれか、既定 `simple` | 王国の既定のテーマ。`simple` は OS の明暗に合わせる |
+| suspended_at | TEXT | | 停止した日時。入っていれば誰も入れず、定期処理も止める |
+| created_by_github_user_id | INTEGER | NOT NULL | 作った運用者 |
+| created_at、updated_at | TEXT | NOT NULL | |
+
+- 運用者の画面で作る。作るときに最初の管理者の `users` を同じバッチで入れる（アカウントがまだなければ、`users` の代わりに管理者の招待を持つ。下の `users` を参照）。
+- アプリが使う名前（`api`、`login`、`operator` など）を slug にできないことは、アプリが検査する。
+- 解約した王国は、停止から30日後に運用の手順でこの王国の行をすべて消す。
+
+### users
+
+王国ごとの人。アカウントと王国の組に1行。
+
+| 列 | 型 | 制約 | 説明 |
+| --- | --- | --- | --- |
+| id | TEXT | PK | |
+| kingdom_id | TEXT | NOT NULL、FK kingdoms | |
+| account_id | TEXT | FK accounts | アカウントができる前（管理者の招待）は空 |
+| github_user_id | INTEGER | NOT NULL | 突き合わせに使う不変の ID。`accounts` と同じ値 |
+| name | TEXT | NOT NULL | この王国での表示名。初回は GitHub の名前かログイン名 |
+| is_admin | INTEGER | NOT NULL、既定 0 | 管理者（国王） |
+| work_start_on | TEXT | | 稼働開始日。空なら区切らない |
+| work_end_on | TEXT | | 稼働終了日。空なら区切らない |
+| disabled_at | TEXT | | 無効にした日時。入っていればこの王国に入れない |
+| last_seen_at | TEXT | | この王国に最後に入った日時。1時間に1回まで書く |
+| theme | TEXT | `kingdoms.theme` と同じ値か NULL | 自分で選んだテーマ。NULL なら王国の既定に従う |
+| created_at、updated_at | TEXT | NOT NULL | |
+
+- 一意: `(kingdom_id, github_user_id)`。
+- 索引: `(github_user_id)`。ログインのときに入れる王国を引く。
+- 表示する GitHub のログイン名とアバターは `accounts` から引く。
+- 運用者が王国を作るときは、最初の管理者を GitHub のユーザー ID に解決し、`is_admin = 1` の行を入れる。`account_id` は、その人が初めてログインしたときに埋める。管理者の指名し直しも同じ。
+- 最後の管理者を解除できないことはアプリが検査する。
+- 招待された人は、承諾した時点でその王国の行を作る（すでにあれば使う）。招待の時点では `invitations` に GitHub の ID だけを持つ。
+
 ### kingdom_holidays
 
 | 列 | 型 | 制約 | 説明 |
 | --- | --- | --- | --- |
+| kingdom_id | TEXT | PK、FK kingdoms | |
 | holiday_on | TEXT | PK | |
 | name | TEXT | | 「元日」など |
 | created_by | TEXT | NOT NULL、FK users | |
@@ -170,6 +205,7 @@ GitHub OAuth の state と PKCE の code_verifier。
 | 列 | 型 | 制約 | 説明 |
 | --- | --- | --- | --- |
 | id | TEXT | PK | |
+| kingdom_id | TEXT | NOT NULL、FK kingdoms | |
 | name | TEXT | NOT NULL | |
 | timezone | TEXT | NOT NULL | IANA のタイムゾーン名。作った人のブラウザの値を既定にする |
 | week_start | INTEGER | NOT NULL、0〜6、既定 1 | 週の始まり。0 が日曜 |
@@ -693,6 +729,7 @@ GitHub OAuth の state と PKCE の code_verifier。
 | 列 | 型 | 制約 | 説明 |
 | --- | --- | --- | --- |
 | id | TEXT | PK | |
+| kingdom_id | TEXT | NOT NULL、FK kingdoms | |
 | workspace_id | TEXT | FK workspaces | 王国の変更（管理者の指名、ユーザーの無効化、王国の休日）では空 |
 | actor_user_id | TEXT | FK users | 空なら同期などの定期処理 |
 | entity_type | TEXT | NOT NULL | `task`、`story`、`epic`、`sprint`、`membership`、`invitation`、`allocation`、`connection`、`completion`、`user`、`workspace` など |
@@ -701,7 +738,7 @@ GitHub OAuth の state と PKCE の code_verifier。
 | changes_json | TEXT | NOT NULL、既定 `'{}'` | `{"列名": [前, 後]}`。人や列は ID と、そのときの表示名を並べて残す |
 | created_at | TEXT | NOT NULL | |
 
-- 索引: `(entity_type, entity_id, created_at)`、`(workspace_id, created_at)`。
+- 索引: `(entity_type, entity_id, created_at)`、`(kingdom_id, created_at)`、`(workspace_id, created_at)`。
 - タスク、ストーリー、エピックの履歴はメンバー全員が、それ以外はリーダーと管理者が見られる。見られる範囲は `entity_type` で決める。
 - 同期による取り込み元の属性の書き換えは残さない。量が多く、取り込み元で見られるため。
 - 期間で消さず、残し続ける。容量が気になったら、手順書のエクスポート（`wrangler d1 export`）で退避する。
@@ -718,6 +755,7 @@ D1 は対話的なトランザクションを持たない。まとめて書く�
 | エピックのクリア | `epics`、`xp_grants`（クリア報酬）、`change_logs` |
 | メンバーの離脱 | `memberships`、担当を外す `tasks`、`epic_party_members`、`connections`、`sessions`（ログインできなくなったとき）、`change_logs` |
 | 取り込み（1件） | `tasks`、`task_sources`、`task_source_payloads` |
+| 王国の作成 | `kingdoms`、最初の管理者の `users` |
 
 先に読んだ値で判定してから書く操作（最後の管理者、完了の可否など）は、書く文の `WHERE` に同じ条件を入れ、影響した行の数で競合を見つける。
 

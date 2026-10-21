@@ -41,7 +41,8 @@
 
 ### サービスにするための決めごと（`docs/business.md`）
 
-- [ ] 1つのアプリに複数の王国を入れるか、顧客ごとに Worker と D1 を立てるか。決めたら `docs/requirements.md` の管理者の節と `docs/data-model.md` に反映する
+- [x] 1つのアプリと1つの D1 に複数の王国を入れる（2026-10-21）。`docs/requirements.md` の「王国と運用者」と `docs/data-model.md` の `accounts`、`kingdoms`、`users` に反映した
+- [ ] 足りない画面の見本を作る: 王国の選択（入れる王国が2つ以上の人のログイン直後）、運用者の画面（王国の一覧、作成、停止と再開、管理者の指名し直し）
 - [ ] 顧客のデータ（private なリポジトリの課題や PR）を預かって運用してよいか
 - [ ] 最初に声をかけるチーム
 
@@ -61,7 +62,7 @@
 1. 上の確認の結果を `docs/design.md` と `docs/requirements.md` に反映する
 2. リポジトリの土台を作る（Hono、Svelte、Vite、wrangler の設定）
 3. `docs/data-model.md` から最初のマイグレーションを書く
-4. `design/tokens.css` と `design/components.css` を本番の画面に持ち込み、`design/kit.js` の関数を1つずつ Svelte のコンポーネントにする。`html` の `data-theme` には、`users.theme`、なければ `kingdom.theme` の値を入れる
+4. `design/tokens.css` と `design/components.css` を本番の画面に持ち込み、`design/kit.js` の関数を1つずつ Svelte のコンポーネントにする。`html` の `data-theme` には、`users.theme`、なければ `kingdoms.theme` の値を入れる
 
 ## 覚えておくこと
 
