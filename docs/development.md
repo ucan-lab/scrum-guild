@@ -254,7 +254,7 @@ GitHub App も比べた。人が抜けても取り込みが止まらない、PAT
 
 ## Issue の運用
 
-- ラベル: 自動マージの `needs-human`、マイグレーションの `migration`、領域の `area:auth`、`area:kingdom`、`area:workspace`、`area:task`、`area:import`、`area:attachment`、`area:ui`、`area:infra`、`area:docs`。GitHub に作った（2026-10-22）
+- ラベル: 自動マージの `needs-human`、マイグレーションの `migration`、領域の `area:auth`、`area:kingdom`、`area:workspace`、`area:task`、`area:import`、`area:attachment`、`area:ui`、`area:infra`、`area:docs`、不具合の `bug`。GitHub に作り、`bug` 以外の既定のラベルは消した（2026-10-22）。重複や対応しないものは、ラベルではなく Issue を閉じるときの理由で表す
 - マイルストーン: 「初版」。自分のチームで使い始めるまでの Issue を入れる
 - テンプレート: `.github/ISSUE_TEMPLATE/plan.md`。`issue-plan` が書く形（背景、やること、完了条件、確認方法、触る領域、マイグレーション）と同じにする
 - 領域のラベルは、並行して作業するときのぶつかりを見分けるのにも使う。同じ領域の PR を同時に何本も開かない
