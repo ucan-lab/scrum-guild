@@ -78,7 +78,7 @@
 
 ### 分ける目安
 
-- 量の大半は取り込み元の応答（`task_source_payloads`）で、1件 5〜10KB とみると、上限いっぱい（タスク5万件）の王国で 0.5GB 前後になる。1つの D1 の上限は 10GB。
+- 応答を保存する王国では、量の大半は取り込み元の応答（`task_source_payloads`）で、1件 5〜10KB とみると、上限いっぱい（タスク5万件）の王国で 0.5GB 前後になる。保存しない王国はこの分がなく、ずっと小さい。1つの D1 の上限は 10GB。
 - 容量が上限の半分を超えたら、分ける準備を始める。
 - D1 は1つのデータベースへの問い合わせを順に処理するため、容量より先に負荷が効くことがある。画面の API が 500ms の目安を超える状態が続き、索引や問い合わせを直しても戻らなければ分ける。
 
@@ -157,6 +157,7 @@ GitHub OAuth の state と PKCE の code_verifier。
 | purge_on | TEXT | | 解約で停止したときの、データを消す予定日（停止から30日後）。一時的な停止では空 |
 | attachment_quota_bytes | INTEGER | NOT NULL、既定 10737418240 | 添付ファイルの合計の上限（既定 10GB）。運用者が決める |
 | attachment_quota_warned_at | TEXT | | 合計が上限の80%を超えたと管理者に通知した日時。合計が80%を下回るか、上限を上げたら空に戻す |
+| stores_source_payload | INTEGER | NOT NULL、既定 0 | 取り込み元の応答（`task_source_payloads`）を保存するか。管理者が王国の設定で選ぶ |
 | created_by_github_user_id | INTEGER | NOT NULL | 作った運用者 |
 | created_at、updated_at | TEXT | NOT NULL | |
 
@@ -591,6 +592,10 @@ GitHub OAuth の state と PKCE の code_verifier。
 | updated_at | TEXT | NOT NULL | |
 
 切り詰めは D1 の行の上限（2MB）より十分小さい 512KB を目安にする。
+
+- 行を書くのは、王国の `kingdoms.stores_source_payload` が 1 のときだけ。0 の王国では同期で応答を読んでも、この表に書かない。
+- 0 に切り替えたら、その王国の行を次の定期処理で王国の中の DB から消す。`kingdoms` は共通の表なので、切り替えと同じ `batch()` では消さない。
+- 1 に切り替えても取り直さない。次に同期で更新された項目から行ができる。
 
 ### task_field_values
 
