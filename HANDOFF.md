@@ -62,6 +62,7 @@
 - [ ] GitHub のプランが Rulesets と auto-merge を private のリポジトリで使えるか（個人は Pro、組織は Team が要る）
 - [ ] GitHub の Rulesets で `main` を保護する（`docs/development.md` の「ブランチ保護」）。マージ後にブランチを自動で消す設定も入れる
 - [ ] Cloudflare の通知で Workers のエラー率などを受けられるか
+- [x] 技術の選択を決めた（2026-10-22）。pnpm、1つのパッケージ、ESLint と Prettier、SvelteKit の SPA モード、Kysely、zod、自前の操作の定義、型付きの言葉の辞書、seed とファクトリー。`docs/requirements.md` の「画面」を SvelteKit の SPA モードに改めた
 - [x] スキルとエージェントを整えた（2026-10-22）。`requirements` を外し、レビューのエージェント3つを D1 と Workers 向けに書き直し、チェックリストに `cloudflare-workers.md` と `multi-tenant.md` を足した
 
 ### AI の機能（`docs/ai.md`）
@@ -83,7 +84,7 @@
 
 1. 上の確認の結果を `docs/design.md` と `docs/requirements.md` に反映する
 2. ブランチ保護で `main` への直接の push を止める（`docs/development.md` の「ブランチ保護」）。ここから先は PR を通す
-3. リポジトリの土台を作る（Hono、Svelte、Vite、wrangler の設定、SessionStart のフック、`.claude/settings.json` の deny、CI の `ci-ok`）。`CLAUDE.md` の「コマンド」を埋める
+3. リポジトリの土台を作る（`docs/development.md` の「技術の選択」。pnpm、Hono、SvelteKit の SPA モード、Kysely、zod、ESLint と Prettier、wrangler の設定、SessionStart のフック、`.claude/settings.json` の deny、CI の `ci-ok`）。`CLAUDE.md` の「コマンド」を埋める。SvelteKit の開発用サーバーと `wrangler dev` をどう組むか（1つにまとまるか、`/api` を転送するか）を確かめる
 4. `d1-migration` のスキルを作り、`docs/data-model.md` から最初のマイグレーションを書く
 5. `design/tokens.css` と `design/components.css` を本番の画面に持ち込み、`design/kit.js` の関数を1つずつ Svelte のコンポーネントにする。`html` の `data-theme` には、`users.theme`、なければ `kingdoms.theme` の値を入れる
 6. 最初の数画面が Svelte で動いたら、下の「画面の自己レビューのスキル」を作る

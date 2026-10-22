@@ -32,3 +32,14 @@
 - `$effect` の中で `await` や `setTimeout` のあとに読んだ値（依存として追跡されず、変わっても再実行されない）
 - 通常の `.ts` ファイルで runes を使っている（`.svelte.ts` か `.svelte.js` でないと動かない）
 - `{@html}` にユーザー由来の値を出している
+
+## SvelteKit 2（SPA モード）
+
+- `+page.server.ts`、`+layout.server.ts`、`+server.ts`、`hooks.server.ts`、form actions を書いている（SPA モードでは使わない。データは Hono の API から取る）
+- ルートで `ssr` や `prerender` の設定を上書きしている（SSR を切った SPA の前提が崩れる）
+- 画面に入れる環境変数に秘密の値を入れている（SPA では、画面が読む値はすべて配信される。秘密は Worker のシークレットに置く）
+- 権限の確認を画面のレイアウトだけでしている（画面の確認は表示を切り替えるためで、権限は API が検査する）
+- `redirect()` と `error()` は例外を投げるので、囲んだ `try/catch` に握りつぶされる（`isRedirect` と `isHttpError` で投げ直す）
+- load の中でグローバルの `fetch` を使っている（引数で渡される `fetch` を使う）
+- URL の値（`?next=` など）をそのまま `goto()` や遷移先に使っている（同じオリジンの相対パスか確かめる）
+- 版のずれの検知（`version.pollInterval` と `updated`）を使わず、画面の再読み込みを促す作りを別に持っている

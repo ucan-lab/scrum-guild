@@ -32,7 +32,7 @@ Backlog や GitHub に散らばったチームのタスクを1か所に集め、
 | DB | Cloudflare D1 |
 | ファイル | Cloudflare R2（添付ファイル） |
 | API | Hono |
-| 画面 | Svelte の SPA（Vite でビルドし、Workers Static Assets で配る） |
+| 画面 | SvelteKit の SPA モード（SSR を使わず静的に書き出し、Workers Static Assets で配る） |
 | 認証 | GitHub OAuth |
 | 定期処理 | Cron Triggers |
 | 処理の上限 | 1回の定期処理の上限を設定値で持つ |

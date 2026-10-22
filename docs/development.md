@@ -4,6 +4,49 @@
 
 前提: 作るのはほぼ1人で、実装の多くは Claude のクラウドのセッションが受け持つ。ステージングは持たず（`requirements.md` の「運用」）、D1 のマイグレーションは戻せない。全王国が1つの D1 に入る。
 
+## 技術の選択
+
+`requirements.md` の「技術の前提」に加えて、土台を作る前に次を決めた（2026-10-22）。
+
+| 項目 | 決定 | 理由 |
+| --- | --- | --- |
+| パッケージマネージャー | pnpm。`package.json` の `packageManager` で版を固定する | 速く、依存が厳密 |
+| リポジトリの形 | 1つのパッケージ。`src/server`（Hono の API と定期処理）、`src/client`（SvelteKit）、`src/shared`（操作の定義、スキーマ、言葉の辞書）に分ける | Worker が1つなので、ワークスペースに分ける設定の手間に見合わない |
+| lint と整形 | ESLint と Prettier（`eslint-plugin-svelte`、`prettier-plugin-svelte`） | Svelte のテンプレートの中まで見られる。下の「入口を守る規則」を自前で書ける |
+| 画面 | SvelteKit の SPA モード。SSR を切り、静的に書き出す。API は Hono のまま | 王国、ワークスペース、画面の入れ子をレイアウトで表せる。画面と API の版のずれを `version.pollInterval` と `updated` で検知できる。AI が書き慣れている |
+| D1 への問い合わせ | Kysely。マイグレーションは SQL のファイルで手書きし、wrangler で当てる | 型付きで SQL に近い。王国を確かめた入口からしか王国の中の表を引けない型を作れる |
+| スキーマ | zod | Hono のバリデーター、Claude の道具や MCP の定義（JSON Schema）への変換など、周りの道具が揃っている |
+| 操作の定義 | 自前の定義から形を推論する。コードの生成はしない | 下の「操作の定義」 |
+| 言葉の切り替え | 型付きの辞書を自前で持つ | 下の「言葉の辞書」 |
+| 架空のデータ | seed とファクトリーの両方 | 下の「架空のデータ」 |
+
+### 操作の定義
+
+`ai.md` の「操作の定義を1か所に持つ」の形。
+
+- 操作ごとに、名前、説明、入力と出力の zod のスキーマ、読むだけか書き込むか、要る権限（ログインだけ、ワークスペースのメンバー、管理者、運用者など）を1つのオブジェクトに書き、`src/shared` に置く。
+- Hono のルートは、定義を並べて1つの関数で登録する。権限の検査と入力の検証はその関数が行い、操作ごとの処理には検証済みの入力と、王国を確かめた DB の入口だけを渡す。
+- 画面からは、定義を引数に取る型付きの呼び出しの関数で呼ぶ。入力と出力の型は定義から推論する。
+- 王国の分離のテストは、定義の一覧を回して全操作に当てる。新しい操作を足すと、テストが自動で増える。
+- 後で足すアシスタントの道具と MCP の道具も、同じ定義から作る。
+
+### 入口を守る規則
+
+- Kysely の型を、共通の表の入口と王国の中の表の入口の2つに分ける。王国の中の入口は、王国を確かめた後にしか手に入らない形にする。
+- Kysely は D1 の `batch()` を持たないので、入口に、Kysely で組み立てた文を受け取って1回の `batch()` で送る関数を持たせる。共通の表の文と王国の中の表の文を混ぜて渡せない型にする。
+- 入口の外から D1 の binding や Kysely を直接使うことを、ESLint の規則で禁じる。
+
+### 言葉の辞書
+
+- 見本の `design/kit.js` の `vocab` と同じく、キーごとにゲームの言葉とスクラムの言葉を持つ辞書を TypeScript で書き、`src/shared` に置く。
+- 片方の言葉が欠けたら型の検査で落ちる形にする。画面の文言は辞書を通して出し、直に書かない。
+
+### 架空のデータ
+
+- seed: `design/sample-data.js` を元に、王国を2つ以上入れたデータを作る。ローカルの D1 と e2e に入れる。王国の分離を画面で確かめられるようにするため。
+- ファクトリー: 単体と結合のテストは、テストごとにファクトリーの関数で必要な行だけを作る。seed を直してもテストが壊れないようにするため。
+- どちらも架空の名前だけを使う。
+
 ## ブランチ戦略
 
 短命なブランチを `main` へ PR で入れる。`main` は常にデプロイできる状態に保つ。
@@ -66,7 +109,7 @@ GitHub の Rulesets で `main` に次を掛ける。private のリポジトリ�
 | `requirements` | 外した。Backlog の要望を要件に落とす受託向けのスキルで、このリポジトリでは使い道が薄い |
 | `database-reviewer` | D1（SQLite）向けに書き直した。`batch()` の原子性、共通の表と王国の中の表の混在、王国での絞り込み、マイグレーションを戻せるか、インデックスを見る |
 | `code-reviewer`、`security-reviewer` | PHP と Laravel の記述を外し、Workers、Hono、D1、R2、Svelte を前提にした。どちらも `multi-tenant.md` と `cloudflare-workers.md` を読む |
-| `.claude/checklists/` | `cloudflare-workers.md` と `multi-tenant.md` を足した。`database.md` を D1 向けに書き直し、`languages/typescript.md` から使わないフレームワーク（Vue、Nuxt、SvelteKit、Express、Sequelize）の節を外した |
+| `.claude/checklists/` | `cloudflare-workers.md` と `multi-tenant.md` を足した。`database.md` を D1 向けに書き直し、`languages/typescript.md` から使わないフレームワーク（Vue、Nuxt、Express、Sequelize）の節を外し、SvelteKit の節を SPA モード向けに直した |
 
 ### 新しく作るもの
 
