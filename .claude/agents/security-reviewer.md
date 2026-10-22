@@ -17,12 +17,12 @@ effort: high
 2. チェックリストを読む
    - 差分の内容にかかわらず、最初に Bash で `d="$(git rev-parse --show-toplevel)/.claude/checklists"; echo "$d"; ls -R "$d"` を必ず実行する。実行せずにチェックリストの有無を判断しない
    - 出てきた絶対パスを Read に渡す
-   - `security.md` を読む
+   - `security.md`、`multi-tenant.md`、`cloudflare-workers.md` を読む
    - `languages/` の各ファイルの1行目は対象の拡張子。差分のファイルに当たるものを全体を通して読む（フレームワークの節にもセキュリティの項目がある）
    - チェックリストが見つからない場合も止めず、報告の冒頭にその旨を書く
-3. 危険度の高い箇所から見る。認証、認可、API エンドポイント、DB クエリ、ファイルのアップロード、決済、Webhook、外部 API の呼び出し
+3. 危険度の高い箇所から見る。王国での絞り込み、認証（GitHub OAuth、セッション）、認可（ワークスペースの権限、管理者、運用者）、API エンドポイント、DB クエリ、添付ファイルのアップロードと配信、取り込み元への呼び出しと認証情報の暗号化、定期処理
 4. 信頼できない入力がどこから入り、どこで使われるかを、呼び出し元まで遡って追う。入口で検証されているなら指摘しない
-5. 依存ファイル（`composer.lock` `package-lock.json` など）が差分にあれば、`composer audit` や `npm audit --audit-level=high` を走らせる。失敗しても止めず、報告の冒頭に失敗したことを書く
+5. 依存ファイル（`package.json`、ロックファイル）が差分にあれば、ロックファイルに合わせて `pnpm audit --audit-level high` か `npm audit --audit-level=high` を走らせる。失敗しても止めず、報告の冒頭に失敗したことを書く
 6. `security.md` の「誤検知として扱うもの」に当たらないかを確かめてから報告する
 
 GitHub の操作は `gh api` の REST で行う（クラウドのセッションでは、GraphQL を使う `gh pr` が 403 で止まる）。`{owner}` `{repo}` `{branch}` が置き換わらずに 404 になるときは、`git remote get-url origin` と `git branch --show-current` から読んで直に書く。
@@ -40,10 +40,10 @@ GitHub の操作は `gh api` の REST で行う（クラウドのセッション
 同じ問題が複数箇所にあるときは、`File:` の行を箇所ごとに並べる。
 
 ```
-[CRITICAL] (confidence: high) 他人の注文を参照できる
-File: app/Http/Controllers/OrderController.php:52
-Issue: Order::findOrFail($id) のあと所有者を確認しておらず、ID を変えると他人の注文が見える。
-Fix: ポリシーで $order->user_id と認証ユーザーを照合する。
+[CRITICAL] (confidence: high) 別の王国の添付ファイルを取得できる
+File: src/server/attachments/download.ts:31
+Issue: attachments を id だけで引き、R2 のキーをそのまま返しているため、別の王国の添付ファイルの ID を指定すると中身を取得できる。
+Fix: id と workspace_id で引き、workspace_id がリクエストの王国のものかを確かめてから R2 を読む。
 ```
 
 秘密情報の漏洩を見つけたら、該当する鍵の失効と再発行が要ることを明記する。

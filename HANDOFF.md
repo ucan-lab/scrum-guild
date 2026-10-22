@@ -17,7 +17,7 @@
 | デザインシステムと画面の見本 | `design/`。`design/index.html` をブラウザで開く（ビルド不要） |
 | スタイルタイル（見た目の3案。決定の記録） | `design/style-tiles.html` |
 | 最初のモック（役目を終えたもの） | `mock/` |
-| クラウドのセッションでも使うスキル、レビューのエージェント、そのチェックリスト | `.claude/skills/`、`.claude/agents/`、`.claude/checklists/`。原本は `ucan-lab/claude-skills`。GitHub の操作は REST（`gh api`）に書き換えてある |
+| クラウドのセッションでも使うスキル、レビューのエージェント、そのチェックリスト | `.claude/skills/`、`.claude/agents/`、`.claude/checklists/`。原本は `ucan-lab/claude-skills`。GitHub の操作は REST（`gh api`）に書き換えてある。レビューのエージェントとチェックリストは、このリポジトリ向けに書き直したので原本と別物になっている（`docs/development.md` の「今あるもの」） |
 
 ## 確認してほしいこと
 
@@ -62,6 +62,7 @@
 - [ ] GitHub のプランが Rulesets と auto-merge を private のリポジトリで使えるか（個人は Pro、組織は Team が要る）
 - [ ] GitHub の Rulesets で `main` を保護する（`docs/development.md` の「ブランチ保護」）。マージ後にブランチを自動で消す設定も入れる
 - [ ] Cloudflare の通知で Workers のエラー率などを受けられるか
+- [x] スキルとエージェントを整えた（2026-10-22）。`requirements` を外し、レビューのエージェント3つを D1 と Workers 向けに書き直し、チェックリストに `cloudflare-workers.md` と `multi-tenant.md` を足した
 
 ### AI の機能（`docs/ai.md`）
 
@@ -82,11 +83,10 @@
 
 1. 上の確認の結果を `docs/design.md` と `docs/requirements.md` に反映する
 2. ブランチ保護で `main` への直接の push を止める（`docs/development.md` の「ブランチ保護」）。ここから先は PR を通す
-3. スキルとエージェントを整える（`docs/development.md` の「今あるもの」）。`requirements` を外し、`database-reviewer` を D1 向け、`code-reviewer` を Workers 向けに書き直し、チェックリストに `cloudflare-workers.md` と `multi-tenant.md` を足す
-4. リポジトリの土台を作る（Hono、Svelte、Vite、wrangler の設定、SessionStart のフック、`.claude/settings.json` の deny、CI の `ci-ok`）。`CLAUDE.md` の「コマンド」を埋める
-5. `d1-migration` のスキルを作り、`docs/data-model.md` から最初のマイグレーションを書く
-6. `design/tokens.css` と `design/components.css` を本番の画面に持ち込み、`design/kit.js` の関数を1つずつ Svelte のコンポーネントにする。`html` の `data-theme` には、`users.theme`、なければ `kingdoms.theme` の値を入れる
-7. 最初の数画面が Svelte で動いたら、下の「画面の自己レビューのスキル」を作る
+3. リポジトリの土台を作る（Hono、Svelte、Vite、wrangler の設定、SessionStart のフック、`.claude/settings.json` の deny、CI の `ci-ok`）。`CLAUDE.md` の「コマンド」を埋める
+4. `d1-migration` のスキルを作り、`docs/data-model.md` から最初のマイグレーションを書く
+5. `design/tokens.css` と `design/components.css` を本番の画面に持ち込み、`design/kit.js` の関数を1つずつ Svelte のコンポーネントにする。`html` の `data-theme` には、`users.theme`、なければ `kingdoms.theme` の値を入れる
+6. 最初の数画面が Svelte で動いたら、下の「画面の自己レビューのスキル」を作る
 
 ## 画面の自己レビューのスキル
 

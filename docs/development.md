@@ -57,14 +57,16 @@ GitHub の Rulesets で `main` に次を掛ける。private のリポジトリ�
 
 ### 今あるもの
 
+2026-10-22 に下のとおり整えた。
+
 | スキル、エージェント | 扱い |
 | --- | --- |
 | `issue-plan`、`pr-create`、`pr-feedback`、`self-review`、`grill-me`、`ui-polish`、`japanese-tech-writing` | 残す |
 | `rebase-base` | 残す。自分の作業ブランチの中だけで使う |
-| `requirements` | 外す。Backlog の要望を要件に落とす受託向けのスキルで、このリポジトリでは使い道が薄い |
-| `database-reviewer` | D1（SQLite）向けに書き直す。`batch()` の原子性、共通の表と王国の中の表の混在、王国での絞り込み、インデックスを見る |
-| `code-reviewer` | PHP と Laravel の記述を外し、Workers、Hono、Svelte を足す |
-| `.claude/checklists/` | `cloudflare-workers.md` と `multi-tenant.md` を足す |
+| `requirements` | 外した。Backlog の要望を要件に落とす受託向けのスキルで、このリポジトリでは使い道が薄い |
+| `database-reviewer` | D1（SQLite）向けに書き直した。`batch()` の原子性、共通の表と王国の中の表の混在、王国での絞り込み、マイグレーションを戻せるか、インデックスを見る |
+| `code-reviewer`、`security-reviewer` | PHP と Laravel の記述を外し、Workers、Hono、D1、R2、Svelte を前提にした。どちらも `multi-tenant.md` と `cloudflare-workers.md` を読む |
+| `.claude/checklists/` | `cloudflare-workers.md` と `multi-tenant.md` を足した。`database.md` を D1 向けに書き直し、`languages/typescript.md` から使わないフレームワーク（Vue、Nuxt、SvelteKit、Express、Sequelize）の節を外した |
 
 ### 新しく作るもの
 
