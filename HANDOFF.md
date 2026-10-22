@@ -64,6 +64,7 @@
 - [ ] Cloudflare の通知で Workers のエラー率などを受けられるか
 - [x] 技術の選択を決めた（2026-10-22）。pnpm、1つのパッケージ、ESLint と Prettier、SvelteKit の SPA モード、Kysely、zod、自前の操作の定義、型付きの言葉の辞書、seed とファクトリー。`docs/requirements.md` の「画面」を SvelteKit の SPA モードに改めた
 - [x] 最初の一本道（王国の作成からタスクの完了まで）、DB を作り直してよい期間（ベータまで）、API のエラーの形、CI の AI レビュー（`claude-code-action`）を決めた（2026-10-22）。`docs/development.md` の「API のエラーとログ」「初版の作る順」
+- [x] GitHub のログインと取り込み（初版は共通の OAuth App と各自の PAT）、開発とテストでのログイン（seed でセッションを作る）、Issue の運用を決めた（2026-10-22）。ラベル（`needs-human`、`migration`、`area:*`）とマイルストーン「初版」を GitHub に作り、`.github/ISSUE_TEMPLATE/plan.md` を置いた
 - [ ] Anthropic の API キーを用意し、リポジトリのシークレットに置く（CI の AI レビューに使う）
 - [x] 運用の手順書（`docs/operations.md` に1つ）、セキュリティのヘッダー（最初の一本道から厳しく）、添付ファイルの配信（同じオリジンで型を絞る）、Cloudflare のアカウント（ucan-lab 用に新しく作る）を決めた（2026-10-22）
 - [ ] ucan-lab 用の Cloudflare アカウントを作り、Workers Paid にする
@@ -114,7 +115,7 @@ hq の `04-research/x-seeconvm-opus-motion-design.md` の7章「The Critic」（
 | 言葉 | ゲームの言葉、スクラムの言葉（見本では `design/kit.js` の `vocab`） |
 | 画面幅 | PC、スマホ（スマホは崩れない程度でよい） |
 
-本番の画面にも、テーマと言葉を撮影の側から指定できる手段が必要（例: 開発時だけ効く URL のパラメータ。形は実装のときに決める）。
+テーマと言葉は、撮影の前に本物の設定の API で切り替える。ログインは seed のセッションの Cookie を置いて通し、「今日」は開発用の設定の値で固定する（`docs/development.md` の「開発とテストでのログイン」）。
 
 ### ループ
 
