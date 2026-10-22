@@ -16,7 +16,7 @@
     capacity: ["積載量", "作業量と基準"], over: ["重量オーバー", "超過"], done: ["完遂", "完了"], column: ["行程", "列"],
     doneToday: ["今日の完遂", "今日の完了"], complete: ["完遂にする", "完了にする"],
     requester: ["依頼主", "作成者"], party: ["パーティ", "参加者"], accept: ["受注する", "参加する"], leave: ["パーティを抜ける", "参加をやめる"],
-    reward: ["クリア報酬", "完了の報酬"], clear: ["レイドをクリアする", "エピックを完了にする"], create: ["依頼を出す", "起票"],
+    reward: ["クリア報酬", "クリア報酬"], clear: ["レイドをクリアする", "エピックを完了にする"], create: ["依頼を出す", "起票"],
     leader: ["ギルドマスター", "リーダー"], member: ["冒険者", "メンバー"], dod: ["ギルドの掟", "完成の定義"],
     vocab: ["ゲームの言葉", "スクラムの言葉"], kingdom: ["王国", "組織"], king: ["国王", "管理者"],
   };
@@ -464,7 +464,7 @@
           const on = drawer.thanked.has(u);
           return `<button class="btn is-sm ${on ? "is-on" : ""}" type="button" data-thank="${u}" aria-pressed="${on}">${avatarOf(u)}${esc(user(u).name)}${on ? " に送った" : " に送る"}</button>`;
         }).join("")}</div>
-        <span class="field-hint">送れるのは${t("assignee")}だけ。${t("task")}が完了すると相手に経験値が付きます。完了までは取り消せます。</span>
+        <span class="field-hint">送れるのは${t("assignee")}だけ（${t("assignee")}がいなければ作った人）。${t("task")}が完了すると相手に経験値が付きます。完了までは取り消せます。</span>
       </div>
       <div>
         <div class="tabs" role="tablist">
@@ -624,7 +624,7 @@
     createWorkspace: () => openDialog(`${t("workspace")}を作る`,
       `<label class="field" for="d-wn"><span class="field-label">名前</span><input class="input" id="d-wn" placeholder="例: 保守チーム"></label>
        <label class="field" for="d-wl"><span class="field-label">最初の${t("leader")}</span><select class="select" id="d-wl">${Object.values(D.users).filter((u) => !u.left).map((u) => `<option>${esc(u.name)}</option>`).join("")}</select><span class="field-hint">自分でもかまいません。あとから${t("leader")}を足せます。</span></label>
-       <p class="field-hint">列は「出発前、遂行中、査定中、${t("done")}」、換算は 1 ${t("points")} = 4 時間、週の始まりは月曜で作ります。あとから設定で変えられます。</p>`,
+       <p class="field-hint">${t("column")}は「${vocab ? "未着手、作業中、レビュー" : "出発前、遂行中、査定中"}、${t("done")}」、換算は 1 ${t("points")} = 4 時間、週の始まりは月曜で作ります。あとから設定で変えられます。</p>`,
       `<button class="btn is-quiet" type="button" data-close-dialog>やめる</button><button class="btn is-primary" type="button" data-close-dialog data-toast="${t("workspace")}を作りました">作る</button>`),
     createKingdom: () => openDialog(`${t("kingdom")}を作る`,
       `<label class="field" for="d-ks"><span class="field-label">URL の名前（slug）</span><input class="input mono" id="d-ks" placeholder="例: sakura-dev"><span class="field-hint">英小文字、数字、ハイフンで 2〜40 字。あとから変えられません。</span></label>

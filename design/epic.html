@@ -59,7 +59,7 @@ SQ.mount("epic", () => {
             ${book(list, { showParent: false, showAssignee: true })}
             <div class="form-actions">${st.doneAt
               ? `<span class="hanko" role="img" aria-label="${t("done")}">${icon("check")}<b>完</b></span><span>${t("done")} ${esc(st.doneAt)}</span><button class="link-btn" type="button" data-toast="完了を取り消しました。完了の経験値も取り消します">取り消す</button>`
-              : `<button class="btn is-sm" type="button" ${openTasks ? "disabled" : ""}>${icon("check")}${t("story")}を${t("complete")}</button>${openTasks ? `<span class="action-note">配下の${t("task")}がすべて完了すると押せます（残り ${openTasks} 件）</span>` : ""}`}</div>
+              : `<button class="btn is-sm" type="button" ${openTasks ? "disabled" : ""}>${icon("check")}${t("story")}を${t("complete")}</button>${openTasks ? `<span class="action-note">配下の${t("task")}がすべて${t("done")}すると押せます（残り ${openTasks} 件）</span>` : ""}`}</div>
           </section>`;
         }).join("")}
       </div>
@@ -82,7 +82,7 @@ SQ.mount("epic", () => {
             <button class="btn" type="button">${t("party")}に割り振る</button>
             <button class="btn" type="button">${t("reward")}を変える</button>
             <button class="btn is-primary" type="button" ${allDone ? "" : "disabled"}>${icon("check")}${t("clear")}</button>
-            ${allDone ? "" : `<span class="action-note">配下の${t("story")}がすべて完了すると押せます（残り ${openStories} 件）</span>`}
+            ${allDone ? "" : `<span class="action-note">配下の${t("story")}がすべて${t("done")}すると押せます（残り ${openStories} 件）</span>`}
             <button class="btn is-quiet" type="button" data-dialog="cancelEpic">${icon("x")}${t("epic")}を中止する</button>
             <button class="btn is-quiet is-danger" type="button" data-dialog="deleteEpic">${icon("trash")}${t("epic")}を削除する</button>
           </div>

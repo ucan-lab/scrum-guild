@@ -52,7 +52,7 @@ SQ.mount("members", () => {
           <div class="field"><span class="field-label">ロール</span><div class="segmented" role="radiogroup"><label><input type="radio" name="role" checked><span>一般</span></label><label><input type="radio" name="role"><span>${t("leader")}</span></label></div></div>
           <button class="btn is-primary" type="button" data-toast="招待しました。URL を本人に伝えてください">${icon("mail")}招待する</button>
         </div>
-        <span class="field-hint">Team Leveling は招待をメールで送りません。この画面の URL を本人に伝えてください。本人が GitHub でログインすると招待が見えます。</span>
+        <span class="field-hint">Team Leveling は招待をメールで送りません。${t("kingdom")}の URL（<span class="mono">team-leveling.dev/${esc(D.kingdom)}/</span>）を本人に伝えてください。本人が GitHub でログインすると招待が見えます。</span>
         ${D.invitations.map((i) => `<div class="load-foot" style="padding-top:var(--space-3);border-top:1px solid var(--color-rule)"><span><span class="mono">${esc(i.login)}</span>・${i.role === "member" ? "一般" : t("leader")}・${esc(user(i.by).name)}が ${esc(i.at)} に招待</span><button class="btn is-sm is-quiet" type="button" data-toast="招待を取り消しました">取り消す</button></div>`).join("")}
       </div>
       <div class="panel">
