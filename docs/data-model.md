@@ -169,7 +169,8 @@
 | theme | TEXT | NOT NULL、`simple`、`simple_light`、`simple_dark`、`medieval`、`modern` のどれか、既定 `simple` | 王国の既定のテーマ。`simple` は OS の明暗に合わせる |
 | suspended_at | TEXT | | 停止した日時。入っていれば誰も入れず、定期処理も止める |
 | purge_on | TEXT | | 解約で停止したときの、データを消す予定日（停止から30日後）。一時的な停止では空 |
-| attachment_quota_bytes | INTEGER | NOT NULL、既定 10737418240 | 添付ファイルの合計の上限（既定 10GB）。運用者が決める |
+| member_limit | INTEGER | NOT NULL、既定 15、`CHECK (member_limit > 0)` | 人数の上限。運用者が決める |
+| attachment_quota_bytes | INTEGER | NOT NULL、既定 32212254720 | 添付ファイルの合計の上限（既定 30GB）。運用者が決める |
 | attachment_quota_warned_at | TEXT | | 合計が上限の80%を超えたと管理者に通知した日時。合計が80%を下回るか、上限を上げたら空に戻す |
 | stores_source_payload | INTEGER | NOT NULL、既定 0 | 取り込み元の応答（`task_source_payloads`）を保存するか。管理者が王国の設定で選ぶ |
 | created_by_operator | TEXT | NOT NULL | 作った運用者のログインの ID（`github:12345` の形） |
@@ -177,6 +178,7 @@
 
 - 運用者の画面で作る。作るときに最初の管理者の `users` を同じバッチで入れる（アカウントがまだなければ、`users` の代わりに管理者の招待を持つ。下の `users` を参照）。
 - アプリが使う名前（`api`、`login`、`operator` など）を slug にできないことは、アプリが検査する。
+- 人数は保存せず、招待のたびに数える。対象は、無効にしていない管理者と、いずれかのワークスペースに今所属しているか承諾待ちの招待を持つ人（まだアカウントのない人への招待を含む）で、同じ人は1人とする。人数が `member_limit` 以上なら招待を断り、同時に招待して少し超えたときはそのまま認める。
 - 解約した王国は、`purge_on` を過ぎたら運用の手順でこの王国の行をすべて消し、R2 の `<kingdom_id>/` で始まるファイルも消す。再開したら `suspended_at` と `purge_on` を空に戻す。
 
 ### users
