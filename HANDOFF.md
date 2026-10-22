@@ -64,7 +64,7 @@
 ### 片付け
 
 - [ ] `mock/` を消してよいか（デザインシステムの見本で置き換えた）
-- [ ] GitHub でリモートの作業ブランチ `claude/focused-wright-vdqz0g` を消す（内容はすべて `main` に入っている。手元のブランチは消した。作業した環境からはリモートのブランチを消せなかった）
+- [ ] GitHub でリモートの作業ブランチ `claude/focused-wright-vdqz0g` と `claude/ai-task-management-h4nr67` を消す（内容はすべて `main` に入っている。手元のブランチは消した。作業した環境からはリモートのブランチを消せなかった）
 
 ### 名前の変更（scrum-quest から Team Leveling へ）
 
