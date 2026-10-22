@@ -32,7 +32,7 @@
 | ワークスペース | `workspaces`、`workspace_point_rates`、`workspace_holidays`、`memberships`、`invitations`、`allocations` |
 | ワークスペースの定義 | `board_columns`、`detail_fields`、`categories` |
 | 接続 | `connections`、`connection_scopes`、`connection_status_mappings` |
-| 計画と作業 | `epics`、`epic_party_members`、`stories`、`tasks`、`task_sources`、`task_source_payloads`、`task_field_values`、`comments`、`sprints`、`sprint_entries` |
+| 計画と作業 | `epics`、`epic_party_members`、`stories`、`tasks`、`task_sources`、`task_source_payloads`、`task_field_values`、`comments`、`attachments`、`sprints`、`sprint_entries` |
 | 記録 | `completions`、`thanks`、`xp_grants`、`notifications`、`change_logs` |
 
 親子の向きの要点。
@@ -54,6 +54,8 @@
 | --- | --- | --- |
 | 共通 | `accounts`、`sessions`、`oauth_states`、`rate_limits`、`kingdoms` | 共通の DB に1つだけ |
 | 王国の中 | それ以外のすべて | 王国が置かれた DB |
+
+添付ファイルの中身は D1 ではなく R2 に置く。R2 のキーの先頭は王国の ID なので、D1 を分けても R2 は分けずに済む。
 
 - 共通の表から王国の中の表へは外部キーを張らない。
 - 王国の中の表から共通の表へ張る外部キーは、`users.account_id` と、`users`、`workspaces`、`kingdom_holidays`、`change_logs` の `kingdom_id` だけにする。分けるときはこれらを外し、アプリの検査に替える。
@@ -153,12 +155,13 @@ GitHub OAuth の state と PKCE の code_verifier。
 | theme | TEXT | NOT NULL、`simple`、`simple_light`、`simple_dark`、`medieval`、`modern` のどれか、既定 `simple` | 王国の既定のテーマ。`simple` は OS の明暗に合わせる |
 | suspended_at | TEXT | | 停止した日時。入っていれば誰も入れず、定期処理も止める |
 | purge_on | TEXT | | 解約で停止したときの、データを消す予定日（停止から30日後）。一時的な停止では空 |
+| attachment_quota_bytes | INTEGER | NOT NULL、既定 5368709120 | 添付ファイルの合計の上限（既定 5GB）。運用者が決める |
 | created_by_github_user_id | INTEGER | NOT NULL | 作った運用者 |
 | created_at、updated_at | TEXT | NOT NULL | |
 
 - 運用者の画面で作る。作るときに最初の管理者の `users` を同じバッチで入れる（アカウントがまだなければ、`users` の代わりに管理者の招待を持つ。下の `users` を参照）。
 - アプリが使う名前（`api`、`login`、`operator` など）を slug にできないことは、アプリが検査する。
-- 解約した王国は、`purge_on` を過ぎたら運用の手順でこの王国の行をすべて消す。再開したら `suspended_at` と `purge_on` を空に戻す。
+- 解約した王国は、`purge_on` を過ぎたら運用の手順でこの王国の行をすべて消し、R2 の `<kingdom_id>/` で始まるファイルも消す。再開したら `suspended_at` と `purge_on` を空に戻す。
 
 ### users
 
@@ -619,6 +622,33 @@ GitHub OAuth の state と PKCE の code_verifier。
 
 索引: `(task_id, created_at)`。
 
+### attachments
+
+添付ファイルの情報。ファイルの中身は R2 に置く。
+
+| 列 | 型 | 制約 | 説明 |
+| --- | --- | --- | --- |
+| id | TEXT | PK | |
+| workspace_id | TEXT | NOT NULL、FK workspaces | |
+| task_id | TEXT | FK tasks | |
+| story_id | TEXT | FK stories | |
+| epic_id | TEXT | FK epics | |
+| comment_id | TEXT | FK comments | |
+| object_key | TEXT | NOT NULL、UNIQUE | R2 のキー。`<kingdom_id>/<workspace_id>/<id>` |
+| file_name | TEXT | NOT NULL | 上げたときのファイル名。255字まで |
+| content_type | TEXT | NOT NULL | 中身の先頭のバイトで確かめた種類。分からなければ `application/octet-stream` |
+| size_bytes | INTEGER | NOT NULL、`CHECK (size_bytes BETWEEN 1 AND 10485760)` | |
+| uploaded_by | TEXT | NOT NULL、FK users | 消す権限に使う |
+| attached_at | TEXT | | 付く先が決まった日時。空なら書いている途中で上げたもの |
+| created_at | TEXT | NOT NULL | |
+
+- 付く先は4つの列のうち多くても1つ: `CHECK ((task_id IS NOT NULL) + (story_id IS NOT NULL) + (epic_id IS NOT NULL) + (comment_id IS NOT NULL) <= 1)`。付く先が決まったら `attached_at` を入れる: `CHECK ((attached_at IS NULL) = (task_id IS NULL AND story_id IS NULL AND epic_id IS NULL AND comment_id IS NULL))`。
+- 起票の画面やコメントの欄では、保存する前に上げるため、付く先のない行を先に作る。保存したときに、本文やコメントが参照する行へ付く先を入れる。付く先のないまま1日たった行とファイルは定期処理で消す。
+- 消すときは行を物理削除する。論理削除にしないのは、戻す手段がなく、残すと容量の上限に数え続けるため。消したことは付く先の `change_logs` に残す。
+- 王国の合計は、王国のワークスペースの `size_bytes` の合計を上げるたびに計算する。集計は保存しない。同時に上げたときに少し超えることは許す。
+- 画面と Markdown からは `/api/<slug>/attachments/<id>` で参照する。返すときは権限を確かめ、`X-Content-Type-Options: nosniff` と `Cache-Control: private` を付ける。画像として出す4種類以外は `Content-Disposition: attachment` で返す。
+- 索引: `(task_id)`、`(story_id)`、`(epic_id)`、`(comment_id)` をそれぞれ NOT NULL の部分索引で、`(workspace_id)`、`(created_at) WHERE attached_at IS NULL`。
+
 ### sprints
 
 | 列 | 型 | 制約 | 説明 |
@@ -795,12 +825,16 @@ D1 は対話的なトランザクションを持たない。まとめて書く�
 | メンバーの離脱 | `memberships`、担当を外す `tasks`、`epic_party_members`、`connections`、`change_logs`。ログインできなくなったときは、続けて共通の DB の `sessions` を消す |
 | 取り込み（1件） | `tasks`、`task_sources`、`task_source_payloads` |
 | 王国の作成 | 共通の DB の `kingdoms`、続けて王国の DB の最初の管理者の `users` |
+| 添付ファイルを上げる | R2 にファイルを書き、続けて `attachments` |
+| 添付ファイルを消す | `attachments` の削除と `change_logs`、続けて R2 のファイルの削除 |
+| コメントの削除 | `comments`、そのコメントの `attachments` の削除、`change_logs`、続けて R2 のファイルの削除 |
 
 先に読んだ値で判定してから書く操作（最後の管理者、完了の可否など）は、書く文の `WHERE` に同じ条件を入れ、影響した行の数で競合を見つける。
 
 共通の DB と王国の DB に分けて書く操作は、途中で失敗したときの扱いを決めておく。
 
 - 王国の作成で `users` が入らなかったときは、管理者のいない王国が残る。運用者の画面の管理者の指名し直しで入れる。
+- 添付ファイルを上げるときに `attachments` が入らなかったら、書いた R2 のファイルを消す。添付ファイルを消すときに R2 のファイルが消えなかったら、どの行も指さないファイルが残る。容量の上限には数えず、王国を消すときにまとめて消える。
 - メンバーの離脱で `sessions` が消えなかったときも、王国に入れるかはリクエストのたびに確かめるので、離脱した王国には入れない。ログインできる条件を失った人のセッションは、次にその人がリクエストしたときに消す。
 
 ## 要件からの補い
