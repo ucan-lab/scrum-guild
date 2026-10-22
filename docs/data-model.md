@@ -696,7 +696,6 @@ GitHub OAuth の state と PKCE の code_verifier。
 
 - 一意: `(task_id) WHERE ended_at IS NULL`。1つのタスクが入っている行は1つ。
 - 索引: `(sprint_id)`、`(task_id)`。
-- 起票と詳細の経験値は、終えたスプリントで `outcome` が `completed` か `carried_over` の行のタスクに付ける。外したタスクは `removed` なので報われない。
 - 積載量では `outcome = 'carried_over'` の行を数えない。持ち越したタスクは最後に入ったスプリントでだけ数える。
 - スプリントを削除したら、入っていた行を `removed` で閉じ、タスクの `sprint_id` と `column_id` を空にする。
 
@@ -754,8 +753,7 @@ GitHub OAuth の state と PKCE の code_verifier。
 | task_id | TEXT | FK tasks | |
 | story_id | TEXT | FK stories | |
 | epic_id | TEXT | FK epics | |
-| sprint_id | TEXT | FK sprints | 起票と詳細では確定したスプリント |
-| completion_id | TEXT | | 完了とレビューでは元の完了の記録。記録は消えうるので外部キーにしない |
+| completion_id | TEXT | | 起票、詳細、完了、レビューでは元の完了の記録。記録は消えうるので外部キーにしない |
 | thank_id | TEXT | | 手助けでは元の感謝。同上 |
 | helper_sender_user_id | TEXT | FK users | 手助けでは感謝を送った人。回数の上限の判定に使う |
 | amount | INTEGER | NOT NULL | 正なら付与、負なら打ち消し |
@@ -765,15 +763,17 @@ GitHub OAuth の state と PKCE の code_verifier。
 
 - 一意: `(dedupe_key)`。
 - `dedupe_key` の作り方。打ち消したあとに付け直せるよう、付与の「回」をキーに含める。
-  - 起票: `task_created:<task_id>`
-  - 詳細: `task_detailed:<task_id>`
+  - 起票: `task_created:<completion_id>`
+  - 詳細: `task_detailed:<completion_id>`
   - 完了: `task_completed:<completion_id>`
   - レビュー: `review:<completion_id>`（依頼の回ごとに完了の記録が分かれる）
   - 手助け: `help:<thank_id>:<completion_id>`
   - ストーリーの完了: `story_completed:<story_id>:<user_id>:<completed_at>`
   - クリア報酬: `epic_reward:<epic_id>:<user_id>:<completed_at>`
   - 打ち消し: `reversal:<元の id>`
-- 「同じタスクの同じ行動で有効な付与は1回だけ」は、上のキーと、付与の前に「打ち消されていない同じ行動の付与がないか」をアプリが見ることで守る。起票と詳細は打ち消さないので、キーだけで1回になる。
+- 「同じタスクの同じ行動で有効な付与は1回だけ」は、上のキーと、付与の前に「打ち消されていない同じ行動の付与がないか」をアプリが見ることで守る。
+- 起票、詳細、完了は、タスクを完了にしたときに同じバッチで付け、未完了に戻したときに同じバッチで打ち消す。
+- 感謝の回数の上限は、`action = 'help'` の行を `helper_sender_user_id` と受け取った人で絞り、`confirmed_at` がワークスペースのタイムゾーンで同じ週に入るものを数えて判定する。
 - 索引: `(user_id, workspace_id)`、`(task_id)`、`(story_id)`、`(epic_id)`、`(reverses_grant_id)`。
 - レベル、合計、チーム全体の合計は `SUM(amount)` で出す。
 

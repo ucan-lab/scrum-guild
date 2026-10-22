@@ -56,6 +56,8 @@
 - [ ] 顧客のデータ（private なリポジトリの課題や PR）を預かって運用してよいか
 - [x] 取り込み元の本文は既定で預からず、王国の設定で保存を選べるようにした（2026-10-22）。`docs/requirements.md` の「取り込み」、`docs/data-model.md` の `kingdoms.stores_source_payload` と `task_source_payloads`
 - [ ] 王国の管理の見本（`design/admin.html`）に、取り込み元の応答を保存するかの設定を足す
+- [x] スプリントを回さない保守中心のチームでも使えるよう、起票と詳細の経験値をタスクの完了で確定させ、感謝の回数の上限を週で数えるようにした（2026-10-23）。`docs/requirements.md` の「ゲームの仕組み」、`docs/data-model.md` の `xp_grants`
+- [ ] 見本の経験値の表示（`design/kit.js` の見込みの凡例、スプリントの終了のダイアログ、起票の欄の説明、`design/style-tiles.html` の見込み）から「スプリントの終了で確定」を外し、完了で確定する形に直す
 - [ ] 最初に声をかけるチーム
 
 ### 開発の進め方（`docs/development.md`）
