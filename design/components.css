@@ -450,6 +450,7 @@ details[open] > summary .tree-caret { transform: rotate(90deg); }
 .tree-ratio { font-family: var(--font-mono); font-size: var(--text-xs); color: var(--color-muted); white-space: nowrap; }
 .tree-folded { font-size: var(--text-xs); color: var(--color-muted); padding: var(--space-2) var(--space-4) var(--space-2) var(--space-10); border-top: 1px solid var(--color-rule); }
 .tree-children .tree-children .tree-folded { padding-left: calc(var(--space-10) + var(--space-6)); }
+.tree-folded.is-root { padding-left: var(--space-4); }
 .kind { display: inline-grid; place-items: center; width: 22px; height: 22px; border-radius: var(--radius-1); border: 1px solid currentColor; }
 .kind .ico { width: 13px; height: 13px; }
 .kind.is-epic { color: var(--color-xp); background: var(--color-xp-soft); }
@@ -568,6 +569,8 @@ a.notice-title.notice-link:hover { text-decoration: underline; text-underline-of
   .tree-children .entry, .tree-children .tree-children .entry { padding-left: var(--space-4); }
   .tree-children .tree-row.is-story { padding-left: var(--space-4); }
   .tree-folded, .tree-children .tree-children .tree-folded { padding-left: var(--space-4); }
+  .tree-row { grid-template-columns: 20px 24px minmax(0, 1fr); }
+  .tree-ratio { grid-column: 3; }
   .story-head .progress { margin-left: 0; max-width: none; }
 }
 

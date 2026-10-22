@@ -32,6 +32,7 @@ SQ.mount("backlog", () => {
       ["is-warn", "", "未見積もり", open.filter((x) => x.pts == null).length],
       ["", "", `${t("sprint")}に入っていない`, open.filter((x) => !x.sprint).length],
     ], actions)}
+    <section class="section" aria-label="${t("backlog")}の${t("task")}">
     <div class="toolbar" role="search">
       <label class="search" for="q">${icon("search")}<input id="q" type="search" placeholder="タイトルや SHOP-128 で探す"></label>
       <select class="select" id="f-who" aria-label="${t("assignee")}"><option>${t("assignee")}: すべて</option><option>ミナト</option><option>担当なし</option></select>
@@ -39,14 +40,15 @@ SQ.mount("backlog", () => {
       <select class="select" id="f-epic" aria-label="${t("epic")}"><option>${t("epic")}: すべて</option><option>会員ポイント制度を公開する</option><option>決済まわりの障害を減らす</option></select>
       <select class="select" id="f-conn" aria-label="${t("connection")}"><option>${t("connection")}: すべて</option><option>ミナトの Backlog</option><option>ミナトの GitHub</option></select>
     </div>
+    <p class="action-note">上にあるものほど優先します。行はドラッグで、キーボードでは行を選んで Alt と ↑ ↓ で並べ替えます。</p>
     <div class="tree">
       ${treeEpic("e1")}
       ${treeEpic("e2")}
       ${treeStory("s4", true)}
       <div>${rootTasks.map((x) => entry(x, { showAssignee: true })).join("")}
-        ${rootDone ? `<p class="tree-folded" style="padding-left:var(--space-4)">親のない完了 ${rootDone} 件を折りたたんでいます</p>` : ""}</div>
+        ${rootDone ? `<p class="tree-folded is-root">親のない完了 ${rootDone} 件を折りたたんでいます</p>` : ""}</div>
     </div>
-    <p class="action-note">上にあるものほど優先します。行はドラッグで、キーボードでは行を選んで Alt と ↑ ↓ で並べ替えます。</p>`;
+    </section>`;
 });
 </script>
 </body>

@@ -211,7 +211,7 @@
         <span class="tree-caret">${icon("chevron")}</span>
         <span class="kind is-story" title="${t("story")}">${icon("check")}</span>
         <span class="tree-title">${esc(st.title)}${solo && st.cat ? ` <span class="chip">${esc(D.categories[st.cat].name)}</span>` : ""}</span>
-        <span class="tree-ratio" title="完了 / 全体">${p.done} / ${p.all}</span>
+        <span class="tree-ratio" title="完了 / 全体">${t("done")} ${p.done} / ${p.all} pt</span>
       </summary>
       <div class="tree-children">${open.map((x) => entry(x, { showParent: false, showAssignee: true })).join("")}
         ${done ? `<p class="tree-folded">完了 ${done} 件を折りたたんでいます</p>` : ""}${!list.length ? `<p class="tree-folded">${t("task")}はまだありません</p>` : ""}</div>
@@ -226,7 +226,7 @@
         <span class="tree-caret">${icon("chevron")}</span>
         <span class="kind is-epic" title="${t("epic")}">${icon("flag")}</span>
         <span class="tree-title"><a href="epic.html" class="tree-link">${esc(e.title)}</a> <span class="chip">${esc(D.categories[e.cat].name)}</span> ${dueChip(e.due)}</span>
-        <span class="tree-ratio" title="完了 / 全体">${p.done} / ${p.all}</span>
+        <span class="tree-ratio" title="完了 / 全体">${t("done")} ${p.done} / ${p.all} pt</span>
       </summary>
       <div class="tree-children">${stories.map((s) => treeStory(s)).join("")}</div>
     </details>`;
