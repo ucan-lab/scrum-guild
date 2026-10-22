@@ -18,6 +18,7 @@
 ## 守ること
 
 - `main` へ直接 push しない。1 Issue に 1 ブランチ、1 PR。マージは squash で、人か GitHub の auto-merge が行う。セッションからはマージしない
+  - 例外: GitHub のブランチ保護を入れるまでは、文書だけの変更（`docs/`、`HANDOFF.md`、`CLAUDE.md`、`.claude/` のスキルとエージェントとチェックリスト、`.github/ISSUE_TEMPLATE/`）は `main` に直接入れてよい。コードと設定は例外にしない。ブランチ保護を入れたらこの例外を消す
 - 本番に触らない。`wrangler deploy`、`wrangler versions deploy`、`--remote` を付けた `wrangler d1` は CI だけが実行する
 - 王国の中の表を読み書きするときは、必ず王国で絞る。共通の表と王国の中の表を結合せず、1回の `batch()` に混ぜない（`docs/data-model.md` の「データベースの分け方」）
 - DB への書き込みは、文を並べて `batch()` で1つのトランザクションとして送る

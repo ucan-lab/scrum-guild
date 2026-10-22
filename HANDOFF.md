@@ -60,7 +60,7 @@
 
 - [x] ブランチ戦略、AI の分担、スキル、開発の流れ、CI/CD を決めた（2026-10-22）。squash merge だけ、承認は必須にせず人がマージを押す、PR ごとのプレビューは持たない、`main` へのマージで自動デプロイしマイグレーションだけ承認を挟む
 - [ ] GitHub のプランが Rulesets と auto-merge を private のリポジトリで使えるか（個人は Pro、組織は Team が要る）
-- [ ] GitHub の Rulesets で `main` を保護する（`docs/development.md` の「ブランチ保護」）。マージ後にブランチを自動で消す設定も入れる
+- [ ] GitHub の Rulesets で `main` を保護する（`docs/development.md` の「ブランチ保護」）。マージ後にブランチを自動で消す設定も入れる。入れたら `CLAUDE.md` の「守ること」の例外を消す
 - [ ] Cloudflare の通知で Workers のエラー率などを受けられるか
 - [x] 技術の選択を決めた（2026-10-22）。pnpm、1つのパッケージ、ESLint と Prettier、SvelteKit の SPA モード、Kysely、zod、自前の操作の定義、型付きの言葉の辞書、seed とファクトリー。`docs/requirements.md` の「画面」を SvelteKit の SPA モードに改めた
 - [x] 最初の一本道（王国の作成からタスクの完了まで）、DB を作り直してよい期間（ベータまで）、API のエラーの形、CI の AI レビュー（`claude-code-action`）を決めた（2026-10-22）。`docs/development.md` の「API のエラーとログ」「初版の作る順」
@@ -174,7 +174,7 @@ Warp の `merge-risk` スキル（`npx skills add warpdotdev/common-skills --ski
 
 ## 覚えておくこと
 
-- `main` に直接コミットしてよいのは仕様を整理している間だけ。ブランチ保護を入れた後は、文書も含めて PR を通す（2026-10-22 に決めた。`docs/development.md`）。
+- `main` に直接コミットしてよいのは、ブランチ保護を入れるまでの文書だけの変更に限る（`CLAUDE.md` の例外と同じ）。ブランチ保護を入れたら、文書も含めて PR を通し、`CLAUDE.md` の例外を消す（2026-10-22 に決めた。`docs/development.md`）。
 - 名前は Team Leveling。表記の決まりは `docs/requirements.md` の「名前」、経緯と重なりの確認は `docs/naming.md`。
 - 見本は、画面ごとの CSS を持たない決まり。足りない部品は先に `design/components.css` とカタログに足す。
 - 見本の例のデータ（`design/sample-data.js`）はすべて架空。実在の名前を混ぜない。
