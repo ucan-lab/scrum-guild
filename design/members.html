@@ -45,7 +45,7 @@ SQ.mount("members", () => {
       <div class="table-wrap"><table class="table"><thead><tr><th>名前</th><th>ロール</th><th class="is-num">所属</th><th>配分（11月）</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>
       <p class="action-note">外すと、その人の未完了の${t("task")}は担当なしに戻り、${t("party")}からも外れます。完了の記録と経験値は残ります。</p>
     </section>
-    <section class="section"><div class="section-head"><h2 class="section-title">招待する</h2></div>
+    <section class="section"><div class="section-head"><h2 class="section-title">招待する</h2><span class="section-hint">${t("kingdom")}の人数 ${D.seats.used} / ${D.seats.limit} 人</span></div>
       <div class="panel">
         <div class="form-row">
           <label class="field" for="login"><span class="field-label">GitHub のユーザー名</span><input class="input" id="login" placeholder="例: kotone-dev"></label>
@@ -54,6 +54,14 @@ SQ.mount("members", () => {
         </div>
         <span class="field-hint">Team Leveling は招待をメールで送りません。この画面の URL を本人に伝えてください。本人が GitHub でログインすると招待が見えます。</span>
         ${D.invitations.map((i) => `<div class="load-foot" style="padding-top:var(--space-3);border-top:1px solid var(--color-rule)"><span><span class="mono">${esc(i.login)}</span>・${i.role === "member" ? "一般" : t("leader")}・${esc(user(i.by).name)}が ${esc(i.at)} に招待</span><button class="btn is-sm is-quiet" type="button" data-toast="招待を取り消しました">取り消す</button></div>`).join("")}
+      </div>
+      <div class="panel">
+        <div class="callout is-warn">${icon("alert")}<span>${t("kingdom")}の人数が上限（${D.seats.limit} 人）に達しているため、招待できません。上限を上げるには${t("king")}に相談してください。</span></div>
+        <div class="form-row">
+          <label class="field" for="login-full"><span class="field-label">GitHub のユーザー名</span><input class="input" id="login-full" placeholder="例: kotone-dev" disabled></label>
+          <button class="btn is-primary" type="button" disabled>${icon("mail")}招待する</button>
+        </div>
+        <p class="props-note">人数が上限に達したときの表示の見本です。人数は${t("king")}と、いずれかの${t("workspace")}に所属しているか招待されている人を数えます。</p>
       </div>
     </section>`;
 });

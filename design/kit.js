@@ -649,14 +649,15 @@
         `<button class="btn is-quiet" type="button" data-close-dialog>やめる</button><button class="btn is-danger" type="button" data-confirm-delete-file="${id}">${icon("trash")}消す</button>`);
       document.querySelector(".dialog-sheet").classList.add("is-danger");
     },
-    changeQuota: () => openDialog("添付ファイルの上限を変える",
-      `<p>あおば開発の添付ファイルの合計の上限を変えます。今の合計は 8.3 GB、上限は 10 GB です。</p>
+    changeQuota: () => openDialog("人数と添付ファイルの上限を変える",
+      `<p>あおば開発の上限を変えます。今は人数 5 人（上限 15 人）、添付ファイルの合計 25.1 GB（上限 30 GB）です。</p>
        <div class="choice-list">
-         <label class="choice"><input type="radio" name="d-q" checked><div><b>10 GB</b><span>小さい${t("kingdom")}（〜10人）の値段の段</span></div></label>
-         <label class="choice"><input type="radio" name="d-q"><div><b>50 GB</b><span>標準（〜50人）の値段の段</span></div></label>
-         <label class="choice"><input type="radio" name="d-q"><div><b>ほかの値</b><span><input class="input" type="number" min="1" aria-label="上限（GB）" placeholder="GB で入力" style="max-width:10em"></span></div></label>
+         <label class="choice"><input type="radio" name="d-q" checked><div><b>小さい${t("kingdom")}</b><span>15 人・30 GB</span></div></label>
+         <label class="choice"><input type="radio" name="d-q"><div><b>標準</b><span>50 人・100 GB</span></div></label>
+         <label class="choice"><input type="radio" name="d-q"><div><b>ほかの値</b><span>51 人以上の${t("kingdom")}のために値を入れます
+           <span class="form-row"><input class="input" type="number" min="1" aria-label="人数の上限" placeholder="人数" style="max-width:8em"><input class="input" type="number" min="1" aria-label="添付ファイルの上限（GB）" placeholder="GB" style="max-width:8em"></span></span></div></label>
        </div>
-       <p class="field-hint">今の合計より小さくすると、合計が下がるまで新しく添付できなくなります。上限を上げて 80% を下回ると、次に超えたときにまた${t("king")}に通知します。</p>`,
+       <p class="field-hint">人数を今より小さくしても、今いる人はそのまま残り、上限を下回るまで招待だけを止めます。添付ファイルを今の合計より小さくすると、合計が下がるまで新しく添付できなくなります。上限を上げて 80% を下回ると、次に超えたときにまた${t("king")}に通知します。</p>`,
       `<button class="btn is-quiet" type="button" data-close-dialog>やめる</button><button class="btn is-primary" type="button" data-close-dialog data-toast="上限を変えました">変える</button>`),
     suspendKingdom: () => {
       openDialog(`${t("kingdom")}を停止する`,

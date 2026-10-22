@@ -57,7 +57,7 @@
 - [x] 取り込み元の本文は既定で預からず、王国の設定で保存を選べるようにした（2026-10-22）。`docs/requirements.md` の「取り込み」、`docs/data-model.md` の `kingdoms.stores_source_payload` と `task_source_payloads`
 - [ ] 王国の管理の見本（`design/admin.html`）に、取り込み元の応答を保存するかの設定を足す
 - [x] 値段を見直した（2026-10-23）。王国ごとの定額を人数の段階（〜15人 月3,000円、〜50人 月10,000円）で分け、年払いは2か月分無料、お試しは30日。`docs/business.md` の「値段の考え方」、競合との比較は `docs/competitors.md`。王国に人数の上限（`docs/data-model.md` の `kingdoms.member_limit`）を足し、上限に達したら招待を止める
-- [ ] 運用の見本（`design/operator.html`）の上限の変更に人数の上限を足し、段階を 15人と30GB、50人と100GB に直す。招待の見本に上限に達したときの表示を足す
+- [x] 運用の見本（`design/operator.html`）の上限の変更に人数の上限を足し、段階を 15人と30GB、50人と100GB に直した。招待の見本に上限に達したときの表示を足した（2026-10-23）
 - [ ] 見積もりと実績の時間（予実）を詰める（`docs/requirements.md` の「未決の論点」）。工数の実績を Non-Goals から外した
 - [ ] 適格請求書発行事業者に登録する時期を、税理士に確かめる（`docs/business.md` の「未決」）
 - [x] スプリントを回さない保守中心のチームでも使えるよう、起票と詳細の経験値をタスクの完了で確定させ、感謝の回数の上限を週で数えるようにした（2026-10-23）。`docs/requirements.md` の「ゲームの仕組み」、`docs/data-model.md` の `xp_grants`

@@ -135,7 +135,9 @@ window.SQ_DATA = (function () {
       ],
     },
     // 王国の添付ファイルの合計（GB）。上限の 80% を超えると管理者に知らせる
-    storage: { used: 8.3, quota: 10, byWorkspace: [["wa", 612, 6.1], ["wb", 205, 2.2]] },
+    storage: { used: 25.1, quota: 30, byWorkspace: [["wa", 612, 18.4], ["wb", 205, 6.7]] },
+    // 王国の人数と上限。人数は管理者と、いずれかのワークスペースに所属しているか招待されている人
+    seats: { used: 5, limit: 15 },
     history: {
       t1: [
         ["10/19 18:02", "u1", "column", "出発前 → 遂行中"],
@@ -236,7 +238,7 @@ Object.assign(window.SQ_DATA, {
   },
 
   notifications: [
-    { kind: "storage", at: "10/20 11:30", read: false, href: "admin.html", text: "添付ファイルの合計が上限の 80% を超えました（8.3 GB / 10 GB）。上限に達すると新しく添付できなくなります" },
+    { kind: "storage", at: "10/20 11:30", read: false, href: "admin.html", text: "添付ファイルの合計が上限の 80% を超えました（25.1 GB / 30 GB）。上限に達すると新しく添付できなくなります" },
     { kind: "srcDone", at: "10/20 10:00", read: false, text: "SHOP-131「請求書 PDF の文字化けを直す」が取り込み元で完了になりました", task: "t12" },
     { kind: "comment", at: "10/16 09:06", read: false, who: "u3", text: "ソウタさんが「ポイント付与のバッチを作る」にコメントしました", task: "t1" },
     { kind: "party", at: "10/15 13:20", read: false, who: "u2", text: "ハルカさんがあなたをレイド「会員ポイント制度を公開する」のパーティに割り振りました" },
@@ -287,10 +289,10 @@ Object.assign(window.SQ_DATA, {
   operator: {
     name: "運用担当",
     kingdoms: [
-      { slug: "aoba", name: "あおば開発", users: 5, wss: 3, tasks: 1284, used: 8.3, quota: 10, lastUsed: "10/20 09:12", created: "2026-06-01", admins: 2 },
-      { slug: "hibari", name: "ひばり工房", users: 3, wss: 1, tasks: 212, used: 0.4, quota: 10, lastUsed: "10/19 18:40", created: "2026-09-15", admins: 1 },
-      { slug: "kumo-lab", name: "くもラボ", users: 8, wss: 4, tasks: 3410, used: 21.7, quota: 50, lastUsed: "10/18 11:03", created: "2026-07-10", admins: 0 },
-      { slug: "nagi", name: "なぎ設計", users: 2, wss: 1, tasks: 96, used: 0.1, quota: 10, lastUsed: "09/02 15:21", created: "2026-08-01", admins: 1, suspended: "2026-09-30", purgeOn: "2026-10-30" },
+      { slug: "aoba", name: "あおば開発", users: 5, limit: 15, wss: 3, tasks: 1284, used: 25.1, quota: 30, lastUsed: "10/20 09:12", created: "2026-06-01", admins: 2 },
+      { slug: "hibari", name: "ひばり工房", users: 15, limit: 15, wss: 1, tasks: 212, used: 0.4, quota: 30, lastUsed: "10/19 18:40", created: "2026-09-15", admins: 1 },
+      { slug: "kumo-lab", name: "くもラボ", users: 38, limit: 50, wss: 4, tasks: 3410, used: 21.7, quota: 100, lastUsed: "10/18 11:03", created: "2026-07-10", admins: 0 },
+      { slug: "nagi", name: "なぎ設計", users: 2, limit: 15, wss: 1, tasks: 96, used: 0.1, quota: 30, lastUsed: "09/02 15:21", created: "2026-08-01", admins: 1, suspended: "2026-09-30", purgeOn: "2026-10-30" },
     ],
   },
 });

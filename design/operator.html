@@ -28,11 +28,11 @@ SQ.mount("operator", () => `
     [K.some((k) => !k.admins) ? "is-danger" : "", "", `${t("king")}がいない`, K.filter((k) => !k.admins).length],
   ], `<button class="btn is-primary" type="button" data-dialog="createKingdom">${icon("plus")}${t("kingdom")}を作る</button>`)}
   <div class="callout is-info">${icon("shield")}<span>運用者は${t("kingdom")}の中（タスク、メンバー、記録、添付ファイルの中身など）を見られません。ここに出すのは数、大きさ、日時だけです。</span></div>
-  <div class="table-wrap"><table class="table"><thead><tr><th>${t("kingdom")}・slug</th><th class="is-num">ユーザー</th><th class="is-num">${t("workspace")}</th><th class="is-num">${t("task")}</th><th>添付ファイル</th><th>最後に使われた</th><th></th></tr></thead>
+  <div class="table-wrap"><table class="table"><thead><tr><th>${t("kingdom")}・slug</th><th class="is-num">人数 / 上限</th><th class="is-num">${t("workspace")}</th><th class="is-num">${t("task")}</th><th>添付ファイル</th><th>最後に使われた</th><th></th></tr></thead>
     <tbody>${K.map((k) => `<tr>
       <td>${esc(k.name)}${k.suspended ? ` <span class="chip is-warn">停止 ${esc(k.suspended)}</span>` : ""}${k.purgeOn ? ` <span class="chip is-danger">${esc(k.purgeOn)} に消す</span>` : ""}${!k.admins ? ` <span class="chip is-danger">${t("king")}がいない</span>` : ""}<br><span class="mono props-note">${esc(k.slug)}</span></td>
-      <td class="is-num">${k.users}</td><td class="is-num">${k.wss}</td><td class="is-num">${k.tasks.toLocaleString()}</td>
-      <td>${meter(k.used, k.quota, { small: true })}<button class="link-btn" type="button" data-dialog="changeQuota">上限を変える</button></td>
+      <td class="is-num">${k.users} / ${k.limit}${k.users >= k.limit ? `<br><span class="chip is-warn">${icon("alert")}上限</span>` : ""}</td><td class="is-num">${k.wss}</td><td class="is-num">${k.tasks.toLocaleString()}</td>
+      <td>${meter(k.used, k.quota, { small: true })}<button class="link-btn" type="button" data-dialog="changeQuota">人数と容量の上限を変える</button></td>
       <td class="mono">${esc(k.lastUsed)}</td>
       <td><span class="table-actions">
         <button class="btn is-sm is-quiet" type="button" data-dialog="reassignKing">${t("king")}を指名</button>
