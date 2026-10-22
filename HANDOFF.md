@@ -9,6 +9,7 @@
 | 要件定義 | `docs/requirements.md` |
 | 名前の決定の記録 | `docs/naming.md` |
 | サービスにする方針と進め方 | `docs/business.md` |
+| AI の機能の案 | `docs/ai.md` |
 | データモデル | `docs/data-model.md` |
 | デザインの原則、画面一覧、主なフロー、決めた方向 | `docs/design.md` |
 | デザインシステムと画面の見本 | `design/`。`design/index.html` をブラウザで開く（ビルド不要） |
@@ -55,6 +56,10 @@
 - [ ] GitHub のブランチ保護で `main` への直接の push を止める
 - [ ] 低リスクの PR を AI の判定で自動マージするか。するなら、対象外にする領域と拒否権のルール
 - [ ] 本番で壊れたことに気づく手段（テレメトリは送らない方針なので、Workers Logs などで足りるか）
+
+### AI の機能（`docs/ai.md`）
+
+- [ ] `docs/ai.md` の「決めること」（初版に入れるか、経験値の扱い、顧客のデータを Anthropic に送ってよいか、モデル、値段）
 
 ### 片付け
 
