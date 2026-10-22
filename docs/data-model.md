@@ -155,7 +155,8 @@ GitHub OAuth の state と PKCE の code_verifier。
 | theme | TEXT | NOT NULL、`simple`、`simple_light`、`simple_dark`、`medieval`、`modern` のどれか、既定 `simple` | 王国の既定のテーマ。`simple` は OS の明暗に合わせる |
 | suspended_at | TEXT | | 停止した日時。入っていれば誰も入れず、定期処理も止める |
 | purge_on | TEXT | | 解約で停止したときの、データを消す予定日（停止から30日後）。一時的な停止では空 |
-| attachment_quota_bytes | INTEGER | NOT NULL、既定 5368709120 | 添付ファイルの合計の上限（既定 5GB）。運用者が決める |
+| attachment_quota_bytes | INTEGER | NOT NULL、既定 10737418240 | 添付ファイルの合計の上限（既定 10GB）。運用者が決める |
+| attachment_quota_warned_at | TEXT | | 合計が上限の80%を超えたと管理者に通知した日時。合計が80%を下回るか、上限を上げたら空に戻す |
 | created_by_github_user_id | INTEGER | NOT NULL | 作った運用者 |
 | created_at、updated_at | TEXT | NOT NULL | |
 
@@ -637,7 +638,7 @@ GitHub OAuth の state と PKCE の code_verifier。
 | object_key | TEXT | NOT NULL、UNIQUE | R2 のキー。`<kingdom_id>/<workspace_id>/<id>` |
 | file_name | TEXT | NOT NULL | 上げたときのファイル名。255字まで |
 | content_type | TEXT | NOT NULL | 中身の先頭のバイトで確かめた種類。分からなければ `application/octet-stream` |
-| size_bytes | INTEGER | NOT NULL、`CHECK (size_bytes BETWEEN 1 AND 10485760)` | |
+| size_bytes | INTEGER | NOT NULL、`CHECK (size_bytes BETWEEN 1 AND 52428800)` | |
 | uploaded_by | TEXT | NOT NULL、FK users | 消す権限に使う |
 | attached_at | TEXT | | 付く先が決まった日時。空なら書いている途中で上げたもの |
 | created_at | TEXT | NOT NULL | |
@@ -645,8 +646,8 @@ GitHub OAuth の state と PKCE の code_verifier。
 - 付く先は4つの列のうち多くても1つ: `CHECK ((task_id IS NOT NULL) + (story_id IS NOT NULL) + (epic_id IS NOT NULL) + (comment_id IS NOT NULL) <= 1)`。付く先が決まったら `attached_at` を入れる: `CHECK ((attached_at IS NULL) = (task_id IS NULL AND story_id IS NULL AND epic_id IS NULL AND comment_id IS NULL))`。
 - 起票の画面やコメントの欄では、保存する前に上げるため、付く先のない行を先に作る。保存したときに、本文やコメントが参照する行へ付く先を入れる。付く先のないまま1日たった行とファイルは定期処理で消す。
 - 消すときは行を物理削除する。論理削除にしないのは、戻す手段がなく、残すと容量の上限に数え続けるため。消したことは付く先の `change_logs` に残す。
-- 王国の合計は、王国のワークスペースの `size_bytes` の合計を上げるたびに計算する。集計は保存しない。同時に上げたときに少し超えることは許す。
-- 画面と Markdown からは `/api/<slug>/attachments/<id>` で参照する。返すときは権限を確かめ、`X-Content-Type-Options: nosniff` と `Cache-Control: private` を付ける。画像として出す4種類以外は `Content-Disposition: attachment` で返す。
+- 王国の合計は、王国のワークスペースの `size_bytes` の合計を上げるたびに計算する。集計は保存しない。同時に上げたときに少し超えることは許す。上げたことで80%を超え、`kingdoms.attachment_quota_warned_at` が空なら、管理者全員に通知し、その日時を入れる。
+- 画面と Markdown からは `/api/<slug>/attachments/<id>` で参照する。返すときは権限を確かめ、`X-Content-Type-Options: nosniff` と `Cache-Control: private` を付ける。画像として出す4種類（PNG、JPEG、GIF、WebP）と動画として再生する2種類（MP4、WebM）以外は `Content-Disposition: attachment` で返す。動画は Range リクエストに応える。
 - 索引: `(task_id)`、`(story_id)`、`(epic_id)`、`(comment_id)` をそれぞれ NOT NULL の部分索引で、`(workspace_id)`、`(created_at) WHERE attached_at IS NULL`。
 
 ### sprints
@@ -778,7 +779,7 @@ GitHub OAuth の state と PKCE の code_verifier。
 | id | TEXT | PK | |
 | user_id | TEXT | NOT NULL、FK users | 受け取る人 |
 | workspace_id | TEXT | FK workspaces | |
-| kind | TEXT | NOT NULL | `source_done`、`source_reopened`、`source_missing`、`connection_failed`、`credential_expiring`、`comment`、`assigned`、`party_assigned`、`reward_changed`、`thanked` |
+| kind | TEXT | NOT NULL | `source_done`、`source_reopened`、`source_missing`、`connection_failed`、`credential_expiring`、`comment`、`assigned`、`party_assigned`、`reward_changed`、`thanked`、`attachment_quota_warning` |
 | task_id | TEXT | FK tasks | |
 | epic_id | TEXT | FK epics | |
 | connection_id | TEXT | FK connections | |
