@@ -843,9 +843,9 @@ D1 は対話的なトランザクションを持たない。まとめて書く�
 
 | 操作 | 書くもの |
 | --- | --- |
-| タスクの完了 | `tasks`、`completions`、`sprint_entries`（スプリントの外なら書かない）、`xp_grants`（完了、手助け）、`change_logs`、`notifications` |
+| タスクの完了 | `tasks`、`completions`、`sprint_entries`（スプリントの外なら書かない）、`xp_grants`（完了、起票、詳細、手助け）、`change_logs`、`notifications` |
 | 完了を戻す | `tasks`、`completions` の削除、`xp_grants`（打ち消し）、`change_logs` |
-| スプリントの終了 | `sprints`、`sprint_entries`、持ち越すタスクの `tasks` と新しい `sprint_entries`、`xp_grants`（起票、詳細）、`change_logs` |
+| スプリントの終了 | `sprints`、`sprint_entries`、持ち越すタスクの `tasks` と新しい `sprint_entries`、`change_logs` |
 | エピックのクリア | `epics`、`xp_grants`（クリア報酬）、`change_logs` |
 | メンバーの離脱 | `memberships`、担当を外す `tasks`、`epic_party_members`、`connections`、`change_logs`。ログインできなくなったときは、続けて共通の DB の `sessions` を消す |
 | 取り込み（1件） | `tasks`、`task_sources`、`task_source_payloads` |
