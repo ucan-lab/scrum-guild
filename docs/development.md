@@ -59,8 +59,8 @@
 
 最初の一本は、運用者が王国を作る → GitHub でログインする → ワークスペースを作る → タスクを1件作って完了する、の一本道にする（2026-10-22 に決めた）。認証、王国の分離、操作の定義、`batch()` での書き込み、画面を一度に通し、CI/CD と本番へのデプロイもこの一本に含める。Issue への分け方は `issue-plan` で決める。目安は次のとおり。
 
-1. 土台: pnpm、SvelteKit の SPA モード、Hono、wrangler の設定、ESLint と Prettier、`CLAUDE.md` の「コマンド」、SessionStart のフック、`.claude/settings.json` の deny
-2. CI と CD: `ci-ok`、`main` からのデプロイ、`/api/health`、煙のテスト
+1. 土台: pnpm、SvelteKit の SPA モード、Hono、wrangler の設定、ESLint と Prettier、`CLAUDE.md` の「コマンド」、SessionStart のフック、`.claude/settings.json` の deny、セキュリティのヘッダー
+2. CI と CD: `ci-ok`、`main` からのデプロイ、`/api/health`、煙のテスト、`docs/operations.md`
 3. 入口: Kysely の2つの入口と `batch()` の関数、操作の定義を登録する関数、エラーの形、王国の分離のテストの仕組み
 4. 一本道に要る表のマイグレーションと seed
 5. 運用者の王国の作成、GitHub OAuth とセッション、王国の選択
@@ -229,6 +229,44 @@ Cloudflare の API トークンは権限を最小にし、GitHub Environment の
 - Workers Logs を有効にする
 - GitHub Actions の定期実行で、1時間ごとに本番の `/api/health` と定期処理の最後の成功時刻を確かめ、落ちていたら Issue を立てる
 - Cloudflare の通知で Workers のエラー率などを受けられるかは、土台を作るときに確かめる
+
+## 運用の手順書
+
+`docs/operations.md` の1つにまとめる（2026-10-22 に決めた）。最初のデプロイの PR で作り、手順を変える PR で同じ差分の中で直す。
+
+- 用意: Cloudflare のアカウント、GitHub OAuth App、D1 と R2 のバケット、シークレットの一覧と登録、GitHub Environment と API トークン
+- 出し方: マイグレーションの承認、デプロイ、煙のテスト
+- 戻し方: `wrangler rollback`、D1 の Time Travel、定期の書き出しからの戻し
+- 王国: 作成、停止と再開、解約と30日後の消去（R2 のファイルを含む）
+- 鍵の入れ替え: 接続の認証情報の暗号鍵
+- 本番で壊れたとき: Workers Logs の見方、定期の確認の Issue が立ったときにすること
+
+後で作る `incident` のスキルは、この文書の「戻し方」と「本番で壊れたとき」を手順として読む。
+
+## セキュリティのヘッダー
+
+最初の一本道から厳しく入れる（2026-10-22 に決めた）。後から締めると、壊れる所を探す手間が大きいため。
+
+- CSP: SvelteKit の `csp` の設定（ハッシュ）で、`script-src` を自分のものだけにする。`default-src 'self'`、`object-src 'none'`、`base-uri 'self'`、`frame-ancestors 'none'`、`form-action 'self'` を基本にする。書体などで外を読むときは、その先だけを足す
+- `X-Content-Type-Options: nosniff`、`Referrer-Policy: strict-origin-when-cross-origin`、`Strict-Transport-Security`
+- API の応答にも同じヘッダーを付ける
+- e2e で、CSP の違反が出ないことを確かめる
+
+## 添付ファイルの配信
+
+画面と同じオリジンから、Worker が権限を確かめて返す（2026-10-22 に決めた）。別のドメインと署名付き URL は使わない。
+
+- 画面で表示するのは、決まった型の画像と動画（MP4、WebM）だけにする。型は上げたときの申告ではなく、ファイルの先頭のバイトで確かめる
+- SVG と HTML を含め、それ以外はすべて `Content-Disposition: attachment` で落とす
+- 添付ファイルの応答には `Content-Security-Policy: sandbox; default-src 'none'` と `nosniff` を付ける
+- 決まりの外れは `.claude/checklists/cloudflare-workers.md` の「画面の配信」で見る
+
+## Cloudflare のアカウントとドメイン
+
+- 本番の Cloudflare アカウントは ucan-lab 用に新しく作る（2026-10-22 に決めた）。請求と権限を個人のものと分け、法人化や人を足すときに移しやすくする
+- ドメイン `team-leveling.dev` はベータの前に取る（2026-10-22 に決めた）。それまでは `workers.dev` の URL で動かす
+- ドメインへ移すときは、公開する URL の設定、GitHub OAuth App の戻り先、Cookie を直し、移した後にもう一度ログインしてもらう。手順は `docs/operations.md` に書く
+- 王国を示す URL の形（`/<slug>/...`）は、`workers.dev` の上でも変えない
 
 ## 定期の作業
 

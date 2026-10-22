@@ -65,6 +65,8 @@
 - [x] 技術の選択を決めた（2026-10-22）。pnpm、1つのパッケージ、ESLint と Prettier、SvelteKit の SPA モード、Kysely、zod、自前の操作の定義、型付きの言葉の辞書、seed とファクトリー。`docs/requirements.md` の「画面」を SvelteKit の SPA モードに改めた
 - [x] 最初の一本道（王国の作成からタスクの完了まで）、DB を作り直してよい期間（ベータまで）、API のエラーの形、CI の AI レビュー（`claude-code-action`）を決めた（2026-10-22）。`docs/development.md` の「API のエラーとログ」「初版の作る順」
 - [ ] Anthropic の API キーを用意し、リポジトリのシークレットに置く（CI の AI レビューに使う）
+- [x] 運用の手順書（`docs/operations.md` に1つ）、セキュリティのヘッダー（最初の一本道から厳しく）、添付ファイルの配信（同じオリジンで型を絞る）、Cloudflare のアカウント（ucan-lab 用に新しく作る）を決めた（2026-10-22）
+- [ ] ucan-lab 用の Cloudflare アカウントを作り、Workers Paid にする
 - [x] スキルとエージェントを整えた（2026-10-22）。`requirements` を外し、レビューのエージェント3つを D1 と Workers 向けに書き直し、チェックリストに `cloudflare-workers.md` と `multi-tenant.md` を足した
 
 ### AI の機能（`docs/ai.md`）
@@ -79,7 +81,7 @@
 ### 名前の変更（scrum-quest から Team Leveling へ）
 
 - [x] GitHub のリポジトリ名を `ucan-lab/scrum-quest` から `ucan-lab/team-leveling` に変えた（2026-10-20）。手元の作業コピーは `git remote set-url origin https://github.com/ucan-lab/team-leveling` で直す
-- [ ] ドメイン `team-leveling.dev` を取る（2026-10-20 に空きを確かめた）
+- [ ] ドメイン `team-leveling.dev` を取る（2026-10-20 に空きを確かめた）。ベータの前に取ると決めた（2026-10-22）。それまでは `workers.dev` で動かす
 - [x] claude.ai の Artifact に公開していた見本は消した（2026-10-20）。見本は `design/index.html` をブラウザで開いて見る
 
 ## 次にやること
