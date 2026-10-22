@@ -14,6 +14,7 @@
 | デザインシステムと画面の見本 | `design/`。`design/index.html` をブラウザで開く（ビルド不要） |
 | スタイルタイル（見た目の3案。決定の記録） | `design/style-tiles.html` |
 | 最初のモック（役目を終えたもの） | `mock/` |
+| クラウドのセッションでも使うスキル、レビューのエージェント、そのチェックリスト | `.claude/skills/`、`.claude/agents/`、`.claude/checklists/`。原本は `ucan-lab/claude-skills`。GitHub の操作は REST（`gh api`）に書き換えてある |
 
 ## 確認してほしいこと
 
