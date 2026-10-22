@@ -18,7 +18,7 @@
 <script>
 "use strict";
 // エピック（レイド）の詳細
-const { D, t, icon, esc, pageHead, avatarOf, emblem, tier, dueChip, progress, book, storyPts, raidNotice } = SQ;
+const { D, t, icon, esc, pageHead, avatarOf, emblem, tier, dueChip, progress, book, storyPts, raidNotice, attachments, filesOf } = SQ;
 const ID = "e1";
 
 SQ.mount("epic", () => {
@@ -42,6 +42,7 @@ SQ.mount("epic", () => {
         <section class="section">
           <div class="raid-body">${e.body.map((b) => `<p>${esc(b)}</p>`).join("")}
             ${e.link ? `<span class="source-key">${icon("link")} ${esc(e.link)}</span>` : ""}</div>
+          <div class="field"><span class="field-label">${icon("clip")} 添付ファイル ${filesOf(ID).length || ""}</span>${attachments(ID)}</div>
         </section>
         ${stories.map((s) => {
           const st = D.stories[s];
@@ -50,6 +51,7 @@ SQ.mount("epic", () => {
           return `<section class="story-block" aria-labelledby="st-${s}">
             <div class="story-head"><span class="kind is-story">${icon("check")}</span><h2 class="story-title" id="st-${s}">${esc(st.title)}</h2>${progress(sp.done, sp.all)}</div>
             <div class="ac-box"><b>${t("ac")}</b><ul>${st.ac.map((a) => `<li>${esc(a)}</li>`).join("")}</ul></div>
+            ${attachments(s, { button: true })}
             ${book(list, { showParent: false, showAssignee: true })}
           </section>`;
         }).join("")}

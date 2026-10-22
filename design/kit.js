@@ -322,6 +322,91 @@
     }).join("");
   }
 
+  // ---- 添付ファイル ----
+  // 付く先のキー（タスク、ストーリー、エピックの ID、コメントは "comment:<タスク>:<番号>"）ごとに D.files に持つ。
+  // 画像と動画は縮小した絵を並べ、それ以外は1行ずつ。押すとプレビューが開く
+  const FILE_ICON = { image: "image", video: "play", file: "file" };
+  const FILE_KIND = { image: "画像", video: "動画", file: "ファイル" };
+  const filesOf = (key) => D.files[key] || [];
+  function findFile(id) {
+    for (const key of Object.keys(D.files)) {
+      const f = D.files[key].find((x) => x.id === id);
+      if (f) return { key, f };
+    }
+    return null;
+  }
+  function fileArt(f) {
+    return `<span class="file-art ${f.type === "video" ? "is-video" : ""}" aria-hidden="true">${icon(f.type === "video" ? "play" : "image")}${f.length ? `<span class="file-art-time">${f.length}</span>` : ""}</span>`;
+  }
+  function fileThumb(f) {
+    return `<button class="file-thumb" type="button" data-file="${f.id}" aria-label="${esc(f.name)}（${FILE_KIND[f.type]}、${f.size}）を開く">${fileArt(f)}<span class="file-thumb-label"><b>${esc(f.name)}</b><span>${f.size}</span></span></button>`;
+  }
+  // 1行。f.state が uploading なら進み、error なら理由を出す
+  function fileRow(f) {
+    if (f.state === "uploading") {
+      return `<div class="file-row">${icon("upload")}<div class="file-main"><span class="file-name">${esc(f.name)}</span>
+        <span class="file-meta">上げています ${f.pct}%・${f.size}</span>
+        <span class="file-bar" role="progressbar" aria-valuenow="${f.pct}" aria-valuemin="0" aria-valuemax="100" aria-label="${esc(f.name)} を上げています"><span style="width:${f.pct}%"></span></span></div>
+        <div class="file-actions"><button class="btn is-sm is-quiet" type="button" data-cancel-file="${f.id}">やめる</button></div></div>`;
+    }
+    if (f.state === "error") {
+      return `<div class="file-row is-error" role="alert">${icon("alert")}<div class="file-main"><span class="file-name">${esc(f.name)}</span><span class="file-meta">${esc(f.error)}</span></div>
+        <div class="file-actions"><button class="btn is-sm is-quiet" type="button" data-cancel-file="${f.id}">閉じる</button></div></div>`;
+    }
+    return `<div class="file-row">${icon(FILE_ICON[f.type])}<div class="file-main"><button class="file-name" type="button" data-file="${f.id}">${esc(f.name)}</button>
+      <span class="file-meta">${f.size}・${esc(user(f.who).name)}・${f.at}</span></div>
+      <div class="file-actions"><button class="icon-btn" type="button" data-toast="ダウンロードを始めました" aria-label="${esc(f.name)} をダウンロード" title="ダウンロード">${icon("download")}</button>
+        <button class="icon-btn is-danger" type="button" data-delete-file="${f.id}" aria-label="${esc(f.name)} を消す" title="消す">${icon("trash")}</button></div></div>`;
+  }
+  // 上げる場所。opts.button なら小さなボタンだけ、opts.full なら上限に達した状態
+  function dropzone(key, opts = {}) {
+    if (opts.full ?? D.storage.used >= D.storage.quota) {
+      return `<div class="dropzone is-disabled">${icon("alert")}<span class="dropzone-text"><b>${t("kingdom")}の添付ファイルが上限（${D.storage.quota} GB）に達しているため、添付できません</b><span>${t("king")}が不要なファイルを消すか、上限を上げると添付できます</span></span></div>`;
+    }
+    if (opts.button) return `<div><button class="btn is-sm is-quiet" type="button" data-pick-file="${key}">${icon("clip")}ファイルを添付</button></div>`;
+    return `<div class="dropzone ${opts.over ? "is-over" : ""}" data-drop="${key}">${icon("upload")}
+      <span class="dropzone-text"><b>${opts.over ? "離すと添付します" : "ここにファイルをドラッグして添付"}</b><span>1 ファイル 50 MB まで。画像は本文やコメントに貼り付けても添付できます</span></span>
+      <button class="btn is-sm" type="button" data-pick-file="${key}">${icon("clip")}ファイルを選ぶ</button></div>`;
+  }
+  // 添付ファイルの一覧と上げる場所。opts.noDrop なら一覧だけ。上げると data-files-for の中だけを描き直す
+  function attachments(key, opts = {}) {
+    const list = filesOf(key);
+    const media = list.filter((f) => f.type !== "file" && !f.state);
+    const rest = list.filter((f) => f.type === "file" || f.state);
+    return `<div class="files" data-files-for="${key}" data-files-opts='${JSON.stringify(opts)}'>
+      ${media.length ? `<div class="file-thumbs">${media.map(fileThumb).join("")}</div>` : ""}
+      ${rest.map(fileRow).join("")}
+      ${opts.noDrop ? "" : dropzone(key, opts)}</div>`;
+  }
+  // Markdown に差し込んだ画像。消したファイルは「見つかりません」と出す
+  function mdImage(alt, id) {
+    const hit = findFile(id);
+    if (!hit) return `<div class="file-row is-error">${icon("image")}<div class="file-main"><span class="file-name">${esc(alt)}</span><span class="file-meta">ファイルが見つかりません。消されたか、まだ上げ終わっていません</span></div></div>`;
+    return `<figure class="md-figure">${fileThumb(hit.f)}</figure>`;
+  }
+  // 本文の段落。"![説明](ファイルの ID)" だけの行は画像として出す
+  function mdBody(lines) {
+    return lines.map((b) => {
+      const m = /^!\[(.*)\]\((\w+)\)$/.exec(b);
+      return m ? mdImage(m[1], m[2]) : `<p>${esc(b)}</p>`;
+    }).join("");
+  }
+  // 使っている量と上限。80% を超えたら is-warn、上限に達したら is-full
+  function meter(used, quota, opts = {}) {
+    const pct = Math.min(100, Math.round((used / quota) * 100));
+    const key = used >= quota ? "is-full" : pct >= 80 ? "is-warn" : "";
+    const label = `上限 ${quota} GB のうち ${used} GB（${pct}%）`;
+    const state = key === "is-full" ? `<span class="chip is-danger">${icon("alert")}上限に達しています</span>`
+      : key ? `<span class="chip is-warn">${icon("alert")}上限の ${pct}%</span>` : `<span class="props-note">上限の ${pct}%</span>`;
+    if (opts.small) {
+      return `<div class="meter meter-small ${key}"><span class="meter-small-top"><span class="mono">${used} / ${quota} GB</span>${key ? `<span class="verdict is-over">${icon("alert")}${pct}%</span>` : ""}</span>
+        <div class="meter-bar" role="img" aria-label="${label}"><span style="width:${pct}%"></span></div></div>`;
+    }
+    return `<div class="meter ${key}"><div class="meter-top"><span class="meter-num">${used}<small> / ${quota} GB</small></span>${state}</div>
+      <div class="meter-bar" role="img" aria-label="${label}"><span style="width:${pct}%"></span></div>
+      <span class="props-note">縦の線は 80% の位置。超えると${t("king")}に通知します。</span></div>`;
+  }
+
   // ---- タスクの詳細（右から出る引き出し） ----
   const drawer = { id: null, tab: "comments", thanked: new Set(), opener: null };
   function drawerHtml() {
@@ -361,7 +446,11 @@
       </div>
       <div class="field">
         <span class="field-label">本文</span>
-        <div class="doc-box">${x.src ? `<p class="props-note">取り込み元の本文は <span class="mono">${esc(x.src.key)}</span> で開いて読みます。ここには Team Leveling のメモを書けます。</p>` : (x.body || ["まだ書かれていません。"]).map((b) => `<p>${esc(b)}</p>`).join("")}</div>
+        <div class="doc-box">${x.src ? `<p class="props-note">取り込み元の本文は <span class="mono">${esc(x.src.key)}</span> で開いて読みます。ここには Team Leveling のメモを書けます。</p>` : mdBody(x.body || ["まだ書かれていません。"])}</div>
+      </div>
+      <div class="field">
+        <span class="field-label">${icon("clip")} 添付ファイル ${filesOf(x.id).filter((f) => !f.state).length || ""}</span>
+        ${attachments(x.id)}
       </div>
       <div class="done-bar">
         ${x.doneAt ? `<span class="hanko" role="img" aria-label="${t("done")}">${icon("check")}<b>完</b></span><span>${t("done")} ${esc(x.doneAt)}</span><button class="link-btn" type="button" data-undo="${x.id}">戻す</button>`
@@ -383,11 +472,14 @@
         </div>
         ${drawer.tab === "comments" ? `
         <div class="thread">
-          ${comments.map((c) => `<div class="comment ${c.deleted ? "is-deleted" : ""}">${avatarOf(c.who)}<div>
+          ${comments.map((c, i) => `<div class="comment ${c.deleted ? "is-deleted" : ""}">${avatarOf(c.who)}<div>
             <div class="comment-head"><b>${esc(user(c.who).name)}</b><span class="mono">${c.at}</span>${c.edited ? "<span>編集済み</span>" : ""}</div>
-            <p class="comment-body">${c.deleted ? "削除されました" : esc(c.body)}</p></div></div>`).join("") || `<p class="props-note">まだコメントはありません。</p>`}
+            <p class="comment-body">${c.deleted ? "削除されました" : esc(c.body)}</p>
+            ${!c.deleted && filesOf(`comment:${x.id}:${i}`).length ? `<div class="comment-files">${filesOf(`comment:${x.id}:${i}`).map((f) => (f.type === "file" ? fileRow(f) : fileThumb(f))).join("")}</div>` : ""}</div></div>`).join("") || `<p class="props-note">まだコメントはありません。</p>`}
           <label class="field" for="new-comment"><span class="field-label">コメントを書く</span><textarea class="textarea" id="new-comment" placeholder="Markdown で書けます"></textarea></label>
-          <div><button class="btn" type="button">送る</button></div>
+          ${attachments(`comment-new:${x.id}`, { noDrop: true })}
+          <div class="composer-foot"><button class="btn is-sm is-quiet" type="button" data-pick-file="comment-new:${x.id}">${icon("clip")}ファイルを添付</button>
+            <span class="field-hint">画像は貼り付けても添付できます。</span><button class="btn" type="button">送る</button></div>
         </div>` : `
         <ul class="history">${history.map((h) => `<li><span class="mono">${h[0]}</span>${avatarOf(h[1])}<span>${esc(user(h[1]).name)}</span><span class="props-note">${HIST[h[2]]}</span><span>${esc(h[3])}</span></li>`).join("") || `<li class="props-note">まだ変更はありません。</li>`}</ul>`}
       </div>`;
@@ -500,7 +592,9 @@
        </div>
        <div class="field"><span class="field-label">${t("points")}</span>
          <div class="segmented" role="radiogroup">${["未", 0, 1, 2, 3, 5, 8, 13].map((v, i) => `<label><input type="radio" name="d-pts" ${i === 0 ? "checked" : ""}><span>${v}</span></label>`).join("")}</div>
-         <span class="field-hint">「未」は未見積もり。起票の経験値は、1 以上のポイントが振られたまま${t("sprint")}を終えると付きます。</span></div>`,
+         <span class="field-hint">「未」は未見積もり。起票の経験値は、1 以上のポイントが振られたまま${t("sprint")}を終えると付きます。</span></div>
+       <div class="field"><span class="field-label">添付ファイル</span>${attachments("new", { button: true })}
+         <span class="field-hint">保存せずに閉じると、上げたファイルは 1 日で消えます。</span></div>`,
       `<button class="btn is-quiet" type="button" data-close-dialog>やめる</button><button class="btn is-primary" type="button" data-close-dialog data-toast="${t("backlog")}の末尾に足しました">${t("create")}</button>`),
     deleteEpic: () => {
       openDialog(`${t("epic")}を削除する`,
@@ -536,6 +630,35 @@
        <label class="field" for="d-ra"><span class="field-label">GitHub ユーザー名</span><input class="input mono" id="d-ra" placeholder="例: kumo-hanako"><span class="field-hint">この${t("kingdom")}のユーザーでなくてもかまいません。指名しても、運用者はこの${t("kingdom")}の中を見られるようにはなりません。</span></label>
        <p class="field-hint">指名は${t("kingdom")}の変更の履歴に、運用者の操作として残ります。</p>`,
       `<button class="btn is-quiet" type="button" data-close-dialog>やめる</button><button class="btn is-primary" type="button" data-close-dialog data-toast="${t("king")}を指名しました">指名する</button>`),
+    // 添付ファイルのプレビュー。画像と動画は画面で見られ、それ以外はダウンロードして開く
+    previewFile: (id) => {
+      const hit = findFile(id);
+      if (!hit) return;
+      const f = hit.f;
+      openDialog(esc(f.name),
+        `<div class="preview">${f.type === "file" ? `<div class="empty" style="border:0">${icon("file")}<b>このファイルは画面では開けません</b><span>ダウンロードして開いてください。</span></div>` : fileArt(f)}</div>
+         <dl class="facts"><div><dt>種類</dt><dd>${FILE_KIND[f.type]}</dd></div><div><dt>大きさ</dt><dd class="mono">${f.size}</dd></div><div><dt>上げた人</dt><dd>${avatarOf(f.who)}${esc(user(f.who).name)}</dd></div><div><dt>上げた日時</dt><dd class="mono">${f.at}</dd></div></dl>`,
+        `<button class="btn is-quiet is-danger" type="button" data-delete-file="${f.id}">${icon("trash")}消す</button><button class="btn is-primary" type="button" data-toast="ダウンロードを始めました">${icon("download")}ダウンロード</button>`);
+      document.querySelector(".dialog-sheet").classList.add("is-wide");
+    },
+    deleteFile: (id) => {
+      const hit = findFile(id);
+      if (!hit) return;
+      openDialog("添付ファイルを消す",
+        `<p>「${esc(hit.f.name)}」を消します。消したファイルは戻せません。</p>
+         <p class="field-hint">本文やコメントに差し込んでいた所には「ファイルが見つかりません」と出ます。消したことは変更の履歴に残ります。消せるのは、上げた人と${t("leader")}です。</p>`,
+        `<button class="btn is-quiet" type="button" data-close-dialog>やめる</button><button class="btn is-danger" type="button" data-confirm-delete-file="${id}">${icon("trash")}消す</button>`);
+      document.querySelector(".dialog-sheet").classList.add("is-danger");
+    },
+    changeQuota: () => openDialog("添付ファイルの上限を変える",
+      `<p>あおば開発の添付ファイルの合計の上限を変えます。今の合計は 8.3 GB、上限は 10 GB です。</p>
+       <div class="choice-list">
+         <label class="choice"><input type="radio" name="d-q" checked><div><b>10 GB</b><span>小さい${t("kingdom")}（〜10人）の値段の段</span></div></label>
+         <label class="choice"><input type="radio" name="d-q"><div><b>50 GB</b><span>標準（〜50人）の値段の段</span></div></label>
+         <label class="choice"><input type="radio" name="d-q"><div><b>ほかの値</b><span><input class="input" type="number" min="1" aria-label="上限（GB）" placeholder="GB で入力" style="max-width:10em"></span></div></label>
+       </div>
+       <p class="field-hint">今の合計より小さくすると、合計が下がるまで新しく添付できなくなります。上限を上げて 80% を下回ると、次に超えたときにまた${t("king")}に通知します。</p>`,
+      `<button class="btn is-quiet" type="button" data-close-dialog>やめる</button><button class="btn is-primary" type="button" data-close-dialog data-toast="上限を変えました">変える</button>`),
     suspendKingdom: () => {
       openDialog(`${t("kingdom")}を停止する`,
       `<p>ひばり工房を停止します。停止すると誰も入れなくなり、取り込みと日をまたぐ処理も止まります。データは残り、再開すれば元どおりに使えます。</p>
@@ -668,7 +791,20 @@
     }
     if ((el = hit("data-tab"))) { drawer.tab = el.dataset.tab; renderDrawer(); return; }
     if (hit("data-close-drawer")) { closeDrawer(); return; }
-    if ((el = hit("data-dialog"))) { DIALOGS[el.dataset.dialog](); return; }
+    if ((el = hit("data-dialog"))) { if (el.dataset.dialog === "createTask") delete D.files.new; DIALOGS[el.dataset.dialog](); return; }
+    if ((el = hit("data-file"))) { DIALOGS.previewFile(el.dataset.file); return; }
+    if ((el = hit("data-delete-file"))) { closeDialog(); DIALOGS.deleteFile(el.dataset.deleteFile); return; }
+    if ((el = hit("data-confirm-delete-file"))) {
+      const found = findFile(el.dataset.confirmDeleteFile);
+      if (found) D.files[found.key] = D.files[found.key].filter((x) => x !== found.f);
+      closeDialog(); redrawAll(); toast(`${icon("check")}添付ファイルを消しました`); return;
+    }
+    if ((el = hit("data-pick-file"))) { fakeUpload(el.dataset.pickFile); return; }
+    if ((el = hit("data-cancel-file"))) {
+      const found = findFile(el.dataset.cancelFile);
+      if (found) { D.files[found.key] = D.files[found.key].filter((x) => x !== found.f); redrawFiles(found.key); }
+      return;
+    }
     if ((el = hit("data-celebrate"))) {
       const e = D.epics[el.dataset.celebrate];
       celebrate(e.title, `${t("party")}の ${e.party.length} 人に ${{ small: 100, medium: 300, large: 600 }[e.tier]} XP`); return;
@@ -688,6 +824,45 @@
     if (closeCelebrate() || closeDialog()) return;
     if (drawer.id) closeDrawer();
   });
+  // 見本の中だけの、上げる動き。ファイルを選ぶかドラッグすると、進みを出してから一覧に加える
+  let uploads = 0;
+  function redrawFiles(key) {
+    document.querySelectorAll(`[data-files-for="${key}"]`).forEach((el) => {
+      const opts = JSON.parse(el.dataset.filesOpts || "{}");
+      el.outerHTML = attachments(key, opts);
+    });
+  }
+  function fakeUpload(key) {
+    uploads += 1;
+    const f = uploads % 3 === 0
+      ? { id: `n${uploads}`, name: "画面の録画 2026-10-20 11.52.mov", type: "video", size: "82.1 MB", state: "error", error: "50 MB を超えているため添付できません（82.1 MB）" }
+      : { id: `n${uploads}`, name: `スクリーンショット 2026-10-20 11.4${uploads}.png`, type: "image", size: "1.8 MB", who: D.me, at: "10/20 11:4" + uploads, state: "uploading", pct: 0 };
+    (D.files[key] = D.files[key] || []).push(f);
+    redrawFiles(key);
+    if (f.state !== "uploading") return;
+    const timer = setInterval(() => {
+      if (!findFile(f.id)) { clearInterval(timer); return; }
+      f.pct = Math.min(100, f.pct + 25);
+      if (f.pct === 100) { clearInterval(timer); delete f.state; toast(`${icon("check")}添付しました`); }
+      redrawFiles(key);
+    }, 350);
+  }
+  document.addEventListener("dragover", (ev) => {
+    const zone = ev.target.closest && ev.target.closest("[data-drop]");
+    document.querySelectorAll(".dropzone.is-over").forEach((z) => z !== zone && z.classList.remove("is-over"));
+    if (!zone) return;
+    ev.preventDefault(); zone.classList.add("is-over");
+  });
+  document.addEventListener("dragleave", (ev) => {
+    const zone = ev.target.closest && ev.target.closest("[data-drop]");
+    if (zone && !zone.contains(ev.relatedTarget)) zone.classList.remove("is-over");
+  });
+  document.addEventListener("drop", (ev) => {
+    const zone = ev.target.closest && ev.target.closest("[data-drop]");
+    if (!zone) return;
+    ev.preventDefault(); fakeUpload(zone.dataset.drop);
+  });
+
   const extraRedraws = [];
   function redrawAll() { redraw(); extraRedraws.forEach((fn) => fn()); }
 
@@ -730,5 +905,6 @@
     avatar, avatarOf, emblem, pts, dueChip, taskDue, tier, sourceKey, entry, book, section, pageHead,
     card, board, treeStory, treeEpic, sprintNotice, raidNotice, progress, levelPanel, load, capacityRows,
     openDialog, closeDialog, toast, celebrate, miniCap, redraw: () => redrawAll(), DIALOGS,
+    filesOf, fileThumb, fileRow, dropzone, attachments, mdBody, meter,
   };
 })();

@@ -19,7 +19,7 @@
 "use strict";
 // 通知: 画面の中だけの知らせ。メールや Slack には送らない
 const { D, t, icon, esc, pageHead } = SQ;
-const ICON = { srcDone: "check", comment: "pen", party: "users", error: "alert", thanks: "heart", reward: "flag" };
+const ICON = { srcDone: "check", comment: "pen", party: "users", error: "alert", thanks: "heart", reward: "flag", storage: "clip" };
 let unreadOnly = false;
 
 SQ.mount("notifications", () => {
@@ -34,10 +34,10 @@ SQ.mount("notifications", () => {
     ${list.length ? `<ul class="feed">${list.map((n, i) => `<li class="${n.read ? "" : "is-unread"}">
         <span class="feed-icon">${icon(ICON[n.kind])}</span>
         <span class="feed-main"><span class="feed-text">${esc(n.text)}</span><span class="feed-at">${esc(n.at)}${n.read ? "" : "・未読"}</span></span>
-        ${n.task ? `<a class="btn is-sm" href="#" data-task="${n.task}" data-read="${D.notifications.indexOf(n)}">開く</a>` : n.read ? "" : `<button class="btn is-sm is-quiet" type="button" data-read="${D.notifications.indexOf(n)}">既読にする</button>`}
+        ${n.href ? `<a class="btn is-sm" href="${n.href}">開く</a>` : n.task ? `<a class="btn is-sm" href="#" data-task="${n.task}" data-read="${D.notifications.indexOf(n)}">開く</a>` : n.read ? "" : `<button class="btn is-sm is-quiet" type="button" data-read="${D.notifications.indexOf(n)}">既読にする</button>`}
       </li>`).join("")}</ul>`
       : `<div class="empty">${icon("bell")}<b>未読の通知はありません</b></div>`}
-    <p class="action-note">知らせるのは、取り込み元での完了と開き直し、取り込み元で見つからない${t("task")}、自分の${t("connection")}の失敗、自分の${t("task")}へのコメント、担当への割り当て、${t("party")}への割り振り、${t("reward")}の変更、届いた感謝です。</p>`;
+    <p class="action-note">知らせるのは、取り込み元での完了と開き直し、取り込み元で見つからない${t("task")}、自分の${t("connection")}の失敗、自分の${t("task")}へのコメント、担当への割り当て、${t("party")}への割り振り、${t("reward")}の変更、届いた感謝、添付ファイルの合計が上限の 80% を超えたこと（${t("king")}だけ）です。</p>`;
 });
 
 document.addEventListener("click", (ev) => {

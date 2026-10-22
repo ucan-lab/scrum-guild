@@ -84,7 +84,7 @@ window.SQ_DATA = (function () {
     // src.kind: backlog（Backlog の課題）、issue、pr、review（レビュー依頼）
     tasks: [
       { id: "t1", ws: "wa", title: "ポイント付与のバッチを作る", story: "s1", sprint: "sp14", col: "c2", who: "u1", pts: 5, todayOn: today, creator: "u1",
-        body: ["確定とキャンセルのイベントを夜間にまとめて処理する。付与率は会員ランクごとの設定値を使う。", "参考: 管理画面の設計メモ https://example.com/notes/42"] },
+        body: ["確定とキャンセルのイベントを夜間にまとめて処理する。付与率は会員ランクごとの設定値を使う。", "![付与率の設定画面](f1)", "参考: 管理画面の設計メモ https://example.com/notes/42"] },
       { id: "t2", ws: "wa", title: "失効日の計算に月末の扱いを足す", story: "s1", sprint: "sp14", col: "c3", who: "u3", pts: 3,
         src: { kind: "pr", key: "acme/shop#412", status: "open" } },
       { id: "t3", ws: "wa", title: "管理画面にポイント履歴の一覧を出す", story: "s1", sprint: "sp14", col: "c1", who: "u2", pts: 5, unfilled: true, creator: "u2" },
@@ -116,6 +116,26 @@ window.SQ_DATA = (function () {
         { who: "u3", at: "10/16 09:06", body: "バッチの実行時刻は、深夜の集計と重ならない 3:30 がよさそうです。" },
       ],
     },
+    // 添付ファイル。付く先（タスク、ストーリー、エピック、コメント）ごと。中身は見本にないので、画像と動画は絵の代わりの模様で出す
+    files: {
+      t1: [
+        { id: "f1", name: "付与率の設定画面.png", type: "image", size: "412 KB", who: "u2", at: "10/15 10:10" },
+        { id: "f2", name: "バッチの処理の流れ.pdf", type: "file", size: "1.2 MB", who: "u1", at: "10/15 11:38" },
+        { id: "f3", name: "キャンセル時の再現手順.mp4", type: "video", size: "18.4 MB", who: "u3", at: "10/16 09:02", length: "0:42" },
+      ],
+      "comment:t1:3": [
+        { id: "f4", name: "集計の実行時刻.png", type: "image", size: "236 KB", who: "u3", at: "10/16 09:06" },
+      ],
+      e1: [
+        { id: "f5", name: "会員ランクと付与率の表.xlsx", type: "file", size: "48 KB", who: "u2", at: "10/02 14:20" },
+        { id: "f6", name: "先方の要望メモ（10月2日）.pdf", type: "file", size: "2.4 MB", who: "u2", at: "10/02 14:21" },
+      ],
+      s1: [
+        { id: "f7", name: "ポイント残高の画面案.png", type: "image", size: "688 KB", who: "u4", at: "10/08 17:02" },
+      ],
+    },
+    // 王国の添付ファイルの合計（GB）。上限の 80% を超えると管理者に知らせる
+    storage: { used: 8.3, quota: 10, byWorkspace: [["wa", 612, 6.1], ["wb", 205, 2.2]] },
     history: {
       t1: [
         ["10/19 18:02", "u1", "column", "出発前 → 遂行中"],
@@ -216,6 +236,7 @@ Object.assign(window.SQ_DATA, {
   },
 
   notifications: [
+    { kind: "storage", at: "10/20 11:30", read: false, href: "admin.html", text: "添付ファイルの合計が上限の 80% を超えました（8.3 GB / 10 GB）。上限に達すると新しく添付できなくなります" },
     { kind: "srcDone", at: "10/20 10:00", read: false, text: "SHOP-131「請求書 PDF の文字化けを直す」が取り込み元で完了になりました", task: "t12" },
     { kind: "comment", at: "10/16 09:06", read: false, who: "u3", text: "ソウタさんが「ポイント付与のバッチを作る」にコメントしました", task: "t1" },
     { kind: "party", at: "10/15 13:20", read: false, who: "u2", text: "ハルカさんがあなたをレイド「会員ポイント制度を公開する」のパーティに割り振りました" },
@@ -266,10 +287,10 @@ Object.assign(window.SQ_DATA, {
   operator: {
     name: "運用担当",
     kingdoms: [
-      { slug: "aoba", name: "あおば開発", users: 5, wss: 3, tasks: 1284, lastUsed: "10/20 09:12", created: "2026-06-01", admins: 2 },
-      { slug: "hibari", name: "ひばり工房", users: 3, wss: 1, tasks: 212, lastUsed: "10/19 18:40", created: "2026-09-15", admins: 1 },
-      { slug: "kumo-lab", name: "くもラボ", users: 8, wss: 4, tasks: 3410, lastUsed: "10/18 11:03", created: "2026-07-10", admins: 0 },
-      { slug: "nagi", name: "なぎ設計", users: 2, wss: 1, tasks: 96, lastUsed: "09/02 15:21", created: "2026-08-01", admins: 1, suspended: "2026-09-30", purgeOn: "2026-10-30" },
+      { slug: "aoba", name: "あおば開発", users: 5, wss: 3, tasks: 1284, used: 8.3, quota: 10, lastUsed: "10/20 09:12", created: "2026-06-01", admins: 2 },
+      { slug: "hibari", name: "ひばり工房", users: 3, wss: 1, tasks: 212, used: 0.4, quota: 10, lastUsed: "10/19 18:40", created: "2026-09-15", admins: 1 },
+      { slug: "kumo-lab", name: "くもラボ", users: 8, wss: 4, tasks: 3410, used: 21.7, quota: 50, lastUsed: "10/18 11:03", created: "2026-07-10", admins: 0 },
+      { slug: "nagi", name: "なぎ設計", users: 2, wss: 1, tasks: 96, used: 0.1, quota: 10, lastUsed: "09/02 15:21", created: "2026-08-01", admins: 1, suspended: "2026-09-30", purgeOn: "2026-10-30" },
     ],
   },
 });

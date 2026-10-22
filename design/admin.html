@@ -17,8 +17,8 @@
 <script src="kit.js"></script>
 <script>
 "use strict";
-// 王国の管理（管理者）: ユーザー、ワークスペース、王国の休日、言葉づかい、既定のテーマ、配分の合計
-const { D, t, icon, esc, pageHead, avatarOf, user } = SQ;
+// 王国の管理（管理者）: ユーザー、ワークスペース、添付ファイルの合計、王国の休日、言葉づかい、既定のテーマ、配分の合計
+const { D, t, icon, esc, pageHead, avatarOf, user, meter } = SQ;
 const A = D.admin;
 function setting(title, desc, body) {
   return `<section class="setting"><div class="setting-head"><h2 class="setting-title">${title}</h2><p class="setting-desc">${desc}</p></div><div class="setting-body">${body}</div></section>`;
@@ -43,6 +43,11 @@ SQ.mount("admin", () => `
         <tbody>${A.workspaces.map((w) => `<tr><td>${esc(w.name)}${w.closed ? ` <span class="chip">閉じた ${w.closed}</span>` : ""}${!w.closed && !w.leaders ? ` <span class="chip is-warn">${t("leader")}がいない</span>` : ""}</td>
           <td class="is-num">${w.members}</td><td class="is-num">${w.leaders}</td><td class="mono">${w.created}</td>
           <td>${w.closed ? `<button class="btn is-sm is-quiet" type="button">開き直す</button>` : `<button class="btn is-sm is-quiet" type="button">閉じる</button>`}</td></tr>`).join("")}</tbody></table></div>`)}
+    ${setting("添付ファイル", `${t("task")}、${t("story")}、${t("epic")}、コメントに添付したファイルの合計。上限は運用者が決めます。上限に達すると、どの${t("workspace")}でも新しく添付できなくなります。`, `
+      ${meter(D.storage.used, D.storage.quota)}
+      ${D.storage.used / D.storage.quota >= 0.8 ? `<div class="callout is-warn">${icon("alert")}<span>上限の 80% を超えています。不要なファイルを消すか、運用者に上限を上げてもらってください。ファイルを消せるのは、上げた人と各${t("workspace")}の${t("leader")}です。</span></div>` : ""}
+      <div class="table-wrap"><table class="table"><thead><tr><th>${t("workspace")}</th><th class="is-num">ファイル</th><th class="is-num">合計</th></tr></thead>
+        <tbody>${D.storage.byWorkspace.map(([ws, n, gb]) => `<tr><td>${esc(D.workspaces[ws].name)}</td><td class="is-num">${n} 件</td><td class="is-num">${gb} GB</td></tr>`).join("")}</tbody></table></div>`)}
     ${setting("王国の休日", `祝日など、すべての${t("workspace")}に効く休日。日付の一覧を貼り付けて、まとめて登録できます。`, `
       <label class="field" for="paste"><span class="field-label">貼り付けて登録</span><textarea class="textarea" id="paste" placeholder="2027-02-11 建国記念の日&#10;2027-02-23 天皇誕生日"></textarea><span class="field-hint">1行に1日。日付のあとに名前を書けます。登録済みの日付は飛ばします。</span></label>
       <div class="form-actions"><button class="btn" type="button" data-toast="2 日を登録しました">登録する</button></div>

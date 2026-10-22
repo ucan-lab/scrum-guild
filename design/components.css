@@ -727,6 +727,68 @@ a.choice > div > span { display: block; }
 }
 .person { display: inline-flex; align-items: center; gap: var(--space-2); white-space: nowrap; }
 
+/* ===== 添付ファイル ===== */
+/* 画像と動画は縮小した絵を並べ、それ以外は1行ずつ。押すとプレビューが開く */
+.files { display: grid; gap: var(--space-2); }
+.file-thumbs { display: grid; grid-template-columns: repeat(auto-fill, minmax(132px, 1fr)); gap: var(--space-2); }
+.file-thumb { display: grid; gap: 4px; padding: 0; border: 1px solid var(--color-line); border-radius: var(--radius-1); background: var(--color-surface); text-align: left; overflow: hidden; }
+.file-thumb:hover { border-color: var(--color-muted); }
+.file-thumb-label { display: grid; padding: 0 var(--space-2) var(--space-2); font-size: var(--text-xs); min-width: 0; }
+.file-thumb-label b { font-weight: 400; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.file-thumb-label span { color: var(--color-muted); font-family: var(--font-mono); }
+/* 見本の絵の代わり。本番では縮小した画像か動画の最初のコマ */
+.file-art { position: relative; display: grid; place-items: center; aspect-ratio: 4 / 3; color: var(--color-faint);
+  background: linear-gradient(var(--color-sunken) 0 18%, transparent 18%), repeating-linear-gradient(var(--color-bg) 0 10px, var(--color-rule) 10px 11px); }
+.file-art .ico { width: 22px; height: 22px; }
+.file-art.is-video { background: var(--color-sunken); color: var(--color-fg); }
+.file-art.is-video .ico { width: 26px; height: 26px; fill: currentColor; }
+.file-art-time { position: absolute; right: 6px; bottom: 4px; font-family: var(--font-mono); font-size: var(--text-xs); }
+.file-row { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: var(--space-3); align-items: center; padding: var(--space-2) var(--space-3); border: 1px solid var(--color-line); border-radius: var(--radius-1); background: var(--color-surface); font-size: var(--text-sm); }
+.file-row > .ico { width: 20px; height: 20px; color: var(--color-muted); }
+.file-main { display: grid; min-width: 0; }
+.file-name { overflow-wrap: anywhere; }
+button.file-name { border: 0; background: none; padding: 0; text-align: left; color: var(--color-fg); text-decoration: underline; text-decoration-color: var(--color-line); text-underline-offset: 3px; }
+button.file-name:hover { text-decoration-color: currentColor; }
+.file-meta { font-size: var(--text-xs); color: var(--color-muted); }
+.file-actions { display: flex; gap: var(--space-1); }
+.file-row.is-error { border-color: var(--color-danger); }
+.file-row.is-error > .ico, .file-row.is-error .file-meta { color: var(--color-danger); }
+.file-bar { height: 4px; border-radius: var(--radius-full); background: var(--color-gauge); overflow: hidden; margin-top: 4px; }
+.file-bar > span { display: block; height: 100%; background: var(--color-accent); }
+/* 上げる場所。ドラッグ中は is-over、上限に達したら is-disabled */
+.dropzone { display: flex; gap: var(--space-3); align-items: center; flex-wrap: wrap; padding: var(--space-3) var(--space-4); border: 1px dashed var(--color-line); border-radius: var(--radius-1); font-size: var(--text-sm); color: var(--color-muted); }
+.dropzone > .ico { width: 20px; height: 20px; }
+.dropzone-text { flex: 1 1 200px; display: grid; }
+.dropzone-text b { color: var(--color-fg); font-weight: 400; }
+.dropzone.is-over { border-style: solid; border-color: var(--color-accent); background: var(--color-accent-soft); color: var(--color-accent); }
+.dropzone.is-disabled { background: var(--color-bg); }
+/* 本文に差し込んだ画像 */
+.md-figure { margin: 0; display: grid; gap: 4px; justify-items: start; }
+.md-figure .file-thumb { width: min(240px, 100%); }
+.md-figure figcaption { font-size: var(--text-xs); color: var(--color-muted); }
+.comment-files { display: flex; flex-wrap: wrap; gap: var(--space-2); margin-top: var(--space-2); }
+.comment-files .file-thumb { width: 160px; }
+.composer-foot { display: flex; gap: var(--space-2); align-items: center; flex-wrap: wrap; }
+.composer-foot .field-hint { flex: 1 1 200px; }
+/* プレビュー（ダイアログの中） */
+.preview { display: grid; place-items: center; min-height: 240px; border: 1px solid var(--color-line); border-radius: var(--radius-1); overflow: hidden; }
+.preview .file-art { width: 100%; aspect-ratio: 16 / 10; }
+.dialog-sheet.is-wide { width: min(820px, 100%); }
+/* 使っている量と上限（添付ファイルの合計）。80% を超えたら is-warn、上限に達したら is-full */
+.meter { display: grid; gap: var(--space-2); }
+.meter-top { display: flex; align-items: baseline; gap: var(--space-2); flex-wrap: wrap; }
+.meter-num { font-family: var(--font-stat); font-weight: 700; font-size: var(--text-xl); font-variant-numeric: tabular-nums; }
+.meter-num small { font-size: var(--text-sm); font-weight: 400; color: var(--color-muted); }
+.meter-bar { position: relative; height: 10px; border-radius: var(--radius-1); background: var(--color-gauge); overflow: hidden; }
+.meter-bar > span { display: block; height: 100%; background: var(--color-accent); }
+.meter-bar::after { content: ""; position: absolute; top: 0; bottom: 0; left: 80%; border-left: 2px solid var(--color-surface); }
+.meter.is-warn .meter-bar > span { background: var(--color-warn); }
+.meter.is-full .meter-bar > span { background: var(--color-danger); }
+.meter-small { display: grid; gap: 4px; min-width: 120px; }
+.meter-small-top { display: flex; gap: var(--space-2); align-items: center; font-size: var(--text-xs); white-space: nowrap; }
+.meter-small.is-warn .verdict { color: var(--color-warn); }
+.meter-small .meter-bar { height: 6px; }
+
 /* ===== テーマの飾り =====
  * テーマの違いは tokens.css の変数で表す。変数で表せない飾りだけをここに置き、この一覧から増やさない。
  * 完了の印、ロゴの印、依頼主の印、クリアの演出、現代風の光。

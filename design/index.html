@@ -286,6 +286,16 @@ const SECTIONS = [
     drawerDemo(),
     ["取り込み元の属性（タイトル、状態、期限）は、ここでは変えられないことを添える。", "完了の操作の横に完成の定義を出す。確認のダイアログは挟まない。", "感謝は押した状態を is-on で示し、完了までは取り消せる。"],
     ".drawer .scrim .drawer-top .drawer-close .drawer-title / .props .props-note / .doc-box .is-empty / .done-bar .done-bar-dod / .thanks / .tabs .tab / .thread .comment .is-deleted / .history")],
+  ["files", "添付ファイル", () => block("files", "添付ファイル", "タスク、ストーリー、エピック、コメントに付ける。画像と動画は縮小した絵、それ以外は1行。押すとプレビューが開く。「ファイルを選ぶ」で上げる動きを試せる（3回目は大きすぎて失敗する）。",
+    `<div class="field"><span class="field-label">一覧と上げる場所</span>${SQ.attachments("t1")}</div>
+     <div class="field"><span class="field-label">上げている途中と失敗</span>
+       ${SQ.fileRow({ id: "x1", name: "スクリーンショット 2026-10-20 11.41.png", type: "image", size: "1.8 MB", state: "uploading", pct: 60 })}
+       ${SQ.fileRow({ id: "x2", name: "画面の録画 2026-10-20 11.52.mov", type: "video", size: "82.1 MB", state: "error", error: "50 MB を超えているため添付できません（82.1 MB）" })}</div>
+     <div class="field"><span class="field-label">ドラッグ中と、上限に達したとき</span>${SQ.dropzone("demo", { over: true, full: false })}${SQ.dropzone("demo", { full: true })}</div>
+     <div class="field"><span class="field-label">小さなボタン（${t("story")}、起票、コメント）</span>${SQ.dropzone("demo", { button: true, full: false })}</div>
+     <div class="field"><span class="field-label">使っている量と上限</span><div class="grid-2">${SQ.meter(3.1, 10)}${SQ.meter(8.3, 10)}${SQ.meter(10, 10)}<div class="panel">${SQ.meter(21.7, 50, { small: true })}</div></div></div>`,
+    ["画像（PNG、JPEG、GIF、WebP）と動画（MP4、WebM）は画面で見せる。それ以外はダウンロードだけ。", "失敗は理由と数字を出す（何 MB を超えたか）。上限に達したら、上げる場所を止めて、誰が何をすれば添付できるかを書く。", "量の色は 80% を超えたら警告、上限で危険。色だけでなく、割合と文字を添える。", "消すときは、戻せないことと、差し込んだ所がどうなるかを確認のダイアログで伝える。"],
+    ".files .file-thumbs .file-thumb .file-thumb-label .file-art .is-video / .file-row .file-main .file-name .file-meta .file-actions .is-error .file-bar / .dropzone .is-over .is-disabled / .md-figure .comment-files .composer-foot / .preview .dialog-sheet.is-wide / .meter .meter-small .is-warn .is-full")],
 ];
 
 function render() {
