@@ -1,6 +1,6 @@
 # 引き継ぎ
 
-2026-10-21 時点。要件定義、データモデル、デザイン（原則、画面一覧、デザインシステム、初版の全画面の見本）まで進んだ。OSS をやめてサービスにし、稼働先を Cloudflare だけに絞った。実装はまだ始めていない。
+2026-10-22 時点。要件定義、データモデル、デザイン（原則、画面一覧、デザインシステム、初版の全画面の見本）まで進んだ。OSS をやめてサービスにし、稼働先を Cloudflare だけに絞った。開発の進め方（ブランチ、AI の分担、スキル、CI/CD）を決めた。実装はまだ始めていない。
 
 ## 文書と置き場所
 
@@ -11,6 +11,8 @@
 | サービスにする方針と進め方 | `docs/business.md` |
 | AI の機能の案 | `docs/ai.md` |
 | データモデル | `docs/data-model.md` |
+| 開発の進め方（ブランチ、AI の分担、スキル、開発の流れ、CI/CD） | `docs/development.md` |
+| AI への決まり（セッションが最初に読む） | `CLAUDE.md` |
 | デザインの原則、画面一覧、主なフロー、決めた方向 | `docs/design.md` |
 | デザインシステムと画面の見本 | `design/`。`design/index.html` をブラウザで開く（ビルド不要） |
 | スタイルタイル（見た目の3案。決定の記録） | `design/style-tiles.html` |
@@ -54,12 +56,12 @@
 - [ ] 顧客のデータ（private なリポジトリの課題や PR）を預かって運用してよいか
 - [ ] 最初に声をかけるチーム
 
-### 実装を始める前に決めること（下の「ブランチと自動マージ」が材料）
+### 開発の進め方（`docs/development.md`）
 
-- [ ] 実装を始めてからのブランチ戦略（`main` への直接の push は禁止と決めた。ブランチの切り方と PR の通し方を決める）
-- [ ] GitHub のブランチ保護で `main` への直接の push を止める
-- [ ] 低リスクの PR を AI の判定で自動マージするか。するなら、対象外にする領域と拒否権のルール
-- [ ] 本番で壊れたことに気づく手段（テレメトリは送らない方針なので、Workers Logs などで足りるか）
+- [x] ブランチ戦略、AI の分担、スキル、開発の流れ、CI/CD を決めた（2026-10-22）。squash merge だけ、承認は必須にせず人がマージを押す、PR ごとのプレビューは持たない、`main` へのマージで自動デプロイしマイグレーションだけ承認を挟む
+- [ ] GitHub のプランが Rulesets と auto-merge を private のリポジトリで使えるか（個人は Pro、組織は Team が要る）
+- [ ] GitHub の Rulesets で `main` を保護する（`docs/development.md` の「ブランチ保護」）。マージ後にブランチを自動で消す設定も入れる
+- [ ] Cloudflare の通知で Workers のエラー率などを受けられるか
 
 ### AI の機能（`docs/ai.md`）
 
@@ -79,11 +81,12 @@
 ## 次にやること
 
 1. 上の確認の結果を `docs/design.md` と `docs/requirements.md` に反映する
-2. ブランチ戦略を決め、ブランチ保護で `main` への直接の push を止める（下の「ブランチと自動マージ」）。ここから先は PR を通す
-3. リポジトリの土台を作る（Hono、Svelte、Vite、wrangler の設定）
-4. `docs/data-model.md` から最初のマイグレーションを書く
-5. `design/tokens.css` と `design/components.css` を本番の画面に持ち込み、`design/kit.js` の関数を1つずつ Svelte のコンポーネントにする。`html` の `data-theme` には、`users.theme`、なければ `kingdoms.theme` の値を入れる
-6. 最初の数画面が Svelte で動いたら、下の「画面の自己レビューのスキル」を作る
+2. ブランチ保護で `main` への直接の push を止める（`docs/development.md` の「ブランチ保護」）。ここから先は PR を通す
+3. スキルとエージェントを整える（`docs/development.md` の「今あるもの」）。`requirements` を外し、`database-reviewer` を D1 向け、`code-reviewer` を Workers 向けに書き直し、チェックリストに `cloudflare-workers.md` と `multi-tenant.md` を足す
+4. リポジトリの土台を作る（Hono、Svelte、Vite、wrangler の設定、SessionStart のフック、`.claude/settings.json` の deny、CI の `ci-ok`）。`CLAUDE.md` の「コマンド」を埋める
+5. `d1-migration` のスキルを作り、`docs/data-model.md` から最初のマイグレーションを書く
+6. `design/tokens.css` と `design/components.css` を本番の画面に持ち込み、`design/kit.js` の関数を1つずつ Svelte のコンポーネントにする。`html` の `data-theme` には、`users.theme`、なければ `kingdoms.theme` の値を入れる
+7. 最初の数画面が Svelte で動いたら、下の「画面の自己レビューのスキル」を作る
 
 ## 画面の自己レビューのスキル
 
@@ -139,9 +142,9 @@ hq の `04-research/x-seeconvm-opus-motion-design.md` の7章「The Critic」（
 
 - 動画の書き出し。記事の本題（`seek(t)` で描いて MP4 にする）は、サービスの紹介動画を作る段階で別に考える。
 
-## ブランチと自動マージ
+## merge-risk のスキルの材料
 
-実装からは `main` への直接の push を禁止すると決めた。ブランチの切り方と自動マージは未決で、実装の始めまでに決める。ねらいは、低リスクの変更を AI の判定でマージし、人のレビューを高リスクの変更に絞ること。
+自動マージの判定に使う。拒否権のパス、入れる順、仕組みは `docs/development.md` の「マージの判定」に移した。ここには採点の基準を作るための材料を残す。
 
 ### 参考にするもの
 
@@ -161,28 +164,11 @@ Warp の `merge-risk` スキル（`npx skills add warpdotdev/common-skills --ski
 
 - 平均なので、⚠️ が1つでも low になりうる。Rollback cost だけ ⚠️ で他が ✅ だと 1.4 で low。自動マージに使うなら、⚠️ が1つでもあれば対象外にする拒否権が要る。
 - 実装した AI 自身が採点すると甘くなる。採点は別のエージェントに任せ、根拠は CI の結果とスクリーンショットだけにする。
-
-### 自動マージの対象外にする候補
-
-要件から見て、差分の大きさに関係なく人が見るもの。
-
-- D1 のマイグレーション。Workers のコードは `wrangler rollback` で戻せても、DB は戻らない。ステージングも持たない
-- GitHub OAuth、認証情報の暗号鍵、シークレット
-- 王国をまたぐデータの分離（全王国が1つの D1 に入る）
-- 運用者の権限（王国の中を見られない線引き）
-- 取り込み元から預かる顧客のデータ（private なリポジトリの課題や PR）
-- 依存の更新、wrangler の設定
-
-### 仕組みの前提
-
-- 実装からは PR を通す（`main` への直接の push は禁止）ので、自動マージはその PR に載せる。
-- マージを実行するのは手元の AI セッションでなく GitHub の側（ブランチ保護で CI を必須にし、判定が low の PR にラベルを付け、そのラベルの PR だけ auto-merge）。手元のセッションはマージしない決まりで、auto モードもマージを弾く。
-- Verification の証拠は「画面の自己レビューのスキル」のコンタクトシートで出せる。
-- 入れる順は、最初の数週間は判定だけ出させて人がマージし、人の判断と合うのを確かめてから low の自動マージを解禁する。
+- Verification の証拠は、CI の e2e のスクリーンショットと「画面の自己レビューのスキル」のコンタクトシートで出せる。
 
 ## 覚えておくこと
 
-- `main` に直接コミットしてよいのは仕様を整理している間だけ。実装を始める前にブランチ戦略を決め、それ以降は `main` への直接の push を禁止する（2026-10-22 に決めた）。
+- `main` に直接コミットしてよいのは仕様を整理している間だけ。ブランチ保護を入れた後は、文書も含めて PR を通す（2026-10-22 に決めた。`docs/development.md`）。
 - 名前は Team Leveling。表記の決まりは `docs/requirements.md` の「名前」、経緯と重なりの確認は `docs/naming.md`。
 - 見本は、画面ごとの CSS を持たない決まり。足りない部品は先に `design/components.css` とカタログに足す。
 - 見本の例のデータ（`design/sample-data.js`）はすべて架空。実在の名前を混ぜない。
