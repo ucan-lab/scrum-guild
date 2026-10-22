@@ -17,7 +17,7 @@
 <script src="kit.js"></script>
 <script>
 "use strict";
-// 王国の管理（管理者）: ユーザー、ワークスペース、添付ファイルの合計、王国の休日、言葉づかい、既定のテーマ、配分の合計
+// 王国の管理（管理者）: ユーザー、ワークスペース、添付ファイルの合計、王国の休日、言葉づかい、既定のテーマ、配分と積載量の合計、取り込み元の応答、変更の履歴
 const { D, t, icon, esc, pageHead, avatarOf, user, meter } = SQ;
 const A = D.admin;
 function setting(title, desc, body) {
@@ -62,6 +62,17 @@ SQ.mount("admin", () => `
     ${setting("配分の合計", `ユーザーごとの、すべての${t("workspace")}の配分の合計。100% を超えた月は本人にも知らせています。`, `
       <div class="table-wrap"><table class="table"><thead><tr><th>名前</th><th class="is-num">10月</th><th class="is-num">11月</th></tr></thead>
         <tbody>${A.allocTotals.map(([n, a, b]) => `<tr><td>${esc(n)}</td>${[a, b].map((v) => `<td class="is-num" ${v > 100 ? 'style="color:var(--color-danger)"' : ""}>${v > 100 ? "▲ " : ""}${v}%</td>`).join("")}</tr>`).join("")}</tbody></table></div>`)}
+    ${setting(`${t("capacity")}の合計`, `ユーザーごとの、すべての${t("workspace")}の作業量の合計を、ユーザーの基準と並べたもの。`, `
+      <div class="table-wrap"><table class="table"><thead><tr><th>名前</th><th>10月</th><th>11月</th></tr></thead>
+        <tbody>${A.loadTotals.map(([u, ...cells]) => `<tr><td><span class="person">${avatarOf(u)}${esc(user(u).name)}</span></td>${cells.map((c) => `<td>${SQ.miniCap(c)}</td>`).join("")}</tr>`).join("")}</tbody></table></div>`)}
+    ${setting("取り込み元の応答", `取り込み元の応答そのもの（本文とラベルを含む）を保存するか。保存しなければ、取り込み元の本文を一度も書きません。`, `
+      <div class="choice-list">
+        <label class="choice"><input type="radio" name="payload" checked><div><b>保存しない</b><span>タイトル、キー、状態、期限、URL など、${t("task")}として扱うのに要る属性だけを持ちます</span></div></label>
+        <label class="choice"><input type="radio" name="payload"><div><b>保存する</b><span>次に同期した項目から保存します。さかのぼって取り直しません</span></div></label></div>
+      <p class="field-hint">保存しない側に切り替えると、保存済みの応答を消します。</p>`)}
+    ${setting("変更の履歴", `${t("king")}の指名と解除、ユーザーの無効化、運用者の操作など、${t("kingdom")}の単位の変更。${t("workspace")}の中の変更は、各${t("workspace")}の変更の履歴に出ます。`, `
+      <div class="table-wrap"><table class="table"><thead><tr><th>日時</th><th>した人</th><th>内容</th></tr></thead>
+        <tbody>${A.audit.map(([at, who, what]) => `<tr><td class="mono">${at}</td><td>${who ? `<span class="person">${avatarOf(who)}${esc(user(who).name)}</span>` : `<span class="props-note">運用者</span>`}</td><td>${esc(what)}</td></tr>`).join("")}</tbody></table></div>`)}
   </div>`);
 </script>
 </body>

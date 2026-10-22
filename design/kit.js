@@ -438,6 +438,7 @@
         <div><dt>親</dt><dd>${parent ? `${icon("flag")} ${esc(parent.title)}${epic ? `<span class="props-note">${esc(epic.title)}</span>` : ""}` : "なし"}</dd></div>
         <div><dt>${t("sprint")}</dt><dd>${x.sprint ? esc(sprintLabel(x.sprint)) : t("backlog")}</dd></div>
         <div><dt>${t("category")}</dt><dd>${cat ? `${esc(D.categories[cat.id].name)}${cat.inherited ? `<span class="props-note">親から引き継ぎ</span>` : ""}` : `${t("category")}なし`}</dd></div>
+        ${x.src ? "" : `<div><dt>リンク</dt><dd>${x.link ? `<span class="source-key">${icon("link")} ${esc(x.link)}</span>` : "なし"}</dd></div>`}
         <div><dt>今日やる</dt><dd><button class="sun" type="button" data-sun="${x.id}" aria-pressed="${x.todayOn === D.today}" aria-label="今日やる">${icon("sun")}</button>${x.todayOn === D.today ? "今日やる" : ""}</dd></div>
       </dl>
       <div class="field">
@@ -482,7 +483,10 @@
             <span class="field-hint">画像は貼り付けても添付できます。</span><button class="btn" type="button">送る</button></div>
         </div>` : `
         <ul class="history">${history.map((h) => `<li><span class="mono">${h[0]}</span>${avatarOf(h[1])}<span>${esc(user(h[1]).name)}</span><span class="props-note">${HIST[h[2]]}</span><span>${esc(h[3])}</span></li>`).join("") || `<li class="props-note">まだ変更はありません。</li>`}</ul>`}
-      </div>`;
+      </div>
+      <div class="form-actions">${x.src
+        ? `<button class="btn is-sm is-quiet" type="button" data-toast="${t("archive")}へ移しました">${icon("archive")}${t("archive")}へ移す</button>`
+        : `<button class="btn is-sm is-quiet is-danger" type="button" data-toast="削除しました">${icon("trash")}この${t("task")}を削除する</button><span class="field-hint">削除できるのは作った人と${t("leader")}です。</span>`}</div>`;
   }
   function openDrawer(id, opener) {
     drawer.id = id; drawer.tab = "comments"; drawer.thanked = new Set(); drawer.opener = opener || null;
@@ -605,6 +609,10 @@
         `<button class="btn is-quiet" type="button" data-close-dialog>やめる</button><button class="btn is-danger" type="button" data-close-dialog data-toast="削除しました">削除する</button>`);
       document.querySelector(".dialog-sheet").classList.add("is-danger");
     },
+    cancelEpic: () => openDialog(`${t("epic")}を中止する`,
+      `<p>「${esc(D.epics.e1.title)}」を中止します。中止した${t("epic")}に${t("reward")}は出ません。</p>
+       <p class="field-hint">${t("task")}や${t("story")}の完了ですでに確定した経験値は残ります。中止は${t("requester")}と${t("leader")}ができます。</p>`,
+      `<button class="btn is-quiet" type="button" data-close-dialog>やめる</button><button class="btn is-primary" type="button" data-close-dialog data-toast="中止しました">中止する</button>`),
     editRecord: () => openDialog("完了の記録を直す",
       `<p class="props-note">「ランク表示の文言を直す」の記録です。直しても経験値は動きません。直したことは変更の履歴に残ります。</p>
        <div class="form-row">

@@ -39,10 +39,11 @@ SQ.mount("records", () => {
       <tbody>${Object.entries(byCat).map(([k, [n, p]]) => `<tr><td>${esc(k)}</td><td class="is-num">${n}</td><td class="is-num">${p}</td></tr>`).join("")}
       <tr><td><b>合計</b></td><td class="is-num"><b>${recs.length}</b></td><td class="is-num"><b>${total}</b></td></tr></tbody></table></div>
     <div class="table-wrap"><table class="table">
-      <thead><tr><th>完了日時</th><th>${t("task")}</th><th>${t("assignee")}</th><th class="is-num">${t("points")}</th><th>${t("sprint")}</th><th>${t("category")}</th><th>計上月</th><th></th></tr></thead>
+      <thead><tr><th>完了日時</th><th>${t("task")}</th><th>完了にした人</th><th>${t("assignee")}</th><th class="is-num">${t("points")}</th><th>${t("sprint")}</th><th>${t("category")}</th><th>計上月</th><th></th></tr></thead>
       <tbody>${recs.map((r) => `<tr>
         <td class="mono">${esc(r.at)}</td>
         <td>${esc(r.task)}${r.edited ? ` <span class="chip">${icon("pen")}直した</span>` : ""}</td>
+        <td><span class="person">${avatarOf(r.by)}${esc(user(r.by).name)}</span></td>
         <td><span class="person">${avatarOf(r.who)}${esc(user(r.who).name)}</span></td>
         <td class="is-num">${r.pts}</td>
         <td>${r.sprint ? esc(`${t("sprint")} ${r.sprint}`) : `<span class="props-note">なし</span>`}</td>
@@ -50,7 +51,7 @@ SQ.mount("records", () => {
         <td class="mono">${r.month || "—"}</td>
         <td><button class="btn is-sm is-quiet" type="button" data-dialog="editRecord">直す</button></td>
       </tr>`).join("")}</tbody></table></div>
-    <p class="action-note">記録は完了にした時点の${t("assignee")}、${t("points")}、${t("sprint")}、${t("category")}を残したものです。${t("leader")}は${t("points")}、完了日時、計上月を直せます。直しても経験値は動きません。</p>`;
+    <p class="action-note">記録は、完了にした人と、完了にした時点の${t("assignee")}、${t("points")}、${t("sprint")}、${t("category")}を残したものです。${t("leader")}は${t("points")}、完了日時、計上月を直せます。直しても経験値は動きません。</p>`;
 });
 </script>
 </body>
