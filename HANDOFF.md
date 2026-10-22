@@ -63,6 +63,8 @@
 - [ ] GitHub の Rulesets で `main` を保護する（`docs/development.md` の「ブランチ保護」）。マージ後にブランチを自動で消す設定も入れる
 - [ ] Cloudflare の通知で Workers のエラー率などを受けられるか
 - [x] 技術の選択を決めた（2026-10-22）。pnpm、1つのパッケージ、ESLint と Prettier、SvelteKit の SPA モード、Kysely、zod、自前の操作の定義、型付きの言葉の辞書、seed とファクトリー。`docs/requirements.md` の「画面」を SvelteKit の SPA モードに改めた
+- [x] 最初の一本道（王国の作成からタスクの完了まで）、DB を作り直してよい期間（ベータまで）、API のエラーの形、CI の AI レビュー（`claude-code-action`）を決めた（2026-10-22）。`docs/development.md` の「API のエラーとログ」「初版の作る順」
+- [ ] Anthropic の API キーを用意し、リポジトリのシークレットに置く（CI の AI レビューに使う）
 - [x] スキルとエージェントを整えた（2026-10-22）。`requirements` を外し、レビューのエージェント3つを D1 と Workers 向けに書き直し、チェックリストに `cloudflare-workers.md` と `multi-tenant.md` を足した
 
 ### AI の機能（`docs/ai.md`）
