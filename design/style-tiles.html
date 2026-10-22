@@ -400,10 +400,10 @@ function tile(T) {
   const levelBlock = b
     ? `<div class="meter"><div class="meter-top"><span class="emblem">7</span><div><div class="lbl">Level</div><div class="note">次のレベルまで 160</div></div><span class="v"><span class="stat-num">1,240</span> XP</span></div>
        <div class="bar" role="img" aria-label="経験値 64%、見込み 20%"><span class="got" style="width:64%"></span><span class="soon" style="width:20%"></span></div>
-       <span class="note">縞は見込み（${w("sprint")}の終了で確定）+90</span></div>`
+       <span class="note">縞は見込み（${w("task")}の完了で確定）+90</span></div>`
     : `<div class="meter"><div class="meter-top"><span class="lv">Lv 7</span><span class="note">次まで 160</span><span class="v">1,240 XP</span></div>
        <div class="bar" role="img" aria-label="経験値 64%、見込み 20%"><span class="got" style="width:64%"></span><span class="soon" style="width:20%"></span></div>
-       <span class="note">縞は見込み（${w("sprint")}の終了で確定）+90</span></div>`;
+       <span class="note">縞は見込み（${w("task")}の完了で確定）+90</span></div>`;
   const raidRarity = b ? ` style="--rarity:var(--b-rare-3)"` : "";
   return `
   <section class="tile" data-tile="${T.id}" aria-label="案 ${T.id.toUpperCase()}">
