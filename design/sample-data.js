@@ -125,7 +125,7 @@ window.SQ_DATA = (function () {
       ],
     },
 
-    level: { level: 7, xp: 1240, toNext: 160, soon: 90, gotPct: 64, soonPct: 20, rows: [["受託開発チーム", 1240], ["社内ツール", 770]], total: 2010 },
+    level: { level: 7, xp: 2550, toNext: 250, soon: 140, gotPct: 64, soonPct: 20, rows: [["受託開発チーム", 1780], ["社内ツール", 770]], total: 2550 },
 
     // 第14回の積載量。基準と作業量は時間
     capacity: [
