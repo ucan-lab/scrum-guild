@@ -103,6 +103,16 @@ GitHub は無料のプランのまま使う（2026-10-23 に決めた）。無�
 - スタック PR は原則使わない。squash merge と相性が悪く、force push が増える
 - ベースが進んだら `rebase-base` で取り込んでよい。履歴を書き換えてよいのは自分の作業ブランチだけ
 
+### ワークツリーで作業する
+
+手元のセッションは、Issue ごとにワークツリーを切って作業する。メインの作業コピーは `main` のまま置き、並行するセッションが同じファイルを書き換え合わないようにする。クラウドのセッションは環境が分かれているので、ワークツリーを切らない。
+
+- 置き場所は `.claude/worktrees/<ブランチ名>`。ワークツリーの名前とブランチ名を同じにする（例 `.claude/worktrees/12-org-create` に `12-org-create`）
+- 切るときは最新の `main` から作る: `git fetch origin` のあと `git worktree add .claude/worktrees/<名前> -b <名前> origin/main`
+- `.claude/worktrees/` は git の管理から外す。今は各自のグローバルの ignore に頼っているので、土台を作るときにリポジトリの `.gitignore` に入れる
+- 依存はワークツリーごとに入れる。ローカルの D1（`.wrangler/state`）もワークツリーごとに分かれるので、seed もそれぞれで当てる。並べて `wrangler dev` を立てるときはポートをずらす
+- PR がマージされたら、そのワークツリーの外から `git worktree remove .claude/worktrees/<名前>` で消し、手元のブランチも消す（`pr-feedback` の後片付け）
+
 ## AI 開発の分担
 
 人が決め、AI が作り、別の AI が点検する。マージするかは、パスの規則と人が決める。

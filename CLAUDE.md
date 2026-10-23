@@ -17,7 +17,7 @@
 
 ## 守ること
 
-- `main` へ直接 push しない。1 Issue に 1 ブランチ、1 PR。ブランチ名は `<Issue番号>-<短い名前>`（クラウドのセッションの `claude/*` はそのまま）。マージは squash で、人が行う。セッションからはマージしない。GitHub のブランチ保護は無いので、この決まりは設定ではなく自分で守る
+- `main` へ直接 push しない。1 Issue に 1 ブランチ、1 PR。ブランチ名は `<Issue番号>-<短い名前>`（クラウドのセッションの `claude/*` はそのまま）。手元では同じ名前のワークツリー（`.claude/worktrees/<ブランチ名>`）を切って作業する（`docs/development.md` の「ワークツリーで作業する」）。マージは squash で、人が行う。セッションからはマージしない。GitHub のブランチ保護は無いので、この決まりは設定ではなく自分で守る
   - 例外: 文書だけの変更（`docs/`、`HANDOFF.md`、`CLAUDE.md`、`.claude/` のスキルとエージェントとチェックリスト、`.github/ISSUE_TEMPLATE/`）は `main` に直接入れてよい。コード、設定、マイグレーションは例外にしない
 - 本番に触らない。`wrangler deploy`、`wrangler versions deploy`、`wrangler rollback`、`--remote` を付けた `wrangler d1` は Cloudflare の Workers Builds だけが実行する
 - 組織の中の表を読み書きするときは、必ず組織で絞る。共通の表と組織の中の表を結合せず、1回の `batch()` に混ぜない（`docs/data-model.md` の「データベースの分け方」）
