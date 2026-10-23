@@ -38,7 +38,11 @@ SQ.mount("admin", () => `
           <td><label class="toggle"><input type="checkbox" ${r.admin ? "checked" : ""} ${r.disabled ? "disabled" : ""} aria-label="${esc(user(r.who).name)}を管理者にする"></label></td>
           <td class="is-num">${r.wss}</td><td class="mono">${r.lastLogin}</td>
           <td>${r.disabled ? `<button class="btn is-sm is-quiet" type="button">有効に戻す</button>` : r.who === D.me ? "" : `<button class="btn is-sm is-quiet is-danger" type="button">無効にする</button>`}</td></tr>`).join("")}</tbody></table></div>`)}
-    ${setting(t("workspace"), `閉じた${t("workspace")}は読み取り専用になり、${t("connection")}はすべて止まります。開き直せます。`, `
+    ${setting(t("workspace"), `閉じた${t("workspace")}は読み取り専用になり、${t("connection")}はすべて止まります。開き直せます。`, !A.workspaces.length
+      ? SQ.emptyState("users", `まだ${t("workspace")}がありません`,
+          `チームや用途ごとに作ります。メンバーの招待は、作った${t("workspace")}の${t("leader")}が行います。`,
+          `<button class="btn is-sm" type="button" data-dialog="createWorkspace">${icon("plus")}${t("workspace")}を作る</button>`)
+      : `
       <div class="table-wrap"><table class="table"><thead><tr><th>名前</th><th class="is-num">メンバー</th><th class="is-num">${t("leader")}</th><th>作った日</th><th></th></tr></thead>
         <tbody>${A.workspaces.map((w) => `<tr><td>${esc(w.name)}${w.closed ? ` <span class="chip">閉じた ${w.closed}</span>` : ""}${!w.closed && !w.leaders ? ` <span class="chip is-warn">${t("leader")}がいない</span>` : ""}</td>
           <td class="is-num">${w.members}</td><td class="is-num">${w.leaders}</td><td class="mono">${w.created}</td>
@@ -46,8 +50,8 @@ SQ.mount("admin", () => `
     ${setting("添付ファイル", `${t("task")}、${t("story")}、${t("epic")}、コメントに添付したファイルの合計。上限は運用者が決めます。上限に達すると、どの${t("workspace")}でも新しく添付できなくなります。`, `
       ${meter(D.storage.used, D.storage.quota)}
       ${D.storage.used / D.storage.quota >= 0.8 ? `<div class="callout is-warn">${icon("alert")}<span>上限の 80% を超えています。不要なファイルを消すか、運用者に上限を上げてもらってください。ファイルを消せるのは、上げた人と各${t("workspace")}の${t("leader")}です。</span></div>` : ""}
-      <div class="table-wrap"><table class="table"><thead><tr><th>${t("workspace")}</th><th class="is-num">ファイル</th><th class="is-num">合計</th></tr></thead>
-        <tbody>${D.storage.byWorkspace.map(([ws, n, gb]) => `<tr><td>${esc(D.workspaces[ws].name)}</td><td class="is-num">${n} 件</td><td class="is-num">${gb} GB</td></tr>`).join("")}</tbody></table></div>`)}
+      ${D.storage.byWorkspace.length ? `<div class="table-wrap"><table class="table"><thead><tr><th>${t("workspace")}</th><th class="is-num">ファイル</th><th class="is-num">合計</th></tr></thead>
+        <tbody>${D.storage.byWorkspace.map(([ws, n, gb]) => `<tr><td>${esc(D.workspaces[ws].name)}</td><td class="is-num">${n} 件</td><td class="is-num">${gb} GB</td></tr>`).join("")}</tbody></table></div>` : ""}`)}
     ${setting("組織の休日", `祝日など、すべての${t("workspace")}に効く休日。日付の一覧を貼り付けて、まとめて登録できます。`, `
       <label class="field" for="paste"><span class="field-label">貼り付けて登録</span><textarea class="textarea" id="paste" placeholder="2027-02-11 建国記念の日&#10;2027-02-23 天皇誕生日"></textarea><span class="field-hint">1行に1日。日付のあとに名前を書けます。登録済みの日付は飛ばします。</span></label>
       <div class="form-actions"><button class="btn" type="button" data-toast="2 日を登録しました">登録する</button></div>
@@ -59,10 +63,14 @@ SQ.mount("admin", () => `
     ${setting("既定のテーマ", `画面の見た目の既定。自分で選んでいないユーザーに効きます。会社で使うならシンプルが無難です。`, `
       <div class="choice-list">
         ${SQ.THEMES.map((v, i) => `<label class="choice"><input type="radio" name="kt" ${i === 0 ? "checked" : ""}><div><b>${SQ.THEME_LABEL[v]}</b><span>${SQ.THEME_NOTE[v]}</span></div></label>`).join("")}</div>`)}
-    ${setting("配分の合計", `ユーザーごとの、すべての${t("workspace")}の配分の合計。100% を超えた月は本人にも知らせています。`, `
+    ${setting("配分の合計", `ユーザーごとの、すべての${t("workspace")}の配分の合計。100% を超えた月は本人にも知らせています。`, !A.allocTotals.length
+      ? `<p class="props-note">${t("workspace")}ができて、${t("leader")}が配分を決めると出ます。</p>`
+      : `
       <div class="table-wrap"><table class="table"><thead><tr><th>名前</th><th class="is-num">10月</th><th class="is-num">11月</th></tr></thead>
         <tbody>${A.allocTotals.map(([n, a, b]) => `<tr><td>${esc(n)}</td>${[a, b].map((v) => `<td class="is-num" ${v > 100 ? 'style="color:var(--color-danger)"' : ""}>${v > 100 ? "▲ " : ""}${v}%</td>`).join("")}</tr>`).join("")}</tbody></table></div>`)}
-    ${setting(`${t("capacity")}の合計`, `ユーザーごとの、すべての${t("workspace")}の作業量の合計を、ユーザーの基準と並べたもの。`, `
+    ${setting(`${t("capacity")}の合計`, `ユーザーごとの、すべての${t("workspace")}の作業量の合計を、ユーザーの基準と並べたもの。`, !A.loadTotals.length
+      ? `<p class="props-note">${t("workspace")}で${t("sprint")}に${t("task")}が入ると出ます。</p>`
+      : `
       <div class="table-wrap"><table class="table"><thead><tr><th>名前</th><th>10月</th><th>11月</th></tr></thead>
         <tbody>${A.loadTotals.map(([u, ...cells]) => `<tr><td><span class="person">${avatarOf(u)}${esc(user(u).name)}</span></td>${cells.map((c) => `<td>${SQ.miniCap(c)}</td>`).join("")}</tr>`).join("")}</tbody></table></div>`)}
     ${setting("取り込み元の応答", `取り込み元の応答そのもの（本文とラベルを含む）を保存するか。保存しなければ、取り込み元の本文を一度も書きません。`, `

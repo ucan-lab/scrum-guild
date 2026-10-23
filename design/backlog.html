@@ -25,6 +25,15 @@ SQ.mount("backlog", () => {
   const rootTasks = SQ.tasksWhere((x) => x.ws === "wa" && !x.story && !x.doneAt);
   const rootDone = SQ.tasksWhere((x) => x.ws === "wa" && !x.story && x.doneAt).length;
   const actions = `<button class="btn is-primary" type="button" data-dialog="createTask">${icon("plus")}${t("create")}</button>`;
+  // 何もないときは、絞り込みの帯も出さずに最初の一歩だけを示す
+  if (!SQ.tasksWhere((x) => x.ws === "wa").length && !Object.keys(D.epics).length && !Object.keys(D.stories).length) {
+    return `
+      ${pageHead(D.workspaces.wa.name, t("backlog"), [], actions)}
+      ${SQ.emptyState("board", `まだ${t("task")}がありません`,
+        `${t("task")}を優先する順に並べる場所です。上の「${t("create")}」から最初の${t("task")}を作ります。` +
+        (D.connections.length ? "" : `取り込み元を使うなら、${t("connection")}を登録すると${t("inbox")}に届き、そこからここへ入れられます。`),
+        D.connections.length ? "" : `<a class="btn is-sm" href="${SQ.firstHref("connections.html")}">${t("connection")}を登録する</a>`)}`;
+  }
   return `
     ${pageHead(D.workspaces.wa.name, t("backlog"), [
       ["", "board", `未完了の${t("task")}`, open.length],
