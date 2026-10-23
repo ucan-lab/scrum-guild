@@ -602,7 +602,7 @@ a.notice-title.notice-link:hover { text-decoration: underline; text-underline-of
 .choice input { margin-top: 4px; accent-color: var(--color-accent); }
 .choice b { display: block; font-size: var(--text-sm); }
 .choice span { font-size: var(--text-xs); color: var(--color-muted); }
-/* 押すと移る選択肢（王国の選択など）。choice と同じ見た目のリンク */
+/* 押すと移る選択肢（組織の選択など）。choice と同じ見た目のリンク */
 a.choice { color: inherit; text-decoration: none; align-items: center; }
 a.choice:hover, a.choice:focus-visible { border-color: var(--color-accent); }
 a.choice > div { flex: 1; min-width: 0; }

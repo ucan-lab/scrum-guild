@@ -10,10 +10,10 @@ window.SQ_DATA = (function () {
     todayLabel: "2026年10月20日（火）",
     me: "u1",
     workspace: "wa",
-    kingdom: "aoba",
+    organization: "aoba",
 
-    // 自分が入れる王国。王国ごとに名前、レベル、経験値が別になる
-    kingdoms: [
+    // 自分が入れる組織。組織ごとに名前、レベル、経験値が別になる
+    organizations: [
       { slug: "aoba", name: "あおば開発", wss: 2, level: 7, admin: true, lastSeen: "10/20" },
       { slug: "hibari", name: "ひばり工房", wss: 1, level: 3, lastSeen: "10/14" },
     ],
@@ -140,9 +140,9 @@ window.SQ_DATA = (function () {
         { id: "f7", name: "ポイント残高の画面案.png", type: "image", size: "688 KB", who: "u4", at: "10/08 17:02" },
       ],
     },
-    // 王国の添付ファイルの合計（GB）。上限の 80% を超えると管理者に知らせる
+    // 組織の添付ファイルの合計（GB）。上限の 80% を超えると管理者に知らせる
     storage: { used: 25.1, quota: 30, byWorkspace: [["wa", 612, 18.4], ["wb", 205, 6.7]] },
-    // 王国の人数と上限。人数は管理者と、いずれかのワークスペースに所属しているか招待されている人
+    // 組織の人数と上限。人数は管理者と、いずれかのワークスペースに所属しているか招待されている人
     seats: { used: 5, limit: 15 },
     history: {
       t1: [
@@ -247,13 +247,13 @@ Object.assign(window.SQ_DATA, {
     { kind: "storage", at: "10/20 11:30", read: false, href: "admin.html", text: "添付ファイルの合計が上限の 80% を超えました（25.1 GB / 30 GB）。上限に達すると新しく添付できなくなります" },
     { kind: "srcDone", at: "10/20 10:00", read: false, text: "SHOP-131「請求書 PDF の文字化けを直す」が取り込み元で完了になりました", task: "t12" },
     { kind: "comment", at: "10/16 09:06", read: false, who: "u3", text: "ソウタさんが「ポイント付与のバッチを作る」にコメントしました", task: "t1" },
-    { kind: "party", at: "10/15 13:20", read: false, who: "u2", text: "ハルカさんがあなたをレイド「会員ポイント制度を公開する」のパーティに割り振りました" },
+    { kind: "party", at: "10/15 13:20", read: false, who: "u2", text: "ハルカさんがあなたをレイド「会員ポイント制度を公開する」の討伐隊に割り振りました" },
     { kind: "error", at: "10/20 10:00", read: true, text: "接続「ミナトの GitHub」の取り込みに失敗しています（503）。次の同期で再試行します" },
     { kind: "thanks", at: "10/14 18:30", read: true, who: "u4", text: "リンさんから「障害時の連絡手順を書く」で感謝が届きました" },
     { kind: "reward", at: "10/10 10:00", read: true, who: "u2", text: "レイド「会員ポイント制度を公開する」のクリア報酬が 中 から 大 に変わりました" },
   ],
   receivedInvites: [
-    { kingdom: "ひばり工房", ws: "デザイン相談室", by: "ユイ", role: "member", at: "10/19" },
+    { organization: "ひばり工房", ws: "デザイン相談室", by: "ユイ", role: "member", at: "10/19" },
   ],
 
   // 自分の設定（自分は me のユーザー）
@@ -291,7 +291,7 @@ Object.assign(window.SQ_DATA, {
     allocTotals: [["ミナト", 100, 100], ["リン", 0, 110], ["ハルカ", 100, 100]],
     // 全ワークスペースの積載量の合計。[基準, 作業量, 未見積もり件数]
     loadTotals: [["u1", [172.0, 168.0, 0], [160.0, 118.0, 1]], ["u2", [172.0, 168.0, 0], [160.0, 120.0, 0]], ["u4", [86.0, 104.0, 0], [96.0, 70.0, 0]]],
-    // 王国の変更の履歴。[日時, した人（null は運用者）, 内容]
+    // 組織の変更の履歴。[日時, した人（null は運用者）, 内容]
     audit: [
       ["10/18 14:02", "u1", "ハルカを管理者に指名した"],
       ["09/01 10:15", "u2", "カイを無効にした（接続の認証情報を消した）"],
@@ -299,10 +299,10 @@ Object.assign(window.SQ_DATA, {
     ],
   },
 
-  // 運用者の画面。王国の中のデータは持たず、数と日時だけ
+  // 運用者の画面。組織の中のデータは持たず、数と日時だけ
   operator: {
     name: "運用担当",
-    kingdoms: [
+    organizations: [
       { slug: "aoba", name: "あおば開発", users: 5, limit: 15, wss: 3, tasks: 1284, used: 25.1, quota: 30, lastUsed: "10/20 09:12", created: "2026-06-01", admins: 2 },
       { slug: "hibari", name: "ひばり工房", users: 15, limit: 15, wss: 1, tasks: 212, used: 0.4, quota: 30, lastUsed: "10/19 18:40", created: "2026-09-15", admins: 1 },
       { slug: "kumo-lab", name: "くもラボ", users: 38, limit: 50, wss: 4, tasks: 3410, used: 21.7, quota: 100, lastUsed: "10/18 11:03", created: "2026-07-10", admins: 0 },

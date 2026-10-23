@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Team Leveling 王国の管理</title>
+<title>Team Leveling 組織の管理</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=BIZ+UDPGothic:wght@400;700&family=Chakra+Petch:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500&family=Zen+Old+Mincho:wght@700;900&display=swap">
@@ -17,7 +17,7 @@
 <script src="kit.js"></script>
 <script>
 "use strict";
-// 王国の管理（管理者）: ユーザー、ワークスペース、添付ファイルの合計、王国の休日、言葉づかい、既定のテーマ、配分と積載量の合計、取り込み元の応答、変更の履歴
+// 組織の管理（管理者）: ユーザー、ワークスペース、添付ファイルの合計、組織の休日、言葉づかい、既定のテーマ、配分と積載量の合計、取り込み元の応答、変更の履歴
 const { D, t, icon, esc, pageHead, avatarOf, user, meter } = SQ;
 const A = D.admin;
 function setting(title, desc, body) {
@@ -25,7 +25,7 @@ function setting(title, desc, body) {
 }
 
 SQ.mount("admin", () => `
-  ${pageHead("管理者だけが見られます", "王国の管理", [
+  ${pageHead("管理者だけが見られます", "組織の管理", [
     ["", "users", "ユーザー", A.users.filter((u) => !u.disabled).length],
     ["", "shield", "管理者", A.users.filter((u) => u.admin).length],
     ["", "", t("workspace"), A.workspaces.filter((w) => !w.closed).length],
@@ -48,13 +48,13 @@ SQ.mount("admin", () => `
       ${D.storage.used / D.storage.quota >= 0.8 ? `<div class="callout is-warn">${icon("alert")}<span>上限の 80% を超えています。不要なファイルを消すか、運用者に上限を上げてもらってください。ファイルを消せるのは、上げた人と各${t("workspace")}の${t("leader")}です。</span></div>` : ""}
       <div class="table-wrap"><table class="table"><thead><tr><th>${t("workspace")}</th><th class="is-num">ファイル</th><th class="is-num">合計</th></tr></thead>
         <tbody>${D.storage.byWorkspace.map(([ws, n, gb]) => `<tr><td>${esc(D.workspaces[ws].name)}</td><td class="is-num">${n} 件</td><td class="is-num">${gb} GB</td></tr>`).join("")}</tbody></table></div>`)}
-    ${setting("王国の休日", `祝日など、すべての${t("workspace")}に効く休日。日付の一覧を貼り付けて、まとめて登録できます。`, `
+    ${setting("組織の休日", `祝日など、すべての${t("workspace")}に効く休日。日付の一覧を貼り付けて、まとめて登録できます。`, `
       <label class="field" for="paste"><span class="field-label">貼り付けて登録</span><textarea class="textarea" id="paste" placeholder="2027-02-11 建国記念の日&#10;2027-02-23 天皇誕生日"></textarea><span class="field-hint">1行に1日。日付のあとに名前を書けます。登録済みの日付は飛ばします。</span></label>
       <div class="form-actions"><button class="btn" type="button" data-toast="2 日を登録しました">登録する</button></div>
       <ul class="party-list">${A.holidays.map(([d, n]) => `<li><span class="mono">${d}</span><span>${esc(n)}</span><button class="icon-btn is-danger" type="button" aria-label="${d} を消す" style="margin-left:auto">${icon("trash")}</button></li>`).join("")}</ul>`)}
-    ${setting(`${t("workspace")}の外の言葉づかい`, `「王国」「国王」などの言葉。${t("workspace")}の中の言葉づかいは、それぞれの${t("leader")}が決めます。`, `
+    ${setting(`${t("workspace")}の外の言葉づかい`, `「冒険者ギルド」「ギルドマスター」などの言葉。${t("workspace")}の中の言葉づかいは、それぞれの${t("leader")}が決めます。`, `
       <div class="choice-list">
-        <label class="choice"><input type="radio" name="kv" checked><div><b>ゲームの言葉</b><span>王国、国王</span></div></label>
+        <label class="choice"><input type="radio" name="kv" checked><div><b>ゲームの言葉</b><span>冒険者ギルド、ギルドマスター</span></div></label>
         <label class="choice"><input type="radio" name="kv"><div><b>スクラムの言葉</b><span>組織、管理者</span></div></label></div>`)}
     ${setting("既定のテーマ", `画面の見た目の既定。自分で選んでいないユーザーに効きます。会社で使うならシンプルが無難です。`, `
       <div class="choice-list">
@@ -70,7 +70,7 @@ SQ.mount("admin", () => `
         <label class="choice"><input type="radio" name="payload" checked><div><b>保存しない</b><span>タイトル、キー、状態、期限、URL など、${t("task")}として扱うのに要る属性だけを持ちます</span></div></label>
         <label class="choice"><input type="radio" name="payload"><div><b>保存する</b><span>次に同期した項目から保存します。さかのぼって取り直しません</span></div></label></div>
       <p class="field-hint">保存しない側に切り替えると、保存済みの応答を消します。</p>`)}
-    ${setting("変更の履歴", `${t("king")}の指名と解除、ユーザーの無効化、運用者の操作など、${t("kingdom")}の単位の変更。${t("workspace")}の中の変更は、各${t("workspace")}の変更の履歴に出ます。`, `
+    ${setting("変更の履歴", `${t("admin")}の指名と解除、ユーザーの無効化、運用者の操作など、${t("organization")}の単位の変更。${t("workspace")}の中の変更は、各${t("workspace")}の変更の履歴に出ます。`, `
       <div class="table-wrap"><table class="table"><thead><tr><th>日時</th><th>した人</th><th>内容</th></tr></thead>
         <tbody>${A.audit.map(([at, who, what]) => `<tr><td class="mono">${at}</td><td>${who ? `<span class="person">${avatarOf(who)}${esc(user(who).name)}</span>` : `<span class="props-note">運用者</span>`}</td><td>${esc(what)}</td></tr>`).join("")}</tbody></table></div>`)}
   </div>`);

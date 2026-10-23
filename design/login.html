@@ -25,12 +25,12 @@ function render() {
     <section class="gate-sheet">
       <div class="gate-brand"><span class="brand-seal" aria-hidden="true"><span class="orn-medieval">冒</span><span class="orn-plain">TL</span></span><span class="brand-name">Team Leveling</span></div>
       <h1 class="gate-title">ログイン</h1>
-      <p>いずれかの${t("kingdom")}に所属しているか、招待されている人がログインできます。入れる${t("kingdom")}が2つ以上あれば、ログインのあとに選びます。</p>
+      <p>いずれかの${t("organization")}に所属しているか、招待されている人がログインできます。入れる${t("organization")}が2つ以上あれば、ログインのあとに選びます。</p>
       <button class="btn is-primary is-wide" type="button">${icon("git")}GitHub でログイン</button>
       <p class="gate-note">GitHub には本人確認だけを頼み、プロフィールを読む権限（read:user）より広い権限は求めません。</p>
     </section>
     <section class="gate-sheet">
-      <div class="callout is-warn">${icon("alert")}<span>ログインできませんでした。どの${t("kingdom")}の${t("workspace")}にも所属しておらず、招待も届いていません。${t("leader")}に GitHub のユーザー名で招待してもらってください。</span></div>
+      <div class="callout is-warn">${icon("alert")}<span>ログインできませんでした。どの${t("organization")}の${t("workspace")}にも所属しておらず、招待も届いていません。${t("leader")}に GitHub のユーザー名で招待してもらってください。</span></div>
       <p class="gate-note">ログインできないときの表示の見本です。</p>
     </section>
     <section class="gate-sheet">
@@ -40,7 +40,7 @@ function render() {
         <span class="props-note">ひばり工房・ユイさんから・一般・10/19</span>
         <div class="form-actions"><button class="btn is-primary is-sm" type="button">承諾する</button><button class="btn is-quiet is-sm" type="button">辞退する</button></div>
       </div>
-      <p class="gate-note">ログインした直後に、承諾していない招待があれば、すべての${t("kingdom")}の分をまとめて出します。</p>
+      <p class="gate-note">ログインした直後に、承諾していない招待があれば、すべての${t("organization")}の分をまとめて出します。</p>
     </section>
     <p class="gate-note" style="text-align:center"><a href="index.html">デザインシステムのカタログへ戻る</a></p>
   </div></div>`;
