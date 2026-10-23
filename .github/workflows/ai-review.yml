@@ -12,9 +12,12 @@ on:
 jobs:
   review:
     # action は .claude/ を base のブランチから戻すので、レビュー済みの main を base にした PR だけで動かす
+    # fork と Bot（Dependabot など）の PR にはシークレットが渡らないので回さない
     if: >-
       github.event.pull_request.draft == false &&
       github.event.pull_request.base.ref == 'main' &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.user.type != 'Bot' &&
       (github.event.action != 'labeled' || github.event.label.name == 'ai-review')
     runs-on: ubuntu-latest
     timeout-minutes: 30
