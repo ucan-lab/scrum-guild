@@ -791,7 +791,8 @@ button.file-name:hover { text-decoration-color: currentColor; }
 
 /* ===== AI のアシスタント（パレットと横の欄） =====
  * パレットは上の帯のボタンか Ctrl+K で開く、画面の上に重ねる入力。続けて話すときは横の欄へ移す。
- * 横の欄は画面を覆わず、広い画面では本文を左へ寄せる。タスクの詳細の引き出しは横の欄の上に出る。
+ * 横の欄は、本文を寄せても潰れない広い画面（1500px 以上）では本文を左へ寄せ、それより狭いと右に重ねる。
+ * タスクの詳細の引き出しは横の欄の上に出る。操作の色は押せる所だけに使い、アシスタントの印は形と文字で示す。現代風でも光らせない。
  */
 .kbd {
   font-family: var(--font-mono); font-size: 10px; line-height: 1; padding: 3px 5px; white-space: nowrap;
@@ -806,9 +807,9 @@ button.file-name:hover { text-decoration-color: currentColor; }
   width: min(640px, 100%); max-height: 76vh; display: flex; flex-direction: column;
   background: var(--surface-panel); border: 1px solid var(--color-line); border-radius: var(--radius-1); box-shadow: var(--shadow-float); overflow: hidden;
 }
-.assist-ask { display: flex; align-items: center; gap: var(--space-2); padding: var(--space-3) var(--space-4); border-bottom: 1px solid var(--color-rule); color: var(--color-accent); }
+.assist-ask { display: flex; align-items: center; gap: var(--space-2); padding: var(--space-3) var(--space-4); border-bottom: 1px solid var(--color-rule); color: var(--color-muted); }
 .assist-input { flex: 1; min-width: 0; border: 0; background: none; outline: none; padding: 6px 0; font-size: var(--text-lg); color: var(--color-fg); }
-.assist-input::placeholder { color: var(--color-faint); }
+.assist-input::placeholder { color: var(--color-muted); }
 .assist-input:disabled { cursor: not-allowed; }
 .assist-ask:focus-within { box-shadow: inset 0 -2px 0 var(--color-accent); }
 .assist-context { padding: var(--space-2) var(--space-4) 0; }
@@ -836,15 +837,15 @@ button.file-name:hover { text-decoration-color: currentColor; }
 /* やり取り。頼んだ人は右に地を付け、答えは左に地なしで置く */
 .assist-msg { display: grid; gap: var(--space-2); font-size: var(--text-sm); min-width: 0; }
 .assist-msg.is-user { justify-items: end; }
-.assist-msg.is-user p { max-width: 85%; background: var(--color-accent-soft); border-radius: var(--radius-1); padding: var(--space-2) var(--space-3); overflow-wrap: anywhere; }
-.assist-who { display: inline-flex; align-items: center; gap: 4px; font-size: var(--text-xs); font-weight: 700; color: var(--color-accent); }
+.assist-msg.is-user p { max-width: 85%; background: var(--color-sunken); border-radius: var(--radius-1); padding: var(--space-2) var(--space-3); overflow-wrap: anywhere; }
+.assist-who { display: inline-flex; align-items: center; gap: 4px; font-size: var(--text-xs); font-weight: 700; color: var(--color-muted); }
 .assist-steps { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; font-size: var(--text-xs); color: var(--color-muted); }
 .assist-steps li { display: flex; align-items: center; gap: 6px; }
 .assist-steps li.is-done .ico { color: var(--color-ok); }
-.assist-spin { width: 10px; height: 10px; flex: none; border: 1.5px solid var(--color-line); border-top-color: var(--color-accent); border-radius: 50%; animation: assist-spin 0.8s linear infinite; }
+.assist-spin { width: 10px; height: 10px; flex: none; border: 1.5px solid var(--color-line); border-top-color: var(--color-fg); border-radius: 50%; animation: assist-spin 0.8s linear infinite; }
 @keyframes assist-spin { to { transform: rotate(360deg); } }
 .assist-text { overflow-wrap: anywhere; }
-.assist-caret { display: inline-block; width: 2px; height: 1em; margin-left: 2px; vertical-align: -0.15em; background: var(--color-accent); animation: assist-blink 1s steps(2) infinite; }
+.assist-caret { display: inline-block; width: 2px; height: 1em; margin-left: 2px; vertical-align: -0.15em; background: var(--color-fg); animation: assist-blink 1s steps(2) infinite; }
 @keyframes assist-blink { 50% { opacity: 0; } }
 .assist-refs { list-style: none; margin: 0; padding: 0; display: grid; border: 1px solid var(--color-line); border-radius: var(--radius-1); background: var(--color-surface); }
 .assist-refs li { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; padding: var(--space-2) var(--space-3); }
@@ -852,7 +853,7 @@ button.file-name:hover { text-decoration-color: currentColor; }
 .assist-refs a { color: var(--color-fg); flex: 1 1 180px; min-width: 0; overflow-wrap: anywhere; }
 
 /* 変える前の確認。行ごとに外せる */
-.assist-confirm { display: grid; gap: var(--space-3); border: 1px solid var(--color-line); border-left: 3px solid var(--color-accent); border-radius: var(--radius-1); background: var(--color-surface); padding: var(--space-3) var(--space-4); }
+.assist-confirm { display: grid; gap: var(--space-3); border: 1px solid var(--color-line); border-left: 3px solid var(--color-muted); border-radius: var(--radius-1); background: var(--color-surface); padding: var(--space-3) var(--space-4); }
 .assist-confirm-head { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
 .assist-confirm-count { margin-left: auto; font-family: var(--font-mono); font-size: var(--text-xs); color: var(--color-muted); }
 .assist-changes { list-style: none; margin: 0; padding: 0; display: grid; }
@@ -865,7 +866,7 @@ button.file-name:hover { text-decoration-color: currentColor; }
 .assist-change-diff s { color: var(--color-muted); }
 .assist-change-diff b { color: var(--color-fg); }
 .assist-change-diff .ico { width: 0.9em; height: 0.9em; }
-.assist-change:has(input:not(:checked)) .assist-change-main { opacity: 0.55; }
+.assist-change:has(input:not(:checked)) .assist-change-title { color: var(--color-muted); text-decoration: line-through; }
 .assist-confirm-foot { display: flex; justify-content: flex-end; gap: var(--space-2); flex-wrap: wrap; }
 .assist-after { font-size: var(--text-sm); color: var(--color-muted); }
 .assist-after.is-done { display: flex; gap: var(--space-2); align-items: flex-start; color: var(--color-ok); }
@@ -874,24 +875,29 @@ button.file-name:hover { text-decoration-color: currentColor; }
 /* 横の欄 */
 .assist-panel {
   position: fixed; top: 0; right: 0; bottom: 0; z-index: 15; width: 400px;
-  display: flex; flex-direction: column; background: var(--color-surface); border-left: var(--rule-double); box-shadow: var(--shadow-float);
+  display: flex; flex-direction: column; background: var(--color-surface); border-left: var(--rule-double); box-shadow: none;
   padding-top: env(safe-area-inset-top, 0px); padding-bottom: env(safe-area-inset-bottom, 0px); padding-right: env(safe-area-inset-right, 0px);
 }
-.assist-panel-head { display: flex; align-items: center; gap: var(--space-2); padding: var(--space-3) var(--space-4); border-bottom: 1px solid var(--color-rule); color: var(--color-accent); }
+.assist-panel-head { display: flex; align-items: center; gap: var(--space-2); padding: var(--space-3) var(--space-4); border-bottom: 1px solid var(--color-rule); color: var(--color-muted); }
 .assist-panel-title { font-family: var(--font-display); font-weight: var(--weight-display); font-size: var(--text-lg); color: var(--color-fg); margin-right: auto; }
 .assist-thread { flex: 1; overflow-y: auto; padding: var(--space-4); display: grid; gap: var(--space-5); align-content: start; }
 .assist-panel .assist-ask { border-top: 1px solid var(--color-rule); border-bottom: 0; }
 .assist-panel .assist-input { font-size: var(--text-md); }
 .assist-panel .assist-foot { border-top: 0; padding-top: 0; }
-@media (min-width: 1081px) {
+body.has-assist .toasts { right: calc(400px + var(--space-4)); }
+@media (min-width: 1500px) {
   body.has-assist .app { margin-right: 400px; }
-  body.has-assist .assist-panel { box-shadow: none; }
-  body.has-assist .toasts { right: calc(400px + var(--space-4)); }
+}
+@media (pointer: coarse) {
+  .assist-ctx button, .assist-ask .icon-btn { min-width: 44px; min-height: 44px; }
+  .assist-example { min-height: 44px; }
 }
 @media (max-width: 760px) {
   .assist-palette { padding-top: var(--space-4); }
-  .assist-sheet { max-height: calc(100vh - 2 * var(--space-4)); }
+  .assist-sheet { max-height: calc(100dvh - 2 * var(--space-4)); }
   .assist-panel { width: 100%; padding-left: env(safe-area-inset-left, 0px); }
+  .assist-input, .assist-panel .assist-input { font-size: var(--text-lg); }
+  body.has-assist .toasts { right: max(var(--space-4), env(safe-area-inset-right, 0px)); }
   .topbar .assist-launch .kbd { display: none; }
 }
 
