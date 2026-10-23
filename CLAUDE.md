@@ -17,9 +17,9 @@
 
 ## 守ること
 
-- `main` へ直接 push しない。1 Issue に 1 ブランチ、1 PR。マージは squash で、人か GitHub の auto-merge が行う。セッションからはマージしない
-  - 例外: GitHub のブランチ保護を入れるまでは、文書だけの変更（`docs/`、`HANDOFF.md`、`CLAUDE.md`、`.claude/` のスキルとエージェントとチェックリスト、`.github/ISSUE_TEMPLATE/`）は `main` に直接入れてよい。コードと設定は例外にしない。ブランチ保護を入れたらこの例外を消す
-- 本番に触らない。`wrangler deploy`、`wrangler versions deploy`、`--remote` を付けた `wrangler d1` は CI だけが実行する
+- `main` へ直接 push しない。1 Issue に 1 ブランチ、1 PR。ブランチ名は `<Issue番号>-<短い名前>`（クラウドのセッションの `claude/*` はそのまま）。手元では同じ名前のワークツリー（`./worktrees/<ブランチ名>`）を切って作業する（`docs/development.md` の「ワークツリーで作業する」）。マージは squash で、人が行う。セッションからはマージしない。GitHub のブランチ保護は無いので、この決まりは設定ではなく自分で守る
+  - 例外: 文書だけの変更（`docs/`、`HANDOFF.md`、`CLAUDE.md`、`.claude/` のスキルとエージェントとチェックリスト、`.github/ISSUE_TEMPLATE/`）は `main` に直接入れてよい。コード、設定、マイグレーションは例外にしない
+- 本番に触らない。`wrangler deploy`、`wrangler versions deploy`、`wrangler rollback`、`--remote` を付けた `wrangler d1` は Cloudflare の Workers Builds だけが実行する
 - 組織の中の表を読み書きするときは、必ず組織で絞る。共通の表と組織の中の表を結合せず、1回の `batch()` に混ぜない（`docs/data-model.md` の「データベースの分け方」）
 - DB への書き込みは、文を並べて `batch()` で1つのトランザクションとして送る
 - D1 には Kysely の入口（共通の表の入口と、組織を確かめた後の入口）からだけ問い合わせる。まとめて書くときも入口の `batch()` の関数を使う。D1 の binding を直接使わない

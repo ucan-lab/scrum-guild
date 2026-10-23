@@ -69,9 +69,11 @@
 
 ### 開発の進め方（`docs/development.md`）
 
-- [x] ブランチ戦略、AI の分担、スキル、開発の流れ、CI/CD を決めた（2026-10-22）。squash merge だけ、承認は必須にせず人がマージを押す、PR ごとのプレビューは持たない、`main` へのマージで自動デプロイしマイグレーションだけ承認を挟む
-- [ ] GitHub のプランが Rulesets と auto-merge を private のリポジトリで使えるか（個人は Pro、組織は Team が要る）
-- [ ] GitHub の Rulesets で `main` を保護する（`docs/development.md` の「ブランチ保護」）。マージ後にブランチを自動で消す設定も入れる。入れたら `CLAUDE.md` の「守ること」の例外を消す
+- [x] ブランチ戦略、AI の分担、スキル、開発の流れ、CI/CD を決めた（2026-10-22）。squash merge だけ、承認は必須にせず人がマージを押す、PR ごとのプレビューは持たない、`main` へのマージで自動デプロイする
+- [x] GitHub は無料のプランのまま進めると決めた（2026-10-23）。private ではブランチ保護、Rulesets、auto-merge、Environment が使えないので、すべての PR を人がマージし、デプロイは Cloudflare の Workers Builds で行う（鍵を GitHub に置かない）。マイグレーションの承認は `needs-human` の PR を人がマージすることで代える。`merge-risk` と自動マージはやめた。作業ブランチの名前は `<Issue番号>-<短い名前>` にした。`docs/development.md` の「`main` を守る仕組み」「マージの判定」「CD」
+- [x] GitHub の設定を直した（2026-10-23）。マージ後にブランチを消す、squash のコミットの件名を PR のタイトルにし本文を空にする、ラベル `area:kingdom` を `area:organization` に改める
+- [ ] Workers Builds をリポジトリにつなぎ、権限を最小にした API トークンを選ぶ。preview builds は有効にしない
+- [ ] Anthropic の側で、CI の AI レビューに使う API キーの額の上限を掛ける
 - [ ] Cloudflare の通知で Workers のエラー率などを受けられるか
 - [x] 技術の選択を決めた（2026-10-22）。pnpm、1つのパッケージ、ESLint と Prettier、SvelteKit の SPA モード、Kysely、zod、自前の操作の定義、型付きの言葉の辞書、seed とファクトリー。`docs/requirements.md` の「画面」を SvelteKit の SPA モードに改めた
 - [x] 最初の一本道（組織の作成からタスクの完了まで）、DB を作り直してよい期間（ベータまで）、API のエラーの形、CI の AI レビュー（`claude-code-action`）を決めた（2026-10-22）。`docs/development.md` の「API のエラーとログ」「初版の作る順」
@@ -88,7 +90,7 @@
 ### 片付け
 
 - [ ] `mock/` を消してよいか（デザインシステムの見本で置き換えた）
-- [ ] GitHub でリモートの作業ブランチ `claude/focused-wright-vdqz0g` と `claude/ai-task-management-h4nr67` を消す（内容はすべて `main` に入っている。手元のブランチは消した。作業した環境からはリモートのブランチを消せなかった）
+- [x] マージ済みのリモートの作業ブランチ（`claude/*` の5本と `docs/task-repository`）を消した（2026-10-23）
 
 ### 名前の変更（scrum-quest から Team Leveling へ）
 
@@ -99,8 +101,7 @@
 ## 次にやること
 
 1. 上の確認の結果を `docs/design.md` と `docs/requirements.md` に反映する
-2. ブランチ保護で `main` への直接の push を止める（`docs/development.md` の「ブランチ保護」）。ここから先は PR を通す
-3. リポジトリの土台を作る（`docs/development.md` の「技術の選択」。pnpm、Hono、SvelteKit の SPA モード、Kysely、zod、ESLint と Prettier、wrangler の設定、SessionStart のフック、`.claude/settings.json` の deny、CI の `ci-ok`）。`CLAUDE.md` の「コマンド」を埋める。SvelteKit の開発用サーバーと `wrangler dev` をどう組むか（1つにまとまるか、`/api` を転送するか）を確かめる
+2. リポジトリの土台を作る（`docs/development.md` の「技術の選択」。pnpm、Hono、SvelteKit の SPA モード、Kysely、zod、ESLint と Prettier、wrangler の設定、SessionStart のフック、`.claude/settings.json` の deny、CI の `ci-ok`、Workers Builds とデプロイのスクリプト）。ここから先、コードは PR を通す。`CLAUDE.md` の「コマンド」を埋める。SvelteKit の開発用サーバーと `wrangler dev` をどう組むか（1つにまとまるか、`/api` を転送するか）を確かめる
 4. `d1-migration` のスキルを作り、`docs/data-model.md` から最初のマイグレーションを書く
 5. `design/tokens.css` と `design/components.css` を本番の画面に持ち込み、`design/kit.js` の関数を1つずつ Svelte のコンポーネントにする。`html` の `data-theme` には、`users.theme`、なければ `organizations.theme` の値を入れる
 6. 最初の数画面が Svelte で動いたら、下の「画面の自己レビューのスキル」を作る
@@ -159,33 +160,9 @@ hq の `04-research/x-seeconvm-opus-motion-design.md` の7章「The Critic」（
 
 - 動画の書き出し。記事の本題（`seek(t)` で描いて MP4 にする）は、サービスの紹介動画を作る段階で別に考える。
 
-## merge-risk のスキルの材料
-
-自動マージの判定に使う。拒否権のパス、入れる順、仕組みは `docs/development.md` の「マージの判定」に移した。ここには採点の基準を作るための材料を残す。
-
-### 参考にするもの
-
-Warp の `merge-risk` スキル（`npx skills add warpdotdev/common-skills --skill merge-risk`、MIT。二次情報ではなくスキル本体の `SKILL.md` を読んだ）。PR を5つの観点で採点し、重み付き平均で low、medium、high を出す。
-
-| 観点 | 見ること | 重み |
-| --- | --- | --- |
-| Impact | 影響範囲。認証、権限、個人情報、シークレット、マイグレーション、依存の更新、設定は差分が小さくても高い | 2 |
-| Verification | E2E の証拠（スクリーンショット、録画、変更前後の比較）。画面の変更で証拠が無ければ不合格 | 2 |
-| Rollback cost | 戻せるか（一方通行のドアか） | 1.5 |
-| Error detection | 本番で壊れたら利用者より先に気づけるか。エラーを握りつぶしていないか | 1 |
-| Alignment | PR の説明、Issue と実装が合っているか | 1 |
-
-判定は ✅=1、👀=2、⚠️=3。平均が 1.5 未満で low、2.25 以上で high。
-
-### そのままでは使えない点
-
-- 平均なので、⚠️ が1つでも low になりうる。Rollback cost だけ ⚠️ で他が ✅ だと 1.4 で low。自動マージに使うなら、⚠️ が1つでもあれば対象外にする拒否権が要る。
-- 実装した AI 自身が採点すると甘くなる。採点は別のエージェントに任せ、根拠は CI の結果とスクリーンショットだけにする。
-- Verification の証拠は、CI の e2e のスクリーンショットと「画面の自己レビューのスキル」のコンタクトシートで出せる。
-
 ## 覚えておくこと
 
-- `main` に直接コミットしてよいのは、ブランチ保護を入れるまでの文書だけの変更に限る（`CLAUDE.md` の例外と同じ）。ブランチ保護を入れたら、文書も含めて PR を通し、`CLAUDE.md` の例外を消す（2026-10-22 に決めた。`docs/development.md`）。
+- `main` に直接コミットしてよいのは、文書だけの変更に限る（`CLAUDE.md` の例外と同じ）。GitHub は無料のプランでブランチ保護が無いので、設定ではなく決まりとして守る（2026-10-23。`docs/development.md` の「`main` を守る仕組み」）。
 - 名前は Team Leveling。表記の決まりは `docs/requirements.md` の「名前」、経緯と重なりの確認は `docs/naming.md`。
 - 見本は、画面ごとの CSS を持たない決まり。足りない部品は先に `design/components.css` とカタログに足す。
 - 見本の例のデータ（`design/sample-data.js`）はすべて架空。実在の名前を混ぜない。
