@@ -10,7 +10,8 @@
   // ?first=member は招待を承諾したばかりの一般、leader はワークスペースを任されたばかりのリーダー、
   // admin は運用者に組織を作ってもらったばかりで、まだワークスペースがない管理者
   const FIRST_ROLES = ["member", "leader", "admin"];
-  // 最初の日の見本を持つ画面。他の画面へのリンクは使い込んだ状態に戻る
+  // 最初の日のデータで描ける画面（空の状態を持つ画面と、空のデータでもそのまま描ける画面）。
+  // 他の画面へのリンクは使い込んだ状態に戻し、URL で直に ?first を付けても無視する
   const WS_FIRST_PAGES = ["inbox.html", "backlog.html", "sprint.html", "plan.html", "connections.html", "members.html", "settings.html"];
   const FIRST_PAGES = {
     member: ["today.html", "notifications.html", ...WS_FIRST_PAGES],
@@ -18,30 +19,36 @@
     admin: ["today.html", "notifications.html", "admin.html"],
   };
   const first = (() => {
-    try { const v = new URLSearchParams(location.search).get("first"); return FIRST_ROLES.includes(v) ? v : null; }
-    catch (e) { return null; }
+    try {
+      const v = new URLSearchParams(location.search).get("first");
+      const here = location.pathname.split("/").pop() || "index.html";
+      return FIRST_ROLES.includes(v) && FIRST_PAGES[v].includes(here) ? v : null;
+    } catch (e) { return null; }
   })();
   const firstHref = (href, role = first) => (role && FIRST_PAGES[role].includes(href) ? `${href}?first=${role}` : href);
-  // ワークスペースを作った直後の既定値は requirements.md の「機能」の冒頭
+  // ワークスペースを作った直後の既定値は requirements.md の「機能」の冒頭。
+  // 決まった欄の名前は作ったときの言葉づかい（既定のゲームの言葉）で付き、あとから訳さない
   function freshData(role) {
     const me = { ...D.users[D.me], level: 1, role: role === "member" ? "member" : "leader" };
     const common = {
-      organizations: [D.organizations[0]], receivedInvites: [],
+      organizations: [{ ...D.organizations[0], level: 1, admin: role === "admin" }], receivedInvites: [],
       tasks: [], inbox: [], archive: [], epics: {}, stories: {}, sprints: {}, comments: {}, history: {}, files: {},
       connections: [], notifications: [], completions: [], audit: [], capacity: [], invitations: [],
-      categories: {}, repositories: {}, detailFields: ["達成条件"], pointRates: [["2026-10", 4]], workspaceHolidays: [],
+      categories: {}, repositories: {}, detailFields: ["達成条件"], definitionOfDone: [], pointRates: [["2026-10", 4]], workspaceHolidays: [],
+      storage: { ...D.storage, used: 0, byWorkspace: [] },
       level: { level: 1, xp: 0, toNext: 100, soon: 0, gotPct: 0, soonPct: 0 },
     };
     if (role === "admin") {
-      return { ...common, users: { [D.me]: me }, workspaces: {}, members: [],
-        storage: { ...D.storage, used: 0, byWorkspace: [] }, seats: { ...D.seats, used: 1 },
+      return { ...common, users: { [D.me]: me }, workspaces: {}, members: [], seats: { ...D.seats, used: 1 },
         admin: { ...D.admin, users: [{ who: D.me, admin: true, wss: 0, lastLogin: "10/20" }], workspaces: [], holidays: [],
           allocTotals: [], loadTotals: [], audit: [["10/20 09:00", null, `${me.name}を最初の管理者に指名した`]] } };
     }
     const members = role === "leader"
       ? [{ who: D.me, role: "leader", joined: "2026-10-20", alloc: null }]
       : [{ who: "u2", role: "leader", joined: "2026-10-16", alloc: null }, { who: D.me, role: "member", joined: "2026-10-20", alloc: null }];
-    return { ...common, users: { ...D.users, [D.me]: me }, workspaces: { wa: D.workspaces.wa }, members };
+    // 人数は、この見本ではワークスペースの所属だけで数える
+    return { ...common, users: { ...D.users, [D.me]: me }, workspaces: { wa: D.workspaces.wa }, members,
+      seats: { ...D.seats, used: members.length } };
   }
   if (first) Object.assign(D, freshData(first));
 
@@ -211,35 +218,37 @@
     if (!list.length && opts.empty) return opts.empty;
     return `<div class="book">${list.length ? list.map((x) => entry(x, opts)).join("") : `<div class="book-empty">ありません</div>`}</div>`;
   }
-  // 空の状態。何が出る場所かと、次に何をすればよいかを書く。actions は押す操作の HTML
+  // 空の状態。何が出る場所かと、次に何をすればよいかを書く。actions は押す操作の HTML。
+  // title と text も HTML として埋め込むので、利用者のデータは esc してから渡す
   function emptyState(ic, title, text, actions = "") {
     return `<div class="empty">${icon(ic)}<b>${title}</b>${text ? `<span>${text}</span>` : ""}${actions ? `<div class="form-actions">${actions}</div>` : ""}</div>`;
   }
 
   // 最初にやること。済んだかは今のデータから決まるので、閉じた印を持たない。
-  // 必須の手順がすべて済むと出さない。opts.preview はカタログ用で、最初の手順だけ済んだ形で出す
+  // 必須の手順がすべて済むと出さない。opts.preview はカタログ用で、最初の手順だけ済んだ形で出す。
+  // title と note は HTML として埋め込む。利用者のデータは esc してから渡す
   const FIRST_STEPS = {
     member: () => [
       { title: `${t("workspace")}「${esc(firstWsName())}」に入る`, note: "招待を承諾しました。", done: true },
-      { title: `最初の${t("task")}を出す`, done: D.tasks.some((x) => x.creator === D.me),
-        note: `「${t("create")}」から作ります。${t("points")}を1以上振ったまま完了にすると、起票の経験値が付きます。`,
-        action: (p) => `<button class="btn is-sm ${p}" type="button" data-dialog="createTask">${icon("plus")}${t("create")}</button>` },
-      { title: `今日やる${t("task")}に印を付ける`, done: D.tasks.some((x) => x.todayOn === D.today),
+      // 取り込み元だけで回す人は起票者にならないので、接続の登録でも済んだことにする
+      { title: `自分の${t("task")}を用意する`, done: D.tasks.some((x) => x.creator === D.me) || D.connections.some((c) => c.owner === D.me),
+        note: `「${t("create")}」で作るか、Backlog や GitHub を${t("connection")}として登録して、自分の担当分を${t("inbox")}に取り込みます。${t("points")}を1以上振ったまま完了にすると、起票の経験値が付きます。`,
+        action: (p) => `<button class="btn is-sm ${p}" type="button" data-dialog="createTask">${icon("plus")}${t("create")}</button>
+          <a class="btn is-sm" href="${firstHref("connections.html")}">${t("connection")}を登録する</a>` },
+      { title: `今日やる${t("task")}に印を付ける`, optional: true, done: D.tasks.some((x) => x.who === D.me && x.todayOn),
         note: `${t("backlog")}や${t("sprint")}の行の左端にある太陽を押すと、この画面の「今日やる」に並びます。印は日付が変わると外れます。`,
         action: (p) => `<a class="btn is-sm ${p}" href="${firstHref("backlog.html")}">${t("backlog")}を開く</a>` },
-      { title: `自分の${t("connection")}を登録する`, optional: true, done: D.connections.some((c) => c.owner === D.me),
-        note: `Backlog や GitHub で自分が担当している課題や PR が、${t("inbox")}に届くようになります。取り込み元を使わないなら要りません。`,
-        action: (p) => `<a class="btn is-sm ${p}" href="${firstHref("connections.html")}">${t("connection")}を登録する</a>` },
     ],
     leader: () => [
       { title: `${t("workspace")}「${esc(firstWsName())}」の${t("leader")}になる`, note: `${t("admin")}が${t("workspace")}を作り、あなたを指名しました。`, done: true },
       { title: "メンバーを招待する", done: D.invitations.length > 0 || D.members.filter((m) => !m.left).length > 1,
         note: `GitHub のユーザー名で招待し、${t("organization")}の URL を本人に伝えます。Team Leveling は招待をメールで送りません。`,
         action: (p) => `<a class="btn is-sm ${p}" href="${firstHref("members.html")}">メンバーを招待する</a>` },
-      { title: `最初の${t("task")}を出す`, done: D.tasks.some((x) => x.creator === D.me),
-        note: `「${t("create")}」から作ります。${t("points")}を1以上振ったまま完了にすると、起票の経験値が付きます。`,
+      { title: `${t("backlog")}に最初の${t("task")}を入れる`, done: D.tasks.some((x) => x.ws === D.workspace),
+        note: `「${t("create")}」で作るか、${t("inbox")}に届いたものを入れます。メンバーが入る前に並べておくと、何から始めるかが伝わります。`,
         action: (p) => `<button class="btn is-sm ${p}" type="button" data-dialog="createTask">${icon("plus")}${t("create")}</button>` },
-      { title: `最初の${t("sprint")}を作って始める`, optional: true, done: Object.values(D.sprints).some((s) => s.ws === "wa"),
+      { title: `最初の${t("sprint")}を作って始める`, optional: true,
+        done: Object.values(D.sprints).some((s) => s.ws === D.workspace && s.status !== "planned"),
         note: `${t("plan")}の画面で期間を決め、${t("backlog")}から${t("task")}を入れて始めます。${t("sprint")}を回さないなら要りません。`,
         action: (p) => `<a class="btn is-sm ${p}" href="${firstHref("plan.html")}">${t("plan")}を開く</a>` },
     ],
@@ -248,7 +257,7 @@
       { title: `最初の${t("workspace")}を作る`, done: D.admin.workspaces.length > 0,
         note: `チームや用途ごとに作ります。作るときに最初の${t("leader")}を選びます。自分でもかまいません。`,
         action: (p) => `<button class="btn is-sm ${p}" type="button" data-dialog="createWorkspace">${icon("plus")}${t("workspace")}を作る</button>` },
-      { title: "メンバーを招待する", done: D.admin.users.length > 1,
+      { title: "メンバーを招待する", optional: true, done: D.admin.users.length > 1,
         note: `招待は${t("workspace")}の中で${t("leader")}が行います。自分を${t("leader")}にしたら、作った${t("workspace")}のメンバーの画面から招待します。` },
       { title: `${t("organization")}の休日を登録する`, optional: true, done: D.admin.holidays.length > 0,
         note: `祝日などを貼り付けて、まとめて登録します。${t("capacity")}の稼働日から除きます。`,
@@ -686,10 +695,13 @@
   const daysBetween = (a, b) => Math.round((Date.parse(`${b}T00:00:00Z`) - Date.parse(`${a}T00:00:00Z`)) / 86400000);
   const WEEKDAY = ["日", "月", "火", "水", "木", "金", "土"];
   const withWeekday = (ymd) => `${ymd}（${WEEKDAY[new Date(`${ymd}T00:00:00Z`).getUTCDay()]}）`;
-  // 作るときの初期値は、前の回の最終日の翌日と同じ長さ。前がなければ次の週の始まりからの 14 日
+  // 作るときの初期値は、前の回の最終日の翌日と同じ長さ。前がなければ、今日より後で最初のワークスペースの週の始まりからの 14 日
   function sprintDefaults() {
     const last = Object.values(D.sprints).filter((s) => s.ws === D.workspace).sort((a, b) => (a.end < b.end ? 1 : -1))[0];
-    if (!last) return { start: addDays(D.weekEnd, 1), days: 14 };
+    if (!last) {
+      const dow = new Date(`${D.today}T00:00:00Z`).getUTCDay();
+      return { start: addDays(D.today, (D.settings.weekStart - dow + 7) % 7 || 7), days: 14 };
+    }
     return { start: addDays(last.end, 1), days: daysBetween(last.start, last.end) + 1 };
   }
 
