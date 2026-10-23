@@ -1,5 +1,5 @@
 # 人が差分を読む領域（docs/development.md の「マージの判定」）。
-# label のワークフローは pull_request_target で動き、この規則を main の版から読む。PR の側で書き換えても判定は変わらない
+# label のワークフローは pull_request_target で動き、この規則を PR のベース（main）の版から読む。PR の側で書き換えても判定は変わらない
 needs-human:
   - changed-files:
       - any-glob-to-any-file:
@@ -15,15 +15,22 @@ needs-human:
           - "src/shared/operations/operator/**"
           # 取り込み元の処理
           - "src/server/import/**"
-          # wrangler の設定、デプロイのスクリプト、依存
+          # wrangler の設定（見本の Worker の wrangler.design.jsonc も含む）、デプロイのスクリプト、依存
           - "wrangler*.jsonc"
           - "wrangler*.json"
           - "wrangler*.toml"
           - "scripts/**"
-          - "package.json"
+          - "**/package.json"
           - "pnpm-lock.yaml"
+          - "pnpm-workspace.yaml"
+          - "patches/**"
+          - ".npmrc"
+          - ".nvmrc"
+          - ".node-version"
           # lint の設定（組織で絞る層を守る規則を含む）
           - "eslint.config.*"
           # GitHub と Claude の設定
           - ".github/**"
           - ".claude/settings.json"
+          - ".claude/hooks/**"
+          - ".mcp.json"
