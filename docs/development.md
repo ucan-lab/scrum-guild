@@ -203,11 +203,19 @@ PR ごとに GitHub Actions で回す。
 | test | Workers の実行環境で動かす（`@cloudflare/vitest-pool-workers`）。ローカルの D1 に全マイグレーションを当てて回す。組織の分離のテストを含む |
 | migration | 空の D1 に全マイグレーションを順に当てて通るか確かめる。ベータが始まったら、既にあるマイグレーションのファイルの書き換えも落とす（上の「DB を作り直してよい期間」） |
 | e2e | ビルドして `wrangler dev` を立て、Playwright で主な流れを確かめる。4つのテーマと2つの言葉の組み合わせでスクリーンショットを撮り、成果物として上げる |
-| ai-review | `anthropics/claude-code-action` で、`.claude/agents/` のレビューのエージェントを動かし、指摘を PR に書く |
+| ai-review | `anthropics/claude-code-action` で、スキル `ai-review` が差分に応じて `.claude/agents/` のレビューのエージェントを呼び分け、指摘を PR に書く。`.github/workflows/ai-review.yml` に分けて置く |
 | label | パスを見て `needs-human` のラベルを付ける（上の「マージの判定」） |
-| ci-ok | 上のジョブをまとめる1つのジョブ。マージの前に確かめるのはこれだけ |
+| ci-ok | ai-review を除く上のジョブをまとめる1つのジョブ。マージの前に確かめるのはこれだけ |
 
-AI のジョブは Anthropic の API キーをリポジトリのシークレットに置いて動かし、使った分だけ費用がかかる。費用は月ごとに見て、多ければ対象の PR を絞る（文書だけの PR では動かさない、など）。このキーは PR のブランチのワークフローからも読めるので、Anthropic の側で使う額の上限を掛けておく。
+ai-review は Claude のサブスクリプションで動かす。手元で `claude setup-token` を実行して作った OAuth トークンを、リポジトリのシークレット `CLAUDE_CODE_OAUTH_TOKEN` に置く。従量の費用はかからないが、使用量の上限は手元の対話の利用と共有になる。
+
+- 回すのは、`main` を base にしたドラフトでない PR を作ったとき（`opened`、`ready_for_review`、`reopened`）だけ。push のたびには回さない。直した後にもう一度見せたいときは、人が PR に `ai-review` のラベルを付ける。終わるとラベルは外れる。PR を作るときにはラベルを付けない（作成と付与で2回走る）
+- 文書だけの PR（`docs/`、`.md`）、ドラフトの PR、fork と Bot（Dependabot など）の PR では回さない。そこへ付けた `ai-review` のラベルは外れずに残るので、回すときは外してから付け直す
+- `ci-ok` に含めない。AI レビューは助言で、サブスクの上限で落ちてもマージの判定を止めない
+- PR の上で action が読む `.claude/` と `CLAUDE.md` は、base のブランチのもの。スキルやエージェントの変更は `main` に入ってから効く
+- GitHub への書き込みは、ワークフローのトークン（`contents: read`、`pull-requests: write`）で行う。Claude の GitHub App のトークンは `main` に書き込めるため使わない。Claude に許すコマンドは、その PR を読む `gh pr diff` と `gh pr view`、その PR に `--body` で書く `gh pr comment`、`git diff` などの読み取りで、`gh api` は許さない（任意の API と外部の URL を叩けるため）。許可は前方一致なので、`git diff --no-index` でランナーの上のファイルを読むことはできる。Claude が動かすコマンドの環境からは秘密情報を除き（`CLAUDE_CODE_SUBPROCESS_ENV_SCRUB`）、外へ送る道具は許さない。指摘は `github-actions[bot]` の名前で付く
+- ワークフローは PR の head の版が動く。ワークフローを書き換える PR では、上の守り（ワークフローのトークン、許すコマンド、秘密情報の除去）も同じ PR の中で外せる。`.github/` に触れる PR は `needs-human` にし、人がワークフローの差分を読んでからマージする
+- OAuth トークンは長く使え、額の上限を掛けられない。どのブランチにワークフローを置いても（PR の中でも、`on: push` でも）読めるので、リポジトリに push できる人とセッションには、レビューを経ずに読めると考える。漏れた疑いがあれば、`claude setup-token` で作り直してシークレットを入れ替える
 
 確かめるチェックを `ci-ok` の1つにまとめるのは、文書だけの PR で重いジョブを飛ばしても、見る所が1つで済むようにするため。
 
@@ -278,7 +286,7 @@ GitHub App も比べた。人が抜けても取り込みが止まらない、PAT
 
 ## Issue の運用
 
-- ラベル: 人が差分を読む `needs-human`、マイグレーションの `migration`、領域の `area:auth`、`area:organization`、`area:workspace`、`area:task`、`area:import`、`area:attachment`、`area:ui`、`area:infra`、`area:docs`、不具合の `bug`。GitHub に作り、`bug` 以外の既定のラベルは消した（2026-10-22）。重複や対応しないものは、ラベルではなく Issue を閉じるときの理由で表す
+- ラベル: 人が差分を読む `needs-human`、マイグレーションの `migration`、領域の `area:auth`、`area:organization`、`area:workspace`、`area:task`、`area:import`、`area:attachment`、`area:ui`、`area:infra`、`area:docs`、不具合の `bug`、AI レビューをもう一度回す `ai-review`。GitHub に作り、`bug` 以外の既定のラベルは消した（2026-10-22）。重複や対応しないものは、ラベルではなく Issue を閉じるときの理由で表す
 - マイルストーン: 「初版」。自分のチームで使い始めるまでの Issue を入れる
 - テンプレート: `.github/ISSUE_TEMPLATE/plan.md`。`issue-plan` が書く形（背景、やること、完了条件、確認方法、触る領域、マイグレーション）と同じにする
 - 領域のラベルは、並行して作業するときのぶつかりを見分けるのにも使う。同じ領域の PR を同時に何本も開かない

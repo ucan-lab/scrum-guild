@@ -73,12 +73,14 @@
 - [x] GitHub は無料のプランのまま進めると決めた（2026-10-23）。private ではブランチ保護、Rulesets、auto-merge、Environment が使えないので、すべての PR を人がマージし、デプロイは Cloudflare の Workers Builds で行う（鍵を GitHub に置かない）。マイグレーションの承認は `needs-human` の PR を人がマージすることで代える。`merge-risk` と自動マージはやめた。作業ブランチの名前は `<Issue番号>-<短い名前>` にした。`docs/development.md` の「`main` を守る仕組み」「マージの判定」「CD」
 - [x] GitHub の設定を直した（2026-10-23）。マージ後にブランチを消す、squash のコミットの件名を PR のタイトルにし本文を空にする、ラベル `area:kingdom` を `area:organization` に改める
 - [ ] Workers Builds をリポジトリにつなぎ、権限を最小にした API トークンを選ぶ。preview builds は有効にしない
-- [ ] Anthropic の側で、CI の AI レビューに使う API キーの額の上限を掛ける
 - [ ] Cloudflare の通知で Workers のエラー率などを受けられるか
 - [x] 技術の選択を決めた（2026-10-22）。pnpm、1つのパッケージ、ESLint と Prettier、SvelteKit の SPA モード、Kysely、zod、自前の操作の定義、型付きの言葉の辞書、seed とファクトリー。`docs/requirements.md` の「画面」を SvelteKit の SPA モードに改めた
 - [x] 最初の一本道（組織の作成からタスクの完了まで）、DB を作り直してよい期間（ベータまで）、API のエラーの形、CI の AI レビュー（`claude-code-action`）を決めた（2026-10-22）。`docs/development.md` の「API のエラーとログ」「初版の作る順」
 - [x] GitHub のログインと取り込み（初版は共通の OAuth App と各自の PAT）、開発とテストでのログイン（seed でセッションを作る）、Issue の運用を決めた（2026-10-22）。ラベル（`needs-human`、`migration`、`area:*`）とマイルストーン「初版」を GitHub に作り、`.github/ISSUE_TEMPLATE/plan.md` を置いた
-- [ ] Anthropic の API キーを用意し、リポジトリのシークレットに置く（CI の AI レビューに使う）
+- [x] CI の AI レビューを、API キーではなく Claude のサブスクリプションの OAuth トークンで動かすと決めた（2026-10-23、#8）。`docs/development.md` の「CI」
+- [x] `claude setup-token` で作ったトークンを、リポジトリのシークレット `CLAUDE_CODE_OAUTH_TOKEN` に置いた（2026-10-23）
+- [x] #9 で AI レビューが動くことを確かめた（2026-10-23）。差分に応じてエージェントを呼び分け、チェックリストを読み、まとめとインラインの指摘を書き、`ai-review` のラベルで再び走って終わるとラベルが外れる
+- [ ] ラベル `needs-human` を付ける CI の `label` のジョブを入れる。それまでは `.github/` に触れる PR に人が付ける（ワークフローを書き換える PR は、AI レビューの守りも外せるため）
 - [x] 運用の手順書（`docs/operations.md` に1つ）、セキュリティのヘッダー（最初の一本道から厳しく）、添付ファイルの配信（同じオリジンで型を絞る）、Cloudflare のアカウント（ucan-lab 用に新しく作る）を決めた（2026-10-22）
 - [x] ucan-lab 用の Cloudflare アカウントを作った（2026-10-23）。Zero Trust を無料の枠で有効にし、チーム名を `ucan-lab`、ログインの手段にワンタイム PIN を足した
 - [ ] Cloudflare アカウントを Workers Paid にする（本番を出すとき）
