@@ -1,0 +1,24 @@
+name: label
+
+# 人が差分を読む領域に触れた PR に needs-human を付ける（docs/development.md の「マージの判定」）。
+# pull_request_target なので、このワークフローも .github/labeler.yml も main の版で動き、PR の側で書き換えても逃れられない
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened, unlabeled]
+
+jobs:
+  label:
+    # 人が needs-human を外したときは、パスに当たっていれば付け直す。ほかのラベルの付け外しでは動かさない
+    if: github.event.action != 'unlabeled' || github.event.label.name == 'needs-human'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      # actions/checkout を置かない。pull_request_target のトークンは書き込めるので、PR のコードを取り込むと
+      # そのコードが書き込みの権限で動く。labeler は手元に規則が無ければ、API で main の版を読む
+      - uses: actions/labeler@bf12e9b00b37c5c0ca2b87b79b2daf7891dbda13 # v7.0.0
+        with:
+          # 付けるだけで外さない。外すのは人
+          sync-labels: false
