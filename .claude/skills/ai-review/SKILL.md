@@ -1,0 +1,60 @@
+---
+name: ai-review
+description: CI の AI レビュー（.github/workflows/ai-review.yml）が呼ぶ手順。PR の差分に応じてレビューのエージェントを呼び分け、指摘を PR に書く。
+disable-model-invocation: true
+allowed-tools: Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh api:*),Bash(git diff:*),Bash(git log:*),Bash(git rev-parse:*),Bash(ls:*),Bash(echo:*)
+---
+
+# ai-review
+
+GitHub Actions の中で、1つの PR をレビューして指摘を書き込む。人の手は入らないので、聞き返さずに最後まで進める。
+
+引数で `REPO`、`PR_NUMBER`、`BASE_SHA`、`HEAD_SHA` を受け取る。作業ディレクトリは PR の head をチェックアウトしたリポジトリ。
+
+## 1. 変更を把握する
+
+`git diff --name-only <BASE_SHA>...<HEAD_SHA>` で変更されたファイルを一覧にする。
+完了の条件: 変更されたファイルの一覧が手元にある。
+
+## 2. エージェントを選ぶ
+
+変更されたファイルを次の表に当て、当たったエージェントをすべて選ぶ。
+
+| エージェント | 呼ぶとき |
+| --- | --- |
+| `code-reviewer` | 常に |
+| `database-reviewer` | マイグレーション、Kysely の問い合わせ、SQL、`docs/data-model.md` に触れたとき |
+| `ui-reviewer` | 画面のコード（Svelte、画面の TypeScript、CSS）、`design/`、言葉の辞書に触れたとき |
+| `security-reviewer` | API、認証、セッション、R2、取り込み、定期処理、wrangler の設定、`package.json` とロックファイル、`.github/` に触れたとき |
+
+`security-reviewer` は使用量を多く食うので、表に当たらないときは呼ばない。
+
+## 3. エージェントを呼ぶ
+
+選んだエージェントを、サブエージェントとして並列に呼ぶ。それぞれに次を渡す。
+
+- 範囲: `REPO`、`PR_NUMBER`、`BASE_SHA...HEAD_SHA` の差分
+- チェックリストのディレクトリの絶対パス: `$(git rev-parse --show-toplevel)/.claude/checklists` を先に自分で解決して渡す
+- CI の中なので、Bash で許されていないコマンドが拒否されたら、チェックリストは Glob で一覧を取って読むこと
+- 報告は、そのエージェントの定義にある報告の形式で返すこと。PR へは書き込まないこと
+
+完了の条件: 選んだエージェントすべてから報告が返っている。
+
+## 4. 指摘を選び、束ねる
+
+- 同じ問題を複数のエージェントが挙げたら1件にまとめる
+- 自分でも差分を開いて確かめ、誤検知と判断したものは落とす
+- 重要度が LOW で確信度が low のものは落とす
+- 変更していない行の指摘は、インラインにせず、まとめの「変更外」に回す
+
+## 5. PR に書く
+
+- 行に紐づく指摘は、`mcp__github_inline_comment__create_inline_comment` でインラインコメントにする。本文の先頭に `[重要度] (確信度)` を付ける
+- まとめを `gh pr comment <PR_NUMBER> --body-file <file>` で1件書く。中身は次の順
+  1. 呼んだエージェントと、呼ばなかったエージェントとその理由
+  2. 各エージェントが読んだチェックリスト（報告の冒頭の「チェックリスト:」から写す。見つからなかったものもそのまま書く）
+  3. 重要度ごとの件数
+  4. 行に紐づかない指摘と「変更外」の指摘
+- 指摘が無ければ、まとめに「指摘なし」と書く
+
+完了の条件: まとめのコメントが1件ある。インラインにした指摘の数と、まとめに書いた件数が合っている。
