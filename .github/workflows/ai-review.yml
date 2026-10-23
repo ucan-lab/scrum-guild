@@ -52,13 +52,12 @@ jobs:
           github_token: ${{ github.token }}
           # 分類は ANTHROPIC_API_KEY が無いと動かない。選別は ai-review のスキルで行う
           classify_inline_comments: "false"
-          show_full_output: true
           prompt: "/ai-review REPO: ${{ github.repository }} PR_NUMBER: ${{ github.event.pull_request.number }} BASE_SHA: ${{ github.event.pull_request.base.sha }} HEAD_SHA: ${{ github.event.pull_request.head.sha }}"
           # prompt を渡す agent モードでは、action は許可するツールを足さない。サブエージェントが使う Bash もここに書く。
-          # gh api は任意の API と外部の URL を叩けるので許可しない。gh pr comment はこの PR にだけ書ける
+          # gh api は任意の API と外部の URL を叩けるので許可しない。gh pr comment はこの PR に --body でだけ書ける
           claude_args: |
             --model sonnet
-            --allowedTools "Task,Agent,mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment ${{ github.event.pull_request.number }}:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(git diff:*),Bash(git log:*),Bash(git rev-parse:*),Bash(ls:*),Bash(echo:*)"
+            --allowedTools "Task,Agent,mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment ${{ github.event.pull_request.number }} --body:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(git diff:*),Bash(git log:*),Bash(git rev-parse:*),Bash(ls:*),Bash(echo:*)"
 
       - name: ai-review のラベルを外す
         if: always() && github.event.action == 'labeled'
