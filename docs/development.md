@@ -234,6 +234,16 @@ Workers Builds の API トークンは、権限を最小にしたものを自分
 
 文書だけの push でビルドを飛ばせるか（build watch paths）と、続けて push したときにビルドが一列に並ぶかは、土台を作るときに確かめる。
 
+### 見本の Worker
+
+見本（`design/`）を、開発者でない人に見せるための2つ目の Worker で配信する（2026-10-23 に決めた）。
+
+- 設定はリポジトリのルートの `wrangler.design.jsonc`。`design/` を静的なファイルとして返すだけで、コード、D1、R2、シークレットを持たない。設定を `design/` の中に置くと設定そのものが配信されるので、外に置く
+- 本番と同じく Workers Builds が `main` から反映する。ビルドのコマンドは空で、デプロイのコマンドは `npx wrangler deploy -c wrangler.design.jsonc`。build watch paths は `design/**` と `wrangler.design.jsonc` だけにし、preview builds は有効にしない
+- `workers.dev` の URL を Cloudflare Access（Zero Trust の無料の枠、50人まで）で守る。ログインの手段はワンタイム PIN で、許可したメールアドレスの人だけが開ける。版ごとのプレビュー URL は Access の外に出るので、設定の `preview_urls` で作らない
+- 見る人を足すときは、Zero Trust の Access のアプリ（見本の Worker）の方針に、メールアドレスを足す
+- 指摘はチャットで受け取り、結論を `HANDOFF.md` の「確認してほしいこと」と `docs/design.md` に移す
+
 ## 本番で壊れたことに気づく
 
 外部へのテレメトリは送らない方針のまま、自分たちで見る。
