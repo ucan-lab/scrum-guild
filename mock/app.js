@@ -3,7 +3,7 @@
 
 // ---- 言葉の辞書（ゲームの言葉 / スクラムの言葉） ----
 const DICT = {
-  workspace: ["冒険者ギルド", "ワークスペース"],
+  workspace: ["パーティ", "ワークスペース"],
   inbox: ["届いた便り", "受信箱"],
   archive: ["保管庫", "アーカイブ"],
   backlog: ["掲示板", "バックログ"],
@@ -12,11 +12,11 @@ const DICT = {
   task: ["クエスト", "タスク"],
   sprint: ["遠征", "スプリント"],
   sprintGoal: ["遠征の目的", "スプリントゴール"],
-  dod: ["ギルドの掟", "完成の定義"],
+  dod: ["パーティの掟", "完成の定義"],
   requester: ["依頼主", "作成者"],
-  party: ["パーティ", "参加者"],
+  party: ["討伐隊", "参加者"],
   accept: ["受注する", "参加する"],
-  leave: ["パーティを抜ける", "参加をやめる"],
+  leave: ["討伐隊を抜ける", "参加をやめる"],
   clear: ["レイドをクリアする", "エピックを完了する"],
   column: ["行程", "列"],
   doneCol: ["完遂", "完了"],
@@ -30,7 +30,7 @@ const DICT = {
   category: ["系統", "区分"],
   capacity: ["積載量", "作業量と基準"],
   over: ["重量オーバー", "超過"],
-  leader: ["ギルドマスター", "リーダー"],
+  leader: ["パーティリーダー", "リーダー"],
   member: ["冒険者", "メンバー"],
   plan: ["遠征の計画", "計画"],
   vocabName: ["ゲームの言葉", "スクラムの言葉"],
@@ -317,10 +317,10 @@ function renderToday() {
           <span style="margin-left:auto" class="lvbig">Lv 7</span></div>
         <div class="xp-bar" role="img" aria-label="次のレベルまで 160、見込み 90"><span class="got" style="width:64%"></span><span class="soon" style="width:20%"></span></div>
         <dl class="kv">
-          <dt>このギルドの経験値</dt><dd>1,240</dd>
+          <dt>このパーティの経験値</dt><dd>1,240</dd>
           <dt>見込み（${t("sprint")}の終了で確定）</dt><dd>+90</dd>
           <dt>次のレベルまで</dt><dd>160</dd>
-          <dt>すべてのギルドの合計</dt><dd>2,010</dd>
+          <dt>すべてのパーティの合計</dt><dd>2,010</dd>
         </dl>
         <div class="muted" style="font-size:var(--fs-xs)">経験値の数値は本人だけに見えます。他のメンバーにはレベルだけが見えます。</div>
       </div>

@@ -17,28 +17,28 @@
 <script src="kit.js"></script>
 <script>
 "use strict";
-// 運用（運用者）: 王国の一覧、作成、停止と再開、国王の指名し直し。王国の中のデータは出さない
+// 運用（運用者）: 組織の一覧、作成、停止と再開、管理者の指名し直し。組織の中のデータは出さない
 const { D, t, icon, esc, pageHead, meter } = SQ;
-const K = D.operator.kingdoms;
+const K = D.operator.organizations;
 
 SQ.mount("operator", () => `
   ${pageHead("運用者だけが見られます", "運用", [
-    ["", "", t("kingdom"), K.filter((k) => !k.suspended).length],
+    ["", "", t("organization"), K.filter((k) => !k.suspended).length],
     ["", "", "停止中", K.filter((k) => k.suspended).length],
-    [K.some((k) => !k.admins) ? "is-danger" : "", "", `${t("king")}がいない`, K.filter((k) => !k.admins).length],
-  ], `<button class="btn is-primary" type="button" data-dialog="createKingdom">${icon("plus")}${t("kingdom")}を作る</button>`)}
-  <div class="callout is-info">${icon("shield")}<span>運用者は${t("kingdom")}の中（タスク、メンバー、記録、添付ファイルの中身など）を見られません。ここに出すのは数、大きさ、日時だけです。</span></div>
-  <div class="table-wrap"><table class="table"><thead><tr><th>${t("kingdom")}・slug</th><th class="is-num">人数 / 上限</th><th class="is-num">${t("workspace")}</th><th class="is-num">${t("task")}</th><th>添付ファイル</th><th>最後に使われた</th><th></th></tr></thead>
+    [K.some((k) => !k.admins) ? "is-danger" : "", "", `${t("admin")}がいない`, K.filter((k) => !k.admins).length],
+  ], `<button class="btn is-primary" type="button" data-dialog="createOrganization">${icon("plus")}${t("organization")}を作る</button>`)}
+  <div class="callout is-info">${icon("shield")}<span>運用者は${t("organization")}の中（タスク、メンバー、記録、添付ファイルの中身など）を見られません。ここに出すのは数、大きさ、日時だけです。</span></div>
+  <div class="table-wrap"><table class="table"><thead><tr><th>${t("organization")}・slug</th><th class="is-num">人数 / 上限</th><th class="is-num">${t("workspace")}</th><th class="is-num">${t("task")}</th><th>添付ファイル</th><th>最後に使われた</th><th></th></tr></thead>
     <tbody>${K.map((k) => `<tr>
-      <td>${esc(k.name)}${k.suspended ? ` <span class="chip is-warn">停止 ${esc(k.suspended)}</span>` : ""}${k.purgeOn ? ` <span class="chip is-danger">${esc(k.purgeOn)} に消す</span>` : ""}${!k.admins ? ` <span class="chip is-danger">${t("king")}がいない</span>` : ""}<br><span class="mono props-note">${esc(k.slug)}</span></td>
+      <td>${esc(k.name)}${k.suspended ? ` <span class="chip is-warn">停止 ${esc(k.suspended)}</span>` : ""}${k.purgeOn ? ` <span class="chip is-danger">${esc(k.purgeOn)} に消す</span>` : ""}${!k.admins ? ` <span class="chip is-danger">${t("admin")}がいない</span>` : ""}<br><span class="mono props-note">${esc(k.slug)}</span></td>
       <td class="is-num">${k.users} / ${k.limit}${k.users >= k.limit ? `<br><span class="chip is-warn">${icon("alert")}上限</span>` : ""}</td><td class="is-num">${k.wss}</td><td class="is-num">${k.tasks.toLocaleString()}</td>
       <td>${meter(k.used, k.quota, { small: true })}<button class="link-btn" type="button" data-dialog="changeQuota">人数と容量の上限を変える</button></td>
       <td class="mono">${esc(k.lastUsed)}</td>
       <td><span class="table-actions">
-        <button class="btn is-sm is-quiet" type="button" data-dialog="reassignKing">${t("king")}を指名</button>
-        ${k.suspended ? `<button class="btn is-sm is-quiet" type="button" data-toast="再開しました">再開する</button>` : `<button class="btn is-sm is-quiet is-danger" type="button" data-dialog="suspendKingdom">停止する</button>`}
+        <button class="btn is-sm is-quiet" type="button" data-dialog="reassignAdmin">${t("admin")}を指名</button>
+        ${k.suspended ? `<button class="btn is-sm is-quiet" type="button" data-toast="再開しました">再開する</button>` : `<button class="btn is-sm is-quiet is-danger" type="button" data-dialog="suspendOrganization">停止する</button>`}
       </span></td></tr>`).join("")}</tbody></table></div>
-  <p class="props-note">${t("kingdom")}を消す作業はこの画面では行わず、運用の手順書に沿って行います。</p>`, { operator: true });
+  <p class="props-note">${t("organization")}を消す作業はこの画面では行わず、運用の手順書に沿って行います。</p>`, { operator: true });
 </script>
 </body>
 </html>

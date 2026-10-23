@@ -8,17 +8,17 @@
 
   // ---- 言葉の辞書（ゲームの言葉 / スクラムの言葉） ----
   const DICT = {
-    workspace: ["冒険者ギルド", "ワークスペース"], inbox: ["届いた便り", "受信箱"], backlog: ["掲示板", "バックログ"],
+    workspace: ["パーティ", "ワークスペース"], inbox: ["届いた便り", "受信箱"], backlog: ["掲示板", "バックログ"],
     sprint: ["遠征", "スプリント"], plan: ["遠征の計画", "計画"], epic: ["レイド", "エピック"], story: ["達成目標", "ストーリー"],
     task: ["クエスト", "タスク"], archive: ["保管庫", "アーカイブ"], connection: ["便りの経路", "接続"],
     sprintGoal: ["遠征の目的", "スプリントゴール"], detail: ["手配書", "詳細"], ac: ["達成条件", "受け入れ基準"],
     due: ["期限", "期日"], points: ["難易度", "ポイント"], assignee: ["担い手", "担当"], category: ["系統", "区分"],
     capacity: ["積載量", "作業量と基準"], over: ["重量オーバー", "超過"], done: ["完遂", "完了"], column: ["行程", "列"],
     doneToday: ["今日の完遂", "今日の完了"], complete: ["完遂にする", "完了にする"],
-    requester: ["依頼主", "作成者"], party: ["パーティ", "参加者"], accept: ["受注する", "参加する"], leave: ["パーティを抜ける", "参加をやめる"],
+    requester: ["依頼主", "作成者"], party: ["討伐隊", "参加者"], accept: ["受注する", "参加する"], leave: ["討伐隊を抜ける", "参加をやめる"],
     reward: ["クリア報酬", "クリア報酬"], clear: ["レイドをクリアする", "エピックを完了にする"], create: ["依頼を出す", "起票"],
-    leader: ["ギルドマスター", "リーダー"], member: ["冒険者", "メンバー"], dod: ["ギルドの掟", "完成の定義"],
-    vocab: ["ゲームの言葉", "スクラムの言葉"], kingdom: ["王国", "組織"], king: ["国王", "管理者"],
+    leader: ["パーティリーダー", "リーダー"], member: ["冒険者", "メンバー"], dod: ["パーティの掟", "完成の定義"],
+    vocab: ["ゲームの言葉", "スクラムの言葉"], organization: ["冒険者ギルド", "組織"], admin: ["ギルドマスター", "管理者"],
   };
   let vocab = 0;
   const listeners = [];
@@ -371,7 +371,7 @@
   // 上げる場所。opts.button なら小さなボタンだけ、opts.full なら上限に達した状態
   function dropzone(key, opts = {}) {
     if (opts.full ?? D.storage.used >= D.storage.quota) {
-      return `<div class="dropzone is-disabled">${icon("alert")}<span class="dropzone-text"><b>${t("kingdom")}の添付ファイルが上限（${D.storage.quota} GB）に達しているため、添付できません</b><span>${t("king")}が不要なファイルを消すか、上限を上げると添付できます</span></span></div>`;
+      return `<div class="dropzone is-disabled">${icon("alert")}<span class="dropzone-text"><b>${t("organization")}の添付ファイルが上限（${D.storage.quota} GB）に達しているため、添付できません</b><span>${t("admin")}が不要なファイルを消すか、上限を上げると添付できます</span></span></div>`;
     }
     if (opts.button) return `<div><button class="btn is-sm is-quiet" type="button" data-pick-file="${key}">${icon("clip")}ファイルを添付</button></div>`;
     return `<div class="dropzone ${opts.over ? "is-over" : ""}" data-drop="${key}">${icon("upload")}
@@ -414,7 +414,7 @@
     }
     return `<div class="meter ${key}"><div class="meter-top"><span class="meter-num">${used}<small> / ${quota} GB</small></span>${state}</div>
       <div class="meter-bar" role="img" aria-label="${label}"><span style="width:${pct}%"></span></div>
-      <span class="props-note">縦の線は 80% の位置。超えると${t("king")}に通知します。</span></div>`;
+      <span class="props-note">縦の線は 80% の位置。超えると${t("admin")}に通知します。</span></div>`;
   }
 
   // ---- タスクの詳細（右から出る引き出し） ----
@@ -639,17 +639,17 @@
        <label class="field" for="d-wl"><span class="field-label">最初の${t("leader")}</span><select class="select" id="d-wl">${Object.values(D.users).filter((u) => !u.left).map((u) => `<option>${esc(u.name)}</option>`).join("")}</select><span class="field-hint">自分でもかまいません。あとから${t("leader")}を足せます。</span></label>
        <p class="field-hint">${t("column")}は「${vocab ? "未着手、作業中、レビュー" : "出発前、遂行中、査定中"}、${t("done")}」、換算は 1 ${t("points")} = 4 時間、週の始まりは月曜で作ります。あとから設定で変えられます。</p>`,
       `<button class="btn is-quiet" type="button" data-close-dialog>やめる</button><button class="btn is-primary" type="button" data-close-dialog data-toast="${t("workspace")}を作りました">作る</button>`),
-    createKingdom: () => openDialog(`${t("kingdom")}を作る`,
+    createOrganization: () => openDialog(`${t("organization")}を作る`,
       `<label class="field" for="d-ks"><span class="field-label">URL の名前（slug）</span><input class="input mono" id="d-ks" placeholder="例: sakura-dev"><span class="field-hint">英小文字、数字、ハイフンで 2〜40 字。あとから変えられません。</span></label>
          <label class="field" for="d-kn"><span class="field-label">表示名</span><input class="input" id="d-kn" placeholder="例: さくら開発"></label>
-       <label class="field" for="d-ka"><span class="field-label">最初の${t("king")}の GitHub ユーザー名</span><input class="input mono" id="d-ka" placeholder="例: sakura-taro"><span class="field-hint">作るときに GitHub のユーザー ID に解決します。その人が GitHub でログインすると、この${t("kingdom")}の${t("king")}として入れます。</span></label>
-       <div class="callout is-info">${icon("link")}<span>URL は <span class="mono">team-leveling.dev/&lt;slug&gt;/</span> になります。この URL を${t("king")}に伝えてください。</span></div>`,
-      `<button class="btn is-quiet" type="button" data-close-dialog>やめる</button><button class="btn is-primary" type="button" data-close-dialog data-toast="${t("kingdom")}を作りました">作る</button>`),
-    reassignKing: () => openDialog(`${t("king")}を指名し直す`,
-      `<p>くもラボには今${t("king")}がいません。新しい${t("king")}を GitHub のユーザー名で指名します。</p>
-       <label class="field" for="d-ra"><span class="field-label">GitHub ユーザー名</span><input class="input mono" id="d-ra" placeholder="例: kumo-hanako"><span class="field-hint">この${t("kingdom")}のユーザーでなくてもかまいません。指名しても、運用者はこの${t("kingdom")}の中を見られるようにはなりません。</span></label>
-       <p class="field-hint">指名は${t("kingdom")}の変更の履歴に、運用者の操作として残ります。</p>`,
-      `<button class="btn is-quiet" type="button" data-close-dialog>やめる</button><button class="btn is-primary" type="button" data-close-dialog data-toast="${t("king")}を指名しました">指名する</button>`),
+       <label class="field" for="d-ka"><span class="field-label">最初の${t("admin")}の GitHub ユーザー名</span><input class="input mono" id="d-ka" placeholder="例: sakura-taro"><span class="field-hint">作るときに GitHub のユーザー ID に解決します。その人が GitHub でログインすると、この${t("organization")}の${t("admin")}として入れます。</span></label>
+       <div class="callout is-info">${icon("link")}<span>URL は <span class="mono">team-leveling.dev/&lt;slug&gt;/</span> になります。この URL を${t("admin")}に伝えてください。</span></div>`,
+      `<button class="btn is-quiet" type="button" data-close-dialog>やめる</button><button class="btn is-primary" type="button" data-close-dialog data-toast="${t("organization")}を作りました">作る</button>`),
+    reassignAdmin: () => openDialog(`${t("admin")}を指名し直す`,
+      `<p>くもラボには今${t("admin")}がいません。新しい${t("admin")}を GitHub のユーザー名で指名します。</p>
+       <label class="field" for="d-ra"><span class="field-label">GitHub ユーザー名</span><input class="input mono" id="d-ra" placeholder="例: kumo-hanako"><span class="field-hint">この${t("organization")}のユーザーでなくてもかまいません。指名しても、運用者はこの${t("organization")}の中を見られるようにはなりません。</span></label>
+       <p class="field-hint">指名は${t("organization")}の変更の履歴に、運用者の操作として残ります。</p>`,
+      `<button class="btn is-quiet" type="button" data-close-dialog>やめる</button><button class="btn is-primary" type="button" data-close-dialog data-toast="${t("admin")}を指名しました">指名する</button>`),
     // 添付ファイルのプレビュー。画像と動画は画面で見られ、それ以外はダウンロードして開く
     previewFile: (id) => {
       const hit = findFile(id);
@@ -673,22 +673,22 @@
     changeQuota: () => openDialog("人数と添付ファイルの上限を変える",
       `<p>あおば開発の上限を変えます。今は人数 5 人（上限 15 人）、添付ファイルの合計 25.1 GB（上限 30 GB）です。</p>
        <div class="choice-list">
-         <label class="choice"><input type="radio" name="d-q" checked><div><b>小さい${t("kingdom")}</b><span>15 人・30 GB</span></div></label>
+         <label class="choice"><input type="radio" name="d-q" checked><div><b>小さい${t("organization")}</b><span>15 人・30 GB</span></div></label>
          <label class="choice"><input type="radio" name="d-q"><div><b>標準</b><span>50 人・100 GB</span></div></label>
-         <label class="choice"><input type="radio" name="d-q"><div><b>ほかの値</b><span>51 人以上の${t("kingdom")}のために値を入れます
+         <label class="choice"><input type="radio" name="d-q"><div><b>ほかの値</b><span>51 人以上の${t("organization")}のために値を入れます
            <span class="form-row"><input class="input" type="number" min="1" aria-label="人数の上限" placeholder="人数" style="max-width:8em"><input class="input" type="number" min="1" aria-label="添付ファイルの上限（GB）" placeholder="GB" style="max-width:8em"></span></span></div></label>
        </div>
-       <p class="field-hint">人数を今より小さくしても、今いる人はそのまま残り、上限を下回るまで招待だけを止めます。添付ファイルを今の合計より小さくすると、合計が下がるまで新しく添付できなくなります。上限を上げて 80% を下回ると、次に超えたときにまた${t("king")}に通知します。</p>`,
+       <p class="field-hint">人数を今より小さくしても、今いる人はそのまま残り、上限を下回るまで招待だけを止めます。添付ファイルを今の合計より小さくすると、合計が下がるまで新しく添付できなくなります。上限を上げて 80% を下回ると、次に超えたときにまた${t("admin")}に通知します。</p>`,
       `<button class="btn is-quiet" type="button" data-close-dialog>やめる</button><button class="btn is-primary" type="button" data-close-dialog data-toast="上限を変えました">変える</button>`),
-    suspendKingdom: () => {
-      openDialog(`${t("kingdom")}を停止する`,
+    suspendOrganization: () => {
+      openDialog(`${t("organization")}を停止する`,
       `<p>ひばり工房を停止します。停止すると誰も入れなくなり、取り込みと日をまたぐ処理も止まります。データは残り、再開すれば元どおりに使えます。</p>
        <fieldset class="field" style="border:0;padding:0;margin:0"><legend class="field-label">停止の理由</legend>
          <div class="choice-list">
            <label class="choice"><input type="radio" name="d-why" checked><div><b>一時的に止める</b><span>支払いの遅れなど。消す予定は立てません。</span></div></label>
            <label class="choice"><input type="radio" name="d-why"><div><b>解約</b><span>停止から 30 日後に、運用の手順でデータをすべて消します。それまでは再開できます。</span></div></label>
          </div></fieldset>`,
-      `<button class="btn is-quiet" type="button" data-close-dialog>やめる</button><button class="btn is-danger" type="button" data-close-dialog data-toast="${t("kingdom")}を停止しました">停止する</button>`);
+      `<button class="btn is-quiet" type="button" data-close-dialog>やめる</button><button class="btn is-danger" type="button" data-close-dialog data-toast="${t("organization")}を停止しました">停止する</button>`);
       document.querySelector(".dialog-sheet").classList.add("is-danger");
     },
   };
@@ -696,11 +696,11 @@
   // ---- 画面の枠 ----
   // [id, アイコン, 名前, ファイル, 件数]。文字列だけの行は見出し
   const PAGES = [
-    "kingdom",
+    "organization",
     ["today", "sun", () => "自分の今日", "today.html"],
     ["notifications", "bell", () => "通知", "notifications.html", 3],
     ["me", "users", () => "自分の設定", "me.html"],
-    ["admin", "shield", () => "王国の管理", "admin.html"],
+    ["admin", "shield", () => "組織の管理", "admin.html"],
     "workspace",
     ["inbox", "inbox", () => t("inbox"), "inbox.html", 4],
     ["backlog", "board", () => t("backlog"), "backlog.html"],
@@ -717,14 +717,14 @@
     ["settings", "gear", () => "設定", "settings.html"],
     ["history", "clock", () => "変更の履歴", "history.html"],
   ];
-  // 運用者の画面。王国の外にあり、王国の中の画面へは行けない
+  // 運用者の画面。組織の外にあり、組織の中の画面へは行けない
   const OPERATOR_PAGES = [
     ["operator", "shield", () => "運用", "operator.html"],
   ];
   function navHtml(current, pages) {
     return pages.map((p) => {
-      // 入れる王国が2つ以上のときだけ出す。選び直すと王国の選択の画面へ
-      if (p === "kingdom") return D.kingdoms.length < 2 ? "" : `<label class="ws-select" for="kd"><span>${t("kingdom")}</span><select id="kd" onchange="location.href='kingdoms.html'">${D.kingdoms.map((k) => `<option ${k.slug === D.kingdom ? "selected" : ""}>${esc(k.name)}</option>`).join("")}<option>${t("kingdom")}の一覧へ</option></select></label>`;
+      // 入れる組織が2つ以上のときだけ出す。選び直すと組織の選択の画面へ
+      if (p === "organization") return D.organizations.length < 2 ? "" : `<label class="ws-select" for="kd"><span>${t("organization")}</span><select id="kd" onchange="location.href='organizations.html'">${D.organizations.map((k) => `<option ${k.slug === D.organization ? "selected" : ""}>${esc(k.name)}</option>`).join("")}<option>${t("organization")}の一覧へ</option></select></label>`;
       if (p === "workspace") return `<div class="nav-group">${t("workspace")}</div>
         <label class="ws-select" for="ws"><span>${t("workspace")}</span><select id="ws"><option>${esc(D.workspaces.wa.name)}</option><option>${esc(D.workspaces.wb.name)}</option></select></label>`;
       if (typeof p === "string") return `<div class="nav-group">${p}</div>`;
@@ -743,7 +743,7 @@
     stamped.clear();
   }
   // 画面の見本を組み立てる。render は中身の HTML を返す関数。
-  // opts.operator なら運用者の画面の枠にする（王国のメニュー、通知、レベルを出さない）
+  // opts.operator なら運用者の画面の枠にする（組織のメニュー、通知、レベルを出さない）
   function mount(current, render, opts = {}) {
     page = { current, render, operator: !!opts.operator };
     const me = user(D.me);
@@ -896,8 +896,8 @@
   function redrawAll() { redraw(); extraRedraws.forEach((fn) => fn()); }
 
   // ---- テーマの切り替え（シンプル（自動）→ シンプル（ライト）→ シンプル（ダーク）→ 中世風 → 現代風） ----
-  // 値は DB の列挙と同じ。null は自分で選んでいない状態で、見本では王国の既定のシンプル（自動）として出す。
-  // 本番では、ユーザーが選んだテーマか王国の既定を data-theme に入れる
+  // 値は DB の列挙と同じ。null は自分で選んでいない状態で、見本では組織の既定のシンプル（自動）として出す。
+  // 本番では、ユーザーが選んだテーマか組織の既定を data-theme に入れる
   const THEMES = ["simple", "simple_light", "simple_dark", "medieval", "modern"];
   const THEME_LABEL = { simple: "シンプル（自動）", simple_light: "シンプル（ライト）", simple_dark: "シンプル（ダーク）", medieval: "中世風", modern: "現代風" };
   const THEME_NOTE = {
@@ -914,7 +914,7 @@
     if (theme) document.documentElement.dataset.theme = theme;
     else delete document.documentElement.dataset.theme;
     document.querySelectorAll("[data-theme-label]").forEach((el) => (el.textContent = `テーマ: ${THEME_LABEL[theme || "simple"]}`));
-    // 「王国の既定に従う」（値が空）の選択肢がない並びでは、選んでいない状態をシンプル（自動）として示す
+    // 「組織の既定に従う」（値が空）の選択肢がない並びでは、選んでいない状態をシンプル（自動）として示す
     document.querySelectorAll("[data-pick-theme]").forEach((el) => {
       const hasDefault = !!document.querySelector(`[data-pick-theme][name="${el.name}"][value=""]`);
       el.checked = el.value === (theme || (hasDefault ? "" : "simple"));

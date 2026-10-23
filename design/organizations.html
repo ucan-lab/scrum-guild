@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Team Leveling 王国の選択</title>
+<title>Team Leveling 組織の選択</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=BIZ+UDPGothic:wght@400;700&family=Chakra+Petch:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500&family=Zen+Old+Mincho:wght@700;900&display=swap">
@@ -18,29 +18,29 @@
 <script>
 "use strict";
 
-// 王国の選択: 入れる王国が2つ以上の人に、ログインの直後に出す。メニューの王国の切り替えからも来る
+// 組織の選択: 入れる組織が2つ以上の人に、ログインの直後に出す。メニューの組織の切り替えからも来る
 const { D, t, icon, esc, emblem } = SQ;
 function render() {
   document.getElementById("gate").innerHTML = `<div class="gate"><div style="display:grid;gap:var(--space-6);width:min(440px,100%)">
     <section class="gate-sheet">
       <div class="gate-brand"><span class="brand-seal" aria-hidden="true"><span class="orn-medieval">冒</span><span class="orn-plain">TL</span></span><span class="brand-name">Team Leveling</span></div>
-      <h1 class="gate-title">${t("kingdom")}を選ぶ</h1>
-      <p>入れる${t("kingdom")}が ${D.kingdoms.length} つあります。名前、レベル、経験値、稼働の設定は${t("kingdom")}ごとに別です。</p>
+      <h1 class="gate-title">${t("organization")}を選ぶ</h1>
+      <p>入れる${t("organization")}が ${D.organizations.length} つあります。名前、レベル、経験値、稼働の設定は${t("organization")}ごとに別です。</p>
       <div class="choice-list">
-        ${D.kingdoms.map((k) => `<a class="choice" href="today.html">
+        ${D.organizations.map((k) => `<a class="choice" href="today.html">
           <div><b>${esc(k.name)}</b><span class="mono">team-leveling.dev/${esc(k.slug)}/</span><span>${t("workspace")} ${k.wss}・最後に入った日 ${esc(k.lastSeen)}</span></div>
-          ${k.admin ? `<span class="chip">${t("king")}</span>` : ""}${emblem(k.level, true)}</a>`).join("")}
+          ${k.admin ? `<span class="chip">${t("admin")}</span>` : ""}${emblem(k.level, true)}</a>`).join("")}
       </div>
-      <p class="gate-note">あとから、メニューの上の${t("kingdom")}の切り替えで選び直せます。</p>
+      <p class="gate-note">あとから、メニューの上の${t("organization")}の切り替えで選び直せます。</p>
     </section>
     <section class="gate-sheet">
       <h2 class="dialog-title">届いた招待</h2>
       ${D.receivedInvites.map((i) => `<div class="panel" style="gap:var(--space-2)">
         <b>${esc(i.ws)}</b>
-        <span class="props-note">${esc(i.kingdom)}・${esc(i.by)}さんから・${i.role === "member" ? "一般" : t("leader")}・${esc(i.at)}</span>
+        <span class="props-note">${esc(i.organization)}・${esc(i.by)}さんから・${i.role === "member" ? "一般" : t("leader")}・${esc(i.at)}</span>
         <div class="form-actions"><button class="btn is-primary is-sm" type="button">承諾する</button><button class="btn is-quiet is-sm" type="button">辞退する</button></div>
       </div>`).join("")}
-      <p class="gate-note">すべての${t("kingdom")}に届いた招待をまとめて出します。承諾すると、その${t("kingdom")}に入れるようになります。</p>
+      <p class="gate-note">すべての${t("organization")}に届いた招待をまとめて出します。承諾すると、その${t("organization")}に入れるようになります。</p>
     </section>
     <p class="gate-note" style="text-align:center"><a href="index.html">デザインシステムのカタログへ戻る</a></p>
   </div></div>`;
