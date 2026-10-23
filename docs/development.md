@@ -230,7 +230,7 @@ PR ごとのプレビュー環境は持たず、Workers Builds の preview build
 
 マイグレーションを当ててから版を切り替え、戻すときはコードだけを戻す。どちらの順でも動くように、マイグレーションは `d1-migration` の「広げてから縮める」に従う。
 
-Workers Builds の API トークンは、権限を最小にしたものを自分で作って選ぶ。自動で作られるトークンは、Zone や Routes の編集の権限まで持つため。
+Workers Builds の API トークンは、権限を最小にしたものを自分で作って選ぶ。自動で作られるトークンは、D1、R2、KV、Queues の編集と、全ゾーンの Workers Routes の編集の権限まで持つため。見本の Worker をつないだとき（2026-10-23）、「Account API tokens」で作ったアカウントのトークンは Workers Builds の選択肢に出なかった。本番をつなぐ前に、「My Profile」で作るユーザーのトークンなら選べるかを確かめる。
 
 文書だけの push でビルドを飛ばせるか（build watch paths）と、続けて push したときにビルドが一列に並ぶかは、土台を作るときに確かめる。
 
@@ -239,9 +239,11 @@ Workers Builds の API トークンは、権限を最小にしたものを自分
 見本（`design/`）を、開発者でない人に見せるための2つ目の Worker で配信する（2026-10-23 に決めた）。
 
 - 設定はリポジトリのルートの `wrangler.design.jsonc`。`design/` を静的なファイルとして返すだけで、コード、D1、R2、シークレットを持たない。設定を `design/` の中に置くと設定そのものが配信されるので、外に置く
-- 本番と同じく Workers Builds が `main` から反映する。ビルドのコマンドは空で、デプロイのコマンドは `npx wrangler deploy -c wrangler.design.jsonc`。build watch paths は `design/**` と `wrangler.design.jsonc` だけにし、preview builds は有効にしない
-- `workers.dev` の URL を Cloudflare Access（Zero Trust の無料の枠、50人まで）で守る。ログインの手段はワンタイム PIN で、許可したメールアドレスの人だけが開ける。版ごとのプレビュー URL は Access の外に出るので、設定の `preview_urls` で作らない
-- 見る人を足すときは、Zero Trust の Access のアプリ（見本の Worker）の方針に、メールアドレスを足す
+- URL は `https://team-leveling-design.ucan-lab.workers.dev/`。`ucan-lab` はアカウントの `workers.dev` のサブドメインで、変えるとアカウントのすべての Worker の URL が変わる
+- 本番と同じく Workers Builds が `main` から反映する。ビルドのコマンドは空で、デプロイのコマンドは `npx wrangler deploy -c wrangler.design.jsonc`。build watch paths は `design/*` と `wrangler.design.jsonc` だけにし、preview builds は有効にしない
+- API トークンは、Workers Builds が自動で作ったもの（`team-leveling-design build token`）を使っている。最小の権限のトークンを選べなかったため（上の「CD」）。本番の D1 や R2 を作る前に、最小の権限のトークンに入れ替える
+- `workers.dev` の URL を Cloudflare Access（Zero Trust の無料の枠、50人まで）で守る。Access のアプリ（`team-leveling-design - Cloudflare Workers`）は Worker の本番とプレビューの URL を覆い、セッションは1か月。ログインの手段は Cloudflare アカウントとワンタイム PIN。版ごとのプレビュー URL は設定の `preview_urls` で作らない
+- 見る人を足すときは、Zero Trust の Access controls の Applications で見本の Worker のアプリを開き、メールアドレス（Emails）で許可する方針を足す。今の方針は Cloudflare アカウントのメンバーだけを許可する
 - 指摘はチャットで受け取り、結論を `HANDOFF.md` の「確認してほしいこと」と `docs/design.md` に移す
 
 ## 本番で壊れたことに気づく

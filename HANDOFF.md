@@ -14,7 +14,7 @@
 | 開発の進め方（ブランチ、AI の分担、スキル、開発の流れ、CI/CD） | `docs/development.md` |
 | AI への決まり（セッションが最初に読む） | `CLAUDE.md` |
 | デザインの原則、画面一覧、主なフロー、決めた方向 | `docs/design.md` |
-| デザインシステムと画面の見本 | `design/`。`design/index.html` をブラウザで開く（ビルド不要）。人に見せるときは見本の Worker（`docs/development.md` の「見本の Worker」） |
+| デザインシステムと画面の見本 | `design/`。`design/index.html` をブラウザで開く（ビルド不要）。人に見せるときは見本の Worker（`https://team-leveling-design.ucan-lab.workers.dev/`、`docs/development.md` の「見本の Worker」） |
 | スタイルタイル（見た目の3案。決定の記録） | `design/style-tiles.html` |
 | 最初のモック（役目を終えたもの） | `mock/` |
 | クラウドのセッションでも使うスキル、レビューのエージェント、そのチェックリスト | `.claude/skills/`、`.claude/agents/`、`.claude/checklists/`。原本は `ucan-lab/claude-skills`。GitHub の操作は REST（`gh api`）に書き換えてある。レビューのエージェントとチェックリストは、このリポジトリ向けに書き直したので原本と別物になっている（`docs/development.md` の「今あるもの」） |
@@ -82,7 +82,9 @@
 - [x] 運用の手順書（`docs/operations.md` に1つ）、セキュリティのヘッダー（最初の一本道から厳しく）、添付ファイルの配信（同じオリジンで型を絞る）、Cloudflare のアカウント（ucan-lab 用に新しく作る）を決めた（2026-10-22）
 - [x] ucan-lab 用の Cloudflare アカウントを作った（2026-10-23）。Zero Trust を無料の枠で有効にし、チーム名を `ucan-lab`、ログインの手段にワンタイム PIN を足した
 - [ ] Cloudflare アカウントを Workers Paid にする（本番を出すとき）
-- [ ] 見本の Worker を Workers Builds につなぎ、Access で守る（#5）。つないだら build watch paths とビルドの並び方の結果を `docs/development.md` の「CD」に書く
+- [x] 見本の Worker を Workers Builds につなぎ、Access で守った（2026-10-23、#5）。アカウントの `workers.dev` のサブドメインを `ucan-lab` に改めた。GitHub の Cloudflare のアプリは `ucan-lab/team-leveling` だけに許可した
+- [ ] 見本を見せる人のメールアドレスを、見本の Worker の Access のアプリの方針に足す（`docs/development.md` の「見本の Worker」）
+- [ ] 見本の Worker の API トークンを、最小の権限のものに入れ替える。本番の D1 や R2 を作る前に行う。本番の Worker のトークンも同じ問題がある（`docs/development.md` の「CD」）
 - [x] スキルとエージェントを整えた（2026-10-22）。`requirements` を外し、レビューのエージェント3つを D1 と Workers 向けに書き直し、チェックリストに `cloudflare-workers.md` と `multi-tenant.md` を足した
 
 ### AI の機能（`docs/ai.md`）
