@@ -124,6 +124,42 @@ function drawerDemo() {
   return `<div class="drawer cat-drawer">${html}</div>`;
 }
 
+// アシスタントの見本。押しても動かないよう data-assist-* を外す。本物は「開いて試す」で開く
+function assistDemo() {
+  const strip = (h) => h.replace(/\sdata-assist-[a-z-]+(="[^"]*")?/g, "");
+  const ai = (o) => ({ role: "ai", steps: [], text: "", ...o, step: o.step ?? (o.steps || []).length, shown: o.shown ?? (o.text || "").length });
+  const msg = (m) => strip(SQ.assistMsg(m));
+  const user = (text) => SQ.assistMsg({ role: "user", text });
+  const steps = [`${SQ.sprintLabel("sp14")}の${t("task")}を読んでいます`, `${t("due")}と${t("column")}を確かめています`];
+  const rows = ["t4", "t5", "t9", "t13", "t3", "t8", "t1"].map((id, j) => {
+    const x = SQ.task(id);
+    return { id, field: t("assignee"), from: x.who ? SQ.user(x.who).name : "担当なし", to: "リン", on: j !== 2 };
+  });
+  const confirm = (state, more) => ({ state, more, note: `${t("assignee")}を変えても、${t("points")}と${t("column")}はそのままです。`, rows });
+  const late = ai({ steps, text: `残り 6 日で、気になるのは 2 件です。${t("due")}を過ぎたものと、${t("points")}が大きいのにまだ手を付けていないものを挙げました。`,
+    refs: [["t8", `<span class="chip is-danger">${icon("alert")}${t("due")}切れ 10/17</span>`], ["t3", `<span class="chip is-warn">${icon("clock")}5 pt で出発前</span>`]] });
+  return `
+    <div class="field"><span class="field-label">開く所とパレット</span>
+      <div class="cat-row"><button class="pill assist-launch" type="button" data-assist-open>${icon("spark")}<span>${t("assistant")}に頼む</span><kbd class="kbd">Ctrl K</kbd></button><span class="field-hint">押すと本物のパレットが開く。例の頼みごとを押して試せる</span></div>
+      <div class="assist-sheet">
+        <div class="assist-ask">${icon("spark")}<input class="assist-input" placeholder="${t("assistant")}に頼む" aria-label="見本の入力" tabindex="-1"><kbd class="kbd">Enter</kbd></div>
+        <div class="assist-context"><span class="assist-ctx">${icon("board")}<span>${SQ.sprintLabel("sp14")}を見ています</span><button type="button" aria-label="開いている画面を前提から外す" tabindex="-1">${icon("x")}</button></span></div>
+        <div class="assist-body">${strip(SQ.assistSuggest())}</div>
+        <div class="assist-foot"><span>送る先: ${SQ.PROVIDER.claude}・会話は保存しません</span><span><kbd class="kbd">Esc</kbd> 閉じる</span></div></div></div>
+    <div class="two">
+      <div class="field"><span class="field-label">道具を呼んでいる途中と、流れてくる答え</span><div class="assist-body">${user(`今の${t("sprint")}で遅れそうな${t("task")}は`)}${msg(ai({ steps, step: 1 }))}${msg(ai({ steps, text: late.text, shown: 18 }))}</div></div>
+      <div class="field"><span class="field-label">読むだけの答え（すぐ出す）</span><div class="assist-body">${msg(late)}</div></div>
+    </div>
+    <div class="two">
+      <div class="field"><span class="field-label">変える前の確認（5 件を超えると畳む）</span><div class="assist-body">${msg(ai({ text: `${rows.length} 件の${t("assignee")}をリンにします。`, confirm: confirm("ask", false) }))}</div></div>
+      <div class="field"><span class="field-label">実行した後と、やめたとき</span><div class="assist-body">${msg(ai({ text: `${rows.length} 件の${t("assignee")}をリンにします。`, confirm: confirm("done") }))}${msg(ai({ text: `${rows.length} 件の${t("assignee")}をリンにします。`, confirm: confirm("cancel") }))}</div></div>
+    </div>
+    <div class="two">
+      <div class="field"><span class="field-label">権限が足りない、失敗した</span><div class="assist-body">${msg(ai({ steps: ["できる操作を確かめています"], text: "この操作はできません。", deny: `人数の上限を変えられるのは運用者だけで、あなたの権限ではできません。上げたいときは、${t("admin")}から運用者に相談してください。` }))}${msg(ai({ error: "応答を受け取れませんでした。何も変えていません。少し待ってから、もう一度頼んでください。" }))}</div></div>
+      <div class="field"><span class="field-label">使えないとき（${t("organization")}で無効、今月の上限）</span>${strip(SQ.assistBlocked("off"))}${strip(SQ.assistBlocked("limit"))}</div>
+    </div>`;
+}
+
 const SECTIONS = [
   ["screens", "画面の見本", () => block("screens", "画面の見本", "部品だけで組んだ画面。メニューから行き来でき、タスクを押すと詳細が開く。各画面の上の帯の「見本」で、使い込んだ状態と最初の日（一般、リーダー、管理者）を切り替えられる。",
     `<div class="screens">${SCREENS.map(([href, name, note]) => `<a href="${href}"><b>${typeof name === "function" ? name() : name}</b><span>${note}</span></a>`).join("")}</div>`)],
@@ -305,6 +341,10 @@ const SECTIONS = [
      <div class="field"><span class="field-label">使っている量と上限</span><div class="grid-2">${SQ.meter(3.1, 10)}${SQ.meter(8.3, 10)}${SQ.meter(10, 10)}<div class="panel">${SQ.meter(21.7, 50, { small: true })}</div></div></div>`,
     ["画像（PNG、JPEG、GIF、WebP）と動画（MP4、WebM）は画面で見せる。それ以外はダウンロードだけ。", "失敗は理由と数字を出す（何 MB を超えたか）。上限に達したら、上げる場所を止めて、誰が何をすれば添付できるかを書く。", "量の色は 80% を超えたら警告、上限で危険。色だけでなく、割合と文字を添える。", "消すときは、戻せないことと、差し込んだ所がどうなるかを確認のダイアログで伝える。"],
     ".files .file-thumbs .file-thumb .file-thumb-label .file-art .is-video / .file-row .file-main .file-name .file-meta .file-actions .is-error .file-bar / .dropzone .is-over .is-disabled / .md-figure .comment-files .composer-foot / .preview .dialog-sheet.is-wide / .meter .meter-small .is-warn .is-full")],
+  ["assistant", "AI のアシスタント", () => block("assistant", "AI のアシスタント", "画面から AI に、言葉で質問したり操作を頼んだりする。上の帯のボタンか Ctrl+K でパレットを開いて頼み、続けて話したいときだけ「横の欄で続ける」で右の欄へ移す。画面の見本でも、上の帯から開いて試せる。",
+    assistDemo(),
+    ["開いている画面（タスクの詳細を開いていればそのタスク）を前提として渡し、入力の下の札で示す。札の × で外せる。", "読むだけの頼みごとは、そのまま答える。答えに出た" + t("task") + "は押すと詳細が開く。", "変える頼みごとは、行ごとに「項目・今・変えた後」を出し、人が「実行する」を押してから1回で変える。外した行は変えない。5 件を超えると、先頭の 5 件だけ出して残りを畳む。", "できないことは、できない理由と、誰に頼めばできるかを書く。失敗したときは、何も変えていないことを書く。", "送る先と、会話を保存しないことを、いつも下に出す。", "横の欄は画面を覆わない。広い画面では本文を左へ寄せ、タスクの詳細の引き出しは横の欄の上に出す。現代風でも光らせない。"],
+    ".assist-launch .kbd / .assist-palette .assist-sheet .assist-ask .assist-input .assist-context .assist-ctx .assist-body .assist-foot / .assist-suggest .assist-example / .assist-msg .is-user .is-ai .assist-who .assist-steps .assist-spin .assist-text .assist-caret .assist-refs / .assist-confirm .assist-changes .assist-change .assist-change-diff .assist-confirm-foot .assist-after .is-done / .assist-panel .assist-panel-head .assist-thread / .callout.is-danger")],
 ];
 
 function render() {

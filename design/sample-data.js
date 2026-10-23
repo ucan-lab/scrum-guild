@@ -11,6 +11,8 @@ window.SQ_DATA = (function () {
     me: "u1",
     workspace: "wa",
     organization: "aoba",
+    // AI の機能。組織の管理で管理者が有効にし、送る先を選ぶ。利用量は百万トークンで数え、上限は運用者が決める
+    ai: { enabled: true, provider: "claude", used: 1.3, limit: 5, resets: "11/1" },
 
     // 自分が入れる組織。組織ごとに名前、レベル、経験値が別になる
     organizations: [

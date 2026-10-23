@@ -65,11 +65,12 @@
     reward: ["クリア報酬", "クリア報酬"], clear: ["レイドをクリアする", "エピックを完了にする"], create: ["依頼を出す", "起票"],
     leader: ["パーティリーダー", "リーダー"], member: ["冒険者", "メンバー"], dod: ["パーティの掟", "完成の定義"],
     vocab: ["ゲームの言葉", "スクラムの言葉"], organization: ["冒険者ギルド", "組織"], admin: ["ギルドマスター", "管理者"],
+    assistant: ["ギルドの書記", "アシスタント"],
   };
   let vocab = 0;
   const listeners = [];
   const t = (k) => (DICT[k] ? DICT[k][vocab] : k);
-  function setVocab(v) { vocab = v; listeners.forEach((fn) => fn()); }
+  function setVocab(v) { vocab = v; listeners.forEach((fn) => fn()); if (assist.open) renderAssist(); }
   function toggleVocab() { setVocab(vocab ? 0 : 1); }
   function onChange(fn) { listeners.push(fn); }
 
@@ -631,6 +632,8 @@
     if (!el) return;
     if (drawer.id) { el.innerHTML = drawerHtml(); el.hidden = false; scrim.hidden = false; }
     else { el.innerHTML = ""; el.hidden = true; scrim.hidden = true; }
+    const ctx = document.querySelector("#assist-panel .assist-context");
+    if (ctx) ctx.outerHTML = assistCtx();
   }
 
   // ---- ダイアログ ----
@@ -835,6 +838,210 @@
     },
   };
 
+  // ---- AI のアシスタント（パレットと横の欄） ----
+  // 上の帯のボタンか Ctrl+K でパレットを開いて頼む。続けて話したいときだけ横の欄へ移す。
+  // 読むだけの頼みごとはそのまま答え、変える頼みごとは確認を出し、人が実行を押してから1回で変える。
+  // 会話はブラウザの中にだけ持ち、保存しない。見本では例の頼みごとにだけ決まった答えを返す
+  const PROVIDER = { claude: "Claude（Anthropic）", openai: "OpenAI" };
+  const assist = { open: null, msgs: [], busy: false, opener: null, ctxOff: false };
+  const reduceMotion = () => window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const ASK_EXAMPLES = () => [
+    `今の${t("sprint")}で遅れそうな${t("task")}は`,
+    `「${D.stories.s2.title}」の${t("task")}を全部今の${t("sprint")}に入れて`,
+    `${t("organization")}の人数の上限を 50 人に上げて`,
+  ];
+  // 開いている画面。タスクの詳細を開いていればそのタスク
+  function assistContext() {
+    if (drawer.id) return `${t("task")}「${esc(task(drawer.id).title)}」`;
+    if (!page) return esc(Object.values(D.workspaces)[0]?.name || "");
+    if (page.current === "sprint" && D.sprints.sp14) return esc(sprintLabel("sp14"));
+    const p = PAGES.find((x) => Array.isArray(x) && x[0] === page.current);
+    const inWs = PAGES.indexOf(p) > PAGES.indexOf("workspace");
+    return `${inWs ? `${esc(firstWsName())}の` : ""}${p ? p[2]() : ""}`;
+  }
+  // 使えないとき（組織で無効、今月の上限）。使えるなら空
+  function assistBlocked(kind = !D.ai.enabled ? "off" : D.ai.used >= D.ai.limit ? "limit" : null) {
+    const isAdmin = (D.organizations[0] || {}).admin;
+    if (kind === "off") return emptyState("spark", `${t("assistant")}は使えません`,
+      `${t("organization")}で AI の機能が有効になっていません。${t("admin")}が${t("organization")}の管理で有効にすると、頼んだ内容と開いている画面のデータを、決めた送る先に送って使えるようになります。`,
+      isAdmin ? `<a class="btn is-sm" href="admin.html">${t("organization")}の管理を開く</a>` : "");
+    if (kind === "limit") return emptyState("spark", "今月の上限に達しました",
+      `${t("organization")}の今月の利用が上限（${D.ai.limit} 百万トークン）に達したため、${D.ai.resets} まで止めています。上限は運用者が${t("organization")}ごとに決めています。上げたいときは${t("admin")}に相談してください。`);
+    return "";
+  }
+  function assistSuggest() {
+    return `<div class="assist-suggest"><span class="field-hint">例</span>${ASK_EXAMPLES().map((q) =>
+      `<button class="assist-example" type="button" data-assist-ask="${esc(q)}">${icon("spark")}<span>${esc(q)}</span></button>`).join("")}
+      <span class="field-hint">${t("task")}を読む頼みごとはすぐ答えます。変える頼みごとは、実行する前に何をどう変えるかを見せます。できるのは、あなたが画面でできる操作だけです。</span></div>`;
+  }
+  // 1つのやり取り。i は assist.msgs の位置（カタログの見本では null）
+  function assistMsg(m, i = null) {
+    if (m.role === "user") return `<div class="assist-msg is-user"><p>${esc(m.text)}</p></div>`;
+    const steps = m.steps.slice(0, m.step + 1).map((s, j) => {
+      const done = j < m.step || m.step >= m.steps.length;
+      return `<li class="${done ? "is-done" : "is-now"}">${done ? icon("check") : `<span class="assist-spin" aria-hidden="true"></span>`}${s}</li>`;
+    }).join("");
+    const streaming = m.step >= m.steps.length && m.shown < m.text.length;
+    const finished = m.step >= m.steps.length && !streaming;
+    const text = m.step >= m.steps.length ? m.text.slice(0, m.shown) : "";
+    return `<div class="assist-msg is-ai">
+      <span class="assist-who">${icon("spark")}${t("assistant")}</span>
+      ${steps ? `<ul class="assist-steps">${steps}</ul>` : ""}
+      ${text ? `<p class="assist-text">${esc(text)}${streaming ? `<span class="assist-caret" aria-hidden="true"></span>` : ""}</p>` : ""}
+      ${finished && m.refs ? `<ul class="assist-refs">${m.refs.map(([id, why]) => `<li><a href="#" data-task="${id}">${titleOf(task(id))}</a>${why}</li>`).join("")}</ul>` : ""}
+      ${finished && m.deny ? `<div class="callout is-warn">${icon("shield")}<span>${m.deny}</span></div>` : ""}
+      ${finished && m.error ? `<div class="callout is-danger">${icon("alert")}<span>${m.error}</span></div><div class="form-actions"><button class="btn is-sm" type="button" ${i == null ? "" : `data-assist-retry="${i}"`}>${icon("refresh")}もう一度頼む</button></div>` : ""}
+      ${finished && m.confirm ? assistConfirm(m.confirm, i) : ""}
+    </div>`;
+  }
+  // 変える前の確認。行は [タスク, 項目, 今, 変えた後, 選んでいるか]
+  const CONFIRM_FOLD = 5;
+  function assistConfirm(c, i) {
+    const at = (attr, v = i) => (i == null ? "" : `${attr}="${v}"`);
+    if (c.state === "cancel") return `<p class="assist-after">やめました。何も変えていません。</p>`;
+    if (c.state === "done") return `<div class="assist-after is-done">${icon("check")}<span>${c.rows.filter((r) => r.on).length} 件を変えました。変更の履歴に、あなたの操作として「AI を通した」印付きで残ります。</span></div>`;
+    const on = c.rows.filter((r) => r.on).length;
+    const rows = c.more ? c.rows : c.rows.slice(0, CONFIRM_FOLD);
+    return `<div class="assist-confirm" role="group" aria-label="実行する前の確認">
+      <div class="assist-confirm-head">${icon("pen")}<b>実行する前に確かめてください</b><span class="assist-confirm-count">${on} / ${c.rows.length} 件</span></div>
+      <ul class="assist-changes">${rows.map((r, j) => `<li><label class="assist-change">
+        <input type="checkbox" ${r.on ? "checked" : ""} ${at("data-assist-row", `${i}:${j}`)} aria-label="${esc(task(r.id).title)}を変える">
+        <span class="assist-change-main"><span class="assist-change-title">${titleOf(task(r.id))}</span>
+          <span class="assist-change-diff">${esc(r.field)}<s>${esc(r.from)}</s>${icon("chevron")}<b>${esc(r.to)}</b></span></span></label></li>`).join("")}</ul>
+      ${c.rows.length > CONFIRM_FOLD && !c.more ? `<button class="link-btn" type="button" ${at("data-assist-more")}>残り ${c.rows.length - CONFIRM_FOLD} 件も見る</button>` : ""}
+      <p class="field-hint">${c.note} 外した行は変えません。選んだ行はまとめて1回で変え、途中で失敗したらどれも変えません。</p>
+      <div class="assist-confirm-foot"><button class="btn is-quiet" type="button" ${at("data-assist-cancel")}>やめる</button>
+        <button class="btn is-primary" type="button" ${at("data-assist-run")} ${on ? "" : "disabled"}>${on} 件を実行する</button></div>
+    </div>`;
+  }
+  // 見本の答え。頼みごとの言葉で決める
+  function assistReply(text) {
+    const base = { role: "ai", step: 0, shown: 0, text: "" };
+    if (/遅れ/.test(text)) {
+      const s = D.sprints.sp14;
+      if (!s) return { ...base, steps: [`進行中の${t("sprint")}を探しています`], text: `進行中の${t("sprint")}はありません。` };
+      const left = s.days - s.dayIndex;
+      const refs = tasksWhere((x) => x.sprint === "sp14" && !x.doneAt).flatMap((x) => {
+        const d = dueOf(x);
+        if (d && d.date < D.today) return [[x.id, `<span class="chip is-danger">${icon("alert")}${t("due")}切れ ${md(d.date)}</span>`]];
+        if (x.col === "c1" && (x.pts || 0) >= 3) return [[x.id, `<span class="chip is-warn">${icon("clock")}${x.pts} pt で${esc(colName(x))}</span>${x.unfilled ? `<span class="chip is-todo">${icon("pen")}${t("detail")} 未記入</span>` : ""}`]];
+        return [];
+      });
+      return { ...base, steps: [`${esc(sprintLabel("sp14"))}の${t("task")}を読んでいます`, `${t("due")}と${t("column")}を確かめています`],
+        text: refs.length ? `残り ${left} 日で、気になるのは ${refs.length} 件です。${t("due")}を過ぎたものと、${t("points")}が大きいのにまだ手を付けていないものを挙げました。` : `残り ${left} 日で、遅れそうな${t("task")}は見当たりません。`,
+        refs };
+    }
+    if (/入れて/.test(text)) {
+      const list = tasksWhere((x) => x.story === "s2" && x.sprint !== "sp14" && !x.doneAt);
+      const steps = [`${t("story")}「${esc(D.stories.s2.title)}」を探しています`, "変える内容をまとめています"];
+      if (!D.sprints.sp14) return { ...base, steps, text: `進行中の${t("sprint")}がないので入れられません。` };
+      if (!list.length) return { ...base, steps, text: `配下の${t("task")}は、もう全部今の${t("sprint")}に入っています。` };
+      return { ...base, steps,
+        text: `配下の${t("task")} ${list.length} 件を今の${t("sprint")}に入れます。合計 ${sumPts(list)} pt 増えます。`,
+        confirm: { state: "ask", more: false, note: `入れた${t("task")}は最初の${t("column")}に置きます。`,
+          rows: list.map((x) => ({ id: x.id, field: t("sprint"), from: x.sprint ? sprintLabel(x.sprint) : t("backlog"), to: sprintLabel("sp14"), on: true })) } };
+    }
+    if (/上限/.test(text)) return { ...base, steps: ["できる操作を確かめています"],
+      text: "この操作はできません。",
+      deny: `人数の上限を変えられるのは運用者だけで、あなたの権限ではできません。上げたいときは、${t("admin")}から運用者に相談してください。` };
+    return { ...base, steps: ["頼みごとを読んでいます"], text: "この見本では、例に挙げた頼みごとにだけ答えます。" };
+  }
+  function assistRoot() {
+    let el = document.getElementById("assist-palette");
+    if (el) return;
+    document.body.insertAdjacentHTML("beforeend", `
+      <div class="assist-palette" id="assist-palette" hidden></div>
+      <aside class="assist-panel" id="assist-panel" hidden></aside>`);
+  }
+  function assistForm(where) {
+    const blocked = !!assistBlocked();
+    return `<form class="assist-ask" data-assist-form>
+      ${icon("spark")}<label class="visually-hidden" for="assist-input-${where}">${t("assistant")}に頼む</label>
+      <input class="assist-input" id="assist-input-${where}" autocomplete="off" placeholder="${t("assistant")}に頼む" ${blocked ? "disabled" : ""}>
+      ${where === "panel" ? `<button class="icon-btn" type="submit" aria-label="送る" ${blocked ? "disabled" : ""}>${icon("send")}</button>` : `<kbd class="kbd">Enter</kbd>`}
+    </form>`;
+  }
+  function assistCtx() {
+    if (assistBlocked()) return `<div class="assist-context"></div>`;
+    return assist.ctxOff
+      ? `<div class="assist-context"><button class="link-btn" type="button" data-assist-ctx>開いている画面を前提にする</button></div>`
+      : `<div class="assist-context"><span class="assist-ctx">${icon("board")}<span>${assistContext()}を見ています</span><button type="button" data-assist-ctx aria-label="開いている画面を前提から外す">${icon("x")}</button></span></div>`;
+  }
+  function assistThread() {
+    return assistBlocked() || (assist.msgs.length ? assist.msgs.map(assistMsg).join("") : assistSuggest());
+  }
+  function renderAssist() {
+    assistRoot();
+    const pal = document.getElementById("assist-palette"), panel = document.getElementById("assist-panel");
+    const sendTo = `送る先: ${PROVIDER[D.ai.provider]}`;
+    if (assist.open === "palette") {
+      pal.innerHTML = `<div class="assist-sheet" role="dialog" aria-modal="true" aria-label="${t("assistant")}">
+        ${assistForm("palette")}${assistCtx()}
+        <div class="assist-body" data-assist-thread aria-live="polite">${assistThread()}</div>
+        <div class="assist-foot"><span>${sendTo}・会話は保存しません</span>
+          ${assist.msgs.length ? `<button class="btn is-sm is-quiet" type="button" data-assist-panel>${icon("panel")}横の欄で続ける</button>` : ""}
+          <span><kbd class="kbd">Esc</kbd> 閉じる</span></div></div>`;
+      pal.hidden = false;
+    } else { pal.hidden = true; pal.innerHTML = ""; }
+    if (assist.open === "panel") {
+      panel.setAttribute("aria-label", t("assistant"));
+      panel.innerHTML = `<div class="assist-panel-head">${icon("spark")}<h2 class="assist-panel-title">${t("assistant")}</h2>
+          ${assist.msgs.length ? `<button class="link-btn" type="button" data-assist-clear>会話を消す</button>` : ""}
+          <button class="pill" type="button" data-assist-close aria-label="閉じる">${icon("x")}</button></div>
+        ${assistCtx()}
+        <div class="assist-thread" data-assist-thread aria-live="polite">${assistThread()}</div>
+        ${assistForm("panel")}
+        <p class="assist-foot">${sendTo}・会話は保存しません。画面を閉じると消えます</p>`;
+      panel.hidden = false;
+    } else { panel.hidden = true; panel.innerHTML = ""; }
+    document.body.classList.toggle("has-assist", assist.open === "panel");
+  }
+  // 答えが流れる間は、やり取りの所だけを描き直す（入力中の文字とフォーカスを残す）
+  function renderThread() {
+    const el = document.querySelector("[data-assist-thread]");
+    if (!el) return;
+    el.innerHTML = assistThread();
+    el.scrollTop = el.scrollHeight;
+  }
+  function openAssist(where = "palette") {
+    if (!assist.open) assist.opener = document.activeElement;
+    assist.open = where;
+    renderAssist();
+    document.querySelector(`#assist-input-${where}`)?.focus();
+  }
+  function closeAssist() {
+    if (!assist.open) return false;
+    assist.open = null;
+    renderAssist();
+    if (assist.opener && assist.opener.focus) assist.opener.focus();
+    return true;
+  }
+  function askAssist(text) {
+    text = text.trim();
+    if (!text || assist.busy || assistBlocked()) return;
+    const m = assistReply(text);
+    assist.msgs.push({ role: "user", text }, m);
+    assist.busy = true;
+    renderThread();
+    if (reduceMotion()) { m.step = m.steps.length; m.shown = m.text.length; assist.busy = false; renderAssist(); return; }
+    const tick = () => {
+      if (!assist.msgs.includes(m)) { assist.busy = false; return; }
+      if (m.step < m.steps.length) { m.step += 1; renderThread(); setTimeout(tick, m.step < m.steps.length ? 650 : 200); return; }
+      if (m.shown < m.text.length) { m.shown = Math.min(m.text.length, m.shown + 3); renderThread(); setTimeout(tick, 28); return; }
+      assist.busy = false; renderAssist();
+      document.querySelector(`#assist-input-${assist.open}`)?.focus();
+    };
+    setTimeout(tick, 650);
+  }
+  function runAssist(i) {
+    const c = assist.msgs[i].confirm;
+    const rows = c.rows.filter((r) => r.on);
+    rows.forEach((r) => { const x = task(r.id); x.sprint = "sp14"; x.col = "c1"; });
+    c.state = "done";
+    redrawAll(); renderThread();
+    toast(`${icon("check")}${rows.length} 件を${esc(sprintLabel("sp14"))}に入れました`);
+  }
+
   // ---- 画面の枠 ----
   // [id, アイコン, 名前, ファイル, 件数]。文字列だけの行は見出し
   const PAGES = [
@@ -891,6 +1098,7 @@
     if (!page) return;
     document.getElementById("nav").innerHTML = navHtml(page.current, page.operator ? OPERATOR_PAGES : PAGES);
     document.querySelectorAll("[data-vocab-label]").forEach((el) => (el.textContent = `言葉: ${t("vocab")}`));
+    document.querySelectorAll("[data-assist-label]").forEach((el) => (el.textContent = `${t("assistant")}に頼む`));
     document.getElementById("content").innerHTML = page.render();
     applyTheme();
     renderDrawer();
@@ -915,6 +1123,7 @@
       </div></aside>
       <div class="sheet">
         <div class="topbar">
+          ${page.operator ? "" : `<button class="pill assist-launch" type="button" data-assist-open>${icon("spark")}<span data-assist-label></span><kbd class="kbd">Ctrl K</kbd></button>`}
           <button class="pill" type="button" data-switch="vocab">${icon("swap")}<span data-vocab-label></span></button>
           <button class="pill" type="button" data-switch="theme">${icon("moon")}<span data-theme-label></span></button>
           ${page.operator ? "" : `<button class="pill" type="button" data-switch="first">${icon("redo")}<span>見本: ${firstLabel(first)}</span></button>`}
@@ -1000,15 +1209,48 @@
     }
     if ((el = hit("data-toast"))) { toast(`${icon("check")}${esc(el.dataset.toast)}`); return; }
     if (hit("data-close-celebrate") || ev.target.id === "celebrate") { closeCelebrate(); return; }
-    if ((el = hit("data-task"))) { ev.preventDefault(); openDrawer(el.dataset.task, el.dataset.task); return; }
+    if (hit("data-assist-open")) { openAssist(assist.open === "panel" ? "panel" : "palette"); return; }
+    if ((el = hit("data-assist-ask"))) { askAssist(el.dataset.assistAsk); return; }
+    if (hit("data-assist-ctx")) { assist.ctxOff = !assist.ctxOff; document.querySelectorAll(".assist-context").forEach((c) => (c.outerHTML = assistCtx())); return; }
+    if (hit("data-assist-panel")) { assist.open = "panel"; renderAssist(); document.getElementById("assist-input-panel")?.focus(); return; }
+    if (hit("data-assist-close")) { closeAssist(); return; }
+    if (hit("data-assist-clear")) { assist.msgs = []; renderAssist(); document.getElementById("assist-input-panel")?.focus(); return; }
+    if ((el = hit("data-assist-run"))) { runAssist(+el.dataset.assistRun); return; }
+    if ((el = hit("data-assist-cancel"))) { assist.msgs[+el.dataset.assistCancel].confirm.state = "cancel"; renderThread(); return; }
+    if ((el = hit("data-assist-more"))) { assist.msgs[+el.dataset.assistMore].confirm.more = true; renderThread(); return; }
+    if ((el = hit("data-assist-retry"))) { const prev = assist.msgs[+el.dataset.assistRetry - 1]; if (prev) askAssist(prev.text); return; }
+    if (ev.target.id === "assist-palette") { closeAssist(); return; }
+    if ((el = hit("data-task"))) {
+      ev.preventDefault();
+      if (assist.open === "palette") { assist.open = null; renderAssist(); }
+      openDrawer(el.dataset.task, el.dataset.task); return;
+    }
+  });
+  document.addEventListener("submit", (ev) => {
+    if (!ev.target.matches("[data-assist-form]")) return;
+    ev.preventDefault();
+    const input = ev.target.querySelector("input");
+    askAssist(input.value); input.value = "";
   });
   document.addEventListener("change", (ev) => {
     if (ev.target.matches("[data-pick-theme]")) setTheme(ev.target.value || null);
+    if (ev.target.matches("[data-assist-row]")) {
+      const [i, j] = ev.target.dataset.assistRow.split(":").map(Number);
+      assist.msgs[i].confirm.rows[j].on = ev.target.checked;
+      renderThread();
+      document.querySelector(`[data-assist-row="${i}:${j}"]`)?.focus();
+    }
   });
   document.addEventListener("keydown", (ev) => {
+    // 運用者の画面（上の帯にボタンがない）では開かない
+    if ((ev.ctrlKey || ev.metaKey) && ev.key.toLowerCase() === "k" && !(page && page.operator)) {
+      ev.preventDefault(); openAssist(assist.open === "panel" ? "panel" : "palette"); return;
+    }
     if (ev.key !== "Escape") return;
     if (closeCelebrate() || closeDialog()) return;
-    if (drawer.id) closeDrawer();
+    if (assist.open === "palette") { closeAssist(); return; }
+    if (drawer.id) { closeDrawer(); return; }
+    if (assist.open === "panel" && ev.target.closest && ev.target.closest("#assist-panel")) closeAssist();
   });
   // 見本の中だけの、上げる動き。ファイルを選ぶかドラッグすると、進みを出してから一覧に加える
   let uploads = 0;
@@ -1093,5 +1335,6 @@
     card, board, treeStory, treeEpic, sprintNotice, raidNotice, progress, levelPanel, load, capacityRows,
     openDialog, closeDialog, toast, celebrate, miniCap, redraw: () => redrawAll(), DIALOGS,
     filesOf, fileThumb, fileRow, dropzone, attachments, mdBody, meter,
+    PROVIDER, assistMsg, assistBlocked, assistSuggest, openAssist,
   };
 })();
