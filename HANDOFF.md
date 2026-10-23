@@ -78,8 +78,9 @@
 - [x] 最初の一本道（組織の作成からタスクの完了まで）、DB を作り直してよい期間（ベータまで）、API のエラーの形、CI の AI レビュー（`claude-code-action`）を決めた（2026-10-22）。`docs/development.md` の「API のエラーとログ」「初版の作る順」
 - [x] GitHub のログインと取り込み（初版は共通の OAuth App と各自の PAT）、開発とテストでのログイン（seed でセッションを作る）、Issue の運用を決めた（2026-10-22）。ラベル（`needs-human`、`migration`、`area:*`）とマイルストーン「初版」を GitHub に作り、`.github/ISSUE_TEMPLATE/plan.md` を置いた
 - [x] CI の AI レビューを、API キーではなく Claude のサブスクリプションの OAuth トークンで動かすと決めた（2026-10-23、#8）。`docs/development.md` の「CI」
-- [ ] 手元で `claude setup-token` を実行し、出たトークンをリポジトリのシークレット `CLAUDE_CODE_OAUTH_TOKEN` に置く
-- [ ] 最初のコードの PR で、AI レビューがチェックリストを読めているか、`ai-review` のラベルで再び走るかを確かめる
+- [x] `claude setup-token` で作ったトークンを、リポジトリのシークレット `CLAUDE_CODE_OAUTH_TOKEN` に置いた（2026-10-23）
+- [x] #9 で AI レビューが動くことを確かめた（2026-10-23）。差分に応じてエージェントを呼び分け、チェックリストを読み、まとめとインラインの指摘を書き、`ai-review` のラベルで再び走って終わるとラベルが外れる
+- [ ] ラベル `needs-human` を付ける CI の `label` のジョブを入れる。それまでは `.github/` に触れる PR に人が付ける（ワークフローを書き換える PR は、AI レビューの守りも外せるため）
 - [x] 運用の手順書（`docs/operations.md` に1つ）、セキュリティのヘッダー（最初の一本道から厳しく）、添付ファイルの配信（同じオリジンで型を絞る）、Cloudflare のアカウント（ucan-lab 用に新しく作る）を決めた（2026-10-22）
 - [x] ucan-lab 用の Cloudflare アカウントを作った（2026-10-23）。Zero Trust を無料の枠で有効にし、チーム名を `ucan-lab`、ログインの手段にワンタイム PIN を足した
 - [ ] Cloudflare アカウントを Workers Paid にする（本番を出すとき）
