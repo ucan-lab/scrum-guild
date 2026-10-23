@@ -42,6 +42,9 @@
     play: '<path d="M8 5v14l11-7z"/>',
     upload: '<path d="M12 16V4M7 9l5-5 5 5M4 20h16"/>',
     download: '<path d="M12 4v12M7 11l5 5 5-5M4 20h16"/>',
+    spark: '<path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"/><path d="M19 16l.7 2.3L22 19l-2.3.7L19 22l-.7-2.3L16 19l2.3-.7z"/>',
+    send: '<path d="M4 12l16-8-6 16-2.5-6.5z"/><path d="M11.5 13.5L20 4"/>',
+    panel: '<path d="M4 4h16v16H4zM14 4v16"/>',
   };
   const svg = Object.entries(ICONS)
     .map(([id, body]) => `<symbol id="i-${id}" viewBox="0 0 24 24">${body}</symbol>`)

@@ -17,7 +17,7 @@
 <script src="kit.js"></script>
 <script>
 "use strict";
-// 組織の管理（管理者）: ユーザー、ワークスペース、添付ファイルの合計、組織の休日、言葉づかい、既定のテーマ、配分と積載量の合計、取り込み元の応答、変更の履歴
+// 組織の管理（管理者）: ユーザー、ワークスペース、添付ファイルの合計、組織の休日、言葉づかい、既定のテーマ、配分と積載量の合計、取り込み元の応答、AI の機能、変更の履歴
 const { D, t, icon, esc, pageHead, avatarOf, user, meter } = SQ;
 const A = D.admin;
 function setting(title, desc, body) {
@@ -78,10 +78,25 @@ SQ.mount("admin", () => `
         <label class="choice"><input type="radio" name="payload" checked><div><b>保存しない</b><span>タイトル、キー、状態、期限、URL など、${t("task")}として扱うのに要る属性だけを持ちます</span></div></label>
         <label class="choice"><input type="radio" name="payload"><div><b>保存する</b><span>次に同期した項目から保存します。さかのぼって取り直しません</span></div></label></div>
       <p class="field-hint">保存しない側に切り替えると、保存済みの応答を消します。</p>`)}
+    ${setting("AI の機能", `${t("assistant")}など、AI を使う機能。有効にすると、頼んだ内容と、開いている画面の${t("task")}などのデータを送る先に送ります。`, `
+      <label class="toggle"><input type="checkbox" data-ai-enabled ${D.ai.enabled ? "checked" : ""}>この${t("organization")}で AI の機能を使う</label>
+      <div class="choice-list" role="radiogroup" aria-label="送る先">
+        ${Object.entries(SQ.PROVIDER).map(([v, name]) => `<label class="choice"><input type="radio" name="ai-provider" value="${v}" data-ai-provider ${D.ai.provider === v ? "checked" : ""} ${D.ai.enabled ? "" : "disabled"}><div><b>${name}</b><span>${v === "claude" ? "既定。Anthropic の API で呼びます" : "OpenAI の API で呼びます"}。送る先を変えても、できることは変わりません</span></div></label>`).join("")}</div>
+      ${D.ai.enabled ? "" : `<p class="field-hint">送る先は、有効にすると選べます。</p>`}
+      ${meter(D.ai.used, D.ai.limit, { unit: "百万トークン", note: `今月の利用。${D.ai.resets} に 0 に戻ります。縦の線は 80% の位置。上限は運用者が決めます。上限に達すると、その月は AI の機能が止まります。` })}`)}
     ${setting("変更の履歴", `${t("admin")}の指名と解除、ユーザーの無効化、運用者の操作など、${t("organization")}の単位の変更。${t("workspace")}の中の変更は、各${t("workspace")}の変更の履歴に出ます。`, `
       <div class="table-wrap"><table class="table"><thead><tr><th>日時</th><th>した人</th><th>内容</th></tr></thead>
         <tbody>${A.audit.map(([at, who, what]) => `<tr><td class="mono">${at}</td><td>${who ? `<span class="person">${avatarOf(who)}${esc(user(who).name)}</span>` : `<span class="props-note">運用者</span>`}</td><td>${esc(what)}</td></tr>`).join("")}</tbody></table></div>`)}
   </div>`);
+// 見本の中だけの切り替え。有効を外すと、アシスタントは「使えません」の表示になる
+document.addEventListener("change", (ev) => {
+  if (ev.target.matches("[data-ai-enabled]")) {
+    D.ai.enabled = ev.target.checked; SQ.redraw();
+    document.querySelector("[data-ai-enabled]").focus();
+    SQ.toast(`${icon("check")}AI の機能を${D.ai.enabled ? "有効" : "無効"}にしました`);
+  }
+  if (ev.target.matches("[data-ai-provider]")) { D.ai.provider = ev.target.value; SQ.toast(`${icon("check")}送る先を${SQ.PROVIDER[D.ai.provider]}にしました`); }
+});
 </script>
 </body>
 </html>
