@@ -60,7 +60,7 @@
 最初の一本は、運用者が組織を作る → GitHub でログインする → ワークスペースを作る → タスクを1件作って完了する、の一本道にする（2026-10-22 に決めた）。認証、組織の分離、操作の定義、`batch()` での書き込み、画面を一度に通し、CI/CD と本番へのデプロイもこの一本に含める。Issue への分け方は `issue-plan` で決める。目安は次のとおり。
 
 1. 土台: pnpm、SvelteKit の SPA モード、Hono、wrangler の設定、ESLint と Prettier、`CLAUDE.md` の「コマンド」、SessionStart のフック、`.claude/settings.json` の deny、セキュリティのヘッダー
-2. CI と CD: `ci-ok`、`main` からのデプロイ、`/api/health`、煙のテスト、`docs/operations.md`
+2. CI と CD: `ci-ok`、Workers Builds とデプロイのスクリプト、`/api/health`、煙のテスト、`docs/operations.md`
 3. 入口: Kysely の2つの入口と `batch()` の関数、操作の定義を登録する関数、エラーの形、組織の分離のテストの仕組み
 4. 一本道に要る表のマイグレーションと seed
 5. 運用者の組織の作成、GitHub OAuth とセッション、組織の選択
@@ -72,7 +72,6 @@
 
 - 作り直すかは人が決める。AI は既にあるマイグレーションのファイルを書き換えず、まとめ直すときは人が決めた Issue の中でだけ行う。
 - 自分のチームのデータは作り直しのたびに入れ直す。取り込み元から入れ直せないもの（完了の記録、経験値、手で作ったタスク）は消える前提で使う。
-- この間も、マイグレーションの承認（`production-migration`）は通す。手順に慣れておくため。
 - ベータを始める日に、CI の migration のジョブで既にあるファイルの書き換えを落とす検査を有効にし、この節を「済み」にする。
 
 ## ブランチ戦略
@@ -82,20 +81,21 @@
 | 項目 | 決まり |
 | --- | --- |
 | 長く残すブランチ | `main` だけ。`develop` や `release` は作らない。ステージングが無いので、分けても受け皿がない |
-| 作業ブランチ | 1 Issue に 1 ブランチ、1 PR。クラウドのセッションが作る `claude/*` はそのまま使う。手で切るときは `<種別>/<Issue番号>-<短い名前>` |
-| マージ方法 | squash merge だけ。PR のタイトルがそのまま `main` のコミットになる |
+| 作業ブランチ | 1 Issue に 1 ブランチ、1 PR。クラウドのセッションが作る `claude/*` はそのまま使う。手で切るときは `<Issue番号>-<短い名前>`（例 `12-org-create`）。スラッシュを使わず、ワークツリーと同じ名前にする。種別は PR のタイトルで表す |
+| マージ方法 | squash merge だけ。PR のタイトルが `main` のコミットの件名になり、本文は空にする |
 | PR のタイトル | 今のコミットと同じ書き方（`feat:`、`fix:`、`docs:`、`design:`、`refactor:`、`chore:`、`test:`、`ci:` の後に日本語） |
 | マージ後 | ブランチを自動で消す |
-| 文書だけの変更 | 文書も PR を通す |
+| 文書だけの変更 | `CLAUDE.md` の「守ること」の例外に挙げた文書だけの変更は、`main` に直接入れてよい。それ以外は PR を通す |
 
-### ブランチ保護
+### `main` を守る仕組み
 
-GitHub の Rulesets で `main` に次を掛ける。private のリポジトリで Rulesets と auto-merge を使うには有料のプラン（個人は Pro、組織は Team）が要る。
+GitHub は無料のプランのまま使う（2026-10-23 に決めた）。無料のプランの private のリポジトリでは、ブランチ保護、Rulesets、auto-merge、Environment が使えない。そのため、守りは次のように置く。
 
-- PR を必須にする。直接の push、force push、削除を禁止する
-- 必須のチェックは `ci-ok` だけにする（下の「CI」）
-- squash merge 以外のマージを無効にする
-- 承認の数は必須にしない。自分の PR は自分で承認できず、Claude が作る PR もこちらの名義になるため。人のレビューは「人がマージボタンを押す」ことで表す（下の「マージの判定」）
+- リポジトリの設定で squash merge だけを許し、マージ後にブランチを消す。squash のコミットの件名は PR のタイトルにし、本文は空にする（設定済み）
+- `main` への直接の push と force push は、`.claude/settings.json` の `permissions.deny` でセッションから止める。人の push は止まらないので、人も同じ決まりで PR を通す
+- 必須のチェックは設定できない。マージする人が `ci-ok` の成功を確かめてから押す
+- すべての PR を人がマージする。承認の数は求めず、人のレビューは「人がマージボタンを押す」ことで表す（下の「マージの判定」）
+- 本番へデプロイする鍵は GitHub に置かない（下の「CD」）。リポジトリのシークレットは PR のブランチのワークフローからも読め、Environment で `main` だけに絞れないため
 
 ### 並行して作業するときの決まり
 
@@ -121,7 +121,7 @@ GitHub の Rulesets で `main` に次を掛ける。private のリポジトリ�
 
 1. **組織の分離のテストを CI で必須にする。** 一番起こりやすく、一番重い事故は `organization_id` での絞り込み漏れ。すべての API の操作について「別の組織の ID で呼ぶと 404 になる」ことを確かめるテストを、操作の定義（`ai.md` の「操作の定義を1か所に持つ」）から作る。組織の中の表に触るクエリは、組織で絞る入口の関数からしか書けないようにする。
 2. **型で境界を固める。** 操作の入力と出力をスキーマで1か所に持ち、Hono と Svelte の両方で使う。片方だけ直したずれを型の検査で落とす。
-3. **本番に触る操作をセッションから拒否する。** `.claude/settings.json` の `permissions.deny` に `wrangler deploy`、`wrangler versions deploy`、`--remote` を付けた `wrangler d1`、`main` への `git push` を入れる。本番に触るのは CI だけ。
+3. **本番に触る操作をセッションから拒否する。** `.claude/settings.json` の `permissions.deny` に `wrangler deploy`、`wrangler versions deploy`、`wrangler rollback`、`--remote` を付けた `wrangler d1`、`main` への `git push`、force push を入れる。本番に触るのは Cloudflare の Workers Builds だけ。
 4. **AI への決まりは `CLAUDE.md` に短く置く。** コマンドと、守らないと事故になる決まりだけを書き、詳しいことは `docs/` を指す。
 
 ## リポジトリのスキル
@@ -148,7 +148,6 @@ GitHub の Rulesets で `main` に次を掛ける。private のリポジトリ�
 | --- | --- | --- |
 | `d1-migration` | 戻せないマイグレーションを書く手順。列や表は先に足し、消すのは次の版以降にする（広げてから縮める）。マイグレーションを当てた後に `wrangler rollback` しても、古いコードが新しいスキーマで動くようにするため。共通の表か組織の中の表かの区分と、`data-model.md` を同じ PR で直すことも扱う | 最初のマイグレーションの前 |
 | `add-operation` | 操作の定義を1つ足す型紙。定義、Hono のルート、権限のテスト、組織の分離のテスト、画面から呼ぶ口までを一続きで作る | 最初の API を作るとき |
-| `merge-risk` | CI で PR の危険度を判定するエージェントの採点基準。Warp の `merge-risk` を元にし、⚠️ が1つでもあれば自動マージしない拒否権を足す | 自動マージを試す前 |
 | `screen-review` | 画面の自己レビュー（`HANDOFF.md` の「画面の自己レビューのスキル」） | 最初の数画面が動いてから |
 | `incident` | 本番で壊れたときの手順。Workers Logs を読む、`wrangler rollback` で戻す、D1 の Time Travel を使う | 運用の手順書と一緒に |
 
@@ -161,33 +160,27 @@ GitHub の Rulesets で `main` に次を掛ける。private のリポジトリ�
 3. 人が着手を決める
 4. クラウドのセッションで実装する。テストは実装と一緒に書く
 5. `self-review` で点検し、`pr-create` で PR を出す
-6. CI、AI レビュー、`merge-risk` の判定を待ち、指摘には `pr-feedback` で応える
-7. 下の「マージの判定」に従ってマージする
-8. `main` から自動でデプロイされる（下の「CD」）
+6. CI と AI レビューを待ち、指摘には `pr-feedback` で応える
+7. 下の「マージの判定」に従って、人がマージする
+8. `main` から Workers Builds で自動でデプロイされる（下の「CD」）
 
 仕様を変える実装は、同じ PR で `docs/` も直す。
 
 ### マージの判定
 
-2段で決める。
+すべての PR を人がマージする。auto-merge は使わない（上の「`main` を守る仕組み」）。
 
-1. **パスで決める拒否権。** 次のどれかに触れた PR には、GitHub Actions が機械的に `needs-human` のラベルを付ける。AI には判断させない。
-   - マイグレーション
-   - 認証と GitHub OAuth、暗号、シークレット
-   - 組織で絞る層（組織をまたぐデータの分離）
-   - 運用者の権限
-   - 取り込み元の処理（顧客のデータ）
-   - wrangler の設定、`package.json` とロックファイル
-   - `.github/`、`.claude/settings.json`
-2. **残りを AI が採点する。** `merge-risk` で low と出たものだけを自動マージの候補にする。採点するのは実装したのとは別のエージェントで、根拠は CI の結果とスクリーンショットだけにする。
+次のどれかに触れた PR には、GitHub Actions が機械的に `needs-human` のラベルを付ける。AI には判断させない。
 
-`needs-human` の PR と、low でない PR は、人が中身を見てマージボタンを押す。
+- マイグレーション
+- 認証と GitHub OAuth、暗号、シークレット
+- 組織で絞る層（組織をまたぐデータの分離）
+- 運用者の権限
+- 取り込み元の処理（顧客のデータ）
+- wrangler の設定、デプロイのスクリプト、`package.json` とロックファイル
+- `.github/`、`.claude/settings.json`
 
-入れる順は次のとおり。
-
-1. はじめの数週間は判定を出すだけにし、すべて人がマージする
-2. 判定と人の判断が合うのを確かめたら、文書と見本だけの PR から自動マージを解禁する
-3. その次に、拒否権に当たらない low のコードの PR に広げる
+`needs-human` の PR は、AI レビューが通っていても人が差分を読んでからマージする。マイグレーションを含む PR では、このマージが本番に当てる承認になる（下の「CD」）。付いていない PR は、`ci-ok`、AI レビューの指摘、e2e のスクリーンショットを見て決めてよい。
 
 ## CI
 
@@ -201,27 +194,35 @@ PR ごとに GitHub Actions で回す。
 | migration | 空の D1 に全マイグレーションを順に当てて通るか確かめる。ベータが始まったら、既にあるマイグレーションのファイルの書き換えも落とす（上の「DB を作り直してよい期間」） |
 | e2e | ビルドして `wrangler dev` を立て、Playwright で主な流れを確かめる。4つのテーマと2つの言葉の組み合わせでスクリーンショットを撮り、成果物として上げる |
 | ai-review | `anthropics/claude-code-action` で、`.claude/agents/` のレビューのエージェントを動かし、指摘を PR に書く |
-| merge-risk | 拒否権のラベルは Actions がパスで付ける。AI の判定は `claude-code-action` で `merge-risk` のスキルを動かし、ラベルで返す |
-| ci-ok | 上のジョブをまとめる1つのジョブ。必須のチェックはこれだけ |
+| label | パスを見て `needs-human` のラベルを付ける（上の「マージの判定」） |
+| ci-ok | 上のジョブをまとめる1つのジョブ。マージの前に確かめるのはこれだけ |
 
-AI のジョブは Anthropic の API キーをリポジトリのシークレットに置いて動かし、使った分だけ費用がかかる。費用は月ごとに見て、多ければ対象の PR を絞る（文書だけの PR では動かさない、など）。
+AI のジョブは Anthropic の API キーをリポジトリのシークレットに置いて動かし、使った分だけ費用がかかる。費用は月ごとに見て、多ければ対象の PR を絞る（文書だけの PR では動かさない、など）。このキーは PR のブランチのワークフローからも読めるので、Anthropic の側で使う額の上限を掛けておく。
 
-必須のチェックを `ci-ok` の1つにするのは、文書だけの PR で重いジョブを飛ばしても、必須のチェックが「未報告」のまま止まらないようにするため。
+確かめるチェックを `ci-ok` の1つにまとめるのは、文書だけの PR で重いジョブを飛ばしても、見る所が1つで済むようにするため。
 
-PR ごとのプレビュー環境は持たない。`wrangler versions upload` のプレビュー URL は本番と同じ D1 につながり、マージ前のコードが本番のデータに触れるため。見た目の確認は e2e のスクリーンショットで行う。
+GitHub Actions の無料枠は、private のリポジトリで月 2,000 分。e2e と AI レビューで足りなくなりそうなら、上と同じく対象の PR を絞る。
+
+PR ごとのプレビュー環境は持たず、Workers Builds の preview builds も有効にしない。`wrangler versions upload` のプレビュー URL は本番と同じ D1 につながり、マージ前のコードが本番のデータに触れるため。見た目の確認は e2e のスクリーンショットで行う。
 
 ## CD
 
-`main` へのマージで動く。デプロイは `concurrency` で一列に並べる。
+`main` への push で、Cloudflare の Workers Builds（Git との連携）が動く（2026-10-23 に決めた）。デプロイの鍵を GitHub に置かないため（上の「`main` を守る仕組み」）。
 
-1. ビルドし、`wrangler versions upload` で新しい版を上げる（まだ切り替えない）
-2. マイグレーションがあれば、GitHub Environment `production-migration` の承認を待ち、`wrangler d1 migrations apply --remote` を実行する。承認するのは人
-3. `wrangler versions deploy` で新しい版に切り替える
-4. 煙のテストで `/api/health`（版と DB への疎通）を確かめる。落ちたら `wrangler rollback` で戻し、Issue を立てる
+1. ビルドする
+2. デプロイのコマンドで、リポジトリに置いたデプロイのスクリプトを動かす。スクリプトの手順は次のとおり
+   1. マイグレーションがあれば `wrangler d1 migrations apply --remote` で当てる
+   2. `wrangler versions upload` で新しい版を上げ、`wrangler versions deploy` で切り替える
+   3. 煙のテストで `/api/health`（版と DB への疎通）を確かめる。落ちたら `wrangler rollback` で戻し、ビルドを失敗で終える
+3. ビルドの失敗には、Cloudflare の通知と GitHub のコミットの状態で気づく。下の「本番で壊れたことに気づく」の定期の確認でも Issue が立つ
 
-マイグレーションの後にコードを戻しても動くように、マイグレーションは `d1-migration` の「広げてから縮める」に従う。
+マイグレーションの承認は別に挟まない。マイグレーションを含む PR には `needs-human` が付き、人が差分を読んでマージするので、そのマージを承認とみなす。`main` への直接の push ではマイグレーションを入れない。
 
-Cloudflare の API トークンは権限を最小にし、GitHub Environment のシークレットに置く。
+マイグレーションを当ててから版を切り替え、戻すときはコードだけを戻す。どちらの順でも動くように、マイグレーションは `d1-migration` の「広げてから縮める」に従う。
+
+Workers Builds の API トークンは、権限を最小にしたものを自分で作って選ぶ。自動で作られるトークンは、Zone や Routes の編集の権限まで持つため。
+
+文書だけの push でビルドを飛ばせるか（build watch paths）と、続けて push したときにビルドが一列に並ぶかは、土台を作るときに確かめる。
 
 ## 本番で壊れたことに気づく
 
@@ -255,7 +256,7 @@ GitHub App も比べた。人が抜けても取り込みが止まらない、PAT
 
 ## Issue の運用
 
-- ラベル: 自動マージの `needs-human`、マイグレーションの `migration`、領域の `area:auth`、`area:organization`、`area:workspace`、`area:task`、`area:import`、`area:attachment`、`area:ui`、`area:infra`、`area:docs`、不具合の `bug`。GitHub に作り、`bug` 以外の既定のラベルは消した（2026-10-22）。重複や対応しないものは、ラベルではなく Issue を閉じるときの理由で表す
+- ラベル: 人が差分を読む `needs-human`、マイグレーションの `migration`、領域の `area:auth`、`area:organization`、`area:workspace`、`area:task`、`area:import`、`area:attachment`、`area:ui`、`area:infra`、`area:docs`、不具合の `bug`。GitHub に作り、`bug` 以外の既定のラベルは消した（2026-10-22）。重複や対応しないものは、ラベルではなく Issue を閉じるときの理由で表す
 - マイルストーン: 「初版」。自分のチームで使い始めるまでの Issue を入れる
 - テンプレート: `.github/ISSUE_TEMPLATE/plan.md`。`issue-plan` が書く形（背景、やること、完了条件、確認方法、触る領域、マイグレーション）と同じにする
 - 領域のラベルは、並行して作業するときのぶつかりを見分けるのにも使う。同じ領域の PR を同時に何本も開かない
@@ -264,8 +265,8 @@ GitHub App も比べた。人が抜けても取り込みが止まらない、PAT
 
 `docs/operations.md` の1つにまとめる（2026-10-22 に決めた）。最初のデプロイの PR で作り、手順を変える PR で同じ差分の中で直す。
 
-- 用意: Cloudflare のアカウント、GitHub OAuth App、D1 と R2 のバケット、シークレットの一覧と登録、GitHub Environment と API トークン
-- 出し方: マイグレーションの承認、デプロイ、煙のテスト
+- 用意: Cloudflare のアカウント、GitHub OAuth App、D1 と R2 のバケット、シークレットの一覧と登録、Workers Builds の接続と API トークン
+- 出し方: Workers Builds とデプロイのスクリプト、マイグレーション、煙のテスト
 - 戻し方: `wrangler rollback`、D1 の Time Travel、定期の書き出しからの戻し
 - 組織: 作成、停止と再開、解約と30日後の消去（R2 のファイルを含む）
 - 鍵の入れ替え: 接続の認証情報の暗号鍵
@@ -300,5 +301,5 @@ GitHub App も比べた。人が抜けても取り込みが止まらない、PAT
 
 ## 定期の作業
 
-- 依存の更新は Renovate か Dependabot で週に1回、まとめて出す。拒否権に当たるので、人がマージする
+- 依存の更新は Renovate か Dependabot で週に1回、まとめて出す。`needs-human` が付くので、人が差分を読んでマージする
 - `wrangler d1 export` の定期の書き出しは、顧客のデータなので GitHub の成果物に置かず、R2 の別のバケットに置く

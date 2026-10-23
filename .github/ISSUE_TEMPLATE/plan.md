@@ -25,7 +25,7 @@ labels: []
 
 ## 触る領域
 
-<!-- area: のラベルを付ける。自動マージの拒否権に当たる領域（マイグレーション、認証、組織で絞る層、運用者の権限、取り込み、wrangler の設定、依存、.github/、.claude/settings.json）に触るなら needs-human も付ける -->
+<!-- area: のラベルを付ける。人が差分を読む領域（マイグレーション、認証、組織で絞る層、運用者の権限、取り込み、wrangler の設定、デプロイのスクリプト、依存、.github/、.claude/settings.json）に触るなら needs-human も付ける -->
 
 ## マイグレーション
 
