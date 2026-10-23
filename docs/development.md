@@ -203,11 +203,17 @@ PR ごとに GitHub Actions で回す。
 | test | Workers の実行環境で動かす（`@cloudflare/vitest-pool-workers`）。ローカルの D1 に全マイグレーションを当てて回す。組織の分離のテストを含む |
 | migration | 空の D1 に全マイグレーションを順に当てて通るか確かめる。ベータが始まったら、既にあるマイグレーションのファイルの書き換えも落とす（上の「DB を作り直してよい期間」） |
 | e2e | ビルドして `wrangler dev` を立て、Playwright で主な流れを確かめる。4つのテーマと2つの言葉の組み合わせでスクリーンショットを撮り、成果物として上げる |
-| ai-review | `anthropics/claude-code-action` で、`.claude/agents/` のレビューのエージェントを動かし、指摘を PR に書く |
+| ai-review | `anthropics/claude-code-action` で、スキル `ai-review` が差分に応じて `.claude/agents/` のレビューのエージェントを呼び分け、指摘を PR に書く。`.github/workflows/ai-review.yml` に分けて置く |
 | label | パスを見て `needs-human` のラベルを付ける（上の「マージの判定」） |
-| ci-ok | 上のジョブをまとめる1つのジョブ。マージの前に確かめるのはこれだけ |
+| ci-ok | ai-review を除く上のジョブをまとめる1つのジョブ。マージの前に確かめるのはこれだけ |
 
-AI のジョブは Anthropic の API キーをリポジトリのシークレットに置いて動かし、使った分だけ費用がかかる。費用は月ごとに見て、多ければ対象の PR を絞る（文書だけの PR では動かさない、など）。このキーは PR のブランチのワークフローからも読めるので、Anthropic の側で使う額の上限を掛けておく。
+ai-review は Claude のサブスクリプションで動かす。手元で `claude setup-token` を実行して作った OAuth トークンを、リポジトリのシークレット `CLAUDE_CODE_OAUTH_TOKEN` に置く。従量の費用はかからないが、使用量の上限は手元の対話の利用と共有になる。
+
+- 回すのは、ドラフトでない PR を作ったとき（`opened`、`ready_for_review`、`reopened`）だけ。push のたびには回さない。直した後にもう一度見せたいときは、人が PR に `ai-review` のラベルを付ける。終わるとラベルは外れる
+- 文書だけの PR（`docs/`、`.md`）では回さない
+- `ci-ok` に含めない。AI レビューは助言で、サブスクの上限で落ちてもマージの判定を止めない
+- ワークフローのファイルを変えた PR では、action が実行を飛ばす（既定のブランチのファイルと違うため）。ワークフローの変更は、マージした後の PR で確かめる
+- PR の上で action が読む `.claude/` と `CLAUDE.md` は、base のブランチのもの。スキルやエージェントの変更は `main` に入ってから効く
 
 確かめるチェックを `ci-ok` の1つにまとめるのは、文書だけの PR で重いジョブを飛ばしても、見る所が1つで済むようにするため。
 
@@ -278,7 +284,7 @@ GitHub App も比べた。人が抜けても取り込みが止まらない、PAT
 
 ## Issue の運用
 
-- ラベル: 人が差分を読む `needs-human`、マイグレーションの `migration`、領域の `area:auth`、`area:organization`、`area:workspace`、`area:task`、`area:import`、`area:attachment`、`area:ui`、`area:infra`、`area:docs`、不具合の `bug`。GitHub に作り、`bug` 以外の既定のラベルは消した（2026-10-22）。重複や対応しないものは、ラベルではなく Issue を閉じるときの理由で表す
+- ラベル: 人が差分を読む `needs-human`、マイグレーションの `migration`、領域の `area:auth`、`area:organization`、`area:workspace`、`area:task`、`area:import`、`area:attachment`、`area:ui`、`area:infra`、`area:docs`、不具合の `bug`、AI レビューをもう一度回す `ai-review`。GitHub に作り、`bug` 以外の既定のラベルは消した（2026-10-22）。重複や対応しないものは、ラベルではなく Issue を閉じるときの理由で表す
 - マイルストーン: 「初版」。自分のチームで使い始めるまでの Issue を入れる
 - テンプレート: `.github/ISSUE_TEMPLATE/plan.md`。`issue-plan` が書く形（背景、やること、完了条件、確認方法、触る領域、マイグレーション）と同じにする
 - 領域のラベルは、並行して作業するときのぶつかりを見分けるのにも使う。同じ領域の PR を同時に何本も開かない
