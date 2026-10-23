@@ -2,14 +2,16 @@
 name: ai-review
 description: CI の AI レビュー（.github/workflows/ai-review.yml）が呼ぶ手順。PR の差分に応じてレビューのエージェントを呼び分け、指摘を PR に書く。
 disable-model-invocation: true
-allowed-tools: Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh api:*),Bash(git diff:*),Bash(git log:*),Bash(git rev-parse:*),Bash(ls:*),Bash(echo:*)
+allowed-tools: Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(git diff:*),Bash(git log:*),Bash(git rev-parse:*),Bash(ls:*),Bash(echo:*)
 ---
 
 # ai-review
 
 GitHub Actions の中で、1つの PR をレビューして指摘を書き込む。人の手は入らないので、聞き返さずに最後まで進める。
 
-引数で `REPO`、`PR_NUMBER`、`BASE_SHA`、`HEAD_SHA` を受け取る。作業ディレクトリは PR の head をチェックアウトしたリポジトリ。
+引数で `REPO`、`PR_NUMBER`、`BASE_SHA`、`HEAD_SHA` を受け取る。作業ディレクトリは PR をチェックアウトしたリポジトリだが、`.claude/` と `CLAUDE.md` は base のブランチの版に戻されている。PR がそれらを変えていれば、PR の版は `git diff` で読む。
+
+`gh api` は許可していない（PR の内容に仕込まれた指示で、任意の API や外部の URL を叩かれないようにするため）。GitHub の操作は `gh pr` の3つだけで行う。
 
 ## 1. 変更を把握する
 
@@ -36,6 +38,7 @@ GitHub Actions の中で、1つの PR をレビューして指摘を書き込む
 - 範囲: `REPO`、`PR_NUMBER`、`BASE_SHA...HEAD_SHA` の差分
 - チェックリストのディレクトリの絶対パス: `$(git rev-parse --show-toplevel)/.claude/checklists` を先に自分で解決して渡す
 - CI の中なので、Bash で許されていないコマンドが拒否されたら、チェックリストは Glob で一覧を取って読むこと
+- `gh api` は使えないので、PR のマージできる状態と CI の結果の確認は飛ばすこと
 - 報告は、そのエージェントの定義にある報告の形式で返すこと。PR へは書き込まないこと
 
 完了の条件: 選んだエージェントすべてから報告が返っている。
@@ -50,7 +53,7 @@ GitHub Actions の中で、1つの PR をレビューして指摘を書き込む
 ## 5. PR に書く
 
 - 行に紐づく指摘は、`mcp__github_inline_comment__create_inline_comment` でインラインコメントにする。本文の先頭に `[重要度] (確信度)` を付ける
-- まとめを `gh pr comment <PR_NUMBER> --body-file <file>` で1件書く。中身は次の順
+- まとめを `gh pr comment <PR_NUMBER> --body "<本文>"` で1件書く（ファイルを書く道具は許可していない）。中身は次の順
   1. 呼んだエージェントと、呼ばなかったエージェントとその理由
   2. 各エージェントが読んだチェックリスト（報告の冒頭の「チェックリスト:」から写す。見つからなかったものもそのまま書く）
   3. 重要度ごとの件数
