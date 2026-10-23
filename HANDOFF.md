@@ -30,7 +30,7 @@
 - [ ] シンプルの完了の印（緑の丸にチェック）とロゴの印（TL）でよいか
 - [ ] 本来の書体（Zen Old Mincho、BIZ UDPGothic、IBM Plex Mono、Chakra Petch）での見え方。現代風の見出しは Chakra Petch が要になる。作った環境では Google Fonts を読み込めず、代わりの書体でしか確かめていない
 - [ ] スマホ幅で崩れないか（PC が対象で、スマホは崩れない程度でよい）
-- [ ] ダイアログ（スプリントの開始、延長、終了、起票、エピックの削除、完了の記録の修正、ワークスペースの作成、王国の作成、停止、管理者の指名し直し）の文言と選択肢
+- [ ] ダイアログ（スプリントの開始、延長、終了、起票、エピックの削除、完了の記録の修正、ワークスペースの作成、組織の作成、停止、管理者の指名し直し）の文言と選択肢
 - [ ] クリアの演出（カタログの「ダイアログと演出」から見られる）の強さ
 
 ### 要件にない補い（`docs/design.md` の「見本を作って補ったこと」）
@@ -45,18 +45,18 @@
 
 ### サービスにするための決めごと（`docs/business.md`）
 
-- [x] 1つのアプリと1つの D1 に複数の王国を入れる（2026-10-21）。`docs/requirements.md` の「王国と運用者」と `docs/data-model.md` の `accounts`、`kingdoms`、`users` に反映した
-- [x] 足りない画面の見本を作った（2026-10-21）: 王国の選択（`design/kingdoms.html`）、運用（`design/operator.html`）。ログイン、自分の設定の招待に王国の名前を足し、メニューの上に王国の切り替えを足した
-- [ ] 添付ファイル（`docs/requirements.md` の「添付ファイル」、`docs/data-model.md` の `attachments`）。初版に入れ、タスク、ストーリー、エピック、コメントに付けると決めた（2026-10-22）。上限は1ファイル50MB、王国ごとに小さい王国 30GB、標準 100GB と決めた（2026-10-23 に値段の見直しで改めた）。動画（MP4、WebM）は画面で再生し、合計が80%を超えたら管理者に通知する
+- [x] 1つのアプリと1つの D1 に複数の組織を入れる（2026-10-21）。`docs/requirements.md` の「組織と運用者」と `docs/data-model.md` の `accounts`、`organizations`、`users` に反映した
+- [x] 足りない画面の見本を作った（2026-10-21）: 組織の選択（`design/kingdoms.html`）、運用（`design/operator.html`）。ログイン、自分の設定の招待に組織の名前を足し、メニューの上に組織の切り替えを足した
+- [ ] 添付ファイル（`docs/requirements.md` の「添付ファイル」、`docs/data-model.md` の `attachments`）。初版に入れ、タスク、ストーリー、エピック、コメントに付けると決めた（2026-10-22）。上限は1ファイル50MB、組織ごとに小さい組織 30GB、標準 100GB と決めた（2026-10-23 に値段の見直しで改めた）。動画（MP4、WebM）は画面で再生し、合計が80%を超えたら管理者に通知する
 - [x] デザインの見本に、添付の欄、貼り付けた画像、動画の再生、上限に達したときの表示、80%の通知、管理者の設定の使用量、運用の画面の使用量と上限を足す（2026-10-22）
-- [ ] 添付ファイルの見本（タスクの詳細、エピック、起票、王国の管理、運用、通知、カタログの「添付ファイル」）で、置き場所と文言がよいか。補ったことは `docs/design.md` の「見本を作って補ったこと」
-- [ ] データベースの分け方（`docs/data-model.md` の「データベースの分け方」）。初めは1つの D1 で、足りなくなったら決まった数の D1 に王国を振り分ける。共通の表と王国の中の表を分け、結合しない、1回の `batch()` に混ぜない、という決まりでよいか
-- [ ] 王国の選択と運用の画面で、出す情報と操作が足りているか。運用者が王国の中を見られない線引きでよいか
+- [ ] 添付ファイルの見本（タスクの詳細、エピック、起票、組織の管理、運用、通知、カタログの「添付ファイル」）で、置き場所と文言がよいか。補ったことは `docs/design.md` の「見本を作って補ったこと」
+- [ ] データベースの分け方（`docs/data-model.md` の「データベースの分け方」）。初めは1つの D1 で、足りなくなったら決まった数の D1 に組織を振り分ける。共通の表と組織の中の表を分け、結合しない、1回の `batch()` に混ぜない、という決まりでよいか
+- [ ] 組織の選択と運用の画面で、出す情報と操作が足りているか。運用者が組織の中を見られない線引きでよいか
 - [ ] 運用の画面の「停止」で、一時的な停止と解約（30日後に消す）を選ぶ形でよいか
 - [ ] 顧客のデータ（private なリポジトリの課題や PR）を預かって運用してよいか
-- [x] 取り込み元の本文は既定で預からず、王国の設定で保存を選べるようにした（2026-10-22）。`docs/requirements.md` の「取り込み」、`docs/data-model.md` の `kingdoms.stores_source_payload` と `task_source_payloads`
-- [x] 王国の管理の見本（`design/admin.html`）に、取り込み元の応答を保存するかの設定を足した（2026-10-23）
-- [x] 値段を見直した（2026-10-23）。王国ごとの定額を人数の段階（〜15人 月3,000円、〜50人 月10,000円）で分け、年払いは2か月分無料、お試しは30日。`docs/business.md` の「値段の考え方」、競合との比較は `docs/competitors.md`。王国に人数の上限（`docs/data-model.md` の `kingdoms.member_limit`）を足し、上限に達したら招待を止める
+- [x] 取り込み元の本文は既定で預からず、組織の設定で保存を選べるようにした（2026-10-22）。`docs/requirements.md` の「取り込み」、`docs/data-model.md` の `organizations.stores_source_payload` と `task_source_payloads`
+- [x] 組織の管理の見本（`design/admin.html`）に、取り込み元の応答を保存するかの設定を足した（2026-10-23）
+- [x] 値段を見直した（2026-10-23）。組織ごとの定額を人数の段階（〜15人 月3,000円、〜50人 月10,000円）で分け、年払いは2か月分無料、お試しは30日。`docs/business.md` の「値段の考え方」、競合との比較は `docs/competitors.md`。組織に人数の上限（`docs/data-model.md` の `organizations.member_limit`）を足し、上限に達したら招待を止める
 - [x] 運用の見本（`design/operator.html`）の上限の変更に人数の上限を足し、段階を 15人と30GB、50人と100GB に直した。招待の見本に上限に達したときの表示を足した（2026-10-23）
 - [ ] 見積もりと実績の時間（予実）を詰める（`docs/requirements.md` の「未決の論点」）。工数の実績を Non-Goals から外した
 - [ ] 適格請求書発行事業者に登録する時期を、税理士に確かめる（`docs/business.md` の「未決」）
@@ -74,7 +74,7 @@
 - [ ] GitHub の Rulesets で `main` を保護する（`docs/development.md` の「ブランチ保護」）。マージ後にブランチを自動で消す設定も入れる。入れたら `CLAUDE.md` の「守ること」の例外を消す
 - [ ] Cloudflare の通知で Workers のエラー率などを受けられるか
 - [x] 技術の選択を決めた（2026-10-22）。pnpm、1つのパッケージ、ESLint と Prettier、SvelteKit の SPA モード、Kysely、zod、自前の操作の定義、型付きの言葉の辞書、seed とファクトリー。`docs/requirements.md` の「画面」を SvelteKit の SPA モードに改めた
-- [x] 最初の一本道（王国の作成からタスクの完了まで）、DB を作り直してよい期間（ベータまで）、API のエラーの形、CI の AI レビュー（`claude-code-action`）を決めた（2026-10-22）。`docs/development.md` の「API のエラーとログ」「初版の作る順」
+- [x] 最初の一本道（組織の作成からタスクの完了まで）、DB を作り直してよい期間（ベータまで）、API のエラーの形、CI の AI レビュー（`claude-code-action`）を決めた（2026-10-22）。`docs/development.md` の「API のエラーとログ」「初版の作る順」
 - [x] GitHub のログインと取り込み（初版は共通の OAuth App と各自の PAT）、開発とテストでのログイン（seed でセッションを作る）、Issue の運用を決めた（2026-10-22）。ラベル（`needs-human`、`migration`、`area:*`）とマイルストーン「初版」を GitHub に作り、`.github/ISSUE_TEMPLATE/plan.md` を置いた
 - [ ] Anthropic の API キーを用意し、リポジトリのシークレットに置く（CI の AI レビューに使う）
 - [x] 運用の手順書（`docs/operations.md` に1つ）、セキュリティのヘッダー（最初の一本道から厳しく）、添付ファイルの配信（同じオリジンで型を絞る）、Cloudflare のアカウント（ucan-lab 用に新しく作る）を決めた（2026-10-22）
@@ -102,7 +102,7 @@
 2. ブランチ保護で `main` への直接の push を止める（`docs/development.md` の「ブランチ保護」）。ここから先は PR を通す
 3. リポジトリの土台を作る（`docs/development.md` の「技術の選択」。pnpm、Hono、SvelteKit の SPA モード、Kysely、zod、ESLint と Prettier、wrangler の設定、SessionStart のフック、`.claude/settings.json` の deny、CI の `ci-ok`）。`CLAUDE.md` の「コマンド」を埋める。SvelteKit の開発用サーバーと `wrangler dev` をどう組むか（1つにまとまるか、`/api` を転送するか）を確かめる
 4. `d1-migration` のスキルを作り、`docs/data-model.md` から最初のマイグレーションを書く
-5. `design/tokens.css` と `design/components.css` を本番の画面に持ち込み、`design/kit.js` の関数を1つずつ Svelte のコンポーネントにする。`html` の `data-theme` には、`users.theme`、なければ `kingdoms.theme` の値を入れる
+5. `design/tokens.css` と `design/components.css` を本番の画面に持ち込み、`design/kit.js` の関数を1つずつ Svelte のコンポーネントにする。`html` の `data-theme` には、`users.theme`、なければ `organizations.theme` の値を入れる
 6. 最初の数画面が Svelte で動いたら、下の「画面の自己レビューのスキル」を作る
 
 ## 画面の自己レビューのスキル

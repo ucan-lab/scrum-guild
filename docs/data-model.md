@@ -19,15 +19,15 @@
 - 作成日時と更新日時は `created_at`、`updated_at` で、更新はアプリが書く。
 - 手で並べ替える並びは、分数の並び（fractional indexing）の文字列 `position` で持つ。間に入れても他の行を書き換えない。新しく入ったものは末尾の値を取る。
 - 集計（積載量、経験値の合計、ポイントの合計、ベロシティ）は保存せず、読むたびに計算する。
-- 1つの D1 に複数の王国を入れる。王国の中の行は、リクエストの王国から辿って引く。ID だけで行を引かず、必ず `kingdom_id` か、王国を確かめた `workspace_id` で絞る。他の王国の行が見えないことはテストで確かめる。
-- 表を共通の表と王国の中の表に分け、後から王国ごとにデータベースを分けられるようにしておく。決まりは「データベースの分け方」。
+- 1つの D1 に複数の組織を入れる。組織の中の行は、リクエストの組織から辿って引く。ID だけで行を引かず、必ず `organization_id` か、組織を確かめた `workspace_id` で絞る。他の組織の行が見えないことはテストで確かめる。
+- 表を共通の表と組織の中の表に分け、後から組織ごとにデータベースを分けられるようにしておく。決まりは「データベースの分け方」。
 
 ## 全体の構成
 
 | まとまり | テーブル |
 | --- | --- |
 | アカウント | `accounts`、`sessions`、`oauth_states`、`rate_limits` |
-| 王国 | `kingdoms`、`users`、`kingdom_holidays` |
+| 組織 | `organizations`、`users`、`organization_holidays` |
 | ユーザーの稼働 | `user_capacity_settings`、`user_monthly_overrides`、`user_time_off` |
 | ワークスペース | `workspaces`、`workspace_point_rates`、`workspace_holidays`、`memberships`、`invitations`、`allocations` |
 | ワークスペースの定義 | `board_columns`、`detail_fields`、`categories`、`repositories` |
@@ -37,49 +37,49 @@
 
 親子の向きの要点。
 
-- アカウントは人ごとに1行で、王国をまたぐ。ログインの手段（初版は GitHub）とは `account_logins` で結び、特定の手段に依存させない。ログインとセッションはアカウントに付く。
+- アカウントは人ごとに1行で、組織をまたぐ。ログインの手段（初版は GitHub）とは `account_logins` で結び、特定の手段に依存させない。ログインとセッションはアカウントに付く。
 - 人は、ログインの手段（`login_provider`）と手段の中の不変の ID（`login_subject`）の組で見分ける。GitHub では `github` とユーザー ID。アカウントができる前の管理者の指名と招待も、この組で持つ。
-- ユーザーは王国ごとの人で、アカウントと王国の組に1行。王国の中の表はすべてユーザーを指し、アカウントは指さない。
-- 王国の直下のもの（`users`、`workspaces`、`kingdom_holidays`、`change_logs`）は `kingdom_id` を持つ。
-- ワークスペースの中のものは、すべて `workspace_id` を持つ。権限の検査と絞り込みを1つの列で行うため、親から辿れるものにも持たせる。`kingdom_id` は持たせず、`workspaces.kingdom_id` で王国を確かめる。
+- ユーザーは組織ごとの人で、アカウントと組織の組に1行。組織の中の表はすべてユーザーを指し、アカウントは指さない。
+- 組織の直下のもの（`users`、`workspaces`、`organization_holidays`、`change_logs`）は `organization_id` を持つ。
+- ワークスペースの中のものは、すべて `workspace_id` を持つ。権限の検査と絞り込みを1つの列で行うため、親から辿れるものにも持たせる。`organization_id` は持たせず、`workspaces.organization_id` で組織を確かめる。
 - タスクの親はストーリーだけ（`tasks.story_id`）、ストーリーの親はエピックだけ（`stories.epic_id`）。
 - 取り込んだタスクは `tasks` の1行に `task_sources` の1行が付く。手で作ったタスクには付かない。
 
 ## データベースの分け方
 
-初めは全王国を1つの D1 に入れる。容量か負荷が足りなくなったら、決まった数の D1 に王国を振り分ける。そのときにコードを書き直さずに済むよう、今から次の決まりを守る。
+初めは全組織を1つの D1 に入れる。容量か負荷が足りなくなったら、決まった数の D1 に組織を振り分ける。そのときにコードを書き直さずに済むよう、今から次の決まりを守る。
 
-### 共通の表と王国の中の表
+### 共通の表と組織の中の表
 
 | 区分 | テーブル | 置き場所 |
 | --- | --- | --- |
-| 共通 | `accounts`、`account_logins`、`sessions`、`oauth_states`、`rate_limits`、`kingdoms` | 共通の DB に1つだけ |
-| 王国の中 | それ以外のすべて | 王国が置かれた DB |
+| 共通 | `accounts`、`account_logins`、`sessions`、`oauth_states`、`rate_limits`、`organizations` | 共通の DB に1つだけ |
+| 組織の中 | それ以外のすべて | 組織が置かれた DB |
 
-添付ファイルの中身は D1 ではなく R2 に置く。R2 のキーの先頭は王国の ID なので、D1 を分けても R2 は分けずに済む。
+添付ファイルの中身は D1 ではなく R2 に置く。R2 のキーの先頭は組織の ID なので、D1 を分けても R2 は分けずに済む。
 
-- 共通の表から王国の中の表へは外部キーを張らない。
-- 王国の中の表から共通の表へ張る外部キーは、`users.account_id` と、`users`、`workspaces`、`kingdom_holidays`、`change_logs` の `kingdom_id` だけにする。分けるときはこれらを外し、アプリの検査に替える。
-- 共通の表と王国の中の表を1つの SQL で結合しない。`users` にログイン名とアバターを添えるときも、`accounts` と `account_logins` を別に引いてアプリで合わせる。
+- 共通の表から組織の中の表へは外部キーを張らない。
+- 組織の中の表から共通の表へ張る外部キーは、`users.account_id` と、`users`、`workspaces`、`organization_holidays`、`change_logs` の `organization_id` だけにする。分けるときはこれらを外し、アプリの検査に替える。
+- 共通の表と組織の中の表を1つの SQL で結合しない。`users` にログイン名とアバターを添えるときも、`accounts` と `account_logins` を別に引いてアプリで合わせる。
 
 ### 読み書きの入口
 
-- 王国の中の表は、リクエストの王国から DB を選ぶ1つの関数を通して読み書きする。今はどの王国でも同じ DB を返す。
+- 組織の中の表は、リクエストの組織から DB を選ぶ1つの関数を通して読み書きする。今はどの組織でも同じ DB を返す。
 - 共通の表は、共通の DB を返す別の関数を通して読み書きする。
-- 1回の `batch()` に、共通の表と王国の中の表を混ぜない。今これに当たる操作は「書き込みの単位」の王国の作成とメンバーの離脱で、どちらも2回に分けて書く。
-- 王国をまたいで読む処理は、1つの関数にまとめる。当たるのは、ログインできるか（入れる王国と届いた招待があるか）、ログインの直後の王国の選択、届いた招待の一覧、初めてのログインで `users.account_id` を埋めること。今は1つの DB に1回の問い合わせで済む。分けたときは、この関数だけを、各 DB に問い合わせる形か、共通の DB にログインの ID（`login_provider` と `login_subject`）と王国の組の索引を持つ形に直す。どちらにするかは分けるときに決める。
+- 1回の `batch()` に、共通の表と組織の中の表を混ぜない。今これに当たる操作は「書き込みの単位」の組織の作成とメンバーの離脱で、どちらも2回に分けて書く。
+- 組織をまたいで読む処理は、1つの関数にまとめる。当たるのは、ログインできるか（入れる組織と届いた招待があるか）、ログインの直後の組織の選択、届いた招待の一覧、初めてのログインで `users.account_id` を埋めること。今は1つの DB に1回の問い合わせで済む。分けたときは、この関数だけを、各 DB に問い合わせる形か、共通の DB にログインの ID（`login_provider` と `login_subject`）と組織の組の索引を持つ形に直す。どちらにするかは分けるときに決める。
 
 ### 分けるとき
 
-- wrangler の設定に、決まった数の D1（`DB_0`、`DB_1` など）を並べる。D1 の接続は設定に固定で書くもので、王国を作るたびには増やせないため。
-- `kingdoms` に置き場所の列を足し、王国の DB を選ぶ関数はその列を見る。
-- マイグレーションは、共通の DB と、王国を置くすべての DB に当てる。王国の中の表の定義はどの DB でも同じにする。
-- 王国を移すときは、その王国の行を書き出して移し先へ入れ、`kingdoms` の置き場所を書き換える。手順は運用の手順書に書く。
-- 王国ごとに Durable Objects の SQLite を持つ形は選ばない。API が Durable Objects を経由する形になり、マイグレーションの当て方も変わって、作りが大きく変わるため。
+- wrangler の設定に、決まった数の D1（`DB_0`、`DB_1` など）を並べる。D1 の接続は設定に固定で書くもので、組織を作るたびには増やせないため。
+- `organizations` に置き場所の列を足し、組織の DB を選ぶ関数はその列を見る。
+- マイグレーションは、共通の DB と、組織を置くすべての DB に当てる。組織の中の表の定義はどの DB でも同じにする。
+- 組織を移すときは、その組織の行を書き出して移し先へ入れ、`organizations` の置き場所を書き換える。手順は運用の手順書に書く。
+- 組織ごとに Durable Objects の SQLite を持つ形は選ばない。API が Durable Objects を経由する形になり、マイグレーションの当て方も変わって、作りが大きく変わるため。
 
 ### 分ける目安
 
-- 応答を保存する王国では、量の大半は取り込み元の応答（`task_source_payloads`）で、1件 5〜10KB とみると、上限いっぱい（タスク5万件）の王国で 0.5GB 前後になる。保存しない王国はこの分がなく、ずっと小さい。1つの D1 の上限は 10GB。
+- 応答を保存する組織では、量の大半は取り込み元の応答（`task_source_payloads`）で、1件 5〜10KB とみると、上限いっぱい（タスク5万件）の組織で 0.5GB 前後になる。保存しない組織はこの分がなく、ずっと小さい。1つの D1 の上限は 10GB。
 - 容量が上限の半分を超えたら、分ける準備を始める。
 - D1 は1つのデータベースへの問い合わせを順に処理するため、容量より先に負荷が効くことがある。分けるのは、画面の API が 500ms の目安を超える状態が続き、索引や問い合わせを直しても戻らないとき。
 
@@ -87,7 +87,7 @@
 
 ### accounts
 
-人ごとの1行。王国をまたぐ。
+人ごとの1行。組織をまたぐ。
 
 | 列 | 型 | 制約 | 説明 |
 | --- | --- | --- | --- |
@@ -95,7 +95,7 @@
 | last_login_at | TEXT | | |
 | created_at、updated_at | TEXT | NOT NULL | |
 
-- 初めてログインできたときに、`account_logins` の行と同じバッチで作る。入れる王国が1つもない人の行は作らない。
+- 初めてログインできたときに、`account_logins` の行と同じバッチで作る。入れる組織が1つもない人の行は作らない。
 - 運用者かどうかは、この表ではなくシークレットのログインの ID（`github:12345` の形）の一覧で決める。
 
 ### account_logins
@@ -108,7 +108,7 @@
 | login_subject | TEXT | PK | 手段の中の不変の ID。GitHub ではユーザー ID を文字列で持つ |
 | account_id | TEXT | NOT NULL、FK accounts | |
 | login_name | TEXT | NOT NULL | ログインのたびに書き直す表示用の名前。GitHub ではログイン名 |
-| display_name | TEXT | | 手段の側の名前。王国で初めてユーザーを作るときの表示名の既定 |
+| display_name | TEXT | | 手段の側の名前。組織で初めてユーザーを作るときの表示名の既定 |
 | avatar_url | TEXT | | |
 | created_at、updated_at | TEXT | NOT NULL | |
 
@@ -124,8 +124,8 @@
 | last_used_at | TEXT | NOT NULL | 使うたびに書き直す |
 | expires_at | TEXT | NOT NULL | `last_used_at` の30日後 |
 
-- 索引: `(account_id)`。ログアウトと、ログインできる条件を失ったとき（入れる王国が1つもなくなったとき）に、その人の行を消す。
-- 王国に入れるかは、リクエストのたびにその王国の `users`、`memberships`、`invitations` で確かめる。1つの王国で無効にされても、セッションは消さない。
+- 索引: `(account_id)`。ログアウトと、ログインできる条件を失ったとき（入れる組織が1つもなくなったとき）に、その人の行を消す。
+- 組織に入れるかは、リクエストのたびにその組織の `users`、`memberships`、`invitations` で確かめる。1つの組織で無効にされても、セッションは消さない。
 - 書き込みを減らすため、`last_used_at` は前回から1時間以上たったときだけ書き直す。
 - 切れた行は定期処理で消す。
 
@@ -156,63 +156,63 @@
 - 手動の同期の「接続ごとに5分に1回」は、この表ではなく `connections.last_manual_sync_at` で判定する。
 - 窓を過ぎた行は定期処理で消す。
 
-## 王国
+## 組織
 
-### kingdoms
+### organizations
 
 | 列 | 型 | 制約 | 説明 |
 | --- | --- | --- | --- |
 | id | TEXT | PK | |
 | slug | TEXT | NOT NULL、UNIQUE、`CHECK (slug GLOB '[a-z0-9]*' AND slug NOT GLOB '*[^a-z0-9-]*' AND length(slug) BETWEEN 2 AND 40)` | URL の先頭に入れる名前。後から変えない |
-| name | TEXT | NOT NULL | 王国の表示名 |
+| name | TEXT | NOT NULL | 組織の表示名 |
 | vocabulary | TEXT | NOT NULL、`game` か `scrum`、既定 `game` | ワークスペースの外の言葉づかい |
-| theme | TEXT | NOT NULL、`simple`、`simple_light`、`simple_dark`、`medieval`、`modern` のどれか、既定 `simple` | 王国の既定のテーマ。`simple` は OS の明暗に合わせる |
+| theme | TEXT | NOT NULL、`simple`、`simple_light`、`simple_dark`、`medieval`、`modern` のどれか、既定 `simple` | 組織の既定のテーマ。`simple` は OS の明暗に合わせる |
 | suspended_at | TEXT | | 停止した日時。入っていれば誰も入れず、定期処理も止める |
 | purge_on | TEXT | | 解約で停止したときの、データを消す予定日（停止から30日後）。一時的な停止では空 |
 | member_limit | INTEGER | NOT NULL、既定 15、`CHECK (member_limit > 0)` | 人数の上限。運用者が決める |
 | attachment_quota_bytes | INTEGER | NOT NULL、既定 32212254720 | 添付ファイルの合計の上限（既定 30GB）。運用者が決める |
 | attachment_quota_warned_at | TEXT | | 合計が上限の80%を超えたと管理者に通知した日時。合計が80%を下回るか、上限を上げたら空に戻す |
-| stores_source_payload | INTEGER | NOT NULL、既定 0 | 取り込み元の応答（`task_source_payloads`）を保存するか。管理者が王国の設定で選ぶ |
+| stores_source_payload | INTEGER | NOT NULL、既定 0 | 取り込み元の応答（`task_source_payloads`）を保存するか。管理者が組織の設定で選ぶ |
 | created_by_operator | TEXT | NOT NULL | 作った運用者のログインの ID（`github:12345` の形） |
 | created_at、updated_at | TEXT | NOT NULL | |
 
 - 運用者の画面で作る。作るときに最初の管理者の `users` を同じバッチで入れる（アカウントがまだなければ、`users` の代わりに管理者の招待を持つ。下の `users` を参照）。
 - アプリが使う名前（`api`、`login`、`operator` など）を slug にできないことは、アプリが検査する。
 - 人数は保存せず、招待のたびに数える。対象は、無効にしていない管理者と、いずれかのワークスペースに今所属しているか承諾待ちの招待を持つ人（まだアカウントのない人への招待を含む）で、同じ人は1人とする。人数が `member_limit` 以上なら招待を断り、同時に招待して少し超えたときはそのまま認める。
-- 解約した王国は、`purge_on` を過ぎたら運用の手順でこの王国の行をすべて消し、R2 の `<kingdom_id>/` で始まるファイルも消す。再開したら `suspended_at` と `purge_on` を空に戻す。
+- 解約した組織は、`purge_on` を過ぎたら運用の手順でこの組織の行をすべて消し、R2 の `<organization_id>/` で始まるファイルも消す。再開したら `suspended_at` と `purge_on` を空に戻す。
 
 ### users
 
-王国ごとの人。アカウントと王国の組に1行。
+組織ごとの人。アカウントと組織の組に1行。
 
 | 列 | 型 | 制約 | 説明 |
 | --- | --- | --- | --- |
 | id | TEXT | PK | |
-| kingdom_id | TEXT | NOT NULL、FK kingdoms | |
+| organization_id | TEXT | NOT NULL、FK organizations | |
 | account_id | TEXT | FK accounts | アカウントができる前（管理者の招待）は空 |
 | login_provider | TEXT | NOT NULL | 突き合わせに使うログインの手段。`account_logins` と同じ値 |
 | login_subject | TEXT | NOT NULL | 突き合わせに使う手段の中の不変の ID。`account_logins` と同じ値 |
-| name | TEXT | NOT NULL | この王国での表示名。初回は手段の側の名前かログイン名 |
-| is_admin | INTEGER | NOT NULL、既定 0 | 管理者（国王） |
+| name | TEXT | NOT NULL | この組織での表示名。初回は手段の側の名前かログイン名 |
+| is_admin | INTEGER | NOT NULL、既定 0 | 管理者（ギルドマスター） |
 | work_start_on | TEXT | | 稼働開始日。空なら区切らない |
 | work_end_on | TEXT | | 稼働終了日。空なら区切らない |
-| disabled_at | TEXT | | 無効にした日時。入っていればこの王国に入れない |
-| last_seen_at | TEXT | | この王国に最後に入った日時。1時間に1回まで書く |
-| theme | TEXT | `kingdoms.theme` と同じ値か NULL | 自分で選んだテーマ。NULL なら王国の既定に従う |
+| disabled_at | TEXT | | 無効にした日時。入っていればこの組織に入れない |
+| last_seen_at | TEXT | | この組織に最後に入った日時。1時間に1回まで書く |
+| theme | TEXT | `organizations.theme` と同じ値か NULL | 自分で選んだテーマ。NULL なら組織の既定に従う |
 | created_at、updated_at | TEXT | NOT NULL | |
 
-- 一意: `(kingdom_id, login_provider, login_subject)`。
-- 索引: `(login_provider, login_subject)`。ログインのときに入れる王国を引く。
+- 一意: `(organization_id, login_provider, login_subject)`。
+- 索引: `(login_provider, login_subject)`。ログインのときに入れる組織を引く。
 - 表示するログイン名とアバターは `account_logins` から引く。
-- 運用者が王国を作るときは、最初の管理者をログインの ID に解決し（初版は GitHub のユーザー名からユーザー ID へ）、`is_admin = 1` の行を入れる。`account_id` は、その人が初めてログインしたときに埋める。管理者の指名し直しも同じ。
+- 運用者が組織を作るときは、最初の管理者をログインの ID に解決し（初版は GitHub のユーザー名からユーザー ID へ）、`is_admin = 1` の行を入れる。`account_id` は、その人が初めてログインしたときに埋める。管理者の指名し直しも同じ。
 - 最後の管理者を解除できないことはアプリが検査する。
-- 招待された人は、承諾した時点でその王国の行を作る（すでにあれば使う）。招待の時点では `invitations` にログインの ID だけを持つ。
+- 招待された人は、承諾した時点でその組織の行を作る（すでにあれば使う）。招待の時点では `invitations` にログインの ID だけを持つ。
 
-### kingdom_holidays
+### organization_holidays
 
 | 列 | 型 | 制約 | 説明 |
 | --- | --- | --- | --- |
-| kingdom_id | TEXT | PK、FK kingdoms | |
+| organization_id | TEXT | PK、FK organizations | |
 | holiday_on | TEXT | PK | |
 | name | TEXT | | 「元日」など |
 | created_by | TEXT | NOT NULL、FK users | |
@@ -265,7 +265,7 @@
 | 列 | 型 | 制約 | 説明 |
 | --- | --- | --- | --- |
 | id | TEXT | PK | |
-| kingdom_id | TEXT | NOT NULL、FK kingdoms | |
+| organization_id | TEXT | NOT NULL、FK organizations | |
 | name | TEXT | NOT NULL | |
 | timezone | TEXT | NOT NULL | IANA のタイムゾーン名。作った人のブラウザの値を既定にする |
 | week_start | INTEGER | NOT NULL、0〜6、既定 1 | 週の始まり。0 が日曜 |
@@ -316,7 +316,7 @@
 - 一意: `(workspace_id, user_id) WHERE left_at IS NULL`。今の所属は1人1行。
 - 索引: `(user_id) WHERE left_at IS NULL`。ログインできるか、自分の今日に出すワークスペースはどれかを引く。
 - 積載量では、日がいずれかの行の `joined_on`〜`left_on` に入るかで、所属していた期間を数える。
-- 管理者が所属していないワークスペースを操作するときは、行を作らない。担当やパーティの候補は、この表の今の所属から選ぶ。
+- 管理者が所属していないワークスペースを操作するときは、行を作らない。担当や討伐隊の候補は、この表の今の所属から選ぶ。
 
 ### invitations
 
@@ -515,7 +515,7 @@
 
 ### epic_party_members
 
-パーティ。抜けたら行を消し、記録は `change_logs` に残す。
+討伐隊。抜けたら行を消し、記録は `change_logs` に残す。
 
 | 列 | 型 | 制約 | 説明 |
 | --- | --- | --- | --- |
@@ -635,8 +635,8 @@
 
 切り詰めは D1 の行の上限（2MB）より十分小さい 512KB を目安にする。
 
-- 行を書くのは、王国の `kingdoms.stores_source_payload` が 1 のときだけ。0 の王国では同期で応答を読んでも、この表に書かない。
-- 0 に切り替えたら、その王国の行を次の定期処理で王国の中の DB から消す。`kingdoms` は共通の表なので、切り替えと同じ `batch()` では消さない。
+- 行を書くのは、組織の `organizations.stores_source_payload` が 1 のときだけ。0 の組織では同期で応答を読んでも、この表に書かない。
+- 0 に切り替えたら、その組織の行を次の定期処理で組織の中の DB から消す。`organizations` は共通の表なので、切り替えと同じ `batch()` では消さない。
 - 1 に切り替えても取り直さない。次に同期で更新された項目から行ができる。
 
 ### task_field_values
@@ -682,7 +682,7 @@
 | story_id | TEXT | FK stories | |
 | epic_id | TEXT | FK epics | |
 | comment_id | TEXT | FK comments | |
-| object_key | TEXT | NOT NULL、UNIQUE | R2 のキー。`<kingdom_id>/<workspace_id>/<id>` |
+| object_key | TEXT | NOT NULL、UNIQUE | R2 のキー。`<organization_id>/<workspace_id>/<id>` |
 | file_name | TEXT | NOT NULL | 上げたときのファイル名。255字まで |
 | content_type | TEXT | NOT NULL | 中身の先頭のバイトで確かめた種類。分からなければ `application/octet-stream` |
 | size_bytes | INTEGER | NOT NULL、`CHECK (size_bytes BETWEEN 1 AND 52428800)` | |
@@ -693,7 +693,7 @@
 - 付く先は4つの列のうち多くても1つ: `CHECK ((task_id IS NOT NULL) + (story_id IS NOT NULL) + (epic_id IS NOT NULL) + (comment_id IS NOT NULL) <= 1)`。付く先が決まったら `attached_at` を入れる: `CHECK ((attached_at IS NULL) = (task_id IS NULL AND story_id IS NULL AND epic_id IS NULL AND comment_id IS NULL))`。
 - 起票の画面やコメントの欄では、保存する前に上げるため、付く先のない行を先に作る。保存したときに、本文やコメントが参照する行へ付く先を入れる。付く先のないまま1日たった行とファイルは定期処理で消す。
 - 消すときは行を物理削除する。論理削除にしないのは、戻す手段がなく、残すと容量の上限に数え続けるため。消したことは付く先の `change_logs` に残す。
-- 王国の合計は、王国のワークスペースの `size_bytes` の合計を上げるたびに計算する。集計は保存しない。同時に上げたときに少し超えることは許す。上げたことで80%を超え、`kingdoms.attachment_quota_warned_at` が空なら、管理者全員に通知し、その日時を入れる。
+- 組織の合計は、組織のワークスペースの `size_bytes` の合計を上げるたびに計算する。集計は保存しない。同時に上げたときに少し超えることは許す。上げたことで80%を超え、`organizations.attachment_quota_warned_at` が空なら、管理者全員に通知し、その日時を入れる。
 - 画面と Markdown からは `/api/<slug>/attachments/<id>` で参照する。返すときは権限を確かめ、`X-Content-Type-Options: nosniff` と `Cache-Control: private` を付ける。画像として出す4種類（PNG、JPEG、GIF、WebP）と動画として再生する2種類（MP4、WebM）以外は `Content-Disposition: attachment` で返す。動画は Range リクエストに応える。
 - 索引: `(task_id)`、`(story_id)`、`(epic_id)`、`(comment_id)` をそれぞれ NOT NULL の部分索引で、`(workspace_id)`、`(created_at) WHERE attached_at IS NULL`。
 
@@ -845,8 +845,8 @@
 | 列 | 型 | 制約 | 説明 |
 | --- | --- | --- | --- |
 | id | TEXT | PK | |
-| kingdom_id | TEXT | NOT NULL、FK kingdoms | |
-| workspace_id | TEXT | FK workspaces | 王国の変更（管理者の指名、ユーザーの無効化、王国の休日）では空 |
+| organization_id | TEXT | NOT NULL、FK organizations | |
+| workspace_id | TEXT | FK workspaces | 組織の変更（管理者の指名、ユーザーの無効化、組織の休日）では空 |
 | actor_user_id | TEXT | FK users | 空なら同期などの定期処理か運用者の操作 |
 | operator | TEXT | | 運用者の操作（管理者の指名し直しなど）のときの運用者のログインの ID（`github:12345` の形） |
 | entity_type | TEXT | NOT NULL | `task`、`story`、`epic`、`sprint`、`membership`、`invitation`、`allocation`、`connection`、`completion`、`user`、`workspace` など |
@@ -855,7 +855,7 @@
 | changes_json | TEXT | NOT NULL、既定 `'{}'` | `{"列名": [前, 後]}`。人や列は ID と、そのときの表示名を並べて残す |
 | created_at | TEXT | NOT NULL | |
 
-- 索引: `(entity_type, entity_id, created_at)`、`(kingdom_id, created_at)`、`(workspace_id, created_at)`。
+- 索引: `(entity_type, entity_id, created_at)`、`(organization_id, created_at)`、`(workspace_id, created_at)`。
 - タスク、ストーリー、エピックの履歴はメンバー全員が、それ以外はリーダーと管理者が見られる。見られる範囲は `entity_type` で決める。
 - 同期による取り込み元の属性の書き換えは残さない。量が多く、取り込み元で見られるため。
 - 期間で消さず、残し続ける。容量が気になったら、手順書のエクスポート（`wrangler d1 export`）で退避する。
@@ -872,18 +872,18 @@ D1 は対話的なトランザクションを持たない。まとめて書く�
 | エピックのクリア | `epics`、`xp_grants`（クリア報酬）、`change_logs` |
 | メンバーの離脱 | `memberships`、担当を外す `tasks`、`epic_party_members`、`connections`、`change_logs`。ログインできなくなったときは、続けて共通の DB の `sessions` を消す |
 | 取り込み（1件） | `tasks`（結ばれたリポジトリがあれば `repository_id` も）、`task_sources`、`task_source_payloads` |
-| 王国の作成 | 共通の DB の `kingdoms`、続けて王国の DB の最初の管理者の `users` |
+| 組織の作成 | 共通の DB の `organizations`、続けて組織の DB の最初の管理者の `users` |
 | 添付ファイルを上げる | R2 にファイルを書き、続けて `attachments` |
 | 添付ファイルを消す | `attachments` の削除と `change_logs`、続けて R2 のファイルの削除 |
 | コメントの削除 | `comments`、そのコメントの `attachments` の削除、`change_logs`、続けて R2 のファイルの削除 |
 
 先に読んだ値で判定してから書く操作（最後の管理者、完了の可否など）は、書く文の `WHERE` に同じ条件を入れ、影響した行の数で競合を見つける。
 
-共通の DB と王国の DB に分けて書く操作は、途中で失敗したときの扱いを決めておく。
+共通の DB と組織の DB に分けて書く操作は、途中で失敗したときの扱いを決めておく。
 
-- 王国の作成で `users` が入らなかったときは、管理者のいない王国が残る。運用者の画面の管理者の指名し直しで入れる。
-- 添付ファイルを上げるときに `attachments` が入らなかったら、書いた R2 のファイルを消す。添付ファイルを消すときに R2 のファイルが消えなかったら、どの行も指さないファイルが残る。容量の上限には数えず、王国を消すときにまとめて消える。
-- メンバーの離脱で `sessions` が消えなかったときも、王国に入れるかはリクエストのたびに確かめるので、離脱した王国には入れない。ログインできる条件を失った人のセッションは、次にその人がリクエストしたときに消す。
+- 組織の作成で `users` が入らなかったときは、管理者のいない組織が残る。運用者の画面の管理者の指名し直しで入れる。
+- 添付ファイルを上げるときに `attachments` が入らなかったら、書いた R2 のファイルを消す。添付ファイルを消すときに R2 のファイルが消えなかったら、どの行も指さないファイルが残る。容量の上限には数えず、組織を消すときにまとめて消える。
+- メンバーの離脱で `sessions` が消えなかったときも、組織に入れるかはリクエストのたびに確かめるので、離脱した組織には入れない。ログインできる条件を失った人のセッションは、次にその人がリクエストしたときに消す。
 
 ## 要件からの補い
 
@@ -892,7 +892,7 @@ D1 は対話的なトランザクションを持たない。まとめて書く�
 - 稼働する曜日も、1日の時間と同じく適用開始月付きの履歴で持つ。変えても過去の月の積載量は動かない。
 - ストーリーとエピックの完了は、行の `completed_at` と `completed_by` だけで持ち、`completions` には入れない。請求と振り返りはタスクの完了の記録で足りるため。
 - エピックは Markdown の本文を1つ持つ。経験値は付かない。
-- 感謝の取り消しと、パーティから抜けることは行の削除で表し、記録は `change_logs` に残す。
+- 感謝の取り消しと、討伐隊から抜けることは行の削除で表し、記録は `change_logs` に残す。
 - 招待は承諾したときにユーザーの行を作る。
 - 既読の通知は90日で消す。変更の履歴は消さない。
 - 区分を削除したら、振っていたものは区分なしに戻す。完了の記録は削除した区分を指したまま残す。
