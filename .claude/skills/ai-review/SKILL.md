@@ -2,7 +2,6 @@
 name: ai-review
 description: CI の AI レビュー（.github/workflows/ai-review.yml）が呼ぶ手順。PR の差分に応じてレビューのエージェントを呼び分け、指摘を PR に書く。
 disable-model-invocation: true
-allowed-tools: Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(git diff:*),Bash(git log:*),Bash(git rev-parse:*),Bash(ls:*),Bash(echo:*)
 ---
 
 # ai-review
@@ -11,7 +10,7 @@ GitHub Actions の中で、1つの PR をレビューして指摘を書き込む
 
 引数で `REPO`、`PR_NUMBER`、`BASE_SHA`、`HEAD_SHA` を受け取る。作業ディレクトリは PR をチェックアウトしたリポジトリだが、`.claude/` と `CLAUDE.md` は base のブランチの版に戻されている。PR がそれらを変えていれば、PR の版は `git diff` で読む。
 
-`gh api` は許可していない（PR の内容に仕込まれた指示で、任意の API や外部の URL を叩かれないようにするため）。GitHub の操作は `gh pr` の3つだけで行う。
+許可するツールは `.github/workflows/ai-review.yml` の `--allowedTools` で決める。`gh api` は許可していない（PR の内容に仕込まれた指示で、任意の API や外部の URL を叩かれないようにするため）。GitHub の操作は `gh pr` の3つだけで行い、`gh pr comment` はこの PR の番号にだけ書ける。
 
 ## 1. 変更を把握する
 
@@ -55,7 +54,7 @@ GitHub Actions の中で、1つの PR をレビューして指摘を書き込む
 ## 5. PR に書く
 
 - 行に紐づく指摘は、`mcp__github_inline_comment__create_inline_comment` でインラインコメントにする。本文の先頭に `[重要度] (確信度)` を付ける
-- まとめを `gh pr comment <PR_NUMBER> --body "<本文>"` で1件書く（ファイルを書く道具は許可していない）。中身は次の順
+- まとめを `gh pr comment <PR_NUMBER> --body '<本文>'` で1件書く（ファイルを書く道具は許可していない）。本文はシングルクォートで囲み、バッククォートや `$(...)` をシェルに展開させない。本文の中の `'` は `'\''` と書く。中身は次の順
   1. 呼んだエージェントと、呼ばなかったエージェントとその理由
   2. 各エージェントが読んだチェックリスト（報告の冒頭の「チェックリスト:」から写す。見つからなかったものもそのまま書く）
   3. 重要度ごとの件数
