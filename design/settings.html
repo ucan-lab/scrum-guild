@@ -63,6 +63,9 @@ SQ.mount("settings", () => `
     ${setting(t("category"), `${t("epic")}に振ると配下が引き継ぎます。「月ごとに計上する」${t("category")}は、完了の記録に計上月を持ちます。`,
       orderList(Object.values(D.categories).map((c) => ({ html: `<span style="display:flex;gap:var(--space-3);align-items:center;flex-wrap:wrap"><input class="input" value="${esc(c.name)}" aria-label="名前" style="flex:1 1 140px"><label class="toggle"><input type="checkbox" ${c.monthly ? "checked" : ""}><span>月ごとに計上する</span></label></span>` }))) +
       `<div><button class="btn is-sm" type="button">${icon("plus")}${t("category")}を足す</button></div>`)}
+    ${setting("リポジトリ", `${t("task")}がどのリポジトリの作業かを示します。${t("task")}に1つまで振れ、起票のときにボタンで選びます。取り込み元の入る先を結ぶと、そこから取り込んだ${t("task")}に自動で振ります。`,
+      orderList(Object.values(D.repositories).map((r) => ({ html: `<span style="display:flex;gap:var(--space-3);align-items:center;flex-wrap:wrap"><input class="input" value="${esc(r.name)}" aria-label="名前" style="flex:1 1 140px"><select class="select" aria-label="結ぶ取り込み元の入る先" style="flex:1 1 180px"><option ${r.source ? "" : "selected"}>結ばない</option>${D.connections.filter((c) => c.provider === "github").flatMap((c) => c.scope.items).map((it) => `<option ${it === r.source ? "selected" : ""}>${esc(it)}（GitHub）</option>`).join("")}</select></span>` }))) +
+      `<div><button class="btn is-sm" type="button">${icon("plus")}リポジトリを足す</button></div>`)}
     ${setting(`${t("points")}の換算`, `${t("capacity")}で、${t("points")}を時間に直す比率。適用を始める月を付けて変えるので、過去の月の値は動きません。`, `
       <div class="form-row">
         <label class="field" for="rate"><span class="field-label">1 ${t("points")} あたり（時間）</span><input class="input" id="rate" type="number" value="4" min="0.5" step="0.5"></label>

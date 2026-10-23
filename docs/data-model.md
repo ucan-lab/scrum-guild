@@ -30,7 +30,7 @@
 | 王国 | `kingdoms`、`users`、`kingdom_holidays` |
 | ユーザーの稼働 | `user_capacity_settings`、`user_monthly_overrides`、`user_time_off` |
 | ワークスペース | `workspaces`、`workspace_point_rates`、`workspace_holidays`、`memberships`、`invitations`、`allocations` |
-| ワークスペースの定義 | `board_columns`、`detail_fields`、`categories` |
+| ワークスペースの定義 | `board_columns`、`detail_fields`、`categories`、`repositories` |
 | 接続 | `connections`、`connection_scopes`、`connection_status_mappings` |
 | 計画と作業 | `epics`、`epic_party_members`、`stories`、`tasks`、`task_sources`、`task_source_payloads`、`task_field_values`、`comments`、`attachments`、`sprints`、`sprint_entries` |
 | 記録 | `completions`、`thanks`、`xp_grants`、`notifications`、`change_logs` |
@@ -404,6 +404,27 @@
 - 削除は論理削除にする。完了の記録と変更の履歴が指したまま残り、集計では元の名前で出す。
 - 削除したら、その区分を振っていたエピック、ストーリー、タスクの `category_id` を空にして区分なしに戻す。削除と同じバッチで書く。
 
+### repositories
+
+タスクに振るリポジトリの定義。
+
+| 列 | 型 | 制約 | 説明 |
+| --- | --- | --- | --- |
+| id | TEXT | PK | |
+| workspace_id | TEXT | NOT NULL、FK workspaces | |
+| name | TEXT | NOT NULL | リーダーが付けた名前 |
+| provider | TEXT | | 結んだ入る先の取り込み元の種類。`task_sources.provider` と同じ値 |
+| source_container_id | TEXT | | 結んだ入る先の ID。`task_sources.source_container_id` と同じ値 |
+| source_container_name | TEXT | | 結んだときの入る先の表示名 |
+| position | TEXT | NOT NULL | |
+| deleted_at | TEXT | | |
+| created_at、updated_at | TEXT | NOT NULL | |
+
+- `CHECK ((provider IS NULL) = (source_container_id IS NULL) AND (provider IS NULL) = (source_container_name IS NULL))`。入る先は結ばないか、3つの列をそろえて結ぶ。
+- 一意: `(workspace_id, provider, source_container_id) WHERE deleted_at IS NULL AND provider IS NOT NULL`。同じ入る先を2つのリポジトリに結ばない。
+- 入る先は取り込み元の種類を問わず結べる。どの入る先を結ぶかは、リーダーが接続の取り込む範囲の一覧から選ぶ。
+- 削除は論理削除にする。変更の履歴が指したまま残る。削除したら、振っていたタスクの `repository_id` を空にする。削除と同じバッチで書く。
+
 ## 接続
 
 ### connections
@@ -543,6 +564,7 @@
 | link_url | TEXT | | 手で作ったタスクだけ |
 | story_id | TEXT | FK stories | 親。空なら親なし |
 | category_id | TEXT | FK categories | 親なしのときだけ入る（アプリが検査） |
+| repository_id | TEXT | FK repositories | 0〜1つ。親から引き継がない |
 | sprint_id | TEXT | FK sprints | 今入っているスプリント。履歴は `sprint_entries` |
 | column_id | TEXT | FK board_columns | スプリントの中の列 |
 | assignee_user_id | TEXT | FK users | 担当。0〜1人 |
@@ -567,6 +589,7 @@
   - `(assignee_user_id) WHERE deleted_at IS NULL AND completed_at IS NULL`: 自分の今日、積載量
 - 「今日やる」は、`today_on` が今日（ワークスペースのタイムゾーン）なら今日の印、それより前で未完了なら前日からの持ち越しとして示す。担当が替わったら消す。
 - 区分は、親のエピック、親のストーリー、タスク自身の順に、最初に入っているものを使う。読むときに結合して出し、タスクには写さない。
+- `repository_id` は、取り込むときに `repositories` の `(workspace_id, provider, source_container_id)` が `task_sources` と一致する行があれば入れる。同期では書き換えない。
 - 表示する期日は `due_on`、なければ `task_sources.source_due_on`（接続の `ignore_source_due` が 0 のとき）。
 - タイトルの検索は `title LIKE` と `task_sources.source_key LIKE` で行う。5万件の規模なら、ワークスペースの索引で絞れば足りる見込み。遅ければ FTS5 を足す。
 
@@ -848,7 +871,7 @@ D1 は対話的なトランザクションを持たない。まとめて書く�
 | スプリントの終了 | `sprints`、`sprint_entries`、持ち越すタスクの `tasks` と新しい `sprint_entries`、`change_logs` |
 | エピックのクリア | `epics`、`xp_grants`（クリア報酬）、`change_logs` |
 | メンバーの離脱 | `memberships`、担当を外す `tasks`、`epic_party_members`、`connections`、`change_logs`。ログインできなくなったときは、続けて共通の DB の `sessions` を消す |
-| 取り込み（1件） | `tasks`、`task_sources`、`task_source_payloads` |
+| 取り込み（1件） | `tasks`（結ばれたリポジトリがあれば `repository_id` も）、`task_sources`、`task_source_payloads` |
 | 王国の作成 | 共通の DB の `kingdoms`、続けて王国の DB の最初の管理者の `users` |
 | 添付ファイルを上げる | R2 にファイルを書き、続けて `attachments` |
 | 添付ファイルを消す | `attachments` の削除と `change_logs`、続けて R2 のファイルの削除 |

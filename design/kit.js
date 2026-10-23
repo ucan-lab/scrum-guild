@@ -121,6 +121,16 @@
   function sourceKey(x) {
     return x.src ? `<span class="source-key">${icon(SRC[x.src.kind].icon)} ${esc(x.src.key)}</span>` : "";
   }
+  // リポジトリ。行とカードでは名前の印、起票と詳細と受信箱では1回押して選ぶボタンの並び
+  function repoTag(x) {
+    return x.repo ? `<span class="chip">${icon("git")}${esc(D.repositories[x.repo].name)}</span>` : "";
+  }
+  function repoPicker(name, current, opts = {}) {
+    const ids = Object.keys(D.repositories);
+    const sel = current !== undefined ? current : ids.length === 1 ? ids[0] : null;
+    const item = (id, label) => `<label><input type="radio" name="${name}" value="${id || ""}" ${opts.for ? `data-repo-for="${opts.for}"` : ""} ${sel === id ? "checked" : ""}><span>${esc(label)}</span></label>`;
+    return `<div class="segmented" role="radiogroup" aria-label="リポジトリ">${item(null, "なし")}${ids.map((id) => item(id, D.repositories[id].name)).join("")}</div>`;
+  }
   function taskFlags(x) {
     const carried = x.todayOn && x.todayOn < D.today && !x.doneAt;
     return `${carried ? `<span class="chip is-carry">${icon("redo")}昨日から持ち越し</span>` : ""}
@@ -148,7 +158,7 @@
         ${title}
         <span class="entry-meta">
           ${opts.showWs ? `<span class="tag">${esc(D.workspaces[x.ws].name)}</span>` : ""}
-          ${sourceKey(x)}
+          ${repoTag(x)}${sourceKey(x)}
           ${showParent && parent ? `<span>${icon("flag")} ${esc(parent)}</span>` : ""}
           ${x.doneAt ? `<span>${t("done")} ${esc(x.doneAt)}</span>` : colName(x) ? `<span class="status-dot">${esc(colName(x))}</span>` : ""}
           ${taskFlags(x)}${opts.meta ? opts.meta(x) : ""}
@@ -183,7 +193,7 @@
     return `<article class="card ${x.doneAt ? "is-done" : ""}">
       ${parent ? `<span class="card-parent">${icon("flag")} ${esc(parent)}</span>` : ""}
       <a class="card-title" href="#" data-task="${x.id}">${titleOf(x)}</a>
-      <div class="card-meta">${sourceKey(x)}${taskFlags(x)}${taskDue(x)}</div>
+      <div class="card-meta">${repoTag(x)}${sourceKey(x)}${taskFlags(x)}${taskDue(x)}</div>
       <div class="card-foot">${pts(x.pts)}${avatarOf(x.who)}<span class="card-end">${doneControl(x)}</span></div>
     </article>`;
   }
@@ -437,6 +447,7 @@
         <div><dt>${t("due")}</dt><dd>${d ? `${taskDue(x)}<span class="props-note">${d.fromSource ? "取り込み元の期限。ここでは変えられません" : "Team Leveling で振った" + t("due")}</span>` : "—"}</dd></div>
         <div><dt>親</dt><dd>${parent ? `${icon("flag")} ${esc(parent.title)}${epic ? `<span class="props-note">${esc(epic.title)}</span>` : ""}` : "なし"}</dd></div>
         <div><dt>${t("sprint")}</dt><dd>${x.sprint ? esc(sprintLabel(x.sprint)) : t("backlog")}</dd></div>
+        <div><dt>リポジトリ</dt><dd>${repoPicker("drawer-repo", x.repo || null, { for: x.id })}</dd></div>
         <div><dt>${t("category")}</dt><dd>${cat ? `${esc(D.categories[cat.id].name)}${cat.inherited ? `<span class="props-note">親から引き継ぎ</span>` : ""}` : `${t("category")}なし`}</dd></div>
         ${x.src ? "" : `<div><dt>リンク</dt><dd>${x.link ? `<span class="source-key">${icon("link")} ${esc(x.link)}</span>` : "なし"}</dd></div>`}
         <div><dt>今日やる</dt><dd><button class="sun" type="button" data-sun="${x.id}" aria-pressed="${x.todayOn === D.today}" aria-label="今日やる">${icon("sun")}</button>${x.todayOn === D.today ? "今日やる" : ""}</dd></div>
@@ -593,6 +604,8 @@
          <label class="field" for="d-parent"><span class="field-label">親の${t("story")}</span><select class="select" id="d-parent"><option>なし</option>${Object.values(D.stories).map((x) => `<option>${esc(x.title)}</option>`).join("")}</select></label>
          <label class="field" for="d-who"><span class="field-label">${t("assignee")}</span><select class="select" id="d-who"><option>担当なし</option>${Object.values(D.users).filter((u) => !u.left).map((u) => `<option>${esc(u.name)}</option>`).join("")}</select></label>
        </div>
+       <div class="field"><span class="field-label">リポジトリ</span>${repoPicker("d-repo")}
+         <span class="field-hint">複数のリポジトリにまたがる作業は、リポジトリごとに${t("task")}を分けます。</span></div>
        <div class="field"><span class="field-label">${t("points")}</span>
          <div class="segmented" role="radiogroup">${["未", 0, 1, 2, 3, 5, 8, 13].map((v, i) => `<label><input type="radio" name="d-pts" ${i === 0 ? "checked" : ""}><span>${v}</span></label>`).join("")}</div>
          <span class="field-hint">「未」は未見積もり。起票の経験値は、1 以上の${t("points")}が振られたまま${t("task")}が完了すると付きます。</span></div>
@@ -767,6 +780,14 @@
   }
 
   // ---- 操作（見本の中だけで動き、保存はしない） ----
+  document.addEventListener("change", (ev) => {
+    const el = ev.target.closest("[data-repo-for]");
+    if (!el) return;
+    const id = el.dataset.repoFor;
+    const x = task(id) || (D.inbox || []).find((y) => y.id === id);
+    x.repo = el.value || null;
+    redrawAll();
+  });
   document.addEventListener("click", (ev) => {
     const hit = (attr) => ev.target.closest(`[${attr}]`);
     let el;
@@ -909,7 +930,7 @@
   window.SQ = {
     D, t, brandSeal, THEMES, THEME_LABEL, THEME_NOTE, setVocab, toggleVocab, onChange, esc, icon, md, sumPts, cycleTheme, setTheme, applyTheme, mount,
     onRedraw: (fn) => extraRedraws.push(fn), openDrawer, drawerHtml, drawerState: drawer,
-    user, task, tasksWhere, sprintLabel, colName, categoryOf, storyPts, epicPts, dueOf,
+    user, task, tasksWhere, repoTag, repoPicker, sprintLabel, colName, categoryOf, storyPts, epicPts, dueOf,
     avatar, avatarOf, emblem, pts, dueChip, taskDue, tier, sourceKey, entry, book, section, pageHead,
     card, board, treeStory, treeEpic, sprintNotice, raidNotice, progress, levelPanel, load, capacityRows,
     openDialog, closeDialog, toast, celebrate, miniCap, redraw: () => redrawAll(), DIALOGS,
