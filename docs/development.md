@@ -209,11 +209,12 @@ PR ごとに GitHub Actions で回す。
 
 ai-review は Claude のサブスクリプションで動かす。手元で `claude setup-token` を実行して作った OAuth トークンを、リポジトリのシークレット `CLAUDE_CODE_OAUTH_TOKEN` に置く。従量の費用はかからないが、使用量の上限は手元の対話の利用と共有になる。
 
-- 回すのは、ドラフトでない PR を作ったとき（`opened`、`ready_for_review`、`reopened`）だけ。push のたびには回さない。直した後にもう一度見せたいときは、人が PR に `ai-review` のラベルを付ける。終わるとラベルは外れる
-- 文書だけの PR（`docs/`、`.md`）では回さない
+- 回すのは、`main` を base にしたドラフトでない PR を作ったとき（`opened`、`ready_for_review`、`reopened`）だけ。push のたびには回さない。直した後にもう一度見せたいときは、人が PR に `ai-review` のラベルを付ける。終わるとラベルは外れる。PR を作るときにはラベルを付けない（作成と付与で2回走る）
+- 文書だけの PR（`docs/`、`.md`）とドラフトの PR では回さない。そこへ付けた `ai-review` のラベルは外れずに残る
 - `ci-ok` に含めない。AI レビューは助言で、サブスクの上限で落ちてもマージの判定を止めない
-- ワークフローのファイルを変えた PR では、action が実行を飛ばす（既定のブランチのファイルと違うため）。ワークフローの変更は、マージした後の PR で確かめる
 - PR の上で action が読む `.claude/` と `CLAUDE.md` は、base のブランチのもの。スキルやエージェントの変更は `main` に入ってから効く
+- GitHub への書き込みは、ワークフローのトークン（`contents: read`、`pull-requests: write`）で行う。Claude の GitHub App のトークンは `main` に書き込めるため使わない。Claude に許すコマンドは `gh pr` の読み書きと `git` の読み取りだけで、`gh api` は許さない（任意の API と外部の URL を叩けるため）。指摘は `github-actions[bot]` の名前で付く
+- OAuth トークンは長く使え、額の上限を掛けられない。PR のブランチのワークフローからも読めるので、リポジトリに push できる人とセッションには読めると考える。漏れた疑いがあれば、`claude setup-token` で作り直してシークレットを入れ替える
 
 確かめるチェックを `ci-ok` の1つにまとめるのは、文書だけの PR で重いジョブを飛ばしても、見る所が1つで済むようにするため。
 
