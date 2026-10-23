@@ -58,6 +58,15 @@ function lane(id, avg) {
 }
 
 SQ.mount("plan", () => {
+  const isLeader = SQ.user(D.me).role === "leader";
+  const actions = isLeader ? `<button class="btn is-primary" type="button" data-dialog="sprintCreate">${icon("plus")}${t("sprint")}を作る</button>` : "";
+  if (!Object.values(D.sprints).some((s) => s.ws === "wa")) {
+    return `
+      ${pageHead(D.workspaces.wa.name, t("plan"), [], actions)}
+      ${SQ.emptyState("calendar", `まだ${t("sprint")}がありません`,
+        `${t("sprint")}は、期間を区切って${t("task")}を進める単位です。作ると、ここに先の${t("sprint")}が並び、入れた${t("points")}と${t("capacity")}を見比べられます。終えた${t("sprint")}がたまると、ベロシティも出ます。` +
+        (isLeader ? "" : `${t("sprint")}を作るのは${t("leader")}です。`))}`;
+  }
   const v = velocity();
   const epicRows = Object.keys(D.epics).map((id) => {
     const e = D.epics[id]; const p = SQ.epicPts(id);
@@ -69,7 +78,7 @@ SQ.mount("plan", () => {
       ["", "trend", "ベロシティ", `${v.avg.toFixed(1)} pt`],
       ["is-danger", "alert", t("over"), 1],
       ["is-warn", "", "未見積もり", unestimated],
-    ])}
+    ], actions)}
     <section class="panel">${v.html}</section>
     <div class="lanes">${lane("sp14", v.avg)}${lane("sp15", v.avg)}${lane("sp16", v.avg)}</div>
     <section class="section" aria-labelledby="cap">

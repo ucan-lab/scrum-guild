@@ -96,6 +96,9 @@ const SCREENS = [
   ["members.html", "メンバー", "ロール、配分、招待"],
   ["settings.html", "設定", "列、決まった欄、完成の定義、区分ほか"],
   ["history.html", "変更の履歴", "権限、配分、接続などの変更"],
+  ["today.html?first=member", "最初の日・一般", "招待を承諾した直後。最初にやることと空の状態"],
+  ["today.html?first=leader", "最初の日・リーダー", "ワークスペースを任された直後"],
+  ["today.html?first=admin", "最初の日・管理者", "組織を作ってもらった直後。ワークスペースがまだない"],
 ];
 const SAMPLE = ["t1", "t8", "t11", "t12", "t9", "t14"].map(SQ.task);
 
@@ -122,7 +125,7 @@ function drawerDemo() {
 }
 
 const SECTIONS = [
-  ["screens", "画面の見本", () => block("screens", "画面の見本", "部品だけで組んだ画面。メニューから行き来でき、タスクを押すと詳細が開く。",
+  ["screens", "画面の見本", () => block("screens", "画面の見本", "部品だけで組んだ画面。メニューから行き来でき、タスクを押すと詳細が開く。上の帯の「見本」で、使い込んだ状態と最初の日（一般、リーダー、管理者）を切り替えられる。",
     `<div class="screens">${SCREENS.map(([href, name, note]) => `<a href="${href}"><b>${typeof name === "function" ? name() : name}</b><span>${note}</span></a>`).join("")}</div>`)],
   ["colors", "色", () => block("colors", "色", "色は役割で名前を付ける。部品は tokens.css の変数だけを使い、素の値を書かない。テーマを切り替えると、同じ名前のまま値が入れ替わる。",
     colorBlock(), ["完了の色は完了の印とクリアだけ、経験値の色は経験値とレベルとレイドだけに使い、他の意味を持たせない。", "状態の色は、必ずアイコンか文字と一緒に使う（色だけで区別しない）。", "操作の色は操作と選択と進みの色。飾りには使わない。"])],
@@ -240,6 +243,7 @@ const SECTIONS = [
     ["表の見出しの下は二重罫。"], ".table-wrap .table .is-num")],
   ["dialogs", "ダイアログと演出", () => block("dialogs", "ダイアログと演出", "押すと本物と同じものが開く。Esc か外側を押すと閉じ、開いた元のボタンに戻る。確認が要るのは、取り消せない操作と、まとめて状態を変える操作だけ。",
     `<div class="cat-row">
+      <button class="btn" type="button" data-dialog="sprintCreate">${t("sprint")}を作る</button>
       <button class="btn" type="button" data-dialog="sprintStart">${t("sprint")}を始める</button>
       <button class="btn" type="button" data-dialog="sprintExtend">${t("sprint")}を延ばす</button>
       <button class="btn" type="button" data-dialog="sprintEnd">${t("sprint")}を終える</button>
@@ -268,17 +272,22 @@ const SECTIONS = [
       <ol class="order-list">${D.columns.filter((c) => !c.done).map((c, i, a) => `<li><span class="grip">${icon("grip")}</span><input class="input" value="${c.name}" aria-label="名前"><span class="order-actions"><button class="icon-btn" type="button" aria-label="上へ" ${i === 0 ? "disabled" : ""}>${icon("up")}</button><button class="icon-btn" type="button" aria-label="下へ" ${i === a.length - 1 ? "disabled" : ""}>${icon("down")}</button><button class="icon-btn is-danger" type="button" aria-label="削除">${icon("trash")}</button></span></li>`).join("")}
         <li><span></span><span class="fixed">${icon("check")} ${t("done")}</span><span class="props-note">常に末尾</span></li></ol></div></section></div>`,
     null, ".settings .setting .setting-head .setting-title .setting-desc .setting-body / .order-list .grip .fixed .order-actions / .icon-btn .is-danger / .form-row .form-actions")],
-  ["steps", "手順", () => block("steps", "手順", "順番に進める入力にだけ番号を付ける（接続の登録など）。",
+  ["steps", "手順", () => block("steps", "手順", "順番に進めるもの（接続の登録、最初にやること）にだけ番号を付ける。",
     `<ol class="steps"><li class="step is-done"><div class="step-body"><span class="step-title">取り込み元を選ぶ</span><span class="props-note">Backlog</span></div></li><li class="step"><div class="step-body"><span class="step-title">認証情報を入れる</span><label class="field" for="k0"><span class="field-label">API キー</span><input class="input" id="k0" type="password"></label></div></li><li class="step"><div class="step-body"><span class="step-title">取り込む範囲を選ぶ</span></div></li></ol>`,
     null, ".steps .step .is-done .step-body .step-title")],
+  ["first", "最初にやること", () => block("first", "最初にやること", "初めて使う人の自分の今日の先頭に、ロールごとの手順を出す。済んだかは今のデータから決まる。必須の手順がすべて済むと出なくなる。",
+    `<div class="two">${SQ.firstSteps("member", { preview: true })}${SQ.firstSteps("admin", { preview: true })}</div>`,
+    ["ロールは一般、リーダー、ワークスペースがまだない管理者の3つ。", "主ボタンは、まだ済んでいない最初の手順にだけ付ける。", "取り込み元やスプリントのように使わないチームもあるものは「任意」にし、済んでいなくても手順の一覧を消す妨げにしない。"],
+    "SQ.firstSteps(role) / .panel .steps .step .is-done .chip")],
   ["status", "状態と事実の並び", () => block("status", "状態と事実の並び", "接続などの状態は、色と文字の両方で示す。事実は見出しと値の組で並べる。",
     `<div class="cat-row"><span class="state-badge is-ok">有効</span><span class="state-badge is-error">エラー</span><span class="state-badge is-stopped">停止</span><span class="state-badge is-muted">下書き</span></div>
      <dl class="facts"><div><dt>取り込み元</dt><dd>Backlog・<span class="mono">acme.backlog.jp</span></dd></div><div><dt>最後に成功</dt><dd class="mono">10/20 10:00</dd></div><div><dt>認証情報</dt><dd class="mono">••••q9Zt</dd></div><div><dt>取り込む範囲</dt><dd><span class="tag">SHOP（ECサイト）</span></dd></div></dl>`,
     ["保存した認証情報は末尾の4文字だけを出す。"], ".state-badge .is-ok .is-error .is-stopped .is-muted / .facts")],
   ["feed", "知らせの一覧と空の状態", () => block("feed", "知らせの一覧と空の状態", "",
     `<ul class="feed">${D.notifications.slice(0, 3).map((n) => `<li class="${n.read ? "" : "is-unread"}"><span class="feed-icon">${icon("bell")}</span><span class="feed-main"><span class="feed-text">${SQ.esc(n.text)}</span><span class="feed-at">${n.at}</span></span><button class="btn is-sm is-quiet" type="button">既読にする</button></li>`).join("")}</ul>
-     <div class="empty">${icon("inbox")}<b>届いたものはありません</b><span>次の同期で新しく取り込んだ${t("task")}がここに届きます。</span></div>`,
-    ["未読は太字と淡い藍の地。", "空の状態は、何が出る場所かと、次に何が起きるかを書く。"], ".feed .is-unread .feed-icon .feed-main .feed-text .feed-at / .empty")],
+     ${SQ.emptyState("inbox", "届いたものはありません", `次の同期で新しく取り込んだ${t("task")}がここに届きます。`)}
+     ${SQ.emptyState("board", `まだ${t("task")}がありません`, `${t("task")}を優先する順に並べる場所です。上の「${t("create")}」から最初の${t("task")}を作ります。`, `<a class="btn is-sm" href="#feed">${t("connection")}を登録する</a>`)}`,
+    ["未読は太字と淡い藍の地。", "空の状態は、何が出る場所かと、次に何をすればよいかを書く。自分で起こせることがあれば、その画面へのボタンを1つ添える。", "空の状態のボタンは主ボタンにしない。画面の主な操作は見出しの右に置く。"], ".feed .is-unread .feed-icon .feed-main .feed-text .feed-at / SQ.emptyState() .empty")],
   ["monthly", "月の積載量", () => block("monthly", "月の積載量", "メンバー × 月の表のセル。",
     `<div class="cat-row" style="align-items:flex-start">${[[103.2, 118, 0], [172, 168, 0], [86, 60, 1], [80, 60, 0], "unset", null].map((c) => `<div class="panel" style="padding:var(--space-3)">${SQ.miniCap(c)}</div>`).join("")}</div>`,
     ["スプリントが1つもない月は、余力ありではなく「計画なし」と出す。"], ".mini-cap .is-none .mini-cap-num / .cap.is-mini")],

@@ -36,7 +36,7 @@ SQ.mount("notifications", () => {
         <span class="feed-main"><span class="feed-text">${esc(n.text)}</span><span class="feed-at">${esc(n.at)}${n.read ? "" : "・未読"}</span></span>
         ${n.href ? `<a class="btn is-sm" href="${n.href}">開く</a>` : n.task ? `<a class="btn is-sm" href="#" data-task="${n.task}" data-read="${D.notifications.indexOf(n)}">開く</a>` : n.read ? "" : `<button class="btn is-sm is-quiet" type="button" data-read="${D.notifications.indexOf(n)}">既読にする</button>`}
       </li>`).join("")}</ul>`
-      : `<div class="empty">${icon("bell")}<b>未読の通知はありません</b></div>`}
+      : SQ.emptyState("bell", D.notifications.length ? "未読の通知はありません" : "通知はまだありません")}
     <p class="action-note">知らせるのは、取り込み元での完了と開き直し、取り込み元で見つからない${t("task")}、自分の${t("connection")}の失敗、自分の${t("task")}へのコメント、担当への割り当て、${t("party")}への割り振り、${t("reward")}の変更、届いた感謝、添付ファイルの合計が上限の 80% を超えたこと（${t("admin")}だけ）です。</p>`;
 });
 
