@@ -1,0 +1,12 @@
+// 見本（design/）を配信するだけの Worker。コードを持たず、D1、R2、シークレットもつながない。
+// 本番の Worker とは別に Workers Builds が main から反映する（docs/development.md の「見本の Worker」）。
+{
+  "name": "team-leveling-design",
+  "compatibility_date": "2026-10-01",
+  "assets": {
+    "directory": "./design"
+  },
+  "workers_dev": true,
+  // 版ごとのプレビュー URL は Access の外に出るので作らない
+  "preview_urls": false
+}

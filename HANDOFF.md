@@ -14,7 +14,7 @@
 | 開発の進め方（ブランチ、AI の分担、スキル、開発の流れ、CI/CD） | `docs/development.md` |
 | AI への決まり（セッションが最初に読む） | `CLAUDE.md` |
 | デザインの原則、画面一覧、主なフロー、決めた方向 | `docs/design.md` |
-| デザインシステムと画面の見本 | `design/`。`design/index.html` をブラウザで開く（ビルド不要） |
+| デザインシステムと画面の見本 | `design/`。`design/index.html` をブラウザで開く（ビルド不要）。人に見せるときは見本の Worker（`docs/development.md` の「見本の Worker」） |
 | スタイルタイル（見た目の3案。決定の記録） | `design/style-tiles.html` |
 | 最初のモック（役目を終えたもの） | `mock/` |
 | クラウドのセッションでも使うスキル、レビューのエージェント、そのチェックリスト | `.claude/skills/`、`.claude/agents/`、`.claude/checklists/`。原本は `ucan-lab/claude-skills`。GitHub の操作は REST（`gh api`）に書き換えてある。レビューのエージェントとチェックリストは、このリポジトリ向けに書き直したので原本と別物になっている（`docs/development.md` の「今あるもの」） |
@@ -80,7 +80,9 @@
 - [x] GitHub のログインと取り込み（初版は共通の OAuth App と各自の PAT）、開発とテストでのログイン（seed でセッションを作る）、Issue の運用を決めた（2026-10-22）。ラベル（`needs-human`、`migration`、`area:*`）とマイルストーン「初版」を GitHub に作り、`.github/ISSUE_TEMPLATE/plan.md` を置いた
 - [ ] Anthropic の API キーを用意し、リポジトリのシークレットに置く（CI の AI レビューに使う）
 - [x] 運用の手順書（`docs/operations.md` に1つ）、セキュリティのヘッダー（最初の一本道から厳しく）、添付ファイルの配信（同じオリジンで型を絞る）、Cloudflare のアカウント（ucan-lab 用に新しく作る）を決めた（2026-10-22）
-- [ ] ucan-lab 用の Cloudflare アカウントを作り、Workers Paid にする
+- [x] ucan-lab 用の Cloudflare アカウントを作った（2026-10-23）。Zero Trust を無料の枠で有効にし、チーム名を `ucan-lab`、ログインの手段にワンタイム PIN を足した
+- [ ] Cloudflare アカウントを Workers Paid にする（本番を出すとき）
+- [ ] 見本の Worker を Workers Builds につなぎ、Access で守る（#5）。つないだら build watch paths とビルドの並び方の結果を `docs/development.md` の「CD」に書く
 - [x] スキルとエージェントを整えた（2026-10-22）。`requirements` を外し、レビューのエージェント3つを D1 と Workers 向けに書き直し、チェックリストに `cloudflare-workers.md` と `multi-tenant.md` を足した
 
 ### AI の機能（`docs/ai.md`）
@@ -96,7 +98,7 @@
 
 - [x] GitHub のリポジトリ名を `ucan-lab/scrum-quest` から `ucan-lab/team-leveling` に変えた（2026-10-20）。手元の作業コピーは `git remote set-url origin https://github.com/ucan-lab/team-leveling` で直す
 - [ ] ドメイン `team-leveling.dev` を取る（2026-10-20 に空きを確かめた）。ベータの前に取ると決めた（2026-10-22）。それまでは `workers.dev` で動かす
-- [x] claude.ai の Artifact に公開していた見本は消した（2026-10-20）。見本は `design/index.html` をブラウザで開いて見る
+- [x] claude.ai の Artifact に公開していた見本は消した（2026-10-20）。人に見せるのは見本の Worker に移した
 
 ## 次にやること
 
