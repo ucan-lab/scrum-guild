@@ -115,7 +115,9 @@ jobs:
 
   # マージの前に確かめるのはこれと label（ai-review は助言なので含めない）。
   # 文書だけなら重いジョブは飛んでいてよく、そうでなければすべて成功していなければならない。
-  # ベースを変えない edited では飛ばす（skipped の ci-ok は、マージの判定で数えない）
+  # ベースを変えない edited では飛ばす（skipped の ci-ok は、マージの判定で数えない）。
+  # 取り消された実行でも always() で動かして failure を残す。!cancelled() にすると skipped になり、
+  # ベースを付け替えた実行を取り消したときに、前のベースで文書だけと判定した success だけが同じ head に残るため
   ci-ok:
     needs: [changes, check, test, migration, e2e]
     if: always() && (github.event.action != 'edited' || github.event.changes.base != null)
