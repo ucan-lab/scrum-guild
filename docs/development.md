@@ -114,6 +114,7 @@ GitHub は無料のプランのまま使う（2026-10-23 に決めた）。無�
 - 切るときは最新の `main` から作る: `git fetch origin` のあと `git worktree add worktrees/<名前> -b <名前> origin/main`
 - `worktrees/` はリポジトリの `.gitignore` で git の管理から外してある
 - 依存はワークツリーごとに入れる。ローカルの D1（`.wrangler/state`）もワークツリーごとに分かれるので、seed もそれぞれで当てる。並べて `pnpm dev` を立てるときはポートをずらす（下の「手元で動かす」）
+- vitest（vite 8 の oxc）は、変換するファイルを `include` に含む tsconfig を、ファイルから上の階層へ探す。リポジトリの中に見つからないとワークツリーの外へ上り、本体の作業コピーの `tsconfig.json` を読む。`test/tsconfig.json` はそれを止めるために置いてある。テストが読むファイルを新しいトップレベルのディレクトリに置くときは、リポジトリの中のどれかの tsconfig の `include` に入れる
 - PR がマージされたら、`~/.claude/scripts/git-cleanup-merged.sh <名前>` でワークツリーと手元のブランチを消す（`pr-feedback` の後片付け）。squash merge では SHA が変わり `git branch -d` が拒むため、PR がマージ済みで head の SHA が手元と一致するときだけ `-D` で消す。スクリプトは dotfiles にあり、無い環境では人が消す
 
 ## 手元で動かす
