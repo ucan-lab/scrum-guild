@@ -11,17 +11,23 @@ function writtenContents(toolName, toolInput) {
   return toolInput.new_string ?? '';
 }
 
+// GIT_DIR などを受け継ぐと、-C で指した先と別のリポジトリを判定してしまう
+const gitEnv = Object.fromEntries(Object.entries(process.env).filter(([key]) => !key.startsWith('GIT_')));
+
 function git(dir, args) {
   return execFileSync('git', ['-C', dir, ...args], {
     encoding: 'utf8',
+    env: gitEnv,
     stdio: ['ignore', 'pipe', 'ignore'],
   }).trim();
 }
 
 // 新しく作るファイルはまだ無いので、あるところまで親をさかのぼる。
-// git はシンボリックリンクを解いたパスを返すので、こちらも解いてから相対パスにする
+// git はシンボリックリンクを解いたパスを返すので、こちらも解いてから相対パスにする。
+// 既にあるファイルはファイル自体のリンクも解く（ワークツリーのリンクから本体のフックを書き換えさせない）
 function locate(filePath) {
-  let dir = path.dirname(filePath);
+  const target = existsSync(filePath) ? realpathSync(filePath) : filePath;
+  let dir = path.dirname(target);
   while (!existsSync(dir) && dir !== path.dirname(dir)) dir = path.dirname(dir);
   let root;
   try {
@@ -29,15 +35,29 @@ function locate(filePath) {
   } catch {
     return undefined;
   }
-  const real = path.join(realpathSync(dir), path.relative(dir, filePath));
-  return { root, rel: path.relative(root, real).split(path.sep).join('/'), inWorktree: isLinkedWorktree(dir) };
+  const real = path.join(realpathSync(dir), path.relative(dir, target));
+  return { root, rel: path.relative(root, real).split(path.sep).join('/'), dir };
 }
 
-// リンクされたワークツリーでは、作業コピーの .git と共有の .git が別になる。判定できなければ本体とみなす
+// リンクされたワークツリーでは、作業コピーの .git と共有の .git が別になる。
+// 古い git は知らないオプションを出力に混ぜて成功するので、2行とも読めたときだけ比べ、判定できなければ本体とみなす
 function isLinkedWorktree(dir) {
   try {
-    const [gitDir, commonDir] = git(dir, ['rev-parse', '--path-format=absolute', '--git-dir', '--git-common-dir']).split('\n');
-    return gitDir !== commonDir;
+    const lines = git(dir, ['rev-parse', '--absolute-git-dir', '--git-common-dir']).split('\n');
+    if (lines.length !== 2 || !path.isAbsolute(lines[0]) || !lines[1] || lines[1].startsWith('-')) return false;
+    return realpathSync(lines[0]) !== realpathSync(path.resolve(dir, lines[1]));
+  } catch {
+    return false;
+  }
+}
+
+// フックの書き換えに確認を挟まないのは、セッションが使うフック（$CLAUDE_PROJECT_DIR）とは別のワークツリーだけ。
+// ワークツリーで起動したセッションが、自分を縛るフックを外せないようにする。プロジェクトを引けなければ確認を挟む
+function isOtherWorktree(root, dir) {
+  const project = process.env.CLAUDE_PROJECT_DIR;
+  if (!project || !isLinkedWorktree(dir)) return false;
+  try {
+    return realpathSync(git(project, ['rev-parse', '--show-toplevel'])) !== realpathSync(root);
   } catch {
     return false;
   }
@@ -70,10 +90,10 @@ try {
   const filePath = input.tool_input?.file_path;
   const located = filePath && locate(path.resolve(input.cwd ?? process.cwd(), filePath));
   if (located && !located.rel.startsWith('..')) {
-    const { root, rel, inWorktree } = located;
+    const { root, rel, dir } = located;
     const verdict = judgeFile({
       rel,
-      inWorktree,
+      inWorktree: rel.startsWith('.claude/hooks/') && isOtherWorktree(root, dir),
       contents: writtenContents(input.tool_name, input.tool_input),
       shippedOnMain: rel.startsWith('migrations/') ? existsOnMain(root, rel) : false,
     });

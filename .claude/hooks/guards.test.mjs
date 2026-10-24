@@ -1,7 +1,7 @@
 // node --test .claude/hooks/*.test.mjs
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { copyFileSync, mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { after, describe, test } from 'node:test';
@@ -427,23 +427,56 @@ describe('入口', () => {
     assert.equal(JSON.parse(result.stdout).hookSpecificOutput.permissionDecision, 'deny');
   });
 
-  test('本体とワークツリーを見分けて、フックの書き換えの確認を決める', () => {
+  describe('ワークツリーの中のフックの書き換え', () => {
+    const cleanEnv = Object.fromEntries(Object.entries(process.env).filter(([key]) => !key.startsWith('GIT_')));
     const main = path.join(tmp, 'repo');
-    const sh = (args, cwd) => spawnSync('git', args, { cwd, encoding: 'utf8' });
+    const worktree = path.join(main, 'worktrees/1-x');
+    const sh = (args, cwd) => {
+      const result = spawnSync('git', args, { cwd, encoding: 'utf8', env: cleanEnv });
+      assert.equal(result.status, 0, `git ${args.join(' ')}: ${result.stderr}`);
+    };
     mkdirSync(main);
     sh(['init', '-q', '-b', 'main'], main);
-    sh(['-c', 'user.name=t', '-c', 'user.email=t@example.com', 'commit', '-q', '--allow-empty', '-m', 'init'], main);
+    sh(['-c', 'user.name=t', '-c', 'user.email=t@example.com', '-c', 'commit.gpgsign=false', 'commit', '-q', '--allow-empty', '-m', 'init'], main);
     sh(['worktree', 'add', '-q', 'worktrees/1-x', '-b', '1-x'], main);
-    const decide = (root) => {
-      const input = JSON.stringify({
-        tool_name: 'Write',
-        cwd: root,
-        tool_input: { file_path: path.join(root, '.claude/hooks/bash-rules.mjs'), content: 'x' },
+    mkdirSync(path.join(main, '.claude/hooks'), { recursive: true });
+    mkdirSync(path.join(worktree, '.claude/hooks'), { recursive: true });
+    writeFileSync(path.join(main, '.claude/hooks/bash-rules.mjs'), '');
+    symlinkSync(path.join(main, '.claude/hooks/bash-rules.mjs'), path.join(worktree, '.claude/hooks/link.mjs'));
+
+    // project は $CLAUDE_PROJECT_DIR（セッションを起動した場所）
+    const decide = (file, project) => {
+      const input = JSON.stringify({ tool_name: 'Write', cwd: project, tool_input: { file_path: file, content: 'x' } });
+      const result = spawnSync(process.execPath, [path.join(hooks, 'guard-files.mjs')], {
+        input,
+        encoding: 'utf8',
+        env: { ...cleanEnv, CLAUDE_PROJECT_DIR: project },
       });
-      const { stdout } = run(path.join(hooks, 'guard-files.mjs'), input);
-      return stdout ? JSON.parse(stdout).hookSpecificOutput.permissionDecision : 'allow';
+      assert.equal(result.status, 0, result.stderr);
+      return result.stdout ? JSON.parse(result.stdout).hookSpecificOutput.permissionDecision : 'allow';
     };
-    assert.equal(decide(main), 'ask');
-    assert.equal(decide(path.join(main, 'worktrees/1-x')), 'allow');
+
+    test('本体で起動したセッションは、ワークツリーのフックを確認なしで書き換える', () => {
+      assert.ok(existsSync(path.join(worktree, '.git')));
+      assert.equal(decide(path.join(worktree, '.claude/hooks/bash-rules.mjs'), main), 'allow');
+      assert.equal(decide(path.join(main, '.claude/hooks/bash-rules.mjs'), main), 'ask');
+    });
+
+    test('ワークツリーで起動したセッションは、自分のフックの書き換えに確認を挟む', () => {
+      assert.equal(decide(path.join(worktree, '.claude/hooks/bash-rules.mjs'), worktree), 'ask');
+    });
+
+    test('ワークツリーでも設定の書き換えには確認を挟む', () => {
+      assert.equal(decide(path.join(worktree, '.claude/settings.json'), main), 'ask');
+      assert.equal(decide(path.join(worktree, '.claude/settings.local.json'), main), 'ask');
+    });
+
+    test('本体のフックを指すシンボリックリンクは、リンク先で判定する', () => {
+      assert.equal(decide(path.join(worktree, '.claude/hooks/link.mjs'), main), 'ask');
+    });
+
+    test('セッションの場所が分からなければ確認を挟む', () => {
+      assert.equal(decide(path.join(worktree, '.claude/hooks/bash-rules.mjs'), ''), 'ask');
+    });
   });
 });

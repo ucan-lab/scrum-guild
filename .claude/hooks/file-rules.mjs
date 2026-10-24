@@ -1,10 +1,10 @@
 // Write と Edit の判定。CLAUDE.md の「守ること」のうち、書いた内容で判定できるものを止め、
-// 守る仕組みそのもの（.claude/settings*.json と .claude/hooks/）の書き換えには人の確認を挟む。
+// 守る仕組みそのもの（.claude/settings*.json と、セッションが使っている .claude/hooks/）の書き換えには人の確認を挟む。
 // D1 の binding の判定は、ESLint の入口を守る規則（docs/development.md の「入口を守る規則」）が入るまでのつなぎ。
 import path from 'node:path';
 
 // rel はリポジトリのルートからの相対パス。shippedOnMain は origin/main に同じパスがあるか（main を引けなければ undefined）
-// inWorktree はリンクされたワークツリー（./worktrees/<名前>）の中のファイルか
+// inWorktree は、セッションが使うフックのあるリポジトリとは別の、リンクされたワークツリーの中のファイルか
 // 一番重い判定を [決定, 理由] で返す。止めるものが無ければ null
 export function judgeFile({ rel, contents, shippedOnMain, inWorktree = false }) {
   const name = path.basename(rel);
@@ -13,7 +13,7 @@ export function judgeFile({ rel, contents, shippedOnMain, inWorktree = false }) 
   if (/^\.claude\/settings[^/]*\.json$/.test(rel)) {
     return ['ask', '守る仕組み（Claude の設定）の変更は人が確かめる'];
   }
-  // 本体の作業コピーで起動したセッションが使うのは本体のフック。ワークツリーでの書き換えは PR で人が読むまで効かない
+  // セッションが使うのは $CLAUDE_PROJECT_DIR のフック。別のワークツリーでの書き換えは PR で人が読むまで効かない
   if (rel.startsWith('.claude/hooks/') && !inWorktree) {
     return ['ask', '守る仕組み（フック）の変更は人が確かめる。ワークツリーで書き換えて PR を通す'];
   }
