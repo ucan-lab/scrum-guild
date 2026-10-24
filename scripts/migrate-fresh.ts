@@ -1,7 +1,7 @@
 // CI の migration のジョブ（pnpm db:migrate:fresh）: 空のローカルの D1 に全マイグレーションを順に当てる。
 // wrangler は migrations/ が無いと失敗するので、0件のときは当てずに成功で終える
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdtempSync, readdirSync } from 'node:fs';
+import { existsSync, mkdtempSync, readdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { migrationFiles } from './ci.ts';
@@ -18,6 +18,7 @@ if (files.length === 0) {
   const result = spawnSync('wrangler', ['d1', 'migrations', 'apply', 'DB', '--local', '--persist-to', persistTo], {
     stdio: 'inherit',
   });
+  rmSync(persistTo, { recursive: true, force: true });
   if (result.error || result.status !== 0) {
     console.error('マイグレーションを当てられませんでした');
     process.exit(result.status ?? 1);

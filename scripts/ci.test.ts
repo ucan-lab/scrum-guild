@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
-import { isDocsOnly, migrationFiles, parseNulSeparated } from './ci.ts';
+import { ciOkVerdict, isDocsOnly, migrationFiles, parseNulSeparated, type Needs } from './ci.ts';
 
 describe('isDocsOnly', () => {
   test('CLAUDE.md の例外に挙げた文書だけなら真', () => {
@@ -63,6 +63,44 @@ describe('parseNulSeparated', () => {
 
   test('空の出力は空の一覧', () => {
     assert.deepEqual(parseNulSeparated(''), []);
+  });
+});
+
+describe('ciOkVerdict', () => {
+  function needs(changes: string, docsOnly: string | undefined, ...heavy: string[]): Needs {
+    const jobs: Needs = {
+      changes: { result: changes, outputs: docsOnly === undefined ? {} : { docs_only: docsOnly } },
+    };
+    heavy.forEach((result, i) => {
+      jobs[`job${i}`] = { result };
+    });
+    return jobs;
+  }
+
+  const cases: [string, Needs, boolean][] = [
+    ['文書だけで4つが skipped', needs('success', 'true', 'skipped', 'skipped', 'skipped', 'skipped'), true],
+    ['文書以外で4つが success', needs('success', 'false', 'success', 'success', 'success', 'success'), true],
+    ['文書だけで1つが success', needs('success', 'true', 'success', 'skipped', 'skipped', 'skipped'), false],
+    ['文書以外で skipped が混ざる', needs('success', 'false', 'success', 'skipped', 'success', 'success'), false],
+    ['文書以外で failure', needs('success', 'false', 'success', 'failure', 'success', 'success'), false],
+    ['文書以外で cancelled', needs('success', 'false', 'cancelled', 'success', 'success', 'success'), false],
+    ['docs_only が空なら文書以外として見る', needs('success', '', 'skipped', 'skipped', 'skipped', 'skipped'), false],
+    ['docs_only が無ければ文書以外として見る', needs('success', undefined, 'success', 'success'), true],
+    ['changes が failure', needs('failure', undefined, 'skipped', 'skipped', 'skipped', 'skipped'), false],
+    ['changes が無い', { check: { result: 'success' } }, false],
+    ['重いジョブが無い', needs('success', 'false'), false],
+  ];
+
+  for (const [name, input, ok] of cases) {
+    test(name, () => {
+      assert.equal(ciOkVerdict(input).ok, ok);
+    });
+  }
+
+  test('通さないときは、期待と違うジョブを理由に挙げる', () => {
+    const verdict = ciOkVerdict(needs('success', 'false', 'success', 'failure'));
+    assert.equal(verdict.ok, false);
+    assert.match(verdict.ok ? '' : verdict.reason, /job1=failure/);
   });
 });
 

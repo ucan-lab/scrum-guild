@@ -20,6 +20,28 @@ export function isDocsOnly(paths: readonly string[]): boolean {
   return paths.length > 0 && paths.every((path) => docsPatterns.some((pattern) => pattern.test(path)));
 }
 
+// ci-ok のジョブが受け取る toJSON(needs) の形
+export type Needs = Record<string, { result: string; outputs?: Record<string, string> }>;
+
+// changes を除く needs のジョブすべてを重いジョブとして見る。ジョブを足したときは needs に入れれば判定に入る。
+// 文書だけなら重いジョブがすべて skipped、そうでなければすべて success のときだけ通す
+export function ciOkVerdict(needs: Needs): { ok: true } | { ok: false; reason: string } {
+  const changes = needs.changes;
+  if (changes?.result !== 'success') {
+    return { ok: false, reason: `changes が success でない（${changes?.result ?? '無し'}）` };
+  }
+  const heavy = Object.entries(needs).filter(([name]) => name !== 'changes');
+  if (heavy.length === 0) return { ok: false, reason: '重いジョブが needs に無い' };
+
+  const expected = changes.outputs?.docs_only === 'true' ? 'skipped' : 'success';
+  const unexpected = heavy.filter(([, job]) => job.result !== expected);
+  if (unexpected.length > 0) {
+    const list = unexpected.map(([name, job]) => `${name}=${job.result}`).join(', ');
+    return { ok: false, reason: `${expected} でないジョブがある: ${list}` };
+  }
+  return { ok: true };
+}
+
 // wrangler d1 migrations apply が当てるのは migrations/ 直下の .sql だけ
 export function migrationFiles(names: readonly string[]): string[] {
   return names.filter((name) => name.endsWith('.sql')).sort();

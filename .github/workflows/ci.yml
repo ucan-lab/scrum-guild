@@ -106,6 +106,8 @@ jobs:
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: e2e
+          # 落ちたジョブを再実行すると同じ名前で上げ直すため
+          overwrite: true
           path: |
             test-results/
             playwright-report/
@@ -120,24 +122,17 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .node-version
+
+      # 判定は scripts/ci.ts の ciOkVerdict（node --test にかける）。needs を丸ごと渡すので、
+      # 重いジョブを足すときは上の needs に入れるだけでよい
       - name: 結果をまとめる
         env:
-          DOCS_ONLY: ${{ needs.changes.outputs.docs_only }}
-          CHANGES: ${{ needs.changes.result }}
-          HEAVY: ${{ needs.check.result }} ${{ needs.test.result }} ${{ needs.migration.result }} ${{ needs.e2e.result }}
-        run: |
-          echo "changes=$CHANGES docs_only=$DOCS_ONLY heavy=$HEAVY"
-          if [ "$CHANGES" != success ]; then
-            echo "変わったファイルを判定できませんでした"
-            exit 1
-          fi
-          expected=success
-          if [ "$DOCS_ONLY" = true ]; then
-            expected=skipped
-          fi
-          for result in $HEAVY; do
-            if [ "$result" != "$expected" ]; then
-              echo "重いジョブの結果が $expected でないものがあります"
-              exit 1
-            fi
-          done
+          NEEDS: ${{ toJSON(needs) }}
+        run: node scripts/ci-ok.ts
