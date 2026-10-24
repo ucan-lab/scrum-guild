@@ -62,6 +62,8 @@ PR 全体へのコメントは別のエンドポイントにある。
 gh api "repos/{owner}/{repo}/issues/{number}/comments" --paginate
 ```
 
+bot の PR 全体へのコメント（AI レビューのまとめ）に並んだ指摘も、インラインの指摘と同じく 1 件ずつ数える。まとめにしか書かれない指摘のほうが多いことがある。
+
 集めた指摘を一覧にして、対応するものとしないものを先に決める。一覧には bot か人かを添える。
 
 ### 3. 1 件ずつ直してコミットする
@@ -105,6 +107,12 @@ gh api --method POST "repos/{owner}/{repo}/pulls/{number}/comments/{comment_id}/
 ```
 
 `comment_id` は手順 2 で取った `id`。
+
+bot の PR 全体へのコメント（AI レビューのまとめ）には、項目ごとに何をどう直したかとコミットの短い SHA（直していなければ理由）を並べた PR コメントを 1 つ返す。これも承認を待たずに投稿する。
+
+```bash
+gh api --method POST "repos/{owner}/{repo}/issues/{number}/comments" --input reply.json
+```
 
 #### 人の指摘
 
