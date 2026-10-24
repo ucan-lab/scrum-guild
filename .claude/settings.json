@@ -24,6 +24,10 @@
       "Read(~/Library/Preferences/.wrangler/**)"
     ]
   },
+  "sandbox": {
+    "enabled": false,
+    "autoAllowBashIfSandboxed": false
+  },
   "hooks": {
     "SessionStart": [
       {
