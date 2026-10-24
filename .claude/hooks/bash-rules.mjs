@@ -120,7 +120,7 @@ function judgeGit(args, dir, branchOf) {
   for (const target of targets) {
     const isCurrent = target === 'HEAD' || target === '@';
     if (isCurrent && !current) return [ASK, 'push する先のブランチを判定できない（cd ~ や変数の先、git の管理外）'];
-    const name = (isCurrent ? current : target).replace(/^refs\/heads\//, '');
+    const name = (isCurrent ? current : target).replace(/^(refs\/)?heads\//, '');
     if (name === 'main') {
       return [DENY, 'main へは push しない。作業ブランチから PR を通す（文書だけの変更も、push は人が行う）'];
     }
@@ -135,6 +135,8 @@ function judgeGitHubWrite(words, method) {
   if (method === 'GET') return null;
   if (/\/pulls\/[^/\s]+\/merge\b|\/merges\b/.test(text)) return [DENY, 'マージは人が行う'];
   if (/\/git\/refs\/heads\/main\b/.test(text)) return [DENY, 'main は PR のマージでだけ進める'];
+  // contents API の書き込みは、ブランチを指定しなければ既定のブランチ（main）へ直にコミットする
+  if (/\/contents\//.test(text)) return [DENY, 'contents API でのファイルの書き込みはしない。作業ブランチで git を使う'];
   return null;
 }
 
