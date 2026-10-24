@@ -1,9 +1,9 @@
 // PreToolUse（Write、Edit、MultiEdit）の入口。判定は file-rules.mjs。
 // import されない前提で、起動されたら必ず判定する。判定できないときは exit 2 で止める。
+// 判定のモジュールは try の中で読み込む。静的に import すると、読み込みの失敗が exit 1（素通り）になる。
 import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync, realpathSync } from 'node:fs';
 import path from 'node:path';
-import { judgeFile } from './file-rules.mjs';
 
 function writtenContents(toolName, toolInput) {
   if (toolName === 'Write') return toolInput.content ?? '';
@@ -45,6 +45,7 @@ function existsOnMain(root, rel) {
 }
 
 try {
+  const { judgeFile } = await import('./file-rules.mjs');
   const input = JSON.parse(readFileSync(0, 'utf8'));
   const filePath = input.tool_input?.file_path;
   const located = filePath && locate(path.resolve(input.cwd ?? process.cwd(), filePath));

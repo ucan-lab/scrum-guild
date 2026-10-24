@@ -1,7 +1,7 @@
 // node --test .claude/hooks/*.test.mjs
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, realpathSync, rmSync, symlinkSync } from 'node:fs';
+import { copyFileSync, mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { after, describe, test } from 'node:test';
@@ -324,6 +324,15 @@ describe('入口', () => {
     symlinkSync(hooks, link);
     const result = run(path.join(link, 'guard-bash.mjs'), bashInput('npx wrangler deploy'));
     assert.equal(JSON.parse(result.stdout).hookSpecificOutput.permissionDecision, 'deny');
+  });
+
+  test('判定のモジュールを読み込めなければ exit 2 で止める', () => {
+    const dir = path.join(tmp, 'broken');
+    mkdirSync(dir);
+    for (const name of ['guard-bash.mjs', 'guard-files.mjs']) {
+      copyFileSync(path.join(hooks, name), path.join(dir, name));
+      assert.equal(run(path.join(dir, name), bashInput('ls')).status, 2);
+    }
   });
 
   test('入力が壊れていたら exit 2 で止める', () => {
