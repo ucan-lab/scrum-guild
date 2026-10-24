@@ -159,6 +159,15 @@ describe('bash-rules: 止める', () => {
     assert.equal(decision('git push origin HEAD', 'main'), 'deny');
   });
 
+  test('同じコマンドの中で切り替えた先のブランチで判定する', () => {
+    assert.equal(decision('git checkout main && git push'), 'deny');
+    assert.equal(decision('git switch main; git push origin HEAD'), 'deny');
+    assert.equal(decision('git checkout -b main && git push'), 'deny');
+    assert.equal(decision('git checkout main && git checkout -b x && git push -u origin x'), 'allow');
+    assert.equal(decision('git checkout -- README.md && git push'), 'allow');
+    assert.equal(decision('git switch - && git push'), 'ask');
+  });
+
   test('cd した先のブランチで判定する', () => {
     const branchOf = (dir) => (dir === '/repo' ? 'main' : 'x');
     assert.equal(judgeBash('cd worktrees/x && git push', { cwd: '/repo', branchOf }), null);

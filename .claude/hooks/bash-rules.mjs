@@ -277,11 +277,29 @@ function judgeSegment(words, ctx) {
   return results.filter(Boolean);
 }
 
+const SWITCH_FLAGS_WITH_VALUE = new Set(['-b', '-B', '-c', '-C', '--orphan']);
+
+// git checkout <branch> と git switch <branch> の切り替え先。切り替えでなければ null、判定できなければ undefined
+function switchedBranch(args) {
+  const [sub] = positionals(args, GIT_FLAGS_WITH_VALUE);
+  if (sub !== 'checkout' && sub !== 'switch') return null;
+  const rest = args.slice(args.indexOf(sub) + 1);
+  if (rest.includes('--')) return null; // git checkout -- <file> はファイルの復元
+  if (rest.includes('-')) return undefined; // 直前のブランチ
+  const created = rest.findIndex((a) => SWITCH_FLAGS_WITH_VALUE.has(a));
+  const name = created !== -1 ? rest[created + 1] : positionals(rest)[0];
+  if (name === undefined) return null;
+  return name === '-' || name.includes('$') ? undefined : name;
+}
+
 // 一番重い判定を [決定, 理由] で返す。止めるものが無ければ null
 // branchOf(dir) は dir のブランチ、scriptOf(dir, name) は dir から見た package.json のスクリプトの中身を返す
 export function judgeBash(command, { cwd, branchOf, scriptOf = () => undefined, depth = 0 }) {
   if (depth > MAX_DEPTH) return [ASK, 'コマンドの入れ子が深く、判定しきれない'];
   let dir = cwd;
+  // 同じコマンドの中で checkout や switch をした後の push は、切り替えた先のブランチで判定する
+  const switched = new Map();
+  const currentBranch = (d) => (switched.has(d) ? switched.get(d) : branchOf(d));
   const results = [];
   for (const words of splitSegments(command)) {
     // cd の後の git push は、移った先のブランチで判定する。展開できない cd の先は判定できないものとする
@@ -291,7 +309,11 @@ export function judgeBash(command, { cwd, branchOf, scriptOf = () => undefined, 
       dir = !to || /^[~$-]/.test(to) || !dir ? null : path.resolve(dir, to);
       continue;
     }
-    results.push(...judgeSegment(words, { dir, branchOf, scriptOf, depth }));
+    results.push(...judgeSegment(words, { dir, branchOf: currentBranch, scriptOf, depth }));
+    if (ci !== -1 && baseName(words[ci]) === 'git' && dir) {
+      const branch = switchedBranch(words.slice(ci + 1));
+      if (branch !== null) switched.set(dir, branch);
+    }
   }
   return results.find(([d]) => d === DENY) ?? results.find(([d]) => d === ASK) ?? null;
 }
