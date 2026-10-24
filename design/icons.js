@@ -13,6 +13,8 @@
     archive: '<path d="M3 4h18v4H3zM5 8v12h14V8M10 12h4"/>',
     link: '<path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1"/><path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/>',
     git: '<circle cx="6" cy="6" r="2"/><circle cx="6" cy="18" r="2"/><circle cx="18" cy="12" r="2"/><path d="M6 8v8M8 6h4a4 4 0 0 1 4 4"/>',
+    // Google のログインの仮の印。本番は Google のブランドの決まりのボタンに替える
+    google: '<path d="M20 12a8 8 0 1 1-2.3-5.6"/><path d="M20 12h-7"/>',
     bell: '<path d="M6 16V11a6 6 0 0 1 12 0v5l2 2H4z"/><path d="M10 20a2 2 0 0 0 4 0"/>',
     alert: '<path d="M12 3l10 18H2z"/><path d="M12 10v5M12 18v.01"/>',
     clock: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
