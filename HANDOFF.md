@@ -86,7 +86,8 @@
 - [ ] #10 のマージ後に、試しの PR で `label` を確かめる（`pull_request_target` は `main` の版しか動かないため）
 - [x] 運用の手順書（`docs/operations.md` に1つ）、セキュリティのヘッダー（最初の一本道から厳しく）、添付ファイルの配信（同じオリジンで型を絞る）、Cloudflare のアカウント（ucan-lab 用に新しく作る）を決めた（2026-10-22）
 - [x] ucan-lab 用の Cloudflare アカウントを作った（2026-10-23）。Zero Trust を無料の枠で有効にし、チーム名を `ucan-lab`、ログインの手段にワンタイム PIN を足した
-- [ ] Cloudflare アカウントを Workers Paid にする（本番を出すとき）
+- [x] 本番の出し方を決めた（2026-10-24）。Worker の名前は `team-leveling`（`https://team-leveling.ucan-lab.workers.dev/`）、Workers Paid にするのは本番に初めてデプロイする Issue で、ベータまで Access では守らない。`docs/development.md` の「Cloudflare のアカウントとドメイン」
+- [ ] Cloudflare アカウントを Workers Paid にする（本番に初めてデプロイする Issue で）
 - [x] 見本の Worker を Workers Builds につなぎ、Access で守った（2026-10-23、#5）。アカウントの `workers.dev` のサブドメインを `ucan-lab` に改めた。GitHub の Cloudflare のアプリは `ucan-lab/team-leveling` だけに許可した
 - [ ] 見本を見せる人のメールアドレスを、見本の Worker の Access のアプリの方針に足す（`docs/development.md` の「見本の Worker」）
 - [ ] 見本の Worker の API トークンを、最小の権限のものに入れ替える。本番の D1 や R2 を作る前に行う。本番の Worker のトークンも同じ問題がある（`docs/development.md` の「CD」）

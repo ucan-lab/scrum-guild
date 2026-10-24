@@ -335,6 +335,9 @@ GitHub App も比べた。人が抜けても取り込みが止まらない、PAT
 
 - 本番の Cloudflare アカウントは ucan-lab 用に新しく作る（2026-10-22 に決めた）。請求と権限を個人のものと分け、法人化や人を足すときに移しやすくする
 - ドメイン `team-leveling.dev` はベータの前に取る（2026-10-22 に決めた）。それまでは `workers.dev` の URL で動かす
+- 本番の Worker の名前は `team-leveling` で、ドメインを取るまでの URL は `https://team-leveling.ucan-lab.workers.dev/`（2026-10-24 に決めた）。GitHub OAuth App の戻り先もこの URL にする
+- アカウントは、本番に初めてデプロイする Issue（上の「初版の作る順」の2）で Workers Paid にする（2026-10-24 に決めた）。無料の枠は1回の CPU の時間や外への通信の回数の上限が厳しく、`wrangler dev` ではその上限で止まらないので、本番でだけ落ちる差を最初から無くすため
+- 本番の `workers.dev` は Cloudflare Access で守らない（2026-10-24 に決めた）。アプリに GitHub のログインがあり、入れる組織か届いた招待が無い人は入れないため。Access を挟むと、煙のテストの `/api/health` を通す除外が要り、ドメインを移すときに Access のアプリも作り直すことになる
 - ドメインへ移すときは、公開する URL の設定、GitHub OAuth App の戻り先、Cookie を直し、移した後にもう一度ログインしてもらう。手順は `docs/operations.md` に書く
 - 組織を示す URL の形（`/<slug>/...`）は、`workers.dev` の上でも変えない
 
