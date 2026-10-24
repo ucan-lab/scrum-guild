@@ -82,7 +82,8 @@
 - [x] CI の AI レビューを、API キーではなく Claude のサブスクリプションの OAuth トークンで動かすと決めた（2026-10-23、#8）。`docs/development.md` の「CI」
 - [x] `claude setup-token` で作ったトークンを、リポジトリのシークレット `CLAUDE_CODE_OAUTH_TOKEN` に置いた（2026-10-23）
 - [x] #9 で AI レビューが動くことを確かめた（2026-10-23）。差分に応じてエージェントを呼び分け、チェックリストを読み、まとめとインラインの指摘を書き、`ai-review` のラベルで再び走って終わるとラベルが外れる
-- [ ] ラベル `needs-human` を付ける CI の `label` のジョブを入れる。それまでは `.github/` に触れる PR に人が付ける（ワークフローを書き換える PR は、AI レビューの守りも外せるため）
+- [x] ラベル `needs-human` を付ける CI の `label` のジョブを入れた（2026-10-23、#10）。人が差分を読む領域の置き場所も決めた（`docs/development.md` の「マージの判定」）
+- [ ] #10 のマージ後に、試しの PR で `label` を確かめる（`pull_request_target` は `main` の版しか動かないため）
 - [x] 運用の手順書（`docs/operations.md` に1つ）、セキュリティのヘッダー（最初の一本道から厳しく）、添付ファイルの配信（同じオリジンで型を絞る）、Cloudflare のアカウント（ucan-lab 用に新しく作る）を決めた（2026-10-22）
 - [x] ucan-lab 用の Cloudflare アカウントを作った（2026-10-23）。Zero Trust を無料の枠で有効にし、チーム名を `ucan-lab`、ログインの手段にワンタイム PIN を足した
 - [ ] Cloudflare アカウントを Workers Paid にする（本番を出すとき）
