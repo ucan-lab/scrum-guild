@@ -120,6 +120,11 @@ describe('bash-rules: 止める', () => {
     'gh api -X PATCH repos/o/r/git/refs/heads/main -F force=true',
     'gh api graphql -f query="mutation { mergePullRequest(input: {}) { clientMutationId } }"',
     'gh stack merge',
+    'gh pr merge 21 --auto --squash',
+    'gh pr merge 21 --squash --admin',
+    'gh pr merge 21 --squash && git push origin main',
+    'gh alias set land "pr merge"',
+    'gh alias import aliases.yml',
     'curl -X PUT -H "Authorization: token $(gh auth token)" https://api.github.com/repos/o/r/pulls/21/merge',
     'curl -XPUT https://api.github.com/repos/o/r/pulls/1/merge',
     'curl --request=PUT https://api.github.com/repos/o/r/pulls/1/merge',
@@ -223,7 +228,11 @@ describe('bash-rules: 確認を挟む', () => {
     'gh stack push',
     'gh stack sync',
     'gh pr merge 21 --squash',
+    'gh pr merge 21 --squash --match-head-commit abc123',
     'gh -R ucan-lab/scrum-guild pr merge 21',
+    'gh pr merge --repo o/r 21 --squash',
+    'gh pr merge $N --squash',
+    'bash -c "gh pr merge 21 --squash"',
     'git push origin $BRANCH',
     'git push origin $(echo main)',
     `echo '{"disableAllHooks": true}' > .claude/settings.local.json`,
@@ -247,8 +256,11 @@ describe('bash-rules: 確認を挟む', () => {
     assert.equal(decision('git --git-dir=/repo/.git push'), 'ask');
   });
 
-  test('マージの確認の理由に needs-human を書く', () => {
-    assert.match(verdict('gh pr merge 1')[1], /needs-human/);
+  test('マージの確認の理由に、使うコマンドと needs-human の扱いを書く', () => {
+    const [d, reason] = verdict('gh pr merge 1');
+    assert.equal(d, 'ask');
+    assert.match(reason, /gh pr merge <番号> --squash/);
+    assert.match(reason, /needs-human の PR .*人がマージする/);
   });
 
   test('止めるものと確認を挟むものが並んだら止める', () => {
@@ -295,6 +307,7 @@ describe('bash-rules: 通す', () => {
     'git push',
     'git push origin feature # not main',
     'gh pr view 21',
+    'gh alias list',
     'gh pr create --title x --body-file b.md',
     'gh api repos/ucan-lab/scrum-guild/pulls/21',
     'gh api repos/ucan-lab/scrum-guild/pulls/21/merge',

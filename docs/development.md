@@ -142,7 +142,7 @@ GitHub は無料のプランのまま使う（2026-10-23 に決めた）。無�
 | --- | --- |
 | `permissions.deny` | `.dev.vars`、`.env` とその環境ごとのファイル（`.local`、`.production` など）の読み取り、`.dev.vars` と `.env` の書き込み、wrangler の資格情報のディレクトリの読み取り |
 | `env` | `WRANGLER_SEND_METRICS=false`（テレメトリを送らない） |
-| `guard-bash.mjs` と `bash-rules.mjs`（PreToolUse、Bash と Monitor） | 止める: wrangler の本番に触る操作（許すのは `dev`、`types`、`whoami`、版と help、`--local` を付けた D1、R2、KV の操作だけ）、`--remote` と `-r` とリモートの binding、本番のログ（`tail`）、デプロイのスクリプトと名前に `deploy` を含む `package.json` のスクリプト、`main` への push、force push、`gh pr merge` 以外での PR のマージ（`gh api` と `curl` の merge、`gh stack merge`、main の ref の書き換え、contents API の書き込み）、シークレットとログイン、`.dev.vars` と `.env` の中身を読むか送るコマンドと `git add`。確認を挟む: `gh pr merge`、依存の追加、削除、更新、マイグレーションの作成、`gh stack` の push 系、ブランチを判定できない push（`cd ~` や変数の先、変数か glob を含む refspec）、Bash からの `.claude/settings*.json` と `.claude/hooks/` と `migrations/` の書き換え |
+| `guard-bash.mjs` と `bash-rules.mjs`（PreToolUse、Bash と Monitor） | 止める: wrangler の本番に触る操作（許すのは `dev`、`types`、`whoami`、版と help、`--local` を付けた D1、R2、KV の操作だけ）、`--remote` と `-r` とリモートの binding、本番のログ（`tail`）、デプロイのスクリプトと名前に `deploy` を含む `package.json` のスクリプト、`main` への push、force push、`gh pr merge` を通さない PR のマージと `--auto`、`--admin`（`gh api` と `curl` の merge、`gh stack merge`、`gh alias set` と `gh alias import`、main の ref の書き換え、contents API の書き込み）、シークレットとログイン、`.dev.vars` と `.env` の中身を読むか送るコマンドと `git add`。確認を挟む: `gh pr merge`、依存の追加、削除、更新、マイグレーションの作成、`gh stack` の push 系、ブランチを判定できない push（`cd ~` や変数の先、変数か glob を含む refspec）、Bash からの `.claude/settings*.json` と `.claude/hooks/` と `migrations/` の書き換え |
 | `guard-files.mjs` と `file-rules.mjs`（PreToolUse、Write と Edit と MultiEdit） | 止める: `origin/main` にあるマイグレーションの書き換え、`+page.server`、`+layout.server`、`+server`、`hooks.server`、`src/` のうち `src/server/db/` の外での `env.DB` と `D1Database`（テストも含む。テストの土台は `test/` に置く）、`.svelte` の `<style>`、wrangler の設定の `remote: true`。確認を挟む: `.claude/settings*.json` と `.claude/hooks/` の書き換え |
 | `format.mjs`（PostToolUse、Write と Edit と MultiEdit） | このリポジトリのファイルを Prettier で整える。依存が入るまでは何もしない |
 | `session-start.sh`（SessionStart の起動と再開） | クラウドのセッションだけで、`pnpm install --frozen-lockfile` を行う |
@@ -202,7 +202,9 @@ Bash の判定を `permissions.deny` に置かないのは、規則が前方一�
 
 マージするかは人が決める。auto-merge は使わない（上の「`main` を守る仕組み」）。
 
-人がその PR のマージを指示したときは、セッションが `gh pr merge <番号> --squash` でマージしてよい。フックがマージのたびに確認を挟む。セッションは、`needs-human` が付いていないこと、`label` と `ci-ok` が成功していることを確かめてから打つ。`needs-human` の PR と `label` が成功していない PR は、指示があっても人がマージする。`gh api` や `curl` でのマージはフックが止める。
+人がその PR のマージを指示したときは、セッションが `gh pr merge <番号> --squash --match-head-commit <確かめた head>` でマージしてよい。打つ前に、`needs-human` が付いていないこと、その head で `label` と `ci-ok` が成功していることを確かめる（`ci-ok` が CI に入るまでは `label` だけ。手順は `pr-feedback` の「マージを依頼して後片付けする」）。`needs-human` の PR と `label` が成功していない PR は、指示があっても人がマージする。
+
+フックは `gh pr merge` のたびに確認を挟み、`--auto` と `--admin`、`gh api` や `curl` でのマージ、`gh` のエイリアスの作成を止める。クラウドのセッションでは `gh pr merge` が GraphQL で 403 になるので、人がマージする。
 
 次のどれかに触れた PR には、GitHub Actions（CI の `label`）が機械的に `needs-human` のラベルを付ける。AI には判断させない。パスの規則は `.github/labeler.yml` にある。各領域のコードは右の列の場所に置き、ほかの場所に散らさない。
 
