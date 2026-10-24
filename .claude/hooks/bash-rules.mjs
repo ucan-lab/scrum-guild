@@ -253,6 +253,22 @@ function judgeSecretAccess(tool, args, words) {
   return false;
 }
 
+// Write と Edit のフック（file-rules.mjs）が守るファイル。Bash から書き換えるときは人の確認を挟む
+function isProtectedPath(word) {
+  return /(^|\/)\.claude\/(settings[^/]*\.json$|hooks(\/|$))|(^|\/)migrations\//.test(word.replace(/^>+/, ''));
+}
+
+function writesProtectedPath(tool, args) {
+  if (args.some((a) => a.startsWith('>') && isProtectedPath(a))) return true;
+  const pos = positionals(args);
+  if (['sed', 'perl'].includes(tool) && args.some((a) => /^-[a-zA-Z]*i|^--in-place/.test(a))) {
+    return pos.some(isProtectedPath);
+  }
+  if (['tee', 'rm', 'truncate', 'unlink'].includes(tool)) return pos.some(isProtectedPath);
+  if (['cp', 'mv', 'ln', 'rsync', 'install'].includes(tool)) return isProtectedPath(pos.at(-1) ?? '');
+  return false;
+}
+
 function judgeSegment(words, ctx) {
   const ci = commandIndex(words);
   if (ci === -1) return [];
@@ -262,6 +278,9 @@ function judgeSegment(words, ctx) {
 
   if (judgeSecretAccess(tool, args, words)) {
     results.push([DENY, '.dev.vars と .env は開発用のシークレット。中身は人が扱い、例は .dev.vars.example に置く']);
+  }
+  if (writesProtectedPath(tool, args)) {
+    results.push([ASK, '守る仕組み（Claude の設定とフック）とマイグレーションの書き換えは人が確かめる']);
   }
   const runsDeployScript =
     /(^|\/)scripts\/deploy[^/]*$/.test(words[ci]) ||
