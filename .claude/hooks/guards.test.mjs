@@ -110,8 +110,22 @@ describe('bash-rules: 止める', () => {
     'git push -uf origin x',
     'git push --force-with-lease origin main',
     'git push --force-with-lease origin HEAD:main',
+    'git push --force-with-lease origin HEAD:refs/heads/main',
+    'git push --force-with-lease=x:abc origin main',
+    'git push --force-with-lease --force-if-includes origin main',
+    'git push --force-with-lease -o ci.skip origin HEAD:main',
+    'git push --force-with-lease origin :main',
+    'git push --force-with-lease --delete origin main',
+    'git push --force-with-lease origin +x',
     'git push --force-with-lease --force origin x',
     'git push --force-if-includes origin x',
+    'git push --force-i origin x',
+    'git push --mirr',
+    'git push --al',
+    'git push --force-with-lease --repo origin main',
+    'git push --force-with-lease --repo=origin main',
+    'git push --force-with-lease origin $BRANCH main',
+    'cd ~ && git push --force-with-lease origin HEAD main',
     'git push origin +x',
     'git push --all',
     'git push --mirror',
@@ -210,6 +224,9 @@ describe('bash-rules: 止める', () => {
     assert.equal(judgeBash('git push', { cwd: '/repo', branchOf })?.[0], 'deny');
     assert.equal(judgeBash('git -C worktrees/x push', { cwd: '/repo', branchOf }), null);
     assert.equal(judgeBash('cd /elsewhere && git -C /repo push', { cwd: '/x', branchOf })?.[0], 'deny');
+    assert.equal(judgeBash('git -C/repo push --force-with-lease origin HEAD', { cwd: '/w', branchOf })?.[0], 'deny');
+    assert.equal(judgeBash('cd /repo && git push --force-with-lease', { cwd: '/w', branchOf })?.[0], 'deny');
+    assert.equal(judgeBash('git -C worktrees/x push --force-with-lease', { cwd: '/repo', branchOf })?.[0], 'ask');
   });
 
   test('止めた理由が規則に合っている', () => {
@@ -247,6 +264,9 @@ describe('bash-rules: 確認を挟む', () => {
     'git push --force-with-lease=x:abc origin x',
     'git push --force-with-lease --force-if-includes origin x',
     'git push -u --force-with-lease origin x',
+    'git push --force-w origin x',
+    'git push --force-with-lease=x:abc origin :feature',
+    'cd ~ && git push --force-with-lease',
     'gh pr merge 21 --squash --match-head-commit abc123',
     'gh pr merge 21 --squash --match-head-commit=abc123',
     'gh -R ucan-lab/scrum-guild pr merge 21 --match-head-commit abc123',
