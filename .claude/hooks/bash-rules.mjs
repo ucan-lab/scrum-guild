@@ -204,12 +204,24 @@ function judgePackageManager(tool, args, ctx) {
     return [ASK, '依存の変更は needs-human の領域。足す理由と代わりの手を確かめてから進める'];
   }
 
-  const name = ['run', 'run-script'].includes(pos[0]) ? pos[1] : tool === 'npm' ? undefined : pos[0];
+  const name = scriptName(tool, pos);
   if (!name) return null;
   if (DEPLOY_SCRIPT.test(name)) return [DENY, 'デプロイは Workers Builds だけが行う'];
-  // package.json のスクリプトの中身も同じ規則で見る
-  const body = ctx.scriptOf(ctx.dir, name);
-  return body ? judgeBash(body, { ...ctx, cwd: ctx.dir, depth: ctx.depth + 1 }) : null;
+  // package.json のスクリプトの中身も同じ規則で見る。pre と post のスクリプトも一緒に走る
+  const results = [`pre${name}`, name, `post${name}`]
+    .map((n) => ctx.scriptOf(ctx.dir, n))
+    .filter(Boolean)
+    .map((body) => judgeBash(body, { ...ctx, cwd: ctx.dir, depth: ctx.depth + 1 }))
+    .filter(Boolean);
+  return results.find(([d]) => d === DENY) ?? results[0] ?? null;
+}
+
+// npm は run 無しでは test、start、stop、restart だけがスクリプトを動かす。pnpm、yarn、bun は名前だけで動かす
+const NPM_SCRIPT_ALIASES = { test: 'test', t: 'test', tst: 'test', start: 'start', stop: 'stop', restart: 'restart' };
+
+function scriptName(tool, pos) {
+  if (['run', 'run-script'].includes(pos[0])) return pos[1];
+  return tool === 'npm' ? NPM_SCRIPT_ALIASES[pos[0]] : pos[0];
 }
 
 // .dev.vars と .env（.example は除く）。コードの文字列の中（readFileSync('.dev.vars')）も拾う。

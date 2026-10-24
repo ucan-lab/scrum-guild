@@ -10,7 +10,15 @@ import { judgeBash } from './bash-rules.mjs';
 import { judgeFile } from './file-rules.mjs';
 import { splitSegments } from './shell-words.mjs';
 
-const scripts = { deploy: 'wrangler deploy', 'db:migrate:remote': 'wrangler d1 migrations apply DB --remote', test: 'vitest run', ci: 'pnpm test && pnpm db:migrate:remote' };
+const scripts = {
+  deploy: 'wrangler deploy',
+  'db:migrate:remote': 'wrangler d1 migrations apply DB --remote',
+  test: 'vitest run',
+  ci: 'pnpm test && pnpm db:migrate:remote',
+  start: 'wrangler deploy',
+  lint: 'eslint .',
+  postlint: 'wrangler deploy',
+};
 const ctx = (branch) => ({ cwd: '/repo', branchOf: () => branch, scriptOf: (dir, name) => (dir ? scripts[name] : undefined) });
 const verdict = (command, branch = '21-claude-settings') => judgeBash(command, ctx(branch));
 const decision = (command, branch) => verdict(command, branch)?.[0] ?? 'allow';
@@ -85,6 +93,9 @@ describe('bash-rules: 止める', () => {
     'npm --prefix api run deploy',
     'pnpm db:migrate:remote',
     'pnpm run ci',
+    'npm start',
+    'pnpm lint',
+    'npm run lint',
     'bash scripts/deploy.sh',
     './scripts/deploy.sh',
     'git push origin main',
