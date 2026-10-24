@@ -1,5 +1,5 @@
 // Bash の判定。本番に触る操作、main への push、--force-with-lease 以外の force push、シークレット、gh pr merge を通さないマージを止め、
-// gh pr merge、作業ブランチへの --force-with-lease、依存の変更、マイグレーションの作成、判定しきれない push では人の確認を挟む（docs/development.md の「Claude の設定とフック」）。
+// gh pr merge、依存の変更、マイグレーションの作成、判定しきれない push では人の確認を挟む（docs/development.md の「Claude の設定とフック」）。
 // permissions.deny の前方一致では npx wrangler や pnpm exec wrangler の言い換えを取りこぼすので、語に分けて判定する。
 // 踏み線であって守りの本体ではない。変数の中身と、パイプで sh に流す中身は見えない。
 import path from 'node:path';
@@ -134,10 +134,8 @@ function judgeGit(args, dir, branchOf) {
     }
   }
   if (targets.some((t) => /[$*]/.test(t))) return [ASK, '変数か glob を含む refspec は、main を含むかを判定できない'];
+  // 作業ブランチへの --force-with-lease は、sync-base の rebase の後に使うので通す
   if (targets.some(unknown)) return [ASK, 'push する先のブランチを判定できない（cd ~ や変数の先、git の管理外）'];
-  if (leased) {
-    return [ASK, '作業ブランチへの force push。sync-base で rebase した後に --force-with-lease=<ブランチ>:<控えた SHA> で使う（docs/development.md の「並行して作業するときの決まり」）'];
-  }
   return null;
 }
 

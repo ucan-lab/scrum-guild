@@ -104,7 +104,7 @@ git diff --stat origin/<base>...HEAD                 # PR の差分が取り込�
 git push --force-with-lease=<branch>:<控えた SHA> --force-if-includes origin <branch>    # リモートに無ければ git push -u origin <branch>
 ```
 
-フックが確認を挟む。auto モードの分類器などに止められたら、同じコマンドを `!` 付きで人に渡す。
+作業ブランチへの `--force-with-lease` は、フックと `.claude/settings.json` の `permissions.allow` で確認なしに通す。それでも止められたら、同じコマンドを `!` 付きで人に渡す。
 lease が外れて失敗したら（stale info）、手順 2 の後に誰かが push している。やり直さずに止まり、手順 2 で控えた HEAD と、`git fetch origin` の後の `origin/<branch>` の差を示して伝える（理由: 手元は rebase 済みなので、手順 2 に戻ると「取り込み済み」で終わり、リモートの新しいコミットを確かめないまま進む）。
 
 次を伝える。
