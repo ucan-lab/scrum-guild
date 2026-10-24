@@ -122,11 +122,23 @@ function judgeGitHubWrite(words, method) {
   return null;
 }
 
+// -X PUT、-XPUT、-X=PUT、--method PUT、--method=PUT のどれでも値を読む
 function valueAfter(words, flags) {
-  const i = words.findIndex((w) => flags.includes(w));
-  if (i !== -1) return words[i + 1];
-  const joined = words.find((w) => flags.some((f) => f.startsWith('--') && w.startsWith(`${f}=`)));
-  return joined?.split('=')[1];
+  for (let i = 0; i < words.length; i++) {
+    const w = words[i];
+    if (flags.includes(w)) return words[i + 1];
+    for (const f of flags) {
+      if (w.startsWith(`${f}=`)) return w.slice(f.length + 1);
+      if (!f.startsWith('--') && w.startsWith(f) && w.length > f.length) return w.slice(f.length);
+    }
+  }
+  return undefined;
+}
+
+// 変数で渡したメソッドは読めないので、書き込みとみなす
+function methodOf(value, fallback) {
+  if (value === undefined) return fallback;
+  return value.includes('$') ? 'UNKNOWN' : value.toUpperCase();
 }
 
 function judgeGh(args) {
@@ -139,8 +151,7 @@ function judgeGh(args) {
   }
   if (pos[0] === 'api') {
     const hasFields = args.some((a) => ['-f', '-F', '--field', '--raw-field', '--input'].includes(a));
-    const method = (valueAfter(args, ['-X', '--method']) ?? (hasFields ? 'POST' : 'GET')).toUpperCase();
-    return judgeGitHubWrite(args, method);
+    return judgeGitHubWrite(args, methodOf(valueAfter(args, ['-X', '--method']), hasFields ? 'POST' : 'GET'));
   }
   return null;
 }
@@ -149,16 +160,15 @@ function judgeHttpClient(tool, args) {
   if (!args.some((a) => a.includes('api.github.com'))) return null;
   let method = 'GET';
   if (tool === 'curl') {
-    const explicit = valueAfter(args, ['-X', '--request']);
     const sendsBody = args.some((a) => /^(-d|--data.*|-F|--form|-T|--upload-file|--json)$/.test(a));
-    method = explicit ?? (sendsBody ? 'POST' : 'GET');
+    method = methodOf(valueAfter(args, ['-X', '--request']), sendsBody ? 'POST' : 'GET');
   } else if (tool === 'wget') {
-    method = valueAfter(args, ['--method']) ?? (args.some((a) => a.startsWith('--post-')) ? 'POST' : 'GET');
+    method = methodOf(valueAfter(args, ['--method']), args.some((a) => a.startsWith('--post-')) ? 'POST' : 'GET');
   } else {
     // httpie: http PUT https://...
     method = args.find((a) => /^[A-Z]+$/.test(a)) ?? 'GET';
   }
-  return judgeGitHubWrite(args, method.toUpperCase());
+  return judgeGitHubWrite(args, method);
 }
 
 const PACKAGE_CHANGES = {
