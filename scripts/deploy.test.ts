@@ -85,7 +85,12 @@ describe('deploy', () => {
   test('マイグレーションが無ければ、戻し先を控えて版を上げ、煙のテストで成功する', async () => {
     const f = fake({});
     assert.equal(await deploy(f.deps), 0);
-    assert.deepEqual(commands(f.calls), ['deployments status', 'deployments status', 'deploy --var']);
+    assert.deepEqual(commands(f.calls), [
+      'deployments status',
+      'deployments status',
+      'deploy --var',
+      'deployments status',
+    ]);
     assert.deepEqual(f.calls[2], ['deploy', '--var', `APP_VERSION:${SHA}`, '--message', SHA]);
   });
 
@@ -98,6 +103,7 @@ describe('deploy', () => {
       'd1 migrations',
       'deployments status',
       'deploy --var',
+      'deployments status',
     ]);
     assert.ok(f.calls[2]!.includes('--remote'));
   });
@@ -119,7 +125,7 @@ describe('deploy', () => {
   test('Worker が無い（10007）なら、戻し先無しで出して成功する', async () => {
     const f = fake({ wrangler: { status: noWorker } });
     assert.equal(await deploy(f.deps), 0);
-    assert.deepEqual(commands(f.calls), ['deployments status', 'deployments status', 'deploy --var']);
+    assert.deepEqual(commands(f.calls).slice(0, 3), ['deployments status', 'deployments status', 'deploy --var']);
   });
 
   test('Worker にデプロイが1つも無ければ、戻し先無しで出す', async () => {
@@ -222,10 +228,27 @@ describe('deploy', () => {
     assert.ok(f.calls.at(-1)!.includes('--message'));
   });
 
+  test('煙のテストの間に別のデプロイが版を上げていれば、それを潰さないよう戻さずに失敗する', async () => {
+    const own = statusOf([{ version_id: 'version-own', percentage: 100 }]);
+    const other = statusOf([{ version_id: 'version-other', percentage: 100 }]);
+    const f = fake({ versions: ['def5678'], statuses: [status100, status100, own, other] });
+    assert.equal(await deploy(f.deps), 1);
+    assert.ok(!f.calls.some((args) => args[0] === 'rollback'));
+    assert.ok(f.errors.some((message) => message.includes('version-other')));
+  });
+
+  test('煙のテストに落ちたとき、本番が上げた版のままなら戻す', async () => {
+    const own = statusOf([{ version_id: 'version-own', percentage: 100 }]);
+    const f = fake({ versions: [CURRENT], statuses: [status100, status100, own, own] });
+    assert.equal(await deploy(f.deps), 1);
+    assert.deepEqual(lastCall(f), ['rollback', CURRENT]);
+  });
+
   test('マイグレーションを当てた後に煙のテストに落ちても、戻すのはコードだけ', async () => {
     const f = fake({ hasMigrations: true, versions: [CURRENT] });
     assert.equal(await deploy(f.deps), 1);
-    assert.deepEqual(commands(f.calls).slice(-2), ['deploy --var', `rollback ${CURRENT}`]);
+    const writes = commands(f.calls).filter((command) => command !== 'deployments status');
+    assert.deepEqual(writes, ['d1 time-travel', 'd1 migrations', 'deploy --var', `rollback ${CURRENT}`]);
   });
 
   test('戻せなければ、壊れた版が残っていると書いて失敗する', async () => {

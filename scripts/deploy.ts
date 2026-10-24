@@ -141,9 +141,22 @@ export async function deploy(deps: DeployDeps): Promise<number> {
     return failAfterSwitch(deps, target.versionId, `デプロイの失敗で ${sha} から戻す`);
   }
 
+  // 煙のテストの間に別のビルドが版を上げると、戻すとその版を潰す。戻す前に比べられるよう、上げた直後の版を控える
+  const deployed = rollbackTarget(deps.wrangler(['deployments', 'status', '--json'], { capture: true }));
+  const ownVersionId = deployed.ok ? deployed.versionId : null;
+
   if (await waitForVersion(deps, sha)) return 0;
 
   deps.error(`煙のテスト: ${SMOKE_TIMEOUT_MS / 1000}秒待っても版が ${sha} になりませんでした`);
+  if (ownVersionId) {
+    const current = rollbackTarget(deps.wrangler(['deployments', 'status', '--json'], { capture: true }));
+    if (current.ok && current.versionId !== ownVersionId) {
+      deps.error(
+        `本番の版が、上げた版（${ownVersionId}）から ${current.versionId ?? '無し'} に変わっています。別のデプロイを潰さないよう戻しません`,
+      );
+      return 1;
+    }
+  }
   return failAfterSwitch(deps, target.versionId, `煙のテストの失敗で ${sha} から戻す`);
 }
 
