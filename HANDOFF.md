@@ -14,7 +14,7 @@
 | 開発の進め方（ブランチ、AI の分担、スキル、開発の流れ、CI/CD） | `docs/development.md` |
 | AI への決まり（セッションが最初に読む） | `CLAUDE.md` |
 | デザインの原則、画面一覧、主なフロー、決めた方向 | `docs/design.md` |
-| デザインシステムと画面の見本 | `design/`。`design/index.html` をブラウザで開く（ビルド不要）。人に見せるときは見本の Worker（`https://team-leveling-design.ucan-lab.workers.dev/`、`docs/development.md` の「見本の Worker」） |
+| デザインシステムと画面の見本 | `design/`。`design/index.html` をブラウザで開く（ビルド不要）。人に見せるときは見本の Worker（`https://scrum-guild-design.ucan-lab.workers.dev/`、`docs/development.md` の「見本の Worker」） |
 | スタイルタイル（見た目の3案。決定の記録） | `design/style-tiles.html` |
 | 最初のモック（役目を終えたもの） | `mock/` |
 | クラウドのセッションでも使うスキル、レビューのエージェント、そのチェックリスト | `.claude/skills/`、`.claude/agents/`、`.claude/checklists/`。原本は `ucan-lab/claude-skills`。GitHub の操作は REST（`gh api`）に書き換えてある。レビューのエージェントとチェックリストは、このリポジトリ向けに書き直したので原本と別物になっている（`docs/development.md` の「今あるもの」） |
@@ -109,7 +109,7 @@
 - [ ] 「Scrum Guild」「スクラムギルド」の商標を J-PlatPat で確かめる
 - [x] GitHub のリポジトリ名を `ucan-lab/team-leveling` から `ucan-lab/scrum-guild` に変えた（2026-10-24）。手元の作業コピーは `git remote set-url origin git@github.com:ucan-lab/scrum-guild.git` で直す
 - [ ] 見本の Worker の Workers Builds が、名前を変えたリポジトリからまだ動くかを、次に `main` へ入れたときのビルドで確かめる
-- [ ] 見本の Worker の名前を `team-leveling-design` から `scrum-guild-design` に変える。`wrangler.design.jsonc` の変更なので Issue と PR で行う。URL が変わり、Workers Builds のつなぎ先、Access のアプリ、`docs/development.md` の「見本の Worker」も合わせて直す
+- [x] 見本の Worker の名前を `team-leveling-design` から `scrum-guild-design` に変えた（2026-10-24、#17）。URL は `https://scrum-guild-design.ucan-lab.workers.dev/`
 - [ ] ドメイン `scrum-guild.dev` を取る（2026-10-24 に空きを確かめた）。ベータの前に取る（2026-10-22 に決めた時期を引き継ぐ）。それまでは `workers.dev` で動かす
 
 ## 次にやること
