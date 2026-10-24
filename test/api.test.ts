@@ -1,5 +1,7 @@
 import { env, exports } from 'cloudflare:workers';
 import { describe, expect, test, vi } from 'vitest';
+import { HTTPException } from 'hono/http-exception';
+import { validator } from 'hono/validator';
 import { createApp } from '../src/server/app.ts';
 import { isErrorBody } from '../src/shared/errors.ts';
 
@@ -61,6 +63,40 @@ describe('API', () => {
     } finally {
       error.mockRestore();
     }
+  });
+
+  test.each([
+    [400, 'invalid_input'],
+    [403, 'forbidden'],
+    [409, 'conflict'],
+  ] as const)('HTTPException の %i は決まった code で返し、message は出さない', async (status, code) => {
+    const app = createApp();
+    app.get('/http', () => {
+      throw new HTTPException(status, { message: '入力の中身' });
+    });
+    const res = await app.request('/api/http', {}, env);
+    expect(res.status).toBe(status);
+    const text = await res.text();
+    expect(text).not.toContain('入力の中身');
+    expect(JSON.parse(text).error.code).toBe(code);
+    expectApiHeaders(res);
+  });
+
+  test('バリデーターに渡した壊れた JSON の本文は 400 の invalid_input', async () => {
+    const app = createApp();
+    app.post(
+      '/json',
+      validator('json', (value) => value),
+      (c) => c.json(c.req.valid('json')),
+    );
+    const res = await app.request(
+      '/api/json',
+      { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{token=secret' },
+      env,
+    );
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(isErrorBody(body) && body.error.code).toBe('invalid_input');
   });
 
   test('ヘッダーを書き換えられない応答にも API のヘッダーを付ける', async () => {
