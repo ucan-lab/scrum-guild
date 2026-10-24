@@ -198,12 +198,13 @@ approve が出たら、人の指摘ごとに、このリポジトリの `.claude
 
 ```bash
 gh api "repos/{owner}/{repo}/pulls/<number>" --jq '{labels: [.labels[].name], head: .head.sha}'
-gh api "repos/{owner}/{repo}/commits/<head>/check-runs?per_page=100" --jq '.check_runs[] | select(.name == "label" or .name == "ci-ok") | {name, status, conclusion}'
+gh api "repos/{owner}/{repo}/commits/<head>/check-runs" --paginate --jq '.check_runs[] | {name, status, conclusion}'
 ```
 
 - `needs-human` が付いていればマージしない
 - `label` は同じ head に何件も付く（`edited` と `unlabeled` のイベントは `skipped` で終わる）。`skipped` を除いた `label` が1件以上あり、すべて `completed` で `success` のときだけ成功とみなす。1件も無い、実行中、`success` 以外があるときは成功とみなさない
 - `ci-ok` も同じ基準で見る。`ci-ok` が CI に入るまでは `label` だけを見る
+- どの名前のチェックでも、`completed` でないもの、`conclusion` が `failure`、`cancelled`、`timed_out`、`action_required` のものが1件でもあればマージしない（`ci-ok` が入るまでは、テストや lint の失敗をここで拾う）
 - 満たさなければマージせず、理由を伝えて人にマージを依頼する
 - 満たせば `gh pr merge <number> --squash --match-head-commit <head>` を打つ（確かめた後に push された head をマージしないため）。フックが確認を挟む。head が変わって失敗したら、この確認からやり直す
 - ユーザーが確認で断ったら、マージせずに止まる
