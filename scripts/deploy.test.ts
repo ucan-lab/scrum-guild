@@ -17,6 +17,7 @@ type Fake = {
   fetches: number;
   // 煙のテストの各回の開始時刻と打ち切りの時間
   attempts: { at: number; timeoutMs: number }[];
+  logs: string[];
   errors: string[];
   clock: () => number;
 };
@@ -34,12 +35,14 @@ function fake(options: {
   fetchMs?: number;
 }): Fake {
   const calls: string[][] = [];
+  const logs: string[] = [];
   const errors: string[] = [];
   let clock = 0;
   let statusCalls = 0;
   const versions = options.versions ?? [SHA];
   const result: Fake = {
     calls,
+    logs,
     errors,
     fetches: 0,
     attempts: [],
@@ -71,7 +74,7 @@ function fake(options: {
         clock += ms;
       },
       now: () => clock,
-      log: () => {},
+      log: (message) => logs.push(message),
       error: (message) => errors.push(message),
     },
   };
@@ -91,7 +94,11 @@ describe('deploy', () => {
       'deploy --var',
       'deployments status',
     ]);
+    assert.deepEqual(f.calls[0], ['deployments', 'status', '--json']);
     assert.deepEqual(f.calls[2], ['deploy', '--var', `APP_VERSION:${SHA}`, '--message', SHA]);
+    // 障害のときに頼るログの行
+    assert.ok(f.logs.includes(`戻し先の版: ${CURRENT}`));
+    assert.ok(f.logs.some((message) => message.startsWith('煙のテスト: 1回目で版が一致しました')));
   });
 
   test('マイグレーションがあれば、ブックマークを取ってから当て、その後に版を上げる', async () => {
@@ -105,7 +112,9 @@ describe('deploy', () => {
       'deploy --var',
       'deployments status',
     ]);
-    assert.ok(f.calls[2]!.includes('--remote'));
+    assert.deepEqual(f.calls[1], ['d1', 'time-travel', 'info', 'DB', '--json']);
+    assert.deepEqual(f.calls[2], ['d1', 'migrations', 'apply', 'DB', '--remote']);
+    assert.ok(f.logs.includes('マイグレーションを当てる前の Time Travel のブックマーク: {"bookmark":"b-1"}'));
   });
 
   test('Workers Builds の外では、wrangler を1つも呼ばずに失敗する', async () => {
@@ -126,6 +135,7 @@ describe('deploy', () => {
     const f = fake({ wrangler: { status: noWorker } });
     assert.equal(await deploy(f.deps), 0);
     assert.deepEqual(commands(f.calls).slice(0, 3), ['deployments status', 'deployments status', 'deploy --var']);
+    assert.ok(f.logs.includes('戻し先の版はありません（初回）'));
   });
 
   test('Worker にデプロイが1つも無ければ、戻し先無しで出す', async () => {
@@ -206,6 +216,14 @@ describe('deploy', () => {
     const f = fake({ wrangler: { status: noWorker, deploy: fail() } });
     assert.equal(await deploy(f.deps), 1);
     assert.ok(!f.calls.some((args) => args[0] === 'rollback'));
+  });
+
+  test('初回に wrangler deploy が落ちたが版は切り替わっていたら、戻し先が無いので壊れた版が残っていると書く', async () => {
+    const switched = statusOf([{ version_id: 'version-new', percentage: 100 }]);
+    const f = fake({ wrangler: { status: noWorker, deploy: fail() }, statuses: [noWorker, noWorker, switched] });
+    assert.equal(await deploy(f.deps), 1);
+    assert.ok(!f.calls.some((args) => args[0] === 'rollback'));
+    assert.ok(f.errors.some((message) => message.includes('壊れた版が残っています')));
   });
 
   test('版を 100% に切り替えた後で wrangler deploy が落ちたら、控えた版へ戻す', async () => {
