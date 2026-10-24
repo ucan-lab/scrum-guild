@@ -48,15 +48,12 @@ SQ.mount("members", () => {
     <section class="section"><div class="section-head"><h2 class="section-title">招待する</h2><span class="section-hint">${t("organization")}の人数 ${D.seats.used} / ${D.seats.limit} 人</span></div>
       <div class="panel">
         <div class="form-row">
-          ${loginTarget("login", { hints: {
-            github: "本人が GitHub でログインすると招待が見えます。",
-            google: "本人がこのメールアドレスの Google アカウントでログインすると招待が見えます。Google が確認済みとしたメールアドレスだけを突き合わせます。",
-          } })}
+          ${loginTarget("login")}
           <div class="field"><span class="field-label">ロール</span><div class="segmented" role="radiogroup"><label><input type="radio" name="role" checked><span>一般</span></label><label><input type="radio" name="role"><span>${t("leader")}</span></label></div></div>
-          <button class="btn is-primary" type="button" data-toast="招待しました。URL を本人に伝えてください">${icon("mail")}招待する</button>
+          <button class="btn is-primary" type="button" data-invite-link="login" data-invite-done="招待しました">${icon("mail")}招待する</button>
         </div>
-        <span class="field-hint">Scrum Guild は招待をメールで送りません。${t("organization")}の URL（<span class="mono">scrum-guild.dev/${esc(D.organization)}/</span>）と、どの手段でログインするかを本人に伝えてください。</span>
-        ${D.invitations.map((i) => `<div class="load-foot" style="padding-top:var(--space-3);border-top:1px solid var(--color-rule)"><span><span class="mono">${esc(i.login)}</span>（${i.via === "google" ? "Google" : "GitHub"}）・${i.role === "member" ? "一般" : t("leader")}・${esc(user(i.by).name)}が ${esc(i.at)} に招待</span><button class="btn is-sm is-quiet" type="button" data-toast="招待を取り消しました">取り消す</button></div>`).join("")}
+        <span class="field-hint">Scrum Guild は招待をメールで送りません。GitHub の招待は${t("organization")}の URL（<span class="mono">scrum-guild.dev/${esc(D.organization)}/</span>）を、Google の招待は招待したときに出る招待の URL（14日で切れます）を本人に伝えてください。</span>
+        ${D.invitations.map((i) => `<div class="load-foot" style="padding-top:var(--space-3);border-top:1px solid var(--color-rule)"><span><span class="mono">${esc(i.login)}</span>（${i.via === "google" ? "Google" : "GitHub"}）・${i.role === "member" ? "一般" : t("leader")}・${esc(user(i.by).name)}が ${esc(i.at)} に招待${i.expires ? `・${esc(i.expires)} まで` : ""}</span><button class="btn is-sm is-quiet" type="button" data-toast="招待を取り消しました">取り消す</button></div>`).join("")}
       </div>
       <div class="panel">
         <div class="callout is-warn">${icon("alert")}<span>${t("organization")}の人数が上限（${D.seats.limit} 人）に達しているため、招待できません。上限を上げるには${t("admin")}に相談してください。</span></div>

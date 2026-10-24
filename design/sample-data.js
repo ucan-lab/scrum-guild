@@ -206,7 +206,7 @@ Object.assign(window.SQ_DATA, {
   ],
   invitations: [
     { login: "kotone-dev", via: "github", role: "member", by: "u1", at: "10/18" },
-    { login: "mio.hoshino@example.com", via: "google", role: "member", by: "u1", at: "10/20" },
+    { login: "mio.hoshino@example.com", via: "google", role: "member", by: "u1", at: "10/20", expires: "11/03" },
   ],
 
   detailFields: ["達成条件", "確かめ方"],

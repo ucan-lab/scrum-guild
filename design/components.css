@@ -611,6 +611,8 @@ a.notice-title.notice-link:hover { text-decoration: underline; text-underline-of
 .segmented label + label span { border-left: 1px solid var(--color-line); }
 .segmented input:checked + span { background: var(--color-accent); color: var(--color-on-accent); font-weight: 700; }
 .segmented input:focus-visible + span { outline: 2px solid var(--color-accent); outline-offset: -3px; }
+.segmented input:disabled { cursor: not-allowed; }
+.segmented input:disabled + span { opacity: .5; }
 .choice-list { display: grid; gap: var(--space-2); }
 .choice { display: flex; gap: var(--space-3); align-items: flex-start; padding: var(--space-3) var(--space-4); border: 1px solid var(--color-line); border-radius: var(--radius-1); background: var(--color-surface); cursor: pointer; }
 .choice:has(input:checked) { border-color: var(--color-accent); background: var(--color-accent-soft); }

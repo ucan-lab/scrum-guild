@@ -39,7 +39,7 @@
 
 - アカウントは人ごとに1行で、組織をまたぐ。ログインの手段（初版は GitHub と Google）とは `account_logins` で結び、特定の手段に依存させない。ログインとセッションはアカウントに付く。
 - 人は、ログインの手段（`login_provider`）と手段の中の不変の ID（`login_subject`）の組で見分ける。GitHub では `github` とユーザー ID、Google では `google` と `sub`。アカウントができる前の管理者の指名と招待も、この組で持つ。
-- Google の人への指名と招待は、`sub` が分からないうちはメールアドレス（`login_email`）で持ち、`login_subject` を空にしておく。本人が Google でログインしたときに、確認済みの同じメールアドレスの行へ `sub` を埋め、`login_email` を空にする（下の「メールアドレスで待つ指名と招待」）。
+- Google の人への指名と招待は、`sub` が分からないうちはメールアドレス（`login_email`）と招待の URL の秘密のハッシュ（`claim_token_hash`）で持ち、`login_subject` を空にしておく。本人が招待の URL から Google でログインしたときに、その行へ `sub` を埋める（下の「メールアドレスで待つ指名と招待」）。
 - ユーザーは組織ごとの人で、アカウントと組織の組に1行。組織の中の表はすべてユーザーを指し、アカウントは指さない。
 - 組織の直下のもの（`users`、`workspaces`、`organization_holidays`、`change_logs`）は `organization_id` を持つ。
 - ワークスペースの中のものは、すべて `workspace_id` を持つ。権限の検査と絞り込みを1つの列で行うため、親から辿れるものにも持たせる。`organization_id` は持たせず、`workspaces.organization_id` で組織を確かめる。
@@ -68,7 +68,7 @@
 - 組織の中の表は、リクエストの組織から DB を選ぶ1つの関数を通して読み書きする。今はどの組織でも同じ DB を返す。
 - 共通の表は、共通の DB を返す別の関数を通して読み書きする。
 - 1回の `batch()` に、共通の表と組織の中の表を混ぜない。今これに当たる操作は「書き込みの単位」の組織の作成とメンバーの離脱で、どちらも2回に分けて書く。
-- 組織をまたいで読む処理は、1つの関数にまとめる。当たるのは、ログインできるか（入れる組織と届いた招待があるか）、ログインの直後の組織の選択、届いた招待の一覧、初めてのログインで `users.account_id` を埋めること、メールアドレスで待つ指名と招待に `sub` を埋めること。今は1つの DB に1回の問い合わせで済む。分けたときは、この関数だけを、各 DB に問い合わせる形か、共通の DB にログインの ID（`login_provider` と `login_subject`、メールアドレスで待つものは `login_email`）と組織の組の索引を持つ形に直す。どちらにするかは分けるときに決める。
+- 組織をまたいで読む処理は、1つの関数にまとめる。当たるのは、ログインできるか（入れる組織と届いた招待があるか）、ログインの直後の組織の選択、届いた招待の一覧、初めてのログインで `users.account_id` を埋めること、招待の URL の秘密のハッシュから待っている指名と招待を引くこと。今は1つの DB に1回の問い合わせで済む。分けたときは、この関数だけを、各 DB に問い合わせる形か、共通の DB にログインの ID（`login_provider` と `login_subject`）と組織の組の索引、招待の URL の秘密のハッシュと組織の組の索引を持つ形に直す。どちらにするかは分けるときに決める。
 
 ### 分けるとき
 
@@ -106,9 +106,9 @@
 | 列 | 型 | 制約 | 説明 |
 | --- | --- | --- | --- |
 | login_provider | TEXT | PK | ログインの手段（初版は `github` と `google`）。値はログインの手段の型の一覧でアプリが検証する |
-| login_subject | TEXT | PK | 手段の中の不変の ID。GitHub ではユーザー ID を文字列で、Google では ID トークンの `sub` を持つ |
+| login_subject | TEXT | PK | 手段の中の不変の ID。GitHub ではユーザー ID を10進の文字列で、Google では ID トークンの `sub` を受け取った文字列のまま持つ。数値に直さない（Google の `sub` は JavaScript の数値で正確に表せない桁数がある） |
 | account_id | TEXT | NOT NULL、FK accounts | |
-| login_name | TEXT | NOT NULL | ログインのたびに書き直す表示用の名前。GitHub ではログイン名、Google ではメールアドレス |
+| login_name | TEXT | NOT NULL | ログインのたびに書き直す表示用の名前。GitHub ではログイン名、Google ではプロフィールの名前（`name`。無ければ「Google ユーザー」）。Google のメールアドレスは持たない |
 | display_name | TEXT | | 手段の側の名前。組織で初めてユーザーを作るときの表示名の既定 |
 | avatar_url | TEXT | | |
 | created_at、updated_at | TEXT | NOT NULL | |
@@ -139,7 +139,8 @@
 | state | TEXT | PK | |
 | login_provider | TEXT | NOT NULL | 戻ってきたときにどの手段で確かめるか |
 | code_verifier | TEXT | NOT NULL | |
-| nonce | TEXT | | OpenID Connect の手段（Google）で、ID トークンの `nonce` と比べる値。GitHub では空 |
+| nonce | TEXT | | OpenID Connect の手段（Google）で、ID トークンの `nonce` と比べる値。GitHub では空。Google で空の行は、アプリが拒む |
+| claim_token_hash | TEXT | | 招待の URL から始めたログインで、その URL の秘密の SHA-256。戻ってきたときに、待っている指名か招待を引く |
 | return_to | TEXT | | ログイン後に戻る画面のパス |
 | expires_at | TEXT | NOT NULL | 作ってから10分 |
 
@@ -178,7 +179,7 @@
 | created_by_operator | TEXT | NOT NULL | 作った運用者のログインの ID（`github:12345`、`google:<sub>` の形） |
 | created_at、updated_at | TEXT | NOT NULL | |
 
-- 運用者の画面で作る。作るときに最初の管理者の `users` を同じバッチで入れる（アカウントがまだなければ、`users` の代わりに管理者の招待を持つ。下の `users` を参照）。
+- 運用者の画面で作る。作るときに最初の管理者の `users` を同じバッチで入れる（アカウントがまだなければ、`account_id` が空の `users` の行で待つ。下の `users` を参照）。
 - アプリが使う名前（`api`、`login`、`operator` など）を slug にできないことは、アプリが検査する。
 - 人数は保存せず、招待のたびに数える。対象は、無効にしていない管理者と、いずれかのワークスペースに今所属しているか承諾待ちの招待を持つ人（まだアカウントのない人への招待を含む）で、同じ人は1人とする。人数が `member_limit` 以上なら招待を断り、同時に招待して少し超えたときはそのまま認める。
 - 解約した組織は、`purge_on` を過ぎたら運用の手順でこの組織の行をすべて消し、R2 の `<organization_id>/` で始まるファイルも消す。再開したら `suspended_at` と `purge_on` を空に戻す。
@@ -191,11 +192,13 @@
 | --- | --- | --- | --- |
 | id | TEXT | PK | |
 | organization_id | TEXT | NOT NULL、FK organizations | |
-| account_id | TEXT | FK accounts | アカウントができる前（管理者の招待）は空 |
+| account_id | TEXT | FK accounts | アカウントができる前（管理者の指名で待つ間）は空 |
 | login_provider | TEXT | NOT NULL | 突き合わせに使うログインの手段。`account_logins` と同じ値 |
 | login_subject | TEXT | | 突き合わせに使う手段の中の不変の ID。`account_logins` と同じ値。Google の指名で `sub` が分かる前は空 |
-| login_email | TEXT | `CHECK ((login_subject IS NULL) <> (login_email IS NULL))` | `sub` が分かる前に突き合わせるメールアドレス（小文字にそろえる）。Google の指名で使い、`sub` を埋めたら空にする |
-| name | TEXT | NOT NULL | この組織での表示名。初回は手段の側の名前かログイン名。Google の指名で待つ間はメールアドレス |
+| login_email | TEXT | | `sub` が分かる前に突き合わせるメールアドレス（そろえ方は下の「メールアドレスで待つ指名と招待」）。Google の指名で使い、`sub` を埋めたら空にする |
+| claim_token_hash | TEXT | UNIQUE | 招待の URL の秘密の SHA-256。`sub` を埋めたら空にする |
+| claim_expires_at | TEXT | | 招待の URL の期限（作ってから14日）。`sub` を埋めたら空にする |
+| name | TEXT | NOT NULL | この組織での表示名。初回は手段の側の名前かログイン名。Google の指名で待つ間はメールアドレスで、`sub` を埋めるときに Google のプロフィールの名前に書き直す |
 | is_admin | INTEGER | NOT NULL、既定 0 | 管理者（ギルドマスター） |
 | work_start_on | TEXT | | 稼働開始日。空なら区切らない |
 | work_end_on | TEXT | | 稼働終了日。空なら区切らない |
@@ -204,12 +207,14 @@
 | theme | TEXT | `organizations.theme` と同じ値か NULL | 自分で選んだテーマ。NULL なら組織の既定に従う |
 | created_at、updated_at | TEXT | NOT NULL | |
 
-- 一意: `(organization_id, login_provider, login_subject)`、`(organization_id, login_provider, login_email) WHERE login_subject IS NULL`。
-- 索引: `(login_provider, login_subject)`。ログインのときに入れる組織を引く。`(login_provider, login_email) WHERE login_subject IS NULL`。メールアドレスで待つ指名を引く。
+- 表の制約: `CHECK ((login_subject IS NULL) = (login_email IS NOT NULL))`、`CHECK ((login_email IS NULL) = (claim_token_hash IS NULL) AND (login_email IS NULL) = (claim_expires_at IS NULL))`、`CHECK (login_email IS NULL OR (login_provider = 'google' AND login_email = lower(trim(login_email))))`。
+- 一意: `(organization_id, login_provider, login_subject)`。`login_subject` が空の行どうしは、SQLite では NULL が重ならないので当たらない。待っている指名は、運用者が指名し直すと消すので、メールアドレスの一意は持たない。
+- 索引: `(login_provider, login_subject)`。ログインのときに入れる組織を引く。
 - 表示するログイン名とアバターは `account_logins` から引く。
-- 運用者が組織を作るときは、最初の管理者をログインの ID に解決し（GitHub はユーザー名からユーザー ID へ。Google は解決せず `login_email` に持つ）、`is_admin = 1` の行を入れる。`account_id` は、その人が初めてログインしたときに埋める。管理者の指名し直しも同じ。
+- 運用者が組織を作るときは、最初の管理者をログインの ID に解決し（GitHub はユーザー名からユーザー ID へ。Google は解決せず、`login_email` と招待の URL の秘密で待つ）、`is_admin = 1` の行を入れる。`account_id` は、その人が初めてログインしたときに埋める。管理者の指名し直しも同じで、そのときは同じ組織の `login_subject` が空の行を同じバッチで消す。
+- `login_subject` が空の行（Google の指名で待つ行）は、管理者の数にも最後の管理者の検査にも数えない。
 - 最後の管理者を解除できないことはアプリが検査する。
-- 招待された人は、承諾した時点でその組織の行を作る（すでにあれば使う）。招待の時点では `invitations` にログインの ID だけを持つ。
+- 招待された人は、承諾した時点でその組織の行を作る（すでにあれば使う）。招待の時点では `invitations` にログインの ID（Google では `sub` が分かるまでメールアドレス）だけを持つ。
 
 ### organization_holidays
 
@@ -329,27 +334,50 @@
 | workspace_id | TEXT | NOT NULL、FK workspaces | |
 | login_provider | TEXT | NOT NULL | 招待した人のログインの手段 |
 | login_subject | TEXT | | 招待のときに解決した、手段の中の不変の ID。Google では `sub` が分かるまで空 |
-| login_email | TEXT | `CHECK ((login_subject IS NULL) <> (login_email IS NULL))` | `sub` が分かる前に突き合わせるメールアドレス（小文字にそろえる）。Google の招待で使い、`sub` を埋めたら空にする |
-| login_name | TEXT | NOT NULL | 招待のときの名前（表示用）。GitHub ではユーザー名、Google ではメールアドレス |
+| login_email | TEXT | | `sub` が分かる前に突き合わせるメールアドレス（そろえ方は下の「メールアドレスで待つ指名と招待」）。Google の招待で使い、`sub` を埋めたら空にする |
+| claim_token_hash | TEXT | UNIQUE | 招待の URL の秘密の SHA-256。`sub` を埋めたら空にする |
+| claim_expires_at | TEXT | | 招待の URL の期限（作ってから14日）。`sub` を埋めたら空にする |
+| login_name | TEXT | NOT NULL | 招待のときの名前（表示用）。GitHub ではユーザー名、Google ではメールアドレス。招待した画面の承諾待ちの一覧にだけ出す |
 | role | TEXT | NOT NULL、`leader` か `member` | |
 | invited_by | TEXT | NOT NULL、FK users | |
 | status | TEXT | NOT NULL、`pending`、`accepted`、`declined`、`revoked` | |
 | responded_at | TEXT | | 承諾、辞退、取り消しの日時 |
 | created_at | TEXT | NOT NULL | |
 
+- 表の制約: `users` と同じ3つの CHECK（`login_subject` と `login_email` のどちらか一方、`login_email` と `claim_token_hash` と `claim_expires_at` はそろって入るか空、`login_email` は `google` の行だけで、そろえた形）。
 - 一意: `(workspace_id, login_provider, login_subject) WHERE status = 'pending'`、`(workspace_id, login_provider, login_email) WHERE status = 'pending' AND login_subject IS NULL`。
-- 索引: `(login_provider, login_subject) WHERE status = 'pending'`、`(login_provider, login_email) WHERE status = 'pending' AND login_subject IS NULL`。ログインの可否と招待の一覧に使う。
+- 索引: `(login_provider, login_subject) WHERE status = 'pending'`。ログインの可否と招待の一覧に使う。
 - 今の所属がある人は招待できないことを、アプリが検査する。Google の招待では、メールアドレスを `sub` に結べないため、所属の検査は `sub` を埋めるときに行う（下の「メールアドレスで待つ指名と招待」）。
+- Google で招待し直すときは、同じワークスペースの同じ `login_email` の承諾待ちの招待を同じバッチで `revoked` にする。
 
 ### メールアドレスで待つ指名と招待
 
-Google の人は、ログインするまで `sub` が分からない。そのため、`users`（管理者の指名）と `invitations`（招待）のうち `login_subject` が空の行を、ログインのときに次の手順で結ぶ。組織をまたいで読む処理の関数（「読み書きの入口」）が行う。
+Google の人は、ログインするまで `sub` が分からない。そのため、`users`（管理者の指名）と `invitations`（招待）を `login_subject` を空にした行で作り、招待の URL から本人がログインしたときに `sub` を埋める。
 
-- ID トークンの `email_verified` が真のときだけ、`email` を小文字にそろえて `login_email` と比べる。偽なら、メールアドレスで待つ行には当てない。
-- 当たった行の `login_subject` に `sub` を埋め、`login_email` を空にする。組織ごとに1回の `batch()` で書く。
-- 同じ組織に同じ `sub` の `users` の行がすでにあれば（離れてから管理者に指名された人など）、その行を `is_admin = 1` にし、メールアドレスで待っていた行を消す。
-- 同じワークスペースに同じ `sub` の承諾待ちの招待がすでにあれば、メールアドレスで待っていた方を `revoked` にする。その人がもうそのワークスペースに所属していれば、同じく `revoked` にする。
-- 結んだ後は `sub` で見分ける。Google の側でメールアドレスが変わっても、結んだ行はそのまま当たる。結ぶ前にメールアドレスが変わったときは、新しいメールアドレスで招待し直す。
+招待の URL を作るとき。
+
+- 秘密は 32 バイトの乱数にし、URL（`/invite/<秘密>`）にだけ入れる。DB には SHA-256 の `claim_token_hash` だけを持ち、URL は作った直後の画面にだけ出す。
+- メールアドレスは、前後の空白を除き、ASCII の英大文字だけを小文字に直してから `login_email` に入れる。ASCII の外の文字を含むものは受け付けない。ドットや `+` 以降は読み替えない。招待と指名の入力と、ID トークンの `email` の両方に、同じ1つの関数を通す。
+- `claim_expires_at` は作ってから14日にする。
+
+本人が招待の URL を開いたとき。
+
+1. すでにログインしていても、Google のログインを始める。`oauth_states.claim_token_hash` に秘密のハッシュを入れる。
+2. 戻ってきたら ID トークンを確かめ（`development.md` の「Google のログイン」）、`email_verified` が真偽値の `true` のときだけ先に進む。
+3. 組織をまたいで読む関数で、`claim_token_hash` が一致し、`login_subject` が空で、`claim_expires_at` が過ぎていない行を引く（`invitations` は `status = 'pending'` も）。`login_email` がトークンの `email` をそろえた値と一致しなければ、当たらなかったものとする。当たらなければ、理由を分けずに「この招待の URL は使えません」と出す。どのメールアドレスに招待したかは出さない。
+4. 当たった行の組織で、次の文を1回の `batch()` に並べて書く。どの文も条件付きにして、読んでから書くまでに状態が変わっても、一意の制約に当たらず、もう一度流しても同じ結果になるようにする。
+   - 指名（`users`）: 同じ組織に同じ `sub` の行があれば、その行を `is_admin = 1` にし、`disabled_at` を空にする（`WHERE EXISTS` で条件付き）。続けて待っていた行を消す（同じ `EXISTS` と `login_subject IS NULL` で条件付き）。無ければ、待っていた行に `sub` を埋め、`login_email`、`claim_token_hash`、`claim_expires_at` を空にし、`name` を Google のプロフィールの名前に書き直す（`WHERE id = ? AND login_subject IS NULL AND NOT EXISTS (同じ組織の同じ sub の行)`）。
+   - 招待（`invitations`）: 同じワークスペースに同じ `sub` の承諾待ちの招待があるか、その人がもうそのワークスペースに所属していれば、待っていた招待を `revoked` にする（`WHERE EXISTS` で条件付き）。無ければ、`sub` を埋め、`login_email`、`claim_token_hash`、`claim_expires_at` を空にする（`WHERE id = ? AND login_subject IS NULL AND status = 'pending' AND NOT EXISTS (…)`）。
+   - どちらも、結んだことを `change_logs` に残す（`entity_type` は `user` か `invitation`、`action` は `update`）。運用者の指名なら `operator` に運用者のログインの ID を入れる。
+   - 文の並びは、統合と取り消しを先に、`sub` を埋める文を後にする。
+5. そのあとは、GitHub と同じく `sub` で入れる組織を引き、アカウントを作り、`users.account_id` を埋める。`sub` を埋めるのをアカウントを作るより先にするのは、入れる組織が1つもない人のアカウントを作らないため。
+6. 4 の途中で失敗しても、行は待ったままで、期限までは同じ招待の URL を開き直せば結べる。
+
+結んだ後の見分けは `sub` だけで、Google の側でメールアドレスが変わっても、結んだ行はそのまま当たる。
+
+期限を過ぎて結ばれていない招待は、人数に数えず、招待の一覧に「期限切れ」と出す。期限を過ぎた指名は、運用者の画面に「期限切れ」と出し、運用者が指名し直す。
+
+人数（`organizations` の「人数」）の数え方: `sub` の行は `(login_provider, login_subject)`、待つ行は `(login_provider, login_email)` で1人。すでに所属している人をメールアドレスで招待すると、結ぶまでの間だけ2人に数える（結んだときに取り消す）。
 
 ### allocations
 
@@ -887,6 +915,7 @@ D1 は対話的なトランザクションを持たない。まとめて書く�
 | メンバーの離脱 | `memberships`、担当を外す `tasks`、`epic_party_members`、`connections`、`change_logs`。ログインできなくなったときは、続けて共通の DB の `sessions` を消す |
 | 取り込み（1件） | `tasks`（結ばれたリポジトリがあれば `repository_id` も）、`task_sources`、`task_source_payloads` |
 | 組織の作成 | 共通の DB の `organizations`、続けて組織の DB の最初の管理者の `users` |
+| Google の招待の URL から結ぶ | 組織の DB の `users` か `invitations`、`change_logs`（「メールアドレスで待つ指名と招待」の 4）、続けて共通の DB の `accounts` と `account_logins` |
 | 添付ファイルを上げる | R2 にファイルを書き、続けて `attachments` |
 | 添付ファイルを消す | `attachments` の削除と `change_logs`、続けて R2 のファイルの削除 |
 | コメントの削除 | `comments`、そのコメントの `attachments` の削除、`change_logs`、続けて R2 のファイルの削除 |
@@ -896,6 +925,7 @@ D1 は対話的なトランザクションを持たない。まとめて書く�
 共通の DB と組織の DB に分けて書く操作は、途中で失敗したときの扱いを決めておく。
 
 - 組織の作成で `users` が入らなかったときは、管理者のいない組織が残る。運用者の画面の管理者の指名し直しで入れる。
+- Google の招待の URL から結んだあと、アカウントが作れなかったときは、`sub` を埋めた行だけが残る。次に Google でログインすれば `sub` で当たり、アカウントを作る。
 - 添付ファイルを上げるときに `attachments` が入らなかったら、書いた R2 のファイルを消す。添付ファイルを消すときに R2 のファイルが消えなかったら、どの行も指さないファイルが残る。容量の上限には数えず、組織を消すときにまとめて消える。
 - メンバーの離脱で `sessions` が消えなかったときも、組織に入れるかはリクエストのたびに確かめるので、離脱した組織には入れない。ログインできる条件を失った人のセッションは、次にその人がリクエストしたときに消す。
 

@@ -243,7 +243,7 @@
     leader: () => [
       { title: `${t("workspace")}「${esc(firstWsName())}」の${t("leader")}になる`, note: `${t("admin")}が${t("workspace")}を作り、あなたを指名しました。`, done: true },
       { title: "メンバーを招待する", done: D.invitations.length > 0 || D.members.filter((m) => !m.left).length > 1,
-        note: `GitHub のユーザー名か Google のメールアドレスで招待し、${t("organization")}の URL とログインの手段を本人に伝えます。Scrum Guild は招待をメールで送りません。`,
+        note: `GitHub のユーザー名か Google のメールアドレスで招待し、${t("organization")}の URL（Google なら招待の URL）を本人に伝えます。Scrum Guild は招待をメールで送りません。`,
         action: (p) => `<a class="btn is-sm ${p}" href="${firstHref("members.html")}">メンバーを招待する</a>` },
       { title: `${t("backlog")}に最初の${t("task")}を入れる`, done: D.tasks.some((x) => x.ws === D.workspace),
         note: `「${t("create")}」で作るか、${t("inbox")}に届いたものを入れます。メンバーが入る前に並べておくと、何から始めるかが伝わります。`,
@@ -804,18 +804,15 @@
     createOrganization: () => openDialog(`${t("organization")}を作る`,
       `<label class="field" for="d-ks"><span class="field-label">URL の名前（slug）</span><input class="input mono" id="d-ks" placeholder="例: sakura-dev"><span class="field-hint">英小文字、数字、ハイフンで 2〜40 字。あとから変えられません。</span></label>
          <label class="field" for="d-kn"><span class="field-label">表示名</span><input class="input" id="d-kn" placeholder="例: さくら開発"></label>
-       ${loginTarget("d-ka", { title: `最初の${t("admin")}のログインの手段`, hints: {
-         github: `作るときに GitHub のユーザー ID に解決します。その人が GitHub でログインすると、この${t("organization")}の${t("admin")}として入れます。`,
-         google: `その人がこのメールアドレスの Google アカウントでログインすると、この${t("organization")}の${t("admin")}として入れます。Google が確認済みとしたメールアドレスだけを突き合わせます。`,
-       } })}
-       <div class="callout is-info">${icon("link")}<span>URL は <span class="mono">scrum-guild.dev/&lt;slug&gt;/</span> になります。この URL を${t("admin")}に伝えてください。</span></div>`,
-      `<button class="btn is-quiet" type="button" data-close-dialog>やめる</button><button class="btn is-primary" type="button" data-close-dialog data-toast="${t("organization")}を作りました">作る</button>`),
+       ${loginTarget("d-ka", { title: `最初の${t("admin")}のログインの手段`, hints: adminHints() })}
+       <div class="callout is-info">${icon("link")}<span>URL は <span class="mono">scrum-guild.dev/&lt;slug&gt;/</span> になります。Google で指名したときは、作ったあとに出る招待の URL を${t("admin")}に伝えてください。</span></div>`,
+      `<button class="btn is-quiet" type="button" data-close-dialog>やめる</button><button class="btn is-primary" type="button" data-invite-link="d-ka" data-invite-done="${t("organization")}を作りました">作る</button>`),
     reassignAdmin: () => openDialog(`${t("admin")}を指名し直す`,
       `<p>くもラボには今${t("admin")}がいません。新しい${t("admin")}を、GitHub のユーザー名か Google のメールアドレスで指名します。</p>
-       ${loginTarget("d-ra")}
-       <p class="field-hint">この${t("organization")}のユーザーでなくてもかまいません。指名しても、運用者はこの${t("organization")}の中を見られるようにはなりません。</p>
+       ${loginTarget("d-ra", { hints: adminHints() })}
+       <p class="field-hint">この${t("organization")}のユーザーでなくてもかまいません。指名しても、運用者はこの${t("organization")}の中を見られるようにはなりません。まだログインしていない前の指名は消えます。</p>
        <p class="field-hint">指名は${t("organization")}の変更の履歴に、運用者の操作として残ります。</p>`,
-      `<button class="btn is-quiet" type="button" data-close-dialog>やめる</button><button class="btn is-primary" type="button" data-close-dialog data-toast="${t("admin")}を指名しました">指名する</button>`),
+      `<button class="btn is-quiet" type="button" data-close-dialog>やめる</button><button class="btn is-primary" type="button" data-invite-link="d-ra" data-invite-done="${t("admin")}を指名しました">指名する</button>`),
     // 添付ファイルのプレビュー。画像と動画は画面で見られ、それ以外はダウンロードして開く
     previewFile: (id) => {
       const hit = findFile(id);
@@ -1220,9 +1217,26 @@
   function loginTarget(id, { title = "ログインの手段", hints = {}, disabled = false } = {}) {
     const vias = Object.keys(LOGIN_VIA);
     const radios = vias.map((k, i) => `<label><input type="radio" name="${id}-via" value="${k}" data-login-via="${id}" ${i === 0 ? "checked" : ""} ${disabled ? "disabled" : ""}><span>${LOGIN_VIA[k].name}</span></label>`).join("");
-    const hintHtml = vias.filter((k) => hints[k]).map((k, i) => `<span class="field-hint" data-login-hint="${k}" ${i === 0 ? "" : "hidden"}>${hints[k]}</span>`).join("");
+    const hintHtml = vias.filter((k) => hints[k]).map((k) => `<span class="field-hint" data-login-hint="${k}" ${k === vias[0] ? "" : "hidden"}>${hints[k]}</span>`).join("");
     return `<div class="field"><span class="field-label">${title}</span><div class="segmented" role="radiogroup" aria-label="${title}">${radios}</div></div>
       <label class="field" for="${id}"><span class="field-label" data-login-label>${LOGIN_VIA[vias[0]].label}</span><input class="input mono" id="${id}" placeholder="${LOGIN_VIA[vias[0]].example}" ${disabled ? "disabled" : ""}>${hintHtml}</label>`;
+  }
+  // 運用者が管理者を指名するときの、手段ごとの説明
+  const adminHints = () => ({
+    github: `GitHub のユーザー ID に解決します。その人が GitHub でログインすると、この${t("organization")}の${t("admin")}として入れます。`,
+    google: `その人が招待の URL を開き、このメールアドレスの Google アカウントでログインすると、${t("admin")}として入れます。招待の URL は14日で切れます。`,
+  });
+  // 招待と指名を決めたあと。Google なら、このときだけ出る招待の URL をダイアログで見せる。
+  // 見本の URL は固定の架空の値
+  function inviteLink(id, done) {
+    const via = document.querySelector(`[data-login-via="${id}"]:checked`)?.value;
+    if (via !== "google") { closeDialog(); toast(`${icon("check")}${esc(done)}`); return; }
+    openDialog("招待の URL",
+      `<p>${esc(done)}。この URL を本人に伝えてください。本人がこの URL を開き、招待したメールアドレスの Google アカウントでログインすると入れます。</p>
+       <div class="form-row"><label class="field" for="d-iu"><span class="field-label">招待の URL</span><input class="input mono" id="d-iu" value="https://scrum-guild.dev/invite/Qm7tX2vLr9aKpE4w" readonly></label>
+         <button class="btn" type="button" data-toast="招待の URL をコピーしました">${icon("link")}コピー</button></div>
+       <div class="callout is-warn">${icon("alert")}<span>この URL はこの画面を閉じると二度と出ません。期限は14日です。なくしたり切れたりしたら、招待し直してください。</span></div>`,
+      `<button class="btn is-primary" type="button" data-close-dialog>閉じる</button>`);
   }
   document.addEventListener("change", (ev) => {
     const el = ev.target.closest("[data-login-via]");
@@ -1283,6 +1297,7 @@
       el.outerHTML = drawerSizeBtn();
       document.querySelector("#drawer [data-drawer-size]")?.focus({ preventScroll: true }); return;
     }
+    if ((el = hit("data-invite-link"))) { inviteLink(el.dataset.inviteLink, el.dataset.inviteDone); return; }
     if ((el = hit("data-dialog"))) { if (el.dataset.dialog === "createTask") delete D.files.new; DIALOGS[el.dataset.dialog](); return; }
     if ((el = hit("data-file"))) { DIALOGS.previewFile(el.dataset.file); return; }
     if ((el = hit("data-delete-file"))) { closeDialog(); DIALOGS.deleteFile(el.dataset.deleteFile); return; }

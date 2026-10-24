@@ -62,9 +62,9 @@
 1. 土台: pnpm、SvelteKit の SPA モード、Hono、wrangler の設定、ESLint と Prettier、`CLAUDE.md` の「コマンド」、セキュリティのヘッダー。Claude の設定とフック（下の「Claude の設定とフック」）は先に入れる
 2. CI と CD: `ci-ok`、Workers Builds とデプロイのスクリプト、`/api/health`、煙のテスト、`docs/operations.md`
 3. 入口: Kysely の2つの入口と `batch()` の関数、操作の定義を登録する関数、エラーの形、組織の分離のテストの仕組み
-4. 一本道に要る表のマイグレーションと seed
+4. 一本道に要る表のマイグレーションと seed。Google で待つための列（`users` と `invitations` の `login_email`、`claim_token_hash`、`claim_expires_at`、空にできる `login_subject`、`oauth_states` の `nonce` と `claim_token_hash`）も最初から入れる。SQLite では後から NOT NULL を外すのに表の作り直しが要るため
 5. 運用者の組織の作成、GitHub OAuth とセッション、組織の選択
-6. Google のログイン（メールアドレスで待つ指名と招待を `sub` に結ぶところまで）。5 のログインの手段の型に、2つ目の実装として足す
+6. Google のログイン（招待の URL から、メールアドレスで待つ指名と招待を `sub` に結ぶところまで）。5 のログインの手段の型に、2つ目の実装として足す
 7. ワークスペースの作成、タスクの作成と完了（完了の記録、経験値、変更の履歴を1回の `batch()` で書く）
 
 ### DB を作り直してよい期間
@@ -318,8 +318,16 @@ GitHub App も比べた。人が抜けても取り込みが止まらない、PAT
 - OAuth クライアント: Google Cloud のプロジェクトに、種類が「ウェブ アプリケーション」のものを1つ作り、承認済みのリダイレクト URI は本番の公開 URL の戻り先だけにする
 - 同意画面: ユーザーの種類は「外部」、公開の状態は「本番」。「テスト」のままだと、登録したテストユーザーしかログインできない
 - スコープ: `openid`、`email`、`profile` だけ。機密のスコープを使わないので、Google の審査を待たずに出せる
-- ID トークン: 認可コードのフローに state、PKCE、nonce を付けて、トークンのエンドポイントから直接受け取る。署名の検証は省き、確かめるのは `iss`、`aud`、`exp`、`nonce` の4つ
-- ドメイン: 個人の Google アカウントの人も入るため、`hd`（Google Workspace のドメイン）では絞らない。入れるかどうかは、ほかの手段と同じく指名と招待で決まる
+- フロー: 認可コードのフロー（`response_type=code`）に state、PKCE（`S256`）、nonce を付ける。受け取る ID トークンは、固定の `https://oauth2.googleapis.com/token` に Worker から送った応答の `id_token` だけ。エンドポイントを発見の文書や設定から読まず、戻り先の URL や画面から ID トークンを受け取らない
+- ID トークンの検証: TLS でトークンのエンドポイントから直接受け取るので、OpenID Connect Core の決まりに沿って署名の検証は省く。確かめるのは次の5つ
+  - `iss` が `https://accounts.google.com` か `accounts.google.com` に完全一致する
+  - `aud` がクライアント ID に完全一致する（配列なら `azp` もクライアント ID）
+  - `exp` が過ぎていない
+  - `nonce` が `oauth_states` の値に一致する
+  - `email_verified` が真偽値の `true`（文字列の `"true"` は通さない）。メールアドレスで待つ指名と招待に結ぶときだけ要る
+- `sub`: 受け取った文字列のまま扱い、数値に直さない
+- ドメイン: 個人の Google アカウントの人も入るため、`hd`（Google Workspace のドメイン）では絞らない。入れるかどうかは、ほかの手段と同じく指名と招待で決まる。Google が管理していないアドレスでも横取りされないよう、指名と招待は招待の URL の秘密とメールアドレスの両方がそろったときだけ結ぶ（`data-model.md` の「メールアドレスで待つ指名と招待」）
+- 運用者のログインの ID: シークレットの一覧の各項目は `github:<数字>` か `google:<数字>` の形だけを受け付け、合わない項目があれば起動を止める。比べるのは手段と ID の文字列の完全一致だけ。自分の Google の `sub` の調べ方は運用の手順書に書く
 - ログインのボタンの見た目は、Google のブランドの決まり（Sign in with Google のボタン）に合わせる。見本の Google のボタンは仮の見た目
 
 ## 開発とテストでのログイン
