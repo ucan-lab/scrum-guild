@@ -14,5 +14,8 @@ build/
 .svelte-kit/
 .wrangler/
 vite.config.ts.timestamp-*
+# e2e の結果（pnpm e2e）
+test-results/
+playwright-report/
 # wrangler types が作る（scripts/prepare.ts）
 worker-configuration.d.ts
