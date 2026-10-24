@@ -536,8 +536,9 @@
       <span class="props-note">${opts.note || `縦の線は 80% の位置。超えると${t("admin")}に通知します。`}</span></div>`;
   }
 
-  // ---- タスクの詳細（右から出る引き出し） ----
-  const drawer = { id: null, tab: "comments", thanked: new Set(), opener: null };
+  // ---- タスクの詳細（右から出る引き出し。画面いっぱいに広げられる） ----
+  // full は開き直しても残し、次に開くタスクも同じ広さで出す
+  const drawer = { id: null, tab: "comments", thanked: new Set(), opener: null, full: false };
   function drawerHtml() {
     const x = task(drawer.id);
     const parent = x.story ? D.stories[x.story] : null;
@@ -555,7 +556,10 @@
       <div class="drawer-top">
         <span class="chip">${icon(x.src ? SRC[x.src.kind].icon : "pen")}${x.src ? SRC[x.src.kind].label : `手で作った${t("task")}`}</span>
         ${x.src ? `<span class="source-key">${esc(x.src.key)}</span><span class="chip">取り込み元: ${esc(x.src.status)}</span>` : ""}
-        <button class="pill drawer-close" type="button" data-close-drawer aria-label="閉じる">${icon("x")}</button>
+        <span class="drawer-tools">
+          <button class="pill drawer-size" type="button" data-drawer-size aria-label="${drawer.full ? "横に戻す" : "画面いっぱいに広げる"}" title="${drawer.full ? "横に戻す" : "画面いっぱいに広げる"}">${icon(drawer.full ? "shrink" : "expand")}</button>
+          <button class="pill drawer-close" type="button" data-close-drawer aria-label="閉じる">${icon("x")}</button>
+        </span>
       </div>
       <h2 class="drawer-title" id="drawer-title">${titleOf(x)}</h2>
       ${x.srcDone && !x.doneAt ? `<div class="callout is-ok">${icon("check")}<span>取り込み元で完了になりました。完了にするかはここで決めます。</span></div>` : ""}
@@ -632,6 +636,7 @@
   function renderDrawer() {
     const el = document.getElementById("drawer"), scrim = document.getElementById("scrim");
     if (!el) return;
+    el.classList.toggle("is-full", drawer.full);
     if (drawer.id) { el.innerHTML = drawerHtml(); el.hidden = false; scrim.hidden = false; }
     else { el.innerHTML = ""; el.hidden = true; scrim.hidden = true; }
     const ctx = document.querySelector("#assist-panel .assist-context");
@@ -1234,6 +1239,11 @@
     }
     if ((el = hit("data-tab"))) { drawer.tab = el.dataset.tab; renderDrawer(); return; }
     if (hit("data-close-drawer")) { closeDrawer(); return; }
+    if (hit("data-drawer-size")) {
+      drawer.full = !drawer.full;
+      renderDrawer();
+      document.querySelector("[data-drawer-size]")?.focus(); return;
+    }
     if ((el = hit("data-dialog"))) { if (el.dataset.dialog === "createTask") delete D.files.new; DIALOGS[el.dataset.dialog](); return; }
     if ((el = hit("data-file"))) { DIALOGS.previewFile(el.dataset.file); return; }
     if ((el = hit("data-delete-file"))) { closeDialog(); DIALOGS.deleteFile(el.dataset.deleteFile); return; }

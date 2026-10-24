@@ -120,7 +120,7 @@ function colorBlock() {
 function drawerDemo() {
   const st = SQ.drawerState;
   const keep = st.id; st.id = "t1";
-  const html = SQ.drawerHtml().replace('id="drawer-title"', 'id="demo-drawer-title"').replace(/data-close-drawer/g, "disabled");
+  const html = SQ.drawerHtml().replace('id="drawer-title"', 'id="demo-drawer-title"').replace(/data-close-drawer|data-drawer-size/g, "disabled");
   st.id = keep;
   return `<div class="drawer cat-drawer">${html}</div>`;
 }
@@ -338,10 +338,10 @@ const SECTIONS = [
   ["monthly", "月の積載量", () => block("monthly", "月の積載量", "メンバー × 月の表のセル。",
     `<div class="cat-row" style="align-items:flex-start">${[[103.2, 118, 0], [172, 168, 0], [86, 60, 1], [80, 60, 0], "unset", null].map((c) => `<div class="panel" style="padding:var(--space-3)">${SQ.miniCap(c)}</div>`).join("")}</div>`,
     ["スプリントが1つもない月は、余力ありではなく「計画なし」と出す。"], ".mini-cap .is-none .mini-cap-num / .cap.is-mini")],
-  ["drawer", "引き出し", () => block("drawer", "引き出し（タスクの詳細）", "タスクの詳細は、どの画面からでも右から出る引き出しで開く。Esc か外側を押すと閉じ、開いた元の行に戻る。",
+  ["drawer", "引き出し", () => block("drawer", "引き出し（タスクの詳細）", "タスクの詳細は、どの画面からでも右から出る引き出しで開く。上の広げるボタンで画面いっぱいに広げ、同じ所で横に戻せる。広さはページの中で覚え、次に開くタスクも同じ広さで出す。Esc か外側を押すと閉じ、開いた元の行に戻る。",
     drawerDemo(),
     ["取り込み元の属性（タイトル、状態、期限）は、ここでは変えられないことを添える。", "完了の操作の横に完成の定義を出す。確認のダイアログは挟まない。", "感謝は押した状態を is-on で示し、完了までは取り消せる。"],
-    ".drawer .scrim .drawer-top .drawer-close .drawer-title / .props .props-note / .doc-box .is-empty / .done-bar .done-bar-dod / .thanks / .tabs .tab / .thread .comment .is-deleted / .history")],
+    ".drawer .is-full .scrim .drawer-top .drawer-tools .drawer-size .drawer-close .drawer-title / .props .props-note / .doc-box .is-empty / .done-bar .done-bar-dod / .thanks / .tabs .tab / .thread .comment .is-deleted / .history")],
   ["files", "添付ファイル", () => block("files", "添付ファイル", "タスク、ストーリー、エピック、コメントに付ける。画像と動画は縮小した絵、それ以外は1行。押すとプレビューが開く。「ファイルを選ぶ」で上げる動きを試せる（3回目は大きすぎて失敗する）。",
     `<div class="field"><span class="field-label">一覧と上げる場所</span>${SQ.attachments("t1")}</div>
      <div class="field"><span class="field-label">上げている途中と失敗</span>
