@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Team Leveling 組織の選択</title>
+<title>Scrum Guild 組織の選択</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=BIZ+UDPGothic:wght@400;700&family=Chakra+Petch:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500&family=Zen+Old+Mincho:wght@700;900&display=swap">
@@ -23,12 +23,12 @@ const { D, t, icon, esc, emblem } = SQ;
 function render() {
   document.getElementById("gate").innerHTML = `<div class="gate"><div style="display:grid;gap:var(--space-6);width:min(440px,100%)">
     <section class="gate-sheet">
-      <div class="gate-brand"><span class="brand-seal" aria-hidden="true"><span class="orn-medieval">冒</span><span class="orn-plain">TL</span></span><span class="brand-name">Team Leveling</span></div>
+      <div class="gate-brand"><span class="brand-seal" aria-hidden="true"><span class="orn-medieval">冒</span><span class="orn-plain">SG</span></span><span class="brand-name">Scrum Guild</span></div>
       <h1 class="gate-title">${t("organization")}を選ぶ</h1>
       <p>入れる${t("organization")}が ${D.organizations.length} つあります。名前、レベル、経験値、稼働の設定は${t("organization")}ごとに別です。</p>
       <div class="choice-list">
         ${D.organizations.map((k) => `<a class="choice" href="today.html">
-          <div><b>${esc(k.name)}</b><span class="mono">team-leveling.dev/${esc(k.slug)}/</span><span>${t("workspace")} ${k.wss}・最後に入った日 ${esc(k.lastSeen)}</span></div>
+          <div><b>${esc(k.name)}</b><span class="mono">scrum-guild.dev/${esc(k.slug)}/</span><span>${t("workspace")} ${k.wss}・最後に入った日 ${esc(k.lastSeen)}</span></div>
           ${k.admin ? `<span class="chip">${t("admin")}</span>` : ""}${emblem(k.level, true)}</a>`).join("")}
       </div>
       <p class="gate-note">あとから、メニューの上の${t("organization")}の切り替えで選び直せます。</p>

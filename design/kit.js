@@ -111,7 +111,7 @@
     const list = tasksWhere((x) => x.story && D.stories[x.story].epic === eid);
     return { done: sumPts(list.filter((x) => x.doneAt)), all: sumPts(list) };
   }
-  // 表示する期日。Team Leveling で振った期日、なければ取り込み元の期限
+  // 表示する期日。Scrum Guild で振った期日、なければ取り込み元の期限
   function dueOf(x) {
     if (x.due) return { date: x.due, fromSource: false };
     if (x.src && x.src.due) return { date: x.src.due, fromSource: true };
@@ -127,7 +127,7 @@
 
   // ---- 部品 ----
   // ロゴの印。中世風は「冒」、他は頭文字
-  const brandSeal = `<span class="brand-seal" aria-hidden="true"><span class="orn-medieval">冒</span><span class="orn-plain">TL</span></span>`;
+  const brandSeal = `<span class="brand-seal" aria-hidden="true"><span class="orn-medieval">冒</span><span class="orn-plain">SG</span></span>`;
   function avatar(name, hue, opts = {}) {
     if (!name) return `<span class="avatar is-none ${opts.lg ? "is-lg" : ""}" title="担当なし">?</span>`;
     return `<span class="avatar ${opts.lg ? "is-lg" : ""} ${opts.left ? "is-left" : ""}" style="--h:${hue}" title="${esc(name)}${opts.left ? "（離脱済み）" : ""}">${esc(name[0])}</span>`;
@@ -243,7 +243,7 @@
     leader: () => [
       { title: `${t("workspace")}「${esc(firstWsName())}」の${t("leader")}になる`, note: `${t("admin")}が${t("workspace")}を作り、あなたを指名しました。`, done: true },
       { title: "メンバーを招待する", done: D.invitations.length > 0 || D.members.filter((m) => !m.left).length > 1,
-        note: `GitHub のユーザー名で招待し、${t("organization")}の URL を本人に伝えます。Team Leveling は招待をメールで送りません。`,
+        note: `GitHub のユーザー名で招待し、${t("organization")}の URL を本人に伝えます。Scrum Guild は招待をメールで送りません。`,
         action: (p) => `<a class="btn is-sm ${p}" href="${firstHref("members.html")}">メンバーを招待する</a>` },
       { title: `${t("backlog")}に最初の${t("task")}を入れる`, done: D.tasks.some((x) => x.ws === D.workspace),
         note: `「${t("create")}」で作るか、${t("inbox")}に届いたものを入れます。メンバーが入る前に並べておくと、何から始めるかが伝わります。`,
@@ -563,7 +563,7 @@
         <div><dt>${t("column")}</dt><dd>${colName(x) ? `<span class="status-dot">${esc(colName(x))}</span>` : "—"}</dd></div>
         <div><dt>${t("assignee")}</dt><dd>${avatarOf(x.who)}${x.who ? esc(user(x.who).name) : "担当なし"}</dd></div>
         <div><dt>${t("points")}</dt><dd>${pts(x.pts)}${x.pts == null ? `<span class="props-note">未見積もり</span>` : ""}</dd></div>
-        <div><dt>${t("due")}</dt><dd>${d ? `${taskDue(x)}<span class="props-note">${d.fromSource ? "取り込み元の期限。ここでは変えられません" : "Team Leveling で振った" + t("due")}</span>` : "—"}</dd></div>
+        <div><dt>${t("due")}</dt><dd>${d ? `${taskDue(x)}<span class="props-note">${d.fromSource ? "取り込み元の期限。ここでは変えられません" : "Scrum Guild で振った" + t("due")}</span>` : "—"}</dd></div>
         <div><dt>親</dt><dd>${parent ? `${icon("flag")} ${esc(parent.title)}${epic ? `<span class="props-note">${esc(epic.title)}</span>` : ""}` : "なし"}</dd></div>
         <div><dt>${t("sprint")}</dt><dd>${x.sprint ? esc(sprintLabel(x.sprint)) : t("backlog")}</dd></div>
         <div><dt>リポジトリ</dt><dd>${repoPicker("drawer-repo", x.repo || null, { for: x.id })}</dd></div>
@@ -577,7 +577,7 @@
       </div>
       <div class="field">
         <span class="field-label">本文</span>
-        <div class="doc-box">${x.src ? `<p class="props-note">取り込み元の本文は <span class="mono">${esc(x.src.key)}</span> で開いて読みます。ここには Team Leveling のメモを書けます。</p>` : mdBody(x.body || ["まだ書かれていません。"])}</div>
+        <div class="doc-box">${x.src ? `<p class="props-note">取り込み元の本文は <span class="mono">${esc(x.src.key)}</span> で開いて読みます。ここには Scrum Guild のメモを書けます。</p>` : mdBody(x.body || ["まだ書かれていません。"])}</div>
       </div>
       <div class="field">
         <span class="field-label">${icon("clip")} 添付ファイル ${filesOf(x.id).filter((f) => !f.state).length || ""}</span>
@@ -791,7 +791,7 @@
       `<label class="field" for="d-ks"><span class="field-label">URL の名前（slug）</span><input class="input mono" id="d-ks" placeholder="例: sakura-dev"><span class="field-hint">英小文字、数字、ハイフンで 2〜40 字。あとから変えられません。</span></label>
          <label class="field" for="d-kn"><span class="field-label">表示名</span><input class="input" id="d-kn" placeholder="例: さくら開発"></label>
        <label class="field" for="d-ka"><span class="field-label">最初の${t("admin")}の GitHub ユーザー名</span><input class="input mono" id="d-ka" placeholder="例: sakura-taro"><span class="field-hint">作るときに GitHub のユーザー ID に解決します。その人が GitHub でログインすると、この${t("organization")}の${t("admin")}として入れます。</span></label>
-       <div class="callout is-info">${icon("link")}<span>URL は <span class="mono">team-leveling.dev/&lt;slug&gt;/</span> になります。この URL を${t("admin")}に伝えてください。</span></div>`,
+       <div class="callout is-info">${icon("link")}<span>URL は <span class="mono">scrum-guild.dev/&lt;slug&gt;/</span> になります。この URL を${t("admin")}に伝えてください。</span></div>`,
       `<button class="btn is-quiet" type="button" data-close-dialog>やめる</button><button class="btn is-primary" type="button" data-close-dialog data-toast="${t("organization")}を作りました">作る</button>`),
     reassignAdmin: () => openDialog(`${t("admin")}を指名し直す`,
       `<p>くもラボには今${t("admin")}がいません。新しい${t("admin")}を GitHub のユーザー名で指名します。</p>
@@ -1165,7 +1165,7 @@
     document.getElementById("app").innerHTML = `
     <div class="app">
       <aside class="binding" aria-label="メニュー"><div class="binding-inner">
-        <a class="brand" href="index.html" title="デザインシステムのカタログへ">${brandSeal}<span class="brand-name">Team Leveling</span></a>
+        <a class="brand" href="index.html" title="デザインシステムのカタログへ">${brandSeal}<span class="brand-name">Scrum Guild</span></a>
         <nav class="nav" id="nav"></nav>
         <p class="binding-foot">デザインの見本。データはすべて架空の例です</p>
       </div></aside>

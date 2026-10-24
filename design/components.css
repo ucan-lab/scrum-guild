@@ -1,5 +1,5 @@
 /*
- * Team Leveling の部品
+ * Scrum Guild の部品
  * tokens.css の変数だけを使う。画面ごとの CSS は持たず、足りない部品はここへ足す。
  * 状態は is-* の修飾で表す（is-danger、is-warn、is-ok、is-todo、is-done など）。
  */
