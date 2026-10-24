@@ -34,21 +34,36 @@ git branch --show-current
 ```
 
 - 未コミットの変更があれば止まり、コミットするか stash するかを `AskUserQuestion` で聞く。身に覚えのない変更なら並行セッションを疑い、触らずに伝える
-- detached HEAD、`main` の上、または rebase / merge の途中（`.git/rebase-merge`、`MERGE_HEAD` などがある）なら止まって伝える
+- detached HEAD か `main` の上なら止まって伝える
+- rebase か merge の途中なら止まって伝える。ワークツリーでは `.git` がファイルなので、場所は git に聞く
+
+```bash
+ls "$(git rev-parse --git-path rebase-merge)" "$(git rev-parse --git-path rebase-apply)" "$(git rev-parse --git-path MERGE_HEAD)" 2>/dev/null
+```
 
 ### 2. fetch して遅れを見る
 
 ```bash
 git fetch origin
 git rev-parse HEAD                                   # 取りやめるときの戻り先として控える
-git rev-parse origin/<branch>                        # push のときの lease に使う。リモートに無ければ控えない
 git merge-base --is-ancestor origin/<base> HEAD      # 0 なら取り込み済み
 git rev-list --count HEAD..origin/<base>             # 遅れているコミット数
 ```
 
 取り込み済みなら、ベースの SHA を添えてそう伝えて終える。
 
-`git rev-list --count origin/<branch>..HEAD` が 0 でなく、手元にしか無いコミットがあれば、先に通常の push を済ませる（理由: rebase の後の force push は、リモートのブランチを手元の内容で置き換える）。
+リモートにブランチがあれば（`git rev-parse --verify --quiet origin/<branch>` が成功すれば）、手元がリモートのコミットをすべて含むことを確かめ、push の lease に使う SHA を控える。
+
+```bash
+git merge-base --is-ancestor origin/<branch> HEAD    # 0 であること
+git rev-parse origin/<branch>                        # lease に使う
+```
+
+0 でなければ、リモートに手元の無いコミットがある（別のセッションか人が push した）。rebase せずに止まり、そのコミットを示して伝える（理由: rebase の後の force push はリモートのブランチを手元の内容で置き換え、lease はそのコミットを守らない。lease が守るのは、最後に fetch した後の push だけ）。
+
+リモートにブランチが無ければ、lease の SHA は控えない。手順 6 で通常の push をする。
+
+PR の履歴に以前の merge のコミットがあると、rebase はそれを落として一直線に積み直す。merge のときに手で直した内容は、コンフリクトとしてもう一度出る。
 
 ### 3. rebase する
 
@@ -62,8 +77,11 @@ git rebase origin/<base>
 
 rebase はコミットごとに止まる。止まったら `git status -s` と `git diff` で衝突箇所を見て解消する。
 
+rebase の途中では、ours がベースの側、theirs が積み直している自分のコミットの側になる（merge と逆）。`git checkout --ours` と `--theirs` を使うときは取り違えない。
+
 - 両側の意図が読めるもの（片側の改名と片側の追記、隣接行の独立した変更など）は両方を活かして解消し、`git add` して `GIT_EDITOR=true git rebase --continue`
-- lockfile（`pnpm-lock.yaml` など）は手で混ぜない。ベース側を採ってから、マニフェストに合わせてパッケージマネージャで作り直す
+- 解消した結果コミットが空になり、`--continue` が止まったら、そのコミットの変更はベースに入っている。`git rebase --skip` で飛ばし、報告に書く
+- lockfile（`pnpm-lock.yaml` など）は手で混ぜない。衝突のたびにベースの側（`git checkout --ours <lockfile>`）を採って進め、rebase を終えた後に1回だけ、マニフェストに合わせてパッケージマネージャで作り直してコミットする
 - `migrations/` の番号がぶつかったら止まって伝える（マイグレーションを含む PR は同時に1本までの決まりに反している）
 - 仕様の選択が要るもの、どちらを残すべきか読めないものは、衝突箇所と両側の内容を示して `AskUserQuestion` で聞く。選択肢に「`git rebase --abort` で取りやめる」を入れる
 
@@ -80,14 +98,14 @@ git diff --stat origin/<base>...HEAD                 # PR の差分が取り込�
 
 ### 6. push して報告する
 
-手順 2 で控えた `origin/<branch>` の SHA を lease に渡す（理由: SHA を省くと、fetch した時点の追跡ブランチと比べるので、別の経路で push されたブランチでは stale info で失敗するか、他人の push を消す）。
+手順 2 で控えた `origin/<branch>` の SHA を lease に渡す（理由: SHA を省くと、push の時点の追跡ブランチと比べる。手順 2 の後に別のプロセスが fetch していると、その間の他人の push を消す）。
 
 ```bash
-git push --force-with-lease=<branch>:<控えた SHA> origin <branch>    # リモートに無ければ git push -u origin <branch>
+git push --force-with-lease=<branch>:<控えた SHA> --force-if-includes origin <branch>    # リモートに無ければ git push -u origin <branch>
 ```
 
 フックが確認を挟む。auto モードの分類器などに止められたら、同じコマンドを `!` 付きで人に渡す。
-lease が外れて失敗したら（stale info）、誰かが push している。手順 2 からやり直す。
+lease が外れて失敗したら（stale info）、手順 2 の後に誰かが push している。やり直さずに止まり、手順 2 で控えた HEAD と、`git fetch origin` の後の `origin/<branch>` の差を示して伝える（理由: 手元は rebase 済みなので、手順 2 に戻ると「取り込み済み」で終わり、リモートの新しいコミットを確かめないまま進む）。
 
 次を伝える。
 
