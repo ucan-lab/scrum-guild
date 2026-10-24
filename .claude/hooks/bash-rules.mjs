@@ -222,6 +222,8 @@ const READERS = new Set([
   'cat', 'head', 'tail', 'less', 'more', 'bat', 'grep', 'egrep', 'fgrep', 'rg', 'ag', 'awk', 'sed', 'sort', 'uniq',
   'wc', 'cut', 'tr', 'diff', 'cmp', 'xxd', 'od', 'hexdump', 'strings', 'base64', 'source', '.', 'vi', 'vim', 'nvim',
   'nano', 'code', 'open', 'jq', 'yq', 'python', 'python3', 'node', 'ruby', 'perl', 'deno', 'bun', 'tee', 'export',
+  // 中身を外へ送る（curl -d @.env、curl -F file=@.dev.vars）
+  'curl', 'wget', 'http', 'https', 'nc',
 ]);
 const COPIERS = new Set(['cp', 'mv', 'scp', 'rsync', 'ln']);
 const SHELLS = new Set(['bash', 'sh', 'zsh', 'dash']);
