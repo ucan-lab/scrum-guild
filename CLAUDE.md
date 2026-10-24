@@ -23,13 +23,15 @@ Node は `.node-version`（26）、pnpm は `package.json` の `packageManager` 
 - lint と整形: `pnpm lint`、`pnpm format:check`、直すときは `pnpm format`
 - build: `pnpm build`（`build/` に書き出し、`build/_headers` を作る）
 - フックのテスト: `node --test .claude/hooks/*.test.mjs`
+- e2e: `pnpm e2e`（`pnpm preview` を立てて Playwright で確かめる。初めは `pnpm exec playwright install chromium`）
+- 空の D1 に全マイグレーションを当てる: `pnpm db:migrate:fresh`
 
 開発用のサーバーとポート、版の渡し方は `docs/development.md` の「手元で動かす」。
 
 ## 守ること
 
 - `main` へ直接 push しない。1 Issue に 1 ブランチ、1 PR。ブランチ名は `<Issue番号>-<短い名前>`（クラウドのセッションの `claude/*` はそのまま）。手元では同じ名前のワークツリー（`./worktrees/<ブランチ名>`）を切って作業する（`docs/development.md` の「ワークツリーで作業する」）。マージは squash で行う。セッションがマージするのは、人がその PR のマージを指示したときだけで、`needs-human` の PR と、`label` か `ci-ok` のチェックが成功していない PR は指示されても人に任せる（`docs/development.md` の「マージの判定」）。GitHub のブランチ保護は無く、`.claude/` のフックは踏み線にすぎないので、この決まりは自分で守る
-  - 例外: 文書だけの変更（`docs/`、`HANDOFF.md`、`CLAUDE.md`、`.claude/` のスキルとエージェントとチェックリスト、`.github/ISSUE_TEMPLATE/`）は `main` に直接入れてよい。セッションはコミットまでで、`main` への push は人が行う（フックが止める）。コード、設定、マイグレーションは例外にしない
+  - 例外: 文書だけの変更（`docs/`、`HANDOFF.md`、`CLAUDE.md`、`.claude/` のスキルとエージェントとチェックリスト、`.github/ISSUE_TEMPLATE/`）は `main` に直接入れてよい。セッションはコミットまでで、`main` への push は人が行う（フックが止める）。コード、設定、マイグレーションは例外にしない。CI が重いジョブを飛ばす「文書だけ」も同じ範囲で、変えるときは `scripts/ci.ts` も直す
 - 実装を終えたら、確認を取らずにコミットし、`self-review` を通して PR を作る。`pr-create` も承認を取らずに作成まで進め、作った後に内容を報告する（作業ブランチのコミットと PR は後から直せるため）。承認を取るのは `pr-create` の Step 4 に挙げた場合（直さなかった CRITICAL か HIGH が残る、self-review を省いた、既存の PR を書き換える）だけ。マージと、`main` に入れるコミットの push は、この決まりに含めない
 - 本番に触らない。`wrangler deploy`、`wrangler versions deploy`、`wrangler rollback`、`--remote` を付けた `wrangler d1` は Cloudflare の Workers Builds だけが実行する
 - 組織の中の表を読み書きするときは、必ず組織で絞る。共通の表と組織の中の表を結合せず、1回の `batch()` に混ぜない（`docs/data-model.md` の「データベースの分け方」）

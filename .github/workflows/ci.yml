@@ -1,0 +1,135 @@
+name: ci
+
+# PR ごとに回し、結果を ci-ok の1つにまとめる（docs/development.md の「CI」）。
+# 各ジョブは package.json のスクリプトを呼ぶだけにし、手順をここに持たない
+on:
+  pull_request:
+
+# 同じ PR の古い実行は止める
+concurrency:
+  group: ci-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  # 文書だけの PR では重いジョブを飛ばす。paths-ignore を使うと ci-ok そのものが出なくなるので、ここで判定する
+  changes:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      docs_only: ${{ steps.docs.outputs.docs_only }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .node-version
+
+      # --no-renames: リネームを移動先の名前だけで見ると、src/ から docs/ への移動が文書だけに見えるため
+      - id: docs
+        name: 文書だけかを判定する
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -o pipefail
+          git diff --name-only --no-renames "$BASE_SHA...$HEAD_SHA" | node scripts/docs-only.ts | tee -a "$GITHUB_OUTPUT"
+
+  check:
+    needs: changes
+    if: needs.changes.outputs.docs_only != 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+      - run: pnpm check
+      - run: pnpm lint
+      - run: pnpm format:check
+      # Claude のフックの判定が壊れたら落とす
+      - run: node --test .claude/hooks/*.test.mjs
+
+  test:
+    needs: changes
+    if: needs.changes.outputs.docs_only != 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+      - run: pnpm test
+
+  migration:
+    needs: changes
+    if: needs.changes.outputs.docs_only != 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+      - run: pnpm db:migrate:fresh
+
+  e2e:
+    needs: changes
+    if: needs.changes.outputs.docs_only != 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      # 画面と /api/health に同じ版が出ることも確かめる
+      APP_VERSION: ${{ github.event.pull_request.head.sha }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+      - run: pnpm exec playwright install --with-deps chromium
+      - run: pnpm e2e
+      - if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: e2e
+          path: |
+            test-results/
+            playwright-report/
+          retention-days: 14
+
+  # マージの前に確かめるのはこれと label（ai-review は助言なので含めない）。
+  # 文書だけなら重いジョブは飛んでいてよく、そうでなければすべて成功していなければならない
+  ci-ok:
+    needs: [changes, check, test, migration, e2e]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: 結果をまとめる
+        env:
+          DOCS_ONLY: ${{ needs.changes.outputs.docs_only }}
+          CHANGES: ${{ needs.changes.result }}
+          HEAVY: ${{ needs.check.result }} ${{ needs.test.result }} ${{ needs.migration.result }} ${{ needs.e2e.result }}
+        run: |
+          echo "changes=$CHANGES docs_only=$DOCS_ONLY heavy=$HEAVY"
+          if [ "$CHANGES" != success ]; then
+            echo "変わったファイルを判定できませんでした"
+            exit 1
+          fi
+          expected=success
+          if [ "$DOCS_ONLY" = true ]; then
+            expected=skipped
+          fi
+          for result in $HEAVY; do
+            if [ "$result" != "$expected" ]; then
+              echo "重いジョブの結果が $expected でないものがあります"
+              exit 1
+            fi
+          done
