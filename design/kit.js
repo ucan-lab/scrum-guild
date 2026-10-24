@@ -539,6 +539,10 @@
   // ---- タスクの詳細（右から出る引き出し。画面いっぱいに広げられる） ----
   // full は開き直しても残し、次に開くタスクも同じ広さで出す
   const drawer = { id: null, tab: "comments", thanked: new Set(), opener: null, full: false };
+  function drawerSizeBtn() {
+    const label = drawer.full ? "横に戻す" : "画面いっぱいに広げる";
+    return `<button class="pill drawer-size" type="button" data-drawer-size aria-label="${label}" title="${label}">${icon(drawer.full ? "shrink" : "expand")}</button>`;
+  }
   function drawerHtml() {
     const x = task(drawer.id);
     const parent = x.story ? D.stories[x.story] : null;
@@ -557,7 +561,7 @@
         <span class="chip">${icon(x.src ? SRC[x.src.kind].icon : "pen")}${x.src ? SRC[x.src.kind].label : `手で作った${t("task")}`}</span>
         ${x.src ? `<span class="source-key">${esc(x.src.key)}</span><span class="chip">取り込み元: ${esc(x.src.status)}</span>` : ""}
         <span class="drawer-tools">
-          <button class="pill drawer-size" type="button" data-drawer-size aria-label="${drawer.full ? "横に戻す" : "画面いっぱいに広げる"}" title="${drawer.full ? "横に戻す" : "画面いっぱいに広げる"}">${icon(drawer.full ? "shrink" : "expand")}</button>
+          ${drawerSizeBtn()}
           <button class="pill drawer-close" type="button" data-close-drawer aria-label="閉じる">${icon("x")}</button>
         </span>
       </div>
@@ -1239,10 +1243,12 @@
     }
     if ((el = hit("data-tab"))) { drawer.tab = el.dataset.tab; renderDrawer(); return; }
     if (hit("data-close-drawer")) { closeDrawer(); return; }
-    if (hit("data-drawer-size")) {
+    if ((el = hit("data-drawer-size"))) {
+      // 中身は描き直さない。書きかけのコメントとスクロールの位置を残すため
       drawer.full = !drawer.full;
-      renderDrawer();
-      document.querySelector("[data-drawer-size]")?.focus(); return;
+      document.getElementById("drawer").classList.toggle("is-full", drawer.full);
+      el.outerHTML = drawerSizeBtn();
+      document.querySelector("#drawer [data-drawer-size]")?.focus(); return;
     }
     if ((el = hit("data-dialog"))) { if (el.dataset.dialog === "createTask") delete D.files.new; DIALOGS[el.dataset.dialog](); return; }
     if ((el = hit("data-file"))) { DIALOGS.previewFile(el.dataset.file); return; }

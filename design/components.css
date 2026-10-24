@@ -528,7 +528,11 @@ details[open] > summary .tree-caret { transform: rotate(90deg); }
   display: grid; gap: var(--space-5); align-content: start;
 }
 /* 広げた状態は画面を覆い、中身は読める幅（960px）で中央に寄せる */
-.drawer.is-full { width: 100%; border-left: 0; padding-inline: max(var(--space-6), calc((100% - 960px) / 2)); }
+.drawer.is-full {
+  width: 100%; border-left: 0;
+  padding-left: max(var(--space-6), calc((100% - 960px) / 2), env(safe-area-inset-left, 0px));
+  padding-right: max(var(--space-6), calc((100% - 960px) / 2), env(safe-area-inset-right, 0px));
+}
 .drawer-top { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
 .drawer-tools { margin-left: auto; display: flex; gap: var(--space-2); }
 /* 引き出しがもともと全幅になる幅では、広げても変わらない */
@@ -567,7 +571,7 @@ a.notice-title.notice-link:hover { text-decoration: underline; text-underline-of
   .lanes { grid-template-columns: minmax(0, 1fr); }
 }
 @media (max-width: 760px) {
-  .drawer { padding-left: max(var(--space-4), env(safe-area-inset-left, 0px)); padding-right: max(var(--space-4), env(safe-area-inset-right, 0px)); }
+  .drawer, .drawer.is-full { padding-left: max(var(--space-4), env(safe-area-inset-left, 0px)); padding-right: max(var(--space-4), env(safe-area-inset-right, 0px)); }
   .props > div { grid-template-columns: minmax(0, 1fr); gap: 2px; }
   .velocity { grid-template-columns: minmax(0, 1fr); }
   .tree-children .entry, .tree-children .tree-children .entry { padding-left: var(--space-4); }
