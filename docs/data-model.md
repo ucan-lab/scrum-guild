@@ -37,8 +37,9 @@
 
 親子の向きの要点。
 
-- アカウントは人ごとに1行で、組織をまたぐ。ログインの手段（初版は GitHub）とは `account_logins` で結び、特定の手段に依存させない。ログインとセッションはアカウントに付く。
-- 人は、ログインの手段（`login_provider`）と手段の中の不変の ID（`login_subject`）の組で見分ける。GitHub では `github` とユーザー ID。アカウントができる前の管理者の指名と招待も、この組で持つ。
+- アカウントは人ごとに1行で、組織をまたぐ。ログインの手段（初版は GitHub と Google）とは `account_logins` で結び、特定の手段に依存させない。ログインとセッションはアカウントに付く。
+- 人は、ログインの手段（`login_provider`）と手段の中の不変の ID（`login_subject`）の組で見分ける。GitHub では `github` とユーザー ID、Google では `google` と `sub`。アカウントができる前の管理者の指名と招待も、この組で持つ。
+- Google の人への指名と招待は、`sub` が分からないうちはメールアドレス（`login_email`）で持ち、`login_subject` を空にしておく。本人が Google でログインしたときに、確認済みの同じメールアドレスの行へ `sub` を埋め、`login_email` を空にする（下の「メールアドレスで待つ指名と招待」）。
 - ユーザーは組織ごとの人で、アカウントと組織の組に1行。組織の中の表はすべてユーザーを指し、アカウントは指さない。
 - 組織の直下のもの（`users`、`workspaces`、`organization_holidays`、`change_logs`）は `organization_id` を持つ。
 - ワークスペースの中のものは、すべて `workspace_id` を持つ。権限の検査と絞り込みを1つの列で行うため、親から辿れるものにも持たせる。`organization_id` は持たせず、`workspaces.organization_id` で組織を確かめる。
@@ -67,7 +68,7 @@
 - 組織の中の表は、リクエストの組織から DB を選ぶ1つの関数を通して読み書きする。今はどの組織でも同じ DB を返す。
 - 共通の表は、共通の DB を返す別の関数を通して読み書きする。
 - 1回の `batch()` に、共通の表と組織の中の表を混ぜない。今これに当たる操作は「書き込みの単位」の組織の作成とメンバーの離脱で、どちらも2回に分けて書く。
-- 組織をまたいで読む処理は、1つの関数にまとめる。当たるのは、ログインできるか（入れる組織と届いた招待があるか）、ログインの直後の組織の選択、届いた招待の一覧、初めてのログインで `users.account_id` を埋めること。今は1つの DB に1回の問い合わせで済む。分けたときは、この関数だけを、各 DB に問い合わせる形か、共通の DB にログインの ID（`login_provider` と `login_subject`）と組織の組の索引を持つ形に直す。どちらにするかは分けるときに決める。
+- 組織をまたいで読む処理は、1つの関数にまとめる。当たるのは、ログインできるか（入れる組織と届いた招待があるか）、ログインの直後の組織の選択、届いた招待の一覧、初めてのログインで `users.account_id` を埋めること、メールアドレスで待つ指名と招待に `sub` を埋めること。今は1つの DB に1回の問い合わせで済む。分けたときは、この関数だけを、各 DB に問い合わせる形か、共通の DB にログインの ID（`login_provider` と `login_subject`、メールアドレスで待つものは `login_email`）と組織の組の索引を持つ形に直す。どちらにするかは分けるときに決める。
 
 ### 分けるとき
 
@@ -96,18 +97,18 @@
 | created_at、updated_at | TEXT | NOT NULL | |
 
 - 初めてログインできたときに、`account_logins` の行と同じバッチで作る。入れる組織が1つもない人の行は作らない。
-- 運用者かどうかは、この表ではなくシークレットのログインの ID（`github:12345` の形）の一覧で決める。
+- 運用者かどうかは、この表ではなくシークレットのログインの ID（`github:12345`、`google:<sub>` の形）の一覧で決める。
 
 ### account_logins
 
-アカウントとログインの手段の結び付き。初版は1つのアカウントに GitHub の1行だけで、手段を足したら1つのアカウントに複数の行を結べる。
+アカウントとログインの手段の結び付き。初版は1つのアカウントに1行だけ（GitHub か Google）で、結ぶ操作を足したら1つのアカウントに複数の行を結べる。
 
 | 列 | 型 | 制約 | 説明 |
 | --- | --- | --- | --- |
-| login_provider | TEXT | PK | ログインの手段（初版は `github`）。値はログインの手段の型の一覧でアプリが検証する |
-| login_subject | TEXT | PK | 手段の中の不変の ID。GitHub ではユーザー ID を文字列で持つ |
+| login_provider | TEXT | PK | ログインの手段（初版は `github` と `google`）。値はログインの手段の型の一覧でアプリが検証する |
+| login_subject | TEXT | PK | 手段の中の不変の ID。GitHub ではユーザー ID を文字列で、Google では ID トークンの `sub` を持つ |
 | account_id | TEXT | NOT NULL、FK accounts | |
-| login_name | TEXT | NOT NULL | ログインのたびに書き直す表示用の名前。GitHub ではログイン名 |
+| login_name | TEXT | NOT NULL | ログインのたびに書き直す表示用の名前。GitHub ではログイン名、Google ではメールアドレス |
 | display_name | TEXT | | 手段の側の名前。組織で初めてユーザーを作るときの表示名の既定 |
 | avatar_url | TEXT | | |
 | created_at、updated_at | TEXT | NOT NULL | |
@@ -131,13 +132,14 @@
 
 ### oauth_states
 
-ログインの手段の OAuth の state と PKCE の code_verifier。
+ログインの手段の OAuth の state と PKCE の code_verifier、OpenID Connect の nonce。
 
 | 列 | 型 | 制約 | 説明 |
 | --- | --- | --- | --- |
 | state | TEXT | PK | |
 | login_provider | TEXT | NOT NULL | 戻ってきたときにどの手段で確かめるか |
 | code_verifier | TEXT | NOT NULL | |
+| nonce | TEXT | | OpenID Connect の手段（Google）で、ID トークンの `nonce` と比べる値。GitHub では空 |
 | return_to | TEXT | | ログイン後に戻る画面のパス |
 | expires_at | TEXT | NOT NULL | 作ってから10分 |
 
@@ -173,7 +175,7 @@
 | attachment_quota_bytes | INTEGER | NOT NULL、既定 32212254720 | 添付ファイルの合計の上限（既定 30GB）。運用者が決める |
 | attachment_quota_warned_at | TEXT | | 合計が上限の80%を超えたと管理者に通知した日時。合計が80%を下回るか、上限を上げたら空に戻す |
 | stores_source_payload | INTEGER | NOT NULL、既定 0 | 取り込み元の応答（`task_source_payloads`）を保存するか。管理者が組織の設定で選ぶ |
-| created_by_operator | TEXT | NOT NULL | 作った運用者のログインの ID（`github:12345` の形） |
+| created_by_operator | TEXT | NOT NULL | 作った運用者のログインの ID（`github:12345`、`google:<sub>` の形） |
 | created_at、updated_at | TEXT | NOT NULL | |
 
 - 運用者の画面で作る。作るときに最初の管理者の `users` を同じバッチで入れる（アカウントがまだなければ、`users` の代わりに管理者の招待を持つ。下の `users` を参照）。
@@ -191,8 +193,9 @@
 | organization_id | TEXT | NOT NULL、FK organizations | |
 | account_id | TEXT | FK accounts | アカウントができる前（管理者の招待）は空 |
 | login_provider | TEXT | NOT NULL | 突き合わせに使うログインの手段。`account_logins` と同じ値 |
-| login_subject | TEXT | NOT NULL | 突き合わせに使う手段の中の不変の ID。`account_logins` と同じ値 |
-| name | TEXT | NOT NULL | この組織での表示名。初回は手段の側の名前かログイン名 |
+| login_subject | TEXT | | 突き合わせに使う手段の中の不変の ID。`account_logins` と同じ値。Google の指名で `sub` が分かる前は空 |
+| login_email | TEXT | `CHECK ((login_subject IS NULL) <> (login_email IS NULL))` | `sub` が分かる前に突き合わせるメールアドレス（小文字にそろえる）。Google の指名で使い、`sub` を埋めたら空にする |
+| name | TEXT | NOT NULL | この組織での表示名。初回は手段の側の名前かログイン名。Google の指名で待つ間はメールアドレス |
 | is_admin | INTEGER | NOT NULL、既定 0 | 管理者（ギルドマスター） |
 | work_start_on | TEXT | | 稼働開始日。空なら区切らない |
 | work_end_on | TEXT | | 稼働終了日。空なら区切らない |
@@ -201,10 +204,10 @@
 | theme | TEXT | `organizations.theme` と同じ値か NULL | 自分で選んだテーマ。NULL なら組織の既定に従う |
 | created_at、updated_at | TEXT | NOT NULL | |
 
-- 一意: `(organization_id, login_provider, login_subject)`。
-- 索引: `(login_provider, login_subject)`。ログインのときに入れる組織を引く。
+- 一意: `(organization_id, login_provider, login_subject)`、`(organization_id, login_provider, login_email) WHERE login_subject IS NULL`。
+- 索引: `(login_provider, login_subject)`。ログインのときに入れる組織を引く。`(login_provider, login_email) WHERE login_subject IS NULL`。メールアドレスで待つ指名を引く。
 - 表示するログイン名とアバターは `account_logins` から引く。
-- 運用者が組織を作るときは、最初の管理者をログインの ID に解決し（初版は GitHub のユーザー名からユーザー ID へ）、`is_admin = 1` の行を入れる。`account_id` は、その人が初めてログインしたときに埋める。管理者の指名し直しも同じ。
+- 運用者が組織を作るときは、最初の管理者をログインの ID に解決し（GitHub はユーザー名からユーザー ID へ。Google は解決せず `login_email` に持つ）、`is_admin = 1` の行を入れる。`account_id` は、その人が初めてログインしたときに埋める。管理者の指名し直しも同じ。
 - 最後の管理者を解除できないことはアプリが検査する。
 - 招待された人は、承諾した時点でその組織の行を作る（すでにあれば使う）。招待の時点では `invitations` にログインの ID だけを持つ。
 
@@ -325,17 +328,28 @@
 | id | TEXT | PK | |
 | workspace_id | TEXT | NOT NULL、FK workspaces | |
 | login_provider | TEXT | NOT NULL | 招待した人のログインの手段 |
-| login_subject | TEXT | NOT NULL | 招待のときに解決した、手段の中の不変の ID |
-| login_name | TEXT | NOT NULL | 招待のときの名前（表示用） |
+| login_subject | TEXT | | 招待のときに解決した、手段の中の不変の ID。Google では `sub` が分かるまで空 |
+| login_email | TEXT | `CHECK ((login_subject IS NULL) <> (login_email IS NULL))` | `sub` が分かる前に突き合わせるメールアドレス（小文字にそろえる）。Google の招待で使い、`sub` を埋めたら空にする |
+| login_name | TEXT | NOT NULL | 招待のときの名前（表示用）。GitHub ではユーザー名、Google ではメールアドレス |
 | role | TEXT | NOT NULL、`leader` か `member` | |
 | invited_by | TEXT | NOT NULL、FK users | |
 | status | TEXT | NOT NULL、`pending`、`accepted`、`declined`、`revoked` | |
 | responded_at | TEXT | | 承諾、辞退、取り消しの日時 |
 | created_at | TEXT | NOT NULL | |
 
-- 一意: `(workspace_id, login_provider, login_subject) WHERE status = 'pending'`。
-- 索引: `(login_provider, login_subject) WHERE status = 'pending'`。ログインの可否と招待の一覧に使う。
-- 今の所属がある人は招待できないことを、アプリが検査する。
+- 一意: `(workspace_id, login_provider, login_subject) WHERE status = 'pending'`、`(workspace_id, login_provider, login_email) WHERE status = 'pending' AND login_subject IS NULL`。
+- 索引: `(login_provider, login_subject) WHERE status = 'pending'`、`(login_provider, login_email) WHERE status = 'pending' AND login_subject IS NULL`。ログインの可否と招待の一覧に使う。
+- 今の所属がある人は招待できないことを、アプリが検査する。Google の招待では、メールアドレスを `sub` に結べないため、所属の検査は `sub` を埋めるときに行う（下の「メールアドレスで待つ指名と招待」）。
+
+### メールアドレスで待つ指名と招待
+
+Google の人は、ログインするまで `sub` が分からない。そのため、`users`（管理者の指名）と `invitations`（招待）のうち `login_subject` が空の行を、ログインのときに次の手順で結ぶ。組織をまたいで読む処理の関数（「読み書きの入口」）が行う。
+
+- ID トークンの `email_verified` が真のときだけ、`email` を小文字にそろえて `login_email` と比べる。偽なら、メールアドレスで待つ行には当てない。
+- 当たった行の `login_subject` に `sub` を埋め、`login_email` を空にする。組織ごとに1回の `batch()` で書く。
+- 同じ組織に同じ `sub` の `users` の行がすでにあれば（離れてから管理者に指名された人など）、その行を `is_admin = 1` にし、メールアドレスで待っていた行を消す。
+- 同じワークスペースに同じ `sub` の承諾待ちの招待がすでにあれば、メールアドレスで待っていた方を `revoked` にする。その人がもうそのワークスペースに所属していれば、同じく `revoked` にする。
+- 結んだ後は `sub` で見分ける。Google の側でメールアドレスが変わっても、結んだ行はそのまま当たる。結ぶ前にメールアドレスが変わったときは、新しいメールアドレスで招待し直す。
 
 ### allocations
 
@@ -848,7 +862,7 @@
 | organization_id | TEXT | NOT NULL、FK organizations | |
 | workspace_id | TEXT | FK workspaces | 組織の変更（管理者の指名、ユーザーの無効化、組織の休日）では空 |
 | actor_user_id | TEXT | FK users | 空なら同期などの定期処理か運用者の操作 |
-| operator | TEXT | | 運用者の操作（管理者の指名し直しなど）のときの運用者のログインの ID（`github:12345` の形） |
+| operator | TEXT | | 運用者の操作（管理者の指名し直しなど）のときの運用者のログインの ID（`github:12345`、`google:<sub>` の形） |
 | entity_type | TEXT | NOT NULL | `task`、`story`、`epic`、`sprint`、`membership`、`invitation`、`allocation`、`connection`、`completion`、`user`、`workspace` など |
 | entity_id | TEXT | NOT NULL | |
 | action | TEXT | NOT NULL | `create`、`update`、`delete`、`complete`、`reopen`、`archive` など |

@@ -243,7 +243,7 @@
     leader: () => [
       { title: `${t("workspace")}「${esc(firstWsName())}」の${t("leader")}になる`, note: `${t("admin")}が${t("workspace")}を作り、あなたを指名しました。`, done: true },
       { title: "メンバーを招待する", done: D.invitations.length > 0 || D.members.filter((m) => !m.left).length > 1,
-        note: `GitHub のユーザー名で招待し、${t("organization")}の URL を本人に伝えます。Scrum Guild は招待をメールで送りません。`,
+        note: `GitHub のユーザー名か Google のメールアドレスで招待し、${t("organization")}の URL とログインの手段を本人に伝えます。Scrum Guild は招待をメールで送りません。`,
         action: (p) => `<a class="btn is-sm ${p}" href="${firstHref("members.html")}">メンバーを招待する</a>` },
       { title: `${t("backlog")}に最初の${t("task")}を入れる`, done: D.tasks.some((x) => x.ws === D.workspace),
         note: `「${t("create")}」で作るか、${t("inbox")}に届いたものを入れます。メンバーが入る前に並べておくと、何から始めるかが伝わります。`,
@@ -804,12 +804,16 @@
     createOrganization: () => openDialog(`${t("organization")}を作る`,
       `<label class="field" for="d-ks"><span class="field-label">URL の名前（slug）</span><input class="input mono" id="d-ks" placeholder="例: sakura-dev"><span class="field-hint">英小文字、数字、ハイフンで 2〜40 字。あとから変えられません。</span></label>
          <label class="field" for="d-kn"><span class="field-label">表示名</span><input class="input" id="d-kn" placeholder="例: さくら開発"></label>
-       <label class="field" for="d-ka"><span class="field-label">最初の${t("admin")}の GitHub ユーザー名</span><input class="input mono" id="d-ka" placeholder="例: sakura-taro"><span class="field-hint">作るときに GitHub のユーザー ID に解決します。その人が GitHub でログインすると、この${t("organization")}の${t("admin")}として入れます。</span></label>
+       ${loginTarget("d-ka", { title: `最初の${t("admin")}のログインの手段`, hints: {
+         github: `作るときに GitHub のユーザー ID に解決します。その人が GitHub でログインすると、この${t("organization")}の${t("admin")}として入れます。`,
+         google: `その人がこのメールアドレスの Google アカウントでログインすると、この${t("organization")}の${t("admin")}として入れます。Google が確認済みとしたメールアドレスだけを突き合わせます。`,
+       } })}
        <div class="callout is-info">${icon("link")}<span>URL は <span class="mono">scrum-guild.dev/&lt;slug&gt;/</span> になります。この URL を${t("admin")}に伝えてください。</span></div>`,
       `<button class="btn is-quiet" type="button" data-close-dialog>やめる</button><button class="btn is-primary" type="button" data-close-dialog data-toast="${t("organization")}を作りました">作る</button>`),
     reassignAdmin: () => openDialog(`${t("admin")}を指名し直す`,
-      `<p>くもラボには今${t("admin")}がいません。新しい${t("admin")}を GitHub のユーザー名で指名します。</p>
-       <label class="field" for="d-ra"><span class="field-label">GitHub ユーザー名</span><input class="input mono" id="d-ra" placeholder="例: kumo-hanako"><span class="field-hint">この${t("organization")}のユーザーでなくてもかまいません。指名しても、運用者はこの${t("organization")}の中を見られるようにはなりません。</span></label>
+      `<p>くもラボには今${t("admin")}がいません。新しい${t("admin")}を、GitHub のユーザー名か Google のメールアドレスで指名します。</p>
+       ${loginTarget("d-ra")}
+       <p class="field-hint">この${t("organization")}のユーザーでなくてもかまいません。指名しても、運用者はこの${t("organization")}の中を見られるようにはなりません。</p>
        <p class="field-hint">指名は${t("organization")}の変更の履歴に、運用者の操作として残ります。</p>`,
       `<button class="btn is-quiet" type="button" data-close-dialog>やめる</button><button class="btn is-primary" type="button" data-close-dialog data-toast="${t("admin")}を指名しました">指名する</button>`),
     // 添付ファイルのプレビュー。画像と動画は画面で見られ、それ以外はダウンロードして開く
@@ -1207,6 +1211,30 @@
     redraw();
   }
 
+  // 招待と管理者の指名で人を指す欄。手段を選ぶと、欄の名前、例、説明だけを差し替える（描き直さない）。
+  // hints は手段ごとの説明。Google はメールアドレスで指し、本人のログインで sub に結ぶ（data-model.md）
+  const LOGIN_VIA = {
+    github: { name: "GitHub", label: "GitHub のユーザー名", example: "例: kotone-dev" },
+    google: { name: "Google", label: "Google のメールアドレス", example: "例: mio.hoshino@example.com" },
+  };
+  function loginTarget(id, { title = "ログインの手段", hints = {}, disabled = false } = {}) {
+    const vias = Object.keys(LOGIN_VIA);
+    const radios = vias.map((k, i) => `<label><input type="radio" name="${id}-via" value="${k}" data-login-via="${id}" ${i === 0 ? "checked" : ""} ${disabled ? "disabled" : ""}><span>${LOGIN_VIA[k].name}</span></label>`).join("");
+    const hintHtml = vias.filter((k) => hints[k]).map((k, i) => `<span class="field-hint" data-login-hint="${k}" ${i === 0 ? "" : "hidden"}>${hints[k]}</span>`).join("");
+    return `<div class="field"><span class="field-label">${title}</span><div class="segmented" role="radiogroup" aria-label="${title}">${radios}</div></div>
+      <label class="field" for="${id}"><span class="field-label" data-login-label>${LOGIN_VIA[vias[0]].label}</span><input class="input mono" id="${id}" placeholder="${LOGIN_VIA[vias[0]].example}" ${disabled ? "disabled" : ""}>${hintHtml}</label>`;
+  }
+  document.addEventListener("change", (ev) => {
+    const el = ev.target.closest("[data-login-via]");
+    if (!el) return;
+    const via = LOGIN_VIA[el.value];
+    const input = document.getElementById(el.dataset.loginVia);
+    const field = input.closest(".field");
+    field.querySelector("[data-login-label]").textContent = via.label;
+    input.placeholder = via.example;
+    field.querySelectorAll("[data-login-hint]").forEach((h) => (h.hidden = h.dataset.loginHint !== el.value));
+  });
+
   // ---- 操作（見本の中だけで動き、保存はしない） ----
   document.addEventListener("change", (ev) => {
     const el = ev.target.closest("[data-repo-for]");
@@ -1407,7 +1435,7 @@
     user, task, tasksWhere, repoTag, repoPicker, sprintLabel, colName, categoryOf, storyPts, epicPts, dueOf,
     avatar, avatarOf, emblem, pts, dueChip, taskDue, tier, sourceKey, entry, book, section, pageHead,
     card, board, treeStory, treeEpic, sprintNotice, raidNotice, progress, levelPanel, load, capacityRows,
-    openDialog, closeDialog, toast, celebrate, miniCap, redraw: () => redrawAll(), DIALOGS,
+    openDialog, closeDialog, toast, celebrate, miniCap, redraw: () => redrawAll(), DIALOGS, loginTarget,
     filesOf, fileThumb, fileRow, dropzone, attachments, mdBody, meter,
     PROVIDER, ASSIST_KEY, assistMsg, assistBlocked, assistSuggest, openAssist,
     enableAssistOnCatalog: () => { assistOnCatalog = true; },
