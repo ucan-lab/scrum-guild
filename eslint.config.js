@@ -1,0 +1,53 @@
+import js from '@eslint/js';
+import prettier from 'eslint-config-prettier';
+import svelte from 'eslint-plugin-svelte';
+import { defineConfig, includeIgnoreFile } from 'eslint/config';
+import globals from 'globals';
+import path from 'node:path';
+import ts from 'typescript-eslint';
+
+const gitignorePath = path.resolve(import.meta.dirname, '.gitignore');
+
+export default defineConfig(
+  includeIgnoreFile(gitignorePath),
+  { ignores: ['design/', 'mock/', '.claude/', 'worker-configuration.d.ts'] },
+  js.configs.recommended,
+  ts.configs.recommended,
+  svelte.configs.recommended,
+  prettier,
+  svelte.configs.prettier,
+  {
+    languageOptions: { globals: { ...globals.browser, ...globals.node } },
+    rules: {
+      // 型の検査が受け持つ（typescript-eslint の FAQ）
+      'no-undef': 'off',
+    },
+  },
+  {
+    files: ['**/*.svelte', '**/*.svelte.ts'],
+    languageOptions: {
+      parserOptions: {
+        projectService: true,
+        extraFileExtensions: ['.svelte'],
+        parser: ts.parser,
+      },
+    },
+  },
+  {
+    // 画面は API を HTTP で呼ぶ。Worker のコード（と、その先の D1 の binding や秘密）を画面の束に入れない
+    files: ['src/routes/**', 'src/lib/**'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            {
+              regex: '(^|/)server(/|$)',
+              message: '画面から src/server を import しない。データは Hono の API から取る',
+            },
+          ],
+        },
+      ],
+    },
+  },
+);

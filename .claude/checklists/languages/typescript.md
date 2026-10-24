@@ -33,7 +33,11 @@
 - 通常の `.ts` ファイルで runes を使っている（`.svelte.ts` か `.svelte.js` でないと動かない）
 - `{@html}` にユーザー由来の値を出している
 
-## SvelteKit 2（SPA モード）
+## SvelteKit 3（SPA モード）
+
+- `svelte.config.js` に設定を書いている（SvelteKit 3 は読まない。`vite.config.ts` の `sveltekit()` に書く）
+- `$app/stores` や `$app/environment` を使っている（3 で `$app/state` と `$app/env` に変わった）
+- テンプレートやコンポーネントに inline の `style` 属性、`<script>`、`on*` 属性を書いている（CSP で止まる。`style-src` が通すのは SvelteKit の読み上げ用の要素のハッシュだけ）
 
 - `+page.server.ts`、`+layout.server.ts`、`+server.ts`、`hooks.server.ts`、form actions を書いている（SPA モードでは使わない。データは Hono の API から取る）
 - ルートで `ssr` や `prerender` の設定を上書きしている（SSR を切った SPA の前提が崩れる）

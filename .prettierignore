@@ -1,0 +1,15 @@
+# 文書、見本、Claude の設定は Prettier で整えない（表や改行の書き方を手で決めているため）
+*.md
+docs/
+design/
+mock/
+.claude/
+.github/
+
+# 生成物
+pnpm-lock.yaml
+worker-configuration.d.ts
+build/
+.svelte-kit/
+.wrangler/
+worktrees/

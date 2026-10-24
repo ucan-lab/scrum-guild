@@ -11,7 +11,8 @@
 | 項目 | 決定 | 理由 |
 | --- | --- | --- |
 | パッケージマネージャー | pnpm。`package.json` の `packageManager` で版を固定する | 速く、依存が厳密 |
-| リポジトリの形 | 1つのパッケージ。`src/server`（Hono の API と定期処理）、`src/client`（SvelteKit）、`src/shared`（操作の定義、スキーマ、言葉の辞書）に分ける | Worker が1つなので、ワークスペースに分ける設定の手間に見合わない |
+| Node | 26。`.node-version` で固定する。Node 25 からは corepack が同梱されないので、pnpm は `packageManager` の版を corepack に頼らずに入れる | 長く使える LTS |
+| リポジトリの形 | 1つのパッケージ。`src/server`（Hono の API と定期処理）、`src/shared`（操作の定義、スキーマ、言葉の辞書）、SvelteKit の既定の場所（`src/routes`、`src/lib`、`src/app.html`）に分ける。SvelteKit の設定は `vite.config.ts` の `sveltekit()` に書く（SvelteKit 3 は `svelte.config.js` を読まない） | Worker が1つなので、ワークスペースに分ける設定の手間に見合わない。画面を別の場所に移す `kit.files` は非推奨 |
 | lint と整形 | ESLint と Prettier（`eslint-plugin-svelte`、`prettier-plugin-svelte`） | Svelte のテンプレートの中まで見られる。下の「入口を守る規則」を自前で書ける |
 | 画面 | SvelteKit の SPA モード。SSR を切り、静的に書き出す。API は Hono のまま | 組織、ワークスペース、画面の入れ子をレイアウトで表せる。画面と API の版のずれを `version.pollInterval` と `updated` で検知できる。AI が書き慣れている |
 | D1 への問い合わせ | Kysely。マイグレーションは SQL のファイルで手書きし、wrangler で当てる | 型付きで SQL に近い。組織を確かめた入口からしか組織の中の表を引けない型を作れる |
@@ -59,8 +60,8 @@
 
 最初の一本は、運用者が組織を作る → GitHub でログインする → ワークスペースを作る → タスクを1件作って完了する、の一本道にする（2026-10-22 に決めた）。認証、組織の分離、操作の定義、`batch()` での書き込み、画面を一度に通し、CI/CD と本番へのデプロイもこの一本に含める。Issue への分け方は `issue-plan` で決める。目安は次のとおり。
 
-1. 土台: pnpm、SvelteKit の SPA モード、Hono、wrangler の設定、ESLint と Prettier、`CLAUDE.md` の「コマンド」、セキュリティのヘッダー。Claude の設定とフック（下の「Claude の設定とフック」）は先に入れる
-2. CI と CD: `ci-ok`、Workers Builds とデプロイのスクリプト、`/api/health`、煙のテスト、`docs/operations.md`
+1. 土台: pnpm、SvelteKit の SPA モード、Hono、wrangler の設定、ESLint と Prettier、`CLAUDE.md` の「コマンド」、セキュリティのヘッダー、`/api/health`。Claude の設定とフック（下の「Claude の設定とフック」）は先に入れる
+2. CI と CD: `ci-ok`、Workers Builds とデプロイのスクリプト、煙のテスト、`docs/operations.md`
 3. 入口: Kysely の2つの入口と `batch()` の関数、操作の定義を登録する関数、エラーの形、組織の分離のテストの仕組み
 4. 一本道に要る表のマイグレーションと seed。Google で待つための列（`users` と `invitations` の `login_email`、`claim_token_hash`、`claim_expires_at`、空にできる `login_subject`、`oauth_states` の `nonce` と `claim_token_hash`）も最初から入れる。SQLite では後から NOT NULL を外すのに表の作り直しが要るため
 5. 運用者の組織の作成、GitHub OAuth とセッション、組織の選択
@@ -112,8 +113,38 @@ GitHub は無料のプランのまま使う（2026-10-23 に決めた）。無�
 - 置き場所は `./worktrees/<ブランチ名>`。ワークツリーの名前とブランチ名を同じにする（例 `worktrees/12-org-create` に `12-org-create`）
 - 切るときは最新の `main` から作る: `git fetch origin` のあと `git worktree add worktrees/<名前> -b <名前> origin/main`
 - `worktrees/` はリポジトリの `.gitignore` で git の管理から外してある
-- 依存はワークツリーごとに入れる。ローカルの D1（`.wrangler/state`）もワークツリーごとに分かれるので、seed もそれぞれで当てる。並べて `wrangler dev` を立てるときはポートをずらす
+- 依存はワークツリーごとに入れる。ローカルの D1（`.wrangler/state`）もワークツリーごとに分かれるので、seed もそれぞれで当てる。並べて `pnpm dev` を立てるときはポートをずらす（下の「手元で動かす」）
 - PR がマージされたら、`~/.claude/scripts/git-cleanup-merged.sh <名前>` でワークツリーと手元のブランチを消す（`pr-feedback` の後片付け）。squash merge では SHA が変わり `git branch -d` が拒むため、PR がマージ済みで head の SHA が手元と一致するときだけ `-D` で消す。スクリプトは dotfiles にあり、無い環境では人が消す
+
+## 手元で動かす
+
+コマンドの一覧は `CLAUDE.md` の「コマンド」にある。
+
+### 開発用のサーバー
+
+`pnpm dev` は、SvelteKit の `vite dev`（画面と HMR）と `wrangler dev`（API）の2つを立てる（`scripts/dev.ts`）。vite が `/api` を `wrangler dev` へ転送するので、画面と API は同じオリジンのままになり、Cookie がそのまま使える。片方が止まると、もう片方も止まる。
+
+- Worker を vite の中で動かす `@cloudflare/vite-plugin` は使わない。SvelteKit との同居を公式に支持していると確かめられず、2つのプラグインが dev サーバーと build の両方を触るので、片方の更新で壊れやすいため
+- `pnpm preview` は、build した `build/` と API を `wrangler dev` だけで配る。本番と同じ配り方（Workers Static Assets、`_headers`、SPA の fallback）を確かめる口で、HMR は効かない
+- 開発の URL は2つある。`pnpm dev` は `http://localhost:5173`、`pnpm preview` は `http://localhost:8787`。Origin の検査と OAuth の戻り先は、認証の Issue で扱う
+
+### ポート
+
+| もの | 既定 |
+| --- | --- |
+| vite（`pnpm dev` の画面） | 5173 |
+| `wrangler dev`（API、`pnpm preview`） | 8787 |
+| wrangler のデバッガー | 9229 |
+
+ワークツリーを並べて立てるときは、`DEV_PORT_OFFSET` で3つを同じ幅だけずらす（例 `DEV_PORT_OFFSET=10 pnpm dev` で 5183、8797、9239）。vite の転送先も同じ値から作るので、画面は自分のワークツリーの API を呼ぶ。ポートがぶつかったら、勝手に空いたポートへずれずに落ちる（vite の `strictPort`）。ずれた vite が別のワークツリーの API につながると、エラーにならないまま別のブランチの API を叩くため。
+
+### 版
+
+版はコミットの SHA にする。build のときの環境変数 `APP_VERSION` を、画面には SvelteKit の `kit.version.name` として、API には wrangler の `vars` の上書き（`--var APP_VERSION:<SHA>`）として渡し、`/api/health` の `version` と画面の版を同じ値にする。手元で埋めなければ `dev` になる。本番では Workers Builds の `WORKERS_CI_COMMIT_SHA` を渡す（下の「CD」）。
+
+### 依存を入れたばかりの作業コピー
+
+`pnpm install` の後（`prepare`）と、`pnpm dev`、`pnpm test`、`pnpm check` の前に、`scripts/prepare.ts` が `svelte-kit sync` と `wrangler types` を走らせ、空の `build/` を作る。`tsconfig.json` は `svelte-kit sync` が作る `$app/tsconfig` を継ぎ、Worker の型は `wrangler types` が作る `worker-configuration.d.ts`（git に入れない）を読み、wrangler の設定の `assets` は `build/` を指す。どれも、`pnpm build` より先に型の検査とテストを通すための準備。
 
 ## AI 開発の分担
 
@@ -148,7 +179,7 @@ GitHub は無料のプランのまま使う（2026-10-23 に決めた）。無�
 | `guard-bash.mjs` と `bash-rules.mjs`（PreToolUse、Bash と Monitor） | 止める: wrangler の本番に触る操作（許すのは `dev`、`types`、`whoami`、版と help、`--local` を付けた D1、R2、KV の操作だけ）、`--remote` と `-r` とリモートの binding、本番のログ（`tail`）、デプロイのスクリプトと名前に `deploy` を含む `package.json` のスクリプト、`main` への push、`--force-with-lease` 以外の force push（`--force`、`-f`、`+` で始まる refspec、`--mirror`、lease の無い `--force-if-includes`）、`gh pr merge` を通さない PR のマージと、`--match-head-commit` の無いか `--auto`、`--admin` を付けた `gh pr merge`（`gh api` と `curl` の merge、`gh stack merge`、`gh alias set` と `gh alias import`、main の ref の書き換え、contents API の書き込み）、シークレットとログイン、`.dev.vars` と `.env` の中身を読むか送るコマンドと `git add`。確認を挟む: `gh pr merge`、依存の追加、削除、更新、マイグレーションの作成、`gh stack` の push 系、ブランチを判定できない push（`cd ~` や変数の先、変数か glob を含む refspec）、Bash からの `.claude/settings*.json` と `.claude/hooks/` と `migrations/` の書き換え |
 | `guard-files.mjs` と `file-rules.mjs`（PreToolUse、Write と Edit と MultiEdit） | 止める: `origin/main` にあるマイグレーションの書き換え、`+page.server`、`+layout.server`、`+server`、`hooks.server`、`src/` のうち `src/server/db/` の外での `env.DB` と `D1Database`（テストも含む。テストの土台は `test/` に置く）、`.svelte` の `<style>`、wrangler の設定の `remote: true`。確認を挟む: `.claude/settings*.json` の書き換えと、セッションが使っている `.claude/hooks/` の書き換え。セッションを起動した場所（`$CLAUDE_PROJECT_DIR`）とは別のワークツリーの `.claude/hooks/` は、確認を挟まない（セッションが使うのは起動した場所のフックで、別のワークツリーでの書き換えは PR で人が読むまで効かない）。ファイル自体のシンボリックリンクはリンク先で判定し、ワークツリーか判定できないときは確認を挟む。Bash からの `.claude/hooks/` の書き換えは、ワークツリーでも確認を挟む |
 | `format.mjs`（PostToolUse、Write と Edit と MultiEdit） | このリポジトリのファイルを Prettier で整える。依存が入るまでは何もしない |
-| `session-start.sh`（SessionStart の起動と再開） | クラウドのセッションだけで、`pnpm install --frozen-lockfile` を行う |
+| `session-start.sh`（SessionStart の起動と再開） | クラウドのセッションだけで、`pnpm install --frozen-lockfile` を行う。pnpm が無ければ corepack で用意し、corepack も無ければ（Node 25 から同梱されない）`packageManager` の版を `npm install -g` で入れる |
 
 Bash の判定を `permissions.deny` に置かないのは、規則が前方一致で、`npx wrangler` や `pnpm exec wrangler` の言い換えを取りこぼすため。先頭に `*` を付けると、`grep "wrangler deploy"` のような読むだけのコマンドまで止まる。フックはコマンドを区切りごとに分け（コメント、行継続、`$(...)` とバッククォート、`bash -c` と `bash <<EOF` と `eval` の中身も読む）、実行する道具の名前で判定する。同じコマンドの中の `cd` と `git checkout` の後の push は移った先のブランチで、`package.json` のスクリプトは pre と post も含めた中身で見る。判定できないときは、フックが exit 2 で止める。判定を変えたら `node --test .claude/hooks/*.test.mjs` を通す。
 
@@ -239,7 +270,7 @@ PR ごとに GitHub Actions で回す。
 | --- | --- |
 | setup | 道具の版をリポジトリで固定し、ロックファイルどおりに依存を入れる |
 | check | 型の検査（`tsc`、`svelte-check`）、lint、整形 |
-| test | Workers の実行環境で動かす（`@cloudflare/vitest-pool-workers`）。ローカルの D1 に全マイグレーションを当てて回す。組織の分離のテストを含む |
+| test | Workers の実行環境で動かす（`@cloudflare/vitest-plugin`。`@cloudflare/vitest-pool-workers` から名前が変わった）。ローカルの D1 に全マイグレーションを当てて回す。組織の分離のテストを含む |
 | migration | 空の D1 に全マイグレーションを順に当てて通るか確かめる。ベータが始まったら、既にあるマイグレーションのファイルの書き換えも落とす（上の「DB を作り直してよい期間」） |
 | e2e | ビルドして `wrangler dev` を立て、Playwright で主な流れを確かめる。4つのテーマと2つの言葉の組み合わせでスクリーンショットを撮り、成果物として上げる |
 | ai-review | `anthropics/claude-code-action` で、スキル `ai-review` が差分に応じて `.claude/agents/` のレビューのエージェントを呼び分け、CRITICAL と HIGH を `finding-verifier` の反証にかけてから、指摘を PR に書く。`.github/workflows/ai-review.yml` に分けて置く |
@@ -367,9 +398,29 @@ GitHub App も比べた。人が抜けても取り込みが止まらない、PAT
 最初の一本道から厳しく入れる（2026-10-22 に決めた）。後から締めると、壊れる所を探す手間が大きいため。
 
 - CSP: SvelteKit の `csp` の設定（ハッシュ）で、`script-src` を自分のものだけにする。`default-src 'self'`、`object-src 'none'`、`base-uri 'self'`、`frame-ancestors 'none'`、`form-action 'self'` を基本にする。書体などで外を読むときは、その先だけを足す
-- `X-Content-Type-Options: nosniff`、`Referrer-Policy: strict-origin-when-cross-origin`、`Strict-Transport-Security`
-- API の応答にも同じヘッダーを付ける
+- `style-src` は `'self'` に加え、SvelteKit が差し込む読み上げ用の要素（`svelte-announcer`）の `style` 属性だけを `'unsafe-hashes'` とハッシュで通す。止めると、画面を移るたびに読み上げ用の文が見えてしまうため
+- `X-Content-Type-Options: nosniff`、`Referrer-Policy: strict-origin-when-cross-origin`、`Strict-Transport-Security: max-age=31536000; includeSubDomains`
 - e2e で、CSP の違反が出ないことを確かめる
+
+値は `src/shared/security-headers.ts` の1か所に持ち、画面の資産と API の両方がそこから付ける。
+
+### 画面の資産
+
+Workers Static Assets の `_headers` で付ける。資産の配信には Worker を起動させない（`run_worker_first` は `/api/*` だけ）。
+
+- CSP の出どころは SvelteKit の `kit.csp`（`mode: 'hash'`）。SvelteKit が書き出した `build/index.html` の meta の CSP を、`pnpm build` の最後に `scripts/write-headers.ts` が `build/_headers` に写す。ハッシュは build ごとに変わるので、コミットした `_headers` には書けない
+- SvelteKit は meta で出すときに `frame-ancestors`、`report-uri`、`sandbox` を捨てる（meta では効かないため）。写すときに、捨てられた `frame-ancestors 'none'` を末尾に足す
+- 写すスクリプトは、meta が見つからないとき、書き出した JS の `style` 属性が `style-src` のハッシュに無いとき（SvelteKit を上げて読み上げ用の要素の `style` が変わったときなど）に build を失敗させる
+- `/_app/immutable/*` は `Cache-Control: public, max-age=31536000, immutable`。ファイル名にハッシュが入り中身が変わらないため。`index.html` は Cloudflare の既定（毎回確かめる）のままにして、新しい版をすぐ拾う
+- `inline` の script と style を `src/app.html` とコンポーネントに書かない。ハッシュから漏れて CSP で止まる
+
+### API
+
+Hono のミドルウェアで、404 と 500 を含む全応答に付ける。
+
+- CSP は `default-src 'none'; frame-ancestors 'none'`。JSON にスクリプトは無いので、何も読ませず、埋め込ませない
+- ほかの固定のヘッダーは画面と同じ
+- `Cache-Control: no-store`。ログインした人のデータを返すので、どの応答もキャッシュに残さない
 
 ## 添付ファイルの配信
 

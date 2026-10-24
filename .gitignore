@@ -7,3 +7,12 @@
 .env
 .env.*
 !.env.example
+
+# 依存と生成物
+node_modules/
+build/
+.svelte-kit/
+.wrangler/
+vite.config.ts.timestamp-*
+# wrangler types が作る（scripts/prepare.ts）
+worker-configuration.d.ts

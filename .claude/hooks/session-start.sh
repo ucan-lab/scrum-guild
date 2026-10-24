@@ -9,9 +9,13 @@ cd "${CLAUDE_PROJECT_DIR:-.}" || exit 0
 [ -f package.json ] || exit 0
 
 if ! command -v pnpm >/dev/null 2>&1; then
-  if ! corepack enable >/dev/null 2>&1; then
-    echo "依存を入れていません: corepack enable が失敗し、pnpm を用意できませんでした"
-    exit 0
+  if ! { command -v corepack >/dev/null 2>&1 && corepack enable >/dev/null 2>&1; }; then
+    # Node 25 からは corepack が同梱されない。package.json の packageManager の版を npm で入れる
+    version=$(node -p "(require('./package.json').packageManager ?? '').replace(/^pnpm@/, '').split('+')[0]" 2>/dev/null)
+    if [ -z "$version" ] || ! npm install -g "pnpm@${version}" >/dev/null 2>&1; then
+      echo "依存を入れていません: corepack が無く、npm install -g pnpm@${version} でも pnpm を用意できませんでした"
+      exit 0
+    fi
   fi
 fi
 
