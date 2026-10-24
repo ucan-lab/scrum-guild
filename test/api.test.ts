@@ -1,5 +1,5 @@
 import { env, exports } from 'cloudflare:workers';
-import { describe, expect, test } from 'vitest';
+import { describe, expect, test, vi } from 'vitest';
 import { createApp } from '../src/server/app.ts';
 import { isErrorBody } from '../src/shared/errors.ts';
 
@@ -33,16 +33,41 @@ describe('API', () => {
     expectApiHeaders(res);
   });
 
-  test('想定外の例外は 500 の internal で、中身を応答に出さない', async () => {
+  test('末尾にスラッシュの無い /api も JSON の 404', async () => {
+    const res = await exports.default.fetch('http://example.com/api');
+    expect(res.status).toBe(404);
+    expect(isErrorBody(await res.json())).toBe(true);
+    expectApiHeaders(res);
+  });
+
+  test('想定外の例外は 500 の internal で、中身を応答にもログにも出さない', async () => {
     const app = createApp();
-    app.get('/boom', () => {
+    app.get('/boom/:token', () => {
       throw new Error('秘密の中身');
     });
-    const res = await app.request('/api/boom', {}, env);
-    expect(res.status).toBe(500);
-    const text = await res.text();
-    expect(text).not.toContain('秘密の中身');
-    expect(JSON.parse(text)).toEqual({ error: { code: 'internal', message: 'internal error' } });
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      const res = await app.request('/api/boom/secret-token', {}, env);
+      expect(res.status).toBe(500);
+      const text = await res.text();
+      expect(text).not.toContain('秘密の中身');
+      expect(JSON.parse(text)).toEqual({ error: { code: 'internal', message: 'internal error' } });
+      expectApiHeaders(res);
+
+      const logged = error.mock.calls.flat().join('\n');
+      expect(logged).toContain('/api/boom/:token');
+      expect(logged).not.toContain('秘密の中身');
+      expect(logged).not.toContain('secret-token');
+    } finally {
+      error.mockRestore();
+    }
+  });
+
+  test('ヘッダーを書き換えられない応答にも API のヘッダーを付ける', async () => {
+    const app = createApp();
+    app.get('/immutable', () => Response.redirect('http://example.com/', 302));
+    const res = await app.request('/api/immutable', {}, env);
+    expect(res.status).toBe(302);
     expectApiHeaders(res);
   });
 });

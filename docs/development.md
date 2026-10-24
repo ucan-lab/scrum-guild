@@ -11,7 +11,7 @@
 | 項目 | 決定 | 理由 |
 | --- | --- | --- |
 | パッケージマネージャー | pnpm。`package.json` の `packageManager` で版を固定する | 速く、依存が厳密 |
-| Node | 26。`.node-version` で固定する。Node 25 からは corepack が同梱されないので、pnpm は `packageManager` の版を corepack に頼らずに入れる | 長く使える LTS |
+| Node | 26。`.node-version` で固定する。`package.json` の `engines` は、`scripts/` の `.ts` を型の除去で直に動かせる下限の 22.18 にし、`engine-strict` は使わない（クラウドのセッションの Node は環境の版で動き、`.node-version` に従わないため）。Node 25 からは corepack が同梱されないので、pnpm は `packageManager` の版を corepack に頼らずに入れる | 長く使える LTS |
 | リポジトリの形 | 1つのパッケージ。`src/server`（Hono の API と定期処理）、`src/shared`（操作の定義、スキーマ、言葉の辞書）、SvelteKit の既定の場所（`src/routes`、`src/lib`、`src/app.html`）に分ける。SvelteKit の設定は `vite.config.ts` の `sveltekit()` に書く（SvelteKit 3 は `svelte.config.js` を読まない） | Worker が1つなので、ワークスペースに分ける設定の手間に見合わない。画面を別の場所に移す `kit.files` は非推奨 |
 | lint と整形 | ESLint と Prettier（`eslint-plugin-svelte`、`prettier-plugin-svelte`） | Svelte のテンプレートの中まで見られる。下の「入口を守る規則」を自前で書ける |
 | 画面 | SvelteKit の SPA モード。SSR を切り、静的に書き出す。API は Hono のまま | 組織、ワークスペース、画面の入れ子をレイアウトで表せる。画面と API の版のずれを `version.pollInterval` と `updated` で検知できる。AI が書き慣れている |
@@ -406,7 +406,7 @@ GitHub App も比べた。人が抜けても取り込みが止まらない、PAT
 
 ### 画面の資産
 
-Workers Static Assets の `_headers` で付ける。資産の配信には Worker を起動させない（`run_worker_first` は `/api/*` だけ）。
+Workers Static Assets の `_headers` で付ける。資産の配信には Worker を起動させない（`run_worker_first` は `/api` と `/api/*` だけ。`/api/*` だけだと末尾にスラッシュの無い `/api` が SPA の `index.html` を 200 で返す）。
 
 - CSP の出どころは SvelteKit の `kit.csp`（`mode: 'hash'`）。SvelteKit が書き出した `build/index.html` の meta の CSP を、`pnpm build` の最後に `scripts/write-headers.ts` が `build/_headers` に写す。ハッシュは build ごとに変わるので、コミットした `_headers` には書けない
 - SvelteKit は meta で出すときに `frame-ancestors`、`report-uri`、`sandbox` を捨てる（meta では効かないため）。写すときに、捨てられた `frame-ancestors 'none'` を末尾に足す

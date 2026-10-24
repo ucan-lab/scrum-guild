@@ -24,6 +24,7 @@ export default defineConfig({
     port: ports.app,
     // ずれた vite が別のワークツリーの API につながらないよう、ぶつかったら落とす
     strictPort: true,
-    proxy: { '/api': `http://localhost:${ports.api}` },
+    // 本番の run_worker_first と同じく /api と /api/ の下だけを送る（'/api' は前方一致で /api-keys まで拾う）
+    proxy: { '^/api(/|$)': `http://localhost:${ports.api}` },
   },
 });

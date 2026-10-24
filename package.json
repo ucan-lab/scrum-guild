@@ -4,7 +4,7 @@
   "type": "module",
   "packageManager": "pnpm@12.12.0",
   "engines": {
-    "node": ">=26"
+    "node": ">=22.18"
   },
   "scripts": {
     "prepare": "node scripts/prepare.ts",

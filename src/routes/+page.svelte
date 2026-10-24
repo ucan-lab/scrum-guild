@@ -5,17 +5,23 @@
   const health = getHealth();
 </script>
 
+<svelte:head>
+  <title>Scrum Guild</title>
+</svelte:head>
+
 <main>
   <h1>Scrum Guild</h1>
-  {#await health}
-    <p>API を確かめています</p>
-  {:then result}
-    {#if result.ok}
-      <p>API: {result.data.status}（版 {result.data.version}）</p>
-    {:else}
-      <p>API: {result.status} {result.error?.code ?? ''}</p>
-    {/if}
-  {:catch}
-    <p>API に届きませんでした</p>
-  {/await}
+  <p role="status">
+    {#await health}
+      API を確かめています
+    {:then result}
+      {#if result.ok}
+        API: {result.data.status}（版 {result.data.version}）
+      {:else}
+        API に届きませんでした（{result.status}）
+      {/if}
+    {:catch}
+      API に届きませんでした
+    {/await}
+  </p>
 </main>

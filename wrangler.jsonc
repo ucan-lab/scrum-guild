@@ -10,7 +10,7 @@
     "binding": "ASSETS",
     "not_found_handling": "single-page-application",
     // 資産の配信に Worker を起動させない
-    "run_worker_first": ["/api/*"]
+    "run_worker_first": ["/api", "/api/*"]
   },
   "vars": {
     // ビルドで埋めたコミットの SHA に上書きする（scripts/dev.ts の --var、本番はデプロイのスクリプト）

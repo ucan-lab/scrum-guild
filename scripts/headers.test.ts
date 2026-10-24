@@ -50,6 +50,21 @@ describe('missingStyleHashes', () => {
   test('ハッシュに無い style 属性を返す', () => {
     assert.deepEqual(missingStyleHashes("default-src 'self'", ['<div style="color: red">']), [`color: red → ${hash}`]);
   });
+
+  test('単一引用符と、JS の文字列の中でエスケープされた引用符の style 属性も拾う', () => {
+    const scripts = [
+      `'<div style=\\'color: red\\'>'`,
+      `"<div style=\\"color: red\\">"`,
+      `\`<div style='color: red'>\``,
+    ];
+    assert.deepEqual(missingStyleHashes("default-src 'self'", scripts), [`color: red → ${hash}`]);
+  });
+
+  test('文字参照を戻した値でハッシュを取る', () => {
+    // 'a: "b"' の sha256
+    const quoted = "'sha256-PEGGa67ITlp99HLdDIET74cCxYimSFdhCJcLnjWYfGA='";
+    assert.deepEqual(missingStyleHashes(`style-src ${quoted}`, ['<i style="a: &quot;b&quot;">']), []);
+  });
 });
 
 describe('devPorts', () => {
