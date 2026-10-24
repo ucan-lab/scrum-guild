@@ -1,1 +1,9 @@
 /worktrees/
+
+# 開発用のシークレット。例のファイルだけを git に入れる
+.dev.vars
+.dev.vars.*
+!.dev.vars.example
+.env
+.env.*
+!.env.example
