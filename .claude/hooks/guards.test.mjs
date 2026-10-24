@@ -124,6 +124,10 @@ describe('bash-rules: 止める', () => {
     'gh -R ucan-lab/scrum-guild pr merge 21',
     'gh pr merge 21 --squash --match-head-commit=',
     'gh pr merge 21 --auto --squash --match-head-commit abc123',
+    'gh pr merge 21 --auto=true --squash --match-head-commit abc123',
+    'gh api graphql -f query="mutation { enablePullRequestAutoMerge(input: {}) { clientMutationId } }"',
+    'gh api graphql -f query="mutation { updateRef(input: {}) { clientMutationId } }"',
+    'gh api graphql -f query="mutation { updateRefs(input: {}) { clientMutationId } }"',
     'gh pr merge 21 --squash --admin --match-head-commit abc123',
     'gh pr merge 21 --squash --match-head-commit abc123 && git push origin main',
     'gh alias set land "pr merge"',
@@ -211,6 +215,10 @@ describe('bash-rules: 止める', () => {
     assert.match(verdict('wrangler d1 execute DB')[1], /--local/);
     assert.match(verdict('git push -f')[1], /force push/);
     assert.match(verdict('gh api -X PUT repos/o/r/pulls/1/merge')[1], /gh pr merge/);
+    assert.match(verdict('gh pr merge 1 --squash')[1], /--match-head-commit/);
+    assert.match(verdict('gh pr merge 1 --auto --match-head-commit abc')[1], /--auto と --admin/);
+    assert.match(verdict('gh api graphql -f query="mutation { enablePullRequestAutoMerge }"')[1], /auto-merge/);
+    assert.match(verdict('gh api graphql -f query="mutation { updateRefs }"')[1], /main は PR のマージでだけ進める/);
   });
 });
 
