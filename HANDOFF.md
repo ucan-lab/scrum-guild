@@ -88,7 +88,7 @@
 - [x] ucan-lab 用の Cloudflare アカウントを作った（2026-10-23）。Zero Trust を無料の枠で有効にし、チーム名を `ucan-lab`、ログインの手段にワンタイム PIN を足した
 - [x] 本番の出し方を決めた（2026-10-24）。Worker の名前は `scrum-guild`（`https://scrum-guild.ucan-lab.workers.dev/`。名前の変更に合わせて 2026-10-24 に改めた）、Workers Paid にするのは本番に初めてデプロイする Issue で、ベータまで Access では守らない。`docs/development.md` の「Cloudflare のアカウントとドメイン」
 - [ ] Cloudflare アカウントを Workers Paid にする（本番に初めてデプロイする Issue で）
-- [x] 見本の Worker を Workers Builds につなぎ、Access で守った（2026-10-23、#5）。アカウントの `workers.dev` のサブドメインを `ucan-lab` に改めた。GitHub の Cloudflare のアプリは `ucan-lab/team-leveling` だけに許可した
+- [x] 見本の Worker を Workers Builds につなぎ、Access で守った（2026-10-23、#5）。アカウントの `workers.dev` のサブドメインを `ucan-lab` に改めた。GitHub の Cloudflare のアプリはこのリポジトリ（今の `ucan-lab/scrum-guild`）だけに許可した
 - [ ] 見本を見せる人のメールアドレスを、見本の Worker の Access のアプリの方針に足す（`docs/development.md` の「見本の Worker」）
 - [ ] 見本の Worker の API トークンを、最小の権限のものに入れ替える。本番の D1 や R2 を作る前に行う。本番の Worker のトークンも同じ問題がある（`docs/development.md` の「CD」）
 - [x] スキルとエージェントを整えた（2026-10-22）。`requirements` を外し、レビューのエージェント3つを D1 と Workers 向けに書き直し、チェックリストに `cloudflare-workers.md` と `multi-tenant.md` を足した
@@ -107,7 +107,8 @@
 2026-10-24 に名前を Scrum Guild に改め、文書と見本の表記を直した（経緯は `docs/naming.md`）。外の名前の付け替えが残っている。
 
 - [ ] 「Scrum Guild」「スクラムギルド」の商標を J-PlatPat で確かめる
-- [ ] GitHub のリポジトリ名を `ucan-lab/team-leveling` から `ucan-lab/scrum-guild` に変える。手元の作業コピーは `git remote set-url origin https://github.com/ucan-lab/scrum-guild` で直す
+- [x] GitHub のリポジトリ名を `ucan-lab/team-leveling` から `ucan-lab/scrum-guild` に変えた（2026-10-24）。手元の作業コピーは `git remote set-url origin git@github.com:ucan-lab/scrum-guild.git` で直す
+- [ ] 見本の Worker の Workers Builds が、名前を変えたリポジトリからまだ動くかを、次に `main` へ入れたときのビルドで確かめる
 - [ ] 見本の Worker の名前を `team-leveling-design` から `scrum-guild-design` に変える。`wrangler.design.jsonc` の変更なので Issue と PR で行う。URL が変わり、Workers Builds のつなぎ先、Access のアプリ、`docs/development.md` の「見本の Worker」も合わせて直す
 - [ ] ドメイン `scrum-guild.dev` を取る（2026-10-24 に空きを確かめた）。ベータの前に取る（2026-10-22 に決めた時期を引き継ぐ）。それまでは `workers.dev` で動かす
 
