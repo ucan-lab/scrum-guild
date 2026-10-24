@@ -536,8 +536,13 @@
       <span class="props-note">${opts.note || `縦の線は 80% の位置。超えると${t("admin")}に通知します。`}</span></div>`;
   }
 
-  // ---- タスクの詳細（右から出る引き出し） ----
-  const drawer = { id: null, tab: "comments", thanked: new Set(), opener: null };
+  // ---- タスクの詳細（右から出る引き出し。左のメニューを残して広げられる） ----
+  // full は開き直しても残し、次に開くタスクも同じ広さで出す
+  const drawer = { id: null, tab: "comments", thanked: new Set(), opener: null, full: false };
+  function drawerSizeBtn() {
+    const label = drawer.full ? "横に戻す" : "広げる";
+    return `<button class="pill drawer-size" type="button" data-drawer-size aria-label="${label}" title="${label}">${icon(drawer.full ? "shrink" : "expand")}</button>`;
+  }
   function drawerHtml() {
     const x = task(drawer.id);
     const parent = x.story ? D.stories[x.story] : null;
@@ -555,7 +560,10 @@
       <div class="drawer-top">
         <span class="chip">${icon(x.src ? SRC[x.src.kind].icon : "pen")}${x.src ? SRC[x.src.kind].label : `手で作った${t("task")}`}</span>
         ${x.src ? `<span class="source-key">${esc(x.src.key)}</span><span class="chip">取り込み元: ${esc(x.src.status)}</span>` : ""}
-        <button class="pill drawer-close" type="button" data-close-drawer aria-label="閉じる">${icon("x")}</button>
+        <span class="drawer-tools">
+          ${drawerSizeBtn()}
+          <button class="pill drawer-close" type="button" data-close-drawer aria-label="閉じる">${icon("x")}</button>
+        </span>
       </div>
       <h2 class="drawer-title" id="drawer-title">${titleOf(x)}</h2>
       ${x.srcDone && !x.doneAt ? `<div class="callout is-ok">${icon("check")}<span>取り込み元で完了になりました。完了にするかはここで決めます。</span></div>` : ""}
@@ -629,9 +637,15 @@
     const back = drawer.opener && document.querySelector(`[data-task="${drawer.opener}"]`);
     if (back) back.focus();
   }
+  // 広げている間は左のメニューも押せるので、モーダルとして扱わない
+  function applyDrawerSize(el) {
+    el.classList.toggle("is-full", drawer.full);
+    el.setAttribute("aria-modal", String(!drawer.full));
+  }
   function renderDrawer() {
     const el = document.getElementById("drawer"), scrim = document.getElementById("scrim");
     if (!el) return;
+    applyDrawerSize(el);
     if (drawer.id) { el.innerHTML = drawerHtml(); el.hidden = false; scrim.hidden = false; }
     else { el.innerHTML = ""; el.hidden = true; scrim.hidden = true; }
     const ctx = document.querySelector("#assist-panel .assist-context");
@@ -1234,6 +1248,13 @@
     }
     if ((el = hit("data-tab"))) { drawer.tab = el.dataset.tab; renderDrawer(); return; }
     if (hit("data-close-drawer")) { closeDrawer(); return; }
+    if ((el = hit("data-drawer-size"))) {
+      // 中身は描き直さない。書きかけのコメントとスクロールの位置を残すため
+      drawer.full = !drawer.full;
+      applyDrawerSize(document.getElementById("drawer"));
+      el.outerHTML = drawerSizeBtn();
+      document.querySelector("#drawer [data-drawer-size]")?.focus({ preventScroll: true }); return;
+    }
     if ((el = hit("data-dialog"))) { if (el.dataset.dialog === "createTask") delete D.files.new; DIALOGS[el.dataset.dialog](); return; }
     if ((el = hit("data-file"))) { DIALOGS.previewFile(el.dataset.file); return; }
     if ((el = hit("data-delete-file"))) { closeDialog(); DIALOGS.deleteFile(el.dataset.deleteFile); return; }

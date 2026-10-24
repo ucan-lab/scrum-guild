@@ -45,6 +45,8 @@
     spark: '<path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"/><path d="M19 16l.7 2.3L22 19l-2.3.7L19 22l-.7-2.3L16 19l2.3-.7z"/>',
     send: '<path d="M4 12l16-8-6 16-2.5-6.5z"/><path d="M11.5 13.5L20 4"/>',
     panel: '<path d="M4 4h16v16H4zM14 4v16"/>',
+    expand: '<path d="M14 4h6v6M20 4l-7 7M10 20H4v-6M4 20l7-7"/>',
+    shrink: '<path d="M14 4v6h6M20 4l-6 6M10 20v-6H4M4 20l6-6"/>',
   };
   const svg = Object.entries(ICONS)
     .map(([id, body]) => `<symbol id="i-${id}" viewBox="0 0 24 24">${body}</symbol>`)
