@@ -120,9 +120,12 @@ describe('bash-rules: 止める', () => {
     'gh api -X PATCH repos/o/r/git/refs/heads/main -F force=true',
     'gh api graphql -f query="mutation { mergePullRequest(input: {}) { clientMutationId } }"',
     'gh stack merge',
-    'gh pr merge 21 --auto --squash',
-    'gh pr merge 21 --squash --admin',
-    'gh pr merge 21 --squash && git push origin main',
+    'gh pr merge 21 --squash',
+    'gh -R ucan-lab/scrum-guild pr merge 21',
+    'gh pr merge 21 --squash --match-head-commit=',
+    'gh pr merge 21 --auto --squash --match-head-commit abc123',
+    'gh pr merge 21 --squash --admin --match-head-commit abc123',
+    'gh pr merge 21 --squash --match-head-commit abc123 && git push origin main',
     'gh alias set land "pr merge"',
     'gh alias import aliases.yml',
     'curl -X PUT -H "Authorization: token $(gh auth token)" https://api.github.com/repos/o/r/pulls/21/merge',
@@ -227,12 +230,12 @@ describe('bash-rules: 確認を挟む', () => {
     'pnpm wrangler d1 migrations create DB add_tasks',
     'gh stack push',
     'gh stack sync',
-    'gh pr merge 21 --squash',
     'gh pr merge 21 --squash --match-head-commit abc123',
-    'gh -R ucan-lab/scrum-guild pr merge 21',
-    'gh pr merge --repo o/r 21 --squash',
-    'gh pr merge $N --squash',
-    'bash -c "gh pr merge 21 --squash"',
+    'gh pr merge 21 --squash --match-head-commit=abc123',
+    'gh -R ucan-lab/scrum-guild pr merge 21 --match-head-commit abc123',
+    'gh pr merge --repo o/r 21 --squash --match-head-commit abc123',
+    'gh pr merge $N --squash --match-head-commit $HEAD',
+    'bash -c "gh pr merge 21 --squash --match-head-commit abc123"',
     'git push origin $BRANCH',
     'git push origin $(echo main)',
     `echo '{"disableAllHooks": true}' > .claude/settings.local.json`,
@@ -257,9 +260,9 @@ describe('bash-rules: 確認を挟む', () => {
   });
 
   test('マージの確認の理由に、使うコマンドと needs-human の扱いを書く', () => {
-    const [d, reason] = verdict('gh pr merge 1');
+    const [d, reason] = verdict('gh pr merge 1 --squash --match-head-commit abc123');
     assert.equal(d, 'ask');
-    assert.match(reason, /gh pr merge <番号> --squash/);
+    assert.match(reason, /gh pr merge <番号> --squash --match-head-commit/);
     assert.match(reason, /needs-human の PR .*人がマージする/);
   });
 

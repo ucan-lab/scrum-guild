@@ -128,7 +128,7 @@ function judgeGit(args, dir, branchOf) {
   return null;
 }
 
-const MERGE_REASON = 'マージは人が指示したときだけ gh pr merge <番号> --squash で行う（docs/development.md の「マージの判定」）';
+const MERGE_REASON = 'マージは人が指示したときだけ gh pr merge <番号> --squash --match-head-commit <head> で行う（docs/development.md の「マージの判定」）';
 
 // GitHub の API でのマージと main の書き換え。GET（読むだけ）は通す
 function judgeGitHubWrite(words, method) {
@@ -169,6 +169,10 @@ function judgeGh(args) {
   if (pos[0] === 'pr' && pos[1] === 'merge') {
     // --auto は確認の後に条件がそろった時点でマージし、--admin は条件を飛ばす
     if (args.some((a) => /^--(auto|admin)(=|$)/.test(a))) return [DENY, 'gh pr merge の --auto と --admin は使わない'];
+    // 確かめた後に push された head をマージしないよう、確かめた head を固定させる
+    if (!args.some((a) => /^--match-head-commit(=.|$)/.test(a))) {
+      return [DENY, 'gh pr merge には --match-head-commit <確かめた head> を付ける'];
+    }
     return [ASK, `${MERGE_REASON}。needs-human の PR と label が成功していない PR は人がマージする`];
   }
   // エイリアスは中身のサブコマンドをフックから隠す（gh alias set m 'pr merge --auto' の後の gh m）
