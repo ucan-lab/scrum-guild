@@ -1,4 +1,4 @@
-// Bash の判定。本番に触る操作、main への push、force push、シークレット、gh pr merge を通さないマージを止め、
+// Bash の判定。本番に触る操作、main への push、--force-with-lease 以外の force push、シークレット、gh pr merge を通さないマージを止め、
 // gh pr merge、依存の変更、マイグレーションの作成、判定しきれない push では人の確認を挟む（docs/development.md の「Claude の設定とフック」）。
 // permissions.deny の前方一致では npx wrangler や pnpm exec wrangler の言い換えを取りこぼすので、語に分けて判定する。
 // 踏み線であって守りの本体ではない。変数の中身と、パイプで sh に流す中身は見えない。
@@ -86,12 +86,19 @@ function judgeWrangler(args) {
 const GIT_FLAGS_WITH_VALUE = new Set(['-C', '-c', '--git-dir', '--work-tree', '--namespace']);
 const PUSH_FLAGS_WITH_VALUE = new Set(['-o', '--push-option', '--repo', '--receive-pack', '--exec']);
 
+// git は長いオプションを一意な省略形でも受け付ける（--force-w は --force-with-lease、--mi は --mirror）
+function isOption(arg, full, shortest) {
+  const name = arg.split('=')[0];
+  return name.length >= shortest && full.startsWith(name);
+}
+
 // dir が null のときは、作業場所を判定できない（cd ~、cd $X、GIT_DIR=）
 function judgeGit(args, dir, branchOf) {
   let i = 0;
   let gitDir = dir;
   while (i < args.length && args[i].startsWith('-')) {
     if (args[i] === '-C') gitDir = gitDir && path.resolve(gitDir, args[i + 1] ?? '.');
+    if (/^-C./.test(args[i])) gitDir = gitDir && path.resolve(gitDir, args[i].slice(2));
     if (/^--(git-dir|work-tree)/.test(args[i])) gitDir = null;
     i += GIT_FLAGS_WITH_VALUE.has(args[i]) ? 2 : 1;
   }
@@ -100,31 +107,35 @@ function judgeGit(args, dir, branchOf) {
   if (sub === 'add' && rest.some(mentionsSecret)) return [DENY, '.dev.vars と .env は git に入れない'];
   if (sub !== 'push') return null;
 
-  const forced = rest.some(
-    (a) =>
-      a === '--force' ||
-      a.startsWith('--force-with-lease') ||
-      a === '--force-if-includes' ||
-      a === '--mirror' ||
-      /^-[a-zA-Z]*f[a-zA-Z]*$/.test(a),
-  );
-  if (forced) return [DENY, 'force push は人が実行する（`!` を付けて打つ）'];
-  if (rest.includes('--all')) return [DENY, '--all は main も push する'];
+  const forced = rest.some((a) => a === '--force' || isOption(a, '--mirror', 4) || /^-[a-zA-Z]*f[a-zA-Z]*$/.test(a));
+  if (forced) return [DENY, '--force と -f は使わない。rebase の後は --force-with-lease で push する'];
+  if (rest.some((a) => isOption(a, '--all', 4))) return [DENY, '--all は main も push する'];
+  // --force-with-lease が守るのは、最後に fetch した後の他人の push だけ。fetch 済みの他人のコミットを
+  // 手元が含んでいるかは sync-base が確かめる。--force-if-includes は lease に添えるときだけ意味を持つ
+  const leased = rest.some((a) => isOption(a, '--force-with-lease', 9));
+  if (rest.some((a) => isOption(a, '--force-if-includes', 9)) && !leased) {
+    return [DENY, '--force-if-includes は --force-with-lease と一緒に使う'];
+  }
 
-  const [, ...refspecs] = positionals(rest, PUSH_FLAGS_WITH_VALUE);
+  // --repo を付けると、先頭の位置引数もリモートではなく refspec になる
+  const hasRepo = rest.some((a) => a === '--repo' || a.startsWith('--repo='));
+  const pos = positionals(rest, PUSH_FLAGS_WITH_VALUE);
+  const refspecs = hasRepo ? pos : pos.slice(1);
   if (refspecs.some((r) => r.startsWith('+'))) return [DENY, '+ で始まる refspec は force push になる'];
-  if (refspecs.some((r) => /[$*]/.test(r))) return [ASK, '変数か glob を含む refspec は、main を含むかを判定できない'];
 
   const current = gitDir ? branchOf(gitDir) : undefined;
   const targets = refspecs.length === 0 ? ['HEAD'] : refspecs.map((r) => r.split(':').pop());
-  for (const target of targets) {
-    const isCurrent = target === 'HEAD' || target === '@';
-    if (isCurrent && !current) return [ASK, 'push する先のブランチを判定できない（cd ~ や変数の先、git の管理外）'];
-    const name = (isCurrent ? current : target).replace(/^(refs\/)?heads\//, '');
+  const unknown = (t) => /[$*]/.test(t) || ((t === 'HEAD' || t === '@') && !current);
+  // 判定できない先があっても、並べて書いた main は先に止める
+  for (const target of targets.filter((t) => !unknown(t))) {
+    const name = (target === 'HEAD' || target === '@' ? current : target).replace(/^(refs\/)?heads\//, '');
     if (name === 'main') {
       return [DENY, 'main へは push しない。作業ブランチから PR を通す（文書だけの変更も、push は人が行う）'];
     }
   }
+  if (targets.some((t) => /[$*]/.test(t))) return [ASK, '変数か glob を含む refspec は、main を含むかを判定できない'];
+  // 作業ブランチへの --force-with-lease は、sync-base の rebase の後に使うので通す
+  if (targets.some(unknown)) return [ASK, 'push する先のブランチを判定できない（cd ~ や変数の先、git の管理外）'];
   return null;
 }
 

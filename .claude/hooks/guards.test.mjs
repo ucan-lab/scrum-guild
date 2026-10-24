@@ -108,7 +108,24 @@ describe('bash-rules: 止める', () => {
     'git push --force origin 21-claude-settings',
     'git push -f',
     'git push -uf origin x',
-    'git push --force-with-lease=x:abc origin x',
+    'git push --force-with-lease origin main',
+    'git push --force-with-lease origin HEAD:main',
+    'git push --force-with-lease origin HEAD:refs/heads/main',
+    'git push --force-with-lease=x:abc origin main',
+    'git push --force-with-lease --force-if-includes origin main',
+    'git push --force-with-lease -o ci.skip origin HEAD:main',
+    'git push --force-with-lease origin :main',
+    'git push --force-with-lease --delete origin main',
+    'git push --force-with-lease origin +x',
+    'git push --force-with-lease --force origin x',
+    'git push --force-if-includes origin x',
+    'git push --force-i origin x',
+    'git push --mirr',
+    'git push --al',
+    'git push --force-with-lease --repo origin main',
+    'git push --force-with-lease --repo=origin main',
+    'git push --force-with-lease origin $BRANCH main',
+    'cd ~ && git push --force-with-lease origin HEAD main',
     'git push origin +x',
     'git push --all',
     'git push --mirror',
@@ -207,13 +224,17 @@ describe('bash-rules: 止める', () => {
     assert.equal(judgeBash('git push', { cwd: '/repo', branchOf })?.[0], 'deny');
     assert.equal(judgeBash('git -C worktrees/x push', { cwd: '/repo', branchOf }), null);
     assert.equal(judgeBash('cd /elsewhere && git -C /repo push', { cwd: '/x', branchOf })?.[0], 'deny');
+    assert.equal(judgeBash('git -C/repo push --force-with-lease origin HEAD', { cwd: '/w', branchOf })?.[0], 'deny');
+    assert.equal(judgeBash('cd /repo && git push --force-with-lease', { cwd: '/w', branchOf })?.[0], 'deny');
+    assert.equal(judgeBash('git -C worktrees/x push --force-with-lease', { cwd: '/repo', branchOf }), null);
   });
 
   test('止めた理由が規則に合っている', () => {
     assert.match(verdict('wrangler login')[1], /シークレットとログイン/);
     assert.match(verdict('wrangler deploy')[1], /本番に触る/);
     assert.match(verdict('wrangler d1 execute DB')[1], /--local/);
-    assert.match(verdict('git push -f')[1], /force push/);
+    assert.match(verdict('git push -f')[1], /--force-with-lease/);
+    assert.equal(decision('git push --force-with-lease', 'main'), 'deny');
     assert.match(verdict('gh api -X PUT repos/o/r/pulls/1/merge')[1], /gh pr merge/);
     assert.match(verdict('gh pr merge 1 --squash')[1], /--match-head-commit/);
     assert.match(verdict('gh pr merge 1 --auto --match-head-commit abc')[1], /--auto と --admin/);
@@ -238,6 +259,7 @@ describe('bash-rules: 確認を挟む', () => {
     'pnpm wrangler d1 migrations create DB add_tasks',
     'gh stack push',
     'gh stack sync',
+    'cd ~ && git push --force-with-lease',
     'gh pr merge 21 --squash --match-head-commit abc123',
     'gh pr merge 21 --squash --match-head-commit=abc123',
     'gh -R ucan-lab/scrum-guild pr merge 21 --match-head-commit abc123',
@@ -312,6 +334,13 @@ describe('bash-rules: 通す', () => {
     'pnpm test',
     'pnpm run build',
     'git push origin 21-claude-settings',
+    'git push --force-with-lease',
+    'git push --force-with-lease origin 21-claude-settings',
+    'git push --force-with-lease=x:abc origin x',
+    'git push --force-with-lease=41-x:abc --force-if-includes origin 41-x',
+    'git push -u --force-with-lease origin x',
+    'git push --force-w origin x',
+    'git push --force-with-lease=x:abc origin :feature',
     'git push -u origin 21-claude-settings',
     'git push --follow-tags origin x',
     'git push origin main:21-claude-settings',
