@@ -22,6 +22,12 @@ describe('isDocsOnly', () => {
     assert.equal(isDocsOnly(['docs/development.md', 'src/server/app.ts']), false);
   });
 
+  test('範囲の中でも .md 以外は文書に数えない', () => {
+    assert.equal(isDocsOnly(['docs/build.sh']), false);
+    assert.equal(isDocsOnly(['.claude/skills/x/scripts/run.mjs']), false);
+    assert.equal(isDocsOnly(['.github/ISSUE_TEMPLATE/config.yml']), false);
+  });
+
   test('範囲の外に置いた .md は文書に数えない', () => {
     assert.equal(isDocsOnly(['src/README.md']), false);
   });

@@ -292,7 +292,7 @@ ai-review は Claude のサブスクリプションで動かす。手元で `cla
 
 ### 文書だけの PR
 
-`changes` のジョブが、PR の base と head の差分（`git diff --no-renames`）を `scripts/ci.ts` の `isDocsOnly` にかける。変わったファイルがすべて `CLAUDE.md` の「守ること」で `main` に直接入れてよい文書（`docs/`、`HANDOFF.md`、`CLAUDE.md`、`.claude/` のスキルとエージェントとチェックリスト、`.github/ISSUE_TEMPLATE/`）に収まるときだけ、文書だけとみなす。範囲の外に置いた `.md` は文書に数えない。範囲を変えるときは、`CLAUDE.md` と `scripts/ci.ts` を同じ PR で直す。
+`changes` のジョブが、PR の base と head の差分（`git diff --no-renames`）を `scripts/ci.ts` の `isDocsOnly` にかける。変わったファイルがすべて `CLAUDE.md` の「守ること」で `main` に直接入れてよい文書（`docs/`、`HANDOFF.md`、`CLAUDE.md`、`.claude/` のスキルとエージェントとチェックリスト、`.github/ISSUE_TEMPLATE/`）の `.md` に収まるときだけ、文書だけとみなす。範囲の外に置いた `.md` も、範囲の中に置いた `.md` 以外のファイル（スクリプトや設定）も文書に数えない。範囲の中のスクリプトには `needs-human` も付かないため。範囲を変えるときは、`CLAUDE.md` と `scripts/ci.ts` を同じ PR で直す。
 
 - `ci-ok` の判定の置き場所は `scripts/ci.ts` の `ciOkVerdict`。`needs` のうち `changes` 以外をすべて重いジョブとして扱うので、重いジョブを足すときは `ci-ok` の `needs` に入れるだけでよい
 - 文書だけなら check、test、migration、e2e を飛ばし、4つがすべて飛んでいれば `ci-ok` は成功
