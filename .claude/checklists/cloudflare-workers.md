@@ -17,6 +17,8 @@
 - 秘密の値が未設定のとき、既定値で動き続ける（起動時か最初の使用時に止める）
 - 公開する URL を設定から読まず、リクエストの `Host` から組み立てている（OAuth の戻り先と Origin の検査は設定の URL を使う）
 - wrangler の設定を変えたのに、運用の手順書や `docs/` が追従していない
+- `observability` を有効にしたのに `logs.invocation_logs: false` が無い（呼び出しごとのログが URL のパスとクエリを残し、OAuth の `code` や招待の秘密を URL で受けるとログに残る）
+- wrangler の設定に `send_metrics: false` が無い（`.claude/settings.json` の `WRANGLER_SEND_METRICS` は Claude のセッションにしか効かず、人の手元と Workers Builds ではテレメトリが送られる）
 
 ## 乱数と暗号
 
