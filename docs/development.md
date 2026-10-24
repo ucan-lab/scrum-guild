@@ -93,8 +93,8 @@ GitHub は無料のプランのまま使う（2026-10-23 に決めた）。無�
 
 - リポジトリの設定で squash merge だけを許し、マージ後にブランチを消す。squash のコミットの件名は PR のタイトルにし、本文は空にする（設定済み）
 - `main` への直接の push と force push は、PreToolUse のフック（`.claude/hooks/guard-bash.mjs`）でセッションから止める。人の push は止まらないので、人も同じ決まりで PR を通す
-- 必須のチェックは設定できない。マージする人が `ci-ok` の成功を確かめてから押す
-- すべての PR を人がマージする。承認の数は求めず、人のレビューは「人がマージボタンを押す」ことで表す（下の「マージの判定」）
+- 必須のチェックは設定できない。マージする人かセッションが `ci-ok` の成功を確かめてからマージする
+- マージは人が決める。人が押すか、人の指示でセッションが `gh pr merge` を打つ。承認の数は求めず、人のレビューは「人がマージを決める」ことで表す（下の「マージの判定」）
 - 本番へデプロイする鍵は GitHub に置かない（下の「CD」）。リポジトリのシークレットは PR のブランチのワークフローからも読め、Environment で `main` だけに絞れないため
 
 ### 並行して作業するときの決まり
@@ -142,14 +142,14 @@ GitHub は無料のプランのまま使う（2026-10-23 に決めた）。無�
 | --- | --- |
 | `permissions.deny` | `.dev.vars`、`.env` とその環境ごとのファイル（`.local`、`.production` など）の読み取り、`.dev.vars` と `.env` の書き込み、wrangler の資格情報のディレクトリの読み取り |
 | `env` | `WRANGLER_SEND_METRICS=false`（テレメトリを送らない） |
-| `guard-bash.mjs` と `bash-rules.mjs`（PreToolUse、Bash と Monitor） | 止める: wrangler の本番に触る操作（許すのは `dev`、`types`、`whoami`、版と help、`--local` を付けた D1、R2、KV の操作だけ）、`--remote` と `-r` とリモートの binding、本番のログ（`tail`）、デプロイのスクリプトと名前に `deploy` を含む `package.json` のスクリプト、`main` への push、force push、PR のマージ（`gh pr merge`、`gh api` と `curl` の merge、main の ref の書き換え、contents API の書き込み）、シークレットとログイン、`.dev.vars` と `.env` の中身を読むか送るコマンドと `git add`。確認を挟む: 依存の追加、削除、更新、マイグレーションの作成、`gh stack` の push 系、ブランチを判定できない push（`cd ~` や変数の先、変数か glob を含む refspec）、Bash からの `.claude/settings*.json` と `.claude/hooks/` と `migrations/` の書き換え |
+| `guard-bash.mjs` と `bash-rules.mjs`（PreToolUse、Bash と Monitor） | 止める: wrangler の本番に触る操作（許すのは `dev`、`types`、`whoami`、版と help、`--local` を付けた D1、R2、KV の操作だけ）、`--remote` と `-r` とリモートの binding、本番のログ（`tail`）、デプロイのスクリプトと名前に `deploy` を含む `package.json` のスクリプト、`main` への push、force push、`gh pr merge` を通さない PR のマージと、`--match-head-commit` の無いか `--auto`、`--admin` を付けた `gh pr merge`（`gh api` と `curl` の merge、`gh stack merge`、`gh alias set` と `gh alias import`、main の ref の書き換え、contents API の書き込み）、シークレットとログイン、`.dev.vars` と `.env` の中身を読むか送るコマンドと `git add`。確認を挟む: `gh pr merge`、依存の追加、削除、更新、マイグレーションの作成、`gh stack` の push 系、ブランチを判定できない push（`cd ~` や変数の先、変数か glob を含む refspec）、Bash からの `.claude/settings*.json` と `.claude/hooks/` と `migrations/` の書き換え |
 | `guard-files.mjs` と `file-rules.mjs`（PreToolUse、Write と Edit と MultiEdit） | 止める: `origin/main` にあるマイグレーションの書き換え、`+page.server`、`+layout.server`、`+server`、`hooks.server`、`src/` のうち `src/server/db/` の外での `env.DB` と `D1Database`（テストも含む。テストの土台は `test/` に置く）、`.svelte` の `<style>`、wrangler の設定の `remote: true`。確認を挟む: `.claude/settings*.json` と `.claude/hooks/` の書き換え |
 | `format.mjs`（PostToolUse、Write と Edit と MultiEdit） | このリポジトリのファイルを Prettier で整える。依存が入るまでは何もしない |
 | `session-start.sh`（SessionStart の起動と再開） | クラウドのセッションだけで、`pnpm install --frozen-lockfile` を行う |
 
 Bash の判定を `permissions.deny` に置かないのは、規則が前方一致で、`npx wrangler` や `pnpm exec wrangler` の言い換えを取りこぼすため。先頭に `*` を付けると、`grep "wrangler deploy"` のような読むだけのコマンドまで止まる。フックはコマンドを区切りごとに分け（コメント、行継続、`$(...)` とバッククォート、`bash -c` と `bash <<EOF` と `eval` の中身も読む）、実行する道具の名前で判定する。同じコマンドの中の `cd` と `git checkout` の後の push は移った先のブランチで、`package.json` のスクリプトは pre と post も含めた中身で見る。判定できないときは、フックが exit 2 で止める。判定を変えたら `node --test .claude/hooks/*.test.mjs` を通す。
 
-どれも踏み線で、本当の守りは、セッションが動く環境に Cloudflare の資格情報を置かないこと。フックからは、変数の中身、パイプで `sh` に流す中身、`gh api graphql` が読むファイルの中身が見えない。
+どれも踏み線で、本当の守りは、セッションが動く環境に Cloudflare の資格情報を置かないこと。フックからは、変数の中身、パイプで `sh` に流す中身、`gh api graphql` と `gh api --input` が読むファイルの中身、`gh` の設定ファイルに直に書いたエイリアス、`gh extension` が中で打つコマンドが見えない。
 
 - クラウドのセッションの環境には、Cloudflare の API トークンを置かない
 - 手元の機械では `wrangler login` しない（したら `wrangler logout` しておく）。シェルに `CLOUDFLARE_API_TOKEN` を置かない。手元のセッションは、人が置いた資格情報をそのまま使えるため
@@ -193,14 +193,18 @@ Bash の判定を `permissions.deny` に置かないのは、規則が前方一�
 4. クラウドのセッションで実装する。テストは実装と一緒に書く
 5. `self-review` で点検し、`pr-create` で PR を出す
 6. CI と AI レビューを待ち、指摘には `pr-feedback` で応える
-7. 下の「マージの判定」に従って、人がマージする
+7. 下の「マージの判定」に従って、人がマージする。人の指示があれば、セッションがマージする
 8. `main` から Workers Builds で自動でデプロイされる（下の「CD」）
 
 仕様を変える実装は、同じ PR で `docs/` も直す。
 
 ### マージの判定
 
-すべての PR を人がマージする。auto-merge は使わない（上の「`main` を守る仕組み」）。
+マージするかは人が決める。auto-merge は使わない（上の「`main` を守る仕組み」）。
+
+人がその PR のマージを指示したときは、セッションが `gh pr merge <番号> --squash --match-head-commit <確かめた head>` でマージしてよい。打つ前に、`needs-human` が付いていないこと、その head で `label` と `ci-ok` が成功していることを確かめる（`ci-ok` が CI に入るまでは `label` だけ。手順は `pr-feedback` の「マージを依頼して後片付けする」）。`needs-human` の PR と、`label` か `ci-ok` が成功していない PR は、指示があっても人がマージする。
+
+フックは `gh pr merge` のたびに確認を挟み、`--auto` と `--admin`、`gh api` や `curl` でのマージ、`gh` のエイリアスの作成を止める。クラウドのセッションでは `gh pr merge` が GraphQL で 403 になるので、人がマージする。確認を人に出せない実行（`claude -p` などの非対話の実行、CI の中）でも、セッションはマージしない。
 
 次のどれかに触れた PR には、GitHub Actions（CI の `label`）が機械的に `needs-human` のラベルを付ける。AI には判断させない。パスの規則は `.github/labeler.yml` にある。各領域のコードは右の列の場所に置き、ほかの場所に散らさない。
 
@@ -236,7 +240,7 @@ PR ごとに GitHub Actions で回す。
 | e2e | ビルドして `wrangler dev` を立て、Playwright で主な流れを確かめる。4つのテーマと2つの言葉の組み合わせでスクリーンショットを撮り、成果物として上げる |
 | ai-review | `anthropics/claude-code-action` で、スキル `ai-review` が差分に応じて `.claude/agents/` のレビューのエージェントを呼び分け、指摘を PR に書く。`.github/workflows/ai-review.yml` に分けて置く |
 | label | パスを見て `needs-human` のラベルを付ける（上の「マージの判定」）。`.github/workflows/label.yml` に分けて置き、`pull_request_target` で動かす。ワークフローも規則も PR のベース（`main`）の版が使われるので、PR の側で書き換えてもラベルは付く。別のブランチをベースに開いてから `main` へ付け替えたときも、判定し直す。PR のコードはチェックアウトしない（書き込みのトークンで PR のコードを動かさないため） |
-| ci-ok | ai-review と label を除く上のジョブをまとめる1つのジョブ。マージの前に確かめるのはこれだけ |
+| ci-ok | ai-review と label を除く上のジョブをまとめる1つのジョブ。マージの前に確かめるのは、これと label |
 
 ai-review は Claude のサブスクリプションで動かす。手元で `claude setup-token` を実行して作った OAuth トークンを、リポジトリのシークレット `CLAUDE_CODE_OAUTH_TOKEN` に置く。従量の費用はかからないが、使用量の上限は手元の対話の利用と共有になる。
 
