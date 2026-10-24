@@ -1233,7 +1233,7 @@
     if (via !== "google") { closeDialog(); toast(`${icon("check")}${esc(done)}`); return; }
     openDialog("招待の URL",
       `<p>${esc(done)}。この URL を本人に伝えてください。本人がこの URL を開き、招待したメールアドレスの Google アカウントでログインすると入れます。</p>
-       <div class="form-row"><label class="field" for="d-iu"><span class="field-label">招待の URL</span><input class="input mono" id="d-iu" value="https://scrum-guild.dev/invite/Qm7tX2vLr9aKpE4w" readonly></label>
+       <div class="form-row"><label class="field" for="d-iu"><span class="field-label">招待の URL</span><input class="input mono" id="d-iu" value="https://scrum-guild.dev/invite#Qm7tX2vLr9aKpE4wZc8hN3bYd6fGs1uJ0oTiRl5eWxA" readonly></label>
          <button class="btn" type="button" data-toast="招待の URL をコピーしました">${icon("link")}コピー</button></div>
        <div class="callout is-warn">${icon("alert")}<span>この URL はこの画面を閉じると二度と出ません。期限は14日です。なくしたり切れたりしたら、招待し直してください。</span></div>`,
       `<button class="btn is-primary" type="button" data-close-dialog>閉じる</button>`);

@@ -53,7 +53,7 @@
 - 別の組織の ID を指定されたときは、存在しないときと同じ `not_found` の 404 を返す。
 - 入力の誤りは 400 の `invalid_input` で、`details` に zod の検証の結果を項目ごとに入れる。権限が無いのは 403、先に読んだ値で判定した書き込みの競合（`meta.changes` が 0）は 409 にする。
 - 想定していないエラーは `app.onError` で 500 の `internal` にし、中身は応答に出さずログにだけ出す。
-- ログは Workers Logs に JSON の1行で出す。リクエストの ID、操作の名前、組織の ID、ユーザーの ID、`code`、かかった時間を入れ、本文、コメント、取り込んだ内容、認証情報は出さない。
+- ログは Workers Logs に JSON の1行で出す。リクエストの ID、操作の名前、組織の ID、ユーザーの ID、`code`、かかった時間を入れ、本文、コメント、取り込んだ内容、認証情報（招待の URL の秘密、ID トークン、Google のメールアドレスを含む）は出さない。
 
 ## 初版の作る順
 
@@ -318,7 +318,7 @@ GitHub App も比べた。人が抜けても取り込みが止まらない、PAT
 - OAuth クライアント: Google Cloud のプロジェクトに、種類が「ウェブ アプリケーション」のものを1つ作り、承認済みのリダイレクト URI は本番の公開 URL の戻り先だけにする
 - 同意画面: ユーザーの種類は「外部」、公開の状態は「本番」。「テスト」のままだと、登録したテストユーザーしかログインできない
 - スコープ: `openid`、`email`、`profile` だけ。機密のスコープを使わないので、Google の審査を待たずに出せる
-- フロー: 認可コードのフロー（`response_type=code`）に state、PKCE（`S256`）、nonce を付ける。受け取る ID トークンは、固定の `https://oauth2.googleapis.com/token` に Worker から送った応答の `id_token` だけ。エンドポイントを発見の文書や設定から読まず、戻り先の URL や画面から ID トークンを受け取らない
+- フロー: 認可コードのフロー（`response_type=code`）に state、PKCE（`S256`）、nonce を付け、`prompt=select_account` で Google のアカウントを選ばせる。複数の Google アカウントでログインしている人が、招待されたのと別のアカウントで戻らないようにするため。受け取る ID トークンは、固定の `https://oauth2.googleapis.com/token` に Worker から送った応答の `id_token` だけ。エンドポイントを発見の文書や設定から読まず、戻り先の URL や画面から ID トークンを受け取らない
 - ID トークンの検証: TLS でトークンのエンドポイントから直接受け取るので、OpenID Connect Core の決まりに沿って署名の検証は省く。確かめるのは次の5つ
   - `iss` が `https://accounts.google.com` か `accounts.google.com` に完全一致する
   - `aud` がクライアント ID に完全一致する（配列なら `azp` もクライアント ID）

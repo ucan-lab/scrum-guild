@@ -356,22 +356,28 @@ Google の人は、ログインするまで `sub` が分からない。そのた
 
 招待の URL を作るとき。
 
-- 秘密は 32 バイトの乱数にし、URL（`/invite/<秘密>`）にだけ入れる。DB には SHA-256 の `claim_token_hash` だけを持ち、URL は作った直後の画面にだけ出す。
+- 秘密は 32 バイトの乱数を base64url（43文字）にし、URL のフラグメント（`/invite#<秘密>`）にだけ入れる。フラグメントはサーバーに届かず、Referer にも付かないので、ログに残らない。DB には SHA-256 の `claim_token_hash` だけを持つ。
+- 招待と指名を作る API は、秘密を応答の本文にだけ入れ、`Cache-Control: no-store` を付ける。ヘッダーと `change_logs` には入れない。URL は作った直後の画面にだけ出す。
 - メールアドレスは、前後の空白を除き、ASCII の英大文字だけを小文字に直してから `login_email` に入れる。ASCII の外の文字を含むものは受け付けない。ドットや `+` 以降は読み替えない。招待と指名の入力と、ID トークンの `email` の両方に、同じ1つの関数を通す。
 - `claim_expires_at` は作ってから14日にする。
 
 本人が招待の URL を開いたとき。
 
-1. すでにログインしていても、Google のログインを始める。`oauth_states.claim_token_hash` に秘密のハッシュを入れる。
-2. 戻ってきたら ID トークンを確かめ（`development.md` の「Google のログイン」）、`email_verified` が真偽値の `true` のときだけ先に進む。
-3. 組織をまたいで読む関数で、`claim_token_hash` が一致し、`login_subject` が空で、`claim_expires_at` が過ぎていない行を引く（`invitations` は `status = 'pending'` も）。`login_email` がトークンの `email` をそろえた値と一致しなければ、当たらなかったものとする。当たらなければ、理由を分けずに「この招待の URL は使えません」と出す。どのメールアドレスに招待したかは出さない。
-4. 当たった行の組織で、次の文を1回の `batch()` に並べて書く。どの文も条件付きにして、読んでから書くまでに状態が変わっても、一意の制約に当たらず、もう一度流しても同じ結果になるようにする。
-   - 指名（`users`）: 同じ組織に同じ `sub` の行があれば、その行を `is_admin = 1` にし、`disabled_at` を空にする（`WHERE EXISTS` で条件付き）。続けて待っていた行を消す（同じ `EXISTS` と `login_subject IS NULL` で条件付き）。無ければ、待っていた行に `sub` を埋め、`login_email`、`claim_token_hash`、`claim_expires_at` を空にし、`name` を Google のプロフィールの名前に書き直す（`WHERE id = ? AND login_subject IS NULL AND NOT EXISTS (同じ組織の同じ sub の行)`）。
-   - 招待（`invitations`）: 同じワークスペースに同じ `sub` の承諾待ちの招待があるか、その人がもうそのワークスペースに所属していれば、待っていた招待を `revoked` にする（`WHERE EXISTS` で条件付き）。無ければ、`sub` を埋め、`login_email`、`claim_token_hash`、`claim_expires_at` を空にする（`WHERE id = ? AND login_subject IS NULL AND status = 'pending' AND NOT EXISTS (…)`）。
-   - どちらも、結んだことを `change_logs` に残す（`entity_type` は `user` か `invitation`、`action` は `update`）。運用者の指名なら `operator` に運用者のログインの ID を入れる。
+1. 画面は `location.hash` から秘密を読み、すぐ `history.replaceState` で URL を `/invite` に置き換える。`/invite` の画面のヘッダーは `Referrer-Policy: no-referrer`。
+2. 画面に「Google でログイン」のボタンを出し（組織の名前は、秘密を API に送る前なので出さない）、押してからログインを始める。リンクを先読みする仕組み（メールの安全確認、チャットのプレビュー）でログインが始まらないようにするのが狙い。すでにログインしていても、Google のログインを通す。
+3. ログインを始める API は、秘密を POST の本文でだけ受ける。決まった形（base64url の43文字）でなければ、ハッシュも DB の問い合わせもせずに断る。サーバーがハッシュにして `oauth_states.claim_token_hash` に入れる。この API と戻り先も、ログインのレート制限（`login:<IP>`）で数える。
+4. 戻ってきたら ID トークンを確かめ（`development.md` の「Google のログイン」）、`email_verified` が真偽値の `true` のときだけ先に進む。
+5. 組織をまたいで読む関数で、`claim_token_hash` が一致し、`login_subject` が空で、`claim_expires_at` が過ぎていない行を引く（`invitations` は `status = 'pending'` も）。`login_email` がトークンの `email` をそろえた値と一致しないとき、組織が停止しているときは、当たらなかったものとする。指名で、同じ組織の同じ `sub` の行が待っている行より後に無効にされていたとき（`disabled_at` が待っている行の `created_at` より後）も同じ。当たらなければ、理由を分けずに「この招待の URL は使えません」と出す。どのメールアドレスに招待したかは出さない。
+6. 当たった行の組織で、次の文を1回の `batch()` に並べて書く。読んでから書くまでに、指名し直し、取り消し、期限切れ、同じ URL の二重の戻りが起こりうるので、どの文にも「待っている行がまだ有効」という同じ条件を付ける: `EXISTS (SELECT 1 FROM <表> WHERE id = :pending_id AND login_subject IS NULL AND claim_token_hash = :hash AND claim_expires_at > :now)`（`invitations` は `AND status = 'pending'` も）。これで一意の制約に当たらず、もう一度流しても同じ結果になる。
+   - 指名（`users`）: 同じ組織に同じ `sub` の行があれば、その行を `is_admin = 1` にし、`disabled_at` を空にする。続けて待っていた行を消す。無ければ、待っていた行に `sub` を埋め、`login_email`、`claim_token_hash`、`claim_expires_at` を空にし、`name` を Google のプロフィールの名前に書き直す（`AND NOT EXISTS (同じ組織の同じ sub の行)`）。
+   - 招待（`invitations`）: 同じワークスペースに同じ `sub` の承諾待ちの別の招待がある（`id <> :pending_id`）か、その人がもうそのワークスペースに所属していれば、待っていた招待を `revoked` にする。無ければ、`sub` を埋め、`login_email`、`claim_token_hash`、`claim_expires_at` を空にする（`AND NOT EXISTS (…)`）。
+   - どちらも、結んだことを `change_logs` に残す（`entity_type` は `user` か `invitation`、`action` は `update`、`actor_user_id` は結んだ本人、`operator` は空）。指名した運用者は、指名したときの `change_logs` で分かる。`changes_json` には `login_email`、`claim_token_hash`、`claim_expires_at` を入れず、待っていた行の名前は「Google の招待（ログイン待ち）」と残す。
    - 文の並びは、統合と取り消しを先に、`sub` を埋める文を後にする。
-5. そのあとは、GitHub と同じく `sub` で入れる組織を引き、アカウントを作り、`users.account_id` を埋める。`sub` を埋めるのをアカウントを作るより先にするのは、入れる組織が1つもない人のアカウントを作らないため。
-6. 4 の途中で失敗しても、行は待ったままで、期限までは同じ招待の URL を開き直せば結べる。
+   - どの文も行を変えなかったら（`meta.changes` がすべて 0）、当たらなかったときと同じ文言を返す。
+7. そのあとは、GitHub と同じく `sub` で入れる組織を引き、アカウントを作り、`users.account_id` を埋める。`sub` を埋めるのをアカウントを作るより先にするのは、入れる組織が1つもない人のアカウントを作らないため。
+8. 6 の途中で失敗しても、行は待ったままで、期限までは同じ招待の URL を開き直せば結べる。
+
+`login_subject` が空の `users` の行は、運用者の画面の「指名済み、ログイン待ち」のほかには、ユーザーの一覧にも担当の候補にも出さない。待つ間の `name` がメールアドレスのため。
 
 結んだ後の見分けは `sub` だけで、Google の側でメールアドレスが変わっても、結んだ行はそのまま当たる。
 
@@ -915,7 +921,7 @@ D1 は対話的なトランザクションを持たない。まとめて書く�
 | メンバーの離脱 | `memberships`、担当を外す `tasks`、`epic_party_members`、`connections`、`change_logs`。ログインできなくなったときは、続けて共通の DB の `sessions` を消す |
 | 取り込み（1件） | `tasks`（結ばれたリポジトリがあれば `repository_id` も）、`task_sources`、`task_source_payloads` |
 | 組織の作成 | 共通の DB の `organizations`、続けて組織の DB の最初の管理者の `users` |
-| Google の招待の URL から結ぶ | 組織の DB の `users` か `invitations`、`change_logs`（「メールアドレスで待つ指名と招待」の 4）、続けて共通の DB の `accounts` と `account_logins` |
+| Google の招待の URL から結ぶ | 組織の DB の `users` か `invitations`、`change_logs`（「メールアドレスで待つ指名と招待」の 6）、続けて共通の DB の `accounts` と `account_logins` |
 | 添付ファイルを上げる | R2 にファイルを書き、続けて `attachments` |
 | 添付ファイルを消す | `attachments` の削除と `change_logs`、続けて R2 のファイルの削除 |
 | コメントの削除 | `comments`、そのコメントの `attachments` の削除、`change_logs`、続けて R2 のファイルの削除 |
