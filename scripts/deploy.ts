@@ -11,6 +11,8 @@ export const SMOKE_REQUEST_TIMEOUT_MS = 10_000;
 export type WranglerResult = { status: number; stdout: string; stderr: string };
 
 export type DeployDeps = {
+  // Workers Builds の中か（WORKERS_CI）
+  inWorkersBuilds: boolean;
   commitSha: string | undefined;
   // capture が真なら出力を受け取り、偽ならそのままログに流す
   wrangler: (args: string[], options: { capture: boolean }) => WranglerResult;
@@ -26,23 +28,32 @@ export type DeployDeps = {
 // Worker が無い（API の 10007）か、Worker はあってもデプロイが1つも無い。どちらも戻し先が無い
 const NO_DEPLOYMENT = [/\[code: 10007\]/, /has no deployments/];
 
+// Workers Builds が渡すコミットの SHA の形。ダッシュボードの環境変数で上書きされた任意の文字列を版として出さない
+const COMMIT_SHA = /^[0-9a-f]{7,40}$/;
+
 type RollbackTarget = { ok: true; versionId: string | null } | { ok: false; reason: string };
+
+// 取り込んだ wrangler の出力を、失敗の理由としてログに添える。長い出力は末尾だけにする
+function outputOf(result: WranglerResult): string {
+  return `${result.stdout}\n${result.stderr}`.trim().slice(-2_000);
+}
 
 // wrangler deployments status --json の結果から、今 100% で動いている版を取る
 export function rollbackTarget(result: WranglerResult): RollbackTarget {
   if (result.status !== 0) {
-    const output = `${result.stdout}\n${result.stderr}`;
-    if (NO_DEPLOYMENT.some((pattern) => pattern.test(output))) return { ok: true, versionId: null };
-    return { ok: false, reason: `今の版を取れませんでした（終了コード ${result.status}）` };
+    if (NO_DEPLOYMENT.some((pattern) => pattern.test(outputOf(result)))) return { ok: true, versionId: null };
+    return { ok: false, reason: `今の版を取れませんでした（終了コード ${result.status}）\n${outputOf(result)}` };
   }
   let deployment: unknown;
   try {
     deployment = JSON.parse(result.stdout);
   } catch {
-    return { ok: false, reason: '今の版の JSON を読めませんでした' };
+    return { ok: false, reason: `今の版の JSON を読めませんでした\n${outputOf(result)}` };
   }
-  const versions = (deployment as { versions?: unknown }).versions;
-  if (!Array.isArray(versions)) return { ok: false, reason: '今の版の JSON に versions がありません' };
+  const versions =
+    typeof deployment === 'object' && deployment !== null && 'versions' in deployment ? deployment.versions : undefined;
+  if (!Array.isArray(versions))
+    return { ok: false, reason: `今の版の JSON に versions がありません\n${outputOf(result)}` };
   // 自分たちは版を分けて流さないので、分かれていたら人が触った異常として止める
   if (versions.length !== 1 || versions[0]?.percentage !== 100 || typeof versions[0]?.version_id !== 'string') {
     return { ok: false, reason: `今の版が 100% で動いていません: ${JSON.stringify(versions)}` };
@@ -53,9 +64,11 @@ export function rollbackTarget(result: WranglerResult): RollbackTarget {
 async function waitForVersion(deps: DeployDeps, expected: string): Promise<boolean> {
   const url = `${PRODUCTION_URL}/api/health`;
   const started = deps.now();
-  for (let attempt = 1; ; attempt++) {
+  const deadline = started + SMOKE_TIMEOUT_MS;
+  // 問い合わせの開始を5秒おきに置き、遅い応答の後に5秒を足さない。1回の打ち切りも期限で縮め、2分を超えない
+  for (let attempt = 1, attemptStart = started; attemptStart < deadline; attempt++) {
     try {
-      const version = await deps.fetchVersion(url, SMOKE_REQUEST_TIMEOUT_MS);
+      const version = await deps.fetchVersion(url, Math.min(SMOKE_REQUEST_TIMEOUT_MS, deadline - attemptStart));
       if (version === expected) {
         deps.log(`煙のテスト: ${attempt}回目で版が一致しました（${Math.round((deps.now() - started) / 1000)}秒）`);
         return true;
@@ -64,17 +77,25 @@ async function waitForVersion(deps: DeployDeps, expected: string): Promise<boole
     } catch (err) {
       deps.log(`煙のテスト: ${attempt}回目は取得に失敗しました（${err instanceof Error ? err.message : String(err)}）`);
     }
-    if (deps.now() - started + SMOKE_INTERVAL_MS > SMOKE_TIMEOUT_MS) return false;
-    await deps.sleep(SMOKE_INTERVAL_MS);
+    const next = attemptStart + SMOKE_INTERVAL_MS;
+    if (next >= deadline) break;
+    await deps.sleep(Math.max(0, next - deps.now()));
+    attemptStart = deps.now();
   }
+  return false;
 }
 
 // 成功なら 0、失敗なら 1 を返す
 export async function deploy(deps: DeployDeps): Promise<number> {
+  // 手元に wrangler のログインが残っていると、作業ツリーがそのまま本番に出る。フックだけに頼らず、ここでも止める
+  if (!deps.inWorkersBuilds) {
+    deps.error('Workers Builds の外では動かしません（WORKERS_CI が 1 でない）。本番に触らずに終えます');
+    return 1;
+  }
   const sha = deps.commitSha;
   // 版の無いまま出すと、本番の版が dev になり煙のテストで見分けられない
-  if (!sha) {
-    deps.error('WORKERS_CI_COMMIT_SHA がありません。本番に触らずに終えます');
+  if (!sha || !COMMIT_SHA.test(sha)) {
+    deps.error(`WORKERS_CI_COMMIT_SHA がコミットの SHA ではありません（${sha ?? '無し'}）。本番に触らずに終えます`);
     return 1;
   }
 
@@ -90,7 +111,7 @@ export async function deploy(deps: DeployDeps): Promise<number> {
   if (deps.hasMigrations()) {
     const bookmark = deps.wrangler(['d1', 'time-travel', 'info', 'DB', '--json'], { capture: true });
     if (bookmark.status !== 0) {
-      deps.error(`${bookmark.stderr}\nTime Travel のブックマークを取れませんでした。本番に触らずに終えます`);
+      deps.error(`${outputOf(bookmark)}\nTime Travel のブックマークを取れませんでした。本番に触らずに終えます`);
       return 1;
     }
     deps.log(`マイグレーションを当てる前の Time Travel のブックマーク: ${bookmark.stdout.trim()}`);
@@ -100,25 +121,46 @@ export async function deploy(deps: DeployDeps): Promise<number> {
     }
   }
 
-  if (deps.wrangler(['deploy', '--var', `APP_VERSION:${sha}`, '--message', sha], { capture: false }).status !== 0) {
-    deps.error('版を上げられませんでした');
+  // Workers Builds が並んで走ると、控えた後に別のビルドが版を上げていることがある。その上に出すと戻し先を誤るので止める
+  const beforeDeploy = rollbackTarget(deps.wrangler(['deployments', 'status', '--json'], { capture: true }));
+  if (!beforeDeploy.ok || beforeDeploy.versionId !== target.versionId) {
+    deps.error(
+      '控えた後に本番の版が変わりました。別のデプロイが走っていないか確かめてください。版は切り替えていません',
+    );
     return 1;
+  }
+
+  if (deps.wrangler(['deploy', '--var', `APP_VERSION:${sha}`, '--message', sha], { capture: false }).status !== 0) {
+    // wrangler deploy は版を 100% に切り替えた後の triggers の反映でも落ちるので、切り替わったかを見直す
+    const after = rollbackTarget(deps.wrangler(['deployments', 'status', '--json'], { capture: true }));
+    if (after.ok && after.versionId === target.versionId) {
+      deps.error('版を上げられませんでした。版は切り替わっていません');
+      return 1;
+    }
+    deps.error('版を上げる途中で失敗しました。版が切り替わったか確かめられないか、切り替わっています');
+    return failAfterSwitch(deps, target.versionId, `デプロイの失敗で ${sha} から戻す`);
   }
 
   if (await waitForVersion(deps, sha)) return 0;
 
   deps.error(`煙のテスト: ${SMOKE_TIMEOUT_MS / 1000}秒待っても版が ${sha} になりませんでした`);
-  if (!target.versionId) {
+  return failAfterSwitch(deps, target.versionId, `煙のテストの失敗で ${sha} から戻す`);
+}
+
+// 本番が切り替わった後の失敗。戻し先があれば戻し、どちらでも失敗で終える
+function failAfterSwitch(deps: DeployDeps, versionId: string | null, reason: string): number {
+  if (!versionId) {
     deps.error('戻し先が無く、壊れた版が残っています。docs/operations.md の「戻し方」を見てください');
     return 1;
   }
-  const rollback = deps.wrangler(['rollback', target.versionId, '--message', `煙のテストの失敗で ${sha} から戻す`], {
-    capture: false,
-  });
-  if (rollback.status !== 0) {
-    deps.error(`${target.versionId} へ戻せませんでした。壊れた版が残っています`);
+  if (deps.wrangler(['rollback', versionId, '--message', reason], { capture: false }).status !== 0) {
+    deps.error(
+      `${versionId} へ戻せませんでした。壊れた版が残っています。docs/operations.md の「戻し方」を見てください`,
+    );
     return 1;
   }
-  deps.error(`${target.versionId} へ戻しました`);
+  deps.error(
+    `${versionId} へ戻しました。cron やルート（triggers）の変更とマイグレーションは戻していません。docs/operations.md の「戻し方」を見てください`,
+  );
   return 1;
 }

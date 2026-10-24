@@ -1,8 +1,9 @@
 // Workers Builds のデプロイのコマンド（node scripts/deploy-production.ts）。手順は scripts/deploy.ts。
-// セッションからは .claude/hooks/ のフックが止める。本番に触るのは Workers Builds だけ
+// 本番に触るのは Workers Builds だけ。セッションからは .claude/hooks/ のフックが止め、Workers Builds の外では deploy() も止まる
 import { spawnSync } from 'node:child_process';
 import { existsSync, readdirSync } from 'node:fs';
 import path from 'node:path';
+import { isHealth } from '../src/shared/health.ts';
 import { migrationFiles } from './ci.ts';
 import { deploy } from './deploy.ts';
 
@@ -10,6 +11,7 @@ import { deploy } from './deploy.ts';
 const wranglerBin = path.join('node_modules', '.bin', 'wrangler');
 
 const status = await deploy({
+  inWorkersBuilds: process.env.WORKERS_CI === '1',
   commitSha: process.env.WORKERS_CI_COMMIT_SHA,
   wrangler: (args, { capture }) => {
     // 標準入力を閉じ、確認を待って止まらないようにする
@@ -17,18 +19,19 @@ const status = await deploy({
       stdio: ['ignore', capture ? 'pipe' : 'inherit', capture ? 'pipe' : 'inherit'],
       encoding: 'utf8',
     });
-    return {
-      status: result.error ? 1 : (result.status ?? 1),
-      stdout: result.stdout ?? '',
-      stderr: result.stderr ?? '',
-    };
+    if (result.error) {
+      // 出力を流す呼び出しでも、起動できなかった理由は残す
+      console.error(`wrangler を起動できませんでした: ${result.error.message}`);
+      return { status: 1, stdout: result.stdout ?? '', stderr: `${result.stderr ?? ''}\n${result.error.message}` };
+    }
+    return { status: result.status ?? 1, stdout: result.stdout ?? '', stderr: result.stderr ?? '' };
   },
   hasMigrations: () => existsSync('migrations') && migrationFiles(readdirSync('migrations')).length > 0,
   fetchVersion: async (url, timeoutMs) => {
     const res = await fetch(url, { signal: AbortSignal.timeout(timeoutMs), cache: 'no-store' });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const body = (await res.json()) as { version?: unknown };
-    if (typeof body.version !== 'string') throw new Error('version がありません');
+    const body: unknown = await res.json();
+    if (!isHealth(body)) throw new Error('health の形ではありません');
     return body.version;
   },
   sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
