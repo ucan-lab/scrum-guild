@@ -17,7 +17,7 @@ fi
 
 if ! out=$(pnpm install --frozen-lockfile 2>&1); then
   echo "依存を入れていません: pnpm install --frozen-lockfile が失敗しました"
-  # .npmrc の認証の値が出力に混ざっても Claude に渡さない
-  echo "$out" | tail -n 20 | grep -viE 'token|auth|password|secret'
+  # .npmrc の認証の値や、URL に埋めた user:pass が出力に混ざっても Claude に渡さない
+  echo "$out" | tail -n 20 | grep -viE 'token|auth|password|secret' | sed -E 's#://[^/@[:space:]]+@#://***@#g'
 fi
 exit 0
