@@ -115,10 +115,10 @@
 ## 次にやること
 
 1. 上の確認の結果を `docs/design.md` と `docs/requirements.md` に反映する
-2. リポジトリの土台を作る（`docs/development.md` の「技術の選択」。pnpm、Hono、SvelteKit の SPA モード、Kysely、zod、ESLint と Prettier、wrangler の設定、SessionStart のフック、`.claude/settings.json` の deny、CI の `ci-ok`、Workers Builds とデプロイのスクリプト）。ここから先、コードは PR を通す。`CLAUDE.md` の「コマンド」を埋める。SvelteKit の開発用サーバーと `wrangler dev` をどう組むか（1つにまとまるか、`/api` を転送するか）を確かめる
-4. `d1-migration` のスキルを作り、`docs/data-model.md` から最初のマイグレーションを書く
-5. `design/tokens.css` と `design/components.css` を本番の画面に持ち込み、`design/kit.js` の関数を1つずつ Svelte のコンポーネントにする。`html` の `data-theme` には、`users.theme`、なければ `organizations.theme` の値を入れる
-6. 最初の数画面が Svelte で動いたら、下の「画面の自己レビューのスキル」を作る
+2. リポジトリの土台を作る（#19）。続けて CI と本番へのデプロイを作る（#20）。どちらも `docs/development.md` の「初版の作る順」の1と2で、開発用サーバーの組み方とセキュリティのヘッダーの付け方は #19 の「背景」に書いた。ここから先、コードは PR を通す
+3. `d1-migration` のスキルを作り、`docs/data-model.md` から最初のマイグレーションを書く
+4. `design/tokens.css` と `design/components.css` を本番の画面に持ち込み、`design/kit.js` の関数を1つずつ Svelte のコンポーネントにする。`html` の `data-theme` には、`users.theme`、なければ `organizations.theme` の値を入れる
+5. 最初の数画面が Svelte で動いたら、下の「画面の自己レビューのスキル」を作る
 
 ## 画面の自己レビューのスキル
 
