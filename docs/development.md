@@ -142,12 +142,12 @@ GitHub は無料のプランのまま使う（2026-10-23 に決めた）。無�
 | --- | --- |
 | `permissions.deny` | `.dev.vars`、`.env` とその環境ごとのファイル（`.local`、`.production` など）の読み取り、`.dev.vars` と `.env` の書き込み、wrangler の資格情報のディレクトリの読み取り |
 | `env` | `WRANGLER_SEND_METRICS=false`（テレメトリを送らない） |
-| `guard-bash.mjs` と `bash-rules.mjs`（PreToolUse、Bash と Monitor） | 止める: wrangler の本番に触る操作（許すのは `dev`、`types`、`whoami`、版と help、`--local` を付けた D1、R2、KV の操作だけ）、`--remote` と `-r` とリモートの binding、本番のログ（`tail`）、デプロイのスクリプトと名前に `deploy` を含む `package.json` のスクリプト、`main` への push、force push、PR のマージ（`gh pr merge`、`gh api` と `curl` の merge、main の ref の書き換え）、シークレットとログイン、`.dev.vars` と `.env` の中身を読むコマンドと `git add`。確認を挟む: 依存の追加、削除、更新、マイグレーションの作成、`gh stack` の push 系、ブランチを判定できない push（`cd ~` や変数の先、変数か glob を含む refspec） |
+| `guard-bash.mjs` と `bash-rules.mjs`（PreToolUse、Bash と Monitor） | 止める: wrangler の本番に触る操作（許すのは `dev`、`types`、`whoami`、版と help、`--local` を付けた D1、R2、KV の操作だけ）、`--remote` と `-r` とリモートの binding、本番のログ（`tail`）、デプロイのスクリプトと名前に `deploy` を含む `package.json` のスクリプト、`main` への push、force push、PR のマージ（`gh pr merge`、`gh api` と `curl` の merge、main の ref の書き換え、contents API の書き込み）、シークレットとログイン、`.dev.vars` と `.env` の中身を読むか送るコマンドと `git add`。確認を挟む: 依存の追加、削除、更新、マイグレーションの作成、`gh stack` の push 系、ブランチを判定できない push（`cd ~` や変数の先、変数か glob を含む refspec）、Bash からの `.claude/settings*.json` と `.claude/hooks/` と `migrations/` の書き換え |
 | `guard-files.mjs` と `file-rules.mjs`（PreToolUse、Write と Edit と MultiEdit） | 止める: `origin/main` にあるマイグレーションの書き換え、`+page.server`、`+layout.server`、`+server`、`hooks.server`、`src/` のうち `src/server/db/` の外での `env.DB` と `D1Database`（テストも含む。テストの土台は `test/` に置く）、`.svelte` の `<style>`、wrangler の設定の `remote: true`。確認を挟む: `.claude/settings*.json` と `.claude/hooks/` の書き換え |
 | `format.mjs`（PostToolUse、Write と Edit と MultiEdit） | このリポジトリのファイルを Prettier で整える。依存が入るまでは何もしない |
 | `session-start.sh`（SessionStart の起動と再開） | クラウドのセッションだけで、`pnpm install --frozen-lockfile` を行う |
 
-Bash の判定を `permissions.deny` に置かないのは、規則が前方一致で、`npx wrangler` や `pnpm exec wrangler` の言い換えを取りこぼすため。先頭に `*` を付けると、`grep "wrangler deploy"` のような読むだけのコマンドまで止まる。フックはコマンドを区切りごとに分け（コメント、ヒアドキュメント、二重引用符の中の `$(...)`、`bash -c`、`eval` も読む）、実行する道具の名前で判定する。`package.json` のスクリプトは中身をたどって判定する。判定できないときはフックが exit 2 で止める。判定を変えたら `node --test .claude/hooks/*.test.mjs` を通す。
+Bash の判定を `permissions.deny` に置かないのは、規則が前方一致で、`npx wrangler` や `pnpm exec wrangler` の言い換えを取りこぼすため。先頭に `*` を付けると、`grep "wrangler deploy"` のような読むだけのコマンドまで止まる。フックはコマンドを区切りごとに分け（コメント、行継続、`$(...)` とバッククォート、`bash -c` と `bash <<EOF` と `eval` の中身も読む）、実行する道具の名前で判定する。同じコマンドの中の `cd` と `git checkout` の後の push は移った先のブランチで、`package.json` のスクリプトは pre と post も含めた中身で見る。判定できないときは、フックが exit 2 で止める。判定を変えたら `node --test .claude/hooks/*.test.mjs` を通す。
 
 どれも踏み線で、本当の守りは、セッションが動く環境に Cloudflare の資格情報を置かないこと。フックからは、変数の中身、パイプで `sh` に流す中身、`gh api graphql` が読むファイルの中身が見えない。
 
