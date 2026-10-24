@@ -171,7 +171,8 @@ Bash の判定を `permissions.deny` に置かないのは、規則が前方一�
 | `sync-base` | `rebase-base` をこのリポジトリ向けに書き換えた。rebase で取り込み、lease の SHA を明示した `--force-with-lease` で push まで行う |
 | `requirements` | 外した。Backlog の要望を要件に落とす受託向けのスキルで、このリポジトリでは使い道が薄い |
 | `database-reviewer` | D1（SQLite）向けに書き直した。`batch()` の原子性、共通の表と組織の中の表の混在、組織での絞り込み、マイグレーションを戻せるか、インデックスを見る |
-| `code-reviewer`、`security-reviewer` | PHP と Laravel の記述を外し、Workers、Hono、D1、R2、Svelte を前提にした。どちらも `multi-tenant.md` と `cloudflare-workers.md` を読む |
+| `code-reviewer`、`security-reviewer` | PHP と Laravel の記述を外し、Workers、Hono、D1、R2、Svelte を前提にした。どちらも `multi-tenant.md` と `cloudflare-workers.md` を読む。`code-reviewer` は観点を当てた後に、PR の主張を疑って差分を壊す筋書きを組み立てる |
+| `finding-verifier` | 足した。CRITICAL と HIGH の指摘の前提をコードと文書で確かめ、成り立たないと示せたものだけを反証とする。CI の AI レビューはすべての CRITICAL と HIGH を、`self-review` は直さないつもりのものを渡す |
 | `ui-reviewer` | 足した。画面の差分のコードを `docs/design.md` とチェックリストの `ui.md` に突き合わせ、色の役割、テーマ、言葉の切り替え、状態、アクセシビリティ、狭い幅での崩れを見る。撮った画像での採点は `screen-review` が受け持つ |
 | `.claude/checklists/` | `cloudflare-workers.md` と `multi-tenant.md` を足した。`database.md` を D1 向けに書き直し、`languages/typescript.md` から使わないフレームワーク（Vue、Nuxt、Express、Sequelize）の節を外し、SvelteKit の節を SPA モード向けに直した |
 
@@ -241,7 +242,7 @@ PR ごとに GitHub Actions で回す。
 | test | Workers の実行環境で動かす（`@cloudflare/vitest-pool-workers`）。ローカルの D1 に全マイグレーションを当てて回す。組織の分離のテストを含む |
 | migration | 空の D1 に全マイグレーションを順に当てて通るか確かめる。ベータが始まったら、既にあるマイグレーションのファイルの書き換えも落とす（上の「DB を作り直してよい期間」） |
 | e2e | ビルドして `wrangler dev` を立て、Playwright で主な流れを確かめる。4つのテーマと2つの言葉の組み合わせでスクリーンショットを撮り、成果物として上げる |
-| ai-review | `anthropics/claude-code-action` で、スキル `ai-review` が差分に応じて `.claude/agents/` のレビューのエージェントを呼び分け、指摘を PR に書く。`.github/workflows/ai-review.yml` に分けて置く |
+| ai-review | `anthropics/claude-code-action` で、スキル `ai-review` が差分に応じて `.claude/agents/` のレビューのエージェントを呼び分け、CRITICAL と HIGH を `finding-verifier` の反証にかけてから、指摘を PR に書く。`.github/workflows/ai-review.yml` に分けて置く |
 | label | パスを見て `needs-human` のラベルを付ける（上の「マージの判定」）。`.github/workflows/label.yml` に分けて置き、`pull_request_target` で動かす。ワークフローも規則も PR のベース（`main`）の版が使われるので、PR の側で書き換えてもラベルは付く。別のブランチをベースに開いてから `main` へ付け替えたときも、判定し直す。PR のコードはチェックアウトしない（書き込みのトークンで PR のコードを動かさないため） |
 | ci-ok | ai-review と label を除く上のジョブをまとめる1つのジョブ。マージの前に確かめるのは、これと label |
 
