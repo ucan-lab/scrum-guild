@@ -7,13 +7,23 @@
 const OPERATORS = ['&&', '||', '$(', ';', '|', '&', '\n', '`', '(', ')'];
 const WORD_END = new Set([' ', '\t', '\n', ';', '&', '|', '<', '>', '(', ')', '`']);
 
-// $( の後ろから、対応する ) の位置を返す
+// $( の後ろから、対応する ) の位置を返す。
+// git commit -m "$(cat <<'EOF' ... EOF)" の本文の ' や ( で数えを崩さないよう、ヒアドキュメントの本文は数えない
 function closingParen(text, start) {
   let depth = 1;
   for (let j = start; j < text.length; j++) {
     const ch = text[j];
     if (ch === '\\') j++;
-    else if (ch === "'") {
+    else if (text.startsWith('<<', j) && text[j + 2] !== '<') {
+      const match = /^<<-?\s*(['"]?)([\w-]+)\1/.exec(text.slice(j));
+      if (!match) continue;
+      const bodyStart = text.indexOf('\n', j);
+      if (bodyStart === -1) return text.length;
+      const end = new RegExp(`\\n[\\t ]*${match[2]}[\\t ]*(\\n|\\)|$)`).exec(text.slice(bodyStart));
+      if (!end) return text.length;
+      // 終わりの印の行の末尾（改行か ) の手前）まで進める
+      j = bodyStart + end.index + end[0].length - (end[1] === ')' ? 2 : 1);
+    } else if (ch === "'") {
       const end = text.indexOf("'", j + 1);
       j = end === -1 ? text.length : end;
     } else if (ch === '(') depth++;

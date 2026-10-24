@@ -136,6 +136,7 @@ describe('bash-rules: 止める', () => {
     'out="$(npx wrangler deploy 2>&1)"; echo "$out"',
     'git commit -m "$(git push origin main)"',
     "$'wrangler' deploy",
+    `git commit -m "$(cat <<'EOF'\nfix: it's (a) note\nEOF\n)" && git push origin main`,
     'echo ok && \\\nwrangler deploy',
     'git \\\npush origin main',
     'npx wrangler \\\n  deploy',
