@@ -192,7 +192,17 @@ approve が出たら、人の指摘ごとに、このリポジトリの `.claude
 
 ### 9. マージを依頼して後片付けする
 
-マージはユーザーに依頼し、マージしたら知らせてほしいと伝えて止まる。自分ではマージしない。
+マージはユーザーに依頼し、マージしたら知らせてほしいと伝えて止まる。自分からはマージしない。
+
+ユーザーがその PR のマージを指示したときだけ、次を確かめてから自分でマージする（`docs/development.md` の「マージの判定」）。
+
+```bash
+gh pr view <number> --json labels,headRefOid --jq '{labels: [.labels[].name], head: .headRefOid}'
+gh api "repos/{owner}/{repo}/commits/<head>/check-runs" --jq '.check_runs[] | select(.name == "label" or .name == "ci-ok") | {name, status, conclusion}'
+```
+
+- `needs-human` が付いている、または `label` か `ci-ok` が `success` でなければマージせず、理由を伝えて人にマージを依頼する
+- 通れば `gh pr merge <number> --squash` を打つ。フックが確認を挟む。止められたら、`! gh pr merge <number> --squash` を人に渡す
 
 知らされたら、マージを確かめてから後片付けする。
 

@@ -113,8 +113,6 @@ describe('bash-rules: 止める', () => {
     'git push --all',
     'git push --mirror',
     'git add -f .dev.vars',
-    'gh pr merge 21 --squash',
-    'gh -R ucan-lab/scrum-guild pr merge 21',
     'gh api -X PUT repos/ucan-lab/scrum-guild/pulls/21/merge',
     'gh api -X PUT repos/o/r/pulls/$PR/merge',
     'gh api --method PUT "repos/{owner}/{repo}/pulls/${n}/merge"',
@@ -204,7 +202,7 @@ describe('bash-rules: 止める', () => {
     assert.match(verdict('wrangler deploy')[1], /本番に触る/);
     assert.match(verdict('wrangler d1 execute DB')[1], /--local/);
     assert.match(verdict('git push -f')[1], /force push/);
-    assert.match(verdict('gh pr merge 1')[1], /マージ/);
+    assert.match(verdict('gh api -X PUT repos/o/r/pulls/1/merge')[1], /gh pr merge/);
   });
 });
 
@@ -224,6 +222,8 @@ describe('bash-rules: 確認を挟む', () => {
     'pnpm wrangler d1 migrations create DB add_tasks',
     'gh stack push',
     'gh stack sync',
+    'gh pr merge 21 --squash',
+    'gh -R ucan-lab/scrum-guild pr merge 21',
     'git push origin $BRANCH',
     'git push origin $(echo main)',
     `echo '{"disableAllHooks": true}' > .claude/settings.local.json`,
@@ -245,6 +245,10 @@ describe('bash-rules: 確認を挟む', () => {
     assert.equal(decision('cd $REPO && git push origin HEAD'), 'ask');
     assert.equal(decision('GIT_DIR=/repo/.git git push'), 'ask');
     assert.equal(decision('git --git-dir=/repo/.git push'), 'ask');
+  });
+
+  test('マージの確認の理由に needs-human を書く', () => {
+    assert.match(verdict('gh pr merge 1')[1], /needs-human/);
   });
 
   test('止めるものと確認を挟むものが並んだら止める', () => {

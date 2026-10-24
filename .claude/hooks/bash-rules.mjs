@@ -1,5 +1,5 @@
-// Bash の判定。本番に触る操作、main への push、force push、マージ、シークレットを止め、
-// 依存の変更、マイグレーションの作成、判定しきれない push では人の確認を挟む（docs/development.md の「Claude の設定とフック」）。
+// Bash の判定。本番に触る操作、main への push、force push、gh pr merge 以外でのマージ、シークレットを止め、
+// gh pr merge、依存の変更、マイグレーションの作成、判定しきれない push では人の確認を挟む（docs/development.md の「Claude の設定とフック」）。
 // permissions.deny の前方一致では npx wrangler や pnpm exec wrangler の言い換えを取りこぼすので、語に分けて判定する。
 // 踏み線であって守りの本体ではない。変数の中身と、パイプで sh に流す中身は見えない。
 import path from 'node:path';
@@ -131,9 +131,9 @@ function judgeGit(args, dir, branchOf) {
 // GitHub の API でのマージと main の書き換え。GET（読むだけ）は通す
 function judgeGitHubWrite(words, method) {
   const text = words.join(' ');
-  if (/mergePullRequest|enablePullRequestAutoMerge|updateRef|updateRefs/.test(text)) return [DENY, 'マージは人が行う'];
+  if (/mergePullRequest|enablePullRequestAutoMerge|updateRef|updateRefs/.test(text)) return [DENY, 'マージは gh pr merge で行う'];
   if (method === 'GET') return null;
-  if (/\/pulls\/[^/\s]+\/merge\b|\/merges\b/.test(text)) return [DENY, 'マージは人が行う'];
+  if (/\/pulls\/[^/\s]+\/merge\b|\/merges\b/.test(text)) return [DENY, 'マージは gh pr merge で行う'];
   if (/\/git\/refs\/heads\/main\b/.test(text)) return [DENY, 'main は PR のマージでだけ進める'];
   // contents API の書き込みは、ブランチを指定しなければ既定のブランチ（main）へ直にコミットする
   if (/\/contents\//.test(text)) return [DENY, 'contents API でのファイルの書き込みはしない。作業ブランチで git を使う'];
@@ -161,9 +161,11 @@ function methodOf(value, fallback) {
 
 function judgeGh(args) {
   const pos = positionals(args, new Set(['-R', '--repo', '-X', '--method', '-H', '--header', '-f', '-F', '--field', '--raw-field', '--input', '--jq', '-q', '--template', '-t']));
-  if ((pos[0] === 'pr' && pos[1] === 'merge') || (pos[0] === 'stack' && pos[1] === 'merge')) {
-    return [DENY, 'マージは人が行う'];
+  // 人が指示したときだけ、gh pr merge でマージする。needs-human のラベルはフックから見えないので、確認で人に委ねる
+  if (pos[0] === 'pr' && pos[1] === 'merge') {
+    return [ASK, 'マージは人が指示したときだけ行う。needs-human の PR と label が成功していない PR は人がマージする（docs/development.md の「マージの判定」）'];
   }
+  if (pos[0] === 'stack' && pos[1] === 'merge') return [DENY, 'マージは gh pr merge で行う'];
   if (pos[0] === 'stack' && ['push', 'sync', 'submit', 'rebase'].includes(pos[1])) {
     return [ASK, `gh stack ${pos[1]} は force push を伴う。スタック PR は原則使わない（docs/development.md の「並行して作業するときの決まり」）`];
   }
