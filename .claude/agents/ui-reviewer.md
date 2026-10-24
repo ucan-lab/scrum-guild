@@ -1,6 +1,6 @@
 ---
 name: ui-reviewer
-description: Team Leveling の画面のレビュアー。SvelteKit のコンポーネント、CSS、デザインシステム（design/）、言葉の辞書の差分を、docs/design.md の決まりと突き合わせ、色の役割、テーマ、言葉の切り替え、状態の作り込み、アクセシビリティ、狭い幅での崩れを見る。差分が画面に触れるときに使う。
+description: Scrum Guild の画面のレビュアー。SvelteKit のコンポーネント、CSS、デザインシステム（design/）、言葉の辞書の差分を、docs/design.md の決まりと突き合わせ、色の役割、テーマ、言葉の切り替え、状態の作り込み、アクセシビリティ、狭い幅での崩れを見る。差分が画面に触れるときに使う。
 tools: ["Read", "Grep", "Glob", "Bash"]
 model: sonnet
 effort: high

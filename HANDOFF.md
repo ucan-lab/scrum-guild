@@ -27,7 +27,7 @@
 - [ ] ゲームの言葉とスクラムの言葉を切り替えて、どちらでも崩れないか
 - [ ] 4つの見た目（シンプルのライトとダーク、中世風、現代風）のどれでも読みやすいか。カタログの先頭か、画面の上の「テーマ」で切り替えられる
 - [ ] 現代風の光の強さと、光らせる所（レベル、積載量、貼り紙、ダイアログ、クリアの演出だけ）がちょうどよいか
-- [ ] シンプルの完了の印（緑の丸にチェック）とロゴの印（TL）でよいか
+- [ ] シンプルの完了の印（緑の丸にチェック）とロゴの印（SG）でよいか
 - [ ] 本来の書体（Zen Old Mincho、BIZ UDPGothic、IBM Plex Mono、Chakra Petch）での見え方。現代風の見出しは Chakra Petch が要になる。作った環境では Google Fonts を読み込めず、代わりの書体でしか確かめていない
 - [ ] スマホ幅で崩れないか（PC が対象で、スマホは崩れない程度でよい）
 - [ ] ダイアログ（スプリントの開始、延長、終了、起票、エピックの削除、完了の記録の修正、ワークスペースの作成、組織の作成、停止、管理者の指名し直し）の文言と選択肢
@@ -64,7 +64,7 @@
 - [ ] 適格請求書発行事業者に登録する時期を、税理士に確かめる（`docs/business.md` の「未決」）
 - [x] スプリントを回さない保守中心のチームでも使えるよう、起票と詳細の経験値をタスクの完了で確定させ、感謝の回数の上限を週で数えるようにした（2026-10-23）。`docs/requirements.md` の「ゲームの仕組み」、`docs/data-model.md` の `xp_grants`
 - [x] 見本の経験値の表示（`design/kit.js` の見込みの凡例、スプリントの終了のダイアログ、起票の欄の説明、`design/style-tiles.html` の見込み）から「スプリントの終了で確定」を外し、完了で確定する形に直した（2026-10-23）
-- [x] Team Leveling は単体で動き、特定の取り込み元に依存しないと決めた（2026-10-23）。取り込み元に固有の処理と値は型の実装に閉じ、DB の CHECK にも書かない。種別は課題、PR、レビュー依頼に共通化した。Jira、Asana、Notion、GitLab、Bitbucket などは後回しで型を足す。同じ作業が別の取り込み元にあるときは、後回しの「取り込み元をまたいだ紐付け」で結び付ける
+- [x] Scrum Guild は単体で動き、特定の取り込み元に依存しないと決めた（2026-10-23）。取り込み元に固有の処理と値は型の実装に閉じ、DB の CHECK にも書かない。種別は課題、PR、レビュー依頼に共通化した。Jira、Asana、Notion、GitLab、Bitbucket などは後回しで型を足す。同じ作業が別の取り込み元にあるときは、後回しの「取り込み元をまたいだ紐付け」で結び付ける
 - [x] ログインの手段も差し替えられる型にし、アカウントを GitHub から切り離した（2026-10-23）。人は手段と手段の中の ID の組で見分け、`account_logins` で結ぶ。初版の手段は GitHub だけで、Google や Microsoft は後回し
 - [x] 工数の実績とスケジュールのずれは Non-Goals に入れた（2026-10-23）
 - [ ] 最初に声をかけるチーム
@@ -86,7 +86,7 @@
 - [ ] #10 のマージ後に、試しの PR で `label` を確かめる（`pull_request_target` は `main` の版しか動かないため）
 - [x] 運用の手順書（`docs/operations.md` に1つ）、セキュリティのヘッダー（最初の一本道から厳しく）、添付ファイルの配信（同じオリジンで型を絞る）、Cloudflare のアカウント（ucan-lab 用に新しく作る）を決めた（2026-10-22）
 - [x] ucan-lab 用の Cloudflare アカウントを作った（2026-10-23）。Zero Trust を無料の枠で有効にし、チーム名を `ucan-lab`、ログインの手段にワンタイム PIN を足した
-- [x] 本番の出し方を決めた（2026-10-24）。Worker の名前は `team-leveling`（`https://team-leveling.ucan-lab.workers.dev/`）、Workers Paid にするのは本番に初めてデプロイする Issue で、ベータまで Access では守らない。`docs/development.md` の「Cloudflare のアカウントとドメイン」
+- [x] 本番の出し方を決めた（2026-10-24）。Worker の名前は `scrum-guild`（`https://scrum-guild.ucan-lab.workers.dev/`。名前の変更に合わせて 2026-10-24 に改めた）、Workers Paid にするのは本番に初めてデプロイする Issue で、ベータまで Access では守らない。`docs/development.md` の「Cloudflare のアカウントとドメイン」
 - [ ] Cloudflare アカウントを Workers Paid にする（本番に初めてデプロイする Issue で）
 - [x] 見本の Worker を Workers Builds につなぎ、Access で守った（2026-10-23、#5）。アカウントの `workers.dev` のサブドメインを `ucan-lab` に改めた。GitHub の Cloudflare のアプリは `ucan-lab/team-leveling` だけに許可した
 - [ ] 見本を見せる人のメールアドレスを、見本の Worker の Access のアプリの方針に足す（`docs/development.md` の「見本の Worker」）
@@ -102,11 +102,14 @@
 - [ ] `mock/` を消してよいか（デザインシステムの見本で置き換えた）
 - [x] マージ済みのリモートの作業ブランチ（`claude/*` の5本と `docs/task-repository`）を消した（2026-10-23）
 
-### 名前の変更（scrum-quest から Team Leveling へ）
+### 名前の変更（Team Leveling から Scrum Guild へ）
 
-- [x] GitHub のリポジトリ名を `ucan-lab/scrum-quest` から `ucan-lab/team-leveling` に変えた（2026-10-20）。手元の作業コピーは `git remote set-url origin https://github.com/ucan-lab/team-leveling` で直す
-- [ ] ドメイン `team-leveling.dev` を取る（2026-10-20 に空きを確かめた）。ベータの前に取ると決めた（2026-10-22）。それまでは `workers.dev` で動かす
-- [x] claude.ai の Artifact に公開していた見本は消した（2026-10-20）。人に見せるのは見本の Worker に移した
+2026-10-24 に名前を Scrum Guild に改め、文書と見本の表記を直した（経緯は `docs/naming.md`）。外の名前の付け替えが残っている。
+
+- [ ] 「Scrum Guild」「スクラムギルド」の商標を J-PlatPat で確かめる
+- [ ] GitHub のリポジトリ名を `ucan-lab/team-leveling` から `ucan-lab/scrum-guild` に変える。手元の作業コピーは `git remote set-url origin https://github.com/ucan-lab/scrum-guild` で直す
+- [ ] 見本の Worker の名前を `team-leveling-design` から `scrum-guild-design` に変える。`wrangler.design.jsonc` の変更なので Issue と PR で行う。URL が変わり、Workers Builds のつなぎ先、Access のアプリ、`docs/development.md` の「見本の Worker」も合わせて直す
+- [ ] ドメイン `scrum-guild.dev` を取る（2026-10-24 に空きを確かめた）。ベータの前に取る（2026-10-22 に決めた時期を引き継ぐ）。それまでは `workers.dev` で動かす
 
 ## 次にやること
 
@@ -126,7 +129,7 @@ hq の `04-research/x-seeconvm-opus-motion-design.md` の7章「The Critic」（
 
 ### 置き場所と時期
 
-- このリポジトリの `.claude/skills/<名前>/SKILL.md`。team-leveling の画面と `docs/design.md` が前提なので、他のリポジトリと共有しない。
+- このリポジトリの `.claude/skills/<名前>/SKILL.md`。Scrum Guild の画面と `docs/design.md` が前提なので、他のリポジトリと共有しない。
 - 作るのは、最初の数画面が `wrangler dev` で動いてから。早く作るほど後の画面で得をする。
 
 ### 撮る組み合わせ
@@ -173,7 +176,7 @@ hq の `04-research/x-seeconvm-opus-motion-design.md` の7章「The Critic」（
 ## 覚えておくこと
 
 - `main` に直接コミットしてよいのは、文書だけの変更に限る（`CLAUDE.md` の例外と同じ）。GitHub は無料のプランでブランチ保護が無いので、設定ではなく決まりとして守る（2026-10-23。`docs/development.md` の「`main` を守る仕組み」）。
-- 名前は Team Leveling。表記の決まりは `docs/requirements.md` の「名前」、経緯と重なりの確認は `docs/naming.md`。
+- 名前は Scrum Guild。表記の決まりは `docs/requirements.md` の「名前」、経緯と重なりの確認は `docs/naming.md`。
 - 見本は、画面ごとの CSS を持たない決まり。足りない部品は先に `design/components.css` とカタログに足す。
 - 見本の例のデータ（`design/sample-data.js`）はすべて架空。実在の名前を混ぜない。
 - OSS にはせず、自分たちで運用するサービスにする。稼働先は Cloudflare だけ（2026-10-21 に決めた。経緯は `docs/business.md`）。

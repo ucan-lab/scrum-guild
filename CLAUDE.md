@@ -1,4 +1,4 @@
-# Team Leveling
+# Scrum Guild
 
 チームのタスクを集め、ゲームの仕組みで回すサービス。Cloudflare Workers（Hono、D1、R2）と SvelteKit の SPA モード。道具の選択は `docs/development.md` の「技術の選択」。今の状態と次にやることは `HANDOFF.md`。
 

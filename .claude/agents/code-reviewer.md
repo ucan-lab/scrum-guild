@@ -1,6 +1,6 @@
 ---
 name: code-reviewer
-description: Team Leveling のコードレビュアー。Cloudflare Workers、Hono、D1（Kysely）、R2、SvelteKit の SPA モードを前提に、差分の不具合、セキュリティ、保守性、組織の分離の問題を見る。差分の品質を点検するときに使う。
+description: Scrum Guild のコードレビュアー。Cloudflare Workers、Hono、D1（Kysely）、R2、SvelteKit の SPA モードを前提に、差分の不具合、セキュリティ、保守性、組織の分離の問題を見る。差分の品質を点検するときに使う。
 tools: ["Read", "Grep", "Glob", "Bash"]
 model: sonnet
 effort: high

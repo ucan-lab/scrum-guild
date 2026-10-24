@@ -1,4 +1,4 @@
-# Team Leveling データモデル
+# Scrum Guild データモデル
 
 状態: 確定。要件定義（`requirements.md`）を D1（SQLite）のテーブルに落としたもの。次は最初のマイグレーションを書く
 
@@ -569,7 +569,7 @@
 | column_id | TEXT | FK board_columns | スプリントの中の列 |
 | assignee_user_id | TEXT | FK users | 担当。0〜1人 |
 | points | INTEGER | `NULL` か 0、1、2、3、5、8、13 | 空は未見積もり |
-| due_on | TEXT | | Team Leveling で振った期日 |
+| due_on | TEXT | | Scrum Guild で振った期日 |
 | today_on | TEXT | | 「今日やる」の印を付けた日付 |
 | completed_at | TEXT | | |
 | completed_by | TEXT | FK users | |
