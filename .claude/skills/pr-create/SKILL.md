@@ -1,12 +1,12 @@
 ---
 name: pr-create
-description: PRのタイトル・本文・アサイン・レビュワー・ラベル・マイルストーンを差分とリポジトリの慣習から決めてPRを作成する。レビュワーに特に読んでほしい箇所にはインラインレビューコメントを未Submitの下書き（PENDING review）として登録する。既にPRがある場合は更新すべき点を提案する。「PR作って」「PR出して」「プルリク作成」「PRの下書き」「スタックPRを出して」などと言われたときに使う。既存PRの概要だけを検証したい場合は pr-description-review、作成後のレビュー指摘とCIへの対応は pr-feedback を使う。
+description: PRのタイトル・本文・アサイン・レビュワー・ラベル・マイルストーンを差分とリポジトリの慣習から決めてPRを作成する。レビュワーに特に読んでほしい箇所にはインラインレビューコメントを付けて Submit する。既にPRがある場合は更新すべき点を提案する。「PR作って」「PR出して」「プルリク作成」「PRの下書き」「スタックPRを出して」などと言われたときに使う。既存PRの概要だけを検証したい場合は pr-description-review、作成後のレビュー指摘とCIへの対応は pr-feedback を使う。
 ---
 
 # PR Create（PR作成・更新提案）
 
 差分とリポジトリの慣習からPRの全項目を決め、作成する。
-レビュワーに読んでほしい箇所は、未Submitのインラインレビューコメントとして残す。Submitは人間が行う。
+レビュワーに読んでほしい箇所は、インラインレビューコメントとして残し、Submit まで行う。このリポジトリでは、PR を作るときのインラインコメントを下書きで止めない（2026-10-25 に決めた）。内容は Step 4 の承認で人が確かめている。
 
 ## 前提条件
 
@@ -258,9 +258,11 @@ gh api -X PATCH repos/{owner}/{repo}/issues/<issue> -F body=@"<スクラッチ�
 
 書き換えたあと本文を取り直し、意図した項目だけが `- [x]` に変わったことを確かめる。
 
-## Step 6: インラインコメントをPENDING reviewとして登録
+## Step 6: インラインコメントを投稿する
 
 インラインコメント候補が無ければこのStepは飛ばす。
+
+いったん PENDING review として作り、ファイル単位のコメントを足してから、最後に Submit する。ファイル単位のコメントは PENDING review にしか足せないため。
 
 ### 既存のPENDING reviewを確認する
 
@@ -290,7 +292,7 @@ pathlib.Path("<スクラッチパッドの絶対パス>/review.json").write_text
 )
 ```
 
-`event` を含めないこと。含めるとSubmitされる。
+ここでは `event` を含めない。含めるとその場で Submit され、ファイル単位のコメントを足せなくなる。Submit は下の「Submit する」で行う。
 
 ```bash
 gh api -X POST "repos/{owner}/{repo}/pulls/<n>/reviews" \
@@ -343,21 +345,24 @@ mutation($id: ID!, $path: String!, $body: String!) {
 gh api graphql -F id=<node_id> -F path=src/foo.ts -F body=@"<本文のファイル>" -F query=@"<スクラッチパッドの絶対パス>/file-comment.graphql"
 ```
 
+### Submit する
+
+コメントが揃ったら、PENDING review を `COMMENT` で Submit する。`<review_id>` は新規作成の結果の `id`（数値）。
+
+```bash
+gh api -X POST "repos/{owner}/{repo}/pulls/<n>/reviews/<review_id>/events" -f event=COMMENT --jq '{state, submitted_at}'
+```
+
+`state` が `COMMENTED` になったことを確かめる。`APPROVE` と `REQUEST_CHANGES` は使わない（自分の PR への講評ではなく、読む箇所の案内のため）。
+
+既にあった PENDING review に追記した場合は、このセッションで入れていないコメントが混ざっていないかを確かめてから Submit する。混ざっていれば Submit せずにユーザーに確認する。
+
 ## Step 7: 報告
 
 - PRのURL
 - 設定した項目（スキップした項目はその理由を一言）
 - Issue の完了条件でチェックを付けた項目と、残した項目
-- インラインコメントを何件、未Submitで登録したか（本文に移したものがあればその件数も）
-
-最後に、Submitは人間が行う旨を明記する。
-
-```
-インラインコメント <n> 件を下書き（未Submit）で登録しました。
-内容を確認のうえ、PRの Files changed から Submit してください。
-```
-
-自分でSubmitしない。`gh pr review` も、`event` を付けたレビューの作成も使わない。どちらも即座にSubmitするため、このスキルの目的に反する。
+- インラインコメントを何件投稿したか（本文に移したものがあればその件数も）
 
 ## Step 8: スキルの改善提案
 
