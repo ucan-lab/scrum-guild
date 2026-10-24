@@ -3,7 +3,7 @@
 // D1 の binding の判定は、ESLint の入口を守る規則（docs/development.md の「入口を守る規則」）が入るまでのつなぎ。
 import path from 'node:path';
 
-// rel はリポジトリのルートからの相対パス。shippedOnMain は origin/main に同じパスがあるか
+// rel はリポジトリのルートからの相対パス。shippedOnMain は origin/main に同じパスがあるか（main を引けなければ undefined）
 // 一番重い判定を [決定, 理由] で返す。止めるものが無ければ null
 export function judgeFile({ rel, contents, shippedOnMain }) {
   const name = path.basename(rel);
@@ -13,6 +13,9 @@ export function judgeFile({ rel, contents, shippedOnMain }) {
   }
   if (rel.startsWith('migrations/') && shippedOnMain) {
     return ['deny', 'マイグレーションは足すだけにし、main にあるファイルを書き換えない。直すときは新しい番号のファイルを足す'];
+  }
+  if (rel.startsWith('migrations/') && shippedOnMain === undefined) {
+    return ['ask', 'main を引けず、このマイグレーションが既に main にあるかを判定できない'];
   }
   if (/^\+(page|layout)\.server\.[jt]s$|^\+server\.[jt]s$|^hooks\.server\.[jt]s$/.test(name)) {
     return ['deny', '画面は SPA として作る。データは Hono の API から取り、+page.server、+layout.server、+server、hooks.server は使わない'];

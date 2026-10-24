@@ -324,6 +324,7 @@ describe('file-rules', () => {
   test('main にあるマイグレーションの書き換えを止め、新しいものは通す', () => {
     assert.equal(judge('migrations/0001_init.sql', 'alter table x', true), 'deny');
     assert.equal(judge('migrations/0002_tasks.sql', 'create table tasks', false), 'allow');
+    assert.equal(judgeFile({ rel: 'migrations/0002_tasks.sql', contents: '', shippedOnMain: undefined })?.[0], 'ask');
   });
 
   test('SPA に反するファイルを止める', () => {

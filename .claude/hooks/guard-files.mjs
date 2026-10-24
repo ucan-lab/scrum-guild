@@ -33,8 +33,18 @@ function locate(filePath) {
   return { root, rel: path.relative(root, real).split(path.sep).join('/') };
 }
 
+// origin/main か main にあれば true、どちらの ref も引けなければ undefined
 function existsOnMain(root, rel) {
-  return ['origin/main', 'main'].some((ref) => {
+  const refs = ['origin/main', 'main'].filter((ref) => {
+    try {
+      git(root, ['rev-parse', '--verify', '--quiet', ref]);
+      return true;
+    } catch {
+      return false;
+    }
+  });
+  if (refs.length === 0) return undefined;
+  return refs.some((ref) => {
     try {
       git(root, ['cat-file', '-e', `${ref}:${rel}`]);
       return true;
@@ -54,7 +64,7 @@ try {
     const verdict = judgeFile({
       rel,
       contents: writtenContents(input.tool_name, input.tool_input),
-      shippedOnMain: rel.startsWith('migrations/') && existsOnMain(root, rel),
+      shippedOnMain: rel.startsWith('migrations/') ? existsOnMain(root, rel) : false,
     });
     if (verdict) {
       const [decision, reason] = verdict;
