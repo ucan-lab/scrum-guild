@@ -536,11 +536,11 @@
       <span class="props-note">${opts.note || `縦の線は 80% の位置。超えると${t("admin")}に通知します。`}</span></div>`;
   }
 
-  // ---- タスクの詳細（右から出る引き出し。画面いっぱいに広げられる） ----
+  // ---- タスクの詳細（右から出る引き出し。左のメニューを残して広げられる） ----
   // full は開き直しても残し、次に開くタスクも同じ広さで出す
   const drawer = { id: null, tab: "comments", thanked: new Set(), opener: null, full: false };
   function drawerSizeBtn() {
-    const label = drawer.full ? "横に戻す" : "画面いっぱいに広げる";
+    const label = drawer.full ? "横に戻す" : "広げる";
     return `<button class="pill drawer-size" type="button" data-drawer-size aria-label="${label}" title="${label}">${icon(drawer.full ? "shrink" : "expand")}</button>`;
   }
   function drawerHtml() {
@@ -637,10 +637,15 @@
     const back = drawer.opener && document.querySelector(`[data-task="${drawer.opener}"]`);
     if (back) back.focus();
   }
+  // 広げている間は左のメニューも押せるので、モーダルとして扱わない
+  function applyDrawerSize(el) {
+    el.classList.toggle("is-full", drawer.full);
+    el.setAttribute("aria-modal", String(!drawer.full));
+  }
   function renderDrawer() {
     const el = document.getElementById("drawer"), scrim = document.getElementById("scrim");
     if (!el) return;
-    el.classList.toggle("is-full", drawer.full);
+    applyDrawerSize(el);
     if (drawer.id) { el.innerHTML = drawerHtml(); el.hidden = false; scrim.hidden = false; }
     else { el.innerHTML = ""; el.hidden = true; scrim.hidden = true; }
     const ctx = document.querySelector("#assist-panel .assist-context");
@@ -1246,7 +1251,7 @@
     if ((el = hit("data-drawer-size"))) {
       // 中身は描き直さない。書きかけのコメントとスクロールの位置を残すため
       drawer.full = !drawer.full;
-      document.getElementById("drawer").classList.toggle("is-full", drawer.full);
+      applyDrawerSize(document.getElementById("drawer"));
       el.outerHTML = drawerSizeBtn();
       document.querySelector("#drawer [data-drawer-size]")?.focus({ preventScroll: true }); return;
     }

@@ -338,7 +338,7 @@ const SECTIONS = [
   ["monthly", "月の積載量", () => block("monthly", "月の積載量", "メンバー × 月の表のセル。",
     `<div class="cat-row" style="align-items:flex-start">${[[103.2, 118, 0], [172, 168, 0], [86, 60, 1], [80, 60, 0], "unset", null].map((c) => `<div class="panel" style="padding:var(--space-3)">${SQ.miniCap(c)}</div>`).join("")}</div>`,
     ["スプリントが1つもない月は、余力ありではなく「計画なし」と出す。"], ".mini-cap .is-none .mini-cap-num / .cap.is-mini")],
-  ["drawer", "引き出し", () => block("drawer", "引き出し（タスクの詳細）", "タスクの詳細は、どの画面からでも右から出る引き出しで開く。上の広げるボタンで画面いっぱいに広げ、同じ所で横に戻せる。広げると中身は 960px の幅で中央に寄せ、引き出しがもともと全幅になる 620px 以下ではボタンを出さない。広さはページの中で覚え、次に開くタスクも同じ広さで出す。広げても書きかけの入力は残す。Esc か外側を押すと閉じ（広げている間は外側が無いので、閉じるボタンか Esc）、開いた元の行に戻る。",
+  ["drawer", "引き出し", () => block("drawer", "引き出し（タスクの詳細）", "タスクの詳細は、どの画面からでも右から出る引き出しで開く。上の広げるボタンで、左のメニューを残して右側いっぱいに広げ、同じ所で横に戻せる。広げている間は幕を外し、メニューから別の画面へ移れる。中身は 960px の幅で中央に寄せる。メニューが上の帯になる 760px 以下では全幅に広げ、引き出しがもともと全幅になる 620px 以下ではボタンを出さない。広さはページの中で覚え、次に開くタスクも同じ広さで出す。広げても書きかけの入力は残す。Esc か外側を押すと閉じ（広げている間は外側が無いので、閉じるボタンか Esc）、開いた元の行に戻る。",
     drawerDemo(),
     ["取り込み元の属性（タイトル、状態、期限）は、ここでは変えられないことを添える。", "完了の操作の横に完成の定義を出す。確認のダイアログは挟まない。", "感謝は押した状態を is-on で示し、完了までは取り消せる。"],
     ".drawer .is-full .scrim .drawer-top .drawer-tools .drawer-size .drawer-close .drawer-title / .props .props-note / .doc-box .is-empty / .done-bar .done-bar-dod / .thanks / .tabs .tab / .thread .comment .is-deleted / .history")],
