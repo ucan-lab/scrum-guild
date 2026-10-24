@@ -203,10 +203,10 @@ gh api "repos/{owner}/{repo}/pulls/<number>" --jq '{merged, base: .base.ref, hea
 `merged` が `true` でなければ後片付けせず、その旨を報告する。
 `true` なら次を行う。
 
-1. ベースブランチに切り替えて最新にする（`git switch <base> && git pull --rebase`）
-2. 作業ブランチが worktree にあれば、その worktree の外から `git worktree remove <パス>` で消す
-3. `git branch -d <head>` でローカルの作業ブランチを消す。squash か rebase でマージされると SHA が変わるので、`-d` は未マージとして拒む。拒まれたら、PR がマージ済みであることと、ブランチに PR 外のコミットが無いこと（`git log origin/<head>..<head>` が空）を添えて、`-D` で消してよいか `AskUserQuestion` で聞く
-4. `git fetch --prune` で消えたリモートブランチの追跡を外す
+1. 本体の作業コピーで `main` を最新にする（`git -C <本体のパス> pull --ff-only`）
+2. 手元では `bash ~/.claude/scripts/git-cleanup-merged.sh <head>` で、worktree とローカルの作業ブランチを消す。PR がマージ済みで、その head の SHA が手元のブランチと一致するときだけ消し、`git fetch --prune` まで行う。worktree の中からでも実行できる
+   - 「消しません」で終わったら、理由（手元にしか無いコミット、未コミットの変更や未追跡のファイル）を伝えて止まる。`git branch -D` や `git worktree remove --force` を自分で打たない（理由: squash merge では `-d` が拒むので、確かめずに消すと PR に入っていないコミットが消える）
+   - クラウドのセッションにはスクリプトが無い。ワークツリーを切らないので、ブランチを消さずに終える
 
 ## 出力
 

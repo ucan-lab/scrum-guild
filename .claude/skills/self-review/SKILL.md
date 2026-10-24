@@ -40,7 +40,7 @@ PR があれば、ベースは `origin/<base>` とし、次の前提をすべて
 
 | 前提 | 確認 | 満たすとき |
 | --- | --- | --- |
-| 最新のベースを rebase 済み | `git fetch origin && git merge-base --is-ancestor origin/<base> HEAD` | 終了コード 0 |
+| 最新のベースを取り込み済み | `git fetch origin && git merge-base --is-ancestor origin/<base> HEAD` | 終了コード 0 |
 | 最新のコミットを push 済み | `git rev-parse HEAD` と `head_sha` を比べる。`git status --short` も見る | 一致し、未コミットの変更が無い |
 | CI が成功 | 下の check-runs | 全て `status` が `completed` で、`conclusion` が `success`、`skipped`、`neutral` のどれか |
 | レビューコメントを解決済み | 下の GraphQL | `isResolved: false` のスレッドが 0 件 |
@@ -57,7 +57,7 @@ gh api graphql -f query='{ repository(owner:"<owner>", name:"<repo>") { pullRequ
 
 満たさない前提が 1 つでもあれば、レビューに進まず止まり、満たさない前提と次の経路を出力する。
 
-- rebase が未了: ユーザーに rebase と force push を依頼する（履歴の書き換えはユーザーの判断に委ねる）
+- ベースの取り込みが未了: `sync-base` で merge して push する
 - push が未了: `git push` を提案する
 - CI が失敗: pr-feedback で直す。`status` が `completed` でないものがあれば、間を空けて check-runs を取り直し、結果が出てから再確認する
 - 未解決のスレッドがある: pr-feedback で対応する

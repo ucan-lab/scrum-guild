@@ -101,7 +101,7 @@ GitHub は無料のプランのまま使う（2026-10-23 に決めた）。無�
 
 - マイグレーションを含む PR は同時に1本まで。番号がぶつかるため。Issue に `migration` のラベルを付けて見分ける
 - スタック PR は原則使わない。squash merge と相性が悪く、force push が増える
-- ベースが進んだら `rebase-base` で取り込んでよい。履歴を書き換えてよいのは自分の作業ブランチだけ
+- ベースが進んだら `sync-base` で merge して取り込み、通常の push をする。rebase はしない。squash merge なのでブランチの履歴は `main` に残らず、rebase は force push とレビュワーが読んだ差分の消失を招くだけになる
 
 ### ワークツリーで作業する
 
@@ -111,7 +111,7 @@ GitHub は無料のプランのまま使う（2026-10-23 に決めた）。無�
 - 切るときは最新の `main` から作る: `git fetch origin` のあと `git worktree add worktrees/<名前> -b <名前> origin/main`
 - `worktrees/` はリポジトリの `.gitignore` で git の管理から外してある
 - 依存はワークツリーごとに入れる。ローカルの D1（`.wrangler/state`）もワークツリーごとに分かれるので、seed もそれぞれで当てる。並べて `wrangler dev` を立てるときはポートをずらす
-- PR がマージされたら、そのワークツリーの外から `git worktree remove worktrees/<名前>` で消し、手元のブランチも消す（`pr-feedback` の後片付け）
+- PR がマージされたら、`~/.claude/scripts/git-cleanup-merged.sh <名前>` でワークツリーと手元のブランチを消す（`pr-feedback` の後片付け）。squash merge では SHA が変わり `git branch -d` が拒むため、PR がマージ済みで head の SHA が手元と一致するときだけ `-D` で消す。スクリプトは dotfiles にあり、無い環境では人が消す
 
 ## AI 開発の分担
 
@@ -165,7 +165,7 @@ Bash の判定を `permissions.deny` に置かないのは、規則が前方一�
 | スキル、エージェント | 扱い |
 | --- | --- |
 | `issue-plan`、`pr-create`、`pr-feedback`、`self-review`、`grill-me`、`ui-polish`、`japanese-tech-writing` | 残す |
-| `rebase-base` | 残す。自分の作業ブランチの中だけで使う |
+| `sync-base` | `rebase-base` を merge で取り込む形に書き換えた。force push を使わずにベースへ追従する |
 | `requirements` | 外した。Backlog の要望を要件に落とす受託向けのスキルで、このリポジトリでは使い道が薄い |
 | `database-reviewer` | D1（SQLite）向けに書き直した。`batch()` の原子性、共通の表と組織の中の表の混在、組織での絞り込み、マイグレーションを戻せるか、インデックスを見る |
 | `code-reviewer`、`security-reviewer` | PHP と Laravel の記述を外し、Workers、Hono、D1、R2、Svelte を前提にした。どちらも `multi-tenant.md` と `cloudflare-workers.md` を読む |
