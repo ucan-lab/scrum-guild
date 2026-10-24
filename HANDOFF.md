@@ -73,6 +73,7 @@
 
 - [x] ブランチ戦略、AI の分担、スキル、開発の流れ、CI/CD を決めた（2026-10-22）。squash merge だけ、承認は必須にせず人がマージを押す、PR ごとのプレビューは持たない、`main` へのマージで自動デプロイする
 - [x] GitHub は無料のプランのまま進めると決めた（2026-10-23）。private ではブランチ保護、Rulesets、auto-merge、Environment が使えないので、すべての PR を人がマージし、デプロイは Cloudflare の Workers Builds で行う（鍵を GitHub に置かない）。マイグレーションの承認は `needs-human` の PR を人がマージすることで代える。`merge-risk` と自動マージはやめた。作業ブランチの名前は `<Issue番号>-<短い名前>` にした。`docs/development.md` の「`main` を守る仕組み」「マージの判定」「CD」
+- [x] 人が指示したときは、セッションも `gh pr merge` でマージしてよいと決めた（2026-10-25、#35）。`needs-human` の PR と `label` が成功していない PR は、従来どおり人がマージする。`docs/development.md` の「マージの判定」
 - [x] GitHub の設定を直した（2026-10-23）。マージ後にブランチを消す、squash のコミットの件名を PR のタイトルにし本文を空にする、ラベル `area:kingdom` を `area:organization` に改める
 - [ ] Workers Builds をリポジトリにつなぎ、権限を最小にした API トークンを選ぶ。preview builds は有効にしない
 - [ ] Cloudflare の通知で Workers のエラー率などを受けられるか
