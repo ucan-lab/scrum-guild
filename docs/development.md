@@ -59,7 +59,7 @@
 
 最初の一本は、運用者が組織を作る → GitHub でログインする → ワークスペースを作る → タスクを1件作って完了する、の一本道にする（2026-10-22 に決めた）。認証、組織の分離、操作の定義、`batch()` での書き込み、画面を一度に通し、CI/CD と本番へのデプロイもこの一本に含める。Issue への分け方は `issue-plan` で決める。目安は次のとおり。
 
-1. 土台: pnpm、SvelteKit の SPA モード、Hono、wrangler の設定、ESLint と Prettier、`CLAUDE.md` の「コマンド」、SessionStart のフック、`.claude/settings.json` の deny、セキュリティのヘッダー
+1. 土台: pnpm、SvelteKit の SPA モード、Hono、wrangler の設定、ESLint と Prettier、`CLAUDE.md` の「コマンド」、セキュリティのヘッダー。Claude の設定とフック（下の「Claude の設定とフック」）は先に入れる
 2. CI と CD: `ci-ok`、Workers Builds とデプロイのスクリプト、`/api/health`、煙のテスト、`docs/operations.md`
 3. 入口: Kysely の2つの入口と `batch()` の関数、操作の定義を登録する関数、エラーの形、組織の分離のテストの仕組み
 4. 一本道に要る表のマイグレーションと seed
@@ -85,14 +85,14 @@
 | マージ方法 | squash merge だけ。PR のタイトルが `main` のコミットの件名になり、本文は空にする |
 | PR のタイトル | 今のコミットと同じ書き方（`feat:`、`fix:`、`docs:`、`design:`、`refactor:`、`chore:`、`test:`、`ci:` の後に日本語） |
 | マージ後 | ブランチを自動で消す |
-| 文書だけの変更 | `CLAUDE.md` の「守ること」の例外に挙げた文書だけの変更は、`main` に直接入れてよい。それ以外は PR を通す |
+| 文書だけの変更 | `CLAUDE.md` の「守ること」の例外に挙げた文書だけの変更は、`main` に直接入れてよい。セッションはコミットまでで、push は人が行う。それ以外は PR を通す |
 
 ### `main` を守る仕組み
 
 GitHub は無料のプランのまま使う（2026-10-23 に決めた）。無料のプランの private のリポジトリでは、ブランチ保護、Rulesets、auto-merge、Environment が使えない。そのため、守りは次のように置く。
 
 - リポジトリの設定で squash merge だけを許し、マージ後にブランチを消す。squash のコミットの件名は PR のタイトルにし、本文は空にする（設定済み）
-- `main` への直接の push と force push は、`.claude/settings.json` の `permissions.deny` でセッションから止める。人の push は止まらないので、人も同じ決まりで PR を通す
+- `main` への直接の push と force push は、PreToolUse のフック（`.claude/hooks/guard-bash.mjs`）でセッションから止める。人の push は止まらないので、人も同じ決まりで PR を通す
 - 必須のチェックは設定できない。マージする人が `ci-ok` の成功を確かめてから押す
 - すべての PR を人がマージする。承認の数は求めず、人のレビューは「人がマージボタンを押す」ことで表す（下の「マージの判定」）
 - 本番へデプロイする鍵は GitHub に置かない（下の「CD」）。リポジトリのシークレットは PR のブランチのワークフローからも読め、Environment で `main` だけに絞れないため
@@ -131,8 +131,30 @@ GitHub は無料のプランのまま使う（2026-10-23 に決めた）。無�
 
 1. **組織の分離のテストを CI で必須にする。** 一番起こりやすく、一番重い事故は `organization_id` での絞り込み漏れ。すべての API の操作について「別の組織の ID で呼ぶと 404 になる」ことを確かめるテストを、操作の定義（`ai.md` の「操作の定義を1か所に持つ」）から作る。組織の中の表に触るクエリは、組織で絞る入口の関数からしか書けないようにする。
 2. **型で境界を固める。** 操作の入力と出力をスキーマで1か所に持ち、Hono と Svelte の両方で使う。片方だけ直したずれを型の検査で落とす。
-3. **本番に触る操作をセッションから拒否する。** `.claude/settings.json` の `permissions.deny` に `wrangler deploy`、`wrangler versions deploy`、`wrangler rollback`、`--remote` を付けた `wrangler d1`、`main` への `git push`、force push を入れる。本番に触るのは Cloudflare の Workers Builds だけ。
+3. **本番に触る操作をセッションから拒否する。** `.claude/settings.json` に登録した PreToolUse のフックで止める。本番に触るのは Cloudflare の Workers Builds だけ。下の「Claude の設定とフック」。
 4. **AI への決まりは `CLAUDE.md` に短く置く。** コマンドと、守らないと事故になる決まりだけを書き、詳しいことは `docs/` を指す。
+
+### Claude の設定とフック
+
+クラウドのセッションにはユーザーの設定が届かず、効くのはリポジトリの `.claude/settings.json` だけ。そこで、permission のモードに関係なく効く `permissions.deny` とフックで守る。
+
+| 仕組み | 中身 |
+| --- | --- |
+| `permissions.deny` | `.dev.vars`、`.env` とその環境ごとのファイル（`.local`、`.production` など）の読み取り、`.dev.vars` と `.env` の書き込み、wrangler の資格情報のディレクトリの読み取り |
+| `env` | `WRANGLER_SEND_METRICS=false`（テレメトリを送らない） |
+| `guard-bash.mjs` と `bash-rules.mjs`（PreToolUse、Bash と Monitor） | 止める: wrangler の本番に触る操作（許すのは `dev`、`types`、`whoami`、版と help、`--local` を付けた D1、R2、KV の操作だけ）、`--remote` と `-r` とリモートの binding、本番のログ（`tail`）、デプロイのスクリプトと名前に `deploy` を含む `package.json` のスクリプト、`main` への push、force push、PR のマージ（`gh pr merge`、`gh api` と `curl` の merge、main の ref の書き換え）、シークレットとログイン、`.dev.vars` と `.env` の中身を読むコマンドと `git add`。確認を挟む: 依存の追加、削除、更新、マイグレーションの作成、`gh stack` の push 系、ブランチを判定できない push（`cd ~` や変数の先、変数か glob を含む refspec） |
+| `guard-files.mjs` と `file-rules.mjs`（PreToolUse、Write と Edit と MultiEdit） | 止める: `origin/main` にあるマイグレーションの書き換え、`+page.server`、`+layout.server`、`+server`、`hooks.server`、`src/` のうち `src/server/db/` の外での `env.DB` と `D1Database`（テストも含む。テストの土台は `test/` に置く）、`.svelte` の `<style>`、wrangler の設定の `remote: true`。確認を挟む: `.claude/settings*.json` と `.claude/hooks/` の書き換え |
+| `format.mjs`（PostToolUse、Write と Edit と MultiEdit） | このリポジトリのファイルを Prettier で整える。依存が入るまでは何もしない |
+| `session-start.sh`（SessionStart の起動と再開） | クラウドのセッションだけで、`pnpm install --frozen-lockfile` を行う |
+
+Bash の判定を `permissions.deny` に置かないのは、規則が前方一致で、`npx wrangler` や `pnpm exec wrangler` の言い換えを取りこぼすため。先頭に `*` を付けると、`grep "wrangler deploy"` のような読むだけのコマンドまで止まる。フックはコマンドを区切りごとに分け（コメント、ヒアドキュメント、二重引用符の中の `$(...)`、`bash -c`、`eval` も読む）、実行する道具の名前で判定する。`package.json` のスクリプトは中身をたどって判定する。判定できないときはフックが exit 2 で止める。判定を変えたら `node --test .claude/hooks/*.test.mjs` を通す。
+
+どれも踏み線で、本当の守りは、セッションが動く環境に Cloudflare の資格情報を置かないこと。フックからは、変数の中身、パイプで `sh` に流す中身、`gh api graphql` が読むファイルの中身が見えない。
+
+- クラウドのセッションの環境には、Cloudflare の API トークンを置かない
+- 手元の機械では `wrangler login` しない（したら `wrangler logout` しておく）。シェルに `CLOUDFLARE_API_TOKEN` を置かない。手元のセッションは、人が置いた資格情報をそのまま使えるため
+
+止められた操作を人が行うときは、Claude Code の入力欄で先頭に `!` を付けて打つ（フックを通らない）。`.dev.vars` は人が `.dev.vars.example` を写して値を入れる。
 
 ## リポジトリのスキル
 
@@ -161,7 +183,7 @@ GitHub は無料のプランのまま使う（2026-10-23 に決めた）。無�
 | `screen-review` | 画面の自己レビュー（`HANDOFF.md` の「画面の自己レビューのスキル」） | 最初の数画面が動いてから |
 | `incident` | 本番で壊れたときの手順。Workers Logs を読む、`wrangler rollback` で戻す、D1 の Time Travel を使う | 運用の手順書と一緒に |
 
-クラウドのセッションで依存を入れる SessionStart のフックは、リポジトリの土台と一緒に作る。
+クラウドのセッションで依存を入れる SessionStart のフックは、上の「Claude の設定とフック」にある。
 
 ## 開発の流れ
 
