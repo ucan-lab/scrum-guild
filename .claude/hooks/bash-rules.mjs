@@ -45,6 +45,10 @@ function judgeWrangler(args) {
   if (isRemote) return [DENY, '--remote を付けた wrangler は本番に触るので、Workers Builds だけが実行する'];
 
   const pos = positionals(args, WRANGLER_FLAGS_WITH_VALUE);
+  const decidesOperation = pos.slice(0, pos[1] === 'migrations' ? 3 : 2);
+  if (decidesOperation.some((p) => p.includes('$'))) {
+    return [DENY, 'wrangler のサブコマンドを変数や $(...) で渡すと、本番に触るかを判定できない'];
+  }
   if (pos.includes('secret') || pos.includes('login')) return [DENY, SECRET_REASON];
   if (pos.some((p) => WRANGLER_PRODUCTION.has(p))) return [DENY, `wrangler ${pos[0]} は本番に触る。${PRODUCTION_REASON}`];
 

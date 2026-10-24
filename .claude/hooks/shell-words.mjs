@@ -1,10 +1,12 @@
-// シェルのコマンドを、区切り（; && || | & 改行 $( ` ( )）ごとの語の並びに分ける。
+// シェルのコマンドを、区切り（; && || | & 改行 ( )）ごとの語の並びに分ける。
 // 引用符の中の区切りは区切りとして扱わないので、grep "wrangler deploy" のような文字列は1語になる。
-// 二重引用符の中の $(...) と `...` は実行されるので、別の区切りとして取り出す。
+// $(...) と `...` は（二重引用符の中でも）実行されるので、別の区切りとして取り出す。
 // コメントとヒアドキュメントの本文は捨てる。リダイレクトは '<' か '>' で始まる1語にまとめる。
 // 完全なシェルの解釈ではない。判定に使うのは、各区切りで先頭に来る道具の名前と引数だけ。
 
-const OPERATORS = ['&&', '||', '$(', ';', '|', '&', '\n', '`', '(', ')'];
+const OPERATORS = ['&&', '||', ';', '|', '&', '\n', '(', ')'];
+// コマンド置換の位置に残す印。中身は別の区切りとして判定し、元の語には「中身が実行時に決まる」ことだけを残す
+export const SUBSTITUTION = '$(…)';
 const WORD_END = new Set([' ', '\t', '\n', ';', '&', '|', '<', '>', '(', ')', '`']);
 
 // $( の後ろから、対応する ) の位置を返す。
@@ -83,6 +85,15 @@ export function splitSegments(command) {
       const end = command.indexOf("'", i + 1);
       const stop = end === -1 ? command.length : end;
       word += command.slice(i + 1, stop);
+      inWord = true;
+      i = stop;
+      continue;
+    }
+    if (command.startsWith('$(', i) || c === '`') {
+      const end = c === '`' ? command.indexOf('`', i + 1) : closingParen(command, i + 2);
+      const stop = end === -1 ? command.length : end;
+      nested.push(command.slice(c === '`' ? i + 1 : i + 2, stop));
+      word += SUBSTITUTION;
       inWord = true;
       i = stop;
       continue;

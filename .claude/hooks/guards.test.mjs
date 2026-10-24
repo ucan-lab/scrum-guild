@@ -29,6 +29,9 @@ describe('shell-words', () => {
   test('二重引用符の中の置換を取り出す', () => {
     assert.deepEqual(splitSegments('echo "a $(wrangler deploy) b"'), [['echo', 'a  b'], ['wrangler', 'deploy']]);
   });
+  test('引用符の無い置換は、元の語に印を残して中身を取り出す', () => {
+    assert.deepEqual(splitSegments('wrangler $(echo deploy) x'), [['wrangler', '$(…)', 'x'], ['echo', 'deploy']]);
+  });
 });
 
 describe('bash-rules: 止める', () => {
@@ -137,6 +140,9 @@ describe('bash-rules: 止める', () => {
     'git commit -m "$(git push origin main)"',
     "$'wrangler' deploy",
     `git commit -m "$(cat <<'EOF'\nfix: it's (a) note\nEOF\n)" && git push origin main`,
+    'wrangler $(echo deploy)',
+    'wrangler `echo deploy`',
+    'wrangler $CMD',
     'echo ok && \\\nwrangler deploy',
     'git \\\npush origin main',
     'npx wrangler \\\n  deploy',
@@ -184,6 +190,8 @@ describe('bash-rules: 確認を挟む', () => {
     'gh stack push',
     'gh stack sync',
     'git push origin $BRANCH',
+    'git push origin $(echo main)',
+    'git push origin `git branch --show-current`',
     "git push origin 'refs/heads/*:refs/heads/*'",
   ]) {
     test(command, () => assert.equal(decision(command), 'ask'));
@@ -214,6 +222,9 @@ describe('bash-rules: 通す', () => {
     'wrangler d1 migrations apply DB --local',
     'wrangler d1 migrations list DB --local',
     'wrangler d1 execute DB --local --remote=false',
+    'wrangler d1 migrations apply $DB --local',
+    'wrangler dev --port $PORT',
+    'git commit -m "$(cat msg.txt)"',
     'wrangler r2 object put attachments/a.png --file a.png --local',
     'pnpm install',
     'pnpm install --frozen-lockfile',
