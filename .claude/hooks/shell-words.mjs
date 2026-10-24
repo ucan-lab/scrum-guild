@@ -117,8 +117,11 @@ export function splitSegments(command) {
       continue;
     }
     if (c === '\\' && i + 1 < command.length) {
-      if (command[i + 1] !== '\n') word += command[i + 1];
-      inWord = true;
+      // 行継続（\ と改行）は語の状態を変えずに読み飛ばす。空の語を積むと、その後ろの道具を見失う
+      if (command[i + 1] !== '\n') {
+        word += command[i + 1];
+        inWord = true;
+      }
       i++;
       continue;
     }
@@ -215,7 +218,7 @@ export function baseName(word) {
 export function commandIndex(words) {
   for (let i = 0; i < words.length; i++) {
     const w = words[i];
-    if (isAssignment(w) || /^[<>]/.test(w)) continue;
+    if (w === '' || isAssignment(w) || /^[<>]/.test(w)) continue;
     if (w.startsWith('-')) {
       if (PREFIX_FLAGS_WITH_VALUE.has(w)) i++;
       continue;

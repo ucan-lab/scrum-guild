@@ -131,6 +131,9 @@ describe('bash-rules: 止める', () => {
     'out="$(npx wrangler deploy 2>&1)"; echo "$out"',
     'git commit -m "$(git push origin main)"',
     "$'wrangler' deploy",
+    'echo ok && \\\nwrangler deploy',
+    'git \\\npush origin main',
+    'npx wrangler \\\n  deploy',
   ]) {
     test(command, () => assert.equal(decision(command), 'deny'));
   }
