@@ -202,7 +202,7 @@ Bash の判定を `permissions.deny` に置かないのは、規則が前方一�
 
 マージするかは人が決める。auto-merge は使わない（上の「`main` を守る仕組み」）。
 
-人がその PR のマージを指示したときは、セッションが `gh pr merge <番号> --squash --match-head-commit <確かめた head>` でマージしてよい。打つ前に、`needs-human` が付いていないこと、その head で `label` と `ci-ok` が成功していることを確かめる（`ci-ok` が CI に入るまでは `label` だけ。手順は `pr-feedback` の「マージを依頼して後片付けする」）。`needs-human` の PR と `label` が成功していない PR は、指示があっても人がマージする。
+人がその PR のマージを指示したときは、セッションが `gh pr merge <番号> --squash --match-head-commit <確かめた head>` でマージしてよい。打つ前に、`needs-human` が付いていないこと、その head で `label` と `ci-ok` が成功していることを確かめる（`ci-ok` が CI に入るまでは `label` だけ。手順は `pr-feedback` の「マージを依頼して後片付けする」）。`needs-human` の PR と、`label` か `ci-ok` が成功していない PR は、指示があっても人がマージする。
 
 フックは `gh pr merge` のたびに確認を挟み、`--auto` と `--admin`、`gh api` や `curl` でのマージ、`gh` のエイリアスの作成を止める。クラウドのセッションでは `gh pr merge` が GraphQL で 403 になるので、人がマージする。確認を人に出せない実行（`claude -p` などの非対話の実行、CI の中）でも、セッションはマージしない。
 
@@ -240,7 +240,7 @@ PR ごとに GitHub Actions で回す。
 | e2e | ビルドして `wrangler dev` を立て、Playwright で主な流れを確かめる。4つのテーマと2つの言葉の組み合わせでスクリーンショットを撮り、成果物として上げる |
 | ai-review | `anthropics/claude-code-action` で、スキル `ai-review` が差分に応じて `.claude/agents/` のレビューのエージェントを呼び分け、指摘を PR に書く。`.github/workflows/ai-review.yml` に分けて置く |
 | label | パスを見て `needs-human` のラベルを付ける（上の「マージの判定」）。`.github/workflows/label.yml` に分けて置き、`pull_request_target` で動かす。ワークフローも規則も PR のベース（`main`）の版が使われるので、PR の側で書き換えてもラベルは付く。別のブランチをベースに開いてから `main` へ付け替えたときも、判定し直す。PR のコードはチェックアウトしない（書き込みのトークンで PR のコードを動かさないため） |
-| ci-ok | ai-review と label を除く上のジョブをまとめる1つのジョブ。マージの前に確かめるのはこれだけ |
+| ci-ok | ai-review と label を除く上のジョブをまとめる1つのジョブ。マージの前に確かめるのは、これと label |
 
 ai-review は Claude のサブスクリプションで動かす。手元で `claude setup-token` を実行して作った OAuth トークンを、リポジトリのシークレット `CLAUDE_CODE_OAUTH_TOKEN` に置く。従量の費用はかからないが、使用量の上限は手元の対話の利用と共有になる。
 
