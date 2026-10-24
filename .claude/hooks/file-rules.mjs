@@ -4,12 +4,18 @@
 import path from 'node:path';
 
 // rel はリポジトリのルートからの相対パス。shippedOnMain は origin/main に同じパスがあるか（main を引けなければ undefined）
+// inWorktree はリンクされたワークツリー（./worktrees/<名前>）の中のファイルか
 // 一番重い判定を [決定, 理由] で返す。止めるものが無ければ null
-export function judgeFile({ rel, contents, shippedOnMain }) {
+export function judgeFile({ rel, contents, shippedOnMain, inWorktree = false }) {
   const name = path.basename(rel);
 
-  if (/^\.claude\/settings[^/]*\.json$/.test(rel) || rel.startsWith('.claude/hooks/')) {
-    return ['ask', '守る仕組み（Claude の設定とフック）の変更は人が確かめる'];
+  // 設定は disableAllHooks でフックごと切れるので、どこでも確かめる
+  if (/^\.claude\/settings[^/]*\.json$/.test(rel)) {
+    return ['ask', '守る仕組み（Claude の設定）の変更は人が確かめる'];
+  }
+  // 本体の作業コピーで起動したセッションが使うのは本体のフック。ワークツリーでの書き換えは PR で人が読むまで効かない
+  if (rel.startsWith('.claude/hooks/') && !inWorktree) {
+    return ['ask', '守る仕組み（フック）の変更は人が確かめる。ワークツリーで書き換えて PR を通す'];
   }
   if (rel.startsWith('migrations/') && shippedOnMain) {
     return ['deny', 'マイグレーションは足すだけにし、main にあるファイルを書き換えない。直すときは新しい番号のファイルを足す'];

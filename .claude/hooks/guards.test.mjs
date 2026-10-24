@@ -363,6 +363,14 @@ describe('file-rules', () => {
     assert.equal(judge('.claude/hooks/bash-rules.mjs', ''), 'ask');
     assert.equal(judge('.claude/skills/x/SKILL.md', ''), 'allow');
   });
+
+  test('ワークツリーの中のフックの書き換えは確認を挟まず、設定は確認を挟む', () => {
+    const inWorktree = (rel) => judgeFile({ rel, contents: '', shippedOnMain: false, inWorktree: true })?.[0] ?? 'allow';
+    assert.equal(inWorktree('.claude/hooks/bash-rules.mjs'), 'allow');
+    assert.equal(inWorktree('.claude/hooks/guards.test.mjs'), 'allow');
+    assert.equal(inWorktree('.claude/settings.json'), 'ask');
+    assert.equal(inWorktree('.claude/settings.local.json'), 'ask');
+  });
 });
 
 describe('入口', () => {
@@ -417,5 +425,25 @@ describe('入口', () => {
     });
     const result = run(path.join(hooks, 'guard-files.mjs'), input);
     assert.equal(JSON.parse(result.stdout).hookSpecificOutput.permissionDecision, 'deny');
+  });
+
+  test('本体とワークツリーを見分けて、フックの書き換えの確認を決める', () => {
+    const main = path.join(tmp, 'repo');
+    const sh = (args, cwd) => spawnSync('git', args, { cwd, encoding: 'utf8' });
+    mkdirSync(main);
+    sh(['init', '-q', '-b', 'main'], main);
+    sh(['-c', 'user.name=t', '-c', 'user.email=t@example.com', 'commit', '-q', '--allow-empty', '-m', 'init'], main);
+    sh(['worktree', 'add', '-q', 'worktrees/1-x', '-b', '1-x'], main);
+    const decide = (root) => {
+      const input = JSON.stringify({
+        tool_name: 'Write',
+        cwd: root,
+        tool_input: { file_path: path.join(root, '.claude/hooks/bash-rules.mjs'), content: 'x' },
+      });
+      const { stdout } = run(path.join(hooks, 'guard-files.mjs'), input);
+      return stdout ? JSON.parse(stdout).hookSpecificOutput.permissionDecision : 'allow';
+    };
+    assert.equal(decide(main), 'ask');
+    assert.equal(decide(path.join(main, 'worktrees/1-x')), 'allow');
   });
 });

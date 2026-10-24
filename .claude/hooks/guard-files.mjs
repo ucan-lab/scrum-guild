@@ -30,7 +30,17 @@ function locate(filePath) {
     return undefined;
   }
   const real = path.join(realpathSync(dir), path.relative(dir, filePath));
-  return { root, rel: path.relative(root, real).split(path.sep).join('/') };
+  return { root, rel: path.relative(root, real).split(path.sep).join('/'), inWorktree: isLinkedWorktree(dir) };
+}
+
+// リンクされたワークツリーでは、作業コピーの .git と共有の .git が別になる。判定できなければ本体とみなす
+function isLinkedWorktree(dir) {
+  try {
+    const [gitDir, commonDir] = git(dir, ['rev-parse', '--path-format=absolute', '--git-dir', '--git-common-dir']).split('\n');
+    return gitDir !== commonDir;
+  } catch {
+    return false;
+  }
 }
 
 // origin/main か main にあれば true、どちらの ref も引けなければ undefined
@@ -60,9 +70,10 @@ try {
   const filePath = input.tool_input?.file_path;
   const located = filePath && locate(path.resolve(input.cwd ?? process.cwd(), filePath));
   if (located && !located.rel.startsWith('..')) {
-    const { root, rel } = located;
+    const { root, rel, inWorktree } = located;
     const verdict = judgeFile({
       rel,
+      inWorktree,
       contents: writtenContents(input.tool_name, input.tool_input),
       shippedOnMain: rel.startsWith('migrations/') ? existsOnMain(root, rel) : false,
     });
