@@ -29,6 +29,11 @@
   // 版ごとのプレビュー URL は本番と同じ D1 につながるので作らない
   "preview_urls": false,
   "observability": {
-    "enabled": true
+    "enabled": true,
+    "logs": {
+      // 呼び出しごとのログは URL のパスとクエリを残す。後で OAuth の code や招待の秘密を URL で受けると
+      // ログに残るので切り、ログは Worker が出す JSON の1行（src/server/app.ts）だけにする
+      "invocation_logs": false
+    }
   }
 }
