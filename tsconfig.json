@@ -1,0 +1,11 @@
+// 画面（src/routes、src/lib）、共有、scripts/、設定のファイル。Worker は Workers の型を使うので src/server/tsconfig.json で別に見る
+{
+  "extends": "$app/tsconfig",
+  "compilerOptions": {
+    "strict": true,
+    "allowImportingTsExtensions": true,
+    "types": ["$app/types", "node"]
+  },
+  "include": ["src", "scripts", "vite.config.ts", "vitest.config.ts"],
+  "exclude": ["src/server"]
+}

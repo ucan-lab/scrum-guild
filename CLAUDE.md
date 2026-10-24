@@ -13,9 +13,18 @@
 
 ## コマンド
 
-実装を始めたら、ここに依存の導入、開発用のサーバー、テスト、lint、型の検査のコマンドを書く。
+Node は `.node-version`（26）、pnpm は `package.json` の `packageManager` の版を使う。
 
+- 依存の導入: `pnpm install`
+- 開発用のサーバー: `pnpm dev`（画面 `http://localhost:5173`、`/api` は `wrangler dev` へ転送）。ワークツリーを並べるときは `DEV_PORT_OFFSET=10 pnpm dev` のようにずらす
+- 本番と同じ配り方での確認: `pnpm preview`（build して `http://localhost:8787`）
+- テスト: `pnpm test`（API は Workers の実行環境、`scripts/` は `node --test`）
+- 型の検査: `pnpm check`（`svelte-check`、Worker の `tsc`）。Worker の型（`worker-configuration.d.ts`）は、`pnpm install`、`dev`、`test`、`check` の前に `wrangler types` で作り直す
+- lint と整形: `pnpm lint`、`pnpm format:check`、直すときは `pnpm format`
+- build: `pnpm build`（`build/` に書き出し、`build/_headers` を作る）
 - フックのテスト: `node --test .claude/hooks/*.test.mjs`
+
+開発用のサーバーとポート、版の渡し方は `docs/development.md` の「手元で動かす」。
 
 ## 守ること
 

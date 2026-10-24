@@ -1,0 +1,42 @@
+// 本番の Worker。API（src/server）と、書き出した画面（build/）を1つの Worker で配る。
+// デプロイは Cloudflare の Workers Builds だけが行う（docs/development.md の「CD」）。
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "scrum-guild",
+  "main": "src/server/index.ts",
+  "compatibility_date": "2026-10-01",
+  // 外へテレメトリを送らない。.claude/settings.json の WRANGLER_SEND_METRICS は Claude のセッションにしか効かないので、
+  // 人の手元と Workers Builds でも送らないよう設定に置く
+  "send_metrics": false,
+  "assets": {
+    "directory": "./build",
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application",
+    // 資産の配信に Worker を起動させない
+    "run_worker_first": ["/api", "/api/*"]
+  },
+  "vars": {
+    // ビルドで埋めたコミットの SHA に上書きする（scripts/dev.ts の --var、本番はデプロイのスクリプト）
+    "APP_VERSION": "dev"
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "scrum-guild",
+      // 仮の値。本物は CI と CD の Issue（#20）で入れる
+      "database_id": "00000000-0000-0000-0000-000000000000",
+      "migrations_dir": "migrations"
+    }
+  ],
+  "workers_dev": true,
+  // 版ごとのプレビュー URL は本番と同じ D1 につながるので作らない
+  "preview_urls": false,
+  "observability": {
+    "enabled": true,
+    "logs": {
+      // 呼び出しごとのログは URL のパスとクエリを残す。後で OAuth の code や招待の秘密を URL で受けると
+      // ログに残るので切り、ログは Worker が出す JSON の1行（src/server/app.ts）だけにする
+      "invocation_logs": false
+    }
+  }
+}

@@ -1,0 +1,17 @@
+// Worker と API のテスト。DOM の型を入れず、wrangler types が作る Workers の型（worker-configuration.d.ts）で見る
+{
+  "compilerOptions": {
+    "target": "es2024",
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "lib": ["es2024"],
+    "strict": true,
+    "noEmit": true,
+    "allowImportingTsExtensions": true,
+    "verbatimModuleSyntax": true,
+    "isolatedModules": true,
+    "skipLibCheck": true,
+    "types": ["@cloudflare/vitest-plugin/types"]
+  },
+  "include": ["./**/*.ts", "../shared/**/*.ts", "../../test/**/*.ts", "../../worker-configuration.d.ts"]
+}
