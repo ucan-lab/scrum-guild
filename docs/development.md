@@ -102,7 +102,8 @@ GitHub は無料のプランのまま使う（2026-10-23 に決めた）。無�
 
 - マイグレーションを含む PR は同時に1本まで。番号がぶつかるため。Issue に `migration` のラベルを付けて見分ける
 - スタック PR は原則使わない。squash merge と相性が悪く、force push が増える
-- ベースが進んだら `sync-base` で rebase して取り込み、`--force-with-lease` で push する。PR の履歴に merge のコミットを残さないため。force push はこのときだけで、PR の指摘への対応は通常の push で積む（レビュワーが読んだ差分を消さないため）
+- ベースが進んだら `sync-base` で rebase して取り込み、`--force-with-lease` で push する（2026-10-25 に決めた）。PR のコミットをベースの最新の上に一直線に並べ、コミットごとの差分にベースの変更を混ぜないため。squash merge なので `main` の履歴には影響しない
+- force push はベースの取り込み（`sync-base`、スタック PR の `gh stack`）のときだけ使う。PR の指摘への対応と self-review の修正は通常の push で積む。取り込みの force push でもレビュワーが前に読んだコミットは書き換わるので、レビューの途中なら取り込んだことを PR にコメントで残す
 
 ### ワークツリーで作業する
 
