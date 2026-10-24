@@ -1,5 +1,5 @@
 // vitest が tsconfig を探してワークツリーの外へ上らないよう置く。型の検査は src/server/tsconfig.json が受け持つ
 {
   "extends": "../src/server/tsconfig.json",
-  "include": ["./**/*.ts", "../src/server/**/*.ts", "../src/shared/**/*.ts", "../worker-configuration.d.ts"]
+  "include": ["./**/*.ts", "../worker-configuration.d.ts"]
 }
