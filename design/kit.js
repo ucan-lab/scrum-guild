@@ -1248,7 +1248,7 @@
       drawer.full = !drawer.full;
       document.getElementById("drawer").classList.toggle("is-full", drawer.full);
       el.outerHTML = drawerSizeBtn();
-      document.querySelector("#drawer [data-drawer-size]")?.focus(); return;
+      document.querySelector("#drawer [data-drawer-size]")?.focus({ preventScroll: true }); return;
     }
     if ((el = hit("data-dialog"))) { if (el.dataset.dialog === "createTask") delete D.files.new; DIALOGS[el.dataset.dialog](); return; }
     if ((el = hit("data-file"))) { DIALOGS.previewFile(el.dataset.file); return; }
