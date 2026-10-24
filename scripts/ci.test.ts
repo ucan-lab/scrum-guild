@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
-import { isDocsOnly, migrationFiles } from './ci.ts';
+import { isDocsOnly, migrationFiles, parseNulSeparated } from './ci.ts';
 
 describe('isDocsOnly', () => {
   test('CLAUDE.md の例外に挙げた文書だけなら真', () => {
@@ -41,11 +41,28 @@ describe('isDocsOnly', () => {
 
   test('一覧が空なら偽', () => {
     assert.equal(isDocsOnly([]), false);
-    assert.equal(isDocsOnly(['', '  ']), false);
   });
 
-  test('前後の空白と空行を無視する', () => {
-    assert.equal(isDocsOnly(['docs/a.md', '', ' HANDOFF.md ']), true);
+  test('前に空白の付いた名前は、空白を除いた名前と別のファイルとして見る', () => {
+    assert.equal(isDocsOnly([' HANDOFF.md']), false);
+  });
+
+  test('日本語の名前の文書も文書に数える', () => {
+    assert.equal(isDocsOnly(['docs/開発.md']), true);
+  });
+});
+
+describe('parseNulSeparated', () => {
+  test('NUL で区切り、末尾の区切りの後の空を除く', () => {
+    assert.deepEqual(parseNulSeparated('docs/開発.md\0 HANDOFF.md\0a\nb.md\0'), [
+      'docs/開発.md',
+      ' HANDOFF.md',
+      'a\nb.md',
+    ]);
+  });
+
+  test('空の出力は空の一覧', () => {
+    assert.deepEqual(parseNulSeparated(''), []);
   });
 });
 

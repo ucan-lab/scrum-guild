@@ -237,7 +237,7 @@ Bash の判定を `permissions.deny` に置かないのは、規則が前方一�
 
 マージするかは人が決める。auto-merge は使わない（上の「`main` を守る仕組み」）。
 
-人がその PR のマージを指示したときは、セッションが `gh pr merge <番号> --squash --match-head-commit <確かめた head>` でマージしてよい。打つ前に、`needs-human` が付いていないこと、その head で `label` と `ci-ok` が成功していることを確かめる（手順は `pr-feedback` の「マージを依頼して後片付けする」）。`needs-human` の PR と、`label` か `ci-ok` が成功していない PR は、指示があっても人がマージする。
+人がその PR のマージを指示したときは、セッションが `gh pr merge <番号> --squash --match-head-commit <確かめた head>` でマージしてよい。打つ前に、PR のベースが `main` であること、`needs-human` が付いていないこと、その head で `label` と `ci-ok` が成功していることを確かめる（手順は `pr-feedback` の「マージを依頼して後片付けする」）。`needs-human` の PR と、`label` か `ci-ok` が成功していない PR は、指示があっても人がマージする。
 
 フックは `gh pr merge` のたびに確認を挟み、`--auto` と `--admin`、`gh api` や `curl` でのマージ、`gh` のエイリアスの作成を止める。クラウドのセッションでは `gh pr merge` が GraphQL で 403 になるので、人がマージする。確認を人に出せない実行（`claude -p` などの非対話の実行、CI の中）でも、セッションはマージしない。
 
@@ -273,7 +273,7 @@ PR ごとに GitHub Actions で回す。`.github/workflows/ci.yml` の各ジョ�
 | check | 型の検査（`tsc`、`svelte-check`）、lint、整形、Claude のフックのテスト（`node --test .claude/hooks/*.test.mjs`） |
 | test | Workers の実行環境で動かす（`@cloudflare/vitest-plugin`。`@cloudflare/vitest-pool-workers` から名前が変わった）。ローカルの D1 に全マイグレーションを当てて回す。組織の分離のテストを含む |
 | migration | 空の D1 に全マイグレーションを順に当てて通るか確かめる（`pnpm db:migrate:fresh`）。0件なら当てずに成功で終える。ベータが始まったら、既にあるマイグレーションのファイルの書き換えも落とす（上の「DB を作り直してよい期間」） |
-| e2e | `pnpm e2e`。`pnpm preview` で build して `wrangler dev` を立て、Playwright でシェルの表示、`/api/health` の版、CSP の違反が無いこと（`securitypolicyviolation` とコンソールのエラー）を確かめる。版には PR の head の SHA を渡し、画面と API に同じ値が出ることも見る。スクリーンショットと、失敗したときの trace を成果物の `e2e` に上げる。4つのテーマと2つの言葉の組み合わせのスクリーンショットは、画面ができてから足す |
+| e2e | `pnpm e2e`。`pnpm preview` で build して `wrangler dev` を立て、Playwright でシェルの表示、`/api/health` の版、CSP の違反が無いこと（`securitypolicyviolation` とコンソールのエラー）を確かめる。版には PR の head の SHA を渡し、`/api/health` と画面の build に埋めた版（SvelteKit が書き出す `/_app/version.json`）がどちらもその値になることも見る。スクリーンショットと、失敗したときの trace を成果物の `e2e` に上げる。4つのテーマと2つの言葉の組み合わせのスクリーンショットは、画面ができてから足す。trace は要求と応答と Cookie を丸ごと残し、成果物はリポジトリを読める人が誰でも取れるので、e2e には本物の認証情報を渡さない（ログインは seed のセッションで通す） |
 | ai-review | `anthropics/claude-code-action` で、スキル `ai-review` が差分に応じて `.claude/agents/` のレビューのエージェントを呼び分け、CRITICAL と HIGH を `finding-verifier` の反証にかけてから、指摘を PR に書く。`.github/workflows/ai-review.yml` に分けて置く |
 | label | パスを見て `needs-human` のラベルを付ける（上の「マージの判定」）。`.github/workflows/label.yml` に分けて置き、`pull_request_target` で動かす。ワークフローも規則も PR のベース（`main`）の版が使われるので、PR の側で書き換えてもラベルは付く。別のブランチをベースに開いてから `main` へ付け替えたときも、判定し直す。PR のコードはチェックアウトしない（書き込みのトークンで PR のコードを動かさないため） |
 | ci-ok | ai-review と label を除く上のジョブをまとめる1つのジョブ。マージの前に確かめるのは、これと label |
@@ -298,6 +298,7 @@ ai-review は Claude のサブスクリプションで動かす。手元で `cla
 - 文書だけでなければ、4つがすべて成功のときだけ `ci-ok` が成功で終わる。飛んだもの、落ちたもの、取り消されたものが1つでもあれば失敗
 - `changes` そのものが成功しなかったときも、`ci-ok` は失敗で終わる
 - リネームは移動元と移動先の両方を見る。`src/` から `docs/` へ移しただけの PR を文書だけとみなさないため
+- PR のベースを付け替えたとき（`edited` のうちベースが変わったもの）も判定し直す。head が同じでも差分が変わり、前の実行で文書だけと判定した `ci-ok` の成功が残るため。タイトルや本文の編集では `ci-ok` も skipped で終わり、マージの判定では skipped を数えない。この何もしない実行は、進んでいる実行を取り消さないよう、別の `concurrency` のグループに置く
 - ワークフローの `paths-ignore` は使わない。飛ばすとワークフローごと動かず、`ci-ok` そのものが出なくなるため
 
 同じ PR の古い実行は `concurrency` で止める。ワークフローの `permissions` は `contents: read` だけにし、action はすべてコミットの SHA で固定する。

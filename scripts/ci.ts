@@ -9,10 +9,15 @@ const docsPatterns: RegExp[] = [
   /^\.github\/ISSUE_TEMPLATE\//,
 ];
 
+// git diff --name-only -z の出力を名前の一覧にする。-z を付けないと、日本語や空白を含む名前を git が引用して書き換える。
+// 名前の前後の空白も名前の一部なので削らない
+export function parseNulSeparated(output: string): string[] {
+  return output.split('\0').filter((path) => path !== '');
+}
+
 // 変わったファイルがすべて文書の範囲に収まるときだけ真。一覧が空なら、判定を誤ったとみて偽にする（重いジョブを回す側に倒す）
 export function isDocsOnly(paths: readonly string[]): boolean {
-  const files = paths.map((path) => path.trim()).filter((path) => path !== '');
-  return files.length > 0 && files.every((path) => docsPatterns.some((pattern) => pattern.test(path)));
+  return paths.length > 0 && paths.every((path) => docsPatterns.some((pattern) => pattern.test(path)));
 }
 
 // wrangler d1 migrations apply が当てるのは migrations/ 直下の .sql だけ

@@ -4,10 +4,15 @@ name: ci
 # 各ジョブは package.json のスクリプトを呼ぶだけにし、手順をここに持たない
 on:
   pull_request:
+    # edited はベースを付け替えたときのため。head が同じままでも差分が変わり、文書だけと判定した前の結果が残るので判定し直す
+    types: [opened, synchronize, reopened, edited]
 
-# 同じ PR の古い実行は止める
+# 同じ PR の古い実行は止める。タイトルや本文の編集（ベースを変えない edited）は何もしない実行なので、
+# 別のグループに置き、進んでいる実行を止めないようにする
 concurrency:
-  group: ci-${{ github.event.pull_request.number }}
+  group: >-
+    ci-${{ github.event.pull_request.number }}${{
+    github.event.action == 'edited' && github.event.changes.base == null && format('-noop-{0}', github.run_id) || '' }}
   cancel-in-progress: true
 
 permissions:
@@ -16,6 +21,7 @@ permissions:
 jobs:
   # 文書だけの PR では重いジョブを飛ばす。paths-ignore を使うと ci-ok そのものが出なくなるので、ここで判定する
   changes:
+    if: github.event.action != 'edited' || github.event.changes.base != null
     runs-on: ubuntu-latest
     timeout-minutes: 5
     outputs:
@@ -30,7 +36,8 @@ jobs:
         with:
           node-version-file: .node-version
 
-      # --no-renames: リネームを移動先の名前だけで見ると、src/ から docs/ への移動が文書だけに見えるため
+      # --no-renames: リネームを移動先の名前だけで見ると、src/ から docs/ への移動が文書だけに見えるため。
+      # -z: 日本語や空白を含む名前を git が引用して書き換えないようにするため
       - id: docs
         name: 文書だけかを判定する
         env:
@@ -38,7 +45,7 @@ jobs:
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
           set -o pipefail
-          git diff --name-only --no-renames "$BASE_SHA...$HEAD_SHA" | node scripts/docs-only.ts | tee -a "$GITHUB_OUTPUT"
+          git diff --name-only --no-renames -z "$BASE_SHA...$HEAD_SHA" | node scripts/docs-only.ts | tee -a "$GITHUB_OUTPUT"
 
   check:
     needs: changes
@@ -105,10 +112,11 @@ jobs:
           retention-days: 14
 
   # マージの前に確かめるのはこれと label（ai-review は助言なので含めない）。
-  # 文書だけなら重いジョブは飛んでいてよく、そうでなければすべて成功していなければならない
+  # 文書だけなら重いジョブは飛んでいてよく、そうでなければすべて成功していなければならない。
+  # ベースを変えない edited では飛ばす（skipped の ci-ok は、マージの判定で数えない）
   ci-ok:
     needs: [changes, check, test, migration, e2e]
-    if: always()
+    if: always() && (github.event.action != 'edited' || github.event.changes.base != null)
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:

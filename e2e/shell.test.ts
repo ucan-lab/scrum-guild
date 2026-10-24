@@ -50,3 +50,10 @@ test('/api/health は 200 で版を返す', async ({ request }) => {
   expect(res.status()).toBe(200);
   expect(await res.json()).toEqual({ status: 'ok', version });
 });
+
+// 画面のシェルが出す版は API から取ったものなので、build に埋めた kit.version.name は SvelteKit が書き出す version.json で見る
+test('画面の build に埋めた版が API の版と同じ', async ({ request }) => {
+  const res = await request.get('/_app/version.json');
+  expect(res.status()).toBe(200);
+  expect(await res.json()).toEqual({ version });
+});
