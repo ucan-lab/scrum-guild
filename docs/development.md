@@ -256,7 +256,7 @@ Workers Builds の API トークンは、権限を最小にしたものを自分
 見本（`design/`）を、開発者でない人に見せるための2つ目の Worker で配信する（2026-10-23 に決めた）。
 
 - 設定はリポジトリのルートの `wrangler.design.jsonc`。`design/` を静的なファイルとして返すだけで、コード、D1、R2、シークレットを持たない。設定を `design/` の中に置くと設定そのものが配信されるので、外に置く
-- URL は `https://scrum-guild-design.ucan-lab.workers.dev/`。Worker の名前が URL になる。名前を変えるときは、先にダッシュボードで Worker の名前を変えて Access が新しい URL を覆うのを確かめ、そのあとで設定の `name` を変える PR をマージする。Workers Builds は、設定の `name` とダッシュボードの名前が違うとビルドを失敗させるため（#17）。`ucan-lab` はアカウントの `workers.dev` のサブドメインで、変えるとアカウントのすべての Worker の URL が変わる
+- URL は `https://scrum-guild-design.ucan-lab.workers.dev/`。URL の先頭は Worker の名前。名前はダッシュボードの Worker の設定（General の Name）で変え、設定の `name` も同じ名前にそろえる。Access のアプリは URL でなく Worker に付くので、名前を変えた直後から新しい URL を守り、古い URL は 404 を返した（2026-10-24、#17）。設定の `name` だけが先に変わっていた間も、Workers Builds はつないだ Worker へのデプロイを通した。`ucan-lab` はアカウントの `workers.dev` のサブドメインで、変えるとアカウントのすべての Worker の URL が変わる
 - 本番と同じく Workers Builds が `main` から反映する。ビルドのコマンドは空で、デプロイのコマンドは `npx wrangler deploy -c wrangler.design.jsonc`。build watch paths は `design/*` と `wrangler.design.jsonc` だけにし、preview builds は有効にしない
 - API トークンは、Workers Builds が自動で作ったもの（`team-leveling-design build token`。Worker の名前を変える前に作られた）を使っている。最小の権限のトークンを選べなかったため（上の「CD」）。本番の D1 や R2 を作る前に、最小の権限のトークンに入れ替える
 - `workers.dev` の URL を Cloudflare Access（Zero Trust の無料の枠、50人まで）で守る。Access のアプリ（`scrum-guild-design - Cloudflare Workers`）は Worker の本番とプレビューの URL を覆い、セッションは1か月。ログインの手段は Cloudflare アカウントとワンタイム PIN。版ごとのプレビュー URL は設定の `preview_urls` で作らない

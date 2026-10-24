@@ -104,12 +104,12 @@
 
 ### 名前の変更（Team Leveling から Scrum Guild へ）
 
-2026-10-24 に名前を Scrum Guild に改め、文書と見本の表記を直した（経緯は `docs/naming.md`）。外の名前の付け替えが残っている。
+2026-10-24 に名前を Scrum Guild に改め、文書、見本、リポジトリ、見本の Worker の名前を付け替えた（経緯は `docs/naming.md`）。商標の確認とドメインが残っている。
 
 - [ ] 「Scrum Guild」「スクラムギルド」の商標を J-PlatPat で確かめる
 - [x] GitHub のリポジトリ名を `ucan-lab/team-leveling` から `ucan-lab/scrum-guild` に変えた（2026-10-24）。手元の作業コピーは `git remote set-url origin git@github.com:ucan-lab/scrum-guild.git` で直す
-- [ ] 見本の Worker の Workers Builds が、名前を変えたリポジトリからまだ動くかを、次に `main` へ入れたときのビルドで確かめる
-- [x] 見本の Worker の名前を `team-leveling-design` から `scrum-guild-design` に変えた（2026-10-24、#17）。URL は `https://scrum-guild-design.ucan-lab.workers.dev/`
+- [x] 見本の Worker の Workers Builds が、名前を変えたリポジトリからも動くことを確かめた（2026-10-24、#16 と #18 のマージでデプロイが通った）
+- [x] 見本の Worker の名前を `team-leveling-design` から `scrum-guild-design` に変えた（2026-10-24、#17）。URL は `https://scrum-guild-design.ucan-lab.workers.dev/`。Access のアプリも `scrum-guild-design - Cloudflare Workers` に改め、新しい URL がログインを求めることを確かめた
 - [ ] ドメイン `scrum-guild.dev` を取る（2026-10-24 に空きを確かめた）。ベータの前に取る（2026-10-22 に決めた時期を引き継ぐ）。それまでは `workers.dev` で動かす
 
 ## 次にやること
