@@ -5,6 +5,9 @@
   "name": "scrum-guild",
   "main": "src/server/index.ts",
   "compatibility_date": "2026-10-01",
+  // 外へテレメトリを送らない。.claude/settings.json の WRANGLER_SEND_METRICS は Claude のセッションにしか効かないので、
+  // 人の手元と Workers Builds でも送らないよう設定に置く
+  "send_metrics": false,
   "assets": {
     "directory": "./build",
     "binding": "ASSETS",
