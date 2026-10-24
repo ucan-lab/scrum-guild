@@ -57,7 +57,7 @@ gh api graphql -f query='{ repository(owner:"<owner>", name:"<repo>") { pullRequ
 
 満たさない前提が 1 つでもあれば、レビューに進まず止まり、満たさない前提と次の経路を出力する。
 
-- ベースの取り込みが未了: `sync-base` で merge して push する
+- ベースの取り込みが未了: `sync-base` で rebase して `--force-with-lease` で push する
 - push が未了: `git push` を提案する
 - CI が失敗: pr-feedback で直す。`status` が `completed` でないものがあれば、間を空けて check-runs を取り直し、結果が出てから再確認する
 - 未解決のスレッドがある: pr-feedback で対応する
@@ -139,7 +139,7 @@ CRITICAL と HIGH は、別の Issue にするかをユーザーに提案する�
 
 `git add <paths> && git commit -m "..."` のように 1 コマンドにまとめる。
 件名には、変更した対象と内容を書く（例: `fix: fill_results.py で結果の未指定と不正値を検出する`）。「レビュー指摘に対応する」のように、指摘への対応であることしか分からない件名にしない（理由: squash merge ではコミットメッセージが本文に残り、マージ後は直せない）。
-PR 作成後は `git push` まで行い、手順 0 の check-runs で CI が通ることを確かめる（force push はしない）。
+PR 作成後は `git push` まで行い、手順 0 の check-runs で CI が通ることを確かめる（修正は通常の push で積む。force push はベースを取り込む `sync-base` の中だけ）。
 
 ### 9. pr-create に引き継ぐ
 

@@ -108,7 +108,10 @@ describe('bash-rules: 止める', () => {
     'git push --force origin 21-claude-settings',
     'git push -f',
     'git push -uf origin x',
-    'git push --force-with-lease=x:abc origin x',
+    'git push --force-with-lease origin main',
+    'git push --force-with-lease origin HEAD:main',
+    'git push --force-with-lease --force origin x',
+    'git push --force-if-includes origin x',
     'git push origin +x',
     'git push --all',
     'git push --mirror',
@@ -213,7 +216,8 @@ describe('bash-rules: 止める', () => {
     assert.match(verdict('wrangler login')[1], /シークレットとログイン/);
     assert.match(verdict('wrangler deploy')[1], /本番に触る/);
     assert.match(verdict('wrangler d1 execute DB')[1], /--local/);
-    assert.match(verdict('git push -f')[1], /force push/);
+    assert.match(verdict('git push -f')[1], /--force-with-lease/);
+    assert.equal(decision('git push --force-with-lease', 'main'), 'deny');
     assert.match(verdict('gh api -X PUT repos/o/r/pulls/1/merge')[1], /gh pr merge/);
     assert.match(verdict('gh pr merge 1 --squash')[1], /--match-head-commit/);
     assert.match(verdict('gh pr merge 1 --auto --match-head-commit abc')[1], /--auto と --admin/);
@@ -238,6 +242,11 @@ describe('bash-rules: 確認を挟む', () => {
     'pnpm wrangler d1 migrations create DB add_tasks',
     'gh stack push',
     'gh stack sync',
+    'git push --force-with-lease',
+    'git push --force-with-lease origin 21-claude-settings',
+    'git push --force-with-lease=x:abc origin x',
+    'git push --force-with-lease --force-if-includes origin x',
+    'git push -u --force-with-lease origin x',
     'gh pr merge 21 --squash --match-head-commit abc123',
     'gh pr merge 21 --squash --match-head-commit=abc123',
     'gh -R ucan-lab/scrum-guild pr merge 21 --match-head-commit abc123',

@@ -93,7 +93,7 @@
 GitHub は無料のプランのまま使う（2026-10-23 に決めた）。無料のプランの private のリポジトリでは、ブランチ保護、Rulesets、auto-merge、Environment が使えない。そのため、守りは次のように置く。
 
 - リポジトリの設定で squash merge だけを許し、マージ後にブランチを消す。squash のコミットの件名は PR のタイトルにし、本文は空にする（設定済み）
-- `main` への直接の push と force push は、PreToolUse のフック（`.claude/hooks/guard-bash.mjs`）でセッションから止める。人の push は止まらないので、人も同じ決まりで PR を通す
+- `main` への直接の push と、`--force-with-lease` 以外の force push は、PreToolUse のフック（`.claude/hooks/guard-bash.mjs`）でセッションから止める。人の push は止まらないので、人も同じ決まりで PR を通す
 - 必須のチェックは設定できない。マージする人かセッションが `ci-ok` の成功を確かめてからマージする
 - マージは人が決める。人が押すか、人の指示でセッションが `gh pr merge` を打つ。承認の数は求めず、人のレビューは「人がマージを決める」ことで表す（下の「マージの判定」）
 - 本番へデプロイする鍵は GitHub に置かない（下の「CD」）。リポジトリのシークレットは PR のブランチのワークフローからも読め、Environment で `main` だけに絞れないため
@@ -102,7 +102,7 @@ GitHub は無料のプランのまま使う（2026-10-23 に決めた）。無�
 
 - マイグレーションを含む PR は同時に1本まで。番号がぶつかるため。Issue に `migration` のラベルを付けて見分ける
 - スタック PR は原則使わない。squash merge と相性が悪く、force push が増える
-- ベースが進んだら `sync-base` で merge して取り込み、通常の push をする。rebase はしない。squash merge なのでブランチの履歴は `main` に残らず、rebase は force push とレビュワーが読んだ差分の消失を招くだけになる
+- ベースが進んだら `sync-base` で rebase して取り込み、`--force-with-lease` で push する。PR の履歴に merge のコミットを残さないため。force push はこのときだけで、PR の指摘への対応は通常の push で積む（レビュワーが読んだ差分を消さないため）
 
 ### ワークツリーで作業する
 
@@ -143,7 +143,7 @@ GitHub は無料のプランのまま使う（2026-10-23 に決めた）。無�
 | --- | --- |
 | `permissions.deny` | `.dev.vars`、`.env` とその環境ごとのファイル（`.local`、`.production` など）の読み取り、`.dev.vars` と `.env` の書き込み、wrangler の資格情報のディレクトリの読み取り |
 | `env` | `WRANGLER_SEND_METRICS=false`（テレメトリを送らない） |
-| `guard-bash.mjs` と `bash-rules.mjs`（PreToolUse、Bash と Monitor） | 止める: wrangler の本番に触る操作（許すのは `dev`、`types`、`whoami`、版と help、`--local` を付けた D1、R2、KV の操作だけ）、`--remote` と `-r` とリモートの binding、本番のログ（`tail`）、デプロイのスクリプトと名前に `deploy` を含む `package.json` のスクリプト、`main` への push、force push、`gh pr merge` を通さない PR のマージと、`--match-head-commit` の無いか `--auto`、`--admin` を付けた `gh pr merge`（`gh api` と `curl` の merge、`gh stack merge`、`gh alias set` と `gh alias import`、main の ref の書き換え、contents API の書き込み）、シークレットとログイン、`.dev.vars` と `.env` の中身を読むか送るコマンドと `git add`。確認を挟む: `gh pr merge`、依存の追加、削除、更新、マイグレーションの作成、`gh stack` の push 系、ブランチを判定できない push（`cd ~` や変数の先、変数か glob を含む refspec）、Bash からの `.claude/settings*.json` と `.claude/hooks/` と `migrations/` の書き換え |
+| `guard-bash.mjs` と `bash-rules.mjs`（PreToolUse、Bash と Monitor） | 止める: wrangler の本番に触る操作（許すのは `dev`、`types`、`whoami`、版と help、`--local` を付けた D1、R2、KV の操作だけ）、`--remote` と `-r` とリモートの binding、本番のログ（`tail`）、デプロイのスクリプトと名前に `deploy` を含む `package.json` のスクリプト、`main` への push、`--force-with-lease` 以外の force push（`--force`、`-f`、`+` で始まる refspec、`--mirror`、lease の無い `--force-if-includes`）、`gh pr merge` を通さない PR のマージと、`--match-head-commit` の無いか `--auto`、`--admin` を付けた `gh pr merge`（`gh api` と `curl` の merge、`gh stack merge`、`gh alias set` と `gh alias import`、main の ref の書き換え、contents API の書き込み）、シークレットとログイン、`.dev.vars` と `.env` の中身を読むか送るコマンドと `git add`。確認を挟む: `gh pr merge`、`main` 以外への `--force-with-lease`、依存の追加、削除、更新、マイグレーションの作成、`gh stack` の push 系、ブランチを判定できない push（`cd ~` や変数の先、変数か glob を含む refspec）、Bash からの `.claude/settings*.json` と `.claude/hooks/` と `migrations/` の書き換え |
 | `guard-files.mjs` と `file-rules.mjs`（PreToolUse、Write と Edit と MultiEdit） | 止める: `origin/main` にあるマイグレーションの書き換え、`+page.server`、`+layout.server`、`+server`、`hooks.server`、`src/` のうち `src/server/db/` の外での `env.DB` と `D1Database`（テストも含む。テストの土台は `test/` に置く）、`.svelte` の `<style>`、wrangler の設定の `remote: true`。確認を挟む: `.claude/settings*.json` の書き換えと、セッションが使っている `.claude/hooks/` の書き換え。セッションを起動した場所（`$CLAUDE_PROJECT_DIR`）とは別のワークツリーの `.claude/hooks/` は、確認を挟まない（セッションが使うのは起動した場所のフックで、別のワークツリーでの書き換えは PR で人が読むまで効かない）。ファイル自体のシンボリックリンクはリンク先で判定し、ワークツリーか判定できないときは確認を挟む。Bash からの `.claude/hooks/` の書き換えは、ワークツリーでも確認を挟む |
 | `format.mjs`（PostToolUse、Write と Edit と MultiEdit） | このリポジトリのファイルを Prettier で整える。依存が入るまでは何もしない |
 | `session-start.sh`（SessionStart の起動と再開） | クラウドのセッションだけで、`pnpm install --frozen-lockfile` を行う |
@@ -166,7 +166,7 @@ Bash の判定を `permissions.deny` に置かないのは、規則が前方一�
 | スキル、エージェント | 扱い |
 | --- | --- |
 | `issue-plan`、`pr-create`、`pr-feedback`、`self-review`、`grill-me`、`ui-polish`、`japanese-tech-writing` | 残す |
-| `sync-base` | `rebase-base` を merge で取り込む形に書き換えた。force push を使わずにベースへ追従する |
+| `sync-base` | `rebase-base` をこのリポジトリ向けに書き換えた。rebase で取り込み、lease の SHA を明示した `--force-with-lease` で push まで行う |
 | `requirements` | 外した。Backlog の要望を要件に落とす受託向けのスキルで、このリポジトリでは使い道が薄い |
 | `database-reviewer` | D1（SQLite）向けに書き直した。`batch()` の原子性、共通の表と組織の中の表の混在、組織での絞り込み、マイグレーションを戻せるか、インデックスを見る |
 | `code-reviewer`、`security-reviewer` | PHP と Laravel の記述を外し、Workers、Hono、D1、R2、Svelte を前提にした。どちらも `multi-tenant.md` と `cloudflare-workers.md` を読む |

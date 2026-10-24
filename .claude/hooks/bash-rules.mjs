@@ -1,5 +1,5 @@
-// Bash の判定。本番に触る操作、main への push、force push、シークレット、gh pr merge を通さないマージを止め、
-// gh pr merge、依存の変更、マイグレーションの作成、判定しきれない push では人の確認を挟む（docs/development.md の「Claude の設定とフック」）。
+// Bash の判定。本番に触る操作、main への push、--force-with-lease 以外の force push、シークレット、gh pr merge を通さないマージを止め、
+// gh pr merge、作業ブランチへの --force-with-lease、依存の変更、マイグレーションの作成、判定しきれない push では人の確認を挟む（docs/development.md の「Claude の設定とフック」）。
 // permissions.deny の前方一致では npx wrangler や pnpm exec wrangler の言い換えを取りこぼすので、語に分けて判定する。
 // 踏み線であって守りの本体ではない。変数の中身と、パイプで sh に流す中身は見えない。
 import path from 'node:path';
@@ -100,16 +100,13 @@ function judgeGit(args, dir, branchOf) {
   if (sub === 'add' && rest.some(mentionsSecret)) return [DENY, '.dev.vars と .env は git に入れない'];
   if (sub !== 'push') return null;
 
-  const forced = rest.some(
-    (a) =>
-      a === '--force' ||
-      a.startsWith('--force-with-lease') ||
-      a === '--force-if-includes' ||
-      a === '--mirror' ||
-      /^-[a-zA-Z]*f[a-zA-Z]*$/.test(a),
-  );
-  if (forced) return [DENY, 'force push は人が実行する（`!` を付けて打つ）'];
+  const forced = rest.some((a) => a === '--force' || a === '--mirror' || /^-[a-zA-Z]*f[a-zA-Z]*$/.test(a));
+  if (forced) return [DENY, '--force と -f は使わない。rebase の後は --force-with-lease で push する'];
   if (rest.includes('--all')) return [DENY, '--all は main も push する'];
+  // --force-with-lease は、最後に見た後に誰かが push していれば失敗するので、他人の push を消さない。
+  // --force-if-includes は lease に添えるときだけ意味を持つ
+  const leased = rest.some((a) => a.startsWith('--force-with-lease'));
+  if (rest.includes('--force-if-includes') && !leased) return [DENY, '--force-if-includes は --force-with-lease と一緒に使う'];
 
   const [, ...refspecs] = positionals(rest, PUSH_FLAGS_WITH_VALUE);
   if (refspecs.some((r) => r.startsWith('+'))) return [DENY, '+ で始まる refspec は force push になる'];
@@ -125,6 +122,7 @@ function judgeGit(args, dir, branchOf) {
       return [DENY, 'main へは push しない。作業ブランチから PR を通す（文書だけの変更も、push は人が行う）'];
     }
   }
+  if (leased) return [ASK, '作業ブランチへの force push。ベースを rebase で取り込んだときだけ使う（docs/development.md の「並行して作業するときの決まり」）'];
   return null;
 }
 
