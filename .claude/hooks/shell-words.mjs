@@ -99,11 +99,26 @@ export function splitSegments(command) {
       continue;
     }
     if (c === '$' && command[i + 1] === "'") {
+      // $'...' はエスケープを解く（$'\x77rangler' は wrangler）
       let j = i + 2;
       while (j < command.length && command[j] !== "'") {
-        if (command[j] === '\\') j++;
-        word += command[j] ?? '';
-        j++;
+        if (command[j] !== '\\') {
+          word += command[j];
+          j++;
+          continue;
+        }
+        const hex = /^x([0-9a-fA-F]{1,2})/.exec(command.slice(j + 1));
+        const octal = /^([0-7]{1,3})/.exec(command.slice(j + 1));
+        if (hex) {
+          word += String.fromCharCode(parseInt(hex[1], 16));
+          j += 1 + hex[0].length;
+        } else if (octal) {
+          word += String.fromCharCode(parseInt(octal[1], 8));
+          j += 1 + octal[0].length;
+        } else {
+          word += { n: '\n', t: '\t' }[command[j + 1]] ?? command[j + 1] ?? '';
+          j += 2;
+        }
       }
       inWord = true;
       i = j;

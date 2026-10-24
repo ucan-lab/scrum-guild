@@ -9,8 +9,18 @@ const DENY = 'deny';
 const ASK = 'ask';
 const MAX_DEPTH = 5;
 
-// wrangler を中で動かせる道具。この後ろの語に wrangler があれば wrangler の実行とみなす
-const LAUNCHERS = new Set(['pnpm', 'npm', 'yarn', 'bun', 'corepack', 'node', 'exec', 'dlx', 'x']);
+// 引数を実行しない道具。これ以外の道具の後ろに wrangler の語があれば、wrangler の実行とみなす
+// （npx dotenv -- wrangler、find -exec wrangler、docker run ... wrangler のような前置きを列挙しきれないため）
+const NON_EXECUTING = new Set([
+  'echo', 'printf', 'cat', 'less', 'more', 'head', 'tail', 'grep', 'egrep', 'fgrep', 'rg', 'ag', 'sed', 'awk', 'sort',
+  'wc', 'diff', 'ls', 'tree', 'stat', 'file', 'which', 'type', 'man', 'git', 'gh', 'jq', 'yq', 'code', 'open',
+  'mkdir', 'touch', 'rm', 'cp', 'mv', 'ln', 'chmod', 'tee', 'test', '[',
+]);
+// 依存の情報を見るだけのサブコマンド（npm view wrangler versions など）
+const PACKAGE_INFO = new Set([
+  'view', 'info', 'show', 'why', 'list', 'ls', 'outdated', 'search', 'home', 'repo', 'docs', 'bugs', 'audit',
+  'add', 'install', 'i', 'remove', 'rm', 'uninstall', 'un', 'update', 'up', 'upgrade',
+]);
 
 function isWrangler(word) {
   const name = baseName(word);
@@ -19,7 +29,9 @@ function isWrangler(word) {
 
 function findWrangler(words, ci) {
   if (isWrangler(words[ci])) return ci;
-  if (!LAUNCHERS.has(baseName(words[ci]))) return -1;
+  const tool = baseName(words[ci]);
+  if (NON_EXECUTING.has(tool)) return -1;
+  if (tool in PACKAGE_CHANGES && PACKAGE_INFO.has(positionals(words.slice(ci + 1), PACKAGE_FLAGS_WITH_VALUE)[0])) return -1;
   for (let i = ci + 1; i < words.length; i++) {
     if (words[i - 1] === '-p' || words[i - 1] === '--package') continue;
     if (isWrangler(words[i])) return i;
