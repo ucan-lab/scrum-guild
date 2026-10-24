@@ -216,15 +216,23 @@ const SHELLS = new Set(['bash', 'sh', 'zsh', 'dash']);
 const SEARCHERS = new Set(['grep', 'egrep', 'fgrep', 'rg', 'ag']);
 const SEARCH_FLAGS_WITH_VALUE = new Set(['-e', '-f', '--regexp', '--file', '-g', '--glob', '-t', '--type', '-A', '-B', '-C', '-m']);
 
-function judgeSecretAccess(tool, args) {
-  if (args.some((a) => a.startsWith('<') && mentionsSecret(a))) return true;
+const INTERPRETERS = new Set(['node', 'python', 'python3', 'ruby', 'perl', 'deno', 'bun']);
+const isHeredoc = (word) => word.startsWith('<<');
+const heredocBody = (word) => word.replace(/^<<<?/, '');
+
+// words は区切りの全部の語（< .env cmd のように、道具の前に置いた入力も見る）
+function judgeSecretAccess(tool, args, words) {
+  if (words.some((a) => a.startsWith('<') && !isHeredoc(a) && mentionsSecret(a))) return true;
+  // 書き込み先（>）と、文書として流すヒアドキュメントの本文は読み取りではない
+  const plain = args.filter((a) => !/^[<>]/.test(a));
+  if (INTERPRETERS.has(tool)) return [...plain, ...args.filter(isHeredoc).map(heredocBody)].some(mentionsSecret);
   if (SEARCHERS.has(tool)) {
     // 最初の位置の引数は探す文字列なので、grep ".dev.vars" docs のような検索は通す
     const pos = positionals(args, SEARCH_FLAGS_WITH_VALUE);
     const files = args.some((a) => ['-e', '-f', '--regexp', '--file'].includes(a)) ? pos : pos.slice(1);
     return files.some(mentionsSecret);
   }
-  if (READERS.has(tool) || SHELLS.has(tool)) return args.some(mentionsSecret);
+  if (READERS.has(tool) || SHELLS.has(tool)) return plain.some(mentionsSecret);
   if (COPIERS.has(tool)) {
     // コピーの元に書いたときだけ止める。cp .dev.vars.example .dev.vars は通す
     const pos = positionals(args);
@@ -240,7 +248,7 @@ function judgeSegment(words, ctx) {
   const args = words.slice(ci + 1);
   const results = [];
 
-  if (judgeSecretAccess(tool, args)) {
+  if (judgeSecretAccess(tool, args, words)) {
     results.push([DENY, '.dev.vars と .env は開発用のシークレット。中身は人が扱い、例は .dev.vars.example に置く']);
   }
   const runsDeployScript =
@@ -261,10 +269,10 @@ function judgeSegment(words, ctx) {
   if (tool in PACKAGE_CHANGES) results.push(judgePackageManager(tool, args, ctx));
   if (tool === 'eval') results.push(judgeBash(args.join(' '), nextCtx));
   if (SHELLS.has(tool)) {
-    // bash -c "..."、bash -lc "..."、bash <<< "..." の中身も同じ規則で見る
+    // bash -c "..."、bash -lc "..."、bash <<< "..."、bash <<EOF の中身も同じ規則で見る
     const c = args.findIndex((a) => /^-[a-zA-Z]*c[a-zA-Z]*$/.test(a));
     if (c !== -1 && args[c + 1]) results.push(judgeBash(args[c + 1], nextCtx));
-    for (const a of args.filter((w) => w.startsWith('<<<'))) results.push(judgeBash(a.slice(3), nextCtx));
+    for (const a of args.filter(isHeredoc)) results.push(judgeBash(heredocBody(a), nextCtx));
   }
   return results.filter(Boolean);
 }

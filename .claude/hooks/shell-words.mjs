@@ -1,7 +1,7 @@
 // シェルのコマンドを、区切り（; && || | & 改行 ( )）ごとの語の並びに分ける。
 // 引用符の中の区切りは区切りとして扱わないので、grep "wrangler deploy" のような文字列は1語になる。
 // $(...) と `...` は（二重引用符の中でも）実行されるので、別の区切りとして取り出す。
-// コメントとヒアドキュメントの本文は捨てる。リダイレクトは '<' か '>' で始まる1語にまとめる。
+// コメントは捨てる。リダイレクトは '<' か '>' で始まる1語にまとめ、ヒアドキュメントの本文は '<<本文' の1語にする。
 // 完全なシェルの解釈ではない。判定に使うのは、各区切りで先頭に来る道具の名前と引数だけ。
 
 const OPERATORS = ['&&', '||', ';', '|', '&', '\n', '(', ')'];
@@ -168,7 +168,8 @@ export function splitSegments(command) {
       if (command.startsWith('<<', i)) {
         const start = command[i + 2] === '-' ? i + 3 : i + 2;
         const [delimiter, next] = readWord(start);
-        heredocs.push(delimiter);
+        // 本文は改行の後で読み、この区切りの語に '<<本文' として足す
+        heredocs.push({ delimiter, words });
         i = next - 1;
         continue;
       }
@@ -190,17 +191,20 @@ export function splitSegments(command) {
     if (op) {
       endSegment();
       i += op.length - 1;
-      // ヒアドキュメントの本文は、行の終わりから終わりの印の行までを読み飛ばす
+      // ヒアドキュメントの本文（行の終わりから終わりの印の行まで）は、区切りとして読まない
       if (op === '\n' && heredocs.length > 0) {
         let j = i + 1;
-        for (const delimiter of heredocs) {
+        for (const { delimiter, words: owner } of heredocs) {
+          const body = [];
           while (j < command.length) {
             const end = command.indexOf('\n', j);
             const lineEnd = end === -1 ? command.length : end;
             const line = command.slice(j, lineEnd);
             j = lineEnd + 1;
             if (line.trim() === delimiter) break;
+            body.push(line);
           }
+          owner.push(`<<${body.join('\n')}`);
         }
         heredocs.length = 0;
         i = j - 1;

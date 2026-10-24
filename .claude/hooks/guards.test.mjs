@@ -21,7 +21,7 @@ describe('shell-words', () => {
   });
   test('コメントとヒアドキュメントの本文を捨てる', () => {
     assert.deepEqual(splitSegments("echo ok # it's\nls"), [['echo', 'ok'], ['ls']]);
-    assert.deepEqual(splitSegments("cat <<'EOF' > b.md\nwrangler deploy\nEOF\nls"), [['cat', '>b.md'], ['ls']]);
+    assert.deepEqual(splitSegments("cat <<'EOF' > b.md\nwrangler deploy\nEOF\nls"), [['cat', '>b.md', '<<wrangler deploy'], ['ls']]);
   });
   test('リダイレクトを1語にまとめ、2>&1 を残さない', () => {
     assert.deepEqual(splitSegments('git push origin x>log 2>&1'), [['git', 'push', 'origin', 'x', '>log']]);
@@ -140,6 +140,9 @@ describe('bash-rules: 止める', () => {
     'git commit -m "$(git push origin main)"',
     "$'wrangler' deploy",
     `git commit -m "$(cat <<'EOF'\nfix: it's (a) note\nEOF\n)" && git push origin main`,
+    "bash <<'EOF'\nnpx wrangler deploy\nEOF",
+    'sh <<EOF\ngit push origin main\nEOF',
+    "node <<'EOF'\nrequire('fs').readFileSync('.dev.vars')\nEOF",
     'wrangler $(echo deploy)',
     'wrangler `echo deploy`',
     'wrangler $CMD',
@@ -248,6 +251,7 @@ describe('bash-rules: 通す', () => {
     'rg "git push origin main" .claude',
     'echo "npx wrangler deploy は Workers Builds が実行する"',
     "cat <<'EOF' > /tmp/b.md\nwrangler deploy は Workers Builds が実行する\n- git push origin main は人が行う\nEOF",
+    "cat <<'EOF' > docs/x.md\n.dev.vars は人が用意する\nEOF",
     'cat .dev.vars.example',
     'cp .dev.vars.example .dev.vars',
     'echo .dev.vars >> .gitignore',
