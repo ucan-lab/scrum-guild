@@ -1,7 +1,8 @@
-// Bash の判定。本番に触る操作、main の上のコミットと main への push、--force-with-lease 以外の force push、シークレット、gh pr merge を通さないマージを止め、
-// gh pr merge、依存の変更、マイグレーションの作成、判定しきれない push では人の確認を挟む（docs/development.md の「Claude の設定とフック」）。
+// Bash の判定。本番に触る操作、WORKERS_CI の設定、main の上のコミットと main への push、--force-with-lease 以外の force push、シークレット、gh pr merge を通さないマージを止め、
+// gh pr merge、依存の変更、マイグレーションの作成、判定しきれない push と場所を判定できないデプロイのスクリプトでは人の確認を挟む（docs/development.md の「Claude の設定とフック」）。
 // permissions.deny の前方一致では npx wrangler や pnpm exec wrangler の言い換えを取りこぼすので、語に分けて判定する。
 // 踏み線であって守りの本体ではない。変数の中身と、パイプで sh に流す中身は見えない。
+import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { baseName, commandIndex, positionals, splitSegments } from './shell-words.mjs';
 
@@ -333,21 +334,306 @@ function writesProtectedPath(tool, args) {
   return false;
 }
 
+// WORKERS_CI=1 は deploy() が本番に触る唯一の条件で、付けるのは Workers Builds だけ。値は問わず、名前がちょうど WORKERS_CI のものだけを見る
+// （WORKERS_CI_COMMIT_SHA は Workers Builds が渡す別の変数）
+const WORKERS_CI_REASON = 'WORKERS_CI は Workers Builds だけが付ける。人が試すときは ! で打つ';
+const ENV_DECLARERS = new Set(['export', 'declare', 'typeset', 'readonly', 'local']);
+
+// ci は道具の位置（WORKERS_CI=1; export WORKERS_CI の最初の区切りのように、道具が無いときは -1）。
+// 道具の前の代入（env を含む）と、export などの引数を見る。引数を実行しない道具（echo、grep、git、gh など）の引数と、
+// ヒアドキュメントの本文は見ない。それ以外の道具は、npx dotenv -v WORKERS_CI=1 -- node x のように後ろへ代入を渡せるので、引数のどこにあっても止める
+// （findWrangler と同じ考え方）
+const WORKERS_CI_ASSIGN = /^WORKERS_CI\+?=/;
+function setsWorkersCi(words, ci) {
+  if (words.slice(0, ci === -1 ? words.length : ci).some((w) => WORKERS_CI_ASSIGN.test(w))) return true;
+  if (ci === -1) return false;
+  const tool = baseName(words[ci]);
+  const args = words.slice(ci + 1);
+  if (ENV_DECLARERS.has(tool)) return args.some((w) => /^WORKERS_CI(\+?=|$)/.test(w));
+  return !NON_EXECUTING.has(tool) && args.some((w) => WORKERS_CI_ASSIGN.test(w));
+}
+
+// 引数のスクリプトを動かす道具。テストが偽の wrangler で動くため、デプロイのスクリプトを渡すと本番の入口が動く
+const RUNNERS = new Set(['node', 'nodejs', 'tsx', 'ts-node', 'bun', 'deno']);
+const PACKAGE_RUNNERS = new Set(['pnpm', 'yarn', 'npm']);
+// 値がパスではなく名前の正規表現なので、判定から外すフラグ（node --test --test-name-pattern x scripts/deploy.test.ts）
+const PATTERN_FLAGS = new Set(['--test-name-pattern', '--test-skip-pattern']);
+const DEPLOY_PATH = /(^|\/)scripts\/deploy[^/]*$/;
+const DEPLOY_ENTRIES = ['scripts/deploy.ts', 'scripts/deploy-production.ts'];
+// *、?、[、{ のどれか、または extglob の !(、+(、@(。{a,b} も glob として照合する
+const GLOB_CHARS = /[*?[{]|[!+@]\(/;
+// 展開が多い glob（{1..1000000}、{a,b} を何個も並べた形）は matchesGlob が展開するので、数が多いと終わらない。照合せず確認を挟む
+const MAX_BRACE_EXPANSION = 256;
+// -e の値やヒアドキュメントの本文は複数の語を含むので、空白、引用符、括弧で区切って1語ずつ判定する
+const CODE_SEPARATORS = /[\s'"()`]+/;
+// 引数のスクリプトを読んで動かす道具（実行の道具は RUNNERS）。位置引数は区切らずに見る
+const SCRIPT_READERS = new Set([...SHELLS, 'source', '.']);
+
+// パッケージマネージャーの作業場所を変えるフラグ（pnpm -C、--dir、yarn --cwd、npm --prefix）。--flag=値 の形も読む
+const DIR_FLAGS = new Set(['-C', '--dir', '--cwd', '--prefix']);
+const EXEC_FLAGS_WITH_VALUE = new Set([...PACKAGE_FLAGS_WITH_VALUE, '-p', '--package']);
+// exec の後ろのコマンドを、道具ではなくシェルの文字列として渡すフラグ（pnpm exec -c "…"、npm exec --call="…"）
+const SHELL_MODE_FLAGS = new Set(['-c', '--shell-mode', '--call']);
+
+// pnpm exec env X=1 node x、npm exec -- tsx x、yarn node x、yarn run node x、corepack pnpm dlx tsx x のように道具を経由するとき、
+// 経由先を返す。{ words, dir } は経由先のコマンドの語の並びで、judgeSegment に掛け直すので env、代入、timeout などの前置きも同じ規則で効く。
+// { script, dir } は exec -c のシェルの文字列で、judgeBash に掛け直す。経由しなければ null。
+// exec と dlx の後ろは何でも経由先とし、exec の無い形（yarn node x、yarn run node x）は実行の道具のときだけ経由先とする。
+// 作業場所は -C、--dir、--cwd、--prefix の値で解決し直し、~ か $ で始まる値は判定できない（null）とする
+function viaPackageManager(tool, args, dir) {
+  let manager = tool;
+  let rest = args;
+  if (tool === 'corepack') {
+    manager = baseName(rest[0] ?? '');
+    rest = rest.slice(1);
+  }
+  if (!PACKAGE_RUNNERS.has(manager)) return null;
+  let viaExec = false;
+  let viaRun = false;
+  for (let i = 0; i < rest.length; i++) {
+    const a = rest[i];
+    if (a.startsWith('-')) {
+      const eq = a.indexOf('=');
+      const name = eq === -1 ? a : a.slice(0, eq);
+      if (DIR_FLAGS.has(name)) {
+        const value = eq === -1 ? rest[++i] : a.slice(eq + 1);
+        dir = !dir || !value || /^[~$]/.test(value) ? null : path.resolve(dir, value);
+      } else if (viaExec && SHELL_MODE_FLAGS.has(name)) {
+        const script = eq === -1 ? rest[i + 1] : a.slice(eq + 1);
+        return script ? { script, dir } : null;
+      } else if (eq === -1 && (EXEC_FLAGS_WITH_VALUE.has(a) || (manager === 'npm' && a === '-w'))) {
+        // npm の -w は値（ワークスペースの名前）を取る。pnpm の -w は値を取らない（--workspace-root）
+        i++;
+      }
+      continue;
+    }
+    // npm x は npm exec の別名
+    if (!viaExec && (a === 'exec' || a === 'dlx' || (manager === 'npm' && a === 'x'))) {
+      viaExec = true;
+      continue;
+    }
+    if (!viaExec && !viaRun && (a === 'run' || a === 'run-script')) {
+      viaRun = true;
+      continue;
+    }
+    if (!viaExec && !RUNNERS.has(baseName(a))) return null;
+    return { words: rest.slice(i), dir };
+  }
+  return null;
+}
+
+// 実行の道具が読むファイルの候補。位置引数、--flag=値 の右側（--import=、--require= など）、
+// ヒアドキュメントとヒアストリングの本文を返す。リダイレクトは stdinTargets が別に見る
+function runnerWords(args) {
+  const result = [];
+  for (let i = 0; i < args.length; i++) {
+    const a = args[i];
+    if (a === '--' || a.startsWith('>')) continue;
+    if (a.startsWith('<')) {
+      if (isHeredoc(a)) result.push(heredocBody(a));
+      continue;
+    }
+    if (!a.startsWith('-')) {
+      result.push(a);
+      continue;
+    }
+    const eq = a.indexOf('=');
+    if (PATTERN_FLAGS.has(eq === -1 ? a : a.slice(0, eq))) {
+      if (eq === -1) i++;
+      continue;
+    }
+    if (eq !== -1) result.push(a.slice(eq + 1));
+  }
+  return result;
+}
+
+// node < scripts/deploy-production.ts と bash < scripts/deploy.sh の読み込み元。道具の前に置いた < も拾う
+const stdinTargets = (words) => words.filter((w) => w.startsWith('<') && !isHeredoc(w)).map((w) => w.slice(1));
+
+function matchesGlob(target, pattern) {
+  // 無い Node で false を返すと素通りになる。投げれば guard-bash が exit 2 で止める
+  if (typeof path.matchesGlob !== 'function') throw new Error('path.matchesGlob が使えない Node では glob を判定できない');
+  try {
+    return path.matchesGlob(target, pattern);
+  } catch {
+    // 壊れた glob は照合できない。止めすぎるより、他の判定に任せる
+    return false;
+  }
+}
+
+// dir から上へ、scripts/deploy-production.ts のあるディレクトリ（リポジトリの根）を探す。見つからなければ null
+function repoRootOf(dir) {
+  for (let d = dir; ; d = path.dirname(d)) {
+    if (existsSync(path.join(d, DEPLOY_ENTRIES[1]))) return d;
+    if (d === path.dirname(d)) return null;
+  }
+}
+
+// glob の固定の部分（最初の glob の文字より前のディレクトリ）
+function fixedDirOf(pattern) {
+  const head = pattern.slice(0, pattern.search(GLOB_CHARS));
+  const slash = head.lastIndexOf('/');
+  return slash === -1 ? '' : head.slice(0, slash) || '/';
+}
+
+// 固定の部分とその祖先のそれぞれに入口を付けて照合する。scripts/*.ts は祖先の 1 つ上から scripts/deploy.ts が当たり、scripts/*.test.ts は当たらない
+function ancestorsHit(pattern) {
+  for (let dir = fixedDirOf(pattern); ; dir = path.posix.dirname(dir)) {
+    if (DEPLOY_ENTRIES.some((entry) => matchesGlob(path.posix.join(dir, entry), pattern))) return true;
+    if (path.posix.dirname(dir) === dir) return false;
+  }
+}
+
+// glob に変数の語を含む区間（worktrees/*/scripts/*.ts）があり、その後ろが scripts/<入口の名前に当たる語> で終わるか。
+// 固定の部分から根を探せない glob のために、実在を確かめずに形だけ見る
+function scriptsSegmentHit(pattern) {
+  const segments = pattern.split('/');
+  const [dirName, last] = segments.slice(-2);
+  if (dirName !== 'scripts' || !segments.slice(0, -2).some((s) => GLOB_CHARS.test(s))) return false;
+  return DEPLOY_ENTRIES.some((entry) => matchesGlob(path.posix.basename(entry), last));
+}
+
+// glob が scripts/deploy.ts か scripts/deploy-production.ts に当たるか。
+// 解決した glob を、作業場所の根と、glob の固定の部分から見つかる根（別のチェックアウトや絶対パスの先）の入口の絶対パスに照合する。
+// 根の入口だけに照合するので、test/**/*.ts のような無関係な glob は止めない。
+// どちらの根も見つからない（場所が不明か、リポジトリの外）ときは、書かれた形と解決した形の固定の部分と祖先に入口を付けて照合する。
+// 根は小文字にする前の absolute から探す。大文字と小文字を区別するファイルシステム（Linux）では、小文字にしたパスは見つからない
+function globHitsDeploy(written, resolved, absolute, workRoot) {
+  const roots = new Set([workRoot, absolute && repoRootOf(fixedDirOf(absolute))].filter(Boolean));
+  if (resolved && [...roots].some((r) => DEPLOY_ENTRIES.some((e) => matchesGlob(path.join(r, e).toLowerCase(), resolved)))) return true;
+  if (scriptsSegmentHit(written) || (resolved && scriptsSegmentHit(resolved))) return true;
+  return roots.size === 0 && (ancestorsHit(written) || (resolved !== null && ancestorsHit(resolved)));
+}
+
+// {a,b} と {1..n} の展開の数を、展開せずに見積もる。上限を超えたら数え続けない
+function expansionSize(text) {
+  let total = 1;
+  for (let i = 0; i < text.length && total <= MAX_BRACE_EXPANSION; i++) {
+    if (text[i] !== '{') continue;
+    let depth = 1;
+    let j = i + 1;
+    for (; j < text.length && depth > 0; j++) depth += text[j] === '{' ? 1 : text[j] === '}' ? -1 : 0;
+    if (depth > 0) break;
+    total *= braceSize(text.slice(i + 1, j - 1));
+    i = j - 1;
+  }
+  return total;
+}
+
+function braceSize(inner) {
+  const range = /^(-?\d+)\.\.(-?\d+)(?:\.\.(-?\d+))?$/.exec(inner);
+  if (range) return Math.floor(Math.abs(range[2] - range[1]) / (Math.abs(range[3]) || 1)) + 1;
+  if (/^[a-z]\.\.[a-z]$/i.test(inner)) return 52;
+  const parts = [];
+  let depth = 0;
+  let start = 0;
+  for (let k = 0; k < inner.length; k++) {
+    if (inner[k] === '{') depth++;
+    else if (inner[k] === '}') depth--;
+    else if (inner[k] === ',' && depth === 0) {
+      parts.push(inner.slice(start, k));
+      start = k + 1;
+    }
+  }
+  parts.push(inner.slice(start));
+  return parts.length < 2 ? 1 : parts.reduce((sum, p) => sum + expansionSize(p), 0);
+}
+
 // テスト（scripts/deploy*.test.ts）は偽の wrangler と fetch で手順を呼ぶだけなので外す。
 // --test の有無では見分けない。node --test scripts/deploy-production.ts も本番の入口を実行する。
 // 外すのは英数字と . / * - _ だけの語に限る。deploy-production.ts$IFS.test.ts はシェルが2語に分け、
 // --import ./scripts/deploy-production.ts#.test.ts は Node が # 以降を URL のフラグメントとして捨てる
-function isDeployScript(word) {
-  if (!/(^|\/)scripts\/deploy[^/]*$/.test(word)) return false;
-  return !(/^[\w./*-]+$/.test(word) && word.endsWith('.test.ts'));
+const isTestFile = (word) => /^[\w./*-]+$/.test(word) && word.endsWith('.test.ts');
+
+const DEPLOY_REASON = [DENY, 'デプロイのスクリプトは Workers Builds だけが実行する'];
+const UNKNOWN_DIR_REASON = [ASK, 'デプロイのスクリプトらしい語を、作業場所を判定できない（cd ~ や変数の先）まま渡している。人が確かめる'];
+const BIG_GLOB_REASON = [ASK, '展開の大きい glob（{1..1000} など）は、デプロイのスクリプトに当たるかを判定しない。人が確かめる'];
+
+// 語がデプロイのスクリプトを指すか。[DENY, 理由]、[ASK, 理由]、null を返す。
+// 書かれた語は小文字にして全部の語に DEPLOY_PATH を掛ける。dir から解決した絶対パス（scripts//、scripts/./、cd scripts && …）の判定と、
+// dir が null（cd ~、cd $X の後）のときに相対の語の名前が deploy で始まれば確認を挟む判定は、パスの形の語（/ を含むか .拡張子 で終わる）に限る。
+// -e の中の deploy や deploying のような、ただの語を止めないため。
+// 空白を含む語（bash -c "echo scripts/deploy.ts" の -c の値）はパスではない。-c の中身は judgeBash が別に見る
+function judgeDeployWord(word, dir, root) {
+  if (isTestFile(word)) return null;
+  const written = word.toLowerCase();
+  if (DEPLOY_PATH.test(written)) return DEPLOY_REASON;
+  if (/\s/.test(word)) return null;
+
+  const isPathShaped = /\/|\.\w+$/.test(word);
+  const absolute = dir ? path.resolve(dir, word) : null;
+  const resolved = absolute?.toLowerCase() ?? null;
+  if (resolved && isPathShaped && DEPLOY_PATH.test(resolved)) return DEPLOY_REASON;
+  // * や ** だけの語（-e の中の 2 ** 10）は見ない
+  if (GLOB_CHARS.test(word) && /[\w.]/.test(word)) {
+    if (expansionSize(word) > MAX_BRACE_EXPANSION) return BIG_GLOB_REASON;
+    if (globHitsDeploy(written, resolved, absolute, root)) return DEPLOY_REASON;
+  }
+  const isRelative = !/^[/~]/.test(word);
+  if (!dir && isPathShaped && isRelative && written.split('/').pop().startsWith('deploy')) return UNKNOWN_DIR_REASON;
+  return null;
+}
+
+// 最初の DENY で打ち切る。残りの語に重い照合（glob の展開）があっても、結論が出ていれば評価しない
+function judgeDeployWords(words, dir) {
+  const root = dir ? repoRootOf(dir) : null;
+  let ask = null;
+  for (const word of words) {
+    const verdict = judgeDeployWord(word, dir, root);
+    if (verdict?.[0] === DENY) return verdict;
+    ask ??= verdict;
+  }
+  return ask;
+}
+
+// 実行の道具、スクリプトを読む道具（シェル、source、.）、デプロイのスクリプトそのものに渡した語を判定する。止めるものが無ければ null
+function judgeDeployScript(words, ci, dir) {
+  const tool = baseName(words[ci]);
+  const args = words.slice(ci + 1);
+  // node --test は並べたファイルを全部実行するので、先頭だけでなく位置引数を全部見る。
+  // --test の無い node と bash では2つ目からはただの引数だが、取りこぼすより止めすぎるほうを取る。
+  // 道具の語、スクリプトを読む道具の位置引数、< の読み込み元は区切らずに見る。実行の道具の引数だけは、-e の値と本文を含むので語に区切る
+  const scriptWords = [words[ci]];
+  if (SCRIPT_READERS.has(tool)) scriptWords.push(...positionals(args));
+  if (SCRIPT_READERS.has(tool) || RUNNERS.has(tool)) scriptWords.push(...stdinTargets(words));
+  if (RUNNERS.has(tool)) {
+    // 区切る前の語も見る（'scripts/!(*.test).ts' は括弧で区切ると壊れる）
+    const code = runnerWords(args);
+    scriptWords.push(...code, ...code.flatMap((w) => w.split(CODE_SEPARATORS).filter(Boolean)));
+  }
+  return judgeDeployWords(scriptWords, dir);
+}
+
+// env -C <dir> と env --chdir=<dir> は、その後ろのコマンドの作業場所を変える。~ か $ で始まる値は判定できない（null）とする
+function dirAfterEnv(words, ci, dir, from) {
+  for (let i = from; i < ci; i++) {
+    if (baseName(words[i]) !== 'env') continue;
+    for (let j = i + 1; j < ci; j++) {
+      const w = words[j];
+      let value;
+      if (w === '-u' || w === '--unset') {
+        j++;
+        continue;
+      }
+      if (w === '-C' || w === '--chdir') value = words[++j];
+      else if (w.startsWith('--chdir=')) value = w.slice('--chdir='.length);
+      else if (/^-C./.test(w)) value = w.slice(2);
+      else continue;
+      dir = !dir || !value || /^[~$]/.test(value) ? null : path.resolve(dir, value);
+    }
+  }
+  return dir;
 }
 
 function judgeSegment(words, ctx) {
   const ci = commandIndex(words);
-  if (ci === -1) return [];
+  const results = [];
+  if (setsWorkersCi(words, ci)) results.push([DENY, WORKERS_CI_REASON]);
+  if (ci === -1) return results;
   const tool = baseName(words[ci]);
   const args = words.slice(ci + 1);
-  const results = [];
+  // env -C は後ろのコマンドの作業場所を変える。経由先に掛け直すとき（envFrom）は、前置きの env の分を解決済みなので重ねない
+  ctx = { ...ctx, dir: dirAfterEnv(words, ci, ctx.dir, ctx.envFrom ?? 0) };
 
   if (judgeSecretAccess(tool, args, words)) {
     results.push([DENY, '.dev.vars と .env は開発用のシークレット。中身は人が扱い、例は .dev.vars.example に置く']);
@@ -355,11 +641,21 @@ function judgeSegment(words, ctx) {
   if (writesProtectedPath(tool, args)) {
     results.push([ASK, '守る仕組み（Claude の設定とフック）とマイグレーションの書き換えは人が確かめる']);
   }
-  // node --test は並べたファイルを全部実行するので、先頭だけでなく位置引数を全部見る。
-  // --test の無い node と bash では2つ目からはただの引数だが、取りこぼすより止めすぎるほうを取る
-  const runsDeployScript =
-    isDeployScript(words[ci]) || ((SHELLS.has(tool) || tool === 'node') && positionals(args).some(isDeployScript));
-  if (runsDeployScript) results.push([DENY, 'デプロイのスクリプトは Workers Builds だけが実行する']);
+  // 他の判定で止まっているなら、glob を展開する重い照合はしない
+  if (!results.some(([d]) => d === DENY)) results.push(judgeDeployScript(words, ci, ctx.dir));
+
+  // pnpm exec env WORKERS_CI=1 node x のように道具を経由するときは、経由先を前置きごと同じ規則で見る。
+  // pnpm exec -c "…" のシェルの文字列は judgeBash に渡す
+  const via = viaPackageManager(tool, args, ctx.dir);
+  if (via?.script !== undefined) {
+    results.push(judgeBash(via.script, { ...ctx, cwd: via.dir, depth: ctx.depth + 1 }));
+  } else if (via) {
+    if (ctx.depth + 1 > MAX_DEPTH) results.push([ASK, 'コマンドの入れ子が深く、判定しきれない']);
+    else {
+      const inner = { ...ctx, dir: via.dir, envFrom: ci, depth: ctx.depth + 1 };
+      results.push(...judgeSegment([...words.slice(0, ci), ...via.words], inner));
+    }
+  }
 
   const wrangler = findWrangler(words, ci);
   if (wrangler !== -1) results.push(judgeWrangler(words.slice(wrangler + 1)));
@@ -410,6 +706,7 @@ export function judgeBash(command, { cwd, branchOf, scriptOf = () => undefined, 
     // cd の後の git push は、移った先のブランチで判定する。展開できない cd の先は判定できないものとする
     const ci = commandIndex(words);
     if (ci !== -1 && ['cd', 'pushd'].includes(words[ci])) {
+      if (setsWorkersCi(words, ci)) results.push([DENY, WORKERS_CI_REASON]);
       const to = words[ci + 1];
       dir = !to || /^[~$-]/.test(to) || !dir ? null : path.resolve(dir, to);
       continue;
