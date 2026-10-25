@@ -150,12 +150,16 @@ describe('セッションとログインの途中の状態', () => {
     await expect(oauthState({ returnTo })).resolves.toBeTruthy();
   });
 
-  test.each(['//evil.example', '/\\evil.example', 'https://evil.example/', 'aoba'])(
-    '戻り先 %s は当たる',
-    async (returnTo) => {
-      await expect(oauthState({ returnTo })).rejects.toThrow(/CHECK/);
-    },
-  );
+  test.each([
+    '//evil.example',
+    '/\\evil.example',
+    'https://evil.example/',
+    'aoba',
+    '/\t/evil.example',
+    '/\n/evil.example',
+  ])('戻り先 %s は当たる', async (returnTo) => {
+    await expect(oauthState({ returnTo })).rejects.toThrow(/CHECK/);
+  });
 });
 
 describe('organizations.slug', () => {

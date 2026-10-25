@@ -141,7 +141,7 @@
 | code_verifier | TEXT | NOT NULL | |
 | nonce | TEXT | | OpenID Connect の手段（Google）で、ID トークンの `nonce` と比べる値。GitHub では空。Google で空の行は、アプリが拒む |
 | claim_token_hash | TEXT | | 招待の URL から始めたログインで、その URL の秘密の SHA-256。戻ってきたときに、待っている指名か招待を引く |
-| return_to | TEXT | `CHECK (return_to GLOB '/*' AND return_to NOT GLOB '//*' AND return_to NOT GLOB '/\*')` | ログイン後に戻る画面のパス。自分のサイトのパスだけで、`//` や `/\` で始まる別のサイトへの移動は DB でも拒む |
+| return_to | TEXT | `CHECK (return_to GLOB '/*' AND return_to NOT GLOB '//*' AND return_to NOT GLOB '/\*' AND return_to NOT GLOB '*[^ -~]*')` | ログイン後に戻る画面のパス。自分のサイトのパスだけで、`//` や `/\` で始まる別のサイトへの移動は DB でも拒む。印字できる ASCII に限る（ブラウザは URL のタブと改行を取り除くので、`/<タブ>/evil.example` が `//evil.example` になる） |
 | expires_at | TEXT | NOT NULL | 作ってから10分 |
 
 使ったら消す。切れた行は定期処理で消す。

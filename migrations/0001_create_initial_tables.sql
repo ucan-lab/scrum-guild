@@ -42,8 +42,11 @@ CREATE TABLE oauth_states (
   code_verifier TEXT NOT NULL,
   nonce TEXT,
   claim_token_hash TEXT CHECK (length(claim_token_hash) = 64 AND claim_token_hash NOT GLOB '*[^0-9a-f]*'),
-  -- 自分のサイトのパスだけ。//evil.example や /\evil.example は別のサイトへの移動になる
-  return_to TEXT CHECK (return_to GLOB '/*' AND return_to NOT GLOB '//*' AND return_to NOT GLOB '/\*'),
+  -- 自分のサイトのパスだけ。//evil.example や /\evil.example は別のサイトへの移動になる。
+  -- 印字できる ASCII に限るのは、ブラウザが URL のタブと改行を取り除き、/<タブ>/evil.example が //evil.example になるため
+  return_to TEXT CHECK (
+    return_to GLOB '/*' AND return_to NOT GLOB '//*' AND return_to NOT GLOB '/\*' AND return_to NOT GLOB '*[^ -~]*'
+  ),
   expires_at TEXT NOT NULL
 );
 
