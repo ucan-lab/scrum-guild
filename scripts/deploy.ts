@@ -1,6 +1,9 @@
 // 本番へのデプロイの手順（docs/development.md の「CD」）。Workers Builds のデプロイのコマンドが
 // scripts/deploy-production.ts から呼ぶ。wrangler と HTTP を差し替えて node --test にかけられるよう、外への作用は deps で受け取る。
 
+import { isErrorBody } from '../src/shared/errors.ts';
+import { isHealth } from '../src/shared/health.ts';
+
 // 煙のテストが叩く本番の URL。ドメインへ移すときはここを直す（docs/operations.md の「ドメインへ移す」）
 export const PRODUCTION_URL = 'https://scrum-guild.ucan-lab.workers.dev';
 
@@ -59,6 +62,14 @@ export function rollbackTarget(result: WranglerResult): RollbackTarget {
     return { ok: false, reason: `今の版が 100% で動いていません: ${JSON.stringify(versions)}` };
   }
   return { ok: true, versionId: versions[0].version_id };
+}
+
+// /api/health の応答から version を取る。D1 に届かない版は 503 を返すので、200 以外は失敗として投げ、煙のテストの失敗にする
+export async function versionFromHealth(res: Response): Promise<string> {
+  const body: unknown = await res.json().catch(() => null);
+  if (!res.ok) throw new Error(isErrorBody(body) ? `HTTP ${res.status}（${body.error.code}）` : `HTTP ${res.status}`);
+  if (!isHealth(body)) throw new Error('health の形ではありません');
+  return body.version;
 }
 
 async function waitForVersion(deps: DeployDeps, expected: string): Promise<boolean> {

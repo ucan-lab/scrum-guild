@@ -3,9 +3,8 @@
 import { spawnSync } from 'node:child_process';
 import { existsSync, readdirSync } from 'node:fs';
 import path from 'node:path';
-import { isHealth } from '../src/shared/health.ts';
 import { migrationFiles } from './ci.ts';
-import { deploy } from './deploy.ts';
+import { deploy, versionFromHealth } from './deploy.ts';
 
 // デプロイのコマンドは pnpm の外で動くので、node_modules/.bin が PATH に無い
 const wranglerBin = path.join('node_modules', '.bin', 'wrangler');
@@ -42,10 +41,7 @@ const status = await deploy({
   hasMigrations: () => existsSync('migrations') && migrationFiles(readdirSync('migrations')).length > 0,
   fetchVersion: async (url, timeoutMs) => {
     const res = await fetch(url, { signal: AbortSignal.timeout(timeoutMs), cache: 'no-store' });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const body: unknown = await res.json();
-    if (!isHealth(body)) throw new Error('health の形ではありません');
-    return body.version;
+    return versionFromHealth(res);
   },
   sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
   now: () => Date.now(),

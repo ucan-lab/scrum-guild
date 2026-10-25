@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
-import { deploy, PRODUCTION_URL, type DeployDeps, type WranglerResult } from './deploy.ts';
+import { deploy, PRODUCTION_URL, versionFromHealth, type DeployDeps, type WranglerResult } from './deploy.ts';
 
 const SHA = 'abc1234';
 const CURRENT = 'version-current';
@@ -317,5 +317,26 @@ describe('deploy', () => {
     assert.equal(await deploy(f.deps), 0);
     assert.equal(f.fetches, 3);
     assert.ok(!f.calls.some((args) => args[0] === 'rollback'));
+  });
+});
+
+describe('versionFromHealth', () => {
+  const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status });
+
+  test('D1 に届いた版の応答から version を取る', async () => {
+    assert.equal(await versionFromHealth(json({ status: 'ok', database: 'ok', version: SHA })), SHA);
+  });
+
+  test('D1 に届かない版の 503 は、code を添えて失敗にする', async () => {
+    const res = json({ error: { code: 'unavailable', message: 'database unavailable' } }, 503);
+    await assert.rejects(versionFromHealth(res), /HTTP 503（unavailable）/);
+  });
+
+  test('本文が JSON でない 503 も失敗にする', async () => {
+    await assert.rejects(versionFromHealth(new Response('upstream error', { status: 503 })), /HTTP 503/);
+  });
+
+  test('database の無い古い形の 200 は失敗にする', async () => {
+    await assert.rejects(versionFromHealth(json({ status: 'ok', version: SHA })), /health の形ではありません/);
   });
 });

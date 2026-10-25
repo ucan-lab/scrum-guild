@@ -16,7 +16,7 @@
       API を確かめています
     {:then result}
       {#if result.ok}
-        API: {result.data.status}（版 {result.data.version}）
+        API: {result.data.status}、DB: {result.data.database}（版 {result.data.version}）
       {:else}
         API に届きませんでした（{result.status}）
       {/if}

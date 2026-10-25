@@ -1,6 +1,14 @@
 // API のエラーの形（docs/development.md の「API のエラーとログ」）。画面は code で分岐し、文言は言葉の辞書から出す。
 
-export const errorCodes = ['invalid_input', 'forbidden', 'not_found', 'conflict', 'internal'] as const;
+export const errorCodes = [
+  'invalid_input',
+  'forbidden',
+  'not_found',
+  'conflict',
+  'internal',
+  // 依存先（D1）に届かない。503
+  'unavailable',
+] as const;
 
 export type ErrorCode = (typeof errorCodes)[number];
 

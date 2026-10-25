@@ -5,6 +5,7 @@ import { routePath } from 'hono/route';
 import type { ErrorBody, ErrorCode } from '../shared/errors.ts';
 import type { Health } from '../shared/health.ts';
 import { apiCacheControl, apiCsp, fixedHeaders } from '../shared/security-headers.ts';
+import { commonDb, sql } from './db/index.ts';
 
 export type AppEnv = { Bindings: Env };
 
@@ -41,8 +42,25 @@ export function createApp() {
     c.res.headers.set('Cache-Control', apiCacheControl);
   });
 
-  app.get('/health', (c) => {
-    const body: Health = { status: 'ok', version: c.env.APP_VERSION || 'dev' };
+  // 煙のテスト（scripts/deploy.ts）が読む。D1 に届かないときは 503 にして、新しい版の失敗として拾わせる
+  app.get('/health', async (c) => {
+    const db = commonDb(c.env);
+    try {
+      await db.first(db.statement((q) => q.selectNoFrom(sql<number>`1`.as('ok'))));
+    } catch (err) {
+      // 中身は出さない。D1 の例外の message には SQL や接続の詳細が混ざりうる
+      console.error(
+        JSON.stringify({
+          level: 'error',
+          code: 'unavailable',
+          requestId: c.req.header('cf-ray') ?? null,
+          route: routePath(c),
+          error: err instanceof Error ? err.name : typeof err,
+        }),
+      );
+      return c.json(errorBody('unavailable', 'database unavailable'), 503);
+    }
+    const body: Health = { status: 'ok', database: 'ok', version: c.env.APP_VERSION || 'dev' };
     return c.json(body);
   });
 
