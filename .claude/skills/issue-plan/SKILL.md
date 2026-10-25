@@ -134,6 +134,16 @@ gh api repos/{owner}/{repo}/issues/<親の番号>/sub_issues -F sub_issue_id=<�
 
 本文の表で子を並べるだけにしない（理由: サブ Issue でつながないと、GitHub の親の進み具合に出ない）。
 
+前に要るものは、待つ側の Issue に依存関係（blocked by）でつなぐ。渡すのは前に要る Issue の REST の `id`。
+
+```bash
+gh api -X POST repos/{owner}/{repo}/issues/<待つ側の番号>/dependencies/blocked_by -F issue_id=<前に要る Issue の id>
+```
+
+- 本文の「前に要るもの」の表に書いたものは、すべてつなぐ（理由: `next-up` は依存関係だけを読んで着手できるかを決め、本文の表を読まない）
+- 閉じた Issue はつながなくてよい。開いている依存だけが着手を止める
+- つないだ後に `gh api repos/{owner}/{repo}/issues/<待つ側の番号>/dependencies/blocked_by --jq '[.[].number]'` で確かめる
+
 ## レビューモード
 
 人が書いた実装計画を着手前にレビューし、潰すべき考慮漏れを洗い出し、最終的に **そのまま Issue に投稿できる指摘コメント** を生成する。
