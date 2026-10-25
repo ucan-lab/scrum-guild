@@ -22,6 +22,56 @@ function setup() {
   return { queue, sent, failed, reload, dropped };
 }
 
+describe('MoveQueue の失敗', () => {
+  test('断られた後の読み直し（onFailed）が失敗しても、後始末に進み、待っていた操作を捨てたことを知らせる', async () => {
+    const { queue, sent, reload, dropped } = setup();
+    const first = deferred();
+    const onFailed = async () => {
+      queue.reloaded();
+      throw new Error('reload failed');
+    };
+    void queue.send(() => {
+      sent.push('a');
+      return first.promise;
+    }, onFailed);
+    const last = queue.send(async () => {
+      sent.push('b');
+      return { ok: true, name: 'b' };
+    }, onFailed);
+    first.resolve({ ok: false, name: 'a' });
+    await last;
+    expect(sent).toEqual(['a']);
+    expect(reload).toHaveBeenCalledTimes(1);
+    expect(dropped).toHaveBeenCalledTimes(1);
+  });
+
+  test('列が空になった後の読み直し（hooks.reload）が失敗しても知らせ、印を後の操作に持ち越さない', async () => {
+    const reload = vi.fn(async () => {
+      throw new Error('reload failed');
+    });
+    const dropped = vi.fn();
+    const queue = new MoveQueue<Result>({ reload, dropped });
+    const onFailed = async () => queue.reloaded();
+    const first = deferred();
+    void queue.send(() => first.promise, onFailed);
+    const last = queue.send(async () => ({ ok: true, name: 'b' }), onFailed);
+    first.resolve({ ok: false, name: 'a' });
+    await last;
+    expect(reload).toHaveBeenCalledTimes(1);
+    expect(dropped).toHaveBeenCalledTimes(1);
+
+    // 後の操作は、残った印で読み直しも知らせもしない。列も止まらずに送る
+    const sent: string[] = [];
+    await queue.send(async () => {
+      sent.push('c');
+      return { ok: true, name: 'c' };
+    }, onFailed);
+    expect(sent).toEqual(['c']);
+    expect(reload).toHaveBeenCalledTimes(1);
+    expect(dropped).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe('MoveQueue', () => {
   test('押した順に1つずつ送り、何も読み直さなければ追加の読み直しをしない', async () => {
     const { queue, sent, reload, dropped } = setup();

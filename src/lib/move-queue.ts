@@ -45,9 +45,14 @@ export class MoveQueue<R extends { ok: boolean }> {
         } finally {
           this.#pending--;
         }
-        if (result !== undefined && !result.ok) await onFailed(result);
-        await this.#settle();
+        // 断られた後の読み直しが失敗しても（onFailed が reject しても）、後始末には進む
+        try {
+          if (result !== undefined && !result.ok) await onFailed(result);
+        } finally {
+          await this.#settle();
+        }
       })
+      // 列は続ける。1つの操作の失敗で、後の操作を止めない（読み直しの失敗は、画面の読み込みの失敗の表示が伝える）
       .catch(() => {});
     return this.#tail;
   }
@@ -60,10 +65,14 @@ export class MoveQueue<R extends { ok: boolean }> {
       this.#dropped = 0;
       return;
     }
+    // 印は読み直す前に下ろす。読み直しが失敗しても、後の操作に持ち越さない。捨てたことは、読み直しの成否に関わらず知らせる
     this.#reloadedWhileMoving = false;
     const dropped = this.#dropped;
     this.#dropped = 0;
-    await this.#hooks.reload();
-    if (dropped > 0) this.#hooks.dropped();
+    try {
+      await this.#hooks.reload();
+    } finally {
+      if (dropped > 0) this.#hooks.dropped();
+    }
   }
 }
