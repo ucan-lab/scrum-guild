@@ -268,7 +268,7 @@ const SECTIONS = [
     <div class="callout is-warn">${icon("alert")}<span>10月は配分の合計が 110% です。本人にだけ見えています。</span></div>
     <div class="callout is-info">${icon("archive")}<span>2026-10-22 に終了しました。読み取り専用です。 <a href="admin.html">組織の管理で再開する</a></span></div>
     <div class="callout is-warn">${icon("alert")}<span role="alert">${t("workspace")}の一覧を更新できませんでした</span><div class="callout-actions"><button class="btn is-sm" type="button">もう一度試す</button><span class="field-hint" role="status">まだ読み込めませんでした</span></div></div>`,
-    ["期日の印は、期限切れが赤、今日と今週が橙、それより先は色なし。完了したら色を付けない。", "取り込み元の期限には「（取り込み元）」を添える。", "ポイントは枠付きの数字、未見積もりは点線の「未」。", "クリア報酬の段階（小・中・大）は、ポイントと混ざらないよう別の形（tier）にする。", "囲みに操作を付けるときは、ボタンと状態の文を .callout-actions にまとめる。右に寄り、狭い幅では本文の下へ折り返す。失敗の知らせ（role=\"alert\"）は本文の span に付け、状態の文（role=\"status\"）を alert の中に入れ子にしない。", "終了したワークスペースの帯は .callout.is-info で、ワークスペースの中のどの画面にも先頭に置く。再開するボタンは置かず、管理者には組織の管理へのリンクだけを添える。"],
+    ["期日の印は、期限切れが赤、今日と今週が橙、それより先は色なし。完了したら色を付けない。", "取り込み元の期限には「（取り込み元）」を添える。", "ポイントは枠付きの数字、未見積もりは点線の「未」。", "クリア報酬の段階（小・中・大）は、ポイントと混ざらないよう別の形（tier）にする。", "囲みに操作を付けるときは、ボタンと状態の文を .callout-actions にまとめる。右に寄り、狭い幅では本文の下へ折り返す。狭い幅と指で押す画面では、中の小さいボタン（.btn.is-sm）の押せる範囲を、見た目を変えずに 44px 四方以上へ広げる（.form-actions の中も同じ）。失敗の知らせ（role=\"alert\"）は本文の span に付け、状態の文（role=\"status\"）を alert の中に入れ子にしない。", "終了したワークスペースの帯は .callout.is-info で、ワークスペースの中のどの画面にも先頭に置く。再開するボタンは置かず、管理者には組織の管理へのリンクだけを添える。"],
     ".chip .is-danger .is-warn .is-todo .is-ok .is-carry / .tag / .status-dot / .source-key / .pts .is-none / .tier / .kind .is-epic .is-story / .callout .is-ok .is-warn .is-info .callout-actions")],
   ["people", "人とレベル", () => block("people", "人とレベル", "他の人に見せるのはレベルだけ。経験値の数字は本人だけ。",
     `<div class="cat-row">
