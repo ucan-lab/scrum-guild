@@ -43,14 +43,14 @@
           <table class="table">
             <thead>
               <tr>
-                <th>{t('operatorColumnOrganization', words)}</th>
+                <th class="is-name">{t('operatorColumnOrganization', words)}</th>
                 <th>{t('operatorColumnCreated')}</th>
               </tr>
             </thead>
             <tbody>
               {#each data.organizations as organization (organization.slug)}
                 <tr>
-                  <td>
+                  <td class="is-name">
                     {organization.name}
                     {#if organization.suspended_at}<span class="chip is-warn">{t('operatorSuspended')}</span>{/if}
                     {#if organization.admin_status === 'none'}
