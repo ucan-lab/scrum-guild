@@ -586,6 +586,7 @@ Issue はエピック、ストーリー、タスクの3階層にし、親子は�
 | レビュー中 | その Issue を指す開いた PR があること。ラベルは使わない | PR の作成 |
 | 済み | Issue が閉じたこと | タスクは PR のマージ、ストーリーとエピックは人が閉じる |
 
+- 表の上の行より下の行が勝つ。開いた PR があれば、`status:in-progress` が付いたままでもレビュー中とみなす（PR を出してもラベルは外さない）
 - 両方のラベルが付いていれば作業中とみなす。セッションが `status:refining` を付けるのは、`status:in-progress` の無い Issue だけ
 - 閉じた Issue は、ラベルにかかわらず済みとして扱う。閉じた後にラベルを外す手間はかけない
 - ラベルは `gh api` の REST で付け外しする（付ける `POST repos/{owner}/{repo}/issues/<番号>/labels`、外す `DELETE …/labels/<名前>`）。GraphQL の `gh issue edit` はクラウドのセッションで 403 になるため
