@@ -166,6 +166,8 @@ export function splitSegments(command) {
   let expands = false;
   // 開いている ( の数。0 のときの ) は case のラベルの終わり
   let depth = 0;
+  // [[ … ]] の中で開いている ( の数
+  let testDepth = 0;
 
   // 語に文字を足す。shapes には、実行時に決まる位置なら DYNAMIC を、そうでなければ同じ文字を足す
   const add = (text, dynamic = false) => {
@@ -353,11 +355,16 @@ export function splitSegments(command) {
     const op = OPERATORS.find((o) => command.startsWith(o, i));
     if (op) {
       const pending = inWord ? [...words, word] : [...words];
-      // [[ … ]] の中の ( ) | は、=~ の正規表現の文字（[[ $x =~ ^(a|b)$ ]]）
-      if (['(', ')', '|'].includes(op) && pending[commandIndex(pending)] === '[[' && !pending.includes(']]')) {
+      // [[ … ]] の中の ( ) と、=~ の後ろか括弧の中の | は、条件式と正規表現の文字（[[ $x =~ ^(a|b)$ ]]）。
+      // 閉じていない [[ に、後ろのコマンドを | で飲み込ませないよう、| は =~ の後ろか括弧の中に限る
+      const inTest = pending[commandIndex(pending)] === '[[' && !pending.includes(']]');
+      if (inTest && (op === '(' || op === ')' || (op === '|' && (testDepth > 0 || pending.includes('=~'))))) {
+        if (op === '(') testDepth++;
+        if (op === ')') testDepth = Math.max(0, testDepth - 1);
         add(op);
         continue;
       }
+      testDepth = 0;
       if (op === '(') {
         // 道具の後ろに書ける ( は、zsh の glob（(a|b)、x(N)）と関数の定義（f() { … }）だけ。前置きだけの後ろ（if (、! (、time (）はサブシェル。
         // zsh は (KV|--no-local) を作業場所のファイルの名前に展開するので、区切りは切ったまま、括弧の位置に展開の印の付いた GLOB_GROUP を残す。
@@ -369,8 +376,9 @@ export function splitSegments(command) {
         }
         depth++;
       } else if (op === ')') {
-        if (depth === 0) {
-          // 対応する ( の無い ) は、case のラベルの終わり（*.md)、*)）。ラベルはコマンドではないので語を捨てる
+        if (depth === 0 && pending.length <= 1) {
+          // 対応する ( の無い ) の前の1語は、case のラベル（*.md)、*)）。ラベルはコマンドではないので捨てる。
+          // 2語以上（wrangler deploy )）は構文エラーだが、判定から落とさずに区切りとして読む
           word = '';
           shape = '';
           inWord = false;
@@ -378,7 +386,7 @@ export function splitSegments(command) {
           words = withMarks([], [], []);
           continue;
         }
-        depth--;
+        depth = Math.max(0, depth - 1);
       }
       endSegment();
       i += op.length - 1;

@@ -188,6 +188,10 @@ describe('bash-rules: 止める', () => {
     'hash -d n=--remote; wrangler dev ~n',
     'OLDPWD=--no-local; wrangler kv key put k v --local --binding ~-',
     'wrangler kv key put k v --local --binding=~-',
+    // 構文エラーでも、判定から落とさない
+    'wrangler deploy )',
+    'git push origin main )',
+    '[[ x | git push origin main',
     // 別名の長い形 --r
     'wrangler dev --r',
     'wrangler dev --r=true',
