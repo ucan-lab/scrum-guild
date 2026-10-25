@@ -45,7 +45,7 @@ gh api "repos/{owner}/{repo}/commits/<head_sha>/check-runs" --jq '.check_runs[] 
 ```
 
 作成者以外の人のレビュワーごとに、最後の `APPROVED` か `CHANGES_REQUESTED` を見る（手順 9 で使う）。
-`conclusion` が `failure`、`timed_out`、`cancelled` の CI があれば、レビュー指摘より先に直す（理由: CI が赤いとレビュワーは読み始めない）。
+`review` を除き、`conclusion` が `failure`、`timed_out`、`cancelled` の CI があれば、レビュー指摘より先に直す（理由: CI が赤いとレビュワーは読み始めない。`review` は AI レビューで、助言なので `ci-ok` に含めない）。
 
 CI の AI レビュー（`.github/workflows/ai-review.yml`、チェックの名前は `review`）が終わるまで、手順 2 に進まない（理由: 途中で集めると、後から付いた指摘を拾い損ねる）。
 
@@ -314,7 +314,7 @@ gh api "repos/{owner}/{repo}/commits/<head>/check-runs" --paginate --jq '.check_
 - `base` が `main` でなければマージしない（別のブランチへの PR では、`ci-ok` はそのブランチとの差分しか見ていない）
 - `label` は同じ head に何件も付く（`edited` と `unlabeled` のイベントは `skipped` で終わる）。`skipped` を除いた `label` が1件以上あり、すべて `completed` で `success` のときだけ成功とみなす。1件も無い、実行中、`success` 以外があるときは成功とみなさない
 - `ci-ok` も同じ基準で見る。文書だけの PR でも `ci-ok` は飛ばずに動くので、1件も無ければ成功とみなさない
-- どの名前のチェックでも、`completed` でないもの、`conclusion` が `failure`、`cancelled`、`timed_out`、`action_required` のものが1件でもあればマージしない
+- `review` を除くどの名前のチェックでも（`review` は AI レビューで、助言なので `ci-ok` に含めない）、`completed` でないもの、`conclusion` が `failure`、`cancelled`、`timed_out`、`action_required` のものが1件でもあればマージしない
 - 満たさなければマージせず、理由を伝えて人にマージを依頼する
 - 満たせば `gh pr merge <number> --squash --match-head-commit <head>` を打つ（確かめた後に push された head をマージしないため）。フックが確認を挟む。head が変わって失敗したら、この確認からやり直す
 - ユーザーが確認で断ったら、マージせずに止まる
