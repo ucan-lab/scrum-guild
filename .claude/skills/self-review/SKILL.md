@@ -42,12 +42,14 @@ PR があれば、ベースは `origin/<base>` とし、次の前提をすべて
 | --- | --- | --- |
 | 最新のベースを取り込み済み | `git fetch origin && git merge-base --is-ancestor origin/<base> HEAD` | 終了コード 0 |
 | 最新のコミットを push 済み | `git rev-parse HEAD` と `head_sha` を比べる。`git status --short` も見る | 一致し、未コミットの変更が無い |
-| CI が成功 | 下の check-runs | 全て `status` が `completed` で、`conclusion` が `success`、`skipped`、`neutral` のどれか |
+| CI が成功 | 下の check-runs | `review` を除き、全て `status` が `completed` で、`conclusion` が `success`、`skipped`、`neutral` のどれか |
 | レビューコメントを解決済み | 下の GraphQL | `isResolved: false` のスレッドが 0 件 |
 
 ```bash
 gh api "repos/{owner}/{repo}/commits/<head_sha>/check-runs" --jq '.check_runs[] | {name, status, conclusion, url: .html_url}'
 ```
+
+`review` は AI レビュー（`.github/workflows/ai-review.yml`）のチェックで、助言なので `ci-ok` に含めず、落ちてもマージの判定を止めない（`docs/development.md` の「CI」）。落ちたか実行中でも、この前提を満たさないとはみなさない（理由: 回した先の pr-feedback も `review` の失敗は直さないので、数に入れると self-review が先へ進めない）。
 
 ```bash
 gh api graphql -f query='{ repository(owner:"<owner>", name:"<repo>") { pullRequest(number:<number>) { reviewThreads(first:100) { nodes { isResolved path comments(first:1) { nodes { body author { login } } } } } } } }'
@@ -59,7 +61,7 @@ gh api graphql -f query='{ repository(owner:"<owner>", name:"<repo>") { pullRequ
 
 - ベースの取り込みが未了: `sync-base` で rebase して `--force-with-lease` で push する
 - push が未了: `git push` を提案する
-- CI が失敗: pr-feedback で直す。`status` が `completed` でないものがあれば、間を空けて check-runs を取り直し、結果が出てから再確認する
+- CI が失敗: pr-feedback で直す。`review` を除いて `status` が `completed` でないものがあれば、間を空けて check-runs を取り直し、結果が出てから再確認する
 - 未解決のスレッドがある: pr-feedback で対応する
 
 全て満たせば手順 1 へ進む。
