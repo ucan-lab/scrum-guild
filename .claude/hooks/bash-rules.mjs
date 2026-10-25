@@ -356,10 +356,15 @@ const GLOB_CHARS = /[*?[]/;
 // -e の値やヒアドキュメントの本文は複数の語を含むので、空白、引用符、括弧で区切って1語ずつ判定する
 const CODE_SEPARATORS = /[\s'"()`]+/;
 
-// pnpm exec node x、npm exec -- tsx x、yarn node x、corepack pnpm dlx tsx x のように道具を経由するとき、経由先の引数を返す。
-// 実行の道具でなければ null
-function runnerArgs(tool, args) {
-  if (RUNNERS.has(tool)) return args;
+// パッケージマネージャーの作業場所を変えるフラグ（pnpm -C、--dir、yarn --cwd、npm --prefix）。--flag=値 の形も読む
+const DIR_FLAGS = new Set(['-C', '--dir', '--cwd', '--prefix']);
+const EXEC_FLAGS_WITH_VALUE = new Set([...PACKAGE_FLAGS_WITH_VALUE, '-p', '--package']);
+
+// pnpm exec env X=1 node x、npm exec -- tsx x、yarn node x、corepack pnpm dlx tsx x のように道具を経由するとき、
+// 経由先のコマンドの語の並びと、作業場所を返す。judgeSegment に掛け直すので、env、代入、timeout などの前置きも同じ規則で効く。
+// exec と dlx の後ろは何でも経由先とし、exec の無い形（yarn node x）は実行の道具のときだけ経由先とする。経由しなければ null。
+// 作業場所は -C、--dir、--cwd、--prefix の値で解決し直し、~ か $ で始まる値は判定できない（null）とする
+function viaPackageManager(tool, args, dir) {
   let manager = tool;
   let rest = args;
   if (tool === 'corepack') {
@@ -371,14 +376,21 @@ function runnerArgs(tool, args) {
   for (let i = 0; i < rest.length; i++) {
     const a = rest[i];
     if (a.startsWith('-')) {
-      if (PACKAGE_FLAGS_WITH_VALUE.has(a)) i++;
+      const eq = a.indexOf('=');
+      if (DIR_FLAGS.has(eq === -1 ? a : a.slice(0, eq))) {
+        const value = eq === -1 ? rest[++i] : a.slice(eq + 1);
+        dir = !dir || !value || /^[~$]/.test(value) ? null : path.resolve(dir, value);
+      } else if (eq === -1 && EXEC_FLAGS_WITH_VALUE.has(a)) {
+        i++;
+      }
       continue;
     }
     if (!viaExec && (a === 'exec' || a === 'dlx')) {
       viaExec = true;
       continue;
     }
-    return RUNNERS.has(baseName(a)) ? rest.slice(i + 1) : null;
+    if (!viaExec && !RUNNERS.has(baseName(a))) return null;
+    return { words: rest.slice(i), dir };
   }
   return null;
 }
@@ -444,11 +456,14 @@ const isTestFile = (word) => /^[\w./*-]+$/.test(word) && word.endsWith('.test.ts
 function judgeDeployWord(word, dir) {
   if (isTestFile(word)) return null;
   const forms = [word.toLowerCase()];
-  if (dir) forms.push(path.resolve(dir, word).toLowerCase());
+  // 空白を含む語（bash -c "echo scripts/deploy.ts" の -c の値）はパスではない。解決すると途中の空白が先頭のディレクトリ名になり、
+  // 引数の文字列がパスのように当たってしまう。-c の中身は judgeBash が別に見る
+  const isPath = !/\s/.test(word);
+  if (dir && isPath) forms.push(path.resolve(dir, word).toLowerCase());
   if (forms.some((f) => DEPLOY_PATH.test(f))) return DENY;
-  if (GLOB_CHARS.test(word) && forms.some(globHitsDeploy)) return DENY;
+  if (isPath && GLOB_CHARS.test(word) && forms.some(globHitsDeploy)) return DENY;
   const isRelative = !/^[/~]/.test(word);
-  if (!dir && isRelative && word.split('/').pop().toLowerCase().startsWith('deploy')) return ASK;
+  if (!dir && isPath && isRelative && word.split('/').pop().toLowerCase().startsWith('deploy')) return ASK;
   return null;
 }
 
@@ -473,18 +488,22 @@ function judgeSegment(words, ctx) {
   }
   // node --test は並べたファイルを全部実行するので、先頭だけでなく位置引数を全部見る。
   // --test の無い node と bash では2つ目からはただの引数だが、取りこぼすより止めすぎるほうを取る
-  const viaRunner = runnerArgs(tool, args);
+  // 道具の語、シェルの位置引数、< の読み込み元は区切らずに見る。実行の道具の引数だけは、-e の値と本文を含むので語に区切る
   const scriptWords = [words[ci]];
-  if (SHELLS.has(tool)) scriptWords.push(...positionals(args), ...stdinTargets(words));
-  if (viaRunner) scriptWords.push(...runnerWords(viaRunner), ...stdinTargets(words));
-  // words[ci] は道具そのものの語なので区切らない。それ以外は -e の値と本文を含むので区切って見る
-  const deployVerdict = judgeDeployWords(
-    [scriptWords[0], ...scriptWords.slice(1).flatMap((w) => w.split(CODE_SEPARATORS).filter(Boolean))],
-    ctx.dir,
-  );
+  if (SHELLS.has(tool)) scriptWords.push(...positionals(args));
+  if (SHELLS.has(tool) || RUNNERS.has(tool)) scriptWords.push(...stdinTargets(words));
+  if (RUNNERS.has(tool)) scriptWords.push(...runnerWords(args).flatMap((w) => w.split(CODE_SEPARATORS).filter(Boolean)));
+  const deployVerdict = judgeDeployWords(scriptWords, ctx.dir);
   if (deployVerdict === DENY) results.push([DENY, 'デプロイのスクリプトは Workers Builds だけが実行する']);
   if (deployVerdict === ASK) {
     results.push([ASK, 'デプロイのスクリプトらしい語を、作業場所を判定できない（cd ~ や変数の先）まま渡している。人が確かめる']);
+  }
+
+  // pnpm exec env WORKERS_CI=1 node x のように道具を経由するときは、経由先を前置きごと同じ規則で見る
+  const via = viaPackageManager(tool, args, ctx.dir);
+  if (via) {
+    if (ctx.depth + 1 > MAX_DEPTH) results.push([ASK, 'コマンドの入れ子が深く、判定しきれない']);
+    else results.push(...judgeSegment([...words.slice(0, ci), ...via.words], { ...ctx, dir: via.dir, depth: ctx.depth + 1 }));
   }
 
   const wrangler = findWrangler(words, ci);
