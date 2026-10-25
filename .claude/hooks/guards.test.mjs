@@ -583,6 +583,25 @@ describe('入口', () => {
       assert.equal(decide(path.join(worktree, '.claude/hooks/bash-rules.mjs'), ''), 'ask');
     });
 
+    test('Bash の判定は、同名のタグがあっても main のブランチを見分ける', () => {
+      const bash = (command, cwd) => {
+        const input = JSON.stringify({ tool_name: 'Bash', cwd, tool_input: { command } });
+        const result = spawnSync(process.execPath, [path.join(hooks, 'guard-bash.mjs')], { input, encoding: 'utf8', env: cleanEnv });
+        return result.stdout ? JSON.parse(result.stdout).hookSpecificOutput.permissionDecision : 'allow';
+      };
+      sh(['checkout', '-q', '-b', 'main'], main);
+      sh(['tag', 'main'], main);
+      try {
+        assert.equal(bash('git commit -m x', main), 'deny');
+        assert.equal(bash('git push origin HEAD', main), 'deny');
+        assert.equal(bash('git commit -m x', worktree), 'allow');
+      } finally {
+        sh(['tag', '-d', 'main'], main);
+        sh(['checkout', '-q', 'trunk'], main);
+        sh(['branch', '-q', '-D', 'main'], main);
+      }
+    });
+
     test('main の作業コピーの書き換えを止め、ワークツリーと別のリポジトリは通す', () => {
       const other = path.join(tmp, 'other');
       mkdirSync(other);
