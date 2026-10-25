@@ -193,7 +193,7 @@ test('「確かめ直す」は、結果が出てから成功と失敗を分け�
   let mode: 'ok' | 'fail' = 'ok';
   await page.route('**/api/health', async (route) => {
     await new Promise((resolve) => setTimeout(resolve, 400));
-    if (mode === 'ok') await route.fulfill({ json: { status: 'ok', version } });
+    if (mode === 'ok') await route.fulfill({ json: { status: 'ok', database: 'ok', version } });
     else await route.fulfill({ status: 500, json: { error: { code: 'internal', message: 'x' } } });
   });
   await page.goto('/');
@@ -218,7 +218,7 @@ test('「確かめ直す」は、結果が出てから成功と失敗を分け�
 });
 
 test('トーストは数秒で消え、同時に出るのは3件まで', async ({ page }) => {
-  await page.route('**/api/health', (route) => route.fulfill({ json: { status: 'ok', version } }));
+  await page.route('**/api/health', (route) => route.fulfill({ json: { status: 'ok', database: 'ok', version } }));
   await page.goto('/');
   const recheck = page.getByRole('button', { name: '確かめ直す' });
   for (let i = 0; i < 5; i++) {
@@ -261,7 +261,7 @@ test('画面の題名は「画面 - Scrum Guild」で、メニューには画面
 // 本番の版は40文字の SHA。狭い幅でも横にはみ出さない
 test('320px の幅で、40文字の版とダイアログの JSON が横にはみ出さない', async ({ page }) => {
   const sha = '9f2c4e7a1b3d5f60718293a4b5c6d7e8f901a2b3';
-  await page.route('**/api/health', (route) => route.fulfill({ json: { status: 'ok', version: sha } }));
+  await page.route('**/api/health', (route) => route.fulfill({ json: { status: 'ok', database: 'ok', version: sha } }));
   await page.setViewportSize({ width: 320, height: 700 });
   await page.goto('/');
   await expect(page.getByRole('status')).toHaveText(`API: ok（版 ${sha}）`);
