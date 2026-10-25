@@ -1,5 +1,8 @@
-// ワークスペースの作成、一覧、枠、閉じると開き直しが使う操作の定義
+// ワークスペースの作成、一覧、枠、閉じると開き直し、メンバーの招待が使う操作の定義
 import type { AnyOperationDefinition } from '../define.ts';
+import { invitationCreate } from './invitation-create.ts';
+import { invitationRevoke } from './invitation-revoke.ts';
+import { inviteeResolve } from './invitee-resolve.ts';
 import { memberList } from './member-list.ts';
 import { workspaceInfo } from './workspace.ts';
 import { workspaceClose } from './workspace-close.ts';
@@ -9,6 +12,9 @@ import { workspaceList } from './workspace-list.ts';
 import { workspaceReopen } from './workspace-reopen.ts';
 
 export {
+  invitationCreate,
+  invitationRevoke,
+  inviteeResolve,
   memberList,
   workspaceClose,
   workspaceCreate,
@@ -26,4 +32,7 @@ export const workspaceOperations: readonly AnyOperationDefinition[] = [
   memberList,
   workspaceClose,
   workspaceReopen,
+  inviteeResolve,
+  invitationCreate,
+  invitationRevoke,
 ];

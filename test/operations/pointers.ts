@@ -4,7 +4,7 @@
 // 組織の外の操作は、入力が必須の項目を持つときだけ足す（運用者の操作は、成功する入力を作る）
 import { createFakeGithub } from '../auth/fake-github.ts';
 import { githubUser } from '../auth/helpers.ts';
-import { createStory, createTask, createWorkspace } from '../factories.ts';
+import { createInvitation, createStory, createTask, createWorkspace } from '../factories.ts';
 import type { Pointers } from './harness.ts';
 
 // 運用者の操作が問い合わせる GitHub。operation-registry.test.ts が fetcher を createApp に渡す
@@ -43,6 +43,32 @@ export const pointers: Pointers = {
   'workspace-reopen': async (target) => ({
     workspace_id: (
       await createWorkspace(target.organization, target.admin.userId!, { closed_at: '2026-10-22T00:00:00.000Z' })
+    ).id,
+  }),
+  'invitee-resolve': async (target) => ({
+    workspace_id: target.workspace.id,
+    provider: 'github',
+    username: newGithubUser().login,
+  }),
+  // 呼ぶたびに別の人を招待する（同じ人を続けて招待すると 409 になるため）
+  'invitation-create': async (target) => {
+    const user = newGithubUser();
+    return {
+      workspace_id: target.workspace.id,
+      provider: 'github',
+      username: user.login,
+      login_subject: String(user.id),
+      role: 'member',
+    };
+  },
+  // 呼ぶたびに承諾待ちの招待を作る（取り消した招待を続けて取り消すと 409 になるため）
+  'invitation-revoke': async (target) => ({
+    workspace_id: target.workspace.id,
+    invitation_id: (
+      await createInvitation(target.organization, target.workspace.id, target.admin.userId!, {
+        provider: 'github',
+        subject: `pointer-${crypto.randomUUID()}`,
+      })
     ).id,
   }),
   'resolve-github-user': async () => ({ username: newGithubUser().login }),

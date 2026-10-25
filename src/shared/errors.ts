@@ -10,6 +10,12 @@ export const errorCodes = [
   'conflict',
   // 閉じたワークスペースへの書き込み。読み取り専用なので書けない。409
   'workspace_closed',
+  // 招待の作成（invitation-create）の 409。招待する人がもうそのワークスペースに所属している、同じワークスペースに承諾待ちの招待がある、
+  // 組織の人数が上限に達している、画面が確かめた後にユーザー名の持ち主が変わった（解決し直した ID が違う）
+  'already_member',
+  'already_invited',
+  'member_limit_reached',
+  'invitee_changed',
   // 操作の回数の上限（定義の rateLimit）を超えた。429
   'rate_limited',
   'internal',

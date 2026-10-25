@@ -12,6 +12,7 @@ import type { Insertable, OrganizationDb, OrganizationTables, QueryCreator } fro
 import { ApiError } from '../errors.ts';
 import { uuidv7 } from '../uuid.ts';
 import { implement } from './implement.ts';
+import { readSeats } from './invitation.ts';
 import { newWorkspaceRows } from './workspace-rows.ts';
 import { actorUserIdOf, changeLogColumns } from './write-guards.ts';
 
@@ -203,8 +204,8 @@ export const workspaceLeaderCandidatesOperation = implement(workspaceLeaderCandi
 });
 
 // 件数に上限を付けない。1つのワークスペースの所属と招待は数十人の想定（docs/data-model.md の workspaces の節）。
-// 招待を返すのは、管理者（所属していなくてもよい）とリーダー。一般のメンバーには、読みもせず null を返す
-export const memberListOperation = implement(memberList, async ({ db, actor, workspace }) => {
+// 招待と組織の人数を返すのは、管理者（所属していなくてもよい）とリーダー。一般のメンバーには、読みもせず null を返す
+export const memberListOperation = implement(memberList, async ({ db, actor, workspace, tools }) => {
   const workspaceId = workspace.workspaceId;
   const organizationId = workspace.organizationId;
   const canSeeInvitations = actor.isAdmin || workspace.actorRole === 'leader';
@@ -237,9 +238,12 @@ export const memberListOperation = implement(memberList, async ({ db, actor, wor
       .orderBy('id'),
   );
 
-  const [workspaceResult, memberResult, invitationResult] = canSeeInvitations
-    ? await db.batch([workspaceStatement, membersStatement, invitationsStatement] as const)
-    : [...(await db.batch([workspaceStatement, membersStatement] as const)), undefined];
+  const [[workspaceResult, memberResult, invitationResult], seats] = await Promise.all([
+    canSeeInvitations
+      ? db.batch([workspaceStatement, membersStatement, invitationsStatement] as const)
+      : db.batch([workspaceStatement, membersStatement] as const).then((results) => [...results, undefined] as const),
+    canSeeInvitations ? readSeats(db, tools) : null,
+  ]);
 
   const timezone = workspaceResult.rows[0]?.timezone;
   if (timezone === undefined) throw new ApiError(404, 'not_found');
@@ -267,6 +271,7 @@ export const memberListOperation = implement(memberList, async ({ db, actor, wor
             // 文字列の順でなく時刻で比べる（書き手の形の違いで、切れた招待を有効と見ないため）
             expired: row.claim_expires_at !== null && Date.parse(row.claim_expires_at) <= at,
           })),
+    seats,
   };
 });
 

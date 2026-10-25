@@ -733,6 +733,105 @@ export const dictionary = defineDictionary({
   // Google の招待の期限（作ってから14日）。{date} は YYYY-MM-DD
   invitationExpiresOn: workspace('{date} まで', '{date} まで'),
   invitationExpired: workspace('期限切れ', '期限切れ'),
+  // 承諾待ちの招待の取り消し（リーダーと管理者）。{name} は招待のときの名前
+  invitationActionsHeader: workspace('操作', '操作'),
+  invitationRevoke: workspace('取り消す', '取り消す'),
+  invitationRevokeLabel: workspace('{name} への招待を取り消す', '{name} への招待を取り消す'),
+  invitationRevoking: workspace('招待を取り消しています', '招待を取り消しています'),
+  invitationRevoked: workspace('招待を取り消しました', '招待を取り消しました'),
+  invitationRevokeChanged: workspace(
+    '招待の状態が変わっていました。一覧を読み直しました。',
+    '招待の状態が変わっていました。一覧を読み直しました。',
+  ),
+  invitationRevokeNotFound: workspace(
+    '招待が見つかりませんでした。一覧を読み直しました。',
+    '招待が見つかりませんでした。一覧を読み直しました。',
+  ),
+  invitationRevokeFailed: workspace(
+    '招待を取り消せませんでした。もう一度試してください。',
+    '招待を取り消せませんでした。もう一度試してください。',
+  ),
+  // 「招待する」の節（リーダーと管理者）。ログインの手段は GitHub だけ（Google は #190 で足す）。
+  // {organization} {admin} {workspace} は、その言葉づかいの言葉を画面が渡す
+  inviteSectionTitle: workspace('招待する', '招待する'),
+  inviteSeats: workspace('{organization}の人数 {used} / {limit} 人', '{organization}の人数 {used} / {limit} 人'),
+  inviteViaLabel: workspace('ログインの手段', 'ログインの手段'),
+  inviteGithubUserLabel: workspace('GitHub のユーザー名', 'GitHub のユーザー名'),
+  inviteGithubUserExample: workspace('例: kotone-dev', '例: kotone-dev'),
+  inviteGithubUserHint: workspace(
+    'GitHub のユーザー ID に解決します。「確かめる」を押して、招待する人を見て確かめてから招待します。',
+    'GitHub のユーザー ID に解決します。「確かめる」を押して、招待する人を見て確かめてから招待します。',
+  ),
+  inviteVerify: workspace('確かめる', '確かめる'),
+  inviteVerifying: workspace('確かめています', '確かめています'),
+  inviteVerifyLead: workspace(
+    'この人を招待します。アバター、ユーザー名、表示名が、招待したい人のものか確かめてください。ユーザー名は 1 字違いでも別の人に当たります。',
+    'この人を招待します。アバター、ユーザー名、表示名が、招待したい人のものか確かめてください。ユーザー名は 1 字違いでも別の人に当たります。',
+  ),
+  inviteNoDisplayName: workspace('表示名なし', '表示名なし'),
+  inviteGithubId: workspace('GitHub のユーザー ID {id}', 'GitHub のユーザー ID {id}'),
+  inviteSubmit: workspace('招待する', '招待する'),
+  inviteSubmitting: workspace('招待しています', '招待しています'),
+  inviteSendNote: workspace(
+    'Scrum Guild は招待をメールで送りません。{organization}の URL（{url}）を本人に伝えてください。',
+    'Scrum Guild は招待をメールで送りません。{organization}の URL（{url}）を本人に伝えてください。',
+  ),
+  inviteDone: workspace('{name} を招待しました', '{name} を招待しました'),
+  inviteLiveVerified: workspace('確かめました: {name}', '確かめました: {name}'),
+  inviteLimitReached: workspace(
+    '{organization}の人数が上限（{limit} 人）に達しているため、招待できません。上限を上げるには{admin}に相談してください。',
+    '{organization}の人数が上限（{limit} 人）に達しているため、招待できません。上限を上げるには{admin}に相談してください。',
+  ),
+  inviteErrorUserRequired: workspace('ユーザー名を入れてください。', 'ユーザー名を入れてください。'),
+  inviteErrorVerifyAgain: workspace(
+    'ユーザー名を直したので、もう一度確かめてください。',
+    'ユーザー名を直したので、もう一度確かめてください。',
+  ),
+  inviteErrorUserNotFound: workspace(
+    'そのユーザー名の人が GitHub にいません。',
+    'そのユーザー名の人が GitHub にいません。',
+  ),
+  inviteErrorNotUser: workspace(
+    'GitHub の組織のアカウントなどで、個人のアカウントではありません。ログインできないので招待できません。',
+    'GitHub の組織のアカウントなどで、個人のアカウントではありません。ログインできないので招待できません。',
+  ),
+  inviteErrorUserChanged: workspace(
+    '確かめたあとに、ユーザー名の持ち主が変わりました。もう一度確かめてください。',
+    '確かめたあとに、ユーザー名の持ち主が変わりました。もう一度確かめてください。',
+  ),
+  inviteErrorAlreadyMember: workspace(
+    'この人は、もうこの{workspace}に所属しています。',
+    'この人は、もうこの{workspace}に所属しています。',
+  ),
+  inviteErrorAlreadyInvited: workspace(
+    'この人には、この{workspace}への承諾待ちの招待があります。',
+    'この人には、この{workspace}への承諾待ちの招待があります。',
+  ),
+  inviteErrorClosed: workspace(
+    '終了した{workspace}には招待できません。画面を読み直しました。',
+    '終了した{workspace}には招待できません。画面を読み直しました。',
+  ),
+  inviteErrorForbidden: workspace(
+    '招待できる権限がなくなっていました。画面を読み直しました。',
+    '招待できる権限がなくなっていました。画面を読み直しました。',
+  ),
+  inviteErrorTooMany: workspace(
+    '確かめる回数が多すぎます。しばらく待ってから、もう一度試してください。',
+    '確かめる回数が多すぎます。しばらく待ってから、もう一度試してください。',
+  ),
+  inviteErrorGithubUnavailable: workspace(
+    'GitHub に届きませんでした。しばらくしてから、もう一度試してください。',
+    'GitHub に届きませんでした。しばらくしてから、もう一度試してください。',
+  ),
+  inviteErrorUnreachable: workspace('サーバーに届きませんでした。', 'サーバーに届きませんでした。'),
+  inviteErrorVerifyFailed: workspace(
+    'ユーザー名を確かめられませんでした。もう一度試してください。',
+    'ユーザー名を確かめられませんでした。もう一度試してください。',
+  ),
+  inviteErrorFailed: workspace(
+    '招待できませんでした。もう一度試してください。',
+    '招待できませんでした。もう一度試してください。',
+  ),
   // 招待の URL を開く画面（/invite）。組織の名前は、秘密を API に送る前なので出さない
   inviteTitle: organization('{app} への招待', '{app} への招待'),
   inviteLead: organization(
