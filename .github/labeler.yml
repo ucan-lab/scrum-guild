@@ -29,8 +29,9 @@ needs-human:
           - ".node-version"
           # lint の設定（組織で絞る層を守る規則を含む）
           - "eslint.config.*"
-          # GitHub と Claude の設定
+          # GitHub と Claude の設定、git のフック
           - ".github/**"
+          - ".githooks/**"
           - ".claude/settings.json"
           - ".claude/hooks/**"
           - ".mcp.json"

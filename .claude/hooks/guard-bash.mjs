@@ -6,12 +6,15 @@ import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 
+// --abbrev-ref と symbolic-ref --short は、同名のタグがあると heads/main を返すので、完全な ref から名前を取る。
+// detached HEAD とブランチを引けないときは undefined（push の先を判定できないものとして確認を挟む）
 function branchOf(dir) {
   try {
-    return execFileSync('git', ['-C', dir, 'rev-parse', '--abbrev-ref', 'HEAD'], {
+    const ref = execFileSync('git', ['-C', dir, 'symbolic-ref', '--quiet', 'HEAD'], {
       encoding: 'utf8',
       stdio: ['ignore', 'pipe', 'ignore'],
     }).trim();
+    return ref.replace(/^refs\/heads\//, '');
   } catch {
     return undefined;
   }

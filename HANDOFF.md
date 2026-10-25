@@ -118,7 +118,7 @@
 ## 次にやること
 
 1. 上の確認の結果を `docs/design.md` と `docs/requirements.md` に反映する
-2. #20（CI と本番へのデプロイ）を閉じる。2026-10-25 に、API トークンの絞り込み、文書だけの push のビルドを飛ばす設定、自動の rollback（#84、#85）、Workers Logs と通知の手段の確かめまで済んだ。ここから先、コードは PR を通す
+2. #20（CI と本番へのデプロイ）を閉じる。2026-10-25 に、API トークンの絞り込み、文書だけの PR のビルドを飛ばす設定、自動の rollback（#84、#85）、Workers Logs と通知の手段の確かめまで済んだ。ここから先、文書も含めてすべて PR を通す
 3. `d1-migration` のスキル（2026-10-25 に作った）に従い、`docs/data-model.md` から最初のマイグレーションを書く（#49）。着手のときに、スキルだけを読んで手順を追えるかを確かめ、足りなければスキルを直す
 4. `design/tokens.css` と `design/components.css` を本番の画面に持ち込み、`design/kit.js` の関数を1つずつ Svelte のコンポーネントにする。`html` の `data-theme` には、`users.theme`、なければ `organizations.theme` の値を入れる
 5. 最初の数画面が Svelte で動いたら、下の「画面の自己レビューのスキル」を作る
@@ -179,7 +179,7 @@ hq の `04-research/x-seeconvm-opus-motion-design.md` の7章「The Critic」（
 
 ## 覚えておくこと
 
-- `main` に直接コミットしてよいのは、文書だけの変更に限る（`CLAUDE.md` の例外と同じ）。GitHub は無料のプランでブランチ保護が無いので、設定ではなく決まりとして守る（2026-10-23。`docs/development.md` の「`main` を守る仕組み」）。
+- `main` には直接コミットも push もしない。文書だけの変更も PR を通す（2026-10-25）。GitHub は無料のプランでブランチ保護が無いので、セッションは `.claude/hooks/`、人は `.githooks/` の踏み線で止め、決まりとして守る（`docs/development.md` の「`main` を守る仕組み」）。
 - 名前は Scrum Guild。表記の決まりは `docs/requirements.md` の「名前」、経緯と重なりの確認は `docs/naming.md`。
 - 見本は、画面ごとの CSS を持たない決まり。足りない部品は先に `design/components.css` とカタログに足す。
 - 見本の例のデータ（`design/sample-data.js`）はすべて架空。実在の名前を混ぜない。

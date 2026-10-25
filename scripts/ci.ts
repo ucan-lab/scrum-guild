@@ -1,6 +1,6 @@
 // CI（.github/workflows/ci.yml）が使う判定。ワークフローに書かず、ここで node --test にかける。
 
-// CLAUDE.md の「守ること」で main に直接入れてよい文書と同じ範囲。片方を変えるときは両方を直す
+// docs/development.md の「文書だけの PR」に書いた範囲。片方を変えるときは両方を直す
 const docsPatterns: RegExp[] = [
   /^docs\//,
   /^HANDOFF\.md$/,

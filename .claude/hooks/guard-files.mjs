@@ -63,6 +63,39 @@ function isOtherWorktree(root, dir) {
   }
 }
 
+const commonDir = (dir) => realpathSync(path.resolve(dir, git(dir, ['rev-parse', '--git-common-dir'])));
+
+// セッションのリポジトリ（本体と、そのワークツリー）か。別のリポジトリのファイルは見ない。
+// プロジェクトを引けないとき（変数が無い、ワークツリーを消した後のセッション）は、同じリポジトリとみなして止める側に倒す
+function isProjectRepo(root) {
+  const project = process.env.CLAUDE_PROJECT_DIR;
+  let projectCommon;
+  try {
+    projectCommon = project && commonDir(project);
+  } catch {
+    projectCommon = undefined;
+  }
+  return !projectCommon || commonDir(root) === projectCommon;
+}
+
+// 作業コピーが main にいるか。--abbrev-ref は同名のタグがあると heads/main を返すので、symbolic-ref で見る。
+// 本体の作業コピーを detached にして抜けさせない。rebase の途中のワークツリーと、本体で rebase するクラウドのセッションは通す
+function isProjectOnMain(root, dir) {
+  try {
+    if (!isProjectRepo(root)) return false;
+    let ref;
+    try {
+      ref = git(root, ['symbolic-ref', '--quiet', 'HEAD']);
+    } catch {
+      return !isLinkedWorktree(dir) && process.env.CLAUDE_CODE_REMOTE !== 'true';
+    }
+    return ref === 'refs/heads/main';
+  } catch {
+    // git のリポジトリの中なのに判定できないときは、止める側に倒す
+    return true;
+  }
+}
+
 // origin/main か main にあれば true、どちらの ref も引けなければ undefined
 function existsOnMain(root, rel) {
   const refs = ['origin/main', 'main'].filter((ref) => {
@@ -93,7 +126,8 @@ try {
     const { root, rel, dir } = located;
     const verdict = judgeFile({
       rel,
-      inWorktree: rel.startsWith('.claude/hooks/') && isOtherWorktree(root, dir),
+      onMain: isProjectOnMain(root, dir),
+      inWorktree: (rel.startsWith('.claude/hooks/') || rel.startsWith('.githooks/')) && isOtherWorktree(root, dir),
       contents: writtenContents(input.tool_name, input.tool_input),
       shippedOnMain: rel.startsWith('migrations/') ? existsOnMain(root, rel) : false,
     });

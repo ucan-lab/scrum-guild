@@ -209,6 +209,60 @@ describe('bash-rules: 止める', () => {
     assert.equal(decision('git push origin HEAD', 'main'), 'deny');
   });
 
+  test('main の上でコミットを作る操作', () => {
+    for (const command of [
+      'git commit -m "docs: x"',
+      'git commit --no-verify -m x',
+      'git commit --amend',
+      'git merge x',
+      'git merge --continue',
+      'git cherry-pick abc',
+      'git revert abc',
+      'git am 0001.patch',
+      'git -c core.hooksPath=/dev/null commit -m x',
+      'git commit --allow-empty -m --abort',
+      'git merge --ff-only --no-ff -m m x',
+      'git pull',
+      'git pull --no-ff . x',
+      'git pull --rebase',
+    ]) {
+      assert.equal(decision(command, 'main'), 'deny', command);
+    }
+    assert.match(verdict('git commit -m x', 'main')[1], /作業ブランチ/);
+    assert.equal(decision('git checkout main && git commit -m x'), 'deny');
+    assert.equal(decision('git commit -m x'), 'allow');
+    assert.equal(decision('git pull --ff-only', 'main'), 'allow');
+    assert.equal(decision('git pull --ff-only origin main', 'main'), 'allow');
+    assert.equal(decision('git -C /repo pull --ff-only', 'main'), 'allow');
+    assert.equal(decision('git pull --ff-only --quiet --prune', 'main'), 'allow');
+    assert.equal(decision('git merge --ff-only -q origin/main', 'main'), 'allow');
+    assert.equal(decision('git pull --ff-only --rebase', 'main'), 'deny');
+    assert.equal(decision('git merge --ff-only --ff x', 'main'), 'deny');
+    assert.equal(decision('git cherry-pick --abort --allow-empty x', 'main'), 'deny');
+    assert.equal(decision('git merge --ff-only origin/main', 'main'), 'allow');
+    assert.equal(decision('git merge --abort', 'main'), 'allow');
+    assert.equal(decision('git cherry-pick --quit', 'main'), 'allow');
+    const branchOf = (dir) => (dir === '/repo' ? 'main' : 'x');
+    assert.equal(judgeBash('cd worktrees/x && git commit -m x', { cwd: '/repo', branchOf }), null);
+    assert.equal(judgeBash('git -C worktrees/x commit -m x', { cwd: '/repo', branchOf }), null);
+    assert.equal(judgeBash('git -C /repo commit -m x', { cwd: '/w', branchOf })?.[0], 'deny');
+    assert.equal(judgeBash('cd ~ && git commit -m x', { cwd: '/repo', branchOf })?.[0], 'ask');
+    assert.equal(judgeBash('GIT_DIR=/x git commit -m x', { cwd: '/repo', branchOf })?.[0], 'ask');
+    assert.equal(judgeBash('cd ~ && git pull --ff-only', { cwd: '/repo', branchOf }), null);
+  });
+
+  test('core.hooksPath と .githooks/ の書き換えに確認を挟む', () => {
+    assert.equal(decision('git config core.hooksPath /dev/null'), 'ask');
+    assert.equal(decision('git config --unset core.hookspath'), 'ask');
+    assert.equal(decision('git -c core.hooksPath=/dev/null commit -m x'), 'ask');
+    assert.equal(decision('git -c core.hooksPath=/dev/null push origin main'), 'deny');
+    assert.equal(decision('git config --get core.hooksPath'), 'allow');
+    assert.equal(decision('rm .githooks/pre-push'), 'ask');
+    assert.equal(decision('git config user.name x'), 'allow');
+    assert.equal(judgeFile({ rel: '.githooks/pre-push', contents: '' })?.[0], 'ask');
+    assert.equal(judgeFile({ rel: '.githooks/pre-push', contents: '', inWorktree: true }), null);
+  });
+
   test('同じコマンドの中で切り替えた先のブランチで判定する', () => {
     assert.equal(decision('git checkout main && git push'), 'deny');
     assert.equal(decision('git switch main; git push origin HEAD'), 'deny');
@@ -421,6 +475,13 @@ describe('file-rules', () => {
     assert.equal(judge('.claude/skills/x/SKILL.md', ''), 'allow');
   });
 
+  test('main の作業コピーは、文書も含めて書き換えを止める', () => {
+    const onMain = (rel) => judgeFile({ rel, contents: '', shippedOnMain: false, onMain: true })?.[0];
+    assert.equal(onMain('docs/development.md'), 'deny');
+    assert.equal(onMain('.claude/settings.json'), 'deny');
+    assert.match(judgeFile({ rel: 'x', contents: '', onMain: true })[1], /ワークツリー/);
+  });
+
   test('ワークツリーの中のフックの書き換えは確認を挟まず、設定は確認を挟む', () => {
     const inWorktree = (rel) => judgeFile({ rel, contents: '', shippedOnMain: false, inWorktree: true })?.[0] ?? 'allow';
     assert.equal(inWorktree('.claude/hooks/bash-rules.mjs'), 'allow');
@@ -493,7 +554,8 @@ describe('入口', () => {
       assert.equal(result.status, 0, `git ${args.join(' ')}: ${result.stderr}`);
     };
     mkdirSync(main);
-    sh(['init', '-q', '-b', 'main'], main);
+    // 本体を main に置くと、どの書き換えも main の作業コピーとして止まるので、別の名前で始める
+    sh(['init', '-q', '-b', 'trunk'], main);
     sh(['-c', 'user.name=t', '-c', 'user.email=t@example.com', '-c', 'commit.gpgsign=false', 'commit', '-q', '--allow-empty', '-m', 'init'], main);
     sh(['worktree', 'add', '-q', 'worktrees/1-x', '-b', '1-x'], main);
     mkdirSync(path.join(main, '.claude/hooks'), { recursive: true });
@@ -534,6 +596,54 @@ describe('入口', () => {
 
     test('セッションの場所が分からなければ確認を挟む', () => {
       assert.equal(decide(path.join(worktree, '.claude/hooks/bash-rules.mjs'), ''), 'ask');
+    });
+
+    test('Bash の判定は、同名のタグがあっても main のブランチを見分ける', () => {
+      const bash = (command, cwd) => {
+        const input = JSON.stringify({ tool_name: 'Bash', cwd, tool_input: { command } });
+        const result = spawnSync(process.execPath, [path.join(hooks, 'guard-bash.mjs')], { input, encoding: 'utf8', env: cleanEnv });
+        return result.stdout ? JSON.parse(result.stdout).hookSpecificOutput.permissionDecision : 'allow';
+      };
+      sh(['checkout', '-q', '-b', 'main'], main);
+      sh(['tag', 'main'], main);
+      try {
+        assert.equal(bash('git commit -m x', main), 'deny');
+        assert.equal(bash('git push origin HEAD', main), 'deny');
+        assert.equal(bash('git commit -m x', worktree), 'allow');
+      } finally {
+        sh(['tag', '-d', 'main'], main);
+        sh(['checkout', '-q', 'trunk'], main);
+        sh(['branch', '-q', '-D', 'main'], main);
+      }
+    });
+
+    test('main の作業コピーの書き換えを止め、ワークツリーと別のリポジトリは通す', () => {
+      const other = path.join(tmp, 'other');
+      mkdirSync(other);
+      sh(['init', '-q', '-b', 'main'], other);
+      sh(['checkout', '-q', '-b', 'main'], main);
+      try {
+        assert.equal(decide(path.join(main, 'docs/x.md'), main), 'deny');
+        assert.equal(decide(path.join(main, 'docs/x.md'), worktree), 'deny');
+        assert.equal(decide(path.join(worktree, 'docs/x.md'), main), 'allow');
+        assert.equal(decide(path.join(other, 'x.md'), main), 'allow');
+        assert.equal(decide(path.join(main, 'newdir/deep/b.md'), main), 'deny');
+        // プロジェクトを引けなければ、止める側に倒す
+        assert.equal(decide(path.join(main, 'docs/x.md'), ''), 'deny');
+        assert.equal(decide(path.join(main, 'docs/x.md'), path.join(tmp, 'gone')), 'deny');
+        // 同名のタグがあっても main とみなす
+        sh(['tag', 'main'], main);
+        assert.equal(decide(path.join(main, 'docs/x.md'), main), 'deny');
+        sh(['tag', '-d', 'main'], main);
+        // 本体の detached は止め、ワークツリーの detached（rebase の途中）は通す
+        sh(['checkout', '-q', '--detach'], main);
+        assert.equal(decide(path.join(main, 'docs/x.md'), main), 'deny');
+        sh(['checkout', '-q', '--detach'], worktree);
+        assert.equal(decide(path.join(worktree, 'docs/x.md'), main), 'allow');
+        sh(['checkout', '-q', '1-x'], worktree);
+      } finally {
+        sh(['checkout', '-q', 'trunk'], main);
+      }
     });
   });
 });

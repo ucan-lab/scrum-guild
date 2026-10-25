@@ -36,7 +36,7 @@ Workers & Pages の「Create application」→「Continue with GitHub」で、�
 | デプロイのコマンド | `node scripts/deploy-production.ts` |
 | ルートのディレクトリ（Path） | `/`（リポジトリのルート） |
 | preview builds（Enable Preview builds） | 無効 |
-| build watch paths | Include は `*`。Exclude は `docs/*`、`HANDOFF.md`、`CLAUDE.md`、`.claude/skills/*`、`.claude/agents/*`、`.claude/checklists/*`、`.github/ISSUE_TEMPLATE/*`（`CLAUDE.md` の「文書だけ」と同じ範囲） |
+| build watch paths | Include は `*`。Exclude は `docs/*`、`HANDOFF.md`、`CLAUDE.md`、`.claude/skills/*`、`.claude/agents/*`、`.claude/checklists/*`、`.github/ISSUE_TEMPLATE/*`（`docs/development.md` の「文書だけの PR」と同じ範囲） |
 | API トークン | 下の「API トークン」 |
 
 - Node の版は `.node-version`、pnpm の版は `package.json` の `packageManager` から入る（2026-10-25 に確かめた）
@@ -73,7 +73,7 @@ Workers Builds が使えるのは、Builds が自分で作ったトークンだ�
 
 ## 出し方
 
-`main` に入ると Workers Builds がビルドし、デプロイのコマンドが `scripts/deploy.ts` の手順を動かす。人の操作は要らない。変わったファイルがすべて build watch paths の Exclude に当たる push（文書だけの push）では、ビルドは走らない。
+`main` に入ると Workers Builds がビルドし、デプロイのコマンドが `scripts/deploy.ts` の手順を動かす。人の操作は要らない。変わったファイルがすべて build watch paths の Exclude に当たるマージ（文書だけの PR）では、ビルドは走らない。
 
 1. 今 100% で動いている版の ID を、戻し先として控える。Worker が無いか、デプロイが1つも無ければ戻し先無し
 2. `migrations/` にファイルがあれば、Time Travel のブックマークをログに出してから、マイグレーションを当てる
@@ -121,7 +121,7 @@ Workers Builds が使えるのは、Builds が自分で作ったトークンだ�
 
 ### 戻したあと
 
-rollback も DB の復元も `main` には触らない。`main` には壊れたコミットが残り、次に `main` へ何かが入ると（文書だけの push でも）、そのデプロイが壊れたコードをもう一度出す。自動で戻ったときも同じ。
+rollback も DB の復元も `main` には触らない。`main` には壊れたコミットが残り、次に `main` へ文書だけでない PR が入ると、そのデプロイが壊れたコードをもう一度出す。自動で戻ったときも同じ。
 
 1. 直す PR か revert の PR が入るまで、`main` へのマージと push を止める
 2. 壊れたコミットを revert する PR を作り、マージする（2026-10-25 の実地の試しでは #84 を #85 で戻した）。DB も戻したなら、戻した時点より後のマイグレーションのファイルも revert に含める。含めないと、`d1_migrations` も戻っているので、次のデプロイが同じマイグレーションをまた当てる

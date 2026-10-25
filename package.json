@@ -7,7 +7,7 @@
     "node": ">=22.18"
   },
   "scripts": {
-    "prepare": "node scripts/prepare.ts",
+    "prepare": "node scripts/prepare.ts && node scripts/git-hooks.ts",
     "dev": "node scripts/prepare.ts && node scripts/dev.ts",
     "build": "vite build && node scripts/write-headers.ts",
     "preview": "pnpm build && node scripts/dev.ts --preview",

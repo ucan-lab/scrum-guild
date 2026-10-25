@@ -1,4 +1,4 @@
-// Bash の判定。本番に触る操作、main への push、--force-with-lease 以外の force push、シークレット、gh pr merge を通さないマージを止め、
+// Bash の判定。本番に触る操作、main の上のコミットと main への push、--force-with-lease 以外の force push、シークレット、gh pr merge を通さないマージを止め、
 // gh pr merge、依存の変更、マイグレーションの作成、判定しきれない push では人の確認を挟む（docs/development.md の「Claude の設定とフック」）。
 // permissions.deny の前方一致では npx wrangler や pnpm exec wrangler の言い換えを取りこぼすので、語に分けて判定する。
 // 踏み線であって守りの本体ではない。変数の中身と、パイプで sh に流す中身は見えない。
@@ -85,6 +85,14 @@ function judgeWrangler(args) {
 
 const GIT_FLAGS_WITH_VALUE = new Set(['-C', '-c', '--git-dir', '--work-tree', '--namespace']);
 const PUSH_FLAGS_WITH_VALUE = new Set(['-o', '--push-option', '--repo', '--receive-pack', '--exec']);
+// main の上で新しいコミットを作る操作。pull --ff-only と merge --ff-only は main を origin に追いつかせるだけなので通す。
+// --ff-only を打ち消すオプション（--no-ff、--rebase など）と、値の取り違え（-m --abort）では抜けさせない
+const COMMITTING = new Set(['commit', 'merge', 'pull', 'cherry-pick', 'revert', 'am']);
+const MAKES_COMMIT = /^(--no-ff|--ff|--no-ff-only|--squash|--commit|--rebase|-r|-m|--message|-F|--file)(=|$)/;
+function onlyStops(sub, args) {
+  if (args.length === 1 && ['--abort', '--quit'].includes(args[0])) return true;
+  return ['pull', 'merge'].includes(sub) && args.includes('--ff-only') && !args.some((a) => MAKES_COMMIT.test(a));
+}
 
 // git は長いオプションを一意な省略形でも受け付ける（--force-w は --force-with-lease、--mi は --mirror）
 function isOption(arg, full, shortest) {
@@ -104,7 +112,22 @@ function judgeGit(args, dir, branchOf) {
   }
   const sub = args[i];
   const rest = args.slice(i + 1);
+  const verdict = judgeGitCommand(sub, rest, gitDir, branchOf);
+  // core.hooksPath を変えると .githooks/ の守りが外れる。止める判定はそのまま、それ以外は人が確かめる
+  const touchesHooksPath = (a) => /core\.hookspath/i.test(a);
+  const readsConfig = rest.some((a) => /^--(get|get-all|get-regexp|list)$|^-l$/.test(a));
+  if (args.slice(0, i).some(touchesHooksPath) || (sub === 'config' && !readsConfig && rest.some(touchesHooksPath))) {
+    if (verdict?.[0] !== DENY) return [ASK, 'core.hooksPath を変えると main を守る git のフック（.githooks/）が外れる。人が確かめる'];
+  }
+  return verdict;
+}
+
+function judgeGitCommand(sub, rest, gitDir, branchOf) {
   if (sub === 'add' && rest.some(mentionsSecret)) return [DENY, '.dev.vars と .env は git に入れない'];
+  if (COMMITTING.has(sub) && !onlyStops(sub, rest)) {
+    if (!gitDir) return [ASK, `git ${sub} をする作業コピーを判定できない（cd ~ や変数の先、GIT_DIR=）`];
+    if (branchOf(gitDir) === 'main') return [DENY, `main の上で git ${sub} はしない。ワークツリーで作業ブランチを切り、PR を通す`];
+  }
   if (sub !== 'push') return null;
 
   const forced = rest.some((a) => a === '--force' || isOption(a, '--mirror', 4) || /^-[a-zA-Z]*f[a-zA-Z]*$/.test(a));
@@ -130,7 +153,7 @@ function judgeGit(args, dir, branchOf) {
   for (const target of targets.filter((t) => !unknown(t))) {
     const name = (target === 'HEAD' || target === '@' ? current : target).replace(/^(refs\/)?heads\//, '');
     if (name === 'main') {
-      return [DENY, 'main へは push しない。作業ブランチから PR を通す（文書だけの変更も、push は人が行う）'];
+      return [DENY, 'main へは push しない。作業ブランチから PR を通す（文書だけの変更も同じ）'];
     }
   }
   if (targets.some((t) => /[$*]/.test(t))) return [ASK, '変数か glob を含む refspec は、main を含むかを判定できない'];
@@ -296,7 +319,7 @@ function judgeSecretAccess(tool, args, words) {
 
 // Write と Edit のフック（file-rules.mjs）が守るファイル。Bash から書き換えるときは人の確認を挟む
 function isProtectedPath(word) {
-  return /(^|\/)\.claude\/(settings[^/]*\.json$|hooks(\/|$))|(^|\/)migrations\//.test(word.replace(/^>+/, ''));
+  return /(^|\/)\.claude\/(settings[^/]*\.json$|hooks(\/|$))|(^|\/)\.githooks(\/|$)|(^|\/)migrations\//.test(word.replace(/^>+/, ''));
 }
 
 function writesProtectedPath(tool, args) {
