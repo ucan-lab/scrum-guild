@@ -6,11 +6,12 @@ import {
   LOGIN_GLOBAL_RATE_LIMIT_KEY,
   LOGIN_RATE_LIMIT,
   LOGIN_RATE_LIMIT_GLOBAL,
+  LOGIN_RATE_LIMIT_IPV6_SITE,
 } from '../src/server/auth/rate-limit.ts';
 import { commonDb } from '../src/server/db/index.ts';
 import { RETURN_TO_MAX_LENGTH } from '../src/shared/return-to.ts';
 import { createFakeGithub } from './auth/fake-github.ts';
-import { createLoginApp, FakeBrowser, loginEnv } from './auth/browser.ts';
+import { createLoginApp, FakeBrowser, loginEnv, STATE_COOKIE } from './auth/browser.ts';
 import { githubUser, organizationWithAdmin, stateRow } from './auth/helpers.ts';
 import { createUser } from './factories.ts';
 
@@ -72,7 +73,8 @@ describe('ログインの開始の全体の枠', () => {
     const log = vi.spyOn(console, 'log').mockImplementation(() => {});
     const browser = newBrowser();
     for (let i = 0; i < LOGIN_RATE_LIMIT.max + 10; i++) await browser.start('/aoba');
-    expect((await rateLimitRow(`login:${browser.ip}`))?.count).toBe(LOGIN_RATE_LIMIT.max + 10);
+    // IP の枠に断られた呼び出しは、覗いただけで IP の行も書き換えない
+    expect((await rateLimitRow(`login:${browser.ip}`))?.count).toBe(LOGIN_RATE_LIMIT.max);
     expect((await rateLimitRow(LOGIN_GLOBAL_RATE_LIMIT_KEY))?.count).toBe(LOGIN_RATE_LIMIT.max);
     // IP の枠に断られたものは、ログでも IP の枠として残る
     expect(startOutcomes(log).filter((outcome) => outcome === 'too_many')).toHaveLength(10);
@@ -120,6 +122,45 @@ describe('ログインの開始の全体の枠', () => {
     await setGlobal(LOGIN_RATE_LIMIT_GLOBAL.max, new Date(Date.now() - LOGIN_RATE_LIMIT_GLOBAL.windowMs - 1000));
     expect((await newBrowser().start()).response.headers.get('Location')).toMatch(toGithub);
     expect((await rateLimitRow(LOGIN_GLOBAL_RATE_LIMIT_KEY))?.count).toBe(1);
+  });
+
+  test('1つの /48 が使える全体の枠は、/64 を変えても /48 の枠の上限まで', async () => {
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+    const perNetwork = 10;
+    const networks = Math.ceil(LOGIN_RATE_LIMIT_IPV6_SITE.max / perNetwork) + 2;
+    for (let n = 1; n <= networks; n++) {
+      const browser = new FakeBrowser(app, github, loginEnv, `2001:db8:4b:${n.toString(16)}::1`);
+      for (let i = 0; i < perNetwork; i++) await browser.start();
+    }
+    expect(LOGIN_RATE_LIMIT_IPV6_SITE.max).toBeLessThan(LOGIN_RATE_LIMIT_GLOBAL.max);
+    expect((await rateLimitRow(LOGIN_GLOBAL_RATE_LIMIT_KEY))?.count).toBe(LOGIN_RATE_LIMIT_IPV6_SITE.max);
+    expect((await rateLimitRow('login48:2001:db8:4b::/48'))?.count).toBe(LOGIN_RATE_LIMIT_IPV6_SITE.max);
+  });
+
+  test('並行した開始でも、通るのは全体の枠の上限まで', async () => {
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+    await setGlobal(LOGIN_RATE_LIMIT_GLOBAL.max - 1, new Date());
+    const before = await oauthStateCount();
+    const results = await Promise.all(Array.from({ length: 10 }, () => newBrowser().start('/aoba')));
+    const passed = results.filter((result) => toGithub.test(result.response.headers.get('Location') ?? ''));
+    expect(passed).toHaveLength(1);
+    expect(await oauthStateCount()).toBe(before + 1);
+    expect(startOutcomes(log).filter((outcome) => outcome === 'too_many_global')).toHaveLength(9);
+  });
+
+  test('行の無い state を Cookie と合わせて送った戻り先は、rate_limits に書かない', async () => {
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+    await setGlobal(LOGIN_RATE_LIMIT_GLOBAL.max, new Date());
+    for (const ip of ['203.0.113.201', '2001:db8:4c:1::1']) {
+      const browser = new FakeBrowser(app, github, loginEnv, ip);
+      // ブラウザ以外の相手は、Cookie を自由に付けられる
+      const forged = 'F'.repeat(43);
+      browser.cookies.set(STATE_COOKIE, forged);
+      expect((await browser.callback({ code: 'x', state: forged })).location).toBe('/login?error=retry');
+    }
+    expect(await rateLimitRow('login:203.0.113.201')).toBeUndefined();
+    expect(await rateLimitRow('login48:2001:db8:4c::/48')).toBeUndefined();
+    expect(await rateLimitRow('login:2001:db8:4c:1::/64')).toBeUndefined();
   });
 
   test('全体の枠が上限でも、state の Cookie が合った戻り先は通り、全体の枠を数えない', async () => {

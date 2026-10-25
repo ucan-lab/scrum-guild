@@ -9,6 +9,7 @@ import {
   LOGIN_RATE_LIMIT,
   LOGIN_RATE_LIMIT_GLOBAL,
   LOGIN_RATE_LIMIT_IPV6_SITE,
+  LOGIN_RATE_LIMIT_POLICIES,
   loginRateLimits,
   longestRateLimitWindowMs,
 } from '../src/server/auth/rate-limit.ts';
@@ -145,8 +146,8 @@ describe('IPv6 の2つの枠', () => {
     expect(await consumeLoginRateLimits(env, address(1), now)).toBe(false);
     // 同じ /48 の別の /64 は、自分の枠が空なので通る
     expect(await consumeLoginRateLimits(env, address(2), now)).toBe(true);
-    // /48 の枠は、どの /64 からも数えている
-    expect((await rowOf(`login48:${site}::/48`))?.count).toBe(3);
+    // /48 の枠は、どの /64 からも数えている。/64 の枠に断られた呼び出しは、覗いただけで /48 も数えない
+    expect((await rowOf(`login48:${site}::/48`))?.count).toBe(2);
   });
 
   test('/48 の上限を超えたら、/64 の枠が空でも断る', async () => {
@@ -222,7 +223,8 @@ describe('数えずに覗く', () => {
     expect(await isRateLimitExceeded(env, inside, policy, now)).toBe(true);
   });
 
-  test('全体の枠の窓は、掃除の境目の最長の窓に入る', () => {
+  test('全体の枠は、掃除の境目の最長の窓を求める枠の一覧に入る', () => {
+    expect(LOGIN_RATE_LIMIT_POLICIES).toContain(LOGIN_RATE_LIMIT_GLOBAL);
     expect(longestRateLimitWindowMs([])).toBeGreaterThanOrEqual(LOGIN_RATE_LIMIT_GLOBAL.windowMs);
   });
 });
