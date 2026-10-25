@@ -247,7 +247,8 @@ const PREFIXES = new Set([
 const PREFIX_FLAGS_WITH_VALUE = new Set(['-u', '-g', '-n', '-s', '-k', '-I', '-P', '-L', '-d', '-E', '-C', '-p', '--package']);
 
 export function isAssignment(word) {
-  return /^[A-Za-z_][A-Za-z0-9_]*=/.test(word);
+  // NAME+=値 も代入
+  return /^[A-Za-z_][A-Za-z0-9_]*\+?=/.test(word);
 }
 
 export function baseName(word) {
