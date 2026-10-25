@@ -66,7 +66,7 @@ test.describe('組織が1つの人（あおば開発のハルカ）', () => {
     await expect(page.locator('.me .chip')).toHaveText('管理者');
   });
 
-  test('組織にワークスペースが1つも無い管理者には、最初のワークスペースを作る案内だけを出し（行き先のボタンは無い）、メニューは組織の画面だけ', async ({
+  test('組織にワークスペースが1つも無い管理者には、最初のワークスペースを作る案内と作るボタンを出し、メニューは組織の画面だけ', async ({
     page,
   }) => {
     await patchOrganization(page, 'aoba', (body) => {
@@ -76,8 +76,9 @@ test.describe('組織が1つの人（あおば開発のハルカ）', () => {
     });
     await page.goto('/aoba');
     await expect(page.getByText('まだパーティがありません')).toBeVisible();
-    await expect(page.getByText('最初のパーティを作る画面は準備中です。')).toBeVisible();
-    await expect(page.locator('.empty a, .empty button')).toHaveCount(0);
+    await expect(page.getByText('最初のパーティを作ります。')).toBeVisible();
+    await expect(page.locator('.empty a')).toHaveCount(0);
+    await expect(page.locator('.empty button')).toHaveText('パーティを作る');
     await expect(page.locator('.nav-group')).toHaveCount(0);
   });
 

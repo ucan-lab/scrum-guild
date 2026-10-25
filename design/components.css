@@ -68,6 +68,7 @@ h1, h2, h3 { text-wrap: balance; }
   border: 1px solid var(--color-line); background: var(--color-surface);
 }
 .ws-select span { font-size: var(--text-xs); color: var(--color-muted); }
+.ws-select b { min-width: 0; overflow-wrap: anywhere; }
 .ws-select select { border: 0; background: none; padding: 0; font-weight: 700; }
 /* 組織の切り替え。開閉するメニューで、中は各組織へのリンクと、最後に組織の選択の画面へ戻るリンク。
    選ぶと画面が移るので select にしない（矢印キーで選んだだけで移ってしまう）。狭い幅でも隠さない */
@@ -129,7 +130,7 @@ h1, h2, h3 { text-wrap: balance; }
 /* ===== 画面の見出しと集計 ===== */
 .page-head { display: grid; gap: var(--space-3); padding-bottom: var(--space-5); border-bottom: var(--rule-double); }
 .page-eyebrow { font-family: var(--font-mono); font-size: var(--text-sm); color: var(--color-muted); letter-spacing: 0.04em; }
-.page-title { font-family: var(--font-display); font-weight: var(--weight-display); font-size: var(--text-2xl); line-height: var(--leading-tight); letter-spacing: 0.04em; }
+.page-title { font-family: var(--font-display); font-weight: var(--weight-display); font-size: var(--text-2xl); line-height: var(--leading-tight); letter-spacing: 0.04em; min-width: 0; overflow-wrap: anywhere; }
 .tally { display: flex; flex-wrap: wrap; gap: var(--space-2) var(--space-6); margin: 0; }
 .tally > div { display: flex; align-items: baseline; gap: var(--space-2); }
 .tally dt { font-size: var(--text-sm); color: var(--color-muted); display: inline-flex; align-items: center; gap: 4px; }
@@ -170,7 +171,8 @@ h1, h2, h3 { text-wrap: balance; }
   border: 1px solid var(--color-line); background: var(--color-surface); border-radius: var(--radius-1);
   padding: 4px 10px; font-size: var(--text-sm); position: relative;
 }
-.pill:hover { border-color: var(--color-muted); }
+.pill:hover:not([aria-disabled="true"]) { border-color: var(--color-muted); }
+.pill[aria-disabled="true"] { opacity: 0.45; cursor: not-allowed; }
 .pill-count {
   position: absolute; top: -7px; right: -7px; min-width: 17px; height: 17px; padding: 0 4px;
   background: var(--color-stamp); color: var(--color-on-accent); border-radius: var(--radius-full);
@@ -537,6 +539,8 @@ details[open] > summary .tree-caret { transform: rotate(90deg); }
 .table .is-num { text-align: right; font-family: var(--font-mono); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .table a { color: var(--color-fg); }
 .table .mono, .table .btn { white-space: nowrap; }
+/* 名前の列（th と td に is-name を付ける）が1字ずつ折れるほど縮まないようにする。足りない幅は .table-wrap の横スクロールで受ける */
+.table .is-name { min-width: 8em; }
 .table-actions { display: flex; gap: var(--space-2); justify-content: flex-end; }
 
 /* ===== レイドの詳細 ===== */
@@ -701,6 +705,10 @@ a.choice > div > span, .choice.is-static > div > span { display: block; }
 .setting-title { font-family: var(--font-display); font-weight: var(--weight-display); font-size: var(--text-lg); }
 .setting-desc { font-size: var(--text-xs); color: var(--color-muted); line-height: 1.7; }
 .setting-body { display: grid; gap: var(--space-4); min-width: 0; align-content: start; }
+/* 入力欄を縦に並べる <form>。ダイアログの本文（.dialog-body）の中で、欄どうしの間隔を保つ */
+.form { display: grid; gap: var(--space-4); }
+/* <form> の欄をまとめて disabled にするための <fieldset>（送っている間に欄を変えられなくする）。枠も余白も持たない */
+.form-fields { display: grid; gap: var(--space-4); border: 0; margin: 0; padding: 0; min-width: 0; }
 .form-row { display: flex; gap: var(--space-3); flex-wrap: wrap; align-items: flex-end; }
 .form-row > .field { flex: 1 1 200px; }
 .form-actions { display: flex; gap: var(--space-2); flex-wrap: wrap; }
@@ -785,7 +793,8 @@ a.choice > div > span, .choice.is-static > div > span { display: block; }
 .banner { display: flex; gap: var(--space-3); align-items: center; flex-wrap: wrap; padding: var(--space-2) var(--space-4); background: var(--color-accent); color: var(--color-on-accent); font-size: var(--text-sm); border-radius: var(--radius-1); }
 .banner .btn { margin-left: auto; }
 
-@media (max-width: 860px) {
+/* 左のメニュー（240px）の分だけ本文が狭いので、メニューのある幅でも説明と本文を縦に並べ、本文の表を潰さない */
+@media (max-width: 1080px) {
   .setting { grid-template-columns: minmax(0, 1fr); gap: var(--space-3); }
 }
 .person { display: inline-flex; align-items: center; gap: var(--space-2); white-space: nowrap; }

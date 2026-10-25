@@ -11,6 +11,7 @@
   import OrganizationSwitcher from '../../lib/components/OrganizationSwitcher.svelte';
   import { applyOrganization } from '../../lib/organization.svelte.ts';
   import { t } from '../../lib/vocabulary.svelte.ts';
+  import { workspaceViewOf } from '../../lib/workspace.ts';
   import type { LayoutData } from './$types';
 
   // 組織の枠。組織の操作の結果で data-theme と言葉づかいを当て、左のメニューと上の帯を出す。
@@ -20,6 +21,9 @@
 
   const organization = $derived(data.organization);
   const notFound = $derived(data.failure?.status === 404 && data.failure.code === 'not_found');
+  // 今開いているワークスペース（/[slug]/w/[id] の枠が読み込む）。メニューにワークスペースの節を出し、
+  // 所属していない管理者には印を出す。ワークスペースの画面の外では null
+  const openWorkspace = $derived(workspaceViewOf(page.data));
 
   $effect(() => {
     if (organization) applyOrganization(organization);
@@ -53,16 +57,27 @@
     {/if}
   {/snippet}
   {#snippet account()}
+    <!-- 所属していない管理者がワークスペースの画面を開いているときの印。所属していないことを、画面のどこからでも見て分かるようにする -->
+    {#if openWorkspace?.role === null}
+      <span class="chip">{t('notMemberAdminChip', { admin: t('admin') })}</span>
+    {/if}
     <span class="me">
       <Avatar userId={organization.me.id} name={organization.me.name} />{organization.me.name}
       {#if organization.me.is_admin}<span class="chip">{t('admin')}</span>{/if}
     </span>
   {/snippet}
+  {#snippet workspaceSwitcher()}
+    {#if openWorkspace}
+      <div class="ws-select"><span>{t('workspace')}</span><b>{openWorkspace.name}</b></div>
+    {/if}
+  {/snippet}
   <AppShell
     current={page.url.pathname}
     slug={data.slug}
     hasWorkspace={organization.workspaces.length > 0}
+    isAdmin={organization.me.is_admin}
     {organizationSwitcher}
+    workspaceSwitcher={openWorkspace ? workspaceSwitcher : undefined}
     {account}
   >
     {@render children()}

@@ -6,22 +6,27 @@
   import Icon from './Icon.svelte';
 
   // kit.js の navHtml。current は今の画面のパス、slug は今の組織。画面のある項目だけを出す（nav.ts の visibleNav）。
-  // 所属するワークスペースが無い人（hasWorkspace が偽）には、組織の画面だけを出す。
-  // ワークスペースの切り替えは置き場所だけで、中身は画面を作る Issue で snippet として渡す。
+  // 組織の管理は管理者にだけ出す。所属するワークスペースが無い人（hasWorkspace が偽）には、組織の画面だけを出す。
+  // workspaceSwitcher を渡すのは、ワークスペースの画面を開いている間。所属していない管理者にも、
+  // ワークスペースの節の見出しと、今のワークスペースを出す。ワークスペースの切り替えの中身は、画面を作る Issue で足す。
   // 組織の切り替えはメニューの外（AppShell のブランドの下）に置く
   let {
     current,
     slug,
     hasWorkspace,
+    isAdmin,
     workspaceSwitcher,
   }: {
     current: string;
     slug: string;
     hasWorkspace: boolean;
+    isAdmin: boolean;
     workspaceSwitcher?: Snippet;
   } = $props();
 
-  const sections = $derived(visibleNav(undefined, { hasWorkspace }));
+  const sections = $derived(
+    visibleNav(undefined, { hasWorkspace, isAdmin, inWorkspaceScreen: workspaceSwitcher !== undefined }),
+  );
 </script>
 
 <nav class="nav">

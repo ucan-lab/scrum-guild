@@ -10,13 +10,17 @@
   // 開閉は open で持つ。footer の snippet には閉じる関数が渡る。
   // Safari と Firefox はクリックしたボタンにフォーカスを移さない（activeElement が body になる）ので、
   // 開く操作を起こした要素は show(trigger) で渡すと確実に戻せる
+  // dismissible が偽の間は、閉じる操作（×、Esc、背景、footer に渡す close）をすべて無視する（送っている最中など）。
+  // 呼び出し側が open を直に偽にするのは止めない
   let {
     open = $bindable(false),
+    dismissible = true,
     title,
     children,
     footer,
   }: {
     open?: boolean;
+    dismissible?: boolean;
     title: string;
     children: Snippet;
     footer?: Snippet<[close: () => void]>;
@@ -38,7 +42,16 @@
   }
 
   function close(): void {
+    if (!dismissible) return;
     open = false;
+  }
+
+  // 入力欄か主ボタンを先に、なければ閉じるボタンにフォーカスを置く
+  function focusFirst(): void {
+    const first =
+      dialog.querySelector<HTMLElement>('input, textarea, select, .btn.is-primary') ??
+      dialog.querySelector<HTMLElement>('[data-close-dialog]');
+    first?.focus();
   }
 
   $effect(() => {
@@ -47,11 +60,7 @@
       opener = requestedOpener ?? (active instanceof HTMLElement && active !== document.body ? active : null);
       requestedOpener = null;
       dialog.showModal();
-      // 入力欄か主ボタンを先に、なければ閉じるボタンにフォーカスを置く
-      const first =
-        dialog.querySelector<HTMLElement>('input, textarea, select, .btn.is-primary') ??
-        dialog.querySelector<HTMLElement>('[data-close-dialog]');
-      first?.focus();
+      focusFirst();
     } else if (!open && dialog.open) {
       dialog.close();
     }
@@ -67,8 +76,15 @@
 
   // Esc でも、閉じるボタンでも、背景を押してもここに来る。close は非同期に届くので、
   // 届く前に開き直されていたら（dialog.open が true）何もしない
+  // dismissible が偽の間に閉じられたときは、開き直す。Chromium は cancel を1回止めた後、ユーザーの操作が無いまま
+  // もう一度 Esc を押されると、cancel を経ずに閉じる（止められない）ため。open は真のまま保つ
   function onclose(): void {
     if (dialog.open) return;
+    if (!dismissible && open) {
+      dialog.showModal();
+      focusFirst();
+      return;
+    }
     open = false;
     opener?.focus();
     opener = null;
@@ -103,7 +119,14 @@
   <div class="dialog-sheet">
     <div class="dialog-head">
       <h2 class="dialog-title" id={titleId}>{title}</h2>
-      <button class="pill" type="button" data-close-dialog aria-label={t('close')} onclick={close}>
+      <button
+        class="pill"
+        type="button"
+        data-close-dialog
+        aria-label={t('close')}
+        aria-disabled={!dismissible}
+        onclick={close}
+      >
         <Icon name="x" />
       </button>
     </div>

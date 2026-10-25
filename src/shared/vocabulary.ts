@@ -116,14 +116,95 @@ export const dictionary = defineDictionary({
   // 組織にワークスペースが1つも無いときは、最初のワークスペースを作る案内。作る画面の行き先は、その画面を作る Issue で決める
   firstWorkspaceTitle: organization('まだ{workspace}がありません', 'まだ{workspace}がありません'),
   firstWorkspaceText: organization(
-    '最初の{workspace}を作る画面は準備中です。できたら、ここから作って{member}を招けます。',
-    '最初の{workspace}を作る画面は準備中です。できたら、ここから作って{member}を招けます。',
+    '最初の{workspace}を作ります。最初の{leader}を1人決めて作ります。',
+    '最初の{workspace}を作ります。最初の{leader}を1人決めて作ります。',
   ),
   // ワークスペースはあるが、自分の所属が0件のとき
   noMembershipTitle: organization('どの{workspace}にも所属していません', 'どの{workspace}にも所属していません'),
   noMembershipText: organization(
     '{workspace}に加わると、ここから使えます。',
     '{workspace}に加わると、ここから使えます。',
+  ),
+
+  // 組織の管理の画面（管理者）。{workspace} と {leader} は、その言葉づかいの言葉を画面が渡す
+  adminEyebrow: organization('{admin}だけが見られます', '{admin}だけが見られます'),
+  adminWorkspacesDesc: organization(
+    '作った{workspace}の一覧です。閉じた{workspace}も含みます。{member}の数は{leader}を含みます。',
+    '作った{workspace}の一覧です。閉じた{workspace}も含みます。{member}の数は{leader}を含みます。',
+  ),
+  workspaceListLabel: organization('{workspace}の一覧', '{workspace}の一覧'),
+  workspaceEmptyText: organization(
+    'チームや用途ごとに作ります。{member}の招待は、作った{workspace}の{leader}が行います。',
+    'チームや用途ごとに作ります。{member}の招待は、作った{workspace}の{leader}が行います。',
+  ),
+  workspaceOpenLabel: organization('開いている{workspace}', '開いている{workspace}'),
+  workspaceMemberCountHeader: organization('{member}数', '{member}数'),
+  workspaceLeaderCountHeader: organization('{leader}数', '{leader}数'),
+  fieldName: organization('名前', '名前'),
+  createdOn: organization('作った日', '作った日'),
+  workspaceClosedChip: organization('閉じた {date}', '閉じた {date}'),
+  workspaceNoLeaderChip: organization('{leader}がいない', '{leader}がいない'),
+
+  // ワークスペースを作るダイアログ。選んだ言葉づかいの名前は、画面が選んだ言葉づかいで引いて渡す
+  workspaceCreateAction: organization('{workspace}を作る', '{workspace}を作る'),
+  workspaceNamePlaceholder: organization('例: 保守チーム', '例: 保守チーム'),
+  workspaceNameRequired: organization('名前を入れてください', '名前を入れてください'),
+  workspaceNameTooLong: organization('名前は {max} 字までです', '名前は {max} 字までです'),
+  workspaceLeaderLabel: organization('最初の{leader}', '最初の{leader}'),
+  workspaceLeaderHint: organization(
+    '自分でもかまいません。あとから{leader}を足せます。',
+    '自分でもかまいません。あとから{leader}を足せます。',
+  ),
+  workspaceLeaderLoadFailed: organization('選べる人を読み込めませんでした', '選べる人を読み込めませんでした'),
+  workspaceVocabularyLabel: organization('言葉づかい', '言葉づかい'),
+  vocabularyGameLabel: organization('ゲームの言葉', 'ゲームの言葉'),
+  vocabularyScrumLabel: organization('スクラムの言葉', 'スクラムの言葉'),
+  // 言葉づかいの選択肢の例。その言葉づかいの言葉を、画面が渡す
+  vocabularyNote: organization('{workspace}、{task}、{epic}', '{workspace}、{task}、{epic}'),
+  workspaceVocabularyHint: organization(
+    '{column}と決まった欄の名前は、選んだ言葉づかいで決まります。あとから言葉づかいを替えても、名前は変わりません。',
+    '{column}と決まった欄の名前は、選んだ言葉づかいで決まります。あとから言葉づかいを替えても、名前は変わりません。',
+  ),
+  workspaceNameInvalidCharacter: organization(
+    '名前に使えない文字（制御文字、ゼロ幅のスペースなど）が含まれています',
+    '名前に使えない文字（制御文字、ゼロ幅のスペースなど）が含まれています',
+  ),
+  workspaceNoCandidates: organization('最初の{leader}に指せる人がいません', '最初の{leader}に指せる人がいません'),
+  workspaceTimezoneRejected: organization(
+    'このブラウザのタイムゾーン（{timezone}）では作れません。ブラウザの設定を確かめてください。',
+    'このブラウザのタイムゾーン（{timezone}）では作れません。ブラウザの設定を確かめてください。',
+  ),
+  workspaceDefaultsNote: organization(
+    '{column}は「{columns}」、決まった欄は「{field}」、換算は 1 {points} = {hours} 時間、週の始まりは月曜、タイムゾーンは {timezone}（このブラウザの設定）で作ります。あとから設定で変えられます。',
+    '{column}は「{columns}」、決まった欄は「{field}」、換算は 1 {points} = {hours} 時間、週の始まりは月曜、タイムゾーンは {timezone}（このブラウザの設定）で作ります。あとから設定で変えられます。',
+  ),
+  cancel: organization('やめる', 'やめる'),
+  workspaceSubmit: organization('作る', '作る'),
+  workspaceSubmitting: organization('作っています', '作っています'),
+  workspaceCreated: organization('{workspace}を作りました', '{workspace}を作りました'),
+  workspaceCreateFailed: organization(
+    '作れませんでした。もう一度試してください。',
+    '作れませんでした。もう一度試してください。',
+  ),
+  workspaceLeaderRejected: organization(
+    '選んだ人は、いま最初の{leader}に指せません。選び直してください。',
+    '選んだ人は、いま最初の{leader}に指せません。選び直してください。',
+  ),
+
+  // ワークスペースの枠と画面。見つからない画面は、組織の枠の中に出す
+  notMemberAdminChip: organization('所属せず{admin}として開いています', '所属せず{admin}として開いています'),
+  workspaceNotFoundTitle: organization('{workspace}が見つかりません', '{workspace}が見つかりません'),
+  workspaceNotFoundText: organization(
+    'URL が違うか、入れない{workspace}です。',
+    'URL が違うか、入れない{workspace}です。',
+  ),
+  pageNotFoundTitle: organization('画面が見つかりません', '画面が見つかりません'),
+  pageNotFoundText: organization('URL が違うか、開けない画面です。', 'URL が違うか、開けない画面です。'),
+  backToToday: organization('自分の今日へ', '自分の今日へ'),
+  workspaceHomeEmptyTitle: organization('この{workspace}の画面は準備中です', 'この{workspace}の画面は準備中です'),
+  workspaceHomeEmptyText: organization(
+    '{backlog}などの画面は、これから加わります。',
+    '{backlog}などの画面は、これから加わります。',
   ),
 
   // 組織の選択と、枠の外の画面（組織の切り替え、見つからない、運用の仮の画面）

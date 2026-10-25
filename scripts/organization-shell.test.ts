@@ -102,12 +102,38 @@ describe('メニュー', () => {
   });
 
   test('行き先の無い（href が null の）項目と、項目の無い見出しは出さない', () => {
-    const shown = visibleNav();
+    const shown = visibleNav(undefined, { isAdmin: true });
     const withDestination = navSections.flatMap((section) => section.items).filter((item) => item.href !== null);
     assert.equal(shown.flatMap((section) => section.items).length, withDestination.length);
     for (const section of shown) {
       assert.ok(section.items.length > 0, `項目の無い見出し: ${section.heading}`);
       for (const item of section.items) assert.notEqual(item.href, null);
     }
+  });
+
+  test('組織の管理は管理者にだけ出し、一般のユーザーには出さない', () => {
+    const labels = (isAdmin: boolean) =>
+      visibleNav(undefined, { isAdmin }).flatMap((section) => section.items.map((item) => item.label));
+    assert.ok(labels(true).includes('pageOrgAdmin'));
+    assert.ok(!labels(false).includes('pageOrgAdmin'));
+    const admin = navSections.flatMap((section) => section.items).find((item) => item.label === 'pageOrgAdmin');
+    assert.equal(admin?.href, '/[slug]/admin');
+  });
+
+  test('ワークスペースの画面を開いている間は、所属が無くても、項目の無いワークスペースの節の見出しを出す', () => {
+    const headings = (options: Parameters<typeof visibleNav>[1]) =>
+      visibleNav(undefined, options).map((section) => section.heading);
+    // 画面の無い項目だけの節は、ふだんは出ない
+    assert.deepEqual(headings({ hasWorkspace: true, isAdmin: true }), [undefined]);
+    assert.deepEqual(headings({ hasWorkspace: false, isAdmin: true }), [undefined]);
+    // 所属の無い管理者がワークスペースの画面を開く。切り替えの置き場所を持つ節だけが、項目が無くても残る
+    assert.deepEqual(headings({ hasWorkspace: false, isAdmin: true, inWorkspaceScreen: true }), [
+      undefined,
+      'workspace',
+    ]);
+    const workspaceSection = visibleNav(undefined, { hasWorkspace: false, inWorkspaceScreen: true }).find(
+      (section) => section.slot === 'workspace',
+    );
+    assert.deepEqual(workspaceSection?.items, []);
   });
 });

@@ -19,6 +19,7 @@
 | スキーマ | zod | Hono のバリデーター、Claude の道具や MCP の定義（JSON Schema）への変換など、周りの道具が揃っている |
 | 操作の定義 | 自前の定義から形を推論する。コードの生成はしない | 下の「操作の定義」 |
 | 言葉の切り替え | 型付きの辞書を自前で持つ | 下の「言葉の辞書」 |
+| 並べ替えの並び（`position`） | `fractional-indexing`（分数の並びの文字列を作る定番のパッケージ） | 間に入れても他の行を書き換えない並びを自前で書かずに済む。ワークスペースを作るときの最初の列と、並べ替えの操作が同じものを使う |
 | 架空のデータ | seed とファクトリーの両方 | 下の「架空のデータ」 |
 
 ### 操作の定義
@@ -61,10 +62,11 @@
   - セッション: Cookie のトークンを SHA-256 にして `sessions` を引く（`src/server/auth/session.ts`）。Cookie の名前は `sessionCookieName(PUBLIC_ORIGIN)`（`src/shared/session-cookie.ts`）で決め、https の公開 URL では `__Host-sg_session`、http の localhost（`pnpm dev`、`pnpm preview`）では `sg_session`。読む側とログインの発行（`src/server/auth/login-routes.ts`）と e2e が同じ関数を使う。無い、形が違う、期限を過ぎた、のどれも 401 の `unauthenticated`。`last_used_at` は前回から1時間以上たったときだけ、読んだ値が変わっていないことを条件に書き直し（並行した呼び出しの片方だけが書く）、`expires_at` を30日後にして、書けたときだけ Cookie を同じ属性で出し直す。書き直しの失敗はログに例外の名前だけを残し、リクエストは続ける。
   - 組織: `src/server/db/enter-organization.ts` が、slug から `organizations` を引き（共通の入口）、停止していないこと、その人が入れることを確かめる（組織の中の入口）。共通の表と組織の中の表は別の問い合わせで、結合しない。`users` はセッションのアカウントの ID と `users.account_id` の一致で引き、無効にされた人は断る。管理者でも所属もない人は、アカウントに結んだログインの手段と ID で承諾待ちの招待に当てる（このときだけ `account_logins` を引く）。ログインの手段と ID が一致する `users` の行が無効なら、アカウントに結ばれる前の行でも断る。招待だけで入った人は `invitedOnly` になり、`invitee` の操作以外は 404 で返す。組織が無い、停止している、入れない、のどれも 404 の `not_found`。
   - ワークスペース: `workspace_id` を入口の組織で絞り、その人の今の所属と一緒に1つの問い合わせで引く。別の組織のものと存在しないものは 404。引けたものが「確かめたワークスペース」（`VerifiedWorkspace`。閉じているか、その人のロールを持つ）になり、処理に渡す直前に `assertVerifiedWorkspace()` で実行時にも確かめる。
-  - 入力: 壊れた JSON や形の違う入力は 400 の `invalid_input` で、`details` に項目ごとの `path`、`code`、`message` を入れる。本文は 1MiB までで、`Content-Length` の無い本文も読んだ分を数えて止め、超えれば 413（`code` は `invalid_input`）。未ログインの呼び出しには本文を読ませない。
+  - 入力: ID の入力は `src/shared/id.ts` の `idSchema`（64字まで）で書き、DB に問い合わせる前に桁違いに長い値を止める。壊れた JSON や形の違う入力は 400 の `invalid_input` で、`details` に項目ごとの `path`、`code`、`message` を入れる。本文は 1MiB までで、`Content-Length` の無い本文も読んだ分を数えて止め、超えれば 413（`code` は `invalid_input`）。未ログインの呼び出しには本文を読ませない。
   - 出力: 戻り値を出力のスキーマで検証し、スキーマに無い項目は落とす。形が合わなければ 500。検証した値（変換を通した出力）をそのまま送り、画面は同じスキーマで検証し直さない。
   - ログ: 「API のエラーとログ」の項目を操作ごとに1行出す。413 を含め、失敗の `code` と `status` も残る。
 - 処理が受け取るもの: 検証済みの入力 `input` と、確かめた DB の入口だけ。組織の外の操作は共通の入口 `db` と `accountId` と `account`（入れる組織と届いた招待を組織をまたいで読む `organizations()`、運用者かを返す `isOperator()`、アカウントに結んだログインの手段と ID を返す `logins()`。`src/server/operations/account.ts`）と今のセッション `session`（`tokenHash`。`clearCookie()` を呼ぶと、応答でセッションの Cookie も消す。ログアウトが使う）、組織の中の操作は組織の中の入口 `db`（組織を確かめないと作れない）と `actor`（`userId`、`isAdmin`、`invitedOnly`。`invitee` の操作では `userId` が null になりうる）と `organization`（入るときに引いた組織の slug、名前、言葉づかい、既定のテーマ）と `defer`（応答を待たせずに続ける仕事を渡す。`waitUntil` に渡り、`ExecutionContext` が無いテストでは応答の前に待つ。失敗は登録の関数がログに例外の名前だけを残し、応答は変えない）、ワークスペースの下の操作はさらに `workspace`。`read` の操作が副作用として書くもの（`organization` の `last_seen_at`）は、定義の `description` に書き、`defer` で送る。画面の値を読む文と書く文は別の `batch()` にし、書き込みの失敗で画面が開かなくならないようにする。`workspace` の型 `VerifiedWorkspace` は `VerifiedOrganization` と同じ作りで、`src/server/db/` の外では作れない（`test/operations-types.ts` が `@ts-expect-error` で確かめる）。組織の中の入口は問い合わせを絞らないので、処理は自分の文を、入口の `organizationId`（組織の直下の表）か、`workspace.workspaceId`（ワークスペースの下の表）で絞る。入力の ID だけで引かない。
+- 日時: 操作の処理は、今の日時を `src/shared/clock.ts` の `now()` から取る。タイムゾーンでの今日（`todayIn`、`YYYY-MM-DD`）と今月（`monthIn`、`YYYY-MM`）もここで作り、`joined_on` や `effective_month` のようなワークスペースの日付と月はこれで数える。開発用の値での差し替えは、`now()` の1か所に足す。タイムゾーンの検査は `src/shared/timezone.ts` の `normalizeTimezone`（時差の表記を断り、`Intl.DateTimeFormat` で作れる名前を正規の名前にそろえる）で、ワークスペースの作成と設定の画面が同じものを使う。
 - 画面からは、`src/lib/api.ts` の `callOperation(定義, 入力, { slug })` で呼ぶ。入力と出力の型は定義から推論し、組織の中の操作は `slug` を要る。結果は `ApiResult` で、応答が JSON でなければ失敗として扱う（出力の形はサーバーが検証済み）。出力のスキーマの変換は JSON にできる値を返すものに限る。
 - 組織の分離のテストと権限のテストは、定義の一覧を回して全操作に当てる（`test/operation-registry.test.ts`）。新しい操作を足しても、回すテストを書き足す必要はない。足すのは、組織の中の操作ごとのテスト用の関数だけで、`test/operations/pointers.ts` に操作の名前をキーにして書く。
   - テスト用の関数は、対象の組織（`Target`。組織、管理者、リーダー、一般のメンバー、別のワークスペースのメンバー、承諾待ちの招待だけの人）を受け取り、その組織の行を指す成功する入力を返す。別の組織の対象を渡した入力が 404 になり、自分の組織の対象を渡した入力が成功することを、同じ関数で確かめる（404 が入力の誤りや権限の不足ではないと言えるようにするため）。
@@ -103,7 +105,7 @@
 - 辞書は `src/shared/vocabulary.ts` に置く。キーごとに、ゲームの言葉（`game`）とスクラムの言葉（`scrum`）の両方を必須にする。`workspace('パーティ', 'ワークスペース')` のように2つ渡す形なので、片方を消すと `pnpm check` が落ちる。言葉が同じ項目（`reward` など）も両方書く。
 - キーには、言葉づかいを決める単位（`scope`）がある。`workspace` はワークスペースの設定で切り替わる。`organization` は管理者が決める組織の設定で切り替わり、冒険者ギルド、ギルドマスター、ギルドの書記のほか、ワークスペースの外の画面の名前（自分の今日、通知、自分の設定、組織の管理）と、枠の共通の文言（閉じる、件など）を入れる（`docs/requirements.md` の「ゲームの仕組み」）。`word(key, { workspace, organization })` が引く。
 - 語順や記号を含む文は、`{名前}` の置き換えを持つ1項目にする（`pageTitle` の `{page} - {app}`、`apiStatus` など）。`t(key, { 名前: 値 })` で埋める。ゲームとスクラムで置き換えの名前をそろえることは `scripts/vocabulary.test.ts` が確かめる。テンプレートに語順や記号を直に書かない。
-- 画面は `src/lib/vocabulary.svelte.ts` の `t(key)` で文言を出し、直に書かない。今の言葉づかいはここのストアが持ち、既定は両方ともゲームの言葉。組織の枠（`src/routes/[slug]/+layout.svelte`）が、組織の操作の結果の `organization.vocabulary` を、組織の言葉とワークスペースの言葉の両方に入れる（`src/lib/organization.svelte.ts`）。ワークスペースの中の画面は、そのワークスペースの `vocabulary` でワークスペースの言葉を上書きする。
+- 画面は `src/lib/vocabulary.svelte.ts` の `t(key)` で文言を出し、直に書かない。今の言葉づかいはここのストアが持ち、既定は両方ともゲームの言葉。組織の枠（`src/routes/[slug]/+layout.svelte`）が、組織の操作の結果の `organization.vocabulary` を、組織の言葉とワークスペースの言葉の両方に入れる（`src/lib/organization.svelte.ts`）。ワークスペースの中の画面は、そのワークスペースの `vocabulary` でワークスペースの言葉を上書きする（`/[slug]/w/[id]` のレイアウトが `setWorkspaceVocabulary()` で入れ、離れるときに戻す。上書きは組織の値とは別の状態で持つので、組織の値を入れ直しても消えない）。今の言葉づかいとは別の言葉づかいで引くときは `tIn(key, { workspace: 'scrum' }, params)`（ワークスペースを作るダイアログが、選んだ言葉づかいの列と決まった欄の名前を見せるのに使う）。列と決まった欄に付けた名前は、辞書を通さず、作るときの言葉づかいで決めた値を保存する（`src/shared/workspace.ts`）。
 - 辞書の型の保証は `src/shared/vocabulary.typecheck.ts` が持つ。片方の言葉が欠けた項目が型で落ちることを `@ts-expect-error` で確かめ、落ちなくなると `pnpm check` が落ちる。
 - 見本の `design/kit.js` の `DICT` にあるキーは、本番も同じ中身で持つ。`scripts/design-parity.test.ts` が突き合わせる（`docs/design.md` の「デザインシステムの構成」）。
 

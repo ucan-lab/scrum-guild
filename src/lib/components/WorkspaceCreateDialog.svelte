@@ -1,0 +1,346 @@
+<script lang="ts">
+  import { tick } from 'svelte';
+  import { goto, invalidateAll } from '$app/navigation';
+  import { resolve } from '$app/paths';
+  import { workspaceCreate, workspaceLeaderCandidates } from '../../shared/operations/workspace/index.ts';
+  import type { Vocabulary } from '../../shared/vocabulary.ts';
+  import {
+    DEFAULT_HOURS_PER_POINT,
+    WORKSPACE_NAME_MAX_LENGTH,
+    defaultColumnNames,
+    defaultDetailFieldNames,
+    workspaceNameProblem,
+    type WorkspaceNameProblem,
+  } from '../../shared/workspace.ts';
+  import { callOperation } from '../api.ts';
+  import { browserTimezone } from '../format.ts';
+  import { showToast } from '../toast.svelte.ts';
+  import { t, tIn } from '../vocabulary.svelte.ts';
+  import Dialog from './Dialog.svelte';
+  import Icon from './Icon.svelte';
+
+  // admin.html / kit.js の createWorkspace。管理の画面と自分の今日の2か所が、同じ部品を使う。
+  // 開いたときに最初のリーダーの候補を取る（既定は自分）。言葉づかいの既定は組織の言葉づかい。
+  // 題、リーダーのラベル、説明文は、選んだ言葉づかいの言葉で出す。説明文には、列と決まった欄の名前、換算比率、
+  // 週の始まり、このブラウザのタイムゾーンを出す。
+  // 送っている間は、「作る」を押しても無視し（aria-disabled）、ダイアログも閉じられない。二重送信はそれだけで防ぐ。
+  // 作れたら組織の枠のデータを読み直し、そのワークスペースの画面へ移って、見出しにフォーカスを置く。
+  // 送り始めた後に部品が外れた（画面を離れた、組織が替わった）ときは、古い応答で移らず、状態も更新しない（generation）
+  let { slug, meId, organizationVocabulary }: { slug: string; meId: string; organizationVocabulary: Vocabulary } =
+    $props();
+
+  type Candidate = { id: string; name: string };
+
+  const ids = $props.id();
+  const formId = `${ids}-form`;
+  const nameId = `${ids}-name`;
+  const nameErrorId = `${ids}-name-error`;
+  const leaderId = `${ids}-leader`;
+  const leaderHintId = `${ids}-leader-hint`;
+  const leaderStateId = `${ids}-leader-state`;
+  const vocabularyLabelId = `${ids}-vocabulary`;
+  const vocabularyHintId = `${ids}-vocabulary-hint`;
+  const defaultsId = `${ids}-defaults`;
+
+  let open = $state(false);
+  let dialog = $state<ReturnType<typeof Dialog>>();
+  let nameInput = $state<HTMLInputElement>();
+  let leaderSelect = $state<HTMLSelectElement>();
+  let submitButton = $state<HTMLButtonElement>();
+
+  let name = $state('');
+  let leaderUserId = $state('');
+  let vocabulary = $state<Vocabulary>('game');
+  let candidates = $state<Candidate[]>([]);
+  let candidatesState = $state<'loading' | 'failed' | 'ready'>('loading');
+  // 読み込みに失敗したことがある間は、読み直している最中も「もう一度試す」を残す（フォーカスを失わせない）
+  let candidatesFailedBefore = $state(false);
+  let nameError = $state<string | null>(null);
+  let submitError = $state<string | null>(null);
+  let submitting = $state(false);
+
+  const timezone = browserTimezone();
+  // 開き直し、部品の取り外し、組織の入れ替わりで進める。古い読み込みと古い応答が、今の状態を上書きしない
+  let generation = 0;
+
+  // 選んだ言葉づかいの言葉。ワークスペースの言葉だけを替える
+  const words = $derived({ workspace: vocabulary });
+  const canSubmit = $derived(!submitting && candidatesState === 'ready' && leaderUserId !== '');
+
+  // 組織の枠のデータを読み直すと slug の props は新しい getter になるが、値が同じなら $derived は変わらない
+  const currentSlug = $derived(slug);
+
+  $effect(() => {
+    void currentSlug;
+    return () => {
+      generation++;
+      submitting = false;
+      open = false;
+    };
+  });
+
+  export function show(trigger?: HTMLElement | null): void {
+    generation++;
+    name = '';
+    vocabulary = organizationVocabulary;
+    nameError = null;
+    submitError = null;
+    submitting = false;
+    candidatesFailedBefore = false;
+    dialog?.show(trigger);
+    void loadCandidates();
+  }
+
+  async function loadCandidates(): Promise<void> {
+    const mine = generation;
+    const targetSlug = slug;
+    candidatesState = 'loading';
+    leaderUserId = '';
+    const result = await callOperation(workspaceLeaderCandidates, {}, { slug: targetSlug });
+    if (mine !== generation) return;
+    if (!result.ok) {
+      candidatesState = 'failed';
+      candidatesFailedBefore = true;
+      return;
+    }
+    candidates = result.data.users;
+    // 自分が候補にいれば自分。いなければ先頭。候補が無ければ空のまま
+    leaderUserId = candidates.some((user) => user.id === meId) ? meId : (candidates[0]?.id ?? '');
+    candidatesFailedBefore = false;
+    candidatesState = 'ready';
+  }
+
+  // 読み直しに成功したら、選ぶ欄へフォーカスを移す（押したボタンは、成功すると消えるため）
+  async function retryCandidates(): Promise<void> {
+    if (candidatesState === 'loading') return;
+    await loadCandidates();
+    if (candidatesState !== 'ready') return;
+    await tick();
+    leaderSelect?.focus();
+  }
+
+  const nameMessages = $derived<Record<WorkspaceNameProblem, string>>({
+    required: t('workspaceNameRequired'),
+    too_long: t('workspaceNameTooLong', { max: WORKSPACE_NAME_MAX_LENGTH }),
+    invalid_character: t('workspaceNameInvalidCharacter'),
+  });
+
+  function nameProblemMessage(): string | null {
+    const problem = workspaceNameProblem(name.trim());
+    return problem === null ? null : nameMessages[problem];
+  }
+
+  const leaderWord = $derived(tIn('leader', words));
+  const defaultsNote = $derived(
+    tIn('workspaceDefaultsNote', words, {
+      column: tIn('column', words),
+      columns: [...defaultColumnNames[vocabulary], tIn('done', words)].join('、'),
+      field: defaultDetailFieldNames[vocabulary],
+      points: tIn('points', words),
+      hours: DEFAULT_HOURS_PER_POINT,
+      timezone,
+    }),
+  );
+
+  // 言葉づかいの選択肢の例。その言葉づかいの言葉で出す
+  function vocabularyExample(value: Vocabulary): string {
+    const scope = { workspace: value };
+    return tIn('vocabularyNote', scope, {
+      workspace: tIn('workspace', scope),
+      task: tIn('task', scope),
+      epic: tIn('epic', scope),
+    });
+  }
+
+  // 400 の details（項目ごとの path）から、断られた項目を取り出す
+  function rejectedFields(details: unknown): string[] {
+    if (!Array.isArray(details)) return [];
+    return details.flatMap((item: unknown) =>
+      typeof item === 'object' && item !== null && 'path' in item && typeof item.path === 'string' ? [item.path] : [],
+    );
+  }
+
+  async function submit(event: SubmitEvent): Promise<void> {
+    event.preventDefault();
+    if (!canSubmit) return;
+    nameError = nameProblemMessage();
+    if (nameError !== null) {
+      nameInput?.focus();
+      return;
+    }
+    const mine = generation;
+    // 送り始めたときの組織で、送ることも移ることも通す
+    const targetSlug = slug;
+    const sentTimezone = timezone;
+    submitting = true;
+    submitError = null;
+    // 欄が disabled になるので、Enter で送ったときもフォーカスを失わないよう、「作る」へ移す
+    submitButton?.focus();
+    // 名前が断られたときに名前の欄へ戻す。送っている間は欄が disabled でフォーカスを受けないので、戻すのは disabled を外した後
+    let focusName = false;
+    try {
+      const result = await callOperation(
+        workspaceCreate,
+        { name: name.trim(), timezone: sentTimezone, vocabulary, leader_user_id: leaderUserId },
+        { slug: targetSlug },
+      );
+      if (mine !== generation) return;
+      if (!result.ok) {
+        if (result.status === 401) {
+          // セッションが切れた。組織の枠の読み直しがログインの画面へ移す
+          await invalidateAll();
+          return;
+        }
+        if (result.status === 404) {
+          submitError = tIn('workspaceLeaderRejected', words, { leader: leaderWord });
+          // 候補を取り直して、選び直せるようにする
+          void loadCandidates();
+        } else if (result.status === 400 && rejectedFields(result.error?.details).includes('timezone')) {
+          // ブラウザの値は直せない。理由を伝える
+          submitError = t('workspaceTimezoneRejected', { timezone: sentTimezone });
+        } else if (result.status === 400 && rejectedFields(result.error?.details).includes('name')) {
+          nameError = t('workspaceNameInvalidCharacter');
+          focusName = true;
+        } else {
+          submitError = t('workspaceCreateFailed');
+        }
+        return;
+      }
+      if (mine !== generation) return;
+      open = false;
+      // 移る先を確定して移る。組織の枠のデータ（has_workspaces、所属するワークスペース）の読み直しは、移る動作に任せる
+      // （先に読み直すと、読み直しが失敗したときに、作ったのに移らなくなる）
+      await goto(resolve('/[slug]/w/[id]', { slug: targetSlug, id: result.data.workspace_id }), {
+        invalidateAll: true,
+      });
+      // 移った先の見出しへフォーカスを置く（移った画面の題は、SvelteKit のルートの読み上げが伝える）
+      await tick();
+      document.querySelector<HTMLElement>('main h1')?.focus();
+      showToast(t('workspaceCreated', { workspace: tIn('workspace', words) }), 'check');
+    } finally {
+      if (mine === generation) {
+        submitting = false;
+        if (focusName) {
+          await tick();
+          nameInput?.focus();
+        }
+      }
+    }
+  }
+
+  // 状態を読み上げに伝える。領域は常に置き、中の文字だけを替える
+  const status = $derived(submitting ? t('workspaceSubmitting') : candidatesState === 'loading' ? t('loading') : '');
+</script>
+
+<Dialog
+  bind:this={dialog}
+  bind:open
+  dismissible={!submitting}
+  title={tIn('workspaceCreateAction', words, { workspace: tIn('workspace', words) })}
+>
+  <form id={formId} class="form" onsubmit={submit} novalidate>
+    <!-- 送っている間は、欄も変えられない。「作る」はフォーカスを残すため、欄のまとまりの外で aria-disabled にしている -->
+    <fieldset class="form-fields" disabled={submitting}>
+      <div class="field" class:is-invalid={nameError !== null}>
+        <label class="field-label" for={nameId}>{t('fieldName')}</label>
+        <input
+          class="input"
+          id={nameId}
+          bind:this={nameInput}
+          bind:value={name}
+          oninput={() => (nameError = null)}
+          placeholder={t('workspaceNamePlaceholder')}
+          autocomplete="off"
+          aria-invalid={nameError !== null}
+          aria-describedby={nameError !== null ? nameErrorId : undefined}
+        />
+        {#if nameError !== null}
+          <span class="field-error" id={nameErrorId} role="alert"><Icon name="alert" />{nameError}</span>
+        {/if}
+      </div>
+
+      <div class="field">
+        <label class="field-label" for={leaderId}>{tIn('workspaceLeaderLabel', words, { leader: leaderWord })}</label>
+        <select
+          class="select"
+          id={leaderId}
+          bind:this={leaderSelect}
+          bind:value={leaderUserId}
+          disabled={candidatesState !== 'ready' || candidates.length === 0}
+          aria-busy={candidatesState === 'loading'}
+          aria-describedby="{leaderHintId} {leaderStateId}"
+        >
+          {#if candidatesState === 'loading'}
+            <option value="">{t('loading')}</option>
+          {:else if candidatesState === 'failed' || candidates.length === 0}
+            <!-- 理由の文は、下のエラー側だけに出す -->
+            <option value="">&mdash;</option>
+          {:else}
+            {#each candidates as user (user.id)}
+              <option value={user.id}>{user.name}</option>
+            {/each}
+          {/if}
+        </select>
+        <span class="field-hint" id={leaderHintId}>{tIn('workspaceLeaderHint', words, { leader: leaderWord })}</span>
+        <!-- 候補を取れない、または0件のときは、「作る」を押せない理由をここに出す -->
+        <span id={leaderStateId}>
+          {#if candidatesState === 'failed'}
+            <span class="field-error" role="alert"><Icon name="alert" />{t('workspaceLeaderLoadFailed')}</span>
+          {:else if candidatesState === 'ready' && candidates.length === 0}
+            <span class="field-error"
+              ><Icon name="alert" />{tIn('workspaceNoCandidates', words, { leader: leaderWord })}</span
+            >
+          {/if}
+        </span>
+        {#if candidatesFailedBefore}
+          <div class="form-actions">
+            <button
+              class="btn is-sm"
+              type="button"
+              aria-disabled={candidatesState === 'loading'}
+              onclick={retryCandidates}
+            >
+              {candidatesState === 'loading' ? t('retrying') : t('retry')}
+            </button>
+          </div>
+        {/if}
+      </div>
+
+      <div class="field">
+        <span class="field-label" id={vocabularyLabelId}>{t('workspaceVocabularyLabel')}</span>
+        <div
+          class="choice-list"
+          role="radiogroup"
+          aria-labelledby={vocabularyLabelId}
+          aria-describedby="{vocabularyHintId} {defaultsId}"
+        >
+          <label class="choice">
+            <input type="radio" name="{ids}-vocabulary" value="game" bind:group={vocabulary} />
+            <div><b>{t('vocabularyGameLabel')}</b><span>{vocabularyExample('game')}</span></div>
+          </label>
+          <label class="choice">
+            <input type="radio" name="{ids}-vocabulary" value="scrum" bind:group={vocabulary} />
+            <div><b>{t('vocabularyScrumLabel')}</b><span>{vocabularyExample('scrum')}</span></div>
+          </label>
+        </div>
+        <span class="field-hint" id={vocabularyHintId}
+          >{tIn('workspaceVocabularyHint', words, { column: tIn('column', words) })}</span
+        >
+      </div>
+
+      <p class="field-hint" id={defaultsId}>{defaultsNote}</p>
+    </fieldset>
+
+    {#if submitError !== null}
+      <div class="callout is-danger" role="alert"><Icon name="alert" /><span>{submitError}</span></div>
+    {/if}
+  </form>
+  <!-- 状態の読み上げの領域。form の外に常に置き、中の文字だけを替える -->
+  <span class="visually-hidden" role="status">{status}</span>
+  {#snippet footer(close)}
+    <button class="btn is-quiet" type="button" aria-disabled={submitting} onclick={close}>{t('cancel')}</button>
+    <button class="btn is-primary" type="submit" form={formId} aria-disabled={!canSubmit} bind:this={submitButton}>
+      {submitting ? t('workspaceSubmitting') : t('workspaceSubmit')}
+    </button>
+  {/snippet}
+</Dialog>

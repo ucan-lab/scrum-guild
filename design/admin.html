@@ -38,13 +38,13 @@ SQ.mount("admin", () => `
           <td><label class="toggle"><input type="checkbox" ${r.admin ? "checked" : ""} ${r.disabled ? "disabled" : ""} aria-label="${esc(user(r.who).name)}を管理者にする"></label></td>
           <td class="is-num">${r.wss}</td><td class="mono">${r.lastLogin}</td>
           <td>${r.disabled ? `<button class="btn is-sm is-quiet" type="button">有効に戻す</button>` : r.who === D.me ? "" : `<button class="btn is-sm is-quiet is-danger" type="button">無効にする</button>`}</td></tr>`).join("")}</tbody></table></div>`)}
-    ${setting(t("workspace"), `閉じた${t("workspace")}は読み取り専用になり、${t("connection")}はすべて止まります。開き直せます。`, !A.workspaces.length
+    ${setting(t("workspace"), `閉じた${t("workspace")}は読み取り専用になり、${t("connection")}はすべて止まります。開き直せます。${t("member")}の数は${t("leader")}を含みます。`, !A.workspaces.length
       ? SQ.emptyState("users", `まだ${t("workspace")}がありません`,
-          `チームや用途ごとに作ります。メンバーの招待は、作った${t("workspace")}の${t("leader")}が行います。`,
+          `チームや用途ごとに作ります。${t("member")}の招待は、作った${t("workspace")}の${t("leader")}が行います。`,
           `<button class="btn is-sm" type="button" data-dialog="createWorkspace">${icon("plus")}${t("workspace")}を作る</button>`)
       : `
-      <div class="table-wrap"><table class="table"><thead><tr><th>名前</th><th class="is-num">メンバー</th><th class="is-num">${t("leader")}</th><th>作った日</th><th></th></tr></thead>
-        <tbody>${A.workspaces.map((w) => `<tr><td>${esc(w.name)}${w.closed ? ` <span class="chip">閉じた ${w.closed}</span>` : ""}${!w.closed && !w.leaders ? ` <span class="chip is-warn">${t("leader")}がいない</span>` : ""}</td>
+      <div class="table-wrap"><table class="table"><thead><tr><th class="is-name">名前</th><th class="is-num">${t("member")}数</th><th class="is-num">${t("leader")}数</th><th>作った日</th><th></th></tr></thead>
+        <tbody>${A.workspaces.map((w) => `<tr><td class="is-name">${esc(w.name)}${w.closed ? ` <span class="chip">閉じた ${w.closed}</span>` : ""}${!w.closed && !w.leaders ? ` <span class="chip is-warn">${t("leader")}がいない</span>` : ""}</td>
           <td class="is-num">${w.members}</td><td class="is-num">${w.leaders}</td><td class="mono">${w.created}</td>
           <td>${w.closed ? `<button class="btn is-sm is-quiet" type="button">開き直す</button>` : `<button class="btn is-sm is-quiet" type="button">閉じる</button>`}</td></tr>`).join("")}</tbody></table></div>`)}
     ${setting("添付ファイル", `${t("task")}、${t("story")}、${t("epic")}、コメントに添付したファイルの合計。上限は運用者が決めます。上限に達すると、どの${t("workspace")}でも新しく添付できなくなります。`, `

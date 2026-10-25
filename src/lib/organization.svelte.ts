@@ -2,7 +2,7 @@ import type { OutputOf } from '../shared/operations/define.ts';
 import type { organizationInfo } from '../shared/operations/organization/index.ts';
 import { defaultVocabularies } from '../shared/vocabulary.ts';
 import { setTheme } from './theme.svelte.ts';
-import { setVocabularies } from './vocabulary.svelte.ts';
+import { setVocabularies, setWorkspaceVocabulary } from './vocabulary.svelte.ts';
 
 export type OrganizationView = OutputOf<typeof organizationInfo>;
 
@@ -18,4 +18,5 @@ export function applyOrganization(view: OrganizationView): void {
 export function resetToDefaults(): void {
   setTheme(null);
   setVocabularies(defaultVocabularies);
+  setWorkspaceVocabulary(null);
 }
