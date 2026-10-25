@@ -222,23 +222,37 @@ function isOption(arg, full, shortest) {
   return name.length >= shortest && full.startsWith(name);
 }
 
-// git -C "$(git rev-parse --show-toplevel)"、-C ~/x、-C /rep? の行き先は、実行するまで分からない
-function gitDirAt(dir, target) {
-  return /^~|[$*?[\]{}]/.test(target) ? null : dir && path.resolve(dir, target);
+// git -C "$(git rev-parse --show-toplevel)"、-C ~/x、-C /rep?、-C src(N) の行き先は、実行するまで分からない。
+// target は行き先の文字列で、at は args の中のその語の位置（-C src の src、-Csrc の -Csrc）。展開の印は語ぜんたいで見る
+// （'sr?' のように引用符の中の記号は文字なので、行き先として解決する）
+function gitDirAt(dir, target, args, at) {
+  return /^~/.test(target) || isUnresolved(args, at) ? null : dir && path.resolve(dir, target);
 }
+
+// zsh の括弧の glob（x(N)、(a|b)）は splitSegments が区切りを切るので、後ろの語（git -C src(N) commit の commit）は別の区切りに入り、
+// この区切りには GLOB_GROUP を含む語で終わる -C だけが残る。shell-words.mjs の GLOB_GROUP と同じ文字
+const GLOB_GROUP_END = '(…)';
 
 // dir が null のときは、作業場所を判定できない（cd ~、cd $X、GIT_DIR=）
 function judgeGit(args, dir, branchOf) {
   let i = 0;
   let gitDir = dir;
+  let dirUnresolved = false;
+  const moveDir = (target, at) => {
+    gitDir = gitDirAt(gitDir, target, args, at);
+    dirUnresolved ||= gitDir === null && isUnresolved(args, at);
+  };
   while (i < args.length && args[i].startsWith('-')) {
-    if (args[i] === '-C') gitDir = gitDirAt(gitDir, args[i + 1] ?? '.');
-    if (/^-C./.test(args[i])) gitDir = gitDirAt(gitDir, args[i].slice(2));
+    if (args[i] === '-C') moveDir(args[i + 1] ?? '.', i + 1);
+    if (/^-C./.test(args[i])) moveDir(args[i].slice(2), i);
     if (/^--(git-dir|work-tree)/.test(args[i])) gitDir = null;
     i += GIT_FLAGS_WITH_VALUE.has(args[i]) ? 2 : 1;
   }
   const sub = args[i];
   const rest = args.slice(i + 1);
+  if (sub === undefined && dirUnresolved && args.at(-1)?.endsWith(GLOB_GROUP_END)) {
+    return [ASK, 'git -C の行き先が zsh の括弧の glob で、サブコマンドが別の区切りに分かれるため、作業コピーを判定できない。人が確かめる'];
+  }
   const verdict = judgeGitCommand(sub, rest, gitDir, branchOf);
   // core.hooksPath を変えると .githooks/ の守りが外れる。止める判定はそのまま、それ以外は人が確かめる
   const touchesHooksPath = (a) => /core\.hookspath/i.test(a);
@@ -253,7 +267,10 @@ function judgeGitCommand(sub, rest, gitDir, branchOf) {
   if (sub === 'add' && rest.some(mentionsSecret)) return [DENY, '.dev.vars と .env は git に入れない'];
   if (COMMITTING.has(sub) && !onlyStops(sub, rest)) {
     if (!gitDir) return [ASK, `git ${sub} をする作業コピーを判定できない（cd ~ や変数の先、GIT_DIR=）`];
-    if (branchOf(gitDir) === 'main') return [DENY, `main の上で git ${sub} はしない。ワークツリーで作業ブランチを切り、PR を通す`];
+    const branch = branchOf(gitDir);
+    if (branch === 'main') return [DENY, `main の上で git ${sub} はしない。ワークツリーで作業ブランチを切り、PR を通す`];
+    // 存在しない行き先（cd nope; git commit）と detached HEAD は、ブランチを引けない。main の判定に当たらないまま通さない
+    if (branch === undefined) return [ASK, `git ${sub} をする作業コピーのブランチを引けない（存在しない行き先、detached HEAD、git の管理外）。人が確かめる`];
   }
   if (sub !== 'push') return null;
 
@@ -490,14 +507,52 @@ function copiesIntoDirectory(matches, pos, dir) {
     const absolute = path.resolve(dest);
     if (!root || !(absolute === root || absolute.startsWith(root + path.sep))) return false;
   }
-  return pos.slice(0, -1).some((src) => matches(path.posix.join(dest, path.posix.basename(src))));
+  return pos.slice(0, -1).some((src) => namesCopiedFrom(src).some((name) => matches(path.posix.join(dest, name))));
+}
+
+// 設定のファイルの名前（isWranglerConfig の基本名）。元が glob のとき、当たる名前を宛先に置かれるものとして見る
+const WRANGLER_CONFIG_NAMES = ['wrangler.json', 'wrangler.jsonc', 'wrangler.toml', 'config.json'];
+
+// 元の語から宛先に置かれる名前。glob（/tmp/wrangler*）は、設定の名前のうち当たるものすべて。
+// * や ** だけの語（cp /tmp/* .）は、文字を1つも含まず何にでも当たるので見ない（judgeDeployWord と同じ）
+function namesCopiedFrom(src) {
+  const name = path.posix.basename(src);
+  if (!GLOB_CHARS.test(name) || !/[\w.]/.test(name)) return [name];
+  const pattern = name.toLowerCase();
+  return [name, ...WRANGLER_CONFIG_NAMES.filter((n) => matchesGlob(n, pattern))];
 }
 
 // Homebrew の GNU coreutils は g を前に付けた名前で入る（gcp、gsed）。g を外した名前で表を引く。全部の名前から g を外すと gh や git が崩れるので、名前の集合を持つ
 const GNU_PREFIXED = new Set(['gcp', 'gmv', 'gln', 'ginstall', 'grm', 'gsed', 'gdd', 'gtee', 'gtruncate', 'gshred']);
 const MULTI_ARG_WRITERS = new Set(['tee', 'rm', 'truncate', 'unlink', 'shred', 'srm', 'sponge', 'ed', 'ex', 'patch']);
 const COPY_TOOLS = new Set(['cp', 'mv', 'ln', 'rsync', 'install', 'scp', 'ditto']);
+// -t DIR（GNU の coreutils）を持つ道具。rsync の -t は --times、scp の -t はサーバー側の印で、宛先を取らない
+const TARGET_DIRECTORY_TOOLS = new Set(['cp', 'mv', 'ln', 'install']);
+// 値を取る短いフラグ（-S 接尾辞、install の -m -g -o）。まとめた短いフラグ（-vS.bak）の中では、これ以降は値の一部
+const SHORT_FLAGS_WITH_VALUE = 'Smgo';
 const FIND_ACTIONS = new Set(['-delete', '-exec', '-execdir', '-ok', '-okdir']);
+
+// -t DIR、-tDIR、-vt DIR、--target-directory DIR、--target-directory=DIR（GNU は長いオプションを一意な省略形でも受け付ける）の宛先。
+// { dir, valueAt } の valueAt は、値が独立した語のときのその位置（連結の形は -1）。無ければ null
+function targetDirectoryOf(args) {
+  for (let i = 0; i < args.length; i++) {
+    const a = args[i];
+    if (a === '--') return null;
+    const long = /^--([a-z-]+)(=([\s\S]*))?$/.exec(a);
+    if (long) {
+      if (!abbreviates(long[1], 'target-directory')) continue;
+      return long[2] === undefined ? (args[i + 1] === undefined ? null : { dir: args[i + 1], valueAt: i + 1 }) : { dir: long[3], valueAt: -1 };
+    }
+    if (!/^-[^-<>]/.test(a)) continue;
+    for (let k = 1; k < a.length; k++) {
+      if (SHORT_FLAGS_WITH_VALUE.includes(a[k])) break;
+      if (a[k] !== 't') continue;
+      if (k + 1 < a.length) return { dir: a.slice(k + 1), valueAt: -1 };
+      return args[i + 1] === undefined ? null : { dir: args[i + 1], valueAt: i + 1 };
+    }
+  }
+  return null;
+}
 
 // 書き込み先のどれかが matches（isProtectedPath か mentionsSecret）に当たるか。守る先とシークレットで道具の表を共用する。
 // words は区切りの全部の語。リダイレクトの先は道具の前に置いたもの（> f cat x）や、道具の無い区切り（> f、exec > f）にもあるので args でなく words で見る。
@@ -516,6 +571,13 @@ function writesTo(matches, tool, args, words, { anyOperand = false, intoDirector
   }
   if (MULTI_ARG_WRITERS.has(tool)) return pos.some(matches);
   if (COPY_TOOLS.has(tool)) {
+    const target = TARGET_DIRECTORY_TOOLS.has(tool) ? targetDirectoryOf(args) : null;
+    if (target) {
+      // -t のときの宛先は target のディレクトリで、位置引数は全部が元
+      const sources = positionals(args.filter((_, j) => j !== target.valueAt));
+      if (anyOperand ? [...sources, target.dir].some(matches) : matches(target.dir)) return true;
+      return intoDirectory !== null && copiesIntoDirectory(matches, [...sources, target.dir], intoDirectory.dir);
+    }
     const anyDestination = anyOperand || (intoDirectory !== null && tool === 'install');
     if (anyDestination ? pos.some(matches) : matches(pos.at(-1) ?? '')) return true;
     return intoDirectory !== null && copiesIntoDirectory(matches, pos, intoDirectory.dir);
@@ -995,8 +1057,13 @@ export function judgeBash(command, { cwd, branchOf, scriptOf = () => undefined, 
       if (setsWorkersCi(words, ci)) results.push([DENY, WORKERS_CI_REASON]);
       // cd . > .dev.vars のようにリダイレクトを付けられる。道具として見ない（cd の引数は書き込み先ではない）
       results.push(...judgeFileWrites('', [], words, dir));
-      const to = words[ci + 1];
-      dir = !to || /^[~$-]/.test(to) || isUnresolved(words, ci + 1) || !dir ? null : path.resolve(dir, to);
+      // -L と -P（シンボリックリンクの扱い）は行き先ではないので飛ばす
+      let at = ci + 1;
+      while (/^-[LP]+$/.test(words[at] ?? '')) at++;
+      const to = words[at];
+      // 絶対パスの行き先は、前の作業場所が判定できなくても（cd sr? && cd /abs）解決し直せる
+      const needsDir = !to?.startsWith('/');
+      dir = !to || /^[~$-]/.test(to) || isUnresolved(words, at) || (needsDir && !dir) ? null : path.resolve(dir ?? '/', to);
       continue;
     }
     results.push(...judgeSegment(words, { dir, branchOf: currentBranch, scriptOf, depth }));

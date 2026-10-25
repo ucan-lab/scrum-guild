@@ -756,11 +756,13 @@ describe('bash-rules: 止める', () => {
       'git -C ~/repo commit -m x',
       'git -C$PWD commit -m x',
       'git -C /rep? commit -m x',
-      "git -C '/re*' commit -m x",
       'git -C {/repo,/x} commit -m x',
     ]) {
       assert.equal(judgeBash(command, { cwd: '/repo', branchOf })?.[0], 'ask', command);
     }
+    // 引用符の中の記号は文字なので、その名前の行き先として解決する
+    assert.equal(judgeBash("git -C '/re*' commit -m x", { cwd: '/repo', branchOf }), null);
+    assert.equal(judgeBash("git -C '/repo?' commit -m x", { cwd: '/x', branchOf: (dir) => (dir === '/repo?' ? 'main' : 'x') })?.[0], 'deny');
     // 二重引用符の中の置換も、refspec を判定できないものとして見る
     assert.equal(judgeBash('git push origin "$(git branch --show-current)"', { cwd: '/w', branchOf })?.[0], 'ask');
   });
@@ -945,6 +947,30 @@ describe('bash-rules: 確認を挟む', () => {
     'ginstall /tmp/x wrangler.jsonc -m 600',
     'install -m 600 /tmp/x wrangler.jsonc',
     'gcp /tmp/wrangler.jsonc .',
+    // GNU の -t と --target-directory（=、独立した語、連結、まとめた短いフラグ、一意な省略形）は、値を宛先のディレクトリとして読む
+    'cp -t . /tmp/wrangler.jsonc',
+    'cp -t . /tmp/wrangler.jsonc /tmp/x',
+    'cp -t. /tmp/wrangler.jsonc',
+    'cp -vt . /tmp/wrangler.jsonc',
+    'cp --target-directory=. /tmp/wrangler.jsonc',
+    'cp --target-directory . /tmp/wrangler.jsonc',
+    'cp --target=. /tmp/wrangler.jsonc',
+    'cp -t apps/api/ /tmp/wrangler.jsonc',
+    'cp -t .wrangler/deploy/ /tmp/config.json',
+    'mv -t . /tmp/wrangler.toml',
+    'ln -t . /tmp/wrangler.json',
+    'install -t . /tmp/wrangler.jsonc',
+    'gcp -t . /tmp/wrangler.jsonc',
+    // 元が glob のコピーは、glob が設定の名前に当たるかを見る
+    'cp /tmp/wrangler* .',
+    'cp /tmp/wrangler.* .',
+    'cp /tmp/wrangler.js* .',
+    'cp /tmp/*.jsonc .',
+    'cp /tmp/wrangler.{json,toml} .',
+    'cp /tmp/wrangler.json? .',
+    'cp /tmp/Wrangler* .',
+    'cp -t . /tmp/wrangler*',
+    'cp /tmp/conf*.json .wrangler/deploy/',
     // インタープリタの本文とヒアドキュメントの本文に出る wrangler の設定
     `node -e "require('fs').writeFileSync('wrangler.jsonc','x')"`,
     `python3 -c "open('.wrangler/deploy/config.json','w')"`,
@@ -1004,6 +1030,25 @@ describe('bash-rules: 確認を挟む', () => {
     assert.equal(decision('git --git-dir=/repo/.git push'), 'ask');
   });
 
+  test('コミットを作る操作は、ブランチを引けない作業コピー（存在しない行き先、detached HEAD）で確認を挟む', () => {
+    const branchOf = (dir) => (dir === '/repo' ? 'main' : undefined);
+    const decisionOn = (command) => judgeBash(command, { cwd: '/repo', branchOf })?.[0];
+    for (const command of [
+      'cd nope; git commit -m x',
+      'cd nope && git merge x',
+      'git -C nope commit -m x',
+      'cd nope && cd /elsewhere && git cherry-pick abc',
+      'git -C /nope pull',
+    ]) {
+      assert.equal(decisionOn(command), 'ask', command);
+    }
+    assert.equal(decisionOn('git commit -m x'), 'deny');
+    assert.equal(decisionOn('cd nope; git status'), undefined);
+    // 進める操作を伴わない形は、ブランチを引けなくても通す
+    assert.equal(decisionOn('cd nope; git pull --ff-only'), undefined);
+    assert.equal(decisionOn('cd nope; git merge --abort'), undefined);
+  });
+
   test('main の作業コピーで、展開の印のある行き先は作業場所を判定できないので確認を挟む', () => {
     const branchOf = () => 'main';
     const decisionOn = (command) => judgeBash(command, { cwd: '/repo', branchOf })?.[0];
@@ -1036,13 +1081,58 @@ describe('bash-rules: 確認を挟む', () => {
       'env --ch={src,x} git commit -m x',
       'env --chd "src$X" git commit -m x',
       'env -C "src$X" git commit -m x',
+      // git -C の値。zsh の括弧の glob は後ろの語を別の区切りに切るので、サブコマンドの見えない git -C で止める
+      'git -C src(N) commit -m x',
+      'git -C (src|x) commit -m x',
+      'git -C src<1-9> commit -m x',
+      'git -C sr? commit -m x',
+      'git -C {src,x} commit -m x',
+      'git -C "src$X" commit -m x',
+      'git -Csr? commit -m x',
+      'git -Csrc(N) commit -m x',
+      'git -C ~x commit -m x',
+      // 展開できない cd の後の cd も、行き先が絶対パスでなければ判定できないまま
+      'cd sr? && cd src && git commit -m x',
+      'cd sr? && cd ~ && git commit -m x',
+      'cd sr? && cd - && git commit -m x',
+      'cd -L sr? && git commit -m x',
+      'cd -L && git commit -m x',
+      'cd sr? && cd /rep? && git commit -m x',
     ]) {
       assert.equal(decisionOn(command), 'ask', command);
     }
     // 展開の印のない行き先は解決し、main の作業コピーでは止める
-    for (const command of ['cd src && git commit -m x', 'pnpm -C src exec git commit -m x', 'env -C src git commit -m x', 'env --c src git commit -m x', 'env --chd=src git commit -m x']) {
+    for (const command of [
+      'cd src && git commit -m x',
+      'pnpm -C src exec git commit -m x',
+      'env -C src git commit -m x',
+      'env --c src git commit -m x',
+      'env --chd=src git commit -m x',
+      // 引用符の中の記号は文字（'sr?' という名前のディレクトリ）
+      "git -C 'sr?' commit -m x",
+      'git -C "sr?" commit -m x',
+      "git -C 'sr*' commit -m x",
+      "cd 'sr?' && git commit -m x",
+      // cd の -L と -P は飛ばして、次の語を行き先にする
+      'cd -L src && git commit -m x',
+      'cd -P src && git commit -m x',
+      'cd -LP src && git commit -m x',
+      'cd -L -P src && git commit -m x',
+      'pushd -L src && git commit -m x',
+      // 展開できない cd の後でも、絶対パスの cd は解決し直す
+      'cd sr? && cd /repo && git commit -m x',
+      'cd $X && cd /repo/src && git commit -m x',
+      'cd ~ && cd -P /repo && git commit -m x',
+      'pushd sr? && pushd /repo && git commit -m x',
+    ]) {
       assert.equal(decisionOn(command), 'deny', command);
     }
+    // 絶対パスの先が main でなければ通す
+    const decisionAway = (command) => judgeBash(command, { cwd: '/repo', branchOf: (dir) => (dir === '/repo' ? 'main' : 'x') })?.[0];
+    assert.equal(decisionAway('cd sr? && cd /w && git commit -m x'), undefined);
+    assert.equal(decisionAway('cd -L /w && git commit -m x'), undefined);
+    assert.equal(decisionAway('cd -L src && git commit -m x'), undefined);
+    assert.equal(decisionAway('cd -L /w && cd /repo && git commit -m x'), 'deny');
     assert.equal(decisionOn('cd sr? && ls'), undefined);
     assert.equal(decisionOn('cd sr? && git pull --ff-only'), undefined);
   });
@@ -1305,6 +1395,18 @@ describe('bash-rules: 通す', () => {
     'cp x /tmp/',
     'cp x src/',
     'cp wrangler.jsonc.bak .',
+    // -t の宛先は元ではないので、設定を別の場所へ写す形と、設定に当たらない元は通す
+    'cp -t /tmp wrangler.jsonc',
+    'cp -t /tmp/ wrangler.jsonc',
+    'cp -t src x',
+    'cp -t . /tmp/x',
+    'cp --target-directory=/tmp wrangler.jsonc',
+    // rsync の -t は --times で、宛先を取らない
+    'rsync -t wrangler.jsonc /tmp/',
+    // 文字を1つも含まない glob と、設定の名前に当たらない glob
+    'cp /tmp/* .',
+    'cp /tmp/x* .',
+    'cp /tmp/*.md .',
     'node -e "console.log(1)"',
     "node -e \"console.log(require('./package.json').name)\"",
     // 展開の印のない cd の行き先は解決する
