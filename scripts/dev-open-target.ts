@@ -75,7 +75,7 @@ export function resolveDevOpenTarget(
   if (safeReturnTo(path) !== path) {
     return {
       ok: false,
-      reason: `path ${path} は開けない。自分のサイトのパスだけを受け付ける（//host、バックスラッシュ、ドット区間、/api と /login で始まるパスは開けない）`,
+      reason: `path ${path} は開けない。自分のサイトのパスだけを受け付ける（//host、バックスラッシュ、ドット区間、最初の区間が api か login のパスは開けない）`,
     };
   }
 
