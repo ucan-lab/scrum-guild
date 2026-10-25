@@ -104,6 +104,14 @@ describe('bash-rules: 止める', () => {
     'node --test scripts/deploy.test.ts scripts/deploy-production.ts',
     'node --import tsx scripts/deploy.ts',
     'node --test scripts/deploy*',
+    'node scripts/deploy-production.ts$IFS.test.ts',
+    'node scripts/deploy-production.ts${IFS}.test.ts',
+    'node scripts/deploy-production.ts$IFS/scripts/deploy.test.ts',
+    'node --import ./scripts/deploy-production.ts#.test.ts --test scripts/deploy.test.ts',
+    "node --import './scripts/deploy-production.ts?x.test.ts' -e 0",
+    'node --import file:///repo/scripts/deploy-production.ts#.test.ts -e 0',
+    `node -p "import('./scripts/deploy-production.ts'),{test:{ts:1}}.test.ts"`,
+    'bash scripts/x.sh scripts/deploy.sh',
     'git push origin main',
     'git push origin HEAD:main',
     'git push origin feature:refs/heads/main',
@@ -434,6 +442,7 @@ describe('bash-rules: 通す', () => {
     'node scripts/deploy.test.ts',
     'node --test scripts/deploy*.test.ts',
     'node --test scripts/*.test.ts',
+    './scripts/deploy.test.ts',
   ]) {
     test(command, () => assert.equal(decision(command), 'allow'));
   }
