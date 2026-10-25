@@ -123,7 +123,7 @@ describe('deploy', () => {
     assert.deepEqual(f.calls, []);
   });
 
-  test('WORKERS_CI_COMMIT_SHA が無いかコミットの SHA の形でなければ、wrangler を1つも呼ばずに失敗する', async () => {
+  test('版が無いかコミットの SHA の形でなければ、wrangler を1つも呼ばずに失敗する', async () => {
     for (const commitSha of [undefined, '', 'dev', 'main', 'ABC1234', 'abc12', 'abc1234 --remote']) {
       const f = fake({ commitSha });
       assert.equal(await deploy(f.deps), 1, String(commitSha));

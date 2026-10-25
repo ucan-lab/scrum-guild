@@ -95,7 +95,7 @@ export async function deploy(deps: DeployDeps): Promise<number> {
   const sha = deps.commitSha;
   // 版の無いまま出すと、本番の版が dev になり煙のテストで見分けられない
   if (!sha || !COMMIT_SHA.test(sha)) {
-    deps.error(`WORKERS_CI_COMMIT_SHA がコミットの SHA ではありません（${sha ?? '無し'}）。本番に触らずに終えます`);
+    deps.error(`版がコミットの SHA ではありません（${sha ?? '無し'}）。本番に触らずに終えます`);
     return 1;
   }
 
