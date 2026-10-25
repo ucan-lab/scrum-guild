@@ -443,6 +443,8 @@ describe('bash-rules: 通す', () => {
     'node --test scripts/deploy*.test.ts',
     'node --test scripts/*.test.ts',
     './scripts/deploy.test.ts',
+    'node --test /repo/scripts/deploy.test.ts',
+    'bash scripts/deploy.test.ts',
   ]) {
     test(command, () => assert.equal(decision(command), 'allow'));
   }
