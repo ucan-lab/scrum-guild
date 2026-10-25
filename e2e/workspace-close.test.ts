@@ -213,6 +213,30 @@ test.describe('管理者（あおば開発のミナト）', () => {
     expect((await button.boundingBox())?.height).toBeGreaterThanOrEqual(44);
   });
 
+  test('空白の無い長い名前でも、確認の見出しとトーストは折り返してはみ出さない', async ({ page }) => {
+    const name = 'W'.repeat(50);
+    await createWorkspace(page, name);
+    await page.setViewportSize({ width: 390, height: 800 });
+    await page.route('**/api/aoba/workspace-close', (route) =>
+      route.fulfill({ status: 404, json: { error: { code: 'not_found', message: 'x' } } }),
+    );
+    await page.goto('/aoba/admin');
+    const row = page.locator('tbody tr', { hasText: name });
+    await row.getByRole('button', { name: `「${name}」を終了する` }).scrollIntoViewIfNeeded();
+    await row.getByRole('button', { name: `「${name}」を終了する` }).click();
+    const dialog = page.getByRole('dialog', { name: `「${name}」を終了しますか？` });
+    const overflow = (selector: string) => dialog.locator(selector).evaluate((el) => el.scrollWidth - el.clientWidth);
+    expect(await overflow('.dialog-title')).toBeLessThanOrEqual(0);
+    expect(await overflow('.dialog-sheet')).toBeLessThanOrEqual(0);
+
+    // 404 のトースト（名前入り）も、はみ出さない
+    await dialog.getByRole('button', { name: `「${name}」を終了する` }).click();
+    const toast = page.getByRole('status').filter({ hasText: `「${name}」を操作できませんでした` });
+    await expect(toast).toBeVisible();
+    expect(await toast.evaluate((el) => el.scrollWidth - el.clientWidth)).toBeLessThanOrEqual(0);
+    expect(await toast.evaluate((el) => el.getBoundingClientRect().right)).toBeLessThanOrEqual(390);
+  });
+
   test('終了の確認で 404 を受けたら、理由を出してダイアログを閉じ、一覧を読み直す', async ({ page }) => {
     await page.route('**/api/aoba/workspace-close', (route) =>
       route.fulfill({ status: 404, json: { error: { code: 'not_found', message: 'x' } } }),
