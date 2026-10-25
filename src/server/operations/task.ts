@@ -16,27 +16,9 @@ import {
   type MovePlan,
   type Positioned,
 } from './move-position.ts';
-import { actorUserIdOf, changeLogColumns, openWorkspace, throwIfClosed } from './write-guards.ts';
+import { activeMemberName, actorUserIdOf, changeLogColumns, openWorkspace, throwIfClosed } from './write-guards.ts';
 
 type Tables = OrganizationTables;
-
-// そのワークスペースに今所属している、無効でない人の名前。いなければ undefined
-function activeMemberName(
-  from: Pick<QueryCreator<Tables>, 'selectFrom'>,
-  organizationId: string,
-  workspaceId: string,
-  userId: string,
-) {
-  return from
-    .selectFrom('memberships as m')
-    .innerJoin('users as u', 'u.id', 'm.user_id')
-    .select('u.name')
-    .where('m.workspace_id', '=', workspaceId)
-    .where('m.user_id', '=', userId)
-    .where('m.left_at', 'is', null)
-    .where('u.organization_id', '=', organizationId)
-    .where('u.disabled_at', 'is', null);
-}
 
 // 削除していないバックログのタスク。親のないタスク（storyId が null）か、ストーリーの配下のタスク。
 // 木の読み取りと、末尾の位置を決める読み取りが同じ範囲を使う

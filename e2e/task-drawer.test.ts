@@ -162,6 +162,49 @@ test('完了したタスクの難易度は直せず、理由を添える。ほ�
   await expect(page.getByRole('status').filter({ hasText: '保存しました' })).toBeVisible();
 });
 
+test('担い手を引き出しで選ぶと、木の行にアバターが出る。外すと担い手なしに戻る。起票のダイアログでも選べる', async ({
+  page,
+}) => {
+  // 作った管理者（ミナト）がリーダーとして所属するので、候補はミナト
+  await createWorkspace(page, '担い手パーティ', 'game');
+  await addTask(page, '担い手を決める');
+  const row = page.locator('.entry', { hasText: '担い手を決める' });
+  await expect(row.getByRole('img', { name: '担い手なし' })).toBeVisible();
+  await row.getByRole('link', { name: '担い手を決める' }).click();
+  const drawer = page.getByRole('dialog', { name: '担い手を決める' });
+  const select = drawer.getByRole('combobox', { name: '担い手' });
+  await expect(select).toHaveValue('');
+  await expect(select.getByRole('option', { name: 'ミナト' })).toBeAttached();
+  await select.selectOption({ label: 'ミナト' });
+  await expect(page.getByRole('status').filter({ hasText: '保存しました' })).toBeVisible();
+  await expect(drawer.getByRole('img', { name: 'ミナト' })).toBeVisible();
+  await expect(row.getByRole('img', { name: 'ミナト' })).toBeVisible();
+
+  await select.selectOption({ label: '担い手なし' });
+  await expect(row.getByRole('img', { name: '担い手なし' })).toBeVisible();
+  await expect(select).toHaveValue('');
+  await drawer.getByRole('button', { name: '閉じる' }).click();
+  await expect(drawer).toBeHidden();
+
+  // 起票のダイアログでは、親の横に担い手を選ぶ（既定は担い手なし）
+  await page.getByRole('button', { name: '依頼を出す' }).click();
+  const dialog = page.getByRole('dialog', { name: '依頼を出す' });
+  await dialog.getByLabel('タイトル').fill('担い手つきの依頼');
+  const assignee = dialog.getByRole('combobox', { name: '担い手' });
+  await expect(assignee).toHaveValue('');
+  await expect(assignee.getByRole('option', { name: 'ミナト' })).toBeAttached();
+  await assignee.selectOption({ label: 'ミナト' });
+  await dialog.getByRole('button', { name: '依頼を出す' }).click();
+  await expect(dialog).toBeHidden();
+  const created = page.locator('.entry', { hasText: '担い手つきの依頼' });
+  await expect(created.getByRole('img', { name: 'ミナト' })).toBeVisible();
+  // 引き出しを開くと、選んだ担い手が出る
+  await created.getByRole('link', { name: '担い手つきの依頼' }).click();
+  await expect(
+    page.getByRole('dialog', { name: '担い手つきの依頼' }).getByRole('combobox', { name: '担い手' }),
+  ).toHaveValue(/[0-9a-f-]{36}/);
+});
+
 test('広げると aria-modal が外れ、左のメニューを押せる。広げた形は次に開くときも残る', async ({ page }) => {
   await createWorkspace(page, '広げるパーティ', 'game');
   await addTask(page, '広げて読む');
@@ -211,6 +254,9 @@ test('終了したワークスペースは読み取り専用で開く（seed の
   await expect(drawer.getByRole('button', { name: '編集' })).toHaveCount(0);
   await expect(drawer.getByRole('button', { name: /削除する/ })).toHaveCount(0);
   for (const radio of await drawer.getByRole('radio').all()) await expect(radio).toBeDisabled();
+  // 担い手は選択欄を出さず、アバターと名前だけ
+  await expect(drawer.getByRole('combobox')).toHaveCount(0);
+  await expect(drawer.getByText('担い手なし', { exact: true })).toBeVisible();
   await expect(row).toHaveCount(1);
 });
 
@@ -391,7 +437,8 @@ test('保存を409で断られたとき、送った欄に合う文を出す。�
   await page.route('**/api/aoba/task-update', (route) =>
     route.fulfill({ status: 409, json: { error: { code: 'conflict', message: 'conflict' } } }),
   );
-  await drawer.getByRole('radio', { name: '5', exact: true }).check();
+  // 断られると選択が前の値に戻るので、check（押した後に選ばれたかを確かめる）でなく click で押す
+  await drawer.getByRole('radio', { name: '5', exact: true }).click();
   // 完了していないタスクの 409 は、「完了している」でなく、同時に直された競合の文（読み直した今の値で決める）
   const raced = 'ほかの人が同時に直したため、保存できませんでした';
   await expect(drawer.locator('.props').getByText(raced, { exact: false })).toBeVisible();
@@ -427,7 +474,7 @@ test('保存を409で断られたとき、送った欄に合う文を出す。�
   await page.route('**/api/aoba/task-update', (route) =>
     route.fulfill({ status: 409, json: { error: { code: 'workspace_closed', message: 'closed' } } }),
   );
-  await drawer.getByRole('radio', { name: '8', exact: true }).check();
+  await drawer.getByRole('radio', { name: '8', exact: true }).click();
   await expect(drawer.getByText('終了したパーティには書き込めません')).toBeVisible();
   await expect.poll(() => workspaceRequests.length).toBeGreaterThan(0);
   expect(organizationRequests).toEqual([]);

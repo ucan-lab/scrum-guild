@@ -10,7 +10,7 @@ import { taskDetailSchema } from './task.ts';
 export const taskDetail = defineOperation({
   name: 'task-detail',
   description:
-    'タスク1件のタイトル、本文、ポイント、期日、リンク、完了の状態、削除できるかと、期日の印を決める今日と週の始まりを返す',
+    'タスク1件のタイトル、本文、ポイント、期日、リンク、担当（今所属しているか付き）、完了の状態、削除できるかと、期日の印を決める今日と週の始まりを返す',
   mode: 'read',
   permission: 'member',
   workspace: true,

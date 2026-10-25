@@ -858,6 +858,24 @@ export const dictionary = defineDictionary({
     '入力を受け付けられませんでした。内容を確かめて、もう一度試してください。',
     '入力を受け付けられませんでした。内容を確かめて、もう一度試してください。',
   ),
+  // 担当の選択（引き出しと起票のダイアログ）。候補は、そのワークスペースに今所属している人
+  assigneeCandidatesFailed: workspace(
+    '{assignee}の候補を読み込めませんでした',
+    '{assignee}の候補を読み込めませんでした',
+  ),
+  assigneeNotMember: workspace(
+    '選んだ人は、もうこの{workspace}にいません。{assignee}を選び直してください',
+    '選んだ人は、もうこの{workspace}に所属していません。{assignee}を選び直してください',
+  ),
+  // 完了したタスクの担当は替えない（完了の経験値と完了の記録が、完了した時点の担当を使うため）
+  taskAssigneeLocked: workspace(
+    '{done}した{task}の{assignee}は替えられません',
+    '{done}した{task}の{assignee}は替えられません',
+  ),
+  taskAssigneeDone: workspace(
+    'この{task}は{done}になっているため、{assignee}は替えられません。',
+    'この{task}は{done}になっているため、{assignee}は替えられません。',
+  ),
   taskReadOnly: workspace(
     '終了した{workspace}の{task}は、読み取りだけできます',
     '終了した{workspace}の{task}は、読み取りだけできます',

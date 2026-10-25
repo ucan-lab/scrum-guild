@@ -141,3 +141,24 @@ test('完了の操作が 404 か workspace_closed を受けたら、一覧を読
     await expect(row.getByRole('button', { name: /完遂にする/ })).toBeVisible();
   }
 });
+
+test('選んだ担い手が所属を外れていたら、理由を出し、候補を読み直して担い手なしに戻し、担い手の選択欄にフォーカスを移す', async ({
+  page,
+}) => {
+  await createWorkspace(page, '担い手の外れたパーティ', 'game');
+  // 送ったときだけ 404 にする（親は選ばないので、外れたのは担い手）
+  await page.route('**/api/aoba/task-create', async (route) => {
+    await route.fulfill({ status: 404, json: { error: { code: 'not_found', message: 'not_found' } } });
+  });
+  await page.getByRole('button', { name: '依頼を出す' }).click();
+  const dialog = page.getByRole('dialog', { name: '依頼を出す' });
+  await dialog.getByLabel('タイトル').fill('外れた人に頼む');
+  const assignee = dialog.getByRole('combobox', { name: '担い手' });
+  await expect(assignee.getByRole('option', { name: 'ミナト' })).toBeAttached();
+  await assignee.selectOption({ label: 'ミナト' });
+  await dialog.getByRole('button', { name: '依頼を出す' }).click();
+  await expect(dialog.getByText('選んだ人は、もうこのパーティにいません。担い手を選び直してください')).toBeVisible();
+  await expect(assignee).toHaveValue('');
+  await expect(assignee).toBeFocused();
+  await expect(dialog).toBeVisible();
+});

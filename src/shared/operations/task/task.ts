@@ -10,6 +10,9 @@ export const taskDetailSchema = z.object({
   points: taskPointsSchema.nullable(),
   due_on: z.string().nullable(),
   link_url: z.string().nullable(),
+  // 担当。いなければ null。left は、今そのワークスペースに所属していない（抜けた、無効にされた）こと。
+  // 抜けた人でも名前を残し、画面は「（離脱済み）」を添える
+  assignee: z.object({ id: z.string(), name: z.string(), left: z.boolean() }).nullable(),
   // 取り込んだタスク。タイトルとリンクは直せない
   is_imported: z.boolean(),
   // 完了した日時。完了したタスクのポイントは直せない

@@ -1,7 +1,14 @@
 <script lang="ts">
   import { tick } from 'svelte';
   import { beforeNavigate, goto } from '$app/navigation';
-  import { taskDelete, taskDetail, taskUpdate, type TaskDetail } from '../../shared/operations/task/index.ts';
+  import {
+    taskAssign,
+    taskDelete,
+    taskDetail,
+    taskUpdate,
+    type TaskDetail,
+  } from '../../shared/operations/task/index.ts';
+  import { memberList } from '../../shared/operations/workspace/index.ts';
   import {
     LINK_URL_MAX_LENGTH,
     STORY_TEXT_MAX_LENGTH,
@@ -15,6 +22,7 @@
   import { callOperation } from '../api.ts';
   import { showToast } from '../toast.svelte.ts';
   import { t } from '../vocabulary.svelte.ts';
+  import Avatar from './Avatar.svelte';
   import ConfirmDialog from './ConfirmDialog.svelte';
   import Drawer from './Drawer.svelte';
   import DueChip from './DueChip.svelte';
@@ -29,6 +37,10 @@
   // 送る欄は、今の値と違うものだけ。保存したら、その欄だけを応答で入れ替え、画面が木を読み直す（onchanged）。
   // ポイントの保存は1本ずつ送る。送っている間に選び直したら、最後の選択だけを溜め、送り終えた後に送る（矢印キーで動かしても要求が飛び交わず、
   // 応答の順が前後しない）。期日は、年が4桁そろった値だけを、少し待ってから（カレンダーで選んだとき）か、欄を離れる／Enter で保存する。
+  // 担当は、アバターと選択欄で、選んだら task-assign で保存する（1本ずつ送り、送っている間に選び直した分は最後の選択だけを送る）。
+  // 候補は、読み込めた後に member-list の members（今所属している人）を読む。今の担当が候補にいない（抜けた）ときは、
+  // その人を「名前（離脱済み）」の選択肢として残す。候補を読めなければ、担当なしと今の担当だけを選べ、読めなかったことを添える。
+  // 完了したタスクの担当は替えない（アバターと名前だけにして理由を添える）。
   // 完了したタスクのポイントは直せない（欄を読み取り専用にして理由を添える）。取り込んだタスクのタイトルとリンクと削除も直せない。
   // 閉じたワークスペース（canWrite が偽）では、直す口と削除を出さず、読み取り専用で開く。
   // 書きかけ（タイトル、リンク、本文の直している途中で、保存と同じ整え方の後も値が保存した値と違うもの。保存の要求を送っている間も数える。
@@ -68,6 +80,9 @@
   const pointsErrorId = `${ids}-points-error`;
   const dueId = `${ids}-due`;
   const dueErrorId = `${ids}-due-error`;
+  const assigneeId = `${ids}-assignee`;
+  const assigneeNoteId = `${ids}-assignee-note`;
+  const assigneeErrorId = `${ids}-assignee-error`;
   const readOnlyId = `${ids}-readonly`;
 
   type PointsChoice = (typeof TASK_POINT_VALUES)[number] | null;
@@ -125,7 +140,30 @@
   let leaving = false;
   let asking = false;
 
+  // 担当の候補（そのワークスペースに今所属している人）。読み込む前と読めなかったときは null
+  let candidates = $state<readonly { id: string; name: string }[] | null>(null);
+  let candidatesFailed = $state(false);
+  let candidatesVersion = 0;
+  // 選んだ担当（空は担当なし）。送っている間（と、続けて選んだ分を送り終えるまで）は、最後に選んだ値を見せる
+  let assigneePending = $state<{ value: string } | null>(null);
+  let assigneeError = $state<string | null>(null);
+  let assigneeSending = false;
+
   const pointsEditable = $derived(canWrite && task !== null && task.completed_at === null);
+  const assigneeEditable = $derived(canWrite && task !== null && task.completed_at === null);
+  const assigneeShownId = $derived(assigneePending !== null ? assigneePending.value : (task?.assignee?.id ?? ''));
+  // 選択欄の選択肢。候補に、今の担当が候補にいなければ（抜けた、候補を読めなかった）その人を足す
+  const assigneeOptions = $derived.by(() => {
+    const options: { id: string; name: string; left: boolean }[] = (candidates ?? []).map((candidate) => ({
+      ...candidate,
+      left: false,
+    }));
+    const current = task?.assignee ?? null;
+    if (current !== null && !options.some((option) => option.id === current.id)) options.unshift(current);
+    return options;
+  });
+  // アバターに出す人。選んだ候補か今の担当
+  const assigneeShown = $derived(assigneeOptions.find((option) => option.id === assigneeShownId) ?? null);
   const titleEditable = $derived(canWrite && task !== null && !task.is_imported);
   const done = $derived(task?.completed_at != null);
 
@@ -138,6 +176,8 @@
       task = result.data.task;
       clock = { today: result.data.today, weekStart: result.data.week_start };
       loadState = 'ready';
+      // 担当を選べるときだけ、候補を読む（読み取り専用では選択欄を出さない）
+      if (canWrite && result.data.task.completed_at === null && candidates === null) void loadCandidates();
       // 開いたときの読み上げに、見出しが読まれるようにする。閉じるボタンか何も無い所にフォーカスがあるときだけ移す
       await tick();
       if (!alive) return;
@@ -281,6 +321,106 @@
       clock = { today: result.data.today, weekStart: result.data.week_start };
     }
     return result.data.task;
+  }
+
+  // ---- 担当（選んだら保存する。1本ずつ送る） ----
+  // 候補を読む。読めなければ、担当なしと今の担当だけを選べるままにし、読めなかったことを添える
+  async function loadCandidates(): Promise<void> {
+    const mine = ++candidatesVersion;
+    const result = await callOperation(memberList, { workspace_id: workspaceId }, { slug });
+    if (!alive || mine !== candidatesVersion) return;
+    if (result.ok) {
+      candidates = result.data.members.map((member) => ({ id: member.id, name: member.name }));
+      candidatesFailed = false;
+    } else {
+      candidatesFailed = true;
+    }
+  }
+
+  function chooseAssignee(value: string): void {
+    // 送っている間に選び直されたら、最後の選択だけを残す
+    assigneePending = { value };
+    if (!assigneeSending) void sendAssignee();
+  }
+
+  // ポイントと同じく、引き出しが閉じた後も溜めた最後の選択まで送る。タスクが消えたか、完了にされていたら、溜めた分を捨てる
+  async function sendAssignee(): Promise<void> {
+    assigneeSending = true;
+    try {
+      while (assigneePending !== null && !taskGone) {
+        const choice = assigneePending.value;
+        if (task === null || choice === (task.assignee?.id ?? '') || task.completed_at !== null) {
+          assigneePending = null;
+          break;
+        }
+        assigneeError = null;
+        const message = await saveAssignee(choice === '' ? null : choice);
+        if (message !== null) {
+          assigneeError = message;
+          if (assigneePending === null || assigneePending.value === choice) assigneePending = null;
+          continue;
+        }
+        if (assigneePending !== null && assigneePending.value === choice) assigneePending = null;
+      }
+      if (taskGone) assigneePending = null;
+    } finally {
+      assigneeSending = false;
+    }
+  }
+
+  // 担当を書く。成功なら null、失敗ならエラーの文（saveFields と同じ扱い）。404 は、タスクが消えたか、選んだ人が所属を外れたかを、
+  // 読み直して分ける（タスクがあれば、候補を読み直して、選び直しを促す）
+  async function saveAssignee(assigneeUserId: string | null): Promise<string | null> {
+    const result = await callOperation(
+      taskAssign,
+      { workspace_id: workspaceId, task_id: taskId, assignee_user_id: assigneeUserId },
+      { slug },
+    );
+    if (result.ok) {
+      if (alive && task !== null) {
+        const saved = result.data.task;
+        task = { ...task, assignee: saved.assignee, completed_at: saved.completed_at, can_delete: saved.can_delete };
+      }
+      showToast(t('taskSaved'), 'check');
+      onchanged();
+      return null;
+    }
+    let message: string;
+    if (result.status === 404) {
+      const latest = await callOperation(taskDetail, { workspace_id: workspaceId, task_id: taskId }, { slug });
+      if (!latest.ok && latest.status === 404) {
+        taskGone = true;
+        if (alive) gone();
+        else {
+          showToast(t('taskGone', { task: t('task') }), 'alert');
+          onchanged();
+        }
+        return null;
+      }
+      if (latest.ok && alive) {
+        task = latest.data.task;
+        clock = { today: latest.data.today, weekStart: latest.data.week_start };
+      }
+      if (alive) void loadCandidates();
+      message = t('assigneeNotMember', { workspace: t('workspace'), assignee: t('assignee') });
+    } else if (result.status === 401) {
+      onstale();
+      message = t('taskSaveFailed');
+    } else if (result.status === 409 && result.error?.code === 'workspace_closed') {
+      onstale();
+      message = t('workspaceClosedReadOnly', { workspace: t('workspace') });
+    } else if (result.status === 409) {
+      // 完了にされていれば、それが理由。そうでなければ、同時に担当を替えられた
+      const latest = await refresh();
+      message =
+        (latest ?? task)?.completed_at != null
+          ? t('taskAssigneeDone', { task: t('task'), done: t('done'), assignee: t('assignee') })
+          : t('taskSaveRaced');
+    } else {
+      message = result.status === 400 ? t('taskBadRequest') : t('taskSaveFailed');
+    }
+    if (!alive) showToast(message, 'alert');
+    return message;
   }
 
   // ---- タイトル、リンク、本文（InlineEdit） ----
@@ -610,6 +750,62 @@
     {/if}
 
     <dl class="props">
+      <div>
+        <dt>
+          {#if assigneeEditable}<label for={assigneeId}>{t('assignee')}</label>{:else}{t('assignee')}{/if}
+        </dt>
+        <dd>
+          {#if assigneeShown === null}
+            <Avatar userId={null} />
+          {:else}
+            <Avatar userId={assigneeShown.id} name={assigneeShown.name} left={assigneeShown.left} />
+          {/if}
+          {#if assigneeEditable}
+            <select
+              class="select"
+              id={assigneeId}
+              onchange={(event) => chooseAssignee(event.currentTarget.value)}
+              aria-invalid={assigneeError !== null}
+              aria-describedby={[
+                candidatesFailed ? assigneeNoteId : null,
+                assigneeError !== null ? assigneeErrorId : null,
+              ]
+                .filter((id) => id !== null)
+                .join(' ') || undefined}
+            >
+              <option value="" selected={assigneeShownId === ''}>{t('unassigned')}</option>
+              {#each assigneeOptions as option (option.id)}
+                <option value={option.id} selected={option.id === assigneeShownId}
+                  >{option.left ? `${option.name}${t('leftMember')}` : option.name}</option
+                >
+              {/each}
+            </select>
+            {#if candidatesFailed}
+              <span class="props-note" id={assigneeNoteId}
+                >{t('assigneeCandidatesFailed', { assignee: t('assignee') })}</span
+              >
+            {/if}
+          {:else}
+            <span
+              >{task.assignee === null
+                ? t('unassigned')
+                : `${task.assignee.name}${task.assignee.left ? t('leftMember') : ''}`}</span
+            >
+          {/if}
+          {#if done}
+            <span class="props-note"
+              ><Icon name="lock" />{t('taskAssigneeLocked', {
+                task: t('task'),
+                done: t('done'),
+                assignee: t('assignee'),
+              })}</span
+            >
+          {/if}
+          {#if assigneeError !== null}
+            <span class="field-error" id={assigneeErrorId} role="alert"><Icon name="alert" />{assigneeError}</span>
+          {/if}
+        </dd>
+      </div>
       <div>
         <dt id={pointsLabelId}>{t('points')}</dt>
         <dd>

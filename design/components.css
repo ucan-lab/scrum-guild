@@ -681,7 +681,7 @@ button.tree-link { border: 0; background: none; padding: 0; font: inherit; text-
 /* 読む形の包み。直している間は hidden で隠し、読む形は包みの外の並び（props の dd など）にそのまま入る */
 .edit-view { display: contents; }
 .edit-view[hidden] { display: none; }
-.props dd > .input { width: auto; max-width: 100%; }
+.props dd > .input, .props dd > .select { width: auto; max-width: 100%; }
 .edit-form { display: grid; gap: var(--space-2); width: 100%; }
 .edit-form > .field { margin: 0; }
 .edit-actions { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }

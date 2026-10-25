@@ -655,6 +655,16 @@ const looooooooooooooooooooooooooooooooooongLine = "コードの長い1行は、
     const reason = x.doneAt ? `<span class="props-note" id="drawer-pts-reason">${icon("lock")}${t("done")}した${t("task")}の${t("points")}は直せません</span>` : "";
     return `<div class="segmented${locked ? " is-readonly" : ""}" role="radiogroup" aria-label="${t("points")}"${x.doneAt ? ` aria-describedby="drawer-pts-reason"` : ""}>${choices}</div>${reason}`;
   }
+  // 担当。アバターと選択欄で、選んだら保存する。候補はワークスペースに今所属している人で、今の担当が抜けていれば「名前（離脱済み）」で残す。
+  // 終了したワークスペースと完了したタスクは、アバターと名前だけ（完了したタスクは理由を添える）
+  function drawerAssigneeHtml(x) {
+    const who = x.who ? user(x.who) : null;
+    const label = who ? `${esc(who.name)}${who.left ? "（離脱済み）" : ""}` : "担当なし";
+    const lock = x.doneAt ? `<span class="props-note">${icon("lock")}${t("done")}した${t("task")}の${t("assignee")}は替えられません</span>` : "";
+    if (x.doneAt || drawerReadOnly()) return `${avatarOf(x.who)}<span>${label}</span>${lock}`;
+    const candidates = Object.entries(D.users).filter(([id, u]) => !u.left || id === x.who);
+    return `${avatarOf(x.who)}<select class="select" aria-label="${t("assignee")}"><option value=""${who ? "" : " selected"}>担当なし</option>${candidates.map(([id, u]) => `<option value="${id}"${id === x.who ? " selected" : ""}>${esc(u.name)}${u.left ? "（離脱済み）" : ""}</option>`).join("")}</select>`;
+  }
   function drawerDueHtml(x) {
     const d = dueOf(x);
     // 終了したワークスペースでは、入力欄にせず文字で出す（空は「—」）。期限の印は同じく出す（バックログの行と同じ部品）
@@ -715,7 +725,7 @@ const looooooooooooooooooooooooooooooooooongLine = "コードの長い1行は、
       ${x.srcDone && !x.doneAt ? `<div class="callout is-ok">${icon("check")}<span>取り込み元で完了になりました。完了にするかはここで決めます。</span></div>` : ""}
       <dl class="props">
         <div><dt>${t("column")}</dt><dd>${colName(x) ? `<span class="status-dot">${esc(colName(x))}</span>` : "—"}</dd></div>
-        <div><dt>${t("assignee")}</dt><dd>${avatarOf(x.who)}${x.who ? esc(user(x.who).name) : "担当なし"}</dd></div>
+        <div><dt>${t("assignee")}</dt><dd>${drawerAssigneeHtml(x)}</dd></div>
         <div><dt>${t("points")}</dt><dd>${drawerPointsHtml(x)}</dd></div>
         <div><dt>${t("due")}</dt><dd>${drawerDueHtml(x)}</dd></div>
         <div><dt>親</dt><dd>${parent ? `${icon("flag")} ${esc(parent.title)}${epic ? `<span class="props-note">${esc(epic.title)}</span>` : ""}` : "なし"}</dd></div>

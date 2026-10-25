@@ -1,22 +1,33 @@
 import { now, todayIn } from '../../shared/clock.ts';
-import { taskDelete, taskDetail, taskUpdate, type TaskDetail } from '../../shared/operations/task/index.ts';
+import { taskAssign, taskDelete, taskDetail, taskUpdate, type TaskDetail } from '../../shared/operations/task/index.ts';
 import { previousStatementChanged, type OrganizationDb, type VerifiedWorkspace } from '../db/index.ts';
 import { ApiError } from '../errors.ts';
 import { uuidv7 } from '../uuid.ts';
 import { implement } from './implement.ts';
-import { actorUserIdOf, changeLogColumns, openWorkspace, throwIfClosed } from './write-guards.ts';
+import { activeMemberName, actorUserIdOf, changeLogColumns, openWorkspace, throwIfClosed } from './write-guards.ts';
 
 // 同時の更新に負けたときにやり直す回数の上限。超えたら 409 の conflict
 const MAX_UPDATE_ATTEMPTS = 3;
 
 type TaskPoints = 0 | 1 | 2 | 3 | 5 | 8 | 13 | null;
 
-// 削除していないタスクの、引き出しが出す欄と作った人。ワークスペースで必ず絞る
+// 削除していないタスクの、引き出しが出す欄と作った人。ワークスペースで必ず絞る。
+// 担当の名前は組織で絞った users から、今所属しているかは、そのワークスペースの今の所属（left_at が空の行は1人に1つ）から読む
 async function readTask(db: OrganizationDb, workspaceId: string, taskId: string) {
+  const organizationId = db.organizationId;
   const row = await db.first(
     db.statement((q) =>
       q
         .selectFrom('tasks')
+        .leftJoin('users as assignee', (join) =>
+          join.onRef('assignee.id', '=', 'tasks.assignee_user_id').on('assignee.organization_id', '=', organizationId),
+        )
+        .leftJoin('memberships as assignee_membership', (join) =>
+          join
+            .onRef('assignee_membership.user_id', '=', 'tasks.assignee_user_id')
+            .on('assignee_membership.workspace_id', '=', workspaceId)
+            .on('assignee_membership.left_at', 'is', null),
+        )
         .select([
           'tasks.id',
           'tasks.title',
@@ -27,6 +38,11 @@ async function readTask(db: OrganizationDb, workspaceId: string, taskId: string)
           'tasks.is_imported',
           'tasks.completed_at',
           'tasks.created_by',
+          'tasks.assignee_user_id',
+          'tasks.today_on',
+          'assignee.name as assignee_name',
+          'assignee.disabled_at as assignee_disabled_at',
+          'assignee_membership.id as assignee_membership_id',
         ])
         .where('tasks.id', '=', taskId)
         .where('tasks.workspace_id', '=', workspaceId)
@@ -58,6 +74,16 @@ function canDelete(
   return task.is_imported === 0 && mayDelete(task, actor, workspace);
 }
 
+// 担当と、今そのワークスペースに所属していないか（抜けた、無効にされた）
+function assigneeOf(row: TaskRow): TaskDetail['assignee'] {
+  if (row.assignee_user_id === null) return null;
+  return {
+    id: row.assignee_user_id,
+    name: row.assignee_name ?? '',
+    left: row.assignee_membership_id === null || row.assignee_disabled_at !== null,
+  };
+}
+
 function detailOf(
   row: TaskRow,
   actor: { userId: string | null; isAdmin: boolean },
@@ -70,6 +96,7 @@ function detailOf(
     points: row.points,
     due_on: row.due_on,
     link_url: row.link_url,
+    assignee: assigneeOf(row),
     is_imported: row.is_imported === 1,
     completed_at: row.completed_at,
     can_delete: canDelete(row, actor, workspace),
@@ -211,6 +238,112 @@ export const taskUpdateOperation = implement(taskUpdate, async ({ db, actor, wor
     // （完了にされていたら、次の周の assertEditable が 409 にする）
     await throwIfClosed(db, workspaceId);
     if ((await readTask(db, workspaceId, taskId)) === undefined) throw new ApiError(404, 'not_found');
+  }
+  throw new ApiError(409, 'conflict');
+});
+
+// 担当を替える（null で外す）。読んだ担当から替わるときだけ、「読んだ担当のまま、読んだ今日やるの印のまま、完了していない、
+// 新しい担当が今所属している、ワークスペースが開いている」という条件つきで書き、同じ文で今日やるの印を消す。
+// 通らなかったら読み直して、やり直す（task-update と同じ。3 回まで）
+export const taskAssignOperation = implement(taskAssign, async ({ db, actor, workspace, input }) => {
+  const actorUserId = actorUserIdOf(actor);
+  const organizationId = db.organizationId;
+  const workspaceId = workspace.workspaceId;
+  const taskId = input.task_id;
+  const nextId = input.assignee_user_id;
+
+  for (let attempt = 0; attempt < MAX_UPDATE_ATTEMPTS; attempt++) {
+    const current = await readTask(db, workspaceId, taskId);
+    if (current === undefined) {
+      await throwIfClosed(db, workspaceId);
+      throw new ApiError(404, 'not_found');
+    }
+    if (current.assignee_user_id === nextId) {
+      // 替わらなければ何も書かない（今日やるの印も消さない）。書くものが無くても、閉じたワークスペースは断る
+      await throwIfClosed(db, workspaceId);
+      return { task: detailOf(current, actor, workspace) };
+    }
+    // 完了したタスクの担当は替えない（完了の経験値と完了の記録が、完了した時点の担当を使うため）
+    if (current.completed_at !== null) throw new ApiError(409, 'conflict');
+
+    // 新しい担当は、このワークスペースに今所属している、無効でない人だけ。読んで名前を残し、書く文にも同じ条件を入れる
+    let next: { id: string; name: string } | null = null;
+    if (nextId !== null) {
+      const found = await db.first(db.statement((q) => activeMemberName(q, organizationId, workspaceId, nextId)));
+      if (found === undefined) {
+        await throwIfClosed(db, workspaceId);
+        throw new ApiError(404, 'not_found');
+      }
+      next = { id: nextId, name: found.name };
+    }
+    // 履歴には、そのときの名前を残す（後で名前が変わっても、履歴は変えない）
+    const previous =
+      current.assignee_user_id === null ? null : { id: current.assignee_user_id, name: current.assignee_name ?? '' };
+    const changes = {
+      assignee: [previous, next],
+      ...(current.today_on === null ? {} : { today_on: [current.today_on, null] }),
+    };
+
+    const at = now();
+    const updatedAt = at.toISOString();
+    const results = await db.batch([
+      db.statement((q) =>
+        q
+          .updateTable('tasks')
+          .set({ assignee_user_id: nextId, today_on: null, updated_at: updatedAt })
+          .where((eb) =>
+            eb.and([
+              eb('id', '=', taskId),
+              eb('workspace_id', '=', workspaceId),
+              eb('deleted_at', 'is', null),
+              eb('completed_at', 'is', null),
+              // 読んだときの担当と今日やるの印のまま（履歴の「前」がずれないように）
+              eb('assignee_user_id', 'is', current.assignee_user_id),
+              eb('today_on', 'is', current.today_on),
+              eb.exists(openWorkspace(q, organizationId, workspaceId)),
+              ...(nextId === null ? [] : [eb.exists(activeMemberName(q, organizationId, workspaceId, nextId))]),
+            ]),
+          ),
+      ),
+      // 直前の更新が行を変えたときだけ履歴を書く
+      db.statement((q) =>
+        q
+          .insertInto('change_logs')
+          .columns(changeLogColumns)
+          .expression(
+            q
+              .selectNoFrom((eb) => [
+                eb.val(uuidv7(at)).as('id'),
+                eb.val(organizationId).as('organization_id'),
+                eb.val(workspaceId).as('workspace_id'),
+                eb.val(actorUserId).as('actor_user_id'),
+                eb.val('task').as('entity_type'),
+                eb.val(taskId).as('entity_id'),
+                eb.val('update').as('action'),
+                eb.val(JSON.stringify(changes)).as('changes_json'),
+                eb.val(updatedAt).as('created_at'),
+              ])
+              .where(previousStatementChanged),
+          ),
+      ),
+    ]);
+
+    if ((results[0]?.changes ?? 0) > 0) {
+      const updated = await readTask(db, workspaceId, taskId);
+      if (updated === undefined) throw new ApiError(404, 'not_found');
+      return { task: detailOf(updated, actor, workspace) };
+    }
+    // 閉じていれば 409 の workspace_closed。タスクが無いか、新しい担当が所属を外れていれば 404。
+    // どちらでもなければ、別の要求が先に担当か今日やるの印を変えたか、完了にしたので、読み直してやり直す
+    // （完了にされていたら、次の周が 409 にする）
+    await throwIfClosed(db, workspaceId);
+    if ((await readTask(db, workspaceId, taskId)) === undefined) throw new ApiError(404, 'not_found');
+    if (
+      nextId !== null &&
+      (await db.first(db.statement((q) => activeMemberName(q, organizationId, workspaceId, nextId)))) === undefined
+    ) {
+      throw new ApiError(404, 'not_found');
+    }
   }
   throw new ApiError(409, 'conflict');
 });
