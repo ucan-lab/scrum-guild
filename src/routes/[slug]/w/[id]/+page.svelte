@@ -307,18 +307,17 @@
     pendingMoves++;
     moveQueue = moveQueue
       .then(async () => {
-        let result: ApiResult<unknown>;
+        // 待つ間に木が読み直された移動は送らずに捨てる（result は undefined のまま）。捨てた移動も、最後の1件なら
+        // 下の settleMoves() で読み直しと知らせを行う
+        let result: ApiResult<unknown> | undefined;
         try {
-          if (mine !== moveGeneration) {
-            droppedMoves++;
-            return;
-          }
-          result = await call();
+          if (mine !== moveGeneration) droppedMoves++;
+          else result = await call();
         } finally {
           pendingMoves--;
         }
         // 送っている間に別のワークスペースへ移っていたら、古い応答で状態を触らない
-        if (!result.ok && workspaceId === page.params.id) {
+        if (result !== undefined && !result.ok && workspaceId === page.params.id) {
           // 401 は、枠の読み直しがログインの画面へ移す
           if (result.status !== 401) showToast(moveFailureMessage(result), 'alert');
           const saved = focusedControl();

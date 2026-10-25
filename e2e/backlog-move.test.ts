@@ -182,6 +182,31 @@ test('並べ替えを断られたら、理由を知らせて読み直す', async
   ).toBeVisible();
 });
 
+test('先に送った並べ替えが断られて読み直したら、待っていた並べ替えは送らずに捨て、そのことを知らせる', async ({
+  page,
+}) => {
+  await createWorkspace(page, '捨てるパーティ', 'game');
+  for (const title of ['見積もりを送る', '請求書を出す', '議事録をまとめる']) await addTask(page, title);
+  // 1件目の応答を遅らせて断り、その間に2件を待たせる
+  let sent = 0;
+  await page.route('**/api/aoba/task-move', async (route) => {
+    sent++;
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    await route.fulfill({
+      status: 409,
+      json: { error: { code: 'conflict', message: 'conflict', details: { reason: 'changed' } } },
+    });
+  });
+  await page.getByRole('button', { name: '下へ: 見積もりを送る' }).click();
+  await page.getByRole('button', { name: '上へ: 議事録をまとめる' }).click();
+  await page.getByRole('button', { name: '上へ: 議事録をまとめる' }).click();
+  await expect(
+    page.getByRole('status').filter({ hasText: '動かしている間に一覧が読み直されたため、一覧を読み直しました' }),
+  ).toBeVisible();
+  await expect(rootTitles(page)).toHaveText(['見積もりを送る', '請求書を出す', '議事録をまとめる']);
+  expect(sent).toBe(1);
+});
+
 test('端の行で Alt と ↑ ↓ を押すと、動かせないことを読み上げる', async ({ page }) => {
   await createWorkspace(page, '端のパーティ', 'game');
   for (const title of ['見積もりを送る', '請求書を出す']) await addTask(page, title);
