@@ -13,7 +13,7 @@ const OPERATORS = ['&&', '||', ';', '|', '&', '\n', '(', ')'];
 // コマンド置換の位置に残す印。中身は別の区切りとして判定し、元の語には「中身が実行時に決まる」ことだけを残す
 export const SUBSTITUTION = '$(…)';
 // zsh の括弧の glob（(a|b)、x(N)）の位置に残す語
-const GLOB_GROUP = '(…)';
+export const GLOB_GROUP = '(…)';
 // shapes の中で、実行時に決まる位置を表す文字
 export const DYNAMIC = '\0';
 const WORD_END = new Set([' ', '\t', '\n', ';', '&', '|', '<', '>', '(', ')', '`']);
