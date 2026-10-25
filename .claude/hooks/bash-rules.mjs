@@ -1131,13 +1131,26 @@ export function judgeBash(command, { cwd, branchOf, scriptOf = () => undefined, 
       if (setsWorkersCi(words, ci)) results.push([DENY, WORKERS_CI_REASON]);
       // cd . > .dev.vars のようにリダイレクトを付けられる。道具として見ない（cd の引数は書き込み先ではない）
       results.push(...judgeFileWrites('', [], words, dir));
-      // -L と -P（シンボリックリンクの扱い）は行き先ではないので飛ばす
-      let at = ci + 1;
+      // リダイレクト（cd >/dev/null src）、-L と -P（シンボリックリンクの扱い）、オプションの終わりの -- は行き先ではないので飛ばす
+      const operands = [];
       let physical = false;
-      for (; /^-[LP]+$/.test(words[at] ?? ''); at++) physical ||= words[at].includes('P');
+      let options = true;
+      for (let j = ci + 1; j < words.length; j++) {
+        if (/^[<>]/.test(words[j])) continue;
+        if (options && /^-[LP]+$/.test(words[j])) {
+          physical ||= words[j].includes('P');
+          continue;
+        }
+        if (options && words[j] === '--') {
+          options = false;
+          continue;
+        }
+        options = false;
+        operands.push(j);
+      }
+      const at = operands[0];
       const to = words[at];
       // 行き先が2つ以上ある cd は、zsh では語の置き換え（cd 旧 新）、bash ではエラー。どこへ移るかを判定できない
-      const operands = words.slice(at).filter((w) => !/^[<>]/.test(w));
       // cd -P は .. を物理パスで辿るので、シンボリックリンクを経由した行き先では path.resolve の字面と別の場所へ移る
       const walksUp = physical && /(^|\/)\.\.(\/|$)/.test(to ?? '');
       // 絶対パスの行き先は、前の作業場所が判定できなくても（cd sr? && cd /abs）解決し直せる

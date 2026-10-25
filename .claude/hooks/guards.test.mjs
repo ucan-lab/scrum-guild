@@ -1172,6 +1172,10 @@ describe('bash-rules: 確認を挟む', () => {
       'cd -LP src && git commit -m x',
       'cd -L -P src && git commit -m x',
       'pushd -L src && git commit -m x',
+      // リダイレクトとオプションの終わりの -- も行き先ではない
+      'cd >/dev/null src && git commit -m x',
+      'cd -- src && git commit -m x',
+      'cd -P -- src && git commit -m x',
       // -P でも .. を含まなければ字面で解決する。-L の .. は字面で辿る
       'cd -P src && git commit -m x',
       'cd -L .. && git commit -m x',
