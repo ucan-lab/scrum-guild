@@ -22,6 +22,7 @@
     "db:seed": "node scripts/db-seed.ts"
   },
   "dependencies": {
+    "decode-named-character-reference": "^1.3.0",
     "fractional-indexing": "^4.0.0",
     "hono": "^4.13.13",
     "kysely": "^0.29.7",

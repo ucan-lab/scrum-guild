@@ -303,21 +303,28 @@ favicon と同じマーク（下の「favicon」）の横に、名前「Scrum Gu
 タスクの本文、コメント、決まった欄、ストーリーとエピックの本文を `Markdown.svelte` で描く。見た目は components.css の `.doc-box` の中の要素（見出し、段落、リスト、チェックリスト、引用、コード、区切り線、打ち消し線、表）として持ち、トークンだけを使う。見本はカタログの「Markdown の本文」。
 
 - 構文木を `src/lib/markdown.ts` が安全な節（段落、見出し、引用、リスト、コード、区切り線、表と、文字、コード、強調、打ち消し線、リンク、改行）に直し、`MarkdownBlocks.svelte` はその節を再帰で描くだけにする。HTML の文字列を作らない（`{@html}` を使わない）。インラインの `style` 属性も使わない（CSP）
-- 生の HTML（`html` の節）は文字で出す
-- リンクは絶対の `http:` と `https:` だけ。URL を `new URL` で解析して判定し、解析した形を `href` にする。相対リンク、`mailto:`、`javascript:`、`data:` は文字で出す。参照形式（`[x][1]`）は定義を引いて同じ規則にかけ、自動リンクにも同じ規則が効く。リンクは `rel="noopener noreferrer"` と `target="_blank"`。組織の中のリンク（タスクの ID の参照）は、その機能を作るときに決める
-- 画像は読み込まない。`http:`、`https:` の画像は代わりの文字（無ければ URL）を文字にしたリンクにし、それ以外は代わりの文字だけにする。Scrum Guild の添付ファイルだけを画像として出す口は、添付ファイルの機能で足す
-- 入れ子（引用、リスト、表、強調、リンク）は32段まで描き、超えた分は書かれたままの Markdown を文字で出す。本文は最大10万字で、`>` を並べるだけで再帰の部品のスタックがあふれるため
+- 生の HTML（`html` の節）は、書かれたままを文字で出す。`.doc-literal`（`white-space: pre-wrap`）で、改行を保つ
+- リンクは絶対の `http:` と `https:` だけ。URL を `new URL` で解析して判定し、解析した形を `href` にする。相対リンク、`mailto:`、`javascript:`、`data:`、2048字（`MAX_URL_LENGTH`）を超える URL、ユーザー情報の付いた URL（`https://名前@ホスト/`。行き先を偽れる）は文字で出す。参照形式（`[x][1]`）は定義を引いて同じ規則にかけ、自動リンクにも同じ規則が効く。中身が空のリンク（`[](https://…)`）は URL を文字にする。リンクは `rel="noopener noreferrer"` と `target="_blank"` で、新しいタブで開くことを `.visually-hidden` の文字（辞書の `markdownNewTab`）で読み上げに伝える。組織の中のリンク（タスクの ID の参照）は、その機能を作るときに決める
+- 画像は読み込まない。`http:`、`https:` の画像は代わりの文字（無ければ URL）を文字にしたリンクにし、それ以外は代わりの文字だけにする。リンクの中の画像は、`<a>` を入れ子にしないよう文字だけにする。Scrum Guild の添付ファイルだけを画像として出す口は、添付ファイルの機能で足す
+- 入れ子（引用、リスト、表、強調、リンク）は32段まで描き、超えた分は書かれたままの Markdown を文字（`.doc-literal`）で出す。本文は最大10万字で、`>` を並べるだけで再帰の部品のスタックがあふれるため
+- 出力の総量の上限: 文字（本文、`href`、切り出した原文の長さの合計）は40万字（`MAX_OUTPUT_CHARS`。本文の最大の4倍）、節は20万（`MAX_OUTPUT_NODES`。本文の最大の字数の2倍）。超えた本文は `parseMarkdown` が変換をやめて `null` を返し、文字のまま出す。備える相手は、長い URL の定義1つに短い参照を並べて、参照ごとの `href` の複製で出力を膨らませる本文。URL の長さの上限と、この総量の上限の両方で抑える
+- 表の本文の行は、見出しの列数に切り詰め、足りない分は空のセルで埋める。`th` は `scope="col"` 付きで出す
+- 密なリスト（項目の間に空行が無い。mdast の `spread` が偽）は、項目の段落を `<p>` で包まない
+- 自動リンクの mdast の拡張が持つ `transforms` は、構文木を再帰で歩き、6000段ほどの引用でスタックがあふれるので外す。リンクは micromark 側の字句が作るので、結果は変わらない。違いは、閉じていない `[` の後ろの URL（`[ https://example.com`）が、リンクにならないこと
 - 変換は Web Worker（`src/lib/markdown.worker.ts`）で行い、メインのスレッドで走らせない。`*_` の連なりや深い入れ子の本文は、変換に数秒から分かかり、同じ組織のメンバーが書いた本文で画面が固まるため。Worker は全部の本文で1つを共有し、要求を1本ずつ送る（`src/lib/markdown-parser.ts`）
-  - 変換が1秒（`MARKDOWN_TIMEOUT_MS`）で終わらない本文は、Worker を `terminate()` して次の要求のために作り直し、その本文は文字のまま出す。数え始めは Worker に送った時点。待たされた時間は数えない
-  - 変換が終わるまでと、時間切れ、Worker のエラー、Worker が使えない環境は、本文を書かれたまま文字で出す（`.doc-box.is-plain`。改行を保つ）
-  - `source` が変わったら古い要求の結果を捨て、部品が消えたら待ちの要求を取り下げる
+  - Worker は、束の評価を終えると `ready` を返す。変換の時間切れ（1秒。`MARKDOWN_TIMEOUT_MS`）は、`ready` を受けて要求を送った時点から数える。起動（束の取得と評価）には別の上限（10秒。`MARKDOWN_START_TIMEOUT_MS`）を持ち、超えるか、起動の前に Worker がエラーを返したら、その画面では Worker を使わない
+  - 変換が時間切れになった本文は、Worker を `terminate()` して次の要求のために作り直し、文字のまま出す。待たされた時間は数えない
+  - 変換の失敗（`null`、Worker のエラー、`messageerror`）と Worker が使えない環境も、本文を文字のまま出す。Worker の中で失敗したときは、本文を含めず、失敗の種類だけを `console.error` に出す
+  - 結果は本文をキーに100件まで覚える（LRU。`src/lib/markdown-session.ts`）。時間切れと失敗の本文も覚え、二度と Worker に送らない。同じ本文の変換が進んでいれば、結果を分け合う
+  - `source` が変わったら古い要求の結果を捨て、新しい結果が来るまで前の描画を残す（文字に戻さない）。部品が消えたら待ちの要求を取り下げる。待つ間は枠に `aria-busy="true"`。この振る舞いは `MarkdownSession`（parser を差し込める）に持ち、`Markdown.svelte` はそれを呼ぶだけにする。結果は `$state.raw` で持つ
+  - 時間切れと失敗で文字のまま出すときは、枠の上に `.props-note` で「整形せずに表示しています」を出す（辞書の `markdownPlainNote`）。変換を待つ間は出さない。本文は `.doc-box.is-plain`（`white-space: pre-wrap`）に入れる
   - Worker は自分のオリジンのファイル（`/_app/immutable/workers/`）で、CSP は `worker-src` を足さず `script-src 'self'` で通る。`blob:` と `data:` の Worker にしない
-  - Worker の束は `decode-named-character-reference` を DOM を使わない版に解決する（`scripts/markdown-worker-entities.ts`）。既定の `browser` の版は `document` を呼び、Worker では落ちるため
-  - 安全の規則（リンク、画像、HTML、入れ子）は、変換の単体テストと、変換済みの節を描く `MarkdownBlocks` の描画テストで守る
-- 見出しは `headingStart` の段から始め（`#` が `h3`、`##` が `h4`）、`h6` で止める。大きさは要素でなく Markdown の段のクラス（`.doc-h1` から `.doc-h6`）で決める
-- チェックリストの箱は `disabled` で出す（押しても保存されない）。`li.is-task`
+  - Worker の束が読む `decode-named-character-reference` は、DOM を使わない版にそろえる。既定の `browser` の版は `document` を呼ぶので、Worker では `document is not defined` で落ちる。`vite.config.ts` の `resolve.alias` で dev と build の両方に効かせ、場所は `scripts/markdown-worker-entities.ts`（直の依存）
+  - 安全の規則（リンク、画像、HTML、入れ子、出力の上限）は、変換の単体テストと、変換済みの節を描く `MarkdownBlocks` の描画テストで守る
+- 見出しは `headingStart` の段から始め（`#` が `h3`、`##` が `h4`）、`h6` で止める。大きさは要素でなく Markdown の段のクラス（`.doc-h1` から `.doc-h6`）で決める。`.doc-h1` は `--text-lg`、`.doc-h2` は `--text-md`（引き出しの題 `.drawer-title` の `--text-xl` より小さい）。`.doc-h3` から下は本文と同じ大きさで、罫（`.doc-h3`）と字間（`.doc-h5`、`.doc-h6`）で見分ける。先頭でない見出しに `margin-top` を足す
+- チェックリストの箱は `disabled` で出す（押しても保存されない）。`li.is-task`。箱は項目の中身と `aria-labelledby` で結ぶ（id は `$props.id()` に節の位置を足し、本文が並んでも衝突しない）。項目の印を消す一覧には `role="list"` を付ける。順序付きのリストは番号を残す（箱は浮かせて中身を回り込ませる）
 - GFM は自動リンク、打ち消し線（`~~` のみ）、表、チェックリストの4つ。脚注は本文ごとに `id` を生やし、同じ画面に本文が並ぶと衝突するので入れない
-- 表の列の寄せは `th` と `td` の `.is-center`、`.is-right`。表は `.doc-table` で包み、幅が足りないと横に動かす
+- 表の列の寄せは `th` と `td` の `.is-center`、`.is-right`。表は `.doc-table` で包み、幅が足りないと横に動かす。セルは `overflow-wrap: break-word`（枠の `anywhere` を引き継ぐと、列が1文字幅までつぶれる）。枠（`.doc-box`）は `overflow-x: auto` で、深い入れ子が狭い幅からはみ出さないようにする
 
 ## 見本を作って補ったこと
 

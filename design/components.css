@@ -648,34 +648,41 @@ button.tree-link { border: 0; background: none; padding: 0; font: inherit; text-
 .props dt { color: var(--color-muted); }
 .props dd { margin: 0; display: flex; gap: var(--space-2); align-items: center; flex-wrap: wrap; }
 .props-note { font-size: var(--text-xs); color: var(--color-muted); }
-.doc-box { border: 1px solid var(--color-line); border-radius: var(--radius-1); padding: var(--space-3) var(--space-4); font-size: var(--text-sm); display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--space-2); overflow-wrap: anywhere; }
+.doc-box { border: 1px solid var(--color-line); border-radius: var(--radius-1); padding: var(--space-3) var(--space-4); font-size: var(--text-sm); display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--space-2); overflow-wrap: anywhere; overflow-x: auto; }
 .doc-box ul, .doc-box ol { margin: 0; padding-left: 1.2em; }
 .doc-box ol { padding-left: 1.6em; }
 .doc-box.is-empty { border-style: dashed; color: var(--color-muted); }
-/* Markdown の変換が終わるまでと、時間切れのときに、本文を書かれたまま出す */
+/* Markdown の変換が終わるまでと、時間切れのときに、本文を書かれたまま出す。注記（.props-note）は枠の上 */
 .doc-box.is-plain { display: block; white-space: pre-wrap; }
-/* Markdown の本文（Markdown.svelte）。見出しの要素は引数の段で決まるので、大きさは Markdown の段のクラス（doc-h1 から doc-h6）で決める */
+.props-note + .doc-box { margin-top: var(--space-1); }
+/* Markdown の本文（Markdown.svelte）。見出しの要素は引数の段で決まるので、大きさは Markdown の段のクラス（doc-h1 から doc-h6）で決める。
+   引き出しの題（.drawer-title は --text-xl）より小さくし、h3 以下は本文と同じ大きさのまま、罫と字間で見分ける */
 .doc-box :is(h1, h2, h3, h4, h5, h6) { margin: 0; font-family: var(--font-display); font-weight: var(--weight-display); line-height: var(--leading-tight); text-wrap: balance; }
-.doc-box .doc-h1 { font-size: var(--text-xl); }
-.doc-box .doc-h2 { font-size: var(--text-lg); }
-.doc-box .doc-h3, .doc-box .doc-h4 { font-size: var(--text-md); }
-.doc-box .doc-h5, .doc-box .doc-h6 { font-size: var(--text-sm); }
-.doc-box .doc-h6 { color: var(--color-muted); }
+.doc-box :is(h1, h2, h3, h4, h5, h6):not(:first-child) { margin-top: var(--space-3); }
+.doc-box .doc-h1 { font-size: var(--text-lg); }
+.doc-box .doc-h2 { font-size: var(--text-md); }
+.doc-box .doc-h3 { font-size: var(--text-sm); padding-bottom: var(--space-1); border-bottom: 1px solid var(--color-rule); }
+.doc-box .doc-h4 { font-size: var(--text-sm); }
+.doc-box .doc-h5 { font-size: var(--text-sm); letter-spacing: var(--tracking-label); }
+.doc-box .doc-h6 { font-size: var(--text-xs); letter-spacing: var(--tracking-label); }
 .doc-box :is(li, blockquote) > * + * { margin-top: var(--space-2); }
 .doc-box li + li { margin-top: var(--space-1); }
-.doc-box li.is-task { display: flex; align-items: baseline; gap: var(--space-2); list-style: none; margin-left: -1.2em; }
-.doc-box li.is-task > input { flex: none; margin: 0; accent-color: var(--color-accent); }
-.doc-box li.is-task > div { flex: 1; min-width: 0; }
+/* チェックリストの箱は、項目の印の位置に浮かせ、中身は箱の横に回り込ませる。順序付きの項目は番号を残す */
+.doc-box li.is-task { list-style: none; margin-left: -1.2em; }
+.doc-box ol > li.is-task { list-style: revert; margin-left: 0; }
+.doc-box li.is-task > input { float: left; margin: 0.2em var(--space-2) 0 0; accent-color: var(--color-accent); }
+.doc-box li.is-task > div { display: flow-root; margin-top: 0; }
+.doc-literal { white-space: pre-wrap; }
 .doc-box blockquote { margin: 0; padding-left: var(--space-3); border-left: 3px solid var(--color-line); color: var(--color-muted); }
 .doc-box a { color: var(--color-accent); text-underline-offset: 2px; }
 .doc-box del { color: var(--color-muted); }
-.doc-box code { font-family: var(--font-mono); font-size: 0.92em; padding: 0.1em 0.35em; border: 1px solid var(--color-rule); border-radius: var(--radius-1); background: var(--color-sunken); }
+.doc-box code { font-family: var(--font-mono); font-size: 0.92em; padding: 0.1em 0.35em; border: 1px solid var(--color-rule); border-radius: var(--radius-1); background: var(--color-sunken); box-decoration-break: clone; }
 .doc-box pre { margin: 0; padding: var(--space-3); border: 1px solid var(--color-rule); border-radius: var(--radius-1); background: var(--color-sunken); overflow-x: auto; overflow-wrap: normal; }
 .doc-box pre code { padding: 0; border: 0; background: none; font-size: var(--text-xs); line-height: var(--leading-body); }
 .doc-box hr { margin: var(--space-1) 0; border: 0; border-top: 1px solid var(--color-line); }
 .doc-box .doc-table { overflow-x: auto; }
 .doc-box table { min-width: 100%; border-collapse: collapse; }
-.doc-box th, .doc-box td { padding: var(--space-1) var(--space-2); border: 1px solid var(--color-line); text-align: left; vertical-align: top; }
+.doc-box th, .doc-box td { padding: var(--space-1) var(--space-2); border: 1px solid var(--color-line); text-align: left; vertical-align: top; overflow-wrap: break-word; }
 .doc-box th { background: var(--color-sunken); font-weight: 700; }
 .doc-box :is(th, td).is-center { text-align: center; }
 .doc-box :is(th, td).is-right { text-align: right; }

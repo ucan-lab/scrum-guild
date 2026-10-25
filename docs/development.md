@@ -662,7 +662,7 @@ Workers Static Assets の `_headers` で付ける。資産の配信には Worker
 - 写すスクリプトは、meta が見つからないとき、書き出した JS の `style` 属性が `style-src` のハッシュに無いとき（SvelteKit を上げて読み上げ用の要素の `style` が変わったときなど）に build を失敗させる
 - `/_app/immutable/*` は `Cache-Control: public, max-age=31536000, immutable`。ファイル名にハッシュが入り中身が変わらないため。`index.html` は Cloudflare の既定（毎回確かめる）のままにして、新しい版をすぐ拾う
 - `inline` の script と style を `src/app.html` とコンポーネントに書かない。ハッシュから漏れて CSP で止まる
-- Web Worker（Markdown の変換。`src/lib/markdown.worker.ts`）は、Vite が `/_app/immutable/workers/` に出す自分のオリジンのファイルとして読む。`worker-src` は足さず、`script-src 'self'` で通る。`blob:` と `data:` の Worker は CSP を広げるので使わない。Worker の束だけ、`vite.config.ts` の `worker.plugins` で `decode-named-character-reference` を DOM を使わない版に解決する（`scripts/markdown-worker-entities.ts`）
+- Web Worker（Markdown の変換。`src/lib/markdown.worker.ts`）は、Vite が `/_app/immutable/workers/` に出す自分のオリジンのファイルとして読む。`worker-src` は足さず、`script-src 'self'` で通る。`blob:` と `data:` の Worker は CSP を広げるので使わない。Worker は束の評価を終えると `ready` を返し、変換の時間切れ（1秒）はそこから数える。micromark が使う `decode-named-character-reference` の既定の版（`browser` 条件）は `document` を呼んで Worker で落ちるので、`vite.config.ts` の `resolve.alias` で、DOM を使わない版（dev と build の両方）にそろえる（`scripts/markdown-worker-entities.ts`。直の依存）
 
 ### API
 
