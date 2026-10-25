@@ -708,7 +708,7 @@ Google の人は、ログインするまで `sub` が分からない。そのた
   - 断るもの。動かすタスクか移す先の親が無い（別の組織、同じ組織の別のワークスペースを含む）ときは 404。動かすタスクが受信箱かアーカイブにあるときも 404。直前の行が移す先に無い（別の親、削除済み、受信箱とアーカイブ、別のワークスペース、別の組織）ときも 404。直前の行が動かすタスク自身なら 400（`invalid_input`）。完了したタスクを動かすのは 409（`conflict`、理由は `task_completed`）。完了したストーリーの下へ親を移すのは 409（`conflict`、理由は `parent_completed`）。同じ親の中の並べ替えは、親のストーリーが完了していてもできる。閉じたワークスペースは 409（`workspace_closed`）。
   - 409 の `conflict` は、理由を `details.reason` に載せる（`parent_completed`、`task_completed`、`changed`、`ties`。`src/shared/operations/task/task-move.ts` の `moveConflictReasons`）。画面は理由で知らせる文を選ぶ。
   - 書く文は条件つきの `UPDATE`（読んだときの親のまま、閉じていないワークスペース、移す先の親が今もあり、親が変わるならその親が完了していない、直前の行が今も読んだ値の位置にある）で、変わった行が 0 なら読み直して理由を決める（閉じていれば `workspace_closed`、タスクか親か直前の行が無ければ 404、タスクが完了していれば `task_completed`、移す先の親が完了していれば `parent_completed`、どれでもなければ別の要求が先に親を移したか直前の行を動かしたので `changed`）。`updated_at` は並べ替えだけでも書く。
-  - 親が変わったときだけ `change_logs`（`action` は `update`、`changes_json` は `{"story": [前, 後]}`、値は `{id, title}` か null）を、移す行の更新が通ったときだけ書く。並べ替えだけなら履歴を残さない。ストーリーの下へ移したら `category_id` を空にする（区分は親なしのときだけ入る）。空にした区分は、同じ履歴に `{"category": [{id, name}, null]}` で残し、書く文は区分が読んだ値のままであることも条件にする。応答は `task_id` と `story_id` で、`position` は返さない。
+  - 親が変わったときだけ `change_logs`（`action` は `update`、`changes_json` は `{"story": [前, 後]}`、値は `{id, title}` か null）を、移す行の更新が通ったときだけ書く。並べ替えだけなら履歴を残さない。ストーリーの下へ移したら `category_id` を空にする（区分は親なしのときだけ入る）。空にした区分は、同じ履歴に `{"category": [{id, name}, null]}` で残し（`name` は読んだ時点の名前。改名と競合すると前の名前が残るが、`id` で引ける）、親が変わるときの書く文は区分が読んだ値（空も含む）のままであることも条件にする。応答は `task_id` と `story_id` で、`position` は返さない。
 - タイトルの検索は `title LIKE` と `task_sources.source_key LIKE` で行う。5万件の規模なら、ワークスペースの索引で絞れば足りる見込み。遅ければ FTS5 を足す。
 
 ### task_sources
