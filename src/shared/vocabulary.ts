@@ -186,6 +186,34 @@ export const dictionary = defineDictionary({
   apiDetailTitle: organization('API の詳細', 'API の詳細'),
   apiDetailBody: organization('この画面が呼んだ API の応答です。', 'この画面が呼んだ API の応答です。'),
 
+  // ログインの画面。{organization} {workspace} {leader} は、それぞれ辞書の同じ名前の項目で埋める
+  loginTitle: organization('ログイン', 'ログイン'),
+  loginLead: organization(
+    'いずれかの{organization}に所属しているか、招待されている人がログインできます。招待されたときの手段でログインしてください。',
+    'いずれかの{organization}に所属しているか、招待されている人がログインできます。招待されたときの手段でログインしてください。',
+  ),
+  loginWithGithub: organization('GitHub でログイン', 'GitHub でログイン'),
+  loginNote: organization(
+    '本人確認だけに使います。入れる{organization}が2つ以上あれば、ログインのあとに選びます。',
+    '本人確認だけに使います。入れる{organization}が2つ以上あれば、ログインのあとに選びます。',
+  ),
+  loginErrorDenied: organization(
+    'ログインできませんでした。どの{organization}の{workspace}にも所属しておらず、招待も届いていません。招待されたのと別の手段でログインしていないか確かめてください。招待がまだなら、{leader}に GitHub のユーザー名で招待してもらってください。',
+    'ログインできませんでした。どの{organization}の{workspace}にも所属しておらず、招待も届いていません。招待されたのと別の手段でログインしていないか確かめてください。招待がまだなら、{leader}に GitHub のユーザー名で招待してもらってください。',
+  ),
+  loginErrorRetry: organization(
+    'ログインを完了できませんでした。もう一度ログインしてください。',
+    'ログインを完了できませんでした。もう一度ログインしてください。',
+  ),
+  loginErrorTooMany: organization(
+    'ログインの試行が多すぎます。しばらく待ってから、もう一度ログインしてください。',
+    'ログインの試行が多すぎます。しばらく待ってから、もう一度ログインしてください。',
+  ),
+  loginErrorUnavailable: organization(
+    'いまログインを受け付けられません。時間をおいてもう一度試してください。続くときは運用者に連絡してください。',
+    'いまログインを受け付けられません。時間をおいてもう一度試してください。続くときは運用者に連絡してください。',
+  ),
+
   // テーマ
   themeLabel: organization('テーマ', 'テーマ'),
   themeSimple: organization('シンプル（自動）', 'シンプル（自動）'),

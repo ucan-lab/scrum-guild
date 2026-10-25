@@ -3,7 +3,9 @@ import type { ContentfulStatusCode } from 'hono/utils/http-status';
 import { routePath } from 'hono/route';
 import type { Health } from '../shared/health.ts';
 import { apiCacheControl, apiCsp, fixedHeaders } from '../shared/security-headers.ts';
+import { isAllowedPublicOrigin } from '../shared/session-cookie.ts';
 import type { AppEnv } from './app-env.ts';
+import { loginRoutes } from './auth/login-routes.ts';
 import { operatorLoginIds } from './auth/operators.ts';
 import { DatabaseUnavailableError, pingDatabase } from './db/index.ts';
 import { errorBody, knownError } from './errors.ts';
@@ -11,8 +13,16 @@ import type { ImplementedOperation } from './operations/implement.ts';
 import { implementedOperations } from './operations/index.ts';
 import { operationsApp } from './operations/register.ts';
 
+export type AppOptions = {
+  // ログインの手段（GitHub）への通信。テストが差し替える
+  fetcher?: typeof fetch;
+};
+
 // テストで例外を投げるルートや仮の操作を足せるよう、アプリを作る関数にしておく
-export function createApp(operations: readonly ImplementedOperation[] = implementedOperations) {
+export function createApp(
+  operations: readonly ImplementedOperation[] = implementedOperations,
+  options: AppOptions = {},
+) {
   const app = new Hono<AppEnv>().basePath('/api');
 
   app.use(async (c, next) => {
@@ -49,6 +59,21 @@ export function createApp(operations: readonly ImplementedOperation[] = implemen
     return c.json(errorBody('internal', 'internal error'), 500);
   });
 
+  // 公開する URL は、https か、手元のループバックのホストへの http だけ。ほかの http だと、Cookie の Secure と `__Host-` が
+  // 黙って外れるので、すべてのリクエストを 500 にして、デプロイの煙のテスト（/api/health）で見つけさせる
+  app.use(async (c, next) => {
+    if (isAllowedPublicOrigin(c.env.PUBLIC_ORIGIN)) return next();
+    console.error(
+      JSON.stringify({
+        level: 'error',
+        code: 'internal',
+        requestId: c.get('requestId'),
+        reason: 'PUBLIC_ORIGIN が https でも、手元のホストへの http でもない',
+      }),
+    );
+    return c.json(errorBody('internal', 'internal error'), 500);
+  });
+
   // 煙のテスト（scripts/deploy.ts）が読む。D1 に届かないときは 503 にして、新しい版の失敗として拾わせる
   app.get('/health', async (c) => {
     try {
@@ -73,7 +98,10 @@ export function createApp(operations: readonly ImplementedOperation[] = implemen
     return c.json(body);
   });
 
-  // 操作の定義から登録するルート。ルートを直に書かない（/api/health だけが例外）
+  // ログインの開始と戻り先。ブラウザの GET の移動なので、操作の定義の外に直に書く（/api/health と同じ例外）
+  app.route('/auth', loginRoutes({ fetcher: options.fetcher ?? ((input, init) => fetch(input, init)) }));
+
+  // 操作の定義から登録するルート。ルートを直に書かない（/api/health と /api/auth/ の下の GET だけが例外）
   app.route('/', operationsApp(operations));
 
   app.notFound((c) => c.json(errorBody('not_found', 'not found'), 404));

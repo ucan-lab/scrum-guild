@@ -32,6 +32,11 @@ export const permissions = Object.keys(permissionScopes) as Permission[];
 // URL の最後の1区分になるので、英小文字と数字をハイフンでつないだ1語に限る
 const OPERATION_NAME_PATTERN = /^[a-z][a-z0-9]*(-[a-z0-9]+)*$/;
 
+// 操作の回数の上限。アカウントごと、操作ごとに数え、窓の中で max を超えた呼び出しは 429 の rate_limited で断る。
+// アプリ側のレート制限を設けるのは、ログインと手動の同期だけ（docs/requirements.md の「運用」）。ログインは GET の
+// 直書きの例外（src/server/auth/login-routes.ts）で IP ごとに数え、定義に付けるのは同期のような重い操作
+export type RateLimit = { readonly max: number; readonly windowSeconds: number };
+
 type Common<Input, Output> = {
   readonly name: string;
   // 後で足す Claude の道具と MCP の道具の説明にも使う
@@ -39,6 +44,11 @@ type Common<Input, Output> = {
   readonly mode: 'read' | 'write';
   readonly input: Input;
   readonly output: Output;
+  readonly rateLimit?: RateLimit;
+  // 組織の外の操作は、既定で、呼ぶたびに「入れる組織がある（か運用者）」ことを確かめ、失っていればセッションを消して 401 にする
+  // （判定は DB を3〜4回引く。運用者は確かめずに通す）。確かめない操作だけに true を付ける（ログアウトなど、
+  // 入れる組織を失った人にも使わせる操作）。組織の中の操作には付けられない（組織に入れなかったときに、登録の関数が確かめる）
+  readonly skipsLoginAccess?: true;
 };
 
 // ワークスペースの下の操作は、入力に workspace_id を持つ。無いと型で落ちる
@@ -86,6 +96,16 @@ export function assertOperationDefinition(definition: AnyOperationDefinition): v
   }
   if (workspace === true && scope === 'organization' && permission !== 'admin') {
     throw new Error(`操作 ${name} は権限 ${permission} なので workspace: true にできない`);
+  }
+  if (definition.skipsLoginAccess !== undefined && (definition.skipsLoginAccess !== true || scope !== 'outside')) {
+    throw new Error(`操作 ${name} の skipsLoginAccess は、組織の外の操作に true だけ付けられる`);
+  }
+  const rateLimit = definition.rateLimit;
+  if (rateLimit !== undefined && !(Number.isInteger(rateLimit.max) && rateLimit.max > 0)) {
+    throw new Error(`操作 ${name} の rateLimit.max は 1 以上の整数`);
+  }
+  if (rateLimit !== undefined && !(Number.isInteger(rateLimit.windowSeconds) && rateLimit.windowSeconds > 0)) {
+    throw new Error(`操作 ${name} の rateLimit.windowSeconds は 1 以上の整数`);
   }
   if ((definition as { allowClosed?: unknown }).allowClosed !== undefined) {
     if (workspace !== true || definition.mode !== 'write') {

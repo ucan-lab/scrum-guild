@@ -1,8 +1,12 @@
 // 本番へのデプロイの手順（docs/development.md の「CD」）。Workers Builds のデプロイのコマンドが
 // scripts/deploy-production.ts から呼ぶ。wrangler と HTTP を差し替えて node --test にかけられるよう、外への作用は deps で受け取る。
 
+import { SEED_SESSIONS } from '../seed/sessions.ts';
 import { isErrorBody } from '../src/shared/errors.ts';
 import { isHealth } from '../src/shared/health.ts';
+import { operationPath } from '../src/shared/operations/define.ts';
+import { logout } from '../src/shared/operations/session/index.ts';
+import { sessionCookieName } from '../src/shared/session-cookie.ts';
 
 // 煙のテストが叩く本番の URL。ドメインへ移すときはここを直す（docs/operations.md の「ドメインへ移す」）
 export const PRODUCTION_URL = 'https://scrum-guild.ucan-lab.workers.dev';
@@ -10,6 +14,8 @@ export const PRODUCTION_URL = 'https://scrum-guild.ucan-lab.workers.dev';
 export const SMOKE_INTERVAL_MS = 5_000;
 export const SMOKE_TIMEOUT_MS = 120_000;
 export const SMOKE_REQUEST_TIMEOUT_MS = 10_000;
+// seed のトークン1つあたりの問い合わせの回数（届かなかったときだけ繰り返す）
+const SEED_CHECK_ATTEMPTS = 3;
 
 export type WranglerResult = { status: number; stdout: string; stderr: string };
 
@@ -22,6 +28,13 @@ export type DeployDeps = {
   hasMigrations: () => boolean;
   // /api/health の version を返す。取れなければ投げる
   fetchVersion: (url: string, timeoutMs: number) => Promise<string>;
+  // POST して HTTP の状態と、エラーの応答の本文の code（`{ "error": { "code": ... } }`。読めなければ undefined）を返す。
+  // 届かなければ投げる（seed のトークンを本番が拒むことの確かめ）
+  postStatus: (
+    url: string,
+    init: { headers: Record<string, string>; body: string },
+    timeoutMs: number,
+  ) => Promise<{ status: number; errorCode: string | undefined }>;
   sleep: (ms: number) => Promise<void>;
   now: () => number;
   log: (message: string) => void;
@@ -96,6 +109,85 @@ async function waitForVersion(deps: DeployDeps, expected: string): Promise<boole
   return false;
 }
 
+// seed のセッションのトークン（seed/sessions.ts）は公開された開発用の値。本番が受け付けると、誰でも管理者と運用者として入れる。
+// Cookie に付けてログアウト（logout）を呼び、どれも 401 で、本文の code が unauthenticated（ログインしていない扱い）になることを確かめる。
+// logout は、入れる組織があるかの判定をしない操作（skipsLoginAccess）なので、seed のセッションの行が本番に残っていれば、
+// 入れる組織が無くても 2xx で通る。判定をする操作（me など）だと、行があっても 401 になり、見逃す。
+// Origin を付けるのは、Origin の検査（403）で止まって、セッションを読む前に終わらないようにするため。
+// 受け付けられたときは、その行を消すという副作用が付く（残りの行は、人が手順で消す）。
+// 5xx、429、届かない（例外）は、本番が答えられていないだけなので、確かめられるまで SEED_CHECK_ATTEMPTS 回まで繰り返す。
+// 401 だけが「拒んだ」。2xx（受け付けた）とそのほかの 4xx、3xx（リダイレクトは辿らない）は、繰り返さずに失敗にする
+type SeedCheck = { ok: true } | { ok: false; reason: string };
+
+const SEED_COUNT = Object.keys(SEED_SESSIONS).length;
+
+function isRetryableStatus(status: number): boolean {
+  return status >= 500 || status === 429;
+}
+
+async function seedSessionsRejected(deps: DeployDeps): Promise<SeedCheck> {
+  const url = `${PRODUCTION_URL}${operationPath(logout)}`;
+  const cookieName = sessionCookieName(PRODUCTION_URL);
+  for (const [name, seed] of Object.entries(SEED_SESSIONS)) {
+    let status: number | undefined;
+    let errorCode: string | undefined;
+    for (let attempt = 1; attempt <= SEED_CHECK_ATTEMPTS && status === undefined; attempt++) {
+      try {
+        const answered = await deps.postStatus(
+          url,
+          {
+            headers: {
+              'Content-Type': 'application/json',
+              Origin: PRODUCTION_URL,
+              Cookie: `${cookieName}=${seed.token}`,
+            },
+            body: '{}',
+          },
+          SMOKE_REQUEST_TIMEOUT_MS,
+        );
+        if (isRetryableStatus(answered.status)) {
+          deps.log(
+            `seed のトークンの確認: ${name} の${attempt}回目は ${answered.status} でした。答えられていないので繰り返します`,
+          );
+          if (attempt < SEED_CHECK_ATTEMPTS) await deps.sleep(SMOKE_INTERVAL_MS);
+        } else {
+          status = answered.status;
+          errorCode = answered.errorCode;
+        }
+      } catch (err) {
+        deps.log(
+          `seed のトークンの確認: ${name} の${attempt}回目は取得に失敗しました（${err instanceof Error ? err.message : String(err)}）`,
+        );
+        if (attempt < SEED_CHECK_ATTEMPTS) await deps.sleep(SMOKE_INTERVAL_MS);
+      }
+    }
+    if (status === undefined) {
+      return { ok: false, reason: `seed のトークン（${name}）を本番が拒むことを確かめられませんでした` };
+    }
+    if (status >= 200 && status < 300) {
+      return {
+        ok: false,
+        reason:
+          `本番が seed のトークン（${name}）を受け付けました（${status}）。前の版へ戻しても、本番の sessions に seed の行が残っていれば直りません。` +
+          'docs/operations.md の「seed のセッションが本番に入ったとき」の手順で消してください',
+      };
+    }
+    // 401 で、本文の code が unauthenticated のものだけが「ログインしていない扱い」。ほかの状態（そのほかの 4xx、リダイレクト）や、
+    // 別の code の 401 は想定と違う（401 だけでは、別の理由で止まったのかを見分けられない）
+    if (status !== 401) {
+      return { ok: false, reason: `seed のトークン（${name}）への本番の応答が ${status} でした。401 を想定しています` };
+    }
+    if (errorCode !== 'unauthenticated') {
+      return {
+        ok: false,
+        reason: `seed のトークン（${name}）への本番の 401 の code が ${errorCode ?? '読めません'} でした。unauthenticated を想定しています`,
+      };
+    }
+  }
+  deps.log(`seed のトークンの確認: ${SEED_COUNT}つとも本番が拒みました`);
+  return { ok: true };
+}
+
 // 成功なら 0、失敗なら 1 を返す
 export async function deploy(deps: DeployDeps): Promise<number> {
   // 手元に wrangler のログインが残っていると、作業ツリーがそのまま本番に出る。フックだけに頼らず、ここでも止める
@@ -156,9 +248,22 @@ export async function deploy(deps: DeployDeps): Promise<number> {
   const deployed = rollbackTarget(deps.wrangler(['deployments', 'status', '--json'], { capture: true }));
   const ownVersionId = deployed.ok ? deployed.versionId : null;
 
-  if (await waitForVersion(deps, sha)) return 0;
-
-  deps.error(`煙のテスト: ${SMOKE_TIMEOUT_MS / 1000}秒待っても版が ${sha} になりませんでした`);
+  if (await waitForVersion(deps, sha)) {
+    // 例外で終わっても、確かめられなかった失敗として前の版へ戻す手順に進む
+    let seed: SeedCheck;
+    try {
+      seed = await seedSessionsRejected(deps);
+    } catch (err) {
+      seed = {
+        ok: false,
+        reason: `seed のトークンの確認が例外で終わりました（${err instanceof Error ? err.message : String(err)}）`,
+      };
+    }
+    if (seed.ok) return 0;
+    deps.error(`煙のテスト: ${seed.reason}`);
+  } else {
+    deps.error(`煙のテスト: ${SMOKE_TIMEOUT_MS / 1000}秒待っても版が ${sha} になりませんでした`);
+  }
   if (ownVersionId) {
     const current = rollbackTarget(deps.wrangler(['deployments', 'status', '--json'], { capture: true }));
     if (current.ok && current.versionId !== ownVersionId) {

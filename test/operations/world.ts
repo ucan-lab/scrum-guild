@@ -71,6 +71,33 @@ export async function createPerson(
   };
 }
 
+// ほかの組織の管理者でもある人にする。ある組織に入れない人の結果を、どの組織にも入れなくなった人の 401 と
+// 区別して見るために使う（セッションは、ログインできる条件を失うと消える）
+export async function admitElsewhere(person: Person): Promise<Person> {
+  const elsewhere = await createOrganization();
+  await createUser(elsewhere, {
+    account_id: person.accountId,
+    login_provider: person.login.provider,
+    login_subject: person.login.subject,
+    is_admin: 1,
+  });
+  return person;
+}
+
+// ログインできる人（どこかの組織の管理者）。組織の外の操作（permission: login）の呼び出しに使う
+export async function createLoginPerson(
+  options: { sessionOverrides?: Parameters<typeof createSessionWithToken>[1] } = {},
+): Promise<Person> {
+  return createPerson({ organization: await createOrganization(), admin: true, ...options });
+}
+
+// 同じ人の新しいセッション。セッションを消す操作（ログアウト）を一覧から回すとき、ほかの操作のテストが
+// 同じ人のセッションを使えなくならないよう、操作ごとに別のセッションを持たせる
+export async function withNewSession(person: Person): Promise<Person> {
+  const { token } = await createSessionWithToken(person.accountId);
+  return { ...person, token };
+}
+
 // どの組織にも属さない運用者。ファイルごとに1人（ログインの ID は一意）
 let operator: Promise<Person> | undefined;
 export function getOperator(): Promise<Person> {

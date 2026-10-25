@@ -25,6 +25,71 @@ export function verifiedOrganizationForTest(organizationId: string): VerifiedOrg
 // 文が組み立てた SQL と束縛する値
 export { compiledQueryOf as compiledQueryForTest };
 
+// D1 の呼び出しに割り込む口。テストが、並行した処理の実行の順を固定したり、書き込みを失敗させたりするのに使う。
+// env の取り出しの Proxy で DB を包むので、入口（commonDb、orgDb）はそのまま包まれた D1 に問い合わせる。
+//   afterQuery: 問い合わせ（rows、first、run）が答えを返した直後に呼ぶ。その間、問い合わせの結果は呼び出し元に返らない
+//   beforeBatch: batch() を送る前に、文の SQL の並びを渡して呼ぶ。投げると、batch() は何も書かずに失敗する
+export type D1Hooks = {
+  afterQuery?: (sql: string) => Promise<void>;
+  beforeBatch?: (sqls: readonly string[]) => void;
+};
+
+export function envWithD1Hooks(base: Env, hooks: D1Hooks): Env {
+  // batch() には包む前の文を渡す（D1 の本物の文でないと受け取らない）
+  const rawOf = new WeakMap<object, D1PreparedStatement>();
+  const sqlOf = new WeakMap<object, string>();
+
+  const wrapBound = (bound: D1PreparedStatement, text: string): D1PreparedStatement => {
+    const wrapped = new Proxy(bound, {
+      get(target, name) {
+        if (name === 'all') {
+          return async (...args: []) => {
+            const result = await target.all(...args);
+            await hooks.afterQuery?.(text);
+            return result;
+          };
+        }
+        const member = Reflect.get(target, name);
+        return typeof member === 'function' ? member.bind(target) : member;
+      },
+    });
+    rawOf.set(wrapped, bound);
+    sqlOf.set(wrapped, text);
+    return wrapped;
+  };
+
+  const wrapStatement = (statement: D1PreparedStatement, text: string) =>
+    new Proxy(statement, {
+      get(target, name) {
+        if (name === 'bind') return (...values: unknown[]) => wrapBound(target.bind(...values), text);
+        const member = Reflect.get(target, name);
+        return typeof member === 'function' ? member.bind(target) : member;
+      },
+    });
+
+  const wrapDatabase = (database: D1Database) =>
+    new Proxy(database, {
+      get(target, name) {
+        const member = Reflect.get(target, name);
+        if (name === 'prepare') return (text: string) => wrapStatement(target.prepare(text), text);
+        if (name === 'batch') {
+          return async (statements: D1PreparedStatement[]) => {
+            hooks.beforeBatch?.(statements.map((statement) => sqlOf.get(statement) ?? ''));
+            return target.batch(statements.map((statement) => rawOf.get(statement) ?? statement));
+          };
+        }
+        return typeof member === 'function' ? member.bind(target) : member;
+      },
+    });
+
+  return new Proxy(base, {
+    get(target, prop) {
+      const value = Reflect.get(target, prop);
+      return prop === 'DB' ? wrapDatabase(value as D1Database) : value;
+    },
+  });
+}
+
 // D1 の形のうち、組織をまたいで読む関数が使う部分（prepare、bind、all）。組織の中の DB を複数にした場合のテストが、作り物を渡す
 export type FakeDatabase = {
   prepare(text: string): {
@@ -58,6 +123,9 @@ export function crossOrganizationStatementsForTest(
   if (db === undefined) throw new Error('組織の中の DB が無い');
   return {
     users: usersStatement(db, account.accountId, account.login),
+    // ログインできるかの判定が使う形（アカウントに結ばれる前の行も引く。初めてのログインはアカウントが無い）
+    usersWithUnlinked: usersStatement(db, account.accountId, account.login, true),
+    usersOfNewAccount: usersStatement(db, undefined, account.login, true),
     memberships: membershipsStatement(db, userIds),
     invitations: invitationsStatement(db, account.login),
   };

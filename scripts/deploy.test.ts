@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { describe, test } from 'node:test';
+import { SEED_SESSIONS } from '../seed/sessions.ts';
 import { deploy, PRODUCTION_URL, versionFromHealth, type DeployDeps, type WranglerResult } from './deploy.ts';
 
 const SHA = 'abc1234';
@@ -22,6 +23,8 @@ type Fake = {
   logs: string[];
   errors: string[];
   clock: () => number;
+  // seed のトークンを付けた本番への問い合わせ
+  seedRequests: { url: string; headers: Record<string, string>; body: string }[];
 };
 
 // wrangler の呼び出しは引数の先頭の語で答えを返す。deployments status は statuses を呼ばれた順に返し、
@@ -35,6 +38,9 @@ function fake(options: {
   hasMigrations?: boolean;
   versions?: (string | Error)[];
   fetchMs?: number;
+  // seed のトークンへの本番の応答。状態（401 の本文の code は unauthenticated とみなす）、状態と code、投げる失敗のどれか。
+  // 既定はすべて 401 の unauthenticated
+  seedStatus?: (token: string, call: number) => number | { status: number; code: string | undefined } | Error;
 }): Fake {
   const calls: string[][] = [];
   const logs: string[] = [];
@@ -48,6 +54,7 @@ function fake(options: {
     errors,
     fetches: 0,
     attempts: [],
+    seedRequests: [],
     clock: () => clock,
     deps: {
       inWorkersBuilds: options.inWorkersBuilds ?? true,
@@ -71,6 +78,16 @@ function fake(options: {
         result.fetches++;
         if (value instanceof Error) throw value;
         return value!;
+      },
+      postStatus: async (url, init) => {
+        result.seedRequests.push({ url, ...init });
+        const token = init.headers.Cookie!.split('=')[1]!;
+        const value = options.seedStatus?.(token, result.seedRequests.length) ?? 401;
+        if (value instanceof Error) throw value;
+        if (typeof value === 'number') {
+          return { status: value, errorCode: value === 401 ? 'unauthenticated' : undefined };
+        }
+        return { status: value.status, errorCode: value.code };
       },
       sleep: async (ms) => {
         clock += ms;
@@ -312,6 +329,122 @@ describe('deploy', () => {
     // 0, 7, 14, ... 119 秒に始め、最後の回は残りの1秒で打ち切る
     assert.deepEqual(f.attempts.at(-1), { at: 119_000, timeoutMs: 1_000 });
     assert.ok(f.clock() <= 120_000);
+  });
+
+  test('版が一致した後、seed のトークンを4つとも本番に送り、どれも 401 なら成功する', async () => {
+    const f = fake({});
+    assert.equal(await deploy(f.deps), 0);
+    assert.equal(f.seedRequests.length, Object.keys(SEED_SESSIONS).length);
+    for (const request of f.seedRequests) {
+      // 入れる組織の判定をしない logout で確かめる（判定をする me だと、行が残っていても 401 になり、見逃す）
+      assert.equal(request.url, `${PRODUCTION_URL}/api/logout`);
+      // Origin が公開する URL と合わないと、セッションを読む前に 403 で終わる
+      assert.equal(request.headers.Origin, PRODUCTION_URL);
+      assert.equal(request.headers['Content-Type'], 'application/json');
+    }
+    assert.deepEqual(
+      f.seedRequests.map((request) => request.headers.Cookie),
+      Object.values(SEED_SESSIONS).map((seed) => `__Host-sg_session=${seed.token}`),
+    );
+    assert.ok(f.logs.includes(`seed のトークンの確認: ${Object.keys(SEED_SESSIONS).length}つとも本番が拒みました`));
+  });
+
+  test('本番が seed のトークンを受け付けたら、繰り返さずに控えた版へ戻して失敗し、sessions の行を消す手順を指す', async () => {
+    const f = fake({ seedStatus: (token) => (token === SEED_SESSIONS.operator.token ? 200 : 401) });
+    assert.equal(await deploy(f.deps), 1);
+    assert.deepEqual(lastCall(f), ['rollback', CURRENT]);
+    const message = f.errors.find((entry) => entry.includes('operator') && entry.includes('200'));
+    assert.ok(message);
+    // 戻しても本番の sessions に seed の行が残れば直らない。消す手順は人が実行する
+    assert.ok(message.includes('前の版へ戻しても'));
+    assert.ok(message.includes('docs/operations.md'));
+    assert.ok(message.includes('seed のセッションが本番に入ったとき'));
+    // 同じ名前への問い合わせは1回だけ
+    assert.equal(
+      f.seedRequests.filter((request) => request.headers.Cookie!.includes(SEED_SESSIONS.operator.token)).length,
+      1,
+    );
+  });
+
+  test('401 以外の 4xx と 3xx は、繰り返さずに失敗にして戻す', async () => {
+    for (const status of [400, 403, 404, 301, 302]) {
+      const f = fake({ seedStatus: () => status });
+      assert.equal(await deploy(f.deps), 1, String(status));
+      assert.deepEqual(lastCall(f), ['rollback', CURRENT], String(status));
+      assert.equal(f.seedRequests.length, 1, String(status));
+      assert.ok(
+        f.errors.some((message) => message.includes(`${status} でした`)),
+        String(status),
+      );
+    }
+  });
+
+  test('401 でも、本文の code が unauthenticated でなければ、別の理由で止まったものとして失敗にして戻す', async () => {
+    for (const code of ['forbidden', 'invalid_input', undefined]) {
+      const f = fake({ seedStatus: () => ({ status: 401, code }) });
+      assert.equal(await deploy(f.deps), 1, String(code));
+      assert.deepEqual(lastCall(f), ['rollback', CURRENT], String(code));
+      assert.equal(f.seedRequests.length, 1, String(code));
+      assert.ok(
+        f.errors.some((message) => message.includes('unauthenticated を想定')),
+        String(code),
+      );
+    }
+  });
+
+  test('5xx と 429 は届かなかったのと同じ扱いで、3回まで繰り返す。その間に 401 が返れば成功する', async () => {
+    for (const status of [500, 502, 503, 429]) {
+      const flaky = fake({ seedStatus: (_token, call) => (call <= 2 ? status : 401) });
+      assert.equal(await deploy(flaky.deps), 0, String(status));
+      assert.ok(
+        flaky.logs.some((message) => message.includes(`${status} でした`)),
+        String(status),
+      );
+
+      const stuck = fake({ seedStatus: () => status });
+      assert.equal(await deploy(stuck.deps), 1, String(status));
+      assert.equal(stuck.seedRequests.length, 3, String(status));
+      assert.deepEqual(lastCall(stuck), ['rollback', CURRENT], String(status));
+      assert.ok(
+        stuck.errors.some((message) => message.includes('確かめられませんでした')),
+        String(status),
+      );
+    }
+  });
+
+  test('seed のトークンの問い合わせが届かなければ、3回まで繰り返し、それでも届かなければ戻す', async () => {
+    const flaky = fake({ seedStatus: (_token, call) => (call <= 2 ? new Error('timeout') : 401) });
+    assert.equal(await deploy(flaky.deps), 0);
+    const down = fake({ seedStatus: () => new Error('timeout') });
+    assert.equal(await deploy(down.deps), 1);
+    assert.equal(down.seedRequests.length, 3);
+    assert.deepEqual(lastCall(down), ['rollback', CURRENT]);
+    assert.ok(down.errors.some((message) => message.includes('確かめられませんでした')));
+  });
+
+  test('確認の途中で例外が出ても（ログの出力など）、失敗として前の版へ戻す', async () => {
+    const f = fake({});
+    let thrown = false;
+    const log = f.deps.log;
+    f.deps.log = (message) => {
+      if (message.startsWith('seed のトークンの確認') && !thrown) {
+        thrown = true;
+        throw new Error('log failed');
+      }
+      log(message);
+    };
+    f.deps.postStatus = async () => {
+      throw new Error('boom');
+    };
+    assert.equal(await deploy(f.deps), 1);
+    assert.deepEqual(lastCall(f), ['rollback', CURRENT]);
+    assert.ok(f.errors.some((message) => message.includes('例外で終わりました')));
+  });
+
+  test('版が一致しなければ、seed のトークンは送らない', async () => {
+    const f = fake({ versions: [CURRENT] });
+    assert.equal(await deploy(f.deps), 1);
+    assert.equal(f.seedRequests.length, 0);
   });
 
   test('反映が遅れても、何回目かで版が一致すれば成功する', async () => {

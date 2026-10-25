@@ -3,6 +3,7 @@
 import { spawnSync } from 'node:child_process';
 import { existsSync, readdirSync } from 'node:fs';
 import path from 'node:path';
+import { isErrorBody } from '../src/shared/errors.ts';
 import { migrationFiles } from './ci.ts';
 import { deploy, versionFromHealth } from './deploy.ts';
 
@@ -52,6 +53,20 @@ if (import.meta.main) {
     fetchVersion: async (url, timeoutMs) => {
       const res = await fetch(url, { signal: AbortSignal.timeout(timeoutMs), cache: 'no-store' });
       return versionFromHealth(res);
+    },
+    postStatus: async (url, init, timeoutMs) => {
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: init.headers,
+        body: init.body,
+        signal: AbortSignal.timeout(timeoutMs),
+        cache: 'no-store',
+        // リダイレクトは辿らない。3xx は想定外の応答として、状態のまま返す
+        redirect: 'manual',
+      });
+      // 本文は JSON のエラーの形のときだけ code を読む。読めなければ undefined
+      const body: unknown = await res.json().catch(() => null);
+      return { status: res.status, errorCode: isErrorBody(body) ? body.error.code : undefined };
     },
     sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
     now: () => Date.now(),

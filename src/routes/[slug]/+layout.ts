@@ -1,6 +1,6 @@
 import { redirect } from '@sveltejs/kit';
 import { callOperation } from '../../lib/api.ts';
-import { isUnauthenticated, loginPath, loginUrl } from '../../lib/login-redirect.ts';
+import { isUnauthenticated, loginUrl } from '../../lib/login-redirect.ts';
 import { myOrganizations, organizationInfo } from '../../shared/operations/organization/index.ts';
 import type { LayoutLoad } from './$types';
 
@@ -12,10 +12,7 @@ export const load: LayoutLoad = async ({ params, fetch, url }) => {
     callOperation(organizationInfo, {}, { slug: params.slug, fetcher: fetch }),
     callOperation(myOrganizations, {}, { fetcher: fetch }),
   ]);
-  // ログインの画面の経路が無い間は /login もここに来るので、ログインの画面から同じ画面へ移し続けないよう止める
-  if ((isUnauthenticated(organization) || isUnauthenticated(accountOrganizations)) && url.pathname !== loginPath) {
-    redirect(307, loginUrl(url));
-  }
+  if (isUnauthenticated(organization) || isUnauthenticated(accountOrganizations)) redirect(307, loginUrl(url));
 
   return {
     slug: params.slug,

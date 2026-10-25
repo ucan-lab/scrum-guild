@@ -25,14 +25,16 @@
 
 `ai.md` の「操作の定義を1か所に持つ」の形。
 
-- 定義: 操作ごとに、名前、説明、入力と出力の zod のスキーマ、`read` か `write`、要る権限を1つのオブジェクトに書き、`src/shared/operations/` に置く（`defineOperation()`）。一覧は `src/shared/operations/index.ts`。運用者の操作は `src/shared/operations/operator/`（人が差分を読む領域）。定義は処理を持たない。画面の束に Worker のコードを入れないため。定義は画面の束にも入るので、`define.ts` が `src/shared/zod-config.ts` を先に読み込み、zod の eval の試し（`new Function`）を止める（`jitless`）。画面の CSP に `'unsafe-eval'` が無く、試しが違反として報告されるため。
-- 処理: `src/server/operations/` で `implement(定義, 処理)` の形に書き、`src/server/operations/index.ts` の一覧に足す。Hono のルートは、この一覧を `createApp()` が1つの関数（`operationsApp()`）で登録する。ルートを直に書かない（`/api/health` だけが例外）。仮の操作は本番の一覧に入れず、テストの中で定義する。
+- 定義: 操作ごとに、名前、説明、入力と出力の zod のスキーマ、`read` か `write`、要る権限を1つのオブジェクトに書き、`src/shared/operations/` に置く（`defineOperation()`）。一覧は `src/shared/operations/index.ts`。運用者の操作は `src/shared/operations/operator/`（人が差分を読む領域）、ログインしている人自身の操作（`me`、`logout`）は `src/shared/operations/session/`。定義は処理を持たない。画面の束に Worker のコードを入れないため。定義は画面の束にも入るので、`define.ts` が `src/shared/zod-config.ts` を先に読み込み、zod の eval の試し（`new Function`）を止める（`jitless`）。画面の CSP に `'unsafe-eval'` が無く、試しが違反として報告されるため。
+- 回数の上限: 重い操作（手動の同期など）には、定義に `rateLimit: { max, windowSeconds }` を付ける。登録の関数が、権限の検査の後、入力を読む前に、アカウントと操作ごとに `rate_limits` の `operation:<操作の名前>:<アカウントの ID>` で数え、窓の中で `max` を超えた呼び出しは 429 の `rate_limited` で断る（処理は動かない）。窓の最初の呼び出しから `windowSeconds` たつと数え直す。数えるのは1文の upsert で、並行した呼び出しも取りこぼさない（`src/server/auth/rate-limit.ts`）。アプリ側のレート制限は、ログインと手動の同期にだけ設ける（`docs/requirements.md` の「運用」）。ログインは GET の例外なので定義に付けず、`login:<IP>` で数える（「GitHub のログインと取り込み」）。手動の同期の「接続ごとに5分に1回」は `connections.last_manual_sync_at` で判定し、この項目とは別。
+- 処理: `src/server/operations/` で `implement(定義, 処理)` の形に書き、`src/server/operations/index.ts` の一覧に足す。Hono のルートは、この一覧を `createApp()` が1つの関数（`operationsApp()`）で登録する。ルートを直に書かない。仮の操作は本番の一覧に入れず、テストの中で定義する。
+- 直に書く例外（GET のルート）: `/api/health` と、ログインの開始 `GET /api/auth/<手段>/start?return_to=<パス>` と戻り先 `GET /api/auth/<手段>/callback`（`src/server/auth/login-routes.ts`）。後の2つは GitHub へ移し、GitHub から戻るブラウザの GET のリダイレクトで、JSON の応答を返す操作の形に合わない。Origin の検査は掛けず（ほかのサイトからの移動で呼ばれる）、ログインの CSRF は state の Cookie で止める（「GitHub のログインと取り込み」）。失敗は JSON のエラーではなく `/login?error=<理由>` へのリダイレクトで返す。ログアウトと「自分」を返す口（`logout`、`me`）は例外にせず、操作の定義で作る（`src/shared/operations/session/`）。
 - URL: `POST /api/<slug>/<操作の名前>`。組織の外の操作（ログインだけ、運用者）は `POST /api/<操作の名前>`。読む操作も POST にする。API の応答はどれもキャッシュしないので、GET にしない損は小さく、Origin の検査をすべての操作に同じに掛けられる。入力は JSON の本文だけで、`Content-Type: application/json` を要る。URL は名前から作り、定義に持たせない。名前は英小文字と数字をハイフンでつないだ1語（`task-title` など）で、一覧で重ならない。URL の形は `operationPath()` に1つだけ持ち、画面と登録の関数が同じ値を使う。
 - 権限の種類（`permission`）:
 
   | 権限 | 範囲 | 通る人 |
   | --- | --- | --- |
-  | `login` | 組織の外 | ログインしている人 |
+  | `login` | 組織の外 | ログインしていて、入れる組織がある人（か運用者）。`skipsLoginAccess` を付けた操作は、入れる組織を失った人も通す |
   | `operator` | 組織の外 | シークレット `OPERATOR_LOGIN_IDS` に載った運用者 |
   | `invitee` | 組織の中 | 組織に入れる人すべて。承諾待ちの招待だけを持つ人を含む。招待の一覧、承諾、辞退に使う |
   | `organization` | 組織の中 | `users` の行がある人。無効でない管理者か、いずれかのワークスペースに今所属している人。承諾待ちの招待だけの人は通さない（404） |
@@ -43,15 +45,25 @@
   組織の中を読む操作を承諾待ちの招待だけの人に見せないため、`invitee` と `organization` を分ける。`member` と `leader` には `workspace: true` が必須で、入力のスキーマに文字列の `workspace_id` が無いと型で落ちる。管理者は所属していないワークスペースでもリーダーと同じ操作ができるので、`member` と `leader` の操作も通す。運用者であることは組織の中の操作の権限にならない。入れる組織は一般の人と同じ条件で決まる。
   - 権限の種類と範囲は `src/shared/operations/define.ts` の1つの表から、型と実行時の検査を導く。登録のときに、権限の種類が一覧にあること、`member` と `leader` に `workspace: true` が付くこと、組織の外の操作に `workspace` が付かないことを確かめ、合わなければ起動のときに落とす。
   - 閉じたワークスペースは読み取り専用。`write` の操作は、閉じていれば 409 の `workspace_closed` で止まる。開き直す操作のように閉じていても書く操作には、定義に `allowClosed: true` を付ける（ワークスペースの下の `write` だけに付けられる）。権限の検査が先で、権限の無い人には 403 を返す。
-- 登録の関数が行う順: Origin の検査、セッションの読み取り、組織の確かめ（組織の中の操作）と運用者や管理者の検査、入力の検証、ワークスペースの確かめとメンバーやリーダーの検査（ワークスペースの下の操作）、処理、出力の検証。ワークスペースの確かめが入力の検証の後になるのは、検証した入力の `workspace_id` から取り出すため。
-  - Origin: すべての操作に掛ける。`wrangler.jsonc` の `vars` の `PUBLIC_ORIGIN`（`scripts/dev.ts` が `pnpm dev` と `pnpm preview` の画面の URL で上書きする。`DEV_PORT_OFFSET` でずらした値も）と一致しない、または Origin の無い呼び出しは 403 の `forbidden`。本文を読む前に行う。`curl` で呼ぶときは `-H "Origin: http://localhost:5173"` を付ける。
-  - セッション: Cookie のトークンを SHA-256 にして `sessions` を引く（`src/server/auth/session.ts`）。Cookie の名前は `sessionCookieName(PUBLIC_ORIGIN)`（`src/shared/session-cookie.ts`）で決め、https の公開 URL では `__Host-sg_session`、http の localhost（`pnpm dev`、`pnpm preview`）では `sg_session`。読む側とログインの発行（#52）と e2e が同じ関数を使う。無い、形が違う、期限を過ぎた、のどれも 401 の `unauthenticated`。`last_used_at` は前回から1時間以上たったときだけ、読んだ値が変わっていないことを条件に書き直し（並行した呼び出しの片方だけが書く）、`expires_at` を30日後にして、書けたときだけ Cookie を同じ属性で出し直す。書き直しの失敗はログに例外の名前だけを残し、リクエストは続ける。
+- 登録の関数が行う順: Origin の検査、セッションの読み取り、組織の確かめ（組織の中の操作）と運用者や管理者の検査、回数の上限、入力の検証、ワークスペースの確かめとメンバーやリーダーの検査（ワークスペースの下の操作）、処理、出力の検証。ワークスペースの確かめが入力の検証の後になるのは、検証した入力の `workspace_id` から取り出すため。
+  - ログインできる条件（`hasLoginAccess()`、`src/server/db/cross-organization.ts`）:
+    - 組織の外の操作は、既定で確かめる対象（`me` を含む）
+    - 例外は、定義に `skipsLoginAccess: true` を付けた操作で、今は `logout` だけ。入れる組織を失った人にも使わせたいため
+    - `skipsLoginAccess` を付けられるのは組織の外の操作のみで、組織の中の操作や `true` 以外の値は、登録のときの検査で弾く。確かめは DB を3〜4回引く仕事なので、付ける操作は絞る方針
+    - 組織の中の操作は、組織に入れなかった（404 にする）ときだけ確かめる。入れた操作では不要（入れる組織があると分かっているため）
+    - 運用者（`OPERATOR_LOGIN_IDS` に載った人）は、確かめずに通す。入れる組織が1つも無く、運用者でもなければ、確かめた時刻までに作られたその人のセッションを消し（確かめた後に作られたものは残す）、Cookie も消して 401 の `unauthenticated` を返す
+    - 判定の元は、組織の選択（`my-organizations`）が使う組織をまたぐ読み取り（`readAccountOrganizations`）と同じ1つ。入れる組織か届いた招待が、停止していない組織に1つでもあれば通す。基準は `enterOrganization` と同じ（管理者、今の所属、承諾待ちの招待を数え、停止した組織と無効にされた人は除く）
+    - ログインできるかの判定だけが、アカウントに結ばれる前の指名の行（`account_id` が空で、ログインの手段と ID が同じ行）も数える。ログインのたびに結ぶ行で、初めてのログインにはアカウントも無い。組織の選択には数えない（結ばれるまで、その組織には入れないため）
+    - 問い合わせの形（`users_login` などの索引に乗せる、組の数で文を分ける、束縛の上限で区切る）は、組織の選択と共通。`test/organization.test.ts` が EXPLAIN QUERY PLAN と101件の境界を確かめる
+    - アカウントのログインの手段と ID は、1回のリクエストで1回だけ引く（`account.logins()`）
+  - Origin: すべての操作に掛ける。`wrangler.jsonc` の `vars` の `PUBLIC_ORIGIN`（`scripts/dev.ts` が `pnpm dev` と `pnpm preview` の画面の URL で上書きする。`DEV_PORT_OFFSET` でずらした値も）と一致しない、または Origin の無い呼び出しは 403 の `forbidden`。検査は本文を読む前。`curl` で呼ぶときの付け方は `-H "Origin: http://localhost:5173"`。`PUBLIC_ORIGIN` に使えるのは、https と、ループバックのホスト（`localhost`、`127.0.0.1`、`[::1]`）への http だけ。それ以外（本番の設定が http になった、値が無い、解釈できない）は、`OPERATOR_LOGIN_IDS` の検査と同じく app のミドルウェアが、`/api/health` を含むすべてのリクエストを 500 にして、デプロイの煙のテストで見つけさせる。綴りだけで決めると、Cookie の Secure と `__Host-` が黙って外れるため。
+  - セッション: Cookie のトークンを SHA-256 にして `sessions` を引く（`src/server/auth/session.ts`）。Cookie の名前は `sessionCookieName(PUBLIC_ORIGIN)`（`src/shared/session-cookie.ts`）で決め、https の公開 URL では `__Host-sg_session`、http の localhost（`pnpm dev`、`pnpm preview`）では `sg_session`。読む側とログインの発行（`src/server/auth/login-routes.ts`）と e2e が同じ関数を使う。無い、形が違う、期限を過ぎた、のどれも 401 の `unauthenticated`。`last_used_at` は前回から1時間以上たったときだけ、読んだ値が変わっていないことを条件に書き直し（並行した呼び出しの片方だけが書く）、`expires_at` を30日後にして、書けたときだけ Cookie を同じ属性で出し直す。書き直しの失敗はログに例外の名前だけを残し、リクエストは続ける。
   - 組織: `src/server/db/enter-organization.ts` が、slug から `organizations` を引き（共通の入口）、停止していないこと、その人が入れることを確かめる（組織の中の入口）。共通の表と組織の中の表は別の問い合わせで、結合しない。`users` はセッションのアカウントの ID と `users.account_id` の一致で引き、無効にされた人は断る。管理者でも所属もない人は、アカウントに結んだログインの手段と ID で承諾待ちの招待に当てる（このときだけ `account_logins` を引く）。ログインの手段と ID が一致する `users` の行が無効なら、アカウントに結ばれる前の行でも断る。招待だけで入った人は `invitedOnly` になり、`invitee` の操作以外は 404 で返す。組織が無い、停止している、入れない、のどれも 404 の `not_found`。
   - ワークスペース: `workspace_id` を入口の組織で絞り、その人の今の所属と一緒に1つの問い合わせで引く。別の組織のものと存在しないものは 404。引けたものが「確かめたワークスペース」（`VerifiedWorkspace`。閉じているか、その人のロールを持つ）になり、処理に渡す直前に `assertVerifiedWorkspace()` で実行時にも確かめる。
   - 入力: 壊れた JSON や形の違う入力は 400 の `invalid_input` で、`details` に項目ごとの `path`、`code`、`message` を入れる。本文は 1MiB までで、`Content-Length` の無い本文も読んだ分を数えて止め、超えれば 413（`code` は `invalid_input`）。未ログインの呼び出しには本文を読ませない。
   - 出力: 戻り値を出力のスキーマで検証し、スキーマに無い項目は落とす。形が合わなければ 500。検証した値（変換を通した出力）をそのまま送り、画面は同じスキーマで検証し直さない。
   - ログ: 「API のエラーとログ」の項目を操作ごとに1行出す。413 を含め、失敗の `code` と `status` も残る。
-- 処理が受け取るもの: 検証済みの入力 `input` と、確かめた DB の入口だけ。組織の外の操作は共通の入口 `db` と `accountId` と `account`（入れる組織と届いた招待を組織をまたいで読む `organizations()`、運用者かを返す `isOperator()`。`src/server/operations/account.ts`）、組織の中の操作は組織の中の入口 `db`（組織を確かめないと作れない）と `actor`（`userId`、`isAdmin`、`invitedOnly`。`invitee` の操作では `userId` が null になりうる）と `organization`（入るときに引いた組織の slug、名前、言葉づかい、既定のテーマ）と `defer`（応答を待たせずに続ける仕事を渡す。`waitUntil` に渡り、`ExecutionContext` が無いテストでは応答の前に待つ。失敗は登録の関数がログに例外の名前だけを残し、応答は変えない）、ワークスペースの下の操作はさらに `workspace`。`read` の操作が副作用として書くもの（`organization` の `last_seen_at`）は、定義の `description` に書き、`defer` で送る。画面の値を読む文と書く文は別の `batch()` にし、書き込みの失敗で画面が開かなくならないようにする。`workspace` の型 `VerifiedWorkspace` は `VerifiedOrganization` と同じ作りで、`src/server/db/` の外では作れない（`test/operations-types.ts` が `@ts-expect-error` で確かめる）。組織の中の入口は問い合わせを絞らないので、処理は自分の文を、入口の `organizationId`（組織の直下の表）か、`workspace.workspaceId`（ワークスペースの下の表）で絞る。入力の ID だけで引かない。
+- 処理が受け取るもの: 検証済みの入力 `input` と、確かめた DB の入口だけ。組織の外の操作は共通の入口 `db` と `accountId` と `account`（入れる組織と届いた招待を組織をまたいで読む `organizations()`、運用者かを返す `isOperator()`、アカウントに結んだログインの手段と ID を返す `logins()`。`src/server/operations/account.ts`）と今のセッション `session`（`tokenHash`。`clearCookie()` を呼ぶと、応答でセッションの Cookie も消す。ログアウトが使う）、組織の中の操作は組織の中の入口 `db`（組織を確かめないと作れない）と `actor`（`userId`、`isAdmin`、`invitedOnly`。`invitee` の操作では `userId` が null になりうる）と `organization`（入るときに引いた組織の slug、名前、言葉づかい、既定のテーマ）と `defer`（応答を待たせずに続ける仕事を渡す。`waitUntil` に渡り、`ExecutionContext` が無いテストでは応答の前に待つ。失敗は登録の関数がログに例外の名前だけを残し、応答は変えない）、ワークスペースの下の操作はさらに `workspace`。`read` の操作が副作用として書くもの（`organization` の `last_seen_at`）は、定義の `description` に書き、`defer` で送る。画面の値を読む文と書く文は別の `batch()` にし、書き込みの失敗で画面が開かなくならないようにする。`workspace` の型 `VerifiedWorkspace` は `VerifiedOrganization` と同じ作りで、`src/server/db/` の外では作れない（`test/operations-types.ts` が `@ts-expect-error` で確かめる）。組織の中の入口は問い合わせを絞らないので、処理は自分の文を、入口の `organizationId`（組織の直下の表）か、`workspace.workspaceId`（ワークスペースの下の表）で絞る。入力の ID だけで引かない。
 - 画面からは、`src/lib/api.ts` の `callOperation(定義, 入力, { slug })` で呼ぶ。入力と出力の型は定義から推論し、組織の中の操作は `slug` を要る。結果は `ApiResult` で、応答が JSON でなければ失敗として扱う（出力の形はサーバーが検証済み）。出力のスキーマの変換は JSON にできる値を返すものに限る。
 - 組織の分離のテストと権限のテストは、定義の一覧を回して全操作に当てる（`test/operation-registry.test.ts`）。新しい操作を足しても、回すテストを書き足す必要はない。足すのは、組織の中の操作ごとのテスト用の関数だけで、`test/operations/pointers.ts` に操作の名前をキーにして書く。
   - テスト用の関数は、対象の組織（`Target`。組織、管理者、リーダー、一般のメンバー、別のワークスペースのメンバー、承諾待ちの招待だけの人）を受け取り、その組織の行を指す成功する入力を返す。別の組織の対象を渡した入力が 404 になり、自分の組織の対象を渡した入力が成功することを、同じ関数で確かめる（404 が入力の誤りや権限の不足ではないと言えるようにするため）。
@@ -127,10 +139,11 @@
 - 入力の誤りは 400 の `invalid_input` で、`details` に zod の検証の結果を項目ごとに入れる。権限が無いのは 403、先に読んだ値で判定した書き込みの競合（`meta.changes` が 0）は 409 にする。
 - ログインしていない（セッションが無いか切れた）のは 401 の `unauthenticated`。画面はこれを見てログインの画面へ戻す。権限が無い 403 の `forbidden` とは分ける。Origin が公開する URL と合わないときは 403 の `forbidden`。
 - 閉じたワークスペースへの書き込みは、409 の `workspace_closed`（先に読んだ値の競合の `conflict` とは分ける）。
+- 定義の `rateLimit` を超えた呼び出しは、429 の `rate_limited`。
 - 本文が 1MiB を超えたときは、413 で `code` は `invalid_input`。
 - D1 に届かないとき（`/api/health` の疎通）は 503 の `unavailable`。
 - 想定していないエラーは `app.onError` で 500 の `internal` にし、中身は応答に出さずログにだけ出す。
-- ログは Workers Logs に JSON の1行で出す。操作ごとの項目は `requestId`（`cf-ray`。無ければ乱数。エラーのログと同じ値）、`operation`、`organizationId`、`userId`（組織の中の `users` の ID）、`accountId`、`code`（成功は `ok`）、`status`、`durationMs`。本文、コメント、取り込んだ内容、認証情報（招待の URL の秘密、ID トークン、Google のメールアドレスを含む）は出さない。
+- ログは Workers Logs に JSON の1行で出す。操作ごとの項目は `requestId`（`cf-ray`。無ければ乱数。エラーのログと同じ値）、`operation`、`organizationId`、`userId`（組織の中の `users` の ID）、`accountId`、`code`（成功は `ok`）、`status`、`durationMs`。本文、コメント、取り込んだ内容、認証情報（招待の URL の秘密、ID トークン、Google のメールアドレスを含む）は出さない。ログインの開始と戻り先（GET の例外）は、操作ごとのログとは別に、`route: "auth"`、`step`（`start` か `callback`）、`provider`、`outcome`（`ok`、`denied`、`too_many` など）、成功のときの `accountId` を1行出す。OAuth の `code`、`state`、トークン、Cookie の値、クライアントの秘密は出さない（`test/login-security.test.ts` が確かめる）。
 
 ## 初版の作る順
 
@@ -205,7 +218,7 @@ GitHub は無料のプランのまま使う（2026-10-23 に決めた）。無�
 
 - Worker を vite の中で動かす `@cloudflare/vite-plugin` は使わない。SvelteKit との同居を公式に支持していると確かめられず、2つのプラグインが dev サーバーと build の両方を触るので、片方の更新で壊れやすいため
 - `pnpm preview` は、build した `build/` と API を `wrangler dev` だけで配る。本番と同じ配り方（Workers Static Assets、`_headers`、SPA の fallback）を確かめる口で、HMR は効かない
-- 開発の URL は2つある。`pnpm dev` は `http://localhost:5173`、`pnpm preview` は `http://localhost:8787`。Origin の検査は、この URL を `PUBLIC_ORIGIN` として `wrangler dev` に渡して行う（`scripts/dev.ts`）。ブラウザが送る Origin と合わない URL（`127.0.0.1` など）で開くと、更新系の API は 403 になる。OAuth の戻り先は、認証の Issue で扱う
+- 開発の URL は2つある。`pnpm dev` は `http://localhost:5173`、`pnpm preview` は `http://localhost:8787`。Origin の検査は、この URL を `PUBLIC_ORIGIN` として `wrangler dev` に渡して行う（`scripts/dev.ts`）。ブラウザが送る Origin と合わない URL（`127.0.0.1` など）で開くと、更新系の API は 403 になる。GitHub の OAuth の戻り先もこの URL から作る（`<画面の URL>/api/auth/github/callback`）ので、開発用の OAuth App の Authorization callback URL とポートまで合わせる（`docs/operations.md` の「GitHub OAuth App」）
 
 ### ポート
 
@@ -216,6 +229,8 @@ GitHub は無料のプランのまま使う（2026-10-23 に決めた）。無�
 | wrangler のデバッガー | 9229 |
 
 ワークツリーを並べて立てるときは、`DEV_PORT_OFFSET` で3つを同じ幅だけずらす（例 `DEV_PORT_OFFSET=10 pnpm dev` で 5183、8797、9239）。vite の転送先も同じ値から作るので、画面は自分のワークツリーの API を呼ぶ。ポートがぶつかったら、勝手に空いたポートへずれずに落ちる（vite の `strictPort`）。ずれた vite が別のワークツリーの API につながると、エラーにならないまま別のブランチの API を叩くため。
+
+ワークツリーを並べて本物のログインを確かめるときの注意: ワークツリーごとに、別のブラウザのプロファイル（Chrome のプロファイル、別のブラウザ、シークレットウィンドウ）で開く。`localhost` の Cookie はポートで分かれず、`sg_session` と `sg_oauth_state` は、ポートの違うワークツリーのあいだで共有される。同じブラウザで開くと、片方のログインがもう片方の Cookie を上書きし、ログインが失敗するか、別のワークツリーのセッションで動いてしまう。
 
 ### 版
 
@@ -355,7 +370,7 @@ PR ごとに GitHub Actions で回す。`.github/workflows/ci.yml` の各ジョ�
 | check | 型の検査（`tsc`、`svelte-check`）、lint、整形、Claude のフックのテスト（`node --test .claude/hooks/*.test.mjs`） |
 | test | Workers の実行環境で動かす（`@cloudflare/vitest-plugin`。`@cloudflare/vitest-pool-workers` から名前が変わった）。テストの D1 には `test/apply-migrations.ts` が全マイグレーションを当てる。1つのテストファイルの中では、前のテストが入れた行が残るので、一意の列にはテストごとに新しい値を使う。組織の分離のテストを含む。`scripts/` の `node --test` は、seed を一時の D1 に2回流して中身を数える |
 | migration | 空の D1 に全マイグレーションを順に当てて通るか確かめ、続けて同じ D1 に seed を2回流す（`pnpm db:migrate:fresh`）。マイグレーションと seed のずれと、seed を流し直せることを PR ごとに確かめるため。0件なら当てずに成功で終える。ベータが始まったら、既にあるマイグレーションのファイルの書き換えも落とす（上の「DB を作り直してよい期間」） |
-| e2e | `pnpm e2e`。`pnpm preview` で build して `wrangler dev` を立て、サーバーが立ってから `e2e/global-setup.ts` が `pnpm db:seed` で手元の D1 に seed を入れ直し（行は消える。立てたままのサーバーを使い回すときも流れる）、Playwright で、seed の Cookie でログインした組織の選択と組織の枠（組織が1つの人、2つの人、入れない組織を開いた人。`e2e/organizations.test.ts`）、シェルの表示、`/api/health` の版と D1 への疎通、CSP の違反が無いこと（`securitypolicyviolation` とコンソールのエラー）を確かめる。版には PR の head の SHA を渡し、`/api/health` と画面の build に埋めた版（SvelteKit が書き出す `/_app/version.json`）がどちらもその値になることも見る。スクリーンショットと、失敗したときの trace を成果物の `e2e` に上げる。4つのテーマと2つの言葉の組み合わせのスクリーンショットは、画面ができてから足す。trace は要求と応答と Cookie を丸ごと残し、成果物はリポジトリを読める人が誰でも取れるので、e2e には本物の認証情報を渡さない（ログインは seed のセッションで通す） |
+| e2e | `pnpm e2e`。`pnpm preview` で build して `wrangler dev` を立て、サーバーが立ってから `e2e/global-setup.ts` が `pnpm db:seed` で手元の D1 に seed を入れ直し（行は消える。立てたままのサーバーを使い回すときも流れる。CI のジョブに seed の段は足さない）、Playwright で、seed の Cookie でログインした組織の選択と組織の枠（組織が1つの人、2つの人、入れない組織を開いた人。`e2e/organizations.test.ts`）、ログインの画面（枠の外、`return_to` の整え方、`?error=` の文言）と seed の Cookie での `me`（`e2e/login.test.ts`）、シェルの表示、`/api/health` の版と D1 への疎通、CSP の違反が無いこと（`securitypolicyviolation` とコンソールのエラー）を確かめる。版には PR の head の SHA を渡し、`/api/health` と画面の build に埋めた版（SvelteKit が書き出す `/_app/version.json`）がどちらもその値になることも見る。スクリーンショットと、失敗したときの trace を成果物の `e2e` に上げる。4つのテーマと2つの言葉の組み合わせのスクリーンショットは、画面ができてから足す。trace は要求と応答と Cookie を丸ごと残し、成果物はリポジトリを読める人が誰でも取れるので、e2e には本物の認証情報を渡さない（ログインは seed のセッションで通す） |
 | ai-review | `anthropics/claude-code-action` で、スキル `ai-review` が差分に応じて `.claude/agents/` のレビューのエージェントを呼び分け、CRITICAL と HIGH を `finding-verifier` の反証にかけてから、指摘を PR に書く。`.github/workflows/ai-review.yml` に分けて置く |
 | label | パスを見て `needs-human` のラベルを付ける（上の「マージの判定」）。`.github/workflows/label.yml` に分けて置き、`pull_request_target` で動かす。ワークフローも規則も PR のベース（`main`）の版が使われるので、PR の側で書き換えてもラベルは付く。別のブランチをベースに開いてから `main` へ付け替えたときも、判定し直す。PR のコードはチェックアウトしない（書き込みのトークンで PR のコードを動かさないため） |
 | ci-ok | ai-review と label を除く上のジョブをまとめる1つのジョブ。マージの前に確かめるのは、これと label |
@@ -467,6 +482,34 @@ GitHub App も比べた。人が抜けても取り込みが止まらない、PAT
 
 ベータで「PAT が面倒」「人が抜けて止まった」が多ければ、取り込みだけ GitHub App に移す。そのときは、接続ごとにリポジトリの許可リストを持ち、インストールを組織に結ぶときに確かめる作りを合わせて入れる。
 
+### ログインの実装
+
+置き場所は `src/server/auth/`（人が差分を読む領域）。OAuth App の作り方とシークレットは `docs/operations.md` の「GitHub OAuth App」。
+
+- ログインの手段の型（`login-method.ts`）: 認可の URL を作る `authorizeUrl()`、戻ってきた `code` を確かめて手段の中の ID と表示名とアバターを返す `verify()`、招待する人の指し方 `resolveInvitee()`（GitHub はユーザー名をユーザー ID に解決する）。確かめられないときは `LoginMethodError`（`rejected`: code が使えない。`unavailable`: 届かない、応答が想定と違う、こちらの設定の誤り）を投げ、メッセージは固定の文だけにする。Google（#57）は同じ型に足す
+- GitHub の実装（`github.ts`）: 通信先は固定の URL で、設定から読まない（認可 `https://github.com/login/oauth/authorize`、トークン `https://github.com/login/oauth/access_token`、ユーザー `https://api.github.com/user`、ユーザー名の解決 `https://api.github.com/users/<名前>`）。受け取るユーザー ID は正の整数で、10進の文字列にして持つ。ログイン名はユーザー名の形（英数字で始まり、英数字、`-`、`_` を80文字まで。Enterprise Managed Users のログイン名が `_` を含むため）でなければ、応答が想定と違うものとして断る。アバターの URL は `https://avatars.githubusercontent.com/` のものだけを持ち、ほかのホストと http は持たない。使い終えたアクセストークンは、読み終えた直後に GitHub 側でも取り消す（`read:user` のトークンは期限が無い）。取り消しはログインの応答を待たせず（`executionCtx.waitUntil`）、2xx 以外の状態と例外の名前は、固定の文でログに出す（トークンは出さない）。失敗してもログインは止めない。クライアントの ID と秘密は Worker のシークレット `GITHUB_CLIENT_ID` と `GITHUB_CLIENT_SECRET`。`resolveInvitee()` は、認証なしの呼び出しの上限（IP ごとに1時間60回）に Workers の共有の IP が当たらないよう、クライアントの資格情報（Basic 認証）で呼ぶ。使うのは招待の機能を作る Issue で、ユーザー名の形（英数字とハイフンで39文字まで）に合わない値は GitHub に問い合わせない
+- 開始 `GET /api/auth/github/start?return_to=<パス>`:
+  - 受けるのは、利用者が自分のサイトの画面（ログインの画面のボタン）かアドレス欄から始めた画面の移動だけ。条件は次の4つで、どれかのヘッダーがあって合わないものは、数えず、行も書かず、ログインの画面へ戻す。ほかのサイトのページから、被害者の IP の枠を使い切らせないため
+    - `Sec-Fetch-Mode` が `navigate`（`<img>`、`<script>`、`fetch()` は合わない）
+    - `Sec-Fetch-Dest` が `document`（`<iframe>` は合わない）
+    - `Sec-Fetch-Site` が `same-origin` か `none`（ほかのサイトと、同じサイトの別のオリジンからの移動は合わない）
+    - `Sec-Purpose` に `prefetch` と `prerender` を含まない（先読みは、利用者が開いたものではない）
+  - ヘッダーを送らない古いブラウザは通す。この場合の限界は `docs/data-model.md` の `rate_limits`
+  - 通ったものはレート制限（`login:<IP>`）を数え、`oauth_states` に state、code_verifier（どちらも 32 バイトの乱数の base64url、43文字）、戻る画面のパスを入れる（10分で切れる）
+  - 同じ state を HttpOnly、SameSite=Lax の Cookie にも置く。https では Secure を付けた `__Host-sg_oauth_state`。http の localhost では、Safari が Secure の Cookie を保存しないので、Secure も `__Host-` も付けず `sg_oauth_state`（セッションの Cookie も同じ）
+  - PKCE（`S256`）の `code_challenge` を付けた GitHub の認可の URL へ 302 で移す
+  - `return_to` は自分のサイトのパスだけを受け付ける（`src/shared/return-to.ts`）。条件は、`/` で始まり、`//` で始まらず、`\` を含まず、`.` と `..` の区間（`%2e` を含む）を持たず、印字できる ASCII だけで、2000字まで。最初の区間が `api` と `login` のものも除く。`/.//evil.example` のように、URL の解決が区間を畳んで `//evil.example` になる書き方を止めるためで、除いた値は `/` に直す
+  - ログインの後に移す先は、URL を解決した後の値（パス、クエリ、フラグメント）も同じ検査に通す。通らなければ `/` を使う。ログインの画面の `return_to` も、同じ関数で整える
+- 戻り先 `GET /api/auth/github/callback?code=&state=`:
+  - 最初に、クエリの state と Cookie の state が揃い、形が 43 文字の base64url で、値が一致することを確かめる（比較は `crypto.subtle.timingSafeEqual`）
+  - 合わない戻りは、`retry` で断る。レート制限には数えず、`oauth_states` の行にも state の Cookie にも触れない。DB の行だけで確かめると、攻撃者が自分で始めたログインの code と state を付けた戻り先の URL を踏ませて、被害者のブラウザを攻撃者のアカウントでログインさせられる（ログインの CSRF）。数えればほかのサイトのページから被害者の IP の枠を使い切らせられ、Cookie を消せば被害者が始めたログインが壊れる
+  - 合った戻りだけが、state の Cookie を消し（成功でも失敗でも）、レート制限を数え、`oauth_states` の行を `DELETE ... RETURNING` で消して読む。並行した戻りでも、通るのは1回だけ
+  - 行が無い（使い済み）、別の手段の行、10分を過ぎた行は、`retry` で断る。`error` が付いた戻り（GitHub 側で拒否）と code の無い戻りも同じ
+- 分かれ道（`login.ts`）: GitHub の ID で `account_logins` を引き、入れる組織があるか調べ（`hasLoginAccess()`。アカウントができる前の指名の行と招待は、ログインの手段と ID で当てる）、運用者の一覧にも無ければ `denied` で断る（`accounts` も `account_logins` も作らない）。初めての人（`account_logins` が無い）は `accounts` と `account_logins` を1回の `batch()` で作る。2回目以降は `account_logins` の `login_name`、`display_name`、`avatar_url` と `accounts.last_login_at` を書き直す。続けて、組織の DB の `users.account_id` が空で、ログインの手段と ID が同じ行を、そのアカウントに結ぶ（`linkLoginToAccount()`。ログインのたびに流す。何度流しても同じ結果。結ぶ行を先に読み、当たったときだけ書くので、空振りのログインで組織の DB に書かない）。共通の表と組織の中の表は別の `batch()` で書く。結ぶ書き込みが失敗したら、セッションを作らず `retry` を出し、次のログインで結ぶ（`docs/data-model.md` の「書き込みの単位」）。最後にセッションを作る（32 バイトの乱数の base64url を Cookie に入れ、SHA-256 の16進を `sessions` に入れる。このリクエストが持っていた古いセッションは、同じ `batch()` で消す）。並行した最初のログインでは、アカウントが無いと読んだ後に、もう片方がアカウントを作り、指名の行を結ぶことがある（結んだ行は、アカウントが無い側からは当たらなくなる）。判定が落ちたら `account_logins` を読み直し、できていればその ID で判定し直す。権限の無い人のアカウントを先に作ることはしない。両方がアカウントを作る側に回ったときは、片方が `account_logins` の主キーで落ちて、`accounts` ごと戻る。落ちた側は読み直して続ける
+- ログインの画面への理由（`/login?error=`）: `denied`（入れる組織も招待も無い）、`retry`（state が合わない、使えない code、結ぶ書き込みの失敗）、`too_many`（レート制限）、`unavailable`（GitHub に届かない、応答が想定と違う、クライアントの ID と秘密が未設定）。再度ログインできるときは `return_to` も付ける
+- レート制限: ログインの開始（画面の移動だけ）と戻り先（state の Cookie が合ったものだけ）を、同じ IP（`CF-Connecting-IP`。無いリクエストは `unknown` の1つの枠。IPv4 はそのまま。IPv6 は、1人が /64 の中の無数のアドレスを使えるので、上位 64 ビット（/64）で数え、事業者の単位の /48 も、より緩い上限で数える。IPv4 を写した IPv6 は、16進と全部を書いた形も含めて IPv4 に直す。解釈できない値は `unknown` の枠）から10分に60回まで（`src/server/auth/rate-limit.ts` の `LOGIN_RATE_LIMIT`）。1回のログインで2回数えるので30人分。同じオフィスの15人のチームが一斉に入っても詰まらない値にした。IPv6 の /48 は10分に600回まで（`LOGIN_RATE_LIMIT_IPV6_SITE`）。どれかを超えたら `too_many`。戻りが超えたときは GitHub に問い合わせない。IP は `CF-Connecting-IP` を使うので、Cloudflare の Pseudo IPv4 を Overwrite で有効にしない（`docs/operations.md`）
+- ログアウト（操作 `logout`）: 今のセッションの行を消し、Cookie を消す。ほかの端末のセッションは残す
+
 ## Google のログイン
 
 エンジニアでない人もチームに入るため、ログインの手段に Google を足す（2026-10-25 に決めた）。
@@ -496,7 +539,7 @@ GitHub App も比べた。人が抜けても取り込みが止まらない、PAT
   - セッションの `last_used_at` と `expires_at` は seed を流した時刻から数える。ほかの日時は固定の値にする。切れたら seed を流し直す
   - seed は全部の表の行を消してから入れる。手で足した行も消える
   - seed のセッションが入った手元の `wrangler dev` を、`--ip 0.0.0.0` やトンネルで外に開かない。公開されたトークンで、誰でも管理者と運用者として入れるため
-  - 本番に入れない守りは、seed のスクリプトが `--local` だけを付けることと、フック（`guard-bash.mjs`）が `--remote` を止めること。本番が seed のトークンを拒むことは、デプロイの煙のテストで確かめる（#52 で足す）
+  - 本番に入れない守りは、seed のスクリプトが `--local` だけを付けることと、フック（`guard-bash.mjs`）が `--remote` を止めること。本番が seed のトークンを拒むことは、デプロイの煙のテストで確かめる。版が一致した後、seed のトークン（`seed/sessions.ts` の数だけ）を本番の `POST /api/logout` に Cookie で送り（Origin は本番の URL）、どれも 401 で、本文の code が `unauthenticated` でなければ、煙のテストの失敗として前の版へ戻す（`scripts/deploy.ts`）。確かめる口を `logout` にしたのは、入れる組織があるかの判定をしない操作（`skipsLoginAccess`）だから。判定をする `me` などだと、seed の行が本番に残っていても、入れる組織が無いために 401 になって、見逃す。5xx、429、届かないときは、答えられていないだけなので3回まで繰り返す。2xx（受け付けた）、そのほかの 4xx、3xx（リダイレクトは辿らない）は、繰り返さずに失敗にする。受け付けられたときは、前の版へ戻しても本番の `sessions` に seed の行が残っていれば直らないので、専用の文言で、人が実行する消す手順（`docs/operations.md` の「seed のセッションが本番に入ったとき」）を指す。トークンは `seed/sessions.ts` から import し、本番のコードには書かない
 - テーマと言葉は、本物の設定の API（自分の設定、組織の設定）で切り替えてから撮る。撮影のための URL のパラメータは作らない
 - 「今日」は、開発用の設定の値（wrangler の開発用の値）で固定できるようにし、スクリーンショットが日付で変わらないようにする。本番でこの値が設定されていたら起動を止める
 - 開発用の GitHub OAuth App と Google の OAuth クライアントを別に作り、手で本物のログインを確かめるときに使う。Google の開発用のクライアントは同意画面を「テスト」のままにし、確かめる人をテストユーザーに登録する

@@ -68,7 +68,13 @@ async function listOrganizations(token: string): Promise<Listed> {
   return (await res.json()) as Listed;
 }
 
-const nothing: Listed = { organizations: [], invitations: [], operator: false };
+// 入れる組織も届いた招待も無く、運用者でもない人は、ログインできる条件を持たない。組織の外の操作は、
+// 一覧を空で返さずに、セッションを消して 401 の unauthenticated にする（組織をまたいで読む関数の読み取りは、空を返す）
+async function expectNoAccess(token: string): Promise<void> {
+  const res = await post(app, myOrganizations, { token });
+  expect(res.status).toBe(401);
+  expect(await res.json()).toMatchObject({ error: { code: 'unauthenticated' } });
+}
 
 // 管理者の組織を作る。ワークスペースを1つ持つ
 async function createOrganizationWithOwner(overrides: Parameters<typeof createOrganization>[0] = {}) {
@@ -104,7 +110,7 @@ describe('my-organizations', () => {
     const leftUser = await visitor.join(left);
     await createMembership(left, workspace.id, leftUser.id, { left_at: AT, left_on: '2026-10-10' });
 
-    expect(await listOrganizations(visitor.token)).toEqual(nothing);
+    await expectNoAccess(visitor.token);
   });
 
   test('承諾待ちの招待だけの組織は、組織の名前だけを招待に出す', async () => {
@@ -157,7 +163,7 @@ describe('my-organizations', () => {
     await visitor.join(own.organization, { disabled_at: AT });
     await createInvitation(own.organization, own.workspace.id, own.owner.id, visitor.identity);
 
-    expect(await listOrganizations(visitor.token)).toEqual(nothing);
+    await expectNoAccess(visitor.token);
   });
 
   test('有効な行と無効な行を持つ人は、enterOrganization と同じく、有効な行で入れる', async () => {
@@ -188,7 +194,13 @@ describe('my-organizations', () => {
     });
     await createInvitation(organization, workspace.id, owner.id, visitor.identity);
 
-    expect(await listOrganizations(visitor.token)).toEqual(nothing);
+    // ほかに入れる組織があれば、この組織の招待は出さず、組織の枠は 404 のまま
+    // （入れる組織が1つも無ければ、どちらも 401 になり、セッションが消える。上のテストが確かめる）
+    const elsewhere = await createOrganizationWithOwner({ name: 'ほかの工房' });
+    await visitor.join(elsewhere.organization, { is_admin: 1 });
+    const result = await listOrganizations(visitor.token);
+    expect(result.organizations.map((item) => item.name)).toEqual(['ほかの工房']);
+    expect(result.invitations).toEqual([]);
     const enter = await post(app, organizationInfo, { slug: organization.slug, token: visitor.token });
     expect(enter.status).toBe(404);
   });
@@ -213,7 +225,7 @@ describe('my-organizations', () => {
     const ownUser = await visitor.join(own.organization);
     await createMembership(own.organization, foreign.workspace.id, ownUser.id);
 
-    expect(await listOrganizations(visitor.token)).toEqual(nothing);
+    await expectNoAccess(visitor.token);
     const strangerList = await listOrganizations(stranger.token);
     expect(strangerList.organizations.map((item) => item.name)).toEqual(['同じ組織の別の人']);
     expect(strangerList.invitations).toEqual([{ organization_name: '別の人宛の工房' }]);

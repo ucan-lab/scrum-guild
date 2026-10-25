@@ -24,7 +24,14 @@ import {
   whoAmI,
   workspaceSummary,
 } from './operations/provisional.ts';
-import { createPerson, createTarget, getOperator, testEnv } from './operations/world.ts';
+import {
+  admitElsewhere,
+  createLoginPerson,
+  createPerson,
+  createTarget,
+  getOperator,
+  testEnv,
+} from './operations/world.ts';
 
 const app = createApp(provisionalOperations);
 const cookieName = sessionCookieName(testEnv.PUBLIC_ORIGIN);
@@ -60,7 +67,7 @@ describe('Cookie の名前', () => {
   });
 
   test('公開 URL に合う名前の Cookie だけを読む', async () => {
-    const person = await createPerson();
+    const person = await createLoginPerson();
     const httpEnv: Env = Object.assign({}, testEnv, { PUBLIC_ORIGIN: 'http://localhost:5173' });
     const httpOk = await post(app, whoAmI, { env: httpEnv, headers: { Cookie: `sg_session=${person.token}` } });
     expect(httpOk.status).toBe(200);
@@ -78,7 +85,7 @@ describe('Cookie の名前', () => {
   });
 
   test('出し直す Cookie も同じ名前と属性', async () => {
-    const person = await createPerson({
+    const person = await createLoginPerson({
       sessionOverrides: { last_used_at: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString() },
     });
     const httpEnv: Env = Object.assign({}, testEnv, { PUBLIC_ORIGIN: 'http://localhost:5173' });
@@ -131,7 +138,7 @@ describe('ログインしていない呼び出し', () => {
 describe('セッションの更新', () => {
   test('前回から1時間たっていなければ書き直さない', async () => {
     const lastUsed = new Date(Date.now() - 10 * 60 * 1000).toISOString();
-    const person = await createPerson({ sessionOverrides: { last_used_at: lastUsed } });
+    const person = await createLoginPerson({ sessionOverrides: { last_used_at: lastUsed } });
     const res = await post(app, whoAmI, { token: person.token });
     expect(res.status).toBe(200);
     expect((await readSessionRow(person.token)).last_used_at).toBe(lastUsed);
@@ -140,7 +147,7 @@ describe('セッションの更新', () => {
 
   test('前回から1時間以上たっていれば書き直して期限と Cookie を延ばし、直後の呼び出しでは書き直さない', async () => {
     const before = Date.now();
-    const person = await createPerson({
+    const person = await createLoginPerson({
       sessionOverrides: { last_used_at: new Date(before - 2 * 60 * 60 * 1000).toISOString() },
     });
     const first = await post(app, whoAmI, { token: person.token });
@@ -194,7 +201,11 @@ describe('セッションの更新', () => {
     });
     const error = vi.spyOn(console, 'error').mockImplementation(() => {});
     const session = await readSession(failing, person.token, new Date(), 'request-c');
-    expect(session).toEqual({ accountId: person.accountId, refreshed: false });
+    expect(session).toEqual({
+      accountId: person.accountId,
+      tokenHash: await hashSessionToken(person.token),
+      refreshed: false,
+    });
     const logged = error.mock.calls.flat().join('\n');
     expect(JSON.parse(logged)).toMatchObject({ level: 'error', requestId: 'request-c', error: 'Error' });
     expect(logged).not.toContain('secret');
@@ -357,6 +368,7 @@ describe('組織に入れる人', () => {
 
   test('停止した組織には管理者も入れず 404', async () => {
     const { organization, adminUser } = await org();
+    await admitElsewhere(adminUser);
     expect((await enter(organization.slug, adminUser.token)).status).toBe(200);
     const db = commonDb(env);
     await db.batch([
@@ -383,6 +395,7 @@ describe('組織に入れる人', () => {
     const disabledInvitee = await createPerson({ organization, disabled: true });
     await createInvitation(organization, workspace.id, disabledInvitee.userId!, disabledInvitee.login);
     for (const person of [disabledAdmin, disabledMember, disabledInvitee]) {
+      await admitElsewhere(person);
       expect((await enter(organization.slug, person.token)).status).toBe(404);
       expect((await enterAsInvitee(organization.slug, person.token)).status).toBe(404);
     }
@@ -391,17 +404,19 @@ describe('組織に入れる人', () => {
   test('アカウントに結ばれる前に無効にされた行も、招待で入る経路で止める', async () => {
     const { organization, adminUser, workspace } = await org();
     const unclaimed = (disabledAt: string | null) =>
-      createPerson().then(async (person) => {
-        // account_id が空の users の行（ログインの手段と ID だけで待っている）
-        await createUser(organization, {
-          account_id: null,
-          login_provider: person.login.provider,
-          login_subject: person.login.subject,
-          disabled_at: disabledAt,
+      createPerson()
+        .then(admitElsewhere)
+        .then(async (person) => {
+          // account_id が空の users の行（ログインの手段と ID だけで待っている）
+          await createUser(organization, {
+            account_id: null,
+            login_provider: person.login.provider,
+            login_subject: person.login.subject,
+            disabled_at: disabledAt,
+          });
+          await createInvitation(organization, workspace.id, adminUser.userId!, person.login);
+          return person;
         });
-        await createInvitation(organization, workspace.id, adminUser.userId!, person.login);
-        return person;
-      });
     const disabled = await unclaimed('2026-10-21T00:00:00.000Z');
     const notDisabled = await unclaimed(null);
     expect((await enterAsInvitee(organization.slug, disabled.token)).status).toBe(404);
@@ -411,6 +426,7 @@ describe('組織に入れる人', () => {
   test('すべてのワークスペースから外れた人は 404、所属していれば入れる', async () => {
     const { organization, workspace } = await org();
     const person = await createPerson({ organization, membership: { workspaceId: workspace.id, role: 'member' } });
+    await admitElsewhere(person);
     expect((await enter(organization.slug, person.token)).status).toBe(200);
     const db = orgDb(env, verifiedOrganizationForTest(organization.id));
     await db.batch([
@@ -443,7 +459,7 @@ describe('組織に入れる人', () => {
 
   test('以前の所属が終わり、承諾待ちの招待を受けた人も、招待の操作だけに入れる', async () => {
     const { organization, adminUser, workspace } = await org();
-    const person = await createPerson({ organization });
+    const person = await admitElsewhere(await createPerson({ organization }));
     await createMembership(organization, workspace.id, person.userId!, {
       left_on: '2026-10-21',
       left_at: '2026-10-21T00:00:00.000Z',
@@ -458,7 +474,7 @@ describe('組織に入れる人', () => {
     const { organization, adminUser, workspace } = await org();
     const other = await org();
     for (const status of ['accepted', 'declined', 'revoked']) {
-      const invitee = await createPerson();
+      const invitee = await admitElsewhere(await createPerson());
       await createInvitation(organization, workspace.id, adminUser.userId!, invitee.login, { status });
       expect((await enterAsInvitee(organization.slug, invitee.token)).status, status).toBe(404);
     }

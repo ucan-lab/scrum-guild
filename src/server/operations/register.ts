@@ -1,28 +1,32 @@
 // 操作の一覧を Hono のルートに登録する1つの関数。順に行うこと（docs/development.md の「操作の定義」）:
-// Origin の検査 → セッションの読み取り → 組織の確かめと権限の検査 → 入力の検証 → ワークスペースの確かめと権限の検査 → 処理 → 出力の検証。
+// Origin の検査 → セッションの読み取り → 組織の確かめと権限の検査（ログインできる条件の確かめを含む）→ 回数の上限 →
+// 入力の検証 → ワークスペースの確かめと権限の検査 → 処理 → 出力の検証。
 // 入力に workspace_id がある操作では、ワークスペースの確かめは入力の検証の後になる
 import { Hono, type Context } from 'hono';
-import { getCookie, setCookie } from 'hono/cookie';
+import { deleteCookie, getCookie, setCookie } from 'hono/cookie';
 import {
   assertOperationDefinition,
   isOutsideOperation,
   isWorkspaceOperation,
+  type AnyOperationDefinition,
   type Permission,
 } from '../../shared/operations/define.ts';
-import { sessionCookieName, sessionCookieOptions } from '../../shared/session-cookie.ts';
+import { sessionCookieClearOptions, sessionCookieName, sessionCookieOptions } from '../../shared/session-cookie.ts';
 import type { AppEnv } from '../app-env.ts';
-import { accountLogins } from '../auth/account-logins.ts';
-import { readSession } from '../auth/session.ts';
+import { consumeRateLimit } from '../auth/rate-limit.ts';
+import { deleteSessionsOf, readSession } from '../auth/session.ts';
 import {
   assertVerifiedWorkspace,
   commonDb,
   enterOrganization,
+  hasLoginAccess,
   verifyWorkspace,
   type OrganizationActor,
   type VerifiedWorkspace,
 } from '../db/index.ts';
 import { ApiError, knownError } from '../errors.ts';
-import { outsideAccount } from './account.ts';
+import { executionContextOf } from '../execution-context.ts';
+import { outsideAccount, type OutsideAccount } from './account.ts';
 import { readInput, requireOrigin } from './guards.ts';
 import type { Defer, ImplementedOperation } from './implement.ts';
 import { logOperation } from './operation-log.ts';
@@ -116,6 +120,41 @@ function isAllowedInWorkspace(permission: Permission, actor: OrganizationActor, 
   }
 }
 
+// ログインできる条件を失った人（入れる組織も届いた招待も無く、運用者でもない人）は、セッションを消し、Cookie も消して 401。
+// 組織に入れるかはリクエストのたびに確かめているので、消し忘れても入れはしない（docs/data-model.md の「書き込みの単位」）。
+// 判定を走らせるのは、組織の外の操作（定義が skipsLoginAccess を付けたものを除く）と、組織の中の操作で組織に入れなかったとき。
+// 運用者は入れる組織が無くても通す。消すのは判定した時刻までに作られたセッションで、判定の後に作られたものは残す
+async function requireLoginAccess(
+  c: Context<AppEnv>,
+  cookieName: string,
+  accountId: string,
+  account: OutsideAccount,
+): Promise<void> {
+  if (await account.isOperator()) return;
+  const checkedAt = new Date();
+  if (await hasLoginAccess(c.env, { accountId, logins: await account.logins() })) return;
+  await deleteSessionsOf(commonDb(c.env), accountId, checkedAt);
+  deleteCookie(c, cookieName, sessionCookieClearOptions(c.env.PUBLIC_ORIGIN));
+  throw new ApiError(401, 'unauthenticated');
+}
+
+// 定義の rateLimit を、アカウントと操作ごとに数える。権限の検査の後、入力を読む前に行う
+async function enforceRateLimit(
+  c: Context<AppEnv>,
+  definition: AnyOperationDefinition,
+  accountId: string,
+): Promise<void> {
+  const { rateLimit } = definition;
+  if (rateLimit === undefined) return;
+  const allowed = await consumeRateLimit(
+    c.env,
+    `operation:${definition.name}:${accountId}`,
+    { max: rateLimit.max, windowMs: rateLimit.windowSeconds * 1000 },
+    new Date(),
+  );
+  if (!allowed) throw new ApiError(429, 'rate_limited');
+}
+
 async function execute(c: Context<AppEnv>, operation: ImplementedOperation, trace: Trace): Promise<Response> {
   const { definition } = operation;
   const handler = operation.handler as Handler;
@@ -128,29 +167,51 @@ async function execute(c: Context<AppEnv>, operation: ImplementedOperation, trac
   if (session === undefined) throw new ApiError(401, 'unauthenticated');
   trace.accountId = session.accountId;
   // 使うたびに期限を延ばす。DB の expires_at を書き直したときは Cookie の期限も同じだけ延ばす
-  if (session.refreshed && token !== undefined) setCookie(c, cookieName, token, sessionCookieOptions);
+  if (session.refreshed && token !== undefined) {
+    setCookie(c, cookieName, token, sessionCookieOptions(c.env.PUBLIC_ORIGIN));
+  }
 
   const deferred = deferrer(c);
+  // 運用者の判定と、アカウントに結んだログインの手段と ID の読み取りは account.ts の1か所。
+  // ログインの手段と ID は、使われたときに1回だけ引く。設定の誤りは app のミドルウェアが先に 500 にしている
+  const account = outsideAccount(c.env, session.accountId);
   let result: unknown;
   if (isOutsideOperation(definition)) {
-    // 運用者の判定は account.ts の1か所。設定の誤りは app のミドルウェアが先に 500 にしている
-    const account = outsideAccount(c.env, session.accountId);
     if (definition.permission === 'operator' && !(await account.isOperator())) throw new ApiError(403, 'forbidden');
+    // 運用者は入れる組織が無くてもログインできる。それ以外は、入れる組織を失っていればセッションを消して 401。
+    // 確かめないのは、定義が skipsLoginAccess を付けた操作（ログアウトなど）だけ
+    if (definition.skipsLoginAccess !== true) await requireLoginAccess(c, cookieName, session.accountId, account);
+    await enforceRateLimit(c, definition, session.accountId);
     const input = await readInput(c, definition.input);
-    result = await handler({ db: commonDb(c.env), accountId: session.accountId, account, input });
+    let cookieCleared = false;
+    result = await handler({
+      db: commonDb(c.env),
+      accountId: session.accountId,
+      account,
+      session: {
+        tokenHash: session.tokenHash,
+        clearCookie: () => {
+          cookieCleared = true;
+        },
+      },
+      input,
+    });
+    if (cookieCleared) deleteCookie(c, cookieName, sessionCookieClearOptions(c.env.PUBLIC_ORIGIN));
   } else {
     // 運用者かどうかは組織に入れるかを変えない。入れる組織が無い運用者は、組織が無いときと同じ 404 になる
     const slug = c.req.param('slug');
     if (slug === undefined) throw new ApiError(404, 'not_found');
-    const entry = await enterOrganization(c.env, slug, {
-      accountId: session.accountId,
-      loadLogins: () => accountLogins(c.env, session.accountId),
-    });
-    if (entry === undefined) throw new ApiError(404, 'not_found');
+    const entry = await enterOrganization(c.env, slug, { accountId: session.accountId, loadLogins: account.logins });
+    if (entry === undefined) {
+      // この組織に入れないだけか、どの組織にも入れなくなったか。入れる組織があれば、組織が無いときと同じ 404
+      await requireLoginAccess(c, cookieName, session.accountId, account);
+      throw new ApiError(404, 'not_found');
+    }
     const { db, actor, organization } = entry;
     trace.organizationId = db.organizationId;
     trace.userId = actor.userId;
     checkOrganizationPermission(definition.permission, actor);
+    await enforceRateLimit(c, definition, session.accountId);
 
     const input = await readInput(c, definition.input);
     if (isWorkspaceOperation(definition)) {
@@ -200,13 +261,4 @@ function deferrer(c: Context<AppEnv>): { defer: Defer; settle: () => Promise<unk
     else executionContext.waitUntil(done);
   };
   return { defer, settle: () => Promise.all(inline) };
-}
-
-// Hono は ExecutionContext が無い呼び出し（テストの app.request）で executionCtx の取得が例外になる。有無の判定はここだけ
-function executionContextOf(c: Context<AppEnv>): Context<AppEnv>['executionCtx'] | undefined {
-  try {
-    return c.executionCtx;
-  } catch {
-    return undefined;
-  }
 }

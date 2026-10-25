@@ -79,7 +79,15 @@ Worker のシークレットは、ダッシュボードの Worker の Settings �
 
 | 名前 | 中身 |
 | --- | --- |
-| `OPERATOR_LOGIN_IDS` | 運用者のログインの ID の一覧。`github:<数字>` か `google:<数字>` を、空白を含めずカンマで区切る（例 `github:12345,google:67890`）。GitHub の数字はユーザー ID（ユーザー名ではない）、Google の数字は `sub` |
+| `OPERATOR_LOGIN_IDS` | 運用者のログインの ID の一覧。`github:<数字>` か `google:<数字>` を、空白を含めずカンマで区切る（例 `github:12345,google:67890`）。GitHub の数字はユーザー ID（ユーザー名ではない。`gh api user --jq .id` で分かる）、Google の数字は `sub` |
+| `GITHUB_CLIENT_ID` | GitHub のログインの OAuth App のクライアント ID（下の「GitHub OAuth App」） |
+| `GITHUB_CLIENT_SECRET` | 同じ OAuth App のクライアントシークレット |
+
+`GITHUB_CLIENT_ID` と `GITHUB_CLIENT_SECRET` の決まり。
+
+- どちらかが未設定か空だと、ログインの画面の GitHub のボタンは「いまログインを受け付けられません」に戻る。API は動き続け、`/api/health` は 200 のまま。Workers Logs にはログインの開始のログ（`route: "auth"`、`step: "start"`、`outcome: "unavailable"`）が出る
+- 初めてのデプロイの前に、本番の OAuth App を作ってシークレットに入れる。入れずに出しても、ほかの機能は動くが、誰もログインできない
+- クライアントシークレットを入れ替えるときは、OAuth App で新しいシークレットを作ってシークレットを書き換え、動くことを確かめてから古いシークレットを OAuth App で消す。書き換えの間は、ログインの途中の人が1度失敗することがある
 
 `OPERATOR_LOGIN_IDS` の決まり。
 
@@ -87,6 +95,39 @@ Worker のシークレットは、ダッシュボードの Worker の Settings �
 - 未設定は「運用者がいない」として扱う。設定してあって空の文字列にすると、500 になる
 - シークレットを入れるか変えたら、すぐに `https://scrum-guild.ucan-lab.workers.dev/api/health` を開き、200 で版が返ることを確かめる。500 なら、直前の変更を直す
 - 運用者を外したら、一覧を変えた版より前の版へ rollback しない。rollback はシークレットも戻し先の版の値に戻すので、外した運用者が戻る（下の「戻るもの、戻らないもの」）
+- 運用者を外すと、入れる組織も無い人は、次に組織の外の操作（`logout` を除く）を呼んだときにセッションが消え、ログインできなくなる
+
+### GitHub OAuth App
+
+ログインは共通の1つの GitHub OAuth App で行う（`docs/development.md` の「GitHub のログインと取り込み」）。本番用と開発用を別に作る。スコープは `read:user` だけで、アプリがログインのたびに求める。OAuth App の側に設定する項目ではない。
+
+1. GitHub の Settings → Developer settings → OAuth Apps → New OAuth App を開く。本番は運用者の GitHub アカウントか、組織の下に作る
+2. 値を入れる。Device Flow は有効にしない
+
+   | 項目 | 本番 | 開発用 |
+   | --- | --- | --- |
+   | Application name | Scrum Guild | Scrum Guild (dev) |
+   | Homepage URL | `https://scrum-guild.ucan-lab.workers.dev` | `http://localhost:5173` |
+   | Authorization callback URL | `https://scrum-guild.ucan-lab.workers.dev/api/auth/github/callback` | `http://localhost:5173/api/auth/github/callback` |
+
+3. 作った OAuth App の「Client ID」を控え、「Generate a new client secret」で作ったシークレットを控える。シークレットは作った直後にしか見えない
+4. 本番は `wrangler secret put GITHUB_CLIENT_ID` と `wrangler secret put GITHUB_CLIENT_SECRET`（か、ダッシュボードの Worker の Settings → Variables and Secrets）で入れる。開発用は `.dev.vars.example` を `.dev.vars` に写して `GITHUB_CLIENT_ID` と `GITHUB_CLIENT_SECRET` に入れる
+5. 入れたら、本番は `https://scrum-guild.ucan-lab.workers.dev/api/health` を開き、200 が返ることを確かめる。ログインの画面から GitHub のボタンを押し、GitHub の同意画面に戻り先の URL の不一致（`redirect_uri` の誤り）が出ないことを見る
+
+決まり。
+
+- 戻り先の URL は、アプリが開始のときに渡す `redirect_uri`（`PUBLIC_ORIGIN` に `/api/auth/github/callback` を足した値）と、OAuth App に登録した Authorization callback URL が合う必要がある。独自ドメインへ移すときは、OAuth App の Homepage URL と Authorization callback URL も直す（上の「ドメインへ移す」）
+- 開発用の戻り先は、`pnpm dev` の画面の URL（`http://localhost:5173`）。OAuth App は戻り先を1つしか登録できないので、`DEV_PORT_OFFSET` でポートをずらして確かめるときは、OAuth App の2つの URL をそのポートに書き換える
+- 開発用の OAuth App で確かめるのは、本物のログインとログアウトだけ。e2e は seed のセッションの Cookie で通し、OAuth App の値を渡さない（`docs/development.md` の「開発とテストでのログイン」）
+- シークレットは git、ログ、Issue、PR に書かない。漏れたと分かったら、OAuth App でシークレットを作り直して入れ替える
+
+### ログインのレート制限が見る IP
+
+ログインの開始と戻り先は、リクエストの `CF-Connecting-IP` ごとに数える（`docs/development.md` の「ログインの実装」）。
+
+- Cloudflare のダッシュボードの Network にある Pseudo IPv4 は、有効にしない。「Add header」は `CF-Pseudo-IPv4` を足すだけで済むが、「Overwrite headers」にすると、IPv6 のリクエストの `CF-Connecting-IP` が、アドレスから作った疑似の IPv4 に置き換わる。置き換わった値は、アプリが IPv6 の /64 と /48 に丸める前の別の値になり、枠の数え方が崩れる（IPv6 の利用者が、疑似の IPv4 を共有する別の人と枠を分け合う、あるいは同じ人が /64 を変えて枠を避ける）。変えたときは、ログインの枠の数え方を見直す
+- 変更したか確かめる場所は、ダッシュボードの Network の Pseudo IPv4。既定は Off
+- `CF-Connecting-IP` が無いリクエスト（手元の開発）と、解釈できない値は、`login:unknown` の1つの枠にまとめて数える。本番で `login:unknown` の行が増えたら、ヘッダーが付いていない経路が無いかを見る
 
 ## 出し方
 
@@ -96,8 +137,8 @@ Worker のシークレットは、ダッシュボードの Worker の Settings �
 2. `migrations/` にファイルがあれば、Time Travel のブックマークをログに出してから、マイグレーションを当てる
 3. 版を上げる直前に今の版を取り直し、控えた版と違えば止める（別のビルドの割り込み）
 4. `wrangler deploy` で版（コミットの SHA）を上げ、100% に切り替える
-5. 煙のテストで、`/api/health` の `version` が SHA になるまで最大2分待つ
-6. ならなければ、控えた版へ戻し、ビルドを失敗で終える
+5. 煙のテストで、`/api/health` の `version` が SHA になるまで最大2分待つ。なったら、seed のセッションのトークン（`seed/sessions.ts` にある全部）を本番の `POST /api/logout` に送り、どれも 401 で、本文の code が `unauthenticated` になることを確かめる（5xx、429、届かないときは3回まで繰り返す）
+6. ならなければ、または seed のトークンが受け付けられるか確かめられなければ、控えた版へ戻し、ビルドを失敗で終える
 
 ビルドの状態とログは、ダッシュボードの Worker の「Deployments」で見る。ビルドの行の「Build」を開くとログが出る。一覧の状態が Ready なら成功、Failed なら失敗。ログで見るもの:
 
@@ -122,6 +163,30 @@ Worker のシークレットは、ダッシュボードの Worker の Settings �
 | `本番の版が、上げた版（…）から … に変わっています` | 別のビルドが上げた版のまま | 上の「控えた後に本番の版が変わりました」と同じ |
 | `… へ戻しました` | 控えた版に戻った | 下の「戻したあと」に進む |
 | `… へ戻せませんでした`、`戻し先が無く、壊れた版が残っています` | 壊れた版のまま | 下の「コードを戻す」で手で戻すか、直した PR を入れて出し直す |
+| `煙のテスト: 本番が seed のトークン（…）を受け付けました` | 控えた版へ戻した（戻ったのはコードだけ） | 直ちに下の「seed のセッションが本番に入ったとき」の手順で、本番の `sessions` の seed の行を消す |
+| `煙のテスト: seed のトークン（…）を本番が拒むことを確かめられませんでした`、`… への本番の応答が … でした`、`seed のトークンの確認が例外で終わりました` | 控えた版へ戻した | 本番の `/api/health` と、ログの `seed のトークンの確認:` の行を見る。5xx と 429 と届かないときは3回まで繰り返した後の失敗。直ってからビルドをやり直し、続くなら下の手順で `sessions` を確かめる |
+
+### seed のセッションが本番に入ったとき
+
+seed のセッションのトークン（`seed/sessions.ts`）は公開された開発用の値で、本番の `sessions` に行があれば、誰でも管理者と運用者として入れる。デプロイの煙のテストが、全部のトークンを本番の `POST /api/logout` に送って確かめる（`docs/development.md` の「開発とテストでのログイン」）。`logout` は入れる組織があるかを判定しない操作なので、seed の行が残っていれば、入れる組織が無くても 2xx で通る（判定をする `me` では、行があっても 401 になり、見逃す）。受け付けられたときは、`logout` がその1つの行を消す副作用が付くが、残りの行は残る。スクリプトが前の版へ戻しても、戻るのはコードだけで、DB の行は残る。次の手順は人が手元（上の「手元の準備」）で実行する。Claude のセッションと自動のデプロイは `--remote` の `wrangler d1` を実行しない。
+
+1. 使われた形跡を、ビルドのログの `seed のトークン（…）を受け付けました` と、Workers Logs の `operation: "logout"` と `operation: "me"` や、`accountId` が下の seed のアカウントの ID のログで見る
+2. seed のセッションの行を消す。アカウントの ID は `seed/sessions.ts` の `accountId`（`019a0000-0000-7000-8000-000000000101` から `…104` の4つ）
+
+   ```bash
+   pnpm exec wrangler d1 execute scrum-guild --remote --command "DELETE FROM sessions WHERE account_id IN ('019a0000-0000-7000-8000-000000000101', '019a0000-0000-7000-8000-000000000102', '019a0000-0000-7000-8000-000000000103', '019a0000-0000-7000-8000-000000000104')"
+   ```
+
+3. 行が消えたことと、seed のほかの行（`seed/data.sql`）が本番に残っていないことを確かめる。
+
+   ```bash
+   pnpm exec wrangler d1 execute scrum-guild --remote --command "SELECT count(*) AS n FROM sessions WHERE account_id LIKE '019a0000-0000-7000-8000-%'"
+   pnpm exec wrangler d1 execute scrum-guild --remote --command "SELECT id, slug FROM organizations WHERE id LIKE '019a0000-0000-7000-8000-%'"
+   ```
+
+   組織やアカウントなどの seed の行が残っていれば、seed が本番に流れている。`seed/data.sql` の行を手で消す方法と、流れる前の時刻まで Time Travel で戻す方法（下の「DB を戻す」）があり、確実さは後者が上。ただし後者は、その後に書かれた本物のデータも失う。選ぶのは人
+4. どうして本番に入ったかを調べる。seed は `wrangler d1 execute --local` だけで流す（`scripts/db-seed.ts`）。`--remote` で流した操作が無かったかを、手元のシェルの履歴と、CI の設定から見る
+5. ビルドをやり直し、煙のテストが通ることを確かめる
 
 ## 戻し方
 
@@ -169,7 +234,7 @@ rollback で戻るのは、版が持つものすべて。コードと設定の�
 `scrum-guild.dev` へ移すときは、次を同じ PR で直す。
 
 - `scripts/deploy.ts` の `PRODUCTION_URL`（煙のテストが叩く URL）
-- `wrangler.jsonc` の `vars` の `PUBLIC_ORIGIN`（更新系の API の Origin の検査。新しい URL と一致しない呼び出しは 403 になる）
+- `wrangler.jsonc` の `vars` の `PUBLIC_ORIGIN`（更新系の API の Origin の検査。新しい URL と一致しない呼び出しは 403 になる。https の URL だけを入れる。http の URL（手元のループバックのホスト以外）を入れると、`/api/health` を含むすべての API が 500 になり、煙のテストで見つかる）
 - ほかに直すもの（GitHub OAuth App の戻り先、Cookie）は `docs/development.md` の「Cloudflare のアカウントとドメイン」
 
 ## 組織
