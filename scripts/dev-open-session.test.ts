@@ -49,9 +49,8 @@ describe('checkDevOpenSession', () => {
     assert.match(admin, /pnpm db:seed/);
     assert.doesNotMatch(admin, /\.dev\.vars/);
     const operator = reasonOf(await checkDevOpenSession(target(['operator']), {}, respond(401)));
-    // ワークツリーに .dev.vars が無いときのリンクの張り方と、リンクのとき、独立したファイルのときの直し先
-    assert.match(operator, /ワークツリーに \.dev\.vars が無ければ.*ln -s <本体>\/\.dev\.vars \.dev\.vars/);
-    assert.match(operator, /リンクなら本体の \.dev\.vars に、リンクでない独立したファイルならそのファイルに/);
+    // 直し方は docs の節を指す
+    assert.match(operator, /docs\/development\.md の「ワークツリーで作業する」/);
     assert.match(operator, new RegExp(SEED_OPERATOR_LOGIN_ID));
     assert.doesNotMatch(operator, /ワークツリーには写されない/);
   });
