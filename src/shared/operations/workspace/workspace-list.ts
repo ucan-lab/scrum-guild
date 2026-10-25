@@ -2,7 +2,8 @@ import { z } from 'zod';
 import { defineOperation } from '../define.ts';
 
 // 組織の管理の画面が使う。閉じたワークスペースも含める。
-// member_count は今の所属の人数で、リーダーを含む。leader_count はそのうちのリーダー
+// member_count は今の所属の人数で、リーダーを含む。leader_count はそのうちのリーダー。
+// 数えるのは member-list が返す人と同じで、無効の人と login_subject が空の人は数えない
 export const workspaceList = defineOperation({
   name: 'workspace-list',
   description:

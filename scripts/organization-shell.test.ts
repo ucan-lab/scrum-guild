@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 import { landingFor } from '../src/lib/landing.ts';
 import { isUnauthenticated, loginUrl } from '../src/lib/login-redirect.ts';
-import { navSections, visibleNav } from '../src/lib/nav.ts';
+import { isWorkspaceRoute, navSections, visibleNav } from '../src/lib/nav.ts';
 
 const org = (slug: string) => ({ slug, name: slug });
 
@@ -103,7 +103,10 @@ describe('メニュー', () => {
 
   test('行き先の無い（href が null の）項目と、項目の無い見出しは出さない', () => {
     const shown = visibleNav(undefined, { isAdmin: true });
-    const withDestination = navSections.flatMap((section) => section.items).filter((item) => item.href !== null);
+    // ワークスペースの経路の項目は、ワークスペースの画面を開いている間だけ出る（次のテスト）
+    const withDestination = navSections
+      .flatMap((section) => section.items)
+      .filter((item) => item.href !== null && !isWorkspaceRoute(item.href));
     assert.equal(shown.flatMap((section) => section.items).length, withDestination.length);
     for (const section of shown) {
       assert.ok(section.items.length > 0, `項目の無い見出し: ${section.heading}`);
@@ -118,6 +121,35 @@ describe('メニュー', () => {
     assert.ok(!labels(false).includes('pageOrgAdmin'));
     const admin = navSections.flatMap((section) => section.items).find((item) => item.label === 'pageOrgAdmin');
     assert.equal(admin?.href, '/[slug]/admin');
+  });
+
+  test('ワークスペースの経路の項目は、ワークスペースの画面を開いている間（ID があるとき）だけ出す', () => {
+    const labels = (options: Parameters<typeof visibleNav>[1]) =>
+      visibleNav(undefined, options).flatMap((section) => section.items.map((item) => item.label));
+    const members = navSections.flatMap((section) => section.items).find((item) => item.label === 'pageMembers');
+    assert.equal(members?.href, '/[slug]/w/[id]/members');
+    // 組織の画面（ID なし）と、ID だけで画面を開いていない場合は出さない
+    assert.ok(!labels({ hasWorkspace: true, isAdmin: true }).includes('pageMembers'));
+    assert.ok(!labels({ hasWorkspace: true, workspaceId: 'w1' }).includes('pageMembers'));
+    assert.ok(!labels({ hasWorkspace: true, inWorkspaceScreen: true, workspaceId: null }).includes('pageMembers'));
+    // 空の ID は壊れたリンクになるので、ID が無いのと同じに扱う
+    assert.ok(!labels({ hasWorkspace: true, inWorkspaceScreen: true, workspaceId: '' }).includes('pageMembers'));
+    // 所属していない管理者にも、開いている間は出す
+    assert.ok(
+      labels({ hasWorkspace: false, isAdmin: true, inWorkspaceScreen: true, workspaceId: 'w1' }).includes(
+        'pageMembers',
+      ),
+    );
+    assert.ok(labels({ hasWorkspace: true, inWorkspaceScreen: true, workspaceId: 'w1' }).includes('pageMembers'));
+  });
+
+  test('ワークスペースの画面を開いている間は、バックログへ戻る項目を出す', () => {
+    const items = visibleNav(undefined, { hasWorkspace: true, inWorkspaceScreen: true, workspaceId: 'w1' }).flatMap(
+      (section) => section.items,
+    );
+    assert.equal(items.find((item) => item.label === 'backlog')?.href, '/[slug]/w/[id]');
+    const outside = visibleNav(undefined, { hasWorkspace: true }).flatMap((section) => section.items);
+    assert.ok(!outside.some((item) => item.label === 'backlog'));
   });
 
   test('ワークスペースの画面を開いている間は、所属が無くても、項目の無いワークスペースの節の見出しを出す', () => {

@@ -606,6 +606,41 @@ export const dictionary = defineDictionary({
     'いまログインを受け付けられません。時間をおいてもう一度試してください。続くときは運用者に連絡してください。',
   ),
 
+  // メンバーの画面（ワークスペースの画面）。{leader} {member} {admin} は、その言葉づかいの言葉を画面が渡す。
+  // ロールは文字で出す（付け替え、外す、抜ける は後の Issue で足す）。
+  // 以下のキーのうち、ゲームとスクラムで同じ文字列にしているのは見本（design/members.html）どおりの意図による
+  // （例: 「一般」はゲームの言葉でも「一般」。見本はロールの select の「一般」を言葉づかいで替えない）。
+  // 言葉づかいで変わるのは、{leader} {member} {admin} などの辞書の言葉を埋め込むところだけ
+  membersPageName: workspace('{members}・{name}', '{members}・{name}'),
+  membersTallyBelonging: workspace('所属', '所属'),
+  membersTallyInvited: workspace('招待中', '招待中'),
+  membersSectionTitle: workspace('所属している人', '所属している人'),
+  membersTableLabel: workspace('所属している人の一覧', '所属している人の一覧'),
+  membersEmptyTitle: workspace('所属している人はいません', '所属している人はいません'),
+  membersEmptyText: workspace(
+    '招待を承諾した{member}が、ここに並びます。',
+    '招待を承諾した{member}が、ここに並びます。',
+  ),
+  memberRoleHeader: workspace('ロール', 'ロール'),
+  memberJoinedHeader: workspace('参加日', '参加日'),
+  roleMember: workspace('一般', '一般'),
+  // 承諾待ちの招待。{leader} と {admin} にだけ見える
+  invitationsSectionTitle: workspace('承諾待ちの招待', '承諾待ちの招待'),
+  invitationsSectionHint: workspace('{leader}と{admin}にだけ見えます', '{leader}と{admin}にだけ見えます'),
+  invitationsTableLabel: workspace('承諾待ちの招待の一覧', '承諾待ちの招待の一覧'),
+  invitationsEmptyTitle: workspace('承諾待ちの招待はありません', '承諾待ちの招待はありません'),
+  invitationsEmptyText: workspace(
+    '招待した人が承諾するまで、ここに並びます。',
+    '招待した人が承諾するまで、ここに並びます。',
+  ),
+  invitationViaHeader: workspace('手段', '手段'),
+  invitedOnHeader: workspace('招待した日', '招待した日'),
+  loginProviderGithub: workspace('GitHub', 'GitHub'),
+  loginProviderGoogle: workspace('Google', 'Google'),
+  // Google の招待の期限（作ってから14日）。{date} は YYYY-MM-DD
+  invitationExpiresOn: workspace('{date} まで', '{date} まで'),
+  invitationExpired: workspace('期限切れ', '期限切れ'),
+
   // テーマ
   themeLabel: organization('テーマ', 'テーマ'),
   themeSimple: organization('シンプル（自動）', 'シンプル（自動）'),

@@ -540,6 +540,18 @@ describe('workspace-list', () => {
       left_on: '2026-10-10',
       left_at: '2026-10-10T00:00:00.000Z',
     });
+    // 無効の人と、login_subject が空の人（Google で待っている行）も数えない。メンバーの一覧に出ない人と数をそろえる
+    const disabled = await createPerson({ organization, disabled: true });
+    await createMembership(organization, open.id, disabled.userId!, { role: 'leader' });
+    const waiting = await createUser(organization, {
+      login_provider: 'google',
+      login_subject: null,
+      login_email: 'waiting@example.com',
+      claim_token_hash: hash64(),
+      claim_expires_at: '2099-01-01T00:00:00.000Z',
+      name: 'waiting@example.com',
+    });
+    await createMembership(organization, open.id, waiting.id, { role: 'member' });
 
     const res = await post(app, workspaceList, { slug: target.slug, token: admin.token });
     expect(res.status).toBe(200);

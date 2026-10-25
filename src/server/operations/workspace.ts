@@ -1,5 +1,6 @@
 import { now, todayIn } from '../../shared/clock.ts';
 import {
+  memberList,
   workspaceCreate,
   workspaceInfo,
   workspaceLeaderCandidates,
@@ -117,8 +118,21 @@ export const workspaceCreateOperation = implement(workspaceCreate, async ({ db, 
   return { workspace_id: rows.workspaceId };
 });
 
-// 保存されたタイムゾーンが Intl で作れない行があっても、一覧全体を落とさない。その行だけ UTC の日付にする
-function createdOn(timezone: string, createdAt: string): string {
+// 一覧に数える今の所属。今所属し（left_at が空）、同じ組織の無効でなく login_subject のある人。
+// メンバーの一覧（member-list）と、管理者の一覧の人数（workspace-list）が同じ式を使い、画面ごとに数がずれないようにする
+function currentMemberships(from: Pick<QueryCreator<Tables>, 'selectFrom'>, organizationId: string) {
+  return from
+    .selectFrom('memberships as m')
+    .innerJoin('users as u', 'u.id', 'm.user_id')
+    .where('m.left_at', 'is', null)
+    .where('u.organization_id', '=', organizationId)
+    .where('u.disabled_at', 'is', null)
+    .where('u.login_subject', 'is not', null);
+}
+
+// 保存されたタイムゾーンが Intl で作れない行があっても、一覧全体を落とさない。その行だけ UTC の日付にする。
+// operation は、ログに残す呼び出し元の操作の名前
+function createdOn(timezone: string, createdAt: string, operation: string): string {
   const at = new Date(createdAt);
   try {
     return todayIn(timezone, at);
@@ -128,7 +142,7 @@ function createdOn(timezone: string, createdAt: string): string {
       JSON.stringify({
         level: 'error',
         code: 'internal',
-        operation: workspaceList.name,
+        operation,
         reason: '保存されたタイムゾーンが使えない',
         error: err instanceof Error ? err.name : typeof err,
       }),
@@ -150,8 +164,7 @@ export const workspaceListOperation = implement(workspaceList, async ({ db }) =>
         .orderBy('id'),
     ),
     db.statement((q) =>
-      q
-        .selectFrom('memberships as m')
+      currentMemberships(q, organizationId)
         .innerJoin('workspaces as w', 'w.id', 'm.workspace_id')
         .select((eb) => [
           'm.workspace_id',
@@ -159,7 +172,6 @@ export const workspaceListOperation = implement(workspaceList, async ({ db }) =>
           eb.fn.countAll<number>().filterWhere('m.role', '=', 'leader').as('leader_count'),
         ])
         .where('w.organization_id', '=', organizationId)
-        .where('m.left_at', 'is', null)
         .groupBy('m.workspace_id'),
     ),
   ] as const);
@@ -171,7 +183,7 @@ export const workspaceListOperation = implement(workspaceList, async ({ db }) =>
       name: row.name,
       member_count: Number(counts.get(row.id)?.member_count ?? 0),
       leader_count: Number(counts.get(row.id)?.leader_count ?? 0),
-      created_on: createdOn(row.timezone, row.created_at),
+      created_on: createdOn(row.timezone, row.created_at, workspaceList.name),
       closed_at: row.closed_at,
     })),
   };
@@ -185,6 +197,74 @@ export const workspaceLeaderCandidatesOperation = implement(workspaceLeaderCandi
     ),
   );
   return { users };
+});
+
+// 件数に上限を付けない。1つのワークスペースの所属と招待は数十人の想定（docs/data-model.md の workspaces の節）。
+// 招待を返すのは、管理者（所属していなくてもよい）とリーダー。一般のメンバーには、読みもせず null を返す
+export const memberListOperation = implement(memberList, async ({ db, actor, workspace }) => {
+  const workspaceId = workspace.workspaceId;
+  const organizationId = workspace.organizationId;
+  const canSeeInvitations = actor.isAdmin || workspace.actorRole === 'leader';
+
+  const workspaceStatement = db.statement((q) =>
+    q
+      .selectFrom('workspaces')
+      .select('timezone')
+      .where('id', '=', workspaceId)
+      .where('organization_id', '=', organizationId),
+  );
+  // role の CHECK は 'leader' と 'member' だけなので、昇順でリーダーが先になる
+  const membersStatement = db.statement((q) =>
+    currentMemberships(q, organizationId)
+      .select(['u.id', 'u.name', 'm.role', 'm.joined_on'])
+      .where('m.workspace_id', '=', workspaceId)
+      .orderBy('m.role')
+      .orderBy('m.joined_on')
+      .orderBy('u.name')
+      .orderBy('u.id'),
+  );
+  // 期限（claim_expires_at）は Google の招待だけが持つ。切れた招待も返し、一覧に「期限切れ」と出す
+  const invitationsStatement = db.statement((q) =>
+    q
+      .selectFrom('invitations')
+      .select(['id', 'login_name', 'login_provider', 'role', 'created_at', 'claim_expires_at'])
+      .where('workspace_id', '=', workspaceId)
+      .where('status', '=', 'pending')
+      .orderBy('created_at')
+      .orderBy('id'),
+  );
+
+  const [workspaceResult, memberResult, invitationResult] = canSeeInvitations
+    ? await db.batch([workspaceStatement, membersStatement, invitationsStatement] as const)
+    : [...(await db.batch([workspaceStatement, membersStatement] as const)), undefined];
+
+  const timezone = workspaceResult.rows[0]?.timezone;
+  if (timezone === undefined) throw new ApiError(404, 'not_found');
+  const at = now().getTime();
+
+  return {
+    members: memberResult.rows.map((row) => ({
+      id: row.id,
+      name: row.name,
+      // role は列の CHECK が守る値。列挙に無い値が来ても、出力のスキーマ（z.enum）が 500 で止める
+      role: row.role as 'leader' | 'member',
+      joined_on: row.joined_on,
+    })),
+    invitations:
+      invitationResult === undefined
+        ? null
+        : invitationResult.rows.map((row) => ({
+            id: row.id,
+            login_name: row.login_name,
+            login_provider: row.login_provider as 'github' | 'google',
+            role: row.role as 'leader' | 'member',
+            invited_on: createdOn(timezone, row.created_at, memberList.name),
+            expires_on:
+              row.claim_expires_at === null ? null : createdOn(timezone, row.claim_expires_at, memberList.name),
+            // 文字列の順でなく時刻で比べる（書き手の形の違いで、切れた招待を有効と見ないため）
+            expired: row.claim_expires_at !== null && Date.parse(row.claim_expires_at) <= at,
+          })),
+  };
 });
 
 export const workspaceInfoOperation = implement(workspaceInfo, async ({ db, workspace }) => {

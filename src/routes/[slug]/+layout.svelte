@@ -73,6 +73,7 @@
     slug={data.slug}
     hasWorkspace={organization.workspaces.length > 0}
     isAdmin={organization.me.is_admin}
+    workspaceId={openWorkspace?.id}
     {organizationSwitcher}
     workspaceSwitcher={openWorkspace ? workspaceSwitcher : undefined}
     {account}
