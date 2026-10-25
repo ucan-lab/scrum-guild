@@ -20,6 +20,10 @@ export default defineConfig({
       version: { name: process.env.APP_VERSION || 'dev' },
     }),
   ],
+  build: {
+    // 小さい書体のファイルを data: URI にして CSS へ埋め込ませない。CSP の font-src（default-src 'self'）は data: を通さず、止まる
+    assetsInlineLimit: 0,
+  },
   server: {
     port: ports.app,
     // ずれた vite が別のワークツリーの API につながらないよう、ぶつかったら落とす

@@ -303,8 +303,8 @@ const SECTIONS = [
       <button class="btn" type="button" data-toast="${t("backlog")}の末尾に足しました">知らせ（トースト）を出す</button>
     </div>
     <div class="banner">${icon("refresh")}<span>新しい版が出ています。画面を読み込み直してください。</span><button class="btn is-sm" type="button">読み込み直す</button></div>`,
-    ["主ボタンは右端。危ない操作のダイアログは上辺を赤にし、主ボタンを is-danger にする。", "クリアの演出は判子が1回押されるだけ。動きを減らす設定では動かさない。", "知らせ（トースト）は操作の結果を短く伝え、数秒で消える。大事なことはトーストだけで伝えない。", "版のずれの帯は、デプロイの直後に画面と API の版が違うときだけ出す。"],
-    ".dialog .dialog-sheet .is-danger .dialog-head .dialog-title .dialog-body .dialog-foot / .celebrate .celebrate-sheet .celebrate-stamp / .toasts .toast / .banner")],
+    ["主ボタンは右端。危ない操作のダイアログは上辺を赤にし、主ボタンを is-danger にする。", "クリアの演出は判子が1回押されるだけ。動きを減らす設定では動かさない。", "知らせ（トースト）は操作の結果を短く伝え、数秒で消える。大事なことはトーストだけで伝えない。", "版のずれの帯は、デプロイの直後に画面と API の版が違うときだけ出す。", "本番のダイアログはブラウザの <code>&lt;dialog class=\"dialog\"&gt;</code> を showModal() で開く（フォーカスの閉じ込めと Esc はブラウザに任せる）。見本の div.dialog と見た目は同じで、dialog.dialog が <code>&lt;dialog&gt;</code> の既定の見た目を打ち消す。"],
+    ".dialog dialog.dialog .dialog-sheet .is-danger .dialog-head .dialog-title .dialog-body .dialog-foot / .celebrate .celebrate-sheet .celebrate-stamp / .toasts .toast / .banner")],
   ["choices", "選ぶ部品", () => block("choices", "選ぶ部品", "",
     `<div class="two">
       <div class="field"><span class="field-label">並んだ選択肢（segmented）</span><div class="segmented" role="radiogroup"><label><input type="radio" name="cs" checked><span>完了した月</span></label><label><input type="radio" name="cs"><span>計上月</span></label></div></div>
