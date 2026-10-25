@@ -81,6 +81,25 @@ const resolveGithub = defineOperation({
   output: z.object({ kind: z.string(), login_subject: z.string().nullable() }),
 });
 
+// 道具が入った人を確かめることを見るための操作。権限の検査は通し、道具の中で断られることを確かめる
+const memberWritesSettings = defineOperation({
+  name: 'tools-member-write-settings',
+  description: '管理者でない人の操作から、組織の設定を書こうとする',
+  mode: 'write',
+  permission: 'organization',
+  input: z.object({}),
+  output: z.object({ written: z.boolean() }),
+});
+
+const inviteeReadsOrganization = defineOperation({
+  name: 'tools-invitee-organization-row',
+  description: '承諾待ちの招待だけの人の操作から、組織の行を読もうとする',
+  mode: 'read',
+  permission: 'invitee',
+  input: z.object({}),
+  output: z.object({ member_limit: z.number() }),
+});
+
 const github = createFakeGithub();
 const app = createApp(
   [
@@ -104,6 +123,15 @@ const app = createApp(
       const result = await resolver.resolveInvitee(input.username);
       return { kind: result.kind, login_subject: result.kind === 'found' ? result.invitee.subject : null };
     }),
+    implement(memberWritesSettings, async ({ tools }) => ({
+      written: await tools.writeOrganizationSettings(
+        { vocabulary: { from: 'game', to: 'scrum' } },
+        new Date('2026-10-25T00:00:00.000Z'),
+      ),
+    })),
+    implement(inviteeReadsOrganization, async ({ tools }) => ({
+      member_limit: (await tools.readOrganization()).memberLimit,
+    })),
   ],
   { fetcher: github.fetcher },
 );
@@ -205,6 +233,34 @@ describe('組織の行', () => {
       });
     }
     expect(await organizationRowOf(own.id)).toEqual(before);
+  });
+});
+
+describe('道具を使える人', () => {
+  test('管理者でない人の操作から組織の設定を書くと、書かずに 500 になる', async () => {
+    const own = await createOrganization();
+    const admin = await createPerson({ organization: own, admin: true });
+    const workspace = await createWorkspace(own, admin.userId!);
+    const member = await createPerson({
+      organization: own,
+      membership: { workspaceId: workspace.id, role: 'leader' },
+    });
+    const before = await organizationRowOf(own.id);
+
+    const res = await post(app, memberWritesSettings, { slug: own.slug, token: member.token });
+    expect(res.status).toBe(500);
+    expect(await organizationRowOf(own.id)).toEqual(before);
+  });
+
+  test('承諾待ちの招待だけの人の操作からは、道具を使えず 500 になる', async () => {
+    const own = await createOrganization();
+    const owner = await createUser(own, { is_admin: 1 });
+    const workspace = await createWorkspace(own, owner.id);
+    const invitee = await createPerson();
+    await createInvitation(own, workspace.id, owner.id, invitee.login);
+
+    const res = await post(app, inviteeReadsOrganization, { slug: own.slug, token: invitee.token });
+    expect(res.status).toBe(500);
   });
 });
 

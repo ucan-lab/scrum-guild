@@ -277,7 +277,7 @@ async function execute(
     }
     const { db, actor, organization } = entry;
     // 入れた組織の入口に結ぶ。どの道具も組織の ID を引数に取らない
-    const tools = organizationTools(c.env, db, inviteeResolverOf(c, options));
+    const tools = organizationTools(c.env, db, actor, inviteeResolverOf(c, options));
     trace.organizationId = db.organizationId;
     trace.userId = actor.userId;
     checkOrganizationPermission(definition.permission, actor);

@@ -1,7 +1,9 @@
 // 組織の中の操作の処理に渡す道具。運用者の道具（operator-tools.ts）と同じく、env を処理に渡さず、決まった呼び出しだけを渡す。
 // 組織の中の処理は共通の入口を持たないので、共通の表（組織の行、アカウントのログイン、セッション）と、ログインの手段に触れるのはここだけ。
 // 登録の関数が、組織に入れると確かめた後に、その組織の入口（OrganizationDb）に結んで作る。どの道具も組織の ID を引数に取らず、
-// 組織の行は確かめた組織の ID で、組織の中の表は organization_id で絞る。共通の表と組織の中の表は別の問い合わせで引き、1回の batch() に混ぜない
+// 組織の行は確かめた組織の ID で、組織の中の表は organization_id で絞る。共通の表と組織の中の表は別の問い合わせで引き、1回の batch() に混ぜない。
+// 道具は権限ごとに分けず、組織の中のすべての操作に渡す。道具の中で入った人（actor）を確かめ、承諾待ちの招待だけの人の操作からは
+// どの道具も使えず、組織の設定の書き込みは管理者の操作からだけ使える。当たらない呼び出しは処理の誤りなので、投げて 500 にする
 import { accountLogins } from '../auth/account-logins.ts';
 import type { InviteeResolver } from '../auth/login-method.ts';
 import { isOperatorLogin } from '../auth/operators.ts';
@@ -12,6 +14,7 @@ import {
   readOrganizationRow,
   userAvatarsOf,
   writeOrganizationSettings,
+  type OrganizationActor,
   type OrganizationDb,
   type OrganizationRow,
   type OrganizationSettingsChange,
@@ -39,14 +42,24 @@ export type OrganizationTools = {
 export function organizationTools(
   env: Env,
   db: OrganizationDb,
+  actor: OrganizationActor,
   inviteeResolver: (provider: string) => InviteeResolver | undefined,
 ): OrganizationTools {
+  // 承諾待ちの招待だけの人は、組織の中を読む操作に通らない（register.ts の checkOrganizationPermission）。道具もその人には使わせない
+  const member = <T>(use: () => T): T => {
+    if (actor.invitedOnly) throw new Error('承諾待ちの招待だけの人の操作から、組織の道具を使った');
+    return use();
+  };
   return {
-    inviteeResolver,
-    readOrganization: () => readOrganizationRow(env, db),
-    writeOrganizationSettings: (change, now) => writeOrganizationSettings(env, db, change, now),
-    endSessionsIfLoginLost: (userId) => endSessionsIfLoginLost(env, db, userId),
-    avatarsOf: (userIds) => userAvatarsOf(env, db, userIds),
+    inviteeResolver: (provider) => member(() => inviteeResolver(provider)),
+    readOrganization: () => member(() => readOrganizationRow(env, db)),
+    writeOrganizationSettings: (change, now) =>
+      member(() => {
+        if (!actor.isAdmin) throw new Error('管理者でない人の操作から、組織の設定を書いた');
+        return writeOrganizationSettings(env, db, change, now);
+      }),
+    endSessionsIfLoginLost: (userId) => member(() => endSessionsIfLoginLost(env, db, userId)),
+    avatarsOf: (userIds) => member(() => userAvatarsOf(env, db, userIds)),
   };
 }
 
