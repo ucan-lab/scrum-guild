@@ -244,8 +244,10 @@ function judgeGit(args, dir, branchOf) {
   const rest = args.slice(i + 1);
   // zsh の括弧の glob（x(N)、(a|b)）は splitSegments が区切りを切るので、その語の後ろ（git --no-pager(N) commit の commit）は別の区切りに入り、
   // この区切りには括弧の glob で終わる語までが残る。サブコマンドが見つからないか、その語がサブコマンドの位置までにあるときは、
-  // 何のサブコマンドをどの作業コピーで動かすかを判定できない
-  if (args.slice(0, i + 1).some((a) => a.endsWith(GLOB_GROUP))) {
+  // 何のサブコマンドをどの作業コピーで動かすかを判定できない。push は refspec が括弧の glob（git push origin x(N)）だと、
+  // zsh が当たらない語を消して git push origin になり、今のブランチを push する
+  const globGroup = (a) => a.endsWith(GLOB_GROUP);
+  if (args.slice(0, i + 1).some(globGroup) || (sub === 'push' && rest.some(globGroup))) {
     return [ASK, 'git の引数の zsh の括弧の glob（x(N)、(a|b)）は後ろの語を別の区切りに切るので、サブコマンドと作業コピーを判定できない。人が確かめる'];
   }
   const verdict = judgeGitCommand(sub, rest, gitDir, branchOf);

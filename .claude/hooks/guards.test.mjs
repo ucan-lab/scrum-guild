@@ -1012,6 +1012,9 @@ describe('bash-rules: 確認を挟む', () => {
     'git -C . --no-pager(N) commit -m y',
     'git --no-pager(N) push origin main',
     'git (a|b) commit -m x',
+    // push の refspec の括弧の glob は、当たらなければ消えて git push origin（今のブランチの push）になる
+    'git push origin zzz(N)',
+    'git push (origin|x) main',
     // cd の位置引数が2つ以上は、zsh の語の置き換え（cd 旧 新）で、移った先を判定できない
     'cd sr? && cd src x && git commit -m y',
     'cd src x && git commit -m y',
