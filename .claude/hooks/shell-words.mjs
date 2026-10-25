@@ -3,11 +3,41 @@
 // $(...) と `...` は（二重引用符の中でも）実行されるので、別の区切りとして取り出す。
 // コメントは捨てる。リダイレクトは '<' か '>' で始まる1語にまとめ、ヒアドキュメントの本文は '<<本文' の1語にする。
 // 完全なシェルの解釈ではない。判定に使うのは、各区切りで先頭に来る道具の名前と引数だけ。
+// 区切りの配列は、語ごとに「引用符の外に展開（変数、置換、brace、glob）があったか」を列挙されない属性 expands に持つ。
+// 引用符を外した文字列だけでは、"a b?" と a\ b? や {a,--no-local} を見分けられないため。
 
 const OPERATORS = ['&&', '||', ';', '|', '&', '\n', '(', ')'];
 // コマンド置換の位置に残す印。中身は別の区切りとして判定し、元の語には「中身が実行時に決まる」ことだけを残す
 export const SUBSTITUTION = '$(…)';
 const WORD_END = new Set([' ', '\t', '\n', ';', '&', '|', '<', '>', '(', ')', '`']);
+// 引用符の外にあると、シェルが展開する記号
+const EXPANSION_CHARS = /[$`{}*?[\]]/;
+// 記号だけでできた予約語と test の道具（{ … }、[ -f x ]、[[ … ]]）は展開しない
+const LITERAL_WORDS = new Set(['{', '}', '[', ']', '[[', ']]']);
+
+function withExpands(words, expands) {
+  Object.defineProperty(words, 'expands', { value: expands, configurable: true });
+  return words;
+}
+
+// i 番目の語に引用符の外の展開があったか。印の無い配列（splitSegments を通っていない語）は、記号があれば展開とみなす
+export function expandsAt(words, i) {
+  return words.expands?.[i] ?? EXPANSION_CHARS.test(words[i] ?? '');
+}
+
+// 語と印を一緒に切り出す。Array.prototype.slice は印を落とすので、判定の途中で語を切り出すときはこれを使う
+export function sliceWords(words, start, end) {
+  const expands = words.map((_, i) => expandsAt(words, i)).slice(start, end);
+  return withExpands(words.slice(start, end), expands);
+}
+
+// 語と印を一緒につなぐ
+export function concatWords(...parts) {
+  return withExpands(
+    parts.flatMap((p) => [...p]),
+    parts.flatMap((p) => p.map((_, i) => expandsAt(p, i))),
+  );
+}
 
 // $( の後ろから、対応する ) の位置を返す。
 // git commit -m "$(cat <<'EOF' ... EOF)" の本文の ' や ( で数えを崩さないよう、ヒアドキュメントの本文は数えない
@@ -38,19 +68,29 @@ export function splitSegments(command) {
   const segments = [];
   const nested = [];
   const heredocs = [];
-  let words = [];
+  let words = withExpands([], []);
   let word = '';
   let inWord = false;
+  let expands = false;
 
   const endWord = () => {
-    if (inWord) words.push(word);
+    if (inWord) {
+      words.push(word);
+      words.expands.push(expands && !LITERAL_WORDS.has(word));
+    }
     word = '';
     inWord = false;
+    expands = false;
   };
   const endSegment = () => {
     endWord();
     if (words.length > 0) segments.push(words);
-    words = [];
+    words = withExpands([], []);
+  };
+  // リダイレクトとヒアドキュメントの本文の語。シェルは argv に渡さないので、展開の印は付けない
+  const pushLiteral = (owner, text) => {
+    owner.push(text);
+    owner.expands.push(false);
   };
 
   // 引用符を外した1語を読む。リダイレクトの宛先とヒアドキュメントの終わりの印に使う
@@ -95,6 +135,7 @@ export function splitSegments(command) {
       nested.push(command.slice(c === '`' ? i + 1 : i + 2, stop));
       word += SUBSTITUTION;
       inWord = true;
+      expands = true;
       i = stop;
       continue;
     }
@@ -178,7 +219,7 @@ export function splitSegments(command) {
       endWord();
       if (command.startsWith('<<<', i)) {
         const [text, next] = readWord(i + 3);
-        words.push(`<<<${text}`);
+        pushLiteral(words, `<<<${text}`);
         i = next - 1;
         continue;
       }
@@ -199,13 +240,20 @@ export function splitSegments(command) {
         continue;
       }
       const [text, next] = readWord(j);
-      words.push(`${op.includes('<') ? '<' : '>'}${text}`);
+      pushLiteral(words, `${op.includes('<') ? '<' : '>'}${text}`);
       i = next - 1;
       continue;
     }
 
     const op = OPERATORS.find((o) => command.startsWith(o, i));
     if (op) {
+      // シェルの文法で語の後ろに書ける ( は、zsh の glob（(a|b)、x(N)）と関数の定義（f() { … }）だけ。
+      // zsh は (KV|--no-local) を作業場所のファイルの名前に展開するので、区切りは切ったまま直前の語に展開の印を付ける。
+      // 中身の無い () は関数の定義なので印を付けない
+      if (op === '(' && (inWord || words.length > 0) && !/^\(\s*\)/.test(command.slice(i))) {
+        endWord();
+        words.expands[words.length - 1] = true;
+      }
       endSegment();
       i += op.length - 1;
       // ヒアドキュメントの本文（行の終わりから終わりの印の行まで）は、区切りとして読まない
@@ -221,13 +269,16 @@ export function splitSegments(command) {
             if (line.trim() === delimiter) break;
             body.push(line);
           }
-          owner.push(`<<${body.join('\n')}`);
+          pushLiteral(owner, `<<${body.join('\n')}`);
         }
         heredocs.length = 0;
         i = j - 1;
       }
       continue;
     }
+    // zsh は語の先頭の =名前 を道具のパスに展開する（=wrangler は /…/wrangler）。= を外して道具の名前として読む
+    if (c === '=' && !inWord && /[\w.-]/.test(command[i + 1] ?? '')) continue;
+    if (EXPANSION_CHARS.test(c)) expands = true;
     word += c;
     inWord = true;
   }

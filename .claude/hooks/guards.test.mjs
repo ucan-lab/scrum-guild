@@ -41,6 +41,14 @@ describe('shell-words', () => {
   test('引用符の無い置換は、元の語に印を残して中身を取り出す', () => {
     assert.deepEqual(splitSegments('wrangler $(echo deploy) x'), [['wrangler', '$(…)', 'x'], ['echo', 'deploy']]);
   });
+  test('語ごとに、引用符の外の展開があったかを持つ', () => {
+    const [words] = splitSegments(`x $A "$B" '$C' \\$D {a,b} "{a,b}" a* "a*" $(y) "$(y)" $'\\x24' [ >$E`);
+    assert.deepEqual(words.expands, [false, true, false, false, false, true, false, true, false, true, false, false, false, false]);
+  });
+  test('語の後ろの ( は直前の語に展開の印を付け、中身の無い () には付けない', () => {
+    assert.deepEqual(splitSegments('w --b (K|N)')[0].expands, [false, true]);
+    assert.deepEqual(splitSegments('f() { ls; }')[0].expands, [false]);
+  });
 });
 
 describe('bash-rules: 止める', () => {
@@ -117,6 +125,38 @@ describe('bash-rules: 止める', () => {
     'wrangler kv key put k v --local --binding KV "$(printf -- --no-local)"',
     'wrangler kv key put k v --local --no-$X',
     'wrangler kv key put k v --name --no-local --local',
+    // 値を取るフラグの値の、引用符の外の展開
+    'wrangler d1 execute DB --local --command {select\\ 1,--no-local,--remote}',
+    'wrangler kv key put k v --local --binding {KV,--no-local}',
+    'wrangler kv key put k v --local --persist-to {x,--no-local}',
+    'wrangler d1 migrations apply DB --local -e {dev,--no-local,--remote}',
+    'wrangler kv key put k v --local --binding $(echo KV --no-local)',
+    'wrangler kv key put k v --local --binding $X',
+    'wrangler kv key put k v --local --persist-to $X',
+    'wrangler kv key put k v --local --binding=$X',
+    'wrangler kv key put k v --local --binding={KV,--no-local}',
+    'wrangler r2 object put attachments/a.png --local --file *',
+    'wrangler dev --port $PORT',
+    'wrangler d1 execute DB --local --persist-to $DIR --command "select 1"',
+    'pnpm exec wrangler kv key put k v --local --binding $X',
+    // zsh の括弧の glob
+    'wrangler kv key put k v --local --binding (KV|--no-local)',
+    'wrangler r2 object put attachments/a.png --local --file a.png(N)',
+    'wrangler (d1|deploy)',
+    // 引用符の中でも、展開した結果がフラグになりうる語
+    'wrangler r2 object put attachments/a.png --local --file "$X"',
+    'wrangler d1 execute DB --local --command "$SQL"',
+    'wrangler d1 execute DB --local --persist-to "$DIR" --command "select 1"',
+    'wrangler kv key put k v --local "--re$X"',
+    'wrangler kv key put k v --local --local="$X"',
+    'wrangler kv key put k v --local "--$F=x"',
+    // まとめた短いフラグの -r と、zsh の =名前
+    'wrangler dev -lr',
+    'wrangler dev -rl',
+    'wrangler dev -r=true',
+    '=wrangler deploy',
+    'npx =wrangler deploy',
+    '=git push origin main',
     'wrangler d1 execute DB --command "drop table users" --remot{e,e} -- --local',
     'wrangler d1 export DB --output prod.sql -y --remot{e,e} -- --local',
     'wrangler d1 execute DB --local --yes $N $R --command "drop table users"',
@@ -465,6 +505,10 @@ describe('bash-rules: 止める', () => {
     assert.match(verdict('wrangler kv key put k v --local --no-local')[1], /local を打ち消して本番に向く/);
     assert.match(verdict('wrangler kv key put k v --no-local')[1], /local を打ち消して本番に向く/);
     assert.match(verdict('wrangler kv key put k v --local $F')[1], /展開した後に本番に向くかを判定できない/);
+    assert.match(verdict('wrangler kv key put k v --local "$F"')[1], /--flag="\$X" の形で渡す/);
+    assert.match(verdict('wrangler kv key put k v --local --binding "$(printf -- --no-local)"')[1], /--flag="\$X" の形で渡す/);
+    assert.match(verdict('wrangler dev -lr')[1], /--remote/);
+    assert.match(verdict('"$(which wrangler)" deploy')[1], /道具の名前を変数/);
     assert.match(verdict('wrangler kv key put k v --local --local.foo=bar')[1], /どのフラグと読むかを判定できない/);
     assert.match(verdict('wrangler secret put X --a.b')[1], /シークレットとログイン/);
     assert.match(verdict('git push -f')[1], /--force-with-lease/);
@@ -491,6 +535,13 @@ describe('bash-rules: 確認を挟む', () => {
     'bun add zod',
     'wrangler d1 migrations create DB add_tasks',
     'pnpm wrangler d1 migrations create DB add_tasks',
+    // 道具の名前を展開で渡す
+    '"$(which wrangler)" deploy',
+    '$(which wrangler) deploy',
+    '$W d1 execute DB --local',
+    'npx "$W" deploy',
+    'pnpm exec $W deploy',
+    './node_modules/.bin/wrangle? deploy',
     'gh stack push',
     'gh stack sync',
     'cd ~ && git push --force-with-lease',
@@ -561,13 +612,28 @@ describe('bash-rules: 通す', () => {
     'wrangler d1 migrations apply DB --local',
     'wrangler d1 migrations list DB --local',
     'wrangler d1 execute DB --local --remote=false',
-    'wrangler dev --port $PORT',
+    'wrangler dev --port="$PORT"',
     'wrangler d1 execute DB --local --command "select * from tasks where id in (?)"',
+    'wrangler d1 execute DB --local --command "select * from tasks"',
+    'wrangler d1 execute DB --local --command="$SQL"',
+    'wrangler r2 object put attachments/a.png --file="$(mktemp)" --local',
+    // 引用符の中にだけ展開や記号があり、先頭が展開でない位置引数
+    'wrangler r2 object put "attachments/$K" --file a.png --local',
+    'pnpm exec wrangler r2 object put "attachments/$K" --file a.png --local',
+    `wrangler kv key put k '{"a":1}' --binding KV --local`,
+    'wrangler r2 object get "attachments/a b?.png" --local',
+    "wrangler r2 object put 'attachments/a[1].png' --file a.png --local",
+    'wrangler r2 object get attachments/a\\*.png --local',
+    'wrangler kv key put k v --local -- $X',
+    '{ wrangler d1 execute DB --local --command "select 1"; }',
+    'if [ -f x ]; then echo ok; fi',
+    '[[ -f x ]] && ls',
+    'f() { ls; }; f',
     'wrangler d1 execute DB --local --command="select * from tasks"',
     'wrangler kv key put k v --local 2>/dev/null',
     'wrangler kv key put k -1.5 --local',
     "wrangler kv key put k v --local -- '--x.y'",
-    'wrangler d1 execute DB --local --persist-to "$DIR" --command "select 1"',
+    'wrangler d1 execute DB --local --persist-to="$DIR" --command "select 1"',
     'wrangler dev --var "A:$(cat x)"',
     `wrangler kv key put k v --binding KV --local --metadata '{"a":1}'`,
     'git commit -m "$(cat msg.txt)"',

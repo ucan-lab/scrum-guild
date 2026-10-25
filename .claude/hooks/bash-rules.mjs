@@ -4,7 +4,7 @@
 // 踏み線であって守りの本体ではない。変数の中身と、パイプで sh に流す中身は見えない。
 import { existsSync } from 'node:fs';
 import path from 'node:path';
-import { baseName, commandIndex, positionals, splitSegments } from './shell-words.mjs';
+import { baseName, commandIndex, concatWords, expandsAt, positionals, sliceWords, splitSegments } from './shell-words.mjs';
 
 const DENY = 'deny';
 const ASK = 'ask';
@@ -80,18 +80,42 @@ function flagWords(args) {
   return words;
 }
 
-// 変数、$(...)、brace 展開、glob は、シェルが展開した後に --no-local や --remote になりうる（--local{,=false}、--remot{e,e}）
-const EXPANDS = /[$`{}*?[\]]/;
+// 引用符の外の変数、$(...)、brace 展開、glob は、シェルが展開した後に --no-local や --remote になるか、別の語に分かれうる
+// （--local{,=false}、--binding {KV,--no-local}、--binding $(echo KV --no-local)）。値を取るフラグの値も同じ
+const UNQUOTED_REASON = [
+  DENY,
+  'wrangler の引数を引用符の外の変数、$(...)、{a,b}、glob、zsh の (a|b) で組み立てると、展開した後に本番に向くかを判定できない',
+];
+// 引用符の中の展開でも、展開した結果が - で始まると yargs はフラグとして読む。値を取るフラグの次の語でも値にしない（--file "$X" で X=--remote）。
+// --flag="$X" の形なら、yargs は = の右を - で始まっても値として読む
+const LEADING_REASON = [
+  DENY,
+  'wrangler の引数を変数や $(...) で始めるか、フラグの名前に展開を入れると、展開した結果をフラグとして読みうる。値は --flag="$X" の形で渡す',
+];
+
+// 引用符の中の展開を含む語が、展開した後にフラグになりうるか。先頭が展開の語と、- で始まり展開を含む語（--re$X）が当たる。
+// 値を取るフラグの = の形で、= の右だけに展開があるもの（--file=$(…)）は除く
+function mayBecomeFlag(word) {
+  if (!word.includes('$')) return false;
+  if (word.startsWith('$')) return true;
+  if (!word.startsWith('-')) return false;
+  const eq = word.indexOf('=');
+  return eq === -1 || word.slice(0, eq).includes('$') || !WRANGLER_FLAGS_WITH_VALUE.has(word.slice(0, eq));
+}
 
 // yargs はフラグの名前を改行の手前で切り（'--local<改行>' は --local）、. の後ろをドット記法で読む（--local.x=1 で local が配列になり、
 // r2 と kv は本番に向く）。名前の完全一致で見る判定が外れるので、名前に空白、改行、. を含むフラグは止める。
 // -1.5 のような負の数は、yargs が値として読むので除く
 const UNREADABLE_FLAG = /^-(?!\d)[^=]*[\s.]/;
 
+// wrangler dev の -r は --remote の別名で、yargs は -lr のようにまとめた短いフラグも1文字ずつ読む。
+// d1、r2、kv には -r が無いので、サブコマンドを問わず = より前に r を含む短いフラグを止める。負の数（-1.5）は除く
+const SHORT_REMOTE = /^-(?![-\d])[^=]*r/;
+
 function judgeWrangler(args) {
   const isRemote = args.some(
     (a) =>
-      a === '-r' ||
+      SHORT_REMOTE.test(a) ||
       a === '--remote' ||
       (a.startsWith('--remote=') && a !== '--remote=false') ||
       /^--(x|experimental)-remote-bindings/.test(a),
@@ -110,9 +134,11 @@ function judgeWrangler(args) {
   if (words.some((a) => UNREADABLE_FLAG.test(a))) {
     return [DENY, 'wrangler のフラグの名前に空白、改行、. を含むと、wrangler がどのフラグと読むかを判定できない'];
   }
-  if (words.some((a) => EXPANDS.test(a))) {
-    return [DENY, 'wrangler の引数を変数、$(...)、{a,b}、glob で組み立てると、展開した後に本番に向くかを判定できない（値を取るフラグの値は除く）'];
-  }
+  // 展開は、値を取るフラグの値も含めた -- より前の全部の語で見る。-- の後ろは yargs がフラグとして読まず、リダイレクトは argv に入らない
+  const end = args.indexOf('--');
+  const argv = (end === -1 ? args : args.slice(0, end)).map((a, i) => [a, i]).filter(([a]) => !/^[<>]/.test(a));
+  if (argv.some(([, i]) => expandsAt(args, i))) return UNQUOTED_REASON;
+  if (argv.some(([a]) => mayBecomeFlag(a))) return LEADING_REASON;
 
   const [sub, sub1, sub2] = pos;
   const hasLocal = words.includes('--local') || words.includes('--local=true');
@@ -434,7 +460,8 @@ const EXEC_FLAGS_WITH_VALUE = new Set([...PACKAGE_FLAGS_WITH_VALUE, '-p', '--pac
 const SHELL_MODE_FLAGS = new Set(['-c', '--shell-mode', '--call']);
 
 // pnpm exec env X=1 node x、npm exec -- tsx x、yarn node x、yarn run node x、corepack pnpm dlx tsx x のように道具を経由するとき、
-// 経由先を返す。{ words, dir } は経由先のコマンドの語の並びで、judgeSegment に掛け直すので env、代入、timeout などの前置きも同じ規則で効く。
+// 経由先を返す。{ start, dir } の start は経由先のコマンドが args の何番目から始まるかで、judgeSegment に掛け直すので env、代入、timeout などの前置きも同じ規則で効く。
+// 語ではなく位置を返すのは、呼び出し元が語と展開の印を一緒に切り出すため。
 // { script, dir } は exec -c のシェルの文字列で、judgeBash に掛け直す。経由しなければ null。
 // exec と dlx の後ろは何でも経由先とし、exec の無い形（yarn node x、yarn run node x）は実行の道具のときだけ経由先とする。
 // 作業場所は -C、--dir、--cwd、--prefix の値で解決し直し、~ か $ で始まる値は判定できない（null）とする
@@ -475,7 +502,7 @@ function viaPackageManager(tool, args, dir) {
       continue;
     }
     if (!viaExec && !RUNNERS.has(baseName(a))) return null;
-    return { words: rest.slice(i), dir };
+    return { start: args.length - rest.length + i, dir };
   }
   return null;
 }
@@ -603,6 +630,7 @@ function braceSize(inner) {
 // --import ./scripts/deploy-production.ts#.test.ts は Node が # 以降を URL のフラグメントとして捨てる
 const isTestFile = (word) => /^[\w./*-]+$/.test(word) && word.endsWith('.test.ts');
 
+const TOOL_EXPANDS_REASON = '道具の名前を変数、$(...)、glob で渡すと、何を実行するか（wrangler で本番に触るか）を判定できない。人が確かめる';
 const DEPLOY_REASON = [DENY, 'デプロイのスクリプトは Workers Builds だけが実行する'];
 const UNKNOWN_DIR_REASON = [ASK, 'デプロイのスクリプトらしい語を、作業場所を判定できない（cd ~ や変数の先）まま渡している。人が確かめる'];
 const BIG_GLOB_REASON = [ASK, '展開の大きい glob（{1..1000} など）は、デプロイのスクリプトに当たるかを判定しない。人が確かめる'];
@@ -689,7 +717,9 @@ function judgeSegment(words, ctx) {
   if (setsWorkersCi(words, ci)) results.push([DENY, WORKERS_CI_REASON]);
   if (ci === -1) return results;
   const tool = baseName(words[ci]);
-  const args = words.slice(ci + 1);
+  const args = sliceWords(words, ci + 1);
+  // 道具の名前が変数や $(...)、glob で決まると、何を実行するかが分からない（"$(which wrangler)" deploy）
+  if (words[ci].includes('$') || expandsAt(words, ci)) results.push([ASK, TOOL_EXPANDS_REASON]);
   // env -C は後ろのコマンドの作業場所を変える。経由先に掛け直すとき（envFrom）は、前置きの env の分を解決済みなので重ねない
   ctx = { ...ctx, dir: dirAfterEnv(words, ci, ctx.dir, ctx.envFrom ?? 0) };
 
@@ -711,12 +741,13 @@ function judgeSegment(words, ctx) {
     if (ctx.depth + 1 > MAX_DEPTH) results.push([ASK, 'コマンドの入れ子が深く、判定しきれない']);
     else {
       const inner = { ...ctx, dir: via.dir, envFrom: ci, depth: ctx.depth + 1 };
-      results.push(...judgeSegment([...words.slice(0, ci), ...via.words], inner));
+      results.push(...judgeSegment(concatWords(sliceWords(words, 0, ci), sliceWords(args, via.start)), inner));
     }
   }
 
+  // wrangler の語そのものに展開の印があれば、引数を読まずに止める。zsh の wrangler (d1|deploy) は、後ろの引数が区切りの外に出ている
   const wrangler = findWrangler(words, ci);
-  if (wrangler !== -1) results.push(judgeWrangler(words.slice(wrangler + 1)));
+  if (wrangler !== -1) results.push(expandsAt(words, wrangler) ? UNQUOTED_REASON : judgeWrangler(sliceWords(words, wrangler + 1)));
 
   const nextCtx = { ...ctx, cwd: ctx.dir, depth: ctx.depth + 1 };
   if (tool === 'git') {
