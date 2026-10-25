@@ -2,6 +2,7 @@
   import type { Snippet } from 'svelte';
   import { resolve } from '$app/paths';
   import { t } from '../vocabulary.svelte.ts';
+  import BrandMark from './BrandMark.svelte';
   import NavMenu from './NavMenu.svelte';
 
   // kit.js の mount が組む画面の枠。左のメニュー（綴じ）と、上の帯と本文（帳面）。slug は今の組織で、組織の中の画面だけが使う。
@@ -35,9 +36,7 @@
   <aside class="binding" aria-label={t('menu')}>
     <div class="binding-inner">
       <a class="brand" href={resolve('/[slug]', { slug })}>
-        <span class="brand-seal" aria-hidden="true"
-          ><span class="orn-medieval">冒</span><span class="orn-plain">SG</span></span
-        >
+        <BrandMark />
         <span class="brand-name">{t('appName')}</span>
       </a>
       {#if organizationSwitcher}{@render organizationSwitcher()}{/if}

@@ -196,6 +196,13 @@ const SECTIONS = [
        <div class="cat-row"><span class="cat-name" style="width:110px">--shadow-sheet</span><span style="width:120px;height:44px;background:var(--color-surface);border:1px solid var(--color-line);box-shadow:var(--shadow-sheet)"></span></div>
      </div></div>`,
     ["影は「貼り紙」（--shadow-sheet）、ゲームの面の光（--shadow-panel、現代風だけ）、上に浮く物（--shadow-float、引き出しなど）の3つだけ。", "区切りの線（--rule-double）は、画面の見出しの下、メニューの境、台帳と木の左端、列の見出しの下に使う。中世風では二重罫になる。"])],
+  ["logo", "ロゴ", () => block("logo", "ロゴ", "金色の旗と生成りのチェックのマークに、名前を横に組む。マークは favicon（static/favicon.svg）と同じ形と色。",
+    `<div class="two">
+      <div class="field"><span class="field-label">左のメニューの上（26px）</span><span class="brand">${SQ.brandMark}<span class="brand-name">Scrum Guild</span></span></div>
+      <div class="field"><span class="field-label">枠の外の画面の先頭（34px）</span><div class="gate-brand">${SQ.brandMark}<span class="brand-name">Scrum Guild</span></div></div>
+    </div>`,
+    ["マークの色はテーマで変えない。タブの favicon と画面のロゴを同じ印に見せるため。", "マークは aria-hidden にし、名前は横の文字で読ませる（読み上げは「Scrum Guild」の1回）。", "マークだけを置かない。名前は通常の文字の大きさなら1行に収まり、文字を拡大したときは、はみ出さずに折り返す。", "形や色を変えるときは、static/favicon.svg、kit.js の brandMark、BrandMark.svelte をそろえて直し（scripts/design-parity.test.ts が突き合わせる）、static/favicon.ico を scripts/generate-favicon.ts で作り直す。"],
+    ".brand .brand-mark .brand-name / .gate-brand / SQ.brandMark")],
   ["icons", "アイコン", () => block("icons", "アイコン", "24px の格子に線だけで描く。icons.js を読み込むとスプライトが入る。",
     `<div class="cat-grid" style="grid-template-columns:repeat(auto-fill,minmax(96px,1fr))">${(window.SQ_ICONS || []).map((n) => `<div class="icon-cell">${icon(n)}<span>${n}</span></div>`).join("")}</div>`,
     ["アイコンは文字の代わりにしない。意味のある操作には文字か aria-label を付ける。", "本番では、同じ描き方の OSS のアイコンセット（Lucide など）に置き換えてよい。"], `&lt;svg class="ico"&gt;&lt;use href="#i-sun"/&gt;&lt;/svg&gt;`)],
@@ -335,7 +342,7 @@ const SECTIONS = [
   ["gate", "枠の外の画面", () => block("gate", "枠の外の画面（ゲート）", "ログイン、組織の選択、見つからない、運用の仮の画面のように、左のメニューを出さない画面。.gate が画面いっぱいに中央寄せし、中の .gate-stack が紙（.gate-sheet）を縦に並べる。本番では Gate.svelte が外側、GateSheet.svelte が紙1枚。",
     `<div class="gate-stack">
       <section class="gate-sheet">
-        <div class="gate-brand"><span class="brand-seal" aria-hidden="true"><span class="orn-medieval">冒</span><span class="orn-plain">SG</span></span><span class="brand-name">Scrum Guild</span></div>
+        <div class="gate-brand">${SQ.brandMark}<span class="brand-name">Scrum Guild</span></div>
         <h1 class="gate-title">${t("organization")}を選ぶ</h1>
         <p>先頭の紙には、ブランドと画面の見出し（h1）を置く。</p>
         <p class="gate-note">補足は gate-note に書く。</p>

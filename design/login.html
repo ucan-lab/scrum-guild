@@ -23,7 +23,7 @@ const { t, icon, esc } = SQ;
 function render() {
   document.getElementById("gate").innerHTML = `<div class="gate"><div class="gate-stack">
     <section class="gate-sheet">
-      <div class="gate-brand"><span class="brand-seal" aria-hidden="true"><span class="orn-medieval">冒</span><span class="orn-plain">SG</span></span><span class="brand-name">Scrum Guild</span></div>
+      <div class="gate-brand">${SQ.brandMark}<span class="brand-name">Scrum Guild</span></div>
       <h1 class="gate-title">ログイン</h1>
       <p>いずれかの${t("organization")}に所属しているか、招待されている人がログインできます。招待されたときの手段でログインしてください。</p>
       <button class="btn is-wide" type="button">${icon("git")}GitHub でログイン</button>

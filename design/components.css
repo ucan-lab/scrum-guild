@@ -44,11 +44,7 @@ h1, h2, h3 { text-wrap: balance; }
 .binding-foot { margin-top: auto; font-size: var(--text-xs); color: var(--color-faint); padding-inline: var(--space-2); }
 
 .brand { display: flex; align-items: center; gap: var(--space-2); padding-inline: var(--space-2); }
-.brand-seal {
-  display: inline-grid; place-items: center; width: 26px; height: 26px;
-  background: var(--color-accent); color: var(--color-on-accent); border-radius: var(--radius-1);
-  font-family: var(--font-display); font-weight: var(--weight-display); font-size: 11px; line-height: 1; letter-spacing: 0.02em;
-}
+.brand-mark { display: block; flex: none; width: 26px; height: 26px; }
 .brand-name { font-family: var(--font-display); font-weight: var(--weight-display); font-size: var(--text-lg); letter-spacing: 0.02em; }
 
 .nav { display: grid; gap: 1px; }
@@ -774,7 +770,7 @@ a.choice > div > span, .choice.is-static > div > span { display: block; }
 .gate-stack { display: grid; gap: var(--space-6); width: min(440px, 100%); }
 .gate-sheet { width: min(440px, 100%); display: grid; gap: var(--space-5); background: var(--color-surface); border: 1px solid var(--color-line); border-top: 5px solid var(--color-accent); box-shadow: var(--shadow-sheet); padding: var(--space-8) var(--space-6); border-radius: var(--radius-1); }
 .gate-brand { display: flex; align-items: center; gap: var(--space-2); }
-.gate-brand .brand-seal { width: 34px; height: 34px; font-size: 17px; }
+.gate-brand .brand-mark { width: 34px; height: 34px; }
 .gate-title { font-family: var(--font-display); font-weight: var(--weight-display); font-size: var(--text-2xl); line-height: var(--leading-tight); }
 .gate-note { font-size: var(--text-xs); color: var(--color-muted); }
 /* 表を載せる枠の外の画面（運用）。紙の幅を広げる */
@@ -984,7 +980,7 @@ body.has-assist .toasts { right: calc(400px + var(--space-4)); }
 
 /* ===== テーマの飾り =====
  * テーマの違いは tokens.css の変数で表す。変数で表せない飾りだけをここに置き、この一覧から増やさない。
- * 完了の印、ロゴの印、依頼主の印、クリアの演出、現代風の光。
+ * 完了の印、依頼主の印、クリアの演出、現代風の光。
  * 中世風と他とで文字が変わる飾りは .orn-medieval と .orn-plain の両方を書き、片方を隠す。
  */
 .orn-medieval { display: none; }
@@ -1000,13 +996,11 @@ body.has-assist .toasts { right: calc(400px + var(--space-4)); }
 :root[data-theme="medieval"] .hanko > b { display: inline; }
 :root[data-theme="medieval"] .hanko > .ico { display: none; }
 :root[data-theme="medieval"] .card .hanko { width: 34px; height: 34px; font-size: 15px; }
-:root[data-theme="medieval"] .brand-seal { background: none; border: 1.5px solid var(--color-stamp); color: var(--color-stamp); font-size: 13px; }
 :root[data-theme="medieval"] .seal { display: inline-grid; }
 :root[data-theme="medieval"] .celebrate-stamp { width: 120px; height: 120px; border: 4px double var(--color-stamp); background: none; font-size: 26px; rotate: -14deg; }
 
 /* 現代風: システムのウィンドウの光 */
 :root[data-theme="modern"] body { background: radial-gradient(1200px 600px at 75% -10%, rgb(76 200 255 / 0.09), transparent 70%) fixed, var(--color-bg); }
-:root[data-theme="modern"] .brand-seal { background: none; border: 1px solid var(--color-accent); color: var(--color-accent); box-shadow: 0 0 10px -2px var(--color-accent); }
 :root[data-theme="modern"] .hanko { background: none; box-shadow: 0 0 10px -3px var(--color-done); }
 :root[data-theme="modern"] .emblem { filter: drop-shadow(0 0 6px var(--color-xp)); }
 :root[data-theme="modern"] .gauge-got { box-shadow: 0 0 10px var(--color-xp); }

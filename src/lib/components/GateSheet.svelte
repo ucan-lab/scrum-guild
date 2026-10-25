@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { Snippet } from 'svelte';
   import { t } from '../vocabulary.svelte.ts';
+  import BrandMark from './BrandMark.svelte';
 
   // 枠の外の画面の紙1枚。brand は先頭の紙だけに付け、その紙の見出しを h1 にする（ほかの紙は h2）
   let { title, brand = false, children }: { title?: string; brand?: boolean; children: Snippet } = $props();
@@ -9,9 +10,7 @@
 <section class="gate-sheet">
   {#if brand}
     <div class="gate-brand">
-      <span class="brand-seal" aria-hidden="true"
-        ><span class="orn-medieval">冒</span><span class="orn-plain">SG</span></span
-      >
+      <BrandMark />
       <span class="brand-name">{t('appName')}</span>
     </div>
   {/if}

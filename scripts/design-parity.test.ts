@@ -39,7 +39,41 @@ function readKitDictionary(): Record<string, [string, string]> {
   return vm.runInNewContext(`(${literal})`);
 }
 
+// SVG の要素の属性を、属性の並びによらずに比べられる形で取り出す
+function readElements(source: string, tag: 'svg' | 'path'): Record<string, string>[] {
+  return [...source.matchAll(new RegExp(`<${tag}\\b([^>]*?)\\/?>`, 'g'))].map(([, attrs]) =>
+    Object.fromEntries([...attrs.matchAll(/([\w-]+)="([^"]*)"/g)].map(([, name, value]) => [name, value]).sort()),
+  );
+}
+
+const readPaths = (source: string) => readElements(source, 'path');
+const readSvg = (source: string) => readElements(source, 'svg')[0];
+// 要素のタグ名の並び。path の外に足した title（読み上げの二重読み）や g、circle を拾う
+const readTags = (source: string) => [...source.matchAll(/<([a-zA-Z][\w-]*)\b/g)].map(([, tag]) => tag);
+
 describe('見本との照合', () => {
+  test('ロゴのマークは favicon、見本、本番で同じ形と色', () => {
+    const faviconSource = readFileSync(new URL('../static/favicon.svg', import.meta.url), 'utf8');
+    const favicon = readPaths(faviconSource);
+    assert.equal(favicon.length, 2, 'favicon の path を読めなかった');
+    const brandMark = /const brandMark = `([^`]*)`/.exec(read('kit.js'))?.[1];
+    assert.ok(brandMark, 'design/kit.js に brandMark が見つからない（書き方を変えたら、このテストの取り出し方も直す）');
+    const component = readFileSync(new URL('../src/lib/components/BrandMark.svelte', import.meta.url), 'utf8');
+    for (const [label, source] of [
+      ['見本の brandMark', brandMark],
+      ['本番の BrandMark.svelte', component],
+    ]) {
+      assert.deepEqual(readTags(source), readTags(faviconSource), `${label} の要素`);
+      assert.deepEqual(readPaths(source), favicon, `${label} の path`);
+      // 名前は横の文字が読ませるので、マークは読み上げから外す。class は components.css の大きさの指定に要る
+      assert.deepEqual(
+        readSvg(source),
+        { 'aria-hidden': 'true', class: 'brand-mark', viewBox: readSvg(faviconSource).viewBox },
+        `${label} の svg`,
+      );
+    }
+  });
+
   test('アイコンは見本と同じ名前と中身を持つ', () => {
     const design = evaluateIcons();
     assert.ok(design.symbols.size > 0, '見本のアイコンを読めなかった');
