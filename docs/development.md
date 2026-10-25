@@ -141,7 +141,7 @@ GitHub は無料のプランのまま使う（2026-10-23 に決めた）。無�
 
 ### 版
 
-版はコミットの SHA にする。build のときの環境変数 `APP_VERSION` を、画面には SvelteKit の `kit.version.name` として、API には wrangler の `vars` の上書き（`--var APP_VERSION:<SHA>`）として渡し、`/api/health` の `version` と画面の版を同じ値にする。手元で埋めなければ `dev` になる。本番では Workers Builds の `WORKERS_CI_COMMIT_SHA` を渡す（下の「CD」）。
+版はコミットの SHA にする。build のときの環境変数 `APP_VERSION` を、画面には SvelteKit の `kit.version.name` として、API には wrangler の `vars` の上書き（`--var APP_VERSION:<SHA>`）として渡し、`/api/health` の `version` と画面の版を同じ値にする。手元で埋めなければ `dev` になる。本番では Workers Builds が checkout したコミットの `git rev-parse HEAD` を渡す（下の「CD」）。
 
 ### 依存を入れたばかりの作業コピー
 
@@ -313,9 +313,9 @@ PR ごとのプレビュー環境は持たず、Workers Builds の preview build
 
 `main` への push で、Cloudflare の Workers Builds（Git との連携）が動く（2026-10-23 に決めた）。デプロイの鍵を GitHub に置かないため（上の「`main` を守る仕組み」）。
 
-1. ビルドする。Workers Builds が渡すコミットの SHA（`WORKERS_CI_COMMIT_SHA`）を `APP_VERSION` として `pnpm build` に渡す（上の「版」）
+1. ビルドする。checkout したコミットの SHA（`git rev-parse HEAD`）を `APP_VERSION` として `pnpm build` に渡す（上の「版」）。Workers Builds の `WORKERS_CI_COMMIT_SHA` は使わない。接続した直後の初回のビルド（手で動かしたビルド）で、ブランチ名の `main` が入っていたため。git が失敗したらビルドを始めない（ビルドのコマンドは `docs/operations.md` の「Workers Builds の接続」）
 2. デプロイのコマンドで、デプロイのスクリプト（`scripts/deploy.ts`、入口は `scripts/deploy-production.ts`）を動かす。スクリプトの手順は次のとおり
-   1. Workers Builds の外（`WORKERS_CI` が `1` でない）か、`WORKERS_CI_COMMIT_SHA` がコミットの SHA の形（16進の7〜40文字）でなければ、本番に触らずに失敗。手元のログインで作業ツリーを出さず、`dev` や任意の文字列を版にしないため
+   1. Workers Builds の外（`WORKERS_CI` が `1` でない）か、`git rev-parse HEAD` で取った版がコミットの SHA の形（16進の7〜40文字）でなければ、本番に触らずに失敗。手元のログインで作業ツリーを出さず、`dev` や任意の文字列を版にしないため
    2. 本番に触る前に、戻し先として今 100% で動いている版の ID を `wrangler deployments status --json` で控える
       - Worker が無い（API のエラーコード `10007`）か、デプロイが1つも無い: 戻し先無しで進む
       - それ以外のエラー、版が分かれて流れている: 本番に触らずに失敗

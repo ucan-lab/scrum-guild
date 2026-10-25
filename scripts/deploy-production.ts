@@ -10,9 +10,22 @@ import { deploy } from './deploy.ts';
 // デプロイのコマンドは pnpm の外で動くので、node_modules/.bin が PATH に無い
 const wranglerBin = path.join('node_modules', '.bin', 'wrangler');
 
+// WORKERS_CI_COMMIT_SHA は、接続した直後の初回のビルド（手で動かしたビルド）でブランチ名の main だった。
+// Workers Builds はコミットを checkout してからデプロイのコマンドを動かすので、作業ツリーの HEAD を版にする
+function headCommit(): string | undefined {
+  const result = spawnSync('git', ['rev-parse', 'HEAD'], { stdio: ['ignore', 'pipe', 'pipe'], encoding: 'utf8' });
+  if (result.status !== 0) {
+    console.error(`git rev-parse HEAD に失敗しました: ${result.error?.message ?? result.stderr.trim()}`);
+    return undefined;
+  }
+  return result.stdout.trim() || undefined;
+}
+
+const inWorkersBuilds = process.env.WORKERS_CI === '1';
 const status = await deploy({
-  inWorkersBuilds: process.env.WORKERS_CI === '1',
-  commitSha: process.env.WORKERS_CI_COMMIT_SHA,
+  inWorkersBuilds,
+  // Workers Builds の外では、止まる理由を WORKERS_CI の1つにする
+  commitSha: inWorkersBuilds ? headCommit() : undefined,
   wrangler: (args, { capture }) => {
     // 標準入力を閉じ、確認を待って止まらないようにする
     const result = spawnSync(wranglerBin, args, {

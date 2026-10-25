@@ -28,7 +28,7 @@ export type DeployDeps = {
 // Worker が無い（API の 10007）か、Worker はあってもデプロイが1つも無い。どちらも戻し先が無い
 const NO_DEPLOYMENT = [/\[code: 10007\]/, /has no deployments/];
 
-// Workers Builds が渡すコミットの SHA の形。ダッシュボードの環境変数で上書きされた任意の文字列を版として出さない
+// コミットの SHA の形（git rev-parse HEAD の出力）。dev やブランチ名を版として出さない
 const COMMIT_SHA = /^[0-9a-f]{7,40}$/;
 
 type RollbackTarget = { ok: true; versionId: string | null } | { ok: false; reason: string };
@@ -95,7 +95,7 @@ export async function deploy(deps: DeployDeps): Promise<number> {
   const sha = deps.commitSha;
   // 版の無いまま出すと、本番の版が dev になり煙のテストで見分けられない
   if (!sha || !COMMIT_SHA.test(sha)) {
-    deps.error(`WORKERS_CI_COMMIT_SHA がコミットの SHA ではありません（${sha ?? '無し'}）。本番に触らずに終えます`);
+    deps.error(`版がコミットの SHA ではありません（${sha ?? '無し'}）。本番に触らずに終えます`);
     return 1;
   }
 
