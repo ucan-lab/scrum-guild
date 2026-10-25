@@ -1,5 +1,5 @@
 // Write と Edit の判定。CLAUDE.md の「守ること」のうち、書いた内容で判定できるものを止め、
-// 守る仕組みそのもの（.claude/settings*.json と、セッションが使っている .claude/hooks/）の書き換えには人の確認を挟む。
+// 守る仕組みそのもの（.claude/settings*.json と、セッションが使っている .claude/hooks/）と、wrangler の設定の転送先（.wrangler/deploy/config.json）の書き換えには人の確認を挟む。
 // D1 の binding の判定は、ESLint の入口を守る規則（docs/development.md の「入口を守る規則」）が入るまでのつなぎ。
 import path from 'node:path';
 
@@ -18,6 +18,11 @@ export function judgeFile({ rel, contents, shippedOnMain, inWorktree = false, on
   // 設定は disableAllHooks でフックごと切れるので、どこでも確かめる
   if (/^\.claude\/settings[^/]*\.json$/.test(rel)) {
     return ['ask', '守る仕組み（Claude の設定）の変更は人が確かめる'];
+  }
+  // wrangler は -c が無いとき、このファイルがあれば書かれた別の設定へ転送する。ignore されていて、remote の binding を持つ設定へ向けられる
+  // macOS は大文字小文字を区別しないので、.wrangler/deploy/CONFIG.JSON も同じファイルを指す（i）
+  if (/(^|\/)\.wrangler\/deploy\/config\.json$/i.test(rel)) {
+    return ['ask', 'wrangler の設定の転送先（.wrangler/deploy/config.json）の書き換えは人が確かめる。remote の binding を持つ設定へ向けると wrangler dev が本番に届く'];
   }
   // セッションが使うのは $CLAUDE_PROJECT_DIR のフック。別のワークツリーでの書き換えは PR で人が読むまで効かない
   if ((rel.startsWith('.claude/hooks/') || rel.startsWith('.githooks/')) && !inWorktree) {

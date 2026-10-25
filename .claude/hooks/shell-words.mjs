@@ -6,7 +6,7 @@
 // 区切りの配列は、語ごとに2つの印を列挙されない属性に持つ。引用符を外した文字列だけでは、"a b?" と a\ b? や {a,--no-local}、
 // '$x' と "$x" を見分けられないため。
 // - expands: 語が展開で別の語に分かれるか、別の文字列になりうるか。引用符の外の変数、置換、brace、glob、zsh の括弧の glob、
-//   ~名前 と、引用符の中の変数のうち QUOTED_PARAMETER に当たらないもの（"$@"、"${a[@]}"、"${(f)x}"、"$=x"、"$x[@]"）
+//   zsh の数値の glob（<->、<1-10>）、~名前 と、引用符の中の変数のうち QUOTED_PARAMETER に当たらないもの（"$@"、"${a[@]}"、"${(f)x}"、"$=x"、"$x[@]"）
 // - shapes: 語の中で実行時に決まる位置（引用符の内外の変数と置換、~名前）を DYNAMIC に置き換えた文字列
 
 const OPERATORS = ['&&', '||', ';', '|', '&', '\n', '(', ')'];
@@ -317,6 +317,15 @@ export function splitSegments(command) {
       i = end;
       continue;
     }
+    // zsh の数値の glob <->、<1-10>（語の途中の x<1-10> も）。リダイレクトとして読むと、後ろの > が次の語を宛先にして argv から隠す
+    // （<-> --remote の >-- が > の宛先になる）。zsh は数に当たるファイルの名前に展開する語として読む
+    const numericGlob = c === '<' ? /^<\d*-\d*>/.exec(command.slice(i)) : null;
+    if (numericGlob) {
+      add(numericGlob[0]);
+      expands = true;
+      i += numericGlob[0].length - 1;
+      continue;
+    }
     const isRedirect = c === '<' || c === '>' || (c === '&' && command[i + 1] === '>');
     if (isRedirect) {
       // 2>&1 の 2 のような番号は語に残さない
@@ -446,7 +455,7 @@ export function splitSegments(command) {
 const PREFIXES = new Set([
   'if', 'then', 'else', 'elif', 'while', 'until', 'do', '!', '{', '}',
   'env', 'sudo', 'time', 'nohup', 'exec', 'command', 'builtin',
-  'timeout', 'nice', 'ionice', 'stdbuf', 'xargs', 'watch', 'caffeinate',
+  'timeout', 'nice', 'ionice', 'stdbuf', 'xargs', 'gxargs', 'genv', 'watch', 'caffeinate',
   'npx', 'pnpx', 'bunx', 'dlx',
   // cross-env FOO=1 cmd は env と同じく、代入を付けて cmd を動かす
   'cross-env',
@@ -467,21 +476,71 @@ export function baseName(word) {
   return name.replace(/(.)@[^@]*$/, '$1');
 }
 
-// 語の並びから、実行する道具の位置を返す。見つからなければ -1
-export function commandIndex(words) {
+// Homebrew の GNU findutils と coreutils は g を前に付けた名前で入る（gxargs、genv）。前置きの名前は g を外した名前にそろえる
+export function prefixName(word) {
+  const name = baseName(word);
+  return name === 'gxargs' || name === 'genv' ? name.slice(1) : name;
+}
+
+// GNU の getopt は長いオプションを一意な省略形でも受け付ける。--ch は --chdir、--s は --split-string（name は -- を除いた1文字以上の名前）
+export function abbreviates(name, full) {
+  return name.length > 0 && full.startsWith(name);
+}
+
+// xargs だけが値を取るフラグ（-a と --arg-file は引数を読むファイル、--delimiter は区切り、--process-slot-var は環境変数の名前、
+// -J、-R、-S は BSD の置換と行数と置換の長さ）。
+// sudo -a のように他の前置きでは値を取らないので、直前の前置きが xargs のときだけ効かせる。
+// GNU の getopt は長いオプションを一意な省略形でも受け付ける（--arg、--delim、--process）。-afile や --arg-file=file の連結の形は1語で済む。
+// 逆に -p は、npx -p と sudo -p では値を取るが、xargs では値を取らない確認のフラグなので、xargs の後ろでは値として飛ばさない
+const XARGS_FLAGS_WITH_VALUE = new Set(['-a', '-J', '-R', '-S']);
+function takesValueInXargs(word) {
+  if (word === '-p') return false;
+  if (XARGS_FLAGS_WITH_VALUE.has(word)) return true;
+  const long = /^--([a-z-]+)$/.exec(word);
+  return Boolean(long) && ['arg-file', 'delimiter', 'process-slot-var'].some((full) => abbreviates(long[1], full));
+}
+
+// env の --chdir とその省略形（--c、--ch）。GNU env の長いオプションで c から始まるのは chdir だけ。値は次の語
+function takesValueInEnv(word) {
+  const long = /^--([a-z-]+)$/.exec(word);
+  return Boolean(long) && abbreviates(long[1], 'chdir');
+}
+
+// index は実行する道具の位置（見つからなければ -1）、prefixes は道具の前で飛ばした前置きの語（env、xargs など）の位置
+function scanCommand(words) {
+  const prefixes = [];
+  let previous = '';
   for (let i = 0; i < words.length; i++) {
     const w = words[i];
     if (w === '' || isAssignment(w) || /^[<>]/.test(w)) continue;
     if (w.startsWith('-')) {
-      if (PREFIX_FLAGS_WITH_VALUE.has(w)) i++;
+      const takesValue =
+        previous === 'xargs'
+          ? takesValueInXargs(w) || (w !== '-p' && PREFIX_FLAGS_WITH_VALUE.has(w))
+          : PREFIX_FLAGS_WITH_VALUE.has(w) || (previous === 'env' && takesValueInEnv(w));
+      if (takesValue) i++;
       continue;
     }
     // timeout 300 や watch -n 2 の数
     if (/^\d+(\.\d+)?[smhd]?$/.test(w)) continue;
-    if (PREFIXES.has(baseName(w))) continue;
-    return i;
+    if (PREFIXES.has(baseName(w))) {
+      prefixes.push(i);
+      previous = prefixName(w);
+      continue;
+    }
+    return { index: i, prefixes };
   }
-  return -1;
+  return { index: -1, prefixes };
+}
+
+// 語の並びから、実行する道具の位置を返す。見つからなければ -1
+export function commandIndex(words) {
+  return scanCommand(words).index;
+}
+
+// 道具の前に飛ばした前置きの語の位置。道具の後ろで効く前置き（xargs の後ろのコマンド、env -S）を判定の側が探すために使う
+export function prefixIndexes(words) {
+  return scanCommand(words).prefixes;
 }
 
 // 値を取るフラグとリダイレクトを飛ばして、位置の引数だけを返す
