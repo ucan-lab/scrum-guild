@@ -223,7 +223,7 @@
 | 組織の作成のダイアログ（`createOrganization`） | `CreateOrganizationDialog.svelte` | 運用の画面だけが使う。slug と表示名、最初の管理者のログインの手段、GitHub のユーザー名の解決と確かめ、作った後の完了の表示（組織の URL とコピー）を、1つの `Dialog` の中で切り替える。ダイアログを閉じると入力を捨てる |
 | `t`、`DICT` | `src/shared/vocabulary.ts`、`src/lib/vocabulary.svelte.ts` | 言葉の辞書（`docs/development.md` の「言葉の辞書」） |
 | `THEMES`、`setTheme`、`applyTheme` | `src/shared/theme.ts`、`src/lib/theme.svelte.ts` | テーマの先当ては `docs/development.md` の「テーマの先当て」 |
-| `.gate`、`.gate-sheet`（枠の外の画面） | `Gate.svelte`、`GateSheet.svelte`、`LoadFailed.svelte`、`LoadingSheet.svelte` | 組織の選択、見つからない、運用の外側（`main`。mount のときにテーマと言葉づかいを既定に戻す）と、紙1枚。先頭の紙に `brand` を付けると、ブランドと h1 の見出しが出る。表を載せる運用の画面は `Gate` の `wide`（`.gate.is-wide`。紙の幅を 960px まで広げる）。紙を縦に並べる `.gate-stack` は components.css に持つ。`LoadFailed` は読み込みの失敗と「もう一度試す」、`LoadingSheet` は外の画面から移る間の読み込み中の表示 |
+| `.gate`、`.gate-sheet`（枠の外の画面） | `Gate.svelte`、`GateSheet.svelte`、`LoadFailed.svelte`、`LoadingSheet.svelte` | 組織の選択、見つからない、運用の外側（`main`。mount のときにテーマと言葉づかいを既定に戻す）と、紙1枚。先頭の紙に `brand` を付けると、ブランドと h1 の見出しが出る。表を載せる運用の画面は `Gate` の `wide`（`.gate.is-wide`。紙の幅を 960px まで広げる。運用の一覧は、要件の集計の列（ユーザー数、ワークスペース数、タスク数、添付ファイル、最後に使われた日時）を並べる幅で作り、集計を足す前の列の少ない間もこの幅にする）。紙を縦に並べる `.gate-stack` は components.css に持つ。`LoadFailed` は読み込みの失敗と「もう一度試す」、`LoadingSheet` は外の画面から移る間の読み込み中の表示 |
 
 - 画面は `.svelte` に `<style>` を書かない。足りない CSS は components.css とカタログに先に足す。フックと `pnpm lint` が止める。
 - インラインの `style` 属性は CSP に止められる。動く値は `style:--h` のように CSSOM で当てる（Svelte の `style:` ディレクティブ）。
