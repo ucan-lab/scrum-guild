@@ -333,6 +333,15 @@ function writesProtectedPath(tool, args) {
   return false;
 }
 
+// テスト（scripts/deploy*.test.ts）は偽の wrangler と fetch で手順を呼ぶだけなので外す。
+// --test の有無では見分けない。node --test scripts/deploy-production.ts も本番の入口を実行する。
+// 外すのは英数字と . / * - _ だけの語に限る。deploy-production.ts$IFS.test.ts はシェルが2語に分け、
+// --import ./scripts/deploy-production.ts#.test.ts は Node が # 以降を URL のフラグメントとして捨てる
+function isDeployScript(word) {
+  if (!/(^|\/)scripts\/deploy[^/]*$/.test(word)) return false;
+  return !(/^[\w./*-]+$/.test(word) && word.endsWith('.test.ts'));
+}
+
 function judgeSegment(words, ctx) {
   const ci = commandIndex(words);
   if (ci === -1) return [];
@@ -346,9 +355,10 @@ function judgeSegment(words, ctx) {
   if (writesProtectedPath(tool, args)) {
     results.push([ASK, '守る仕組み（Claude の設定とフック）とマイグレーションの書き換えは人が確かめる']);
   }
+  // node --test は並べたファイルを全部実行するので、先頭だけでなく位置引数を全部見る。
+  // --test の無い node と bash では2つ目からはただの引数だが、取りこぼすより止めすぎるほうを取る
   const runsDeployScript =
-    /(^|\/)scripts\/deploy[^/]*$/.test(words[ci]) ||
-    ((SHELLS.has(tool) || tool === 'node') && /(^|\/)scripts\/deploy[^/]*$/.test(positionals(args)[0] ?? ''));
+    isDeployScript(words[ci]) || ((SHELLS.has(tool) || tool === 'node') && positionals(args).some(isDeployScript));
   if (runsDeployScript) results.push([DENY, 'デプロイのスクリプトは Workers Builds だけが実行する']);
 
   const wrangler = findWrangler(words, ci);
