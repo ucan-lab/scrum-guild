@@ -454,6 +454,8 @@ describe('bash-rules: 止める', () => {
     ]) {
       assert.equal(judgeBash(command, { cwd: '/repo', branchOf })?.[0], 'ask', command);
     }
+    // 二重引用符の中の置換も、refspec を判定できないものとして見る
+    assert.equal(judgeBash('git push origin "$(git branch --show-current)"', { cwd: '/w', branchOf })?.[0], 'ask');
   });
 
   test('止めた理由が規則に合っている', () => {
