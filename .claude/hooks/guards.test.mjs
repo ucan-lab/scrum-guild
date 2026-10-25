@@ -203,6 +203,9 @@ describe('bash-rules: 止める', () => {
     "$'\\U00000077rangler' deploy",
     "wrangler d1 execute DB --local $'\\u002d-remote'",
     "wrangler kv key put k v --local $'\\x00'--remote",
+    // bash の $"…"（ロケールの訳）は、引用符の外の $ として止める側に倒す
+    'wrangler dev $"--remote"',
+    'wrangler kv key put k v --local $"--no-local"',
     // 二重引用符の中の \\<改行>
     'wrangler kv key put k v --local --file "\\\n$X"',
     'wrangler kv key put k v --local "\\\n--remote"',
