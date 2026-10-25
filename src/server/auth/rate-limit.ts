@@ -24,9 +24,10 @@ export function loginRateLimits(ip: string | undefined): LoginRateLimit[] {
     case 'v4':
       return [{ key: `login:${units.address}`, policy: LOGIN_RATE_LIMIT }];
     case 'v6':
+      // 広い /48 の枠を先に数える。/48 を超えた後に /64 を変えて叩かれても、/64 の行を増やさないため
       return [
-        { key: `login:${units.network64}`, policy: LOGIN_RATE_LIMIT },
         { key: `login48:${units.network48}`, policy: LOGIN_RATE_LIMIT_IPV6_SITE },
+        { key: `login:${units.network64}`, policy: LOGIN_RATE_LIMIT },
       ];
     case 'unknown':
       return [{ key: 'login:unknown', policy: LOGIN_RATE_LIMIT }];
@@ -69,11 +70,11 @@ export async function consumeRateLimit(env: Env, key: string, policy: RateLimitP
   return row.count <= policy.max;
 }
 
-// ログインの枠をすべて数える。どれかが上限を超えていれば false。超えた枠があっても、残りの枠も数える
+// ログインの枠を、広い枠から順に数える。上限を超えた枠があればそこで止めて false を返し、残りの枠は数えない
+// （断った呼び出しで、狭い枠の行を作らない）
 export async function consumeLoginRateLimits(env: Env, ip: string | undefined, now: Date): Promise<boolean> {
-  let allowed = true;
   for (const { key, policy } of loginRateLimits(ip)) {
-    if (!(await consumeRateLimit(env, key, policy, now))) allowed = false;
+    if (!(await consumeRateLimit(env, key, policy, now))) return false;
   }
-  return allowed;
+  return true;
 }

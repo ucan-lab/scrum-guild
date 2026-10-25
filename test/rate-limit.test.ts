@@ -89,13 +89,13 @@ describe('IP を数える単位', () => {
     expect(clientIpUnits(value)).toEqual(v6(network64, network48));
   });
 
-  test('同じ /64 は同じ枠、同じ /48 の別の /64 は /64 が別で /48 は同じ、別の /48 はどちらも別', () => {
+  test('同じ /64 は同じ枠、同じ /48 の別の /64 は /64 が別で /48 は同じ、別の /48 はどちらも別。/48 を先に数える', () => {
     const keys = (ip: string) => loginRateLimits(ip).map((limit) => limit.key);
-    expect(keys('2001:db8:1:2::1')).toEqual(['login:2001:db8:1:2::/64', 'login48:2001:db8:1::/48']);
+    expect(keys('2001:db8:1:2::1')).toEqual(['login48:2001:db8:1::/48', 'login:2001:db8:1:2::/64']);
     expect(keys('2001:db8:1:2:ffff:eeee:dddd:cccc')).toEqual(keys('2001:db8:1:2::1'));
     const sibling = keys('2001:db8:1:3::1');
-    expect(sibling[0]).not.toBe(keys('2001:db8:1:2::1')[0]);
-    expect(sibling[1]).toBe(keys('2001:db8:1:2::1')[1]);
+    expect(sibling[0]).toBe(keys('2001:db8:1:2::1')[0]);
+    expect(sibling[1]).not.toBe(keys('2001:db8:1:2::1')[1]);
     const other = keys('2001:db8:2:2::1');
     expect(other[0]).not.toBe(keys('2001:db8:1:2::1')[0]);
     expect(other[1]).not.toBe(keys('2001:db8:1:2::1')[1]);
@@ -104,7 +104,7 @@ describe('IP を数える単位', () => {
   test('IPv4 は1つの枠、/48 の枠は /64 より緩い上限', () => {
     expect(loginRateLimits('203.0.113.7')).toEqual([{ key: 'login:203.0.113.7', policy: LOGIN_RATE_LIMIT }]);
     expect(loginRateLimits('::ffff:0102:0304')).toEqual([{ key: 'login:1.2.3.4', policy: LOGIN_RATE_LIMIT }]);
-    const [narrow, wide] = loginRateLimits('2001:db8:1:2::1');
+    const [wide, narrow] = loginRateLimits('2001:db8:1:2::1');
     expect(narrow!.policy).toBe(LOGIN_RATE_LIMIT);
     expect(wide!.policy).toBe(LOGIN_RATE_LIMIT_IPV6_SITE);
     expect(wide!.policy.max).toBeGreaterThan(narrow!.policy.max);
@@ -152,6 +152,8 @@ describe('IPv6 の2つの枠', () => {
     expect(await consumeLoginRateLimits(env, address(1), now)).toBe(true);
     await setCount(`login48:${site}::/48`, LOGIN_RATE_LIMIT_IPV6_SITE.max);
     expect(await consumeLoginRateLimits(env, address(7), now)).toBe(false);
+    // /48 で断った呼び出しは、/64 の行を作らない
+    expect(await rowOf(`login:${site}:7::/64`)).toBeUndefined();
     // 別の /48 は数えていない
     const other = randomSite();
     expect(await consumeLoginRateLimits(env, `${other}:1::1`, now)).toBe(true);
