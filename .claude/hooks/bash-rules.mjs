@@ -931,7 +931,8 @@ function judgeSegment(words, ctx) {
   // 読むだけの道具以外では、findWrangler が引数を実行しない道具（echo、git など）で打ち切っても、後ろの語の wrangler を見る
   const xargs = prefixes.find((j) => prefixName(words[j]) === 'xargs');
   if (xargs !== undefined) {
-    const isReader = XARGS_READERS.has(tool);
+    // パスの付いた名前（./cat、/tmp/cat）は PATH の道具とは別のファイルかもしれないので、読むだけの道具に数えない
+    const isReader = XARGS_READERS.has(tool) && !words[ci].includes('/');
     const wranglerAfter = wrangler !== -1 || (!isReader && words.some((w, i) => i > ci && (isWrangler(w) || isCfWrangler(w))));
     if (wranglerAfter) results.push([DENY, XARGS_WRANGLER_REASON]);
     else if (!isReader || xargsReadsFile(words.slice(xargs + 1, ci))) results.push([ASK, XARGS_REASON]);

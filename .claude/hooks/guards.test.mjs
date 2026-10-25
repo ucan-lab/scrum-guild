@@ -109,6 +109,12 @@ describe('shell-words', () => {
     assert.equal(toolOf('xargs --delim x node'), 'node');
     assert.equal(toolOf('xargs -J X -R 1 -S 2 git'), 'git');
     assert.equal(toolOf('xargs -I {} -P 4 node'), 'node');
+    assert.equal(toolOf('xargs -p cat x'), 'cat');
+    assert.equal(toolOf('xargs --process-slot-var cat rm'), 'rm');
+    assert.equal(toolOf('xargs --process cat rm'), 'rm');
+    assert.equal(toolOf('sudo -p prompt ls'), 'ls');
+    assert.equal(toolOf('npx -p wrangler wrangler'), 'wrangler');
+    assert.equal(toolOf('xargs sudo -p prompt ls'), 'ls');
     assert.equal(toolOf('gxargs -a list wrangler deploy'), 'wrangler');
     assert.equal(toolOf('genv --c src git'), 'git');
     assert.equal(toolOf('env --c src git'), 'git');
@@ -890,6 +896,15 @@ describe('bash-rules: 確認を挟む', () => {
     'xargs ag x',
     'xargs file',
     'xargs file -C',
+    // パスの付いた名前は読むだけの道具に数えない
+    'xargs ./cat x',
+    'xargs /tmp/cat x',
+    'xargs /bin/cat x',
+    'xargs ../grep x',
+    // --process-slot-var の値は道具の名前ではない
+    'xargs --process-slot-var cat rm -rf x',
+    'xargs --process-slot-var=cat rm',
+    'xargs --process cat rm -rf x',
     // 引数をファイルから足す形は、読むだけの道具でも何を読むかが見えない
     'xargs -a list.txt grep x',
     'xargs -a list.txt cat',
@@ -1267,6 +1282,9 @@ describe('bash-rules: 通す', () => {
     'git ls-files | xargs -I {} cat {}',
     'git ls-files | xargs -0 egrep -l x',
     'git ls-files | gxargs grep x',
+    // xargs の -p は値を取らない確認のフラグ。後ろの cat を道具として読む
+    'xargs -p cat x',
+    'git ls-files | xargs -p grep x',
     'genv -C src ls',
     'git ls-files | xargs -d x -s 100 wc -l',
     'xargs fgrep x',
