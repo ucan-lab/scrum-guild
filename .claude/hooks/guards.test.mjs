@@ -98,6 +98,12 @@ describe('bash-rules: 止める', () => {
     'npm run lint',
     'bash scripts/deploy.sh',
     './scripts/deploy.sh',
+    'node scripts/deploy.ts',
+    'node scripts/deploy-production.ts',
+    'node --test scripts/deploy-production.ts',
+    'node --test scripts/deploy.test.ts scripts/deploy-production.ts',
+    'node --import tsx scripts/deploy.ts',
+    'node --test scripts/deploy*',
     'git push origin main',
     'git push origin HEAD:main',
     'git push origin feature:refs/heads/main',
@@ -424,6 +430,10 @@ describe('bash-rules: 通す', () => {
     'shellcheck scripts/deploy.sh',
     'git log --oneline -- scripts/',
     'node --test .claude/hooks/*.test.mjs',
+    'node --test scripts/deploy.test.ts',
+    'node scripts/deploy.test.ts',
+    'node --test scripts/deploy*.test.ts',
+    'node --test scripts/*.test.ts',
   ]) {
     test(command, () => assert.equal(decision(command), 'allow'));
   }

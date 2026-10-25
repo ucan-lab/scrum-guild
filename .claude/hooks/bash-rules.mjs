@@ -333,6 +333,12 @@ function writesProtectedPath(tool, args) {
   return false;
 }
 
+// テスト（scripts/deploy*.test.ts）は偽の wrangler と fetch で手順を呼ぶだけなので外す。
+// --test の有無では見分けない。node --test scripts/deploy-production.ts も本番の入口を実行する
+function isDeployScript(word) {
+  return /(^|\/)scripts\/deploy[^/]*$/.test(word) && !word.endsWith('.test.ts');
+}
+
 function judgeSegment(words, ctx) {
   const ci = commandIndex(words);
   if (ci === -1) return [];
@@ -346,9 +352,9 @@ function judgeSegment(words, ctx) {
   if (writesProtectedPath(tool, args)) {
     results.push([ASK, '守る仕組み（Claude の設定とフック）とマイグレーションの書き換えは人が確かめる']);
   }
+  // node --test は並べたファイルを全部実行するので、先頭だけでなく位置引数を全部見る
   const runsDeployScript =
-    /(^|\/)scripts\/deploy[^/]*$/.test(words[ci]) ||
-    ((SHELLS.has(tool) || tool === 'node') && /(^|\/)scripts\/deploy[^/]*$/.test(positionals(args)[0] ?? ''));
+    isDeployScript(words[ci]) || ((SHELLS.has(tool) || tool === 'node') && positionals(args).some(isDeployScript));
   if (runsDeployScript) results.push([DENY, 'デプロイのスクリプトは Workers Builds だけが実行する']);
 
   const wrangler = findWrangler(words, ci);
