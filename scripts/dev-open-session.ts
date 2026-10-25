@@ -43,6 +43,8 @@ export async function checkDevOpenSession(
       reason: `${target.origin} につながらない。別の端末で ${serveCommand} を立ててから、もう一度打つ`,
     };
   }
+  // 見るのは状態コードだけ。本文を読まずに閉じ、接続を残さない
+  await res.body?.cancel().catch(() => undefined);
   if (res.status === 401) {
     // 運用者は OPERATOR_LOGIN_IDS で決まる。.dev.vars は git の外なので、新しいワークツリーには無い
     const operatorHint =
