@@ -622,6 +622,19 @@ describe('task-move で、読んでから書くまでに別の要求が割り込
     expect(await logsOf(target, moving!)).toEqual([]);
   });
 
+  test('ストーリーの下へ移すとき、読んだ後に区分が付いていたら 409（changed）で、区分を履歴なしに消さない', async () => {
+    const target = await createTarget();
+    const story = await createStory(target.organization, target.workspace.id, target.admin.userId!);
+    const category = await createCategory(target.organization, target.workspace.id);
+    const [moving] = await rootTasks(target, ['a0']);
+    const raced = racing(readsMovingTask, () => updateTask(target, moving!, { category_id: category.id }));
+    const res = await moveTask(target, { task_id: moving, story_id: story.id }, target.member, raced);
+    expect(res.status).toBe(409);
+    expect(await errorOf(res)).toEqual({ code: 'conflict', reason: 'changed' });
+    expect((await rowOf(target, 'tasks', moving!))!.category_id).toBe(category.id);
+    expect(await logsOf(target, moving!)).toEqual([]);
+  });
+
   test('直前の行が動いていたら 409（changed）', async () => {
     const target = await createTarget();
     const [a, b, c] = await rootTasks(target, ['a0', 'a1', 'a2']);

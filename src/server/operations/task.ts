@@ -772,7 +772,9 @@ export const taskMoveOperation = implement(taskMove, async ({ db, actor, workspa
   const parentId = input.story_id;
   const parentChanged = current.story_id !== parentId;
   const parent = parentId === null ? null : await readMoveParent(db, workspaceId, parentId, parentChanged);
-  // ストーリーの下へ移して区分が消えるときは、前の区分を履歴に残す。書く文は区分が読んだ値のままであることも条件にする
+  // ストーリーの下へ移して区分が消えるときは、前の区分を履歴に残す。親が変わってストーリーの下へ移すときは、
+  // 書く文は区分が読んだ値（空も含む）のままであることも条件にする。読んだ後に付いた区分を、履歴なしに消さないため
+  const guardsCategory = parentChanged && parentId !== null;
   const clearedCategory =
     parentChanged && parentId !== null && current.category_id !== null
       ? { id: current.category_id, name: current.category_name ?? '' }
@@ -811,7 +813,9 @@ export const taskMoveOperation = implement(taskMove, async ({ db, actor, workspa
         .where('completed_at', 'is', null)
         .where('deleted_at', 'is', null)
         .where('story_id', current.story_id === null ? 'is' : '=', current.story_id)
-        .$if(clearedCategory !== null, (qb) => qb.where('category_id', '=', clearedCategory!.id))
+        .$if(guardsCategory, (qb) =>
+          qb.where('category_id', current.category_id === null ? 'is' : '=', current.category_id),
+        )
         .where((eb) => eb.exists(openWorkspace(q, organizationId, workspaceId)))
         .$if(parentId !== null, (qb) =>
           qb.where((eb) =>
