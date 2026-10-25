@@ -590,7 +590,7 @@ Issue はエピック、ストーリー、タスクの3階層にし、親子は�
 - 閉じた Issue は、ラベルにかかわらず済みとして扱う。閉じた後にラベルを外す手間はかけない
 - ラベルは `gh api` の REST で付け外しする（付ける `POST repos/{owner}/{repo}/issues/<番号>/labels`、外す `DELETE …/labels/<名前>`）。GraphQL の `gh issue edit` はクラウドのセッションで 403 になるため
 - `post-checkout` は、前の HEAD が null の SHA になる checkout のうち、追加のワークツリーでだけ動く。clone、本体の作業コピー、既にある作業コピーでの `git switch -c`、detached のワークツリーでは付かないので、着手を表すなら手で付ける。既にあるブランチでワークツリーを切り直したときも付く。付けるのは、その番号が開いた Issue（PR ではない）だと確かめられたときだけ。`gh` が無い、認証が無い、通信が落ちたときは理由を知らせるだけで、checkout は続ける。`timeout` のある環境（Linux、coreutils を入れた macOS）では `gh` の1回の呼び出しを10秒で切り、無い環境では上限なしで待つ。書き込み先は `ucan-lab/scrum-guild` に固定してある
-- 詰めるのをやめて着手しない Issue は、`status:refining` を手で外す
+- 詰めるのをやめて着手しない Issue は、`status:refining` を手で外す。ワークツリーを捨てて着手をやめたとき、PR をマージせずに閉じて Issue を開いたまま残すときは、`status:in-progress` を手で外す。外し忘れると、並行するセッションから着手済みに見え続ける
 
 ## 運用の手順書
 
