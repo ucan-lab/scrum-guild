@@ -246,6 +246,9 @@ describe('bash-rules: 止める', () => {
     assert.equal(judgeBash('cd worktrees/x && git commit -m x', { cwd: '/repo', branchOf }), null);
     assert.equal(judgeBash('git -C worktrees/x commit -m x', { cwd: '/repo', branchOf }), null);
     assert.equal(judgeBash('git -C /repo commit -m x', { cwd: '/w', branchOf })?.[0], 'deny');
+    assert.equal(judgeBash('cd ~ && git commit -m x', { cwd: '/repo', branchOf })?.[0], 'ask');
+    assert.equal(judgeBash('GIT_DIR=/x git commit -m x', { cwd: '/repo', branchOf })?.[0], 'ask');
+    assert.equal(judgeBash('cd ~ && git pull --ff-only', { cwd: '/repo', branchOf }), null);
   });
 
   test('同じコマンドの中で切り替えた先のブランチで判定する', () => {

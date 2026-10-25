@@ -113,8 +113,9 @@ function judgeGit(args, dir, branchOf) {
   const sub = args[i];
   const rest = args.slice(i + 1);
   if (sub === 'add' && rest.some(mentionsSecret)) return [DENY, '.dev.vars と .env は git に入れない'];
-  if (COMMITTING.has(sub) && !onlyStops(sub, rest) && gitDir && branchOf(gitDir) === 'main') {
-    return [DENY, `main の上で git ${sub} はしない。ワークツリーで作業ブランチを切り、PR を通す`];
+  if (COMMITTING.has(sub) && !onlyStops(sub, rest)) {
+    if (!gitDir) return [ASK, `git ${sub} をする作業コピーを判定できない（cd ~ や変数の先、GIT_DIR=）`];
+    if (branchOf(gitDir) === 'main') return [DENY, `main の上で git ${sub} はしない。ワークツリーで作業ブランチを切り、PR を通す`];
   }
   if (sub !== 'push') return null;
 
