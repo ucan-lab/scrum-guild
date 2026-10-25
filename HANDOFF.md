@@ -93,7 +93,7 @@
 - [x] Cloudflare アカウントを Workers Paid にした（2026-10-25）。本番の D1 `scrum-guild` を Asia Pacific に作った
 - [x] 見本の Worker を Workers Builds につなぎ、Access で守った（2026-10-23、#5）。アカウントの `workers.dev` のサブドメインを `ucan-lab` に改めた。GitHub の Cloudflare のアプリはこのリポジトリ（今の `ucan-lab/scrum-guild`）だけに許可した
 - [ ] 見本を見せる人のメールアドレスを、見本の Worker の Access のアプリの方針に足す（`docs/development.md` の「見本の Worker」）
-- [ ] 見本の Worker の API トークン（`team-leveling-design build token`）の権限を、編集で絞る（`docs/development.md` の「見本の Worker」）。本番のトークンは 2026-10-25 に絞った
+- [x] 見本の Worker の API トークンを4つの権限に絞り、名前を `scrum-guild-design build token` に改めた（2026-10-25、`docs/development.md` の「見本の Worker」）。本番のトークンも同じ日に絞った
 - [x] スキルとエージェントを整えた（2026-10-22）。`requirements` を外し、レビューのエージェント3つを D1 と Workers 向けに書き直し、チェックリストに `cloudflare-workers.md` と `multi-tenant.md` を足した
 
 ### AI の機能（`docs/ai.md`）
