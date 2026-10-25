@@ -85,7 +85,7 @@ export const taskCreateOperation = implement(taskCreate, async ({ db, actor, wor
   }
 
   // 位置は親のないタスクの末尾。完了したタスクも並びに残っているので、それも含めた末尾に置く。
-  // 同時に作ると同じ位置になりうるが、並びは id で決まるので順番は崩れない
+  // 同時に作ると同じ位置になりうる。同じ位置の行は id の順に並ぶ（同じミリ秒の中では作った順とは限らない）
   const last = await db.first(
     db.statement((q) =>
       rootBacklogTasks(q, workspaceId).select('tasks.position').orderBy('tasks.position', 'desc').limit(1),
