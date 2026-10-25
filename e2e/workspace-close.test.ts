@@ -384,19 +384,22 @@ test.describe('管理者（あおば開発のミナト）', () => {
     await expect(page.getByText('パーティの一覧を読み込めませんでした')).toHaveCount(0);
   });
 
-  test('初回の読み込み中は、読み上げの領域（role="status"）に伝え、節に aria-busy を付ける', async ({ page }) => {
+  test('初回の読み込み中は、読み上げの領域（role="status"）に伝える', async ({ page }) => {
     await page.route('**/api/aoba/workspace-list', async (route) => {
       await new Promise((resolve) => setTimeout(resolve, 3000));
       await route.continue();
     });
     await page.goto('/aoba/admin', { waitUntil: 'commit' });
-    // 作るダイアログの候補の欄にも読み込み中の領域と aria-busy があるので、節の中に絞る
-    await expect(page.locator('.setting [role="status"]', { hasText: '読み込んでいます' })).toHaveCount(1);
-    await expect(page.locator('.setting [aria-busy="true"]')).toHaveCount(1);
+    // 作るダイアログの候補の欄にも読み込み中の領域があるので、節の中に絞る
+    const announcement = page.locator('.setting [role="status"]', { hasText: '読み込んでいます' });
+    await expect(announcement).toHaveCount(1);
+    // 領域は、描いた次のフレームで文字が入る。節の直下の領域（節の読み込み、再開の送信中）は、文字が消えても残る
+    const regions = page.locator('.setting-body > [role="status"]');
+    await expect(regions).toHaveCount(2);
     // 読めたら、領域は残したまま文字を消す
     await expect(page.locator('tbody tr', { hasText: '受託開発チーム' })).toBeVisible();
-    await expect(page.locator('.setting [role="status"]', { hasText: '読み込んでいます' })).toHaveCount(0);
-    await expect(page.locator('.setting [aria-busy="true"]')).toHaveCount(0);
+    await expect(announcement).toHaveCount(0);
+    await expect(regions).toHaveCount(2);
   });
 
   test('狭い幅でも、節の「もう一度試す」は 44px 四方以上ある', async ({ page }) => {

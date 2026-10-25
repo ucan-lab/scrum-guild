@@ -29,10 +29,14 @@
   }: { section: SectionStatus; failedTitle: string; refreshFailedText: string; children: Snippet } = $props();
 
   let body = $state<HTMLElement>();
-  // 描いた後に真にする。領域の文字が最初から入っていると、読み上げられないことがあるため
+  // 領域を描いた次のフレームで、文字を入れる。領域と文字が同じ描画で入ると、読み上げられないことがあるため。
+  // 取り外されるときは、まだ来ていないフレームを取り消す
   let mounted = $state(false);
   onMount(() => {
-    mounted = true;
+    const frame = requestAnimationFrame(() => {
+      mounted = true;
+    });
+    return () => cancelAnimationFrame(frame);
   });
   const loadingAnnouncement = $derived(mounted && section.state === 'loading' ? t('loading') : '');
 
@@ -54,7 +58,7 @@
 <span class="visually-hidden" role="status">{loadingAnnouncement}</span>
 
 {#if section.state === 'loading'}
-  <div aria-busy="true"><EmptyState icon="clock" title={t('loading')} /></div>
+  <EmptyState icon="clock" title={t('loading')} />
 {:else if section.state === 'failed'}
   <EmptyState icon="alert" title={failedTitle} text={t('loadFailedText')} actions={retryActions} />
 {:else}
