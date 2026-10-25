@@ -13,8 +13,8 @@
 
 ### D1
 
-1. 手元で `wrangler d1 create scrum-guild` を実行し、本番の D1 を作る
-2. 出力された `database_id` を `wrangler.jsonc` の `d1_databases` に入れ、PR で `main` に入れる。仮の値のままでは、デプロイが D1 の binding を解決できずに落ちる
+1. ダッシュボードの D1 の「Create Database」か、手元の `wrangler d1 create scrum-guild` で、本番の D1 を作る。置き場所は自動（作った人に近い地域）のまま。今の D1 は Asia Pacific にある（2026-10-25）
+2. D1 の ID を `wrangler.jsonc` の `d1_databases` の `database_id` に入れ、PR で `main` に入れる
 
 ### Workers Builds の接続
 
