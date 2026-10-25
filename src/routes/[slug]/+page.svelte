@@ -1,5 +1,4 @@
 <script lang="ts">
-  import { resolve } from '$app/paths';
   import { getHealth } from '../../lib/api.ts';
   import Dialog from '../../lib/components/Dialog.svelte';
   import EmptyState from '../../lib/components/EmptyState.svelte';
@@ -11,15 +10,16 @@
 
   // 自分の今日の仮の画面。枠と見出しと空の状態を部品で組み、API と画面がつながったことを示す。文言はすべて辞書を通す。
   // 今日やるタスクは API から取っていないので、件数や「所属すると並ぶ」といった事実は書かない。
-  // ワークスペースがまだない管理者には、最初のワークスペースを作るボタンを出す
+  // 空の状態は管理者の場合を分ける。組織にワークスペースが1つも無いときは、最初のワークスペースを作る案内。
+  // ワークスペースはあるが所属が0件のときは、所属が無いことの案内。ワークスペースを作る画面の行き先は、その画面を作る Issue で決める
   let { data }: PageProps = $props();
 
-  const needsFirstWorkspace = $derived(
-    data.organization !== null && data.organization.me.is_admin && data.organization.workspaces.length === 0,
-  );
-
-  // ワークスペースを作る画面の仮の URL。画面ができたら、その経路の ID を resolve に渡す形に替える
-  const newWorkspaceHref = $derived(`${resolve('/[slug]', { slug: data.slug })}/workspaces/new`);
+  const emptyKind = $derived.by(() => {
+    const view = data.organization;
+    if (view === null || !view.me.is_admin) return 'default';
+    if (!view.organization.has_workspaces) return 'firstWorkspace';
+    return view.workspaces.length === 0 ? 'noMembership' : 'default';
+  });
 
   let health = $state(getHealth());
   let checking = $state(false);
@@ -45,19 +45,18 @@
 <PageHead title={t('pageToday')} />
 
 <Section id="s-today" title={t('sectionToday')} hint={t('sectionTodayHint')}>
-  {#if needsFirstWorkspace}
+  {#if emptyKind === 'firstWorkspace'}
     <EmptyState
       icon="sun"
       title={t('firstWorkspaceTitle', { workspace: t('workspace') })}
-      text={t('firstWorkspaceText', { workspace: t('workspace') })}
-    >
-      {#snippet actions()}
-        <!-- eslint-disable-next-line svelte/no-navigation-without-resolve -- 経路がまだ無いので、resolve した組織の URL に仮の続きを足している -->
-        <a class="btn is-sm is-primary" href={newWorkspaceHref}
-          >{t('firstWorkspaceCreate', { workspace: t('workspace') })}</a
-        >
-      {/snippet}
-    </EmptyState>
+      text={t('firstWorkspaceText', { workspace: t('workspace'), member: t('member') })}
+    />
+  {:else if emptyKind === 'noMembership'}
+    <EmptyState
+      icon="sun"
+      title={t('noMembershipTitle', { workspace: t('workspace') })}
+      text={t('noMembershipText', { workspace: t('workspace'), member: t('member') })}
+    />
   {:else}
     <EmptyState icon="sun" title={t('todayEmptyTitle')} text={t('todayEmptyText')} />
   {/if}

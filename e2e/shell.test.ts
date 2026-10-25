@@ -232,11 +232,18 @@ test('アバターの色相が当たり、CSP の違反が無い', async ({ page
 test('画面の題名は「画面 - Scrum Guild」で、メニューには画面のある項目だけが出る', async ({ page }) => {
   await page.goto(today);
   await expect(page).toHaveTitle('自分の今日 - Scrum Guild');
-  await expect(page.locator('.nav-item')).toHaveText(['自分の今日']);
+  // 出る項目はすべて行き先を持つ（画面のある項目だけ）。今の画面は1つだけ
+  await expect(page.locator('.nav-item')).not.toHaveCount(0);
+  for (const item of await page.locator('.nav-item').all()) await expect(item).toHaveAttribute('href', /^\/aoba/);
   await expect(page.locator('.nav-item[aria-current="page"]')).toHaveCount(1);
-  // 項目が1つも無いグループは、見出しごと出さない
-  await expect(page.locator('.nav-group')).toHaveCount(0);
   await expect(page.locator('.is-later')).toHaveCount(0);
+  // 項目が1つも無いグループは、見出しごと出さない（見出しの次は必ず項目）
+  const emptyGroups = await page
+    .locator('.nav-group')
+    .evaluateAll(
+      (groups) => groups.filter((group) => !group.nextElementSibling?.classList.contains('nav-item')).length,
+    );
+  expect(emptyGroups).toBe(0);
 });
 
 // 本番の版は40文字の SHA。狭い幅でも横にはみ出さない

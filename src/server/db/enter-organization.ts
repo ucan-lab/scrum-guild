@@ -1,6 +1,8 @@
 // 組織に入れるかの判定と、ワークスペースが組織のものかの判定（docs/requirements.md の「メンバーと権限」）。
 // リクエストのたびに行う。共通の表（organizations）と組織の中の表（users、memberships、invitations）は別の問い合わせで引き、
 // 1つの SQL で結合しない（docs/data-model.md の「データベースの分け方」）
+import type { Theme } from '../../shared/theme.ts';
+import type { Vocabulary } from '../../shared/vocabulary.ts';
 import { commonDb, orgDb, type OrganizationDb } from './entries.ts';
 import { issueVerifiedOrganization } from './verify-organization.ts';
 import { issueVerifiedWorkspace, type VerifiedWorkspace, type WorkspaceRole } from './verify-workspace.ts';
@@ -22,8 +24,8 @@ export type OrganizationActor = {
 export type OrganizationSummary = {
   readonly slug: string;
   readonly name: string;
-  readonly vocabulary: string;
-  readonly theme: string;
+  readonly vocabulary: Vocabulary;
+  readonly theme: Theme;
 };
 
 export type OrganizationEntry = {
@@ -73,8 +75,9 @@ export async function enterOrganization(
     organization: {
       slug: organization.slug,
       name: organization.name,
-      vocabulary: organization.vocabulary,
-      theme: organization.theme,
+      // 列の CHECK が守る値。列挙に無い値が来ても、操作の出力のスキーマ（z.enum）が 500 で止める
+      vocabulary: organization.vocabulary as Vocabulary,
+      theme: organization.theme as Theme,
     },
   });
 

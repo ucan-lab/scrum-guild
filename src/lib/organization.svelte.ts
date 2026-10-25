@@ -1,5 +1,6 @@
 import type { OutputOf } from '../shared/operations/define.ts';
 import type { organizationInfo } from '../shared/operations/organization/index.ts';
+import { defaultVocabularies } from '../shared/vocabulary.ts';
 import { setTheme } from './theme.svelte.ts';
 import { setVocabularies } from './vocabulary.svelte.ts';
 
@@ -10,4 +11,11 @@ export type OrganizationView = OutputOf<typeof organizationInfo>;
 export function applyOrganization(view: OrganizationView): void {
   setTheme(view.me.theme ?? view.organization.theme);
   setVocabularies({ organization: view.organization.vocabulary, workspace: view.organization.vocabulary });
+}
+
+// 組織の外の画面（組織の選択、見つからない、読み込みの失敗、運用）の既定。どの組織の値も持ち越さない。
+// テーマは属性なし（シンプル（自動））にして、localStorage の値も消す
+export function resetToDefaults(): void {
+  setTheme(null);
+  setVocabularies(defaultVocabularies);
 }

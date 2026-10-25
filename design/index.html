@@ -317,6 +317,23 @@ const SECTIONS = [
       ${SQ.loginTarget("cat-login", { hints: { github: "GitHub のユーザー ID に解決して招待します。", google: "招待の URL を作り、本人がそこから Google でログインすると入れます。" } })}
     </div>`,
     ["2〜7個の短い選択肢は segmented、説明が要る選択肢は choice、その場で効くオンとオフはスイッチ。", "押すとすぐ移る選択肢（組織の選択）は a.choice にする。ラジオを持たず、行の全体がリンクになる。", "招待と管理者の指名で人を指す欄は loginTarget。先に手段を選び、選んだ手段に合わせて欄の名前、例、説明を差し替える。"], ".segmented / .toggle / .weekdays / .choice-list .choice / a.choice / SQ.loginTarget")],
+  ["org-menu", "組織の切り替え", () => block("org-menu", "組織の切り替え", "左のメニューの上（ブランドの下）に置く。開閉するメニューで、中は各組織へのリンクと、最後に組織の選択の画面へ戻るリンク。入れる組織が2つ以上、または届いた招待があるときだけ出す。",
+    `<div class="two"><div class="field"><span class="field-label">閉じているとき</span><div style="max-width:240px">${SQ.orgMenuHtml({ open: false, id: "cat-org-menu-closed", live: false })}</div></div>
+      <div class="field"><span class="field-label">開いているとき（今の組織に aria-current）</span><div style="max-width:240px">${SQ.orgMenuHtml({ open: true, id: "cat-org-menu-open", live: false })}</div></div></div>`,
+    ["選ぶと画面が移るので select にしない。矢印キーで選んだだけで移ってしまい、操作の結果が予告なく変わる（WCAG 3.2.2）。リンクの一覧なら、移るのは押したときだけになる。", "メニューの外を押す、Esc、リンクを押すと閉じる。Esc で閉じたら、開いたボタンにフォーカスを戻す。", "760px 以下でも隠さない。メニューが上の帯になる幅では、ブランドの横に並べ、開くと下に広がる。", "組織の名前は長くても折り返し、はみ出さない。"],
+    ".org-menu .org-menu-button .org-menu-list / a[aria-current=\"true\"] / SQ.orgMenuHtml()")],
+  ["gate", "枠の外の画面", () => block("gate", "枠の外の画面（ゲート）", "ログイン、組織の選択、見つからない、運用の仮の画面のように、左のメニューを出さない画面。.gate が画面いっぱいに中央寄せし、中の .gate-stack が紙（.gate-sheet）を縦に並べる。本番では Gate.svelte が外側、GateSheet.svelte が紙1枚。",
+    `<div class="gate-stack">
+      <section class="gate-sheet">
+        <div class="gate-brand"><span class="brand-seal" aria-hidden="true"><span class="orn-medieval">冒</span><span class="orn-plain">SG</span></span><span class="brand-name">Scrum Guild</span></div>
+        <h1 class="gate-title">${t("organization")}を選ぶ</h1>
+        <p>先頭の紙には、ブランドと画面の見出し（h1）を置く。</p>
+        <p class="gate-note">補足は gate-note に書く。</p>
+      </section>
+      <section class="gate-sheet"><h2 class="dialog-title">届いた招待</h2><p class="gate-note">2枚目からの紙は、見出しを h2 にする。</p></section>
+    </div>`,
+    ["紙の幅は 440px までで、狭い画面では画面の幅に収める。", "枠の外の画面では、テーマと言葉づかいを既定（シンプル（自動）、ゲームの言葉）に戻す。どの組織の値も持ち越さない。", "本番の Gate は、外側を main にする。"],
+    ".gate .gate-stack .gate-sheet .gate-brand .gate-title .gate-note")],
   ["settings", "設定の節と並べ替え", () => block("settings", "設定の節と並べ替え", "設定の画面は、左に説明、右に入力を置く節を縦に並べる。並べ替えられる一覧は、ドラッグの他に上下のボタンを持つ。",
     `<div class="settings"><section class="setting"><div class="setting-head"><h3 class="setting-title">${t("column")}</h3><p class="setting-desc">名前は言葉づかいを切り替えても訳しません。</p></div><div class="setting-body">
       <ol class="order-list">${D.columns.filter((c) => !c.done).map((c, i, a) => `<li><span class="grip">${icon("grip")}</span><input class="input" value="${c.name}" aria-label="名前"><span class="order-actions"><button class="icon-btn" type="button" aria-label="上へ" ${i === 0 ? "disabled" : ""}>${icon("up")}</button><button class="icon-btn" type="button" aria-label="下へ" ${i === a.length - 1 ? "disabled" : ""}>${icon("down")}</button><button class="icon-btn is-danger" type="button" aria-label="削除">${icon("trash")}</button></span></li>`).join("")}

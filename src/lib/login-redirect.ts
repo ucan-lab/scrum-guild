@@ -3,8 +3,15 @@
 
 export const loginPath = '/login';
 
+// return_to は自分のオリジンのパスだけにする。`//` と `/\` で始まる値は、ブラウザが別のオリジンとして解釈するので `/` に落とす
+// （ログインの後に戻す側も検査するが、作る側でも外へ向けた値を作らない）
+function safeReturnPath(path: string): string {
+  if (!path.startsWith('/') || path.startsWith('//') || path.startsWith('/\\')) return '/';
+  return path;
+}
+
 export function loginUrl(current: { pathname: string; search: string }): string {
-  return `${loginPath}?return_to=${encodeURIComponent(current.pathname + current.search)}`;
+  return `${loginPath}?return_to=${encodeURIComponent(safeReturnPath(current.pathname + current.search))}`;
 }
 
 export function isUnauthenticated(result: { ok: boolean; error?: { code: string } | null }): boolean {

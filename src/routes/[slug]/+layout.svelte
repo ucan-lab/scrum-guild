@@ -1,6 +1,5 @@
 <script lang="ts">
   import type { Snippet } from 'svelte';
-  import { invalidateAll } from '$app/navigation';
   import { resolve } from '$app/paths';
   import { page } from '$app/state';
   import AppShell from '../../lib/components/AppShell.svelte';
@@ -8,16 +7,19 @@
   import EmptyState from '../../lib/components/EmptyState.svelte';
   import Gate from '../../lib/components/Gate.svelte';
   import GateSheet from '../../lib/components/GateSheet.svelte';
+  import LoadFailed from '../../lib/components/LoadFailed.svelte';
   import OrganizationSwitcher from '../../lib/components/OrganizationSwitcher.svelte';
   import { applyOrganization } from '../../lib/organization.svelte.ts';
   import { t } from '../../lib/vocabulary.svelte.ts';
   import type { LayoutData } from './$types';
 
   // 組織の枠。組織の操作の結果で data-theme と言葉づかいを当て、左のメニューと上の帯を出す。
-  // 組織に入れないときと無いときは、どちらも同じ「見つからない」の画面（どちらかを漏らさない）
+  // 組織に入れないときと無いときは、どちらも同じ「見つからない」の画面（どちらかを漏らさない）。
+  // 見つからないのは、API が not_found の 404 を返したときだけ。ほかの失敗（通信、5xx、権限）は読み込みの失敗
   let { data, children }: { data: LayoutData; children: Snippet } = $props();
 
   const organization = $derived(data.organization);
+  const notFound = $derived(data.failure?.status === 404 && data.failure.code === 'not_found');
 
   $effect(() => {
     if (organization) applyOrganization(organization);
@@ -34,7 +36,7 @@
 
 <!-- 組織の中の画面は、それぞれの題名を持つ。見つからない画面だけが、ここで題名を決める -->
 <svelte:head>
-  {#if !organization && data.failureStatus === 404}
+  {#if !organization && notFound}
     <title>{t('pageTitle', { page: t('organizationNotFoundTitle'), app: t('appName') })}</title>
   {/if}
 </svelte:head>
@@ -42,7 +44,11 @@
 {#if organization}
   {#snippet organizationSwitcher()}
     {#if switcherOrganizations}
-      <OrganizationSwitcher organizations={switcherOrganizations} currentSlug={data.slug} />
+      <OrganizationSwitcher
+        organizations={switcherOrganizations}
+        currentSlug={data.slug}
+        currentName={organization.organization.name}
+      />
     {/if}
   {/snippet}
   {#snippet account()}
@@ -60,7 +66,7 @@
   >
     {@render children()}
   </AppShell>
-{:else if data.failureStatus === 404}
+{:else if notFound}
   <Gate>
     <GateSheet brand title={t('organizationNotFoundTitle')}>
       <EmptyState icon="search" title={t('organizationNotFoundText')}>
@@ -71,13 +77,5 @@
     </GateSheet>
   </Gate>
 {:else}
-  <Gate>
-    <GateSheet brand title={t('loadFailedTitle')}>
-      <EmptyState icon="alert" title={t('loadFailedText')}>
-        {#snippet actions()}
-          <button class="btn is-sm" type="button" onclick={() => invalidateAll()}>{t('retry')}</button>
-        {/snippet}
-      </EmptyState>
-    </GateSheet>
-  </Gate>
+  <LoadFailed />
 {/if}

@@ -7,18 +7,17 @@
 
   // kit.js の navHtml。current は今の画面のパス、slug は今の組織。画面のある項目だけを出す（nav.ts の visibleNav）。
   // 所属するワークスペースが無い人（hasWorkspace が偽）には、組織の画面だけを出す。
-  // ワークスペースの切り替えは置き場所だけで、中身は画面を作る Issue で snippet として渡す
+  // ワークスペースの切り替えは置き場所だけで、中身は画面を作る Issue で snippet として渡す。
+  // 組織の切り替えはメニューの外（AppShell のブランドの下）に置く
   let {
     current,
     slug,
     hasWorkspace,
-    organizationSwitcher,
     workspaceSwitcher,
   }: {
     current: string;
     slug: string;
     hasWorkspace: boolean;
-    organizationSwitcher?: Snippet;
     workspaceSwitcher?: Snippet;
   } = $props();
 
@@ -26,9 +25,8 @@
 </script>
 
 <nav class="nav">
-  {#each sections as section (section.heading ?? section.slot)}
+  {#each sections as section (section.heading ?? 'organization')}
     {#if section.heading}<div class="nav-group">{t(section.heading)}</div>{/if}
-    {#if section.slot === 'organization' && organizationSwitcher}{@render organizationSwitcher()}{/if}
     {#if section.slot === 'workspace' && workspaceSwitcher}{@render workspaceSwitcher()}{/if}
     {#each section.items as item (item.label)}
       {@const href = resolve(item.href, { slug })}

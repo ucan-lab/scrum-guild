@@ -1,30 +1,62 @@
 <script lang="ts">
-  import { goto } from '$app/navigation';
   import { resolve } from '$app/paths';
   import { t } from '../vocabulary.svelte.ts';
+  import Icon from './Icon.svelte';
 
-  // kit.js の組織の切り替え。選ぶとその組織へ移り、最後の項目は組織の選択の画面へ戻る
+  // kit.js の orgMenuHtml。開閉するメニューで、中は各組織へのリンクと、最後に組織の選択の画面（/）へ戻るリンク。
+  // 選ぶと画面が移るので select にしない（矢印キーで選んだだけで移ってしまう）。
+  // メニューの外を押す、Esc、リンクを押すと閉じる。Esc で閉じたら開いたボタンにフォーカスを戻す
   let {
     organizations,
     currentSlug,
-  }: { organizations: readonly { slug: string; name: string }[]; currentSlug: string } = $props();
+    currentName,
+  }: { organizations: readonly { slug: string; name: string }[]; currentSlug: string; currentName: string } = $props();
 
-  const id = $props.id();
-  // slug は英小文字・数字・ハイフンなので、空の値は一覧の項目だけを指す
-  const LIST = '';
+  const listId = $props.id();
+  let open = $state(false);
+  let root = $state<HTMLElement>();
+  let button = $state<HTMLButtonElement>();
 
-  function change(event: Event & { currentTarget: HTMLSelectElement }): void {
-    const value = event.currentTarget.value;
-    void goto(value === LIST ? resolve('/') : resolve('/[slug]', { slug: value }));
+  function close(): void {
+    open = false;
+  }
+
+  function onKeydown(event: KeyboardEvent): void {
+    if (!open || event.key !== 'Escape') return;
+    open = false;
+    button?.focus();
+  }
+
+  function onClick(event: MouseEvent): void {
+    if (open && root && event.target instanceof Node && !root.contains(event.target)) open = false;
   }
 </script>
 
-<label class="ws-select" for={id}>
-  <span>{t('organization')}</span>
-  <select {id} onchange={change}>
+<svelte:window onkeydown={onKeydown} onclick={onClick} />
+
+<div class="org-menu" bind:this={root}>
+  <button
+    class="org-menu-button"
+    type="button"
+    aria-expanded={open}
+    aria-controls={listId}
+    bind:this={button}
+    onclick={() => (open = !open)}
+  >
+    <span>{t('organization')}</span>
+    <b>{currentName}</b>
+    <Icon name="chevron" />
+  </button>
+  <ul class="org-menu-list" id={listId} hidden={!open}>
     {#each organizations as organization (organization.slug)}
-      <option value={organization.slug} selected={organization.slug === currentSlug}>{organization.name}</option>
+      <li>
+        <a
+          href={resolve('/[slug]', { slug: organization.slug })}
+          aria-current={organization.slug === currentSlug ? 'true' : undefined}
+          onclick={close}>{organization.name}</a
+        >
+      </li>
     {/each}
-    <option value={LIST}>{t('organizationList')}</option>
-  </select>
-</label>
+    <li><a href={resolve('/')} onclick={close}>{t('organizationList')}</a></li>
+  </ul>
+</div>

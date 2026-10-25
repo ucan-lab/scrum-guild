@@ -7,6 +7,8 @@ const baseURL = `http://localhost:${devPorts(process.env).api}`;
 export default defineConfig({
   testDir: 'e2e',
   outputDir: 'test-results',
+  // seed の入れ直し。webServer が立ってから動く
+  globalSetup: './e2e/global-setup.ts',
   forbidOnly: Boolean(process.env.CI),
   reporter: [['list'], ['html', { open: 'never', outputFolder: 'playwright-report' }]],
   use: {
@@ -17,8 +19,7 @@ export default defineConfig({
   },
   projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
   webServer: {
-    // ログインした画面は seed のセッションで開くので、サーバーを立てる前に seed を入れ直す（手元の D1 の行は消える）
-    command: 'pnpm db:seed && pnpm preview',
+    command: 'pnpm preview',
     url: `${baseURL}/api/health`,
     // 手元では立てたままの preview を使えるが、CI では必ずこのコミットで build し直す
     reuseExistingServer: !process.env.CI,

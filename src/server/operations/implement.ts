@@ -16,12 +16,17 @@ import type {
 } from '../db/index.ts';
 import type { OutsideAccount } from './account.ts';
 
+// 応答を待たせずに続ける仕事。応答の後も終わるまで Worker が残る（waitUntil）。失敗は登録の関数が例外の名前だけをログに残す。
+// 読む操作が副作用として書くものに使う（書き込みは db.batch で送る）
+export type Defer = (task: () => Promise<unknown>) => void;
+
 export type OutsideContext<Input> = { db: CommonDb; accountId: string; account: OutsideAccount; input: Input };
 // organization は入るときに引いた組織の行（名前、言葉づかい、既定のテーマ）。組織の中の処理は共通の入口を持たない
 export type OrganizationContext<Input> = {
   db: OrganizationDb;
   actor: OrganizationActor;
   organization: OrganizationSummary;
+  defer: Defer;
   input: Input;
 };
 export type WorkspaceContext<Input> = OrganizationContext<Input> & { workspace: VerifiedWorkspace };

@@ -56,6 +56,15 @@ describe('ログインへの戻し方', () => {
     );
   });
 
+  test('別のオリジンへ向く形（// と /\\ で始まるパス）は、作る側でも / に落とす', () => {
+    assert.equal(loginUrl({ pathname: '//evil.example', search: '' }), '/login?return_to=%2F');
+    assert.equal(loginUrl({ pathname: '/\\evil.example', search: '' }), '/login?return_to=%2F');
+    assert.equal(loginUrl({ pathname: '//evil.example/path', search: '?a=1' }), '/login?return_to=%2F');
+    assert.equal(loginUrl({ pathname: 'aoba', search: '' }), '/login?return_to=%2F');
+    // 普通のパスは変えない
+    assert.equal(loginUrl({ pathname: '/aoba//x', search: '' }), `/login?return_to=${encodeURIComponent('/aoba//x')}`);
+  });
+
   test('401 の unauthenticated だけを未ログインとして扱う', () => {
     assert.equal(isUnauthenticated({ ok: false, error: { code: 'unauthenticated' } }), true);
     assert.equal(isUnauthenticated({ ok: false, error: { code: 'not_found' } }), false);
@@ -75,10 +84,13 @@ describe('メニュー', () => {
     assert.deepEqual(headings(true), [undefined, 'workspace', 'groupRecords', 'groupManage']);
   });
 
-  test('今ある項目は自分の今日だけ', () => {
-    assert.deepEqual(
-      visibleNav().flatMap((section) => section.items.map((item) => item.label)),
-      ['pageToday'],
-    );
+  test('行き先の無い（href が null の）項目と、項目の無い見出しは出さない', () => {
+    const shown = visibleNav();
+    const withDestination = navSections.flatMap((section) => section.items).filter((item) => item.href !== null);
+    assert.equal(shown.flatMap((section) => section.items).length, withDestination.length);
+    for (const section of shown) {
+      assert.ok(section.items.length > 0, `項目の無い見出し: ${section.heading}`);
+      for (const item of section.items) assert.notEqual(item.href, null);
+    }
   });
 });

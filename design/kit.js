@@ -1137,14 +1137,30 @@
     // ワークスペースがまだない管理者には、ワークスペースの中の画面を出さない
     const cut = Object.keys(D.workspaces).length ? pages.length : pages.indexOf("workspace");
     return pages.slice(0, cut < 0 ? pages.length : cut).map((p) => {
-      // 入れる組織が2つ以上のときだけ出す。選び直すと組織の選択の画面へ
-      if (p === "organization") return D.organizations.length < 2 ? "" : `<label class="ws-select" for="kd"><span>${t("organization")}</span><select id="kd" onchange="location.href='organizations.html'">${D.organizations.map((k) => `<option ${k.slug === D.organization ? "selected" : ""}>${esc(k.name)}</option>`).join("")}<option>${t("organization")}の一覧へ</option></select></label>`;
+      // 組織の切り替えは、メニューの外（ブランドの下）の orgMenuHtml
+      if (p === "organization") return "";
       if (p === "workspace") return `<div class="nav-group">${t("workspace")}</div>
         <label class="ws-select" for="ws"><span>${t("workspace")}</span><select id="ws">${Object.values(D.workspaces).map((w) => `<option>${esc(w.name)}</option>`).join("")}</select></label>`;
       if (typeof p === "string") return `<div class="nav-group">${p}</div>`;
       const [id, ic, label, href, badge] = p;
       return `<a class="nav-item" href="${firstHref(href)}" ${current === id ? 'aria-current="page"' : ""}>${icon(ic)}<span>${label()}</span>${badge && !first ? `<span class="nav-badge">${badge}</span>` : ""}</a>`;
     }).join("");
+  }
+  // 組織の切り替え。開閉するメニューで、中は各組織へのリンクと、最後に組織の選択の画面へ戻るリンク。
+  // 入れる組織が2つ以上のときだけ出す。select にしないのは、矢印キーで選んだだけで画面が移らないようにするため
+  let orgMenuOpen = false;
+  // カタログの見本は、開いた状態と閉じた状態を並べるので、open と id を渡す。live が偽なら押しても動かない
+  function orgMenuHtml({ open = orgMenuOpen, id = "org-menu-list", live = true } = {}) {
+    if (D.organizations.length < 2) return "";
+    const current = D.organizations.find((k) => k.slug === D.organization) || D.organizations[0];
+    return `<div class="org-menu"><button class="org-menu-button" type="button" aria-expanded="${open}" aria-controls="${id}" ${live ? "data-org-menu" : ""}><span>${t("organization")}</span><b>${esc(current.name)}</b>${icon("chevron")}</button>
+      <ul class="org-menu-list" id="${id}" ${open ? "" : "hidden"}>${D.organizations.map((k) => `<li><a href="today.html"${k.slug === current.slug ? ' aria-current="true"' : ""}>${esc(k.name)}</a></li>`).join("")}<li><a href="organizations.html">${t("organization")}の一覧へ</a></li></ul></div>`;
+  }
+  function setOrgMenu(open, focus) {
+    orgMenuOpen = open;
+    const slot = document.getElementById("org-menu-slot");
+    if (slot) slot.innerHTML = orgMenuHtml();
+    if (focus) document.querySelector("[data-org-menu]")?.focus();
   }
   const FIRST_LABEL = { member: "最初の日・一般", leader: "最初の日・リーダー", admin: "最初の日・管理者" };
   const firstLabel = (role) => FIRST_LABEL[role] || "使い込んだ状態";
@@ -1159,6 +1175,7 @@
   let page = null;
   function redraw() {
     if (!page) return;
+    document.getElementById("org-menu-slot").innerHTML = page.operator ? "" : orgMenuHtml();
     document.getElementById("nav").innerHTML = navHtml(page.current, page.operator ? OPERATOR_PAGES : PAGES);
     document.querySelectorAll("[data-vocab-label]").forEach((el) => (el.textContent = `言葉: ${t("vocab")}`));
     document.querySelectorAll("[data-assist-label]").forEach((el) => (el.textContent = `${t("assistant")}に頼む`));
@@ -1181,6 +1198,7 @@
     <div class="app">
       <aside class="binding" aria-label="メニュー"><div class="binding-inner">
         <a class="brand" href="index.html" title="デザインシステムのカタログへ">${brandSeal}<span class="brand-name">Scrum Guild</span></a>
+        <div id="org-menu-slot"></div>
         <nav class="nav" id="nav"></nav>
         <p class="binding-foot">デザインの見本。データはすべて架空の例です</p>
       </div></aside>
@@ -1261,6 +1279,9 @@
   document.addEventListener("click", (ev) => {
     const hit = (attr) => ev.target.closest(`[${attr}]`);
     let el;
+    // 組織の切り替えを開閉する。外を押したら閉じる（押したものの動きは続ける）
+    if (hit("data-org-menu")) { setOrgMenu(!orgMenuOpen, true); return; }
+    if (orgMenuOpen && !ev.target.closest(".org-menu")) setOrgMenu(false);
     if ((el = hit("data-sun"))) {
       const x = task(el.dataset.sun);
       x.todayOn = x.todayOn === D.today ? null : D.today;
@@ -1364,6 +1385,7 @@
       ev.preventDefault(); openAssist(assist.open === "panel" ? "panel" : "palette"); return;
     }
     if (ev.key !== "Escape" || ev.isComposing || ev.keyCode === 229) return;
+    if (orgMenuOpen) { setOrgMenu(false, true); return; }
     if (closeCelebrate() || closeDialog()) return;
     if (assist.open === "palette") { closeAssist(); return; }
     if (drawer.id) { closeDrawer(); return; }
@@ -1450,7 +1472,7 @@
     user, task, tasksWhere, repoTag, repoPicker, sprintLabel, colName, categoryOf, storyPts, epicPts, dueOf,
     avatar, avatarOf, emblem, pts, dueChip, taskDue, tier, sourceKey, entry, book, section, pageHead,
     card, board, treeStory, treeEpic, sprintNotice, raidNotice, progress, levelPanel, load, capacityRows,
-    openDialog, closeDialog, toast, celebrate, miniCap, redraw: () => redrawAll(), DIALOGS, loginTarget,
+    openDialog, closeDialog, toast, celebrate, miniCap, redraw: () => redrawAll(), DIALOGS, loginTarget, orgMenuHtml,
     filesOf, fileThumb, fileRow, dropzone, attachments, mdBody, meter,
     PROVIDER, ASSIST_KEY, assistMsg, assistBlocked, assistSuggest, openAssist,
     enableAssistOnCatalog: () => { assistOnCatalog = true; },

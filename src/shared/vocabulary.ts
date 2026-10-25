@@ -82,6 +82,8 @@ export const dictionary = defineDictionary({
     'しばらくしてから、もう一度試してください。',
   ),
   retry: organization('もう一度試す', 'もう一度試す'),
+  retrying: organization('読み込んでいます', '読み込んでいます'),
+  loading: organization('読み込んでいます', '読み込んでいます'),
 
   // メニューの項目と見出し。ワークスペースの外の画面は organization
   pageToday: organization('自分の今日', '自分の今日'),
@@ -107,13 +109,19 @@ export const dictionary = defineDictionary({
     'いまは API の疎通だけを確かめる仮の画面です。',
   ),
 
-  // 自分の今日の空の状態。ワークスペースがまだない管理者に、最初のワークスペースを作るボタンを出す
+  // 自分の今日の空の状態（管理者）。{workspace} と {member} は、その言葉づかいの言葉を画面が渡す。
+  // 組織にワークスペースが1つも無いときは、最初のワークスペースを作る案内。作る画面の行き先は、その画面を作る Issue で決める
   firstWorkspaceTitle: organization('まだ{workspace}がありません', 'まだ{workspace}がありません'),
   firstWorkspaceText: organization(
-    '最初の{workspace}を作って、冒険者を招きましょう。',
-    '最初の{workspace}を作って、メンバーを招きましょう。',
+    '最初の{workspace}を作って、{member}を招きましょう。',
+    '最初の{workspace}を作って、{member}を招きましょう。',
   ),
-  firstWorkspaceCreate: organization('{workspace}を作る', '{workspace}を作る'),
+  // ワークスペースはあるが、自分の所属が0件のとき
+  noMembershipTitle: organization('どの{workspace}にも所属していません', 'どの{workspace}にも所属していません'),
+  noMembershipText: organization(
+    '{workspace}の{member}に加わると、ここから使えます。',
+    '{workspace}の{member}に加わると、ここから使えます。',
+  ),
 
   // 組織の選択と、枠の外の画面（組織の切り替え、見つからない、運用の仮の画面）
   organizationChooseTitle: organization('冒険者ギルドを選ぶ', '組織を選ぶ'),
@@ -131,6 +139,12 @@ export const dictionary = defineDictionary({
     'ギルドマスターから招待が届くと、ここに出ます。',
     '管理者から招待が届くと、ここに出ます。',
   ),
+  // 入れる組織は無いが、届いた招待がある人
+  noOrganizationInvitedTitle: organization('まだ入れる冒険者ギルドがありません', 'まだ入れる組織がありません'),
+  noOrganizationInvitedText: organization(
+    '届いた招待の承諾と辞退は、この画面にこれから加わります。',
+    '届いた招待の承諾と辞退は、この画面にこれから加わります。',
+  ),
   invitationsHeading: organization('届いた招待', '届いた招待'),
   invitationPending: organization('承諾待ちの招待があります', '承諾待ちの招待があります'),
   invitationsNote: organization(
@@ -146,8 +160,8 @@ export const dictionary = defineDictionary({
   pageOperator: organization('運用', '運用'),
   operatorEmptyTitle: organization('運用の画面は準備中です', '運用の画面は準備中です'),
   operatorEmptyText: organization(
-    '運用者のログインで入りました。入れる組織はまだありません。',
-    '運用者のログインで入りました。入れる組織はまだありません。',
+    '組織の一覧と作成は、この画面に並びます。',
+    '組織の一覧と作成は、この画面に並びます。',
   ),
 
   // API の疎通の表示（仮の画面）

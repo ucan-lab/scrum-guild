@@ -5,9 +5,8 @@
   import NavMenu from './NavMenu.svelte';
 
   // kit.js の mount が組む画面の枠。左のメニュー（綴じ）と、上の帯と本文（帳面）。slug は今の組織で、組織の中の画面だけが使う。
-  // 組織とワークスペースの切り替え、アシスタントのボタンは置き場所だけで、中身は snippet で渡す。
-  // 上の帯は、assistant、tools、account のどれかを渡したときだけ出す（空の帯を出さない）。
-  // tools は開発用の切り替えなど、account はログインしている人の表示
+  // 組織の切り替え（ブランドの下）、ワークスペースの切り替え、アシスタントのボタンは置き場所だけで、中身は snippet で渡す。
+  // 上の帯は、assistant か account のどちらかを渡したときだけ出す（空の帯を出さない）。account はログインしている人の表示
   let {
     current,
     slug,
@@ -15,7 +14,6 @@
     organizationSwitcher,
     workspaceSwitcher,
     assistant,
-    tools,
     account,
     children,
   }: {
@@ -25,7 +23,6 @@
     organizationSwitcher?: Snippet;
     workspaceSwitcher?: Snippet;
     assistant?: Snippet;
-    tools?: Snippet;
     account?: Snippet;
     children: Snippet;
   } = $props();
@@ -40,14 +37,14 @@
         >
         <span class="brand-name">{t('appName')}</span>
       </a>
-      <NavMenu {current} {slug} {hasWorkspace} {organizationSwitcher} {workspaceSwitcher} />
+      {#if organizationSwitcher}{@render organizationSwitcher()}{/if}
+      <NavMenu {current} {slug} {hasWorkspace} {workspaceSwitcher} />
     </div>
   </aside>
   <div class="sheet">
-    {#if assistant || tools || account}
+    {#if assistant || account}
       <div class="topbar">
         {#if assistant}{@render assistant()}{/if}
-        {#if tools}{@render tools()}{/if}
         {#if account}{@render account()}{/if}
       </div>
     {/if}

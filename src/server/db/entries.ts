@@ -33,9 +33,12 @@ export function commonDb(env: Env): CommonDb {
 // 組織をまたいで組織の中の表を読む入口。組織で絞らないので、cross-organization.ts だけが使う（index.ts は出さない）。
 // 組織の中の操作の処理には渡さない
 export function crossOrganizationEntries(env: Env): DbEntry<OrganizationTables, 'organization'>[] {
-  return allOrganizationDatabases(env).map(
-    (d1) => new DbEntry<OrganizationTables, 'organization'>(d1, organizationQueries),
-  );
+  return entriesOf(allOrganizationDatabases(env));
+}
+
+// DB の一覧から入口を作る。DB を複数にした場合をテストが確かめるのに使う（testing.ts）
+export function entriesOf(databases: readonly D1Database[]): DbEntry<OrganizationTables, 'organization'>[] {
+  return databases.map((d1) => new DbEntry<OrganizationTables, 'organization'>(d1, organizationQueries));
 }
 
 // 組織の中の16表。組織を確かめた結果が無いと作れない

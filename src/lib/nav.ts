@@ -14,7 +14,7 @@ export type NavItem = { icon: IconName; label: DictionaryKey; href: NavRoute | n
 // inWorkspace は、ワークスペースの中の画面の見出し。所属するワークスペースが無い人（最初のワークスペースを作る前の管理者）には出さない
 export type NavSection = {
   heading?: DictionaryKey;
-  slot?: 'organization' | 'workspace';
+  slot?: 'workspace';
   inWorkspace?: true;
   items: NavItem[];
 };
@@ -38,7 +38,6 @@ export function visibleNav(
 
 export const navSections: NavSection[] = [
   {
-    slot: 'organization',
     items: [
       { icon: 'sun', label: 'pageToday', href: '/[slug]' },
       { icon: 'bell', label: 'pageNotifications', href: null },

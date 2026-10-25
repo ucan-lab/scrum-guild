@@ -7,6 +7,8 @@ import type { DictionaryKey } from './vocabulary.ts';
 export const themes = ['simple', 'simple_light', 'simple_dark', 'medieval', 'modern'] as const;
 export type Theme = (typeof themes)[number];
 
+// テーマを選ぶ設定の画面が使う、テーマごとの辞書のキー。今は画面から使わないが、全テーマに辞書の名前があることを
+// scripts/theme.test.ts が確かめる（テーマを足したとき、辞書の名前の足し忘れを止める）
 export const themeLabelKeys: Record<Theme, DictionaryKey> = {
   simple: 'themeSimple',
   simple_light: 'themeSimpleLight',
