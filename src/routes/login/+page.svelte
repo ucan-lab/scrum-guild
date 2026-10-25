@@ -27,6 +27,10 @@
     return Object.hasOwn(errorMessages, error) ? errorMessages[error] : undefined;
   });
 
+  // ログアウトの直後（src/lib/logout-action.svelte.ts が付ける）。?error= があるときは、エラーだけを出す。
+  // 読み込んだときから在る文なので role="status" を付けない（読み上げの領域は、常に置いて文字だけを替えるときに使う）。見出しの次に読まれる
+  const loggedOut = $derived(page.url.searchParams.get('logged_out') === '1' && !page.url.searchParams.has('error'));
+
   // ほかの文言に混ぜる言葉。organization と workspace と leader は辞書のそれぞれの項目
   const words = $derived({ organization: t('organization'), workspace: t('workspace'), leader: t('leader') });
 </script>
@@ -39,6 +43,8 @@
   <GateSheet brand title={t('loginTitle')}>
     {#if errorKey}
       <div class="callout is-warn" role="alert"><Icon name="alert" /><span>{t(errorKey, words)}</span></div>
+    {:else if loggedOut}
+      <div class="callout is-info"><Icon name="shield" /><span>{t('loggedOut')}</span></div>
     {/if}
     <p>{t('loginLead', words)}</p>
     <!-- 画面の経路ではなく Worker の GET。resolve() は経路の ID を要るので通さず、data-sveltekit-reload で直に開く -->

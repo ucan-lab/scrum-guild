@@ -5,6 +5,7 @@
   import GateSheet from '../../lib/components/GateSheet.svelte';
   import Icon from '../../lib/components/Icon.svelte';
   import LoadFailed from '../../lib/components/LoadFailed.svelte';
+  import LogoutButton from '../../lib/components/LogoutButton.svelte';
   import { formatDateTime } from '../../lib/format-datetime.ts';
   import { t } from '../../lib/vocabulary.svelte.ts';
   import type { PageProps } from './$types';
@@ -67,6 +68,7 @@
           </table>
         </div>
       {/if}
+      <div class="form-actions"><LogoutButton /></div>
     </GateSheet>
   </Gate>
 {/if}

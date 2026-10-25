@@ -28,4 +28,15 @@ export const SEED_SESSIONS = {
     accountId: '019a0000-0000-7000-8000-000000000104',
     description: 'どの組織にも属さない運用者',
   },
+  // e2e のログアウトが消すための2本目。e2e は上のセッションを全ファイルで共有して並列に走るので、共有のものはログアウトしない
+  adminLogout: {
+    token: 'dev-seed-admin-logout-000000000000000000000',
+    accountId: '019a0000-0000-7000-8000-000000000101',
+    description: 'admin と同じアカウントの2本目（e2e のログアウトが消す）',
+  },
+  operatorLogout: {
+    token: 'dev-seed-operator-logout-000000000000000000',
+    accountId: '019a0000-0000-7000-8000-000000000104',
+    description: 'operator と同じアカウントの2本目（e2e のログアウトが消す）',
+  },
 } as const satisfies Record<string, SeedSession>;

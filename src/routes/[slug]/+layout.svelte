@@ -2,8 +2,8 @@
   import type { Snippet } from 'svelte';
   import { resolve } from '$app/paths';
   import { page } from '$app/state';
+  import AccountMenu from '../../lib/components/AccountMenu.svelte';
   import AppShell from '../../lib/components/AppShell.svelte';
-  import Avatar from '../../lib/components/Avatar.svelte';
   import EmptyState from '../../lib/components/EmptyState.svelte';
   import Gate from '../../lib/components/Gate.svelte';
   import GateSheet from '../../lib/components/GateSheet.svelte';
@@ -61,10 +61,7 @@
     {#if openWorkspace?.role === null}
       <span class="chip">{t('notMemberAdminChip', { admin: t('admin') })}</span>
     {/if}
-    <span class="me">
-      <Avatar userId={organization.me.id} name={organization.me.name} />{organization.me.name}
-      {#if organization.me.is_admin}<span class="chip">{t('admin')}</span>{/if}
-    </span>
+    <AccountMenu userId={organization.me.id} name={organization.me.name} isAdmin={organization.me.is_admin} />
   {/snippet}
   {#snippet workspaceSwitcher()}
     {#if openWorkspace}

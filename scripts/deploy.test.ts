@@ -331,7 +331,7 @@ describe('deploy', () => {
     assert.ok(f.clock() <= 120_000);
   });
 
-  test('版が一致した後、seed のトークンを4つとも本番に送り、どれも 401 なら成功する', async () => {
+  test('版が一致した後、seed のトークンを全部本番に送り、どれも 401 なら成功する', async () => {
     const f = fake({});
     assert.equal(await deploy(f.deps), 0);
     assert.equal(f.seedRequests.length, Object.keys(SEED_SESSIONS).length);

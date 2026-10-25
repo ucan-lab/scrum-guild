@@ -481,6 +481,16 @@ export const dictionary = defineDictionary({
   apiDetailTitle: organization('API の詳細', 'API の詳細'),
   apiDetailBody: organization('この画面が呼んだ API の応答です。', 'この画面が呼んだ API の応答です。'),
 
+  // アカウントのメニュー（組織の中の上の帯）とログアウト。{name} はログインしている人の名前
+  accountMenuLabel: organization('{name}。アカウントのメニュー', '{name}。アカウントのメニュー'),
+  logout: organization('ログアウト', 'ログアウト'),
+  logoutMoving: organization('ログアウトしています', 'ログアウトしています'),
+  logoutFailed: organization(
+    'ログアウトできませんでした。時間をおいてもう一度試してください。',
+    'ログアウトできませんでした。時間をおいてもう一度試してください。',
+  ),
+  loggedOut: organization('ログアウトしました。', 'ログアウトしました。'),
+
   // ログインの画面。{organization} {workspace} {leader} は、それぞれ辞書の同じ名前の項目で埋める
   loginTitle: organization('ログイン', 'ログイン'),
   loginLead: organization(
