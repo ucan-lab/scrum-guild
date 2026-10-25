@@ -330,6 +330,24 @@ export const dictionary = defineDictionary({
   operatorLiveVerified: organization('確かめました: {name}', '確かめました: {name}'),
   operatorLiveCreating: organization('作っています', '作っています'),
   operatorLiveCreated: organization('作りました', '作りました'),
+  operatorLiveExisting: organization(
+    '作られていた{organization}を見ています',
+    '作られていた{organization}を見ています',
+  ),
+  // 作れたか分からない失敗の後に、読み直した一覧で見つけた組織の表示。{admin} に指名された人は、ここでは分からない
+  operatorExistingTitle: organization('{organization}はもう作られています', '{organization}はもう作られています'),
+  operatorExistingLead: organization(
+    'この slug の{organization}は、もう作られています。次の URL を確かめてください。誰を{admin}に指名したかは、ここでは分かりません。',
+    'この slug の{organization}は、もう作られています。次の URL を確かめてください。誰を{admin}に指名したかは、ここでは分かりません。',
+  ),
+  operatorExistingAdminPending: organization(
+    '指名された{admin}は、まだログインしていません。',
+    '指名された{admin}は、まだログインしていません。',
+  ),
+  operatorExistingAdminActive: organization(
+    '{admin}は、もうログインしています。',
+    '{admin}は、もうログインしています。',
+  ),
   operatorErrorNameRequired: organization('表示名を入れてください。', '表示名を入れてください。'),
   operatorErrorNameLong: organization('表示名は 80 字までです。', '表示名は 80 字までです。'),
   operatorErrorNameInvalid: organization(

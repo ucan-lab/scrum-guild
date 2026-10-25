@@ -351,14 +351,25 @@ test.describe('運用者', () => {
     await expect(dialog.locator('p[tabindex="-1"]')).toBeFocused();
   });
 
-  test('作れたか分からない失敗の後は一覧を読み直し、同じ slug の組織があれば、ダイアログの中で示して完了の表示へ移せる', async ({
-    page,
-  }) => {
+  // 管理者がダイアログで確かめた人だとは限らないので、作られていた組織の表示は、人の名前を出さず、一覧の状態だけを出す
+  for (const [status, text] of [
+    ['active', 'ギルドマスターは、もうログインしています。'],
+    ['pending', '指名されたギルドマスターは、まだログインしていません。'],
+    ['none', '最初のギルドマスターが書かれていません'],
+  ] as const) {
+    test(`作れたか分からない失敗の後は一覧を読み直し、同じ slug の組織（管理者の状態 ${status}）があれば、ダイアログの中で示し、URL と状態だけの表示へ移せる`, async ({
+      page,
+    }) => {
+      await expectExistingOrganization(page, status, text);
+    });
+  }
+
+  async function expectExistingOrganization(page: Page, status: 'active' | 'pending' | 'none', text: string) {
     let created = false;
     await page.route('**/api/list-organizations', (route) =>
       route.fulfill({
         json: {
-          organizations: created ? [organization({ slug: 'sakura-dev', name: '工房', admin_status: 'active' })] : [],
+          organizations: created ? [organization({ slug: 'sakura-dev', name: '工房', admin_status: status })] : [],
         },
       }),
     );
@@ -383,10 +394,14 @@ test.describe('運用者', () => {
     await expect(dialog.locator('.callout.is-danger')).toBeFocused();
 
     await dialog.getByRole('button', { name: '作られた冒険者ギルドの URL を見る' }).click();
-    await expect(dialog.getByRole('heading', { name: '冒険者ギルドを作りました' })).toBeVisible();
+    await expect(dialog.getByRole('heading', { name: '冒険者ギルドはもう作られています' })).toBeVisible();
     await expect(dialog.getByLabel('冒険者ギルドの URL')).toHaveValue(/\/sakura-dev\/$/);
-    await expect(dialog.getByText('GitHub の alice-dev でログインするよう伝えてください。')).toBeVisible();
-  });
+    await expect(dialog.getByRole('status')).toHaveText('作られていた冒険者ギルドを見ています');
+    await expect(dialog.getByText(text)).toBeVisible();
+    // 確かめた人（alice-dev）の名前で、ログインするよう伝えない
+    await expect(dialog.getByText('でログインするよう伝えてください')).toHaveCount(0);
+    await expect(dialog).not.toContainText('alice-dev');
+  }
 
   test('slug の 409 も一覧を読み直す。名前が違う組織なら、この入力で作ったものではないかもしれないと出し、完了の表示へは移せない', async ({
     page,

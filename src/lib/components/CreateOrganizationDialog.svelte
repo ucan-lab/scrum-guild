@@ -46,7 +46,14 @@
     displayName: string | null;
     avatarUrl: string | null;
   };
-  type Created = { slug: string; name: string; adminLoginName: string };
+  // admin が named: この操作で作れた（指名した人を確かめている）。existing: 作れたか分からない失敗の後に、読み直した一覧で
+  // 見つけた組織。管理者がダイアログで確かめた人とは限らない（別の運用者が、別の人を指名して作ったかもしれない）ので、
+  // 人の名前は出さず、一覧の管理者の状態だけを持つ
+  type Created = {
+    slug: string;
+    name: string;
+    admin: { kind: 'named'; loginName: string } | { kind: 'existing'; status: AdminStatus };
+  };
   type Existing = { slug: string; name: string; sameName: boolean; adminStatus: AdminStatus };
   type Field = 'slug' | 'name' | 'username' | 'form';
   type FailedResult = Extract<ApiResult<unknown>, { ok: false }>;
@@ -78,7 +85,7 @@
   // 読み上げの領域の文字。領域は常に置き、文字だけを替える
   const live = $derived(
     created !== null
-      ? t('operatorLiveCreated')
+      ? t(created.admin.kind === 'named' ? 'operatorLiveCreated' : 'operatorLiveExisting', words)
       : busy === 'creating'
         ? t('operatorLiveCreating')
         : busy === 'resolving'
@@ -303,7 +310,11 @@
     }
     busy = 'idle';
     if (result.ok) {
-      created = { slug: result.data.slug, name: result.data.name, adminLoginName: result.data.admin_login_name };
+      created = {
+        slug: result.data.slug,
+        name: result.data.name,
+        admin: { kind: 'named', loginName: result.data.admin_login_name },
+      };
       await invalidateAll();
       return;
     }
@@ -326,13 +337,14 @@
     }
   }
 
-  // 読み直した一覧にあった組織を、作った組織として完了の表示に切り替える。管理者の名前は、確かめた人のものを使う
+  // 読み直した一覧にあった組織の表示に切り替える。組織の URL と、一覧の管理者の状態だけを出す。
+  // 管理者がダイアログで確かめた人だとは限らないので、ログインするユーザー名は出さない
   function showExisting(): void {
     if (existing === null) return;
     created = {
       slug: existing.slug,
       name: existing.name,
-      adminLoginName: resolved?.loginName ?? username.trim(),
+      admin: { kind: 'existing', status: existing.adminStatus },
     };
     existing = null;
     errors = {};
@@ -353,7 +365,14 @@
   bind:this={dialog}
   bind:open
   dismissible={!creating}
-  title={t(created === null ? 'operatorCreateTitle' : 'operatorDoneTitle', words)}
+  title={t(
+    created === null
+      ? 'operatorCreateTitle'
+      : created.admin.kind === 'named'
+        ? 'operatorDoneTitle'
+        : 'operatorExistingTitle',
+    words,
+  )}
 >
   <!-- 読み上げの領域。常に置き、文字だけを替える（後から挿入した領域は読み上げられないことがある） -->
   <div class="visually-hidden" role="status">{live}</div>
@@ -499,7 +518,9 @@
       {/if}
     {/if}
   {:else}
-    <p tabindex="-1" bind:this={doneLead}>{t('operatorDoneLead', words)}</p>
+    <p tabindex="-1" bind:this={doneLead}>
+      {t(created.admin.kind === 'named' ? 'operatorDoneLead' : 'operatorExistingLead', words)}
+    </p>
     <div class="field">
       <label class="field-label" for="operator-url">{t('operatorDoneUrlLabel', words)}</label>
       <div class="input-row">
@@ -507,9 +528,23 @@
         <button class="btn" type="button" onclick={copyUrl}><Icon name="link" />{t('operatorCopy')}</button>
       </div>
     </div>
-    <div class="callout is-info">
-      <Icon name="check" /><span>{t('operatorDoneTell', { name: created.adminLoginName })}</span>
-    </div>
+    {#if created.admin.kind === 'named'}
+      <div class="callout is-info">
+        <Icon name="check" /><span>{t('operatorDoneTell', { name: created.admin.loginName })}</span>
+      </div>
+    {:else if created.admin.status === 'none'}
+      <div class="callout is-danger"><Icon name="alert" /><span>{t('operatorAlreadyCreatedNoAdmin', words)}</span></div>
+    {:else}
+      <div class="callout is-info">
+        <Icon name="shield" />
+        <span>
+          {t(
+            created.admin.status === 'pending' ? 'operatorExistingAdminPending' : 'operatorExistingAdminActive',
+            words,
+          )}
+        </span>
+      </div>
+    {/if}
   {/if}
   {#snippet footer(close)}
     {#if created === null}
