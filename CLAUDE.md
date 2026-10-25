@@ -1,6 +1,6 @@
 # Scrum Guild
 
-チームのタスクを集め、ゲームの仕組みで回すサービス。Cloudflare Workers（Hono、D1、R2）と SvelteKit の SPA モード。道具の選択は `docs/development.md` の「技術の選択」。今の状態と次にやることは GitHub の Issue とマイルストーン「初版」で追う。
+チームのタスクを集め、ゲームの仕組みで回すサービス。Cloudflare Workers（Hono、D1、R2）と SvelteKit の SPA モード。道具の選択は `docs/development.md` の「技術の選択」。今の状態と次にやることは GitHub の Issue で追い、自分のチームで使い始めるまでのものはマイルストーン「初版」に入れる。
 
 ## 文書
 
