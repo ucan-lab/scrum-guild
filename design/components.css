@@ -101,10 +101,12 @@ h1, h2, h3 { text-wrap: balance; }
 .org-menu-list li:last-child:not(:only-child) a { color: var(--color-muted); }
 /* 狭い幅と、指で押す画面では、押す所を 44px 以上にする */
 @media (max-width: 760px), (pointer: coarse) {
-  .org-menu-list a, .account-menu-list button { min-height: 44px; }
+  .org-menu-list a, .account-menu-list button, .account-menu-button { min-height: 44px; }
 }
 /* アカウントのメニュー。上の帯の自分の名前を押すと開く。リストの見た目は組織の切り替えと同じ（上の .org-menu-list と並べて書く）で、
-   帯の下に重ねて出す（帯の高さを変えない）。右端から開くので、狭い幅でも画面の外へはみ出さない */
+   帯の下に重ねて出す（帯の高さを変えない）。広い幅ではボタンの右端に合わせて開く。760px 以下は、帯が左に寄って
+   ボタンが左端に来るので、ボタンではなく帯を基準に、左右の余白の内側へ広げる（下の狭い画面の規則）。
+   どちらも画面の外へはみ出さない */
 .account-menu { position: relative; min-width: 0; max-width: 100%; }
 .account-menu-button {
   display: inline-flex; align-items: center; gap: var(--space-2); max-width: 100%; text-align: left;
@@ -456,7 +458,13 @@ h1, h2, h3 { text-wrap: balance; }
     padding-left: max(var(--space-4), env(safe-area-inset-left, 0px));
     padding-right: max(var(--space-4), env(safe-area-inset-right, 0px));
   }
-  .topbar { justify-content: flex-start; }
+  .topbar { justify-content: flex-start; position: relative; }
+  /* アカウントのメニューの一覧は、ボタンではなく帯を基準に、左右の余白の内側へ広げる（ボタンが左に寄っても画面の外へ出ない） */
+  .account-menu { position: static; }
+  .account-menu-list {
+    top: 100%; min-width: 0; max-width: none;
+    left: max(var(--space-4), env(safe-area-inset-left, 0px)); right: max(var(--space-4), env(safe-area-inset-right, 0px));
+  }
   .entry { grid-template-columns: 32px minmax(0, 1fr); }
   .entry-end { grid-column: 2; flex-wrap: wrap; }
   .notice-facts { grid-template-columns: minmax(0, 1fr); }

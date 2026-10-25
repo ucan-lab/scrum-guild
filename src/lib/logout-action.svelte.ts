@@ -14,8 +14,10 @@ export async function performLogout(): Promise<void> {
   const result = await callOperation(logout, {});
   if (logoutOutcome(result) === 'leave') {
     // goto は使わない。組織のテーマ、言葉づかい、読み込み済みのデータがメモリに残るので、ページごと読み直す。
+    // assign ではなく replace: 履歴に残すと、「戻る」で前の人の組織の画面が戻る（共有の端末で見える）。
+    // それでも bfcache から戻る場合は、root のレイアウトが pageshow で読み直す。
     // 移った先で busy は戻さない（読み直しで消える）。return_to は付けない（別の人が同じ端末で入り直すため）
-    location.assign(loggedOutPath);
+    location.replace(loggedOutPath);
     return;
   }
   logoutState.busy = false;

@@ -15,6 +15,9 @@
   let root = $state<HTMLElement>();
   let button = $state<HTMLButtonElement>();
 
+  // 読み上げの名前に、見た目にある管理者の印も含める
+  const label = $derived(t('accountMenuLabel', { name: isAdmin ? `${name}（${t('admin')}）` : name }));
+
   function closeMenu(): void {
     // 隠れる要素にフォーカスがあるなら、ボタンへ戻す
     if (root?.contains(document.activeElement)) button?.focus();
@@ -46,7 +49,7 @@
     type="button"
     aria-expanded={open}
     aria-controls={listId}
-    aria-label={t('accountMenuLabel', { name })}
+    aria-label={label}
     bind:this={button}
     onclick={() => (open = !open)}
   >
@@ -56,7 +59,9 @@
     </span>
     <Icon name="chevron" />
   </button>
-  <ul class="account-menu-list" id={listId} aria-label={t('accountMenuLabel', { name })} hidden={!open}>
+  <!-- ログアウトを待っている間を読み上げに伝える。領域は常に置き、中の文字だけを替える（OrganizationSwitcher と同じ） -->
+  <span class="visually-hidden" role="status">{logoutState.busy ? t('logoutMoving') : ''}</span>
+  <ul class="account-menu-list" id={listId} aria-label={label} hidden={!open}>
     <li>
       <button type="button" aria-disabled={logoutState.busy} onclick={performLogout}>
         <span class="org-menu-name">{logoutState.busy ? t('logoutMoving') : t('logout')}</span>

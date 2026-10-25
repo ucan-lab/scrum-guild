@@ -1209,14 +1209,18 @@
   // 開閉は組織の切り替えと同じ: ボタン、外を押す、Tab で外へ出る、Esc。メニューの中にフォーカスがあるときに閉じたら、ボタンへ戻す。
   // 見本ではログアウトせず、トーストだけを出す。運用者の枠も同じメニュー（本番の /operator は紙の下のボタン）
   let accountMenuOpen = false;
-  function accountMenuHtml({ open = accountMenuOpen, id = "account-menu-list", live = true, operator = page && page.operator } = {}) {
+  // busy は、ログアウトを押して結果を待っている間（項目を aria-disabled にして文言を替え、読み上げの領域に伝える）。
+  // admin は管理者の印を出し、読み上げの名前にも含める
+  function accountMenuHtml({ open = accountMenuOpen, id = "account-menu-list", live = true, operator = page && page.operator, busy = false, admin = false } = {}) {
     const name = operator ? D.operator.name : user(D.me).name;
+    const badge = operator ? "運用者" : admin ? t("admin") : "";
     const who = operator
       ? `${avatar(D.operator.name, 0)}${esc(name)}<span class="chip">運用者</span>`
-      : `${avatarOf(D.me)}${esc(name)}${emblem(user(D.me).level, true)}`;
-    const label = t("accountMenuLabel").replace("{name}", name);
+      : `${avatarOf(D.me)}${esc(name)}${admin ? `<span class="chip">${t("admin")}</span>` : ""}${emblem(user(D.me).level, true)}`;
+    const label = t("accountMenuLabel").replace("{name}", badge ? `${name}（${badge}）` : name);
     return `<div class="account-menu"><button class="account-menu-button" type="button" aria-expanded="${open}" aria-controls="${id}" aria-label="${esc(label)}" ${live ? "data-account-menu" : ""}><span class="me">${who}</span>${icon("chevron")}</button>
-      <ul class="account-menu-list" id="${id}" aria-label="${esc(label)}" ${open ? "" : "hidden"}><li><button type="button" ${live ? 'data-toast="見本のため、ログアウトしません"' : ""}><span class="org-menu-name">${t("logout")}</span></button></li></ul></div>`;
+      <span class="visually-hidden" role="status">${busy ? t("logoutMoving") : ""}</span>
+      <ul class="account-menu-list" id="${id}" aria-label="${esc(label)}" ${open ? "" : "hidden"}><li><button type="button" ${busy ? 'aria-disabled="true"' : ""} ${live ? 'data-toast="見本のため、ログアウトしません"' : ""}><span class="org-menu-name">${busy ? t("logoutMoving") : t("logout")}</span></button></li></ul></div>`;
   }
   function setAccountMenu(open, focus) {
     accountMenuOpen = open;
@@ -1365,10 +1369,9 @@
     if (hit("data-org-menu")) { setOrgMenu(!orgMenuOpen, true); return; }
     if (orgMenuOpen && ev.target.closest(".org-menu-list a")) closeOrgMenu();
     else if (orgMenuOpen && !ev.target.closest(".org-menu")) closeOrgMenu();
-    // アカウントのメニューも同じ。項目を押したら閉じる
+    // アカウントのメニューも同じ。ただしログアウトの項目を押しても閉じない（本番は待ちの表示を見せるため）
     if (hit("data-account-menu")) { setAccountMenu(!accountMenuOpen, true); return; }
-    if (accountMenuOpen && ev.target.closest(".account-menu-list button")) closeAccountMenu();
-    else if (accountMenuOpen && !ev.target.closest(".account-menu")) closeAccountMenu();
+    if (accountMenuOpen && !ev.target.closest(".account-menu")) closeAccountMenu();
     if ((el = hit("data-sun"))) {
       const x = task(el.dataset.sun);
       x.todayOn = x.todayOn === D.today ? null : D.today;

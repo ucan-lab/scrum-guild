@@ -30,6 +30,9 @@ test.describe('組織の中（アカウントのメニュー）', () => {
     await signIn(context, baseURL, 'adminLogout');
     await page.goto('/aoba');
     await expect(page.getByRole('heading', { level: 1, name: '自分の今日' })).toBeVisible();
+    // 別の画面へ移ってからログアウトする（「戻る」の先に組織の画面がある）
+    await page.goto('/aoba/admin');
+    await expect(accountButton(page)).toBeVisible();
     await accountButton(page).click();
     await logoutItem(page).click();
 
@@ -44,6 +47,13 @@ test.describe('組織の中（アカウントのメニュー）', () => {
     expect(await meWith('adminLogout')).toBe(401);
     // 同じ人のほかのセッションは残る
     expect(await meWith('admin')).toBe(200);
+
+    // 移ったのは履歴を置き換えたので、「戻る」で組織の画面の前の人のデータは出ない（セッションが無いのでログインの画面に移る）
+    await page.goBack();
+    await expect(page).toHaveURL(/\/login\?return_to=%2Faoba$/);
+    await expect(page.getByRole('heading', { level: 1, name: 'ログイン' })).toBeVisible();
+    await expect(page.locator('.app')).toHaveCount(0);
+    await expect(accountButton(page)).toHaveCount(0);
   });
 
   test('?error= があるときは、ログアウトしましたを出さずエラーだけを出す', async ({ page }) => {
@@ -100,6 +110,65 @@ test.describe('組織の中（アカウントのメニュー）', () => {
       await page.keyboard.press('Tab');
       await expect(button).toHaveAttribute('aria-expanded', 'false');
       await expect(page).toHaveURL(/\/aoba$/);
+    });
+
+    test('bfcache から戻った画面（pageshow の persisted）は読み直す', async ({ page }) => {
+      await page.goto('/aoba');
+      await expect(accountButton(page)).toBeVisible();
+      await page.evaluate(() => ((window as unknown as { __marker: boolean }).__marker = true));
+      // headless の Chromium は bfcache を使わないので、戻ったときに来る pageshow を合成して渡す
+      const reloaded = page.waitForEvent('load');
+      await page.evaluate(() => window.dispatchEvent(new PageTransitionEvent('pageshow', { persisted: true })));
+      await reloaded;
+      expect(await page.evaluate(() => (window as unknown as { __marker?: boolean }).__marker)).toBeUndefined();
+      await expect(accountButton(page)).toBeVisible();
+      // persisted でない pageshow（普通の読み込み）では読み直さない
+      await page.evaluate(() => ((window as unknown as { __marker: boolean }).__marker = true));
+      await page.evaluate(() => window.dispatchEvent(new PageTransitionEvent('pageshow', { persisted: false })));
+      await page.waitForTimeout(300);
+      expect(await page.evaluate(() => (window as unknown as { __marker?: boolean }).__marker)).toBe(true);
+    });
+
+    test('390px の幅でも、メニューの一覧とログアウトの項目が画面の中に収まる', async ({ context, page, baseURL }) => {
+      // 一般のユーザー（ハルカ）は帯に名前しか無く、狭い幅では左に寄る
+      await context.clearCookies();
+      await signIn(context, baseURL, 'member');
+      await page.setViewportSize({ width: 390, height: 800 });
+      await page.goto('/aoba');
+      await accountButton(page).click();
+      await expect(logoutItem(page)).toBeVisible();
+      const inside = await page.evaluate(() => {
+        const list = document.querySelector('.account-menu-list')!.getBoundingClientRect();
+        const item = document.querySelector('.account-menu-list button')!.getBoundingClientRect();
+        return [list, item].map((box) => box.left >= 0 && box.right <= window.innerWidth);
+      });
+      expect(inside).toEqual([true, true]);
+      // 押す所は 44px 以上
+      const heights = await page.evaluate(() => [
+        document.querySelector('.account-menu-button')!.getBoundingClientRect().height,
+        document.querySelector('.account-menu-list button')!.getBoundingClientRect().height,
+      ]);
+      for (const height of heights) expect(height).toBeGreaterThanOrEqual(44);
+    });
+
+    test('読み上げの名前に管理者の印を含め、待っている間は status の領域に「ログアウトしています」を入れる', async ({
+      page,
+    }) => {
+      let release!: () => void;
+      const gate = new Promise<void>((resolve) => (release = resolve));
+      await page.route('**/api/logout', async (route) => {
+        await gate;
+        await route.fulfill({ status: 503, json: { error: { code: 'unavailable', message: 'x' } } });
+      });
+      await page.goto('/aoba');
+      await expect(accountButton(page)).toHaveAttribute('aria-label', 'ミナト（ギルドマスター）。アカウントのメニュー');
+      const status = page.locator('.account-menu [role="status"]');
+      await expect(status).toHaveText('');
+      await accountButton(page).click();
+      await logoutItem(page).click();
+      await expect(status).toHaveText('ログアウトしています');
+      release();
+      await expect(status).toHaveText('');
     });
 
     test('押した後は結果が返るまで項目を止めて「ログアウトしています」を出し、5xx ならトーストを出して今の画面に留まる', async ({
