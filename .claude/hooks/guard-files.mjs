@@ -91,7 +91,8 @@ function isProjectOnMain(root, dir) {
     }
     return ref === 'refs/heads/main';
   } catch {
-    return false;
+    // git のリポジトリの中なのに判定できないときは、止める側に倒す
+    return true;
   }
 }
 
