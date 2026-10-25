@@ -258,7 +258,7 @@ export const dictionary = defineDictionary({
     'タイトルに使えない文字（制御文字、ゼロ幅のスペースなど）が含まれています',
   ),
   taskPointsHint: workspace(
-    '「未」は未見積もり。起票の経験値は、1 以上の{points}が振られたまま{task}が{done}すると付きます。',
+    '「未」は未見積もり。1 以上の{points}が振られたまま{task}が{done}すると、依頼を出した経験値が付きます。',
     '「未」は未見積もり。起票の経験値は、1 以上の{points}が振られたまま{task}が{done}すると付きます。',
   ),
   taskSubmitting: organization('作っています', '作っています'),
