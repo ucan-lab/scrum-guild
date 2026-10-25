@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { after, describe, test } from 'node:test';
@@ -11,12 +11,16 @@ const root = mkdtempSync(path.join(os.tmpdir(), 'git-hooks-'));
 after(() => rmSync(root, { recursive: true, force: true }));
 
 // 呼び出し元の git の設定（署名、グローバルのフック）に左右されないよう、設定を空にして動かす
-function git(cwd: string, ...args: string[]) {
+function gitWith(env: NodeJS.ProcessEnv, cwd: string, ...args: string[]) {
   return spawnSync('git', args, {
     cwd,
     encoding: 'utf8',
-    env: { ...process.env, GIT_CONFIG_GLOBAL: '/dev/null', GIT_CONFIG_NOSYSTEM: '1' },
+    env: { ...process.env, GIT_CONFIG_GLOBAL: '/dev/null', GIT_CONFIG_NOSYSTEM: '1', ...env },
   });
+}
+
+function git(cwd: string, ...args: string[]) {
+  return gitWith({}, cwd, ...args);
 }
 
 function setUp(name: string) {
@@ -137,5 +141,55 @@ describe('.githooks', () => {
     // bare のリモートはフックが無くても今の HEAD の削除を拒むので、拒んだのがフックかを文言で見る
     assert.match(git(work, 'push', 'origin', '--delete', 'main').stderr, /main へは push しない/);
     assert.equal(git(work, 'push', 'origin', '1-x').status, 0);
+  });
+
+  describe('post-checkout', () => {
+    // 本物の gh の代わりに、受けた引数を記録するか失敗するだけの gh を PATH の先頭に置く
+    function fakeGh(name: string, body: string) {
+      const bin = path.join(root, `${name}-bin`);
+      mkdirSync(bin);
+      writeFileSync(path.join(bin, 'gh'), `#!/bin/sh\n${body}\n`, { mode: 0o755 });
+      return { PATH: `${bin}:${process.env.PATH}` };
+    }
+
+    test('番号付きのブランチのワークツリーを切ると、その Issue を作業中にする', () => {
+      const work = setUp('worktree');
+      const log = path.join(root, 'worktree-gh.log');
+      const env = fakeGh('worktree', `echo "$@" >> '${log}'`);
+      const added = gitWith(env, work, 'worktree', 'add', path.join(root, 'wt-12'), '-b', '12-x');
+      assert.equal(added.status, 0);
+      assert.match(added.stderr, /#12 を作業中/);
+      // 番号の無いブランチ、0 で始まる番号、既にある作業コピーでのブランチの作成では動かない
+      assert.equal(gitWith(env, work, 'worktree', 'add', path.join(root, 'wt-x'), '-b', 'feature-x').status, 0);
+      assert.equal(gitWith(env, work, 'worktree', 'add', path.join(root, 'wt-0'), '-b', '012-x').status, 0);
+      assert.equal(gitWith(env, work, 'checkout', '-b', '13-y').status, 0);
+      assert.equal(
+        readFileSync(log, 'utf8'),
+        'issue edit 12 --add-label status:in-progress --remove-label status:refining\n',
+      );
+    });
+
+    test('gh が失敗しても、無くても、ワークツリーの作成は止めない', () => {
+      const work = setUp('worktree-fail');
+      const failing = gitWith(
+        fakeGh('worktree-fail', 'exit 1'),
+        work,
+        'worktree',
+        'add',
+        path.join(root, 'wt-14'),
+        '-b',
+        '14-x',
+      );
+      assert.equal(failing.status, 0);
+      assert.match(failing.stderr, /#14 に status:in-progress を付けられませんでした/);
+      // git だけを置いた PATH で、gh が見つからない状態を作る
+      const bin = path.join(root, 'git-only-bin');
+      mkdirSync(bin);
+      const gitPath = spawnSync('sh', ['-c', 'command -v git'], { encoding: 'utf8' }).stdout.trim();
+      symlinkSync(realpathSync(gitPath), path.join(bin, 'git'));
+      const missing = gitWith({ PATH: bin }, work, 'worktree', 'add', path.join(root, 'wt-15'), '-b', '15-x');
+      assert.equal(missing.status, 0);
+      assert.match(missing.stderr, /gh が無いので、#15/);
+    });
   });
 });

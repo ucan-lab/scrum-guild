@@ -42,6 +42,7 @@ Issue の読み書きは `gh api` の REST で行う。クラウドのセッシ�
 `docs/` の要件と関係する文書（`requirements.md`、`data-model.md`、`design.md`、`development.md`）を読む。
 確認が要る点が残っているなら、計画に入る前に潰す。
 `docs/` で決まっている点は潰さずに、計画の「背景」に前提として書く。
+既にある Issue の計画を書くときは、ここでその Issue に `status:refining` を付ける（`gh issue edit <番号> --add-label status:refining`。`docs/development.md` の「Issue の状態」）。新しく立てる Issue には付けない。
 
 ### 2. 影響範囲を調べる
 

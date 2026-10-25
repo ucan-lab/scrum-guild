@@ -188,7 +188,7 @@ GitHub は無料のプランのまま使う（2026-10-23 に決めた）。無�
 - リポジトリの設定で squash merge だけを許し、マージ後にブランチを消す。squash のコミットの件名は PR のタイトルにし、本文は空にする（設定済み）
 - `main` の上のコミット、`main` への直接の push、`--force-with-lease` 以外の force push は、PreToolUse のフック（`.claude/hooks/guard-bash.mjs`）でセッションから止める
 - セッションは、`main` にいる作業コピーのファイルを Write と Edit で書き換えられない（`.claude/hooks/guard-files.mjs`）。手元のセッションはワークツリーを切ってから書き、クラウドのセッションは `claude/*` のブランチで書く
-- 人の操作は、`.githooks/` の git のフックで止める。`pre-commit`、`pre-merge-commit`、`prepare-commit-msg`、`pre-applypatch` が `main` の上のコミット（マージ、`cherry-pick`、`revert`、`am` も含む）を、`pre-push` がリモートの `main` への push（削除と force push も含む）を拒む。`main` を `pull --ff-only` で進めるのは通す。`pnpm install` の `prepare`（`scripts/git-hooks.ts`）が `core.hooksPath` を `.githooks` にする。設定はワークツリーで共有し、フックは各ワークツリーのブランチにある `.githooks/` が動く。`pnpm install` をしていない clone と、`.githooks/` の無い古いブランチでは効かない。別の `core.hooksPath` が既にあれば上書きせず、警告だけ出す。取り出したブランチの `.githooks/` がそのまま動くので、信頼できない人のブランチを取り出してコミットや push をしない。`core.hooksPath` の上書きや `git commit-tree` で抜けられる踏み線なので、人も同じ決まりで PR を通す
+- 人の操作は、`.githooks/` の git のフックで止める。`pre-commit`、`pre-merge-commit`、`prepare-commit-msg`、`pre-applypatch` が `main` の上のコミット（マージ、`cherry-pick`、`revert`、`am` も含む）を、`pre-push` がリモートの `main` への push（削除と force push も含む）を拒む。`main` を `pull --ff-only` で進めるのは通す。同じ場所の `post-checkout` は止めるためのものではなく、番号付きのブランチのワークツリーを切ったときに Issue を作業中にする（下の「Issue の状態」）。`pnpm install` の `prepare`（`scripts/git-hooks.ts`）が `core.hooksPath` を `.githooks` にする。設定はワークツリーで共有し、フックは各ワークツリーのブランチにある `.githooks/` が動く。`pnpm install` をしていない clone と、`.githooks/` の無い古いブランチでは効かない。別の `core.hooksPath` が既にあれば上書きせず、警告だけ出す。取り出したブランチの `.githooks/` がそのまま動くので、信頼できない人のブランチを取り出してコミットや push をしない。`core.hooksPath` の上書きや `git commit-tree` で抜けられる踏み線なので、人も同じ決まりで PR を通す
 - 必須のチェックは設定できない。マージする人かセッションが `ci-ok` の成功を確かめてからマージする
 - マージは人が決める。人が押すか、人の指示でセッションが `gh pr merge` を打つ。承認の数は求めず、人のレビューは「人がマージを決める」ことで表す（下の「マージの判定」）
 - 本番へデプロイする鍵は GitHub に置かない（下の「CD」）。リポジトリのシークレットは PR のブランチのワークフローからも読め、Environment で `main` だけに絞れないため
@@ -327,8 +327,8 @@ Bash の判定を `permissions.deny` に置かないのは、規則が前方一�
 1. アイディアは `docs/ideas.md` か Issue に置く
 2. `issue-plan` で Issue を書く。エピック、ストーリー、タスクのどれかと親を決め（下の「Issue の運用」）、完了条件、触る領域、マイグレーションの有無を書く
 3. 人が着手を決める。ほかの Issue と並べるときは、上の「並行して作業するときの決まり」で変えるファイルの重なりを見る
-4. Issue の本文に書かれていない難所があれば、`grill-me` で人と詰め、決めたことを `issue-plan` で Issue の本文に足す。後の Issue に関わることはその Issue にコメントで申し送る。難所が無い Issue と、人に聞けない実行では飛ばし、置いた前提を PR に書く
-5. 着手したことを Issue にコメントで残し（上の「並行して作業するときの決まり」）、手元のセッションは Issue ごとのワークツリーで、クラウドのセッションはそのままの環境で実装する（上の「ワークツリーで作業する」）。テストは実装と一緒に書く
+4. Issue の本文に書かれていない難所があれば、`grill-me` で人と詰め（詰める間は `status:refining`、下の「Issue の状態」）、決めたことを `issue-plan` で Issue の本文に足す。後の Issue に関わることはその Issue にコメントで申し送る。難所が無い Issue と、人に聞けない実行では飛ばし、置いた前提を PR に書く
+5. 着手したことを Issue にコメントで残し（上の「並行して作業するときの決まり」）、手元のセッションは Issue ごとのワークツリーで（切ると `status:in-progress` が付く）、クラウドのセッションはそのままの環境で実装する（上の「ワークツリーで作業する」）。テストは実装と一緒に書く
 6. `self-review` で点検し、`pr-create` で PR を出す
 7. CI と AI レビューを待ち、指摘には `pr-feedback` で応える
 8. セッションが、Issue と PR でしたことをその場限りの Artifact の説明資料で見せ、人が判断すべきことと、マージするかを `AskUserQuestion` で聞く
@@ -571,9 +571,24 @@ Issue はエピック、ストーリー、タスクの3階層にし、親子は�
 - 親の無いタスクも置いてよい（不具合、定期の確認で立つ Issue、`d1-migration` の縮める Issue）。PR のマージで閉じる。この運用を決める前に立てた Issue は、着手するときに親を決めてつなぐ
 - PR の本文は、タスクを `Closes #<番号>` で指す。ストーリーとエピックは `Refs #<番号>` で指し、`Closes` を使わない。マージで閉じると、人が受け入れ条件を確かめる前に閉じるため
 - ストーリーの最後のタスクの PR では、`pr-feedback` の説明資料で親のストーリーの受け入れ条件を示し、人に確かめて閉じてもらう
-- ラベル: 階層の `epic`、`story`、人が差分を読む `needs-human`、マイグレーションの `migration`、領域の `area:auth`、`area:organization`、`area:workspace`、`area:task`、`area:import`、`area:attachment`、`area:ui`、`area:infra`、`area:docs`、不具合の `bug`、AI レビューをもう一度回す `ai-review`。GitHub に作り、`bug` 以外の既定のラベルは消した（2026-10-22）。重複や対応しないものは、ラベルではなく Issue を閉じるときの理由で表す
+- ラベル: 階層の `epic`、`story`、状態の `status:refining`、`status:in-progress`（下の「Issue の状態」）、人が差分を読む `needs-human`、マイグレーションの `migration`、領域の `area:auth`、`area:organization`、`area:workspace`、`area:task`、`area:import`、`area:attachment`、`area:ui`、`area:infra`、`area:docs`、不具合の `bug`、AI レビューをもう一度回す `ai-review`。GitHub に作り、`bug` 以外の既定のラベルは消した（2026-10-22）。重複や対応しないものは、ラベルではなく Issue を閉じるときの理由で表す
 - テンプレート: タスクは `.github/ISSUE_TEMPLATE/plan.md`、ストーリーは `.github/ISSUE_TEMPLATE/story.md`。`issue-plan` が書く形と同じにする
 - 領域のラベルは、並行して作業するときのぶつかりを見分けるのにも使う。同じ領域の PR を同時に何本も開かない。ラベルが違っても重なる共通の層は、「並行して作業するときの決まり」で変えるファイルを比べて見る
+
+### Issue の状態
+
+開いた Issue の状態は、ラベルと開いた PR で表す（2026-10-25 に決めた）。並行するセッションが、人と詰めている Issue や実装中の Issue を取らないようにするためと、進捗の図が推測せずに状態を読めるようにするため。進捗の図はこの表のとおりに状態を出す。
+
+| 状態 | 表し方 | 付け替えるきっかけ |
+| --- | --- | --- |
+| 要件整理中 | `status:refining` | `grill-me` で Issue を詰め始めたとき、`issue-plan` の書くモードで既にある Issue の計画を書き始めたとき。セッションが付ける |
+| 作業中 | `status:in-progress` | 番号付きのブランチ（`<番号>-<名前>`）のワークツリーを新しく切ったとき。`.githooks/post-checkout` が付け、`status:refining` を外す。クラウドのセッションはワークツリーを切らないので、着手したときに手で付ける |
+| レビュー中 | その Issue を指す開いた PR があること。ラベルは使わない | PR の作成 |
+| 済み | Issue が閉じたこと | タスクは PR のマージ、ストーリーとエピックは人が閉じる |
+
+- ラベルは閉じた後も外さない。閉じた Issue は済みとして扱い、ラベルは見ない
+- `post-checkout` は、前の HEAD が null の SHA になる checkout（新しいワークツリーと clone）でだけ動く。既にある作業コピーで `git switch -c` しても付かないので、そのときは手で付ける。`gh` が無い、認証が無い、通信が落ちたときは知らせるだけで checkout を止めない
+- 詰めるのをやめて着手しない Issue は、`status:refining` を手で外す
 
 ## 運用の手順書
 

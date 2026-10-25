@@ -1,0 +1,23 @@
+#!/bin/sh
+# 番号付きのブランチ（<番号>-<名前>）のワークツリーを新しく切ったら、その Issue を作業中にする（docs/development.md の「Issue の状態」）
+# 前の HEAD が null の SHA になるのは、新しいワークツリーと clone だけ。既にある作業コピーでの checkout と switch では動かない
+# 状態を知らせるだけの処理なので、gh が無い、認証が無い、通信が落ちたときも checkout は止めない
+case "$1" in *[!0]*) exit 0 ;; esac
+[ "$3" = "1" ] || exit 0
+
+ref=$(git symbolic-ref -q HEAD) || exit 0
+branch=${ref#refs/heads/}
+number=${branch%%-*}
+case "$number" in '' | *[!0-9]* | 0*) exit 0 ;; esac
+[ "$number" != "$branch" ] || exit 0
+
+if ! command -v gh >/dev/null 2>&1; then
+  echo "gh が無いので、#$number に status:in-progress を付けていません。手で付けてください" >&2
+  exit 0
+fi
+if gh issue edit "$number" --add-label status:in-progress --remove-label status:refining >/dev/null 2>&1; then
+  echo "#$number を作業中（status:in-progress）にしました" >&2
+else
+  echo "#$number に status:in-progress を付けられませんでした。手で付けてください" >&2
+fi
+exit 0
