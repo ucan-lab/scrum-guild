@@ -466,12 +466,15 @@ test('メンバーの画面で開いて閉じても、メンバーの画面に�
   await drawer.getByRole('button', { name: '閉じる' }).click();
   await expect(drawer).toBeHidden();
   await expect(page).toHaveURL(`${new URL(page.url()).origin}${workspacePath}/members?tab=all`);
+  // 戻る先の行が無い画面では、見出しへフォーカスを移す（見出しを focusable にしていない画面でも）
+  await expect(page.getByRole('heading', { level: 1 })).toBeFocused();
   // 削除して閉じたときも、メンバーの画面のまま
   await page.goto(`${workspacePath}/members?task=${taskId}`);
   await drawer.getByRole('button', { name: 'このクエストを削除する' }).click();
   await page.getByRole('dialog', { name: 'クエストを削除する' }).getByRole('button', { name: '削除する' }).click();
   await expect(drawer).toBeHidden();
   await expect(page).toHaveURL(`${new URL(page.url()).origin}${workspacePath}/members`);
+  await expect(page.getByRole('heading', { level: 1 })).toBeFocused();
 });
 
 test('保存の要求を送っている間の入力は書きかけで、閉じようとすると確かめる。失敗しても入力が消えない', async ({
