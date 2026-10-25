@@ -108,6 +108,8 @@ bot の PR 全体へのコメント（AI レビューのまとめ）に並んだ
 
 全ての指摘を直したら push する（理由: リプライに書くコミットがレビュワーから見える状態にする）。
 
+push の前に `git fetch origin` でベースの遅れを見る（`git rev-list --count HEAD..origin/<base>`）。遅れていれば、push の代わりに `sync-base` で取り込み、その中の `--force-with-lease` で push してから手順 4 に進む（理由: リプライに書くコミットの SHA は rebase で変わる。返事の後に取り込むと、返事の SHA が PR のどのコミットも指さなくなる）。指摘への対応を force push で入れない決まりの例外ではなく、ベースを取り込む push に直した分が乗るだけ。
+
 ```bash
 git push
 ```
