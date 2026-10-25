@@ -62,8 +62,8 @@
 
 1. 土台: pnpm、SvelteKit の SPA モード、Hono、wrangler の設定、ESLint と Prettier、`CLAUDE.md` の「コマンド」、セキュリティのヘッダー、`/api/health`。Claude の設定とフック（下の「Claude の設定とフック」）は先に入れる
 2. CI と CD: `ci-ok`、Workers Builds とデプロイのスクリプト、煙のテスト、`docs/operations.md`
-3. 入口: Kysely の2つの入口と `batch()` の関数、操作の定義を登録する関数、エラーの形、組織の分離のテストの仕組み。`/api/health` に DB への疎通を足し、デプロイの煙のテストで確かめる。`src/shared/health.ts` の `Health` と `isHealth`、`scripts/deploy.ts` の煙のテストを合わせて直す
-4. 一本道に要る表のマイグレーションと seed。Google で待つための列（`users` と `invitations` の `login_email`、`claim_token_hash`、`claim_expires_at`、空にできる `login_subject`、`oauth_states` の `nonce` と `claim_token_hash`）も最初から入れる。SQLite では後から NOT NULL を外すのに表の作り直しが要るため
+3. 一本道に要る表のマイグレーションと seed。Google で待つための列（`users` と `invitations` の `login_email`、`claim_token_hash`、`claim_expires_at`、空にできる `login_subject`、`oauth_states` の `nonce` と `claim_token_hash`）も最初から入れる。SQLite では後から NOT NULL を外すのに表の作り直しが要るため。入れる表は、一本道が触る表と、その表が外部キーか CHECK で指す表（指される表が欠けると、後で表の作り直しが要るため）。入口より先にするのは、入口のテストが表なしには書けず、マイグレーションは `docs/data-model.md` だけを見て読める差分になるため
+4. 入口: Kysely の2つの入口と `batch()` の関数、操作の定義を登録する関数、エラーの形、組織の分離のテストの仕組み。`/api/health` に DB への疎通を足し、デプロイの煙のテストで確かめる。`src/shared/health.ts` の `Health` と `isHealth`、`scripts/deploy.ts` の煙のテストを合わせて直す
 5. 運用者の組織の作成、GitHub OAuth とセッション、組織の選択
 6. Google のログイン（招待の URL から、メールアドレスで待つ指名と招待を `sub` に結ぶところまで）。5 のログインの手段の型に、2つ目の実装として足す
 7. ワークスペースの作成、タスクの作成と完了（完了の記録、経験値、変更の履歴を1回の `batch()` で書く）
@@ -249,6 +249,7 @@ Bash の判定を `permissions.deny` に置かないのは、規則が前方一�
 | 領域 | 置き場所 |
 | --- | --- |
 | マイグレーション | `migrations/` |
+| seed（公開された開発用のトークンのセッションを入れる。本番に入ると誰でもログインできる） | `seed/` |
 | 認証とログインの手段（GitHub OAuth、Google）、暗号、シークレット | `src/server/auth/`、`src/server/crypto/`、`.dev.vars*` |
 | 組織で絞る層（組織をまたぐデータの分離。Kysely の2つの入口と `batch()` の関数） | `src/server/db/` |
 | 運用者の権限（運用者だけの操作の定義） | `src/shared/operations/operator/` |
@@ -259,7 +260,7 @@ Bash の判定を `permissions.deny` に置かないのは、規則が前方一�
 
 ファイルのリネームを含む PR と、変更したファイルが 3000 を超える PR にも付ける。パスの規則は移動先の名前しか見ず、変更したファイルの一覧も 3000 件までしか取れないため。
 
-ラベルは付けるだけで、機械は外さない。人が外したときは、パスに当たっていれば付け直す。新しい領域を足すときや置き場所を変えるときは、`.github/labeler.yml` と上の表を同じ PR で直す。運用者の権限を確かめるコード（操作の定義を登録する関数）の置き場所は、入口を作る Issue（上の「初版の作る順」の3）で決め、この表に足す。
+ラベルは付けるだけで、機械は外さない。人が外したときは、パスに当たっていれば付け直す。新しい領域を足すときや置き場所を変えるときは、`.github/labeler.yml` と上の表を同じ PR で直す。運用者の権限を確かめるコード（操作の定義を登録する関数）の置き場所は、入口を作る Issue（上の「初版の作る順」の4）で決め、この表に足す。
 
 `needs-human` の PR は、AI レビューが通っていても人が差分を読んでからマージする。マイグレーションを含む PR では、このマージが本番に当てる承認になる（下の「CD」）。`label` のチェックが成功していない PR も、`needs-human` と同じに扱う（ジョブが落ちるとラベルが付かず、付いていない PR と見分けが付かないため）。付いていない PR は、`label` の成功を確かめたうえで、`ci-ok`、AI レビューの指摘、e2e のスクリーンショットを見て決めてよい。
 
@@ -274,8 +275,8 @@ PR ごとに GitHub Actions で回す。`.github/workflows/ci.yml` の各ジョ�
 | changes | 変わったファイルを見て、文書だけの PR かを判定する（下の「文書だけの PR」） |
 | setup | 各ジョブの先頭で動く共通の用意（`.github/actions/setup`）。Node を `.node-version` から、pnpm を `packageManager` から入れ（corepack に頼らない）、ロックファイルどおりに依存を入れる |
 | check | 型の検査（`tsc`、`svelte-check`）、lint、整形、Claude のフックのテスト（`node --test .claude/hooks/*.test.mjs`） |
-| test | Workers の実行環境で動かす（`@cloudflare/vitest-plugin`。`@cloudflare/vitest-pool-workers` から名前が変わった）。ローカルの D1 に全マイグレーションを当てて回す。組織の分離のテストを含む |
-| migration | 空の D1 に全マイグレーションを順に当てて通るか確かめる（`pnpm db:migrate:fresh`）。0件なら当てずに成功で終える。ベータが始まったら、既にあるマイグレーションのファイルの書き換えも落とす（上の「DB を作り直してよい期間」） |
+| test | Workers の実行環境で動かす（`@cloudflare/vitest-plugin`。`@cloudflare/vitest-pool-workers` から名前が変わった）。テストの D1 には `test/apply-migrations.ts` が全マイグレーションを当てる。1つのテストファイルの中では、前のテストが入れた行が残るので、一意の列にはテストごとに新しい値を使う。組織の分離のテストを含む。`scripts/` の `node --test` は、seed を一時の D1 に2回流して中身を数える |
+| migration | 空の D1 に全マイグレーションを順に当てて通るか確かめ、続けて同じ D1 に seed を2回流す（`pnpm db:migrate:fresh`）。マイグレーションと seed のずれと、seed を流し直せることを PR ごとに確かめるため。0件なら当てずに成功で終える。ベータが始まったら、既にあるマイグレーションのファイルの書き換えも落とす（上の「DB を作り直してよい期間」） |
 | e2e | `pnpm e2e`。`pnpm preview` で build して `wrangler dev` を立て、Playwright でシェルの表示、`/api/health` の版、CSP の違反が無いこと（`securitypolicyviolation` とコンソールのエラー）を確かめる。版には PR の head の SHA を渡し、`/api/health` と画面の build に埋めた版（SvelteKit が書き出す `/_app/version.json`）がどちらもその値になることも見る。スクリーンショットと、失敗したときの trace を成果物の `e2e` に上げる。4つのテーマと2つの言葉の組み合わせのスクリーンショットは、画面ができてから足す。trace は要求と応答と Cookie を丸ごと残し、成果物はリポジトリを読める人が誰でも取れるので、e2e には本物の認証情報を渡さない（ログインは seed のセッションで通す） |
 | ai-review | `anthropics/claude-code-action` で、スキル `ai-review` が差分に応じて `.claude/agents/` のレビューのエージェントを呼び分け、CRITICAL と HIGH を `finding-verifier` の反証にかけてから、指摘を PR に書く。`.github/workflows/ai-review.yml` に分けて置く |
 | label | パスを見て `needs-human` のラベルを付ける（上の「マージの判定」）。`.github/workflows/label.yml` に分けて置き、`pull_request_target` で動かす。ワークフローも規則も PR のベース（`main`）の版が使われるので、PR の側で書き換えてもラベルは付く。別のブランチをベースに開いてから `main` へ付け替えたときも、判定し直す。PR のコードはチェックアウトしない（書き込みのトークンで PR のコードを動かさないため） |
@@ -334,7 +335,7 @@ PR ごとのプレビュー環境は持たず、Workers Builds の preview build
 
 - 版は `wrangler deploy` の1回で上げる。`wrangler versions upload` と `versions deploy` の2段にしないのは、`versions upload` が Worker のまだ無い初回に失敗し、cron やルート（triggers）の変更も反映しないため。版を段階的に流さないので、2段に分ける得も無い
 - rollback には必ず版の ID を渡す。`wrangler rollback` は版を指定しないと、直近のデプロイを除いた履歴から 100% で動いていた版を選ぶ。その間に別のデプロイが挟まると、このスクリプトが切り替える直前の版とずれるため
-- 煙のテストが確かめるのは版だけ。DB への疎通は、入口を作るときに `/api/health` に足す（上の「初版の作る順」の3）。入口より前に D1 の binding を直に使わないため
+- 煙のテストが確かめるのは版だけ。DB への疎通は、入口を作るときに `/api/health` に足す（上の「初版の作る順」の4）。入口より前に D1 の binding を直に使わないため
 - 煙のテストの URL はスクリプトの定数（`PRODUCTION_URL`）。ドメインへ移すときに直す
 - マイグレーションは自動では戻さない。戻すかは人が決め、ログのブックマークで Time Travel から戻す（`docs/operations.md` の「戻し方」）
 
@@ -411,7 +412,13 @@ GitHub App も比べた。人が抜けても取り込みが止まらない、PAT
 
 ログインを飛ばす口は作らない（2026-10-22 に決めた）。本番に罠として残るコードを無くすため。
 
-- seed が、決まったトークンのセッションをローカルの D1 に入れる。e2e と画面の自己レビューは、その Cookie を置いてログインした画面を開く。トークンは開発用の値で、本番の D1 には入れない
+- seed（`pnpm db:seed`）が、決まったトークンのセッションをローカルの D1 に入れる。e2e と画面の自己レビューは、その Cookie を置いてログインした画面を開く。トークンは開発用の値で、本番の D1 には入れない
+  - セッションは4つ: あおば開発の管理者、あおば開発の一般のユーザー、ひばり工房だけに入れる管理者、どの組織にも属さない運用者（`OPERATOR_LOGIN_IDS` の開発用の値、`.dev.vars.example`）
+  - トークンは `seed/sessions.ts` の1か所に置き、seed はそこから SHA-256 の16進を計算して入れる。e2e も同じ定数を import する。中身と流し方は `seed/README.md`
+  - セッションの `last_used_at` と `expires_at` は seed を流した時刻から数える。ほかの日時は固定の値にする。切れたら seed を流し直す
+  - seed は全部の表の行を消してから入れる。手で足した行も消える
+  - seed のセッションが入った手元の `wrangler dev` を、`--ip 0.0.0.0` やトンネルで外に開かない。公開されたトークンで、誰でも管理者と運用者として入れるため
+  - 本番に入れない守りは、seed のスクリプトが `--local` だけを付けることと、フック（`guard-bash.mjs`）が `--remote` を止めること。本番が seed のトークンを拒むことは、デプロイの煙のテストで確かめる（#52 で足す）
 - テーマと言葉は、本物の設定の API（自分の設定、組織の設定）で切り替えてから撮る。撮影のための URL のパラメータは作らない
 - 「今日」は、開発用の設定の値（wrangler の開発用の値）で固定できるようにし、スクリーンショットが日付で変わらないようにする。本番でこの値が設定されていたら起動を止める
 - 開発用の GitHub OAuth App と Google の OAuth クライアントを別に作り、手で本物のログインを確かめるときに使う。Google の開発用のクライアントは同意画面を「テスト」のままにし、確かめる人をテストユーザーに登録する

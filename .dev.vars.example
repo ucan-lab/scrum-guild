@@ -1,2 +1,5 @@
 # wrangler dev が読む開発用のシークレット。.dev.vars に写して値を入れる（.dev.vars は git に入れない）
-# 今はシークレットを使わない。足すときはここに名前と説明を書く
+
+# 運用者のログインの ID の一覧。github:<数字> か google:<数字> を、空白を含めずカンマで区切る。
+# 下の値は seed（seed/sessions.ts）の運用者の架空の ID。本番には本物の運用者の ID を Cloudflare のシークレットに入れる
+OPERATOR_LOGIN_IDS=github:9000000000000001
