@@ -383,6 +383,19 @@ test.describe('管理者（あおば開発のミナト）', () => {
     await expect(page.locator('tbody tr', { hasText: '受託開発チーム' })).toBeVisible();
     await expect(page.getByText('パーティの一覧を読み込めませんでした')).toHaveCount(0);
   });
+
+  test('狭い幅でも、節の「もう一度試す」は 44px 四方以上ある', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 800 });
+    await page.route('**/api/aoba/workspace-list', (route) =>
+      route.fulfill({ status: 500, json: { error: { code: 'internal', message: 'x' } } }),
+    );
+    await page.goto('/aoba/admin');
+    const retry = page.getByRole('button', { name: 'もう一度試す' });
+    await expect(retry).toBeVisible();
+    const box = (await retry.boundingBox())!;
+    expect(box.height).toBeGreaterThanOrEqual(44);
+    expect(box.width).toBeGreaterThanOrEqual(44);
+  });
 });
 
 test.describe('一般のユーザー（あおば開発のハルカ）', () => {
