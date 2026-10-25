@@ -68,6 +68,18 @@ export const pointers: Pointers = {
     story_id: (await createStory(target.organization, target.workspace.id, target.admin.userId!)).id,
     title: `見直した ${crypto.randomUUID().slice(0, 8)}`,
   }),
+  // 呼ぶたびにストーリーとタスクを作り、タスクをそのストーリーの下へ移す
+  'task-move': async (target) => {
+    const adminId = target.admin.userId!;
+    const story = await createStory(target.organization, target.workspace.id, adminId);
+    const task = await createTask(target.organization, target.workspace.id, adminId);
+    return { workspace_id: target.workspace.id, task_id: task.id, story_id: story.id };
+  },
+  'story-move': async (target) => {
+    const adminId = target.admin.userId!;
+    const story = await createStory(target.organization, target.workspace.id, adminId);
+    return { workspace_id: target.workspace.id, story_id: story.id, epic_id: null, after_story_id: null };
+  },
   // 呼ぶたびに完了にしていないタスクを作る（同じタスクを続けて完了にすると 409 になるため）
   'task-complete': async (target) => ({
     workspace_id: target.workspace.id,

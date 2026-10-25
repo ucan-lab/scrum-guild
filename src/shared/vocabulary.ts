@@ -354,6 +354,59 @@ export const dictionary = defineDictionary({
   treeOpen: workspace('{title}を開く', '{title}を開く'),
   treeClose: workspace('{title}を閉じる', '{title}を閉じる'),
 
+  // バックログの並べ替えと親の移動。{title} は動かす行の題
+  backlogOrderNote: workspace(
+    '上にあるものほど優先します。行の「上へ」「下へ」か、行の中にフォーカスを置いて Alt と ↑ ↓ で並べ替えます。',
+    '上にあるものほど優先します。行の「上へ」「下へ」か、行の中にフォーカスを置いて Alt と ↑ ↓ で並べ替えます。',
+  ),
+  moveUp: organization('上へ', '上へ'),
+  moveDown: organization('下へ', '下へ'),
+  // 同じ名前のボタンが並ぶので、どの行かを添える
+  moveUpLabel: organization('上へ: {title}', '上へ: {title}'),
+  moveDownLabel: organization('下へ: {title}', '下へ: {title}'),
+  moveParent: workspace('親を移す', '親を移す'),
+  moveParentLabel: workspace('親を移す: {title}', '親を移す: {title}'),
+  // 並べ替えの読み上げ。{index} は同じ親の中で何番目か
+  moveAnnounced: workspace('「{title}」を {index} 番目に移しました', '「{title}」を {index} 番目に移しました'),
+  // 親を移したときの知らせ。{parent} は移す先のストーリーの題
+  moveAnnouncedUnder: workspace(
+    '「{title}」を{story}「{parent}」の末尾へ移しました',
+    '「{title}」を{story}「{parent}」の末尾へ移しました',
+  ),
+  moveAnnouncedRoot: workspace('「{title}」を親なしの末尾へ移しました', '「{title}」を親なしの末尾へ移しました'),
+  moveFailed: organization('移せませんでした。一覧を読み直します', '移せませんでした。一覧を読み直します'),
+  moveConflict: organization(
+    'ほかの画面で変わったため、移せませんでした。一覧を読み直します',
+    'ほかの画面で変わったため、移せませんでした。一覧を読み直します',
+  ),
+  moveParentDone: workspace(
+    '{done}した{story}の下へは移せません。一覧を読み直します',
+    '{done}した{story}の下へは移せません。一覧を読み直します',
+  ),
+  // 動かした行か、直前の行か、親が見つからなかった（404）。どれが消えたかは分からない
+  moveGone: organization(
+    '一覧が変わったため移せませんでした。一覧を読み直します',
+    '一覧が変わったため移せませんでした。一覧を読み直します',
+  ),
+  moveTaskDone: workspace(
+    'この{task}は{done}しています。一覧を読み直します',
+    'この{task}は{done}しています。一覧を読み直します',
+  ),
+  // 動かしている間に一覧が読み直され、まだ送っていなかった移動を捨てたとき
+  moveReloaded: organization(
+    '動かしている間に一覧が読み直されたため、一覧を読み直しました。並びが変わっていなければ、もう一度動かしてください',
+    '動かしている間に一覧が読み直されたため、一覧を読み直しました。並びが変わっていなければ、もう一度動かしてください',
+  ),
+  // 端の行で Alt と ↑ ↓ を押したときの読み上げ
+  moveAtTop: organization('いちばん上です', 'いちばん上です'),
+  moveAtBottom: organization('いちばん下です', 'いちばん下です'),
+  // 親を移すダイアログ。見出しに、どのタスクを動かすかを添える
+  moveParentTitle: workspace('「{title}」の親を移す', '「{title}」の親を移す'),
+  moveParentField: organization('移す先', '移す先'),
+  moveParentNone: organization('親なし', '親なし'),
+  moveParentHint: organization('移す先の末尾に置きます。', '移す先の末尾に置きます。'),
+  moveParentSubmit: organization('移す', '移す'),
+
   // 組織の選択と、枠の外の画面（組織の切り替え、見つからない、運用の仮の画面）
   organizationChooseTitle: organization('冒険者ギルドを選ぶ', '組織を選ぶ'),
   organizationChooseLead: organization(

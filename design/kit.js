@@ -208,7 +208,15 @@
       : `<button class="done-btn" type="button" data-done="${x.id}" aria-label="${t("complete")}" title="${t("complete")}">${icon("check")}</button>`;
   }
 
-  // 台帳の1行。opts: showWs, showParent（既定 true）, showAssignee
+  // 並べ替えの「上へ」「下へ」と「親を移す」（本番の TaskEntry、TreeStory と同じ組み方）。
+  // order: { first, last, parent }。端の向きは aria-disabled（フォーカスを失わない）。parent が真なら「親を移す」も出す
+  function orderActions(title, order) {
+    const btn = (name, label, disabled) =>
+      `<button class="icon-btn" type="button" aria-label="${label}: ${esc(title)}" title="${label}"${disabled === undefined ? "" : ` aria-disabled="${disabled}"`}>${icon(name)}</button>`;
+    return `<span class="order-actions">${btn("up", "上へ", Boolean(order.first))}${btn("down", "下へ", Boolean(order.last))}${order.parent ? btn("swap", "親を移す") : ""}</span>`;
+  }
+
+  // 台帳の1行。opts: showWs, showParent（既定 true）, showAssignee, order（並べ替えの操作。orderActions の order）
   function entry(x, opts = {}) {
     const showParent = opts.showParent !== false;
     const parent = x.story ? D.stories[x.story].title : null;
@@ -227,7 +235,7 @@
           ${taskFlags(x)}${opts.meta ? opts.meta(x) : ""}
         </span>
       </div>
-      <div class="entry-end">${taskDue(x)}${opts.hidePts ? "" : pts(x.pts)}${opts.showAssignee ? avatarOf(x.who) : ""}${opts.actions ? opts.actions(x) : doneControl(x)}</div>
+      <div class="entry-end">${taskDue(x)}${opts.hidePts ? "" : pts(x.pts)}${opts.showAssignee ? avatarOf(x.who) : ""}${opts.order && !x.doneAt ? orderActions(x.title, opts.order) : ""}${opts.actions ? opts.actions(x) : doneControl(x)}</div>
     </div>`;
   }
   // opts.empty があれば、空のときに台帳の代わりに出す（emptyState で作る）
@@ -342,8 +350,8 @@
     }).join("")}</div></div>`;
   }
 
-  // バックログの木
-  function treeStory(sid, solo) {
+  // バックログの木。opts.order を渡すと、ストーリーの行に「上へ」「下へ」を、配下のタスクの行に並べ替えと「親を移す」を出す
+  function treeStory(sid, solo, opts = {}) {
     const st = D.stories[sid];
     const list = tasksWhere((x) => x.story === sid);
     const open = list.filter((x) => !x.doneAt);
@@ -357,9 +365,11 @@
         <span class="tree-end">
           <span class="tree-ratio" title="完了 / 全体">${t("done")} ${p.done} / ${p.all} pt</span>
           <button class="btn is-sm" type="button" data-dialog="createTask" aria-label="${t("task")}を足す: ${esc(st.title)}">${icon("plus")}${t("task")}</button>
+          ${opts.order ? orderActions(st.title, opts.order) : ""}
         </span>
       </div>
-      <div class="tree-children" id="tree-${sid}">${open.map((x) => entry(x, { showParent: false, showAssignee: true })).join("")}
+      <div class="tree-children" id="tree-${sid}">${open.map((x, i) => entry(x, { showParent: false, showAssignee: true,
+        order: opts.order ? { first: i === 0, last: i === open.length - 1, parent: true } : undefined })).join("")}
         ${done ? `<p class="tree-folded">完了 ${done} 件を折りたたんでいます</p>` : ""}${!list.length ? `<p class="tree-folded">${t("task")}はまだありません</p>` : ""}</div>
     </div>`;
   }
@@ -998,6 +1008,15 @@ const looooooooooooooooooooooooooooooooooongLine = "コードの長い1行は、
          <p class="field-hint">完了の記録と経験値は残ります。</p>`,
         `<button class="btn is-primary" type="button" data-close-dialog>やめる</button><button class="btn is-danger" type="button" ${drawer.id ? "data-delete-task" : `data-close-dialog data-toast="削除しました"`}>削除する</button>`);
       document.querySelector(".dialog-sheet").classList.add("is-danger");
+    },
+    // タスクの親を移す（本番の TaskMoveDialog）。移す先は親なしと、完了していない親のないストーリー（今の親を除く）。移す先の末尾に置く
+    moveTask: () => {
+      const x = tasksWhere((task) => task.story === "s4" && !task.doneAt)[0];
+      const others = Object.entries(D.stories).filter(([sid, s]) => sid !== "s4" && !s.epic && !s.doneAt);
+      openDialog(`「${esc(x ? x.title : "")}」の親を移す`,
+        `<label class="field" for="d-move"><span class="field-label">移す先</span><select class="select" id="d-move" aria-describedby="d-move-hint"><option>親なし</option>${others.map(([, s]) => `<option>${esc(s.title)}</option>`).join("")}</select>
+           <span class="field-hint" id="d-move-hint">移す先の末尾に置きます。</span></label>`,
+        `<button class="btn is-quiet" type="button" data-close-dialog>やめる</button><button class="btn is-primary" type="button" data-close-dialog>移す</button>`);
     },
     deleteEpic: () => {
       openDialog(`${t("epic")}を削除する`,
@@ -1820,7 +1839,7 @@ const looooooooooooooooooooooooooooooooooongLine = "コードの長い1行は、
     D, t, brandMark, googleMark, THEMES, THEME_LABEL, THEME_NOTE, setVocab, toggleVocab, onChange, esc, icon, md, sumPts, cycleTheme, setTheme, applyTheme, mount,
     onRedraw: (fn) => extraRedraws.push(fn), openDrawer, drawerHtml, drawerState: drawer,
     user, task, tasksWhere, repoTag, repoPicker, sprintLabel, colName, categoryOf, storyPts, epicPts, dueOf,
-    avatar, avatarOf, SAMPLE_PHOTO, BROKEN_PHOTO, emblem, pts, dueChip, taskDue, tier, sourceKey, entry, book, section, pageHead,
+    avatar, avatarOf, SAMPLE_PHOTO, BROKEN_PHOTO, emblem, pts, dueChip, taskDue, tier, sourceKey, entry, orderActions, book, section, pageHead,
     card, board, treeStory, treeEpic, sprintNotice, raidNotice, progress, levelPanel, load, capacityRows,
     openDialog, closeDialog, toast, celebrate, miniCap, redraw: () => redrawAll(), DIALOGS, loginTarget, orgMenuHtml, accountMenuHtml,
     filesOf, fileThumb, fileRow, dropzone, attachments, mdBody, markdownSample, meter,
