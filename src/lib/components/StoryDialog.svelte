@@ -291,7 +291,10 @@
 
 <Dialog bind:this={dialog} bind:open dismissible={!submitting} title={dialogTitle}>
   <form id={formId} class="form" onsubmit={submit} novalidate aria-busy={loadState === 'loading'}>
-    {#if loadState === 'failed'}
+    {#if loadState === 'loading'}
+      <!-- 読み上げは下の role="status" が伝えるので、見える文字だけにする -->
+      <p class="field-hint" aria-hidden="true">{t('storyLoading')}</p>
+    {:else if loadState === 'failed'}
       <div class="callout is-danger" role="alert">
         <Icon name="alert" /><span>{t('storyLoadFailed', { story: t('story') })}</span>
       </div>
