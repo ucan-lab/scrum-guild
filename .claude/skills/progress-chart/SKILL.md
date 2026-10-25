@@ -24,11 +24,13 @@ description: 人の手元の進捗の図（claude.ai の Artifact「Scrum Guild 
 ### 2. GitHub の状態を引く
 
 ```bash
-gh api "repos/{owner}/{repo}/issues?state=all&per_page=100" --paginate --jq '.[] | select(.pull_request | not) | "\(.number) \(.state) \(.state_reason) \([.labels[].name] | join(","))"'
-gh api "repos/{owner}/{repo}/pulls?state=open&per_page=100" --jq '.[] | "\(.number) \(.head.ref)"'
+gh api "repos/{owner}/{repo}/issues?state=all&per_page=100" --paginate --jq '.[] | select(.pull_request | not) | {number, title, state, state_reason, labels: [.labels[].name], parent: (.parent_issue_url // "" | split("/") | last), blocked_total: .issue_dependencies_summary.total_blocked_by}'
+gh api "repos/{owner}/{repo}/pulls?state=open&per_page=100" --jq '.[] | {number, head: .head.ref, refs: ([.body // "" | scan("(?i)(?:closes|fixes|refs) #([0-9]+)") | .[0]])}'
 ```
 
 ラベルの絞り込み（`labels=a,b`）は AND になるので、全件を引いて手元で分ける。
+`blocked_total` が 0 でない開いた Issue だけ、`gh api repos/{owner}/{repo}/issues/<番号>/dependencies/blocked_by --jq '[.[].number]'` で前に要るものを引く。
+`gh` を1回ずつ打つのが多くなるときは、Python のスクリプトをスクラッチパッドに書き、`subprocess` で `gh` を呼んで JSON に落とす。
 
 ### 3. ページを直す
 
@@ -39,7 +41,7 @@ gh api "repos/{owner}/{repo}/pulls?state=open&per_page=100" --jq '.[] | "\(.numb
 
 次の決まりで直す。
 
-- `s` は推測せず GitHub から読む（`docs/development.md` の「Issue の状態」）。閉じていれば `done`、開いた PR があれば `review`、`status:in-progress` なら `wip`（`status:refining` と両方あっても `wip`）、`status:refining` なら `refining`、どれでもなければ `todo`。開いた PR はブランチ名の先頭の番号で引く
+- `s` は推測せず GitHub から読む（`docs/development.md` の「Issue の状態」）。閉じていれば `done`、開いた PR（ブランチ名の `<番号>-` の先頭か、本文の `Closes` と `Refs` で引く）があれば `review`、`status:in-progress` なら `wip`（`status:refining` と両方あっても `wip`）、`status:refining` なら `refining`、どれでもなければ `todo`。開いた PR はブランチ名の先頭の番号で引く
 - 閉じた Issue を `done` にする前に、`state_reason` が `not_planned`（重複や対応しない）でないかを確かめる。そうなら図から外す
 - PR を出した Issue は、`note` を「PR #nn」で始める。ページが番号を取って列のブロックに出す
 - 開いている Issue の `deps` は、GitHub の依存関係（`gh api repos/{owner}/{repo}/issues/<番号>/dependencies/blocked_by --jq '[.[].number]'`）に合わせる。閉じた Issue の `deps` は残す。「待ち」と待っている番号はページが `deps` から出すので、手で書かない
@@ -48,8 +50,9 @@ gh api "repos/{owner}/{repo}/pulls?state=open&per_page=100" --jq '.[] | "\(.numb
 - ストーリーの Issue が閉じたら `closed: true` を付ける。付いていないと、タスクが済んだストーリーは「受け入れ待ち」として一番上の「あなたの番」に出る
 - `SECTIONS` の並びは作る順のまま、手で動かさない。タスクがすべて済んだストーリーは、ページが畳んで一番下にまとめる
 - 図に載せない閉じた chore は `doneIssues` に足す
+- 人が確かめること、行うこと（`human`、#92〜#96 など）は、「次に着手するもの」に混ぜない
 - 導入文に済んだ経緯を書き足さない。依存の矢印は、見づらいので描かない
 
 ### 4. 出し直す
 
-足元の日付（`asof`）を今日に直す。ページの `<script>` の中身をファイルに抜き出して `node --check` で構文を確かめてから、同じファイルのパスと URL で出し直す。
+足元の日付（`asof`）を今日に直す。ページの `<script>` の中身をスクラッチパッドのファイルに抜き出して（Python で `re.search(r"<script>(.*?)</script>", html, re.S)`）`node --check` で構文を確かめてから、同じファイルのパスと URL で出し直す。

@@ -134,14 +134,16 @@ gh api repos/{owner}/{repo}/issues/<親の番号>/sub_issues -F sub_issue_id=<�
 
 本文の表で子を並べるだけにしない（理由: サブ Issue でつながないと、GitHub の親の進み具合に出ない）。
 
-前に要るものは、待つ側の Issue に依存関係（blocked by）でつなぐ。渡すのは前に要る Issue の REST の `id`。
+前に要るものは、待つ側の Issue に依存関係（blocked by）でつなぐ。渡すのは前に要る Issue の REST の `id`（`gh api repos/{owner}/{repo}/issues/<番号> --jq .id`）。
 
 ```bash
 gh api -X POST repos/{owner}/{repo}/issues/<待つ側の番号>/dependencies/blocked_by -F issue_id=<前に要る Issue の id>
 ```
 
-- 本文の「前に要るもの」の表に書いたものは、すべてつなぐ（理由: `next-up` は依存関係だけを読んで着手できるかを決め、本文の表を読まない）
+- 前に要る Issue が決まったら、本文に表があるかに関わらずすべてつなぐ（理由: `next-up` は依存関係だけを読んで着手できるかを決め、本文の表を読まない。つなぎ忘れた Issue は着手できる扱いになる）
+- ストーリーをタスクに分けたら、ストーリーが待つものを、最初に着手するタスクにもつなぐ
 - 閉じた Issue はつながなくてよい。開いている依存だけが着手を止める
+- つなぎ間違えたら `gh api -X DELETE repos/{owner}/{repo}/issues/<待つ側の番号>/dependencies/blocked_by/<前に要る Issue の id>` で外す
 - つないだ後に `gh api repos/{owner}/{repo}/issues/<待つ側の番号>/dependencies/blocked_by --jq '[.[].number]'` で確かめる
 
 ## レビューモード
