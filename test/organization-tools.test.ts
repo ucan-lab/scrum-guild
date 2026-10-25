@@ -14,6 +14,7 @@ import { githubUser } from './auth/helpers.ts';
 import {
   AT,
   createAccountLogin,
+  createInvitation,
   createOrganization,
   createSessionWithToken,
   createUser,
@@ -43,11 +44,14 @@ const workspaceOrganizationRow = defineOperation({
 
 const writeSettings = defineOperation({
   name: 'tools-write-settings',
-  description: '自分の組織の言葉づかいと既定のテーマを書く',
+  description: '自分の組織の言葉づかいと既定のテーマを、読んだ値のままなら書く',
   mode: 'write',
   permission: 'admin',
-  input: z.object({ vocabulary: z.enum(['game', 'scrum']).optional(), theme: z.enum(themes).optional() }),
-  output: z.object({ ok: z.literal(true) }),
+  input: z.object({
+    vocabulary: z.object({ from: z.enum(['game', 'scrum']), to: z.enum(['game', 'scrum']) }).optional(),
+    theme: z.object({ from: z.enum(themes), to: z.enum(themes) }).optional(),
+  }),
+  output: z.object({ written: z.boolean() }),
 });
 
 const endSessions = defineOperation({
@@ -84,10 +88,9 @@ const app = createApp(
     implement(workspaceOrganizationRow, async ({ tools }) => ({
       member_limit: (await tools.readOrganization()).memberLimit,
     })),
-    implement(writeSettings, async ({ tools, input }) => {
-      await tools.writeOrganizationSettings(input, new Date('2026-10-25T00:00:00.000Z'));
-      return { ok: true as const };
-    }),
+    implement(writeSettings, async ({ tools, input }) => ({
+      written: await tools.writeOrganizationSettings(input, new Date('2026-10-25T00:00:00.000Z')),
+    })),
     implement(endSessions, async ({ tools, input }) => {
       await tools.endSessionsIfLoginLost(input.user_id);
       return { ok: true as const };
@@ -150,13 +153,15 @@ describe('組織の行', () => {
     const admin = await createPerson({ organization: own, admin: true });
     const otherBefore = await organizationRowOf(other.id);
 
-    await ok(
-      await post(app, writeSettings, {
-        slug: own.slug,
-        token: admin.token,
-        body: { vocabulary: 'scrum', theme: 'medieval' },
-      }),
-    );
+    expect(
+      await ok(
+        await post(app, writeSettings, {
+          slug: own.slug,
+          token: admin.token,
+          body: { vocabulary: { from: 'game', to: 'scrum' }, theme: { from: 'simple', to: 'medieval' } },
+        }),
+      ),
+    ).toEqual({ written: true });
     expect(await organizationRowOf(own.id)).toMatchObject({
       vocabulary: 'scrum',
       theme: 'medieval',
@@ -165,8 +170,41 @@ describe('組織の行', () => {
     expect(await organizationRowOf(other.id)).toEqual(otherBefore);
 
     // 渡した項目だけを書く
-    await ok(await post(app, writeSettings, { slug: own.slug, token: admin.token, body: { theme: 'modern' } }));
+    await ok(
+      await post(app, writeSettings, {
+        slug: own.slug,
+        token: admin.token,
+        body: { theme: { from: 'medieval', to: 'modern' } },
+      }),
+    );
     expect(await organizationRowOf(own.id)).toMatchObject({ vocabulary: 'scrum', theme: 'modern' });
+  });
+
+  test('書く項目が無ければ何も書かず、updated_at も変えない', async () => {
+    const own = await createOrganization();
+    const admin = await createPerson({ organization: own, admin: true });
+    const before = await organizationRowOf(own.id);
+    expect(await ok(await post(app, writeSettings, { slug: own.slug, token: admin.token, body: {} }))).toEqual({
+      written: true,
+    });
+    expect(await organizationRowOf(own.id)).toEqual(before);
+  });
+
+  test('読んだ値が今の値と違えば false で、行は変わらない', async () => {
+    const own = await createOrganization({ vocabulary: 'scrum', theme: 'modern' });
+    const admin = await createPerson({ organization: own, admin: true });
+    const before = await organizationRowOf(own.id);
+    for (const body of [
+      { vocabulary: { from: 'game', to: 'scrum' } },
+      { theme: { from: 'simple', to: 'medieval' } },
+      // 片方の欄だけが古くても、もう片方も書かない
+      { vocabulary: { from: 'scrum', to: 'game' }, theme: { from: 'simple', to: 'medieval' } },
+    ]) {
+      expect(await ok(await post(app, writeSettings, { slug: own.slug, token: admin.token, body }))).toEqual({
+        written: false,
+      });
+    }
+    expect(await organizationRowOf(own.id)).toEqual(before);
   });
 });
 
@@ -214,6 +252,52 @@ describe('ログインできる条件を失った人のセッション', () => {
     }
     expect(await sessionCount(elsewhere.accountId)).toBe(1);
     expect(await sessionCount(operator.accountId)).toBe(1);
+  });
+
+  test('ほかの入口が、別の組織のアカウントに結ばれる前の指名の行だけなら、セッションを消す', async () => {
+    const own = await createOrganization();
+    const other = await createOrganization();
+    const admin = await createPerson({ organization: own, admin: true });
+    const left = await createPerson({ organization: own });
+    // 別の組織で管理者に指名されているが、まだ結ばれていない（account_id が空）行。セッションの判定では数えない
+    await createUser(other, {
+      account_id: null,
+      login_provider: left.login.provider,
+      login_subject: left.login.subject,
+      is_admin: 1,
+    });
+
+    await ok(await post(app, endSessions, { slug: own.slug, token: admin.token, body: { user_id: left.userId } }));
+    expect(await sessionCount(left.accountId)).toBe(0);
+  });
+
+  test('入れる組織が無くても、承諾待ちの招待があればセッションを残す', async () => {
+    const own = await createOrganization();
+    const admin = await createPerson({ organization: own, admin: true });
+    const left = await createPerson({ organization: own });
+    const other = await createOrganization();
+    const owner = await createUser(other, { is_admin: 1 });
+    const workspace = await createWorkspace(other, owner.id);
+    await createInvitation(other, workspace.id, owner.id, left.login);
+
+    await ok(await post(app, endSessions, { slug: own.slug, token: admin.token, body: { user_id: left.userId } }));
+    expect(await sessionCount(left.accountId)).toBe(1);
+  });
+
+  test('判定した時刻より後に作られたセッションは残す', async () => {
+    const own = await createOrganization();
+    const admin = await createPerson({ organization: own, admin: true });
+    const left = await createPerson({ organization: own });
+    // 判定の後にログインし直したセッションの代わりに、作った時刻が先の行を入れる
+    const later = await createSessionWithToken(left.accountId, { created_at: '2099-01-01T00:00:00.000Z' });
+
+    await ok(await post(app, endSessions, { slug: own.slug, token: admin.token, body: { user_id: left.userId } }));
+    expect(await sessionCount(left.accountId)).toBe(1);
+    const db = commonDb(env);
+    const rows = await db.rows(
+      db.statement((q) => q.selectFrom('sessions').select('token_hash').where('account_id', '=', left.accountId)),
+    );
+    expect(rows.map((row) => row.token_hash)).toEqual([later.row.token_hash]);
   });
 
   test('アカウントに結ばれていない行と、無い ID は何もしない', async () => {
@@ -276,6 +360,35 @@ describe('アバター', () => {
         [googleWaiting.id, null],
       ]),
     );
+  });
+
+  test('アカウントに結ばれる前の行は、同じログインの account_logins があっても null', async () => {
+    const own = await createOrganization();
+    const other = await createOrganization();
+    const admin = await createPerson({ organization: own, admin: true });
+    // 別の組織でログインしている人。アバターを持つ
+    const elsewhere = await createPerson({ organization: other });
+    const db = commonDb(env);
+    await db.run(
+      db.statement((q) =>
+        q
+          .updateTable('account_logins')
+          .set({ avatar_url: 'https://avatars.githubusercontent.com/u/7100002' })
+          .where('login_provider', '=', elsewhere.login.provider)
+          .where('login_subject', '=', elsewhere.login.subject),
+      ),
+    );
+    // 自分の組織で、同じログインを指名して待っている行（まだ結ばれていない）
+    const waiting = await createUser(own, {
+      account_id: null,
+      login_provider: elsewhere.login.provider,
+      login_subject: elsewhere.login.subject,
+    });
+
+    const result = (await ok(
+      await post(app, avatars, { slug: own.slug, token: admin.token, body: { user_ids: [waiting.id] } }),
+    )) as { avatars: { user_id: string; avatar_url: string | null }[] };
+    expect(result.avatars).toEqual([{ user_id: waiting.id, avatar_url: null }]);
   });
 
   test('束縛の上限を超える数の ID も区切って引く', async () => {

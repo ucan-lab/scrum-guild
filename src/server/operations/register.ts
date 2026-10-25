@@ -51,12 +51,18 @@ export type OperationsAppOptions = {
   fetcher: typeof fetch;
 };
 
-// 運用者の道具と組織の道具に渡す、招待する人の解決器。持つのは GitHub だけ
+// 運用者の道具と組織の道具に渡す、招待する人の解決器。持つのは GitHub だけ。
+// ログインの手段のほかの口（認可の URL、code の確かめ）を処理に渡さないよう、resolveInvitee だけを持つ入れ物に包む
 function inviteeResolverOf(
   c: Context<AppEnv>,
   options: OperationsAppOptions,
 ): (provider: string) => InviteeResolver | undefined {
-  return (provider) => (provider === 'github' ? githubMethod(c, options.fetcher) : undefined);
+  return (provider) => {
+    if (provider !== 'github') return undefined;
+    const method = githubMethod(c, options.fetcher);
+    if (method === undefined) return undefined;
+    return { resolveInvitee: (reference) => method.resolveInvitee(reference) };
+  };
 }
 
 export function operationsApp(

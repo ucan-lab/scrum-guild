@@ -23,7 +23,7 @@ export {
   userAvatarsOf,
   writeOrganizationSettings,
   type OrganizationRow,
-  type OrganizationSettings,
+  type OrganizationSettingsChange,
 } from './organization-common.ts';
 export {
   adminStatusesOf,

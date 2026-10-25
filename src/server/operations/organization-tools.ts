@@ -14,7 +14,7 @@ import {
   writeOrganizationSettings,
   type OrganizationDb,
   type OrganizationRow,
-  type OrganizationSettings,
+  type OrganizationSettingsChange,
 } from '../db/index.ts';
 
 export type OrganizationTools = {
@@ -22,14 +22,16 @@ export type OrganizationTools = {
   inviteeResolver(provider: string): InviteeResolver | undefined;
   // 自分の組織の行のうち、入るときに引かない値（人数の上限）
   readOrganization(): Promise<OrganizationRow>;
-  // 自分の組織の言葉づかいと既定のテーマを書く（渡した項目と updated_at だけ）。変更の記録（change_logs）は書かない。
-  // 組織の中の表なので、呼び出し側が別の batch() で書く
-  writeOrganizationSettings(settings: OrganizationSettings, now: Date): Promise<void>;
-  // ログインできる条件を失った人のセッションを消す。組織を離れる、無効にするなどの書き込みの batch() の後に呼ぶ。
+  // 自分の組織の言葉づかいと既定のテーマを、先に読んだ値（from）のままなら書く（渡した項目と updated_at だけ）。管理者の操作からだけ呼ぶ。
+  // 書けたら true、別の要求が先に変えていたら false（呼び出し側は 409 にする）。変更の記録（change_logs）は書かない。
+  // 組織の中の表なので、呼び出し側が true のときだけ別の batch() で書く
+  writeOrganizationSettings(change: OrganizationSettingsChange, now: Date): Promise<boolean>;
+  // ログインできる条件を失った人のセッションを消す。組織を離れる、無効にするなどの書き込みの batch() の後に、defer に渡して呼ぶ
+  // （失敗しても応答を変えない。消し忘れても、組織に入れるかはリクエストのたびに確かめるので入れない）。
   // users の ID は自分の組織の行だけを見る（別の組織の ID は何もしない）。アカウントに結ばれていない行、運用者、
   // まだ入れる組織か届いた招待がある人も何もしない。判定は登録の関数のセッションの判定と同じ（結ばれる前の行を数えない）
   endSessionsIfLoginLost(userId: string): Promise<void>;
-  // 自分の組織の users の ID ごとのアバターの URL。ログインしたことの無い人と、アバターの無い人は null。
+  // 自分の組織の users の ID ごとのアバターの URL。アカウントに結ばれていない人、ログインしたことの無い人、アバターの無い人は null。
   // 別の組織の ID と、存在しない ID はキーを持たない
   avatarsOf(userIds: readonly string[]): Promise<Map<string, string | null>>;
 };
@@ -42,7 +44,7 @@ export function organizationTools(
   return {
     inviteeResolver,
     readOrganization: () => readOrganizationRow(env, db),
-    writeOrganizationSettings: (settings, now) => writeOrganizationSettings(env, db, settings, now),
+    writeOrganizationSettings: (change, now) => writeOrganizationSettings(env, db, change, now),
     endSessionsIfLoginLost: (userId) => endSessionsIfLoginLost(env, db, userId),
     avatarsOf: (userIds) => userAvatarsOf(env, db, userIds),
   };
