@@ -130,6 +130,31 @@ test('ボタンを押した後の2回目以降の押下は無視し、文言を�
   expect(posts).toBe(1);
 });
 
+test('押したときに隠し欄へ入れた秘密は、ページを離れるときに消す（bfcache の復元で DOM に残さない）', async ({
+  page,
+}) => {
+  let body = '';
+  await page.route('**/api/auth/google/start', async (route) => {
+    body = route.request().postData() ?? '';
+    await route.fulfill({ status: 302, headers: { Location: '/login?error=invite' } });
+  });
+  await page.goto(`/invite#${CLAIM_TOKEN}`);
+  await expect(page.getByRole('button', { name: 'Google でログイン' })).toBeVisible();
+  // 移動が始まると DOM を読めなくなるので、押した直後と pagehide の後の隠し欄をページの中で読む
+  const values = await page.evaluate(() => {
+    const field = document.querySelector<HTMLInputElement>('main input[type="hidden"]')!;
+    document.querySelector<HTMLButtonElement>('main button.is-google')!.click();
+    const pressed = field.value;
+    window.dispatchEvent(new PageTransitionEvent('pagehide', { persisted: true }));
+    return { pressed, left: field.value };
+  });
+  expect(values.pressed).toBe(CLAIM_TOKEN);
+  expect(values.left).toBe('');
+  await expect(page).toHaveURL(/\/login\?error=invite$/);
+  // 隠し欄を空にしても、送った本文には秘密が入っている
+  expect(new URLSearchParams(body).get('claim_token')).toBe(CLAIM_TOKEN);
+});
+
 test('ほかの画面の Referrer-Policy は変えない', async ({ page }) => {
   const response = await page.goto('/login');
   expect(response?.headers()['referrer-policy']).toBe('strict-origin-when-cross-origin');

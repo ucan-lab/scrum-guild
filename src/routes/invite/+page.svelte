@@ -15,7 +15,8 @@
   //   - ボタンを押すまでログインを始めない。リンクを先読みする仕組み（メールの安全確認、チャットのプレビュー）で
   //     ログインが始まらないようにするため。押すと、隠し欄に秘密を入れたフォームを POST で送る（POST /api/auth/google/start）。
   //     すでにログインしていても、サーバーが Google のログインを通し、Google のアカウントのセッションに替える
-  // 秘密は DOM に置かず、押すまでこの変数だけが持つ。形が合わない（無い、短い、長い）URL は、ボタンを出さず使えない旨を出す
+  // 秘密は DOM に置かず、押すまでこの変数だけが持つ。押したときだけ隠し欄に入れ、ページを離れるときに消す（bfcache の復元で
+  // DOM に残さない）。形が合わない（無い、短い、長い）URL は、ボタンを出さず使えない旨を出す
   let claimToken = '';
   // undefined: URL を読む前
   let usable = $state<boolean | undefined>(undefined);
@@ -45,9 +46,14 @@
   function restore(event: PageTransitionEvent): void {
     if (event.persisted) moving = false;
   }
+
+  // フォームの本文は送る時点で組まれているので、離れるときに隠し欄を空にしても送信には響かない
+  function clearField(): void {
+    if (field !== undefined) field.value = '';
+  }
 </script>
 
-<svelte:window onpageshow={restore} />
+<svelte:window onpageshow={restore} onpagehide={clearField} />
 
 <svelte:head>
   <title>{t('pageTitle', { page: t('inviteTitle', { app: t('appName') }), app: t('appName') })}</title>
