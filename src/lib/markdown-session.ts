@@ -2,9 +2,13 @@
 // 部品はこれを呼ぶだけにして、parser を差し込んでテストできるようにしてある。
 import type { MarkdownBlock } from './markdown.ts';
 import type { MarkdownParser } from './markdown-parser.ts';
+import { blockWeight } from './markdown-render.ts';
 
 // 覚えておく本文の数。同じ本文を画面を移るたびに変換し直さず、時間切れの本文を二度と Worker に送らないための記憶
 export const MARKDOWN_CACHE_SIZE = 100;
+// 覚えておく量の合計（本文の字数と、節の数の合計）。1件は本文が最大10万字、節が最大5万なので、件数だけでは
+// 上限近い本文が並ぶと数百 MB に届く。上限近い本文で13件ほど
+export const MARKDOWN_CACHE_WEIGHT = 2_000_000;
 
 // 変換した節。null は、時間切れ、変換の失敗、出力の上限を超えたこと（文字のまま出す）
 export type MarkdownResult = MarkdownBlock[] | null;
@@ -24,28 +28,51 @@ type Inflight = {
   cancel: () => boolean;
 };
 
-// 結果を、本文をキーに大きさに上限のある Map（LRU）で覚える。同じ本文の変換が進んでいるときは、その結果を分け合う。
+const weightOf = (source: string, result: MarkdownResult): number =>
+  source.length + (result ? result.reduce((sum, block) => sum + blockWeight(block), 0) : 0);
+
+// 結果を、本文をキーに件数と量に上限のある Map（LRU）で覚える。同じ本文の変換が進んでいるときは、その結果を分け合う。
 // 送り済みの要求は、待つ人が全員いなくなっても進めて結果を覚える（時間切れの本文を、あとで二度送らないため）。
 // 同じ本文を新しく頼まれたら、その変換に相乗りして、同じ本文を2本変換しない
-export function createMarkdownLoader(parser: MarkdownParser, cacheSize = MARKDOWN_CACHE_SIZE): MarkdownLoader {
-  const cache = new Map<string, MarkdownResult>();
+export function createMarkdownLoader(
+  parser: MarkdownParser,
+  cacheSize = MARKDOWN_CACHE_SIZE,
+  cacheWeight = MARKDOWN_CACHE_WEIGHT,
+): MarkdownLoader {
+  const cache = new Map<string, { result: MarkdownResult; weight: number }>();
   const inflight = new Map<string, Inflight>();
+  let total = 0;
+
+  function forget(source: string) {
+    const entry = cache.get(source);
+    if (!entry) return;
+    cache.delete(source);
+    total -= entry.weight;
+  }
 
   function remember(source: string, result: MarkdownResult) {
-    cache.delete(source);
-    cache.set(source, result);
-    if (cache.size > cacheSize) cache.delete(cache.keys().next().value as string);
+    forget(source);
+    const weight = weightOf(source, result);
+    cache.set(source, { result, weight });
+    total += weight;
+    // 古いものから追い出す。今入れた1件は残す
+    while (cache.size > 1 && (cache.size > cacheSize || total > cacheWeight)) {
+      forget(cache.keys().next().value as string);
+    }
   }
 
   return {
     recall(source) {
-      if (!cache.has(source)) return undefined;
-      const result = cache.get(source) ?? null;
-      remember(source, result);
-      return { result };
+      const entry = cache.get(source);
+      if (!entry) return undefined;
+      // 使った本文として、LRU の末尾へ移す
+      cache.delete(source);
+      cache.set(source, entry);
+      return { result: entry.result };
     },
     load(source) {
-      if (cache.has(source)) return { result: Promise.resolve(cache.get(source) ?? null), cancel() {} };
+      const known = cache.get(source);
+      if (known) return { result: Promise.resolve(known.result), cancel() {} };
       let entry = inflight.get(source);
       if (!entry) {
         const request = parser.parse(source);

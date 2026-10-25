@@ -90,6 +90,30 @@ describe('createMarkdownLoader', () => {
     expect(loader.recall('c')).toBeDefined();
   });
 
+  test('覚える量（本文の字数と節の数）の合計に上限があり、超えたら古い本文から捨てる。1件だけなら上限を超えても残す', async () => {
+    const { parser, requests } = fakeParser();
+    // 10字の本文と、節2つ（段落と文字）で、1件の量は12
+    const loader = createMarkdownLoader(parser, 100, 25);
+    const remember = async (source: string) => {
+      const request = loader.load(source);
+      requests.at(-1)!.resolve(paragraph(source));
+      await request.result;
+    };
+    await remember('a'.repeat(10));
+    await remember('b'.repeat(10));
+    expect(loader.recall('a'.repeat(10))).toBeDefined();
+    await remember('c'.repeat(10));
+
+    expect(loader.recall('b'.repeat(10))).toBeUndefined();
+    expect(loader.recall('a'.repeat(10))).toBeDefined();
+    expect(loader.recall('c'.repeat(10))).toBeDefined();
+
+    await remember('d'.repeat(40));
+    expect(loader.recall('d'.repeat(40))).toBeDefined();
+    expect(loader.recall('a'.repeat(10))).toBeUndefined();
+    expect(loader.recall('c'.repeat(10))).toBeUndefined();
+  });
+
   test('同じ本文の変換が進んでいるときは、結果を分け合う', async () => {
     const { parser, requests } = fakeParser();
     const loader = createMarkdownLoader(parser);
