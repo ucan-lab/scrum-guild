@@ -25,18 +25,44 @@
 
 `ai.md` の「操作の定義を1か所に持つ」の形。
 
-- 操作ごとに、名前、説明、入力と出力の zod のスキーマ、読むだけか書き込むか、要る権限（ログインだけ、ワークスペースのメンバー、管理者、運用者など）を1つのオブジェクトに書き、`src/shared` に置く。
-- Hono のルートは、定義を並べて1つの関数で登録する。権限の検査と入力の検証はその関数が行い、操作ごとの処理には検証済みの入力と、組織を確かめた DB の入口だけを渡す。
-- 画面からは、定義を引数に取る型付きの呼び出しの関数で呼ぶ。入力と出力の型は定義から推論する。
-- 組織の分離のテストは、定義の一覧を回して全操作に当てる。新しい操作を足しても、テストを書き足す必要はない。
+- 定義: 操作ごとに、名前、説明、入力と出力の zod のスキーマ、`read` か `write`、要る権限を1つのオブジェクトに書き、`src/shared/operations/` に置く（`defineOperation()`）。一覧は `src/shared/operations/index.ts`。運用者の操作は `src/shared/operations/operator/`（人が差分を読む領域）。定義は処理を持たない。画面の束に Worker のコードを入れないため。
+- 処理: `src/server/operations/` で `implement(定義, 処理)` の形に書き、`src/server/operations/index.ts` の一覧に足す。Hono のルートは、この一覧を `createApp()` が1つの関数（`operationsApp()`）で登録する。ルートを直に書かない（`/api/health` だけが例外）。仮の操作は本番の一覧に入れず、テストの中で定義する。
+- URL: `POST /api/<slug>/<操作の名前>`。組織の外の操作（ログインだけ、運用者）は `POST /api/<操作の名前>`。読む操作も POST にする。API の応答はどれもキャッシュしないので、GET にしない損は小さく、Origin の検査をすべての操作に同じに掛けられる。入力は JSON の本文だけで、`Content-Type: application/json` を要る。URL は名前から作り、定義に持たせない。名前は英小文字と数字をハイフンでつないだ1語（`task-title` など）で、一覧で重ならない。URL の形は `operationPath()` に1つだけ持ち、画面と登録の関数が同じ値を使う。
+- 権限の種類（`permission`）:
+
+  | 権限 | 範囲 | 通る人 |
+  | --- | --- | --- |
+  | `login` | 組織の外 | ログインしている人 |
+  | `operator` | 組織の外 | シークレット `OPERATOR_LOGIN_IDS` に載った運用者 |
+  | `organization` | 組織の中 | 組織に入れる人（管理者、いずれかのワークスペースに今所属している人、承諾待ちの招待がある人） |
+  | `member` | ワークスペースの下 | そのワークスペースに今所属している人と、管理者 |
+  | `leader` | ワークスペースの下 | そのワークスペースのリーダーと、管理者 |
+  | `admin` | 組織の中（`workspace: true` を付ければワークスペースの下） | 管理者 |
+
+  `member` と `leader` には `workspace: true` が必須で、入力のスキーマに文字列の `workspace_id` が無いと型で落ちる。管理者は所属していないワークスペースでもリーダーと同じ操作ができるので、`member` と `leader` の操作も通す。運用者であることは組織の中の操作の権限にならない。入れる組織は一般の人と同じ条件で決まる。
+- 登録の関数が行う順: Origin の検査、セッションの読み取り、組織の確かめ（組織の中の操作）と運用者や管理者の検査、入力の検証、ワークスペースの確かめとメンバーやリーダーの検査（ワークスペースの下の操作）、処理、出力の検証。ワークスペースの確かめが入力の検証の後になるのは、検証した入力の `workspace_id` から取り出すため。
+  - Origin: すべての操作に掛ける。`wrangler.jsonc` の `vars` の `PUBLIC_ORIGIN`（`scripts/dev.ts` が `pnpm dev` と `pnpm preview` の画面の URL で上書きする。`DEV_PORT_OFFSET` でずらした値も）と一致しない、または Origin の無い呼び出しは 403 の `forbidden`。`curl` で呼ぶときは `-H "Origin: http://localhost:5173"` を付ける。
+  - セッション: Cookie `sg_session`（名前と属性は `src/shared/session-cookie.ts`）のトークンを SHA-256 にして `sessions` を引く（`src/server/auth/session.ts`）。無い、形が違う、期限を過ぎた、のどれも 401 の `unauthenticated`。`last_used_at` は前回から1時間以上たったときだけ書き直し、`expires_at` を30日後にして Cookie も同じ属性で出し直す。
+  - 組織: `src/server/db/enter-organization.ts` が、slug から `organizations` を引き（共通の入口）、停止していないこと、その人が入れることを確かめる（組織の中の入口）。共通の表と組織の中の表は別の問い合わせで、結合しない。`users` はセッションのアカウントの ID と `users.account_id` の一致で引き、無効にされた人は入れない。承諾待ちの招待だけの人は `users` の行を持たないので、アカウントに結んだログインの手段と ID で招待に当てる。組織が無い、停止している、入れない、のどれも 404 の `not_found`。
+  - ワークスペース: `workspace_id` を入口の組織で絞って引く。別の組織のものと存在しないものは 404。引けたものが「確かめたワークスペース」（`VerifiedWorkspace`）になる。
+  - 入力: 壊れた JSON や形の違う入力は 400 の `invalid_input` で、`details` に項目ごとの `path`、`code`、`message` を入れる。本文は 1MiB まで。
+  - 出力: 戻り値を出力のスキーマで検証し、スキーマに無い項目は落とす。形が合わなければ 500。
+  - ログ: 操作ごとに JSON の1行（`requestId`、`operation`、`organizationId`、`userId`、`accountId`、`code`、`status`、`durationMs`）。成功の `code` は `ok`。
+- 処理が受け取るもの: 検証済みの入力 `input` と、確かめた DB の入口だけ。組織の外の操作は共通の入口 `db` と `accountId`、組織の中の操作は組織の中の入口 `db`（組織を確かめないと作れない）と `actor`（`userId`、`isAdmin`）、ワークスペースの下の操作はさらに `workspace`。`workspace` の型 `VerifiedWorkspace` は `VerifiedOrganization` と同じ作りで、`src/server/db/` の外では作れない（`test/operations-types.ts` が `@ts-expect-error` で確かめる）。組織の中の入口は問い合わせを絞らないので、処理は自分の文を、入口の `organizationId`（組織の直下の表）か、`workspace.workspaceId`（ワークスペースの下の表）で絞る。入力の ID だけで引かない。
+- 画面からは、`src/lib/api.ts` の `callOperation(定義, 入力, { slug })` で呼ぶ。入力と出力の型は定義から推論し、組織の中の操作は `slug` を要る。結果は `ApiResult` で、出力が定義の形でなければ失敗として扱う。
+- 組織の分離のテストと権限のテストは、定義の一覧を回して全操作に当てる（`test/operation-registry.test.ts`）。新しい操作を足しても、回すテストを書き足す必要はない。足すのは、組織の中の操作ごとのテスト用の関数だけで、`test/operations/pointers.ts` に操作の名前をキーにして書く。
+  - テスト用の関数は、対象の組織（`Target`。組織、管理者、リーダー、一般のメンバー、別のワークスペースのメンバー）を受け取り、その組織の行を指す成功する入力を返す。別の組織の対象を渡した入力が 404 になり、自分の組織の対象を渡した入力が成功することを、同じ関数で確かめる（404 が入力の誤りや権限の不足ではないと言えるようにするため）。
+  - 入力が組織の中の行を指さない操作は、関数の代わりに `{ noReference: <成功する入力> }` を書く。別の組織の slug と権限のテストだけを回す。
+  - 一覧にある組織の中の操作に関数が無いと、一覧に無い操作の関数があると、テストが落ちる。
+  - 権限のテストも一覧から回る。Origin の違い、未ログイン（401）、別の組織の人（404）、権限の種類ごとの許可と拒否（一般がリーダーの操作を呼ぶと 403 など）。
 - 後で足すアシスタントの道具と MCP の道具も、同じ定義から作る。
 
 ### 入口を守る規則
 
 置き場所は `src/server/db/`（人が差分を読む領域。「マージの判定」）。外から import してよいのは入口のモジュール `db/index.ts` だけ。
 
-- 入口は2つ。`commonDb(env)` は共通の6表だけを型に持ち、`orgDb(env, organization)` は組織の中の16表だけを型に持つ。`organization` は `VerifiedOrganization`（組織を確かめた結果）で、private な印を持つクラスなので、同じ形のオブジェクトは型の検査を通らず、値は凍結されて `organizationId` も書き換えられない。`index.ts` が出すのは型だけである。作る関数 `issueVerifiedOrganization()` は `db/verify-organization.ts` のモジュールの関数で、クラスの static にはしていないため、手に入れた値から辿れない。コンストラクターは作る関数だけが持つ札を要求し、値の `constructor` からは作り直せない。`orgDb` は、作る関数が登録したものだけを実行時に受け取る（組織を確かめる処理の中身は #51）
-- `orgDb` は組織の絞り込みを付けない。呼び出し側が、自分の文を `organization_id` か、組織を確かめた `workspace_id` で絞る。絞り込みに使う組織の ID は、リクエストの入力ではなく、入口の `organizationId`（確かめた組織の ID。読み取り専用）から取る。絞り込みを入口に寄せるかどうかは #51 で決める
+- 入口は2つ。`commonDb(env)` は共通の6表だけを型に持ち、`orgDb(env, organization)` は組織の中の16表だけを型に持つ。`organization` は `VerifiedOrganization`（組織を確かめた結果）で、private な印を持つクラスなので、同じ形のオブジェクトは型の検査を通らず、値は凍結されて `organizationId` も書き換えられない。`index.ts` が出すのは型だけである。作る関数 `issueVerifiedOrganization()` は `db/verify-organization.ts` のモジュールの関数で、クラスの static にはしていないため、手に入れた値から辿れない。コンストラクターは作る関数だけが持つ札を要求し、値の `constructor` からは作り直せない。`orgDb` は、作る関数が登録したものだけを実行時に受け取る。組織を確かめる処理は `db/enter-organization.ts`（「操作の定義」）
+- `orgDb` は組織の絞り込みを付けない。呼び出し側が、自分の文を `organization_id` か、確かめたワークスペース（`VerifiedWorkspace`。作りは `VerifiedOrganization` と同じで、`db/verify-workspace.ts` の外では作れない）の `workspaceId` で絞る。絞り込みに使う組織の ID は、リクエストの入力ではなく、入口の `organizationId`（確かめた組織の ID。読み取り専用）から取る。絞り込みを入口に寄せない。ワークスペースの下の表は、ワークスペースの ID で絞るのが組織の分離の単位になるため。すべての組織の中の操作に、別の組織の ID で 404 になることを確かめるテストを、定義の一覧から回す
 - 表の型は `db/tables.ts` の定数（列名、型、NULL を許すか、DEFAULT があるか）から導く。DEFAULT のある列と NULL を許す列は INSERT で省ける。列名は DB と同じスネークケースのままで、`CamelCasePlugin` は使わない。表を足すときは、マイグレーションと同じ PR で定数に足す
 - 表の型の照合: `test/table-columns.test.ts` が、全マイグレーションを当てた D1 の `sqlite_master` と `PRAGMA table_info` を定数と突き合わせる。表の一覧、列名、型、NOT NULL、DEFAULT の有無、主キーの NOT NULL がずれると落ちる
 - 文を作る部分: Kysely は SQL を組み立てるだけに使い（`DummyDriver` と `SqliteQueryCompiler`。D1 の方言のパッケージは入れない）、実行しない。`db.statement((q) => q.selectFrom(...))` の `q` は、その入口の表だけを型に持つので、別の入口の表を引くと型の検査で落ちる。生の SQL（`kysely` の `sql`）は `db/` の中だけで使い、入口は出さない（`/api/health` の `SELECT 1` は `pingDatabase(env)`）
@@ -175,7 +201,7 @@ GitHub は無料のプランのまま使う（2026-10-23 に決めた）。無�
 
 - Worker を vite の中で動かす `@cloudflare/vite-plugin` は使わない。SvelteKit との同居を公式に支持していると確かめられず、2つのプラグインが dev サーバーと build の両方を触るので、片方の更新で壊れやすいため
 - `pnpm preview` は、build した `build/` と API を `wrangler dev` だけで配る。本番と同じ配り方（Workers Static Assets、`_headers`、SPA の fallback）を確かめる口で、HMR は効かない
-- 開発の URL は2つある。`pnpm dev` は `http://localhost:5173`、`pnpm preview` は `http://localhost:8787`。Origin の検査と OAuth の戻り先は、認証の Issue で扱う
+- 開発の URL は2つある。`pnpm dev` は `http://localhost:5173`、`pnpm preview` は `http://localhost:8787`。Origin の検査は、この URL を `PUBLIC_ORIGIN` として `wrangler dev` に渡して行う（`scripts/dev.ts`）。ブラウザが送る Origin と合わない URL（`127.0.0.1` など）で開くと、更新系の API は 403 になる。OAuth の戻り先は、認証の Issue で扱う
 
 ### ポート
 
@@ -255,6 +281,7 @@ Bash の判定を `permissions.deny` に置かないのは、規則が前方一�
 | `code-reviewer`、`security-reviewer` | PHP と Laravel の記述を外し、Workers、Hono、D1、R2、Svelte を前提にした。どちらも `multi-tenant.md` と `cloudflare-workers.md` を読む。観点を当てた後に、PR の主張を疑って差分を壊す筋書きを組み立てる（`security-reviewer` は攻撃者を決めて組み立てる） |
 | `finding-verifier` | 足した。CRITICAL と HIGH の指摘の前提をコードと文書で確かめ、成り立たないと示せたものだけを反証とする。CI の AI レビューはすべての CRITICAL と HIGH を、`self-review` は直さないつもりのものを渡す |
 | `ui-reviewer` | 足した。画面の差分のコードを `docs/design.md` とチェックリストの `ui.md` に突き合わせ、色の役割、テーマ、言葉の切り替え、状態、アクセシビリティ、狭い幅での崩れを見る。観点を当てた後に、PR の確認を疑って画面を壊す筋書きを組み立てる。撮った画像での採点は `screen-review` が受け持つ |
+| `add-operation` | 足した（2026-10-25）。操作の定義を1つ足す型紙。定義、処理、一覧への登録、組織の分離のテスト用の関数、権限のテスト、画面から呼ぶ口までを一続きで作る |
 | `.claude/checklists/` | `cloudflare-workers.md` と `multi-tenant.md` を足した。`database.md` を D1 向けに書き直し、`languages/typescript.md` から使わないフレームワーク（Vue、Nuxt、Express、Sequelize）の節を外し、SvelteKit の節を SPA モード向けに直した |
 
 ### 新しく作るもの
@@ -263,7 +290,6 @@ Bash の判定を `permissions.deny` に置かないのは、規則が前方一�
 
 | スキル | 中身 | 時期 |
 | --- | --- | --- |
-| `add-operation` | 操作の定義を1つ足す型紙。定義、Hono のルート、権限のテスト、組織の分離のテスト、画面から呼ぶ口までを一続きで作る | 最初の API を作るとき |
 | `screen-review` | 画面の自己レビュー（#74） | 最初の数画面が動いてから |
 | `incident` | 本番で壊れたときの手順。Workers Logs を読む、`wrangler rollback` で戻す、D1 の Time Travel を使う | 運用の手順書と一緒に |
 
@@ -296,9 +322,10 @@ Bash の判定を `permissions.deny` に置かないのは、規則が前方一�
 | --- | --- |
 | マイグレーション | `migrations/` |
 | seed（公開された開発用のトークンのセッションを入れる。本番に入ると誰でもログインできる） | `seed/` |
-| 認証とログインの手段（GitHub OAuth、Google）、暗号、シークレット | `src/server/auth/`、`src/server/crypto/`、`.dev.vars*` |
-| 組織で絞る層（組織をまたぐデータの分離。Kysely の2つの入口と `batch()` の関数） | `src/server/db/` |
+| 認証とログインの手段（GitHub OAuth、Google）、セッションの読み取り、運用者の判定、暗号、シークレット | `src/server/auth/`、`src/server/crypto/`、`.dev.vars*` |
+| 組織で絞る層（組織をまたぐデータの分離。Kysely の2つの入口と `batch()` の関数、組織とワークスペースを確かめる処理） | `src/server/db/` |
 | 運用者の権限（運用者だけの操作の定義） | `src/shared/operations/operator/` |
+| 権限の検査（操作の定義を登録する関数。Origin、セッション、権限、組織とワークスペースの確かめを順に行う） | `src/server/operations/register.ts`、`src/server/operations/guards.ts`、`src/server/operations/implement.ts` |
 | 取り込み元の処理（顧客のデータ） | `src/server/import/` |
 | wrangler の設定（見本の Worker の `wrangler.design.jsonc` も含む）、デプロイのスクリプト、依存 | `wrangler*.jsonc` など、`scripts/`、`package.json`、`pnpm-lock.yaml`、`pnpm-workspace.yaml`、`patches/`、`.npmrc`、Node の版の指定 |
 | lint の設定（組織で絞る層を守る規則を含む） | `eslint.config.*` |
@@ -306,7 +333,7 @@ Bash の判定を `permissions.deny` に置かないのは、規則が前方一�
 
 ファイルのリネームを含む PR と、変更したファイルが 3000 を超える PR にも付ける。パスの規則は移動先の名前しか見ず、変更したファイルの一覧も 3000 件までしか取れないため。
 
-ラベルは付けるだけで、機械は外さない。人が外したときは、パスに当たっていれば付け直す。新しい領域を足すときや置き場所を変えるときは、`.github/labeler.yml` と上の表を同じ PR で直す。運用者の権限を確かめるコード（操作の定義を登録する関数）の置き場所は、入口を作る Issue（上の「初版の作る順」の4）で決め、この表に足す。
+ラベルは付けるだけで、機械は外さない。人が外したときは、パスに当たっていれば付け直す。新しい領域を足すときや置き場所を変えるときは、`.github/labeler.yml` と上の表を同じ PR で直す。運用者の権限を確かめるコードは、判定が `src/server/auth/operators.ts`、検査が操作の定義を登録する関数（`src/server/operations/register.ts`）にあり、どちらもこの表の領域に入る。登録の関数と同じ `src/server/operations/` に置く各操作の処理は、この表の領域に入れない。
 
 `needs-human` の PR は、AI レビューが通っていても人が差分を読んでからマージする。マイグレーションを含む PR では、このマージが本番に当てる承認になる（下の「CD」）。`label` のチェックが成功していない PR も、`needs-human` と同じに扱う（ジョブが落ちるとラベルが付かず、付いていない PR と見分けが付かないため）。付いていない PR は、`label` の成功を確かめたうえで、`ci-ok`、AI レビューの指摘、e2e のスクリーンショットを見て決めてよい。
 

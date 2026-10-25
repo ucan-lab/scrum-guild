@@ -154,7 +154,8 @@ rollback で戻るのは、版が持つものすべて。コードと設定の�
 `scrum-guild.dev` へ移すときは、次を同じ PR で直す。
 
 - `scripts/deploy.ts` の `PRODUCTION_URL`（煙のテストが叩く URL）
-- ほかに直すもの（公開する URL の設定、GitHub OAuth App の戻り先、Cookie）は `docs/development.md` の「Cloudflare のアカウントとドメイン」
+- `wrangler.jsonc` の `vars` の `PUBLIC_ORIGIN`（更新系の API の Origin の検査。新しい URL と一致しない呼び出しは 403 になる）
+- ほかに直すもの（GitHub OAuth App の戻り先、GitHub OAuth App の戻り先、Cookie）は `docs/development.md` の「Cloudflare のアカウントとドメイン」
 
 ## 組織
 

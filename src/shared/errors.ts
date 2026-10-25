@@ -2,6 +2,9 @@
 
 export const errorCodes = [
   'invalid_input',
+  // セッションが無いか切れた。401。画面はこれを見てログインの画面へ戻す
+  'unauthenticated',
+  // ログインしていて、権限が無い。Origin が公開する URL と違うときも
   'forbidden',
   'not_found',
   'conflict',

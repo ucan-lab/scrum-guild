@@ -4,8 +4,8 @@
 // コンストラクターは作る関数だけが持つ札を要り、値の constructor から作り直せない。
 // 型の上では private な印で、同じ形のオブジェクトは通らない。実行時には、作る関数が登録したものだけを is() が通す。
 //
-// 組織を確かめる処理（リクエストの組織が存在し、停止しておらず、ログインした人が入れること）はここに書く。中身は #51。
-// 確かめて通ったときだけ issueVerifiedOrganization() を呼ぶ
+// 組織を確かめる処理（リクエストの組織が存在し、停止しておらず、ログインした人が入れること）は enter-organization.ts。
+// ワークスペースを組織のものと確かめた結果は verify-workspace.ts に、同じ作りで置く
 const issueToken = Symbol('issue');
 const issuedValues = new WeakSet<object>();
 

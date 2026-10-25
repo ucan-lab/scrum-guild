@@ -17,7 +17,10 @@
   },
   "vars": {
     // ビルドで埋めたコミットの SHA に上書きする（scripts/dev.ts の --var、本番はデプロイのスクリプト）
-    "APP_VERSION": "dev"
+    "APP_VERSION": "dev",
+    // 公開する URL。更新系の API の Origin の検査に使う。scripts/dev.ts が pnpm dev と pnpm preview の画面の URL に上書きする。
+    // 独自ドメインへ移すときに直す（docs/operations.md）
+    "PUBLIC_ORIGIN": "https://scrum-guild.ucan-lab.workers.dev"
   },
   "d1_databases": [
     {

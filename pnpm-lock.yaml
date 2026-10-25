@@ -172,6 +172,9 @@ importers:
       kysely:
         specifier: ^0.29.7
         version: 0.29.7
+      zod:
+        specifier: ^4.6.7
+        version: 4.6.7
     devDependencies:
       '@cloudflare/vitest-plugin':
         specifier: ^1.4.7
@@ -1821,6 +1824,9 @@ packages:
   zod@4.6.5:
     resolution: {integrity: sha512-v5l/aFXZQeai4awLbOpSoHecE9UiMrnfx75tEXLjNonXVARxQ5mOeipTjROUchszUNCqnE+hqAMujRsRHsut2Q==}
 
+  zod@4.6.7:
+    resolution: {integrity: sha512-g8W2D2kU6a8untc053fX1uVBKzM7yqAxW/3zwk83+6RyF2+SKOuV+c0wBDhUwzV1PaGapmZH+rmcUzPf+3CGwg==}
+
 snapshots:
 
   '@cacheable/memory@2.2.0':
@@ -3169,3 +3175,5 @@ snapshots:
   zimmerframe@1.1.5: {}
 
   zod@4.6.5: {}
+
+  zod@4.6.7: {}

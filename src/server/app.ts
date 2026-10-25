@@ -1,33 +1,18 @@
 import { Hono } from 'hono';
 import type { ContentfulStatusCode } from 'hono/utils/http-status';
-import { HTTPException } from 'hono/http-exception';
 import { routePath } from 'hono/route';
-import type { ErrorBody, ErrorCode } from '../shared/errors.ts';
 import type { Health } from '../shared/health.ts';
 import { apiCacheControl, apiCsp, fixedHeaders } from '../shared/security-headers.ts';
+import type { AppEnv } from './app-env.ts';
+import { operatorLoginIds } from './auth/operators.ts';
 import { DatabaseUnavailableError, pingDatabase } from './db/index.ts';
+import { errorBody, knownError } from './errors.ts';
+import type { ImplementedOperation } from './operations/implement.ts';
+import { implementedOperations } from './operations/index.ts';
+import { operationsApp } from './operations/register.ts';
 
-export type AppEnv = { Bindings: Env };
-
-function errorBody(code: ErrorCode, message: string): ErrorBody {
-  return { error: { code, message } };
-}
-
-// Hono の組み込みの処理（壊れた JSON の c.req.json()、バリデーター、bodyLimit など）が投げる HTTPException を、
-// 決まった code に写す。ここに無い状態は想定外として 500 の internal にする
-const httpExceptionCodes: Partial<Record<number, ErrorCode>> = {
-  400: 'invalid_input',
-  401: 'forbidden',
-  403: 'forbidden',
-  404: 'not_found',
-  409: 'conflict',
-  413: 'invalid_input',
-  415: 'invalid_input',
-  422: 'invalid_input',
-};
-
-// テストで例外を投げるルートを足せるよう、アプリを作る関数にしておく
-export function createApp() {
+// テストで例外を投げるルートや仮の操作を足せるよう、アプリを作る関数にしておく
+export function createApp(operations: readonly ImplementedOperation[] = implementedOperations) {
   const app = new Hono<AppEnv>().basePath('/api');
 
   // 404 と 500 の応答にも付くよう、next の後で付ける
@@ -40,6 +25,23 @@ export function createApp() {
     }
     c.res.headers.set('Content-Security-Policy', apiCsp);
     c.res.headers.set('Cache-Control', apiCacheControl);
+  });
+
+  // 運用者の一覧に形の合わない項目があれば、すべてのリクエストを 500 にする。運用者でない人に運用者の権限を渡さないため、
+  // 起動を止める代わりに、デプロイの煙のテスト（/api/health）で見つけさせる。値は出さず、項目の位置だけをログに出す
+  app.use(async (c, next) => {
+    const operators = operatorLoginIds(c.env);
+    if (operators.ok) return next();
+    console.error(
+      JSON.stringify({
+        level: 'error',
+        code: 'internal',
+        requestId: c.req.header('cf-ray') ?? null,
+        reason: 'OPERATOR_LOGIN_IDS に形の合わない項目がある',
+        invalidPositions: operators.invalidPositions,
+      }),
+    );
+    return c.json(errorBody('internal', 'internal error'), 500);
   });
 
   // 煙のテスト（scripts/deploy.ts）が読む。D1 に届かないときは 503 にして、新しい版の失敗として拾わせる
@@ -66,13 +68,19 @@ export function createApp() {
     return c.json(body);
   });
 
+  // 操作の定義から登録するルート。ルートを直に書かない（/api/health だけが例外）
+  app.route('/', operationsApp(operations));
+
   app.notFound((c) => c.json(errorBody('not_found', 'not found'), 404));
 
   app.onError((err, c) => {
-    const code = err instanceof HTTPException ? httpExceptionCodes[err.status] : undefined;
-    if (code && err instanceof HTTPException) {
+    const known = knownError(err);
+    if (known) {
       // err.message は入力の一部を含みうるので返さない
-      return c.json(errorBody(code, code.replaceAll('_', ' ')), err.status as ContentfulStatusCode);
+      return c.json(
+        errorBody(known.code, known.code.replaceAll('_', ' '), known.details),
+        known.status as ContentfulStatusCode,
+      );
     }
     // 中身は応答にもログにも出さない。例外の message と stack には入力の本文や認証情報が混ざりうる
     // （JSON.parse の失敗は入力の一部を message に含める）。パスも秘密を含みうるので、ルートの定義を出す

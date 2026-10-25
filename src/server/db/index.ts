@@ -7,3 +7,11 @@ export { commonDb, orgDb, type CommonDb, type OrganizationDb } from './entries.t
 export { DatabaseUnavailableError, pingDatabase } from './ping.ts';
 export type { CommonTables, OrganizationTables } from './tables.ts';
 export type { VerifiedOrganization } from './verify-organization.ts';
+export type { VerifiedWorkspace, WorkspaceRole } from './verify-workspace.ts';
+export {
+  enterOrganization,
+  verifyWorkspace,
+  type LoginId,
+  type OrganizationActor,
+  type OrganizationEntry,
+} from './enter-organization.ts';
