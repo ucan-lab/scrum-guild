@@ -376,9 +376,10 @@ function scriptName(tool, pos) {
 }
 
 // .dev.vars と .env（.example は除く）。コードの文字列の中（readFileSync('.dev.vars')）も拾う。
-// .envrc や process.env は拾わない。.dev.v* のように名前の途中で切ったグロブは取りこぼす
+// .envrc や process.env は拾わない。.dev.v* のように名前の途中で切ったグロブは取りこぼす。
+// macOS の APFS は大文字小文字を区別しないので、.DEV.VARS も同じファイルを指す（i）
 export function mentionsSecret(word) {
-  return /(^|[^\w.])\.(dev\.vars|env)(?!\.example)(?![\w-])/.test(word);
+  return /(^|[^\w.])\.(dev\.vars|env)(?!\.example)(?![\w-])/i.test(word);
 }
 
 const READERS = new Set([
@@ -397,7 +398,7 @@ const INTERPRETERS = new Set(['node', 'python', 'python3', 'ruby', 'perl', 'deno
 const isHeredoc = (word) => word.startsWith('<<');
 const heredocBody = (word) => word.replace(/^<<<?/, '');
 
-// 読み書き共通の文言。ワークツリーの .dev.vars は本体の本物へのリンクなので、書き込みは本体の値を上書きする
+// 読み書き共通の文言。ワークツリーの .dev.vars は本体の本物へのリンクなので、.dev.vars への書き込みは本体の値を上書きする
 const SECRET_FILE_REASON = '.dev.vars と .env は開発用のシークレット。読むのも書くのも人が ! を付けて打つ。例は .dev.vars.example に置く';
 
 // words は区切りの全部の語（< .env cmd のように、道具の前に置いた入力も見る）
@@ -426,18 +427,44 @@ function isProtectedPath(word) {
   return /(^|\/)\.claude\/(settings[^/]*\.json$|hooks(\/|$))|(^|\/)\.githooks(\/|$)|(^|\/)migrations\//.test(word.replace(/^>+/, ''));
 }
 
+// Homebrew の GNU coreutils は g を前に付けた名前で入る（gcp、gsed）。g を外した名前で表を引く。全部の名前から g を外すと gh や git が崩れるので、名前の集合を持つ
+const GNU_PREFIXED = new Set(['gcp', 'gmv', 'gln', 'ginstall', 'grm', 'gsed', 'gdd', 'gtee', 'gtruncate', 'gshred']);
+const MULTI_ARG_WRITERS = new Set(['tee', 'rm', 'truncate', 'unlink', 'shred', 'srm', 'sponge', 'ed', 'ex', 'patch']);
+const COPY_TOOLS = new Set(['cp', 'mv', 'ln', 'rsync', 'install', 'scp', 'ditto']);
+const FIND_ACTIONS = new Set(['-delete', '-exec', '-execdir', '-ok', '-okdir']);
+
 // 書き込み先のどれかが matches（isProtectedPath か mentionsSecret）に当たるか。守る先とシークレットで道具の表を共用する。
-// words は区切りの全部の語。リダイレクトの先は道具の前に置いたもの（> f cat x）や、道具の無い区切り（> f、exec > f）にもあるので args でなく words で見る
-function writesTo(matches, tool, args, words) {
+// words は区切りの全部の語。リダイレクトの先は道具の前に置いたもの（> f cat x）や、道具の無い区切り（> f、exec > f）にもあるので args でなく words で見る。
+// anyOperand は、書き込み先か読み取り元かを区別せずに止めてよいとき（シークレット）に付ける。
+// コピーの宛先は、GNU の並べ替え（install x .dev.vars -m 600）で最後とは限らないので、位置引数のどれかを見る。
+// find -exec は書くか読むかが分からないので、名前が引数にあれば止める。
+// 守る先では、コピーの元（cp .claude/hooks/x.mjs /tmp/）と find -exec での読み取り（find .claude/hooks -exec grep）に確認を挟まないよう、
+// コピーは最後の引数だけを見て、find は見ない
+function writesTo(matches, tool, args, words, { anyOperand = false } = {}) {
   if (words.some((w) => w.startsWith('>') && matches(w.replace(/^>+/, '')))) return true;
+  if (GNU_PREFIXED.has(tool)) tool = tool.slice(1);
   const pos = positionals(args);
   if (['sed', 'perl'].includes(tool) && args.some((a) => /^-[a-zA-Z]*i|^--in-place/.test(a))) {
     return pos.some(matches);
   }
-  if (['tee', 'rm', 'truncate', 'unlink'].includes(tool)) return pos.some(matches);
-  if (['cp', 'mv', 'ln', 'rsync', 'install'].includes(tool)) return matches(pos.at(-1) ?? '');
+  if (MULTI_ARG_WRITERS.has(tool)) return pos.some(matches);
+  if (COPY_TOOLS.has(tool)) return anyOperand ? pos.some(matches) : matches(pos.at(-1) ?? '');
   if (tool === 'dd') return args.some((a) => a.startsWith('of=') && matches(a.slice('of='.length)));
+  if (tool === 'find') return anyOperand && args.some((a) => FIND_ACTIONS.has(a)) && args.some(matches);
+  if (tool === 'git') return args.some((a) => a.startsWith('--output=') && matches(a.slice('--output='.length)));
   return false;
+}
+
+// 道具の無い区切り（> f、exec > f）と cd、pushd のリダイレクトも見るので、tool を空、args を空にして呼べる
+function judgeFileWrites(tool, args, words) {
+  const results = [];
+  if (judgeSecretAccess(tool, args, words) || writesTo(mentionsSecret, tool, args, words, { anyOperand: true })) {
+    results.push([DENY, SECRET_FILE_REASON]);
+  }
+  if (writesTo(isProtectedPath, tool, args, words)) {
+    results.push([ASK, '守る仕組み（Claude の設定とフック）とマイグレーションの書き換えは人が確かめる']);
+  }
+  return results;
 }
 
 // WORKERS_CI=1 は deploy() が本番に触る唯一の条件で、付けるのは Workers Builds だけ。値は問わず、名前がちょうど WORKERS_CI のものだけを見る
@@ -737,15 +764,9 @@ function judgeSegment(words, ctx) {
   const ci = commandIndex(words);
   const results = [];
   if (setsWorkersCi(words, ci)) results.push([DENY, WORKERS_CI_REASON]);
-  // 道具の無い区切り（> .dev.vars、exec > .dev.vars）にもリダイレクトはあるので、道具と引数を空にして書き込みの判定だけ掛ける
   const tool = ci === -1 ? '' : baseName(words[ci]);
   const args = ci === -1 ? [] : sliceWords(words, ci + 1);
-  if (judgeSecretAccess(tool, args, words) || writesTo(mentionsSecret, tool, args, words)) {
-    results.push([DENY, SECRET_FILE_REASON]);
-  }
-  if (writesTo(isProtectedPath, tool, args, words)) {
-    results.push([ASK, '守る仕組み（Claude の設定とフック）とマイグレーションの書き換えは人が確かめる']);
-  }
+  results.push(...judgeFileWrites(tool, args, words));
   if (ci === -1) return results;
   // 道具の名前が変数や $(...)、glob で決まると、何を実行するかが分からない（"$(which wrangler)" deploy）
   if (shapeAt(words, ci).includes(DYNAMIC) || expandsAt(words, ci)) results.push([ASK, TOOL_EXPANDS_REASON]);
@@ -819,6 +840,8 @@ export function judgeBash(command, { cwd, branchOf, scriptOf = () => undefined, 
     const ci = commandIndex(words);
     if (ci !== -1 && ['cd', 'pushd'].includes(words[ci])) {
       if (setsWorkersCi(words, ci)) results.push([DENY, WORKERS_CI_REASON]);
+      // cd . > .dev.vars のようにリダイレクトを付けられる。道具として見ない（cd の引数は書き込み先ではない）
+      results.push(...judgeFileWrites('', [], words));
       const to = words[ci + 1];
       dir = !to || /^[~$-]/.test(to) || !dir ? null : path.resolve(dir, to);
       continue;

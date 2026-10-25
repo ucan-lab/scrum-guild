@@ -34,6 +34,13 @@ describe('shell-words', () => {
   test('リダイレクトを1語にまとめ、2>&1 を残さない', () => {
     assert.deepEqual(splitSegments('git push origin x>log 2>&1'), [['git', 'push', 'origin', 'x', '>log']]);
   });
+  test('zsh の >! 系は、! を宛先に残さず >宛先 の1語にそろえる', () => {
+    for (const op of ['>', '>>', '>|', '1>>', '&>', '&>>', '>&', '>!', '>>!', '&>!', '&>>!', '>&!']) {
+      assert.deepEqual(splitSegments(`echo x ${op} f`), [['echo', 'x', '>f']], op);
+    }
+    assert.deepEqual(splitSegments('echo x >!f'), [['echo', 'x', '>f']]);
+    assert.deepEqual(splitSegments('! true && echo x'), [['!', 'true'], ['echo', 'x']]);
+  });
   test('二重引用符の中の置換は、元の語に印を残して中身を取り出す', () => {
     assert.deepEqual(splitSegments('echo "a $(wrangler deploy) b"'), [['echo', 'a $(…) b'], ['wrangler', 'deploy']]);
     assert.deepEqual(splitSegments('echo "a `wrangler deploy` b"'), [['echo', 'a $(…) b'], ['wrangler', 'deploy']]);
@@ -463,6 +470,57 @@ describe('bash-rules: 止める', () => {
     'perl -pi -e s/a/b/ .dev.vars',
     `node -e "require('fs').writeFileSync('.dev.vars','x')"`,
     "node <<'EOF'\nrequire('fs').writeFileSync('.dev.vars', 'x')\nEOF",
+    // cd、pushd に付けたリダイレクトと、zsh の >!
+    'cd . > .dev.vars',
+    'pushd . > .env',
+    'echo x >! .dev.vars',
+    'echo x >>! .dev.vars',
+    'echo x &>! .dev.vars',
+    'echo x &>>! .dev.vars',
+    'echo x >&! .dev.vars',
+    'echo x >!.dev.vars',
+    'echo x >| .dev.vars',
+    'echo x 1>> .dev.vars',
+    'echo x &>> .env',
+    // APFS は大文字小文字を区別しない
+    'echo x > .DEV.VARS',
+    'cp x .Dev.Vars',
+    'rm .ENV',
+    'cat .DEV.VARS',
+    // GNU の並べ替えで宛先が最後でない形と、そのほかの書き込みの道具
+    'install x .dev.vars -m 600',
+    'scp x .dev.vars',
+    'ditto x .dev.vars',
+    'shred -u .dev.vars',
+    'srm .dev.vars',
+    'echo x | sponge .dev.vars',
+    'ed -s .dev.vars',
+    'ex .dev.vars',
+    'patch .dev.vars p.diff',
+    'find . -name .dev.vars -delete',
+    'find . -name .dev.vars -exec truncate -s0 {} +',
+    'find . -name .dev.vars -execdir rm {} \\;',
+    'git diff --output=.dev.vars',
+    'gcp x .dev.vars',
+    'gmv x .dev.vars',
+    'gln -sf x .dev.vars',
+    'ginstall x .dev.vars',
+    'grm .dev.vars',
+    "gsed -i '' s/a/b/ .dev.vars",
+    'gdd if=/dev/null of=.dev.vars',
+    'gtee .dev.vars',
+    'gtruncate -s0 .dev.vars',
+    'gshred -u .dev.vars',
+    // .env の書き込み
+    'echo x >> .env',
+    'tee .env',
+    'cp x .env',
+    "sed -i '' s/a/b/ .env",
+    'dd of=.env',
+    // 道具を経由する形
+    'pnpm exec tee .dev.vars',
+    'bash -c "echo x > .dev.vars"',
+    'bash <<EOF\necho x > .dev.vars\nEOF',
     'git status && npx wrangler deploy',
     'echo ok; wrangler deploy',
     "echo ok # it's a note\nwrangler deploy",
@@ -657,6 +715,8 @@ describe('bash-rules: 確認を挟む', () => {
     'rm -rf .claude/hooks',
     'dd of=.claude/hooks/x.mjs',
     '> .claude/settings.json',
+    'cd . > .claude/hooks/x.mjs',
+    'echo x >! .claude/settings.json',
     'tee migrations/0001_init.sql < x.sql',
     'echo "alter table x" >> migrations/0001_init.sql',
     'git push origin `git branch --show-current`',
@@ -812,6 +872,14 @@ describe('bash-rules: 通す', () => {
     "cat <<'EOF' > /tmp/b.md\nwrangler deploy は Workers Builds が実行する\n- git push origin main は人が行う\nEOF",
     "cat <<'EOF' > docs/x.md\n.dev.vars は人が用意する\nEOF",
     'cat .dev.vars.example',
+    'rm .dev.vars.example',
+    'echo x > .env.example',
+    'cp .dev.vars.EXAMPLE x',
+    'find . -name .dev.vars',
+    'git diff --stat',
+    'cp .claude/hooks/x.mjs /tmp/x',
+    "find .claude/hooks -name '*.mjs' -exec grep -l judgeBash {} +",
+    '! true',
     'echo x >> .dev.vars.example',
     'cp .dev.vars.example .dev.vars.example.bak',
     'touch .dev.vars',
@@ -897,6 +965,14 @@ describe('bash-rules: シークレットの理由', () => {
       const [d, reason] = verdict(command);
       assert.equal(d, 'deny', command);
       assert.match(reason, /人が ! を付けて打つ/, command);
+    }
+  });
+
+  test('守る先の書き込みは、人が確かめる理由で確認を挟む', () => {
+    for (const command of ['dd of=.claude/hooks/x.mjs', 'cd . > .claude/hooks/x.mjs']) {
+      const [d, reason] = verdict(command);
+      assert.equal(d, 'ask', command);
+      assert.match(reason, /人が確かめる/, command);
     }
   });
 });
