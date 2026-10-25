@@ -8,6 +8,11 @@ test.use({ timezoneId: 'Asia/Tokyo' });
 
 const BANNER = /\d{4}-\d{2}-\d{2} に閉じました。読み取り専用です。/;
 
+// 閉じた帯。ストーリーのダイアログも閉じたワークスペースの案内に .callout を持ち、開く前から DOM にあるので、帯の文で絞る
+function bannerOf(page: Page) {
+  return page.locator('.callout', { hasText: 'に閉じました。読み取り専用です。' });
+}
+
 // 管理の画面から、自分をリーダーにワークスペースを作る。作ると、そのワークスペースの画面へ移る
 async function createWorkspace(page: Page, name: string): Promise<string> {
   await page.goto('/aoba/admin');
@@ -30,7 +35,7 @@ test.describe('管理者（あおば開発のミナト）', () => {
     const name = '閉じる確認パーティ';
     const workspaceUrl = await createWorkspace(page, name);
     // 開いているうちは帯が無く、起票できる
-    await expect(page.locator('.callout')).toHaveCount(0);
+    await expect(bannerOf(page)).toHaveCount(0);
     await expect(page.getByRole('button', { name: '依頼を出す' })).toBeVisible();
 
     await page.goto('/aoba/admin');
@@ -66,7 +71,7 @@ test.describe('管理者（あおば開発のミナト）', () => {
 
     // 閉じたワークスペースの画面: どの画面にも帯が出て、起票の操作は出ない。管理者には組織の管理へのリンクが付く
     await page.goto(workspaceUrl);
-    const banner = page.locator('.callout');
+    const banner = bannerOf(page);
     await expect(banner).toHaveCount(1);
     await expect(banner).toContainText(BANNER);
     // リンクは本文と同じ色（既定のリンクの青にしない）で、下線を引く
@@ -92,7 +97,7 @@ test.describe('管理者（あおば開発のミナト）', () => {
 
     await page.goto(workspaceUrl);
     await expect(page.getByRole('heading', { level: 1, name: '掲示板' })).toBeVisible();
-    await expect(page.locator('.callout')).toHaveCount(0);
+    await expect(bannerOf(page)).toHaveCount(0);
     await expect(page.getByRole('button', { name: '依頼を出す' })).toBeVisible();
     expect(await collect()).toEqual([]);
   });
@@ -292,7 +297,7 @@ test.describe('一般のユーザー（あおば開発のハルカ）', () => {
     });
     await page.goto('/aoba/w/019a0000-0000-7000-8000-000000000401');
     await expect(page.getByRole('heading', { level: 1, name: '掲示板' })).toBeVisible();
-    await expect(page.locator('.callout')).toHaveText(BANNER);
-    await expect(page.locator('.callout').getByRole('link')).toHaveCount(0);
+    await expect(bannerOf(page)).toHaveText(BANNER);
+    await expect(bannerOf(page).getByRole('link')).toHaveCount(0);
   });
 });
