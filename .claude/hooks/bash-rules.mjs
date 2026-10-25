@@ -495,9 +495,10 @@ function scriptsSegmentHit(pattern) {
 // glob が scripts/deploy.ts か scripts/deploy-production.ts に当たるか。
 // 解決した glob を、作業場所の根と、glob の固定の部分から見つかる根（別のチェックアウトや絶対パスの先）の入口の絶対パスに照合する。
 // 根の入口だけに照合するので、test/**/*.ts のような無関係な glob は止めない。
-// どちらの根も見つからない（場所が不明か、リポジトリの外）ときは、書かれた形と解決した形の固定の部分と祖先に入口を付けて照合する
-function globHitsDeploy(written, resolved, workRoot) {
-  const roots = new Set([workRoot, resolved && repoRootOf(fixedDirOf(resolved))].filter(Boolean));
+// どちらの根も見つからない（場所が不明か、リポジトリの外）ときは、書かれた形と解決した形の固定の部分と祖先に入口を付けて照合する。
+// 根は小文字にする前の absolute から探す。大文字と小文字を区別するファイルシステム（Linux）では、小文字にしたパスは見つからない
+function globHitsDeploy(written, resolved, absolute, workRoot) {
+  const roots = new Set([workRoot, absolute && repoRootOf(fixedDirOf(absolute))].filter(Boolean));
   if (resolved && [...roots].some((r) => DEPLOY_ENTRIES.some((e) => matchesGlob(path.join(r, e).toLowerCase(), resolved)))) return true;
   if (scriptsSegmentHit(written) || (resolved && scriptsSegmentHit(resolved))) return true;
   return roots.size === 0 && (ancestorsHit(written) || (resolved !== null && ancestorsHit(resolved)));
@@ -559,12 +560,13 @@ function judgeDeployWord(word, dir, root) {
   if (/\s/.test(word)) return null;
 
   const isPathShaped = /\/|\.\w+$/.test(word);
-  const resolved = dir ? path.resolve(dir, word).toLowerCase() : null;
+  const absolute = dir ? path.resolve(dir, word) : null;
+  const resolved = absolute?.toLowerCase() ?? null;
   if (resolved && isPathShaped && DEPLOY_PATH.test(resolved)) return DEPLOY_REASON;
   // * や ** だけの語（-e の中の 2 ** 10）は見ない
   if (GLOB_CHARS.test(word) && /[\w.]/.test(word)) {
     if (expansionSize(word) > MAX_BRACE_EXPANSION) return BIG_GLOB_REASON;
-    if (globHitsDeploy(written, resolved, root)) return DEPLOY_REASON;
+    if (globHitsDeploy(written, resolved, absolute, root)) return DEPLOY_REASON;
   }
   const isRelative = !/^[/~]/.test(word);
   if (!dir && isPathShaped && isRelative && written.split('/').pop().startsWith('deploy')) return UNKNOWN_DIR_REASON;
