@@ -610,7 +610,7 @@ function dirAfterEnv(words, ci, dir, from) {
     for (let j = i + 1; j < ci; j++) {
       const w = words[j];
       let value;
-      if (w === '-u') {
+      if (w === '-u' || w === '--unset') {
         j++;
         continue;
       }

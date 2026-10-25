@@ -179,6 +179,8 @@ describe('bash-rules: 止める', () => {
     'npm x -- tsx scripts/deploy-production.ts',
     'env -C scripts node deploy-production.ts',
     'env --chdir=scripts node deploy-production.ts',
+    'env --chdir scripts node deploy-production.ts',
+    'env --unset FOO node scripts/deploy.ts',
     'env -Cscripts node deploy.ts',
     'env -u FOO -C scripts node deploy.ts',
     'env -C scripts pnpm exec node deploy.ts',

@@ -244,7 +244,9 @@ const PREFIXES = new Set([
   'cross-env',
 ]);
 // 前置きの道具が値を取るフラグ（sudo -u root、nice -n 10、xargs -I {}）
-const PREFIX_FLAGS_WITH_VALUE = new Set(['-u', '-g', '-n', '-s', '-k', '-I', '-P', '-L', '-d', '-E', '-C', '-p', '--package']);
+const PREFIX_FLAGS_WITH_VALUE = new Set([
+  '-u', '-g', '-n', '-s', '-k', '-I', '-P', '-L', '-d', '-E', '-C', '-p', '--package', '--chdir', '--unset',
+]);
 
 export function isAssignment(word) {
   // NAME+=値 も代入
