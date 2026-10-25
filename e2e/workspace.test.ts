@@ -317,6 +317,30 @@ test.describe('管理者（あおば開発のミナト）', () => {
     await expect(dialog.getByText('このブラウザのタイムゾーン（Asia/Tokyo）では作れません')).toBeVisible();
   });
 
+  test('サーバーが名前を断ったら、送り終えて欄が戻った後に、名前の欄へフォーカスを戻す', async ({ page }) => {
+    await page.route('**/api/aoba/workspace-create', (route) =>
+      route.fulfill({
+        status: 400,
+        json: {
+          error: {
+            code: 'invalid_input',
+            message: 'x',
+            details: [{ path: 'name', code: 'custom', message: 'x' }],
+          },
+        },
+      }),
+    );
+    await page.goto('/aoba/admin');
+    await page.getByRole('button', { name: 'パーティを作る' }).first().click();
+    const dialog = page.getByRole('dialog', { name: 'パーティを作る' });
+    await expect(dialog.getByRole('combobox')).toBeEnabled();
+    const nameField = dialog.getByLabel('名前');
+    await nameField.fill('断られる名前');
+    await dialog.getByRole('button', { name: '作る' }).click();
+    await expect(nameField).toBeEnabled();
+    await expect(nameField).toBeFocused();
+  });
+
   test('存在しない ID と別の組織のワークスペースの ID は、同じ「見つからない」', async ({ page }) => {
     for (const id of ['no-such-workspace', HIBARI_WORKSPACE_ID]) {
       await page.goto(`/aoba/w/${id}`);

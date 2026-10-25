@@ -176,6 +176,8 @@
     submitError = null;
     // 欄が disabled になるので、Enter で送ったときもフォーカスを失わないよう、「作る」へ移す
     submitButton?.focus();
+    // 名前が断られたときに名前の欄へ戻す。送っている間は欄が disabled でフォーカスを受けないので、戻すのは disabled を外した後
+    let focusName = false;
     try {
       const result = await callOperation(
         workspaceCreate,
@@ -198,7 +200,7 @@
           submitError = t('workspaceTimezoneRejected', { timezone: sentTimezone });
         } else if (result.status === 400 && rejectedFields(result.error?.details).includes('name')) {
           nameError = t('workspaceNameInvalidCharacter');
-          nameInput?.focus();
+          focusName = true;
         } else {
           submitError = t('workspaceCreateFailed');
         }
@@ -216,7 +218,13 @@
       document.querySelector<HTMLElement>('main h1')?.focus();
       showToast(t('workspaceCreated', { workspace: tIn('workspace', words) }), 'check');
     } finally {
-      if (mine === generation) submitting = false;
+      if (mine === generation) {
+        submitting = false;
+        if (focusName) {
+          await tick();
+          nameInput?.focus();
+        }
+      }
     }
   }
 
