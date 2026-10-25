@@ -4,7 +4,7 @@
 // 組織の外の操作は、入力が必須の項目を持つときだけ足す（運用者の操作は、成功する入力を作る）
 import { createFakeGithub } from '../auth/fake-github.ts';
 import { githubUser } from '../auth/helpers.ts';
-import { createTask } from '../factories.ts';
+import { createStory, createTask } from '../factories.ts';
 import type { Pointers } from './harness.ts';
 
 // 運用者の操作が問い合わせる GitHub。operation-registry.test.ts が fetcher を createApp に渡す
@@ -41,7 +41,14 @@ export const pointers: Pointers = {
     };
   },
   'task-create': async (target) => ({ workspace_id: target.workspace.id, title: '見積もりを送る', points: 3 }),
-  'task-list': async (target) => ({ workspace_id: target.workspace.id }),
+  'backlog-tree': async (target) => ({ workspace_id: target.workspace.id }),
+  'story-create': async (target) => ({ workspace_id: target.workspace.id, title: '見積もりを整える' }),
+  // 呼ぶたびにストーリーを作る（変える欄が同じだと、2回目は何も書かないため）
+  'story-update': async (target) => ({
+    workspace_id: target.workspace.id,
+    story_id: (await createStory(target.organization, target.workspace.id, target.admin.userId!)).id,
+    title: `見直した ${crypto.randomUUID().slice(0, 8)}`,
+  }),
   // 呼ぶたびに完了にしていないタスクを作る（同じタスクを続けて完了にすると 409 になるため）
   'task-complete': async (target) => ({
     workspace_id: target.workspace.id,

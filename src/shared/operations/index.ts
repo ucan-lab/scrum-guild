@@ -4,6 +4,7 @@ import type { AnyOperationDefinition } from './define.ts';
 import { operatorOperations } from './operator/index.ts';
 import { organizationOperations } from './organization/index.ts';
 import { sessionOperations } from './session/index.ts';
+import { storyOperations } from './story/index.ts';
 import { taskOperations } from './task/index.ts';
 import { workspaceOperations } from './workspace/index.ts';
 
@@ -11,6 +12,7 @@ export const operations: readonly AnyOperationDefinition[] = [
   ...operatorOperations,
   ...organizationOperations,
   ...sessionOperations,
+  ...storyOperations,
   ...taskOperations,
   ...workspaceOperations,
 ];

@@ -267,6 +267,62 @@ export const dictionary = defineDictionary({
     '作れませんでした。もう一度試してください。',
     '作れませんでした。もう一度試してください。',
   ),
+  // 親の選択欄。選べるのは、親のないストーリー。{story} {done} は、その言葉づかいの言葉を画面が渡す
+  taskParent: workspace('親の{story}', '親の{story}'),
+  taskParentNone: workspace('なし', 'なし'),
+  taskCreatedUnder: workspace('{story}の末尾に足しました', '{story}の末尾に足しました'),
+  taskParentGone: workspace(
+    'この{story}は見つかりません。親を選び直してください',
+    'この{story}は見つかりません。親を選び直してください',
+  ),
+  taskParentDone: workspace(
+    'この{story}はすでに{done}しています。親を選び直してください',
+    'この{story}はすでに{done}しています。親を選び直してください',
+  ),
+
+  // バックログの木（ストーリーの行、期日の印）
+  storyCreate: workspace('{story}を作る', '{story}を作る'),
+  // 木の行の「＋タスク」の読み上げの名前。同じ名前のボタンが並ぶので、どのストーリーかを添える
+  storyAddTaskLabel: workspace('{task}を足す: {title}', '{task}を足す: {title}'),
+  treeRatio: workspace('{done} {value} / {all} pt', '{done} {value} / {all} pt'),
+  treeRatioTitle: workspace('{done} / 全体', '{done} / 全体'),
+  storyFolded: workspace('{done} {count} 件を折りたたんでいます', '{done} {count} 件を折りたたんでいます'),
+  storyNoTasks: workspace('{task}はまだありません', '{task}はまだありません'),
+  dueOverdue: workspace('{due}切れ {date}', '{due}切れ {date}'),
+  dueToday: workspace('今日まで', '今日まで'),
+  dueThisWeek: workspace('今週 {date}', '今週 {date}'),
+
+  // ストーリーのダイアログ（作るときも直すときも同じ欄）
+  fieldBody: organization('本文', '本文'),
+  fieldLink: organization('リンク', 'リンク'),
+  storyTitlePlaceholder: workspace('どこまで進めば区切りか', 'どこまで進めば区切りか'),
+  linkPlaceholder: organization('https://', 'https://'),
+  fieldTextTooLong: organization('{field}は {max} 字までです', '{field}は {max} 字までです'),
+  fieldTextInvalidCharacter: organization(
+    '{field}に使えない文字（改行とタブ以外の制御文字、ゼロ幅のスペースなど）が含まれています',
+    '{field}に使えない文字（改行とタブ以外の制御文字、ゼロ幅のスペースなど）が含まれています',
+  ),
+  linkInvalid: organization(
+    'http か https で始まる URL を入れてください',
+    'http か https で始まる URL を入れてください',
+  ),
+  linkTooLong: organization('リンクは {max} 字までです', 'リンクは {max} 字までです'),
+  storySave: organization('保存する', '保存する'),
+  storySaving: organization('保存しています', '保存しています'),
+  storyCreated: workspace('{story}を作りました', '{story}を作りました'),
+  storySaved: workspace('{story}を保存しました', '{story}を保存しました'),
+  storySaveFailed: organization(
+    '保存できませんでした。もう一度試してください。',
+    '保存できませんでした。もう一度試してください。',
+  ),
+  storyGone: workspace(
+    'この{story}は見つかりません。一覧を読み直します',
+    'この{story}は見つかりません。一覧を読み直します',
+  ),
+  storyReadOnly: workspace(
+    '閉じた{workspace}の{story}は、読み取りだけできます',
+    '閉じた{workspace}の{story}は、読み取りだけできます',
+  ),
 
   // 組織の選択と、枠の外の画面（組織の切り替え、見つからない、運用の仮の画面）
   organizationChooseTitle: organization('冒険者ギルドを選ぶ', '組織を選ぶ'),

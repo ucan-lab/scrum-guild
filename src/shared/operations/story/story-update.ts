@@ -1,0 +1,28 @@
+import { z } from 'zod';
+import { idSchema } from '../../id.ts';
+import { dueOnSchema, linkUrlSchema, longTextSchema, storyTitleSchema } from '../../story.ts';
+import { defineOperation } from '../define.ts';
+import { storyDetailSchema } from './story.ts';
+
+// ストーリーの欄を変える。送られた欄のうち、今の値と違うものだけを書く（送られない欄は触らない）。
+// ダイアログを開いたときの値から変えた欄だけを送ると、別の人が別の欄を直していても両方が残り、同じ欄は後の保存が勝つ。
+// 変わる欄が無ければ何も書かない（履歴も残さない）。無いストーリー（別の組織・別のワークスペース・削除済みを含む）は 404。
+// 返すのは、書いた後に読み直した値
+export const storyUpdate = defineOperation({
+  name: 'story-update',
+  description:
+    'ストーリーのタイトル、受け入れ基準、本文、期日、リンクのうち、送った欄だけを変える。変わる欄が無ければ何も書かない',
+  mode: 'write',
+  permission: 'member',
+  workspace: true,
+  input: z.object({
+    workspace_id: idSchema,
+    story_id: idSchema,
+    title: storyTitleSchema.optional(),
+    acceptance_criteria_md: longTextSchema.optional(),
+    body_md: longTextSchema.optional(),
+    due_on: dueOnSchema.optional(),
+    link_url: linkUrlSchema.optional(),
+  }),
+  output: z.object({ story: storyDetailSchema }),
+});

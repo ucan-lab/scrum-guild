@@ -351,8 +351,11 @@
       <summary class="tree-row is-story ${solo ? "is-root" : ""}">
         <span class="tree-caret">${icon("chevron")}</span>
         <span class="kind is-story" title="${t("story")}">${icon("check")}</span>
-        <span class="tree-title">${esc(st.title)}${solo && st.cat ? ` <span class="chip">${esc(D.categories[st.cat].name)}</span>` : ""}</span>
-        <span class="tree-ratio" title="完了 / 全体">${t("done")} ${p.done} / ${p.all} pt</span>
+        <span class="tree-title"><button class="tree-link" type="button" data-dialog="editStory">${esc(st.title)}</button>${solo && st.cat ? ` <span class="chip">${esc(D.categories[st.cat].name)}</span>` : ""} ${dueChip(st.due)}</span>
+        <span class="tree-end">
+          <span class="tree-ratio" title="完了 / 全体">${t("done")} ${p.done} / ${p.all} pt</span>
+          <button class="btn is-sm" type="button" data-dialog="createTask" aria-label="${t("task")}を足す: ${esc(st.title)}">${icon("plus")}${t("task")}</button>
+        </span>
       </summary>
       <div class="tree-children">${open.map((x) => entry(x, { showParent: false, showAssignee: true })).join("")}
         ${done ? `<p class="tree-folded">完了 ${done} 件を折りたたんでいます</p>` : ""}${!list.length ? `<p class="tree-folded">${t("task")}はまだありません</p>` : ""}</div>
@@ -739,6 +742,17 @@
     return { start: addDays(last.end, 1), days: daysBetween(last.start, last.end) + 1 };
   }
 
+  function storyDialog(title, st) {
+    openDialog(title,
+      `<label class="field" for="d-st"><span class="field-label">タイトル</span><input class="input" id="d-st" placeholder="どこまで進めば区切りか" value="${st ? esc(st.title) : ""}"></label>
+       <label class="field" for="d-sa"><span class="field-label">${t("ac")}</span><textarea class="textarea" id="d-sa">${st ? esc((st.ac || []).join("\n")) : ""}</textarea></label>
+       <label class="field" for="d-sb"><span class="field-label">本文</span><textarea class="textarea" id="d-sb"></textarea></label>
+       <div class="form-row">
+         <label class="field" for="d-sd"><span class="field-label">${t("due")}</span><input class="input" id="d-sd" type="date" value="${st && st.due ? st.due : ""}"></label>
+         <label class="field" for="d-sl"><span class="field-label">リンク</span><input class="input" id="d-sl" type="url" placeholder="https://"></label>
+       </div>`,
+      `<button class="btn is-quiet" type="button" data-close-dialog>やめる</button><button class="btn is-primary" type="button" data-close-dialog data-toast="${st ? "保存しました" : `${t("story")}を作りました`}">${st ? "保存する" : "作る"}</button>`);
+  }
   const DIALOGS = {
     sprintCreate: () => {
       const d = sprintDefaults();
@@ -774,6 +788,9 @@
          <p class="props-note">${esc(D.sprints.sp14.goal)}</p>
          <div class="segmented" role="radiogroup"><label><input type="radio" name="d-goal" checked><span>達成した</span></label><label><input type="radio" name="d-goal"><span>達成していない</span></label></div></div>`,
       `<button class="btn is-quiet" type="button" data-close-dialog>やめる</button><button class="btn is-primary" type="button" data-close-dialog data-toast="${sprintLabel("sp14")} を終えました">終える</button>`),
+    // ストーリーの作成と変更は同じ欄。バックログの木の行から開く。タイトル以外は空でよい
+    createStory: () => storyDialog(`${t("story")}を作る`, null),
+    editStory: () => storyDialog(t("story"), D.stories.s4),
     createTask: () => openDialog(`${t("create")}`,
       `<label class="field" for="d-title"><span class="field-label">タイトル</span><input class="input" id="d-title" placeholder="何をするか"></label>
        <div class="form-row">
@@ -1416,7 +1433,13 @@
       return;
     }
     if ((el = hit("data-org-create"))) { DIALOGS.organizationCreated(); return; }
-    if ((el = hit("data-dialog"))) { if (el.dataset.dialog === "createTask") delete D.files.new; DIALOGS[el.dataset.dialog](); return; }
+    if ((el = hit("data-dialog"))) {
+      // 木の行（summary）の中のボタンは、押しても行の開閉を起こさない
+      if (el.closest("summary")) ev.preventDefault();
+      if (el.dataset.dialog === "createTask") delete D.files.new;
+      DIALOGS[el.dataset.dialog]();
+      return;
+    }
     if ((el = hit("data-file"))) { DIALOGS.previewFile(el.dataset.file); return; }
     if ((el = hit("data-delete-file"))) { closeDialog(); DIALOGS.deleteFile(el.dataset.deleteFile); return; }
     if ((el = hit("data-confirm-delete-file"))) {

@@ -1,20 +1,15 @@
 import { generateKeyBetween } from 'fractional-indexing';
-import { monthIn, now } from '../../shared/clock.ts';
+import { monthIn, now, todayIn } from '../../shared/clock.ts';
 import { XP_TASK_COMPLETED, XP_TASK_CREATED } from '../../shared/experience.ts';
-import { taskComplete, taskCreate, taskList } from '../../shared/operations/task/index.ts';
+import { backlogTree, taskComplete, taskCreate } from '../../shared/operations/task/index.ts';
 import { MIN_POINTS_FOR_EXPERIENCE } from '../../shared/task.ts';
 import type { OrganizationDb, OrganizationTables, QueryCreator } from '../db/index.ts';
 import { ApiError } from '../errors.ts';
 import { uuidv7 } from '../uuid.ts';
 import { implement } from './implement.ts';
+import { actorUserIdOf, changeLogColumns, openWorkspace, throwIfClosed } from './write-guards.ts';
 
 type Tables = OrganizationTables;
-
-// 呼んだ人の users の行。permission: 'member' は users の行がある人だけを通す。型の上の null を 404 で閉じる
-function actorUserIdOf(actor: { userId: string | null }): string {
-  if (actor.userId === null) throw new ApiError(404, 'not_found');
-  return actor.userId;
-}
 
 // そのワークスペースに今所属している、無効でない人の名前。いなければ undefined
 function activeMemberName(
@@ -34,39 +29,40 @@ function activeMemberName(
     .where('u.disabled_at', 'is', null);
 }
 
-// 閉じていないワークスペース。書く文の条件に入れ、読んでから書くまでの間にワークスペースが閉じた競合を止める
-// （登録の関数が見る閉じたかどうかは、読み取りの時点の値）
-function openWorkspace(from: Pick<QueryCreator<Tables>, 'selectFrom'>, organizationId: string, workspaceId: string) {
-  return from
-    .selectFrom('workspaces')
-    .select('workspaces.id')
-    .where('workspaces.id', '=', workspaceId)
-    .where('workspaces.organization_id', '=', organizationId)
-    .where('workspaces.closed_at', 'is', null);
-}
-
-// 条件で落ちた書き込みの理由を、書いた後に読み直して決める。閉じていれば登録の関数と同じ 409 の workspace_closed
-async function throwIfClosed(db: OrganizationDb, workspaceId: string): Promise<void> {
-  const row = await db.first(
-    db.statement((q) =>
-      q
-        .selectFrom('workspaces')
-        .select('workspaces.closed_at')
-        .where('workspaces.id', '=', workspaceId)
-        .where('workspaces.organization_id', '=', db.organizationId),
-    ),
-  );
-  if (row?.closed_at != null) throw new ApiError(409, 'workspace_closed');
-}
-
-// 親のないバックログのタスク。一覧と、末尾の位置を決める読み取りが同じ範囲を使う
-function rootBacklogTasks(from: Pick<QueryCreator<Tables>, 'selectFrom'>, workspaceId: string) {
+// 削除していないバックログのタスク。親のないタスク（storyId が null）か、ストーリーの配下のタスク。
+// 木の読み取りと、末尾の位置を決める読み取りが同じ範囲を使う
+function backlogTasksUnder(
+  from: Pick<QueryCreator<Tables>, 'selectFrom'>,
+  workspaceId: string,
+  storyId: string | null,
+) {
   return from
     .selectFrom('tasks')
     .where('tasks.workspace_id', '=', workspaceId)
     .where('tasks.tray', '=', 'backlog')
-    .where('tasks.story_id', 'is', null)
+    .where('tasks.story_id', storyId === null ? 'is' : '=', storyId)
     .where('tasks.deleted_at', 'is', null);
+}
+
+// 作るタスクの親にできる、削除していないストーリー。完了しているかは completed_at で見る
+function storyRow(from: Pick<QueryCreator<Tables>, 'selectFrom'>, workspaceId: string, storyId: string) {
+  return from
+    .selectFrom('stories')
+    .where('stories.id', '=', storyId)
+    .where('stories.workspace_id', '=', workspaceId)
+    .where('stories.deleted_at', 'is', null);
+}
+
+// 親にするストーリーを読む。無ければ 404、完了していれば 409 の conflict
+async function readParentStory(db: OrganizationDb, workspaceId: string, storyId: string) {
+  const story = await db.first(
+    db.statement((q) =>
+      storyRow(q, workspaceId, storyId).select(['stories.id', 'stories.title', 'stories.completed_at']),
+    ),
+  );
+  if (story === undefined) throw new ApiError(404, 'not_found');
+  if (story.completed_at !== null) throw new ApiError(409, 'conflict');
+  return { id: story.id, title: story.title };
 }
 
 export const taskCreateOperation = implement(taskCreate, async ({ db, actor, workspace, input }) => {
@@ -84,11 +80,15 @@ export const taskCreateOperation = implement(taskCreate, async ({ db, actor, wor
     assignee = { id: input.assignee_user_id, name: found.name };
   }
 
-  // 位置は親のないタスクの末尾。完了したタスクも並びに残っているので、それも含めた末尾に置く。
+  // 親は、同じワークスペースの削除していない、完了していないストーリー。無ければ 404、完了していれば 409。書く文にも同じ条件を入れる
+  const parentId = input.story_id;
+  const parent = parentId === null ? null : await readParentStory(db, workspaceId, parentId);
+
+  // 位置は親の配下（親なしなら、親のないタスク）の末尾。完了したタスクも並びに残っているので、それも含めた末尾に置く。
   // 同時に作ると同じ位置になりうる。同じ位置の行は id の順に並ぶ（同じミリ秒の中では作った順とは限らない）
   const last = await db.first(
     db.statement((q) =>
-      rootBacklogTasks(q, workspaceId).select('tasks.position').orderBy('tasks.position', 'desc').limit(1),
+      backlogTasksUnder(q, workspaceId, parentId).select('tasks.position').orderBy('tasks.position', 'desc').limit(1),
     ),
   );
   const at = now();
@@ -107,6 +107,7 @@ export const taskCreateOperation = implement(taskCreate, async ({ db, actor, wor
           'tray',
           'title',
           'points',
+          'story_id',
           'assignee_user_id',
           'position',
           'created_by',
@@ -122,6 +123,7 @@ export const taskCreateOperation = implement(taskCreate, async ({ db, actor, wor
               eb.val('backlog').as('tray'),
               eb.val(input.title).as('title'),
               eb.val(input.points).as('points'),
+              eb.val(parent?.id ?? null).as('story_id'),
               eb.val(assignee?.id ?? null).as('assignee_user_id'),
               eb.val(position).as('position'),
               eb.val(actorUserId).as('created_by'),
@@ -131,24 +133,21 @@ export const taskCreateOperation = implement(taskCreate, async ({ db, actor, wor
             .where((eb) => eb.exists(openWorkspace(eb, organizationId, workspaceId)))
             .$if(assignee !== null, (qb) =>
               qb.where((eb) => eb.exists(activeMemberName(eb, organizationId, workspaceId, assignee!.id))),
+            )
+            .$if(parent !== null, (qb) =>
+              qb.where((eb) =>
+                eb.exists(
+                  storyRow(eb, workspaceId, parent!.id).select('stories.id').where('stories.completed_at', 'is', null),
+                ),
+              ),
             ),
         ),
     ),
-    // 作った行がある（担当の条件を通った）ときだけ履歴を書く
+    // 作った行がある（担当と親の条件を通った）ときだけ履歴を書く
     db.statement((q) =>
       q
         .insertInto('change_logs')
-        .columns([
-          'id',
-          'organization_id',
-          'workspace_id',
-          'actor_user_id',
-          'entity_type',
-          'entity_id',
-          'action',
-          'changes_json',
-          'created_at',
-        ])
+        .columns(changeLogColumns)
         .expression(
           q
             .selectNoFrom((eb) => [
@@ -165,6 +164,7 @@ export const taskCreateOperation = implement(taskCreate, async ({ db, actor, wor
                     title: [null, input.title],
                     points: [null, input.points],
                     ...(assignee === null ? {} : { assignee: [null, assignee] }),
+                    ...(parent === null ? {} : { story: [null, parent] }),
                   }),
                 )
                 .as('changes_json'),
@@ -183,43 +183,170 @@ export const taskCreateOperation = implement(taskCreate, async ({ db, actor, wor
     ),
   ]);
 
-  // 読んでから書くまでに、ワークスペースが閉じたか、担当が所属を外れたら何も入らない
+  // 読んでから書くまでに、ワークスペースが閉じたか、担当が所属を外れたか、親が消えたか完了したら何も入らない
   if ((results[0]?.changes ?? 0) === 0) {
     await throwIfClosed(db, workspaceId);
+    // 親が消えていれば 404、完了していれば 409。親は無事なら、担当が外れたので 404
+    if (parent !== null) await readParentStory(db, workspaceId, parent.id);
     throw new ApiError(404, 'not_found');
   }
-  return { task: { id: taskId, title: input.title, points: input.points, assignee } };
+  return { task: { id: taskId, title: input.title, points: input.points, due_on: null, assignee } };
 });
 
-// 件数に上限を付けない。バックログの木と絞り込みは、バックログと階層の Issue で足す
-export const taskListOperation = implement(taskList, async ({ db, workspace }) => {
+type TaskPoints = 0 | 1 | 2 | 3 | 5 | 8 | 13 | null;
+
+// 親のないストーリーの配下の、削除していないバックログのタスク。ストーリー側もワークスペースで絞る
+function tasksUnderRootStories(from: Pick<QueryCreator<Tables>, 'selectFrom'>, workspaceId: string) {
+  return from
+    .selectFrom('tasks')
+    .innerJoin('stories', (join) =>
+      join.onRef('stories.id', '=', 'tasks.story_id').onRef('stories.workspace_id', '=', 'tasks.workspace_id'),
+    )
+    .where('tasks.workspace_id', '=', workspaceId)
+    .where('tasks.tray', '=', 'backlog')
+    .where('tasks.deleted_at', 'is', null)
+    .where('stories.epic_id', 'is', null)
+    .where('stories.deleted_at', 'is', null);
+}
+
+// 件数に上限を付けない。重さは 5 万件で測る Issue で決める
+export const backlogTreeOperation = implement(backlogTree, async ({ db, workspace }) => {
+  const organizationId = db.organizationId;
   const workspaceId = workspace.workspaceId;
-  const [openResult, completedResult] = await db.batch([
-    db.statement((q) =>
-      rootBacklogTasks(q, workspaceId)
-        .leftJoin('users', (join) =>
-          join.onRef('users.id', '=', 'tasks.assignee_user_id').on('users.organization_id', '=', db.organizationId),
-        )
-        .select(['tasks.id', 'tasks.title', 'tasks.points', 'tasks.assignee_user_id', 'users.name as assignee_name'])
-        .where('tasks.completed_at', 'is', null)
-        .orderBy('tasks.position')
-        .orderBy('tasks.id'),
-    ),
-    db.statement((q) =>
-      rootBacklogTasks(q, workspaceId)
-        .select((eb) => eb.fn.countAll<number>().as('count'))
-        .where('tasks.completed_at', 'is not', null),
-    ),
-  ] as const);
+  const [workspaceResult, storiesResult, storyTasksResult, totalsResult, rootOpenResult, rootDoneResult] =
+    await db.batch([
+      db.statement((q) =>
+        q
+          .selectFrom('workspaces')
+          .select(['workspaces.timezone', 'workspaces.week_start'])
+          .where('workspaces.id', '=', workspaceId)
+          .where('workspaces.organization_id', '=', organizationId),
+      ),
+      db.statement((q) =>
+        q
+          .selectFrom('stories')
+          .select([
+            'stories.id',
+            'stories.title',
+            'stories.acceptance_criteria_md',
+            'stories.body_md',
+            'stories.due_on',
+            'stories.link_url',
+            'stories.completed_at',
+          ])
+          .where('stories.workspace_id', '=', workspaceId)
+          .where('stories.epic_id', 'is', null)
+          .where('stories.deleted_at', 'is', null)
+          .orderBy('stories.position')
+          .orderBy('stories.id'),
+      ),
+      // 配下の未完了のタスク
+      db.statement((q) =>
+        tasksUnderRootStories(q, workspaceId)
+          .leftJoin('users', (join) =>
+            join.onRef('users.id', '=', 'tasks.assignee_user_id').on('users.organization_id', '=', organizationId),
+          )
+          .select([
+            'tasks.story_id',
+            'tasks.id',
+            'tasks.title',
+            'tasks.points',
+            'tasks.due_on',
+            'tasks.assignee_user_id',
+            'users.name as assignee_name',
+          ])
+          .where('tasks.completed_at', 'is', null)
+          .orderBy('tasks.position')
+          .orderBy('tasks.id'),
+      ),
+      // ストーリーごとの、完了した件数とポイントの合計。未見積もりは 0
+      db.statement((q) =>
+        tasksUnderRootStories(q, workspaceId)
+          .select((eb) => [
+            'tasks.story_id',
+            eb.fn
+              .sum<number>(eb.case().when('tasks.completed_at', 'is not', null).then(1).else(0).end())
+              .as('completed_count'),
+            eb.fn
+              .sum<number>(
+                eb
+                  .case()
+                  .when('tasks.completed_at', 'is not', null)
+                  .then(eb.fn.coalesce('tasks.points', eb.lit(0)))
+                  .else(0)
+                  .end(),
+              )
+              .as('points_done'),
+            eb.fn.sum<number>(eb.fn.coalesce('tasks.points', eb.lit(0))).as('points_all'),
+          ])
+          .groupBy('tasks.story_id'),
+      ),
+      db.statement((q) =>
+        backlogTasksUnder(q, workspaceId, null)
+          .leftJoin('users', (join) =>
+            join.onRef('users.id', '=', 'tasks.assignee_user_id').on('users.organization_id', '=', organizationId),
+          )
+          .select([
+            'tasks.id',
+            'tasks.title',
+            'tasks.points',
+            'tasks.due_on',
+            'tasks.assignee_user_id',
+            'users.name as assignee_name',
+          ])
+          .where('tasks.completed_at', 'is', null)
+          .orderBy('tasks.position')
+          .orderBy('tasks.id'),
+      ),
+      db.statement((q) =>
+        backlogTasksUnder(q, workspaceId, null)
+          .select((eb) => eb.fn.countAll<number>().as('count'))
+          .where('tasks.completed_at', 'is not', null),
+      ),
+    ] as const);
+
+  const settings = workspaceResult.rows[0];
+  if (settings === undefined) throw new ApiError(404, 'not_found');
+
+  type Row = {
+    id: string;
+    title: string;
+    points: number | null;
+    due_on: string | null;
+    assignee_user_id: string | null;
+    assignee_name: string | null;
+  };
+  const taskOf = (row: Row) => ({
+    id: row.id,
+    title: row.title,
+    points: row.points as TaskPoints,
+    due_on: row.due_on,
+    assignee: row.assignee_user_id === null ? null : { id: row.assignee_user_id, name: row.assignee_name ?? '' },
+  });
+
+  const tasksByStory = new Map<string, ReturnType<typeof taskOf>[]>();
+  for (const row of storyTasksResult.rows) {
+    const list = tasksByStory.get(row.story_id!) ?? [];
+    list.push(taskOf(row));
+    tasksByStory.set(row.story_id!, list);
+  }
+  const totalsByStory = new Map(totalsResult.rows.map((row) => [row.story_id!, row]));
 
   return {
-    tasks: openResult.rows.map((row) => ({
-      id: row.id,
-      title: row.title,
-      points: row.points as 0 | 1 | 2 | 3 | 5 | 8 | 13 | null,
-      assignee: row.assignee_user_id === null ? null : { id: row.assignee_user_id, name: row.assignee_name ?? '' },
-    })),
-    completed_count: Number(completedResult.rows[0]?.count ?? 0),
+    today: todayIn(settings.timezone),
+    week_start: settings.week_start,
+    stories: storiesResult.rows.map((story) => {
+      const totals = totalsByStory.get(story.id);
+      return {
+        ...story,
+        tasks: tasksByStory.get(story.id) ?? [],
+        completed_task_count: Number(totals?.completed_count ?? 0),
+        points_done: Number(totals?.points_done ?? 0),
+        points_all: Number(totals?.points_all ?? 0),
+      };
+    }),
+    tasks: rootOpenResult.rows.map(taskOf),
+    completed_count: Number(rootDoneResult.rows[0]?.count ?? 0),
   };
 });
 
@@ -356,7 +483,7 @@ export const taskCompleteOperation = implement(taskComplete, async ({ db, actor,
 
   const results = await db.batch([
     // 1. tasks。変わった行が0なら、タスクが無い（この版の完了の前提に当たらないタスクを含む）か、すでに完了。
-    // 前提は、親とスプリントの無いバックログのタスク
+    // 前提は、スプリントに入っていないバックログのタスク（親のないタスクと、ストーリーの下のタスク）
     db.statement((q) =>
       q
         .updateTable('tasks')
@@ -364,7 +491,6 @@ export const taskCompleteOperation = implement(taskComplete, async ({ db, actor,
         .where('id', '=', taskId)
         .where('workspace_id', '=', workspaceId)
         .where('tray', '=', 'backlog')
-        .where('story_id', 'is', null)
         .where('sprint_id', 'is', null)
         .where('completed_at', 'is', null)
         .where('deleted_at', 'is', null)
@@ -378,9 +504,18 @@ export const taskCompleteOperation = implement(taskComplete, async ({ db, actor,
         .expression(
           q
             .selectFrom('tasks')
+            // 区分は、親のストーリーの親のエピック、ストーリー、タスクの順に、最初に入っているものを使う
+            .leftJoin('stories', (join) =>
+              join.onRef('stories.id', '=', 'tasks.story_id').onRef('stories.workspace_id', '=', 'tasks.workspace_id'),
+            )
+            .leftJoin('epics', (join) =>
+              join.onRef('epics.id', '=', 'stories.epic_id').onRef('epics.workspace_id', '=', 'tasks.workspace_id'),
+            )
             .leftJoin('categories', (join) =>
               join
-                .onRef('categories.id', '=', 'tasks.category_id')
+                .on('categories.id', '=', (eb) =>
+                  eb.fn.coalesce('epics.category_id', 'stories.category_id', 'tasks.category_id'),
+                )
                 .onRef('categories.workspace_id', '=', 'tasks.workspace_id'),
             )
             .select((eb) => [
@@ -392,7 +527,7 @@ export const taskCompleteOperation = implement(taskComplete, async ({ db, actor,
               'tasks.points as points',
               'tasks.assignee_user_id as assignee_user_id',
               'tasks.sprint_id as sprint_id',
-              'tasks.category_id as category_id',
+              eb.fn.coalesce('epics.category_id', 'stories.category_id', 'tasks.category_id').as('category_id'),
               // 月ごとに計上する区分のときだけ入る。既定は完了した月（ワークスペースのタイムゾーン）
               eb
                 .case()
@@ -480,7 +615,6 @@ export const taskCompleteOperation = implement(taskComplete, async ({ db, actor,
           .where('tasks.id', '=', taskId)
           .where('tasks.workspace_id', '=', workspaceId)
           .where('tasks.tray', '=', 'backlog')
-          .where('tasks.story_id', 'is', null)
           .where('tasks.sprint_id', 'is', null)
           .where('tasks.deleted_at', 'is', null),
       ),
