@@ -1,7 +1,7 @@
 // 本番の操作の一覧を回して、組織の分離と権限を確かめる。新しい操作を足しても、このファイルは書き足さない。
 // 組織の中の操作のテスト用の関数（test/operations/pointers.ts）が無いと落ちる
 import { describe, expect, test } from 'vitest';
-import { permissions } from '../src/shared/operations/define.ts';
+import { isWorkspaceOperation, permissions } from '../src/shared/operations/define.ts';
 import { operations } from '../src/shared/operations/index.ts';
 import { createApp } from '../src/server/app.ts';
 import { ApiError } from '../src/server/errors.ts';
@@ -108,6 +108,22 @@ describe('仮の操作の一覧', () => {
 assertPointersCover(implementedOperations, pointers);
 describe('本番の一覧の分離と権限', () =>
   defineOperationChecks(implementedOperations, pointers, { fetcher: operatorGithub.fetcher }));
+
+// allowClosed の無いワークスペースの下の write を、閉じたワークスペースで呼んで 409 の workspace_closed になることは、
+// 一覧の各操作に当てる検査（defineOperationChecks。test/operations/harness.ts）が確かめる。
+// ここでは、その検査が対象にする操作の範囲が、期待どおりであることだけを見る
+describe('本番の閉じたワークスペースへの書き込み', () => {
+  const guarded = implementedOperations
+    .map((operation) => operation.definition)
+    .filter(isWorkspaceOperation)
+    .filter((definition) => definition.mode === 'write' && definition.allowClosed !== true);
+
+  test('止める書き込みの一覧は、タスクの作成と完了を含み、開き直す操作を含まない', () => {
+    const names = guarded.map((definition) => definition.name);
+    expect(names).toEqual(expect.arrayContaining(['task-create', 'task-complete', 'workspace-close']));
+    expect(names).not.toContain('workspace-reopen');
+  });
+});
 
 describe('本番の運用者の操作', () => {
   test('組織の一覧、GitHub のユーザー名の解決、組織の作成が、運用者の権限で一覧に載っている', () => {

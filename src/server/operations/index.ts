@@ -8,10 +8,12 @@ import { storyCreateOperation, storyGetOperation, storyUpdateOperation } from '.
 import { backlogTreeOperation, taskCompleteOperation, taskCreateOperation } from './task.ts';
 import {
   memberListOperation,
+  workspaceCloseOperation,
   workspaceCreateOperation,
   workspaceInfoOperation,
   workspaceLeaderCandidatesOperation,
   workspaceListOperation,
+  workspaceReopenOperation,
 } from './workspace.ts';
 
 export const implementedOperations: readonly ImplementedOperation[] = [
@@ -33,4 +35,6 @@ export const implementedOperations: readonly ImplementedOperation[] = [
   workspaceLeaderCandidatesOperation,
   workspaceInfoOperation,
   memberListOperation,
+  workspaceCloseOperation,
+  workspaceReopenOperation,
 ];

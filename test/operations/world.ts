@@ -115,7 +115,7 @@ export function getOperator(): Promise<Person> {
 export type Target = {
   organization: OrganizationFixture;
   slug: string;
-  workspace: { id: string };
+  workspace: { id: string; closed_at?: string | null };
   // 別のワークスペース。bystander だけが所属する
   otherWorkspace: { id: string };
   admin: Person;

@@ -945,7 +945,7 @@ Google の人は、ログインするまで `sub` が分からない。そのた
 | operator | TEXT | | 運用者の操作（管理者の指名し直しなど）のときの運用者のログインの ID（`github:12345`、`google:<sub>` の形） |
 | entity_type | TEXT | NOT NULL | `task`、`story`、`epic`、`sprint`、`membership`、`invitation`、`allocation`、`connection`、`completion`、`user`、`workspace`、`organization` など |
 | entity_id | TEXT | NOT NULL | |
-| action | TEXT | NOT NULL | `create`、`update`、`delete`、`complete`、`reopen`、`archive` など |
+| action | TEXT | NOT NULL | `create`、`update`、`delete`、`complete`、`reopen`、`archive`、`close` など |
 | changes_json | TEXT | NOT NULL、既定 `'{}'` | `{"列名": [前, 後]}`。人や列は ID と、そのときの表示名を並べて残す |
 | created_at | TEXT | NOT NULL | |
 
@@ -971,6 +971,8 @@ D1 は対話的なトランザクションを持たない。まとめて書く�
 | 取り込み（1件） | `tasks`（結ばれたリポジトリがあれば `repository_id` も）、`task_sources`、`task_source_payloads` |
 | 組織の作成 | 共通の DB の `organizations`、続けて組織の DB の最初の管理者の `users` と `change_logs` の2行（組織の作成と管理者の指名） |
 | ワークスペースの作成 | `workspaces`、`workspace_point_rates`（作った月、4）、`board_columns`（4行。完了の列は末尾）、`detail_fields`（1行）、最初のリーダーの `memberships`、`change_logs`（ワークスペースと所属の2行）。どの文も `INSERT ... SELECT ... WHERE EXISTS`（最初のリーダーが同じ組織にいて、無効でなく、`login_subject` があり、管理者か、いずれかのワークスペースに今所属している。かつ、作る人が同じ組織の、無効でない管理者）にし、全部入るか何も入らないかにする。何も入らなければ 404 |
+| ワークスペースを閉じる | `change_logs`（`entity_type` は `workspace`、`action` は `close`、`changes_json` は `{"closed_at": [null, 閉じた日時]}`）、`workspaces`（`closed_at`、`updated_at`）。この順に書き、どちらの文も同じ条件（ワークスペースが組織のもので `closed_at IS NULL`、かつ呼んだ人が同じ組織の無効でない管理者）を持つ。1回の `batch()` は文を順に流すので、履歴が入るのは `workspaces` が書き換わるときだけ。何も入らなければ、読み直して閉じていれば 409（`workspace_closed`）、そうでなければ 404 |
+| ワークスペースを開き直す | 閉じるのと同じ形で、`action` は `reopen`、`changes_json` は `{"closed_at": [前の日時, null]}`、`workspaces` の条件は `closed_at = 前の日時`（読んだ値）。何も入らなければ、読み直して `closed_at` が読んだ値と違えば 409（`conflict`）、同じなら 404。開いているワークスペースには、書く前に 409（`conflict`） |
 | Google の招待の URL から結ぶ | 組織の DB の `users` か `invitations`、`change_logs`（「メールアドレスで待つ指名と招待」の 6）、続けて共通の DB の `accounts` と `account_logins` |
 | 初めてのログイン | 共通の DB の `accounts` と `account_logins`、続けて組織の DB の `users.account_id`（指名で待っていた行に結ぶ）、続けて共通の DB の `sessions`。2回目以降は `account_logins` と `accounts.last_login_at` の書き直し、`users.account_id` を結び直す書き込み、`sessions` の順 |
 | 添付ファイルを上げる | R2 にファイルを書き、続けて `attachments` |

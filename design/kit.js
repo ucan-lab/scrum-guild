@@ -852,6 +852,12 @@
          <span class="field-hint">${t("column")}と決まった欄の名前は、選んだ言葉づかいで決まります。あとから言葉づかいを替えても、名前は変わりません。</span></div>
        <p class="field-hint">${t("column")}は「${vocab ? "未着手、作業中、レビュー" : "出発前、遂行中、査定中"}、${t("done")}」、決まった欄は「${vocab ? "受け入れ基準" : "達成条件"}」、換算は 1 ${t("points")} = 4 時間、週の始まりは月曜、タイムゾーンは Asia/Tokyo（このブラウザの設定）で作ります。あとから設定で変えられます。</p>`,
       `<button class="btn is-quiet" type="button" data-close-dialog>やめる</button><button class="btn is-primary" type="button" data-close-dialog data-toast="${t("workspace")}を作りました">作る</button>`),
+    closeWorkspace: () => {
+      const target = D.admin.workspaces.find((w) => !w.closed);
+      return openDialog(`${t("workspace")}を閉じる`,
+        `<p>「${esc(target ? target.name : "")}」を閉じると読み取り専用になり、中の書き込みはすべてできなくなります。閉じた後も、この画面から開き直せます。</p>`,
+        `<button class="btn is-quiet" type="button" data-close-dialog>やめる</button><button class="btn is-primary" type="button" data-close-dialog data-toast="${t("workspace")}を閉じました">閉じる</button>`);
+    },
     createOrganization: () => openDialog(`${t("organization")}を作る`,
       `<label class="field" for="d-ks"><span class="field-label">URL の名前（slug）</span><input class="input mono" id="d-ks" placeholder="例: sakura-dev"><span class="field-hint">英小文字、数字、ハイフンで 2〜40 字。あとから変えられません。</span></label>
          <label class="field" for="d-kn"><span class="field-label">表示名</span><input class="input" id="d-kn" placeholder="例: さくら開発"></label>

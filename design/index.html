@@ -265,9 +265,11 @@ const SECTIONS = [
       <span class="kind is-epic">${icon("flag")}</span><span class="kind is-story">${icon("check")}</span>
     </div>
     <div class="callout is-ok">${icon("check")}<span>取り込み元で完了になりました。完了にするかはここで決めます。</span></div>
-    <div class="callout is-warn">${icon("alert")}<span>10月は配分の合計が 110% です。本人にだけ見えています。</span></div>`,
-    ["期日の印は、期限切れが赤、今日と今週が橙、それより先は色なし。完了したら色を付けない。", "取り込み元の期限には「（取り込み元）」を添える。", "ポイントは枠付きの数字、未見積もりは点線の「未」。", "クリア報酬の段階（小・中・大）は、ポイントと混ざらないよう別の形（tier）にする。"],
-    ".chip .is-danger .is-warn .is-todo .is-ok .is-carry / .tag / .status-dot / .source-key / .pts .is-none / .tier / .kind .is-epic .is-story / .callout .is-ok .is-warn .is-info")],
+    <div class="callout is-warn">${icon("alert")}<span>10月は配分の合計が 110% です。本人にだけ見えています。</span></div>
+    <div class="callout is-info">${icon("archive")}<span>2026-10-22 に閉じました。読み取り専用です。 <a href="admin.html">組織の管理で開き直す</a></span></div>
+    <div class="callout is-warn">${icon("alert")}<span role="alert">${t("workspace")}の一覧を更新できませんでした</span><div class="callout-actions"><button class="btn is-sm" type="button">もう一度試す</button><span class="field-hint" role="status">まだ読み込めませんでした</span></div></div>`,
+    ["期日の印は、期限切れが赤、今日と今週が橙、それより先は色なし。完了したら色を付けない。", "取り込み元の期限には「（取り込み元）」を添える。", "ポイントは枠付きの数字、未見積もりは点線の「未」。", "クリア報酬の段階（小・中・大）は、ポイントと混ざらないよう別の形（tier）にする。", "囲みに操作を付けるときは、ボタンと状態の文を .callout-actions にまとめる。右に寄り、狭い幅では本文の下へ折り返す。失敗の知らせ（role=\"alert\"）は本文の span に付け、状態の文（role=\"status\"）を alert の中に入れ子にしない。", "閉じたワークスペースの帯は .callout.is-info で、ワークスペースの中のどの画面にも先頭に置く。開き直すボタンは置かず、管理者には組織の管理へのリンクだけを添える。"],
+    ".chip .is-danger .is-warn .is-todo .is-ok .is-carry / .tag / .status-dot / .source-key / .pts .is-none / .tier / .kind .is-epic .is-story / .callout .is-ok .is-warn .is-info .callout-actions")],
   ["people", "人とレベル", () => block("people", "人とレベル", "他の人に見せるのはレベルだけ。経験値の数字は本人だけ。",
     `<div class="cat-row">
       ${avatarOf("u1")}${avatarOf("u2", { lg: true })}${avatar(null)}${avatarOf("u5")}
@@ -305,11 +307,11 @@ const SECTIONS = [
       <div class="lane-row">${pts(5)}<a href="#" data-task="t1">ポイント付与のバッチを作る</a>${avatarOf("u1")}</div><div class="lane-row">${pts(null)}<a href="#" data-task="t13">ポイント失効の通知メールを作る</a>${avatarOf(null)}</div></section></div>`,
     null, ".velocity .stat .stat-label .stat-num / .bars .bars-avg .bar-col .is-excluded .bars-labels / .lanes .lane .is-active .lane-head .lane-title .lane-sub .lane-fill .lane-fill-bar .is-over .lane-row")],
   ["table", "表", () => block("table", "表", "数が並ぶ一覧は表にする。数の列は右に揃える。",
-    `<div class="table-wrap"><table class="table"><thead><tr><th>${t("epic")}</th><th class="is-num">残り（pt）</th><th>進み</th><th>${t("due")}</th></tr></thead>
-      <tbody>${Object.keys(D.epics).map((id) => { const p = SQ.epicPts(id); return `<tr><td><a href="epic.html">${SQ.esc(D.epics[id].title)}</a></td><td class="is-num">${p.all - p.done}</td><td>${progress(p.done, p.all)}</td><td>${dueChip(D.epics[id].due)}</td></tr>`; }).join("")}</tbody></table></div>
+    `<div class="table-wrap"><table class="table"><thead><tr><th>${t("epic")}</th><th class="is-num">残り（pt）</th><th>進み</th><th>${t("due")}</th><th class="is-actions"><span class="visually-hidden">操作</span></th></tr></thead>
+      <tbody>${Object.keys(D.epics).map((id) => { const p = SQ.epicPts(id); return `<tr><td><a href="epic.html">${SQ.esc(D.epics[id].title)}</a></td><td class="is-num">${p.all - p.done}</td><td>${progress(p.done, p.all)}</td><td>${dueChip(D.epics[id].due)}</td><td class="is-actions"><button class="btn is-sm is-quiet" type="button">開く</button></td></tr>`; }).join("")}</tbody></table></div>
     <div class="table-wrap"><table class="table"><thead><tr><th class="is-name">名前</th><th>ロール</th><th>メールアドレス</th></tr></thead>
       <tbody><tr><td class="is-name"><span class="person is-wrap">${avatarOf("u1")}ミナトミナトミナトミナトミナトミナトミナトミナトミナトミナト</span></td><td>一般</td><td class="mono is-wrap">minato-minato-minato-minato@example.com</td></tr></tbody></table></div>`,
-    ["表の見出しの下は二重罫。", "名前の列には is-name を付ける（th と td の両方）。名前が1字ずつ折れるほど縮まないよう最小幅を持ち、足りない幅は .table-wrap の横スクロールで受ける。", "利用者が付けた長い名前（空白の無い30字以上、メールアドレスなど）が入る列は、人の名前に .person.is-wrap、等幅の文字に .mono.is-wrap を付けて折り返す（下の表）。付けた列だけが縮み、右の列を押し出さない。.mono.is-wrap の列には is-name を付けない（最小幅が、幅の狭い画面で表をはみ出させるため）。代わりに .mono.is-wrap は 6 文字分の最小幅を持つ。"], ".table-wrap .table .is-num .is-name .person.is-wrap .mono.is-wrap")],
+    ["表の見出しの下は二重罫。", "名前の列には is-name を付ける（th と td の両方）。名前が1字ずつ折れるほど縮まないよう最小幅を持ち、足りない幅は .table-wrap の横スクロールで受ける。", "利用者が付けた長い名前（空白の無い30字以上、メールアドレスなど）が入る列は、人の名前に .person.is-wrap、等幅の文字に .mono.is-wrap を付けて折り返す（下の表）。付けた列だけが縮み、右の列を押し出さない。.mono.is-wrap の列には is-name を付けない（最小幅が、幅の狭い画面で表をはみ出させるため）。代わりに .mono.is-wrap は 6 文字分の最小幅を持つ。", "行ごとの操作の列には is-actions を付ける（th と td の両方）。狭い幅で表が横にはみ出しても、操作を右端に固定して隠さない。", "狭い幅と指で押す画面では、表の中の小さいボタン（.btn.is-sm）も 44px 四方以上にする。"], ".table-wrap .table .is-num .is-name .is-actions .person.is-wrap .mono.is-wrap")],
   ["dialogs", "ダイアログと演出", () => block("dialogs", "ダイアログと演出", "押すと本物と同じものが開く。Esc か外側を押すと閉じ、開いた元のボタンに戻る。確認が要るのは、取り消せない操作と、まとめて状態を変える操作だけ。",
     `<div class="cat-row">
       <button class="btn" type="button" data-dialog="sprintCreate">${t("sprint")}を作る</button>

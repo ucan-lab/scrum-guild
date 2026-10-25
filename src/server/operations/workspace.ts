@@ -1,13 +1,16 @@
 import { now, todayIn } from '../../shared/clock.ts';
 import {
   memberList,
+  workspaceClose,
   workspaceCreate,
   workspaceInfo,
   workspaceLeaderCandidates,
   workspaceList,
+  workspaceReopen,
 } from '../../shared/operations/workspace/index.ts';
 import type { Insertable, OrganizationDb, OrganizationTables, QueryCreator } from '../db/index.ts';
 import { ApiError } from '../errors.ts';
+import { uuidv7 } from '../uuid.ts';
 import { implement } from './implement.ts';
 import { newWorkspaceRows } from './workspace-rows.ts';
 
@@ -285,4 +288,133 @@ export const workspaceInfoOperation = implement(workspaceInfo, async ({ db, work
     closed_at: row.closed_at,
     role: workspace.actorRole,
   };
+});
+
+// 閉じると開き直しの文が持つ条件。ワークスペースが今 before の状態（null は開いている、日時はその日時で閉じている）であること（inState）と、
+// 操作する人が同じ組織の無効でない管理者であること（isAdmin）。履歴の INSERT と workspaces の UPDATE が同じ関数から組む。
+// UPDATE の中は、update の式の組み立て（eb）が selectFrom の型で adminUsers に渡せないため、文の QueryCreator（q）から組む
+function closeGuard(
+  from: Pick<QueryCreator<Tables>, 'selectFrom'>,
+  organizationId: string,
+  workspaceId: string,
+  actorUserId: string,
+  before: string | null,
+) {
+  return {
+    inState: from
+      .selectFrom('workspaces')
+      .select('workspaces.id')
+      .where('workspaces.id', '=', workspaceId)
+      .where('workspaces.organization_id', '=', organizationId)
+      .where((eb) =>
+        before === null ? eb('workspaces.closed_at', 'is', null) : eb('workspaces.closed_at', '=', before),
+      ),
+    isAdmin: adminUsers(from, organizationId).select('users.id').where('users.id', '=', actorUserId),
+  };
+}
+
+// 閉じると開き直しの書き込み。change_logs の INSERT を先に、workspaces の UPDATE を後に置き、2つが同じ条件（closeGuard）を持つ。
+// 1回の batch は1つのトランザクションで文が順に走るので、先の文が通ったときは UPDATE も同じ状態を見て必ず通り、
+// 通らなかったときは UPDATE も通らない。UPDATE の後に履歴の条件を置くと、同じ時刻の2つの要求の両方に履歴が入りうる。
+// 当たらなかったときは読み直して、状態が変わっていれば 409、そうでなければ（呼んだ人が管理者でなくなった）404
+async function writeClosedState(
+  db: OrganizationDb,
+  actor: { userId: string | null },
+  workspaceId: string,
+  change: { action: 'close' } | { action: 'reopen'; closedAt: string },
+): Promise<string> {
+  // permission: 'admin' は users の行がある管理者だけを通す。型の上の null を 404 で閉じる
+  const actorUserId = actor.userId;
+  if (actorUserId === null) throw new ApiError(404, 'not_found');
+  const organizationId = db.organizationId;
+  const at = now();
+  const stamp = at.toISOString();
+  const before = change.action === 'close' ? null : change.closedAt;
+  const after = change.action === 'close' ? stamp : null;
+
+  const results = await db.batch([
+    db.statement((q) =>
+      q
+        .insertInto('change_logs')
+        .columns([
+          'id',
+          'organization_id',
+          'workspace_id',
+          'actor_user_id',
+          'entity_type',
+          'entity_id',
+          'action',
+          'changes_json',
+          'created_at',
+        ])
+        .expression(
+          q
+            .selectNoFrom((eb) => [
+              eb.val(uuidv7(at)).as('id'),
+              eb.val(organizationId).as('organization_id'),
+              eb.val(workspaceId).as('workspace_id'),
+              eb.val(actorUserId).as('actor_user_id'),
+              eb.val('workspace').as('entity_type'),
+              eb.val(workspaceId).as('entity_id'),
+              eb.val(change.action).as('action'),
+              eb.val(JSON.stringify({ closed_at: [before, after] })).as('changes_json'),
+              eb.val(stamp).as('created_at'),
+            ])
+            .where((eb) => {
+              const guard = closeGuard(eb, organizationId, workspaceId, actorUserId, before);
+              return eb.and([eb.exists(guard.inState), eb.exists(guard.isAdmin)]);
+            }),
+        ),
+    ),
+    db.statement((q) =>
+      q
+        .updateTable('workspaces')
+        .set({ closed_at: after, updated_at: stamp })
+        .where('workspaces.id', '=', workspaceId)
+        .where('workspaces.organization_id', '=', organizationId)
+        .where((eb) => {
+          const guard = closeGuard(q, organizationId, workspaceId, actorUserId, before);
+          return eb.and([eb.exists(guard.inState), eb.exists(guard.isAdmin)]);
+        }),
+    ),
+  ]);
+  if ((results[1]?.changes ?? 0) > 0) return stamp;
+
+  // 読んでから書くまでに、ワークスペースの状態が変わったか、呼んだ人が管理者でなくなった
+  const row = await db.first(
+    db.statement((q) =>
+      q
+        .selectFrom('workspaces')
+        .select('workspaces.closed_at')
+        .where('workspaces.id', '=', workspaceId)
+        .where('workspaces.organization_id', '=', organizationId),
+    ),
+  );
+  if (row === undefined) throw new ApiError(404, 'not_found');
+  if (row.closed_at !== before) {
+    throw new ApiError(409, change.action === 'close' ? 'workspace_closed' : 'conflict');
+  }
+  throw new ApiError(404, 'not_found');
+}
+
+export const workspaceCloseOperation = implement(workspaceClose, async ({ db, actor, workspace }) => {
+  const closedAt = await writeClosedState(db, actor, workspace.workspaceId, { action: 'close' });
+  return { workspace_id: workspace.workspaceId, closed_at: closedAt };
+});
+
+export const workspaceReopenOperation = implement(workspaceReopen, async ({ db, actor, workspace }) => {
+  const row = await db.first(
+    db.statement((q) =>
+      q
+        .selectFrom('workspaces')
+        .select('workspaces.closed_at')
+        .where('workspaces.id', '=', workspace.workspaceId)
+        .where('workspaces.organization_id', '=', db.organizationId),
+    ),
+  );
+  if (row === undefined) throw new ApiError(404, 'not_found');
+  // 開いているものは開き直せない。何も書かない
+  if (row.closed_at === null) throw new ApiError(409, 'conflict');
+  await writeClosedState(db, actor, workspace.workspaceId, { action: 'reopen', closedAt: row.closed_at });
+  return { workspace_id: workspace.workspaceId };
 });
