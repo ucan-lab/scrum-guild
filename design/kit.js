@@ -1137,8 +1137,8 @@
     // ワークスペースがまだない管理者には、ワークスペースの中の画面を出さない
     const cut = Object.keys(D.workspaces).length ? pages.length : pages.indexOf("workspace");
     return pages.slice(0, cut < 0 ? pages.length : cut).map((p) => {
-      // 入れる組織が2つ以上のときだけ出す。選び直すと組織の選択の画面へ
-      if (p === "organization") return D.organizations.length < 2 ? "" : `<label class="ws-select" for="kd"><span>${t("organization")}</span><select id="kd" onchange="location.href='organizations.html'">${D.organizations.map((k) => `<option ${k.slug === D.organization ? "selected" : ""}>${esc(k.name)}</option>`).join("")}<option>${t("organization")}の一覧へ</option></select></label>`;
+      // 組織の切り替えは、メニューの外（ブランドの下）の orgMenuHtml
+      if (p === "organization") return "";
       if (p === "workspace") return `<div class="nav-group">${t("workspace")}</div>
         <label class="ws-select" for="ws"><span>${t("workspace")}</span><select id="ws">${Object.values(D.workspaces).map((w) => `<option>${esc(w.name)}</option>`).join("")}</select></label>`;
       if (typeof p === "string") return `<div class="nav-group">${p}</div>`;
@@ -1146,6 +1146,33 @@
       return `<a class="nav-item" href="${firstHref(href)}" ${current === id ? 'aria-current="page"' : ""}>${icon(ic)}<span>${label()}</span>${badge && !first ? `<span class="nav-badge">${badge}</span>` : ""}</a>`;
     }).join("");
   }
+  // 組織の切り替え。開閉するメニューで、中は各組織へのリンクと、最後に組織の選択の画面へ戻るリンク。
+  // 入れる組織が2つ以上、または届いた招待があるときだけ出す（1組織でも招待があれば、一覧へ戻る道が要る）。
+  // select にしないのは、矢印キーで選んだだけで画面が移らないようにするため。
+  // 閉じるのは、ボタン、外を押す、Tab で外へ出る、リンクを押す、Esc。メニューの中にフォーカスがあるときに閉じたら、ボタンへ戻す
+  let orgMenuOpen = false;
+  // カタログの見本は、開いた状態と閉じた状態、組織の数、招待の有無を替えて並べるので、引数で渡す。live が偽なら押しても動かない
+  function orgMenuHtml({ open = orgMenuOpen, id = "org-menu-list", live = true, orgs = D.organizations, invited = (D.receivedInvites || []).length > 0 } = {}) {
+    if (orgs.length < 2 && !invited) return "";
+    const current = orgs.find((k) => k.slug === D.organization) || orgs[0];
+    const label = `${current.name}。${t("organization")}を切り替える${invited ? "。届いた招待あり" : ""}`;
+    return `<div class="org-menu"><button class="org-menu-button" type="button" aria-expanded="${open}" aria-controls="${id}" aria-label="${esc(label)}" ${live ? "data-org-menu" : ""}><span class="org-menu-label">${t("organization")}</span><b>${esc(current.name)}</b>${invited ? '<span class="chip">届いた招待あり</span>' : ""}${icon("chevron")}</button>
+      <ul class="org-menu-list" id="${id}" aria-label="入れる${t("organization")}" ${open ? "" : "hidden"}>${orgs.map((k) => `<li><a href="today.html"${k.slug === current.slug ? ' aria-current="page"' : ""}><span class="org-menu-name">${esc(k.name)}</span>${k.slug === current.slug ? icon("check") : ""}</a></li>`).join("")}<li><a href="organizations.html"><span class="org-menu-name">${t("organization")}の一覧へ</span>${invited ? '<span class="org-menu-note">招待が届いています</span>' : ""}</a></li></ul></div>`;
+  }
+  function setOrgMenu(open, focus) {
+    orgMenuOpen = open;
+    const slot = document.getElementById("org-menu-slot");
+    if (slot) slot.innerHTML = orgMenuHtml();
+    if (focus) document.querySelector("[data-org-menu]")?.focus();
+  }
+  // メニューの中にフォーカスがあるときに閉じるなら、ボタンへ戻す
+  function closeOrgMenu() {
+    setOrgMenu(false, !!document.activeElement?.closest?.(".org-menu"));
+  }
+  document.addEventListener("focusout", (ev) => {
+    const next = ev.relatedTarget;
+    if (orgMenuOpen && next && !next.closest(".org-menu")) setOrgMenu(false);
+  });
   const FIRST_LABEL = { member: "最初の日・一般", leader: "最初の日・リーダー", admin: "最初の日・管理者" };
   const firstLabel = (role) => FIRST_LABEL[role] || "使い込んだ状態";
   // 使い込んだ状態 → 最初の日（一般 → リーダー → 管理者）の順に回す。今の画面に見本がなければ自分の今日へ
@@ -1159,6 +1186,7 @@
   let page = null;
   function redraw() {
     if (!page) return;
+    document.getElementById("org-menu-slot").innerHTML = page.operator ? "" : orgMenuHtml();
     document.getElementById("nav").innerHTML = navHtml(page.current, page.operator ? OPERATOR_PAGES : PAGES);
     document.querySelectorAll("[data-vocab-label]").forEach((el) => (el.textContent = `言葉: ${t("vocab")}`));
     document.querySelectorAll("[data-assist-label]").forEach((el) => (el.textContent = `${t("assistant")}に頼む`));
@@ -1181,6 +1209,7 @@
     <div class="app">
       <aside class="binding" aria-label="メニュー"><div class="binding-inner">
         <a class="brand" href="index.html" title="デザインシステムのカタログへ">${brandSeal}<span class="brand-name">Scrum Guild</span></a>
+        <div id="org-menu-slot"></div>
         <nav class="nav" id="nav"></nav>
         <p class="binding-foot">デザインの見本。データはすべて架空の例です</p>
       </div></aside>
@@ -1261,6 +1290,10 @@
   document.addEventListener("click", (ev) => {
     const hit = (attr) => ev.target.closest(`[${attr}]`);
     let el;
+    // 組織の切り替えを開閉する。外を押したら閉じる（押したものの動きは続ける）
+    if (hit("data-org-menu")) { setOrgMenu(!orgMenuOpen, true); return; }
+    if (orgMenuOpen && ev.target.closest(".org-menu-list a")) closeOrgMenu();
+    else if (orgMenuOpen && !ev.target.closest(".org-menu")) closeOrgMenu();
     if ((el = hit("data-sun"))) {
       const x = task(el.dataset.sun);
       x.todayOn = x.todayOn === D.today ? null : D.today;
@@ -1364,6 +1397,7 @@
       ev.preventDefault(); openAssist(assist.open === "panel" ? "panel" : "palette"); return;
     }
     if (ev.key !== "Escape" || ev.isComposing || ev.keyCode === 229) return;
+    if (orgMenuOpen) { ev.stopPropagation(); closeOrgMenu(); return; }
     if (closeCelebrate() || closeDialog()) return;
     if (assist.open === "palette") { closeAssist(); return; }
     if (drawer.id) { closeDrawer(); return; }
@@ -1450,7 +1484,7 @@
     user, task, tasksWhere, repoTag, repoPicker, sprintLabel, colName, categoryOf, storyPts, epicPts, dueOf,
     avatar, avatarOf, emblem, pts, dueChip, taskDue, tier, sourceKey, entry, book, section, pageHead,
     card, board, treeStory, treeEpic, sprintNotice, raidNotice, progress, levelPanel, load, capacityRows,
-    openDialog, closeDialog, toast, celebrate, miniCap, redraw: () => redrawAll(), DIALOGS, loginTarget,
+    openDialog, closeDialog, toast, celebrate, miniCap, redraw: () => redrawAll(), DIALOGS, loginTarget, orgMenuHtml,
     filesOf, fileThumb, fileRow, dropzone, attachments, mdBody, meter,
     PROVIDER, ASSIST_KEY, assistMsg, assistBlocked, assistSuggest, openAssist,
     enableAssistOnCatalog: () => { assistOnCatalog = true; },

@@ -1,4 +1,4 @@
-import { applyTheme, readStoredTheme, storeTheme, type Theme, type ThemeStorage } from '../shared/theme.ts';
+import { applyTheme, storeTheme, type Theme, type ThemeStorage } from '../shared/theme.ts';
 
 // localStorage を取り出すだけで例外になる環境（権限なし、プライベートモード）がある。そのときは覚えない
 function storage(): ThemeStorage | null {
@@ -9,21 +9,10 @@ function storage(): ThemeStorage | null {
   }
 }
 
-// 今のテーマ。null は属性なし（シンプル（自動））。
-// 描く前の先当ては static/theme-init.js の役目で、ここは画面が動き出してから値を持ち、切り替えを受け持つ。
-// 本物の値（users.theme、なければ organizations.theme）を API から入れるのは #53
-export const themeState: { current: Theme | null } = $state({
-  current: readStoredThemeOrNull(),
-});
-
-function readStoredThemeOrNull(): Theme | null {
-  const store = storage();
-  return store ? readStoredTheme(store) : null;
-}
-
-// 当てて、localStorage に覚える
+// 当てて、localStorage に覚える。null は属性なし（シンプル（自動））で、覚えた値も消す。
+// 描く前の先当ては static/theme-init.js の役目で、ここは画面が動き出してからの切り替えを受け持つ。
+// 本物の値（users.theme、なければ organizations.theme）は組織の枠が入れ、組織の外の画面は null に戻す（organization.svelte.ts）
 export function setTheme(theme: Theme | null): void {
-  themeState.current = theme;
   applyTheme(theme, document.documentElement);
   const store = storage();
   if (store) storeTheme(store, theme);

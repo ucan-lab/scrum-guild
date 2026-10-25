@@ -5,8 +5,6 @@ import vm from 'node:vm';
 import { hueOf } from '../src/lib/avatar-hue.ts';
 import {
   applyTheme,
-  isTheme,
-  readStoredTheme,
   storeTheme,
   themeLabelKeys,
   themes,
@@ -80,12 +78,6 @@ describe('テーマの値', () => {
     for (const theme of themes) assert.ok(themeLabelKeys[theme] in dictionary, theme);
   });
 
-  test('isTheme は5つの値だけを通す', () => {
-    assert.ok(themes.every(isTheme));
-    assert.equal(isTheme('retro'), false);
-    assert.equal(isTheme(null), false);
-  });
-
   test('applyTheme は値を当て、null で属性を外す', () => {
     const target: { dataset: { theme?: string } } = { dataset: {} };
     applyTheme('medieval', target);
@@ -94,7 +86,7 @@ describe('テーマの値', () => {
     assert.equal('theme' in target.dataset, false);
   });
 
-  test('覚えた値を読み戻せ、使えない localStorage でも落ちない', () => {
+  test('値を覚え、null で消す。使えない localStorage でも落ちない', () => {
     const data = new Map<string, string>();
     const storage: ThemeStorage = {
       getItem: (key) => data.get(key) ?? null,
@@ -102,9 +94,9 @@ describe('テーマの値', () => {
       removeItem: (key) => void data.delete(key),
     };
     storeTheme(storage, 'modern');
-    assert.equal(readStoredTheme(storage), 'modern');
+    assert.equal(data.get(themeStorageKey), 'modern');
     storeTheme(storage, null);
-    assert.equal(readStoredTheme(storage), null);
+    assert.equal(data.has(themeStorageKey), false);
 
     const broken: ThemeStorage = {
       getItem: () => {
@@ -117,7 +109,6 @@ describe('テーマの値', () => {
         throw new Error('SecurityError');
       },
     };
-    assert.equal(readStoredTheme(broken), null);
     assert.doesNotThrow(() => storeTheme(broken, 'modern'));
     assert.doesNotThrow(() => storeTheme(broken, null));
   });

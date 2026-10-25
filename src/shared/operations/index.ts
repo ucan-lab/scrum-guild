@@ -2,5 +2,6 @@
 // 仮の操作はテストの中で定義し、ここに入れない
 import type { AnyOperationDefinition } from './define.ts';
 import { operatorOperations } from './operator/index.ts';
+import { organizationOperations } from './organization/index.ts';
 
-export const operations: readonly AnyOperationDefinition[] = [...operatorOperations];
+export const operations: readonly AnyOperationDefinition[] = [...operatorOperations, ...organizationOperations];

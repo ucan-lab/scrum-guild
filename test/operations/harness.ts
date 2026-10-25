@@ -69,6 +69,8 @@ type PostOptions = {
   rawBody?: string | ReadableStream<Uint8Array>;
   headers?: Record<string, string>;
   env?: Env;
+  // 渡すと、本番と同じ waitUntil の経路を通る（省略は ExecutionContext の無い呼び出し）
+  executionCtx?: ExecutionContext;
 };
 
 export async function post(app: App, definition: AnyOperationDefinition, options: PostOptions = {}): Promise<Response> {
@@ -85,6 +87,7 @@ export async function post(app: App, definition: AnyOperationDefinition, options
     // 本文が ReadableStream のときは Content-Length が付かない（chunked と同じ）
     { method: 'POST', headers, body, ...(typeof body === 'string' ? {} : { duplex: 'half' }) } as RequestInit,
     env,
+    options.executionCtx,
   );
 }
 

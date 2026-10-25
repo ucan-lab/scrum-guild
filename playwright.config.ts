@@ -7,6 +7,8 @@ const baseURL = `http://localhost:${devPorts(process.env).api}`;
 export default defineConfig({
   testDir: 'e2e',
   outputDir: 'test-results',
+  // seed の入れ直し。webServer が立ってから動く
+  globalSetup: './e2e/global-setup.ts',
   forbidOnly: Boolean(process.env.CI),
   reporter: [['list'], ['html', { open: 'never', outputFolder: 'playwright-report' }]],
   use: {

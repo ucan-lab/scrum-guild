@@ -8,4 +8,11 @@ export { DatabaseUnavailableError, pingDatabase } from './ping.ts';
 export type { CommonTables, OrganizationTables } from './tables.ts';
 export type { VerifiedOrganization } from './verify-organization.ts';
 export { assertVerifiedWorkspace, type VerifiedWorkspace } from './verify-workspace.ts';
-export { enterOrganization, verifyWorkspace, type LoginId, type OrganizationActor } from './enter-organization.ts';
+export {
+  enterOrganization,
+  verifyWorkspace,
+  type LoginId,
+  type OrganizationActor,
+  type OrganizationSummary,
+} from './enter-organization.ts';
+export { listAccountOrganizations, type AccountOrganizations } from './cross-organization.ts';

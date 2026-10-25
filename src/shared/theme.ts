@@ -7,6 +7,8 @@ import type { DictionaryKey } from './vocabulary.ts';
 export const themes = ['simple', 'simple_light', 'simple_dark', 'medieval', 'modern'] as const;
 export type Theme = (typeof themes)[number];
 
+// テーマを選ぶ設定の画面が使う、テーマごとの辞書のキー。今は画面から使わないが、全テーマに辞書の名前があることを
+// scripts/theme.test.ts が確かめる（テーマを足したとき、辞書の名前の足し忘れを止める）
 export const themeLabelKeys: Record<Theme, DictionaryKey> = {
   simple: 'themeSimple',
   simple_light: 'themeSimpleLight',
@@ -17,10 +19,6 @@ export const themeLabelKeys: Record<Theme, DictionaryKey> = {
 
 // 描く前に読むので、static/theme-init.js と同じキーにする
 export const themeStorageKey = 'sg-theme';
-
-export function isTheme(value: unknown): value is Theme {
-  return typeof value === 'string' && (themes as readonly string[]).includes(value);
-}
 
 // document.documentElement の形のうち、使う部分だけ
 export type ThemeTarget = { dataset: { theme?: string } };
@@ -38,16 +36,7 @@ export type ThemeStorage = {
   removeItem(key: string): void;
 };
 
-// localStorage が使えない（プライベートモード、権限なし）ときも落ちず、覚えていないものとして扱う
-export function readStoredTheme(storage: Pick<ThemeStorage, 'getItem'>): Theme | null {
-  try {
-    const value = storage.getItem(themeStorageKey);
-    return isTheme(value) ? value : null;
-  } catch {
-    return null;
-  }
-}
-
+// 覚えた値を読むのは、描く前の static/theme-init.js だけ（画面の側では読まない）
 export function storeTheme(storage: Pick<ThemeStorage, 'setItem' | 'removeItem'>, theme: Theme | null): void {
   try {
     if (theme) storage.setItem(themeStorageKey, theme);

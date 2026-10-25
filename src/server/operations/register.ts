@@ -12,7 +12,6 @@ import {
 import { sessionCookieName, sessionCookieOptions } from '../../shared/session-cookie.ts';
 import type { AppEnv } from '../app-env.ts';
 import { accountLogins } from '../auth/account-logins.ts';
-import { isOperator, operatorLoginIds } from '../auth/operators.ts';
 import { readSession } from '../auth/session.ts';
 import {
   assertVerifiedWorkspace,
@@ -23,8 +22,9 @@ import {
   type VerifiedWorkspace,
 } from '../db/index.ts';
 import { ApiError, knownError } from '../errors.ts';
+import { outsideAccount } from './account.ts';
 import { readInput, requireOrigin } from './guards.ts';
-import type { ImplementedOperation } from './implement.ts';
+import type { Defer, ImplementedOperation } from './implement.ts';
 import { logOperation } from './operation-log.ts';
 
 // ログに残す、リクエストの途中で分かった値
@@ -130,16 +130,14 @@ async function execute(c: Context<AppEnv>, operation: ImplementedOperation, trac
   // 使うたびに期限を延ばす。DB の expires_at を書き直したときは Cookie の期限も同じだけ延ばす
   if (session.refreshed && token !== undefined) setCookie(c, cookieName, token, sessionCookieOptions);
 
+  const deferred = deferrer(c);
   let result: unknown;
   if (isOutsideOperation(definition)) {
-    if (definition.permission === 'operator') {
-      // 設定の誤りは app のミドルウェアが先に 500 にしている。ここに来る一覧は解釈できている
-      const operators = operatorLoginIds(c.env);
-      const logins = await accountLogins(c.env, session.accountId);
-      if (!operators.ok || !isOperator(operators.ids, logins)) throw new ApiError(403, 'forbidden');
-    }
+    // 運用者の判定は account.ts の1か所。設定の誤りは app のミドルウェアが先に 500 にしている
+    const account = outsideAccount(c.env, session.accountId);
+    if (definition.permission === 'operator' && !(await account.isOperator())) throw new ApiError(403, 'forbidden');
     const input = await readInput(c, definition.input);
-    result = await handler({ db: commonDb(c.env), accountId: session.accountId, input });
+    result = await handler({ db: commonDb(c.env), accountId: session.accountId, account, input });
   } else {
     // 運用者かどうかは組織に入れるかを変えない。入れる組織が無い運用者は、組織が無いときと同じ 404 になる
     const slug = c.req.param('slug');
@@ -149,7 +147,7 @@ async function execute(c: Context<AppEnv>, operation: ImplementedOperation, trac
       loadLogins: () => accountLogins(c.env, session.accountId),
     });
     if (entry === undefined) throw new ApiError(404, 'not_found');
-    const { db, actor } = entry;
+    const { db, actor, organization } = entry;
     trace.organizationId = db.organizationId;
     trace.userId = actor.userId;
     checkOrganizationPermission(definition.permission, actor);
@@ -165,12 +163,50 @@ async function execute(c: Context<AppEnv>, operation: ImplementedOperation, trac
         throw new ApiError(409, 'workspace_closed');
       }
       assertVerifiedWorkspace(workspace);
-      result = await handler({ db, actor, input, workspace });
+      result = await handler({ db, actor, organization, input, workspace, defer: deferred.defer });
     } else {
-      result = await handler({ db, actor, input });
+      result = await handler({ db, actor, organization, input, defer: deferred.defer });
     }
   }
 
+  const output = definition.output.parse(result);
+  await deferred.settle();
   // 検証した値（スキーマの変換を通した出力）をそのまま送る。画面は同じスキーマで検証し直さない
-  return c.json(definition.output.parse(result));
+  return c.json(output);
+}
+
+// 応答を待たせずに続ける仕事（定義の副作用の書き込み）。ExecutionContext の waitUntil に渡す。
+// ExecutionContext が無い環境（テスト）では、応答の前に待つ。失敗はログに例外の名前だけを残し、応答は変えない
+function deferrer(c: Context<AppEnv>): { defer: Defer; settle: () => Promise<unknown> } {
+  const executionContext = executionContextOf(c);
+  const inline: Promise<void>[] = [];
+  const defer: Defer = (task) => {
+    const done = (async () => task())().then(
+      () => undefined,
+      (err: unknown) => {
+        console.error(
+          JSON.stringify({
+            level: 'error',
+            code: 'internal',
+            requestId: c.get('requestId'),
+            reason: '応答の後の書き込みに失敗した',
+            error: err instanceof Error ? err.name : typeof err,
+          }),
+        );
+      },
+    );
+    // waitUntil 自身の失敗は隠さない（ExecutionContext の有無の判定だけを executionContextOf に寄せている）
+    if (executionContext === undefined) inline.push(done);
+    else executionContext.waitUntil(done);
+  };
+  return { defer, settle: () => Promise.all(inline) };
+}
+
+// Hono は ExecutionContext が無い呼び出し（テストの app.request）で executionCtx の取得が例外になる。有無の判定はここだけ
+function executionContextOf(c: Context<AppEnv>): Context<AppEnv>['executionCtx'] | undefined {
+  try {
+    return c.executionCtx;
+  } catch {
+    return undefined;
+  }
 }

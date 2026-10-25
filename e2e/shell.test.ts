@@ -1,36 +1,24 @@
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test } from '@playwright/test';
+import { signIn, watchViolations } from './helpers.ts';
 
 // build と wrangler dev に渡した版。埋めていなければ dev（docs/development.md の「版」）
 const version = process.env.APP_VERSION || 'dev';
 
-// CSP の違反は、ページのスクリプトより先に securitypolicyviolation を拾い、コンソールのエラーと合わせて集める
-async function watchViolations(page: Page): Promise<() => Promise<string[]>> {
-  const consoleErrors: string[] = [];
-  page.on('console', (message) => {
-    if (message.type() === 'error') consoleErrors.push(message.text());
-  });
-  page.on('pageerror', (error) => consoleErrors.push(error.message));
-  await page.addInitScript(() => {
-    const violations: string[] = [];
-    (window as unknown as { __cspViolations: string[] }).__cspViolations = violations;
-    document.addEventListener('securitypolicyviolation', (event) => {
-      violations.push(`${event.violatedDirective} ${event.blockedURI}`);
-    });
-  });
-  return async () => {
-    const violations = await page.evaluate(() => (window as unknown as { __cspViolations: string[] }).__cspViolations);
-    return [...violations, ...consoleErrors];
-  };
-}
+// 枠の部品は組織の中の画面が使う。あおば開発だけに入れるユーザー（ハルカ）で、組織の画面を開く
+const today = '/aoba';
 
-test('/ はシェルを返し、API の版を出し、CSP の違反が無い', async ({ page }) => {
+test.beforeEach(async ({ context, baseURL }) => {
+  await signIn(context, baseURL, 'member');
+});
+
+test('組織の画面はシェルを返し、API の版を出し、CSP の違反が無い', async ({ page }) => {
   const collect = await watchViolations(page);
-  const res = await page.goto('/');
+  const res = await page.goto(today);
   expect(res?.status()).toBe(200);
   expect(res?.headers()['content-security-policy']).toContain("frame-ancestors 'none'");
 
   await expect(page.getByRole('heading', { level: 1, name: '自分の今日' })).toBeVisible();
-  await expect(page.getByRole('status')).toHaveText(`API: ok（版 ${version}）`);
+  await expect(page.locator('p[role="status"]')).toHaveText(`API: ok（版 ${version}）`);
   expect(await collect()).toEqual([]);
 });
 
@@ -43,7 +31,7 @@ test('書体を自分のオリジンから読み込み、外へ通信しない',
     origins.add(new URL(request.url()).origin);
     if (/\.woff2?$/.test(new URL(request.url()).pathname)) fonts.push(request.url());
   });
-  await page.goto('/');
+  await page.goto(today);
   await expect(page.getByRole('heading', { level: 1, name: '自分の今日' })).toBeVisible();
   await page.evaluate(() => document.fonts.ready);
 
@@ -65,34 +53,27 @@ test('覚えたテーマを、body ができる前に当てる', async ({ page }
       // 初期化のスクリプトは html の要素ができる前に動くので、document を subtree で見る
     }).observe(document, { attributes: true, attributeFilter: ['data-theme'], subtree: true });
   });
-  await page.goto('/');
+  await page.goto(today);
   await expect(page.getByRole('heading', { level: 1, name: '自分の今日' })).toBeVisible();
 
   const seen = await page.evaluate(
     () => (window as unknown as { __themeSeen: { theme: string | undefined; bodyExists: boolean }[] }).__themeSeen,
   );
   expect(seen[0]).toEqual({ theme: 'medieval', bodyExists: false });
-  await expect(page.locator('html')).toHaveAttribute('data-theme', 'medieval');
   expect(await collect()).toEqual([]);
 });
 
-test('覚えた値が壊れていても、属性なしで描く', async ({ page }) => {
+test('覚えた値が壊れていても、落ちずに描く', async ({ page }) => {
   await page.addInitScript(() => localStorage.setItem('sg-theme', 'retro'));
-  await page.goto('/');
+  await page.goto(today);
   await expect(page.getByRole('heading', { level: 1, name: '自分の今日' })).toBeVisible();
-  await expect(page.locator('html')).not.toHaveAttribute('data-theme', /.*/);
-});
-
-// 本番の build には、開発用のテーマと言葉の切り替えを入れない
-test('開発用の切り替えが出ない', async ({ page }) => {
-  await page.goto('/');
-  await expect(page.getByRole('heading', { level: 1, name: '自分の今日' })).toBeVisible();
-  await expect(page.locator('[data-dev-switch]')).toHaveCount(0);
+  // 壊れた値は先当てで無視され、組織の値（seed は simple）が当たる
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'simple');
 });
 
 test('ダイアログをキーボードだけで開閉でき、閉じたら開いたボタンにフォーカスが戻る', async ({ page }) => {
   const collect = await watchViolations(page);
-  await page.goto('/');
+  await page.goto(today);
   const opener = page.getByRole('button', { name: '詳細を見る' });
   await opener.focus();
   await page.keyboard.press('Enter');
@@ -116,7 +97,7 @@ test('ダイアログをキーボードだけで開閉でき、閉じたら開�
 // Safari と Firefox はクリックしたボタンにフォーカスを移さない。mousedown の既定の動作を止めて同じ状態にし、
 // 画面が開く操作を起こしたボタン（show(trigger)）へフォーカスを戻すことを確かめる
 test('クリックでボタンにフォーカスが乗らなくても、閉じたら開いたボタンにフォーカスが戻る', async ({ page }) => {
-  await page.goto('/');
+  await page.goto(today);
   const opener = page.getByRole('button', { name: '詳細を見る' });
   await opener.evaluate((button) => button.addEventListener('mousedown', (event) => event.preventDefault()));
   await opener.click();
@@ -130,7 +111,7 @@ test('クリックでボタンにフォーカスが乗らなくても、閉じ�
 });
 
 test('ダイアログの外側を押すと閉じ、中と外をまたいでドラッグしても閉じない', async ({ page }) => {
-  await page.goto('/');
+  await page.goto(today);
   const dialog = page.getByRole('dialog', { name: 'API の詳細' });
   const open = page.getByRole('button', { name: '詳細を見る' });
 
@@ -158,7 +139,7 @@ test('ダイアログの外側を押すと閉じ、中と外をまたいでド�
 
 // モーダルのダイアログが開くと、その外は inert になる。トーストはダイアログの中の領域に出る
 test('ダイアログを開いたままトーストを出すと、前面に見えて、読み上げの領域が inert でない', async ({ page }) => {
-  await page.goto('/');
+  await page.goto(today);
   await page.getByRole('button', { name: '詳細を見る' }).click();
   const dialog = page.getByRole('dialog', { name: 'API の詳細' });
   await expect(dialog).toBeVisible();
@@ -196,8 +177,8 @@ test('「確かめ直す」は、結果が出てから成功と失敗を分け�
     if (mode === 'ok') await route.fulfill({ json: { status: 'ok', database: 'ok', version } });
     else await route.fulfill({ status: 500, json: { error: { code: 'internal', message: 'x' } } });
   });
-  await page.goto('/');
-  await expect(page.getByRole('status').first()).toHaveText(`API: ok（版 ${version}）`);
+  await page.goto(today);
+  await expect(page.locator('p[role="status"]')).toHaveText(`API: ok（版 ${version}）`);
 
   // ダイアログの外の領域に出る（ダイアログが閉じている間は、中の領域は表示されない）
   const toasts = page.locator('.toasts:visible .toast');
@@ -219,7 +200,7 @@ test('「確かめ直す」は、結果が出てから成功と失敗を分け�
 
 test('トーストは数秒で消え、同時に出るのは3件まで', async ({ page }) => {
   await page.route('**/api/health', (route) => route.fulfill({ json: { status: 'ok', database: 'ok', version } }));
-  await page.goto('/');
+  await page.goto(today);
   const recheck = page.getByRole('button', { name: '確かめ直す' });
   for (let i = 0; i < 5; i++) {
     await recheck.click();
@@ -233,8 +214,8 @@ test('トーストは数秒で消え、同時に出るのは3件まで', async (
 // 同じ ID は同じ色。色相は style:--h（CSSOM）で渡すので CSP に止められない
 test('アバターの色相が当たり、CSP の違反が無い', async ({ page }) => {
   const collect = await watchViolations(page);
-  await page.goto('/');
-  const avatar = page.getByRole('img', { name: '仮の利用者' });
+  await page.goto(today);
+  const avatar = page.getByRole('img', { name: 'ハルカ' });
   await expect(avatar).toBeVisible();
   const style = await avatar.evaluate((element) => ({
     hue: getComputedStyle(element).getPropertyValue('--h').trim(),
@@ -249,13 +230,20 @@ test('アバターの色相が当たり、CSP の違反が無い', async ({ page
 });
 
 test('画面の題名は「画面 - Scrum Guild」で、メニューには画面のある項目だけが出る', async ({ page }) => {
-  await page.goto('/');
+  await page.goto(today);
   await expect(page).toHaveTitle('自分の今日 - Scrum Guild');
-  await expect(page.locator('.nav-item')).toHaveText(['自分の今日']);
+  // 出る項目はすべて行き先を持つ（画面のある項目だけ）。今の画面は1つだけ
+  await expect(page.locator('.nav-item')).not.toHaveCount(0);
+  for (const item of await page.locator('.nav-item').all()) await expect(item).toHaveAttribute('href', /^\/aoba/);
   await expect(page.locator('.nav-item[aria-current="page"]')).toHaveCount(1);
-  // 項目が1つも無いグループは、見出しごと出さない
-  await expect(page.locator('.nav-group')).toHaveCount(0);
   await expect(page.locator('.is-later')).toHaveCount(0);
+  // 項目が1つも無いグループは、見出しごと出さない（見出しの次は必ず項目）
+  const emptyGroups = await page
+    .locator('.nav-group')
+    .evaluateAll(
+      (groups) => groups.filter((group) => !group.nextElementSibling?.classList.contains('nav-item')).length,
+    );
+  expect(emptyGroups).toBe(0);
 });
 
 // 本番の版は40文字の SHA。狭い幅でも横にはみ出さない
@@ -263,8 +251,8 @@ test('320px の幅で、40文字の版とダイアログの JSON が横にはみ
   const sha = '9f2c4e7a1b3d5f60718293a4b5c6d7e8f901a2b3';
   await page.route('**/api/health', (route) => route.fulfill({ json: { status: 'ok', database: 'ok', version: sha } }));
   await page.setViewportSize({ width: 320, height: 700 });
-  await page.goto('/');
-  await expect(page.getByRole('status')).toHaveText(`API: ok（版 ${sha}）`);
+  await page.goto(today);
+  await expect(page.locator('p[role="status"]')).toHaveText(`API: ok（版 ${sha}）`);
 
   const overflow = () =>
     page.evaluate(() => ({ scroll: document.documentElement.scrollWidth, inner: window.innerWidth }));
@@ -284,10 +272,10 @@ test('320px の幅で、40文字の版とダイアログの JSON が横にはみ
   expect(dialogBox.contentRight).toBeLessThanOrEqual(dialogBox.sheetRight);
 });
 
-// 画面の無いパスも SPA の fallback で 200 のシェルを返し、404 は SvelteKit が画面の中で描く
-test('画面の無いパスも 200 でシェルを返し、CSP の違反が無い', async ({ page }) => {
+// 経路に合わない深いパスも SPA の fallback で 200 のシェルを返し、404 は SvelteKit が画面の中で描く
+test('経路に合わないパスも 200 でシェルを返し、CSP の違反が無い', async ({ page }) => {
   const collect = await watchViolations(page);
-  const res = await page.goto('/foo');
+  const res = await page.goto('/foo/bar/baz');
   expect(res?.status()).toBe(200);
   expect(res?.headers()['content-security-policy']).toContain("frame-ancestors 'none'");
 

@@ -69,6 +69,41 @@ h1, h2, h3 { text-wrap: balance; }
 }
 .ws-select span { font-size: var(--text-xs); color: var(--color-muted); }
 .ws-select select { border: 0; background: none; padding: 0; font-weight: 700; }
+/* 組織の切り替え。開閉するメニューで、中は各組織へのリンクと、最後に組織の選択の画面へ戻るリンク。
+   選ぶと画面が移るので select にしない（矢印キーで選んだだけで移ってしまう）。狭い幅でも隠さない */
+.org-menu { display: grid; gap: var(--space-1); min-width: 0; }
+.org-menu-button {
+  display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; column-gap: var(--space-2);
+  width: 100%; padding: var(--space-2); text-align: left; font: inherit; color: inherit; cursor: pointer;
+  border-radius: var(--radius-1); border: 1px solid var(--color-line); background: var(--color-surface);
+}
+.org-menu-button:hover { border-color: var(--color-muted); }
+.org-menu-label { grid-column: 1; font-size: var(--text-xs); color: var(--color-muted); }
+.org-menu-button > b { grid-column: 1; font-weight: 700; overflow-wrap: anywhere; }
+.org-menu-button > .chip { grid-column: 1; justify-self: start; margin-top: var(--space-1); }
+.org-menu-button > .ico { grid-column: 2; grid-row: 1 / span 3; color: var(--color-muted); transform: rotate(90deg); }
+.org-menu-button[aria-expanded="true"] > .ico { transform: rotate(-90deg); }
+/* 組織が多いときは、一覧の中でスクロールする（メニューの綴じが画面の高さに収まらなくなるため） */
+.org-menu-list {
+  list-style: none; margin: 0; padding: var(--space-1); display: grid; gap: 1px;
+  max-height: 40vh; overflow-y: auto;
+  border-radius: var(--radius-1); border: 1px solid var(--color-line); background: var(--color-surface);
+}
+.org-menu-list[hidden] { display: none; }
+.org-menu-list a {
+  display: flex; flex-wrap: wrap; align-items: center; column-gap: var(--space-2);
+  padding: 7px var(--space-2); border-radius: var(--radius-1); color: var(--color-fg); text-decoration: none;
+}
+.org-menu-list a:hover { background: var(--color-rule); }
+.org-menu-list a[aria-current="page"] { background: var(--color-sunken); font-weight: 700; box-shadow: 0 0 0 1px var(--color-line); }
+.org-menu-list a .ico { margin-left: auto; color: var(--color-accent); }
+.org-menu-name { min-width: 0; overflow-wrap: anywhere; }
+.org-menu-note { flex-basis: 100%; font-size: var(--text-xs); color: var(--color-muted); }
+.org-menu-list li:last-child:not(:only-child) a { color: var(--color-muted); }
+/* 狭い幅と、指で押す画面では、押す所を 44px 以上にする */
+@media (max-width: 760px), (pointer: coarse) {
+  .org-menu-list a { min-height: 44px; }
+}
 
 .sheet { min-width: 0; display: flex; flex-direction: column; }
 .topbar {
@@ -77,7 +112,7 @@ h1, h2, h3 { text-wrap: balance; }
   padding-left: max(var(--space-8), env(safe-area-inset-left, 0px));
   padding-right: max(var(--space-8), env(safe-area-inset-right, 0px));
 }
-.me { display: inline-flex; align-items: center; gap: var(--space-2); font-size: var(--text-sm); padding-left: var(--space-2); }
+.me { display: inline-flex; align-items: center; gap: var(--space-2); font-size: var(--text-sm); padding-left: var(--space-2); min-width: 0; max-width: 100%; overflow-wrap: anywhere; }
 .content {
   padding-block: var(--space-2) var(--space-10);
   padding-left: max(var(--space-8), env(safe-area-inset-left, 0px));
@@ -124,7 +159,8 @@ h1, h2, h3 { text-wrap: balance; }
 .btn.is-quiet:hover { color: var(--color-fg); background: var(--color-rule); }
 .btn.is-danger { color: var(--color-danger); border-color: currentColor; }
 .btn.is-sm { padding: 3px 10px; font-size: var(--text-xs); }
-.btn:disabled { opacity: 0.45; cursor: not-allowed; filter: none; }
+/* aria-disabled は、押しても何も起きないが、フォーカスは残したいボタン（読み直している最中の「もう一度試す」など） */
+.btn:disabled, .btn[aria-disabled="true"] { opacity: 0.45; cursor: not-allowed; filter: none; }
 .link-btn { border: 0; background: none; padding: 0; font-size: var(--text-xs); color: var(--color-muted); text-decoration: underline; text-underline-offset: 2px; }
 .link-btn:hover { color: var(--color-fg); }
 
@@ -292,7 +328,7 @@ h1, h2, h3 { text-wrap: balance; }
 .progress-num { font-family: var(--font-mono); font-size: var(--text-xs); color: var(--color-muted); white-space: nowrap; }
 
 /* ===== 記録の面（レベル、積載量） ===== */
-.panel { background: var(--surface-panel); box-shadow: var(--shadow-panel); border: 1px solid var(--color-line); border-radius: var(--radius-1); padding: var(--space-4); display: grid; gap: var(--space-3); }
+.panel { background: var(--surface-panel); box-shadow: var(--shadow-panel); border: 1px solid var(--color-line); border-radius: var(--radius-1); padding: var(--space-4); display: grid; gap: var(--space-3); min-width: 0; }
 .panel-title { font-size: var(--text-xs); color: var(--color-muted); letter-spacing: var(--tracking-label); display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
 .panel-title b { color: var(--color-fg); font-weight: 700; letter-spacing: 0.04em; font-size: var(--text-sm); }
 .panel-note { font-size: var(--text-xs); color: var(--color-muted); }
@@ -373,6 +409,7 @@ h1, h2, h3 { text-wrap: balance; }
     padding-right: max(var(--space-4), env(safe-area-inset-right, 0px));
   }
   .ws-select, .nav-group, .binding-foot { display: none; }
+  .org-menu { flex: 1 1 12rem; }
   .nav { display: flex; overflow-x: auto; width: 100%; gap: var(--space-1); }
   .nav-item { white-space: nowrap; }
   .topbar, .content {
@@ -623,13 +660,15 @@ dialog.dialog::backdrop { background: none; }
 .choice { display: flex; gap: var(--space-3); align-items: flex-start; padding: var(--space-3) var(--space-4); border: 1px solid var(--color-line); border-radius: var(--radius-1); background: var(--color-surface); cursor: pointer; }
 .choice:has(input:checked) { border-color: var(--color-accent); background: var(--color-accent-soft); }
 .choice input { margin-top: 4px; accent-color: var(--color-accent); }
-.choice b { display: block; font-size: var(--text-sm); }
-.choice span { font-size: var(--text-xs); color: var(--color-muted); }
+.choice b { display: block; font-size: var(--text-sm); overflow-wrap: anywhere; }
+.choice span { font-size: var(--text-xs); color: var(--color-muted); overflow-wrap: anywhere; }
 /* 押すと移る選択肢（組織の選択など）。choice と同じ見た目のリンク */
 a.choice { color: inherit; text-decoration: none; align-items: center; }
 a.choice:hover, a.choice:focus-visible { border-color: var(--color-accent); }
-a.choice > div { flex: 1; min-width: 0; }
-a.choice > div > span { display: block; }
+a.choice > div, .choice.is-static > div { flex: 1; min-width: 0; }
+a.choice > div > span, .choice.is-static > div > span { display: block; }
+/* 押せない行（届いた招待など）。choice と同じ枠で、光らせない */
+.choice.is-static { cursor: default; }
 .toggle { display: inline-flex; align-items: center; gap: var(--space-2); font-size: var(--text-sm); cursor: pointer; }
 .toggle input { appearance: none; width: 36px; height: 20px; border-radius: 10px; background: var(--color-gauge); border: 1px solid var(--color-line); position: relative; margin: 0; cursor: pointer; flex: none; }
 .toggle input::after { content: ""; position: absolute; top: 2px; left: 2px; width: 14px; height: 14px; border-radius: 50%; background: var(--color-surface); box-shadow: 0 0 0 1px var(--color-line); transition: left var(--duration-fast); }
@@ -717,6 +756,7 @@ a.choice > div > span { display: block; }
 /* ===== ログインの画面（枠の外） ===== */
 .gate { min-height: 100vh; display: grid; place-items: center; padding-block: var(--space-8);
   padding-left: max(var(--space-4), env(safe-area-inset-left, 0px)); padding-right: max(var(--space-4), env(safe-area-inset-right, 0px)); }
+.gate-stack { display: grid; gap: var(--space-6); width: min(440px, 100%); }
 .gate-sheet { width: min(440px, 100%); display: grid; gap: var(--space-5); background: var(--color-surface); border: 1px solid var(--color-line); border-top: 5px solid var(--color-accent); box-shadow: var(--shadow-sheet); padding: var(--space-8) var(--space-6); border-radius: var(--radius-1); }
 .gate-brand { display: flex; align-items: center; gap: var(--space-2); }
 .gate-brand .brand-seal { width: 34px; height: 34px; font-size: 17px; }

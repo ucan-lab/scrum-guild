@@ -1,0 +1,10 @@
+// e2e の前に、手元の D1 に seed を入れ直す（手元の D1 の行は消える）。ログインした画面は seed のセッションの Cookie で開く。
+// webServer が立ってから動くので、立てたままのサーバー（reuseExistingServer）を使い回すときも流れる。
+// seed は --local だけを付ける（本番の D1 には入れない。scripts/db-seed.ts）
+import { spawnSync } from 'node:child_process';
+
+export default function globalSetup(): void {
+  // wrangler の出力は長いので、失敗のときの標準エラーだけを出す
+  const result = spawnSync('pnpm', ['db:seed'], { stdio: ['ignore', 'ignore', 'inherit'] });
+  if (result.error || result.status !== 0) throw new Error('pnpm db:seed が失敗した');
+}

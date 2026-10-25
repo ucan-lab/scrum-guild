@@ -7,6 +7,12 @@ export function organizationDatabase(env: Env, organization: VerifiedOrganizatio
   return env.DB;
 }
 
+// 組織の中の表を持つ DB すべて。組織をまたいで読む関数（cross-organization.ts）だけが使う。今は1つ。
+// 組織を分けるときは、分けた DB を全部返す形に直す
+export function allOrganizationDatabases(env: Env): D1Database[] {
+  return [env.DB];
+}
+
 // 共通の表の DB。組織の DB を分けても、共通の表は1つの DB に残る
 export function commonDatabase(env: Env): D1Database {
   return env.DB;

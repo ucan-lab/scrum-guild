@@ -1,6 +1,8 @@
 // 組織に入れるかの判定と、ワークスペースが組織のものかの判定（docs/requirements.md の「メンバーと権限」）。
 // リクエストのたびに行う。共通の表（organizations）と組織の中の表（users、memberships、invitations）は別の問い合わせで引き、
 // 1つの SQL で結合しない（docs/data-model.md の「データベースの分け方」）
+import type { Theme } from '../../shared/theme.ts';
+import type { Vocabulary } from '../../shared/vocabulary.ts';
 import { commonDb, orgDb, type OrganizationDb } from './entries.ts';
 import { issueVerifiedOrganization } from './verify-organization.ts';
 import { issueVerifiedWorkspace, type VerifiedWorkspace, type WorkspaceRole } from './verify-workspace.ts';
@@ -18,7 +20,19 @@ export type OrganizationActor = {
   readonly invitedOnly: boolean;
 };
 
-export type OrganizationEntry = { readonly db: OrganizationDb; readonly actor: OrganizationActor };
+// 組織の行（共通の表）のうち、処理が読むもの。処理に共通の入口を渡さず、入るときに引いた値を渡す
+export type OrganizationSummary = {
+  readonly slug: string;
+  readonly name: string;
+  readonly vocabulary: Vocabulary;
+  readonly theme: Theme;
+};
+
+export type OrganizationEntry = {
+  readonly db: OrganizationDb;
+  readonly actor: OrganizationActor;
+  readonly organization: OrganizationSummary;
+};
 
 // 組織を引けない、停止している、入れない、のどれでも undefined を返す。呼び出し側はどれも同じ 404 にする。
 // loadLogins は招待で入る分岐に来たときだけ呼ぶ（管理者と所属のある人には要らないので、引かない）
@@ -29,7 +43,12 @@ export async function enterOrganization(
 ): Promise<OrganizationEntry | undefined> {
   const common = commonDb(env);
   const organization = await common.first(
-    common.statement((q) => q.selectFrom('organizations').select(['id', 'suspended_at']).where('slug', '=', slug)),
+    common.statement((q) =>
+      q
+        .selectFrom('organizations')
+        .select(['id', 'suspended_at', 'slug', 'name', 'vocabulary', 'theme'])
+        .where('slug', '=', slug),
+    ),
   );
   if (organization === undefined || organization.suspended_at !== null) return undefined;
 
@@ -53,6 +72,13 @@ export async function enterOrganization(
   const entry = (isAdmin: boolean, invitedOnly: boolean): OrganizationEntry => ({
     db,
     actor: { accountId: account.accountId, userId: user?.id ?? null, isAdmin, invitedOnly },
+    organization: {
+      slug: organization.slug,
+      name: organization.name,
+      // 列の CHECK が守る値。列挙に無い値が来ても、操作の出力のスキーマ（z.enum）が 500 で止める
+      vocabulary: organization.vocabulary as Vocabulary,
+      theme: organization.theme as Theme,
+    },
   });
 
   if (user !== undefined && user.is_admin === 1) return entry(true, false);
