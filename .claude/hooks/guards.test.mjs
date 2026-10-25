@@ -593,6 +593,20 @@ describe('入口', () => {
         assert.equal(decide(path.join(main, 'docs/x.md'), worktree), 'deny');
         assert.equal(decide(path.join(worktree, 'docs/x.md'), main), 'allow');
         assert.equal(decide(path.join(other, 'x.md'), main), 'allow');
+        assert.equal(decide(path.join(main, 'newdir/deep/b.md'), main), 'deny');
+        // プロジェクトを引けなければ、止める側に倒す
+        assert.equal(decide(path.join(main, 'docs/x.md'), ''), 'deny');
+        assert.equal(decide(path.join(main, 'docs/x.md'), path.join(tmp, 'gone')), 'deny');
+        // 同名のタグがあっても main とみなす
+        sh(['tag', 'main'], main);
+        assert.equal(decide(path.join(main, 'docs/x.md'), main), 'deny');
+        sh(['tag', '-d', 'main'], main);
+        // 本体の detached は止め、ワークツリーの detached（rebase の途中）は通す
+        sh(['checkout', '-q', '--detach'], main);
+        assert.equal(decide(path.join(main, 'docs/x.md'), main), 'deny');
+        sh(['checkout', '-q', '--detach'], worktree);
+        assert.equal(decide(path.join(worktree, 'docs/x.md'), main), 'allow');
+        sh(['checkout', '-q', '1-x'], worktree);
       } finally {
         sh(['checkout', '-q', 'trunk'], main);
       }

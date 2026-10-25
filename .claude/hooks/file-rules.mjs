@@ -5,14 +5,14 @@ import path from 'node:path';
 
 // rel はリポジトリのルートからの相対パス。shippedOnMain は origin/main に同じパスがあるか（main を引けなければ undefined）
 // inWorktree は、セッションが使うフックのあるリポジトリとは別の、リンクされたワークツリーの中のファイルか
-// onMain は、ファイルのある作業コピーが main にいるか
+// onMain は、ファイルのある作業コピーが main にいるか（本体の detached も含む）。ほかのどの判定より先に止める
 // 一番重い判定を [決定, 理由] で返す。止めるものが無ければ null
 export function judgeFile({ rel, contents, shippedOnMain, inWorktree = false, onMain = false }) {
   const name = path.basename(rel);
 
   // 文書も含めて、変更はすべて作業ブランチで作り PR を通す。main の作業コピーは読むだけにする
   if (onMain) {
-    return ['deny', 'main の作業コピーは書き換えない。git worktree add worktrees/<Issue番号>-<名前> -b <同じ名前> origin/main でワークツリーを切り、その中で書く'];
+    return ['deny', 'main の作業コピーは書き換えない。git fetch origin のあと git worktree add worktrees/<Issue番号>-<名前> -b <同じ名前> origin/main でワークツリーを切り、その中で書く（docs/development.md の「ワークツリーで作業する」）'];
   }
 
   // 設定は disableAllHooks でフックごと切れるので、どこでも確かめる
