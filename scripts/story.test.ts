@@ -25,6 +25,13 @@ describe('normalizeLongText', () => {
     assert.equal(normalizeLongText('\n\n  - 入れ子\n- 親'), '  - 入れ子\n- 親');
     assert.equal(normalizeLongText('\t字下げ'), '\t字下げ');
   });
+
+  test('空白の長い列の後に文字があっても、時間がかからない', () => {
+    const value = `a${' '.repeat(1_000_000)}b`;
+    const started = performance.now();
+    assert.equal(normalizeLongText(value), value);
+    assert.ok(performance.now() - started < 1000);
+  });
 });
 
 describe('longTextProblem', () => {

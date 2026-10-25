@@ -35,7 +35,8 @@ export function normalizeLongText(raw: string): string | null {
   const value = raw
     .replace(/\r\n?/g, '\n')
     .replace(/^(?:[^\S\n]*\n)+/u, '')
-    .replace(/\s+$/u, '');
+    // /\s+$/ は長い空白の列で二乗の時間になり、字数の検査の前に CPU を使い切るので使わない
+    .trimEnd();
   return value === '' ? null : value;
 }
 
