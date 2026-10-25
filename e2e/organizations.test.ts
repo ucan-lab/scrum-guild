@@ -225,7 +225,7 @@ test.describe('組織が1つの人（あおば開発のハルカ）', () => {
     await expect(page.getByRole('heading', { level: 1, name: '自分の今日' })).toBeVisible();
   });
 
-  test('短い読み込みでは、読み込み中の表示を出さない', async ({ page }) => {
+  test('読み込み中の表示は、移り始めてから 300ms たつまで出さない', async ({ page }) => {
     await page.route('**/api/my-organizations', (route) =>
       route.fulfill({
         json: {
@@ -236,18 +236,24 @@ test.describe('組織が1つの人（あおば開発のハルカ）', () => {
       }),
     );
     await page.goto('/');
+    // 実際の読み込みの速さは CI で揺れるので、出たかどうかではなく、押してから出るまでの時間を見る
     await page.evaluate(() => {
-      const seen = { loading: false };
+      const seen: { clickedAt: number | null; shownAt: number | null } = { clickedAt: null, shownAt: null };
       (window as unknown as { __seen: typeof seen }).__seen = seen;
+      document.addEventListener('click', () => (seen.clickedAt ??= performance.now()), true);
       new MutationObserver(() => {
-        if (document.body.innerText.includes('しばらくお待ちください')) seen.loading = true;
+        if (seen.shownAt === null && document.body.innerText.includes('しばらくお待ちください')) {
+          seen.shownAt = performance.now();
+        }
       }).observe(document.body, { childList: true, subtree: true, characterData: true });
     });
     await page.getByRole('link', { name: /あおば開発/ }).click();
     await expect(page.getByRole('heading', { level: 1, name: '自分の今日' })).toBeVisible();
-    expect(await page.evaluate(() => (window as unknown as { __seen: { loading: boolean } }).__seen.loading)).toBe(
-      false,
+    const seen = await page.evaluate(
+      () => (window as unknown as { __seen: { clickedAt: number | null; shownAt: number | null } }).__seen,
     );
+    expect(seen.clickedAt).not.toBeNull();
+    if (seen.shownAt !== null) expect(seen.shownAt - (seen.clickedAt ?? 0)).toBeGreaterThanOrEqual(300);
   });
 });
 
