@@ -31,6 +31,7 @@ Node は `.node-version`（26）、pnpm は `package.json` の `packageManager` 
 - e2e: `pnpm e2e`（`pnpm preview` を立て、手元の D1 を seed で入れ直してから Playwright で確かめる。手元の D1 の行は消える。初めは `pnpm exec playwright install chromium`）
 - 空の D1 に全マイグレーションを当て、seed を2回流して確かめる: `pnpm db:migrate:fresh`
 - 手元の D1 にマイグレーションを当て、全部の行を消して seed を入れ直す: `pnpm db:seed`（ログインに使うトークンは `seed/sessions.ts`）
+- seed のセッションでログインした手元の画面を、見えるブラウザで開く: `pnpm dev:open [--preview] [who] [path]`（例 `pnpm dev:open admin /aoba`。先に `pnpm db:seed` と `pnpm dev` を済ませる。`DEV_PORT_OFFSET` は立てたときと同じ値を付ける）
 
 開発用のサーバーとポート、版の渡し方は `docs/development.md` の「手元で動かす」。
 
