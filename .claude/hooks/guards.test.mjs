@@ -704,6 +704,8 @@ describe('bash-rules: 通す', () => {
     'wrangler dev --port="${PORT:-8788}"',
     'wrangler r2 object put "attachments/${K}.png" --file a.png --local',
     'wrangler r2 object put "attachments/$K.png" --file "./$F" --local',
+    // 引数の位置の =名前 は、道具の名前として読まない
+    'echo =wrangler deploy',
     // ~ だけと ~/ は家のディレクトリ
     'wrangler r2 object put attachments/a.png --file ~/a.png --local',
     '~/.claude/scripts/git-cleanup-merged.sh 136-hook-expansion',

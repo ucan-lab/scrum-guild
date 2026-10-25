@@ -414,8 +414,9 @@ export function splitSegments(command) {
       }
       continue;
     }
-    // zsh は語の先頭の =名前 を道具のパスに展開する（=wrangler は /…/wrangler）。= を外して道具の名前として読む
-    if (c === '=' && !inWord && /[\w.-]/.test(command[i + 1] ?? '')) continue;
+    // zsh は語の先頭の =名前 を道具のパスに展開する（=wrangler は /…/wrangler）。道具の位置では = を外して道具の名前として読む。
+    // 引数の位置（echo =.env）は、道具が見つからなければ zsh が実行を止めるので、文字のまま読む
+    if (c === '=' && !inWord && commandIndex(words) === -1 && /[\w.-]/.test(command[i + 1] ?? '')) continue;
     // ~名前（zsh の hash -d、bash の ~- と ~+、~user）は、語の先頭か = と : の後ろで別の文字列に展開される。
     // ~ だけと ~/ は家のディレクトリなので文字として読む
     if (c === '~' && (!inWord || /[=:]$/.test(word)) && !/^~(\/|$|[\s;&|<>()])/.test(command.slice(i))) {
