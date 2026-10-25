@@ -12,10 +12,41 @@ test('/login は枠の外に GitHub のボタンを出す', async ({ page }) => 
     'href',
     '/api/auth/github/start?return_to=%2F',
   );
+  await expect(page.getByRole('link', { name: 'Google でログイン' })).toHaveAttribute(
+    'href',
+    '/api/auth/google/start?return_to=%2F',
+  );
   // 左のメニューも上の帯も出ない
   await expect(page.locator('.app')).toHaveCount(0);
   await expect(page.getByRole('navigation')).toHaveCount(0);
   await expect(page).toHaveTitle('ログイン - Scrum Guild');
+});
+
+test('Google のボタンは GitHub と同じ幅で、OS のライトとダークで公式の色になる', async ({ page }) => {
+  await page.goto('/login');
+  const google = page.getByRole('link', { name: 'Google でログイン' });
+  const github = page.getByRole('link', { name: 'GitHub でログイン' });
+  expect((await google.boundingBox())?.width).toBe((await github.boundingBox())?.width);
+  await expect(google.locator('svg.google-mark')).toBeVisible();
+
+  const colors = () =>
+    google.evaluate((element) => {
+      const style = getComputedStyle(element);
+      return { background: style.backgroundColor, border: style.borderTopColor, color: style.color };
+    });
+  // 色は短く遷移する（.btn の transition）ので、落ち着くまで待つ
+  await page.emulateMedia({ colorScheme: 'light' });
+  await expect.poll(colors).toEqual({
+    background: 'rgb(255, 255, 255)',
+    border: 'rgb(116, 119, 117)',
+    color: 'rgb(31, 31, 31)',
+  });
+  await page.emulateMedia({ colorScheme: 'dark' });
+  await expect.poll(colors).toEqual({
+    background: 'rgb(19, 19, 20)',
+    border: 'rgb(142, 145, 143)',
+    color: 'rgb(227, 227, 227)',
+  });
 });
 
 test('ログインしていない人が組織の画面を開くと、ログインの画面に移り、そこで止まって、元のパスを開始の URL に渡す', async ({

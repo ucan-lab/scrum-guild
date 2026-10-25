@@ -4,10 +4,21 @@ import { implementedOperations } from '../../src/server/operations/index.ts';
 import { operationPath, type AnyOperationDefinition } from '../../src/shared/operations/define.ts';
 import { testEnv } from '../operations/world.ts';
 import { FAKE_CLIENT_ID, FAKE_CLIENT_SECRET, type FakeGithub, type FakeGithubUser } from './fake-github.ts';
+import {
+  createFakeGoogle,
+  FAKE_GOOGLE_CLIENT_ID,
+  FAKE_GOOGLE_CLIENT_SECRET,
+  GOOGLE_TOKEN_URL,
+  type FakeGoogle,
+  type FakeGoogleUser,
+  type IdTokenClaims,
+} from './fake-google.ts';
 
 export const loginEnv: Env = Object.assign({}, testEnv, {
   GITHUB_CLIENT_ID: FAKE_CLIENT_ID,
   GITHUB_CLIENT_SECRET: FAKE_CLIENT_SECRET,
+  GOOGLE_CLIENT_ID: FAKE_GOOGLE_CLIENT_ID,
+  GOOGLE_CLIENT_SECRET: FAKE_GOOGLE_CLIENT_SECRET,
 });
 
 export const SESSION_COOKIE = '__Host-sg_session';
@@ -15,9 +26,14 @@ export const STATE_COOKIE = '__Host-sg_oauth_state';
 
 let browserCount = 0;
 
-export function createLoginApp(github: FakeGithub) {
-  return createApp(implementedOperations, { fetcher: github.fetcher });
+// アプリに渡す fetcher は、Google のトークンのエンドポイントを Google の偽物へ、ほかを GitHub の偽物へ振り分ける
+export function createLoginApp(github: FakeGithub, google: FakeGoogle = createFakeGoogle()) {
+  const fetcher: typeof fetch = (input, init) =>
+    String(input) === GOOGLE_TOKEN_URL ? google.fetcher(input, init) : github.fetcher(input, init);
+  return createApp(implementedOperations, { fetcher });
 }
+
+export type LoginProvider = 'github' | 'google';
 
 export type StartedLogin = { response: Response; location: URL; state: string; challenge: string };
 export type FinishedLogin = { response: Response; location: string };
@@ -28,11 +44,21 @@ export class FakeBrowser {
   readonly ip: string;
   readonly #app: ReturnType<typeof createLoginApp>;
   readonly #github: FakeGithub;
+  readonly #google: FakeGoogle | undefined;
   readonly #env: Env;
+  // start と callback が叩く手段
+  provider: LoginProvider = 'github';
 
-  constructor(app: ReturnType<typeof createLoginApp>, github: FakeGithub, env: Env = loginEnv, ip?: string) {
+  constructor(
+    app: ReturnType<typeof createLoginApp>,
+    github: FakeGithub,
+    env: Env = loginEnv,
+    ip?: string,
+    google?: FakeGoogle,
+  ) {
     this.#app = app;
     this.#github = github;
+    this.#google = google;
     this.#env = env;
     this.ip = ip ?? `198.51.100.${++browserCount}`;
   }
@@ -81,7 +107,7 @@ export class FakeBrowser {
 
   async start(returnTo?: string, headers?: Record<string, string>): Promise<StartedLogin> {
     const query = returnTo === undefined ? '' : `?return_to=${encodeURIComponent(returnTo)}`;
-    const response = await this.request(`/api/auth/github/start${query}`, { headers });
+    const response = await this.request(`/api/auth/${this.provider}/start${query}`, { headers });
     const location = new URL(response.headers.get('Location') ?? '', 'https://scrum-guild.test');
     return {
       response,
@@ -92,8 +118,23 @@ export class FakeBrowser {
   }
 
   async callback(query: Record<string, string>): Promise<FinishedLogin> {
-    const response = await this.request(`/api/auth/github/callback?${new URLSearchParams(query).toString()}`);
+    const response = await this.request(`/api/auth/${this.provider}/callback?${new URLSearchParams(query).toString()}`);
     return { response, location: response.headers.get('Location') ?? '' };
+  }
+
+  // Google の認可の画面を通った人の戻り。claims で ID トークンの中身を上書きできる
+  async loginWithGoogle(user: FakeGoogleUser, options: { returnTo?: string; claims?: IdTokenClaims } = {}) {
+    if (this.#google === undefined) throw new Error('FakeBrowser に Google の偽物を渡していない');
+    const previous = this.provider;
+    this.provider = 'google';
+    try {
+      const started = await this.start(options.returnTo);
+      const code = this.#google.issueCode(user, started.location, options.claims);
+      const finished = await this.callback({ code, state: started.state });
+      return { started, code, ...finished };
+    } finally {
+      this.provider = previous;
+    }
   }
 
   // GitHub の認可の画面を通った人の戻り。start で認可の URL を作り、GitHub が code を渡し、戻り先を開くまでを通す

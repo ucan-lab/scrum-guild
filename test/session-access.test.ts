@@ -587,7 +587,9 @@ describe('ログインの手段の型（GitHub の招待する人の指し方）
 
   test('認可の URL は固定の GitHub のエンドポイントで、スコープは read:user だけ', () => {
     const { method: login } = method();
-    const url = new URL(login.authorizeUrl({ state: 's', codeChallenge: 'c', redirectUri: 'https://example.test/cb' }));
+    const url = new URL(
+      login.authorizeUrl({ state: 's', codeChallenge: 'c', redirectUri: 'https://example.test/cb', nonce: null }),
+    );
     expect(url.origin + url.pathname).toBe('https://github.com/login/oauth/authorize');
     expect(url.searchParams.get('scope')).toBe('read:user');
   });

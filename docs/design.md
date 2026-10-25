@@ -40,6 +40,16 @@ favicon と同じマーク（下の「favicon」）の横に、名前「Scrum Gu
 
 原本は `static/favicon.svg`。金色は `#b58020`、チェックは `#fffaf0`、背景は透明。旗とチェックのコントラスト比は約3.32:1。下端の V 字の切れ込みと太いチェックが16pxでも残る形にする。`static/favicon.ico` は同じ SVG から作った16px・32pxの画像を含むフォールバックで、`src/app.html` から両方を参照する。形や色を変えたときは `pnpm exec node scripts/generate-favicon.ts` で ICO も作り直し、明暗背景で両サイズを確かめる。初回は `pnpm exec playwright install chromium` で描画用のブラウザを入れる。生成には既存の Playwright を使い、SVG と ICO を同じコミットに含める。
 
+## Google のボタン
+
+ログインの画面の Google のボタンは、Google のブランドの決まり（Sign in with Google）に合わせる。`.btn` の変種 `.btn.is-google` で、画面ごとの CSS は持たない。
+
+- ロゴ: 公式の G の SVG（4色）を形も色も変えずに 20px で置く。本番は `GoogleMark.svelte`、見本は `design/kit.js` の `googleMark`。2つの path の並びと色を `scripts/design-parity.test.ts` が公式の値と突き合わせる
+- 色: テーマでなく OS の明暗（`prefers-color-scheme`）で切り替える。ライトは地 `#fff`、枠 `#747775`、文字 `#1f1f1f`。ダークは地 `#131314`、枠 `#8e918f`、文字 `#e3e3e3`
+- 書体と重み: アプリの本文の書体と、`.btn` の重みのまま（GitHub のボタンと同じ）。Roboto は足さない
+- 並べ方: GitHub のボタンと同じ `.is-wide` で、同じ幅にする。ロゴと文字の間は 10px
+- 文言: 辞書の `loginWithGoogle`（「Google でログイン」。ゲームとスクラムで同じ文）
+
 ## 画面一覧
 
 初版の画面。「場所」は、組織（ワークスペースの外）かワークスペースの中か。
@@ -48,7 +58,7 @@ favicon と同じマーク（下の「favicon」）の横に、名前「Scrum Gu
 
 | 画面 | 主な中身 | 見る人 |
 | --- | --- | --- |
-| ログイン | 用意したログインの手段のボタン（初版は GitHub と Google を同じ重みで並べる。Google のボタンは Google のログインを作る #57 で足し、それまでは GitHub だけを出す）。ログインできないときの理由と、招待された手段でログインする案内 | 全員 |
+| ログイン | 用意したログインの手段のボタン（初版は GitHub と Google を、同じ幅と重みで GitHub、Google の順に並べる。Google のボタンの見た目は下の「Google のボタン」）。ログインできないときの理由と、招待された手段でログインする案内 | 全員 |
 | 届いた招待 | 招待の一覧、承諾と辞退 | 招待された人 |
 | 自分の今日 | 最初にやること（初めて使う人だけ）。全ワークスペースから、今日やる、今日と今週が期日、進行中のスプリントの自分のタスク。スプリントゴール。経験値と見込み、自分の積載量 | 本人 |
 | 通知 | 通知の一覧、既読 | 本人 |
@@ -226,6 +236,7 @@ favicon と同じマーク（下の「favicon」）の横に、名前「Scrum Gu
 | --- | --- | --- |
 | `icons.js` のスプライトと `icon` | `IconSprite.svelte`、`Icon.svelte` | スプライトは root の `+layout.svelte` に1つ置く。アイコンの定義は `src/lib/icons.ts` |
 | `brandMark`（ロゴのマーク） | `BrandMark.svelte` | 左のメニューの上（`AppShell`）と、枠の外の画面の先頭の紙（`GateSheet`）で、名前の横に置く。上の「ロゴ」 |
+| `googleMark`（Google の G のロゴ）、`.btn.is-google` | `GoogleMark.svelte` | ログインの画面の Google のボタン。下の「Google のボタン」 |
 | `mount`（枠） | `AppShell.svelte`、`NavMenu.svelte`、`OrganizationSwitcher.svelte` | 左のメニューと上の帯。`/[slug]` のレイアウトだけが使い、`slug` と、所属するワークスペースがあるか（`hasWorkspace`。無ければワークスペースの中の見出しを出さない）を渡す。組織の切り替えは `OrganizationSwitcher`（`kit.js` の `orgMenuHtml`）を snippet で渡し、メニュー（`nav`）の外、ブランドの下に置く。開閉するメニューで、中は各組織へのリンク（今の組織に `aria-current="page"` とチェック）と、最後に `/` へ戻るリンク。select にしないのは、矢印キーで選んだだけで移るのを避けるため（WCAG 3.2.2）。CSS は `.org-menu`。ボタンの名前は今の組織の名前で、入れる組織の一覧の中の名前を使う（一覧に無いときだけ組織の操作の名前）。ボタンとリストに読み上げの名前を付ける。メニューが上の帯になる 760px 以下でも隠さない（`.ws-select`、ワークスペースの切り替えは隠す）。ワークスペースの切り替え、アシスタントのボタンは置き場所だけで、中身は snippet で渡す。メニューの項目は `src/lib/nav.ts`。画面がまだ無い項目（`href` が `null`）はメニューに出さず、項目が1つも無いグループは見出しごと出さない（色を薄くするだけの「まだ無い」の示し方は、色だけに頼りコントラストも足りないので採らない）。上の帯は、アシスタントとログインした人の表示のどちらかを渡したときだけ出す |
 | `.input-row` | | 入力欄とボタンだけを並べる行（`.field` の中）。ヒントとエラーはこの行の下に出すので、折り返しても、ボタンは入力欄の横に残る。運用の画面の「確かめる」と、組織の URL の「コピー」が使う。見本はカタログの「入力と道具の帯」 |
 | `pageHead` | `PageHead.svelte` | |
@@ -238,7 +249,7 @@ favicon と同じマーク（下の「favicon」）の横に、名前「Scrum Gu
 | （見本に無い）見つからない、読み込みの失敗 | `NotFoundPage.svelte`、`LoadFailed.svelte` | 組織の枠の中に出す「見つからない」と、枠の外の `LoadFailed`（`inShell` を付けると枠の中に出す）。管理者でない人が開いた組織の管理と、存在しない（別の組織の）ワークスペースに使う |
 | `openDialog`、`closeDialog` | `Dialog.svelte` | ブラウザの `<dialog>` を `showModal()` で開く。フォーカスの閉じ込めと Esc はブラウザに任せ、閉じたら開いたボタンにフォーカスを戻す。Safari と Firefox はクリックしたボタンにフォーカスを移さないので、開く側は `show(event.currentTarget)` で開く操作を起こした要素を渡す。外側を押して閉じるのは、押し始めと離した所の両方が背景のときだけ（中で選択を始めて外で離しても閉じない）。`dismissible` を偽にすると、×、Esc、背景、footer に渡す `close` の閉じる操作をすべて無視する（送っている最中など）。CSS は components.css の `dialog.dialog` |
 | `toast` | `ToastRegion.svelte`、`src/lib/toast.svelte.ts` | `ToastRegion` を `+layout.svelte` に1つ置き、`showToast()` で出す。HTML でなく文字列を渡す。同時に出すのは3件までで、あふれたら古いものから消す。モーダルのダイアログが開くと外側は inert になり、トップレイヤーに出し直した領域（`popover="manual"`）も inert のままで読み上げが届かない。そのため `Dialog.svelte` の中にも領域を持ち、ダイアログが開いている間は中の領域に出して、外側の領域は隠す |
-| `avatar`、`avatarOf` | `Avatar.svelte` | 色相は `users.id` から計算し（`src/lib/avatar-hue.ts`）、`style:--h` で渡す。DB に列は持たない。ユーザーがいるときは名前が必須で、`role="img"` と `aria-label` を付ける。ログインの手段の側のアバターの画像（運用者が指名する人を確かめるときの GitHub のアバター）は `image` で渡し、頭文字の円の中に画像を重ねる（`.avatar > img`）。画像のホストは CSP の `img-src` に足した `https://avatars.githubusercontent.com` だけ。画像が読み込めないときは頭文字に戻る。見本は `design/kit.js` の `avatar(name, hue, { image })` で、カタログの「人とレベル」に画像と読み込めない例がある（画像は架空の data URI で、外へ通信しない） |
+| `avatar`、`avatarOf` | `Avatar.svelte` | 色相は `users.id` から計算し（`src/lib/avatar-hue.ts`）、`style:--h` で渡す。DB に列は持たない。ユーザーがいるときは名前が必須で、`role="img"` と `aria-label` を付ける。ログインの手段の側のアバターの画像（運用者が指名する人を確かめるときの GitHub のアバター）は `image` で渡し、頭文字の円の中に画像を重ねる（`.avatar > img`）。画像のホストは CSP の `img-src` に足した `https://avatars.githubusercontent.com` と `https://lh3.googleusercontent.com` だけ。画像が読み込めないときは頭文字に戻る。見本は `design/kit.js` の `avatar(name, hue, { image })` で、カタログの「人とレベル」に画像と読み込めない例がある（画像は架空の data URI で、外へ通信しない） |
 | 組織の作成のダイアログ（`createOrganization`） | `CreateOrganizationDialog.svelte` | 運用の画面だけが使う。slug と表示名、最初の管理者のログインの手段、GitHub のユーザー名の解決と確かめ、作った後の完了の表示（組織の URL とコピー）を、1つの `Dialog` の中で切り替える。ダイアログを閉じると入力を捨てる |
 | `t`、`DICT` | `src/shared/vocabulary.ts`、`src/lib/vocabulary.svelte.ts` | 言葉の辞書（`docs/development.md` の「言葉の辞書」） |
 | `THEMES`、`setTheme`、`applyTheme` | `src/shared/theme.ts`、`src/lib/theme.svelte.ts` | テーマの先当ては `docs/development.md` の「テーマの先当て」 |
@@ -268,7 +279,7 @@ favicon と同じマーク（下の「favicon」）の横に、名前「Scrum Gu
 - 人数が上限に達した組織では、招待の画面に上限に達したことと、管理者に相談するよう出し、招待のボタンを押せなくする。
 - 招待と管理者の指名で人を指す欄は、先にログインの手段（GitHub か Google）を選び、選んだ手段に合わせて欄の名前と例を差し替える。Google で招待すると、招待の URL とコピーのボタンをダイアログで出し、この画面を閉じると二度と出ないことと期限（14日）を添える。招待の一覧には手段と、Google の招待の期限を出す。
 - ログインの画面には、招待の URL から開いたときの見本を置く。招待された Google アカウントでログインするよう促し、使えない URL（期限切れ、取り消し済み、別のアカウント）は理由を分けずに伝える。
-- 見本の Google の印は仮のもので、本番のボタンは Google のブランドの決まりに合わせる。
+- Google のボタンは Google のブランドの決まりに合わせる（下の「Google のボタン」）。
 - 初めて使う人には、自分の今日の先頭に「最初にやること」をロール（一般、リーダー、ワークスペースのない管理者）ごとに出す。済んだかは今のデータ（起票したタスク、今日やるの印、招待、スプリント、接続、ワークスペース、組織の休日）から決めるので、閉じた印は DB に要らない。必須の手順がすべて済んだら消える。必須は、一般が「自分のタスクを用意する」（起票か接続の登録のどちらかで済む）、リーダーが「メンバーを招待する」と「バックログに最初のタスクを入れる」、管理者が「最初のワークスペースを作る」。今日やるの印、スプリント、接続、組織の休日、管理者からの招待は、使わない人や1人で使う組織もあるため任意とし、消すかどうかの判定から外す。
 - 空の一覧には、何が出る場所かと次にやることを書き、自分で起こせることがあればその画面へのボタンを1つ添える。自分の今日では、今日やる以外の区分は空なら出さない。
 - ワークスペースがまだない管理者のメニューには、組織の画面（自分の今日、通知、自分の設定、組織の管理）だけを出す。

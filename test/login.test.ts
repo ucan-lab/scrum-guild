@@ -89,7 +89,7 @@ describe('開始', () => {
   });
 
   test('知らない手段は 404', async () => {
-    const res = await newBrowser().request('/api/auth/google/start');
+    const res = await newBrowser().request('/api/auth/gitlab/start');
     expect(res.status).toBe(404);
   });
 });

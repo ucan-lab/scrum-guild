@@ -1,11 +1,12 @@
 // GitHub のログイン（docs/development.md の「GitHub のログインと取り込み」）。共通の1つの OAuth App で、スコープは read:user だけ。
 // 認可コードのフローに state（login-routes.ts）と PKCE（S256）を付ける。
 // 通信先は固定の URL にし、設定から読まない。人が差分を読む領域（docs/development.md の「マージの判定」）
-import { stripHiddenCharacters } from '../../shared/hidden-characters.ts';
+import { avatarUrlOf, displayNameOf } from './profile-fields.ts';
 import {
   LoginMethodError,
   type AuthorizationRequest,
   type InviteeResolution,
+  type InviteeResolver,
   type LoginMethod,
   type LoginProfile,
   type VerificationRequest,
@@ -27,8 +28,6 @@ const API_VERSION = '2022-11-28';
 const USERNAME_PATTERN = /^[A-Za-z0-9](?:[A-Za-z0-9]|-(?=[A-Za-z0-9])){0,38}$/;
 const LOGIN_NAME_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_-]{0,79}$/;
 const AVATAR_HOST = 'avatars.githubusercontent.com';
-const MAX_DISPLAY_NAME_LENGTH = 200;
-const MAX_AVATAR_URL_LENGTH = 500;
 
 export type GithubCredentials = { clientId: string; clientSecret: string };
 
@@ -73,26 +72,6 @@ function loginNameOf(value: unknown): string {
   return value;
 }
 
-// アバターは GitHub のアバターのホストの https だけ。ほかのホストの画像を、画面から読ませない
-function avatarUrlOf(value: unknown): string | null {
-  if (typeof value !== 'string' || value.length > MAX_AVATAR_URL_LENGTH) return null;
-  try {
-    const url = new URL(value);
-    return url.protocol === 'https:' && url.hostname === AVATAR_HOST ? value : null;
-  } catch {
-    return null;
-  }
-}
-
-// 手段の側の名前。名前で断る文字（制御文字、区切り、向きを変える文字、見えない空白や演算子。shared/hidden-characters.ts）は
-// 取り除く。似せたアカウントを指名させるのに使われうるため。絵文字の結合（ZWJ）などは残す。
-// 取り除いて空になる、空白だけ、文字列でない、のどれかなら null。長さはコードポイントで切る（絵文字を途中で割らない）
-function displayNameOf(value: unknown): string | null {
-  if (typeof value !== 'string') return null;
-  const cleaned = stripHiddenCharacters(value).trim();
-  return cleaned === '' ? null : [...cleaned].slice(0, MAX_DISPLAY_NAME_LENGTH).join('');
-}
-
 export type GithubOptions = {
   // ログインの応答を待たせない仕事（トークンの取り消し）を走らせる。Workers では executionCtx.waitUntil
   background: (work: Promise<unknown>) => void;
@@ -104,7 +83,7 @@ export function createGithubLoginMethod(
   credentials: GithubCredentials,
   fetcher: typeof fetch,
   options: GithubOptions,
-): LoginMethod {
+): LoginMethod & InviteeResolver {
   async function send(url: string, init: RequestInit): Promise<Response> {
     try {
       return await fetcher(url, { ...init, signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS) });
@@ -175,7 +154,7 @@ export function createGithubLoginMethod(
       subject: subjectOf(body.id),
       loginName: loginNameOf(body.login),
       displayName: displayNameOf(body.name),
-      avatarUrl: avatarUrlOf(body.avatar_url),
+      avatarUrl: avatarUrlOf(body.avatar_url, AVATAR_HOST),
     };
   }
 
@@ -204,6 +183,7 @@ export function createGithubLoginMethod(
 
   return {
     provider: 'github',
+    usesNonce: false,
 
     authorizeUrl(request: AuthorizationRequest): string {
       const url = new URL(AUTHORIZE_URL);
@@ -257,7 +237,7 @@ export function createGithubLoginMethod(
           subject: subjectOf(body.id),
           loginName: loginNameOf(body.login),
           displayName: displayNameOf(body.name),
-          avatarUrl: avatarUrlOf(body.avatar_url),
+          avatarUrl: avatarUrlOf(body.avatar_url, AVATAR_HOST),
         },
       };
     },

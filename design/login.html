@@ -27,13 +27,13 @@ function render() {
       <h1 class="gate-title">ログイン</h1>
       <p>いずれかの${t("organization")}に所属しているか、招待されている人がログインできます。招待されたときの手段でログインしてください。</p>
       <button class="btn is-wide" type="button">${icon("git")}GitHub でログイン</button>
-      <button class="btn is-wide" type="button">${icon("google")}Google でログイン</button>
+      <button class="btn is-wide is-google" type="button">${SQ.googleMark}Google でログイン</button>
       <p class="gate-note">どちらも本人確認だけに使います。入れる${t("organization")}が2つ以上あれば、ログインのあとに選びます。</p>
     </section>
     <section class="gate-sheet">
       <h2 class="dialog-title">Scrum Guild への招待</h2>
       <p>招待されたメールアドレスの Google アカウントでログインしてください。</p>
-      <button class="btn is-primary is-wide" type="button">${icon("google")}Google でログイン</button>
+      <button class="btn is-wide is-google" type="button">${SQ.googleMark}Google でログイン</button>
       <div class="callout is-warn">${icon("alert")}<span>この招待の URL は使えません。期限が切れたか、取り消されたか、招待されたのと別のアカウントでログインしています。招待した人に確かめてください。</span></div>
       <p class="gate-note">Google の招待の URL から開いたときの見本です。ボタンを押すまでログインを始めず、すでにログインしていても Google のログインを通します。下は使えなかったときの表示です。</p>
     </section>

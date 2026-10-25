@@ -44,7 +44,7 @@ function unreachable(value: never): never {
 
 // 定義が型の検査を抜けていても、登録のときに落とす。権限の分岐に知らない値が来たまま動かさない
 export type OperationsAppOptions = {
-  // ログインの手段（GitHub）への通信。運用者の操作が GitHub のユーザー名を解決するのに使う。テストが差し替える
+  // ログインの手段（GitHub、Google）への通信。運用者の操作が GitHub のユーザー名を解決するのに使う。テストが差し替える
   fetcher: typeof fetch;
 };
 

@@ -32,12 +32,19 @@ export function oauthStateCookieName(publicOrigin: string): string {
   return isSecureOrigin(publicOrigin) ? '__Host-sg_oauth_state' : 'sg_oauth_state';
 }
 
-export type StartedLogin = { state: string; codeChallenge: string };
+export type StartedLogin = { state: string; codeChallenge: string; nonce: string | null };
 
-// state の行を入れる。returnTo は検査済みの自分のサイトのパス
-export async function startOAuthState(env: Env, provider: string, returnTo: string, now: Date): Promise<StartedLogin> {
+// state の行を入れる。returnTo は検査済みの自分のサイトのパス。withNonce が真の手段（LoginMethod.usesNonce）には nonce も作って入れる
+export async function startOAuthState(
+  env: Env,
+  provider: string,
+  returnTo: string,
+  now: Date,
+  withNonce: boolean,
+): Promise<StartedLogin> {
   const state = randomToken();
   const codeVerifier = randomToken();
+  const nonce = withNonce ? randomToken() : null;
   const db = commonDb(env);
   await db.batch([
     db.statement((q) =>
@@ -45,17 +52,17 @@ export async function startOAuthState(env: Env, provider: string, returnTo: stri
         state,
         login_provider: provider,
         code_verifier: codeVerifier,
-        nonce: null,
+        nonce,
         claim_token_hash: null,
         return_to: returnTo,
         expires_at: new Date(now.getTime() + OAUTH_STATE_LIFETIME_MS).toISOString(),
       }),
     ),
   ]);
-  return { state, codeChallenge: await codeChallenge(codeVerifier) };
+  return { state, codeChallenge: await codeChallenge(codeVerifier), nonce };
 }
 
-export type ConsumedOAuthState = { codeVerifier: string; returnTo: string | null };
+export type ConsumedOAuthState = { codeVerifier: string; nonce: string | null; returnTo: string | null };
 
 // state の行を消して返す。1回の DELETE ... RETURNING なので、同じ state の戻りが並行しても1回しか通らない（使い回させない）。
 // 書き込みなので batch() で送る。無い、使い済み、別の手段の行、10分を過ぎた行は undefined（過ぎた行も消える）
@@ -71,10 +78,10 @@ export async function consumeOAuthState(
       q
         .deleteFrom('oauth_states')
         .where('state', '=', state)
-        .returning(['login_provider', 'code_verifier', 'return_to', 'expires_at']),
+        .returning(['login_provider', 'code_verifier', 'nonce', 'return_to', 'expires_at']),
     ),
   ]);
   const row = result.rows[0];
   if (row === undefined || row.login_provider !== provider || row.expires_at <= now.toISOString()) return undefined;
-  return { codeVerifier: row.code_verifier, returnTo: row.return_to };
+  return { codeVerifier: row.code_verifier, nonce: row.nonce, returnTo: row.return_to };
 }

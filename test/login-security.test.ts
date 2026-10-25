@@ -5,11 +5,14 @@ import { afterEach, describe, expect, test, vi } from 'vitest';
 import { logout, me } from '../src/shared/operations/session/index.ts';
 import { commonDb } from '../src/server/db/index.ts';
 import { createFakeGithub, FAKE_CLIENT_SECRET } from './auth/fake-github.ts';
+import { createFakeGoogle, FAKE_GOOGLE_CLIENT_SECRET } from './auth/fake-google.ts';
 import { createLoginApp, FakeBrowser, loginEnv, STATE_COOKIE } from './auth/browser.ts';
 import {
   accountLoginOf,
   failUserWrites,
   githubUser,
+  googleAccountLoginOf,
+  googleUser,
   organizationWithAdmin,
   sessionRowsOf,
   stateRow,
@@ -18,8 +21,9 @@ import {
 import { createUser } from './factories.ts';
 
 const github = createFakeGithub();
-const app = createLoginApp(github);
-const newBrowser = () => new FakeBrowser(app, github);
+const google = createFakeGoogle();
+const app = createLoginApp(github, google);
+const newBrowser = () => new FakeBrowser(app, github, loginEnv, undefined, google);
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -336,5 +340,65 @@ describe('ログ', () => {
     expect(logged).not.toContain('code_verifier');
     // ログの1行は JSON で、どれも requestId を持つ
     for (const line of lines) expect(JSON.parse(line)).toHaveProperty('requestId');
+  });
+
+  test('Google: ID トークン、メールアドレス、code、nonce、クライアントの秘密をログにも account_logins にも出さない', async () => {
+    const lines: string[] = [];
+    const capture = (...args: unknown[]) => void lines.push(args.map(String).join(' '));
+    for (const method of ['log', 'error', 'warn', 'info', 'debug'] as const) {
+      vi.spyOn(console, method).mockImplementation(capture);
+    }
+
+    const { organization } = await organizationWithAdmin();
+    const user = googleUser('ログ確認', { email: 'log-check-address@example.test' });
+    await createUser(organization, { login_provider: 'google', login_subject: user.sub, is_admin: 1 });
+
+    // 成功の経路
+    const secrets: string[] = [FAKE_GOOGLE_CLIENT_SECRET, user.email!];
+    const browser = newBrowser();
+    const ok = await browser.loginWithGoogle(user);
+    secrets.push(ok.code, ok.started.state, ok.started.challenge, browser.sessionToken!);
+    secrets.push(ok.started.location.searchParams.get('nonce')!);
+
+    // 失敗の経路: 使えない code、メールを含む ID トークンの検査の失敗、Google の 5xx、入れない人
+    const failing = newBrowser();
+    failing.provider = 'google';
+    const start = await failing.start();
+    secrets.push(start.state, start.location.searchParams.get('nonce')!);
+    const bad = await failing.callback({ code: '4/secret-bad-code', state: start.state });
+    secrets.push('4/secret-bad-code');
+    expect(bad.location).toContain('error=retry');
+    const wrongAudience = await newBrowser().loginWithGoogle(user, { claims: { aud: 'other-client' } });
+    expect(wrongAudience.location).toContain('error=unavailable');
+    secrets.push(wrongAudience.code);
+    const serverError = newBrowser();
+    serverError.provider = 'google';
+    const failStart = await serverError.start();
+    google.failNext.token = 'server-error';
+    const failCode = google.issueCode(user, failStart.location);
+    await serverError.callback({ code: failCode, state: failStart.state });
+    secrets.push(failCode, failStart.state);
+    const stranger = googleUser('部外者', { email: 'log-stranger-address@example.test' });
+    const strangerLogin = await newBrowser().loginWithGoogle(stranger);
+    secrets.push(strangerLogin.code, strangerLogin.started.state, stranger.email!);
+
+    await browser.post(me);
+
+    // ID トークンは、署名の無い JWT の本文にメールアドレスや sub を含む。トークンそのものも、受け取ったアクセストークンも出さない
+    secrets.push(...google.idTokens, ...google.accessTokens, 'ya29.');
+
+    expect(lines.length).toBeGreaterThan(0);
+    const logged = lines.join('\n');
+    for (const secret of secrets) {
+      expect(logged, secret.slice(0, 12)).not.toContain(secret);
+    }
+    expect(logged).not.toContain('example.test');
+    expect(logged).not.toContain('id_token');
+    expect(logged).not.toContain('code_verifier');
+    for (const line of lines) expect(JSON.parse(line)).toHaveProperty('requestId');
+
+    // account_logins にメールアドレスは入らない
+    const login = await googleAccountLoginOf(user);
+    expect(JSON.stringify(login)).not.toContain('example.test');
   });
 });

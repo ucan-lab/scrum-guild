@@ -504,7 +504,7 @@ GitHub App も比べた。人が抜けても取り込みが止まらない、PAT
 
 置き場所は `src/server/auth/`（人が差分を読む領域）。OAuth App の作り方とシークレットは `docs/operations.md` の「GitHub OAuth App」。
 
-- ログインの手段の型（`login-method.ts`）: 認可の URL を作る `authorizeUrl()`、戻ってきた `code` を確かめて手段の中の ID と表示名とアバターを返す `verify()`、招待する人の指し方 `resolveInvitee()`（GitHub はユーザー名をユーザー ID に解決する）。結果は、見つかった人（手段の中の ID、ログイン名、表示名、アバターの URL）、当たる人がいない（`not_found`）、個人のアカウントでない（`not_a_user`。GitHub の応答の `type` が `User` でない相手。ログインできないので、管理者や招待の相手にしない）の3つに分けて返す。呼ぶ側は、後の2つを `invalid_input` にし、どの項目かと理由を `details` に入れる。確かめられないときは `LoginMethodError`（`rejected`: code が使えない。`unavailable`: 届かない、応答が想定と違う、こちらの設定の誤り）を投げ、メッセージは固定の文だけにする。Google（#57）は同じ型に足す
+- ログインの手段の型（`login-method.ts`）: 認可の URL を作る `authorizeUrl()`、戻ってきた `code` を確かめて手段の中の ID と表示名とアバターを返す `verify()`、`state` の行に OpenID Connect の nonce を入れる手段かを宣言する `usesNonce`（`authorizeUrl()` と `verify()` の引数に `nonce` が入る。使わない手段は `null`）。招待する人の指し方 `resolveInvitee()` は `LoginMethod` から分けた `InviteeResolver` が持ち、持つのは GitHub だけ（ユーザー名をユーザー ID に解決する。Google にはメールアドレスから `sub` を引く口が無い）。運用者の道具（`operator-tools.ts`）は、この解決器だけを受け取る。結果は、見つかった人（手段の中の ID、ログイン名、表示名、アバターの URL）、当たる人がいない（`not_found`）、個人のアカウントでない（`not_a_user`。GitHub の応答の `type` が `User` でない相手。ログインできないので、管理者や招待の相手にしない）の3つに分けて返す。呼ぶ側は、後の2つを `invalid_input` にし、どの項目かと理由を `details` に入れる。確かめられないときは `LoginMethodError`（`rejected`: code が使えない。`unavailable`: 届かない、応答が想定と違う、こちらの設定の誤り）を投げ、メッセージは固定の文だけにする。名前の整え方（見えない文字の除去、200字の切り詰め）とアバターの https とホストの検査は、`profile-fields.ts` に置き、GitHub と Google で共有する。Google の実装は `google.ts`（下の「Google のログイン」）
 - GitHub の実装（`github.ts`）: 通信先は固定の URL で、設定から読まない（認可 `https://github.com/login/oauth/authorize`、トークン `https://github.com/login/oauth/access_token`、ユーザー `https://api.github.com/user`、ユーザー名の解決 `https://api.github.com/users/<名前>`）。受け取るユーザー ID は正の整数で、10進の文字列にして持つ。ログイン名はユーザー名の形（英数字で始まり、英数字、`-`、`_` を80文字まで。Enterprise Managed Users のログイン名が `_` を含むため）でなければ、応答が想定と違うものとして断る。表示名は、名前で断る文字（制御文字、行と段落の区切り、向きを変える制御、ゼロ幅スペースと見えない演算子、BOM。ワークスペースの名前と組織の表示名と共通の決まりで、`src/shared/hidden-characters.ts` の1か所に置く）を取り除き、200字までのコードポイントで切る（絵文字の結合の ZWJ、ZWNJ、方向の印の LRM、RLM、ALM、旗のタグ文字は残す）。アバターの URL は `https://avatars.githubusercontent.com/` のものだけを持ち、ほかのホストと http は持たない。使い終えたアクセストークンは、読み終えた直後に GitHub 側でも取り消す（`read:user` のトークンは期限が無い）。取り消しはログインの応答を待たせず（`executionCtx.waitUntil`）、2xx 以外の状態と例外の名前は、固定の文でログに出す（トークンは出さない）。失敗してもログインは止めない。クライアントの ID と秘密は Worker のシークレット `GITHUB_CLIENT_ID` と `GITHUB_CLIENT_SECRET`。`resolveInvitee()` は、認証なしの呼び出しの上限（IP ごとに1時間60回）に Workers の共有の IP が当たらないよう、クライアントの資格情報（Basic 認証）で呼ぶ。使うのは運用者の組織の作成（`resolve-github-user`、`create-organization`）と、招待の機能を作る Issue で、ユーザー名の形（英数字とハイフンで39文字まで）に合わない値は GitHub に問い合わせない
 - 開始 `GET /api/auth/github/start?return_to=<パス>`:
   - 受けるのは、利用者が自分のサイトの画面（ログインの画面のボタン）かアドレス欄から始めた画面の移動だけ。条件は次の4つで、どれかのヘッダーがあって合わないものは、数えず、行も書かず、ログインの画面へ戻す。ほかのサイトのページから、被害者の IP の枠を使い切らせないため
@@ -542,10 +542,17 @@ GitHub App も比べた。人が抜けても取り込みが止まらない、PAT
   - `exp` が過ぎていない
   - `nonce` が `oauth_states` の値に一致する
   - `email_verified` が真偽値の `true`（文字列の `"true"` は通さない）。メールアドレスで待つ指名と招待に結ぶときだけ要る
-- `sub`: 受け取った文字列のまま扱い、数値に直さない
+- 検査の置き場: 5つの検査は `google.ts` の `checkGoogleIdToken()`（純粋な関数）に置く。失敗の理由は固定の文だけで、ID トークン、`code`、応答の本文、メールアドレスは入れず、ログにも出さない。メールアドレスは `email_verified` が真偽値の `true` のときだけ検査の結果に載り、それ以外は `null`。`LoginProfile` と `account_logins` には持たない。`email_verified` が `true` でなくてもこのログインは通す（メールアドレスで待つ指名と招待に結ぶ処理が、`null` なら結ばずに済ます）
+- `sub`: 受け取った文字列のまま扱い、数値に直さない。空でない文字列で、255字までを受ける
+- 名前: `account_logins.login_name` はプロフィールの `name`、無ければ「Google ユーザー」。`display_name` は `name` か、無ければ空
+- アバター: `picture` が `https://lh3.googleusercontent.com` の https のときだけ持ち、ほかは空にする。`*.googleusercontent.com` 全体は許さない（利用者がファイルを上げられるサブドメインがあるため）。CSP の `img-src` に同じホストを足してある
+- `access_token`: トークンのエンドポイントの応答から読まず、捨てる。取り消さない（Google の `/revoke` は許可ごと消し、ログインのたびに同意画面が出直すため。トークンは1時間で切れる）。userinfo も呼ばない
+- 戻り先の `code`: Google の `code` は `4/0A...` の形で `/` を含むので、戻り先の形の検査（`login-routes.ts` の `CODE_PATTERN`）は `/` を通し、512文字までにする
+- `nonce`: 開始で `usesNonce` の手段にだけ作り、`oauth_states.nonce` に入れる。`oauth_states` の `nonce` が空の Google の行は、Google に送らずに断る
+- クライアントの ID と秘密は Worker のシークレット `GOOGLE_CLIENT_ID` と `GOOGLE_CLIENT_SECRET`。どちらかが未設定か空なら、Google のログインだけを受け付けない（GitHub は続ける）
 - ドメイン: 個人の Google アカウントの人も入るため、`hd`（Google Workspace のドメイン）では絞らない。入れるかどうかは、ほかの手段と同じく指名と招待で決まる。Google が管理していないアドレスでも横取りされないよう、指名と招待は招待の URL の秘密とメールアドレスの両方がそろったときだけ結ぶ（`data-model.md` の「メールアドレスで待つ指名と招待」）
 - 運用者のログインの ID: シークレットの一覧の各項目は `github:<数字>` か `google:<数字>` の形だけを受け付け、合わない項目があれば起動を止める。比べるのは手段と ID の文字列の完全一致だけ。自分の Google の `sub` の調べ方は運用の手順書に書く
-- ログインのボタンの見た目は、Google のブランドの決まり（Sign in with Google のボタン）に合わせる。見本の Google のボタンは仮の見た目
+- ログインのボタンの見た目は、Google のブランドの決まり（Sign in with Google のボタン）に合わせる。決まりの中身は `design.md` のログインの画面の行
 
 ## 開発とテストでのログイン
 
@@ -627,7 +634,7 @@ Issue はエピック、ストーリー、タスクの3階層にし、親子は�
 
 最初の一本道から厳しく入れる（2026-10-22 に決めた）。後から締めると、壊れる所を探す手間が大きいため。
 
-- CSP: SvelteKit の `csp` の設定（ハッシュ）で、`script-src` を自分のものだけにする。`default-src 'self'`、`object-src 'none'`、`base-uri 'self'`、`frame-ancestors 'none'`、`form-action 'self'` を基本にする。外を読む必要が出たら、その先だけを足す。足したのは `img-src` の `'self'` と `https://avatars.githubusercontent.com` で、運用者が最初の管理者に指名する人のアバターを作る前に見せるため。書体は自分の Worker から配るので足していない（上の「書体」）
+- CSP: SvelteKit の `csp` の設定（ハッシュ）で、`script-src` を自分のものだけにする。`default-src 'self'`、`object-src 'none'`、`base-uri 'self'`、`frame-ancestors 'none'`、`form-action 'self'` を基本にする。外を読む必要が出たら、その先だけを足す。足したのは `img-src` の `'self'` と `https://avatars.githubusercontent.com`（GitHub のアバター）と `https://lh3.googleusercontent.com`（Google のアバター。利用者がファイルを上げられるほかのサブドメインは許さない）で、運用者が最初の管理者に指名する人のアバターを作る前に見せるため。書体は自分の Worker から配るので足していない（上の「書体」）
 - `style-src` は `'self'` に加え、SvelteKit が差し込む読み上げ用の要素（`svelte-announcer`）の `style` 属性だけを `'unsafe-hashes'` とハッシュで通す。止めると、画面を移るたびに読み上げ用の文が見えてしまうため
 - `X-Content-Type-Options: nosniff`、`Referrer-Policy: strict-origin-when-cross-origin`、`Strict-Transport-Security: max-age=31536000; includeSubDomains`
 - e2e で、CSP の違反が出ないことを確かめる

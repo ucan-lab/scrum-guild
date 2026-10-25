@@ -2,6 +2,7 @@
   import { page } from '$app/state';
   import Gate from '../../lib/components/Gate.svelte';
   import GateSheet from '../../lib/components/GateSheet.svelte';
+  import GoogleMark from '../../lib/components/GoogleMark.svelte';
   import Icon from '../../lib/components/Icon.svelte';
   import { t } from '../../lib/vocabulary.svelte.ts';
   import type { DictionaryKey } from '../../shared/vocabulary.ts';
@@ -18,7 +19,8 @@
   };
 
   const returnTo = $derived(safeReturnTo(page.url.searchParams.get('return_to')));
-  const startHref = $derived(`/api/auth/github/start?return_to=${encodeURIComponent(returnTo)}`);
+  const githubStartHref = $derived(`/api/auth/github/start?return_to=${encodeURIComponent(returnTo)}`);
+  const googleStartHref = $derived(`/api/auth/google/start?return_to=${encodeURIComponent(returnTo)}`);
   // 自分のキーだけで引く（constructor や __proto__ のような継承したキーで、辞書に無い値を引かない）
   const errorKey = $derived.by(() => {
     const error = page.url.searchParams.get('error') ?? '';
@@ -41,7 +43,11 @@
     <p>{t('loginLead', words)}</p>
     <!-- 画面の経路ではなく Worker の GET。resolve() は経路の ID を要るので通さず、data-sveltekit-reload で直に開く -->
     <!-- eslint-disable-next-line svelte/no-navigation-without-resolve -->
-    <a class="btn is-wide" href={startHref} data-sveltekit-reload><Icon name="git" />{t('loginWithGithub')}</a>
+    <a class="btn is-wide" href={githubStartHref} data-sveltekit-reload><Icon name="git" />{t('loginWithGithub')}</a>
+    <!-- eslint-disable-next-line svelte/no-navigation-without-resolve -->
+    <a class="btn is-wide is-google" href={googleStartHref} data-sveltekit-reload
+      ><GoogleMark />{t('loginWithGoogle')}</a
+    >
     <p class="gate-note">{t('loginNote', words)}</p>
   </GateSheet>
 </Gate>
