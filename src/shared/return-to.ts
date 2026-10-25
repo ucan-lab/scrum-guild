@@ -4,7 +4,8 @@
 
 export const DEFAULT_RETURN_TO = '/';
 
-const MAX_LENGTH = 2000;
+// 画面のパスとクエリに足りる長さ。未ログインの人が書かせられる oauth_states の1行を小さく保つ
+export const RETURN_TO_MAX_LENGTH = 512;
 
 // 印字できる ASCII だけ。ブラウザは URL のタブと改行を取り除くので、`/<タブ>/evil.example` が `//evil.example` になる
 const PRINTABLE_PATH = /^\/[ -~]*$/;
@@ -16,7 +17,8 @@ const EXCLUDED_FIRST_SEGMENTS = new Set(['api', 'login']);
 const DOT_SEGMENT = /^(?:\.|%2e){1,2}$/i;
 
 export function safeReturnTo(value: unknown): string {
-  if (typeof value !== 'string' || value.length > MAX_LENGTH || !PRINTABLE_PATH.test(value)) return DEFAULT_RETURN_TO;
+  if (typeof value !== 'string' || value.length > RETURN_TO_MAX_LENGTH || !PRINTABLE_PATH.test(value))
+    return DEFAULT_RETURN_TO;
   // `//host` は別のサイトへの移動になる
   if (value.startsWith('//')) return DEFAULT_RETURN_TO;
   const path = value.split(/[?#]/, 1)[0] ?? '';

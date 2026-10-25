@@ -24,7 +24,7 @@ import {
   oauthStateCookieOptions,
   startOAuthState,
 } from './oauth-state.ts';
-import { consumeLoginRateLimits } from './rate-limit.ts';
+import { consumeLoginRateLimits, consumeLoginStartRateLimits, type LoginStartRateLimit } from './rate-limit.ts';
 import { timingSafeEqualStrings } from './tokens.ts';
 
 // ログインの画面（/login?error=）が扱う失敗。画面は文言を辞書から出す（src/routes/login/）
@@ -121,7 +121,13 @@ function isUserNavigation(c: Context<AppEnv>): boolean {
   );
 }
 
-async function withinRateLimit(c: Context<AppEnv>): Promise<boolean> {
+// 開始は IP の枠と全体の枠、戻り先は IP の枠だけを数える。戻り先へ進むには開始で作った state の Cookie が要るので、
+// 開始の全体の枠で間接的に絞られる。GitHub から戻った人を全体の枠で断らない
+async function startRateLimit(c: Context<AppEnv>): Promise<LoginStartRateLimit> {
+  return consumeLoginStartRateLimits(c.env, c.req.header('CF-Connecting-IP'), new Date());
+}
+
+async function withinCallbackRateLimit(c: Context<AppEnv>): Promise<boolean> {
   return consumeLoginRateLimits(c.env, c.req.header('CF-Connecting-IP'), new Date());
 }
 
@@ -138,8 +144,10 @@ export function loginRoutes(options: LoginRoutesOptions): Hono<AppEnv> {
         log(c, { step: 'start', provider, outcome: 'not_navigation' });
         return toLoginPage(c, undefined, returnTo);
       }
-      if (!(await withinRateLimit(c))) {
-        log(c, { step: 'start', provider, outcome: 'too_many' });
+      const limit = await startRateLimit(c);
+      if (!limit.allowed) {
+        // 画面は同じ too_many。ログでは、全体の枠に当たったのかを IP の枠と見分ける
+        log(c, { step: 'start', provider, outcome: limit.limitedBy === 'global' ? 'too_many_global' : 'too_many' });
         return toLoginPage(c, 'too_many', returnTo);
       }
       const method = githubMethod(c, options.fetcher);
@@ -197,7 +205,7 @@ export function loginRoutes(options: LoginRoutesOptions): Hono<AppEnv> {
       // 照合に通った戻りで、state の Cookie を使い切る。以降は成功でも失敗でも消す
       deleteCookie(c, stateCookie, oauthStateCookieClearOptions(c.env.PUBLIC_ORIGIN));
 
-      if (!(await withinRateLimit(c))) {
+      if (!(await withinCallbackRateLimit(c))) {
         log(c, { step: 'callback', provider, outcome: 'too_many' });
         return toLoginPage(c, 'too_many');
       }

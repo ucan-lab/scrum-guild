@@ -5,9 +5,12 @@ import { clientIpUnits } from '../src/server/auth/client-ip.ts';
 import {
   consumeLoginRateLimits,
   consumeRateLimit,
+  isRateLimitExceeded,
   LOGIN_RATE_LIMIT,
+  LOGIN_RATE_LIMIT_GLOBAL,
   LOGIN_RATE_LIMIT_IPV6_SITE,
   loginRateLimits,
+  longestRateLimitWindowMs,
 } from '../src/server/auth/rate-limit.ts';
 import { commonDb } from '../src/server/db/index.ts';
 
@@ -173,6 +176,54 @@ describe('IPv6 の2つの枠', () => {
     await setCount(`login48:${wideSite}::/48`, LOGIN_RATE_LIMIT_IPV6_SITE.max - 1);
     expect(await consumeLoginRateLimits(env, wideAddress, now)).toBe(true);
     expect(await consumeLoginRateLimits(env, wideAddress, now)).toBe(false);
+  });
+});
+
+describe('数えずに覗く', () => {
+  const policy = { max: 3, windowMs: 60_000 };
+  const now = new Date();
+  const setRow = async (key: string, count: number, windowStartAt: Date) => {
+    const db = commonDb(env);
+    await db.batch([
+      db.statement((q) =>
+        q.insertInto('rate_limits').values({ key, window_start_at: windowStartAt.toISOString(), count }),
+      ),
+    ]);
+  };
+
+  test('行が無い枠は超えておらず、覗いても行を作らない', async () => {
+    const key = `test:${crypto.randomUUID()}`;
+    expect(await isRateLimitExceeded(env, key, policy, now)).toBe(false);
+    const db = commonDb(env);
+    expect(
+      await db.first(db.statement((q) => q.selectFrom('rate_limits').selectAll().where('key', '=', key))),
+    ).toBeUndefined();
+  });
+
+  test('窓の内は、count が上限に届いたら超えている（次の呼び出しが断られる）', async () => {
+    const below = `test:${crypto.randomUUID()}`;
+    await setRow(below, policy.max - 1, now);
+    expect(await isRateLimitExceeded(env, below, policy, now)).toBe(false);
+    const reached = `test:${crypto.randomUUID()}`;
+    await setRow(reached, policy.max, now);
+    expect(await isRateLimitExceeded(env, reached, policy, now)).toBe(true);
+    // 覗いた判定と、数えたときの判定が合う
+    expect(await consumeRateLimit(env, reached, policy, now)).toBe(false);
+  });
+
+  test('窓を過ぎた行は、上限を超えた count でも超えていない（consumeRateLimit と同じ境目）', async () => {
+    const boundary = `test:${crypto.randomUUID()}`;
+    await setRow(boundary, policy.max + 10, new Date(now.getTime() - policy.windowMs));
+    expect(await isRateLimitExceeded(env, boundary, policy, now)).toBe(false);
+    expect(await consumeRateLimit(env, boundary, policy, now)).toBe(true);
+
+    const inside = `test:${crypto.randomUUID()}`;
+    await setRow(inside, policy.max, new Date(now.getTime() - policy.windowMs + 1));
+    expect(await isRateLimitExceeded(env, inside, policy, now)).toBe(true);
+  });
+
+  test('全体の枠の窓は、掃除の境目の最長の窓に入る', () => {
+    expect(longestRateLimitWindowMs([])).toBeGreaterThanOrEqual(LOGIN_RATE_LIMIT_GLOBAL.windowMs);
   });
 });
 

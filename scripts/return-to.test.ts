@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
-import { DEFAULT_RETURN_TO, resolvedReturnTo, safeReturnTo } from '../src/shared/return-to.ts';
+import { DEFAULT_RETURN_TO, RETURN_TO_MAX_LENGTH, resolvedReturnTo, safeReturnTo } from '../src/shared/return-to.ts';
 
 describe('ログイン後に戻る画面のパス', () => {
   test('自分のサイトのパスはそのまま返す（クエリとフラグメントを含む）', () => {
@@ -133,7 +133,8 @@ describe('ログイン後に戻る画面のパス', () => {
   });
 
   test('長すぎる値は /', () => {
-    assert.equal(safeReturnTo(`/${'a'.repeat(2000)}`), DEFAULT_RETURN_TO);
-    assert.equal(safeReturnTo(`/${'a'.repeat(1999)}`), `/${'a'.repeat(1999)}`);
+    assert.equal(safeReturnTo(`/${'a'.repeat(RETURN_TO_MAX_LENGTH)}`), DEFAULT_RETURN_TO);
+    assert.equal(safeReturnTo(`/${'a'.repeat(RETURN_TO_MAX_LENGTH - 1)}`), `/${'a'.repeat(RETURN_TO_MAX_LENGTH - 1)}`);
+    assert.equal(RETURN_TO_MAX_LENGTH, 512);
   });
 });

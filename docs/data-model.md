@@ -146,7 +146,7 @@
 | code_verifier | TEXT | NOT NULL | |
 | nonce | TEXT | | OpenID Connect の手段（Google）で、ID トークンの `nonce` と比べる値。GitHub では空。Google で空の行は、アプリが拒む |
 | claim_token_hash | TEXT | | 招待の URL から始めたログインで、その URL の秘密の SHA-256。戻ってきたときに、待っている指名か招待を引く |
-| return_to | TEXT | `CHECK (return_to GLOB '/*' AND return_to NOT GLOB '//*' AND return_to NOT GLOB '/\*' AND return_to NOT GLOB '*[^ -~]*')` | ログイン後に戻る画面のパス。自分のサイトのパスだけで、`//` や `/\` で始まる別のサイトへの移動は DB でも拒む。印字できる ASCII に限る（ブラウザは URL のタブと改行を取り除くので、`/<タブ>/evil.example` が `//evil.example` になる）。DB の CHECK が拒むのは、この大まかな形だけ。`.` と `..` の区間、パスの `\`、`api` と `login` で始まる値などの細かい検査は、アプリ（`src/shared/return-to.ts`）が持つ |
+| return_to | TEXT | `CHECK (return_to GLOB '/*' AND return_to NOT GLOB '//*' AND return_to NOT GLOB '/\*' AND return_to NOT GLOB '*[^ -~]*')` | ログイン後に戻る画面のパス。自分のサイトのパスだけで、`//` や `/\` で始まる別のサイトへの移動は DB でも拒む。印字できる ASCII に限る（ブラウザは URL のタブと改行を取り除くので、`/<タブ>/evil.example` が `//evil.example` になる）。DB の CHECK が拒むのは、この大まかな形だけ。長さ（512文字まで）、`.` と `..` の区間、パスの `\`、`api` と `login` で始まる値などの細かい検査は、アプリ（`src/shared/return-to.ts`）が持ち、合わない値は `/` に直す。長さを絞るのは、未ログインの人が書かせられる1行を小さく保つため |
 | expires_at | TEXT | NOT NULL | 作ってから10分 |
 
 - `state` は HttpOnly の Cookie にも同じ値で置く。戻り先では、クエリの `state` と Cookie の値が合うことを確かめてから、この表の行を `DELETE ... RETURNING` で消して読む。Cookie が無い、合わない戻りは、行にも Cookie にも触れず、レート制限にも数えずに断る（ログインの CSRF を止める）。照合に通った戻りだけが、行と Cookie を使い切り、枠を数える。
@@ -158,14 +158,19 @@
 
 | 列 | 型 | 制約 | 説明 |
 | --- | --- | --- | --- |
-| key | TEXT | PK | `login:<IP>`（ログインの開始と戻り先。`CF-Connecting-IP`。IPv6 は上位 64 ビットに丸めた `login:2001:db8:1:2::/64` と、上位 48 ビットの `login48:2001:db8:1::/48` の2つ。IPv4 を写した IPv6 は IPv4 に直す。解釈できない値と IP の無いリクエストは `login:unknown`）、`operation:<操作の名前>:<アカウントの ID>`（操作の定義の `rateLimit`） |
+| key | TEXT | PK | `login:<IP>`（ログインの開始と戻り先。`CF-Connecting-IP`。IPv6 は上位 64 ビットに丸めた `login:2001:db8:1:2::/64` と、上位 48 ビットの `login48:2001:db8:1::/48` の2つ。IPv4 を写した IPv6 は IPv4 に直す。解釈できない値と IP の無いリクエストは `login:unknown`）、`login:global`（ログインの開始の全体の枠）、`operation:<操作の名前>:<アカウントの ID>`（操作の定義の `rateLimit`） |
 | window_start_at | TEXT | NOT NULL | 窓の最初の呼び出しの日時 |
 | count | INTEGER | NOT NULL | 窓の中の呼び出しの数。上限を超えた呼び出しも数える |
 
 - 1文の upsert（`INSERT ... ON CONFLICT DO UPDATE ... RETURNING count`）で数える。`window_start_at` から窓の長さがたっていれば、`window_start_at` を今に、`count` を 1 に戻す。返った `count` が上限以下なら通す。
 - ログインは同じ IP から10分に60回まで（1回のログインで開始と戻り先の2回を数える）。IPv6 は、この /64 の枠に加えて、/48 の枠を10分に600回まで数え、どちらかを超えたら断る。/48 の枠を先に数え、超えていたら /64 の枠は数えない（/64 を変えて叩かれても、行を増やさない）。値は `src/server/auth/rate-limit.ts` の定数。
+- ログインの開始は、IP の枠に加えて、全部の IP を合わせた全体の枠 `login:global` を10分に600回まで数える。IP を多く持つ人が、IP の数に比例して `oauth_states` の行を書かせられないようにするため。叩かれ続けても、書き込みは月に約1,000万行で、居座る `oauth_states` は約600行に収まる。
+  - 順は、全体の枠を読むだけで覗き、上限に届いていれば何も書かずに断る → IP の枠を数える → 通った呼び出しだけ全体の枠を数える。全体の枠を先に数えると、断った呼び出しも数えるので、1つの IP から叩き続けるだけで全体の枠を使い切れる。この順なら、1つの IP が使える全体の枠は IP の枠の上限（60回）まで。
+  - 全体の枠が上限の間の開始は、`rate_limits` にも `oauth_states` にも書かない。覗いた後に並行した呼び出しがすり抜けても、最後に全体の枠を数えるので上限は守られる。
+  - 戻り先は全体の枠で数えない。先へ進むには開始で作った `state` の Cookie が要るので、開始の全体の枠で間接的に絞られる。GitHub から戻った人を、全体の枠で断らないため。
+  - 断ったときの画面は IP の枠と同じ `too_many`。ログの `outcome` は `too_many_global` で、IP の枠の `too_many` と見分ける。
 - 数えるのは、利用者が始めた画面の移動の開始と、`state` の Cookie が合った戻りだけ。開始は、`Sec-Fetch-Mode` が `navigate`、`Sec-Fetch-Dest` が `document`、`Sec-Fetch-Site` が `same-origin` か `none` で、`Sec-Purpose` に prefetch と prerender を含まないもの。どのヘッダーも、送らない古いブラウザは通す。ほかのサイトが `<img>`、`fetch()`、`<iframe>`、リンクの移動、先読みで読ませても、被害者の枠は減らず、`oauth_states` の行もできない。
-- 残る限界: `Sec-Fetch` を送らない古いブラウザには、`<img>` で読ませる攻撃が通る。同じ IP を共有する人（同じオフィス）が、意図して枠を使い切ることは止められない。
+- 残る限界: `Sec-Fetch` を送らない古いブラウザには、`<img>` で読ませる攻撃が通る。同じ IP を共有する人（同じオフィス）が、意図して枠を使い切ることは止められない。IP を多く持つ人は、約10個の IP（600 ÷ 60）で全体の枠を使い切り、新しいログインを止められる。ログイン済みの人は、セッションの期限まで使い続けられる。
 - 手動の同期の「接続ごとに5分に1回」は、この表ではなく `connections.last_manual_sync_at` で判定する。
 - `window_start_at <= 定期処理の基準の時刻 - 最長の窓` の行を、毎分の定期処理で消す（「期限切れの行の掃除」）。最長の窓は、ログインの枠（`src/server/auth/rate-limit.ts`）と操作の定義の `rateLimit` の窓のうち最も長いもの。短い窓の枠を過ぎていても、最長の窓の内にある行は残す。最長の窓に入らない窓の枠は、`consumeRateLimit` が例外にする。
 
