@@ -120,7 +120,7 @@ favicon と同じマーク（下の「favicon」）の横に、名前「Scrum Gu
   - 確認のダイアログは挟まない。失うのは再ログインの手間だけで、メニューを開く1手が誤操作を防ぐ。左のメニューの下や、帯に並べたボタンは、狭い幅で名前と離れる、誤って押しやすい、帯が混むので採らない。
 - ログアウト: 組織の外（`/`、`/operator`）は、紙（`GateSheet`）の一番下に `btn is-sm is-quiet` の「ログアウト」を置く（`LogoutButton.svelte`。`/` では「運用の画面へ」と同じ並び）。`Gate` に帯を足さない。読み込みの失敗（`LoadFailed`）と見つからない画面には置かない（`/` へ戻ればログアウトできる）。
   - 押すとボタン（メニューの項目も）を止めて、文言を「ログアウトしています」にする（`aria-disabled`。二重に送らない）。「ログアウトしています」は、常に置く `role="status"` の領域（メニューとボタンのそれぞれの隣）にも入れて読み上げに伝える。呼び出しは `src/lib/logout-action.svelte.ts` の 1 か所で、メニューの項目とボタンが共有する。
-  - 結果の振り分けは `src/lib/logout.ts`。成功と、401 の `unauthenticated`（もうセッションが無い）は、`location.assign('/login?logged_out=1')` でページごと読み直す。`goto` は使わない（組織のテーマ、言葉づかい、読み込み済みのデータがメモリに残るため）。移るのは `location.replace` で、履歴に残さない（「戻る」で前の人の組織の画面が戻らないようにする。共有の端末の対策）。それでも bfcache から画面が戻る場合に備え、root のレイアウト（`src/routes/+layout.svelte`）が `pageshow` の `persisted` で `location.reload()` する。`return_to` は付けない。
+  - 結果の振り分けは `src/lib/logout.ts`。成功と、401 の `unauthenticated`（もうセッションが無い）は、`location.replace('/login?logged_out=1')` でページごと読み直す。`goto` は使わない（組織のテーマ、言葉づかい、読み込み済みのデータがメモリに残るため）。`assign` でなく `replace` にして、履歴に残さない（「戻る」で前の人の組織の画面が戻らないようにする。共有の端末の対策）。それでも bfcache から画面が戻る場合に備え、root のレイアウト（`src/routes/+layout.svelte`）が `pageshow` の `persisted` で `location.reload()` する。`return_to` は付けない。
   - 通信の失敗、5xx、そのほかは、トースト「ログアウトできませんでした。時間をおいてもう一度試してください。」を出して今の画面に留まり、ボタンを戻す。`/login` へ移すと、Cookie と行が残ったまま「ログアウトできた」ように見える（共有の端末で危ない）。
   - `/login?logged_out=1` は、見出しの下に `callout is-info` の「ログアウトしました。」を出す。`?error=` があるときは、エラーだけを出す。
   - サーバーの `logout` は今のセッションだけを消し、同じ人のほかの端末のセッションは残す。
