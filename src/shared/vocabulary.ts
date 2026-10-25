@@ -753,6 +753,9 @@ export const dictionary = defineDictionary({
   markdownPlainNote: workspace('整形せずに表示しています', '整形せずに表示しています'),
   // リンクは新しいタブで開く。リンクの補足（aria-describedby）として読み上げに伝える
   markdownNewTab: workspace('新しいタブで開きます', '新しいタブで開きます'),
+  // 横にスクロールするコードと表の枠の名前。キーボードで枠にフォーカスを置いて動かすため、読み上げに名前を伝える
+  markdownCodeRegion: workspace('コード', 'コード'),
+  markdownTableRegion: workspace('表', '表'),
 });
 
 export type DictionaryKey = keyof typeof dictionary;

@@ -85,12 +85,16 @@
         {/each}
       </svelte:element>
     {:else if node.type === 'code'}
-      <pre><code>{node.value}</code></pre>
+      <!-- 横にスクロールする枠は、キーボードで動かせるようフォーカスを置けるようにし、名前を付ける（Safari は自動で置かない）。
+           axe の scrollable-region-focusable が求める作りで、操作を持たない要素の tabindex を止める警告は当てはまらない -->
+      <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+      <pre tabindex="0" role="region" aria-label={t('markdownCodeRegion')}><code>{node.value}</code></pre>
     {:else if node.type === 'rule'}
       <hr />
     {:else if node.type === 'table'}
       {@const align = node.align}
-      <div class="doc-table">
+      <!-- svelte-ignore a11y_no_noninteractive_tabindex (上のコードの枠と同じ理由) -->
+      <div class="doc-table" tabindex="0" role="region" aria-label={t('markdownTableRegion')}>
         <table>
           <thead>
             <tr>

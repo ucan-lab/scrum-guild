@@ -576,11 +576,11 @@
       <h6 class="doc-h5">見出し5</h6>
       <h6 class="doc-h6">見出し6</h6>
       <blockquote><p>見た目は4つのテーマで確かめる。</p><p>色は役割の変数だけを使う。</p></blockquote>
-      <pre><code>pnpm test
+      <pre tabindex="0" role="region" aria-label="コード"><code>pnpm test
 pnpm check
 const looooooooooooooooooooooooooooooooooongLine = "コードの長い1行は、枠をはみ出さず、横にスクロールする";</code></pre>
       <hr>
-      <div class="doc-table"><table>
+      <div class="doc-table" tabindex="0" role="region" aria-label="表"><table>
         <thead><tr><th scope="col">画面</th><th scope="col" class="is-center">状態</th><th scope="col" class="is-right">件数</th><th scope="col">担当</th><th scope="col">期限</th><th scope="col">メモ</th></tr></thead>
         <tbody>
           <tr><td>バックログ</td><td class="is-center">確認済み</td><td class="is-right">12</td><td>ayu</td><td>10/27</td><td>幅が足りない表は、枠の中で横に動かせる</td></tr>
