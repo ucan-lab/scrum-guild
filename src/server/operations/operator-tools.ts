@@ -2,6 +2,7 @@
 // 登録の関数が、運用者の権限を確かめた操作にだけ渡す。組織の中の表を、組織で絞らずに読み書きする入口は渡さない。
 // 組織で絞らずに書くのは linkLogin だけ。組織の作成で、アカウントが無いと読んだ後に、その人が初めてログインを終えた場合に、
 // 書いた後の結び直しで呼ぶ（ログインのたびの結び直しと同じ文で、account_id が空でログインの手段と ID が同じ行だけに当たる）
+import { INVITE_PATH } from '../../shared/claim-token.ts';
 import type { InviteeResolver } from '../auth/login-method.ts';
 import {
   adminStatusesOf,
@@ -20,8 +21,10 @@ export type OperatorTools = {
   readonly requestId: string;
   // 招待する人の解決器。持つ手段（GitHub）だけ。資格情報が未設定の手段と、解決器を持たない手段は undefined
   inviteeResolver(provider: string): InviteeResolver | undefined;
-  // 組織ごとの管理者の状態。人の名前や ID は返さない
-  adminStatuses(organizationIds: readonly string[]): Promise<Map<string, AdminStatus>>;
+  // 招待の URL（<公開 URL のオリジン>/invite#<秘密>）。秘密は応答の本文にだけ入れる
+  inviteUrl(claimToken: string): string;
+  // 組織ごとの管理者の状態。人の名前や ID は返さない。期限の過ぎた待つ行は expired に数える
+  adminStatuses(organizationIds: readonly string[], now: Date): Promise<Map<string, AdminStatus>>;
   // organizations に書き、続けて最初の管理者を書く組織の入口を返す。slug が重なれば 'slug_taken'
   insertOrganization(input: Omit<NewOrganization, 'createdByOperator'>): Promise<CreatedOrganization | 'slug_taken'>;
   // 指名で待っている users の行（account_id が空で、ログインの手段と ID が同じ）にアカウントを結ぶ。何度流しても同じ結果
@@ -37,7 +40,8 @@ export function operatorTools(
     loginId: context.loginId,
     requestId: context.requestId,
     inviteeResolver,
-    adminStatuses: (organizationIds) => adminStatusesOf(env, organizationIds),
+    inviteUrl: (claimToken) => `${new URL(env.PUBLIC_ORIGIN).origin}${INVITE_PATH}#${claimToken}`,
+    adminStatuses: (organizationIds, now) => adminStatusesOf(env, organizationIds, now),
     insertOrganization: (input) => insertOrganization(env, { ...input, createdByOperator: context.loginId }),
     linkLogin: (accountId, login, now) => linkLoginToAccount(env, accountId, login, now),
   };

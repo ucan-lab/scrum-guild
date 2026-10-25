@@ -6,7 +6,9 @@
   import { isUnauthenticated, loginUrl } from '../login-redirect.ts';
   import { showToast } from '../toast.svelte.ts';
   import { t } from '../vocabulary.svelte.ts';
+  import { EMAIL_MAX_LENGTH } from '../../shared/email.ts';
   import { slugProblem } from '../../shared/organization-slug.ts';
+  import { formatDateTime } from '../format-datetime.ts';
   import {
     createOrganization,
     GITHUB_USERNAME_MAX_LENGTH,
@@ -25,6 +27,8 @@
   // ユーザー名、表示名）を見て確かめ、作る。打ち間違いで別の人を管理者にしないため、確かめるまで作れない。
   // 作るときは確かめたユーザー ID を渡し、サーバーが解決し直して違えば断る。作った後は、同じダイアログを完了の表示に切り替え、
   // 組織の URL（コピーできる）と、管理者になる人に伝えることを出す。
+  // Google はメールアドレスで指す（解決する口が無いので確かめる手順は無い）。作った後の表示は招待の URL とコピーのボタンで、
+  // 閉じると二度と出ないことと期限を添える。招待の URL は応答の本文にだけあり、この画面の状態（created）が閉じるときに捨てる
   //
   // 応答が遅れて届いても、古い入力の結果で今の状態を書き換えない。要求を送るときの世代を覚え、応答のときに世代が
   // 進んでいれば捨てる。dialogEpoch はダイアログの開閉、inputEpoch はユーザー名と手段の変更で進む。
@@ -48,14 +52,17 @@
   };
   // admin が named: この操作で作れた（指名した人を確かめている）。existing: 作れたか分からない失敗の後に、読み直した一覧で
   // 見つけた組織。管理者がダイアログで確かめた人とは限らない（別の運用者が、別の人を指名して作ったかもしれない）ので、
-  // 人の名前は出さず、一覧の管理者の状態だけを持つ
+  // 人の名前は出さず、一覧の管理者の状態だけを持つ。invite: Google の指名で作った（招待の URL はこの状態にだけ持つ）
   type Created = {
     slug: string;
     name: string;
-    admin: { kind: 'named'; loginName: string } | { kind: 'existing'; status: AdminStatus };
+    admin:
+      | { kind: 'named'; loginName: string }
+      | { kind: 'invite'; email: string; inviteUrl: string; expiresAt: string | null }
+      | { kind: 'existing'; status: AdminStatus };
   };
   type Existing = { slug: string; name: string; sameName: boolean; adminStatus: AdminStatus };
-  type Field = 'slug' | 'name' | 'username' | 'form';
+  type Field = 'slug' | 'name' | 'username' | 'email' | 'form';
   type FailedResult = Extract<ApiResult<unknown>, { ok: false }>;
 
   let dialog = $state<ReturnType<typeof Dialog>>();
@@ -63,6 +70,7 @@
   let name = $state('');
   let via = $state<'github' | 'google'>('github');
   let username = $state('');
+  let email = $state('');
   let resolved = $state<Resolved | null>(null);
   let created = $state<Created | null>(null);
   let existing = $state<Existing | null>(null);
@@ -76,16 +84,20 @@
 
   const words = $derived({ organization: t('organization'), admin: t('admin') });
   const organizationUrl = $derived(created === null ? '' : `${page.url.origin}/${created.slug}/`);
+  const inviteUrl = $derived(created?.admin.kind === 'invite' ? created.admin.inviteUrl : '');
   const github = $derived(via === 'github');
   const creating = $derived(busy === 'creating');
   const usernameDescribedBy = $derived(
     errors.username ? 'operator-username-error operator-username-hint' : 'operator-username-hint',
   );
   const slugDescribedBy = $derived(errors.slug ? 'operator-slug-error operator-slug-hint' : 'operator-slug-hint');
+  const emailDescribedBy = $derived(errors.email ? 'operator-email-error operator-email-hint' : 'operator-email-hint');
+  // 「作る」を押せるか。GitHub は確かめた後、Google はメールアドレスを入れた後
+  const ready = $derived(github ? resolved !== null : email.trim() !== '');
   // 読み上げの領域の文字。領域は常に置き、文字だけを替える
   const live = $derived(
     created !== null
-      ? t(created.admin.kind === 'named' ? 'operatorLiveCreated' : 'operatorLiveExisting', words)
+      ? t(created.admin.kind === 'existing' ? 'operatorLiveExisting' : 'operatorLiveCreated', words)
       : busy === 'creating'
         ? t('operatorLiveCreating')
         : busy === 'resolving'
@@ -108,6 +120,7 @@
     name = '';
     via = 'github';
     username = '';
+    email = '';
     resolved = null;
     created = null;
     existing = null;
@@ -132,6 +145,7 @@
     github_user_not_found: 'operatorErrorUserNotFound',
     github_not_a_user: 'operatorErrorNotUser',
     github_user_changed: 'operatorErrorUserChanged',
+    email_invalid: 'operatorErrorEmailInvalid',
   };
   const usernameProblems = ['github_user_not_found', 'github_not_a_user', 'github_user_changed'];
 
@@ -164,7 +178,7 @@
     const known = problems.find((problem) => problem.code !== undefined && Object.hasOwn(problemKeys, problem.code));
     if (known?.code !== undefined) {
       return {
-        field: known.code.startsWith('slug_') ? 'slug' : 'username',
+        field: known.code.startsWith('slug_') ? 'slug' : known.code === 'email_invalid' ? 'email' : 'username',
         key: problemKeys[known.code]!,
         code: known.code,
       };
@@ -189,6 +203,7 @@
     slug: 'operator-slug',
     name: 'operator-name',
     username: 'operator-username',
+    email: 'operator-email',
   };
 
   // 失敗した欄へフォーカスを移す。欄に紐づかない失敗は、誤りを出した枠（callout）へ移す
@@ -210,6 +225,11 @@
     resolved = null;
     if (busy === 'resolving') busy = 'idle';
     errors = { slug: errors.slug, name: errors.name };
+  }
+
+  // メールアドレスを直したら、そのメールアドレスの誤りは捨てる
+  function changeEmail(): void {
+    errors = { ...errors, email: undefined, form: undefined };
   }
 
   // ユーザー名を直したら、確かめた結果は捨てる（確かめた人と違う人を指名しないため）。確かめている最中の応答も捨てる
@@ -281,12 +301,34 @@
     return result.status === 0 || result.status === 200 || result.status === 409 || result.status >= 500;
   }
 
-  async function submit(): Promise<void> {
-    if (busy !== 'idle' || resolved === null) return;
+  // 送る最初の管理者。GitHub は確かめた人（確かめていなければ送らない）、Google は入れたメールアドレス
+  // 作れないときは undefined（誤りは errors に入れる）。同期で返す（待つと、押す操作が重なって二重に作れてしまう）
+  type AdminToSend =
+    { provider: 'google'; email: string } | { provider: 'github'; username: string; login_subject: string };
+
+  function adminToSend(): AdminToSend | undefined {
+    if (!github) {
+      const value = email.trim();
+      if (value === '') {
+        errors = { ...errors, email: 'operatorErrorEmailRequired' };
+        return undefined;
+      }
+      return { provider: 'google', email: value };
+    }
+    if (resolved === null) return undefined;
     // 確かめた人と、欄のユーザー名が違うまま作らない（欄を直したら確かめた結果は捨てるが、念のため送る前にも見る）
     if (username.trim() !== resolved.username) {
       resolved = null;
       errors = { ...errors, username: 'operatorErrorVerifyAgain' };
+      return undefined;
+    }
+    return { provider: 'github', username: resolved.username, login_subject: resolved.loginSubject };
+  }
+
+  async function submit(): Promise<void> {
+    if (busy !== 'idle') return;
+    const admin = adminToSend();
+    if (admin === undefined) {
       await focusFirstInvalid();
       return;
     }
@@ -298,10 +340,7 @@
     busy = 'creating';
     const epoch = dialogEpoch;
     const sent = { slug: slug.trim(), name: name.trim() };
-    const result = await callOperation(createOrganization, {
-      ...sent,
-      admin: { provider: 'github', username: resolved.username, login_subject: resolved.loginSubject },
-    });
+    const result = await callOperation(createOrganization, { ...sent, admin });
     const refresh = mayHaveCreated(result);
     // 閉じた、開き直した後に届いた応答は、今のダイアログの状態に入れない（作っている間は閉じられないが、念のため）
     if (epoch !== dialogEpoch) {
@@ -313,7 +352,15 @@
       created = {
         slug: result.data.slug,
         name: result.data.name,
-        admin: { kind: 'named', loginName: result.data.admin_login_name },
+        admin:
+          typeof result.data.invite_url === 'string'
+            ? {
+                kind: 'invite',
+                email: result.data.admin_login_name,
+                inviteUrl: result.data.invite_url,
+                expiresAt: result.data.invite_expires_at,
+              }
+            : { kind: 'named', loginName: result.data.admin_login_name },
       };
       await invalidateAll();
       return;
@@ -350,15 +397,23 @@
     errors = {};
   }
 
-  async function copyUrl(): Promise<void> {
+  async function copy(text: string, copiedKey: DictionaryKey): Promise<void> {
     try {
-      await navigator.clipboard.writeText(organizationUrl);
-      showToast(t('operatorCopied'), 'check');
+      await navigator.clipboard.writeText(text);
+      showToast(t(copiedKey), 'check');
     } catch {
       urlInput?.select();
       showToast(t('operatorCopyFailed'), 'alert');
     }
   }
+
+  // 完了の表示の見出しと本文。組織を作ったとき（GitHub の指名、Google の指名）と、読み直した一覧で見つけた組織
+  const adminStatusKeys: Record<AdminStatus, DictionaryKey> = {
+    none: 'operatorAlreadyCreatedNoAdmin',
+    pending: 'operatorExistingAdminPending',
+    expired: 'operatorExistingAdminExpired',
+    active: 'operatorExistingAdminActive',
+  };
 </script>
 
 <Dialog
@@ -368,9 +423,9 @@
   title={t(
     created === null
       ? 'operatorCreateTitle'
-      : created.admin.kind === 'named'
-        ? 'operatorDoneTitle'
-        : 'operatorExistingTitle',
+      : created.admin.kind === 'existing'
+        ? 'operatorExistingTitle'
+        : 'operatorDoneTitle',
     words,
   )}
 >
@@ -493,7 +548,35 @@
         </div>
       {/if}
     {:else}
-      <div class="callout is-warn"><Icon name="alert" /><span>{t('operatorGoogleSoon')}</span></div>
+      <div class="field" class:is-invalid={errors.email}>
+        <label class="field-label" for="operator-email">{t('operatorGoogleEmailLabel')}</label>
+        <input
+          class="input mono"
+          id="operator-email"
+          bind:value={email}
+          readonly={creating}
+          maxlength={EMAIL_MAX_LENGTH}
+          inputmode="email"
+          placeholder={t('operatorGoogleEmailExample')}
+          autocomplete="off"
+          spellcheck="false"
+          aria-invalid={errors.email ? 'true' : undefined}
+          aria-describedby={emailDescribedBy}
+          oninput={changeEmail}
+          onkeydown={(event) => {
+            if (event.key === 'Enter' && !event.isComposing) {
+              event.preventDefault();
+              void submit();
+            }
+          }}
+        />
+        {#if errors.email}
+          <span class="field-error" id="operator-email-error" role="alert"
+            ><Icon name="alert" />{t(errors.email, words)}</span
+          >
+        {/if}
+        <span class="field-hint" id="operator-email-hint">{t('operatorGoogleEmailHint', words)}</span>
+      </div>
     {/if}
     {#if errors.form}
       <div class="callout is-danger" role="alert" tabindex="-1" bind:this={formCallout}>
@@ -517,6 +600,35 @@
         </div>
       {/if}
     {/if}
+  {:else if created.admin.kind === 'invite'}
+    <!-- Google の指名。招待の URL は応答の本文にだけあり、この表示を閉じると二度と出ない -->
+    <p tabindex="-1" bind:this={doneLead}>{t('operatorInviteLead', words)}</p>
+    <div class="field">
+      <label class="field-label" for="operator-invite-url">{t('operatorInviteUrlLabel')}</label>
+      <div class="input-row">
+        <input
+          class="input mono"
+          id="operator-invite-url"
+          value={created.admin.inviteUrl}
+          readonly
+          bind:this={urlInput}
+        />
+        <button class="btn" type="button" onclick={() => copy(inviteUrl, 'operatorInviteCopied')}
+          ><Icon name="link" />{t('operatorCopy')}</button
+        >
+      </div>
+    </div>
+    <div class="callout is-info">
+      <Icon name="check" /><span>{t('operatorInviteTell', { email: created.admin.email })}</span>
+    </div>
+    <div class="callout is-warn">
+      <Icon name="alert" /><span
+        >{t('operatorInviteOnce', {
+          ...words,
+          expires: created.admin.expiresAt === null ? '' : formatDateTime(created.admin.expiresAt),
+        })}</span
+      >
+    </div>
   {:else}
     <p tabindex="-1" bind:this={doneLead}>
       {t(created.admin.kind === 'named' ? 'operatorDoneLead' : 'operatorExistingLead', words)}
@@ -525,7 +637,9 @@
       <label class="field-label" for="operator-url">{t('operatorDoneUrlLabel', words)}</label>
       <div class="input-row">
         <input class="input mono" id="operator-url" value={organizationUrl} readonly bind:this={urlInput} />
-        <button class="btn" type="button" onclick={copyUrl}><Icon name="link" />{t('operatorCopy')}</button>
+        <button class="btn" type="button" onclick={() => copy(organizationUrl, 'operatorCopied')}
+          ><Icon name="link" />{t('operatorCopy')}</button
+        >
       </div>
     </div>
     {#if created.admin.kind === 'named'}
@@ -537,12 +651,7 @@
     {:else}
       <div class="callout is-info">
         <Icon name="shield" />
-        <span>
-          {t(
-            created.admin.status === 'pending' ? 'operatorExistingAdminPending' : 'operatorExistingAdminActive',
-            words,
-          )}
-        </span>
+        <span>{t(adminStatusKeys[created.admin.status], words)}</span>
       </div>
     {/if}
   {/if}
@@ -551,13 +660,7 @@
       <button class="btn is-quiet" type="button" aria-disabled={creating} onclick={close}>
         {t('operatorCancel')}
       </button>
-      <button
-        class="btn is-primary"
-        type="button"
-        disabled={resolved === null || !github}
-        aria-disabled={busy !== 'idle'}
-        onclick={submit}
-      >
+      <button class="btn is-primary" type="button" disabled={!ready} aria-disabled={busy !== 'idle'} onclick={submit}>
         {busy === 'creating' ? t('operatorSubmitting') : t('operatorSubmit')}
       </button>
     {:else}

@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { EMAIL_MAX_LENGTH } from '../../email.ts';
 import { hasHiddenCharacter } from '../../hidden-characters.ts';
 import { SLUG_MAX_LENGTH } from '../../organization-slug.ts';
 import { defineOperation } from '../define.ts';
@@ -16,24 +17,27 @@ export const createOrganizationProblems = [
   'github_user_not_found',
   'github_not_a_user',
   'github_user_changed',
-  'login_provider_unavailable',
+  'email_invalid',
 ] as const;
 export type CreateOrganizationProblem = (typeof createOrganizationProblems)[number];
 
 // 最初の管理者の指し方。ログインの手段ごとに分ける（docs/requirements.md の「組織と運用者」）。
 // GitHub はユーザー名と、運用者が resolve-github-user で確かめたユーザー ID を渡す。作るときにサーバーでもう一度解決し、
 // ID が違えば invalid_input にする（確かめた後にユーザー名が付け替えられた場合に、別の人を管理者にしない）。
-// Google はメールアドレスで指す。まだ使えず、選ぶと invalid_input（login_provider_unavailable）を返す
+// Google はメールアドレスで指す。サーバーが同じ関数（normalizeEmail）でそろえ、そろえられなければ invalid_input（email_invalid）にする。
+// 解決はせず、待つ行（login_subject が空）を入れて、招待の URL を返す
 const githubAdmin = z.object({
   provider: z.literal('github'),
   username: z.string().trim().min(1).max(GITHUB_USERNAME_MAX_LENGTH),
   login_subject: z.string().min(1).max(20),
 });
-const googleAdmin = z.object({ provider: z.literal('google'), email: z.string().trim().min(1).max(254) });
+const googleAdmin = z.object({ provider: z.literal('google'), email: z.string().trim().min(1).max(EMAIL_MAX_LENGTH) });
 
 // 組織の作り方は docs/data-model.md の「書き込みの単位」。共通の DB の organizations、続けて組織の DB の
 // 最初の管理者の users の2回に分けて書く。users が入らなかったときは、管理者のいない組織が残る（一覧の admin_status が none）。
-// 人数と添付ファイルの上限は既定の値で作る。重なる slug は 409 の conflict、GitHub に届かないときは 503 の unavailable
+// 人数と添付ファイルの上限は既定の値で作る。重なる slug は 409 の conflict、GitHub に届かないときは 503 の unavailable。
+// Google の指名では、応答の本文にだけ招待の URL（invite_url）と期限（invite_expires_at）を入れる（二度と出ない。
+// 応答はどれも Cache-Control: no-store）。GitHub の指名では null
 export const createOrganization = defineOperation({
   name: 'create-organization',
   description: '組織を作り、最初の管理者を指名する。slug は後から変えられない',
@@ -54,7 +58,11 @@ export const createOrganization = defineOperation({
   output: z.object({
     slug: z.string(),
     name: z.string(),
-    // 管理者に指名した人の GitHub のユーザー名。作った後に「この名前でログインするよう伝えてください」と出すのに使う
+    // 管理者に指名した人の GitHub のユーザー名。作った後に「この名前でログインするよう伝えてください」と出すのに使う。
+    // Google の指名ではそろえたメールアドレス
     admin_login_name: z.string(),
+    // Google の指名で作った招待の URL（<公開 URL>/invite#<秘密>）と、その期限（ISO 8601）
+    invite_url: z.string().nullable(),
+    invite_expires_at: z.string().nullable(),
   }),
 });

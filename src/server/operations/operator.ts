@@ -6,9 +6,12 @@ import {
   resolveGithubUser,
   type CreateOrganizationProblem,
 } from '../../shared/operations/operator/index.ts';
+import { CLAIM_LIFETIME_DAYS } from '../../shared/claim-token.ts';
+import { normalizeEmail } from '../../shared/email.ts';
 import { slugProblem } from '../../shared/organization-slug.ts';
 import { LoginMethodError, type ResolvedInvitee } from '../auth/login-method.ts';
-import { commonDb } from '../db/index.ts';
+import { randomToken, sha256Hex } from '../auth/tokens.ts';
+import { commonDb, type CreatedOrganization, type Statement } from '../db/index.ts';
 import { ApiError } from '../errors.ts';
 import { adminDesignationStatements } from '../organizations/designate-admin.ts';
 import { uuidv7 } from '../uuid.ts';
@@ -97,7 +100,10 @@ export const listOrganizationsOperation = implement(listOrganizations, async ({ 
         .orderBy('slug'),
     ),
   );
-  const statuses = await operator.adminStatuses(rows.map((row) => row.id));
+  const statuses = await operator.adminStatuses(
+    rows.map((row) => row.id),
+    new Date(),
+  );
   return {
     organizations: rows.map((row) => ({
       slug: row.slug,
@@ -119,6 +125,95 @@ export const resolveGithubUserOperation = implement(resolveGithubUser, async ({ 
   };
 });
 
+// 組織の作成の change_logs と最初の管理者の指名（users と change_logs）を、組織の DB に1回の batch() で書く
+async function writeOrganizationAndAdmin(
+  operator: OperatorTools,
+  created: CreatedOrganization,
+  organization: { slug: string; name: string; now: Date },
+  designationStatements: readonly Statement<'organization'>[],
+): Promise<void> {
+  const { db } = created;
+  try {
+    await db.batch([
+      db.statement((q) =>
+        q.insertInto('change_logs').values({
+          id: uuidv7(organization.now.getTime()),
+          organization_id: created.organizationId,
+          actor_user_id: null,
+          operator: operator.loginId,
+          entity_type: 'organization',
+          entity_id: created.organizationId,
+          action: 'create',
+          changes_json: JSON.stringify({ slug: [null, organization.slug], name: [null, organization.name] }),
+          created_at: organization.now.toISOString(),
+        }),
+      ),
+      ...designationStatements,
+    ]);
+  } catch (err) {
+    // organizations だけが残った。例外の message に SQL や接続の詳細が混ざりうるので、名前と組織の ID だけをログに残す
+    console.error(
+      JSON.stringify({
+        level: 'error',
+        code: 'internal',
+        requestId: operator.requestId,
+        operation: createOrganization.name,
+        route: 'operator',
+        reason: '組織を作ったが、最初の管理者を書けなかった。管理者のいない組織が残る',
+        organizationId: created.organizationId,
+        error: err instanceof Error ? err.name : typeof err,
+      }),
+    );
+    throw err;
+  }
+}
+
+// Google のメールアドレスで最初の管理者を指名する。sub が分かる前なので解決せず、待つ行（login_subject が空）を入れて、
+// 招待の URL を返す（docs/data-model.md の「メールアドレスで待つ指名と招待」）。秘密は応答の本文にだけ入れ、DB には SHA-256 だけを持つ。
+// 順は GitHub の指名と同じ（slug、重なり、organizations、組織の DB の users と change_logs）。解決も、アカウントの引き直しもしない
+async function createWithGoogleAdmin(
+  db: CommonDb,
+  operator: OperatorTools,
+  input: { slug: string; name: string; email: string },
+) {
+  const email = normalizeEmail(input.email);
+  if (email === undefined) throw invalid('admin.email', 'email_invalid', 'メールアドレスの形に合わない');
+
+  if (await slugExists(db, input.slug)) throw new ApiError(409, 'conflict');
+
+  const now = new Date();
+  const claimToken = randomToken();
+  const claimExpiresAt = new Date(now.getTime() + CLAIM_LIFETIME_DAYS * 24 * 60 * 60 * 1000).toISOString();
+  const created = await operator.insertOrganization({ slug: input.slug, name: input.name, now });
+  if (created === 'slug_taken') throw new ApiError(409, 'conflict');
+
+  const designation = adminDesignationStatements(created.db, {
+    nominee: {
+      provider: 'google',
+      waiting: { email, claimTokenHash: await sha256Hex(claimToken), claimExpiresAt },
+      // 待つ間の users.name はメールアドレス（結ぶときに Google のプロフィールの名前に書き直す）
+      name: email,
+      accountId: null,
+    },
+    operatorLoginId: operator.loginId,
+    now,
+  });
+  await writeOrganizationAndAdmin(
+    operator,
+    created,
+    { slug: input.slug, name: input.name, now },
+    designation.statements,
+  );
+
+  return {
+    slug: input.slug,
+    name: input.name,
+    admin_login_name: email,
+    invite_url: operator.inviteUrl(claimToken),
+    invite_expires_at: claimExpiresAt,
+  };
+}
+
 // 作る順（docs/data-model.md の「書き込みの単位」）:
 //   1. slug の形と予約した名前を確かめる  2. slug の重なりを読む（重なれば GitHub に問い合わせずに 409）
 //   3. GitHub のユーザー名を解決し、運用者が確かめたユーザー ID と一致するか確かめる
@@ -134,8 +229,8 @@ export const createOrganizationOperation = implement(createOrganization, async (
       problem === 'format' ? 'slug の形に合わない' : 'アプリが使う名前は slug にできない',
     );
   }
-  if (input.admin.provider !== 'github') {
-    throw invalid('admin.provider', 'login_provider_unavailable', 'この手段での指名はまだ使えない');
+  if (input.admin.provider === 'google') {
+    return await createWithGoogleAdmin(db, operator, { slug: input.slug, name: input.name, email: input.admin.email });
   }
   const admin = input.admin;
 
@@ -157,39 +252,12 @@ export const createOrganizationOperation = implement(createOrganization, async (
     operatorLoginId: operator.loginId,
     now,
   });
-  try {
-    await created.db.batch([
-      created.db.statement((q) =>
-        q.insertInto('change_logs').values({
-          id: uuidv7(now.getTime()),
-          organization_id: created.organizationId,
-          actor_user_id: null,
-          operator: operator.loginId,
-          entity_type: 'organization',
-          entity_id: created.organizationId,
-          action: 'create',
-          changes_json: JSON.stringify({ slug: [null, input.slug], name: [null, input.name] }),
-          created_at: now.toISOString(),
-        }),
-      ),
-      ...designation.statements,
-    ]);
-  } catch (err) {
-    // organizations だけが残った。例外の message に SQL や接続の詳細が混ざりうるので、名前と組織の ID だけをログに残す
-    console.error(
-      JSON.stringify({
-        level: 'error',
-        code: 'internal',
-        requestId: operator.requestId,
-        operation: createOrganization.name,
-        route: 'operator',
-        reason: '組織を作ったが、最初の管理者を書けなかった。管理者のいない組織が残る',
-        organizationId: created.organizationId,
-        error: err instanceof Error ? err.name : typeof err,
-      }),
-    );
-    throw err;
-  }
+  await writeOrganizationAndAdmin(
+    operator,
+    created,
+    { slug: input.slug, name: input.name, now },
+    designation.statements,
+  );
 
   // アカウントが無いと読んだ後、書くまでの間にその人が初めてログインを終えると、users.account_id が空のまま残る
   // （ログインの結ぶ書き込みは、まだ書いていない行に当たらない）。書いた後に引き直し、できていれば結ぶ。
@@ -214,5 +282,11 @@ export const createOrganizationOperation = implement(createOrganization, async (
     }
   }
 
-  return { slug: input.slug, name: input.name, admin_login_name: invitee.loginName };
+  return {
+    slug: input.slug,
+    name: input.name,
+    admin_login_name: invitee.loginName,
+    invite_url: null,
+    invite_expires_at: null,
+  };
 });

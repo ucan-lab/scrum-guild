@@ -291,7 +291,9 @@ rollback で戻るのは、版が持つものすべて。コードと設定の�
 
 - `scripts/deploy.ts` の `PRODUCTION_URL`（煙のテストが叩く URL）
 - `wrangler.jsonc` の `vars` の `PUBLIC_ORIGIN`（更新系の API の Origin の検査。新しい URL と一致しない呼び出しは 403 になる。https の URL だけを入れる。http の URL（手元のループバックのホスト以外）を入れると、`/api/health` を含むすべての API が 500 になり、煙のテストで見つかる）
-- ほかに直すもの（GitHub OAuth App の戻り先、Cookie）は `docs/development.md` の「Cloudflare のアカウントとドメイン」
+- GitHub OAuth App の Redirect URI（`https://scrum-guild.dev/api/auth/github/callback`）と、Google の OAuth クライアントの承認済みのリダイレクト URI（`https://scrum-guild.dev/api/auth/google/callback`）を、新しい URL に直す（上の「GitHub OAuth App」と「Google の OAuth クライアント」）。アプリが開始のときに渡す `redirect_uri` は `PUBLIC_ORIGIN` から作るので、登録の URL と完全に合わないと、Google の同意画面が `redirect_uri_mismatch` を出す
+- 運用者が作った招待の URL（`<公開 URL>/invite#<秘密>`）は、古いドメインを指したまま残る。移した後は、まだ結ばれていない指名（運用者の一覧で「指名済み、ログイン待ち」と「期限切れ」）を、新しいドメインで作り直す
+- ほかに直すもの（Cookie）は `docs/development.md` の「Cloudflare のアカウントとドメイン」
 
 ## 組織
 

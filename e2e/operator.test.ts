@@ -16,7 +16,7 @@ type ListedOrganization = {
   name: string;
   suspended_at: string | null;
   created_at: string;
-  admin_status: 'none' | 'pending' | 'active';
+  admin_status: 'none' | 'pending' | 'expired' | 'active';
 };
 
 const organization = (overrides: Partial<ListedOrganization>): ListedOrganization => ({
@@ -97,7 +97,7 @@ test.describe('運用者', () => {
       'ギルドマスターがいない',
     );
     await expect(rows.filter({ hasText: 'つばめ商会' }).locator('.chip.is-warn')).toHaveText(
-      'ギルドマスターはログイン待ち',
+      'ギルドマスターは指名済み、ログイン待ち',
     );
     await expect(rows.filter({ hasText: 'かもめ社' }).locator('.chip.is-warn')).toHaveText('停止中');
     // 2026-10-01T09:30Z は、東京のブラウザでは 18:30
@@ -131,7 +131,15 @@ test.describe('運用者', () => {
     await page.route('**/api/create-organization', async (route) => {
       created = route.request().postDataJSON();
       listed.push(organization({ slug: 'sakura-dev', name: 'さくら開発', admin_status: 'pending' }));
-      await route.fulfill({ json: { slug: 'sakura-dev', name: 'さくら開発', admin_login_name: 'kotone-dev' } });
+      await route.fulfill({
+        json: {
+          slug: 'sakura-dev',
+          name: 'さくら開発',
+          admin_login_name: 'kotone-dev',
+          invite_url: null,
+          invite_expires_at: null,
+        },
+      });
     });
 
     const collect = await watchViolations(page);
@@ -184,7 +192,7 @@ test.describe('運用者', () => {
     // 一覧が読み直され、指名した人のログイン待ちの印が付く
     const row = page.locator('.table tbody tr').filter({ hasText: 'さくら開発' });
     await expect(row).toContainText('sakura-dev');
-    await expect(row.locator('.chip.is-warn')).toHaveText('ギルドマスターはログイン待ち');
+    await expect(row.locator('.chip.is-warn')).toHaveText('ギルドマスターは指名済み、ログイン待ち');
   });
 
   test('組織のアカウントや、いないユーザー名は、理由を出して確かめた結果にしない', async ({ page }) => {
@@ -584,14 +592,101 @@ test.describe('運用者', () => {
     expect(error.y).toBeGreaterThan(input.y + input.height - 1);
   });
 
-  test('Google を選ぶと、まだ使えないと出して作れない', async ({ page }) => {
+  test('Google を選ぶと、メールアドレスの欄が出る。確かめる手順は無く、入れると作れる', async ({ page }) => {
     await mockList(page, []);
     await page.goto('/operator');
     await page.getByRole('button', { name: '冒険者ギルドを作る' }).click();
     const dialog = page.getByRole('dialog');
     await dialog.getByRole('radio', { name: 'Google' }).check();
-    await expect(dialog.getByText('Google での指名はまだ使えません')).toBeVisible();
-    await expect(dialog.getByRole('button', { name: '作る', exact: true })).toBeDisabled();
+    await expect(dialog.getByLabel('Google のメールアドレス')).toBeVisible();
+    await expect(dialog.getByRole('button', { name: '確かめる' })).toHaveCount(0);
+    const submit = dialog.getByRole('button', { name: '作る', exact: true });
+    await expect(submit).toBeDisabled();
+    await dialog.getByLabel('Google のメールアドレス').fill('mio.hoshino@example.com');
+    await expect(submit).toBeEnabled();
+  });
+
+  test('Google で指名すると、完了の表示に招待の URL とコピー、閉じると二度と出ないことと期限が出て、閉じると消える', async ({
+    page,
+  }) => {
+    const listed = [organization({})];
+    await page.route('**/api/list-organizations', (route) => route.fulfill({ json: { organizations: listed } }));
+    const inviteUrl = `http://localhost:8787/invite#${'Qm7tX2vLr9aKpE4wZc8hN3bYd6fGs1uJ0oTiRl5eWxA'}`;
+    let created: unknown;
+    await page.route('**/api/create-organization', async (route) => {
+      created = route.request().postDataJSON();
+      listed.push(organization({ slug: 'sakura-dev', name: 'さくら開発', admin_status: 'pending' }));
+      await route.fulfill({
+        json: {
+          slug: 'sakura-dev',
+          name: 'さくら開発',
+          admin_login_name: 'mio.hoshino@example.com',
+          invite_url: inviteUrl,
+          invite_expires_at: '2026-11-09T00:00:00.000Z',
+        },
+      });
+    });
+    const collect = await watchViolations(page);
+    await page.goto('/operator');
+    await page.getByRole('button', { name: '冒険者ギルドを作る' }).click();
+    const dialog = page.getByRole('dialog');
+    await dialog.getByLabel('URL の名前（slug）').fill('sakura-dev');
+    await dialog.getByLabel('表示名').fill('さくら開発');
+    await dialog.getByRole('radio', { name: 'Google' }).check();
+    await dialog.getByLabel('Google のメールアドレス').fill(' Mio.Hoshino@Example.com ');
+    await dialog.getByRole('button', { name: '作る', exact: true }).click();
+
+    await expect(dialog.getByRole('heading', { name: '冒険者ギルドを作りました' })).toBeVisible();
+    await expect(dialog.getByLabel('招待の URL')).toHaveValue(inviteUrl);
+    await expect(dialog.getByRole('button', { name: 'コピー' })).toBeVisible();
+    await expect(
+      dialog.getByText('mio.hoshino@example.com の Google アカウントでログインするよう伝えてください。'),
+    ).toBeVisible();
+    await expect(dialog.getByText('この画面を閉じると二度と出ません')).toBeVisible();
+    await expect(dialog.getByText('期限は14日（2026/11/09 09:00 まで）')).toBeVisible();
+    // メールアドレスは前後の空白を除いて送る（大文字小文字はサーバーがそろえる）
+    expect(created).toEqual({
+      slug: 'sakura-dev',
+      name: 'さくら開発',
+      admin: { provider: 'google', email: 'Mio.Hoshino@Example.com' },
+    });
+    expect(await collect()).toEqual([]);
+
+    await dialog.locator('.dialog-foot').getByRole('button', { name: '閉じる' }).click();
+    await expect(dialog).toBeHidden();
+    // 開き直しても、招待の URL は二度と出ない
+    await page.getByRole('button', { name: '冒険者ギルドを作る' }).click();
+    await expect(page.getByRole('dialog').getByLabel('招待の URL')).toHaveCount(0);
+    await expect(page.locator('body')).not.toContainText('Qm7tX2vLr9aKpE4wZc8hN3bYd6fGs1uJ0oTiRl5eWxA');
+    await page.getByRole('dialog').locator('.dialog-foot').getByRole('button', { name: 'やめる' }).click();
+    // 一覧には、指名済み、ログイン待ちの印が付く
+    const row = page.locator('.table tbody tr').filter({ hasText: 'さくら開発' });
+    await expect(row.locator('.chip.is-warn')).toHaveText('ギルドマスターは指名済み、ログイン待ち');
+  });
+
+  test('メールアドレスの形が合わないという応答は、メールアドレスの欄の下で知らせる', async ({ page }) => {
+    await mockList(page, []);
+    await page.route('**/api/create-organization', (route) =>
+      route.fulfill(invalidInput('admin.email', 'email_invalid')),
+    );
+    await page.goto('/operator');
+    await page.getByRole('button', { name: '冒険者ギルドを作る' }).click();
+    const dialog = page.getByRole('dialog');
+    await dialog.getByLabel('URL の名前（slug）').fill('sakura-dev');
+    await dialog.getByLabel('表示名').fill('さくら開発');
+    await dialog.getByRole('radio', { name: 'Google' }).check();
+    await dialog.getByLabel('Google のメールアドレス').fill('みお@example.com');
+    await dialog.getByRole('button', { name: '作る', exact: true }).click();
+    await expect(dialog.getByRole('alert')).toContainText('メールアドレスの形に合いません');
+    await expect(dialog.getByLabel('Google のメールアドレス')).toBeFocused();
+  });
+
+  test('組織の一覧に、期限が切れた指名の印を出す', async ({ page }) => {
+    await mockList(page, [organization({ slug: 'kamome', name: 'かもめ社', admin_status: 'expired' })]);
+    await page.goto('/operator');
+    await expect(page.locator('.table tbody tr').filter({ hasText: 'かもめ社' }).locator('.chip.is-danger')).toHaveText(
+      'ギルドマスターの招待の URL は期限切れ',
+    );
   });
 });
 

@@ -410,7 +410,8 @@ export const dictionary = defineDictionary({
   operatorColumnCreated: organization('作った日時', '作った日時'),
   operatorSuspended: organization('停止中', '停止中'),
   operatorAdminNone: organization('{admin}がいない', '{admin}がいない'),
-  operatorAdminPending: organization('{admin}はログイン待ち', '{admin}はログイン待ち'),
+  operatorAdminPending: organization('{admin}は指名済み、ログイン待ち', '{admin}は指名済み、ログイン待ち'),
+  operatorAdminExpired: organization('{admin}の招待の URL は期限切れ', '{admin}の招待の URL は期限切れ'),
 
   // 組織の作成のダイアログ
   operatorCreateTitle: organization('{organization}を作る', '{organization}を作る'),
@@ -431,9 +432,16 @@ export const dictionary = defineDictionary({
     'GitHub のユーザー ID に解決します。「確かめる」を押して、指名する人を見て確かめてから作ります。',
     'GitHub のユーザー ID に解決します。「確かめる」を押して、指名する人を見て確かめてから作ります。',
   ),
-  operatorGoogleSoon: organization(
-    'Google での指名はまだ使えません。GitHub を選んでください。',
-    'Google での指名はまだ使えません。GitHub を選んでください。',
+  operatorGoogleEmailLabel: organization('Google のメールアドレス', 'Google のメールアドレス'),
+  operatorGoogleEmailExample: organization('例: mio.hoshino@example.com', '例: mio.hoshino@example.com'),
+  operatorGoogleEmailHint: organization(
+    'その人が招待の URL を開き、このメールアドレスの Google アカウントでログインすると、{admin}として入れます。招待の URL は14日で切れます。',
+    'その人が招待の URL を開き、このメールアドレスの Google アカウントでログインすると、{admin}として入れます。招待の URL は14日で切れます。',
+  ),
+  operatorErrorEmailRequired: organization('メールアドレスを入れてください。', 'メールアドレスを入れてください。'),
+  operatorErrorEmailInvalid: organization(
+    'メールアドレスの形に合いません。英数字などの ASCII の文字だけで、本人が Google に登録した綴りのまま入れてください。',
+    'メールアドレスの形に合いません。英数字などの ASCII の文字だけで、本人が Google に登録した綴りのまま入れてください。',
   ),
   operatorVerify: organization('確かめる', '確かめる'),
   operatorVerifying: organization('確かめています', '確かめています'),
@@ -490,6 +498,10 @@ export const dictionary = defineDictionary({
   operatorExistingAdminPending: organization(
     '指名された{admin}は、まだログインしていません。',
     '指名された{admin}は、まだログインしていません。',
+  ),
+  operatorExistingAdminExpired: organization(
+    '指名された{admin}の招待の URL は、期限が切れています。',
+    '指名された{admin}の招待の URL は、期限が切れています。',
   ),
   operatorExistingAdminActive: organization(
     '{admin}は、もうログインしています。',
@@ -553,6 +565,21 @@ export const dictionary = defineDictionary({
     'GitHub の {name} でログインするよう伝えてください。',
     'GitHub の {name} でログインするよう伝えてください。',
   ),
+  // Google の指名で作った後の表示。招待の URL はこの画面にだけ出る
+  operatorInviteLead: organization(
+    'Scrum Guild はメールを送りません。{admin}になる人に、次の招待の URL を伝えてください。本人がこの URL を開き、指名したメールアドレスの Google アカウントでログインすると、{organization}に入れます。',
+    'Scrum Guild はメールを送りません。{admin}になる人に、次の招待の URL を伝えてください。本人がこの URL を開き、指名したメールアドレスの Google アカウントでログインすると、{organization}に入れます。',
+  ),
+  operatorInviteUrlLabel: organization('招待の URL', '招待の URL'),
+  operatorInviteCopied: organization('招待の URL をコピーしました', '招待の URL をコピーしました'),
+  operatorInviteOnce: organization(
+    'この URL はこの画面を閉じると二度と出ません。期限は14日（{expires} まで）です。なくしたり切れたりしたら、{admin}を指名し直してください。',
+    'この URL はこの画面を閉じると二度と出ません。期限は14日（{expires} まで）です。なくしたり切れたりしたら、{admin}を指名し直してください。',
+  ),
+  operatorInviteTell: organization(
+    '{email} の Google アカウントでログインするよう伝えてください。',
+    '{email} の Google アカウントでログインするよう伝えてください。',
+  ),
 
   // API の疎通の表示（仮の画面）
   apiHeading: organization('API の疎通', 'API の疎通'),
@@ -590,8 +617,13 @@ export const dictionary = defineDictionary({
     'どちらも本人確認だけに使います。入れる{organization}が2つ以上あれば、ログインのあとに選びます。',
   ),
   loginErrorDenied: organization(
-    'ログインできませんでした。どの{organization}の{workspace}にも所属しておらず、招待も届いていません。招待された手段（GitHub か Google）と、招待されたアカウントでログインしているか確かめてください。招待がまだなら、{leader}に GitHub のユーザー名で招待してもらってください。',
-    'ログインできませんでした。どの{organization}の{workspace}にも所属しておらず、招待も届いていません。招待された手段（GitHub か Google）と、招待されたアカウントでログインしているか確かめてください。招待がまだなら、{leader}に GitHub のユーザー名で招待してもらってください。',
+    'ログインできませんでした。どの{organization}の{workspace}にも所属しておらず、招待も届いていません。招待された手段（GitHub か Google）と、招待されたアカウントでログインしているか確かめてください。招待がまだなら、{leader}に GitHub のユーザー名か Google のメールアドレスで招待してもらってください。',
+    'ログインできませんでした。どの{organization}の{workspace}にも所属しておらず、招待も届いていません。招待された手段（GitHub か Google）と、招待されたアカウントでログインしているか確かめてください。招待がまだなら、{leader}に GitHub のユーザー名か Google のメールアドレスで招待してもらってください。',
+  ),
+  // 招待の URL から結べなかったとき。理由（期限切れ、取り消し、別のアカウント、使い済み）は分けず、どのメールアドレスに招待したかも出さない
+  loginErrorInvite: organization(
+    'この招待の URL は使えません。期限が切れたか、取り消されたか、招待されたのと別のアカウントでログインしています。招待した人に確かめてください。',
+    'この招待の URL は使えません。期限が切れたか、取り消されたか、招待されたのと別のアカウントでログインしています。招待した人に確かめてください。',
   ),
   loginErrorRetry: organization(
     'ログインを完了できませんでした。もう一度ログインしてください。',
@@ -640,6 +672,16 @@ export const dictionary = defineDictionary({
   // Google の招待の期限（作ってから14日）。{date} は YYYY-MM-DD
   invitationExpiresOn: workspace('{date} まで', '{date} まで'),
   invitationExpired: workspace('期限切れ', '期限切れ'),
+  // 招待の URL を開く画面（/invite）。組織の名前は、秘密を API に送る前なので出さない
+  inviteTitle: organization('{app} への招待', '{app} への招待'),
+  inviteLead: organization(
+    '招待されたメールアドレスの Google アカウントでログインしてください。',
+    '招待されたメールアドレスの Google アカウントでログインしてください。',
+  ),
+  inviteNote: organization(
+    'ボタンを押すまでログインを始めません。すでにログインしていても、Google のアカウントでログインし直します。',
+    'ボタンを押すまでログインを始めません。すでにログインしていても、Google のアカウントでログインし直します。',
+  ),
 
   // テーマ
   themeLabel: organization('テーマ', 'テーマ'),

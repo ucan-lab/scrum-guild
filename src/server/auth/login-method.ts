@@ -13,6 +13,9 @@ export type LoginProfile = {
   // account_logins.display_name。手段の側の名前。無ければ null
   displayName: string | null;
   avatarUrl: string | null;
+  // 手段が確かめたメールアドレス（Google の ID トークンで email_verified が真偽値の true のときだけ。そろえる前の値）。
+  // メールアドレスで待つ指名と招待に結ぶときにだけ使う。account_logins にもログにも出さない。持たない手段と確かめられなかったときは null か省略
+  verifiedEmail?: string | null;
 };
 
 // 招待する人の解決の結果。displayName とアバターは、運用者や招待する人が、指した相手を確かめるために見せる

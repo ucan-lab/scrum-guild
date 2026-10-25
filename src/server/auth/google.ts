@@ -82,7 +82,7 @@ export type GoogleIdTokenExpectation = {
 export type GoogleIdentity = {
   profile: LoginProfile;
   // email_verified が真偽値の true のときだけ、ID トークンのメールアドレス。それ以外は null（断らない）。
-  // #58 で、メールアドレスで待つ指名と招待に結ぶときに使う。LoginProfile には載せず、ログにも DB にも出さない
+  // verify() が LoginProfile.verifiedEmail に載せ、メールアドレスで待つ指名と招待に結ぶときに使う。ログにも DB にも出さない
   email: string | null;
 };
 
@@ -210,11 +210,12 @@ export function createGoogleLoginMethod(credentials: GoogleCredentials, fetcher:
         throw new LoginMethodError('rejected', 'Google のログインの state に nonce が無い');
       }
       const idToken = await exchangeCode(request);
-      return checkGoogleIdToken(idToken, {
+      const identity = checkGoogleIdToken(idToken, {
         clientId: credentials.clientId,
         nonce: request.nonce,
         now: new Date(),
-      }).profile;
+      });
+      return { ...identity.profile, verifiedEmail: identity.email };
     },
   };
 }

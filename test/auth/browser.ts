@@ -117,6 +117,47 @@ export class FakeBrowser {
     };
   }
 
+  // 招待の URL の画面（/invite）のフォームの POST。ブラウザがフォームを送るときと同じヘッダー（同じオリジンからの画面の移動）を付ける。
+  // body と contentType を渡すと、本文をそのまま送る（形の違う本文の確かめ）
+  async startInvite(
+    claimToken: string,
+    options: { headers?: Record<string, string>; body?: string; contentType?: string } = {},
+  ): Promise<StartedLogin> {
+    const response = await this.request('/api/auth/google/start', {
+      method: 'POST',
+      headers: {
+        'Content-Type': options.contentType ?? 'application/x-www-form-urlencoded',
+        'Sec-Fetch-Mode': 'navigate',
+        'Sec-Fetch-Dest': 'document',
+        'Sec-Fetch-Site': 'same-origin',
+        ...options.headers,
+      },
+      body: options.body ?? new URLSearchParams({ claim_token: claimToken }).toString(),
+    });
+    const location = new URL(response.headers.get('Location') ?? '', 'https://scrum-guild.test');
+    return {
+      response,
+      location,
+      state: location.searchParams.get('state') ?? '',
+      challenge: location.searchParams.get('code_challenge') ?? '',
+    };
+  }
+
+  // 招待の URL から Google の認可の画面を通った人の戻り。claims で ID トークンの中身を上書きできる
+  async loginWithInvite(user: FakeGoogleUser, claimToken: string, options: { claims?: IdTokenClaims } = {}) {
+    if (this.#google === undefined) throw new Error('FakeBrowser に Google の偽物を渡していない');
+    const previous = this.provider;
+    this.provider = 'google';
+    try {
+      const started = await this.startInvite(claimToken);
+      const code = this.#google.issueCode(user, started.location, options.claims);
+      const finished = await this.callback({ code, state: started.state });
+      return { started, code, ...finished };
+    } finally {
+      this.provider = previous;
+    }
+  }
+
   async callback(query: Record<string, string>): Promise<FinishedLogin> {
     const response = await this.request(`/api/auth/${this.provider}/callback?${new URLSearchParams(query).toString()}`);
     return { response, location: response.headers.get('Location') ?? '' };

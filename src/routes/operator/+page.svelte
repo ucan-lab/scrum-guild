@@ -58,6 +58,8 @@
                       <span class="chip is-danger"><Icon name="alert" />{t('operatorAdminNone', words)}</span>
                     {:else if organization.admin_status === 'pending'}
                       <span class="chip is-warn"><Icon name="clock" />{t('operatorAdminPending', words)}</span>
+                    {:else if organization.admin_status === 'expired'}
+                      <span class="chip is-danger"><Icon name="alert" />{t('operatorAdminExpired', words)}</span>
                     {/if}
                     <br /><span class="mono props-note">{organization.slug}</span>
                   </td>

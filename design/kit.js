@@ -860,8 +860,7 @@
          <div class="callout is-info">${icon("shield")}<span>この人を最初の${t("admin")}にします。アバター、ユーザー名、表示名が、伝えたい人のものか確かめてください。ユーザー名は 1 字違いでも別の人に当たります。</span></div>
          <div class="choice is-static">${avatar("星野 琴音", 3, { lg: true, image: SAMPLE_PHOTO })}<div><b class="mono">kotone-dev</b><span>星野 琴音</span><span>GitHub のユーザー ID 5550001</span></div></div>
        </div>
-       <div class="callout is-info">${icon("link")}<span>URL は <span class="mono">scrum-guild.dev/&lt;slug&gt;/</span> になります。作ったあとに出る組織の URL を、${t("admin")}になる人に伝えてください。</span></div>
-       <div class="callout is-warn" id="d-kg" hidden>${icon("alert")}<span>Google での指名はまだ使えません。GitHub を選んでください。</span></div>`,
+       <div class="callout is-info">${icon("link")}<span>URL は <span class="mono">scrum-guild.dev/&lt;slug&gt;/</span> になります。作ったあとに出る組織の URL（Google の指名は招待の URL）を、${t("admin")}になる人に伝えてください。</span></div>`,
       `<button class="btn is-quiet" type="button" data-close-dialog>やめる</button><button class="btn is-primary" id="d-kb" type="button" data-org-create="d-ka" disabled>作る</button>`),
     // 作った後。組織の URL とコピー、管理者になる人に伝えること
     organizationCreated: () => openDialog(`${t("organization")}を作りました`,
@@ -1375,13 +1374,12 @@
     field.querySelector("[data-login-label]").textContent = via.label;
     input.placeholder = via.example;
     field.querySelectorAll("[data-login-hint]").forEach((h) => (h.hidden = h.dataset.loginHint !== el.value));
-    // 組織の作成のダイアログ: GitHub は確かめるまで作れない。Google はまだ使えず、作れない
+    // 組織の作成のダイアログ: GitHub は確かめるまで作れない。Google はメールアドレスで指し、確かめる手順が無く、すぐ作れる
     if (el.dataset.loginVia === "d-ka" && document.getElementById("d-kb")) {
       const google = el.value === "google";
       document.getElementById("d-kz").hidden = google;
       document.getElementById("d-kv").hidden = true;
-      document.getElementById("d-kg").hidden = !google;
-      document.getElementById("d-kb").disabled = true;
+      document.getElementById("d-kb").disabled = !google;
     }
   });
 
@@ -1447,7 +1445,12 @@
       document.getElementById("d-kb").disabled = false;
       return;
     }
-    if ((el = hit("data-org-create"))) { DIALOGS.organizationCreated(); return; }
+    // Google の指名は、組織の URL の代わりに招待の URL を出す
+    if ((el = hit("data-org-create"))) {
+      if (document.querySelector(`[data-login-via="${el.dataset.orgCreate}"]:checked`)?.value === "google") inviteLink(el.dataset.orgCreate, `${t("organization")}を作りました`);
+      else DIALOGS.organizationCreated();
+      return;
+    }
     if ((el = hit("data-tree-toggle"))) {
       const body = document.getElementById(el.dataset.treeToggle);
       const opened = el.getAttribute("aria-expanded") === "true";

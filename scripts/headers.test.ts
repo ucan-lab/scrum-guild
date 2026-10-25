@@ -37,6 +37,14 @@ describe('headers', () => {
     assert.match(file, /\n {2}X-Content-Type-Options: nosniff\n/);
     assert.match(file, /\n\/_app\/immutable\/\*\n {2}Cache-Control: public, max-age=31536000, immutable\n$/);
   });
+
+  test('招待の URL を開く画面は、/* の Referrer-Policy を外して no-referrer にする', () => {
+    const file = headersFile(html);
+    assert.match(file, /\n\/invite\n {2}! Referrer-Policy\n {2}Referrer-Policy: no-referrer\n/);
+    assert.match(file, /\n\/invite\/\n {2}! Referrer-Policy\n {2}Referrer-Policy: no-referrer\n/);
+    // 画面全体の値は変えない
+    assert.match(file, /^\/\*\n[\s\S]*? {2}Referrer-Policy: strict-origin-when-cross-origin\n/);
+  });
 });
 
 describe('missingStyleHashes', () => {
