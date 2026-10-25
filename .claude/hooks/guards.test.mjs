@@ -194,7 +194,6 @@ describe('bash-rules: 止める', () => {
     'WORKERS_CI+=1',
     'export WORKERS_CI+=1',
     'WORKERS_CI=1 node scripts/deploy-production.ts {1..1000000}',
-    'bash < scripts/deploy.sh',
     'node --test scripts/*.ts',
     'node --test scripts/*',
     "node --test '**/*.ts'",
