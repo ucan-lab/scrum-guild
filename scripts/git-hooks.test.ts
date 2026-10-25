@@ -44,6 +44,12 @@ describe('.githooks', () => {
     const onMain = git(work, 'commit', '--allow-empty', '-m', 'x');
     assert.notEqual(onMain.status, 0);
     assert.match(onMain.stderr, /main の上ではコミットしない/);
+    // prepare-commit-msg は --no-verify でも動く
+    assert.notEqual(git(work, 'commit', '--no-verify', '--allow-empty', '-m', 'x').status, 0);
+    // 同名のタグがあっても main とみなす
+    git(work, 'tag', 'main');
+    assert.notEqual(git(work, 'commit', '--allow-empty', '-m', 'x').status, 0);
+    git(work, 'tag', '-d', 'main');
     git(work, 'checkout', '-b', '1-x');
     assert.equal(git(work, 'commit', '--allow-empty', '-m', 'x').status, 0);
   });

@@ -1,7 +1,8 @@
 #!/bin/sh
 # main の上でのコミットを止める（docs/development.md の「`main` を守る仕組み」）。pre-merge-commit からも呼ぶ
-branch=$(git symbolic-ref --short -q HEAD)
-if [ "$branch" = "main" ]; then
+# symbolic-ref --short は同名のタグがあると heads/main を返すので、完全な ref で比べる
+ref=$(git symbolic-ref -q HEAD)
+if [ "$ref" = "refs/heads/main" ]; then
   echo "main の上ではコミットしない。作業ブランチを切って PR を通す（docs/development.md の「ワークツリーで作業する」）" >&2
   exit 1
 fi
