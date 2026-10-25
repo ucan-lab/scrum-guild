@@ -15,6 +15,7 @@ import {
   expandsAt,
   positionals,
   prefixIndexes,
+  prefixName,
   shapeAt,
   sliceWords,
   splitSegments,
@@ -835,7 +836,7 @@ function judgeDeployScript(words, ci, dir) {
 // ~ か $ で始まる値と、展開の印のある値は判定できない（null）とする
 function dirAfterEnv(words, ci, dir, from) {
   for (let i = from; i < ci; i++) {
-    if (baseName(words[i]) !== 'env') continue;
+    if (prefixName(words[i]) !== 'env') continue;
     for (let j = i + 1; j < ci; j++) {
       const w = words[j];
       let value;
@@ -869,7 +870,7 @@ function isEnvSplitFlag(word) {
 }
 function splitsString(words, prefixes, ci) {
   const end = ci === -1 ? words.length : ci;
-  return prefixes.some((i) => baseName(words[i]) === 'env' && words.slice(i + 1, end).some(isEnvSplitFlag));
+  return prefixes.some((i) => prefixName(words[i]) === 'env' && words.slice(i + 1, end).some(isEnvSplitFlag));
 }
 
 const CF_WRANGLER_REASON = 'cf-wrangler は引数の読み方が wrangler と違い（util.parseArgs）、dev は本番の資源に向きうる。このリポジトリでは使わない';
@@ -928,7 +929,7 @@ function judgeSegment(words, ctx) {
 
   // xargs は標準入力かファイル（-a）から引数を足すので、wrangler の引数（--remote）も、node や git が何を実行するかも見えない。
   // 読むだけの道具以外では、findWrangler が引数を実行しない道具（echo、git など）で打ち切っても、後ろの語の wrangler を見る
-  const xargs = prefixes.find((j) => baseName(words[j]) === 'xargs');
+  const xargs = prefixes.find((j) => prefixName(words[j]) === 'xargs');
   if (xargs !== undefined) {
     const isReader = XARGS_READERS.has(tool);
     const wranglerAfter = wrangler !== -1 || (!isReader && words.some((w, i) => i > ci && (isWrangler(w) || isCfWrangler(w))));
@@ -982,7 +983,7 @@ export function judgeBash(command, { cwd, branchOf, scriptOf = () => undefined, 
   // xargs は標準入力から引数を足すので、シークレットの名前を標準入力に流す形（echo <名前> | xargs cat）は、xargs の後ろの道具からは見えない。
   // xargs がどこかの区切りにあれば、コマンド全体のどこかの語がシークレットの名前に当たるだけで止める。
   // 名前が見えない形（ls -a | xargs grep TOKEN）は止められない
-  const hasXargs = segments.some((words) => prefixIndexes(words).some((i) => baseName(words[i]) === 'xargs'));
+  const hasXargs = segments.some((words) => prefixIndexes(words).some((i) => prefixName(words[i]) === 'xargs'));
   if (hasXargs && segments.some((words) => words.some(mentionsSecret))) results.push([DENY, SECRET_FILE_REASON]);
   for (const words of segments) {
     // cd の後の git push は、移った先のブランチで判定する。展開できない cd の先は判定できないものとする

@@ -455,7 +455,7 @@ export function splitSegments(command) {
 const PREFIXES = new Set([
   'if', 'then', 'else', 'elif', 'while', 'until', 'do', '!', '{', '}',
   'env', 'sudo', 'time', 'nohup', 'exec', 'command', 'builtin',
-  'timeout', 'nice', 'ionice', 'stdbuf', 'xargs', 'watch', 'caffeinate',
+  'timeout', 'nice', 'ionice', 'stdbuf', 'xargs', 'gxargs', 'genv', 'watch', 'caffeinate',
   'npx', 'pnpx', 'bunx', 'dlx',
   // cross-env FOO=1 cmd は env と同じく、代入を付けて cmd を動かす
   'cross-env',
@@ -474,6 +474,12 @@ export function baseName(word) {
   const name = word.split('/').pop();
   // npx wrangler@4 のような版の指定を外す
   return name.replace(/(.)@[^@]*$/, '$1');
+}
+
+// Homebrew の GNU findutils と coreutils は g を前に付けた名前で入る（gxargs、genv）。前置きの名前は g を外した名前にそろえる
+export function prefixName(word) {
+  const name = baseName(word);
+  return name === 'gxargs' || name === 'genv' ? name.slice(1) : name;
 }
 
 // GNU の getopt は長いオプションを一意な省略形でも受け付ける。--ch は --chdir、--s は --split-string（name は -- を除いた1文字以上の名前）
@@ -518,7 +524,7 @@ function scanCommand(words) {
     if (/^\d+(\.\d+)?[smhd]?$/.test(w)) continue;
     if (PREFIXES.has(baseName(w))) {
       prefixes.push(i);
-      previous = baseName(w);
+      previous = prefixName(w);
       continue;
     }
     return { index: i, prefixes };

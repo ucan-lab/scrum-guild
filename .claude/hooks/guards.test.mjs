@@ -109,6 +109,8 @@ describe('shell-words', () => {
     assert.equal(toolOf('xargs --delim x node'), 'node');
     assert.equal(toolOf('xargs -J X -R 1 -S 2 git'), 'git');
     assert.equal(toolOf('xargs -I {} -P 4 node'), 'node');
+    assert.equal(toolOf('gxargs -a list wrangler deploy'), 'wrangler');
+    assert.equal(toolOf('genv --c src git'), 'git');
     assert.equal(toolOf('env --c src git'), 'git');
     assert.equal(toolOf('env --chdir src git'), 'git');
     assert.equal(toolOf('sudo --c src git'), 'src');
@@ -271,6 +273,10 @@ describe('bash-rules: 止める', () => {
     'xargs wrangler2',
     'sudo xargs wrangler',
     'sudo -a wrangler deploy',
+    // Homebrew の GNU 版の名前
+    'echo --remote | gxargs wrangler dev',
+    'gxargs -a cat wrangler deploy',
+    'echo .dev.vars | gxargs cat',
     // xargs の値を取るフラグ（-a、--arg-file、--delimiter、-J、-R、-S）の値を、道具の名前と読まない
     'xargs -a cat wrangler deploy',
     'xargs -a cat wrangler',
@@ -845,6 +851,10 @@ describe('bash-rules: 確認を挟む', () => {
     "env --split-string 'x'",
     "env --split-string='x'",
     "env --split-str='x'",
+    "genv -S 'wrangler deploy'",
+    'genv --split-string=x',
+    'echo x | gxargs node',
+    'gxargs -a list.txt grep x',
     "env --s 'wrangler deploy'",
     'env --s=x',
     "env --sp 'x'",
@@ -1005,6 +1015,8 @@ describe('bash-rules: 確認を挟む', () => {
       'env --chdir=sr? git commit -m x',
       'env --chdir {src,x} git commit -m x',
       'env --c=sr? git commit -m x',
+      'genv -C sr? git commit -m x',
+      'genv --chdir {src,x} git commit -m x',
       'env --c sr? git commit -m x',
       'env --ch={src,x} git commit -m x',
       'env --chd "src$X" git commit -m x',
@@ -1254,6 +1266,8 @@ describe('bash-rules: 通す', () => {
     'git ls-files | xargs -n 50 -P 4 grep x',
     'git ls-files | xargs -I {} cat {}',
     'git ls-files | xargs -0 egrep -l x',
+    'git ls-files | gxargs grep x',
+    'genv -C src ls',
     'git ls-files | xargs -d x -s 100 wc -l',
     'xargs fgrep x',
     'xargs ls -l',
