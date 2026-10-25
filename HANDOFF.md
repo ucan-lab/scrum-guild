@@ -118,7 +118,7 @@
 ## 次にやること
 
 1. 上の確認の結果を `docs/design.md` と `docs/requirements.md` に反映する
-2. #20（CI と本番へのデプロイ）の残りを片づける。API トークンを最小の権限のものに入れ替えて Workers Logs を確かめ、自動の rollback を試しの PR で実地に確かめる。ここから先、コードは PR を通す
+2. #20（CI と本番へのデプロイ）の残りを片づける。API トークンを最小の権限のものに入れ替えて Workers Logs を確かめる。自動の rollback は 2026-10-25 に実地で確かめた（#84、#85）。ここから先、コードは PR を通す
 3. `d1-migration` のスキルを作り、`docs/data-model.md` から最初のマイグレーションを書く
 4. `design/tokens.css` と `design/components.css` を本番の画面に持ち込み、`design/kit.js` の関数を1つずつ Svelte のコンポーネントにする。`html` の `data-theme` には、`users.theme`、なければ `organizations.theme` の値を入れる
 5. 最初の数画面が Svelte で動いたら、下の「画面の自己レビューのスキル」を作る
