@@ -495,13 +495,14 @@ export const dictionary = defineDictionary({
     'この slug の{organization}は、もう作られています。次の URL を確かめてください。誰を{admin}に指名したかは、ここでは分かりません。',
     'この slug の{organization}は、もう作られています。次の URL を確かめてください。誰を{admin}に指名したかは、ここでは分かりません。',
   ),
+  // 招待の URL は作った直後の応答にしか出ないので、ここでは出せない。出し直すには指名し直しの操作が要る
   operatorExistingAdminPending: organization(
-    '指名された{admin}は、まだログインしていません。',
-    '指名された{admin}は、まだログインしていません。',
+    '指名された{admin}は、まだログインしていません。Google で指名したときの招待の URL は、ここでは出せません。URL を渡せていなければ、指名し直す操作が入るまで、この{organization}は使い始められません。',
+    '指名された{admin}は、まだログインしていません。Google で指名したときの招待の URL は、ここでは出せません。URL を渡せていなければ、指名し直す操作が入るまで、この{organization}は使い始められません。',
   ),
   operatorExistingAdminExpired: organization(
-    '指名された{admin}の招待の URL は、期限が切れています。',
-    '指名された{admin}の招待の URL は、期限が切れています。',
+    '指名された{admin}の招待の URL は、期限が切れています。URL はもう出せず、指名し直す操作が入るまで、この{organization}は使い始められません。',
+    '指名された{admin}の招待の URL は、期限が切れています。URL はもう出せず、指名し直す操作が入るまで、この{organization}は使い始められません。',
   ),
   operatorExistingAdminActive: organization(
     '{admin}は、もうログインしています。',
