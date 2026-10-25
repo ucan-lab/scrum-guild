@@ -403,7 +403,8 @@ h1, h2, h3 { text-wrap: balance; }
   .layout-side { position: static; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); }
 }
 @media (max-width: 760px) {
-  .app { grid-template-columns: minmax(0, 1fr); }
+  /* 本文が min-height に届かないとき、余りを本文の行にだけ回す（既定ではメニューの行も伸びて下に空きが出る） */
+  .app { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto 1fr; }
   .binding { border-right: 0; border-bottom: var(--rule-double); }
   .binding-inner {
     position: static; height: auto;

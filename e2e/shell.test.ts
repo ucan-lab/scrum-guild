@@ -289,6 +289,30 @@ test('/api/health は D1 に届いて 200 で版を返す', async ({ request }) 
   expect(await res.json()).toEqual({ status: 'ok', database: 'ok', version });
 });
 
+// 760px 以下ではメニューが上の帯になる。本文が画面の高さに届かなくても、メニューは中身の高さのままで、余りは本文が受け取る
+for (const width of [390, 672]) {
+  test(`幅 ${width}px で本文が短くても、メニューの下に空きが出ない`, async ({ page }) => {
+    const height = 2000;
+    await page.setViewportSize({ width, height });
+    await page.goto(today);
+    await expect(page.getByRole('heading', { level: 1, name: '自分の今日' })).toBeVisible();
+    // 本文が画面より長いと空きは出ないので、この検査の前提が崩れたことを空きの失敗と分けて出す
+    const pageHeight = await page.evaluate(() => document.documentElement.scrollHeight);
+    expect(pageHeight, '画面の内容が高さを超えたので、height を上げる').toBeLessThanOrEqual(height);
+
+    const binding = await page.locator('.binding').boundingBox();
+    const inner = await page.locator('.binding-inner').boundingBox();
+    const sheet = await page.locator('.sheet').boundingBox();
+    if (!binding || !inner || !sheet) throw new Error('枠の要素の位置が取れない');
+    // .binding は下の罫線（テーマで太さが変わる）の分だけ中身より高い
+    const rule = await page
+      .locator('.binding')
+      .evaluate((element) => parseFloat(getComputedStyle(element).borderBottomWidth));
+    expect(binding.height - rule).toBeCloseTo(inner.height, 0);
+    expect(sheet.y + sheet.height).toBeCloseTo(height, 0);
+  });
+}
+
 // 画面のシェルが出す版は API から取ったものなので、build に埋めた kit.version.name は SvelteKit が書き出す version.json で見る
 test('画面の build に埋めた版が API の版と同じ', async ({ request }) => {
   const res = await request.get('/_app/version.json');
