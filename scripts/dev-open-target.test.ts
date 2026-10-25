@@ -90,6 +90,11 @@ describe('resolveDevOpenTarget', () => {
     }
   });
 
+  test('URL の解決で別の形になる path は止める', () => {
+    // 空白は safeReturnTo を通るが、URL の解決で %20 になる
+    assert.match(failureReason(resolveDevOpenTarget(['/a b'], {})), /別のパスになる/);
+  });
+
   test('path は、クエリとフラグメントを含めてそのまま使う', () => {
     const target = resolveDevOpenTarget(['/aoba/board?tab=1#top'], {});
     assert.ok(target.ok);

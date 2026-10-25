@@ -86,7 +86,9 @@ export function resolveDevOpenTarget(
     return { ok: false, reason: err instanceof Error ? err.message : String(err) };
   }
 
-  // 二重の守り: 解決した結果が path と変わらず、origin が手元のサーバーのときだけ進む
+  // 二重の守り: 解決した結果が path と変わらず、origin が手元のサーバーのときだけ進む。
+  // origin の検査は、devPublicOrigin が今は http の localhost しか返さないので通らないが、
+  // dev-ports.ts の変更で別のホストを返すようになったときに、トークンを外へ送らないために残す
   const { protocol, hostname } = new URL(origin);
   if (protocol !== 'http:' || !LOCAL_HOSTNAMES.has(hostname)) {
     return { ok: false, reason: `${origin} は手元のサーバーではないので、seed のトークンを送らない` };
