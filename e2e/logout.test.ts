@@ -38,7 +38,7 @@ test.describe('組織の中（アカウントのメニュー）', () => {
 
     await expect(page).toHaveURL('/login?logged_out=1');
     await expect(page.getByRole('heading', { level: 1, name: 'ログイン' })).toBeVisible();
-    await expect(page.getByRole('status').filter({ hasText: 'ログアウトしました。' })).toBeVisible();
+    await expect(page.locator('.callout.is-info').filter({ hasText: 'ログアウトしました。' })).toBeVisible();
     // 帯のあるページごと読み直したので、左のメニューも出ない
     await expect(page.locator('.app')).toHaveCount(0);
 
