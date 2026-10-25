@@ -30,7 +30,9 @@ favicon と同じマーク（下の「favicon」）の横に、名前「Scrum Gu
 
 - 置く所は、左のメニューの上（マーク 26px）と、枠の外の画面の先頭の紙（マーク 34px）。マークだけを置かず、名前は折り返さない
 - マークは `aria-hidden` にし、名前は横の文字で読ませる。読み上げは「Scrum Guild」の1回になる
-- 本番は `src/lib/components/BrandMark.svelte`、見本は `design/kit.js` の `brandMark`。インラインの SVG にして、画像の読み込みを待たずに出す。`static/favicon.svg` と合わせて3つが同じ path を持つことを `scripts/design-parity.test.ts` が確かめるので、形や色を変えるときは3つと ICO をそろえて直す
+- マークの金と生成りはロゴだけの色で、操作、完了、印、経験値のどの色の役割にも入れない。favicon と同じ値を SVG に直に書き、tokens.css の変数にしない（テーマで変わらないことを値で保つ）
+- 金の旗と背景の比は、白の紙で約3.46:1、シンプル（ライト）と中世風の左メニュー（`--color-sunken`）で約2.9〜3.0:1、ダークと現代風で4.7:1以上。マークは名前の文字と並べて置き、意味は文字で伝わるので、3:1 を割る面があっても色を変えない
+- 本番は `src/lib/components/BrandMark.svelte`、見本は `design/kit.js` の `brandMark`。インラインの SVG にして、画像の読み込みを待たずに出す。`static/favicon.svg` と合わせた3つの path と viewBox、見本と本番の `class` と `aria-hidden` が一致することを `scripts/design-parity.test.ts` が確かめる。形や色を変えるときは3つをそろえて直し、`static/favicon.ico` は下の「favicon」の手順で作り直す
 
 ## favicon
 
@@ -216,6 +218,7 @@ favicon と同じマーク（下の「favicon」）の横に、名前「Scrum Gu
 | `kit.js` | 本番 | 補足 |
 | --- | --- | --- |
 | `icons.js` のスプライトと `icon` | `IconSprite.svelte`、`Icon.svelte` | スプライトは root の `+layout.svelte` に1つ置く。アイコンの定義は `src/lib/icons.ts` |
+| `brandMark`（ロゴのマーク） | `BrandMark.svelte` | 左のメニューの上（`AppShell`）と、枠の外の画面の先頭の紙（`GateSheet`）で、名前の横に置く。上の「ロゴ」 |
 | `mount`（枠） | `AppShell.svelte`、`NavMenu.svelte`、`OrganizationSwitcher.svelte` | 左のメニューと上の帯。`/[slug]` のレイアウトだけが使い、`slug` と、所属するワークスペースがあるか（`hasWorkspace`。無ければワークスペースの中の見出しを出さない）を渡す。組織の切り替えは `OrganizationSwitcher`（`kit.js` の `orgMenuHtml`）を snippet で渡し、メニュー（`nav`）の外、ブランドの下に置く。開閉するメニューで、中は各組織へのリンク（今の組織に `aria-current="page"` とチェック）と、最後に `/` へ戻るリンク。select にしないのは、矢印キーで選んだだけで移るのを避けるため（WCAG 3.2.2）。CSS は `.org-menu`。ボタンの名前は今の組織の名前で、入れる組織の一覧の中の名前を使う（一覧に無いときだけ組織の操作の名前）。ボタンとリストに読み上げの名前を付ける。メニューが上の帯になる 760px 以下でも隠さない（`.ws-select`、ワークスペースの切り替えは隠す）。ワークスペースの切り替え、アシスタントのボタンは置き場所だけで、中身は snippet で渡す。メニューの項目は `src/lib/nav.ts`。画面がまだ無い項目（`href` が `null`）はメニューに出さず、項目が1つも無いグループは見出しごと出さない（色を薄くするだけの「まだ無い」の示し方は、色だけに頼りコントラストも足りないので採らない）。上の帯は、アシスタントとログインした人の表示のどちらかを渡したときだけ出す |
 | `.input-row` | | 入力欄とボタンだけを並べる行（`.field` の中）。ヒントとエラーはこの行の下に出すので、折り返しても、ボタンは入力欄の横に残る。運用の画面の「確かめる」と、組織の URL の「コピー」が使う。見本はカタログの「入力と道具の帯」 |
 | `pageHead` | `PageHead.svelte` | |
