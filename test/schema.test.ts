@@ -136,6 +136,15 @@ describe('外部キー', () => {
     );
     expect(details).not.toMatch(/^SCAN tasks\b/m);
   });
+
+  // 使わない索引も書くたびに更新され、D1 の書いた行数に数えられる。統計の無い空の表では計画が変わらないので、残っていないことを直に見る
+  test('外部キーの検査の索引と重なる部分索引は残っていない', async () => {
+    const { results } = await env.DB.prepare(
+      `SELECT name FROM sqlite_master WHERE type = 'index' AND name IN ('memberships_user_current', 'tasks_assignee_open')`,
+    ).all<{ name: string }>();
+
+    expect(results).toEqual([]);
+  });
 });
 
 // SQLite の通常の表では、PRIMARY KEY だけでは NULL を拒まない
