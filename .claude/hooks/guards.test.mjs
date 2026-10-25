@@ -191,6 +191,8 @@ describe('bash-rules: 止める', () => {
     // 構文エラーでも、判定から落とさない
     'wrangler deploy )',
     'git push origin main )',
+    'case x in a) :;; b|c) wrangler deploy;; esac',
+    'arr[0]=1 wrangler deploy',
     '[[ x | git push origin main',
     // 別名の長い形 --r
     'wrangler dev --r',
@@ -709,6 +711,8 @@ describe('bash-rules: 通す', () => {
     'diff <(sort a) <(sort b)',
     'comm -12 <(sort a) <(sort b)',
     'case "$x" in *.md) echo md;; *) echo other;; esac',
+    'case "$x" in *.md|*.txt) echo text;; *.png | *.jpg) echo image;; esac',
+    'arr[0]=1; echo "${arr[0]}"',
     'if (cd x && git diff --quiet); then echo same; fi',
     'if ! (cd x); then echo ng; fi',
     'time (sleep 1)',

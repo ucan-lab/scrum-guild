@@ -23,6 +23,8 @@ const EXPANSION_CHARS = /[$`{}*?[\]]/;
 // これ以外（$@、${a[@]}、zsh の ${(f)x}、$=x）は、引用符の中でも複数の語に分かれうるものとして扱う。
 // 語を分ける形を並べる代わりに、分けない形を決めておく。zsh は修飾と添字の書き方が多く、並べると漏れるため
 const QUOTED_PARAMETER = /^\$([A-Za-z_]\w*|\d|[?$#!*-]|\{#?[A-Za-z_]\w*(:?[-=+?][^$`@{}()[\]]*)?\})$/;
+// case のラベルの残り。今の位置の ) か、| で並べたラベルの続きと閉じの )
+const CASE_LABEL_REST = /^(\|[ \t]*[^\s;&|()<>]+[ \t]*)*\)/;
 // 記号だけでできた予約語と test の道具（{ … }、[ -f x ]、[[ … ]]）は展開しない
 const LITERAL_WORDS = new Set(['{', '}', '[', ']', '[[', ']]']);
 
@@ -365,6 +367,18 @@ export function splitSegments(command) {
         continue;
       }
       testDepth = 0;
+      // 対応する ( の無い ) の前の1語は、case のラベル（*.md)、*)）。| で並べたラベル（*.md|*.txt)）も、) までをまとめてラベルとする。
+      // ラベルはコマンドではないので捨てる。2語以上（wrangler deploy )）は構文エラーだが、判定から落とさずに区切りとして読む
+      const label = depth === 0 && pending.length <= 1 ? CASE_LABEL_REST.exec(command.slice(i)) : null;
+      if (label) {
+        word = '';
+        shape = '';
+        inWord = false;
+        expands = false;
+        words = withMarks([], [], []);
+        i += label[0].length - 1;
+        continue;
+      }
       if (op === '(') {
         // 道具の後ろに書ける ( は、zsh の glob（(a|b)、x(N)）と関数の定義（f() { … }）だけ。前置きだけの後ろ（if (、! (、time (）はサブシェル。
         // zsh は (KV|--no-local) を作業場所のファイルの名前に展開するので、区切りは切ったまま、括弧の位置に展開の印の付いた GLOB_GROUP を残す。
@@ -376,16 +390,6 @@ export function splitSegments(command) {
         }
         depth++;
       } else if (op === ')') {
-        if (depth === 0 && pending.length <= 1) {
-          // 対応する ( の無い ) の前の1語は、case のラベル（*.md)、*)）。ラベルはコマンドではないので捨てる。
-          // 2語以上（wrangler deploy )）は構文エラーだが、判定から落とさずに区切りとして読む
-          word = '';
-          shape = '';
-          inWord = false;
-          expands = false;
-          words = withMarks([], [], []);
-          continue;
-        }
         depth = Math.max(0, depth - 1);
       }
       endSegment();
@@ -450,8 +454,8 @@ const PREFIX_FLAGS_WITH_VALUE = new Set([
 ]);
 
 export function isAssignment(word) {
-  // NAME+=値 も代入
-  return /^[A-Za-z_][A-Za-z0-9_]*\+?=/.test(word);
+  // NAME+=値 と、配列の要素の NAME[添字]=値 も代入
+  return /^[A-Za-z_][A-Za-z0-9_]*(\[[^\]]*\])?\+?=/.test(word);
 }
 
 export function baseName(word) {
