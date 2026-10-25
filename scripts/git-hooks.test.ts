@@ -1,6 +1,16 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import {
+  lstatSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  readlinkSync,
+  realpathSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { after, describe, test } from 'node:test';
@@ -238,6 +248,197 @@ describe('.githooks', () => {
       const missing = gitWith({ PATH: bin }, work, 'worktree', 'add', path.join(root, 'wt-15'), '-b', '15-x');
       assert.equal(missing.status, 0);
       assert.match(missing.stderr, /gh が無いので、#15/);
+    });
+
+    describe('.dev.vars', () => {
+      // 番号の無いブランチで切るので gh は呼ばれないが、呼ばれても本物の GitHub に書かないよう、失敗するだけの gh を先頭に置く
+      const failingGh = (name: string) => fakeGh(name, 'exit 1');
+      // 本体の根は .dev.vars.example の有無で確かめる。.dev.vars の中身は読まないので、置くのは仮の値
+      const setUpMain = (name: string, withDevVars: boolean) => {
+        const work = setUp(name);
+        writeFileSync(path.join(work, '.dev.vars.example'), '# 例\n');
+        if (withDevVars) writeFileSync(path.join(work, '.dev.vars'), 'PLACEHOLDER=1\n');
+        return work;
+      };
+
+      test('本体に .dev.vars があれば、ワークツリーの .dev.vars を本体へのリンクにする', () => {
+        const work = setUpMain('dv-link', true);
+        const env = failingGh('dv-link');
+        const wt = path.join(root, 'wt-dv-link');
+        const added = gitWith(env, work, 'worktree', 'add', wt, '-b', 'feature-dv');
+        assert.equal(added.status, 0);
+        assert.match(added.stderr, /\.dev\.vars を本体.*へのリンクにしました/);
+        assert.equal(readlinkSync(path.join(wt, '.dev.vars')), path.join(realpathSync(work), '.dev.vars'));
+        // 番号付きのブランチでも置く。Issue の判定には進む（ここでは gh が失敗する）
+        const wtNumbered = path.join(root, 'wt-dv-link-12');
+        const numbered = gitWith(env, work, 'worktree', 'add', wtNumbered, '-b', '12-dv');
+        assert.equal(numbered.status, 0);
+        assert.match(numbered.stderr, /\.dev\.vars を本体/);
+        assert.match(numbered.stderr, /#12 を引けなかった/);
+        assert.equal(readlinkSync(path.join(wtNumbered, '.dev.vars')), path.join(realpathSync(work), '.dev.vars'));
+      });
+
+      // チェックアウトした時点で .dev.vars が既にあるブランチを作る（追跡したファイルは checkout が置く）
+      const branchWithDevVars = (work: string, branch: string, place: (file: string) => void) => {
+        git(work, 'checkout', '-q', '-b', `${branch}-base`);
+        place(path.join(work, '.dev.vars'));
+        git(work, 'add', '-f', '.dev.vars');
+        assert.equal(git(work, 'commit', '-q', '-m', 'dev.vars').status, 0);
+        git(work, 'branch', branch);
+        git(work, 'checkout', '-q', 'main');
+      };
+
+      test('ワークツリーに .dev.vars が既にあれば、触らない', () => {
+        const work = setUpMain('dv-keep', true);
+        const env = failingGh('dv-keep');
+        rmSync(path.join(work, '.dev.vars'));
+        branchWithDevVars(work, 'feature-file', (file) => writeFileSync(file, 'TRACKED=1\n'));
+        const wt = path.join(root, 'wt-dv-file');
+        const added = gitWith(env, work, 'worktree', 'add', wt, 'feature-file');
+        assert.equal(added.status, 0);
+        assert.doesNotMatch(added.stderr, /\.dev\.vars/);
+        assert.equal(lstatSync(path.join(wt, '.dev.vars')).isSymbolicLink(), false);
+        assert.equal(readFileSync(path.join(wt, '.dev.vars'), 'utf8'), 'TRACKED=1\n');
+      });
+
+      test('壊れたリンクの .dev.vars も触らない', () => {
+        const work = setUpMain('dv-broken', true);
+        const env = failingGh('dv-broken');
+        rmSync(path.join(work, '.dev.vars'));
+        branchWithDevVars(work, 'feature-broken', (file) => symlinkSync('/nonexistent/dev-vars', file));
+        const wt = path.join(root, 'wt-dv-broken');
+        const added = gitWith(env, work, 'worktree', 'add', wt, 'feature-broken');
+        assert.equal(added.status, 0);
+        assert.doesNotMatch(added.stderr, /\.dev\.vars/);
+        assert.equal(readlinkSync(path.join(wt, '.dev.vars')), '/nonexistent/dev-vars');
+      });
+
+      test('本体に .dev.vars が無ければ、リンクを置かずに案内し、ワークツリーは作る', () => {
+        const work = setUpMain('dv-none', false);
+        const env = failingGh('dv-none');
+        const wt = path.join(root, 'wt-dv-none');
+        const added = gitWith(env, work, 'worktree', 'add', wt, '-b', 'feature-none');
+        assert.equal(added.status, 0);
+        assert.match(added.stderr, /本体に \.dev\.vars が無いので、リンクを置いていません.*\.dev\.vars\.example/);
+        assert.throws(() => lstatSync(path.join(wt, '.dev.vars')), { code: 'ENOENT' });
+        // 本体にもファイルを作らない
+        assert.throws(() => lstatSync(path.join(work, '.dev.vars')), { code: 'ENOENT' });
+      });
+
+      test('本体のパスに空白があっても、リンクを置く', () => {
+        const work = setUpMain('dv space', true);
+        const env = failingGh('dv-space');
+        const wt = path.join(root, 'wt dv space');
+        const added = gitWith(env, work, 'worktree', 'add', wt, '-b', 'feature-space');
+        assert.equal(added.status, 0);
+        assert.equal(readlinkSync(path.join(wt, '.dev.vars')), path.join(realpathSync(work), '.dev.vars'));
+      });
+
+      test('本体の .dev.vars が壊れたリンクなら、本体に無いものとして案内する', () => {
+        const work = setUpMain('dv-main-broken', false);
+        symlinkSync('/nonexistent/dev-vars', path.join(work, '.dev.vars'));
+        const env = failingGh('dv-main-broken');
+        const wt = path.join(root, 'wt-dv-main-broken');
+        const added = gitWith(env, work, 'worktree', 'add', wt, '-b', 'feature-main-broken');
+        assert.equal(added.status, 0);
+        assert.match(added.stderr, /本体に \.dev\.vars が無いので/);
+        assert.throws(() => lstatSync(path.join(wt, '.dev.vars')), { code: 'ENOENT' });
+      });
+
+      test('リンクを置けなくても、手で置くよう案内し、ワークツリーは作る', () => {
+        const work = setUpMain('dv-ln-fail', true);
+        const env = failingGh('dv-ln-fail');
+        // 失敗するだけの ln を gh と同じ場所に置く
+        writeFileSync(path.join(root, 'dv-ln-fail-bin', 'ln'), '#!/bin/sh\nexit 1\n', { mode: 0o755 });
+        const wt = path.join(root, 'wt-dv-ln-fail');
+        const added = gitWith(env, work, 'worktree', 'add', wt, '-b', 'feature-ln-fail');
+        assert.equal(added.status, 0);
+        assert.match(added.stderr, /リンクを置けませんでした/);
+        assert.match(
+          added.stderr,
+          new RegExp(`本体: ${realpathSync(work).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}/\\.dev\\.vars`),
+        );
+        assert.throws(() => lstatSync(path.join(wt, '.dev.vars')), { code: 'ENOENT' });
+      });
+
+      test('本体の作業コピー（追加のワークツリーでない）では動かない', () => {
+        // 本体に .dev.vars が無い clone で、追加のワークツリーと取り違えると「本体に .dev.vars が無い」の案内が出る。出ないことで判定を見る
+        const work = setUpMain('dv-main', false);
+        const env = failingGh('dv-main');
+        // setUp が core.hooksPath を設定済みなので、フックを切って example を push する（main の上のコミットと push はフックが止める）
+        const noHooks = ['-c', 'core.hooksPath=/dev/null'];
+        assert.equal(git(work, ...noHooks, 'add', '.dev.vars.example').status, 0);
+        assert.equal(git(work, ...noHooks, 'commit', '-q', '-m', 'example').status, 0);
+        assert.equal(git(work, ...noHooks, 'push', 'origin', 'main').status, 0);
+        // clone は前の HEAD が null の SHA になるが、追加のワークツリーではないので、.dev.vars を置かず案内も出さない
+        const remote = path.join(root, 'dv-main.git');
+        const clone = path.join(root, 'dv-main-clone');
+        const cloned = gitWith(env, root, '-c', `core.hooksPath=${hooksDir}`, 'clone', remote, clone);
+        assert.equal(cloned.status, 0);
+        assert.equal(lstatSync(path.join(clone, '.dev.vars.example')).isFile(), true);
+        assert.doesNotMatch(cloned.stderr, /\.dev\.vars/);
+        assert.throws(() => lstatSync(path.join(clone, '.dev.vars')), { code: 'ENOENT' });
+      });
+
+      test('detached のワークツリーと、gh の無い環境でも、リンクを置く', () => {
+        const work = setUpMain('dv-env', true);
+        const env = failingGh('dv-env');
+        const expected = path.join(realpathSync(work), '.dev.vars');
+        const detached = path.join(root, 'wt-dv-detached');
+        assert.equal(gitWith(env, work, 'worktree', 'add', detached, '--detach').status, 0);
+        assert.equal(readlinkSync(path.join(detached, '.dev.vars')), expected);
+        // git とフックの使う道具だけを置いた PATH。gh は無い
+        const bin = path.join(root, 'dv-tools-bin');
+        mkdirSync(bin);
+        for (const tool of ['git', 'dirname', 'basename', 'ln']) {
+          const found = spawnSync('sh', ['-c', `command -v ${tool}`], { encoding: 'utf8' }).stdout.trim();
+          symlinkSync(realpathSync(found), path.join(bin, tool));
+        }
+        const noGh = path.join(root, 'wt-dv-nogh');
+        const added = gitWith({ PATH: bin }, work, 'worktree', 'add', noGh, '-b', '15-dv');
+        assert.equal(added.status, 0);
+        assert.match(added.stderr, /\.dev\.vars を本体/);
+        assert.match(added.stderr, /gh が無いので、#15/);
+        assert.equal(readlinkSync(path.join(noGh, '.dev.vars')), expected);
+      });
+
+      test('共通のディレクトリが .git でない（bare の配置）ときは、親を本体と取り違えない', () => {
+        setUp('dv-bare-src');
+        const env = failingGh('dv-bare');
+        // bare リポジトリの親に .dev.vars.example と .dev.vars があっても、本体とはみなさない
+        const parent = path.join(root, 'dv-bare');
+        mkdirSync(parent);
+        writeFileSync(path.join(parent, '.dev.vars.example'), '# 例\n');
+        writeFileSync(path.join(parent, '.dev.vars'), 'PLACEHOLDER=1\n');
+        const bare = path.join(parent, 'repo.git');
+        assert.equal(git(root, 'clone', '--bare', path.join(root, 'dv-bare-src.git'), bare).status, 0);
+        const wt = path.join(parent, 'wt');
+        const added = gitWith(
+          env,
+          bare,
+          '-c',
+          `core.hooksPath=${hooksDir}`,
+          'worktree',
+          'add',
+          wt,
+          '-b',
+          'feature-bare',
+          'main',
+        );
+        assert.equal(added.status, 0);
+        assert.doesNotMatch(added.stderr, /\.dev\.vars/);
+        assert.throws(() => lstatSync(path.join(wt, '.dev.vars')), { code: 'ENOENT' });
+      });
+
+      test('本体の根を確かめられない（.dev.vars.example が無い）ときは、何もしない', () => {
+        const work = setUp('dv-noexample');
+        const env = failingGh('dv-noexample');
+        const wt = path.join(root, 'wt-dv-noexample');
+        const added = gitWith(env, work, 'worktree', 'add', wt, '-b', 'feature-noexample');
+        assert.equal(added.status, 0);
+        assert.doesNotMatch(added.stderr, /\.dev\.vars/);
+        assert.throws(() => lstatSync(path.join(wt, '.dev.vars')), { code: 'ENOENT' });
+      });
     });
   });
 });

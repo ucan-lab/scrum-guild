@@ -2,6 +2,8 @@
 
 # 運用者のログインの ID の一覧。github:<数字> か google:<数字> を、空白を含めずカンマで区切る。
 # 下の値は seed（seed/sessions.ts）の運用者の架空の ID。本番には本物の運用者の ID を Cloudflare のシークレットに入れる
+# 本物のログインで自分の ID を使うときは、この値を消さずに、後ろへカンマで足す（例 github:9000000000000001,github:<自分の数字>）。
+# seed の ID を消すと、pnpm dev:open operator が 401 になる。写すのも直すのも本体の作業コピーで（docs/development.md の「ワークツリーで作業する」）
 OPERATOR_LOGIN_IDS=github:9000000000000001
 
 # GitHub のログインの OAuth App のクライアント ID と秘密。手元で本物のログインを確かめるときに、開発用の OAuth App
