@@ -31,6 +31,8 @@
     }
   ],
   "workers_dev": true,
+  // 毎分、期限を過ぎた行を消す（src/server/scheduled/）
+  "triggers": { "crons": ["* * * * *"] },
   // 版ごとのプレビュー URL は本番と同じ D1 につながるので作らない
   "preview_urls": false,
   "observability": {

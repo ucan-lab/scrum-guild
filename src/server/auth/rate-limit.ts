@@ -1,6 +1,8 @@
 // アプリ側のレート制限（docs/data-model.md の `rate_limits`）。設けるのは、ログインと手動の同期だけ。
 // 窓の最初の呼び出しから windowMs の間に max 回まで。1文の upsert で数えるので、並行した呼び出しも取りこぼさず、
 // 窓を過ぎた最初の呼び出しが数え直す。断った呼び出しも数える
+import type { AnyOperationDefinition } from '../../shared/operations/define.ts';
+import { operations } from '../../shared/operations/index.ts';
 import { commonDb } from '../db/index.ts';
 import { clientIpUnits } from './client-ip.ts';
 
@@ -13,6 +15,24 @@ export const LOGIN_RATE_LIMIT: RateLimitPolicy = { max: 60, windowMs: 10 * 60 * 
 // IPv6 は /64 の枠（上の LOGIN_RATE_LIMIT）に加えて、/48 の枠を数える。事業者の単位の /48 の中なら、/64 を変えて
 // 1つの枠を避けられるため。/48 の中には複数の利用者がいるので、/64 の10倍まで認める
 export const LOGIN_RATE_LIMIT_IPV6_SITE: RateLimitPolicy = { max: 600, windowMs: 10 * 60 * 1000 };
+
+// ログインで数える枠の一覧。loginRateLimits() はこの一覧の値だけを使う。
+// 期限を過ぎた rate_limits の行を消す境目の最長の窓は、この一覧と操作の定義から求める（longestRateLimitWindowMs）
+export const LOGIN_RATE_LIMIT_POLICIES: readonly RateLimitPolicy[] = [LOGIN_RATE_LIMIT, LOGIN_RATE_LIMIT_IPV6_SITE];
+
+// consumeRateLimit に渡る全部の枠（ログインの枠と、操作の定義の rateLimit）のうち、最長の窓。
+// この窓を過ぎた行は、どの枠から見ても数え直しになるので消してよい（src/server/scheduled/cleanup-expired.ts）。
+// 操作の定義は src/shared/operations の operations（sessionOperations を含む全部）。register.ts の enforceRateLimit が
+// windowSeconds * 1000 で使う
+export function longestRateLimitWindowMs(definitions: readonly AnyOperationDefinition[] = operations): number {
+  const windows = [
+    ...LOGIN_RATE_LIMIT_POLICIES.map((policy) => policy.windowMs),
+    ...definitions.flatMap((definition) =>
+      definition.rateLimit === undefined ? [] : [definition.rateLimit.windowSeconds * 1000],
+    ),
+  ];
+  return Math.max(...windows);
+}
 
 export type LoginRateLimit = { key: string; policy: RateLimitPolicy };
 
