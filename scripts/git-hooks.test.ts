@@ -325,6 +325,42 @@ describe('.githooks', () => {
         assert.throws(() => lstatSync(path.join(work, '.dev.vars')), { code: 'ENOENT' });
       });
 
+      test('本体のパスに空白があっても、リンクを置く', () => {
+        const work = setUpMain('dv space', true);
+        const env = failingGh('dv-space');
+        const wt = path.join(root, 'wt dv space');
+        const added = gitWith(env, work, 'worktree', 'add', wt, '-b', 'feature-space');
+        assert.equal(added.status, 0);
+        assert.equal(readlinkSync(path.join(wt, '.dev.vars')), path.join(realpathSync(work), '.dev.vars'));
+      });
+
+      test('本体の .dev.vars が壊れたリンクなら、本体に無いものとして案内する', () => {
+        const work = setUpMain('dv-main-broken', false);
+        symlinkSync('/nonexistent/dev-vars', path.join(work, '.dev.vars'));
+        const env = failingGh('dv-main-broken');
+        const wt = path.join(root, 'wt-dv-main-broken');
+        const added = gitWith(env, work, 'worktree', 'add', wt, '-b', 'feature-main-broken');
+        assert.equal(added.status, 0);
+        assert.match(added.stderr, /本体に \.dev\.vars が無いので/);
+        assert.throws(() => lstatSync(path.join(wt, '.dev.vars')), { code: 'ENOENT' });
+      });
+
+      test('リンクを置けなくても、手で置くよう案内し、ワークツリーは作る', () => {
+        const work = setUpMain('dv-ln-fail', true);
+        const env = failingGh('dv-ln-fail');
+        // 失敗するだけの ln を gh と同じ場所に置く
+        writeFileSync(path.join(root, 'dv-ln-fail-bin', 'ln'), '#!/bin/sh\nexit 1\n', { mode: 0o755 });
+        const wt = path.join(root, 'wt-dv-ln-fail');
+        const added = gitWith(env, work, 'worktree', 'add', wt, '-b', 'feature-ln-fail');
+        assert.equal(added.status, 0);
+        assert.match(added.stderr, /リンクを置けませんでした/);
+        assert.match(
+          added.stderr,
+          new RegExp(`本体: ${realpathSync(work).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}/\\.dev\\.vars`),
+        );
+        assert.throws(() => lstatSync(path.join(wt, '.dev.vars')), { code: 'ENOENT' });
+      });
+
       test('本体の作業コピー（追加のワークツリーでない）では動かない', () => {
         // 本体に .dev.vars が無い clone で、追加のワークツリーと取り違えると「本体に .dev.vars が無い」の案内が出る。出ないことで判定を見る
         const work = setUpMain('dv-main', false);
