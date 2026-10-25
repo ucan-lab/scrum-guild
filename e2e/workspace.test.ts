@@ -317,6 +317,16 @@ test.describe('管理者（あおば開発のミナト）', () => {
     await expect(dialog.getByText('このブラウザのタイムゾーン（Asia/Tokyo）では作れません')).toBeVisible();
   });
 
+  test('組織の管理の一覧を読むときにセッションが切れていたら（401）、今のパスを return_to に入れてログインへ移す', async ({
+    page,
+  }) => {
+    await page.route('**/api/aoba/workspace-list', (route) =>
+      route.fulfill({ status: 401, json: { error: { code: 'unauthenticated', message: 'x' } } }),
+    );
+    await page.goto('/aoba/admin');
+    await expect(page).toHaveURL(/\/login\?return_to=%2Faoba%2Fadmin$/);
+  });
+
   test('サーバーが名前を断ったら、送り終えて欄が戻った後に、名前の欄へフォーカスを戻す', async ({ page }) => {
     await page.route('**/api/aoba/workspace-create', (route) =>
       route.fulfill({
