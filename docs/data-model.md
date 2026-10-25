@@ -16,6 +16,7 @@
 - 論理削除は `deleted_at` で持つ。一覧の索引は `deleted_at IS NULL` の部分索引にする。
 - SQL は D1 で通る SQLite の方言で書く（部分索引、`json_valid`、`date()`、CHECK を使う）。
 - 外部キーは張る。D1 は検査が有効。`ON DELETE` は付けず、物理削除はアプリが順に行う。
+- `users.id` を指す外部キーの列には、外部キーの検査に使える索引を持つ。その列を先頭に置く索引で、部分索引なら条件は `x IS NOT NULL` だけにする（空にできる列はこの形にする）。待っていた `users` の行を消すとき（「メールアドレスで待つ指名と招待」の統合）、索引が無いと SQLite が子の表を全件読んで検査するため。引き換えに、子の表を書くたびに索引も書き、D1 の書いた行数が増える。空にできる列を部分索引にするのは、空の行の分を書かずに済ませるため。主キーやほかの索引の先頭の列なら足さない。`left_at IS NULL` のようなほかの条件の部分索引は、検査に使えないので数えない。各表の索引では「外部キーの検査」と書く。表を足すときも同じにし、`test/schema.test.ts` が `users` の行を消す文の実行計画で確かめる。
 - 作成日時と更新日時は `created_at`、`updated_at` で、更新はアプリが書く。
 - 手で並べ替える並びは、分数の並び（fractional indexing）の文字列 `position` で持つ。間に入れても他の行を書き換えない。新しく入ったものは末尾の値を取る。同時に作ると同じ値になりうるので、読むときは `position, id` の順で並べる（同じ値の行は `id` の順で、同じミリ秒の中では作った順とは限らない）。同じ値の隣に入れる並べ替えの扱いは、並べ替えを作る #62 で決める。値は `fractional-indexing` のパッケージで作る（ワークスペースを作るときの最初の列も同じ）。
 - 集計（積載量、経験値の合計、ポイントの合計、ベロシティ）は保存せず、読むたびに計算する。
@@ -257,6 +258,8 @@
 | created_by | TEXT | NOT NULL、FK users | |
 | created_at | TEXT | NOT NULL | |
 
+- 索引: `(created_by)`。外部キーの検査。
+
 一括の登録は `INSERT ... ON CONFLICT DO NOTHING` で行う。
 
 ## ユーザーの稼働
@@ -315,6 +318,7 @@
 | created_at、updated_at | TEXT | NOT NULL | |
 
 - 索引: `(organization_id)`。組織のワークスペースの一覧に使う。
+- 索引: `(created_by)`。外部キーの検査。
 - 名前は前後の空白を除いて、1〜50 字（コードポイントで数える。絵文字も1字）。制御文字（`Cc`）、ゼロ幅のスペース（U+200B）、行と段落の区切り（U+2028、U+2029）、向きを変える制御（U+202A〜U+202E、U+2066〜U+2069）、語結合子などの見えない演算子（U+2060〜U+2064）、BOM（U+FEFF）は受けない。この決まりは `src/shared/hidden-characters.ts` の1か所に置き、組織の表示名と GitHub の表示名（取り除く）も同じ文字を扱う。ZWJ（U+200D）でつないだ絵文字、旗のタグ文字、ZWNJ（U+200C）を使うペルシア語やインド系の文字、方向の印（LRM、RLM、ALM）の名前は通す。空白、書式の文字（`Cf`）、U+3164、U+2800、U+115F、U+1160、U+FFA0 を除いて何も残らない名前は、空の名前と同じ扱いにする。重複は許す（一意の制約を持たず、閉じたものと同じ名前もありうるため）。
 - ワークスペースの一覧（`workspace-list`）と最初のリーダーの候補（`workspace-leader-candidates`）は、件数に上限を付けない。想定はワークスペースが組織あたり数十、候補も同じく数十から数百で、1回の応答に収まる。上限で切ると、管理者から見えないワークスペースや、指せない人ができるため。想定を超える組織が出たら、そのときに絞り込みやページ分けを足す。
 - ワークスペースの一覧の人数（`workspace-list` の `member_count` と `leader_count`）は、メンバーの一覧（`member-list`）が返す人と同じ条件で数える（次の項目）。
@@ -343,6 +347,8 @@
 | created_by | TEXT | NOT NULL、FK users | |
 | created_at | TEXT | NOT NULL | |
 
+- 索引: `(created_by)`。外部キーの検査。
+
 ### memberships
 
 所属の期間の履歴。抜けて戻ったら新しい行を作る。
@@ -360,7 +366,8 @@
 
 - 一意: `(workspace_id, user_id) WHERE left_at IS NULL`。今の所属は1人1行。
 - `CHECK ((left_on IS NULL) = (left_at IS NULL))`、`CHECK (left_on >= joined_on)`。離脱の日付と日時はそろって入り、離脱日は参加日より前にならない。今の所属の一意は `left_at` で、積載量の期間は `left_on` で見るので、片方だけ入った行は2つの判定を食い違わせる。
-- 索引: `(user_id) WHERE left_at IS NULL`。ログインできるか、自分の今日に出すワークスペースはどれかを引く。
+- 索引: `(user_id, left_at)`。外部キーの検査と、ログインできるか、自分の今日に出すワークスペースはどれか（今の所属）を引く。
+- 索引: `(user_id) WHERE left_at IS NULL`。最初のマイグレーションで張った今の所属の索引。条件が `left_at IS NULL` なので外部キーの検査に使えず、今の所属も上の索引で引けるので、使わない。消すのは縮める変更なので、別の PR で行う（#214）。
 - 積載量では、日がいずれかの行の `joined_on`〜`left_on` に入るかで、所属していた期間を数える。
 - 管理者が所属していないワークスペースを操作するときは、行を作らない。担当や討伐隊の候補は、この表の今の所属から選ぶ。
 
@@ -385,6 +392,7 @@
 - 表の制約: `users` と同じ3つの CHECK（`login_subject` と `login_email` のどちらか一方、`login_email` と `claim_token_hash` と `claim_expires_at` はそろって入るか空、`login_email` は `google` の行だけで、そろえた形）。
 - 一意: `(workspace_id, login_provider, login_subject) WHERE status = 'pending'`、`(workspace_id, login_provider, login_email) WHERE status = 'pending' AND login_subject IS NULL`。
 - 索引: `(login_provider, login_subject) WHERE status = 'pending'`。ログインの可否と招待の一覧に使う。
+- 索引: `(invited_by)`。外部キーの検査。
 - メンバーの画面の承諾待ちの招待（`member-list`）は、`status = 'pending'` の行を、期限の過ぎたものも含めて `created_at`、`id` の順に、リーダーと管理者（所属していない管理者を含む）にだけ返す。一般のメンバーには返さない。
 - 今の所属がある人は招待できないことを、アプリが検査する。Google の招待では、メールアドレスを `sub` に結べないため、所属の検査は `sub` を埋めるときに行う（下の「メールアドレスで待つ指名と招待」）。
 - Google で招待し直すときは、同じワークスペースの同じ `login_email` の承諾待ちの招待を同じバッチで `revoked` にする。
@@ -438,7 +446,8 @@ Google の人は、ログインするまで `sub` が分からない。そのた
 | created_at | TEXT | NOT NULL | |
 
 - 行がなければ配分は未設定。その月に所属しているワークスペースが1つだけなら 100% とみなす。この判定は保存せず読むときに行う。
-- 索引: `(user_id, effective_month)`。本人の配分の合計に使う。
+- 索引: `(user_id, effective_month)`。本人の配分の合計に使う。`user_id` の外部キーの検査にも使う。
+- 索引: `(set_by)`。外部キーの検査。
 
 ## ワークスペースの定義
 
@@ -543,7 +552,7 @@ Google の人は、ログインするまで `sub` が分からない。そのた
 | deleted_at | TEXT | | |
 | created_at、updated_at | TEXT | NOT NULL | |
 
-- 索引: `(workspace_id) WHERE deleted_at IS NULL`、`(owner_user_id) WHERE deleted_at IS NULL`。
+- 索引: `(workspace_id) WHERE deleted_at IS NULL`、`(owner_user_id)`。`owner_user_id` は外部キーの検査にも使うので、部分索引にしない。
 - 定期処理は `status IN ('active', 'error') AND deleted_at IS NULL` を `last_success_at` の古い順に処理する。
 - 削除は論理削除にする。取り込んだタスクが `task_sources.connection_id` で指すため。削除したら認証情報の列を消す。
 - `credential_*` と `sync_state_json` は API で返さない。返すのは `credential_last4` まで。
@@ -600,6 +609,7 @@ Google の人は、ログインするまで `sub` が分からない。そのた
 
 - `CHECK (completed_at IS NULL OR canceled_at IS NULL)`。
 - 索引: `(workspace_id, position) WHERE deleted_at IS NULL`。
+- 索引（外部キーの検査）: `(requester_user_id)`、`(created_by)`、`(completed_by) WHERE completed_by IS NOT NULL`、`(canceled_by) WHERE canceled_by IS NOT NULL`。
 
 ### epic_party_members
 
@@ -614,6 +624,7 @@ Google の人は、ログインするまで `sub` が分からない。そのた
 | joined_at | TEXT | NOT NULL | |
 
 - 索引: `(user_id)`。
+- 索引: `(added_by)`。外部キーの検査。
 - クリア報酬は、クリアした時点のこの表の行に払う。
 
 ### stories
@@ -637,6 +648,7 @@ Google の人は、ログインするまで `sub` が分からない。そのた
 | created_at、updated_at | TEXT | NOT NULL | |
 
 - 索引: `(workspace_id, epic_id, position) WHERE deleted_at IS NULL`。
+- 索引（外部キーの検査）: `(created_by)`、`(completed_by) WHERE completed_by IS NOT NULL`。
 - 親を変えたら、新しい親の末尾の `position` を振る。
 - `title` は `tasks.title` と同じ決まり（前後の空白を除いて 1〜200 字）。`acceptance_criteria_md` と `body_md` はそれぞれ 1 万字まで（コードポイントで数え、改行とタブ以外の制御文字と見えない文字は断る）。改行は `\n` にそろえ、前後の空行と末尾の空白だけを落とし、先頭の行の字下げは残す。空は `NULL`。列の CHECK（10 万字）は、決まりを超えた書き込みを止める保険。`link_url` は http と https の URL だけで 2048 字まで。ユーザー名とパスワードを含む URL は断り、保存する値は解釈した URL（`new URL(...).href`）にそろえる。`due_on` は暦に存在する日付で、空は `NULL`。
 - 作る操作（`story-create`）は、親なし（`epic_id` は空）で、`position` は親のないストーリーの末尾、`created_by` は呼んだ人。変える操作（`story-update`）は、送られた欄のうち今の値と違うものだけを、読んだ値のままなら、という条件つきで書き（書き方は「書き込みの単位」の「ストーリーの変更」）、変えた欄だけを `change_logs` に `{"列名": [前, 後]}` で残す。変える欄が無ければ何も書かない。ダイアログを開くときの読み取り（`story-get`）は、1件の全部の欄を返す（`backlog-tree` には載せない）。無い（別の組織、別のワークスペース、削除済みを含む）ときは 404 で、閉じたワークスペースでも読める。
@@ -677,6 +689,7 @@ Google の人は、ログインするまで `sub` が分からない。そのた
   - `(story_id, position) WHERE deleted_at IS NULL`: ストーリーの配下
   - `(sprint_id, column_id, column_position) WHERE deleted_at IS NULL`: スプリントの列
   - `(assignee_user_id) WHERE deleted_at IS NULL AND completed_at IS NULL`: 自分の今日、積載量
+  - `(assignee_user_id) WHERE assignee_user_id IS NOT NULL`、`(completed_by) WHERE completed_by IS NOT NULL`、`(created_by) WHERE created_by IS NOT NULL`: 外部キーの検査。上の担当の部分索引は条件が違うので、検査に使えない
 - 手で作るタスクの `title` は、前後の空白を除いて 1〜200 字。字数の数え方と断る文字は `workspaces.name` と同じ。
 - 「今日やる」は、`today_on` が今日（ワークスペースのタイムゾーン）なら今日の印、それより前で未完了なら前日からの持ち越しとして示す。担当が替わったら消す。
 - 区分は、親のエピック、親のストーリー、タスク自身の順に、最初に入っているものを使う。読むときに結合して出し、タスクには写さない。完了の記録（`completions.category_id`）には、完了した時点の値を写す。
@@ -745,6 +758,7 @@ Google の人は、ログインするまで `sub` が分からない。そのた
 | updated_by | TEXT | NOT NULL、FK users | |
 | updated_at | TEXT | NOT NULL | |
 
+- 索引: `(updated_by)`。外部キーの検査。
 - 未記入の判定は、削除していない欄のうち行のない欄があるか。
 - 「詳細を書いた」の受け取り手は、すべて埋まっているタスクで `updated_at` が最も新しい行の `updated_by`。
 
@@ -762,7 +776,8 @@ Google の人は、ログインするまで `sub` が分からない。そのた
 | deleted_by | TEXT | FK users | |
 | created_at | TEXT | NOT NULL | |
 
-索引: `(task_id, created_at)`。
+- 索引: `(task_id, created_at)`。
+- 索引（外部キーの検査）: `(author_user_id)`、`(deleted_by) WHERE deleted_by IS NOT NULL`。
 
 ### attachments
 
@@ -789,7 +804,7 @@ Google の人は、ログインするまで `sub` が分からない。そのた
 - 消すときは行を物理削除する。論理削除にしないのは、戻す手段がなく、残すと容量の上限に数え続けるため。消したことは付く先の `change_logs` に残す。
 - 組織の合計は、組織のワークスペースの `size_bytes` の合計を上げるたびに計算する。集計は保存しない。同時に上げたときに少し超えることは許す。上げたことで80%を超え、`organizations.attachment_quota_warned_at` が空なら、管理者全員に通知し、その日時を入れる。
 - 画面と Markdown からは `/api/<slug>/attachments/<id>` で参照する。返すときは権限を確かめ、`X-Content-Type-Options: nosniff` と `Cache-Control: private` を付ける。画像として出す4種類（PNG、JPEG、GIF、WebP）と動画として再生する2種類（MP4、WebM）以外は `Content-Disposition: attachment` で返す。動画は Range リクエストに応える。
-- 索引: `(task_id)`、`(story_id)`、`(epic_id)`、`(comment_id)` をそれぞれ NOT NULL の部分索引で、`(workspace_id)`、`(created_at) WHERE attached_at IS NULL`。
+- 索引: `(task_id)`、`(story_id)`、`(epic_id)`、`(comment_id)` をそれぞれ NOT NULL の部分索引で、`(workspace_id)`、`(created_at) WHERE attached_at IS NULL`、`(uploaded_by)`（外部キーの検査）。
 
 ### sprints
 
@@ -814,6 +829,7 @@ Google の人は、ログインするまで `sub` が分からない。そのた
 - `CHECK (julianday(end_on) - julianday(start_on) BETWEEN 0 AND 27)`。長さは1〜28日。
 - 一意: `(workspace_id) WHERE status = 'active' AND deleted_at IS NULL`。進行中は1つ。
 - 索引: `(workspace_id, start_on) WHERE deleted_at IS NULL`。
+- 索引（外部キーの検査）: `(started_by) WHERE started_by IS NOT NULL`、`(closed_by) WHERE closed_by IS NOT NULL`。
 - 期間を重ねないことはアプリが検査する。延長で後ろのスプリントをずらすときは、1回のバッチで全部を書き直す。
 
 ### sprint_entries
@@ -831,7 +847,7 @@ Google の人は、ログインするまで `sub` が分からない。そのた
 | outcome | TEXT | `completed`、`carried_over`、`removed` | 完了、持ち越し、外した。入っている間は空 |
 
 - 一意: `(task_id) WHERE ended_at IS NULL`。1つのタスクが入っている行は1つ。
-- 索引: `(sprint_id)`、`(task_id)`。
+- 索引: `(sprint_id)`、`(task_id)`、`(added_by)`（外部キーの検査）。
 - 積載量では `outcome = 'carried_over'` の行を数えない。持ち越したタスクは最後に入ったスプリントでだけ数える。
 - スプリントを削除したら、入っていた行を `removed` で閉じ、タスクの `sprint_id` と `column_id` を空にする。
 
@@ -856,6 +872,7 @@ Google の人は、ログインするまで `sub` が分からない。そのた
 | created_at、updated_at | TEXT | NOT NULL | |
 
 - 索引: `(workspace_id, completed_at)`、`(workspace_id, billing_month)`、`(sprint_id)`、`(task_id)`。
+- 索引（外部キーの検査）: `(completed_by)`、`(assignee_user_id) WHERE assignee_user_id IS NOT NULL`。
 - 未完了に戻したら行を消す。ただし、レビュー依頼が再依頼されて未完了に戻るときは消さない。このため1つのタスクに複数の行がありうる。
 
 ### thanks
@@ -873,7 +890,7 @@ Google の人は、ログインするまで `sub` が分からない。そのた
 
 - `CHECK (sender_user_id <> recipient_user_id)`。
 - 一意: `(task_id, recipient_user_id)`。同じタスクで同じ相手に1回。
-- 索引: `(recipient_user_id)`。
+- 索引: `(recipient_user_id)`、`(sender_user_id)`（外部キーの検査）。
 - 取り消しは行を消す。完了したタスクの感謝は取り消せない（アプリが検査）。
 
 ### xp_grants
@@ -910,7 +927,8 @@ Google の人は、ログインするまで `sub` が分からない。そのた
 - 「同じタスクの同じ行動で有効な付与は1回だけ」は、上のキーと、付与の前に「打ち消されていない同じ行動の付与がないか」をアプリが見ることで守る。
 - 起票、詳細、完了は、タスクを完了にしたときに同じバッチで付け、未完了に戻したときに同じバッチで打ち消す。
 - 感謝の回数の上限は、`action = 'help'` の行を `helper_sender_user_id` と受け取った人で絞り、`confirmed_at` がワークスペースのタイムゾーンで同じ週に入るものを数えて判定する。
-- 索引: `(user_id, workspace_id)`、`(workspace_id, user_id)`、`(task_id)`、`(story_id)`、`(epic_id)`、`(reverses_grant_id)`。`(workspace_id, user_id)` はチーム全体の合計とメンバーごとの合計に使う。
+- 索引: `(user_id, workspace_id)`、`(workspace_id, user_id)`、`(task_id)`、`(story_id)`、`(epic_id)`、`(reverses_grant_id)`。`(workspace_id, user_id)` はチーム全体の合計とメンバーごとの合計に使う。`(user_id, workspace_id)` は `user_id` の外部キーの検査にも使う。
+- 索引: `(helper_sender_user_id) WHERE helper_sender_user_id IS NOT NULL`。外部キーの検査。
 - レベル、合計、チーム全体の合計は `SUM(amount)` で出す。
 
 ### notifications
@@ -930,6 +948,7 @@ Google の人は、ログインするまで `sub` が分からない。そのた
 | created_at | TEXT | NOT NULL | |
 
 - 索引: `(user_id, created_at)`、`(user_id) WHERE read_at IS NULL`。
+- 索引: `(actor_user_id) WHERE actor_user_id IS NOT NULL`。外部キーの検査。
 - 既読にしてから90日たった通知は定期処理で消す。未読は消さない。
 
 ### change_logs
@@ -950,6 +969,7 @@ Google の人は、ログインするまで `sub` が分からない。そのた
 | created_at | TEXT | NOT NULL | |
 
 - 索引: `(entity_type, entity_id, created_at)`、`(organization_id, created_at)`、`(workspace_id, created_at)`。
+- 索引: `(actor_user_id) WHERE actor_user_id IS NOT NULL`。外部キーの検査。
 - タスク、ストーリー、エピックの履歴はメンバー全員が、それ以外はリーダーと管理者が見られる。見られる範囲は `entity_type` で決める。
 - 同期による取り込み元の属性の書き換えは残さない。量が多く、取り込み元で見られるため。
 - 期間で消さず、残し続ける。容量が気になったら、手順書のエクスポート（`wrangler d1 export`）で退避する。
