@@ -326,23 +326,72 @@ describe('.githooks', () => {
       });
 
       test('本体の作業コピー（追加のワークツリーでない）では動かない', () => {
-        const work = setUpMain('dv-main', true);
+        // 本体に .dev.vars が無い clone で、追加のワークツリーと取り違えると「本体に .dev.vars が無い」の案内が出る。出ないことで判定を見る
+        const work = setUpMain('dv-main', false);
         const env = failingGh('dv-main');
-        git(work, 'add', '.dev.vars.example');
-        git(work, 'commit', '--no-verify', '-q', '-m', 'example');
-        git(work, 'push', 'origin', 'main');
+        // setUp が core.hooksPath を設定済みなので、フックを切って example を push する（main の上のコミットと push はフックが止める）
+        const noHooks = ['-c', 'core.hooksPath=/dev/null'];
+        assert.equal(git(work, ...noHooks, 'add', '.dev.vars.example').status, 0);
+        assert.equal(git(work, ...noHooks, 'commit', '-q', '-m', 'example').status, 0);
+        assert.equal(git(work, ...noHooks, 'push', 'origin', 'main').status, 0);
         // clone は前の HEAD が null の SHA になるが、追加のワークツリーではないので、.dev.vars を置かず案内も出さない
         const remote = path.join(root, 'dv-main.git');
         const clone = path.join(root, 'dv-main-clone');
         const cloned = gitWith(env, root, '-c', `core.hooksPath=${hooksDir}`, 'clone', remote, clone);
         assert.equal(cloned.status, 0);
+        assert.equal(lstatSync(path.join(clone, '.dev.vars.example')).isFile(), true);
         assert.doesNotMatch(cloned.stderr, /\.dev\.vars/);
         assert.throws(() => lstatSync(path.join(clone, '.dev.vars')), { code: 'ENOENT' });
-        // 本体で作るブランチも同じ
-        const switched = gitWith(env, work, 'checkout', '-b', 'feature-main');
-        assert.equal(switched.status, 0);
-        assert.doesNotMatch(switched.stderr, /\.dev\.vars/);
-        assert.equal(lstatSync(path.join(work, '.dev.vars')).isSymbolicLink(), false);
+      });
+
+      test('detached のワークツリーと、gh の無い環境でも、リンクを置く', () => {
+        const work = setUpMain('dv-env', true);
+        const env = failingGh('dv-env');
+        const expected = path.join(realpathSync(work), '.dev.vars');
+        const detached = path.join(root, 'wt-dv-detached');
+        assert.equal(gitWith(env, work, 'worktree', 'add', detached, '--detach').status, 0);
+        assert.equal(readlinkSync(path.join(detached, '.dev.vars')), expected);
+        // git とフックの使う道具だけを置いた PATH。gh は無い
+        const bin = path.join(root, 'dv-tools-bin');
+        mkdirSync(bin);
+        for (const tool of ['git', 'dirname', 'basename', 'ln']) {
+          const found = spawnSync('sh', ['-c', `command -v ${tool}`], { encoding: 'utf8' }).stdout.trim();
+          symlinkSync(realpathSync(found), path.join(bin, tool));
+        }
+        const noGh = path.join(root, 'wt-dv-nogh');
+        const added = gitWith({ PATH: bin }, work, 'worktree', 'add', noGh, '-b', '15-dv');
+        assert.equal(added.status, 0);
+        assert.match(added.stderr, /\.dev\.vars を本体/);
+        assert.match(added.stderr, /gh が無いので、#15/);
+        assert.equal(readlinkSync(path.join(noGh, '.dev.vars')), expected);
+      });
+
+      test('共通のディレクトリが .git でない（bare の配置）ときは、親を本体と取り違えない', () => {
+        setUp('dv-bare-src');
+        const env = failingGh('dv-bare');
+        // bare リポジトリの親に .dev.vars.example と .dev.vars があっても、本体とはみなさない
+        const parent = path.join(root, 'dv-bare');
+        mkdirSync(parent);
+        writeFileSync(path.join(parent, '.dev.vars.example'), '# 例\n');
+        writeFileSync(path.join(parent, '.dev.vars'), 'PLACEHOLDER=1\n');
+        const bare = path.join(parent, 'repo.git');
+        assert.equal(git(root, 'clone', '--bare', path.join(root, 'dv-bare-src.git'), bare).status, 0);
+        const wt = path.join(parent, 'wt');
+        const added = gitWith(
+          env,
+          bare,
+          '-c',
+          `core.hooksPath=${hooksDir}`,
+          'worktree',
+          'add',
+          wt,
+          '-b',
+          'feature-bare',
+          'main',
+        );
+        assert.equal(added.status, 0);
+        assert.doesNotMatch(added.stderr, /\.dev\.vars/);
+        assert.throws(() => lstatSync(path.join(wt, '.dev.vars')), { code: 'ENOENT' });
       });
 
       test('本体の根を確かめられない（.dev.vars.example が無い）ときは、何もしない', () => {

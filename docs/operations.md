@@ -75,7 +75,7 @@ Workers Builds が使えるのは、Builds が自分で作ったトークンだ�
 
 ### シークレット
 
-Worker のシークレットは、ダッシュボードの Worker の Settings → Variables and Secrets か `wrangler secret put` で入れる。ダッシュボードでは Type を `Secret` にする。`Variable` で入れると、Workers Builds の次のデプロイで、`wrangler.jsonc` の `vars` に無い名前として消える。消えても `/api/health` は 200 のままで、運用者がいない状態になるか、GitHub のログインが「いまログインを受け付けられません」になるだけなので、気づいたら `Secret` として入れ直す。どちらで入れても、保存するとその場で新しい版が本番に出る。値は git に入れず、手元の開発用の値は `.dev.vars.example` を `.dev.vars` に写して入れる。
+Worker のシークレットは、ダッシュボードの Worker の Settings → Variables and Secrets か `wrangler secret put` で入れる。ダッシュボードでは Type を `Secret` にする。`Variable` で入れると、Workers Builds の次のデプロイで、`wrangler.jsonc` の `vars` に無い名前として消える。消えても `/api/health` は 200 のままで、運用者がいない状態になるか、GitHub のログインが「いまログインを受け付けられません」になるだけなので、気づいたら `Secret` として入れ直す。どちらで入れても、保存するとその場で新しい版が本番に出る。値は git に入れず、手元の開発用の値は、本体の作業コピーで `.dev.vars.example` を `.dev.vars` に写して入れる。ワークツリーの `.dev.vars` は本体へのリンクなので、そこで写すと本体の値を上書きする（`docs/development.md` の「ワークツリーで作業する」）。
 
 | 名前 | 中身 |
 | --- | --- |
@@ -112,7 +112,7 @@ Worker のシークレットは、ダッシュボードの Worker の Settings �
    | Redirect URI | `https://scrum-guild.ucan-lab.workers.dev/api/auth/github/callback` | `http://localhost:5173/api/auth/github/callback` |
 
 3. 作った OAuth App の「Client ID」を控え、「Generate a new client secret」で作ったシークレットを控える。シークレットは作った直後にしか見えない
-4. 本番は `wrangler secret put GITHUB_CLIENT_ID` と `wrangler secret put GITHUB_CLIENT_SECRET`（か、ダッシュボードの Worker の Settings → Variables and Secrets）で入れる。開発用は `.dev.vars.example` を `.dev.vars` に写して `GITHUB_CLIENT_ID` と `GITHUB_CLIENT_SECRET` に入れる。本番で初めて入れるときは `OPERATOR_LOGIN_IDS` にも自分の ID を入れ、入れないと次の手順のログインは `/login?error=denied` で終わる（上の「シークレット」の `OPERATOR_LOGIN_IDS` の決まり）
+4. 本番は `wrangler secret put GITHUB_CLIENT_ID` と `wrangler secret put GITHUB_CLIENT_SECRET`（か、ダッシュボードの Worker の Settings → Variables and Secrets）で入れる。開発用は、本体の作業コピーで `.dev.vars.example` を `.dev.vars` に写して `GITHUB_CLIENT_ID` と `GITHUB_CLIENT_SECRET` に入れる（ワークツリーの `.dev.vars` は本体へのリンクなので、直すのは本体の側。`docs/development.md` の「ワークツリーで作業する」）。本番で初めて入れるときは `OPERATOR_LOGIN_IDS` にも自分の ID を入れ、入れないと次の手順のログインは `/login?error=denied` で終わる（上の「シークレット」の `OPERATOR_LOGIN_IDS` の決まり）
 5. 入れたら、本番は `https://scrum-guild.ucan-lab.workers.dev/api/health` を開き、200 が返ることを確かめる。ログインの画面から GitHub のボタンを押し、GitHub の同意画面に戻り先の URL の不一致（`redirect_uri` の誤り）が出ないことを見る
 
 決まり。
