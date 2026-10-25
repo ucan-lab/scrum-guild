@@ -153,9 +153,9 @@ function isOption(arg, full, shortest) {
   return name.length >= shortest && full.startsWith(name);
 }
 
-// git -C "$(git rev-parse --show-toplevel)" や -C ~/x の行き先は、実行するまで分からない
+// git -C "$(git rev-parse --show-toplevel)"、-C ~/x、-C /rep? の行き先は、実行するまで分からない
 function gitDirAt(dir, target) {
-  return /^~|\$/.test(target) ? null : dir && path.resolve(dir, target);
+  return /^~|[$*?[\]{}]/.test(target) ? null : dir && path.resolve(dir, target);
 }
 
 // dir が null のときは、作業場所を判定できない（cd ~、cd $X、GIT_DIR=）

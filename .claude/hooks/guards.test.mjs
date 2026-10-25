@@ -448,6 +448,9 @@ describe('bash-rules: 止める', () => {
       'git -C "$PWD" commit -m x',
       'git -C ~/repo commit -m x',
       'git -C$PWD commit -m x',
+      'git -C /rep? commit -m x',
+      "git -C '/re*' commit -m x",
+      'git -C {/repo,/x} commit -m x',
     ]) {
       assert.equal(judgeBash(command, { cwd: '/repo', branchOf })?.[0], 'ask', command);
     }
