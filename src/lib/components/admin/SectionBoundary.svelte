@@ -10,7 +10,7 @@
 </script>
 
 <script lang="ts">
-  import { tick, type Snippet } from 'svelte';
+  import { onMount, tick, type Snippet } from 'svelte';
   import { t } from '../../vocabulary.svelte.ts';
   import EmptyState from '../EmptyState.svelte';
   import Icon from '../Icon.svelte';
@@ -29,6 +29,12 @@
   }: { section: SectionStatus; failedTitle: string; refreshFailedText: string; children: Snippet } = $props();
 
   let body = $state<HTMLElement>();
+  // 描いた後に真にする。領域の文字が最初から入っていると、読み上げられないことがあるため
+  let mounted = $state(false);
+  onMount(() => {
+    mounted = true;
+  });
+  const loadingAnnouncement = $derived(mounted && section.state === 'loading' ? t('loading') : '');
 
   const retryStatus = $derived(section.retrying ? t('retrying') : section.retryFailed ? t('retryFailed') : '');
 
@@ -44,8 +50,11 @@
   <span class="field-hint" role="status">{retryStatus}</span>
 {/snippet}
 
+<!-- 初回の読み込み中を読み上げに伝える。領域は常に置き、描いた後に中の文字だけを替える（最初から文字が入っていると読み上げられないことがある） -->
+<span class="visually-hidden" role="status">{loadingAnnouncement}</span>
+
 {#if section.state === 'loading'}
-  <EmptyState icon="clock" title={t('loading')} />
+  <div aria-busy="true"><EmptyState icon="clock" title={t('loading')} /></div>
 {:else if section.state === 'failed'}
   <EmptyState icon="alert" title={failedTitle} text={t('loadFailedText')} actions={retryActions} />
 {:else}

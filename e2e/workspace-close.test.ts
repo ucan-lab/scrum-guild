@@ -384,6 +384,21 @@ test.describe('管理者（あおば開発のミナト）', () => {
     await expect(page.getByText('パーティの一覧を読み込めませんでした')).toHaveCount(0);
   });
 
+  test('初回の読み込み中は、読み上げの領域（role="status"）に伝え、節に aria-busy を付ける', async ({ page }) => {
+    await page.route('**/api/aoba/workspace-list', async (route) => {
+      await new Promise((resolve) => setTimeout(resolve, 3000));
+      await route.continue();
+    });
+    await page.goto('/aoba/admin', { waitUntil: 'commit' });
+    // 作るダイアログの候補の欄にも読み込み中の領域と aria-busy があるので、節の中に絞る
+    await expect(page.locator('.setting [role="status"]', { hasText: '読み込んでいます' })).toHaveCount(1);
+    await expect(page.locator('.setting [aria-busy="true"]')).toHaveCount(1);
+    // 読めたら、領域は残したまま文字を消す
+    await expect(page.locator('tbody tr', { hasText: '受託開発チーム' })).toBeVisible();
+    await expect(page.locator('.setting [role="status"]', { hasText: '読み込んでいます' })).toHaveCount(0);
+    await expect(page.locator('.setting [aria-busy="true"]')).toHaveCount(0);
+  });
+
   test('狭い幅でも、節の「もう一度試す」は 44px 四方以上ある', async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 800 });
     await page.route('**/api/aoba/workspace-list', (route) =>
