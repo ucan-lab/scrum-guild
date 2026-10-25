@@ -5,7 +5,7 @@ import { routePath } from 'hono/route';
 import type { ErrorBody, ErrorCode } from '../shared/errors.ts';
 import type { Health } from '../shared/health.ts';
 import { apiCacheControl, apiCsp, fixedHeaders } from '../shared/security-headers.ts';
-import { commonDb, sql } from './db/index.ts';
+import { DatabaseUnavailableError, pingDatabase } from './db/index.ts';
 
 export type AppEnv = { Bindings: Env };
 
@@ -44,18 +44,20 @@ export function createApp() {
 
   // 煙のテスト（scripts/deploy.ts）が読む。D1 に届かないときは 503 にして、新しい版の失敗として拾わせる
   app.get('/health', async (c) => {
-    const db = commonDb(c.env);
     try {
-      await db.first(db.statement((q) => q.selectNoFrom(sql<number>`1`.as('ok'))));
+      await pingDatabase(c.env);
     } catch (err) {
+      // 送るのに失敗したときだけ 503 にする。文の組み立ての誤りなどは握りつぶさず、onError の 500 にする
+      if (!(err instanceof DatabaseUnavailableError)) throw err;
       // 中身は出さない。D1 の例外の message には SQL や接続の詳細が混ざりうる
       console.error(
         JSON.stringify({
           level: 'error',
           code: 'unavailable',
           requestId: c.req.header('cf-ray') ?? null,
+          method: c.req.method,
           route: routePath(c),
-          error: err instanceof Error ? err.name : typeof err,
+          error: err.cause instanceof Error ? err.cause.name : typeof err.cause,
         }),
       );
       return c.json(errorBody('unavailable', 'database unavailable'), 503);

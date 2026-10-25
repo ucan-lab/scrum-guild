@@ -30,15 +30,17 @@ describe('API', () => {
   test('/api/health は D1 に届かなければ 503 の unavailable で、中身を応答にもログにも出さない', async () => {
     // D1 が落ちたときの例外。message には接続の詳細が混ざりうる
     const down = new Error('D1_ERROR: 接続の詳細');
+    // どのメソッドを呼んでも失敗する D1
     const unreachable = {
       APP_VERSION: 'dev',
-      DB: {
-        prepare: () => ({
-          bind: () => ({
-            all: () => Promise.reject(down),
-          }),
-        }),
-      },
+      DB: new Proxy(
+        {},
+        {
+          get: () => () => {
+            throw down;
+          },
+        },
+      ),
     } as unknown as Env;
     const error = vi.spyOn(console, 'error').mockImplementation(() => {});
     try {
@@ -50,7 +52,13 @@ describe('API', () => {
       expectApiHeaders(res);
 
       const logged = error.mock.calls.flat().join('\n');
-      expect(logged).toContain('/api/health');
+      expect(JSON.parse(error.mock.calls[0]![0] as string)).toMatchObject({
+        level: 'error',
+        code: 'unavailable',
+        method: 'GET',
+        route: '/api/health',
+        error: 'Error',
+      });
       expect(logged).not.toContain('接続の詳細');
     } finally {
       error.mockRestore();

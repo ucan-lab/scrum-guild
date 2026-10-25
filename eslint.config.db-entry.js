@@ -1,0 +1,137 @@
+// 入口を守る規則（docs/development.md の「入口を守る規則」）。D1 には src/server/db/ の入口（commonDb と orgDb）からだけ問い合わせる。
+// 禁止の定義はこの1つの規則に置く。ESLint は同じ規則を設定ごとに書くと後ろが前を置き換えるので、
+// no-restricted-imports などに分けて並べると、設定を足したときに黙って消える。ファイルごとの違いは規則の中で判定する。
+//
+// src/server/db/ の外で禁じるもの:
+//   - kysely の import（静的、動的、型の import()、require、export from）
+//   - db/ の内部のファイルの import（入口のモジュール db/index.ts 以外）
+//   - db/testing.ts の import（test/ だけが使える）
+//   - 引数が文字列のリテラルでない import()、createRequire、process.getBuiltinModule（import の検査を抜けるため）
+//   - D1 の binding（env.DB、env['DB']、env[`DB`]、{ DB } の取り出し、Reflect.get(env, 'DB')、Env['DB']）
+//   - D1Database の型
+// 例外は、入口を通さない次の 2 つのテストだけ（規則を丸ごと外す）。
+//   test/apply-migrations.ts: 全マイグレーションを D1 の binding に直に当てる。入口より前に要る
+//   test/schema.test.ts: CHECK や一意を確かめるため、型を外れた生の INSERT を送る。入口の型を通すと、壊れた値を書けない
+import path from 'node:path';
+
+const DB_DIR = 'src/server/db/';
+const EXCEPTIONS = new Set(['test/apply-migrations.ts', 'test/schema.test.ts']);
+const BINDING = 'DB';
+// 第2引数に名前を取って、プロパティを読む関数
+const PROPERTY_READERS = new Set(['get', 'getOwnPropertyDescriptor']);
+
+function stringOf(node) {
+  if (!node) return undefined;
+  if (node.type === 'Literal' && typeof node.value === 'string') return node.value;
+  if (node.type === 'TemplateLiteral' && node.expressions.length === 0) return node.quasis[0].value.cooked ?? undefined;
+  return undefined;
+}
+
+// キーの名前。{ DB }、{ 'DB': d }、{ ['DB']: d }、{ [`DB`]: d } のどれでも DB を返す
+function keyName(key, computed) {
+  if (!computed && key.type === 'Identifier') return key.name;
+  return stringOf(key);
+}
+
+const rule = {
+  meta: {
+    type: 'problem',
+    schema: [],
+    messages: {
+      kysely:
+        'kysely を src/server/db/ の外で使わない。問い合わせは入口（commonDb、orgDb）から、型は db/index.ts から取る',
+      internal: 'src/server/db/ の内部のファイルを import しない。入口のモジュール（db/index.ts）から取る',
+      testing: 'db/testing.ts は test/ からだけ import する。組織を確かめずに入口を作る口を、本番のコードに入れない',
+      dynamicImport:
+        'import() の引数は文字列のリテラルにする。式で渡すと、kysely と db/ の内部のファイルの検査を抜けられる',
+      createRequire:
+        'createRequire と process.getBuiltinModule を使わない。import の検査を抜けて kysely と db/ の内部のファイルを読めてしまう',
+      binding: 'D1 の binding（DB）を直に使わない。src/server/db/ の入口（commonDb、orgDb）から問い合わせる',
+      d1Database:
+        'D1Database の型を src/server/db/ の外で使わない。src/server/db/ の入口（commonDb、orgDb）から問い合わせる',
+    },
+  },
+  create(context) {
+    const rel = path.relative(context.cwd, context.filename).split(path.sep).join('/');
+    if (rel.startsWith(DB_DIR) || EXCEPTIONS.has(rel)) return {};
+
+    const inTest = rel.startsWith('test/');
+
+    function checkSpecifier(node, specifier) {
+      if (specifier === undefined) return;
+      if (/^kysely(\/|$)/.test(specifier)) {
+        context.report({ node, messageId: 'kysely' });
+      } else if (/(^|\/)db\/(?!(index|testing)(\.ts)?$).+/.test(specifier)) {
+        context.report({ node, messageId: 'internal' });
+      } else if (!inTest && /(^|\/)db\/testing(\.ts)?$/.test(specifier)) {
+        context.report({ node, messageId: 'testing' });
+      }
+    }
+
+    const checkSource = (node) => node.source && checkSpecifier(node, stringOf(node.source));
+
+    return {
+      ImportDeclaration: checkSource,
+      ExportNamedDeclaration: checkSource,
+      ExportAllDeclaration: checkSource,
+      ImportExpression(node) {
+        const specifier = stringOf(node.source);
+        if (specifier === undefined) context.report({ node, messageId: 'dynamicImport' });
+        else checkSpecifier(node, specifier);
+      },
+      // type K = import('kysely').Kysely
+      TSImportType(node) {
+        checkSpecifier(node, stringOf(node.argument?.literal ?? node.argument));
+      },
+      // import k = require('kysely')
+      TSImportEqualsDeclaration(node) {
+        if (node.moduleReference.type === 'TSExternalModuleReference') {
+          checkSpecifier(node, stringOf(node.moduleReference.expression));
+        }
+      },
+      ImportSpecifier(node) {
+        const imported = node.imported.type === 'Identifier' ? node.imported.name : node.imported.value;
+        if (imported === 'createRequire') context.report({ node, messageId: 'createRequire' });
+      },
+      CallExpression(node) {
+        const { callee } = node;
+        if (callee.type === 'Identifier') {
+          if (callee.name === 'require') checkSpecifier(node, stringOf(node.arguments[0]));
+          if (callee.name === 'createRequire') context.report({ node, messageId: 'createRequire' });
+          return;
+        }
+        if (callee.type !== 'MemberExpression') return;
+        const name = keyName(callee.property, callee.computed);
+        if (name === 'createRequire' || name === 'getBuiltinModule') {
+          context.report({ node, messageId: 'createRequire' });
+        } else if (
+          callee.object.type === 'Identifier' &&
+          (callee.object.name === 'Reflect' || callee.object.name === 'Object') &&
+          PROPERTY_READERS.has(name ?? '') &&
+          stringOf(node.arguments[1]) === BINDING
+        ) {
+          context.report({ node, messageId: 'binding' });
+        }
+      },
+      MemberExpression(node) {
+        if (keyName(node.property, node.computed) === BINDING) context.report({ node, messageId: 'binding' });
+      },
+      // const { DB } = env、const { 'DB': d } = env、const { ['DB']: d } = env
+      'ObjectPattern > Property'(node) {
+        if (keyName(node.key, node.computed) === BINDING) context.report({ node, messageId: 'binding' });
+      },
+      // Env['DB']
+      TSIndexedAccessType(node) {
+        if (stringOf(node.indexType.literal) === BINDING) context.report({ node, messageId: 'binding' });
+      },
+      Identifier(node) {
+        if (node.name === 'D1Database') context.report({ node, messageId: 'd1Database' });
+      },
+    };
+  },
+};
+
+export const dbEntryConfig = {
+  plugins: { 'db-entry': { rules: { guard: rule } } },
+  rules: { 'db-entry/guard': 'error' },
+};

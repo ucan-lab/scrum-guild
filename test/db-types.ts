@@ -1,7 +1,7 @@
 // 入口の型の検査。実行はしない（vitest の対象は *.test.ts）。pnpm check の tsc が検査し、
 // 期待したエラーの行が型の検査に通るようになると、使われていない期待として落ちる
 import { env } from 'cloudflare:workers';
-import { commonDb, orgDb, type VerifiedOrganization } from '../src/server/db/index.ts';
+import { commonDb, orgDb, type Statement, type VerifiedOrganization } from '../src/server/db/index.ts';
 
 const common = commonDb(env);
 declare const verified: VerifiedOrganization;
@@ -59,6 +59,40 @@ void org.batch([orgStatement, commonStatement]);
 void common.run(orgStatement);
 // @ts-expect-error 共通の文を組織の中の入口で実行できない
 void org.rows(commonStatement);
+
+// 文は入口が作ったものだけが通る。形だけのオブジェクトと、付け替えた文は型の検査で落ちる
+// @ts-expect-error 形だけのオブジェクトは文にならない
+void common.run({ scope: 'common' });
+// @ts-expect-error 付け替えた文は文にならない
+void common.run({ ...commonStatement, scope: 'common' });
+// @ts-expect-error 空のオブジェクトは文にならない
+const forgedStatement: Statement<'common'> = {};
+void forgedStatement;
+
+// 書き込みの文（RETURNING の無い INSERT、UPDATE、DELETE）は行を持たず、rows と first に渡せない。結果は changes で見る
+const insertStatement = common.statement((q) =>
+  q.insertInto('accounts').values({ id: 'x', created_at: 'x', updated_at: 'x' }),
+);
+const updateStatement = common.statement((q) => q.updateTable('accounts').set({ updated_at: 'x' }));
+const deleteStatement = common.statement((q) => q.deleteFrom('accounts'));
+// @ts-expect-error INSERT は行を返さない
+void common.rows(insertStatement);
+// @ts-expect-error UPDATE は行を返さない
+void common.first(updateStatement);
+// @ts-expect-error DELETE は行を返さない
+void common.rows(deleteStatement);
+void common.run(insertStatement).then((result) => result.changes);
+void common.batch([insertStatement, updateStatement, deleteStatement, commonStatement]);
+// RETURNING を付ければ行を読める
+const returning = common.statement((q) =>
+  q.insertInto('accounts').values({ id: 'x', created_at: 'x', updated_at: 'x' }).returning('id'),
+);
+void common.rows(returning).then((rows) => rows[0]?.id satisfies string | undefined);
+
+// 組織の中の入口は、確かめた組織の ID を読み取り専用で持つ
+org.organizationId satisfies string;
+// @ts-expect-error 読み取り専用
+org.organizationId = 'x';
 
 // 組織を確かめた結果が無いと、組織の中の入口は作れない
 // @ts-expect-error 組織を確かめた結果が要る

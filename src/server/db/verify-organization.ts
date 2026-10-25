@@ -1,22 +1,31 @@
 // 組織を確かめた結果。組織の中の入口（orgDb）はこの型を引数に取るので、組織を確かめずに組織の中の表は引けない。
-// 作れるのは src/server/db/ の中だけ。入口のモジュール（index.ts）は型だけを出し、値（issue）は出さない。
-// #private を持つクラスなので、同じ形のオブジェクトを書いても型の検査で通らず、キャストで通しても is() が実行時に止める。
+// 作れるのは src/server/db/ の中だけ。入口のモジュール（index.ts）は型だけを出し、値は出さない。
+// 作る関数（issueVerifiedOrganization）はクラスの外のモジュールの関数で、手に入れた値からは辿れない。
+// コンストラクターは作る関数だけが持つ札を要り、値の constructor から作り直せない。
+// 型の上では private な印で、同じ形のオブジェクトは通らない。実行時には、作る関数が登録したものだけを is() が通す。
 //
 // 組織を確かめる処理（リクエストの組織が存在し、停止しておらず、ログインした人が入れること）はここに書く。中身は #51。
-// 確かめて通ったときだけ VerifiedOrganization.issue() を呼ぶ
+// 確かめて通ったときだけ issueVerifiedOrganization() を呼ぶ
+const issueToken = Symbol('issue');
+const issuedValues = new WeakSet<object>();
+
 export class VerifiedOrganization {
-  readonly #verified = true;
+  declare private readonly brand: true;
   readonly organizationId: string;
 
-  private constructor(organizationId: string) {
+  constructor(token: symbol, organizationId: string) {
+    if (token !== issueToken) throw new Error('組織を確かめた結果は、組織を確かめる処理だけが作る');
     this.organizationId = organizationId;
-  }
-
-  static issue(organizationId: string): VerifiedOrganization {
-    return new VerifiedOrganization(organizationId);
+    Object.freeze(this);
   }
 
   static is(value: unknown): value is VerifiedOrganization {
-    return typeof value === 'object' && value !== null && #verified in value;
+    return typeof value === 'object' && value !== null && issuedValues.has(value);
   }
+}
+
+export function issueVerifiedOrganization(organizationId: string): VerifiedOrganization {
+  const verified = new VerifiedOrganization(issueToken, organizationId);
+  issuedValues.add(verified);
+  return verified;
 }

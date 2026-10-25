@@ -30,7 +30,7 @@ test('/ はシェルを返し、API の版を出し、CSP の違反が無い', a
   expect(res?.headers()['content-security-policy']).toContain("frame-ancestors 'none'");
 
   await expect(page.getByRole('heading', { level: 1, name: 'Scrum Guild' })).toBeVisible();
-  await expect(page.getByRole('status')).toHaveText(`API: ok、DB: ok（版 ${version}）`);
+  await expect(page.getByRole('status')).toHaveText(`API: ok（版 ${version}）`);
   expect(await collect()).toEqual([]);
 });
 

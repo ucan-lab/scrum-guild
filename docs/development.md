@@ -35,17 +35,25 @@
 
 置き場所は `src/server/db/`（人が差分を読む領域。「マージの判定」）。外から import してよいのは入口のモジュール `db/index.ts` だけ。
 
-- 入口は2つ。`commonDb(env)` は共通の6表だけを型に持ち、`orgDb(env, organization)` は組織の中の16表だけを型に持つ。`organization` は `VerifiedOrganization`（組織を確かめた結果）で、`#private` を持つクラスなので、同じ形のオブジェクトを書いても型の検査を通らない。`index.ts` は型だけを出し、作る `VerifiedOrganization.issue()` は `db/` の中の `verify-organization.ts` に置く（組織を確かめる処理の中身は #51）。`orgDb` は渡された値を実行時にも確かめる
+- 入口は2つ。`commonDb(env)` は共通の6表だけを型に持ち、`orgDb(env, organization)` は組織の中の16表だけを型に持つ。`organization` は `VerifiedOrganization`（組織を確かめた結果）で、private な印を持つクラスなので、同じ形のオブジェクトは型の検査を通らず、値は凍結されて `organizationId` も書き換えられない。`index.ts` が出すのは型だけである。作る関数 `issueVerifiedOrganization()` は `db/verify-organization.ts` のモジュールの関数で、クラスの static にはしていないため、手に入れた値から辿れない。コンストラクターは作る関数だけが持つ札を要求し、値の `constructor` からは作り直せない。`orgDb` は、作る関数が登録したものだけを実行時に受け取る（組織を確かめる処理の中身は #51）
+- `orgDb` は組織の絞り込みを付けない。呼び出し側が、自分の文を `organization_id` か、組織を確かめた `workspace_id` で絞る。絞り込みに使う組織の ID は、リクエストの入力ではなく、入口の `organizationId`（確かめた組織の ID。読み取り専用）から取る。絞り込みを入口に寄せるかどうかは #51 で決める
 - 表の型は `db/tables.ts` の定数（列名、型、NULL を許すか、DEFAULT があるか）から導く。DEFAULT のある列と NULL を許す列は INSERT で省ける。列名は DB と同じスネークケースのままで、`CamelCasePlugin` は使わない。表を足すときは、マイグレーションと同じ PR で定数に足す
 - 表の型の照合: `test/table-columns.test.ts` が、全マイグレーションを当てた D1 の `sqlite_master` と `PRAGMA table_info` を定数と突き合わせる。表の一覧、列名、型、NOT NULL、DEFAULT の有無、主キーの NOT NULL がずれると落ちる
-- 文を作る部分: Kysely は SQL を組み立てるだけに使い（`DummyDriver` と `SqliteQueryCompiler`。D1 の方言のパッケージは入れない）、実行しない。`db.statement((q) => q.selectFrom(...))` の `q` は、その入口の表だけを型に持つので、別の入口の表を引くと型の検査で落ちる
-- 送る部分: `db/send.ts` が、組み立てた `CompiledQuery` を D1 の `prepare(sql).bind(...parameters)` にして送る。値は SQL に埋めず束縛する。1件の問い合わせ（`rows`、`first`、`run`）も `batch()` も同じ道を通り、結果の行と `meta.changes` を文ごとに返す
-- `batch()` の形: `db.batch([文, 文, ...])`。入口ごとに、その入口の `statement()` が作った文（範囲が `common` か `organization` の `Statement`）だけを受け取り、共通の文と組織の中の文を同じ配列に入れると型の検査で落ちる。D1 の `batch()` は全部の文を1つのトランザクションで流すので、途中の文が失敗すると前の文も書かれない。先に読んだ値で判定した書き込みの競合は、文ごとの `changes` が 0 かで見つけて 409 にする
+- 文を作る部分: Kysely は SQL を組み立てるだけに使い（`DummyDriver` と `SqliteQueryCompiler`。D1 の方言のパッケージは入れない）、実行しない。`db.statement((q) => q.selectFrom(...))` の `q` は、その入口の表だけを型に持つので、別の入口の表を引くと型の検査で落ちる。生の SQL（`kysely` の `sql`）は `db/` の中だけで使い、入口は出さない（`/api/health` の `SELECT 1` は `pingDatabase(env)`）
+- 文（`Statement`）: private な印を持つので、形だけのオブジェクトや `{ ...statement }` は型の検査を通らない。実行時には、文を作った入口のインスタンスに結び付けて持ち、別の入口（同じ範囲の別の組織の入口、作り直した入口を含む）の文、付け替えた文、形だけのオブジェクトを拒む。文は作った入口のインスタンスで実行する。RETURNING の無い INSERT、UPDATE、DELETE の文は読める行を持たず、`rows` と `first` に渡せない。結果は `changes` で見る
+- 送る部分: `db/send.ts` が、組み立てた `CompiledQuery` を D1 の `prepare(sql).bind(...parameters)` にして送る。値は SQL に埋めず束縛する。1件の問い合わせ（`rows`、`first`、`run`）も `batch()` も同じ道を通り、結果の行と `meta.changes` を文ごとに返す。1文の束縛が D1 の上限（100）を超えたら、送る前に文の番号を添えたエラーを投げる（SQL と値はメッセージに入れない）
+- `batch()` の形: `db.batch([文, 文, ...])`。入口ごとに、その入口の `statement()` が作った文だけを受け取り、共通の文と組織の中の文を同じ配列に入れると型の検査で落ちる。D1 の `batch()` は全部の文を1つのトランザクションで流すので、途中の文が失敗すると前の文も書かれない。ただし件数 0 の文では戻さない。先に読んだ値で判定した書き込みは、後ろの文にも同じ条件を入れる（前の文が書いた値を見る `WHERE EXISTS (...)` など。`docs/data-model.md` の「書き込みの単位」と「メールアドレスで待つ指名と招待」の 6 と同じ決まり）。文ごとの `changes` を見るのは 409 を返すためで、見つけても書き込みは戻らない
 - 置き場所: 組織から DB を選ぶ関数は `db/select-database.ts`（今はどの組織でも同じ DB）、組織をまたいで読む関数は `db/cross-organization.ts`
-- 入口の外から D1 の binding や Kysely を直接使うことを、ESLint の規則（`eslint.config.js`）で禁じる。`src/server/db/` の外で次を使うと落ちる: `kysely` の import（`sql` と `Insertable` などの型は `db/index.ts` から取る）、`env.DB`（メンバーの参照と、`{ DB }` の取り出し）、`D1Database` の型、`db/` の内部のファイルの import
+- 入口の外から D1 の binding や Kysely を直接使うことを、ESLint の規則で禁じる。禁止の定義と例外は `eslint.config.db-entry.js` の1つの規則（`db-entry/guard`）に置く。`no-restricted-imports` などを設定ごとに並べると、後ろの設定が前を置き換えて黙って消えるため、ファイルごとの違いは規則の中で判定する。`src/server/db/` の外で次を使うと落ちる
+  - `kysely` の import（静的、`import()`、型の `import('kysely')`、`require`、`export from`）。型は `db/index.ts` から取る
+  - `db/` の内部のファイルの import（入口のモジュール `db/index.ts` 以外）。`db/testing.ts` は `test/` からだけ
+  - 引数が文字列のリテラルでない `import()`、`createRequire`、`process.getBuiltinModule`。import の検査を抜けられるため
+  - D1 の binding: `env.DB`、`env['DB']`、``env[`DB`]``、`{ DB }`、`{ 'DB': d }`、`{ ['DB']: d }` の取り出し、`Reflect.get(env, 'DB')`、`Env['DB']`
+  - `D1Database` の型
 - 規則の例外は、入口を通さない次の2つのテストだけ。`test/apply-migrations.ts`（全マイグレーションを binding に直に当てる）と `test/schema.test.ts`（CHECK や一意を確かめるため、型を外れた生の INSERT を送る）。ほかのテストは入口とファクトリーを通す
-- テストが組織の中の入口を使えるよう、`db/testing.ts` が確かめずに `VerifiedOrganization` を作る `verifiedOrganizationForTest` を出す。`test/` からだけ import でき、`src/` の下から import すると ESLint が落とす（Worker の束にも入らない）
-- 型の検査: `test/db-types.ts` が `@ts-expect-error` で、共通の入口から組織の中の表、組織の中の入口から共通の表、`batch()` への混在、確かめた結果を持たない `orgDb` を型の検査で落とす。`pnpm check` が検査する
+- 規則のテスト: `scripts/eslint-db-entry.test.ts` が、`ESLint` クラスに文字列を渡して、禁じる形が `src/server/`、`src/lib/`、`src/routes/`、`src/shared/`、`scripts/`、`e2e/`、`test/` で落ち、`db/` の中、入口のモジュールの import、`test/` からの `db/testing.ts`、例外の2ファイルが通ることを確かめる。解析できない形（`env[key]` など、キーが変数のもの）は規則で止められないので、差分を読む人が見る
+- テスト用の口: `db/testing.ts` が、確かめずに `VerifiedOrganization` を作る `verifiedOrganizationForTest`、表の照合に使う列の定数（`commonTableColumns`、`organizationTableColumns`、`ColumnSpec`）と DB のカタログを読む関数、組み立てた SQL を読む `compiledQueryForTest` を出す。`test/` からだけ import でき、ほかの場所から import すると ESLint が落とす。Worker の束にも入らない
+- 型の検査: `test/db-types.ts` が `@ts-expect-error` で、共通の入口から組織の中の表、組織の中の入口から共通の表、`batch()` への混在、形だけの文、書き込みの文の `rows`、確かめた結果を持たない `orgDb` を型の検査で落とす。`pnpm check` が検査する
 - `.claude/hooks/file-rules.mjs` の `env.DB` と `D1Database` の判定は、書く時点で止めるつなぎとして残す
 
 ### 言葉の辞書

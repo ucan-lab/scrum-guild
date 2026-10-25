@@ -3,41 +3,16 @@
 import { env } from 'cloudflare:workers';
 import { describe, expect, test } from 'vitest';
 import {
-  commonDb,
   commonTableColumns,
+  listAppTables,
   organizationTableColumns,
-  sql,
+  tableInfo,
   type ColumnSpec,
-} from '../src/server/db/index.ts';
+  type TableInfoRow as ActualColumn,
+} from '../src/server/db/testing.ts';
 
-type ActualColumn = { name: string; type: string; notnull: number; dflt_value: string | null; pk: number };
-
-// マイグレーションの記録、SQLite と D1 が持つ表は、アプリの表ではない
-const NOT_APP_TABLE = /^(d1_migrations|sqlite_.*|_cf_.*)$/;
-
-async function actualTables(): Promise<string[]> {
-  const db = commonDb(env);
-  const rows = await db.rows(
-    db.statement((q) =>
-      q
-        .selectFrom(sql<{ name: string; type: string }>`sqlite_master`.as('m'))
-        .select('m.name')
-        .where('m.type', '=', 'table'),
-    ),
-  );
-  return rows.map((row) => row.name).filter((name) => !NOT_APP_TABLE.test(name));
-}
-
-async function actualColumns(table: string): Promise<ActualColumn[]> {
-  const db = commonDb(env);
-  return db.rows(
-    db.statement((q) =>
-      q
-        .selectFrom(sql<ActualColumn>`pragma_table_info(${sql.lit(table)})`.as('c'))
-        .select(['c.name', 'c.type', 'c.notnull', 'c.dflt_value', 'c.pk']),
-    ),
-  );
-}
+const actualTables = () => listAppTables(env);
+const actualColumns = (table: string) => tableInfo(env, table);
 
 // 定数と DB のずれを文にして返す。ずれが無ければ空
 function columnProblems(table: string, spec: Readonly<Record<string, ColumnSpec>>, actual: ActualColumn[]): string[] {
