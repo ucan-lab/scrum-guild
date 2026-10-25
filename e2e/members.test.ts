@@ -61,8 +61,26 @@ test.describe('リーダー（あおば開発のミナト）', () => {
       route.fulfill({
         json: {
           members: [{ id: AOBA_WORKSPACE_ID, name: longName, role: 'leader', joined_on: '2026-10-01' }],
+          // Google の招待は手段の列に期限か「期限切れ」が並び、その列も広がる
           invitations: [
-            { id: 'i1', login_name: longLogin, login_provider: 'google', role: 'member', invited_on: '2026-10-19' },
+            {
+              id: 'i1',
+              login_name: longLogin,
+              login_provider: 'google',
+              role: 'member',
+              invited_on: '2026-10-19',
+              expires_on: '2026-11-02',
+              expired: false,
+            },
+            {
+              id: 'i2',
+              login_name: longLogin,
+              login_provider: 'google',
+              role: 'leader',
+              invited_on: '2026-09-30',
+              expires_on: '2026-10-14',
+              expired: true,
+            },
           ],
         },
       }),
@@ -76,6 +94,12 @@ test.describe('リーダー（あおば開発のミナト）', () => {
     // 右の列（参加日、招待した日）が見える
     await expect(page.getByText('2026-10-01')).toBeInViewport();
     await expect(page.getByText('2026-10-19')).toBeInViewport();
+    // 招待の表は 390px の高さでは下にあるので、縦に送ってから、横に切れていないかを見る
+    for (const text of ['2026-11-02 まで', '期限切れ']) {
+      const cell = page.getByText(text);
+      await cell.scrollIntoViewIfNeeded();
+      await expect(cell).toBeInViewport();
+    }
   });
 });
 
