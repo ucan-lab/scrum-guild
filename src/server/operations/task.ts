@@ -725,7 +725,7 @@ async function readMoveParent(db: OrganizationDb, workspaceId: string, storyId: 
   return { id: story.id, title: story.title };
 }
 
-// 移すタスク。削除していないバックログのタスクで、今の親の題（履歴に残す）も読む
+// 移すタスク。削除していないバックログのタスクで、今の親の題と区分の名前（履歴に残す）も読む
 function movingTask(db: OrganizationDb, workspaceId: string, taskId: string) {
   return db.first(
     db.statement((q) =>
@@ -734,7 +734,19 @@ function movingTask(db: OrganizationDb, workspaceId: string, taskId: string) {
         .leftJoin('stories', (join) =>
           join.onRef('stories.id', '=', 'tasks.story_id').onRef('stories.workspace_id', '=', 'tasks.workspace_id'),
         )
-        .select(['tasks.id', 'tasks.story_id', 'tasks.completed_at', 'stories.title as story_title'])
+        .leftJoin('categories', (join) =>
+          join
+            .onRef('categories.id', '=', 'tasks.category_id')
+            .onRef('categories.workspace_id', '=', 'tasks.workspace_id'),
+        )
+        .select([
+          'tasks.id',
+          'tasks.story_id',
+          'tasks.completed_at',
+          'tasks.category_id',
+          'stories.title as story_title',
+          'categories.name as category_name',
+        ])
         .where('tasks.id', '=', taskId)
         .where('tasks.workspace_id', '=', workspaceId)
         .where('tasks.tray', '=', 'backlog')
@@ -760,6 +772,11 @@ export const taskMoveOperation = implement(taskMove, async ({ db, actor, workspa
   const parentId = input.story_id;
   const parentChanged = current.story_id !== parentId;
   const parent = parentId === null ? null : await readMoveParent(db, workspaceId, parentId, parentChanged);
+  // ストーリーの下へ移して区分が消えるときは、前の区分を履歴に残す。書く文は区分が読んだ値のままであることも条件にする
+  const clearedCategory =
+    parentChanged && parentId !== null && current.category_id !== null
+      ? { id: current.category_id, name: current.category_name ?? '' }
+      : null;
   const { plan, after } = await planTaskMove(db, workspaceId, parentId, taskId, afterId);
 
   const at = now();
@@ -794,6 +811,7 @@ export const taskMoveOperation = implement(taskMove, async ({ db, actor, workspa
         .where('completed_at', 'is', null)
         .where('deleted_at', 'is', null)
         .where('story_id', current.story_id === null ? 'is' : '=', current.story_id)
+        .$if(clearedCategory !== null, (qb) => qb.where('category_id', '=', clearedCategory!.id))
         .where((eb) => eb.exists(openWorkspace(q, organizationId, workspaceId)))
         .$if(parentId !== null, (qb) =>
           qb.where((eb) =>
@@ -853,6 +871,7 @@ export const taskMoveOperation = implement(taskMove, async ({ db, actor, workspa
                             current.story_id === null ? null : { id: current.story_id, title: current.story_title },
                             parent,
                           ],
+                          ...(clearedCategory === null ? {} : { category: [clearedCategory, null] }),
                         }),
                       )
                       .as('changes_json'),

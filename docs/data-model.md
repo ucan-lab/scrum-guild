@@ -652,7 +652,7 @@ Google の人は、ログインするまで `sub` が分からない。そのた
 - 索引: `(workspace_id, epic_id, position) WHERE deleted_at IS NULL`。
 - 索引（外部キーの検査）: `(created_by)`、`(completed_by) WHERE completed_by IS NOT NULL`。
 - 親を変えたら、新しい親の末尾の `position` を振る。
-- 並べ替えと親の移動（`story-move`）は、`tasks` の「並べ替えと親の移動」と同じ決まりで、親は `epic_id`（null は親なし）、直前の行は `after_story_id`。違うのは次のとおり。移す先のエピックが無ければ（別の組織を含む）404、親を変えるときに完了しているか中止していれば（`epics.completed_at` か `canceled_at` が空でない）409（`conflict`、理由は `parent_completed`）。同じエピックの中の並べ替えは、エピックが完了か中止していてもできる。完了したストーリーも動かせる。エピックの下へ移したら `category_id` を空にする。親が変わったときの履歴は `{"epic": [前, 後]}`（値は `{id, title}` か null）。
+- 並べ替えと親の移動（`story-move`）は、`tasks` の「並べ替えと親の移動」と同じ決まりで、親は `epic_id`（null は親なし）、直前の行は `after_story_id`。違うのは次のとおり。移す先のエピックが無ければ（別の組織を含む）404、親を変えるときに完了しているか中止していれば（`epics.completed_at` か `canceled_at` が空でない）409（`conflict`、理由は `parent_completed`）。同じエピックの中の並べ替えは、エピックが完了か中止していてもできる。完了したストーリーも動かせる。エピックの下へ移したら `category_id` を空にし、空にした区分は `tasks` と同じく履歴の `category` に残す。親が変わったときの履歴は `{"epic": [前, 後]}`（値は `{id, title}` か null）。
 - `title` は `tasks.title` と同じ決まり（前後の空白を除いて 1〜200 字）。`acceptance_criteria_md` と `body_md` はそれぞれ 1 万字まで（コードポイントで数え、改行とタブ以外の制御文字と見えない文字は断る）。改行は `\n` にそろえ、前後の空行と末尾の空白だけを落とし、先頭の行の字下げは残す。空は `NULL`。列の CHECK（10 万字）は、決まりを超えた書き込みを止める保険。`link_url` は http と https の URL だけで 2048 字まで。ユーザー名とパスワードを含む URL は断り、保存する値は解釈した URL（`new URL(...).href`）にそろえる。`due_on` は暦に存在する日付で、空は `NULL`。
 - 作る操作（`story-create`）は、親なし（`epic_id` は空）で、`position` は親のないストーリーの末尾、`created_by` は呼んだ人。変える操作（`story-update`）は、送られた欄のうち今の値と違うものだけを、読んだ値のままなら、という条件つきで書き（書き方は「書き込みの単位」の「ストーリーの変更」）、変えた欄だけを `change_logs` に `{"列名": [前, 後]}` で残す。変える欄が無ければ何も書かない。ダイアログを開くときの読み取り（`story-get`）は、1件の全部の欄を返す（`backlog-tree` には載せない）。無い（別の組織、別のワークスペース、削除済みを含む）ときは 404 で、閉じたワークスペースでも読める。
 
@@ -708,7 +708,7 @@ Google の人は、ログインするまで `sub` が分からない。そのた
   - 断るもの。動かすタスクか移す先の親が無い（別の組織、同じ組織の別のワークスペースを含む）ときは 404。動かすタスクが受信箱かアーカイブにあるときも 404。直前の行が移す先に無い（別の親、削除済み、受信箱とアーカイブ、別のワークスペース、別の組織）ときも 404。直前の行が動かすタスク自身なら 400（`invalid_input`）。完了したタスクを動かすのは 409（`conflict`、理由は `task_completed`）。完了したストーリーの下へ親を移すのは 409（`conflict`、理由は `parent_completed`）。同じ親の中の並べ替えは、親のストーリーが完了していてもできる。閉じたワークスペースは 409（`workspace_closed`）。
   - 409 の `conflict` は、理由を `details.reason` に載せる（`parent_completed`、`task_completed`、`changed`、`ties`。`src/shared/operations/task/task-move.ts` の `moveConflictReasons`）。画面は理由で知らせる文を選ぶ。
   - 書く文は条件つきの `UPDATE`（読んだときの親のまま、閉じていないワークスペース、移す先の親が今もあり、親が変わるならその親が完了していない、直前の行が今も読んだ値の位置にある）で、変わった行が 0 なら読み直して理由を決める（閉じていれば `workspace_closed`、タスクか親か直前の行が無ければ 404、タスクが完了していれば `task_completed`、移す先の親が完了していれば `parent_completed`、どれでもなければ別の要求が先に親を移したか直前の行を動かしたので `changed`）。`updated_at` は並べ替えだけでも書く。
-  - 親が変わったときだけ `change_logs`（`action` は `update`、`changes_json` は `{"story": [前, 後]}`、値は `{id, title}` か null）を、移す行の更新が通ったときだけ書く。並べ替えだけなら履歴を残さない。ストーリーの下へ移したら `category_id` を空にする（区分は親なしのときだけ入る）。応答は `task_id` と `story_id` で、`position` は返さない。
+  - 親が変わったときだけ `change_logs`（`action` は `update`、`changes_json` は `{"story": [前, 後]}`、値は `{id, title}` か null）を、移す行の更新が通ったときだけ書く。並べ替えだけなら履歴を残さない。ストーリーの下へ移したら `category_id` を空にする（区分は親なしのときだけ入る）。空にした区分は、同じ履歴に `{"category": [{id, name}, null]}` で残し、書く文は区分が読んだ値のままであることも条件にする。応答は `task_id` と `story_id` で、`position` は返さない。
 - タイトルの検索は `title LIKE` と `task_sources.source_key LIKE` で行う。5万件の規模なら、ワークスペースの索引で絞れば足りる見込み。遅ければ FTS5 を足す。
 
 ### task_sources

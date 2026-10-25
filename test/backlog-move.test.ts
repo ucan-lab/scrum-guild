@@ -262,7 +262,11 @@ describe('task-move の親の移動', () => {
       entity_type: 'task',
       action: 'update',
     });
-    expect(JSON.parse(logs[0]!.changes_json)).toEqual({ story: [null, { id: story.id, title: '移す先' }] });
+    // 消した区分も、前の値として残す
+    expect(JSON.parse(logs[0]!.changes_json)).toEqual({
+      story: [null, { id: story.id, title: '移す先' }],
+      category: [{ id: category.id, name: '保守' }, null],
+    });
 
     // 親なしへ戻す。末尾に置く
     res = await moveTask(target, { task_id: moving.id, story_id: null });
@@ -457,7 +461,10 @@ describe('story-move', () => {
     let logs = await logsOf(target, moving.id);
     expect(logs).toHaveLength(1);
     expect(logs[0]).toMatchObject({ entity_type: 'story', action: 'update', actor_user_id: target.member.userId });
-    expect(JSON.parse(logs[0]!.changes_json)).toEqual({ epic: [null, { id: epic.id, title: 'レイド' }] });
+    expect(JSON.parse(logs[0]!.changes_json)).toEqual({
+      epic: [null, { id: epic.id, title: 'レイド' }],
+      category: [{ id: category.id, name: '保守' }, null],
+    });
 
     // エピックの下から親なしへ
     res = await moveStory(target, { story_id: inEpic.id, epic_id: null });

@@ -398,7 +398,7 @@ async function planStoryMove(
   return { plan: placeAfter(after, ties.rows, next.rows[0]), after };
 }
 
-// 移すストーリーと、今の親の題（履歴に残す）
+// 移すストーリーと、今の親の題と区分の名前（履歴に残す）
 function movingStory(db: OrganizationDb, workspaceId: string, storyId: string) {
   return db.first(
     db.statement((q) =>
@@ -407,7 +407,18 @@ function movingStory(db: OrganizationDb, workspaceId: string, storyId: string) {
         .leftJoin('epics', (join) =>
           join.onRef('epics.id', '=', 'stories.epic_id').onRef('epics.workspace_id', '=', 'stories.workspace_id'),
         )
-        .select(['stories.id', 'stories.epic_id', 'epics.title as epic_title'])
+        .leftJoin('categories', (join) =>
+          join
+            .onRef('categories.id', '=', 'stories.category_id')
+            .onRef('categories.workspace_id', '=', 'stories.workspace_id'),
+        )
+        .select([
+          'stories.id',
+          'stories.epic_id',
+          'stories.category_id',
+          'epics.title as epic_title',
+          'categories.name as category_name',
+        ])
         .where('stories.id', '=', storyId)
         .where('stories.workspace_id', '=', workspaceId)
         .where('stories.deleted_at', 'is', null),
@@ -428,6 +439,11 @@ export const storyMoveOperation = implement(storyMove, async ({ db, actor, works
   const parentId = input.epic_id;
   const parentChanged = current.epic_id !== parentId;
   const parent = parentId === null ? null : await readMoveEpic(db, workspaceId, parentId, parentChanged);
+  // エピックの下へ移して区分が消えるときは、前の区分を履歴に残す。書く文は区分が読んだ値のままであることも条件にする
+  const clearedCategory =
+    parentChanged && parentId !== null && current.category_id !== null
+      ? { id: current.category_id, name: current.category_name ?? '' }
+      : null;
   const { plan, after } = await planStoryMove(db, workspaceId, parentId, storyId, afterId);
 
   const at = now();
@@ -458,6 +474,7 @@ export const storyMoveOperation = implement(storyMove, async ({ db, actor, works
         .where('workspace_id', '=', workspaceId)
         .where('deleted_at', 'is', null)
         .where('epic_id', current.epic_id === null ? 'is' : '=', current.epic_id)
+        .$if(clearedCategory !== null, (qb) => qb.where('category_id', '=', clearedCategory!.id))
         .where((eb) => eb.exists(openWorkspace(q, organizationId, workspaceId)))
         .$if(parentId !== null, (qb) =>
           qb.where((eb) =>
@@ -518,6 +535,7 @@ export const storyMoveOperation = implement(storyMove, async ({ db, actor, works
                             current.epic_id === null ? null : { id: current.epic_id, title: current.epic_title },
                             parent,
                           ],
+                          ...(clearedCategory === null ? {} : { category: [clearedCategory, null] }),
                         }),
                       )
                       .as('changes_json'),
