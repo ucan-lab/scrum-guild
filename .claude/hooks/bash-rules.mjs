@@ -50,6 +50,7 @@ const PRODUCTION_REASON = 'デプロイ、版、本番のログ、D1 と R2 の�
 
 // wrangler の yargs は、真偽のフラグが重なると後の値を採り、--local の次の語が true か false ならそれを値として読み、
 // --local= の値は "true" のときだけ true にする。r2 と kv は local が false だと本番に向く。
+// ここと下の yargs の読み方は、wrangler 4.152.0 に同梱の yargs 17.7.2 と yargs-parser 21.1.1 で確かめた（2026-10-25）。
 // 後の値を採る規則は真似ず、打ち消しが1つでもあれば順番に関わらず止める
 function negatesLocal(words) {
   return words.some(
