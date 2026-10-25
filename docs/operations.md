@@ -36,7 +36,7 @@ Workers & Pages の「Create application」→「Continue with GitHub」で、�
 | デプロイのコマンド | `node scripts/deploy-production.ts` |
 | ルートのディレクトリ（Path） | `/`（リポジトリのルート） |
 | preview builds（Enable Preview builds） | 無効 |
-| build watch paths | 既定（すべてのパス）。文書だけの push でもデプロイが走る |
+| build watch paths | Include は `*`。Exclude は `docs/*`、`HANDOFF.md`、`CLAUDE.md`、`.claude/skills/*`、`.claude/agents/*`、`.claude/checklists/*`、`.github/ISSUE_TEMPLATE/*`（`CLAUDE.md` の「文書だけ」と同じ範囲） |
 | API トークン | 下の「API トークン」 |
 
 - Node の版は `.node-version`、pnpm の版は `package.json` の `packageManager` から入る（2026-10-25 に確かめた）
@@ -62,7 +62,7 @@ Workers Builds のビルドでは、devDependencies のコードがトークン�
 
 ## 出し方
 
-`main` に入ると Workers Builds がビルドし、デプロイのコマンドが `scripts/deploy.ts` の手順を動かす。人の操作は要らない。PR のマージだけでなく、文書だけのコミットの push でも走る。
+`main` に入ると Workers Builds がビルドし、デプロイのコマンドが `scripts/deploy.ts` の手順を動かす。人の操作は要らない。変わったファイルがすべて build watch paths の Exclude に当たる push（文書だけの push）では、ビルドは走らない。
 
 1. 今 100% で動いている版の ID を、戻し先として控える。Worker が無いか、デプロイが1つも無ければ戻し先無し
 2. `migrations/` にファイルがあれば、Time Travel のブックマークをログに出してから、マイグレーションを当てる
@@ -77,7 +77,7 @@ Workers Builds のビルドでは、devDependencies のコードがトークン�
 - `マイグレーションを当てる前の Time Travel のブックマーク:` の行。続く数行の JSON の `bookmark` の値を、DB を戻すときに使う
 - `煙のテスト:` の行。何回目、何秒で版が一致したか
 
-続けてマージするときは、前のデプロイが終わってから次をマージする。文書のコミットの push も同じ。Workers Builds はビルドを一列に並べず同時に走らせる（2026-10-25 に確かめた）。デプロイの段が重なると、スクリプトは別のビルドを潰さないよう戻さずに止まり、どちらの版が本番に残ったかを人が確かめることになる。ダッシュボードから古いコミットのビルドをやり直すのも、本番のコードを巻き戻すことになるので行わない。
+続けてマージするときは、前のデプロイが終わってから次をマージする。Workers Builds はビルドを一列に並べず同時に走らせる（2026-10-25 に確かめた）。デプロイの段が重なると、スクリプトは別のビルドを潰さないよう戻さずに止まり、どちらの版が本番に残ったかを人が確かめることになる。ダッシュボードから古いコミットのビルドをやり直すのも、本番のコードを巻き戻すことになるので行わない。
 
 ### デプロイが失敗で終わったとき
 
