@@ -3,9 +3,12 @@
 import type { AnyOperationDefinition } from '../define.ts';
 import { createOrganization } from './create-organization.ts';
 import { listOrganizations } from './list-organizations.ts';
+import { organizationResume } from './organization-resume.ts';
+import { organizationSuspend } from './organization-suspend.ts';
 import { resolveGithubUser } from './resolve-github-user.ts';
 
-export { createOrganization, listOrganizations, resolveGithubUser };
+export { createOrganization, listOrganizations, organizationResume, organizationSuspend, resolveGithubUser };
+export { PURGE_AFTER_DAYS, purgeDateOf, suspensionKinds, type SuspensionKind } from './organization-suspend.ts';
 export {
   createOrganizationProblems,
   hasHiddenCharacter,
@@ -19,4 +22,6 @@ export const operatorOperations: readonly AnyOperationDefinition[] = [
   listOrganizations,
   resolveGithubUser,
   createOrganization,
+  organizationSuspend,
+  organizationResume,
 ];

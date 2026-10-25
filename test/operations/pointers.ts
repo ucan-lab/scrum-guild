@@ -4,8 +4,9 @@
 // 組織の外の操作は、入力が必須の項目を持つときだけ足す（運用者の操作は、成功する入力を作る）
 import { createFakeGithub } from '../auth/fake-github.ts';
 import { githubUser } from '../auth/helpers.ts';
-import { createInvitation, createStory, createTask, createWorkspace } from '../factories.ts';
+import { createInvitation, createOrganization, createStory, createTask, createWorkspace } from '../factories.ts';
 import type { Pointers } from './harness.ts';
+import { SUSPENDED_AT } from './world.ts';
 
 // 運用者の操作が問い合わせる GitHub。operation-registry.test.ts が fetcher を createApp に渡す
 export const operatorGithub = createFakeGithub();
@@ -81,6 +82,12 @@ export const pointers: Pointers = {
       admin: { provider: 'github', username: user.login, login_subject: String(user.id) },
     };
   },
+  // 停止と再開は、呼ぶたびに別の組織を作る（対象の組織を停止すると、同じ describe の運用者でない人の検査が 401 になるため。
+  // 停止済みの組織を停止する、停止していない組織を再開するのは 409 になる）
+  'organization-suspend': async () => ({ slug: (await createOrganization()).slug, kind: 'temporary' }),
+  'organization-resume': async () => ({
+    slug: (await createOrganization({ suspended_at: SUSPENDED_AT, purge_on: '2026-11-19' })).slug,
+  }),
   'task-create': async (target) => ({ workspace_id: target.workspace.id, title: '見積もりを送る', points: 3 }),
   'backlog-tree': async (target) => ({ workspace_id: target.workspace.id }),
   'story-create': async (target) => ({ workspace_id: target.workspace.id, title: '見積もりを整える' }),

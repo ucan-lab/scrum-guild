@@ -148,6 +148,55 @@ test.describe('組織が1つの人（あおば開発のハルカ）', () => {
     });
   }
 
+  // 停止した組織は、停止していなければ入れた人にだけ 403 の organization_suspended を返す（サーバーの判定は test/operator-suspension.test.ts）。
+  // 運用者の画面で停止できない e2e の Worker のため、応答を差し替える
+  test('403 の organization_suspended は、停止している組織の画面を出し、組織の一覧へ戻れる。見つからない画面とは別', async ({
+    page,
+  }) => {
+    await page.route('**/api/aoba/organization', (route) =>
+      route.fulfill({ status: 403, json: { error: { code: 'organization_suspended', message: 'x' } } }),
+    );
+    const collect = await watchViolations(page);
+    await page.goto('/aoba');
+    await expect(page.getByRole('heading', { level: 1, name: '冒険者ギルドは停止しています' })).toBeVisible();
+    await expect(page).toHaveTitle('冒険者ギルドは停止しています - Scrum Guild');
+    await expect(page.getByText('この冒険者ギルドは停止しています。運用者に問い合わせてください。')).toBeVisible();
+    await expect(page.getByRole('heading', { name: '冒険者ギルドが見つかりません' })).toHaveCount(0);
+    await expect(page.locator('.nav')).toHaveCount(0);
+    await page.getByRole('link', { name: '冒険者ギルドの一覧へ' }).click();
+    await expect(page).toHaveURL(/\/aoba$/);
+    // 差し替えた 403 の読み込みの失敗をブラウザがコンソールに出す。それ以外（CSP の違反など）が無いことを見る
+    expect((await collect()).filter((entry) => !entry.includes('403 (Forbidden)'))).toEqual([]);
+  });
+
+  test('停止した組織にしか入れない人の 401（理由 suspended）は、ログインの画面の suspended へ移す', async ({
+    page,
+  }) => {
+    await page.route('**/api/aoba/organization', (route) =>
+      route.fulfill({ status: 403, json: { error: { code: 'organization_suspended', message: 'x' } } }),
+    );
+    await page.route('**/api/my-organizations', (route) =>
+      route.fulfill({
+        status: 401,
+        json: { error: { code: 'unauthenticated', message: 'x', details: { reason: 'suspended' } } },
+      }),
+    );
+    await page.goto('/aoba');
+    await expect(page).toHaveURL('/login?return_to=%2Faoba&error=suspended');
+    await expect(page.getByRole('alert')).toHaveText(
+      'ログインできませんでした。所属している冒険者ギルドは停止しています。運用者に問い合わせてください。',
+    );
+  });
+
+  test('理由を持たない 401 は、理由なしでログインの画面へ移す', async ({ page }) => {
+    await page.route('**/api/my-organizations', (route) =>
+      route.fulfill({ status: 401, json: { error: { code: 'unauthenticated', message: 'x' } } }),
+    );
+    await page.goto('/aoba');
+    await expect(page).toHaveURL('/login?return_to=%2Faoba');
+    await expect(page.getByRole('alert')).toHaveCount(0);
+  });
+
   test('「もう一度試す」は、読み直している間は aria-disabled でフォーカスを残し、状態を status に出し、また失敗したら知らせる', async ({
     page,
   }) => {

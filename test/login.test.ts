@@ -264,7 +264,7 @@ describe('入れない人', () => {
     expect((await browser.post(me)).status).toBe(401);
   });
 
-  test('無効にされた人、停止した組織だけの人、終わった所属だけの人、取り消された招待だけの人も入れない', async () => {
+  test('無効にされた人、終わった所属だけの人、取り消された招待だけの人も入れない。停止した組織だけの人は理由が suspended', async () => {
     const { organization, admin, workspace } = await organizationWithAdmin();
     const disabled = githubUser('disabled');
     await createUser(organization, {
@@ -304,11 +304,43 @@ describe('入れない人', () => {
       ),
     ]);
 
-    for (const user of [disabled, left, revoked, suspended]) {
+    // 入れる組織が、停止した組織にだけある人には、入れる組織が無い（denied）のでなく、所属する組織が停止している（suspended）と伝える
+    for (const [user, error] of [
+      [disabled, 'denied'],
+      [left, 'denied'],
+      [revoked, 'denied'],
+      [suspended, 'suspended'],
+    ] as const) {
       const result = await newBrowser().login(user);
-      expect(result.location, user.login).toBe('/login?error=denied');
+      expect(result.location, user.login).toBe(`/login?error=${error}`);
       expect(await accountLoginOf(user), user.login).toBeUndefined();
     }
+  });
+
+  test('停止した組織の承諾待ちの招待だけの人も、理由が suspended。停止した組織で無効にされた人は denied', async () => {
+    const { organization, admin, workspace } = await organizationWithAdmin();
+    const invited = githubUser('invited-to-suspended');
+    await createInvitation(organization, workspace.id, admin.id, { provider: 'github', subject: String(invited.id) });
+    const disabled = githubUser('disabled-in-suspended');
+    await createUser(organization, {
+      login_provider: 'github',
+      login_subject: String(disabled.id),
+      is_admin: 1,
+      disabled_at: '2026-10-21T00:00:00.000Z',
+    });
+    const db = commonDb(env);
+    await db.batch([
+      db.statement((q) =>
+        q
+          .updateTable('organizations')
+          .set({ suspended_at: '2026-10-22T00:00:00.000Z' })
+          .where('id', '=', organization.id),
+      ),
+    ]);
+
+    expect((await newBrowser().login(invited)).location).toBe('/login?error=suspended');
+    // 停止した組織の中で無効にされた人は、停止していなければ入れた人ではない
+    expect((await newBrowser().login(disabled)).location).toBe('/login?error=denied');
   });
 
   test('ある組織で無効にされていても、別の組織に入れる人はログインできる', async () => {

@@ -11,7 +11,7 @@
 //   - セッションを作る
 // 人が差分を読む領域（docs/development.md の「マージの判定」）
 import { normalizeEmail } from '../../shared/email.ts';
-import { claimPendingLogin, commonDb, hasLoginAccess, linkLoginToAccount, type ClaimOutcome } from '../db/index.ts';
+import { claimPendingLogin, commonDb, linkLoginToAccount, readLoginAccess, type ClaimOutcome } from '../db/index.ts';
 import { uuidv7 } from '../uuid.ts';
 import type { LoginProfile } from './login-method.ts';
 import { isOperatorLogin } from './operators.ts';
@@ -20,8 +20,9 @@ import { createSession } from './session.ts';
 export type LoginOutcome =
   // claimed: 招待の URL から結んだときの、結んだ先
   | { ok: true; accountId: string; sessionToken: string; claimed?: ClaimOutcome }
-  // denied: 入れる組織も招待も無い。retry: 結ぶ書き込みが失敗した。invite: 招待の URL から結べなかった
-  | { ok: false; reason: 'denied' | 'retry' | 'invite' };
+  // denied: 入れる組織も招待も無い。suspended: 入れる組織か招待が、停止した組織にだけある。
+  // retry: 結ぶ書き込みが失敗した。invite: 招待の URL から結べなかった
+  | { ok: false; reason: 'denied' | 'suspended' | 'retry' | 'invite' };
 
 type LoginInput = {
   provider: string;
@@ -136,15 +137,15 @@ export async function completeLogin(env: Env, input: LoginInput): Promise<LoginO
   let existing = await findAccountId(env, provider, profile.subject);
   const operator = isOperatorLogin(env, [login]);
   if (!operator) {
-    let allowed = await hasLoginAccess(env, { accountId: existing, logins: [login] });
+    let access = await readLoginAccess(env, { accountId: existing, logins: [login] });
     // 同じ人の最初のログインが並行すると、アカウントが無いと読んだ後に、もう片方がアカウントを作り、指名の行を結ぶ
     // （結んだ行は、アカウントが無い側からは当たらなくなる）。判定が落ちたら読み直し、できていればその ID で判定し直す。
     // 権限の無い人のアカウントを先に作ることはしない
-    if (!allowed && existing === undefined) {
+    if (!access.allowed && existing === undefined) {
       existing = await findAccountId(env, provider, profile.subject);
-      if (existing !== undefined) allowed = await hasLoginAccess(env, { accountId: existing, logins: [login] });
+      if (existing !== undefined) access = await readLoginAccess(env, { accountId: existing, logins: [login] });
     }
-    if (!allowed) return { ok: false, reason: 'denied' };
+    if (!access.allowed) return { ok: false, reason: access.suspended ? 'suspended' : 'denied' };
   }
 
   const accountId = await ensureAccount(env, input, existing);

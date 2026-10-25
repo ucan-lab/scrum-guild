@@ -127,8 +127,11 @@ export type Target = {
   invitee: Person;
 };
 
-export async function createTarget(options: { closed?: boolean } = {}): Promise<Target> {
-  const organization = await createOrganization();
+export const SUSPENDED_AT = '2026-10-20T00:00:00.000Z';
+
+// suspended は組織を停止した状態で作る（停止した組織で、入れたはずの人に 403 の organization_suspended を返すことを見る）
+export async function createTarget(options: { closed?: boolean; suspended?: boolean } = {}): Promise<Target> {
+  const organization = await createOrganization(options.suspended ? { suspended_at: SUSPENDED_AT } : {});
   const admin = await createPerson({ organization, admin: true });
   const workspace = await createWorkspace(organization, admin.userId!, {
     closed_at: options.closed ? '2026-10-22T00:00:00.000Z' : null,

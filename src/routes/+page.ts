@@ -10,7 +10,7 @@ import type { PageLoad } from './$types';
 // それ以外は、この画面が組織の選択になる
 export const load: PageLoad = async ({ fetch, url }) => {
   const result = await callOperation(myOrganizations, {}, { fetcher: fetch });
-  if (isUnauthenticated(result)) redirect(307, loginUrl(url));
+  if (isUnauthenticated(result)) redirect(307, loginUrl(url, result));
   if (!result.ok) return { failed: true as const };
 
   const landing = landingFor(result.data);

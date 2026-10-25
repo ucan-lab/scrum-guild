@@ -446,6 +446,12 @@ export const dictionary = defineDictionary({
     'URL が違うか、入れない冒険者ギルドです。',
     'URL が違うか、入れない組織です。',
   ),
+  // 組織の枠の停止の画面（API が 403 の organization_suspended を返したとき）
+  organizationSuspendedTitle: organization('冒険者ギルドは停止しています', '組織は停止しています'),
+  organizationSuspendedText: organization(
+    'この冒険者ギルドは停止しています。運用者に問い合わせてください。',
+    'この組織は停止しています。運用者に問い合わせてください。',
+  ),
   operatorOpen: organization('運用の画面へ', '運用の画面へ'),
   pageOperator: organization('運用', '運用'),
   // 運用の画面。{organization} {admin} は、それぞれ辞書の同じ名前の項目で埋める
@@ -461,7 +467,53 @@ export const dictionary = defineDictionary({
   operatorCreate: organization('{organization}を作る', '{organization}を作る'),
   operatorColumnOrganization: organization('{organization}・slug', '{organization}・slug'),
   operatorColumnCreated: organization('作った日時', '作った日時'),
-  operatorSuspended: organization('停止中', '停止中'),
+  // 一覧の印。{date} は停止した日（ブラウザのタイムゾーンの日付）と、解約で消す予定日（UTC の日付）
+  operatorSuspended: organization('停止 {date}', '停止 {date}'),
+  operatorPurgeOn: organization('{date} に消す', '{date} に消す'),
+  operatorActionsHeader: organization('操作', '操作'),
+  // 組織の停止と再開。{organization} は辞書の同じ名前の項目、{name} は組織の名前
+  operatorSuspendAction: organization('停止する', '停止する'),
+  operatorResumeAction: organization('再開する', '再開する'),
+  operatorSuspendLabel: organization('「{name}」を停止する', '「{name}」を停止する'),
+  operatorResumeLabel: organization('「{name}」を再開する', '「{name}」を再開する'),
+  operatorSuspendTitle: organization('{organization}を停止する', '{organization}を停止する'),
+  operatorSuspendText: organization(
+    '「{name}」を停止します。停止すると誰も入れなくなり、取り込みと日をまたぐ処理も止まります。データは残り、再開すれば元どおりに使えます。',
+    '「{name}」を停止します。停止すると誰も入れなくなり、取り込みと日をまたぐ処理も止まります。データは残り、再開すれば元どおりに使えます。',
+  ),
+  operatorSuspendReason: organization('停止の理由', '停止の理由'),
+  operatorSuspendTemporary: organization('一時的に止める', '一時的に止める'),
+  operatorSuspendTemporaryHint: organization(
+    '支払いの遅れなど。消す予定は立てません。',
+    '支払いの遅れなど。消す予定は立てません。',
+  ),
+  operatorSuspendCancellation: organization('解約', '解約'),
+  operatorSuspendCancellationHint: organization(
+    '停止から 30 日後に、運用の手順でデータをすべて消します。それまでは再開できます。',
+    '停止から 30 日後に、運用の手順でデータをすべて消します。それまでは再開できます。',
+  ),
+  operatorSuspending: organization('停止しています', '停止しています'),
+  operatorResuming: organization('再開しています', '再開しています'),
+  operatorSuspendDone: organization('{organization}を停止しました', '{organization}を停止しました'),
+  operatorResumeDone: organization('{organization}を再開しました', '{organization}を再開しました'),
+  operatorSuspendFailed: organization(
+    '{organization}を停止できませんでした。もう一度試してください。',
+    '{organization}を停止できませんでした。もう一度試してください。',
+  ),
+  operatorResumeFailed: organization(
+    '{organization}を再開できませんでした。もう一度試してください。',
+    '{organization}を再開できませんでした。もう一度試してください。',
+  ),
+  // 別の画面で先に操作されていた（409）。停止した状態か再開した状態かは言い切らず、読み直した一覧を見てもらう
+  operatorStateChanged: organization(
+    '「{name}」の状態が変わっていました。一覧で状態を確かめてください',
+    '「{name}」の状態が変わっていました。一覧で状態を確かめてください',
+  ),
+  // 見つからない、または操作できない（404、403）
+  operatorUnavailable: organization(
+    '「{name}」を操作できませんでした。見つからないか、操作できない状態です。一覧で状態を確かめてください',
+    '「{name}」を操作できませんでした。見つからないか、操作できない状態です。一覧で状態を確かめてください',
+  ),
   operatorAdminNone: organization('{admin}がいない', '{admin}がいない'),
   operatorAdminPending: organization('{admin}は指名済み、ログイン待ち', '{admin}は指名済み、ログイン待ち'),
   operatorAdminExpired: organization('{admin}の招待の URL は期限切れ', '{admin}の招待の URL は期限切れ'),
@@ -674,6 +726,11 @@ export const dictionary = defineDictionary({
   loginErrorDenied: organization(
     'ログインできませんでした。どの{organization}の{workspace}にも所属しておらず、招待も届いていません。招待された手段（GitHub か Google）と、招待されたアカウントでログインしているか確かめてください。招待がまだなら、{leader}に GitHub のユーザー名か Google のメールアドレスで招待してもらってください。',
     'ログインできませんでした。どの{organization}の{workspace}にも所属しておらず、招待も届いていません。招待された手段（GitHub か Google）と、招待されたアカウントでログインしているか確かめてください。招待がまだなら、{leader}に GitHub のユーザー名か Google のメールアドレスで招待してもらってください。',
+  ),
+  // 入れる{organization}（や届いた招待）が、停止した{organization}にだけあるとき（?error=suspended）
+  loginErrorSuspended: organization(
+    'ログインできませんでした。所属している{organization}は停止しています。運用者に問い合わせてください。',
+    'ログインできませんでした。所属している{organization}は停止しています。運用者に問い合わせてください。',
   ),
   // 招待の URL から結べなかったとき。理由（期限切れ、取り消し、別のアカウント、使い済み）は分けず、どのメールアドレスに招待したかも出さない
   loginErrorInvite: organization(

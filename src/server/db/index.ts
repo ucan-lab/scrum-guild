@@ -13,11 +13,14 @@ export { assertVerifiedWorkspace, type VerifiedWorkspace } from './verify-worksp
 export {
   enterOrganization,
   verifyWorkspace,
+  ORGANIZATION_SUSPENDED,
+  type EnteredOrganization,
   type LoginId,
   type OrganizationActor,
   type OrganizationSummary,
 } from './enter-organization.ts';
 export { insertOrganization, type CreatedOrganization, type NewOrganization } from './create-organization.ts';
+export { openOrganizationAsOperator } from './operator-organization.ts';
 export {
   readOrganizationRow,
   userAvatarsOf,
@@ -31,6 +34,8 @@ export {
   type ClaimInput,
   type ClaimOutcome,
   hasLoginAccess,
+  readLoginAccess,
+  type LoginAccess,
   type LoginAccessTarget,
   linkLoginToAccount,
   listAccountOrganizations,

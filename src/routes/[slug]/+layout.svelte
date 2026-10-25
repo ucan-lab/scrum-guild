@@ -16,11 +16,13 @@
 
   // 組織の枠。組織の操作の結果で data-theme と言葉づかいを当て、左のメニューと上の帯を出す。
   // 組織に入れないときと無いときは、どちらも同じ「見つからない」の画面（どちらかを漏らさない）。
-  // 見つからないのは、API が not_found の 404 を返したときだけ。ほかの失敗（通信、5xx、権限）は読み込みの失敗
+  // 見つからないのは、API が not_found の 404 を返したときだけ。停止しているのは、organization_suspended の 403
+  // （停止していなければ入れた人にだけ返る。入れない人は見つからない）。ほかの失敗（通信、5xx、権限）は読み込みの失敗
   let { data, children }: { data: LayoutData; children: Snippet } = $props();
 
   const organization = $derived(data.organization);
   const notFound = $derived(data.failure?.status === 404 && data.failure.code === 'not_found');
+  const suspended = $derived(data.failure?.status === 403 && data.failure.code === 'organization_suspended');
   // 今開いているワークスペース（/[slug]/w/[id] の枠が読み込む）。メニューにワークスペースの節を出し、
   // 所属していない管理者には印を出す。ワークスペースの画面の外では null
   const openWorkspace = $derived(workspaceViewOf(page.data));
@@ -42,6 +44,8 @@
 <svelte:head>
   {#if !organization && notFound}
     <title>{t('pageTitle', { page: t('organizationNotFoundTitle'), app: t('appName') })}</title>
+  {:else if !organization && suspended}
+    <title>{t('pageTitle', { page: t('organizationSuspendedTitle'), app: t('appName') })}</title>
   {/if}
 </svelte:head>
 
@@ -84,6 +88,16 @@
   <Gate>
     <GateSheet brand title={t('organizationNotFoundTitle')}>
       <EmptyState icon="search" title={t('organizationNotFoundText')}>
+        {#snippet actions()}
+          <a class="btn is-sm" href={resolve('/')}>{t('organizationList')}</a>
+        {/snippet}
+      </EmptyState>
+    </GateSheet>
+  </Gate>
+{:else if suspended}
+  <Gate>
+    <GateSheet brand title={t('organizationSuspendedTitle')}>
+      <EmptyState icon="shield" title={t('organizationSuspendedText')}>
         {#snippet actions()}
           <a class="btn is-sm" href={resolve('/')}>{t('organizationList')}</a>
         {/snippet}

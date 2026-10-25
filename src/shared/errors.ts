@@ -16,6 +16,9 @@ export const errorCodes = [
   'already_invited',
   'member_limit_reached',
   'invitee_changed',
+  // 組織が停止している。403。停止していなければ入れた人にだけ返す（入れない人は組織が無いときと同じ not_found）。
+  // 画面の組織の枠は「この組織は停止しています」を出す
+  'organization_suspended',
   // 操作の回数の上限（定義の rateLimit）を超えた。429
   'rate_limited',
   'internal',
@@ -33,6 +36,21 @@ export type ErrorBody = {
     details?: unknown;
   };
 };
+
+// 入れる組織を失ってセッションが消えた 401 の details.reason。入れたはずの組織が停止しているだけのときに付く。
+// 画面はログインの画面へ移すときの理由（/login?error=suspended）にする
+export const UNAUTHENTICATED_SUSPENDED = 'suspended';
+
+export function isSuspendedUnauthenticated(error: ErrorBody['error'] | null | undefined): boolean {
+  const details = error?.details;
+  return (
+    error?.code === 'unauthenticated' &&
+    typeof details === 'object' &&
+    details !== null &&
+    'reason' in details &&
+    details.reason === UNAUTHENTICATED_SUSPENDED
+  );
+}
 
 export function isErrorBody(value: unknown): value is ErrorBody {
   if (typeof value !== 'object' || value === null || !('error' in value)) return false;

@@ -217,7 +217,7 @@ describe('不変条件が崩れたアカウント', () => {
     const second = fakeDatabase({});
 
     const result = await listAccountOrganizationsForTest(env, { accountId: id, logins: [] }, [second.database]);
-    expect(result).toEqual({ organizations: [], invitations: [] });
+    expect(result).toEqual({ organizations: [], invitations: [], suspended: false });
     expect(await hasLoginAccessForTest(env, { accountId: id, logins: [] }, [second.database])).toBe(false);
     expect(second.queries).toEqual([]);
   });

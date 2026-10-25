@@ -126,12 +126,18 @@ describe('本番の閉じたワークスペースへの書き込み', () => {
 });
 
 describe('本番の運用者の操作', () => {
-  test('組織の一覧、GitHub のユーザー名の解決、組織の作成が、運用者の権限で一覧に載っている', () => {
+  test('組織の一覧、GitHub のユーザー名の解決、組織の作成、停止、再開が、運用者の権限で一覧に載っている', () => {
     const operator = implementedOperations
       .map((operation) => operation.definition)
       .filter((definition) => definition.permission === 'operator')
       .map((definition) => definition.name)
       .sort();
-    expect(operator).toEqual(['create-organization', 'list-organizations', 'resolve-github-user']);
+    expect(operator).toEqual([
+      'create-organization',
+      'list-organizations',
+      'organization-resume',
+      'organization-suspend',
+      'resolve-github-user',
+    ]);
   });
 });

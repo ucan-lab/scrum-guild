@@ -12,6 +12,7 @@ import {
   type AnyOperationDefinition,
   type Permission,
 } from '../../shared/operations/define.ts';
+import { UNAUTHENTICATED_SUSPENDED } from '../../shared/errors.ts';
 import { sessionCookieClearOptions, sessionCookieName, sessionCookieOptions } from '../../shared/session-cookie.ts';
 import type { AppEnv } from '../app-env.ts';
 import type { InviteeResolver } from '../auth/login-method.ts';
@@ -22,6 +23,7 @@ import {
   assertVerifiedWorkspace,
   commonDb,
   enterOrganization,
+  ORGANIZATION_SUSPENDED,
   verifyWorkspace,
   type OrganizationActor,
   type VerifiedWorkspace,
@@ -185,11 +187,12 @@ async function requireLoginAccess(
   // 組織の選択と同じ読み取りの結果（account.organizations()。同じリクエストの中で1回だけ引く）。
   // アカウントに結ばれる前の行は数えない。数えると、結ばれる前の行だけの人が、どこにも入れないままセッションを持ち続ける。
   // その人は 401 でセッションが消え、もう一度ログインすると結ばれて入れる
-  const { organizations, invitations } = await account.organizations();
+  const { organizations, invitations, suspended } = await account.organizations();
   if (organizations.length > 0 || invitations.length > 0) return;
   await deleteSessionsOf(commonDb(c.env), accountId, checkedAt);
   cookie.clear = true;
-  throw new ApiError(401, 'unauthenticated');
+  // 入れたはずの組織が停止しているだけなら、details の reason で伝える。画面はログインの画面へ移すときの理由（suspended）にする
+  throw new ApiError(401, 'unauthenticated', suspended ? { reason: UNAUTHENTICATED_SUSPENDED } : undefined);
 }
 
 // 定義の rateLimit を、アカウントと操作ごとに数える。権限の検査の後、入力を読む前に行う
@@ -270,6 +273,8 @@ async function execute(
     const slug = c.req.param('slug');
     if (slug === undefined) throw new ApiError(404, 'not_found');
     const entry = await enterOrganization(c.env, slug, { accountId: session.accountId, loadLogins: account.logins });
+    // 停止した組織は、停止していなければ入れた人にだけ伝える。入れない人は下の 404（組織があることを漏らさない）
+    if (entry === ORGANIZATION_SUSPENDED) throw new ApiError(403, 'organization_suspended');
     if (entry === undefined) {
       // この組織に入れないだけか、どの組織にも入れなくなったか。入れる組織があれば、組織が無いときと同じ 404
       await requireLoginAccess(c, cookie, session.accountId, account);

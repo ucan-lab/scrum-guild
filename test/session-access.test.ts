@@ -119,6 +119,41 @@ describe('ログインできる条件を失った人', () => {
     }
   });
 
+  test('停止した組織にしか入れない人の 401 は details.reason が suspended で、無効にされた人の 401 は理由を持たない', async () => {
+    const suspendedOrg = await createOrganization({ suspended_at: '2026-10-22T00:00:00.000Z' });
+    const suspendedAdmin = await createPerson({ organization: suspendedOrg, admin: true });
+    const disabledAdmin = await createPerson({
+      organization: await createOrganization(),
+      admin: true,
+      disabled: true,
+    });
+
+    const suspendedRes = await post(app, me, { token: suspendedAdmin.token });
+    expect(suspendedRes.status).toBe(401);
+    expect(await suspendedRes.json()).toMatchObject({
+      error: { code: 'unauthenticated', details: { reason: 'suspended' } },
+    });
+
+    const disabledRes = await post(app, me, { token: disabledAdmin.token });
+    expect(disabledRes.status).toBe(401);
+    expect(((await disabledRes.json()) as { error: { details?: unknown } }).error.details).toBeUndefined();
+  });
+
+  test('停止した組織の中の操作は、入れたはずの人に 403 を返してセッションを残し、次の組織の外の操作で 401 と理由を返す', async () => {
+    const suspendedOrg = await createOrganization({ suspended_at: '2026-10-22T00:00:00.000Z' });
+    const admin = await createPerson({ organization: suspendedOrg, admin: true });
+
+    const inside = await post(provisionalApp, organizationProfile, { slug: suspendedOrg.slug, token: admin.token });
+    expect(inside.status).toBe(403);
+    expect(await errorCodeOf(inside)).toBe('organization_suspended');
+    expect(await sessionCount(admin.accountId)).toBe(1);
+
+    const outside = await post(app, me, { token: admin.token });
+    expect(outside.status).toBe(401);
+    expect(await outside.json()).toMatchObject({ error: { details: { reason: 'suspended' } } });
+    expect(await sessionCount(admin.accountId)).toBe(0);
+  });
+
   test('運用者の一覧から外れ、入れる組織も無い人は 401 になる', async () => {
     const operator = await withNewSession(await getOperator());
     const removed: Env = Object.assign({}, testEnv, { OPERATOR_LOGIN_IDS: 'github:9000000000000002' });
