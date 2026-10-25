@@ -86,7 +86,9 @@ export function createGithubLoginMethod(
 ): LoginMethod & InviteeResolver {
   async function send(url: string, init: RequestInit): Promise<Response> {
     try {
-      return await fetcher(url, { ...init, signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS) });
+      // リダイレクトは追わない。3xx は res.ok が偽なので、呼ぶ側で失敗になる。
+      // Workers の fetch は redirect に follow と manual しか受け付けない（error は TypeError で投げる）
+      return await fetcher(url, { ...init, redirect: 'manual', signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS) });
     } catch (err) {
       // 例外の message に URL や接続の詳細が混ざりうるので、名前だけを残す
       throw new LoginMethodError(

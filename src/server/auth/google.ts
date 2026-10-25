@@ -21,6 +21,8 @@ const SCOPE = 'openid email profile';
 const REQUEST_TIMEOUT_MS = 10_000;
 
 const ISSUERS: readonly string[] = ['https://accounts.google.com', 'accounts.google.com'];
+// Google のプロフィール画像の既定のホスト。lh3 にも利用者が上げた画像は載るが、読むのは img-src なのでスクリプトは動かない。
+// `*.googleusercontent.com` 全体は、ほかのサービスのファイルを配るサブドメインまで画面から読めるので許さない
 const AVATAR_HOST = 'lh3.googleusercontent.com';
 // プロフィールに名前が無い人の login_name（docs/data-model.md の `account_logins`）
 const FALLBACK_LOGIN_NAME = 'Google ユーザー';
@@ -80,13 +82,13 @@ export type GoogleIdTokenExpectation = {
 export type GoogleIdentity = {
   profile: LoginProfile;
   // email_verified が真偽値の true のときだけ、ID トークンのメールアドレス。それ以外は null（断らない）。
-  // LoginProfile には載せず、ログにも DB にも出さない
+  // #58 で、メールアドレスで待つ指名と招待に結ぶときに使う。LoginProfile には載せず、ログにも DB にも出さない
   email: string | null;
 };
 
 // ID トークンの検査（純粋な関数）。確かめるのは5つ:
 //   1. iss が https://accounts.google.com か accounts.google.com に完全一致
-//   2. aud がクライアント ID に完全一致（配列なら含み、azp も一致）
+//   2. aud がクライアント ID に完全一致（配列なら含み、azp も一致。文字列でも azp があれば一致）
 //   3. exp が過ぎていない（猶予なし）
 //   4. nonce が oauth_states の値に一致
 //   5. email_verified が真偽値の true（メールアドレスを返すかどうか。断らない）
@@ -99,9 +101,10 @@ export function checkGoogleIdToken(idToken: string, expected: GoogleIdTokenExpec
   }
 
   const { aud, azp } = claims;
+  // 配列の aud は azp が必須。文字列の aud でも、azp があれば（別のクライアント向けに発行されたトークンを通さないよう）一致させる
   const audienceMatches = Array.isArray(aud)
     ? aud.includes(expected.clientId) && azp === expected.clientId
-    : aud === expected.clientId;
+    : aud === expected.clientId && (azp === undefined || azp === expected.clientId);
   if (!audienceMatches) {
     throw new LoginMethodError('unavailable', 'Google の ID トークンの aud が違う');
   }
@@ -137,7 +140,9 @@ export function checkGoogleIdToken(idToken: string, expected: GoogleIdTokenExpec
 export function createGoogleLoginMethod(credentials: GoogleCredentials, fetcher: typeof fetch): LoginMethod {
   async function send(url: string, init: RequestInit): Promise<Response> {
     try {
-      return await fetcher(url, { ...init, signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS) });
+      // リダイレクトは追わない。3xx は res.ok が偽なので、呼ぶ側で失敗になる。
+      // Workers の fetch は redirect に follow と manual しか受け付けない（error は TypeError で投げる）
+      return await fetcher(url, { ...init, redirect: 'manual', signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS) });
     } catch (err) {
       // 例外の message に URL や接続の詳細が混ざりうるので、名前だけを残す
       throw new LoginMethodError(
@@ -182,6 +187,10 @@ export function createGoogleLoginMethod(credentials: GoogleCredentials, fetcher:
     usesNonce: true,
 
     authorizeUrl(request: AuthorizationRequest): string {
+      // nonce の無い認可は始めさせない（戻りの ID トークンを nonce で確かめられなくなる）
+      if (request.nonce === null || request.nonce === '') {
+        throw new LoginMethodError('unavailable', 'Google の認可の URL に nonce が渡されていない');
+      }
       const url = new URL(AUTHORIZE_URL);
       url.searchParams.set('response_type', 'code');
       url.searchParams.set('client_id', credentials.clientId);
@@ -190,7 +199,7 @@ export function createGoogleLoginMethod(credentials: GoogleCredentials, fetcher:
       url.searchParams.set('state', request.state);
       url.searchParams.set('code_challenge', request.codeChallenge);
       url.searchParams.set('code_challenge_method', 'S256');
-      if (request.nonce !== null) url.searchParams.set('nonce', request.nonce);
+      url.searchParams.set('nonce', request.nonce);
       url.searchParams.set('prompt', 'select_account');
       return url.toString();
     },

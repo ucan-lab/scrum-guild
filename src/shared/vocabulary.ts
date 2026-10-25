@@ -490,12 +490,12 @@ export const dictionary = defineDictionary({
   loginWithGithub: organization('GitHub でログイン', 'GitHub でログイン'),
   loginWithGoogle: organization('Google でログイン', 'Google でログイン'),
   loginNote: organization(
-    '本人確認だけに使います。入れる{organization}が2つ以上あれば、ログインのあとに選びます。',
-    '本人確認だけに使います。入れる{organization}が2つ以上あれば、ログインのあとに選びます。',
+    'どちらも本人確認だけに使います。入れる{organization}が2つ以上あれば、ログインのあとに選びます。',
+    'どちらも本人確認だけに使います。入れる{organization}が2つ以上あれば、ログインのあとに選びます。',
   ),
   loginErrorDenied: organization(
-    'ログインできませんでした。どの{organization}の{workspace}にも所属しておらず、招待も届いていません。招待されたのと別の手段でログインしていないか確かめてください。招待がまだなら、{leader}に GitHub のユーザー名で招待してもらってください。',
-    'ログインできませんでした。どの{organization}の{workspace}にも所属しておらず、招待も届いていません。招待されたのと別の手段でログインしていないか確かめてください。招待がまだなら、{leader}に GitHub のユーザー名で招待してもらってください。',
+    'ログインできませんでした。どの{organization}の{workspace}にも所属しておらず、招待も届いていません。招待された手段（GitHub か Google）と、招待されたアカウントでログインしているか確かめてください。招待がまだなら、{leader}に GitHub のユーザー名か Google のメールアドレスで招待してもらってください。',
+    'ログインできませんでした。どの{organization}の{workspace}にも所属しておらず、招待も届いていません。招待された手段（GitHub か Google）と、招待されたアカウントでログインしているか確かめてください。招待がまだなら、{leader}に GitHub のユーザー名か Google のメールアドレスで招待してもらってください。',
   ),
   loginErrorRetry: organization(
     'ログインを完了できませんでした。もう一度ログインしてください。',

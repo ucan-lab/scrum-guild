@@ -156,8 +156,10 @@ h1, h2, h3 { text-wrap: balance; }
 .btn.is-quiet:hover { color: var(--color-fg); background: var(--color-rule); }
 .btn.is-danger { color: var(--color-danger); border-color: currentColor; }
 .btn.is-sm { padding: 3px 10px; font-size: var(--text-xs); }
-/* Google のボタン（Google のブランドの決まり）。ロゴは公式の4色の G で変えない。地と枠と文字は公式の色で、テーマでなく OS の明暗で
-   切り替える。書体はアプリの本文のまま（Roboto を足さない）。ロゴと文字の間は公式の 10px */
+/* Google のボタン（Google のブランドの決まり）。ロゴは公式の4色の G で変えない。地と枠と文字は Google のブランドの固定色なので、
+   トークンを通さず色を直に書く。明暗はアプリのテーマに合わせる: テーマの指定が無い既定とシンプル（自動）だけ OS の明暗に従い、
+   シンプル（ダーク）と現代風はダーク版、シンプル（ライト）と中世風はライト版。書体と角丸はアプリのもの（Roboto を足さず、
+   公式の角丸にもしない。意図的な例外）。ロゴと文字の間は公式の 10px */
 .btn.is-google {
   --google-bg: #fff; --google-line: #747775; --google-fg: #1f1f1f; --google-hover: rgb(31 31 31 / 0.08);
   gap: 10px; background: var(--google-bg); border-color: var(--google-line); color: var(--google-fg);
@@ -165,7 +167,12 @@ h1, h2, h3 { text-wrap: balance; }
 .btn.is-google:hover { border-color: var(--google-line); background-image: linear-gradient(var(--google-hover), var(--google-hover)); }
 .btn.is-google .google-mark { width: 20px; height: 20px; flex: none; }
 @media (prefers-color-scheme: dark) {
-  .btn.is-google { --google-bg: #131314; --google-line: #8e918f; --google-fg: #e3e3e3; --google-hover: rgb(227 227 227 / 0.08); }
+  :root:not([data-theme]) .btn.is-google, :root[data-theme="simple"] .btn.is-google {
+    --google-bg: #131314; --google-line: #8e918f; --google-fg: #e3e3e3; --google-hover: rgb(227 227 227 / 0.08);
+  }
+}
+:root[data-theme="simple_dark"] .btn.is-google, :root[data-theme="modern"] .btn.is-google {
+  --google-bg: #131314; --google-line: #8e918f; --google-fg: #e3e3e3; --google-hover: rgb(227 227 227 / 0.08);
 }
 /* aria-disabled は、押しても何も起きないが、フォーカスは残したいボタン（読み直している最中の「もう一度試す」など） */
 .btn:disabled, .btn[aria-disabled="true"] { opacity: 0.45; cursor: not-allowed; filter: none; }

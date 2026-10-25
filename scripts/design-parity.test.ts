@@ -104,6 +104,8 @@ describe('見本との照合', () => {
       ['見本の googleMark', googleMark],
       ['本番の GoogleMark.svelte', component],
     ]) {
+      // svg と path ×5 だけ。title や g、circle を足して公式の形を崩さない
+      assert.deepEqual(readTags(source), ['svg', 'path', 'path', 'path', 'path', 'path'], `${label} の要素`);
       assert.deepEqual(readPaths(source), official, `${label} の path`);
       assert.deepEqual(
         readSvg(source),

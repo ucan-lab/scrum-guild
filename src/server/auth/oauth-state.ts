@@ -16,7 +16,7 @@ export function oauthStateCookieOptions(publicOrigin: string) {
   return {
     httpOnly: true,
     secure: isSecureOrigin(publicOrigin),
-    // GitHub からの戻りは別のサイトからの GET の移動。Lax はこれに Cookie を付ける
+    // 手段からの戻りは別のサイトからの GET の移動。Lax はこれに Cookie を付ける
     sameSite: 'Lax',
     path: '/',
     maxAge: OAUTH_STATE_LIFETIME_MS / 1000,

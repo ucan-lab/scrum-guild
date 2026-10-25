@@ -28,9 +28,9 @@
 
 ## 外への通信
 
-- 取り込み元（Backlog、GitHub）と GitHub のログイン以外へ通信している（テレメトリは送らない。AI の機能を入れたら Anthropic が加わる。`docs/ai.md`）
+- 通信先が、取り込み元（Backlog、GitHub）と GitHub のログイン、Google のログイン（認可の URL への移動と、トークンのエンドポイント `oauth2.googleapis.com` だけ）以外に及ぶこと（テレメトリは送らない。AI の機能を入れたときの Anthropic の扱いは `docs/ai.md`）
 - `fetch()` にタイムアウトが無い（`AbortSignal.timeout()` を渡す）
-- 取り込み元の応答を、型を検証せずに使っている。大きさを確かめずに D1 に入れている
+- 取り込み元の応答を、型を検証せずに使い、大きさを確かめずに D1 に入れている
 - 利用者が指定した URL へサーバーから通信している（SSRF）
 
 ## Hono

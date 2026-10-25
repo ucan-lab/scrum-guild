@@ -68,7 +68,7 @@ export function githubMethod(c: Context<AppEnv>, fetcher: typeof fetch): (LoginM
 }
 
 // 資格情報が未設定なら undefined。Google はトークンを取り消さないので、背景の仕事を持たない
-export function googleMethod(c: Context<AppEnv>, fetcher: typeof fetch): LoginMethod | undefined {
+function googleMethod(c: Context<AppEnv>, fetcher: typeof fetch): LoginMethod | undefined {
   const credentials = googleCredentials(c.env);
   if (credentials === undefined) return undefined;
   return createGoogleLoginMethod(credentials, fetcher);

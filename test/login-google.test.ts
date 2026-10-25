@@ -279,6 +279,56 @@ describe('トークンの交換', () => {
     expect(browser.sessionToken).toBeUndefined();
   });
 
+  test('クライアントの秘密が違う（invalid_client）と、unavailable でアカウントを作らない', async () => {
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const user = googleUser('秘密違い');
+    await memberOf(user.sub);
+    const wrongSecret: Env = Object.assign({}, loginEnv, { GOOGLE_CLIENT_SECRET: 'wrong-secret' });
+    const browser = googleBrowser(wrongSecret);
+    const started = await browser.start();
+    const code = google.issueCode(user, started.location);
+    const result = await browser.callback({ code, state: started.state });
+    expect(result.location).toBe('/login?error=unavailable');
+    expect(browser.sessionToken).toBeUndefined();
+    expect(await googleAccountLoginOf(user)).toBeUndefined();
+  });
+
+  test('redirect_uri が認可のときと合わないと、unavailable でアカウントを作らない', async () => {
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const user = googleUser('戻り先違い');
+    await memberOf(user.sub);
+    const browser = googleBrowser();
+    const started = await browser.start();
+    // 認可の画面が別の戻り先で始まったことにする（token の交換で使う redirect_uri は、アプリの戻り先のまま）
+    const authorization = new URL(started.location);
+    authorization.searchParams.set('redirect_uri', 'https://other.example.test/api/auth/google/callback');
+    const code = google.issueCode(user, authorization);
+    const result = await browser.callback({ code, state: started.state });
+    expect(result.location).toBe('/login?error=unavailable');
+    expect(browser.sessionToken).toBeUndefined();
+    expect(await googleAccountLoginOf(user)).toBeUndefined();
+  });
+
+  test('戻り先の時点で Google の資格情報が未設定なら、unavailable で Google に送らない', async () => {
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+    const user = googleUser('戻りで未設定');
+    await memberOf(user.sub);
+    const starting = googleBrowser();
+    const started = await starting.start();
+    const code = google.issueCode(user, started.location);
+    const unconfigured: Env = Object.assign({}, loginEnv, { GOOGLE_CLIENT_ID: '', GOOGLE_CLIENT_SECRET: '' });
+    const returning = googleBrowser(unconfigured);
+    for (const [name, value] of starting.cookies) returning.cookies.set(name, value);
+    google.calls.length = 0;
+    const result = await returning.callback({ code, state: started.state });
+    expect(result.location).toBe('/login?error=unavailable');
+    expect(returning.sessionToken).toBeUndefined();
+    expect(google.calls.length).toBe(0);
+    expect(await googleAccountLoginOf(user)).toBeUndefined();
+  });
+
   test.each(['server-error', 'not-json', 'no-id-token'] as const)(
     'トークンの交換が %s なら unavailable で、アカウントを作らない',
     async (failure) => {
@@ -328,6 +378,44 @@ describe('ID トークンの検査（結合）', () => {
     await db.batch([
       db.statement((q) => q.updateTable('oauth_states').set({ nonce: null }).where('state', '=', started.state)),
     ]);
+    google.calls.length = 0;
+    const result = await browser.callback({ code, state: started.state });
+    expect(result.location).toBe('/login?error=retry');
+    expect(browser.sessionToken).toBeUndefined();
+    expect(google.calls.length).toBe(0);
+    expect(await googleAccountLoginOf(user)).toBeUndefined();
+  });
+
+  test('nonce が空文字の oauth_states の行も、Google に送らず断る', async () => {
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const user = googleUser('nonce 空文字');
+    await memberOf(user.sub);
+    const browser = googleBrowser();
+    const started = await browser.start();
+    const code = google.issueCode(user, started.location);
+    const db = commonDb(env);
+    await db.batch([
+      db.statement((q) => q.updateTable('oauth_states').set({ nonce: '' }).where('state', '=', started.state)),
+    ]);
+    google.calls.length = 0;
+    const result = await browser.callback({ code, state: started.state });
+    expect(result.location).toBe('/login?error=retry');
+    expect(browser.sessionToken).toBeUndefined();
+    expect(google.calls.length).toBe(0);
+    expect(await googleAccountLoginOf(user)).toBeUndefined();
+  });
+
+  test('GitHub で始めた行（nonce が空）を Google の戻り先に持ち込むと断る。Google には送らない', async () => {
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const user = googleUser('持ち込み');
+    await memberOf(user.sub);
+    const browser = newBrowser();
+    const started = await browser.start();
+    expect((await stateRow(started.state))?.nonce).toBeNull();
+    const code = google.issueCode(user, started.location);
+    browser.provider = 'google';
     google.calls.length = 0;
     const result = await browser.callback({ code, state: started.state });
     expect(result.location).toBe('/login?error=retry');

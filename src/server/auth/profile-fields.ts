@@ -13,12 +13,19 @@ export function displayNameOf(value: unknown): string | null {
   return cleaned === '' ? null : [...cleaned].slice(0, MAX_DISPLAY_NAME_LENGTH).join('');
 }
 
-// アバターは手段のアバターのホスト（host）の https だけ。ほかのホストの画像を、画面から読ませない
+// アバターは手段のアバターのホスト（host）の https だけ。ほかのホストの画像を、画面から読ませない。
+// CSP の img-src はホストとポートで照合するので、ポートの指定とユーザー情報（user:pass@）が付いたものも通さない
 export function avatarUrlOf(value: unknown, host: string): string | null {
   if (typeof value !== 'string' || value.length > MAX_AVATAR_URL_LENGTH) return null;
   try {
     const url = new URL(value);
-    return url.protocol === 'https:' && url.hostname === host ? value : null;
+    return url.protocol === 'https:' &&
+      url.hostname === host &&
+      url.port === '' &&
+      url.username === '' &&
+      url.password === ''
+      ? value
+      : null;
   } catch {
     return null;
   }

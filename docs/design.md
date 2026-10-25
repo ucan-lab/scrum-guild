@@ -45,8 +45,9 @@ favicon と同じマーク（下の「favicon」）の横に、名前「Scrum Gu
 ログインの画面の Google のボタンは、Google のブランドの決まり（Sign in with Google）に合わせる。`.btn` の変種 `.btn.is-google` で、画面ごとの CSS は持たない。
 
 - ロゴ: 公式の G の SVG（4色）を形も色も変えずに 20px で置く。本番は `GoogleMark.svelte`、見本は `design/kit.js` の `googleMark`。2つの path の並びと色を `scripts/design-parity.test.ts` が公式の値と突き合わせる
-- 色: テーマでなく OS の明暗（`prefers-color-scheme`）で切り替える。ライトは地 `#fff`、枠 `#747775`、文字 `#1f1f1f`。ダークは地 `#131314`、枠 `#8e918f`、文字 `#e3e3e3`
-- 書体と重み: アプリの本文の書体と、`.btn` の重みのまま（GitHub のボタンと同じ）。Roboto は足さない
+- 色: ライトは地 `#fff`、枠 `#747775`、文字 `#1f1f1f`。ダークは地 `#131314`、枠 `#8e918f`、文字 `#e3e3e3`。Google のブランドの固定色なので、トークンを通さず `components.css` に色を直に書く
+- 明暗の切り替え: アプリのテーマに合わせる。`data-theme` が無い既定とシンプル（自動）だけ OS の明暗（`prefers-color-scheme`）に従う。シンプル（ダーク、`simple_dark`）と現代風（`modern`）はダーク版、シンプル（ライト、`simple_light`）と中世風（`medieval`）はライト版で、OS の明暗に依らない。ログインの画面は枠の外でテーマを既定に戻すので、実際には OS の明暗で決まる。テーマごとの分岐が効くのは、テーマを当てたまま出す見本とカタログ
+- 書体と重み: アプリの本文の書体と、`.btn` の重みのまま（GitHub のボタンと同じ）。Roboto は足さない。角丸もアプリのもの（`--radius-1`）にする。書体と角丸は、公式から外す意図的な例外
 - 並べ方: GitHub のボタンと同じ `.is-wide` で、同じ幅にする。ロゴと文字の間は 10px
 - 文言: 辞書の `loginWithGoogle`（「Google でログイン」。ゲームとスクラムで同じ文）
 

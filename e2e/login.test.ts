@@ -22,32 +22,51 @@ test('/login は枠の外に GitHub のボタンを出す', async ({ page }) => 
   await expect(page).toHaveTitle('ログイン - Scrum Guild');
 });
 
-test('Google のボタンは GitHub と同じ幅で、OS のライトとダークで公式の色になる', async ({ page }) => {
+test('Google のボタンは GitHub と同じ幅で、ロゴが出る', async ({ page }) => {
   await page.goto('/login');
   const google = page.getByRole('link', { name: 'Google でログイン' });
   const github = page.getByRole('link', { name: 'GitHub でログイン' });
   expect((await google.boundingBox())?.width).toBe((await github.boundingBox())?.width);
   await expect(google.locator('svg.google-mark')).toBeVisible();
-
-  const colors = () =>
-    google.evaluate((element) => {
-      const style = getComputedStyle(element);
-      return { background: style.backgroundColor, border: style.borderTopColor, color: style.color };
-    });
-  // 色は短く遷移する（.btn の transition）ので、落ち着くまで待つ
-  await page.emulateMedia({ colorScheme: 'light' });
-  await expect.poll(colors).toEqual({
-    background: 'rgb(255, 255, 255)',
-    border: 'rgb(116, 119, 117)',
-    color: 'rgb(31, 31, 31)',
-  });
-  await page.emulateMedia({ colorScheme: 'dark' });
-  await expect.poll(colors).toEqual({
-    background: 'rgb(19, 19, 20)',
-    border: 'rgb(142, 145, 143)',
-    color: 'rgb(227, 227, 227)',
-  });
 });
+
+// Google のボタンの明暗は、テーマの指定が無い既定とシンプル（自動）だけ OS の明暗に従い、
+// ダークのテーマ（simple_dark、modern）はダーク版、ライトのテーマ（simple_light、medieval）はライト版になる
+const googleLight = { background: 'rgb(255, 255, 255)', border: 'rgb(116, 119, 117)', color: 'rgb(31, 31, 31)' };
+const googleDark = { background: 'rgb(19, 19, 20)', border: 'rgb(142, 145, 143)', color: 'rgb(227, 227, 227)' };
+const googleThemes: [theme: string | null, os: 'light' | 'dark', expected: typeof googleLight][] = [
+  [null, 'light', googleLight],
+  [null, 'dark', googleDark],
+  ['simple', 'light', googleLight],
+  ['simple', 'dark', googleDark],
+  ['simple_light', 'dark', googleLight],
+  ['simple_dark', 'light', googleDark],
+  ['medieval', 'dark', googleLight],
+  ['modern', 'light', googleDark],
+];
+
+for (const [theme, os, expected] of googleThemes) {
+  test(`Google のボタンの色: テーマ ${theme ?? '（指定なし）'}、OS が${os === 'dark' ? 'ダーク' : 'ライト'}なら${expected === googleDark ? 'ダーク版' : 'ライト版'}`, async ({
+    page,
+  }) => {
+    await page.emulateMedia({ colorScheme: os });
+    await page.goto('/login');
+    const google = page.getByRole('link', { name: 'Google でログイン' });
+    // 画面に当てたテーマを直に替える（theme-init が覚えた値を当てるのと同じ data-theme の属性）。
+    // ログインの画面は枠の外なので、読み込みの後に画面がテーマを既定に戻す（organization.svelte.ts）。
+    // 戻されても確かめられるよう、読むたびに当て直す。色は短く遷移する（.btn の transition）ので、落ち着くまで待つ
+    await expect
+      .poll(() =>
+        google.evaluate((element, value) => {
+          if (value === null) delete document.documentElement.dataset.theme;
+          else document.documentElement.dataset.theme = value;
+          const style = getComputedStyle(element);
+          return { background: style.backgroundColor, border: style.borderTopColor, color: style.color };
+        }, theme),
+      )
+      .toEqual(expected);
+  });
+}
 
 test('ログインしていない人が組織の画面を開くと、ログインの画面に移り、そこで止まって、元のパスを開始の URL に渡す', async ({
   page,

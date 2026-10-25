@@ -538,14 +538,14 @@ GitHub App も比べた。人が抜けても取り込みが止まらない、PAT
 - フロー: 認可コードのフロー（`response_type=code`）に state、PKCE（`S256`）、nonce を付け、`prompt=select_account` で Google のアカウントを選ばせる。複数の Google アカウントでログインしている人が、招待されたのと別のアカウントで戻らないようにするため。受け取る ID トークンは、固定の `https://oauth2.googleapis.com/token` に Worker から送った応答の `id_token` だけ。エンドポイントを発見の文書や設定から読まず、戻り先の URL や画面から ID トークンを受け取らない
 - ID トークンの検証: TLS でトークンのエンドポイントから直接受け取るので、OpenID Connect Core の決まりに沿って署名の検証は省く。確かめるのは次の5つ
   - `iss` が `https://accounts.google.com` か `accounts.google.com` に完全一致する
-  - `aud` がクライアント ID に完全一致する（配列なら `azp` もクライアント ID）
+  - `aud` がクライアント ID に完全一致する（配列なら `azp` もクライアント ID。文字列でも `azp` があれば、クライアント ID に完全一致する）
   - `exp` が過ぎていない
   - `nonce` が `oauth_states` の値に一致する
   - `email_verified` が真偽値の `true`（文字列の `"true"` は通さない）。メールアドレスで待つ指名と招待に結ぶときだけ要る
 - 検査の置き場: 5つの検査は `google.ts` の `checkGoogleIdToken()`（純粋な関数）に置く。失敗の理由は固定の文だけで、ID トークン、`code`、応答の本文、メールアドレスは入れず、ログにも出さない。メールアドレスは `email_verified` が真偽値の `true` のときだけ検査の結果に載り、それ以外は `null`。`LoginProfile` と `account_logins` には持たない。`email_verified` が `true` でなくてもこのログインは通す（メールアドレスで待つ指名と招待に結ぶ処理が、`null` なら結ばずに済ます）
 - `sub`: 受け取った文字列のまま扱い、数値に直さない。空でない文字列で、255字までを受ける
 - 名前: `account_logins.login_name` はプロフィールの `name`、無ければ「Google ユーザー」。`display_name` は `name` か、無ければ空
-- アバター: `picture` が `https://lh3.googleusercontent.com` の https のときだけ持ち、ほかは空にする。`*.googleusercontent.com` 全体は許さない（利用者がファイルを上げられるサブドメインがあるため）。CSP の `img-src` に同じホストを足してある
+- アバター: `picture` が `https://lh3.googleusercontent.com` の https のときだけ持ち、ほかは空にする。`lh3` は Google のプロフィール画像の既定のホストで、利用者が上げた画像も載るが、読むのは `img-src` なのでスクリプトは動かない。`*.googleusercontent.com` 全体は、ほかのサービスのファイルを配るサブドメインまで画面から読めるので許さない。CSP の `img-src` に同じホストを足してある
 - `access_token`: トークンのエンドポイントの応答から読まず、捨てる。取り消さない（Google の `/revoke` は許可ごと消し、ログインのたびに同意画面が出直すため。トークンは1時間で切れる）。userinfo も呼ばない
 - 戻り先の `code`: Google の `code` は `4/0A...` の形で `/` を含むので、戻り先の形の検査（`login-routes.ts` の `CODE_PATTERN`）は `/` を通し、512文字までにする
 - `nonce`: 開始で `usesNonce` の手段にだけ作り、`oauth_states.nonce` に入れる。`oauth_states` の `nonce` が空の Google の行は、Google に送らずに断る
@@ -634,7 +634,7 @@ Issue はエピック、ストーリー、タスクの3階層にし、親子は�
 
 最初の一本道から厳しく入れる（2026-10-22 に決めた）。後から締めると、壊れる所を探す手間が大きいため。
 
-- CSP: SvelteKit の `csp` の設定（ハッシュ）で、`script-src` を自分のものだけにする。`default-src 'self'`、`object-src 'none'`、`base-uri 'self'`、`frame-ancestors 'none'`、`form-action 'self'` を基本にする。外を読む必要が出たら、その先だけを足す。足したのは `img-src` の `'self'` と `https://avatars.githubusercontent.com`（GitHub のアバター）と `https://lh3.googleusercontent.com`（Google のアバター。利用者がファイルを上げられるほかのサブドメインは許さない）で、運用者が最初の管理者に指名する人のアバターを作る前に見せるため。書体は自分の Worker から配るので足していない（上の「書体」）
+- CSP: SvelteKit の `csp` の設定（ハッシュ）で、`script-src` を自分のものだけにする。`default-src 'self'`、`object-src 'none'`、`base-uri 'self'`、`frame-ancestors 'none'`、`form-action 'self'` を基本にする。外を読む必要が出たら、その先だけを足す。足したのは `img-src` の `'self'` と `https://avatars.githubusercontent.com`（GitHub のアバター）と `https://lh3.googleusercontent.com`（Google のアバター。`*.googleusercontent.com` 全体は許さない）で、運用者が最初の管理者に指名する人のアバターを作る前に見せるため。書体は自分の Worker から配るので足していない（上の「書体」）
 - `style-src` は `'self'` に加え、SvelteKit が差し込む読み上げ用の要素（`svelte-announcer`）の `style` 属性だけを `'unsafe-hashes'` とハッシュで通す。止めると、画面を移るたびに読み上げ用の文が見えてしまうため
 - `X-Content-Type-Options: nosniff`、`Referrer-Policy: strict-origin-when-cross-origin`、`Strict-Transport-Security: max-age=31536000; includeSubDomains`
 - e2e で、CSP の違反が出ないことを確かめる

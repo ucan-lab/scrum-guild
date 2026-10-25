@@ -61,6 +61,10 @@ describe('通るトークン', () => {
     expect(check({ iss }).profile.subject).toBe('118234567890123456789');
   });
 
+  test('aud が文字列で azp が無ければ通る', () => {
+    expect(check({ aud: FAKE_GOOGLE_CLIENT_ID, azp: undefined }).profile.subject).toBe('118234567890123456789');
+  });
+
   test('aud が配列で、クライアント ID を含み azp も一致すれば通る', () => {
     expect(check({ aud: ['other-client', FAKE_GOOGLE_CLIENT_ID], azp: FAKE_GOOGLE_CLIENT_ID }).profile.subject).toBe(
       '118234567890123456789',
@@ -85,6 +89,7 @@ describe('断るトークン', () => {
     ['aud が配列でクライアント ID を含まない', { aud: ['other-client'], azp: FAKE_GOOGLE_CLIENT_ID }],
     ['aud が配列で azp が別', { aud: [FAKE_GOOGLE_CLIENT_ID, 'other-client'], azp: 'other-client' }],
     ['aud が配列で azp が無い', { aud: [FAKE_GOOGLE_CLIENT_ID, 'other-client'], azp: undefined }],
+    ['aud が文字列で azp が別', { aud: FAKE_GOOGLE_CLIENT_ID, azp: 'other-client' }],
   ])('%s', (_label, overrides) => {
     expect(failureOf(() => check(overrides)).message).toContain('aud');
   });
@@ -187,7 +192,7 @@ describe('名前とアバター', () => {
 
   test.each([
     ['lh3 でない googleusercontent', 'https://lh4.googleusercontent.com/a/x'],
-    ['利用者がファイルを上げられるサブドメイン', 'https://doc-0g-1o-docs.googleusercontent.com/x'],
+    ['ほかのサービスのファイルを配るサブドメイン', 'https://doc-0g-1o-docs.googleusercontent.com/x'],
     ['親ドメインの別名', 'https://lh3.googleusercontent.com.evil.example/a'],
     ['http', 'http://lh3.googleusercontent.com/a/x'],
     ['別のホスト', 'https://avatars.githubusercontent.com/u/1'],
