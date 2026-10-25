@@ -9,7 +9,7 @@ import { createApp } from '../src/server/app.ts';
 import { orgDb, verifyWorkspace } from '../src/server/db/index.ts';
 import { implementedOperations } from '../src/server/operations/index.ts';
 import { taskCompleteOperation, taskCreateOperation } from '../src/server/operations/task.ts';
-import { createCategory, createMembership, createTask, createWorkspace } from './factories.ts';
+import { createCategory, createMembership, createStory, createTask, createWorkspace } from './factories.ts';
 import { errorCodeOf, post } from './operations/harness.ts';
 import { createPerson, createTarget, testEnv, type Person, type Target } from './operations/world.ts';
 
@@ -568,6 +568,34 @@ describe('task-complete', () => {
         (await recordsOf({ ...target, workspace: target.otherWorkspace }, elsewhere.id)).task!.completed_at,
       ).toBeNull();
       expect((await recordsOf(target, deleted.id)).completions).toEqual([]);
+    });
+
+    test('受信箱のタスクとストーリーの下のタスクは、この版の完了の対象外で、404 になり何も書かれない', async () => {
+      const target = await createTarget();
+      const adminId = target.admin.userId!;
+      const story = await createStory(target.organization, target.workspace.id, adminId);
+      const inbox = await createTask(target.organization, target.workspace.id, adminId, {
+        points: 3,
+        is_imported: 1,
+        tray: 'inbox',
+        created_by: null,
+      });
+      const underStory = await createTask(target.organization, target.workspace.id, adminId, {
+        points: 3,
+        story_id: story.id,
+      });
+      for (const task of [inbox, underStory]) {
+        const res = await complete(target, target.member, task.id);
+        expect(res.status, task.id).toBe(404);
+        expect(await errorCodeOf(res)).toBe('not_found');
+
+        const records = await recordsOf(target, task.id);
+        expect(records.task!.completed_at).toBeNull();
+        expect(records.task!.completed_by).toBeNull();
+        expect(records.completions).toEqual([]);
+        expect(records.grants).toEqual([]);
+        expect(records.logs).toEqual([]);
+      }
     });
   });
 

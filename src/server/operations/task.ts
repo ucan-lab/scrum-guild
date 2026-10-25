@@ -355,13 +355,17 @@ export const taskCompleteOperation = implement(taskComplete, async ({ db, actor,
   const billingMonth = monthIn(timezone, at);
 
   const results = await db.batch([
-    // 1. tasks。変わった行が0なら、タスクが無いか、すでに完了
+    // 1. tasks。変わった行が0なら、タスクが無い（この版の完了の前提に当たらないタスクを含む）か、すでに完了。
+    // 前提は、親とスプリントの無いバックログのタスク
     db.statement((q) =>
       q
         .updateTable('tasks')
         .set({ completed_at: completedAt, completed_by: userId, updated_at: completedAt })
         .where('id', '=', taskId)
         .where('workspace_id', '=', workspaceId)
+        .where('tray', '=', 'backlog')
+        .where('story_id', 'is', null)
+        .where('sprint_id', 'is', null)
         .where('completed_at', 'is', null)
         .where('deleted_at', 'is', null)
         .where((eb) => eb.exists(openWorkspace(q, organizationId, workspaceId))),
@@ -465,7 +469,8 @@ export const taskCompleteOperation = implement(taskComplete, async ({ db, actor,
 
   if ((results[0]?.changes ?? 0) === 0) {
     // 先に読んだ値ではなく、書いた結果で決める。読んでから書くまでに閉じたなら 409 の workspace_closed、
-    // タスクが無い（別の組織のタスクを含む）なら 404、あるのに変わらなければ完了済みの 409 の conflict
+    // タスクが無い（別の組織のタスクと、この版の完了の前提に当たらないタスクを含む）なら 404、
+    // あるのに変わらなければ完了済みの 409 の conflict
     await throwIfClosed(db, workspaceId);
     const existing = await db.first(
       db.statement((q) =>
@@ -474,6 +479,9 @@ export const taskCompleteOperation = implement(taskComplete, async ({ db, actor,
           .select('tasks.id')
           .where('tasks.id', '=', taskId)
           .where('tasks.workspace_id', '=', workspaceId)
+          .where('tasks.tray', '=', 'backlog')
+          .where('tasks.story_id', 'is', null)
+          .where('tasks.sprint_id', 'is', null)
           .where('tasks.deleted_at', 'is', null),
       ),
     );

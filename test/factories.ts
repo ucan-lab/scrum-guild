@@ -247,6 +247,37 @@ export async function createCategory(
   return row;
 }
 
+// エピックの下に入っていないストーリー。作った人が要る
+export async function createStory(
+  organization: OrganizationFixture,
+  workspaceId: string,
+  createdBy: string,
+  overrides: Partial<Row<OrganizationTables, 'stories'>> = {},
+) {
+  const row: Row<OrganizationTables, 'stories'> = {
+    id: uuidv7(),
+    workspace_id: workspaceId,
+    epic_id: null,
+    title: '見積もりを整える',
+    acceptance_criteria_md: null,
+    body_md: null,
+    category_id: null,
+    due_on: null,
+    link_url: null,
+    created_by: createdBy,
+    completed_at: null,
+    completed_by: null,
+    position: 'a0',
+    deleted_at: null,
+    created_at: AT,
+    updated_at: AT,
+    ...overrides,
+  };
+  const db = orgDb(env, organization.verified);
+  await db.run(db.statement((q) => q.insertInto('stories').values(row)));
+  return row;
+}
+
 // 手で作ったバックログのタスク。起票した人が要る
 export async function createTask(
   organization: OrganizationFixture,
