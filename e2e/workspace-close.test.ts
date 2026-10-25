@@ -384,22 +384,42 @@ test.describe('管理者（あおば開発のミナト）', () => {
     await expect(page.getByText('パーティの一覧を読み込めませんでした')).toHaveCount(0);
   });
 
-  test('初回の読み込み中は、読み上げの領域（role="status"）に伝える', async ({ page }) => {
+  test('初回の読み込み中は、空の読み上げの領域を先に描き、後から文字を入れる', async ({ page }) => {
+    // 節の読み上げの領域（data-section-status）が DOM に入ったときと、中の文字が変わったときを順に記録する。
+    // 領域と文字が同じ描画で入ると読み上げられないことがあるので、空の領域が先で、文字が後であることを見る
+    await page.addInitScript(() => {
+      const log: string[] = [];
+      (window as unknown as { __sectionStatusLog: string[] }).__sectionStatusLog = log;
+      new MutationObserver((mutations) => {
+        for (const mutation of mutations) {
+          // 領域は節ごとまとめて DOM に入るので、足された要素の中も探す
+          for (const node of mutation.addedNodes) {
+            if (!(node instanceof Element)) continue;
+            const added = node.matches('[data-section-status]')
+              ? [node]
+              : node.querySelectorAll('[data-section-status]');
+            for (const region of added) log.push(`added:${region.textContent}`);
+          }
+          const target = mutation.target instanceof Element ? mutation.target : mutation.target.parentElement;
+          const region = target?.closest('[data-section-status]');
+          if (region) log.push(`text:${region.textContent}`);
+        }
+      }).observe(document, { childList: true, subtree: true, characterData: true });
+    });
     await page.route('**/api/aoba/workspace-list', async (route) => {
       await new Promise((resolve) => setTimeout(resolve, 3000));
       await route.continue();
     });
     await page.goto('/aoba/admin', { waitUntil: 'commit' });
-    // 作るダイアログの候補の欄にも読み込み中の領域があるので、節の中に絞る
-    const announcement = page.locator('.setting [role="status"]', { hasText: '読み込んでいます' });
-    await expect(announcement).toHaveCount(1);
-    // 領域は、描いた次のフレームで文字が入る。節の直下の領域（節の読み込み、再開の送信中）は、文字が消えても残る
-    const regions = page.locator('.setting-body > [role="status"]');
-    await expect(regions).toHaveCount(2);
+    const region = page.locator('[data-section-status]');
+    await expect(region).toHaveText('読み込んでいます');
+    const log = await page.evaluate(() => (window as unknown as { __sectionStatusLog: string[] }).__sectionStatusLog);
+    expect(log[0]).toBe('added:');
+    expect(log.indexOf('text:読み込んでいます')).toBeGreaterThan(0);
     // 読めたら、領域は残したまま文字を消す
     await expect(page.locator('tbody tr', { hasText: '受託開発チーム' })).toBeVisible();
-    await expect(announcement).toHaveCount(0);
-    await expect(regions).toHaveCount(2);
+    await expect(region).toHaveCount(1);
+    await expect(region).toHaveText('');
   });
 
   test('狭い幅でも、節の「もう一度試す」は押せる範囲が 44px 四方以上ある', async ({ page }) => {

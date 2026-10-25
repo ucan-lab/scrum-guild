@@ -55,7 +55,7 @@
 {/snippet}
 
 <!-- 初回の読み込み中を読み上げに伝える。領域は常に置き、描いた後に中の文字だけを替える（最初から文字が入っていると読み上げられないことがある） -->
-<span class="visually-hidden" role="status">{loadingAnnouncement}</span>
+<span class="visually-hidden" role="status" data-section-status>{loadingAnnouncement}</span>
 
 {#if section.state === 'loading'}
   <EmptyState icon="clock" title={t('loading')} />
