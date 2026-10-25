@@ -20,11 +20,49 @@ function expectApiHeaders(res: Response) {
 }
 
 describe('API', () => {
-  test('/api/health は 200 で版を返す', async () => {
+  test('/api/health は D1 に届けば 200 で版を返す', async () => {
     const res = await exports.default.fetch('http://example.com/api/health');
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ status: 'ok', version: 'dev' });
+    expect(await res.json()).toEqual({ status: 'ok', database: 'ok', version: 'dev' });
     expectApiHeaders(res);
+  });
+
+  test('/api/health は D1 に届かなければ 503 の unavailable で、中身を応答にもログにも出さない', async () => {
+    // D1 が落ちたときの例外。message には接続の詳細が混ざりうる
+    const down = new Error('D1_ERROR: 接続の詳細');
+    // どのメソッドを呼んでも失敗する D1
+    const unreachable = {
+      APP_VERSION: 'dev',
+      DB: new Proxy(
+        {},
+        {
+          get: () => () => {
+            throw down;
+          },
+        },
+      ),
+    } as unknown as Env;
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      const res = await createApp().request('/api/health', {}, unreachable);
+      expect(res.status).toBe(503);
+      const text = await res.text();
+      expect(text).not.toContain('接続の詳細');
+      expect(JSON.parse(text)).toEqual({ error: { code: 'unavailable', message: 'database unavailable' } });
+      expectApiHeaders(res);
+
+      const logged = error.mock.calls.flat().join('\n');
+      expect(JSON.parse(error.mock.calls[0]![0] as string)).toMatchObject({
+        level: 'error',
+        code: 'unavailable',
+        method: 'GET',
+        route: '/api/health',
+        error: 'Error',
+      });
+      expect(logged).not.toContain('接続の詳細');
+    } finally {
+      error.mockRestore();
+    }
   });
 
   test('存在しない /api/* は JSON の 404', async () => {

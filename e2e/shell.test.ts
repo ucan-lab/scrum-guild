@@ -45,10 +45,10 @@ test('画面の無いパスも 200 でシェルを返し、CSP の違反が無�
   expect(await collect()).toEqual([]);
 });
 
-test('/api/health は 200 で版を返す', async ({ request }) => {
+test('/api/health は D1 に届いて 200 で版を返す', async ({ request }) => {
   const res = await request.get('/api/health');
   expect(res.status()).toBe(200);
-  expect(await res.json()).toEqual({ status: 'ok', version });
+  expect(await res.json()).toEqual({ status: 'ok', database: 'ok', version });
 });
 
 // 画面のシェルが出す版は API から取ったものなので、build に埋めた kit.version.name は SvelteKit が書き出す version.json で見る

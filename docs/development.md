@@ -33,9 +33,28 @@
 
 ### 入口を守る規則
 
-- Kysely の型を、共通の表の入口と組織の中の表の入口の2つに分ける。組織の中の入口は、組織を確かめた後にしか手に入らない形にする。
-- Kysely は D1 の `batch()` を持たないので、入口に、Kysely で組み立てた文を受け取って1回の `batch()` で送る関数を持たせる。共通の表の文と組織の中の表の文を混ぜて渡せない型にする。
-- 入口の外から D1 の binding や Kysely を直接使うことを、ESLint の規則で禁じる。
+置き場所は `src/server/db/`（人が差分を読む領域。「マージの判定」）。外から import してよいのは入口のモジュール `db/index.ts` だけ。
+
+- 入口は2つ。`commonDb(env)` は共通の6表だけを型に持ち、`orgDb(env, organization)` は組織の中の16表だけを型に持つ。`organization` は `VerifiedOrganization`（組織を確かめた結果）で、private な印を持つクラスなので、同じ形のオブジェクトは型の検査を通らず、値は凍結されて `organizationId` も書き換えられない。`index.ts` が出すのは型だけである。作る関数 `issueVerifiedOrganization()` は `db/verify-organization.ts` のモジュールの関数で、クラスの static にはしていないため、手に入れた値から辿れない。コンストラクターは作る関数だけが持つ札を要求し、値の `constructor` からは作り直せない。`orgDb` は、作る関数が登録したものだけを実行時に受け取る（組織を確かめる処理の中身は #51）
+- `orgDb` は組織の絞り込みを付けない。呼び出し側が、自分の文を `organization_id` か、組織を確かめた `workspace_id` で絞る。絞り込みに使う組織の ID は、リクエストの入力ではなく、入口の `organizationId`（確かめた組織の ID。読み取り専用）から取る。絞り込みを入口に寄せるかどうかは #51 で決める
+- 表の型は `db/tables.ts` の定数（列名、型、NULL を許すか、DEFAULT があるか）から導く。DEFAULT のある列と NULL を許す列は INSERT で省ける。列名は DB と同じスネークケースのままで、`CamelCasePlugin` は使わない。表を足すときは、マイグレーションと同じ PR で定数に足す
+- 表の型の照合: `test/table-columns.test.ts` が、全マイグレーションを当てた D1 の `sqlite_master` と `PRAGMA table_info` を定数と突き合わせる。表の一覧、列名、型、NOT NULL、DEFAULT の有無、主キーの NOT NULL がずれると落ちる
+- 文を作る部分: Kysely は SQL を組み立てるだけに使い（`DummyDriver` と `SqliteQueryCompiler`。D1 の方言のパッケージは入れない）、実行しない。`db.statement((q) => q.selectFrom(...))` の `q` は、その入口の表だけを型に持つので、別の入口の表を引くと型の検査で落ちる。生の SQL（`kysely` の `sql`）は `db/` の中だけで使い、入口は出さない（`/api/health` の `SELECT 1` は `pingDatabase(env)`）
+- 文（`Statement`）: private な印を持つので、形だけのオブジェクトや `{ ...statement }` は型の検査を通らない。実行時には、文を作った入口のインスタンスに結び付けて持ち、別の入口（同じ範囲の別の組織の入口、作り直した入口を含む）の文、付け替えた文、形だけのオブジェクトを拒む。文は作った入口のインスタンスで実行する。RETURNING の無い INSERT、UPDATE、DELETE の文は読める行を持たず、`rows` と `first` に渡せない。結果は `changes` で見る
+- 送る部分: `db/send.ts` が、組み立てた `CompiledQuery` を D1 の `prepare(sql).bind(...parameters)` にして送る。値は SQL に埋めず束縛する。1件の問い合わせ（`rows`、`first`、`run`）も `batch()` も同じ道を通り、結果の行と `meta.changes` を文ごとに返す。1文の束縛が D1 の上限（100）を超えたら、送る前に文の番号を添えたエラーを投げる（SQL と値はメッセージに入れない）
+- `batch()` の形: `db.batch([文, 文, ...])`。入口ごとに、その入口の `statement()` が作った文だけを受け取り、共通の文と組織の中の文を同じ配列に入れると型の検査で落ちる。D1 の `batch()` は全部の文を1つのトランザクションで流すので、途中の文が失敗すると前の文も書かれない。ただし件数 0 の文では戻さない。先に読んだ値で判定した書き込みは、後ろの文にも同じ条件を入れる（前の文が書いた値を見る `WHERE EXISTS (...)` など。`docs/data-model.md` の「書き込みの単位」と「メールアドレスで待つ指名と招待」の 6 と同じ決まり）。文ごとの `changes` を見るのは 409 を返すためで、見つけても書き込みは戻らない
+- 置き場所: 組織から DB を選ぶ関数は `db/select-database.ts`（今はどの組織でも同じ DB）、組織をまたいで読む関数は `db/cross-organization.ts`
+- 入口の外から D1 の binding や Kysely を直接使うことを、ESLint の規則で禁じる。禁止の定義と例外は `eslint.config.db-entry.js` の1つの規則（`db-entry/guard`）に置く。`no-restricted-imports` などを設定ごとに並べると、後ろの設定が前を置き換えて黙って消えるため、ファイルごとの違いは規則の中で判定する。`src/server/db/` の外で次を使うと落ちる
+  - `kysely` の import（静的、`import()`、型の `import('kysely')`、`require`、`export from`）。型は `db/index.ts` から取る
+  - `db/` の内部のファイルの import（入口のモジュール `db/index.ts` 以外）。`db/testing.ts` は `test/` からだけ
+  - 引数が文字列のリテラルでない `import()`、`createRequire`、`process.getBuiltinModule`。import の検査を抜けられるため
+  - D1 の binding: `env.DB`、`env['DB']`、``env[`DB`]``、`{ DB }`、`{ 'DB': d }`、`{ ['DB']: d }` の取り出し、`Reflect.get(env, 'DB')`、`Env['DB']`
+  - `D1Database` の型
+- 規則の例外は、入口を通さない次の2つのテストだけ。`test/apply-migrations.ts`（全マイグレーションを binding に直に当てる）と `test/schema.test.ts`（CHECK や一意を確かめるため、型を外れた生の INSERT を送る）。ほかのテストは入口とファクトリーを通す
+- 規則のテスト: `scripts/eslint-db-entry.test.ts` が、`ESLint` クラスに文字列を渡して、禁じる形が `src/server/`、`src/lib/`、`src/routes/`、`src/shared/`、`scripts/`、`e2e/`、`test/` で落ち、`db/` の中、入口のモジュールの import、`test/` からの `db/testing.ts`、例外の2ファイルが通ることを確かめる。解析できない形（`env[key]` など、キーが変数のもの）は規則で止められないので、差分を読む人が見る
+- テスト用の口: `db/testing.ts` が、確かめずに `VerifiedOrganization` を作る `verifiedOrganizationForTest`、表の照合に使う列の定数（`commonTableColumns`、`organizationTableColumns`、`ColumnSpec`）と DB のカタログを読む関数、組み立てた SQL を読む `compiledQueryForTest` を出す。`test/` からだけ import でき、ほかの場所から import すると ESLint が落とす。Worker の束にも入らない
+- 型の検査: `test/db-types.ts` が `@ts-expect-error` で、共通の入口から組織の中の表、組織の中の入口から共通の表、`batch()` への混在、形だけの文、書き込みの文の `rows`、確かめた結果を持たない `orgDb` を型の検査で落とす。`pnpm check` が検査する
+- `.claude/hooks/file-rules.mjs` の `env.DB` と `D1Database` の判定は、書く時点で止めるつなぎとして残す
 
 ### 言葉の辞書
 
@@ -53,6 +72,7 @@
 - エラーの応答は `{ "error": { "code": "...", "message": "...", "details": ... } }` の自前の形にする。`code` は `src/shared` の列挙で持ち、画面は `code` で分岐して、文言は言葉の辞書から出す。`message` は開発者向けで、画面にそのまま出さない。
 - 別の組織の ID を指定されたときは、存在しないときと同じ `not_found` の 404 を返す。
 - 入力の誤りは 400 の `invalid_input` で、`details` に zod の検証の結果を項目ごとに入れる。権限が無いのは 403、先に読んだ値で判定した書き込みの競合（`meta.changes` が 0）は 409 にする。
+- D1 に届かないとき（`/api/health` の疎通）は 503 の `unavailable`。
 - 想定していないエラーは `app.onError` で 500 の `internal` にし、中身は応答に出さずログにだけ出す。
 - ログは Workers Logs に JSON の1行で出す。リクエストの ID、操作の名前、組織の ID、ユーザーの ID、`code`、かかった時間を入れ、本文、コメント、取り込んだ内容、認証情報（招待の URL の秘密、ID トークン、Google のメールアドレスを含む）は出さない。
 
@@ -277,7 +297,7 @@ PR ごとに GitHub Actions で回す。`.github/workflows/ci.yml` の各ジョ�
 | check | 型の検査（`tsc`、`svelte-check`）、lint、整形、Claude のフックのテスト（`node --test .claude/hooks/*.test.mjs`） |
 | test | Workers の実行環境で動かす（`@cloudflare/vitest-plugin`。`@cloudflare/vitest-pool-workers` から名前が変わった）。テストの D1 には `test/apply-migrations.ts` が全マイグレーションを当てる。1つのテストファイルの中では、前のテストが入れた行が残るので、一意の列にはテストごとに新しい値を使う。組織の分離のテストを含む。`scripts/` の `node --test` は、seed を一時の D1 に2回流して中身を数える |
 | migration | 空の D1 に全マイグレーションを順に当てて通るか確かめ、続けて同じ D1 に seed を2回流す（`pnpm db:migrate:fresh`）。マイグレーションと seed のずれと、seed を流し直せることを PR ごとに確かめるため。0件なら当てずに成功で終える。ベータが始まったら、既にあるマイグレーションのファイルの書き換えも落とす（上の「DB を作り直してよい期間」） |
-| e2e | `pnpm e2e`。`pnpm preview` で build して `wrangler dev` を立て、Playwright でシェルの表示、`/api/health` の版、CSP の違反が無いこと（`securitypolicyviolation` とコンソールのエラー）を確かめる。版には PR の head の SHA を渡し、`/api/health` と画面の build に埋めた版（SvelteKit が書き出す `/_app/version.json`）がどちらもその値になることも見る。スクリーンショットと、失敗したときの trace を成果物の `e2e` に上げる。4つのテーマと2つの言葉の組み合わせのスクリーンショットは、画面ができてから足す。trace は要求と応答と Cookie を丸ごと残し、成果物はリポジトリを読める人が誰でも取れるので、e2e には本物の認証情報を渡さない（ログインは seed のセッションで通す） |
+| e2e | `pnpm e2e`。`pnpm preview` で build して `wrangler dev` を立て、Playwright でシェルの表示、`/api/health` の版と D1 への疎通、CSP の違反が無いこと（`securitypolicyviolation` とコンソールのエラー）を確かめる。版には PR の head の SHA を渡し、`/api/health` と画面の build に埋めた版（SvelteKit が書き出す `/_app/version.json`）がどちらもその値になることも見る。スクリーンショットと、失敗したときの trace を成果物の `e2e` に上げる。4つのテーマと2つの言葉の組み合わせのスクリーンショットは、画面ができてから足す。trace は要求と応答と Cookie を丸ごと残し、成果物はリポジトリを読める人が誰でも取れるので、e2e には本物の認証情報を渡さない（ログインは seed のセッションで通す） |
 | ai-review | `anthropics/claude-code-action` で、スキル `ai-review` が差分に応じて `.claude/agents/` のレビューのエージェントを呼び分け、CRITICAL と HIGH を `finding-verifier` の反証にかけてから、指摘を PR に書く。`.github/workflows/ai-review.yml` に分けて置く |
 | label | パスを見て `needs-human` のラベルを付ける（上の「マージの判定」）。`.github/workflows/label.yml` に分けて置き、`pull_request_target` で動かす。ワークフローも規則も PR のベース（`main`）の版が使われるので、PR の側で書き換えてもラベルは付く。別のブランチをベースに開いてから `main` へ付け替えたときも、判定し直す。PR のコードはチェックアウトしない（書き込みのトークンで PR のコードを動かさないため） |
 | ci-ok | ai-review と label を除く上のジョブをまとめる1つのジョブ。マージの前に確かめるのは、これと label |
@@ -325,7 +345,7 @@ PR ごとのプレビュー環境は持たず、Workers Builds の preview build
    3. `migrations/` にファイルがあれば、D1 の Time Travel のブックマークをログに出してから `wrangler d1 migrations apply --remote` で当てる。未適用が無い回の apply は何もしないので、未適用の有無は見ない。ブックマークが取れないか apply が落ちたら、版は切り替えずに失敗
    4. 版を上げる直前に今の版を取り直し、控えた版と違えば（別のビルドが割り込んだ）版を切り替えずに失敗
    5. `wrangler deploy --var APP_VERSION:<SHA> --message <SHA>` で新しい版を上げ、100% に切り替える。`wrangler deploy` は版を切り替えた後の triggers の反映でも落ちるので、落ちたら今の版を取り直す。控えた版のままなら、そのまま失敗。切り替わっていれば、または確かめられなければ、控えた版へ戻して失敗
-   6. 煙のテストで、本番の `/api/health` の `version` が SHA に一致するまで、5秒おきに問い合わせを始め、2分で打ち切る。1回の問い合わせは10秒（期限が近ければ残りの時間）で打ち切り、200 でも版が違えば失敗として数える。反映にかかった時間をログに出す
+   6. 煙のテストで、本番の `/api/health` の `version` が SHA に一致するまで、5秒おきに問い合わせを始め、2分で打ち切る。1回の問い合わせは10秒（期限が近ければ残りの時間）で打ち切り、200 以外（D1 に届かない 503 を含む）と、200 でも版が違うものは失敗として数える。反映にかかった時間をログに出す
    7. 一致しなければ、控えた版の ID を指定して `wrangler rollback <ID>` で戻し、ビルドを失敗で終える。ただし次の2つは戻さずに失敗
       - 上げた直後に控えた自分の版から、本番の版が変わっている（別のビルドが上げた）
       - 戻し先が無い。壊れた版が残っていると書く
@@ -335,7 +355,7 @@ PR ごとのプレビュー環境は持たず、Workers Builds の preview build
 
 - 版は `wrangler deploy` の1回で上げる。`wrangler versions upload` と `versions deploy` の2段にしないのは、`versions upload` が Worker のまだ無い初回に失敗し、cron やルート（triggers）の変更も反映しないため。版を段階的に流さないので、2段に分ける得も無い
 - rollback には必ず版の ID を渡す。`wrangler rollback` は版を指定しないと、直近のデプロイを除いた履歴から 100% で動いていた版を選ぶ。その間に別のデプロイが挟まると、このスクリプトが切り替える直前の版とずれるため
-- 煙のテストが確かめるのは版だけ。DB への疎通は、入口を作るときに `/api/health` に足す（上の「初版の作る順」の4）。入口より前に D1 の binding を直に使わないため
+- 煙のテストが確かめるのは版と DB への疎通。`/api/health` は共通の入口で `SELECT 1` を送り、届けば 200 の `{ status, database, version }`、届かなければ 503 の `unavailable` を返す。503 は失敗として数えるので、D1 に届かない版は上の rollback で戻る（`versionFromHealth` が応答を読む）
 - 煙のテストの URL はスクリプトの定数（`PRODUCTION_URL`）。ドメインへ移すときに直す
 - マイグレーションは自動では戻さない。戻すかは人が決め、ログのブックマークで Time Travel から戻す（`docs/operations.md` の「戻し方」）
 

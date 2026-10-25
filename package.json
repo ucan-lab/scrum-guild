@@ -21,7 +21,8 @@
     "db:seed": "node scripts/db-seed.ts"
   },
   "dependencies": {
-    "hono": "^4.13.13"
+    "hono": "^4.13.13",
+    "kysely": "^0.29.7"
   },
   "devDependencies": {
     "@cloudflare/vitest-plugin": "^1.4.7",

@@ -5,6 +5,7 @@ import { defineConfig, includeIgnoreFile } from 'eslint/config';
 import globals from 'globals';
 import path from 'node:path';
 import ts from 'typescript-eslint';
+import { dbEntryConfig } from './eslint.config.db-entry.js';
 
 const gitignorePath = path.resolve(import.meta.dirname, '.gitignore');
 
@@ -33,6 +34,8 @@ export default defineConfig(
       },
     },
   },
+  // 入口を守る規則。禁止の定義と例外は eslint.config.db-entry.js の1つの規則に置き、この設定からは足すだけにする
+  dbEntryConfig,
   {
     // 画面は API を HTTP で呼ぶ。Worker のコード（と、その先の D1 の binding や秘密）を画面の束に入れない。
     // src/shared は画面の束にも入るので、同じく src/server を引かせない。相対パスと $lib だけを見て、
