@@ -112,6 +112,8 @@ describe('外部キー', () => {
     const details = plan.map((row) => row.detail);
 
     expect(details.filter((detail) => detail.startsWith('SCAN '))).toEqual([]);
+    // その場で作る索引（AUTOMATIC）でなく、張った索引で引くこと
+    expect(details.filter((detail) => !/^SEARCH \w+ USING (COVERING )?INDEX \w+ /.test(detail))).toEqual([]);
     // 外部キーの列ごとに1行ずつ SEARCH が出る。実行計画が検査を載せなくなったら、上の確かめが空振りするので数も見る
     const searched = details
       .map((detail) => /^SEARCH (\w+) /.exec(detail)?.[1])

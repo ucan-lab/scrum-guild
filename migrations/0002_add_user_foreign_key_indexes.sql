@@ -2,7 +2,7 @@
 -- users.id を指す外部キーの列に、外部キーの検査に使える索引を足す。待っていた users の行を消すとき、子の表を全件読まないようにする
 -- 空にできる列は WHERE x IS NOT NULL の部分索引にする。検査の x = ? が条件を満たすので使える。ほかの条件の部分索引（left_at IS NULL など）は使えない
 -- xp_grants.user_id は xp_grants_user_workspace の先頭の列なので足さない
--- memberships は (user_id, left_at) にする。今の所属を引く文（user_id と left_at IS NULL）も、SQLite がこちらを選んで、索引だけで引けるようにするため
+-- memberships は (user_id, left_at) にする。今の所属を引く文（user_id と left_at IS NULL）は、SQLite がこちらを選ぶので、2列とも索引で絞れるようにするため
 
 CREATE INDEX workspaces_created_by ON workspaces (created_by);
 
