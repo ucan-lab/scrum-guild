@@ -441,6 +441,16 @@ describe('bash-rules: 止める', () => {
     assert.equal(judgeBash('git -C/repo push --force-with-lease origin HEAD', { cwd: '/w', branchOf })?.[0], 'deny');
     assert.equal(judgeBash('cd /repo && git push --force-with-lease', { cwd: '/w', branchOf })?.[0], 'deny');
     assert.equal(judgeBash('git -C worktrees/x push --force-with-lease', { cwd: '/repo', branchOf }), null);
+    for (const command of [
+      'git -C "$(git rev-parse --show-toplevel)" commit -m x',
+      'git -C "$(pwd)" merge x',
+      'git -C $(pwd) commit -m x',
+      'git -C "$PWD" commit -m x',
+      'git -C ~/repo commit -m x',
+      'git -C$PWD commit -m x',
+    ]) {
+      assert.equal(judgeBash(command, { cwd: '/repo', branchOf })?.[0], 'ask', command);
+    }
   });
 
   test('止めた理由が規則に合っている', () => {
@@ -549,6 +559,9 @@ describe('bash-rules: 通す', () => {
     'wrangler d1 execute DB --local --command "select * from tasks where id in (?)"',
     'wrangler d1 execute DB --local --command="select * from tasks"',
     'wrangler kv key put k v --local 2>/dev/null',
+    'wrangler d1 execute DB --local --persist-to "$DIR" --command "select 1"',
+    'wrangler dev --var "A:$(cat x)"',
+    `wrangler kv key put k v --binding KV --local --metadata '{"a":1}'`,
     'git commit -m "$(cat msg.txt)"',
     'wrangler r2 object put attachments/a.png --file a.png --local',
     'wrangler r2 object get attachments/a.png --local=true',

@@ -42,6 +42,7 @@ function findWrangler(words, ci) {
 
 const WRANGLER_FLAGS_WITH_VALUE = new Set([
   '-c', '--config', '-e', '--env', '--cwd', '--env-file', '--name', '--port', '--ip', '--command', '--file', '--binding',
+  '--persist-to', '--var', '--metadata', '--content-type',
 ]);
 const WRANGLER_PRODUCTION = new Set(['deploy', 'publish', 'rollback', 'versions', 'deployments', 'delete', 'triggers', 'tail']);
 const SECRET_REASON = 'シークレットとログインは人が扱う（セッションに Cloudflare の資格情報を置かない）';
@@ -151,13 +152,18 @@ function isOption(arg, full, shortest) {
   return name.length >= shortest && full.startsWith(name);
 }
 
+// git -C "$(git rev-parse --show-toplevel)" や -C ~/x の行き先は、実行するまで分からない
+function gitDirAt(dir, target) {
+  return /^~|\$/.test(target) ? null : dir && path.resolve(dir, target);
+}
+
 // dir が null のときは、作業場所を判定できない（cd ~、cd $X、GIT_DIR=）
 function judgeGit(args, dir, branchOf) {
   let i = 0;
   let gitDir = dir;
   while (i < args.length && args[i].startsWith('-')) {
-    if (args[i] === '-C') gitDir = gitDir && path.resolve(gitDir, args[i + 1] ?? '.');
-    if (/^-C./.test(args[i])) gitDir = gitDir && path.resolve(gitDir, args[i].slice(2));
+    if (args[i] === '-C') gitDir = gitDirAt(gitDir, args[i + 1] ?? '.');
+    if (/^-C./.test(args[i])) gitDir = gitDirAt(gitDir, args[i].slice(2));
     if (/^--(git-dir|work-tree)/.test(args[i])) gitDir = null;
     i += GIT_FLAGS_WITH_VALUE.has(args[i]) ? 2 : 1;
   }
