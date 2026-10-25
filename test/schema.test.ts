@@ -121,6 +121,30 @@ describe('外部キー', () => {
     expect(children.length).toBeGreaterThan(0);
     expect(searched.sort()).toEqual(children.sort());
   });
+
+  // 外部キーの検査の索引が、担当の未完了のタスク（自分の今日、積載量）も引く。完了した行と消した行を読まないこと
+  test('担当の未完了のタスクを引く文は、tasks_assignee_user の3列で絞る', async () => {
+    const { results: plan } = await env.DB.prepare(
+      `EXPLAIN QUERY PLAN SELECT id FROM tasks WHERE assignee_user_id = ? AND deleted_at IS NULL AND completed_at IS NULL`,
+    )
+      .bind(id())
+      .all<{ detail: string }>();
+    const details = plan.map((row) => row.detail).join('\n');
+
+    expect(details).toContain(
+      'USING INDEX tasks_assignee_user (assignee_user_id=? AND deleted_at=? AND completed_at=?)',
+    );
+    expect(details).not.toMatch(/^SCAN tasks\b/m);
+  });
+
+  // 使わない索引も書くたびに更新され、D1 の書いた行数に数えられる。統計の無い空の表では計画が変わらないので、残っていないことを直に見る
+  test('外部キーの検査の索引と重なる部分索引は残っていない', async () => {
+    const { results } = await env.DB.prepare(
+      `SELECT name FROM sqlite_master WHERE type = 'index' AND name IN ('memberships_user_current', 'tasks_assignee_open')`,
+    ).all<{ name: string }>();
+
+    expect(results).toEqual([]);
+  });
 });
 
 // SQLite の通常の表では、PRIMARY KEY だけでは NULL を拒まない
