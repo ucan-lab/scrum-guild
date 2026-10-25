@@ -3,9 +3,12 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <!-- 描く前にテーマを当てるので、async や defer を付けない。inline にするとハッシュから漏れて止まる -->
-    <script src="%sveltekit.assets%/theme-init.js"></script>
+    <!-- 画面が動き出すまでの題名。画面ごとの題名は画面が辞書から組み立てる（scripts/vocabulary.test.ts が辞書の appName と同じことを確かめる） -->
+    <title>Scrum Guild</title>
     %sveltekit.head%
+    <!-- 描く前にテーマを当てるので、async や defer を付けない。inline にするとハッシュから漏れて止まる。
+         meta の CSP は自分より後の要素にだけ効くので、%sveltekit.head%（CSP の meta を含む）の後に置く -->
+    <script src="%sveltekit.assets%/theme-init.js"></script>
   </head>
   <body data-sveltekit-preload-data="hover">
     <!-- inline の script と style を置かない。CSP のハッシュから漏れて止まる -->

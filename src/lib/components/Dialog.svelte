@@ -1,11 +1,15 @@
 <script lang="ts">
-  import type { Snippet } from 'svelte';
+  import { untrack, type Snippet } from 'svelte';
+  import { modalState } from '../toast.svelte.ts';
   import { t } from '../vocabulary.svelte.ts';
   import Icon from './Icon.svelte';
+  import ToastRegion from './ToastRegion.svelte';
 
   // kit.js の openDialog / closeDialog。ブラウザの <dialog> の showModal() で開くので、
   // フォーカスの閉じ込めと Esc での閉じは任せる。閉じたら、開いたときにフォーカスのあった要素へ戻す。
-  // 開閉は open で持つ。footer の snippet には閉じる関数が渡る
+  // 開閉は open で持つ。footer の snippet には閉じる関数が渡る。
+  // Safari と Firefox はクリックしたボタンにフォーカスを移さない（activeElement が body になる）ので、
+  // 開く操作を起こした要素は show(trigger) で渡すと確実に戻せる
   let {
     open = $bindable(false),
     title,
@@ -20,7 +24,16 @@
 
   const titleId = $props.id();
   let dialog: HTMLDialogElement;
+  // フォーカスを戻す先。show() が渡した要素か、開いた時点でフォーカスのあった要素
   let opener: HTMLElement | null = null;
+  let requestedOpener: HTMLElement | null = null;
+  // 背景（dialog 自身）を押し始めたか。中で押して外で離した（文字の選択など）ときに閉じないため
+  let pressedOnBackdrop = false;
+
+  export function show(trigger?: HTMLElement | null): void {
+    requestedOpener = trigger ?? null;
+    open = true;
+  }
 
   function close(): void {
     open = false;
@@ -28,7 +41,9 @@
 
   $effect(() => {
     if (open && !dialog.open) {
-      opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+      const active = document.activeElement;
+      opener = requestedOpener ?? (active instanceof HTMLElement && active !== document.body ? active : null);
+      requestedOpener = null;
       dialog.showModal();
       // 入力欄か主ボタンを先に、なければ閉じるボタンにフォーカスを置く
       const first =
@@ -38,6 +53,14 @@
     } else if (!open && dialog.open) {
       dialog.close();
     }
+  });
+
+  // 開いている間だけ数える。閉じても、開いたまま画面ごと消えても戻る
+  $effect(() => {
+    if (!open) return;
+    // 数を読みながら書くので、この effect の依存に入れない
+    untrack(() => modalState.openCount++);
+    return () => untrack(() => modalState.openCount--);
   });
 
   // Esc でも、閉じるボタンでも、背景を押してもここに来る。close は非同期に届くので、
@@ -50,7 +73,7 @@
   }
 </script>
 
-<!-- 背景（dialog 自身）を押したときだけ閉じる。キーボードでは Esc で閉じられる -->
+<!-- 背景を押して閉じるのは、押し始めと離した所の両方が dialog 自身のときだけ。キーボードでは Esc で閉じられる -->
 <dialog
   class="dialog"
   bind:this={dialog}
@@ -62,8 +85,13 @@
     close();
   }}
   {onclose}
+  onpointerdown={(event) => {
+    pressedOnBackdrop = event.target === dialog;
+  }}
   onclick={(event) => {
-    if (event.target === dialog) close();
+    const closing = pressedOnBackdrop && event.target === dialog;
+    pressedOnBackdrop = false;
+    if (closing) close();
   }}
 >
   <div class="dialog-sheet">
@@ -76,4 +104,5 @@
     <div class="dialog-body">{@render children()}</div>
     {#if footer}<div class="dialog-foot">{@render footer(close)}</div>{/if}
   </div>
+  <ToastRegion inDialog />
 </dialog>

@@ -25,6 +25,8 @@ h1, h2, h3 { text-wrap: balance; }
 [hidden] { display: none !important; }
 .visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 .mono { font-family: var(--font-mono); }
+/* 区切りのない長い文字列（版の SHA、ID、URL）を、狭い幅でも途中で折る */
+.wrap-anywhere { overflow-wrap: anywhere; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }
 }

@@ -26,7 +26,8 @@
   </div>
   {#if tallies.length > 0}
     <dl class="tally">
-      {#each tallies as tally (tally.label)}
+      <!-- 同じラベルが2つあっても落ちないよう、key は添字にする（並びは画面が決め、入れ替えない） -->
+      {#each tallies as tally, index (index)}
         <div class={tally.count && tally.tone ? `is-${tally.tone}` : undefined}>
           <dt>
             {#if tally.icon}<Icon name={tally.icon} />{/if}{tally.label}

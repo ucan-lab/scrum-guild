@@ -3,11 +3,25 @@ import type { DictionaryKey } from '../shared/vocabulary.ts';
 import type { IconName } from './icons.ts';
 
 // メニューの項目。kit.js の PAGES と同じ並びと見出し。
-// href が null の項目は、画面がまだ無いので押せない形（.nav-item.is-later）で出す。画面を足したら href に経路の ID を入れる
+// href が null の項目は、画面がまだ無いのでメニューに出さない（色を薄くして押せなくする形は、
+// 状態が色だけに頼り、コントラストも足りないので採らない）。画面を足したら href に経路の ID を入れる
 export type NavItem = { icon: IconName; label: DictionaryKey; href: RouteId | null };
 
 // slot は、見出しのすぐ下に置く切り替え（組織、ワークスペース）。中身は画面を作る Issue で足し、枠は置き場所だけ持つ
 export type NavSection = { heading?: DictionaryKey; slot?: 'organization' | 'workspace'; items: NavItem[] };
+
+export type VisibleNavItem = { icon: IconName; label: DictionaryKey; href: RouteId };
+export type VisibleNavSection = Omit<NavSection, 'items'> & { items: VisibleNavItem[] };
+
+// 画面のある項目だけを残す。項目が1つも無い見出しは、見出しごと外す
+export function visibleNav(sections: NavSection[] = navSections): VisibleNavSection[] {
+  return sections
+    .map((section) => ({
+      ...section,
+      items: section.items.filter((item): item is VisibleNavItem => item.href !== null),
+    }))
+    .filter((section) => section.items.length > 0);
+}
 
 export const navSections: NavSection[] = [
   {

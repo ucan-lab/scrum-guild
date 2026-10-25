@@ -1,12 +1,14 @@
 // 画面の言葉の辞書。キーごとにゲームの言葉とスクラムの言葉の両方を必須にする（片方を書き忘れると pnpm check が落ちる）。
 // 画面の文言は、直に書かずにこの辞書を通して出す。言葉が同じ項目も両方書く。
 // 見本の design/kit.js の DICT にあるキーは、同じ中身を持つ（scripts/design-parity.test.ts が突き合わせる）。
-// vite.config.ts と scripts/ からも読むので、Node の型の除去で動く書き方に留める（enum を使わない）。
+// 語順や記号を含む文は、{名前} の置き換えを持つ1項目にする（format で埋める）。
+// 読むのは画面（src/lib）と scripts/ のテスト。テストは Node の型の除去で読むので、enum を使わない。
 
 export type Vocabulary = 'game' | 'scrum';
 
 // 言葉づかいを決める単位。ワークスペースの中の言葉は、ワークスペースの設定で切り替える。
-// ワークスペースの外の言葉（冒険者ギルド、ギルドマスターなど）は、管理者が組織の設定で切り替える（docs/requirements.md の「ゲームの仕組み」）
+// ワークスペースの外の言葉（冒険者ギルド、ギルドマスター、組織の画面の名前、枠の共通の文言）は、管理者が組織の設定で切り替える
+// （docs/requirements.md の「ゲームの仕組み」）
 export type VocabularyScope = 'workspace' | 'organization';
 
 export type Vocabularies = Record<VocabularyScope, Vocabulary>;
@@ -14,12 +16,18 @@ export type Vocabularies = Record<VocabularyScope, Vocabulary>;
 // 既定はゲームの言葉
 export const defaultVocabularies: Vocabularies = { workspace: 'game', organization: 'game' };
 
-type Entry = { readonly scope: VocabularyScope; readonly game: string; readonly scrum: string };
+export type Entry = { readonly scope: VocabularyScope; readonly game: string; readonly scrum: string };
 
-const workspace = (game: string, scrum: string) => ({ scope: 'workspace', game, scrum }) as const;
-const organization = (game: string, scrum: string) => ({ scope: 'organization', game, scrum }) as const;
+// 辞書の型の検査。game と scrum のどちらかが欠けた項目は、ここで型エラーになる
+// （src/shared/vocabulary.typecheck.ts が、欠けたときに落ちることを確かめる）
+export function defineDictionary<const T extends Record<string, Entry>>(entries: T): T {
+  return entries;
+}
 
-export const dictionary = {
+export const workspace = (game: string, scrum: string) => ({ scope: 'workspace', game, scrum }) as const;
+export const organization = (game: string, scrum: string) => ({ scope: 'organization', game, scrum }) as const;
+
+export const dictionary = defineDictionary({
   // ---- 見本（design/kit.js の DICT）と同じキー ----
   workspace: workspace('パーティ', 'ワークスペース'),
   inbox: workspace('届いた便り', '受信箱'),
@@ -60,17 +68,20 @@ export const dictionary = {
   assistant: organization('ギルドの書記', 'アシスタント'),
 
   // ---- 本番の画面の文言 ----
+  // 枠の共通の文言
   appName: organization('Scrum Guild', 'Scrum Guild'),
+  pageTitle: organization('{page} - {app}', '{page} - {app}'),
   menu: organization('メニュー', 'メニュー'),
-  close: workspace('閉じる', '閉じる'),
-  countUnit: workspace('件', '件'),
+  close: organization('閉じる', '閉じる'),
+  countUnit: organization('件', '件'),
   unassigned: workspace('担い手なし', '担当なし'),
   leftMember: workspace('（離脱済み）', '（離脱済み）'),
+  placeholderUserName: organization('仮の利用者', '仮の利用者'),
 
-  // メニューの項目と見出し
-  pageToday: workspace('自分の今日', '自分の今日'),
-  pageNotifications: workspace('通知', '通知'),
-  pageMe: workspace('自分の設定', '自分の設定'),
+  // メニューの項目と見出し。ワークスペースの外の画面は organization
+  pageToday: organization('自分の今日', '自分の今日'),
+  pageNotifications: organization('通知', '通知'),
+  pageMe: organization('自分の設定', '自分の設定'),
   pageOrgAdmin: organization('組織の管理', '組織の管理'),
   pageRecords: workspace('完了の記録', '完了の記録'),
   pageMembers: workspace('メンバー', 'メンバー'),
@@ -80,39 +91,50 @@ export const dictionary = {
   groupManage: workspace('管理', '管理'),
 
   // 自分の今日（仮の画面）
-  sectionToday: workspace('今日やる', '今日やる'),
-  sectionTodayHint: workspace('日付が変わると印は外れます', '日付が変わると印は外れます'),
-  todayEmptyTitle: workspace('今日やるクエストはまだありません', '今日やるタスクはまだありません'),
-  todayEmptyText: workspace(
-    'パーティに所属すると、自分が担い手のクエストがここに並びます。',
-    'ワークスペースに所属すると、自分が担当のタスクがここに並びます。',
+  sectionToday: organization('今日やる', '今日やる'),
+  sectionTodayHint: organization('日付が変わると印は外れます', '日付が変わると印は外れます'),
+  todayEmptyTitle: workspace(
+    '今日やるクエストは、この画面ができたらここに並びます',
+    '今日やるタスクは、この画面ができたらここに並びます',
+  ),
+  todayEmptyText: organization(
+    'いまは API の疎通だけを確かめる仮の画面です。',
+    'いまは API の疎通だけを確かめる仮の画面です。',
   ),
 
   // API の疎通の表示（仮の画面）
-  apiHeading: workspace('API の疎通', 'API の疎通'),
-  apiLabel: workspace('API', 'API'),
-  apiVersion: workspace('版', '版'),
-  apiChecking: workspace('API を確かめています', 'API を確かめています'),
-  apiUnreachable: workspace('API に届きませんでした', 'API に届きませんでした'),
-  apiShowDetail: workspace('詳細を見る', '詳細を見る'),
-  apiRecheck: workspace('確かめ直す', '確かめ直す'),
-  apiRechecked: workspace('API を確かめ直しました', 'API を確かめ直しました'),
-  apiDetailTitle: workspace('API の詳細', 'API の詳細'),
-  apiDetailBody: workspace('この画面が呼んだ API の応答です。', 'この画面が呼んだ API の応答です。'),
+  apiHeading: organization('API の疎通', 'API の疎通'),
+  apiStatus: organization('API: {status}（版 {version}）', 'API: {status}（版 {version}）'),
+  apiChecking: organization('API を確かめています', 'API を確かめています'),
+  apiUnreachable: organization('API に届きませんでした', 'API に届きませんでした'),
+  apiUnreachableStatus: organization('API に届きませんでした（{status}）', 'API に届きませんでした（{status}）'),
+  apiShowDetail: organization('詳細を見る', '詳細を見る'),
+  apiRecheck: organization('確かめ直す', '確かめ直す'),
+  apiRecheckOk: organization('API を確かめました', 'API を確かめました'),
+  apiRecheckFailed: organization('API に届きませんでした', 'API に届きませんでした'),
+  apiDetailTitle: organization('API の詳細', 'API の詳細'),
+  apiDetailBody: organization('この画面が呼んだ API の応答です。', 'この画面が呼んだ API の応答です。'),
 
   // テーマ
-  themeLabel: workspace('テーマ', 'テーマ'),
-  themeSimple: workspace('シンプル（自動）', 'シンプル（自動）'),
-  themeSimpleLight: workspace('シンプル（ライト）', 'シンプル（ライト）'),
-  themeSimpleDark: workspace('シンプル（ダーク）', 'シンプル（ダーク）'),
-  themeMedieval: workspace('中世風', '中世風'),
-  themeModern: workspace('現代風', '現代風'),
-  vocabLabel: workspace('言葉', '言葉'),
-} as const satisfies Record<string, Entry>;
+  themeLabel: organization('テーマ', 'テーマ'),
+  themeSimple: organization('シンプル（自動）', 'シンプル（自動）'),
+  themeSimpleLight: organization('シンプル（ライト）', 'シンプル（ライト）'),
+  themeSimpleDark: organization('シンプル（ダーク）', 'シンプル（ダーク）'),
+  themeMedieval: organization('中世風', '中世風'),
+  themeModern: organization('現代風', '現代風'),
+  vocabLabel: organization('言葉', '言葉'),
+});
 
 export type DictionaryKey = keyof typeof dictionary;
 
-export function word(key: DictionaryKey, vocabularies: Vocabularies): string {
+export type TemplateParams = Record<string, string | number>;
+
+// {名前} を params の値で埋める。params に無い名前はそのまま残す（欠けに気づけるように）
+export function format(template: string, params: TemplateParams = {}): string {
+  return template.replace(/\{(\w+)\}/g, (whole, name: string) => (name in params ? String(params[name]) : whole));
+}
+
+export function word(key: DictionaryKey, vocabularies: Vocabularies, params?: TemplateParams): string {
   const entry: Entry = dictionary[key];
-  return entry[vocabularies[entry.scope]];
+  return format(entry[vocabularies[entry.scope]], params);
 }
