@@ -273,9 +273,10 @@ const SECTIONS = [
     </div>`,
     ["離脱した人は薄くし、title に「離脱済み」を出す。", "ログインの手段の側の画像（運用者が指名する人を確かめるときの GitHub のアバター）は、頭文字の円の中に重ねる（.avatar > img）。画像の組の右側は、画像が読み込めない例で、頭文字に戻る。", "紋章の大は自分の記録の面だけ、小は名前の横に添える。"], ".avatar .is-lg .is-none .is-left / .avatar > img / .avatar-stack / .emblem .is-sm")],
   ["ledger", "台帳", () => block("ledger", "台帳（タスクの一覧）", "タスクの一覧はすべてこの形。左に今日やるの印、右に期日、ポイント、担当、完了の操作。右端の丸を押すと判子が押される。題を押すと詳細が開く。",
-    book(SAMPLE, { showAssignee: true }),
-    ["行の左端の太陽は「今日やる」。押すと金色になる。", "完了は判子で示し、すぐ横に「戻す」を置く。", "取り込んだタスクは、キーと取り込み元のアイコンを必ず添える。"],
-    ".book .entry .is-done .entry-main .entry-title .entry-meta .entry-end / .sun[aria-pressed] / .done-btn / .hanko .is-new")],
+    book(SAMPLE, { showAssignee: true }) +
+    `<div class="cat-row"><button class="done-btn" type="button" aria-disabled="true" aria-label="送信中">${icon("check")}</button><span class="field-hint">完了の操作を送っている最中（aria-disabled）</span></div>`,
+    ["行の左端の太陽は「今日やる」。押すと金色になる。", "完了は判子で示し、すぐ横に「戻す」を置く。", "完了の操作を送っている最中は、丸を薄くして押しても何も起きないようにする（aria-disabled。フォーカスは残す）。", "狭い幅（760px 以下）と指で押す画面では、完了の操作の押せる範囲を 44px 四方に広げる（丸の見た目は変えず、::after で広げる）。ポイントなどの .segmented の選択肢も 44px の高さにする。", "取り込んだタスクは、キーと取り込み元のアイコンを必ず添える。"],
+    ".book .entry .is-done .entry-main .entry-title .entry-meta .entry-end / .sun[aria-pressed] / .done-btn .done-btn[aria-disabled] / .hanko .is-new")],
   ["board", "列とカード", () => block("board", "列とカード", "スプリントの列。列の名前は明朝。完了の列にだけ完成の定義を添える。狭いときは横に送る。",
     board("sp14"),
     ["列の名前はリーダーが付けたもので、言葉づかいを切り替えても訳さない。完了の列だけは「完遂」か「完了」と出す。", "カードの操作（列の移動）は、ドラッグの他にキーボードでもできるようにする。"],

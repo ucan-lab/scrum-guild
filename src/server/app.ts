@@ -8,6 +8,7 @@ import type { AppEnv } from './app-env.ts';
 import { loginRoutes } from './auth/login-routes.ts';
 import { operatorLoginIds } from './auth/operators.ts';
 import { DatabaseUnavailableError, pingDatabase } from './db/index.ts';
+import { applyDevClock } from './dev-clock.ts';
 import { errorBody, knownError } from './errors.ts';
 import type { ImplementedOperation } from './operations/implement.ts';
 import { implementedOperations } from './operations/index.ts';
@@ -69,6 +70,27 @@ export function createApp(
         code: 'internal',
         requestId: c.get('requestId'),
         reason: 'PUBLIC_ORIGIN が https でも、手元のホストへの http でもない',
+      }),
+    );
+    return c.json(errorBody('internal', 'internal error'), 500);
+  });
+
+  // 開発用の時計（DEV_NOW）。ループバックへの http でない公開 URL（本番）に値があるか、値が解釈できなければ、
+  // API のすべてのリクエストを 500 にして（画面の資産は Worker を通らない）、デプロイの煙のテスト（/api/health）で
+  // 見つけて前の版へ戻させる。起動は止めない。値は出さない。
+  // now() を使う処理より前に置く（時計を、このリクエストの env に合わせる）
+  app.use(async (c, next) => {
+    const clock = applyDevClock(c.env);
+    if (clock.ok) return next();
+    console.error(
+      JSON.stringify({
+        level: 'error',
+        code: 'internal',
+        requestId: c.get('requestId'),
+        reason:
+          clock.reason === 'not_local'
+            ? 'DEV_NOW が、手元のホストへの http でない PUBLIC_ORIGIN で設定されている'
+            : 'DEV_NOW が解釈できない',
       }),
     );
     return c.json(errorBody('internal', 'internal error'), 500);

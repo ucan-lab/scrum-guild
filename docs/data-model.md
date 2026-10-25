@@ -17,7 +17,7 @@
 - SQL は D1 で通る SQLite の方言で書く（部分索引、`json_valid`、`date()`、CHECK を使う）。
 - 外部キーは張る。D1 は検査が有効。`ON DELETE` は付けず、物理削除はアプリが順に行う。
 - 作成日時と更新日時は `created_at`、`updated_at` で、更新はアプリが書く。
-- 手で並べ替える並びは、分数の並び（fractional indexing）の文字列 `position` で持つ。間に入れても他の行を書き換えない。新しく入ったものは末尾の値を取る。値は `fractional-indexing` のパッケージで作る（ワークスペースを作るときの最初の列も同じ）。
+- 手で並べ替える並びは、分数の並び（fractional indexing）の文字列 `position` で持つ。間に入れても他の行を書き換えない。新しく入ったものは末尾の値を取る。同時に作ると同じ値になりうるので、読むときは `position, id` の順で並べる（同じ値の行は `id` の順で、同じミリ秒の中では作った順とは限らない）。同じ値の隣に入れる並べ替えの扱いは、並べ替えを作る #62 で決める。値は `fractional-indexing` のパッケージで作る（ワークスペースを作るときの最初の列も同じ）。
 - 集計（積載量、経験値の合計、ポイントの合計、ベロシティ）は保存せず、読むたびに計算する。
 - 1つの D1 に複数の組織を入れる。組織の中の行は、リクエストの組織から辿って引く。ID だけで行を引かず、必ず `organization_id` か、組織を確かめた `workspace_id` で絞る。他の組織の行が見えないことはテストで確かめる。
 - 表を共通の表と組織の中の表に分け、後から組織ごとにデータベースを分けられるようにしておく。決まりは「データベースの分け方」。
@@ -664,10 +664,12 @@ Google の人は、ログインするまで `sub` が分からない。そのた
   - `(story_id, position) WHERE deleted_at IS NULL`: ストーリーの配下
   - `(sprint_id, column_id, column_position) WHERE deleted_at IS NULL`: スプリントの列
   - `(assignee_user_id) WHERE deleted_at IS NULL AND completed_at IS NULL`: 自分の今日、積載量
+- 手で作るタスクの `title` は、前後の空白を除いて 1〜200 字。字数の数え方と断る文字は `workspaces.name` と同じ。
 - 「今日やる」は、`today_on` が今日（ワークスペースのタイムゾーン）なら今日の印、それより前で未完了なら前日からの持ち越しとして示す。担当が替わったら消す。
 - 区分は、親のエピック、親のストーリー、タスク自身の順に、最初に入っているものを使う。読むときに結合して出し、タスクには写さない。
 - `repository_id` は、取り込むときに `repositories` の `(workspace_id, provider, source_container_id)` が `task_sources` と一致する行があれば入れる。同期では書き換えない。
 - 表示する期日は `due_on`、なければ `task_sources.source_due_on`（接続の `ignore_source_due` が 0 のとき）。
+- バックログの一覧（`task-list`。親のない未完了のタスク）は、件数に上限を付けない。想定は1ワークスペースで数百件までで、1回の応答に収まり、完了したものは行を返さず件数だけ返すので、使い続けても重くならない。上限で切ると、優先順位の後ろにあるタスクが見えなくなるため。上限か分けて読む形は、バックログの木と絞り込みを作る #62 で決める。
 - タイトルの検索は `title LIKE` と `task_sources.source_key LIKE` で行う。5万件の規模なら、ワークスペースの索引で絞れば足りる見込み。遅ければ FTS5 を足す。
 
 ### task_sources
@@ -944,6 +946,7 @@ D1 は対話的なトランザクションを持たない。まとめて書く�
 | 操作 | 書くもの |
 | --- | --- |
 | タスクの完了 | `tasks`、`completions`、`sprint_entries`（スプリントの外なら書かない）、`xp_grants`（完了、起票、詳細、手助け）、`change_logs`、`notifications` |
+| タスクの作成 | `tasks`、`change_logs`。`tasks` の文は `INSERT ... SELECT ... WHERE EXISTS`（閉じていないワークスペース。担当を指すときは、そのワークスペースに今所属している無効でない人）にし、`change_logs` は作った行があるときだけ入れる。何も入らなければ、閉じていれば 409（`workspace_closed`）、そうでなければ 404 |
 | 完了を戻す | `tasks`、`completions` の削除、`xp_grants`（打ち消し）、`change_logs` |
 | スプリントの終了 | `sprints`、`sprint_entries`、持ち越すタスクの `tasks` と新しい `sprint_entries`、`change_logs` |
 | エピックのクリア | `epics`、`xp_grants`（クリア報酬）、`change_logs` |
@@ -958,6 +961,15 @@ D1 は対話的なトランザクションを持たない。まとめて書く�
 | コメントの削除 | `comments`、そのコメントの `attachments` の削除、`change_logs`、続けて R2 のファイルの削除 |
 
 先に読んだ値で判定してから書く操作（最後の管理者、完了の可否など）は、書く文の `WHERE` に同じ条件を入れ、影響した行の数で競合を見つける。
+
+タスクの完了（`task-complete`）の文と条件。ポイント、担当、区分、作った人は先に読まず、`INSERT ... SELECT` で `tasks` の行から取る。読むのは、計上月を決めるワークスペースのタイムゾーンと、変更の履歴に残す完了にした人の名前だけ。`batch()` は件数 0 の文があっても後ろの文を書くので、後ろの文は先の文が通ったことを自分の条件に持つ。この版の完了は、親とスプリントの無いバックログのタスクだけを対象にし、1 の条件（`tray = 'backlog' AND story_id IS NULL AND sprint_id IS NULL`）で守る。対象でないタスク（受信箱やアーカイブのタスク、ストーリーの下のタスク、スプリントに入っているタスク）は、何も書かず 404 にする。区分の引き継ぎ（親のエピックとストーリー）と `sprint_entries` を足すときに、対象を広げる。
+
+1. `tasks`: `completed_at`、`completed_by`、`updated_at` を書く。条件は `id = :task AND workspace_id = :ws AND tray = 'backlog' AND story_id IS NULL AND sprint_id IS NULL AND completed_at IS NULL AND deleted_at IS NULL AND EXISTS (閉じていないワークスペース)`。最後の条件は、読んでから書くまでの間にワークスペースが閉じた競合を止める。変わった行が0なら、`batch()` の後に、同じ前提（`tray`、`story_id`、`sprint_id`）でタスクを読み直して分ける。ワークスペースが閉じていれば 409（`workspace_closed`）、タスクの行が無い（別の組織のタスクと、前提に当たらないタスクを含む）なら 404、あれば完了済みの 409（`conflict`）
+2. `completions`: `tasks LEFT JOIN categories` から入れる。条件は `tasks.completed_at = :at AND tasks.completed_by = :me AND NOT EXISTS (同じタスクで同じ完了日時の completions)`。開発用の時計（`DEV_NOW`）で止めた時刻では、同じ人が2回完了にした要求の完了日時と完了にした人が同じになる。1 の値との一致だけでは自分の更新か先の要求の更新かを見分けられないので、先に入った記録があれば何も入らないようにする。レビュー依頼の再依頼で1つのタスクに完了の記録が複数ありうるため、`task_id` の一意制約では守らない。`billing_month` は `categories.is_billed_monthly = 1` のときだけ `:at` の月（ワークスペースのタイムゾーン）、ほかは空
+3. `xp_grants`: 起票（`task_created`。受け取るのは `created_by`、`created_by IS NOT NULL` が条件）と完了（`task_completed`。受け取るのは `COALESCE(assignee_user_id, :me)`）。どちらも `tasks.points >= 1`、受け取る人がそのワークスペースに今所属している（`EXISTS (SELECT 1 FROM memberships WHERE workspace_id = :ws AND user_id = <受け取る人> AND left_at IS NULL)`）こと、`EXISTS (SELECT 1 FROM completions WHERE id = :自分の completion_id)` が条件。所属していない管理者や所属を外れた担当は、経験値の対象にならない（`docs/requirements.md`）ので、担当のいないタスクを所属していない管理者が完了にすると、完了の経験値は誰にも付かない。`dedupe_key` は `task_created:<completion_id>`、`task_completed:<completion_id>`
+4. `change_logs`: 3 と同じ `EXISTS` が条件
+
+自分の `completion_id` の記録が入ったことを後ろの文の条件にするので、遅れた要求は `completions`、`xp_grants`、`change_logs` を1行も書かない。
 
 共通の DB と組織の DB に分けて書く操作は、途中で失敗したときの扱いを決めておく。
 
