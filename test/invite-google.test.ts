@@ -727,9 +727,11 @@ describe('招待（invitations）の結び', () => {
       claim_expires_at: null,
     });
     const list = (await browser.post(myOrganizations).then((res) => res.json())) as {
-      invitations: { organization_name: string }[];
+      invitations: { organization_name: string; slug: string }[];
     };
-    expect(list.invitations).toEqual([{ organization_name: waiting.organization.name }]);
+    expect(list.invitations).toEqual([
+      { organization_name: waiting.organization.name, slug: waiting.organization.slug },
+    ]);
 
     const log = (await changeLogsOf(waiting.organization.id)).find((item) => item.entity_type === 'invitation');
     expect(log).toMatchObject({

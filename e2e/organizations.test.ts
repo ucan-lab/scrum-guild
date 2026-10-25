@@ -208,7 +208,7 @@ test.describe('組織が1つの人（あおば開発のハルカ）', () => {
       route.fulfill({
         json: {
           organizations: [{ slug: 'aoba', name: 'あおば開発' }],
-          invitations: [{ organization_name: 'つばめ商会' }],
+          invitations: [{ organization_name: 'つばめ商会', slug: 'tsubame' }],
           operator: false,
         },
       }),
@@ -231,7 +231,7 @@ test.describe('組織が1つの人（あおば開発のハルカ）', () => {
       route.fulfill({
         json: {
           organizations: [{ slug: 'aoba', name: 'あおば開発' }],
-          invitations: [{ organization_name: 'つばめ商会' }],
+          invitations: [{ organization_name: 'つばめ商会', slug: 'tsubame' }],
           operator: false,
         },
       }),
@@ -406,7 +406,7 @@ test.describe('組織が2つの人（あおば開発の管理者でひばり工�
       route.fulfill({
         json: {
           organizations: [{ slug: 'aoba', name: 'あおば開発' }],
-          invitations: [{ organization_name: 'つばめ商会' }],
+          invitations: [{ organization_name: 'つばめ商会', slug: 'tsubame' }],
           operator: false,
         },
       }),
@@ -435,7 +435,7 @@ test.describe('組織が2つの人（あおば開発の管理者でひばり工�
       route.fulfill({
         json: {
           organizations: [{ slug: 'hibari', name: 'ひばり工房' }],
-          invitations: [{ organization_name: 'つばめ商会' }],
+          invitations: [{ organization_name: 'つばめ商会', slug: 'tsubame' }],
           operator: false,
         },
       }),
@@ -511,7 +511,7 @@ test.describe('組織が2つの人（あおば開発の管理者でひばり工�
             { slug: longSlug, name: longName },
             { slug: 'aoba', name: 'あおば開発' },
           ],
-          invitations: [{ organization_name: longName }],
+          invitations: [{ organization_name: longName, slug: longSlug }],
           operator: false,
         },
       }),
@@ -578,7 +578,7 @@ test.describe('ログインしていない人と、組織が無い人', () => {
       route.fulfill({
         json: {
           organizations: [{ slug: 'aoba', name: 'あおば開発' }],
-          invitations: [{ organization_name: 'つばめ商会' }],
+          invitations: [{ organization_name: 'つばめ商会', slug: 'tsubame' }],
           operator: false,
         },
       }),
@@ -600,7 +600,11 @@ test.describe('ログインしていない人と、組織が無い人', () => {
     await signIn(context, baseURL, 'member');
     await page.route('**/api/my-organizations', (route) =>
       route.fulfill({
-        json: { organizations: [], invitations: [{ organization_name: 'つばめ商会' }], operator: false },
+        json: {
+          organizations: [],
+          invitations: [{ organization_name: 'つばめ商会', slug: 'tsubame' }],
+          operator: false,
+        },
       }),
     );
     await page.goto('/');

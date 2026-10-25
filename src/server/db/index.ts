@@ -19,6 +19,13 @@ export {
 } from './enter-organization.ts';
 export { insertOrganization, type CreatedOrganization, type NewOrganization } from './create-organization.ts';
 export {
+  readOrganizationRow,
+  userAvatarsOf,
+  writeOrganizationSettings,
+  type OrganizationRow,
+  type OrganizationSettingsChange,
+} from './organization-common.ts';
+export {
   adminStatusesOf,
   claimPendingLogin,
   type ClaimInput,
