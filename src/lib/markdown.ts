@@ -19,11 +19,15 @@ export const MAX_NESTING = 32;
 // 長い URL の定義 1 つに短い参照を並べると、参照ごとに href が複製されて出力が膨らむので、そもそも長い URL は通さない
 export const MAX_URL_LENGTH = 2048;
 
-// 出力の総量の上限。本文は最大10万字なので、普通の本文は文字が1倍前後、節が文字数の半分以下に収まる
-// （`*a*` は3字で2節、`\` と改行の連なりは2字で1節）。文字は href と入れ子の上限で切り出した原文の複製も含めて4倍、
-// 節は文字数の2倍までを通す。超える本文は変換をやめ、文字のまま出す
+// 出力の総量の上限。超える本文は変換をやめ、文字のまま出す。
+// 文字は、本文の最大（10万字）の4倍。普通の本文は1倍前後で、href と入れ子の上限で切り出した原文の複製を含めても余る。
+// 節は、描画の時間で決めた。節を DOM にする時間は節の数に比例し、手元（Chromium、Mac）で測ると、
+// 見出し、段落、リスト、表、リンクが混ざった93k字の本文は節が約2.2万で約255ms、チェックリスト中心の96k字は節が約3.7万で約1.07秒、
+// 節が20万の表の本文は約1.7秒止まった（CPU を4倍に絞るとさらに約4倍）。
+// 段階の描画（markdown-render.ts）で1フレームの停止は抑えるが、節の総量が大きいと描き終わるまでが長いので、
+// 正当な最大の本文（上の約3.7万）が通る5万を上限にする
 export const MAX_OUTPUT_CHARS = 400_000;
-export const MAX_OUTPUT_NODES = 200_000;
+export const MAX_OUTPUT_NODES = 50_000;
 
 export type MarkdownInline =
   | { type: 'text'; value: string }
@@ -47,7 +51,7 @@ export type MarkdownBlock =
   | { type: 'literal'; value: string }
   | { type: 'heading'; depth: 1 | 2 | 3 | 4 | 5 | 6; children: MarkdownInline[] }
   | { type: 'quote'; children: MarkdownBlock[] }
-  // tight は、項目の間に空行の無い密なリスト。項目の段落を `<p>` で包まない
+  // tight は、項目の間にも項目の中にも空行の無い密なリスト。項目の段落を `<p>` で包まない
   | { type: 'list'; ordered: boolean; start: number | null; tight: boolean; items: MarkdownListItem[] }
   | { type: 'code'; value: string }
   | { type: 'rule' }
@@ -174,7 +178,8 @@ function block(node: RootContent, depth: number, ctx: Context): MarkdownBlock[] 
           type: 'list',
           ordered: node.ordered ?? false,
           start: node.ordered ? (node.start ?? 1) : null,
-          tight: node.spread !== true,
+          // 項目の間だけでなく、項目の中の段落の間にも空行が無いリスト（空行で区切った段落を、`<p>` なしで連結しない）
+          tight: node.spread !== true && node.children.every((item) => item.spread !== true),
           items: node.children.map((item) =>
             made(ctx, { checked: item.checked ?? null, children: blocks(item.children, depth + 1, ctx) }),
           ),

@@ -1,6 +1,13 @@
-import { describe, expect, test } from 'vitest';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import type { MarkdownBlock } from './markdown.ts';
-import type { MarkdownParser } from './markdown-parser.ts';
+import {
+  createMarkdownParser,
+  MARKDOWN_TIMEOUT_MS,
+  type MarkdownMessage,
+  type MarkdownParser,
+  type MarkdownRequest,
+  type MarkdownWorker,
+} from './markdown-parser.ts';
 import { createMarkdownLoader, MarkdownSession, type MarkdownView } from './markdown-session.ts';
 
 const paragraph = (value: string): MarkdownBlock[] => [{ type: 'paragraph', children: [{ type: 'text', value }] }];
@@ -10,18 +17,21 @@ function fakeParser() {
   const requests: {
     source: string;
     cancelled: boolean;
+    // Worker に送った（テストが立てる）。送る前の取り下げだけが、parser の cancel() で true になる
+    sent: boolean;
     resolve: (blocks: MarkdownBlock[] | null) => void;
   }[] = [];
   const parser: MarkdownParser = {
     parse(source) {
       let resolve!: (blocks: MarkdownBlock[] | null) => void;
       const result = new Promise<MarkdownBlock[] | null>((r) => (resolve = r));
-      const request = { source, cancelled: false, resolve };
+      const request = { source, cancelled: false, sent: false, resolve };
       requests.push(request);
       return {
         result,
         cancel: () => {
           request.cancelled = true;
+          return !request.sent;
         },
       };
     },
@@ -40,7 +50,7 @@ describe('createMarkdownLoader', () => {
     requests[0].resolve(paragraph('a'));
     await first.result;
 
-    expect(loader.peek('a')).toEqual({ result: paragraph('a') });
+    expect(loader.recall('a')).toEqual({ result: paragraph('a') });
     await expect(loader.load('a').result).resolves.toEqual(paragraph('a'));
     expect(requests).toHaveLength(1);
   });
@@ -52,13 +62,13 @@ describe('createMarkdownLoader', () => {
     requests[0].resolve(null);
     await first.result;
 
-    expect(loader.peek('slow')).toEqual({ result: null });
+    expect(loader.recall('slow')).toEqual({ result: null });
     await expect(loader.load('slow').result).resolves.toBeNull();
     expect(requests).toHaveLength(1);
   });
 
   test('覚えていない本文は undefined', () => {
-    expect(createMarkdownLoader(fakeParser().parser).peek('a')).toBeUndefined();
+    expect(createMarkdownLoader(fakeParser().parser).recall('a')).toBeUndefined();
   });
 
   test('覚える数に上限があり、使っていない本文から捨てる（LRU）', async () => {
@@ -70,14 +80,14 @@ describe('createMarkdownLoader', () => {
       await request.result;
     }
     // a を使い直すと、捨てられるのは b
-    expect(loader.peek('a')).toBeDefined();
+    expect(loader.recall('a')).toBeDefined();
     const c = loader.load('c');
     requests.at(-1)!.resolve(paragraph('c'));
     await c.result;
 
-    expect(loader.peek('b')).toBeUndefined();
-    expect(loader.peek('a')).toBeDefined();
-    expect(loader.peek('c')).toBeDefined();
+    expect(loader.recall('b')).toBeUndefined();
+    expect(loader.recall('a')).toBeDefined();
+    expect(loader.recall('c')).toBeDefined();
   });
 
   test('同じ本文の変換が進んでいるときは、結果を分け合う', async () => {
@@ -103,20 +113,114 @@ describe('createMarkdownLoader', () => {
 
     requests[0].resolve(null);
     await flush();
-    expect(loader.peek('a')).toBeUndefined();
+    expect(loader.recall('a')).toBeUndefined();
 
     // 取り下げの後に同じ本文を頼むと、新しく送る
     loader.load('a');
     expect(requests).toHaveLength(2);
   });
 
-  test('取り下げた後に届いた成功の結果は覚える', async () => {
+  test('Worker に送った後に取り下げても、届いた成功の結果は覚える', async () => {
     const { parser, requests } = fakeParser();
     const loader = createMarkdownLoader(parser);
-    loader.load('a').cancel();
+    const request = loader.load('a');
+    requests[0].sent = true;
+    request.cancel();
     requests[0].resolve(paragraph('a'));
     await flush();
-    expect(loader.peek('a')).toEqual({ result: paragraph('a') });
+    expect(loader.recall('a')).toEqual({ result: paragraph('a') });
+  });
+
+  test('Worker に送った後に取り下げた本文の時間切れ（null）は覚え、二度と送らない', async () => {
+    const { parser, requests } = fakeParser();
+    const loader = createMarkdownLoader(parser);
+    const request = loader.load('slow');
+    requests[0].sent = true;
+    request.cancel();
+    requests[0].resolve(null);
+    await flush();
+
+    expect(loader.recall('slow')).toEqual({ result: null });
+    await expect(loader.load('slow').result).resolves.toBeNull();
+    expect(requests).toHaveLength(1);
+  });
+
+  test('送り済みの要求は、待つ人が全員いなくなっても残し、同じ本文の新しい要求は相乗りする', async () => {
+    const { parser, requests } = fakeParser();
+    const loader = createMarkdownLoader(parser);
+    const first = loader.load('a');
+    requests[0].sent = true;
+    first.cancel();
+
+    const second = loader.load('a');
+    expect(requests).toHaveLength(1);
+    requests[0].resolve(paragraph('a'));
+    await expect(second.result).resolves.toEqual(paragraph('a'));
+  });
+});
+
+// 本物の parser とつなぎ、偽の Worker で、送る、取り下げる、時間切れ、もう一度頼む、までを確かめる
+describe('createMarkdownLoader と createMarkdownParser', () => {
+  class FakeWorker implements MarkdownWorker {
+    static created: FakeWorker[] = [];
+    requests: MarkdownRequest[] = [];
+    onmessage: ((event: { data: MarkdownMessage }) => void) | null = null;
+    onmessageerror: ((event: unknown) => void) | null = null;
+    onerror: ((event: unknown) => void) | null = null;
+    constructor() {
+      FakeWorker.created.push(this);
+    }
+    postMessage(request: MarkdownRequest) {
+      this.requests.push(request);
+    }
+    terminate() {}
+  }
+
+  beforeEach(() => {
+    FakeWorker.created = [];
+    vi.useFakeTimers();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  test('送った本文を取り下げて時間切れになっても、同じ本文を二度と送らない', async () => {
+    const loader = createMarkdownLoader(createMarkdownParser({ createWorker: () => new FakeWorker() }));
+    const request = loader.load('slow');
+    const [worker] = FakeWorker.created;
+    worker.onmessage?.({ data: { type: 'ready' } });
+    expect(worker.requests).toHaveLength(1);
+
+    // 送った後に取り下げ、時間切れを待つ間に同じ本文を頼むと、相乗りする
+    request.cancel();
+    const again = loader.load('slow');
+    expect(worker.requests).toHaveLength(1);
+    expect(FakeWorker.created).toHaveLength(1);
+
+    vi.advanceTimersByTime(MARKDOWN_TIMEOUT_MS);
+    await expect(again.result).resolves.toBeNull();
+    expect(loader.recall('slow')).toEqual({ result: null });
+
+    // 時間切れの後は、新しい Worker にも送らない
+    await expect(loader.load('slow').result).resolves.toBeNull();
+    expect(FakeWorker.created).toHaveLength(1);
+    expect(worker.requests).toHaveLength(1);
+  });
+
+  test('送る前に取り下げた本文は、null を覚えず、次に頼まれたら送る', async () => {
+    const loader = createMarkdownLoader(createMarkdownParser({ createWorker: () => new FakeWorker() }));
+    const first = loader.load('first');
+    const second = loader.load('second');
+    second.cancel();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(loader.recall('second')).toBeUndefined();
+
+    const [worker] = FakeWorker.created;
+    worker.onmessage?.({ data: { type: 'ready' } });
+    worker.onmessage?.({ data: { type: 'result', id: 0, blocks: paragraph('first') } });
+    await first.result;
+    loader.load('second');
+    expect(worker.requests.map((r) => r.source)).toEqual(['first', 'second']);
   });
 });
 

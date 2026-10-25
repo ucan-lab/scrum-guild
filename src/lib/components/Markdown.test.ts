@@ -40,9 +40,11 @@ describe('Markdown.svelte の悪い入力', () => {
     '[x](https://user@evil.example/)',
   ])('%s は要素や属性として出ない', (source) => {
     const out = html(source);
-    // 本文が文字なら、開始タグは枠の div、段落の p、書かれたままの文字の span だけで、属性は class だけになる
+    // 本文が文字なら、開始タグは枠の div、段落の p、書かれたままの文字と補足の span だけで、属性は class と補足の id だけになる
     for (const tag of tagsOf(out)) expect(['div', 'p', 'span']).toContain(tag);
-    for (const attributes of attributesOf(out)) expect(attributes).toMatch(/^class="(doc-box|doc-literal)"$/);
+    for (const attributes of attributesOf(out)) {
+      expect(attributes).toMatch(/^(class="(doc-box|doc-literal)"|id="[^"]+-newtab" hidden="")$/);
+    }
   });
 
   test('生の HTML は文字として出る', () => {
@@ -52,7 +54,9 @@ describe('Markdown.svelte の悪い入力', () => {
   test('外部の画像は img でなくリンクとして出る', () => {
     const out = html('![x](https://example.com/a.png)');
     expect(out).not.toContain('<img');
-    expect(out).toContain('<a href="https://example.com/a.png" rel="noopener noreferrer" target="_blank">x');
+    expect(out).toMatch(
+      /<a href="https:\/\/example.com\/a.png" rel="noopener noreferrer" target="_blank" aria-describedby="[^"]+">x<\/a>/,
+    );
   });
 
   test('リンクの中の画像は、<a> を入れ子にしない', () => {
@@ -78,10 +82,21 @@ describe('Markdown.svelte の悪い入力', () => {
 });
 
 describe('MarkdownBlocks の描画', () => {
-  test('http と https のリンクは rel と target を持ち、新しいタブで開くことを読み上げに伝える', () => {
-    expect(html('[x](http://example.com/)')).toContain(
-      '<a href="http://example.com/" rel="noopener noreferrer" target="_blank">x<span class="visually-hidden">（新しいタブで開きます）</span></a>',
-    );
+  test('http と https のリンクは rel と target を持ち、新しいタブで開くことを補足（aria-describedby）で伝える', () => {
+    const out = html('[x](http://example.com/)');
+    const id =
+      /<a href="http:\/\/example.com\/" rel="noopener noreferrer" target="_blank" aria-describedby="([^"]+)">x<\/a>/.exec(
+        out,
+      )?.[1];
+    expect(id).toBeTruthy();
+    expect(out).toContain(`<span id="${id}" hidden="">新しいタブで開きます</span>`);
+  });
+
+  test('新しいタブの補足は、リンクの名前にも、チェックリストの箱の名前にも入らない', () => {
+    const out = html('- [ ] [x](http://example.com/) を開く');
+    const label = /<div id="[^"]+">(.*?)<\/div>/.exec(out)?.[1] ?? '';
+    expect(label).toContain('x</a> を開く');
+    expect(label).not.toContain('新しいタブ');
   });
 
   test('自動リンクが描かれ、mailto: の自動リンクは文字', () => {
@@ -110,9 +125,25 @@ describe('MarkdownBlocks の描画', () => {
     expect(html('###### a', 4)).toContain('<h6 class="doc-h6">');
   });
 
+  test('不正な headingStart は、数でなければ既定の h3、範囲外は h1 と h6 に丸める', () => {
+    const tag = (headingStart: number) => /<(h[1-6])[ >]/.exec(html('# a', headingStart))?.[1];
+    expect(tag(Number.NaN)).toBe('h3');
+    expect(tag(0)).toBe('h1');
+    expect(tag(-5)).toBe('h1');
+    expect(tag(-Infinity)).toBe('h1');
+    expect(tag(7)).toBe('h6');
+    expect(tag(Infinity)).toBe('h6');
+    expect(tag(2.7)).toBe('h2');
+  });
+
   test('密なリストは段落を <p> で包まず、空行のあるリストは包む', () => {
     expect(html('- a\n- b')).toContain('<li>a</li><li>b</li>');
     expect(html('- a\n\n- b')).toContain('<li><p>a</p></li>');
+  });
+
+  test('項目の中を空行で区切った段落は、連結せず別々の <p> にする', () => {
+    expect(html('- b\n\n  c\n- d')).toContain('<li><p>b</p><p>c</p></li>');
+    expect(html('- [ ] a\n\n  b')).toContain('<p>a</p><p>b</p>');
   });
 
   test('チェックリストの箱は項目の中身と結び、一覧として読み上げさせる', () => {
@@ -122,6 +153,25 @@ describe('MarkdownBlocks の描画', () => {
     expect(labels).toHaveLength(2);
     expect(new Set(labels).size).toBe(2);
     for (const id of labels) expect(out).toContain(`<div id="${id}">`);
+  });
+
+  test('100項目を超えるリストも、頁をまたいで全項目を順に描き、チェックリストの id は重ならない', () => {
+    const out = html(`${'- [ ] a\n'.repeat(250)}`);
+    expect(out.match(/<li class="is-task">/g)).toHaveLength(250);
+    const ids = [...out.matchAll(/aria-labelledby="([^"]+)"/g)].map((m) => m[1]);
+    expect(new Set(ids).size).toBe(250);
+  });
+
+  test('100行を超える表も、全行を描く', () => {
+    const rows = Array.from({ length: 250 }, (_, i) => `| ${i} |`).join('\n');
+    const out = html(`| n |\n| - |\n${rows}`);
+    expect(out.match(/<tr>/g)).toHaveLength(251);
+  });
+
+  test('100節を超える本文も、全部を順に描く', () => {
+    const out = html(Array.from({ length: 250 }, (_, i) => `p${i}`).join('\n\n'));
+    expect(out.match(/<p>/g)).toHaveLength(250);
+    expect(out.indexOf('p0<')).toBeLessThan(out.indexOf('p249<'));
   });
 
   test('順序付きのチェックリストは ol のまま（番号を残す）', () => {

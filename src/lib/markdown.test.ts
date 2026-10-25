@@ -201,6 +201,12 @@ describe('parseMarkdown の書式', () => {
     expect((parse('- a\n\n- b')[0] as ListBlock).tight).toBe(false);
   });
 
+  test('項目の中に空行で区切った段落があるリストは tight でない（段落を連結しない）', () => {
+    expect((parse('- b\n\n  c\n- d')[0] as ListBlock).tight).toBe(false);
+    expect((parse('- [ ] a\n\n  b')[0] as ListBlock).tight).toBe(false);
+    expect((parse('1. a\n\n   b\n2. c')[0] as ListBlock).tight).toBe(false);
+  });
+
   test('打ち消し線は ~~ だけで、~ 1つは文字', () => {
     expect(firstInlines('~~a~~')).toEqual([{ type: 'delete', children: [{ type: 'text', value: 'a' }] }]);
     expect(firstInlines('1~2')).toEqual([{ type: 'text', value: '1~2' }]);
@@ -277,7 +283,7 @@ describe('入れ子の上限', () => {
     expect(parseMarkdown('[a](https://example.com) '.repeat(4_000))).not.toBeNull();
     expect(parseMarkdown('|a'.repeat(50_000))).not.toBeNull();
     expect(parseMarkdown('- [ ] a\n'.repeat(12_000))).not.toBeNull();
-    expect(parseMarkdown('a\\\n'.repeat(33_000))).not.toBeNull();
+    expect(parseMarkdown('a\\\n'.repeat(20_000))).not.toBeNull();
   }, 30_000);
 });
 
@@ -287,18 +293,32 @@ describe('出力の上限', () => {
     const blocks = parse(`[x]: ${url}\n\n${'[x] '.repeat(20_000)}`);
     expect(JSON.stringify(blocks)).not.toContain(url);
     expect(JSON.stringify(blocks)).not.toContain('"link"');
-  });
+  }, 30_000);
 
   test('上限に収まる長さの URL を何千も複製する本文は、変換をやめる（null）', () => {
     const url = `https://a.example/${'a'.repeat(1500)}`;
     expect(parseMarkdown(`[x]: ${url}\n\n${'[x] '.repeat(20_000)}`)).toBeNull();
     expect(parseMarkdown(`[x]: ${url}\n\n${'![][x]'.repeat(15_000)}`)).toBeNull();
-  });
+  }, 30_000);
+
+  test('見出し、リスト、表、リンクが混ざった正当な10万字の本文は、上限に掛からない', () => {
+    const unit =
+      '## 見出し\n\n本文の段落。*強調*と**太字**と`code`と[リンク](https://example.com/a)を含む。\n\n- 項目1\n- 項目2 [x](https://example.com/b)\n- [ ] 作業\n\n| a | b | c |\n| - | - | - |\n| 1 | 2 | [l](https://e.example) |\n\n> 引用\n\n';
+    const source = unit.repeat(Math.floor(100_000 / unit.length));
+    expect(source.length).toBeGreaterThan(90_000);
+    expect(parseMarkdown(source)).not.toBeNull();
+  }, 30_000);
+
+  test('チェックリスト中心の10万字の本文（節が約3.7万）は、上限に掛からない', () => {
+    const source = '- [ ] a\n'.repeat(12_000);
+    expect(source.length).toBeGreaterThan(90_000);
+    expect(parseMarkdown(source)).not.toBeNull();
+  }, 30_000);
 
   test('出力の文字数の上限を超える本文は null', () => {
     expect(parseMarkdown('あ'.repeat(MAX_OUTPUT_CHARS + 1))).toBeNull();
     expect(parseMarkdown('あ'.repeat(MAX_OUTPUT_CHARS))).not.toBeNull();
-  });
+  }, 30_000);
 
   test('出力の節の数の上限を超える本文は null', () => {
     // `a` と空行の3字が、段落と文字の2節

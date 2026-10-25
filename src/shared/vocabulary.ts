@@ -751,7 +751,7 @@ export const dictionary = defineDictionary({
 
   // Markdown の本文。変換が終わらなかった本文を、書かれたまま出すときの注記
   markdownPlainNote: workspace('整形せずに表示しています', '整形せずに表示しています'),
-  // リンクは新しいタブで開く。読み上げに伝える
+  // リンクは新しいタブで開く。リンクの補足（aria-describedby）として読み上げに伝える
   markdownNewTab: workspace('新しいタブで開きます', '新しいタブで開きます'),
 });
 

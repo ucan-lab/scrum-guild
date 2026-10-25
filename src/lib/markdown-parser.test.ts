@@ -176,9 +176,38 @@ describe('createMarkdownParser', () => {
     expect(worker.terminated).toBe(false);
   });
 
+  test('取り下げは、Worker に送る前なら true、送り済みなら false を返す', async () => {
+    const { parser, request, worker } = startedParser();
+    const queued = parser.parse('queued');
+    expect(queued.cancel()).toBe(true);
+    expect(request.cancel()).toBe(false);
+    worker.reply(0, paragraph('first'));
+    await request.result;
+    // 結果が出た後の取り下げは、取り下げではない
+    expect(request.cancel()).toBe(false);
+  });
+
+  test('大量に待っている状態で起動が失敗しても、再帰せず全件が null で終わる', async () => {
+    const parser = newParser();
+    const requests = Array.from({ length: 10_000 }, (_, i) => parser.parse(`source ${i}`));
+    FakeWorker.created[0].onerror?.(new Error('document is not defined'));
+    const results = await Promise.all(requests.map((request) => request.result));
+    expect(results.every((result) => result === null)).toBe(true);
+    expect(FakeWorker.created).toHaveLength(1);
+  });
+
+  test('大量に待っている状態で起動の上限を超えても、全件が null で終わる', async () => {
+    const parser = newParser();
+    const requests = Array.from({ length: 10_000 }, (_, i) => parser.parse(`source ${i}`));
+    vi.advanceTimersByTime(MARKDOWN_START_TIMEOUT_MS);
+    const results = await Promise.all(requests.map((request) => request.result));
+    expect(results.every((result) => result === null)).toBe(true);
+    expect(FakeWorker.created).toHaveLength(1);
+  });
+
   test('起動を待つ間に取り下げられた要求は、送らない', async () => {
     const request = newParser().parse('a');
-    request.cancel();
+    expect(request.cancel()).toBe(true);
     FakeWorker.created[0].ready();
     expect(FakeWorker.created[0].requests).toEqual([]);
     await expect(request.result).resolves.toBeNull();

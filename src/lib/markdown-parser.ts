@@ -30,8 +30,9 @@ export type MarkdownWorker = {
 export type MarkdownParseRequest = {
   // 変換した節。時間切れ、変換の失敗、Worker の失敗、Worker が作れない環境では null（呼び出し側が文字のまま出す）
   result: Promise<MarkdownBlock[] | null>;
-  // 結果が要らなくなったとき。待っている要求は取り下げる。送り済みの要求は、結果を捨てて時間切れまで Worker に任せる
-  cancel: () => void;
+  // 結果が要らなくなったとき。Worker に送る前の要求は取り下げ（結果は null で、変換の失敗ではない）、true を返す。
+  // 送り済みの要求は取り下げず、時間切れまで Worker に任せて false を返す（結果は届き、時間切れや失敗の null も本物）
+  cancel: () => boolean;
 };
 
 export type MarkdownParser = { parse(source: string): MarkdownParseRequest };
@@ -41,6 +42,9 @@ type Pending = {
   source: string;
   resolve: (blocks: MarkdownBlock[] | null) => void;
   cancelled: boolean;
+  // Worker に送った
+  sent: boolean;
+  done: boolean;
   timer?: ReturnType<typeof setTimeout>;
 };
 
@@ -75,6 +79,7 @@ export function createMarkdownParser(options: {
   function finish(pending: Pending, blocks: MarkdownBlock[] | null) {
     clearTimeout(pending.timer);
     if (current === pending) current = null;
+    pending.done = true;
     pending.resolve(blocks);
     pump();
   }
@@ -123,6 +128,7 @@ export function createMarkdownParser(options: {
       finish(pending, null);
     }, timeoutMs);
     try {
+      pending.sent = true;
       worker?.postMessage({ id: pending.id, source: pending.source });
     } catch {
       discardWorker();
@@ -130,29 +136,32 @@ export function createMarkdownParser(options: {
     }
   }
 
+  // 使えない Worker の待ち行列は、再帰せずループで空にする（待ちが1万件あっても、スタックがあふれない）
   function pump() {
-    if (current) return;
-    const pending = queue.shift();
-    if (!pending) return;
-    if (pending.cancelled) return pump();
-    current = pending;
-    if (unavailable) return finish(pending, null);
-    if (!worker) {
-      worker = start();
-      if (!worker) {
-        unavailable = true;
-        return finish(pending, null);
+    while (!current) {
+      const pending = queue.shift();
+      if (!pending) return;
+      if (pending.cancelled) continue;
+      if (!unavailable && !worker) {
+        worker = start();
+        if (!worker) unavailable = true;
       }
+      if (unavailable) {
+        pending.done = true;
+        pending.resolve(null);
+        continue;
+      }
+      current = pending;
+      // 起動の途中なら、`ready` が届いてから送る
+      if (ready) send(pending);
     }
-    // 起動の途中なら、`ready` が届いてから送る
-    if (ready) send(pending);
   }
 
   return {
     parse(source) {
       let pending!: Pending;
       const result = new Promise<MarkdownBlock[] | null>((resolve) => {
-        pending = { id: nextId++, source, resolve, cancelled: false };
+        pending = { id: nextId++, source, resolve, cancelled: false, sent: false, done: false };
       });
       queue.push(pending);
       pump();
@@ -163,8 +172,12 @@ export function createMarkdownParser(options: {
           const queued = queue.indexOf(pending);
           if (queued >= 0) {
             queue.splice(queued, 1);
+            pending.done = true;
             pending.resolve(null);
+            return true;
           }
+          // 起動を待つ間の要求は、`ready` の後に送られず null で終わる
+          return !pending.sent && !pending.done;
         },
       };
     },

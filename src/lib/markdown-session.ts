@@ -10,14 +10,23 @@ export const MARKDOWN_CACHE_SIZE = 100;
 export type MarkdownResult = MarkdownBlock[] | null;
 
 export type MarkdownLoader = {
-  // 覚えている結果。覚えていなければ undefined（結果が null のときも、覚えていれば { result: null }）
-  peek(source: string): { result: MarkdownResult } | undefined;
+  // 覚えている結果を取り出し、使った本文として LRU の順を新しくする。覚えていなければ undefined
+  // （結果が null のときも、覚えていれば { result: null }）
+  recall(source: string): { result: MarkdownResult } | undefined;
   load(source: string): { result: Promise<MarkdownResult>; cancel: () => void };
 };
 
-type Inflight = { result: Promise<MarkdownResult>; refs: number; cancelled: boolean; cancel: () => void };
+type Inflight = {
+  result: Promise<MarkdownResult>;
+  refs: number;
+  // Worker に送る前に取り下げた（結果の null は、時間切れや失敗ではない）
+  withdrawn: boolean;
+  cancel: () => boolean;
+};
 
-// 結果を、本文をキーに大きさに上限のある Map（LRU）で覚える。同じ本文の変換が進んでいるときは、その結果を分け合う
+// 結果を、本文をキーに大きさに上限のある Map（LRU）で覚える。同じ本文の変換が進んでいるときは、その結果を分け合う。
+// 送り済みの要求は、待つ人が全員いなくなっても進めて結果を覚える（時間切れの本文を、あとで二度送らないため）。
+// 同じ本文を新しく頼まれたら、その変換に相乗りして、同じ本文を2本変換しない
 export function createMarkdownLoader(parser: MarkdownParser, cacheSize = MARKDOWN_CACHE_SIZE): MarkdownLoader {
   const cache = new Map<string, MarkdownResult>();
   const inflight = new Map<string, Inflight>();
@@ -29,7 +38,7 @@ export function createMarkdownLoader(parser: MarkdownParser, cacheSize = MARKDOW
   }
 
   return {
-    peek(source) {
+    recall(source) {
       if (!cache.has(source)) return undefined;
       const result = cache.get(source) ?? null;
       remember(source, result);
@@ -42,15 +51,12 @@ export function createMarkdownLoader(parser: MarkdownParser, cacheSize = MARKDOW
         const request = parser.parse(source);
         const created: Inflight = {
           refs: 0,
-          cancelled: false,
-          cancel: () => {
-            created.cancelled = true;
-            request.cancel();
-          },
+          withdrawn: false,
+          cancel: request.cancel,
           result: request.result.then((result) => {
             if (inflight.get(source) === created) inflight.delete(source);
-            // 取り下げで待ちから外れただけの null は、時間切れとして覚えない
-            if (result !== null || !created.cancelled) remember(source, result);
+            // 待ちの中で取り下げただけの null は、時間切れとして覚えない。送った後の null は、取り下げても覚える
+            if (!created.withdrawn) remember(source, result);
             return result;
           }),
         };
@@ -66,8 +72,11 @@ export function createMarkdownLoader(parser: MarkdownParser, cacheSize = MARKDOW
           if (released) return;
           released = true;
           if (--shared.refs > 0) return;
-          if (inflight.get(source) === shared) inflight.delete(source);
-          shared.cancel();
+          // 送る前なら取り下げて、待ちから外す。送り済みなら、そのまま進めて相乗りを待つ
+          if (shared.cancel()) {
+            shared.withdrawn = true;
+            if (inflight.get(source) === shared) inflight.delete(source);
+          }
         },
       };
     },
@@ -102,7 +111,7 @@ export class MarkdownSession {
   show(source: string): void {
     this.cancel();
     const generation = this.#generation;
-    const known = this.#loader.peek(source);
+    const known = this.#loader.recall(source);
     if (known) return this.#settle(known.result);
 
     this.#update({ status: 'loading', blocks: this.#view.blocks });

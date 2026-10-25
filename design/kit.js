@@ -541,10 +541,10 @@
   }
   // Markdown の本文の見本。本番は Markdown.svelte が markdown.ts の安全な節を MarkdownBlocks.svelte で描く。
   // 見出しは `#` を h3 にした形（始まりの段の既定）。h6 で止まるので、4段目からは h6 のまま、大きさは Markdown の段のクラス（doc-h1 から doc-h6）で決まる。
-  // 密なリストは段落を <p> で包まない。リンクは新しいタブで開くことを、読み上げ向けの文字で添える。
+  // 密なリストは段落を <p> で包まない。リンクは新しいタブで開くことを、aria-describedby が指す隠した文で添える（リンクの名前にも、チェックリストの箱の名前にも入らない）。
   // kind: all（既定）、unsafe（リンクにしないもの）、plain（変換を待つ間と時間切れの、書かれたままの文字。注記つき）
   function markdownSample(kind = "all") {
-    const newTab = `<span class="visually-hidden">（新しいタブで開きます）</span>`;
+    const newTab = (id) => `<span id="${id}" hidden>新しいタブで開きます</span>`;
     if (kind === "plain") {
       return `<p class="props-note">整形せずに表示しています</p>
       <div class="doc-box is-plain">## 結果を確かめる手順\n\nログインしてから /aoba を開き、**一覧が出る**ことを確かめる。\n\n- [ ] 一覧が出る</div>`;
@@ -554,12 +554,13 @@
         <p class="doc-literal">&lt;script&gt;alert(1)&lt;/script&gt;</p>
         <p>&lt;img src=x onerror=alert(1)&gt;を<span class="doc-literal">&lt;b&gt;含む&lt;/b&gt;</span>行も、文字のまま出る。</p>
         <p>相対リンク /aoba/w/1?task=2 と mailto:ayu@example.com は文字のまま出る。</p>
-        <p><a href="https://example.com/diagram.png" rel="noopener noreferrer" target="_blank">構成図${newTab}</a>（外部の画像は読み込まず、リンクにする）</p>
+        <p><a href="https://example.com/diagram.png" rel="noopener noreferrer" target="_blank" aria-describedby="md-newtab-u">構成図</a>（外部の画像は読み込まず、リンクにする）</p>
+        ${newTab("md-newtab-u")}
       </div>`;
     }
     return `<div class="doc-box">
       <h3 class="doc-h1">結果を確かめる手順</h3>
-      <p>ログインしてから <code>/aoba</code> を開き、<strong>一覧が出る</strong>ことを確かめる。<em>古い画面</em>は<del>残さない</del>。詳しくは <a href="https://example.com/guide" rel="noopener noreferrer" target="_blank">手引き${newTab}</a> を読む。</p>
+      <p>ログインしてから <code>/aoba</code> を開き、<strong>一覧が出る</strong>ことを確かめる。<em>古い画面</em>は<del>残さない</del>。詳しくは <a href="https://example.com/guide" rel="noopener noreferrer" target="_blank" aria-describedby="md-newtab-a">手引き</a> を読む。</p>
       <h4 class="doc-h2">段取り</h4>
       <ol><li>組織を選ぶ</li><li>ワークスペースを開く<ul><li>一覧が出る</li><li>空なら案内が出る</li></ul></li></ol>
       <h5 class="doc-h3">確かめること</h5>
@@ -588,6 +589,7 @@ const looooooooooooooooooooooooooooooooooongLine = "コードの長い1行は、
       </table></div>
       <p><span class="doc-literal">入れ子の上限を超えた分や、
 生の HTML は、改行を保って文字で出る。</span></p>
+      ${newTab("md-newtab-a")}
     </div>`;
   }
   // 使っている量と上限。80% を超えたら is-warn、上限に達したら is-full
