@@ -369,7 +369,6 @@
 - 一意: `(workspace_id, user_id) WHERE left_at IS NULL`。今の所属は1人1行。
 - `CHECK ((left_on IS NULL) = (left_at IS NULL))`、`CHECK (left_on >= joined_on)`。離脱の日付と日時はそろって入り、離脱日は参加日より前にならない。今の所属の一意は `left_at` で、積載量の期間は `left_on` で見るので、片方だけ入った行は2つの判定を食い違わせる。
 - 索引: `(user_id, left_at)`。外部キーの検査と、ログインできるか、自分の今日に出すワークスペースはどれか（今の所属）を引く。
-- 索引: `(user_id) WHERE left_at IS NULL`。最初のマイグレーションで張った今の所属の索引。条件が `left_at IS NULL` なので外部キーの検査に使えず、今の所属も上の索引で引けるので、使わない。消すのは縮める変更なので、別の PR で行う（#214）。
 - 積載量では、日がいずれかの行の `joined_on`〜`left_on` に入るかで、所属していた期間を数える。
 - 管理者が所属していないワークスペースを操作するときは、行を作らない。担当や討伐隊の候補は、この表の今の所属から選ぶ。
 
@@ -625,7 +624,7 @@ Google の人は、ログインするまで `sub` が分からない。そのた
 | added_by | TEXT | NOT NULL、FK users | |
 | joined_at | TEXT | NOT NULL | |
 
-- 索引: `(user_id)`。
+- 索引: `(user_id)`。`user_id` の外部キーの検査にも使う。
 - 索引: `(added_by)`。外部キーの検査。
 - クリア報酬は、クリアした時点のこの表の行に払う。
 
@@ -690,8 +689,8 @@ Google の人は、ログインするまで `sub` が分からない。そのた
   - `(workspace_id, tray, position) WHERE deleted_at IS NULL`: 受信箱、アーカイブ、バックログの一覧
   - `(story_id, position) WHERE deleted_at IS NULL`: ストーリーの配下
   - `(sprint_id, column_id, column_position) WHERE deleted_at IS NULL`: スプリントの列
-  - `(assignee_user_id) WHERE deleted_at IS NULL AND completed_at IS NULL`: 自分の今日、積載量
-  - `(assignee_user_id) WHERE assignee_user_id IS NOT NULL`、`(completed_by) WHERE completed_by IS NOT NULL`、`(created_by) WHERE created_by IS NOT NULL`: 外部キーの検査。上の担当の部分索引は条件が違うので、検査に使えない
+  - `(assignee_user_id, deleted_at, completed_at) WHERE assignee_user_id IS NOT NULL`: 外部キーの検査と、自分の今日、積載量（担当の未完了のタスク）
+  - `(completed_by) WHERE completed_by IS NOT NULL`、`(created_by) WHERE created_by IS NOT NULL`: 外部キーの検査
 - 手で作るタスクの `title` は、前後の空白を除いて 1〜200 字。字数の数え方と断る文字は `workspaces.name` と同じ。
 - 「今日やる」は、`today_on` が今日（ワークスペースのタイムゾーン）なら今日の印、それより前で未完了なら前日からの持ち越しとして示す。担当が替わったら消す。
 - 区分は、親のエピック、親のストーリー、タスク自身の順に、最初に入っているものを使う。読むときに結合して出し、タスクには写さない。完了の記録（`completions.category_id`）には、完了した時点の値を写す。
@@ -892,7 +891,7 @@ Google の人は、ログインするまで `sub` が分からない。そのた
 
 - `CHECK (sender_user_id <> recipient_user_id)`。
 - 一意: `(task_id, recipient_user_id)`。同じタスクで同じ相手に1回。
-- 索引: `(recipient_user_id)`、`(sender_user_id)`（外部キーの検査）。
+- 索引: `(recipient_user_id)`（外部キーの検査にも使う）、`(sender_user_id)`（外部キーの検査）。
 - 取り消しは行を消す。完了したタスクの感謝は取り消せない（アプリが検査）。
 
 ### xp_grants
@@ -949,7 +948,7 @@ Google の人は、ログインするまで `sub` が分からない。そのた
 | read_at | TEXT | | |
 | created_at | TEXT | NOT NULL | |
 
-- 索引: `(user_id, created_at)`、`(user_id) WHERE read_at IS NULL`。
+- 索引: `(user_id, created_at)`、`(user_id) WHERE read_at IS NULL`。`(user_id, created_at)` は `user_id` の外部キーの検査にも使う。
 - 索引: `(actor_user_id) WHERE actor_user_id IS NOT NULL`。外部キーの検査。
 - 既読にしてから90日たった通知は定期処理で消す。未読は消さない。
 
