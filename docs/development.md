@@ -188,7 +188,7 @@ GitHub は無料のプランのまま使う（2026-10-23 に決めた）。無�
 - リポジトリの設定で squash merge だけを許し、マージ後にブランチを消す。squash のコミットの件名は PR のタイトルにし、本文は空にする（設定済み）
 - `main` の上のコミット、`main` への直接の push、`--force-with-lease` 以外の force push は、PreToolUse のフック（`.claude/hooks/guard-bash.mjs`）でセッションから止める
 - セッションは、`main` にいる作業コピーのファイルを Write と Edit で書き換えられない（`.claude/hooks/guard-files.mjs`）。手元のセッションはワークツリーを切ってから書き、クラウドのセッションは `claude/*` のブランチで書く
-- 人の操作は、`.githooks/` の git のフックで止める。`pre-commit`、`pre-merge-commit`、`prepare-commit-msg`、`pre-applypatch` が `main` の上のコミット（マージ、`cherry-pick`、`revert`、`am` も含む）を、`pre-push` がリモートの `main` への push（削除と force push も含む）を拒む。`main` を `pull --ff-only` で進めるのは通す。同じ場所の `post-checkout` は止めるためのものではなく、番号付きのブランチのワークツリーを切ったときに Issue を作業中にする（下の「Issue の状態」）。`pnpm install` の `prepare`（`scripts/git-hooks.ts`）が `core.hooksPath` を `.githooks` にする。設定はワークツリーで共有し、フックは各ワークツリーのブランチにある `.githooks/` が動く。`pnpm install` をしていない clone と、`.githooks/` の無い古いブランチでは効かない。別の `core.hooksPath` が既にあれば上書きせず、警告だけ出す。取り出したブランチの `.githooks/` がそのまま動くので、信頼できない人のブランチを取り出してコミットや push をしない。`core.hooksPath` の上書きや `git commit-tree` で抜けられる踏み線なので、人も同じ決まりで PR を通す
+- 人の操作は、`.githooks/` の git のフックで止める。`pre-commit`、`pre-merge-commit`、`prepare-commit-msg`、`pre-applypatch` が `main` の上のコミット（マージ、`cherry-pick`、`revert`、`am` も含む）を、`pre-push` がリモートの `main` への push（削除と force push も含む）を拒む。`main` を `pull --ff-only` で進めるのは通す。同じ場所の `post-checkout` は止めるためのものではなく、番号付きのブランチのワークツリーを切ったときに Issue を作業中にする（下の「Issue の状態」）。`pnpm install` の `prepare`（`scripts/git-hooks.ts`）が `core.hooksPath` を `.githooks` にする。設定はワークツリーで共有し、フックは各ワークツリーのブランチにある `.githooks/` が動く。`pnpm install` をしていない clone と、`.githooks/` の無い古いブランチでは効かない。別の `core.hooksPath` が既にあれば上書きせず、警告だけ出す。取り出したブランチの `.githooks/` がそのまま動き、`post-checkout` は checkout と switch の時点で動くので、信頼できない人のブランチは作業コピーに取り出さず、中身は `git diff` か GitHub で読む。`core.hooksPath` の上書きや `git commit-tree` で抜けられる踏み線なので、人も同じ決まりで PR を通す
 - 必須のチェックは設定できない。マージする人かセッションが `ci-ok` の成功を確かめてからマージする
 - マージは人が決める。人が押すか、人の指示でセッションが `gh pr merge` を打つ。承認の数は求めず、人のレビューは「人がマージを決める」ことで表す（下の「マージの判定」）
 - 本番へデプロイする鍵は GitHub に置かない（下の「CD」）。リポジトリのシークレットは PR のブランチのワークフローからも読め、Environment で `main` だけに絞れないため
@@ -586,8 +586,10 @@ Issue はエピック、ストーリー、タスクの3階層にし、親子は�
 | レビュー中 | その Issue を指す開いた PR があること。ラベルは使わない | PR の作成 |
 | 済み | Issue が閉じたこと | タスクは PR のマージ、ストーリーとエピックは人が閉じる |
 
-- ラベルは閉じた後も外さない。閉じた Issue は済みとして扱い、ラベルは見ない
-- `post-checkout` は、前の HEAD が null の SHA になる checkout（新しいワークツリーと clone）でだけ動く。既にある作業コピーで `git switch -c` しても付かないので、そのときは手で付ける。`gh` が無い、認証が無い、通信が落ちたときは知らせるだけで checkout を止めない
+- 両方のラベルが付いていれば作業中とみなす。セッションが `status:refining` を付けるのは、`status:in-progress` の無い Issue だけ
+- 閉じた Issue は、ラベルにかかわらず済みとして扱う。閉じた後にラベルを外す手間はかけない
+- ラベルは `gh api` の REST で付け外しする（付ける `POST repos/{owner}/{repo}/issues/<番号>/labels`、外す `DELETE …/labels/<名前>`）。GraphQL の `gh issue edit` はクラウドのセッションで 403 になるため
+- `post-checkout` は、前の HEAD が null の SHA になる checkout のうち、追加のワークツリーでだけ動く。clone、本体の作業コピー、既にある作業コピーでの `git switch -c`、detached のワークツリーでは付かないので、着手を表すなら手で付ける。既にあるブランチでワークツリーを切り直したときも付く。付けるのは、その番号が開いた Issue（PR ではない）だと確かめられたときだけ。`gh` が無い、認証が無い、通信が落ちたときは理由を知らせるだけで、checkout は続ける。`gh` の応答を待つ上限は無く、通信が詰まるとワークツリーの作成もそのぶん遅れる。書き込み先は `ucan-lab/scrum-guild` に固定してある
 - 詰めるのをやめて着手しない Issue は、`status:refining` を手で外す
 
 ## 運用の手順書

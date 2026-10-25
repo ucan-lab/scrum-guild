@@ -13,7 +13,12 @@ description: 計画や設計について、共通理解に到達するまでユ�
 2. **これから何をするか予告する**: 「論点を洗い出して 1 つずつ一緒に決めていく」という進め方と、おおよその規模感（論点が何個くらいになりそうか）を先に伝える。
 3. 合意できたら論点ボードを出して最初の質問に入る。
 
-詰める対象が GitHub の Issue なら、最初の質問の前にその Issue へ `status:refining` を付ける（`gh issue edit <番号> --add-label status:refining`）。並行するセッションと進捗の図に、要件整理中と分かるようにするため（`docs/development.md` の「Issue の状態」）。Issue がまだ無い計画には付けない。ワークツリーを切ると `post-checkout` のフックが `status:in-progress` に付け替えるので、外すのは手でしない。
+詰める対象が GitHub の Issue なら、最初の質問の前にその Issue へ `status:refining` を付ける。並行するセッションと進捗の図に、要件整理中と分かるようにするため（`docs/development.md` の「Issue の状態」）。
+
+- `gh api repos/{owner}/{repo}/issues/<番号> --jq '[.labels[].name]'` でラベルを見て、`status:in-progress` が無ければ `gh api -X POST repos/{owner}/{repo}/issues/<番号>/labels -f 'labels[]=status:refining'` で付ける。作業中の Issue を詰め直すときは付けない
+- REST を使う。GraphQL の `gh issue edit` はクラウドのセッションで 403 になるため
+- Issue がまだ無い計画には付けない
+- 詰め終えてワークツリーを切れば、`post-checkout` のフックが `status:in-progress` に付け替える。詰めるのをやめて着手しないときだけ、`gh api -X DELETE repos/{owner}/{repo}/issues/<番号>/labels/status:refining` で外す
 
 ## 進捗の可視化（論点ボード）
 
