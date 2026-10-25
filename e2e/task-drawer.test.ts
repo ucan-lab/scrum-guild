@@ -588,6 +588,26 @@ test('期日は Enter で保存でき、「クリア」を押すと空にして�
   expect(bodies.map((body) => body.due_on)).toEqual(['2099-12-31', null]);
 });
 
+test('期日が過ぎたタスクを開くと、引き出しの期日に「期限切れ」の印が出て、保存した値で出し直す', async ({ page }) => {
+  // seed: あおば開発の受託開発チームの「障害時の連絡手順を書く」は、期日 2026-10-17（今日より前）
+  await page.goto('/aoba/w/019a0000-0000-7000-8000-000000000401?task=019a0000-0000-7000-8000-000000000802');
+  const drawer = page.getByRole('dialog', { name: '障害時の連絡手順を書く' });
+  await expect(drawer).toBeVisible();
+  const chip = drawer.locator('.props .chip');
+  await expect(chip).toHaveText(/期限切れ 10\/17/);
+  await expect(chip).toHaveClass(/is-danger/);
+  await expect(drawer.locator('.props .chip svg, .props .chip .ico')).toHaveCount(1);
+  // 期日を直すと、保存した値で印を出し直す（未来の日付は、色なしの印）
+  await drawer.getByLabel('期限').fill('2099-12-31');
+  await expect(chip).toHaveText('12/31');
+  await expect(chip).not.toHaveClass(/is-danger/);
+  await drawer.getByLabel('期限').fill('2000-01-02');
+  await expect(chip).toHaveText(/期限切れ 1\/2/);
+  // 後始末（seed を残す）。元の期日へ戻す
+  await drawer.getByLabel('期限').fill('2026-10-17');
+  await expect(chip).toHaveText(/期限切れ 10\/17/);
+});
+
 test('取り込んだタスクは、タイトルを直せず、リンクの欄と削除を出さず、理由を添える', async ({ page }) => {
   await createWorkspace(page, '取り込みパーティ', 'game');
   await addTask(page, '取り込んだ体');

@@ -647,8 +647,8 @@ const looooooooooooooooooooooooooooooooooongLine = "コードの長い1行は、
   }
   function drawerDueHtml(x) {
     const d = dueOf(x);
-    // 閉じたワークスペースでは、入力欄にせず文字で出す（空は「—」）
-    if (drawerReadOnly()) return `<span>${x.due || "—"}</span>`;
+    // 終了したワークスペースでは、入力欄にせず文字で出す（空は「—」）。期限の印は同じく出す（バックログの行と同じ部品）
+    if (drawerReadOnly()) return `<span>${x.due || "—"}</span>${d ? taskDue(x) : ""}`;
     return `<input class="input" type="date" data-drawer-due aria-label="${t("due")}" value="${x.due || ""}">
       ${x.due ? `<button class="link-btn" type="button" data-drawer-due-clear>クリア</button>` : ""}
       ${d ? taskDue(x) : ""}${d && d.fromSource ? `<span class="props-note">取り込み元の期限。ここでは変えられません</span>` : ""}
