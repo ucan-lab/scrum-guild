@@ -210,7 +210,7 @@
 | --- | --- | --- |
 | `icons.js` のスプライトと `icon` | `IconSprite.svelte`、`Icon.svelte` | スプライトは root の `+layout.svelte` に1つ置く。アイコンの定義は `src/lib/icons.ts` |
 | `mount`（枠） | `AppShell.svelte`、`NavMenu.svelte`、`OrganizationSwitcher.svelte` | 左のメニューと上の帯。`/[slug]` のレイアウトだけが使い、`slug` と、所属するワークスペースがあるか（`hasWorkspace`。無ければワークスペースの中の見出しを出さない）を渡す。組織の切り替えは `OrganizationSwitcher`（`kit.js` の `orgMenuHtml`）を snippet で渡し、メニュー（`nav`）の外、ブランドの下に置く。開閉するメニューで、中は各組織へのリンク（今の組織に `aria-current="page"` とチェック）と、最後に `/` へ戻るリンク。select にしないのは、矢印キーで選んだだけで移るのを避けるため（WCAG 3.2.2）。CSS は `.org-menu`。ボタンの名前は今の組織の名前で、入れる組織の一覧の中の名前を使う（一覧に無いときだけ組織の操作の名前）。ボタンとリストに読み上げの名前を付ける。メニューが上の帯になる 760px 以下でも隠さない（`.ws-select`、ワークスペースの切り替えは隠す）。ワークスペースの切り替え、アシスタントのボタンは置き場所だけで、中身は snippet で渡す。メニューの項目は `src/lib/nav.ts`。画面がまだ無い項目（`href` が `null`）はメニューに出さず、項目が1つも無いグループは見出しごと出さない（色を薄くするだけの「まだ無い」の示し方は、色だけに頼りコントラストも足りないので採らない）。上の帯は、アシスタントとログインした人の表示のどちらかを渡したときだけ出す |
-| `.input-row` | | 入力欄とボタンだけを並べる行（`.field` の中）。ヒントとエラーはこの行の下に出すので、折り返しても、ボタンは入力欄の横に残る。運用の画面の「確かめる」と、組織の URL の「コピー」が使う |
+| `.input-row` | | 入力欄とボタンだけを並べる行（`.field` の中）。ヒントとエラーはこの行の下に出すので、折り返しても、ボタンは入力欄の横に残る。運用の画面の「確かめる」と、組織の URL の「コピー」が使う。見本はカタログの「入力と道具の帯」 |
 | `pageHead` | `PageHead.svelte` | |
 | `section` | `Section.svelte` | |
 | `emptyState` | `EmptyState.svelte` | |
@@ -219,11 +219,11 @@
 | （見本に無い）見つからない、読み込みの失敗 | `NotFoundPage.svelte`、`LoadFailed.svelte` | 組織の枠の中に出す「見つからない」と、枠の外の `LoadFailed`（`inShell` を付けると枠の中に出す）。管理者でない人が開いた組織の管理と、存在しない（別の組織の）ワークスペースに使う |
 | `openDialog`、`closeDialog` | `Dialog.svelte` | ブラウザの `<dialog>` を `showModal()` で開く。フォーカスの閉じ込めと Esc はブラウザに任せ、閉じたら開いたボタンにフォーカスを戻す。Safari と Firefox はクリックしたボタンにフォーカスを移さないので、開く側は `show(event.currentTarget)` で開く操作を起こした要素を渡す。外側を押して閉じるのは、押し始めと離した所の両方が背景のときだけ（中で選択を始めて外で離しても閉じない）。`dismissible` を偽にすると、×、Esc、背景、footer に渡す `close` の閉じる操作をすべて無視する（送っている最中など）。CSS は components.css の `dialog.dialog` |
 | `toast` | `ToastRegion.svelte`、`src/lib/toast.svelte.ts` | `ToastRegion` を `+layout.svelte` に1つ置き、`showToast()` で出す。HTML でなく文字列を渡す。同時に出すのは3件までで、あふれたら古いものから消す。モーダルのダイアログが開くと外側は inert になり、トップレイヤーに出し直した領域（`popover="manual"`）も inert のままで読み上げが届かない。そのため `Dialog.svelte` の中にも領域を持ち、ダイアログが開いている間は中の領域に出して、外側の領域は隠す |
-| `avatar`、`avatarOf` | `Avatar.svelte` | 色相は `users.id` から計算し（`src/lib/avatar-hue.ts`）、`style:--h` で渡す。DB に列は持たない。ユーザーがいるときは名前が必須で、`role="img"` と `aria-label` を付ける。ログインの手段の側のアバターの画像（運用者が指名する人を確かめるときの GitHub のアバター）は `image` で渡し、頭文字の円の中に画像を重ねる（`.avatar > img`）。画像のホストは CSP の `img-src` に足した `https://avatars.githubusercontent.com` だけ |
+| `avatar`、`avatarOf` | `Avatar.svelte` | 色相は `users.id` から計算し（`src/lib/avatar-hue.ts`）、`style:--h` で渡す。DB に列は持たない。ユーザーがいるときは名前が必須で、`role="img"` と `aria-label` を付ける。ログインの手段の側のアバターの画像（運用者が指名する人を確かめるときの GitHub のアバター）は `image` で渡し、頭文字の円の中に画像を重ねる（`.avatar > img`）。画像のホストは CSP の `img-src` に足した `https://avatars.githubusercontent.com` だけ。画像が読み込めないときは頭文字に戻る。見本は `design/kit.js` の `avatar(name, hue, { image })` で、カタログの「人とレベル」に画像と読み込めない例がある（画像は架空の data URI で、外へ通信しない） |
 | 組織の作成のダイアログ（`createOrganization`） | `CreateOrganizationDialog.svelte` | 運用の画面だけが使う。slug と表示名、最初の管理者のログインの手段、GitHub のユーザー名の解決と確かめ、作った後の完了の表示（組織の URL とコピー）を、1つの `Dialog` の中で切り替える。ダイアログを閉じると入力を捨てる |
 | `t`、`DICT` | `src/shared/vocabulary.ts`、`src/lib/vocabulary.svelte.ts` | 言葉の辞書（`docs/development.md` の「言葉の辞書」） |
 | `THEMES`、`setTheme`、`applyTheme` | `src/shared/theme.ts`、`src/lib/theme.svelte.ts` | テーマの先当ては `docs/development.md` の「テーマの先当て」 |
-| `.gate`、`.gate-sheet`（枠の外の画面） | `Gate.svelte`、`GateSheet.svelte`、`LoadFailed.svelte`、`LoadingSheet.svelte` | 組織の選択、見つからない、運用の外側（`main`。mount のときにテーマと言葉づかいを既定に戻す）と、紙1枚。先頭の紙に `brand` を付けると、ブランドと h1 の見出しが出る。表を載せる運用の画面は `Gate` の `wide`（`.gate.is-wide`。紙の幅を 960px まで広げる。運用の一覧は、要件の集計の列（ユーザー数、ワークスペース数、タスク数、添付ファイル、最後に使われた日時）を並べる幅で作り、集計を足す前の列の少ない間もこの幅にする）。紙を縦に並べる `.gate-stack` は components.css に持つ。`LoadFailed` は読み込みの失敗と「もう一度試す」、`LoadingSheet` は外の画面から移る間の読み込み中の表示 |
+| `.gate`、`.gate-sheet`（枠の外の画面） | `Gate.svelte`、`GateSheet.svelte`、`LoadFailed.svelte`、`LoadingSheet.svelte` | 組織の選択、見つからない、運用の外側（`main`。mount のときにテーマと言葉づかいを既定に戻す）と、紙1枚。先頭の紙に `brand` を付けると、ブランドと h1 の見出しが出る。表を載せる運用の画面は `Gate` の `wide`（`.gate.is-wide`。紙の幅を 960px まで広げる。運用の一覧は、要件の集計の列（ユーザー数、ワークスペース数、タスク数、添付ファイル、最後に使われた日時）を並べる幅で作り、集計を足す前の列の少ない間もこの幅にする。見本はカタログの「枠の外の画面」）。紙を縦に並べる `.gate-stack` は components.css に持つ。`LoadFailed` は読み込みの失敗と「もう一度試す」、`LoadingSheet` は外の画面から移る間の読み込み中の表示 |
 
 - 画面は `.svelte` に `<style>` を書かない。足りない CSS は components.css とカタログに先に足す。フックと `pnpm lint` が止める。
 - インラインの `style` 属性は CSP に止められる。動く値は `style:--h` のように CSSOM で当てる（Svelte の `style:` ディレクティブ）。

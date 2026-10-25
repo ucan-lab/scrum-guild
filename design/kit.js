@@ -128,10 +128,19 @@
   // ---- 部品 ----
   // ロゴの印。中世風は「冒」、他は頭文字
   const brandSeal = `<span class="brand-seal" aria-hidden="true"><span class="orn-medieval">冒</span><span class="orn-plain">SG</span></span>`;
+  // opts.image はログインの手段の側のアバターの画像の URL（指名する人を確かめるときなど）。画像が読めないときは頭文字に戻す
+  // （Avatar.svelte と同じ）。見本の画像は SAMPLE_PHOTO のような架空の data URI にし、外の URL を読まない
   function avatar(name, hue, opts = {}) {
     if (!name) return `<span class="avatar is-none ${opts.lg ? "is-lg" : ""}" title="担当なし">?</span>`;
-    return `<span class="avatar ${opts.lg ? "is-lg" : ""} ${opts.left ? "is-left" : ""}" style="--h:${hue}" title="${esc(name)}${opts.left ? "（離脱済み）" : ""}">${esc(name[0])}</span>`;
+    const initial = esc([...name][0]);
+    const inner = opts.image
+      ? `<img src="${esc(opts.image)}" alt="" referrerpolicy="no-referrer" data-initial="${initial}" onerror="this.replaceWith(document.createTextNode(this.dataset.initial))">`
+      : initial;
+    return `<span class="avatar ${opts.lg ? "is-lg" : ""} ${opts.left ? "is-left" : ""}" style="--h:${hue}" title="${esc(name)}${opts.left ? "（離脱済み）" : ""}">${inner}</span>`;
   }
+  // 見本のアバターの画像（架空の人の絵。data URI なので外へ通信しない）と、読み込めない画像（頭文字に戻る例）
+  const SAMPLE_PHOTO = `data:image/svg+xml,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 36 36"><rect width="36" height="36" fill="#c9a24b"/><circle cx="18" cy="14" r="6" fill="#fffaf0"/><path d="M6 33c1-8 6-11 12-11s11 3 12 11z" fill="#fffaf0"/></svg>')}`;
+  const BROKEN_PHOTO = "data:image/png;base64,AAAA";
   function avatarOf(uid, opts = {}) {
     if (!uid) return avatar(null, 0, opts);
     const u = user(uid);
@@ -812,7 +821,7 @@
        ${loginTarget("d-ka", { title: `最初の${t("admin")}のログインの手段`, hints: adminHints(), action: `<button class="btn" id="d-kz" type="button" data-verify-admin="d-ka">確かめる</button>` })}
        <div id="d-kv" hidden>
          <div class="callout is-info">${icon("shield")}<span>この人を最初の${t("admin")}にします。アバター、ユーザー名、表示名が、伝えたい人のものか確かめてください。ユーザー名は 1 字違いでも別の人に当たります。</span></div>
-         <div class="choice is-static">${avatar("星野 琴音", 3, { lg: true })}<div><b class="mono">kotone-dev</b><span>星野 琴音</span><span>GitHub のユーザー ID 5550001</span></div></div>
+         <div class="choice is-static">${avatar("星野 琴音", 3, { lg: true, image: SAMPLE_PHOTO })}<div><b class="mono">kotone-dev</b><span>星野 琴音</span><span>GitHub のユーザー ID 5550001</span></div></div>
        </div>
        <div class="callout is-info">${icon("link")}<span>URL は <span class="mono">scrum-guild.dev/&lt;slug&gt;/</span> になります。作ったあとに出る組織の URL を、${t("admin")}になる人に伝えてください。</span></div>
        <div class="callout is-warn" id="d-kg" hidden>${icon("alert")}<span>Google での指名はまだ使えません。GitHub を選んでください。</span></div>`,
@@ -1520,7 +1529,7 @@
     D, t, brandSeal, THEMES, THEME_LABEL, THEME_NOTE, setVocab, toggleVocab, onChange, esc, icon, md, sumPts, cycleTheme, setTheme, applyTheme, mount,
     onRedraw: (fn) => extraRedraws.push(fn), openDrawer, drawerHtml, drawerState: drawer,
     user, task, tasksWhere, repoTag, repoPicker, sprintLabel, colName, categoryOf, storyPts, epicPts, dueOf,
-    avatar, avatarOf, emblem, pts, dueChip, taskDue, tier, sourceKey, entry, book, section, pageHead,
+    avatar, avatarOf, SAMPLE_PHOTO, BROKEN_PHOTO, emblem, pts, dueChip, taskDue, tier, sourceKey, entry, book, section, pageHead,
     card, board, treeStory, treeEpic, sprintNotice, raidNotice, progress, levelPanel, load, capacityRows,
     openDialog, closeDialog, toast, celebrate, miniCap, redraw: () => redrawAll(), DIALOGS, loginTarget, orgMenuHtml,
     filesOf, fileThumb, fileRow, dropzone, attachments, mdBody, meter,
