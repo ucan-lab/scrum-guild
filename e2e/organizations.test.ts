@@ -578,7 +578,9 @@ test.describe('ログインしていない人と、組織が無い人', () => {
     await expect(page).toHaveURL(/\/$/);
     await expect(page.locator('a.choice')).toHaveText([/あおば開発/]);
     await expect(page.getByRole('heading', { level: 2, name: '届いた招待' })).toBeVisible();
-    await expect(page.locator('.panel')).toContainText('つばめ商会');
+    await expect(page.locator('.choice.is-static')).toContainText('つばめ商会');
+    // 届いた招待の行は記録の面（.panel）ではない。.panel は現代風で光るため
+    await expect(page.locator('.panel')).toHaveCount(0);
   });
 
   test('入れる組織は無く、招待だけが届いている人には、招待を承諾する画面がこれから加わることを出す', async ({

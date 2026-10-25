@@ -47,9 +47,11 @@
     {#if data.invitations.length > 0}
       <GateSheet title={t('invitationsHeading')}>
         {#each data.invitations as invitation, index (index)}
-          <div class="panel">
-            <b>{invitation.organization_name}</b>
-            <span class="panel-note">{t('invitationPending')}</span>
+          <div class="choice is-static">
+            <div>
+              <b>{invitation.organization_name}</b>
+              <span>{t('invitationPending')}</span>
+            </div>
           </div>
         {/each}
         <p class="gate-note">{t('invitationsNote')}</p>
