@@ -80,6 +80,14 @@ describe('bash-rules: 止める', () => {
     'wrangler r2 bucket delete attachments',
     'wrangler r2 object get attachments/a.png --remote',
     'wrangler kv key list --remote --binding KV',
+    'wrangler r2 object put attachments/a.png --file a.png --local --no-local',
+    'wrangler kv key put k v --local --local=false',
+    'wrangler kv key put k v --local false',
+    'wrangler r2 object get attachments/a.png --local --local=0',
+    'wrangler r2 object get attachments/a.png --local --local=TRUE',
+    'wrangler kv key get k --local --no-local=true',
+    'wrangler kv key list --binding KV --no-local --local',
+    'wrangler d1 execute DB --local --no-local --command "select 1"',
     'wrangler secret put GITHUB_CLIENT_SECRET',
     'wrangler versions secret put X',
     'wrangler login',
@@ -405,6 +413,7 @@ describe('bash-rules: 止める', () => {
     assert.match(verdict('wrangler login')[1], /シークレットとログイン/);
     assert.match(verdict('wrangler deploy')[1], /本番に触る/);
     assert.match(verdict('wrangler d1 execute DB')[1], /--local/);
+    assert.match(verdict('wrangler kv key put k v --local --no-local')[1], /local を打ち消して本番に向く/);
     assert.match(verdict('git push -f')[1], /--force-with-lease/);
     assert.equal(decision('git push --force-with-lease', 'main'), 'deny');
     assert.match(verdict('gh api -X PUT repos/o/r/pulls/1/merge')[1], /gh pr merge/);
@@ -503,6 +512,9 @@ describe('bash-rules: 通す', () => {
     'wrangler dev --port $PORT',
     'git commit -m "$(cat msg.txt)"',
     'wrangler r2 object put attachments/a.png --file a.png --local',
+    'wrangler r2 object get attachments/a.png --local=true',
+    'wrangler kv key put k v --local true',
+    'wrangler d1 execute DB --local=true --command "select 1"',
     'pnpm install',
     'pnpm install --frozen-lockfile',
     'pnpm why wrangler',

@@ -47,6 +47,18 @@ const WRANGLER_PRODUCTION = new Set(['deploy', 'publish', 'rollback', 'versions'
 const SECRET_REASON = 'シークレットとログインは人が扱う（セッションに Cloudflare の資格情報を置かない）';
 const PRODUCTION_REASON = 'デプロイ、版、本番のログ、D1 と R2 の作成と削除は Workers Builds と人が行う';
 
+// wrangler の yargs は、真偽のフラグが重なると後の値を採り、--local の次の語が true か false ならそれを値として読み、
+// --local= の値は "true" のときだけ true にする。r2 と kv は local が false だと本番に向く。
+// 後の値を採る規則は真似ず、打ち消しが1つでもあれば順番に関わらず止める
+function negatesLocal(args) {
+  return args.some(
+    (a, i) =>
+      a.startsWith('--no-local') ||
+      (a.startsWith('--local=') && a !== '--local=true') ||
+      (a === '--local' && args[i + 1] === 'false'),
+  );
+}
+
 function judgeWrangler(args) {
   const isRemote = args.some(
     (a) =>
@@ -66,9 +78,13 @@ function judgeWrangler(args) {
   if (pos.some((p) => WRANGLER_PRODUCTION.has(p))) return [DENY, `wrangler ${pos[0]} は本番に触る。${PRODUCTION_REASON}`];
 
   const [sub, sub1, sub2] = pos;
-  const hasLocal = args.includes('--local');
-  const needLocal = (what) =>
-    hasLocal ? null : [DENY, `${what} は --local を付けて手元の D1、R2、KV に向けて実行する`];
+  const hasLocal = args.includes('--local') || args.includes('--local=true');
+  const needLocal = (what) => {
+    if (negatesLocal(args)) {
+      return [DENY, `${what} の --no-local、--local=<true 以外>、--local false は local を打ち消して本番に向く。--local だけを付ける`];
+    }
+    return hasLocal ? null : [DENY, `${what} は --local を付けて手元の D1、R2、KV に向けて実行する`];
+  };
 
   if (sub === undefined) return null; // wrangler --version、wrangler --help
   if (['dev', 'types', 'help', 'version', 'whoami'].includes(sub)) return null;
