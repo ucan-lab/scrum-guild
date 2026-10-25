@@ -844,9 +844,17 @@ a.choice > div > span, .choice.is-static > div > span { display: block; }
 .icon-btn[aria-disabled="true"] { opacity: 0.35; cursor: not-allowed; }
 .icon-btn[aria-disabled="true"]:hover { border-color: transparent; color: var(--color-muted); }
 /* 狭い幅と、指で押す画面では、バックログの行の並べ替えのボタンを 44px 四方にする（並んだボタンの押せる範囲が重ならないよう、見た目ごと広げる）。
-   行の操作は題の下へ折り返すので場所がある。設定の列の並べ替え（.order-list）は入力欄と同じ行に並ぶので、ここでは広げない */
+   狭い幅では行の操作が題の下へ折り返す。設定の列の並べ替え（.order-list）は入力欄と同じ行に並ぶので、ここでは広げない */
 @media (max-width: 760px), (pointer: coarse) {
   .entry-end .order-actions .icon-btn, .tree-end .order-actions .icon-btn { width: 44px; height: 44px; }
+}
+/* 一覧が広いまま指で押す画面（タブレットの横置きなど）では、行の右端が題の下へ折り返さないまま 44px のボタンが並ぶ。
+   題の列に 12rem を先に取り、右端は残りの幅に収まらなければ中で折り返す（右端の列は max-content まで、題の列を押しのけない） */
+@media (pointer: coarse) and (min-width: 761px) {
+  @container (min-width: 641px) {
+    .entry { grid-template-columns: 32px minmax(12rem, 1fr) minmax(0, max-content); }
+    .entry-end { flex-wrap: wrap; justify-content: flex-end; }
+  }
 }
 .icon-btn.is-danger:hover { color: var(--color-danger); border-color: currentColor; }
 

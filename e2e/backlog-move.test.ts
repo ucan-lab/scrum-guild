@@ -245,3 +245,22 @@ test('メニューの横で一覧が狭い幅でも、題の列は縮みすぎ�
   expect(box!.width).toBeGreaterThanOrEqual(44);
   expect(box!.height).toBeGreaterThanOrEqual(44);
 });
+
+test('一覧が広いまま指で押す画面（タブレットの横置き）でも、44px のボタンで題の列を縮めすぎない', async ({
+  browser,
+  baseURL,
+}) => {
+  // 一覧の幅が 640px を少し超える幅。右端は題の下へ折り返さないので、44px のボタンが題の列を押しのけうる
+  const context = await browser.newContext({ hasTouch: true, isMobile: true, viewport: { width: 960, height: 768 } });
+  await signIn(context, baseURL, 'admin');
+  const page = await context.newPage();
+  await page.goto(SEED_GAME_WORKSPACE);
+  expect(await page.evaluate(() => matchMedia('(pointer: coarse)').matches)).toBe(true);
+  const up = page.locator('.tree-children .entry .order-actions .icon-btn').first();
+  expect((await up.boundingBox())!.width).toBeGreaterThanOrEqual(44);
+  // 題の列は 12rem（192px）を保つ
+  for (const main of await page.locator('.tree-children .entry .entry-main').all()) {
+    expect((await main.boundingBox())!.width).toBeGreaterThanOrEqual(190);
+  }
+  await context.close();
+});
