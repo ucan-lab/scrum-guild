@@ -6,7 +6,7 @@
 // 区切りの配列は、語ごとに2つの印を列挙されない属性に持つ。引用符を外した文字列だけでは、"a b?" と a\ b? や {a,--no-local}、
 // '$x' と "$x" を見分けられないため。
 // - expands: 語が展開で別の語に分かれるか、別の文字列になりうるか。引用符の外の変数、置換、brace、glob、zsh の括弧の glob、
-//   ~名前 と、引用符の中の変数のうち QUOTED_PARAMETER に当たらないもの（"$@"、"${a[@]}"、"${(f)x}"、"$=x"、"$x[@]"）
+//   zsh の数値の glob（<->、<1-10>）、~名前 と、引用符の中の変数のうち QUOTED_PARAMETER に当たらないもの（"$@"、"${a[@]}"、"${(f)x}"、"$=x"、"$x[@]"）
 // - shapes: 語の中で実行時に決まる位置（引用符の内外の変数と置換、~名前）を DYNAMIC に置き換えた文字列
 
 const OPERATORS = ['&&', '||', ';', '|', '&', '\n', '(', ')'];
@@ -317,6 +317,15 @@ export function splitSegments(command) {
       i = end;
       continue;
     }
+    // zsh の数値の glob <->、<1-10>（語の途中の x<1-10> も）。リダイレクトとして読むと、後ろの > が次の語を宛先にして argv から隠す
+    // （<-> --remote の >-- が > の宛先になる）。zsh は数に当たるファイルの名前に展開する語として読む
+    const numericGlob = c === '<' ? /^<\d*-\d*>/.exec(command.slice(i)) : null;
+    if (numericGlob) {
+      add(numericGlob[0]);
+      expands = true;
+      i += numericGlob[0].length - 1;
+      continue;
+    }
     const isRedirect = c === '<' || c === '>' || (c === '&' && command[i + 1] === '>');
     if (isRedirect) {
       // 2>&1 の 2 のような番号は語に残さない
@@ -467,8 +476,9 @@ export function baseName(word) {
   return name.replace(/(.)@[^@]*$/, '$1');
 }
 
-// 語の並びから、実行する道具の位置を返す。見つからなければ -1
-export function commandIndex(words) {
+// index は実行する道具の位置（見つからなければ -1）、prefixes は道具の前で飛ばした前置きの語（env、xargs など）の位置
+function scanCommand(words) {
+  const prefixes = [];
   for (let i = 0; i < words.length; i++) {
     const w = words[i];
     if (w === '' || isAssignment(w) || /^[<>]/.test(w)) continue;
@@ -478,10 +488,23 @@ export function commandIndex(words) {
     }
     // timeout 300 や watch -n 2 の数
     if (/^\d+(\.\d+)?[smhd]?$/.test(w)) continue;
-    if (PREFIXES.has(baseName(w))) continue;
-    return i;
+    if (PREFIXES.has(baseName(w))) {
+      prefixes.push(i);
+      continue;
+    }
+    return { index: i, prefixes };
   }
-  return -1;
+  return { index: -1, prefixes };
+}
+
+// 語の並びから、実行する道具の位置を返す。見つからなければ -1
+export function commandIndex(words) {
+  return scanCommand(words).index;
+}
+
+// 道具の前に飛ばした前置きの語の位置。道具の後ろで効く前置き（xargs の後ろのコマンド、env -S）を判定の側が探すために使う
+export function prefixIndexes(words) {
+  return scanCommand(words).prefixes;
 }
 
 // 値を取るフラグとリダイレクトを飛ばして、位置の引数だけを返す

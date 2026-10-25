@@ -8,7 +8,7 @@ import { after, describe, test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { judgeBash } from './bash-rules.mjs';
 import { judgeFile } from './file-rules.mjs';
-import { splitSegments } from './shell-words.mjs';
+import { prefixIndexes, splitSegments } from './shell-words.mjs';
 
 const scripts = {
   deploy: 'wrangler deploy',
@@ -76,6 +76,25 @@ describe('shell-words', () => {
     assert.deepEqual([...splitSegments('w >/dev/null (K|N)')[0]], ['w', '>/dev/null', '(…)']);
     assert.deepEqual([...splitSegments('w --(r|s)')[0]], ['w', '--(…)']);
     assert.deepEqual([...splitSegments('f() { ls; }')[0]], ['f']);
+  });
+  test('zsh の数値の glob は、リダイレクトではなく展開の印の付いた語として読む', () => {
+    const [glob] = splitSegments('w --local <-> --remote');
+    assert.deepEqual([...glob], ['w', '--local', '<->', '--remote']);
+    assert.deepEqual(glob.expands, [false, false, true, false]);
+    const [middle] = splitSegments('w --local x<1-10> --remote y<3->z');
+    assert.deepEqual([...middle], ['w', '--local', 'x<1-10>', '--remote', 'y<3->z']);
+    assert.deepEqual(middle.expands, [false, false, true, false, true]);
+    // 数値の glob の形でない < は、今までどおりリダイレクト
+    assert.deepEqual([...splitSegments('cat <- >out')[0]], ['cat', '<-', '>out']);
+    assert.deepEqual([...splitSegments('cat <1-2 >out')[0]], ['cat', '<1-2', '>out']);
+    assert.deepEqual([...splitSegments('cat <a-b> out')[0]], ['cat', '<a-b', '>out']);
+    assert.deepEqual([...splitSegments('cat < in > out')[0]], ['cat', '<in', '>out']);
+    assert.deepEqual([...splitSegments("cat <<'EOF'\nx\nEOF")[0]], ['cat', '<<x']);
+  });
+  test('前置きの位置を返す', () => {
+    assert.deepEqual(prefixIndexes(splitSegments('FOO=1 xargs -I {} node y')[0]), [1]);
+    assert.deepEqual(prefixIndexes(splitSegments('sudo env -u X xargs node')[0]), [0, 1, 4]);
+    assert.deepEqual(prefixIndexes(splitSegments('node x')[0]), []);
   });
 });
 
@@ -195,6 +214,42 @@ describe('bash-rules: 止める', () => {
     'hash -d n=--remote; wrangler dev ~n',
     'OLDPWD=--no-local; wrangler kv key put k v --local --binding ~-',
     'wrangler kv key put k v --local --binding=~-',
+    // 別名の道具。wrangler2 は wrangler と同じ規則で見る
+    'pnpm exec wrangler2 deploy',
+    "node_modules/.bin/wrangler2 d1 execute DB --remote --command 'drop table x'",
+    'wrangler2 d1 execute DB --command "select 1"',
+    'wrangler2 dev --remote',
+    'npx wrangler2@4 deploy',
+    'node node_modules/wrangler/bin/wrangler2.js deploy',
+    'wrangler2.js versions upload',
+    'echo x | xargs wrangler2 deploy',
+    // cf-wrangler は引数を読まずに止める（dev と build も）
+    'cf-wrangler dev',
+    'cf-wrangler build',
+    'cf-wrangler',
+    'cf-wrangler.js dev',
+    'node node_modules/wrangler/bin/cf-wrangler.js dev',
+    './node_modules/.bin/cf-wrangler dev --local',
+    'pnpm exec cf-wrangler dev',
+    'npx cf-wrangler@4 dev',
+    'npx -p wrangler cf-wrangler dev',
+    // zsh の数値の glob は、リダイレクトとして argv から外さず、後ろのフラグを読む
+    'wrangler d1 execute DB --local <-> --remote',
+    'wrangler d1 execute DB --local x<1-10> --remote',
+    'wrangler d1 execute DB --local <1-10> --remote',
+    'wrangler d1 execute DB --local <-5> --remote',
+    'wrangler d1 execute DB --local <->',
+    'wrangler kv key put k v --local <1-> false',
+    // xargs の後ろの wrangler は、引数が空でも止める
+    'echo --remote | xargs wrangler d1 execute DB --local --command x',
+    'xargs wrangler',
+    'echo x | xargs -I {} wrangler d1 execute DB --local --command {}',
+    'echo x | xargs -n 1 -P 4 wrangler types',
+    'xargs npx wrangler dev',
+    'xargs pnpm exec wrangler',
+    'xargs cf-wrangler dev',
+    'xargs wrangler2',
+    'sudo xargs wrangler',
     // 構文エラーでも、判定から落とさない
     'wrangler deploy )',
     'git push origin main )',
@@ -732,6 +787,75 @@ describe('bash-rules: 確認を挟む', () => {
     'pnpm --dir=~/work exec tsx deploy-production.ts',
     'env -C ~ node deploy.ts',
     'env --chdir=$X node deploy.ts',
+    // env -S の文字列は中身を読まずに確認を挟む
+    "env -S 'wrangler deploy'",
+    'env -S"wrangler deploy"',
+    "env -S'wrangler deploy'",
+    "env -iS 'x'",
+    "env -vS 'x'",
+    'env -S x',
+    "env --split-string 'x'",
+    "env --split-string='x'",
+    "env --split-str='x'",
+    "env -i -S 'wrangler\\_deploy'",
+    "env FOO=1 -S 'x'",
+    "sudo env -S 'x'",
+    "pnpm exec env -S 'x'",
+    "echo x | xargs env -S 'x'",
+    // xargs の後ろは、wrangler と読むだけの道具以外に確認を挟む
+    'echo scripts/deploy.ts | xargs node',
+    'echo origin main | xargs git push',
+    'echo 1 | xargs gh pr close',
+    'xargs rm',
+    'xargs sh',
+    'xargs bash -c "echo $0"',
+    'xargs pnpm test',
+    'xargs pnpm exec grep x',
+    'xargs sed -i s/a/b/',
+    'xargs awk x',
+    'xargs find . -name x',
+    'xargs tee x',
+    'xargs echo',
+    'xargs -I {} node {}',
+    'xargs -n 1 -P 4 node',
+    'xargs -0 -d x git status',
+    'xargs -L 1 -E eof -s 100 git log',
+    'xargs "$X"',
+    'time xargs node',
+    // wrangler の設定の書き換え
+    "sed -i '' s/a/b/ wrangler.jsonc",
+    'sed -i s/a/b/ wrangler.toml',
+    'perl -pi -e s/a/b/ wrangler.json',
+    'echo x > wrangler.jsonc',
+    'echo x >> apps/api/wrangler.toml',
+    '> wrangler.jsonc',
+    'cp x wrangler.jsonc',
+    'cp x worktrees/foo/wrangler.json',
+    'mv x apps/api/wrangler.jsonc',
+    'tee wrangler.jsonc',
+    'dd of=wrangler.jsonc',
+    'rm wrangler.jsonc',
+    'echo x > Wrangler.JSONC',
+    'cd . > wrangler.jsonc',
+    'echo {} > .wrangler/deploy/config.json',
+    'mkdir -p .wrangler/deploy && echo x > .wrangler/deploy/config.json',
+    'cp x .wrangler/deploy/config.json',
+    'cp x apps/api/.wrangler/deploy/config.json',
+    'tee .wrangler/deploy/config.json',
+    'bash -c "echo x > wrangler.jsonc"',
+    // wrangler dev の -c と --config は値を問わず確認を挟む
+    'wrangler dev -c x.jsonc',
+    'wrangler dev --config x.jsonc',
+    'wrangler dev -c=x.jsonc',
+    'wrangler dev --config=x.jsonc',
+    'wrangler dev --config wrangler.jsonc',
+    'wrangler -c x.jsonc dev',
+    'wrangler --config=x.jsonc dev',
+    'wrangler dev -lc x.jsonc',
+    'wrangler dev --port 8788 -c worktrees/x/wrangler.jsonc',
+    'pnpm exec wrangler dev --config x.jsonc',
+    'npx wrangler2 dev -c x.jsonc',
+    'node_modules/.bin/wrangler dev --config=x.jsonc',
     'node x.ts {1..30000}',
     'node x.ts {1..257}',
     'node scripts/prepare.ts a{b,c}{d,e}{f,g}{h,i}{j,k}{l,m}{n,o}{p,q}{r,s}{t,u}',
@@ -745,6 +869,55 @@ describe('bash-rules: 確認を挟む', () => {
     assert.equal(decision('cd $REPO && git push origin HEAD'), 'ask');
     assert.equal(decision('GIT_DIR=/repo/.git git push'), 'ask');
     assert.equal(decision('git --git-dir=/repo/.git push'), 'ask');
+  });
+
+  test('main の作業コピーで、展開の印のある行き先は作業場所を判定できないので確認を挟む', () => {
+    const branchOf = () => 'main';
+    const decisionOn = (command) => judgeBash(command, { cwd: '/repo', branchOf })?.[0];
+    for (const command of [
+      'cd sr? && git commit -m x',
+      'cd {src,x} && git commit -m x',
+      'cd "src$X" && git commit -m x',
+      'cd src$X && git commit -m x',
+      'cd "$(pwd)/src" && git commit -m x',
+      'cd src[ab] && git commit -m x',
+      'cd src/(a|b) && git commit -m x',
+      'pushd sr? && git commit -m x',
+      'pnpm -C sr? exec git commit -m x',
+      'pnpm -C {src,x} exec git commit -m x',
+      'pnpm -C "src$X" exec git commit -m x',
+      'pnpm --dir sr? exec git commit -m x',
+      'pnpm --dir=sr? exec git commit -m x',
+      'pnpm --dir="src$X" exec git commit -m x',
+      'npm --prefix sr? exec -- git commit -m x',
+      'yarn --cwd sr? exec git commit -m x',
+      'corepack pnpm -C sr? exec git commit -m x',
+      'env -C sr? git commit -m x',
+      'env -Csr? git commit -m x',
+      'env --chdir=sr? git commit -m x',
+      'env --chdir {src,x} git commit -m x',
+      'env -C "src$X" git commit -m x',
+    ]) {
+      assert.equal(decisionOn(command), 'ask', command);
+    }
+    // 展開の印のない行き先は今までどおり解決し、main の作業コピーでは止める
+    for (const command of ['cd src && git commit -m x', 'pnpm -C src exec git commit -m x', 'env -C src git commit -m x']) {
+      assert.equal(decisionOn(command), 'deny', command);
+    }
+    assert.equal(decisionOn('cd sr? && ls'), undefined);
+    assert.equal(decisionOn('cd sr? && git pull --ff-only'), undefined);
+  });
+
+  test('wrangler の設定、env -S、xargs の理由は、ほかの確認の理由と分けて書く', () => {
+    const wranglerConfig = verdict('sed -i s/a/b/ wrangler.jsonc')[1];
+    assert.match(wranglerConfig, /remote の binding/);
+    assert.doesNotMatch(wranglerConfig, /Claude の設定とフック/);
+    assert.match(verdict('rm .claude/hooks/x.mjs')[1], /Claude の設定とフック/);
+    assert.match(verdict('wrangler dev -c x.jsonc')[1], /-c と --config/);
+    assert.match(verdict("env -S 'x'")[1], /env -S/);
+    assert.match(verdict('xargs node')[1], /標準入力から引数を足す/);
+    assert.match(verdict('xargs wrangler')[1], /標準入力から wrangler に引数を足す/);
+    assert.match(verdict('cf-wrangler dev')[1], /util\.parseArgs/);
   });
 
   test('マージの確認の理由に、使うコマンドと needs-human の扱いを書く', () => {
@@ -954,6 +1127,55 @@ describe('bash-rules: 通す', () => {
     'shellcheck scripts/deploy.sh',
     'node <<< "console.log(1)"',
     'node < scripts/prepare.ts',
+    // xargs の後ろの読むだけの道具は、今までどおりの判定で通す
+    'git ls-files | xargs grep x',
+    "find . -name '*.ts' | xargs wc -l",
+    'ls -a | xargs grep TOKEN',
+    'git ls-files | xargs -n 50 -P 4 rg x',
+    'git ls-files | xargs -I {} cat {}',
+    'git ls-files | xargs -0 egrep -l x',
+    'xargs fgrep x',
+    'xargs ag x',
+    'xargs ls -l',
+    'xargs head -n 5',
+    'xargs tail -n 5',
+    'xargs file',
+    'xargs stat',
+    'echo x | xargs',
+    'xargs nice -n 10 grep x',
+    // wrangler の別名と設定は、確認の対象外の形
+    'wrangler2 dev',
+    'pnpm wrangler2 dev --port 8788',
+    'wrangler2 types',
+    'wrangler d1 migrations apply DB --local --config worktrees/x/wrangler.jsonc',
+    'wrangler d1 execute DB --local -c wrangler.jsonc --command "select 1"',
+    'wrangler dev --port 8788 -e staging',
+    'wrangler dev --compatibility-date 2026-01-01',
+    'wrangler dev --persist-to .wrangler/state',
+    'wrangler dev -- --config x',
+    'cat wrangler.jsonc',
+    'cp wrangler.jsonc /tmp/x.jsonc',
+    'grep remote wrangler.jsonc',
+    'ls .wrangler/deploy',
+    'echo x > wrangler.jsonc.bak',
+    'echo x > mywrangler.jsonc',
+    // 通常のリダイレクトと、数値の glob に見えない < は崩さない
+    'cd src && ls',
+    'cat <-',
+    'cat <- > /tmp/x',
+    'cat <-x',
+    'cat < a-b > /tmp/c',
+    'cat <1-2 >/tmp/c',
+    'wrangler d1 execute DB --local --command "select 1" <-',
+    'wrangler kv key put k v --local 2>&1',
+    // env のフラグの値の S は -S ではない
+    'env -u S ls',
+    'env -C src ls',
+    'env -CSrc ls',
+    'env -i ls',
+    'env FOO=1 ls',
+    'env --unset=S ls',
+    'env --chdir=src ls',
   ]) {
     test(command, () => assert.equal(decision(command), 'allow'));
   }
@@ -1156,6 +1378,16 @@ describe('file-rules', () => {
     assert.equal(judge('.claude/settings.local.json', '{"disableAllHooks": true}'), 'ask');
     assert.equal(judge('.claude/hooks/bash-rules.mjs', ''), 'ask');
     assert.equal(judge('.claude/skills/x/SKILL.md', ''), 'allow');
+  });
+
+  test('wrangler の設定の転送先の書き換えに確認を挟む', () => {
+    assert.equal(judge('.wrangler/deploy/config.json', '{"configPath":"../x.jsonc"}'), 'ask');
+    assert.equal(judge('apps/api/.wrangler/deploy/config.json', '{}'), 'ask');
+    assert.match(judgeFile({ rel: '.wrangler/deploy/config.json', contents: '{}' })[1], /remote の binding/);
+    assert.equal(judgeFile({ rel: '.wrangler/deploy/config.json', contents: '{}', inWorktree: true })?.[0], 'ask');
+    assert.equal(judge('.wrangler/state/v3/d1/x.sqlite', ''), 'allow');
+    assert.equal(judge('.wrangler/deploy/config.json.bak', ''), 'allow');
+    assert.equal(judge('src/wrangler/deploy/config.json', ''), 'allow');
   });
 
   test('main の作業コピーは、文書も含めて書き換えを止める', () => {
