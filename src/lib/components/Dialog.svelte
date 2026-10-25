@@ -27,8 +27,10 @@
   // フォーカスを戻す先。show() が渡した要素か、開いた時点でフォーカスのあった要素
   let opener: HTMLElement | null = null;
   let requestedOpener: HTMLElement | null = null;
-  // 背景（dialog 自身）を押し始めたか。中で押して外で離した（文字の選択など）ときに閉じないため
+  // 背景（dialog 自身）を押し始めたか、離したか。押し始めと離した所が違うと、click は共通の祖先の
+  // dialog に届くので、click の target だけでは中と外をまたいだドラッグを見分けられない
   let pressedOnBackdrop = false;
+  let releasedOnBackdrop = false;
 
   export function show(trigger?: HTMLElement | null): void {
     requestedOpener = trigger ?? null;
@@ -88,9 +90,13 @@
   onpointerdown={(event) => {
     pressedOnBackdrop = event.target === dialog;
   }}
+  onpointerup={(event) => {
+    releasedOnBackdrop = event.target === dialog;
+  }}
   onclick={(event) => {
-    const closing = pressedOnBackdrop && event.target === dialog;
+    const closing = pressedOnBackdrop && releasedOnBackdrop && event.target === dialog;
     pressedOnBackdrop = false;
+    releasedOnBackdrop = false;
     if (closing) close();
   }}
 >

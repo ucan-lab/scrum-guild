@@ -129,7 +129,7 @@ test('クリックでボタンにフォーカスが乗らなくても、閉じ�
   await expect(opener).toBeFocused();
 });
 
-test('ダイアログの外側を押すと閉じ、中で押し始めて外で離しても閉じない', async ({ page }) => {
+test('ダイアログの外側を押すと閉じ、中と外をまたいでドラッグしても閉じない', async ({ page }) => {
   await page.goto('/');
   const dialog = page.getByRole('dialog', { name: 'API の詳細' });
   const open = page.getByRole('button', { name: '詳細を見る' });
@@ -138,9 +138,16 @@ test('ダイアログの外側を押すと閉じ、中で押し始めて外で�
   await expect(dialog).toBeVisible();
   const text = await page.getByText('この画面が呼んだ API の応答です。').boundingBox();
   if (!text) throw new Error('ダイアログの本文の位置が取れない');
+  // 中で押し始めて外で離す（文字の選択など）
   await page.mouse.move(text.x + 4, text.y + 4);
   await page.mouse.down();
   await page.mouse.move(4, 4);
+  await page.mouse.up();
+  await expect(dialog).toBeVisible();
+  // 外で押し始めて中で離す
+  await page.mouse.move(4, 4);
+  await page.mouse.down();
+  await page.mouse.move(text.x + 4, text.y + 4);
   await page.mouse.up();
   await expect(dialog).toBeVisible();
 
