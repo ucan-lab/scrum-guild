@@ -16,7 +16,17 @@ afterEach(() => {
 
 type Listed = {
   members: { id: string; name: string; role: string; joined_on: string }[];
-  invitations: { id: string; login_name: string; login_provider: string; role: string; invited_on: string }[] | null;
+  invitations:
+    | {
+        id: string;
+        login_name: string;
+        login_provider: string;
+        role: string;
+        invited_on: string;
+        expires_on: string | null;
+        expired: boolean;
+      }[]
+    | null;
 };
 
 async function list(target: Target, person: Person, workspaceId: string = target.workspace.id): Promise<Listed> {
@@ -42,6 +52,8 @@ describe('member-list: 招待を返す相手', () => {
           login_provider: target.invitee.login.provider,
           role: 'member',
           invited_on: '2026-10-20',
+          expires_on: null,
+          expired: false,
         },
       ]);
     }
@@ -139,7 +151,7 @@ describe('member-list: メンバー', () => {
 });
 
 describe('member-list: 承諾待ちの招待', () => {
-  test('accepted、declined、revoked の招待と、期限の過ぎた招待は出ない。期限内の Google の招待は出る', async () => {
+  test('accepted、declined、revoked の招待は出ない。Google の招待は期限の内も外も出て、期限の日と切れたかを返す', async () => {
     const target = await createTarget();
     const { organization, workspace } = target;
     const inviter = target.admin.userId!;
@@ -173,9 +185,19 @@ describe('member-list: 承諾待ちの招待', () => {
     });
 
     const listed = await list(target, target.leader);
-    expect(listed.invitations?.map((invitation) => [invitation.login_name, invitation.login_provider]).sort()).toEqual([
-      ['haruka-aoi', target.invitee.login.provider],
-      ['valid-google', 'google'],
+    expect(
+      listed.invitations
+        ?.map((invitation) => [
+          invitation.login_name,
+          invitation.login_provider,
+          invitation.expires_on,
+          invitation.expired,
+        ])
+        .sort(),
+    ).toEqual([
+      ['expired-google', 'google', '2020-01-01', true],
+      ['haruka-aoi', target.invitee.login.provider, null, false],
+      ['valid-google', 'google', '2099-01-01', false],
     ]);
   });
 

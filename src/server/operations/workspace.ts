@@ -223,14 +223,13 @@ export const memberListOperation = implement(memberList, async ({ db, actor, wor
       .orderBy('u.name')
       .orderBy('u.id'),
   );
-  // 期限（claim_expires_at）は Google の招待だけが持つ。切れた招待は使えないので出さない
+  // 期限（claim_expires_at）は Google の招待だけが持つ。切れた招待も返し、一覧に「期限切れ」と出す
   const invitationsStatement = db.statement((q) =>
     q
       .selectFrom('invitations')
-      .select(['id', 'login_name', 'login_provider', 'role', 'created_at'])
+      .select(['id', 'login_name', 'login_provider', 'role', 'created_at', 'claim_expires_at'])
       .where('workspace_id', '=', workspaceId)
       .where('status', '=', 'pending')
-      .where((eb) => eb.or([eb('claim_expires_at', 'is', null), eb('claim_expires_at', '>', now().toISOString())]))
       .orderBy('created_at')
       .orderBy('id'),
   );
@@ -241,6 +240,7 @@ export const memberListOperation = implement(memberList, async ({ db, actor, wor
 
   const timezone = workspaceResult.rows[0]?.timezone;
   if (timezone === undefined) throw new ApiError(404, 'not_found');
+  const at = now().getTime();
 
   return {
     members: memberResult.rows.map((row) => ({
@@ -259,6 +259,10 @@ export const memberListOperation = implement(memberList, async ({ db, actor, wor
             login_provider: row.login_provider as 'github' | 'google',
             role: row.role as 'leader' | 'member',
             invited_on: createdOn(timezone, row.created_at, memberList.name),
+            expires_on:
+              row.claim_expires_at === null ? null : createdOn(timezone, row.claim_expires_at, memberList.name),
+            // 文字列の順でなく時刻で比べる（書き手の形の違いで、切れた招待を有効と見ないため）
+            expired: row.claim_expires_at !== null && Date.parse(row.claim_expires_at) <= at,
           })),
   };
 });

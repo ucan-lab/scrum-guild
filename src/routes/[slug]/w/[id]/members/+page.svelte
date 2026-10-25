@@ -9,6 +9,7 @@
 
   // メンバーの画面（members.html の「所属している人」の節と頭の数字）。名前（アバター付き）、ロール、参加日を文字で出す。
   // 承諾待ちの招待は、リーダーと管理者にだけ API が返す（一般のメンバーは null）ので、null のときは節も「招待中」の数も出さない。
+  // 期限の過ぎた Google の招待は、一覧に「期限切れ」と出し、「招待中」の数には入れない（docs/data-model.md）。
   // ロールの付け替え、外す、抜ける、配分、招待する は、それぞれの Issue で足す
   let { data }: PageProps = $props();
 
@@ -31,7 +32,13 @@
     { label: t('leader'), count: leaderCount },
     ...(invitations === null
       ? []
-      : [{ label: t('membersTallyInvited'), count: invitations.length, icon: 'mail' as const }]),
+      : [
+          {
+            label: t('membersTallyInvited'),
+            count: invitations.filter((invitation) => !invitation.expired).length,
+            icon: 'mail' as const,
+          },
+        ]),
   ]);
 </script>
 
@@ -103,7 +110,14 @@
               {#each invitations as invitation (invitation.id)}
                 <tr>
                   <td class="mono is-wrap">{invitation.login_name}</td>
-                  <td>{providerLabel(invitation.login_provider)}</td>
+                  <td>
+                    {providerLabel(invitation.login_provider)}
+                    {#if invitation.expired}
+                      <span class="chip is-danger">{t('invitationExpired')}</span>
+                    {:else if invitation.expires_on !== null}
+                      <span class="props-note">{t('invitationExpiresOn', { date: invitation.expires_on })}</span>
+                    {/if}
+                  </td>
                   <td>{roleLabel(invitation.role)}</td>
                   <td class="mono">{invitation.invited_on}</td>
                 </tr>

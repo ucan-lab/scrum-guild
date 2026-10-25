@@ -637,6 +637,9 @@ export const dictionary = defineDictionary({
   invitedOnHeader: workspace('招待した日', '招待した日'),
   loginProviderGithub: workspace('GitHub', 'GitHub'),
   loginProviderGoogle: workspace('Google', 'Google'),
+  // Google の招待の期限（作ってから14日）。{date} は YYYY-MM-DD
+  invitationExpiresOn: workspace('{date} まで', '{date} まで'),
+  invitationExpired: workspace('期限切れ', '期限切れ'),
 
   // テーマ
   themeLabel: organization('テーマ', 'テーマ'),

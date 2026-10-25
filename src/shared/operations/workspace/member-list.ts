@@ -7,7 +7,9 @@ const roleSchema = z.enum(['leader', 'member']);
 // メンバーの画面が使う。members は今所属していて、無効でなく、login_subject のある人（Google で待っている行は出さない）。
 // 並びはリーダーが先、続いて参加日、名前、ID。
 // invitations はリーダーと管理者（所属していない管理者を含む）にだけ配列で返し、一般のメンバーには null。
-// 承諾待ち（status = 'pending'）で、claim_expires_at が過ぎていないものだけ。invited_on はワークスペースのタイムゾーンでの招待した日（YYYY-MM-DD）
+// 承諾待ち（status = 'pending'）のものすべて。期限（Google の招待だけが持つ）の過ぎたものも返し、expired で示す。
+// リーダーが期限切れに気づいて招待し直せるようにするため（docs/data-model.md の「メールアドレスで待つ指名と招待」）。
+// invited_on と expires_on はワークスペースのタイムゾーンでの日付（YYYY-MM-DD）。expires_on は期限の無い GitHub の招待では null
 export const memberList = defineOperation({
   name: 'member-list',
   description:
@@ -33,6 +35,8 @@ export const memberList = defineOperation({
           login_provider: z.enum(['github', 'google']),
           role: roleSchema,
           invited_on: z.string(),
+          expires_on: z.string().nullable(),
+          expired: z.boolean(),
         }),
       )
       .nullable(),

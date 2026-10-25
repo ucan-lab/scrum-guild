@@ -318,7 +318,7 @@
 - 名前は前後の空白を除いて、1〜50 字（コードポイントで数える。絵文字も1字）。制御文字（`Cc`）、ゼロ幅のスペース（U+200B）、行と段落の区切り（U+2028、U+2029）、向きを変える制御（U+202A〜U+202E、U+2066〜U+2069）、語結合子などの見えない演算子（U+2060〜U+2064）、BOM（U+FEFF）は受けない。この決まりは `src/shared/hidden-characters.ts` の1か所に置き、組織の表示名と GitHub の表示名（取り除く）も同じ文字を扱う。ZWJ（U+200D）でつないだ絵文字、旗のタグ文字、ZWNJ（U+200C）を使うペルシア語やインド系の文字、方向の印（LRM、RLM、ALM）の名前は通す。空白、書式の文字（`Cf`）、U+3164、U+2800、U+115F、U+1160、U+FFA0 を除いて何も残らない名前は、空の名前と同じ扱いにする。重複は許す（一意の制約を持たず、閉じたものと同じ名前もありうるため）。
 - ワークスペースの一覧（`workspace-list`）と最初のリーダーの候補（`workspace-leader-candidates`）は、件数に上限を付けない。想定はワークスペースが組織あたり数十、候補も同じく数十から数百で、1回の応答に収まる。上限で切ると、管理者から見えないワークスペースや、指せない人ができるため。想定を超える組織が出たら、そのときに絞り込みやページ分けを足す。
 - ワークスペースの一覧の人数（`workspace-list` の `member_count` と `leader_count`）は、メンバーの一覧（`member-list`）が返す人と同じ条件で数える（次の項目）。
-- メンバーの一覧（`member-list`）も件数に上限を付けない。1つのワークスペースの所属と承諾待ちの招待は数十人の想定で、1回の応答に収まる。返す人は、今所属し（`memberships.left_at` が空）、無効でなく（`users.disabled_at` が空）、`users.login_subject` のある人。並びはリーダーが先、続いて参加日、名前、ID。承諾待ちの招待（`status = 'pending'`で、`claim_expires_at` が空か今より後）は、リーダーと管理者（所属していない管理者を含む）にだけ返し、一般のメンバーには `null` を返す。招待した日は `invitations.created_at` をワークスペースのタイムゾーンの日付にした値。
+- メンバーの一覧（`member-list`）も件数に上限を付けない。1つのワークスペースの所属と承諾待ちの招待は数十人の想定で、1回の応答に収まる。返す人は、今所属し（`memberships.left_at` が空）、無効でなく（`users.disabled_at` が空）、`users.login_subject` のある人。並びはリーダーが先、続いて参加日、名前、ID。承諾待ちの招待（`status = 'pending'`。期限の過ぎた Google の招待も含め、切れたかを `expired` で返す）は、リーダーと管理者（所属していない管理者を含む）にだけ返し、一般のメンバーには `null` を返す。招待した日と期限の日は、`invitations.created_at` と `claim_expires_at` をワークスペースのタイムゾーンの日付にした値。
 
 ### workspace_point_rates
 
@@ -385,7 +385,7 @@
 - 表の制約: `users` と同じ3つの CHECK（`login_subject` と `login_email` のどちらか一方、`login_email` と `claim_token_hash` と `claim_expires_at` はそろって入るか空、`login_email` は `google` の行だけで、そろえた形）。
 - 一意: `(workspace_id, login_provider, login_subject) WHERE status = 'pending'`、`(workspace_id, login_provider, login_email) WHERE status = 'pending' AND login_subject IS NULL`。
 - 索引: `(login_provider, login_subject) WHERE status = 'pending'`。ログインの可否と招待の一覧に使う。
-- メンバーの画面の承諾待ちの招待（`member-list`）は、`status = 'pending'` で、`claim_expires_at` が空か今より後の行を、`created_at`、`id` の順に、リーダーと管理者（所属していない管理者を含む）にだけ返す。一般のメンバーには返さない。
+- メンバーの画面の承諾待ちの招待（`member-list`）は、`status = 'pending'` の行を、期限の過ぎたものも含めて `created_at`、`id` の順に、リーダーと管理者（所属していない管理者を含む）にだけ返す。一般のメンバーには返さない。
 - 今の所属がある人は招待できないことを、アプリが検査する。Google の招待では、メールアドレスを `sub` に結べないため、所属の検査は `sub` を埋めるときに行う（下の「メールアドレスで待つ指名と招待」）。
 - Google で招待し直すときは、同じワークスペースの同じ `login_email` の承諾待ちの招待を同じバッチで `revoked` にする。
 
