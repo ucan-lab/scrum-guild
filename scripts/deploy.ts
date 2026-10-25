@@ -28,7 +28,7 @@ export type DeployDeps = {
 // Worker が無い（API の 10007）か、Worker はあってもデプロイが1つも無い。どちらも戻し先が無い
 const NO_DEPLOYMENT = [/\[code: 10007\]/, /has no deployments/];
 
-// Workers Builds が渡すコミットの SHA の形。ダッシュボードの環境変数で上書きされた任意の文字列を版として出さない
+// コミットの SHA の形（git rev-parse HEAD の出力）。dev やブランチ名を版として出さない
 const COMMIT_SHA = /^[0-9a-f]{7,40}$/;
 
 type RollbackTarget = { ok: true; versionId: string | null } | { ok: false; reason: string };

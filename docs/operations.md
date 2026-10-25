@@ -23,7 +23,7 @@ Worker の設定の Builds で、GitHub のリポジトリ `ucan-lab/scrum-guild
 | 項目 | 値 |
 | --- | --- |
 | ブランチ | `main` |
-| ビルドのコマンド | `APP_VERSION=$(git rev-parse HEAD) pnpm build` |
+| ビルドのコマンド | `APP_VERSION=$(git rev-parse HEAD) && export APP_VERSION && pnpm build` |
 | デプロイのコマンド | `node scripts/deploy-production.ts` |
 | ルートのディレクトリ | 空（リポジトリのルート） |
 | preview builds | 無効 |
@@ -31,7 +31,8 @@ Worker の設定の Builds で、GitHub のリポジトリ `ucan-lab/scrum-guild
 
 - Node の版は `.node-version`、pnpm の版は `package.json` の `packageManager` から。Workers Builds で入らないときの扱いは `docs/development.md` の「CD」
 - デプロイのスクリプトは、Workers Builds が入れる `WORKERS_CI=1` が無いか、`git rev-parse HEAD` で版を取れないと、本番に触らずに止まる。`WORKERS_CI` はデプロイのコマンドにも渡る（2026-10-25 の最初の接続で確かめた）
-- 版に `WORKERS_CI_COMMIT_SHA` は使わない。接続した直後の初回のビルドと Retry build のような手で動かしたビルドでは、コミットの SHA ではなくブランチ名（`main`）が入る
+- ビルドのコマンドは、`git rev-parse HEAD` が失敗したらビルドを始めない。`APP_VERSION=$(...) pnpm build` の1行では git の失敗が無視され、画面の版が `dev` のまま出るため
+- 版に `WORKERS_CI_COMMIT_SHA` は使わない。接続した直後の初回のビルド（手で動かしたビルド）で、コミットの SHA ではなくブランチ名（`main`）が入っていた
 
 ### API トークン
 

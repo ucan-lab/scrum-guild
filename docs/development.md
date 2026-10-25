@@ -313,7 +313,7 @@ PR ごとのプレビュー環境は持たず、Workers Builds の preview build
 
 `main` への push で、Cloudflare の Workers Builds（Git との連携）が動く（2026-10-23 に決めた）。デプロイの鍵を GitHub に置かないため（上の「`main` を守る仕組み」）。
 
-1. ビルドする。checkout したコミットの SHA（`git rev-parse HEAD`）を `APP_VERSION` として `pnpm build` に渡す（上の「版」）。Workers Builds の `WORKERS_CI_COMMIT_SHA` は使わない。手で動かしたビルド（接続した直後の初回、Retry build）では、ブランチ名の `main` が入るため
+1. ビルドする。checkout したコミットの SHA（`git rev-parse HEAD`）を `APP_VERSION` として `pnpm build` に渡す（上の「版」）。Workers Builds の `WORKERS_CI_COMMIT_SHA` は使わない。接続した直後の初回のビルド（手で動かしたビルド）で、ブランチ名の `main` が入っていたため。git が失敗したらビルドを始めない（ビルドのコマンドは `docs/operations.md` の「Workers Builds の接続」）
 2. デプロイのコマンドで、デプロイのスクリプト（`scripts/deploy.ts`、入口は `scripts/deploy-production.ts`）を動かす。スクリプトの手順は次のとおり
    1. Workers Builds の外（`WORKERS_CI` が `1` でない）か、`git rev-parse HEAD` で取った版がコミットの SHA の形（16進の7〜40文字）でなければ、本番に触らずに失敗。手元のログインで作業ツリーを出さず、`dev` や任意の文字列を版にしないため
    2. 本番に触る前に、戻し先として今 100% で動いている版の ID を `wrangler deployments status --json` で控える
