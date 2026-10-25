@@ -38,6 +38,9 @@ export function longestRateLimitWindowMs(definitions: readonly AnyOperationDefin
   return Math.max(...windows);
 }
 
+// 枠も操作の定義も読み込みの後は変わらないので、consumeRateLimit のたびに定義を走査せず1回だけ求める
+const LONGEST_WINDOW_MS = longestRateLimitWindowMs();
+
 export type LoginRateLimit = { key: string; policy: RateLimitPolicy };
 
 // 数える枠。IPv4 は `login:<IP>`、IPv6 は `login:<上位64ビット>::/64` と `login48:<上位48ビット>::/48`、
@@ -61,7 +64,7 @@ export function loginRateLimits(ip: string | undefined): LoginRateLimit[] {
 // 数えて、上限の内なら true。超えたら false
 export async function consumeRateLimit(env: Env, key: string, policy: RateLimitPolicy, now: Date): Promise<boolean> {
   // 最長の窓に入っていない枠を足すと、掃除が窓の途中で行を消し、上限が緩む（src/server/scheduled/cleanup-expired.ts）
-  if (policy.windowMs > longestRateLimitWindowMs()) {
+  if (policy.windowMs > LONGEST_WINDOW_MS) {
     throw new Error(`レート制限の窓 ${policy.windowMs}ms が、掃除の境目の最長の窓を超えている`);
   }
   const db = commonDb(env);
