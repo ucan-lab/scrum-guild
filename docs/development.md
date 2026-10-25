@@ -201,7 +201,7 @@ Bash の判定を `permissions.deny` に置かないのは、規則が前方一�
 | --- | --- |
 | `issue-plan`、`pr-create`、`pr-feedback`、`self-review`、`grill-me`、`ui-polish`、`japanese-tech-writing` | 残す |
 | `sync-base` | `rebase-base` をこのリポジトリ向けに書き換えた。rebase で取り込み、lease の SHA を明示した `--force-with-lease` で push まで行う |
-| `d1-migration` | 足した（2026-10-25）。戻せないマイグレーションを書く手順。広げる変更は使うコードと同じ PR で、縮める変更（消す、名前を変える、型を変える、制約を足すか狭める）は先に使わなくする版を出してから別の PR で行う。マイグレーションを当てた後に `wrangler rollback` しても、古いコードが新しいスキーマで動くようにするため。並行の確かめ、共通の表か組織の中の表かの区分、`data-model.md` を同じ PR で直すこと、空の D1 と行の入った D1 での確かめも扱う |
+| `d1-migration` | 足した（2026-10-25）。戻せないマイグレーションを書く手順。変更を広げると縮めるに分け、縮める変更は先に使わなくする版を出してから別の PR で行う。マイグレーションを当てた後に `wrangler rollback` しても、古いコードが新しいスキーマで動くようにするため。並行の確かめ、`data-model.md` を同じ PR で直すこと、表の作り直し、空の D1 と行の入った D1 での確かめも扱う |
 | `requirements` | 外した。Backlog の要望を要件に落とす受託向けのスキルで、このリポジトリでは使い道が薄い |
 | `database-reviewer` | D1（SQLite）向けに書き直した。`batch()` の原子性、共通の表と組織の中の表の混在、組織での絞り込み、マイグレーションを戻せるか、インデックスを見る。観点を当てた後に、PR の保証を疑ってデータを壊す筋書きを組み立てる |
 | `code-reviewer`、`security-reviewer` | PHP と Laravel の記述を外し、Workers、Hono、D1、R2、Svelte を前提にした。どちらも `multi-tenant.md` と `cloudflare-workers.md` を読む。観点を当てた後に、PR の主張を疑って差分を壊す筋書きを組み立てる（`security-reviewer` は攻撃者を決めて組み立てる） |
