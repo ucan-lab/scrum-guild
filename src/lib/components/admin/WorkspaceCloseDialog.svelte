@@ -1,6 +1,7 @@
 <script lang="ts">
   import { workspaceClose } from '../../../shared/operations/workspace/index.ts';
   import { callOperation } from '../../api.ts';
+  import { isUnauthenticated } from '../../login-redirect.ts';
   import { t } from '../../vocabulary.svelte.ts';
   import Dialog from '../Dialog.svelte';
   import Icon from '../Icon.svelte';
@@ -53,7 +54,7 @@
       if (result.ok) {
         open = false;
         onfinish('closed');
-      } else if (result.status === 401) {
+      } else if (isUnauthenticated(result)) {
         onfinish('unauthenticated');
       } else if (result.status === 409 && result.error?.code === 'workspace_closed') {
         // 別の画面で先に閉じられていた。閉じ直されたのか、開き直されたのかは言い切らず、読み直した一覧を見てもらう

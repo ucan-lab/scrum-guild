@@ -485,7 +485,10 @@ a.brand { color: inherit; text-decoration: none; }
 
 /* ===== 囲みの知らせ ===== */
 .callout { display: flex; gap: var(--space-2); align-items: flex-start; padding: var(--space-3) var(--space-4); border-radius: var(--radius-1); font-size: var(--text-sm); border: 1px solid currentColor; }
-.callout > span { color: var(--color-fg); }
+.callout { flex-wrap: wrap; }
+.callout > span { color: var(--color-fg); flex: 1 1 12em; min-width: 0; }
+/* 囲みの中の操作（ボタンと、その状態の文）。右に寄せ、狭い幅では本文の下へ折り返す */
+.callout-actions { display: flex; gap: var(--space-2); align-items: center; flex-wrap: wrap; margin-left: auto; }
 /* 囲みの中のリンクは、本文と同じ色に下線を引く（既定のリンクの青は、ダークと現代風の地で読めない） */
 .callout a { color: inherit; text-decoration: underline; text-underline-offset: 0.2em; }
 .callout.is-ok { color: var(--color-ok); background: var(--color-ok-soft); }

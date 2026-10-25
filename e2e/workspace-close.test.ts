@@ -199,6 +199,10 @@ test.describe('管理者（あおば開発のミナト）', () => {
     const button = page
       .locator('tbody tr', { hasText: SEED_NAME })
       .getByRole('button', { name: `「${SEED_NAME}」を閉じる` });
+    // 表が横にはみ出す幅であること（固定を外すと、操作の列は横スクロールの先に隠れる）
+    await expect(button).toBeAttached();
+    const overflow = await page.locator('.table-wrap').evaluate((el) => el.scrollWidth - el.clientWidth);
+    expect(overflow).toBeGreaterThan(0);
     // 縦には、その行まで動かす。横には、表がはみ出していても動かさずに見える
     await button.scrollIntoViewIfNeeded();
     await expect(button).toBeInViewport({ ratio: 1 });
@@ -253,13 +257,85 @@ test.describe('管理者（あおば開発のミナト）', () => {
     const row = page.locator('tbody tr', { hasText: SEED_NAME });
     await row.getByRole('button', { name: `「${SEED_NAME}」を開き直す` }).click();
 
-    const notice = page.getByRole('alert').filter({ hasText: 'パーティの一覧を更新できませんでした' });
-    await expect(notice).toBeVisible();
+    const notice = page.locator('.callout', { hasText: 'パーティの一覧を更新できませんでした' });
+    await expect(notice.getByRole('alert')).toHaveText('パーティの一覧を更新できませんでした');
+    // 知らせ（alert）と状態（status）は入れ子にしない
+    await expect(notice.locator('[role="alert"] [role="status"]')).toHaveCount(0);
     // 今の一覧は残る
     await expect(row).toBeVisible();
     await notice.getByRole('button', { name: 'もう一度試す' }).click();
     await expect(notice).toHaveCount(0);
     await expect(row).toBeVisible();
+    // 押したボタンが消えるので、節の中身へフォーカスが移る
+    await expect(page.locator('.setting-body[tabindex="-1"]')).toBeFocused();
+  });
+
+  test('「もう一度試す」を押していない読み込みの結果では、「まだ読み込めませんでした」を出さない', async ({ page }) => {
+    // 2、3、5 回目を失敗させる: 操作の後の読み直しが失敗 → 「もう一度試す」も失敗 → 別の操作の読み直しが成功 → また別の操作の読み直しが失敗
+    await showSeedWorkspaceClosed(page, (call) => ([2, 3, 5].includes(call) ? 'fail' : 'real'));
+    await page.route('**/api/aoba/workspace-reopen', (route) =>
+      route.fulfill({ json: { workspace_id: '019a0000-0000-7000-8000-000000000401' } }),
+    );
+    await page.goto('/aoba/admin');
+    const row = page.locator('tbody tr', { hasText: SEED_NAME });
+    const reopen = row.getByRole('button', { name: `「${SEED_NAME}」を開き直す` });
+    const notice = page.locator('.callout', { hasText: 'パーティの一覧を更新できませんでした' });
+
+    await reopen.click();
+    await expect(notice).toBeVisible();
+    await notice.getByRole('button', { name: 'もう一度試す' }).click();
+    await expect(notice.getByRole('status')).toHaveText('まだ読み込めませんでした');
+
+    // 押していない読み込み（操作の後の読み直し）が成功すると、知らせごと消える
+    await reopen.click();
+    await expect(notice).toHaveCount(0);
+    // その次の読み直しが失敗しても、押していないので「まだ」とは出ない
+    await reopen.click();
+    await expect(notice).toBeVisible();
+    await expect(notice.getByRole('status')).toHaveText('');
+  });
+
+  test('先に始めた読み直しが後で返っても、新しい一覧を古い一覧で上書きしない', async ({ page }) => {
+    // 2回目（1回目の操作の後の読み直し）は遅らせ、古い一覧（閉じた）を返す。3回目（2回目の操作の後）は本物の一覧（開いている）を先に返す
+    let calls = 0;
+    let staleDone: () => void = () => {};
+    const staleSent = new Promise<void>((resolve) => (staleDone = resolve));
+    await page.route('**/api/aoba/workspace-list', async (route) => {
+      calls++;
+      if (calls !== 2) return route.continue();
+      const response = await route.fetch();
+      const body = (await response.json()) as { workspaces: { name: string; closed_at: string | null }[] };
+      for (const workspace of body.workspaces) {
+        if (workspace.name === SEED_NAME) workspace.closed_at = '2026-10-22T00:00:00.000Z';
+      }
+      await new Promise((resolve) => setTimeout(resolve, 2500));
+      await route.fulfill({ response, json: body });
+      staleDone();
+    });
+    await page.route('**/api/aoba/workspace-close', (route) =>
+      route.fulfill({
+        json: { workspace_id: '019a0000-0000-7000-8000-000000000401', closed_at: '2026-10-26T00:00:00.000Z' },
+      }),
+    );
+    await page.goto('/aoba/admin');
+    const row = page.locator('tbody tr', { hasText: SEED_NAME });
+    const close = row.getByRole('button', { name: `「${SEED_NAME}」を閉じる` });
+    const dialog = page.getByRole('dialog', { name: 'パーティを閉じる' });
+
+    // 1回目の閉じる: 読み直し（2回目）が遅れている間に、2回目の閉じる（読み直しは3回目）を済ませる
+    await close.click();
+    await dialog.getByRole('button', { name: `「${SEED_NAME}」を閉じる` }).click();
+    await expect(dialog).toBeHidden();
+    await close.click();
+    await dialog.getByRole('button', { name: `「${SEED_NAME}」を閉じる` }).click();
+    await expect(dialog).toBeHidden();
+    await expect.poll(() => calls).toBe(3);
+
+    // 遅れた古い一覧が返った後も、新しい一覧（開いている）のまま
+    await staleSent;
+    await page.waitForTimeout(300);
+    await expect(row.locator('.chip')).toHaveCount(0);
+    await expect(close).toBeVisible();
   });
 
   test('一覧を読み込めないときは節の中に知らせ、「もう一度試す」で読み直せる。ほかの部分は出る', async ({ page }) => {

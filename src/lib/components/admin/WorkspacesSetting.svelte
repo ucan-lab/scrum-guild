@@ -6,20 +6,22 @@
   import type { Vocabulary } from '../../../shared/vocabulary.ts';
   import { callOperation } from '../../api.ts';
   import { formatLocalDate } from '../../format.ts';
-  import { loginUrl } from '../../login-redirect.ts';
+  import { isUnauthenticated, loginUrl } from '../../login-redirect.ts';
   import { showToast } from '../../toast.svelte.ts';
   import { t } from '../../vocabulary.svelte.ts';
   import EmptyState from '../EmptyState.svelte';
   import Icon from '../Icon.svelte';
   import Setting from '../Setting.svelte';
   import WorkspaceCreateDialog from '../WorkspaceCreateDialog.svelte';
+  import SectionBoundary from './SectionBoundary.svelte';
   import { SectionLoad } from './section-load.svelte.ts';
   import WorkspaceCloseDialog from './WorkspaceCloseDialog.svelte';
 
   // 組織の管理の画面（admin.html）のワークスペースの節。読み込みの状態（読み込み中、失敗、読み直し、401、古い応答の破棄）は
-  // SectionLoad に任せ、この部品は一覧と操作だけを持つ。ほかの節の部品も同じ形にして、画面（+page.svelte）には並べるだけにする。
+  // SectionLoad、その表示は SectionBoundary に任せ、この部品は一覧と操作だけを持つ。
+  // ほかの節の部品も同じ形にして、画面（+page.svelte）には並べるだけにする。
   // 初回の読み込みだけ「読み込んでいます」を出し、閉じる／開き直すの後の読み直しは、一覧を残したまま入れ替える
-  // （押したボタンを消さず、フォーカスを保つ）。読み直しに失敗したら、一覧を残して知らせる。
+  // （押したボタンを消さず、フォーカスを保つ）。
   // 「閉じる」は確認のダイアログを経て、「開き直す」は確認なしで送る。
   // 操作を送っている間は、どの行のボタンも aria-disabled にして押しても無視する。
   // 画面の見出しの集計と右上の「作る」は画面が持つので、開いている数は onopencount で渡し（読めるまでは null）、
@@ -61,25 +63,26 @@
     createDialog?.show(trigger);
   }
 
-  $effect(() => {
-    void currentSlug;
-    workspaces = [];
-    onopencount(null);
-    reopeningId = null;
-    section.restart();
-    return () => section.dispose();
-  });
+  // slug が替わったら、前の組織の一覧を捨てて読み直す
+  section.attach(
+    () => currentSlug,
+    () => {
+      workspaces = [];
+      onopencount(null);
+      reopeningId = null;
+    },
+  );
 
   async function reopen(workspace: Workspace): Promise<void> {
     if (reopeningId !== null) return;
-    const mine = section.epoch;
+    const token = section.token();
     reopeningId = workspace.id;
     try {
       const result = await callOperation(workspaceReopen, { workspace_id: workspace.id }, { slug: currentSlug });
-      if (mine !== section.epoch) return;
+      if (!section.isCurrent(token)) return;
       if (result.ok) {
         showToast(t('workspaceReopened', { workspace: t('workspace') }), 'check');
-      } else if (result.status === 401) {
+      } else if (isUnauthenticated(result)) {
         window.location.assign(loginUrl(page.url));
         return;
       } else if (result.status === 409 && result.error?.code === 'conflict') {
@@ -92,7 +95,7 @@
       }
       await section.load();
     } finally {
-      if (mine === section.epoch) reopeningId = null;
+      if (section.isCurrent(token)) reopeningId = null;
     }
   }
 
@@ -118,37 +121,17 @@
   }
 
   const status = $derived(reopeningId !== null ? t('workspaceReopening') : '');
-  const retryStatus = $derived(section.retrying ? t('retrying') : section.retryFailed ? t('retryFailed') : '');
 </script>
-
-{#snippet retryActions()}
-  <button class="btn is-sm" type="button" aria-disabled={section.retrying} onclick={() => section.retry()}>
-    {t('retry')}
-  </button>
-  <span class="field-hint" role="status">{retryStatus}</span>
-{/snippet}
 
 <Setting
   title={t('workspace')}
   description={t('adminWorkspacesDesc', { workspace: t('workspace'), member: t('member'), leader: t('leader') })}
 >
-  {#if section.state === 'loading'}
-    <EmptyState icon="clock" title={t('loading')} />
-  {:else if section.state === 'failed'}
-    <EmptyState
-      icon="alert"
-      title={t('workspaceListLoadFailed', { workspace: t('workspace') })}
-      text={t('loadFailedText')}
-      actions={retryActions}
-    />
-  {:else}
-    <!-- 読み直しに失敗しても、今の一覧は残す -->
-    {#if section.refreshFailed}
-      <div class="callout is-warn" role="alert">
-        <Icon name="alert" /><span>{t('workspaceListRefreshFailed', { workspace: t('workspace') })}</span>
-        {@render retryActions()}
-      </div>
-    {/if}
+  <SectionBoundary
+    {section}
+    failedTitle={t('workspaceListLoadFailed', { workspace: t('workspace') })}
+    refreshFailedText={t('workspaceListRefreshFailed', { workspace: t('workspace') })}
+  >
     {#if workspaces.length === 0}
       <EmptyState
         icon="users"
@@ -208,7 +191,7 @@
         </table>
       </div>
     {/if}
-  {/if}
+  </SectionBoundary>
   <!-- 開き直しを送っている間の読み上げ。領域は常に置き、中の文字だけを替える -->
   <span class="visually-hidden" role="status">{status}</span>
 </Setting>
