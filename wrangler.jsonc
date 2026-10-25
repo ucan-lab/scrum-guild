@@ -23,8 +23,7 @@
     {
       "binding": "DB",
       "database_name": "scrum-guild",
-      // 仮の値。本物は CI と CD の Issue（#20）で入れる
-      "database_id": "00000000-0000-0000-0000-000000000000",
+      "database_id": "7fc32f51-8771-4122-aa5d-3b69c07ff861",
       "migrations_dir": "migrations"
     }
   ],

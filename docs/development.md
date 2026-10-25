@@ -62,7 +62,7 @@
 
 1. 土台: pnpm、SvelteKit の SPA モード、Hono、wrangler の設定、ESLint と Prettier、`CLAUDE.md` の「コマンド」、セキュリティのヘッダー、`/api/health`。Claude の設定とフック（下の「Claude の設定とフック」）は先に入れる
 2. CI と CD: `ci-ok`、Workers Builds とデプロイのスクリプト、煙のテスト、`docs/operations.md`
-3. 入口: Kysely の2つの入口と `batch()` の関数、操作の定義を登録する関数、エラーの形、組織の分離のテストの仕組み
+3. 入口: Kysely の2つの入口と `batch()` の関数、操作の定義を登録する関数、エラーの形、組織の分離のテストの仕組み。`/api/health` に DB への疎通を足し、デプロイの煙のテストで確かめる。`src/shared/health.ts` の `Health` と `isHealth`、`scripts/deploy.ts` の煙のテストを合わせて直す
 4. 一本道に要る表のマイグレーションと seed。Google で待つための列（`users` と `invitations` の `login_email`、`claim_token_hash`、`claim_expires_at`、空にできる `login_subject`、`oauth_states` の `nonce` と `claim_token_hash`）も最初から入れる。SQLite では後から NOT NULL を外すのに表の作り直しが要るため
 5. 運用者の組織の作成、GitHub OAuth とセッション、組織の選択
 6. Google のログイン（招待の URL から、メールアドレスで待つ指名と招待を `sub` に結ぶところまで）。5 のログインの手段の型に、2つ目の実装として足す
@@ -313,20 +313,36 @@ PR ごとのプレビュー環境は持たず、Workers Builds の preview build
 
 `main` への push で、Cloudflare の Workers Builds（Git との連携）が動く（2026-10-23 に決めた）。デプロイの鍵を GitHub に置かないため（上の「`main` を守る仕組み」）。
 
-1. ビルドする
-2. デプロイのコマンドで、リポジトリに置いたデプロイのスクリプトを動かす。スクリプトの手順は次のとおり
-   1. マイグレーションがあれば `wrangler d1 migrations apply --remote` で当てる
-   2. `wrangler versions upload` で新しい版を上げ、`wrangler versions deploy` で切り替える
-   3. 煙のテストで `/api/health`（版と DB への疎通）を確かめる。落ちたら `wrangler rollback` で戻し、ビルドを失敗で終える
+1. ビルドする。Workers Builds が渡すコミットの SHA（`WORKERS_CI_COMMIT_SHA`）を `APP_VERSION` として `pnpm build` に渡す（上の「版」）
+2. デプロイのコマンドで、デプロイのスクリプト（`scripts/deploy.ts`、入口は `scripts/deploy-production.ts`）を動かす。スクリプトの手順は次のとおり
+   1. Workers Builds の外（`WORKERS_CI` が `1` でない）か、`WORKERS_CI_COMMIT_SHA` がコミットの SHA の形（16進の7〜40文字）でなければ、本番に触らずに失敗。手元のログインで作業ツリーを出さず、`dev` や任意の文字列を版にしないため
+   2. 本番に触る前に、戻し先として今 100% で動いている版の ID を `wrangler deployments status --json` で控える
+      - Worker が無い（API のエラーコード `10007`）か、デプロイが1つも無い: 戻し先無しで進む
+      - それ以外のエラー、版が分かれて流れている: 本番に触らずに失敗
+   3. `migrations/` にファイルがあれば、D1 の Time Travel のブックマークをログに出してから `wrangler d1 migrations apply --remote` で当てる。未適用が無い回の apply は何もしないので、未適用の有無は見ない。ブックマークが取れないか apply が落ちたら、版は切り替えずに失敗
+   4. 版を上げる直前に今の版を取り直し、控えた版と違えば（別のビルドが割り込んだ）版を切り替えずに失敗
+   5. `wrangler deploy --var APP_VERSION:<SHA> --message <SHA>` で新しい版を上げ、100% に切り替える。`wrangler deploy` は版を切り替えた後の triggers の反映でも落ちるので、落ちたら今の版を取り直す。控えた版のままなら、そのまま失敗。切り替わっていれば、または確かめられなければ、控えた版へ戻して失敗
+   6. 煙のテストで、本番の `/api/health` の `version` が SHA に一致するまで、5秒おきに問い合わせを始め、2分で打ち切る。1回の問い合わせは10秒（期限が近ければ残りの時間）で打ち切り、200 でも版が違えば失敗として数える。反映にかかった時間をログに出す
+   7. 一致しなければ、控えた版の ID を指定して `wrangler rollback <ID>` で戻し、ビルドを失敗で終える。ただし次の2つは戻さずに失敗
+      - 上げた直後に控えた自分の版から、本番の版が変わっている（別のビルドが上げた）
+      - 戻し先が無い。壊れた版が残っていると書く
 3. ビルドの失敗には、Cloudflare の通知と GitHub のコミットの状態で気づく。下の「本番で壊れたことに気づく」の定期の確認でも Issue が立つ
+
+ビルドとデプロイのコマンドは `docs/operations.md` の「出し方」に置く。
+
+- 版は `wrangler deploy` の1回で上げる。`wrangler versions upload` と `versions deploy` の2段にしないのは、`versions upload` が Worker のまだ無い初回に失敗し、cron やルート（triggers）の変更も反映しないため。版を段階的に流さないので、2段に分ける得も無い
+- rollback には必ず版の ID を渡す。`wrangler rollback` は版を指定しないと、直近のデプロイを除いた履歴から 100% で動いていた版を選ぶ。その間に別のデプロイが挟まると、このスクリプトが切り替える直前の版とずれるため
+- 煙のテストが確かめるのは版だけ。DB への疎通は、入口を作るときに `/api/health` に足す（上の「初版の作る順」の3）。入口より前に D1 の binding を直に使わないため
+- 煙のテストの URL はスクリプトの定数（`PRODUCTION_URL`）。ドメインへ移すときに直す
+- マイグレーションは自動では戻さない。戻すかは人が決め、ログのブックマークで Time Travel から戻す（`docs/operations.md` の「戻し方」）
 
 マイグレーションの承認は別に挟まない。マイグレーションを含む PR には `needs-human` が付き、人が差分を読んでマージするので、そのマージを承認とみなす。`main` への直接の push ではマイグレーションを入れない。
 
 マイグレーションを当ててから版を切り替え、戻すときはコードだけを戻す。どちらの順でも動くように、マイグレーションは `d1-migration` の「広げてから縮める」に従う。
 
-Workers Builds の API トークンは、権限を最小にしたものを自分で作って選ぶ。自動で作られるトークンは、D1、R2、KV、Queues の編集と、全ゾーンの Workers Routes の編集の権限まで持つため。見本の Worker をつないだとき（2026-10-23）、「Account API tokens」で作ったアカウントのトークンは Workers Builds の選択肢に出なかった。本番をつなぐ前に、「My Profile」で作るユーザーのトークンなら選べるかを確かめる。
+Workers Builds の API トークンは、権限を最小にしたものを自分で作って選ぶ。自動で作られるトークンは、D1、R2、KV、Queues の編集と、全ゾーンの Workers Routes の編集の権限まで持つため。見本の Worker をつないだとき（2026-10-23）、「Account API tokens」で作ったアカウントのトークンは Workers Builds の選択肢に出なかった。本番をつなぐ前に、「My Profile」で作るユーザーのトークンなら選べるかを確かめる。選べなければ自動で作られたトークンでつなぎ、本番の D1 に自分のチームのデータを入れる前に最小の権限のものへ入れ替え、自動のトークンは失効させる（`docs/operations.md` の「API トークン」）。ビルドでは devDependencies のコードがトークンのある環境で動くので、それまでは依存の乗っ取りでアカウントの D1 と R2 まで触られうることを受け入れる。
 
-文書だけの push でビルドを飛ばせるか（build watch paths）と、続けて push したときにビルドが一列に並ぶかは、土台を作るときに確かめる。
+文書だけの push でビルドを飛ばせるか（build watch paths）と、続けて push したときにビルドが一列に並ぶかは、本番をつなぐときに確かめる。一列に並ばなければ、前のデプロイが終わるまで次をマージしないことを運用の決まりにする。スクリプトは、版を上げる直前に割り込みが見えたら止め、煙のテストに落ちても本番が上げた版から変わっていれば戻さない。別のビルドを潰さないためで、そのときは人が本番の版を確かめる。スクリプトで `main` の先頭と比べる案は、GitHub のトークンを Cloudflare に置くことになるので採らない。
 
 ### 見本の Worker
 

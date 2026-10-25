@@ -10,6 +10,7 @@
 | 表と列 | `docs/data-model.md` |
 | 画面とデザインの決まり | `docs/design.md`、見本は `design/` |
 | ブランチ、PR、CI/CD、スキルの使い分け | `docs/development.md` |
+| 本番の用意、出し方、戻し方 | `docs/operations.md` |
 
 ## コマンド
 
