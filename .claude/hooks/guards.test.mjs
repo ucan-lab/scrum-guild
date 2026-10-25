@@ -220,6 +220,11 @@ describe('bash-rules: 止める', () => {
       'git revert abc',
       'git am 0001.patch',
       'git -c core.hooksPath=/dev/null commit -m x',
+      'git commit --allow-empty -m --abort',
+      'git merge --ff-only --no-ff -m m x',
+      'git pull',
+      'git pull --no-ff . x',
+      'git pull --rebase',
     ]) {
       assert.equal(decision(command, 'main'), 'deny', command);
     }
@@ -227,6 +232,13 @@ describe('bash-rules: 止める', () => {
     assert.equal(decision('git checkout main && git commit -m x'), 'deny');
     assert.equal(decision('git commit -m x'), 'allow');
     assert.equal(decision('git pull --ff-only', 'main'), 'allow');
+    assert.equal(decision('git pull --ff-only origin main', 'main'), 'allow');
+    assert.equal(decision('git -C /repo pull --ff-only', 'main'), 'allow');
+    assert.equal(decision('git pull --ff-only --quiet --prune', 'main'), 'allow');
+    assert.equal(decision('git merge --ff-only -q origin/main', 'main'), 'allow');
+    assert.equal(decision('git pull --ff-only --rebase', 'main'), 'deny');
+    assert.equal(decision('git merge --ff-only --ff x', 'main'), 'deny');
+    assert.equal(decision('git cherry-pick --abort --allow-empty x', 'main'), 'deny');
     assert.equal(decision('git merge --ff-only origin/main', 'main'), 'allow');
     assert.equal(decision('git merge --abort', 'main'), 'allow');
     assert.equal(decision('git cherry-pick --quit', 'main'), 'allow');

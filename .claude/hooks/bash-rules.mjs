@@ -85,9 +85,14 @@ function judgeWrangler(args) {
 
 const GIT_FLAGS_WITH_VALUE = new Set(['-C', '-c', '--git-dir', '--work-tree', '--namespace']);
 const PUSH_FLAGS_WITH_VALUE = new Set(['-o', '--push-option', '--repo', '--receive-pack', '--exec']);
-// main の上で新しいコミットを作る操作。pull --ff-only と merge --ff-only は main を origin に追いつかせるだけなので通す
-const COMMITTING = new Set(['commit', 'merge', 'cherry-pick', 'revert', 'am']);
-const STOPPING = new Set(['--abort', '--quit', '--ff-only']);
+// main の上で新しいコミットを作る操作。pull --ff-only と merge --ff-only は main を origin に追いつかせるだけなので通す。
+// --ff-only を打ち消すオプション（--no-ff、--rebase など）と、値の取り違え（-m --abort）では抜けさせない
+const COMMITTING = new Set(['commit', 'merge', 'pull', 'cherry-pick', 'revert', 'am']);
+const MAKES_COMMIT = /^(--no-ff|--ff|--no-ff-only|--squash|--commit|--rebase|-r|-m|--message|-F|--file)(=|$)/;
+function onlyStops(sub, args) {
+  if (args.length === 1 && ['--abort', '--quit'].includes(args[0])) return true;
+  return ['pull', 'merge'].includes(sub) && args.includes('--ff-only') && !args.some((a) => MAKES_COMMIT.test(a));
+}
 
 // git は長いオプションを一意な省略形でも受け付ける（--force-w は --force-with-lease、--mi は --mirror）
 function isOption(arg, full, shortest) {
@@ -108,7 +113,7 @@ function judgeGit(args, dir, branchOf) {
   const sub = args[i];
   const rest = args.slice(i + 1);
   if (sub === 'add' && rest.some(mentionsSecret)) return [DENY, '.dev.vars と .env は git に入れない'];
-  if (COMMITTING.has(sub) && !rest.some((a) => STOPPING.has(a)) && gitDir && branchOf(gitDir) === 'main') {
+  if (COMMITTING.has(sub) && !onlyStops(sub, rest) && gitDir && branchOf(gitDir) === 'main') {
     return [DENY, `main の上で git ${sub} はしない。ワークツリーで作業ブランチを切り、PR を通す`];
   }
   if (sub !== 'push') return null;
