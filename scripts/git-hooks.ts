@@ -8,13 +8,20 @@ import { realpathSync } from 'node:fs';
 
 const HOOKS_PATH = '.githooks';
 
-const toplevel = spawnSync('git', ['rev-parse', '--show-toplevel'], {
-  encoding: 'utf8',
-  stdio: ['ignore', 'pipe', 'ignore'],
-});
-if (toplevel.error || toplevel.status !== 0 || realpathSync(toplevel.stdout.trim()) !== realpathSync(process.cwd())) {
-  process.exit(0);
+function isRepositoryRoot(): boolean {
+  const toplevel = spawnSync('git', ['rev-parse', '--show-toplevel'], {
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'ignore'],
+  });
+  if (toplevel.error || toplevel.status !== 0) return false;
+  try {
+    return realpathSync(toplevel.stdout.trim()) === realpathSync(process.cwd());
+  } catch {
+    return false;
+  }
 }
+
+if (!isRepositoryRoot()) process.exit(0);
 
 const current = spawnSync('git', ['config', '--get', 'core.hooksPath'], {
   encoding: 'utf8',
