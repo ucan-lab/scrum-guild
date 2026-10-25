@@ -460,6 +460,13 @@ describe('file-rules', () => {
     assert.equal(judge('.claude/skills/x/SKILL.md', ''), 'allow');
   });
 
+  test('main の作業コピーは、文書も含めて書き換えを止める', () => {
+    const onMain = (rel) => judgeFile({ rel, contents: '', shippedOnMain: false, onMain: true })?.[0];
+    assert.equal(onMain('docs/development.md'), 'deny');
+    assert.equal(onMain('.claude/settings.json'), 'deny');
+    assert.match(judgeFile({ rel: 'x', contents: '', onMain: true })[1], /ワークツリー/);
+  });
+
   test('ワークツリーの中のフックの書き換えは確認を挟まず、設定は確認を挟む', () => {
     const inWorktree = (rel) => judgeFile({ rel, contents: '', shippedOnMain: false, inWorktree: true })?.[0] ?? 'allow';
     assert.equal(inWorktree('.claude/hooks/bash-rules.mjs'), 'allow');
@@ -532,7 +539,8 @@ describe('入口', () => {
       assert.equal(result.status, 0, `git ${args.join(' ')}: ${result.stderr}`);
     };
     mkdirSync(main);
-    sh(['init', '-q', '-b', 'main'], main);
+    // 本体を main に置くと、どの書き換えも main の作業コピーとして止まるので、別の名前で始める
+    sh(['init', '-q', '-b', 'trunk'], main);
     sh(['-c', 'user.name=t', '-c', 'user.email=t@example.com', '-c', 'commit.gpgsign=false', 'commit', '-q', '--allow-empty', '-m', 'init'], main);
     sh(['worktree', 'add', '-q', 'worktrees/1-x', '-b', '1-x'], main);
     mkdirSync(path.join(main, '.claude/hooks'), { recursive: true });
@@ -573,6 +581,21 @@ describe('入口', () => {
 
     test('セッションの場所が分からなければ確認を挟む', () => {
       assert.equal(decide(path.join(worktree, '.claude/hooks/bash-rules.mjs'), ''), 'ask');
+    });
+
+    test('main の作業コピーの書き換えを止め、ワークツリーと別のリポジトリは通す', () => {
+      const other = path.join(tmp, 'other');
+      mkdirSync(other);
+      sh(['init', '-q', '-b', 'main'], other);
+      sh(['checkout', '-q', '-b', 'main'], main);
+      try {
+        assert.equal(decide(path.join(main, 'docs/x.md'), main), 'deny');
+        assert.equal(decide(path.join(main, 'docs/x.md'), worktree), 'deny');
+        assert.equal(decide(path.join(worktree, 'docs/x.md'), main), 'allow');
+        assert.equal(decide(path.join(other, 'x.md'), main), 'allow');
+      } finally {
+        sh(['checkout', '-q', 'trunk'], main);
+      }
     });
   });
 });

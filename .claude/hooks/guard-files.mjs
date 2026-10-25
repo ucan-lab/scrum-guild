@@ -63,6 +63,20 @@ function isOtherWorktree(root, dir) {
   }
 }
 
+// セッションのリポジトリ（本体と、そのワークツリー）の作業コピーが main にいるか。別のリポジトリのファイルは見ない。
+// プロジェクトを引けなければ判定しない（ほかの判定と同じく、git の外のファイルは通す）
+function isProjectOnMain(root) {
+  const project = process.env.CLAUDE_PROJECT_DIR;
+  if (!project) return false;
+  try {
+    const common = (dir) => realpathSync(path.resolve(dir, git(dir, ['rev-parse', '--git-common-dir'])));
+    if (common(root) !== common(project)) return false;
+    return git(root, ['rev-parse', '--abbrev-ref', 'HEAD']) === 'main';
+  } catch {
+    return false;
+  }
+}
+
 // origin/main か main にあれば true、どちらの ref も引けなければ undefined
 function existsOnMain(root, rel) {
   const refs = ['origin/main', 'main'].filter((ref) => {
@@ -93,6 +107,7 @@ try {
     const { root, rel, dir } = located;
     const verdict = judgeFile({
       rel,
+      onMain: isProjectOnMain(root),
       inWorktree: rel.startsWith('.claude/hooks/') && isOtherWorktree(root, dir),
       contents: writtenContents(input.tool_name, input.tool_input),
       shippedOnMain: rel.startsWith('migrations/') ? existsOnMain(root, rel) : false,
