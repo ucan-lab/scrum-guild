@@ -38,9 +38,16 @@
   </div>
   <div class="entry-end">
     {#if task.points === null}
-      <span class="pts is-none" title={t('pointsUnsetTitle')}>{t('pointsUnsetMark')}</span>
+      <span class="pts is-none" role="img" aria-label={t('pointsUnsetTitle')} title={t('pointsUnsetTitle')}
+        >{t('pointsUnsetMark')}</span
+      >
     {:else}
-      <span class="pts" title="{t('points')} {task.points}">{task.points}</span>
+      <span
+        class="pts"
+        role="img"
+        aria-label={t('pointsLabel', { points: t('points'), value: task.points })}
+        title={t('pointsLabel', { points: t('points'), value: task.points })}>{task.points}</span
+      >
     {/if}
     {#if task.assignee === null}
       <Avatar userId={null} />
@@ -49,7 +56,13 @@
     {/if}
     {#if done}
       <!-- tabindex="-1" は、完了にした後にフォーカスを置くため（キーボードの Tab 順には入らない） -->
-      <span class="hanko is-new" role="img" aria-label={t('done')} tabindex="-1" bind:this={mark}>
+      <span
+        class="hanko is-new"
+        role="img"
+        aria-label={t('doneMarkLabel', { title: task.title, done: t('done') })}
+        tabindex="-1"
+        bind:this={mark}
+      >
         <Icon name="check" /><b>{t('doneStamp')}</b>
       </span>
     {:else if canComplete}

@@ -218,7 +218,22 @@ export const dictionary = defineDictionary({
     '親のない{done} {count} 件を折りたたんでいます',
     '親のない{done} {count} 件を折りたたんでいます',
   ),
+  // 画面の題名の「画面」の部分。画面（バックログ）とワークスペースの両方が分かる形にする。{name} はワークスペースの名前
+  backlogPageName: workspace('{backlog}・{name}', '{backlog}・{name}'),
+  // 未完了が0件で、完了した親のないタスクがあるとき、折りたたみの行の上に出す
+  backlogNoOpenTitle: workspace('未完了の{task}はありません', '未完了の{task}はありません'),
+  backlogNoOpenText: workspace(
+    '次の{task}は、上の「{create}」から作ります。',
+    '次の{task}は、上の「{create}」から作ります。',
+  ),
   // タスクの行と、完了の操作
+  pointsLabel: workspace('{points} {value}', '{points} {value}'),
+  doneMarkLabel: workspace('{title}: {done}', '{title}: {done}'),
+  taskCompleting: workspace('{done}にしています', '{done}にしています'),
+  taskGone: workspace(
+    'この{task}は見つかりません。一覧を読み直します',
+    'この{task}は見つかりません。一覧を読み直します',
+  ),
   pointsUnsetMark: workspace('未', '未'),
   pointsUnsetTitle: workspace('未見積もり', '未見積もり'),
   // 完了の印の判子の文字。中世風のテーマだけが見せる

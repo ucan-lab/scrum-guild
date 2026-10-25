@@ -19,7 +19,11 @@ async function createWorkspace(page: Page, name: string, vocabulary: 'game' | 's
   await dialog.getByLabel('名前').fill(name);
   await dialog.getByRole('button', { name: '作る' }).click();
   await expect(page).toHaveURL(/\/aoba\/w\/[0-9a-f-]{36}$/);
-  await expect(page.getByRole('heading', { level: 1, name })).toBeVisible();
+  // 見出しは画面の名前（掲示板／バックログ）、小見出しがワークスペースの名前
+  const backlog = vocabulary === 'game' ? '掲示板' : 'バックログ';
+  await expect(page.getByRole('heading', { level: 1, name: backlog })).toBeVisible();
+  await expect(page.locator('.page-eyebrow')).toHaveText(name);
+  await expect(page).toHaveTitle(`${backlog}・${name} - Scrum Guild`);
 }
 
 test('ゲームの言葉: タスクを作って完了にすると、その行に完了の印が出て、読み直すと折りたたみの件数に入る', async ({
@@ -48,7 +52,9 @@ test('ゲームの言葉: タスクを作って完了にすると、その行に
 
   // 完了にする。ボタンは完了の印に替わり、フォーカスは印へ移る。行はその場に残る
   await row.getByRole('button', { name: /完遂にする/ }).click();
-  const stamp = row.getByRole('img', { name: '完遂' });
+  // 完了の印の名前にはタイトルを添える。ポイントの印の名前は「難易度 3」
+  await expect(row.getByRole('img', { name: '難易度 3' })).toBeVisible();
+  const stamp = row.getByRole('img', { name: '見積もりを送る: 完遂' });
   await expect(stamp).toBeVisible();
   await expect(stamp).toBeFocused();
   await expect(row.getByRole('button', { name: /完遂にする/ })).toHaveCount(0);
@@ -58,8 +64,10 @@ test('ゲームの言葉: タスクを作って完了にすると、その行に
 
   // 読み直すと、行は一覧から外れ、親のない完了の件数に入る
   await page.reload();
-  await expect(page.getByRole('heading', { level: 1, name: '一本道パーティ' })).toBeVisible();
+  await expect(page.getByRole('heading', { level: 1, name: '掲示板' })).toBeVisible();
   await expect(page.locator('.entry')).toHaveCount(0);
+  // 未完了が0件で完了済みがあるときは、折りたたみの行の上に次の一歩を示す
+  await expect(page.getByText('未完了のクエストはありません')).toBeVisible();
   await expect(page.locator('.tree-folded.is-root')).toHaveText('親のない完遂 1 件を折りたたんでいます');
   expect(await collect()).toEqual([]);
 });
@@ -82,10 +90,70 @@ test('スクラムの言葉: 同じ流れで、言葉がスクラムの言葉に
   const row = page.locator('.entry', { hasText: '請求書を出す' });
   await expect(row.locator('.pts')).toHaveText('未');
   await row.getByRole('button', { name: /完了にする/ }).click();
-  await expect(row.getByRole('img', { name: '完了' })).toBeVisible();
+  await expect(row.getByRole('img', { name: '未見積もり' })).toBeVisible();
+  await expect(row.getByRole('img', { name: '請求書を出す: 完了' })).toBeVisible();
   await expect(page.getByRole('status').filter({ hasText: 'タスクを完了にしました' })).toBeVisible();
 
   await page.reload();
   await expect(page.locator('.tree-folded.is-root')).toHaveText('親のない完了 1 件を折りたたんでいます');
   expect(await collect()).toEqual([]);
+});
+
+// 起票のダイアログから、タイトルだけでタスクを1件作る
+async function addTask(page: Page, title: string): Promise<void> {
+  await page.getByRole('button', { name: '依頼を出す' }).click();
+  const dialog = page.getByRole('dialog', { name: '依頼を出す' });
+  await dialog.getByLabel('タイトル').fill(title);
+  await dialog.getByRole('button', { name: '依頼を出す' }).click();
+  await expect(dialog).toBeHidden();
+}
+
+test('完了の操作を送っている間は、押せない印と読み上げを出し、応答が来たら完了の印に替わる', async ({ page }) => {
+  await createWorkspace(page, '送信中パーティ', 'game');
+  await addTask(page, '遅い応答を待つ');
+  const row = page.locator('.entry', { hasText: '遅い応答を待つ' });
+
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => (release = resolve));
+  let requests = 0;
+  await page.route('**/api/aoba/task-complete', async (route) => {
+    requests++;
+    await gate;
+    await route.continue();
+  });
+  const button = row.getByRole('button', { name: /完遂にする/ });
+  await button.click();
+  await expect(button).toHaveAttribute('aria-disabled', 'true');
+  await expect(page.getByRole('status').filter({ hasText: '完遂にしています' })).toBeAttached();
+  // もう一度押しても、送らない
+  await button.click({ force: true });
+  release();
+  await expect(row.getByRole('img', { name: '遅い応答を待つ: 完遂' })).toBeVisible();
+  expect(requests).toBe(1);
+  await expect(page.getByRole('status').filter({ hasText: '完遂にしています' })).toHaveCount(0);
+});
+
+test('完了の操作が 404 か workspace_closed を受けたら、一覧を読み直す', async ({ page }) => {
+  await createWorkspace(page, '読み直しパーティ', 'game');
+  await addTask(page, '読み直しを促す');
+  const row = page.locator('.entry', { hasText: '読み直しを促す' });
+
+  let listRequests = 0;
+  page.on('request', (request) => {
+    if (request.url().endsWith('/api/aoba/task-list')) listRequests++;
+  });
+  for (const [status, code] of [
+    [404, 'not_found'],
+    [409, 'workspace_closed'],
+  ] as const) {
+    const before = listRequests;
+    await page.route('**/api/aoba/task-complete', (route) =>
+      route.fulfill({ status, json: { error: { code, message: code } } }),
+    );
+    await row.getByRole('button', { name: /完遂にする/ }).click();
+    await expect.poll(() => listRequests).toBeGreaterThan(before);
+    // 実際のタスクは完了にしていないので、読み直した一覧に行が残る
+    await expect(row).toHaveCount(1);
+    await expect(row.getByRole('button', { name: /完遂にする/ })).toBeVisible();
+  }
 });

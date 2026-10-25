@@ -282,6 +282,9 @@ h1, h2, h3 { text-wrap: balance; }
   border: 1.5px dashed var(--color-line); background: var(--color-surface); color: var(--color-faint);
 }
 .done-btn:hover { border-color: var(--color-done); color: var(--color-done); border-style: solid; }
+/* 送っている最中。押しても何も起きないが、フォーカスは残す（.btn の aria-disabled と同じ考え方） */
+.done-btn[aria-disabled="true"] { opacity: 0.45; cursor: not-allowed; }
+.done-btn[aria-disabled="true"]:hover { border-color: var(--color-line); color: var(--color-faint); border-style: dashed; }
 /* 完了の印。シンプルと現代風はチェック、中世風は朱の判子（末尾のテーマの飾り） */
 .hanko {
   display: inline-grid; place-items: center; width: 30px; height: 30px; border-radius: 50%;

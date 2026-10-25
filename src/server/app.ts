@@ -76,7 +76,8 @@ export function createApp(
   });
 
   // 開発用の時計（DEV_NOW）。ループバックへの http でない公開 URL（本番）に値があるか、値が解釈できなければ、
-  // すべてのリクエストを 500 にして、デプロイの煙のテスト（/api/health）で見つけさせる。値は出さない。
+  // API のすべてのリクエストを 500 にして（画面の資産は Worker を通らない）、デプロイの煙のテスト（/api/health）で
+  // 見つけて前の版へ戻させる。起動は止めない。値は出さない。
   // now() を使う処理より前に置く（時計を、このリクエストの env に合わせる）
   app.use(async (c, next) => {
     const clock = applyDevClock(c.env);

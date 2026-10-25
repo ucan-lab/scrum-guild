@@ -34,6 +34,31 @@ function activeMemberName(
     .where('u.disabled_at', 'is', null);
 }
 
+// 閉じていないワークスペース。書く文の条件に入れ、読んでから書くまでの間にワークスペースが閉じた競合を止める
+// （登録の関数が見る閉じたかどうかは、読み取りの時点の値）
+function openWorkspace(from: Pick<QueryCreator<Tables>, 'selectFrom'>, organizationId: string, workspaceId: string) {
+  return from
+    .selectFrom('workspaces')
+    .select('workspaces.id')
+    .where('workspaces.id', '=', workspaceId)
+    .where('workspaces.organization_id', '=', organizationId)
+    .where('workspaces.closed_at', 'is', null);
+}
+
+// 条件で落ちた書き込みの理由を、書いた後に読み直して決める。閉じていれば登録の関数と同じ 409 の workspace_closed
+async function throwIfClosed(db: OrganizationDb, workspaceId: string): Promise<void> {
+  const row = await db.first(
+    db.statement((q) =>
+      q
+        .selectFrom('workspaces')
+        .select('workspaces.closed_at')
+        .where('workspaces.id', '=', workspaceId)
+        .where('workspaces.organization_id', '=', db.organizationId),
+    ),
+  );
+  if (row?.closed_at != null) throw new ApiError(409, 'workspace_closed');
+}
+
 // 親のないバックログのタスク。一覧と、末尾の位置を決める読み取りが同じ範囲を使う
 function rootBacklogTasks(from: Pick<QueryCreator<Tables>, 'selectFrom'>, workspaceId: string) {
   return from
@@ -62,7 +87,9 @@ export const taskCreateOperation = implement(taskCreate, async ({ db, actor, wor
   // 位置は親のないタスクの末尾。完了したタスクも並びに残っているので、それも含めた末尾に置く。
   // 同時に作ると同じ位置になりうるが、並びは id で決まるので順番は崩れない
   const last = await db.first(
-    db.statement((q) => rootBacklogTasks(q, workspaceId).select('tasks.position').orderBy('tasks.position', 'desc')),
+    db.statement((q) =>
+      rootBacklogTasks(q, workspaceId).select('tasks.position').orderBy('tasks.position', 'desc').limit(1),
+    ),
   );
   const at = now();
   const createdAt = at.toISOString();
@@ -101,6 +128,7 @@ export const taskCreateOperation = implement(taskCreate, async ({ db, actor, wor
               eb.val(createdAt).as('created_at'),
               eb.val(createdAt).as('updated_at'),
             ])
+            .where((eb) => eb.exists(openWorkspace(eb, organizationId, workspaceId)))
             .$if(assignee !== null, (qb) =>
               qb.where((eb) => eb.exists(activeMemberName(eb, organizationId, workspaceId, assignee!.id))),
             ),
@@ -155,8 +183,11 @@ export const taskCreateOperation = implement(taskCreate, async ({ db, actor, wor
     ),
   ]);
 
-  // 読んでから書くまでに、担当が所属を外れていたら何も入らない
-  if ((results[0]?.changes ?? 0) === 0) throw new ApiError(404, 'not_found');
+  // 読んでから書くまでに、ワークスペースが閉じたか、担当が所属を外れたら何も入らない
+  if ((results[0]?.changes ?? 0) === 0) {
+    await throwIfClosed(db, workspaceId);
+    throw new ApiError(404, 'not_found');
+  }
   return { task: { id: taskId, title: input.title, points: input.points, assignee } };
 });
 
@@ -272,6 +303,21 @@ function grantStatement(
               eb('tasks.workspace_id', '=', workspaceId),
               eb('tasks.points', '>=', MIN_POINTS_FOR_EXPERIENCE),
               ...(grant.action === 'task_created' ? [eb('tasks.created_by', 'is not', null)] : []),
+              // 受け取る人は、このワークスペースに今所属している人だけ（所属していない管理者は経験値の対象にならない）
+              eb.exists(
+                eb
+                  .selectFrom('memberships')
+                  .select('memberships.id')
+                  .where('memberships.workspace_id', '=', workspaceId)
+                  .where('memberships.left_at', 'is', null)
+                  .where(
+                    'memberships.user_id',
+                    '=',
+                    grant.action === 'task_created'
+                      ? eb.ref('tasks.created_by')
+                      : eb.fn.coalesce('tasks.assignee_user_id', eb.val(userId)),
+                  ),
+              ),
               eb.exists(completionExists(q, workspaceId, completionId)),
             ]),
           ),
@@ -317,7 +363,8 @@ export const taskCompleteOperation = implement(taskComplete, async ({ db, actor,
         .where('id', '=', taskId)
         .where('workspace_id', '=', workspaceId)
         .where('completed_at', 'is', null)
-        .where('deleted_at', 'is', null),
+        .where('deleted_at', 'is', null)
+        .where((eb) => eb.exists(openWorkspace(q, organizationId, workspaceId))),
     ),
     // 2. completions。止めた時計で同じ人が2回完了にしても、先に入った記録があれば何も入らない
     db.statement((q) =>
@@ -364,6 +411,7 @@ export const taskCompleteOperation = implement(taskComplete, async ({ db, actor,
                     eb
                       .selectFrom('completions')
                       .select('completions.id')
+                      .where('completions.workspace_id', '=', workspaceId)
                       .where('completions.task_id', '=', taskId)
                       .where('completions.completed_at', '=', completedAt),
                   ),
@@ -416,7 +464,9 @@ export const taskCompleteOperation = implement(taskComplete, async ({ db, actor,
   ]);
 
   if ((results[0]?.changes ?? 0) === 0) {
-    // 先に読んだ値ではなく、書いた結果で決める。無い（別の組織のタスクを含む）なら 404、あるのに変わらなければ完了済みの 409
+    // 先に読んだ値ではなく、書いた結果で決める。読んでから書くまでに閉じたなら 409 の workspace_closed、
+    // タスクが無い（別の組織のタスクを含む）なら 404、あるのに変わらなければ完了済みの 409 の conflict
+    await throwIfClosed(db, workspaceId);
     const existing = await db.first(
       db.statement((q) =>
         q

@@ -47,6 +47,15 @@
   // 開き直しと部品の取り外しで進める。古い応答が、今の状態を上書きしない
   let generation = 0;
 
+  // 閉じたワークスペースだと分かったら、ダイアログを閉じたときに画面を読み直す。
+  // すぐに読み直すと、ダイアログごと外れて理由の文を読めなくなるため
+  let reloadOnClose = false;
+  $effect(() => {
+    if (open || !reloadOnClose) return;
+    reloadOnClose = false;
+    void invalidateAll();
+  });
+
   // ワークスペースが替わったら、開いたままにしない
   const currentWorkspaceId = $derived(workspaceId);
   $effect(() => {
@@ -60,6 +69,7 @@
 
   export function show(trigger?: HTMLElement | null): void {
     generation++;
+    reloadOnClose = false;
     title = '';
     points = null;
     titleError = null;
@@ -108,6 +118,8 @@
         }
         if (result.status === 409 && result.error?.code === 'workspace_closed') {
           submitError = t('workspaceClosedReadOnly', { workspace: t('workspace') });
+          // 閉じたら画面を読み直して、閉じた表示（起票と完了の操作を出さない）に切り替える
+          reloadOnClose = true;
         } else if (result.status === 400) {
           // 画面の検査を通った後に断られたのは、タイトルだけ（ポイントは選ぶ形）
           titleError = t('taskTitleInvalidCharacter');
