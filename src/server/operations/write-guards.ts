@@ -1,10 +1,10 @@
-// ワークスペースの下の書き込み（タスク、ストーリー）が共通で使う、書く文の条件と、条件で落ちた理由の判定
+// ワークスペースの下の書き込み（タスク、ストーリー、ワークスペースの終了と再開）が共通で使う、書く文の条件と、条件で落ちた理由の判定
 import type { OrganizationDb, OrganizationTables, QueryCreator } from '../db/index.ts';
 import { ApiError } from '../errors.ts';
 
 type Tables = OrganizationTables;
 
-// 呼んだ人の users の行。permission: 'member' は users の行がある人だけを通す。型の上の null を 404 で閉じる
+// 呼んだ人の users の行。permission: 'member' と 'admin' は users の行がある人だけを通す。型の上の null を 404 で閉じる
 export function actorUserIdOf(actor: { userId: string | null }): string {
   if (actor.userId === null) throw new ApiError(404, 'not_found');
   return actor.userId;

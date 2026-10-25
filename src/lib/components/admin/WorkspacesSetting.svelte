@@ -44,11 +44,11 @@
   const currentSlug = $derived(slug);
 
   let workspaces = $state<Workspace[]>([]);
-  // 開き直す操作を送っている行
+  // 再開する操作を送っている行
   let reopeningId = $state<string | null>(null);
   let createDialog = $state<ReturnType<typeof WorkspaceCreateDialog>>();
   let closeDialog = $state<ReturnType<typeof WorkspaceCloseDialog>>();
-  // 閉じる確認の対象。ダイアログの結果を受けるとき、どの行だったかを名前で知らせるのに使う
+  // 終了の確認の対象。ダイアログの結果を受けるとき、どの行だったかを名前で知らせるのに使う
   let closing = $state<Workspace | null>(null);
 
   const section = new SectionLoad(
@@ -86,7 +86,7 @@
         window.location.assign(loginUrl(page.url));
         return;
       } else if (result.status === 409 && result.error?.code === 'conflict') {
-        // 別の画面で先に操作されていた。開き直されたのか、閉じ直されたのかは言い切らず、読み直した一覧を見てもらう
+        // 別の画面で先に操作されていた。再開されたのか、終了し直されたのかは言い切らず、読み直した一覧を見てもらう
         showToast(t('workspaceStateChanged', { name: workspace.name }), 'alert');
       } else if (result.status === 404 || result.status === 403) {
         showToast(t('workspaceUnavailable', { name: workspace.name }), 'alert');
@@ -192,7 +192,7 @@
       </div>
     {/if}
   </SectionBoundary>
-  <!-- 開き直しを送っている間の読み上げ。領域は常に置き、中の文字だけを替える -->
+  <!-- 再開を送っている間の読み上げ。領域は常に置き、中の文字だけを替える -->
   <span class="visually-hidden" role="status">{status}</span>
 </Setting>
 
