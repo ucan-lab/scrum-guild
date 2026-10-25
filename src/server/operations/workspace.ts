@@ -106,7 +106,17 @@ function createdOn(timezone: string, createdAt: string): string {
   const at = new Date(createdAt);
   try {
     return todayIn(timezone, at);
-  } catch {
+  } catch (err) {
+    // 気づけるよう、例外の名前だけをログに残す（タイムゾーンの値、名前、日時は出さない）
+    console.error(
+      JSON.stringify({
+        level: 'error',
+        code: 'internal',
+        operation: workspaceList.name,
+        reason: '保存されたタイムゾーンが使えない',
+        error: err instanceof Error ? err.name : typeof err,
+      }),
+    );
     return todayIn('UTC', at);
   }
 }

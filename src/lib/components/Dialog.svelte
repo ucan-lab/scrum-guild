@@ -46,17 +46,21 @@
     open = false;
   }
 
+  // 入力欄か主ボタンを先に、なければ閉じるボタンにフォーカスを置く
+  function focusFirst(): void {
+    const first =
+      dialog.querySelector<HTMLElement>('input, textarea, select, .btn.is-primary') ??
+      dialog.querySelector<HTMLElement>('[data-close-dialog]');
+    first?.focus();
+  }
+
   $effect(() => {
     if (open && !dialog.open) {
       const active = document.activeElement;
       opener = requestedOpener ?? (active instanceof HTMLElement && active !== document.body ? active : null);
       requestedOpener = null;
       dialog.showModal();
-      // 入力欄か主ボタンを先に、なければ閉じるボタンにフォーカスを置く
-      const first =
-        dialog.querySelector<HTMLElement>('input, textarea, select, .btn.is-primary') ??
-        dialog.querySelector<HTMLElement>('[data-close-dialog]');
-      first?.focus();
+      focusFirst();
     } else if (!open && dialog.open) {
       dialog.close();
     }
@@ -72,8 +76,15 @@
 
   // Esc でも、閉じるボタンでも、背景を押してもここに来る。close は非同期に届くので、
   // 届く前に開き直されていたら（dialog.open が true）何もしない
+  // dismissible が偽の間に閉じられたときは、開き直す。Chromium は cancel を1回止めた後、ユーザーの操作が無いまま
+  // もう一度 Esc を押されると、cancel を経ずに閉じる（止められない）ため。open は真のまま保つ
   function onclose(): void {
     if (dialog.open) return;
+    if (!dismissible && open) {
+      dialog.showModal();
+      focusFirst();
+      return;
+    }
     open = false;
     opener?.focus();
     opener = null;

@@ -19,7 +19,7 @@
 </svelte:head>
 
 {#if workspace}
-  <PageHead title={workspace.name}>
+  <PageHead title={workspace.name} focusable>
     {#snippet actions()}
       {#if workspace.closedAt}
         <span class="chip">{t('workspaceClosedChip', { date: formatLocalDate(workspace.closedAt) })}</span>

@@ -18,6 +18,12 @@ test.describe('管理者（あおば開発のミナト）', () => {
     await page.locator('.nav-item', { hasText: '組織の管理' }).click();
     await expect(page).toHaveURL(/\/aoba\/admin$/);
     await expect(page.getByRole('heading', { level: 1, name: '組織の管理' })).toBeVisible();
+    // 見出しにフォーカスを置くのはワークスペースの画面だけ。ほかの画面の見出しは、フォーカスを受けない
+    await expect(page.getByRole('heading', { level: 1 })).not.toHaveAttribute('tabindex', /.*/);
+    // 表の見出しは数だと分かる短い形。名前の列には最小幅を持たせる
+    await expect(page.locator('thead th').nth(1)).toHaveText('冒険者数');
+    await expect(page.locator('thead th').nth(2)).toHaveText('パーティリーダー数');
+    expect(await page.locator('th.is-name').evaluate((th) => getComputedStyle(th).minWidth)).not.toBe('auto');
 
     const row = page.locator('tbody tr', { hasText: '受託開発チーム' });
     await expect(row.getByRole('link', { name: '受託開発チーム' })).toHaveAttribute('href', /\/aoba\/w\/019a0000-/);
@@ -124,9 +130,11 @@ test.describe('管理者（あおば開発のミナト）', () => {
     await expect(dialog.getByRole('alert')).toHaveCount(0);
 
     // 見えない文字（ゼロ幅のスペース）は、サーバーも断る
-    await dialog.getByLabel('名前').fill('保守​チーム');
+    await dialog.getByLabel('名前').fill('保守\u{200B}チーム');
     await dialog.getByRole('button', { name: '作る' }).click();
-    await expect(dialog.getByRole('alert')).toHaveText('名前に使えない文字（制御文字など）が含まれています');
+    await expect(dialog.getByRole('alert')).toHaveText(
+      '名前に使えない文字（制御文字、ゼロ幅のスペースなど）が含まれています',
+    );
     expect(requests).toBe(0);
   });
 
@@ -160,10 +168,18 @@ test.describe('管理者（あおば開発のミナト）', () => {
     await expect(dialog).toBeVisible();
     await dialog.getByRole('button', { name: '閉じる' }).click({ force: true });
     await expect(dialog).toBeVisible();
-    await page.keyboard.press('Escape');
-    await expect(dialog).toBeVisible();
+    // Esc は何回押しても閉じない（Chromium は、1回止めた後の Esc を止められない形で閉じるので、開き直している）
+    for (let i = 0; i < 3; i++) {
+      await page.keyboard.press('Escape');
+      await expect(dialog).toBeVisible();
+    }
     await page.mouse.click(4, 4);
     await expect(dialog).toBeVisible();
+    // 欄は変えられず、読み上げの領域は form の外にある
+    await expect(dialog.getByLabel('名前')).toBeDisabled();
+    await expect(dialog.getByLabel('最初のパーティリーダー')).toBeDisabled();
+    await expect(dialog.getByRole('radio', { name: /スクラムの言葉/ })).toBeDisabled();
+    await expect(dialog.locator('form [role="status"]')).toHaveCount(0);
 
     await expect(page).toHaveURL(/\/aoba\/w\/[0-9a-f-]{36}$/);
     expect(requests).toBe(1);
@@ -217,6 +233,41 @@ test.describe('管理者（あおば開発のミナト）', () => {
     await expect(dialog.getByRole('combobox')).toBeEnabled();
     await expect(dialog.getByRole('button', { name: '作る' })).toHaveAttribute('aria-disabled', 'false');
     await expect(dialog.getByRole('button', { name: 'もう一度試す' })).toHaveCount(0);
+    // 押したボタンが消えるので、選ぶ欄へフォーカスが移る
+    await expect(dialog.getByRole('combobox')).toBeFocused();
+  });
+
+  test('候補を読み込めないときの欄は、理由の文を二重に出さない', async ({ page }) => {
+    await page.route('**/api/aoba/workspace-leader-candidates', (route) =>
+      route.fulfill({ status: 500, json: { error: { code: 'internal', message: 'x' } } }),
+    );
+    await page.goto('/aoba/admin');
+    await page.getByRole('button', { name: 'パーティを作る' }).first().click();
+    const dialog = page.getByRole('dialog', { name: 'パーティを作る' });
+    await expect(dialog.getByRole('alert')).toHaveText('選べる人を読み込めませんでした');
+    await expect(dialog.getByRole('combobox').locator('option')).toHaveText(['—']);
+    await expect(dialog.getByText('選べる人を読み込めませんでした')).toHaveCount(1);
+  });
+
+  test('作れたのに組織の枠の読み直しが失敗しても、作ったワークスペースの画面へ移る', async ({ page }) => {
+    let created = false;
+    await page.route('**/api/aoba/workspace-create', async (route) => {
+      await route.continue();
+      created = true;
+    });
+    // 作った後の組織の枠の読み直しだけを失敗させる
+    await page.route('**/api/aoba/organization', (route) =>
+      created ? route.fulfill({ status: 500, json: { error: { code: 'internal', message: 'x' } } }) : route.continue(),
+    );
+    await page.goto('/aoba/admin');
+    await page.getByRole('button', { name: 'パーティを作る' }).first().click();
+    const dialog = page.getByRole('dialog', { name: 'パーティを作る' });
+    await expect(dialog.getByRole('combobox')).toBeEnabled();
+    await dialog.getByLabel('名前').fill('読み直しに失敗');
+    await dialog.getByRole('button', { name: '作る' }).click();
+
+    await expect(page).toHaveURL(/\/aoba\/w\/[0-9a-f-]{36}$/);
+    await expect(page.getByRole('heading', { level: 1, name: '読み込めませんでした' })).toBeVisible();
   });
 
   test('選んだ最初のリーダーが指せなくなっていて 404 になったら、選び直しを促し、候補を取り直す', async ({ page }) => {

@@ -68,16 +68,16 @@
           <table class="table" aria-label={t('workspaceListLabel', { workspace: t('workspace') })}>
             <thead>
               <tr>
-                <th>{t('fieldName')}</th>
-                <th class="is-num">{t('member')}</th>
-                <th class="is-num">{t('leader')}</th>
+                <th class="is-name">{t('fieldName')}</th>
+                <th class="is-num">{t('workspaceMemberCountHeader', { member: t('member') })}</th>
+                <th class="is-num">{t('workspaceLeaderCountHeader', { leader: t('leader') })}</th>
                 <th>{t('createdOn')}</th>
               </tr>
             </thead>
             <tbody>
               {#each workspaces as workspace (workspace.id)}
                 <tr>
-                  <td>
+                  <td class="is-name">
                     <a href={resolve('/[slug]/w/[id]', { slug: data.slug, id: workspace.id })}>{workspace.name}</a>
                     {#if workspace.closed_at !== null}
                       <span class="chip"

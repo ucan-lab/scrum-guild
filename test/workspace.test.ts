@@ -404,8 +404,11 @@ describe('workspace-create', () => {
       ['空白だけ', ' 　 \t'],
       [`${WORKSPACE_NAME_MAX_LENGTH + 1}字`, 'あ'.repeat(WORKSPACE_NAME_MAX_LENGTH + 1)],
       [`絵文字の${WORKSPACE_NAME_MAX_LENGTH + 1}字`, '😀'.repeat(WORKSPACE_NAME_MAX_LENGTH + 1)],
-      ['ゼロ幅の文字を含む', '保守​チーム'],
-      ['向きを変える文字を含む', '保守‮チーム'],
+      ['ゼロ幅のスペースを含む', '保守\u{200B}チーム'],
+      ['向きを変える文字を含む', '保守\u{202E}チーム'],
+      ['行の区切りを含む', '保守\u{2028}チーム'],
+      ['U+3164 だけ', '\u{3164}'],
+      ['ゼロ幅のスペースだけ', '\u{200B}'],
       ['途中に改行を含む', '保守\nチーム'],
     ])('%s は 400 の invalid_input で、行が入らない', async (_label, name) => {
       const target = await createTarget();
@@ -573,10 +576,19 @@ describe('workspace-list', () => {
       timezone: 'Mars/Olympus',
       created_at: '2026-10-25T15:30:00.000Z',
     });
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
     const res = await post(app, workspaceList, { slug: target.slug, token: target.admin.token });
     expect(res.status).toBe(200);
     const { workspaces } = (await res.json()) as { workspaces: { id: string; created_on: string }[] };
     expect(workspaces.find((row) => row.id === broken.id)?.created_on).toBe('2026-10-25');
+    // 例外の名前だけをログに残し、タイムゾーンの値と名前は出さない
+    const logged = errors.mock.calls
+      .map((call) => String(call[0]))
+      .filter((line) => line.includes('保存されたタイムゾーン'));
+    expect(logged).toHaveLength(1);
+    expect(JSON.parse(logged[0]!)).toMatchObject({ level: 'error', operation: 'workspace-list', error: 'RangeError' });
+    expect(logged[0]).not.toContain('Mars');
+    expect(logged[0]).not.toContain('壊れたタイムゾーン');
     // ほかの行は、それぞれのタイムゾーンの日付のまま
     expect(workspaces.find((row) => row.id === target.workspace.id)?.created_on).toBe('2026-10-20');
   });

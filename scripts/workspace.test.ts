@@ -1,4 +1,5 @@
-// ワークスペースの共通の値と関数（src/shared）。Worker と画面の両方が使うので、Node でも確かめる
+// ワークスペースの共通の値と関数（src/shared）。Worker と画面の両方が使うので、Node でも確かめる。
+// 見えない文字は、生の文字ではなく \u{...} で書く（差分で読めるように）
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 import { monthIn, now, todayIn } from '../src/shared/clock.ts';
@@ -26,7 +27,7 @@ describe('normalizeTimezone', () => {
   });
 
   test('時差の表記は形で断る', () => {
-    for (const offset of ['+09:00', '-05:00', '+0900', '-0500', '+09', '+9', '−05:00']) {
+    for (const offset of ['+09:00', '-05:00', '+0900', '-0500', '+09', '+9', '\u{2212}05:00']) {
       assert.equal(normalizeTimezone(offset), undefined, offset);
     }
   });
@@ -80,8 +81,8 @@ describe('今日と今月', () => {
 
 describe('名前', () => {
   test('前後の空白（全角を含む）を除いて 1 字以上、上限以下', () => {
-    assert.equal(workspaceNameSchema.parse('  保守チーム　'), '保守チーム');
-    assert.equal(workspaceNameSchema.safeParse(' 　 ').success, false);
+    assert.equal(workspaceNameSchema.parse('  保守チーム\u{3000}'), '保守チーム');
+    assert.equal(workspaceNameSchema.safeParse(' \u{3000} ').success, false);
     assert.equal(workspaceNameSchema.safeParse('').success, false);
     assert.equal(workspaceNameSchema.safeParse('あ'.repeat(WORKSPACE_NAME_MAX_LENGTH)).success, true);
     assert.equal(workspaceNameSchema.safeParse('あ'.repeat(WORKSPACE_NAME_MAX_LENGTH + 1)).success, false);
@@ -96,10 +97,55 @@ describe('名前', () => {
     assert.equal(workspaceNameProblem('😀'.repeat(WORKSPACE_NAME_MAX_LENGTH + 1)), 'too_long');
   });
 
-  test('制御文字と書式の文字（ゼロ幅の文字、向きを変える文字、途中の改行）は断る', () => {
-    for (const bad of ['保守​チーム', '​', '保守‮チーム', '保守\nチーム', '保守\u0000']) {
+  test('制御文字、ゼロ幅のスペース、行の区切り、向きを変える制御、途中の改行は断る', () => {
+    const rejected = [
+      '\u{200B}',
+      '\u{2028}',
+      '\u{2029}',
+      '\u{202A}',
+      '\u{202E}',
+      '\u{2066}',
+      '\u{2069}',
+      '\u{FEFF}',
+      '\n',
+      '\u{0}',
+    ];
+    for (const character of rejected) {
+      const bad = `保守${character}チーム`;
       assert.equal(workspaceNameSchema.safeParse(bad).success, false, JSON.stringify(bad));
-      assert.equal(workspaceNameProblem(bad.trim()), 'invalid_character', JSON.stringify(bad));
+      assert.equal(workspaceNameProblem(bad), 'invalid_character', JSON.stringify(bad));
+    }
+  });
+
+  test('ZWJ でつないだ絵文字、旗、ZWNJ や ZWJ を使う文字の名前は通る', () => {
+    const allowed = [
+      '\u{1F468}\u{200D}\u{1F469}\u{200D}\u{1F467}', // 家族の絵文字（ZWJ）
+      '\u{1F3F4}\u{E0067}\u{E0062}\u{E0065}\u{E006E}\u{E0067}\u{E007F}', // イングランドの旗（タグ文字）
+      '\u{645}\u{6CC}\u{200C}\u{62E}\u{648}\u{627}\u{647}\u{645}', // ペルシア語（ZWNJ）
+      '\u{915}\u{94D}\u{200D}\u{937}', // インド系の文字（ZWJ）
+    ];
+    for (const name of allowed) {
+      assert.equal(workspaceNameProblem(name), null, JSON.stringify(name));
+      assert.equal(workspaceNameSchema.safeParse(name).success, true, JSON.stringify(name));
+    }
+  });
+
+  test('見えない文字だけの名前は、空の名前と同じ扱いで断る', () => {
+    const blanks = [
+      '\u{3164}',
+      '\u{2800}',
+      '\u{115F}\u{1160}',
+      '\u{FFA0}',
+      '\u{200D}',
+      '\u{200C}',
+      '\u{A0}',
+      '\u{E0020}',
+      '\u{3164}\u{200D}',
+      '\u{200B}',
+    ];
+    for (const bad of blanks) {
+      assert.equal(workspaceNameProblem(bad), 'required', JSON.stringify(bad));
+      assert.equal(workspaceNameSchema.safeParse(bad).success, false, JSON.stringify(bad));
     }
   });
 

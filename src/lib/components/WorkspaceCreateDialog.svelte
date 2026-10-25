@@ -45,6 +45,8 @@
   let open = $state(false);
   let dialog = $state<ReturnType<typeof Dialog>>();
   let nameInput = $state<HTMLInputElement>();
+  let leaderSelect = $state<HTMLSelectElement>();
+  let submitButton = $state<HTMLButtonElement>();
 
   let name = $state('');
   let leaderUserId = $state('');
@@ -108,9 +110,13 @@
     candidatesState = 'ready';
   }
 
-  function retryCandidates(): void {
+  // 読み直しに成功したら、選ぶ欄へフォーカスを移す（押したボタンは、成功すると消えるため）
+  async function retryCandidates(): Promise<void> {
     if (candidatesState === 'loading') return;
-    void loadCandidates();
+    await loadCandidates();
+    if (candidatesState !== 'ready') return;
+    await tick();
+    leaderSelect?.focus();
   }
 
   const nameMessages = $derived<Record<WorkspaceNameProblem, string>>({
@@ -168,6 +174,8 @@
     const sentTimezone = timezone;
     submitting = true;
     submitError = null;
+    // 欄が disabled になるので、Enter で送ったときもフォーカスを失わないよう、「作る」へ移す
+    submitButton?.focus();
     try {
       const result = await callOperation(
         workspaceCreate,
@@ -196,11 +204,13 @@
         }
         return;
       }
-      // 組織の枠のデータ（has_workspaces、所属するワークスペース）を読み直してから移る
-      await invalidateAll();
       if (mine !== generation) return;
       open = false;
-      await goto(resolve('/[slug]/w/[id]', { slug: targetSlug, id: result.data.workspace_id }));
+      // 移る先を確定して移る。組織の枠のデータ（has_workspaces、所属するワークスペース）の読み直しは、移る動作に任せる
+      // （先に読み直すと、読み直しが失敗したときに、作ったのに移らなくなる）
+      await goto(resolve('/[slug]/w/[id]', { slug: targetSlug, id: result.data.workspace_id }), {
+        invalidateAll: true,
+      });
       // 移った先の見出しへフォーカスを置く（移った画面の題は、SvelteKit のルートの読み上げが伝える）
       await tick();
       document.querySelector<HTMLElement>('main h1')?.focus();
@@ -220,104 +230,108 @@
   dismissible={!submitting}
   title={tIn('workspaceCreateAction', words, { workspace: tIn('workspace', words) })}
 >
-  <form id={formId} class="form" onsubmit={submit} novalidate aria-busy={submitting}>
-    <div class="field" class:is-invalid={nameError !== null}>
-      <label class="field-label" for={nameId}>{t('fieldName')}</label>
-      <input
-        class="input"
-        id={nameId}
-        bind:this={nameInput}
-        bind:value={name}
-        oninput={() => (nameError = null)}
-        placeholder={t('workspaceNamePlaceholder')}
-        autocomplete="off"
-        aria-invalid={nameError !== null}
-        aria-describedby={nameError !== null ? nameErrorId : undefined}
-      />
-      {#if nameError !== null}
-        <span class="field-error" id={nameErrorId} role="alert"><Icon name="alert" />{nameError}</span>
-      {/if}
-    </div>
-
-    <div class="field">
-      <label class="field-label" for={leaderId}>{tIn('workspaceLeaderLabel', words, { leader: leaderWord })}</label>
-      <select
-        class="select"
-        id={leaderId}
-        bind:value={leaderUserId}
-        disabled={candidatesState !== 'ready' || candidates.length === 0}
-        aria-busy={candidatesState === 'loading'}
-        aria-describedby="{leaderHintId} {leaderStateId}"
-      >
-        {#if candidatesState === 'loading'}
-          <option value="">{t('loading')}</option>
-        {:else if candidatesState === 'failed'}
-          <option value="">{t('workspaceLeaderLoadFailed')}</option>
-        {:else if candidates.length === 0}
-          <option value="">{tIn('workspaceNoCandidates', words, { leader: leaderWord })}</option>
-        {:else}
-          {#each candidates as user (user.id)}
-            <option value={user.id}>{user.name}</option>
-          {/each}
+  <form id={formId} class="form" onsubmit={submit} novalidate>
+    <!-- 送っている間は、欄も変えられない。「作る」はフォーカスを残すため、欄のまとまりの外で aria-disabled にしている -->
+    <fieldset class="form-fields" disabled={submitting}>
+      <div class="field" class:is-invalid={nameError !== null}>
+        <label class="field-label" for={nameId}>{t('fieldName')}</label>
+        <input
+          class="input"
+          id={nameId}
+          bind:this={nameInput}
+          bind:value={name}
+          oninput={() => (nameError = null)}
+          placeholder={t('workspaceNamePlaceholder')}
+          autocomplete="off"
+          aria-invalid={nameError !== null}
+          aria-describedby={nameError !== null ? nameErrorId : undefined}
+        />
+        {#if nameError !== null}
+          <span class="field-error" id={nameErrorId} role="alert"><Icon name="alert" />{nameError}</span>
         {/if}
-      </select>
-      <span class="field-hint" id={leaderHintId}>{tIn('workspaceLeaderHint', words, { leader: leaderWord })}</span>
-      <!-- 候補を取れない、または0件のときは、「作る」を押せない理由をここに出す -->
-      <span id={leaderStateId}>
-        {#if candidatesState === 'failed'}
-          <span class="field-error" role="alert"><Icon name="alert" />{t('workspaceLeaderLoadFailed')}</span>
-        {:else if candidatesState === 'ready' && candidates.length === 0}
-          <span class="field-error"
-            ><Icon name="alert" />{tIn('workspaceNoCandidates', words, { leader: leaderWord })}</span
-          >
-        {/if}
-      </span>
-      {#if candidatesFailedBefore}
-        <div class="form-actions">
-          <button
-            class="btn is-sm"
-            type="button"
-            aria-disabled={candidatesState === 'loading'}
-            onclick={retryCandidates}
-          >
-            {candidatesState === 'loading' ? t('retrying') : t('retry')}
-          </button>
-        </div>
-      {/if}
-    </div>
-
-    <div class="field">
-      <span class="field-label" id={vocabularyLabelId}>{t('workspaceVocabularyLabel')}</span>
-      <div
-        class="choice-list"
-        role="radiogroup"
-        aria-labelledby={vocabularyLabelId}
-        aria-describedby="{vocabularyHintId} {defaultsId}"
-      >
-        <label class="choice">
-          <input type="radio" name="{ids}-vocabulary" value="game" bind:group={vocabulary} />
-          <div><b>{t('vocabularyGameLabel')}</b><span>{vocabularyExample('game')}</span></div>
-        </label>
-        <label class="choice">
-          <input type="radio" name="{ids}-vocabulary" value="scrum" bind:group={vocabulary} />
-          <div><b>{t('vocabularyScrumLabel')}</b><span>{vocabularyExample('scrum')}</span></div>
-        </label>
       </div>
-      <span class="field-hint" id={vocabularyHintId}
-        >{tIn('workspaceVocabularyHint', words, { column: tIn('column', words) })}</span
-      >
-    </div>
 
-    <p class="field-hint" id={defaultsId}>{defaultsNote}</p>
+      <div class="field">
+        <label class="field-label" for={leaderId}>{tIn('workspaceLeaderLabel', words, { leader: leaderWord })}</label>
+        <select
+          class="select"
+          id={leaderId}
+          bind:this={leaderSelect}
+          bind:value={leaderUserId}
+          disabled={candidatesState !== 'ready' || candidates.length === 0}
+          aria-busy={candidatesState === 'loading'}
+          aria-describedby="{leaderHintId} {leaderStateId}"
+        >
+          {#if candidatesState === 'loading'}
+            <option value="">{t('loading')}</option>
+          {:else if candidatesState === 'failed' || candidates.length === 0}
+            <!-- 理由の文は、下のエラー側だけに出す -->
+            <option value="">&mdash;</option>
+          {:else}
+            {#each candidates as user (user.id)}
+              <option value={user.id}>{user.name}</option>
+            {/each}
+          {/if}
+        </select>
+        <span class="field-hint" id={leaderHintId}>{tIn('workspaceLeaderHint', words, { leader: leaderWord })}</span>
+        <!-- 候補を取れない、または0件のときは、「作る」を押せない理由をここに出す -->
+        <span id={leaderStateId}>
+          {#if candidatesState === 'failed'}
+            <span class="field-error" role="alert"><Icon name="alert" />{t('workspaceLeaderLoadFailed')}</span>
+          {:else if candidatesState === 'ready' && candidates.length === 0}
+            <span class="field-error"
+              ><Icon name="alert" />{tIn('workspaceNoCandidates', words, { leader: leaderWord })}</span
+            >
+          {/if}
+        </span>
+        {#if candidatesFailedBefore}
+          <div class="form-actions">
+            <button
+              class="btn is-sm"
+              type="button"
+              aria-disabled={candidatesState === 'loading'}
+              onclick={retryCandidates}
+            >
+              {candidatesState === 'loading' ? t('retrying') : t('retry')}
+            </button>
+          </div>
+        {/if}
+      </div>
+
+      <div class="field">
+        <span class="field-label" id={vocabularyLabelId}>{t('workspaceVocabularyLabel')}</span>
+        <div
+          class="choice-list"
+          role="radiogroup"
+          aria-labelledby={vocabularyLabelId}
+          aria-describedby="{vocabularyHintId} {defaultsId}"
+        >
+          <label class="choice">
+            <input type="radio" name="{ids}-vocabulary" value="game" bind:group={vocabulary} />
+            <div><b>{t('vocabularyGameLabel')}</b><span>{vocabularyExample('game')}</span></div>
+          </label>
+          <label class="choice">
+            <input type="radio" name="{ids}-vocabulary" value="scrum" bind:group={vocabulary} />
+            <div><b>{t('vocabularyScrumLabel')}</b><span>{vocabularyExample('scrum')}</span></div>
+          </label>
+        </div>
+        <span class="field-hint" id={vocabularyHintId}
+          >{tIn('workspaceVocabularyHint', words, { column: tIn('column', words) })}</span
+        >
+      </div>
+
+      <p class="field-hint" id={defaultsId}>{defaultsNote}</p>
+    </fieldset>
 
     {#if submitError !== null}
       <div class="callout is-danger" role="alert"><Icon name="alert" /><span>{submitError}</span></div>
     {/if}
-    <span class="visually-hidden" role="status">{status}</span>
   </form>
+  <!-- 状態の読み上げの領域。form の外に常に置き、中の文字だけを替える -->
+  <span class="visually-hidden" role="status">{status}</span>
   {#snippet footer(close)}
     <button class="btn is-quiet" type="button" aria-disabled={submitting} onclick={close}>{t('cancel')}</button>
-    <button class="btn is-primary" type="submit" form={formId} aria-disabled={!canSubmit}>
+    <button class="btn is-primary" type="submit" form={formId} aria-disabled={!canSubmit} bind:this={submitButton}>
       {submitting ? t('workspaceSubmitting') : t('workspaceSubmit')}
     </button>
   {/snippet}

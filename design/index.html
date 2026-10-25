@@ -210,14 +210,16 @@ const SECTIONS = [
       <button class="btn is-quiet" type="button">あとで</button>
       <button class="btn is-danger" type="button">削除する</button>
       <button class="btn" type="button" disabled>終了する</button>
+      <button class="btn" type="button" aria-disabled="true">${t("create")}</button>
       <button class="btn is-sm is-on" type="button" aria-pressed="true">${avatar("ハルカ", 28)}ハルカ に送った</button>
       <button class="link-btn" type="button">戻す</button>
     </div>
     <div class="cat-row">
       <button class="pill" type="button">${icon("swap")}言葉: ${t("vocab")}</button>
       <button class="pill" type="button" aria-label="通知 3件">${icon("bell")}<span class="pill-count">3</span></button>
+      <button class="pill" type="button" aria-label="閉じる（いまは閉じられません）" aria-disabled="true">${icon("x")}</button>
     </div>`,
-    ["文言は押すと起きることをそのまま書く（「完遂にする」「受注する」）。", "押せない理由がある無効のボタンは、title か横の文で理由を示す。", "取り消せない操作（削除）は is-danger にし、確認は画面の中のダイアログで行う。", "切り替えのボタンは aria-pressed を持ち、押した状態は is-on で示す。"],
+    ["文言は押すと起きることをそのまま書く（「完遂にする」「受注する」）。", "押せない理由がある無効のボタンは、title か横の文で理由を示す。", "送っている最中や読み直している最中のように、フォーカスを残したいボタンは disabled でなく aria-disabled=\"true\" にする（.btn と .pill が同じ薄い見た目になる）。押しても何も起きないよう、処理の側で無視する。", "取り消せない操作（削除）は is-danger にし、確認は画面の中のダイアログで行う。", "切り替えのボタンは aria-pressed を持ち、押した状態は is-on で示す。"],
     ".btn .is-primary .is-quiet .is-danger .is-sm .is-on / .link-btn / .pill .pill-count")],
   ["forms", "入力と道具の帯", () => block("forms", "入力と道具の帯", "",
     `<div class="toolbar"><label class="search" for="q0">${icon("search")}<input id="q0" type="search" placeholder="タイトルや SHOP-128 で探す"></label>
@@ -288,7 +290,7 @@ const SECTIONS = [
   ["table", "表", () => block("table", "表", "数が並ぶ一覧は表にする。数の列は右に揃える。",
     `<div class="table-wrap"><table class="table"><thead><tr><th>${t("epic")}</th><th class="is-num">残り（pt）</th><th>進み</th><th>${t("due")}</th></tr></thead>
       <tbody>${Object.keys(D.epics).map((id) => { const p = SQ.epicPts(id); return `<tr><td><a href="epic.html">${SQ.esc(D.epics[id].title)}</a></td><td class="is-num">${p.all - p.done}</td><td>${progress(p.done, p.all)}</td><td>${dueChip(D.epics[id].due)}</td></tr>`; }).join("")}</tbody></table></div>`,
-    ["表の見出しの下は二重罫。"], ".table-wrap .table .is-num")],
+    ["表の見出しの下は二重罫。", "名前の列には is-name を付ける（th と td の両方）。名前が1字ずつ折れるほど縮まないよう最小幅を持ち、足りない幅は .table-wrap の横スクロールで受ける。"], ".table-wrap .table .is-num .is-name")],
   ["dialogs", "ダイアログと演出", () => block("dialogs", "ダイアログと演出", "押すと本物と同じものが開く。Esc か外側を押すと閉じ、開いた元のボタンに戻る。確認が要るのは、取り消せない操作と、まとめて状態を変える操作だけ。",
     `<div class="cat-row">
       <button class="btn" type="button" data-dialog="sprintCreate">${t("sprint")}を作る</button>
@@ -341,7 +343,7 @@ const SECTIONS = [
     `<div class="settings"><section class="setting"><div class="setting-head"><h3 class="setting-title">${t("column")}</h3><p class="setting-desc">名前は言葉づかいを切り替えても訳しません。</p></div><div class="setting-body">
       <ol class="order-list">${D.columns.filter((c) => !c.done).map((c, i, a) => `<li><span class="grip">${icon("grip")}</span><input class="input" value="${c.name}" aria-label="名前"><span class="order-actions"><button class="icon-btn" type="button" aria-label="上へ" ${i === 0 ? "disabled" : ""}>${icon("up")}</button><button class="icon-btn" type="button" aria-label="下へ" ${i === a.length - 1 ? "disabled" : ""}>${icon("down")}</button><button class="icon-btn is-danger" type="button" aria-label="削除">${icon("trash")}</button></span></li>`).join("")}
         <li><span></span><span class="fixed">${icon("check")} ${t("done")}</span><span class="props-note">常に末尾</span></li></ol></div></section></div>`,
-    null, ".settings .setting .setting-head .setting-title .setting-desc .setting-body / .order-list .grip .fixed .order-actions / .icon-btn .is-danger / .form .form-row .form-actions")],
+    null, ".settings .setting .setting-head .setting-title .setting-desc .setting-body / .order-list .grip .fixed .order-actions / .icon-btn .is-danger / .form .form-fields .form-row .form-actions")],
   ["steps", "手順", () => block("steps", "手順", "順番に進めるもの（接続の登録、最初にやること）にだけ番号を付ける。",
     `<ol class="steps"><li class="step is-done"><div class="step-body"><span class="step-title">取り込み元を選ぶ</span><span class="props-note">Backlog</span></div></li><li class="step"><div class="step-body"><span class="step-title">認証情報を入れる</span><label class="field" for="k0"><span class="field-label">API キー</span><input class="input" id="k0" type="password"></label></div></li><li class="step"><div class="step-body"><span class="step-title">取り込む範囲を選ぶ</span></div></li></ol>`,
     null, ".steps .step .is-done .step-body .step-title")],

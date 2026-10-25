@@ -138,6 +138,8 @@ export const dictionary = defineDictionary({
     'チームや用途ごとに作ります。{member}の招待は、作った{workspace}の{leader}が行います。',
   ),
   workspaceOpenLabel: organization('開いている{workspace}', '開いている{workspace}'),
+  workspaceMemberCountHeader: organization('{member}数', '{member}数'),
+  workspaceLeaderCountHeader: organization('{leader}数', '{leader}数'),
   fieldName: organization('名前', '名前'),
   createdOn: organization('作った日', '作った日'),
   workspaceClosedChip: organization('閉じた {date}', '閉じた {date}'),
@@ -164,8 +166,8 @@ export const dictionary = defineDictionary({
     '{column}と決まった欄の名前は、選んだ言葉づかいで決まります。あとから言葉づかいを替えても、名前は変わりません。',
   ),
   workspaceNameInvalidCharacter: organization(
-    '名前に使えない文字（制御文字など）が含まれています',
-    '名前に使えない文字（制御文字など）が含まれています',
+    '名前に使えない文字（制御文字、ゼロ幅のスペースなど）が含まれています',
+    '名前に使えない文字（制御文字、ゼロ幅のスペースなど）が含まれています',
   ),
   workspaceNoCandidates: organization('最初の{leader}に指せる人がいません', '最初の{leader}に指せる人がいません'),
   workspaceTimezoneRejected: organization(
