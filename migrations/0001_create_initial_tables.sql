@@ -1,10 +1,11 @@
 -- Migration number: 0001 	 2026-10-25T06:08:03.543Z
--- 一本道に要る22表。列と制約は docs/data-model.md の写し。残す15表は使う機能の Issue で足す
+-- 一本道に要る22表。列と制約は docs/data-model.md の写し。残す18表は使う機能の Issue で足す
+-- 主キーに NOT NULL を書くのは、SQLite の通常の表では PRIMARY KEY が NULL を拒まないため
 
 -- 共通の表
 
 CREATE TABLE accounts (
-  id TEXT PRIMARY KEY,
+  id TEXT NOT NULL PRIMARY KEY,
   last_login_at TEXT,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL
@@ -24,8 +25,9 @@ CREATE TABLE account_logins (
 
 CREATE INDEX account_logins_account_id ON account_logins (account_id);
 
+-- ハッシュの列は SHA-256 の小文字の16進に限る。ハッシュする前のトークンを入れる取り違えを、DB の写しやログから読める形で残さないため
 CREATE TABLE sessions (
-  token_hash TEXT PRIMARY KEY,
+  token_hash TEXT NOT NULL PRIMARY KEY CHECK (length(token_hash) = 64 AND token_hash NOT GLOB '*[^0-9a-f]*'),
   account_id TEXT NOT NULL REFERENCES accounts (id),
   created_at TEXT NOT NULL,
   last_used_at TEXT NOT NULL,
@@ -35,23 +37,24 @@ CREATE TABLE sessions (
 CREATE INDEX sessions_account_id ON sessions (account_id);
 
 CREATE TABLE oauth_states (
-  state TEXT PRIMARY KEY,
+  state TEXT NOT NULL PRIMARY KEY,
   login_provider TEXT NOT NULL,
   code_verifier TEXT NOT NULL,
   nonce TEXT,
-  claim_token_hash TEXT,
-  return_to TEXT,
+  claim_token_hash TEXT CHECK (length(claim_token_hash) = 64 AND claim_token_hash NOT GLOB '*[^0-9a-f]*'),
+  -- 自分のサイトのパスだけ。//evil.example や /\evil.example は別のサイトへの移動になる
+  return_to TEXT CHECK (return_to GLOB '/*' AND return_to NOT GLOB '//*' AND return_to NOT GLOB '/\*'),
   expires_at TEXT NOT NULL
 );
 
 CREATE TABLE rate_limits (
-  key TEXT PRIMARY KEY,
+  key TEXT NOT NULL PRIMARY KEY,
   window_start_at TEXT NOT NULL,
   count INTEGER NOT NULL
 );
 
 CREATE TABLE organizations (
-  id TEXT PRIMARY KEY,
+  id TEXT NOT NULL PRIMARY KEY,
   slug TEXT NOT NULL UNIQUE CHECK (
     slug GLOB '[a-z0-9]*' AND slug NOT GLOB '*[^a-z0-9-]*' AND length(slug) BETWEEN 2 AND 40
   ),
@@ -74,13 +77,13 @@ CREATE TABLE organizations (
 -- 組織の中の表
 
 CREATE TABLE users (
-  id TEXT PRIMARY KEY,
+  id TEXT NOT NULL PRIMARY KEY,
   organization_id TEXT NOT NULL REFERENCES organizations (id),
   account_id TEXT REFERENCES accounts (id),
   login_provider TEXT NOT NULL,
   login_subject TEXT,
   login_email TEXT,
-  claim_token_hash TEXT UNIQUE,
+  claim_token_hash TEXT UNIQUE CHECK (length(claim_token_hash) = 64 AND claim_token_hash NOT GLOB '*[^0-9a-f]*'),
   claim_expires_at TEXT,
   name TEXT NOT NULL,
   is_admin INTEGER NOT NULL DEFAULT 0 CHECK (is_admin IN (0, 1)),
@@ -102,10 +105,11 @@ CREATE TABLE users (
 );
 
 CREATE UNIQUE INDEX users_organization_login ON users (organization_id, login_provider, login_subject);
+CREATE UNIQUE INDEX users_organization_account ON users (organization_id, account_id) WHERE account_id IS NOT NULL;
 CREATE INDEX users_login ON users (login_provider, login_subject);
 
 CREATE TABLE workspaces (
-  id TEXT PRIMARY KEY,
+  id TEXT NOT NULL PRIMARY KEY,
   organization_id TEXT NOT NULL REFERENCES organizations (id),
   name TEXT NOT NULL,
   timezone TEXT NOT NULL,
@@ -129,26 +133,28 @@ CREATE TABLE workspace_point_rates (
 );
 
 CREATE TABLE memberships (
-  id TEXT PRIMARY KEY,
+  id TEXT NOT NULL PRIMARY KEY,
   workspace_id TEXT NOT NULL REFERENCES workspaces (id),
   user_id TEXT NOT NULL REFERENCES users (id),
   role TEXT NOT NULL CHECK (role IN ('leader', 'member')),
   joined_on TEXT NOT NULL CHECK (joined_on IS date(joined_on)),
   left_on TEXT CHECK (left_on IS date(left_on)),
   joined_at TEXT NOT NULL,
-  left_at TEXT
+  left_at TEXT,
+  CHECK ((left_on IS NULL) = (left_at IS NULL)),
+  CHECK (left_on >= joined_on)
 );
 
 CREATE UNIQUE INDEX memberships_current ON memberships (workspace_id, user_id) WHERE left_at IS NULL;
 CREATE INDEX memberships_user_current ON memberships (user_id) WHERE left_at IS NULL;
 
 CREATE TABLE invitations (
-  id TEXT PRIMARY KEY,
+  id TEXT NOT NULL PRIMARY KEY,
   workspace_id TEXT NOT NULL REFERENCES workspaces (id),
   login_provider TEXT NOT NULL,
   login_subject TEXT,
   login_email TEXT,
-  claim_token_hash TEXT UNIQUE,
+  claim_token_hash TEXT UNIQUE CHECK (length(claim_token_hash) = 64 AND claim_token_hash NOT GLOB '*[^0-9a-f]*'),
   claim_expires_at TEXT,
   login_name TEXT NOT NULL,
   role TEXT NOT NULL CHECK (role IN ('leader', 'member')),
@@ -175,7 +181,7 @@ CREATE INDEX invitations_login_pending ON invitations (login_provider, login_sub
 -- ワークスペースの定義
 
 CREATE TABLE board_columns (
-  id TEXT PRIMARY KEY,
+  id TEXT NOT NULL PRIMARY KEY,
   workspace_id TEXT NOT NULL REFERENCES workspaces (id),
   name TEXT,
   is_done INTEGER NOT NULL DEFAULT 0 CHECK (is_done IN (0, 1)),
@@ -190,7 +196,7 @@ CREATE UNIQUE INDEX board_columns_done ON board_columns (workspace_id) WHERE is_
 CREATE INDEX board_columns_workspace ON board_columns (workspace_id, position) WHERE deleted_at IS NULL;
 
 CREATE TABLE detail_fields (
-  id TEXT PRIMARY KEY,
+  id TEXT NOT NULL PRIMARY KEY,
   workspace_id TEXT NOT NULL REFERENCES workspaces (id),
   name TEXT NOT NULL,
   position TEXT NOT NULL,
@@ -202,7 +208,7 @@ CREATE TABLE detail_fields (
 CREATE INDEX detail_fields_workspace ON detail_fields (workspace_id, position) WHERE deleted_at IS NULL;
 
 CREATE TABLE categories (
-  id TEXT PRIMARY KEY,
+  id TEXT NOT NULL PRIMARY KEY,
   workspace_id TEXT NOT NULL REFERENCES workspaces (id),
   name TEXT NOT NULL,
   is_billed_monthly INTEGER NOT NULL DEFAULT 0 CHECK (is_billed_monthly IN (0, 1)),
@@ -215,7 +221,7 @@ CREATE TABLE categories (
 CREATE INDEX categories_workspace ON categories (workspace_id, position) WHERE deleted_at IS NULL;
 
 CREATE TABLE repositories (
-  id TEXT PRIMARY KEY,
+  id TEXT NOT NULL PRIMARY KEY,
   workspace_id TEXT NOT NULL REFERENCES workspaces (id),
   name TEXT NOT NULL,
   provider TEXT,
@@ -238,13 +244,13 @@ CREATE INDEX repositories_workspace ON repositories (workspace_id, position) WHE
 -- 計画と作業
 
 CREATE TABLE epics (
-  id TEXT PRIMARY KEY,
+  id TEXT NOT NULL PRIMARY KEY,
   workspace_id TEXT NOT NULL REFERENCES workspaces (id),
   title TEXT NOT NULL,
   body_md TEXT CHECK (length(body_md) <= 100000),
   category_id TEXT REFERENCES categories (id),
   due_on TEXT CHECK (due_on IS date(due_on)),
-  link_url TEXT,
+  link_url TEXT CHECK (link_url LIKE 'http://%' OR link_url LIKE 'https://%'),
   reward_tier TEXT NOT NULL CHECK (reward_tier IN ('small', 'medium', 'large')),
   requester_user_id TEXT NOT NULL REFERENCES users (id),
   created_by TEXT NOT NULL REFERENCES users (id),
@@ -262,7 +268,7 @@ CREATE TABLE epics (
 CREATE INDEX epics_workspace ON epics (workspace_id, position) WHERE deleted_at IS NULL;
 
 CREATE TABLE stories (
-  id TEXT PRIMARY KEY,
+  id TEXT NOT NULL PRIMARY KEY,
   workspace_id TEXT NOT NULL REFERENCES workspaces (id),
   epic_id TEXT REFERENCES epics (id),
   title TEXT NOT NULL,
@@ -270,7 +276,7 @@ CREATE TABLE stories (
   body_md TEXT CHECK (length(body_md) <= 100000),
   category_id TEXT REFERENCES categories (id),
   due_on TEXT CHECK (due_on IS date(due_on)),
-  link_url TEXT,
+  link_url TEXT CHECK (link_url LIKE 'http://%' OR link_url LIKE 'https://%'),
   created_by TEXT NOT NULL REFERENCES users (id),
   completed_at TEXT,
   completed_by TEXT REFERENCES users (id),
@@ -283,7 +289,7 @@ CREATE TABLE stories (
 CREATE INDEX stories_workspace_epic ON stories (workspace_id, epic_id, position) WHERE deleted_at IS NULL;
 
 CREATE TABLE sprints (
-  id TEXT PRIMARY KEY,
+  id TEXT NOT NULL PRIMARY KEY,
   workspace_id TEXT NOT NULL REFERENCES workspaces (id),
   name TEXT,
   goal TEXT,
@@ -306,13 +312,13 @@ CREATE UNIQUE INDEX sprints_active ON sprints (workspace_id) WHERE status = 'act
 CREATE INDEX sprints_workspace_start ON sprints (workspace_id, start_on) WHERE deleted_at IS NULL;
 
 CREATE TABLE tasks (
-  id TEXT PRIMARY KEY,
+  id TEXT NOT NULL PRIMARY KEY,
   workspace_id TEXT NOT NULL REFERENCES workspaces (id),
   is_imported INTEGER NOT NULL CHECK (is_imported IN (0, 1)),
   tray TEXT NOT NULL CHECK (tray IN ('inbox', 'backlog', 'archive')),
   title TEXT NOT NULL,
   body_md TEXT CHECK (length(body_md) <= 100000),
-  link_url TEXT,
+  link_url TEXT CHECK (link_url LIKE 'http://%' OR link_url LIKE 'https://%'),
   story_id TEXT REFERENCES stories (id),
   category_id TEXT REFERENCES categories (id),
   repository_id TEXT REFERENCES repositories (id),
@@ -345,7 +351,7 @@ CREATE INDEX tasks_assignee_open ON tasks (assignee_user_id) WHERE deleted_at IS
 -- 記録
 
 CREATE TABLE completions (
-  id TEXT PRIMARY KEY,
+  id TEXT NOT NULL PRIMARY KEY,
   workspace_id TEXT NOT NULL REFERENCES workspaces (id),
   task_id TEXT NOT NULL REFERENCES tasks (id),
   completed_at TEXT NOT NULL,
@@ -365,7 +371,7 @@ CREATE INDEX completions_sprint ON completions (sprint_id);
 CREATE INDEX completions_task ON completions (task_id);
 
 CREATE TABLE xp_grants (
-  id TEXT PRIMARY KEY,
+  id TEXT NOT NULL PRIMARY KEY,
   workspace_id TEXT NOT NULL REFERENCES workspaces (id),
   user_id TEXT NOT NULL REFERENCES users (id),
   action TEXT NOT NULL CHECK (
@@ -393,7 +399,7 @@ CREATE INDEX xp_grants_epic ON xp_grants (epic_id);
 CREATE INDEX xp_grants_reverses ON xp_grants (reverses_grant_id);
 
 CREATE TABLE change_logs (
-  id TEXT PRIMARY KEY,
+  id TEXT NOT NULL PRIMARY KEY,
   organization_id TEXT NOT NULL REFERENCES organizations (id),
   workspace_id TEXT REFERENCES workspaces (id),
   actor_user_id TEXT REFERENCES users (id),

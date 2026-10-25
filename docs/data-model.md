@@ -5,7 +5,7 @@
 ## 決まりごと
 
 - 名前はスクラムの言葉で、テーブルは複数形のスネークケース、列はスネークケース。
-- 主キーは UUIDv7 の文字列（`TEXT`）で、列名は `id`。行を作る Worker が採番する。単一の行しか持たない表と、他の表の組を主キーにする表は除く。
+- 主キーは UUIDv7 の文字列（`TEXT`）で、列名は `id`。行を作る Worker が採番する。単一の行しか持たない表と、他の表の組を主キーにする表は除く。主キーの列には `NOT NULL` も書く。SQLite の通常の表では、`PRIMARY KEY` だけでは NULL を拒まないため。
 - 日時は UTC の ISO 8601（`2026-10-20T01:23:45.678Z`）を `TEXT` で持ち、列名は `_at` で終える。
 - 日付は `YYYY-MM-DD` を `TEXT` で持ち、列名は `_on` か `_date` で終える。検査は `CHECK (x IS date(x))`。`=` で比べない。`date()` は形の崩れた値に NULL を返し、`=` の比較が NULL になると CHECK は通ってしまうため。`IS` なら空の列は通り、形の崩れた値は当たる。
 - 月は `YYYY-MM` を `TEXT` で持ち、列名は `_month` で終える。検査は `CHECK (x || '-01' IS date(x || '-01'))`。
@@ -96,7 +96,7 @@
 | last_login_at | TEXT | | |
 | created_at、updated_at | TEXT | NOT NULL | |
 
-- 初めてログインできたときに、`account_logins` の行と同じバッチで作る。入れる組織が1つもない人の行は作らない。
+- 初めてログインできたときに、`account_logins` の行と同じバッチで作る。入れる組織が1つもない人の行は作らない。ただし運用者（下の一覧に載った人）は、入れる組織が無くても作る。運用者の画面に組織の外から入るため。
 - 運用者かどうかは、この表ではなくシークレットのログインの ID（`github:12345`、`google:<sub>` の形）の一覧で決める。
 
 ### account_logins
@@ -119,7 +119,7 @@
 
 | 列 | 型 | 制約 | 説明 |
 | --- | --- | --- | --- |
-| token_hash | TEXT | PK | Cookie に入れたランダムな ID（32 バイトの乱数の base64url、43文字）の SHA-256 を小文字の16進（64文字）にしたもの |
+| token_hash | TEXT | PK、`CHECK (length(token_hash) = 64 AND token_hash NOT GLOB '*[^0-9a-f]*')` | Cookie に入れたランダムな ID（32 バイトの乱数の base64url、43文字）の SHA-256 を小文字の16進（64文字）にしたもの。ハッシュする前の値を入れる取り違えを DB で止める。`claim_token_hash` の列（`oauth_states`、`users`、`invitations`）も同じ CHECK を持つ |
 | account_id | TEXT | NOT NULL、FK accounts | |
 | created_at | TEXT | NOT NULL | |
 | last_used_at | TEXT | NOT NULL | 使うたびに書き直す |
@@ -141,7 +141,7 @@
 | code_verifier | TEXT | NOT NULL | |
 | nonce | TEXT | | OpenID Connect の手段（Google）で、ID トークンの `nonce` と比べる値。GitHub では空。Google で空の行は、アプリが拒む |
 | claim_token_hash | TEXT | | 招待の URL から始めたログインで、その URL の秘密の SHA-256。戻ってきたときに、待っている指名か招待を引く |
-| return_to | TEXT | | ログイン後に戻る画面のパス |
+| return_to | TEXT | `CHECK (return_to GLOB '/*' AND return_to NOT GLOB '//*' AND return_to NOT GLOB '/\*')` | ログイン後に戻る画面のパス。自分のサイトのパスだけで、`//` や `/\` で始まる別のサイトへの移動は DB でも拒む |
 | expires_at | TEXT | NOT NULL | 作ってから10分 |
 
 使ったら消す。切れた行は定期処理で消す。
@@ -209,6 +209,7 @@
 
 - 表の制約: `CHECK ((login_subject IS NULL) = (login_email IS NOT NULL))`、`CHECK ((login_email IS NULL) = (claim_token_hash IS NULL) AND (login_email IS NULL) = (claim_expires_at IS NULL))`、`CHECK (login_email IS NULL OR (login_provider = 'google' AND login_email = lower(trim(login_email))))`。
 - 一意: `(organization_id, login_provider, login_subject)`。`login_subject` が空の行どうしは、SQLite では NULL が重ならないので当たらない。待っている指名は、運用者が指名し直すと消すので、メールアドレスの一意は持たない。
+- 一意: `(organization_id, account_id) WHERE account_id IS NOT NULL`。アカウントと組織の組に1行。1つのアカウントに複数のログインの手段を結んだ後も、同じ人が1つの組織に2行持たないようにする。
 - 索引: `(login_provider, login_subject)`。ログインのときに入れる組織を引く。
 - 表示するログイン名とアバターは `account_logins` から引く。
 - 運用者が組織を作るときは、最初の管理者をログインの ID に解決し（GitHub はユーザー名からユーザー ID へ。Google は解決せず、`login_email` と招待の URL の秘密で待つ）、`is_admin = 1` の行を入れる。`account_id` は、その人が初めてログインしたときに埋める。管理者の指名し直しも同じで、そのときは同じ組織の `login_subject` が空の行を同じバッチで消す。
@@ -324,6 +325,7 @@
 | left_at | TEXT | | |
 
 - 一意: `(workspace_id, user_id) WHERE left_at IS NULL`。今の所属は1人1行。
+- `CHECK ((left_on IS NULL) = (left_at IS NULL))`、`CHECK (left_on >= joined_on)`。離脱の日付と日時はそろって入り、離脱日は参加日より前にならない。今の所属の一意は `left_at` で、積載量の期間は `left_on` で見るので、片方だけ入った行は2つの判定を食い違わせる。
 - 索引: `(user_id) WHERE left_at IS NULL`。ログインできるか、自分の今日に出すワークスペースはどれかを引く。
 - 積載量では、日がいずれかの行の `joined_on`〜`left_on` に入るかで、所属していた期間を数える。
 - 管理者が所属していないワークスペースを操作するときは、行を作らない。担当や討伐隊の候補は、この表の今の所属から選ぶ。
@@ -549,7 +551,7 @@ Google の人は、ログインするまで `sub` が分からない。そのた
 | body_md | TEXT | | レイドの説明。経験値は付かない |
 | category_id | TEXT | FK categories | 配下のストーリーとタスクが引き継ぐ |
 | due_on | TEXT | | |
-| link_url | TEXT | | http と https だけ |
+| link_url | TEXT | `CHECK (link_url LIKE 'http://%' OR link_url LIKE 'https://%')` | http と https だけ。`stories` と `tasks` の `link_url` も同じ CHECK を持つ |
 | reward_tier | TEXT | NOT NULL、`small`、`medium`、`large` | クリア報酬の段階。値はコードの定数 |
 | requester_user_id | TEXT | NOT NULL、FK users | 依頼主。リーダーが替えられる |
 | created_by | TEXT | NOT NULL、FK users | 作った人。削除の権限に使う |

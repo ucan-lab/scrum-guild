@@ -19,7 +19,7 @@ function run(sql: string, ...values: unknown[]) {
 async function organization(slug = `org-${id().slice(0, 8)}`): Promise<string> {
   const orgId = id();
   await run(
-    `INSERT INTO organizations (id, slug, name, created_by_operator, created_at, updated_at) VALUES (?, ?, '組織', 'github:1000001', ?, ?)`,
+    `INSERT INTO organizations (id, slug, name, created_by_operator, created_at, updated_at) VALUES (?, ?, '組織', 'github:9000000000000001', ?, ?)`,
     orgId,
     slug,
     AT,
@@ -94,6 +94,70 @@ describe('外部キー', () => {
   });
 });
 
+// SQLite の通常の表では、PRIMARY KEY だけでは NULL を拒まない
+describe('主キー', () => {
+  test.each([
+    ['省いた', `INSERT INTO accounts (created_at, updated_at) VALUES (?, ?)`],
+    ['NULL を渡した', `INSERT INTO accounts (id, created_at, updated_at) VALUES (NULL, ?, ?)`],
+  ])('ID を%sら当たる', async (_, sql) => {
+    await expect(run(sql, AT, AT)).rejects.toThrow(/NOT NULL/);
+  });
+});
+
+describe('セッションとログインの途中の状態', () => {
+  async function account(): Promise<string> {
+    const accountId = id();
+    await run(`INSERT INTO accounts (id, created_at, updated_at) VALUES (?, ?, ?)`, accountId, AT, AT);
+    return accountId;
+  }
+
+  function session(accountId: string, tokenHash: string) {
+    return run(
+      `INSERT INTO sessions (token_hash, account_id, created_at, last_used_at, expires_at) VALUES (?, ?, ?, ?, ?)`,
+      tokenHash,
+      accountId,
+      AT,
+      AT,
+      AT,
+    );
+  }
+
+  function oauthState(columns: { claimTokenHash?: string; returnTo?: string }) {
+    return run(
+      `INSERT INTO oauth_states (state, login_provider, code_verifier, claim_token_hash, return_to, expires_at) VALUES (?, 'google', 'v', ?, ?, ?)`,
+      id(),
+      columns.claimTokenHash ?? null,
+      columns.returnTo ?? null,
+      AT,
+    );
+  }
+
+  test('token_hash は SHA-256 の小文字の16進64文字', async () => {
+    const accountId = await account();
+    await expect(session(accountId, (id() + id()).replaceAll('-', ''))).resolves.toBeTruthy();
+  });
+
+  test.each([
+    ['ハッシュする前のトークン', 'dev-seed-admin-0000000000000000000000000000'],
+    ['大文字の16進', 'A'.repeat(64)],
+    ['63文字', 'a'.repeat(63)],
+  ])('%sは当たる', async (_, tokenHash) => {
+    await expect(session(await account(), tokenHash)).rejects.toThrow(/CHECK/);
+    await expect(oauthState({ claimTokenHash: tokenHash })).rejects.toThrow(/CHECK/);
+  });
+
+  test.each(['/aoba', '/invite', '/'])('戻り先 %s は通る', async (returnTo) => {
+    await expect(oauthState({ returnTo })).resolves.toBeTruthy();
+  });
+
+  test.each(['//evil.example', '/\\evil.example', 'https://evil.example/', 'aoba'])(
+    '戻り先 %s は当たる',
+    async (returnTo) => {
+      await expect(oauthState({ returnTo })).rejects.toThrow(/CHECK/);
+    },
+  );
+});
+
 describe('organizations.slug', () => {
   test.each(['ab', 'aoba', 'ab-1', '0a', 'a'.repeat(40)])('%s は通る', async (slug) => {
     await expect(organization(slug)).resolves.toBeTypeOf('string');
@@ -131,6 +195,11 @@ describe.each(['users', 'invitations'] as const)('%s の待つ列', (table) => {
 
   test('Google でメールアドレスと招待の URL の秘密で待つ行は入る', async () => {
     await expect(insert(googlePending())).resolves.toBeTruthy();
+  });
+
+  // 待つ列をすべて空にして、1つ目の CHECK だけが働く形にする
+  test('待つ列が無いのに login_subject も空なら当たる', async () => {
+    await expect(insert({ loginSubject: null })).rejects.toThrow(/CHECK/);
   });
 
   test('login_subject と login_email の両方が空なら当たる', async () => {
@@ -176,6 +245,25 @@ describe('users の一意', () => {
     const orgId = await organization();
     await insertUser(orgId, googlePending()).result;
     await expect(insertUser(orgId, googlePending()).result).resolves.toBeTruthy();
+  });
+
+  test('同じアカウントは同じ組織に1行だけ', async () => {
+    const orgId = await organization();
+    const accountId = id();
+    await run(`INSERT INTO accounts (id, created_at, updated_at) VALUES (?, ?, ?)`, accountId, AT, AT);
+    const withAccount = (loginProvider: string) =>
+      run(
+        `INSERT INTO users (id, organization_id, account_id, login_provider, login_subject, name, created_at, updated_at) VALUES (?, ?, ?, ?, ?, '人', ?, ?)`,
+        id(),
+        orgId,
+        accountId,
+        loginProvider,
+        id(),
+        AT,
+        AT,
+      );
+    await withAccount('github');
+    await expect(withAccount('google')).rejects.toThrow(/UNIQUE/);
   });
 
   test('同じ claim_token_hash は2つ作れない', async () => {
@@ -251,6 +339,25 @@ describe('memberships の今の所属', () => {
     const { userId, workspaceId } = await workspace();
     await join(workspaceId, userId, AT);
     await expect(join(workspaceId, userId, null)).resolves.toBeTruthy();
+  });
+
+  test.each([
+    ['離脱日だけ入っている', '2026-10-10', null],
+    ['離脱の日時だけ入っている', null, AT],
+    ['離脱日が参加日より前', '2026-09-30', AT],
+  ])('%s行は当たる', async (_, leftOn, leftAt) => {
+    const { userId, workspaceId } = await workspace();
+    await expect(
+      run(
+        `INSERT INTO memberships (id, workspace_id, user_id, role, joined_on, left_on, joined_at, left_at) VALUES (?, ?, ?, 'member', '2026-10-01', ?, ?, ?)`,
+        id(),
+        workspaceId,
+        userId,
+        leftOn,
+        AT,
+        leftAt,
+      ),
+    ).rejects.toThrow(/CHECK/);
   });
 });
 
@@ -341,6 +448,14 @@ describe('tasks', () => {
     await expect(task({ sprintId, columnId, storyId, linkUrl: 'https://example.com/' })).resolves.toBeTruthy();
     await expect(task({ isImported: 1, tray: 'inbox', createdBy: null })).resolves.toBeTruthy();
   });
+
+  test.each(['javascript:alert(1)', 'ftp://example.com/', 'example.com'])(
+    'http と https 以外のリンク（%s）は当たる',
+    async (linkUrl) => {
+      const { task } = await setup();
+      await expect(task({ linkUrl })).rejects.toThrow(/CHECK/);
+    },
+  );
 
   test('手で作ったタスクはバックログにしか置けない', async () => {
     const { task } = await setup();

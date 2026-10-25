@@ -119,7 +119,7 @@
 
 1. 上の確認の結果を `docs/design.md` と `docs/requirements.md` に反映する
 2. #20（CI と本番へのデプロイ）を閉じる。2026-10-25 に、API トークンの絞り込み、文書だけの PR のビルドを飛ばす設定、自動の rollback（#84、#85）、Workers Logs と通知の手段の確かめまで済んだ。ここから先、文書も含めてすべて PR を通す
-3. `d1-migration` のスキル（2026-10-25 に作った）に従い、`docs/data-model.md` から最初のマイグレーションを書く（#49）。着手のときに、スキルだけを読んで手順を追えるかを確かめ、足りなければスキルを直す
+3. 最初のマイグレーション（22表）と seed（#49）の PR をマージし、Workers Builds のビルドのログでマイグレーションが本番の D1 に当たったことを確かめる。API トークンの D1: Edit で足りたかを `docs/operations.md` の「API トークン」に書く。続けて Kysely の2つの入口（#50）に進む
 4. `design/tokens.css` と `design/components.css` を本番の画面に持ち込み、`design/kit.js` の関数を1つずつ Svelte のコンポーネントにする。`html` の `data-theme` には、`users.theme`、なければ `organizations.theme` の値を入れる
 5. 最初の数画面が Svelte で動いたら、下の「画面の自己レビューのスキル」を作る
 

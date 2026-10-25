@@ -45,14 +45,16 @@ describe('sessionInserts', () => {
 });
 
 describe('seedSql', () => {
-  test('外部キーの検査を先送りして全部の表を消してから入れる', () => {
+  test('外部キーの検査は消す文の間だけ先送りし、入れる文はその場で検査させる', () => {
     const sql = seedSql(['accounts', 'd1_migrations'], 'INSERT INTO accounts VALUES (1);\n', sessions, new Date());
     const lines = sql.trimEnd().split('\n');
-    assert.equal(lines[0], 'PRAGMA defer_foreign_keys = true;');
-    assert.equal(lines[1], 'DELETE FROM "accounts";');
+    assert.deepEqual(lines.slice(0, 3), [
+      'PRAGMA defer_foreign_keys = true;',
+      'DELETE FROM "accounts";',
+      'PRAGMA defer_foreign_keys = false;',
+    ]);
     assert.ok(!sql.includes('d1_migrations'));
     assert.ok(sql.indexOf('INSERT INTO accounts') < sql.indexOf('INSERT INTO sessions'));
-    assert.equal(lines.at(-1), 'PRAGMA defer_foreign_keys = false;');
   });
 });
 
@@ -78,7 +80,9 @@ describe('pnpm db:seed', () => {
         (SELECT count(*) FROM users u JOIN account_logins l ON l.account_id = u.account_id
           WHERE l.login_provider || ':' || l.login_subject = '${SEED_OPERATOR_LOGIN_ID}') AS operator_users,
         (SELECT count(*) FROM account_logins
-          WHERE login_provider || ':' || login_subject = '${SEED_OPERATOR_LOGIN_ID}') AS operator_logins`;
+          WHERE login_provider || ':' || login_subject = '${SEED_OPERATOR_LOGIN_ID}') AS operator_logins,
+        (SELECT count(*) FROM sessions
+          WHERE julianday(expires_at) - julianday(last_used_at) = 30) AS sessions_30_days`;
       const result = spawnSync(
         wrangler,
         ['d1', 'execute', 'DB', '--local', '--persist-to', persistTo, '--json', '--command', query],
@@ -86,7 +90,31 @@ describe('pnpm db:seed', () => {
       );
       assert.equal(result.status, 0, result.stderr);
       const [row] = (JSON.parse(result.stdout) as { results: Record<string, number>[] }[])[0].results;
-      assert.deepEqual(row, { organizations: 2, sessions: 4, operator_users: 0, operator_logins: 1 });
+      assert.deepEqual(row, {
+        organizations: 2,
+        sessions: 4,
+        operator_users: 0,
+        operator_logins: 1,
+        sessions_30_days: 4,
+      });
+
+      const check = spawnSync(
+        wrangler,
+        [
+          'd1',
+          'execute',
+          'DB',
+          '--local',
+          '--persist-to',
+          persistTo,
+          '--json',
+          '--command',
+          'PRAGMA foreign_key_check',
+        ],
+        { cwd: root, env, encoding: 'utf8' },
+      );
+      assert.equal(check.status, 0, check.stderr);
+      assert.deepEqual((JSON.parse(check.stdout) as { results: unknown[] }[])[0].results, [], '親の無い行が無い');
     } finally {
       rmSync(persistTo, { recursive: true, force: true });
     }

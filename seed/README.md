@@ -22,7 +22,7 @@ pnpm db:seed
 | `admin` | あおば開発の管理者（ミナト）。ひばり工房では一般のユーザー |
 | `member` | あおば開発の一般のユーザー（ハルカ） |
 | `otherOrg` | ひばり工房だけに入れる管理者（リン） |
-| `operator` | どの組織にも属さない運用者。ログインの ID は `.dev.vars.example` の `OPERATOR_LOGIN_IDS` と同じ `github:1000001` |
+| `operator` | どの組織にも属さない運用者。ログインの ID は `.dev.vars.example` の `OPERATOR_LOGIN_IDS` と同じ `github:9000000000000001`（実在の人に当たらないよう、GitHub がまだ振っていない桁にした） |
 
 ## 本番に入れない
 
