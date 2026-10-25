@@ -289,21 +289,24 @@ test('/api/health は D1 に届いて 200 で版を返す', async ({ request }) 
   expect(await res.json()).toEqual({ status: 'ok', database: 'ok', version });
 });
 
-// 760px 以下ではメニューが上の帯になる。本文が画面の高さに届かなくても、メニューは中身の高さのまま
+// 760px 以下ではメニューが上の帯になる。本文が画面の高さに届かなくても、メニューは中身の高さのままで、余りは本文が受け取る
 for (const width of [390, 672]) {
   test(`幅 ${width}px で本文が短くても、メニューの下に空きが出ない`, async ({ page }) => {
-    await page.setViewportSize({ width, height: 2000 });
+    const height = 2000;
+    await page.setViewportSize({ width, height });
     await page.goto(today);
     await expect(page.getByRole('heading', { level: 1, name: '自分の今日' })).toBeVisible();
 
-    const heights = await page.evaluate(() => {
-      const height = (selector: string) => document.querySelector(selector)?.getBoundingClientRect().height;
-      return { binding: height('.binding'), inner: height('.binding-inner') };
-    });
-    // .binding は下の罫線の分だけ中身より高い
-    expect(heights.binding).toBeDefined();
-    expect(heights.inner).toBeDefined();
-    expect(Math.abs((heights.binding ?? 0) - (heights.inner ?? 0))).toBeLessThan(5);
+    const binding = await page.locator('.binding').boundingBox();
+    const inner = await page.locator('.binding-inner').boundingBox();
+    const sheet = await page.locator('.sheet').boundingBox();
+    if (!binding || !inner || !sheet) throw new Error('枠の要素の位置が取れない');
+    // .binding は下の罫線（テーマで太さが変わる）の分だけ中身より高い
+    const rule = await page
+      .locator('.binding')
+      .evaluate((element) => parseFloat(getComputedStyle(element).borderBottomWidth));
+    expect(binding.height - rule).toBeCloseTo(inner.height, 0);
+    expect(sheet.y + sheet.height).toBeCloseTo(height, 0);
   });
 }
 
