@@ -13,6 +13,7 @@ import { ApiError } from '../errors.ts';
 import { uuidv7 } from '../uuid.ts';
 import { implement } from './implement.ts';
 import { newWorkspaceRows } from './workspace-rows.ts';
+import { actorUserIdOf, changeLogColumns } from './write-guards.ts';
 
 type Tables = OrganizationTables;
 
@@ -84,8 +85,7 @@ function insertWhenAllowed<T extends keyof Tables>(
 
 export const workspaceCreateOperation = implement(workspaceCreate, async ({ db, actor, input }) => {
   // permission: 'admin' は users の行がある管理者だけを通す。型の上の null を 404 で閉じる
-  const actorUserId = actor.userId;
-  if (actorUserId === null) throw new ApiError(404, 'not_found');
+  const actorUserId = actorUserIdOf(actor);
   const organizationId = db.organizationId;
 
   // 先に読んで、候補でなければ書かずに 404。名前は change_logs に残す
@@ -324,8 +324,7 @@ async function writeClosedState(
   change: { action: 'close' } | { action: 'reopen'; closedAt: string },
 ): Promise<string> {
   // permission: 'admin' は users の行がある管理者だけを通す。型の上の null を 404 で閉じる
-  const actorUserId = actor.userId;
-  if (actorUserId === null) throw new ApiError(404, 'not_found');
+  const actorUserId = actorUserIdOf(actor);
   const organizationId = db.organizationId;
   const at = now();
   const stamp = at.toISOString();
@@ -336,17 +335,7 @@ async function writeClosedState(
     db.statement((q) =>
       q
         .insertInto('change_logs')
-        .columns([
-          'id',
-          'organization_id',
-          'workspace_id',
-          'actor_user_id',
-          'entity_type',
-          'entity_id',
-          'action',
-          'changes_json',
-          'created_at',
-        ])
+        .columns(changeLogColumns)
         .expression(
           q
             .selectNoFrom((eb) => [
