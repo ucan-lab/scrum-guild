@@ -150,6 +150,29 @@ describe('bash-rules: 止める', () => {
     'npm --prefix scripts exec -- node deploy.ts',
     'yarn --cwd scripts node deploy.ts',
     'bash -c "node scripts/deploy.ts"',
+    'npx cross-env WORKERS_CI=1 node x.ts',
+    'pnpm exec cross-env WORKERS_CI=1 ls',
+    'cross-env WORKERS_CI=1 ls',
+    'typeset -x WORKERS_CI=1',
+    'local WORKERS_CI=1',
+    'WORKERS_CI=1; cd scripts',
+    'WORKERS_CI=1 cd scripts && ls',
+    'cd scripts && export WORKERS_CI',
+    'node --eval="import(\'./scripts/deploy.ts\')"',
+    'node --print="import(\'./scripts/deploy.ts\')"',
+    'node --test-skip-pattern=x scripts/deploy.ts',
+    'corepack yarn node scripts/deploy-production.ts',
+    'npm exec --package x -- tsx scripts/deploy.ts',
+    'yarn run node scripts/deploy-production.ts',
+    'npm run tsx scripts/deploy.ts',
+    'pnpm run node scripts/deploy.ts',
+    'pnpm exec -c "node scripts/deploy.ts"',
+    'pnpm exec --shell-mode "WORKERS_CI=1 ls"',
+    'npm exec -c "node scripts/deploy.ts"',
+    'npm exec --call="node scripts/deploy.ts"',
+    'source scripts/deploy.sh',
+    '. scripts/deploy.sh',
+    'node scripts/{deploy-production,x}.ts',
     'bash < scripts/deploy.sh',
     'node --test scripts/*.ts',
     'node --test scripts/*',
@@ -159,7 +182,6 @@ describe('bash-rules: 止める', () => {
     'node scripts/./deploy-production.ts',
     'node ../repo/scripts/deploy-production.ts',
     'cd scripts && node deploy-production.ts',
-    'cd scripts && node --test *.ts',
     'node scripts/Deploy-production.ts',
     'node --import=./scripts/deploy-production.ts -e 0',
     'node --require=./scripts/deploy-production.ts -e 0',
@@ -527,6 +549,15 @@ describe('bash-rules: 通す', () => {
     'bash -lc "pnpm exec prettier --check scripts/deploy.ts"',
     'pnpm exec prettier --check scripts/deploy.ts',
     'pnpm exec env FOO=1 ls',
+    'npx cross-env FOO=1 ls',
+    'pnpm exec -c "echo scripts/deploy.ts"',
+    'npm exec -c "ls"',
+    'source .dev.vars.example',
+    '. scripts/prepare.sh',
+    'yarn run build',
+    'node -e "console.log(\'deploy\')"',
+    'cd scripts && node prepare.ts deploy',
+    'cd ~ && node -e "console.log(\'deploying\')"',
     'pnpm -C scripts exec node deploy.test.ts',
     'pnpm -C scripts exec node --test *.test.ts',
     'node --test test/*.ts',
@@ -563,6 +594,54 @@ describe('bash-rules: デプロイのスクリプトと WORKERS_CI の理由', (
     assert.match(verdict('cd ~ && node deploy.ts')[1], /作業場所を判定できない/);
     assert.equal(decision('cd ~ && node scripts/deploy.ts'), 'deny');
     assert.equal(decision('cd ~ && node deploy.ts && WORKERS_CI=1 ls'), 'deny');
+  });
+});
+
+describe('bash-rules: glob の照合先は実在するデプロイの入口', () => {
+  // scripts/deploy-production.ts のあるリポジトリの根を、実在するディレクトリで用意する
+  const root = realpathSync(mkdtempSync(path.join(os.tmpdir(), 'guard-root-')));
+  mkdirSync(path.join(root, 'scripts'));
+  writeFileSync(path.join(root, 'scripts', 'deploy-production.ts'), '');
+  after(() => rmSync(root, { recursive: true, force: true }));
+  const inRoot = (command) => judgeBash(command, { cwd: root, branchOf: () => 'x' })?.[0] ?? 'allow';
+
+  for (const command of [
+    'node --test scripts/*.ts',
+    "node --test '**/*.ts'",
+    'node scripts/{deploy-production,x}.ts',
+    'cd scripts && node --test *.ts',
+    'cd scripts && node deploy-production.ts',
+    `cd scripts && node -e "import('./deploy.ts')"`,
+    `node --test ${root}/scripts/dep*`,
+  ]) {
+    test(`${command} は止める`, () => assert.equal(inRoot(command), 'deny'));
+  }
+
+  for (const command of [
+    'node -e "console.log(2 ** 10)"',
+    'node --test "src/**/*.ts"',
+    'node --test test/**/*.ts',
+    'node --test scripts/*.test.ts',
+    `cd scripts && node -e "console.log('deploy')"`,
+    'cd scripts && node prepare.ts deploy',
+    `cd ~ && node -e "console.log('deploying')"`,
+  ]) {
+    test(`${command} は通す`, () => assert.equal(inRoot(command), 'allow'));
+  }
+
+  test('path.matchesGlob が無い Node では glob を素通りさせず、投げて止める', () => {
+    const original = path.matchesGlob;
+    path.matchesGlob = undefined;
+    try {
+      assert.throws(() => inRoot('node --test scripts/*.ts'), /matchesGlob/);
+    } finally {
+      path.matchesGlob = original;
+    }
+  });
+
+  test('場所が不明なときの確認は残る', () => {
+    assert.equal(inRoot('cd ~ && node deploy-production.ts'), 'ask');
+    assert.equal(inRoot('cd $X && node deploy.ts'), 'ask');
   });
 });
 

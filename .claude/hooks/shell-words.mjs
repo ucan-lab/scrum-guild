@@ -234,12 +234,14 @@ export function splitSegments(command) {
   return segments;
 }
 
-// 実行する道具の前に付く語（シェルの予約語、環境変数の代入、env や timeout、npx）を飛ばす
+// 実行する道具の前に付く語（シェルの予約語、環境変数の代入、env や timeout、npx、cross-env）を飛ばす
 const PREFIXES = new Set([
   'if', 'then', 'else', 'elif', 'while', 'until', 'do', '!', '{', '}',
   'env', 'sudo', 'time', 'nohup', 'exec', 'command', 'builtin',
   'timeout', 'nice', 'ionice', 'stdbuf', 'xargs', 'watch', 'caffeinate',
   'npx', 'pnpx', 'bunx', 'dlx',
+  // cross-env FOO=1 cmd は env と同じく、代入を付けて cmd を動かす
+  'cross-env',
 ]);
 // 前置きの道具が値を取るフラグ（sudo -u root、nice -n 10、xargs -I {}）
 const PREFIX_FLAGS_WITH_VALUE = new Set(['-u', '-g', '-n', '-s', '-k', '-I', '-P', '-L', '-d', '-E', '-C', '-p', '--package']);

@@ -343,7 +343,9 @@ describe('versionFromHealth', () => {
 });
 
 describe('deploy-production.ts', () => {
-  test('import しても deploy() は動かず、プロセスも終わらない', () => {
+  // import.meta.main の無い Node（engines は >=22.18）では deploy-production.ts が理由を出して終了コード 1 で終わるので、確かめる対象が無い
+  const skip = typeof import.meta.main !== 'boolean' && 'import.meta.main が使えない Node では import できない';
+  test('import しても deploy() は動かず、プロセスも終わらない', { skip }, () => {
     // 動いてしまっても本番に触らないよう、WORKERS_CI を外した環境で動かす（deploy() は手順に入らず終わる）
     const childEnv = { ...process.env, WORKERS_CI: undefined };
     const url = new URL('./deploy-production.ts', import.meta.url).href;

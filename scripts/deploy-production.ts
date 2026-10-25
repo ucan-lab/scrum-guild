@@ -21,9 +21,11 @@ function headCommit(): string | undefined {
 }
 
 // import しても本番の入口が動かないよう、直に動かしたときだけ deploy() を呼ぶ（テストや別のスクリプトからの import を守る）。
-// import.meta.main が無い Node（24.2 より前）では、常に偽とみなすと何もしないまま成功に見えるので、理由を出して失敗させる
+// import.meta.main が無い Node（古い版）では、常に偽とみなすと何もしないまま成功に見えるので、理由を出して失敗させる
 if (typeof import.meta.main !== 'boolean') {
-  console.error('import.meta.main が使えない Node です。Node 24.2 以降（.node-version）で動かしてください');
+  console.error(
+    'import.meta.main が使えない Node です。import.meta.main が使える Node（.node-version の版）で動かしてください',
+  );
   process.exit(1);
 }
 
