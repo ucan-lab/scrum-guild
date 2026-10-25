@@ -102,13 +102,13 @@ Worker のシークレットは、ダッシュボードの Worker の Settings �
 ログインは共通の1つの GitHub OAuth App で行う（`docs/development.md` の「GitHub のログインと取り込み」）。本番用と開発用を別に作る。スコープは `read:user` だけで、アプリがログインのたびに求める。OAuth App の側に設定する項目ではない。
 
 1. GitHub の Settings → Developer settings → OAuth Apps → New OAuth App を開く。本番は運用者の GitHub アカウントか、組織の下に作る
-2. 値を入れる。Device Flow は有効にしない
+2. 値を入れる。Device Flow は有効にしない。Expire user access tokens は既定のままでよい（アプリはトークンを読んだ直後に取り消す）
 
    | 項目 | 本番 | 開発用 |
    | --- | --- | --- |
    | Application name | Scrum Guild | Scrum Guild (dev) |
    | Homepage URL | `https://scrum-guild.ucan-lab.workers.dev` | `http://localhost:5173` |
-   | Authorization callback URL | `https://scrum-guild.ucan-lab.workers.dev/api/auth/github/callback` | `http://localhost:5173/api/auth/github/callback` |
+   | Redirect URI | `https://scrum-guild.ucan-lab.workers.dev/api/auth/github/callback` | `http://localhost:5173/api/auth/github/callback` |
 
 3. 作った OAuth App の「Client ID」を控え、「Generate a new client secret」で作ったシークレットを控える。シークレットは作った直後にしか見えない
 4. 本番は `wrangler secret put GITHUB_CLIENT_ID` と `wrangler secret put GITHUB_CLIENT_SECRET`（か、ダッシュボードの Worker の Settings → Variables and Secrets）で入れる。開発用は `.dev.vars.example` を `.dev.vars` に写して `GITHUB_CLIENT_ID` と `GITHUB_CLIENT_SECRET` に入れる
@@ -116,8 +116,8 @@ Worker のシークレットは、ダッシュボードの Worker の Settings �
 
 決まり。
 
-- 戻り先の URL は、アプリが開始のときに渡す `redirect_uri`（`PUBLIC_ORIGIN` に `/api/auth/github/callback` を足した値）と、OAuth App に登録した Authorization callback URL が合う必要がある。独自ドメインへ移すときは、OAuth App の Homepage URL と Authorization callback URL も直す（上の「ドメインへ移す」）
-- 開発用の戻り先は、`pnpm dev` の画面の URL（`http://localhost:5173`）。OAuth App は戻り先を1つしか登録できないので、`DEV_PORT_OFFSET` でポートをずらして確かめるときは、OAuth App の2つの URL をそのポートに書き換える
+- 戻り先の URL は、アプリが開始のときに渡す `redirect_uri`（`PUBLIC_ORIGIN` に `/api/auth/github/callback` を足した値）と、OAuth App に登録した Redirect URI のどれかが合う必要がある。独自ドメインへ移すときは、OAuth App の Homepage URL と Redirect URI も直す（上の「ドメインへ移す」）
+- 開発用の戻り先は、`pnpm dev` の画面の URL（`http://localhost:5173`）。`DEV_PORT_OFFSET` でポートをずらして確かめるときは、OAuth App の「Add redirect URI」で、そのポートの戻り先（例 `http://localhost:5183/api/auth/github/callback`）を足す（10個まで登録できる）
 - 開発用の OAuth App で確かめるのは、本物のログインとログアウトだけ。e2e は seed のセッションの Cookie で通し、OAuth App の値を渡さない（`docs/development.md` の「開発とテストでのログイン」）
 - シークレットは git、ログ、Issue、PR に書かない。漏れたと分かったら、OAuth App でシークレットを作り直して入れ替える
 
