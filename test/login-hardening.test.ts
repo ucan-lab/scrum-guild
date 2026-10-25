@@ -3,6 +3,7 @@
 import { env } from 'cloudflare:workers';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { me } from '../src/shared/operations/session/index.ts';
+import { LOGIN_RATE_LIMIT, LOGIN_RATE_LIMIT_IPV6_SITE } from '../src/server/auth/rate-limit.ts';
 import { commonDb } from '../src/server/db/index.ts';
 import { createFakeGithub } from './auth/fake-github.ts';
 import { createLoginApp, FakeBrowser, loginEnv, STATE_COOKIE } from './auth/browser.ts';
@@ -167,7 +168,10 @@ describe('IPv6 の枠', () => {
     const db = commonDb(env);
     await db.batch([
       db.statement((q) =>
-        q.updateTable('rate_limits').set({ count: 60 }).where('key', '=', 'login:2001:db8:aa:bb::/64'),
+        q
+          .updateTable('rate_limits')
+          .set({ count: LOGIN_RATE_LIMIT.max })
+          .where('key', '=', 'login:2001:db8:aa:bb::/64'),
       ),
     ]);
     expect((await b.start()).response.headers.get('Location')).toBe('/login?error=too_many');
@@ -183,7 +187,10 @@ describe('IPv6 の枠', () => {
     const db = commonDb(env);
     await db.batch([
       db.statement((q) =>
-        q.updateTable('rate_limits').set({ count: 600 }).where('key', '=', 'login48:2001:db8:ee::/48'),
+        q
+          .updateTable('rate_limits')
+          .set({ count: LOGIN_RATE_LIMIT_IPV6_SITE.max })
+          .where('key', '=', 'login48:2001:db8:ee::/48'),
       ),
     ]);
     // /64 の枠は空（2回目）でも、/48 の枠が上限を超えているので断る
