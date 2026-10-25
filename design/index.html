@@ -265,8 +265,9 @@ const SECTIONS = [
       <span class="kind is-epic">${icon("flag")}</span><span class="kind is-story">${icon("check")}</span>
     </div>
     <div class="callout is-ok">${icon("check")}<span>取り込み元で完了になりました。完了にするかはここで決めます。</span></div>
-    <div class="callout is-warn">${icon("alert")}<span>10月は配分の合計が 110% です。本人にだけ見えています。</span></div>`,
-    ["期日の印は、期限切れが赤、今日と今週が橙、それより先は色なし。完了したら色を付けない。", "取り込み元の期限には「（取り込み元）」を添える。", "ポイントは枠付きの数字、未見積もりは点線の「未」。", "クリア報酬の段階（小・中・大）は、ポイントと混ざらないよう別の形（tier）にする。"],
+    <div class="callout is-warn">${icon("alert")}<span>10月は配分の合計が 110% です。本人にだけ見えています。</span></div>
+    <div class="callout is-info">${icon("archive")}<span>2026-10-22 に閉じました。読み取り専用です。 <a href="admin.html">組織の管理で開き直す</a></span></div>`,
+    ["期日の印は、期限切れが赤、今日と今週が橙、それより先は色なし。完了したら色を付けない。", "取り込み元の期限には「（取り込み元）」を添える。", "ポイントは枠付きの数字、未見積もりは点線の「未」。", "クリア報酬の段階（小・中・大）は、ポイントと混ざらないよう別の形（tier）にする。", "閉じたワークスペースの帯は .callout.is-info で、ワークスペースの中のどの画面にも先頭に置く。開き直すボタンは置かず、管理者には組織の管理へのリンクだけを添える。"],
     ".chip .is-danger .is-warn .is-todo .is-ok .is-carry / .tag / .status-dot / .source-key / .pts .is-none / .tier / .kind .is-epic .is-story / .callout .is-ok .is-warn .is-info")],
   ["people", "人とレベル", () => block("people", "人とレベル", "他の人に見せるのはレベルだけ。経験値の数字は本人だけ。",
     `<div class="cat-row">

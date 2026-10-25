@@ -1,13 +1,20 @@
 // 本番の操作の一覧を回して、組織の分離と権限を確かめる。新しい操作を足しても、このファイルは書き足さない。
 // 組織の中の操作のテスト用の関数（test/operations/pointers.ts）が無いと落ちる
 import { describe, expect, test } from 'vitest';
-import { permissions } from '../src/shared/operations/define.ts';
+import { isWorkspaceOperation, permissions } from '../src/shared/operations/define.ts';
 import { operations } from '../src/shared/operations/index.ts';
 import { createApp } from '../src/server/app.ts';
 import { ApiError } from '../src/server/errors.ts';
 import { implement } from '../src/server/operations/implement.ts';
 import { implementedOperations } from '../src/server/operations/index.ts';
-import { assertPointersCover, checkRowIsolation, defineOperationChecks, post } from './operations/harness.ts';
+import {
+  assertPointersCover,
+  checkRowIsolation,
+  defineOperationChecks,
+  errorCodeOf,
+  inputFor,
+  post,
+} from './operations/harness.ts';
 import { operatorGithub, pointers } from './operations/pointers.ts';
 import { provisionalOperations, provisionalPointers, renameWorkspace, taskTitle } from './operations/provisional.ts';
 import { createTarget } from './operations/world.ts';
@@ -108,6 +115,33 @@ describe('仮の操作の一覧', () => {
 assertPointersCover(implementedOperations, pointers);
 describe('本番の一覧の分離と権限', () =>
   defineOperationChecks(implementedOperations, pointers, { fetcher: operatorGithub.fetcher }));
+
+// 一覧のうち、allowClosed の無いワークスペースの下の write を、閉じたワークスペースで呼ぶ。一覧に足した操作も自動で入る
+describe('本番の閉じたワークスペースへの書き込み', () => {
+  const guarded = implementedOperations
+    .map((operation) => operation.definition)
+    .filter(isWorkspaceOperation)
+    .filter((definition) => definition.mode === 'write' && definition.allowClosed !== true);
+  const app = createApp(implementedOperations, { fetcher: operatorGithub.fetcher });
+
+  test('止める書き込みの一覧は、タスクの作成と完了を含み、開き直す操作を含まない', () => {
+    const names = guarded.map((definition) => definition.name);
+    expect(names).toEqual(expect.arrayContaining(['task-create', 'task-complete', 'workspace-close']));
+    expect(names).not.toContain('workspace-reopen');
+  });
+
+  test.each(guarded.map((definition) => definition.name))('%s は 409 の workspace_closed で断る', async (name) => {
+    const definition = guarded.find((candidate) => candidate.name === name)!;
+    const closed = await createTarget({ closed: true });
+    const res = await post(app, definition, {
+      slug: closed.slug,
+      token: closed.admin.token,
+      body: await inputFor(pointers, definition, closed),
+    });
+    expect(res.status).toBe(409);
+    expect(await errorCodeOf(res)).toBe('workspace_closed');
+  });
+});
 
 describe('本番の運用者の操作', () => {
   test('組織の一覧、GitHub のユーザー名の解決、組織の作成が、運用者の権限で一覧に載っている', () => {

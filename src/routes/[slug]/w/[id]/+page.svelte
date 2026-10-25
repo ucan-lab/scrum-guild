@@ -11,7 +11,6 @@
   import TaskEntry from '../../../../lib/components/TaskEntry.svelte';
   import TreeStory from '../../../../lib/components/TreeStory.svelte';
   import { callOperation } from '../../../../lib/api.ts';
-  import { formatLocalDate } from '../../../../lib/format.ts';
   import { showToast } from '../../../../lib/toast.svelte.ts';
   import { t } from '../../../../lib/vocabulary.svelte.ts';
   import type { BacklogStory, BacklogTask } from '../../../../shared/operations/task/backlog-tree.ts';
@@ -22,7 +21,7 @@
   // それぞれ position の順。ストーリーの下には未完了のタスクを並べ、完了したタスクは件数の1行にする。
   // 並べ替え、絞り込み、折りたたみを開ける操作、エピックの段は、それぞれの機能の Issue で足す。
   // 見出しは見本どおり画面の名前（掲示板／バックログ）で、小見出しがワークスペースの名前。見出しの右に、ストーリーを作るボタンと起票のボタン。
-  // 閉じていれば、閉じた日を印で出し、作る操作と完了の操作は出さない（ストーリーのダイアログは読み取り専用で開く）。
+  // 閉じていれば、作る操作と完了の操作は出さない（ストーリーのダイアログは読み取り専用で開く。閉じていることはワークスペースの枠の帯が伝える）。
   // 完了にした行は、読み直すまで完了の印を付けてその場に残し、その行のポイントを親の「完了」に即時に足す。折りたたみの件数は読み直した値なので、その行は読み直すまで入らない。
   // 起票したタスクは、読み直さずに親の配下（親なしなら一覧の末尾）に足し、親の「全体」のポイントにも足す。親の行が畳まれていれば開く。
   // ストーリーを作った、直したときは、木を読み直す。
@@ -166,9 +165,7 @@
 {:else if workspace && tree}
   <PageHead title={t('backlog')} eyebrow={workspace.name} focusable>
     {#snippet actions()}
-      {#if workspace.closedAt}
-        <span class="chip">{t('workspaceClosedChip', { date: formatLocalDate(workspace.closedAt) })}</span>
-      {:else}
+      {#if canWrite}
         <button class="btn" type="button" onclick={(event) => storyDialog?.show(event.currentTarget)}>
           <Icon name="plus" />{t('storyCreate', { story: t('story') })}
         </button>

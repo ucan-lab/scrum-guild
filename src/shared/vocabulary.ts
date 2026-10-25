@@ -648,6 +648,44 @@ export const dictionary = defineDictionary({
   themeSimpleDark: organization('シンプル（ダーク）', 'シンプル（ダーク）'),
   themeMedieval: organization('中世風', '中世風'),
   themeModern: organization('現代風', '現代風'),
+
+  // ワークスペースを閉じる、開き直す（組織の管理の画面）。{workspace} {task} {done} は、その言葉づかいの言葉を画面が渡す。
+  // {name} はワークスペースの名前
+  workspaceActionsHeader: organization('操作', '操作'),
+  workspaceCloseAction: organization('閉じる', '閉じる'),
+  workspaceReopenAction: organization('開き直す', '開き直す'),
+  workspaceCloseLabel: organization('「{name}」を閉じる', '「{name}」を閉じる'),
+  workspaceReopenLabel: organization('「{name}」を開き直す', '「{name}」を開き直す'),
+  workspaceCloseTitle: organization('{workspace}を閉じる', '{workspace}を閉じる'),
+  workspaceCloseText: organization(
+    '「{name}」を閉じると読み取り専用になり、{task}の作成や{done}などの書き込みができなくなります。閉じた後も、この画面から開き直せます。',
+    '「{name}」を閉じると読み取り専用になり、{task}の作成や{done}などの書き込みができなくなります。閉じた後も、この画面から開き直せます。',
+  ),
+  workspaceClosing: organization('閉じています', '閉じています'),
+  workspaceReopening: organization('開き直しています', '開き直しています'),
+  workspaceClosed: organization('{workspace}を閉じました', '{workspace}を閉じました'),
+  workspaceReopened: organization('{workspace}を開き直しました', '{workspace}を開き直しました'),
+  workspaceCloseFailed: organization(
+    '{workspace}を閉じられませんでした。もう一度試してください。',
+    '{workspace}を閉じられませんでした。もう一度試してください。',
+  ),
+  workspaceReopenFailed: organization(
+    '{workspace}を開き直せませんでした。もう一度試してください。',
+    '{workspace}を開き直せませんでした。もう一度試してください。',
+  ),
+  workspaceAlreadyClosed: organization('「{name}」は、すでに閉じています', '「{name}」は、すでに閉じています'),
+  workspaceAlreadyOpen: organization('「{name}」は、すでに開いています', '「{name}」は、すでに開いています'),
+  workspaceListLoadFailed: organization(
+    '{workspace}の一覧を読み込めませんでした',
+    '{workspace}の一覧を読み込めませんでした',
+  ),
+
+  // 閉じたワークスペースの帯（ワークスペースの中の全画面）。{date} は閉じた日、{page} は組織の管理の画面の名前
+  workspaceClosedBanner: workspace(
+    '{date} に閉じました。読み取り専用です。',
+    '{date} に閉じました。読み取り専用です。',
+  ),
+  workspaceClosedBannerLink: organization('{page}で開き直す', '{page}で開き直す'),
 });
 
 export type DictionaryKey = keyof typeof dictionary;

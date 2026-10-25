@@ -4,7 +4,7 @@
 // 組織の外の操作は、入力が必須の項目を持つときだけ足す（運用者の操作は、成功する入力を作る）
 import { createFakeGithub } from '../auth/fake-github.ts';
 import { githubUser } from '../auth/helpers.ts';
-import { createStory, createTask } from '../factories.ts';
+import { createStory, createTask, createWorkspace } from '../factories.ts';
 import type { Pointers } from './harness.ts';
 
 // 運用者の操作が問い合わせる GitHub。operation-registry.test.ts が fetcher を createApp に渡す
@@ -31,6 +31,20 @@ export const pointers: Pointers = {
   'workspace-leader-candidates': { noReference: {} },
   workspace: async (target) => ({ workspace_id: target.workspace.id }),
   'member-list': async (target) => ({ workspace_id: target.workspace.id }),
+  // 成功すると状態が変わるので、呼ぶたびに別のワークスペースを作る（続けて呼ぶと 409 になるため）。
+  // 閉じた対象（createTarget({ closed: true })）では閉じたワークスペースそのものを指し、閉じたものへの書き込みが 409 になることを見る
+  'workspace-close': async (target) => ({
+    workspace_id:
+      target.workspace.closed_at == null
+        ? (await createWorkspace(target.organization, target.admin.userId!)).id
+        : target.workspace.id,
+  }),
+  // 呼ぶたびに閉じたワークスペースを作る
+  'workspace-reopen': async (target) => ({
+    workspace_id: (
+      await createWorkspace(target.organization, target.admin.userId!, { closed_at: '2026-10-22T00:00:00.000Z' })
+    ).id,
+  }),
   'resolve-github-user': async () => ({ username: newGithubUser().login }),
   // slug は呼ぶたびに別の値にする（重なると 409 になる）
   'create-organization': async () => {
