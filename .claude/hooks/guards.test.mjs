@@ -45,9 +45,30 @@ describe('shell-words', () => {
     const [words] = splitSegments(`x $A "$B" '$C' \\$D {a,b} "{a,b}" a* "a*" $(y) "$(y)" $'\\x24' [ >$E`);
     assert.deepEqual(words.expands, [false, true, false, false, false, true, false, true, false, true, false, false, false, false]);
   });
-  test('語の後ろの ( は直前の語に展開の印を付け、中身の無い () には付けない', () => {
-    assert.deepEqual(splitSegments('w --b (K|N)')[0].expands, [false, true]);
-    assert.deepEqual(splitSegments('f() { ls; }')[0].expands, [false]);
+  test('引用符の中でも語を分ける展開に印を付ける', () => {
+    const [words] = splitSegments('x "a$@" "${a[@]}" "${(f)x}" "${=x}" "$*" "${x:-y}"');
+    assert.deepEqual(words.expands, [false, true, true, true, true, false, false]);
+  });
+  test('語ごとに、実行時に決まる位置を印にした形を持つ', () => {
+    const [words] = splitSegments(`x "a$B" '$C' \\$D $E "$(y)" $'\\x24' "\${F:-g}h" $1.`);
+    assert.deepEqual(words.shapes, ['x', 'a\0', '$C', '$D', '\0', '\0', '$', '\0h', '\0.']);
+  });
+  test('${…} の中の置換を取り出し、二重引用符の中の \\<改行> を消す', () => {
+    assert.deepEqual(splitSegments('echo "${X:-$(a b)}" ${Y:-`c`}').slice(1), [['a', 'b'], ['c']]);
+    assert.deepEqual([...splitSegments('x "\\\n--r" "\\--y" "\\$z"')[0]], ['x', '--r', '\\--y', '$z']);
+  });
+  test('$\'…\' を bash と同じに解く', () => {
+    assert.deepEqual([...splitSegments("x $'\\u0077' $'\\U00000077' $'\\cA' $'\\e' $'\\q' $'a\\x00b'c")[0]], [
+      'x', 'w', 'w', '\x01', '\x1b', '\\q', 'ac',
+    ]);
+  });
+  test('語の後ろの ( は、展開の印の付いた語として残し、中身の無い () は残さない', () => {
+    const [words] = splitSegments('w --b (K|N) x(N) --(r|s)');
+    assert.deepEqual([...words], ['w', '--b', '(…)']);
+    assert.deepEqual(words.expands, [false, false, true]);
+    assert.deepEqual([...splitSegments('w >/dev/null (K|N)')[0]], ['w', '>/dev/null', '(…)']);
+    assert.deepEqual([...splitSegments('w --(r|s)')[0]], ['w', '--(…)']);
+    assert.deepEqual([...splitSegments('f() { ls; }')[0]], ['f']);
   });
 });
 
@@ -143,6 +164,46 @@ describe('bash-rules: 止める', () => {
     'wrangler kv key put k v --local --binding (KV|--no-local)',
     'wrangler r2 object put attachments/a.png --local --file a.png(N)',
     'wrangler (d1|deploy)',
+    'wrangler dev --(remote|remote)',
+    'wrangler dev >/dev/null (--remote|--remote)',
+    // 引用符の中でも語を分ける展開
+    'set -- "" --no-local; wrangler kv key put k v --local --binding "KV$@"',
+    'set -- "" --remote; wrangler dev --name="worker$@"',
+    'wrangler kv key put k v --local --binding "v${a[@]}"',
+    'wrangler kv key put k v --local --binding "${(f)x}"',
+    // ${…} の中の置換は、引用符の内外を問わず別の区切りとして見る
+    'echo "${X:-$(wrangler deploy)}"',
+    ': ${X:=$(wrangler deploy)}',
+    'echo "${X:-`wrangler deploy`}"',
+    'echo "${X:-it\'s $(wrangler deploy)}"',
+    'true "${X:-$(wrangler d1 execute DB --remote --command \'drop table t\')}"',
+    'echo ${X:-${Y:-$(git push origin main)}}',
+    // zsh の語を分ける形
+    'X=(x --no-local); wrangler r2 object put "a/$X[@]" --file a.png --local',
+    'X=(KV --no-local); wrangler kv key put k v --local --binding="$X[@]"',
+    'wrangler kv key put k v --local --binding="$=X"',
+    'set -- KV --no-local; wrangler kv key put k v --local --binding="$argv[@]"',
+    'wrangler r2 object put "a/${(@f)X}" --file a.png --local',
+    // ~名前
+    'hash -d n=--remote; wrangler dev ~n',
+    'OLDPWD=--no-local; wrangler kv key put k v --local --binding ~-',
+    'wrangler kv key put k v --local --binding=~-',
+    // 別名の長い形 --r
+    'wrangler dev --r',
+    'wrangler dev --r=true',
+    'corepack pnpm exec wrangler dev --r',
+    // $'…' の \u と \U と NUL
+    "$'\\u0077rangler' deploy",
+    "$'\\U00000077rangler' deploy",
+    "wrangler d1 execute DB --local $'\\u002d-remote'",
+    "wrangler kv key put k v --local $'\\x00'--remote",
+    // 二重引用符の中の \\<改行>
+    'wrangler kv key put k v --local --file "\\\n$X"',
+    'wrangler kv key put k v --local "\\\n--remote"',
+    'wrangler kv key put k v --local "\\\n--no-local"',
+    // 展開した結果が --local の値の false になりうる語
+    'X=se; wrangler r2 object get attachments/a --local "fal$X"',
+    'wrangler r2 object get attachments/a --local "f$(echo alse)"',
     // 引用符の中でも、展開した結果がフラグになりうる語
     'wrangler r2 object put attachments/a.png --local --file "$X"',
     'wrangler d1 execute DB --local --command "$SQL"',
@@ -505,8 +566,8 @@ describe('bash-rules: 止める', () => {
     assert.match(verdict('wrangler kv key put k v --local --no-local')[1], /local を打ち消して本番に向く/);
     assert.match(verdict('wrangler kv key put k v --no-local')[1], /local を打ち消して本番に向く/);
     assert.match(verdict('wrangler kv key put k v --local $F')[1], /展開した後に本番に向くかを判定できない/);
-    assert.match(verdict('wrangler kv key put k v --local "$F"')[1], /--flag="\$X" の形で渡す/);
-    assert.match(verdict('wrangler kv key put k v --local --binding "$(printf -- --no-local)"')[1], /--flag="\$X" の形で渡す/);
+    assert.match(verdict('wrangler kv key put k v --local "$F"')[1], /--flag="\$X" の形で/);
+    assert.match(verdict('wrangler kv key put k v --local --binding "$(printf -- --no-local)"')[1], /位置引数は固定の文字で始めて/);
     assert.match(verdict('wrangler dev -lr')[1], /--remote/);
     assert.match(verdict('"$(which wrangler)" deploy')[1], /道具の名前を変数/);
     assert.match(verdict('wrangler kv key put k v --local --local.foo=bar')[1], /どのフラグと読むかを判定できない/);
@@ -542,6 +603,9 @@ describe('bash-rules: 確認を挟む', () => {
     'npx "$W" deploy',
     'pnpm exec $W deploy',
     './node_modules/.bin/wrangle? deploy',
+    'hash -d w=wrangler; ~w deploy',
+    'OLDPWD=wrangler; ~- deploy',
+    '{wrangler,x} deploy',
     'gh stack push',
     'gh stack sync',
     'cd ~ && git push --force-with-lease',
@@ -624,6 +688,28 @@ describe('bash-rules: 通す', () => {
     'wrangler r2 object get "attachments/a b?.png" --local',
     "wrangler r2 object put 'attachments/a[1].png' --file a.png --local",
     'wrangler r2 object get attachments/a\\*.png --local',
+    // 文字としての $
+    "wrangler r2 object put attachments/a --local --file '$report.txt'",
+    'wrangler r2 object put attachments/a --local --file \\$report.txt',
+    "wrangler r2 object put attachments/a --local --file $'\\x24report.txt'",
+    // --local の次の語でも、false になりえない展開は通す
+    'wrangler r2 object put --local "attachments/$K" --file a.png',
+    // 1語のまま展開すると決まっている、引用符の中の変数
+    'wrangler dev --port="${PORT:-8788}"',
+    'wrangler r2 object put "attachments/${K}.png" --file a.png --local',
+    'wrangler r2 object put "attachments/$K.png" --file "./$F" --local',
+    // ~ だけと ~/ は家のディレクトリ
+    'wrangler r2 object put attachments/a.png --file ~/a.png --local',
+    '~/.claude/scripts/git-cleanup-merged.sh 136-hook-expansion',
+    // プロセス置換、case のラベル、サブシェル、[[ =~ ]] の括弧は、道具の名前の展開にしない
+    'diff <(sort a) <(sort b)',
+    'comm -12 <(sort a) <(sort b)',
+    'case "$x" in *.md) echo md;; *) echo other;; esac',
+    'if (cd x && git diff --quiet); then echo same; fi',
+    'if ! (cd x); then echo ng; fi',
+    'time (sleep 1)',
+    '[[ $x =~ ^(a|b)$ ]] && echo ok',
+    'for ((i = 0; i < 3; i++)); do echo $i; done',
     'wrangler kv key put k v --local -- $X',
     '{ wrangler d1 execute DB --local --command "select 1"; }',
     'if [ -f x ]; then echo ok; fi',

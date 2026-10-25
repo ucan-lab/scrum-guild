@@ -186,7 +186,7 @@ pnpm exec wrangler d1 execute DB --local --persist-to <一時の場所>/d1-with-
 git worktree remove worktrees/main-snapshot
 ```
 
-- `<一時の場所>` はセッションの一時のディレクトリ（スクラッチパッドなど）。リポジトリの中に置かない
+- `<一時の場所>` はセッションの一時のディレクトリ（スクラッチパッドなど）。リポジトリの中に置かない。変数で書かずに絶対パスで書く（`--persist-to "$TMPDIR/…"` は、フックが展開した結果をフラグと読みうるものとして止める。変数を使うなら `--persist-to="$DIR/d1-with-rows"` の形にする）
 - 起点は `origin/main` ではなく、このブランチとの分かれ目（`merge-base`）にする。ブランチに無いマイグレーションが混ざらないようにするため
 - `--config` を渡すと、wrangler はその設定の `migrations_dir` から読む。手元の D1 は `database_id` で決まるので、分かれ目の状態に seed を入れてから、このブランチの設定で当て直すと、新しいファイルだけが当たる。`database_id` を変える PR では、この手順は使えない
 - seed の流し方は、分かれ目の `CLAUDE.md` の「コマンド」に従う。seed がまだ無い間は、新しいファイルが当たる行（重なりや NULL や親の無い行になりうる値を含む）を入れる SQL を自分で書いて流す
