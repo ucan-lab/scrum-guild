@@ -34,8 +34,9 @@ describe('shell-words', () => {
   test('リダイレクトを1語にまとめ、2>&1 を残さない', () => {
     assert.deepEqual(splitSegments('git push origin x>log 2>&1'), [['git', 'push', 'origin', 'x', '>log']]);
   });
-  test('二重引用符の中の置換を取り出す', () => {
-    assert.deepEqual(splitSegments('echo "a $(wrangler deploy) b"'), [['echo', 'a  b'], ['wrangler', 'deploy']]);
+  test('二重引用符の中の置換は、元の語に印を残して中身を取り出す', () => {
+    assert.deepEqual(splitSegments('echo "a $(wrangler deploy) b"'), [['echo', 'a $(…) b'], ['wrangler', 'deploy']]);
+    assert.deepEqual(splitSegments('echo "a `wrangler deploy` b"'), [['echo', 'a $(…) b'], ['wrangler', 'deploy']]);
   });
   test('引用符の無い置換は、元の語に印を残して中身を取り出す', () => {
     assert.deepEqual(splitSegments('wrangler $(echo deploy) x'), [['wrangler', '$(…)', 'x'], ['echo', 'deploy']]);
@@ -80,6 +81,47 @@ describe('bash-rules: 止める', () => {
     'wrangler r2 bucket delete attachments',
     'wrangler r2 object get attachments/a.png --remote',
     'wrangler kv key list --remote --binding KV',
+    'wrangler r2 object put attachments/a.png --file a.png --local --no-local',
+    'wrangler kv key put k v --local --local=false',
+    'wrangler kv key put k v --local false',
+    'wrangler r2 object get attachments/a.png --local --local=0',
+    'wrangler r2 object get attachments/a.png --local --local=TRUE',
+    'wrangler kv key get k --local --no-local=true',
+    'wrangler kv key list --binding KV --no-local --local',
+    'wrangler d1 execute DB --local --no-local --command "select 1"',
+    'wrangler kv key put k v --local --local=',
+    'wrangler d1 migrations apply DB --local --no-local',
+    'wrangler d1 migrations list DB --local --local=false',
+    'wrangler d1 export DB --local --output out.sql --local false',
+    'wrangler kv bulk put keys.json --local --no-local',
+    'wrangler kv key put k v --local $F',
+    'wrangler kv key put k v --local "$F"',
+    'wrangler kv key put k v --local ${F}',
+    'wrangler kv key put k v --local $(echo false)',
+    'wrangler kv key put k v --local `echo false`',
+    'wrangler r2 object get attachments/a.png --local --local.foo=bar',
+    'wrangler kv key put k v --binding KV --local --local.foo=bar',
+    "wrangler r2 object get attachments/a.png --local '--local\n' false",
+    "wrangler r2 object get attachments/a.png --local '--local\r' false",
+    "wrangler d1 execute DB --local '--remote\n' --command \"select 1\"",
+    'wrangler d1 execute DB --local --remote.x=1 --command "select 1"',
+    'wrangler kv key put k v --binding KV --local >/dev/null false',
+    'wrangler kv key put k v --local 2>/dev/null false',
+    'wrangler kv key put k v --local </dev/null false',
+    'wrangler kv key put k v --local --local{,=false}',
+    'wrangler kv key put k v --local --{local,no-local}',
+    'wrangler kv key put k v --local {false,}',
+    'wrangler kv key put k v --local fals?',
+    'wrangler kv key put k v --local --no-loca?',
+    'wrangler kv key put k v --local --binding KV $NEG',
+    'wrangler kv key put k v --local --binding KV "$(printf -- --no-local)"',
+    'wrangler kv key put k v --local --no-$X',
+    'wrangler kv key put k v --name --no-local --local',
+    'wrangler d1 execute DB --command "drop table users" --remot{e,e} -- --local',
+    'wrangler d1 export DB --output prod.sql -y --remot{e,e} -- --local',
+    'wrangler d1 execute DB --local --yes $N $R --command "drop table users"',
+    'wrangler dev {--remote,}',
+    'wrangler d1 migrations apply $DB --local',
     'wrangler secret put GITHUB_CLIENT_SECRET',
     'wrangler versions secret put X',
     'wrangler login',
@@ -399,12 +441,32 @@ describe('bash-rules: 止める', () => {
     assert.equal(judgeBash('git -C/repo push --force-with-lease origin HEAD', { cwd: '/w', branchOf })?.[0], 'deny');
     assert.equal(judgeBash('cd /repo && git push --force-with-lease', { cwd: '/w', branchOf })?.[0], 'deny');
     assert.equal(judgeBash('git -C worktrees/x push --force-with-lease', { cwd: '/repo', branchOf }), null);
+    for (const command of [
+      'git -C "$(git rev-parse --show-toplevel)" commit -m x',
+      'git -C "$(pwd)" merge x',
+      'git -C $(pwd) commit -m x',
+      'git -C "$PWD" commit -m x',
+      'git -C ~/repo commit -m x',
+      'git -C$PWD commit -m x',
+      'git -C /rep? commit -m x',
+      "git -C '/re*' commit -m x",
+      'git -C {/repo,/x} commit -m x',
+    ]) {
+      assert.equal(judgeBash(command, { cwd: '/repo', branchOf })?.[0], 'ask', command);
+    }
+    // 二重引用符の中の置換も、refspec を判定できないものとして見る
+    assert.equal(judgeBash('git push origin "$(git branch --show-current)"', { cwd: '/w', branchOf })?.[0], 'ask');
   });
 
   test('止めた理由が規則に合っている', () => {
     assert.match(verdict('wrangler login')[1], /シークレットとログイン/);
     assert.match(verdict('wrangler deploy')[1], /本番に触る/);
     assert.match(verdict('wrangler d1 execute DB')[1], /--local/);
+    assert.match(verdict('wrangler kv key put k v --local --no-local')[1], /local を打ち消して本番に向く/);
+    assert.match(verdict('wrangler kv key put k v --no-local')[1], /local を打ち消して本番に向く/);
+    assert.match(verdict('wrangler kv key put k v --local $F')[1], /展開した後に本番に向くかを判定できない/);
+    assert.match(verdict('wrangler kv key put k v --local --local.foo=bar')[1], /どのフラグと読むかを判定できない/);
+    assert.match(verdict('wrangler secret put X --a.b')[1], /シークレットとログイン/);
     assert.match(verdict('git push -f')[1], /--force-with-lease/);
     assert.equal(decision('git push --force-with-lease', 'main'), 'deny');
     assert.match(verdict('gh api -X PUT repos/o/r/pulls/1/merge')[1], /gh pr merge/);
@@ -499,10 +561,23 @@ describe('bash-rules: 通す', () => {
     'wrangler d1 migrations apply DB --local',
     'wrangler d1 migrations list DB --local',
     'wrangler d1 execute DB --local --remote=false',
-    'wrangler d1 migrations apply $DB --local',
     'wrangler dev --port $PORT',
+    'wrangler d1 execute DB --local --command "select * from tasks where id in (?)"',
+    'wrangler d1 execute DB --local --command="select * from tasks"',
+    'wrangler kv key put k v --local 2>/dev/null',
+    'wrangler kv key put k -1.5 --local',
+    "wrangler kv key put k v --local -- '--x.y'",
+    'wrangler d1 execute DB --local --persist-to "$DIR" --command "select 1"',
+    'wrangler dev --var "A:$(cat x)"',
+    `wrangler kv key put k v --binding KV --local --metadata '{"a":1}'`,
     'git commit -m "$(cat msg.txt)"',
     'wrangler r2 object put attachments/a.png --file a.png --local',
+    'wrangler r2 object get attachments/a.png --local=true',
+    'wrangler kv key put k v --local true',
+    'wrangler kv key put k v --local=true',
+    'wrangler kv key put --local k v',
+    'wrangler r2 object put attachments/a.png --file=./a.png --local',
+    'wrangler d1 execute DB --local=true --command "select 1"',
     'pnpm install',
     'pnpm install --frozen-lockfile',
     'pnpm why wrangler',

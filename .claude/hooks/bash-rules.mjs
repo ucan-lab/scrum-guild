@@ -42,10 +42,51 @@ function findWrangler(words, ci) {
 
 const WRANGLER_FLAGS_WITH_VALUE = new Set([
   '-c', '--config', '-e', '--env', '--cwd', '--env-file', '--name', '--port', '--ip', '--command', '--file', '--binding',
+  '--persist-to', '--var', '--metadata', '--content-type',
 ]);
 const WRANGLER_PRODUCTION = new Set(['deploy', 'publish', 'rollback', 'versions', 'deployments', 'delete', 'triggers', 'tail']);
 const SECRET_REASON = 'シークレットとログインは人が扱う（セッションに Cloudflare の資格情報を置かない）';
 const PRODUCTION_REASON = 'デプロイ、版、本番のログ、D1 と R2 の作成と削除は Workers Builds と人が行う';
+
+// wrangler の yargs は、真偽のフラグが重なると後の値を採り、--local の次の語が true か false ならそれを値として読み、
+// --local= の値は "true" のときだけ true にする。r2 と kv は local が false だと本番に向く。
+// ここと下の yargs の読み方は、wrangler 4.152.0 に同梱の yargs 17.7.2 と yargs-parser 21.1.1 で確かめた（2026-10-25）。
+// 後の値を採る規則は真似ず、打ち消しが1つでもあれば順番に関わらず止める
+function negatesLocal(words) {
+  return words.some(
+    (a, i) =>
+      a.startsWith('--no-local') ||
+      (a.startsWith('--local=') && a !== '--local=true') ||
+      (a === '--local' && words[i + 1] === 'false'),
+  );
+}
+
+// yargs が読む語。-- の後ろはフラグにならず、リダイレクトはシェルが argv から外す（--local >/dev/null false は --local false）。
+// 値を取るフラグの値も除く。ただし - で始まる語は yargs が値にせずフラグとして読むので残す
+function flagWords(args) {
+  const end = args.indexOf('--');
+  const head = end === -1 ? args : args.slice(0, end);
+  const words = [];
+  for (let i = 0; i < head.length; i++) {
+    const a = head[i];
+    if (/^[<>]/.test(a) || (a.includes('=') && WRANGLER_FLAGS_WITH_VALUE.has(a.split('=')[0]))) continue;
+    if (WRANGLER_FLAGS_WITH_VALUE.has(a) && head[i + 1] !== undefined && !head[i + 1].startsWith('-')) {
+      words.push(a);
+      i++;
+      continue;
+    }
+    words.push(a);
+  }
+  return words;
+}
+
+// 変数、$(...)、brace 展開、glob は、シェルが展開した後に --no-local や --remote になりうる（--local{,=false}、--remot{e,e}）
+const EXPANDS = /[$`{}*?[\]]/;
+
+// yargs はフラグの名前を改行の手前で切り（'--local<改行>' は --local）、. の後ろをドット記法で読む（--local.x=1 で local が配列になり、
+// r2 と kv は本番に向く）。名前の完全一致で見る判定が外れるので、名前に空白、改行、. を含むフラグは止める。
+// -1.5 のような負の数は、yargs が値として読むので除く
+const UNREADABLE_FLAG = /^-(?!\d)[^=]*[\s.]/;
 
 function judgeWrangler(args) {
   const isRemote = args.some(
@@ -65,10 +106,22 @@ function judgeWrangler(args) {
   if (pos.includes('secret') || pos.includes('login')) return [DENY, SECRET_REASON];
   if (pos.some((p) => WRANGLER_PRODUCTION.has(p))) return [DENY, `wrangler ${pos[0]} は本番に触る。${PRODUCTION_REASON}`];
 
+  const words = flagWords(args);
+  if (words.some((a) => UNREADABLE_FLAG.test(a))) {
+    return [DENY, 'wrangler のフラグの名前に空白、改行、. を含むと、wrangler がどのフラグと読むかを判定できない'];
+  }
+  if (words.some((a) => EXPANDS.test(a))) {
+    return [DENY, 'wrangler の引数を変数、$(...)、{a,b}、glob で組み立てると、展開した後に本番に向くかを判定できない（値を取るフラグの値は除く）'];
+  }
+
   const [sub, sub1, sub2] = pos;
-  const hasLocal = args.includes('--local');
-  const needLocal = (what) =>
-    hasLocal ? null : [DENY, `${what} は --local を付けて手元の D1、R2、KV に向けて実行する`];
+  const hasLocal = words.includes('--local') || words.includes('--local=true');
+  const needLocal = (what) => {
+    if (negatesLocal(words)) {
+      return [DENY, `${what} の --no-local、--local=<true 以外>、--local false は local を打ち消して本番に向く。--local だけを付ける`];
+    }
+    return hasLocal ? null : [DENY, `${what} は --local を付けて手元の D1、R2、KV に向けて実行する`];
+  };
 
   if (sub === undefined) return null; // wrangler --version、wrangler --help
   if (['dev', 'types', 'help', 'version', 'whoami'].includes(sub)) return null;
@@ -101,13 +154,18 @@ function isOption(arg, full, shortest) {
   return name.length >= shortest && full.startsWith(name);
 }
 
+// git -C "$(git rev-parse --show-toplevel)"、-C ~/x、-C /rep? の行き先は、実行するまで分からない
+function gitDirAt(dir, target) {
+  return /^~|[$*?[\]{}]/.test(target) ? null : dir && path.resolve(dir, target);
+}
+
 // dir が null のときは、作業場所を判定できない（cd ~、cd $X、GIT_DIR=）
 function judgeGit(args, dir, branchOf) {
   let i = 0;
   let gitDir = dir;
   while (i < args.length && args[i].startsWith('-')) {
-    if (args[i] === '-C') gitDir = gitDir && path.resolve(gitDir, args[i + 1] ?? '.');
-    if (/^-C./.test(args[i])) gitDir = gitDir && path.resolve(gitDir, args[i].slice(2));
+    if (args[i] === '-C') gitDir = gitDirAt(gitDir, args[i + 1] ?? '.');
+    if (/^-C./.test(args[i])) gitDir = gitDirAt(gitDir, args[i].slice(2));
     if (/^--(git-dir|work-tree)/.test(args[i])) gitDir = null;
     i += GIT_FLAGS_WITH_VALUE.has(args[i]) ? 2 : 1;
   }
