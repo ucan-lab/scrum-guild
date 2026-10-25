@@ -501,6 +501,20 @@ describe('ログインの手段の型（GitHub の招待する人の指し方）
     });
   });
 
+  test('見えない演算子（U+2060〜2064）と行の区切り（U+2028、U+2029）も取り除き、ALM（U+061C）は残す', async () => {
+    const { github, method: login } = method();
+    const chars = (...codePoints: number[]) => String.fromCodePoint(...codePoints);
+    github.addUser({
+      id: 583237,
+      login: 'invisible-cat',
+      name: `星野${chars(0x2060, 0x2062, 0x2064, 0x2028, 0x2029)}澪${chars(0x61c)}`,
+    });
+    expect(await login.resolveInvitee('invisible-cat')).toMatchObject({
+      kind: 'found',
+      invitee: { displayName: `星野澪${chars(0x61c)}` },
+    });
+  });
+
   test('表示名の長さは、コードポイントで200字に切り、絵文字を途中で割らない', async () => {
     const { github, method: login } = method();
     github.addUser({ id: 583236, login: 'long-cat', name: '😀'.repeat(250) });

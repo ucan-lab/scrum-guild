@@ -84,7 +84,7 @@ function avatarUrlOf(value: unknown): string | null {
   }
 }
 
-// 手段の側の名前。名前の見え方を偽れる文字（制御文字、双方向の制御、ゼロ幅スペース、BOM。shared/hidden-characters.ts）は
+// 手段の側の名前。名前で断る文字（制御文字、区切り、向きを変える文字、見えない空白や演算子。shared/hidden-characters.ts）は
 // 取り除く。似せたアカウントを指名させるのに使われうるため。絵文字の結合（ZWJ）などは残す。
 // 取り除いて空になる、空白だけ、文字列でない、のどれかなら null。長さはコードポイントで切る（絵文字を途中で割らない）
 function displayNameOf(value: unknown): string | null {

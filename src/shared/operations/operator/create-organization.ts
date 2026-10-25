@@ -47,7 +47,7 @@ export const createOrganization = defineOperation({
       .min(1)
       .max(ORGANIZATION_NAME_MAX_LENGTH)
       .refine((value) => !hasHiddenCharacter(value), {
-        message: '制御文字、双方向の制御、ゼロ幅スペース、BOM は使えない',
+        message: '制御文字、区切り、向きを変える文字、見えない空白や演算子は使えない',
       }),
     admin: z.discriminatedUnion('provider', [githubAdmin, googleAdmin]),
   }),

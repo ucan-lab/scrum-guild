@@ -1,9 +1,19 @@
-// 名前の見え方を偽れる文字。制御文字（Cc）、双方向の埋め込みと上書き（U+202A〜202E）、双方向の分離（U+2066〜2069）、
-// ゼロ幅スペース（U+200B）、BOM（U+FEFF）。表示名やログイン名の並びを入れ替えたり、見えない文字で似せたりするのに使われうる。
-// 絵文字の結合に要る ZWJ（U+200D）、ZWNJ（U+200C）、方向の印（LRM U+200E、RLM U+200F）は、書式文字（Cf）でも正しい名前に
-// 使うので含めない。scripts/ のテストと Worker の型の検査からも読むので、Node の型の除去で動く書き方に留める。
-// 正規表現のリテラルに見えない文字を直に置かないよう、エスケープを文字列で渡す
-const HIDDEN_CHARACTERS_SOURCE = '[\\p{Cc}\\u202A-\\u202E\\u2066-\\u2069\\u200B\\uFEFF]';
+// 名前（ワークスペースの名前、組織の表示名）で断り、GitHub の表示名から除く文字。名前の見え方を偽り、並びや表示を乱せるもの。
+// 判定はここの1か所に置き、ワークスペースの名前（workspace.ts）、組織の表示名（operator/create-organization.ts）、
+// GitHub の表示名（server/auth/github.ts）が同じ文字を扱う。
+//   - 制御文字（Cc）
+//   - ゼロ幅のスペース（U+200B）
+//   - 行と段落の区切り（U+2028、U+2029）
+//   - 文字の向きを変える制御（U+202A〜U+202E、U+2066〜U+2069）
+//   - 語結合子などの見えない演算子（U+2060〜U+2064）
+//   - BOM（U+FEFF）
+// 書式の文字（Cf）をまとめては扱わない。ZWJ（U+200D）でつないだ絵文字、ZWNJ（U+200C）を使うペルシア語やインド系の文字、
+// 方向の印（LRM U+200E、RLM U+200F、ALM U+061C）、旗のタグ文字（U+E0020〜U+E007F）の名前を通すため。
+// 画面の束にも入り、scripts/ からも読むので、Worker のコードを引かず、Node の型の除去で動く書き方に留める。
+// 文字は \u{...} で書く（生の文字や \uXXXX は、行の区切りが正規表現を壊し、見えないので差分でも読めない）。
+// 正規表現の文字列に \u{...} のまま渡すため、バックスラッシュを重ねて書く
+const HIDDEN_CHARACTERS_SOURCE =
+  '[\\p{Cc}\\u{200B}\\u{2028}\\u{2029}\\u{202A}-\\u{202E}\\u{2060}-\\u{2064}\\u{2066}-\\u{2069}\\u{FEFF}]';
 const HIDDEN_CHARACTERS = new RegExp(HIDDEN_CHARACTERS_SOURCE, 'u');
 const HIDDEN_CHARACTERS_GLOBAL = new RegExp(HIDDEN_CHARACTERS_SOURCE, 'gu');
 

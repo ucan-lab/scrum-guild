@@ -351,8 +351,8 @@ export const dictionary = defineDictionary({
   operatorErrorNameRequired: organization('表示名を入れてください。', '表示名を入れてください。'),
   operatorErrorNameLong: organization('表示名は 80 字までです。', '表示名は 80 字までです。'),
   operatorErrorNameInvalid: organization(
-    '表示名に使えない文字（制御文字、双方向の制御、ゼロ幅スペース）が含まれています。',
-    '表示名に使えない文字（制御文字、双方向の制御、ゼロ幅スペース）が含まれています。',
+    '表示名に使えない文字（制御文字、行や段落の区切り、向きを変える文字、見えない空白や演算子）が含まれています。',
+    '表示名に使えない文字（制御文字、行や段落の区切り、向きを変える文字、見えない空白や演算子）が含まれています。',
   ),
   operatorErrorInvalid: organization(
     '入力に誤りがあります。内容を確かめてください。',
