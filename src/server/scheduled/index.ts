@@ -3,7 +3,7 @@ import { cleanupExpired } from './cleanup-expired.ts';
 
 type ScheduledJob = (env: Env, scheduledTime: Date) => Promise<void>;
 
-export const scheduledJobs: ReadonlyMap<string, ScheduledJob> = new Map<string, ScheduledJob>([
+const scheduledJobs: ReadonlyMap<string, ScheduledJob> = new Map<string, ScheduledJob>([
   // 毎分: 期限を過ぎた行を消す
   ['* * * * *', (env, scheduledTime) => cleanupExpired(env, scheduledTime)],
 ]);

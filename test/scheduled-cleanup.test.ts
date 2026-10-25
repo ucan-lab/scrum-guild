@@ -3,16 +3,23 @@ import { createScheduledController } from 'cloudflare:test';
 import { env } from 'cloudflare:workers';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import {
+  consumeRateLimit,
   LOGIN_RATE_LIMIT,
   LOGIN_RATE_LIMIT_IPV6_SITE,
   LOGIN_RATE_LIMIT_POLICIES,
+  LOGIN_RATE_LIMITS,
   loginRateLimits,
   longestRateLimitWindowMs,
 } from '../src/server/auth/rate-limit.ts';
 import { commonDb } from '../src/server/db/index.ts';
 import { envWithD1Hooks } from '../src/server/db/testing.ts';
 import worker from '../src/server/index.ts';
-import { cleanupExpired, CLEANUP_ROW_LIMIT } from '../src/server/scheduled/cleanup-expired.ts';
+import {
+  cleanupExpired,
+  CLEANUP_MAX_ROUNDS,
+  CLEANUP_ROW_LIMIT,
+  CLEANUP_TIME_BUDGET_MS,
+} from '../src/server/scheduled/cleanup-expired.ts';
 import { operations } from '../src/shared/operations/index.ts';
 import { defineOperation } from '../src/shared/operations/define.ts';
 import { z } from 'zod';
@@ -157,22 +164,87 @@ describe('期限を過ぎた行を消す', () => {
 });
 
 describe('1回で消す行数の上限', () => {
-  test('上限を超える行があるとき、1回目は上限の行数だけ、2回目で残りが消える', async () => {
-    const states = [
-      await insertOauthState(iso(-3 * MINUTE)),
-      await insertOauthState(iso(-3 * MINUTE)),
-      await insertOauthState(iso(-3 * MINUTE)),
-    ];
+  async function insertOauthStates(count: number) {
+    const states: string[] = [];
+    for (let i = 0; i < count; i++) states.push(await insertOauthState(iso(-3 * MINUTE)));
+    return states;
+  }
 
-    await cleanupExpired(env, new Date(NOW), { limit: 2 });
+  test('回数の予算が1なら、1回目は上限の行数だけ、2回目で残りが消える', async () => {
+    const states = await insertOauthStates(3);
+
+    await cleanupExpired(env, new Date(NOW), { limit: 2, maxRounds: 1 });
     expect(await remaining('oauth_states', states)).toHaveLength(1);
 
-    await cleanupExpired(env, new Date(NOW), { limit: 2 });
+    await cleanupExpired(env, new Date(NOW), { limit: 2, maxRounds: 1 });
     expect(await remaining('oauth_states', states)).toEqual([]);
   });
 
-  test('既定の上限は1万行', () => {
+  test('1回の scheduled() で、上限を超える行が複数回の文で消えきる。warn は出ない', async () => {
+    const states = await insertOauthStates(5);
+
+    await cleanupExpired(env, new Date(NOW), { limit: 2 });
+
+    expect(await remaining('oauth_states', states)).toEqual([]);
+    expect(warn).not.toHaveBeenCalled();
+    expect(JSON.parse(String(info.mock.calls[0]?.[0]))).toMatchObject({
+      deleted: { oauth_states: 5, sessions: 0, rate_limits: 0 },
+      rounds: { oauth_states: 3, sessions: 1, rate_limits: 1 },
+      behind: [],
+    });
+  });
+
+  test('回数の予算を使い切ると、残りは次の回に残り、warn が出る', async () => {
+    const states = await insertOauthStates(7);
+
+    await cleanupExpired(env, new Date(NOW), { limit: 2, maxRounds: 2 });
+
+    expect(await remaining('oauth_states', states)).toHaveLength(3);
+    expect(info).not.toHaveBeenCalled();
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(JSON.parse(String(warn.mock.calls[0]?.[0]))).toMatchObject({
+      level: 'warn',
+      deleted: { oauth_states: 4 },
+      rounds: { oauth_states: 2 },
+      behind: ['oauth_states'],
+    });
+
+    await cleanupExpired(env, new Date(NOW), { limit: 2, maxRounds: 2 });
+    expect(await remaining('oauth_states', states)).toEqual([]);
+  });
+
+  test('時間の予算を使い切ると、どの表も最初の1文は送り、繰り返さずに warn が出る', async () => {
+    const states = await insertOauthStates(5);
+    const sessionHashes = [await insertSession(iso(-MINUTE)), await insertSession(iso(-MINUTE))];
+
+    await cleanupExpired(env, new Date(NOW), { limit: 2, timeBudgetMs: 0 });
+
+    expect(await remaining('oauth_states', states)).toHaveLength(3);
+    expect(await remaining('sessions', sessionHashes)).toEqual([]);
+    expect(JSON.parse(String(warn.mock.calls[0]?.[0]))).toMatchObject({
+      rounds: { oauth_states: 1, sessions: 1, rate_limits: 1 },
+      behind: ['oauth_states', 'sessions'],
+    });
+  });
+
+  test('ちょうど上限の件数の回は、次の文が0件で終わり、warn にならない', async () => {
+    const states = await insertOauthStates(2);
+
+    await cleanupExpired(env, new Date(NOW), { limit: 2 });
+
+    expect(await remaining('oauth_states', states)).toEqual([]);
+    expect(warn).not.toHaveBeenCalled();
+    expect(JSON.parse(String(info.mock.calls[0]?.[0]))).toMatchObject({
+      deleted: { oauth_states: 2 },
+      rounds: { oauth_states: 2 },
+      behind: [],
+    });
+  });
+
+  test('既定の上限は1万行、1つの表に送る文は20回まで、時間は20秒まで', () => {
     expect(CLEANUP_ROW_LIMIT).toBe(10000);
+    expect(CLEANUP_MAX_ROUNDS).toBe(20);
+    expect(CLEANUP_TIME_BUDGET_MS).toBe(20_000);
   });
 });
 
@@ -198,6 +270,46 @@ describe('失敗の切り分け', () => {
     const line = String(error.mock.calls[0]?.[0]);
     expect(JSON.parse(line)).toMatchObject({ level: 'error', table: 'sessions', error: 'Error' });
     expect(line).not.toContain('secret SQL detail');
+  });
+
+  test('繰り返しの途中で表が失敗したら、その表はそこで止まり、残りの表は続く', async () => {
+    const states = [
+      await insertOauthState(iso(-MINUTE)),
+      await insertOauthState(iso(-MINUTE)),
+      await insertOauthState(iso(-MINUTE)),
+    ];
+    const rateLimit = await insertRateLimit(iso(-LONGEST_WINDOW_MS - MINUTE));
+    let oauthStateBatches = 0;
+    const failing = envWithD1Hooks(env, {
+      beforeBatch: (sqls) => {
+        if (sqls.some((sql) => sql.startsWith('delete from "oauth_states"')) && ++oauthStateBatches === 2) {
+          throw new Error('secret SQL detail');
+        }
+      },
+    });
+
+    await expect(cleanupExpired(failing, new Date(NOW), { limit: 1 })).rejects.toThrow('oauth_states');
+
+    expect(oauthStateBatches).toBe(2);
+    expect(await remaining('oauth_states', states)).toHaveLength(2);
+    expect(await remaining('rate_limits', [rateLimit])).toEqual([]);
+  });
+
+  test('rate_limits の境目の計算が例外になっても、他の2表は消える', async () => {
+    const state = await insertOauthState(iso(-MINUTE));
+    const session = await insertSession(iso(-MINUTE));
+
+    // 窓が大きすぎて Date が不正になる（toISOString が RangeError）
+    await expect(cleanupExpired(env, new Date(NOW), { longestWindowMs: Number.MAX_VALUE })).rejects.toThrow(
+      'rate_limits',
+    );
+
+    expect(await remaining('oauth_states', [state])).toEqual([]);
+    expect(await remaining('sessions', [session])).toEqual([]);
+    expect(JSON.parse(String(error.mock.calls[0]?.[0]))).toMatchObject({
+      table: 'rate_limits',
+      error: 'RangeError',
+    });
   });
 });
 
@@ -238,18 +350,18 @@ describe('ログ', () => {
       job: 'cleanup-expired',
       limit: CLEANUP_ROW_LIMIT,
       deleted: { oauth_states: 1, sessions: 1, rate_limits: 1 },
+      rounds: { oauth_states: 1, sessions: 1, rate_limits: 1 },
+      behind: [],
     });
     for (const secret of [state, session, key]) expect(line).not.toContain(secret);
   });
 
-  test('上限に届いた表があれば、同じ行を warn に出す', async () => {
-    await cleanupExpired(env, new Date(NOW));
-    info.mockClear();
+  test('予算を使い切っても上限に届いた表があれば、同じ行を warn に出す', async () => {
     await insertOauthState(iso(-MINUTE));
     await insertOauthState(iso(-MINUTE));
     await insertOauthState(iso(-MINUTE));
 
-    await cleanupExpired(env, new Date(NOW), { limit: 2 });
+    await cleanupExpired(env, new Date(NOW), { limit: 2, maxRounds: 1 });
 
     expect(info).not.toHaveBeenCalled();
     expect(warn).toHaveBeenCalledTimes(1);
@@ -258,18 +370,34 @@ describe('ログ', () => {
       job: 'cleanup-expired',
       limit: 2,
       deleted: { oauth_states: 2, sessions: 0, rate_limits: 0 },
+      rounds: { oauth_states: 1, sessions: 1, rate_limits: 1 },
+      behind: ['oauth_states'],
     });
   });
 });
 
 describe('最長の窓', () => {
+  test('最長の窓に入らない窓の枠は、consumeRateLimit が例外にする', async () => {
+    const tooLong = { max: 1, windowMs: LONGEST_WINDOW_MS + 1 };
+    await expect(consumeRateLimit(env, 'login:too-long', tooLong, new Date(NOW))).rejects.toThrow('最長の窓');
+    const db = commonDb(env);
+    expect(
+      await db.first(db.statement((q) => q.selectFrom('rate_limits').selectAll().where('key', '=', 'login:too-long'))),
+    ).toBeUndefined();
+
+    const atLongest = { max: 1, windowMs: LONGEST_WINDOW_MS };
+    expect(await consumeRateLimit(env, 'login:at-longest', atLongest, new Date(NOW))).toBe(true);
+  });
+
   test('ログインの枠は、最長の窓以下', () => {
     for (const policy of LOGIN_RATE_LIMIT_POLICIES) expect(policy.windowMs).toBeLessThanOrEqual(LONGEST_WINDOW_MS);
     // loginRateLimits() が返す枠は、一覧の値だけ
     for (const ip of ['203.0.113.7', '2001:db8:1:2::1', undefined, 'not-an-ip']) {
       for (const { policy } of loginRateLimits(ip)) expect(LOGIN_RATE_LIMIT_POLICIES).toContain(policy);
     }
-    expect(LOGIN_RATE_LIMIT_POLICIES).toEqual([LOGIN_RATE_LIMIT, LOGIN_RATE_LIMIT_IPV6_SITE]);
+    expect(LOGIN_RATE_LIMIT_POLICIES).toEqual(Object.values(LOGIN_RATE_LIMITS));
+    expect(LOGIN_RATE_LIMIT).toBe(LOGIN_RATE_LIMITS.network);
+    expect(LOGIN_RATE_LIMIT_IPV6_SITE).toBe(LOGIN_RATE_LIMITS.ipv6Site);
   });
 
   test('操作の定義（operations、sessionOperations を含む）の rateLimit の窓は、最長の窓以下', () => {

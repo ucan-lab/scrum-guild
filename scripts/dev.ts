@@ -14,9 +14,6 @@ const wranglerArgs = [
   String(ports.api),
   '--inspector-port',
   String(ports.inspector),
-  // API のポートの /cdn-cgi/handler/scheduled?cron=*+*+*+*+* で定期処理を起こせるようにする。
-  // /__scheduled は assets の not_found_handling が先に答えるので届かない
-  '--test-scheduled',
   ...(version ? ['--var', `APP_VERSION:${version}`] : []),
   '--var',
   `PUBLIC_ORIGIN:${devPublicOrigin(ports, preview)}`,
