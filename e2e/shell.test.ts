@@ -296,6 +296,9 @@ for (const width of [390, 672]) {
     await page.setViewportSize({ width, height });
     await page.goto(today);
     await expect(page.getByRole('heading', { level: 1, name: '自分の今日' })).toBeVisible();
+    // 本文が画面より長いと空きは出ないので、この検査の前提が崩れたことを空きの失敗と分けて出す
+    const pageHeight = await page.evaluate(() => document.documentElement.scrollHeight);
+    expect(pageHeight, '画面の内容が高さを超えたので、height を上げる').toBeLessThanOrEqual(height);
 
     const binding = await page.locator('.binding').boundingBox();
     const inner = await page.locator('.binding-inner').boundingBox();
