@@ -1,5 +1,6 @@
 // pnpm dev:open が開く前に me を1回呼び、サーバーが立っていることと seed のセッションが生きていることを確かめる。
 // fetch を差し替えられるようにして、分かれ方を node --test で確かめる（scripts/dev-open-session.test.ts）
+import { SEED_OPERATOR_LOGIN_ID } from '../seed/sessions.ts';
 import { operationPath } from '../src/shared/operations/define.ts';
 import { me } from '../src/shared/operations/session/index.ts';
 import type { DevOpenTarget } from './dev-open-target.ts';
@@ -49,7 +50,7 @@ export async function checkDevOpenSession(
     // 運用者は OPERATOR_LOGIN_IDS で決まる。.dev.vars は git の外なので、新しいワークツリーには無い
     const operatorHint =
       target.who === 'operator'
-        ? '。または .dev.vars が無い（.dev.vars.example を写す。ワークツリーには写されない）'
+        ? `。または .dev.vars が無いか、その OPERATOR_LOGIN_IDS に seed の運用者の ${SEED_OPERATOR_LOGIN_ID} が無い（.dev.vars.example を写す。ワークツリーには写されない。直したら立て直す）`
         : '';
     return {
       ok: false,
