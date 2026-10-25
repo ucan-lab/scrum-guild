@@ -126,8 +126,8 @@
   const titleOf = (x) => `${x.src && x.src.kind === "review" ? "レビュー: " : ""}${esc(x.title)}`;
 
   // ---- 部品 ----
-  // ロゴの印。中世風は「冒」、他は頭文字
-  const brandSeal = `<span class="brand-seal" aria-hidden="true"><span class="orn-medieval">冒</span><span class="orn-plain">SG</span></span>`;
+  // ロゴのマーク。static/favicon.svg と同じ形と色で、テーマで変えない。名前は横の brand-name が読ませる
+  const brandMark = `<svg class="brand-mark" viewBox="0 0 32 32" aria-hidden="true"><path fill="#b58020" d="M7 2h18a3 3 0 0 1 3 3v25L16 22 4 30V5a3 3 0 0 1 3-3Z"/><path d="m10 13 4 4 8-8" fill="none" stroke="#fffaf0" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
   // opts.image はログインの手段の側のアバターの画像の URL（指名する人を確かめるときなど）。画像が読めないときは頭文字に戻す
   // （Avatar.svelte と同じ）。見本の画像は SAMPLE_PHOTO のような架空の data URI にし、外の URL を読まない
   function avatar(name, hue, opts = {}) {
@@ -1235,7 +1235,7 @@
     document.getElementById("app").innerHTML = `
     <div class="app">
       <aside class="binding" aria-label="メニュー"><div class="binding-inner">
-        <a class="brand" href="index.html" title="デザインシステムのカタログへ">${brandSeal}<span class="brand-name">Scrum Guild</span></a>
+        <a class="brand" href="index.html" title="デザインシステムのカタログへ">${brandMark}<span class="brand-name">Scrum Guild</span></a>
         <div id="org-menu-slot"></div>
         <nav class="nav" id="nav"></nav>
         <p class="binding-foot">デザインの見本。データはすべて架空の例です</p>
@@ -1526,7 +1526,7 @@
 
   window.SQ = {
     first, firstHref, firstSteps, emptyState,
-    D, t, brandSeal, THEMES, THEME_LABEL, THEME_NOTE, setVocab, toggleVocab, onChange, esc, icon, md, sumPts, cycleTheme, setTheme, applyTheme, mount,
+    D, t, brandMark, THEMES, THEME_LABEL, THEME_NOTE, setVocab, toggleVocab, onChange, esc, icon, md, sumPts, cycleTheme, setTheme, applyTheme, mount,
     onRedraw: (fn) => extraRedraws.push(fn), openDrawer, drawerHtml, drawerState: drawer,
     user, task, tasksWhere, repoTag, repoPicker, sprintLabel, colName, categoryOf, storyPts, epicPts, dueOf,
     avatar, avatarOf, SAMPLE_PHOTO, BROKEN_PHOTO, emblem, pts, dueChip, taskDue, tier, sourceKey, entry, book, section, pageHead,
