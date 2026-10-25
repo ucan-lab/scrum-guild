@@ -1,14 +1,12 @@
 import { z } from 'zod';
+import { hasHiddenCharacter } from '../../hidden-characters.ts';
 import { SLUG_MAX_LENGTH } from '../../organization-slug.ts';
 import { defineOperation } from '../define.ts';
 import { GITHUB_USERNAME_MAX_LENGTH } from './resolve-github-user.ts';
 
 export const ORGANIZATION_NAME_MAX_LENGTH = 80;
 
-// 制御文字（Cc）と書式文字（Cf。双方向の制御、ゼロ幅）。表示名の見え方を偽れるので、組織の表示名には使えない
-export function hasHiddenCharacter(value: string): boolean {
-  return /[\p{Cc}\p{Cf}]/u.test(value);
-}
+export { hasHiddenCharacter };
 
 // 入力の誤りの理由。400 の invalid_input の details に、項目ごとの { path, code, message } で入る。
 // 画面は code で文言を選ぶ（message は開発者向けで、画面に出さない）
@@ -48,7 +46,9 @@ export const createOrganization = defineOperation({
       .trim()
       .min(1)
       .max(ORGANIZATION_NAME_MAX_LENGTH)
-      .refine((value) => !hasHiddenCharacter(value), { message: '制御文字と書式文字は使えない' }),
+      .refine((value) => !hasHiddenCharacter(value), {
+        message: '制御文字、双方向の制御、ゼロ幅スペース、BOM は使えない',
+      }),
     admin: z.discriminatedUnion('provider', [githubAdmin, googleAdmin]),
   }),
   output: z.object({

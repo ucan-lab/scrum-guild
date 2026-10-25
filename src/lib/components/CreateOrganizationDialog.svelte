@@ -6,13 +6,14 @@
   import { isUnauthenticated, loginUrl } from '../login-redirect.ts';
   import { showToast } from '../toast.svelte.ts';
   import { t } from '../vocabulary.svelte.ts';
-  import { slugProblem, SLUG_MAX_LENGTH } from '../../shared/organization-slug.ts';
+  import { slugProblem } from '../../shared/organization-slug.ts';
   import {
     createOrganization,
     GITHUB_USERNAME_MAX_LENGTH,
     hasHiddenCharacter,
     ORGANIZATION_NAME_MAX_LENGTH,
     resolveGithubUser,
+    type AdminStatus,
   } from '../../shared/operations/operator/index.ts';
   import type { DictionaryKey } from '../../shared/vocabulary.ts';
   import Avatar from './Avatar.svelte';
@@ -26,8 +27,17 @@
   // 組織の URL（コピーできる）と、管理者になる人に伝えることを出す。
   //
   // 応答が遅れて届いても、古い入力の結果で今の状態を書き換えない。要求を送るときの世代を覚え、応答のときに世代が
-  // 進んでいれば捨てる。dialogEpoch はダイアログの開閉、inputEpoch はユーザー名と手段の変更で進む
-  let { open = $bindable(false) }: { open?: boolean } = $props();
+  // 進んでいれば捨てる。dialogEpoch はダイアログの開閉、inputEpoch はユーザー名と手段の変更で進む。
+  // 作っている間は、入力欄と手段を読み取り専用にし、閉じる操作を無視する（応答を見失わない）。
+  // 作れたか分からない失敗（通信の切れ、5xx、slug の重なり）の後は、一覧を読み直し、同じ slug の組織があれば、このダイアログの中で示す。
+  // organizations は一覧の今の内容（運用の画面が渡す。読み直すと入れ替わる）
+  let {
+    open = $bindable(false),
+    organizations = [],
+  }: {
+    open?: boolean;
+    organizations?: readonly { slug: string; name: string; admin_status: AdminStatus }[];
+  } = $props();
 
   type Resolved = {
     username: string;
@@ -37,6 +47,7 @@
     avatarUrl: string | null;
   };
   type Created = { slug: string; name: string; adminLoginName: string };
+  type Existing = { slug: string; name: string; sameName: boolean; adminStatus: AdminStatus };
   type Field = 'slug' | 'name' | 'username' | 'form';
   type FailedResult = Extract<ApiResult<unknown>, { ok: false }>;
 
@@ -47,19 +58,35 @@
   let username = $state('');
   let resolved = $state<Resolved | null>(null);
   let created = $state<Created | null>(null);
+  let existing = $state<Existing | null>(null);
   let busy = $state<'idle' | 'resolving' | 'creating'>('idle');
   let errors = $state<Partial<Record<Field, DictionaryKey>>>({});
+  let doneLead = $state<HTMLElement>();
   let urlInput = $state<HTMLInputElement>();
+  let formCallout = $state<HTMLElement>();
   let dialogEpoch = 0;
   let inputEpoch = 0;
 
   const words = $derived({ organization: t('organization'), admin: t('admin') });
   const organizationUrl = $derived(created === null ? '' : `${page.url.origin}/${created.slug}/`);
   const github = $derived(via === 'github');
+  const creating = $derived(busy === 'creating');
   const usernameDescribedBy = $derived(
     errors.username ? 'operator-username-error operator-username-hint' : 'operator-username-hint',
   );
   const slugDescribedBy = $derived(errors.slug ? 'operator-slug-error operator-slug-hint' : 'operator-slug-hint');
+  // 読み上げの領域の文字。領域は常に置き、文字だけを替える
+  const live = $derived(
+    created !== null
+      ? t('operatorLiveCreated')
+      : busy === 'creating'
+        ? t('operatorLiveCreating')
+        : busy === 'resolving'
+          ? t('operatorLiveVerifying')
+          : resolved !== null
+            ? t('operatorLiveVerified', { name: resolved.loginName })
+            : '',
+  );
 
   export function show(trigger?: HTMLElement | null): void {
     dialog?.show(trigger);
@@ -76,6 +103,7 @@
     username = '';
     resolved = null;
     created = null;
+    existing = null;
     busy = 'idle';
     errors = {};
   }
@@ -85,9 +113,9 @@
     reset();
   });
 
-  // 完了の表示に切り替わったら、フォーカスを消えたボタンから URL に移す
+  // 完了の表示に切り替わったら、フォーカスを消えたボタンから本文に移す（読み上げが続きを読める）
   $effect(() => {
-    if (created !== null) urlInput?.focus();
+    if (created !== null) doneLead?.focus();
   });
 
   // 入力の誤りの理由（details の code）を、辞書のキーに写す。ユーザー名にかかわる理由は、確かめた結果を捨てる
@@ -150,7 +178,20 @@
     return { field: 'form', key: 'operatorErrorCreate' };
   }
 
-  // 最初に誤りのある欄へフォーカスを移す（誤りの文言は role="alert" で読まれ、欄は aria-invalid と結ばれている）
+  const fieldIds: Record<Exclude<Field, 'form'>, string> = {
+    slug: 'operator-slug',
+    name: 'operator-name',
+    username: 'operator-username',
+  };
+
+  // 失敗した欄へフォーカスを移す。欄に紐づかない失敗は、誤りを出した枠（callout）へ移す
+  async function focusFailure(field: Field): Promise<void> {
+    await tick();
+    if (field === 'form') formCallout?.focus();
+    else document.getElementById(fieldIds[field])?.focus();
+  }
+
+  // 作る前の確かめで、誤りのある最初の欄へフォーカスを移す
   async function focusFirstInvalid(): Promise<void> {
     await tick();
     document.querySelector<HTMLElement>('dialog[open] [aria-invalid="true"]')?.focus();
@@ -172,6 +213,12 @@
     errors = { ...errors, username: undefined };
   }
 
+  // slug と表示名を直したら、読み直した一覧との照合の結果は古い
+  function changeNameOrSlug(field: 'slug' | 'name'): void {
+    existing = null;
+    errors = { ...errors, [field]: undefined };
+  }
+
   async function verify(): Promise<void> {
     if (busy !== 'idle' || !github) return;
     const value = username.trim();
@@ -180,6 +227,8 @@
       await focusFirstInvalid();
       return;
     }
+    // 確かめ直す間は、前の確かめた結果で作れないようにする
+    resolved = null;
     errors = { ...errors, username: undefined, form: undefined };
     busy = 'resolving';
     const epochs = { dialog: dialogEpoch, input: inputEpoch };
@@ -199,10 +248,11 @@
     }
     const failure = failureOf(result, 'verify');
     errors = { ...errors, [failure.field]: failure.key };
-    await focusFirstInvalid();
+    await focusFailure(failure.field);
   }
 
-  // 作る前の確かめ。サーバーも同じ確かめをする（ここは入力の誤りをすぐ知らせるため）
+  // 作る前の確かめ。サーバーも同じ確かめをする（ここは入力の誤りをすぐ知らせるため。slug は貼り付けで黙って切れないよう、
+  // 入力欄では切らず、ここで 2〜40 字の外を断る）
   function validate(): boolean {
     const next: Partial<Record<Field, DictionaryKey>> = {};
     const trimmedSlug = slug.trim();
@@ -218,6 +268,12 @@
     return Object.keys(next).length === 0;
   }
 
+  // 作れたか分からない失敗: 通信の切れ、本文が JSON でない 200、slug の重なり（自分が作ったものかもしれない）、5xx すべて
+  function mayHaveCreated(result: ApiResult<unknown>): boolean {
+    if (result.ok) return true;
+    return result.status === 0 || result.status === 200 || result.status === 409 || result.status >= 500;
+  }
+
   async function submit(): Promise<void> {
     if (busy !== 'idle' || resolved === null) return;
     // 確かめた人と、欄のユーザー名が違うまま作らない（欄を直したら確かめた結果は捨てるが、念のため送る前にも見る）
@@ -231,18 +287,18 @@
       await focusFirstInvalid();
       return;
     }
+    existing = null;
     busy = 'creating';
     const epoch = dialogEpoch;
+    const sent = { slug: slug.trim(), name: name.trim() };
     const result = await callOperation(createOrganization, {
-      slug: slug.trim(),
-      name: name.trim(),
+      ...sent,
       admin: { provider: 'github', username: resolved.username, login_subject: resolved.loginSubject },
     });
-    // 通信の切れと 5xx は、サーバーで組織だけ作れて管理者を書けなかった場合がある。成功も含め、一覧は読み直す
-    const mayHaveCreated = result.ok || result.status === 0 || (result.status >= 500 && result.status !== 503);
-    // 閉じた、開き直した後に届いた応答は、今のダイアログの状態に入れない
+    const refresh = mayHaveCreated(result);
+    // 閉じた、開き直した後に届いた応答は、今のダイアログの状態に入れない（作っている間は閉じられないが、念のため）
     if (epoch !== dialogEpoch) {
-      if (mayHaveCreated) await invalidateAll();
+      if (refresh) await invalidateAll();
       return;
     }
     busy = 'idle';
@@ -254,8 +310,32 @@
     const failure = failureOf(result, 'create');
     if (failure.code !== undefined && usernameProblems.includes(failure.code)) resolved = null;
     errors = { [failure.field]: failure.key };
-    if (mayHaveCreated) await invalidateAll();
-    await focusFirstInvalid();
+    await focusFailure(failure.field);
+    if (!refresh) return;
+    // 一覧を読み直し、同じ slug の組織があれば、このダイアログの中で示す（閉じると入力が消えるため）
+    await invalidateAll();
+    if (epoch !== dialogEpoch) return;
+    const found = organizations.find((item) => item.slug === sent.slug);
+    if (found !== undefined) {
+      existing = {
+        slug: found.slug,
+        name: found.name,
+        sameName: found.name === sent.name,
+        adminStatus: found.admin_status,
+      };
+    }
+  }
+
+  // 読み直した一覧にあった組織を、作った組織として完了の表示に切り替える。管理者の名前は、確かめた人のものを使う
+  function showExisting(): void {
+    if (existing === null) return;
+    created = {
+      slug: existing.slug,
+      name: existing.name,
+      adminLoginName: resolved?.loginName ?? username.trim(),
+    };
+    existing = null;
+    errors = {};
   }
 
   async function copyUrl(): Promise<void> {
@@ -269,7 +349,14 @@
   }
 </script>
 
-<Dialog bind:this={dialog} bind:open title={t(created === null ? 'operatorCreateTitle' : 'operatorDoneTitle', words)}>
+<Dialog
+  bind:this={dialog}
+  bind:open
+  dismissible={!creating}
+  title={t(created === null ? 'operatorCreateTitle' : 'operatorDoneTitle', words)}
+>
+  <!-- 読み上げの領域。常に置き、文字だけを替える（後から挿入した領域は読み上げられないことがある） -->
+  <div class="visually-hidden" role="status">{live}</div>
   {#if created === null}
     <div class="field" class:is-invalid={errors.slug}>
       <label class="field-label" for="operator-slug">{t('operatorSlugLabel')}</label>
@@ -277,13 +364,13 @@
         class="input mono"
         id="operator-slug"
         bind:value={slug}
-        maxlength={SLUG_MAX_LENGTH}
+        readonly={creating}
         placeholder={t('operatorSlugExample')}
         autocomplete="off"
         spellcheck="false"
         aria-invalid={errors.slug ? 'true' : undefined}
         aria-describedby={slugDescribedBy}
-        oninput={() => (errors = { ...errors, slug: undefined })}
+        oninput={() => changeNameOrSlug('slug')}
       />
       {#if errors.slug}
         <span class="field-error" id="operator-slug-error" role="alert"
@@ -298,12 +385,13 @@
         class="input"
         id="operator-name"
         bind:value={name}
+        readonly={creating}
         maxlength={ORGANIZATION_NAME_MAX_LENGTH}
         placeholder={t('operatorNameExample')}
         autocomplete="off"
         aria-invalid={errors.name ? 'true' : undefined}
         aria-describedby={errors.name ? 'operator-name-error' : undefined}
-        oninput={() => (errors = { ...errors, name: undefined })}
+        oninput={() => changeNameOrSlug('name')}
       />
       {#if errors.name}
         <span class="field-error" id="operator-name-error" role="alert"
@@ -315,11 +403,25 @@
       <span class="field-label" id="operator-via-label">{t('operatorAdminVia', words)}</span>
       <div class="segmented" role="radiogroup" aria-labelledby="operator-via-label">
         <label>
-          <input type="radio" name="operator-via" value="github" bind:group={via} onchange={changeVia} />
+          <input
+            type="radio"
+            name="operator-via"
+            value="github"
+            bind:group={via}
+            disabled={creating}
+            onchange={changeVia}
+          />
           <span>{t('operatorGithubName')}</span>
         </label>
         <label>
-          <input type="radio" name="operator-via" value="google" bind:group={via} onchange={changeVia} />
+          <input
+            type="radio"
+            name="operator-via"
+            value="google"
+            bind:group={via}
+            disabled={creating}
+            onchange={changeVia}
+          />
           <span>{t('operatorGoogleName')}</span>
         </label>
       </div>
@@ -332,6 +434,7 @@
             class="input mono"
             id="operator-username"
             bind:value={username}
+            readonly={creating}
             maxlength={GITHUB_USERNAME_MAX_LENGTH}
             placeholder={t('operatorGithubUserExample')}
             autocomplete="off"
@@ -358,7 +461,7 @@
         <span class="field-hint" id="operator-username-hint">{t('operatorGithubUserHint')}</span>
       </div>
       {#if resolved}
-        <div class="callout is-info" role="status">
+        <div class="callout is-info">
           <Icon name="shield" /><span>{t('operatorVerifyLead', words)}</span>
         </div>
         <div class="choice is-static">
@@ -371,13 +474,32 @@
         </div>
       {/if}
     {:else}
-      <div class="callout is-warn" role="status"><Icon name="alert" /><span>{t('operatorGoogleSoon')}</span></div>
+      <div class="callout is-warn"><Icon name="alert" /><span>{t('operatorGoogleSoon')}</span></div>
     {/if}
     {#if errors.form}
-      <div class="callout is-danger" role="alert"><Icon name="alert" /><span>{t(errors.form, words)}</span></div>
+      <div class="callout is-danger" role="alert" tabindex="-1" bind:this={formCallout}>
+        <Icon name="alert" /><span>{t(errors.form, words)}</span>
+      </div>
+    {/if}
+    {#if existing}
+      <div class="callout is-warn">
+        <Icon name="alert" />
+        <span>
+          {t(existing.sameName ? 'operatorAlreadyCreated' : 'operatorAlreadyCreatedOther', {
+            ...words,
+            slug: existing.slug,
+          })}
+          {#if existing.adminStatus === 'none'}{t('operatorAlreadyCreatedNoAdmin', words)}{/if}
+        </span>
+      </div>
+      {#if existing.sameName}
+        <div class="form-actions">
+          <button class="btn" type="button" onclick={showExisting}>{t('operatorShowCreated', words)}</button>
+        </div>
+      {/if}
     {/if}
   {:else}
-    <p>{t('operatorDoneLead', words)}</p>
+    <p tabindex="-1" bind:this={doneLead}>{t('operatorDoneLead', words)}</p>
     <div class="field">
       <label class="field-label" for="operator-url">{t('operatorDoneUrlLabel', words)}</label>
       <div class="input-row">
@@ -391,11 +513,14 @@
   {/if}
   {#snippet footer(close)}
     {#if created === null}
-      <button class="btn is-quiet" type="button" onclick={close}>{t('operatorCancel')}</button>
+      <button class="btn is-quiet" type="button" aria-disabled={creating} onclick={close}>
+        {t('operatorCancel')}
+      </button>
       <button
         class="btn is-primary"
         type="button"
-        disabled={busy !== 'idle' || resolved === null || !github}
+        disabled={resolved === null || !github}
+        aria-disabled={busy !== 'idle'}
         onclick={submit}
       >
         {busy === 'creating' ? t('operatorSubmitting') : t('operatorSubmit')}

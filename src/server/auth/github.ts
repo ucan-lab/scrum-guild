@@ -1,6 +1,7 @@
 // GitHub のログイン（docs/development.md の「GitHub のログインと取り込み」）。共通の1つの OAuth App で、スコープは read:user だけ。
 // 認可コードのフローに state（login-routes.ts）と PKCE（S256）を付ける。
 // 通信先は固定の URL にし、設定から読まない。人が差分を読む領域（docs/development.md の「マージの判定」）
+import { stripHiddenCharacters } from '../../shared/hidden-characters.ts';
 import {
   LoginMethodError,
   type AuthorizationRequest,
@@ -83,12 +84,13 @@ function avatarUrlOf(value: unknown): string | null {
   }
 }
 
-// 手段の側の名前。制御文字（Cc）と書式文字（Cf。双方向の制御、ゼロ幅）は取り除く。名前の見え方を偽って、
-// 似せたアカウントを指名させるのに使われうるため。取り除いて空になる、空白だけ、文字列でない、のどれかなら null
+// 手段の側の名前。名前の見え方を偽れる文字（制御文字、双方向の制御、ゼロ幅スペース、BOM。shared/hidden-characters.ts）は
+// 取り除く。似せたアカウントを指名させるのに使われうるため。絵文字の結合（ZWJ）などは残す。
+// 取り除いて空になる、空白だけ、文字列でない、のどれかなら null。長さはコードポイントで切る（絵文字を途中で割らない）
 function displayNameOf(value: unknown): string | null {
   if (typeof value !== 'string') return null;
-  const cleaned = value.replace(/[\p{Cc}\p{Cf}]/gu, '').trim();
-  return cleaned === '' ? null : cleaned.slice(0, MAX_DISPLAY_NAME_LENGTH);
+  const cleaned = stripHiddenCharacters(value).trim();
+  return cleaned === '' ? null : [...cleaned].slice(0, MAX_DISPLAY_NAME_LENGTH).join('');
 }
 
 export type GithubOptions = {

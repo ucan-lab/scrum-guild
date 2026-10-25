@@ -314,10 +314,26 @@ describe('組織の作成', () => {
     expect(await entered.json()).toMatchObject({ me: { is_admin: true } });
   });
 
-  test('組織の表示名に制御文字と書式文字（双方向の制御、ゼロ幅）は使えない', async () => {
+  test('組織の表示名に絵文字の結合（ZWJ）や方向の印は使える', async () => {
+    const user = githubUser('emoji-name');
+    github.addUser(user);
+    const [zwj, zwnj, lrm, rlm] = [0x200d, 0x200c, 0x200e, 0x200f].map((code) => String.fromCodePoint(code));
+    for (const name of [`👩${zwj}💻 工房`, `工${zwnj}房`, `工${lrm}房${rlm}`]) {
+      const slug = newSlug();
+      const res = await post(app, create, {
+        token: await operatorToken(),
+        body: { slug, name, admin: adminOf(user) },
+      });
+      expect(res.status, JSON.stringify(name)).toBe(200);
+      expect((await organizationRow(slug))?.name).toBe(name);
+    }
+  });
+
+  test('組織の表示名に制御文字、双方向の制御、ゼロ幅スペース、BOM は使えない', async () => {
     const user = githubUser('hidden-name');
     github.addUser(user);
-    for (const name of ['工房‮', '工​房', '工\u0007房']) {
+    const [rlo, zwsp, lri, bom] = [0x202e, 0x200b, 0x2066, 0xfeff].map((code) => String.fromCodePoint(code));
+    for (const name of [`工房${rlo}`, `工${zwsp}房`, '工\u0007房', `工${lri}房`, `工${bom}房`]) {
       const slug = newSlug();
       const res = await post(app, create, {
         token: await operatorToken(),
@@ -694,6 +710,44 @@ describe('書き込みの途中の失敗と割り込み', () => {
     expect(accountId).toBeDefined();
     const organization = await organizationRow(slug);
     expect((await usersOf(organization!.id))[0]?.account_id).toBe(accountId);
+  });
+});
+
+describe('結び直しの失敗', () => {
+  test('書いた後の結び直しが失敗しても 200 を返し、organizations と users は残り、ログには組織の ID が出て SQL は出ない', async () => {
+    const errorLog = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const user = githubUser('link-fails');
+    github.addUser(user);
+    const slug = newSlug();
+    let accountId: string | undefined;
+    const failingEnv = envWithD1Hooks(testEnv, {
+      // users を書いた直後にその人の最初のログインが完了し、結ぶ UPDATE は失敗する
+      beforeBatch: (sqls) => {
+        if (sqls.some((sql) => sql.startsWith('update "users"'))) throw new Error('secret SQL detail');
+      },
+      afterBatch: async (sqls) => {
+        if (accountId !== undefined || !sqls.some((sql) => sql.startsWith('insert into "users"'))) return;
+        const account = await createAccount();
+        accountId = account.id;
+        await createAccountLogin(account.id, { login_provider: 'github', login_subject: String(user.id) });
+      },
+    });
+    const res = await post(app, create, {
+      token: await operatorToken(),
+      body: { slug, name: '工房', admin: adminOf(user) },
+      env: failingEnv,
+    });
+    expect(res.status).toBe(200);
+    const organization = await organizationRow(slug);
+    expect(organization).toBeDefined();
+    const users = await usersOf(organization!.id);
+    expect(users).toHaveLength(1);
+    expect(users[0]?.account_id).toBeNull();
+
+    const logged = errorLog.mock.calls.map((call) => String(call[0])).join('\n');
+    expect(logged).toContain(organization!.id);
+    expect(logged).toContain('create-organization');
+    expect(logged).not.toContain('secret SQL detail');
   });
 });
 

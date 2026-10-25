@@ -475,10 +475,11 @@ describe('ログインの手段の型（GitHub の招待する人の指し方）
     });
   });
 
-  test('表示名の制御文字と書式文字（双方向の制御、ゼロ幅）は取り除き、取り除いて空になれば null', async () => {
+  test('表示名の制御文字、双方向の制御、ゼロ幅スペース、BOM は取り除き、取り除いて空になれば null', async () => {
     const { github, method: login } = method();
-    github.addUser({ id: 583233, login: 'bidi-cat', name: '星野‮​ 澪\u0007' });
-    github.addUser({ id: 583234, login: 'blank-cat', name: '​‮' });
+    const [rlo, lri, zwsp, bom] = [0x202e, 0x2066, 0x200b, 0xfeff].map((code) => String.fromCodePoint(code));
+    github.addUser({ id: 583233, login: 'bidi-cat', name: `星野${rlo}${lri}${zwsp}${bom} 澪\u0007` });
+    github.addUser({ id: 583234, login: 'blank-cat', name: `${zwsp}${rlo}${bom}` });
     expect(await login.resolveInvitee('bidi-cat')).toMatchObject({
       kind: 'found',
       invitee: { displayName: '星野 澪' },
@@ -487,6 +488,25 @@ describe('ログインの手段の型（GitHub の招待する人の指し方）
       kind: 'found',
       invitee: { displayName: null },
     });
+  });
+
+  test('絵文字の結合（ZWJ）、ZWNJ、方向の印（LRM、RLM）は、正しい名前に使うので残す', async () => {
+    const { github, method: login } = method();
+    const [zwj, zwnj, lrm, rlm] = [0x200d, 0x200c, 0x200e, 0x200f].map((code) => String.fromCodePoint(code));
+    const name = `👩${zwj}💻 Aki ${zwnj}A${lrm}B${rlm}`;
+    github.addUser({ id: 583235, login: 'emoji-cat', name });
+    expect(await login.resolveInvitee('emoji-cat')).toMatchObject({
+      kind: 'found',
+      invitee: { displayName: name.trim() },
+    });
+  });
+
+  test('表示名の長さは、コードポイントで200字に切り、絵文字を途中で割らない', async () => {
+    const { github, method: login } = method();
+    github.addUser({ id: 583236, login: 'long-cat', name: '😀'.repeat(250) });
+    const result = await login.resolveInvitee('long-cat');
+    expect(result.kind).toBe('found');
+    if (result.kind === 'found') expect(result.invitee.displayName).toBe('😀'.repeat(200));
   });
 
   test('いないユーザー名は not_found', async () => {

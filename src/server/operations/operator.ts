@@ -110,7 +110,7 @@ export const listOrganizationsOperation = implement(listOrganizations, async ({ 
 });
 
 export const resolveGithubUserOperation = implement(resolveGithubUser, async ({ operator, input }) => {
-  const invitee = await resolveGithubUsername(operator, input.username, 'username', 'resolve-github-user');
+  const invitee = await resolveGithubUsername(operator, input.username, 'username', resolveGithubUser.name);
   return {
     login_subject: invitee.subject,
     login_name: invitee.loginName,
@@ -125,8 +125,6 @@ export const resolveGithubUserOperation = implement(resolveGithubUser, async ({ 
 //   4. 指名する人のアカウントを共通の DB で引く  5. organizations を書く（同時に作られて UNIQUE に当たれば 409）
 //   6. 組織の DB に、最初の管理者の users と change_logs の2行を1回の batch() で書く
 // 6 が失敗すると、管理者のいない組織が残る（一覧の admin_status が none）。指名し直しは Issue #60
-const OPERATION = 'create-organization';
-
 export const createOrganizationOperation = implement(createOrganization, async ({ db, operator, input }) => {
   const problem = slugProblem(input.slug);
   if (problem !== undefined) {
@@ -143,7 +141,7 @@ export const createOrganizationOperation = implement(createOrganization, async (
 
   if (await slugExists(db, input.slug)) throw new ApiError(409, 'conflict');
 
-  const invitee = await resolveGithubUsername(operator, admin.username, 'admin.username', OPERATION);
+  const invitee = await resolveGithubUsername(operator, admin.username, 'admin.username', createOrganization.name);
   if (invitee.subject !== admin.login_subject) {
     throw invalid('admin.login_subject', 'github_user_changed', '確かめたユーザー ID と、解決し直した ID が違う');
   }
@@ -183,7 +181,7 @@ export const createOrganizationOperation = implement(createOrganization, async (
         level: 'error',
         code: 'internal',
         requestId: operator.requestId,
-        operation: OPERATION,
+        operation: createOrganization.name,
         route: 'operator',
         reason: '組織を作ったが、最初の管理者を書けなかった。管理者のいない組織が残る',
         organizationId: created.organizationId,
@@ -206,7 +204,7 @@ export const createOrganizationOperation = implement(createOrganization, async (
           level: 'error',
           code: 'internal',
           requestId: operator.requestId,
-          operation: OPERATION,
+          operation: createOrganization.name,
           route: 'operator',
           reason: '指名した人のアカウントを結べなかった。次のログインで結ばれる',
           organizationId: created.organizationId,

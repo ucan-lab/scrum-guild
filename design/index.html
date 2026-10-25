@@ -230,8 +230,12 @@ const SECTIONS = [
       <label class="field is-invalid" for="f2"><span class="field-label">${t("points")}</span><input class="input" id="f2" value="4" aria-invalid="true"><span class="field-error">${icon("alert")}0、1、2、3、5、8、13 のどれかにしてください</span></label>
       <label class="field" for="f3"><span class="field-label">${t("category")}</span><select class="select" id="f3"><option>追加案件</option><option>保守</option><option>${t("category")}なし</option></select></label>
       <label class="field" for="f5"><span class="field-label">${t("ac")}</span><textarea class="textarea" id="f5">- 購入の確定でポイントが付く&#10;- 失効日を過ぎたポイントが残高から消える</textarea></label>
+      <div class="field is-invalid"><label class="field-label" for="f6">GitHub のユーザー名</label>
+        <div class="input-row"><input class="input mono" id="f6" value="kotone-dev2" aria-invalid="true" aria-describedby="f6e f6h"><button class="btn" type="button">確かめる</button></div>
+        <span class="field-error" id="f6e">${icon("alert")}そのユーザー名の人が GitHub にいません。</span>
+        <span class="field-hint" id="f6h">「確かめる」を押して、指名する人を見て確かめてから作ります。</span></div>
     </div>`,
-    ["ラベルは入力欄の上に置き、プレースホルダーをラベルの代わりにしない。", "誤りは欄の下に、何が違うかと直し方を書く。", "絞り込みは道具の帯にまとめ、画面の見出しのすぐ下に置く。"], ".toolbar / .field .field-label .field-hint .field-error .input .select .textarea .search / .field.is-invalid")],
+    ["ラベルは入力欄の上に置き、プレースホルダーをラベルの代わりにしない。", "誤りは欄の下に、何が違うかと直し方を書く。", "入力欄の横にボタン（確かめる、コピー）を置くときは .input-row に入れ、ヒントと誤りはその下に置く。折り返しても、ボタンは入力欄の横に残る。", "絞り込みは道具の帯にまとめ、画面の見出しのすぐ下に置く。"], ".toolbar / .field .field-label .field-hint .field-error .input .select .textarea .search / .field.is-invalid / .input-row")],
   ["chips", "印と囲みの知らせ", () => block("chips", "印と囲みの知らせ", "状態を小さく添える。どれもアイコンか文字で意味が分かる。",
     `<div class="cat-row">
       ${dueChip("2026-10-17")}${dueChip("2026-10-20", { fromSource: true })}${dueChip("2026-10-22")}${dueChip("2026-11-20")}

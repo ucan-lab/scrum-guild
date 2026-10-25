@@ -70,4 +70,8 @@
     </GateSheet>
   </Gate>
 {/if}
-<CreateOrganizationDialog bind:this={dialog} bind:open={dialogOpen} />
+<CreateOrganizationDialog
+  bind:this={dialog}
+  bind:open={dialogOpen}
+  organizations={data.failed ? [] : data.organizations}
+/>

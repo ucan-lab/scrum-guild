@@ -809,20 +809,20 @@
     createOrganization: () => openDialog(`${t("organization")}を作る`,
       `<label class="field" for="d-ks"><span class="field-label">URL の名前（slug）</span><input class="input mono" id="d-ks" placeholder="例: sakura-dev"><span class="field-hint">英小文字、数字、ハイフンで 2〜40 字。あとから変えられません。</span></label>
          <label class="field" for="d-kn"><span class="field-label">表示名</span><input class="input" id="d-kn" placeholder="例: さくら開発"></label>
-       ${loginTarget("d-ka", { title: `最初の${t("admin")}のログインの手段`, hints: adminHints() })}
-       <div class="form-actions" id="d-kz"><button class="btn" type="button" data-verify-admin="d-ka">確かめる</button></div>
+       ${loginTarget("d-ka", { title: `最初の${t("admin")}のログインの手段`, hints: adminHints(), action: `<button class="btn" id="d-kz" type="button" data-verify-admin="d-ka">確かめる</button>` })}
        <div id="d-kv" hidden>
-         <div class="callout is-info" role="status">${icon("shield")}<span>この人を最初の${t("admin")}にします。アバター、ユーザー名、表示名が、伝えたい人のものか確かめてください。ユーザー名は 1 字違いでも別の人に当たります。</span></div>
-         <div class="choice is-static">${avatar("星野 琴音", 3, { lg: true })}<div><b>星野 琴音</b><span class="mono">kotone-dev</span><span>GitHub のユーザー ID 5550001</span></div></div>
+         <div class="callout is-info">${icon("shield")}<span>この人を最初の${t("admin")}にします。アバター、ユーザー名、表示名が、伝えたい人のものか確かめてください。ユーザー名は 1 字違いでも別の人に当たります。</span></div>
+         <div class="choice is-static">${avatar("星野 琴音", 3, { lg: true })}<div><b class="mono">kotone-dev</b><span>星野 琴音</span><span>GitHub のユーザー ID 5550001</span></div></div>
        </div>
        <div class="callout is-info">${icon("link")}<span>URL は <span class="mono">scrum-guild.dev/&lt;slug&gt;/</span> になります。作ったあとに出る組織の URL を、${t("admin")}になる人に伝えてください。</span></div>
-       <div class="callout is-warn" id="d-kg" hidden role="status">${icon("alert")}<span>Google での指名はまだ使えません。GitHub を選んでください。</span></div>`,
+       <div class="callout is-warn" id="d-kg" hidden>${icon("alert")}<span>Google での指名はまだ使えません。GitHub を選んでください。</span></div>`,
       `<button class="btn is-quiet" type="button" data-close-dialog>やめる</button><button class="btn is-primary" id="d-kb" type="button" data-org-create="d-ka" disabled>作る</button>`),
     // 作った後。組織の URL とコピー、管理者になる人に伝えること
     organizationCreated: () => openDialog(`${t("organization")}を作りました`,
       `<p>Scrum Guild はメールを送りません。${t("admin")}になる人に、次の URL とログインの手段を伝えてください。</p>
-       <div class="form-row"><label class="field" for="d-ou"><span class="field-label">${t("organization")}の URL</span><input class="input mono" id="d-ou" value="https://scrum-guild.dev/sakura-dev/" readonly></label>
-         <button class="btn" type="button" data-toast="URL をコピーしました">${icon("link")}コピー</button></div>
+       <div class="field"><label class="field-label" for="d-ou">${t("organization")}の URL</label>
+         <div class="input-row"><input class="input mono" id="d-ou" value="https://scrum-guild.dev/sakura-dev/" readonly>
+           <button class="btn" type="button" data-toast="URL をコピーしました">${icon("link")}コピー</button></div></div>
        <div class="callout is-info">${icon("check")}<span>GitHub の kotone-dev でログインするよう伝えてください。</span></div>`,
       `<button class="btn is-primary" type="button" data-close-dialog>閉じる</button>`),
     reassignAdmin: () => openDialog(`${t("admin")}を指名し直す`,
@@ -1261,12 +1261,16 @@
     github: { name: "GitHub", label: "GitHub のユーザー名", example: "例: kotone-dev" },
     google: { name: "Google", label: "Google のメールアドレス", example: "例: mio.hoshino@example.com" },
   };
-  function loginTarget(id, { title = "ログインの手段", hints = {}, disabled = false } = {}) {
+  // action は欄の右に並べるボタン（確かめるなど）。入力欄とボタンだけを .input-row に並べ、ヒントはその下に出す
+  function loginTarget(id, { title = "ログインの手段", hints = {}, disabled = false, action = "" } = {}) {
     const vias = Object.keys(LOGIN_VIA);
     const radios = vias.map((k, i) => `<label><input type="radio" name="${id}-via" value="${k}" data-login-via="${id}" ${i === 0 ? "checked" : ""} ${disabled ? "disabled" : ""}><span>${LOGIN_VIA[k].name}</span></label>`).join("");
     const hintHtml = vias.filter((k) => hints[k]).map((k) => `<span class="field-hint" data-login-hint="${k}" ${k === vias[0] ? "" : "hidden"}>${hints[k]}</span>`).join("");
     return `<div class="field"><span class="field-label">${title}</span><div class="segmented" role="radiogroup" aria-label="${title}">${radios}</div></div>
-      <label class="field" for="${id}"><span class="field-label" data-login-label>${LOGIN_VIA[vias[0]].label}</span><input class="input mono" id="${id}" placeholder="${LOGIN_VIA[vias[0]].example}" ${disabled ? "disabled" : ""}>${hintHtml}</label>`;
+      <div class="field"><label class="field-label" for="${id}" data-login-label>${LOGIN_VIA[vias[0]].label}</label>${(() => {
+        const input = `<input class="input mono" id="${id}" placeholder="${LOGIN_VIA[vias[0]].example}" ${disabled ? "disabled" : ""}>`;
+        return action ? `<div class="input-row">${input}${action}</div>` : input;
+      })()}${hintHtml}</div>`;
   }
   // 運用者が管理者を指名するときの、手段ごとの説明
   const adminHints = () => ({
@@ -1280,8 +1284,9 @@
     if (via !== "google") { closeDialog(); toast(`${icon("check")}${esc(done)}`); return; }
     openDialog("招待の URL",
       `<p>${esc(done)}。この URL を本人に伝えてください。本人がこの URL を開き、招待したメールアドレスの Google アカウントでログインすると入れます。</p>
-       <div class="form-row"><label class="field" for="d-iu"><span class="field-label">招待の URL</span><input class="input mono" id="d-iu" value="https://scrum-guild.dev/invite#Qm7tX2vLr9aKpE4wZc8hN3bYd6fGs1uJ0oTiRl5eWxA" readonly></label>
-         <button class="btn" type="button" data-toast="招待の URL をコピーしました">${icon("link")}コピー</button></div>
+       <div class="field"><label class="field-label" for="d-iu">招待の URL</label>
+         <div class="input-row"><input class="input mono" id="d-iu" value="https://scrum-guild.dev/invite#Qm7tX2vLr9aKpE4wZc8hN3bYd6fGs1uJ0oTiRl5eWxA" readonly>
+           <button class="btn" type="button" data-toast="招待の URL をコピーしました">${icon("link")}コピー</button></div></div>
        <div class="callout is-warn">${icon("alert")}<span>この URL はこの画面を閉じると二度と出ません。期限は14日です。なくしたり切れたりしたら、招待し直してください。</span></div>`,
       `<button class="btn is-primary" type="button" data-close-dialog>閉じる</button>`);
   }

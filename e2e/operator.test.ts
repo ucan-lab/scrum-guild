@@ -46,6 +46,17 @@ async function mockGithubUser(page: Page, user: Record<string, unknown> | { stat
   );
 }
 
+// 保留した応答を返し、画面がそれを処理し終えるまで待つ（時間では待たない）。
+// 応答が届いたら、続けて 2 フレーム待つ（応答の本文の読み取りと、その後の状態の更新と描画が済む）
+async function settleAfterResponse(page: Page, urlPart: string, release: () => void) {
+  const response = page.waitForResponse((res) => res.url().includes(urlPart));
+  release();
+  await response;
+  await page.evaluate(
+    () => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))),
+  );
+}
+
 // 応答を保留して、あとで返す。遅れて届く応答を作る
 function deferred<T>() {
   let release!: (value: T) => void;
@@ -266,9 +277,8 @@ test.describe('運用者', () => {
     // 確かめている最中に bob へ直す。確かめる操作も、もう一度押せる
     await dialog.getByLabel('GitHub のユーザー名').fill('bob');
     await expect(dialog.getByRole('button', { name: '確かめる' })).toBeVisible();
-    alice.release();
-    // 古い alice の応答が処理される時間を置いても、確かめた人は出ず、作れない
-    await page.waitForTimeout(300);
+    // 古い alice の応答が届き、画面が処理し終えても、確かめた人は出ず、作れない
+    await settleAfterResponse(page, 'resolve-github-user', alice.release);
     await expect(dialog.locator('.choice')).toHaveCount(0);
     await expect(dialog.getByRole('button', { name: '作る', exact: true })).toBeDisabled();
   });
@@ -291,14 +301,15 @@ test.describe('運用者', () => {
 
     await open.click();
     await expect(dialog.getByLabel('GitHub のユーザー名')).toHaveValue('');
-    pending.release();
-    await page.waitForTimeout(300);
+    await settleAfterResponse(page, 'resolve-github-user', pending.release);
     await expect(dialog.locator('.choice')).toHaveCount(0);
     await expect(dialog.getByRole('button', { name: '作る', exact: true })).toBeDisabled();
     await expect(dialog.getByRole('button', { name: '確かめる' })).toBeVisible();
   });
 
-  test('作っている最中に閉じて開き直すと、前の完了の表示は残らない', async ({ page }) => {
+  test('作っている間は、入力欄と手段が読み取り専用になり、閉じる操作と「作る」を無視し、作り終えると完了の表示に移る', async ({
+    page,
+  }) => {
     await mockList(page, []);
     await mockGithubUser(page, TOKYO_USER);
     const pending = deferred<void>();
@@ -307,24 +318,118 @@ test.describe('運用者', () => {
       await route.fulfill({ json: { slug: 'sakura-dev', name: '工房', admin_login_name: 'alice-dev' } });
     });
     await page.goto('/operator');
-    const open = page.getByRole('button', { name: '冒険者ギルドを作る' });
-    await open.click();
+    await page.getByRole('button', { name: '冒険者ギルドを作る' }).click();
+    const dialog = page.getByRole('dialog');
+    await dialog.getByLabel('URL の名前（slug）').fill('sakura-dev');
+    await dialog.getByLabel('表示名').fill('工房');
+    await dialog.getByLabel('GitHub のユーザー名').fill('alice');
+    await dialog.getByRole('button', { name: '確かめる' }).click();
+    const submit = dialog.getByRole('button', { name: '作る', exact: true });
+    await submit.focus();
+    await submit.click();
+    const creating = dialog.getByRole('button', { name: '作っています' });
+    await expect(creating).toBeVisible();
+    // 「作る」は aria-disabled で、フォーカスを落とさず、押しても何も起きない
+    await expect(creating).toHaveAttribute('aria-disabled', 'true');
+    await expect(creating).toBeFocused();
+    await expect(dialog.getByRole('status')).toHaveText('作っています');
+    await expect(dialog.getByLabel('URL の名前（slug）')).toHaveAttribute('readonly', '');
+    await expect(dialog.getByLabel('表示名')).toHaveAttribute('readonly', '');
+    await expect(dialog.getByLabel('GitHub のユーザー名')).toHaveAttribute('readonly', '');
+    await expect(dialog.getByRole('radio', { name: 'Google' })).toBeDisabled();
+    // 閉じる操作（Esc、×、やめる）は無視する
+    await page.keyboard.press('Escape');
+    // aria-disabled の要素は、Playwright が押せないものとして待つので、force で押す（押しても何も起きないことを確かめる）
+    await dialog.getByRole('button', { name: '閉じる', exact: true }).first().click({ force: true });
+    await dialog.getByRole('button', { name: 'やめる' }).click({ force: true });
+    await expect(dialog).toBeVisible();
+
+    await settleAfterResponse(page, 'create-organization', pending.release);
+    await expect(dialog.getByRole('heading', { name: '冒険者ギルドを作りました' })).toBeVisible();
+    await expect(dialog.getByRole('status')).toHaveText('作りました');
+    // フォーカスは完了の表示の本文に移る
+    await expect(dialog.locator('p[tabindex="-1"]')).toBeFocused();
+  });
+
+  test('作れたか分からない失敗の後は一覧を読み直し、同じ slug の組織があれば、ダイアログの中で示して完了の表示へ移せる', async ({
+    page,
+  }) => {
+    let created = false;
+    await page.route('**/api/list-organizations', (route) =>
+      route.fulfill({
+        json: {
+          organizations: created ? [organization({ slug: 'sakura-dev', name: '工房', admin_status: 'active' })] : [],
+        },
+      }),
+    );
+    await mockGithubUser(page, TOKYO_USER);
+    await page.route('**/api/create-organization', (route) => {
+      // サーバーでは作られたが、応答が 502 で返る
+      created = true;
+      return route.fulfill({ status: 502, body: 'bad gateway', contentType: 'text/plain' });
+    });
+    await page.goto('/operator');
+    await page.getByRole('button', { name: '冒険者ギルドを作る' }).click();
     const dialog = page.getByRole('dialog');
     await dialog.getByLabel('URL の名前（slug）').fill('sakura-dev');
     await dialog.getByLabel('表示名').fill('工房');
     await dialog.getByLabel('GitHub のユーザー名').fill('alice');
     await dialog.getByRole('button', { name: '確かめる' }).click();
     await dialog.getByRole('button', { name: '作る', exact: true }).click();
-    await expect(dialog.getByRole('button', { name: '作っています' })).toBeVisible();
-    // 作っている最中に閉じる（Esc）と、開き直す
-    await page.keyboard.press('Escape');
-    await expect(dialog).toBeHidden();
-    await open.click();
+
+    await expect(dialog.getByText('「sakura-dev」の冒険者ギルドはもう作られています。名前も入力と同じ')).toBeVisible();
+    await expect(dialog.getByRole('alert')).toContainText('このダイアログを閉じると入力は消えます');
+    // 失敗の枠にフォーカスが移っている
+    await expect(dialog.locator('.callout.is-danger')).toBeFocused();
+
+    await dialog.getByRole('button', { name: '作られた冒険者ギルドの URL を見る' }).click();
+    await expect(dialog.getByRole('heading', { name: '冒険者ギルドを作りました' })).toBeVisible();
+    await expect(dialog.getByLabel('冒険者ギルドの URL')).toHaveValue(/\/sakura-dev\/$/);
+    await expect(dialog.getByText('GitHub の alice-dev でログインするよう伝えてください。')).toBeVisible();
+  });
+
+  test('slug の 409 も一覧を読み直す。名前が違う組織なら、この入力で作ったものではないかもしれないと出し、完了の表示へは移せない', async ({
+    page,
+  }) => {
+    await mockList(page, [organization({ slug: 'sakura-dev', name: '別の工房', admin_status: 'none' })]);
+    await mockGithubUser(page, TOKYO_USER);
+    await page.route('**/api/create-organization', (route) =>
+      route.fulfill({ status: 409, json: { error: { code: 'conflict', message: 'x' } } }),
+    );
+    await page.goto('/operator');
+    await page.getByRole('button', { name: '冒険者ギルドを作る' }).click();
+    const dialog = page.getByRole('dialog');
+    await dialog.getByLabel('URL の名前（slug）').fill('sakura-dev');
+    await dialog.getByLabel('表示名').fill('工房');
+    await dialog.getByLabel('GitHub のユーザー名').fill('alice');
+    await dialog.getByRole('button', { name: '確かめる' }).click();
+    await dialog.getByRole('button', { name: '作る', exact: true }).click();
+    await expect(dialog.getByText('名前が入力と違うので')).toBeVisible();
+    await expect(dialog.getByText('最初のギルドマスターが書かれていません')).toBeVisible();
+    await expect(dialog.getByRole('button', { name: '作られた冒険者ギルドの URL を見る' })).toHaveCount(0);
+    // slug の欄にフォーカスが移っている
+    await expect(dialog.getByLabel('URL の名前（slug）')).toBeFocused();
+  });
+
+  test('読み上げの領域は常にあり、確かめている間と確かめた後で文字だけが替わる', async ({ page }) => {
+    await mockList(page, []);
+    const pending = deferred<void>();
+    await page.route('**/api/resolve-github-user', async (route) => {
+      await pending.promise;
+      await route.fulfill({ json: TOKYO_USER });
+    });
+    await page.goto('/operator');
+    await page.getByRole('button', { name: '冒険者ギルドを作る' }).click();
+    const dialog = page.getByRole('dialog');
+    const status = dialog.getByRole('status');
+    await expect(status).toHaveText('');
+    await dialog.getByLabel('GitHub のユーザー名').fill('alice');
+    await dialog.getByRole('button', { name: '確かめる' }).click();
+    await expect(status).toHaveText('確かめています');
     pending.release();
-    await page.waitForTimeout(300);
-    await expect(dialog.getByRole('heading', { name: '冒険者ギルドを作る' })).toBeVisible();
-    await expect(dialog.getByLabel('冒険者ギルドの URL')).toHaveCount(0);
-    await expect(dialog.getByLabel('URL の名前（slug）')).toHaveValue('');
+    await expect(status).toHaveText('確かめました: alice-dev');
+    // 後から挿入した role="status" の領域は無い（領域は1つだけ）
+    await expect(dialog.getByRole('status')).toHaveCount(1);
   });
 
   test('作った後に一覧の読み直しが失敗しても、完了の表示（組織の URL）は消えない', async ({ page }) => {
@@ -349,7 +454,7 @@ test.describe('運用者', () => {
     await expect(dialog.getByLabel('冒険者ギルドの URL')).toHaveValue(/\/sakura-dev\/$/);
     // 一覧の読み直しは失敗して、画面の裏は読み込みの失敗になるが、ダイアログは残る
     await expect.poll(() => reads).toBeGreaterThan(1);
-    await page.waitForTimeout(300);
+    await expect(page.locator('.gate-title')).toHaveText('読み込めませんでした');
     await expect(dialog.getByLabel('冒険者ギルドの URL')).toHaveValue(/\/sakura-dev\/$/);
     await expect(dialog.getByText('GitHub の alice-dev でログインするよう伝えてください。')).toBeVisible();
   });
@@ -405,7 +510,8 @@ test.describe('運用者', () => {
     const dialog = page.getByRole('dialog');
     const slug = dialog.getByLabel('URL の名前（slug）');
     await slug.fill('a'.repeat(60));
-    expect(await slug.inputValue()).toHaveLength(40);
+    // slug は貼り付けで黙って切らない（切ると別の slug で作られる）。長すぎれば作る前の確かめで断る
+    expect(await slug.inputValue()).toHaveLength(60);
     const name = dialog.getByLabel('表示名');
     await name.fill('あ'.repeat(120));
     expect(await name.inputValue()).toHaveLength(80);
@@ -435,6 +541,12 @@ test.describe('運用者', () => {
       'operator-slug-hint',
     ]);
     await expect(name).toHaveAttribute('aria-invalid', 'true');
+
+    // 長すぎる slug は、切らずに断る
+    await slug.fill('a'.repeat(60));
+    await name.fill('工房');
+    await dialog.getByRole('button', { name: '作る', exact: true }).click();
+    await expect(page.locator('#operator-slug-error')).toContainText('2〜40 字');
   });
 
   test('狭い幅でも、確かめるボタンは入力欄の横に残り、ヒントやエラーの横に落ちない', async ({ page }) => {

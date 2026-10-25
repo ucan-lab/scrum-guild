@@ -281,8 +281,8 @@ export const dictionary = defineDictionary({
   operatorGithubUserLabel: organization('GitHub のユーザー名', 'GitHub のユーザー名'),
   operatorGithubUserExample: organization('例: kotone-dev', '例: kotone-dev'),
   operatorGithubUserHint: organization(
-    'GitHub のユーザー ID に解決します。次の「確かめる」で、指名する人を見て確かめてから作ります。',
-    'GitHub のユーザー ID に解決します。次の「確かめる」で、指名する人を見て確かめてから作ります。',
+    'GitHub のユーザー ID に解決します。「確かめる」を押して、指名する人を見て確かめてから作ります。',
+    'GitHub のユーザー ID に解決します。「確かめる」を押して、指名する人を見て確かめてから作ります。',
   ),
   operatorGoogleSoon: organization(
     'Google での指名はまだ使えません。GitHub を選んでください。',
@@ -309,14 +309,32 @@ export const dictionary = defineDictionary({
     'この名前はアプリが使うので付けられません。',
   ),
   operatorErrorSlugTaken: organization(
-    'この slug はもう使われています。今作った{organization}かもしれないので、一覧を確かめてください。',
-    'この slug はもう使われています。今作った{organization}かもしれないので、一覧を確かめてください。',
+    'この slug はもう使われています。今作った{organization}かもしれないので、一覧を確かめてください。このダイアログを閉じると入力は消えます。',
+    'この slug はもう使われています。今作った{organization}かもしれないので、一覧を確かめてください。このダイアログを閉じると入力は消えます。',
   ),
+  operatorAlreadyCreated: organization(
+    '「{slug}」の{organization}はもう作られています。名前も入力と同じなので、今作ったものと思われます。',
+    '「{slug}」の{organization}はもう作られています。名前も入力と同じなので、今作ったものと思われます。',
+  ),
+  operatorAlreadyCreatedOther: organization(
+    '「{slug}」の{organization}はもう作られています。名前が入力と違うので、この入力で作ったものではないかもしれません。',
+    '「{slug}」の{organization}はもう作られています。名前が入力と違うので、この入力で作ったものではないかもしれません。',
+  ),
+  operatorAlreadyCreatedNoAdmin: organization(
+    '最初の{admin}が書かれていません。{admin}の指名し直しは、運用の画面にこれから加わります。',
+    '最初の{admin}が書かれていません。{admin}の指名し直しは、運用の画面にこれから加わります。',
+  ),
+  operatorShowCreated: organization('作られた{organization}の URL を見る', '作られた{organization}の URL を見る'),
+  // ダイアログの読み上げの領域（常に置き、文字だけを替える）
+  operatorLiveVerifying: organization('確かめています', '確かめています'),
+  operatorLiveVerified: organization('確かめました: {name}', '確かめました: {name}'),
+  operatorLiveCreating: organization('作っています', '作っています'),
+  operatorLiveCreated: organization('作りました', '作りました'),
   operatorErrorNameRequired: organization('表示名を入れてください。', '表示名を入れてください。'),
   operatorErrorNameLong: organization('表示名は 80 字までです。', '表示名は 80 字までです。'),
   operatorErrorNameInvalid: organization(
-    '表示名に使えない文字（制御文字など）が含まれています。',
-    '表示名に使えない文字（制御文字など）が含まれています。',
+    '表示名に使えない文字（制御文字、双方向の制御、ゼロ幅スペース）が含まれています。',
+    '表示名に使えない文字（制御文字、双方向の制御、ゼロ幅スペース）が含まれています。',
   ),
   operatorErrorInvalid: organization(
     '入力に誤りがあります。内容を確かめてください。',
@@ -348,8 +366,8 @@ export const dictionary = defineDictionary({
     'GitHub に届きませんでした。しばらくしてから、もう一度試してください。',
   ),
   operatorErrorCreate: organization(
-    '{organization}を作れたか分かりません。サーバーでは作られていることがあるので、一覧を確かめてから、もう一度試してください。',
-    '{organization}を作れたか分かりません。サーバーでは作られていることがあるので、一覧を確かめてから、もう一度試してください。',
+    '{organization}を作れたか分かりません。サーバーでは作られていることがあるので、一覧を確かめてから、もう一度試してください。このダイアログを閉じると入力は消えます。',
+    '{organization}を作れたか分かりません。サーバーでは作られていることがあるので、一覧を確かめてから、もう一度試してください。このダイアログを閉じると入力は消えます。',
   ),
   operatorErrorUnreachable: organization('サーバーに届きませんでした。', 'サーバーに届きませんでした。'),
 
