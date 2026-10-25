@@ -39,7 +39,7 @@ PR 番号。省略時は現在のブランチの PR。
 ### 1. 状態を取る
 
 ```bash
-gh api "repos/{owner}/{repo}/pulls?head={owner}:{branch}&state=open" --jq '.[0] | {number, url: .html_url, head_sha: .head.sha}'
+gh api "repos/{owner}/{repo}/pulls?head={owner}:{branch}&state=open" --jq '.[0] | {number, url: .html_url, head_sha: .head.sha, created_at, labels: [.labels[].name]}'
 gh api "repos/{owner}/{repo}/pulls/{number}/reviews" --paginate --jq '.[] | {user: .user.login, state, submitted_at}'
 gh api "repos/{owner}/{repo}/commits/<head_sha>/check-runs" --jq '.check_runs[] | {name, status, conclusion, url: .html_url}'
 ```
@@ -49,9 +49,22 @@ gh api "repos/{owner}/{repo}/commits/<head_sha>/check-runs" --jq '.check_runs[] 
 
 CI の AI レビュー（`.github/workflows/ai-review.yml`、チェックの名前は `review`）が終わるまで、手順 2 に進まない（理由: 途中で集めると、後から付いた指摘を拾い損ねる）。
 
+AI レビューは push では走らず、PR を作ったときと、人が `ai-review` のラベルを付けたときだけ走る。
+待つかどうかは今の head の check-runs でなく、PR のワークフローの実行の履歴で決める（理由: 指摘は head に関係なく PR 全体から集める。今の head の `review` を待つと、指摘を直して push した後のラウンドで待ちが終わらない。`pulls/{number}/commits` で前の head を辿ると、`sync-base` で rebase した後に前の head が消える）。
+
+```bash
+gh api "repos/{owner}/{repo}/actions/workflows/ai-review.yml/runs?branch={branch}&event=pull_request" --paginate --jq '.workflow_runs[] | select(.created_at >= "<PR の created_at>" and .conclusion != "skipped") | {head_sha: .head_sha[0:7], status, conclusion, created_at, url: .html_url}'
+```
+
+PR の作成時刻より前の実行は、同じブランチ名の前の PR のものなので除く。`ai-review` 以外のラベルを付けたときなどの実行は `skipped` で残るので除く。
+
 - PR の差分が `docs/**` と `*.md` だけなら、AI レビューは走らない。待たずに進み、説明資料にその旨を書く
-- それ以外は、`skipped` を除いた `review` が 1 件以上あり、すべて `completed` になるまで間を空けて check-runs を取り直す（Monitor が使えればそれで待つ）。PR を作った直後は `review` がまだ無いことがあるので、無いときも待つ
-- `review` が `success` 以外で終わったら、AI レビューの指摘は無いものとして進め、説明資料と手順 7 でそのことを伝える（人が `ai-review` のラベルを付ければ回し直せる）
+- `status` が `completed` でない実行があれば、全て `completed` になるまで間を空けて取り直す（Monitor が使えればそれで待つ）
+- 走っている実行が無く、`completed` の実行が 1 件以上あれば進む。どの head の実行かは問わない。最後の実行の head が今の head と違えば、その短い SHA を手順 6 の説明資料に書く
+- 次のときは、30 秒おきに 3 回まで取り直してから決める（理由: PR を作った直後やラベルを付けた直後は、実行が履歴に出るまで間がある）
+  - PR に `ai-review` のラベルがあるのに、走っている実行が無い。出なければ前の実行の結果で進み、ラベルが残っていることを説明資料に書く（文書だけ、ドラフト、fork と Bot の PR では、ジョブが飛ばされてラベルが外れずに残る）
+  - `completed` の実行が 1 件も無い。出なければ AI レビュー無しで進み、手順 7 で `ai-review` のラベルを付けて回すかを聞く（文書だけで開いて後からコードを足した PR は、一度も走らない）
+- 最後の実行が `success` 以外で終わったら、AI レビューの指摘は無いものとして進め、説明資料と手順 7 でそのことを伝える（人が `ai-review` のラベルを付ければ回し直せる）
 
 ### 2. 指摘を集める
 
@@ -198,7 +211,7 @@ bot へのリプライを投稿し、CI が全て `completed` になったら、
 
 構成は次の順。当てはまらない節は省く。
 
-1. 冒頭: この PR が何をしたかを 1 文で。Issue と PR のリンク、CI と AI レビューの結果、`needs-human` の有無
+1. 冒頭: この PR が何をしたかを 1 文で。Issue と PR のリンク、CI と AI レビューの結果、`needs-human` の有無。AI レビューが前の head の結果なら、見た head の短い SHA と、その後のコミットは AI に見られていないこと
 2. なぜ: Issue の目的
 3. 変えたこと: 領域ごとに、振る舞いがどう変わったか。ファイル名の羅列にしない。流れや構造が変わったときだけ図を入れる
 4. 完了条件: 1 項目ずつ、満たした、一部、満たしていないと、その根拠（テスト、コミット、確かめた結果）
@@ -221,6 +234,7 @@ Artifact ツールが無い環境（クラウドのセッション）では、�
 
 - 直さなかった指摘と、反論か確認を返した指摘。CRITICAL と HIGH は必ず聞く
 - 満たせていない完了条件
+- AI レビューが一度も走らずに進んだ PR で、`ai-review` のラベルを付けて回すか（前の head の結果で進んだだけなら聞かない）
 - 実装中に前提として置いた仕様の判断で、Issue と `docs/` に書かれていないもの
 - `needs-human` が付いた PR で、人が読むべき箇所（どのファイルの何を見ればよいか）
 - 止まる条件に当たったもの（自分の変更と関係ない CI の失敗など）
@@ -294,7 +308,7 @@ gh api "repos/{owner}/{repo}/pulls/<number>" --jq '{merged, base: .base.ref, hea
 
 ## 完了条件
 
-- AI レビューが走る PR では、`review` が終わってから指摘を集めている
+- AI レビューが走る PR では、PR の `ai-review` の実行が全て `completed` になってから指摘を集めている。一度も走っていない PR では、手順 1 の取り直しを経てから進んでいる
 - 全ての指摘にリプライが付いている
 - 人へのリプライは、ユーザーの Submit か承認を経て投稿されている
 - 手順 1 の check-runs に失敗が無い
