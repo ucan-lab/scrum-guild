@@ -396,6 +396,7 @@ CREATE TABLE xp_grants (
 );
 
 CREATE INDEX xp_grants_user_workspace ON xp_grants (user_id, workspace_id);
+CREATE INDEX xp_grants_workspace_user ON xp_grants (workspace_id, user_id);
 CREATE INDEX xp_grants_task ON xp_grants (task_id);
 CREATE INDEX xp_grants_story ON xp_grants (story_id);
 CREATE INDEX xp_grants_epic ON xp_grants (epic_id);

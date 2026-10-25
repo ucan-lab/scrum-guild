@@ -869,7 +869,7 @@ Google の人は、ログインするまで `sub` が分からない。そのた
 - 「同じタスクの同じ行動で有効な付与は1回だけ」は、上のキーと、付与の前に「打ち消されていない同じ行動の付与がないか」をアプリが見ることで守る。
 - 起票、詳細、完了は、タスクを完了にしたときに同じバッチで付け、未完了に戻したときに同じバッチで打ち消す。
 - 感謝の回数の上限は、`action = 'help'` の行を `helper_sender_user_id` と受け取った人で絞り、`confirmed_at` がワークスペースのタイムゾーンで同じ週に入るものを数えて判定する。
-- 索引: `(user_id, workspace_id)`、`(task_id)`、`(story_id)`、`(epic_id)`、`(reverses_grant_id)`。
+- 索引: `(user_id, workspace_id)`、`(workspace_id, user_id)`、`(task_id)`、`(story_id)`、`(epic_id)`、`(reverses_grant_id)`。`(workspace_id, user_id)` はチーム全体の合計とメンバーごとの合計に使う。
 - レベル、合計、チーム全体の合計は `SUM(amount)` で出す。
 
 ### notifications
