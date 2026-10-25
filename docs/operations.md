@@ -75,7 +75,7 @@ Workers Builds が使えるのは、Builds が自分で作ったトークンだ�
 
 ### シークレット
 
-Worker のシークレットは、ダッシュボードの Worker の Settings → Variables and Secrets か `wrangler secret put` で入れる。ダッシュボードでは Type を `Secret` にする。`Variable` で入れると、Workers Builds の次のデプロイで `wrangler.jsonc` の `vars` に置き換わって消える。どちらで入れても、保存するとその場で新しい版が本番に出る。値は git に入れず、手元の開発用の値は `.dev.vars.example` を `.dev.vars` に写して入れる。
+Worker のシークレットは、ダッシュボードの Worker の Settings → Variables and Secrets か `wrangler secret put` で入れる。ダッシュボードでは Type を `Secret` にする。`Variable` で入れると、Workers Builds の次のデプロイで、`wrangler.jsonc` の `vars` に無い名前として消える。消えても `/api/health` は 200 のままで、運用者がいない状態になるか、GitHub のログインが「いまログインを受け付けられません」になるだけなので、気づいたら `Secret` として入れ直す。どちらで入れても、保存するとその場で新しい版が本番に出る。値は git に入れず、手元の開発用の値は `.dev.vars.example` を `.dev.vars` に写して入れる。
 
 | 名前 | 中身 |
 | --- | --- |
@@ -93,7 +93,7 @@ Worker のシークレットは、ダッシュボードの Worker の Settings �
 
 - 空の項目、形に合わない項目、前後の空白、大文字の手段名が1つでもあると、`/api/health` を含むすべての API が 500 の `internal` を返す。運用者でない人に運用者の権限を渡さないよう、一覧を部分的に読まずに止める。ログ（Workers Logs）に項目の位置（`invalidPositions`）だけが出て、値は出ない
 - 未設定は「運用者がいない」として扱う。設定してあって空の文字列にすると、500 になる
-- 最初の運用者は、初めてログインする前に自分の ID をこの一覧に入れる。組織も招待も無い本番では、運用者でない人は GitHub の認可を通っても `/login?error=denied` に戻る（Workers Logs には `step: "callback"`、`outcome: "denied"` が出る）。組織は運用者が作るので、一覧が空のままだと誰も入れない
+- 最初の運用者は、初めてログインする前に自分の ID をこの一覧に入れる（形と調べ方は上の表）。組織も招待も無い本番では、運用者でない人は GitHub の認可を通っても `/login?error=denied` に戻る（Workers Logs には `step: "callback"`、`outcome: "denied"` が出る）。組織は運用者が作るので、一覧が未設定のままだと誰も入れない
 - シークレットを入れるか変えたら、すぐに `https://scrum-guild.ucan-lab.workers.dev/api/health` を開き、200 で版が返ることを確かめる。500 なら、直前の変更を直す
 - 運用者を外したら、一覧を変えた版より前の版へ rollback しない。rollback はシークレットも戻し先の版の値に戻すので、外した運用者が戻る（下の「戻るもの、戻らないもの」）
 - 運用者を外すと、入れる組織も無い人は、次に組織の外の操作（`logout` を除く）を呼んだときにセッションが消え、ログインできなくなる
@@ -112,7 +112,7 @@ Worker のシークレットは、ダッシュボードの Worker の Settings �
    | Redirect URI | `https://scrum-guild.ucan-lab.workers.dev/api/auth/github/callback` | `http://localhost:5173/api/auth/github/callback` |
 
 3. 作った OAuth App の「Client ID」を控え、「Generate a new client secret」で作ったシークレットを控える。シークレットは作った直後にしか見えない
-4. 本番は `wrangler secret put GITHUB_CLIENT_ID` と `wrangler secret put GITHUB_CLIENT_SECRET`（か、ダッシュボードの Worker の Settings → Variables and Secrets）で入れる。開発用は `.dev.vars.example` を `.dev.vars` に写して `GITHUB_CLIENT_ID` と `GITHUB_CLIENT_SECRET` に入れる
+4. 本番は `wrangler secret put GITHUB_CLIENT_ID` と `wrangler secret put GITHUB_CLIENT_SECRET`（か、ダッシュボードの Worker の Settings → Variables and Secrets）で入れる。開発用は `.dev.vars.example` を `.dev.vars` に写して `GITHUB_CLIENT_ID` と `GITHUB_CLIENT_SECRET` に入れる。本番で初めて入れるときは `OPERATOR_LOGIN_IDS` にも自分の ID を入れ、入れないと次の手順のログインは `/login?error=denied` で終わる（上の「シークレット」の `OPERATOR_LOGIN_IDS` の決まり）
 5. 入れたら、本番は `https://scrum-guild.ucan-lab.workers.dev/api/health` を開き、200 が返ることを確かめる。ログインの画面から GitHub のボタンを押し、GitHub の同意画面に戻り先の URL の不一致（`redirect_uri` の誤り）が出ないことを見る
 
 決まり。
