@@ -843,9 +843,10 @@ a.choice > div > span, .choice.is-static > div > span { display: block; }
 /* 端の「上へ」「下へ」のように、押してもフォーカスを失わせたくない押せないボタンは aria-disabled にする */
 .icon-btn[aria-disabled="true"] { opacity: 0.35; cursor: not-allowed; }
 .icon-btn[aria-disabled="true"]:hover { border-color: transparent; color: var(--color-muted); }
-/* 狭い幅と、指で押す画面では、並べ替えのボタンを 44px 四方にする（並んだボタンの押せる範囲が重ならないよう、見た目ごと広げる） */
+/* 狭い幅と、指で押す画面では、バックログの行の並べ替えのボタンを 44px 四方にする（並んだボタンの押せる範囲が重ならないよう、見た目ごと広げる）。
+   行の操作は題の下へ折り返すので場所がある。設定の列の並べ替え（.order-list）は入力欄と同じ行に並ぶので、ここでは広げない */
 @media (max-width: 760px), (pointer: coarse) {
-  .order-actions .icon-btn { width: 44px; height: 44px; }
+  .entry-end .order-actions .icon-btn, .tree-end .order-actions .icon-btn { width: 44px; height: 44px; }
 }
 .icon-btn.is-danger:hover { color: var(--color-danger); border-color: currentColor; }
 
