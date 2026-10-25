@@ -9,6 +9,22 @@ git_dir=$(git rev-parse --path-format=absolute --git-dir) || exit 0
 common_dir=$(git rev-parse --path-format=absolute --git-common-dir) || exit 0
 [ "$git_dir" != "$common_dir" ] || exit 0
 
+# .dev.vars（wrangler dev の開発用のシークレット）は git の外なので、新しいワークツリーには無い。本体の作業コピーのものへのリンクにする
+# 本体は共通のディレクトリ（.git）の親で、.dev.vars.example があれば本体の根と確かめる。本体に .dev.vars が無いときは、人の作業コピーにファイルを作らず案内だけ出す
+# ワークツリーに .dev.vars（壊れたリンクも）が既にあれば触らない。番号の無いブランチでも置くので、Issue の判定より前に動かす
+main_root=$(dirname "$common_dir")
+if [ -f "$main_root/.dev.vars.example" ] && ! [ -e .dev.vars ] && ! [ -L .dev.vars ]; then
+  if [ -e "$main_root/.dev.vars" ]; then
+    if ln -s "$main_root/.dev.vars" .dev.vars 2>/dev/null; then
+      echo ".dev.vars を本体（$main_root/.dev.vars）へのリンクにしました" >&2
+    else
+      echo ".dev.vars のリンクを置けませんでした。手で ln -s '$main_root/.dev.vars' .dev.vars を打ってください" >&2
+    fi
+  else
+    echo "本体に .dev.vars が無いので、リンクを置いていません。$main_root/.dev.vars.example を写して値を入れてください" >&2
+  fi
+fi
+
 ref=$(git symbolic-ref -q HEAD) || exit 0
 branch=${ref#refs/heads/}
 number=${branch%%-*}

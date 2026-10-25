@@ -189,7 +189,7 @@ GitHub は無料のプランのまま使う（2026-10-23 に決めた）。無�
 - リポジトリの設定で squash merge だけを許し、マージ後にブランチを消す。squash のコミットの件名は PR のタイトルにし、本文は空にする（設定済み）
 - `main` の上のコミット、`main` への直接の push、`--force-with-lease` 以外の force push は、PreToolUse のフック（`.claude/hooks/guard-bash.mjs`）でセッションから止める
 - セッションは、`main` にいる作業コピーのファイルを Write と Edit で書き換えられない（`.claude/hooks/guard-files.mjs`）。手元のセッションはワークツリーを切ってから書き、クラウドのセッションは `claude/*` のブランチで書く
-- 人の操作は、`.githooks/` の git のフックで止める。`pre-commit`、`pre-merge-commit`、`prepare-commit-msg`、`pre-applypatch` が `main` の上のコミット（マージ、`cherry-pick`、`revert`、`am` も含む）を、`pre-push` がリモートの `main` への push（削除と force push も含む）を拒む。`main` を `pull --ff-only` で進めるのは通す。同じ場所の `post-checkout` は止めるためのものではなく、番号付きのブランチのワークツリーを切ったときに Issue を作業中にする（下の「Issue の状態」）。`pnpm install` の `prepare`（`scripts/git-hooks.ts`）が `core.hooksPath` を `.githooks` にする。設定はワークツリーで共有し、フックは各ワークツリーのブランチにある `.githooks/` が動く。`pnpm install` をしていない clone と、`.githooks/` の無い古いブランチでは効かない。別の `core.hooksPath` が既にあれば上書きせず、警告だけ出す。取り出したブランチの `.githooks/` がそのまま動き、`post-checkout` は checkout と switch の時点で動くので、信頼できない人のブランチは作業コピーに取り出さず、中身は `git diff` か GitHub で読む。どうしても取り出すときは、`git -c core.hooksPath=/dev/null checkout <ブランチ>` のようにフックを切る。`core.hooksPath` の上書きや `git commit-tree` で抜けられる踏み線なので、人も同じ決まりで PR を通す
+- 人の操作は、`.githooks/` の git のフックで止める。`pre-commit`、`pre-merge-commit`、`prepare-commit-msg`、`pre-applypatch` が `main` の上のコミット（マージ、`cherry-pick`、`revert`、`am` も含む）を、`pre-push` がリモートの `main` への push（削除と force push も含む）を拒む。`main` を `pull --ff-only` で進めるのは通す。同じ場所の `post-checkout` は止めるためのものではなく、追加のワークツリーを切ったときに `.dev.vars` を本体へのリンクにし（上の「ワークツリーで作業する」）、番号付きのブランチなら Issue を作業中にする（下の「Issue の状態」）。`pnpm install` の `prepare`（`scripts/git-hooks.ts`）が `core.hooksPath` を `.githooks` にする。設定はワークツリーで共有し、フックは各ワークツリーのブランチにある `.githooks/` が動く。`pnpm install` をしていない clone と、`.githooks/` の無い古いブランチでは効かない。別の `core.hooksPath` が既にあれば上書きせず、警告だけ出す。取り出したブランチの `.githooks/` がそのまま動き、`post-checkout` は checkout と switch の時点で動くので、信頼できない人のブランチは作業コピーに取り出さず、中身は `git diff` か GitHub で読む。どうしても取り出すときは、`git -c core.hooksPath=/dev/null checkout <ブランチ>` のようにフックを切る。`core.hooksPath` の上書きや `git commit-tree` で抜けられる踏み線なので、人も同じ決まりで PR を通す
 - 必須のチェックは設定できない。マージする人かセッションが `ci-ok` の成功を確かめてからマージする
 - マージは人が決める。人が押すか、人の指示でセッションが `gh pr merge` を打つ。承認の数は求めず、人のレビューは「人がマージを決める」ことで表す（下の「マージの判定」）
 - 本番へデプロイする鍵は GitHub に置かない（下の「CD」）。リポジトリのシークレットは PR のブランチのワークフローからも読め、Environment で `main` だけに絞れないため
@@ -212,6 +212,11 @@ GitHub は無料のプランのまま使う（2026-10-23 に決めた）。無�
 - 切るときは最新の `main` から作る: `git fetch origin` のあと `git worktree add worktrees/<名前> -b <名前> origin/main`
 - `worktrees/` はリポジトリの `.gitignore` で git の管理から外してある
 - 依存はワークツリーごとに入れる。ローカルの D1（`.wrangler/state`）もワークツリーごとに分かれるので、seed もそれぞれで当てる。並べて `pnpm dev` を立てるときはポートをずらす（下の「手元で動かす」）
+- `.dev.vars`（wrangler dev の開発用のシークレット）は git の外なので、`git worktree add` で切ったワークツリーには無い。`.githooks/post-checkout` が、ワークツリーの `.dev.vars` を本体の作業コピーの `.dev.vars` への絶対パスのシンボリックリンクにする（番号の無いブランチでも置く）。秘密の実体は本体の1か所で、本体を直せばすべてのワークツリーに効く（立て直しは要る）。ワークツリーで `.dev.vars` を書き換えると本体も変わる
+  - 本体に `.dev.vars` が無いときは、リンクを置かずに案内を1行出す。人の作業コピーにフックがファイルを作らないため。本体で `.dev.vars.example` を写して値を入れてから、ワークツリーの `ln -s <本体>/.dev.vars .dev.vars` を人が打つ（切り直してもよい）
+  - ワークツリーに `.dev.vars`（壊れたリンクも）が既にあれば触らない。本体の根（`.dev.vars.example` のあるディレクトリ）を確かめられないときも置かない
+  - `DEV_PORT_OFFSET` でずらして立てると、GitHub の OAuth の戻り先のポートが開発用の OAuth App の Redirect URI と合わず、本物のログインは通らない（下の「開発用のサーバー」の `PUBLIC_ORIGIN` の注意）。seed のセッションで開く `pnpm dev:open` はずらしても使える
+  - `OPERATOR_LOGIN_IDS` の決まりは「開発とテストでのログイン」
 - vitest（vite 8 の oxc）は、変換するファイルを `include` に含む tsconfig を、ファイルのディレクトリから上の階層へ探す。隣のディレクトリの tsconfig は見ないので、`src/server/tsconfig.json` が `test/` を含んでいても `test/` からは見つからない。リポジトリの中に見つからないとワークツリーの外へ上り、本体の作業コピーの `tsconfig.json` を読む。本体に依存が無ければ、継ぎ先の `$app/tsconfig`（`svelte-kit sync` が作る）が無く `[TSCONFIG_ERROR] Failed to load tsconfig '$app/tsconfig'` で落ち、依存があれば本体の版の設定を黙って読む。`test/tsconfig.json` はそれを止めるために置いてある。テストが読むファイルを新しいトップレベルのディレクトリに置くときは、そのディレクトリにも `test/tsconfig.json` と同じように tsconfig を置く
 - PR がマージされたら、`~/.claude/scripts/git-cleanup-merged.sh <名前>` でワークツリーと手元のブランチを消す（`pr-feedback` の後片付け）。人がマージするときも、手元のセッションは PR が閉じるのを待っていて、知らせを受けずに後片付けと、受け持つほかの PR の追従まで続ける。クラウドのセッションは手番を終えると再開できないので、人がマージを知らせる。squash merge では SHA が変わり `git branch -d` が拒むため、PR がマージ済みで head の SHA が手元と一致するときだけ `-D` で消す。スクリプトは dotfiles にあり、無い環境では人が消す
 
@@ -291,7 +296,7 @@ Bash の判定を `permissions.deny` に置かないのは、規則が前方一�
 - クラウドのセッションの環境には、Cloudflare の API トークンを置かない
 - 手元の機械では `wrangler login` しない（したら `wrangler logout` しておく）。シェルに `CLOUDFLARE_API_TOKEN` を置かない。手元のセッションは、人が置いた資格情報をそのまま使えるため
 
-止められた操作を人が行うときは、Claude Code の入力欄で先頭に `!` を付けて打つ（フックを通らない）。`.dev.vars` は人が `.dev.vars.example` を写して値を入れる。
+止められた操作を人が行うときは、Claude Code の入力欄で先頭に `!` を付けて打つ（フックを通らない）。`.dev.vars` は人が `.dev.vars.example` を写して値を入れる。本体の作業コピーに1つ置けば、ワークツリーは `post-checkout` が張るリンクで使う（上の「ワークツリーで作業する」）。
 
 ## リポジトリのスキル
 
@@ -549,11 +554,12 @@ GitHub App も比べた。人が抜けても取り込みが止まらない、PAT
   - セッションの `last_used_at` と `expires_at` は seed を流した時刻から数える。ほかの日時は固定の値にする。切れたら seed を流し直す
   - seed は全部の表の行を消してから入れる。手で足した行も消える
   - seed のセッションが入った手元の `wrangler dev` を、`--ip 0.0.0.0` やトンネルで外に開かない。公開されたトークンで、誰でも管理者と運用者として入れるため
+  - 本体の `.dev.vars` の `OPERATOR_LOGIN_IDS` には、seed の運用者の ID（`github:9000000000000001`）と、本物のログインで使う自分の ID を、カンマで両方並べる（`github:9000000000000001,github:<自分の数字>`）。自分の ID だけに書き換えると seed の運用者が抜け、`pnpm dev:open operator` が 401 になる。ワークツリーの `.dev.vars` は本体へのリンクなので、直すのは本体の側（上の「ワークツリーで作業する」）
   - 本番に入れない守りは、seed のスクリプトが `--local` だけを付けることと、フック（`guard-bash.mjs`）が `--remote` を止めること。本番が seed のトークンを拒むことは、デプロイの煙のテストで確かめる。版が一致した後、seed のトークン（`seed/sessions.ts` の数だけ）を本番の `POST /api/logout` に Cookie で送り（Origin は本番の URL）、どれも 401 で、本文の code が `unauthenticated` でなければ、煙のテストの失敗として前の版へ戻す（`scripts/deploy.ts`）。確かめる口を `logout` にしたのは、入れる組織があるかの判定をしない操作（`skipsLoginAccess`）だから。判定をする `me` などだと、seed の行が本番に残っていても、入れる組織が無いために 401 になって、見逃す。5xx、429、届かないときは、答えられていないだけなので3回まで繰り返す。2xx（受け付けた）、そのほかの 4xx、3xx（リダイレクトは辿らない）は、繰り返さずに失敗にする。受け付けたトークンがあっても、残りのトークンも全部確かめてから失敗にし、受け付けた名前（`admin` など。値は出さない）をすべて報告する。受け付けられたときは、前の版へ戻しても本番の `sessions` に seed の行が残っていれば直らないので、専用の文言で、人が実行する消す手順（`docs/operations.md` の「seed のセッションが本番に入ったとき」）を指す。トークンは `seed/sessions.ts` から import し、本番のコードには書かない
 - 人が手元の画面を見るときは `pnpm dev:open [--preview] [who] [path]`（`scripts/dev-open.ts`）で開く。seed のトークンの Cookie を置いた、画面の見えるブラウザ（Playwright の Chromium）を立てる。e2e の `signIn` と同じやり方で、ログインを飛ばす口は足さない
   - `pnpm db:seed` を流し、`pnpm dev` か `pnpm preview` を立てておく。引数は位置でなく形で見分ける。`--preview` は `pnpm preview` の画面（`http://localhost:8787`）、`/` で始まる値は開く path、それ以外は who（`admin`、`member`、`otherOrg`、`operator`。`seed/sessions.ts` のキー）。省略したときは `admin` と `/`。例は `pnpm dev:open admin /aoba`、`pnpm dev:open /aoba`、`pnpm dev:open --preview operator`
   - `DEV_PORT_OFFSET` でずらして立てたときは、同じ値を付けて打つ（`DEV_PORT_OFFSET=10 pnpm dev:open /aoba`）
-  - 開く前に `POST /api/me` を1回呼び、ブラウザを開かずに止まる条件を見分ける。画面で使うときと同じく、この呼び出しでも seed のセッションの期限が延びる（前回から1時間以上たっていれば、そこから30日）。つながらないときは `pnpm dev`（`--preview` のときは `pnpm preview`）を立てる案内、401 のときは `pnpm db:seed` の案内（seed を流していない、30日で切れた、別のワークツリーの D1 を見ている。`operator` は `.dev.vars` の `OPERATOR_LOGIN_IDS` で決まるので、`.dev.vars` を写していないワークツリーや、`OPERATOR_LOGIN_IDS` を自分の ID だけに書き換えて seed の運用者の `github:9000000000000001` が無いときも 401 になる。カンマで区切って両方を入れられる）、10秒答えないときと、そのほかの 2xx 以外（リダイレクトは辿らない）は状態を出す。Chromium を起動できないときは、入っていなければ `pnpm exec playwright install chromium` を流すよう案内する（画面を出せない SSH の先や CI では使えない）。止まるときの終了コードは 1
+  - 開く前に `POST /api/me` を1回呼び、ブラウザを開かずに止まる条件を見分ける。画面で使うときと同じく、この呼び出しでも seed のセッションの期限が延びる（前回から1時間以上たっていれば、そこから30日）。つながらないときは `pnpm dev`（`--preview` のときは `pnpm preview`）を立てる案内、401 のときは `pnpm db:seed` の案内（seed を流していない、30日で切れた、別のワークツリーの D1 を見ている。`operator` は `.dev.vars` の `OPERATOR_LOGIN_IDS` で決まるので、本体に `.dev.vars` が無くワークツリーにリンクが張られていないときや、本体の `OPERATOR_LOGIN_IDS` に seed の運用者の `github:9000000000000001` が無いときも 401 になる。本体の `.dev.vars` に足して、立て直す）、10秒答えないときと、そのほかの 2xx 以外（リダイレクトは辿らない）は状態を出す。Chromium を起動できないときは、入っていなければ `pnpm exec playwright install chromium` を流すよう案内する（画面を出せない SSH の先や CI では使えない）。止まるときの終了コードは 1
   - 引数の誤りも、Cookie を置かず通信もせずに止まる。同じ種類（who か path）が2つ以上、`--preview` 以外のフラグ、知らない who（選べるキーと説明を並べる）、受け付けない path。path はログイン後の戻り先と同じ基準（`safeReturnTo`）で、`//host`、バックスラッシュ、ドット区間、完全な URL、相対パス、最初の区間が `api` か `login` のパス（`/api/me`、`/login?x=1`。`/apiary` は開ける）は、`/` に直さず止める。完全な URL を受け付けないのは、ポートが `DEV_PORT_OFFSET` で決まり、受け付ける範囲だけが広がるため。開く先の origin は http の `localhost` か `127.0.0.1` だけで、seed のトークンを手元の外へ送らない
   - 毎回新しい context に Cookie を置くので、普段のブラウザの Cookie とも、別のワークツリーを開いたブラウザの Cookie とも混ざらない（localhost の Cookie はポートで分かれない）。複数の人を並べるときは端末を2つ使い、それぞれで `pnpm dev:open admin` と `pnpm dev:open member` を打つ（1回に開くのは1人）。ブラウザを閉じるか Ctrl+C で終わる
 - テーマと言葉は、本物の設定の API（自分の設定、組織の設定）で切り替えてから撮る。撮影のための URL のパラメータは作らない
@@ -597,7 +603,7 @@ Issue はエピック、ストーリー、タスクの3階層にし、親子は�
 - 両方のラベルが付いていれば作業中とみなす。セッションが `status:refining` を付けるのは、`status:in-progress` の無い Issue だけ
 - 閉じた Issue は、ラベルにかかわらず済みとして扱う。閉じた後にラベルを外す手間はかけない
 - ラベルは `gh api` の REST で付け外しする（付ける `POST repos/{owner}/{repo}/issues/<番号>/labels`、外す `DELETE …/labels/<名前>`）。GraphQL の `gh issue edit` はクラウドのセッションで 403 になるため
-- `post-checkout` は、前の HEAD が null の SHA になる checkout のうち、追加のワークツリーでだけ動く。clone、本体の作業コピー、既にある作業コピーでの `git switch -c`、detached のワークツリーでは付かないので、着手を表すなら手で付ける。既にあるブランチでワークツリーを切り直したときも付く。付けるのは、その番号が開いた Issue（PR ではない）だと確かめられたときだけ。`gh` が無い、認証が無い、通信が落ちたときは理由を知らせるだけで、checkout は続ける。`timeout` のある環境（Linux、coreutils を入れた macOS）では `gh` の1回の呼び出しを10秒で切り、無い環境では上限なしで待つ。書き込み先は `ucan-lab/scrum-guild` に固定してある
+- `post-checkout` は、前の HEAD が null の SHA になる checkout のうち、追加のワークツリーでだけ動く。clone、本体の作業コピー、既にある作業コピーでの `git switch -c`、detached のワークツリーでは付かないので、着手を表すなら手で付ける。既にあるブランチでワークツリーを切り直したときも付く。付けるのは、その番号が開いた Issue（PR ではない）だと確かめられたときだけ。`gh` が無い、認証が無い、通信が落ちたときは理由を知らせるだけで、checkout は続ける。`timeout` のある環境（Linux、coreutils を入れた macOS）では `gh` の1回の呼び出しを10秒で切り、無い環境では上限なしで待つ。書き込み先は `ucan-lab/scrum-guild` に固定してある。同じフックが、Issue の判定より前に、ワークツリーの `.dev.vars` を本体の `.dev.vars` へのリンクにする（番号の無いブランチ、`gh` が無い環境でも動く。上の「ワークツリーで作業する」）
 - 詰めるのをやめて着手しない Issue は、`status:refining` を手で外す。ワークツリーを捨てて着手をやめたとき、PR をマージせずに閉じて Issue を開いたまま残すときは、`status:in-progress` を手で外す。外し忘れると、並行するセッションから着手済みに見え続ける
 
 ## 運用の手順書

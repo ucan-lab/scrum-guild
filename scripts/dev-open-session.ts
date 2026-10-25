@@ -47,10 +47,10 @@ export async function checkDevOpenSession(
   // 見るのは状態コードだけ。本文を読まずに閉じ、接続を残さない
   await res.body?.cancel().catch(() => undefined);
   if (res.status === 401) {
-    // 運用者は OPERATOR_LOGIN_IDS で決まる。.dev.vars は git の外なので、新しいワークツリーには無い
+    // 運用者は OPERATOR_LOGIN_IDS で決まる。ワークツリーの .dev.vars は本体の .dev.vars へのリンクなので、直すのは本体の側
     const operatorHint =
       target.who === 'operator'
-        ? `。または .dev.vars が無いか、その OPERATOR_LOGIN_IDS に seed の運用者の ${SEED_OPERATOR_LOGIN_ID} が無い（.dev.vars.example を写す。ワークツリーには写されない。直したら立て直す）`
+        ? `。または .dev.vars が無いか、その OPERATOR_LOGIN_IDS に seed の運用者の ${SEED_OPERATOR_LOGIN_ID} が無い（本体の .dev.vars に足す。自分の ID があればカンマで並べる。本体に .dev.vars が無ければ .dev.vars.example を写す。直したら立て直す）`
         : '';
     return {
       ok: false,

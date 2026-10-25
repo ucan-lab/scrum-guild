@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
-import { SEED_SESSIONS } from '../seed/sessions.ts';
+import { SEED_OPERATOR_LOGIN_ID, SEED_SESSIONS } from '../seed/sessions.ts';
 import { checkDevOpenSession } from './dev-open-session.ts';
 import { resolveDevOpenTarget, type DevOpenTarget } from './dev-open-target.ts';
 
@@ -48,7 +48,10 @@ describe('checkDevOpenSession', () => {
     const admin = reasonOf(await checkDevOpenSession(target(['admin']), {}, respond(401)));
     assert.match(admin, /pnpm db:seed/);
     assert.doesNotMatch(admin, /\.dev\.vars/);
-    assert.match(reasonOf(await checkDevOpenSession(target(['operator']), {}, respond(401))), /\.dev\.vars/);
+    const operator = reasonOf(await checkDevOpenSession(target(['operator']), {}, respond(401)));
+    assert.match(operator, /本体の \.dev\.vars に足す/);
+    assert.match(operator, new RegExp(SEED_OPERATOR_LOGIN_ID));
+    assert.doesNotMatch(operator, /ワークツリーには写されない/);
   });
 
   test('3xx と 5xx は状態コードを出して止める', async () => {
