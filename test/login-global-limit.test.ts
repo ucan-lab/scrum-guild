@@ -29,19 +29,22 @@ async function rateLimitRow(key: string) {
   return db.first(db.statement((q) => q.selectFrom('rate_limits').selectAll().where('key', '=', key)));
 }
 
-async function setGlobal(count: number, windowStartAt: Date) {
+async function setRateLimit(key: string, count: number, windowStartAt: Date) {
   const db = commonDb(env);
   await db.batch([
     db.statement((q) =>
       q
         .insertInto('rate_limits')
-        .values({ key: LOGIN_GLOBAL_RATE_LIMIT_KEY, window_start_at: windowStartAt.toISOString(), count })
+        .values({ key, window_start_at: windowStartAt.toISOString(), count })
         .onConflict((conflict) =>
           conflict.column('key').doUpdateSet({ window_start_at: windowStartAt.toISOString(), count }),
         ),
     ),
   ]);
 }
+
+const setGlobal = (count: number, windowStartAt: Date) =>
+  setRateLimit(LOGIN_GLOBAL_RATE_LIMIT_KEY, count, windowStartAt);
 
 async function oauthStateCount(): Promise<number> {
   const db = commonDb(env);
@@ -73,10 +76,13 @@ describe('ログインの開始の全体の枠', () => {
   test('1つの IP が使える全体の枠は、IP の枠の上限まで。IP の枠に断られた呼び出しは全体の枠を減らさない', async () => {
     const log = vi.spyOn(console, 'log').mockImplementation(() => {});
     const browser = newBrowser();
-    for (let i = 0; i < LOGIN_RATE_LIMIT.max + 10; i++) await browser.start('/aoba');
+    // 開始は数える前に覗くので、IP の行を上限の手前から始めても同じ境目を確かめられる（呼び出しを減らすため）
+    await setRateLimit(`login:${browser.ip}`, LOGIN_RATE_LIMIT.max - 3, new Date());
+    for (let i = 0; i < 3 + 10; i++) await browser.start('/aoba');
     // IP の枠に断られた呼び出しは、覗いただけで IP の行も書き換えない
     expect((await rateLimitRow(`login:${browser.ip}`))?.count).toBe(LOGIN_RATE_LIMIT.max);
-    expect((await rateLimitRow(LOGIN_GLOBAL_RATE_LIMIT_KEY))?.count).toBe(LOGIN_RATE_LIMIT.max);
+    // 全体の枠を数えたのは、IP の枠の残りの3回だけ
+    expect((await rateLimitRow(LOGIN_GLOBAL_RATE_LIMIT_KEY))?.count).toBe(3);
     // IP の枠に断られたものは、ログでも IP の枠として残る
     expect(startOutcomes(log).filter((outcome) => outcome === 'too_many')).toHaveLength(10);
     expect(startOutcomes(log)).not.toContain('too_many_global');
@@ -127,15 +133,20 @@ describe('ログインの開始の全体の枠', () => {
 
   test('1つの /48 が使える全体の枠は、/64 を変えても /48 の枠の上限まで', async () => {
     vi.spyOn(console, 'log').mockImplementation(() => {});
-    const perNetwork = 10;
-    const networks = Math.ceil(LOGIN_RATE_LIMIT_IPV6_SITE.max / perNetwork) + 2;
-    for (let n = 1; n <= networks; n++) {
-      const browser = new FakeBrowser(app, github, loginEnv, `2001:db8:4b:${n.toString(16)}::1`);
-      for (let i = 0; i < perNetwork; i++) await browser.start();
+    // 開始は数える前に覗くので、/48 の行を上限の手前から始めても同じ境目を確かめられる（呼び出しを減らすため）。
+    // 残りの6回は /64 の1つ目と2つ目にまたがり、/48 の行が /64 を変えても数え続けることを確かめる
+    await setRateLimit('login48:2001:db8:4b::/48', LOGIN_RATE_LIMIT_IPV6_SITE.max - 6, new Date());
+    for (let n = 1; n <= 4; n++) {
+      const browser = new FakeBrowser(app, github, loginEnv, `2001:db8:4b:${n}::1`);
+      for (let i = 0; i < 3; i++) await browser.start();
     }
     expect(LOGIN_RATE_LIMIT_IPV6_SITE.max).toBeLessThan(LOGIN_RATE_LIMIT_GLOBAL.max);
-    expect((await rateLimitRow(LOGIN_GLOBAL_RATE_LIMIT_KEY))?.count).toBe(LOGIN_RATE_LIMIT_IPV6_SITE.max);
+    expect((await rateLimitRow(LOGIN_GLOBAL_RATE_LIMIT_KEY))?.count).toBe(6);
     expect((await rateLimitRow('login48:2001:db8:4b::/48'))?.count).toBe(LOGIN_RATE_LIMIT_IPV6_SITE.max);
+    expect((await rateLimitRow('login:2001:db8:4b:1::/64'))?.count).toBe(3);
+    expect((await rateLimitRow('login:2001:db8:4b:2::/64'))?.count).toBe(3);
+    // /48 の枠に断られた /64 は、行を作らない
+    expect(await rateLimitRow('login:2001:db8:4b:3::/64')).toBeUndefined();
   });
 
   test('並行した開始でも、通るのは全体の枠の上限まで', async () => {
