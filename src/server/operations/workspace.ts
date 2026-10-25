@@ -1,22 +1,14 @@
-import { generateKeyBetween, generateNKeysBetween } from 'fractional-indexing';
-import { monthIn, now, todayIn } from '../../shared/clock.ts';
+import { now, todayIn } from '../../shared/clock.ts';
 import {
   workspaceCreate,
   workspaceInfo,
   workspaceLeaderCandidates,
   workspaceList,
 } from '../../shared/operations/workspace/index.ts';
-import { normalizeTimezone } from '../../shared/timezone.ts';
-import {
-  DEFAULT_HOURS_PER_POINT,
-  DEFAULT_WEEK_START,
-  defaultColumnNames,
-  defaultDetailFieldNames,
-} from '../../shared/workspace.ts';
 import type { Insertable, OrganizationDb, OrganizationTables, QueryCreator } from '../db/index.ts';
 import { ApiError } from '../errors.ts';
-import { uuidv7 } from '../uuid.ts';
 import { implement } from './implement.ts';
+import { newWorkspaceRows } from './workspace-rows.ts';
 
 type Tables = OrganizationTables;
 
@@ -30,13 +22,23 @@ function candidateUsers(from: Pick<QueryCreator<Tables>, 'selectFrom'>, organiza
     .where('users.login_subject', 'is not', null);
 }
 
-// INSERT ... SELECT <値> WHERE EXISTS (最初のリーダーが候補) の文。
-// 読んでから書くまでに最初のリーダーが候補でなくなっても、どの表にも行が入らない（全部入るか何も入らないか）
-function insertWhenLeaderIsCandidate<T extends keyof Tables>(
+// 作る人。同じ組織の、無効でない管理者
+function adminUsers(from: Pick<QueryCreator<Tables>, 'selectFrom'>, organizationId: string) {
+  return from
+    .selectFrom('users')
+    .where('users.organization_id', '=', organizationId)
+    .where('users.disabled_at', 'is', null)
+    .where('users.is_admin', '=', 1);
+}
+
+// INSERT ... SELECT <値> WHERE EXISTS (最初のリーダーが候補) AND EXISTS (作る人が管理者) の文。
+// 読んでから書くまでに、最初のリーダーが候補でなくなっても、作る人が管理者でなくなっても、
+// どの表にも行が入らない（全部入るか何も入らないか）
+function insertWhenAllowed<T extends keyof Tables>(
   db: OrganizationDb,
   table: T,
   row: Insertable<Tables[T]>,
-  leaderUserId: string,
+  ids: { leaderUserId: string; actorUserId: string },
 ) {
   const entries = Object.entries(row).filter(
     (entry): entry is [string, string | number | null] => entry[1] !== undefined,
@@ -49,7 +51,12 @@ function insertWhenLeaderIsCandidate<T extends keyof Tables>(
         q
           .selectNoFrom((eb) => entries.map(([column, value]) => eb.val(value).as(column)))
           .where((eb) =>
-            eb.exists(candidateUsers(eb, db.organizationId).select('users.id').where('users.id', '=', leaderUserId)),
+            eb.and([
+              eb.exists(
+                candidateUsers(eb, db.organizationId).select('users.id').where('users.id', '=', ids.leaderUserId),
+              ),
+              eb.exists(adminUsers(eb, db.organizationId).select('users.id').where('users.id', '=', ids.actorUserId)),
+            ]),
           ),
       ),
   );
@@ -59,8 +66,6 @@ export const workspaceCreateOperation = implement(workspaceCreate, async ({ db, 
   // permission: 'admin' は users の行がある管理者だけを通す。型の上の null を 404 で閉じる
   const actorUserId = actor.userId;
   if (actorUserId === null) throw new ApiError(404, 'not_found');
-  const timezone = normalizeTimezone(input.timezone);
-  if (timezone === undefined) throw new ApiError(400, 'invalid_input');
   const organizationId = db.organizationId;
 
   // 先に読んで、候補でなければ書かずに 404。名前は change_logs に残す
@@ -71,103 +76,42 @@ export const workspaceCreateOperation = implement(workspaceCreate, async ({ db, 
   );
   if (leader === undefined) throw new ApiError(404, 'not_found');
 
-  const at = now();
-  const createdAt = at.toISOString();
-  const workspaceId = uuidv7(at);
-  const membershipId = uuidv7(at);
-  // 完了の列は末尾の値を持つ（読むときは使わないが NOT NULL）
-  const [positionA, positionB, positionC, positionDone] = generateNKeysBetween(null, null, 4);
-  const columnPositions = [positionA, positionB, positionC];
-  const insert = <T extends keyof Tables>(table: T, row: Insertable<Tables[T]>) =>
-    insertWhenLeaderIsCandidate(db, table, row, leader.id);
-
+  const rows = newWorkspaceRows({
+    at: now(),
+    organizationId,
+    actorUserId,
+    leader,
+    name: input.name,
+    // 検証のときに正規の名前にそろっている（timezoneSchema）
+    timezone: input.timezone,
+    vocabulary: input.vocabulary,
+  });
+  const ids = { leaderUserId: leader.id, actorUserId };
   const results = await db.batch([
-    insert('workspaces', {
-      id: workspaceId,
-      organization_id: organizationId,
-      name: input.name,
-      timezone,
-      week_start: DEFAULT_WEEK_START,
-      vocabulary: input.vocabulary,
-      created_by: actorUserId,
-      created_at: createdAt,
-      updated_at: createdAt,
-    }),
-    insert('workspace_point_rates', {
-      workspace_id: workspaceId,
-      effective_month: monthIn(timezone, at),
-      hours_per_point: DEFAULT_HOURS_PER_POINT,
-      created_at: createdAt,
-    }),
-    ...defaultColumnNames[input.vocabulary].map((name, index) =>
-      insert('board_columns', {
-        id: uuidv7(at),
-        workspace_id: workspaceId,
-        name,
-        is_done: 0,
-        position: columnPositions[index]!,
-        created_at: createdAt,
-        updated_at: createdAt,
-      }),
-    ),
-    insert('board_columns', {
-      id: uuidv7(at),
-      workspace_id: workspaceId,
-      name: null,
-      is_done: 1,
-      position: positionDone!,
-      created_at: createdAt,
-      updated_at: createdAt,
-    }),
-    insert('detail_fields', {
-      id: uuidv7(at),
-      workspace_id: workspaceId,
-      name: defaultDetailFieldNames[input.vocabulary],
-      position: generateKeyBetween(null, null),
-      created_at: createdAt,
-      updated_at: createdAt,
-    }),
-    insert('memberships', {
-      id: membershipId,
-      workspace_id: workspaceId,
-      user_id: leader.id,
-      role: 'leader',
-      joined_on: todayIn(timezone, at),
-      joined_at: createdAt,
-    }),
-    insert('change_logs', {
-      id: uuidv7(at),
-      organization_id: organizationId,
-      workspace_id: workspaceId,
-      actor_user_id: actorUserId,
-      entity_type: 'workspace',
-      entity_id: workspaceId,
-      action: 'create',
-      changes_json: JSON.stringify({
-        name: [null, input.name],
-        timezone: [null, timezone],
-        vocabulary: [null, input.vocabulary],
-      }),
-      created_at: createdAt,
-    }),
-    insert('change_logs', {
-      id: uuidv7(at),
-      organization_id: organizationId,
-      workspace_id: workspaceId,
-      actor_user_id: actorUserId,
-      entity_type: 'membership',
-      entity_id: membershipId,
-      action: 'create',
-      changes_json: JSON.stringify({ user: [null, { id: leader.id, name: leader.name }], role: [null, 'leader'] }),
-      created_at: createdAt,
-    }),
+    insertWhenAllowed(db, 'workspaces', rows.workspace, ids),
+    insertWhenAllowed(db, 'workspace_point_rates', rows.rate, ids),
+    ...rows.columns.map((column) => insertWhenAllowed(db, 'board_columns', column, ids)),
+    insertWhenAllowed(db, 'detail_fields', rows.detailField, ids),
+    insertWhenAllowed(db, 'memberships', rows.membership, ids),
+    ...rows.logs.map((log) => insertWhenAllowed(db, 'change_logs', log, ids)),
   ]);
 
-  // どの文も同じ条件を持つので、先頭が入らなければ何も入っていない。読んだ後に最初のリーダーが候補でなくなった場合
+  // どの文も同じ条件を持つので、先頭が入らなければ何も入っていない（読んだ後に条件が崩れた場合）
   if ((results[0]?.changes ?? 0) === 0) throw new ApiError(404, 'not_found');
-  return { workspace_id: workspaceId };
+  return { workspace_id: rows.workspaceId };
 });
 
+// 保存されたタイムゾーンが Intl で作れない行があっても、一覧全体を落とさない。その行だけ UTC の日付にする
+function createdOn(timezone: string, createdAt: string): string {
+  const at = new Date(createdAt);
+  try {
+    return todayIn(timezone, at);
+  } catch {
+    return todayIn('UTC', at);
+  }
+}
+
+// 件数に上限を付けない。ワークスペースは組織あたり数十の想定（docs/data-model.md の workspaces の節）
 export const workspaceListOperation = implement(workspaceList, async ({ db }) => {
   const organizationId = db.organizationId;
   const [workspaceResult, countResult] = await db.batch([
@@ -201,12 +145,13 @@ export const workspaceListOperation = implement(workspaceList, async ({ db }) =>
       name: row.name,
       member_count: Number(counts.get(row.id)?.member_count ?? 0),
       leader_count: Number(counts.get(row.id)?.leader_count ?? 0),
-      created_on: todayIn(row.timezone, new Date(row.created_at)),
+      created_on: createdOn(row.timezone, row.created_at),
       closed_at: row.closed_at,
     })),
   };
 });
 
+// 件数に上限を付けない。ユーザーの数は member_limit で抑えられる（docs/data-model.md の workspaces の節）
 export const workspaceLeaderCandidatesOperation = implement(workspaceLeaderCandidates, async ({ db }) => {
   const users = await db.rows(
     db.statement((q) =>

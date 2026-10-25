@@ -37,7 +37,7 @@
   <PageHead
     eyebrow={t('adminEyebrow', { admin: t('admin') })}
     title={t('pageOrgAdmin')}
-    tallies={[{ label: t('workspace'), count: openCount }]}
+    tallies={[{ label: t('workspaceOpenLabel', { workspace: t('workspace') }), count: openCount }]}
   >
     {#snippet actions()}
       <button class="btn is-primary" type="button" onclick={(event) => createDialog?.show(event.currentTarget)}>
@@ -52,7 +52,7 @@
         <EmptyState
           icon="users"
           title={t('firstWorkspaceTitle', { workspace: t('workspace') })}
-          text={t('workspaceEmptyText', { workspace: t('workspace'), leader: t('leader') })}
+          text={t('workspaceEmptyText', { workspace: t('workspace'), leader: t('leader'), member: t('member') })}
         >
           {#snippet actions()}
             <button class="btn is-sm" type="button" onclick={(event) => createDialog?.show(event.currentTarget)}>
@@ -66,8 +66,8 @@
             <thead>
               <tr>
                 <th>{t('fieldName')}</th>
-                <th class="is-num">{t('pageMembers')}</th>
-                <th class="is-num">{t('leader')}</th>
+                <th class="is-num">{t('workspaceMemberCountHeader', { member: t('member'), leader: t('leader') })}</th>
+                <th class="is-num">{t('workspaceLeaderCountHeader', { leader: t('leader') })}</th>
                 <th>{t('createdOn')}</th>
               </tr>
             </thead>

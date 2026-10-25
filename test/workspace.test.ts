@@ -8,6 +8,7 @@ import {
   workspaceLeaderCandidates,
   workspaceList,
 } from '../src/shared/operations/workspace/index.ts';
+import { ID_MAX_LENGTH } from '../src/shared/id.ts';
 import { WORKSPACE_NAME_MAX_LENGTH } from '../src/shared/workspace.ts';
 import { createApp } from '../src/server/app.ts';
 import { orgDb } from '../src/server/db/index.ts';
@@ -34,22 +35,54 @@ afterEach(() => {
 type WrittenTable =
   'workspaces' | 'workspace_point_rates' | 'board_columns' | 'detail_fields' | 'memberships' | 'change_logs';
 
-// 作る操作が書く6表の行の数。作る前後で比べて、書かれていないことを確かめる（テストは1つずつ順に流れる）
+// 組織の、作る操作が書く6表の行の数。作る前後で比べて、書かれていないことを確かめる。
+// 組織で絞る（workspaces と change_logs は organization_id、ほかは workspace_id から辿る）
 async function countRows(organization: OrganizationFixture): Promise<Record<WrittenTable, number>> {
   const db = orgDb(env, organization.verified);
-  const count = async (table: WrittenTable): Promise<number> => {
-    const rows = await db.rows(
-      db.statement((q) => q.selectFrom(table as 'workspaces').select((eb) => eb.fn.countAll<number>().as('n'))),
-    );
-    return Number(rows[0]?.n);
-  };
+  const organizationId = organization.id;
+  const [workspaces, rates, columns, fields, memberships, logs] = await db.batch([
+    db.statement((q) => q.selectFrom('workspaces').select('id').where('organization_id', '=', organizationId)),
+    db.statement((q) =>
+      q
+        .selectFrom('workspace_point_rates')
+        .select('workspace_id')
+        .where('workspace_id', 'in', (eb) =>
+          eb.selectFrom('workspaces').select('id').where('organization_id', '=', organizationId),
+        ),
+    ),
+    db.statement((q) =>
+      q
+        .selectFrom('board_columns')
+        .select('id')
+        .where('workspace_id', 'in', (eb) =>
+          eb.selectFrom('workspaces').select('id').where('organization_id', '=', organizationId),
+        ),
+    ),
+    db.statement((q) =>
+      q
+        .selectFrom('detail_fields')
+        .select('id')
+        .where('workspace_id', 'in', (eb) =>
+          eb.selectFrom('workspaces').select('id').where('organization_id', '=', organizationId),
+        ),
+    ),
+    db.statement((q) =>
+      q
+        .selectFrom('memberships')
+        .select('id')
+        .where('workspace_id', 'in', (eb) =>
+          eb.selectFrom('workspaces').select('id').where('organization_id', '=', organizationId),
+        ),
+    ),
+    db.statement((q) => q.selectFrom('change_logs').select('id').where('organization_id', '=', organizationId)),
+  ] as const);
   return {
-    workspaces: await count('workspaces'),
-    workspace_point_rates: await count('workspace_point_rates'),
-    board_columns: await count('board_columns'),
-    detail_fields: await count('detail_fields'),
-    memberships: await count('memberships'),
-    change_logs: await count('change_logs'),
+    workspaces: workspaces.rows.length,
+    workspace_point_rates: rates.rows.length,
+    board_columns: columns.rows.length,
+    detail_fields: fields.rows.length,
+    memberships: memberships.rows.length,
+    change_logs: logs.rows.length,
   };
 }
 
@@ -264,38 +297,66 @@ describe('workspace-create', () => {
       await expectRejected(target, waiting.id);
     });
 
-    test('読んだ後に無効にされて、書く文の条件で行が入らなかったとき', async () => {
-      const target = await createTarget();
-      const leader = await createPerson({ organization: target.organization });
-      const before = await countRows(target.organization);
-
-      // 最初のリーダーを読む問い合わせの直後に、そのユーザーを無効にする。入口の first は DbEntry.prototype にある
+    // 最初のリーダーを読む問い合わせの直後に、users の行を書き換える（読んでから書くまでの間に起きる変更）。
+    // 入口の first は DbEntry.prototype にある
+    function changeUserAfterLeaderRead(
+      target: Target,
+      leaderUserId: string,
+      changedUserId: string,
+      change: { disabled_at: string } | { is_admin: 0 },
+    ): () => boolean {
       const entry = orgDb(env, target.organization.verified);
       const prototype = Object.getPrototypeOf(Object.getPrototypeOf(entry)) as {
         first: (this: unknown, ...args: unknown[]) => Promise<unknown>;
       };
       const original = prototype.first;
-      let disabled = false;
+      let changed = false;
       vi.spyOn(prototype, 'first').mockImplementation(async function (this: unknown, ...args: unknown[]) {
         const row = await original.apply(this, args);
-        if (!disabled && (row as { id?: string } | undefined)?.id === leader.userId) {
-          disabled = true;
+        if (!changed && (row as { id?: string } | undefined)?.id === leaderUserId) {
+          changed = true;
           const db = orgDb(env, target.organization.verified);
           await db.batch([
             db.statement((q) =>
               q
                 .updateTable('users')
-                .set({ disabled_at: '2026-10-25T00:00:00.000Z' })
-                .where('id', '=', leader.userId!)
+                .set(change)
+                .where('id', '=', changedUserId)
                 .where('organization_id', '=', target.organization.id),
             ),
           ]);
         }
         return row;
       });
+      return () => changed;
+    }
+
+    test('読んだ後に最初のリーダーが無効にされて、書く文の条件で行が入らなかったとき', async () => {
+      const target = await createTarget();
+      const leader = await createPerson({ organization: target.organization });
+      const before = await countRows(target.organization);
+      const changed = changeUserAfterLeaderRead(target, leader.userId!, leader.userId!, {
+        disabled_at: '2026-10-25T00:00:00.000Z',
+      });
 
       const res = await create(target, target.admin.token, { leader_user_id: leader.userId! });
-      expect(disabled).toBe(true);
+      expect(changed()).toBe(true);
+      expect(res.status).toBe(404);
+      expect(await errorCodeOf(res)).toBe('not_found');
+      expect(await countRows(target.organization)).toEqual(before);
+    });
+
+    test.each([
+      ['管理者を外された', { is_admin: 0 } as const],
+      ['無効にされた', { disabled_at: '2026-10-25T00:00:00.000Z' }],
+    ])('読んだ後に作る人が%sとき、書く文の条件で行が入らない', async (_label, change) => {
+      const target = await createTarget();
+      const leader = await createPerson({ organization: target.organization });
+      const before = await countRows(target.organization);
+      const changed = changeUserAfterLeaderRead(target, leader.userId!, target.admin.userId!, change);
+
+      const res = await create(target, target.admin.token, { leader_user_id: leader.userId! });
+      expect(changed()).toBe(true);
       expect(res.status).toBe(404);
       expect(await errorCodeOf(res)).toBe('not_found');
       expect(await countRows(target.organization)).toEqual(before);
@@ -342,6 +403,10 @@ describe('workspace-create', () => {
       ['空', ''],
       ['空白だけ', ' 　 \t'],
       [`${WORKSPACE_NAME_MAX_LENGTH + 1}字`, 'あ'.repeat(WORKSPACE_NAME_MAX_LENGTH + 1)],
+      [`絵文字の${WORKSPACE_NAME_MAX_LENGTH + 1}字`, '😀'.repeat(WORKSPACE_NAME_MAX_LENGTH + 1)],
+      ['ゼロ幅の文字を含む', '保守​チーム'],
+      ['向きを変える文字を含む', '保守‮チーム'],
+      ['途中に改行を含む', '保守\nチーム'],
     ])('%s は 400 の invalid_input で、行が入らない', async (_label, name) => {
       const target = await createTarget();
       const before = await countRows(target.organization);
@@ -358,6 +423,8 @@ describe('workspace-create', () => {
         ['あ'.repeat(WORKSPACE_NAME_MAX_LENGTH), 'あ'.repeat(WORKSPACE_NAME_MAX_LENGTH)],
         ['  保守チーム　', '保守チーム'],
         [` ${'あ'.repeat(WORKSPACE_NAME_MAX_LENGTH)} `, 'あ'.repeat(WORKSPACE_NAME_MAX_LENGTH)],
+        // 字数はコードポイントで数える。絵文字は1字
+        ['😀'.repeat(WORKSPACE_NAME_MAX_LENGTH), '😀'.repeat(WORKSPACE_NAME_MAX_LENGTH)],
       ]);
       for (const [sent, saved] of names) {
         const id = await created(
@@ -366,6 +433,21 @@ describe('workspace-create', () => {
         expect((await readCreated(target.organization, id)).workspace?.name).toBe(saved);
       }
     });
+  });
+
+  test('ID の入力は長さの上限を超えると 400 の invalid_input', async () => {
+    const target = await createTarget();
+    const before = await countRows(target.organization);
+    const res = await create(target, target.admin.token, { leader_user_id: 'a'.repeat(ID_MAX_LENGTH + 1) });
+    expect(res.status).toBe(400);
+    expect(await errorCodeOf(res)).toBe('invalid_input');
+    const info = await post(app, workspaceInfo, {
+      slug: target.slug,
+      token: target.admin.token,
+      body: { workspace_id: 'a'.repeat(ID_MAX_LENGTH + 1) },
+    });
+    expect(info.status).toBe(400);
+    expect(await countRows(target.organization)).toEqual(before);
   });
 
   describe('日付はワークスペースのタイムゾーンで決まる', () => {
@@ -482,6 +564,21 @@ describe('workspace-list', () => {
       [target.workspace.id, target.otherWorkspace.id, open.id, closed.id].sort(),
     );
     expect(workspaces.some((row) => row.id === other.workspace.id)).toBe(false);
+  });
+
+  test('保存されたタイムゾーンが Intl で作れない行があっても、一覧は 200 で、その行だけ UTC の日付にする', async () => {
+    const target = await createTarget();
+    const broken = await createWorkspace(target.organization, target.admin.userId!, {
+      name: '壊れたタイムゾーン',
+      timezone: 'Mars/Olympus',
+      created_at: '2026-10-25T15:30:00.000Z',
+    });
+    const res = await post(app, workspaceList, { slug: target.slug, token: target.admin.token });
+    expect(res.status).toBe(200);
+    const { workspaces } = (await res.json()) as { workspaces: { id: string; created_on: string }[] };
+    expect(workspaces.find((row) => row.id === broken.id)?.created_on).toBe('2026-10-25');
+    // ほかの行は、それぞれのタイムゾーンの日付のまま
+    expect(workspaces.find((row) => row.id === target.workspace.id)?.created_on).toBe('2026-10-20');
   });
 
   test('ワークスペースが無い組織は空の一覧を返す', async () => {

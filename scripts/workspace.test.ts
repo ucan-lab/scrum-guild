@@ -2,13 +2,13 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 import { monthIn, now, todayIn } from '../src/shared/clock.ts';
-import { normalizeTimezone } from '../src/shared/timezone.ts';
+import { TIMEZONE_MAX_LENGTH, normalizeTimezone, timezoneSchema } from '../src/shared/timezone.ts';
 import { dictionary } from '../src/shared/vocabulary.ts';
 import {
   WORKSPACE_NAME_MAX_LENGTH,
   defaultColumnNames,
   defaultDetailFieldNames,
-  timezoneSchema,
+  workspaceNameProblem,
   workspaceNameSchema,
 } from '../src/shared/workspace.ts';
 
@@ -41,6 +41,11 @@ describe('normalizeTimezone', () => {
     assert.equal(timezoneSchema.safeParse('Asia/Tokyo').success, true);
     assert.equal(timezoneSchema.safeParse('+09:00').success, false);
     assert.equal(timezoneSchema.safeParse('Mars/Olympus').success, false);
+    assert.equal(timezoneSchema.safeParse('a'.repeat(TIMEZONE_MAX_LENGTH + 1)).success, false);
+  });
+
+  test('スキーマは検証のときに正規の名前へそろえる', () => {
+    assert.equal(timezoneSchema.parse('asia/tokyo'), 'Asia/Tokyo');
   });
 });
 
@@ -82,6 +87,25 @@ describe('名前', () => {
     assert.equal(workspaceNameSchema.safeParse('あ'.repeat(WORKSPACE_NAME_MAX_LENGTH + 1)).success, false);
     // 空白を除いてから数える
     assert.equal(workspaceNameSchema.safeParse(` ${'あ'.repeat(WORKSPACE_NAME_MAX_LENGTH)} `).success, true);
+  });
+
+  test('字数はコードポイントで数える（絵文字は1字）', () => {
+    assert.equal(workspaceNameSchema.safeParse('😀'.repeat(WORKSPACE_NAME_MAX_LENGTH)).success, true);
+    assert.equal(workspaceNameSchema.safeParse('😀'.repeat(WORKSPACE_NAME_MAX_LENGTH + 1)).success, false);
+    assert.equal(workspaceNameProblem('😀'.repeat(WORKSPACE_NAME_MAX_LENGTH)), null);
+    assert.equal(workspaceNameProblem('😀'.repeat(WORKSPACE_NAME_MAX_LENGTH + 1)), 'too_long');
+  });
+
+  test('制御文字と書式の文字（ゼロ幅の文字、向きを変える文字、途中の改行）は断る', () => {
+    for (const bad of ['保守​チーム', '​', '保守‮チーム', '保守\nチーム', '保守\u0000']) {
+      assert.equal(workspaceNameSchema.safeParse(bad).success, false, JSON.stringify(bad));
+      assert.equal(workspaceNameProblem(bad.trim()), 'invalid_character', JSON.stringify(bad));
+    }
+  });
+
+  test('画面が使う判定の種類', () => {
+    assert.equal(workspaceNameProblem(''), 'required');
+    assert.equal(workspaceNameProblem('保守'), null);
   });
 });
 

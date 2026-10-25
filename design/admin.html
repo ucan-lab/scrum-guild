@@ -40,7 +40,7 @@ SQ.mount("admin", () => `
           <td>${r.disabled ? `<button class="btn is-sm is-quiet" type="button">有効に戻す</button>` : r.who === D.me ? "" : `<button class="btn is-sm is-quiet is-danger" type="button">無効にする</button>`}</td></tr>`).join("")}</tbody></table></div>`)}
     ${setting(t("workspace"), `閉じた${t("workspace")}は読み取り専用になり、${t("connection")}はすべて止まります。開き直せます。`, !A.workspaces.length
       ? SQ.emptyState("users", `まだ${t("workspace")}がありません`,
-          `チームや用途ごとに作ります。メンバーの招待は、作った${t("workspace")}の${t("leader")}が行います。`,
+          `チームや用途ごとに作ります。${t("member")}の招待は、作った${t("workspace")}の${t("leader")}が行います。`,
           `<button class="btn is-sm" type="button" data-dialog="createWorkspace">${icon("plus")}${t("workspace")}を作る</button>`)
       : `
       <div class="table-wrap"><table class="table"><thead><tr><th>名前</th><th class="is-num">メンバー</th><th class="is-num">${t("leader")}</th><th>作った日</th><th></th></tr></thead>

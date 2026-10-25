@@ -68,6 +68,7 @@ h1, h2, h3 { text-wrap: balance; }
   border: 1px solid var(--color-line); background: var(--color-surface);
 }
 .ws-select span { font-size: var(--text-xs); color: var(--color-muted); }
+.ws-select b { min-width: 0; overflow-wrap: anywhere; }
 .ws-select select { border: 0; background: none; padding: 0; font-weight: 700; }
 /* 組織の切り替え。開閉するメニューで、中は各組織へのリンクと、最後に組織の選択の画面へ戻るリンク。
    選ぶと画面が移るので select にしない（矢印キーで選んだだけで移ってしまう）。狭い幅でも隠さない */
@@ -129,7 +130,7 @@ h1, h2, h3 { text-wrap: balance; }
 /* ===== 画面の見出しと集計 ===== */
 .page-head { display: grid; gap: var(--space-3); padding-bottom: var(--space-5); border-bottom: var(--rule-double); }
 .page-eyebrow { font-family: var(--font-mono); font-size: var(--text-sm); color: var(--color-muted); letter-spacing: 0.04em; }
-.page-title { font-family: var(--font-display); font-weight: var(--weight-display); font-size: var(--text-2xl); line-height: var(--leading-tight); letter-spacing: 0.04em; }
+.page-title { font-family: var(--font-display); font-weight: var(--weight-display); font-size: var(--text-2xl); line-height: var(--leading-tight); letter-spacing: 0.04em; min-width: 0; overflow-wrap: anywhere; }
 .tally { display: flex; flex-wrap: wrap; gap: var(--space-2) var(--space-6); margin: 0; }
 .tally > div { display: flex; align-items: baseline; gap: var(--space-2); }
 .tally dt { font-size: var(--text-sm); color: var(--color-muted); display: inline-flex; align-items: center; gap: 4px; }
@@ -171,6 +172,7 @@ h1, h2, h3 { text-wrap: balance; }
   padding: 4px 10px; font-size: var(--text-sm); position: relative;
 }
 .pill:hover { border-color: var(--color-muted); }
+.pill[aria-disabled="true"] { opacity: 0.45; cursor: not-allowed; }
 .pill-count {
   position: absolute; top: -7px; right: -7px; min-width: 17px; height: 17px; padding: 0 4px;
   background: var(--color-stamp); color: var(--color-on-accent); border-radius: var(--radius-full);

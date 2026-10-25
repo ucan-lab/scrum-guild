@@ -803,7 +803,7 @@
          <div class="choice-list" role="radiogroup" aria-labelledby="d-wv">
            <label class="choice"><input type="radio" name="d-wv" ${vocab ? "" : "checked"}><div><b>ゲームの言葉</b><span>パーティ、クエスト、レイド</span></div></label>
            <label class="choice"><input type="radio" name="d-wv" ${vocab ? "checked" : ""}><div><b>スクラムの言葉</b><span>ワークスペース、タスク、エピック</span></div></label></div>
-         <span class="field-hint">列と決まった欄の名前は、選んだ言葉づかいで決まります。あとから言葉づかいを替えても、名前は変わりません。</span></div>
+         <span class="field-hint">${t("column")}と決まった欄の名前は、選んだ言葉づかいで決まります。あとから言葉づかいを替えても、名前は変わりません。</span></div>
        <p class="field-hint">${t("column")}は「${vocab ? "未着手、作業中、レビュー" : "出発前、遂行中、査定中"}、${t("done")}」、決まった欄は「${vocab ? "受け入れ基準" : "達成条件"}」、換算は 1 ${t("points")} = 4 時間、週の始まりは月曜、タイムゾーンは Asia/Tokyo（このブラウザの設定）で作ります。あとから設定で変えられます。</p>`,
       `<button class="btn is-quiet" type="button" data-close-dialog>やめる</button><button class="btn is-primary" type="button" data-close-dialog data-toast="${t("workspace")}を作りました">作る</button>`),
     createOrganization: () => openDialog(`${t("organization")}を作る`,

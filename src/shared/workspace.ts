@@ -2,19 +2,32 @@
 // 画面の束にも入るので、Worker のコードを引かない。scripts/ からも読むので、Node の型の除去で動く書き方に留める
 import { z } from 'zod';
 import './zod-config.ts';
-import { isValidTimezone } from './timezone.ts';
 import type { Vocabulary } from './vocabulary.ts';
 
-// 名前は前後の空白を除いて 1〜50 字
+// 名前は前後の空白を除いて 1〜50 字。字数はコードポイントで数える（絵文字も1字）
 export const WORKSPACE_NAME_MAX_LENGTH = 50;
 
-export const workspaceNameSchema = z.string().trim().min(1).max(WORKSPACE_NAME_MAX_LENGTH);
+// 制御文字（Cc）と書式の文字（Cf。ゼロ幅の文字、向きを変える文字など）。見えないまま名前に紛れるため断る
+const INVISIBLE_CHARACTERS = /[\p{Cc}\p{Cf}]/u;
 
-// 時差の表記と存在しない名前は断る。保存する正規の名前は normalizeTimezone で作る
-export const timezoneSchema = z
+export type WorkspaceNameProblem = 'required' | 'too_long' | 'invalid_character';
+
+// 画面の検査と API の検証が同じ判定を使う。name は前後の空白を除いた後の値
+export function workspaceNameProblem(name: string): WorkspaceNameProblem | null {
+  if (INVISIBLE_CHARACTERS.test(name)) return 'invalid_character';
+  const length = [...name].length;
+  if (length === 0) return 'required';
+  if (length > WORKSPACE_NAME_MAX_LENGTH) return 'too_long';
+  return null;
+}
+
+export const workspaceNameSchema = z
   .string()
-  .max(64)
-  .refine(isValidTimezone, { message: '存在するタイムゾーンの名前ではない' });
+  .trim()
+  .superRefine((name, ctx) => {
+    const problem = workspaceNameProblem(name);
+    if (problem !== null) ctx.addIssue({ code: 'custom', message: `ワークスペースの名前が使えない（${problem}）` });
+  });
 
 export const workspaceVocabularySchema = z.enum(['game', 'scrum']);
 

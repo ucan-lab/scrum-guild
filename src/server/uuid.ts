@@ -3,7 +3,8 @@ import { now } from '../shared/clock.ts';
 
 const HEX = (bytes: Uint8Array) => Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('');
 
-// 時刻は Date でもミリ秒の数でも受ける（ログインは数で、ワークスペースの作成は Date で渡す）
+// 時刻は Date でもミリ秒の数でも受ける（ログインは数で、ワークスペースの作成は Date で渡す）。
+// 同じミリ秒の中では、作った順に並ぶことを保証しない（時刻の後ろはすべて乱数）。順を持たせたい行は position などの別の列で並べる
 export function uuidv7(at: Date | number = now()): string {
   const bytes = crypto.getRandomValues(new Uint8Array(16));
   // 先頭の48ビットはミリ秒の時刻

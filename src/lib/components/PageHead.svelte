@@ -21,7 +21,8 @@
 <header class="page-head">
   {#if eyebrow}<span class="page-eyebrow">{eyebrow}</span>{/if}
   <div class="page-head-row">
-    <h1 class="page-title">{title}</h1>
+    <!-- tabindex="-1" は、画面を移った後に見出しへフォーカスを置くため（キーボードの Tab 順には入らない） -->
+    <h1 class="page-title" tabindex="-1">{title}</h1>
     {#if actions}<div class="page-actions">{@render actions()}</div>{/if}
   </div>
   {#if tallies.length > 0}

@@ -134,9 +134,12 @@ export const dictionary = defineDictionary({
   ),
   workspaceListLabel: organization('{workspace}の一覧', '{workspace}の一覧'),
   workspaceEmptyText: organization(
-    'チームや用途ごとに作ります。メンバーの招待は、作った{workspace}の{leader}が行います。',
-    'チームや用途ごとに作ります。メンバーの招待は、作った{workspace}の{leader}が行います。',
+    'チームや用途ごとに作ります。{member}の招待は、作った{workspace}の{leader}が行います。',
+    'チームや用途ごとに作ります。{member}の招待は、作った{workspace}の{leader}が行います。',
   ),
+  workspaceOpenLabel: organization('開いている{workspace}', '開いている{workspace}'),
+  workspaceMemberCountHeader: organization('{member}数（{leader}を含む）', '{member}数（{leader}を含む）'),
+  workspaceLeaderCountHeader: organization('{leader}数', '{leader}数'),
   fieldName: organization('名前', '名前'),
   createdOn: organization('作った日', '作った日'),
   workspaceClosedChip: organization('閉じた {date}', '閉じた {date}'),
@@ -155,12 +158,21 @@ export const dictionary = defineDictionary({
   workspaceLeaderLoadFailed: organization('選べる人を読み込めませんでした', '選べる人を読み込めませんでした'),
   workspaceVocabularyLabel: organization('言葉づかい', '言葉づかい'),
   vocabularyGameLabel: organization('ゲームの言葉', 'ゲームの言葉'),
-  vocabularyGameNote: organization('パーティ、クエスト、レイド', 'パーティ、クエスト、レイド'),
   vocabularyScrumLabel: organization('スクラムの言葉', 'スクラムの言葉'),
-  vocabularyScrumNote: organization('ワークスペース、タスク、エピック', 'ワークスペース、タスク、エピック'),
+  // 言葉づかいの選択肢の例。その言葉づかいの言葉を、画面が渡す
+  vocabularyNote: organization('{workspace}、{task}、{epic}', '{workspace}、{task}、{epic}'),
   workspaceVocabularyHint: organization(
-    '列と決まった欄の名前は、選んだ言葉づかいで決まります。あとから言葉づかいを替えても、名前は変わりません。',
-    '列と決まった欄の名前は、選んだ言葉づかいで決まります。あとから言葉づかいを替えても、名前は変わりません。',
+    '{column}と決まった欄の名前は、選んだ言葉づかいで決まります。あとから言葉づかいを替えても、名前は変わりません。',
+    '{column}と決まった欄の名前は、選んだ言葉づかいで決まります。あとから言葉づかいを替えても、名前は変わりません。',
+  ),
+  workspaceNameInvalidCharacter: organization(
+    '名前に使えない文字（制御文字など）が含まれています',
+    '名前に使えない文字（制御文字など）が含まれています',
+  ),
+  workspaceNoCandidates: organization('最初の{leader}に指せる人がいません', '最初の{leader}に指せる人がいません'),
+  workspaceTimezoneRejected: organization(
+    'このブラウザのタイムゾーン（{timezone}）では作れません。ブラウザの設定を確かめてください。',
+    'このブラウザのタイムゾーン（{timezone}）では作れません。ブラウザの設定を確かめてください。',
   ),
   workspaceDefaultsNote: organization(
     '{column}は「{columns}」、決まった欄は「{field}」、換算は 1 {points} = {hours} 時間、週の始まりは月曜、タイムゾーンは {timezone}（このブラウザの設定）で作ります。あとから設定で変えられます。',

@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { idSchema } from '../../id.ts';
 import { workspaceVocabularySchema } from '../../workspace.ts';
 import { defineOperation } from '../define.ts';
 
@@ -10,7 +11,7 @@ export const workspaceInfo = defineOperation({
   mode: 'read',
   permission: 'member',
   workspace: true,
-  input: z.object({ workspace_id: z.string() }),
+  input: z.object({ workspace_id: idSchema }),
   output: z.object({
     name: z.string(),
     vocabulary: workspaceVocabularySchema,
