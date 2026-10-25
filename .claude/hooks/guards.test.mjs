@@ -88,6 +88,22 @@ describe('bash-rules: 止める', () => {
     'wrangler kv key get k --local --no-local=true',
     'wrangler kv key list --binding KV --no-local --local',
     'wrangler d1 execute DB --local --no-local --command "select 1"',
+    'wrangler kv key put k v --local --local=',
+    'wrangler d1 migrations apply DB --local --no-local',
+    'wrangler d1 migrations list DB --local --local=false',
+    'wrangler d1 export DB --local --output out.sql --local false',
+    'wrangler kv bulk put keys.json --local --no-local',
+    'wrangler kv key put k v --local $F',
+    'wrangler kv key put k v --local "$F"',
+    'wrangler kv key put k v --local ${F}',
+    'wrangler kv key put k v --local $(echo false)',
+    'wrangler kv key put k v --local `echo false`',
+    'wrangler r2 object get attachments/a.png --local --local.foo=bar',
+    'wrangler kv key put k v --binding KV --local --local.foo=bar',
+    "wrangler r2 object get attachments/a.png --local '--local\n' false",
+    "wrangler r2 object get attachments/a.png --local '--local\r' false",
+    "wrangler d1 execute DB --local '--remote\n' --command \"select 1\"",
+    'wrangler d1 execute DB --local --remote.x=1 --command "select 1"',
     'wrangler secret put GITHUB_CLIENT_SECRET',
     'wrangler versions secret put X',
     'wrangler login',
@@ -414,6 +430,9 @@ describe('bash-rules: 止める', () => {
     assert.match(verdict('wrangler deploy')[1], /本番に触る/);
     assert.match(verdict('wrangler d1 execute DB')[1], /--local/);
     assert.match(verdict('wrangler kv key put k v --local --no-local')[1], /local を打ち消して本番に向く/);
+    assert.match(verdict('wrangler kv key put k v --no-local')[1], /local を打ち消して本番に向く/);
+    assert.match(verdict('wrangler kv key put k v --local $F')[1], /local を打ち消すかを判定できない/);
+    assert.match(verdict('wrangler kv key put k v --local --local.foo=bar')[1], /どのフラグと読むかを判定できない/);
     assert.match(verdict('git push -f')[1], /--force-with-lease/);
     assert.equal(decision('git push --force-with-lease', 'main'), 'deny');
     assert.match(verdict('gh api -X PUT repos/o/r/pulls/1/merge')[1], /gh pr merge/);
@@ -514,6 +533,9 @@ describe('bash-rules: 通す', () => {
     'wrangler r2 object put attachments/a.png --file a.png --local',
     'wrangler r2 object get attachments/a.png --local=true',
     'wrangler kv key put k v --local true',
+    'wrangler kv key put k v --local=true',
+    'wrangler kv key put --local k v',
+    'wrangler r2 object put attachments/a.png --file=./a.png --local',
     'wrangler d1 execute DB --local=true --command "select 1"',
     'pnpm install',
     'pnpm install --frozen-lockfile',

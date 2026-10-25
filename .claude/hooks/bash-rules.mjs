@@ -49,17 +49,26 @@ const PRODUCTION_REASON = 'デプロイ、版、本番のログ、D1 と R2 の�
 
 // wrangler の yargs は、真偽のフラグが重なると後の値を採り、--local の次の語が true か false ならそれを値として読み、
 // --local= の値は "true" のときだけ true にする。r2 と kv は local が false だと本番に向く。
-// 後の値を採る規則は真似ず、打ち消しが1つでもあれば順番に関わらず止める
-function negatesLocal(args) {
-  return args.some(
-    (a, i) =>
-      a.startsWith('--no-local') ||
-      (a.startsWith('--local=') && a !== '--local=true') ||
-      (a === '--local' && args[i + 1] === 'false'),
-  );
+// 後の値を採る規則は真似ず、打ち消しが1つでもあれば順番に関わらず止める。次の語が変数なら false かを判定できない
+function localProblem(args) {
+  for (const [i, a] of args.entries()) {
+    const next = args[i + 1];
+    if (a.startsWith('--no-local') || (a.startsWith('--local=') && a !== '--local=true') || (a === '--local' && next === 'false')) {
+      return 'negated';
+    }
+    if (a === '--local' && next?.includes('$')) return 'variable';
+  }
+  return null;
 }
 
+// yargs はフラグの名前を改行の手前で切り（'--local<改行>' は --local）、. の後ろをドット記法で読む（--local.x=1 で local が配列になり、
+// r2 と kv は本番に向く）。名前の完全一致で見る判定が外れるので、名前に空白、改行、. を含むフラグは止める
+const UNREADABLE_FLAG = /^-[^=]*[\s.]/;
+
 function judgeWrangler(args) {
+  if (args.some((a) => UNREADABLE_FLAG.test(a))) {
+    return [DENY, 'wrangler のフラグの名前に空白、改行、. を含むと、wrangler がどのフラグと読むかを判定できない'];
+  }
   const isRemote = args.some(
     (a) =>
       a === '-r' ||
@@ -80,8 +89,12 @@ function judgeWrangler(args) {
   const [sub, sub1, sub2] = pos;
   const hasLocal = args.includes('--local') || args.includes('--local=true');
   const needLocal = (what) => {
-    if (negatesLocal(args)) {
+    const problem = localProblem(args);
+    if (problem === 'negated') {
       return [DENY, `${what} の --no-local、--local=<true 以外>、--local false は local を打ち消して本番に向く。--local だけを付ける`];
+    }
+    if (problem === 'variable') {
+      return [DENY, `${what} の --local の次の語を変数や $(...) で渡すと、local を打ち消すかを判定できない`];
     }
     return hasLocal ? null : [DENY, `${what} は --local を付けて手元の D1、R2、KV に向けて実行する`];
   };
