@@ -42,7 +42,8 @@ export function createApp() {
   });
 
   app.get('/health', (c) => {
-    const body: Health = { status: 'ok', version: c.env.APP_VERSION || 'dev' };
+    // rollback の実地の試し（#20 の手順6）。版をずらして本番の煙のテストを落とす。revert の PR で戻す
+    const body: Health = { status: 'ok', version: `${c.env.APP_VERSION || 'dev'}-rollback-test` };
     return c.json(body);
   });
 
