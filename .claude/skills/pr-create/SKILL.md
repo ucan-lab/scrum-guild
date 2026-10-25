@@ -120,7 +120,7 @@ gh api repos/{owner}/{repo}/issues/<issue> --jq '{number, title, body, state, la
 ```
 
 本文の未チェックの項目（`- [ ]`）を完了条件として控える。
-PR の本文では、ラベルの無いタスクを `Closes #<番号>` で指す。`story` か `epic` のラベルが付いた Issue は `Refs #<番号>` で指し、`Closes` を使わない（理由: ストーリーとエピックは人が受け入れ条件を確かめて閉じる。`docs/development.md` の「Issue の運用」）。
+PR の本文では、`epic` も `story` も付いていない Issue（タスク。`area:` などほかのラベルの有無は問わない）を `Closes #<番号>` で指す。`story` か `epic` のラベルが付いた Issue は `Refs #<番号>` で指し、`Closes` を使わない（理由: ストーリーとエピックは人が受け入れ条件を確かめて閉じる。`docs/development.md` の「Issue の運用」）。
 
 ## Step 3: 草案を作る
 
