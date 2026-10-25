@@ -157,11 +157,9 @@ export function stageBlocks(options: {
   blocks: MarkdownBlock[];
   clock: FrameClock;
   show: (visible: MarkdownBlock[], progress: { done: boolean; measured: boolean }) => void;
-  budgetMs?: number;
-  singlePassWeight?: number;
 }): StagedRender {
   const { blocks, clock, show } = options;
-  const budgetMs = options.budgetMs ?? MARKDOWN_FRAME_BUDGET_MS;
+  const budgetMs = MARKDOWN_FRAME_BUDGET_MS;
   const units = unitsOf(blocks);
   const total = units.length;
   const totalWeight = units.reduce((sum, unit) => sum + unit.weight, 0);
@@ -210,7 +208,7 @@ export function stageBlocks(options: {
     if (shown < total && !cancelled) frame = clock.requestFrame(onFrame);
   }
 
-  if (totalWeight <= (options.singlePassWeight ?? MARKDOWN_SINGLE_PASS_WEIGHT)) {
+  if (totalWeight <= MARKDOWN_SINGLE_PASS_WEIGHT) {
     show(blocks, { done: true, measured: false });
     shown = total;
   } else {

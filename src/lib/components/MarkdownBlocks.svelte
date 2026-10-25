@@ -6,7 +6,7 @@
   // 変換済みの安全な節（markdown.ts の MarkdownBlock）を再帰で描く。枠は components.css の .doc-box。
   // HTML の文字列を差し込む記法と、インラインの style 属性（CSP が止める）は使わない。リンクと画像の規則は markdown.ts が持つ。
   // headingStart は `#` を何段の見出しにするか（既定 3）。`##` はその次の段で、h6 で止める。見た目の大きさは Markdown の段（.doc-h1 から .doc-h6）で決まる。
-  // busy は、次の本文の変換を待っている間（今の描画は前の本文）
+  // busy は、次の本文の変換を待っている間（今の描画は前の本文）と、段階の描画で描き終わるまで
   let {
     blocks,
     headingStart = 3,
