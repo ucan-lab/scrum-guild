@@ -19,9 +19,10 @@ export const pageCspDirectives = {
   'base-uri': sources('self'),
   'form-action': sources('self'),
   'frame-ancestors': sources('none'),
-  // GitHub のアバターの画像。運用者が最初の管理者に指名する人を、作る前に確かめるのに見せる（アバターの URL は
-  // src/server/auth/github.ts がこのホストの https だけを通す）
-  'img-src': sources('self', 'https://avatars.githubusercontent.com'),
+  // GitHub と Google のアバターの画像。運用者が最初の管理者に指名する人を、作る前に確かめるのに見せる（アバターの URL は
+  // src/server/auth/github.ts と google.ts がこれらのホストの https だけを通す。Google は lh3 だけ（プロフィール画像の
+  // 既定のホスト）で、`*.googleusercontent.com` 全体は許さない）
+  'img-src': sources('self', 'https://avatars.githubusercontent.com', 'https://lh3.googleusercontent.com'),
   // SvelteKit が差し込む読み上げ用の要素（svelte-announcer）の style 属性だけを通す。
   // Kit を上げて値が変わると、pnpm build の最後（scripts/write-headers.ts）が落ちる
   'style-src': sources('self', 'unsafe-hashes', 'sha256-S8qMpvofolR8Mpjy4kQvEm7m1q8clzU4dfDH0AmvZjo='),

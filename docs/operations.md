@@ -79,15 +79,19 @@ Worker のシークレットは、ダッシュボードの Worker の Settings �
 
 | 名前 | 中身 |
 | --- | --- |
-| `OPERATOR_LOGIN_IDS` | 運用者のログインの ID の一覧。`github:<数字>` か `google:<数字>` を、空白を含めずカンマで区切る（例 `github:12345,google:67890`）。GitHub の数字はユーザー ID（ユーザー名ではない。`gh api user --jq .id` で分かる）、Google の数字は `sub` |
+| `OPERATOR_LOGIN_IDS` | 運用者のログインの ID の一覧。`github:<数字>` か `google:<数字>` を、空白を含めずカンマで区切る（例 `github:12345,google:67890`）。GitHub の数字はユーザー ID（ユーザー名ではない。`gh api user --jq .id` で分かる）、Google の数字は `sub`（調べ方は下の「運用者の Google の `sub` の調べ方」） |
 | `GITHUB_CLIENT_ID` | GitHub のログインの OAuth App のクライアント ID（下の「GitHub OAuth App」） |
 | `GITHUB_CLIENT_SECRET` | 同じ OAuth App のクライアントシークレット |
+| `GOOGLE_CLIENT_ID` | Google のログインの OAuth クライアントのクライアント ID（下の「Google の OAuth クライアント」） |
+| `GOOGLE_CLIENT_SECRET` | 同じ OAuth クライアントのクライアントシークレット |
 
 `GITHUB_CLIENT_ID` と `GITHUB_CLIENT_SECRET` の決まり。
 
 - どちらかが未設定か空だと、ログインの画面の GitHub のボタンは「いまログインを受け付けられません」に戻る。API は動き続け、`/api/health` は 200 のまま。Workers Logs にはログインの開始のログ（`route: "auth"`、`step: "start"`、`outcome: "unavailable"`）が出る
 - 初めてのデプロイの前に、本番の OAuth App を作ってシークレットに入れる。入れずに出しても、ほかの機能は動くが、誰もログインできない
 - クライアントシークレットを入れ替えるときは、OAuth App で新しいシークレットを作ってシークレットを書き換え、動くことを確かめてから古いシークレットを OAuth App で消す。書き換えの間は、ログインの途中の人が1度失敗することがある
+
+`GOOGLE_CLIENT_ID` と `GOOGLE_CLIENT_SECRET` も同じ決まり。どちらかが未設定か空だと、ログインの画面の Google のボタンだけが「いまログインを受け付けられません」に戻り、GitHub のログインは動き続ける。Workers Logs にはログインの開始のログ（`provider: "google"`、`step: "start"`、`outcome: "unavailable"`）が出る。
 
 `OPERATOR_LOGIN_IDS` の決まり。
 
@@ -121,6 +125,47 @@ Worker のシークレットは、ダッシュボードの Worker の Settings �
 - 開発用の戻り先は、`pnpm dev` の画面の URL（`http://localhost:5173`）。`DEV_PORT_OFFSET` でポートをずらして確かめるときは、OAuth App の「Add redirect URI」で、そのポートの戻り先（例 `http://localhost:5183/api/auth/github/callback`）を足す（10個まで登録できる）
 - 開発用の OAuth App で確かめるのは、本物のログインとログアウトだけ。e2e は seed のセッションの Cookie で通し、OAuth App の値を渡さない（`docs/development.md` の「開発とテストでのログイン」）
 - シークレットは git、ログ、Issue、PR に書かない。漏れたと分かったら、OAuth App でシークレットを作り直して入れ替える
+
+### Google の OAuth クライアント
+
+ログインは、種類が「ウェブ アプリケーション」の OAuth クライアント1つで行う（`docs/development.md` の「Google のログイン」）。本番用と開発用は別の Google Cloud プロジェクトに作る。同意画面の公開の状態が違い、開発用を「テスト」のままにしておくため。スコープは `openid`、`email`、`profile` だけで、機密のスコープを使わないので Google の審査は要らない。
+
+1. Google Cloud コンソールでプロジェクトを作る（本番は `Scrum Guild`、開発用は `Scrum Guild (dev)` など）
+2. Google Auth Platform の「ブランディング」で、アプリ名、ユーザーサポートメール、デベロッパーの連絡先を入れる
+3. 「対象」で、ユーザーの種類を「外部」にする。公開の状態は、本番は「本番環境」に進める。開発用は「テスト」のままにして、確かめる人の Google アカウントを「テストユーザー」に登録する（「テスト」の間は、登録したテストユーザーしかログインできない）
+4. 「データへのアクセス」で、スコープに `openid`、`.../auth/userinfo.email`、`.../auth/userinfo.profile` の3つだけを足す
+5. 「クライアント」でクライアントを作る。アプリケーションの種類は「ウェブ アプリケーション」。「承認済みの JavaScript 生成元」は空にし、「承認済みのリダイレクト URI」に次を入れる
+
+   | 項目 | 本番 | 開発用 |
+   | --- | --- | --- |
+   | 承認済みのリダイレクト URI | `https://scrum-guild.ucan-lab.workers.dev/api/auth/google/callback` | `http://localhost:5173/api/auth/google/callback` |
+
+6. 作ったクライアントの「クライアント ID」と「クライアント シークレット」を控える。クライアントシークレットは作った直後にしか全体が見えない
+7. 本番は `wrangler secret put GOOGLE_CLIENT_ID` と `wrangler secret put GOOGLE_CLIENT_SECRET`（か、ダッシュボードの Worker の Settings → Variables and Secrets）で入れる。開発用は `.dev.vars.example` を `.dev.vars` に写して `GOOGLE_CLIENT_ID` と `GOOGLE_CLIENT_SECRET` に入れる。自分の Google でログインを確かめるときは、`OPERATOR_LOGIN_IDS` に `google:<自分の sub>` も足す（次の節）
+8. 入れたら、本番は `https://scrum-guild.ucan-lab.workers.dev/api/health` を開き、200 が返ることを確かめる。ログインの画面から Google のボタンを押し、Google の画面に `redirect_uri_mismatch` が出ないことを見る
+
+決まり。
+
+- 戻り先の URL は、アプリが開始のときに渡す `redirect_uri`（`PUBLIC_ORIGIN` に `/api/auth/google/callback` を足した値）と、クライアントに登録した承認済みのリダイレクト URI が完全に合う必要がある。独自ドメインへ移すときは、リダイレクト URI も直す（上の「ドメインへ移す」）
+- 開発用の戻り先は、`pnpm dev` の画面の URL（`http://localhost:5173`）。`DEV_PORT_OFFSET` でポートをずらして確かめるときは、そのポートの戻り先（例 `http://localhost:5183/api/auth/google/callback`）も承認済みのリダイレクト URI に足す。`pnpm preview` で確かめるときは `http://localhost:8787/api/auth/google/callback` も足す
+- 開発用のクライアントで確かめるのは、本物のログインとログアウトだけ。e2e は seed のセッションの Cookie で通し、クライアントの値を渡さない（`docs/development.md` の「開発とテストでのログイン」）
+- アプリは Google のアクセストークンを使わず、取り消しもしない。Google 側の許可を消すと、その人はログインのたびに同意画面が出直す
+- クライアントシークレットは git、ログ、Issue、PR に書かない。漏れたと分かったら、クライアントで新しいシークレットを作って入れ替え、動くことを確かめてから古いシークレットを無効にして消す
+
+### 運用者の Google の `sub` の調べ方
+
+`OPERATOR_LOGIN_IDS` に入れる `google:<sub>` の `sub` は、Google アカウントごとに決まった数字の文字列で、メールアドレスを変えても変わらない。ログインに失敗した画面やログには出ないので、次の手順で調べる。
+
+1. OAuth 2.0 Playground（`https://developers.google.com/oauthplayground/`）を開く
+2. Step 1 の入力欄に `openid` と書き、「Authorize APIs」を押す。運用者にする Google アカウントを選んで許可する
+3. Step 2 の「Exchange authorization code for tokens」を押す
+4. Step 3 の Request URI に `https://openidconnect.googleapis.com/v1/userinfo` を入れ、「Send the request」を押す。Playground がアクセストークンを付けて送る。返る JSON の `sub` が、`google:` の後ろに入れる値
+
+決まり。
+
+- `sub` は数字だけの長い文字列で、数値として扱うと桁が落ちる。表示された文字列をそのまま、`google:` の後ろに入れる（例 `google:118234567890123456789`）
+- Step 2 の応答に出るトークンはコピーせず、jwt.io など別のサイトにも貼らない。調べ終えたら Playground のタブを閉じ、要らなければ Google アカウントの「サードパーティ製のアプリとサービス」から Playground への許可を外す
+- 断られたログインの `sub` をログや画面に出す機能は作らない。試した人全員の ID を扱うことになるため
 
 ### ログインのレート制限が見る IP
 

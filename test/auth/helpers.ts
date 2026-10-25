@@ -4,6 +4,7 @@ import { commonDb, orgDb } from '../../src/server/db/index.ts';
 import { envWithD1Hooks, verifiedOrganizationForTest } from '../../src/server/db/testing.ts';
 import { createOrganization, createUser, createWorkspace } from '../factories.ts';
 import type { FakeGithubUser } from './fake-github.ts';
+import type { FakeGoogleUser } from './fake-google.ts';
 
 // 一意の GitHub のユーザー。実在の人に当たらないよう、架空の名前と ID にする
 let nextGithubId = 7_000_000;
@@ -15,6 +16,33 @@ export function githubUser(login: string, overrides: Partial<FakeGithubUser> = {
     avatar_url: 'https://avatars.githubusercontent.com/u/7000000',
     ...overrides,
   };
+}
+
+// 一意の Google の人。sub は数値に直すと桁が落ちる長さの文字列
+let nextGoogleSub = 118_234_567_890_123_456_000n;
+export function googleUser(name: string | null, overrides: Partial<FakeGoogleUser> = {}): FakeGoogleUser {
+  const sub = String(nextGoogleSub++);
+  return {
+    sub,
+    name,
+    picture: 'https://lh3.googleusercontent.com/a/fake-avatar',
+    email: `user-${sub}@example.test`,
+    email_verified: true,
+    ...overrides,
+  };
+}
+
+export async function googleAccountLoginOf(user: FakeGoogleUser) {
+  const db = commonDb(env);
+  return db.first(
+    db.statement((q) =>
+      q
+        .selectFrom('account_logins')
+        .selectAll()
+        .where('login_provider', '=', 'google')
+        .where('login_subject', '=', user.sub),
+    ),
+  );
 }
 
 export async function accountLoginOf(user: FakeGithubUser) {

@@ -2,7 +2,8 @@
 
 # 運用者のログインの ID の一覧。github:<数字> か google:<数字> を、空白を含めずカンマで区切る。
 # 下の値は seed（seed/sessions.ts）の運用者の架空の ID。本番には本物の運用者の ID を Cloudflare のシークレットに入れる
-# 本物のログインで自分の ID を使うときは、この値を消さずに、後ろへカンマで足す（例 github:9000000000000001,github:<自分の数字>）。
+# 本物のログインで自分の ID を使うときは、この値を消さずに、後ろへカンマで足す（例 github:9000000000000001,github:<自分の数字>、
+# Google なら github:9000000000000001,google:<自分の sub>。sub の調べ方は docs/operations.md の「運用者の Google の sub の調べ方」）。
 # seed の ID を消すと、pnpm dev:open operator が 401 になる。写すのも直すのも本体の作業コピーで（docs/development.md の「ワークツリーで作業する」）
 OPERATOR_LOGIN_IDS=github:9000000000000001
 
@@ -11,6 +12,13 @@ OPERATOR_LOGIN_IDS=github:9000000000000001
 # 空のままだと、ログインの画面の GitHub のボタンは「いまログインを受け付けられません」に戻る
 GITHUB_CLIENT_ID=
 GITHUB_CLIENT_SECRET=
+
+# Google のログインの OAuth クライアント（ウェブ アプリケーション）のクライアント ID と秘密。手元で本物のログインを確かめるときに、
+# 開発用のクライアント（本番とは別のプロジェクトに作り、同意画面は「テスト」のままテストユーザーを登録する）の値を入れる。
+# 作り方は docs/operations.md の「Google の OAuth クライアント」。値は書かない。
+# 空のままだと、ログインの画面の Google のボタンは「いまログインを受け付けられません」に戻る
+GOOGLE_CLIENT_ID=
+GOOGLE_CLIENT_SECRET=
 
 # 開発用の時計。置くと、Worker の「今の日時」（now()）がこの時刻のまま進まなくなり、完了日時などが毎回同じになる
 # （画面の写りを揃えるため）。ISO 8601 で、時差を付ける。空のままにせず、使わないときは行ごと消す（行を置いたまま

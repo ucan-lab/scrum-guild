@@ -14,8 +14,9 @@ import { sessionCookieName, sessionCookieOptions } from '../../shared/session-co
 import type { AppEnv } from '../app-env.ts';
 import { executionContextOf } from '../execution-context.ts';
 import { createGithubLoginMethod, githubCredentials } from './github.ts';
+import { createGoogleLoginMethod, googleCredentials } from './google.ts';
 import { completeLogin } from './login.ts';
-import { LoginMethodError, type LoginMethod } from './login-method.ts';
+import { LoginMethodError, type InviteeResolver, type LoginMethod } from './login-method.ts';
 import {
   consumeOAuthState,
   OAUTH_STATE_PATTERN,
@@ -30,19 +31,19 @@ import { timingSafeEqualStrings } from './tokens.ts';
 // ログインの画面（/login?error=）が扱う失敗。画面は文言を辞書から出す（src/routes/login/）
 export type LoginError = 'denied' | 'retry' | 'too_many' | 'unavailable';
 
-// 戻り先の code の形。GitHub の code は短い英数字。長さと文字で弾いてから送る
-const CODE_PATTERN = /^[A-Za-z0-9._~-]{1,256}$/;
+// 戻り先の code の形。GitHub の code は短い英数字で、Google の code は `4/0A...` のように `/` を含む。長さと文字で弾いてから送る
+const CODE_PATTERN = /^[A-Za-z0-9._~/-]{1,512}$/;
 
 export type LoginRoutesOptions = {
   fetcher: typeof fetch;
 };
 
-// URL に出せる手段。Google は #57 で足す
-const PROVIDERS: ReadonlySet<string> = new Set(['github']);
+// URL に出せる手段
+const PROVIDERS: ReadonlySet<string> = new Set(['github', 'google']);
 
 // 資格情報が未設定の手段は undefined（その手段のログインを受け付けない）。
 // トークンの取り消しは応答を待たせずに走らせ（waitUntil）、失敗は固定の文でログに出す
-export function githubMethod(c: Context<AppEnv>, fetcher: typeof fetch): LoginMethod | undefined {
+export function githubMethod(c: Context<AppEnv>, fetcher: typeof fetch): (LoginMethod & InviteeResolver) | undefined {
   const credentials = githubCredentials(c.env);
   if (credentials === undefined) return undefined;
   return createGithubLoginMethod(credentials, fetcher, {
@@ -64,6 +65,17 @@ export function githubMethod(c: Context<AppEnv>, fetcher: typeof fetch): LoginMe
       );
     },
   });
+}
+
+// 資格情報が未設定なら undefined。Google はトークンを取り消さないので、背景の仕事を持たない
+function googleMethod(c: Context<AppEnv>, fetcher: typeof fetch): LoginMethod | undefined {
+  const credentials = googleCredentials(c.env);
+  if (credentials === undefined) return undefined;
+  return createGoogleLoginMethod(credentials, fetcher);
+}
+
+function methodOf(c: Context<AppEnv>, provider: string, fetcher: typeof fetch): LoginMethod | undefined {
+  return provider === 'google' ? googleMethod(c, fetcher) : githubMethod(c, fetcher);
 }
 
 function callbackUrl(env: Env, provider: string): string {
@@ -150,12 +162,12 @@ export function loginRoutes(options: LoginRoutesOptions): Hono<AppEnv> {
         log(c, { step: 'start', provider, outcome: limit.limitedBy === 'global' ? 'too_many_global' : 'too_many' });
         return toLoginPage(c, 'too_many', returnTo);
       }
-      const method = githubMethod(c, options.fetcher);
+      const method = methodOf(c, provider, options.fetcher);
       if (method === undefined) {
         log(c, { step: 'start', provider, outcome: 'unavailable' });
         return toLoginPage(c, 'unavailable', returnTo);
       }
-      const started = await startOAuthState(c.env, provider, returnTo, new Date());
+      const started = await startOAuthState(c.env, provider, returnTo, new Date(), method.usesNonce);
       setCookie(
         c,
         oauthStateCookieName(c.env.PUBLIC_ORIGIN),
@@ -168,6 +180,7 @@ export function loginRoutes(options: LoginRoutesOptions): Hono<AppEnv> {
           state: started.state,
           codeChallenge: started.codeChallenge,
           redirectUri: callbackUrl(c.env, provider),
+          nonce: started.nonce,
         }),
         302,
       );
@@ -182,7 +195,7 @@ export function loginRoutes(options: LoginRoutesOptions): Hono<AppEnv> {
     if (!PROVIDERS.has(provider)) return c.notFound();
     const stateCookie = oauthStateCookieName(c.env.PUBLIC_ORIGIN);
     try {
-      const method = githubMethod(c, options.fetcher);
+      const method = methodOf(c, provider, options.fetcher);
       if (method === undefined) {
         log(c, { step: 'callback', provider, outcome: 'unavailable' });
         return toLoginPage(c, 'unavailable');
@@ -219,7 +232,7 @@ export function loginRoutes(options: LoginRoutesOptions): Hono<AppEnv> {
       const returnTo = safeReturnTo(consumed.returnTo);
 
       const code = c.req.query('code');
-      // GitHub 側で拒否された（error=access_denied など）か、code が無いときは、ログインを完了できない
+      // 手段の側で拒否された（error=access_denied など）か、code が無いときは、ログインを完了できない
       if (c.req.query('error') !== undefined || code === undefined || !CODE_PATTERN.test(code)) {
         log(c, { step: 'callback', provider, outcome: 'no_code' });
         return toLoginPage(c, 'retry', returnTo);
@@ -231,6 +244,7 @@ export function loginRoutes(options: LoginRoutesOptions): Hono<AppEnv> {
           code,
           codeVerifier: consumed.codeVerifier,
           redirectUri: callbackUrl(c.env, provider),
+          nonce: consumed.nonce,
         });
       } catch (err) {
         logError(c, '本人を確かめられなかった', err);

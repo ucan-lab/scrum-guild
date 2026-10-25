@@ -31,13 +31,13 @@ async function resolveGithubUsername(
   path: string,
   operation: string,
 ): Promise<ResolvedInvitee> {
-  const method = operator.loginMethod('github');
-  if (method === undefined) {
+  const resolver = operator.inviteeResolver('github');
+  if (resolver === undefined) {
     throw unavailable(operator, operation, 'GitHub のクライアントの ID と秘密が設定されていない');
   }
   let resolution;
   try {
-    resolution = await method.resolveInvitee(username);
+    resolution = await resolver.resolveInvitee(username);
   } catch (err) {
     if (err instanceof LoginMethodError) throw unavailable(operator, operation, err.message);
     throw err;

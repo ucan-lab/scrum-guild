@@ -1,6 +1,6 @@
 // 名前（ワークスペースの名前、組織の表示名）とタスクのタイトルで断り、GitHub の表示名から除く文字。名前の見え方を偽り、並びや表示を乱せるもの。
 // 判定はここの1か所に置き、ワークスペースの名前とタスクのタイトル（text-rules.ts）、組織の表示名（operator/create-organization.ts）、
-// GitHub の表示名（server/auth/github.ts）が同じ文字を扱う。
+// ログインの手段の側の名前（server/auth/profile-fields.ts。GitHub と Google が共有する）が同じ文字を扱う。
 //   - 制御文字（Cc）
 //   - ゼロ幅のスペース（U+200B）
 //   - 行と段落の区切り（U+2028、U+2029）
