@@ -807,7 +807,7 @@ const looooooooooooooooooooooooooooooooooongLine = "コードの長い1行は、
     const link = st && st.link ? st.link : "";
     const ro = readOnly ? " readonly" : "";
     openDialog(title,
-      `${readOnly ? `<div class="callout is-info">${icon("shield")}<span>閉じた${t("workspace")}の${t("story")}は、読み取りだけできます。</span></div>` : ""}
+      `${readOnly ? `<div class="callout is-info">${icon("shield")}<span>終了した${t("workspace")}の${t("story")}は、読み取りだけできます。</span></div>` : ""}
        <label class="field" for="d-st"><span class="field-label">タイトル</span><input class="input" id="d-st" placeholder="どこまで進めば区切りか" value="${st ? esc(st.title) : ""}"${ro}></label>
        <label class="field" for="d-sa"><span class="field-label">${t("ac")}</span><textarea class="textarea" id="d-sa"${ro}>${st ? esc((st.ac || []).join("\n")) : ""}</textarea></label>
        <label class="field" for="d-sb"><span class="field-label">本文</span><textarea class="textarea" id="d-sb"${ro}></textarea></label>
@@ -909,9 +909,9 @@ const looooooooooooooooooooooooooooooooooongLine = "コードの長い1行は、
       `<button class="btn is-quiet" type="button" data-close-dialog>やめる</button><button class="btn is-primary" type="button" data-close-dialog data-toast="${t("workspace")}を作りました">作る</button>`),
     closeWorkspace: () => {
       const target = D.admin.workspaces.find((w) => !w.closed);
-      return openDialog(`${t("workspace")}を閉じる`,
-        `<p>「${esc(target ? target.name : "")}」を閉じると読み取り専用になり、中の書き込みはすべてできなくなります。閉じた後も、この画面から開き直せます。</p>`,
-        `<button class="btn is-quiet" type="button" data-close-dialog>やめる</button><button class="btn is-primary" type="button" data-close-dialog data-toast="${t("workspace")}を閉じました">閉じる</button>`);
+      return openDialog(`「${esc(target ? target.name : "")}」を終了しますか？`,
+        `<p>終了すると読み取り専用になり、中の書き込みはすべてできなくなります。この画面からいつでも再開できます。</p>`,
+        `<button class="btn is-quiet" type="button" data-close-dialog>やめる</button><button class="btn is-primary" type="button" data-close-dialog data-toast="${t("workspace")}を終了しました">終了する</button>`);
     },
     createOrganization: () => openDialog(`${t("organization")}を作る`,
       `<label class="field" for="d-ks"><span class="field-label">URL の名前（slug）</span><input class="input mono" id="d-ks" placeholder="例: sakura-dev"><span class="field-hint">英小文字、数字、ハイフンで 2〜40 字。あとから変えられません。</span></label>

@@ -20,9 +20,9 @@
   // 組織の管理の画面（admin.html）のワークスペースの節。読み込みの状態（読み込み中、失敗、読み直し、401、古い応答の破棄）は
   // SectionLoad、その表示は SectionBoundary に任せ、この部品は一覧と操作だけを持つ。
   // ほかの節の部品も同じ形にして、画面（+page.svelte）には並べるだけにする。
-  // 初回の読み込みだけ「読み込んでいます」を出し、閉じる／開き直すの後の読み直しは、一覧を残したまま入れ替える
+  // 初回の読み込みだけ「読み込んでいます」を出し、終了する／再開するの後の読み直しは、一覧を残したまま入れ替える
   // （押したボタンを消さず、フォーカスを保つ）。
-  // 「閉じる」は確認のダイアログを経て、「開き直す」は確認なしで送る。
+  // 「終了する」は確認のダイアログを経て、「再開する」は確認なしで送る。
   // 操作を送っている間は、どの行のボタンも aria-disabled にして押しても無視する。
   // 画面の見出しの集計と右上の「作る」は画面が持つので、開いている数は onopencount で渡し（読めるまでは null）、
   // 作るダイアログは showCreate で開く
@@ -44,11 +44,11 @@
   const currentSlug = $derived(slug);
 
   let workspaces = $state<Workspace[]>([]);
-  // 開き直す操作を送っている行
+  // 再開する操作を送っている行
   let reopeningId = $state<string | null>(null);
   let createDialog = $state<ReturnType<typeof WorkspaceCreateDialog>>();
   let closeDialog = $state<ReturnType<typeof WorkspaceCloseDialog>>();
-  // 閉じる確認の対象。ダイアログの結果を受けるとき、どの行だったかを名前で知らせるのに使う
+  // 終了の確認の対象。ダイアログの結果を受けるとき、どの行だったかを名前で知らせるのに使う
   let closing = $state<Workspace | null>(null);
 
   const section = new SectionLoad(
@@ -86,7 +86,7 @@
         window.location.assign(loginUrl(page.url));
         return;
       } else if (result.status === 409 && result.error?.code === 'conflict') {
-        // 別の画面で先に操作されていた。開き直されたのか、閉じ直されたのかは言い切らず、読み直した一覧を見てもらう
+        // 別の画面で先に操作されていた。再開されたのか、終了し直されたのかは言い切らず、読み直した一覧を見てもらう
         showToast(t('workspaceStateChanged', { name: workspace.name }), 'alert');
       } else if (result.status === 404 || result.status === 403) {
         showToast(t('workspaceUnavailable', { name: workspace.name }), 'alert');
@@ -171,7 +171,7 @@
                 <td class="is-num">{workspace.leader_count}</td>
                 <td class="mono">{workspace.created_on}</td>
                 <td class="is-actions">
-                  <!-- 閉じた行は「開き直す」、開いている行は「閉じる」。同じ要素のまま文字だけを替え、読み直しでフォーカスを失わない。
+                  <!-- 終了した行は「再開する」、進行中の行は「終了する」。同じ要素のまま文字だけを替え、読み直しでフォーカスを失わない。
                        読み上げの名前に、どのワークスペースかを添える -->
                   <button
                     class="btn is-sm is-quiet"
@@ -192,7 +192,7 @@
       </div>
     {/if}
   </SectionBoundary>
-  <!-- 開き直しを送っている間の読み上げ。領域は常に置き、中の文字だけを替える -->
+  <!-- 再開を送っている間の読み上げ。領域は常に置き、中の文字だけを替える -->
   <span class="visually-hidden" role="status">{status}</span>
 </Setting>
 

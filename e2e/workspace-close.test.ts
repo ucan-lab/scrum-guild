@@ -1,16 +1,16 @@
-// ワークスペースを閉じる、開き直す。管理者が閉じる（確認のダイアログを経る）→ 帯を確かめる → 開き直す。
+// ワークスペースを終了する、再開する。管理者が終了する（確認のダイアログを経る）→ 帯を確かめる → 再開する。
 // seed のセッション（seed/sessions.ts）の Cookie で開く。あおば開発の管理者はミナト、一般のユーザーはハルカ。
-// 閉じて確かめるワークスペースは、管理の画面から作った専用のもの（seed のワークスペースを閉じたままにしない）
+// 終了して確かめるワークスペースは、管理の画面から作った専用のもの（seed のワークスペースを終了したままにしない）
 import { expect, test, type Page } from '@playwright/test';
 import { signIn, watchViolations } from './helpers.ts';
 
 test.use({ timezoneId: 'Asia/Tokyo' });
 
-const BANNER = /\d{4}-\d{2}-\d{2} に閉じました。読み取り専用です。/;
+const BANNER = /\d{4}-\d{2}-\d{2} に終了しました。読み取り専用です。/;
 
-// 閉じた帯。ストーリーのダイアログも閉じたワークスペースの案内に .callout を持ち、開く前から DOM にあるので、帯の文で絞る
+// 終了した帯。ストーリーのダイアログも終了したワークスペースの案内に .callout を持ち、開く前から DOM にあるので、帯の文で絞る
 function bannerOf(page: Page) {
-  return page.locator('.callout', { hasText: 'に閉じました。読み取り専用です。' });
+  return page.locator('.callout', { hasText: 'に終了しました。読み取り専用です。' });
 }
 
 // 管理の画面から、自分をリーダーにワークスペースを作る。作ると、そのワークスペースの画面へ移る
@@ -30,24 +30,24 @@ test.describe('管理者（あおば開発のミナト）', () => {
     await signIn(context, baseURL, 'admin');
   });
 
-  test('確認のダイアログを経て閉じ、帯と読み取り専用を確かめ、開き直すと元に戻る', async ({ page }) => {
+  test('確認のダイアログを経て終了し、帯と読み取り専用を確かめ、再開すると元に戻る', async ({ page }) => {
     const collect = await watchViolations(page);
-    const name = '閉じる確認パーティ';
+    const name = '終了確認パーティ';
     const workspaceUrl = await createWorkspace(page, name);
-    // 開いているうちは帯が無く、起票できる
+    // 進行中のうちは帯が無く、起票できる
     await expect(bannerOf(page)).toHaveCount(0);
     await expect(page.getByRole('button', { name: '依頼を出す' })).toBeVisible();
 
     await page.goto('/aoba/admin');
     const row = page.locator('tbody tr', { hasText: name });
-    const closeButton = row.getByRole('button', { name: `「${name}」を閉じる` });
-    await expect(closeButton).toHaveText('閉じる');
+    const closeButton = row.getByRole('button', { name: `「${name}」を終了する` });
+    await expect(closeButton).toHaveText('終了する');
     await closeButton.click();
 
-    // 確認のダイアログ。読み取り専用になることと、開き直せることを書く。危険の色にはしない
-    const dialog = page.getByRole('dialog', { name: 'パーティを閉じる' });
+    // 確認のダイアログ。読み取り専用になることと、再開できることを書く。危険の色にはしない
+    const dialog = page.getByRole('dialog', { name: `「${name}」を終了しますか？` });
     await expect(dialog).toContainText('読み取り専用');
-    await expect(dialog).toContainText('開き直せます');
+    await expect(dialog).toContainText('いつでも再開できます');
     // 本文は言葉づかいに依らない（対象のワークスペースの名前だけを埋める）
     await expect(dialog).not.toContainText('{');
     await expect(dialog.locator('.is-danger')).toHaveCount(0);
@@ -58,24 +58,24 @@ test.describe('管理者（あおば開発のミナト）', () => {
     await expect(row.locator('.chip')).toHaveCount(0);
 
     await closeButton.click();
-    await dialog.getByRole('button', { name: `「${name}」を閉じる` }).click();
+    await dialog.getByRole('button', { name: `「${name}」を終了する` }).click();
     await expect(dialog).toBeHidden();
-    await expect(page.getByRole('status').filter({ hasText: 'パーティを閉じました' })).toBeVisible();
-    // 一覧を読み直して、閉じた印と「開き直す」に替わる。押したボタンは残り、フォーカスを保つ
-    await expect(row.locator('.chip')).toHaveText(/^閉じた \d{4}-\d{2}-\d{2}$/);
-    const reopenButton = row.getByRole('button', { name: `「${name}」を開き直す` });
-    await expect(reopenButton).toHaveText('開き直す');
+    await expect(page.getByRole('status').filter({ hasText: 'パーティを終了しました' })).toBeVisible();
+    // 一覧を読み直して、終了の印と「再開する」に替わる。押したボタンは残り、フォーカスを保つ
+    await expect(row.locator('.chip')).toHaveText(/^終了 \d{4}-\d{2}-\d{2}$/);
+    const reopenButton = row.getByRole('button', { name: `「${name}」を再開する` });
+    await expect(reopenButton).toHaveText('再開する');
     await expect(reopenButton).toBeFocused();
-    // 見出しの集計は開いているワークスペースの数
-    await expect(page.locator('.tally')).toContainText('開いているパーティ');
+    // 見出しの集計は進行中のワークスペースの数
+    await expect(page.locator('.tally')).toContainText('進行中のパーティ');
 
-    // 閉じたワークスペースの画面: どの画面にも帯が出て、起票の操作は出ない。管理者には組織の管理へのリンクが付く
+    // 終了したワークスペースの画面: どの画面にも帯が出て、起票の操作は出ない。管理者には組織の管理へのリンクが付く
     await page.goto(workspaceUrl);
     const banner = bannerOf(page);
     await expect(banner).toHaveCount(1);
     await expect(banner).toContainText(BANNER);
     // リンクは本文と同じ色（既定のリンクの青にしない）で、下線を引く
-    const link = banner.getByRole('link', { name: '組織の管理で開き直す' });
+    const link = banner.getByRole('link', { name: '組織の管理で再開する' });
     const colors = await banner.evaluate((el) => [
       getComputedStyle(el.querySelector('a')!).color,
       getComputedStyle(el.querySelector('span')!).color,
@@ -84,16 +84,16 @@ test.describe('管理者（あおば開発のミナト）', () => {
     await expect(link).toHaveCSS('text-decoration-line', 'underline');
     await expect(banner.getByRole('button')).toHaveCount(0);
     await expect(page.getByRole('button', { name: '依頼を出す' })).toHaveCount(0);
-    // 見出しの右上の「閉じた <日>」の印は、帯と重なるので出さない
+    // 見出しの右上の「終了 <日>」の印は、帯と重なるので出さない
     await expect(page.locator('.page-head .chip')).toHaveCount(0);
-    await banner.getByRole('link', { name: '組織の管理で開き直す' }).click();
+    await banner.getByRole('link', { name: '組織の管理で再開する' }).click();
     await expect(page).toHaveURL(/\/aoba\/admin$/);
 
-    // 開き直す。確認なしで送り、一覧が読み直される
-    await row.getByRole('button', { name: `「${name}」を開き直す` }).click();
-    await expect(page.getByRole('status').filter({ hasText: 'パーティを開き直しました' })).toBeVisible();
+    // 再開する。確認なしで送り、一覧が読み直される
+    await row.getByRole('button', { name: `「${name}」を再開する` }).click();
+    await expect(page.getByRole('status').filter({ hasText: 'パーティを再開しました' })).toBeVisible();
     await expect(row.locator('.chip')).toHaveCount(0);
-    await expect(row.getByRole('button', { name: `「${name}」を閉じる` })).toHaveText('閉じる');
+    await expect(row.getByRole('button', { name: `「${name}」を終了する` })).toHaveText('終了する');
 
     await page.goto(workspaceUrl);
     await expect(page.getByRole('heading', { level: 1, name: '掲示板' })).toBeVisible();
@@ -102,7 +102,7 @@ test.describe('管理者（あおば開発のミナト）', () => {
     expect(await collect()).toEqual([]);
   });
 
-  test('送っている間は、「閉じる」を押しても無視し、ダイアログも閉じられず、1回しか送らない', async ({ page }) => {
+  test('送っている間は、「終了する」を押しても無視し、ダイアログも閉じられず、1回しか送らない', async ({ page }) => {
     const name = '二重送信の確認パーティ';
     await createWorkspace(page, name);
     let requests = 0;
@@ -113,14 +113,14 @@ test.describe('管理者（あおば開発のミナト）', () => {
     });
     await page.goto('/aoba/admin');
     const row = page.locator('tbody tr', { hasText: name });
-    await row.getByRole('button', { name: `「${name}」を閉じる` }).click();
-    const dialog = page.getByRole('dialog', { name: 'パーティを閉じる' });
-    await dialog.getByRole('button', { name: `「${name}」を閉じる` }).click();
+    await row.getByRole('button', { name: `「${name}」を終了する` }).click();
+    const dialog = page.getByRole('dialog', { name: `「${name}」を終了しますか？` });
+    await dialog.getByRole('button', { name: `「${name}」を終了する` }).click();
 
     // disabled でなく aria-disabled。押しても何も起きない
-    const submitting = dialog.getByRole('button', { name: '閉じています' });
+    const submitting = dialog.getByRole('button', { name: '終了しています' });
     await expect(submitting).toHaveAttribute('aria-disabled', 'true');
-    await expect(dialog.getByRole('status')).toHaveText('閉じています');
+    await expect(dialog.getByRole('status')).toHaveText('終了しています');
     await submitting.click({ force: true });
     await submitting.click({ force: true });
     await dialog.getByRole('button', { name: 'やめる' }).click({ force: true });
@@ -128,15 +128,15 @@ test.describe('管理者（あおば開発のミナト）', () => {
     await expect(dialog).toBeVisible();
 
     await expect(dialog).toBeHidden();
-    await expect(row.locator('.chip')).toHaveText(/^閉じた /);
+    await expect(row.locator('.chip')).toHaveText(/^終了 /);
     expect(requests).toBe(1);
 
-    // 後片づけ。開き直しておく
-    await row.getByRole('button', { name: `「${name}」を開き直す` }).click();
+    // 後片づけ。再開しておく
+    await row.getByRole('button', { name: `「${name}」を再開する` }).click();
     await expect(row.locator('.chip')).toHaveCount(0);
   });
 
-  test('閉じられなかったときは、ダイアログの中に理由を出して開いたままにする。別の画面で先に閉じられていたら、読み直して知らせる', async ({
+  test('終了できなかったときは、ダイアログの中に理由を出して開いたままにする。別の画面で先に終了されていたら、読み直して知らせる', async ({
     page,
   }) => {
     const name = '失敗の確認パーティ';
@@ -147,14 +147,17 @@ test.describe('管理者（あおば開発のミナト）', () => {
     await page.route('**/api/aoba/workspace-close', (route) =>
       route.fulfill({ status: 500, json: { error: { code: 'internal', message: 'x' } } }),
     );
-    await row.getByRole('button', { name: `「${name}」を閉じる` }).click();
-    const dialog = page.getByRole('dialog', { name: 'パーティを閉じる' });
-    await dialog.getByRole('button', { name: `「${name}」を閉じる` }).click();
-    await expect(dialog.getByRole('alert')).toHaveText('パーティを閉じられませんでした。もう一度試してください。');
-    await expect(dialog.getByRole('button', { name: `「${name}」を閉じる` })).toHaveAttribute('aria-disabled', 'false');
+    await row.getByRole('button', { name: `「${name}」を終了する` }).click();
+    const dialog = page.getByRole('dialog', { name: `「${name}」を終了しますか？` });
+    await dialog.getByRole('button', { name: `「${name}」を終了する` }).click();
+    await expect(dialog.getByRole('alert')).toHaveText('パーティを終了できませんでした。もう一度試してください。');
+    await expect(dialog.getByRole('button', { name: `「${name}」を終了する` })).toHaveAttribute(
+      'aria-disabled',
+      'false',
+    );
     await expect(row.locator('.chip')).toHaveCount(0);
 
-    // 別の画面で先に閉じられていた（409）
+    // 別の画面で先に終了されていた（409）
     await page.unroute('**/api/aoba/workspace-close');
     await page.route('**/api/aoba/workspace-close', async (route) => {
       await page.request.post('/api/aoba/workspace-close', {
@@ -163,18 +166,18 @@ test.describe('管理者（あおば開発のミナト）', () => {
       });
       await route.continue();
     });
-    await dialog.getByRole('button', { name: `「${name}」を閉じる` }).click();
+    await dialog.getByRole('button', { name: `「${name}」を終了する` }).click();
     await expect(dialog).toBeHidden();
-    // 閉じ直されたのか、開き直されたのかは言い切らない
+    // 終了し直されたのか、再開されたのかは言い切らない
     await expect(page.getByRole('status').filter({ hasText: `「${name}」の状態が変わっていました` })).toBeVisible();
-    await expect(row.locator('.chip')).toHaveText(/^閉じた /);
+    await expect(row.locator('.chip')).toHaveText(/^終了 /);
 
     await page.unroute('**/api/aoba/workspace-close');
-    await row.getByRole('button', { name: `「${name}」を開き直す` }).click();
+    await row.getByRole('button', { name: `「${name}」を再開する` }).click();
     await expect(row.locator('.chip')).toHaveCount(0);
   });
 
-  // 受託開発チームを、一覧の上だけで閉じた状態にする（seed のワークスペースを閉じない）。操作は route で差し替える
+  // 受託開発チームを、一覧の上だけで終了した状態にする（seed のワークスペースを終了しない）。操作は route で差し替える
   const SEED_NAME = '受託開発チーム';
   async function showSeedWorkspaceClosed(page: Page, onList: (call: number) => 'real' | 'fail') {
     let calls = 0;
@@ -198,7 +201,7 @@ test.describe('管理者（あおば開発のミナト）', () => {
     await page.goto('/aoba/admin');
     const button = page
       .locator('tbody tr', { hasText: SEED_NAME })
-      .getByRole('button', { name: `「${SEED_NAME}」を閉じる` });
+      .getByRole('button', { name: `「${SEED_NAME}」を終了する` });
     // 表が横にはみ出す幅であること（固定を外すと、操作の列は横スクロールの先に隠れる）
     await expect(button).toBeAttached();
     const overflow = await page.locator('.table-wrap').evaluate((el) => el.scrollWidth - el.clientWidth);
@@ -210,7 +213,31 @@ test.describe('管理者（あおば開発のミナト）', () => {
     expect((await button.boundingBox())?.height).toBeGreaterThanOrEqual(44);
   });
 
-  test('閉じる確認で 404 を受けたら、理由を出してダイアログを閉じ、一覧を読み直す', async ({ page }) => {
+  test('空白の無い長い名前でも、確認の見出しとトーストは折り返してはみ出さない', async ({ page }) => {
+    const name = 'W'.repeat(50);
+    await createWorkspace(page, name);
+    await page.setViewportSize({ width: 390, height: 800 });
+    await page.route('**/api/aoba/workspace-close', (route) =>
+      route.fulfill({ status: 404, json: { error: { code: 'not_found', message: 'x' } } }),
+    );
+    await page.goto('/aoba/admin');
+    const row = page.locator('tbody tr', { hasText: name });
+    await row.getByRole('button', { name: `「${name}」を終了する` }).scrollIntoViewIfNeeded();
+    await row.getByRole('button', { name: `「${name}」を終了する` }).click();
+    const dialog = page.getByRole('dialog', { name: `「${name}」を終了しますか？` });
+    const overflow = (selector: string) => dialog.locator(selector).evaluate((el) => el.scrollWidth - el.clientWidth);
+    expect(await overflow('.dialog-title')).toBeLessThanOrEqual(0);
+    expect(await overflow('.dialog-sheet')).toBeLessThanOrEqual(0);
+
+    // 404 のトースト（名前入り）も、はみ出さない
+    await dialog.getByRole('button', { name: `「${name}」を終了する` }).click();
+    const toast = page.getByRole('status').filter({ hasText: `「${name}」を操作できませんでした` });
+    await expect(toast).toBeVisible();
+    expect(await toast.evaluate((el) => el.scrollWidth - el.clientWidth)).toBeLessThanOrEqual(0);
+    expect(await toast.evaluate((el) => el.getBoundingClientRect().right)).toBeLessThanOrEqual(390);
+  });
+
+  test('終了の確認で 404 を受けたら、理由を出してダイアログを閉じ、一覧を読み直す', async ({ page }) => {
     await page.route('**/api/aoba/workspace-close', (route) =>
       route.fulfill({ status: 404, json: { error: { code: 'not_found', message: 'x' } } }),
     );
@@ -221,25 +248,25 @@ test.describe('管理者（あおば開発のミナト）', () => {
     });
     await page.goto('/aoba/admin');
     const row = page.locator('tbody tr', { hasText: SEED_NAME });
-    await row.getByRole('button', { name: `「${SEED_NAME}」を閉じる` }).click();
-    const dialog = page.getByRole('dialog', { name: 'パーティを閉じる' });
-    await dialog.getByRole('button', { name: `「${SEED_NAME}」を閉じる` }).click();
+    await row.getByRole('button', { name: `「${SEED_NAME}」を終了する` }).click();
+    const dialog = page.getByRole('dialog', { name: `「${SEED_NAME}」を終了しますか？` });
+    await dialog.getByRole('button', { name: `「${SEED_NAME}」を終了する` }).click();
 
     await expect(dialog).toBeHidden();
     await expect(page.getByRole('status').filter({ hasText: `「${SEED_NAME}」を操作できませんでした` })).toBeVisible();
     await expect.poll(() => listCalls).toBe(2);
   });
 
-  test('開き直しが 409 の conflict になったら、状態が変わっていたことを知らせて読み直す', async ({ page }) => {
+  test('再開が 409 の conflict になったら、状態が変わっていたことを知らせて読み直す', async ({ page }) => {
     const listCalls = await showSeedWorkspaceClosed(page, () => 'real');
     await page.route('**/api/aoba/workspace-reopen', (route) =>
       route.fulfill({ status: 409, json: { error: { code: 'conflict', message: 'x' } } }),
     );
     await page.goto('/aoba/admin');
     const row = page.locator('tbody tr', { hasText: SEED_NAME });
-    await row.getByRole('button', { name: `「${SEED_NAME}」を開き直す` }).click();
+    await row.getByRole('button', { name: `「${SEED_NAME}」を再開する` }).click();
 
-    // 「すでに開いています」とは言い切らない（閉じ直された場合もある）
+    // 「すでに開いています」とは言い切らない（終了し直された場合もある）
     await expect(
       page.getByRole('status').filter({ hasText: `「${SEED_NAME}」の状態が変わっていました` }),
     ).toBeVisible();
@@ -255,7 +282,7 @@ test.describe('管理者（あおば開発のミナト）', () => {
     );
     await page.goto('/aoba/admin');
     const row = page.locator('tbody tr', { hasText: SEED_NAME });
-    await row.getByRole('button', { name: `「${SEED_NAME}」を開き直す` }).click();
+    await row.getByRole('button', { name: `「${SEED_NAME}」を再開する` }).click();
 
     const notice = page.locator('.callout', { hasText: 'パーティの一覧を更新できませんでした' });
     await expect(notice.getByRole('alert')).toHaveText('パーティの一覧を更新できませんでした');
@@ -278,7 +305,7 @@ test.describe('管理者（あおば開発のミナト）', () => {
     );
     await page.goto('/aoba/admin');
     const row = page.locator('tbody tr', { hasText: SEED_NAME });
-    const reopen = row.getByRole('button', { name: `「${SEED_NAME}」を開き直す` });
+    const reopen = row.getByRole('button', { name: `「${SEED_NAME}」を再開する` });
     const notice = page.locator('.callout', { hasText: 'パーティの一覧を更新できませんでした' });
 
     await reopen.click();
@@ -296,7 +323,7 @@ test.describe('管理者（あおば開発のミナト）', () => {
   });
 
   test('先に始めた読み直しが後で返っても、新しい一覧を古い一覧で上書きしない', async ({ page }) => {
-    // 2回目（1回目の操作の後の読み直し）は遅らせ、古い一覧（閉じた）を返す。3回目（2回目の操作の後）は本物の一覧（開いている）を先に返す
+    // 2回目（1回目の操作の後の読み直し）は遅らせ、古い一覧（終了した）を返す。3回目（2回目の操作の後）は本物の一覧（進行中）を先に返す
     let calls = 0;
     let staleDone: () => void = () => {};
     const staleSent = new Promise<void>((resolve) => (staleDone = resolve));
@@ -319,19 +346,19 @@ test.describe('管理者（あおば開発のミナト）', () => {
     );
     await page.goto('/aoba/admin');
     const row = page.locator('tbody tr', { hasText: SEED_NAME });
-    const close = row.getByRole('button', { name: `「${SEED_NAME}」を閉じる` });
-    const dialog = page.getByRole('dialog', { name: 'パーティを閉じる' });
+    const close = row.getByRole('button', { name: `「${SEED_NAME}」を終了する` });
+    const dialog = page.getByRole('dialog', { name: `「${SEED_NAME}」を終了しますか？` });
 
-    // 1回目の閉じる: 読み直し（2回目）が遅れている間に、2回目の閉じる（読み直しは3回目）を済ませる
+    // 1回目の終了する: 読み直し（2回目）が遅れている間に、2回目の終了する（読み直しは3回目）を済ませる
     await close.click();
-    await dialog.getByRole('button', { name: `「${SEED_NAME}」を閉じる` }).click();
+    await dialog.getByRole('button', { name: `「${SEED_NAME}」を終了する` }).click();
     await expect(dialog).toBeHidden();
     await close.click();
-    await dialog.getByRole('button', { name: `「${SEED_NAME}」を閉じる` }).click();
+    await dialog.getByRole('button', { name: `「${SEED_NAME}」を終了する` }).click();
     await expect(dialog).toBeHidden();
     await expect.poll(() => calls).toBe(3);
 
-    // 遅れた古い一覧が返った後も、新しい一覧（開いている）のまま
+    // 遅れた古い一覧が返った後も、新しい一覧（進行中）のまま
     await staleSent;
     await page.waitForTimeout(300);
     await expect(row.locator('.chip')).toHaveCount(0);
@@ -356,6 +383,63 @@ test.describe('管理者（あおば開発のミナト）', () => {
     await expect(page.locator('tbody tr', { hasText: '受託開発チーム' })).toBeVisible();
     await expect(page.getByText('パーティの一覧を読み込めませんでした')).toHaveCount(0);
   });
+
+  test('初回の読み込み中は、空の読み上げの領域を先に描き、後から文字を入れる', async ({ page }) => {
+    // 節の読み上げの領域（data-section-status）が DOM に入ったときと、中の文字が変わったときを順に記録する。
+    // 領域と文字が同じ描画で入ると読み上げられないことがあるので、空の領域が先で、文字が後であることを見る
+    await page.addInitScript(() => {
+      const log: string[] = [];
+      (window as unknown as { __sectionStatusLog: string[] }).__sectionStatusLog = log;
+      new MutationObserver((mutations) => {
+        for (const mutation of mutations) {
+          // 領域は節ごとまとめて DOM に入るので、足された要素の中も探す
+          for (const node of mutation.addedNodes) {
+            if (!(node instanceof Element)) continue;
+            const added = node.matches('[data-section-status]')
+              ? [node]
+              : node.querySelectorAll('[data-section-status]');
+            for (const region of added) log.push(`added:${region.textContent}`);
+          }
+          const target = mutation.target instanceof Element ? mutation.target : mutation.target.parentElement;
+          const region = target?.closest('[data-section-status]');
+          if (region) log.push(`text:${region.textContent}`);
+        }
+      }).observe(document, { childList: true, subtree: true, characterData: true });
+    });
+    await page.route('**/api/aoba/workspace-list', async (route) => {
+      await new Promise((resolve) => setTimeout(resolve, 3000));
+      await route.continue();
+    });
+    await page.goto('/aoba/admin', { waitUntil: 'commit' });
+    const region = page.locator('[data-section-status]');
+    await expect(region).toHaveText('読み込んでいます');
+    const log = await page.evaluate(() => (window as unknown as { __sectionStatusLog: string[] }).__sectionStatusLog);
+    expect(log[0]).toBe('added:');
+    expect(log.indexOf('text:読み込んでいます')).toBeGreaterThan(0);
+    // 読めたら、領域は残したまま文字を消す
+    await expect(page.locator('tbody tr', { hasText: '受託開発チーム' })).toBeVisible();
+    await expect(region).toHaveCount(1);
+    await expect(region).toHaveText('');
+  });
+
+  test('狭い幅でも、節の「もう一度試す」は押せる範囲が 44px 四方以上ある', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 800 });
+    await page.route('**/api/aoba/workspace-list', (route) =>
+      route.fulfill({ status: 500, json: { error: { code: 'internal', message: 'x' } } }),
+    );
+    await page.goto('/aoba/admin');
+    const retry = page.getByRole('button', { name: 'もう一度試す' });
+    await expect(retry).toBeVisible();
+    // 見た目の大きさは変えず、::after で押せる範囲だけを広げる（横のヒントの文字を上にずらさないため）
+    const hit = await retry.evaluate((el) => {
+      const after = getComputedStyle(el, '::after');
+      return { width: parseFloat(after.width), height: parseFloat(after.height), position: after.position };
+    });
+    expect(hit.position).toBe('absolute');
+    expect(hit.width).toBeGreaterThanOrEqual(44);
+    expect(hit.height).toBeGreaterThanOrEqual(44);
+    expect((await retry.boundingBox())!.height).toBeLessThan(44);
+  });
 });
 
 test.describe('一般のユーザー（あおば開発のハルカ）', () => {
@@ -363,8 +447,8 @@ test.describe('一般のユーザー（あおば開発のハルカ）', () => {
     await signIn(context, baseURL, 'member');
   });
 
-  test('閉じたワークスペースの帯は出るが、組織の管理へのリンクは出ない', async ({ page }) => {
-    // 受託開発チームを、画面の上だけで閉じた状態にする（seed のワークスペースを閉じない）
+  test('終了したワークスペースの帯は出るが、組織の管理へのリンクは出ない', async ({ page }) => {
+    // 受託開発チームを、画面の上だけで終了した状態にする（seed のワークスペースを終了しない）
     await page.route('**/api/aoba/workspace', async (route) => {
       const response = await route.fetch();
       const body = (await response.json()) as { closed_at: string | null };

@@ -129,20 +129,20 @@ export const dictionary = defineDictionary({
   // 組織の管理の画面（管理者）。{workspace} と {leader} は、その言葉づかいの言葉を画面が渡す
   adminEyebrow: organization('{admin}だけが見られます', '{admin}だけが見られます'),
   adminWorkspacesDesc: organization(
-    '作った{workspace}の一覧です。閉じた{workspace}も含みます。{member}の数は{leader}を含みます。',
-    '作った{workspace}の一覧です。閉じた{workspace}も含みます。{member}の数は{leader}を含みます。',
+    '作った{workspace}の一覧です。終了した{workspace}も含みます。{member}の数は{leader}を含みます。',
+    '作った{workspace}の一覧です。終了した{workspace}も含みます。{member}の数は{leader}を含みます。',
   ),
   workspaceListLabel: organization('{workspace}の一覧', '{workspace}の一覧'),
   workspaceEmptyText: organization(
     'チームや用途ごとに作ります。{member}の招待は、作った{workspace}の{leader}が行います。',
     'チームや用途ごとに作ります。{member}の招待は、作った{workspace}の{leader}が行います。',
   ),
-  workspaceOpenLabel: organization('開いている{workspace}', '開いている{workspace}'),
+  workspaceOpenLabel: organization('進行中の{workspace}', '進行中の{workspace}'),
   workspaceMemberCountHeader: organization('{member}数', '{member}数'),
   workspaceLeaderCountHeader: organization('{leader}数', '{leader}数'),
   fieldName: organization('名前', '名前'),
   createdOn: organization('作った日', '作った日'),
-  workspaceClosedChip: organization('閉じた {date}', '閉じた {date}'),
+  workspaceClosedChip: organization('終了 {date}', '終了 {date}'),
   workspaceNoLeaderChip: organization('{leader}がいない', '{leader}がいない'),
 
   // ワークスペースを作るダイアログ。選んだ言葉づかいの名前は、画面が選んだ言葉づかいで引いて渡す
@@ -210,8 +210,8 @@ export const dictionary = defineDictionary({
     '{task}を優先する順に並べる場所です。上の「{create}」から最初の{task}を作ります。',
   ),
   backlogEmptyClosedText: workspace(
-    '閉じた{workspace}には、{task}を作れません。',
-    '閉じた{workspace}には、{task}を作れません。',
+    '終了した{workspace}には、{task}を作れません。',
+    '終了した{workspace}には、{task}を作れません。',
   ),
   // 完了にした親のないタスクの件数。行は返さず、件数の1行にする。完了にした行は、読み直すまでこの件数に入らない
   backlogFolded: workspace(
@@ -246,7 +246,7 @@ export const dictionary = defineDictionary({
     '{done}にできませんでした。もう一度試してください。',
   ),
   taskAlreadyDone: workspace('この{task}は、すでに{done}です', 'この{task}は、すでに{done}です'),
-  workspaceClosedReadOnly: workspace('閉じた{workspace}には書き込めません', '閉じた{workspace}には書き込めません'),
+  workspaceClosedReadOnly: workspace('終了した{workspace}には書き込めません', '終了した{workspace}には書き込めません'),
 
   // 起票のダイアログ
   fieldTitle: organization('タイトル', 'タイトル'),
@@ -321,8 +321,8 @@ export const dictionary = defineDictionary({
     'この{story}は見つかりません。一覧を読み直します',
   ),
   storyReadOnly: workspace(
-    '閉じた{workspace}の{story}は、読み取りだけできます',
-    '閉じた{workspace}の{story}は、読み取りだけできます',
+    '終了した{workspace}の{story}は、読み取りだけできます',
+    '終了した{workspace}の{story}は、読み取りだけできます',
   ),
   // ストーリーのダイアログ専用の文言（タスクのダイアログの文言を流用しない）
   storyTitleRequired: organization('タイトルを入れてください', 'タイトルを入れてください'),
@@ -699,31 +699,31 @@ export const dictionary = defineDictionary({
   themeMedieval: organization('中世風', '中世風'),
   themeModern: organization('現代風', '現代風'),
 
-  // ワークスペースを閉じる、開き直す（組織の管理の画面）。{workspace} {task} {done} は、その言葉づかいの言葉を画面が渡す。
-  // {name} はワークスペースの名前
+  // ワークスペースを終了する、再開する（組織の管理の画面。API の操作の名前は workspace-close と workspace-reopen のまま）。
+  // {workspace} は、その言葉づかいの言葉を画面が渡す。{name} はワークスペースの名前
   workspaceActionsHeader: organization('操作', '操作'),
-  workspaceCloseAction: organization('閉じる', '閉じる'),
-  workspaceReopenAction: organization('開き直す', '開き直す'),
-  workspaceCloseLabel: organization('「{name}」を閉じる', '「{name}」を閉じる'),
-  workspaceReopenLabel: organization('「{name}」を開き直す', '「{name}」を開き直す'),
-  workspaceCloseTitle: organization('{workspace}を閉じる', '{workspace}を閉じる'),
+  workspaceCloseAction: organization('終了する', '終了する'),
+  workspaceReopenAction: organization('再開する', '再開する'),
+  workspaceCloseLabel: organization('「{name}」を終了する', '「{name}」を終了する'),
+  workspaceReopenLabel: organization('「{name}」を再開する', '「{name}」を再開する'),
+  workspaceCloseTitle: organization('「{name}」を終了しますか？', '「{name}」を終了しますか？'),
   workspaceCloseText: organization(
-    '「{name}」を閉じると読み取り専用になり、中の書き込みはすべてできなくなります。閉じた後も、この画面から開き直せます。',
-    '「{name}」を閉じると読み取り専用になり、中の書き込みはすべてできなくなります。閉じた後も、この画面から開き直せます。',
+    '終了すると読み取り専用になり、中の書き込みはすべてできなくなります。この画面からいつでも再開できます。',
+    '終了すると読み取り専用になり、中の書き込みはすべてできなくなります。この画面からいつでも再開できます。',
   ),
-  workspaceClosing: organization('閉じています', '閉じています'),
-  workspaceReopening: organization('開き直しています', '開き直しています'),
-  workspaceClosed: organization('{workspace}を閉じました', '{workspace}を閉じました'),
-  workspaceReopened: organization('{workspace}を開き直しました', '{workspace}を開き直しました'),
+  workspaceClosing: organization('終了しています', '終了しています'),
+  workspaceReopening: organization('再開しています', '再開しています'),
+  workspaceClosed: organization('{workspace}を終了しました', '{workspace}を終了しました'),
+  workspaceReopened: organization('{workspace}を再開しました', '{workspace}を再開しました'),
   workspaceCloseFailed: organization(
-    '{workspace}を閉じられませんでした。もう一度試してください。',
-    '{workspace}を閉じられませんでした。もう一度試してください。',
+    '{workspace}を終了できませんでした。もう一度試してください。',
+    '{workspace}を終了できませんでした。もう一度試してください。',
   ),
   workspaceReopenFailed: organization(
-    '{workspace}を開き直せませんでした。もう一度試してください。',
-    '{workspace}を開き直せませんでした。もう一度試してください。',
+    '{workspace}を再開できませんでした。もう一度試してください。',
+    '{workspace}を再開できませんでした。もう一度試してください。',
   ),
-  // 別の画面で先に操作されていた（409）。閉じた状態か開いた状態かは言い切らず、読み直した一覧を見てもらう
+  // 別の画面で先に操作されていた（409）。終了した状態か再開した状態かは言い切らず、読み直した一覧を見てもらう
   workspaceStateChanged: organization(
     '「{name}」の状態が変わっていました。一覧で状態を確かめてください',
     '「{name}」の状態が変わっていました。一覧で状態を確かめてください',
@@ -742,12 +742,12 @@ export const dictionary = defineDictionary({
     '{workspace}の一覧を読み込めませんでした',
   ),
 
-  // 閉じたワークスペースの帯（ワークスペースの中の全画面）。{date} は閉じた日、{page} は組織の管理の画面の名前
+  // 終了したワークスペースの帯（ワークスペースの中の全画面）。{date} は終了した日、{page} は組織の管理の画面の名前
   workspaceClosedBanner: workspace(
-    '{date} に閉じました。読み取り専用です。',
-    '{date} に閉じました。読み取り専用です。',
+    '{date} に終了しました。読み取り専用です。',
+    '{date} に終了しました。読み取り専用です。',
   ),
-  workspaceClosedBannerLink: organization('{page}で開き直す', '{page}で開き直す'),
+  workspaceClosedBannerLink: organization('{page}で再開する', '{page}で再開する'),
 
   // Markdown の本文。変換が終わらなかった本文を、書かれたまま出すときの注記
   markdownPlainNote: workspace('整形せずに表示しています', '整形せずに表示しています'),

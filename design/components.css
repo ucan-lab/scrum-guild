@@ -737,7 +737,7 @@ dialog.dialog::backdrop { background: none; }
   display: grid; gap: var(--space-4); padding: var(--space-5) var(--space-6) var(--space-6);
 }
 .dialog-head { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-3); }
-.dialog-title { font-family: var(--font-display); font-weight: var(--weight-display); font-size: var(--text-xl); line-height: var(--leading-tight); }
+.dialog-title { font-family: var(--font-display); font-weight: var(--weight-display); font-size: var(--text-xl); line-height: var(--leading-tight); min-width: 0; overflow-wrap: anywhere; }
 .dialog-body { display: grid; gap: var(--space-4); font-size: var(--text-sm); }
 .dialog-foot { display: flex; justify-content: flex-end; gap: var(--space-2); flex-wrap: wrap; padding-top: var(--space-2); border-top: 1px solid var(--color-rule); }
 .dialog-sheet.is-danger { border-top-color: var(--color-danger); }
@@ -758,9 +758,10 @@ dialog.dialog::backdrop { background: none; }
   .table .btn.is-sm { min-width: 44px; min-height: 44px; }
   .done-btn { position: relative; }
   .done-btn::after { content: ""; position: absolute; left: 50%; top: 50%; width: 44px; height: 44px; transform: translate(-50%, -50%); }
-  /* 木の行のボタン（開閉の caret、題、＋タスク）も、見た目は変えず、押せる範囲だけを 44px 四方以上に広げる */
-  .tree-caret, button.tree-link, .tree-row .btn.is-sm { position: relative; }
-  .tree-caret::after, button.tree-link::after, .tree-row .btn.is-sm::after {
+  /* 木の行のボタン（開閉の caret、題、＋タスク）と、操作の並びの小さいボタンも、見た目は変えず、押せる範囲だけを 44px 四方以上に広げる。
+     操作の並びで高さを変えると、横に並ぶヒントの文字が上にずれるため */
+  .tree-caret, button.tree-link, .tree-row .btn.is-sm, .form-actions .btn.is-sm, .callout-actions .btn.is-sm { position: relative; }
+  .tree-caret::after, button.tree-link::after, .tree-row .btn.is-sm::after, .form-actions .btn.is-sm::after, .callout-actions .btn.is-sm::after {
     content: ""; position: absolute; left: 50%; top: 50%; width: max(100%, 44px); height: max(100%, 44px); transform: translate(-50%, -50%);
   }
 }
@@ -886,7 +887,7 @@ a.choice > div > span, .choice.is-static > div > span { display: block; }
 
 /* ===== 知らせ（トースト） ===== */
 .toasts { position: fixed; z-index: 40; right: max(var(--space-4), env(safe-area-inset-right, 0px)); bottom: calc(var(--space-4) + env(safe-area-inset-bottom, 0px)); display: grid; gap: var(--space-2); }
-.toast { display: flex; gap: var(--space-2); align-items: center; padding: var(--space-3) var(--space-4); background: var(--color-fg); color: var(--color-bg); border-radius: var(--radius-1); box-shadow: var(--shadow-float); font-size: var(--text-sm); max-width: min(420px, calc(100vw - 2 * var(--space-4))); animation: toast-in var(--duration-stamp) var(--ease-out) 1; }
+.toast { display: flex; gap: var(--space-2); align-items: center; padding: var(--space-3) var(--space-4); background: var(--color-fg); color: var(--color-bg); border-radius: var(--radius-1); box-shadow: var(--shadow-float); font-size: var(--text-sm); overflow-wrap: anywhere; max-width: min(420px, calc(100vw - 2 * var(--space-4))); animation: toast-in var(--duration-stamp) var(--ease-out) 1; }
 @keyframes toast-in { from { transform: translateY(8px); opacity: 0; } to { transform: none; opacity: 1; } }
 
 /* ===== クリアの演出 ===== */
