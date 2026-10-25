@@ -19,7 +19,6 @@ import {
   assertVerifiedWorkspace,
   commonDb,
   enterOrganization,
-  hasLoginAccess,
   verifyWorkspace,
   type OrganizationActor,
   type VerifiedWorkspace,
@@ -57,14 +56,34 @@ export function operationsApp(operations: readonly ImplementedOperation[]): Hono
   return app;
 }
 
+// このリクエストの応答に付けるセッションの Cookie の状態。付けるのは応答を作る直前の1回で、期限を延ばす（extend）か、
+// 消す（clear）かの片方だけ。両方を付けると、同じ名前の Set-Cookie が2本並び（Max-Age 30日と Max-Age=0）、
+// 受け取る側の処理の順に頼ることになるので、消すときは延ばす Cookie を付けない
+type SessionCookie = { applied: boolean; extend: boolean; clear: boolean };
+
+function applySessionCookie(c: Context<AppEnv>, cookie: SessionCookie): void {
+  if (cookie.applied) return;
+  cookie.applied = true;
+  const name = sessionCookieName(c.env.PUBLIC_ORIGIN);
+  if (cookie.clear) {
+    deleteCookie(c, name, sessionCookieClearOptions(c.env.PUBLIC_ORIGIN));
+    return;
+  }
+  const token = cookie.extend ? getCookie(c, name) : undefined;
+  if (token !== undefined) setCookie(c, name, token, sessionCookieOptions(c.env.PUBLIC_ORIGIN));
+}
+
 async function handleOperation(c: Context<AppEnv>, operation: ImplementedOperation): Promise<Response> {
   const startedAt = Date.now();
   const trace: Trace = { organizationId: null, userId: null, accountId: null };
   let status = 200;
   let code = 'ok';
+  const cookie: SessionCookie = { applied: false, extend: false, clear: false };
   try {
-    return await execute(c, operation, trace);
+    return await execute(c, operation, trace, cookie);
   } catch (err) {
+    // 失敗の応答にも、期限を延ばす Cookie と、消す Cookie を付ける（1本だけ。applySessionCookie）
+    applySessionCookie(c, cookie);
     const known = knownError(err);
     status = known?.status ?? 500;
     code = known?.code ?? 'internal';
@@ -126,15 +145,19 @@ function isAllowedInWorkspace(permission: Permission, actor: OrganizationActor, 
 // 運用者は入れる組織が無くても通す。消すのは判定した時刻までに作られたセッションで、判定の後に作られたものは残す
 async function requireLoginAccess(
   c: Context<AppEnv>,
-  cookieName: string,
+  cookie: SessionCookie,
   accountId: string,
   account: OutsideAccount,
 ): Promise<void> {
   if (await account.isOperator()) return;
   const checkedAt = new Date();
-  if (await hasLoginAccess(c.env, { accountId, logins: await account.logins() })) return;
+  // 組織の選択と同じ読み取りの結果（account.organizations()。同じリクエストの中で1回だけ引く）。
+  // アカウントに結ばれる前の行は数えない。数えると、結ばれる前の行だけの人が、どこにも入れないままセッションを持ち続ける。
+  // その人は 401 でセッションが消え、もう一度ログインすると結ばれて入れる
+  const { organizations, invitations } = await account.organizations();
+  if (organizations.length > 0 || invitations.length > 0) return;
   await deleteSessionsOf(commonDb(c.env), accountId, checkedAt);
-  deleteCookie(c, cookieName, sessionCookieClearOptions(c.env.PUBLIC_ORIGIN));
+  cookie.clear = true;
   throw new ApiError(401, 'unauthenticated');
 }
 
@@ -155,7 +178,12 @@ async function enforceRateLimit(
   if (!allowed) throw new ApiError(429, 'rate_limited');
 }
 
-async function execute(c: Context<AppEnv>, operation: ImplementedOperation, trace: Trace): Promise<Response> {
+async function execute(
+  c: Context<AppEnv>,
+  operation: ImplementedOperation,
+  trace: Trace,
+  cookie: SessionCookie,
+): Promise<Response> {
   const { definition } = operation;
   const handler = operation.handler as Handler;
 
@@ -166,10 +194,8 @@ async function execute(c: Context<AppEnv>, operation: ImplementedOperation, trac
   const session = await readSession(c.env, token, new Date(), c.get('requestId'));
   if (session === undefined) throw new ApiError(401, 'unauthenticated');
   trace.accountId = session.accountId;
-  // 使うたびに期限を延ばす。DB の expires_at を書き直したときは Cookie の期限も同じだけ延ばす
-  if (session.refreshed && token !== undefined) {
-    setCookie(c, cookieName, token, sessionCookieOptions(c.env.PUBLIC_ORIGIN));
-  }
+  // 使うたびに期限を延ばす。DB の expires_at を書き直したときは Cookie の期限も同じだけ延ばす（付けるのは応答を作る直前）
+  cookie.extend = session.refreshed && token !== undefined;
 
   const deferred = deferrer(c);
   // 運用者の判定と、アカウントに結んだログインの手段と ID の読み取りは account.ts の1か所。
@@ -177,13 +203,13 @@ async function execute(c: Context<AppEnv>, operation: ImplementedOperation, trac
   const account = outsideAccount(c.env, session.accountId);
   let result: unknown;
   if (isOutsideOperation(definition)) {
-    if (definition.permission === 'operator' && !(await account.isOperator())) throw new ApiError(403, 'forbidden');
     // 運用者は入れる組織が無くてもログインできる。それ以外は、入れる組織を失っていればセッションを消して 401。
-    // 確かめないのは、定義が skipsLoginAccess を付けた操作（ログアウトなど）だけ
-    if (definition.skipsLoginAccess !== true) await requireLoginAccess(c, cookieName, session.accountId, account);
+    // 確かめないのは、定義が skipsLoginAccess を付けた操作（ログアウトなど）だけ。
+    // 運用者の権限の検査（403）より前に確かめる（入れる組織を失った非運用者には、403 でなく 401 を返す）
+    if (definition.skipsLoginAccess !== true) await requireLoginAccess(c, cookie, session.accountId, account);
+    if (definition.permission === 'operator' && !(await account.isOperator())) throw new ApiError(403, 'forbidden');
     await enforceRateLimit(c, definition, session.accountId);
     const input = await readInput(c, definition.input);
-    let cookieCleared = false;
     result = await handler({
       db: commonDb(c.env),
       accountId: session.accountId,
@@ -191,12 +217,11 @@ async function execute(c: Context<AppEnv>, operation: ImplementedOperation, trac
       session: {
         tokenHash: session.tokenHash,
         clearCookie: () => {
-          cookieCleared = true;
+          cookie.clear = true;
         },
       },
       input,
     });
-    if (cookieCleared) deleteCookie(c, cookieName, sessionCookieClearOptions(c.env.PUBLIC_ORIGIN));
   } else {
     // 運用者かどうかは組織に入れるかを変えない。入れる組織が無い運用者は、組織が無いときと同じ 404 になる
     const slug = c.req.param('slug');
@@ -204,7 +229,7 @@ async function execute(c: Context<AppEnv>, operation: ImplementedOperation, trac
     const entry = await enterOrganization(c.env, slug, { accountId: session.accountId, loadLogins: account.logins });
     if (entry === undefined) {
       // この組織に入れないだけか、どの組織にも入れなくなったか。入れる組織があれば、組織が無いときと同じ 404
-      await requireLoginAccess(c, cookieName, session.accountId, account);
+      await requireLoginAccess(c, cookie, session.accountId, account);
       throw new ApiError(404, 'not_found');
     }
     const { db, actor, organization } = entry;
@@ -232,6 +257,8 @@ async function execute(c: Context<AppEnv>, operation: ImplementedOperation, trac
 
   const output = definition.output.parse(result);
   await deferred.settle();
+  // Cookie は応答を作る前に付ける（作った後に c.header で足しても、返す応答には載らない）
+  applySessionCookie(c, cookie);
   // 検証した値（スキーマの変換を通した出力）をそのまま送る。画面は同じスキーマで検証し直さない
   return c.json(output);
 }

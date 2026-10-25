@@ -125,67 +125,88 @@ function isRetryableStatus(status: number): boolean {
   return status >= 500 || status === 429;
 }
 
-async function seedSessionsRejected(deps: DeployDeps): Promise<SeedCheck> {
+// 1つのトークンの結果。accepted（2xx）は、本番が受け付けた。problem は、受け付けたのではないが、拒んだと確かめられなかった
+type TokenCheck = { kind: 'rejected' } | { kind: 'accepted'; status: number } | { kind: 'problem'; reason: string };
+
+async function checkSeedToken(deps: DeployDeps, name: string, token: string): Promise<TokenCheck> {
   const url = `${PRODUCTION_URL}${operationPath(logout)}`;
-  const cookieName = sessionCookieName(PRODUCTION_URL);
-  for (const [name, seed] of Object.entries(SEED_SESSIONS)) {
-    let status: number | undefined;
-    let errorCode: string | undefined;
-    for (let attempt = 1; attempt <= SEED_CHECK_ATTEMPTS && status === undefined; attempt++) {
-      try {
-        const answered = await deps.postStatus(
-          url,
-          {
-            headers: {
-              'Content-Type': 'application/json',
-              Origin: PRODUCTION_URL,
-              Cookie: `${cookieName}=${seed.token}`,
-            },
-            body: '{}',
+  let status: number | undefined;
+  let errorCode: string | undefined;
+  for (let attempt = 1; attempt <= SEED_CHECK_ATTEMPTS && status === undefined; attempt++) {
+    try {
+      const answered = await deps.postStatus(
+        url,
+        {
+          headers: {
+            'Content-Type': 'application/json',
+            Origin: PRODUCTION_URL,
+            Cookie: `${sessionCookieName(PRODUCTION_URL)}=${token}`,
           },
-          SMOKE_REQUEST_TIMEOUT_MS,
-        );
-        if (isRetryableStatus(answered.status)) {
-          deps.log(
-            `seed のトークンの確認: ${name} の${attempt}回目は ${answered.status} でした。答えられていないので繰り返します`,
-          );
-          if (attempt < SEED_CHECK_ATTEMPTS) await deps.sleep(SMOKE_INTERVAL_MS);
-        } else {
-          status = answered.status;
-          errorCode = answered.errorCode;
-        }
-      } catch (err) {
+          body: '{}',
+        },
+        SMOKE_REQUEST_TIMEOUT_MS,
+      );
+      if (isRetryableStatus(answered.status)) {
         deps.log(
-          `seed のトークンの確認: ${name} の${attempt}回目は取得に失敗しました（${err instanceof Error ? err.message : String(err)}）`,
+          `seed のトークンの確認: ${name} の${attempt}回目は ${answered.status} でした。答えられていないので繰り返します`,
         );
         if (attempt < SEED_CHECK_ATTEMPTS) await deps.sleep(SMOKE_INTERVAL_MS);
+      } else {
+        status = answered.status;
+        errorCode = answered.errorCode;
       }
-    }
-    if (status === undefined) {
-      return { ok: false, reason: `seed のトークン（${name}）を本番が拒むことを確かめられませんでした` };
-    }
-    if (status >= 200 && status < 300) {
-      return {
-        ok: false,
-        reason:
-          `本番が seed のトークン（${name}）を受け付けました（${status}）。前の版へ戻しても、本番の sessions に seed の行が残っていれば直りません。` +
-          'docs/operations.md の「seed のセッションが本番に入ったとき」の手順で消してください',
-      };
-    }
-    // 401 で、本文の code が unauthenticated のものだけが「ログインしていない扱い」。ほかの状態（そのほかの 4xx、リダイレクト）や、
-    // 別の code の 401 は想定と違う（401 だけでは、別の理由で止まったのかを見分けられない）
-    if (status !== 401) {
-      return { ok: false, reason: `seed のトークン（${name}）への本番の応答が ${status} でした。401 を想定しています` };
-    }
-    if (errorCode !== 'unauthenticated') {
-      return {
-        ok: false,
-        reason: `seed のトークン（${name}）への本番の 401 の code が ${errorCode ?? '読めません'} でした。unauthenticated を想定しています`,
-      };
+    } catch (err) {
+      deps.log(
+        `seed のトークンの確認: ${name} の${attempt}回目は取得に失敗しました（${err instanceof Error ? err.message : String(err)}）`,
+      );
+      if (attempt < SEED_CHECK_ATTEMPTS) await deps.sleep(SMOKE_INTERVAL_MS);
     }
   }
-  deps.log(`seed のトークンの確認: ${SEED_COUNT}つとも本番が拒みました`);
-  return { ok: true };
+  if (status === undefined) {
+    return { kind: 'problem', reason: `seed のトークン（${name}）を本番が拒むことを確かめられませんでした` };
+  }
+  if (status >= 200 && status < 300) return { kind: 'accepted', status };
+  // 401 で、本文の code が unauthenticated のものだけが「ログインしていない扱い」。ほかの状態（そのほかの 4xx、リダイレクト）や、
+  // 別の code の 401 は想定と違う（401 だけでは、別の理由で止まったのかを見分けられない）
+  if (status !== 401) {
+    return {
+      kind: 'problem',
+      reason: `seed のトークン（${name}）への本番の応答が ${status} でした。401 を想定しています`,
+    };
+  }
+  if (errorCode !== 'unauthenticated') {
+    return {
+      kind: 'problem',
+      reason: `seed のトークン（${name}）への本番の 401 の code が ${errorCode ?? '読めません'} でした。unauthenticated を想定しています`,
+    };
+  }
+  return { kind: 'rejected' };
+}
+
+// 受け付けたトークンがあっても、残りのトークンも全部確かめてから失敗にする（人が消す行を、すべて報告するため）。
+// 報告するのはトークンの名前（admin など）だけで、値は出さない。logout は受け付けたトークンの行を消す副作用を持つので、
+// 全部に送る
+async function seedSessionsRejected(deps: DeployDeps): Promise<SeedCheck> {
+  const accepted: string[] = [];
+  const problems: string[] = [];
+  for (const [name, seed] of Object.entries(SEED_SESSIONS)) {
+    const result = await checkSeedToken(deps, name, seed.token);
+    if (result.kind === 'accepted') accepted.push(`${name}（${result.status}）`);
+    else if (result.kind === 'problem') problems.push(result.reason);
+  }
+  if (accepted.length === 0 && problems.length === 0) {
+    deps.log(`seed のトークンの確認: ${SEED_COUNT}つとも本番が拒みました`);
+    return { ok: true };
+  }
+  const reasons: string[] = [];
+  if (accepted.length > 0) {
+    reasons.push(
+      `本番が seed のトークンを受け付けました: ${accepted.join('、')}（${SEED_COUNT}つのうち ${accepted.length}つ）。前の版へ戻しても、本番の sessions に seed の行が残っていれば直りません。` +
+        'docs/operations.md の「seed のセッションが本番に入ったとき」の手順で消してください',
+    );
+  }
+  reasons.push(...problems);
+  return { ok: false, reason: reasons.join('。') };
 }
 
 // 成功なら 0、失敗なら 1 を返す

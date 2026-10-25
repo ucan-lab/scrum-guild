@@ -17,7 +17,7 @@ import { implementedOperations } from '../src/server/operations/index.ts';
 import { createFakeGithub, FAKE_CLIENT_ID, FAKE_CLIENT_SECRET, quietGithubOptions } from './auth/fake-github.ts';
 import { createInvitation, createOrganization, createUser, createWorkspace } from './factories.ts';
 import { errorCodeOf, post } from './operations/harness.ts';
-import { organizationProfile, provisionalOperations, whoAmI } from './operations/provisional.ts';
+import { operatorPing, organizationProfile, provisionalOperations, whoAmI } from './operations/provisional.ts';
 import {
   admitElsewhere,
   createLoginPerson,
@@ -127,16 +127,94 @@ describe('ログインできる条件を失った人', () => {
     expect(await sessionCount(operator.accountId)).toBe(0);
   });
 
-  test('アカウントに結ばれる前の指名の行が残っている人は、ログインできる条件を持つ', async () => {
+  test('アカウントに結ばれる前の指名の行だけを持つ人は、セッションの判定では数えず、401 でセッションが消える', async () => {
     const organization = await createOrganization();
     const person = await createPerson();
+    const second = await withNewSession(person);
     await createUser(organization, {
       account_id: null,
       login_provider: person.login.provider,
       login_subject: person.login.subject,
       is_admin: 1,
     });
-    expect((await post(app, me, { token: person.token })).status).toBe(200);
+    // 組織の枠は account_id で引くので入れない。セッションの判定も同じ読み取りで、数えない。
+    // 数えると、どこにも入れないまま、セッションが30日以上続く。もう一度ログインすれば結ばれる（test/login.test.ts）
+    expect(await sessionCount(person.accountId)).toBe(2);
+    const res = await post(app, me, { token: person.token });
+    expect(res.status).toBe(401);
+    expect(await errorCodeOf(res)).toBe('unauthenticated');
+    expect(await sessionCount(person.accountId)).toBe(0);
+    expect((await post(app, me, { token: second.token })).status).toBe(401);
+  });
+
+  test('運用者の権限の操作を、入れる組織を失った非運用者が呼ぶと、403 でなく 401 でセッションが消える', async () => {
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+    const lost = await createPerson();
+    const res = await post(provisionalApp, operatorPing, { token: lost.token });
+    expect(res.status).toBe(401);
+    expect(await errorCodeOf(res)).toBe('unauthenticated');
+    expect(await sessionCount(lost.accountId)).toBe(0);
+
+    // 入れる組織のある非運用者は、これまでどおり 403。運用者は通る
+    const member = await createLoginPerson();
+    const forbidden = await post(provisionalApp, operatorPing, { token: member.token });
+    expect(forbidden.status).toBe(403);
+    expect(await errorCodeOf(forbidden)).toBe('forbidden');
+    expect(await sessionCount(member.accountId)).toBe(1);
+    const operator = await withNewSession(await getOperator());
+    expect((await post(provisionalApp, operatorPing, { token: operator.token })).status).toBe(200);
+  });
+
+  describe('同じ応答のセッションの Set-Cookie', () => {
+    const staleSession = { last_used_at: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString() };
+    const sessionCookies = (res: Response) =>
+      res.headers.getSetCookie().filter((line) => line.startsWith(`${SESSION_COOKIE}=`));
+
+    test('期限を延ばす古いセッションで、入れる組織を失った人が呼ぶと、消す1本だけになる', async () => {
+      const lost = await createPerson({ sessionOverrides: staleSession });
+      const res = await post(app, me, { token: lost.token });
+      expect(res.status).toBe(401);
+      const cookies = sessionCookies(res);
+      expect(cookies).toHaveLength(1);
+      expect(cookies[0]).toContain('Max-Age=0');
+      expect(cookies[0]).not.toContain(lost.token);
+    });
+
+    test('期限を延ばす古いセッションのログアウトも、消す1本だけになる', async () => {
+      const person = await createLoginPerson({ sessionOverrides: staleSession });
+      const res = await post(app, logout, { token: person.token });
+      expect(res.status).toBe(200);
+      const cookies = sessionCookies(res);
+      expect(cookies).toHaveLength(1);
+      expect(cookies[0]).toContain('Max-Age=0');
+    });
+
+    test('組織に入れなかった組織の中の操作でも、消す1本だけになる', async () => {
+      const target = await createTarget();
+      const lost = await createPerson({ sessionOverrides: staleSession });
+      const res = await post(provisionalApp, organizationProfile, { slug: target.slug, token: lost.token });
+      expect(res.status).toBe(401);
+      const cookies = sessionCookies(res);
+      expect(cookies).toHaveLength(1);
+      expect(cookies[0]).toContain('Max-Age=0');
+    });
+
+    test('消さない応答では、期限を延ばす1本だけが付く（失敗の応答にも付く）', async () => {
+      const person = await createLoginPerson({ sessionOverrides: staleSession });
+      const ok = await post(app, me, { token: person.token });
+      expect(ok.status).toBe(200);
+      expect(sessionCookies(ok)).toHaveLength(1);
+      expect(sessionCookies(ok)[0]).toContain(`${SESSION_COOKIE}=${person.token}`);
+      expect(sessionCookies(ok)[0]).toContain('Max-Age=2592000');
+
+      // 同じ人が、別の組織の slug を呼んだ失敗（404）の応答にも、期限を延ばす Cookie が付く
+      const target = await createTarget();
+      const stale = await createLoginPerson({ sessionOverrides: staleSession });
+      const notFound = await post(provisionalApp, organizationProfile, { slug: target.slug, token: stale.token });
+      expect(notFound.status).toBe(404);
+      expect(sessionCookies(notFound)).toHaveLength(1);
+      expect(sessionCookies(notFound)[0]).toContain('Max-Age=2592000');
+    });
   });
 
   test('招待の取り消しだけで入れていた人は、承諾待ちが無くなれば 401', async () => {

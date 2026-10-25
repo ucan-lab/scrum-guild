@@ -17,6 +17,7 @@ export {
 } from './enter-organization.ts';
 export {
   hasLoginAccess,
+  type LoginAccessTarget,
   linkLoginToAccount,
   listAccountOrganizations,
   type AccountOrganizations,

@@ -1,7 +1,12 @@
-// 組織をまたいで読み書きする処理のうち、ログインのための部分（src/server/db/cross-organization.ts）。
-// ログインできるか（hasLoginAccess）と、指名で待っていた行を結ぶこと（linkLoginToAccount）。
-// 組織の選択と共通の読み取りの形（索引、束縛の上限、DB が複数のとき）は test/organization.test.ts と
-// test/cross-organization-databases.test.ts が確かめる
+// 組織をまたいで読み書きする処理のうち、ログインのための部分（src/server/db/cross-organization.ts）を、
+// 本物の DB 1つで確かめる。確かめる範囲は次の3つ。
+//   - ログインのときの判定（hasLoginAccess）の条件: 管理者、今の所属、承諾待ちの招待、停止、無効、アカウントに結ばれる前の行
+//     （組織の選択には数えない）、初めてのログイン（アカウントが無い）、ログインの手段と ID が無いアカウント
+//   - 指名で待っていた行を結ぶこと（linkLoginToAccount）が、結ぶ行があるときだけ書くこと
+//   - 組織の選択（listAccountOrganizations）との違い（結ばれる前の行を数えるか）
+// 確かめない範囲: 組織の選択と共通の読み取りの形（索引、束縛の上限）は test/organization.test.ts が、
+// DB が2つのときの合わせ方（hasLoginAccess と linkLoginToAccount を含む）は test/cross-organization-databases.test.ts が、
+// セッションの判定（結ばれる前の行を数えない）は test/session-access.test.ts と test/login.test.ts が確かめる
 import { env } from 'cloudflare:workers';
 import { describe, expect, test } from 'vitest';
 import { commonDb, hasLoginAccess, linkLoginToAccount, listAccountOrganizations } from '../src/server/db/index.ts';

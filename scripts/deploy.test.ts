@@ -359,19 +359,56 @@ describe('deploy', () => {
     assert.ok(message.includes('前の版へ戻しても'));
     assert.ok(message.includes('docs/operations.md'));
     assert.ok(message.includes('seed のセッションが本番に入ったとき'));
-    // 同じ名前への問い合わせは1回だけ
+    // 同じ名前への問い合わせは1回だけ。トークンの値は、ログにも失敗の文言にも出さない
     assert.equal(
       f.seedRequests.filter((request) => request.headers.Cookie!.includes(SEED_SESSIONS.operator.token)).length,
       1,
     );
+    for (const seed of Object.values(SEED_SESSIONS)) {
+      assert.ok(![...f.errors, ...f.logs].some((line) => line.includes(seed.token)));
+    }
   });
 
-  test('401 以外の 4xx と 3xx は、繰り返さずに失敗にして戻す', async () => {
+  test('受け付けられたトークンがあっても、残りのトークンも全部確かめてから失敗にし、受け付けた名前をすべて報告する', async () => {
+    const acceptedNames = ['admin', 'operator'] as const;
+    const f = fake({
+      seedStatus: (token) => (acceptedNames.some((name) => SEED_SESSIONS[name].token === token) ? 200 : 401),
+    });
+    assert.equal(await deploy(f.deps), 1);
+    // 全部のトークンに送った（最初の1つで止めない）
+    assert.equal(f.seedRequests.length, Object.keys(SEED_SESSIONS).length);
+    const message = f.errors.find((entry) => entry.includes('本番が seed のトークンを受け付けました'));
+    assert.ok(message);
+    for (const name of acceptedNames) assert.ok(message.includes(`${name}（200）`), name);
+    // 拒まれた名前は、受け付けた名前に入れない
+    for (const name of Object.keys(SEED_SESSIONS).filter((key) => !acceptedNames.some((a) => a === key))) {
+      assert.ok(!message.includes(`${name}（`), name);
+    }
+    assert.ok(message.includes(`${Object.keys(SEED_SESSIONS).length}つのうち 2つ`));
+    assert.deepEqual(lastCall(f), ['rollback', CURRENT]);
+  });
+
+  test('受け付けたトークンと、確かめられなかったトークンが混ざっても、両方を報告する', async () => {
+    const f = fake({
+      seedStatus: (token) => {
+        if (token === SEED_SESSIONS.admin.token) return 200;
+        if (token === SEED_SESSIONS.member.token) return new Error('timeout');
+        return 401;
+      },
+    });
+    assert.equal(await deploy(f.deps), 1);
+    const message = f.errors.find((entry) => entry.includes('本番が seed のトークンを受け付けました'))!;
+    assert.ok(message.includes('admin（200）'));
+    assert.ok(message.includes('seed のトークン（member）を本番が拒むことを確かめられませんでした'));
+  });
+
+  test('401 以外の 4xx と 3xx は、繰り返さずに失敗にして戻す（全部のトークンを確かめる）', async () => {
     for (const status of [400, 403, 404, 301, 302]) {
       const f = fake({ seedStatus: () => status });
       assert.equal(await deploy(f.deps), 1, String(status));
       assert.deepEqual(lastCall(f), ['rollback', CURRENT], String(status));
-      assert.equal(f.seedRequests.length, 1, String(status));
+      // トークンごとに1回だけ（繰り返さない）
+      assert.equal(f.seedRequests.length, Object.keys(SEED_SESSIONS).length, String(status));
       assert.ok(
         f.errors.some((message) => message.includes(`${status} でした`)),
         String(status),
@@ -384,7 +421,7 @@ describe('deploy', () => {
       const f = fake({ seedStatus: () => ({ status: 401, code }) });
       assert.equal(await deploy(f.deps), 1, String(code));
       assert.deepEqual(lastCall(f), ['rollback', CURRENT], String(code));
-      assert.equal(f.seedRequests.length, 1, String(code));
+      assert.equal(f.seedRequests.length, Object.keys(SEED_SESSIONS).length, String(code));
       assert.ok(
         f.errors.some((message) => message.includes('unauthenticated を想定')),
         String(code),
@@ -401,9 +438,10 @@ describe('deploy', () => {
         String(status),
       );
 
+      // 全部のトークンが、それぞれ3回まで繰り返す
       const stuck = fake({ seedStatus: () => status });
       assert.equal(await deploy(stuck.deps), 1, String(status));
-      assert.equal(stuck.seedRequests.length, 3, String(status));
+      assert.equal(stuck.seedRequests.length, 3 * Object.keys(SEED_SESSIONS).length, String(status));
       assert.deepEqual(lastCall(stuck), ['rollback', CURRENT], String(status));
       assert.ok(
         stuck.errors.some((message) => message.includes('確かめられませんでした')),
@@ -417,7 +455,7 @@ describe('deploy', () => {
     assert.equal(await deploy(flaky.deps), 0);
     const down = fake({ seedStatus: () => new Error('timeout') });
     assert.equal(await deploy(down.deps), 1);
-    assert.equal(down.seedRequests.length, 3);
+    assert.equal(down.seedRequests.length, 3 * Object.keys(SEED_SESSIONS).length);
     assert.deepEqual(lastCall(down), ['rollback', CURRENT]);
     assert.ok(down.errors.some((message) => message.includes('確かめられませんでした')));
   });

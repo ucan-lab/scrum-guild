@@ -485,7 +485,8 @@ describe('組織に入れる人', () => {
 
   test('users の行がアカウントに結ばれていなければ入れない', async () => {
     const { organization } = await org();
-    const person = await createPerson();
+    // ほかの組織には入れる（入れる組織が1つも無いと、401 でセッションが消える）
+    const person = await admitElsewhere(await createPerson());
     await createUser(organization, {
       account_id: null,
       login_provider: person.login.provider,
@@ -620,7 +621,10 @@ describe('運用者の一覧', () => {
   });
 
   test('手段と ID の完全一致だけで運用者になる', async () => {
-    const sameNumberOtherProvider = await createPerson({ login: { provider: 'google', subject: '9000000000000001' } });
+    // 運用者でない人は、入れる組織が無いと 403 でなく 401 になるので、ほかの組織には入れる人にする
+    const sameNumberOtherProvider = await admitElsewhere(
+      await createPerson({ login: { provider: 'google', subject: '9000000000000001' } }),
+    );
     const listed = await createPerson({ login: { provider: 'google', subject: '424242' } });
     const call = (token: string) => post(app, operatorPing, { token });
     expect((await call(sameNumberOtherProvider.token)).status).toBe(403);

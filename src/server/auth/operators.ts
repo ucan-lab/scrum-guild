@@ -32,3 +32,11 @@ export function operatorLoginIds(env: object): OperatorLoginIds {
 export function isOperator(operators: ReadonlySet<string>, logins: readonly LoginId[]): boolean {
   return logins.some((login) => operators.has(`${login.provider}:${login.subject}`));
 }
+
+// シークレットの運用者の一覧に、これらのログインのどれかが載っているか。運用者の判定の式はここに1つだけ置く
+// （登録の関数が account.isOperator() で、ログインの分かれ道が login.ts で呼ぶ）。
+// 設定の誤りは app のミドルウェアが先に 500 にしているので、ここに来る一覧は解釈できている。未設定は運用者がいない
+export function isOperatorLogin(env: object, logins: readonly LoginId[]): boolean {
+  const operators = operatorLoginIds(env);
+  return operators.ok && isOperator(operators.ids, logins);
+}

@@ -10,7 +10,7 @@
 import { commonDb, hasLoginAccess, linkLoginToAccount } from '../db/index.ts';
 import { uuidv7 } from '../uuid.ts';
 import type { LoginProfile } from './login-method.ts';
-import { isOperator, operatorLoginIds } from './operators.ts';
+import { isOperatorLogin } from './operators.ts';
 import { createSession } from './session.ts';
 
 export type LoginOutcome =
@@ -106,8 +106,7 @@ export async function completeLogin(env: Env, input: LoginInput): Promise<LoginO
   const login = { provider, subject: profile.subject };
 
   let existing = await findAccountId(env, provider, profile.subject);
-  const operators = operatorLoginIds(env);
-  const operator = operators.ok && isOperator(operators.ids, [login]);
+  const operator = isOperatorLogin(env, [login]);
   if (!operator) {
     let allowed = await hasLoginAccess(env, { accountId: existing, logins: [login] });
     // 同じ人の最初のログインが並行すると、アカウントが無いと読んだ後に、もう片方がアカウントを作り、指名の行を結ぶ

@@ -78,7 +78,7 @@ export const renameWorkspaceOperation = implement(renameWorkspace, async ({ db, 
 });
 ```
 
-- 渡るもの: 組織の外は `db`（共通の入口）と `accountId` と `session`（今のセッション。ログアウトのように、セッションを終える操作だけが使う）。組織の中は `db`（組織の中の入口）と `actor`。ワークスペースの下はさらに `workspace`（確かめたワークスペース）。どれも `input` は検証済み
+- 渡るもの: 組織の外は `db`（共通の入口）と `accountId` と `account`（`organizations()` は入れる組織と届いた招待、`isOperator()` は運用者か、`logins()` はアカウントに結んだログインの手段と ID。どれも1回のリクエストで1回だけ引く）と `session`（今のセッション。ログアウトのように、セッションを終える操作だけが使う）。組織の中は `db`（組織の中の入口）と `actor` と `organization`（入るときに引いた組織の slug、名前、言葉づかい、既定のテーマ）と `defer`（応答を待たせずに続ける仕事。`read` の操作が副作用として書くものに使う）。ワークスペースの下はさらに `workspace`（確かめたワークスペース）。どれも `input` は検証済み
 - 組織の直下の表は `db.organizationId` で、ワークスペースの下の表は `workspace.workspaceId` で絞る。ID を入力から受ける組織の中の操作（`workspace_id` を持たないもの）は、結合した `workspaces.organization_id` を `db.organizationId` で絞り、行が無ければ `throw new ApiError(404, 'not_found')` を返す。別の組織の行と存在しない行を区別しない
 - 書き込みは文を並べて `db.batch([...])` で1回に送る。先に読んだ値で判定する書き込みは、書く文の `WHERE` に同じ条件を入れる（`docs/development.md` の「入口を守る規則」）
 - 競合は `throw new ApiError(409, 'conflict')`。ログに本文を出さない。`console.log` に入力や行を渡さない

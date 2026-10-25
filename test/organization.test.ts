@@ -274,12 +274,15 @@ describe('my-organizations', () => {
       expect(plan.length, name).toBeGreaterThan(0);
       for (const line of plan) expect(line, `${name}: ${line}`).not.toMatch(/^SCAN (users|memberships|invitations)\b/);
     }
+    // SCAN でないだけでなく、期待する索引を使っていること。users の文はどれも users_login（ログインのたびに結ぶ読む文と書く文を含む）
+    for (const name of ['users', 'usersWithUnlinked', 'usersOfNewAccount', 'waiting', 'link'] as const) {
+      const plan = await queryPlanForTest(env, statements[name]);
+      expect(plan.join('\n'), name).toContain('USING INDEX users_login');
+    }
     const plans = {
-      users: await queryPlanForTest(env, statements.users),
       memberships: await queryPlanForTest(env, statements.memberships),
       invitations: await queryPlanForTest(env, statements.invitations),
     };
-    expect(plans.users.join('\n')).toContain('USING INDEX users_login');
     expect(plans.memberships.join('\n')).toContain('USING INDEX memberships_user_current');
     expect(plans.invitations.join('\n')).toContain('USING INDEX invitations_login_pending');
   });

@@ -50,10 +50,27 @@ describe('ログインの直後の行き先', () => {
 describe('ログインへの戻し方', () => {
   test('今のパスとクエリを encodeURIComponent して return_to に入れる', () => {
     assert.equal(loginUrl({ pathname: '/aoba', search: '' }), '/login?return_to=%2Faoba');
+    // 実際の URL（url.pathname と url.search）は、ASCII 以外が符号化済みで渡る
+    const url = new URL('https://scrum-guild.example/aoba/w/019a?tab=a&b=日本語');
+    assert.equal(url.search, '?tab=a&b=%E6%97%A5%E6%9C%AC%E8%AA%9E');
     assert.equal(
-      loginUrl({ pathname: '/aoba/w/019a', search: '?tab=a&b=日本語' }),
-      `/login?return_to=${encodeURIComponent('/aoba/w/019a?tab=a&b=日本語')}`,
+      loginUrl(url),
+      `/login?return_to=${encodeURIComponent('/aoba/w/019a?tab=a&b=%E6%97%A5%E6%9C%AC%E8%AA%9E')}`,
     );
+    assert.equal(
+      loginUrl(new URL('https://scrum-guild.example/%E3%81%82%E3%81%8A%E3%81%B0')),
+      `/login?return_to=${encodeURIComponent('/%E3%81%82%E3%81%8A%E3%81%B0')}`,
+    );
+  });
+
+  test('return_to の検査は、ログインの後に戻す側と同じ関数（src/shared/return-to.ts）で、作る側でも外へ向けた値を作らない', () => {
+    // 符号化していない ASCII 以外は、DB の CHECK も通らないので / に落とす
+    assert.equal(loginUrl({ pathname: '/あおば', search: '' }), '/login?return_to=%2F');
+    assert.equal(loginUrl({ pathname: '/.//evil.example', search: '' }), '/login?return_to=%2F');
+    assert.equal(loginUrl({ pathname: '/a/../b', search: '' }), '/login?return_to=%2F');
+    // ログインの画面と API へは戻さない
+    assert.equal(loginUrl({ pathname: '/login', search: '?return_to=%2Faoba' }), '/login?return_to=%2F');
+    assert.equal(loginUrl({ pathname: '/%61pi/x', search: '' }), '/login?return_to=%2F');
   });
 
   test('別のオリジンへ向く形（// と /\\ で始まるパス）は、作る側でも / に落とす', () => {

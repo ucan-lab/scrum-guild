@@ -6,8 +6,11 @@ import { env } from 'cloudflare:workers';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { logout, me } from '../src/shared/operations/session/index.ts';
 import { hashSessionToken } from '../src/server/auth/session.ts';
-import { commonDb } from '../src/server/db/index.ts';
+import { organizationInfo } from '../src/shared/operations/organization/index.ts';
+import { commonDb, orgDb } from '../src/server/db/index.ts';
+import { verifiedOrganizationForTest } from '../src/server/db/testing.ts';
 import { createFakeGithub } from './auth/fake-github.ts';
+import { post } from './operations/harness.ts';
 import { createLoginApp, FakeBrowser, loginEnv, SESSION_COOKIE, STATE_COOKIE } from './auth/browser.ts';
 import {
   accountLoginOf,
@@ -386,6 +389,59 @@ describe('ログアウト', () => {
       body: '{}',
     });
     expect(res.status).toBe(403);
+    expect((await browser.post(me)).status).toBe(200);
+  });
+});
+
+describe('組織を失ったあと、結ばれる前の指名の行だけを持つ人', () => {
+  test('401 でセッションが消え、もう一度ログインすると結ばれて、指名された組織に入れる', async () => {
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+    const user = githubUser('renominated');
+    const first = await organizationWithAdmin();
+    const row = await createUser(first.organization, {
+      login_provider: 'github',
+      login_subject: String(user.id),
+      is_admin: 1,
+    });
+    const browser = newBrowser();
+    await browser.login(user);
+    expect((await browser.post(me)).status).toBe(200);
+    const accountId = (await accountLoginOf(user))!.account_id;
+
+    // 最初の組織で無効にされ、別の組織に account_id が空の行で指名される
+    const firstDb = orgDb(env, verifiedOrganizationForTest(first.organization.id));
+    await firstDb.batch([
+      firstDb.statement((q) =>
+        q.updateTable('users').set({ disabled_at: '2026-10-21T00:00:00.000Z' }).where('id', '=', row.id),
+      ),
+    ]);
+    const second = await organizationWithAdmin();
+    await createUser(second.organization, {
+      account_id: null,
+      login_provider: 'github',
+      login_subject: String(user.id),
+      is_admin: 1,
+    });
+
+    // 組織の一覧も組織の枠も account_id で引くので、結ばれる前の行には入れない。セッションを残すと、どこにも入れないまま続く
+    const token = browser.sessionToken!;
+    const lost = await browser.post(me);
+    expect(lost.status).toBe(401);
+    expect(lost.headers.getSetCookie().find((line) => line.startsWith(`${SESSION_COOKIE}=`))).toContain('Max-Age=0');
+    expect(await sessionRowsOf(accountId)).toHaveLength(0);
+    expect(browser.sessionToken).toBeUndefined();
+    expect((await post(app, organizationInfo, { slug: second.organization.slug, token })).status).toBe(401);
+    expect((await userRow(second.organization.id, user))?.account_id).toBeNull();
+
+    // もう一度ログインすると、ログインのときの判定は結ばれる前の行を数え、結んでから、セッションを作る
+    const again = await browser.login(user);
+    expect(again.location).toBe('/');
+    expect((await userRow(second.organization.id, user))?.account_id).toBe(accountId);
+    const entered = await post(app, organizationInfo, {
+      slug: second.organization.slug,
+      token: browser.sessionToken!,
+    });
+    expect(entered.status).toBe(200);
     expect((await browser.post(me)).status).toBe(200);
   });
 });
