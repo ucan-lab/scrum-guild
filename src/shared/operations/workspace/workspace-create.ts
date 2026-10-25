@@ -5,7 +5,7 @@ import { workspaceNameSchema, workspaceVocabularySchema } from '../../workspace.
 import { defineOperation } from '../define.ts';
 
 // 作ると同時に、既定の列、決まった欄、換算比率、最初のリーダーの所属を書く（1回の batch）。
-// 最初のリーダーは、この組織の、無効でなく login_subject のあるユーザー（workspace-leader-candidates が返す人）。
+// 最初のリーダーは、いまこの組織に入れる、無効でなく login_subject のあるユーザー（workspace-leader-candidates が返す人）。
 // 管理者自身を指したときだけ所属ができる。指さないときは、作った管理者の memberships の行を作らない。
 // timezone は検証のときに正規の名前（asia/tokyo は Asia/Tokyo）にそろう
 export const workspaceCreate = defineOperation({

@@ -12,14 +12,30 @@ import { newWorkspaceRows } from './workspace-rows.ts';
 
 type Tables = OrganizationTables;
 
-// 最初のリーダーに指せる人。同じ組織にいて、無効でなく、login_subject がある（Google で待っている行は除く）。
+// 最初のリーダーに指せる人。同じ組織にいて、無効でなく、login_subject があり（Google で待っている行は除く）、
+// いまこの組織に入れる人（管理者か、いずれかのワークスペースに今所属している人。enterOrganization と同じ判定）。
+// 所属の無い人を指せると、招待の人数の上限（member_limit）を通らず、本人の承諾も無いまま組織へ戻せてしまうため。
 // 候補の一覧（workspace-leader-candidates）と、作る操作の書き込みの条件が同じ式を使う
 function candidateUsers(from: Pick<QueryCreator<Tables>, 'selectFrom'>, organizationId: string) {
   return from
     .selectFrom('users')
     .where('users.organization_id', '=', organizationId)
     .where('users.disabled_at', 'is', null)
-    .where('users.login_subject', 'is not', null);
+    .where('users.login_subject', 'is not', null)
+    .where((eb) =>
+      eb.or([
+        eb('users.is_admin', '=', 1),
+        eb.exists(
+          eb
+            .selectFrom('memberships as m')
+            .innerJoin('workspaces as w', 'w.id', 'm.workspace_id')
+            .select('m.id')
+            .whereRef('m.user_id', '=', 'users.id')
+            .where('m.left_at', 'is', null)
+            .where('w.organization_id', '=', organizationId),
+        ),
+      ]),
+    );
 }
 
 // 作る人。同じ組織の、無効でない管理者

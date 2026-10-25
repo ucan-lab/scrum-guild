@@ -297,6 +297,12 @@ describe('workspace-create', () => {
       await expectRejected(target, waiting.id);
     });
 
+    test('どのワークスペースにも所属していない一般のユーザー（組織に入れない人）', async () => {
+      const target = await createTarget();
+      const unaffiliated = await createUser(target.organization, { name: 'あおい' });
+      await expectRejected(target, unaffiliated.id);
+    });
+
     // 最初のリーダーを読む問い合わせの直後に、users の行を書き換える（読んでから書くまでの間に起きる変更）。
     // 入口の first は DbEntry.prototype にある
     function changeUserAfterLeaderRead(
@@ -333,7 +339,8 @@ describe('workspace-create', () => {
 
     test('読んだ後に最初のリーダーが無効にされて、書く文の条件で行が入らなかったとき', async () => {
       const target = await createTarget();
-      const leader = await createPerson({ organization: target.organization });
+      // 候補は今の所属がある人なので、ワークスペースのメンバーを指す
+      const leader = target.member;
       const before = await countRows(target.organization);
       const changed = changeUserAfterLeaderRead(target, leader.userId!, leader.userId!, {
         disabled_at: '2026-10-25T00:00:00.000Z',
@@ -351,7 +358,7 @@ describe('workspace-create', () => {
       ['無効にされた', { disabled_at: '2026-10-25T00:00:00.000Z' }],
     ])('読んだ後に作る人が%sとき、書く文の条件で行が入らない', async (_label, change) => {
       const target = await createTarget();
-      const leader = await createPerson({ organization: target.organization });
+      const leader = target.member;
       const before = await countRows(target.organization);
       const changed = changeUserAfterLeaderRead(target, leader.userId!, target.admin.userId!, change);
 
@@ -602,10 +609,11 @@ describe('workspace-list', () => {
 });
 
 describe('workspace-leader-candidates', () => {
-  test('無効でなく login_subject のあるこの組織のユーザーだけを、名前順に返す', async () => {
+  test('いまこの組織に入れる人（管理者か、今の所属がある人）のうち、無効でなく login_subject のある人だけを、名前順に返す', async () => {
     const [target, other] = await Promise.all([createTarget(), createTarget()]);
     const { organization } = target;
-    const active = await createUser(organization, { name: 'あおい' });
+    // どのワークスペースにも所属していない一般のユーザー（組織に入れない）
+    const unaffiliated = await createUser(organization, { name: 'あおい' });
     const disabled = await createUser(organization, { name: 'かえで', disabled_at: '2026-10-21T00:00:00.000Z' });
     const waiting = await createUser(organization, {
       name: 'waiting@example.com',
@@ -620,11 +628,11 @@ describe('workspace-leader-candidates', () => {
     expect(res.status).toBe(200);
     const { users } = (await res.json()) as { users: { id: string; name: string }[] };
     const ids = users.map((user) => user.id);
-    expect(ids).toContain(active.id);
-    // 所属の有無は問わない（管理者、リーダー、メンバー、別のワークスペースのメンバー）
+    // 管理者と、どれかのワークスペースに今所属している人（リーダー、メンバー、別のワークスペースのメンバー）
     for (const person of [target.admin, target.leader, target.member, target.bystander]) {
       expect(ids).toContain(person.userId);
     }
+    expect(ids).not.toContain(unaffiliated.id);
     expect(ids).not.toContain(disabled.id);
     expect(ids).not.toContain(waiting.id);
     expect(ids).not.toContain(other.admin.userId);
