@@ -105,6 +105,7 @@ describe('API', () => {
 
   test.each([
     [400, 'invalid_input'],
+    [401, 'unauthenticated'],
     [403, 'forbidden'],
     [409, 'conflict'],
   ] as const)('HTTPException の %i は決まった code で返し、message は出さない', async (status, code) => {

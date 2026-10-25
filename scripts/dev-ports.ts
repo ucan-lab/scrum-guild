@@ -5,6 +5,12 @@ export type DevPorts = { app: number; api: number; inspector: number };
 
 const base: DevPorts = { app: 5173, api: 8787, inspector: 9229 };
 
+// 画面を開く URL。API の Origin の検査（wrangler の vars の PUBLIC_ORIGIN）をこれで上書きする。
+// pnpm dev は vite の画面から /api を転送するのでブラウザの Origin は vite の URL、pnpm preview は wrangler dev の URL になる
+export function devPublicOrigin(ports: DevPorts, preview: boolean): string {
+  return `http://localhost:${preview ? ports.api : ports.app}`;
+}
+
 export function devPorts(env: Record<string, string | undefined>): DevPorts {
   const raw = env.DEV_PORT_OFFSET ?? '0';
   const offset = Number(raw);

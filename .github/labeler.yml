@@ -15,6 +15,17 @@ needs-human:
           - "src/server/db/**"
           # 運用者の権限（運用者だけの操作の定義）
           - "src/shared/operations/operator/**"
+          # 権限の検査（操作の定義を登録する関数。各操作の処理は同じ src/server/operations/ に置くので、ファイルで指す）。
+          # 権限の種類と実行時の検査（define.ts）、Cookie の名前と属性（session-cookie.ts）、
+          # 応答の形とヘッダー（app.ts、errors.ts）、ログの項目（operation-log.ts）も、権限の検査が頼る
+          - "src/server/operations/register.ts"
+          - "src/server/operations/guards.ts"
+          - "src/server/operations/implement.ts"
+          - "src/server/operations/operation-log.ts"
+          - "src/server/app.ts"
+          - "src/server/errors.ts"
+          - "src/shared/operations/define.ts"
+          - "src/shared/session-cookie.ts"
           # 取り込み元の処理
           - "src/server/import/**"
           # wrangler の設定（見本の Worker の wrangler.design.jsonc も含む）、デプロイのスクリプト、依存

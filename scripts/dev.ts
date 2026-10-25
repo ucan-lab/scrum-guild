@@ -2,7 +2,7 @@
 // pnpm preview（--preview）: build 済みの build/ と API を、本番と同じ配り方で wrangler dev だけで配る。
 // どちらかが止まったら残りも止める。ポートがぶつかったときに片方だけ動き続けないようにするため。
 import { spawn, type ChildProcess } from 'node:child_process';
-import { devPorts } from './dev-ports.ts';
+import { devPorts, devPublicOrigin } from './dev-ports.ts';
 
 const preview = process.argv.includes('--preview');
 const ports = devPorts(process.env);
@@ -15,6 +15,8 @@ const wranglerArgs = [
   '--inspector-port',
   String(ports.inspector),
   ...(version ? ['--var', `APP_VERSION:${version}`] : []),
+  '--var',
+  `PUBLIC_ORIGIN:${devPublicOrigin(ports, preview)}`,
 ];
 
 const commands: [string, string[]][] = preview

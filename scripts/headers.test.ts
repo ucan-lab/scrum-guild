@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 import { extractMetaCsp, headersFile, missingStyleHashes, withIgnoredDirectives } from './headers.ts';
-import { devPorts } from './dev-ports.ts';
+import { devPorts, devPublicOrigin } from './dev-ports.ts';
 
 const meta = `default-src 'self'; script-src 'self' 'sha256-abc='`;
 const html = `<head><meta http-equiv="content-security-policy" content="${meta}"></head>`;
@@ -79,5 +79,19 @@ describe('devPorts', () => {
   test('整数でなければ失敗する', () => {
     assert.throws(() => devPorts({ DEV_PORT_OFFSET: 'x' }), /DEV_PORT_OFFSET/);
     assert.throws(() => devPorts({ DEV_PORT_OFFSET: '-1' }), /DEV_PORT_OFFSET/);
+  });
+});
+
+describe('devPublicOrigin', () => {
+  test('pnpm dev は vite の画面の URL、pnpm preview は wrangler dev の URL', () => {
+    const ports = devPorts({});
+    assert.equal(devPublicOrigin(ports, false), 'http://localhost:5173');
+    assert.equal(devPublicOrigin(ports, true), 'http://localhost:8787');
+  });
+
+  test('DEV_PORT_OFFSET でずらした値になる', () => {
+    const ports = devPorts({ DEV_PORT_OFFSET: '10' });
+    assert.equal(devPublicOrigin(ports, false), 'http://localhost:5183');
+    assert.equal(devPublicOrigin(ports, true), 'http://localhost:8797');
   });
 });

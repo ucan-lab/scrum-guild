@@ -10,7 +10,7 @@ const organizationQueries = compileOnlyKysely<OrganizationTables>();
 export type CommonDb = DbEntry<CommonTables, 'common'>;
 
 // 組織の中の入口。組織で絞る処理は入口に寄せていない。呼び出し側が、organizationId（確かめた組織の ID）か、
-// 組織を確かめた workspace_id で自分の文を絞る。絞り込みを入口に寄せるかは #51 で決める
+// 確かめたワークスペース（VerifiedWorkspace）の workspaceId で自分の文を絞る
 export class OrganizationDb extends DbEntry<OrganizationTables, 'organization'> {
   readonly #organizationId: string;
 

@@ -2,9 +2,14 @@
 
 export const errorCodes = [
   'invalid_input',
+  // セッションが無いか切れた。401。画面はこれを見てログインの画面へ戻す
+  'unauthenticated',
+  // ログインしていて、権限が無い。Origin が公開する URL と違うときも
   'forbidden',
   'not_found',
   'conflict',
+  // 閉じたワークスペースへの書き込み。読み取り専用なので書けない。409
+  'workspace_closed',
   'internal',
   // 依存先（D1）に届かない。503
   'unavailable',

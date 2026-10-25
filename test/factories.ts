@@ -9,6 +9,7 @@ import {
   type Selectable,
   type VerifiedOrganization,
 } from '../src/server/db/index.ts';
+import { hashSessionToken } from '../src/server/auth/session.ts';
 import { verifiedOrganizationForTest } from '../src/server/db/testing.ts';
 
 export const AT = '2026-10-20T00:00:00.000Z';
@@ -111,6 +112,47 @@ export async function createSession(accountId: string, overrides: Partial<Row<Co
   };
   const db = commonDb(env);
   await db.run(db.statement((q) => q.insertInto('sessions').values(row)));
+  return row;
+}
+
+// Cookie に入れるトークンと、DB の行を作る。トークンは本物と同じ base64url の43文字
+export async function createSessionWithToken(
+  accountId: string,
+  overrides: Partial<Row<CommonTables, 'sessions'>> = {},
+) {
+  const token = btoa(String.fromCharCode(...crypto.getRandomValues(new Uint8Array(32))))
+    .replaceAll('+', '-')
+    .replaceAll('/', '_')
+    .replaceAll('=', '');
+  const row = await createSession(accountId, { token_hash: await hashSessionToken(token), ...overrides });
+  return { token, row };
+}
+
+export async function createInvitation(
+  organization: OrganizationFixture,
+  workspaceId: string,
+  invitedBy: string,
+  login: { provider: string; subject: string },
+  overrides: Partial<Row<OrganizationTables, 'invitations'>> = {},
+) {
+  const row: Row<OrganizationTables, 'invitations'> = {
+    id: uuidv7(),
+    workspace_id: workspaceId,
+    login_provider: login.provider,
+    login_subject: login.subject,
+    login_email: null,
+    claim_token_hash: null,
+    claim_expires_at: null,
+    login_name: 'haruka-aoi',
+    role: 'member',
+    invited_by: invitedBy,
+    status: 'pending',
+    responded_at: null,
+    created_at: AT,
+    ...overrides,
+  };
+  const db = orgDb(env, organization.verified);
+  await db.run(db.statement((q) => q.insertInto('invitations').values(row)));
   return row;
 }
 
