@@ -614,10 +614,56 @@ const looooooooooooooooooooooooooooooooooongLine = "コードの長い1行は、
 
   // ---- タスクの詳細（右から出る引き出し。左のメニューを残して広げられる） ----
   // full は開き直しても残し、次に開くタスクも同じ広さで出す
-  const drawer = { id: null, tab: "comments", thanked: new Set(), opener: null, full: false };
+  // editing は直している途中の欄（title、link、body）。欄ごとに別々に開け、保存か取り消しで閉じる
+  const drawer = { id: null, tab: "comments", thanked: new Set(), opener: null, full: false, editing: new Set() };
   function drawerSizeBtn() {
     const label = drawer.full ? "横に戻す" : "広げる";
     return `<button class="pill drawer-size" type="button" data-drawer-size aria-label="${label}" title="${label}">${icon(drawer.full ? "shrink" : "expand")}</button>`;
+  }
+  // 欄ごとに直す。値そのものが押せるボタン（edit-trigger）で、押すと入力欄と「保存」「取り消し」に替わる。
+  // Enter で保存、Esc で取り消し（本文は Enter が改行なので、保存は「保存」だけ）。ポイントと期日は選んだら保存する
+  function editActions(name) {
+    return `<div class="edit-actions"><button class="btn is-primary is-sm" type="button" data-drawer-save="${name}">保存</button><button class="btn is-sm is-quiet" type="button" data-drawer-cancel="${name}">取り消し</button></div>`;
+  }
+  function drawerTitleHtml(x) {
+    if (drawer.editing.has("title")) {
+      return `<h2 class="visually-hidden"><span id="drawer-title">${titleOf(x)}</span></h2>
+        <div class="edit-form"><label class="field" for="drawer-edit-title"><span class="field-label visually-hidden">タイトル</span>
+          <input class="input" id="drawer-edit-title" data-drawer-input="title" value="${esc(x.title)}" autocomplete="off"></label>${editActions("title")}</div>`;
+    }
+    // 取り込み元のタイトルは、ここでは変えられない
+    if (x.src) return `<h2 class="drawer-title"><span id="drawer-title">${titleOf(x)}</span></h2>`;
+    return `<h2 class="drawer-title"><button class="edit-trigger" type="button" data-drawer-edit="title"><span id="drawer-title">${titleOf(x)}</span>${icon("pen")}<span class="visually-hidden">（押して${t("task")}のタイトルを直す）</span></button></h2>`;
+  }
+  function drawerPointsHtml(x) {
+    const locked = !!x.doneAt;
+    const choices = ["", 0, 1, 2, 3, 5, 8, 13].map((v) => `<label><input type="radio" name="drawer-pts" value="${v}" data-drawer-pts${v === "" ? ` aria-label="未見積もり"` : ""}${String(x.pts ?? "") === String(v) ? " checked" : ""}${locked ? " disabled" : ""}><span>${v === "" ? "未" : v}</span></label>`).join("");
+    return `<div class="segmented" role="radiogroup" aria-label="${t("points")}">${choices}</div>${locked ? `<span class="props-note">${t("done")}を戻すと直せます</span>` : ""}`;
+  }
+  function drawerDueHtml(x) {
+    const d = dueOf(x);
+    return `<input class="input" type="date" data-drawer-due aria-label="${t("due")}" value="${x.due || ""}">
+      ${x.due ? `<button class="link-btn" type="button" data-drawer-due-clear>クリア</button>` : ""}
+      ${d ? taskDue(x) : ""}${d && d.fromSource ? `<span class="props-note">取り込み元の期限。ここでは変えられません</span>` : ""}`;
+  }
+  function drawerLinkHtml(x) {
+    if (drawer.editing.has("link")) {
+      return `<div class="edit-form"><label class="field" for="drawer-edit-link"><span class="field-label visually-hidden">リンク</span>
+        <input class="input" id="drawer-edit-link" type="url" data-drawer-input="link" placeholder="https://" value="${esc(x.link || "")}" autocomplete="off"></label>${editActions("link")}</div>`;
+    }
+    const shown = x.link ? `<span class="source-key">${icon("link")} ${esc(x.link)}</span>` : `<span>リンクを足す</span>`;
+    return `<button class="edit-trigger${x.link ? "" : " is-empty"}" type="button" data-drawer-edit="link">${shown}${icon("pen")}<span class="visually-hidden">（押してリンクを直す）</span></button>
+      ${x.link ? `<a class="btn is-sm" href="${esc(x.link)}" target="_blank" rel="noopener noreferrer" aria-label="リンクを新しいタブで開く">開く</a>` : ""}`;
+  }
+  function drawerBodyHtml(x) {
+    if (x.src) return `<div class="field"><span class="field-label">本文</span><div class="doc-box"><p class="props-note">取り込み元の本文は <span class="mono">${esc(x.src.key)}</span> で開いて読みます。ここには Scrum Guild のメモを書けます。</p></div></div>`;
+    if (drawer.editing.has("body")) {
+      return `<div class="field"><label class="field-label" for="drawer-edit-body">本文</label>
+        <div class="edit-form"><textarea class="textarea" id="drawer-edit-body" data-drawer-input="body" aria-describedby="drawer-edit-body-hint">${esc((x.body || []).join("\n"))}</textarea>
+          <span class="field-hint" id="drawer-edit-body-hint">Markdown で書けます。見出しは <code>#</code> が小見出しの大きさから始まります。</span>${editActions("body")}</div></div>`;
+    }
+    return `<div class="field"><div class="field-head"><span class="field-label">本文</span><button class="btn is-sm" type="button" data-drawer-edit="body">${icon("pen")}編集</button></div>
+      <div class="doc-box${x.body ? "" : " is-empty"}">${x.body ? mdBody(x.body) : "まだ書かれていません。"}</div></div>`;
   }
   function drawerHtml() {
     const x = task(drawer.id);
@@ -641,28 +687,25 @@ const looooooooooooooooooooooooooooooooooongLine = "コードの長い1行は、
           <button class="pill drawer-close" type="button" data-close-drawer aria-label="閉じる">${icon("x")}</button>
         </span>
       </div>
-      <h2 class="drawer-title" id="drawer-title">${titleOf(x)}</h2>
+      ${drawerTitleHtml(x)}
       ${x.srcDone && !x.doneAt ? `<div class="callout is-ok">${icon("check")}<span>取り込み元で完了になりました。完了にするかはここで決めます。</span></div>` : ""}
       <dl class="props">
         <div><dt>${t("column")}</dt><dd>${colName(x) ? `<span class="status-dot">${esc(colName(x))}</span>` : "—"}</dd></div>
         <div><dt>${t("assignee")}</dt><dd>${avatarOf(x.who)}${x.who ? esc(user(x.who).name) : "担当なし"}</dd></div>
-        <div><dt>${t("points")}</dt><dd>${pts(x.pts)}${x.pts == null ? `<span class="props-note">未見積もり</span>` : ""}</dd></div>
-        <div><dt>${t("due")}</dt><dd>${d ? `${taskDue(x)}<span class="props-note">${d.fromSource ? "取り込み元の期限。ここでは変えられません" : "Scrum Guild で振った" + t("due")}</span>` : "—"}</dd></div>
+        <div><dt>${t("points")}</dt><dd>${drawerPointsHtml(x)}</dd></div>
+        <div><dt>${t("due")}</dt><dd>${drawerDueHtml(x)}</dd></div>
         <div><dt>親</dt><dd>${parent ? `${icon("flag")} ${esc(parent.title)}${epic ? `<span class="props-note">${esc(epic.title)}</span>` : ""}` : "なし"}</dd></div>
         <div><dt>${t("sprint")}</dt><dd>${x.sprint ? esc(sprintLabel(x.sprint)) : t("backlog")}</dd></div>
         <div><dt>リポジトリ</dt><dd>${repoPicker("drawer-repo", x.repo || null, { for: x.id })}</dd></div>
         <div><dt>${t("category")}</dt><dd>${cat ? `${esc(D.categories[cat.id].name)}${cat.inherited ? `<span class="props-note">親から引き継ぎ</span>` : ""}` : `${t("category")}なし`}</dd></div>
-        ${x.src ? "" : `<div><dt>リンク</dt><dd>${x.link ? `<span class="source-key">${icon("link")} ${esc(x.link)}</span>` : "なし"}</dd></div>`}
+        ${x.src ? "" : `<div><dt>リンク</dt><dd>${drawerLinkHtml(x)}</dd></div>`}
         <div><dt>今日やる</dt><dd><button class="sun" type="button" data-sun="${x.id}" aria-pressed="${x.todayOn === D.today}" aria-label="今日やる">${icon("sun")}</button>${x.todayOn === D.today ? "今日やる" : ""}</dd></div>
       </dl>
       <div class="field">
         <span class="field-label">${icon("pen")} ${t("detail")}・${t("ac")} ${x.unfilled ? `<span class="chip is-todo">未記入</span>` : ""}</span>
         ${fieldBody}
       </div>
-      <div class="field">
-        <span class="field-label">本文</span>
-        <div class="doc-box">${x.src ? `<p class="props-note">取り込み元の本文は <span class="mono">${esc(x.src.key)}</span> で開いて読みます。ここには Scrum Guild のメモを書けます。</p>` : mdBody(x.body || ["まだ書かれていません。"])}</div>
-      </div>
+      ${drawerBodyHtml(x)}
       <div class="field">
         <span class="field-label">${icon("clip")} 添付ファイル ${filesOf(x.id).filter((f) => !f.state).length || ""}</span>
         ${attachments(x.id)}
@@ -700,19 +743,43 @@ const looooooooooooooooooooooooooooooooooongLine = "コードの長い1行は、
       </div>
       <div class="form-actions">${x.src
         ? `<button class="btn is-sm is-quiet" type="button" data-toast="${t("archive")}へ移しました">${icon("archive")}${t("archive")}へ移す</button>`
-        : `<button class="btn is-sm is-quiet is-danger" type="button" data-toast="削除しました">${icon("trash")}この${t("task")}を削除する</button><span class="field-hint">削除できるのは作った人と${t("leader")}です。</span>`}</div>`;
+        : `<button class="btn is-sm is-quiet is-danger" type="button" data-dialog="deleteTask">${icon("trash")}この${t("task")}を削除する</button><span class="field-hint">削除できるのは作った人と${t("leader")}です。</span>`}</div>`;
   }
   function openDrawer(id, opener) {
-    drawer.id = id; drawer.tab = "comments"; drawer.thanked = new Set(); drawer.opener = opener || null;
+    drawer.id = id; drawer.tab = "comments"; drawer.thanked = new Set(); drawer.opener = opener || null; drawer.editing = new Set();
     renderDrawer();
     document.querySelector("[data-close-drawer]")?.focus();
   }
-  function closeDrawer() {
-    drawer.id = null;
+  // 書きかけ（直している途中の欄）があるときは、捨てるかをダイアログで確かめる。force は捨てると決めた後
+  function closeDrawer(force = false) {
+    if (!force && drawer.editing.size > 0) { DIALOGS.discardDraft(); return; }
+    drawer.id = null; drawer.editing = new Set();
     renderDrawer();
     const back = drawer.opener && document.querySelector(`[data-task="${drawer.opener}"]`);
     if (back) back.focus();
   }
+  const focusDrawerInput = (name) => document.querySelector(`#drawer [data-drawer-input="${name}"]`)?.focus();
+  const focusDrawerTrigger = (name) => document.querySelector(`#drawer [data-drawer-edit="${name}"]`)?.focus();
+  function cancelDrawerEdit(name) { drawer.editing.delete(name); renderDrawer(); focusDrawerTrigger(name); }
+  function saveDrawerEdit(name) {
+    const x = task(drawer.id), input = document.querySelector(`#drawer [data-drawer-input="${name}"]`);
+    if (!x || !input) return;
+    const value = input.value.trim();
+    if (name === "title") { if (!value) return; x.title = value; }
+    else if (name === "link") x.link = value || null;
+    else x.body = value ? value.split("\n") : null;
+    drawer.editing.delete(name);
+    redrawAll(); toast(`${icon("check")}保存しました`); focusDrawerTrigger(name);
+  }
+  // ポイントと期日は、選んだら保存する（保存のボタンは無い）
+  document.addEventListener("change", (ev) => {
+    const el = ev.target.closest && ev.target.closest("[data-drawer-pts], [data-drawer-due]");
+    if (!el || !drawer.id) return;
+    const x = task(drawer.id);
+    if (el.matches("[data-drawer-pts]")) x.pts = el.value === "" ? null : Number(el.value);
+    else x.due = el.value || null;
+    redrawAll(); toast(`${icon("check")}保存しました`);
+  });
   // 広げている間は左のメニューも押せるので、モーダルとして扱わない
   function applyDrawerSize(el) {
     el.classList.toggle("is-full", drawer.full);
@@ -875,6 +942,20 @@ const looooooooooooooooooooooooooooooooooongLine = "コードの長い1行は、
        <div class="field"><span class="field-label">添付ファイル</span>${attachments("new", { button: true })}
          <span class="field-hint">保存せずに閉じると、上げたファイルは 1 日で消えます。</span></div>`,
       `<button class="btn is-quiet" type="button" data-close-dialog>やめる</button><button class="btn is-primary" type="button" data-close-dialog data-toast="${t("backlog")}の末尾に足しました">${t("create")}</button>`),
+    // 引き出しで書きかけの欄があるまま閉じる（か別のタスクへ移る）ときに、捨てるかを確かめる。安全な側（続ける）を主ボタンにする
+    discardDraft: () => {
+      openDialog("書きかけを捨てますか",
+        `<p>保存していない変更があります。捨てると元に戻せません。</p>`,
+        `<button class="btn is-primary" type="button" data-close-dialog>書き続ける</button><button class="btn is-danger" type="button" data-discard-draft>捨てる</button>`);
+      document.querySelector(".dialog-sheet").classList.add("is-danger");
+    },
+    deleteTask: () => {
+      openDialog(`${t("task")}を削除する`,
+        `<p>「${esc(task(drawer.id).title)}」を削除します。削除したものは画面から消え、この版では戻せません。</p>
+         <p class="field-hint">完了の記録と経験値は残ります。</p>`,
+        `<button class="btn is-primary" type="button" data-close-dialog>やめる</button><button class="btn is-danger" type="button" data-delete-task>削除する</button>`);
+      document.querySelector(".dialog-sheet").classList.add("is-danger");
+    },
     deleteEpic: () => {
       openDialog(`${t("epic")}を削除する`,
         `<p>「${esc(D.epics.e1.title)}」を削除します。削除したものは画面から消え、この版では戻せません。</p>
@@ -1493,6 +1574,17 @@ const looooooooooooooooooooooooooooooooooongLine = "コードの長い1行は、
     }
     if ((el = hit("data-tab"))) { drawer.tab = el.dataset.tab; renderDrawer(); return; }
     if (hit("data-close-drawer")) { closeDrawer(); return; }
+    if ((el = hit("data-drawer-edit"))) { drawer.editing.add(el.dataset.drawerEdit); renderDrawer(); focusDrawerInput(el.dataset.drawerEdit); return; }
+    if ((el = hit("data-drawer-cancel"))) { cancelDrawerEdit(el.dataset.drawerCancel); return; }
+    if ((el = hit("data-drawer-save"))) { saveDrawerEdit(el.dataset.drawerSave); return; }
+    if (hit("data-drawer-due-clear")) { task(drawer.id).due = null; redrawAll(); toast(`${icon("check")}保存しました`); return; }
+    if (hit("data-discard-draft")) { closeDialog(); closeDrawer(true); return; }
+    if (hit("data-delete-task")) {
+      const x = task(drawer.id);
+      closeDialog(); closeDrawer(true);
+      D.tasks = D.tasks.filter((y) => y !== x);
+      redrawAll(); toast(`${icon("check")}${t("task")}を削除しました`); return;
+    }
     if ((el = hit("data-drawer-size"))) {
       // 中身は描き直さない。書きかけのコメントとスクロールの位置を残すため
       drawer.full = !drawer.full;
@@ -1590,12 +1682,20 @@ const looooooooooooooooooooooooooooooooooongLine = "コードの長い1行は、
     if ((ev.ctrlKey || ev.metaKey) && ev.key.toLowerCase() === "k" && assistAllowed() && !overlay) {
       ev.preventDefault(); openAssist(assist.open === "panel" ? "panel" : "palette"); return;
     }
+    if (ev.key === "Enter" && !ev.isComposing && ev.target.matches && ev.target.matches("input[data-drawer-input]")) {
+      ev.preventDefault(); saveDrawerEdit(ev.target.dataset.drawerInput); return;
+    }
     if (ev.key !== "Escape" || ev.isComposing || ev.keyCode === 229) return;
     if (orgMenuOpen) { ev.stopPropagation(); closeOrgMenu(); return; }
     if (accountMenuOpen) { ev.stopPropagation(); closeAccountMenu(); return; }
     if (closeCelebrate() || closeDialog()) return;
     if (assist.open === "palette") { closeAssist(); return; }
-    if (drawer.id) { closeDrawer(); return; }
+    if (drawer.id) {
+      // タイトルとリンクの入力欄では、Esc は欄の取り消し。本文は Esc でも閉じる（書きかけは確かめる）
+      const name = ev.target.dataset && ev.target.dataset.drawerInput;
+      if (name && name !== "body") { cancelDrawerEdit(name); return; }
+      closeDrawer(); return;
+    }
     if (assist.open === "panel" && ev.target.closest && ev.target.closest("#assist-panel")) closeAssist();
   });
   // 見本の中だけの、上げる動き。ファイルを選ぶかドラッグすると、進みを出してから一覧に加える

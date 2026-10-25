@@ -15,12 +15,15 @@
   let {
     open = $bindable(false),
     dismissible = true,
+    danger = false,
     title,
     children,
     footer,
   }: {
     open?: boolean;
     dismissible?: boolean;
+    // 取り消せない操作の確認。上辺を赤にする（.dialog-sheet.is-danger）
+    danger?: boolean;
     title: string;
     children: Snippet;
     footer?: Snippet<[close: () => void]>;
@@ -116,7 +119,7 @@
     if (closing) close();
   }}
 >
-  <div class="dialog-sheet">
+  <div class="dialog-sheet" class:is-danger={danger}>
     <div class="dialog-head">
       <h2 class="dialog-title" id={titleId}>{title}</h2>
       <button

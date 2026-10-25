@@ -73,4 +73,19 @@ export const pointers: Pointers = {
     workspace_id: target.workspace.id,
     task_id: (await createTask(target.organization, target.workspace.id, target.admin.userId!, { points: 2 })).id,
   }),
+  'task-detail': async (target) => ({
+    workspace_id: target.workspace.id,
+    task_id: (await createTask(target.organization, target.workspace.id, target.admin.userId!)).id,
+  }),
+  // 呼ぶたびにタスクを作る（変える欄が同じだと、2回目は何も書かないため）
+  'task-update': async (target) => ({
+    workspace_id: target.workspace.id,
+    task_id: (await createTask(target.organization, target.workspace.id, target.admin.userId!)).id,
+    title: `見直した ${crypto.randomUUID().slice(0, 8)}`,
+  }),
+  // 呼ぶたびに、一般のメンバーが作ったタスクを作る（削除できるのは作った人とリーダーなので、メンバーも通る。削除したタスクは続けて削除できない）
+  'task-delete': async (target) => ({
+    workspace_id: target.workspace.id,
+    task_id: (await createTask(target.organization, target.workspace.id, target.member.userId!)).id,
+  }),
 };

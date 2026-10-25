@@ -749,6 +749,76 @@ export const dictionary = defineDictionary({
   ),
   workspaceClosedBannerLink: organization('{page}で再開する', '{page}で再開する'),
 
+  // タスクの詳細の引き出し
+  drawerExpand: organization('広げる', '広げる'),
+  drawerShrink: organization('横に戻す', '横に戻す'),
+  taskManualChip: workspace('手で作った{task}', '手で作った{task}'),
+  taskImportedChip: workspace('取り込んだ{task}', '取り込んだ{task}'),
+  taskDrawerLoadFailed: workspace(
+    'この{task}を読み込めませんでした。もう一度試してください。',
+    'この{task}を読み込めませんでした。もう一度試してください。',
+  ),
+  // タイトルとリンクの値のボタンの、読み上げに添える文（押すと入力欄になる）
+  taskTitleEditHint: workspace('（押して{task}のタイトルを直す）', '（押して{task}のタイトルを直す）'),
+  linkEditHint: organization('（押してリンクを直す）', '（押してリンクを直す）'),
+  linkAdd: organization('リンクを足す', 'リンクを足す'),
+  linkEdit: organization('リンクを直す', 'リンクを直す'),
+  editSave: organization('保存', '保存'),
+  editCancel: organization('取り消し', '取り消し'),
+  editBody: organization('編集', '編集'),
+  bodyEmpty: organization('まだ書かれていません。', 'まだ書かれていません。'),
+  bodyEditHint: organization(
+    'Markdown で書けます。見出しは # が小見出しの大きさから始まります。',
+    'Markdown で書けます。見出しは # が小見出しの大きさから始まります。',
+  ),
+  dueClear: organization('クリア', 'クリア'),
+  // 完了したタスクのポイントは直せない（経験値とスプリントの集計が、完了の記録の値を使うため）
+  taskPointsLocked: workspace('{done}を戻すと直せます', '{done}を戻すと直せます'),
+  taskSaved: organization('保存しました', '保存しました'),
+  taskSaving: organization('保存しています', '保存しています'),
+  taskSaveFailed: organization(
+    '保存できませんでした。もう一度試してください。',
+    '保存できませんでした。もう一度試してください。',
+  ),
+  taskSaveConflict: workspace(
+    'この{task}は{done}になっているため、{points}は直せません。',
+    'この{task}は{done}になっているため、{points}は直せません。',
+  ),
+  taskBadRequest: organization(
+    '入力を受け付けられませんでした。内容を確かめて、もう一度試してください。',
+    '入力を受け付けられませんでした。内容を確かめて、もう一度試してください。',
+  ),
+  taskReadOnly: workspace(
+    '閉じた{workspace}の{task}は、読み取りだけできます',
+    '閉じた{workspace}の{task}は、読み取りだけできます',
+  ),
+  // 書きかけがあるまま閉じる（か別のタスクへ移る）ときの確認
+  discardTitle: organization('書きかけを捨てますか', '書きかけを捨てますか'),
+  discardText: organization(
+    '保存していない変更があります。捨てると元に戻せません。',
+    '保存していない変更があります。捨てると元に戻せません。',
+  ),
+  discardKeep: organization('書き続ける', '書き続ける'),
+  discardConfirm: organization('捨てる', '捨てる'),
+  // 削除
+  taskDelete: workspace('この{task}を削除する', 'この{task}を削除する'),
+  taskDeleteWho: workspace('削除できるのは作った人と{leader}です。', '削除できるのは作った人と{leader}です。'),
+  taskDeleteTitle: workspace('{task}を削除する', '{task}を削除する'),
+  taskDeleteText: workspace(
+    '「{title}」を削除します。削除したものは画面から消え、この版では戻せません。',
+    '「{title}」を削除します。削除したものは画面から消え、この版では戻せません。',
+  ),
+  taskDeleteHint: organization('完了の記録と経験値は残ります。', '完了の記録と経験値は残ります。'),
+  taskDeleteConfirm: organization('削除する', '削除する'),
+  taskDeleteCancel: organization('やめる', 'やめる'),
+  taskDeleting: organization('削除しています', '削除しています'),
+  taskDeleted: workspace('{task}を削除しました', '{task}を削除しました'),
+  taskDeleteFailed: organization(
+    '削除できませんでした。もう一度試してください。',
+    '削除できませんでした。もう一度試してください。',
+  ),
+  taskDeleteForbidden: workspace('作った人と{leader}だけが削除できます', '作った人と{leader}だけが削除できます'),
+
   // Markdown の本文。変換が終わらなかった本文を、書かれたまま出すときの注記
   markdownPlainNote: workspace('整形せずに表示しています', '整形せずに表示しています'),
   // リンクは新しいタブで開く。リンクの補足（aria-describedby）として読み上げに伝える
