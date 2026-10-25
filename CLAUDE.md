@@ -16,7 +16,7 @@
 
 Node は `.node-version`（26）、pnpm は `package.json` の `packageManager` の版を使う。
 
-- 依存の導入: `pnpm install`
+- 依存の導入: `pnpm install`（`prepare` が `core.hooksPath` を `.githooks` にし、`main` を守る git のフックを有効にする）
 - 開発用のサーバー: `pnpm dev`（画面 `http://localhost:5173`、`/api` は `wrangler dev` へ転送）。ワークツリーを並べるときは `DEV_PORT_OFFSET=10 pnpm dev` のようにずらす
 - 本番と同じ配り方での確認: `pnpm preview`（build して `http://localhost:8787`）
 - テスト: `pnpm test`（API は Workers の実行環境、`scripts/` は `node --test`）
