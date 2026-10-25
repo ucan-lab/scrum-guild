@@ -283,7 +283,7 @@ describe('my-organizations', () => {
       memberships: await queryPlanForTest(env, statements.memberships),
       invitations: await queryPlanForTest(env, statements.invitations),
     };
-    expect(plans.memberships.join('\n')).toContain('USING INDEX memberships_user_current');
+    expect(plans.memberships.join('\n')).toContain('USING INDEX memberships_user_left (user_id=? AND left_at=?)');
     expect(plans.invitations.join('\n')).toContain('USING INDEX invitations_login_pending');
   });
 

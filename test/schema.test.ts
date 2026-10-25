@@ -92,6 +92,33 @@ describe('外部キー', () => {
   test('D1 は外部キーを検査する', async () => {
     await expect(insertUser(id()).result).rejects.toThrow(/FOREIGN KEY/);
   });
+
+  // 待っていた users の行を消すとき（Google の招待で同じ sub の行と統合する）、外部キーの検査が子の表を全件読まないこと
+  test('users の行を消す文は、users を指すどの列も索引で引く', async () => {
+    // D1 は pragma_foreign_key_list を表の列で結合すると断るので、表ごとに引く
+    const { results: tables } = await env.DB.prepare(
+      `SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' AND name NOT LIKE '_cf_%'`,
+    ).all<{ name: string }>();
+    const children: string[] = [];
+    for (const { name } of tables) {
+      const { results: keys } = await env.DB.prepare(`SELECT "table" AS parent FROM pragma_foreign_key_list(?)`)
+        .bind(name)
+        .all<{ parent: string }>();
+      children.push(...keys.filter((key) => key.parent === 'users').map(() => name));
+    }
+    const { results: plan } = await env.DB.prepare(`EXPLAIN QUERY PLAN DELETE FROM users WHERE id = ?`)
+      .bind(id())
+      .all<{ detail: string }>();
+    const details = plan.map((row) => row.detail);
+
+    expect(details.filter((detail) => detail.startsWith('SCAN '))).toEqual([]);
+    // 外部キーの列ごとに1行ずつ SEARCH が出る。実行計画が検査を載せなくなったら、上の確かめが空振りするので数も見る
+    const searched = details
+      .map((detail) => /^SEARCH (\w+) /.exec(detail)?.[1])
+      .filter((table) => table !== undefined && table !== 'users');
+    expect(children.length).toBeGreaterThan(0);
+    expect(searched.sort()).toEqual(children.sort());
+  });
 });
 
 // SQLite の通常の表では、PRIMARY KEY だけでは NULL を拒まない

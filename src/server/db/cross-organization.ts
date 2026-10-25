@@ -69,7 +69,7 @@ export function usersStatement(
   );
 }
 
-// ユーザーの今の所属。memberships_user_current（user_id、left_at が空）の索引に乗せる
+// ユーザーの今の所属。memberships_user_left（user_id、left_at）の索引に乗せる
 export function membershipsStatement(db: OrganizationEntry, userIds: readonly string[]) {
   return db.statement((q) =>
     q
