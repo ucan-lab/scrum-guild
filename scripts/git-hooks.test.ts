@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { after, describe, test } from 'node:test';
@@ -37,6 +37,38 @@ function setUp(name: string) {
   git(work, 'config', 'core.hooksPath', hooksDir);
   return work;
 }
+
+describe('scripts/git-hooks.ts', () => {
+  const script = fileURLToPath(new URL('./git-hooks.ts', import.meta.url));
+  const run = (cwd: string) =>
+    spawnSync(process.execPath, [script], {
+      cwd,
+      encoding: 'utf8',
+      env: { ...process.env, GIT_CONFIG_GLOBAL: '/dev/null', GIT_CONFIG_NOSYSTEM: '1' },
+    });
+  const hooksPath = (cwd: string) => git(cwd, 'config', '--get', 'core.hooksPath').stdout.trim();
+
+  test('リポジトリの根で .githooks を設定し、別の値は上書きしない', () => {
+    const repo = path.join(root, 'setup');
+    git(root, 'init', '-q', '-b', 'main', repo);
+    assert.equal(run(repo).status, 0);
+    assert.equal(hooksPath(repo), '.githooks');
+    git(repo, 'config', 'core.hooksPath', '.husky');
+    const kept = run(repo);
+    assert.equal(kept.status, 0);
+    assert.match(kept.stderr, /上書きしません/);
+    assert.equal(hooksPath(repo), '.husky');
+  });
+
+  test('リポジトリの根でなければ何もしない', () => {
+    const repo = path.join(root, 'nested');
+    git(root, 'init', '-q', '-b', 'main', repo);
+    const sub = path.join(repo, 'sub');
+    mkdirSync(sub);
+    assert.equal(run(sub).status, 0);
+    assert.equal(hooksPath(repo), '');
+  });
+});
 
 describe('.githooks', () => {
   test('main の上のコミットを止め、作業ブランチでは通す', () => {
