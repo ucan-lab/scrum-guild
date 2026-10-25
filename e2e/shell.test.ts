@@ -289,6 +289,24 @@ test('/api/health は D1 に届いて 200 で版を返す', async ({ request }) 
   expect(await res.json()).toEqual({ status: 'ok', database: 'ok', version });
 });
 
+// 760px 以下ではメニューが上の帯になる。本文が画面の高さに届かなくても、メニューは中身の高さのまま
+for (const width of [390, 672]) {
+  test(`幅 ${width}px で本文が短くても、メニューの下に空きが出ない`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 2000 });
+    await page.goto(today);
+    await expect(page.getByRole('heading', { level: 1, name: '自分の今日' })).toBeVisible();
+
+    const heights = await page.evaluate(() => {
+      const height = (selector: string) => document.querySelector(selector)?.getBoundingClientRect().height;
+      return { binding: height('.binding'), inner: height('.binding-inner') };
+    });
+    // .binding は下の罫線の分だけ中身より高い
+    expect(heights.binding).toBeDefined();
+    expect(heights.inner).toBeDefined();
+    expect(Math.abs((heights.binding ?? 0) - (heights.inner ?? 0))).toBeLessThan(5);
+  });
+}
+
 // 画面のシェルが出す版は API から取ったものなので、build に埋めた kit.version.name は SvelteKit が書き出す version.json で見る
 test('画面の build に埋めた版が API の版と同じ', async ({ request }) => {
   const res = await request.get('/_app/version.json');
