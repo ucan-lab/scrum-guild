@@ -1,4 +1,5 @@
-// Bash の判定。本番に触る操作、WORKERS_CI の設定、main の上のコミットと main への push、--force-with-lease 以外の force push、シークレット、gh pr merge を通さないマージを止め、
+// Bash の判定。本番に触る操作、WORKERS_CI の設定、main の上のコミットと main への push、--force-with-lease 以外の force push、
+// シークレット（.dev.vars と .env）の読み取りと書き込み、gh pr merge を通さないマージを止め、
 // gh pr merge、依存の変更、マイグレーションの作成、判定しきれない push と場所を判定できないデプロイのスクリプト、
 // 道具の名前が展開で決まるコマンドでは人の確認を挟む（docs/development.md の「Claude の設定とフック」）。
 // permissions.deny の前方一致では npx wrangler や pnpm exec wrangler の言い換えを取りこぼすので、語に分けて判定する。
@@ -396,6 +397,9 @@ const INTERPRETERS = new Set(['node', 'python', 'python3', 'ruby', 'perl', 'deno
 const isHeredoc = (word) => word.startsWith('<<');
 const heredocBody = (word) => word.replace(/^<<<?/, '');
 
+// 読み書き共通の文言。ワークツリーの .dev.vars は本体の本物へのリンクなので、書き込みは本体の値を上書きする
+const SECRET_FILE_REASON = '.dev.vars と .env は開発用のシークレット。読むのも書くのも人が ! を付けて打つ。例は .dev.vars.example に置く';
+
 // words は区切りの全部の語（< .env cmd のように、道具の前に置いた入力も見る）
 function judgeSecretAccess(tool, args, words) {
   if (words.some((a) => a.startsWith('<') && !isHeredoc(a) && mentionsSecret(a))) return true;
@@ -410,7 +414,7 @@ function judgeSecretAccess(tool, args, words) {
   }
   if (READERS.has(tool) || SHELLS.has(tool)) return plain.some(mentionsSecret);
   if (COPIERS.has(tool)) {
-    // コピーの元に書いたときだけ止める。cp .dev.vars.example .dev.vars は通す
+    // ここで見るのはコピーの元。書き込み先は writesTo が見る（cp .dev.vars.example .dev.vars はそちらで止まる）
     const pos = positionals(args);
     return pos.slice(0, -1).some(mentionsSecret);
   }
@@ -422,14 +426,17 @@ function isProtectedPath(word) {
   return /(^|\/)\.claude\/(settings[^/]*\.json$|hooks(\/|$))|(^|\/)\.githooks(\/|$)|(^|\/)migrations\//.test(word.replace(/^>+/, ''));
 }
 
-function writesProtectedPath(tool, args) {
-  if (args.some((a) => a.startsWith('>') && isProtectedPath(a))) return true;
+// 書き込み先のどれかが matches（isProtectedPath か mentionsSecret）に当たるか。守る先とシークレットで道具の表を共用する。
+// words は区切りの全部の語。リダイレクトの先は道具の前に置いたもの（> f cat x）や、道具の無い区切り（> f、exec > f）にもあるので args でなく words で見る
+function writesTo(matches, tool, args, words) {
+  if (words.some((w) => w.startsWith('>') && matches(w.replace(/^>+/, '')))) return true;
   const pos = positionals(args);
   if (['sed', 'perl'].includes(tool) && args.some((a) => /^-[a-zA-Z]*i|^--in-place/.test(a))) {
-    return pos.some(isProtectedPath);
+    return pos.some(matches);
   }
-  if (['tee', 'rm', 'truncate', 'unlink'].includes(tool)) return pos.some(isProtectedPath);
-  if (['cp', 'mv', 'ln', 'rsync', 'install'].includes(tool)) return isProtectedPath(pos.at(-1) ?? '');
+  if (['tee', 'rm', 'truncate', 'unlink'].includes(tool)) return pos.some(matches);
+  if (['cp', 'mv', 'ln', 'rsync', 'install'].includes(tool)) return matches(pos.at(-1) ?? '');
+  if (tool === 'dd') return args.some((a) => a.startsWith('of=') && matches(a.slice('of='.length)));
   return false;
 }
 
@@ -730,20 +737,21 @@ function judgeSegment(words, ctx) {
   const ci = commandIndex(words);
   const results = [];
   if (setsWorkersCi(words, ci)) results.push([DENY, WORKERS_CI_REASON]);
+  // 道具の無い区切り（> .dev.vars、exec > .dev.vars）にもリダイレクトはあるので、道具と引数を空にして書き込みの判定だけ掛ける
+  const tool = ci === -1 ? '' : baseName(words[ci]);
+  const args = ci === -1 ? [] : sliceWords(words, ci + 1);
+  if (judgeSecretAccess(tool, args, words) || writesTo(mentionsSecret, tool, args, words)) {
+    results.push([DENY, SECRET_FILE_REASON]);
+  }
+  if (writesTo(isProtectedPath, tool, args, words)) {
+    results.push([ASK, '守る仕組み（Claude の設定とフック）とマイグレーションの書き換えは人が確かめる']);
+  }
   if (ci === -1) return results;
-  const tool = baseName(words[ci]);
-  const args = sliceWords(words, ci + 1);
   // 道具の名前が変数や $(...)、glob で決まると、何を実行するかが分からない（"$(which wrangler)" deploy）
   if (shapeAt(words, ci).includes(DYNAMIC) || expandsAt(words, ci)) results.push([ASK, TOOL_EXPANDS_REASON]);
   // env -C は後ろのコマンドの作業場所を変える。経由先に掛け直すとき（envFrom）は、前置きの env の分を解決済みなので重ねない
   ctx = { ...ctx, dir: dirAfterEnv(words, ci, ctx.dir, ctx.envFrom ?? 0) };
 
-  if (judgeSecretAccess(tool, args, words)) {
-    results.push([DENY, '.dev.vars と .env は開発用のシークレット。中身は人が扱い、例は .dev.vars.example に置く']);
-  }
-  if (writesProtectedPath(tool, args)) {
-    results.push([ASK, '守る仕組み（Claude の設定とフック）とマイグレーションの書き換えは人が確かめる']);
-  }
   // 他の判定で止まっているなら、glob を展開する重い照合はしない
   if (!results.some(([d]) => d === DENY)) results.push(judgeDeployScript(words, ci, ctx.dir));
 
