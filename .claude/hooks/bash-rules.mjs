@@ -401,7 +401,8 @@ function viaPackageManager(tool, args, dir) {
       } else if (viaExec && SHELL_MODE_FLAGS.has(name)) {
         const script = eq === -1 ? rest[i + 1] : a.slice(eq + 1);
         return script ? { script, dir } : null;
-      } else if (eq === -1 && EXEC_FLAGS_WITH_VALUE.has(a)) {
+      } else if (eq === -1 && (EXEC_FLAGS_WITH_VALUE.has(a) || (manager === 'npm' && a === '-w'))) {
+        // npm の -w は値（ワークスペースの名前）を取る。pnpm の -w は値を取らない（--workspace-root）
         i++;
       }
       continue;
