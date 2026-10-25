@@ -83,13 +83,11 @@ function flagWords(args) {
 const EXPANDS = /[$`{}*?[\]]/;
 
 // yargs はフラグの名前を改行の手前で切り（'--local<改行>' は --local）、. の後ろをドット記法で読む（--local.x=1 で local が配列になり、
-// r2 と kv は本番に向く）。名前の完全一致で見る判定が外れるので、名前に空白、改行、. を含むフラグは止める
-const UNREADABLE_FLAG = /^-[^=]*[\s.]/;
+// r2 と kv は本番に向く）。名前の完全一致で見る判定が外れるので、名前に空白、改行、. を含むフラグは止める。
+// -1.5 のような負の数は、yargs が値として読むので除く
+const UNREADABLE_FLAG = /^-(?!\d)[^=]*[\s.]/;
 
 function judgeWrangler(args) {
-  if (args.some((a) => UNREADABLE_FLAG.test(a))) {
-    return [DENY, 'wrangler のフラグの名前に空白、改行、. を含むと、wrangler がどのフラグと読むかを判定できない'];
-  }
   const isRemote = args.some(
     (a) =>
       a === '-r' ||
@@ -108,6 +106,9 @@ function judgeWrangler(args) {
   if (pos.some((p) => WRANGLER_PRODUCTION.has(p))) return [DENY, `wrangler ${pos[0]} は本番に触る。${PRODUCTION_REASON}`];
 
   const words = flagWords(args);
+  if (words.some((a) => UNREADABLE_FLAG.test(a))) {
+    return [DENY, 'wrangler のフラグの名前に空白、改行、. を含むと、wrangler がどのフラグと読むかを判定できない'];
+  }
   if (words.some((a) => EXPANDS.test(a))) {
     return [DENY, 'wrangler の引数を変数、$(...)、{a,b}、glob で組み立てると、展開した後に本番に向くかを判定できない（値を取るフラグの値は除く）'];
   }

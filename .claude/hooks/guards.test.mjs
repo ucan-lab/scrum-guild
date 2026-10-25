@@ -461,6 +461,7 @@ describe('bash-rules: 止める', () => {
     assert.match(verdict('wrangler kv key put k v --no-local')[1], /local を打ち消して本番に向く/);
     assert.match(verdict('wrangler kv key put k v --local $F')[1], /展開した後に本番に向くかを判定できない/);
     assert.match(verdict('wrangler kv key put k v --local --local.foo=bar')[1], /どのフラグと読むかを判定できない/);
+    assert.match(verdict('wrangler secret put X --a.b')[1], /シークレットとログイン/);
     assert.match(verdict('git push -f')[1], /--force-with-lease/);
     assert.equal(decision('git push --force-with-lease', 'main'), 'deny');
     assert.match(verdict('gh api -X PUT repos/o/r/pulls/1/merge')[1], /gh pr merge/);
@@ -559,6 +560,8 @@ describe('bash-rules: 通す', () => {
     'wrangler d1 execute DB --local --command "select * from tasks where id in (?)"',
     'wrangler d1 execute DB --local --command="select * from tasks"',
     'wrangler kv key put k v --local 2>/dev/null',
+    'wrangler kv key put k -1.5 --local',
+    "wrangler kv key put k v --local -- '--x.y'",
     'wrangler d1 execute DB --local --persist-to "$DIR" --command "select 1"',
     'wrangler dev --var "A:$(cat x)"',
     `wrangler kv key put k v --binding KV --local --metadata '{"a":1}'`,
