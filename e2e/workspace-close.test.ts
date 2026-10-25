@@ -402,7 +402,7 @@ test.describe('管理者（あおば開発のミナト）', () => {
     await expect(regions).toHaveCount(2);
   });
 
-  test('狭い幅でも、節の「もう一度試す」は 44px 四方以上ある', async ({ page }) => {
+  test('狭い幅でも、節の「もう一度試す」は押せる範囲が 44px 四方以上ある', async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 800 });
     await page.route('**/api/aoba/workspace-list', (route) =>
       route.fulfill({ status: 500, json: { error: { code: 'internal', message: 'x' } } }),
@@ -410,9 +410,15 @@ test.describe('管理者（あおば開発のミナト）', () => {
     await page.goto('/aoba/admin');
     const retry = page.getByRole('button', { name: 'もう一度試す' });
     await expect(retry).toBeVisible();
-    const box = (await retry.boundingBox())!;
-    expect(box.height).toBeGreaterThanOrEqual(44);
-    expect(box.width).toBeGreaterThanOrEqual(44);
+    // 見た目の大きさは変えず、::after で押せる範囲だけを広げる（横のヒントの文字を上にずらさないため）
+    const hit = await retry.evaluate((el) => {
+      const after = getComputedStyle(el, '::after');
+      return { width: parseFloat(after.width), height: parseFloat(after.height), position: after.position };
+    });
+    expect(hit.position).toBe('absolute');
+    expect(hit.width).toBeGreaterThanOrEqual(44);
+    expect(hit.height).toBeGreaterThanOrEqual(44);
+    expect((await retry.boundingBox())!.height).toBeLessThan(44);
   });
 });
 

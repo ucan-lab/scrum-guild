@@ -755,12 +755,13 @@ dialog.dialog::backdrop { background: none; }
 /* 狭い幅と、指で押す画面では、押す所を 44px 四方以上にする。完了の操作の丸は見た目の大きさのまま、押せる範囲だけを広げる */
 @media (max-width: 760px), (pointer: coarse) {
   .segmented span { display: flex; align-items: center; justify-content: center; min-width: 44px; min-height: 44px; }
-  .table .btn.is-sm, .form-actions .btn.is-sm, .callout-actions .btn.is-sm { min-width: 44px; min-height: 44px; }
+  .table .btn.is-sm { min-width: 44px; min-height: 44px; }
   .done-btn { position: relative; }
   .done-btn::after { content: ""; position: absolute; left: 50%; top: 50%; width: 44px; height: 44px; transform: translate(-50%, -50%); }
-  /* 木の行のボタン（開閉の caret、題、＋タスク）も、見た目は変えず、押せる範囲だけを 44px 四方以上に広げる */
-  .tree-caret, button.tree-link, .tree-row .btn.is-sm { position: relative; }
-  .tree-caret::after, button.tree-link::after, .tree-row .btn.is-sm::after {
+  /* 木の行のボタン（開閉の caret、題、＋タスク）と、操作の並びの小さいボタンも、見た目は変えず、押せる範囲だけを 44px 四方以上に広げる。
+     操作の並びで高さを変えると、横に並ぶヒントの文字が上にずれるため */
+  .tree-caret, button.tree-link, .tree-row .btn.is-sm, .form-actions .btn.is-sm, .callout-actions .btn.is-sm { position: relative; }
+  .tree-caret::after, button.tree-link::after, .tree-row .btn.is-sm::after, .form-actions .btn.is-sm::after, .callout-actions .btn.is-sm::after {
     content: ""; position: absolute; left: 50%; top: 50%; width: max(100%, 44px); height: max(100%, 44px); transform: translate(-50%, -50%);
   }
 }
