@@ -5,6 +5,8 @@ needs-human:
       - any-glob-to-any-file:
           # マイグレーション
           - "migrations/**"
+          # seed（公開された開発用のトークンのセッションを入れる）
+          - "seed/**"
           # 認証と GitHub OAuth、暗号、シークレット
           - "src/server/auth/**"
           - "src/server/crypto/**"

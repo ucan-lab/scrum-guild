@@ -249,6 +249,7 @@ Bash の判定を `permissions.deny` に置かないのは、規則が前方一�
 | 領域 | 置き場所 |
 | --- | --- |
 | マイグレーション | `migrations/` |
+| seed（公開された開発用のトークンのセッションを入れる。本番に入ると誰でもログインできる） | `seed/` |
 | 認証とログインの手段（GitHub OAuth、Google）、暗号、シークレット | `src/server/auth/`、`src/server/crypto/`、`.dev.vars*` |
 | 組織で絞る層（組織をまたぐデータの分離。Kysely の2つの入口と `batch()` の関数） | `src/server/db/` |
 | 運用者の権限（運用者だけの操作の定義） | `src/shared/operations/operator/` |
