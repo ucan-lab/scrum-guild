@@ -1,6 +1,6 @@
 <script lang="ts">
   import { tick } from 'svelte';
-  import { beforeNavigate, goto, invalidateAll } from '$app/navigation';
+  import { beforeNavigate, goto } from '$app/navigation';
   import { taskDelete, taskDetail, taskUpdate, type TaskDetail } from '../../shared/operations/task/index.ts';
   import {
     LINK_URL_MAX_LENGTH,
@@ -30,8 +30,11 @@
   // 応答の順が前後しない）。期日は、年が4桁そろった値だけを、少し待ってから（カレンダーで選んだとき）か、欄を離れる／Enter で保存する。
   // 完了したタスクのポイントは直せない（欄を読み取り専用にして理由を添える）。取り込んだタスクのタイトルとリンクと削除も直せない。
   // 閉じたワークスペース（canWrite が偽）では、直す口と削除を出さず、読み取り専用で開く。
-  // 書きかけ（タイトル、リンク、本文の直している途中で、保存と同じ整え方の後も値が保存した値と違うもの）があるまま閉じる（×、幕、Esc）か、
-  // 別のタスクや別の画面へ移る（beforeNavigate）ときは、捨てるかをアプリの中のダイアログで確かめる。捨てると決めたら、閉じる／移る。
+  // 書きかけ（タイトル、リンク、本文の直している途中で、保存と同じ整え方の後も値が保存した値と違うもの。保存の要求を送っている間も数える。
+  // と、まだ送っていない期日の入力）があるまま閉じる（×、幕、Esc）か、別のタスクや別の画面へ移る（beforeNavigate）ときは、
+  // 捨てるかをアプリの中のダイアログで確かめる。捨てると決めたら、閉じる／移る。送っている最中の要求は止められず、そのまま通る。
+  // 閉じた後に返った保存の応答も、通ったら木を読み直してトーストで知らせ、失敗はトーストで知らせる（saveFields）。
+  // 引き出しが読み直すのは木（onchanged）かワークスペースの枠（onstale）だけで、組織の枠は読み直さない。
   // 削除は確認のダイアログを挟む。消したら閉じ、トーストで知らせ、画面が木を読み直す（onremoved）
   let {
     slug,
@@ -82,9 +85,12 @@
   let discardDialog = $state<ReturnType<typeof ConfirmDialog>>();
   let deleteDialog = $state<ReturnType<typeof ConfirmDialog>>();
 
-  // 直している途中の欄ごとの書きかけ
+  // 直している途中の欄ごとの書きかけ（保存の要求を送っている間も数える）
   const dirty = $state({ title: false, link: false, body: false });
-  const hasDraft = $derived(dirty.title || dirty.link || dirty.body);
+  // 書きかけ。タイトル、リンク、本文の書きかけと、まだ送っていない期日の入力（待っている間と、打ちかけ）
+  function hasDraft(): boolean {
+    return dirty.title || dirty.link || dirty.body || dueUnsent();
+  }
 
   // 選んだポイント。送っている間（と、続けて選んだ分を送り終えるまで）は、最後に選んだ値を見せる
   let pointsPending = $state<{ value: PointsChoice } | null>(null);
@@ -96,6 +102,11 @@
   let dueTimer: ReturnType<typeof setTimeout> | undefined;
   let dueSending = false;
   let dueAgain = false;
+  // 期日の入力欄が、保存した値と同じ（同期済み）か、最後に送った値のときの文字。入力がこれと違えば、まだ送っていない入力がある
+  let dueBase = '';
+  let dueBoundTo: HTMLInputElement | undefined;
+  // タスクが消えていた。保存の続きを送らない
+  let taskGone = false;
   let deleting = $state(false);
   let deleteError = $state<string | null>(null);
   let loadVersion = 0;
@@ -131,7 +142,7 @@
       return;
     }
     if (result.status === 401) {
-      await invalidateAll();
+      onstale();
       return;
     }
     // 400 は、URL の `?task=` が ID の形でないとき。見つからないのと同じに扱う
@@ -150,6 +161,7 @@
   // タスクが消えていた（別の人が削除した）。閉じて、木を読み直す
   function gone(): void {
     leaving = true;
+    taskGone = true;
     showToast(t('taskGone', { task: t('task') }), 'alert');
     onremoved();
   }
@@ -157,7 +169,7 @@
   // 閉じる操作。書きかけがあれば、捨てるかを確かめる
   async function requestClose(): Promise<void> {
     if (asking || leaving) return;
-    if (hasDraft && !(await confirmDiscard())) return;
+    if (hasDraft() && !(await confirmDiscard())) return;
     leaving = true;
     onclose();
   }
@@ -175,7 +187,7 @@
   // 同じタスクのままの移動と、閉じると決めた後は通す。ページを離れる（タブを閉じる、外のサイト）ときは、cancel() がブラウザの確認を出す。
   // 捨てると決めた後、戻る／進むは履歴をその分だけ動かす（goto は履歴を積んでしまう）
   beforeNavigate((navigation) => {
-    if (leaving || !hasDraft) return;
+    if (leaving || !hasDraft()) return;
     if (navigation.to === null) {
       navigation.cancel();
       return;
@@ -200,12 +212,13 @@
   // 保存に使う応答の扱い。送った欄だけを応答で入れ替える（別の欄の保存と前後しても、古い値で戻さない）
   type Fields = Partial<Pick<TaskDetail, 'title' | 'points' | 'due_on' | 'link_url' | 'body_md'>>;
 
-  // 欄を書く。成功なら null、失敗ならエラーの文。404 は閉じる側へ回す（文は返さない）
+  // 欄を書く。成功なら null、失敗ならエラーの文。404 は閉じる側へ回す（文は返さず、taskGone を立てる）。
+  // 引き出しが閉じた後に返った応答（欄を離れた直後に × を押した、ポイントを選んだ直後に閉じた）も、黙って捨てない:
+  // 通ったら木を読み直してトーストで知らせ、失敗はトーストで知らせる（画面の状態は触らない）
   async function saveFields(fields: Fields): Promise<string | null> {
     const result = await callOperation(taskUpdate, { workspace_id: workspaceId, task_id: taskId, ...fields }, { slug });
-    if (!alive) return null;
     if (result.ok) {
-      if (task !== null) {
+      if (alive && task !== null) {
         const saved = result.data.task;
         const merged: TaskDetail = { ...task, completed_at: saved.completed_at, can_delete: saved.can_delete };
         for (const key of Object.keys(fields) as (keyof Fields)[]) Object.assign(merged, { [key]: saved[key] });
@@ -215,35 +228,52 @@
       onchanged();
       return null;
     }
-    if (result.status === 401) {
-      await invalidateAll();
-      return t('taskSaveFailed');
-    }
     if (result.status === 404) {
-      gone();
+      taskGone = true;
+      if (alive) gone();
+      else {
+        showToast(t('taskGone', { task: t('task') }), 'alert');
+        onchanged();
+      }
       return null;
     }
-    if (result.status === 409 && result.error?.code === 'workspace_closed') {
+    let message: string;
+    if (result.status === 401) {
+      onstale();
+      message = t('taskSaveFailed');
+    } else if (result.status === 409 && result.error?.code === 'workspace_closed') {
       // 閉じた。枠を読み直して、読み取り専用の表示に切り替える
       onstale();
-      return t('workspaceClosedReadOnly', { workspace: t('workspace') });
+      message = t('workspaceClosedReadOnly', { workspace: t('workspace') });
+    } else if (result.status === 409) {
+      message = await conflictMessage(fields);
+    } else {
+      message = result.status === 400 ? t('taskBadRequest') : t('taskSaveFailed');
     }
-    if (result.status === 409) {
-      // 断った理由は、送った欄で分かる。どれも今の値を読み直す
-      void refresh();
-      if ('points' in fields) return t('taskSaveConflict', { task: t('task'), done: t('done'), points: t('points') });
-      if (task?.is_imported && ('title' in fields || 'link_url' in fields))
-        return t('taskImportedLocked', { task: t('task') });
-      return t('taskSaveRaced');
-    }
-    if (result.status === 400) return t('taskBadRequest');
-    return t('taskSaveFailed');
+    if (!alive) showToast(message, 'alert');
+    return message;
   }
 
-  // 保存に負けたときに、今の値を読み直す。読めなければ今の表示のまま
-  async function refresh(): Promise<void> {
+  // 409 の文。断った理由は、読み直した今の値で決める（完了していればポイントが理由、取り込んだタスクならタイトルとリンクが理由、
+  // どちらでもなければ、同じ欄を同時に直された）。読み直した値は、引き出しが開いていれば表示にも入れる
+  async function conflictMessage(fields: Fields): Promise<string> {
+    const latest = await refresh();
+    const current = latest ?? task;
+    if ('points' in fields && current?.completed_at != null) {
+      return t('taskSaveConflict', { task: t('task'), done: t('done'), points: t('points') });
+    }
+    if (current?.is_imported && ('title' in fields || 'link_url' in fields)) {
+      return t('taskImportedLocked', { task: t('task') });
+    }
+    return t('taskSaveRaced');
+  }
+
+  // 今の値を読み直す。読めなければ今の表示のまま（null）
+  async function refresh(): Promise<TaskDetail | null> {
     const result = await callOperation(taskDetail, { workspace_id: workspaceId, task_id: taskId }, { slug });
-    if (alive && result.ok) task = result.data.task;
+    if (!result.ok) return null;
+    if (alive) task = result.data.task;
+    return result.data.task;
   }
 
   // ---- タイトル、リンク、本文（InlineEdit） ----
@@ -302,27 +332,30 @@
     if (!pointsSending) void sendPoints();
   }
 
+  // 引き出しが閉じた後も、溜めた最後の選択まで送る（選んだ値を黙って失わない）。送った結果の通知は saveFields がする。
+  // 先の要求が失敗しても、送っている間に選び直された最後の選択は捨てずに送る（次の送信を始めるときに、前の失敗の文は消す）。
+  // タスクが消えた（404）か、完了にされていた（ポイントを直せない）ときは、同じ要求を繰り返さず、溜めた分を捨てる
   async function sendPoints(): Promise<void> {
     pointsSending = true;
     try {
-      while (alive && pointsPending !== null) {
+      while (pointsPending !== null && !taskGone) {
         const choice = pointsPending.value;
         // 保存した値（最後に送って通った値）と同じなら送らない
-        if (task === null || choice === task.points) {
+        if (task === null || choice === task.points || task.completed_at !== null) {
           pointsPending = null;
           break;
         }
         pointsError = null;
         const message = await saveFields({ points: choice });
-        if (!alive) return;
         if (message !== null) {
           pointsError = message;
-          pointsPending = null;
-          break;
+          // 選び直されていなければ、ここで終わる。選び直されていれば、次の周で最後の選択を送る
+          if (pointsPending === null || pointsPending.value === choice) pointsPending = null;
+          continue;
         }
-        // 送っている間に選び直されていなければ終わり。選び直されていれば、次の周で最後の選択を送る
         if (pointsPending !== null && pointsPending.value === choice) pointsPending = null;
       }
+      if (taskGone) pointsPending = null;
     } finally {
       pointsSending = false;
     }
@@ -339,52 +372,93 @@
     const value = dueInput?.value ?? '';
     // 打ちかけの年は送らない。欄を離れたときに、直っていなければ知らせる
     if (value !== '' && !dueIsComplete(value)) return;
-    dueTimer = setTimeout(() => void commitDue(false), DUE_DEBOUNCE_MS);
+    scheduleDue();
+  }
+
+  // 待ってから送る。捨てるかの確認を出している間は送らず、待ちを延ばす（捨てれば部品が外れて止まり、書き続ければ続きから送る）
+  function scheduleDue(): void {
+    clearTimeout(dueTimer);
+    dueTimer = setTimeout(() => {
+      if (asking) scheduleDue();
+      else if (!leaving) void commitDue(false);
+    }, DUE_DEBOUNCE_MS);
   }
 
   function onDueKeydown(event: KeyboardEvent): void {
-    if (event.key !== 'Enter' || event.isComposing) return;
+    if (event.key !== 'Enter' || event.isComposing || event.keyCode === 229) return;
     event.preventDefault();
     clearTimeout(dueTimer);
     void commitDue(true);
   }
 
   function onDueBlur(): void {
+    // 捨てるかの確認のダイアログにフォーカスが移ったときと、捨てると決めて部品が外れるとき（Chrome は、フォーカスのある要素が
+    // 外れると blur を出す）は、送らない（待っている入力は書きかけとして確かめた結果、捨てる）
+    if (asking || leaving) return;
     clearTimeout(dueTimer);
     void commitDue(true);
   }
 
+  // 入力欄の値は、保存した値に追従させる。ただし、入力が最後に同期した（か送った）値のままのときだけ。
+  // 送っている間に次の値を選んだ（入力が違う）ときは、先の応答で上書きしない
+  $effect(() => {
+    const saved = task?.due_on ?? '';
+    const input = dueInput;
+    if (input === undefined) return;
+    if (input !== dueBoundTo) {
+      dueBoundTo = input;
+      dueBase = input.value;
+    }
+    if (input.value === dueBase) {
+      input.value = saved;
+      dueBase = saved;
+    }
+  });
+
+  // まだ送っていない期日の入力がある（待っている間、打ちかけ、送っている間に選んだ次の値）
+  function dueUnsent(): boolean {
+    return dueInput !== undefined && dueInput.value !== dueBase;
+  }
+
   // final は、欄を離れたか Enter。書けない値のときだけ、ここで知らせる
   async function commitDue(final: boolean): Promise<void> {
-    if (task === null || dueInput === undefined) return;
+    const input = dueInput;
+    if (task === null || input === undefined || taskGone) return;
     if (dueSending) {
       dueAgain = true;
       return;
     }
-    const value = dueInput.value;
+    const value = input.value;
     // 途中までしか打たれていない値や存在しない日付は、value が空になり、validity.badInput が立つ
-    if (dueInput.validity.badInput || (value !== '' && !dueIsComplete(value))) {
+    if (input.validity.badInput || (value !== '' && !dueIsComplete(value))) {
       if (final) dueError = t('dueInvalid', { due: t('due') });
       return;
     }
     const next = value === '' ? null : value;
-    if (next === task.due_on) return;
+    if (next === task.due_on) {
+      dueBase = value;
+      return;
+    }
     dueSending = true;
+    dueBase = value;
     dueError = null;
     try {
       const message = await saveFields({ due_on: next });
-      if (!alive) return;
       if (message !== null) {
         dueError = message;
-        if (dueInput) dueInput.value = task?.due_on ?? '';
+        // 失敗したら、保存した値へ戻す。ただし、送っている間に打っている次の値は消さない
+        if (alive && input.value === value) {
+          input.value = task?.due_on ?? '';
+          dueBase = input.value;
+        }
       }
     } finally {
       dueSending = false;
     }
     // 送っている間に値が変わっていたら、送り終えた後に、今の値を送る
-    if (alive && dueAgain) {
+    if (dueAgain) {
       dueAgain = false;
-      await commitDue(true);
+      if (alive) await commitDue(true);
     }
   }
 
@@ -392,6 +466,8 @@
     if (dueInput === undefined) return;
     clearTimeout(dueTimer);
     dueInput.value = '';
+    // 「クリア」は空にすると消えるので、フォーカスを期日の入力欄へ移す
+    dueInput.focus();
     void commitDue(true);
   }
 
@@ -411,14 +487,25 @@
     deleteError = null;
     try {
       const result = await callOperation(taskDelete, { workspace_id: workspaceId, task_id: taskId }, { slug });
-      if (!alive) return;
+      if (!alive) {
+        // 削除の要求を送っている間に閉じられた。結果は黙って捨てず、通ったら木を読み直して知らせ、失敗は知らせる
+        if (result.ok) {
+          showToast(t('taskDeleted', { task: t('task') }), 'check');
+          onchanged();
+        } else if (result.status === 404) {
+          onchanged();
+        } else {
+          showToast(t('taskDeleteFailed'), 'alert');
+        }
+        return;
+      }
       if (result.ok) {
         // 消えたので、書きかけがあっても確かめずに閉じる
         leaving = true;
         showToast(t('taskDeleted', { task: t('task') }), 'check');
         onremoved();
       } else if (result.status === 401) {
-        await invalidateAll();
+        onstale();
       } else if (result.status === 404) {
         gone();
       } else if (result.status === 403) {
@@ -524,13 +611,12 @@
             class:is-readonly={!pointsEditable}
             role="radiogroup"
             aria-labelledby={pointsLabelId}
-            aria-describedby={pointsError !== null
-              ? pointsErrorId
-              : done
-                ? pointsReasonId
-                : !canWrite
-                  ? readOnlyId
-                  : undefined}
+            aria-describedby={[
+              done ? pointsReasonId : !canWrite ? readOnlyId : null,
+              pointsError !== null ? pointsErrorId : null,
+            ]
+              .filter((id) => id !== null)
+              .join(' ') || undefined}
           >
             {#each pointChoices as choice (choice)}
               <label>
@@ -572,7 +658,6 @@
               id={dueId}
               type="date"
               bind:this={dueInput}
-              value={task.due_on ?? ''}
               onchange={onDueChange}
               onblur={onDueBlur}
               onkeydown={onDueKeydown}

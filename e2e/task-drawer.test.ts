@@ -294,7 +294,7 @@ test('書きかけのまま戻るで別の画面へ移ろうとすると確か�
   await expect(page.locator('.entry').getByRole('link', { name: '戻る前の確認' })).toBeFocused();
 });
 
-test('値が元と同じ欄と、前後の空白だけの違いは、書きかけに数えない。保存中も数えない', async ({ page }) => {
+test('前後の空白だけの違いは、書きかけに数えず、確認せずに閉じる', async ({ page }) => {
   await createWorkspace(page, '書きかけの判定パーティ', 'game');
   await addTask(page, '同じ値');
   const drawer = await openDrawer(page, '同じ値');
@@ -392,42 +392,236 @@ test('保存を409で断られたとき、送った欄に合う文を出す。�
     route.fulfill({ status: 409, json: { error: { code: 'conflict', message: 'conflict' } } }),
   );
   await drawer.getByRole('radio', { name: '5', exact: true }).check();
-  await expect(
-    drawer.getByText('完遂したクエストの難易度は直せません').or(drawer.getByText(/完遂になっているため/)),
-  ).toBeVisible();
+  // 完了していないタスクの 409 は、「完了している」でなく、同時に直された競合の文（読み直した今の値で決める）
+  const raced = 'ほかの人が同時に直したため、保存できませんでした';
+  await expect(drawer.locator('.props').getByText(raced, { exact: false })).toBeVisible();
+  await expect(drawer.getByText('完遂したクエストの難易度は直せません')).toHaveCount(0);
   await drawer.getByRole('button', { name: /断られる/ }).click();
   await drawer.getByRole('textbox', { name: 'タイトル' }).fill('同時に直された');
   await drawer.getByRole('button', { name: '保存', exact: true }).click();
-  await expect(drawer.getByText('ほかの人が同時に直したため、保存できませんでした', { exact: false })).toBeVisible();
+  await expect(drawer.locator('.edit-form').getByText(raced, { exact: false })).toBeVisible();
   // 書きかけが残ったまま、枠の読み直しが 500 になっても、引き出しは消えない
   await page.unroute('**/api/aoba/task-update');
   await drawer.getByRole('textbox', { name: 'タイトル' }).fill('書きかけが残る');
   await page.route('**/api/aoba/workspace', (route) =>
     route.fulfill({ status: 500, json: { error: { code: 'internal', message: 'x' } } }),
   );
+  // 組織の枠の 500 は、最後まで外さない。引き出しは組織の枠を読み直さない（要求も出ない）
   await page.route('**/api/aoba/organization', (route) =>
     route.fulfill({ status: 500, json: { error: { code: 'internal', message: 'x' } } }),
   );
-  // 保存の後は木だけを読み直すので、枠の情報は読み直さない
-  const frameRequests: string[] = [];
+  const workspaceRequests: string[] = [];
+  const organizationRequests: string[] = [];
   page.on('request', (request) => {
-    if (/\/api\/aoba\/(workspace|organization)$/.test(request.url())) frameRequests.push(request.url());
+    if (request.url().endsWith('/api/aoba/workspace')) workspaceRequests.push(request.url());
+    if (request.url().endsWith('/api/aoba/organization')) organizationRequests.push(request.url());
   });
+  // 保存の後は木だけを読み直す
   await drawer.getByLabel('期限').fill('2099-12-31');
   await expect(page.getByRole('status').filter({ hasText: '保存しました' })).toBeVisible();
   await expect(drawer).toBeVisible();
   await expect(drawer.getByRole('textbox', { name: 'タイトル' })).toHaveValue('書きかけが残る');
-  expect(frameRequests).toEqual([]);
-  // 閉じたと分かって枠ごと読み直すとき、ワークスペースの読み直しが 500 でも、前の値を保って引き出しと書きかけを残す
-  await page.unroute('**/api/aoba/organization');
+  expect(workspaceRequests).toEqual([]);
+  expect(organizationRequests).toEqual([]);
+  // 閉じたと分かったときは、ワークスペースの枠だけを読み直す。それが 500 でも、前の値を保って引き出しと書きかけを残す
   await page.route('**/api/aoba/task-update', (route) =>
     route.fulfill({ status: 409, json: { error: { code: 'workspace_closed', message: 'closed' } } }),
   );
   await drawer.getByRole('radio', { name: '8', exact: true }).check();
   await expect(drawer.getByText('閉じたパーティには書き込めません')).toBeVisible();
-  await expect.poll(() => frameRequests.length).toBeGreaterThan(0);
+  await expect.poll(() => workspaceRequests.length).toBeGreaterThan(0);
+  expect(organizationRequests).toEqual([]);
   await expect(drawer).toBeVisible();
   await expect(drawer.getByRole('textbox', { name: 'タイトル' })).toHaveValue('書きかけが残る');
+});
+
+// 行のリンクの `?task=<ID>` から、タスクの ID を取る
+async function taskIdOf(page: Page, title: string): Promise<string> {
+  const href = await page.locator('.entry', { hasText: title }).getByRole('link', { name: title }).getAttribute('href');
+  return new URL(href!, 'http://localhost').searchParams.get('task')!;
+}
+
+const SLOW_MS = 700;
+// 要求を SLOW_MS だけ遅らせて通す。status を渡すと、遅らせた後にその失敗を返す
+async function slowTaskUpdate(page: Page, failure?: { status: number; code: string }) {
+  const bodies: Record<string, unknown>[] = [];
+  await page.route('**/api/aoba/task-update', async (route) => {
+    bodies.push(route.request().postDataJSON());
+    await new Promise((resolve) => setTimeout(resolve, SLOW_MS));
+    if (failure === undefined) await route.continue();
+    else
+      await route.fulfill({ status: failure.status, json: { error: { code: failure.code, message: failure.code } } });
+  });
+  return bodies;
+}
+
+test('メンバーの画面で開いて閉じても、メンバーの画面に残り、ほかのクエリも残る', async ({ page }) => {
+  await createWorkspace(page, 'メンバー画面パーティ', 'game');
+  await addTask(page, 'メンバー画面で開く');
+  const taskId = await taskIdOf(page, 'メンバー画面で開く');
+  const workspacePath = new URL(page.url()).pathname;
+  await page.goto(`${workspacePath}/members?tab=all&task=${taskId}`);
+  const drawer = page.getByRole('dialog', { name: 'メンバー画面で開く' });
+  await expect(drawer).toBeVisible();
+  await drawer.getByRole('button', { name: '閉じる' }).click();
+  await expect(drawer).toBeHidden();
+  await expect(page).toHaveURL(`${new URL(page.url()).origin}${workspacePath}/members?tab=all`);
+  // 削除して閉じたときも、メンバーの画面のまま
+  await page.goto(`${workspacePath}/members?task=${taskId}`);
+  await drawer.getByRole('button', { name: 'このクエストを削除する' }).click();
+  await page.getByRole('dialog', { name: 'クエストを削除する' }).getByRole('button', { name: '削除する' }).click();
+  await expect(drawer).toBeHidden();
+  await expect(page).toHaveURL(`${new URL(page.url()).origin}${workspacePath}/members`);
+});
+
+test('保存の要求を送っている間の入力は書きかけで、閉じようとすると確かめる。失敗しても入力が消えない', async ({
+  page,
+}) => {
+  await createWorkspace(page, '送信中の書きかけパーティ', 'game');
+  await addTask(page, '送信中に閉じる');
+  const drawer = await openDrawer(page, '送信中に閉じる');
+  await slowTaskUpdate(page, { status: 500, code: 'internal' });
+  await drawer.getByRole('button', { name: /送信中に閉じる/ }).click();
+  await drawer.getByRole('textbox', { name: 'タイトル' }).fill('送っている最中のタイトル');
+  await drawer.getByRole('textbox', { name: 'タイトル' }).press('Enter');
+  await drawer.getByRole('button', { name: '閉じる' }).click();
+  const confirm = page.getByRole('dialog', { name: '書きかけを捨てますか' });
+  await expect(confirm).toBeVisible();
+  await confirm.getByRole('button', { name: '書き続ける' }).click();
+  // 失敗しても、入力と理由が残る
+  await expect(drawer.getByText('保存できませんでした')).toBeVisible();
+  await expect(drawer.getByRole('textbox', { name: 'タイトル' })).toHaveValue('送っている最中のタイトル');
+});
+
+test('期日で欄を離れた直後と、ポイントを選んだ直後に閉じても、結果は木に反映され、トーストで知らせる', async ({
+  page,
+}) => {
+  await createWorkspace(page, '閉じた後の応答パーティ', 'game');
+  await addTask(page, '閉じた後に返る');
+  const row = page.locator('.entry', { hasText: '閉じた後に返る' });
+  const drawer = await openDrawer(page, '閉じた後に返る');
+  await slowTaskUpdate(page);
+  await drawer.getByLabel('期限').fill('2099-12-31');
+  // 閉じるボタンを押すと、期日の入力が外れて（blur）送られる。送った値は書きかけではないので、確認なしで閉じる
+  await drawer.getByRole('button', { name: '閉じる' }).click();
+  await expect(drawer).toBeHidden();
+  await expect(page.getByRole('status').filter({ hasText: '保存しました' })).toBeVisible();
+  await expect(row.locator('.chip')).toBeVisible();
+  // ポイントも、選んだ直後に閉じて、結果が木に出る
+  await page.unroute('**/api/aoba/task-update');
+  await slowTaskUpdate(page);
+  await row.getByRole('link', { name: '閉じた後に返る' }).click();
+  await drawer.getByRole('radio', { name: '8', exact: true }).check();
+  await drawer.getByRole('button', { name: '閉じる' }).click();
+  await expect(drawer).toBeHidden();
+  await expect(row.locator('.pts')).toHaveText('8');
+  // 失敗はトーストで知らせる
+  await page.unroute('**/api/aoba/task-update');
+  await slowTaskUpdate(page, { status: 500, code: 'internal' });
+  await row.getByRole('link', { name: '閉じた後に返る' }).click();
+  await drawer.getByRole('radio', { name: '5', exact: true }).check();
+  await drawer.getByRole('button', { name: '閉じる' }).click();
+  await expect(drawer).toBeHidden();
+  await expect(page.getByRole('status').filter({ hasText: '保存できませんでした' })).toBeVisible();
+});
+
+test('期日の 600ms の待ちの間に Esc で閉じようとすると確かめ、捨てると何も送らない', async ({ page }) => {
+  await createWorkspace(page, '期日の待ちパーティ', 'game');
+  await addTask(page, '期日を待つ');
+  const drawer = await openDrawer(page, '期日を待つ');
+  const bodies = await slowTaskUpdate(page);
+  await drawer.getByLabel('期限').fill('2099-12-31');
+  await page.keyboard.press('Escape');
+  const confirm = page.getByRole('dialog', { name: '書きかけを捨てますか' });
+  await expect(confirm).toBeVisible();
+  await confirm.getByRole('button', { name: '捨てる' }).click();
+  await expect(drawer).toBeHidden();
+  await page.waitForTimeout(SLOW_MS + 600);
+  expect(bodies, JSON.stringify(bodies)).toEqual([]);
+});
+
+test('期日の保存中に次の値を選んでも、先の応答で入力欄が上書きされず、次の値が送られる', async ({ page }) => {
+  await createWorkspace(page, '期日の連続パーティ', 'game');
+  await addTask(page, '期日を続ける');
+  const drawer = await openDrawer(page, '期日を続ける');
+  const bodies = await slowTaskUpdate(page);
+  const due = drawer.getByLabel('期限');
+  await due.fill('2099-12-30');
+  await due.press('Enter');
+  await expect.poll(() => bodies.length).toBe(1);
+  // 先の要求が返る前に、次の値を選ぶ
+  await due.fill('2099-12-31');
+  await expect(page.getByRole('status').filter({ hasText: '保存しました' })).toBeVisible();
+  await expect(due).toHaveValue('2099-12-31');
+  await expect.poll(() => bodies.length).toBe(2);
+  // 2 本とも通って、保存のトーストが 2 回出るまで待つ
+  await expect(page.getByRole('status').filter({ hasText: '保存しました' })).toHaveCount(2);
+  expect(bodies.map((body) => body.due_on)).toEqual(['2099-12-30', '2099-12-31']);
+  await expect(due).toHaveValue('2099-12-31');
+  // 保存した値は、読み直しても同じ
+  await page.reload();
+  await expect(page.getByRole('dialog', { name: '期日を続ける' }).getByLabel('期限')).toHaveValue('2099-12-31');
+});
+
+test('期日は Enter で保存でき、「クリア」を押すと空にして保存し、フォーカスを入力欄へ移す', async ({ page }) => {
+  await createWorkspace(page, '期日のクリアパーティ', 'game');
+  await addTask(page, '期日をクリアする');
+  const row = page.locator('.entry', { hasText: '期日をクリアする' });
+  const drawer = await openDrawer(page, '期日をクリアする');
+  const bodies: Record<string, unknown>[] = [];
+  page.on('request', (request) => {
+    if (request.url().endsWith('/api/aoba/task-update')) bodies.push(request.postDataJSON());
+  });
+  const due = drawer.getByLabel('期限');
+  await due.fill('2099-12-31');
+  await due.press('Enter');
+  // 600ms を待たずに、Enter で送る
+  await expect.poll(() => bodies.length, { timeout: 500 }).toBe(1);
+  await expect(row.locator('.chip')).toBeVisible();
+  await drawer.getByRole('button', { name: 'クリア', exact: true }).click();
+  await expect(due).toBeFocused();
+  await expect(due).toHaveValue('');
+  await expect(row.locator('.chip')).toHaveCount(0);
+  expect(bodies.map((body) => body.due_on)).toEqual(['2099-12-31', null]);
+});
+
+test('取り込んだタスクは、タイトルを直せず、リンクの欄と削除を出さず、理由を添える', async ({ page }) => {
+  await createWorkspace(page, '取り込みパーティ', 'game');
+  await addTask(page, '取り込んだ体');
+  const taskId = await taskIdOf(page, '取り込んだ体');
+  // 取り込みはまだ無いので、1件の読み取りの応答を、取り込んだタスクに差し替える
+  await page.route('**/api/aoba/task-detail', async (route) => {
+    const response = await route.fetch();
+    const body = (await response.json()) as { task: Record<string, unknown> };
+    await route.fulfill({
+      response,
+      json: { task: { ...body.task, is_imported: true, can_delete: false, link_url: null } },
+    });
+  });
+  const drawer = await openDrawer(page, '取り込んだ体');
+  await expect(drawer.getByText('取り込んだクエストのタイトルは、ここでは直せません')).toBeVisible();
+  await expect(drawer.getByRole('button', { name: /取り込んだ体/ })).toHaveCount(0);
+  await expect(drawer.getByRole('button', { name: /削除する/ })).toHaveCount(0);
+  await expect(drawer.getByText('取り込んだクエストは削除せず、保管庫へ移して外します。')).toBeVisible();
+  await expect(drawer.getByText('リンク', { exact: true })).toHaveCount(0);
+  expect(taskId).toMatch(/^[0-9a-f-]{36}$/);
+});
+
+test('1行の入力欄は、日本語の変換中の Enter では送らない', async ({ page }) => {
+  await createWorkspace(page, '変換中パーティ', 'game');
+  await addTask(page, '変換中に送らない');
+  const drawer = await openDrawer(page, '変換中に送らない');
+  await drawer.getByRole('button', { name: /変換中に送らない/ }).click();
+  const input = drawer.getByRole('textbox', { name: 'タイトル' });
+  await input.fill('変換の途中');
+  const prevented = await input.evaluate((element) => {
+    const event = new KeyboardEvent('keydown', { key: 'Enter', isComposing: true, bubbles: true, cancelable: true });
+    element.dispatchEvent(event);
+    return event.defaultPrevented;
+  });
+  expect(prevented).toBe(true);
+  // 変換の確定を待っている入力は、そのまま残る
+  await expect(input).toHaveValue('変換の途中');
 });
 
 // 長い本文: 順序付きリスト（3 から始まる）、チェックリスト、表を、描き終わった後に確かめる。

@@ -1,7 +1,7 @@
 <script lang="ts">
   import { tick, type Snippet } from 'svelte';
   import { SvelteURLSearchParams } from 'svelte/reactivity';
-  import { goto, invalidate, invalidateAll } from '$app/navigation';
+  import { goto, invalidate } from '$app/navigation';
   import { resolve } from '$app/paths';
   import { page } from '$app/state';
   import Icon from '../../../../lib/components/Icon.svelte';
@@ -20,8 +20,10 @@
   // ほかの失敗（通信、5xx）は読み込みの失敗。
   // 終了したワークスペースには、読み取り専用の帯を出す（部品は components.css の .callout）
   // タスクの詳細の引き出しは、URL の `?task=<ID>` が付いている間、ワークスペースのどの画面の上にも置く（タスクが替わったら、置き直す）。
-  // 閉じるときは `?task=` を外し（履歴は積まない）、開いた行のリンクへフォーカスを戻す。行が無ければ（消えた、画面にまだ無い）
-  // 画面の見出しへ移す。保存した欄は、画面を読み直して木の行に反映する。終了したワークスペースでは、引き出しを読み取り専用で開く
+  // 閉じるときは、開いている画面の URL から `task` だけを外し（履歴は積まない）、開いた行のリンクへフォーカスを戻す。行が無ければ（消えた、
+  // 画面にまだ無い）画面の見出しへ移す。保存した欄は、木だけを読み直して行に反映する（`app:backlog-tree`）。引き出しが読み直すのは、
+  // 木かこの枠（`app:workspace`）だけで、組織の枠は読み直さない（組織の枠の失敗で、引き出しと書きかけが消えないため）。
+  // 終了したワークスペースでは、引き出しを読み取り専用で開く
   let { data, children }: { data: LayoutData; children: Snippet } = $props();
 
   const workspace = $derived(data.workspace);
@@ -38,14 +40,13 @@
     return () => setWorkspaceVocabulary(null);
   });
 
-  // 今の URL から `task` だけを外した画面（ほかのクエリは残す）
+  // 今の URL から `task` だけを外した画面。開いた画面（バックログ、メンバーなど）のまま、ほかのクエリも残す
   const withoutTask = () => {
     const rest = new SvelteURLSearchParams(page.url.search);
     rest.delete('task');
     const query = rest.size > 0 ? `?${rest}` : '';
-    const path = resolve('/[slug]/w/[id]', { slug: page.params.slug ?? '', id: page.params.id ?? '' });
-    // eslint-disable-next-line svelte/no-navigation-without-resolve -- 経路は resolve() で作り、残すクエリだけを足している
-    return goto(path + query, {
+    // eslint-disable-next-line svelte/no-navigation-without-resolve -- 今の画面の経路（page.url.pathname）に、残すクエリだけを足している
+    return goto(page.url.pathname + query, {
       replace: true,
       reset: false,
     });
@@ -74,7 +75,7 @@
   async function removed(): Promise<void> {
     focusAfterReload = true;
     await withoutTask();
-    await invalidateAll();
+    await invalidate('app:backlog-tree');
     await tick();
     document.querySelector<HTMLElement>('h1.page-title')?.focus();
   }
@@ -105,7 +106,7 @@
         {canWrite}
         onclose={() => void withoutTask()}
         onchanged={() => void invalidate('app:backlog-tree')}
-        onstale={() => void invalidateAll()}
+        onstale={() => void invalidate('app:workspace')}
         onremoved={() => void removed()}
       />
     {/key}

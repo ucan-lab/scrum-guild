@@ -56,9 +56,10 @@
   let trigger: HTMLElement | null = null;
   let input = $state<HTMLInputElement | HTMLTextAreaElement>();
 
-  // 書きかけは、保存と同じ整え方（normalize）の後で、保存した値と違うもの。送っている間は数えない
+  // 書きかけは、保存と同じ整え方（normalize）の後で、保存した値と違うもの。送っている間も数える
+  // （失敗したときに入力が消えないよう、閉じる前に確かめる。通れば保存した値と同じになり、書きかけでなくなる）
   $effect(() => {
-    ondirty?.(editing && !saving && normalize(draft) !== normalize(value));
+    ondirty?.(editing && normalize(draft) !== normalize(value));
   });
   // 部品が外れたら（欄が読み取り専用に替わったなど）、書きかけは無くなる
   $effect(() => () => ondirty?.(false));
@@ -105,9 +106,15 @@
     }
   }
 
+  // 1行の欄の Enter と Esc。変換中（keyCode 229 は、isComposing が偽になる確定直後も含む）の Enter は変換の確定、Esc は変換の取り消しなので、
+  // 送らず、戻さない
   function onkeydown(event: KeyboardEvent): void {
-    // 変換中の Esc は変換の取り消し（keyCode 229 は、isComposing が偽になる確定直後の Esc も含む）
-    if (multiline || event.key !== 'Escape' || event.isComposing || event.keyCode === 229) return;
+    const composing = event.isComposing || event.keyCode === 229;
+    if (event.key === 'Enter' && composing) {
+      event.preventDefault();
+      return;
+    }
+    if (multiline || event.key !== 'Escape' || composing) return;
     event.preventDefault();
     cancel();
   }
