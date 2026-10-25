@@ -127,7 +127,7 @@ try {
     const verdict = judgeFile({
       rel,
       onMain: isProjectOnMain(root, dir),
-      inWorktree: rel.startsWith('.claude/hooks/') && isOtherWorktree(root, dir),
+      inWorktree: (rel.startsWith('.claude/hooks/') || rel.startsWith('.githooks/')) && isOtherWorktree(root, dir),
       contents: writtenContents(input.tool_name, input.tool_input),
       shippedOnMain: rel.startsWith('migrations/') ? existsOnMain(root, rel) : false,
     });

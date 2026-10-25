@@ -112,6 +112,17 @@ function judgeGit(args, dir, branchOf) {
   }
   const sub = args[i];
   const rest = args.slice(i + 1);
+  const verdict = judgeGitCommand(sub, rest, gitDir, branchOf);
+  // core.hooksPath を変えると .githooks/ の守りが外れる。止める判定はそのまま、それ以外は人が確かめる
+  const touchesHooksPath = (a) => /core\.hookspath/i.test(a);
+  const readsConfig = rest.some((a) => /^--(get|get-all|get-regexp|list)$|^-l$/.test(a));
+  if (args.slice(0, i).some(touchesHooksPath) || (sub === 'config' && !readsConfig && rest.some(touchesHooksPath))) {
+    if (verdict?.[0] !== DENY) return [ASK, 'core.hooksPath を変えると main を守る git のフック（.githooks/）が外れる。人が確かめる'];
+  }
+  return verdict;
+}
+
+function judgeGitCommand(sub, rest, gitDir, branchOf) {
   if (sub === 'add' && rest.some(mentionsSecret)) return [DENY, '.dev.vars と .env は git に入れない'];
   if (COMMITTING.has(sub) && !onlyStops(sub, rest)) {
     if (!gitDir) return [ASK, `git ${sub} をする作業コピーを判定できない（cd ~ や変数の先、GIT_DIR=）`];
@@ -308,7 +319,7 @@ function judgeSecretAccess(tool, args, words) {
 
 // Write と Edit のフック（file-rules.mjs）が守るファイル。Bash から書き換えるときは人の確認を挟む
 function isProtectedPath(word) {
-  return /(^|\/)\.claude\/(settings[^/]*\.json$|hooks(\/|$))|(^|\/)migrations\//.test(word.replace(/^>+/, ''));
+  return /(^|\/)\.claude\/(settings[^/]*\.json$|hooks(\/|$))|(^|\/)\.githooks(\/|$)|(^|\/)migrations\//.test(word.replace(/^>+/, ''));
 }
 
 function writesProtectedPath(tool, args) {

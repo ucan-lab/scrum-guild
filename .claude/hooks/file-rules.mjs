@@ -20,7 +20,7 @@ export function judgeFile({ rel, contents, shippedOnMain, inWorktree = false, on
     return ['ask', '守る仕組み（Claude の設定）の変更は人が確かめる'];
   }
   // セッションが使うのは $CLAUDE_PROJECT_DIR のフック。別のワークツリーでの書き換えは PR で人が読むまで効かない
-  if (rel.startsWith('.claude/hooks/') && !inWorktree) {
+  if ((rel.startsWith('.claude/hooks/') || rel.startsWith('.githooks/')) && !inWorktree) {
     return ['ask', '守る仕組み（フック）の変更は人が確かめる。ワークツリーで書き換えて PR を通す'];
   }
   if (rel.startsWith('migrations/') && shippedOnMain) {

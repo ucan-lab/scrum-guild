@@ -251,6 +251,18 @@ describe('bash-rules: 止める', () => {
     assert.equal(judgeBash('cd ~ && git pull --ff-only', { cwd: '/repo', branchOf }), null);
   });
 
+  test('core.hooksPath と .githooks/ の書き換えに確認を挟む', () => {
+    assert.equal(decision('git config core.hooksPath /dev/null'), 'ask');
+    assert.equal(decision('git config --unset core.hookspath'), 'ask');
+    assert.equal(decision('git -c core.hooksPath=/dev/null commit -m x'), 'ask');
+    assert.equal(decision('git -c core.hooksPath=/dev/null push origin main'), 'deny');
+    assert.equal(decision('git config --get core.hooksPath'), 'allow');
+    assert.equal(decision('rm .githooks/pre-push'), 'ask');
+    assert.equal(decision('git config user.name x'), 'allow');
+    assert.equal(judgeFile({ rel: '.githooks/pre-push', contents: '' })?.[0], 'ask');
+    assert.equal(judgeFile({ rel: '.githooks/pre-push', contents: '', inWorktree: true }), null);
+  });
+
   test('同じコマンドの中で切り替えた先のブランチで判定する', () => {
     assert.equal(decision('git checkout main && git push'), 'deny');
     assert.equal(decision('git switch main; git push origin HEAD'), 'deny');
