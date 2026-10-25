@@ -234,14 +234,14 @@ describe('レート制限', () => {
       expect((await browser.start()).response.headers.get('Location')).toMatch(toGithub);
     }
     // 60回目は通り、61回目から断る。戻り先も同じ数に入る
-    expect((await browser.start()).response.headers.get('Location')).toMatch(toGithub);
+    const last = await browser.start();
+    expect(last.response.headers.get('Location')).toMatch(toGithub);
     const over = await browser.start('/aoba');
     expect(over.response.status).toBe(302);
     expect(over.response.headers.get('Location')).toBe('/login?error=too_many&return_to=%2Faoba');
-    // state の Cookie が合う戻りは、同じ枠で数える
-    const matching = 'S'.repeat(43);
-    browser.cookies.set(STATE_COOKIE, matching);
-    const callback = await browser.callback({ code: 'x', state: matching });
+    // state の行を使い切れた戻りは、同じ枠で数える
+    expect(browser.cookies.get(STATE_COOKIE)).toBe(last.state);
+    const callback = await browser.callback({ code: 'x', state: last.state });
     expect(callback.location).toBe('/login?error=too_many');
     // 照合に通った戻りは、枠を超えていても state の Cookie を使い切る
     expect(browser.cookies.has(STATE_COOKIE)).toBe(false);

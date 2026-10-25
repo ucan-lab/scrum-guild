@@ -1,6 +1,7 @@
 // アプリ側のレート制限（docs/data-model.md の `rate_limits`）。設けるのは、ログインと手動の同期だけ。
 // 窓の最初の呼び出しから windowMs の間に max 回まで。1文の upsert で数えるので、並行した呼び出しも取りこぼさず、
-// 窓を過ぎた最初の呼び出しが数え直す。断った呼び出しも数える
+// 窓を過ぎた最初の呼び出しが数え直す。断った呼び出しも数える。ログインだけは、数える前に覗いて、上限に届いた枠を
+// 数えずに断る（未ログインの人が、叩く速さに比例して行を書き換えさせられないため。窓は固定なので、断る効き目は同じ）
 import type { AnyOperationDefinition } from '../../shared/operations/define.ts';
 import { operations } from '../../shared/operations/index.ts';
 import { commonDb } from '../db/index.ts';
@@ -8,19 +9,28 @@ import { clientIpUnits } from './client-ip.ts';
 
 export type RateLimitPolicy = { max: number; windowMs: number };
 
-// ログインで数える枠。loginRateLimits() と LOGIN_RATE_LIMIT_POLICIES はこの辞書の値だけを使う。
+// ログインで数える枠。loginRateLimits()、consumeLoginStartRateLimits() と LOGIN_RATE_LIMIT_POLICIES はこの辞書の値だけを使う。
 // 期限を過ぎた rate_limits の行を消す境目の最長の窓は、この辞書と操作の定義から求める（longestRateLimitWindowMs）。
 //   network: ログインの開始と戻り先を、同じ IP（CF-Connecting-IP。IPv6 は /64）から10分に60回まで。1回のログインで
 //     2回数えるので30人分。同じオフィスの15人のチームが一斉に入っても詰まらない値にした
 //   ipv6Site: IPv6 は /64 の枠に加えて、/48 の枠を数える。事業者の単位の /48 の中なら、/64 を変えて1つの枠を避けられる
-//     ため。/48 の中には複数の利用者がいるので、/64 の10倍まで認める
+//     ため。/48 の中には複数の利用者がいるので /64 の2倍まで認める。global より十分小さくし、1つの /48（家庭の /56 も
+//     含む1回線）だけで global を使い切れないようにする
+//   global: ログインの開始だけを、全部の IP を合わせて10分に600回まで。IP を多く持つ人が、IP の数に比例して
+//     oauth_states の行を書かせられないようにする。居座る oauth_states は、窓の境目をまたいでも約1,200行まで。
+//     代わりに、IPv4 なら約10個（窓の境目をまたげば約5個）、IPv6 なら約5個の /48 で新しいログインを止められる
 export const LOGIN_RATE_LIMITS = {
   network: { max: 60, windowMs: 10 * 60 * 1000 },
-  ipv6Site: { max: 600, windowMs: 10 * 60 * 1000 },
+  ipv6Site: { max: 120, windowMs: 10 * 60 * 1000 },
+  global: { max: 600, windowMs: 10 * 60 * 1000 },
 } as const satisfies Record<string, RateLimitPolicy>;
 
 export const LOGIN_RATE_LIMIT: RateLimitPolicy = LOGIN_RATE_LIMITS.network;
 export const LOGIN_RATE_LIMIT_IPV6_SITE: RateLimitPolicy = LOGIN_RATE_LIMITS.ipv6Site;
+export const LOGIN_RATE_LIMIT_GLOBAL: RateLimitPolicy = LOGIN_RATE_LIMITS.global;
+
+// IP の枠のキー（`login:<IP>`）とは重ならない。`global` は IP として解釈できず、解釈できない IP は `login:unknown` になる
+export const LOGIN_GLOBAL_RATE_LIMIT_KEY = 'login:global';
 
 export const LOGIN_RATE_LIMIT_POLICIES: readonly RateLimitPolicy[] = Object.values(LOGIN_RATE_LIMITS);
 
@@ -101,11 +111,49 @@ export async function consumeRateLimit(env: Env, key: string, policy: RateLimitP
   return row.count <= policy.max;
 }
 
-// ログインの枠を、広い枠から順に数える。上限を超えた枠があればそこで止めて false を返し、残りの枠は数えない
-// （断った呼び出しで、狭い枠の行を作らない）
+// 数えずに読むだけで、次の呼び出しが上限を超えるか。窓を過ぎた行と行の無い枠は、consumeRateLimit が数え直すので超えない
+export async function isRateLimitExceeded(env: Env, key: string, policy: RateLimitPolicy, now: Date): Promise<boolean> {
+  const db = commonDb(env);
+  const cutoff = new Date(now.getTime() - policy.windowMs).toISOString();
+  const row = await db.first(
+    db.statement((q) => q.selectFrom('rate_limits').select(['window_start_at', 'count']).where('key', '=', key)),
+  );
+  return row !== undefined && row.window_start_at > cutoff && row.count >= policy.max;
+}
+
+// ログインの IP の枠。先に全部の枠を覗き、上限に届いた枠が1つでもあれば、どの行も書かずに false を返す。
+// 通ったら広い枠から順に数え、並行した呼び出しで上限を超えた枠があればそこで止め、残りの枠は数えない
+// （断った呼び出しで、狭い枠の行を作らない）。戻り先はこの枠だけを数える
 export async function consumeLoginRateLimits(env: Env, ip: string | undefined, now: Date): Promise<boolean> {
-  for (const { key, policy } of loginRateLimits(ip)) {
+  const limits = loginRateLimits(ip);
+  for (const { key, policy } of limits) {
+    if (await isRateLimitExceeded(env, key, policy, now)) return false;
+  }
+  for (const { key, policy } of limits) {
     if (!(await consumeRateLimit(env, key, policy, now))) return false;
   }
   return true;
+}
+
+export type LoginStartRateLimit = { allowed: true } | { allowed: false; limitedBy: 'ip' | 'global' };
+
+// ログインの開始の枠。全体の枠を読むだけで覗き → IP の枠を数え → 通った呼び出しだけ全体の枠を数える。
+//   - 全体の枠を先に数えると、断った呼び出しも数えるので、1つの IP から叩き続けるだけで全体の枠を使い切れる。
+//     この順なら、1つの IP が使える全体の枠は IP の枠の上限まで
+//   - 全体の枠が上限の間は、覗いただけで断り、どの行も書かない（叩かれた回数だけ IP の行を書き続けない）
+//   - 覗いた後に並行した呼び出しがすり抜けても、最後に全体の枠を数えるので、通る開始（oauth_states を書く数）の
+//     上限は守られる。すり抜けた呼び出しが IP の行を書くことは止めない（全体の枠が埋まる瞬間に飛んでいた数だけ）
+export async function consumeLoginStartRateLimits(
+  env: Env,
+  ip: string | undefined,
+  now: Date,
+): Promise<LoginStartRateLimit> {
+  if (await isRateLimitExceeded(env, LOGIN_GLOBAL_RATE_LIMIT_KEY, LOGIN_RATE_LIMIT_GLOBAL, now)) {
+    return { allowed: false, limitedBy: 'global' };
+  }
+  if (!(await consumeLoginRateLimits(env, ip, now))) return { allowed: false, limitedBy: 'ip' };
+  if (!(await consumeRateLimit(env, LOGIN_GLOBAL_RATE_LIMIT_KEY, LOGIN_RATE_LIMIT_GLOBAL, now))) {
+    return { allowed: false, limitedBy: 'global' };
+  }
+  return { allowed: true };
 }

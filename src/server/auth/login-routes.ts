@@ -5,7 +5,7 @@
 // どちらも失敗はログインの画面（/login?error=...）へ移す。ブラウザが見る応答に JSON のエラーを返さないため。
 // Origin の検査は掛からない（ほかのサイトからの移動で呼ばれる）。ログインの CSRF は state の Cookie で止める（oauth-state.ts）。
 // ほかのサイトのページが `<img>` などで読ませて、被害者の IP のレート制限の枠を使い切らせたり、行を書かせたりできないよう、
-// 開始はブラウザの移動（Sec-Fetch）だけを数え、戻り先は state の Cookie が合ったものだけを数える。
+// 開始はブラウザの移動（Sec-Fetch）だけを数え、戻り先は state の Cookie が合い、DB の state の行を使い切れたものだけを数える。
 // 人が差分を読む領域（docs/development.md の「マージの判定」）
 import { Hono, type Context } from 'hono';
 import { deleteCookie, getCookie, setCookie } from 'hono/cookie';
@@ -24,7 +24,7 @@ import {
   oauthStateCookieOptions,
   startOAuthState,
 } from './oauth-state.ts';
-import { consumeLoginRateLimits } from './rate-limit.ts';
+import { consumeLoginRateLimits, consumeLoginStartRateLimits, type LoginStartRateLimit } from './rate-limit.ts';
 import { timingSafeEqualStrings } from './tokens.ts';
 
 // ログインの画面（/login?error=）が扱う失敗。画面は文言を辞書から出す（src/routes/login/）
@@ -121,7 +121,13 @@ function isUserNavigation(c: Context<AppEnv>): boolean {
   );
 }
 
-async function withinRateLimit(c: Context<AppEnv>): Promise<boolean> {
+// 開始は IP の枠と全体の枠、戻り先は IP の枠だけを数える。戻り先は state の行を使い切れたものだけを数え、行は開始が
+// 書いたものしか無いので、開始の全体の枠で間接的に絞られる。GitHub から戻った人を全体の枠で断らない
+async function consumeStartRateLimit(c: Context<AppEnv>): Promise<LoginStartRateLimit> {
+  return consumeLoginStartRateLimits(c.env, c.req.header('CF-Connecting-IP'), new Date());
+}
+
+async function consumeCallbackRateLimit(c: Context<AppEnv>): Promise<boolean> {
   return consumeLoginRateLimits(c.env, c.req.header('CF-Connecting-IP'), new Date());
 }
 
@@ -138,8 +144,10 @@ export function loginRoutes(options: LoginRoutesOptions): Hono<AppEnv> {
         log(c, { step: 'start', provider, outcome: 'not_navigation' });
         return toLoginPage(c, undefined, returnTo);
       }
-      if (!(await withinRateLimit(c))) {
-        log(c, { step: 'start', provider, outcome: 'too_many' });
+      const limit = await consumeStartRateLimit(c);
+      if (!limit.allowed) {
+        // 画面は同じ too_many。ログでは、全体の枠に当たったのかを IP の枠と見分ける
+        log(c, { step: 'start', provider, outcome: limit.limitedBy === 'global' ? 'too_many_global' : 'too_many' });
         return toLoginPage(c, 'too_many', returnTo);
       }
       const method = githubMethod(c, options.fetcher);
@@ -197,14 +205,16 @@ export function loginRoutes(options: LoginRoutesOptions): Hono<AppEnv> {
       // 照合に通った戻りで、state の Cookie を使い切る。以降は成功でも失敗でも消す
       deleteCookie(c, stateCookie, oauthStateCookieClearOptions(c.env.PUBLIC_ORIGIN));
 
-      if (!(await withinRateLimit(c))) {
-        log(c, { step: 'callback', provider, outcome: 'too_many' });
-        return toLoginPage(c, 'too_many');
-      }
+      // 行を使い切ってから数える。Cookie はブラウザ以外なら自由に付けられるので、照合に通っただけでは数えない
+      // （行の無い state を IP ごとに送って、開始の全体の枠を通らずに rate_limits の行を書かせられないため）
       const consumed = await consumeOAuthState(c.env, provider, state, new Date());
       if (consumed === undefined) {
         log(c, { step: 'callback', provider, outcome: 'state_invalid' });
         return toLoginPage(c, 'retry');
+      }
+      if (!(await consumeCallbackRateLimit(c))) {
+        log(c, { step: 'callback', provider, outcome: 'too_many' });
+        return toLoginPage(c, 'too_many');
       }
       const returnTo = safeReturnTo(consumed.returnTo);
 
