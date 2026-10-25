@@ -342,6 +342,8 @@ export function splitSegments(command) {
       }
       let j = i;
       while ('<>&|'.includes(command[j]) && j - i < 3) j++;
+      // zsh の >!、>>!、&>!、>&! は、既にあるファイルを上書きする >。! を宛先の語に残さない
+      if (command[j] === '!' && command.slice(i, j).includes('>')) j++;
       const op = command.slice(i, j);
       if (op.endsWith('&') && /[\d-]/.test(command[j] ?? '')) {
         while (/[\d-]/.test(command[j] ?? '')) j++;
