@@ -1,0 +1,46 @@
+#!/bin/sh
+# 番号付きのブランチ（<番号>-<名前>）のワークツリーを新しく切ったら、その Issue を作業中にする（docs/development.md の「Issue の状態」）
+# 前の HEAD が null の SHA になる checkout（新しいワークツリー、clone、まだコミットの無い作業コピーでの最初の checkout）のうち、
+# git のディレクトリが共有のものと違う、追加のワークツリーでだけ動く。clone と本体の作業コピーでは動かない
+# 状態を知らせるだけの処理なので、gh が無い、認証が無い、通信が落ちたときも checkout は止めない
+case "$1" in *[!0]*) exit 0 ;; esac
+[ "$3" = "1" ] || exit 0
+git_dir=$(git rev-parse --path-format=absolute --git-dir) || exit 0
+common_dir=$(git rev-parse --path-format=absolute --git-common-dir) || exit 0
+[ "$git_dir" != "$common_dir" ] || exit 0
+
+ref=$(git symbolic-ref -q HEAD) || exit 0
+branch=${ref#refs/heads/}
+number=${branch%%-*}
+case "$number" in '' | *[!0-9]* | 0*) exit 0 ;; esac
+[ "$number" != "$branch" ] || exit 0
+
+if ! command -v gh >/dev/null 2>&1; then
+  echo "gh が無いので、#$number に status:in-progress を付けていません。手で付けてください" >&2
+  exit 0
+fi
+# 通信が詰まってもワークツリーの作成を待たせないよう、timeout がある環境（Linux、coreutils を入れた macOS）では10秒で切る
+gh_api() {
+  if command -v timeout >/dev/null 2>&1; then
+    timeout 10 gh api "$@"
+  else
+    gh api "$@"
+  fi
+}
+# 書き込み先は固定する。{owner}/{repo} にすると、GH_REPO や複数の remote（fork の upstream）で別のリポジトリの Issue に書くため
+repo=ucan-lab/scrum-guild
+# 日付で始まるブランチ（2026-10-25-x）や閉じた Issue、PR の番号に付けないよう、開いた Issue かを先に確かめる
+# クラウドのセッションと同じ REST を使う（GraphQL の gh issue はクラウドで 403 になる）
+if ! state=$(gh_api "repos/$repo/issues/$number" --jq '.state + " " + (.pull_request != null | tostring)' 2>&1); then
+  echo "#$number を引けなかったので、status:in-progress を付けていません: $state" >&2
+  exit 0
+fi
+[ "$state" = "open false" ] || exit 0
+if ! out=$(gh_api -X POST "repos/$repo/issues/$number/labels" -f 'labels[]=status:in-progress' 2>&1); then
+  echo "#$number に status:in-progress を付けられませんでした。手で付けてください: $out" >&2
+  exit 0
+fi
+# 付いていなければ 404 になるので、外せなくても知らせない
+gh_api -X DELETE "repos/$repo/issues/$number/labels/status:refining" >/dev/null 2>&1
+echo "#$number を作業中（status:in-progress）にしました" >&2
+exit 0

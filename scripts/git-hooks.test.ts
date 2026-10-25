@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { after, describe, test } from 'node:test';
@@ -11,12 +11,16 @@ const root = mkdtempSync(path.join(os.tmpdir(), 'git-hooks-'));
 after(() => rmSync(root, { recursive: true, force: true }));
 
 // 呼び出し元の git の設定（署名、グローバルのフック）に左右されないよう、設定を空にして動かす
-function git(cwd: string, ...args: string[]) {
+function gitWith(env: NodeJS.ProcessEnv, cwd: string, ...args: string[]) {
   return spawnSync('git', args, {
     cwd,
     encoding: 'utf8',
-    env: { ...process.env, GIT_CONFIG_GLOBAL: '/dev/null', GIT_CONFIG_NOSYSTEM: '1' },
+    env: { ...process.env, GIT_CONFIG_GLOBAL: '/dev/null', GIT_CONFIG_NOSYSTEM: '1', ...env },
   });
+}
+
+function git(cwd: string, ...args: string[]) {
+  return gitWith({}, cwd, ...args);
 }
 
 function setUp(name: string) {
@@ -137,5 +141,103 @@ describe('.githooks', () => {
     // bare のリモートはフックが無くても今の HEAD の削除を拒むので、拒んだのがフックかを文言で見る
     assert.match(git(work, 'push', 'origin', '--delete', 'main').stderr, /main へは push しない/);
     assert.equal(git(work, 'push', 'origin', '1-x').status, 0);
+  });
+
+  describe('post-checkout', () => {
+    // 本物の gh の代わりに、受けた引数を記録するか失敗するだけの gh を PATH の先頭に置く
+    function fakeGh(name: string, body: string) {
+      const bin = path.join(root, `${name}-bin`);
+      mkdirSync(bin);
+      writeFileSync(path.join(bin, 'gh'), `#!/bin/sh\n${body}\n`, { mode: 0o755 });
+      return { PATH: `${bin}:${process.env.PATH}` };
+    }
+
+    test('番号付きのブランチのワークツリーを切ると、開いた Issue を作業中にする', () => {
+      const work = setUp('worktree');
+      const log = path.join(root, 'worktree-gh.log');
+      // 12 は開いた Issue、20 は閉じた Issue、21 は PR。ほかの番号は無い
+      const env = fakeGh(
+        'worktree',
+        [
+          `echo "$*" >> '${log}'`,
+          'case "$*" in',
+          `  *"issues/12 --jq"*) echo 'open false' ;;`,
+          `  *"issues/20 --jq"*) echo 'closed false' ;;`,
+          `  *"issues/21 --jq"*) echo 'open true' ;;`,
+          `  *--jq*) echo 'gh: Not Found (HTTP 404)' >&2; exit 1 ;;`,
+          'esac',
+        ].join('\n'),
+      );
+      const add = (name: string, ...args: string[]) =>
+        gitWith(env, work, 'worktree', 'add', path.join(root, `wt-${name}`), ...args);
+      const added = add('12', '-b', '12-x');
+      assert.equal(added.status, 0);
+      assert.match(added.stderr, /#12 を作業中/);
+      // 閉じた Issue、PR、無い番号（日付で始まるブランチ）には付けない
+      assert.equal(add('20', '-b', '20-x').status, 0);
+      assert.equal(add('21', '-b', '21-x').status, 0);
+      const dated = add('dated', '-b', '2026-10-25-x');
+      assert.equal(dated.status, 0);
+      assert.match(dated.stderr, /#2026 を引けなかった.*HTTP 404/);
+      // 番号の無いブランチ、0 で始まる番号、detached、既にある作業コピーでのブランチの作成では、Issue を引きもしない
+      assert.equal(add('x', '-b', 'feature-x').status, 0);
+      assert.equal(add('0', '-b', '012-x').status, 0);
+      assert.equal(add('detached', '--detach').status, 0);
+      assert.equal(gitWith(env, work, 'checkout', '-b', '13-y').status, 0);
+      // clone と、コミットの無い作業コピーでの最初の checkout も、前の HEAD が null の SHA になるが、追加のワークツリーではないので動かない
+      git(work, 'push', 'origin', '13-y:16-x');
+      const remote = path.join(root, 'worktree.git');
+      assert.equal(
+        gitWith(env, root, '-c', `core.hooksPath=${hooksDir}`, 'clone', '-b', '16-x', remote, 'worktree-clone').status,
+        0,
+      );
+      const fresh = path.join(root, 'worktree-fresh');
+      git(root, 'init', '-q', '-b', 'main', fresh);
+      git(fresh, 'config', 'core.hooksPath', hooksDir);
+      git(fresh, 'fetch', '-q', remote, '16-x');
+      assert.equal(gitWith(env, fresh, 'checkout', '-b', '17-x', 'FETCH_HEAD').status, 0);
+      const calls = readFileSync(log, 'utf8').trimEnd().split('\n');
+      assert.deepEqual(
+        calls.filter((c) => c.includes('--jq')).map((c) => c.match(/issues\/(\d+) /)?.[1]),
+        ['12', '20', '21', '2026'],
+      );
+      assert.deepEqual(
+        calls.filter((c) => !c.includes('--jq')),
+        [
+          'api -X POST repos/ucan-lab/scrum-guild/issues/12/labels -f labels[]=status:in-progress',
+          'api -X DELETE repos/ucan-lab/scrum-guild/issues/12/labels/status:refining',
+        ],
+      );
+    });
+
+    test('gh が失敗しても、無くても、ワークツリーの作成は止めない', () => {
+      const work = setUp('worktree-fail');
+      // Issue を引くのは 14 で失敗し、ほかは引けるがラベルの書き込みで失敗する
+      const env = fakeGh(
+        'worktree-fail',
+        [
+          'case "$*" in',
+          `  *"issues/14 --jq"*) echo 'HTTP 401: Bad credentials' >&2; exit 1 ;;`,
+          `  *--jq*) echo 'open false' ;;`,
+          `  *) echo 'HTTP 422: Validation Failed' >&2; exit 1 ;;`,
+          'esac',
+        ].join('\n'),
+      );
+      const add = (n: string) => gitWith(env, work, 'worktree', 'add', path.join(root, `wt-${n}`), '-b', `${n}-x`);
+      const unread = add('14');
+      assert.equal(unread.status, 0);
+      assert.match(unread.stderr, /#14 を引けなかった.*Bad credentials/);
+      const unwritten = add('16');
+      assert.equal(unwritten.status, 0);
+      assert.match(unwritten.stderr, /#16 に status:in-progress を付けられませんでした.*Validation Failed/);
+      // git だけを置いた PATH で、gh が見つからない状態を作る
+      const bin = path.join(root, 'git-only-bin');
+      mkdirSync(bin);
+      const gitPath = spawnSync('sh', ['-c', 'command -v git'], { encoding: 'utf8' }).stdout.trim();
+      symlinkSync(realpathSync(gitPath), path.join(bin, 'git'));
+      const missing = gitWith({ PATH: bin }, work, 'worktree', 'add', path.join(root, 'wt-15'), '-b', '15-x');
+      assert.equal(missing.status, 0);
+      assert.match(missing.stderr, /gh が無いので、#15/);
+    });
   });
 });
