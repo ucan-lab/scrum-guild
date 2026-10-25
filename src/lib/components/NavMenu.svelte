@@ -1,7 +1,7 @@
 <script lang="ts">
   import type { Snippet } from 'svelte';
   import { resolve } from '$app/paths';
-  import { isWorkspaceRoute, visibleNav } from '../nav.ts';
+  import { isWorkspaceId, isWorkspaceRoute, visibleNav } from '../nav.ts';
   import { t } from '../vocabulary.svelte.ts';
   import Icon from './Icon.svelte';
 
@@ -44,7 +44,7 @@
     {#each section.items as item (item.label)}
       <!-- ワークスペースの経路は、ID が無ければ行き先が決まらないので描かない（visibleNav も同じ条件で外す） -->
       {@const href = isWorkspaceRoute(item.href)
-        ? workspaceId
+        ? isWorkspaceId(workspaceId)
           ? resolve(item.href, { slug, id: workspaceId })
           : null
         : resolve(item.href, { slug })}

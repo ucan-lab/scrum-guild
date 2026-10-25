@@ -11,6 +11,12 @@ export function isWorkspaceRoute(route: NavRoute): route is WorkspaceNavRoute {
   return (workspaceRoutes as readonly string[]).includes(route);
 }
 
+// ワークスペースの経路を resolve できる ID か。空の文字列は、/aoba/w//members のような壊れたリンクになるので ID と見ない。
+// visibleNav（項目を残すか）と NavMenu（リンクを作るか）が同じ判定を使う
+export function isWorkspaceId(id: string | null | undefined): id is string {
+  return typeof id === 'string' && id !== '';
+}
+
 // メニューの項目。kit.js の PAGES と同じ並びと見出し。
 // href が null の項目は、画面がまだ無いのでメニューに出さない（色を薄くして押せなくする形は、
 // 状態が色だけに頼り、コントラストも足りないので採らない）。画面を足したら href に経路の ID を入れる。
@@ -53,7 +59,7 @@ export function visibleNav(
         (item): item is VisibleNavItem =>
           item.href !== null &&
           (!item.adminOnly || isAdmin) &&
-          (!isWorkspaceRoute(item.href) || (inWorkspaceScreen && workspaceId !== null)),
+          (!isWorkspaceRoute(item.href) || (inWorkspaceScreen && isWorkspaceId(workspaceId))),
       ),
     }))
     .filter((section) => section.items.length > 0 || (inWorkspaceScreen && section.slot !== undefined));

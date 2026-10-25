@@ -132,6 +132,8 @@ describe('メニュー', () => {
     assert.ok(!labels({ hasWorkspace: true, isAdmin: true }).includes('pageMembers'));
     assert.ok(!labels({ hasWorkspace: true, workspaceId: 'w1' }).includes('pageMembers'));
     assert.ok(!labels({ hasWorkspace: true, inWorkspaceScreen: true, workspaceId: null }).includes('pageMembers'));
+    // 空の ID は壊れたリンクになるので、ID が無いのと同じに扱う
+    assert.ok(!labels({ hasWorkspace: true, inWorkspaceScreen: true, workspaceId: '' }).includes('pageMembers'));
     // 所属していない管理者にも、開いている間は出す
     assert.ok(
       labels({ hasWorkspace: false, isAdmin: true, inWorkspaceScreen: true, workspaceId: 'w1' }).includes(
