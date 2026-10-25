@@ -69,6 +69,8 @@
     accountMenuLabel: ["{name}。アカウントのメニュー", "{name}。アカウントのメニュー"], logout: ["ログアウト", "ログアウト"],
     logoutMoving: ["ログアウトしています", "ログアウトしています"], loggedOut: ["ログアウトしました。", "ログアウトしました。"],
     logoutFailed: ["ログアウトできませんでした。時間をおいてもう一度試してください。", "ログアウトできませんでした。時間をおいてもう一度試してください。"],
+    markdownPlainNote: ["整形せずに表示しています", "整形せずに表示しています"], markdownNewTab: ["新しいタブで開きます", "新しいタブで開きます"],
+    markdownCodeRegion: ["コード", "コード"], markdownTableRegion: ["表", "表"],
   };
   let vocab = 0;
   const listeners = [];
@@ -544,9 +546,9 @@
   // 密なリストは段落を <p> で包まない。リンクは新しいタブで開くことを、aria-describedby が指す隠した文で添える（リンクの名前にも、チェックリストの箱の名前にも入らない）。
   // kind: all（既定）、unsafe（リンクにしないもの）、plain（変換を待つ間と時間切れの、書かれたままの文字。注記つき）
   function markdownSample(kind = "all") {
-    const newTab = (id) => `<span id="${id}" hidden>新しいタブで開きます</span>`;
+    const newTab = (id) => `<span id="${id}" hidden>${t("markdownNewTab")}</span>`;
     if (kind === "plain") {
-      return `<p class="props-note">整形せずに表示しています</p>
+      return `<p class="props-note">${t("markdownPlainNote")}</p>
       <div class="doc-box is-plain">## 結果を確かめる手順\n\nログインしてから /aoba を開き、**一覧が出る**ことを確かめる。\n\n- [ ] 一覧が出る</div>`;
     }
     if (kind === "unsafe") {
@@ -576,11 +578,11 @@
       <h6 class="doc-h5">見出し5</h6>
       <h6 class="doc-h6">見出し6</h6>
       <blockquote><p>見た目は4つのテーマで確かめる。</p><p>色は役割の変数だけを使う。</p></blockquote>
-      <pre tabindex="0" role="region" aria-label="コード"><code>pnpm test
+      <pre tabindex="0" role="region" aria-label="${t("markdownCodeRegion")}"><code>pnpm test
 pnpm check
 const looooooooooooooooooooooooooooooooooongLine = "コードの長い1行は、枠をはみ出さず、横にスクロールする";</code></pre>
       <hr>
-      <div class="doc-table" tabindex="0" role="region" aria-label="表"><table>
+      <div class="doc-table" tabindex="0" role="region" aria-label="${t("markdownTableRegion")}"><table>
         <thead><tr><th scope="col">画面</th><th scope="col" class="is-center">状態</th><th scope="col" class="is-right">件数</th><th scope="col">担当</th><th scope="col">期限</th><th scope="col">メモ</th></tr></thead>
         <tbody>
           <tr><td>バックログ</td><td class="is-center">確認済み</td><td class="is-right">12</td><td>ayu</td><td>10/27</td><td>幅が足りない表は、枠の中で横に動かせる</td></tr>
