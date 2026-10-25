@@ -1,5 +1,6 @@
 // ログインの開始の全体の枠（src/server/auth/rate-limit.ts の consumeLoginStartRateLimits）。
-// IP を多く持つ人が、IP の数に比例して oauth_states と rate_limits の行を書かせられないこと
+// IP を多く持つ人が、IP の数に比例して oauth_states の行を書かせられないこと。全体の枠が上限の間は rate_limits にも
+// 書かないこと（覗いた後に並行してすり抜けた呼び出しが IP の行を書くのは、docs/data-model.md の rate_limits で受け入れている）
 import { env } from 'cloudflare:workers';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import {
