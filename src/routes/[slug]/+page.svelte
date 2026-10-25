@@ -2,8 +2,10 @@
   import { getHealth } from '../../lib/api.ts';
   import Dialog from '../../lib/components/Dialog.svelte';
   import EmptyState from '../../lib/components/EmptyState.svelte';
+  import Icon from '../../lib/components/Icon.svelte';
   import PageHead from '../../lib/components/PageHead.svelte';
   import Section from '../../lib/components/Section.svelte';
+  import WorkspaceCreateDialog from '../../lib/components/WorkspaceCreateDialog.svelte';
   import { showToast } from '../../lib/toast.svelte.ts';
   import { t } from '../../lib/vocabulary.svelte.ts';
   import type { PageProps } from './$types';
@@ -11,8 +13,10 @@
   // 自分の今日の仮の画面。枠と見出しと空の状態を部品で組み、API と画面がつながったことを示す。文言はすべて辞書を通す。
   // 今日やるタスクは API から取っていないので、件数や「所属すると並ぶ」といった事実は書かない。
   // 空の状態は管理者の場合を分ける。組織にワークスペースが1つも無いときは、最初のワークスペースを作る案内。
-  // ワークスペースはあるが所属が0件のときは、所属が無いことの案内。ワークスペースを作る画面の行き先は、その画面を作る Issue で決める
+  // ワークスペースはあるが所属が0件のときは、所属が無いことの案内。最初のワークスペースを作る案内には、作るダイアログを開くボタンを置く
   let { data }: PageProps = $props();
+
+  let createDialog = $state<ReturnType<typeof WorkspaceCreateDialog>>();
 
   const emptyKind = $derived.by(() => {
     const view = data.organization;
@@ -49,8 +53,14 @@
     <EmptyState
       icon="sun"
       title={t('firstWorkspaceTitle', { workspace: t('workspace') })}
-      text={t('firstWorkspaceText', { workspace: t('workspace'), member: t('member') })}
-    />
+      text={t('firstWorkspaceText', { workspace: t('workspace'), leader: t('leader') })}
+    >
+      {#snippet actions()}
+        <button class="btn is-sm" type="button" onclick={(event) => createDialog?.show(event.currentTarget)}>
+          <Icon name="plus" />{t('workspaceCreateAction', { workspace: t('workspace') })}
+        </button>
+      {/snippet}
+    </EmptyState>
   {:else if emptyKind === 'noMembership'}
     <EmptyState
       icon="sun"
@@ -84,6 +94,15 @@
     <button class="btn is-sm" type="button" disabled={checking} onclick={recheck}>{t('apiRecheck')}</button>
   </div>
 </Section>
+
+{#if data.organization?.me.is_admin}
+  <WorkspaceCreateDialog
+    bind:this={createDialog}
+    slug={data.slug}
+    meId={data.organization.me.id}
+    organizationVocabulary={data.organization.organization.vocabulary}
+  />
+{/if}
 
 <Dialog bind:this={detailDialog} bind:open={detailOpen} title={t('apiDetailTitle')}>
   <p>{t('apiDetailBody')}</p>

@@ -17,7 +17,7 @@
 - SQL は D1 で通る SQLite の方言で書く（部分索引、`json_valid`、`date()`、CHECK を使う）。
 - 外部キーは張る。D1 は検査が有効。`ON DELETE` は付けず、物理削除はアプリが順に行う。
 - 作成日時と更新日時は `created_at`、`updated_at` で、更新はアプリが書く。
-- 手で並べ替える並びは、分数の並び（fractional indexing）の文字列 `position` で持つ。間に入れても他の行を書き換えない。新しく入ったものは末尾の値を取る。
+- 手で並べ替える並びは、分数の並び（fractional indexing）の文字列 `position` で持つ。間に入れても他の行を書き換えない。新しく入ったものは末尾の値を取る。値は `fractional-indexing` のパッケージで作る（ワークスペースを作るときの最初の列も同じ）。
 - 集計（積載量、経験値の合計、ポイントの合計、ベロシティ）は保存せず、読むたびに計算する。
 - 1つの D1 に複数の組織を入れる。組織の中の行は、リクエストの組織から辿って引く。ID だけで行を引かず、必ず `organization_id` か、組織を確かめた `workspace_id` で絞る。他の組織の行が見えないことはテストで確かめる。
 - 表を共通の表と組織の中の表に分け、後から組織ごとにデータベースを分けられるようにしておく。決まりは「データベースの分け方」。
@@ -286,7 +286,7 @@
 | id | TEXT | PK | |
 | organization_id | TEXT | NOT NULL、FK organizations | |
 | name | TEXT | NOT NULL | |
-| timezone | TEXT | NOT NULL | IANA のタイムゾーン名。作った人のブラウザの値を既定にする |
+| timezone | TEXT | NOT NULL | IANA のタイムゾーン名。作った人のブラウザの値を既定にする。時差の表記（`+09:00` など）は受けず、`Intl.DateTimeFormat` で作れる名前を `resolvedOptions().timeZone` にそろえて保存する（`asia/tokyo` は `Asia/Tokyo`）。正式名の一覧とは突き合わせない。ブラウザが旧名（`Asia/Calcutta` など）を返すことがあるため |
 | week_start | INTEGER | NOT NULL、0〜6、既定 1 | 週の始まり。0 が日曜 |
 | vocabulary | TEXT | NOT NULL、`game` か `scrum`、既定 `game` | 言葉づかい |
 | definition_of_done_md | TEXT | | 完成の定義。空なら出さない |
@@ -295,6 +295,7 @@
 | created_at、updated_at | TEXT | NOT NULL | |
 
 - 索引: `(organization_id)`。組織のワークスペースの一覧に使う。
+- 名前は前後の空白を除いて 1〜50 字。重複は許す（一意の制約を持たず、閉じたものと同じ名前もありうるため）。
 
 ### workspace_point_rates
 
@@ -936,6 +937,7 @@ D1 は対話的なトランザクションを持たない。まとめて書く�
 | メンバーの離脱 | `memberships`、担当を外す `tasks`、`epic_party_members`、`connections`、`change_logs`。ログインできなくなったときは、続けて共通の DB の `sessions` を消す |
 | 取り込み（1件） | `tasks`（結ばれたリポジトリがあれば `repository_id` も）、`task_sources`、`task_source_payloads` |
 | 組織の作成 | 共通の DB の `organizations`、続けて組織の DB の最初の管理者の `users` |
+| ワークスペースの作成 | `workspaces`、`workspace_point_rates`（作った月、4）、`board_columns`（4行。完了の列は末尾）、`detail_fields`（1行）、最初のリーダーの `memberships`、`change_logs`（ワークスペースと所属の2行）。どの文も `INSERT ... SELECT ... WHERE EXISTS`（最初のリーダーが同じ組織にいて、無効でなく、`login_subject` がある）にし、全部入るか何も入らないかにする。何も入らなければ 404 |
 | Google の招待の URL から結ぶ | 組織の DB の `users` か `invitations`、`change_logs`（「メールアドレスで待つ指名と招待」の 6）、続けて共通の DB の `accounts` と `account_logins` |
 | 初めてのログイン | 共通の DB の `accounts` と `account_logins`、続けて組織の DB の `users.account_id`（指名で待っていた行に結ぶ）、続けて共通の DB の `sessions`。2回目以降は `account_logins` と `accounts.last_login_at` の書き直し、`users.account_id` を結び直す書き込み、`sessions` の順 |
 | 添付ファイルを上げる | R2 にファイルを書き、続けて `attachments` |

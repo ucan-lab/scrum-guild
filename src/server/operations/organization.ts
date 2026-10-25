@@ -1,3 +1,4 @@
+import { now } from '../../shared/clock.ts';
 import { myOrganizations, organizationInfo } from '../../shared/operations/organization/index.ts';
 import type { Theme } from '../../shared/theme.ts';
 import { ApiError } from '../errors.ts';
@@ -15,8 +16,8 @@ export const organizationInfoOperation = implement(organizationInfo, async ({ db
   // permission: 'organization' は users の行がある人だけを通す。型の上の null を 404 で閉じる
   const userId = actor.userId;
   if (userId === null) throw new ApiError(404, 'not_found');
-  const now = new Date();
-  const staleBefore = new Date(now.getTime() - LAST_SEEN_INTERVAL_MS).toISOString();
+  const at = now();
+  const staleBefore = new Date(at.getTime() - LAST_SEEN_INTERVAL_MS).toISOString();
 
   // 画面に返す値を読む。書き込みは混ぜず、書き込みが失敗しても画面は開く
   const [userResult, workspaceResult, anyWorkspaceResult] = await db.batch([
@@ -52,7 +53,7 @@ export const organizationInfoOperation = implement(organizationInfo, async ({ db
       db.statement((q) =>
         q
           .updateTable('users')
-          .set({ last_seen_at: now.toISOString() })
+          .set({ last_seen_at: at.toISOString() })
           .where('id', '=', userId)
           .where('organization_id', '=', db.organizationId)
           .where((eb) => eb.or([eb('last_seen_at', 'is', null), eb('last_seen_at', '<=', staleBefore)])),

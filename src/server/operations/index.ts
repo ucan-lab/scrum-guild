@@ -3,10 +3,20 @@
 import type { ImplementedOperation } from './implement.ts';
 import { myOrganizationsOperation, organizationInfoOperation } from './organization.ts';
 import { logoutOperation, meOperation } from './session.ts';
+import {
+  workspaceCreateOperation,
+  workspaceInfoOperation,
+  workspaceLeaderCandidatesOperation,
+  workspaceListOperation,
+} from './workspace.ts';
 
 export const implementedOperations: readonly ImplementedOperation[] = [
   myOrganizationsOperation,
   organizationInfoOperation,
   meOperation,
   logoutOperation,
+  workspaceCreateOperation,
+  workspaceListOperation,
+  workspaceLeaderCandidatesOperation,
+  workspaceInfoOperation,
 ];

@@ -701,6 +701,8 @@ a.choice > div > span, .choice.is-static > div > span { display: block; }
 .setting-title { font-family: var(--font-display); font-weight: var(--weight-display); font-size: var(--text-lg); }
 .setting-desc { font-size: var(--text-xs); color: var(--color-muted); line-height: 1.7; }
 .setting-body { display: grid; gap: var(--space-4); min-width: 0; align-content: start; }
+/* 入力欄を縦に並べる <form>。ダイアログの本文（.dialog-body）の中で、欄どうしの間隔を保つ */
+.form { display: grid; gap: var(--space-4); }
 .form-row { display: flex; gap: var(--space-3); flex-wrap: wrap; align-items: flex-end; }
 .form-row > .field { flex: 1 1 200px; }
 .form-actions { display: flex; gap: var(--space-2); flex-wrap: wrap; }
