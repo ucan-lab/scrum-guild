@@ -3,7 +3,6 @@
 // docs/development.md の「文書だけの PR」に書いた範囲。片方を変えるときは両方を直す
 const docsPatterns: RegExp[] = [
   /^docs\//,
-  /^HANDOFF\.md$/,
   /^CLAUDE\.md$/,
   /^\.claude\/(skills|agents|checklists)\//,
   /^\.github\/ISSUE_TEMPLATE\//,

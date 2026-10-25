@@ -1,6 +1,6 @@
 # Scrum Guild
 
-チームのタスクを集め、ゲームの仕組みで回すサービス。Cloudflare Workers（Hono、D1、R2）と SvelteKit の SPA モード。道具の選択は `docs/development.md` の「技術の選択」。今の状態と次にやることは `HANDOFF.md`。
+チームのタスクを集め、ゲームの仕組みで回すサービス。Cloudflare Workers（Hono、D1、R2）と SvelteKit の SPA モード。道具の選択は `docs/development.md` の「技術の選択」。今の状態と次にやることは GitHub の Issue で追い、自分のチームで使い始めるまでのものはマイルストーン「初版」に入れる。
 
 ## 文書
 
@@ -8,9 +8,13 @@
 | --- | --- |
 | 要件 | `docs/requirements.md` |
 | 表と列 | `docs/data-model.md` |
-| 画面とデザインの決まり | `docs/design.md`、見本は `design/` |
+| 画面とデザインの決まり | `docs/design.md`、見本は `design/`（`design/index.html` をブラウザで開く。人に見せるときは `docs/development.md` の「見本の Worker」） |
 | ブランチ、PR、CI/CD、スキルの使い分け | `docs/development.md` |
 | 本番の用意、出し方、戻し方 | `docs/operations.md` |
+| サービスにする方針、値段 | `docs/business.md`、競合との比較は `docs/competitors.md` |
+| AI の機能の案 | `docs/ai.md` |
+| 名前の決定の記録 | `docs/naming.md` |
+| 要件にする前のアイディア | `docs/ideas.md` |
 
 ## コマンド
 

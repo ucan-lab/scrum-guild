@@ -1,6 +1,6 @@
 # Scrum Guild 要件定義
 
-状態: 確定。データモデルは `data-model.md`、画面とデザインは `design.md`。引き継ぎはリポジトリ直下の `HANDOFF.md`
+状態: 確定。データモデルは `data-model.md`、画面とデザインは `design.md`。
 
 ## 名前
 

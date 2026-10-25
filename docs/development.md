@@ -197,7 +197,7 @@ Bash の判定を `permissions.deny` に置かないのは、規則が前方一�
 
 ### 今あるもの
 
-2026-10-22 に下のとおり整えた。
+2026-10-22 に下のとおり整えた。原本は `ucan-lab/claude-skills`。クラウドのセッションでも動くよう、残したスキルの GitHub の操作は REST（`gh api`）に書き換えた。レビューのエージェントとチェックリストはこのリポジトリ向けに書き直したので、原本とは別物。
 
 | スキル、エージェント | 扱い |
 | --- | --- |
@@ -218,7 +218,7 @@ Bash の判定を `permissions.deny` に置かないのは、規則が前方一�
 | スキル | 中身 | 時期 |
 | --- | --- | --- |
 | `add-operation` | 操作の定義を1つ足す型紙。定義、Hono のルート、権限のテスト、組織の分離のテスト、画面から呼ぶ口までを一続きで作る | 最初の API を作るとき |
-| `screen-review` | 画面の自己レビュー（`HANDOFF.md` の「画面の自己レビューのスキル」） | 最初の数画面が動いてから |
+| `screen-review` | 画面の自己レビュー（#74） | 最初の数画面が動いてから |
 | `incident` | 本番で壊れたときの手順。Workers Logs を読む、`wrangler rollback` で戻す、D1 の Time Travel を使う | 運用の手順書と一緒に |
 
 クラウドのセッションで依存を入れる SessionStart のフックは、上の「Claude の設定とフック」にある。
@@ -296,7 +296,7 @@ ai-review は Claude のサブスクリプションで動かす。手元で `cla
 
 ### 文書だけの PR
 
-`changes` のジョブが、PR の base と head の差分（`git diff --no-renames`）を `scripts/ci.ts` の `isDocsOnly` にかける。変わったファイルがすべて文書の範囲（`docs/`、`HANDOFF.md`、`CLAUDE.md`、`.claude/` のスキルとエージェントとチェックリスト、`.github/ISSUE_TEMPLATE/`）の `.md` に収まるときだけ、文書だけとみなす。範囲の外に置いた `.md` も、範囲の中に置いた `.md` 以外のファイル（スクリプトや設定）も文書に数えない。範囲の中のスクリプトには `needs-human` も付かないため。Workers Builds の build watch paths の Exclude も同じ範囲にする。範囲を変えるときは、この段落と `scripts/ci.ts` を同じ PR で直し、マージの前に build watch paths（`docs/operations.md` の「Workers Builds の接続」）も直す。
+`changes` のジョブが、PR の base と head の差分（`git diff --no-renames`）を `scripts/ci.ts` の `isDocsOnly` にかける。変わったファイルがすべて文書の範囲（`docs/`、`CLAUDE.md`、`.claude/` のスキルとエージェントとチェックリスト、`.github/ISSUE_TEMPLATE/`）の `.md` に収まるときだけ、文書だけとみなす。範囲の外に置いた `.md` も、範囲の中に置いた `.md` 以外のファイル（スクリプトや設定）も文書に数えない。範囲の中のスクリプトには `needs-human` も付かないため。Workers Builds の build watch paths の Exclude も同じ範囲にする。範囲を変えるときは、この段落と `scripts/ci.ts` を同じ PR で直し、マージの前に build watch paths（`docs/operations.md` の「Workers Builds の接続」）も直す。
 
 - `ci-ok` の判定の置き場所は `scripts/ci.ts` の `ciOkVerdict`。`needs` のうち `changes` 以外をすべて重いジョブとして扱うので、重いジョブを足すときは `ci-ok` の `needs` に入れるだけでよい
 - 文書だけなら check、test、migration、e2e を飛ばし、4つがすべて飛んでいれば `ci-ok` は成功
@@ -365,7 +365,7 @@ Workers Builds の API トークンは、Builds が作ったトークンの権�
 - API トークンは、Workers Builds が自動で作ったもの（`scrum-guild-design build token`。もとの名前は `team-leveling-design build token`）を使っている。2026-10-25 に、本番と同じく編集で Workers Scripts: Edit、Account Settings: Read、User Details: Read、Memberships: Read の4つに絞り、名前を改め、Retry build でデプロイが通ることを確かめた。見本は D1 を使わない。Builds の設定の「API token」には、名前を変えた後も古い名前が出る（Builds が名前を写して持っている）
 - `workers.dev` の URL を Cloudflare Access（Zero Trust の無料の枠、50人まで）で守る。Access のアプリ（`scrum-guild-design - Cloudflare Workers`）は Worker の本番とプレビューの URL を覆い、セッションは1か月。ログインの手段は Cloudflare アカウントとワンタイム PIN。版ごとのプレビュー URL は設定の `preview_urls` で作らない
 - 見る人を足すときは、Zero Trust の Access controls の Applications で見本の Worker のアプリを開き、メールアドレス（Emails）で許可する方針を足す。今の方針は Cloudflare アカウントのメンバーだけを許可する
-- 指摘はチャットで受け取り、結論を `HANDOFF.md` の「確認してほしいこと」と `docs/design.md` に移す
+- 指摘はチャットで受け取り、直すことは Issue にし、決まったことは `docs/design.md` に移す
 
 ## 本番で壊れたことに気づく
 
@@ -374,7 +374,7 @@ Workers Builds の API トークンは、Builds が作ったトークンの権�
 - Workers Logs は有効（`wrangler.jsonc` の `observability`）。呼び出しごとのログは切っているので、残るのは Worker がエラーのときに出す JSON の1行だけ。正常な呼び出しではイベントが増えない（2026-10-25 に確かめた）
 - GitHub Actions の定期実行で、1時間ごとに本番の `/api/health` と定期処理の最後の成功時刻を確かめ、落ちていたら Issue を立てる
 - Cloudflare の Platform Notifications に、Workers のエラー率の通知は無い（2026-10-25）。Observability の Monitors なら、データセット `Workers Logs`、`Workers Real-Time Issues`、`HTTP Requests` への問い合わせにしきい値を置き、メールなどへ送れる。作るのは、エラーのログの形が決まってから
-- 請求の通知は設定済み（`HANDOFF.md`）
+- 請求の通知は設定済み（`docs/operations.md` の「Cloudflare のアカウント」）
 
 ## GitHub のログインと取り込み
 

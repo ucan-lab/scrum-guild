@@ -7,7 +7,6 @@ describe('isDocsOnly', () => {
     assert.equal(
       isDocsOnly([
         'docs/development.md',
-        'HANDOFF.md',
         'CLAUDE.md',
         '.claude/skills/pr-create/SKILL.md',
         '.claude/agents/code-reviewer.md',
@@ -30,6 +29,7 @@ describe('isDocsOnly', () => {
 
   test('範囲の外に置いた .md は文書に数えない', () => {
     assert.equal(isDocsOnly(['src/README.md']), false);
+    assert.equal(isDocsOnly(['README.md']), false);
   });
 
   test('.claude/ のフックと設定は文書に数えない', () => {
@@ -42,7 +42,7 @@ describe('isDocsOnly', () => {
   });
 
   test('名前の先頭だけが似たパスは文書に数えない', () => {
-    assert.equal(isDocsOnly(['docs-old/a.md', 'HANDOFF.md.bak', 'src/docs/a.md']), false);
+    assert.equal(isDocsOnly(['docs-old/a.md', 'CLAUDE.md.bak', 'src/docs/a.md']), false);
   });
 
   test('一覧が空なら偽', () => {
@@ -50,7 +50,7 @@ describe('isDocsOnly', () => {
   });
 
   test('前に空白の付いた名前は、空白を除いた名前と別のファイルとして見る', () => {
-    assert.equal(isDocsOnly([' HANDOFF.md']), false);
+    assert.equal(isDocsOnly([' CLAUDE.md']), false);
   });
 
   test('日本語の名前の文書も文書に数える', () => {
@@ -60,9 +60,9 @@ describe('isDocsOnly', () => {
 
 describe('parseNulSeparated', () => {
   test('NUL で区切り、末尾の区切りの後の空を除く', () => {
-    assert.deepEqual(parseNulSeparated('docs/開発.md\0 HANDOFF.md\0a\nb.md\0'), [
+    assert.deepEqual(parseNulSeparated('docs/開発.md\0 CLAUDE.md\0a\nb.md\0'), [
       'docs/開発.md',
-      ' HANDOFF.md',
+      ' CLAUDE.md',
       'a\nb.md',
     ]);
   });

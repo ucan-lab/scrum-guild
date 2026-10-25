@@ -18,6 +18,8 @@
 
 - ucan-lab 用のアカウントは Workers Paid（2026-10-25 にした）。Workers & Pages の「Workers plans」で変える
 - `workers.dev` のサブドメインは `ucan-lab`。本番の URL は `https://scrum-guild.ucan-lab.workers.dev/`。Workers & Pages の Account details の Subdomain で変えられるが、変えるとアカウントのすべての Worker の URL が変わるので触らない
+- 請求の通知: 予算 $10（自動で作られていたもの）と、使用量の通知（Workers のリクエスト 500万、CPU 時間 1,500万 ms、D1 の書き込み 2,500万行）。届け先はアカウントのメール
+- Zero Trust は無料の枠で有効にしてある。チーム名は `ucan-lab`、ログインの手段にワンタイム PIN を足した。使うのは見本の Worker の Access（`docs/development.md` の「見本の Worker」）
 
 ### D1
 
@@ -27,7 +29,7 @@
 
 ### Workers Builds の接続
 
-Workers & Pages の「Create application」→「Continue with GitHub」で、リポジトリ `ucan-lab/scrum-guild` を選び、Project name を `scrum-guild`（`wrangler.jsonc` の `name` と同じ）にして作る。Worker が既にあるときは、その Worker の Settings の Builds でつなぐ。
+Workers & Pages の「Create application」→「Continue with GitHub」で、リポジトリ `ucan-lab/scrum-guild` を選び、Project name を `scrum-guild`（`wrangler.jsonc` の `name` と同じ）にして作る。Worker が既にあるときは、その Worker の Settings の Builds でつなぐ。GitHub の Cloudflare のアプリには、このリポジトリだけを許可してある。
 
 | 項目 | 値 |
 | --- | --- |
@@ -36,7 +38,7 @@ Workers & Pages の「Create application」→「Continue with GitHub」で、�
 | デプロイのコマンド | `node scripts/deploy-production.ts` |
 | ルートのディレクトリ（Path） | `/`（リポジトリのルート） |
 | preview builds（Enable Preview builds） | 無効 |
-| build watch paths | Include は `*`。Exclude は `docs/*`、`HANDOFF.md`、`CLAUDE.md`、`.claude/skills/*`、`.claude/agents/*`、`.claude/checklists/*`、`.github/ISSUE_TEMPLATE/*`（`docs/development.md` の「文書だけの PR」と同じ範囲） |
+| build watch paths | Include は `*`。Exclude は `docs/*`、`CLAUDE.md`、`.claude/skills/*`、`.claude/agents/*`、`.claude/checklists/*`、`.github/ISSUE_TEMPLATE/*`（`docs/development.md` の「文書だけの PR」と同じ範囲） |
 | API トークン | 下の「API トークン」 |
 
 - Node の版は `.node-version`、pnpm の版は `package.json` の `packageManager` から入る（2026-10-25 に確かめた）
