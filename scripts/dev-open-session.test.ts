@@ -57,6 +57,15 @@ describe('checkDevOpenSession', () => {
     }
   });
 
+  test('pnpm dev の 5xx は、wrangler dev の立て直しも案内する', async () => {
+    assert.match(
+      reasonOf(await checkDevOpenSession(target([]), {}, respond(502))),
+      /wrangler dev が止まっていれば pnpm dev/,
+    );
+    assert.doesNotMatch(reasonOf(await checkDevOpenSession(target([]), {}, respond(403))), /wrangler dev/);
+    assert.doesNotMatch(reasonOf(await checkDevOpenSession(target(['--preview']), {}, respond(500))), /wrangler dev/);
+  });
+
   test('時間切れは、立てる案内でなく答えないことを伝える', async () => {
     const reason = reasonOf(
       await checkDevOpenSession(target([]), {}, fail(new DOMException('timeout', 'TimeoutError'))),

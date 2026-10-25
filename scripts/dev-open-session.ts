@@ -54,6 +54,11 @@ export async function checkDevOpenSession(
       reason: `${target.who} のセッションが無い（seed を流していない、30日で切れた、別のワークツリーの D1 を見ている）。pnpm db:seed を流してから、もう一度打つ${operatorHint}`,
     };
   }
-  if (!res.ok) return { ok: false, reason: `${target.origin} の me が ${res.status} を返した。サーバーのログを見る` };
+  if (!res.ok) {
+    // pnpm dev は vite が /api を wrangler dev へ転送するので、wrangler dev だけが落ちていると vite が 5xx を返す
+    const proxyHint =
+      !target.preview && res.status >= 500 ? `。wrangler dev が止まっていれば ${serveCommand} を立て直す` : '';
+    return { ok: false, reason: `${target.origin} の me が ${res.status} を返した。サーバーのログを見る${proxyHint}` };
+  }
   return { ok: true };
 }
