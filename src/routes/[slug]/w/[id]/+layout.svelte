@@ -1,6 +1,7 @@
 <script lang="ts">
   import { tick, type Snippet } from 'svelte';
-  import { goto, invalidateAll } from '$app/navigation';
+  import { SvelteURLSearchParams } from 'svelte/reactivity';
+  import { goto, invalidate, invalidateAll } from '$app/navigation';
   import { resolve } from '$app/paths';
   import { page } from '$app/state';
   import Icon from '../../../../lib/components/Icon.svelte';
@@ -37,23 +38,41 @@
     return () => setWorkspaceVocabulary(null);
   });
 
-  // `?task=` を外した、今のワークスペースの画面
-  const withoutTask = () =>
-    goto(resolve('/[slug]/w/[id]', { slug: page.params.slug ?? '', id: page.params.id ?? '' }), {
+  // 今の URL から `task` だけを外した画面（ほかのクエリは残す）
+  const withoutTask = () => {
+    const rest = new SvelteURLSearchParams(page.url.search);
+    rest.delete('task');
+    const query = rest.size > 0 ? `?${rest}` : '';
+    const path = resolve('/[slug]/w/[id]', { slug: page.params.slug ?? '', id: page.params.id ?? '' });
+    // eslint-disable-next-line svelte/no-navigation-without-resolve -- 経路は resolve() で作り、残すクエリだけを足している
+    return goto(path + query, {
       replace: true,
       reset: false,
     });
+  };
 
-  async function closeDrawer(): Promise<void> {
-    const id = taskId;
-    await withoutTask();
-    await tick();
-    const row = id === null ? null : document.querySelector<HTMLElement>(`a[data-task-id="${CSS.escape(id)}"]`);
-    (row ?? document.querySelector<HTMLElement>('h1.page-title'))?.focus();
-  }
+  // 閉じたら、開いた行のリンクへフォーカスを戻す。行が無ければ（消えた、画面にまだ無い）画面の見出しへ移す。
+  // 閉じるボタンと Esc だけでなく、戻る／進むで `?task=` が外れて閉じたときも同じ。タスクが消えて閉じたときは、
+  // 木を読み直した後に見出しへ移す（removed）ので、ここでは移さない
+  let shownTaskId: string | null = null;
+  let focusAfterReload = false;
+  $effect(() => {
+    const previous = shownTaskId;
+    shownTaskId = taskId;
+    if (previous === null || taskId !== null) return;
+    if (focusAfterReload) {
+      focusAfterReload = false;
+      return;
+    }
+    void tick().then(() => {
+      const row = document.querySelector<HTMLElement>(`a[data-task-id="${CSS.escape(previous)}"]`);
+      (row ?? document.querySelector<HTMLElement>('h1.page-title'))?.focus();
+    });
+  });
 
   // タスクが消えた（削除した、見つからない）。閉じて、木を読み直し、フォーカスを見出しへ移す（戻る先の行が無いため）
   async function removed(): Promise<void> {
+    focusAfterReload = true;
     await withoutTask();
     await invalidateAll();
     await tick();
@@ -84,8 +103,9 @@
         workspaceId={workspace.id}
         {taskId}
         {canWrite}
-        onclose={() => void closeDrawer()}
-        onchanged={() => void invalidateAll()}
+        onclose={() => void withoutTask()}
+        onchanged={() => void invalidate('app:backlog-tree')}
+        onstale={() => void invalidateAll()}
         onremoved={() => void removed()}
       />
     {/key}

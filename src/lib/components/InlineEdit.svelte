@@ -21,6 +21,7 @@
     hint,
     problem,
     save,
+    normalize = (raw) => raw,
     ondirty,
     view,
   }: {
@@ -36,6 +37,8 @@
     // 画面の検査。エラーの文か、null
     problem: (raw: string) => string | null;
     save: (raw: string) => Promise<string | null>;
+    // 保存するときの整え方（前後の空白、空は同じ、など）。書きかけの判定は、整えた値どうしで比べる
+    normalize?: (raw: string) => string;
     // 書きかけがあるかが変わるたびに呼ぶ
     ondirty?: (dirty: boolean) => void;
     view: Snippet<[begin: (event: Event) => void]>;
@@ -53,8 +56,9 @@
   let trigger: HTMLElement | null = null;
   let input = $state<HTMLInputElement | HTMLTextAreaElement>();
 
+  // 書きかけは、保存と同じ整え方（normalize）の後で、保存した値と違うもの。送っている間は数えない
   $effect(() => {
-    ondirty?.(editing && draft !== value);
+    ondirty?.(editing && !saving && normalize(draft) !== normalize(value));
   });
   // 部品が外れたら（欄が読み取り専用に替わったなど）、書きかけは無くなる
   $effect(() => () => ondirty?.(false));
@@ -102,7 +106,8 @@
   }
 
   function onkeydown(event: KeyboardEvent): void {
-    if (multiline || event.key !== 'Escape' || event.isComposing) return;
+    // 変換中の Esc は変換の取り消し（keyCode 229 は、isComposing が偽になる確定直後の Esc も含む）
+    if (multiline || event.key !== 'Escape' || event.isComposing || event.keyCode === 229) return;
     event.preventDefault();
     cancel();
   }

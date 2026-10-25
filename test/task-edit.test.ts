@@ -1,12 +1,13 @@
 // タスクの詳細の読み取り、変更、削除の振る舞い。
 // 組織の分離と権限の種類ごとの許可と拒否は、一覧を回す test/operation-registry.test.ts が確かめる
 import { env } from 'cloudflare:workers';
-import { describe, expect, test } from 'vitest';
+import { afterEach, describe, expect, test } from 'vitest';
+import { setFixedNow } from '../src/shared/clock.ts';
 import { backlogTree, taskComplete, taskDelete, taskDetail, taskUpdate } from '../src/shared/operations/task/index.ts';
 import { createApp } from '../src/server/app.ts';
 import { orgDb, verifyWorkspace } from '../src/server/db/index.ts';
 import { implementedOperations } from '../src/server/operations/index.ts';
-import { taskUpdateOperation } from '../src/server/operations/task-edit.ts';
+import { taskDeleteOperation, taskUpdateOperation } from '../src/server/operations/task-edit.ts';
 import { createStory, createTask } from './factories.ts';
 import { errorCodeOf, post } from './operations/harness.ts';
 import { createPerson, createTarget, type Person, type Target } from './operations/world.ts';
@@ -380,6 +381,152 @@ describe('task-update', () => {
   });
 });
 
+// 処理を直に呼び、タスクを読む文が答えを返した直後に race を呼ぶ（n は何回目の読み取りか）。
+// 「同じ値を読んだ2つの要求が、順に書く」状況を、読み取りの後に別の要求を挟んで作る
+async function runWithRace(
+  target: Target,
+  person: Person,
+  operation: { handler: (context: never) => Promise<unknown> },
+  input: Record<string, unknown>,
+  race: (n: number, db: ReturnType<typeof orgDb>) => Promise<void>,
+) {
+  const db = orgDb(env, target.organization.verified);
+  const actor = actorOf(person);
+  const workspace = await verifyWorkspace(db, actor, target.workspace.id);
+  let reads = 0;
+  const racing = new Proxy(db, {
+    get(base, key) {
+      // 入口は #private を持つので、メソッドは本物の入口に結んで返す
+      const value = Reflect.get(base, key, base);
+      if (typeof value !== 'function') return value;
+      if (key !== 'first') return value.bind(base);
+      return async (...args: unknown[]) => {
+        const result = await (value as (...a: unknown[]) => Promise<unknown>).apply(base, args);
+        // タスクの行を返した読み取りだけを数える（閉じたかどうかの読み取りは数えない）
+        if ((result as { title?: string } | undefined)?.title !== undefined) await race(++reads, base);
+        return result;
+      };
+    },
+  });
+  const context = {
+    db: racing,
+    actor,
+    workspace,
+    input: { workspace_id: target.workspace.id, ...input },
+    defer: () => {},
+  } as never;
+  return operation.handler(context);
+}
+
+describe('履歴の二重書き（止めた時計で、同じ時刻に競った要求）', () => {
+  const FIXED = new Date('2026-10-26T01:00:00.000Z');
+  afterEach(() => setFixedNow(undefined));
+
+  test('同じ値を書く2つの更新が競っても、履歴は1行だけ', async () => {
+    setFixedNow(FIXED);
+    const target = await createTarget();
+    const task = await createTask(target.organization, target.workspace.id, target.admin.userId!, { title: '元' });
+    // 要求 B は「元」を読んだ。書く前に、要求 A が同じ時刻に同じ値へ変える。B の更新は通らず、読み直すと変える欄が無い
+    const result = (await runWithRace(
+      target,
+      target.member,
+      taskUpdateOperation,
+      { task_id: task.id, title: '新' },
+      async (n) => {
+        if (n === 1) expect((await update(target, task.id, { title: '新' }, target.leader)).status).toBe(200);
+      },
+    )) as { task: Detail };
+    expect(result.task.title).toBe('新');
+    const logs = await logsOf(target, task.id);
+    expect(logs).toHaveLength(1);
+    expect(logs[0]).toMatchObject({ actor_user_id: target.leader.userId });
+    expect(JSON.parse(logs[0]!.changes_json)).toEqual({ title: ['元', '新'] });
+  });
+
+  test('先に削除した要求があれば、同じ時刻の削除は 404 で、履歴は1行だけ', async () => {
+    setFixedNow(FIXED);
+    const target = await createTarget();
+    const task = await createTask(target.organization, target.workspace.id, target.member.userId!);
+    await expect(
+      runWithRace(target, target.member, taskDeleteOperation, { task_id: task.id }, async (n) => {
+        if (n === 1) expect((await remove(target, task.id, target.leader)).status).toBe(200);
+      }),
+    ).rejects.toMatchObject({ status: 404, code: 'not_found' });
+    const logs = await logsOf(target, task.id);
+    expect(logs).toHaveLength(1);
+    expect(logs[0]).toMatchObject({ action: 'delete', actor_user_id: target.leader.userId });
+  });
+
+  test('読んだ後に削除された更新は 404 で、更新の履歴を書かない', async () => {
+    const target = await createTarget();
+    const task = await createTask(target.organization, target.workspace.id, target.member.userId!);
+    await expect(
+      runWithRace(target, target.member, taskUpdateOperation, { task_id: task.id, title: '書き換える' }, async (n) => {
+        if (n === 1) expect((await remove(target, task.id, target.leader)).status).toBe(200);
+      }),
+    ).rejects.toMatchObject({ status: 404, code: 'not_found' });
+    expect((await logsOf(target, task.id)).map((log) => log.action)).toEqual(['delete']);
+  });
+
+  test('負け続けてやり直しが尽きたら 409 の conflict で、自分の履歴は書かない', async () => {
+    const target = await createTarget();
+    const task = await createTask(target.organization, target.workspace.id, target.admin.userId!, { title: '元' });
+    await expect(
+      runWithRace(target, target.member, taskUpdateOperation, { task_id: task.id, title: '自分の値' }, async (n) => {
+        // 1周に2回読む（書く前の読み取りと、書けなかった後の存在の確かめ）ので、書く前の読み取り（奇数回）のたびに、別の要求が違う値へ変える
+        if (n % 2 === 0) return;
+        expect((await update(target, task.id, { title: `別の値 ${n}` }, target.leader)).status).toBe(200);
+      }),
+    ).rejects.toMatchObject({ status: 409, code: 'conflict' });
+    const titles = (await logsOf(target, task.id)).map((log) => JSON.parse(log.changes_json).title[1]);
+    expect(titles).toEqual(['別の値 1', '別の値 3', '別の値 5']);
+  });
+
+  test.each([
+    ['更新', taskUpdateOperation, { title: '書き換える' }],
+    ['削除', taskDeleteOperation, {}],
+  ] as const)(
+    '読んだ後にワークスペースが閉じたら、%s は何も書かず 409 の workspace_closed',
+    async (_name, operation, extra) => {
+      const target = await createTarget();
+      const task = await createTask(target.organization, target.workspace.id, target.member.userId!);
+      await expect(
+        runWithRace(target, target.member, operation, { task_id: task.id, ...extra }, async (n, db) => {
+          if (n !== 1) return;
+          await db.run(
+            db.statement((q) =>
+              q
+                .updateTable('workspaces')
+                .set({ closed_at: '2026-10-22T00:00:00.000Z' })
+                .where('id', '=', target.workspace.id)
+                .where('organization_id', '=', target.organization.id),
+            ),
+          );
+        }),
+      ).rejects.toMatchObject({ status: 409, code: 'workspace_closed' });
+      expect(await rowOf(target, task.id)).toEqual(task);
+      expect(await logsOf(target, task.id)).toEqual([]);
+    },
+  );
+});
+
+describe('task-update の空の値', () => {
+  test('空の本文と空白だけのリンクは null になり、履歴は [前, null]', async () => {
+    const target = await createTarget();
+    const task = await createTask(target.organization, target.workspace.id, target.admin.userId!, {
+      body_md: '元の本文',
+      link_url: 'https://example.com/old',
+    });
+    const res = await update(target, task.id, { body_md: '', link_url: ' ' });
+    expect(res.status).toBe(200);
+    expect(await rowOf(target, task.id)).toMatchObject({ body_md: null, link_url: null });
+    expect(JSON.parse((await logsOf(target, task.id))[0]!.changes_json)).toEqual({
+      body_md: ['元の本文', null],
+      link_url: ['https://example.com/old', null],
+    });
+  });
+});
+
 describe('task-delete', () => {
   test('作った人は削除できる。論理削除で、削除の履歴を残し、木と詳細から消える', async () => {
     const target = await createTarget();
@@ -432,14 +579,33 @@ describe('task-delete', () => {
     const gone = await createTask(target.organization, target.workspace.id, target.member.userId!, {
       deleted_at: '2026-10-21T00:00:00.000Z',
     });
-    for (const id of [foreignTask.id, gone.id]) {
+    // 同じ組織の別のワークスペースのタスク
+    const elsewhere = await createTask(target.organization, target.otherWorkspace.id, target.member.userId!);
+    for (const id of [foreignTask.id, gone.id, elsewhere.id]) {
       const res = await remove(target, id, target.member);
       expect(res.status, id).toBe(404);
       expect(await errorCodeOf(res)).toBe('not_found');
     }
     expect((await rowOf(foreign, foreignTask.id))!.deleted_at).toBeNull();
+    expect((await rowOf({ ...target, workspace: target.otherWorkspace }, elsewhere.id))!.deleted_at).toBeNull();
     // 削除済みを続けて削除しても、履歴は増えない
     expect(await logsOf(target, gone.id)).toEqual([]);
+  });
+
+  test('取り込んだタスクは、権限があっても 409 の conflict で削除できず、can_delete も偽。何も書かない', async () => {
+    const target = await createTarget();
+    const task = await createTask(target.organization, target.workspace.id, target.admin.userId!, {
+      is_imported: 1,
+      created_by: null,
+    });
+    for (const person of [target.leader, target.admin]) {
+      const res = await remove(target, task.id, person);
+      expect(res.status).toBe(409);
+      expect(await errorCodeOf(res)).toBe('conflict');
+      expect(((await (await detail(target, task.id, person)).json()) as { task: Detail }).task.can_delete).toBe(false);
+    }
+    expect(await rowOf(target, task.id)).toEqual(task);
+    expect(await logsOf(target, task.id)).toEqual([]);
   });
 
   test('経験値の付いたタスクも論理削除で、完了の記録と経験値は残る。ストーリーの合計からは外れる', async () => {

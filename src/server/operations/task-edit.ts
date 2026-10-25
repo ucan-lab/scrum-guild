@@ -1,6 +1,6 @@
 import { now } from '../../shared/clock.ts';
 import { taskDelete, taskDetail, taskUpdate, type TaskDetail } from '../../shared/operations/task/index.ts';
-import type { OrganizationDb, VerifiedWorkspace } from '../db/index.ts';
+import { previousStatementChanged, type OrganizationDb, type VerifiedWorkspace } from '../db/index.ts';
 import { ApiError } from '../errors.ts';
 import { uuidv7 } from '../uuid.ts';
 import { implement } from './implement.ts';
@@ -38,8 +38,8 @@ async function readTask(db: OrganizationDb, workspaceId: string, taskId: string)
 
 type TaskRow = NonNullable<Awaited<ReturnType<typeof readTask>>>;
 
-// 削除できるのは、作った人とリーダー（管理者を含む）
-function canDelete(
+// 削除する権限。作った人とリーダー（管理者を含む）
+function mayDelete(
   task: Pick<TaskRow, 'created_by'>,
   actor: { userId: string | null; isAdmin: boolean },
   workspace: VerifiedWorkspace,
@@ -47,6 +47,15 @@ function canDelete(
   return (
     actor.isAdmin || workspace.actorRole === 'leader' || (actor.userId !== null && task.created_by === actor.userId)
   );
+}
+
+// 削除できるか。取り込んだタスクは削除で片付けず、アーカイブで外す（docs/requirements.md の「削除」）ので、権限があっても削除できない
+function canDelete(
+  task: Pick<TaskRow, 'created_by' | 'is_imported'>,
+  actor: { userId: string | null; isAdmin: boolean },
+  workspace: VerifiedWorkspace,
+): boolean {
+  return task.is_imported === 0 && mayDelete(task, actor, workspace);
 }
 
 function detailOf(
@@ -159,8 +168,7 @@ export const taskUpdateOperation = implement(taskUpdate, async ({ db, actor, wor
             ]),
           ),
       ),
-      // 自分の更新が通ったときだけ履歴を書く。更新が通らなかったときは、行が書いた値と同じになっていても、
-      // 自分の更新ではない同じ時刻の行を拾わないよう、書いた値の一致も条件にする
+      // 直前の更新が行を変えたときだけ履歴を書く（負けた要求は、止めた時計で同じ値を書いていても、履歴を書かない）
       db.statement((q) =>
         q
           .insertInto('change_logs')
@@ -178,29 +186,7 @@ export const taskUpdateOperation = implement(taskUpdate, async ({ db, actor, wor
                 eb.val(JSON.stringify(changes)).as('changes_json'),
                 eb.val(updatedAt).as('created_at'),
               ])
-              .where((eb) =>
-                eb.and([
-                  eb.exists(
-                    eb
-                      .selectFrom('tasks')
-                      .select('tasks.id')
-                      .where((sb) =>
-                        sb.and([
-                          sb('tasks.id', '=', taskId),
-                          sb('tasks.workspace_id', '=', workspaceId),
-                          sb('tasks.deleted_at', 'is', null),
-                          sb('tasks.updated_at', '=', updatedAt),
-                          ...(values.title === undefined ? [] : [sb('tasks.title', 'is', values.title)]),
-                          ...(values.points === undefined ? [] : [sb('tasks.points', 'is', values.points)]),
-                          ...(values.due_on === undefined ? [] : [sb('tasks.due_on', 'is', values.due_on)]),
-                          ...(values.link_url === undefined ? [] : [sb('tasks.link_url', 'is', values.link_url)]),
-                          ...(values.body_md === undefined ? [] : [sb('tasks.body_md', 'is', values.body_md)]),
-                        ]),
-                      ),
-                  ),
-                  eb.exists(openWorkspace(eb, organizationId, workspaceId)),
-                ]),
-              ),
+              .where(previousStatementChanged),
           ),
       ),
     ]);
@@ -229,7 +215,9 @@ export const taskDeleteOperation = implement(taskDelete, async ({ db, actor, wor
     await throwIfClosed(db, workspaceId);
     throw new ApiError(404, 'not_found');
   }
-  if (!canDelete(task, actor, workspace)) throw new ApiError(403, 'forbidden');
+  if (!mayDelete(task, actor, workspace)) throw new ApiError(403, 'forbidden');
+  // 取り込んだタスクはアーカイブで外す。削除は手で作ったタスクだけ
+  if (task.is_imported === 1) throw new ApiError(409, 'conflict');
 
   const at = now();
   const deletedAt = at.toISOString();
@@ -247,7 +235,7 @@ export const taskDeleteOperation = implement(taskDelete, async ({ db, actor, wor
           ]),
         ),
     ),
-    // 自分の削除が通ったときだけ履歴を書く
+    // 直前の削除が行を変えたときだけ履歴を書く（先に削除した要求があれば、止めた時計でも書かない）
     db.statement((q) =>
       q
         .insertInto('change_logs')
@@ -265,19 +253,7 @@ export const taskDeleteOperation = implement(taskDelete, async ({ db, actor, wor
               eb.val(JSON.stringify({ deleted_at: [null, deletedAt] })).as('changes_json'),
               eb.val(deletedAt).as('created_at'),
             ])
-            .where((eb) =>
-              eb.and([
-                eb.exists(
-                  eb
-                    .selectFrom('tasks')
-                    .select('tasks.id')
-                    .where('tasks.id', '=', taskId)
-                    .where('tasks.workspace_id', '=', workspaceId)
-                    .where('tasks.deleted_at', '=', deletedAt),
-                ),
-                eb.exists(openWorkspace(eb, organizationId, workspaceId)),
-              ]),
-            ),
+            .where(previousStatementChanged),
         ),
     ),
   ]);

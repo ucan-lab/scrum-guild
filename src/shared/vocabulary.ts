@@ -773,7 +773,24 @@ export const dictionary = defineDictionary({
   ),
   dueClear: organization('クリア', 'クリア'),
   // 完了したタスクのポイントは直せない（経験値とスプリントの集計が、完了の記録の値を使うため）
-  taskPointsLocked: workspace('{done}を戻すと直せます', '{done}を戻すと直せます'),
+  taskPointsLocked: workspace('{done}した{task}の{points}は直せません', '{done}した{task}の{points}は直せません'),
+  // 取り込んだタスクは、タイトルとリンクを直せず、削除でなくアーカイブで外す（取り込み元のキーと期限は、取り込みの Issue で足す）
+  taskImportedNote: workspace(
+    '取り込んだ{task}のタイトルは、ここでは直せません',
+    '取り込んだ{task}のタイトルは、ここでは直せません',
+  ),
+  taskImportedLocked: workspace(
+    '取り込んだ{task}のタイトルとリンクは直せません。',
+    '取り込んだ{task}のタイトルとリンクは直せません。',
+  ),
+  taskImportedNoDelete: workspace(
+    '取り込んだ{task}は削除せず、{archive}へ移して外します。',
+    '取り込んだ{task}は削除せず、{archive}へ移して外します。',
+  ),
+  taskSaveRaced: organization(
+    'ほかの人が同時に直したため、保存できませんでした。最新の内容を読み直したので、もう一度試してください。',
+    'ほかの人が同時に直したため、保存できませんでした。最新の内容を読み直したので、もう一度試してください。',
+  ),
   taskSaved: organization('保存しました', '保存しました'),
   taskSaving: organization('保存しています', '保存しています'),
   taskSaveFailed: organization(

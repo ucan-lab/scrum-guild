@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { Snippet } from 'svelte';
+  import { MediaQuery } from 'svelte/reactivity';
   import { drawerState } from '../drawer.svelte.ts';
   import { inertOutside } from '../inert-outside.ts';
   import { modalState } from '../toast.svelte.ts';
@@ -33,8 +34,12 @@
   let scrimElement = $state<HTMLElement>();
   let closeButton = $state<HTMLButtonElement>();
 
-  const modal = $derived(!drawerState.full);
-  const sizeLabel = $derived(drawerState.full ? t('drawerShrink') : t('drawerExpand'));
+  // 引き出しがもともと全幅になる 620px 以下では、広げた形を無視して横に出した形（モーダル）として扱う。
+  // 広げても見た目が変わらず、左のメニューも覆われているので、幕と inert で外側を操作できなくするのが正しい
+  const narrow = new MediaQuery('max-width: 620px');
+  const full = $derived(drawerState.full && !narrow.current);
+  const modal = $derived(!full);
+  const sizeLabel = $derived(full ? t('drawerShrink') : t('drawerExpand'));
 
   $effect(() => {
     closeButton?.focus();
@@ -51,7 +56,9 @@
 
 <svelte:window
   onkeydown={(event) => {
-    if (event.key !== 'Escape' || event.isComposing || event.defaultPrevented || modalState.openCount > 0) return;
+    // 日本語の変換中の Esc は変換の取り消し。keyCode 229 は、isComposing が偽になる Safari の変換確定の直後の Esc も含む
+    if (event.key !== 'Escape' || event.isComposing || event.keyCode === 229) return;
+    if (event.defaultPrevented || modalState.openCount > 0) return;
     event.preventDefault();
     onrequestclose();
   }}
@@ -61,7 +68,7 @@
 <div class="scrim" bind:this={scrimElement} aria-hidden="true" onclick={onrequestclose}></div>
 <div
   class="drawer"
-  class:is-full={drawerState.full}
+  class:is-full={full}
   bind:this={drawerElement}
   role="dialog"
   aria-modal={modal}
@@ -76,9 +83,9 @@
         type="button"
         aria-label={sizeLabel}
         title={sizeLabel}
-        onclick={() => (drawerState.full = !drawerState.full)}
+        onclick={() => (drawerState.full = !full)}
       >
-        <Icon name={drawerState.full ? 'shrink' : 'expand'} />
+        <Icon name={full ? 'shrink' : 'expand'} />
       </button>
       <button
         class="pill drawer-close"

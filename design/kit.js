@@ -615,7 +615,9 @@ const looooooooooooooooooooooooooooooooooongLine = "コードの長い1行は、
   // ---- タスクの詳細（右から出る引き出し。左のメニューを残して広げられる） ----
   // full は開き直しても残し、次に開くタスクも同じ広さで出す
   // editing は直している途中の欄（title、link、body）。欄ごとに別々に開け、保存か取り消しで閉じる
-  const drawer = { id: null, tab: "comments", thanked: new Set(), opener: null, full: false, editing: new Set() };
+  // view は見本の状態の切り替え（読み込み中、読めない、閉じたワークスペースの読み取り専用）。errors は欄の下に出す理由
+  const drawer = { id: null, tab: "comments", thanked: new Set(), opener: null, full: false, editing: new Set(), view: null, errors: {}, drafts: {} };
+  const drawerReadOnly = () => drawer.view === "readonly";
   function drawerSizeBtn() {
     const label = drawer.full ? "横に戻す" : "広げる";
     return `<button class="pill drawer-size" type="button" data-drawer-size aria-label="${label}" title="${label}">${icon(drawer.full ? "shrink" : "expand")}</button>`;
@@ -626,40 +628,50 @@ const looooooooooooooooooooooooooooooooooongLine = "コードの長い1行は、
     return `<div class="edit-actions"><button class="btn is-primary is-sm" type="button" data-drawer-save="${name}">保存</button><button class="btn is-sm is-quiet" type="button" data-drawer-cancel="${name}">取り消し</button></div>`;
   }
   function drawerTitleHtml(x) {
+    if (drawerReadOnly()) return `<h2 class="drawer-title"><span id="drawer-title">${titleOf(x)}</span></h2>`;
     if (drawer.editing.has("title")) {
       return `<h2 class="visually-hidden"><span id="drawer-title">${titleOf(x)}</span></h2>
         <div class="edit-form"><label class="field" for="drawer-edit-title"><span class="field-label visually-hidden">タイトル</span>
           <input class="input" id="drawer-edit-title" data-drawer-input="title" value="${esc(x.title)}" autocomplete="off"></label>${editActions("title")}</div>`;
     }
-    // 取り込み元のタイトルは、ここでは変えられない
-    if (x.src) return `<h2 class="drawer-title"><span id="drawer-title">${titleOf(x)}</span></h2>`;
+    // 取り込み元のタイトルは、ここでは変えられない（押せないことを添える）
+    if (x.src) return `<h2 class="drawer-title"><span id="drawer-title">${titleOf(x)}</span></h2><span class="props-note">取り込んだ${t("task")}のタイトルは、ここでは直せません</span>`;
     return `<h2 class="drawer-title"><button class="edit-trigger" type="button" data-drawer-edit="title"><span id="drawer-title">${titleOf(x)}</span>${icon("pen")}<span class="visually-hidden">（押して${t("task")}のタイトルを直す）</span></button></h2>`;
   }
+  // 完了したタスクのポイントと、閉じたワークスペースは読み取り専用。薄めず（is-readonly）、鍵と理由の文で示す
   function drawerPointsHtml(x) {
-    const locked = !!x.doneAt;
+    const locked = !!x.doneAt || drawerReadOnly();
     const choices = ["", 0, 1, 2, 3, 5, 8, 13].map((v) => `<label><input type="radio" name="drawer-pts" value="${v}" data-drawer-pts${v === "" ? ` aria-label="未見積もり"` : ""}${String(x.pts ?? "") === String(v) ? " checked" : ""}${locked ? " disabled" : ""}><span>${v === "" ? "未" : v}</span></label>`).join("");
-    return `<div class="segmented" role="radiogroup" aria-label="${t("points")}">${choices}</div>${locked ? `<span class="props-note">${t("done")}を戻すと直せます</span>` : ""}`;
+    const reason = x.doneAt ? `<span class="props-note" id="drawer-pts-reason">${icon("lock")}${t("done")}した${t("task")}の${t("points")}は直せません</span>` : "";
+    return `<div class="segmented${locked ? " is-readonly" : ""}" role="radiogroup" aria-label="${t("points")}"${x.doneAt ? ` aria-describedby="drawer-pts-reason"` : ""}>${choices}</div>${reason}`;
   }
   function drawerDueHtml(x) {
     const d = dueOf(x);
+    // 閉じたワークスペースでは、入力欄にせず文字で出す（空は「—」）
+    if (drawerReadOnly()) return `<span>${x.due || "—"}</span>`;
     return `<input class="input" type="date" data-drawer-due aria-label="${t("due")}" value="${x.due || ""}">
       ${x.due ? `<button class="link-btn" type="button" data-drawer-due-clear>クリア</button>` : ""}
-      ${d ? taskDue(x) : ""}${d && d.fromSource ? `<span class="props-note">取り込み元の期限。ここでは変えられません</span>` : ""}`;
+      ${d ? taskDue(x) : ""}${d && d.fromSource ? `<span class="props-note">取り込み元の期限。ここでは変えられません</span>` : ""}
+      ${drawer.errors.due ? `<span class="field-error" role="alert">${icon("alert")}${drawer.errors.due}</span>` : ""}`;
   }
   function drawerLinkHtml(x) {
+    const open = x.link ? `<a class="btn is-sm" href="${esc(x.link)}" target="_blank" rel="noopener noreferrer" aria-label="リンクを新しいタブで開く">開く</a>` : "";
+    if (drawerReadOnly()) return x.link ? `<span class="source-key">${icon("link")} ${esc(x.link)}</span>${open}` : "—";
     if (drawer.editing.has("link")) {
-      return `<div class="edit-form"><label class="field" for="drawer-edit-link"><span class="field-label visually-hidden">リンク</span>
-        <input class="input" id="drawer-edit-link" type="url" data-drawer-input="link" placeholder="https://" value="${esc(x.link || "")}" autocomplete="off"></label>${editActions("link")}</div>`;
+      // 直している間は「開く」を出さない
+      return `<div class="edit-form"><div class="field${drawer.errors.link ? " is-invalid" : ""}"><label class="field-label visually-hidden" for="drawer-edit-link">リンク</label>
+        <input class="input" id="drawer-edit-link" type="url" data-drawer-input="link" placeholder="https://" value="${esc(drawer.drafts.link ?? x.link ?? "")}" autocomplete="off">
+        ${drawer.errors.link ? `<span class="field-error" role="alert">${icon("alert")}${drawer.errors.link}</span>` : ""}</div>${editActions("link")}</div>`;
     }
     const shown = x.link ? `<span class="source-key">${icon("link")} ${esc(x.link)}</span>` : `<span>リンクを足す</span>`;
-    return `<button class="edit-trigger${x.link ? "" : " is-empty"}" type="button" data-drawer-edit="link">${shown}${icon("pen")}<span class="visually-hidden">（押してリンクを直す）</span></button>
-      ${x.link ? `<a class="btn is-sm" href="${esc(x.link)}" target="_blank" rel="noopener noreferrer" aria-label="リンクを新しいタブで開く">開く</a>` : ""}`;
+    return `<button class="edit-trigger${x.link ? "" : " is-empty"}" type="button" data-drawer-edit="link">${shown}${icon("pen")}<span class="visually-hidden">（押してリンクを直す）</span></button>${open}`;
   }
   function drawerBodyHtml(x) {
+    if (drawerReadOnly()) return `<div class="field"><span class="field-label">本文</span><div class="doc-box${x.body ? "" : " is-empty"}">${x.body ? mdBody(x.body) : "まだ書かれていません。"}</div></div>`;
     if (x.src) return `<div class="field"><span class="field-label">本文</span><div class="doc-box"><p class="props-note">取り込み元の本文は <span class="mono">${esc(x.src.key)}</span> で開いて読みます。ここには Scrum Guild のメモを書けます。</p></div></div>`;
     if (drawer.editing.has("body")) {
       return `<div class="field"><label class="field-label" for="drawer-edit-body">本文</label>
-        <div class="edit-form"><textarea class="textarea" id="drawer-edit-body" data-drawer-input="body" aria-describedby="drawer-edit-body-hint">${esc((x.body || []).join("\n"))}</textarea>
+        <div class="edit-form"><textarea class="textarea" id="drawer-edit-body" data-drawer-input="body" aria-describedby="drawer-edit-body-hint">${esc(drawer.drafts.body ?? (x.body || []).join("\n"))}</textarea>
           <span class="field-hint" id="drawer-edit-body-hint">Markdown で書けます。見出しは <code>#</code> が小見出しの大きさから始まります。</span>${editActions("body")}</div></div>`;
     }
     return `<div class="field"><div class="field-head"><span class="field-label">本文</span><button class="btn is-sm" type="button" data-drawer-edit="body">${icon("pen")}編集</button></div>
@@ -678,6 +690,7 @@ const looooooooooooooooooooooooooooooooooongLine = "コードの長い1行は、
       ? `<div class="doc-box is-empty">まだ書かれていません。${t("task")}を完了にした時点ですべて埋まっていると、最後に書いた人に経験値が付きます。</div>`
       : `<div class="doc-box"><ul>${(parent ? parent.ac.slice(0, 2) : ["結果を確かめる手順が書かれている"]).map((a) => `<li>${esc(a)}</li>`).join("")}</ul></div>`;
     const HIST = { column: t("column"), points: t("points"), sprint: t("sprint"), create: "作成" };
+    if (drawer.view === "loading" || drawer.view === "failed") return drawerStateHtml();
     return `
       <div class="drawer-top">
         <span class="chip">${icon(x.src ? SRC[x.src.kind].icon : "pen")}${x.src ? SRC[x.src.kind].label : `手で作った${t("task")}`}</span>
@@ -687,6 +700,7 @@ const looooooooooooooooooooooooooooooooooongLine = "コードの長い1行は、
           <button class="pill drawer-close" type="button" data-close-drawer aria-label="閉じる">${icon("x")}</button>
         </span>
       </div>
+      ${drawerReadOnly() ? `<div class="callout is-info">${icon("shield")}<span>閉じた${t("workspace")}の${t("task")}は、読み取りだけできます</span></div>` : ""}
       ${drawerTitleHtml(x)}
       ${x.srcDone && !x.doneAt ? `<div class="callout is-ok">${icon("check")}<span>取り込み元で完了になりました。完了にするかはここで決めます。</span></div>` : ""}
       <dl class="props">
@@ -741,34 +755,62 @@ const looooooooooooooooooooooooooooooooooongLine = "コードの長い1行は、
         </div>` : `
         <ul class="history">${history.map((h) => `<li><span class="mono">${h[0]}</span>${avatarOf(h[1])}<span>${esc(user(h[1]).name)}</span><span class="props-note">${HIST[h[2]]}</span><span>${esc(h[3])}</span></li>`).join("") || `<li class="props-note">まだ変更はありません。</li>`}</ul>`}
       </div>
-      <div class="form-actions">${x.src
-        ? `<button class="btn is-sm is-quiet" type="button" data-toast="${t("archive")}へ移しました">${icon("archive")}${t("archive")}へ移す</button>`
-        : `<button class="btn is-sm is-quiet is-danger" type="button" data-dialog="deleteTask">${icon("trash")}この${t("task")}を削除する</button><span class="field-hint">削除できるのは作った人と${t("leader")}です。</span>`}</div>`;
+      ${drawerReadOnly() ? "" : `<div class="form-actions">${x.src
+        ? `<button class="btn is-sm is-quiet" type="button" data-toast="${t("archive")}へ移しました">${icon("archive")}${t("archive")}へ移す</button><span class="field-hint">取り込んだ${t("task")}は削除せず、${t("archive")}へ移して外します。</span>`
+        // 作った人とリーダーには削除のボタンだけを出す。一般のメンバーには、ボタンの代わりに「削除できるのは作った人と${t("leader")}です。」だけを添える
+        : `<button class="btn is-sm is-quiet is-danger" type="button" data-dialog="deleteTask">${icon("trash")}この${t("task")}を削除する</button>`}</div>`}`;
+  }
+  // 引き出しの見本の状態。読み込み中と、読めなかったとき（もう一度試す）は、見出しと文だけ
+  function drawerStateHtml() {
+    const x = task(drawer.id);
+    const top = `<div class="drawer-top"><span class="drawer-tools">${drawerSizeBtn()}<button class="pill drawer-close" type="button" data-close-drawer aria-label="閉じる">${icon("x")}</button></span></div>
+      <h2 class="drawer-title"><span id="drawer-title">${t("task")}</span></h2>`;
+    if (drawer.view === "loading") return `${top}<p class="field-hint">読み込んでいます</p>`;
+    return `${top}<div class="callout is-danger" role="alert">${icon("alert")}<span>この${t("task")}を読み込めませんでした。もう一度試してください。</span></div>
+      <div class="form-actions"><button class="btn" type="button">もう一度試す</button></div>`;
   }
   function openDrawer(id, opener) {
-    drawer.id = id; drawer.tab = "comments"; drawer.thanked = new Set(); drawer.opener = opener || null; drawer.editing = new Set();
+    drawer.id = id; drawer.tab = "comments"; drawer.thanked = new Set(); drawer.opener = opener || null; drawer.editing = new Set(); drawer.errors = {}; drawer.drafts = {};
     renderDrawer();
     document.querySelector("[data-close-drawer]")?.focus();
   }
-  // 書きかけ（直している途中の欄）があるときは、捨てるかをダイアログで確かめる。force は捨てると決めた後
+  // 直している欄の今の入力。再描画しても書きかけを残すため、描き直す前に写す
+  function captureDrafts() {
+    document.querySelectorAll("#drawer [data-drawer-input]").forEach((input) => { drawer.drafts[input.dataset.drawerInput] = input.value; });
+  }
+  // 書きかけ: 直している途中で、入力が保存した値と違う欄（保存と同じく前後の空白は除いて比べる）
+  function drawerHasDraft() {
+    const x = task(drawer.id);
+    if (!x) return false;
+    captureDrafts();
+    const saved = { title: x.title, link: x.link || "", body: (x.body || []).join("\n") };
+    return [...drawer.editing].some((name) => (drawer.drafts[name] ?? saved[name]).trim() !== saved[name].trim());
+  }
+  // 書きかけがあるときは、捨てるかをダイアログで確かめる。force は捨てると決めた後
   function closeDrawer(force = false) {
-    if (!force && drawer.editing.size > 0) { DIALOGS.discardDraft(); return; }
-    drawer.id = null; drawer.editing = new Set();
+    if (!force && drawerHasDraft()) { DIALOGS.discardDraft(); return; }
+    drawer.id = null; drawer.editing = new Set(); drawer.errors = {}; drawer.drafts = {};
     renderDrawer();
     const back = drawer.opener && document.querySelector(`[data-task="${drawer.opener}"]`);
     if (back) back.focus();
   }
   const focusDrawerInput = (name) => document.querySelector(`#drawer [data-drawer-input="${name}"]`)?.focus();
   const focusDrawerTrigger = (name) => document.querySelector(`#drawer [data-drawer-edit="${name}"]`)?.focus();
-  function cancelDrawerEdit(name) { drawer.editing.delete(name); renderDrawer(); focusDrawerTrigger(name); }
+  function cancelDrawerEdit(name) { drawer.editing.delete(name); delete drawer.drafts[name]; delete drawer.errors[name]; renderDrawer(); focusDrawerTrigger(name); }
   function saveDrawerEdit(name) {
     const x = task(drawer.id), input = document.querySelector(`#drawer [data-drawer-input="${name}"]`);
     if (!x || !input) return;
     const value = input.value.trim();
     if (name === "title") { if (!value) return; x.title = value; }
-    else if (name === "link") x.link = value || null;
-    else x.body = value ? value.split("\n") : null;
-    drawer.editing.delete(name);
+    else if (name === "link") {
+      // リンクは http と https の URL だけ（本番の判定と同じ）。断ったら、欄の下に理由を出して、入力を残す
+      if (value && !/^https?:\/\/\S+$/i.test(value)) {
+        drawer.drafts.link = input.value; drawer.errors.link = "http か https で始まる URL を入れてください";
+        renderDrawer(); focusDrawerInput("link"); return;
+      }
+      x.link = value || null;
+    } else x.body = value ? value.split("\n") : null;
+    drawer.editing.delete(name); delete drawer.drafts[name]; delete drawer.errors[name];
     redrawAll(); toast(`${icon("check")}保存しました`); focusDrawerTrigger(name);
   }
   // ポイントと期日は、選んだら保存する（保存のボタンは無い）
@@ -789,7 +831,7 @@ const looooooooooooooooooooooooooooooooooongLine = "コードの長い1行は、
     const el = document.getElementById("drawer"), scrim = document.getElementById("scrim");
     if (!el) return;
     applyDrawerSize(el);
-    if (drawer.id) { el.innerHTML = drawerHtml(); el.hidden = false; scrim.hidden = false; }
+    if (drawer.id) { captureDrafts(); el.innerHTML = drawerHtml(); el.hidden = false; scrim.hidden = false; }
     else { el.innerHTML = ""; el.hidden = true; scrim.hidden = true; }
     const ctx = document.querySelector("#assist-panel .assist-context");
     if (ctx) ctx.outerHTML = assistCtx();
@@ -949,11 +991,12 @@ const looooooooooooooooooooooooooooooooooongLine = "コードの長い1行は、
         `<button class="btn is-primary" type="button" data-close-dialog>書き続ける</button><button class="btn is-danger" type="button" data-discard-draft>捨てる</button>`);
       document.querySelector(".dialog-sheet").classList.add("is-danger");
     },
+    // 引き出しの外（カタログ）から開いたときは、見本のタスクを指し、削除は実行しない。長いタイトルは折り返す
     deleteTask: () => {
       openDialog(`${t("task")}を削除する`,
-        `<p>「${esc(task(drawer.id).title)}」を削除します。削除したものは画面から消え、この版では戻せません。</p>
+        `<p>「${esc(task(drawer.id || "t1").title)}」を削除します。削除したものは画面から消え、この版では戻せません。</p>
          <p class="field-hint">完了の記録と経験値は残ります。</p>`,
-        `<button class="btn is-primary" type="button" data-close-dialog>やめる</button><button class="btn is-danger" type="button" data-delete-task>削除する</button>`);
+        `<button class="btn is-primary" type="button" data-close-dialog>やめる</button><button class="btn is-danger" type="button" ${drawer.id ? "data-delete-task" : `data-close-dialog data-toast="削除しました"`}>削除する</button>`);
       document.querySelector(".dialog-sheet").classList.add("is-danger");
     },
     deleteEpic: () => {

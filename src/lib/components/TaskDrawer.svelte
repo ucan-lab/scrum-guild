@@ -23,13 +23,15 @@
 
   // タスクの詳細の引き出しの中身（kit.js の drawerHtml）。`?task=<ID>` が付いている間、画面の枠（/[slug]/w/[id] のレイアウト）が置く。
   // 開いたら task-detail で1件を読む（本文は長いので、木には載せない）。読んでいる間は読み込み中を出し、読めなければ
-  // （404 以外）もう一度試すを出す。404 は、トーストで知らせて閉じ、画面が木を読み直す（onremoved）。
+  // （404 以外）もう一度試すを出す（フォーカスもそこへ置く）。404 は、トーストで知らせて閉じ、画面が木を読み直す（onremoved）。
   // 欄ごとに、その場で直す。ポイントと期日は選んだら保存し、タイトル、リンク、本文は InlineEdit で確定する（本文は Markdown の部品で描く）。
   // 送る欄は、今の値と違うものだけ。保存したら、その欄だけを応答で入れ替え、画面が木を読み直す（onchanged）。
-  // 完了したタスクのポイントは直せない（欄を読み取り専用にして理由を添える）。取り込んだタスクのタイトルとリンクも直せない。
+  // ポイントの保存は1本ずつ送る。送っている間に選び直したら、最後の選択だけを溜め、送り終えた後に送る（矢印キーで動かしても要求が飛び交わず、
+  // 応答の順が前後しない）。期日は、年が4桁そろった値だけを、少し待ってから（カレンダーで選んだとき）か、欄を離れる／Enter で保存する。
+  // 完了したタスクのポイントは直せない（欄を読み取り専用にして理由を添える）。取り込んだタスクのタイトルとリンクと削除も直せない。
   // 閉じたワークスペース（canWrite が偽）では、直す口と削除を出さず、読み取り専用で開く。
-  // 書きかけ（タイトル、リンク、本文の直している途中で、値が保存した値と違うもの）があるまま閉じる（×、幕、Esc）か、別のタスクや別の画面へ移る
-  // （beforeNavigate）ときは、捨てるかをアプリの中のダイアログで確かめる。捨てると決めたら、閉じる／移る。
+  // 書きかけ（タイトル、リンク、本文の直している途中で、保存と同じ整え方の後も値が保存した値と違うもの）があるまま閉じる（×、幕、Esc）か、
+  // 別のタスクや別の画面へ移る（beforeNavigate）ときは、捨てるかをアプリの中のダイアログで確かめる。捨てると決めたら、閉じる／移る。
   // 削除は確認のダイアログを挟む。消したら閉じ、トーストで知らせ、画面が木を読み直す（onremoved）
   let {
     slug,
@@ -38,6 +40,7 @@
     canWrite,
     onclose,
     onchanged,
+    onstale,
     onremoved,
   }: {
     slug: string;
@@ -46,8 +49,10 @@
     canWrite: boolean;
     // 閉じる。画面の枠が `?task=` を外し、フォーカスを行へ戻す
     onclose: () => void;
-    // 欄を保存した。画面が木を読み直す
+    // 欄を保存した。画面が木だけを読み直す（枠の読み直しが一時的に失敗しても、引き出しと書きかけを失わないため）
     onchanged: () => void;
+    // ワークスペースの状態が変わっていた（閉じた）。画面が枠ごと読み直す
+    onstale: () => void;
     // タスクが消えた（削除した、見つからない）。画面が閉じて、木を読み直す
     onremoved: () => void;
   } = $props();
@@ -55,17 +60,25 @@
   const ids = $props.id();
   const titleLabelId = `${ids}-title`;
   const pointsLabelId = `${ids}-points`;
+  const pointsReasonId = `${ids}-points-reason`;
+  const pointsErrorId = `${ids}-points-error`;
   const dueId = `${ids}-due`;
   const dueErrorId = `${ids}-due-error`;
-  const pointsErrorId = `${ids}-points-error`;
+  const readOnlyId = `${ids}-readonly`;
 
   type PointsChoice = (typeof TASK_POINT_VALUES)[number] | null;
   // 先頭が「未」（未見積もり）
   const pointChoices: readonly PointsChoice[] = [null, ...TASK_POINT_VALUES];
 
+  // 期日を、選んでから保存するまでの待ち。年を打つ間と、矢印キーで動かす間の保存をまとめる
+  const DUE_DEBOUNCE_MS = 600;
+  // 期日の年が4桁そろったとみなす下限。打ちかけの年（0002、0020、0202）は、4桁の文字でも送らない
+  const DUE_MIN_YEAR = 1000;
+
   let loadState = $state<'loading' | 'ready' | 'failed'>('loading');
   let task = $state<TaskDetail | null>(null);
   let heading = $state<HTMLElement>();
+  let retryButton = $state<HTMLButtonElement>();
   let discardDialog = $state<ReturnType<typeof ConfirmDialog>>();
   let deleteDialog = $state<ReturnType<typeof ConfirmDialog>>();
 
@@ -73,21 +86,25 @@
   const dirty = $state({ title: false, link: false, body: false });
   const hasDraft = $derived(dirty.title || dirty.link || dirty.body);
 
-  // 選んだポイント。保存した値に追従し、選んだ直後は保存の結果が来るまで選んだ値を見せる
-  let pointsChoice = $derived<PointsChoice>(task?.points ?? null);
+  // 選んだポイント。送っている間（と、続けて選んだ分を送り終えるまで）は、最後に選んだ値を見せる
+  let pointsPending = $state<{ value: PointsChoice } | null>(null);
+  const pointsShown = $derived<PointsChoice>(pointsPending !== null ? pointsPending.value : (task?.points ?? null));
   let pointsError = $state<string | null>(null);
+  let pointsSending = false;
   let dueError = $state<string | null>(null);
   let dueInput = $state<HTMLInputElement>();
+  let dueTimer: ReturnType<typeof setTimeout> | undefined;
+  let dueSending = false;
+  let dueAgain = false;
   let deleting = $state(false);
   let deleteError = $state<string | null>(null);
   let loadVersion = 0;
-  let pointsVersion = 0;
-  let dueVersion = 0;
 
   // 部品が外れた後の応答で、状態を触らない
   let alive = true;
   $effect(() => () => {
     alive = false;
+    clearTimeout(dueTimer);
   });
 
   // 捨てると決めた後、閉じる／移るために確認を飛ばす
@@ -123,6 +140,9 @@
       return;
     }
     loadState = 'failed';
+    // 失敗の文と「もう一度試す」へ、フォーカスを移す（開いたときの閉じるボタンに残さない）
+    await tick();
+    if (alive && mine === loadVersion) retryButton?.focus();
   }
 
   void load();
@@ -152,23 +172,26 @@
   }
 
   // 別のタスクや別の画面へ移るとき（戻る／進む、行のリンク、左のメニュー）も、書きかけがあれば確かめる。
-  // 同じタスクのままの移動と、閉じると決めた後は通す。ページを離れる（タブを閉じる、外のサイト）ときは、cancel() がブラウザの確認を出す
+  // 同じタスクのままの移動と、閉じると決めた後は通す。ページを離れる（タブを閉じる、外のサイト）ときは、cancel() がブラウザの確認を出す。
+  // 捨てると決めた後、戻る／進むは履歴をその分だけ動かす（goto は履歴を積んでしまう）
   beforeNavigate((navigation) => {
-    if (leaving || !hasDraft || navigation.to === null) {
-      if (!leaving && hasDraft && navigation.to === null) navigation.cancel();
+    if (leaving || !hasDraft) return;
+    if (navigation.to === null) {
+      navigation.cancel();
       return;
     }
     const to = navigation.to.url;
     if (to.origin === location.origin && to.pathname === location.pathname && to.searchParams.get('task') === taskId) {
       return;
     }
+    const delta = navigation.type === 'popstate' ? navigation.delta : undefined;
     navigation.cancel();
     if (asking) return;
     void confirmDiscard().then((discard) => {
       if (!discard) return;
       leaving = true;
-      // 同じ画面の中で別のタスクへ移るときは、スクロールとフォーカスを動かさない
       if (to.origin !== location.origin) location.href = to.href;
+      else if (delta !== undefined && delta !== 0) history.go(delta);
       // eslint-disable-next-line svelte/no-navigation-without-resolve -- 行き先は SvelteKit が解決した URL（navigation.to）で、経路から作り直せない
       else void goto(to, { reset: to.pathname !== location.pathname });
     });
@@ -202,13 +225,16 @@
     }
     if (result.status === 409 && result.error?.code === 'workspace_closed') {
       // 閉じた。枠を読み直して、読み取り専用の表示に切り替える
-      onchanged();
+      onstale();
       return t('workspaceClosedReadOnly', { workspace: t('workspace') });
     }
     if (result.status === 409) {
-      // 完了にされていた（ポイント）。読み直して、直せない表示にする
+      // 断った理由は、送った欄で分かる。どれも今の値を読み直す
       void refresh();
-      return t('taskSaveConflict', { task: t('task'), done: t('done'), points: t('points') });
+      if ('points' in fields) return t('taskSaveConflict', { task: t('task'), done: t('done'), points: t('points') });
+      if (task?.is_imported && ('title' in fields || 'link_url' in fields))
+        return t('taskImportedLocked', { task: t('task') });
+      return t('taskSaveRaced');
     }
     if (result.status === 400) return t('taskBadRequest');
     return t('taskSaveFailed');
@@ -242,10 +268,18 @@
     return null;
   }
 
+  // 保存する形の文字（空は空、使える URL は解釈した URL）。書きかけの判定にも使う
+  function linkForm(raw: string): string {
+    const value = normalizeLinkUrl(raw);
+    if (value === null) return '';
+    return linkUrlProblem(value) === null ? canonicalLinkUrl(value) : value;
+  }
+
   function saveLink(raw: string): Promise<string | null> {
     const value = normalizeLinkUrl(raw);
-    const next = value === null ? null : canonicalLinkUrl(value);
-    return task === null || next === task.link_url ? Promise.resolve(null) : saveFields({ link_url: value });
+    return task === null || linkForm(raw) === (task.link_url ?? '')
+      ? Promise.resolve(null)
+      : saveFields({ link_url: value });
   }
 
   function bodyProblem(raw: string): string | null {
@@ -261,38 +295,104 @@
     return task === null || next === task.body_md ? Promise.resolve(null) : saveFields({ body_md: next });
   }
 
-  // ---- ポイントと期日（選んだら保存する） ----
-  async function savePoints(choice: PointsChoice): Promise<void> {
-    if (task === null || choice === task.points) return;
-    const mine = ++pointsVersion;
-    pointsError = null;
-    const message = await saveFields({ points: choice });
-    if (!alive || mine !== pointsVersion || message === null) return;
-    pointsError = message;
-    pointsChoice = task?.points ?? null;
+  // ---- ポイント（選んだら保存する。1本ずつ送る） ----
+  function choosePoints(choice: PointsChoice): void {
+    // 送っている間に選び直されたら、最後の選択だけを残す
+    pointsPending = { value: choice };
+    if (!pointsSending) void sendPoints();
   }
 
-  async function saveDue(): Promise<void> {
+  async function sendPoints(): Promise<void> {
+    pointsSending = true;
+    try {
+      while (alive && pointsPending !== null) {
+        const choice = pointsPending.value;
+        // 保存した値（最後に送って通った値）と同じなら送らない
+        if (task === null || choice === task.points) {
+          pointsPending = null;
+          break;
+        }
+        pointsError = null;
+        const message = await saveFields({ points: choice });
+        if (!alive) return;
+        if (message !== null) {
+          pointsError = message;
+          pointsPending = null;
+          break;
+        }
+        // 送っている間に選び直されていなければ終わり。選び直されていれば、次の周で最後の選択を送る
+        if (pointsPending !== null && pointsPending.value === choice) pointsPending = null;
+      }
+    } finally {
+      pointsSending = false;
+    }
+  }
+
+  // ---- 期日（年が4桁そろった値だけを、待ってから、か欄を離れる／Enter で保存する） ----
+  function dueIsComplete(value: string): boolean {
+    return /^\d{4}-\d{2}-\d{2}$/.test(value) && Number(value.slice(0, 4)) >= DUE_MIN_YEAR;
+  }
+
+  function onDueChange(): void {
+    clearTimeout(dueTimer);
+    dueError = null;
+    const value = dueInput?.value ?? '';
+    // 打ちかけの年は送らない。欄を離れたときに、直っていなければ知らせる
+    if (value !== '' && !dueIsComplete(value)) return;
+    dueTimer = setTimeout(() => void commitDue(false), DUE_DEBOUNCE_MS);
+  }
+
+  function onDueKeydown(event: KeyboardEvent): void {
+    if (event.key !== 'Enter' || event.isComposing) return;
+    event.preventDefault();
+    clearTimeout(dueTimer);
+    void commitDue(true);
+  }
+
+  function onDueBlur(): void {
+    clearTimeout(dueTimer);
+    void commitDue(true);
+  }
+
+  // final は、欄を離れたか Enter。書けない値のときだけ、ここで知らせる
+  async function commitDue(final: boolean): Promise<void> {
     if (task === null || dueInput === undefined) return;
-    // 途中までしか打たれていない値や存在しない日付は、value が空になり、validity.badInput が立つ
-    if (dueInput.validity.badInput) {
-      dueError = t('dueInvalid', { due: t('due') });
+    if (dueSending) {
+      dueAgain = true;
       return;
     }
-    const next = dueInput.value === '' ? null : dueInput.value;
+    const value = dueInput.value;
+    // 途中までしか打たれていない値や存在しない日付は、value が空になり、validity.badInput が立つ
+    if (dueInput.validity.badInput || (value !== '' && !dueIsComplete(value))) {
+      if (final) dueError = t('dueInvalid', { due: t('due') });
+      return;
+    }
+    const next = value === '' ? null : value;
     if (next === task.due_on) return;
-    const mine = ++dueVersion;
+    dueSending = true;
     dueError = null;
-    const message = await saveFields({ due_on: next });
-    if (!alive || mine !== dueVersion || message === null) return;
-    dueError = message;
-    if (dueInput) dueInput.value = task?.due_on ?? '';
+    try {
+      const message = await saveFields({ due_on: next });
+      if (!alive) return;
+      if (message !== null) {
+        dueError = message;
+        if (dueInput) dueInput.value = task?.due_on ?? '';
+      }
+    } finally {
+      dueSending = false;
+    }
+    // 送っている間に値が変わっていたら、送り終えた後に、今の値を送る
+    if (alive && dueAgain) {
+      dueAgain = false;
+      await commitDue(true);
+    }
   }
 
   function clearDue(): void {
     if (dueInput === undefined) return;
+    clearTimeout(dueTimer);
     dueInput.value = '';
-    void saveDue();
+    void commitDue(true);
   }
 
   // ---- 削除 ----
@@ -325,7 +425,11 @@
         deleteError = t('taskDeleteForbidden', { leader: t('leader') });
       } else if (result.status === 409 && result.error?.code === 'workspace_closed') {
         deleteError = t('workspaceClosedReadOnly', { workspace: t('workspace') });
-        onchanged();
+        onstale();
+      } else if (result.status === 409) {
+        // 取り込んだタスクは削除できない
+        deleteError = t('taskImportedNoDelete', { task: t('task'), archive: t('archive') });
+        void refresh();
       } else {
         deleteError = t('taskDeleteFailed');
       }
@@ -352,6 +456,14 @@
   </h2>
 {/snippet}
 
+{#snippet bodyView()}
+  {#if task?.body_md != null}
+    <Markdown source={task.body_md} headingStart={3} />
+  {:else}
+    <div class="doc-box is-empty">{t('bodyEmpty')}</div>
+  {/if}
+{/snippet}
+
 <Drawer labelledBy={titleLabelId} busy={loadState === 'loading'} onrequestclose={() => void requestClose()}>
   {#snippet top()}
     {#if task !== null}
@@ -374,11 +486,11 @@
       <Icon name="alert" /><span>{t('taskDrawerLoadFailed', { task: t('task') })}</span>
     </div>
     <div class="form-actions">
-      <button class="btn" type="button" onclick={() => void load()}>{t('retry')}</button>
+      <button class="btn" type="button" bind:this={retryButton} onclick={() => void load()}>{t('retry')}</button>
     </div>
   {:else if task !== null}
     {#if !canWrite}
-      <div class="callout is-info">
+      <div class="callout is-info" id={readOnlyId}>
         <Icon name="shield" /><span>{t('taskReadOnly', { workspace: t('workspace'), task: t('task') })}</span>
       </div>
     {/if}
@@ -391,12 +503,16 @@
         placeholder={t('taskTitlePlaceholder')}
         problem={titleProblem}
         save={saveTitle}
+        normalize={(raw) => raw.trim()}
         ondirty={(value) => (dirty.title = value)}
       >
         {#snippet view(begin)}{@render titleView(begin)}{/snippet}
       </InlineEdit>
     {:else}
       {@render titleView(null)}
+    {/if}
+    {#if task.is_imported}
+      <span class="props-note">{t('taskImportedNote', { task: t('task') })}</span>
     {/if}
 
     <dl class="props">
@@ -405,9 +521,16 @@
         <dd>
           <div
             class="segmented"
+            class:is-readonly={!pointsEditable}
             role="radiogroup"
             aria-labelledby={pointsLabelId}
-            aria-describedby={pointsError !== null ? pointsErrorId : undefined}
+            aria-describedby={pointsError !== null
+              ? pointsErrorId
+              : done
+                ? pointsReasonId
+                : !canWrite
+                  ? readOnlyId
+                  : undefined}
           >
             {#each pointChoices as choice (choice)}
               <label>
@@ -415,26 +538,33 @@
                   type="radio"
                   name="{ids}-points"
                   value={choice}
-                  checked={pointsChoice === choice}
+                  checked={pointsShown === choice}
                   disabled={!pointsEditable}
-                  onchange={() => {
-                    pointsChoice = choice;
-                    void savePoints(choice);
-                  }}
+                  onchange={() => choosePoints(choice)}
                   aria-label={choice === null ? t('pointsUnsetTitle') : undefined}
                 />
                 <span>{choice === null ? t('pointsUnsetMark') : choice}</span>
               </label>
             {/each}
           </div>
-          {#if done}<span class="props-note">{t('taskPointsLocked', { done: t('done') })}</span>{/if}
+          {#if done}
+            <span class="props-note" id={pointsReasonId}
+              ><Icon name="lock" />{t('taskPointsLocked', {
+                task: t('task'),
+                done: t('done'),
+                points: t('points'),
+              })}</span
+            >
+          {/if}
           {#if pointsError !== null}
             <span class="field-error" id={pointsErrorId} role="alert"><Icon name="alert" />{pointsError}</span>
           {/if}
         </dd>
       </div>
       <div>
-        <dt><label for={dueId}>{t('due')}</label></dt>
+        <dt>
+          {#if canWrite}<label for={dueId}>{t('due')}</label>{:else}{t('due')}{/if}
+        </dt>
         <dd>
           {#if canWrite}
             <input
@@ -443,7 +573,9 @@
               type="date"
               bind:this={dueInput}
               value={task.due_on ?? ''}
-              onchange={() => void saveDue()}
+              onchange={onDueChange}
+              onblur={onDueBlur}
+              onkeydown={onDueKeydown}
               aria-invalid={dueError !== null}
               aria-describedby={dueError !== null ? dueErrorId : undefined}
             />
@@ -451,8 +583,8 @@
               <button class="link-btn" type="button" onclick={clearDue}>{t('dueClear')}</button>
             {/if}
           {:else}
-            <!-- 日付の入力は readonly を受けないので、読み取り専用では文字で出す -->
-            <input class="input" id={dueId} type="text" value={task.due_on ?? ''} readonly />
+            <!-- 読み取り専用では、入力欄にせず文字で出す（空は「—」） -->
+            <span id={dueId}>{task.due_on ?? '—'}</span>
           {/if}
           {#if dueError !== null}
             <span class="field-error" id={dueErrorId} role="alert"><Icon name="alert" />{dueError}</span>
@@ -472,6 +604,7 @@
                 placeholder={t('linkPlaceholder')}
                 problem={linkProblemMessage}
                 save={saveLink}
+                normalize={linkForm}
                 ondirty={(value) => (dirty.link = value)}
               >
                 {#snippet view(begin)}
@@ -484,15 +617,20 @@
                     <Icon name="pen" />
                     <span class="visually-hidden">{t('linkEditHint')}</span>
                   </button>
+                  {#if task?.link_url != null}
+                    <!-- 外のサイトは新しいタブで開く。読み上げにも、新しいタブで開くことを含める。直している間は、読む形ごと隠れる -->
+                    <a
+                      class="btn is-sm"
+                      href={task.link_url}
+                      target="_blank"
+                      rel="external noopener noreferrer"
+                      aria-label={t('storyLinkOpenLabel')}>{t('storyLinkOpen')}</a
+                    >
+                  {/if}
                 {/snippet}
               </InlineEdit>
             {:else if task.link_url !== null}
               <span class="source-key"><Icon name="link" /> {task.link_url}</span>
-            {:else}
-              —
-            {/if}
-            {#if task.link_url !== null}
-              <!-- 外のサイトは新しいタブで開く。読み上げにも、新しいタブで開くことを含める -->
               <a
                 class="btn is-sm"
                 href={task.link_url}
@@ -500,6 +638,8 @@
                 rel="external noopener noreferrer"
                 aria-label={t('storyLinkOpenLabel')}>{t('storyLinkOpen')}</a
               >
+            {:else}
+              —
             {/if}
           </dd>
         </div>
@@ -515,6 +655,7 @@
           hint={t('bodyEditHint')}
           problem={bodyProblem}
           save={saveBody}
+          normalize={(raw) => normalizeLongText(raw) ?? ''}
           ondirty={(value) => (dirty.body = value)}
         >
           {#snippet view(begin)}
@@ -542,8 +683,11 @@
           >
             <Icon name="trash" />{t('taskDelete', { task: t('task') })}
           </button>
+        {:else if task.is_imported}
+          <span class="field-hint">{t('taskImportedNoDelete', { task: t('task'), archive: t('archive') })}</span>
+        {:else}
+          <span class="field-hint">{t('taskDeleteWho', { leader: t('leader') })}</span>
         {/if}
-        <span class="field-hint">{t('taskDeleteWho', { leader: t('leader') })}</span>
       </div>
       {#if deleteError !== null}
         <div class="callout is-danger" role="alert"><Icon name="alert" /><span>{deleteError}</span></div>
@@ -554,14 +698,6 @@
   <!-- 状態の読み上げの領域。常に置き、中の文字だけを替える -->
   <span class="visually-hidden" role="status">{status}</span>
 </Drawer>
-
-{#snippet bodyView()}
-  {#if task?.body_md != null}
-    <Markdown source={task.body_md} headingStart={3} />
-  {:else}
-    <div class="doc-box is-empty">{t('bodyEmpty')}</div>
-  {/if}
-{/snippet}
 
 <ConfirmDialog
   bind:this={discardDialog}
