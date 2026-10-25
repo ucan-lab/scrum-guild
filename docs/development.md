@@ -328,7 +328,7 @@ Bash の判定を `permissions.deny` に置かないのは、規則が前方一�
 2. `issue-plan` で Issue を書く。エピック、ストーリー、タスクのどれかと親を決め（下の「Issue の運用」）、完了条件、触る領域、マイグレーションの有無を書く
 3. 人が着手を決める。ほかの Issue と並べるときは、上の「並行して作業するときの決まり」で変えるファイルの重なりを見る
 4. Issue の本文に書かれていない難所があれば、`grill-me` で人と詰め（詰める間は `status:refining`、下の「Issue の状態」）、決めたことを `issue-plan` で Issue の本文に足す。後の Issue に関わることはその Issue にコメントで申し送る。難所が無い Issue と、人に聞けない実行では飛ばし、置いた前提を PR に書く
-5. 着手したことを Issue にコメントで残し（上の「並行して作業するときの決まり」）、手元のセッションは Issue ごとのワークツリーで（切ると `status:in-progress` が付く）、クラウドのセッションはそのままの環境で実装する（上の「ワークツリーで作業する」）。テストは実装と一緒に書く
+5. 着手したことを Issue にコメントで残し（上の「並行して作業するときの決まり」）、手元のセッションは Issue ごとのワークツリーで（切ると `status:in-progress` が付く）、クラウドのセッションはそのままの環境で（`status:in-progress` を自分で付ける。下の「Issue の状態」）実装する（上の「ワークツリーで作業する」）。テストは実装と一緒に書く
 6. `self-review` で点検し、`pr-create` で PR を出す
 7. CI と AI レビューを待ち、指摘には `pr-feedback` で応える
 8. セッションが、Issue と PR でしたことをその場限りの Artifact の説明資料で見せ、人が判断すべきことと、マージするかを `AskUserQuestion` で聞く
@@ -582,7 +582,7 @@ Issue はエピック、ストーリー、タスクの3階層にし、親子は�
 | 状態 | 表し方 | 付け替えるきっかけ |
 | --- | --- | --- |
 | 要件整理中 | `status:refining` | `grill-me` で Issue を詰め始めたとき、`issue-plan` の書くモードで既にある Issue の計画を書き始めたとき。セッションが付ける |
-| 作業中 | `status:in-progress` | 番号付きのブランチ（`<番号>-<名前>`）のワークツリーを新しく切ったとき。`.githooks/post-checkout` が付け、`status:refining` を外す。クラウドのセッションはワークツリーを切らないので、着手したときに手で付ける |
+| 作業中 | `status:in-progress` | 番号付きのブランチ（`<番号>-<名前>`）のワークツリーを新しく切ったとき。`.githooks/post-checkout` が付け、`status:refining` を外す。クラウドのセッションはワークツリーを切らないので、着手したときに `gh api -X POST repos/{owner}/{repo}/issues/<番号>/labels -f 'labels[]=status:in-progress'` で付け、`status:refining` を外す |
 | レビュー中 | その Issue を指す開いた PR があること。ラベルは使わない | PR の作成 |
 | 済み | Issue が閉じたこと | タスクは PR のマージ、ストーリーとエピックは人が閉じる |
 
