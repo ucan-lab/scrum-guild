@@ -122,7 +122,8 @@ function mayBecomeFlag(shape) {
 const UNREADABLE_FLAG = /^-(?!\d)[^=]*[\s.]/;
 
 // wrangler dev の -r は --remote の別名で、yargs は -lr のようにまとめた短いフラグも1文字ずつ読み、別名の長い形 --r も読む。
-// d1、r2、kv には -r が無いので、サブコマンドを問わず = より前に r を含む短いフラグを止める。負の数（-1.5）は除く
+// d1、r2、kv には -r が無いので、サブコマンドを問わず = より前に r を含む短いフラグを止める。負の数（-1.5）は除く。
+// 別名は wrangler 4.152.0 の dev の remote（alias: "r"）と local（alias: "l"）で確かめた（2026-10-25）
 const SHORT_REMOTE = /^-(?![-\d])[^=]*r/;
 
 function judgeWrangler(args) {
