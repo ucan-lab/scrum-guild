@@ -38,13 +38,15 @@ const PACKAGE_INFO = new Set([
   'add', 'install', 'i', 'remove', 'rm', 'uninstall', 'un', 'update', 'up', 'upgrade',
 ]);
 
-// wrangler のパッケージの bin は wrangler、wrangler2（bin/wrangler.js と同じもの）、cf-wrangler の3つで、node_modules/.bin に全部入る
+// wrangler のパッケージの bin は wrangler、wrangler2（bin/wrangler.js と同じもの）、cf-wrangler の3つで、node_modules/.bin に全部入る。
+// wrangler 4.152.0 の package.json の bin で確かめた（2026-10-26）
 function isWrangler(word) {
   const name = baseName(word);
   return /^wrangler2?$/.test(name) || /^wrangler2?\.[cm]?js$/.test(name) || /(^|\/)wrangler\/(bin|wrangler-dist)\//.test(word);
 }
 
-// cf-wrangler は dev と build だけを持つ別の道具で、引数を yargs ではなく util.parseArgs で読む。wrangler の規則では判定できない
+// cf-wrangler は dev と build だけを持つ別の道具で、引数を yargs ではなく util.parseArgs で読む。wrangler の規則では判定できない。
+// wrangler 4.152.0 の bin/cf-wrangler.js の verbHandlers と wrangler-dist/cli.js の parseDevArgs で確かめた（2026-10-26）
 function isCfWrangler(word) {
   return /^cf-wrangler(\.[cm]?js)?$/.test(baseName(word));
 }
