@@ -136,6 +136,16 @@ function isUserNavigation(c: Context<AppEnv>): boolean {
   );
 }
 
+// Sec-Fetch-Site を送らないブラウザからの POST で、Origin が別のオリジンを指しているか。
+// Sec-Fetch-Site があれば isUserNavigation が見分けるので、ここでは見ない。Origin が無い、null（Referrer-Policy: no-referrer
+// の画面からの送信）、自分のオリジンのときは通す
+function isForeignOriginWithoutSecFetch(c: Context<AppEnv>): boolean {
+  if (c.req.header('Sec-Fetch-Site') !== undefined) return false;
+  const origin = c.req.header('Origin');
+  if (origin === undefined || origin === 'null') return false;
+  return origin !== new URL(c.env.PUBLIC_ORIGIN).origin;
+}
+
 // 開始は IP の枠と全体の枠、戻り先は IP の枠だけを数える。戻り先は state の行を使い切れたものだけを数え、行は開始が
 // 書いたものしか無いので、開始の全体の枠で間接的に絞られる。GitHub から戻った人を全体の枠で断らない
 async function consumeStartRateLimit(c: Context<AppEnv>): Promise<LoginStartRateLimit> {
@@ -210,13 +220,14 @@ export function loginRoutes(options: LoginRoutesOptions): Hono<AppEnv> {
   //   2. 秘密が決まった形（base64url の43文字）でなければ、ハッシュも DB の問い合わせ（レート制限を含む）もせずに invite で断る
   //   3. 戻り先を `/` にして、レート制限、state の行と Cookie、Google への移動は GET と同じ。state の行に秘密のハッシュだけを入れる
   // 秘密そのものは state の行にもログにも出さない。
-  // Origin の検査は掛けない: /invite は Referrer-Policy: no-referrer なので、フォームの POST の Origin が null になりうる
-  // （Origin を必須にすると、正しい利用者の POST を断ってしまう）。ほかのサイトからの POST は、上の 1 の Sec-Fetch で止める
+  // Origin は必須にしない: /invite は Referrer-Policy: no-referrer なので、フォームの POST の Origin が null になりうる
+  // （Origin を必須にすると、正しい利用者の POST を断ってしまう）。ほかのサイトからの POST は、上の 1 の Sec-Fetch で止める。
+  // Sec-Fetch-Site を送らない古いブラウザに限り、自分のオリジンでも null でもない Origin が付いていれば、同じく 1 の扱いで断る
   app.post('/:provider/start', async (c) => {
     const provider = c.req.param('provider');
     if (provider !== 'google') return c.notFound();
     try {
-      if (!isUserNavigation(c)) {
+      if (!isUserNavigation(c) || isForeignOriginWithoutSecFetch(c)) {
         log(c, { step: 'start', provider, outcome: 'not_navigation' });
         return toLoginPage(c);
       }

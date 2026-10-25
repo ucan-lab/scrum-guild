@@ -534,6 +534,28 @@ describe('ログインを始める POST', () => {
     expect(started.location.origin).toBe('https://accounts.google.com');
   });
 
+  // Sec-Fetch-* を送らない古いブラウザでは Origin で見分ける。no-referrer の /invite からの送信は Origin が null になる
+  test('Sec-Fetch-* が無いときは、別のオリジンの Origin だけを断り、null と自分のオリジンと無しは通す', async () => {
+    const { token } = await secret();
+    const post = (origin: string | undefined) =>
+      newBrowser().request('/api/auth/google/start', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          ...(origin === undefined ? {} : { Origin: origin }),
+        },
+        body: new URLSearchParams({ claim_token: token }).toString(),
+      });
+    const foreign = await post('https://evil.example');
+    expect(foreign.headers.get('Location')).toBe('/login');
+    for (const origin of [undefined, 'null', new URL(loginEnv.PUBLIC_ORIGIN).origin]) {
+      const response = await post(origin);
+      expect(new URL(response.headers.get('Location') ?? '', 'https://x.test').origin, String(origin)).toBe(
+        'https://accounts.google.com',
+      );
+    }
+  });
+
   test.each([
     ['42文字', 'A'.repeat(42)],
     ['44文字', 'A'.repeat(44)],
