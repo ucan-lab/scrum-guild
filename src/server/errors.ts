@@ -2,7 +2,7 @@
 import { HTTPException } from 'hono/http-exception';
 import type { ErrorBody, ErrorCode } from '../shared/errors.ts';
 
-export type ErrorStatus = 400 | 401 | 403 | 404 | 409 | 413;
+export type ErrorStatus = 400 | 401 | 403 | 404 | 409 | 413 | 429;
 
 // message は応答にそのまま出す値を持たない。code から作る
 export class ApiError extends Error {
@@ -35,6 +35,7 @@ const httpExceptionCodes: Partial<Record<number, ErrorCode>> = {
   413: 'invalid_input',
   415: 'invalid_input',
   422: 'invalid_input',
+  429: 'rate_limited',
 };
 
 export type KnownError = { status: number; code: ErrorCode; details?: unknown };

@@ -33,6 +33,7 @@ describe('API', () => {
     // どのメソッドを呼んでも失敗する D1
     const unreachable = {
       APP_VERSION: 'dev',
+      PUBLIC_ORIGIN: 'https://scrum-guild.example',
       DB: new Proxy(
         {},
         {
@@ -144,5 +145,46 @@ describe('API', () => {
     const res = await app.request('/api/immutable', {}, env);
     expect(res.status).toBe(302);
     expectApiHeaders(res);
+  });
+});
+
+describe('公開する URL（PUBLIC_ORIGIN）の検査', () => {
+  const request = (publicOrigin: unknown) => {
+    const withOrigin = Object.assign({}, env, { PUBLIC_ORIGIN: publicOrigin }) as unknown as Env;
+    return createApp().request('/api/health', {}, withOrigin);
+  };
+
+  test.each([
+    'https://scrum-guild.ucan-lab.workers.dev',
+    'http://localhost:5173',
+    'http://localhost:8797',
+    'http://127.0.0.1:5173',
+    'http://[::1]:5173',
+  ])('%s は使える', async (origin) => {
+    expect((await request(origin)).status).toBe(200);
+  });
+
+  test.each([
+    'http://scrum-guild.ucan-lab.workers.dev',
+    'http://example.com',
+    'http://localhost.evil.example',
+    'http://192.168.0.10:5173',
+    'ftp://localhost',
+    'localhost:5173',
+    '',
+    undefined,
+    42,
+  ])('%s は、すべてのリクエストを 500 にし、値は出さない', async (origin) => {
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      const res = await request(origin);
+      expect(res.status).toBe(500);
+      expect(await res.json()).toEqual({ error: { code: 'internal', message: 'internal error' } });
+      const logged = error.mock.calls.flat().join('\n');
+      expect(logged).toContain('PUBLIC_ORIGIN');
+      if (typeof origin === 'string' && origin !== '') expect(logged).not.toContain(origin);
+    } finally {
+      error.mockRestore();
+    }
   });
 });

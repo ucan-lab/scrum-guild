@@ -15,4 +15,10 @@ export {
   type OrganizationActor,
   type OrganizationSummary,
 } from './enter-organization.ts';
-export { listAccountOrganizations, type AccountOrganizations } from './cross-organization.ts';
+export {
+  hasLoginAccess,
+  type LoginAccessTarget,
+  linkLoginToAccount,
+  listAccountOrganizations,
+  type AccountOrganizations,
+} from './cross-organization.ts';

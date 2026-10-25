@@ -20,7 +20,21 @@ import type { OutsideAccount } from './account.ts';
 // 読む操作が副作用として書くものに使う（書き込みは db.batch で送る）
 export type Defer = (task: () => Promise<unknown>) => void;
 
-export type OutsideContext<Input> = { db: CommonDb; accountId: string; account: OutsideAccount; input: Input };
+// 今のリクエストのセッション。ログアウトが今のセッションの行を指し、Cookie も消すのに使う
+export type CurrentSession = {
+  // sessions.token_hash
+  readonly tokenHash: string;
+  // 応答でセッションの Cookie を消す。行を消した後に呼ぶ
+  clearCookie(): void;
+};
+
+export type OutsideContext<Input> = {
+  db: CommonDb;
+  accountId: string;
+  account: OutsideAccount;
+  session: CurrentSession;
+  input: Input;
+};
 // organization は入るときに引いた組織の行（名前、言葉づかい、既定のテーマ）。組織の中の処理は共通の入口を持たない
 export type OrganizationContext<Input> = {
   db: OrganizationDb;

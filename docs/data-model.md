@@ -69,7 +69,11 @@
 - 共通の表は、共通の DB を返す別の関数を通して読み書きする。
 - 1回の `batch()` に、共通の表と組織の中の表を混ぜない。今これに当たる操作は「書き込みの単位」の組織の作成とメンバーの離脱で、どちらも2回に分けて書く。
 - 組織をまたいで読む処理は、1つの関数にまとめる。当たるのは、ログインできるか（入れる組織と届いた招待があるか）、ログインの直後の組織の選択、届いた招待の一覧、初めてのログインで `users.account_id` を埋めること、招待の URL の秘密のハッシュから待っている指名と招待を引くこと。今は組織の中の表を持つ DB が1つで、`allOrganizationDatabases()`（`db/select-database.ts`）が返す DB ごとに、組織の中の表（`users`、`memberships`、`invitations`）を引き、共通の表（`organizations`）を別の問い合わせで引いて、アプリで合わせる。`users` と `invitations` は、アカウントに結んだログインの手段と ID の組ごとに、`users_login` と `invitations_login_pending` の索引で引く（全件を読まない）。分けたときは、この関数だけを、DB の一覧を全部返す形に直すか、共通の DB にログインの ID（`login_provider` と `login_subject`）と組織の組の索引、招待の URL の秘密のハッシュと組織の組の索引を持つ形に直す。どちらにするかは分けるときに決める。
-- 組織をまたいで読む関数（`listAccountOrganizations`）の前提。アカウントは必ず1つ以上のログインを持つ（0件なら、一覧は何も引かずに空を返す）。`users` の行のログイン（`login_provider`、`login_subject`）は、結んだアカウントのログインのどれかである。一覧はログインの手段と ID で `users` を引いてから `account_id` で絞るのに対し、`enterOrganization` は `account_id` で引くので、この前提が崩れると、一覧と入れる組織がずれる。ログインの付け替えや統合を入れるときは、この関数を直す。
+- 組織をまたいで読む関数（`listAccountOrganizations`）の前提。アカウントは必ず1つ以上のログインを持つ（0件なら、一覧は何も引かずに空を返す）。`users` の行のログイン（`login_provider`、`login_subject`）は、結んだアカウントのログインのどれかである。一覧はログインの手段と ID で `users` を引いてから `account_id` で絞るのに対し、`enterOrganization` は `account_id` で引くので、この前提が崩れると、一覧と入れる組織がずれる。ログインの付け替えや統合を入れるときは、この関数を直す。結ぶ書き込み（ログインのたびの、`account_id` が空の行の埋め直し）は、この前提を崩さない。
+- ログインできるかの判定は、`listAccountOrganizations` と同じ読み取り（`readAccountOrganizations`）を通す。入れる組織か届いた招待が、停止していない組織に1つでもあれば通す。2つの場面で使う。
+  - セッションの判定（組織の外の操作と、組織に入れなかったとき）: 組織の選択と同じ結果を、1回のリクエストの中で使い回す。アカウントに結ばれる前の行（`account_id` が空で、ログインの手段と ID が一致する、指名で待っていた行）は数えない。結ばれる前の行だけを持つ人のセッションを、どこにも入れないまま残さないため。その人は 401 でセッションが消え、もう一度ログインすると結ばれて入れる。
+  - ログインのとき（`hasLoginAccess`）: 結ばれる前の行も数える。ログインのたびに `users.account_id` を結ぶので、これから入れる行だから。初めてのログインではアカウントが無くても引ける。
+- `linkLoginToAccount` は、組織で絞らずに `users.account_id` と `updated_at` を書く、この読み書きの入口だけの例外（組織の中の操作の処理は、組織の ID で絞らないと書けない）。絞るのは、ログインの手段と ID が一致することと、`account_id` が空であること。読む文と書く文は、どちらも `users_login` の索引に乗る。1つのアカウントに複数のログインの手段を結ぶとき（#57）は、同じ組織に同じアカウントの行が2つできて、`users_organization_account`（`organization_id` と `account_id` の一意）に当たりうる。#57 で、この前提と判定と、結ぶ UPDATE を見直す。
 
 ### 分けるとき
 
@@ -126,10 +130,10 @@
 | last_used_at | TEXT | NOT NULL | 使うたびに書き直す |
 | expires_at | TEXT | NOT NULL | `last_used_at` の30日後 |
 
-- 索引: `(account_id)`。ログアウトと、ログインできる条件を失ったとき（入れる組織が1つもなくなったとき。運用者は組織が無くてもログインできるので除く）に、その人の行を消す。
+- 索引: `(account_id)`。ログアウトは今のセッションの行だけを消す。ログインできる条件を失ったとき（入れる組織が1つもなくなったとき。運用者は組織が無くてもログインできるので除く）は、その人の行をすべて消す。確かめるのは、組織の外の操作（定義に `skipsLoginAccess` を付けた `logout` を除く）と、組織の中の操作で組織に入れなかったとき。`logout` は入れる組織を失った人にも使わせる。結ばれる前の指名の行は数えない（「読み書きの入口」）。停止した組織にしか入れない人は、停止の間にセッションが消え、組織が再開した後も、もう一度ログインが要る。消すのは確かめた時刻までに作られた行だけで、確かめた後に作られたセッションは残す。
 - 組織に入れるかは、リクエストのたびにその組織の `users`、`memberships`、`invitations` で確かめる。1つの組織で無効にされても、セッションは消さない。
 - 書き込みを減らすため、`last_used_at` は前回から1時間以上たったときだけ書き直す。
-- 切れた行は定期処理で消す。
+- 切れた行は定期処理で消す（Issue #105）。
 
 ### oauth_states
 
@@ -142,10 +146,11 @@
 | code_verifier | TEXT | NOT NULL | |
 | nonce | TEXT | | OpenID Connect の手段（Google）で、ID トークンの `nonce` と比べる値。GitHub では空。Google で空の行は、アプリが拒む |
 | claim_token_hash | TEXT | | 招待の URL から始めたログインで、その URL の秘密の SHA-256。戻ってきたときに、待っている指名か招待を引く |
-| return_to | TEXT | `CHECK (return_to GLOB '/*' AND return_to NOT GLOB '//*' AND return_to NOT GLOB '/\*' AND return_to NOT GLOB '*[^ -~]*')` | ログイン後に戻る画面のパス。自分のサイトのパスだけで、`//` や `/\` で始まる別のサイトへの移動は DB でも拒む。印字できる ASCII に限る（ブラウザは URL のタブと改行を取り除くので、`/<タブ>/evil.example` が `//evil.example` になる） |
+| return_to | TEXT | `CHECK (return_to GLOB '/*' AND return_to NOT GLOB '//*' AND return_to NOT GLOB '/\*' AND return_to NOT GLOB '*[^ -~]*')` | ログイン後に戻る画面のパス。自分のサイトのパスだけで、`//` や `/\` で始まる別のサイトへの移動は DB でも拒む。印字できる ASCII に限る（ブラウザは URL のタブと改行を取り除くので、`/<タブ>/evil.example` が `//evil.example` になる）。DB の CHECK が拒むのは、この大まかな形だけ。`.` と `..` の区間、パスの `\`、`api` と `login` で始まる値などの細かい検査は、アプリ（`src/shared/return-to.ts`）が持つ |
 | expires_at | TEXT | NOT NULL | 作ってから10分 |
 
-使ったら消す。切れた行は定期処理で消す。
+- `state` は HttpOnly の Cookie にも同じ値で置く。戻り先では、クエリの `state` と Cookie の値が合うことを確かめてから、この表の行を `DELETE ... RETURNING` で消して読む。Cookie が無い、合わない戻りは、行にも Cookie にも触れず、レート制限にも数えずに断る（ログインの CSRF を止める）。照合に通った戻りだけが、行と Cookie を使い切り、枠を数える。
+- 使ったら消す（1つの `state` は1回しか通らない）。切れた行は定期処理で消す（Issue #105）。
 
 ### rate_limits
 
@@ -153,12 +158,16 @@
 
 | 列 | 型 | 制約 | 説明 |
 | --- | --- | --- | --- |
-| key | TEXT | PK | `login:<IP>` など |
-| window_start_at | TEXT | NOT NULL | |
-| count | INTEGER | NOT NULL | |
+| key | TEXT | PK | `login:<IP>`（ログインの開始と戻り先。`CF-Connecting-IP`。IPv6 は上位 64 ビットに丸めた `login:2001:db8:1:2::/64` と、上位 48 ビットの `login48:2001:db8:1::/48` の2つ。IPv4 を写した IPv6 は IPv4 に直す。解釈できない値と IP の無いリクエストは `login:unknown`）、`operation:<操作の名前>:<アカウントの ID>`（操作の定義の `rateLimit`） |
+| window_start_at | TEXT | NOT NULL | 窓の最初の呼び出しの日時 |
+| count | INTEGER | NOT NULL | 窓の中の呼び出しの数。上限を超えた呼び出しも数える |
 
+- 1文の upsert（`INSERT ... ON CONFLICT DO UPDATE ... RETURNING count`）で数える。`window_start_at` から窓の長さがたっていれば、`window_start_at` を今に、`count` を 1 に戻す。返った `count` が上限以下なら通す。
+- ログインは同じ IP から10分に60回まで（1回のログインで開始と戻り先の2回を数える）。IPv6 は、この /64 の枠に加えて、/48 の枠を10分に600回まで数え、どちらかを超えたら断る。/48 の枠を先に数え、超えていたら /64 の枠は数えない（/64 を変えて叩かれても、行を増やさない）。値は `src/server/auth/rate-limit.ts` の定数。
+- 数えるのは、利用者が始めた画面の移動の開始と、`state` の Cookie が合った戻りだけ。開始は、`Sec-Fetch-Mode` が `navigate`、`Sec-Fetch-Dest` が `document`、`Sec-Fetch-Site` が `same-origin` か `none` で、`Sec-Purpose` に prefetch と prerender を含まないもの。どのヘッダーも、送らない古いブラウザは通す。ほかのサイトが `<img>`、`fetch()`、`<iframe>`、リンクの移動、先読みで読ませても、被害者の枠は減らず、`oauth_states` の行もできない。
+- 残る限界: `Sec-Fetch` を送らない古いブラウザには、`<img>` で読ませる攻撃が通る。同じ IP を共有する人（同じオフィス）が、意図して枠を使い切ることは止められない。
 - 手動の同期の「接続ごとに5分に1回」は、この表ではなく `connections.last_manual_sync_at` で判定する。
-- 窓を過ぎた行は定期処理で消す。
+- 窓を過ぎた行は定期処理で消す（Issue #105）。
 
 ## 組織
 
@@ -928,6 +937,7 @@ D1 は対話的なトランザクションを持たない。まとめて書く�
 | 取り込み（1件） | `tasks`（結ばれたリポジトリがあれば `repository_id` も）、`task_sources`、`task_source_payloads` |
 | 組織の作成 | 共通の DB の `organizations`、続けて組織の DB の最初の管理者の `users` |
 | Google の招待の URL から結ぶ | 組織の DB の `users` か `invitations`、`change_logs`（「メールアドレスで待つ指名と招待」の 6）、続けて共通の DB の `accounts` と `account_logins` |
+| 初めてのログイン | 共通の DB の `accounts` と `account_logins`、続けて組織の DB の `users.account_id`（指名で待っていた行に結ぶ）、続けて共通の DB の `sessions`。2回目以降は `account_logins` と `accounts.last_login_at` の書き直し、`users.account_id` を結び直す書き込み、`sessions` の順 |
 | 添付ファイルを上げる | R2 にファイルを書き、続けて `attachments` |
 | 添付ファイルを消す | `attachments` の削除と `change_logs`、続けて R2 のファイルの削除 |
 | コメントの削除 | `comments`、そのコメントの `attachments` の削除、`change_logs`、続けて R2 のファイルの削除 |
@@ -937,7 +947,9 @@ D1 は対話的なトランザクションを持たない。まとめて書く�
 共通の DB と組織の DB に分けて書く操作は、途中で失敗したときの扱いを決めておく。
 
 - 組織の作成で `users` が入らなかったときは、管理者のいない組織が残る。運用者の画面の管理者の指名し直しで入れる。
-- Google の招待の URL から結んだあと、アカウントが作れなかったときは、`sub` を埋めた行だけが残る。次に Google でログインすれば `sub` で当たり、アカウントを作る。
+- Google の招待の URL から結んだあと、アカウントが作れなかったときは、`sub` を埋めた行だけが残る。次に Google でログインすれば `sub` で当たり、アカウントの作成に進む。
+- ログインで `users.account_id` を結べなかったときは、`accounts` と `account_logins` だけが残る。セッションは作らず、「もう一度ログインしてください」を出す。ログインのたびに、そのログインの ID（手段と手段の中の ID）で `account_id` が空の `users` を結び直す（結んだ行は当たらなくなるので、何度流しても同じ結果）ので、次のログインで結ばれる。組織に入れるかの判定は `users.account_id` で行うので、結ばれるまでその組織には入れない。
+- 同じ人の最初のログインが並行したときは、片方の `batch()` が `account_logins` の主キーで落ちて、`accounts` ごと戻る。落ちた側は、もう片方が作った行を読み直して続ける。
 - 添付ファイルを上げるときに `attachments` が入らなかったら、書いた R2 のファイルを消す。添付ファイルを消すときに R2 のファイルが消えなかったら、どの行も指さないファイルが残る。容量の上限には数えず、組織を消すときにまとめて消える。
 - メンバーの離脱で `sessions` が消えなかったときも、組織に入れるかはリクエストのたびに確かめるので、離脱した組織には入れない。ログインできる条件を失った人のセッションは、次にその人がリクエストしたときに消す。
 

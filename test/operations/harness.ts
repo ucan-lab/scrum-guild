@@ -10,7 +10,7 @@ import {
 import { sessionCookieName } from '../../src/shared/session-cookie.ts';
 import { createApp } from '../../src/server/app.ts';
 import type { ImplementedOperation } from '../../src/server/operations/implement.ts';
-import { createTarget, getOperator, testEnv, type Person, type Target } from './world.ts';
+import { createTarget, getOperator, testEnv, withNewSession, type Person, type Target } from './world.ts';
 
 // 対象の組織の行を指す、成功する入力を作る。別の組織の対象を渡すと、同じ入力が 404 になる。
 // 入力が組織の中の行を指さない操作は、成功する入力を noReference に書く（分離の検査はスラッグだけになる）。
@@ -146,7 +146,7 @@ export function defineOperationChecks(operations: readonly ImplementedOperation[
         createTarget(),
         createTarget(),
         createTarget({ closed: true }),
-        getOperator(),
+        getOperator().then(withNewSession),
       ]);
     });
 
