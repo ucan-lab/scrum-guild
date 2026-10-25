@@ -30,7 +30,8 @@ Worker の設定の Builds で、GitHub のリポジトリ `ucan-lab/scrum-guild
 | API トークン | 権限を最小にしたトークン（`docs/development.md` の「CD」） |
 
 - Node の版は `.node-version`、pnpm の版は `package.json` の `packageManager` から。Workers Builds で入らないときの扱いは `docs/development.md` の「CD」
-- デプロイのスクリプトは、Workers Builds が入れる `WORKERS_CI=1` が無いか、`git rev-parse HEAD` で版を取れないと、本番に触らずに止まる。`WORKERS_CI` はデプロイのコマンドにも渡る（2026-10-25 の最初の接続で確かめた）
+- デプロイのスクリプトは、Workers Builds が入れる `WORKERS_CI=1` が無いか、`git rev-parse HEAD` で版を取れないと、本番に触らずに止まる。どちらもデプロイのコマンドで使えることを、2026-10-25 のビルド `ab64e8c1` で確かめた
+- ダッシュボードの Create application からつなぐと、Cloudflare が Worker を作るときに初期の版を出す。最初のデプロイは「戻し先無し」にならず、この版を戻し先として控える（2026-10-25 は `56208d33`）
 - ビルドのコマンドは、`git rev-parse HEAD` が失敗したらビルドを始めない。`APP_VERSION=$(...) pnpm build` の1行では git の失敗が無視され、画面の版が `dev` のまま出るため
 - 版に `WORKERS_CI_COMMIT_SHA` は使わない。接続した直後の初回のビルド（手で動かしたビルド）で、コミットの SHA ではなくブランチ名（`main`）が入っていた
 
@@ -45,7 +46,7 @@ Workers Builds のビルドでは、devDependencies のコードがトークン�
 
 `main` に入ると Workers Builds がビルドし、デプロイのコマンドが `scripts/deploy.ts` の手順を動かす。人の操作は要らない。
 
-1. 今 100% で動いている版の ID を、戻し先として控える。初回は戻し先無し
+1. 今 100% で動いている版の ID を、戻し先として控える。Worker もデプロイも無ければ戻し先無し
 2. `migrations/` にファイルがあれば、Time Travel のブックマークをログに出してから、マイグレーションを当てる
 3. 版を上げる直前に今の版を取り直し、控えた版と違えば止める（別のビルドの割り込み）
 4. `wrangler deploy` で版（コミットの SHA）を上げ、100% に切り替える
@@ -70,7 +71,7 @@ Workers Builds のビルドでは、devDependencies のコードがトークン�
 2. 手元で `wrangler rollback <版の ID> --message "<理由>"` を実行する。版の ID は必ず渡す。渡さないと wrangler が履歴から戻し先を選び、意図した版とずれることがある
 3. `https://scrum-guild.ucan-lab.workers.dev/api/health` の `version` が戻した版の SHA になったことを確かめる
 
-戻し先が無い（初回の版が煙のテストに落ちた）ときは、ビルドのログに「戻し先が無く、壊れた版が残っています」と出る。直したコミットを `main` に入れて出し直す。
+戻し先が無い（デプロイの無い Worker に出した版が煙のテストに落ちた）ときは、ビルドのログに「戻し先が無く、壊れた版が残っています」と出る。直したコミットを `main` に入れて出し直す。
 
 ### 戻るもの、戻らないもの
 

@@ -76,7 +76,8 @@
 - [x] GitHub は無料のプランのまま進めると決めた（2026-10-23）。private ではブランチ保護、Rulesets、auto-merge、Environment が使えないので、すべての PR を人がマージし、デプロイは Cloudflare の Workers Builds で行う（鍵を GitHub に置かない）。マイグレーションの承認は `needs-human` の PR を人がマージすることで代える。`merge-risk` と自動マージはやめた。作業ブランチの名前は `<Issue番号>-<短い名前>` にした。`docs/development.md` の「`main` を守る仕組み」「マージの判定」「CD」
 - [x] 人が指示したときは、セッションも `gh pr merge` でマージしてよいと決めた（2026-10-25、#35）。`needs-human` の PR と `label` が成功していない PR は、従来どおり人がマージする。`docs/development.md` の「マージの判定」
 - [x] GitHub の設定を直した（2026-10-23）。マージ後にブランチを消す、squash のコミットの件名を PR のタイトルにし本文を空にする、ラベル `area:kingdom` を `area:organization` に改める
-- [ ] Workers Builds をリポジトリにつなぎ、権限を最小にした API トークンを選ぶ。preview builds は有効にしない
+- [x] 本番の Worker `scrum-guild` を Workers Builds につなぎ、最初のデプロイが通った（2026-10-25、#80 と #83）。preview builds は無効。API トークンは自動で作った `scrum-guild build token` で、最小の権限への入れ替えは下に残る。`docs/operations.md` の「Workers Builds の接続」
+- [x] 請求の通知を設定した（2026-10-25）。予算 $10（自動で作られていたもの）と、Workers のリクエスト 500万、CPU 時間 1,500万 ms、D1 の書き込み 2,500万行の使用量の通知。届け先はアカウントのメール
 - [ ] Cloudflare の通知で Workers のエラー率などを受けられるか
 - [x] 技術の選択を決めた（2026-10-22）。pnpm、1つのパッケージ、ESLint と Prettier、SvelteKit の SPA モード、Kysely、zod、自前の操作の定義、型付きの言葉の辞書、seed とファクトリー。`docs/requirements.md` の「画面」を SvelteKit の SPA モードに改めた
 - [x] 最初の一本道（組織の作成からタスクの完了まで）、DB を作り直してよい期間（ベータまで）、API のエラーの形、CI の AI レビュー（`claude-code-action`）を決めた（2026-10-22）。`docs/development.md` の「API のエラーとログ」「初版の作る順」
@@ -89,7 +90,7 @@
 - [x] 運用の手順書（`docs/operations.md` に1つ）、セキュリティのヘッダー（最初の一本道から厳しく）、添付ファイルの配信（同じオリジンで型を絞る）、Cloudflare のアカウント（ucan-lab 用に新しく作る）を決めた（2026-10-22）
 - [x] ucan-lab 用の Cloudflare アカウントを作った（2026-10-23）。Zero Trust を無料の枠で有効にし、チーム名を `ucan-lab`、ログインの手段にワンタイム PIN を足した
 - [x] 本番の出し方を決めた（2026-10-24）。Worker の名前は `scrum-guild`（`https://scrum-guild.ucan-lab.workers.dev/`。名前の変更に合わせて 2026-10-24 に改めた）、Workers Paid にするのは本番に初めてデプロイする Issue で、ベータまで Access では守らない。`docs/development.md` の「Cloudflare のアカウントとドメイン」
-- [ ] Cloudflare アカウントを Workers Paid にする（本番に初めてデプロイする Issue で）
+- [x] Cloudflare アカウントを Workers Paid にした（2026-10-25）。本番の D1 `scrum-guild` を Asia Pacific に作った
 - [x] 見本の Worker を Workers Builds につなぎ、Access で守った（2026-10-23、#5）。アカウントの `workers.dev` のサブドメインを `ucan-lab` に改めた。GitHub の Cloudflare のアプリはこのリポジトリ（今の `ucan-lab/scrum-guild`）だけに許可した
 - [ ] 見本を見せる人のメールアドレスを、見本の Worker の Access のアプリの方針に足す（`docs/development.md` の「見本の Worker」）
 - [ ] 見本の Worker の API トークンを、最小の権限のものに入れ替える。本番の D1 や R2 を作る前に行う。本番の Worker のトークンも同じ問題がある（`docs/development.md` の「CD」）
@@ -117,7 +118,7 @@
 ## 次にやること
 
 1. 上の確認の結果を `docs/design.md` と `docs/requirements.md` に反映する
-2. リポジトリの土台を作る（#19）。続けて CI と本番へのデプロイを作る（#20）。どちらも `docs/development.md` の「初版の作る順」の1と2で、開発用サーバーの組み方とセキュリティのヘッダーの付け方は #19 の「背景」に書いた。ここから先、コードは PR を通す
+2. #20（CI と本番へのデプロイ）の残りを片づける。API トークンを最小の権限のものに入れ替えて Workers Logs を確かめ、自動の rollback を試しの PR で実地に確かめる。ここから先、コードは PR を通す
 3. `d1-migration` のスキルを作り、`docs/data-model.md` から最初のマイグレーションを書く
 4. `design/tokens.css` と `design/components.css` を本番の画面に持ち込み、`design/kit.js` の関数を1つずつ Svelte のコンポーネントにする。`html` の `data-theme` には、`users.theme`、なければ `organizations.theme` の値を入れる
 5. 最初の数画面が Svelte で動いたら、下の「画面の自己レビューのスキル」を作る
