@@ -112,6 +112,53 @@ describe('bash-rules: 止める', () => {
     'node --import file:///repo/scripts/deploy-production.ts#.test.ts -e 0',
     `node -p "import('./scripts/deploy-production.ts'),{test:{ts:1}}.test.ts"`,
     'bash scripts/x.sh scripts/deploy.sh',
+    'WORKERS_CI=1 node scripts/deploy-production.ts',
+    'env WORKERS_CI=1 pnpm build',
+    'export WORKERS_CI=1',
+    'export WORKERS_CI',
+    'WORKERS_CI=1',
+    'WORKERS_CI=1; export WORKERS_CI',
+    'WORKERS_CI=0 ls',
+    'declare -x WORKERS_CI=1',
+    'readonly WORKERS_CI=1',
+    'cd scripts && WORKERS_CI=1 ls',
+    'WORKERS_CI=1 cd scripts',
+    'bash -c "WORKERS_CI=1 pnpm build"',
+    'tsx scripts/deploy.ts',
+    'npx tsx scripts/deploy-production.ts',
+    'bun scripts/deploy.ts',
+    'deno run scripts/deploy.ts',
+    'nodejs scripts/deploy-production.ts',
+    'ts-node scripts/deploy.ts',
+    'pnpm exec node scripts/deploy-production.ts',
+    'pnpm --filter api exec tsx scripts/deploy.ts',
+    'pnpm dlx tsx scripts/deploy.ts',
+    'npm exec -- tsx scripts/deploy.ts',
+    'yarn node scripts/deploy-production.ts',
+    'corepack pnpm exec node scripts/deploy-production.ts',
+    'node --test scripts/*.ts',
+    'node --test scripts/*',
+    "node --test '**/*.ts'",
+    'node --test scripts/dep*',
+    'node scripts//deploy-production.ts',
+    'node scripts/./deploy-production.ts',
+    'node ../repo/scripts/deploy-production.ts',
+    'cd scripts && node deploy-production.ts',
+    'cd scripts && node --test *.ts',
+    'node scripts/Deploy-production.ts',
+    'node --import=./scripts/deploy-production.ts -e 0',
+    'node --require=./scripts/deploy-production.ts -e 0',
+    'node --loader=./scripts/deploy-production.ts -e 0',
+    'node --experimental-loader=./scripts/deploy-production.ts -e 0',
+    'node --test-reporter=./scripts/deploy-production.ts --test x',
+    'node --test --test-name-pattern x scripts/deploy-production.ts',
+    'node < scripts/deploy-production.ts',
+    'tsx <scripts/deploy.ts',
+    'bash < scripts/deploy.sh',
+    `node <<'EOF'\nimport('./scripts/deploy-production.ts')\nEOF`,
+    `node <<EOF\nconsole.log(1)\nawait import('./scripts/deploy.ts');\nEOF`,
+    `node <<< "import('./scripts/deploy-production.ts')"`,
+    `node -e "import('./scripts/deploy-production.ts')"`,
     'git push origin main',
     'git push origin HEAD:main',
     'git push origin feature:refs/heads/main',
@@ -345,6 +392,12 @@ describe('bash-rules: 確認を挟む', () => {
     'echo "alter table x" >> migrations/0001_init.sql',
     'git push origin `git branch --show-current`',
     "git push origin 'refs/heads/*:refs/heads/*'",
+    // 作業場所を判定できないときの、デプロイのスクリプトらしい語
+    'cd ~ && node deploy-production.ts',
+    'cd $X && node deploy.ts',
+    'cd ~ && bash deploy.sh',
+    'cd ~ && ./deploy.sh',
+    'cd ~ && tsx Deploy.ts',
   ]) {
     test(command, () => assert.equal(decision(command), 'ask'));
   }
@@ -445,9 +498,48 @@ describe('bash-rules: 通す', () => {
     './scripts/deploy.test.ts',
     'node --test /repo/scripts/deploy.test.ts',
     'bash scripts/deploy.test.ts',
+    'node --test --test-name-pattern scripts/deploy-production.ts scripts/deploy.test.ts',
+    'node --test --test-name-pattern=scripts/deploy-production.ts scripts/deploy.test.ts',
+    'node --test --test-skip-pattern scripts/deploy.ts scripts/deploy.test.ts',
+    'tsx scripts/prepare.ts',
+    'pnpm exec vitest run',
+    'pnpm exec node scripts/deploy.test.ts',
+    'npx tsx scripts/deploy.test.ts',
+    'node --test test/*.ts',
+    'node --test scripts/*.test.ts',
+    'node --test .claude/hooks/*.test.mjs',
+    'cd scripts && node --test *.test.ts',
+    'cd scripts && node deploy.test.ts',
+    'cd ~ && node deploy.test.ts',
+    'cd ~ && node /repo/scripts/prepare.ts',
+    'cd ~ && ls deploy',
+    'echo $WORKERS_CI',
+    'grep -rn WORKERS_CI docs/',
+    'echo WORKERS_CI=1',
+    'printf "WORKERS_CI=1\\n" > /tmp/x.env',
+    'WORKERS_CI_COMMIT_SHA=abc ls',
+    'export WORKERS_CI_COMMIT_SHA=abc',
+    "cat <<'EOF' > /tmp/x.md\nWORKERS_CI=1\nEOF",
+    'prettier --write scripts/deploy.ts',
+    'shellcheck scripts/deploy.sh',
+    'node <<< "console.log(1)"',
+    'node < scripts/prepare.ts',
   ]) {
     test(command, () => assert.equal(decision(command), 'allow'));
   }
+});
+
+describe('bash-rules: デプロイのスクリプトと WORKERS_CI の理由', () => {
+  test('WORKERS_CI の設定は Workers Builds だけに任せる', () => {
+    assert.match(verdict('WORKERS_CI=1 ls')[1], /Workers Builds だけが付ける/);
+    assert.match(verdict('WORKERS_CI=1 ls')[1], /! で打つ/);
+  });
+
+  test('場所を判定できないときは確認を挟み、判定できるときの deny は変えない', () => {
+    assert.match(verdict('cd ~ && node deploy.ts')[1], /作業場所を判定できない/);
+    assert.equal(decision('cd ~ && node scripts/deploy.ts'), 'deny');
+    assert.equal(decision('cd ~ && node deploy.ts && WORKERS_CI=1 ls'), 'deny');
+  });
 });
 
 describe('file-rules', () => {

@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
 import { describe, test } from 'node:test';
 import { deploy, PRODUCTION_URL, versionFromHealth, type DeployDeps, type WranglerResult } from './deploy.ts';
 
@@ -338,5 +339,20 @@ describe('versionFromHealth', () => {
 
   test('database の無い古い形の 200 は失敗にする', async () => {
     await assert.rejects(versionFromHealth(json({ status: 'ok', version: SHA })), /health の形ではありません/);
+  });
+});
+
+describe('deploy-production.ts', () => {
+  test('import しても deploy() は動かず、プロセスも終わらない', () => {
+    // 動いてしまっても本番に触らないよう、WORKERS_CI を外した環境で動かす（deploy() は手順に入らず終わる）
+    const childEnv = { ...process.env, WORKERS_CI: undefined };
+    const url = new URL('./deploy-production.ts', import.meta.url).href;
+    const code = `await import(${JSON.stringify(url)}); console.log('imported')`;
+    const result = spawnSync(process.execPath, ['--input-type=module', '-e', code], {
+      encoding: 'utf8',
+      env: childEnv,
+    });
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(result.stdout.trim(), 'imported');
   });
 });

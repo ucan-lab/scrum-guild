@@ -20,32 +20,41 @@ function headCommit(): string | undefined {
   return result.stdout.trim() || undefined;
 }
 
-const inWorkersBuilds = process.env.WORKERS_CI === '1';
-const status = await deploy({
-  inWorkersBuilds,
-  // Workers Builds の外では、止まる理由を WORKERS_CI の1つにする
-  commitSha: inWorkersBuilds ? headCommit() : undefined,
-  wrangler: (args, { capture }) => {
-    // 標準入力を閉じ、確認を待って止まらないようにする
-    const result = spawnSync(wranglerBin, args, {
-      stdio: ['ignore', capture ? 'pipe' : 'inherit', capture ? 'pipe' : 'inherit'],
-      encoding: 'utf8',
-    });
-    if (result.error) {
-      // 出力を流す呼び出しでも、起動できなかった理由は残す
-      console.error(`wrangler を起動できませんでした: ${result.error.message}`);
-      return { status: 1, stdout: result.stdout ?? '', stderr: `${result.stderr ?? ''}\n${result.error.message}` };
-    }
-    return { status: result.status ?? 1, stdout: result.stdout ?? '', stderr: result.stderr ?? '' };
-  },
-  hasMigrations: () => existsSync('migrations') && migrationFiles(readdirSync('migrations')).length > 0,
-  fetchVersion: async (url, timeoutMs) => {
-    const res = await fetch(url, { signal: AbortSignal.timeout(timeoutMs), cache: 'no-store' });
-    return versionFromHealth(res);
-  },
-  sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
-  now: () => Date.now(),
-  log: (message) => console.log(message),
-  error: (message) => console.error(message),
-});
-process.exit(status);
+// import しても本番の入口が動かないよう、直に動かしたときだけ deploy() を呼ぶ（テストや別のスクリプトからの import を守る）。
+// import.meta.main が無い Node（24.2 より前）では、常に偽とみなすと何もしないまま成功に見えるので、理由を出して失敗させる
+if (typeof import.meta.main !== 'boolean') {
+  console.error('import.meta.main が使えない Node です。Node 24.2 以降（.node-version）で動かしてください');
+  process.exit(1);
+}
+
+if (import.meta.main) {
+  const inWorkersBuilds = process.env.WORKERS_CI === '1';
+  const status = await deploy({
+    inWorkersBuilds,
+    // Workers Builds の外では、止まる理由を WORKERS_CI の1つにする
+    commitSha: inWorkersBuilds ? headCommit() : undefined,
+    wrangler: (args, { capture }) => {
+      // 標準入力を閉じ、確認を待って止まらないようにする
+      const result = spawnSync(wranglerBin, args, {
+        stdio: ['ignore', capture ? 'pipe' : 'inherit', capture ? 'pipe' : 'inherit'],
+        encoding: 'utf8',
+      });
+      if (result.error) {
+        // 出力を流す呼び出しでも、起動できなかった理由は残す
+        console.error(`wrangler を起動できませんでした: ${result.error.message}`);
+        return { status: 1, stdout: result.stdout ?? '', stderr: `${result.stderr ?? ''}\n${result.error.message}` };
+      }
+      return { status: result.status ?? 1, stdout: result.stdout ?? '', stderr: result.stderr ?? '' };
+    },
+    hasMigrations: () => existsSync('migrations') && migrationFiles(readdirSync('migrations')).length > 0,
+    fetchVersion: async (url, timeoutMs) => {
+      const res = await fetch(url, { signal: AbortSignal.timeout(timeoutMs), cache: 'no-store' });
+      return versionFromHealth(res);
+    },
+    sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+    now: () => Date.now(),
+    log: (message) => console.log(message),
+    error: (message) => console.error(message),
+  });
+  process.exit(status);
+}
