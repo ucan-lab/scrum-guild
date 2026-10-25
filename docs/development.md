@@ -20,6 +20,7 @@
 | 操作の定義 | 自前の定義から形を推論する。コードの生成はしない | 下の「操作の定義」 |
 | 言葉の切り替え | 型付きの辞書を自前で持つ | 下の「言葉の辞書」 |
 | 並べ替えの並び（`position`） | `fractional-indexing`（分数の並びの文字列を作る定番のパッケージ） | 間に入れても他の行を書き換えない並びを自前で書かずに済む。ワークスペースを作るときの最初の列と、並べ替えの操作が同じものを使う |
+| Markdown の描画 | `mdast-util-from-markdown` と GFM の拡張4つ（自動リンク、打ち消し線、表、チェックリスト。脚注は入れない）で構文木にし、自前の安全な節に直して Svelte の再帰の部品で描く（`src/lib/markdown.ts`、`src/lib/components/MarkdownBlocks.svelte`）。変換は Web Worker で行い、1秒で終わらない本文は Worker を止めて文字のまま出す（`docs/design.md` の「Markdown の本文」） | HTML の文字列を作らないので無害化器が要らず、リンクと画像の規則を型の上で守れる。悪意のある本文は変換に数秒から分かかるので、画面の本体では走らせない |
 | 架空のデータ | seed とファクトリーの両方 | 下の「架空のデータ」 |
 
 ### 操作の定義
@@ -389,7 +390,7 @@ PR ごとに GitHub Actions で回す。`.github/workflows/ci.yml` の各ジョ�
 | changes | 変わったファイルを見て、文書だけの PR かを判定する（下の「文書だけの PR」） |
 | setup | 各ジョブの先頭で動く共通の用意（`.github/actions/setup`）。Node を `.node-version` から、pnpm を `packageManager` から入れ（corepack に頼らない）、ロックファイルどおりに依存を入れる |
 | check | 型の検査（`tsc`、`svelte-check`）、lint、整形、Claude のフックのテスト（`node --test .claude/hooks/*.test.mjs`） |
-| test | Workers の実行環境で動かす（`@cloudflare/vitest-plugin`。`@cloudflare/vitest-pool-workers` から名前が変わった）。テストの D1 には `test/apply-migrations.ts` が全マイグレーションを当てる。1つのテストファイルの中では、前のテストが入れた行が残るので、一意の列にはテストごとに新しい値を使う。組織の分離のテストを含む。`scripts/` の `node --test` は、seed を一時の D1 に2回流して中身を数える |
+| test | vitest の3つのプロジェクトで動かす（`vitest.config.ts`）。`workers` は API のテストを Workers の実行環境で動かす（`test/`。`@cloudflare/vitest-plugin`。`@cloudflare/vitest-pool-workers` から名前が変わった）。`web` は画面のコードのテストを node の環境で動かす（`src/` の `*.test.ts`。Workers の実行環境では `.svelte` を描けないので、`svelte/server` の `render` で部品を HTML にして確かめる。テストは確かめる対象の隣に置く）。`web-client` は部品の配線（`*.svelte.ts` の `$effect`）を、DOM なしのブラウザ向けの実行で確かめる（`src/` の `*.svelte.test.ts`。環境は `scripts/vitest-client-environment.ts`。`$effect.root` と `flushSync` で動かし、部品そのものは mount しない）。テストの D1 には `test/apply-migrations.ts` が全マイグレーションを当てる。1つのテストファイルの中では、前のテストが入れた行が残るので、一意の列にはテストごとに新しい値を使う。組織の分離のテストを含む。`scripts/` の `node --test` は、seed を一時の D1 に2回流して中身を数える |
 | migration | 空の D1 に全マイグレーションを順に当てて通るか確かめ、続けて同じ D1 に seed を2回流す（`pnpm db:migrate:fresh`）。マイグレーションと seed のずれと、seed を流し直せることを PR ごとに確かめるため。0件なら当てずに成功で終える。ベータが始まったら、既にあるマイグレーションのファイルの書き換えも落とす（上の「DB を作り直してよい期間」） |
 | e2e | `pnpm e2e`。`pnpm preview` で build して `wrangler dev` を立て、サーバーが立ってから `e2e/global-setup.ts` が `pnpm db:seed` で手元の D1 に seed を入れ直し（行は消える。立てたままのサーバーを使い回すときも流れる。CI のジョブに seed の段は足さない）、Playwright で、seed の Cookie でログインした組織の選択と組織の枠（組織が1つの人、2つの人、入れない組織を開いた人。`e2e/organizations.test.ts`）、ログインの画面（枠の外、`return_to` の整え方、`?error=` の文言）と seed の Cookie での `me`（`e2e/login.test.ts`）、運用の画面の一覧と組織の作成のダイアログ（`e2e/operator.test.ts`。e2e の Worker には運用者の一覧のシークレットも GitHub への通信も無いので、運用者の操作の応答は差し替える。運用者でない人の 403 と `/` への戻しは本物のサーバーで見る）、シェルの表示、`/api/health` の版と D1 への疎通、CSP の違反が無いこと（`securitypolicyviolation` とコンソールのエラー）を確かめる。版には PR の head の SHA を渡し、`/api/health` と画面の build に埋めた版（SvelteKit が書き出す `/_app/version.json`）がどちらもその値になることも見る。スクリーンショットと、失敗したときの trace を成果物の `e2e` に上げる。4つのテーマと2つの言葉の組み合わせのスクリーンショットは、画面ができてから足す。trace は要求と応答と Cookie を丸ごと残し、成果物はリポジトリを読める人が誰でも取れるので、e2e には本物の認証情報を渡さない（ログインは seed のセッションで通す） |
 | ai-review | `anthropics/claude-code-action` で、スキル `ai-review` が差分に応じて `.claude/agents/` のレビューのエージェントを呼び分け、CRITICAL と HIGH を `finding-verifier` の反証にかけてから、指摘を PR に書く。`.github/workflows/ai-review.yml` に分けて置く |
@@ -661,6 +662,7 @@ Workers Static Assets の `_headers` で付ける。資産の配信には Worker
 - 写すスクリプトは、meta が見つからないとき、書き出した JS の `style` 属性が `style-src` のハッシュに無いとき（SvelteKit を上げて読み上げ用の要素の `style` が変わったときなど）に build を失敗させる
 - `/_app/immutable/*` は `Cache-Control: public, max-age=31536000, immutable`。ファイル名にハッシュが入り中身が変わらないため。`index.html` は Cloudflare の既定（毎回確かめる）のままにして、新しい版をすぐ拾う
 - `inline` の script と style を `src/app.html` とコンポーネントに書かない。ハッシュから漏れて CSP で止まる
+- Web Worker（Markdown の変換。`src/lib/markdown.worker.ts`）は、Vite が `/_app/immutable/workers/` に出す自分のオリジンのファイルとして読む。`worker-src` は足さず、`script-src 'self'` で通る。`blob:` と `data:` の Worker は CSP を広げるので使わない。Worker は束の評価を終えると `ready` を返し、変換の時間切れ（1秒）はそこから数える。micromark が使う `decode-named-character-reference` の既定の版（`browser` 条件）は `document` を呼んで Worker で落ちるので、`vite.config.ts` の `resolve.alias` で、DOM を使わない版（dev と build の両方）にそろえる（`scripts/markdown-worker-entities.ts`。直の依存）
 
 ### API
 

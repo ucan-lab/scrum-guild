@@ -748,6 +748,14 @@ export const dictionary = defineDictionary({
     '{date} に閉じました。読み取り専用です。',
   ),
   workspaceClosedBannerLink: organization('{page}で開き直す', '{page}で開き直す'),
+
+  // Markdown の本文。変換が終わらなかった本文を、書かれたまま出すときの注記
+  markdownPlainNote: workspace('整形せずに表示しています', '整形せずに表示しています'),
+  // リンクは新しいタブで開く。リンクの補足（aria-describedby）として読み上げに伝える
+  markdownNewTab: workspace('新しいタブで開きます', '新しいタブで開きます'),
+  // 横にスクロールするコードと表の枠の名前。キーボードで枠にフォーカスを置いて動かすため、読み上げに名前を伝える
+  markdownCodeRegion: workspace('コード', 'コード'),
+  markdownTableRegion: workspace('表', '表'),
 });
 
 export type DictionaryKey = keyof typeof dictionary;

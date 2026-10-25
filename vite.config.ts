@@ -3,6 +3,7 @@ import { sveltekit } from '@sveltejs/kit/vite';
 import { defineConfig } from 'vite';
 import { devPorts } from './scripts/dev-ports.ts';
 import { fontsourceWoff2Only } from './scripts/fontsource-woff2.ts';
+import { decodeNamedCharacterReferenceFile } from './scripts/markdown-worker-entities.ts';
 import { pageCspDirectives } from './src/shared/security-headers.ts';
 
 const ports = devPorts(process.env);
@@ -22,6 +23,8 @@ export default defineConfig({
       version: { name: process.env.APP_VERSION || 'dev' },
     }),
   ],
+  // 本文の変換の Worker（src/lib/markdown.worker.ts）が DOM を使わない版を読むようにする（理由は scripts/markdown-worker-entities.ts）
+  resolve: { alias: { 'decode-named-character-reference': decodeNamedCharacterReferenceFile } },
   build: {
     // 小さい書体のファイルを data: URI にして CSS へ埋め込ませない。CSP の font-src（default-src 'self'）は data: を通さず、止まる
     assetsInlineLimit: 0,

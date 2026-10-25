@@ -69,6 +69,8 @@
     accountMenuLabel: ["{name}。アカウントのメニュー", "{name}。アカウントのメニュー"], logout: ["ログアウト", "ログアウト"],
     logoutMoving: ["ログアウトしています", "ログアウトしています"], loggedOut: ["ログアウトしました。", "ログアウトしました。"],
     logoutFailed: ["ログアウトできませんでした。時間をおいてもう一度試してください。", "ログアウトできませんでした。時間をおいてもう一度試してください。"],
+    markdownPlainNote: ["整形せずに表示しています", "整形せずに表示しています"], markdownNewTab: ["新しいタブで開きます", "新しいタブで開きます"],
+    markdownCodeRegion: ["コード", "コード"], markdownTableRegion: ["表", "表"],
   };
   let vocab = 0;
   const listeners = [];
@@ -538,6 +540,59 @@
       const m = /^!\[(.*)\]\((\w+)\)$/.exec(b);
       return m ? mdImage(m[1], m[2]) : `<p>${esc(b)}</p>`;
     }).join("");
+  }
+  // Markdown の本文の見本。本番は Markdown.svelte が markdown.ts の安全な節を MarkdownBlocks.svelte で描く。
+  // 見出しは `#` を h3 にした形（始まりの段の既定）。h6 で止まるので、4段目からは h6 のまま、大きさは Markdown の段のクラス（doc-h1 から doc-h6）で決まる。
+  // 密なリストは段落を <p> で包まない。リンクは新しいタブで開くことを、aria-describedby が指す隠した文で添える（リンクの名前にも、チェックリストの箱の名前にも入らない）。
+  // kind: all（既定）、unsafe（リンクにしないもの）、plain（変換を待つ間と時間切れの、書かれたままの文字。注記つき）
+  function markdownSample(kind = "all") {
+    const newTab = (id) => `<span id="${id}" hidden>${t("markdownNewTab")}</span>`;
+    if (kind === "plain") {
+      return `<p class="props-note">${t("markdownPlainNote")}</p>
+      <div class="doc-box is-plain">## 結果を確かめる手順\n\nログインしてから /aoba を開き、**一覧が出る**ことを確かめる。\n\n- [ ] 一覧が出る</div>`;
+    }
+    if (kind === "unsafe") {
+      return `<div class="doc-box">
+        <p class="doc-literal">&lt;script&gt;alert(1)&lt;/script&gt;</p>
+        <p>&lt;img src=x onerror=alert(1)&gt;を<span class="doc-literal">&lt;b&gt;含む&lt;/b&gt;</span>行も、文字のまま出る。</p>
+        <p>相対リンク /aoba/w/1?task=2 と mailto:ayu@example.com は文字のまま出る。</p>
+        <p><a href="https://example.com/diagram.png" rel="noopener noreferrer" target="_blank" aria-describedby="md-newtab-u">構成図</a>（外部の画像は読み込まず、リンクにする）</p>
+        ${newTab("md-newtab-u")}
+      </div>`;
+    }
+    return `<div class="doc-box">
+      <h3 class="doc-h1">結果を確かめる手順</h3>
+      <p>ログインしてから <code>/aoba</code> を開き、<strong>一覧が出る</strong>ことを確かめる。<em>古い画面</em>は<del>残さない</del>。詳しくは <a href="https://example.com/guide" rel="noopener noreferrer" target="_blank" aria-describedby="md-newtab-a">手引き</a> を読む。</p>
+      <h4 class="doc-h2">段取り</h4>
+      <ol><li>組織を選ぶ</li><li>ワークスペースを開く<ul><li>一覧が出る</li><li>空なら案内が出る</li></ul></li></ol>
+      <h5 class="doc-h3">確かめること</h5>
+      <ul role="list">
+        <li class="is-task"><input type="checkbox" checked disabled aria-labelledby="md-task-a"><div id="md-task-a">一覧が出る</div></li>
+        <li class="is-task"><input type="checkbox" disabled aria-labelledby="md-task-b"><div id="md-task-b">空の案内が出る</div></li>
+      </ul>
+      <h6 class="doc-h4">順序のある確認</h6>
+      <ol>
+        <li class="is-task"><input type="checkbox" checked disabled aria-labelledby="md-task-c"><div id="md-task-c">ログインする</div></li>
+        <li class="is-task"><input type="checkbox" disabled aria-labelledby="md-task-d"><div id="md-task-d">組織を切り替える</div></li>
+      </ol>
+      <h6 class="doc-h5">見出し5</h6>
+      <h6 class="doc-h6">見出し6</h6>
+      <blockquote><p>見た目は4つのテーマで確かめる。</p><p>色は役割の変数だけを使う。</p></blockquote>
+      <pre tabindex="0" role="region" aria-label="${t("markdownCodeRegion")}"><code>pnpm test
+pnpm check
+const looooooooooooooooooooooooooooooooooongLine = "コードの長い1行は、枠をはみ出さず、横にスクロールする";</code></pre>
+      <hr>
+      <div class="doc-table" tabindex="0" role="region" aria-label="${t("markdownTableRegion")}"><table>
+        <thead><tr><th scope="col">画面</th><th scope="col" class="is-center">状態</th><th scope="col" class="is-right">件数</th><th scope="col">担当</th><th scope="col">期限</th><th scope="col">メモ</th></tr></thead>
+        <tbody>
+          <tr><td>バックログ</td><td class="is-center">確認済み</td><td class="is-right">12</td><td>ayu</td><td>10/27</td><td>幅が足りない表は、枠の中で横に動かせる</td></tr>
+          <tr><td>スプリント</td><td class="is-center">確認中</td><td class="is-right">5</td><td></td><td></td><td></td></tr>
+        </tbody>
+      </table></div>
+      <p><span class="doc-literal">入れ子の上限を超えた分や、
+生の HTML は、改行を保って文字で出る。</span></p>
+      ${newTab("md-newtab-a")}
+    </div>`;
   }
   // 使っている量と上限。80% を超えたら is-warn、上限に達したら is-full
   // opts.unit は量の単位（既定 GB）、opts.note は下に添える文
@@ -1625,7 +1680,7 @@
     avatar, avatarOf, SAMPLE_PHOTO, BROKEN_PHOTO, emblem, pts, dueChip, taskDue, tier, sourceKey, entry, book, section, pageHead,
     card, board, treeStory, treeEpic, sprintNotice, raidNotice, progress, levelPanel, load, capacityRows,
     openDialog, closeDialog, toast, celebrate, miniCap, redraw: () => redrawAll(), DIALOGS, loginTarget, orgMenuHtml, accountMenuHtml,
-    filesOf, fileThumb, fileRow, dropzone, attachments, mdBody, meter,
+    filesOf, fileThumb, fileRow, dropzone, attachments, mdBody, markdownSample, meter,
     PROVIDER, ASSIST_KEY, assistMsg, assistBlocked, assistSuggest, openAssist,
     enableAssistOnCatalog: () => { assistOnCatalog = true; },
   };
