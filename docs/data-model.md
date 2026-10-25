@@ -1,15 +1,15 @@
 # Scrum Guild データモデル
 
-状態: 確定。要件定義（`requirements.md`）を D1（SQLite）のテーブルに落としたもの。次は最初のマイグレーションを書く
+状態: 確定。要件定義（`requirements.md`）を D1（SQLite）のテーブルに落としたもの。最初のマイグレーション（`migrations/0001_create_initial_tables.sql`）で、共通の6表と、一本道に要る組織の中の16表を作った。残りの表は、使う機能の Issue でマイグレーションを足して作る
 
 ## 決まりごと
 
 - 名前はスクラムの言葉で、テーブルは複数形のスネークケース、列はスネークケース。
 - 主キーは UUIDv7 の文字列（`TEXT`）で、列名は `id`。行を作る Worker が採番する。単一の行しか持たない表と、他の表の組を主キーにする表は除く。
 - 日時は UTC の ISO 8601（`2026-10-20T01:23:45.678Z`）を `TEXT` で持ち、列名は `_at` で終える。
-- 日付は `YYYY-MM-DD` を `TEXT` で持ち、列名は `_on` か `_date` で終える。検査は `CHECK (x = date(x))`。
-- 月は `YYYY-MM` を `TEXT` で持ち、列名は `_month` で終える。検査は `CHECK (x || '-01' = date(x || '-01'))`。
-- 真偽は `INTEGER` の 0 と 1 で持ち、列名は `is_` で始める。
+- 日付は `YYYY-MM-DD` を `TEXT` で持ち、列名は `_on` か `_date` で終える。検査は `CHECK (x IS date(x))`。`=` で比べない。`date()` は形の崩れた値に NULL を返し、`=` の比較が NULL になると CHECK は通ってしまうため。`IS` なら空の列は通り、形の崩れた値は当たる。
+- 月は `YYYY-MM` を `TEXT` で持ち、列名は `_month` で終える。検査は `CHECK (x || '-01' IS date(x || '-01'))`。
+- 真偽は `INTEGER` の 0 と 1 で持ち、列名は `is_` で始める。検査は `CHECK (x IN (0, 1))`。
 - 列挙は `TEXT` に `CHECK (x IN (...))` を付ける。値は英語の小文字とスネークケース。取り込み元に固有の値（取り込み元の種類、取り込む範囲の種類）は CHECK に書かず、取り込み元の型の一覧でアプリが検証する。SQLite では CHECK を後から変えられず、取り込み元を足すたびに表を作り直すことになるため。
 - JSON は `TEXT` に `CHECK (json_valid(x))` を付け、列名は `_json` で終える。
 - 本文とコメントは `CHECK (length(x) <= 100000)` で10万字に抑える。
@@ -119,7 +119,7 @@
 
 | 列 | 型 | 制約 | 説明 |
 | --- | --- | --- | --- |
-| token_hash | TEXT | PK | Cookie に入れたランダムな ID の SHA-256 |
+| token_hash | TEXT | PK | Cookie に入れたランダムな ID（32 バイトの乱数の base64url、43文字）の SHA-256 を小文字の16進（64文字）にしたもの |
 | account_id | TEXT | NOT NULL、FK accounts | |
 | created_at | TEXT | NOT NULL | |
 | last_used_at | TEXT | NOT NULL | 使うたびに書き直す |
@@ -283,6 +283,8 @@
 | created_by | TEXT | NOT NULL、FK users | |
 | created_at、updated_at | TEXT | NOT NULL | |
 
+- 索引: `(organization_id)`。組織のワークスペースの一覧に使う。
+
 ### workspace_point_rates
 
 ポイントの換算比率の履歴。
@@ -356,7 +358,7 @@ Google の人は、ログインするまで `sub` が分からない。そのた
 
 招待の URL を作るとき。
 
-- 秘密は 32 バイトの乱数を base64url（43文字）にし、URL のフラグメント（`/invite#<秘密>`）にだけ入れる。フラグメントはサーバーに届かず、Referer にも付かないので、ログに残らない。DB には SHA-256 の `claim_token_hash` だけを持つ。
+- 秘密は 32 バイトの乱数を base64url（43文字）にし、URL のフラグメント（`/invite#<秘密>`）にだけ入れる。フラグメントはサーバーに届かず、Referer にも付かないので、ログに残らない。DB には SHA-256 の `claim_token_hash`（`sessions.token_hash` と同じく小文字の16進）だけを持つ。
 - 招待と指名を作る API は、秘密を応答の本文にだけ入れ、`Cache-Control: no-store` を付ける。ヘッダーと `change_logs` には入れない。URL は作った直後の画面にだけ出す。
 - メールアドレスは、前後の空白を除き、ASCII の英大文字だけを小文字に直してから `login_email` に入れる。ASCII の外の文字を含むものは受け付けない。ドットや `+` 以降は読み替えない。招待と指名の入力と、ID トークンの `email` の両方に、同じ1つの関数を通す。
 - `claim_expires_at` は作ってから14日にする。
@@ -416,6 +418,7 @@ Google の人は、ログインするまで `sub` が分からない。そのた
 | created_at、updated_at | TEXT | NOT NULL | |
 
 - 一意: `(workspace_id) WHERE is_done = 1`。完了の列はワークスペースに1つ。
+- 索引: `(workspace_id, position) WHERE deleted_at IS NULL`。`detail_fields`、`categories`、`repositories` も同じ索引で一覧を引く。
 - `CHECK (is_done = 1 OR name IS NOT NULL)`。
 - 完了の列を末尾に置くことは、読むときに `ORDER BY is_done, position` で守る。完了の列の `position` は使わない。
 - 削除は論理削除にする。変更の履歴と完了の記録が列を指すため。最後に残った完了以外の列と完了の列を削除できないことは、アプリが検査する。

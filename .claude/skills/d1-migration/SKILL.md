@@ -162,9 +162,9 @@ pnpm db:migrate:fresh
 pnpm test
 ```
 
-- `pnpm db:migrate:fresh` は一時の場所に空の D1 を作って当て、当て終えたら消す（手元の `.wrangler/state` の D1 は前に当てた状態から始まるので、空の確かめにならない）。CI の migration のジョブも同じことをする。確かめるのは SQL が当たることだけで、アプリのコードとスキーマが合うかは見ない
-- テストが全マイグレーションを当てた D1 で回る仕組みは #49 で入れる。入るまでは、`pnpm test` はマイグレーションを当てない
-- 表を変えたら、全マイグレーションを当てた D1 にこのブランチの seed を流して通ることも確かめる。流し方は `CLAUDE.md` の「コマンド」
+- `pnpm db:migrate:fresh` は一時の場所に空の D1 を作って当て、続けて同じ D1 に seed を2回流し、終えたら消す（手元の `.wrangler/state` の D1 は前に当てた状態から始まるので、空の確かめにならない）。CI の migration のジョブも同じことをする。確かめるのは SQL が当たることと seed が流れることで、アプリのコードとスキーマが合うかは見ない
+- `pnpm test` のテストの D1 には、全マイグレーションが当たる（`test/apply-migrations.ts`）。足した CHECK と一意は `test/schema.test.ts` にテストを足す
+- 表を変えて seed が落ちたら、`seed/data.sql` を同じ PR で直す。表を足しても、seed が消す表の一覧は直さなくてよい（`sqlite_master` から引く）
 
 #### 行の入った D1 で確かめる
 

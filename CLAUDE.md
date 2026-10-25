@@ -25,7 +25,8 @@ Node は `.node-version`（26）、pnpm は `package.json` の `packageManager` 
 - build: `pnpm build`（`build/` に書き出し、`build/_headers` を作る）
 - フックのテスト: `node --test .claude/hooks/*.test.mjs`
 - e2e: `pnpm e2e`（`pnpm preview` を立てて Playwright で確かめる。初めは `pnpm exec playwright install chromium`）
-- 空の D1 に全マイグレーションを当てる: `pnpm db:migrate:fresh`
+- 空の D1 に全マイグレーションを当て、seed を2回流して確かめる: `pnpm db:migrate:fresh`
+- 手元の D1 にマイグレーションを当て、全部の行を消して seed を入れ直す: `pnpm db:seed`（ログインに使うトークンは `seed/sessions.ts`）
 
 開発用のサーバーとポート、版の渡し方は `docs/development.md` の「手元で動かす」。
 

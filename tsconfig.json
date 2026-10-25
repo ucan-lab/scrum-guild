@@ -1,4 +1,4 @@
-// 画面（src/routes、src/lib）、共有、scripts/、設定のファイル。Worker は Workers の型を使うので src/server/tsconfig.json で別に見る
+// 画面（src/routes、src/lib）、共有、scripts/、seed/、設定のファイル。Worker は Workers の型を使うので src/server/tsconfig.json で別に見る
 {
   "extends": "$app/tsconfig",
   "compilerOptions": {
@@ -6,6 +6,6 @@
     "allowImportingTsExtensions": true,
     "types": ["$app/types", "node"]
   },
-  "include": ["src", "scripts", "e2e", "vite.config.ts", "vitest.config.ts", "playwright.config.ts"],
+  "include": ["src", "scripts", "seed", "e2e", "vite.config.ts", "vitest.config.ts", "playwright.config.ts"],
   "exclude": ["src/server"]
 }

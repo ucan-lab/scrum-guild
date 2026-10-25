@@ -17,7 +17,8 @@
     "format:check": "prettier --check .",
     "test": "node scripts/prepare.ts && vitest run && node --test scripts/*.test.ts",
     "e2e": "playwright test",
-    "db:migrate:fresh": "node scripts/migrate-fresh.ts"
+    "db:migrate:fresh": "node scripts/migrate-fresh.ts",
+    "db:seed": "node scripts/db-seed.ts"
   },
   "dependencies": {
     "hono": "^4.13.13"
