@@ -50,15 +50,26 @@ Workers & Pages の「Create application」→「Continue with GitHub」で、�
 
 Workers Builds のビルドでは、devDependencies のコードがトークンのある環境で動く。依存が1つ乗っ取られるとトークンが外へ出るので、権限はデプロイに要るものだけにする。
 
-今の本番は、接続のときに自動で作ったトークン `scrum-guild build token` でつないでいる（2026-10-25）。自動のトークンは D1、R2、KV、Queues の編集と、全ゾーンの Workers Routes の編集まで持つ。本番の D1 に自分のチームのデータを入れる前に、最小の権限のトークンへ入れ替える（#20）。
+Workers Builds が使えるのは、Builds が自分で作ったトークンだけ。「My Profile」で自分で作ったユーザーのトークンも、「Account API tokens」で作ったアカウントのトークンも、Builds の「API token」の選択肢に出なかった（2026-10-25、2026-10-23）。Builds は値を持っていないトークンを使えないため。権限は、Builds が作ったトークンを編集して絞る。
 
-入れ替えの手順:
+本番のトークンは `scrum-guild build token`（接続のときに Builds が作った）。2026-10-25 に次の5つへ絞り、デプロイ（rollback の戻し先を控える、版を上げる、煙のテスト）が通ることを Retry build で確かめた。
 
-1. 右上のユーザーのメニューの「My Profile」→「API Tokens」で、ユーザーのトークンを作る。「Account API tokens」で作るアカウントのトークンは、Workers Builds の選択肢に出なかった（2026-10-23、見本の Worker）
-2. 付ける権限は、デプロイのスクリプトが呼ぶ wrangler（`deployments status`、`deploy`、`rollback`、`d1 time-travel info`、`d1 migrations apply`）に要るものだけにし、対象は ucan-lab のアカウントだけにする。確かめた権限の一覧は、入れ替えたときにここへ書く
-3. Worker の Settings の Builds の「API token」で、作ったトークンを選び直す
-4. 次の `main` へのデプロイが通ることを確かめる
-5. 自動で作られたトークンを失効させる。名前は `<Worker の名前> build token`（本番は `scrum-guild build token`、見本は `team-leveling-design build token`）
+| 範囲 | 権限 |
+| --- | --- |
+| Account（ucan-lab のアカウントだけ） | Workers Scripts: Edit、D1: Edit、Account Settings: Read |
+| User | User Details: Read、Memberships: Read |
+
+- 作られたときは、Workers AI、Queues、Containers、Secrets Store、R2、KV、AI Gateway などの編集と、全アカウントの全ゾーンの Email Routing Rules、Workers Routes、SSL and Certificates の編集まで、30 の権限を持っていた
+- マイグレーション（`d1 time-travel info`、`d1 migrations apply`）は D1: Edit で動く見込みで、最初のマイグレーションのデプロイで確かめる
+- 機能を足して権限が要るようになったら（R2 の添付ファイル、Queues など）、そのときに足す
+
+権限を変える手順:
+
+1. 右上のユーザーのメニューの「My Profile」→「API Tokens」で、`scrum-guild build token` の「⋯」→「Edit」を開く
+2. 権限を足すか外し、「Continue to summary」→「Update token」で保存する。トークンの値は変わらないので、Builds の設定は触らない
+3. Worker の「Deployments」で最新のビルドの「Retry build」を押し、デプロイが通ることを確かめる。権限が足りないときの止まり方は、本番に触る前の失敗
+
+編集の画面では、名前の出ない権限の行（`Select...` と出る）がある。本番のトークンの `User` の `Select...` の行は Memberships: Read なので消さない。行の中身は「View summary」で確かめる。
 
 ## 出し方
 

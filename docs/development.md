@@ -340,7 +340,7 @@ PR ごとのプレビュー環境は持たず、Workers Builds の preview build
 
 マイグレーションを当ててから版を切り替え、戻すときはコードだけを戻す。どちらの順でも動くように、マイグレーションは `d1-migration` の「広げてから縮める」に従う。
 
-Workers Builds の API トークンは、権限を最小にしたものを自分で作って選ぶ。自動で作られるトークンは、D1、R2、KV、Queues の編集と、全ゾーンの Workers Routes の編集の権限まで持つため。見本の Worker をつないだとき（2026-10-23）、「Account API tokens」で作ったアカウントのトークンは Workers Builds の選択肢に出なかった。本番をつなぐ前に、「My Profile」で作るユーザーのトークンなら選べるかを確かめる。選べなければ自動で作られたトークンでつなぎ、本番の D1 に自分のチームのデータを入れる前に最小の権限のものへ入れ替え、自動のトークンは失効させる（`docs/operations.md` の「API トークン」）。ビルドでは devDependencies のコードがトークンのある環境で動くので、それまでは依存の乗っ取りでアカウントの D1 と R2 まで触られうることを受け入れる。
+Workers Builds の API トークンは、Builds が作ったトークンの権限を、デプロイに要るものだけに絞って使う。ビルドでは devDependencies のコードがトークンのある環境で動き、依存が1つ乗っ取られるとトークンが外へ出るため。自分で作ったトークン（ユーザーのものもアカウントのものも）は Builds の選択肢に出ないので、入れ替えではなく編集で絞る（2026-10-25 に確かめた）。本番のトークンの権限と変え方は `docs/operations.md` の「API トークン」。
 
 本番をつないだとき（2026-10-25）に確かめたこと。
 
@@ -359,7 +359,7 @@ Workers Builds の API トークンは、権限を最小にしたものを自分
 - 設定はリポジトリのルートの `wrangler.design.jsonc`。`design/` を静的なファイルとして返すだけで、コード、D1、R2、シークレットを持たない。設定を `design/` の中に置くと設定そのものが配信されるので、外に置く
 - URL は `https://scrum-guild-design.ucan-lab.workers.dev/`。URL の先頭は Worker の名前。名前はダッシュボードの Worker の設定（General の Name）で変え、設定の `name` も同じ名前にそろえる。Access のアプリは URL でなく Worker に付くので、名前を変えた直後から新しい URL を守り、古い URL は 404 を返した（2026-10-24、#17）。設定の `name` だけが先に変わっていた間も、Workers Builds はつないだ Worker へのデプロイを通した。`ucan-lab` はアカウントの `workers.dev` のサブドメインで、変えるとアカウントのすべての Worker の URL が変わる
 - 本番と同じく Workers Builds が `main` から反映する。ビルドのコマンドは空で、デプロイのコマンドは `npx wrangler deploy -c wrangler.design.jsonc`。build watch paths は `design/*` と `wrangler.design.jsonc` だけにし、preview builds は有効にしない
-- API トークンは、Workers Builds が自動で作ったもの（`team-leveling-design build token`。Worker の名前を変える前に作られた）を使っている。最小の権限のトークンを選べなかったため（上の「CD」）。本番の D1 や R2 を作る前に、最小の権限のトークンに入れ替える
+- API トークンは、Workers Builds が自動で作ったもの（`team-leveling-design build token`。Worker の名前を変える前に作られた）を使っている。名前は古いが消さない。消すと見本のデプロイが止まる。権限は作られたときのまま（30）で、本番と同じく編集で絞る（上の「CD」）。見本は D1 を使わないので、Workers Scripts: Edit、Account Settings: Read、User Details: Read、Memberships: Read で足りる見込み
 - `workers.dev` の URL を Cloudflare Access（Zero Trust の無料の枠、50人まで）で守る。Access のアプリ（`scrum-guild-design - Cloudflare Workers`）は Worker の本番とプレビューの URL を覆い、セッションは1か月。ログインの手段は Cloudflare アカウントとワンタイム PIN。版ごとのプレビュー URL は設定の `preview_urls` で作らない
 - 見る人を足すときは、Zero Trust の Access controls の Applications で見本の Worker のアプリを開き、メールアドレス（Emails）で許可する方針を足す。今の方針は Cloudflare アカウントのメンバーだけを許可する
 - 指摘はチャットで受け取り、結論を `HANDOFF.md` の「確認してほしいこと」と `docs/design.md` に移す
