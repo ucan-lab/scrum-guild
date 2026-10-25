@@ -30,6 +30,7 @@ export const pointers: Pointers = {
   'workspace-list': { noReference: {} },
   'workspace-leader-candidates': { noReference: {} },
   workspace: async (target) => ({ workspace_id: target.workspace.id }),
+  'member-list': async (target) => ({ workspace_id: target.workspace.id }),
   'resolve-github-user': async () => ({ username: newGithubUser().login }),
   // slug は呼ぶたびに別の値にする（重なると 409 になる）
   'create-organization': async () => {

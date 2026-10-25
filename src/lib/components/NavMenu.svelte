@@ -9,23 +9,31 @@
   // 組織の管理は管理者にだけ出す。所属するワークスペースが無い人（hasWorkspace が偽）には、組織の画面だけを出す。
   // workspaceSwitcher を渡すのは、ワークスペースの画面を開いている間。所属していない管理者にも、
   // ワークスペースの節の見出しと、今のワークスペースを出す。ワークスペースの切り替えの中身は、画面を作る Issue で足す。
+  // ワークスペースの経路の項目（メンバーなど）は、workspaceId を渡したときだけ出す。渡すのは、開いているワークスペースの ID。
   // 組織の切り替えはメニューの外（AppShell のブランドの下）に置く
   let {
     current,
     slug,
     hasWorkspace,
     isAdmin,
+    workspaceId,
     workspaceSwitcher,
   }: {
     current: string;
     slug: string;
     hasWorkspace: boolean;
     isAdmin: boolean;
+    workspaceId?: string;
     workspaceSwitcher?: Snippet;
   } = $props();
 
   const sections = $derived(
-    visibleNav(undefined, { hasWorkspace, isAdmin, inWorkspaceScreen: workspaceSwitcher !== undefined }),
+    visibleNav(undefined, {
+      hasWorkspace,
+      isAdmin,
+      inWorkspaceScreen: workspaceSwitcher !== undefined,
+      workspaceId: workspaceId ?? null,
+    }),
   );
 </script>
 
@@ -34,7 +42,11 @@
     {#if section.heading}<div class="nav-group">{t(section.heading)}</div>{/if}
     {#if section.slot === 'workspace' && workspaceSwitcher}{@render workspaceSwitcher()}{/if}
     {#each section.items as item (item.label)}
-      {@const href = resolve(item.href, { slug })}
+      <!-- ワークスペースの経路は、visibleNav が ID のあるときだけ残す -->
+      {@const href =
+        item.href === '/[slug]/w/[id]/members'
+          ? resolve(item.href, { slug, id: workspaceId ?? '' })
+          : resolve(item.href, { slug })}
       <a class="nav-item" {href} aria-current={current === href ? 'page' : undefined}>
         <Icon name={item.icon} /><span>{t(item.label)}</span>
       </a>
