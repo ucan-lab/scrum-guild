@@ -157,6 +157,38 @@ describe('task-create', () => {
     expect((await recordsOf(target, task.id)).task!.assignee_user_id).toBe(target.leader.userId);
   });
 
+  test('所属は残っていても、無効にした人は担当に指せない。404 で、何も書かない', async () => {
+    const target = await createTarget();
+    const disabled = await createPerson({
+      organization: target.organization,
+      disabled: true,
+      membership: { workspaceId: target.workspace.id, role: 'member' },
+    });
+    const res = await post(app, taskCreate, {
+      slug: target.slug,
+      token: target.member.token,
+      body: { workspace_id: target.workspace.id, title: 'x', assignee_user_id: disabled.userId },
+    });
+    expect(res.status).toBe(404);
+    expect(await errorCodeOf(res)).toBe('not_found');
+
+    const db = orgDb(env, target.organization.verified);
+    const tasks = await db.rows(
+      db.statement((q) => q.selectFrom('tasks').select('id').where('workspace_id', '=', target.workspace.id)),
+    );
+    const logs = await db.rows(
+      db.statement((q) =>
+        q
+          .selectFrom('change_logs')
+          .select('id')
+          .where('organization_id', '=', target.organization.id)
+          .where('workspace_id', '=', target.workspace.id),
+      ),
+    );
+    expect(tasks).toEqual([]);
+    expect(logs).toEqual([]);
+  });
+
   test.each([
     ['タイトルが空', { title: '   ' }],
     ['タイトルが201字', { title: 'あ'.repeat(201) }],
