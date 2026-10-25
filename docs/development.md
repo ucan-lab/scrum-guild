@@ -328,7 +328,7 @@ PR ごとのプレビュー環境は持たず、Workers Builds の preview build
       - 戻し先が無い。壊れた版が残っていると書く
 3. ビルドの失敗には、Cloudflare の通知と GitHub のコミットの状態で気づく。下の「本番で壊れたことに気づく」の定期の確認でも Issue が立つ
 
-ビルドとデプロイのコマンドは `docs/operations.md` の「出し方」に置く。
+ビルドとデプロイのコマンドは `docs/operations.md` の「Workers Builds の接続」に置く。
 
 - 版は `wrangler deploy` の1回で上げる。`wrangler versions upload` と `versions deploy` の2段にしないのは、`versions upload` が Worker のまだ無い初回に失敗し、cron やルート（triggers）の変更も反映しないため。版を段階的に流さないので、2段に分ける得も無い
 - rollback には必ず版の ID を渡す。`wrangler rollback` は版を指定しないと、直近のデプロイを除いた履歴から 100% で動いていた版を選ぶ。その間に別のデプロイが挟まると、このスクリプトが切り替える直前の版とずれるため
@@ -368,9 +368,10 @@ Workers Builds の API トークンは、権限を最小にしたものを自分
 
 外部へのテレメトリは送らない方針のまま、自分たちで見る。
 
-- Workers Logs を有効にする
+- Workers Logs は有効（`wrangler.jsonc` の `observability`）。呼び出しごとのログは切っているので、残るのは Worker がエラーのときに出す JSON の1行だけ。正常な呼び出しではイベントが増えない（2026-10-25 に確かめた）
 - GitHub Actions の定期実行で、1時間ごとに本番の `/api/health` と定期処理の最後の成功時刻を確かめ、落ちていたら Issue を立てる
-- Cloudflare の通知で Workers のエラー率などを受けられるかは、土台を作るときに確かめる
+- Cloudflare の Platform Notifications に、Workers のエラー率の通知は無い（2026-10-25）。Observability の Monitors なら、データセット `Workers Logs`、`Workers Real-Time Issues`、`HTTP Requests` への問い合わせにしきい値を置き、メールなどへ送れる。作るのは、エラーのログの形が決まってから
+- 請求の通知は設定済み（`HANDOFF.md`）
 
 ## GitHub のログインと取り込み
 
