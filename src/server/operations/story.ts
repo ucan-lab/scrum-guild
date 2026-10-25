@@ -1,10 +1,17 @@
 import { generateKeyBetween } from 'fractional-indexing';
 import { now } from '../../shared/clock.ts';
-import { storyCreate, storyGet, storyUpdate, type StoryDetail } from '../../shared/operations/story/index.ts';
-import type { OrganizationDb } from '../db/index.ts';
+import {
+  storyCreate,
+  storyGet,
+  storyMove,
+  storyUpdate,
+  type StoryDetail,
+} from '../../shared/operations/story/index.ts';
+import type { OrganizationDb, OrganizationTables, QueryCreator } from '../db/index.ts';
 import { ApiError } from '../errors.ts';
 import { uuidv7 } from '../uuid.ts';
 import { implement } from './implement.ts';
+import { placeAfter, placeFirst, placeLast, type MovePlan } from './move-position.ts';
 import { actorUserIdOf, changeLogColumns, openWorkspace, throwIfClosed } from './write-guards.ts';
 
 // ストーリーのダイアログの欄。作るときの履歴に使う
@@ -283,4 +290,239 @@ export const storyUpdateOperation = implement(storyUpdate, async ({ db, actor, w
     if ((await readStory(db, workspaceId, storyId)) === undefined) throw new ApiError(404, 'not_found');
   }
   throw new ApiError(409, 'conflict');
+});
+
+type Tables = OrganizationTables;
+
+// 移す先の並び（エピックの配下か、親のないストーリー）から、移すストーリーを除いたもの。完了したストーリーも含める
+function siblingStories(
+  from: Pick<QueryCreator<Tables>, 'selectFrom'>,
+  workspaceId: string,
+  epicId: string | null,
+  storyId: string,
+) {
+  return from
+    .selectFrom('stories')
+    .where('stories.workspace_id', '=', workspaceId)
+    .where('stories.epic_id', epicId === null ? 'is' : '=', epicId)
+    .where('stories.deleted_at', 'is', null)
+    .where('stories.id', '!=', storyId);
+}
+
+// 移す先の親にできる、削除していないエピック。完了も中止もしていないかは、呼ぶ側が見る
+function epicRow(from: Pick<QueryCreator<Tables>, 'selectFrom'>, workspaceId: string, epicId: string) {
+  return from
+    .selectFrom('epics')
+    .where('epics.id', '=', epicId)
+    .where('epics.workspace_id', '=', workspaceId)
+    .where('epics.deleted_at', 'is', null);
+}
+
+// 親にするエピックを読む。無ければ 404、完了か中止していれば 409 の conflict
+async function readParentEpic(db: OrganizationDb, workspaceId: string, epicId: string) {
+  const epic = await db.first(
+    db.statement((q) =>
+      epicRow(q, workspaceId, epicId).select(['epics.id', 'epics.title', 'epics.completed_at', 'epics.canceled_at']),
+    ),
+  );
+  if (epic === undefined) throw new ApiError(404, 'not_found');
+  if (epic.completed_at !== null || epic.canceled_at !== null) throw new ApiError(409, 'conflict');
+  return { id: epic.id, title: epic.title };
+}
+
+// 移すストーリーの新しい位置を決める。考え方はタスクの移動（task.ts の planTaskMove）と同じ
+async function planStoryMove(
+  db: OrganizationDb,
+  workspaceId: string,
+  epicId: string | null,
+  storyId: string,
+  afterId: string | null | undefined,
+): Promise<MovePlan> {
+  const columns = ['stories.id', 'stories.position'] as const;
+  if (afterId === undefined) {
+    const last = await db.first(
+      db.statement((q) =>
+        siblingStories(q, workspaceId, epicId, storyId)
+          .select(columns)
+          .orderBy('stories.position', 'desc')
+          .orderBy('stories.id', 'desc')
+          .limit(1),
+      ),
+    );
+    return placeLast(last);
+  }
+  if (afterId === null) {
+    const first = await db.first(
+      db.statement((q) =>
+        siblingStories(q, workspaceId, epicId, storyId)
+          .select(columns)
+          .orderBy('stories.position')
+          .orderBy('stories.id')
+          .limit(1),
+      ),
+    );
+    return placeFirst(first);
+  }
+  const after = await db.first(
+    db.statement((q) =>
+      siblingStories(q, workspaceId, epicId, storyId).select(columns).where('stories.id', '=', afterId),
+    ),
+  );
+  if (after === undefined) throw new ApiError(404, 'not_found');
+  const [ties, next] = await db.batch([
+    db.statement((q) =>
+      siblingStories(q, workspaceId, epicId, storyId)
+        .select(columns)
+        .where('stories.position', '=', after.position)
+        .where('stories.id', '>', after.id)
+        .orderBy('stories.id'),
+    ),
+    db.statement((q) =>
+      siblingStories(q, workspaceId, epicId, storyId)
+        .select(columns)
+        .where('stories.position', '>', after.position)
+        .orderBy('stories.position')
+        .orderBy('stories.id')
+        .limit(1),
+    ),
+  ] as const);
+  return placeAfter(after, ties.rows, next.rows[0]);
+}
+
+// 移すストーリーと、今の親の題（履歴に残す）
+function movingStory(db: OrganizationDb, workspaceId: string, storyId: string) {
+  return db.first(
+    db.statement((q) =>
+      q
+        .selectFrom('stories')
+        .leftJoin('epics', (join) =>
+          join.onRef('epics.id', '=', 'stories.epic_id').onRef('epics.workspace_id', '=', 'stories.workspace_id'),
+        )
+        .select(['stories.id', 'stories.epic_id', 'epics.title as epic_title'])
+        .where('stories.id', '=', storyId)
+        .where('stories.workspace_id', '=', workspaceId)
+        .where('stories.deleted_at', 'is', null),
+    ),
+  );
+}
+
+export const storyMoveOperation = implement(storyMove, async ({ db, actor, workspace, input }) => {
+  const actorUserId = actorUserIdOf(actor);
+  const organizationId = db.organizationId;
+  const workspaceId = workspace.workspaceId;
+  const storyId = input.story_id;
+  const afterId = input.after_story_id;
+  if (afterId === storyId) throw new ApiError(400, 'invalid_input');
+
+  const current = await movingStory(db, workspaceId, storyId);
+  if (current === undefined) throw new ApiError(404, 'not_found');
+  const parentId = input.epic_id;
+  const parent = parentId === null ? null : await readParentEpic(db, workspaceId, parentId);
+  const plan = await planStoryMove(db, workspaceId, parentId, storyId, afterId);
+  const parentChanged = current.epic_id !== parentId;
+
+  const at = now();
+  const updatedAt = at.toISOString();
+  // 自分の更新が通った、という条件。振り直しと履歴は、これを自分の条件に持つ
+  const moved = (from: Pick<QueryCreator<Tables>, 'selectFrom'>) =>
+    from
+      .selectFrom('stories')
+      .select('stories.id')
+      .where('stories.id', '=', storyId)
+      .where('stories.workspace_id', '=', workspaceId)
+      .where('stories.epic_id', parentId === null ? 'is' : '=', parentId)
+      .where('stories.position', '=', plan.position)
+      .where('stories.updated_at', '=', updatedAt);
+
+  const results = await db.batch([
+    db.statement((q) =>
+      q
+        .updateTable('stories')
+        .set({
+          epic_id: parentId,
+          position: plan.position,
+          updated_at: updatedAt,
+          // 区分は親のないストーリーにだけ入る。エピックの下へ移したら空にする
+          ...(parentId === null ? {} : { category_id: null }),
+        })
+        .where('id', '=', storyId)
+        .where('workspace_id', '=', workspaceId)
+        .where('deleted_at', 'is', null)
+        .where('epic_id', current.epic_id === null ? 'is' : '=', current.epic_id)
+        .where((eb) => eb.exists(openWorkspace(q, organizationId, workspaceId)))
+        .$if(parentId !== null, (qb) =>
+          qb.where((eb) =>
+            eb.exists(
+              epicRow(q, workspaceId, parentId!)
+                .select('epics.id')
+                .where('epics.completed_at', 'is', null)
+                .where('epics.canceled_at', 'is', null),
+            ),
+          ),
+        )
+        .$if(afterId != null, (qb) =>
+          qb.where((eb) =>
+            eb.exists(
+              siblingStories(q, workspaceId, parentId, storyId).select('stories.id').where('stories.id', '=', afterId!),
+            ),
+          ),
+        ),
+    ),
+    ...plan.renumber.map((row) =>
+      db.statement((q) =>
+        q
+          .updateTable('stories')
+          .set({ position: row.to })
+          .where('id', '=', row.id)
+          .where('workspace_id', '=', workspaceId)
+          .where('epic_id', parentId === null ? 'is' : '=', parentId)
+          .where('position', '=', row.from)
+          .where('deleted_at', 'is', null)
+          .where((eb) => eb.exists(moved(q))),
+      ),
+    ),
+    ...(parentChanged
+      ? [
+          db.statement((q) =>
+            q
+              .insertInto('change_logs')
+              .columns(changeLogColumns)
+              .expression(
+                q
+                  .selectNoFrom((eb) => [
+                    eb.val(uuidv7(at)).as('id'),
+                    eb.val(organizationId).as('organization_id'),
+                    eb.val(workspaceId).as('workspace_id'),
+                    eb.val(actorUserId).as('actor_user_id'),
+                    eb.val('story').as('entity_type'),
+                    eb.val(storyId).as('entity_id'),
+                    eb.val('update').as('action'),
+                    eb
+                      .val(
+                        JSON.stringify({
+                          epic: [
+                            current.epic_id === null ? null : { id: current.epic_id, title: current.epic_title },
+                            parent,
+                          ],
+                        }),
+                      )
+                      .as('changes_json'),
+                    eb.val(updatedAt).as('created_at'),
+                  ])
+                  .where((eb) => eb.exists(moved(q))),
+              ),
+          ),
+        ]
+      : []),
+  ]);
+
+  if ((results[0]?.changes ?? 0) === 0) {
+    // 読んでから書くまでに、閉じたか、ストーリーか親か直前の行が消えたか、親が完了したか、別の要求が先に親を移した
+    await throwIfClosed(db, workspaceId);
+    if ((await movingStory(db, workspaceId, storyId)) === undefined) throw new ApiError(404, 'not_found');
+    if (parentId !== null) await readParentEpic(db, workspaceId, parentId);
+    if (afterId != null) await planStoryMove(db, workspaceId, parentId, storyId, afterId);
+    throw new ApiError(409, 'conflict');
+  }
+  return { story_id: storyId, epic_id: parentId };
 });

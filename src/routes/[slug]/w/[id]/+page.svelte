@@ -9,17 +9,22 @@
   import StoryDialog from '../../../../lib/components/StoryDialog.svelte';
   import TaskCreateDialog from '../../../../lib/components/TaskCreateDialog.svelte';
   import TaskEntry from '../../../../lib/components/TaskEntry.svelte';
+  import TaskMoveDialog from '../../../../lib/components/TaskMoveDialog.svelte';
   import TreeStory from '../../../../lib/components/TreeStory.svelte';
-  import { callOperation } from '../../../../lib/api.ts';
+  import { callOperation, type ApiResult } from '../../../../lib/api.ts';
   import { showToast } from '../../../../lib/toast.svelte.ts';
   import { t } from '../../../../lib/vocabulary.svelte.ts';
+  import { storyMove } from '../../../../shared/operations/story/index.ts';
   import type { BacklogStory, BacklogTask } from '../../../../shared/operations/task/backlog-tree.ts';
-  import { taskComplete } from '../../../../shared/operations/task/index.ts';
+  import { taskComplete, taskMove } from '../../../../shared/operations/task/index.ts';
   import type { PageProps } from './$types';
 
   // ワークスペースの画面（backlog.html の木と起票）。最上段は見本どおり「親のないストーリー → 親のないタスク」の2段で、
   // それぞれ position の順。ストーリーの下には未完了のタスクを並べ、完了したタスクは件数の1行にする。
-  // 並べ替え、絞り込み、折りたたみを開ける操作、エピックの段は、それぞれの機能の Issue で足す。
+  // 絞り込み、折りたたみを開ける操作、ドラッグでの並べ替え、エピックの段は、それぞれの機能の Issue で足す。
+  // 並べ替えは、行の「上へ」「下へ」と Alt と ↑ ↓ で、同じ親（親なしのタスク、親のないストーリーはそれぞれの段）の中で1つ動かす。
+  // タスクの行の「親を移す」は、ダイアログで選んだ親の末尾へ移す。どちらも先に画面を動かしてから送り、送る順は守る（moveQueue）。
+  // 失敗したら理由を知らせて読み直す。動かした並びは読み直すまで画面に持ち、読み直したら捨てる（読み直した値が送った後の並び）。
   // 見出しは見本どおり画面の名前（掲示板／バックログ）で、小見出しがワークスペースの名前。見出しの右に、ストーリーを作るボタンと起票のボタン。
   // 閉じていれば、作る操作と完了の操作は出さない（ストーリーのダイアログは読み取り専用で開く。閉じていることはワークスペースの枠の帯が伝える）。
   // 完了にした行は、読み直すまで完了の印を付けてその場に残し、その行のポイントを親の「完了」に即時に足す。折りたたみの件数は読み直した値なので、その行は読み直すまで入らない。
@@ -34,36 +39,91 @@
   // 期日の印を決める、ワークスペースの今日の日付と週の始まり（API の値）
   const clock = $derived({ today: tree?.today ?? '', weekStart: tree?.week_start ?? 1 });
 
-  // 読み直したら（枠の読み直し、ワークスペースの切り替え）、足した行と完了の印を捨てる
+  // 親なしのタスクの並びのキー。ストーリーの ID とぶつからない
+  const ROOT = '';
+
+  // 読み直したら（枠の読み直し、ワークスペースの切り替え）、足した行と完了の印と、画面で動かした並びを捨てる
   let added = $state<{ task: BacklogTask; storyId: string | null }[]>([]);
   let completedIds = $state<string[]>([]);
   let pendingIds = $state<string[]>([]);
+  // 画面で親を移したタスク（値は移す先の親。null は親なし）と、並べ替えた親ごとの id の並び（キーは親の ID か ROOT）、ストーリーの並び
+  let movedParents = $state<Record<string, string | null>>({});
+  let taskOrders = $state<Record<string, string[]>>({});
+  let storyOrder = $state<string[] | null>(null);
+  // 動かす操作は、押した順に1つずつ送る。読み直したら世代を進め、まだ送っていない古い操作は捨てる
+  let moveQueue: Promise<void> = Promise.resolve();
+  let moveGeneration = 0;
   $effect.pre(() => {
     void tree;
     added = [];
     completedIds = [];
+    movedParents = {};
+    taskOrders = {};
+    storyOrder = null;
+    moveGeneration++;
   });
 
-  // 読み直した一覧と足した行が重なっても（起票の直後に読み直したときなど）、同じ id の行は1つにする
-  function withAdded(base: readonly BacklogTask[], storyId: string | null): BacklogTask[] {
-    const unique: Record<string, BacklogTask> = {};
-    for (const task of base) unique[task.id] ??= task;
-    for (const entry of added) if (entry.storyId === storyId) unique[entry.task.id] ??= entry.task;
-    return Object.values(unique);
+  // order の順に並べる。order に無い行（後から足した行）は、元の順のまま後ろに置く
+  function sortedBy<T extends { id: string }>(rows: readonly T[], order: readonly string[]): T[] {
+    const rank = new Map(order.map((id, index) => [id, index]));
+    const rankOf = (row: T, index: number) => rank.get(row.id) ?? order.length + index;
+    return rows
+      .map((row, index) => ({ row, rank: rankOf(row, index) }))
+      .sort((a, b) => a.rank - b.rank)
+      .map((entry) => entry.row);
   }
 
-  const rootRows = $derived(withAdded(tree?.tasks ?? [], null));
-  const openStories = $derived((tree?.stories ?? []).filter((story) => story.completed_at === null));
+  // 親ごとの未完了の行（キーは親の ID か ROOT）。読み直した一覧と足した行が重なっても（起票の直後に読み直したときなど）、
+  // 同じ id の行は1つにする。画面で親を移した行は移す先に置き、並べ替えた親はその並びに従う
+  function listTasks(): Record<string, BacklogTask[]> {
+    const lists: Record<string, BacklogTask[]> = {};
+    const seen: Record<string, true> = {};
+    const place = (task: BacklogTask, parentId: string | null) => {
+      if (seen[task.id]) return;
+      seen[task.id] = true;
+      const moved = Object.hasOwn(movedParents, task.id) ? (movedParents[task.id] ?? null) : parentId;
+      (lists[moved ?? ROOT] ??= []).push(task);
+    };
+    for (const story of tree?.stories ?? []) for (const task of story.tasks) place(task, story.id);
+    for (const task of tree?.tasks ?? []) place(task, null);
+    for (const entry of added) place(entry.task, entry.storyId);
+    for (const [key, list] of Object.entries(lists)) {
+      const order = taskOrders[key];
+      if (order !== undefined) lists[key] = sortedBy(list, order);
+    }
+    return lists;
+  }
+  const taskLists = $derived(listTasks());
+
+  // タスクの行の、親と並びの中の位置。上へ、下へのボタンの端の判定と、親を移すダイアログの今の親に使う
+  function placeTasks(lists: Record<string, BacklogTask[]>) {
+    const places: Record<string, { parentId: string | null; index: number; count: number }> = {};
+    for (const [key, list] of Object.entries(lists)) {
+      list.forEach((task, index) => {
+        places[task.id] = { parentId: key === ROOT ? null : key, index, count: list.length };
+      });
+    }
+    return places;
+  }
+  const taskPlaces = $derived(placeTasks(taskLists));
+
+  const storyList = $derived(storyOrder === null ? (tree?.stories ?? []) : sortedBy(tree?.stories ?? [], storyOrder));
+  const rootRows = $derived(taskLists[ROOT] ?? []);
+  const openStories = $derived(storyList.filter((story) => story.completed_at === null));
 
   function storyRows(story: BacklogStory): BacklogTask[] {
-    return withAdded(story.tasks, story.id);
+    return taskLists[story.id] ?? [];
   }
 
-  // 足した行のポイントを、親の「全体」に足す。読み直した一覧にすでにある行は数えない
+  // 親の「全体」のポイント。足した行と、画面で移してきた行の分を足し、画面で外へ移した行の分を引く
   function pointsAllOf(story: BacklogStory): number {
+    const rows = storyRows(story);
     const known = new Set(story.tasks.map((task) => task.id));
-    const extra = added.filter((entry) => entry.storyId === story.id && !known.has(entry.task.id));
-    return story.points_all + extra.reduce((sum, entry) => sum + (entry.task.points ?? 0), 0);
+    const here = new Set(rows.map((task) => task.id));
+    const gained = rows.filter((task) => !known.has(task.id));
+    const lost = story.tasks.filter((task) => !here.has(task.id));
+    const sum = (tasks: readonly BacklogTask[]) => tasks.reduce((total, task) => total + (task.points ?? 0), 0);
+    return story.points_all + sum(gained) - sum(lost);
   }
 
   // 完了にした行のポイントを、親の「完了」に足す。完了にした行は、読み直した一覧では未完了だった行か、足した行なので、
@@ -135,6 +195,130 @@
     await tick();
     document.querySelector<HTMLElement>('h1.page-title')?.focus();
   }
+
+  let moveDialog = $state<ReturnType<typeof TaskMoveDialog>>();
+  // 動かした結果の読み上げ。領域は常に置き、中の文字だけを替える。同じ文が続いても読まれるよう、一度空にしてから入れる
+  let moveStatus = $state('');
+  async function announce(message: string): Promise<void> {
+    moveStatus = '';
+    await tick();
+    moveStatus = message;
+  }
+
+  // 並べ替えで行の要素が動くと、その中のフォーカスが外れることがある。動かす前のフォーカスを、描き直した後に戻す
+  function holdFocus(): () => Promise<void> {
+    const active = document.activeElement;
+    return async () => {
+      await tick();
+      if (active instanceof HTMLElement && active.isConnected && document.activeElement !== active) active.focus();
+    };
+  }
+
+  // ids の中で id を1つ動かした並びと、送る直前の行。下へは次の行の直後、上へは2つ上の行の直後（先頭になるなら null）
+  function shifted(ids: readonly string[], id: string, delta: -1 | 1) {
+    const from = ids.indexOf(id);
+    const to = from + delta;
+    if (from === -1 || to < 0 || to >= ids.length) return null;
+    const next = ids.filter((other) => other !== id);
+    next.splice(to, 0, id);
+    return { ids: next, index: to, after: to === 0 ? null : next[to - 1]! };
+  }
+
+  // 動かす操作を、押した順に送る。失敗したら理由を知らせて読み直す（画面で動かした並びは、読み直しで捨てる）
+  function send(call: () => Promise<ApiResult<unknown>>, messages: { gone: string; conflict: string }): void {
+    const mine = moveGeneration;
+    const workspaceId = workspace?.id;
+    moveQueue = moveQueue
+      .then(async () => {
+        if (mine !== moveGeneration) return;
+        const result = await call();
+        // 送っている間に別のワークスペースへ移っていたら、古い応答で状態を触らない
+        if (result.ok || workspaceId !== page.params.id) return;
+        if (result.status !== 401) {
+          const closed = result.status === 409 && result.error?.code === 'workspace_closed';
+          showToast(
+            result.status === 404
+              ? messages.gone
+              : closed
+                ? t('workspaceClosedReadOnly', { workspace: t('workspace') })
+                : result.status === 409
+                  ? messages.conflict
+                  : t('moveFailed'),
+            'alert',
+          );
+        }
+        // 401 は、枠の読み直しがログインの画面へ移す
+        await invalidateAll();
+      })
+      .catch(() => {});
+  }
+
+  function reorderTask(task: BacklogTask, delta: -1 | 1): void {
+    if (workspace === null) return;
+    const parentId = taskPlaces[task.id]?.parentId ?? null;
+    const key = parentId ?? ROOT;
+    const next = shifted(
+      (taskLists[key] ?? []).map((row) => row.id),
+      task.id,
+      delta,
+    );
+    if (next === null) return;
+    const restore = holdFocus();
+    taskOrders = { ...taskOrders, [key]: next.ids };
+    void restore();
+    void announce(t('moveAnnounced', { title: task.title, index: next.index + 1 }));
+    const input = { workspace_id: workspace.id, task_id: task.id, story_id: parentId, after_task_id: next.after };
+    send(() => callOperation(taskMove, input, { slug: page.params.slug ?? '' }), {
+      gone: t('taskGone', { task: t('task') }),
+      conflict: t('moveConflict'),
+    });
+  }
+
+  function reorderStory(story: BacklogStory, delta: -1 | 1): void {
+    if (workspace === null) return;
+    const next = shifted(
+      storyList.map((row) => row.id),
+      story.id,
+      delta,
+    );
+    if (next === null) return;
+    const restore = holdFocus();
+    storyOrder = next.ids;
+    void restore();
+    void announce(t('moveAnnounced', { title: story.title, index: next.index + 1 }));
+    const input = { workspace_id: workspace.id, story_id: story.id, epic_id: null, after_story_id: next.after };
+    send(() => callOperation(storyMove, input, { slug: page.params.slug ?? '' }), {
+      gone: t('storyGone', { story: t('story') }),
+      conflict: t('moveConflict'),
+    });
+  }
+
+  function openMoveDialog(task: BacklogTask, trigger: HTMLElement): void {
+    moveDialog?.show(trigger, task, taskPlaces[task.id]?.parentId ?? null);
+  }
+
+  // 親を移す（ダイアログが閉じた後に呼ばれる）。移す先の末尾に置き（API には直前の行を送らない）、畳まれていれば開く。
+  // 行は移す先の下に作り直されるので、新しい行の「親を移す」へフォーカスを移す
+  function moveParent(task: BacklogTask, storyId: string | null): void {
+    if (workspace === null) return;
+    const key = storyId ?? ROOT;
+    const ids = (taskLists[key] ?? []).map((row) => row.id).filter((id) => id !== task.id);
+    movedParents = { ...movedParents, [task.id]: storyId };
+    taskOrders = { ...taskOrders, [key]: [...ids, task.id] };
+    if (storyId !== null) treeRows[storyId]?.expand();
+    const parent = storyId === null ? undefined : storyList.find((story) => story.id === storyId);
+    void tick().then(() => entries[task.id]?.focusMoveParent());
+    void announce(
+      parent === undefined
+        ? t('moveAnnouncedRoot', { title: task.title })
+        : t('moveAnnouncedUnder', { title: task.title, story: t('story'), parent: parent.title }),
+    );
+    const input = { workspace_id: workspace.id, task_id: task.id, story_id: storyId };
+    send(() => callOperation(taskMove, input, { slug: page.params.slug ?? '' }), {
+      gone: t('taskGone', { task: t('task') }),
+      conflict: storyId === null ? t('moveConflict') : t('moveParentDone', { done: t('done'), story: t('story') }),
+    });
+  }
 </script>
 
 <svelte:head>
@@ -149,6 +333,8 @@
 </svelte:head>
 
 {#snippet taskRow(task: BacklogTask)}
+  {@const place = taskPlaces[task.id]}
+  <!-- 親なしのタスクは、移す先のストーリーがあるときだけ「親を移す」を出す（ストーリーの下のタスクは、親なしへ移せる） -->
   <TaskEntry
     bind:this={entries[task.id]}
     {task}
@@ -157,6 +343,10 @@
     pending={pendingIds.includes(task.id)}
     canComplete={canWrite}
     onComplete={complete}
+    canMoveUp={place !== undefined && place.index > 0}
+    canMoveDown={place !== undefined && place.index < place.count - 1}
+    onMove={canWrite ? reorderTask : undefined}
+    onMoveParent={canWrite && (place?.parentId != null || openStories.length > 0) ? openMoveDialog : undefined}
   />
 {/snippet}
 
@@ -176,8 +366,9 @@
     {/snippet}
   </PageHead>
 
-  <!-- 完了の操作を送っている最中の読み上げ。領域は常に置き、中の文字だけを替える -->
+  <!-- 完了の操作を送っている最中の読み上げと、動かした結果の読み上げ。領域は常に置き、中の文字だけを替える -->
   <span class="visually-hidden" role="status">{completingStatus}</span>
+  <span class="visually-hidden" role="status">{moveStatus}</span>
 
   {#if tree.stories.length === 0 && rootRows.length === 0 && tree.completed_count === 0}
     <EmptyState
@@ -189,8 +380,11 @@
     />
   {:else}
     <section class="section" aria-label={t('backlogTasksLabel', { backlog: t('backlog'), task: t('task') })}>
+      {#if canWrite}
+        <p class="action-note">{t('backlogOrderNote')}</p>
+      {/if}
       <div class="tree">
-        {#each tree.stories as story (story.id)}
+        {#each storyList as story, index (story.id)}
           <TreeStory
             bind:this={treeRows[story.id]}
             {story}
@@ -202,6 +396,9 @@
             onEdit={(target, trigger) => storyDialog?.show(trigger, target.id)}
             onAddTask={(target, trigger) => taskDialog?.show(trigger, target.id)}
             row={taskRow}
+            canMoveUp={index > 0}
+            canMoveDown={index < storyList.length - 1}
+            onMove={canWrite ? reorderStory : undefined}
           />
         {/each}
         {#if rootRows.length > 0 || tree.completed_count > 0}
@@ -246,5 +443,6 @@
       stories={openStories}
       oncreated={created}
     />
+    <TaskMoveDialog bind:this={moveDialog} stories={openStories} onmove={moveParent} />
   {/if}
 {/if}

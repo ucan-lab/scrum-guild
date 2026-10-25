@@ -831,6 +831,13 @@ a.choice > div > span, .choice.is-static > div > span { display: block; }
 .icon-btn { display: inline-grid; place-items: center; width: 30px; height: 30px; border: 1px solid transparent; background: none; border-radius: var(--radius-1); color: var(--color-muted); }
 .icon-btn:hover { border-color: var(--color-line); color: var(--color-fg); }
 .icon-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+/* 端の「上へ」「下へ」のように、押してもフォーカスを失わせたくない押せないボタンは aria-disabled にする */
+.icon-btn[aria-disabled="true"] { opacity: 0.35; cursor: not-allowed; }
+.icon-btn[aria-disabled="true"]:hover { border-color: transparent; color: var(--color-muted); }
+/* 狭い幅と、指で押す画面では、並べ替えのボタンを 44px 四方にする（並んだボタンの押せる範囲が重ならないよう、見た目ごと広げる） */
+@media (max-width: 760px), (pointer: coarse) {
+  .order-actions .icon-btn { width: 44px; height: 44px; }
+}
 .icon-btn.is-danger:hover { color: var(--color-danger); border-color: currentColor; }
 
 /* ===== 設定の節（左に説明、右に入力） ===== */

@@ -297,9 +297,10 @@ const SECTIONS = [
     ["列の名前はリーダーが付けたもので、言葉づかいを切り替えても訳さない。完了の列だけは「完遂」か「完了」と出す。", "カードの操作（列の移動）は、ドラッグの他にキーボードでもできるようにする。"],
     ".board-wrap .board .board-col .is-done .board-col-head .board-col-name / .dod / .card .card-parent .card-title .card-meta .card-foot .card-end")],
   ["tree", "木", () => block("tree", "木（バックログ）", "エピック、ストーリー、タスクの階層。エピックの行は一段下の地と明朝で区切る。",
-    `<div class="tree">${treeEpic("e2")}${treeStory("s4", true)}</div>`,
-    ["右端の数は「完了 / 全体」のポイント。", "完了したタスクは折りたたみ、件数だけ出す。", "行は普通の要素（div）で、開閉は左端の caret のボタン（button.tree-caret の aria-expanded と aria-controls）だけが受け持つ。details と summary は使わない（行の中のボタンと開閉がぶつかるため）。", "ストーリーの題はボタン（button.tree-link）で、押すとダイアログが開く。行の右端の「＋タスク」（.tree-end）は、親を選んだ状態でタスクのダイアログを開く。caret、題、「＋タスク」は独立したボタンで、狭い幅（760px 以下）と指で押す画面では、見た目は変えず押せる範囲を 44px 四方以上に広げる。"],
-    ".tree .tree-group .tree-row .is-epic .is-story .is-root .tree-caret .tree-title .tree-ratio .tree-end .tree-children .tree-folded / button.tree-link / button.tree-caret[aria-expanded]")],
+    `<div class="tree">${treeEpic("e2")}${treeStory("s4", true)}</div>` +
+    `<div class="cat-row"><span class="order-actions"><button class="icon-btn" type="button" aria-label="上へ" title="上へ" aria-disabled="true">${icon("up")}</button><button class="icon-btn" type="button" aria-label="下へ" title="下へ">${icon("down")}</button><button class="icon-btn" type="button" aria-label="親を移す" title="親を移す">${icon("swap")}</button></span><span class="field-hint">行の並べ替えと親の移動。先頭の行の「上へ」は aria-disabled</span></div>`,
+    ["右端の数は「完了 / 全体」のポイント。", "完了したタスクは折りたたみ、件数だけ出す。", "行は普通の要素（div）で、開閉は左端の caret のボタン（button.tree-caret の aria-expanded と aria-controls）だけが受け持つ。details と summary は使わない（行の中のボタンと開閉がぶつかるため）。", "ストーリーの題はボタン（button.tree-link）で、押すとダイアログが開く。行の右端の「＋タスク」（.tree-end）は、親を選んだ状態でタスクのダイアログを開く。caret、題、「＋タスク」は独立したボタンで、狭い幅（760px 以下）と指で押す画面では、見た目は変えず押せる範囲を 44px 四方以上に広げる。", "書き込めるときは、タスクの行（.entry-end）と親のないストーリーの行（.tree-end）の右に .order-actions の「上へ」「下へ」を置き、タスクの行には「親を移す」も添える。行の中で Alt と ↑ ↓ を押しても同じ。端の向きは、押した後もフォーカスが残るよう disabled でなく aria-disabled にする。狭い幅と指で押す画面では、ボタンを 44px 四方にする。"],
+    ".tree .tree-group .tree-row .is-epic .is-story .is-root .tree-caret .tree-title .tree-ratio .tree-end .tree-children .tree-folded / button.tree-link / button.tree-caret[aria-expanded] / .order-actions .icon-btn[aria-disabled]")],
   ["notices", "貼り紙", () => block("notices", "貼り紙", "掲示する物（スプリントゴール、レイド）は、上辺に太い線を引いた紙として見せる。レイドは金、クリア済みは朱。",
     `<div class="notice-grid">${sprintNotice("sp14")}${raidNotice("e1")}${raidNotice("e2", { cleared: true })}</div>`,
     ["依頼主の名前の横に朱の「印」を添える。", "クリアしたレイドには「済」の判子を押す。"], ".notice .is-raid .is-cleared / .notice-label .notice-title .notice-meta .notice-facts .notice-foot / .day-ticks / .progress / .seal")],

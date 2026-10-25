@@ -446,6 +446,8 @@ test('狭い幅では、caret、題、「＋タスク」の押せる範囲が 44
   async function reaches(button: Locator, dx: number, dy: number): Promise<boolean> {
     return button.evaluate(
       (element, offset) => {
+        // elementFromPoint は画面の外の点に null を返すので、行を画面の中へ出してから測る
+        element.scrollIntoView({ block: 'center' });
         const rect = element.getBoundingClientRect();
         const hit = document.elementFromPoint(
           rect.left + rect.width / 2 + offset.dx,

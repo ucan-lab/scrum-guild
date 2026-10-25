@@ -1,12 +1,13 @@
 import { generateKeyBetween } from 'fractional-indexing';
 import { monthIn, now, todayIn } from '../../shared/clock.ts';
 import { XP_TASK_COMPLETED, XP_TASK_CREATED } from '../../shared/experience.ts';
-import { backlogTree, taskComplete, taskCreate } from '../../shared/operations/task/index.ts';
+import { backlogTree, taskComplete, taskCreate, taskMove } from '../../shared/operations/task/index.ts';
 import { MIN_POINTS_FOR_EXPERIENCE } from '../../shared/task.ts';
 import type { OrganizationDb, OrganizationTables, QueryCreator } from '../db/index.ts';
 import { ApiError } from '../errors.ts';
 import { uuidv7 } from '../uuid.ts';
 import { implement } from './implement.ts';
+import { placeAfter, placeFirst, placeLast, type MovePlan } from './move-position.ts';
 import { actorUserIdOf, changeLogColumns, openWorkspace, throwIfClosed } from './write-guards.ts';
 
 type Tables = OrganizationTables;
@@ -632,4 +633,219 @@ export const taskCompleteOperation = implement(taskComplete, async ({ db, actor,
     throw existing === undefined ? new ApiError(404, 'not_found') : new ApiError(409, 'conflict');
   }
   return { task_id: taskId, completed_at: completedAt };
+});
+
+// 移す先の並び（親の配下か、親のないタスク）から、移すタスクを除いたもの。完了したタスクも並びに残っているので含める
+function siblingTasks(
+  from: Pick<QueryCreator<Tables>, 'selectFrom'>,
+  workspaceId: string,
+  storyId: string | null,
+  taskId: string,
+) {
+  return backlogTasksUnder(from, workspaceId, storyId).where('tasks.id', '!=', taskId);
+}
+
+// 移すタスクの新しい位置を決める。直前の行が移す先に無ければ 404。親の行の全件は読まず、直前の行と同じ値の行と、
+// それより大きい値の最初の行だけを読む
+async function planTaskMove(
+  db: OrganizationDb,
+  workspaceId: string,
+  storyId: string | null,
+  taskId: string,
+  afterId: string | null | undefined,
+): Promise<MovePlan> {
+  const columns = ['tasks.id', 'tasks.position'] as const;
+  if (afterId === undefined) {
+    const last = await db.first(
+      db.statement((q) =>
+        siblingTasks(q, workspaceId, storyId, taskId)
+          .select(columns)
+          .orderBy('tasks.position', 'desc')
+          .orderBy('tasks.id', 'desc')
+          .limit(1),
+      ),
+    );
+    return placeLast(last);
+  }
+  if (afterId === null) {
+    const first = await db.first(
+      db.statement((q) =>
+        siblingTasks(q, workspaceId, storyId, taskId)
+          .select(columns)
+          .orderBy('tasks.position')
+          .orderBy('tasks.id')
+          .limit(1),
+      ),
+    );
+    return placeFirst(first);
+  }
+  const after = await db.first(
+    db.statement((q) => siblingTasks(q, workspaceId, storyId, taskId).select(columns).where('tasks.id', '=', afterId)),
+  );
+  if (after === undefined) throw new ApiError(404, 'not_found');
+  const [ties, next] = await db.batch([
+    db.statement((q) =>
+      siblingTasks(q, workspaceId, storyId, taskId)
+        .select(columns)
+        .where('tasks.position', '=', after.position)
+        .where('tasks.id', '>', after.id)
+        .orderBy('tasks.id'),
+    ),
+    db.statement((q) =>
+      siblingTasks(q, workspaceId, storyId, taskId)
+        .select(columns)
+        .where('tasks.position', '>', after.position)
+        .orderBy('tasks.position')
+        .orderBy('tasks.id')
+        .limit(1),
+    ),
+  ] as const);
+  return placeAfter(after, ties.rows, next.rows[0]);
+}
+
+// 移すタスク。削除していないバックログのタスクで、今の親の題（履歴に残す）も読む
+function movingTask(db: OrganizationDb, workspaceId: string, taskId: string) {
+  return db.first(
+    db.statement((q) =>
+      q
+        .selectFrom('tasks')
+        .leftJoin('stories', (join) =>
+          join.onRef('stories.id', '=', 'tasks.story_id').onRef('stories.workspace_id', '=', 'tasks.workspace_id'),
+        )
+        .select(['tasks.id', 'tasks.story_id', 'tasks.completed_at', 'stories.title as story_title'])
+        .where('tasks.id', '=', taskId)
+        .where('tasks.workspace_id', '=', workspaceId)
+        .where('tasks.tray', '=', 'backlog')
+        .where('tasks.deleted_at', 'is', null),
+    ),
+  );
+}
+
+export const taskMoveOperation = implement(taskMove, async ({ db, actor, workspace, input }) => {
+  const actorUserId = actorUserIdOf(actor);
+  const organizationId = db.organizationId;
+  const workspaceId = workspace.workspaceId;
+  const taskId = input.task_id;
+  const afterId = input.after_task_id;
+  if (afterId === taskId) throw new ApiError(400, 'invalid_input');
+
+  // 移すタスクが無ければ 404、完了していれば 409。完了したタスクは画面に行が無く、並べ替えの対象にしない
+  const current = await movingTask(db, workspaceId, taskId);
+  if (current === undefined) throw new ApiError(404, 'not_found');
+  if (current.completed_at !== null) throw new ApiError(409, 'conflict');
+
+  // 移す先の親は、同じワークスペースの削除していない、完了していないストーリー。無ければ 404、完了していれば 409
+  const parentId = input.story_id;
+  const parent = parentId === null ? null : await readParentStory(db, workspaceId, parentId);
+  const plan = await planTaskMove(db, workspaceId, parentId, taskId, afterId);
+  const parentChanged = current.story_id !== parentId;
+
+  const at = now();
+  const updatedAt = at.toISOString();
+  // 自分の更新が通った、という条件。振り直しと履歴は、これを自分の条件に持つ（batch() は件数 0 の文があっても後ろの文を書く）
+  const moved = (from: Pick<QueryCreator<Tables>, 'selectFrom'>) =>
+    from
+      .selectFrom('tasks')
+      .select('tasks.id')
+      .where('tasks.id', '=', taskId)
+      .where('tasks.workspace_id', '=', workspaceId)
+      .where('tasks.story_id', parentId === null ? 'is' : '=', parentId)
+      .where('tasks.position', '=', plan.position)
+      .where('tasks.updated_at', '=', updatedAt);
+
+  const results = await db.batch([
+    // 条件は、読んだときの親のままで、閉じていないワークスペース、移す先の親と直前の行が今もあること
+    db.statement((q) =>
+      q
+        .updateTable('tasks')
+        .set({
+          story_id: parentId,
+          position: plan.position,
+          updated_at: updatedAt,
+          // 区分は親のないタスクにだけ入る。ストーリーの下へ移したら空にする
+          ...(parentId === null ? {} : { category_id: null }),
+        })
+        .where('id', '=', taskId)
+        .where('workspace_id', '=', workspaceId)
+        .where('tray', '=', 'backlog')
+        .where('completed_at', 'is', null)
+        .where('deleted_at', 'is', null)
+        .where('story_id', current.story_id === null ? 'is' : '=', current.story_id)
+        .where((eb) => eb.exists(openWorkspace(q, organizationId, workspaceId)))
+        .$if(parentId !== null, (qb) =>
+          qb.where((eb) =>
+            eb.exists(
+              storyRow(q, workspaceId, parentId!).select('stories.id').where('stories.completed_at', 'is', null),
+            ),
+          ),
+        )
+        .$if(afterId != null, (qb) =>
+          qb.where((eb) =>
+            eb.exists(
+              siblingTasks(q, workspaceId, parentId, taskId).select('tasks.id').where('tasks.id', '=', afterId!),
+            ),
+          ),
+        ),
+    ),
+    // 同じ値の行の振り直し。読んだときの値のままの行だけを書く
+    ...plan.renumber.map((row) =>
+      db.statement((q) =>
+        q
+          .updateTable('tasks')
+          .set({ position: row.to })
+          .where('id', '=', row.id)
+          .where('workspace_id', '=', workspaceId)
+          .where('story_id', parentId === null ? 'is' : '=', parentId)
+          .where('position', '=', row.from)
+          .where('deleted_at', 'is', null)
+          .where((eb) => eb.exists(moved(q))),
+      ),
+    ),
+    // 親が変わったときだけ履歴を書く。並べ替えだけなら残さない
+    ...(parentChanged
+      ? [
+          db.statement((q) =>
+            q
+              .insertInto('change_logs')
+              .columns(changeLogColumns)
+              .expression(
+                q
+                  .selectNoFrom((eb) => [
+                    eb.val(uuidv7(at)).as('id'),
+                    eb.val(organizationId).as('organization_id'),
+                    eb.val(workspaceId).as('workspace_id'),
+                    eb.val(actorUserId).as('actor_user_id'),
+                    eb.val('task').as('entity_type'),
+                    eb.val(taskId).as('entity_id'),
+                    eb.val('update').as('action'),
+                    eb
+                      .val(
+                        JSON.stringify({
+                          story: [
+                            current.story_id === null ? null : { id: current.story_id, title: current.story_title },
+                            parent,
+                          ],
+                        }),
+                      )
+                      .as('changes_json'),
+                    eb.val(updatedAt).as('created_at'),
+                  ])
+                  .where((eb) => eb.exists(moved(q))),
+              ),
+          ),
+        ]
+      : []),
+  ]);
+
+  if ((results[0]?.changes ?? 0) === 0) {
+    // 読んでから書くまでに、閉じたか、タスクが消えたか完了したか、親か直前の行が消えたか、別の要求が先に親を移した
+    await throwIfClosed(db, workspaceId);
+    const latest = await movingTask(db, workspaceId, taskId);
+    if (latest === undefined) throw new ApiError(404, 'not_found');
+    if (latest.completed_at !== null) throw new ApiError(409, 'conflict');
+    if (parentId !== null) await readParentStory(db, workspaceId, parentId);
+    if (afterId != null) await planTaskMove(db, workspaceId, parentId, taskId, afterId);
+    throw new ApiError(409, 'conflict');
+  }
+  return { task_id: taskId, story_id: parentId };
 });

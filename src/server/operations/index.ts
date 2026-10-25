@@ -4,9 +4,9 @@ import type { ImplementedOperation } from './implement.ts';
 import { createOrganizationOperation, listOrganizationsOperation, resolveGithubUserOperation } from './operator.ts';
 import { myOrganizationsOperation, organizationInfoOperation } from './organization.ts';
 import { logoutOperation, meOperation } from './session.ts';
-import { storyCreateOperation, storyGetOperation, storyUpdateOperation } from './story.ts';
+import { storyCreateOperation, storyGetOperation, storyMoveOperation, storyUpdateOperation } from './story.ts';
 import { taskDeleteOperation, taskDetailOperation, taskUpdateOperation } from './task-edit.ts';
-import { backlogTreeOperation, taskCompleteOperation, taskCreateOperation } from './task.ts';
+import { backlogTreeOperation, taskCompleteOperation, taskCreateOperation, taskMoveOperation } from './task.ts';
 import {
   memberListOperation,
   workspaceCloseOperation,
@@ -28,12 +28,14 @@ export const implementedOperations: readonly ImplementedOperation[] = [
   storyCreateOperation,
   storyGetOperation,
   storyUpdateOperation,
+  storyMoveOperation,
   taskCreateOperation,
   backlogTreeOperation,
   taskCompleteOperation,
   taskDetailOperation,
   taskUpdateOperation,
   taskDeleteOperation,
+  taskMoveOperation,
   workspaceCreateOperation,
   workspaceListOperation,
   workspaceLeaderCandidatesOperation,
