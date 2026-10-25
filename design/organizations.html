@@ -32,6 +32,7 @@ function render() {
           ${k.admin ? `<span class="chip">${t("admin")}</span>` : ""}${emblem(k.level, true)}</a>`).join("")}
       </div>
       <p class="gate-note">あとから、メニューの上の${t("organization")}の切り替えで選び直せます。</p>
+      <div class="form-actions"><button class="btn is-sm is-quiet" type="button" data-toast="見本のため、ログアウトしません">${t("logout")}</button></div>
     </section>
     <section class="gate-sheet">
       <h2 class="dialog-title">届いた招待</h2>

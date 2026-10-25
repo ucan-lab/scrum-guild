@@ -81,17 +81,19 @@ h1, h2, h3 { text-wrap: balance; }
 .org-menu-button > .ico { grid-column: 2; grid-row: 1 / span 3; color: var(--color-muted); transform: rotate(90deg); }
 .org-menu-button[aria-expanded="true"] > .ico { transform: rotate(-90deg); }
 /* 組織が多いときは、一覧の中でスクロールする（メニューの綴じが画面の高さに収まらなくなるため） */
-.org-menu-list {
+.org-menu-list, .account-menu-list {
   list-style: none; margin: 0; padding: var(--space-1); display: grid; gap: 1px;
   max-height: 40vh; overflow-y: auto;
   border-radius: var(--radius-1); border: 1px solid var(--color-line); background: var(--color-surface);
 }
-.org-menu-list[hidden] { display: none; }
-.org-menu-list a {
+.org-menu-list[hidden], .account-menu-list[hidden] { display: none; }
+.org-menu-list a, .account-menu-list button {
   display: flex; flex-wrap: wrap; align-items: center; column-gap: var(--space-2);
   padding: 7px var(--space-2); border-radius: var(--radius-1); color: var(--color-fg); text-decoration: none;
 }
-.org-menu-list a:hover { background: var(--color-rule); }
+.account-menu-list button { width: 100%; border: 0; background: none; text-align: left; }
+.org-menu-list a:hover, .account-menu-list button:hover:not([aria-disabled="true"]) { background: var(--color-rule); }
+.account-menu-list button[aria-disabled="true"] { opacity: 0.45; cursor: not-allowed; }
 .org-menu-list a[aria-current="page"] { background: var(--color-sunken); font-weight: 700; box-shadow: 0 0 0 1px var(--color-line); }
 .org-menu-list a .ico { margin-left: auto; color: var(--color-accent); }
 .org-menu-name { min-width: 0; overflow-wrap: anywhere; }
@@ -99,7 +101,23 @@ h1, h2, h3 { text-wrap: balance; }
 .org-menu-list li:last-child:not(:only-child) a { color: var(--color-muted); }
 /* 狭い幅と、指で押す画面では、押す所を 44px 以上にする */
 @media (max-width: 760px), (pointer: coarse) {
-  .org-menu-list a { min-height: 44px; }
+  .org-menu-list a, .account-menu-list button { min-height: 44px; }
+}
+/* アカウントのメニュー。上の帯の自分の名前を押すと開く。リストの見た目は組織の切り替えと同じ（上の .org-menu-list と並べて書く）で、
+   帯の下に重ねて出す（帯の高さを変えない）。右端から開くので、狭い幅でも画面の外へはみ出さない */
+.account-menu { position: relative; min-width: 0; max-width: 100%; }
+.account-menu-button {
+  display: inline-flex; align-items: center; gap: var(--space-2); max-width: 100%; text-align: left;
+  padding: 3px var(--space-2); border-radius: var(--radius-1); border: 1px solid transparent; background: none;
+  font-size: var(--text-sm); overflow-wrap: anywhere;
+}
+.account-menu-button:hover, .account-menu-button[aria-expanded="true"] { border-color: var(--color-line); background: var(--color-surface); }
+.account-menu-button .me { padding-left: 0; }
+.account-menu-button > .ico { color: var(--color-muted); transform: rotate(90deg); }
+.account-menu-button[aria-expanded="true"] > .ico { transform: rotate(-90deg); }
+.account-menu-list {
+  position: absolute; z-index: 10; top: calc(100% + var(--space-1)); right: 0; min-width: 12rem; max-width: min(20rem, 90vw);
+  box-shadow: var(--shadow-float);
 }
 
 .sheet { min-width: 0; display: flex; flex-direction: column; }

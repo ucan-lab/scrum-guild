@@ -5,6 +5,7 @@
   import Gate from '../lib/components/Gate.svelte';
   import GateSheet from '../lib/components/GateSheet.svelte';
   import LoadFailed from '../lib/components/LoadFailed.svelte';
+  import LogoutButton from '../lib/components/LogoutButton.svelte';
   import { t } from '../lib/vocabulary.svelte.ts';
   import type { PageProps } from './$types';
 
@@ -40,9 +41,12 @@
       {:else}
         <EmptyState icon="shield" title={t('noOrganizationTitle')} text={t('noOrganizationText')} />
       {/if}
-      {#if data.operator}
-        <a class="btn is-sm" href={resolve('/operator')}>{t('operatorOpen')}</a>
-      {/if}
+      <div class="form-actions">
+        {#if data.operator}
+          <a class="btn is-sm" href={resolve('/operator')}>{t('operatorOpen')}</a>
+        {/if}
+        <LogoutButton />
+      </div>
     </GateSheet>
     {#if data.invitations.length > 0}
       <GateSheet title={t('invitationsHeading')}>

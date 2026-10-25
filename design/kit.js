@@ -66,6 +66,9 @@
     leader: ["パーティリーダー", "リーダー"], member: ["冒険者", "メンバー"], dod: ["パーティの掟", "完成の定義"],
     vocab: ["ゲームの言葉", "スクラムの言葉"], organization: ["冒険者ギルド", "組織"], admin: ["ギルドマスター", "管理者"],
     assistant: ["ギルドの書記", "アシスタント"],
+    accountMenuLabel: ["{name}。アカウントのメニュー", "{name}。アカウントのメニュー"], logout: ["ログアウト", "ログアウト"],
+    logoutMoving: ["ログアウトしています", "ログアウトしています"], loggedOut: ["ログアウトしました。", "ログアウトしました。"],
+    logoutFailed: ["ログアウトできませんでした。時間をおいてもう一度試してください。", "ログアウトできませんでした。時間をおいてもう一度試してください。"],
   };
   let vocab = 0;
   const listeners = [];
@@ -1202,6 +1205,32 @@
     const next = ev.relatedTarget;
     if (orgMenuOpen && next && !next.closest(".org-menu")) setOrgMenu(false);
   });
+  // アカウントのメニュー。上の帯の自分の名前を押すと開き、中は「ログアウト」の1項目（後で「自分の設定」も入る）。
+  // 開閉は組織の切り替えと同じ: ボタン、外を押す、Tab で外へ出る、Esc。メニューの中にフォーカスがあるときに閉じたら、ボタンへ戻す。
+  // 見本ではログアウトせず、トーストだけを出す。運用者の枠も同じメニュー（本番の /operator は紙の下のボタン）
+  let accountMenuOpen = false;
+  function accountMenuHtml({ open = accountMenuOpen, id = "account-menu-list", live = true, operator = page && page.operator } = {}) {
+    const name = operator ? D.operator.name : user(D.me).name;
+    const who = operator
+      ? `${avatar(D.operator.name, 0)}${esc(name)}<span class="chip">運用者</span>`
+      : `${avatarOf(D.me)}${esc(name)}${emblem(user(D.me).level, true)}`;
+    const label = t("accountMenuLabel").replace("{name}", name);
+    return `<div class="account-menu"><button class="account-menu-button" type="button" aria-expanded="${open}" aria-controls="${id}" aria-label="${esc(label)}" ${live ? "data-account-menu" : ""}><span class="me">${who}</span>${icon("chevron")}</button>
+      <ul class="account-menu-list" id="${id}" aria-label="${esc(label)}" ${open ? "" : "hidden"}><li><button type="button" ${live ? 'data-toast="見本のため、ログアウトしません"' : ""}><span class="org-menu-name">${t("logout")}</span></button></li></ul></div>`;
+  }
+  function setAccountMenu(open, focus) {
+    accountMenuOpen = open;
+    const slot = document.getElementById("account-menu-slot");
+    if (slot) slot.innerHTML = accountMenuHtml();
+    if (focus) document.querySelector("[data-account-menu]")?.focus();
+  }
+  function closeAccountMenu() {
+    setAccountMenu(false, !!document.activeElement?.closest?.(".account-menu"));
+  }
+  document.addEventListener("focusout", (ev) => {
+    const next = ev.relatedTarget;
+    if (accountMenuOpen && next && !next.closest(".account-menu")) setAccountMenu(false);
+  });
   const FIRST_LABEL = { member: "最初の日・一般", leader: "最初の日・リーダー", admin: "最初の日・管理者" };
   const firstLabel = (role) => FIRST_LABEL[role] || "使い込んだ状態";
   // 使い込んだ状態 → 最初の日（一般 → リーダー → 管理者）の順に回す。今の画面に見本がなければ自分の今日へ
@@ -1216,6 +1245,7 @@
   function redraw() {
     if (!page) return;
     document.getElementById("org-menu-slot").innerHTML = page.operator ? "" : orgMenuHtml();
+    document.getElementById("account-menu-slot").innerHTML = accountMenuHtml();
     document.getElementById("nav").innerHTML = navHtml(page.current, page.operator ? OPERATOR_PAGES : PAGES);
     document.querySelectorAll("[data-vocab-label]").forEach((el) => (el.textContent = `言葉: ${t("vocab")}`));
     document.querySelectorAll("[data-assist-label]").forEach((el) => (el.textContent = `${t("assistant")}に頼む`));
@@ -1228,12 +1258,11 @@
   // opts.operator なら運用者の画面の枠にする（組織のメニュー、通知、レベルを出さない）
   function mount(current, render, opts = {}) {
     page = { current, render, operator: !!opts.operator };
-    const me = user(D.me);
     const who = page.operator
-      ? `<span class="me">${avatar(D.operator.name, 0)}${esc(D.operator.name)}<span class="chip">運用者</span></span>`
+      ? `<span id="account-menu-slot"></span>`
       : `${first ? `<button class="pill" type="button" aria-label="通知 0件">${icon("bell")}</button>`
           : `<button class="pill" type="button" aria-label="通知 3件">${icon("bell")}<span class="pill-count">3</span></button>`}
-          <span class="me">${avatarOf(D.me)}${esc(me.name)}${emblem(me.level, true)}</span>`;
+          <span id="account-menu-slot"></span>`;
     document.getElementById("app").innerHTML = `
     <div class="app">
       <aside class="binding" aria-label="メニュー"><div class="binding-inner">
@@ -1336,6 +1365,10 @@
     if (hit("data-org-menu")) { setOrgMenu(!orgMenuOpen, true); return; }
     if (orgMenuOpen && ev.target.closest(".org-menu-list a")) closeOrgMenu();
     else if (orgMenuOpen && !ev.target.closest(".org-menu")) closeOrgMenu();
+    // アカウントのメニューも同じ。項目を押したら閉じる
+    if (hit("data-account-menu")) { setAccountMenu(!accountMenuOpen, true); return; }
+    if (accountMenuOpen && ev.target.closest(".account-menu-list button")) closeAccountMenu();
+    else if (accountMenuOpen && !ev.target.closest(".account-menu")) closeAccountMenu();
     if ((el = hit("data-sun"))) {
       const x = task(el.dataset.sun);
       x.todayOn = x.todayOn === D.today ? null : D.today;
@@ -1447,6 +1480,7 @@
     }
     if (ev.key !== "Escape" || ev.isComposing || ev.keyCode === 229) return;
     if (orgMenuOpen) { ev.stopPropagation(); closeOrgMenu(); return; }
+    if (accountMenuOpen) { ev.stopPropagation(); closeAccountMenu(); return; }
     if (closeCelebrate() || closeDialog()) return;
     if (assist.open === "palette") { closeAssist(); return; }
     if (drawer.id) { closeDrawer(); return; }
@@ -1533,7 +1567,7 @@
     user, task, tasksWhere, repoTag, repoPicker, sprintLabel, colName, categoryOf, storyPts, epicPts, dueOf,
     avatar, avatarOf, SAMPLE_PHOTO, BROKEN_PHOTO, emblem, pts, dueChip, taskDue, tier, sourceKey, entry, book, section, pageHead,
     card, board, treeStory, treeEpic, sprintNotice, raidNotice, progress, levelPanel, load, capacityRows,
-    openDialog, closeDialog, toast, celebrate, miniCap, redraw: () => redrawAll(), DIALOGS, loginTarget, orgMenuHtml,
+    openDialog, closeDialog, toast, celebrate, miniCap, redraw: () => redrawAll(), DIALOGS, loginTarget, orgMenuHtml, accountMenuHtml,
     filesOf, fileThumb, fileRow, dropzone, attachments, mdBody, meter,
     PROVIDER, ASSIST_KEY, assistMsg, assistBlocked, assistSuggest, openAssist,
     enableAssistOnCatalog: () => { assistOnCatalog = true; },

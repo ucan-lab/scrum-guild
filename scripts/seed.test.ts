@@ -60,7 +60,7 @@ describe('seedSql', () => {
 
 // 空の D1 に流して中身を数える。wrangler の手元の D1 を使うので数秒かかる
 describe('pnpm db:seed', () => {
-  test('2回流しても通り、組織2つ、セッション4つ、組織の無い運用者が入る', () => {
+  test('2回流しても通り、組織2つ、セッション6つ（同じアカウントの2本目を含む）、組織の無い運用者が入る', () => {
     const persistTo = mkdtempSync(path.join(tmpdir(), 'scrum-guild-seed-test-'));
     const root = fileURLToPath(new URL('..', import.meta.url));
     const wrangler = path.join(root, 'node_modules', '.bin', 'wrangler');
@@ -92,10 +92,10 @@ describe('pnpm db:seed', () => {
       const [row] = (JSON.parse(result.stdout) as { results: Record<string, number>[] }[])[0].results;
       assert.deepEqual(row, {
         organizations: 2,
-        sessions: 4,
+        sessions: sessions.length,
         operator_users: 0,
         operator_logins: 1,
-        sessions_30_days: 4,
+        sessions_30_days: sessions.length,
       });
 
       const check = spawnSync(
