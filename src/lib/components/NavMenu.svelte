@@ -1,7 +1,7 @@
 <script lang="ts">
   import type { Snippet } from 'svelte';
   import { resolve } from '$app/paths';
-  import { visibleNav } from '../nav.ts';
+  import { isWorkspaceRoute, visibleNav } from '../nav.ts';
   import { t } from '../vocabulary.svelte.ts';
   import Icon from './Icon.svelte';
 
@@ -42,14 +42,17 @@
     {#if section.heading}<div class="nav-group">{t(section.heading)}</div>{/if}
     {#if section.slot === 'workspace' && workspaceSwitcher}{@render workspaceSwitcher()}{/if}
     {#each section.items as item (item.label)}
-      <!-- ワークスペースの経路は、visibleNav が ID のあるときだけ残す -->
-      {@const href =
-        item.href === '/[slug]/w/[id]/members'
-          ? resolve(item.href, { slug, id: workspaceId ?? '' })
-          : resolve(item.href, { slug })}
-      <a class="nav-item" {href} aria-current={current === href ? 'page' : undefined}>
-        <Icon name={item.icon} /><span>{t(item.label)}</span>
-      </a>
+      <!-- ワークスペースの経路は、ID が無ければ行き先が決まらないので描かない（visibleNav も同じ条件で外す） -->
+      {@const href = isWorkspaceRoute(item.href)
+        ? workspaceId
+          ? resolve(item.href, { slug, id: workspaceId })
+          : null
+        : resolve(item.href, { slug })}
+      {#if href !== null}
+        <a class="nav-item" {href} aria-current={current === href ? 'page' : undefined}>
+          <Icon name={item.icon} /><span>{t(item.label)}</span>
+        </a>
+      {/if}
     {/each}
   {/each}
 </nav>

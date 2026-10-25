@@ -3,11 +3,12 @@ import type { IconName } from './icons.ts';
 
 // メニューの行き先。NavMenu が slug（ワークスペースの経路はワークスペースの ID も）で resolve する。
 // ワークスペースの経路（WorkspaceNavRoute）は、ワークスペースの画面を開いている間だけ出す。ワークスペースの外では行き先が決まらないため
-export type WorkspaceNavRoute = '/[slug]/w/[id]/members';
+const workspaceRoutes = ['/[slug]/w/[id]/members'] as const;
+export type WorkspaceNavRoute = (typeof workspaceRoutes)[number];
 export type NavRoute = '/[slug]' | '/[slug]/admin' | WorkspaceNavRoute;
 
 export function isWorkspaceRoute(route: NavRoute): route is WorkspaceNavRoute {
-  return route === '/[slug]/w/[id]/members';
+  return (workspaceRoutes as readonly string[]).includes(route);
 }
 
 // メニューの項目。kit.js の PAGES と同じ並びと見出し。

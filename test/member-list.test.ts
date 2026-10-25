@@ -1,6 +1,6 @@
 // メンバーの一覧の振る舞い。
 // 組織の分離と権限の種類ごとの許可と拒否は、一覧を回す test/operation-registry.test.ts が確かめる
-import { describe, expect, test } from 'vitest';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 import { memberList } from '../src/shared/operations/workspace/index.ts';
 import { createApp } from '../src/server/app.ts';
 import { implementedOperations } from '../src/server/operations/index.ts';
@@ -9,6 +9,10 @@ import { errorCodeOf, post } from './operations/harness.ts';
 import { createPerson, createTarget, type Person, type Target } from './operations/world.ts';
 
 const app = createApp(implementedOperations);
+
+afterEach(() => {
+  vi.restoreAllMocks();
+});
 
 type Listed = {
   members: { id: string; name: string; role: string; joined_on: string }[];
@@ -96,8 +100,8 @@ describe('member-list: メンバー', () => {
   });
 
   test('並びはリーダーが先、続いて参加日、名前、ID', async () => {
-    const organization = (await createTarget()).organization;
-    const admin = await createPerson({ organization, admin: true });
+    const target = await createTarget();
+    const { organization, admin } = target;
     const workspace = await createWorkspace(organization, admin.userId!);
     const add = async (name: string, role: 'leader' | 'member', joinedOn: string, id?: string) => {
       const user = await createUser(organization, { name, ...(id === undefined ? {} : { id }) });
@@ -113,7 +117,6 @@ describe('member-list: メンバー', () => {
     const leaderLate = await add('え', 'leader', '2026-10-09');
     const leaderEarly = await add('お', 'leader', '2026-10-02');
 
-    const target = { organization, slug: organization.slug } as Target;
     const listed = await list(target, admin, workspace.id);
     const sameName = [c, d1, d2].sort();
     expect(listed.members.map((member) => member.id)).toEqual([leaderEarly, leaderLate, a, b, ...sameName]);
@@ -190,6 +193,70 @@ describe('member-list: 承諾待ちの招待', () => {
     );
     const listed = await list(target, target.leader, workspace.id);
     expect(listed.invitations?.map((invitation) => invitation.invited_on)).toEqual(['2026-10-21']);
+  });
+
+  test('並びは招待した順（created_at）で、同じ時刻は ID の順', async () => {
+    const target = await createTarget();
+    const { organization, admin } = target;
+    const workspace = await createWorkspace(organization, admin.userId!);
+    const invite = async (name: string, createdAt: string, id: string) => {
+      await createInvitation(
+        organization,
+        workspace.id,
+        admin.userId!,
+        { provider: 'github', subject: `order-${name}` },
+        { id, login_name: name, created_at: createdAt },
+      );
+    };
+    await invite('late', '2026-10-22T00:00:00.000Z', '019a0000-0000-7000-8000-0000000000a1');
+    await invite('same-b', '2026-10-21T00:00:00.000Z', '019a0000-0000-7000-8000-0000000000b2');
+    await invite('same-a', '2026-10-21T00:00:00.000Z', '019a0000-0000-7000-8000-0000000000b1');
+    await invite('early', '2026-10-20T00:00:00.000Z', '019a0000-0000-7000-8000-0000000000c9');
+
+    const listed = await list(target, admin, workspace.id);
+    expect(listed.invitations?.map((invitation) => invitation.login_name)).toEqual([
+      'early',
+      'same-a',
+      'same-b',
+      'late',
+    ]);
+  });
+
+  test('保存されたタイムゾーンが Intl で作れないワークスペースでも 200 で、招待した日は UTC の日付', async () => {
+    const target = await createTarget();
+    const { organization, admin } = target;
+    const workspace = await createWorkspace(organization, admin.userId!, { timezone: 'Mars/Olympus' });
+    await createInvitation(
+      organization,
+      workspace.id,
+      admin.userId!,
+      { provider: 'github', subject: 'broken-tz' },
+      { created_at: '2026-10-20T16:00:00.000Z' },
+    );
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    const listed = await list(target, admin, workspace.id);
+    expect(listed.invitations?.map((invitation) => invitation.invited_on)).toEqual(['2026-10-20']);
+    // 例外の名前だけをログに残し、タイムゾーンの値は出さない
+    const logged = errors.mock.calls
+      .map((call) => String(call[0]))
+      .filter((line) => line.includes('保存されたタイムゾーン'));
+    expect(logged).toHaveLength(1);
+    expect(JSON.parse(logged[0]!)).toMatchObject({ level: 'error', operation: 'member-list', error: 'RangeError' });
+    expect(logged[0]).not.toContain('Mars');
+  });
+});
+
+describe('member-list: 閉じたワークスペース', () => {
+  test('読む操作なので、閉じていても所属している人と招待を返す', async () => {
+    const target = await createTarget({ closed: true });
+
+    const leaderView = await list(target, target.leader);
+    expect(leaderView.members.map((member) => member.id).sort()).toEqual(
+      [target.leader.userId, target.member.userId].sort(),
+    );
+    expect(leaderView.invitations).toHaveLength(1);
+    expect((await list(target, target.member)).invitations).toBeNull();
   });
 });
 

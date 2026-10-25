@@ -607,13 +607,20 @@ export const dictionary = defineDictionary({
   ),
 
   // メンバーの画面（ワークスペースの画面）。{leader} {member} {admin} は、その言葉づかいの言葉を画面が渡す。
-  // ロールは文字で出す（付け替え、外す、抜ける は後の Issue で足す）
+  // ロールは文字で出す（付け替え、外す、抜ける は後の Issue で足す）。
+  // 以下のキーのうち、ゲームとスクラムで同じ文字列にしているのは見本（design/members.html）どおりの意図による
+  // （例: 「一般」はゲームの言葉でも「一般」。見本はロールの select の「一般」を言葉づかいで替えない）。
+  // 言葉づかいで変わるのは、{leader} {member} {admin} などの辞書の言葉を埋め込むところだけ
   membersPageName: workspace('{members}・{name}', '{members}・{name}'),
   membersTallyBelonging: workspace('所属', '所属'),
   membersTallyInvited: workspace('招待中', '招待中'),
   membersSectionTitle: workspace('所属している人', '所属している人'),
   membersTableLabel: workspace('所属している人の一覧', '所属している人の一覧'),
   membersEmptyTitle: workspace('所属している人はいません', '所属している人はいません'),
+  membersEmptyText: workspace(
+    '招待を承諾した{member}が、ここに並びます。',
+    '招待を承諾した{member}が、ここに並びます。',
+  ),
   memberRoleHeader: workspace('ロール', 'ロール'),
   memberJoinedHeader: workspace('参加日', '参加日'),
   roleMember: workspace('一般', '一般'),
@@ -626,7 +633,6 @@ export const dictionary = defineDictionary({
     '招待した人が承諾するまで、ここに並びます。',
     '招待した人が承諾するまで、ここに並びます。',
   ),
-  invitationNameHeader: workspace('招待した名前', '招待した名前'),
   invitationViaHeader: workspace('手段', '手段'),
   invitedOnHeader: workspace('招待した日', '招待した日'),
   loginProviderGithub: workspace('GitHub', 'GitHub'),

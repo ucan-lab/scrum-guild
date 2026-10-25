@@ -306,8 +306,10 @@ const SECTIONS = [
     null, ".velocity .stat .stat-label .stat-num / .bars .bars-avg .bar-col .is-excluded .bars-labels / .lanes .lane .is-active .lane-head .lane-title .lane-sub .lane-fill .lane-fill-bar .is-over .lane-row")],
   ["table", "表", () => block("table", "表", "数が並ぶ一覧は表にする。数の列は右に揃える。",
     `<div class="table-wrap"><table class="table"><thead><tr><th>${t("epic")}</th><th class="is-num">残り（pt）</th><th>進み</th><th>${t("due")}</th></tr></thead>
-      <tbody>${Object.keys(D.epics).map((id) => { const p = SQ.epicPts(id); return `<tr><td><a href="epic.html">${SQ.esc(D.epics[id].title)}</a></td><td class="is-num">${p.all - p.done}</td><td>${progress(p.done, p.all)}</td><td>${dueChip(D.epics[id].due)}</td></tr>`; }).join("")}</tbody></table></div>`,
-    ["表の見出しの下は二重罫。", "名前の列には is-name を付ける（th と td の両方）。名前が1字ずつ折れるほど縮まないよう最小幅を持ち、足りない幅は .table-wrap の横スクロールで受ける。"], ".table-wrap .table .is-num .is-name")],
+      <tbody>${Object.keys(D.epics).map((id) => { const p = SQ.epicPts(id); return `<tr><td><a href="epic.html">${SQ.esc(D.epics[id].title)}</a></td><td class="is-num">${p.all - p.done}</td><td>${progress(p.done, p.all)}</td><td>${dueChip(D.epics[id].due)}</td></tr>`; }).join("")}</tbody></table></div>
+    <div class="table-wrap"><table class="table"><thead><tr><th class="is-name">名前</th><th>ロール</th><th>メールアドレス</th></tr></thead>
+      <tbody><tr><td class="is-name"><span class="person is-wrap">${avatarOf("u1")}ミナトミナトミナトミナトミナトミナトミナトミナトミナトミナト</span></td><td>一般</td><td class="mono is-wrap">minato-minato-minato-minato@example.com</td></tr></tbody></table></div>`,
+    ["表の見出しの下は二重罫。", "名前の列には is-name を付ける（th と td の両方）。名前が1字ずつ折れるほど縮まないよう最小幅を持ち、足りない幅は .table-wrap の横スクロールで受ける。", "利用者が付けた長い名前（空白の無い30字以上、メールアドレスなど）が入る列は、人の名前に .person.is-wrap、等幅の文字に .mono.is-wrap を付けて折り返す（下の表）。付けた列だけが縮み、右の列を押し出さない。.mono.is-wrap の列には is-name を付けない（最小幅が、幅の狭い画面で表をはみ出させるため）。"], ".table-wrap .table .is-num .is-name .person.is-wrap .mono.is-wrap")],
   ["dialogs", "ダイアログと演出", () => block("dialogs", "ダイアログと演出", "押すと本物と同じものが開く。Esc か外側を押すと閉じ、開いた元のボタンに戻る。確認が要るのは、取り消せない操作と、まとめて状態を変える操作だけ。",
     `<div class="cat-row">
       <button class="btn" type="button" data-dialog="sprintCreate">${t("sprint")}を作る</button>

@@ -118,6 +118,18 @@ export const workspaceCreateOperation = implement(workspaceCreate, async ({ db, 
   return { workspace_id: rows.workspaceId };
 });
 
+// 一覧に数える今の所属。今所属し（left_at が空）、同じ組織の無効でなく login_subject のある人。
+// メンバーの一覧（member-list）と、管理者の一覧の人数（workspace-list）が同じ式を使い、画面ごとに数がずれないようにする
+function currentMemberships(from: Pick<QueryCreator<Tables>, 'selectFrom'>, organizationId: string) {
+  return from
+    .selectFrom('memberships as m')
+    .innerJoin('users as u', 'u.id', 'm.user_id')
+    .where('m.left_at', 'is', null)
+    .where('u.organization_id', '=', organizationId)
+    .where('u.disabled_at', 'is', null)
+    .where('u.login_subject', 'is not', null);
+}
+
 // 保存されたタイムゾーンが Intl で作れない行があっても、一覧全体を落とさない。その行だけ UTC の日付にする。
 // operation は、ログに残す呼び出し元の操作の名前
 function createdOn(timezone: string, createdAt: string, operation: string): string {
@@ -152,8 +164,7 @@ export const workspaceListOperation = implement(workspaceList, async ({ db }) =>
         .orderBy('id'),
     ),
     db.statement((q) =>
-      q
-        .selectFrom('memberships as m')
+      currentMemberships(q, organizationId)
         .innerJoin('workspaces as w', 'w.id', 'm.workspace_id')
         .select((eb) => [
           'm.workspace_id',
@@ -161,7 +172,6 @@ export const workspaceListOperation = implement(workspaceList, async ({ db }) =>
           eb.fn.countAll<number>().filterWhere('m.role', '=', 'leader').as('leader_count'),
         ])
         .where('w.organization_id', '=', organizationId)
-        .where('m.left_at', 'is', null)
         .groupBy('m.workspace_id'),
     ),
   ] as const);
@@ -205,15 +215,9 @@ export const memberListOperation = implement(memberList, async ({ db, actor, wor
   );
   // role の CHECK は 'leader' と 'member' だけなので、昇順でリーダーが先になる
   const membersStatement = db.statement((q) =>
-    q
-      .selectFrom('memberships as m')
-      .innerJoin('users as u', 'u.id', 'm.user_id')
+    currentMemberships(q, organizationId)
       .select(['u.id', 'u.name', 'm.role', 'm.joined_on'])
       .where('m.workspace_id', '=', workspaceId)
-      .where('m.left_at', 'is', null)
-      .where('u.organization_id', '=', organizationId)
-      .where('u.disabled_at', 'is', null)
-      .where('u.login_subject', 'is not', null)
       .orderBy('m.role')
       .orderBy('m.joined_on')
       .orderBy('u.name')

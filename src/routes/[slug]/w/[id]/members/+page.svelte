@@ -16,6 +16,15 @@
   const members = $derived(data.members);
   const invitations = $derived(data.invitations);
 
+  // 言葉は、開いているワークスペースの言葉づかいで引く（t が当てる）
+  function roleLabel(role: 'leader' | 'member'): string {
+    return role === 'leader' ? t('leader') : t('roleMember');
+  }
+
+  function providerLabel(provider: 'github' | 'google'): string {
+    return provider === 'google' ? t('loginProviderGoogle') : t('loginProviderGithub');
+  }
+
   const leaderCount = $derived(members?.filter((member) => member.role === 'leader').length ?? 0);
   const tallies = $derived([
     { label: t('membersTallyBelonging'), count: members?.length ?? 0, icon: 'users' as const },
@@ -44,7 +53,7 @@
 
   <Section id="members-belonging" title={t('membersSectionTitle')}>
     {#if members.length === 0}
-      <EmptyState icon="users" title={t('membersEmptyTitle')} />
+      <EmptyState icon="users" title={t('membersEmptyTitle')} text={t('membersEmptyText', { member: t('member') })} />
     {:else}
       <div class="table-wrap">
         <table class="table" aria-label={t('membersTableLabel')}>
@@ -59,9 +68,9 @@
             {#each members as member (member.id)}
               <tr>
                 <td class="is-name"
-                  ><span class="person"><Avatar userId={member.id} name={member.name} />{member.name}</span></td
+                  ><span class="person is-wrap"><Avatar userId={member.id} name={member.name} />{member.name}</span></td
                 >
-                <td>{member.role === 'leader' ? t('leader') : t('roleMember')}</td>
+                <td>{roleLabel(member.role)}</td>
                 <td class="mono">{member.joined_on}</td>
               </tr>
             {/each}
@@ -84,7 +93,7 @@
           <table class="table" aria-label={t('invitationsTableLabel')}>
             <thead>
               <tr>
-                <th class="is-name">{t('invitationNameHeader')}</th>
+                <th>{t('fieldName')}</th>
                 <th>{t('invitationViaHeader')}</th>
                 <th>{t('memberRoleHeader')}</th>
                 <th>{t('invitedOnHeader')}</th>
@@ -93,10 +102,9 @@
             <tbody>
               {#each invitations as invitation (invitation.id)}
                 <tr>
-                  <td class="is-name mono">{invitation.login_name}</td>
-                  <td>{invitation.login_provider === 'google' ? t('loginProviderGoogle') : t('loginProviderGithub')}</td
-                  >
-                  <td>{invitation.role === 'leader' ? t('leader') : t('roleMember')}</td>
+                  <td class="mono is-wrap">{invitation.login_name}</td>
+                  <td>{providerLabel(invitation.login_provider)}</td>
+                  <td>{roleLabel(invitation.role)}</td>
                   <td class="mono">{invitation.invited_on}</td>
                 </tr>
               {/each}

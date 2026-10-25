@@ -50,6 +50,33 @@ test.describe('リーダー（あおば開発のミナト）', () => {
     await expect(invitation).toHaveText(['sora--seed', 'GitHub', '一般', '2026-10-19']);
     expect(await collect()).toEqual([]);
   });
+
+  test('390px の幅で、長い名前（空白の無い30字以上）と長いメールアドレスは折り返し、表は横にはみ出さない', async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 390, height: 800 });
+    const longName = 'ミナト'.repeat(12);
+    const longLogin = 'minato-minato-minato-minato-minato-minato@example.com';
+    await page.route('**/api/aoba/member-list', (route) =>
+      route.fulfill({
+        json: {
+          members: [{ id: AOBA_WORKSPACE_ID, name: longName, role: 'leader', joined_on: '2026-10-01' }],
+          invitations: [
+            { id: 'i1', login_name: longLogin, login_provider: 'google', role: 'member', invited_on: '2026-10-19' },
+          ],
+        },
+      }),
+    );
+    await page.goto(MEMBERS_PATH);
+    await expect(page.getByRole('table', { name: '承諾待ちの招待の一覧' })).toContainText(longLogin);
+    await expect(page.getByRole('table', { name: '所属している人の一覧' })).toContainText(longName);
+    for (const wrap of await page.locator('.table-wrap').all()) {
+      expect(await wrap.evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
+    }
+    // 右の列（参加日、招待した日）が見える
+    await expect(page.getByText('2026-10-01')).toBeInViewport();
+    await expect(page.getByText('2026-10-19')).toBeInViewport();
+  });
 });
 
 test.describe('一般のユーザー（あおば開発のハルカ）', () => {

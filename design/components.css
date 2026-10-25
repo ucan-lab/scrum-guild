@@ -866,6 +866,9 @@ a.choice > div > span, .choice.is-static > div > span { display: block; }
   .setting { grid-template-columns: minmax(0, 1fr); gap: var(--space-3); }
 }
 .person { display: inline-flex; align-items: center; gap: var(--space-2); white-space: nowrap; }
+/* 長い名前（空白の無い30字以上、メールアドレスなど）を折り返す。付けた列だけが縮み、表の右の列を押し出さない。付けない列は今のまま折り返さない */
+.person.is-wrap { white-space: normal; overflow-wrap: anywhere; }
+.table .mono.is-wrap { white-space: normal; overflow-wrap: anywhere; }
 
 /* ===== 添付ファイル ===== */
 /* 画像と動画は縮小した絵を並べ、それ以外は1行ずつ。押すとプレビューが開く */
