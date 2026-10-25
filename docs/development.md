@@ -196,7 +196,7 @@ GitHub は無料のプランのまま使う（2026-10-23 に決めた）。無�
 - `worktrees/` はリポジトリの `.gitignore` で git の管理から外してある
 - 依存はワークツリーごとに入れる。ローカルの D1（`.wrangler/state`）もワークツリーごとに分かれるので、seed もそれぞれで当てる。並べて `pnpm dev` を立てるときはポートをずらす（下の「手元で動かす」）
 - vitest（vite 8 の oxc）は、変換するファイルを `include` に含む tsconfig を、ファイルのディレクトリから上の階層へ探す。隣のディレクトリの tsconfig は見ないので、`src/server/tsconfig.json` が `test/` を含んでいても `test/` からは見つからない。リポジトリの中に見つからないとワークツリーの外へ上り、本体の作業コピーの `tsconfig.json` を読む。本体に依存が無ければ、継ぎ先の `$app/tsconfig`（`svelte-kit sync` が作る）が無く `[TSCONFIG_ERROR] Failed to load tsconfig '$app/tsconfig'` で落ち、依存があれば本体の版の設定を黙って読む。`test/tsconfig.json` はそれを止めるために置いてある。テストが読むファイルを新しいトップレベルのディレクトリに置くときは、そのディレクトリにも `test/tsconfig.json` と同じように tsconfig を置く
-- PR がマージされたら、`~/.claude/scripts/git-cleanup-merged.sh <名前>` でワークツリーと手元のブランチを消す（`pr-feedback` の後片付け）。squash merge では SHA が変わり `git branch -d` が拒むため、PR がマージ済みで head の SHA が手元と一致するときだけ `-D` で消す。スクリプトは dotfiles にあり、無い環境では人が消す
+- PR がマージされたら、`~/.claude/scripts/git-cleanup-merged.sh <名前>` でワークツリーと手元のブランチを消す（`pr-feedback` の後片付け）。人がマージするときも、セッションは PR が閉じるのを待っていて、知らせを受けずに後片付けと、受け持つほかの PR の追従まで続ける。squash merge では SHA が変わり `git branch -d` が拒むため、PR がマージ済みで head の SHA が手元と一致するときだけ `-D` で消す。スクリプトは dotfiles にあり、無い環境では人が消す
 
 ## 手元で動かす
 
