@@ -87,14 +87,15 @@
 | マージ方法 | squash merge だけ。PR のタイトルが `main` のコミットの件名になり、本文は空にする |
 | PR のタイトル | 今のコミットと同じ書き方（`feat:`、`fix:`、`docs:`、`design:`、`refactor:`、`chore:`、`test:`、`ci:` の後に日本語） |
 | マージ後 | ブランチを自動で消す |
-| 文書だけの変更 | `CLAUDE.md` の「守ること」の例外に挙げた文書だけの変更は、`main` に直接入れてよい。セッションはコミットまでで、push は人が行う。それ以外は PR を通す |
+| 文書だけの変更 | ほかの変更と同じく PR を通す。CI は重いジョブを飛ばし（下の「文書だけの PR」）、マージの後に Workers Builds はビルドしない |
 
 ### `main` を守る仕組み
 
 GitHub は無料のプランのまま使う（2026-10-23 に決めた）。無料のプランの private のリポジトリでは、ブランチ保護、Rulesets、auto-merge、Environment が使えない。そのため、守りは次のように置く。
 
 - リポジトリの設定で squash merge だけを許し、マージ後にブランチを消す。squash のコミットの件名は PR のタイトルにし、本文は空にする（設定済み）
-- `main` への直接の push と、`--force-with-lease` 以外の force push は、PreToolUse のフック（`.claude/hooks/guard-bash.mjs`）でセッションから止める。人の push は止まらないので、人も同じ決まりで PR を通す
+- `main` の上のコミット、`main` への直接の push、`--force-with-lease` 以外の force push は、PreToolUse のフック（`.claude/hooks/guard-bash.mjs`）でセッションから止める
+- 人の操作は、`.githooks/` の git のフックで止める。`pre-commit` と `pre-merge-commit` が `main` の上のコミットとマージのコミットを、`pre-push` がリモートの `main` への push（削除と force push も含む）を拒む。`main` を `pull --ff-only` で進めるのは通す。`pnpm install` の `prepare`（`scripts/git-hooks.ts`）が `core.hooksPath` を `.githooks` にする。`--no-verify` で抜けられる踏み線なので、人も同じ決まりで PR を通す
 - 必須のチェックは設定できない。マージする人かセッションが `ci-ok` の成功を確かめてからマージする
 - マージは人が決める。人が押すか、人の指示でセッションが `gh pr merge` を打つ。承認の数は求めず、人のレビューは「人がマージを決める」ことで表す（下の「マージの判定」）
 - 本番へデプロイする鍵は GitHub に置かない（下の「CD」）。リポジトリのシークレットは PR のブランチのワークフローからも読め、Environment で `main` だけに絞れないため
@@ -177,7 +178,7 @@ GitHub は無料のプランのまま使う（2026-10-23 に決めた）。無�
 | `permissions.allow` | `git push --force-with-lease`（`sync-base` の rebase の後の push。auto モードでも確認なしに通す。`main` への push はフックが先に止める） |
 | `permissions.deny` | `.dev.vars`、`.env` とその環境ごとのファイル（`.local`、`.production` など）の読み取り、`.dev.vars` と `.env` の書き込み、wrangler の資格情報のディレクトリの読み取り |
 | `env` | `WRANGLER_SEND_METRICS=false`（テレメトリを送らない） |
-| `guard-bash.mjs` と `bash-rules.mjs`（PreToolUse、Bash と Monitor） | 止める: wrangler の本番に触る操作（許すのは `dev`、`types`、`whoami`、版と help、`--local` を付けた D1、R2、KV の操作だけ）、`--remote` と `-r` とリモートの binding、本番のログ（`tail`）、デプロイのスクリプトと名前に `deploy` を含む `package.json` のスクリプト、`main` への push、`--force-with-lease` 以外の force push（`--force`、`-f`、`+` で始まる refspec、`--mirror`、lease の無い `--force-if-includes`）、`gh pr merge` を通さない PR のマージと、`--match-head-commit` の無いか `--auto`、`--admin` を付けた `gh pr merge`（`gh api` と `curl` の merge、`gh stack merge`、`gh alias set` と `gh alias import`、main の ref の書き換え、contents API の書き込み）、シークレットとログイン、`.dev.vars` と `.env` の中身を読むか送るコマンドと `git add`。確認を挟む: `gh pr merge`、依存の追加、削除、更新、マイグレーションの作成、`gh stack` の push 系、ブランチを判定できない push（`cd ~` や変数の先、変数か glob を含む refspec）、Bash からの `.claude/settings*.json` と `.claude/hooks/` と `migrations/` の書き換え |
+| `guard-bash.mjs` と `bash-rules.mjs`（PreToolUse、Bash と Monitor） | 止める: wrangler の本番に触る操作（許すのは `dev`、`types`、`whoami`、版と help、`--local` を付けた D1、R2、KV の操作だけ）、`--remote` と `-r` とリモートの binding、本番のログ（`tail`）、デプロイのスクリプトと名前に `deploy` を含む `package.json` のスクリプト、`main` の上でコミットを作る操作（`commit`、`merge`、`cherry-pick`、`revert`、`am`。`--ff-only`、`--abort`、`--quit` は通す）、`main` への push、`--force-with-lease` 以外の force push（`--force`、`-f`、`+` で始まる refspec、`--mirror`、lease の無い `--force-if-includes`）、`gh pr merge` を通さない PR のマージと、`--match-head-commit` の無いか `--auto`、`--admin` を付けた `gh pr merge`（`gh api` と `curl` の merge、`gh stack merge`、`gh alias set` と `gh alias import`、main の ref の書き換え、contents API の書き込み）、シークレットとログイン、`.dev.vars` と `.env` の中身を読むか送るコマンドと `git add`。確認を挟む: `gh pr merge`、依存の追加、削除、更新、マイグレーションの作成、`gh stack` の push 系、ブランチを判定できない push（`cd ~` や変数の先、変数か glob を含む refspec）、Bash からの `.claude/settings*.json` と `.claude/hooks/` と `migrations/` の書き換え |
 | `guard-files.mjs` と `file-rules.mjs`（PreToolUse、Write と Edit と MultiEdit） | 止める: `origin/main` にあるマイグレーションの書き換え、`+page.server`、`+layout.server`、`+server`、`hooks.server`、`src/` のうち `src/server/db/` の外での `env.DB` と `D1Database`（テストも含む。テストの土台は `test/` に置く）、`.svelte` の `<style>`、wrangler の設定の `remote: true`。確認を挟む: `.claude/settings*.json` の書き換えと、セッションが使っている `.claude/hooks/` の書き換え。セッションを起動した場所（`$CLAUDE_PROJECT_DIR`）とは別のワークツリーの `.claude/hooks/` は、確認を挟まない（セッションが使うのは起動した場所のフックで、別のワークツリーでの書き換えは PR で人が読むまで効かない）。ファイル自体のシンボリックリンクはリンク先で判定し、ワークツリーか判定できないときは確認を挟む。Bash からの `.claude/hooks/` の書き換えは、ワークツリーでも確認を挟む |
 | `format.mjs`（PostToolUse、Write と Edit と MultiEdit） | このリポジトリのファイルを Prettier で整える。依存が入るまでは何もしない |
 | `session-start.sh`（SessionStart の起動と再開） | クラウドのセッションだけで、`pnpm install --frozen-lockfile` を行う。pnpm が無ければ corepack で用意し、corepack も無ければ（Node 25 から同梱されない）`packageManager` の版を `npm install -g` で入れる |
@@ -253,7 +254,7 @@ Bash の判定を `permissions.deny` に置かないのは、規則が前方一�
 | 取り込み元の処理（顧客のデータ） | `src/server/import/` |
 | wrangler の設定（見本の Worker の `wrangler.design.jsonc` も含む）、デプロイのスクリプト、依存 | `wrangler*.jsonc` など、`scripts/`、`package.json`、`pnpm-lock.yaml`、`pnpm-workspace.yaml`、`patches/`、`.npmrc`、Node の版の指定 |
 | lint の設定（組織で絞る層を守る規則を含む） | `eslint.config.*` |
-| GitHub と Claude の設定 | `.github/`、`.claude/settings.json`、`.claude/hooks/`、`.mcp.json` |
+| GitHub と Claude の設定、git のフック | `.github/`、`.claude/settings.json`、`.claude/hooks/`、`.mcp.json`、`.githooks/` |
 
 ファイルのリネームを含む PR と、変更したファイルが 3000 を超える PR にも付ける。パスの規則は移動先の名前しか見ず、変更したファイルの一覧も 3000 件までしか取れないため。
 
@@ -261,7 +262,7 @@ Bash の判定を `permissions.deny` に置かないのは、規則が前方一�
 
 `needs-human` の PR は、AI レビューが通っていても人が差分を読んでからマージする。マイグレーションを含む PR では、このマージが本番に当てる承認になる（下の「CD」）。`label` のチェックが成功していない PR も、`needs-human` と同じに扱う（ジョブが落ちるとラベルが付かず、付いていない PR と見分けが付かないため）。付いていない PR は、`label` の成功を確かめたうえで、`ci-ok`、AI レビューの指摘、e2e のスクリーンショットを見て決めてよい。
 
-この仕組みが守るのは PR を通る変更だけで、`main` への直接の push は止められない（上の「`main` を守る仕組み」）。
+この仕組みが守るのは PR を通る変更だけで、GitHub の側では `main` への直接の push を止められない。手元の git のフックで止める（上の「`main` を守る仕組み」）。
 
 ## CI
 
@@ -293,7 +294,7 @@ ai-review は Claude のサブスクリプションで動かす。手元で `cla
 
 ### 文書だけの PR
 
-`changes` のジョブが、PR の base と head の差分（`git diff --no-renames`）を `scripts/ci.ts` の `isDocsOnly` にかける。変わったファイルがすべて `CLAUDE.md` の「守ること」で `main` に直接入れてよい文書（`docs/`、`HANDOFF.md`、`CLAUDE.md`、`.claude/` のスキルとエージェントとチェックリスト、`.github/ISSUE_TEMPLATE/`）の `.md` に収まるときだけ、文書だけとみなす。範囲の外に置いた `.md` も、範囲の中に置いた `.md` 以外のファイル（スクリプトや設定）も文書に数えない。範囲の中のスクリプトには `needs-human` も付かないため。範囲を変えるときは、`CLAUDE.md` と `scripts/ci.ts` を同じ PR で直す。
+`changes` のジョブが、PR の base と head の差分（`git diff --no-renames`）を `scripts/ci.ts` の `isDocsOnly` にかける。変わったファイルがすべて文書の範囲（`docs/`、`HANDOFF.md`、`CLAUDE.md`、`.claude/` のスキルとエージェントとチェックリスト、`.github/ISSUE_TEMPLATE/`）の `.md` に収まるときだけ、文書だけとみなす。範囲の外に置いた `.md` も、範囲の中に置いた `.md` 以外のファイル（スクリプトや設定）も文書に数えない。範囲の中のスクリプトには `needs-human` も付かないため。Workers Builds の build watch paths の Exclude も同じ範囲にする。範囲を変えるときは、この段落と `scripts/ci.ts` を同じ PR で直し、マージの前に build watch paths（`docs/operations.md` の「Workers Builds の接続」）も直す。
 
 - `ci-ok` の判定の置き場所は `scripts/ci.ts` の `ciOkVerdict`。`needs` のうち `changes` 以外をすべて重いジョブとして扱うので、重いジョブを足すときは `ci-ok` の `needs` に入れるだけでよい
 - 文書だけなら check、test、migration、e2e を飛ばし、4つがすべて飛んでいれば `ci-ok` は成功
@@ -347,7 +348,7 @@ Workers Builds の API トークンは、Builds が作ったトークンの権�
 - Workers Builds は `.node-version` から Node 26.12.1 を、`packageManager` から pnpm 12.12.0 を入れた。corepack を使わずに入るので、ビルドのコマンドで pnpm を入れ直す必要は無い
 - `WORKERS_CI=1` と `git rev-parse HEAD` は、ビルドとデプロイの両方のコマンドで使える
 - rollback を実地で確かめた。版をずらした PR（#84）のマージのビルドで、煙のテストが2分で打ち切られ、控えた版へ `wrangler rollback` で戻り、ビルドは失敗で終わった。revert の PR（#85）のビルドは成功した
-- 文書だけの push ではビルドを飛ばす。build watch paths の Exclude に、`CLAUDE.md` の「文書だけ」と同じ範囲を入れた（値は `docs/operations.md` の「Workers Builds の接続」）。build watch paths のワイルドカードは規則の先頭か末尾にしか置けないので、CI のように `.md` だけに絞らず、フォルダごと除く。今の範囲のフォルダには `.md` しか無い。1回の push で 3000 ファイル以上か 20 コミット以上が変わると、Exclude を見ずにビルドが走る
+- 文書だけの PR のマージではビルドを飛ばす。build watch paths の Exclude に、上の「文書だけの PR」と同じ範囲を入れた（値は `docs/operations.md` の「Workers Builds の接続」）。build watch paths のワイルドカードは規則の先頭か末尾にしか置けないので、CI のように `.md` だけに絞らず、フォルダごと除く。今の範囲のフォルダには `.md` しか無い。1回の push で 3000 ファイル以上か 20 コミット以上が変わると、Exclude を見ずにビルドが走る
 - 続けて push すると、ビルドは一列に並ばず同時に走る（Workers Paid のビルドの枠は6つ）。2つの push を25秒あけたときは、2つ目のビルドが1つ目の途中で始まり、デプロイの段はたまたま重ならずにどちらも通った。重なれば、2つ目はスクリプトの割り込みの検査で止まる。前のデプロイが終わるまで次をマージしない（`docs/operations.md` の「出し方」）
 
 スクリプトは、版を上げる直前に割り込みが見えたら止め、煙のテストに落ちても本番が上げた版から変わっていれば戻さない。別のビルドを潰さないためで、そのときは人が本番の版を確かめる。スクリプトで `main` の先頭と比べる案は、GitHub のトークンを Cloudflare に置くことになるので採らない。

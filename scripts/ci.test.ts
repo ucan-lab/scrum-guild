@@ -3,7 +3,7 @@ import { describe, test } from 'node:test';
 import { ciOkVerdict, isDocsOnly, migrationFiles, parseNulSeparated, type Needs } from './ci.ts';
 
 describe('isDocsOnly', () => {
-  test('CLAUDE.md の例外に挙げた文書だけなら真', () => {
+  test('文書の範囲の .md だけなら真', () => {
     assert.equal(
       isDocsOnly([
         'docs/development.md',
