@@ -48,6 +48,8 @@ function readElements(source: string, tag: 'svg' | 'path'): Record<string, strin
 
 const readPaths = (source: string) => readElements(source, 'path');
 const readSvg = (source: string) => readElements(source, 'svg')[0];
+// 要素のタグ名の並び。path の外に足した title（読み上げの二重読み）や g、circle を拾う
+const readTags = (source: string) => [...source.matchAll(/<([a-zA-Z][\w-]*)\b/g)].map(([, tag]) => tag);
 
 describe('見本との照合', () => {
   test('ロゴのマークは favicon、見本、本番で同じ形と色', () => {
@@ -61,6 +63,7 @@ describe('見本との照合', () => {
       ['見本の brandMark', brandMark],
       ['本番の BrandMark.svelte', component],
     ]) {
+      assert.deepEqual(readTags(source), readTags(faviconSource), `${label} の要素`);
       assert.deepEqual(readPaths(source), favicon, `${label} の path`);
       // 名前は横の文字が読ませるので、マークは読み上げから外す。class は components.css の大きさの指定に要る
       assert.deepEqual(

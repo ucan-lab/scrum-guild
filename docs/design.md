@@ -32,7 +32,7 @@ favicon と同じマーク（下の「favicon」）の横に、名前「Scrum Gu
 - マークは `aria-hidden` にし、名前は横の文字で読ませる。読み上げは「Scrum Guild」の1回になる
 - マークの金と生成りはロゴだけの色で、操作、完了、印、経験値のどの色の役割にも入れない。favicon と同じ値を SVG に直に書き、tokens.css の変数にしない（テーマで変わらないことを値で保つ）
 - 金の旗と背景の比は、白の紙で約3.46:1、シンプル（ライト）と中世風の左メニュー（`--color-sunken`）で約2.9〜3.0:1、ダークと現代風で4.7:1以上。マークは名前の文字と並べて置き、意味は文字で伝わるので、3:1 を割る面があっても色を変えない
-- 本番は `src/lib/components/BrandMark.svelte`、見本は `design/kit.js` の `brandMark`。インラインの SVG にして、画像の読み込みを待たずに出す。`static/favicon.svg` と合わせた3つのファイルで、2本の path（旗とチェック）と viewBox、見本と本番の `class` と `aria-hidden` が一致することを `scripts/design-parity.test.ts` が確かめる。形や色を変えるときは3つをそろえて直し、`static/favicon.ico` は下の「favicon」の手順で作り直す
+- 本番は `src/lib/components/BrandMark.svelte`、見本は `design/kit.js` の `brandMark`。インラインの SVG にして、画像の読み込みを待たずに出す。`static/favicon.svg` と合わせた3つのファイルで、要素の並び（svg と2本の path だけ）、2本の path（旗とチェック）と viewBox、見本と本番の `class` と `aria-hidden` が一致することを `scripts/design-parity.test.ts` が確かめる。形や色を変えるときは3つをそろえて直し、`static/favicon.ico` は下の「favicon」の手順で作り直す
 
 ## favicon
 
