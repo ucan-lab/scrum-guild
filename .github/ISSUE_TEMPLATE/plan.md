@@ -1,6 +1,6 @@
 ---
-name: 実装計画
-about: 1つの PR で入れる変更の計画。issue-plan のスキルが書くのと同じ形
+name: タスク
+about: 1つの PR で入れる変更の計画。ストーリーのサブ Issue にする（不具合などは親無しでよい）。issue-plan のスキルが書くのと同じ形
 title: ""
 labels: []
 ---
