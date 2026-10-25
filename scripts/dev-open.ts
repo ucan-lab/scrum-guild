@@ -16,7 +16,9 @@ async function open(target: DevOpenTarget): Promise<void> {
     browser = await chromium.launch({ headless: false, handleSIGINT: false });
   } catch (err) {
     const detail = err instanceof Error ? (err.message.split('\n')[0] ?? '') : String(err);
-    stop(`Chromium を起動できない（${detail}）。pnpm exec playwright install chromium を流してから、もう一度打つ`);
+    stop(
+      `Chromium を起動できない（${detail}）。入っていなければ pnpm exec playwright install chromium を流す。画面を出せない環境（SSH の先、CI）では使えない`,
+    );
   }
 
   let disconnected = false;
