@@ -139,19 +139,35 @@ describe('ログインできる条件を失った人', () => {
     expect(((await disabledRes.json()) as { error: { details?: unknown } }).error.details).toBeUndefined();
   });
 
-  test('停止した組織の中の操作は、入れたはずの人に 403 を返してセッションを残し、次の組織の外の操作で 401 と理由を返す', async () => {
+  test('停止した組織の中の操作でも、ほかに入れる組織が無い人は 401（理由 suspended）でセッションを消し、ある人は 403 でセッションを残す', async () => {
     const suspendedOrg = await createOrganization({ suspended_at: '2026-10-22T00:00:00.000Z' });
-    const admin = await createPerson({ organization: suspendedOrg, admin: true });
+    const only = await createPerson({ organization: suspendedOrg, admin: true });
+    const second = await withNewSession(only);
+    const stayer = await admitElsewhere(await createPerson({ organization: suspendedOrg, admin: true }));
+    const call = (token: string) => post(provisionalApp, organizationProfile, { slug: suspendedOrg.slug, token });
 
-    const inside = await post(provisionalApp, organizationProfile, { slug: suspendedOrg.slug, token: admin.token });
-    expect(inside.status).toBe(403);
-    expect(await errorCodeOf(inside)).toBe('organization_suspended');
-    expect(await sessionCount(admin.accountId)).toBe(1);
+    // 403 を返し続けるとセッションが延び続ける。組織の中の操作だけを呼ぶ人も、ここで消える
+    const lost = await call(only.token);
+    expect(lost.status).toBe(401);
+    expect(await lost.json()).toMatchObject({ error: { code: 'unauthenticated', details: { reason: 'suspended' } } });
+    expect(lost.headers.getSetCookie().find((line) => line.startsWith(`${SESSION_COOKIE}=`))).toContain('Max-Age=0');
+    expect(await sessionCount(only.accountId)).toBe(0);
+    expect((await call(second.token)).status).toBe(401);
 
-    const outside = await post(app, me, { token: admin.token });
-    expect(outside.status).toBe(401);
-    expect(await outside.json()).toMatchObject({ error: { details: { reason: 'suspended' } } });
-    expect(await sessionCount(admin.accountId)).toBe(0);
+    const kept = await call(stayer.token);
+    expect(kept.status).toBe(403);
+    expect(await errorCodeOf(kept)).toBe('organization_suspended');
+    expect(await sessionCount(stayer.accountId)).toBe(1);
+  });
+
+  test('停止した組織への 403 の操作のログに、組織の ID が付く', async () => {
+    const suspendedOrg = await createOrganization({ suspended_at: '2026-10-22T00:00:00.000Z' });
+    const stayer = await admitElsewhere(await createPerson({ organization: suspendedOrg, admin: true }));
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+    await post(provisionalApp, organizationProfile, { slug: suspendedOrg.slug, token: stayer.token });
+    const lines = log.mock.calls.map((call) => JSON.parse(String(call[0])));
+    expect(lines).toMatchObject([{ code: 'organization_suspended', status: 403, organizationId: suspendedOrg.id }]);
+    log.mockRestore();
   });
 
   test('運用者の一覧から外れ、入れる組織も無い人は 401 になる', async () => {

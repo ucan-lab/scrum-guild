@@ -1131,6 +1131,15 @@ const looooooooooooooooooooooooooooooooooongLine = "コードの長い1行は、
       `<button class="btn is-quiet" type="button" data-close-dialog>やめる</button><button class="btn is-danger" type="button" data-close-dialog data-toast="${t("organization")}を停止しました">停止する</button>`);
       document.querySelector(".dialog-sheet").classList.add("is-danger");
     },
+    // 停止中の組織の停止の理由を、再開せずに切り替える。停止した日時は変わらない。今の理由を選んだ状態で開く
+    changeSuspension: () => openDialog("停止の理由を変える",
+      `<p>ひばり工房の停止の理由を選び直します。停止した日時は変わらず、再開しなくても切り替えられます。</p>
+       <fieldset class="field" style="border:0;padding:0;margin:0"><legend class="field-label">停止の理由</legend>
+         <div class="choice-list">
+           <label class="choice"><input type="radio" name="d-why" checked><div><b>一時的に止める</b><span>消す予定を取り消します。</span></div></label>
+           <label class="choice"><input type="radio" name="d-why"><div><b>解約</b><span>切り替えた日から 30 日後に、運用の手順でデータをすべて消します。それまでは再開できます。</span></div></label>
+         </div></fieldset>`,
+      `<button class="btn is-quiet" type="button" data-close-dialog>やめる</button><button class="btn is-primary" type="button" data-close-dialog data-toast="停止の理由を変えました">変える</button>`),
   };
 
   // ---- AI のアシスタント（パレットと横の欄） ----

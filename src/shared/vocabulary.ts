@@ -488,14 +488,35 @@ export const dictionary = defineDictionary({
     '支払いの遅れなど。消す予定は立てません。',
   ),
   operatorSuspendCancellation: organization('解約', '解約'),
+  // {days} は PURGE_AFTER_DAYS（src/shared/operations/operator/organization-suspend.ts）
   operatorSuspendCancellationHint: organization(
-    '停止から 30 日後に、運用の手順でデータをすべて消します。それまでは再開できます。',
-    '停止から 30 日後に、運用の手順でデータをすべて消します。それまでは再開できます。',
+    '停止から {days} 日後に、運用の手順でデータをすべて消します。それまでは再開できます。',
+    '停止から {days} 日後に、運用の手順でデータをすべて消します。それまでは再開できます。',
   ),
   operatorSuspending: organization('停止しています', '停止しています'),
   operatorResuming: organization('再開しています', '再開しています'),
-  operatorSuspendDone: organization('{organization}を停止しました', '{organization}を停止しました'),
-  operatorResumeDone: organization('{organization}を再開しました', '{organization}を再開しました'),
+  operatorSuspendDone: organization('「{name}」を停止しました', '「{name}」を停止しました'),
+  operatorResumeDone: organization('「{name}」を再開しました', '「{name}」を再開しました'),
+  // 停止中の組織の停止の理由を、再開せずに切り替える（停止した日時は変えない）
+  operatorChangeAction: organization('停止の理由を変える', '停止の理由を変える'),
+  operatorChangeLabel: organization('「{name}」の停止の理由を変える', '「{name}」の停止の理由を変える'),
+  operatorChangeTitle: organization('停止の理由を変える', '停止の理由を変える'),
+  operatorChangeText: organization(
+    '「{name}」の停止の理由を選び直します。停止した日時は変わらず、再開しなくても切り替えられます。',
+    '「{name}」の停止の理由を選び直します。停止した日時は変わらず、再開しなくても切り替えられます。',
+  ),
+  operatorChangeTemporaryHint: organization('消す予定を取り消します。', '消す予定を取り消します。'),
+  operatorChangeCancellationHint: organization(
+    '切り替えた日から {days} 日後に、運用の手順でデータをすべて消します。それまでは再開できます。',
+    '切り替えた日から {days} 日後に、運用の手順でデータをすべて消します。それまでは再開できます。',
+  ),
+  operatorChangeSubmit: organization('変える', '変える'),
+  operatorChanging: organization('変えています', '変えています'),
+  operatorChangeDone: organization('「{name}」の停止の理由を変えました', '「{name}」の停止の理由を変えました'),
+  operatorChangeFailed: organization(
+    '停止の理由を変えられませんでした。もう一度試してください。',
+    '停止の理由を変えられませんでした。もう一度試してください。',
+  ),
   operatorSuspendFailed: organization(
     '{organization}を停止できませんでした。もう一度試してください。',
     '{organization}を停止できませんでした。もう一度試してください。',
@@ -729,8 +750,8 @@ export const dictionary = defineDictionary({
   ),
   // 入れる{organization}（や届いた招待）が、停止した{organization}にだけあるとき（?error=suspended）
   loginErrorSuspended: organization(
-    'ログインできませんでした。所属している{organization}は停止しています。運用者に問い合わせてください。',
-    'ログインできませんでした。所属している{organization}は停止しています。運用者に問い合わせてください。',
+    'ログインできませんでした。所属しているか招待されている{organization}は停止しています。運用者に問い合わせてください。',
+    'ログインできませんでした。所属しているか招待されている{organization}は停止しています。運用者に問い合わせてください。',
   ),
   // 招待の URL から結べなかったとき。理由（期限切れ、取り消し、別のアカウント、使い済み）は分けず、どのメールアドレスに招待したかも出さない
   loginErrorInvite: organization(

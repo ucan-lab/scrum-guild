@@ -86,7 +86,7 @@ test.describe('運用者', () => {
       organization({}),
       organization({ slug: 'hibari', name: 'ひばり工房', admin_status: 'none' }),
       organization({ slug: 'tsubame', name: 'つばめ商会', admin_status: 'pending' }),
-      organization({ slug: 'kamome', name: 'かもめ社', suspended_at: '2026-10-10T00:00:00.000Z' }),
+      organization({ slug: 'kamome', name: 'かもめ社', suspended_at: '2026-10-10T20:00:00.000Z' }),
       organization({
         slug: 'ibis',
         name: 'とき運送',
@@ -107,7 +107,7 @@ test.describe('運用者', () => {
     await expect(rows.filter({ hasText: 'つばめ商会' }).locator('.chip.is-warn')).toHaveText(
       'ギルドマスターは指名済み、ログイン待ち',
     );
-    // 停止した日はブラウザのタイムゾーンの日付。一時的な停止には、消す予定日の印を付けない
+    // 停止した日は UTC の日付（東京のブラウザでは 10/11 5:00 になる時刻でも 10/10）。一時的な停止には、消す予定日の印を付けない
     await expect(rows.filter({ hasText: 'かもめ社' }).locator('.chip.is-warn')).toHaveText('停止 2026-10-10');
     await expect(rows.filter({ hasText: 'かもめ社' }).locator('.chip.is-danger')).toHaveCount(0);
     // 解約には、消す予定日の印も付く
@@ -116,8 +116,11 @@ test.describe('運用者', () => {
     // 操作のボタンは、停止していない組織は「停止する」（is-danger）、停止中の組織は「再開する」
     await expect(rows.filter({ hasText: 'あおば開発' }).getByRole('button')).toHaveText('停止する');
     await expect(rows.filter({ hasText: 'あおば開発' }).getByRole('button')).toHaveClass(/is-danger/);
-    await expect(rows.filter({ hasText: 'かもめ社' }).getByRole('button')).toHaveText('再開する');
-    await expect(rows.filter({ hasText: 'かもめ社' }).getByRole('button')).not.toHaveClass(/is-danger/);
+    // 停止中の行は「停止の理由を変える」と「再開する」。どちらも危険の色にしない
+    const suspendedButtons = rows.filter({ hasText: 'かもめ社' }).getByRole('button');
+    await expect(suspendedButtons).toHaveText(['停止の理由を変える', '再開する']);
+    await expect(suspendedButtons.first()).not.toHaveClass(/is-danger/);
+    await expect(suspendedButtons.last()).not.toHaveClass(/is-danger/);
     // 2026-10-01T09:30Z は、東京のブラウザでは 18:30
     await expect(rows.filter({ hasText: 'あおば開発' }).locator('.mono').last()).toHaveText('2026/10/01 18:30');
     expect(await collect()).toEqual([]);
@@ -752,10 +755,10 @@ test.describe('運用者', () => {
     await expect(dialog).toBeHidden();
     expect(sent).toEqual({ slug: 'hibari', kind: 'cancellation' });
 
-    await expect(page.getByRole('status').filter({ hasText: '冒険者ギルドを停止しました' })).toBeVisible();
+    await expect(page.getByRole('status').filter({ hasText: '「ひばり工房」を停止しました' })).toBeVisible();
     await expect(row.locator('.chip.is-warn')).toHaveText('停止 2026-10-26');
     await expect(row.locator('.chip.is-danger')).toHaveText('2026-11-25 に消す');
-    await expect(row.getByRole('button')).toHaveText('再開する');
+    await expect(row.getByRole('button')).toHaveText(['停止の理由を変える', '再開する']);
     // もう一方の組織は変わらない
     await expect(page.locator('.table tbody tr', { hasText: 'あおば開発' }).locator('.chip')).toHaveCount(0);
     expect(await collect()).toEqual([]);
@@ -784,9 +787,104 @@ test.describe('運用者', () => {
 
     await expect(page.getByRole('dialog')).toHaveCount(0);
     expect(sent).toEqual({ slug: 'hibari' });
-    await expect(page.getByRole('status').filter({ hasText: '冒険者ギルドを再開しました' })).toBeVisible();
+    await expect(page.getByRole('status').filter({ hasText: '「ひばり工房」を再開しました' })).toBeVisible();
     await expect(row.locator('.chip')).toHaveCount(0);
     await expect(row.getByRole('button')).toHaveText('停止する');
+  });
+
+  test('再開を送っている間は、送っている行のボタンの文字が「再開しています」になり、押しても二重に送らない', async ({
+    page,
+  }) => {
+    const listed = [organization({ slug: 'hibari', name: 'ひばり工房', suspended_at: '2026-10-10T00:00:00.000Z' })];
+    await page.route('**/api/list-organizations', (route) => route.fulfill({ json: { organizations: listed } }));
+    let requests = 0;
+    const gate = deferred<void>();
+    await page.route('**/api/organization-resume', async (route) => {
+      requests++;
+      await gate.promise;
+      listed[0] = organization({ slug: 'hibari', name: 'ひばり工房' });
+      await route.fulfill({ json: { slug: 'hibari' } });
+    });
+    await page.goto('/operator');
+    const row = page.locator('.table tbody tr', { hasText: 'ひばり工房' });
+    const resume = row.getByRole('button', { name: '「ひばり工房」を再開する' });
+    await resume.click();
+
+    await expect(resume).toHaveText('再開しています');
+    await expect(resume).toHaveAttribute('aria-disabled', 'true');
+    // 見える文字は替わるが、読み上げの名前は据え置く
+    await expect(resume).toHaveAccessibleName('「ひばり工房」を再開する');
+    await resume.click({ force: true });
+    await row.getByRole('button', { name: '「ひばり工房」の停止の理由を変える' }).click({ force: true });
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+
+    await settleAfterResponse(page, 'organization-resume', () => gate.release());
+    await expect(row.getByRole('button')).toHaveText('停止する');
+    expect(requests).toBe(1);
+  });
+
+  test('「停止の理由を変える」は、今の理由を選んだ状態で開き、今と同じ理由では変えられず、選び直して送ると一覧が読み直される', async ({
+    page,
+  }) => {
+    const listed = [
+      organization({ slug: 'hibari', name: 'ひばり工房', suspended_at: '2026-10-10T00:00:00.000Z' }),
+      organization({
+        slug: 'tsubame',
+        name: 'つばめ商会',
+        suspended_at: '2026-10-11T00:00:00.000Z',
+        purge_on: '2026-11-10',
+      }),
+    ];
+    await page.route('**/api/list-organizations', (route) => route.fulfill({ json: { organizations: listed } }));
+    let sent: unknown;
+    await page.route('**/api/organization-suspension-update', async (route) => {
+      sent = route.request().postDataJSON();
+      listed[0] = organization({
+        slug: 'hibari',
+        name: 'ひばり工房',
+        suspended_at: '2026-10-10T00:00:00.000Z',
+        purge_on: '2026-11-25',
+      });
+      await route.fulfill({ json: { slug: 'hibari', purge_on: '2026-11-25' } });
+    });
+    await page.goto('/operator');
+
+    // 解約の組織は、解約を選んだ状態で開く。危険の色にはしない
+    await page.getByRole('button', { name: '「つばめ商会」の停止の理由を変える' }).click();
+    const dialog = page.getByRole('dialog', { name: '停止の理由を変える' });
+    await expect(dialog.getByRole('radio', { name: /解約/ })).toBeChecked();
+    await expect(page.locator('.dialog-sheet.is-danger')).toHaveCount(0);
+    await dialog.getByRole('button', { name: 'やめる' }).click();
+    await expect(dialog).toBeHidden();
+
+    const button = page.getByRole('button', { name: '「ひばり工房」の停止の理由を変える' });
+    await button.click();
+    await expect(dialog.getByRole('radio', { name: /一時的に止める/ })).toBeChecked();
+    // 今と同じ理由では、「変える」を押しても何も送らない
+    const change = dialog.getByRole('button', { name: '変える' });
+    await expect(change).toHaveAttribute('aria-disabled', 'true');
+    await change.click({ force: true });
+    expect(sent).toBeUndefined();
+
+    await dialog.getByRole('radio', { name: /解約/ }).check();
+    await expect(change).toHaveAttribute('aria-disabled', 'false');
+    await change.click();
+    await expect(dialog).toBeHidden();
+    expect(sent).toEqual({ slug: 'hibari', kind: 'cancellation' });
+    await expect(page.getByRole('status').filter({ hasText: '「ひばり工房」の停止の理由を変えました' })).toBeVisible();
+    const row = page.locator('.table tbody tr', { hasText: 'ひばり工房' });
+    await expect(row.locator('.chip.is-warn')).toHaveText('停止 2026-10-10');
+    await expect(row.locator('.chip.is-danger')).toHaveText('2026-11-25 に消す');
+  });
+
+  test('長い組織の名前は、停止のダイアログの本文で折り返し、横にはみ出さない', async ({ page }) => {
+    const longName = 'とても長い名前の組織'.repeat(8) + 'x'.repeat(60);
+    await mockList(page, [organization({ name: longName })]);
+    await page.goto('/operator');
+    await page.getByRole('button', { name: `「${longName}」を停止する` }).click();
+    const text = page.getByRole('dialog').locator('p.wrap-anywhere');
+    await expect(text).toContainText(longName);
+    expect(await text.evaluate((el) => el.scrollWidth - el.clientWidth)).toBeLessThanOrEqual(0);
   });
 
   test('停止を送っている間は、「停止する」を押しても無視し、ダイアログも閉じられず、1回しか送らない', async ({
@@ -840,7 +938,7 @@ test.describe('運用者', () => {
     await page.getByRole('dialog').getByRole('button', { name: '「あおば開発」を停止する' }).click();
     await expect(page.getByRole('dialog')).toHaveCount(0);
     await expect(page.getByRole('status').filter({ hasText: '「あおば開発」の状態が変わっていました' })).toBeVisible();
-    await expect(page.locator('.table tbody tr', { hasText: 'あおば開発' }).getByRole('button')).toHaveText('再開する');
+    await expect(page.getByRole('button', { name: '「あおば開発」を再開する' })).toHaveText('再開する');
 
     await page.getByRole('button', { name: '「ひばり工房」を再開する' }).click();
     await expect(page.getByRole('status').filter({ hasText: '「ひばり工房」の状態が変わっていました' })).toBeVisible();
@@ -889,6 +987,7 @@ test('運用者でない人は、運用者の操作を呼ぶと 403', async ({ p
     'resolve-github-user',
     'create-organization',
     'organization-suspend',
+    'organization-suspension-update',
     'organization-resume',
   ]) {
     const res = await page.request.post(`/api/${name}`, {

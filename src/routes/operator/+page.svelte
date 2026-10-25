@@ -10,12 +10,12 @@
   import LoadFailed from '../../lib/components/LoadFailed.svelte';
   import LogoutButton from '../../lib/components/LogoutButton.svelte';
   import OrganizationSuspendDialog from '../../lib/components/OrganizationSuspendDialog.svelte';
-  import { formatLocalDate } from '../../lib/format.ts';
+  import { formatUtcDate } from '../../lib/format.ts';
   import { formatDateTime } from '../../lib/format-datetime.ts';
   import { isUnauthenticated, loginUrl } from '../../lib/login-redirect.ts';
   import { showToast } from '../../lib/toast.svelte.ts';
   import { t } from '../../lib/vocabulary.svelte.ts';
-  import { organizationResume } from '../../shared/operations/operator/index.ts';
+  import { organizationResume, type SuspensionKind } from '../../shared/operations/operator/index.ts';
   import type { PageProps } from './$types';
 
   // 運用の画面（design/operator.html）。組織の一覧と、組織の作成、停止と再開。組織の中のデータは出さない。
@@ -30,13 +30,13 @@
   let dialogOpen = $state(false);
   let suspendDialog = $state<ReturnType<typeof OrganizationSuspendDialog>>();
   // 停止の確認の対象。ダイアログの結果を受けるとき、どの行だったかを名前で知らせるのに使う
-  let suspending = $state<{ slug: string; name: string } | null>(null);
+  let suspending = $state<{ slug: string; name: string; currentKind?: SuspensionKind } | null>(null);
   // 再開を送っている行
   let resumingSlug = $state<string | null>(null);
 
   const words = $derived({ organization: t('organization'), admin: t('admin') });
 
-  type Row = { slug: string; name: string; suspended_at: string | null };
+  type Row = { slug: string; name: string; suspended_at: string | null; purge_on: string | null };
 
   async function resume(row: Row): Promise<void> {
     if (resumingSlug !== null) return;
@@ -44,7 +44,7 @@
     try {
       const result = await callOperation(organizationResume, { slug: row.slug });
       if (result.ok) {
-        showToast(t('operatorResumeDone', words), 'check');
+        showToast(t('operatorResumeDone', { name: row.name }), 'check');
       } else if (isUnauthenticated(result)) {
         window.location.assign(loginUrl(page.url, result));
         return;
@@ -62,27 +62,33 @@
     }
   }
 
-  function suspendFinished(
-    name: string,
-    outcome: 'suspended' | 'state_changed' | 'unavailable' | 'unauthenticated',
-  ): void {
+  // 停止の確認と、停止の理由を変えるダイアログの結果。どちらのダイアログだったかは、開いたときの対象（currentKind）で分かる
+  function suspendFinished(outcome: 'done' | 'state_changed' | 'unavailable' | 'unauthenticated'): void {
     if (outcome === 'unauthenticated') {
       window.location.assign(loginUrl(page.url));
       return;
     }
-    if (outcome === 'suspended') showToast(t('operatorSuspendDone', words), 'check');
-    else if (outcome === 'state_changed') showToast(t('operatorStateChanged', { name }), 'alert');
+    const name = suspending?.name ?? '';
+    if (outcome === 'done') {
+      const key = suspending?.currentKind === undefined ? 'operatorSuspendDone' : 'operatorChangeDone';
+      showToast(t(key, { name }), 'check');
+    } else if (outcome === 'state_changed') showToast(t('operatorStateChanged', { name }), 'alert');
     else showToast(t('operatorUnavailable', { name }), 'alert');
     void invalidateAll();
   }
 
-  function act(row: Row, trigger: HTMLElement): void {
+  // 停止している組織の今の停止の理由。消す予定日があれば解約
+  const kindOf = (row: Row): SuspensionKind => (row.purge_on === null ? 'temporary' : 'cancellation');
+
+  function suspend(row: Row, trigger: HTMLElement): void {
     if (resumingSlug !== null) return;
-    if (row.suspended_at !== null) {
-      void resume(row);
-      return;
-    }
     suspending = { slug: row.slug, name: row.name };
+    suspendDialog?.show(suspending, trigger);
+  }
+
+  function changeReason(row: Row, trigger: HTMLElement): void {
+    if (resumingSlug !== null) return;
+    suspending = { slug: row.slug, name: row.name, currentKind: kindOf(row) };
     suspendDialog?.show(suspending, trigger);
   }
 
@@ -124,7 +130,7 @@
                     {organization.name}
                     {#if organization.suspended_at}
                       <span class="chip is-warn"
-                        >{t('operatorSuspended', { date: formatLocalDate(organization.suspended_at) })}</span
+                        >{t('operatorSuspended', { date: formatUtcDate(organization.suspended_at) })}</span
                       >
                     {/if}
                     {#if organization.suspended_at && organization.purge_on}
@@ -141,20 +147,43 @@
                   </td>
                   <td class="mono">{formatDateTime(organization.created_at)}</td>
                   <td class="is-actions">
-                    <!-- 停止中の行は「再開する」、それ以外は「停止する」。同じ要素のまま文字だけを替え、読み直しでフォーカスを失わない。
-                         読み上げの名前に、どの組織かを添える -->
-                    <button
-                      class="btn is-sm is-quiet"
-                      class:is-danger={organization.suspended_at === null}
-                      type="button"
-                      aria-disabled={resumingSlug !== null}
-                      aria-label={organization.suspended_at !== null
-                        ? t('operatorResumeLabel', { name: organization.name })
-                        : t('operatorSuspendLabel', { name: organization.name })}
-                      onclick={(event) => act(organization, event.currentTarget)}
-                    >
-                      {organization.suspended_at !== null ? t('operatorResumeAction') : t('operatorSuspendAction')}
-                    </button>
+                    <!-- 停止中の行は「停止の理由を変える」と「再開する」、それ以外は「停止する」。右端のボタンは同じ要素のまま
+                         文字だけを替え、読み直しでフォーカスを失わない。読み上げの名前に、どの組織かを添える。
+                         再開を送っている行は、見える文字も「再開しています」にする（名前は据え置く） -->
+                    <span class="table-actions">
+                      {#if organization.suspended_at !== null}
+                        <button
+                          class="btn is-sm is-quiet"
+                          type="button"
+                          aria-disabled={resumingSlug !== null}
+                          aria-label={t('operatorChangeLabel', { name: organization.name })}
+                          onclick={(event) => changeReason(organization, event.currentTarget)}
+                        >
+                          {t('operatorChangeAction')}
+                        </button>
+                      {/if}
+                      <button
+                        class="btn is-sm is-quiet"
+                        class:is-danger={organization.suspended_at === null}
+                        type="button"
+                        aria-disabled={resumingSlug !== null}
+                        aria-label={organization.suspended_at !== null
+                          ? t('operatorResumeLabel', { name: organization.name })
+                          : t('operatorSuspendLabel', { name: organization.name })}
+                        onclick={(event) =>
+                          organization.suspended_at !== null
+                            ? void resume(organization)
+                            : suspend(organization, event.currentTarget)}
+                      >
+                        {#if resumingSlug === organization.slug}
+                          {t('operatorResuming')}
+                        {:else if organization.suspended_at !== null}
+                          {t('operatorResumeAction')}
+                        {:else}
+                          {t('operatorSuspendAction')}
+                        {/if}
+                      </button>
+                    </span>
                   </td>
                 </tr>
               {/each}
@@ -172,7 +201,4 @@
   bind:open={dialogOpen}
   organizations={data.failed ? [] : data.organizations}
 />
-<OrganizationSuspendDialog
-  bind:this={suspendDialog}
-  onfinish={(outcome) => suspendFinished(suspending?.name ?? '', outcome)}
-/>
+<OrganizationSuspendDialog bind:this={suspendDialog} onfinish={suspendFinished} />

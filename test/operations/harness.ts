@@ -164,6 +164,12 @@ export function defineOperationChecks(
         createTarget({ suspended: true }),
         getOperator().then(withNewSession),
       ]);
+      // 停止した組織にしか入れない人は、403 の前にセッションを消されて 401 になる。ほかの組織にも入れる人にして、403 を見る
+      await Promise.all(
+        [suspended.admin, suspended.leader, suspended.member, suspended.bystander, suspended.invitee].map(
+          admitElsewhere,
+        ),
+      );
     });
 
     // 成功の応答が定義の出力の形であることまで確かめる

@@ -34,14 +34,19 @@ export type OrganizationEntry = {
   readonly organization: OrganizationSummary;
 };
 
-// 停止した組織の結果。停止していなければ入れた人にだけ返す（入口は渡さない）。呼び出し側は 403 の organization_suspended にする
-export const ORGANIZATION_SUSPENDED = 'suspended' as const;
+// 停止した組織の結果。停止していなければ入れた人にだけ返す（組織の中の入口は渡さない。ログに残す組織の ID だけを持つ）。
+// 呼び出し側は 403 の organization_suspended にする
+export type SuspendedOrganization = { readonly suspended: true; readonly organizationId: string };
 
-export type EnteredOrganization = OrganizationEntry | typeof ORGANIZATION_SUSPENDED | undefined;
+export type EnteredOrganization = OrganizationEntry | SuspendedOrganization | undefined;
+
+export function isSuspendedOrganization(entered: EnteredOrganization): entered is SuspendedOrganization {
+  return entered !== undefined && 'suspended' in entered;
+}
 
 // 組織を引けない、入れないは undefined を返す。呼び出し側はどちらも同じ 404 にする（組織があることを外に漏らさない）。
 // 停止した組織は、停止していなければ入れた人（無効でない管理者、今の所属、承諾待ちの招待。停止していない組織と同じ判定）には
-// ORGANIZATION_SUSPENDED を返し、入れない人には undefined を返す。
+// SuspendedOrganization を返し、入れない人には undefined を返す。
 // loadLogins は招待で入る分岐に来たときだけ呼ぶ（管理者と所属のある人には要らないので、引かない）
 export async function enterOrganization(
   env: Env,
@@ -78,9 +83,9 @@ export async function enterOrganization(
   if (user !== undefined && user.disabled_at !== null) return undefined;
 
   // 入れる人と決まったところで、停止していれば入口を渡さずに停止を知らせる
-  const entry = (isAdmin: boolean, invitedOnly: boolean): OrganizationEntry | typeof ORGANIZATION_SUSPENDED =>
+  const entry = (isAdmin: boolean, invitedOnly: boolean): OrganizationEntry | SuspendedOrganization =>
     suspended
-      ? ORGANIZATION_SUSPENDED
+      ? { suspended: true, organizationId }
       : {
           db,
           actor: { accountId: account.accountId, userId: user?.id ?? null, isAdmin, invitedOnly },

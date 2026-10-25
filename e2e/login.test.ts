@@ -101,7 +101,7 @@ test('?error= の理由を、辞書の文言で出す。知らない値は出さ
   );
   await page.goto('/login?error=suspended');
   await expect(page.getByRole('alert')).toHaveText(
-    'ログインできませんでした。所属している冒険者ギルドは停止しています。運用者に問い合わせてください。',
+    'ログインできませんでした。所属しているか招待されている冒険者ギルドは停止しています。運用者に問い合わせてください。',
   );
   await page.goto('/login?error=retry');
   await expect(page.getByRole('alert')).toHaveText('ログインを完了できませんでした。もう一度ログインしてください。');

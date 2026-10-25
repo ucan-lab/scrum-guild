@@ -85,6 +85,10 @@ export const pointers: Pointers = {
   // 停止と再開は、呼ぶたびに別の組織を作る（対象の組織を停止すると、同じ describe の運用者でない人の検査が 401 になるため。
   // 停止済みの組織を停止する、停止していない組織を再開するのは 409 になる）
   'organization-suspend': async () => ({ slug: (await createOrganization()).slug, kind: 'temporary' }),
+  'organization-suspension-update': async () => ({
+    slug: (await createOrganization({ suspended_at: SUSPENDED_AT })).slug,
+    kind: 'cancellation',
+  }),
   'organization-resume': async () => ({
     slug: (await createOrganization({ suspended_at: SUSPENDED_AT, purge_on: '2026-11-19' })).slug,
   }),

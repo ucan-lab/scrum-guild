@@ -102,6 +102,7 @@
   - 引数が文字列のリテラルでない `import()`、`createRequire`、`process.getBuiltinModule`。import の検査を抜けられるため
   - D1 の binding: `env.DB`、`env['DB']`、``env[`DB`]``、`{ DB }`、`{ 'DB': d }`、`{ ['DB']: d }` の取り出し、`Reflect.get(env, 'DB')`、`Env['DB']`
   - `D1Database` の型
+  - 運用者の履歴の関数 `appendOperatorChangeLog`（import、`export from`、名前空間からの参照、取り出し）。使えるのは運用者の道具 `src/server/operations/operator-tools.ts` だけ。既にある組織の中の `change_logs` に運用者が1行足す口で、組織の中の入口は渡さない。処理には、道具が `operator` の列を埋めて包んだ `appendChangeLog` を渡す
 - 規則の例外は、入口を通さない次の2つのテストだけ。`test/apply-migrations.ts`（全マイグレーションを binding に直に当てる）と `test/schema.test.ts`（CHECK や一意を確かめるため、型を外れた生の INSERT を送る）。ほかのテストは入口とファクトリーを通す
 - 規則のテスト: `scripts/eslint-db-entry.test.ts` が、`ESLint` クラスに文字列を渡して、禁じる形が `src/server/`、`src/lib/`、`src/routes/`、`src/shared/`、`scripts/`、`e2e/`、`test/` で落ち、`db/` の中、入口のモジュールの import、`test/` からの `db/testing.ts`、例外の2ファイルが通ることを確かめる。解析できない形（`env[key]` など、キーが変数のもの）は規則で止められないので、差分を読む人が見る
 - テスト用の口: `db/testing.ts` が、確かめずに `VerifiedOrganization` を作る `verifiedOrganizationForTest`、表の照合に使う列の定数（`commonTableColumns`、`organizationTableColumns`、`ColumnSpec`）と DB のカタログを読む関数、組み立てた SQL を読む `compiledQueryForTest` を出す。`test/` からだけ import でき、ほかの場所から import すると ESLint が落とす。Worker の束にも入らない
@@ -151,7 +152,7 @@
 - ログインしていない（セッションが無いか切れた）のは 401 の `unauthenticated`。画面はこれを見てログインの画面へ戻す。権限が無い 403 の `forbidden` とは分ける。Origin が公開する URL と合わないときは 403 の `forbidden`。
 - 閉じたワークスペースへの書き込みは、409 の `workspace_closed`（先に読んだ値の競合の `conflict` とは分ける）。
 - 招待の作成（`invitation-create`）が断るときは 409 で、理由を `code` で分ける（`member_limit_reached`、`invitee_changed`、`already_member`、`already_invited`）。招待する人の解決（`invitee-resolve`、`invitation-create`）が当たらないときは、運用者の操作と同じ 400 の `invalid_input` で、`details` の `code` が `github_user_not_found` か `github_not_a_user`。
-- 停止した組織の中の操作は、停止していなければ入れた人（無効でない管理者、今の所属がある人、承諾待ちの招待がある人）に 403 の `organization_suspended` を返す。入れない人（無効にされた人を含む）は、組織が無いときと同じ 404 の `not_found`。判定は `enterOrganization` が行い、停止した組織では入口を渡さず `ORGANIZATION_SUSPENDED` を返す。登録の関数がこれを 403 にする。組織の分離のテスト（`test/operations/harness.ts`）が、組織の中のすべての操作について回す。
+- 停止した組織の中の操作は、停止していなければ入れた人（無効でない管理者、今の所属がある人、承諾待ちの招待がある人）に 403 の `organization_suspended` を返す。入れない人（無効にされた人を含む）は、組織が無いときと同じ 404 の `not_found`。判定は `enterOrganization` が行い、停止した組織では入口を渡さず、組織の ID だけを持つ `SuspendedOrganization` を返す（操作のログに組織の ID が付く）。登録の関数は、403 を返す前に `requireLoginAccess()` を通す。ほかに入れる組織も届いた招待も無い人（停止した組織にしか入れない人）は、403 を返し続けてセッションが延びないよう、セッションを消して 401 にする。組織の分離のテスト（`test/operations/harness.ts`）が、組織の中のすべての操作について回す。
 - 入れる組織を失った人の 401 の `unauthenticated` は、入れたはずの組織が停止しているだけのとき `details: { "reason": "suspended" }` を付ける（`src/shared/errors.ts` の `UNAUTHENTICATED_SUSPENDED`）。画面が `/login?error=suspended` へ移すのに使う。
 - 定義の `rateLimit` を超えた呼び出しは、429 の `rate_limited`。
 - 本文が 1MiB を超えたときは、413 で `code` は `invalid_input`。

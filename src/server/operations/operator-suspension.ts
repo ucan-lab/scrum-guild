@@ -1,12 +1,17 @@
-// 運用者の組織の停止と再開の処理（docs/data-model.md の「書き込みの単位」の組織の停止と再開）。
+// 運用者の組織の停止、再開、停止の理由の切り替えの処理（docs/data-model.md の「書き込みの単位」の組織の停止と再開）。
 // 共通の DB の organizations を、今の状態を条件にした UPDATE で書き、続けて組織の DB の change_logs に運用者の操作として残す。
-// 2つは別の batch() で書く（共通の表と組織の中の表は1回の batch() に混ぜない）。履歴を書けなくても停止と再開は成功として返す。
+// 2つは別の batch() で書く（共通の表と組織の中の表は1回の batch() に混ぜない）。履歴を書けなくても成功として返す。
 // 運用者は組織の中に特権を持たない。応答に組織の中のデータを入れない
 import { now } from '../../shared/clock.ts';
-import { organizationResume, organizationSuspend, purgeDateOf } from '../../shared/operations/operator/index.ts';
+import {
+  organizationResume,
+  organizationSuspend,
+  organizationSuspensionUpdate,
+  purgeDateOf,
+  type SuspensionKind,
+} from '../../shared/operations/operator/index.ts';
 import { commonDb } from '../db/index.ts';
 import { ApiError } from '../errors.ts';
-import { uuidv7 } from '../uuid.ts';
 import { implement } from './implement.ts';
 import type { OperatorTools } from './operator-tools.ts';
 
@@ -25,49 +30,41 @@ async function readSuspension(db: CommonDb, slug: string) {
 
 type Suspension = { suspended_at: string | null; purge_on: string | null };
 
-// 停止と再開を、組織の変更の履歴に運用者の操作として残す。書けなくても投げず、組織の ID と例外の名前だけをログに残す
-// （例外の message に SQL や接続の詳細が混ざりうる）。停止と再開は書けているので、履歴が欠けたことを運用者が知れるようにする
-async function logSuspension(
+// 解約で停止した組織は消す予定日を持ち、一時的な停止は持たない
+const kindOf = (suspension: Suspension): SuspensionKind =>
+  suspension.purge_on === null ? 'temporary' : 'cancellation';
+
+// 組織の変更の履歴に運用者の操作として残す。書けなくても投げず、組織の ID と例外の名前だけをログに残す
+// （例外の message に SQL や接続の詳細が混ざりうる）。organizations は書けているので、欠けた行は運用者がログから手で補える
+async function logChange(
   operator: OperatorTools,
-  operation: string,
-  organizationId: string,
-  action: 'suspend' | 'resume',
-  before: Suspension,
-  after: Suspension,
-  at: Date,
+  log: {
+    operation: string;
+    organizationId: string;
+    action: 'suspend' | 'resume' | 'update';
+    changes: Record<string, readonly [unknown, unknown]>;
+    at: Date;
+  },
 ): Promise<void> {
   try {
-    const db = await operator.openOrganization(organizationId);
-    if (db === undefined) throw new Error('組織の行が無い');
-    await db.batch([
-      db.statement((q) =>
-        q.insertInto('change_logs').values({
-          id: uuidv7(at.getTime()),
-          organization_id: db.organizationId,
-          workspace_id: null,
-          actor_user_id: null,
-          operator: operator.loginId,
-          entity_type: 'organization',
-          entity_id: db.organizationId,
-          action,
-          changes_json: JSON.stringify({
-            suspended_at: [before.suspended_at, after.suspended_at],
-            purge_on: [before.purge_on, after.purge_on],
-          }),
-          created_at: at.toISOString(),
-        }),
-      ),
-    ]);
+    await operator.appendChangeLog(log.organizationId, {
+      entityType: 'organization',
+      entityId: log.organizationId,
+      action: log.action,
+      changes: log.changes,
+      at: log.at,
+    });
   } catch (err) {
     console.error(
       JSON.stringify({
         level: 'error',
         code: 'internal',
         requestId: operator.requestId,
-        operation,
+        operation: log.operation,
         route: 'operator',
-        reason: '組織の停止か再開は書けたが、変更の履歴を書けなかった',
-        organizationId,
+        reason: '組織の状態は書けたが、変更の履歴を書けなかった',
+        action: log.action,
+        organizationId: log.organizationId,
         error: err instanceof Error ? err.name : typeof err,
       }),
     );
@@ -97,9 +94,51 @@ export const organizationSuspendOperation = implement(organizationSuspend, async
   ]);
   if (result.changes === 0) throw new ApiError(409, 'conflict');
 
-  await logSuspension(operator, organizationSuspend.name, current.id, 'suspend', current, after, at);
+  await logChange(operator, {
+    operation: organizationSuspend.name,
+    organizationId: current.id,
+    action: 'suspend',
+    changes: {
+      suspended_at: [current.suspended_at, after.suspended_at],
+      purge_on: [current.purge_on, after.purge_on],
+    },
+    at,
+  });
   return { slug: input.slug, suspended_at: suspendedAt, purge_on: after.purge_on };
 });
+
+// 停止した日時は変えず、消す予定日だけを書き換える。今と同じ理由への切り替えは 409。
+// 書く条件は、停止中で、読んだ消す予定日のまま（別の運用者が先に切り替えていたら外れて 409）
+export const organizationSuspensionUpdateOperation = implement(
+  organizationSuspensionUpdate,
+  async ({ db, operator, input }) => {
+    const current = await readSuspension(db, input.slug);
+    if (current.suspended_at === null || kindOf(current) === input.kind) throw new ApiError(409, 'conflict');
+
+    const at = now();
+    const purgeOn = input.kind === 'cancellation' ? purgeDateOf(at) : null;
+    const [result] = await db.batch([
+      db.statement((q) =>
+        q
+          .updateTable('organizations')
+          .set({ purge_on: purgeOn, updated_at: at.toISOString() })
+          .where('id', '=', current.id)
+          .where('suspended_at', 'is not', null)
+          .where('purge_on', 'is', current.purge_on),
+      ),
+    ]);
+    if (result.changes === 0) throw new ApiError(409, 'conflict');
+
+    await logChange(operator, {
+      operation: organizationSuspensionUpdate.name,
+      organizationId: current.id,
+      action: 'update',
+      changes: { purge_on: [current.purge_on, purgeOn] },
+      at,
+    });
+    return { slug: input.slug, purge_on: purgeOn };
+  },
+);
 
 // 解約で消す予定日を過ぎていても、データを消すまでは再開できる（予定日は見ない）
 export const organizationResumeOperation = implement(organizationResume, async ({ db, operator, input }) => {
@@ -119,6 +158,15 @@ export const organizationResumeOperation = implement(organizationResume, async (
   ]);
   if (result.changes === 0) throw new ApiError(409, 'conflict');
 
-  await logSuspension(operator, organizationResume.name, current.id, 'resume', current, after, at);
+  await logChange(operator, {
+    operation: organizationResume.name,
+    organizationId: current.id,
+    action: 'resume',
+    changes: {
+      suspended_at: [current.suspended_at, after.suspended_at],
+      purge_on: [current.purge_on, after.purge_on],
+    },
+    at,
+  });
   return { slug: input.slug };
 });

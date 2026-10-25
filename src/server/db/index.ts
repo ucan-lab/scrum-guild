@@ -13,14 +13,16 @@ export { assertVerifiedWorkspace, type VerifiedWorkspace } from './verify-worksp
 export {
   enterOrganization,
   verifyWorkspace,
-  ORGANIZATION_SUSPENDED,
+  isSuspendedOrganization,
   type EnteredOrganization,
+  type SuspendedOrganization,
   type LoginId,
   type OrganizationActor,
   type OrganizationSummary,
 } from './enter-organization.ts';
 export { insertOrganization, type CreatedOrganization, type NewOrganization } from './create-organization.ts';
-export { openOrganizationAsOperator } from './operator-organization.ts';
+// 運用者の道具（operations/operator-tools.ts）だけが import できる（eslint.config.db-entry.js）
+export { appendOperatorChangeLog, type OperatorChangeLog } from './operator-change-log.ts';
 export {
   readOrganizationRow,
   userAvatarsOf,

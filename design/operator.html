@@ -36,7 +36,7 @@ SQ.mount("operator", () => `
       <td class="mono">${esc(k.lastUsed)}</td>
       <td><span class="table-actions">
         <button class="btn is-sm is-quiet" type="button" data-dialog="reassignAdmin">${t("admin")}を指名</button>
-        ${k.suspended ? `<button class="btn is-sm is-quiet" type="button" data-toast="再開しました">再開する</button>` : `<button class="btn is-sm is-quiet is-danger" type="button" data-dialog="suspendOrganization">停止する</button>`}
+        ${k.suspended ? `<button class="btn is-sm is-quiet" type="button" data-dialog="changeSuspension">停止の理由を変える</button><button class="btn is-sm is-quiet" type="button" data-toast="再開しました">再開する</button>` :`<button class="btn is-sm is-quiet is-danger" type="button" data-dialog="suspendOrganization">停止する</button>`}
       </span></td></tr>`).join("")}</tbody></table></div>
   <p class="props-note">${t("organization")}を消す作業はこの画面では行わず、運用の手順書に沿って行います。</p>`, { operator: true });
 </script>

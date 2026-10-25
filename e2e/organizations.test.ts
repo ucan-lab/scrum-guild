@@ -184,7 +184,7 @@ test.describe('組織が1つの人（あおば開発のハルカ）', () => {
     await page.goto('/aoba');
     await expect(page).toHaveURL('/login?return_to=%2Faoba&error=suspended');
     await expect(page.getByRole('alert')).toHaveText(
-      'ログインできませんでした。所属している冒険者ギルドは停止しています。運用者に問い合わせてください。',
+      'ログインできませんでした。所属しているか招待されている冒険者ギルドは停止しています。運用者に問い合わせてください。',
     );
   });
 

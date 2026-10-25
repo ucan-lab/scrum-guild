@@ -141,6 +141,46 @@ describe('src/server/db/ の中と例外のファイル', () => {
   });
 });
 
+describe('運用者の履歴の関数（appendOperatorChangeLog）', () => {
+  const imported = `import { appendOperatorChangeLog } from './db/index.ts'; export const a = appendOperatorChangeLog;`;
+  const forms: Record<string, string> = {
+    import: imported,
+    '別名の import': `import { appendOperatorChangeLog as append } from './db/index.ts'; export const a = append;`,
+    'export from': `export { appendOperatorChangeLog } from './db/index.ts';`,
+    '別名の export from': `export { appendOperatorChangeLog as append } from './db/index.ts';`,
+    名前空間からの参照: `import * as db from './db/index.ts'; export const a = db.appendOperatorChangeLog;`,
+    '名前空間からの参照（文字列のキー）': `import * as db from './db/index.ts'; export const a = db['appendOperatorChangeLog'];`,
+    '動的な import の取り出し': `const { appendOperatorChangeLog } = await import('./db/index.ts'); export const a = appendOperatorChangeLog;`,
+  };
+
+  test('運用者の道具のファイルだけが使える', async () => {
+    for (const [name, code] of Object.entries(forms)) {
+      assert.equal(await violations('src/server/operations/operator-tools.ts', code), 0, name);
+    }
+  });
+
+  for (const file of [
+    ...outside,
+    'src/server/operations/operator.ts',
+    'src/server/operations/operator-suspension.ts',
+  ]) {
+    test(`${file}: 落ちる`, async () => {
+      for (const [name, code] of Object.entries(forms)) {
+        assert.ok((await violations(file, code)) >= 1, `落ちなかった: ${name}`);
+      }
+    });
+  }
+
+  test('db/ の中（入口のモジュールの再 export を含む）は通る', async () => {
+    assert.equal(await violations('src/server/db/index.ts', forms['export from']!), 0);
+  });
+
+  test('名前が違う関数は、どのファイルでも通る', async () => {
+    const code = `import { commonDb as appendOperatorChangeLogs } from './db/index.ts'; export const a = appendOperatorChangeLogs;`;
+    assert.equal(await violations('src/server/operations/operator.ts', code), 0);
+  });
+});
+
 test('.svelte の script も同じ規則で落ちる', async () => {
   const code = `<script lang="ts">\n  import { sql } from 'kysely';\n  const a = (env: Env) => env.DB;\n  console.log(sql, a);\n</script>\n`;
   assert.equal(await violations('src/routes/+page.svelte', code), 2);

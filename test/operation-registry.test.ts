@@ -137,6 +137,7 @@ describe('本番の運用者の操作', () => {
       'list-organizations',
       'organization-resume',
       'organization-suspend',
+      'organization-suspension-update',
       'resolve-github-user',
     ]);
   });

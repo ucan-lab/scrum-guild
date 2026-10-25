@@ -8,6 +8,13 @@ export function formatLocalDate(iso: string): string {
   return Number.isNaN(at.getTime()) ? iso : dateFormatter.format(at);
 }
 
+// UTC の ISO 8601 を、UTC の YYYY-MM-DD にする。ブラウザのタイムゾーンに依らない日付で、運用の画面の「停止 <日>」が、
+// UTC の日付で数える「<日> に消す」（停止から30日後）と同じ基準で並ぶ。読めない値は元のまま返す
+export function formatUtcDate(iso: string): string {
+  const at = new Date(iso);
+  return Number.isNaN(at.getTime()) ? iso : at.toISOString().slice(0, 10);
+}
+
 // 期日（YYYY-MM-DD）を 月/日 にする（kit.js の md）。期日は暦の日付で、タイムゾーンを掛けない。読めない値は元のまま返す
 export function formatMonthDay(date: string): string {
   const match = /^\d{4}-(\d{2})-(\d{2})$/.exec(date);

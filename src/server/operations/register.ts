@@ -23,7 +23,7 @@ import {
   assertVerifiedWorkspace,
   commonDb,
   enterOrganization,
-  ORGANIZATION_SUSPENDED,
+  isSuspendedOrganization,
   verifyWorkspace,
   type OrganizationActor,
   type VerifiedWorkspace,
@@ -274,7 +274,13 @@ async function execute(
     if (slug === undefined) throw new ApiError(404, 'not_found');
     const entry = await enterOrganization(c.env, slug, { accountId: session.accountId, loadLogins: account.logins });
     // 停止した組織は、停止していなければ入れた人にだけ伝える。入れない人は下の 404（組織があることを漏らさない）
-    if (entry === ORGANIZATION_SUSPENDED) throw new ApiError(403, 'organization_suspended');
+    if (isSuspendedOrganization(entry)) {
+      trace.organizationId = entry.organizationId;
+      // 停止した組織にしか入れない人は、ログインできる条件を失っている。403 を返し続けるとセッションが延び続けるので、
+      // ほかに入れる組織が無ければ、セッションを消して 401（理由 suspended）にする
+      await requireLoginAccess(c, cookie, session.accountId, account);
+      throw new ApiError(403, 'organization_suspended');
+    }
     if (entry === undefined) {
       // この組織に入れないだけか、どの組織にも入れなくなったか。入れる組織があれば、組織が無いときと同じ 404
       await requireLoginAccess(c, cookie, session.accountId, account);
