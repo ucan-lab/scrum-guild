@@ -226,6 +226,8 @@ GitHub は無料のプランのまま使う（2026-10-23 に決めた）。無�
 - `pnpm preview` は、build した `build/` と API を `wrangler dev` だけで配る。本番と同じ配り方（Workers Static Assets、`_headers`、SPA の fallback）を確かめる口で、HMR は効かない
 - 開発の URL は2つある。`pnpm dev` は `http://localhost:5173`、`pnpm preview` は `http://localhost:8787`。Origin の検査は、この URL を `PUBLIC_ORIGIN` として `wrangler dev` に渡して行う（`scripts/dev.ts`）。ブラウザが送る Origin と合わない URL（`127.0.0.1` など）で開くと、更新系の API は 403 になる。GitHub の OAuth の戻り先もこの URL から作る（`<画面の URL>/api/auth/github/callback`）ので、開発用の OAuth App の Redirect URI とポートまで合わせる（`docs/operations.md` の「GitHub OAuth App」）
 
+`pnpm dev` と `pnpm preview` の `wrangler dev` は、API のポートの `/cdn-cgi/handler/scheduled?cron=*+*+*+*+*` を常に開いている（wrangler の既定）。開くと、毎分の定期処理（期限切れの行の掃除）を起こせる。`/__scheduled` は `assets` の `not_found_handling` が先に答えて SPA の画面が返るので使わない。`cron` は `wrangler.jsonc` の `triggers.crons` にある式で、`+` は空白の代わり。表に無い式では例外になる。
+
 ### ポート
 
 | もの | 既定 |

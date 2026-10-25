@@ -1,18 +1,45 @@
 // アプリ側のレート制限（docs/data-model.md の `rate_limits`）。設けるのは、ログインと手動の同期だけ。
 // 窓の最初の呼び出しから windowMs の間に max 回まで。1文の upsert で数えるので、並行した呼び出しも取りこぼさず、
 // 窓を過ぎた最初の呼び出しが数え直す。断った呼び出しも数える
+import type { AnyOperationDefinition } from '../../shared/operations/define.ts';
+import { operations } from '../../shared/operations/index.ts';
 import { commonDb } from '../db/index.ts';
 import { clientIpUnits } from './client-ip.ts';
 
 export type RateLimitPolicy = { max: number; windowMs: number };
 
-// ログインの開始と戻り先を、同じ IP（CF-Connecting-IP）から10分に60回まで。1回のログインで2回数えるので30人分。
-// 同じオフィスの15人のチームが一斉に入っても詰まらない値にした
-export const LOGIN_RATE_LIMIT: RateLimitPolicy = { max: 60, windowMs: 10 * 60 * 1000 };
+// ログインで数える枠。loginRateLimits() と LOGIN_RATE_LIMIT_POLICIES はこの辞書の値だけを使う。
+// 期限を過ぎた rate_limits の行を消す境目の最長の窓は、この辞書と操作の定義から求める（longestRateLimitWindowMs）。
+//   network: ログインの開始と戻り先を、同じ IP（CF-Connecting-IP。IPv6 は /64）から10分に60回まで。1回のログインで
+//     2回数えるので30人分。同じオフィスの15人のチームが一斉に入っても詰まらない値にした
+//   ipv6Site: IPv6 は /64 の枠に加えて、/48 の枠を数える。事業者の単位の /48 の中なら、/64 を変えて1つの枠を避けられる
+//     ため。/48 の中には複数の利用者がいるので、/64 の10倍まで認める
+export const LOGIN_RATE_LIMITS = {
+  network: { max: 60, windowMs: 10 * 60 * 1000 },
+  ipv6Site: { max: 600, windowMs: 10 * 60 * 1000 },
+} as const satisfies Record<string, RateLimitPolicy>;
 
-// IPv6 は /64 の枠（上の LOGIN_RATE_LIMIT）に加えて、/48 の枠を数える。事業者の単位の /48 の中なら、/64 を変えて
-// 1つの枠を避けられるため。/48 の中には複数の利用者がいるので、/64 の10倍まで認める
-export const LOGIN_RATE_LIMIT_IPV6_SITE: RateLimitPolicy = { max: 600, windowMs: 10 * 60 * 1000 };
+export const LOGIN_RATE_LIMIT: RateLimitPolicy = LOGIN_RATE_LIMITS.network;
+export const LOGIN_RATE_LIMIT_IPV6_SITE: RateLimitPolicy = LOGIN_RATE_LIMITS.ipv6Site;
+
+export const LOGIN_RATE_LIMIT_POLICIES: readonly RateLimitPolicy[] = Object.values(LOGIN_RATE_LIMITS);
+
+// consumeRateLimit に渡る全部の枠（ログインの枠と、操作の定義の rateLimit）のうち、最長の窓。
+// この窓を過ぎた行は、どの枠から見ても数え直しになるので消してよい（src/server/scheduled/cleanup-expired.ts）。
+// 操作の定義は src/shared/operations の operations（sessionOperations を含む全部）。register.ts の enforceRateLimit が
+// windowSeconds * 1000 で使う
+export function longestRateLimitWindowMs(definitions: readonly AnyOperationDefinition[] = operations): number {
+  const windows = [
+    ...LOGIN_RATE_LIMIT_POLICIES.map((policy) => policy.windowMs),
+    ...definitions.flatMap((definition) =>
+      definition.rateLimit === undefined ? [] : [definition.rateLimit.windowSeconds * 1000],
+    ),
+  ];
+  return Math.max(...windows);
+}
+
+// 枠も操作の定義も読み込みの後は変わらないので、consumeRateLimit のたびに定義を走査せず1回だけ求める
+const LONGEST_WINDOW_MS = longestRateLimitWindowMs();
 
 export type LoginRateLimit = { key: string; policy: RateLimitPolicy };
 
@@ -22,20 +49,24 @@ export function loginRateLimits(ip: string | undefined): LoginRateLimit[] {
   const units = clientIpUnits(ip);
   switch (units.kind) {
     case 'v4':
-      return [{ key: `login:${units.address}`, policy: LOGIN_RATE_LIMIT }];
+      return [{ key: `login:${units.address}`, policy: LOGIN_RATE_LIMITS.network }];
     case 'v6':
       // 広い /48 の枠を先に数える。/48 を超えた後に /64 を変えて叩かれても、/64 の行を増やさないため
       return [
-        { key: `login48:${units.network48}`, policy: LOGIN_RATE_LIMIT_IPV6_SITE },
-        { key: `login:${units.network64}`, policy: LOGIN_RATE_LIMIT },
+        { key: `login48:${units.network48}`, policy: LOGIN_RATE_LIMITS.ipv6Site },
+        { key: `login:${units.network64}`, policy: LOGIN_RATE_LIMITS.network },
       ];
     case 'unknown':
-      return [{ key: 'login:unknown', policy: LOGIN_RATE_LIMIT }];
+      return [{ key: 'login:unknown', policy: LOGIN_RATE_LIMITS.network }];
   }
 }
 
 // 数えて、上限の内なら true。超えたら false
 export async function consumeRateLimit(env: Env, key: string, policy: RateLimitPolicy, now: Date): Promise<boolean> {
+  // 最長の窓に入っていない枠を足すと、掃除が窓の途中で行を消し、上限が緩む（src/server/scheduled/cleanup-expired.ts）
+  if (policy.windowMs > LONGEST_WINDOW_MS) {
+    throw new Error(`レート制限の窓 ${policy.windowMs}ms が、掃除の境目の最長の窓を超えている`);
+  }
   const db = commonDb(env);
   const at = now.toISOString();
   // 窓の開始時刻から windowMs 以上たっていれば、窓を数え直す。ISO 8601 の UTC は文字列の比較で時刻の順になる

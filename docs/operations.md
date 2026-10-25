@@ -217,7 +217,7 @@ rollback で戻るのは、版が持つものすべて。コードと設定の�
 次のものは戻らない。
 
 - D1 のデータとスキーマ（下の「DB を戻す」）
-- cron やルート（triggers）の変更。`wrangler deploy` が版と一緒に反映する。triggers を変えた版を戻すときは、手元（上の「手元の準備」）で戻し先の版のコミットを checkout し、その `wrangler.jsonc` で `wrangler triggers deploy` を実行して当て直す。今の `main` で実行すると、戻したい triggers をもう一度当てるだけになる。今の `wrangler.jsonc` に triggers は無い
+- cron やルート（triggers）の変更。`wrangler deploy` が版と一緒に反映する。triggers を変えた版を戻すときは、手元（上の「手元の準備」）で戻し先の版のコミットを checkout し、その `wrangler.jsonc` で `wrangler triggers deploy` を実行して当て直す。今の `main` で実行すると、戻したい triggers をもう一度当てるだけになる。今の `wrangler.jsonc` の triggers は、毎分（`* * * * *`）の期限切れの行の掃除だけ
 
 ### DB を戻す
 
@@ -229,6 +229,15 @@ rollback で戻るのは、版が持つものすべて。コードと設定の�
 4. 上の「戻したあと」に進む
 
 マイグレーションは「広げてから縮める」に従うので、コードだけを戻せば足りることが多い。DB まで戻すのは、データを壊したときに限る。
+
+### 期限切れの行の掃除
+
+毎分の cron（`* * * * *`）が、`oauth_states`、`sessions`、`rate_limits` の期限を過ぎた行を消す（`src/server/scheduled/`、条件と上限は `docs/data-model.md` の「期限切れの行の掃除」）。掃除の失敗や遅れを知らせる通知は無い。D1 の書き込みの使用量の通知（上の「Cloudflare のアカウント」）が届いたら、Workers Logs で `job: "cleanup-expired"` のログを見る。
+
+- `level: "warn"`: 回数か時間の予算を使い切っても、消すのが追いついていない。`behind` が追いついていない表。1回の warn では動かない。毎分続いたときに、行が増えている原因（攻撃や設定の誤り）を調べる
+- `level: "error"`: その表の掃除が失敗した。`table` が表の名前、`error` が例外の種類。cron の失敗にも残る。ほかの表は消えている
+- `level: "info"`: 1行以上消した回の件数（`deleted` は表ごとの合計、`rounds` は表ごとに文を送った回数）。掃除が動いていることは、このログが出ることで分かる。行が無い回は何も出ない
+- 掃除だけが静かに止まったときは、通知が来ないので気づきにくい
 
 ## ドメインへ移す
 
