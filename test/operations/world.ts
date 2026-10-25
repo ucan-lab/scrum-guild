@@ -3,6 +3,7 @@ import { env as baseEnv } from 'cloudflare:workers';
 import {
   createAccount,
   createAccountLogin,
+  createInvitation,
   createMembership,
   createOrganization,
   createSessionWithToken,
@@ -89,12 +90,16 @@ export type Target = {
   member: Person;
   // 組織には入れるが、workspace には所属しない人
   bystander: Person;
+  // 承諾待ちの招待だけを持つ人（users の行を持たない）
+  invitee: Person;
 };
 
-export async function createTarget(): Promise<Target> {
+export async function createTarget(options: { closed?: boolean } = {}): Promise<Target> {
   const organization = await createOrganization();
   const admin = await createPerson({ organization, admin: true });
-  const workspace = await createWorkspace(organization, admin.userId!);
+  const workspace = await createWorkspace(organization, admin.userId!, {
+    closed_at: options.closed ? '2026-10-22T00:00:00.000Z' : null,
+  });
   const otherWorkspace = await createWorkspace(organization, admin.userId!);
   const leader = await createPerson({ organization, membership: { workspaceId: workspace.id, role: 'leader' } });
   const member = await createPerson({ organization, membership: { workspaceId: workspace.id, role: 'member' } });
@@ -102,5 +107,17 @@ export async function createTarget(): Promise<Target> {
     organization,
     membership: { workspaceId: otherWorkspace.id, role: 'member' },
   });
-  return { organization, slug: organization.slug, workspace, otherWorkspace, admin, leader, member, bystander };
+  const invitee = await createPerson();
+  await createInvitation(organization, workspace.id, admin.userId!, invitee.login);
+  return {
+    organization,
+    slug: organization.slug,
+    workspace,
+    otherWorkspace,
+    admin,
+    leader,
+    member,
+    bystander,
+    invitee,
+  };
 }

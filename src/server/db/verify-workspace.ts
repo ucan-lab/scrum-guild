@@ -13,12 +13,15 @@ export class VerifiedWorkspace {
   // 確かめた組織の ID。ワークスペースが属する組織
   readonly organizationId: string;
   readonly actorRole: WorkspaceRole;
+  // 閉じたワークスペース（closed_at が入っている）。読み取り専用で、書き込みの操作は登録の関数が止める
+  readonly closed: boolean;
 
-  constructor(token: symbol, organizationId: string, workspaceId: string, actorRole: WorkspaceRole) {
+  constructor(token: symbol, organizationId: string, workspaceId: string, actorRole: WorkspaceRole, closed: boolean) {
     if (token !== issueToken) throw new Error('確かめたワークスペースは、ワークスペースを確かめる処理だけが作る');
     this.organizationId = organizationId;
     this.workspaceId = workspaceId;
     this.actorRole = actorRole;
+    this.closed = closed;
     Object.freeze(this);
   }
 
@@ -31,8 +34,14 @@ export function issueVerifiedWorkspace(
   organizationId: string,
   workspaceId: string,
   actorRole: WorkspaceRole,
+  closed: boolean,
 ): VerifiedWorkspace {
-  const verified = new VerifiedWorkspace(issueToken, organizationId, workspaceId, actorRole);
+  const verified = new VerifiedWorkspace(issueToken, organizationId, workspaceId, actorRole, closed);
   issuedValues.add(verified);
   return verified;
+}
+
+// 処理に渡す直前の検査。型の検査をキャストで抜けた値（同じ形のオブジェクト）を実行時に止める
+export function assertVerifiedWorkspace(value: unknown): asserts value is VerifiedWorkspace {
+  if (!VerifiedWorkspace.is(value)) throw new Error('ワークスペースを確かめた結果ではない');
 }

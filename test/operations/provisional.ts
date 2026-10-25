@@ -34,7 +34,16 @@ export const organizationProfile = defineOperation({
   output: z.object({ organization_id: z.string(), user_id: z.string().nullable() }),
 });
 
-const taskTitle = defineOperation({
+export const inviteeProfile = defineOperation({
+  name: 'invitee-profile',
+  description: '承諾待ちの招待だけの人も呼べる。入れた組織と自分のユーザーの ID を返す',
+  mode: 'read',
+  permission: 'invitee',
+  input: z.object({}),
+  output: z.object({ organization_id: z.string(), user_id: z.string().nullable() }),
+});
+
+export const taskTitle = defineOperation({
   name: 'task-title',
   description: 'タスクの題名を返す。組織の中のタスクを ID だけで指す操作の見本',
   mode: 'read',
@@ -82,6 +91,17 @@ export const closeWorkspace = defineOperation({
   output: z.object({ workspace_id: z.string() }),
 });
 
+export const reopenWorkspace = defineOperation({
+  name: 'reopen-workspace',
+  description: '閉じたワークスペースを開き直す。閉じていても通す書き込み',
+  mode: 'write',
+  permission: 'admin',
+  workspace: true,
+  allowClosed: true,
+  input: z.object({ workspace_id: z.string() }),
+  output: z.object({ workspace_id: z.string() }),
+});
+
 export const provisionalOperations = [
   implement(whoAmI, async ({ accountId }) => ({ account_id: accountId })),
   implement(operatorPing, async () => ({ pong: true as const })),
@@ -122,6 +142,22 @@ export const provisionalOperations = [
     return { workspace_id: workspace.workspaceId, name: input.name };
   }),
   implement(closeWorkspace, async ({ workspace }) => ({ workspace_id: workspace.workspaceId })),
+  implement(reopenWorkspace, async ({ db, workspace }) => {
+    await db.batch([
+      db.statement((q) =>
+        q
+          .updateTable('workspaces')
+          .set({ closed_at: null })
+          .where('id', '=', workspace.workspaceId)
+          .where('organization_id', '=', workspace.organizationId),
+      ),
+    ]);
+    return { workspace_id: workspace.workspaceId };
+  }),
+  implement(inviteeProfile, async ({ db, actor }) => ({
+    organization_id: db.organizationId,
+    user_id: actor.userId,
+  })),
 ];
 
 // 組織の分離のテスト用の関数。対象の組織の行を指す入力を作る。
@@ -139,4 +175,6 @@ export const provisionalPointers: Pointers = {
   'workspace-summary': async (target) => ({ workspace_id: target.workspace.id }),
   'rename-workspace': async (target) => ({ workspace_id: target.workspace.id, name: '青葉チーム' }),
   'close-workspace': async (target) => ({ workspace_id: target.workspace.id }),
+  'reopen-workspace': async (target) => ({ workspace_id: target.workspace.id }),
+  'invitee-profile': { noReference: {} },
 };

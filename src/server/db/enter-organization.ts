@@ -5,7 +5,7 @@ import { commonDb, orgDb, type OrganizationDb } from './entries.ts';
 import { issueVerifiedOrganization } from './verify-organization.ts';
 import { issueVerifiedWorkspace, type VerifiedWorkspace, type WorkspaceRole } from './verify-workspace.ts';
 
-// アカウントに結んだログインの手段と、手段の中の ID。承諾待ちの招待はこれで突き合わせる
+// アカウントに結んだログインの手段と、手段の中の ID。承諾待ちの招待と、無効にされた人の行はこれで突き合わせる
 export type LoginId = { readonly provider: string; readonly subject: string };
 
 export type OrganizationActor = {
@@ -13,15 +13,19 @@ export type OrganizationActor = {
   // この組織の users の行の ID。承諾待ちの招待だけで入った人は行を持たないので null
   readonly userId: string | null;
   readonly isAdmin: boolean;
+  // 承諾待ちの招待だけで入った人（管理者でも、いずれかのワークスペースに今所属している人でもない）。
+  // 組織の中を読む操作には通さず、招待の一覧、承諾、辞退（invitee の権限）だけに通す
+  readonly invitedOnly: boolean;
 };
 
 export type OrganizationEntry = { readonly db: OrganizationDb; readonly actor: OrganizationActor };
 
-// 組織を引けない、停止している、入れない、のどれでも undefined を返す。呼び出し側はどれも同じ 404 にする
+// 組織を引けない、停止している、入れない、のどれでも undefined を返す。呼び出し側はどれも同じ 404 にする。
+// loadLogins は招待で入る分岐に来たときだけ呼ぶ（管理者と所属のある人には要らないので、引かない）
 export async function enterOrganization(
   env: Env,
   slug: string,
-  account: { accountId: string; logins: readonly LoginId[] },
+  account: { accountId: string; loadLogins: () => Promise<readonly LoginId[]> },
 ): Promise<OrganizationEntry | undefined> {
   const common = commonDb(env);
   const organization = await common.first(
@@ -46,12 +50,12 @@ export async function enterOrganization(
   // 無効にされた人は、管理者でも所属や招待があっても入れない
   if (user !== undefined && user.disabled_at !== null) return undefined;
 
-  const actor = (isAdmin: boolean): OrganizationEntry => ({
+  const entry = (isAdmin: boolean, invitedOnly: boolean): OrganizationEntry => ({
     db,
-    actor: { accountId: account.accountId, userId: user?.id ?? null, isAdmin },
+    actor: { accountId: account.accountId, userId: user?.id ?? null, isAdmin, invitedOnly },
   });
 
-  if (user !== undefined && user.is_admin === 1) return actor(true);
+  if (user !== undefined && user.is_admin === 1) return entry(true, false);
 
   if (user !== undefined) {
     const membership = await db.first(
@@ -66,10 +70,32 @@ export async function enterOrganization(
           .limit(1),
       ),
     );
-    if (membership !== undefined) return actor(false);
+    if (membership !== undefined) return entry(false, false);
   }
 
-  if (account.logins.length === 0) return undefined;
+  const logins = await account.loadLogins();
+  if (logins.length === 0) return undefined;
+
+  // 招待は手段と ID に結ぶので、アカウントが結ばれる前に無効にされた行（account_id が空）も、手段と ID で突き合わせて止める
+  const disabledByLogin = await db.first(
+    db.statement((q) =>
+      q
+        .selectFrom('users')
+        .select('id')
+        .where('organization_id', '=', organizationId)
+        .where('disabled_at', 'is not', null)
+        .where((eb) =>
+          eb.or(
+            logins.map((login) =>
+              eb.and([eb('login_provider', '=', login.provider), eb('login_subject', '=', login.subject)]),
+            ),
+          ),
+        )
+        .limit(1),
+    ),
+  );
+  if (disabledByLogin !== undefined) return undefined;
+
   const invitation = await db.first(
     db.statement((q) =>
       q
@@ -80,7 +106,7 @@ export async function enterOrganization(
         .where('i.status', '=', 'pending')
         .where((eb) =>
           eb.or(
-            account.logins.map((login) =>
+            logins.map((login) =>
               eb.and([eb('i.login_provider', '=', login.provider), eb('i.login_subject', '=', login.subject)]),
             ),
           ),
@@ -88,41 +114,34 @@ export async function enterOrganization(
         .limit(1),
     ),
   );
-  return invitation === undefined ? undefined : actor(false);
+  return invitation === undefined ? undefined : entry(false, true);
 }
 
-// ワークスペースが、入口の組織のものであることを確かめる。別の組織のものと存在しないものは、どちらも undefined
+// ワークスペースが、入口の組織のものであることを確かめる。別の組織のものと存在しないものは、どちらも undefined。
+// ワークスペースと、その人の今の所属は、どちらも組織の中の表なので1つの問い合わせで引く
 export async function verifyWorkspace(
   db: OrganizationDb,
   actor: OrganizationActor,
   workspaceId: string,
 ): Promise<VerifiedWorkspace | undefined> {
+  // users の行を持たない人はワークスペースの下の操作に通らない
+  if (actor.userId === null) return undefined;
+  const userId = actor.userId;
   const organizationId = db.organizationId;
-  const workspace = await db.first(
+  const row = await db.first(
     db.statement((q) =>
       q
-        .selectFrom('workspaces')
-        .select('id')
-        .where('id', '=', workspaceId)
-        .where('organization_id', '=', organizationId),
+        .selectFrom('workspaces as w')
+        .leftJoin('memberships as m', (join) =>
+          join.onRef('m.workspace_id', '=', 'w.id').on('m.user_id', '=', userId).on('m.left_at', 'is', null),
+        )
+        .select(['w.id', 'w.closed_at', 'm.role'])
+        .where('w.id', '=', workspaceId)
+        .where('w.organization_id', '=', organizationId),
     ),
   );
-  if (workspace === undefined) return undefined;
+  if (row === undefined) return undefined;
 
-  let role: WorkspaceRole = null;
-  if (actor.userId !== null) {
-    const userId = actor.userId;
-    const membership = await db.first(
-      db.statement((q) =>
-        q
-          .selectFrom('memberships')
-          .select('role')
-          .where('workspace_id', '=', workspace.id)
-          .where('user_id', '=', userId)
-          .where('left_at', 'is', null),
-      ),
-    );
-    if (membership !== undefined) role = membership.role === 'leader' ? 'leader' : 'member';
-  }
-  return issueVerifiedWorkspace(organizationId, workspace.id, role);
+  const role: WorkspaceRole = row.role === null ? null : row.role === 'leader' ? 'leader' : 'member';
+  return issueVerifiedWorkspace(organizationId, row.id, role, row.closed_at !== null);
 }

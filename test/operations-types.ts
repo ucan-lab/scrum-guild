@@ -39,6 +39,26 @@ defineOperation({ ...base, name: 'member-without-workspace', permission: 'member
 defineOperation({ ...base, name: 'login-workspace', permission: 'login', workspace: true, input: z.object({}) });
 // @ts-expect-error 権限の種類にない値
 defineOperation({ ...base, name: 'unknown-permission', permission: 'owner', input: z.object({}) });
+// 招待の操作（invitee）は組織の直下に置く
+defineOperation({ ...base, name: 'invitee-ok', permission: 'invitee', input: z.object({}) });
+// @ts-expect-error invitee はワークスペースの下に置けない
+defineOperation({
+  ...base,
+  name: 'invitee-workspace',
+  permission: 'invitee',
+  workspace: true,
+  input: z.object({ workspace_id: z.string() }),
+});
+// 閉じたワークスペースでも通す印は、ワークスペースの下の操作だけに付けられる
+defineOperation({
+  ...base,
+  name: 'reopen-ok',
+  mode: 'write',
+  permission: 'admin',
+  workspace: true,
+  allowClosed: true,
+  input: z.object({ workspace_id: z.string() }),
+});
 
 // 処理が受け取る文脈は、定義の種類で決まる
 const inWorkspace = defineOperation({
@@ -76,7 +96,7 @@ implement(outside, async (context) => {
 
 // 確かめたワークスペースは db/ の外では作れない。同じ形のオブジェクトも、値の import もできない
 // @ts-expect-error 同じ形のオブジェクトは確かめた結果にならない
-const forged: VerifiedWorkspace = { workspaceId: 'x', organizationId: 'y', actorRole: null };
+const forged: VerifiedWorkspace = { workspaceId: 'x', organizationId: 'y', actorRole: null, closed: false };
 void forged;
 // @ts-expect-error 入口のモジュールは型だけを出し、クラスの値は出さない
 void db.VerifiedWorkspace;

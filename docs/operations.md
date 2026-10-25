@@ -73,6 +73,21 @@ Workers Builds が使えるのは、Builds が自分で作ったトークンだ�
 
 編集の画面では、名前の出ない権限の行（`Select...` と出る）がある。本番のトークンの `User` の `Select...` の行は Memberships: Read なので消さない。行の中身は「View summary」で確かめる。
 
+### シークレット
+
+Worker のシークレットは、ダッシュボードの Worker の Settings → Variables and Secrets か `wrangler secret put` で入れる。値は git に入れず、手元の開発用の値は `.dev.vars.example` を `.dev.vars` に写して入れる。
+
+| 名前 | 中身 |
+| --- | --- |
+| `OPERATOR_LOGIN_IDS` | 運用者のログインの ID の一覧。`github:<数字>` か `google:<数字>` を、空白を含めずカンマで区切る（例 `github:12345,google:67890`）。GitHub の数字はユーザー ID（ユーザー名ではない）、Google の数字は `sub` |
+
+`OPERATOR_LOGIN_IDS` の決まり。
+
+- 空の項目、形に合わない項目、前後の空白、大文字の手段名が1つでもあると、`/api/health` を含むすべての API が 500 の `internal` を返す。運用者でない人に運用者の権限を渡さないよう、一覧を部分的に読まずに止める。ログ（Workers Logs）に項目の位置（`invalidPositions`）だけが出て、値は出ない
+- 未設定は「運用者がいない」として扱う。設定してあって空の文字列にすると、500 になる
+- シークレットを入れるか変えたら、すぐに `https://scrum-guild.ucan-lab.workers.dev/api/health` を開き、200 で版が返ることを確かめる。500 なら、直前の変更を直す
+- 運用者を外したら、一覧を変えた版より前の版へ rollback しない。rollback はシークレットも戻し先の版の値に戻すので、外した運用者が戻る（下の「戻るもの、戻らないもの」）
+
 ## 出し方
 
 `main` に入ると Workers Builds がビルドし、デプロイのコマンドが `scripts/deploy.ts` の手順を動かす。人の操作は要らない。変わったファイルがすべて build watch paths の Exclude に当たるマージ（文書だけの PR）では、ビルドは走らない。
@@ -131,7 +146,7 @@ rollback も DB の復元も `main` には触らない。`main` には壊れた�
 
 ### 戻るもの、戻らないもの
 
-rollback で戻るのは、版が持つものすべて。コードと設定の値に加え、シークレットも戻し先の版の値に戻る。漏れた鍵を入れ替えた後に、入れ替えより前の版へ戻すと、漏れた鍵が本番で再び有効になる。
+rollback で戻るのは、版が持つものすべて。コードと設定の値に加え、シークレットも戻し先の版の値に戻る。漏れた鍵を入れ替えた後に、入れ替えより前の版へ戻すと、漏れた鍵が本番で再び有効になる。運用者の一覧（`OPERATOR_LOGIN_IDS`）から外した人も、外す前の版へ戻すと運用者に戻ってしまう。
 
 次のものは戻らない。
 
@@ -155,7 +170,7 @@ rollback で戻るのは、版が持つものすべて。コードと設定の�
 
 - `scripts/deploy.ts` の `PRODUCTION_URL`（煙のテストが叩く URL）
 - `wrangler.jsonc` の `vars` の `PUBLIC_ORIGIN`（更新系の API の Origin の検査。新しい URL と一致しない呼び出しは 403 になる）
-- ほかに直すもの（GitHub OAuth App の戻り先、GitHub OAuth App の戻り先、Cookie）は `docs/development.md` の「Cloudflare のアカウントとドメイン」
+- ほかに直すもの（GitHub OAuth App の戻り先、Cookie）は `docs/development.md` の「Cloudflare のアカウントとドメイン」
 
 ## 組織
 

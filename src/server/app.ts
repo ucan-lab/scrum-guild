@@ -15,6 +15,11 @@ import { operationsApp } from './operations/register.ts';
 export function createApp(operations: readonly ImplementedOperation[] = implementedOperations) {
   const app = new Hono<AppEnv>().basePath('/api');
 
+  app.use(async (c, next) => {
+    c.set('requestId', c.req.header('cf-ray') ?? crypto.randomUUID());
+    await next();
+  });
+
   // 404 と 500 の応答にも付くよう、next の後で付ける
   app.use(async (c, next) => {
     await next();
@@ -36,7 +41,7 @@ export function createApp(operations: readonly ImplementedOperation[] = implemen
       JSON.stringify({
         level: 'error',
         code: 'internal',
-        requestId: c.req.header('cf-ray') ?? null,
+        requestId: c.get('requestId'),
         reason: 'OPERATOR_LOGIN_IDS に形の合わない項目がある',
         invalidPositions: operators.invalidPositions,
       }),
@@ -56,7 +61,7 @@ export function createApp(operations: readonly ImplementedOperation[] = implemen
         JSON.stringify({
           level: 'error',
           code: 'unavailable',
-          requestId: c.req.header('cf-ray') ?? null,
+          requestId: c.get('requestId'),
           method: c.req.method,
           route: routePath(c),
           error: err.cause instanceof Error ? err.cause.name : typeof err.cause,
@@ -88,7 +93,7 @@ export function createApp(operations: readonly ImplementedOperation[] = implemen
       JSON.stringify({
         level: 'error',
         code: 'internal',
-        requestId: c.req.header('cf-ray') ?? null,
+        requestId: c.get('requestId'),
         method: c.req.method,
         route: routePath(c),
         error: err instanceof Error ? err.name : typeof err,

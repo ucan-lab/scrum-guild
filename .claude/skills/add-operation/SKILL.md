@@ -24,12 +24,14 @@ description: API の操作を1つ足す型紙。権限の選択、定義（src/s
 | --- | --- |
 | `login` | ログインしていれば誰でも。組織の外（`/api/<名前>`） |
 | `operator` | 運用者だけ。組織の外。定義は `src/shared/operations/operator/` に置く（人が差分を読む領域） |
-| `organization` | 組織に入れる人なら誰でも（承諾待ちの招待だけの人を含む）。`actor.userId` は null がありうる |
+| `invitee` | 招待の一覧、承諾、辞退。承諾待ちの招待だけの人も通す。`actor.userId` は null がありうる。組織の中のデータを読む操作には使わない |
+| `organization` | `users` の行がある人（無効でない管理者か、ワークスペースに今所属している人）。承諾待ちの招待だけの人には 404 |
 | `member` | ワークスペースに今所属している人。管理者も通る。`workspace: true` を付ける |
 | `leader` | ワークスペースのリーダー。管理者も通る。`workspace: true` を付ける |
 | `admin` | 組織の管理者だけ。ワークスペースを指すなら `workspace: true` も付ける |
 
 読むだけなら `mode: 'read'`、書くなら `'write'`。どちらも POST で、Origin の検査が掛かる。
+ワークスペースの下の `write` は、閉じたワークスペースでは 409 の `workspace_closed` で止まる。閉じていても書く操作（開き直すなど）だけ、定義に `allowClosed: true` を付ける。
 
 ### 2. 定義を書く
 
@@ -82,7 +84,7 @@ export const renameWorkspaceOperation = implement(renameWorkspace, async ({ db, 
 
 ### 4. 組織の分離のテスト用の関数を足す
 
-組織の中の操作（`organization`、`member`、`leader`、`admin`）は、`test/operations/pointers.ts` に操作の名前をキーにして足す。足し忘れると `test/operation-registry.test.ts` が落ちる。
+組織の中の操作（`invitee`、`organization`、`member`、`leader`、`admin`）は、`test/operations/pointers.ts` に操作の名前をキーにして足す。足し忘れると `test/operation-registry.test.ts` が落ちる。
 
 ```ts
 'rename-workspace': async (target) => ({ workspace_id: target.workspace.id, name: '青葉チーム' }),
@@ -90,8 +92,8 @@ export const renameWorkspaceOperation = implement(renameWorkspace, async ({ db, 
 
 - 関数は対象の組織（`Target`）を受け取り、その組織の行を指す成功する入力を返す。行が要るなら、ファクトリー（`test/factories.ts`）でその組織に作る
 - 別の組織の `Target` を渡した入力が 404 になり、自分の組織の `Target` を渡した入力が成功することを、同じ関数で確かめる
-- 入力が組織の中の行を指さない操作は、`{ noReference: <成功する入力> }` を書く
-- 組織の外の操作は、入力が空でなければ同じ形で足せる（必須ではない）
+- 入力が組織の中の行を指さない操作は、`{ noReference: <成功する入力> }` を書く。入力に `_id` で終わる項目がある操作には書けない（行を指しているので、関数で作る）
+- 組織の外の操作（`login`、`operator`）は、入力が空で通るなら書かなくてよい。入力が必須の項目を持つなら、同じ形で足す（足さないと、一覧のテストが空の入力で呼んで 400 になり落ちる）
 
 ### 5. テストを足す
 

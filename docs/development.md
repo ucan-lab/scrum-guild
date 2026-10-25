@@ -34,27 +34,30 @@
   | --- | --- | --- |
   | `login` | 組織の外 | ログインしている人 |
   | `operator` | 組織の外 | シークレット `OPERATOR_LOGIN_IDS` に載った運用者 |
-  | `organization` | 組織の中 | 組織に入れる人（管理者、いずれかのワークスペースに今所属している人、承諾待ちの招待がある人） |
+  | `invitee` | 組織の中 | 組織に入れる人すべて。承諾待ちの招待だけを持つ人を含む。招待の一覧、承諾、辞退に使う |
+  | `organization` | 組織の中 | `users` の行がある人。無効でない管理者か、いずれかのワークスペースに今所属している人。承諾待ちの招待だけの人は通さない（404） |
   | `member` | ワークスペースの下 | そのワークスペースに今所属している人と、管理者 |
   | `leader` | ワークスペースの下 | そのワークスペースのリーダーと、管理者 |
   | `admin` | 組織の中（`workspace: true` を付ければワークスペースの下） | 管理者 |
 
-  `member` と `leader` には `workspace: true` が必須で、入力のスキーマに文字列の `workspace_id` が無いと型で落ちる。管理者は所属していないワークスペースでもリーダーと同じ操作ができるので、`member` と `leader` の操作も通す。運用者であることは組織の中の操作の権限にならない。入れる組織は一般の人と同じ条件で決まる。
+  組織の中を読む操作を承諾待ちの招待だけの人に見せないため、`invitee` と `organization` を分ける。`member` と `leader` には `workspace: true` が必須で、入力のスキーマに文字列の `workspace_id` が無いと型で落ちる。管理者は所属していないワークスペースでもリーダーと同じ操作ができるので、`member` と `leader` の操作も通す。運用者であることは組織の中の操作の権限にならない。入れる組織は一般の人と同じ条件で決まる。
+  - 権限の種類と範囲は `src/shared/operations/define.ts` の1つの表から、型と実行時の検査を導く。登録のときに、権限の種類が一覧にあること、`member` と `leader` に `workspace: true` が付くこと、組織の外の操作に `workspace` が付かないことを確かめ、合わなければ起動のときに落とす。
+  - 閉じたワークスペースは読み取り専用。`write` の操作は、閉じていれば 409 の `workspace_closed` で止まる。開き直す操作のように閉じていても書く操作には、定義に `allowClosed: true` を付ける（ワークスペースの下の `write` だけに付けられる）。権限の検査が先で、権限の無い人には 403 を返す。
 - 登録の関数が行う順: Origin の検査、セッションの読み取り、組織の確かめ（組織の中の操作）と運用者や管理者の検査、入力の検証、ワークスペースの確かめとメンバーやリーダーの検査（ワークスペースの下の操作）、処理、出力の検証。ワークスペースの確かめが入力の検証の後になるのは、検証した入力の `workspace_id` から取り出すため。
-  - Origin: すべての操作に掛ける。`wrangler.jsonc` の `vars` の `PUBLIC_ORIGIN`（`scripts/dev.ts` が `pnpm dev` と `pnpm preview` の画面の URL で上書きする。`DEV_PORT_OFFSET` でずらした値も）と一致しない、または Origin の無い呼び出しは 403 の `forbidden`。`curl` で呼ぶときは `-H "Origin: http://localhost:5173"` を付ける。
-  - セッション: Cookie `sg_session`（名前と属性は `src/shared/session-cookie.ts`）のトークンを SHA-256 にして `sessions` を引く（`src/server/auth/session.ts`）。無い、形が違う、期限を過ぎた、のどれも 401 の `unauthenticated`。`last_used_at` は前回から1時間以上たったときだけ書き直し、`expires_at` を30日後にして Cookie も同じ属性で出し直す。
-  - 組織: `src/server/db/enter-organization.ts` が、slug から `organizations` を引き（共通の入口）、停止していないこと、その人が入れることを確かめる（組織の中の入口）。共通の表と組織の中の表は別の問い合わせで、結合しない。`users` はセッションのアカウントの ID と `users.account_id` の一致で引き、無効にされた人は入れない。承諾待ちの招待だけの人は `users` の行を持たないので、アカウントに結んだログインの手段と ID で招待に当てる。組織が無い、停止している、入れない、のどれも 404 の `not_found`。
-  - ワークスペース: `workspace_id` を入口の組織で絞って引く。別の組織のものと存在しないものは 404。引けたものが「確かめたワークスペース」（`VerifiedWorkspace`）になる。
-  - 入力: 壊れた JSON や形の違う入力は 400 の `invalid_input` で、`details` に項目ごとの `path`、`code`、`message` を入れる。本文は 1MiB まで。
-  - 出力: 戻り値を出力のスキーマで検証し、スキーマに無い項目は落とす。形が合わなければ 500。
-  - ログ: 操作ごとに JSON の1行（`requestId`、`operation`、`organizationId`、`userId`、`accountId`、`code`、`status`、`durationMs`）。成功の `code` は `ok`。
-- 処理が受け取るもの: 検証済みの入力 `input` と、確かめた DB の入口だけ。組織の外の操作は共通の入口 `db` と `accountId`、組織の中の操作は組織の中の入口 `db`（組織を確かめないと作れない）と `actor`（`userId`、`isAdmin`）、ワークスペースの下の操作はさらに `workspace`。`workspace` の型 `VerifiedWorkspace` は `VerifiedOrganization` と同じ作りで、`src/server/db/` の外では作れない（`test/operations-types.ts` が `@ts-expect-error` で確かめる）。組織の中の入口は問い合わせを絞らないので、処理は自分の文を、入口の `organizationId`（組織の直下の表）か、`workspace.workspaceId`（ワークスペースの下の表）で絞る。入力の ID だけで引かない。
-- 画面からは、`src/lib/api.ts` の `callOperation(定義, 入力, { slug })` で呼ぶ。入力と出力の型は定義から推論し、組織の中の操作は `slug` を要る。結果は `ApiResult` で、出力が定義の形でなければ失敗として扱う。
+  - Origin: すべての操作に掛ける。`wrangler.jsonc` の `vars` の `PUBLIC_ORIGIN`（`scripts/dev.ts` が `pnpm dev` と `pnpm preview` の画面の URL で上書きする。`DEV_PORT_OFFSET` でずらした値も）と一致しない、または Origin の無い呼び出しは 403 の `forbidden`。本文を読む前に行う。`curl` で呼ぶときは `-H "Origin: http://localhost:5173"` を付ける。
+  - セッション: Cookie のトークンを SHA-256 にして `sessions` を引く（`src/server/auth/session.ts`）。Cookie の名前は `sessionCookieName(PUBLIC_ORIGIN)`（`src/shared/session-cookie.ts`）で決め、https の公開 URL では `__Host-sg_session`、http の localhost（`pnpm dev`、`pnpm preview`）では `sg_session`。読む側とログインの発行（#52）と e2e が同じ関数を使う。無い、形が違う、期限を過ぎた、のどれも 401 の `unauthenticated`。`last_used_at` は前回から1時間以上たったときだけ、読んだ値が変わっていないことを条件に書き直し（並行した呼び出しの片方だけが書く）、`expires_at` を30日後にして、書けたときだけ Cookie を同じ属性で出し直す。書き直しの失敗はログに例外の名前だけを残し、リクエストは続ける。
+  - 組織: `src/server/db/enter-organization.ts` が、slug から `organizations` を引き（共通の入口）、停止していないこと、その人が入れることを確かめる（組織の中の入口）。共通の表と組織の中の表は別の問い合わせで、結合しない。`users` はセッションのアカウントの ID と `users.account_id` の一致で引き、無効にされた人は断る。管理者でも所属もない人は、アカウントに結んだログインの手段と ID で承諾待ちの招待に当てる（このときだけ `account_logins` を引く）。ログインの手段と ID が一致する `users` の行が無効なら、アカウントに結ばれる前の行でも断る。招待だけで入った人は `invitedOnly` になり、`invitee` の操作以外は 404 で返す。組織が無い、停止している、入れない、のどれも 404 の `not_found`。
+  - ワークスペース: `workspace_id` を入口の組織で絞り、その人の今の所属と一緒に1つの問い合わせで引く。別の組織のものと存在しないものは 404。引けたものが「確かめたワークスペース」（`VerifiedWorkspace`。閉じているか、その人のロールを持つ）になり、処理に渡す直前に `assertVerifiedWorkspace()` で実行時にも確かめる。
+  - 入力: 壊れた JSON や形の違う入力は 400 の `invalid_input` で、`details` に項目ごとの `path`、`code`、`message` を入れる。本文は 1MiB までで、`Content-Length` の無い本文も読んだ分を数えて止め、超えれば 413（`code` は `invalid_input`）。未ログインの呼び出しには本文を読ませない。
+  - 出力: 戻り値を出力のスキーマで検証し、スキーマに無い項目は落とす。形が合わなければ 500。検証した値（変換を通した出力）をそのまま送り、画面は同じスキーマで検証し直さない。
+  - ログ: 「API のエラーとログ」の項目を操作ごとに1行出す。413 を含め、失敗の `code` と `status` も残る。
+- 処理が受け取るもの: 検証済みの入力 `input` と、確かめた DB の入口だけ。組織の外の操作は共通の入口 `db` と `accountId`、組織の中の操作は組織の中の入口 `db`（組織を確かめないと作れない）と `actor`（`userId`、`isAdmin`、`invitedOnly`。`invitee` の操作では `userId` が null になりうる）、ワークスペースの下の操作はさらに `workspace`。`workspace` の型 `VerifiedWorkspace` は `VerifiedOrganization` と同じ作りで、`src/server/db/` の外では作れない（`test/operations-types.ts` が `@ts-expect-error` で確かめる）。組織の中の入口は問い合わせを絞らないので、処理は自分の文を、入口の `organizationId`（組織の直下の表）か、`workspace.workspaceId`（ワークスペースの下の表）で絞る。入力の ID だけで引かない。
+- 画面からは、`src/lib/api.ts` の `callOperation(定義, 入力, { slug })` で呼ぶ。入力と出力の型は定義から推論し、組織の中の操作は `slug` を要る。結果は `ApiResult` で、応答が JSON でなければ失敗として扱う（出力の形はサーバーが検証済み）。出力のスキーマの変換は JSON にできる値を返すものに限る。
 - 組織の分離のテストと権限のテストは、定義の一覧を回して全操作に当てる（`test/operation-registry.test.ts`）。新しい操作を足しても、回すテストを書き足す必要はない。足すのは、組織の中の操作ごとのテスト用の関数だけで、`test/operations/pointers.ts` に操作の名前をキーにして書く。
-  - テスト用の関数は、対象の組織（`Target`。組織、管理者、リーダー、一般のメンバー、別のワークスペースのメンバー）を受け取り、その組織の行を指す成功する入力を返す。別の組織の対象を渡した入力が 404 になり、自分の組織の対象を渡した入力が成功することを、同じ関数で確かめる（404 が入力の誤りや権限の不足ではないと言えるようにするため）。
-  - 入力が組織の中の行を指さない操作は、関数の代わりに `{ noReference: <成功する入力> }` を書く。別の組織の slug と権限のテストだけを回す。
-  - 一覧にある組織の中の操作に関数が無いと、一覧に無い操作の関数があると、テストが落ちる。
-  - 権限のテストも一覧から回る。Origin の違い、未ログイン（401）、別の組織の人（404）、権限の種類ごとの許可と拒否（一般がリーダーの操作を呼ぶと 403 など）。
+  - テスト用の関数は、対象の組織（`Target`。組織、管理者、リーダー、一般のメンバー、別のワークスペースのメンバー、承諾待ちの招待だけの人）を受け取り、その組織の行を指す成功する入力を返す。別の組織の対象を渡した入力が 404 になり、自分の組織の対象を渡した入力が成功することを、同じ関数で確かめる（404 が入力の誤りや権限の不足ではないと言えるようにするため）。
+  - 入力が組織の中の行を指さない操作は、関数の代わりに `{ noReference: <成功する入力> }` を書く。別の組織の slug と権限のテストだけを回す。入力に `_id` で終わる項目がある操作には書けない。
+  - 一覧にある組織の中の操作に関数が無いと、一覧に無い操作の関数があると、`noReference` を付けた操作の入力に `_id` で終わる項目があると、テストが落ちる。組織で絞らない処理を同じ検査に通すと落ちることも、別のテストの対象にした。
+  - 権限のテストも一覧から回る。Origin の違い、未ログイン（401）、別の組織の人（404）、承諾待ちの招待だけの人（`invitee` 以外は 404）、権限の種類ごとの許可と拒否（一般がリーダーの操作を呼ぶと 403 など）、閉じたワークスペース（書き込みは 409、`allowClosed` の操作は成功）。
 - 後で足すアシスタントの道具と MCP の道具も、同じ定義から作る。
 
 ### 入口を守る規則
@@ -124,9 +127,12 @@
 - エラーの応答は `{ "error": { "code": "...", "message": "...", "details": ... } }` の自前の形にする。`code` は `src/shared` の列挙で持ち、画面は `code` で分岐して、文言は言葉の辞書から出す。`message` は開発者向けで、画面にそのまま出さない。
 - 別の組織の ID を指定されたときは、存在しないときと同じ `not_found` の 404 を返す。
 - 入力の誤りは 400 の `invalid_input` で、`details` に zod の検証の結果を項目ごとに入れる。権限が無いのは 403、先に読んだ値で判定した書き込みの競合（`meta.changes` が 0）は 409 にする。
+- ログインしていない（セッションが無いか切れた）のは 401 の `unauthenticated`。画面はこれを見てログインの画面へ戻す。権限が無い 403 の `forbidden` とは分ける。Origin が公開する URL と合わないときは 403 の `forbidden`。
+- 閉じたワークスペースへの書き込みは、409 の `workspace_closed`（先に読んだ値の競合の `conflict` とは分ける）。
+- 本文が 1MiB を超えたときは、413 で `code` は `invalid_input`。
 - D1 に届かないとき（`/api/health` の疎通）は 503 の `unavailable`。
 - 想定していないエラーは `app.onError` で 500 の `internal` にし、中身は応答に出さずログにだけ出す。
-- ログは Workers Logs に JSON の1行で出す。リクエストの ID、操作の名前、組織の ID、ユーザーの ID、`code`、かかった時間を入れ、本文、コメント、取り込んだ内容、認証情報（招待の URL の秘密、ID トークン、Google のメールアドレスを含む）は出さない。
+- ログは Workers Logs に JSON の1行で出す。操作ごとの項目は `requestId`（`cf-ray`。無ければ乱数。エラーのログと同じ値）、`operation`、`organizationId`、`userId`（組織の中の `users` の ID）、`accountId`、`code`（成功は `ok`）、`status`、`durationMs`。本文、コメント、取り込んだ内容、認証情報（招待の URL の秘密、ID トークン、Google のメールアドレスを含む）は出さない。
 
 ## 初版の作る順
 
@@ -325,7 +331,7 @@ Bash の判定を `permissions.deny` に置かないのは、規則が前方一�
 | 認証とログインの手段（GitHub OAuth、Google）、セッションの読み取り、運用者の判定、暗号、シークレット | `src/server/auth/`、`src/server/crypto/`、`.dev.vars*` |
 | 組織で絞る層（組織をまたぐデータの分離。Kysely の2つの入口と `batch()` の関数、組織とワークスペースを確かめる処理） | `src/server/db/` |
 | 運用者の権限（運用者だけの操作の定義） | `src/shared/operations/operator/` |
-| 権限の検査（操作の定義を登録する関数。Origin、セッション、権限、組織とワークスペースの確かめを順に行う） | `src/server/operations/register.ts`、`src/server/operations/guards.ts`、`src/server/operations/implement.ts` |
+| 権限の検査（操作の定義を登録する関数。Origin、セッション、権限、組織とワークスペースの確かめを順に行う）と、それが頼るもの | `src/server/operations/register.ts`、`guards.ts`、`implement.ts`、`operation-log.ts`（権限の検査と処理に渡すもの、ログの項目）、`src/server/app.ts`、`src/server/errors.ts`（応答の形、運用者の一覧が壊れたときの 500）、`src/shared/operations/define.ts`（権限の種類と実行時の検査）、`src/shared/session-cookie.ts`（Cookie の名前と属性） |
 | 取り込み元の処理（顧客のデータ） | `src/server/import/` |
 | wrangler の設定（見本の Worker の `wrangler.design.jsonc` も含む）、デプロイのスクリプト、依存 | `wrangler*.jsonc` など、`scripts/`、`package.json`、`pnpm-lock.yaml`、`pnpm-workspace.yaml`、`patches/`、`.npmrc`、Node の版の指定 |
 | lint の設定（組織で絞る層を守る規則を含む） | `eslint.config.*` |
@@ -487,7 +493,7 @@ GitHub App も比べた。人が抜けても取り込みが止まらない、PAT
 
 - seed（`pnpm db:seed`）が、決まったトークンのセッションをローカルの D1 に入れる。e2e と画面の自己レビューは、その Cookie を置いてログインした画面を開く。トークンは開発用の値で、本番の D1 には入れない
   - セッションは4つ: あおば開発の管理者、あおば開発の一般のユーザー、ひばり工房だけに入れる管理者、どの組織にも属さない運用者（`OPERATOR_LOGIN_IDS` の開発用の値、`.dev.vars.example`）
-  - トークンは `seed/sessions.ts` の1か所に置き、seed はそこから SHA-256 の16進を計算して入れる。e2e も同じ定数を import する。中身と流し方は `seed/README.md`
+  - トークンは `seed/sessions.ts` の1か所に置き、seed はそこから SHA-256 の16進を計算して入れる。e2e も同じ定数を import し、Cookie の名前は `sessionCookieName()` で決める（e2e は `pnpm preview` の http の localhost なので `sg_session`）。中身と流し方は `seed/README.md`
   - セッションの `last_used_at` と `expires_at` は seed を流した時刻から数える。ほかの日時は固定の値にする。切れたら seed を流し直す
   - seed は全部の表の行を消してから入れる。手で足した行も消える
   - seed のセッションが入った手元の `wrangler dev` を、`--ip 0.0.0.0` やトンネルで外に開かない。公開されたトークンで、誰でも管理者と運用者として入れるため

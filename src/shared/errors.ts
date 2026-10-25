@@ -8,6 +8,8 @@ export const errorCodes = [
   'forbidden',
   'not_found',
   'conflict',
+  // 閉じたワークスペースへの書き込み。読み取り専用なので書けない。409
+  'workspace_closed',
   'internal',
   // 依存先（D1）に届かない。503
   'unavailable',

@@ -15,7 +15,7 @@ pnpm db:seed
 
 ## セッション
 
-トークンの値の置き場所は `sessions.ts` だけ。`sessions.token_hash` にはその SHA-256 の16進を、`last_used_at` には流した時刻を、`expires_at` にはその30日後を入れ、切れたら流し直す。手で画面を開くときの Cookie の名前は、GitHub のログインの Issue で決める。
+トークンの値の置き場所は `sessions.ts` だけ。`sessions.token_hash` にはその SHA-256 の16進を、`last_used_at` には流した時刻を、`expires_at` にはその30日後を入れ、切れたら流し直す。手で画面を開くときの Cookie の名前は、画面を開く URL が http の localhost（`pnpm dev`、`pnpm preview`）なら `sg_session`、https なら `__Host-sg_session`（`src/shared/session-cookie.ts` の `sessionCookieName()`）。e2e も同じ関数で名前を決める。
 
 | キー | 人 |
 | --- | --- |

@@ -19,8 +19,15 @@ export async function hashSessionToken(token: string): Promise<string> {
   return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0')).join('');
 }
 
-// 無いか、形が違うか、切れているときは undefined。期限を過ぎた行は入れず、書き直しもしない
-export async function readSession(env: Env, token: string | undefined, now: Date): Promise<Session | undefined> {
+// 無いか、形が違うか、切れているときは undefined。期限を過ぎた行は入れず、書き直しもしない。
+// 書き直しは読んだ last_used_at が変わっていないときだけ書く。並行した呼び出しの片方だけが書き、日時が巻き戻らない。
+// 書き直しに失敗しても、セッションは読めているのでリクエストは続ける
+export async function readSession(
+  env: Env,
+  token: string | undefined,
+  now: Date,
+  requestId: string,
+): Promise<Session | undefined> {
   if (token === undefined || !SESSION_TOKEN_PATTERN.test(token)) return undefined;
   const tokenHash = await hashSessionToken(token);
   const db = commonDb(env);
@@ -35,13 +42,28 @@ export async function readSession(env: Env, token: string | undefined, now: Date
   const idleMs = now.getTime() - Date.parse(row.last_used_at);
   if (idleMs < REFRESH_AFTER_MS) return { accountId: row.account_id, refreshed: false };
 
-  await db.batch([
-    db.statement((q) =>
-      q
-        .updateTable('sessions')
-        .set({ last_used_at: now.toISOString(), expires_at: new Date(now.getTime() + LIFETIME_MS).toISOString() })
-        .where('token_hash', '=', tokenHash),
-    ),
-  ]);
-  return { accountId: row.account_id, refreshed: true };
+  try {
+    const [result] = await db.batch([
+      db.statement((q) =>
+        q
+          .updateTable('sessions')
+          .set({ last_used_at: now.toISOString(), expires_at: new Date(now.getTime() + LIFETIME_MS).toISOString() })
+          .where('token_hash', '=', tokenHash)
+          .where('last_used_at', '=', row.last_used_at),
+      ),
+    ]);
+    return { accountId: row.account_id, refreshed: result.changes === 1 };
+  } catch (err) {
+    // 例外の message に SQL や接続の詳細が混ざりうるので、名前だけを残す
+    console.error(
+      JSON.stringify({
+        level: 'error',
+        code: 'internal',
+        requestId,
+        reason: 'セッションの書き直しに失敗した',
+        error: err instanceof Error ? err.name : typeof err,
+      }),
+    );
+    return { accountId: row.account_id, refreshed: false };
+  }
 }

@@ -2,21 +2,30 @@
 // Origin の検査 → セッションの読み取り → 組織の確かめと権限の検査 → 入力の検証 → ワークスペースの確かめと権限の検査 → 処理 → 出力の検証。
 // 入力に workspace_id がある操作では、ワークスペースの確かめは入力の検証の後になる
 import { Hono, type Context } from 'hono';
-import { bodyLimit } from 'hono/body-limit';
 import { getCookie, setCookie } from 'hono/cookie';
-import { isOutsideOperation, isWorkspaceOperation } from '../../shared/operations/define.ts';
-import { SESSION_COOKIE_NAME, sessionCookieOptions } from '../../shared/session-cookie.ts';
+import {
+  assertOperationDefinition,
+  isOutsideOperation,
+  isWorkspaceOperation,
+  type Permission,
+} from '../../shared/operations/define.ts';
+import { sessionCookieName, sessionCookieOptions } from '../../shared/session-cookie.ts';
 import type { AppEnv } from '../app-env.ts';
 import { accountLogins } from '../auth/account-logins.ts';
 import { isOperator, operatorLoginIds } from '../auth/operators.ts';
 import { readSession } from '../auth/session.ts';
-import { commonDb, enterOrganization, verifyWorkspace } from '../db/index.ts';
-import { ApiError, errorBody, knownError } from '../errors.ts';
+import {
+  assertVerifiedWorkspace,
+  commonDb,
+  enterOrganization,
+  verifyWorkspace,
+  type OrganizationActor,
+  type VerifiedWorkspace,
+} from '../db/index.ts';
+import { ApiError, knownError } from '../errors.ts';
 import { readInput, requireOrigin } from './guards.ts';
 import type { ImplementedOperation } from './implement.ts';
 import { logOperation } from './operation-log.ts';
-
-const MAX_BODY_BYTES = 1024 * 1024;
 
 // ログに残す、リクエストの途中で分かった値
 type Trace = { organizationId: string | null; userId: string | null; accountId: string | null };
@@ -24,22 +33,22 @@ type Trace = { organizationId: string | null; userId: string | null; accountId: 
 // 処理に渡す文脈の型は implement() が定義から決めている。ここでは型を消して呼ぶ
 type Handler = (context: unknown) => Promise<unknown>;
 
+function unreachable(value: never): never {
+  throw new Error(`扱っていない権限: ${String(value)}`);
+}
+
+// 定義が型の検査を抜けていても、登録のときに落とす。権限の分岐に知らない値が来たまま動かさない
 export function operationsApp(operations: readonly ImplementedOperation[]): Hono<AppEnv> {
   const names = new Set<string>();
   const app = new Hono<AppEnv>();
   for (const operation of operations) {
+    assertOperationDefinition(operation.definition);
+    if (typeof operation.handler !== 'function') throw new Error(`操作 ${operation.definition.name} に処理が無い`);
     const { name } = operation.definition;
     if (names.has(name)) throw new Error(`操作の名前が重なっている（${name}）`);
     names.add(name);
     const path = isOutsideOperation(operation.definition) ? `/${name}` : `/:slug/${name}`;
-    app.post(
-      path,
-      bodyLimit({
-        maxSize: MAX_BODY_BYTES,
-        onError: (c) => c.json(errorBody('invalid_input', 'payload too large'), 413),
-      }),
-      (c) => handleOperation(c, operation),
-    );
+    app.post(path, (c) => handleOperation(c, operation));
   }
   return app;
 }
@@ -58,7 +67,7 @@ async function handleOperation(c: Context<AppEnv>, operation: ImplementedOperati
     throw err;
   } finally {
     logOperation({
-      requestId: c.req.header('cf-ray') ?? crypto.randomUUID(),
+      requestId: c.get('requestId'),
       operation: operation.definition.name,
       ...trace,
       code,
@@ -68,18 +77,58 @@ async function handleOperation(c: Context<AppEnv>, operation: ImplementedOperati
   }
 }
 
+// 組織に入れた人への、入力の検証より前の検査。承諾待ちの招待だけの人には、招待の操作（invitee）以外を見せない
+function checkOrganizationPermission(permission: Permission, actor: OrganizationActor): void {
+  if (actor.invitedOnly && permission !== 'invitee') throw new ApiError(404, 'not_found');
+  switch (permission) {
+    case 'invitee':
+    case 'organization':
+    case 'member':
+    case 'leader':
+      return;
+    case 'admin':
+      if (!actor.isAdmin) throw new ApiError(403, 'forbidden');
+      return;
+    case 'login':
+    case 'operator':
+      throw new Error(`組織の外の権限 ${permission} が組織の中の操作に付いている`);
+    default:
+      return unreachable(permission);
+  }
+}
+
+// ワークスペースの下の操作の権限。管理者は所属していないワークスペースでも、リーダーと同じ操作ができる
+function isAllowedInWorkspace(permission: Permission, actor: OrganizationActor, workspace: VerifiedWorkspace): boolean {
+  switch (permission) {
+    case 'admin':
+      return actor.isAdmin;
+    case 'leader':
+      return actor.isAdmin || workspace.actorRole === 'leader';
+    case 'member':
+      return actor.isAdmin || workspace.actorRole !== null;
+    case 'login':
+    case 'operator':
+    case 'invitee':
+    case 'organization':
+      throw new Error(`権限 ${permission} はワークスペースの下の操作に付けられない`);
+    default:
+      return unreachable(permission);
+  }
+}
+
 async function execute(c: Context<AppEnv>, operation: ImplementedOperation, trace: Trace): Promise<Response> {
   const { definition } = operation;
   const handler = operation.handler as Handler;
 
   requireOrigin(c);
 
-  const token = getCookie(c, SESSION_COOKIE_NAME);
-  const session = await readSession(c.env, token, new Date());
+  const cookieName = sessionCookieName(c.env.PUBLIC_ORIGIN);
+  const token = getCookie(c, cookieName);
+  const session = await readSession(c.env, token, new Date(), c.get('requestId'));
   if (session === undefined) throw new ApiError(401, 'unauthenticated');
   trace.accountId = session.accountId;
   // 使うたびに期限を延ばす。DB の expires_at を書き直したときは Cookie の期限も同じだけ延ばす
-  if (session.refreshed && token !== undefined) setCookie(c, SESSION_COOKIE_NAME, token, sessionCookieOptions);
+  if (session.refreshed && token !== undefined) setCookie(c, cookieName, token, sessionCookieOptions);
 
   let result: unknown;
   if (isOutsideOperation(definition)) {
@@ -95,33 +144,33 @@ async function execute(c: Context<AppEnv>, operation: ImplementedOperation, trac
     // 運用者かどうかは組織に入れるかを変えない。入れる組織が無い運用者は、組織が無いときと同じ 404 になる
     const slug = c.req.param('slug');
     if (slug === undefined) throw new ApiError(404, 'not_found');
-    const logins = await accountLogins(c.env, session.accountId);
-    const entry = await enterOrganization(c.env, slug, { accountId: session.accountId, logins });
+    const entry = await enterOrganization(c.env, slug, {
+      accountId: session.accountId,
+      loadLogins: () => accountLogins(c.env, session.accountId),
+    });
     if (entry === undefined) throw new ApiError(404, 'not_found');
     const { db, actor } = entry;
     trace.organizationId = db.organizationId;
     trace.userId = actor.userId;
-    if (definition.permission === 'admin' && !actor.isAdmin) throw new ApiError(403, 'forbidden');
+    checkOrganizationPermission(definition.permission, actor);
 
     const input = await readInput(c, definition.input);
     if (isWorkspaceOperation(definition)) {
       // 別の組織のワークスペースは、存在しないときと同じ 404
       const workspace = await verifyWorkspace(db, actor, (input as { workspace_id: string }).workspace_id);
       if (workspace === undefined) throw new ApiError(404, 'not_found');
-      // 管理者は所属していないワークスペースでも、リーダーと同じ操作ができる
-      const allowed =
-        actor.isAdmin ||
-        (definition.permission === 'leader'
-          ? workspace.actorRole === 'leader'
-          : definition.permission === 'member'
-            ? workspace.actorRole !== null
-            : false);
-      if (!allowed) throw new ApiError(403, 'forbidden');
+      if (!isAllowedInWorkspace(definition.permission, actor, workspace)) throw new ApiError(403, 'forbidden');
+      // 閉じたワークスペースは読み取り専用。開き直す操作だけが通る
+      if (workspace.closed && definition.mode === 'write' && definition.allowClosed !== true) {
+        throw new ApiError(409, 'workspace_closed');
+      }
+      assertVerifiedWorkspace(workspace);
       result = await handler({ db, actor, input, workspace });
     } else {
       result = await handler({ db, actor, input });
     }
   }
 
+  // 検証した値（スキーマの変換を通した出力）をそのまま送る。画面は同じスキーマで検証し直さない
   return c.json(definition.output.parse(result));
 }
