@@ -1,7 +1,8 @@
 // 操作の一覧を Hono のルートに登録する1つの関数。順に行うこと（docs/development.md の「操作の定義」）:
 // Origin の検査 → セッションの読み取り → 組織の確かめと権限の検査（ログインできる条件の確かめを含む）→ 回数の上限 →
 // 入力の検証 → ワークスペースの確かめと権限の検査 → 処理 → 出力の検証。
-// 入力に workspace_id がある操作では、ワークスペースの確かめは入力の検証の後になる
+// 入力に workspace_id がある操作では、ワークスペースの確かめは入力の検証の後になる。
+// 処理に渡す道具は、運用者の操作には運用者を確かめた後の運用者の道具、組織の中の操作には組織に入れた後の、その組織に結んだ組織の道具
 import { Hono, type Context } from 'hono';
 import { deleteCookie, getCookie, setCookie } from 'hono/cookie';
 import {
@@ -13,6 +14,7 @@ import {
 } from '../../shared/operations/define.ts';
 import { sessionCookieClearOptions, sessionCookieName, sessionCookieOptions } from '../../shared/session-cookie.ts';
 import type { AppEnv } from '../app-env.ts';
+import type { InviteeResolver } from '../auth/login-method.ts';
 import { githubMethod } from '../auth/login-routes.ts';
 import { consumeRateLimit } from '../auth/rate-limit.ts';
 import { deleteSessionsOf, readSession } from '../auth/session.ts';
@@ -30,6 +32,7 @@ import { outsideAccount, type OutsideAccount } from './account.ts';
 import { readInput, requireOrigin } from './guards.ts';
 import type { Defer, ImplementedOperation } from './implement.ts';
 import { operatorTools, type OperatorTools } from './operator-tools.ts';
+import { organizationTools } from './organization-tools.ts';
 import { logOperation } from './operation-log.ts';
 
 // ログに残す、リクエストの途中で分かった値
@@ -44,9 +47,17 @@ function unreachable(value: never): never {
 
 // 定義が型の検査を抜けていても、登録のときに落とす。権限の分岐に知らない値が来たまま動かさない
 export type OperationsAppOptions = {
-  // ログインの手段（GitHub）への通信。運用者の操作が GitHub のユーザー名を解決するのに使う。テストが差し替える
+  // ログインの手段（GitHub）への通信。運用者の操作と組織の中の操作が GitHub のユーザー名を解決するのに使う。テストが差し替える
   fetcher: typeof fetch;
 };
+
+// 運用者の道具と組織の道具に渡す、招待する人の解決器。持つのは GitHub だけ
+function inviteeResolverOf(
+  c: Context<AppEnv>,
+  options: OperationsAppOptions,
+): (provider: string) => InviteeResolver | undefined {
+  return (provider) => (provider === 'github' ? githubMethod(c, options.fetcher) : undefined);
+}
 
 export function operationsApp(
   operations: readonly ImplementedOperation[],
@@ -227,8 +238,10 @@ async function execute(
     if (definition.permission === 'operator') {
       const operatorLoginId = await account.operatorLoginId();
       if (operatorLoginId === undefined) throw new ApiError(403, 'forbidden');
-      operator = operatorTools(c.env, { loginId: operatorLoginId, requestId: c.get('requestId') }, (provider) =>
-        provider === 'github' ? githubMethod(c, options.fetcher) : undefined,
+      operator = operatorTools(
+        c.env,
+        { loginId: operatorLoginId, requestId: c.get('requestId') },
+        inviteeResolverOf(c, options),
       );
     }
     await enforceRateLimit(c, definition, session.accountId);
@@ -257,6 +270,8 @@ async function execute(
       throw new ApiError(404, 'not_found');
     }
     const { db, actor, organization } = entry;
+    // 入れた組織の入口に結ぶ。どの道具も組織の ID を引数に取らない
+    const tools = organizationTools(c.env, db, inviteeResolverOf(c, options));
     trace.organizationId = db.organizationId;
     trace.userId = actor.userId;
     checkOrganizationPermission(definition.permission, actor);
@@ -273,9 +288,9 @@ async function execute(
         throw new ApiError(409, 'workspace_closed');
       }
       assertVerifiedWorkspace(workspace);
-      result = await handler({ db, actor, organization, input, workspace, defer: deferred.defer });
+      result = await handler({ db, actor, organization, tools, input, workspace, defer: deferred.defer });
     } else {
-      result = await handler({ db, actor, organization, input, defer: deferred.defer });
+      result = await handler({ db, actor, organization, tools, input, defer: deferred.defer });
     }
   }
 

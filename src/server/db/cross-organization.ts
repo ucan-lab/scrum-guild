@@ -5,7 +5,8 @@
 // 招待の URL の秘密のハッシュから待っている指名と招待を引いて結ぶこと（claimPendingLogin）。
 // ログインできるか（hasLoginAccess）は、組織の選択と同じ読み取り（readAccountOrganizations）を使う。判定の元を1つにするため。
 // 使うのはログインのとき（login.ts）だけで、アカウントに結ばれる前の指名の行も数える。セッションの判定（register.ts）は、
-// 組織の選択と同じ結果（結ばれる前の行を数えない）を使う。結ばれる前の行だけを持つ人のセッションを、結べないまま残さないため
+// 組織の選択と同じ結果（結ばれる前の行を数えない）を使う。結ばれる前の行だけを持つ人のセッションを、結べないまま残さないため。
+// 組織の道具（operations/organization-tools.ts）が、組織を離れた人や無効にされた人のセッションを消すかの判定にも、同じ結果を使う
 //
 // 書き込みは linkLoginToAccount と claimPendingLogin だけ。
 //   - linkLoginToAccount: 組織で絞らずに users.account_id と updated_at を書く、この関数だけの例外
@@ -23,10 +24,11 @@ import { MAX_BOUND_PARAMETERS } from './send.ts';
 import type { OrganizationTables } from './tables.ts';
 
 // 入れる組織と、承諾待ちの招待がある組織。入れる組織は管理者か、いずれかのワークスペースに今所属する組織。
-// 招待は入れる組織の分も含める（届いた招待はすべての組織の分をまとめて出す）。招待は組織の名前しか持たない
+// 招待は入れる組織の分も含める（届いた招待はすべての組織の分をまとめて出す）。招待は組織の名前と slug しか持たない
+// （slug は承諾と辞退の操作を、その組織の slug の下で呼ぶのに使う）
 export type AccountOrganizations = {
   readonly organizations: readonly { readonly slug: string; readonly name: string }[];
-  readonly invitations: readonly { readonly organization_name: string }[];
+  readonly invitations: readonly { readonly organization_name: string; readonly slug: string }[];
 };
 
 type Account = { accountId: string; logins: readonly LoginId[] };
@@ -207,7 +209,9 @@ async function readAccountOrganizations(
   const shown = new Set(invitedShown);
   return {
     organizations: rows.filter((row) => enterable.has(row.id)).map(({ slug, name }) => ({ slug, name })),
-    invitations: rows.filter((row) => shown.has(row.id)).map((row) => ({ organization_name: row.name })),
+    invitations: rows
+      .filter((row) => shown.has(row.id))
+      .map((row) => ({ organization_name: row.name, slug: row.slug })),
   };
 }
 

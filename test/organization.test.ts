@@ -58,7 +58,7 @@ async function createVisitor(options: { extraLogin?: boolean } = {}) {
 
 type Listed = {
   organizations: { slug: string; name: string }[];
-  invitations: { organization_name: string }[];
+  invitations: { organization_name: string; slug: string }[];
   operator: boolean;
 };
 
@@ -113,7 +113,7 @@ describe('my-organizations', () => {
     await expectNoAccess(visitor.token);
   });
 
-  test('承諾待ちの招待だけの組織は、組織の名前だけを招待に出す', async () => {
+  test('承諾待ちの招待だけの組織は、組織の名前と slug だけを招待に出す', async () => {
     const visitor = await createVisitor();
     const { organization, owner, workspace } = await createOrganizationWithOwner({ name: '招待だけの工房' });
     await createInvitation(organization, workspace.id, owner.id, visitor.identity);
@@ -126,8 +126,10 @@ describe('my-organizations', () => {
 
     const result = await listOrganizations(visitor.token);
     expect(result.organizations).toEqual([]);
-    expect(result.invitations).toEqual([{ organization_name: '招待だけの工房' }]);
-    expect(JSON.stringify(result)).not.toContain(organization.slug);
+    // slug は承諾と辞退の操作を呼ぶ先。組織の中の値（ワークスペースや招待した人）は出さない
+    expect(result.invitations).toEqual([{ organization_name: '招待だけの工房', slug: organization.slug }]);
+    expect(JSON.stringify(result)).not.toContain(workspace.id);
+    expect(JSON.stringify(result)).not.toContain(owner.id);
   });
 
   test('入れる組織への承諾待ちの招待も、届いた招待に出す（同じ組織の招待は1件にまとめる）', async () => {
@@ -141,7 +143,7 @@ describe('my-organizations', () => {
 
     const result = await listOrganizations(visitor.token);
     expect(result.organizations.map((item) => item.name)).toEqual(['入れる工房']);
-    expect(result.invitations).toEqual([{ organization_name: '入れる工房' }]);
+    expect(result.invitations).toEqual([{ organization_name: '入れる工房', slug: organization.slug }]);
   });
 
   test('無効にされた人と、停止した組織は、どちらも出さない', async () => {
@@ -228,7 +230,9 @@ describe('my-organizations', () => {
     await expectNoAccess(visitor.token);
     const strangerList = await listOrganizations(stranger.token);
     expect(strangerList.organizations.map((item) => item.name)).toEqual(['同じ組織の別の人']);
-    expect(strangerList.invitations).toEqual([{ organization_name: '別の人宛の工房' }]);
+    expect(strangerList.invitations).toEqual([
+      { organization_name: '別の人宛の工房', slug: invited.organization.slug },
+    ]);
   });
 
   test('運用者のログインには operator が真で、入れる組織が無くても返る', async () => {
