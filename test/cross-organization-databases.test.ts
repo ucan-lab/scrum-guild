@@ -3,7 +3,7 @@
 // 2つ目の DB は、users の問い合わせにだけ行を返す作り物（別の DB にだけある組織の管理者の行）
 import { env } from 'cloudflare:workers';
 import { describe, expect, test } from 'vitest';
-import { listAccountOrganizationsForTest, organizationEntriesForTest } from '../src/server/db/testing.ts';
+import { listAccountOrganizationsForTest } from '../src/server/db/testing.ts';
 import { createAccount, createAccountLogin, createOrganization, createUser } from './factories.ts';
 
 function fakeDatabase(rows: Record<string, unknown>[]) {
@@ -39,11 +39,9 @@ describe('組織の中の DB が2つのとき', () => {
       { id: 'second-db-user', organization_id: inSecond.id, account_id: account.id, is_admin: 1, disabled_at: null },
     ]);
 
-    const result = await listAccountOrganizationsForTest(
-      env,
-      { accountId: account.id, logins: [identity] },
-      organizationEntriesForTest(env, [second.database]),
-    );
+    const result = await listAccountOrganizationsForTest(env, { accountId: account.id, logins: [identity] }, [
+      second.database,
+    ]);
     expect(result.organizations.map((item) => item.name)).toEqual(['あ工房', 'い工房']);
     expect(result.invitations).toEqual([]);
     // 2つ目の DB には、users の問い合わせと、招待の問い合わせが届いている
@@ -66,11 +64,30 @@ describe('組織の中の DB が2つのとき', () => {
       { id: 'dup', organization_id: organization.id, account_id: account.id, is_admin: 1, disabled_at: null },
     ]);
 
-    const result = await listAccountOrganizationsForTest(
-      env,
-      { accountId: account.id, logins: [identity] },
-      organizationEntriesForTest(env, [second.database]),
-    );
+    const result = await listAccountOrganizationsForTest(env, { accountId: account.id, logins: [identity] }, [
+      second.database,
+    ]);
     expect(result.organizations.map((item) => item.name)).toEqual(['重なる工房']);
+  });
+});
+
+describe('不変条件が崩れたアカウント', () => {
+  // アカウントは必ず1つ以上のログインを持つ。0件のときは、users の行を引き当てる手がかりが無いので空を返す
+  // （enterOrganization は account_id で引くので入れる。不変条件が崩れたときの差で、ログインの付け替えや統合を入れるときに直す）
+  test('ログインが0件のときは、管理者の行があっても空を返し、問い合わせも送らない', async () => {
+    const account = await createAccount();
+    const login = await createAccountLogin(account.id);
+    const organization = await createOrganization();
+    await createUser(organization, {
+      account_id: account.id,
+      login_provider: login.login_provider,
+      login_subject: login.login_subject,
+      is_admin: 1,
+    });
+    const second = fakeDatabase([]);
+
+    const result = await listAccountOrganizationsForTest(env, { accountId: account.id, logins: [] }, [second.database]);
+    expect(result).toEqual({ organizations: [], invitations: [] });
+    expect(second.queries).toEqual([]);
   });
 });

@@ -55,7 +55,7 @@
     <EmptyState
       icon="sun"
       title={t('noMembershipTitle', { workspace: t('workspace') })}
-      text={t('noMembershipText', { workspace: t('workspace'), member: t('member') })}
+      text={t('noMembershipText', { workspace: t('workspace') })}
     />
   {:else}
     <EmptyState icon="sun" title={t('todayEmptyTitle')} text={t('todayEmptyText')} />

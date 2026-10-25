@@ -12,7 +12,9 @@ export type SendResult = {
 export const MAX_BOUND_PARAMETERS = 100;
 
 // 超えた文は D1 に送る前に止める。文を見つけられるよう番号を添え、SQL と値は入れない（値に入力の本文や認証情報が混ざりうる）
-function assertBindable(query: CompiledQuery, label: string): void {
+type SqlWithParameters = Pick<CompiledQuery, 'sql' | 'parameters'>;
+
+function assertBindable(query: SqlWithParameters, label: string): void {
   if (query.parameters.length > MAX_BOUND_PARAMETERS) {
     throw new Error(`${label}の束縛が ${query.parameters.length} 個で、D1 の上限 ${MAX_BOUND_PARAMETERS} を超えた`);
   }
@@ -26,6 +28,17 @@ export async function sendOne(d1: D1Database, query: CompiledQuery): Promise<Sen
   assertBindable(query, '文');
   const result = await prepare(d1, query).all();
   return { rows: result.results, changes: result.meta.changes };
+}
+
+// 文の実行計画（EXPLAIN QUERY PLAN の detail の列）。テストが索引に乗るかを確かめるために、testing.ts だけが呼ぶ。
+// D1 の binding に触れる場所を増やさないよう、ここに置く
+export async function explainQueryPlan(d1: D1Database, query: SqlWithParameters): Promise<string[]> {
+  assertBindable(query, '文');
+  const result = await d1
+    .prepare(`EXPLAIN QUERY PLAN ${query.sql}`)
+    .bind(...query.parameters)
+    .all<{ detail: string }>();
+  return result.results.map((row) => row.detail);
 }
 
 // D1 の batch() は全部の文を1つのトランザクションで流し、途中の文が失敗すると前の文も戻す。

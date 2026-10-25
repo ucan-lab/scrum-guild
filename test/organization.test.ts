@@ -330,7 +330,11 @@ async function writeLastSeen(organization: OrganizationFixture, userId: string, 
 }
 
 // users の更新を送る batch() を見張る。呼ぶたびに、書いた件数（changes）を集める
-function watchUserUpdates(organization: OrganizationFixture, fail = false) {
+// fail は書き込みを失敗させる。gate は、開くまで書き込みを送らない（応答の時点で書き込みが終わっていないことを作る）
+function watchUserUpdates(
+  organization: OrganizationFixture,
+  { fail = false, gate }: { fail?: boolean; gate?: Promise<void> } = {},
+) {
   const entryPrototype = Object.getPrototypeOf(Object.getPrototypeOf(orgDb(env, organization.verified)));
   const original = entryPrototype.batch as (statements: readonly never[]) => Promise<{ changes: number }[]>;
   const writes: Promise<number>[] = [];
@@ -339,6 +343,7 @@ function watchUserUpdates(organization: OrganizationFixture, fail = false) {
     const isUserUpdate = statements.some((statement) =>
       compiledQueryForTest(statement).sql.startsWith('update "users"'),
     );
+    if (isUserUpdate && gate) await gate;
     if (isUserUpdate && fail) throw new Error('書き込みに失敗: 秘密の詳細');
     const results = await original.call(this, statements);
     if (isUserUpdate) writes.push(Promise.resolve(results[0]?.changes ?? 0));
@@ -487,7 +492,7 @@ describe('organization', () => {
   test('last_seen_at の書き込みが失敗しても画面の値は返り、ログには例外の名前だけを残す', async () => {
     const organization = await createOrganization();
     const person = await createPerson({ organization, admin: true });
-    watchUserUpdates(organization, true);
+    watchUserUpdates(organization, { fail: true });
     const error = vi.spyOn(console, 'error').mockImplementation(() => undefined);
 
     const res = await post(app, organizationInfo, { slug: organization.slug, token: person.token });
@@ -510,5 +515,66 @@ describe('organization', () => {
     await readOrganization(a.slug, visitor.token);
     expect(await readLastSeen(a, aUser.id)).not.toBeNull();
     expect(await readLastSeen(b, bUser.id)).toBeNull();
+  });
+});
+
+// 本番は ExecutionContext の waitUntil に書き込みを渡す。渡された Promise を集めるダミーで、その経路を通す
+describe('organization の last_seen_at の書き込み（waitUntil の経路）', () => {
+  function collectingContext(waitUntil?: (promise: Promise<unknown>) => void) {
+    const waited: Promise<unknown>[] = [];
+    const executionCtx = {
+      waitUntil: waitUntil ?? ((promise: Promise<unknown>) => void waited.push(promise)),
+      passThroughOnException: () => undefined,
+    } as unknown as ExecutionContext;
+    return { waited, executionCtx };
+  }
+
+  test('書き込みは waitUntil に1件渡り、応答の時点で終わっていなくてよい', async () => {
+    const organization = await createOrganization();
+    const person = await createPerson({ organization, admin: true });
+    let open!: () => void;
+    const gate = new Promise<void>((resolve) => (open = resolve));
+    watchUserUpdates(organization, { gate });
+    const { waited, executionCtx } = collectingContext();
+
+    const res = await post(app, organizationInfo, { slug: organization.slug, token: person.token, executionCtx });
+    expect(res.status).toBe(200);
+    expect(waited).toHaveLength(1);
+    // 応答は返っているが、書き込みは門で止まっていて、まだ書かれていない
+    expect(await readLastSeen(organization, person.userId!)).toBeNull();
+
+    open();
+    await Promise.all(waited);
+    expect(await readLastSeen(organization, person.userId!)).not.toBeNull();
+  });
+
+  test('書き込みが失敗しても、waitUntil に渡った Promise は拒否にならず、ログだけ残る', async () => {
+    const organization = await createOrganization();
+    const person = await createPerson({ organization, admin: true });
+    watchUserUpdates(organization, { fail: true });
+    const error = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const { waited, executionCtx } = collectingContext();
+
+    const res = await post(app, organizationInfo, { slug: organization.slug, token: person.token, executionCtx });
+    expect(res.status).toBe(200);
+    expect(waited).toHaveLength(1);
+    await expect(waited[0]).resolves.toBeUndefined();
+    const lines = error.mock.calls.map((call) => String(call[0]));
+    expect(
+      lines.some((line) => line.includes('応答の後の書き込みに失敗した') && line.includes('"error":"Error"')),
+    ).toBe(true);
+    expect(lines.join('\n')).not.toContain('秘密の詳細');
+  });
+
+  test('waitUntil 自身が投げたときは、隠さず 500 にする', async () => {
+    const organization = await createOrganization();
+    const person = await createPerson({ organization, admin: true });
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const { executionCtx } = collectingContext(() => {
+      throw new Error('waitUntil が使えない');
+    });
+
+    const res = await post(app, organizationInfo, { slug: organization.slug, token: person.token, executionCtx });
+    expect(res.status).toBe(500);
   });
 });

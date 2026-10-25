@@ -67,12 +67,20 @@ export function invitationsStatement(db: OrganizationEntry, login: LoginId) {
 // - 管理者の行か今の所属があれば入れる。そのとき、手段と ID が一致する別の無効な行は見ない
 // - 入れない組織の招待は、手段と ID が一致する無効な行があれば出さない
 // 共通の表と組織の中の表は別の問い合わせで引き、アプリで合わせる。組織の中の表は、組織を分けたときは DB ごとに引く。
-// アカウントに結んだログインが無いアカウントは、users の行を引き当てる手がかりが無いので、何も返さない
-export async function listAccountOrganizations(
+//
+// この関数が前提にする不変条件（docs/data-model.md の「読み書きの入口」）:
+// - アカウントは必ず1つ以上のログインを持つ。0件なら users の行を引き当てる手がかりが無いので、空を返す。
+// - users の行のログイン（login_provider、login_subject）は、結んだアカウントのログインのどれかである。
+// ログインの付け替えや統合を入れるときは、この関数を直す（enterOrganization は account_id で引くので、ずれが出る）
+export function listAccountOrganizations(env: Env, account: Account): Promise<AccountOrganizations> {
+  return listAccountOrganizationsIn(env, account, crossOrganizationEntries(env));
+}
+
+// 組織の中の表を持つ DB ごとの入口を受け取る本体。index.ts は出さない。DB を複数にした場合を、テストが testing.ts から確かめる
+export async function listAccountOrganizationsIn(
   env: Env,
   account: Account,
-  // 組織の中の表を持つ DB ごとの入口。DB を複数にした場合をテストが確かめるときだけ渡す
-  entries: readonly OrganizationEntry[] = crossOrganizationEntries(env),
+  entries: readonly OrganizationEntry[],
 ): Promise<AccountOrganizations> {
   if (account.logins.length === 0) return { organizations: [], invitations: [] };
 

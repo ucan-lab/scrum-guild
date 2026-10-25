@@ -2,10 +2,17 @@
 // Worker は src/server/index.ts から辿るので、ここは束に入らない。
 // 組織を確かめた結果を確かめずに作る口と、表の照合に要る値（列の定数と、DB のカタログ）を出す
 import { sql } from 'kysely';
-import { invitationsStatement, membershipsStatement, usersStatement } from './cross-organization.ts';
+import {
+  invitationsStatement,
+  listAccountOrganizationsIn,
+  membershipsStatement,
+  usersStatement,
+} from './cross-organization.ts';
 import { commonDb, crossOrganizationEntries, entriesOf } from './entries.ts';
 import type { LoginId } from './enter-organization.ts';
 import { compiledQueryOf, type Scope, type Statement } from './entry.ts';
+import { explainQueryPlan } from './send.ts';
+import { allOrganizationDatabases, commonDatabase } from './select-database.ts';
 import { issueVerifiedOrganization, type VerifiedOrganization } from './verify-organization.ts';
 
 export type { ColumnSpec } from './column-spec.ts';
@@ -18,19 +25,27 @@ export function verifiedOrganizationForTest(organizationId: string): VerifiedOrg
 // 文が組み立てた SQL と束縛する値
 export { compiledQueryOf as compiledQueryForTest };
 
-// 組織の中の DB を複数にした場合の入口（listAccountOrganizations の第3引数）。1つ目は本物の DB で、追加の DB は作り物を渡す
-export function organizationEntriesForTest(env: Env, extraDatabases: readonly object[]) {
-  return entriesOf([env.DB, ...(extraDatabases as D1Database[])]);
+// D1 の形のうち、組織をまたいで読む関数が使う部分（prepare、bind、all）。組織の中の DB を複数にした場合のテストが、作り物を渡す
+export type FakeDatabase = {
+  prepare(text: string): {
+    bind(...values: unknown[]): { all(): Promise<{ results: unknown[]; meta: { changes: number } }> };
+  };
+};
+
+// 組織の中の DB を、本物の1つと作り物の追加分にして、組織をまたいで読む関数を呼ぶ。本番の関数の署名は広げない
+export function listAccountOrganizationsForTest(
+  env: Env,
+  account: { accountId: string; logins: readonly LoginId[] },
+  extraDatabases: readonly FakeDatabase[],
+) {
+  // 型の穴はここだけ。作り物は、送る側（send.ts）が呼ぶ prepare、bind、all しか持たない
+  const extras = extraDatabases as unknown as D1Database[];
+  return listAccountOrganizationsIn(env, account, entriesOf([...allOrganizationDatabases(env), ...extras]));
 }
-export { listAccountOrganizations as listAccountOrganizationsForTest } from './cross-organization.ts';
 
 // 文の実行計画（EXPLAIN QUERY PLAN の detail の列）。索引に乗るかを確かめるのに使う
-export async function queryPlanForTest(env: Env, statement: Statement<Scope>): Promise<string[]> {
-  const { sql: text, parameters } = compiledQueryOf(statement);
-  const result = await env.DB.prepare(`EXPLAIN QUERY PLAN ${text}`)
-    .bind(...parameters)
-    .all<{ detail: string }>();
-  return result.results.map((row) => row.detail);
+export function queryPlanForTest(env: Env, statement: Statement<Scope>): Promise<string[]> {
+  return explainQueryPlan(commonDatabase(env), compiledQueryOf(statement));
 }
 
 // 組織をまたいで読む関数が組み立てる文。実行計画の確認に使う

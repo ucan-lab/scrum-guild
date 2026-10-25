@@ -19,7 +19,7 @@ export const organizationInfo = defineOperation({
       name: z.string(),
       vocabulary: z.enum(['game', 'scrum']),
       theme,
-      // 組織にワークスペースが1つでもあるか（所属していないものを含む）。最初のワークスペースを作る案内の判定に使う
+      // 組織にワークスペースが1つでもあるか（所属していないものと、閉じたものを含む）。最初のワークスペースを作る案内の判定に使う
       has_workspaces: z.boolean(),
     }),
     me: z.object({ id: z.string(), name: z.string(), is_admin: z.boolean(), theme: theme.nullable() }),

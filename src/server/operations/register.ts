@@ -178,6 +178,7 @@ async function execute(c: Context<AppEnv>, operation: ImplementedOperation, trac
 // 応答を待たせずに続ける仕事（定義の副作用の書き込み）。ExecutionContext の waitUntil に渡す。
 // ExecutionContext が無い環境（テスト）では、応答の前に待つ。失敗はログに例外の名前だけを残し、応答は変えない
 function deferrer(c: Context<AppEnv>): { defer: Defer; settle: () => Promise<unknown> } {
+  const executionContext = executionContextOf(c);
   const inline: Promise<void>[] = [];
   const defer: Defer = (task) => {
     const done = (async () => task())().then(
@@ -194,11 +195,18 @@ function deferrer(c: Context<AppEnv>): { defer: Defer; settle: () => Promise<unk
         );
       },
     );
-    try {
-      c.executionCtx.waitUntil(done);
-    } catch {
-      inline.push(done);
-    }
+    // waitUntil 自身の失敗は隠さない（ExecutionContext の有無の判定だけを executionContextOf に寄せている）
+    if (executionContext === undefined) inline.push(done);
+    else executionContext.waitUntil(done);
   };
   return { defer, settle: () => Promise.all(inline) };
+}
+
+// Hono は ExecutionContext が無い呼び出し（テストの app.request）で executionCtx の取得が例外になる。有無の判定はここだけ
+function executionContextOf(c: Context<AppEnv>): Context<AppEnv>['executionCtx'] | undefined {
+  try {
+    return c.executionCtx;
+  } catch {
+    return undefined;
+  }
 }

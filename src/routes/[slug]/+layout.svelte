@@ -47,7 +47,8 @@
       <OrganizationSwitcher
         organizations={switcherOrganizations}
         currentSlug={data.slug}
-        currentName={organization.organization.name}
+        fallbackName={organization.organization.name}
+        invited={(data.organizations?.invitations.length ?? 0) > 0}
       />
     {/if}
   {/snippet}

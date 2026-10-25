@@ -83,7 +83,10 @@ export const dictionary = defineDictionary({
   ),
   retry: organization('もう一度試す', 'もう一度試す'),
   retrying: organization('読み込んでいます', '読み込んでいます'),
+  // 読み直しに失敗したときの、もう一度試すボタンの横の知らせ
+  retryFailed: organization('まだ読み込めませんでした', 'まだ読み込めませんでした'),
   loading: organization('読み込んでいます', '読み込んでいます'),
+  loadingText: organization('しばらくお待ちください。', 'しばらくお待ちください。'),
 
   // メニューの項目と見出し。ワークスペースの外の画面は organization
   pageToday: organization('自分の今日', '自分の今日'),
@@ -113,14 +116,14 @@ export const dictionary = defineDictionary({
   // 組織にワークスペースが1つも無いときは、最初のワークスペースを作る案内。作る画面の行き先は、その画面を作る Issue で決める
   firstWorkspaceTitle: organization('まだ{workspace}がありません', 'まだ{workspace}がありません'),
   firstWorkspaceText: organization(
-    '最初の{workspace}を作って、{member}を招きましょう。',
-    '最初の{workspace}を作って、{member}を招きましょう。',
+    '最初の{workspace}を作る画面は準備中です。できたら、ここから作って{member}を招けます。',
+    '最初の{workspace}を作る画面は準備中です。できたら、ここから作って{member}を招けます。',
   ),
   // ワークスペースはあるが、自分の所属が0件のとき
   noMembershipTitle: organization('どの{workspace}にも所属していません', 'どの{workspace}にも所属していません'),
   noMembershipText: organization(
-    '{workspace}の{member}に加わると、ここから使えます。',
-    '{workspace}の{member}に加わると、ここから使えます。',
+    '{workspace}に加わると、ここから使えます。',
+    '{workspace}に加わると、ここから使えます。',
   ),
 
   // 組織の選択と、枠の外の画面（組織の切り替え、見つからない、運用の仮の画面）
@@ -130,10 +133,16 @@ export const dictionary = defineDictionary({
     '入れる組織が {count} つあります。名前や稼働の設定は組織ごとに別です。',
   ),
   organizationChooseNote: organization(
-    'あとから、メニューの上の冒険者ギルドの切り替えで選び直せます。',
-    'あとから、メニューの上の組織の切り替えで選び直せます。',
+    'あとから、画面の左上（狭い幅では上の帯）の冒険者ギルドの切り替えで選び直せます。',
+    'あとから、画面の左上（狭い幅では上の帯）の組織の切り替えで選び直せます。',
   ),
   organizationList: organization('冒険者ギルドの一覧へ', '組織の一覧へ'),
+  // 組織の切り替えのボタンと一覧の読み上げの名前。{name} は今の組織の名前
+  organizationSwitchLabel: organization('{name}。冒険者ギルドを切り替える', '{name}。組織を切り替える'),
+  organizationListLabel: organization('入れる冒険者ギルド', '入れる組織'),
+  organizationMoving: organization('移っています', '移っています'),
+  invitationsBadge: organization('届いた招待あり', '届いた招待あり'),
+  invitationsReceived: organization('招待が届いています', '招待が届いています'),
   noOrganizationTitle: organization('入れる冒険者ギルドがありません', '入れる組織がありません'),
   noOrganizationText: organization(
     'ギルドマスターから招待が届くと、ここに出ます。',

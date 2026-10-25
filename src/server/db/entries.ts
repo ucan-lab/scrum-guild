@@ -30,8 +30,8 @@ export function commonDb(env: Env): CommonDb {
   return new DbEntry<CommonTables, 'common'>(commonDatabase(env), commonQueries);
 }
 
-// 組織をまたいで組織の中の表を読む入口。組織で絞らないので、cross-organization.ts だけが使う（index.ts は出さない）。
-// 組織の中の操作の処理には渡さない
+// 組織をまたいで組織の中の表を読む入口。組織で絞らないので、cross-organization.ts と testing.ts だけが使う
+// （index.ts は出さない）。組織の中の操作の処理には渡さない
 export function crossOrganizationEntries(env: Env): DbEntry<OrganizationTables, 'organization'>[] {
   return entriesOf(allOrganizationDatabases(env));
 }

@@ -18,7 +18,7 @@ test('組織の画面はシェルを返し、API の版を出し、CSP の違反
   expect(res?.headers()['content-security-policy']).toContain("frame-ancestors 'none'");
 
   await expect(page.getByRole('heading', { level: 1, name: '自分の今日' })).toBeVisible();
-  await expect(page.getByRole('status')).toHaveText(`API: ok（版 ${version}）`);
+  await expect(page.locator('p[role="status"]')).toHaveText(`API: ok（版 ${version}）`);
   expect(await collect()).toEqual([]);
 });
 
@@ -178,7 +178,7 @@ test('「確かめ直す」は、結果が出てから成功と失敗を分け�
     else await route.fulfill({ status: 500, json: { error: { code: 'internal', message: 'x' } } });
   });
   await page.goto(today);
-  await expect(page.getByRole('status').first()).toHaveText(`API: ok（版 ${version}）`);
+  await expect(page.locator('p[role="status"]')).toHaveText(`API: ok（版 ${version}）`);
 
   // ダイアログの外の領域に出る（ダイアログが閉じている間は、中の領域は表示されない）
   const toasts = page.locator('.toasts:visible .toast');
@@ -252,7 +252,7 @@ test('320px の幅で、40文字の版とダイアログの JSON が横にはみ
   await page.route('**/api/health', (route) => route.fulfill({ json: { status: 'ok', database: 'ok', version: sha } }));
   await page.setViewportSize({ width: 320, height: 700 });
   await page.goto(today);
-  await expect(page.getByRole('status')).toHaveText(`API: ok（版 ${sha}）`);
+  await expect(page.locator('p[role="status"]')).toHaveText(`API: ok（版 ${sha}）`);
 
   const overflow = () =>
     page.evaluate(() => ({ scroll: document.documentElement.scrollWidth, inner: window.innerWidth }));

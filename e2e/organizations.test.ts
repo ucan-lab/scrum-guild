@@ -76,7 +76,7 @@ test.describe('組織が1つの人（あおば開発のハルカ）', () => {
     });
     await page.goto('/aoba');
     await expect(page.getByText('まだパーティがありません')).toBeVisible();
-    await expect(page.getByText('最初のパーティを作って、冒険者を招きましょう。')).toBeVisible();
+    await expect(page.getByText('最初のパーティを作る画面は準備中です。')).toBeVisible();
     await expect(page.locator('.empty a, .empty button')).toHaveCount(0);
     await expect(page.locator('.nav-group')).toHaveCount(0);
   });
@@ -147,23 +147,39 @@ test.describe('組織が1つの人（あおば開発のハルカ）', () => {
     });
   }
 
-  test('「もう一度試す」は、読み直している間は押せず、文言が替わる', async ({ page }) => {
+  test('「もう一度試す」は、読み直している間は aria-disabled でフォーカスを残し、状態を status に出し、また失敗したら知らせる', async ({
+    page,
+  }) => {
     let calls = 0;
     await page.route('**/api/aoba/organization', async (route) => {
       calls += 1;
-      if (calls === 1) {
+      if (calls <= 2) {
+        // 2回目（最初の「もう一度試す」）は、少し待ってからまた失敗する
+        if (calls === 2) await new Promise((resolve) => setTimeout(resolve, 600));
         await route.fulfill({ status: 503, json: { error: { code: 'unavailable', message: 'x' } } });
         return;
       }
-      await new Promise((resolve) => setTimeout(resolve, 600));
       await route.continue();
     });
     await page.goto('/aoba');
+    await expect(page).toHaveTitle('読み込めませんでした - Scrum Guild');
     const retry = page.getByRole('button', { name: 'もう一度試す' });
-    await expect(retry).toBeEnabled();
+    const status = page.locator('.empty [role="status"]');
+    await expect(retry).toHaveAttribute('aria-disabled', 'false');
+    await expect(status).toHaveText('');
+
     await retry.click();
-    const retrying = page.getByRole('button', { name: '読み込んでいます' });
-    await expect(retrying).toBeDisabled();
+    await expect(retry).toHaveAttribute('aria-disabled', 'true');
+    await expect(status).toHaveText('読み込んでいます');
+    // 押せない間もフォーカスは残り、押しても読み直しは増えない（Playwright は aria-disabled を待つので force で押す）
+    await expect(retry).toBeFocused();
+    await retry.click({ force: true });
+    // 読み直しが失敗に終わったら、知らせる
+    await expect(status).toHaveText('まだ読み込めませんでした');
+    await expect(retry).toHaveAttribute('aria-disabled', 'false');
+    expect(calls).toBe(2);
+
+    await retry.click();
     await expect(page.getByRole('heading', { level: 1, name: '自分の今日' })).toBeVisible();
   });
 
@@ -198,12 +214,40 @@ test.describe('組織が1つの人（あおば開発のハルカ）', () => {
     );
     await page.goto('/');
     await page.route('**/api/aoba/organization', async (route) => {
-      await new Promise((resolve) => setTimeout(resolve, 500));
+      await new Promise((resolve) => setTimeout(resolve, 1200));
       await route.continue();
     });
     await page.getByRole('link', { name: /あおば開発/ }).click();
-    await expect(page.getByRole('status').filter({ hasText: '読み込んでいます' })).toBeVisible();
+    // 少し遅れて、見出しと題名を持つ読み込み中の表示を出す。読み上げの領域は常に置いてあり、文字だけが替わる
+    await expect(page.getByRole('heading', { level: 1, name: '読み込んでいます' })).toBeVisible();
+    await expect(page).toHaveTitle('読み込んでいます - Scrum Guild');
+    await expect(page.locator('[role="status"].visually-hidden').first()).toHaveText('読み込んでいます');
     await expect(page.getByRole('heading', { level: 1, name: '自分の今日' })).toBeVisible();
+  });
+
+  test('短い読み込みでは、読み込み中の表示を出さない', async ({ page }) => {
+    await page.route('**/api/my-organizations', (route) =>
+      route.fulfill({
+        json: {
+          organizations: [{ slug: 'aoba', name: 'あおば開発' }],
+          invitations: [{ organization_name: 'つばめ商会' }],
+          operator: false,
+        },
+      }),
+    );
+    await page.goto('/');
+    await page.evaluate(() => {
+      const seen = { loading: false };
+      (window as unknown as { __seen: typeof seen }).__seen = seen;
+      new MutationObserver(() => {
+        if (document.body.innerText.includes('しばらくお待ちください')) seen.loading = true;
+      }).observe(document.body, { childList: true, subtree: true, characterData: true });
+    });
+    await page.getByRole('link', { name: /あおば開発/ }).click();
+    await expect(page.getByRole('heading', { level: 1, name: '自分の今日' })).toBeVisible();
+    expect(await page.evaluate(() => (window as unknown as { __seen: { loading: boolean } }).__seen.loading)).toBe(
+      false,
+    );
   });
 });
 
@@ -247,8 +291,12 @@ test.describe('組織が2つの人（あおば開発の管理者でひばり工�
     await menuButton(page).click();
     await expect(menuButton(page)).toHaveAttribute('aria-expanded', 'true');
     await expect(menuLinks(page)).toHaveText(['あおば開発', 'ひばり工房', '冒険者ギルドの一覧へ']);
-    await expect(menuLinks(page).nth(0)).toHaveAttribute('aria-current', 'true');
+    await expect(menuLinks(page).nth(0)).toHaveAttribute('aria-current', 'page');
+    await expect(menuLinks(page).nth(0).locator('svg')).toHaveCount(1);
     await expect(menuLinks(page).nth(1)).not.toHaveAttribute('aria-current', /.*/);
+    // ボタンとリストには、読み上げの名前がある
+    await expect(menuButton(page)).toHaveAttribute('aria-label', 'あおば開発。冒険者ギルドを切り替える');
+    await expect(page.getByRole('list', { name: '入れる冒険者ギルド' })).toBeVisible();
     await menuLinks(page).nth(1).click();
 
     await expect(page).toHaveURL(/\/hibari$/);
@@ -262,7 +310,7 @@ test.describe('組織が2つの人（あおば開発の管理者でひばり工�
     await expect(menuButton(page)).toContainText('ひばり工房');
   });
 
-  test('切り替えは、矢印キーで項目を行き来しても移らず、Enter で移る。Esc で閉じて、ボタンにフォーカスが戻る', async ({
+  test('切り替えは、フォーカスしただけでは移らず、Enter で移る。Esc で閉じて、ボタンにフォーカスが戻る', async ({
     page,
   }) => {
     await page.goto('/aoba');
@@ -294,6 +342,127 @@ test.describe('組織が2つの人（あおば開発の管理者でひばり工�
     await expect(menuButton(page)).toHaveAttribute('aria-expanded', 'true');
     await page.getByRole('heading', { level: 1, name: '自分の今日' }).click();
     await expect(menuButton(page)).toHaveAttribute('aria-expanded', 'false');
+  });
+
+  test('Tab でメニューの外へ出ると閉じる', async ({ page }) => {
+    await page.goto('/aoba');
+    await menuButton(page).focus();
+    await page.keyboard.press('Enter');
+    await expect(menuButton(page)).toHaveAttribute('aria-expanded', 'true');
+    // 3つのリンクを通り過ぎて、メニューの外（左のメニューの項目）へ出る
+    for (let index = 0; index < 4; index++) await page.keyboard.press('Tab');
+    await expect(page.locator('.nav-item').first()).toBeFocused();
+    await expect(menuButton(page)).toHaveAttribute('aria-expanded', 'false');
+  });
+
+  test('リンクを開いたまま Esc で閉じると、フォーカスはボタンに戻る', async ({ page }) => {
+    await page.goto('/aoba');
+    await menuButton(page).click();
+    await menuLinks(page).nth(1).focus();
+    await page.keyboard.press('Escape');
+    await expect(menuButton(page)).toHaveAttribute('aria-expanded', 'false');
+    await expect(menuButton(page)).toBeFocused();
+  });
+
+  test('組織が多いときは、一覧が画面の高さの 40% までで、中でスクロールする', async ({ page }) => {
+    await page.route('**/api/my-organizations', (route) =>
+      route.fulfill({
+        json: {
+          organizations: [
+            { slug: 'aoba', name: 'あおば開発' },
+            ...Array.from({ length: 14 }, (_, index) => ({ slug: `k${index}`, name: `組織${index}` })),
+          ],
+          invitations: [],
+          operator: false,
+        },
+      }),
+    );
+    await page.setViewportSize({ width: 1280, height: 600 });
+    await page.goto('/aoba');
+    await menuButton(page).click();
+    const list = page.locator('.org-menu-list');
+    const sizes = await list.evaluate((element) => ({
+      client: element.clientHeight,
+      scroll: element.scrollHeight,
+      bottom: element.getBoundingClientRect().bottom,
+      inner: window.innerHeight,
+    }));
+    expect(sizes.scroll).toBeGreaterThan(sizes.client);
+    expect(sizes.client).toBeLessThanOrEqual(600 * 0.4 + 2);
+    expect(sizes.bottom).toBeLessThanOrEqual(sizes.inner);
+  });
+
+  test('1組織でも届いた招待があれば、ボタンに印を出し、一覧へ戻る行に招待が届いていることを添える', async ({
+    page,
+  }) => {
+    await page.route('**/api/my-organizations', (route) =>
+      route.fulfill({
+        json: {
+          organizations: [{ slug: 'aoba', name: 'あおば開発' }],
+          invitations: [{ organization_name: 'つばめ商会' }],
+          operator: false,
+        },
+      }),
+    );
+    await page.goto('/aoba');
+    await expect(menuButton(page).locator('.chip')).toHaveText('届いた招待あり');
+    await expect(menuButton(page)).toHaveAttribute('aria-label', /届いた招待あり/);
+    await menuButton(page).click();
+    await expect(menuLinks(page)).toHaveCount(2);
+    await expect(menuLinks(page).last()).toContainText('招待が届いています');
+    await menuLinks(page).last().click();
+    await expect(page).toHaveURL(/\/$/);
+    await expect(page.getByRole('heading', { level: 2, name: '届いた招待' })).toBeVisible();
+  });
+
+  test('今の組織の名前は、入れる組織の一覧の名前を使う。一覧に無いときだけ組織の操作の名前を使う', async ({ page }) => {
+    await patchOrganization(page, 'aoba', (body) => {
+      body.organization.name = '操作の名前';
+    });
+    await page.goto('/aoba');
+    await expect(menuButton(page)).toContainText('あおば開発');
+    await expect(menuButton(page)).not.toContainText('操作の名前');
+
+    // 一覧に今の組織が無いときだけ、組織の操作の名前を使う
+    await page.route('**/api/my-organizations', (route) =>
+      route.fulfill({
+        json: {
+          organizations: [{ slug: 'hibari', name: 'ひばり工房' }],
+          invitations: [{ organization_name: 'つばめ商会' }],
+          operator: false,
+        },
+      }),
+    );
+    await page.goto('/aoba');
+    await expect(menuButton(page)).toContainText('操作の名前');
+  });
+
+  test('別の組織へ移っている間は、ボタンに「移っています」を出す', async ({ page }) => {
+    await page.route('**/api/hibari/organization', async (route) => {
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+      await route.continue();
+    });
+    await page.goto('/aoba');
+    await menuButton(page).click();
+    await menuLinks(page).nth(1).click();
+    // リンクを選んだら、移る前に、隠れるリンクではなくボタンにフォーカスを戻して閉じる
+    await expect(menuButton(page)).toBeFocused();
+    await expect(menuButton(page)).toHaveAttribute('aria-expanded', 'false');
+    await expect(menuButton(page)).toContainText('移っています');
+    await expect(page.locator('.org-menu [role="status"]')).toHaveText('移っています');
+    await expect(page).toHaveURL(/\/hibari$/);
+    await expect(menuButton(page)).toContainText('ひばり工房');
+    await expect(page.locator('.org-menu [role="status"]')).toHaveText('');
+  });
+
+  test('狭い幅では、一覧のリンクの高さが 44px 以上ある', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 800 });
+    await page.goto('/aoba');
+    await menuButton(page).click();
+    for (const link of await menuLinks(page).all()) {
+      const box = await link.boundingBox();
+      expect(box?.height ?? 0).toBeGreaterThanOrEqual(44);
+    }
   });
 
   test('切り替えの最後の項目で、組織の選択の画面に戻る', async ({ page }) => {
