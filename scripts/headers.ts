@@ -4,6 +4,8 @@ import { createHash } from 'node:crypto';
 import {
   fixedHeaders,
   immutableCacheControl,
+  invitePagePaths,
+  invitePageReferrerPolicy,
   metaIgnoredDirectives,
   pageCspDirectives,
 } from '../src/shared/security-headers.ts';
@@ -86,5 +88,9 @@ export function headersFile(indexHtml: string): string {
   const page = Object.entries({ 'Content-Security-Policy': csp, ...fixedHeaders })
     .map(([name, value]) => `  ${name}: ${value}`)
     .join('\n');
-  return `/*\n${page}\n\n/_app/immutable/*\n  Cache-Control: ${immutableCacheControl}\n`;
+  // Cloudflare は複数の規則が当たると、同じ名前のヘッダーを足し合わせる（`a, b`）。`!` で `/*` の値を外してから付ける
+  const invite = invitePagePaths
+    .map((path) => `${path}\n  ! Referrer-Policy\n  Referrer-Policy: ${invitePageReferrerPolicy}\n`)
+    .join('\n');
+  return `/*\n${page}\n\n${invite}\n/_app/immutable/*\n  Cache-Control: ${immutableCacheControl}\n`;
 }

@@ -16,6 +16,7 @@
     retry: 'loginErrorRetry',
     too_many: 'loginErrorTooMany',
     unavailable: 'loginErrorUnavailable',
+    invite: 'loginErrorInvite',
   };
 
   const returnTo = $derived(safeReturnTo(page.url.searchParams.get('return_to')));

@@ -5,14 +5,18 @@ import { sql } from 'kysely';
 import {
   adminCountsStatement,
   adminStatusesIn,
+  claimPendingLoginIn,
   hasLoginAccessIn,
   invitationsStatement,
   linkLoginToAccountIn,
   linkUserStatement,
   listAccountOrganizationsIn,
   membershipsStatement,
+  pendingInvitationStatement,
+  pendingUserStatement,
   usersStatement,
   waitingUserStatement,
+  type ClaimInput,
 } from './cross-organization.ts';
 import { commonDb, crossOrganizationEntries, entriesOf } from './entries.ts';
 import type { LoginId } from './enter-organization.ts';
@@ -150,15 +154,38 @@ export function adminStatusesForTest(
   env: Env,
   organizationIds: readonly string[],
   extraDatabases: readonly FakeDatabase[],
+  now: Date = new Date(),
 ) {
-  return adminStatusesIn(organizationIds, entriesWith(env, extraDatabases));
+  return adminStatusesIn(organizationIds, entriesWith(env, extraDatabases), now);
 }
 
 // 管理者の状態を数える文。実行計画の確認に使う
 export function adminCountsStatementForTest(env: Env, organizationIds: readonly string[]) {
   const [db] = crossOrganizationEntries(env);
   if (db === undefined) throw new Error('組織の中の DB が無い');
-  return adminCountsStatement(db, organizationIds);
+  return adminCountsStatement(db, organizationIds, new Date());
+}
+
+// 招待の URL の秘密のハッシュで待つ行を引く文と、結ぶ batch() を、組織の中の DB が複数あるときに確かめる。
+// writeClock は、読み取りを終えて batch() を組む直前の時刻（省略は今）。読んだ後で期限を越える場合を作るのに差し込む
+export function claimPendingLoginForTest(
+  env: Env,
+  input: ClaimInput,
+  extraDatabases: readonly FakeDatabase[],
+  writeClock?: () => Date,
+) {
+  return claimPendingLoginIn(env, input, entriesWith(env, extraDatabases), writeClock);
+}
+
+// 待っている指名と招待を引く文。実行計画の確認に使う
+export function pendingClaimStatementsForTest(env: Env, tokenHash: string) {
+  const [db] = crossOrganizationEntries(env);
+  if (db === undefined) throw new Error('組織の中の DB が無い');
+  const now = new Date();
+  return {
+    user: pendingUserStatement(db, tokenHash, now),
+    invitation: pendingInvitationStatement(db, tokenHash, now),
+  };
 }
 
 // 文の実行計画（EXPLAIN QUERY PLAN の detail の列）。索引に乗るかを確かめるのに使う

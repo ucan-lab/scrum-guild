@@ -3,18 +3,28 @@
 // 入口は確かめた組織の OrganizationDb。組織の ID はそこから取り、呼び出し側の入力から取らない。
 // account_id は、指名する人が既にアカウントを持つとき（共通の DB の account_logins に当たったとき）に呼び出し側が渡す。
 // 共通の表は別の入口で読んで渡し、この書き込みの batch() に共通の表を混ぜない（docs/data-model.md の「読み書きの入口」）
+import { WAITING_USER_NAME_IN_LOG } from '../../shared/claim-token.ts';
 import type { OrganizationDb, Statement } from '../db/index.ts';
 import { uuidv7 } from '../uuid.ts';
 
-export type AdminNominee = {
-  // ログインの手段（`account_logins.login_provider` と同じ値）と、手段の中の不変の ID
-  provider: string;
-  subject: string;
-  // users.name。GitHub はユーザー名
-  name: string;
-  // 指名する人が既にアカウントを持つときの ID。無ければ null（その人が初めてログインしたときに結ぶ）
-  accountId: string | null;
-};
+export type AdminNominee =
+  | {
+      // ログインの手段（`account_logins.login_provider` と同じ値）と、手段の中の不変の ID
+      provider: string;
+      subject: string;
+      // users.name。GitHub はユーザー名
+      name: string;
+      // 指名する人が既にアカウントを持つときの ID。無ければ null（その人が初めてログインしたときに結ぶ）
+      accountId: string | null;
+    }
+  // Google の指名。sub が分かる前は、メールアドレスと招待の URL の秘密のハッシュ・期限で待つ行にする
+  // （login_subject は空。docs/data-model.md の「メールアドレスで待つ指名と招待」）。name は待つ間のメールアドレス
+  | {
+      provider: 'google';
+      waiting: { email: string; claimTokenHash: string; claimExpiresAt: string };
+      name: string;
+      accountId: null;
+    };
 
 export type AdminDesignation = {
   nominee: AdminNominee;
@@ -40,7 +50,14 @@ export function adminDesignationStatements(
           organization_id: db.organizationId,
           account_id: nominee.accountId,
           login_provider: nominee.provider,
-          login_subject: nominee.subject,
+          ...('waiting' in nominee
+            ? {
+                login_subject: null,
+                login_email: nominee.waiting.email,
+                claim_token_hash: nominee.waiting.claimTokenHash,
+                claim_expires_at: nominee.waiting.claimExpiresAt,
+              }
+            : { login_subject: nominee.subject }),
           name: nominee.name,
           is_admin: 1,
           created_at: at,
@@ -56,11 +73,12 @@ export function adminDesignationStatements(
           entity_type: 'user',
           entity_id: userId,
           action: 'create',
+          // 待つ行は、メールアドレス、秘密のハッシュ、期限を記録に入れない
           changes_json: JSON.stringify({
             is_admin: [null, 1],
-            name: [null, nominee.name],
+            name: [null, 'waiting' in nominee ? WAITING_USER_NAME_IN_LOG : nominee.name],
             login_provider: [null, nominee.provider],
-            login_subject: [null, nominee.subject],
+            ...('waiting' in nominee ? {} : { login_subject: [null, nominee.subject] }),
             // 既にアカウントのある人は、指名のときに結ぶ
             ...(nominee.accountId === null ? {} : { account_id: [null, nominee.accountId] }),
           }),

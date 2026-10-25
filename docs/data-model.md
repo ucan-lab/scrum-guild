@@ -242,7 +242,7 @@
 - 索引: `(login_provider, login_subject)`。ログインのときに入れる組織を引く。
 - 表示するログイン名とアバターは `account_logins` から引く。
 - 運用者が組織を作るときは、最初の管理者をログインの ID に解決し（GitHub はユーザー名からユーザー ID へ。Google は解決せず、`login_email` と招待の URL の秘密で待つ）、`is_admin = 1` の行を入れる。GitHub の `name` は解決したユーザー名。GitHub のユーザー名が指すのは個人のアカウントだけで、組織のアカウント（応答の `type` が `Organization`）は断る。`account_id` は、指名のときに共通の DB の `account_logins` を（ログインの手段と ID で）引き、当たればその書き込みで埋める。既にアカウントのある人（別の組織で使っている人）が、ログインし直さずに新しい組織へ入れるため。当たらなければ空で待ち、その人が初めてログインしたときに埋める（`linkLoginToAccount`）。`account_logins` は共通の表なので、読むのは共通の入口から、`users` の書き込みとは別の文で行う。引いて当たらなかった人が、`users` を書くまでの間に初めてログインを終えたときは、`users` を書いた後に `account_logins` を引き直し、当たれば `linkLoginToAccount` で結ぶ（`account_id` が空の行だけに当たるので、何度流しても同じ結果）。指名の `change_logs` に結んだ `account_id` を残すのは、指名の書き込みと同時に結んだとき（`account_logins` に当たったとき）だけ。書いた後の結び直しは、`users.account_id` だけを書く。結び直しが失敗しても組織の作成は成功として返し、`organizations` と `users` は残る。ログには組織の ID と例外の名前だけを出し、次のログインで結ばれる。管理者の指名し直しも同じで、そのときは同じ組織の `login_subject` が空の行を同じバッチで消す。
-- 運用者の組織の一覧は、組織ごとの管理者の状態を持つ。`none` は無効でない管理者（`is_admin = 1`）の行が無い組織、`pending` はその行があるが、どれも `account_id` が空の組織（指名した人がまだログインしていない）、`active` はそれ以外。`login_subject` が空の行（Google の指名で待つ行）は、管理者の数や最後の管理者の検査には数えないが、ここでは `account_id` が空の管理者の行として `pending` に数える。運用者の画面が「ログイン待ち」と出すため。組織をまたいで読む関数に置き、一覧の組織の ID を `organization_id IN (...)` で渡して、1回の問い合わせで数える（束縛の上限で区切る）。人の名前や ID は返さない。
+- 運用者の組織の一覧は、組織ごとの管理者の状態を持つ。`none` は無効でない管理者（`is_admin = 1`）の行が無い組織、`pending` はその行があるが、どれも `account_id` が空の組織（指名した人がまだログインしていない）、`expired` は `pending` のうち、空の行がどれも Google の指名で待つ行で、招待の URL の期限が過ぎている組織、`active` はそれ以外。`login_subject` が空の行（Google の指名で待つ行）は、管理者の数や最後の管理者の検査には数えないが、ここでは `account_id` が空の管理者の行として `pending` に数える。運用者の画面が「ログイン待ち」と出すため。組織をまたいで読む関数に置き、一覧の組織の ID を `organization_id IN (...)` で渡して、1回の問い合わせで数える（束縛の上限で区切る）。人の名前や ID は返さない。
 - `login_subject` が空の行（Google の指名で待つ行）は、管理者の数にも最後の管理者の検査にも数えない。
 - 最後の管理者を解除できないことはアプリが検査する。
 - 招待された人は、承諾した時点でその組織の行を作る（すでにあれば使う）。招待の時点では `invitations` にログインの ID（Google では `sub` が分かるまでメールアドレス）だけを持つ。
@@ -403,24 +403,24 @@ Google の人は、ログインするまで `sub` が分からない。そのた
 本人が招待の URL を開いたとき。
 
 1. 画面は `location.hash` から秘密を読み、すぐ `history.replaceState` で URL を `/invite` に置き換える。`/invite` の画面のヘッダーは `Referrer-Policy: no-referrer`。
-2. 画面に「Google でログイン」のボタンを出し（組織の名前は、秘密を API に送る前なので出さない）、押してからログインを始める。リンクを先読みする仕組み（メールの安全確認、チャットのプレビュー）でログインが始まらないようにするのが狙い。すでにログインしていても、Google のログインを通す。
-3. ログインを始める API は、秘密を POST の本文でだけ受ける。決まった形（base64url の43文字）でなければ、ハッシュも DB の問い合わせもせずに断る。サーバーがハッシュにして `oauth_states.claim_token_hash` に入れる。この API と戻り先も、ログインのレート制限（`login:<IP>`）で数える。
+2. 画面に「Google でログイン」のボタンを出し（組織の名前は、秘密を API に送る前なので出さない）、押してからログインを始める。リンクを先読みする仕組み（メールの安全確認、チャットのプレビュー）でログインが始まらないようにするのが狙い。ボタンは、隠し欄に秘密を入れたフォームを `POST /api/auth/google/start` に送る（`form.submit()`）。すでにログインしていても、Google のログインを通す。秘密の形が合わない URL（無い、短い、長い）は、ボタンを出さずに使えない旨を出す。
+3. ログインを始める API は、秘密を POST の本文（`application/x-www-form-urlencoded` の `claim_token` 欄）でだけ受ける。URL のクエリでは受けない。ほかのサイトからのフォームの POST（`Sec-Fetch-Site: cross-site`）は、本文を読まず、数えず、行も書かず、ログインの画面へ戻す。決まった形（base64url の43文字）でなければ、ハッシュも DB の問い合わせもせずに断り、`/login?error=invite` へ移す。サーバーがハッシュにして `oauth_states.claim_token_hash` に入れ、戻り先は `/` にする。この API と戻り先も、ログインのレート制限（`login:<IP>`）で数える。
 4. 戻ってきたら ID トークンを確かめ（`development.md` の「Google のログイン」）、`email_verified` が真偽値の `true` のときだけ先に進む。
-5. 組織をまたいで読む関数で、`claim_token_hash` が一致し、`login_subject` が空で、`claim_expires_at` が過ぎていない行を引く（`invitations` は `status = 'pending'` も）。`login_email` がトークンの `email` をそろえた値と一致しないとき、組織が停止しているときは、当たらなかったものとする。指名で、同じ組織の同じ `sub` の行が待っている行より後に無効にされていたとき（`disabled_at` が待っている行の `created_at` より後）も同じ。当たらなければ、理由を分けずに「この招待の URL は使えません」と出す。どのメールアドレスに招待したかは出さない。
-6. 当たった行の組織で、次の文を1回の `batch()` に並べて書く。読んでから書くまでに、指名し直し、取り消し、期限切れ、同じ URL の二重の戻りが起こりうるので、どの文にも「待っている行がまだ有効」という同じ条件を付ける: `EXISTS (SELECT 1 FROM <表> WHERE id = :pending_id AND login_subject IS NULL AND claim_token_hash = :hash AND claim_expires_at > :now)`（`invitations` は `AND status = 'pending'` も）。これで一意の制約に当たらず、もう一度流しても同じ結果になる。
+5. 組織をまたいで読む関数で、`claim_token_hash` が一致し、`login_subject` が空で、`claim_expires_at` が過ぎていない行を引く（`invitations` は `status = 'pending'` も）。`login_email` がトークンの `email` をそろえた値と一致しないとき、組織が停止しているときは、当たらなかったものとする。指名で、同じ組織の同じ `sub` の行が待っている行より後に無効にされていたとき（`disabled_at` が待っている行の `created_at` より後）も同じ。当たらなければ、理由を分けずに「この招待の URL は使えません」と出す。どのメールアドレスに招待したかは出さない。結べなかったログインは、ほかの組織に入れる人でも、セッションを作らず、アカウントも作らず、`/login?error=invite` へ移す。この結ぶ処理は、入れる組織があるかの判定（`hasLoginAccess`）より前に流す。組織の停止の確認は、書く前に1回読むだけである。共通の表（`organizations`）と組織の中の表を1回の `batch()` に混ぜない決まりのため、読んでから書くまでに停止されると結ばれうる。結ばれても、その後の判定（`hasLoginAccess`）が停止した組織を数えないので、その組織には入れない。
+6. 当たった行の組織で、次の文を1回の `batch()` に並べて書く。読んでから書くまでに、指名し直し、取り消し、期限切れ、同じ URL の二重の戻りが起こりうるので、どの文にも「待っている行がまだ有効」という同じ条件を付ける: `EXISTS (SELECT 1 FROM <表> WHERE id = :pending_id AND login_subject IS NULL AND claim_token_hash = :hash AND claim_expires_at > :now)`（`users` は `AND disabled_at IS NULL`、`invitations` は `AND status = 'pending'` も）。`:now` は、待つ行を読み終えて `batch()` を組む直前の時刻にする。読んだ時刻のままだと、読んだ後で期限を越えた行が結べてしまう。これで一意の制約に当たらず、もう一度流しても同じ結果になる。
    - 指名（`users`）: 同じ組織に同じ `sub` の行があれば、その行を `is_admin = 1` にし、`disabled_at` を空にする。続けて待っていた行を消す。無ければ、待っていた行に `sub` を埋め、`login_email`、`claim_token_hash`、`claim_expires_at` を空にし、`name` を Google のプロフィールの名前に書き直す（`AND NOT EXISTS (同じ組織の同じ sub の行)`）。
-   - 招待（`invitations`）: 同じワークスペースに同じ `sub` の承諾待ちの別の招待がある（`id <> :pending_id`）か、その人がもうそのワークスペースに所属していれば、待っていた招待を `revoked` にする。無ければ、`sub` を埋め、`login_email`、`claim_token_hash`、`claim_expires_at` を空にする（`AND NOT EXISTS (…)`）。
+   - 招待（`invitations`）: 同じワークスペースに同じ `sub` の承諾待ちの別の招待がある（`id <> :pending_id`）か、その人がもうそのワークスペースに所属していれば、待っていた招待を `revoked` にする（書く列は `status` と `responded_at`）。取り消した招待は、`login_email`、`claim_token_hash`、`claim_expires_at` を持ったまま残す。`login_subject` が空なら `login_email` が入っているという CHECK（`(login_subject IS NULL) = (login_email IS NOT NULL)`）のため、空にできない。無ければ、`sub` を埋め、`login_email`、`claim_token_hash`、`claim_expires_at` を空にする（`AND NOT EXISTS (…)`）。招待では、同じ組織で無効にされた人にも `sub` は埋まる。入れるかどうかは、ログインの判定（`hasLoginAccess`）が無効にされた人を除いて決める。
    - どちらも、結んだことを `change_logs` に残す（`entity_type` は `user` か `invitation`、`action` は `update`、`actor_user_id` は結んだ本人、`operator` は空）。指名した運用者は、指名したときの `change_logs` で分かる。`changes_json` には `login_email`、`claim_token_hash`、`claim_expires_at` を入れず、待っていた行の名前は「Google の招待（ログイン待ち）」と残す。
-   - 文の並びは、統合と取り消しを先に、`sub` を埋める文を後にする。
+   - 文の並びは、`change_logs` の記録を先に、統合と取り消しを次に、`sub` を埋める文を最後にする。記録を変える文の後ろに置くと、先の文が待っている行を変えた後は「待っている行がまだ有効」の条件が外れて、記録が入らないため。記録の条件は、実際に行を変える文と同じにする。
    - どの文も行を変えなかったら（`meta.changes` がすべて 0）、当たらなかったときと同じ文言を返す。
-7. そのあとは、GitHub と同じく `sub` で入れる組織を引き、アカウントを作り、`users.account_id` を埋める。`sub` を埋めるのをアカウントを作るより先にするのは、入れる組織が1つもない人のアカウントを作らないため。
-8. 6 の途中で失敗しても、行は待ったままで、期限までは同じ招待の URL を開き直せば結べる。
+7. そのあとは、GitHub と同じく `sub` で入れる組織を引き、アカウントを作り、`users.account_id` を埋める。`sub` を埋めるのをアカウントを作るより先にするのは、入れる組織が1つもない人のアカウントを作らないため。GitHub でログイン済みの人が招待の URL から Google でログインしたときも、セッションを Google のアカウントのものに替える（GitHub のアカウントとはまとめない）。結んだ後の行き先は、指名なら結んだ組織の `/<slug>`、招待なら届いた招待が出る `/`。
+8. 6 の途中で失敗しても、行は待ったままで、期限までは同じ招待の URL を開き直せば結べる。結んだ後の 7 で失敗したときは、`sub` を埋めた後で秘密を使い切っているので、招待の URL は使えない。ログインの画面（`/login`）から Google でログインすれば、`sub` で当たって入れる。
 
 `login_subject` が空の `users` の行は、運用者の画面の「指名済み、ログイン待ち」のほかには、ユーザーの一覧にも担当の候補にも出さない。待つ間の `name` がメールアドレスのため。
 
 結んだ後の見分けは `sub` だけで、Google の側でメールアドレスが変わっても、結んだ行はそのまま当たる。
 
-期限を過ぎて結ばれていない招待は、人数に数えず、招待の一覧に「期限切れ」と出す。期限を過ぎた指名は、運用者の画面に「期限切れ」と出し、運用者が指名し直す。
+期限を過ぎて結ばれていない招待は、人数に数えず、招待の一覧に「期限切れ」と出す。期限を過ぎた指名は、運用者の画面に「期限切れ」と出し、運用者が指名し直す。運用者の組織の一覧の管理者の状態は、結ばれた管理者がおらず、結ばれていない管理者の行がどれも期限の過ぎた待つ行なら `expired`、期限内の待つ行か結ばれていない GitHub の指名が1つでもあれば `pending` とする。
 
 人数（`organizations` の「人数」）の数え方: `sub` の行は `(login_provider, login_subject)`、待つ行は `(login_provider, login_email)` で1人。すでに所属している人をメールアドレスで招待すると、結ぶまでの間だけ2人に数える（結んだときに取り消す）。
 

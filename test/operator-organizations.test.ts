@@ -6,6 +6,7 @@ import { afterEach, describe, expect, test, vi } from 'vitest';
 import { createApp } from '../src/server/app.ts';
 import { implementedOperations } from '../src/server/operations/index.ts';
 import { operatorLoginIdOf } from '../src/server/auth/operators.ts';
+import { sha256Hex } from '../src/server/auth/tokens.ts';
 import { commonDb, insertOrganization, orgDb } from '../src/server/db/index.ts';
 import {
   adminCountsStatementForTest,
@@ -173,8 +174,13 @@ describe('組織の作成', () => {
       body: { slug, name: ' さくら開発 ', admin: adminOf(user) },
     });
     expect(res.status).toBe(200);
-    // 応答は組織の表示名、slug、指名した人の GitHub のユーザー名だけ
-    expect(await res.json()).toEqual({ slug, name: 'さくら開発', admin_login_name: 'minato-aoba' });
+    // 応答は組織の表示名、slug、指名した人の GitHub のユーザー名だけ。招待の URL は Google の指名だけ
+    expect(await res.json()).toEqual({
+      slug,
+      name: 'さくら開発',
+      admin_login_name: 'minato-aoba',
+      invite: null,
+    });
 
     const organization = await organizationRow(slug);
     expect(organization).toMatchObject({
@@ -464,17 +470,33 @@ describe('組織の作成', () => {
     expect(await organizationRow(slug)).toBeUndefined();
   });
 
-  test('Google での指名はまだ使えないことを返し、行も作らない', async () => {
-    const slug = newSlug();
+  test.each(['', '   ', 'みお@example.com', 'mio@', 'mio example@example.com', 'a@b@example.com'])(
+    'Google のメールアドレスの形が合わない（%j）と、email_invalid で断り、行も作らない',
+    async (email) => {
+      const slug = newSlug();
+      const res = await post(app, create, {
+        token: await operatorToken(),
+        body: { slug, name: '工房', admin: { provider: 'google', email } },
+      });
+      expect(res.status).toBe(400);
+      expect(await errorCodeOf(res.clone())).toBe('invalid_input');
+      if (email.trim() !== '') {
+        expect(await problemsOf(res)).toEqual([
+          expect.objectContaining({ path: 'admin.email', code: 'email_invalid' }),
+        ]);
+      }
+      expect(await organizationRow(slug)).toBeUndefined();
+    },
+  );
+
+  test('重なる slug は Google の指名でも 409 で、行も作らない', async () => {
+    const existing = await createOrganizationRow();
     const res = await post(app, create, {
       token: await operatorToken(),
-      body: { slug, name: '工房', admin: { provider: 'google', email: 'mio@example.com' } },
+      body: { slug: existing.slug, name: '工房', admin: { provider: 'google', email: 'mio@example.com' } },
     });
-    expect(res.status).toBe(400);
-    expect(await problemsOf(res)).toEqual([
-      expect.objectContaining({ path: 'admin.provider', code: 'login_provider_unavailable' }),
-    ]);
-    expect(await organizationRow(slug)).toBeUndefined();
+    expect(res.status).toBe(409);
+    expect(await usersOf(existing.id)).toEqual([]);
   });
 
   test('GitHub に届かないときは 503 の unavailable で、行も作らない', async () => {
@@ -748,6 +770,129 @@ describe('結び直しの失敗', () => {
     expect(logged).toContain(organization!.id);
     expect(logged).toContain('create-organization');
     expect(logged).not.toContain('secret SQL detail');
+  });
+});
+
+describe('Google のメールアドレスでの指名', () => {
+  async function createWithGoogle(email: string) {
+    const slug = newSlug();
+    const res = await post(app, create, {
+      token: await operatorToken(),
+      body: { slug, name: 'ひばり工房', admin: { provider: 'google', email } },
+    });
+    return { slug, res };
+  }
+
+  test('待つ行（login_subject が空、メールアドレス、秘密のハッシュ、14日の期限）と change_logs の2行ができ、応答の本文にだけ招待の URL がある', async () => {
+    const { slug, res } = await createWithGoogle('  Mio.Hoshino@Example.com ');
+    expect(res.status).toBe(200);
+    expect(res.headers.get('Cache-Control')).toBe('no-store');
+    const body = (await res.json()) as {
+      admin_login_name: string;
+      invite: { url: string; expires_at: string };
+    } & Record<string, unknown>;
+    expect(Object.keys(body).sort()).toEqual(['admin_login_name', 'invite', 'name', 'slug']);
+    expect(Object.keys(body.invite).sort()).toEqual(['expires_at', 'url']);
+    expect(body.admin_login_name).toBe('mio.hoshino@example.com');
+    const url = new URL(body.invite.url);
+    expect(url.pathname).toBe('/invite');
+    const claimToken = url.hash.slice(1);
+    expect(claimToken).toMatch(/^[A-Za-z0-9_-]{43}$/);
+    // ヘッダーのどれにも秘密を入れない
+    for (const [name, value] of res.headers) expect(value, name).not.toContain(claimToken);
+
+    const organization = await organizationRow(slug);
+    const users = await usersOf(organization!.id);
+    expect(users).toHaveLength(1);
+    expect(users[0]).toMatchObject({
+      account_id: null,
+      login_provider: 'google',
+      login_subject: null,
+      login_email: 'mio.hoshino@example.com',
+      claim_token_hash: await sha256Hex(claimToken),
+      claim_expires_at: body.invite.expires_at,
+      name: 'mio.hoshino@example.com',
+      is_admin: 1,
+    });
+    const span = Date.parse(users[0]!.claim_expires_at!) - Date.parse(users[0]!.created_at);
+    expect(span).toBe(14 * 24 * 60 * 60 * 1000);
+
+    const logs = await changeLogsOf(organization!.id);
+    expect(logs).toHaveLength(2);
+    // 記録に秘密、ハッシュ、メールアドレス、期限を入れない
+    for (const log of logs) {
+      for (const secret of [claimToken, users[0]!.claim_token_hash!, 'mio.hoshino', users[0]!.claim_expires_at!]) {
+        expect(log.changes_json, log.entity_type).not.toContain(secret);
+      }
+    }
+    expect(JSON.parse(logs.find((log) => log.entity_type === 'user')!.changes_json)).toEqual({
+      is_admin: [null, 1],
+      name: [null, 'Google の招待（ログイン待ち）'],
+      login_provider: [null, 'google'],
+    });
+  });
+
+  test('一覧の管理者の状態は、待つ間は pending、期限が過ぎると expired。結ばれていない別の指名が混ざれば pending', async () => {
+    const token = await operatorToken();
+    const { slug } = await createWithGoogle('mio@example.com');
+    expect((await listed(token, slug))?.admin_status).toBe('pending');
+
+    const organization = (await organizationRow(slug))!;
+    const db = orgDbOf(organization.id);
+    await db.batch([
+      db.statement((q) =>
+        q
+          .updateTable('users')
+          .set({ claim_expires_at: new Date(Date.now() - 1000).toISOString() })
+          .where('organization_id', '=', organization.id),
+      ),
+    ]);
+    expect((await listed(token, slug))?.admin_status).toBe('expired');
+
+    // 期限切れの待つ行と、まだ結ばれていない GitHub の指名が混ざるときは、待つ人がいるので pending
+    await createUser(
+      { ...organization, verified: verifiedOrganizationForTest(organization.id) },
+      { is_admin: 1, account_id: null },
+    );
+    expect((await listed(token, slug))?.admin_status).toBe('pending');
+  });
+
+  test('一覧は招待の URL を返さない（応答の本文にも、一覧の項目にもない）', async () => {
+    const token = await operatorToken();
+    const { slug, res } = await createWithGoogle('mio2@example.com');
+    const claimToken = new URL(((await res.json()) as { invite: { url: string } }).invite.url).hash.slice(1);
+    const listedRes = await post(app, listOrganizations, { token });
+    expect(await listedRes.text()).not.toContain(claimToken);
+    expect(slug).toBeTruthy();
+  });
+
+  test('organizations と users の書き込みの途中で失敗すると、管理者のいない組織が残る（none）', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const failing = envWithD1Hooks(testEnv, {
+      beforeBatch: (sqls) => {
+        if (sqls.some((sql) => sql.startsWith('insert into "users"'))) throw new Error('secret SQL detail');
+      },
+    });
+    const slug = newSlug();
+    const res = await post(app, create, {
+      token: await operatorToken(),
+      env: failing,
+      body: { slug, name: '工房', admin: { provider: 'google', email: 'mio3@example.com' } },
+    });
+    expect(res.status).toBe(500);
+    expect(await res.text()).not.toContain('mio3@example.com');
+    expect((await listed(await operatorToken(), slug))?.admin_status).toBe('none');
+  });
+
+  test('運用者でない人は 403 で、何も作らない', async () => {
+    const slug = newSlug();
+    const person = await createLoginPerson();
+    const res = await post(app, create, {
+      token: person.token,
+      body: { slug, name: '工房', admin: { provider: 'google', email: 'mio4@example.com' } },
+    });
+    expect(res.status).toBe(403);
+    expect(await organizationRow(slug)).toBeUndefined();
   });
 });
 

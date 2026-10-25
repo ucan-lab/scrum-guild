@@ -148,6 +148,7 @@ Worker のシークレットは、ダッシュボードの Worker の Settings �
 
 - 戻り先の URL は、アプリが開始のときに渡す `redirect_uri`（`PUBLIC_ORIGIN` に `/api/auth/google/callback` を足した値）と、クライアントに登録した承認済みのリダイレクト URI が完全に合う必要がある。独自ドメインへ移すときは、リダイレクト URI も直す（上の「ドメインへ移す」）
 - 開発用の戻り先は、`pnpm dev` の画面の URL（`http://localhost:5173`）。`DEV_PORT_OFFSET` でポートをずらして確かめるときは、そのポートの戻り先（例 `http://localhost:5183/api/auth/google/callback`）も承認済みのリダイレクト URI に足す。`pnpm preview` で確かめるときは `http://localhost:8787/api/auth/google/callback` も足す
+- Google で指名した組織の招待の URL を失った、または期限が切れたときは、指名し直し（#60）が入るまで直す操作が無い。招待の URL は作った直後の画面にだけ出て、DB には SHA-256 のハッシュしか無いので、運用者にも取り出せない
 - 開発用のクライアントで確かめるのは、本物のログインとログアウトだけ。e2e は seed のセッションの Cookie で通し、クライアントの値を渡さない（`docs/development.md` の「開発とテストでのログイン」）
 - アプリは Google のアクセストークンを使わず、取り消しもしない。Google 側の許可を消すと、その人はログインのたびに同意画面が出直す
 - クライアントシークレットは git、ログ、Issue、PR に書かない。漏れたと分かったら、クライアントで新しいシークレットを作って入れ替え、動くことを確かめてから古いシークレットを無効にして消す
@@ -291,7 +292,9 @@ rollback で戻るのは、版が持つものすべて。コードと設定の�
 
 - `scripts/deploy.ts` の `PRODUCTION_URL`（煙のテストが叩く URL）
 - `wrangler.jsonc` の `vars` の `PUBLIC_ORIGIN`（更新系の API の Origin の検査。新しい URL と一致しない呼び出しは 403 になる。https の URL だけを入れる。http の URL（手元のループバックのホスト以外）を入れると、`/api/health` を含むすべての API が 500 になり、煙のテストで見つかる）
-- ほかに直すもの（GitHub OAuth App の戻り先、Cookie）は `docs/development.md` の「Cloudflare のアカウントとドメイン」
+- GitHub OAuth App の Redirect URI（`https://scrum-guild.dev/api/auth/github/callback`）と、Google の OAuth クライアントの承認済みのリダイレクト URI（`https://scrum-guild.dev/api/auth/google/callback`）を、新しい URL に直す（上の「GitHub OAuth App」と「Google の OAuth クライアント」）。アプリが開始のときに渡す `redirect_uri` は `PUBLIC_ORIGIN` から作るので、登録の URL と完全に合わないと、Google の同意画面が `redirect_uri_mismatch` を出す
+- 運用者が作った招待の URL（`<公開 URL>/invite#<秘密>`）は、古いドメインを指したまま残る。移した後は、まだ結ばれていない指名（運用者の一覧で「指名済み、ログイン待ち」と「期限切れ」）を、新しいドメインで作り直す
+- ほかに直すもの（Cookie）は `docs/development.md` の「Cloudflare のアカウントとドメイン」
 
 ## 組織
 

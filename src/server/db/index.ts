@@ -18,6 +18,9 @@ export {
 export { insertOrganization, type CreatedOrganization, type NewOrganization } from './create-organization.ts';
 export {
   adminStatusesOf,
+  claimPendingLogin,
+  type ClaimInput,
+  type ClaimOutcome,
   hasLoginAccess,
   type LoginAccessTarget,
   linkLoginToAccount,

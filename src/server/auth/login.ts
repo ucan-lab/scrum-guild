@@ -5,18 +5,23 @@
 //   - ログインのたびに、組織の DB の users.account_id が空で、ログインの ID が同じ行（指名で待っていた行）を結ぶ。
 //     共通の表と組織の中の表は別の batch() で書くので、結ぶ書き込みが失敗しうる。失敗したらセッションを作らず、
 //     「もう一度ログインしてください」を出す。次のログインで同じ行を結び直すので、何度流しても同じ結果になる
+//   - 招待の URL から始めたログイン（state の行に秘密のハッシュがある）は、上の判定より前に、メールアドレスで待つ指名と招待を結ぶ
+//     （docs/data-model.md の「メールアドレスで待つ指名と招待」の 4〜7）。結べなければ、ほかの組織に入れる人でもセッションを作らず、
+//     `invite` で断る。結べたら、あとは通常のログインと同じ（sub で入れる組織を引き、アカウントを作り、users.account_id を結ぶ）
 //   - セッションを作る
 // 人が差分を読む領域（docs/development.md の「マージの判定」）
-import { commonDb, hasLoginAccess, linkLoginToAccount } from '../db/index.ts';
+import { normalizeEmail } from '../../shared/email.ts';
+import { claimPendingLogin, commonDb, hasLoginAccess, linkLoginToAccount, type ClaimOutcome } from '../db/index.ts';
 import { uuidv7 } from '../uuid.ts';
 import type { LoginProfile } from './login-method.ts';
 import { isOperatorLogin } from './operators.ts';
 import { createSession } from './session.ts';
 
 export type LoginOutcome =
-  | { ok: true; accountId: string; sessionToken: string }
-  // denied: 入れる組織も招待も無い。retry: 結ぶ書き込みが失敗した
-  | { ok: false; reason: 'denied' | 'retry' };
+  // claimed: 招待の URL から結んだときの、結んだ先
+  | { ok: true; accountId: string; sessionToken: string; claimed?: ClaimOutcome }
+  // denied: 入れる組織も招待も無い。retry: 結ぶ書き込みが失敗した。invite: 招待の URL から結べなかった
+  | { ok: false; reason: 'denied' | 'retry' | 'invite' };
 
 type LoginInput = {
   provider: string;
@@ -25,6 +30,8 @@ type LoginInput = {
   // このリクエストが持っていた古いセッションの Cookie の値
   replacedSessionToken: string | undefined;
   requestId: string;
+  // 招待の URL から始めたログインの、その URL の秘密の SHA-256（oauth_states.claim_token_hash）。通常のログインは null
+  claimTokenHash?: string | null;
 };
 
 async function findAccountId(env: Env, provider: string, subject: string): Promise<string | undefined> {
@@ -101,9 +108,30 @@ async function ensureAccount(env: Env, input: LoginInput, existing: string | und
   }
 }
 
+// 招待の URL の秘密と、ID トークンの確かめたメールアドレスで、待っている指名と招待を結ぶ。結べなければ undefined。
+// メールアドレスが無い（email_verified が真でない）、そろえられない、Google 以外の手段、のときは DB を引かずに結べないものとする
+async function claimWaitingRow(env: Env, input: LoginInput, tokenHash: string): Promise<ClaimOutcome | undefined> {
+  const { provider, profile, now } = input;
+  const email = profile.verifiedEmail == null ? undefined : normalizeEmail(profile.verifiedEmail);
+  if (provider !== 'google' || email === undefined) return undefined;
+  return claimPendingLogin(env, {
+    tokenHash,
+    email,
+    login: { provider, subject: profile.subject },
+    name: profile.displayName ?? profile.loginName,
+    now,
+  });
+}
+
 export async function completeLogin(env: Env, input: LoginInput): Promise<LoginOutcome> {
   const { provider, profile, now } = input;
   const login = { provider, subject: profile.subject };
+
+  let claimed: ClaimOutcome | undefined;
+  if (input.claimTokenHash != null) {
+    claimed = await claimWaitingRow(env, input, input.claimTokenHash);
+    if (claimed === undefined) return { ok: false, reason: 'invite' };
+  }
 
   let existing = await findAccountId(env, provider, profile.subject);
   const operator = isOperatorLogin(env, [login]);
@@ -138,5 +166,5 @@ export async function completeLogin(env: Env, input: LoginInput): Promise<LoginO
   }
 
   const sessionToken = await createSession(env, accountId, now, input.replacedSessionToken);
-  return { ok: true, accountId, sessionToken };
+  return { ok: true, accountId, sessionToken, ...(claimed === undefined ? {} : { claimed }) };
 }

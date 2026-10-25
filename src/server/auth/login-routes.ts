@@ -1,6 +1,7 @@
 // ログインの開始と戻り先。ブラウザの GET の移動（リダイレクト）なので、操作の定義の外に直に書く例外
 // （docs/development.md の「操作の定義」。/api/health と同じ）。
 //   GET /api/auth/<手段>/start?return_to=<自分のサイトのパス>
+//   POST /api/auth/google/start（招待の URL の画面のフォーム。本文に秘密）
 //   GET /api/auth/<手段>/callback?code=...&state=...
 // どちらも失敗はログインの画面（/login?error=...）へ移す。ブラウザが見る応答に JSON のエラーを返さないため。
 // Origin の検査は掛からない（ほかのサイトからの移動で呼ばれる）。ログインの CSRF は state の Cookie で止める（oauth-state.ts）。
@@ -9,10 +10,11 @@
 // 人が差分を読む領域（docs/development.md の「マージの判定」）
 import { Hono, type Context } from 'hono';
 import { deleteCookie, getCookie, setCookie } from 'hono/cookie';
-import { resolvedReturnTo, safeReturnTo } from '../../shared/return-to.ts';
+import { DEFAULT_RETURN_TO, resolvedReturnTo, safeReturnTo } from '../../shared/return-to.ts';
 import { sessionCookieName, sessionCookieOptions } from '../../shared/session-cookie.ts';
 import type { AppEnv } from '../app-env.ts';
 import { executionContextOf } from '../execution-context.ts';
+import { readClaimToken } from './claim-form.ts';
 import { createGithubLoginMethod, githubCredentials } from './github.ts';
 import { createGoogleLoginMethod, googleCredentials } from './google.ts';
 import { completeLogin } from './login.ts';
@@ -26,10 +28,11 @@ import {
   startOAuthState,
 } from './oauth-state.ts';
 import { consumeLoginRateLimits, consumeLoginStartRateLimits, type LoginStartRateLimit } from './rate-limit.ts';
-import { timingSafeEqualStrings } from './tokens.ts';
+import { sha256Hex, timingSafeEqualStrings } from './tokens.ts';
 
-// ログインの画面（/login?error=）が扱う失敗。画面は文言を辞書から出す（src/routes/login/）
-export type LoginError = 'denied' | 'retry' | 'too_many' | 'unavailable';
+// ログインの画面（/login?error=）が扱う失敗。画面は文言を辞書から出す（src/routes/login/）。
+// invite: 招待の URL から結べなかった（秘密の形が違う、当たらない、期限切れ、使い済み、別のアカウント、停止した組織など。理由は分けない）
+export type LoginError = 'denied' | 'retry' | 'too_many' | 'unavailable' | 'invite';
 
 // 戻り先の code の形。GitHub の code は短い英数字で、Google の code は `4/0A...` のように `/` を含む。長さと文字で弾いてから送る
 const CODE_PATTERN = /^[A-Za-z0-9._~/-]{1,512}$/;
@@ -133,6 +136,16 @@ function isUserNavigation(c: Context<AppEnv>): boolean {
   );
 }
 
+// Sec-Fetch-Site を送らないブラウザからの POST で、Origin が別のオリジンを指しているか。
+// Sec-Fetch-Site があれば isUserNavigation が見分けるので、ここでは見ない。Origin が無い、null（Referrer-Policy: no-referrer
+// の画面からの送信）、自分のオリジンのときは通す
+function isForeignOriginWithoutSecFetch(c: Context<AppEnv>): boolean {
+  if (c.req.header('Sec-Fetch-Site') !== undefined) return false;
+  const origin = c.req.header('Origin');
+  if (origin === undefined || origin === 'null') return false;
+  return origin !== new URL(c.env.PUBLIC_ORIGIN).origin;
+}
+
 // 開始は IP の枠と全体の枠、戻り先は IP の枠だけを数える。戻り先は state の行を使い切れたものだけを数え、行は開始が
 // 書いたものしか無いので、開始の全体の枠で間接的に絞られる。GitHub から戻った人を全体の枠で断らない
 async function consumeStartRateLimit(c: Context<AppEnv>): Promise<LoginStartRateLimit> {
@@ -146,6 +159,44 @@ async function consumeCallbackRateLimit(c: Context<AppEnv>): Promise<boolean> {
 export function loginRoutes(options: LoginRoutesOptions): Hono<AppEnv> {
   const app = new Hono<AppEnv>();
 
+  // 開始の共通の道。画面の移動だけを受けた後に、レート制限、state の行と Cookie、手段の認可の URL への移動を行う。
+  // claimTokenHash は招待の URL から始めたログインの、その URL の秘密の SHA-256（state の行に入れる）
+  async function redirectToProvider(
+    c: Context<AppEnv>,
+    provider: string,
+    returnTo: string,
+    claimTokenHash: string | null,
+  ): Promise<Response> {
+    const limit = await consumeStartRateLimit(c);
+    if (!limit.allowed) {
+      // 画面は同じ too_many。ログでは、全体の枠に当たったのかを IP の枠と見分ける
+      log(c, { step: 'start', provider, outcome: limit.limitedBy === 'global' ? 'too_many_global' : 'too_many' });
+      return toLoginPage(c, 'too_many', returnTo);
+    }
+    const method = methodOf(c, provider, options.fetcher);
+    if (method === undefined) {
+      log(c, { step: 'start', provider, outcome: 'unavailable' });
+      return toLoginPage(c, 'unavailable', returnTo);
+    }
+    const started = await startOAuthState(c.env, provider, returnTo, new Date(), method.usesNonce, claimTokenHash);
+    setCookie(
+      c,
+      oauthStateCookieName(c.env.PUBLIC_ORIGIN),
+      started.state,
+      oauthStateCookieOptions(c.env.PUBLIC_ORIGIN),
+    );
+    log(c, { step: 'start', provider, outcome: 'redirected' });
+    return c.redirect(
+      method.authorizeUrl({
+        state: started.state,
+        codeChallenge: started.codeChallenge,
+        redirectUri: callbackUrl(c.env, provider),
+        nonce: started.nonce,
+      }),
+      302,
+    );
+  }
+
   app.get('/:provider/start', async (c) => {
     const provider = c.req.param('provider');
     if (!PROVIDERS.has(provider)) return c.notFound();
@@ -156,37 +207,39 @@ export function loginRoutes(options: LoginRoutesOptions): Hono<AppEnv> {
         log(c, { step: 'start', provider, outcome: 'not_navigation' });
         return toLoginPage(c, undefined, returnTo);
       }
-      const limit = await consumeStartRateLimit(c);
-      if (!limit.allowed) {
-        // 画面は同じ too_many。ログでは、全体の枠に当たったのかを IP の枠と見分ける
-        log(c, { step: 'start', provider, outcome: limit.limitedBy === 'global' ? 'too_many_global' : 'too_many' });
-        return toLoginPage(c, 'too_many', returnTo);
-      }
-      const method = methodOf(c, provider, options.fetcher);
-      if (method === undefined) {
-        log(c, { step: 'start', provider, outcome: 'unavailable' });
-        return toLoginPage(c, 'unavailable', returnTo);
-      }
-      const started = await startOAuthState(c.env, provider, returnTo, new Date(), method.usesNonce);
-      setCookie(
-        c,
-        oauthStateCookieName(c.env.PUBLIC_ORIGIN),
-        started.state,
-        oauthStateCookieOptions(c.env.PUBLIC_ORIGIN),
-      );
-      log(c, { step: 'start', provider, outcome: 'redirected' });
-      return c.redirect(
-        method.authorizeUrl({
-          state: started.state,
-          codeChallenge: started.codeChallenge,
-          redirectUri: callbackUrl(c.env, provider),
-          nonce: started.nonce,
-        }),
-        302,
-      );
+      return await redirectToProvider(c, provider, returnTo, null);
     } catch (err) {
       logError(c, 'ログインを始められなかった', err);
       return toLoginPage(c, 'unavailable', returnTo);
+    }
+  });
+
+  // 招待の URL から始めるログイン（/invite のフォームの POST）。秘密は URL ではなく本文（application/x-www-form-urlencoded）でだけ受ける。
+  // Google だけ（メールアドレスで待つ指名と招待に結ぶのは Google だけ）。GET の開始と同じ道を通る:
+  //   1. 画面の移動でなければ（ほかのサイトからのフォームの POST は Sec-Fetch-Site が cross-site）、本文を読まず、数えず、行も書かず、ログインの画面へ戻す
+  //   2. 秘密が決まった形（base64url の43文字）でなければ、ハッシュも DB の問い合わせ（レート制限を含む）もせずに invite で断る
+  //   3. 戻り先を `/` にして、レート制限、state の行と Cookie、Google への移動は GET と同じ。state の行に秘密のハッシュだけを入れる
+  // 秘密そのものは state の行にもログにも出さない。
+  // Origin は必須にしない: /invite は Referrer-Policy: no-referrer なので、フォームの POST の Origin が null になりうる
+  // （Origin を必須にすると、正しい利用者の POST を断ってしまう）。ほかのサイトからの POST は、上の 1 の Sec-Fetch で止める。
+  // Sec-Fetch-Site を送らない古いブラウザに限り、自分のオリジンでも null でもない Origin が付いていれば、同じく 1 の扱いで断る
+  app.post('/:provider/start', async (c) => {
+    const provider = c.req.param('provider');
+    if (provider !== 'google') return c.notFound();
+    try {
+      if (!isUserNavigation(c) || isForeignOriginWithoutSecFetch(c)) {
+        log(c, { step: 'start', provider, outcome: 'not_navigation' });
+        return toLoginPage(c);
+      }
+      const claimToken = await readClaimToken(c.req.raw);
+      if (claimToken === undefined) {
+        log(c, { step: 'start', provider, outcome: 'invalid_claim' });
+        return toLoginPage(c, 'invite');
+      }
+      return await redirectToProvider(c, provider, DEFAULT_RETURN_TO, await sha256Hex(claimToken));
+    } catch (err) {
+      logError(c, 'ログインを始められなかった', err);
+      return toLoginPage(c, 'unavailable');
     }
   });
 
@@ -259,6 +312,7 @@ export function loginRoutes(options: LoginRoutesOptions): Hono<AppEnv> {
         now: new Date(),
         replacedSessionToken: getCookie(c, sessionCookie),
         requestId: c.get('requestId'),
+        claimTokenHash: consumed.claimTokenHash,
       });
       if (!outcome.ok) {
         log(c, { step: 'callback', provider, outcome: outcome.reason });
@@ -266,8 +320,16 @@ export function loginRoutes(options: LoginRoutesOptions): Hono<AppEnv> {
       }
       setCookie(c, sessionCookie, outcome.sessionToken, sessionCookieOptions(c.env.PUBLIC_ORIGIN));
       log(c, { step: 'callback', provider, outcome: 'ok', accountId: outcome.accountId });
+      // 招待の URL から結んだときの行き先: 指名なら結んだ組織、招待なら届いた招待が出る `/`。戻り先は使わない
+      // （招待の URL から始めたログインの戻り先は `/` で、結んだ先が決める）。
       // 戻る先は、自分のオリジンのパスであることを URL の解決の後でもう一度確かめてから使う
-      return c.redirect(resolvedReturnTo(returnTo, new URL(c.env.PUBLIC_ORIGIN).origin), 302);
+      const destination =
+        outcome.claimed?.kind === 'user'
+          ? safeReturnTo(`/${outcome.claimed.organizationSlug}`)
+          : outcome.claimed?.kind === 'invitation'
+            ? DEFAULT_RETURN_TO
+            : returnTo;
+      return c.redirect(resolvedReturnTo(destination, new URL(c.env.PUBLIC_ORIGIN).origin), 302);
     } catch (err) {
       logError(c, 'ログインを完了できなかった', err);
       return toLoginPage(c, 'retry');

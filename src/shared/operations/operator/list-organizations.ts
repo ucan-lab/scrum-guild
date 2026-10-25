@@ -4,8 +4,9 @@ import { defineOperation } from '../define.ts';
 // 組織の管理者の状態。運用者が組織の中を見ずに、管理者のいない組織と、指名した人のログイン待ちの組織を見分けるのに使う。
 //   none: 無効でない管理者の行が無い
 //   pending: 管理者の行はあるが、どれもアカウントに結ばれていない（指名した人がまだログインしていない）
+//   expired: pending のうち、どれも Google の指名で待つ行で、招待の URL の期限が過ぎている（運用者が指名し直す）
 //   active: それ以外
-export const adminStatuses = ['none', 'pending', 'active'] as const;
+export const adminStatuses = ['none', 'pending', 'expired', 'active'] as const;
 export type AdminStatus = (typeof adminStatuses)[number];
 
 // 組織をまたぐ一覧。組織の中のデータ（人の名前、ID など）は返さない。ユーザー数などの集計は組織の停止と再開の Issue で足す

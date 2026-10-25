@@ -29,7 +29,7 @@
 - 定義: 操作ごとに、名前、説明、入力と出力の zod のスキーマ、`read` か `write`、要る権限を1つのオブジェクトに書き、`src/shared/operations/` に置く（`defineOperation()`）。一覧は `src/shared/operations/index.ts`。運用者の操作は `src/shared/operations/operator/`（人が差分を読む領域）、ログインしている人自身の操作（`me`、`logout`）は `src/shared/operations/session/`。定義は処理を持たない。画面の束に Worker のコードを入れないため。定義は画面の束にも入るので、`define.ts` が `src/shared/zod-config.ts` を先に読み込み、zod の eval の試し（`new Function`）を止める（`jitless`）。画面の CSP に `'unsafe-eval'` が無く、試しが違反として報告されるため。
 - 回数の上限: 重い操作（手動の同期など）には、定義に `rateLimit: { max, windowSeconds }` を付ける。登録の関数が、権限の検査の後、入力を読む前に、アカウントと操作ごとに `rate_limits` の `operation:<操作の名前>:<アカウントの ID>` で数え、窓の中で `max` を超えた呼び出しは 429 の `rate_limited` で断る（処理は動かない）。窓の最初の呼び出しから `windowSeconds` たつと数え直す。数えるのは1文の upsert で、並行した呼び出しも取りこぼさない（`src/server/auth/rate-limit.ts`）。アプリ側のレート制限は、ログインと手動の同期にだけ設ける（`docs/requirements.md` の「運用」）。ログインは GET の例外なので定義に付けず、`login:<IP>` で数える（「GitHub のログインと取り込み」）。手動の同期の「接続ごとに5分に1回」は `connections.last_manual_sync_at` で判定し、この項目とは別。
 - 処理: `src/server/operations/` で `implement(定義, 処理)` の形に書き、`src/server/operations/index.ts` の一覧に足す。Hono のルートは、この一覧を `createApp()` が1つの関数（`operationsApp()`）で登録する。ルートを直に書かない。仮の操作は本番の一覧に入れず、テストの中で定義する。
-- 直に書く例外（GET のルート）: `/api/health` と、ログインの開始 `GET /api/auth/<手段>/start?return_to=<パス>` と戻り先 `GET /api/auth/<手段>/callback`（`src/server/auth/login-routes.ts`）。後の2つは GitHub へ移し、GitHub から戻るブラウザの GET のリダイレクトで、JSON の応答を返す操作の形に合わない。Origin の検査は掛けず（ほかのサイトからの移動で呼ばれる）、ログインの CSRF は state の Cookie で止める（「GitHub のログインと取り込み」）。失敗は JSON のエラーではなく `/login?error=<理由>` へのリダイレクトで返す。ログアウトと「自分」を返す口（`logout`、`me`）は例外にせず、操作の定義で作る（`src/shared/operations/session/`）。
+- 直に書く例外（GET のルートと、招待の URL の画面のフォームの POST）: `/api/health` と、ログインの開始 `GET /api/auth/<手段>/start?return_to=<パス>` と戻り先 `GET /api/auth/<手段>/callback`、招待の URL から Google のログインを始める `POST /api/auth/google/start`（`src/server/auth/login-routes.ts`）。ログインの3つは手段（GitHub か Google）へ移し、手段から戻るブラウザの移動（リダイレクト）で、JSON の応答を返す操作の形に合わない。POST は `/invite` の画面のフォームから送る `application/x-www-form-urlencoded` の本文（欄 `claim_token`）に秘密を持ち、302 で Google へ移す。fetch で認可の URL を JSON で受ける形にしないのは、Google へ移す開始が2通りになり、ほかのサイトからの防ぎを Origin の検査で作り直すことになるため。Origin の検査は掛けず（ほかのサイトからの移動で呼ばれる）、ログインの CSRF は state の Cookie で止める（「GitHub のログインと取り込み」）。失敗は JSON のエラーではなく `/login?error=<理由>` へのリダイレクトで返す。ログアウトと「自分」を返す口（`logout`、`me`）は例外にせず、操作の定義で作る（`src/shared/operations/session/`）。
 - URL: `POST /api/<slug>/<操作の名前>`。組織の外の操作（ログインだけ、運用者）は `POST /api/<操作の名前>`。読む操作も POST にする。API の応答はどれもキャッシュしないので、GET にしない損は小さく、Origin の検査をすべての操作に同じに掛けられる。入力は JSON の本文だけで、`Content-Type: application/json` を要る。URL は名前から作り、定義に持たせない。名前は英小文字と数字をハイフンでつないだ1語（`task-title` など）で、一覧で重ならない。URL の形は `operationPath()` に1つだけ持ち、画面と登録の関数が同じ値を使う。
 - 権限の種類（`permission`）:
 
@@ -145,7 +145,7 @@
 - 定義の `rateLimit` を超えた呼び出しは、429 の `rate_limited`。
 - 本文が 1MiB を超えたときは、413 で `code` は `invalid_input`。
 - D1 に届かないとき（`/api/health` の疎通）と、運用者の操作が問い合わせる GitHub に届かないとき（上限、障害、クライアントの ID と秘密が未設定）は 503 の `unavailable`。入力の誤りの 400 の `invalid_input` とは分け、人がしばらくしてからやり直せる失敗として扱う。
-- 運用者の操作（`src/server/operations/operator.ts`）は、入力の誤りの `details` の `code` で理由を分ける（`slug_format`、`slug_reserved`、`github_user_not_found`、`github_not_a_user`、`github_user_changed`、`login_provider_unavailable`。定義は `src/shared/operations/operator/create-organization.ts`）。画面はこの `code` で文言を選ぶ。重なる slug は 409 の `conflict`。
+- 運用者の操作（`src/server/operations/operator.ts`）は、入力の誤りの `details` の `code` で理由を分ける（`slug_format`、`slug_reserved`、`github_user_not_found`、`github_not_a_user`、`github_user_changed`、`email_invalid`（Google のメールアドレスの形が合わない）。定義は `src/shared/operations/operator/create-organization.ts`）。画面はこの `code` で文言を選ぶ。重なる slug は 409 の `conflict`。
 - 想定していないエラーは `app.onError` で 500 の `internal` にし、中身は応答に出さずログにだけ出す。
 - ログは Workers Logs に JSON の1行で出す。操作ごとの項目は `requestId`（`cf-ray`。無ければ乱数。エラーのログと同じ値）、`operation`、`organizationId`、`userId`（組織の中の `users` の ID）、`accountId`、`code`（成功は `ok`）、`status`、`durationMs`。本文、コメント、取り込んだ内容、認証情報（招待の URL の秘密、ID トークン、Google のメールアドレスを含む）は出さない。ログインの開始と戻り先（GET の例外）は、操作ごとのログとは別に、`route: "auth"`、`step`（`start` か `callback`）、`provider`、`outcome`（`ok`、`denied`、`too_many` など）、成功のときの `accountId` を1行出す。OAuth の `code`、`state`、トークン、Cookie の値、クライアントの秘密は出さない（`test/login-security.test.ts` が確かめる）。
 
@@ -218,7 +218,7 @@ GitHub は無料のプランのまま使う（2026-10-23 に決めた）。無�
   - 本体を移してリンクが切れたら、ワークツリーで `ln -sfn <本体>/.dev.vars .dev.vars` と打って張り直す
   - ワークツリーに `.dev.vars`（壊れたリンクも）が既にあれば触らない。本体の根（`.git` の親で、`.dev.vars.example` があるディレクトリ）を確かめられないときも置かない
   - ワークツリーの `.dev.vars` には本体の値が見える。`grep -R` やグロブ、テストなど、セッションの道具から届きうる（読み取りを止める守りは、Read の拒否とフックが見る範囲だけ）。守りはどちらもパスの名前（`.dev.vars`）で判定するので、リンク先が本体にあっても、ワークツリーの `.dev.vars` を名指しした Read と `cat` は止まる（2026-10-26 に仮の値のリンクで確かめた。このリポジトリの設定ではサンドボックスは使っていない）。vitest の `cloudflareTest` は wrangler を通して `.dev.vars` を読み、`cloudflare:test` の `env` に入れる。読み込み先を変える設定はプラグインに無い。そこで本体の `.dev.vars` に置く値は、開発用の OAuth App の値と seed の ID のような、開発用のものだけにする。本番のシークレットは入れない
-  - `DEV_PORT_OFFSET` でずらして立てると、GitHub の OAuth の戻り先のポートが開発用の OAuth App の Redirect URI と合わず、本物のログインは通らない（下の「開発用のサーバー」の `PUBLIC_ORIGIN` の注意）。seed のセッションで開く `pnpm dev:open` はずらしても使える
+  - `DEV_PORT_OFFSET` でずらして立てると、GitHub の OAuth の戻り先のポートが開発用の OAuth App の Redirect URI と、Google の戻り先のポートがクライアントの承認済みのリダイレクト URI と合わず、本物のログインは通らない（下の「開発用のサーバー」の `PUBLIC_ORIGIN` の注意）。seed のセッションで開く `pnpm dev:open` はずらしても使える
   - `OPERATOR_LOGIN_IDS` の決まりは「開発とテストでのログイン」
 - vitest（vite 8 の oxc）は、変換するファイルを `include` に含む tsconfig を、ファイルのディレクトリから上の階層へ探す。隣のディレクトリの tsconfig は見ないので、`src/server/tsconfig.json` が `test/` を含んでいても `test/` からは見つからない。リポジトリの中に見つからないとワークツリーの外へ上り、本体の作業コピーの `tsconfig.json` を読む。本体に依存が無ければ、継ぎ先の `$app/tsconfig`（`svelte-kit sync` が作る）が無く `[TSCONFIG_ERROR] Failed to load tsconfig '$app/tsconfig'` で落ち、依存があれば本体の版の設定を黙って読む。`test/tsconfig.json` はそれを止めるために置いてある。テストが読むファイルを新しいトップレベルのディレクトリに置くときは、そのディレクトリにも `test/tsconfig.json` と同じように tsconfig を置く
 - PR がマージされたら、`~/.claude/scripts/git-cleanup-merged.sh <名前>` でワークツリーと手元のブランチを消す（`pr-feedback` の後片付け）。人がマージするときも、手元のセッションは PR が閉じるのを待っていて、知らせを受けずに後片付けと、受け持つほかの PR の追従まで続ける。クラウドのセッションは手番を終えると再開できないので、人がマージを知らせる。squash merge では SHA が変わり `git branch -d` が拒むため、PR がマージ済みで head の SHA が手元と一致するときだけ `-D` で消す。スクリプトは dotfiles にあり、無い環境では人が消す
@@ -233,7 +233,7 @@ GitHub は無料のプランのまま使う（2026-10-23 に決めた）。無�
 
 - Worker を vite の中で動かす `@cloudflare/vite-plugin` は使わない。SvelteKit との同居を公式に支持していると確かめられず、2つのプラグインが dev サーバーと build の両方を触るので、片方の更新で壊れやすいため
 - `pnpm preview` は、build した `build/` と API を `wrangler dev` だけで配る。本番と同じ配り方（Workers Static Assets、`_headers`、SPA の fallback）を確かめる口で、HMR は効かない
-- 開発の URL は2つある。`pnpm dev` は `http://localhost:5173`、`pnpm preview` は `http://localhost:8787`。Origin の検査は、この URL を `PUBLIC_ORIGIN` として `wrangler dev` に渡して行う（`scripts/dev.ts`）。ブラウザが送る Origin と合わない URL（`127.0.0.1` など）で開くと、更新系の API は 403 になる。GitHub の OAuth の戻り先もこの URL から作る（`<画面の URL>/api/auth/github/callback`）ので、開発用の OAuth App の Redirect URI とポートまで合わせる（`docs/operations.md` の「GitHub OAuth App」）
+- 開発の URL は2つある。`pnpm dev` は `http://localhost:5173`、`pnpm preview` は `http://localhost:8787`。Origin の検査は、この URL を `PUBLIC_ORIGIN` として `wrangler dev` に渡して行う（`scripts/dev.ts`）。ブラウザが送る Origin と合わない URL（`127.0.0.1` など）で開くと、更新系の API は 403 になる。GitHub の OAuth の戻り先もこの URL から作る（`<画面の URL>/api/auth/github/callback`）ので、開発用の OAuth App の Redirect URI とポートまで合わせる（`docs/operations.md` の「GitHub OAuth App」）。Google の戻り先も同じ（`<画面の URL>/api/auth/google/callback`）で、クライアントの承認済みのリダイレクト URI にこの URL（`pnpm dev` の `http://localhost:5173` と `pnpm preview` の `http://localhost:8787`）を足して合わせる（`docs/operations.md` の「Google の OAuth クライアント」）。運用者が作る招待の URL も `PUBLIC_ORIGIN` から作る（`<PUBLIC_ORIGIN>/invite#<秘密>`）
 
 `pnpm dev` と `pnpm preview` の `wrangler dev` は、API のポートの `/cdn-cgi/handler/scheduled?cron=*+*+*+*+*` を常に開いている（wrangler の既定）。開くと、毎分の定期処理（期限切れの行の掃除）を起こせる。`/__scheduled` は `assets` の `not_found_handling` が先に答えて SPA の画面が返るので使わない。`cron` は `wrangler.jsonc` の `triggers.crons` にある式で、`+` は空白の代わり。表に無い式では例外になる。
 
@@ -521,13 +521,18 @@ GitHub App も比べた。人が抜けても取り込みが止まらない、PAT
   - PKCE（`S256`）の `code_challenge` を付けた GitHub の認可の URL へ 302 で移す
   - `return_to` は自分のサイトのパスだけを受け付ける（`src/shared/return-to.ts`）。条件は、`/` で始まり、`//` で始まらず、`\` を含まず、`.` と `..` の区間（`%2e` を含む）を持たず、印字できる ASCII だけで、512文字まで。最初の区間が `api` と `login` のものも除く。`/.//evil.example` のように、URL の解決が区間を畳んで `//evil.example` になる書き方を止めるためで、除いた値は `/` に直す
   - ログインの後に移す先は、URL を解決した後の値（パス、クエリ、フラグメント）も同じ検査に通す。通らなければ `/` を使う。ログインの画面の `return_to` も、同じ関数で整える
+- 招待の URL から始める `POST /api/auth/google/start`（Google だけ。GitHub への POST は 404）:
+  - `/invite` の画面のフォームが、`application/x-www-form-urlencoded` の本文（欄 `claim_token`）に秘密を入れて送る。受ける条件と数え方は `GET` の開始と同じ関数を通す: 画面の移動でなければ（ほかのサイトからのフォームの POST は `Sec-Fetch-Site` が `cross-site`）、本文を読まず、数えず、行も書かず、`/login` へ戻す
+  - 本文を読んだら、秘密が base64url の43文字で、欄が1つだけで、本文が1KB以内でなければ、ハッシュも DB の問い合わせ（レート制限の行を含む）もせずに `invite` で断る。秘密を URL のクエリで渡しても受けない
+  - 通ったものは、`GET` の開始と同じ道（レート制限、`oauth_states` の行と state の Cookie、Google の認可の URL への 302）を通る。行の `return_to` は `/`、`claim_token_hash` に秘密の SHA-256（小文字の16進）を入れる。秘密そのものは行にもログにも応答のヘッダーにも出さない
+- 招待の URL から始めた戻り先（`oauth_states.claim_token_hash` が空でない行）: ID トークンを確かめた後、`completeLogin` が下の分かれ道より前に、メールアドレスで待つ指名と招待を結ぶ（`docs/data-model.md` の「メールアドレスで待つ指名と招待」の 4〜7）。ID トークンの `email` は `email_verified` が真偽値の `true` のときだけ `LoginProfile.verifiedEmail` に載り、入力と同じ関数（`src/shared/email.ts` の `normalizeEmail`）でそろえてから、待っている行の `login_email` と突き合わせる。結べなければ、ほかの組織に入れる人でもセッションを作らず（Cookie も古いセッションもそのまま）、`/login?error=invite` へ移す。結べたら、指名は結んだ組織の `/<slug>`、招待は `/` へ移す（`resolvedReturnTo` を通す）。GitHub でログイン済みの人も、Google のアカウントのセッションに替える（アカウントはまとめない）
 - 戻り先 `GET /api/auth/github/callback?code=&state=`:
   - 最初に、クエリの state と Cookie の state が揃い、形が 43 文字の base64url で、値が一致することを確かめる（比較は `crypto.subtle.timingSafeEqual`）
   - 合わない戻りは、`retry` で断る。レート制限には数えず、`oauth_states` の行にも state の Cookie にも触れない。DB の行だけで確かめると、攻撃者が自分で始めたログインの code と state を付けた戻り先の URL を踏ませて、被害者のブラウザを攻撃者のアカウントでログインさせられる（ログインの CSRF）。数えればほかのサイトのページから被害者の IP の枠を使い切らせられ、Cookie を消せば被害者が始めたログインが壊れる
   - 合った戻りだけが、state の Cookie を消し（成功でも失敗でも）、`oauth_states` の行を `DELETE ... RETURNING` で消して読み、行を使い切れたときだけレート制限を数える。並行した戻りでも、通るのは1回だけ。Cookie はブラウザ以外なら自由に付けられるので、行の無い state でレート制限の行を書かせないため、数えるのを行の後にする
   - 行が無い（使い済み）、別の手段の行、10分を過ぎた行は、`retry` で断る。`error` が付いた戻り（GitHub 側で拒否）と code の無い戻りも同じ
 - 分かれ道（`login.ts`）: GitHub の ID で `account_logins` を引き、入れる組織があるか調べ（`hasLoginAccess()`。アカウントができる前の指名の行と招待は、ログインの手段と ID で当てる）、運用者の一覧にも無ければ `denied` で断る（`accounts` も `account_logins` も作らない）。初めての人（`account_logins` が無い）は `accounts` と `account_logins` を1回の `batch()` で作る。2回目以降は `account_logins` の `login_name`、`display_name`、`avatar_url` と `accounts.last_login_at` を書き直す。続けて、組織の DB の `users.account_id` が空で、ログインの手段と ID が同じ行を、そのアカウントに結ぶ（`linkLoginToAccount()`。ログインのたびに流す。何度流しても同じ結果。結ぶ行を先に読み、当たったときだけ書くので、空振りのログインで組織の DB に書かない）。共通の表と組織の中の表は別の `batch()` で書く。結ぶ書き込みが失敗したら、セッションを作らず `retry` を出し、次のログインで結ぶ（`docs/data-model.md` の「書き込みの単位」）。最後にセッションを作る（32 バイトの乱数の base64url を Cookie に入れ、SHA-256 の16進を `sessions` に入れる。このリクエストが持っていた古いセッションは、同じ `batch()` で消す）。並行した最初のログインでは、アカウントが無いと読んだ後に、もう片方がアカウントを作り、指名の行を結ぶことがある（結んだ行は、アカウントが無い側からは当たらなくなる）。判定が落ちたら `account_logins` を読み直し、できていればその ID で判定し直す。権限の無い人のアカウントを先に作ることはしない。両方がアカウントを作る側に回ったときは、片方が `account_logins` の主キーで落ちて、`accounts` ごと戻る。落ちた側は読み直して続ける
-- ログインの画面への理由（`/login?error=`）: `denied`（入れる組織も招待も無い）、`retry`（state が合わない、使えない code、結ぶ書き込みの失敗）、`too_many`（レート制限）、`unavailable`（GitHub に届かない、応答が想定と違う、クライアントの ID と秘密が未設定）。再度ログインできるときは `return_to` も付ける
+- ログインの画面への理由（`/login?error=`）: `denied`（入れる組織も招待も無い）、`retry`（state が合わない、使えない code、結ぶ書き込みの失敗）、`too_many`（レート制限）、`unavailable`（GitHub に届かない、応答が想定と違う、クライアントの ID と秘密が未設定）、`invite`（招待の URL から結べなかった。秘密の形が違う、当たらない、期限切れ、使い済み、取り消し済み、停止した組織、別のアカウント、メールアドレスが確認済みでない、のどれも同じ。どのメールアドレスに招待したかは出さない）。再度ログインできるときは `return_to` も付ける
 - レート制限: ログインの開始（画面の移動だけ）と戻り先（state の Cookie が合い、DB の state の行を使い切れたものだけ）を、同じ IP（`CF-Connecting-IP`。無いリクエストは `unknown` の1つの枠。IPv4 はそのまま。IPv6 は、1人が /64 の中の無数のアドレスを使えるので、上位 64 ビット（/64）で数え、事業者の単位の /48 も、より緩い上限で数える。IPv4 を写した IPv6 は、16進と全部を書いた形も含めて IPv4 に直す。解釈できない値は `unknown` の枠）から10分に60回まで（`src/server/auth/rate-limit.ts` の `LOGIN_RATE_LIMIT`）。1回のログインで2回数えるので30人分。同じオフィスの15人のチームが一斉に入っても詰まらない値にした。IPv6 の /48 は10分に120回まで（`LOGIN_RATE_LIMIT_IPV6_SITE`）。開始だけは、全部の IP を合わせた全体の枠も10分に600回まで数える（`LOGIN_RATE_LIMIT_GLOBAL`。数える順と理由は `docs/data-model.md` の `rate_limits`）。どれかを超えたら `too_many`。どの枠も、上限に届いた後は行を書き換えずに断る。全体の枠で断った開始は、ログの `outcome` を `too_many_global` にする。戻りが超えたときは GitHub に問い合わせない。IP は `CF-Connecting-IP` を使うので、Cloudflare の Pseudo IPv4 を Overwrite で有効にしない（`docs/operations.md`）
 - ログアウト（操作 `logout`）: 今のセッションの行を消し、Cookie を消す。ほかの端末のセッションは残す
 
@@ -545,7 +550,7 @@ GitHub App も比べた。人が抜けても取り込みが止まらない、PAT
   - `exp` が過ぎていない
   - `nonce` が `oauth_states` の値に一致する
   - `email_verified` が真偽値の `true`（文字列の `"true"` は通さない）。メールアドレスで待つ指名と招待に結ぶときだけ要る
-- 検査の置き場: 5つの検査は `google.ts` の `checkGoogleIdToken()`（純粋な関数）に置く。失敗の理由は固定の文だけで、ID トークン、`code`、応答の本文、メールアドレスは入れず、ログにも出さない。メールアドレスは `email_verified` が真偽値の `true` のときだけ検査の結果に載り、それ以外は `null`。`LoginProfile` と `account_logins` には持たない。`email_verified` が `true` でなくてもこのログインは通す（メールアドレスで待つ指名と招待に結ぶ処理が、`null` なら結ばずに済ます）
+- 検査の置き場: 5つの検査は `google.ts` の `checkGoogleIdToken()`（純粋な関数）に置く。失敗の理由は固定の文だけで、ID トークン、`code`、応答の本文、メールアドレスは入れず、ログにも出さない。メールアドレスは `email_verified` が真偽値の `true` のときだけ検査の結果に載り、それ以外は `null`。`verify()` が `LoginProfile.verifiedEmail` に載せて結ぶ処理へ渡すだけで、`account_logins` には持たない。`email_verified` が `true` でなくてもこのログインは通す（メールアドレスで待つ指名と招待に結ぶ処理が、`null` なら結ばずに済ます）
 - `sub`: 受け取った文字列のまま扱い、数値に直さない。空でない文字列で、255字までを受ける
 - 名前: `account_logins.login_name` はプロフィールの `name`、無ければ「Google ユーザー」。`display_name` は `name` か、無ければ空
 - アバター: `picture` が `https://lh3.googleusercontent.com` の https のときだけ持ち、ほかは空にする。`lh3` は Google のプロフィール画像の既定のホストで、利用者が上げた画像も載るが、読むのは `img-src` なのでスクリプトは動かない。`*.googleusercontent.com` 全体は、ほかのサービスのファイルを配るサブドメインまで画面から読めるので許さない。CSP の `img-src` に同じホストを足してある
@@ -639,9 +644,10 @@ Issue はエピック、ストーリー、タスクの3階層にし、親子は�
 
 最初の一本道から厳しく入れる（2026-10-22 に決めた）。後から締めると、壊れる所を探す手間が大きいため。
 
-- CSP: SvelteKit の `csp` の設定（ハッシュ）で、`script-src` を自分のものだけにする。`default-src 'self'`、`object-src 'none'`、`base-uri 'self'`、`frame-ancestors 'none'`、`form-action 'self'` を基本にする。外を読む必要が出たら、その先だけを足す。足したのは `img-src` の `'self'` と `https://avatars.githubusercontent.com`（GitHub のアバター）と `https://lh3.googleusercontent.com`（Google のアバター。`*.googleusercontent.com` 全体は許さない）で、運用者が最初の管理者に指名する人のアバターを作る前に見せるため。書体は自分の Worker から配るので足していない（上の「書体」）
+- CSP: SvelteKit の `csp` の設定（ハッシュ）で、`script-src` を自分のものだけにする。`default-src 'self'`、`object-src 'none'`、`base-uri 'self'`、`frame-ancestors 'none'`、`form-action 'self'` を基本にする。外を読む必要が出たら、その先だけを足す。足したのは `img-src` の `'self'` と `https://avatars.githubusercontent.com`（GitHub のアバター）と `https://lh3.googleusercontent.com`（Google のアバター。`*.googleusercontent.com` 全体は許さない）で、運用者が最初の管理者に指名する人のアバターを作る前に見せるため。`form-action` には `https://accounts.google.com` を足した。招待の URL の画面のフォームは自分の API に POST し、Chrome は `form-action` をリダイレクトの先にも当てるので、Google の認可の画面へ移る 302 が止まらないようにする。書体は自分の Worker から配るので足していない（上の「書体」）
 - `style-src` は `'self'` に加え、SvelteKit が差し込む読み上げ用の要素（`svelte-announcer`）の `style` 属性だけを `'unsafe-hashes'` とハッシュで通す。止めると、画面を移るたびに読み上げ用の文が見えてしまうため
 - `X-Content-Type-Options: nosniff`、`Referrer-Policy: strict-origin-when-cross-origin`、`Strict-Transport-Security: max-age=31536000; includeSubDomains`
+- 招待の URL を開く画面（`/invite`）だけ `Referrer-Policy: no-referrer`。フラグメントは Referer に付かないが、秘密を持つ画面なのでオリジンも外へ送らない。`_headers` の `/invite` と `/invite/` の規則は、`/*` の値と `a, b` の形で並ばないよう、`! Referrer-Policy` で外してから付けたもの
 - e2e で、CSP の違反が出ないことを確かめる
 
 値は `src/shared/security-headers.ts` の1か所に持ち、画面の資産と API の両方がそこから付ける。
@@ -680,7 +686,7 @@ Hono のミドルウェアで、404 と 500 を含む全応答に付ける。
 - 本番の Worker の名前は `scrum-guild` で、ドメインを取るまでの URL は `https://scrum-guild.ucan-lab.workers.dev/`（2026-10-24 に決めた）。GitHub OAuth App の戻り先もこの URL にする
 - アカウントは、本番に初めてデプロイする Issue（上の「初版の作る順」の2）で Workers Paid にする（2026-10-24 に決めた）。無料の枠は1回の CPU の時間や外への通信の回数の上限が厳しく、`wrangler dev` ではその上限で止まらないので、本番でだけ落ちる差を最初から無くすため
 - 本番の `workers.dev` は Cloudflare Access で守らない（2026-10-24 に決めた）。アプリに GitHub のログインがあり、入れる組織か届いた招待が無い人は入れないため。Access を挟むと、煙のテストの `/api/health` を通す除外が要り、ドメインを移すときに Access のアプリも作り直すことになる
-- ドメインへ移すときは、公開する URL の設定、GitHub OAuth App の戻り先、Cookie を直し、移した後にもう一度ログインしてもらう。手順は `docs/operations.md` に書く
+- ドメインへ移すときは、公開する URL の設定、GitHub OAuth App の戻り先、Google のクライアントの承認済みのリダイレクト URI、Cookie を直し、移した後にもう一度ログインしてもらう。作ってある招待の URL（`<公開 URL>/invite#<秘密>`）は古いドメインのままなので、結ばれていない指名は作り直す。手順は `docs/operations.md` に書く
 - 組織を示す URL の形（`/<slug>/...`）は、`workers.dev` の上でも変えない
 
 ## 定期の作業
