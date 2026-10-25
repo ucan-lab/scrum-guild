@@ -4,7 +4,7 @@
 // 道具の名前が展開で決まるコマンド、env -S、読むだけの道具以外の xargs、wrangler の設定の書き換えと wrangler dev の -c では人の確認を挟む（docs/development.md の「Claude の設定とフック」）。
 // permissions.deny の前方一致では npx wrangler や pnpm exec wrangler の言い換えを取りこぼすので、語に分けて判定する。
 // 踏み線であって守りの本体ではない。変数の中身と、パイプで sh に流す中身は見えない。
-import { existsSync } from 'node:fs';
+import { existsSync, statSync } from 'node:fs';
 import path from 'node:path';
 import {
   DYNAMIC,
@@ -138,13 +138,14 @@ const UNREADABLE_FLAG = /^-(?!\d)[^=]*[\s.]/;
 const SHORT_REMOTE = /^-(?![-\d])[^=]*r/;
 
 // wrangler dev に渡す -c と --config（-c=…、--config=… も）は、remote の binding を持つ別の設定を渡して本番の D1 と R2 に届きうる。
-// 作業場所の外を指すときだけ見る案は、作業場所の中に Write で置いた設定が通るので採らず、値を問わず確認を挟む。
-// yargs は -lc のようにまとめた短いフラグの c も -c と読むので、SHORT_REMOTE と同じく = より前に c を含む短いフラグを拾う。-- の後ろはフラグにならない
+// 値を問わず確認を挟む。作業場所の中に Write で置いた設定も渡せるため。
+// yargs は -lc のようにまとめた短いフラグの c も -c と読み、別名の長い形 --c も読む（--r と同じ）ので、
+// SHORT_REMOTE と同じく = より前に c を含む短いフラグと --c を拾う。-- の後ろはフラグにならない
 const DEV_CONFIG_REASON = 'wrangler dev の -c と --config は、remote の binding を持つ設定を渡して本番の D1 と R2 に届きうる。人が確かめる';
 function mentionsConfig(args) {
   const end = args.indexOf('--');
   const head = end === -1 ? args : args.slice(0, end);
-  return head.some((a) => /^--config(=|$)/.test(a) || /^-(?![-\d])[^=]*c/.test(a));
+  return head.some((a) => /^--(config|c)(=|$)/.test(a) || /^-(?![-\d])[^=]*c/.test(a));
 }
 
 function judgeWrangler(args) {
@@ -454,6 +455,40 @@ function isWranglerConfig(word) {
   return /(^|\/)wrangler\.(json|jsonc|toml)$|(^|\/)\.wrangler\/deploy\/config\.json$/i.test(word.replace(/^>+/, ''));
 }
 
+// 書かれた語のほかに、正規化した語（.wrangler//deploy/./config.json）と、作業場所が分かるときは作業場所から解決した絶対パス
+// （cd .wrangler/deploy && … > config.json）でも設定に当たるかを見る。作業場所が null のときは書かれた語だけで見る
+function wranglerConfigAt(dir) {
+  return (word) => {
+    const written = word.replace(/^>+/, '');
+    return isWranglerConfig(written) || isWranglerConfig(path.posix.normalize(written)) || Boolean(dir && isWranglerConfig(path.resolve(dir, written)));
+  };
+}
+
+// cp x dir/ や cp x .、cp x .. のように、宛先がディレクトリのとき（末尾が /、.、..、または作業場所から解決して実在するディレクトリ）
+function isDirectoryTarget(dest, dir) {
+  if (/(^|\/)\.\.?$|\/$/.test(dest)) return true;
+  try {
+    return Boolean(dir) && statSync(path.resolve(dir, dest)).isDirectory();
+  } catch {
+    return false;
+  }
+}
+
+// 宛先がディレクトリのコピーは、元の名前でそのディレクトリに置かれる（cp /tmp/wrangler.jsonc .）。元の basename を宛先に付けて見る。
+// 絶対パスの宛先は、作業場所が分かり、その根（scripts/deploy-production.ts のあるディレクトリ）の中のときだけ見る
+// （cp wrangler.jsonc /tmp/ は別の場所への複製）。~ で始まる宛先は見ない
+function copiesIntoDirectory(matches, pos, dir) {
+  const dest = pos.at(-1);
+  if (pos.length < 2 || !dest || !isDirectoryTarget(dest, dir)) return false;
+  if (dest.startsWith('~')) return false;
+  if (dest.startsWith('/')) {
+    const root = dir && (repoRootOf(dir) ?? dir);
+    const absolute = path.resolve(dest);
+    if (!root || !(absolute === root || absolute.startsWith(root + path.sep))) return false;
+  }
+  return pos.slice(0, -1).some((src) => matches(path.posix.join(dest, path.posix.basename(src))));
+}
+
 // Homebrew の GNU coreutils は g を前に付けた名前で入る（gcp、gsed）。g を外した名前で表を引く。全部の名前から g を外すと gh や git が崩れるので、名前の集合を持つ
 const GNU_PREFIXED = new Set(['gcp', 'gmv', 'gln', 'ginstall', 'grm', 'gsed', 'gdd', 'gtee', 'gtruncate', 'gshred']);
 const MULTI_ARG_WRITERS = new Set(['tee', 'rm', 'truncate', 'unlink', 'shred', 'srm', 'sponge', 'ed', 'ex', 'patch']);
@@ -466,8 +501,9 @@ const FIND_ACTIONS = new Set(['-delete', '-exec', '-execdir', '-ok', '-okdir']);
 // コピーの宛先は、GNU の並べ替え（install x .dev.vars -m 600）で最後とは限らないので、位置引数のどれかを見る。
 // find -exec は書くか読むかが分からないので、名前が引数にあれば止める。
 // 守る先では、コピーの元（cp .claude/hooks/x.mjs /tmp/）と find -exec での読み取り（find .claude/hooks -exec grep）に確認を挟まないよう、
-// コピーは最後の引数だけを見て、find は見ない
-function writesTo(matches, tool, args, words, { anyOperand = false } = {}) {
+// コピーは最後の引数だけを見て、find は見ない。
+// intoDirectory は wrangler の設定の判定に付け、宛先がディレクトリのコピーを元の名前で見る。install は GNU の並べ替えがあるので位置引数のどれかも見る
+function writesTo(matches, tool, args, words, { anyOperand = false, intoDirectory = null } = {}) {
   if (words.some((w) => w.startsWith('>') && matches(w.replace(/^>+/, '')))) return true;
   if (GNU_PREFIXED.has(tool)) tool = tool.slice(1);
   const pos = positionals(args);
@@ -475,15 +511,28 @@ function writesTo(matches, tool, args, words, { anyOperand = false } = {}) {
     return pos.some(matches);
   }
   if (MULTI_ARG_WRITERS.has(tool)) return pos.some(matches);
-  if (COPY_TOOLS.has(tool)) return anyOperand ? pos.some(matches) : matches(pos.at(-1) ?? '');
+  if (COPY_TOOLS.has(tool)) {
+    const anyDestination = anyOperand || (intoDirectory !== null && tool === 'install');
+    if (anyDestination ? pos.some(matches) : matches(pos.at(-1) ?? '')) return true;
+    return intoDirectory !== null && copiesIntoDirectory(matches, pos, intoDirectory.dir);
+  }
   if (tool === 'dd') return args.some((a) => a.startsWith('of=') && matches(a.slice('of='.length)));
   if (tool === 'find') return anyOperand && args.some((a) => FIND_ACTIONS.has(a)) && args.some(matches);
   if (tool === 'git') return args.some((a) => a.startsWith('--output=') && matches(a.slice('--output='.length)));
   return false;
 }
 
-// 道具の無い区切り（> f、exec > f）と cd、pushd のリダイレクトも見るので、tool を空、args を空にして呼べる
-function judgeFileWrites(tool, args, words) {
+// インタープリタに渡した語。位置引数とヒアドキュメントの本文は、-e の本文の中のパス（writeFileSync('wrangler.jsonc')）を
+// 拾えるよう、空白、引用符、括弧で区切った語も見る
+function interpreterWords(tool, args) {
+  if (!INTERPRETERS.has(tool)) return [];
+  const bodies = [...args.filter((a) => !/^[<>]/.test(a)), ...args.filter(isHeredoc).map(heredocBody)];
+  return bodies.flatMap((b) => [b, ...b.split(CODE_SEPARATORS).filter(Boolean)]);
+}
+
+// 道具の無い区切り（> f、exec > f）と cd、pushd のリダイレクトも見るので、tool を空、args を空にして呼べる。
+// dir は作業場所（分からなければ null）。wrangler の設定は相対パスを dir から解決しても見る
+function judgeFileWrites(tool, args, words, dir = null) {
   const results = [];
   if (judgeSecretAccess(tool, args, words) || writesTo(mentionsSecret, tool, args, words, { anyOperand: true })) {
     results.push([DENY, SECRET_FILE_REASON]);
@@ -491,7 +540,8 @@ function judgeFileWrites(tool, args, words) {
   if (writesTo(isProtectedPath, tool, args, words)) {
     results.push([ASK, '守る仕組み（Claude の設定とフック）とマイグレーションの書き換えは人が確かめる']);
   }
-  if (writesTo(isWranglerConfig, tool, args, words)) {
+  const isConfig = wranglerConfigAt(dir);
+  if (writesTo(isConfig, tool, args, words, { intoDirectory: { dir } }) || interpreterWords(tool, args).some(isConfig)) {
     results.push([ASK, 'wrangler の設定（wrangler.jsonc、.wrangler/deploy/config.json）に remote の binding を入れると、wrangler dev が本番の D1 と R2 に届く。書き換えは人が確かめる']);
   }
   return results;
@@ -565,10 +615,12 @@ function viaPackageManager(tool, args, dir) {
     if (a.startsWith('-')) {
       const eq = a.indexOf('=');
       const name = eq === -1 ? a : a.slice(0, eq);
-      if (DIR_FLAGS.has(name)) {
-        // = の形の値は、語ぜんたいの展開の印で見る
-        const valueAt = eq === -1 ? ++i : i;
-        const value = eq === -1 ? rest[valueAt] : a.slice(eq + 1);
+      // pnpm -Csr? のように -C に値を連結した形も -C として読む
+      const attached = !DIR_FLAGS.has(name) && /^-C./.test(a);
+      if (DIR_FLAGS.has(name) || attached) {
+        // = の形と連結の形の値は、語ぜんたいの展開の印で見る
+        const valueAt = eq === -1 && !attached ? ++i : i;
+        const value = attached ? a.slice(2) : eq === -1 ? rest[valueAt] : a.slice(eq + 1);
         dir = !dir || !value || /^[~$]/.test(value) || isUnresolved(rest, valueAt) ? null : path.resolve(dir, value);
       } else if (viaExec && SHELL_MODE_FLAGS.has(name)) {
         const script = eq === -1 ? rest[i + 1] : a.slice(eq + 1);
@@ -818,8 +870,19 @@ function splitsString(words, prefixes, ci) {
 const CF_WRANGLER_REASON = 'cf-wrangler は引数の読み方が wrangler と違い（util.parseArgs）、dev は本番の資源に向きうる。このリポジトリでは使わない';
 const XARGS_WRANGLER_REASON = 'xargs は標準入力から wrangler に引数を足すので、--remote が加わるかを判定できない。wrangler は xargs の後ろに置かない';
 const XARGS_REASON = 'xargs は標準入力から引数を足すので、何を実行するか（デプロイ、main への push、シークレットの読み取り）を判定できない。人が確かめる';
-// xargs の後ろに置いても、足される引数で書き込みや実行に変わらない読むだけの道具。今までどおりの判定で通す
-const XARGS_READERS = new Set(['grep', 'egrep', 'fgrep', 'rg', 'ag', 'wc', 'ls', 'cat', 'head', 'tail', 'file', 'stat']);
+// xargs の後ろに置いても、足される引数で書き込みや実行に変わらない読むだけの道具。xargs を外したときと同じ判定で通す。
+// rg の --pre、ag の --pager、file の -C は、標準入力から足した引数でコマンドを実行や書き込みをするので含めない
+const XARGS_READERS = new Set(['grep', 'egrep', 'fgrep', 'wc', 'ls', 'cat', 'head', 'tail', 'stat']);
+
+// xargs のフラグに引数の出どころを変える -a、-afile、-0a のようにまとめた形、--arg-file（--arg、--arg-file=file も）があるか。
+// 標準入力ではなくファイルから足すので、読むだけの道具でも何を読むかが見えない。値を取る短いフラグ（-I、-P …）の後ろの a は値の一部
+function xargsReadsFile(flags) {
+  return flags.some((w) => {
+    if (/^-[^-IPLdEnsJRSa]*a/.test(w)) return true;
+    const long = /^--(a[a-z-]*)(=|$)/.exec(w);
+    return Boolean(long) && 'arg-file'.startsWith(long[1]);
+  });
+}
 
 function judgeSegment(words, ctx) {
   const ci = commandIndex(words);
@@ -827,15 +890,15 @@ function judgeSegment(words, ctx) {
   if (setsWorkersCi(words, ci)) results.push([DENY, WORKERS_CI_REASON]);
   const tool = ci === -1 ? '' : baseName(words[ci]);
   const args = ci === -1 ? [] : sliceWords(words, ci + 1);
-  results.push(...judgeFileWrites(tool, args, words));
+  // env -C は後ろのコマンドの作業場所を変える。経由先に掛け直すとき（envFrom）は、前置きの env の分を解決済みなので重ねない
+  if (ci !== -1) ctx = { ...ctx, dir: dirAfterEnv(words, ci, ctx.dir, ctx.envFrom ?? 0) };
+  results.push(...judgeFileWrites(tool, args, words, ctx.dir));
   const prefixes = prefixIndexes(words);
   // env -S の文字列は、道具の名前の位置に1語として見えるか、フラグに紛れて道具が見つからない。ci が -1 でも見る
   if (splitsString(words, prefixes, ci)) results.push([ASK, ENV_SPLIT_REASON]);
   if (ci === -1) return results;
   // 道具の名前が変数や $(...)、glob で決まると、何を実行するかが分からない（"$(which wrangler)" deploy）
   if (shapeAt(words, ci).includes(DYNAMIC) || expandsAt(words, ci)) results.push([ASK, TOOL_EXPANDS_REASON]);
-  // env -C は後ろのコマンドの作業場所を変える。経由先に掛け直すとき（envFrom）は、前置きの env の分を解決済みなので重ねない
-  ctx = { ...ctx, dir: dirAfterEnv(words, ci, ctx.dir, ctx.envFrom ?? 0) };
 
   // 他の判定で止まっているなら、glob を展開する重い照合はしない
   if (!results.some(([d]) => d === DENY)) results.push(judgeDeployScript(words, ci, ctx.dir));
@@ -858,10 +921,14 @@ function judgeSegment(words, ctx) {
   if (wrangler !== -1 && isCfWrangler(words[wrangler])) results.push([DENY, CF_WRANGLER_REASON]);
   else if (wrangler !== -1) results.push(expandsAt(words, wrangler) ? UNQUOTED_REASON : judgeWrangler(sliceWords(words, wrangler + 1)));
 
-  // xargs は標準入力から引数を足すので、wrangler の引数（--remote）も、node や git が何を実行するかも見えない
-  if (prefixes.some((j) => baseName(words[j]) === 'xargs')) {
-    if (wrangler !== -1) results.push([DENY, XARGS_WRANGLER_REASON]);
-    else if (!XARGS_READERS.has(tool)) results.push([ASK, XARGS_REASON]);
+  // xargs は標準入力かファイル（-a）から引数を足すので、wrangler の引数（--remote）も、node や git が何を実行するかも見えない。
+  // 読むだけの道具以外では、findWrangler が引数を実行しない道具（echo、git など）で打ち切っても、後ろの語の wrangler を見る
+  const xargs = prefixes.find((j) => baseName(words[j]) === 'xargs');
+  if (xargs !== undefined) {
+    const isReader = XARGS_READERS.has(tool);
+    const wranglerAfter = wrangler !== -1 || (!isReader && words.some((w, i) => i > ci && (isWrangler(w) || isCfWrangler(w))));
+    if (wranglerAfter) results.push([DENY, XARGS_WRANGLER_REASON]);
+    else if (!isReader || xargsReadsFile(words.slice(xargs + 1, ci))) results.push([ASK, XARGS_REASON]);
   }
 
   const nextCtx = { ...ctx, cwd: ctx.dir, depth: ctx.depth + 1 };
@@ -906,13 +973,19 @@ export function judgeBash(command, { cwd, branchOf, scriptOf = () => undefined, 
   const switched = new Map();
   const currentBranch = (d) => (switched.has(d) ? switched.get(d) : branchOf(d));
   const results = [];
-  for (const words of splitSegments(command)) {
+  const segments = splitSegments(command);
+  // xargs は標準入力から引数を足すので、シークレットの名前を標準入力に流す形（echo <名前> | xargs cat）は、xargs の後ろの道具からは見えない。
+  // xargs がどこかの区切りにあれば、コマンド全体のどこかの語がシークレットの名前に当たるだけで止める。
+  // 名前が見えない形（ls -a | xargs grep TOKEN）は止められない
+  const hasXargs = segments.some((words) => prefixIndexes(words).some((i) => baseName(words[i]) === 'xargs'));
+  if (hasXargs && segments.some((words) => words.some(mentionsSecret))) results.push([DENY, SECRET_FILE_REASON]);
+  for (const words of segments) {
     // cd の後の git push は、移った先のブランチで判定する。展開できない cd の先は判定できないものとする
     const ci = commandIndex(words);
     if (ci !== -1 && ['cd', 'pushd'].includes(words[ci])) {
       if (setsWorkersCi(words, ci)) results.push([DENY, WORKERS_CI_REASON]);
       // cd . > .dev.vars のようにリダイレクトを付けられる。道具として見ない（cd の引数は書き込み先ではない）
-      results.push(...judgeFileWrites('', [], words));
+      results.push(...judgeFileWrites('', [], words, dir));
       const to = words[ci + 1];
       dir = !to || /^[~$-]/.test(to) || isUnresolved(words, ci + 1) || !dir ? null : path.resolve(dir, to);
       continue;

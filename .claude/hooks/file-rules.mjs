@@ -20,7 +20,8 @@ export function judgeFile({ rel, contents, shippedOnMain, inWorktree = false, on
     return ['ask', '守る仕組み（Claude の設定）の変更は人が確かめる'];
   }
   // wrangler は -c が無いとき、このファイルがあれば書かれた別の設定へ転送する。ignore されていて、remote の binding を持つ設定へ向けられる
-  if (/(^|\/)\.wrangler\/deploy\/config\.json$/.test(rel)) {
+  // macOS は大文字小文字を区別しないので、.wrangler/deploy/CONFIG.JSON も同じファイルを指す（i）
+  if (/(^|\/)\.wrangler\/deploy\/config\.json$/i.test(rel)) {
     return ['ask', 'wrangler の設定の転送先（.wrangler/deploy/config.json）の書き換えは人が確かめる。remote の binding を持つ設定へ向けると wrangler dev が本番に届く'];
   }
   // セッションが使うのは $CLAUDE_PROJECT_DIR のフック。別のワークツリーでの書き換えは PR で人が読むまで効かない
