@@ -23,8 +23,7 @@ describe('API', () => {
   test('/api/health は 200 で版を返す', async () => {
     const res = await exports.default.fetch('http://example.com/api/health');
     expect(res.status).toBe(200);
-    // rollback の実地の試し（#20 の手順6）で版をずらしている。revert の PR で戻す
-    expect(await res.json()).toEqual({ status: 'ok', version: 'dev-rollback-test' });
+    expect(await res.json()).toEqual({ status: 'ok', version: 'dev' });
     expectApiHeaders(res);
   });
 

@@ -2,8 +2,6 @@ import { expect, test, type Page } from '@playwright/test';
 
 // build と wrangler dev に渡した版。埋めていなければ dev（docs/development.md の「版」）
 const version = process.env.APP_VERSION || 'dev';
-// rollback の実地の試し（#20 の手順6）で API の版だけをずらしている。revert の PR で戻す
-const apiVersion = `${version}-rollback-test`;
 
 // CSP の違反は、ページのスクリプトより先に securitypolicyviolation を拾い、コンソールのエラーと合わせて集める
 async function watchViolations(page: Page): Promise<() => Promise<string[]>> {
@@ -32,7 +30,7 @@ test('/ はシェルを返し、API の版を出し、CSP の違反が無い', a
   expect(res?.headers()['content-security-policy']).toContain("frame-ancestors 'none'");
 
   await expect(page.getByRole('heading', { level: 1, name: 'Scrum Guild' })).toBeVisible();
-  await expect(page.getByRole('status')).toHaveText(`API: ok（版 ${apiVersion}）`);
+  await expect(page.getByRole('status')).toHaveText(`API: ok（版 ${version}）`);
   expect(await collect()).toEqual([]);
 });
 
@@ -50,7 +48,7 @@ test('画面の無いパスも 200 でシェルを返し、CSP の違反が無�
 test('/api/health は 200 で版を返す', async ({ request }) => {
   const res = await request.get('/api/health');
   expect(res.status()).toBe(200);
-  expect(await res.json()).toEqual({ status: 'ok', version: apiVersion });
+  expect(await res.json()).toEqual({ status: 'ok', version });
 });
 
 // 画面のシェルが出す版は API から取ったものなので、build に埋めた kit.version.name は SvelteKit が書き出す version.json で見る
