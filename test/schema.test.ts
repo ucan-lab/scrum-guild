@@ -97,7 +97,7 @@ describe('外部キー', () => {
   test('users の行を消す文は、users を指すどの列も索引で引く', async () => {
     // D1 は pragma_foreign_key_list を表の列で結合すると断るので、表ごとに引く
     const { results: tables } = await env.DB.prepare(
-      `SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' AND name NOT LIKE '_cf_%'`,
+      `SELECT name FROM sqlite_master WHERE type = 'table' AND substr(name, 1, 7) <> 'sqlite_' AND substr(name, 1, 4) <> '_cf_'`,
     ).all<{ name: string }>();
     const children: string[] = [];
     for (const { name } of tables) {
