@@ -58,8 +58,34 @@
 
 ### 言葉の辞書
 
-- 見本の `design/kit.js` の `vocab` と同じく、キーごとにゲームの言葉とスクラムの言葉を持つ辞書を TypeScript で書き、`src/shared` に置く。
-- 片方の言葉が欠けたら型の検査で落ちる形にする。画面の文言は辞書を通して出し、直に書かない。
+- 辞書は `src/shared/vocabulary.ts` に置く。キーごとに、ゲームの言葉（`game`）とスクラムの言葉（`scrum`）の両方を必須にする。`workspace('パーティ', 'ワークスペース')` のように2つ渡す形なので、片方を消すと `pnpm check` が落ちる。言葉が同じ項目（`reward` など）も両方書く。
+- キーには、言葉づかいを決める単位（`scope`）がある。`workspace` はワークスペースの設定で切り替わる。`organization` は管理者が決める組織の設定で切り替わり、冒険者ギルド、ギルドマスター、ギルドの書記のほか、ワークスペースの外の画面の名前（自分の今日、通知、自分の設定、組織の管理）と、枠の共通の文言（閉じる、件など）を入れる（`docs/requirements.md` の「ゲームの仕組み」）。`word(key, { workspace, organization })` が引く。
+- 語順や記号を含む文は、`{名前}` の置き換えを持つ1項目にする（`pageTitle` の `{page} - {app}`、`apiStatus` など）。`t(key, { 名前: 値 })` で埋める。ゲームとスクラムで置き換えの名前をそろえることは `scripts/vocabulary.test.ts` が確かめる。テンプレートに語順や記号を直に書かない。
+- 画面は `src/lib/vocabulary.svelte.ts` の `t(key)` で文言を出し、直に書かない。今の言葉づかいはここのストアが持ち、既定は両方ともゲームの言葉。本物の値を API から入れるのは #53。
+- 辞書の型の保証は `src/shared/vocabulary.typecheck.ts` が持つ。片方の言葉が欠けた項目が型で落ちることを `@ts-expect-error` で確かめ、落ちなくなると `pnpm check` が落ちる。
+- 見本の `design/kit.js` の `DICT` にあるキーは、本番も同じ中身で持つ。`scripts/design-parity.test.ts` が突き合わせる（`docs/design.md` の「デザインシステムの構成」）。
+- 開発用のサーバー（`pnpm dev`）では、上の帯の「言葉」でゲームとスクラムを切り替えられる。`pnpm preview` と本番の build には入らない。
+
+### 書体
+
+- 書体は `@fontsource` の4つのパッケージ（`biz-udpgothic`、`zen-old-mincho`、`ibm-plex-mono`、`chakra-petch`）から、`src/routes/+layout.svelte` が使う太さだけを import する。太さは見本（`design/today.html`）の Google Fonts の URL と同じ（BIZ UDPGothic 400 と 700、Zen Old Mincho 700 と 900、IBM Plex Mono 400 と 500、Chakra Petch 500、600、700）。
+- Google Fonts は使わない。利用者の IP を外へ出さず、CSP に外の先を足さない。書体のファイルは build が `build/_app/immutable/assets/` に書き出し、自分の Worker から配る。
+- パッケージは `devDependencies` に置く。書体のファイルは build のときに CSS から拾って `build/` に書き出すだけで、Worker の実行時には要らない。
+- 日本語の書体は文字の範囲ごとに約120のファイルに分かれ（`unicode-range`）、ブラウザは使う文字のファイルだけを読む。build の出力は woff2 が514ファイル、`build/` 全体で約530ファイル、約13MB になる（Workers Static Assets の上限は20,000ファイル）。
+- `@fontsource` の CSS は woff2 と woff の両方を `src` に書くが、woff は使われない。woff を `build/` に出さないため、`scripts/fontsource-woff2.ts` の Vite プラグインが、CSS を Vite に渡す前に woff の指定を外す（実際の CSS での確認は `scripts/fontsource-woff2.test.ts`）。
+- 書体の CSS は1本にまとまり、約440KB（gzip で約136KB）。`index.html` の `<link rel="stylesheet">` から読むので描画を止めるが、この大きさと止まることは受け入れた。理由は2つ。1つは、日本語の書体を文字の範囲で分けて読む以上、範囲の一覧（`unicode-range`）を CSS に持つ構造が避けられないこと（Google Fonts の CSS も同じ構造）。もう1つは、ファイル名にハッシュが入って `immutable` でキャッシュされ、2回目からの読み込みが軽いこと。
+- Vite は小さいファイルを `data:` の URI にして CSS へ埋め込むが、CSP の `font-src`（`default-src 'self'`）は `data:` を通さない。`vite.config.ts` の `build.assetsInlineLimit` を 0 にして、すべてファイルとして出す。
+- 太さを足すときは、見本の Google Fonts の URL も同じ PR で直す。
+
+### テーマの先当て
+
+- `html` の `data-theme` の値は `src/shared/theme.ts` の `themes`（DB の列挙と同じ5つ）。属性がなければシンプル（自動）。
+- 当てたテーマは `localStorage` の `sg-theme` に覚える（`src/lib/theme.svelte.ts` の `setTheme`）。
+- 描く前の先当ては `static/theme-init.js` の役目。`src/app.html` の head が同期（`async` と `defer` なし）で読み、覚えている値を `data-theme` に入れる。インラインにすると CSP のハッシュから漏れて止まるので、自分のオリジンのファイルにしてある。`localStorage` が使えない、値が壊れているときは何もせず、属性なしで描く。
+- `static/theme-init.js` は同期で読むので、小さなファイルでも読み終えるまで HTML の解析が止まる。`_headers` では `Cache-Control` を指定せず、Cloudflare の既定（毎回確かめる）のまま配る。描画のたびに「変わっていないか」の問い合わせが1往復増えるが、ファイルは数百バイトで、ちらつきを無くす利点が上回るので受け入れた。名前にハッシュを入れて `immutable` にすれば往復は無くなる一方、`app.html` から名前を引く仕掛けが要り、遅れが問題になってから足せば足りる。
+- キーと値は `src/shared/theme.ts` と同じにする。`scripts/theme.test.ts` が、`static/theme-init.js` を偽の `localStorage` で動かして確かめる。
+- 画面が動き出してからの切り替えとストアは `src/lib/theme.svelte.ts`。本物の値（`users.theme`、なければ `organizations.theme`）を API から入れて上書きするのは #53。
+- 開発用のサーバーでは、上の帯の「テーマ」で5つを順に切り替えられる。`pnpm preview` と本番の build には入らない（`import.meta.env.DEV`）。
 
 ### 架空のデータ
 
@@ -467,7 +493,7 @@ GitHub App も比べた。人が抜けても取り込みが止まらない、PAT
 
 最初の一本道から厳しく入れる（2026-10-22 に決めた）。後から締めると、壊れる所を探す手間が大きいため。
 
-- CSP: SvelteKit の `csp` の設定（ハッシュ）で、`script-src` を自分のものだけにする。`default-src 'self'`、`object-src 'none'`、`base-uri 'self'`、`frame-ancestors 'none'`、`form-action 'self'` を基本にする。書体などで外を読むときは、その先だけを足す
+- CSP: SvelteKit の `csp` の設定（ハッシュ）で、`script-src` を自分のものだけにする。`default-src 'self'`、`object-src 'none'`、`base-uri 'self'`、`frame-ancestors 'none'`、`form-action 'self'` を基本にする。外を読む必要が出たら、その先だけを足す。書体は自分の Worker から配るので足していない（上の「書体」）
 - `style-src` は `'self'` に加え、SvelteKit が差し込む読み上げ用の要素（`svelte-announcer`）の `style` 属性だけを `'unsafe-hashes'` とハッシュで通す。止めると、画面を移るたびに読み上げ用の文が見えてしまうため
 - `X-Content-Type-Options: nosniff`、`Referrer-Policy: strict-origin-when-cross-origin`、`Strict-Transport-Security: max-age=31536000; includeSubDomains`
 - e2e で、CSP の違反が出ないことを確かめる

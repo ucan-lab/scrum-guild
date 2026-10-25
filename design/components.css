@@ -25,6 +25,8 @@ h1, h2, h3 { text-wrap: balance; }
 [hidden] { display: none !important; }
 .visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 .mono { font-family: var(--font-mono); }
+/* 区切りのない長い文字列（版の SHA、ID、URL）を、狭い幅でも途中で折る */
+.wrap-anywhere { overflow-wrap: anywhere; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }
 }
@@ -591,6 +593,10 @@ a.notice-title.notice-link:hover { text-decoration: underline; text-underline-of
 
 /* ===== ダイアログ ===== */
 .dialog { position: fixed; inset: 0; z-index: 30; background: rgb(10 15 20 / 0.45); display: grid; place-items: center; padding: var(--space-4); }
+/* 本番は <dialog class="dialog"> を showModal() で開く。<dialog> の既定の大きさ、枠、閉じているときの非表示を打ち消し、見本の div.dialog と同じ見た目にする */
+dialog.dialog { width: 100%; height: 100%; max-width: none; max-height: none; margin: 0; border: 0; color: inherit; }
+dialog.dialog:not([open]) { display: none; }
+dialog.dialog::backdrop { background: none; }
 .dialog-sheet {
   width: min(560px, 100%); max-height: calc(100vh - 2 * var(--space-4)); overflow-y: auto;
   background: var(--surface-panel); border: 1px solid var(--color-line); border-top: 5px solid var(--color-accent);

@@ -162,7 +162,31 @@
 - 手元では `design/index.html` をブラウザで開く（ビルド不要）。開発者でない人には、見本の Worker の URL を渡す（`docs/development.md` の「見本の Worker」）。
 - 読み込む順は tokens.css、components.css、icons.js、sample-data.js、kit.js。
 - 画面に固有の CSS を書かない。足りない部品は components.css とカタログに先に足す。
-- 本番の Svelte では、tokens.css と components.css をそのまま読み込み、kit.js の関数を1つずつコンポーネントにする。
+- 本番の Svelte では、tokens.css と components.css をそのまま読み込み、kit.js の関数を1つずつコンポーネントにする（次の節）。
+- tokens.css と components.css は `src/routes/+layout.svelte` が `design/` から import する。複製しない。見本の Worker（`wrangler.design.jsonc`）の build watch paths が `design/*` なので、この2つを直すと見本も出し直される。
+
+### 本番の Svelte のコンポーネント
+
+コンポーネントは `src/lib/components/` に、1部品1ファイル（PascalCase）で置く。`kit.js` の関数との対応は次のとおり。ここにない関数（タスクの行、カード、木、引き出し、レベル、積載量など）は、使う画面の Issue で足す。
+
+| `kit.js` | 本番 | 補足 |
+| --- | --- | --- |
+| `icons.js` のスプライトと `icon` | `IconSprite.svelte`、`Icon.svelte` | スプライトは `+layout.svelte` に1つ置く。アイコンの定義は `src/lib/icons.ts` |
+| `mount`（枠） | `AppShell.svelte`、`NavMenu.svelte` | 左のメニューと上の帯。組織とワークスペースの切り替え、アシスタントのボタンは置き場所だけで、中身は snippet で渡す。メニューの項目は `src/lib/nav.ts`。画面がまだ無い項目（`href` が `null`）はメニューに出さず、項目が1つも無いグループは見出しごと出さない（色を薄くするだけの「まだ無い」の示し方は、色だけに頼りコントラストも足りないので採らない）。上の帯は、アシスタント、開発用の切り替え、ログインした人の表示のどれかを渡したときだけ出す |
+| `pageHead` | `PageHead.svelte` | |
+| `section` | `Section.svelte` | |
+| `emptyState` | `EmptyState.svelte` | |
+| `openDialog`、`closeDialog` | `Dialog.svelte` | ブラウザの `<dialog>` を `showModal()` で開く。フォーカスの閉じ込めと Esc はブラウザに任せ、閉じたら開いたボタンにフォーカスを戻す。Safari と Firefox はクリックしたボタンにフォーカスを移さないので、開く側は `show(event.currentTarget)` で開く操作を起こした要素を渡す。外側を押して閉じるのは、押し始めと離した所の両方が背景のときだけ（中で選択を始めて外で離しても閉じない）。CSS は components.css の `dialog.dialog` |
+| `toast` | `ToastRegion.svelte`、`src/lib/toast.svelte.ts` | `ToastRegion` を `+layout.svelte` に1つ置き、`showToast()` で出す。HTML でなく文字列を渡す。同時に出すのは3件までで、あふれたら古いものから消す。モーダルのダイアログが開くと外側は inert になり、トップレイヤーに出し直した領域（`popover="manual"`）も inert のままで読み上げが届かない。そのため `Dialog.svelte` の中にも領域を持ち、ダイアログが開いている間は中の領域に出して、外側の領域は隠す |
+| `avatar`、`avatarOf` | `Avatar.svelte` | 色相は `users.id` から計算し（`src/lib/avatar-hue.ts`）、`style:--h` で渡す。DB に列は持たない。ユーザーがいるときは名前が必須で、`role="img"` と `aria-label` を付ける |
+| `t`、`DICT` | `src/shared/vocabulary.ts`、`src/lib/vocabulary.svelte.ts` | 言葉の辞書（`docs/development.md` の「言葉の辞書」） |
+| `THEMES`、`setTheme`、`applyTheme` | `src/shared/theme.ts`、`src/lib/theme.svelte.ts` | テーマの先当ては `docs/development.md` の「テーマの先当て」 |
+| 上の帯の「言葉」と「テーマ」 | `DevSwitches.svelte` | `import.meta.env.DEV` のときだけ出し、本番の build に入れない。#53 で消す |
+
+- 画面は `.svelte` に `<style>` を書かない。足りない CSS は components.css とカタログに先に足す。フックと `pnpm lint` が止める。
+- インラインの `style` 属性は CSP に止められる。動く値は `style:--h` のように CSSOM で当てる（Svelte の `style:` ディレクティブ）。
+- アイコンと言葉の辞書は、見本と本番の二重持ち。`scripts/design-parity.test.ts`（`pnpm test` の `node --test`）が `design/icons.js` と `kit.js` の `DICT` を読み、見本にあるアイコンとキーが本番に同じ中身で在ることを突き合わせる。片方だけを直すと、このテストが落ちる。
+- 照合の対象は見本にあるキーだけで、本番の辞書は画面の文言を足して大きくなってよい。見本を直した PR では、`src/lib/icons.ts` と `src/shared/vocabulary.ts` も一緒に直す。
 
 ## 見本を作って補ったこと
 

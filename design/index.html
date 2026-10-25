@@ -184,9 +184,10 @@ const SECTIONS = [
       <div class="type-row"><span class="cat-name">--font-body<br>md / 400</span><span>購入額に応じてポイントを付け、次の購入で使えるようにする。年内の公開が先方との約束。</span></div>
       <div class="type-row"><span class="cat-name">--font-body<br>xs</span><span style="font-size:var(--text-xs);color:var(--color-muted)">補足とラベルの大きさ。12px より小さくしない。</span></div>
       <div class="type-row"><span class="cat-name">--font-mono</span><span class="mono">SHOP-128 · acme/shop#412 · 2026-10-13 〜 10/26 · 5 pt</span></div>
+      <div class="type-row"><span class="cat-name">.wrap-anywhere</span><span class="mono wrap-anywhere">9f2c4e7a1b3d5f60718293a4b5c6d7e8f901a2b3</span></div>
       <div class="type-row"><span class="cat-name">--font-stat</span><span class="xp-num">1,240<small>XP</small></span></div>
     </div>`,
-    ["見出しの書体（--font-display）は画面と節の見出し、貼り紙と引き出しの題、列の名前だけ。本文やボタンには使わない。シンプルはゴシック、中世風は明朝、現代風は Chakra Petch とゴシック。", "キー、日付、ポイントは mono、レベルと経験値と積載量の数字は stat。数字が縦に並ぶ所は等幅の数字にする。"])],
+    ["見出しの書体（--font-display）は画面と節の見出し、貼り紙と引き出しの題、列の名前だけ。本文やボタンには使わない。シンプルはゴシック、中世風は明朝、現代風は Chakra Petch とゴシック。", "キー、日付、ポイントは mono、レベルと経験値と積載量の数字は stat。数字が縦に並ぶ所は等幅の数字にする。", "版（40文字のコミットの SHA）、ID、URL のように、区切りがなく長くなる文字列には wrap-anywhere を足す。狭い幅でも、横にはみ出さずに途中で折る。表のセルなど折らない所では付けない。"])],
   ["space", "余白と形", () => block("space", "余白と形", "余白は 4px 刻み。角、区切りの線、影はテーマで変わる。",
     `<div class="two"><div class="field">${[1, 2, 3, 4, 5, 6, 8, 10].map((n) => `<div class="space-row"><span class="cat-name" style="width:80px">--space-${n}</span><i style="width:var(--space-${n})"></i></div>`).join("")}</div>
      <div class="field">
@@ -303,8 +304,8 @@ const SECTIONS = [
       <button class="btn" type="button" data-toast="${t("backlog")}の末尾に足しました">知らせ（トースト）を出す</button>
     </div>
     <div class="banner">${icon("refresh")}<span>新しい版が出ています。画面を読み込み直してください。</span><button class="btn is-sm" type="button">読み込み直す</button></div>`,
-    ["主ボタンは右端。危ない操作のダイアログは上辺を赤にし、主ボタンを is-danger にする。", "クリアの演出は判子が1回押されるだけ。動きを減らす設定では動かさない。", "知らせ（トースト）は操作の結果を短く伝え、数秒で消える。大事なことはトーストだけで伝えない。", "版のずれの帯は、デプロイの直後に画面と API の版が違うときだけ出す。"],
-    ".dialog .dialog-sheet .is-danger .dialog-head .dialog-title .dialog-body .dialog-foot / .celebrate .celebrate-sheet .celebrate-stamp / .toasts .toast / .banner")],
+    ["主ボタンは右端。危ない操作のダイアログは上辺を赤にし、主ボタンを is-danger にする。", "クリアの演出は判子が1回押されるだけ。動きを減らす設定では動かさない。", "知らせ（トースト）は操作の結果を短く伝え、数秒で消える。大事なことはトーストだけで伝えない。", "版のずれの帯は、デプロイの直後に画面と API の版が違うときだけ出す。", "本番のダイアログはブラウザの <code>&lt;dialog class=\"dialog\"&gt;</code> を showModal() で開く（フォーカスの閉じ込めと Esc はブラウザに任せる）。見本の div.dialog と見た目は同じで、dialog.dialog が <code>&lt;dialog&gt;</code> の既定の見た目を打ち消す。"],
+    ".dialog dialog.dialog .dialog-sheet .is-danger .dialog-head .dialog-title .dialog-body .dialog-foot / .celebrate .celebrate-sheet .celebrate-stamp / .toasts .toast / .banner")],
   ["choices", "選ぶ部品", () => block("choices", "選ぶ部品", "",
     `<div class="two">
       <div class="field"><span class="field-label">並んだ選択肢（segmented）</span><div class="segmented" role="radiogroup"><label><input type="radio" name="cs" checked><span>完了した月</span></label><label><input type="radio" name="cs"><span>計上月</span></label></div></div>

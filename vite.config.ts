@@ -2,12 +2,14 @@ import adapter from '@sveltejs/adapter-static';
 import { sveltekit } from '@sveltejs/kit/vite';
 import { defineConfig } from 'vite';
 import { devPorts } from './scripts/dev-ports.ts';
+import { fontsourceWoff2Only } from './scripts/fontsource-woff2.ts';
 import { pageCspDirectives } from './src/shared/security-headers.ts';
 
 const ports = devPorts(process.env);
 
 export default defineConfig({
   plugins: [
+    fontsourceWoff2Only(),
     sveltekit({
       compilerOptions: {
         // Svelte 6 までは runes を明示する。依存のライブラリは各自の設定に任せる
@@ -20,6 +22,10 @@ export default defineConfig({
       version: { name: process.env.APP_VERSION || 'dev' },
     }),
   ],
+  build: {
+    // 小さい書体のファイルを data: URI にして CSS へ埋め込ませない。CSP の font-src（default-src 'self'）は data: を通さず、止まる
+    assetsInlineLimit: 0,
+  },
   server: {
     port: ports.app,
     // ずれた vite が別のワークツリーの API につながらないよう、ぶつかったら落とす
