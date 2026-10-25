@@ -1,15 +1,15 @@
-// タスクの作成、一覧、完了の振る舞い。
+// タスクの作成、バックログの木、完了の振る舞い。
 // 組織の分離と権限の種類ごとの許可と拒否は、一覧を回す test/operation-registry.test.ts が確かめる
 import { env } from 'cloudflare:workers';
 import { afterEach, describe, expect, test } from 'vitest';
 import { setFixedNow } from '../src/shared/clock.ts';
 import { XP_TASK_COMPLETED, XP_TASK_CREATED } from '../src/shared/experience.ts';
-import { taskComplete, taskCreate, taskList } from '../src/shared/operations/task/index.ts';
+import { backlogTree, taskComplete, taskCreate } from '../src/shared/operations/task/index.ts';
 import { createApp } from '../src/server/app.ts';
 import { orgDb, verifyWorkspace } from '../src/server/db/index.ts';
 import { implementedOperations } from '../src/server/operations/index.ts';
 import { taskCompleteOperation, taskCreateOperation } from '../src/server/operations/task.ts';
-import { createCategory, createMembership, createStory, createTask, createWorkspace } from './factories.ts';
+import { createCategory, createEpic, createMembership, createStory, createTask, createWorkspace } from './factories.ts';
 import { errorCodeOf, post } from './operations/harness.ts';
 import { createPerson, createTarget, testEnv, type Person, type Target } from './operations/world.ts';
 
@@ -139,7 +139,7 @@ describe('task-create', () => {
       expect(res.status).toBe(404);
       expect(await errorCodeOf(res)).toBe('not_found');
     }
-    const list = await post(app, taskList, {
+    const list = await post(app, backlogTree, {
       slug: target.slug,
       token: target.member.token,
       body: { workspace_id: target.workspace.id },
@@ -220,7 +220,307 @@ describe('task-create', () => {
   });
 });
 
-describe('task-list', () => {
+describe('task-create の親のストーリー', () => {
+  function create(target: Target, body: Record<string, unknown>, person: Person = target.member) {
+    return post(app, taskCreate, {
+      slug: target.slug,
+      token: person.token,
+      body: { workspace_id: target.workspace.id, title: '見積もりを送る', ...body },
+    });
+  }
+
+  async function tasksUnder(target: Target, storyId: string | null) {
+    const db = orgDb(env, target.organization.verified);
+    return db.rows(
+      db.statement((q) =>
+        q
+          .selectFrom('tasks')
+          .select(['id', 'story_id', 'position'])
+          .where('workspace_id', '=', target.workspace.id)
+          .where('story_id', storyId === null ? 'is' : '=', storyId)
+          .orderBy('position'),
+      ),
+    );
+  }
+
+  test('ストーリーの下に、配下の末尾の position で作り、履歴に親を残す。親のないタスクの並びには入らない', async () => {
+    const target = await createTarget();
+    const story = await createStory(target.organization, target.workspace.id, target.admin.userId!, { title: '親' });
+    const other = await createStory(target.organization, target.workspace.id, target.admin.userId!, { title: '別' });
+    await createTask(target.organization, target.workspace.id, target.admin.userId!, {
+      story_id: other.id,
+      position: 'a5',
+    });
+    const first = await create(target, { story_id: story.id });
+    const second = await create(target, { story_id: story.id, title: '請求書を出す' });
+    expect(first.status).toBe(200);
+    expect(second.status).toBe(200);
+    const firstId = ((await first.json()) as { task: { id: string } }).task.id;
+    const secondId = ((await second.json()) as { task: { id: string } }).task.id;
+
+    // 別のストーリーの position の影響を受けず、親ごとに a0 から並ぶ
+    const under = await tasksUnder(target, story.id);
+    expect(under.map((row) => row.id)).toEqual([firstId, secondId]);
+    expect(under[0]!.position).toBe('a0');
+    expect(under[1]!.position > under[0]!.position).toBe(true);
+    expect(await tasksUnder(target, null)).toEqual([]);
+
+    const logs = (await recordsOf(target, firstId)).logs;
+    expect(JSON.parse(logs[0]!.changes_json)).toMatchObject({ story: [null, { id: story.id, title: '親' }] });
+  });
+
+  test('ストーリーを指さなければ、今までどおり親のないタスクの末尾', async () => {
+    const target = await createTarget();
+    const story = await createStory(target.organization, target.workspace.id, target.admin.userId!);
+    await createTask(target.organization, target.workspace.id, target.admin.userId!, {
+      story_id: story.id,
+      position: 'a9',
+    });
+    const res = await create(target, {});
+    const id = ((await res.json()) as { task: { id: string } }).task.id;
+    expect((await tasksUnder(target, null)).map((row) => row.id)).toEqual([id]);
+    expect((await recordsOf(target, id)).task!.position).toBe('a0');
+  });
+
+  test('別の組織・別のワークスペース・削除済み・存在しないストーリーは 404 で、何も書かない', async () => {
+    const target = await createTarget();
+    const foreign = await createTarget();
+    const adminId = target.admin.userId!;
+    const ids = [
+      (await createStory(foreign.organization, foreign.workspace.id, foreign.admin.userId!)).id,
+      (await createStory(target.organization, target.otherWorkspace.id, adminId)).id,
+      (
+        await createStory(target.organization, target.workspace.id, adminId, {
+          deleted_at: '2026-10-21T00:00:00.000Z',
+        })
+      ).id,
+      '019a0000-0000-7000-8000-00000000ffff',
+    ];
+    for (const id of ids) {
+      const res = await create(target, { story_id: id });
+      expect(res.status, id).toBe(404);
+      expect(await errorCodeOf(res)).toBe('not_found');
+    }
+    const db = orgDb(env, target.organization.verified);
+    expect(
+      await db.rows(
+        db.statement((q) => q.selectFrom('tasks').select('id').where('workspace_id', '=', target.workspace.id)),
+      ),
+    ).toEqual([]);
+  });
+
+  test('完了したストーリーは 409 の conflict で、何も書かない', async () => {
+    const target = await createTarget();
+    const done = await createStory(target.organization, target.workspace.id, target.admin.userId!, {
+      completed_at: '2026-10-21T00:00:00.000Z',
+      completed_by: target.admin.userId,
+    });
+    const res = await create(target, { story_id: done.id });
+    expect(res.status).toBe(409);
+    expect(await errorCodeOf(res)).toBe('conflict');
+    expect(await tasksUnder(target, done.id)).toEqual([]);
+  });
+
+  test('読んだ後に親が完了したか削除されたら、書く文の条件で止まり 409 か 404 になる', async () => {
+    for (const [change, status] of [
+      [{ completed_at: '2026-10-22T00:00:00.000Z' }, 409],
+      [{ deleted_at: '2026-10-22T00:00:00.000Z' }, 404],
+    ] as const) {
+      const target = await createTarget();
+      const story = await createStory(target.organization, target.workspace.id, target.admin.userId!);
+      const db = orgDb(env, target.organization.verified);
+      const actor = {
+        accountId: target.member.accountId,
+        userId: target.member.userId,
+        isAdmin: false,
+        invitedOnly: false,
+      };
+      const verified = await verifyWorkspace(db, actor, target.workspace.id);
+      // 親を読んだ後に、別の要求が親を変えた状況を作る。親の読み取りだけを先に通すため、変更は読み取りの後に起きるよう
+      // 操作の db を差し替えて、最初の stories の読み取りの直後に書く
+      let injected = false;
+      const spied = new Proxy(db, {
+        get(base, key) {
+          // 入口は #private を持つので、メソッドは本物の入口に結んで返す
+          const value = Reflect.get(base, key, base);
+          if (typeof value !== 'function') return value;
+          if (key !== 'first') return value.bind(base);
+          return async (...args: unknown[]) => {
+            const result = await (value as (...a: unknown[]) => Promise<unknown>).apply(base, args);
+            if (!injected && (result as { title?: string } | undefined)?.title !== undefined) {
+              injected = true;
+              await base.run(
+                base.statement((q) =>
+                  q
+                    .updateTable('stories')
+                    .set(change)
+                    .where('id', '=', story.id)
+                    .where('workspace_id', '=', target.workspace.id),
+                ),
+              );
+            }
+            return result;
+          };
+        },
+      });
+      const context = {
+        db: spied,
+        actor,
+        workspace: verified,
+        input: {
+          workspace_id: target.workspace.id,
+          title: 'x',
+          points: null,
+          assignee_user_id: null,
+          story_id: story.id,
+        },
+        defer: () => {},
+      } as never;
+      await expect(taskCreateOperation.handler(context)).rejects.toMatchObject({ status });
+      expect(await tasksUnder(target, story.id)).toEqual([]);
+    }
+  });
+
+  test('閉じたワークスペースでは 409 の workspace_closed', async () => {
+    const target = await createTarget({ closed: true });
+    const story = await createStory(target.organization, target.workspace.id, target.admin.userId!);
+    const res = await create(target, { story_id: story.id }, target.admin);
+    expect(res.status).toBe(409);
+    expect(await errorCodeOf(res)).toBe('workspace_closed');
+  });
+});
+
+describe('backlog-tree', () => {
+  function tree(target: Target, person: Person = target.member) {
+    return post(app, backlogTree, {
+      slug: target.slug,
+      token: person.token,
+      body: { workspace_id: target.workspace.id },
+    });
+  }
+
+  type TreeBody = {
+    today: string;
+    week_start: number;
+    stories: {
+      id: string;
+      title: string;
+      due_on: string | null;
+      link_url: string | null;
+      tasks: { id: string; points: number | null; due_on: string | null; assignee: { id: string } | null }[];
+      completed_task_count: number;
+      points_done: number;
+      points_all: number;
+    }[];
+    tasks: { id: string }[];
+    completed_count: number;
+  };
+
+  test('親のないストーリーを position の順に、配下の未完了のタスクと、完了の件数とポイントの合計つきで返す', async () => {
+    const target = await createTarget();
+    const adminId = target.admin.userId!;
+    const workspaceId = target.workspace.id;
+    const { organization } = target;
+    const second = await createStory(organization, workspaceId, adminId, { title: '二番目', position: 'a1' });
+    const first = await createStory(organization, workspaceId, adminId, {
+      title: '一番目',
+      position: 'a0',
+      acceptance_criteria_md: '- 条件',
+      body_md: '本文',
+      due_on: '2026-10-30',
+      link_url: 'https://example.com/a',
+    });
+    const b = await createTask(organization, workspaceId, adminId, {
+      story_id: first.id,
+      position: 'a1',
+      points: 3,
+      due_on: '2026-10-28',
+      assignee_user_id: target.leader.userId,
+    });
+    const a = await createTask(organization, workspaceId, adminId, { story_id: first.id, position: 'a0', points: 2 });
+    // 完了は件数とポイントに入り、行は返さない。未見積もりは 0
+    for (const points of [5, null]) {
+      await createTask(organization, workspaceId, adminId, {
+        story_id: first.id,
+        points,
+        completed_at: '2026-10-21T00:00:00.000Z',
+        completed_by: adminId,
+      });
+    }
+    // 削除したタスクは数えない
+    await createTask(organization, workspaceId, adminId, {
+      story_id: first.id,
+      points: 13,
+      deleted_at: '2026-10-21T00:00:00.000Z',
+    });
+    await createTask(organization, workspaceId, adminId, {
+      story_id: first.id,
+      points: 8,
+      completed_at: '2026-10-21T00:00:00.000Z',
+      completed_by: adminId,
+      deleted_at: '2026-10-21T00:00:00.000Z',
+    });
+    // 削除したストーリー、別のワークスペースのストーリーは返さない
+    await createStory(organization, workspaceId, adminId, { deleted_at: '2026-10-21T00:00:00.000Z' });
+    const elsewhere = await createStory(organization, target.otherWorkspace.id, adminId);
+    await createTask(organization, target.otherWorkspace.id, adminId, { story_id: elsewhere.id, points: 8 });
+    // エピックの下のストーリーは、最上段に出さない（エピックの画面の Issue で足す）。その下のタスクの数も、親のないストーリーに混ざらない
+    const epic = await createEpic(organization, workspaceId, adminId);
+    const underEpic = await createStory(organization, workspaceId, adminId, {
+      title: 'エピックの下',
+      epic_id: epic.id,
+    });
+    await createTask(organization, workspaceId, adminId, { story_id: underEpic.id, points: 8 });
+
+    const res = await tree(target);
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as TreeBody;
+    expect(body.stories.map((story) => story.id)).toEqual([first.id, second.id]);
+    // 受け入れ基準と本文は長いので載せない（ダイアログを開くときに story-get で読む）
+    expect(body.stories[0]).not.toHaveProperty('acceptance_criteria_md');
+    expect(body.stories[0]).not.toHaveProperty('body_md');
+    expect(body.stories[0]).toMatchObject({
+      title: '一番目',
+      due_on: '2026-10-30',
+      link_url: 'https://example.com/a',
+      completed_task_count: 2,
+      points_done: 5,
+      points_all: 10,
+    });
+    expect(body.stories[0]!.tasks.map((task) => task.id)).toEqual([a.id, b.id]);
+    expect(body.stories[0]!.tasks[1]).toMatchObject({ points: 3, due_on: '2026-10-28' });
+    expect(body.stories[0]!.tasks[1]).toHaveProperty('assignee.id', target.leader.userId);
+    // 配下の無いストーリーは 0
+    expect(body.stories[1]).toMatchObject({ tasks: [], completed_task_count: 0, points_done: 0, points_all: 0 });
+    // ストーリーの下のタスクは、親のないタスクの段にも件数にも入らない
+    expect(body.tasks).toEqual([]);
+    expect(body.completed_count).toBe(0);
+  });
+
+  test('今日の日付はワークスペースのタイムゾーンで、週の始まりと一緒に返す', async () => {
+    const target = await createTarget();
+    const sunday = await createWorkspace(target.organization, target.admin.userId!, {
+      timezone: 'Pacific/Auckland',
+      week_start: 0,
+    });
+    await createMembership(target.organization, sunday.id, target.member.userId!);
+    // UTC では 10-25 の 20:00。ニュージーランドでは 10-26 の翌朝 09:00
+    const env2 = devEnv('2026-10-26T09:00:00+13:00');
+    const res = await post(app, backlogTree, {
+      slug: target.slug,
+      token: target.member.token,
+      body: { workspace_id: sunday.id },
+      env: env2,
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as TreeBody;
+    expect(body.today).toBe('2026-10-26');
+    expect(body.week_start).toBe(0);
+
+    const tokyo = await tree(target);
+    expect(((await tokyo.json()) as TreeBody).week_start).toBe(1);
+  });
+
   test('未完了で親のないバックログのタスクを position の順に返し、完了したものは件数だけ返す', async () => {
     const target = await createTarget();
     const adminId = target.admin.userId!;
@@ -257,11 +557,17 @@ describe('task-list', () => {
       created_by: null,
     });
 
-    const res = await post(app, taskList, {
-      slug: target.slug,
-      token: target.member.token,
-      body: { workspace_id: workspaceId },
+    // ストーリーの下のタスクは、親のないタスクの段にも件数にも入らない
+    const story = await createStory(organization, workspaceId, adminId);
+    await createTask(organization, workspaceId, adminId, { title: 'under', story_id: story.id });
+    await createTask(organization, workspaceId, adminId, {
+      title: 'under-done',
+      story_id: story.id,
+      completed_at: '2026-10-21T00:00:00.000Z',
+      completed_by: adminId,
     });
+
+    const res = await tree(target);
     expect(res.status).toBe(200);
     const body = (await res.json()) as { tasks: { id: string; title: string }[]; completed_count: number };
     expect(body.tasks.map((task) => task.id)).toEqual([a.id, b.id, c.id]);
@@ -602,32 +908,186 @@ describe('task-complete', () => {
       expect((await recordsOf(target, deleted.id)).completions).toEqual([]);
     });
 
-    test('受信箱のタスクとストーリーの下のタスクは、この版の完了の対象外で、404 になり何も書かれない', async () => {
+    test('受信箱のタスクは、この版の完了の対象外で、404 になり何も書かれない', async () => {
       const target = await createTarget();
-      const adminId = target.admin.userId!;
-      const story = await createStory(target.organization, target.workspace.id, adminId);
-      const inbox = await createTask(target.organization, target.workspace.id, adminId, {
+      const inbox = await createTask(target.organization, target.workspace.id, target.admin.userId!, {
         points: 3,
         is_imported: 1,
         tray: 'inbox',
         created_by: null,
       });
-      const underStory = await createTask(target.organization, target.workspace.id, adminId, {
+      const res = await complete(target, target.member, inbox.id);
+      expect(res.status).toBe(404);
+      expect(await errorCodeOf(res)).toBe('not_found');
+
+      const records = await recordsOf(target, inbox.id);
+      expect(records.task!.completed_at).toBeNull();
+      expect(records.task!.completed_by).toBeNull();
+      expect(records.completions).toEqual([]);
+      expect(records.grants).toEqual([]);
+      expect(records.logs).toEqual([]);
+    });
+  });
+
+  describe('ストーリーの下のタスク', () => {
+    test('完了にでき、完了の記録と経験値を書く。もう一度は 409 の conflict', async () => {
+      const target = await createTarget();
+      const adminId = target.admin.userId!;
+      const story = await createStory(target.organization, target.workspace.id, adminId);
+      const task = await createTask(target.organization, target.workspace.id, target.leader.userId!, {
         points: 3,
         story_id: story.id,
       });
-      for (const task of [inbox, underStory]) {
-        const res = await complete(target, target.member, task.id);
-        expect(res.status, task.id).toBe(404);
-        expect(await errorCodeOf(res)).toBe('not_found');
+      expect((await complete(target, target.member, task.id)).status).toBe(200);
 
-        const records = await recordsOf(target, task.id);
-        expect(records.task!.completed_at).toBeNull();
-        expect(records.task!.completed_by).toBeNull();
-        expect(records.completions).toEqual([]);
-        expect(records.grants).toEqual([]);
-        expect(records.logs).toEqual([]);
+      const records = await recordsOf(target, task.id);
+      expect(records.task!.completed_by).toBe(target.member.userId);
+      expect(records.completions).toHaveLength(1);
+      expect(records.completions[0]).toMatchObject({ points: 3, category_id: null, billing_month: null });
+      expect(records.grants).toHaveLength(2);
+      expect(records.logs).toHaveLength(1);
+
+      const again = await complete(target, target.leader, task.id);
+      expect(again.status).toBe(409);
+      expect(await errorCodeOf(again)).toBe('conflict');
+      // 完了の合計は、読み直すと変わる
+      const tree = await post(app, backlogTree, {
+        slug: target.slug,
+        token: target.member.token,
+        body: { workspace_id: target.workspace.id },
+      });
+      const body = (await tree.json()) as {
+        stories: { tasks: unknown[]; completed_task_count: number; points_done: number; points_all: number }[];
+      };
+      expect(body.stories[0]).toMatchObject({ tasks: [], completed_task_count: 1, points_done: 3, points_all: 3 });
+    });
+
+    describe('区分の引き継ぎ（エピック、ストーリー、タスクの順に最初に入っているもの）', () => {
+      // 月ごとに計上する区分は、完了した月が billing_month に入る。区分を見分けるため、名前の違う区分を3つ作る
+      async function setup(
+        target: Target,
+        categories: { epic?: boolean; story?: boolean; task?: boolean },
+        // epicWorkspaceId は、エピックの行そのものを別のワークスペースに置く。foreign は、その段の区分を別のワークスペースの区分にする
+        options: { epicWorkspaceId?: string; foreign?: { epic?: boolean; story?: boolean; task?: boolean } } = {},
+      ) {
+        const { organization } = target;
+        const workspaceId = target.workspace.id;
+        const adminId = target.admin.userId!;
+        const home = (tier: 'epic' | 'story' | 'task') =>
+          options.foreign?.[tier] ? target.otherWorkspace.id : workspaceId;
+        const epicCategory = await createCategory(organization, home('epic'), {
+          name: 'エピックの区分',
+          is_billed_monthly: 1,
+        });
+        const storyCategory = await createCategory(organization, home('story'), { name: 'ストーリーの区分' });
+        const taskCategory = await createCategory(organization, home('task'), { name: 'タスクの区分' });
+        const epic = await createEpic(organization, options.epicWorkspaceId ?? workspaceId, adminId, {
+          category_id: categories.epic ? epicCategory.id : null,
+        });
+        const epicId = epic.id;
+        const story = await createStory(organization, workspaceId, adminId, {
+          epic_id: epicId,
+          category_id: categories.story ? storyCategory.id : null,
+        });
+        const task = await createTask(organization, workspaceId, adminId, {
+          story_id: story.id,
+          category_id: categories.task ? taskCategory.id : null,
+        });
+        return { epicCategory, storyCategory, taskCategory, task };
       }
+
+      test.each([
+        ['3つ入っていればエピックの区分', { epic: true, story: true, task: true }, 'epicCategory'],
+        ['エピックが空ならストーリーの区分', { story: true, task: true }, 'storyCategory'],
+        ['ストーリーも空ならタスクの区分', { task: true }, 'taskCategory'],
+      ] as const)('%s', async (_name, categories, expected) => {
+        const target = await createTarget();
+        const made = await setup(target, categories);
+        expect((await complete(target, target.member, made.task.id, { env: devEnv(DEV_NOW) })).status).toBe(200);
+        const completion = (await recordsOf(target, made.task.id)).completions[0]!;
+        expect(completion.category_id).toBe(made[expected].id);
+        // 月ごとに計上するのはエピックの区分だけ。引き継いだ区分で判定する
+        expect(completion.billing_month).toBe(expected === 'epicCategory' ? '2026-10' : null);
+      });
+
+      test('どこにも区分が無ければ空', async () => {
+        const target = await createTarget();
+        const made = await setup(target, {});
+        expect((await complete(target, target.member, made.task.id)).status).toBe(200);
+        expect((await recordsOf(target, made.task.id)).completions[0]).toMatchObject({
+          category_id: null,
+          billing_month: null,
+        });
+      });
+
+      test('別のワークスペースのエピックは結ばれていても、区分を引き継がない', async () => {
+        const target = await createTarget();
+        const made = await setup(target, { epic: true, task: true }, { epicWorkspaceId: target.otherWorkspace.id });
+        expect((await complete(target, target.member, made.task.id)).status).toBe(200);
+        expect((await recordsOf(target, made.task.id)).completions[0]!.category_id).toBe(made.taskCategory.id);
+      });
+
+      test('別のワークスペースの区分が結ばれた段は飛ばして、次の段へ下りる。月ごとの計上も下りた先の区分で決まる', async () => {
+        const target = await createTarget();
+        // エピックの区分（月ごとに計上）が別のワークスペースのもの。ストーリーの区分が使われ、月ごとには計上しない
+        const skipEpic = await setup(target, { epic: true, story: true, task: true }, { foreign: { epic: true } });
+        expect((await complete(target, target.member, skipEpic.task.id, { env: devEnv(DEV_NOW) })).status).toBe(200);
+        expect((await recordsOf(target, skipEpic.task.id)).completions[0]).toMatchObject({
+          category_id: skipEpic.storyCategory.id,
+          billing_month: null,
+        });
+
+        // エピックとストーリーの区分が別のワークスペースのもの。タスクの区分が使われる
+        const skipTwo = await setup(
+          target,
+          { epic: true, story: true, task: true },
+          { foreign: { epic: true, story: true } },
+        );
+        expect((await complete(target, target.member, skipTwo.task.id)).status).toBe(200);
+        expect((await recordsOf(target, skipTwo.task.id)).completions[0]!.category_id).toBe(skipTwo.taskCategory.id);
+
+        // 全部が別のワークスペースのもの。区分なし
+        const skipAll = await setup(
+          target,
+          { epic: true, story: true, task: true },
+          { foreign: { epic: true, story: true, task: true } },
+        );
+        expect((await complete(target, target.member, skipAll.task.id, { env: devEnv(DEV_NOW) })).status).toBe(200);
+        expect((await recordsOf(target, skipAll.task.id)).completions[0]).toMatchObject({
+          category_id: null,
+          billing_month: null,
+        });
+      });
+
+      test('ストーリーの区分だけが月ごとに計上するときは、ストーリーの区分で決まる', async () => {
+        const target = await createTarget();
+        const category = await createCategory(target.organization, target.workspace.id, { is_billed_monthly: 1 });
+        const plain = await createCategory(target.organization, target.workspace.id, { is_billed_monthly: 0 });
+        const story = await createStory(target.organization, target.workspace.id, target.admin.userId!, {
+          category_id: category.id,
+        });
+        const task = await createTask(target.organization, target.workspace.id, target.admin.userId!, {
+          story_id: story.id,
+          category_id: plain.id,
+        });
+        expect((await complete(target, target.member, task.id, { env: devEnv(DEV_NOW) })).status).toBe(200);
+        expect((await recordsOf(target, task.id)).completions[0]).toMatchObject({
+          category_id: category.id,
+          billing_month: '2026-10',
+        });
+      });
+    });
+
+    test('別の組織のストーリーの下のタスクは 404', async () => {
+      const target = await createTarget();
+      const foreign = await createTarget();
+      const story = await createStory(foreign.organization, foreign.workspace.id, foreign.admin.userId!);
+      const task = await createTask(foreign.organization, foreign.workspace.id, foreign.admin.userId!, {
+        story_id: story.id,
+      });
+      const res = await complete(target, target.member, task.id);
+      expect(res.status).toBe(404);
+      expect((await recordsOf(foreign, task.id)).task!.completed_at).toBeNull();
     });
   });
 
@@ -647,7 +1107,7 @@ describe('task-complete', () => {
     expect(created.status).toBe(409);
     expect(await errorCodeOf(created)).toBe('workspace_closed');
     // 読み取りは通る
-    const list = await post(app, taskList, {
+    const list = await post(app, backlogTree, {
       slug: target.slug,
       token: target.admin.token,
       body: { workspace_id: target.workspace.id },
@@ -700,6 +1160,7 @@ describe('task-complete', () => {
         title: '見積もりを送る',
         points: 3,
         assignee_user_id: null,
+        story_id: null,
       });
 
       await expect(taskCreateOperation.handler(context)).rejects.toMatchObject({

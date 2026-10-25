@@ -2,7 +2,7 @@
   import { tick } from 'svelte';
   import { invalidateAll } from '$app/navigation';
   import { taskCreate } from '../../shared/operations/task/index.ts';
-  import type { TaskListItem } from '../../shared/operations/task/task-list.ts';
+  import type { BacklogTask } from '../../shared/operations/task/backlog-tree.ts';
   import {
     TASK_POINT_VALUES,
     TASK_TITLE_MAX_LENGTH,
@@ -15,12 +15,23 @@
   import Dialog from './Dialog.svelte';
   import Icon from './Icon.svelte';
 
-  // kit.js の createTask。タイトルとポイントだけ（担当は API でだけ渡せる）。親、リポジトリ、添付ファイルは、それぞれの機能の Issue で足す。
+  // kit.js の createTask。タイトル、親のストーリー、ポイント（担当は API でだけ渡せる）。リポジトリ、添付ファイルは、それぞれの機能の Issue で足す。
+  // 親の選択欄は、親なしと、stories（画面が渡す、完了していない親のないストーリー）。show(trigger, storyId) で親を選んだ状態で開ける。
   // 送っている間は、「作る」を押しても無視し（aria-disabled）、ダイアログも閉じられない。二重送信はそれだけで防ぐ。
-  // 作れたら閉じて、作ったタスクを oncreated に渡す（画面が一覧の末尾に足す）。
+  // 作れたら閉じて、作ったタスクと親の ID を oncreated に渡す（画面が親の配下か一覧の末尾に足す）。
+  // 親が消えた（404）か完了した（409）ときは、理由を出し、その場で木を読み直して候補を更新する（選んでいた親が消えたら親なしに戻し、親の選択欄へフォーカスを移す）。
   // 送り始めた後に部品が外れた（画面を離れた、ワークスペースが替わった）ときは、古い応答で状態を更新しない（generation）
-  let { slug, workspaceId, oncreated }: { slug: string; workspaceId: string; oncreated: (task: TaskListItem) => void } =
-    $props();
+  let {
+    slug,
+    workspaceId,
+    stories,
+    oncreated,
+  }: {
+    slug: string;
+    workspaceId: string;
+    stories: readonly { id: string; title: string }[];
+    oncreated: (task: BacklogTask, storyId: string | null) => void;
+  } = $props();
 
   type PointsChoice = (typeof TASK_POINT_VALUES)[number] | null;
   // 先頭が「未」（未見積もり）
@@ -30,6 +41,7 @@
   const formId = `${ids}-form`;
   const titleId = `${ids}-title`;
   const titleErrorId = `${ids}-title-error`;
+  const parentId = `${ids}-parent`;
   const pointsLabelId = `${ids}-points`;
   const pointsHintId = `${ids}-points-hint`;
 
@@ -37,9 +49,12 @@
   let dialog = $state<ReturnType<typeof Dialog>>();
   let titleInput = $state<HTMLInputElement>();
   let submitButton = $state<HTMLButtonElement>();
+  let parentSelect = $state<HTMLSelectElement>();
 
   let title = $state('');
   let points = $state<PointsChoice>(null);
+  // 選んだ親のストーリーの ID。空は親なし
+  let story = $state('');
   let titleError = $state<string | null>(null);
   let submitError = $state<string | null>(null);
   let submitting = $state(false);
@@ -67,11 +82,13 @@
     };
   });
 
-  export function show(trigger?: HTMLElement | null): void {
+  export function show(trigger?: HTMLElement | null, storyId: string | null = null): void {
     generation++;
     reloadOnClose = false;
     title = '';
     points = null;
+    // 候補に無い親（完了した、消えた）は選ばず、親なしで開く
+    story = storyId !== null && stories.some((candidate) => candidate.id === storyId) ? storyId : '';
     titleError = null;
     submitError = null;
     submitting = false;
@@ -103,10 +120,11 @@
     // 欄が disabled になるので、Enter で送ったときもフォーカスを失わないよう、「作る」へ移す
     submitButton?.focus();
     let focusTitle = false;
+    let focusParent = false;
     try {
       const result = await callOperation(
         taskCreate,
-        { workspace_id: workspaceId, title: title.trim(), points },
+        { workspace_id: workspaceId, title: title.trim(), points, story_id: story === '' ? null : story },
         { slug },
       );
       if (mine !== generation) return;
@@ -120,6 +138,23 @@
           submitError = t('workspaceClosedReadOnly', { workspace: t('workspace') });
           // 閉じたら画面を読み直して、閉じた表示（起票と完了の操作を出さない）に切り替える
           reloadOnClose = true;
+        } else if (
+          story !== '' &&
+          (result.status === 404 || (result.status === 409 && result.error?.code === 'conflict'))
+        ) {
+          // 親が消えたか、完了した。理由を出し、その場で木を読み直して候補を更新する。選んでいた親が候補から消えたら、親なしに戻して、
+          // 選び直せるよう親の選択欄へフォーカスを移す（ダイアログは閉じない）
+          submitError =
+            result.status === 404
+              ? t('taskParentGone', { story: t('story') })
+              : t('taskParentDone', { story: t('story'), done: t('done') });
+          const chosen = story;
+          await invalidateAll();
+          if (mine !== generation) return;
+          if (!stories.some((candidate) => candidate.id === chosen)) {
+            story = '';
+            focusParent = true;
+          }
         } else if (result.status === 400) {
           // 画面の検査を通った後に断られたのは、タイトルだけ（ポイントは選ぶ形）
           titleError = t('taskTitleInvalidCharacter');
@@ -129,15 +164,21 @@
         }
         return;
       }
+      const parent = stories.find((candidate) => candidate.id === story) ?? null;
       open = false;
-      oncreated(result.data.task);
-      showToast(t('taskCreated', { backlog: t('backlog') }), 'check');
+      oncreated(result.data.task, parent?.id ?? null);
+      showToast(
+        parent === null
+          ? t('taskCreated', { backlog: t('backlog') })
+          : t('taskCreatedUnder', { story: t('story'), title: parent.title }),
+        'check',
+      );
     } finally {
       if (mine === generation) {
         submitting = false;
-        if (focusTitle) {
+        if (focusTitle || focusParent) {
           await tick();
-          titleInput?.focus();
+          (focusParent ? parentSelect : titleInput)?.focus();
         }
       }
     }
@@ -167,6 +208,16 @@
         {#if titleError !== null}
           <span class="field-error" id={titleErrorId} role="alert"><Icon name="alert" />{titleError}</span>
         {/if}
+      </div>
+
+      <div class="field">
+        <label class="field-label" for={parentId}>{t('taskParent', { story: t('story') })}</label>
+        <select class="select" id={parentId} bind:this={parentSelect} bind:value={story}>
+          <option value="">{t('taskParentNone')}</option>
+          {#each stories as option (option.id)}
+            <option value={option.id}>{option.title}</option>
+          {/each}
+        </select>
       </div>
 
       <div class="field">

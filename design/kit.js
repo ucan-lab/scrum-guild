@@ -347,30 +347,37 @@
     const open = list.filter((x) => !x.doneAt);
     const done = list.length - open.length;
     const p = storyPts(sid);
-    return `<details class="tree-group" open>
-      <summary class="tree-row is-story ${solo ? "is-root" : ""}">
-        <span class="tree-caret">${icon("chevron")}</span>
+    return `<div class="tree-group">
+      <div class="tree-row is-story ${solo ? "is-root" : ""}">
+        ${treeCaret(`tree-${sid}`, st.title)}
         <span class="kind is-story" title="${t("story")}">${icon("check")}</span>
-        <span class="tree-title">${esc(st.title)}${solo && st.cat ? ` <span class="chip">${esc(D.categories[st.cat].name)}</span>` : ""}</span>
-        <span class="tree-ratio" title="完了 / 全体">${t("done")} ${p.done} / ${p.all} pt</span>
-      </summary>
-      <div class="tree-children">${open.map((x) => entry(x, { showParent: false, showAssignee: true })).join("")}
+        <span class="tree-title"><button class="tree-link" type="button" data-dialog="editStory">${esc(st.title)}</button>${solo && st.cat ? ` <span class="chip">${esc(D.categories[st.cat].name)}</span>` : ""} ${dueChip(st.due)}</span>
+        <span class="tree-end">
+          <span class="tree-ratio" title="完了 / 全体">${t("done")} ${p.done} / ${p.all} pt</span>
+          <button class="btn is-sm" type="button" data-dialog="createTask" aria-label="${t("task")}を足す: ${esc(st.title)}">${icon("plus")}${t("task")}</button>
+        </span>
+      </div>
+      <div class="tree-children" id="tree-${sid}">${open.map((x) => entry(x, { showParent: false, showAssignee: true })).join("")}
         ${done ? `<p class="tree-folded">完了 ${done} 件を折りたたんでいます</p>` : ""}${!list.length ? `<p class="tree-folded">${t("task")}はまだありません</p>` : ""}</div>
-    </details>`;
+    </div>`;
+  }
+  // 木の行の開閉。行（div）の中の caret のボタンだけが開閉を受け持ち、題や「＋タスク」のボタンとはぶつからない
+  function treeCaret(bodyId, title) {
+    return `<button class="tree-caret" type="button" aria-expanded="true" aria-controls="${bodyId}" aria-label="${esc(title)}を閉じる" data-tree-toggle="${bodyId}" data-tree-title="${esc(title)}">${icon("chevron")}</button>`;
   }
   function treeEpic(eid) {
     const e = D.epics[eid];
     const p = epicPts(eid);
     const stories = Object.keys(D.stories).filter((s) => D.stories[s].epic === eid);
-    return `<details class="tree-group" open>
-      <summary class="tree-row is-epic">
-        <span class="tree-caret">${icon("chevron")}</span>
+    return `<div class="tree-group">
+      <div class="tree-row is-epic">
+        ${treeCaret(`tree-${eid}`, e.title)}
         <span class="kind is-epic" title="${t("epic")}">${icon("flag")}</span>
         <span class="tree-title"><a href="epic.html" class="tree-link">${esc(e.title)}</a> <span class="chip">${esc(D.categories[e.cat].name)}</span> ${dueChip(e.due)}</span>
         <span class="tree-ratio" title="完了 / 全体">${t("done")} ${p.done} / ${p.all} pt</span>
-      </summary>
-      <div class="tree-children">${stories.map((s) => treeStory(s)).join("")}</div>
-    </details>`;
+      </div>
+      <div class="tree-children" id="tree-${eid}">${stories.map((s) => treeStory(s)).join("")}</div>
+    </div>`;
   }
 
   // スプリントゴールの貼り紙
@@ -739,6 +746,27 @@
     return { start: addDays(last.end, 1), days: daysBetween(last.start, last.end) + 1 };
   }
 
+  // ストーリーの作成と変更のダイアログ。閉じたワークスペース（readOnly）では、欄を readonly にして保存のボタンを出さない
+  // （日付の入力は readonly を受けないので、読み取り専用の text にして日付を出す）。リンクに値があれば、欄の横に「開く」を置く
+  function storyDialog(title, st, readOnly = false) {
+    const link = st && st.link ? st.link : "";
+    const ro = readOnly ? " readonly" : "";
+    openDialog(title,
+      `${readOnly ? `<div class="callout is-info">${icon("shield")}<span>閉じた${t("workspace")}の${t("story")}は、読み取りだけできます。</span></div>` : ""}
+       <label class="field" for="d-st"><span class="field-label">タイトル</span><input class="input" id="d-st" placeholder="どこまで進めば区切りか" value="${st ? esc(st.title) : ""}"${ro}></label>
+       <label class="field" for="d-sa"><span class="field-label">${t("ac")}</span><textarea class="textarea" id="d-sa"${ro}>${st ? esc((st.ac || []).join("\n")) : ""}</textarea></label>
+       <label class="field" for="d-sb"><span class="field-label">本文</span><textarea class="textarea" id="d-sb"${ro}></textarea></label>
+       <div class="form-row is-start">
+         <label class="field" for="d-sd"><span class="field-label">${t("due")}</span>${readOnly
+           ? `<input class="input" id="d-sd" type="text" readonly value="${st && st.due ? st.due : ""}">`
+           : `<input class="input" id="d-sd" type="date" value="${st && st.due ? st.due : ""}">`}</label>
+         <div class="field"><label class="field-label" for="d-sl">リンク</label>
+           <span class="input-row"><input class="input" id="d-sl" type="url" placeholder="https://" value="${esc(link)}"${ro}>${link ? `<a class="btn" href="${esc(link)}" target="_blank" rel="noopener noreferrer" aria-label="リンクを新しいタブで開く">開く</a>` : ""}</span></div>
+       </div>`,
+      readOnly
+        ? `<button class="btn is-primary" type="button" data-close-dialog>閉じる</button>`
+        : `<button class="btn is-quiet" type="button" data-close-dialog>やめる</button><button class="btn is-primary" type="button" data-close-dialog data-toast="${st ? "保存しました" : `${t("story")}を作りました`}">${st ? "保存する" : "作る"}</button>`);
+  }
   const DIALOGS = {
     sprintCreate: () => {
       const d = sprintDefaults();
@@ -774,6 +802,10 @@
          <p class="props-note">${esc(D.sprints.sp14.goal)}</p>
          <div class="segmented" role="radiogroup"><label><input type="radio" name="d-goal" checked><span>達成した</span></label><label><input type="radio" name="d-goal"><span>達成していない</span></label></div></div>`,
       `<button class="btn is-quiet" type="button" data-close-dialog>やめる</button><button class="btn is-primary" type="button" data-close-dialog data-toast="${sprintLabel("sp14")} を終えました">終える</button>`),
+    // ストーリーの作成と変更は同じ欄。バックログの木の行から開く。タイトル以外は空でよい
+    createStory: () => storyDialog(`${t("story")}を作る`, null),
+    editStory: () => storyDialog(t("story"), D.stories.s4),
+    viewStory: () => storyDialog(t("story"), { ...D.stories.s4, link: "https://example.com/notes/42" }, true),
     createTask: () => openDialog(`${t("create")}`,
       `<label class="field" for="d-title"><span class="field-label">タイトル</span><input class="input" id="d-title" placeholder="何をするか"></label>
        <div class="form-row">
@@ -1416,7 +1448,19 @@
       return;
     }
     if ((el = hit("data-org-create"))) { DIALOGS.organizationCreated(); return; }
-    if ((el = hit("data-dialog"))) { if (el.dataset.dialog === "createTask") delete D.files.new; DIALOGS[el.dataset.dialog](); return; }
+    if ((el = hit("data-tree-toggle"))) {
+      const body = document.getElementById(el.dataset.treeToggle);
+      const opened = el.getAttribute("aria-expanded") === "true";
+      el.setAttribute("aria-expanded", String(!opened));
+      el.setAttribute("aria-label", `${el.dataset.treeTitle}${opened ? "を開く" : "を閉じる"}`);
+      if (body) body.hidden = opened;
+      return;
+    }
+    if ((el = hit("data-dialog"))) {
+      if (el.dataset.dialog === "createTask") delete D.files.new;
+      DIALOGS[el.dataset.dialog]();
+      return;
+    }
     if ((el = hit("data-file"))) { DIALOGS.previewFile(el.dataset.file); return; }
     if ((el = hit("data-delete-file"))) { closeDialog(); DIALOGS.deleteFile(el.dataset.deleteFile); return; }
     if ((el = hit("data-confirm-delete-file"))) {

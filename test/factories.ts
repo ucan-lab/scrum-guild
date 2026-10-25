@@ -247,6 +247,39 @@ export async function createCategory(
   return row;
 }
 
+// エピック。依頼主と作った人が要る
+export async function createEpic(
+  organization: OrganizationFixture,
+  workspaceId: string,
+  createdBy: string,
+  overrides: Partial<Row<OrganizationTables, 'epics'>> = {},
+) {
+  const row: Row<OrganizationTables, 'epics'> = {
+    id: uuidv7(),
+    workspace_id: workspaceId,
+    title: '会員ポイント制度を公開する',
+    body_md: null,
+    category_id: null,
+    due_on: null,
+    link_url: null,
+    reward_tier: 'small',
+    requester_user_id: createdBy,
+    created_by: createdBy,
+    completed_at: null,
+    completed_by: null,
+    canceled_at: null,
+    canceled_by: null,
+    position: 'a0',
+    deleted_at: null,
+    created_at: AT,
+    updated_at: AT,
+    ...overrides,
+  };
+  const db = orgDb(env, organization.verified);
+  await db.run(db.statement((q) => q.insertInto('epics').values(row)));
+  return row;
+}
+
 // エピックの下に入っていないストーリー。作った人が要る
 export async function createStory(
   organization: OrganizationFixture,

@@ -287,8 +287,8 @@ const SECTIONS = [
     ".board-wrap .board .board-col .is-done .board-col-head .board-col-name / .dod / .card .card-parent .card-title .card-meta .card-foot .card-end")],
   ["tree", "木", () => block("tree", "木（バックログ）", "エピック、ストーリー、タスクの階層。エピックの行は一段下の地と明朝で区切る。",
     `<div class="tree">${treeEpic("e2")}${treeStory("s4", true)}</div>`,
-    ["右端の数は「完了 / 全体」のポイント。", "完了したタスクは折りたたみ、件数だけ出す。"],
-    ".tree .tree-group .tree-row .is-epic .is-story .is-root .tree-caret .tree-title .tree-ratio .tree-children .tree-folded")],
+    ["右端の数は「完了 / 全体」のポイント。", "完了したタスクは折りたたみ、件数だけ出す。", "行は普通の要素（div）で、開閉は左端の caret のボタン（button.tree-caret の aria-expanded と aria-controls）だけが受け持つ。details と summary は使わない（行の中のボタンと開閉がぶつかるため）。", "ストーリーの題はボタン（button.tree-link）で、押すとダイアログが開く。行の右端の「＋タスク」（.tree-end）は、親を選んだ状態でタスクのダイアログを開く。caret、題、「＋タスク」は独立したボタンで、狭い幅（760px 以下）と指で押す画面では、見た目は変えず押せる範囲を 44px 四方以上に広げる。"],
+    ".tree .tree-group .tree-row .is-epic .is-story .is-root .tree-caret .tree-title .tree-ratio .tree-end .tree-children .tree-folded / button.tree-link / button.tree-caret[aria-expanded]")],
   ["notices", "貼り紙", () => block("notices", "貼り紙", "掲示する物（スプリントゴール、レイド）は、上辺に太い線を引いた紙として見せる。レイドは金、クリア済みは朱。",
     `<div class="notice-grid">${sprintNotice("sp14")}${raidNotice("e1")}${raidNotice("e2", { cleared: true })}</div>`,
     ["依頼主の名前の横に朱の「印」を添える。", "クリアしたレイドには「済」の判子を押す。"], ".notice .is-raid .is-cleared / .notice-label .notice-title .notice-meta .notice-facts .notice-foot / .day-ticks / .progress / .seal")],
@@ -315,6 +315,9 @@ const SECTIONS = [
       <button class="btn" type="button" data-dialog="sprintExtend">${t("sprint")}を延ばす</button>
       <button class="btn" type="button" data-dialog="sprintEnd">${t("sprint")}を終える</button>
       <button class="btn" type="button" data-dialog="createTask">${t("create")}</button>
+      <button class="btn" type="button" data-dialog="createStory">${t("story")}を作る</button>
+      <button class="btn" type="button" data-dialog="editStory">${t("story")}を直す</button>
+      <button class="btn" type="button" data-dialog="viewStory">${t("story")}（閉じた${t("workspace")}）</button>
       <button class="btn" type="button" data-dialog="editRecord">完了の記録を直す</button>
       <button class="btn is-danger" type="button" data-dialog="deleteEpic">${t("epic")}を削除する</button>
     </div>

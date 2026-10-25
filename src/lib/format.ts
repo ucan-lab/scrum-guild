@@ -8,6 +8,12 @@ export function formatLocalDate(iso: string): string {
   return Number.isNaN(at.getTime()) ? iso : dateFormatter.format(at);
 }
 
+// 期日（YYYY-MM-DD）を 月/日 にする（kit.js の md）。期日は暦の日付で、タイムゾーンを掛けない。読めない値は元のまま返す
+export function formatMonthDay(date: string): string {
+  const match = /^\d{4}-(\d{2})-(\d{2})$/.exec(date);
+  return match === null ? date : `${Number(match[1])}/${Number(match[2])}`;
+}
+
 // このブラウザのタイムゾーンの名前。取れないときは UTC
 export function browserTimezone(): string {
   return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
