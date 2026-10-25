@@ -18,12 +18,22 @@ export function isSecureOrigin(publicOrigin: string): boolean {
 // http で公開してよいのは、手元で動かすときのループバックのホストだけ（URL の hostname は IPv6 を `[::1]` で返す）
 const LOOPBACK_HOSTS: ReadonlySet<string> = new Set(['localhost', '127.0.0.1', '[::1]']);
 
+// ループバックのホストへの http か。手元で動かしているときだけ真になる。解釈できない値は偽
+export function isLoopbackHttpOrigin(publicOrigin: unknown): boolean {
+  if (typeof publicOrigin !== 'string') return false;
+  try {
+    const url = new URL(publicOrigin);
+    return url.protocol === 'http:' && LOOPBACK_HOSTS.has(url.hostname);
+  } catch {
+    return false;
+  }
+}
+
 // 公開する URL として使ってよいか: https か、ループバックのホストへの http。解釈できない値は使えない
 export function isAllowedPublicOrigin(publicOrigin: unknown): boolean {
   if (typeof publicOrigin !== 'string') return false;
   try {
-    const url = new URL(publicOrigin);
-    return url.protocol === 'https:' || (url.protocol === 'http:' && LOOPBACK_HOSTS.has(url.hostname));
+    return new URL(publicOrigin).protocol === 'https:' || isLoopbackHttpOrigin(publicOrigin);
   } catch {
     return false;
   }

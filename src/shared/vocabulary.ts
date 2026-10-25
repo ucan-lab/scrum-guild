@@ -201,10 +201,56 @@ export const dictionary = defineDictionary({
   pageNotFoundTitle: organization('画面が見つかりません', '画面が見つかりません'),
   pageNotFoundText: organization('URL が違うか、開けない画面です。', 'URL が違うか、開けない画面です。'),
   backToToday: organization('自分の今日へ', '自分の今日へ'),
-  workspaceHomeEmptyTitle: organization('この{workspace}の画面は準備中です', 'この{workspace}の画面は準備中です'),
-  workspaceHomeEmptyText: organization(
-    '{backlog}などの画面は、これから加わります。',
-    '{backlog}などの画面は、これから加わります。',
+
+  // バックログ（ワークスペースの画面）。{backlog} {task} {create} {done} {points} は、その言葉づかいの言葉を画面が渡す
+  backlogTasksLabel: workspace('{backlog}の{task}', '{backlog}の{task}'),
+  backlogEmptyTitle: workspace('まだ{task}がありません', 'まだ{task}がありません'),
+  backlogEmptyText: workspace(
+    '{task}を優先する順に並べる場所です。上の「{create}」から最初の{task}を作ります。',
+    '{task}を優先する順に並べる場所です。上の「{create}」から最初の{task}を作ります。',
+  ),
+  backlogEmptyClosedText: workspace(
+    '閉じた{workspace}には、{task}を作れません。',
+    '閉じた{workspace}には、{task}を作れません。',
+  ),
+  // 完了にした親のないタスクの件数。行は返さず、件数の1行にする。完了にした行は、読み直すまでこの件数に入らない
+  backlogFolded: workspace(
+    '親のない{done} {count} 件を折りたたんでいます',
+    '親のない{done} {count} 件を折りたたんでいます',
+  ),
+  // タスクの行と、完了の操作
+  pointsUnsetMark: workspace('未', '未'),
+  pointsUnsetTitle: workspace('未見積もり', '未見積もり'),
+  // 完了の印の判子の文字。中世風のテーマだけが見せる
+  doneStamp: workspace('完', '完'),
+  // 完了の操作の読み上げの名前。同じ名前のボタンが並ぶので、どのタスクかを添える
+  taskCompleteLabel: workspace('{complete}: {title}', '{complete}: {title}'),
+  taskCompleted: workspace('{task}を{done}にしました', '{task}を{done}にしました'),
+  taskCompleteFailed: workspace(
+    '{done}にできませんでした。もう一度試してください。',
+    '{done}にできませんでした。もう一度試してください。',
+  ),
+  taskAlreadyDone: workspace('この{task}は、すでに{done}です', 'この{task}は、すでに{done}です'),
+  workspaceClosedReadOnly: workspace('閉じた{workspace}には書き込めません', '閉じた{workspace}には書き込めません'),
+
+  // 起票のダイアログ
+  fieldTitle: organization('タイトル', 'タイトル'),
+  taskTitlePlaceholder: workspace('何をするか', '何をするか'),
+  taskTitleRequired: organization('タイトルを入れてください', 'タイトルを入れてください'),
+  taskTitleTooLong: organization('タイトルは {max} 字までです', 'タイトルは {max} 字までです'),
+  taskTitleInvalidCharacter: organization(
+    'タイトルに使えない文字（制御文字、ゼロ幅のスペースなど）が含まれています',
+    'タイトルに使えない文字（制御文字、ゼロ幅のスペースなど）が含まれています',
+  ),
+  taskPointsHint: workspace(
+    '「未」は未見積もり。起票の経験値は、1 以上の{points}が振られたまま{task}が{done}すると付きます。',
+    '「未」は未見積もり。起票の経験値は、1 以上の{points}が振られたまま{task}が{done}すると付きます。',
+  ),
+  taskSubmitting: organization('作っています', '作っています'),
+  taskCreated: workspace('{backlog}の末尾に足しました', '{backlog}の末尾に足しました'),
+  taskCreateFailed: organization(
+    '作れませんでした。もう一度試してください。',
+    '作れませんでした。もう一度試してください。',
   ),
 
   // 組織の選択と、枠の外の画面（組織の切り替え、見つからない、運用の仮の画面）

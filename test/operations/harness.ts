@@ -251,27 +251,34 @@ export function defineOperationChecks(
           }
         });
         break;
+      // 成功する呼び出しごとに入力を作り直す（タスクを完了にする操作のように、同じ入力で続けて呼ぶと 409 になる操作のため）
       case 'leader':
         test('一般のメンバーと所属していない人は 403、リーダーと管理者は成功する', async () => {
-          const body = await input(own);
           for (const person of [own.member, own.bystander]) {
-            const res = await post(app, definition, { slug: own.slug, token: person.token, body });
+            const res = await post(app, definition, { slug: own.slug, token: person.token, body: await input(own) });
             expect(res.status).toBe(403);
             expect(await errorCodeOf(res)).toBe('forbidden');
           }
           for (const person of [own.leader, own.admin]) {
-            await expectOk(await post(app, definition, { slug: own.slug, token: person.token, body }));
+            await expectOk(
+              await post(app, definition, { slug: own.slug, token: person.token, body: await input(own) }),
+            );
           }
         });
         break;
       case 'member':
         test('所属していない人は 403、メンバーと管理者は成功する', async () => {
-          const body = await input(own);
-          const res = await post(app, definition, { slug: own.slug, token: own.bystander.token, body });
+          const res = await post(app, definition, {
+            slug: own.slug,
+            token: own.bystander.token,
+            body: await input(own),
+          });
           expect(res.status).toBe(403);
           expect(await errorCodeOf(res)).toBe('forbidden');
           for (const person of [own.member, own.leader, own.admin]) {
-            await expectOk(await post(app, definition, { slug: own.slug, token: person.token, body }));
+            await expectOk(
+              await post(app, definition, { slug: own.slug, token: person.token, body: await input(own) }),
+            );
           }
         });
         break;

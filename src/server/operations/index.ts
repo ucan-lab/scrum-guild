@@ -4,6 +4,7 @@ import type { ImplementedOperation } from './implement.ts';
 import { createOrganizationOperation, listOrganizationsOperation, resolveGithubUserOperation } from './operator.ts';
 import { myOrganizationsOperation, organizationInfoOperation } from './organization.ts';
 import { logoutOperation, meOperation } from './session.ts';
+import { taskCompleteOperation, taskCreateOperation, taskListOperation } from './task.ts';
 import {
   workspaceCreateOperation,
   workspaceInfoOperation,
@@ -19,6 +20,9 @@ export const implementedOperations: readonly ImplementedOperation[] = [
   organizationInfoOperation,
   meOperation,
   logoutOperation,
+  taskCreateOperation,
+  taskListOperation,
+  taskCompleteOperation,
   workspaceCreateOperation,
   workspaceListOperation,
   workspaceLeaderCandidatesOperation,

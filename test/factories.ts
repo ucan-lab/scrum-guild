@@ -226,6 +226,27 @@ export async function createMembership(
   return row;
 }
 
+export async function createCategory(
+  organization: OrganizationFixture,
+  workspaceId: string,
+  overrides: Partial<Row<OrganizationTables, 'categories'>> = {},
+) {
+  const row: Row<OrganizationTables, 'categories'> = {
+    id: uuidv7(),
+    workspace_id: workspaceId,
+    name: '保守',
+    is_billed_monthly: 0,
+    position: 'a0',
+    deleted_at: null,
+    created_at: AT,
+    updated_at: AT,
+    ...overrides,
+  };
+  const db = orgDb(env, organization.verified);
+  await db.run(db.statement((q) => q.insertInto('categories').values(row)));
+  return row;
+}
+
 // 手で作ったバックログのタスク。起票した人が要る
 export async function createTask(
   organization: OrganizationFixture,

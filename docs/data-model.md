@@ -664,6 +664,7 @@ Google の人は、ログインするまで `sub` が分からない。そのた
   - `(story_id, position) WHERE deleted_at IS NULL`: ストーリーの配下
   - `(sprint_id, column_id, column_position) WHERE deleted_at IS NULL`: スプリントの列
   - `(assignee_user_id) WHERE deleted_at IS NULL AND completed_at IS NULL`: 自分の今日、積載量
+- 手で作るタスクの `title` は、前後の空白を除いて 1〜200 字。字数の数え方と断る文字は `workspaces.name` と同じ。
 - 「今日やる」は、`today_on` が今日（ワークスペースのタイムゾーン）なら今日の印、それより前で未完了なら前日からの持ち越しとして示す。担当が替わったら消す。
 - 区分は、親のエピック、親のストーリー、タスク自身の順に、最初に入っているものを使う。読むときに結合して出し、タスクには写さない。
 - `repository_id` は、取り込むときに `repositories` の `(workspace_id, provider, source_container_id)` が `task_sources` と一致する行があれば入れる。同期では書き換えない。
@@ -958,6 +959,15 @@ D1 は対話的なトランザクションを持たない。まとめて書く�
 | コメントの削除 | `comments`、そのコメントの `attachments` の削除、`change_logs`、続けて R2 のファイルの削除 |
 
 先に読んだ値で判定してから書く操作（最後の管理者、完了の可否など）は、書く文の `WHERE` に同じ条件を入れ、影響した行の数で競合を見つける。
+
+タスクの完了（`task-complete`）の文と条件。ポイント、担当、区分、作った人は先に読まず、`INSERT ... SELECT` で `tasks` の行から取る。読むのは、計上月を決めるワークスペースのタイムゾーンと、変更の履歴に残す完了にした人の名前だけ。`batch()` は件数 0 の文があっても後ろの文を書くので、後ろの文は先の文が通ったことを自分の条件に持つ。
+
+1. `tasks`: `completed_at`、`completed_by`、`updated_at` を書く。条件は `id = :task AND workspace_id = :ws AND completed_at IS NULL AND deleted_at IS NULL`。変わった行が0なら、`batch()` の後に `tasks` を読み直して分ける。行が無い（別の組織のタスクを含む）なら 404、あれば完了済みの 409（`conflict`）
+2. `completions`: `tasks LEFT JOIN categories` から入れる。条件は `tasks.completed_at = :at AND tasks.completed_by = :me AND NOT EXISTS (同じタスクで同じ完了日時の completions)`。開発用の時計（`DEV_NOW`）で止めた時刻では、同じ人が2回完了にした要求の完了日時と完了にした人が同じになる。1 の値との一致だけでは自分の更新か先の要求の更新かを見分けられないので、先に入った記録があれば何も入らないようにする。レビュー依頼の再依頼で1つのタスクに完了の記録が複数ありうるため、`task_id` の一意制約では守らない。`billing_month` は `categories.is_billed_monthly = 1` のときだけ `:at` の月（ワークスペースのタイムゾーン）、ほかは空
+3. `xp_grants`: 起票（`task_created`。受け取るのは `created_by`、`created_by IS NOT NULL` が条件）と完了（`task_completed`。受け取るのは `COALESCE(assignee_user_id, :me)`）。どちらも `tasks.points >= 1` と `EXISTS (SELECT 1 FROM completions WHERE id = :自分の completion_id)` が条件。`dedupe_key` は `task_created:<completion_id>`、`task_completed:<completion_id>`
+4. `change_logs`: 3 と同じ `EXISTS` が条件
+
+自分の `completion_id` の記録が入ったことを後ろの文の条件にするので、遅れた要求は `completions`、`xp_grants`、`change_logs` を1行も書かない。
 
 共通の DB と組織の DB に分けて書く操作は、途中で失敗したときの扱いを決めておく。
 

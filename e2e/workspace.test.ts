@@ -60,7 +60,8 @@ test.describe('管理者（あおば開発のミナト）', () => {
     await expect(page.getByText(/所属せず/)).toHaveCount(0);
     await expect(page.locator('.ws-select')).toContainText('保守チーム');
     await expect(page.locator('.nav-group')).toHaveText('パーティ');
-    await expect(page.getByText('パーティを作りました')).toBeVisible();
+    // 画面にも起票のダイアログ（中に閉じた読み上げの領域がある）があるので、見える領域だけを role で引く
+    await expect(page.getByRole('status').filter({ hasText: 'パーティを作りました' })).toBeVisible();
     expect(await collect()).toEqual([]);
 
     // 一覧に出て、リーダーが1人のメンバーが1人
@@ -94,7 +95,7 @@ test.describe('管理者（あおば開発のミナト）', () => {
     await expect(page.getByRole('heading', { level: 1, name: '社内ツール改善' })).toBeVisible();
     // ワークスペースの中の言葉はスクラム。組織の言葉（ギルドマスター）はそのまま
     await expect(page.locator('.nav-group')).toHaveText('ワークスペース');
-    await expect(page.getByText('このワークスペースの画面は準備中です')).toBeVisible();
+    await expect(page.getByText('まだタスクがありません')).toBeVisible();
     // 作った管理者は所属していない。それでも画面に入れて、印が出る
     await expect(page.locator('.topbar .chip').first()).toHaveText('所属せずギルドマスターとして開いています');
 

@@ -204,7 +204,7 @@
 
 ### 本番の Svelte のコンポーネント
 
-コンポーネントは `src/lib/components/` に、1部品1ファイル（PascalCase）で置く。`kit.js` の関数との対応は次のとおり。ここにない関数（タスクの行、カード、木、引き出し、レベル、積載量など）は、使う画面の Issue で足す。
+コンポーネントは `src/lib/components/` に、1部品1ファイル（PascalCase）で置く。`kit.js` の関数との対応は次のとおり。ここにない関数（カード、木、引き出し、レベル、積載量など）は、使う画面の Issue で足す。
 
 | `kit.js` | 本番 | 補足 |
 | --- | --- | --- |
@@ -216,6 +216,8 @@
 | `emptyState` | `EmptyState.svelte` | |
 | `setting`（`admin.html` の画面内の関数） | `Setting.svelte` | 組織の管理の節。左に見出しと説明、右に中身。`.settings` の中に並べる |
 | `createWorkspace` | `WorkspaceCreateDialog.svelte` | 前の節の「ワークスペースを作るダイアログ」。欄は `<form class="form">` で縦に並べる（`.form` は components.css）。送る「作る」はダイアログの下の帯にあるので、`form` 属性で結ぶ |
+| `entry`、`doneControl` | `TaskEntry.svelte` | 台帳の1行。今あるのはタイトル、ポイント、担当、完了の操作と完了の印だけで、先頭の枠（今日やる）は空の要素で埋める。完了にした行は `done` を真にして完了の印（`.hanko`。シンプルと現代風はチェック、中世風は朱の判子）を付け、完了の操作（`.done-btn`）は出さない。押したボタンは消えるので、印へフォーカスを移す `focusMark()` を出す。完了の操作の読み上げの名前にはタスクのタイトルを添える。親の一覧は `.tree` の中に並べ、完了した親のないタスクは行にせず、`.tree-folded.is-root` の件数の1行にする |
+| `createTask` | `TaskCreateDialog.svelte` | 起票のダイアログ。今あるのはタイトルとポイント（`.segmented` の選択）だけで、親、担当、リポジトリ、添付ファイルは、それぞれの機能の Issue で足す。作れたら閉じて、作ったタスクを `oncreated` で画面に渡す。送っている間の扱いは `WorkspaceCreateDialog` と同じ |
 | （見本に無い）見つからない、読み込みの失敗 | `NotFoundPage.svelte`、`LoadFailed.svelte` | 組織の枠の中に出す「見つからない」と、枠の外の `LoadFailed`（`inShell` を付けると枠の中に出す）。管理者でない人が開いた組織の管理と、存在しない（別の組織の）ワークスペースに使う |
 | `openDialog`、`closeDialog` | `Dialog.svelte` | ブラウザの `<dialog>` を `showModal()` で開く。フォーカスの閉じ込めと Esc はブラウザに任せ、閉じたら開いたボタンにフォーカスを戻す。Safari と Firefox はクリックしたボタンにフォーカスを移さないので、開く側は `show(event.currentTarget)` で開く操作を起こした要素を渡す。外側を押して閉じるのは、押し始めと離した所の両方が背景のときだけ（中で選択を始めて外で離しても閉じない）。`dismissible` を偽にすると、×、Esc、背景、footer に渡す `close` の閉じる操作をすべて無視する（送っている最中など）。CSS は components.css の `dialog.dialog` |
 | `toast` | `ToastRegion.svelte`、`src/lib/toast.svelte.ts` | `ToastRegion` を `+layout.svelte` に1つ置き、`showToast()` で出す。HTML でなく文字列を渡す。同時に出すのは3件までで、あふれたら古いものから消す。モーダルのダイアログが開くと外側は inert になり、トップレイヤーに出し直した領域（`popover="manual"`）も inert のままで読み上げが届かない。そのため `Dialog.svelte` の中にも領域を持ち、ダイアログが開いている間は中の領域に出して、外側の領域は隠す |
