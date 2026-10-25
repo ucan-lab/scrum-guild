@@ -52,6 +52,14 @@
     });
   };
 
+  // 画面の見出しへフォーカスを移す。見出しを focusable にしていない画面（メンバーなど）でも移せるよう、tabindex が無ければ付ける
+  function focusHeading(): void {
+    const heading = document.querySelector<HTMLElement>('h1.page-title');
+    if (!heading) return;
+    if (!heading.hasAttribute('tabindex')) heading.setAttribute('tabindex', '-1');
+    heading.focus();
+  }
+
   // 閉じたら、開いた行のリンクへフォーカスを戻す。行が無ければ（消えた、画面にまだ無い）画面の見出しへ移す。
   // 閉じるボタンと Esc だけでなく、戻る／進むで `?task=` が外れて閉じたときも同じ。タスクが消えて閉じたときは、
   // 木を読み直した後に見出しへ移す（removed）ので、ここでは移さない
@@ -67,7 +75,8 @@
     }
     void tick().then(() => {
       const row = document.querySelector<HTMLElement>(`a[data-task-id="${CSS.escape(previous)}"]`);
-      (row ?? document.querySelector<HTMLElement>('h1.page-title'))?.focus();
+      if (row) row.focus();
+      else focusHeading();
     });
   });
 
@@ -77,7 +86,7 @@
     await withoutTask();
     await invalidate('app:backlog-tree');
     await tick();
-    document.querySelector<HTMLElement>('h1.page-title')?.focus();
+    focusHeading();
   }
 </script>
 

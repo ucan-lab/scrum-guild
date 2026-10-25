@@ -692,7 +692,7 @@ Google の人は、ログインするまで `sub` が分からない。そのた
   - `(assignee_user_id, deleted_at, completed_at) WHERE assignee_user_id IS NOT NULL`: 外部キーの検査と、自分の今日、積載量（担当の未完了のタスク）
   - `(completed_by) WHERE completed_by IS NOT NULL`、`(created_by) WHERE created_by IS NOT NULL`: 外部キーの検査
 - 手で作るタスクの `title` は、前後の空白を除いて 1〜200 字。字数の数え方と断る文字は `workspaces.name` と同じ。
-- 引き出しで直す欄（`task-update`）の決まりは、ストーリーと同じ。`body_md` は 1 万字まで（`stories.body_md` と同じ正規化。空は `NULL`）、`link_url` は http と https の URL だけで 2048 字まで（解釈した URL にそろえる）、`due_on` は暦に存在する日付。取り込んだタスクはリンクを持たず（上の CHECK）、タイトルは同期で書き直すので、どちらも直せない。完了したタスクのポイントは直せない（「書き込みの単位」の「タスクの変更」）。1件の読み取り（`task-detail`）は、これらの欄と、取り込んだタスクか、完了した日時、呼んだ人が削除できるかを返す。本文は長いので、バックログの木には載せない。
+- 引き出しで直す欄（`task-update`）の決まりは、ストーリーと同じ。`body_md` は 1 万字まで（`stories.body_md` と同じ正規化。空は `NULL`）、`link_url` は http と https の URL だけで 2048 字まで（解釈した URL にそろえる）、`due_on` は暦に存在する日付。取り込んだタスクはリンクを持たず（上の CHECK）、タイトルは同期で書き直すので、どちらも直せない。完了したタスクのポイントは直せない（「書き込みの単位」の「タスクの変更」）。1件の読み取り（`task-detail`）は、これらの欄と、取り込んだタスクか、完了した日時、呼んだ人が削除できるかに加えて、期日の印を決める今日（`today`。ワークスペースのタイムゾーン）と週の始まり（`week_start`）を返す（`backlog-tree` と同じ決め方。ワークスペースの行は組織とワークスペースで絞って読む）。本文は長いので、バックログの木には載せない。
 - 「今日やる」は、`today_on` が今日（ワークスペースのタイムゾーン）なら今日の印、それより前で未完了なら前日からの持ち越しとして示す。担当が替わったら消す。
 - 区分は、親のエピック、親のストーリー、タスク自身の順に、最初に入っているものを使う。読むときに結合して出し、タスクには写さない。完了の記録（`completions.category_id`）には、完了した時点の値を写す。
 - `repository_id` は、取り込むときに `repositories` の `(workspace_id, provider, source_container_id)` が `task_sources` と一致する行があれば入れる。同期では書き換えない。

@@ -17,6 +17,7 @@
   import { t } from '../vocabulary.svelte.ts';
   import ConfirmDialog from './ConfirmDialog.svelte';
   import Drawer from './Drawer.svelte';
+  import DueChip from './DueChip.svelte';
   import Icon from './Icon.svelte';
   import InlineEdit from './InlineEdit.svelte';
   import Markdown from './Markdown.svelte';
@@ -80,6 +81,8 @@
 
   let loadState = $state<'loading' | 'ready' | 'failed'>('loading');
   let task = $state<TaskDetail | null>(null);
+  // 期日の印を決める、ワークスペースの今日と週の始まり（task-detail の値。ブラウザの時計に頼らない）
+  let clock = $state<{ today: string; weekStart: number } | null>(null);
   let heading = $state<HTMLElement>();
   let retryButton = $state<HTMLButtonElement>();
   let discardDialog = $state<ReturnType<typeof ConfirmDialog>>();
@@ -133,6 +136,7 @@
     if (!alive || mine !== loadVersion) return;
     if (result.ok) {
       task = result.data.task;
+      clock = { today: result.data.today, weekStart: result.data.week_start };
       loadState = 'ready';
       // 開いたときの読み上げに、見出しが読まれるようにする。閉じるボタンか何も無い所にフォーカスがあるときだけ移す
       await tick();
@@ -272,7 +276,10 @@
   async function refresh(): Promise<TaskDetail | null> {
     const result = await callOperation(taskDetail, { workspace_id: workspaceId, task_id: taskId }, { slug });
     if (!result.ok) return null;
-    if (alive) task = result.data.task;
+    if (alive) {
+      task = result.data.task;
+      clock = { today: result.data.today, weekStart: result.data.week_start };
+    }
     return result.data.task;
   }
 
@@ -670,6 +677,10 @@
           {:else}
             <!-- 読み取り専用では、入力欄にせず文字で出す（空は「—」） -->
             <span id={dueId}>{task.due_on ?? '—'}</span>
+          {/if}
+          <!-- 期限の印（木の行と同じ部品）。保存した値（task.due_on）で出し直す。完了したタスクは色なし -->
+          {#if task.due_on !== null && clock !== null}
+            <DueChip dueOn={task.due_on} today={clock.today} weekStart={clock.weekStart} {done} />
           {/if}
           {#if dueError !== null}
             <span class="field-error" id={dueErrorId} role="alert"><Icon name="alert" />{dueError}</span>

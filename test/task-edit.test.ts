@@ -10,7 +10,7 @@ import { implementedOperations } from '../src/server/operations/index.ts';
 import { taskDeleteOperation, taskUpdateOperation } from '../src/server/operations/task-edit.ts';
 import { createStory, createTask } from './factories.ts';
 import { errorCodeOf, post } from './operations/harness.ts';
-import { createPerson, createTarget, type Person, type Target } from './operations/world.ts';
+import { createPerson, createTarget, testEnv, type Person, type Target } from './operations/world.ts';
 
 const app = createApp(implementedOperations);
 
@@ -26,27 +26,45 @@ type Detail = {
   can_delete: boolean;
 };
 
-function detail(target: Target, taskId: string, person: Person = target.member) {
+// 開発用の時計（DEV_NOW）を置いた環境。リクエストごとに時計が環境の値に合わされるので、setFixedNow だけでは止まらない
+// （リクエストの最初に、DEV_NOW が無ければ本物の時計に戻される。src/server/dev-clock.ts）。
+// DEV_NOW は、ループバックの公開 URL のときだけ使える
+const FROZEN_AT = '2026-10-26T10:00:00+09:00';
+const FROZEN_ISO = '2026-10-26T01:00:00.000Z';
+function frozenEnv(devNow: string = FROZEN_AT): Env {
+  return Object.assign({}, testEnv, { PUBLIC_ORIGIN: 'http://localhost:8787', DEV_NOW: devNow });
+}
+
+function detail(target: Target, taskId: string, person: Person = target.member, requestEnv?: Env) {
   return post(app, taskDetail, {
     slug: target.slug,
     token: person.token,
     body: { workspace_id: target.workspace.id, task_id: taskId },
+    ...(requestEnv === undefined ? {} : { env: requestEnv }),
   });
 }
 
-function update(target: Target, taskId: string, body: Record<string, unknown>, person: Person = target.member) {
+function update(
+  target: Target,
+  taskId: string,
+  body: Record<string, unknown>,
+  person: Person = target.member,
+  requestEnv?: Env,
+) {
   return post(app, taskUpdate, {
     slug: target.slug,
     token: person.token,
     body: { workspace_id: target.workspace.id, task_id: taskId, ...body },
+    ...(requestEnv === undefined ? {} : { env: requestEnv }),
   });
 }
 
-function remove(target: Target, taskId: string, person: Person = target.member) {
+function remove(target: Target, taskId: string, person: Person = target.member, requestEnv?: Env) {
   return post(app, taskDelete, {
     slug: target.slug,
     token: person.token,
     body: { workspace_id: target.workspace.id, task_id: taskId },
+    ...(requestEnv === undefined ? {} : { env: requestEnv }),
   });
 }
 
@@ -123,6 +141,44 @@ describe('task-detail', () => {
       membership: { workspaceId: target.workspace.id, role: 'member' },
     });
     expect(((await (await detail(target, task.id, other)).json()) as { task: Detail }).task.can_delete).toBe(false);
+  });
+
+  test('期日の印を決める、ワークスペースのタイムゾーンでの今日と週の始まりを返す（止めた時計で）', async () => {
+    // UTC では 2026-10-26 の 20:00 だが、東京ではもう 10-27。ブラウザの時計やタイムゾーンでなく、ワークスペースの値で決まる
+    const frozen = frozenEnv('2026-10-27T05:00:00+09:00');
+    try {
+      const target = await createTarget();
+      const task = await createTask(target.organization, target.workspace.id, target.member.userId!, {
+        due_on: '2026-10-26',
+      });
+      const body = (await (await detail(target, task.id, target.member, frozen)).json()) as {
+        today: string;
+        week_start: number;
+      };
+      expect(body.today).toBe('2026-10-27');
+      // ワークスペースの既定（月曜始まり）
+      expect(body.week_start).toBe(1);
+      // 別のタイムゾーンのワークスペースでは、その値になる
+      const other = await createTarget();
+      const db = orgDb(env, other.organization.verified);
+      await db.run(
+        db.statement((q) =>
+          q
+            .updateTable('workspaces')
+            .set({ timezone: 'America/Los_Angeles', week_start: 0 })
+            .where('id', '=', other.workspace.id)
+            .where('organization_id', '=', other.organization.id),
+        ),
+      );
+      const otherTask = await createTask(other.organization, other.workspace.id, other.member.userId!);
+      const otherBody = (await (await detail(other, otherTask.id, other.member, frozen)).json()) as {
+        today: string;
+        week_start: number;
+      };
+      expect(otherBody).toMatchObject({ today: '2026-10-26', week_start: 0 });
+    } finally {
+      setFixedNow(undefined);
+    }
   });
 
   test('別の組織・別のワークスペース・削除済み・存在しないタスクは 404', async () => {
@@ -419,11 +475,12 @@ async function runWithRace(
 }
 
 describe('履歴の二重書き（止めた時計で、同じ時刻に競った要求）', () => {
-  const FIXED = new Date('2026-10-26T01:00:00.000Z');
   afterEach(() => setFixedNow(undefined));
 
   test('同じ値を書く2つの更新が競っても、履歴は1行だけ', async () => {
-    setFixedNow(FIXED);
+    const frozen = frozenEnv();
+    // 処理を直に呼ぶ要求 B も、競う要求 A も、同じ時刻（FROZEN_ISO）で書く
+    setFixedNow(new Date(FROZEN_ISO));
     const target = await createTarget();
     const task = await createTask(target.organization, target.workspace.id, target.admin.userId!, { title: '元' });
     // 要求 B は「元」を読んだ。書く前に、要求 A が同じ時刻に同じ値へ変える。B の更新は通らず、読み直すと変える欄が無い
@@ -433,27 +490,31 @@ describe('履歴の二重書き（止めた時計で、同じ時刻に競った�
       taskUpdateOperation,
       { task_id: task.id, title: '新' },
       async (n) => {
-        if (n === 1) expect((await update(target, task.id, { title: '新' }, target.leader)).status).toBe(200);
+        if (n === 1) expect((await update(target, task.id, { title: '新' }, target.leader, frozen)).status).toBe(200);
       },
     )) as { task: Detail };
     expect(result.task.title).toBe('新');
     const logs = await logsOf(target, task.id);
     expect(logs).toHaveLength(1);
+    // 時計が止まっていた（行の更新日時が、止めた時刻）
+    expect((await rowOf(target, task.id))!.updated_at).toBe(FROZEN_ISO);
     expect(logs[0]).toMatchObject({ actor_user_id: target.leader.userId });
     expect(JSON.parse(logs[0]!.changes_json)).toEqual({ title: ['元', '新'] });
   });
 
   test('先に削除した要求があれば、同じ時刻の削除は 404 で、履歴は1行だけ', async () => {
-    setFixedNow(FIXED);
+    const frozen = frozenEnv();
+    setFixedNow(new Date(FROZEN_ISO));
     const target = await createTarget();
     const task = await createTask(target.organization, target.workspace.id, target.member.userId!);
     await expect(
       runWithRace(target, target.member, taskDeleteOperation, { task_id: task.id }, async (n) => {
-        if (n === 1) expect((await remove(target, task.id, target.leader)).status).toBe(200);
+        if (n === 1) expect((await remove(target, task.id, target.leader, frozen)).status).toBe(200);
       }),
     ).rejects.toMatchObject({ status: 404, code: 'not_found' });
     const logs = await logsOf(target, task.id);
     expect(logs).toHaveLength(1);
+    expect((await rowOf(target, task.id))!.deleted_at).toBe(FROZEN_ISO);
     expect(logs[0]).toMatchObject({ action: 'delete', actor_user_id: target.leader.userId });
   });
 

@@ -1,4 +1,4 @@
-import { now } from '../../shared/clock.ts';
+import { now, todayIn } from '../../shared/clock.ts';
 import { taskDelete, taskDetail, taskUpdate, type TaskDetail } from '../../shared/operations/task/index.ts';
 import { previousStatementChanged, type OrganizationDb, type VerifiedWorkspace } from '../db/index.ts';
 import { ApiError } from '../errors.ts';
@@ -79,7 +79,18 @@ function detailOf(
 export const taskDetailOperation = implement(taskDetail, async ({ db, actor, workspace, input }) => {
   const task = await readTask(db, workspace.workspaceId, input.task_id);
   if (task === undefined) throw new ApiError(404, 'not_found');
-  return { task: detailOf(task, actor, workspace) };
+  // 期日の印を決める、ワークスペースのタイムゾーンでの今日と週の始まり（backlog-tree と同じ。ブラウザの時計に頼らない）。組織とワークスペースで絞る
+  const settings = await db.first(
+    db.statement((q) =>
+      q
+        .selectFrom('workspaces')
+        .select(['workspaces.timezone', 'workspaces.week_start'])
+        .where('workspaces.id', '=', workspace.workspaceId)
+        .where('workspaces.organization_id', '=', db.organizationId),
+    ),
+  );
+  if (settings === undefined) throw new ApiError(404, 'not_found');
+  return { task: detailOf(task, actor, workspace), today: todayIn(settings.timezone), week_start: settings.week_start };
 });
 
 // 書く欄。ポイントと期日、リンク、本文は空にできる
