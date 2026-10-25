@@ -1,6 +1,6 @@
 # Scrum Guild データモデル
 
-状態: 確定。要件定義（`requirements.md`）を D1（SQLite）のテーブルに落としたもの。最初のマイグレーション（`migrations/0001_create_initial_tables.sql`）で、共通の6表と、一本道に要る組織の中の16表を作った。残りの表は、使う機能の Issue でマイグレーションを足して作る
+状態: 確定。要件定義（`requirements.md`）を D1（SQLite）のテーブルに落としたもの。最初のマイグレーション（`migrations/0001_create_initial_tables.sql`）で、共通の6表と、一本道に要る組織の中の16表を作った。`organization_holidays` は `migrations/0004_add_organization_holidays.sql` で足した。残りの表は、使う機能の Issue でマイグレーションを足して作る
 
 ## 決まりごと
 
@@ -254,14 +254,18 @@
 | 列 | 型 | 制約 | 説明 |
 | --- | --- | --- | --- |
 | organization_id | TEXT | PK、FK organizations | |
-| holiday_on | TEXT | PK | |
-| name | TEXT | | 「元日」など |
+| holiday_on | TEXT | PK、`CHECK (holiday_on IS date(holiday_on))` | |
+| name | TEXT | `CHECK (name IS NULL OR length(name) <= 40)` | 「元日」など。無くてよい（空は NULL） |
 | created_by | TEXT | NOT NULL、FK users | |
 | created_at | TEXT | NOT NULL | |
 
-- 索引: `(created_by)`。外部キーの検査。
-
-一括の登録は `INSERT ... ON CONFLICT DO NOTHING` で行う。
+- 作ったのは `migrations/0004_add_organization_holidays.sql`（#194）。積載量（#66）が、全員の稼働しない日として読む。
+- 索引: `(created_by)`。外部キーの検査。組織ごとの一覧は主キーの先頭の `organization_id` で引く。
+- 操作はどれも管理者だけ（`organization-holiday-list`、`organization-holiday-add`、`organization-holiday-delete`）。どの文も `organization_id` を確かめた組織で絞る。一覧は日付の古い順に全件を返す。
+- 名前は前後の空白を除いて 40 字まで（コードポイントで数える）。見えない文字（制御文字、ゼロ幅のスペースなど）を含む名前は断る。決まりは `src/shared/text-rules.ts` の `shortTextProblem` と同じで、空だけは通して NULL にする。画面の貼り付けの解析（`src/shared/holiday.ts`）と API の検証が同じ判定を使う。
+- 一括の登録は `INSERT ... ON CONFLICT DO NOTHING ... RETURNING holiday_on` で行う。登録済みの日付は飛ばし、名前も書き換えない。入った件数は `RETURNING` の行で数え、送った件数との差を登録済みとして返す。1回に送れるのは 100 件まで。D1 の1文の束縛は 100 個までなので、5列の行を 20 件ずつの文に分け、全部を1回の `batch()` で送る（途中で落ちれば何も入らない）。同じ送信の中で同じ日付が重なれば 400 で断る。
+- 削除は組織と日付で1行を消す。消えた行が無ければ 404 の `not_found`。確かめのダイアログは挟まない（入れ直せるため）。
+- 休日の登録と削除は `change_logs` に書かない。組織の変更の履歴（#193）が扱うのは、権限、組織の設定、運用者の操作で、休日は積載量の入力にすぎないため。
 
 ## ユーザーの稼働
 

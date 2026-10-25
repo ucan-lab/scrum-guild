@@ -3,11 +3,12 @@
   import NotFoundPage from '../../../lib/components/NotFoundPage.svelte';
   import PageHead from '../../../lib/components/PageHead.svelte';
   import WorkspacesSetting from '../../../lib/components/admin/WorkspacesSetting.svelte';
+  import HolidaysSetting from '../../../lib/components/admin/HolidaysSetting.svelte';
   import { t } from '../../../lib/vocabulary.svelte.ts';
   import type { PageProps } from './$types';
 
   // 組織の管理の画面（admin.html）。節は src/lib/components/admin/ の部品で、それぞれ自分でデータを読む。
-  // ほかの節（ユーザー、言葉づかいとテーマ、変更の履歴、休日）は、部品を足してここに並べる。
+  // ほかの節（ユーザー、言葉づかいとテーマ、変更の履歴）は、部品を足してここに並べる。
   // 管理者でなければ「見つからない」と同じ扱い
   let { data }: PageProps = $props();
 
@@ -53,5 +54,6 @@
       meId={organization.me.id}
       organizationVocabulary={organization.organization.vocabulary}
     />
+    <HolidaysSetting slug={data.slug} />
   </div>
 {/if}

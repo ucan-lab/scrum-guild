@@ -55,7 +55,7 @@ SQ.mount("admin", () => `
     ${setting("組織の休日", `祝日など、すべての${t("workspace")}に効く休日。日付の一覧を貼り付けて、まとめて登録できます。`, `
       <label class="field" for="paste"><span class="field-label">貼り付けて登録</span><textarea class="textarea" id="paste" placeholder="2027-02-11 建国記念の日&#10;2027-02-23 天皇誕生日"></textarea><span class="field-hint">1行に1日。日付のあとに名前を書けます。登録済みの日付は飛ばします。</span></label>
       <div class="form-actions"><button class="btn" type="button" data-toast="2 日を登録しました">登録する</button></div>
-      <ul class="party-list">${A.holidays.map(([d, n]) => `<li><span class="mono">${d}</span><span>${esc(n)}</span><button class="icon-btn is-danger" type="button" aria-label="${d} を消す" style="margin-left:auto">${icon("trash")}</button></li>`).join("")}</ul>`)}
+      <ul class="party-list">${A.holidays.map(([d, n]) => `<li><span class="mono">${d}</span><span class="party-list-text">${esc(n)}</span><button class="icon-btn is-danger party-list-end" type="button" aria-label="${d} を消す">${icon("trash")}</button></li>`).join("")}</ul>`)}
     ${setting(`${t("workspace")}の外の言葉づかい`, `「冒険者ギルド」「ギルドマスター」などの言葉。${t("workspace")}の中の言葉づかいは、それぞれの${t("leader")}が決めます。`, `
       <div class="choice-list">
         <label class="choice"><input type="radio" name="kv" checked><div><b>ゲームの言葉</b><span>冒険者ギルド、ギルドマスター</span></div></label>

@@ -9,6 +9,11 @@ import {
   organizationSuspensionUpdateOperation,
 } from './operator-suspension.ts';
 import { myOrganizationsOperation, organizationInfoOperation } from './organization.ts';
+import {
+  organizationHolidayAddOperation,
+  organizationHolidayDeleteOperation,
+  organizationHolidayListOperation,
+} from './organization-holiday.ts';
 import { logoutOperation, meOperation } from './session.ts';
 import { storyCreateOperation, storyGetOperation, storyMoveOperation, storyUpdateOperation } from './story.ts';
 import { taskAssignOperation, taskDeleteOperation, taskDetailOperation, taskUpdateOperation } from './task-edit.ts';
@@ -32,6 +37,9 @@ export const implementedOperations: readonly ImplementedOperation[] = [
   organizationResumeOperation,
   myOrganizationsOperation,
   organizationInfoOperation,
+  organizationHolidayListOperation,
+  organizationHolidayAddOperation,
+  organizationHolidayDeleteOperation,
   meOperation,
   logoutOperation,
   storyCreateOperation,
