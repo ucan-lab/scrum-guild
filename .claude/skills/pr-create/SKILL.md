@@ -116,10 +116,11 @@ git log <base>..HEAD --oneline
 ブランチ名、コミットメッセージ、更新モードなら既存の本文（`Closes #n` 等）、ユーザーの指示から Issue 番号を拾う。見つからなければこの節と Step 5-C を飛ばす。
 
 ```bash
-gh api repos/{owner}/{repo}/issues/<issue> --jq '{number, title, body, state, url: .html_url}' > "<スクラッチパッドの絶対パス>/issue.json"
+gh api repos/{owner}/{repo}/issues/<issue> --jq '{number, title, body, state, labels: [.labels[].name], url: .html_url}' > "<スクラッチパッドの絶対パス>/issue.json"
 ```
 
 本文の未チェックの項目（`- [ ]`）を完了条件として控える。
+PR の本文では、ラベルの無いタスクを `Closes #<番号>` で指す。`story` か `epic` のラベルが付いた Issue は `Refs #<番号>` で指し、`Closes` を使わない（理由: ストーリーとエピックは人が受け入れ条件を確かめて閉じる。`docs/development.md` の「Issue の運用」）。
 
 ## Step 3: 草案を作る
 
