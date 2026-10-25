@@ -15,7 +15,17 @@ export type LoginProfile = {
   avatarUrl: string | null;
 };
 
-export type ResolvedInvitee = { subject: string; loginName: string };
+// 招待する人の解決の結果。displayName とアバターは、運用者や招待する人が、指した相手を確かめるために見せる
+export type ResolvedInvitee = {
+  subject: string;
+  loginName: string;
+  displayName: string | null;
+  avatarUrl: string | null;
+};
+
+// not_found: 当たる人がいない。not_a_user: 当たったが個人のアカウントではない（GitHub の組織など。ログインできない）
+export type InviteeResolution =
+  { kind: 'found'; invitee: ResolvedInvitee } | { kind: 'not_found' } | { kind: 'not_a_user' };
 
 export type AuthorizationRequest = { state: string; codeChallenge: string; redirectUri: string };
 export type VerificationRequest = { code: string; codeVerifier: string; redirectUri: string };
@@ -41,6 +51,7 @@ export interface LoginMethod {
   authorizeUrl(request: AuthorizationRequest): string;
   // 戻ってきた code を確かめ、手段の中の ID と表示名とアバターを返す。確かめられなければ LoginMethodError を投げる
   verify(request: VerificationRequest): Promise<LoginProfile>;
-  // 招待する人の指し方。GitHub はユーザー名を、招待のときにユーザー ID に解決する。当たる人がいなければ undefined
-  resolveInvitee(reference: string): Promise<ResolvedInvitee | undefined>;
+  // 招待する人の指し方。GitHub はユーザー名を、招待のときにユーザー ID に解決する。
+  // 当たる人がいない、個人のアカウントでない、は結果で分けて返す。届かないときは LoginMethodError（unavailable）を投げる
+  resolveInvitee(reference: string): Promise<InviteeResolution>;
 }

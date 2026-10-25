@@ -1,12 +1,13 @@
 // GitHub のログイン（docs/development.md の「GitHub のログインと取り込み」）。共通の1つの OAuth App で、スコープは read:user だけ。
 // 認可コードのフローに state（login-routes.ts）と PKCE（S256）を付ける。
 // 通信先は固定の URL にし、設定から読まない。人が差分を読む領域（docs/development.md の「マージの判定」）
+import { stripHiddenCharacters } from '../../shared/hidden-characters.ts';
 import {
   LoginMethodError,
   type AuthorizationRequest,
+  type InviteeResolution,
   type LoginMethod,
   type LoginProfile,
-  type ResolvedInvitee,
   type VerificationRequest,
 } from './login-method.ts';
 
@@ -81,6 +82,15 @@ function avatarUrlOf(value: unknown): string | null {
   } catch {
     return null;
   }
+}
+
+// 手段の側の名前。名前で断る文字（制御文字、区切り、向きを変える文字、見えない空白や演算子。shared/hidden-characters.ts）は
+// 取り除く。似せたアカウントを指名させるのに使われうるため。絵文字の結合（ZWJ）などは残す。
+// 取り除いて空になる、空白だけ、文字列でない、のどれかなら null。長さはコードポイントで切る（絵文字を途中で割らない）
+function displayNameOf(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  const cleaned = stripHiddenCharacters(value).trim();
+  return cleaned === '' ? null : [...cleaned].slice(0, MAX_DISPLAY_NAME_LENGTH).join('');
 }
 
 export type GithubOptions = {
@@ -164,10 +174,7 @@ export function createGithubLoginMethod(
     return {
       subject: subjectOf(body.id),
       loginName: loginNameOf(body.login),
-      displayName:
-        typeof body.name === 'string' && body.name.trim() !== ''
-          ? body.name.trim().slice(0, MAX_DISPLAY_NAME_LENGTH)
-          : null,
+      displayName: displayNameOf(body.name),
       avatarUrl: avatarUrlOf(body.avatar_url),
     };
   }
@@ -221,8 +228,8 @@ export function createGithubLoginMethod(
 
     // ユーザー名は変えられるので、招待のときにユーザー ID に解決して突き合わせる。クライアントの資格情報で呼び、
     // 認証なしの呼び出しの上限（IP ごと、1時間に60回）に Workers の共有の IP が当たらないようにする
-    async resolveInvitee(reference: string): Promise<ResolvedInvitee | undefined> {
-      if (!USERNAME_PATTERN.test(reference)) return undefined;
+    async resolveInvitee(reference: string): Promise<InviteeResolution> {
+      if (!USERNAME_PATTERN.test(reference)) return { kind: 'not_found' };
       const res = await send(`${USERS_URL}${encodeURIComponent(reference)}`, {
         headers: {
           Accept: 'application/vnd.github+json',
@@ -233,7 +240,7 @@ export function createGithubLoginMethod(
       });
       if (res.status === 404) {
         await discard(res);
-        return undefined;
+        return { kind: 'not_found' };
       }
       if (!res.ok) {
         await discard(res);
@@ -241,7 +248,18 @@ export function createGithubLoginMethod(
       }
       const body = await readJson(res);
       if (!isRecord(body)) throw unexpected('ユーザーの応答');
-      return { subject: subjectOf(body.id), loginName: loginNameOf(body.login) };
+      // type は User（個人）、Organization（組織）、Bot など。個人以外はログインできず、管理者や招待の相手にすると誰も入れない
+      if (typeof body.type !== 'string') throw unexpected('アカウントの種類');
+      if (body.type !== 'User') return { kind: 'not_a_user' };
+      return {
+        kind: 'found',
+        invitee: {
+          subject: subjectOf(body.id),
+          loginName: loginNameOf(body.login),
+          displayName: displayNameOf(body.name),
+          avatarUrl: avatarUrlOf(body.avatar_url),
+        },
+      };
     },
   };
 }

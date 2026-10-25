@@ -99,10 +99,11 @@ export function createApp(
   });
 
   // ログインの開始と戻り先。ブラウザの GET の移動なので、操作の定義の外に直に書く（/api/health と同じ例外）
-  app.route('/auth', loginRoutes({ fetcher: options.fetcher ?? ((input, init) => fetch(input, init)) }));
+  const fetcher = options.fetcher ?? ((input, init) => fetch(input, init));
+  app.route('/auth', loginRoutes({ fetcher }));
 
   // 操作の定義から登録するルート。ルートを直に書かない（/api/health と /api/auth/ の下の GET だけが例外）
-  app.route('/', operationsApp(operations));
+  app.route('/', operationsApp(operations, { fetcher }));
 
   app.notFound((c) => c.json(errorBody('not_found', 'not found'), 404));
 

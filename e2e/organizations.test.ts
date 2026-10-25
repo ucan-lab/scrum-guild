@@ -560,6 +560,8 @@ test.describe('ログインしていない人と、組織が無い人', () => {
     await page.route('**/api/my-organizations', (route) =>
       route.fulfill({ json: { organizations: [], invitations: [], operator: true } }),
     );
+    // e2e の Worker には運用者の一覧が無いので、運用の画面が取る組織の一覧も差し替える（e2e/operator.test.ts）
+    await page.route('**/api/list-organizations', (route) => route.fulfill({ json: { organizations: [] } }));
     await page.goto('/');
     await expect(page).toHaveURL(/\/operator$/);
     await expect(page.getByRole('heading', { level: 1, name: '運用' })).toBeVisible();

@@ -68,12 +68,12 @@
 - 組織の中の表は、リクエストの組織から DB を選ぶ1つの関数を通して読み書きする。今はどの組織でも同じ DB を返す。
 - 共通の表は、共通の DB を返す別の関数を通して読み書きする。
 - 1回の `batch()` に、共通の表と組織の中の表を混ぜない。今これに当たる操作は「書き込みの単位」の組織の作成とメンバーの離脱で、どちらも2回に分けて書く。
-- 組織をまたいで読む処理は、1つの関数にまとめる。当たるのは、ログインできるか（入れる組織と届いた招待があるか）、ログインの直後の組織の選択、届いた招待の一覧、初めてのログインで `users.account_id` を埋めること、招待の URL の秘密のハッシュから待っている指名と招待を引くこと。今は組織の中の表を持つ DB が1つで、`allOrganizationDatabases()`（`db/select-database.ts`）が返す DB ごとに、組織の中の表（`users`、`memberships`、`invitations`）を引き、共通の表（`organizations`）を別の問い合わせで引いて、アプリで合わせる。`users` と `invitations` は、アカウントに結んだログインの手段と ID の組ごとに、`users_login` と `invitations_login_pending` の索引で引く（全件を読まない）。分けたときは、この関数だけを、DB の一覧を全部返す形に直すか、共通の DB にログインの ID（`login_provider` と `login_subject`）と組織の組の索引、招待の URL の秘密のハッシュと組織の組の索引を持つ形に直す。どちらにするかは分けるときに決める。
+- 組織をまたいで読む処理は、1つの関数にまとめる。当たるのは、ログインできるか（入れる組織と届いた招待があるか）、ログインの直後の組織の選択、届いた招待の一覧、初めてのログインで `users.account_id` を埋めること、招待の URL の秘密のハッシュから待っている指名と招待を引くこと、運用者の一覧の管理者の状態を数えること。今は組織の中の表を持つ DB が1つで、`allOrganizationDatabases()`（`db/select-database.ts`）が返す DB ごとに、組織の中の表（`users`、`memberships`、`invitations`）を引き、共通の表（`organizations`）を別の問い合わせで引いて、アプリで合わせる。`users` と `invitations` は、アカウントに結んだログインの手段と ID の組ごとに、`users_login` と `invitations_login_pending` の索引で引く（全件を読まない）。分けたときは、この関数だけを、DB の一覧を全部返す形に直すか、共通の DB にログインの ID（`login_provider` と `login_subject`）と組織の組の索引、招待の URL の秘密のハッシュと組織の組の索引を持つ形に直す。どちらにするかは分けるときに決める。
 - 組織をまたいで読む関数（`listAccountOrganizations`）の前提。アカウントは必ず1つ以上のログインを持つ（0件なら、一覧は何も引かずに空を返す）。`users` の行のログイン（`login_provider`、`login_subject`）は、結んだアカウントのログインのどれかである。一覧はログインの手段と ID で `users` を引いてから `account_id` で絞るのに対し、`enterOrganization` は `account_id` で引くので、この前提が崩れると、一覧と入れる組織がずれる。ログインの付け替えや統合を入れるときは、この関数を直す。結ぶ書き込み（ログインのたびの、`account_id` が空の行の埋め直し）は、この前提を崩さない。
 - ログインできるかの判定は、`listAccountOrganizations` と同じ読み取り（`readAccountOrganizations`）を通す。入れる組織か届いた招待が、停止していない組織に1つでもあれば通す。2つの場面で使う。
   - セッションの判定（組織の外の操作と、組織に入れなかったとき）: 組織の選択と同じ結果を、1回のリクエストの中で使い回す。アカウントに結ばれる前の行（`account_id` が空で、ログインの手段と ID が一致する、指名で待っていた行）は数えない。結ばれる前の行だけを持つ人のセッションを、どこにも入れないまま残さないため。その人は 401 でセッションが消え、もう一度ログインすると結ばれて入れる。
   - ログインのとき（`hasLoginAccess`）: 結ばれる前の行も数える。ログインのたびに `users.account_id` を結ぶので、これから入れる行だから。初めてのログインではアカウントが無くても引ける。
-- `linkLoginToAccount` は、組織で絞らずに `users.account_id` と `updated_at` を書く、この読み書きの入口だけの例外（組織の中の操作の処理は、組織の ID で絞らないと書けない）。絞るのは、ログインの手段と ID が一致することと、`account_id` が空であること。読む文と書く文は、どちらも `users_login` の索引に乗る。1つのアカウントに複数のログインの手段を結ぶとき（#57）は、同じ組織に同じアカウントの行が2つできて、`users_organization_account`（`organization_id` と `account_id` の一意）に当たりうる。#57 で、この前提と判定と、結ぶ UPDATE を見直す。
+- `linkLoginToAccount` は、組織で絞らずに `users.account_id` と `updated_at` を書く、この読み書きの入口だけの例外（組織の中の操作の処理は、組織の ID で絞らないと書けない）。呼ぶのは、ログインのたびの結び直しと、運用者の組織の作成の書いた後の結び直し（運用者の道具の `linkLogin` 経由）。絞るのは、ログインの手段と ID が一致することと、`account_id` が空であること。読む文と書く文は、どちらも `users_login` の索引に乗る。1つのアカウントに複数のログインの手段を結ぶとき（#57）は、同じ組織に同じアカウントの行が2つできて、`users_organization_account`（`organization_id` と `account_id` の一意）に当たりうる。#57 で、この前提と判定と、結ぶ UPDATE を見直す。
 
 ### 分けるとき
 
@@ -200,7 +200,8 @@
 | created_at、updated_at | TEXT | NOT NULL | |
 
 - 運用者の画面で作る。作るときに最初の管理者の `users` を同じバッチで入れる（アカウントがまだなければ、`account_id` が空の `users` の行で待つ。下の `users` を参照）。
-- アプリが使う名前（`api`、`login`、`operator` など）を slug にできないことは、アプリが検査する。
+- アプリが使う名前（`api`、`login`、`operator` など）を slug にできないことは、アプリが検査する。予約した名前の一覧は `src/shared/organization-slug.ts` に持ち、画面の最上段のルートを足したら合わせて足す（`scripts/organization-slug.test.ts` が照合する）。
+- 続けて書く `users` と `change_logs` の入口は、組織の作成の関数（`src/server/db/create-organization.ts`）が作る。入口を作れるのは `organizations` に挿入した組織の ID だけで、任意の組織の ID から入口を作る関数は `db/` の外へ出さない。同時に作られて `slug` の UNIQUE に当たったときは、`slug` の行が今あるかを読み直し、重なりとして 409 を返す。
 - 人数は保存せず、招待のたびに数える。対象は、無効にしていない管理者と、いずれかのワークスペースに今所属しているか承諾待ちの招待を持つ人（まだアカウントのない人への招待を含む）で、同じ人は1人とする。人数が `member_limit` 以上なら招待を断り、同時に招待して少し超えたときはそのまま認める。
 - 解約した組織は、`purge_on` を過ぎたら運用の手順でこの組織の行をすべて消し、R2 の `<organization_id>/` で始まるファイルも消す。再開したら `suspended_at` と `purge_on` を空に戻す。
 
@@ -232,7 +233,8 @@
 - 一意: `(organization_id, account_id) WHERE account_id IS NOT NULL`。アカウントと組織の組に1行。1つのアカウントに複数のログインの手段を結んだ後も、同じ人が1つの組織に2行持たないようにする。
 - 索引: `(login_provider, login_subject)`。ログインのときに入れる組織を引く。
 - 表示するログイン名とアバターは `account_logins` から引く。
-- 運用者が組織を作るときは、最初の管理者をログインの ID に解決し（GitHub はユーザー名からユーザー ID へ。Google は解決せず、`login_email` と招待の URL の秘密で待つ）、`is_admin = 1` の行を入れる。`account_id` は、その人が初めてログインしたときに埋める。管理者の指名し直しも同じで、そのときは同じ組織の `login_subject` が空の行を同じバッチで消す。
+- 運用者が組織を作るときは、最初の管理者をログインの ID に解決し（GitHub はユーザー名からユーザー ID へ。Google は解決せず、`login_email` と招待の URL の秘密で待つ）、`is_admin = 1` の行を入れる。GitHub の `name` は解決したユーザー名。GitHub のユーザー名が指すのは個人のアカウントだけで、組織のアカウント（応答の `type` が `Organization`）は断る。`account_id` は、指名のときに共通の DB の `account_logins` を（ログインの手段と ID で）引き、当たればその書き込みで埋める。既にアカウントのある人（別の組織で使っている人）が、ログインし直さずに新しい組織へ入れるため。当たらなければ空で待ち、その人が初めてログインしたときに埋める（`linkLoginToAccount`）。`account_logins` は共通の表なので、読むのは共通の入口から、`users` の書き込みとは別の文で行う。引いて当たらなかった人が、`users` を書くまでの間に初めてログインを終えたときは、`users` を書いた後に `account_logins` を引き直し、当たれば `linkLoginToAccount` で結ぶ（`account_id` が空の行だけに当たるので、何度流しても同じ結果）。指名の `change_logs` に結んだ `account_id` を残すのは、指名の書き込みと同時に結んだとき（`account_logins` に当たったとき）だけ。書いた後の結び直しは、`users.account_id` だけを書く。結び直しが失敗しても組織の作成は成功として返し、`organizations` と `users` は残る。ログには組織の ID と例外の名前だけを出し、次のログインで結ばれる。管理者の指名し直しも同じで、そのときは同じ組織の `login_subject` が空の行を同じバッチで消す。
+- 運用者の組織の一覧は、組織ごとの管理者の状態を持つ。`none` は無効でない管理者（`is_admin = 1`）の行が無い組織、`pending` はその行があるが、どれも `account_id` が空の組織（指名した人がまだログインしていない）、`active` はそれ以外。`login_subject` が空の行（Google の指名で待つ行）は、管理者の数や最後の管理者の検査には数えないが、ここでは `account_id` が空の管理者の行として `pending` に数える。運用者の画面が「ログイン待ち」と出すため。組織をまたいで読む関数に置き、一覧の組織の ID を `organization_id IN (...)` で渡して、1回の問い合わせで数える（束縛の上限で区切る）。人の名前や ID は返さない。
 - `login_subject` が空の行（Google の指名で待つ行）は、管理者の数にも最後の管理者の検査にも数えない。
 - 最後の管理者を解除できないことはアプリが検査する。
 - 招待された人は、承諾した時点でその組織の行を作る（すでにあれば使う）。招待の時点では `invitations` にログインの ID（Google では `sub` が分かるまでメールアドレス）だけを持つ。
@@ -305,7 +307,7 @@
 | created_at、updated_at | TEXT | NOT NULL | |
 
 - 索引: `(organization_id)`。組織のワークスペースの一覧に使う。
-- 名前は前後の空白を除いて、1〜50 字（コードポイントで数える。絵文字も1字）。制御文字（`Cc`）、ゼロ幅のスペース（U+200B）、行と段落の区切り（U+2028、U+2029）、向きを変える制御（U+202A〜U+202E、U+2066〜U+2069）、BOM（U+FEFF）は受けない。ZWJ（U+200D）でつないだ絵文字、旗のタグ文字、ZWNJ（U+200C）を使うペルシア語やインド系の文字の名前は通す。空白、書式の文字（`Cf`）、U+3164、U+2800、U+115F、U+1160、U+FFA0 を除いて何も残らない名前は、空の名前と同じ扱いにする。重複は許す（一意の制約を持たず、閉じたものと同じ名前もありうるため）。
+- 名前は前後の空白を除いて、1〜50 字（コードポイントで数える。絵文字も1字）。制御文字（`Cc`）、ゼロ幅のスペース（U+200B）、行と段落の区切り（U+2028、U+2029）、向きを変える制御（U+202A〜U+202E、U+2066〜U+2069）、語結合子などの見えない演算子（U+2060〜U+2064）、BOM（U+FEFF）は受けない。この決まりは `src/shared/hidden-characters.ts` の1か所に置き、組織の表示名と GitHub の表示名（取り除く）も同じ文字を扱う。ZWJ（U+200D）でつないだ絵文字、旗のタグ文字、ZWNJ（U+200C）を使うペルシア語やインド系の文字、方向の印（LRM、RLM、ALM）の名前は通す。空白、書式の文字（`Cf`）、U+3164、U+2800、U+115F、U+1160、U+FFA0 を除いて何も残らない名前は、空の名前と同じ扱いにする。重複は許す（一意の制約を持たず、閉じたものと同じ名前もありうるため）。
 - ワークスペースの一覧（`workspace-list`）と最初のリーダーの候補（`workspace-leader-candidates`）は、件数に上限を付けない。想定はワークスペースが組織あたり数十、候補も同じく数十から数百で、1回の応答に収まる。上限で切ると、管理者から見えないワークスペースや、指せない人ができるため。想定を超える組織が出たら、そのときに絞り込みやページ分けを足す。
 
 ### workspace_point_rates
@@ -921,10 +923,10 @@ Google の人は、ログインするまで `sub` が分からない。そのた
 | --- | --- | --- | --- |
 | id | TEXT | PK | |
 | organization_id | TEXT | NOT NULL、FK organizations | |
-| workspace_id | TEXT | FK workspaces | 組織の変更（管理者の指名、ユーザーの無効化、組織の休日）では空 |
+| workspace_id | TEXT | FK workspaces | 組織の変更（組織の作成、管理者の指名、ユーザーの無効化、組織の休日）では空 |
 | actor_user_id | TEXT | FK users | 空なら同期などの定期処理か運用者の操作 |
 | operator | TEXT | | 運用者の操作（管理者の指名し直しなど）のときの運用者のログインの ID（`github:12345`、`google:<sub>` の形） |
-| entity_type | TEXT | NOT NULL | `task`、`story`、`epic`、`sprint`、`membership`、`invitation`、`allocation`、`connection`、`completion`、`user`、`workspace` など |
+| entity_type | TEXT | NOT NULL | `task`、`story`、`epic`、`sprint`、`membership`、`invitation`、`allocation`、`connection`、`completion`、`user`、`workspace`、`organization` など |
 | entity_id | TEXT | NOT NULL | |
 | action | TEXT | NOT NULL | `create`、`update`、`delete`、`complete`、`reopen`、`archive` など |
 | changes_json | TEXT | NOT NULL、既定 `'{}'` | `{"列名": [前, 後]}`。人や列は ID と、そのときの表示名を並べて残す |
@@ -947,7 +949,7 @@ D1 は対話的なトランザクションを持たない。まとめて書く�
 | エピックのクリア | `epics`、`xp_grants`（クリア報酬）、`change_logs` |
 | メンバーの離脱 | `memberships`、担当を外す `tasks`、`epic_party_members`、`connections`、`change_logs`。ログインできなくなったときは、続けて共通の DB の `sessions` を消す |
 | 取り込み（1件） | `tasks`（結ばれたリポジトリがあれば `repository_id` も）、`task_sources`、`task_source_payloads` |
-| 組織の作成 | 共通の DB の `organizations`、続けて組織の DB の最初の管理者の `users` |
+| 組織の作成 | 共通の DB の `organizations`、続けて組織の DB の最初の管理者の `users` と `change_logs` の2行（組織の作成と管理者の指名） |
 | ワークスペースの作成 | `workspaces`、`workspace_point_rates`（作った月、4）、`board_columns`（4行。完了の列は末尾）、`detail_fields`（1行）、最初のリーダーの `memberships`、`change_logs`（ワークスペースと所属の2行）。どの文も `INSERT ... SELECT ... WHERE EXISTS`（最初のリーダーが同じ組織にいて、無効でなく、`login_subject` があり、管理者か、いずれかのワークスペースに今所属している。かつ、作る人が同じ組織の、無効でない管理者）にし、全部入るか何も入らないかにする。何も入らなければ 404 |
 | Google の招待の URL から結ぶ | 組織の DB の `users` か `invitations`、`change_logs`（「メールアドレスで待つ指名と招待」の 6）、続けて共通の DB の `accounts` と `account_logins` |
 | 初めてのログイン | 共通の DB の `accounts` と `account_logins`、続けて組織の DB の `users.account_id`（指名で待っていた行に結ぶ）、続けて共通の DB の `sessions`。2回目以降は `account_logins` と `accounts.last_login_at` の書き直し、`users.account_id` を結び直す書き込み、`sessions` の順 |
@@ -959,7 +961,7 @@ D1 は対話的なトランザクションを持たない。まとめて書く�
 
 共通の DB と組織の DB に分けて書く操作は、途中で失敗したときの扱いを決めておく。
 
-- 組織の作成で `users` が入らなかったときは、管理者のいない組織が残る。運用者の画面の管理者の指名し直しで入れる。
+- 組織の作成で `users` が入らなかったときは、管理者のいない組織が残る。運用者の一覧では管理者の状態が `none` になり、画面は「管理者がいない」と出す。管理者の指名し直しで入れる。`change_logs` は `users` と同じ `batch()` で書くので、残らない。
 - Google の招待の URL から結んだあと、アカウントが作れなかったときは、`sub` を埋めた行だけが残る。次に Google でログインすれば `sub` で当たり、アカウントの作成に進む。
 - ログインで `users.account_id` を結べなかったときは、`accounts` と `account_logins` だけが残る。セッションは作らず、「もう一度ログインしてください」を出す。ログインのたびに、そのログインの ID（手段と手段の中の ID）で `account_id` が空の `users` を結び直す（結んだ行は当たらなくなるので、何度流しても同じ結果）ので、次のログインで結ばれる。組織に入れるかの判定は `users.account_id` で行うので、結ばれるまでその組織には入れない。
 - 同じ人の最初のログインが並行したときは、片方の `batch()` が `account_logins` の主キーで落ちて、`accounts` ごと戻る。落ちた側は、もう片方が作った行を読み直して続ける。

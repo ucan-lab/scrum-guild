@@ -8,7 +8,7 @@ import { ApiError } from '../src/server/errors.ts';
 import { implement } from '../src/server/operations/implement.ts';
 import { implementedOperations } from '../src/server/operations/index.ts';
 import { assertPointersCover, checkRowIsolation, defineOperationChecks, post } from './operations/harness.ts';
-import { pointers } from './operations/pointers.ts';
+import { operatorGithub, pointers } from './operations/pointers.ts';
 import { provisionalOperations, provisionalPointers, renameWorkspace, taskTitle } from './operations/provisional.ts';
 import { createTarget } from './operations/world.ts';
 
@@ -104,8 +104,18 @@ describe('仮の操作の一覧', () => {
   defineOperationChecks(provisionalOperations, provisionalPointers);
 });
 
-// 本番の一覧。今は空で、操作が入るとここで回る。関数の足し忘れは、ファイルの読み込みで落ちる
+// 本番の一覧。関数の足し忘れは、ファイルの読み込みで落ちる。運用者の操作は、差し替えた GitHub に問い合わせる
 assertPointersCover(implementedOperations, pointers);
-if (implementedOperations.length > 0) {
-  describe('本番の一覧の分離と権限', () => defineOperationChecks(implementedOperations, pointers));
-}
+describe('本番の一覧の分離と権限', () =>
+  defineOperationChecks(implementedOperations, pointers, { fetcher: operatorGithub.fetcher }));
+
+describe('本番の運用者の操作', () => {
+  test('組織の一覧、GitHub のユーザー名の解決、組織の作成が、運用者の権限で一覧に載っている', () => {
+    const operator = implementedOperations
+      .map((operation) => operation.definition)
+      .filter((definition) => definition.permission === 'operator')
+      .map((definition) => definition.name)
+      .sort();
+    expect(operator).toEqual(['create-organization', 'list-organizations', 'resolve-github-user']);
+  });
+});

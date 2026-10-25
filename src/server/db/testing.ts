@@ -3,6 +3,8 @@
 // 組織を確かめた結果を確かめずに作る口と、表の照合に要る値（列の定数と、DB のカタログ）を出す
 import { sql } from 'kysely';
 import {
+  adminCountsStatement,
+  adminStatusesIn,
   hasLoginAccessIn,
   invitationsStatement,
   linkLoginToAccountIn,
@@ -33,9 +35,12 @@ export { compiledQueryOf as compiledQueryForTest };
 // env の取り出しの Proxy で DB を包むので、入口（commonDb、orgDb）はそのまま包まれた D1 に問い合わせる。
 //   afterQuery: 問い合わせ（rows、first、run）が答えを返した直後に呼ぶ。その間、問い合わせの結果は呼び出し元に返らない
 //   beforeBatch: batch() を送る前に、文の SQL の並びを渡して呼ぶ。投げると、batch() は何も書かずに失敗する
+//   afterBatch: batch() が書き終えた直後に、文の SQL の並びを渡して呼ぶ。投げると、書き込みはコミットされたまま、呼び出し元には失敗が返る
+//     （応答だけが失敗した場合）。別の処理を割り込ませて、書いた直後の状態を変えるのにも使う
 export type D1Hooks = {
   afterQuery?: (sql: string) => Promise<void>;
   beforeBatch?: (sqls: readonly string[]) => void;
+  afterBatch?: (sqls: readonly string[]) => Promise<void> | void;
 };
 
 export function envWithD1Hooks(base: Env, hooks: D1Hooks): Env {
@@ -78,8 +83,11 @@ export function envWithD1Hooks(base: Env, hooks: D1Hooks): Env {
         if (name === 'prepare') return (text: string) => wrapStatement(target.prepare(text), text);
         if (name === 'batch') {
           return async (statements: D1PreparedStatement[]) => {
-            hooks.beforeBatch?.(statements.map((statement) => sqlOf.get(statement) ?? ''));
-            return target.batch(statements.map((statement) => rawOf.get(statement) ?? statement));
+            const sqls = statements.map((statement) => sqlOf.get(statement) ?? '');
+            hooks.beforeBatch?.(sqls);
+            const results = await target.batch(statements.map((statement) => rawOf.get(statement) ?? statement));
+            await hooks.afterBatch?.(sqls);
+            return results;
           };
         }
         return typeof member === 'function' ? member.bind(target) : member;
@@ -135,6 +143,22 @@ export function linkLoginToAccountForTest(
   extraDatabases: readonly FakeDatabase[],
 ) {
   return linkLoginToAccountIn(env, accountId, login, now, entriesWith(env, extraDatabases));
+}
+
+// 運用者の一覧の管理者の状態を、組織の中の DB が複数あるときに確かめる
+export function adminStatusesForTest(
+  env: Env,
+  organizationIds: readonly string[],
+  extraDatabases: readonly FakeDatabase[],
+) {
+  return adminStatusesIn(organizationIds, entriesWith(env, extraDatabases));
+}
+
+// 管理者の状態を数える文。実行計画の確認に使う
+export function adminCountsStatementForTest(env: Env, organizationIds: readonly string[]) {
+  const [db] = crossOrganizationEntries(env);
+  if (db === undefined) throw new Error('組織の中の DB が無い');
+  return adminCountsStatement(db, organizationIds);
 }
 
 // 文の実行計画（EXPLAIN QUERY PLAN の detail の列）。索引に乗るかを確かめるのに使う

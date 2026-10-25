@@ -230,8 +230,12 @@ const SECTIONS = [
       <label class="field is-invalid" for="f2"><span class="field-label">${t("points")}</span><input class="input" id="f2" value="4" aria-invalid="true"><span class="field-error">${icon("alert")}0、1、2、3、5、8、13 のどれかにしてください</span></label>
       <label class="field" for="f3"><span class="field-label">${t("category")}</span><select class="select" id="f3"><option>追加案件</option><option>保守</option><option>${t("category")}なし</option></select></label>
       <label class="field" for="f5"><span class="field-label">${t("ac")}</span><textarea class="textarea" id="f5">- 購入の確定でポイントが付く&#10;- 失効日を過ぎたポイントが残高から消える</textarea></label>
+      <div class="field is-invalid"><label class="field-label" for="f6">GitHub のユーザー名</label>
+        <div class="input-row"><input class="input mono" id="f6" value="kotone-dev2" aria-invalid="true" aria-describedby="f6e f6h"><button class="btn" type="button">確かめる</button></div>
+        <span class="field-error" id="f6e">${icon("alert")}そのユーザー名の人が GitHub にいません。</span>
+        <span class="field-hint" id="f6h">「確かめる」を押して、指名する人を見て確かめてから作ります。</span></div>
     </div>`,
-    ["ラベルは入力欄の上に置き、プレースホルダーをラベルの代わりにしない。", "誤りは欄の下に、何が違うかと直し方を書く。", "絞り込みは道具の帯にまとめ、画面の見出しのすぐ下に置く。"], ".toolbar / .field .field-label .field-hint .field-error .input .select .textarea .search / .field.is-invalid")],
+    ["ラベルは入力欄の上に置き、プレースホルダーをラベルの代わりにしない。", "誤りは欄の下に、何が違うかと直し方を書く。", "入力欄の横にボタン（確かめる、コピー）を置くときは .input-row に入れ、ヒントと誤りはその下に置く。折り返しても、ボタンは入力欄の横に残る。", "絞り込みは道具の帯にまとめ、画面の見出しのすぐ下に置く。"], ".toolbar / .field .field-label .field-hint .field-error .input .select .textarea .search / .field.is-invalid / .input-row")],
   ["chips", "印と囲みの知らせ", () => block("chips", "印と囲みの知らせ", "状態を小さく添える。どれもアイコンか文字で意味が分かる。",
     `<div class="cat-row">
       ${dueChip("2026-10-17")}${dueChip("2026-10-20", { fromSource: true })}${dueChip("2026-10-22")}${dueChip("2026-11-20")}
@@ -256,10 +260,11 @@ const SECTIONS = [
   ["people", "人とレベル", () => block("people", "人とレベル", "他の人に見せるのはレベルだけ。経験値の数字は本人だけ。",
     `<div class="cat-row">
       ${avatarOf("u1")}${avatarOf("u2", { lg: true })}${avatar(null)}${avatarOf("u5")}
+      ${avatar("星野 琴音", 3, { lg: true, image: SQ.SAMPLE_PHOTO })}${avatar("星野 琴音", 3, { lg: true, image: SQ.BROKEN_PHOTO })}
       <span class="avatar-stack">${avatarOf("u2")}${avatarOf("u1")}${avatarOf("u3")}</span>
       ${emblem(7, true)}${emblem(7)}${emblem(12)}
     </div>`,
-    ["離脱した人は薄くし、title に「離脱済み」を出す。", "紋章の大は自分の記録の面だけ、小は名前の横に添える。"], ".avatar .is-lg .is-none .is-left / .avatar-stack / .emblem .is-sm")],
+    ["離脱した人は薄くし、title に「離脱済み」を出す。", "ログインの手段の側の画像（運用者が指名する人を確かめるときの GitHub のアバター）は、頭文字の円の中に重ねる（.avatar > img）。画像の組の右側は、画像が読み込めない例で、頭文字に戻る。", "紋章の大は自分の記録の面だけ、小は名前の横に添える。"], ".avatar .is-lg .is-none .is-left / .avatar > img / .avatar-stack / .emblem .is-sm")],
   ["ledger", "台帳", () => block("ledger", "台帳（タスクの一覧）", "タスクの一覧はすべてこの形。左に今日やるの印、右に期日、ポイント、担当、完了の操作。右端の丸を押すと判子が押される。題を押すと詳細が開く。",
     book(SAMPLE, { showAssignee: true }),
     ["行の左端の太陽は「今日やる」。押すと金色になる。", "完了は判子で示し、すぐ横に「戻す」を置く。", "取り込んだタスクは、キーと取り込み元のアイコンを必ず添える。"],
@@ -336,9 +341,18 @@ const SECTIONS = [
         <p class="gate-note">補足は gate-note に書く。</p>
       </section>
       <section class="gate-sheet"><h2 class="dialog-title">届いた招待</h2><p class="gate-note">2枚目からの紙は、見出しを h2 にする。</p></section>
+    </div>
+    <div class="gate is-wide" style="min-height:0">
+      <div class="gate-stack">
+        <section class="gate-sheet">
+          <h2 class="dialog-title">表を載せる紙（.gate.is-wide）</h2>
+          <div class="table-wrap"><table class="table"><thead><tr><th>${t("organization")}・slug</th><th>作った日時</th></tr></thead>
+            <tbody><tr><td>あおば開発<br><span class="mono props-note">aoba</span></td><td class="mono">2026/10/01&nbsp;18:30</td></tr></tbody></table></div>
+        </section>
+      </div>
     </div>`,
-    ["紙の幅は 440px までで、狭い画面では画面の幅に収める。", "枠の外の画面では、テーマと言葉づかいを既定（シンプル（自動）、ゲームの言葉）に戻す。どの組織の値も持ち越さない。", "本番の Gate は、外側を main にする。"],
-    ".gate .gate-stack .gate-sheet .gate-brand .gate-title .gate-note")],
+    ["紙の幅は 440px までで、狭い画面では画面の幅に収める。", "表を載せる画面（運用）は、外側の .gate に is-wide を付けて、紙の幅を 960px までに広げる（本番では Gate の wide）。", "枠の外の画面では、テーマと言葉づかいを既定（シンプル（自動）、ゲームの言葉）に戻す。どの組織の値も持ち越さない。", "本番の Gate は、外側を main にする。"],
+    ".gate .gate-stack .gate-sheet .gate-brand .gate-title .gate-note / .gate.is-wide")],
   ["settings", "設定の節と並べ替え", () => block("settings", "設定の節と並べ替え", "設定の画面は、左に説明、右に入力を置く節を縦に並べる。並べ替えられる一覧は、ドラッグの他に上下のボタンを持つ。",
     `<div class="settings"><section class="setting"><div class="setting-head"><h3 class="setting-title">${t("column")}</h3><p class="setting-desc">名前は言葉づかいを切り替えても訳しません。</p></div><div class="setting-body">
       <ol class="order-list">${D.columns.filter((c) => !c.done).map((c, i, a) => `<li><span class="grip">${icon("grip")}</span><input class="input" value="${c.name}" aria-label="名前"><span class="order-actions"><button class="icon-btn" type="button" aria-label="上へ" ${i === 0 ? "disabled" : ""}>${icon("up")}</button><button class="icon-btn" type="button" aria-label="下へ" ${i === a.length - 1 ? "disabled" : ""}>${icon("down")}</button><button class="icon-btn is-danger" type="button" aria-label="削除">${icon("trash")}</button></span></li>`).join("")}

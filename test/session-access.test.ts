@@ -448,21 +448,109 @@ describe('ログインの手段の型（GitHub の招待する人の指し方）
 
   test('ユーザー名をユーザー ID に解決する。ID は10進の文字列で、名前は GitHub が返す綴りにする', async () => {
     const { github, method: login } = method();
-    github.addUser({ id: 583231, login: 'octo-cat' });
-    expect(await login.resolveInvitee('Octo-Cat')).toEqual({ subject: '583231', loginName: 'octo-cat' });
+    github.addUser({
+      id: 583231,
+      login: 'octo-cat',
+      name: ' Octo Cat ',
+      avatar_url: 'https://avatars.githubusercontent.com/u/583231',
+    });
+    expect(await login.resolveInvitee('Octo-Cat')).toEqual({
+      kind: 'found',
+      invitee: {
+        subject: '583231',
+        loginName: 'octo-cat',
+        displayName: 'Octo Cat',
+        avatarUrl: 'https://avatars.githubusercontent.com/u/583231',
+      },
+    });
     expect(github.calls.at(-1)?.authorization).toBe(`Basic ${btoa(`${FAKE_CLIENT_ID}:${FAKE_CLIENT_SECRET}`)}`);
   });
 
-  test('いないユーザー名は undefined', async () => {
+  test('表示名が無い、アバターが GitHub のホストでない、は null で返す', async () => {
+    const { github, method: login } = method();
+    github.addUser({ id: 583232, login: 'plain-cat', name: null, avatar_url: 'https://evil.example/a.png' });
+    expect(await login.resolveInvitee('plain-cat')).toEqual({
+      kind: 'found',
+      invitee: { subject: '583232', loginName: 'plain-cat', displayName: null, avatarUrl: null },
+    });
+  });
+
+  test('表示名の制御文字、双方向の制御、ゼロ幅スペース、BOM は取り除き、取り除いて空になれば null', async () => {
+    const { github, method: login } = method();
+    const [rlo, lri, zwsp, bom] = [0x202e, 0x2066, 0x200b, 0xfeff].map((code) => String.fromCodePoint(code));
+    github.addUser({ id: 583233, login: 'bidi-cat', name: `星野${rlo}${lri}${zwsp}${bom} 澪\u0007` });
+    github.addUser({ id: 583234, login: 'blank-cat', name: `${zwsp}${rlo}${bom}` });
+    expect(await login.resolveInvitee('bidi-cat')).toMatchObject({
+      kind: 'found',
+      invitee: { displayName: '星野 澪' },
+    });
+    expect(await login.resolveInvitee('blank-cat')).toMatchObject({
+      kind: 'found',
+      invitee: { displayName: null },
+    });
+  });
+
+  test('絵文字の結合（ZWJ）、ZWNJ、方向の印（LRM、RLM）は、正しい名前に使うので残す', async () => {
+    const { github, method: login } = method();
+    const [zwj, zwnj, lrm, rlm] = [0x200d, 0x200c, 0x200e, 0x200f].map((code) => String.fromCodePoint(code));
+    const name = `👩${zwj}💻 Aki ${zwnj}A${lrm}B${rlm}`;
+    github.addUser({ id: 583235, login: 'emoji-cat', name });
+    expect(await login.resolveInvitee('emoji-cat')).toMatchObject({
+      kind: 'found',
+      invitee: { displayName: name.trim() },
+    });
+  });
+
+  test('見えない演算子（U+2060〜2064）と行の区切り（U+2028、U+2029）も取り除き、ALM（U+061C）は残す', async () => {
+    const { github, method: login } = method();
+    const chars = (...codePoints: number[]) => String.fromCodePoint(...codePoints);
+    github.addUser({
+      id: 583237,
+      login: 'invisible-cat',
+      name: `星野${chars(0x2060, 0x2062, 0x2064, 0x2028, 0x2029)}澪${chars(0x61c)}`,
+    });
+    expect(await login.resolveInvitee('invisible-cat')).toMatchObject({
+      kind: 'found',
+      invitee: { displayName: `星野澪${chars(0x61c)}` },
+    });
+  });
+
+  test('表示名の長さは、コードポイントで200字に切り、絵文字を途中で割らない', async () => {
+    const { github, method: login } = method();
+    github.addUser({ id: 583236, login: 'long-cat', name: '😀'.repeat(250) });
+    const result = await login.resolveInvitee('long-cat');
+    expect(result.kind).toBe('found');
+    if (result.kind === 'found') expect(result.invitee.displayName).toBe('😀'.repeat(200));
+  });
+
+  test('いないユーザー名は not_found', async () => {
     const { method: login } = method();
-    expect(await login.resolveInvitee('nobody-here')).toBeUndefined();
+    expect(await login.resolveInvitee('nobody-here')).toEqual({ kind: 'not_found' });
+  });
+
+  test.each(['Organization', 'Bot'])(
+    '個人のアカウントでない（type が %s）相手は、not_found と分けて not_a_user で返す',
+    async (type) => {
+      const { github, method: login } = method();
+      github.addUser({ id: 9001, login: 'acme-corp', type });
+      expect(await login.resolveInvitee('acme-corp')).toEqual({ kind: 'not_a_user' });
+    },
+  );
+
+  test('type が無い応答は、想定と違う応答として失敗で投げる', async () => {
+    const noType = createGithubLoginMethod(
+      { clientId: FAKE_CLIENT_ID, clientSecret: FAKE_CLIENT_SECRET },
+      async () => new Response(JSON.stringify({ id: 1, login: 'octo-cat' }), { status: 200 }),
+      quietGithubOptions,
+    );
+    await expect(noType.resolveInvitee('octo-cat')).rejects.toBeInstanceOf(LoginMethodError);
   });
 
   test.each(['', '-leading', 'trailing-', 'dou--ble', 'a'.repeat(40), '../etc', 'a b', 'ユーザー'])(
-    'GitHub のユーザー名の形でない %j は、GitHub に問い合わせずに undefined',
+    'GitHub のユーザー名の形でない %j は、GitHub に問い合わせずに not_found',
     async (name) => {
       const { github, method: login } = method();
-      expect(await login.resolveInvitee(name)).toBeUndefined();
+      expect(await login.resolveInvitee(name)).toEqual({ kind: 'not_found' });
       expect(github.calls).toHaveLength(0);
     },
   );
@@ -482,7 +570,10 @@ describe('ログインの手段の型（GitHub の招待する人の指し方）
   test('EMU のように `_` を含むログイン名は解決できる', async () => {
     const { github, method: method_ } = method();
     github.addUser({ id: 77, login: 'octo_acme-corp' }, 'octo_acme-corp'.replaceAll('_', '-'));
-    expect(await method_.resolveInvitee('octo-acme-corp')).toEqual({ subject: '77', loginName: 'octo_acme-corp' });
+    expect(await method_.resolveInvitee('octo-acme-corp')).toMatchObject({
+      kind: 'found',
+      invitee: { subject: '77', loginName: 'octo_acme-corp' },
+    });
   });
 
   test('GitHub が 5xx を返したら、見つからないのではなく失敗として投げる', async () => {

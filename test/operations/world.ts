@@ -11,11 +11,17 @@ import {
   createWorkspace,
   type OrganizationFixture,
 } from '../factories.ts';
+import { FAKE_CLIENT_ID, FAKE_CLIENT_SECRET } from '../auth/fake-github.ts';
 
 // 運用者の一覧。Person.operator が持つログインの ID はこの先頭
 export const OPERATOR_LOGIN_ID = 'github:9000000000000001';
 
-export const testEnv: Env = Object.assign({}, baseEnv, { OPERATOR_LOGIN_IDS: `${OPERATOR_LOGIN_ID},google:424242` });
+// GitHub の資格情報は差し替えた GitHub（test/auth/fake-github.ts）に合わせた架空の値。運用者の操作が GitHub のユーザー名を解決する
+export const testEnv: Env = Object.assign({}, baseEnv, {
+  OPERATOR_LOGIN_IDS: `${OPERATOR_LOGIN_ID},google:424242`,
+  GITHUB_CLIENT_ID: FAKE_CLIENT_ID,
+  GITHUB_CLIENT_SECRET: FAKE_CLIENT_SECRET,
+});
 
 export type Person = {
   accountId: string;

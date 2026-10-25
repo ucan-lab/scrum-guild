@@ -133,8 +133,13 @@ export async function checkRowIsolation(
   expect(await errorCodeOf(res)).toBe('not_found');
 }
 
-export function defineOperationChecks(operations: readonly ImplementedOperation[], pointers: Pointers): void {
-  const app = createApp(operations);
+// options.fetcher は、ログインの手段（GitHub）への通信の差し替え。運用者の操作が GitHub に問い合わせるときに渡す
+export function defineOperationChecks(
+  operations: readonly ImplementedOperation[],
+  pointers: Pointers,
+  options: { fetcher?: typeof fetch } = {},
+): void {
+  const app = createApp(operations, options);
 
   describe.each(operations.map((operation) => operation.definition))('$name（$permission）', (definition) => {
     let own: Target;

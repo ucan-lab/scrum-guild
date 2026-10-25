@@ -128,10 +128,19 @@
   // ---- 部品 ----
   // ロゴの印。中世風は「冒」、他は頭文字
   const brandSeal = `<span class="brand-seal" aria-hidden="true"><span class="orn-medieval">冒</span><span class="orn-plain">SG</span></span>`;
+  // opts.image はログインの手段の側のアバターの画像の URL（指名する人を確かめるときなど）。画像が読めないときは頭文字に戻す
+  // （Avatar.svelte と同じ）。見本の画像は SAMPLE_PHOTO のような架空の data URI にし、外の URL を読まない
   function avatar(name, hue, opts = {}) {
     if (!name) return `<span class="avatar is-none ${opts.lg ? "is-lg" : ""}" title="担当なし">?</span>`;
-    return `<span class="avatar ${opts.lg ? "is-lg" : ""} ${opts.left ? "is-left" : ""}" style="--h:${hue}" title="${esc(name)}${opts.left ? "（離脱済み）" : ""}">${esc(name[0])}</span>`;
+    const initial = esc([...name][0]);
+    const inner = opts.image
+      ? `<img src="${esc(opts.image)}" alt="" referrerpolicy="no-referrer" data-initial="${initial}" onerror="this.replaceWith(document.createTextNode(this.dataset.initial))">`
+      : initial;
+    return `<span class="avatar ${opts.lg ? "is-lg" : ""} ${opts.left ? "is-left" : ""}" style="--h:${hue}" title="${esc(name)}${opts.left ? "（離脱済み）" : ""}">${inner}</span>`;
   }
+  // 見本のアバターの画像（架空の人の絵。data URI なので外へ通信しない）と、読み込めない画像（頭文字に戻る例）
+  const SAMPLE_PHOTO = `data:image/svg+xml,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 36 36"><rect width="36" height="36" fill="#c9a24b"/><circle cx="18" cy="14" r="6" fill="#fffaf0"/><path d="M6 33c1-8 6-11 12-11s11 3 12 11z" fill="#fffaf0"/></svg>')}`;
+  const BROKEN_PHOTO = "data:image/png;base64,AAAA";
   function avatarOf(uid, opts = {}) {
     if (!uid) return avatar(null, 0, opts);
     const u = user(uid);
@@ -809,9 +818,22 @@
     createOrganization: () => openDialog(`${t("organization")}を作る`,
       `<label class="field" for="d-ks"><span class="field-label">URL の名前（slug）</span><input class="input mono" id="d-ks" placeholder="例: sakura-dev"><span class="field-hint">英小文字、数字、ハイフンで 2〜40 字。あとから変えられません。</span></label>
          <label class="field" for="d-kn"><span class="field-label">表示名</span><input class="input" id="d-kn" placeholder="例: さくら開発"></label>
-       ${loginTarget("d-ka", { title: `最初の${t("admin")}のログインの手段`, hints: adminHints() })}
-       <div class="callout is-info">${icon("link")}<span>URL は <span class="mono">scrum-guild.dev/&lt;slug&gt;/</span> になります。Google で指名したときは、作ったあとに出る招待の URL を${t("admin")}に伝えてください。</span></div>`,
-      `<button class="btn is-quiet" type="button" data-close-dialog>やめる</button><button class="btn is-primary" type="button" data-invite-link="d-ka" data-invite-done="${t("organization")}を作りました">作る</button>`),
+       ${loginTarget("d-ka", { title: `最初の${t("admin")}のログインの手段`, hints: adminHints(), action: `<button class="btn" id="d-kz" type="button" data-verify-admin="d-ka">確かめる</button>` })}
+       <div id="d-kv" hidden>
+         <div class="callout is-info">${icon("shield")}<span>この人を最初の${t("admin")}にします。アバター、ユーザー名、表示名が、伝えたい人のものか確かめてください。ユーザー名は 1 字違いでも別の人に当たります。</span></div>
+         <div class="choice is-static">${avatar("星野 琴音", 3, { lg: true, image: SAMPLE_PHOTO })}<div><b class="mono">kotone-dev</b><span>星野 琴音</span><span>GitHub のユーザー ID 5550001</span></div></div>
+       </div>
+       <div class="callout is-info">${icon("link")}<span>URL は <span class="mono">scrum-guild.dev/&lt;slug&gt;/</span> になります。作ったあとに出る組織の URL を、${t("admin")}になる人に伝えてください。</span></div>
+       <div class="callout is-warn" id="d-kg" hidden>${icon("alert")}<span>Google での指名はまだ使えません。GitHub を選んでください。</span></div>`,
+      `<button class="btn is-quiet" type="button" data-close-dialog>やめる</button><button class="btn is-primary" id="d-kb" type="button" data-org-create="d-ka" disabled>作る</button>`),
+    // 作った後。組織の URL とコピー、管理者になる人に伝えること
+    organizationCreated: () => openDialog(`${t("organization")}を作りました`,
+      `<p>Scrum Guild はメールを送りません。${t("admin")}になる人に、次の URL とログインの手段を伝えてください。</p>
+       <div class="field"><label class="field-label" for="d-ou">${t("organization")}の URL</label>
+         <div class="input-row"><input class="input mono" id="d-ou" value="https://scrum-guild.dev/sakura-dev/" readonly>
+           <button class="btn" type="button" data-toast="URL をコピーしました">${icon("link")}コピー</button></div></div>
+       <div class="callout is-info">${icon("check")}<span>GitHub の kotone-dev でログインするよう伝えてください。</span></div>`,
+      `<button class="btn is-primary" type="button" data-close-dialog>閉じる</button>`),
     reassignAdmin: () => openDialog(`${t("admin")}を指名し直す`,
       `<p>くもラボには今${t("admin")}がいません。新しい${t("admin")}を、GitHub のユーザー名か Google のメールアドレスで指名します。</p>
        ${loginTarget("d-ra", { hints: adminHints() })}
@@ -1248,12 +1270,16 @@
     github: { name: "GitHub", label: "GitHub のユーザー名", example: "例: kotone-dev" },
     google: { name: "Google", label: "Google のメールアドレス", example: "例: mio.hoshino@example.com" },
   };
-  function loginTarget(id, { title = "ログインの手段", hints = {}, disabled = false } = {}) {
+  // action は欄の右に並べるボタン（確かめるなど）。入力欄とボタンだけを .input-row に並べ、ヒントはその下に出す
+  function loginTarget(id, { title = "ログインの手段", hints = {}, disabled = false, action = "" } = {}) {
     const vias = Object.keys(LOGIN_VIA);
     const radios = vias.map((k, i) => `<label><input type="radio" name="${id}-via" value="${k}" data-login-via="${id}" ${i === 0 ? "checked" : ""} ${disabled ? "disabled" : ""}><span>${LOGIN_VIA[k].name}</span></label>`).join("");
     const hintHtml = vias.filter((k) => hints[k]).map((k) => `<span class="field-hint" data-login-hint="${k}" ${k === vias[0] ? "" : "hidden"}>${hints[k]}</span>`).join("");
     return `<div class="field"><span class="field-label">${title}</span><div class="segmented" role="radiogroup" aria-label="${title}">${radios}</div></div>
-      <label class="field" for="${id}"><span class="field-label" data-login-label>${LOGIN_VIA[vias[0]].label}</span><input class="input mono" id="${id}" placeholder="${LOGIN_VIA[vias[0]].example}" ${disabled ? "disabled" : ""}>${hintHtml}</label>`;
+      <div class="field"><label class="field-label" for="${id}" data-login-label>${LOGIN_VIA[vias[0]].label}</label>${(() => {
+        const input = `<input class="input mono" id="${id}" placeholder="${LOGIN_VIA[vias[0]].example}" ${disabled ? "disabled" : ""}>`;
+        return action ? `<div class="input-row">${input}${action}</div>` : input;
+      })()}${hintHtml}</div>`;
   }
   // 運用者が管理者を指名するときの、手段ごとの説明
   const adminHints = () => ({
@@ -1267,8 +1293,9 @@
     if (via !== "google") { closeDialog(); toast(`${icon("check")}${esc(done)}`); return; }
     openDialog("招待の URL",
       `<p>${esc(done)}。この URL を本人に伝えてください。本人がこの URL を開き、招待したメールアドレスの Google アカウントでログインすると入れます。</p>
-       <div class="form-row"><label class="field" for="d-iu"><span class="field-label">招待の URL</span><input class="input mono" id="d-iu" value="https://scrum-guild.dev/invite#Qm7tX2vLr9aKpE4wZc8hN3bYd6fGs1uJ0oTiRl5eWxA" readonly></label>
-         <button class="btn" type="button" data-toast="招待の URL をコピーしました">${icon("link")}コピー</button></div>
+       <div class="field"><label class="field-label" for="d-iu">招待の URL</label>
+         <div class="input-row"><input class="input mono" id="d-iu" value="https://scrum-guild.dev/invite#Qm7tX2vLr9aKpE4wZc8hN3bYd6fGs1uJ0oTiRl5eWxA" readonly>
+           <button class="btn" type="button" data-toast="招待の URL をコピーしました">${icon("link")}コピー</button></div></div>
        <div class="callout is-warn">${icon("alert")}<span>この URL はこの画面を閉じると二度と出ません。期限は14日です。なくしたり切れたりしたら、招待し直してください。</span></div>`,
       `<button class="btn is-primary" type="button" data-close-dialog>閉じる</button>`);
   }
@@ -1281,6 +1308,14 @@
     field.querySelector("[data-login-label]").textContent = via.label;
     input.placeholder = via.example;
     field.querySelectorAll("[data-login-hint]").forEach((h) => (h.hidden = h.dataset.loginHint !== el.value));
+    // 組織の作成のダイアログ: GitHub は確かめるまで作れない。Google はまだ使えず、作れない
+    if (el.dataset.loginVia === "d-ka" && document.getElementById("d-kb")) {
+      const google = el.value === "google";
+      document.getElementById("d-kz").hidden = google;
+      document.getElementById("d-kv").hidden = true;
+      document.getElementById("d-kg").hidden = !google;
+      document.getElementById("d-kb").disabled = true;
+    }
   });
 
   // ---- 操作（見本の中だけで動き、保存はしない） ----
@@ -1336,6 +1371,13 @@
       document.querySelector("#drawer [data-drawer-size]")?.focus({ preventScroll: true }); return;
     }
     if ((el = hit("data-invite-link"))) { inviteLink(el.dataset.inviteLink, el.dataset.inviteDone); return; }
+    // 組織の作成: GitHub は解決した人を見せ、確かめてから作れる。作った後は組織の URL を出す
+    if ((el = hit("data-verify-admin"))) {
+      document.getElementById("d-kv").hidden = false;
+      document.getElementById("d-kb").disabled = false;
+      return;
+    }
+    if ((el = hit("data-org-create"))) { DIALOGS.organizationCreated(); return; }
     if ((el = hit("data-dialog"))) { if (el.dataset.dialog === "createTask") delete D.files.new; DIALOGS[el.dataset.dialog](); return; }
     if ((el = hit("data-file"))) { DIALOGS.previewFile(el.dataset.file); return; }
     if ((el = hit("data-delete-file"))) { closeDialog(); DIALOGS.deleteFile(el.dataset.deleteFile); return; }
@@ -1487,7 +1529,7 @@
     D, t, brandSeal, THEMES, THEME_LABEL, THEME_NOTE, setVocab, toggleVocab, onChange, esc, icon, md, sumPts, cycleTheme, setTheme, applyTheme, mount,
     onRedraw: (fn) => extraRedraws.push(fn), openDrawer, drawerHtml, drawerState: drawer,
     user, task, tasksWhere, repoTag, repoPicker, sprintLabel, colName, categoryOf, storyPts, epicPts, dueOf,
-    avatar, avatarOf, emblem, pts, dueChip, taskDue, tier, sourceKey, entry, book, section, pageHead,
+    avatar, avatarOf, SAMPLE_PHOTO, BROKEN_PHOTO, emblem, pts, dueChip, taskDue, tier, sourceKey, entry, book, section, pageHead,
     card, board, treeStory, treeEpic, sprintNotice, raidNotice, progress, levelPanel, load, capacityRows,
     openDialog, closeDialog, toast, celebrate, miniCap, redraw: () => redrawAll(), DIALOGS, loginTarget, orgMenuHtml,
     filesOf, fileThumb, fileRow, dropzone, attachments, mdBody, meter,

@@ -13,7 +13,7 @@ export const errorCodes = [
   // 操作の回数の上限（定義の rateLimit）を超えた。429
   'rate_limited',
   'internal',
-  // 依存先（D1）に届かない。503
+  // 依存先（D1、GitHub）に届かない。503。人がしばらくしてからやり直せる
   'unavailable',
 ] as const;
 

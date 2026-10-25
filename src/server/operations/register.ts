@@ -13,6 +13,7 @@ import {
 } from '../../shared/operations/define.ts';
 import { sessionCookieClearOptions, sessionCookieName, sessionCookieOptions } from '../../shared/session-cookie.ts';
 import type { AppEnv } from '../app-env.ts';
+import { githubMethod } from '../auth/login-routes.ts';
 import { consumeRateLimit } from '../auth/rate-limit.ts';
 import { deleteSessionsOf, readSession } from '../auth/session.ts';
 import {
@@ -28,6 +29,7 @@ import { executionContextOf } from '../execution-context.ts';
 import { outsideAccount, type OutsideAccount } from './account.ts';
 import { readInput, requireOrigin } from './guards.ts';
 import type { Defer, ImplementedOperation } from './implement.ts';
+import { operatorTools, type OperatorTools } from './operator-tools.ts';
 import { logOperation } from './operation-log.ts';
 
 // ログに残す、リクエストの途中で分かった値
@@ -41,7 +43,15 @@ function unreachable(value: never): never {
 }
 
 // 定義が型の検査を抜けていても、登録のときに落とす。権限の分岐に知らない値が来たまま動かさない
-export function operationsApp(operations: readonly ImplementedOperation[]): Hono<AppEnv> {
+export type OperationsAppOptions = {
+  // ログインの手段（GitHub）への通信。運用者の操作が GitHub のユーザー名を解決するのに使う。テストが差し替える
+  fetcher: typeof fetch;
+};
+
+export function operationsApp(
+  operations: readonly ImplementedOperation[],
+  options: OperationsAppOptions,
+): Hono<AppEnv> {
   const names = new Set<string>();
   const app = new Hono<AppEnv>();
   for (const operation of operations) {
@@ -51,7 +61,7 @@ export function operationsApp(operations: readonly ImplementedOperation[]): Hono
     if (names.has(name)) throw new Error(`操作の名前が重なっている（${name}）`);
     names.add(name);
     const path = isOutsideOperation(operation.definition) ? `/${name}` : `/:slug/${name}`;
-    app.post(path, (c) => handleOperation(c, operation));
+    app.post(path, (c) => handleOperation(c, operation, options));
   }
   return app;
 }
@@ -73,14 +83,18 @@ function applySessionCookie(c: Context<AppEnv>, cookie: SessionCookie): void {
   if (token !== undefined) setCookie(c, name, token, sessionCookieOptions(c.env.PUBLIC_ORIGIN));
 }
 
-async function handleOperation(c: Context<AppEnv>, operation: ImplementedOperation): Promise<Response> {
+async function handleOperation(
+  c: Context<AppEnv>,
+  operation: ImplementedOperation,
+  options: OperationsAppOptions,
+): Promise<Response> {
   const startedAt = Date.now();
   const trace: Trace = { organizationId: null, userId: null, accountId: null };
   let status = 200;
   let code = 'ok';
   const cookie: SessionCookie = { applied: false, extend: false, clear: false };
   try {
-    return await execute(c, operation, trace, cookie);
+    return await execute(c, operation, trace, cookie, options);
   } catch (err) {
     // 失敗の応答にも、期限を延ばす Cookie と、消す Cookie を付ける（1本だけ。applySessionCookie）
     applySessionCookie(c, cookie);
@@ -183,6 +197,7 @@ async function execute(
   operation: ImplementedOperation,
   trace: Trace,
   cookie: SessionCookie,
+  options: OperationsAppOptions,
 ): Promise<Response> {
   const { definition } = operation;
   const handler = operation.handler as Handler;
@@ -207,7 +222,15 @@ async function execute(
     // 確かめないのは、定義が skipsLoginAccess を付けた操作（ログアウトなど）だけ。
     // 運用者の権限の検査（403）より前に確かめる（入れる組織を失った非運用者には、403 でなく 401 を返す）
     if (definition.skipsLoginAccess !== true) await requireLoginAccess(c, cookie, session.accountId, account);
-    if (definition.permission === 'operator' && !(await account.isOperator())) throw new ApiError(403, 'forbidden');
+    // 運用者の操作には、運用者のログインの ID と運用者の道具を渡す。運用者でなければ 403
+    let operator: OperatorTools | undefined;
+    if (definition.permission === 'operator') {
+      const operatorLoginId = await account.operatorLoginId();
+      if (operatorLoginId === undefined) throw new ApiError(403, 'forbidden');
+      operator = operatorTools(c.env, { loginId: operatorLoginId, requestId: c.get('requestId') }, (provider) =>
+        provider === 'github' ? githubMethod(c, options.fetcher) : undefined,
+      );
+    }
     await enforceRateLimit(c, definition, session.accountId);
     const input = await readInput(c, definition.input);
     result = await handler({
@@ -220,6 +243,7 @@ async function execute(
           cookie.clear = true;
         },
       },
+      ...(operator === undefined ? {} : { operator }),
       input,
     });
   } else {

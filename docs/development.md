@@ -36,7 +36,7 @@
   | 権限 | 範囲 | 通る人 |
   | --- | --- | --- |
   | `login` | 組織の外 | ログインしていて、入れる組織がある人（か運用者）。`skipsLoginAccess` を付けた操作は、入れる組織を失った人も通す |
-  | `operator` | 組織の外 | シークレット `OPERATOR_LOGIN_IDS` に載った運用者 |
+  | `operator` | 組織の外 | シークレット `OPERATOR_LOGIN_IDS` に載った運用者。処理には、運用者のログインの ID（`github:12345` の形。複数のログインを結んだ人は一覧に載っているもの）と、運用者の道具（`operator-tools.ts`。ログインの手段、管理者の状態の読み取り、組織の作成の最初の書き込み）が渡る |
   | `invitee` | 組織の中 | 組織に入れる人すべて。承諾待ちの招待だけを持つ人を含む。招待の一覧、承諾、辞退に使う |
   | `organization` | 組織の中 | `users` の行がある人。無効でない管理者か、いずれかのワークスペースに今所属している人。承諾待ちの招待だけの人は通さない（404） |
   | `member` | ワークスペースの下 | そのワークスペースに今所属している人と、管理者 |
@@ -144,7 +144,8 @@
 - 閉じたワークスペースへの書き込みは、409 の `workspace_closed`（先に読んだ値の競合の `conflict` とは分ける）。
 - 定義の `rateLimit` を超えた呼び出しは、429 の `rate_limited`。
 - 本文が 1MiB を超えたときは、413 で `code` は `invalid_input`。
-- D1 に届かないとき（`/api/health` の疎通）は 503 の `unavailable`。
+- D1 に届かないとき（`/api/health` の疎通）と、運用者の操作が問い合わせる GitHub に届かないとき（上限、障害、クライアントの ID と秘密が未設定）は 503 の `unavailable`。入力の誤りの 400 の `invalid_input` とは分け、人がしばらくしてからやり直せる失敗として扱う。
+- 運用者の操作（`src/server/operations/operator.ts`）は、入力の誤りの `details` の `code` で理由を分ける（`slug_format`、`slug_reserved`、`github_user_not_found`、`github_not_a_user`、`github_user_changed`、`login_provider_unavailable`。定義は `src/shared/operations/operator/create-organization.ts`）。画面はこの `code` で文言を選ぶ。重なる slug は 409 の `conflict`。
 - 想定していないエラーは `app.onError` で 500 の `internal` にし、中身は応答に出さずログにだけ出す。
 - ログは Workers Logs に JSON の1行で出す。操作ごとの項目は `requestId`（`cf-ray`。無ければ乱数。エラーのログと同じ値）、`operation`、`organizationId`、`userId`（組織の中の `users` の ID）、`accountId`、`code`（成功は `ok`）、`status`、`durationMs`。本文、コメント、取り込んだ内容、認証情報（招待の URL の秘密、ID トークン、Google のメールアドレスを含む）は出さない。ログインの開始と戻り先（GET の例外）は、操作ごとのログとは別に、`route: "auth"`、`step`（`start` か `callback`）、`provider`、`outcome`（`ok`、`denied`、`too_many` など）、成功のときの `accountId` を1行出す。OAuth の `code`、`state`、トークン、Cookie の値、クライアントの秘密は出さない（`test/login-security.test.ts` が確かめる）。
 
@@ -379,7 +380,7 @@ PR ごとに GitHub Actions で回す。`.github/workflows/ci.yml` の各ジョ�
 | check | 型の検査（`tsc`、`svelte-check`）、lint、整形、Claude のフックのテスト（`node --test .claude/hooks/*.test.mjs`） |
 | test | Workers の実行環境で動かす（`@cloudflare/vitest-plugin`。`@cloudflare/vitest-pool-workers` から名前が変わった）。テストの D1 には `test/apply-migrations.ts` が全マイグレーションを当てる。1つのテストファイルの中では、前のテストが入れた行が残るので、一意の列にはテストごとに新しい値を使う。組織の分離のテストを含む。`scripts/` の `node --test` は、seed を一時の D1 に2回流して中身を数える |
 | migration | 空の D1 に全マイグレーションを順に当てて通るか確かめ、続けて同じ D1 に seed を2回流す（`pnpm db:migrate:fresh`）。マイグレーションと seed のずれと、seed を流し直せることを PR ごとに確かめるため。0件なら当てずに成功で終える。ベータが始まったら、既にあるマイグレーションのファイルの書き換えも落とす（上の「DB を作り直してよい期間」） |
-| e2e | `pnpm e2e`。`pnpm preview` で build して `wrangler dev` を立て、サーバーが立ってから `e2e/global-setup.ts` が `pnpm db:seed` で手元の D1 に seed を入れ直し（行は消える。立てたままのサーバーを使い回すときも流れる。CI のジョブに seed の段は足さない）、Playwright で、seed の Cookie でログインした組織の選択と組織の枠（組織が1つの人、2つの人、入れない組織を開いた人。`e2e/organizations.test.ts`）、ログインの画面（枠の外、`return_to` の整え方、`?error=` の文言）と seed の Cookie での `me`（`e2e/login.test.ts`）、シェルの表示、`/api/health` の版と D1 への疎通、CSP の違反が無いこと（`securitypolicyviolation` とコンソールのエラー）を確かめる。版には PR の head の SHA を渡し、`/api/health` と画面の build に埋めた版（SvelteKit が書き出す `/_app/version.json`）がどちらもその値になることも見る。スクリーンショットと、失敗したときの trace を成果物の `e2e` に上げる。4つのテーマと2つの言葉の組み合わせのスクリーンショットは、画面ができてから足す。trace は要求と応答と Cookie を丸ごと残し、成果物はリポジトリを読める人が誰でも取れるので、e2e には本物の認証情報を渡さない（ログインは seed のセッションで通す） |
+| e2e | `pnpm e2e`。`pnpm preview` で build して `wrangler dev` を立て、サーバーが立ってから `e2e/global-setup.ts` が `pnpm db:seed` で手元の D1 に seed を入れ直し（行は消える。立てたままのサーバーを使い回すときも流れる。CI のジョブに seed の段は足さない）、Playwright で、seed の Cookie でログインした組織の選択と組織の枠（組織が1つの人、2つの人、入れない組織を開いた人。`e2e/organizations.test.ts`）、ログインの画面（枠の外、`return_to` の整え方、`?error=` の文言）と seed の Cookie での `me`（`e2e/login.test.ts`）、運用の画面の一覧と組織の作成のダイアログ（`e2e/operator.test.ts`。e2e の Worker には運用者の一覧のシークレットも GitHub への通信も無いので、運用者の操作の応答は差し替える。運用者でない人の 403 と `/` への戻しは本物のサーバーで見る）、シェルの表示、`/api/health` の版と D1 への疎通、CSP の違反が無いこと（`securitypolicyviolation` とコンソールのエラー）を確かめる。版には PR の head の SHA を渡し、`/api/health` と画面の build に埋めた版（SvelteKit が書き出す `/_app/version.json`）がどちらもその値になることも見る。スクリーンショットと、失敗したときの trace を成果物の `e2e` に上げる。4つのテーマと2つの言葉の組み合わせのスクリーンショットは、画面ができてから足す。trace は要求と応答と Cookie を丸ごと残し、成果物はリポジトリを読める人が誰でも取れるので、e2e には本物の認証情報を渡さない（ログインは seed のセッションで通す） |
 | ai-review | `anthropics/claude-code-action` で、スキル `ai-review` が差分に応じて `.claude/agents/` のレビューのエージェントを呼び分け、CRITICAL と HIGH を `finding-verifier` の反証にかけてから、指摘を PR に書く。`.github/workflows/ai-review.yml` に分けて置く |
 | label | パスを見て `needs-human` のラベルを付ける（上の「マージの判定」）。`.github/workflows/label.yml` に分けて置き、`pull_request_target` で動かす。ワークフローも規則も PR のベース（`main`）の版が使われるので、PR の側で書き換えてもラベルは付く。別のブランチをベースに開いてから `main` へ付け替えたときも、判定し直す。PR のコードはチェックアウトしない（書き込みのトークンで PR のコードを動かさないため） |
 | ci-ok | ai-review と label を除く上のジョブをまとめる1つのジョブ。マージの前に確かめるのは、これと label |
@@ -495,8 +496,8 @@ GitHub App も比べた。人が抜けても取り込みが止まらない、PAT
 
 置き場所は `src/server/auth/`（人が差分を読む領域）。OAuth App の作り方とシークレットは `docs/operations.md` の「GitHub OAuth App」。
 
-- ログインの手段の型（`login-method.ts`）: 認可の URL を作る `authorizeUrl()`、戻ってきた `code` を確かめて手段の中の ID と表示名とアバターを返す `verify()`、招待する人の指し方 `resolveInvitee()`（GitHub はユーザー名をユーザー ID に解決する）。確かめられないときは `LoginMethodError`（`rejected`: code が使えない。`unavailable`: 届かない、応答が想定と違う、こちらの設定の誤り）を投げ、メッセージは固定の文だけにする。Google（#57）は同じ型に足す
-- GitHub の実装（`github.ts`）: 通信先は固定の URL で、設定から読まない（認可 `https://github.com/login/oauth/authorize`、トークン `https://github.com/login/oauth/access_token`、ユーザー `https://api.github.com/user`、ユーザー名の解決 `https://api.github.com/users/<名前>`）。受け取るユーザー ID は正の整数で、10進の文字列にして持つ。ログイン名はユーザー名の形（英数字で始まり、英数字、`-`、`_` を80文字まで。Enterprise Managed Users のログイン名が `_` を含むため）でなければ、応答が想定と違うものとして断る。アバターの URL は `https://avatars.githubusercontent.com/` のものだけを持ち、ほかのホストと http は持たない。使い終えたアクセストークンは、読み終えた直後に GitHub 側でも取り消す（`read:user` のトークンは期限が無い）。取り消しはログインの応答を待たせず（`executionCtx.waitUntil`）、2xx 以外の状態と例外の名前は、固定の文でログに出す（トークンは出さない）。失敗してもログインは止めない。クライアントの ID と秘密は Worker のシークレット `GITHUB_CLIENT_ID` と `GITHUB_CLIENT_SECRET`。`resolveInvitee()` は、認証なしの呼び出しの上限（IP ごとに1時間60回）に Workers の共有の IP が当たらないよう、クライアントの資格情報（Basic 認証）で呼ぶ。使うのは招待の機能を作る Issue で、ユーザー名の形（英数字とハイフンで39文字まで）に合わない値は GitHub に問い合わせない
+- ログインの手段の型（`login-method.ts`）: 認可の URL を作る `authorizeUrl()`、戻ってきた `code` を確かめて手段の中の ID と表示名とアバターを返す `verify()`、招待する人の指し方 `resolveInvitee()`（GitHub はユーザー名をユーザー ID に解決する）。結果は、見つかった人（手段の中の ID、ログイン名、表示名、アバターの URL）、当たる人がいない（`not_found`）、個人のアカウントでない（`not_a_user`。GitHub の応答の `type` が `User` でない相手。ログインできないので、管理者や招待の相手にしない）の3つに分けて返す。呼ぶ側は、後の2つを `invalid_input` にし、どの項目かと理由を `details` に入れる。確かめられないときは `LoginMethodError`（`rejected`: code が使えない。`unavailable`: 届かない、応答が想定と違う、こちらの設定の誤り）を投げ、メッセージは固定の文だけにする。Google（#57）は同じ型に足す
+- GitHub の実装（`github.ts`）: 通信先は固定の URL で、設定から読まない（認可 `https://github.com/login/oauth/authorize`、トークン `https://github.com/login/oauth/access_token`、ユーザー `https://api.github.com/user`、ユーザー名の解決 `https://api.github.com/users/<名前>`）。受け取るユーザー ID は正の整数で、10進の文字列にして持つ。ログイン名はユーザー名の形（英数字で始まり、英数字、`-`、`_` を80文字まで。Enterprise Managed Users のログイン名が `_` を含むため）でなければ、応答が想定と違うものとして断る。表示名は、名前で断る文字（制御文字、行と段落の区切り、向きを変える制御、ゼロ幅スペースと見えない演算子、BOM。ワークスペースの名前と組織の表示名と共通の決まりで、`src/shared/hidden-characters.ts` の1か所に置く）を取り除き、200字までのコードポイントで切る（絵文字の結合の ZWJ、ZWNJ、方向の印の LRM、RLM、ALM、旗のタグ文字は残す）。アバターの URL は `https://avatars.githubusercontent.com/` のものだけを持ち、ほかのホストと http は持たない。使い終えたアクセストークンは、読み終えた直後に GitHub 側でも取り消す（`read:user` のトークンは期限が無い）。取り消しはログインの応答を待たせず（`executionCtx.waitUntil`）、2xx 以外の状態と例外の名前は、固定の文でログに出す（トークンは出さない）。失敗してもログインは止めない。クライアントの ID と秘密は Worker のシークレット `GITHUB_CLIENT_ID` と `GITHUB_CLIENT_SECRET`。`resolveInvitee()` は、認証なしの呼び出しの上限（IP ごとに1時間60回）に Workers の共有の IP が当たらないよう、クライアントの資格情報（Basic 認証）で呼ぶ。使うのは運用者の組織の作成（`resolve-github-user`、`create-organization`）と、招待の機能を作る Issue で、ユーザー名の形（英数字とハイフンで39文字まで）に合わない値は GitHub に問い合わせない
 - 開始 `GET /api/auth/github/start?return_to=<パス>`:
   - 受けるのは、利用者が自分のサイトの画面（ログインの画面のボタン）かアドレス欄から始めた画面の移動だけ。条件は次の4つで、どれかのヘッダーがあって合わないものは、数えず、行も書かず、ログインの画面へ戻す。ほかのサイトのページから、被害者の IP の枠を使い切らせないため
     - `Sec-Fetch-Mode` が `navigate`（`<img>`、`<script>`、`fetch()` は合わない）
@@ -610,7 +611,7 @@ Issue はエピック、ストーリー、タスクの3階層にし、親子は�
 
 最初の一本道から厳しく入れる（2026-10-22 に決めた）。後から締めると、壊れる所を探す手間が大きいため。
 
-- CSP: SvelteKit の `csp` の設定（ハッシュ）で、`script-src` を自分のものだけにする。`default-src 'self'`、`object-src 'none'`、`base-uri 'self'`、`frame-ancestors 'none'`、`form-action 'self'` を基本にする。外を読む必要が出たら、その先だけを足す。書体は自分の Worker から配るので足していない（上の「書体」）
+- CSP: SvelteKit の `csp` の設定（ハッシュ）で、`script-src` を自分のものだけにする。`default-src 'self'`、`object-src 'none'`、`base-uri 'self'`、`frame-ancestors 'none'`、`form-action 'self'` を基本にする。外を読む必要が出たら、その先だけを足す。足したのは `img-src` の `'self'` と `https://avatars.githubusercontent.com` で、運用者が最初の管理者に指名する人のアバターを作る前に見せるため。書体は自分の Worker から配るので足していない（上の「書体」）
 - `style-src` は `'self'` に加え、SvelteKit が差し込む読み上げ用の要素（`svelte-announcer`）の `style` 属性だけを `'unsafe-hashes'` とハッシュで通す。止めると、画面を移るたびに読み上げ用の文が見えてしまうため
 - `X-Content-Type-Options: nosniff`、`Referrer-Policy: strict-origin-when-cross-origin`、`Strict-Transport-Security: max-age=31536000; includeSubDomains`
 - e2e で、CSP の違反が出ないことを確かめる

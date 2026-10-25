@@ -1,7 +1,7 @@
 // 組織をまたいで読む処理の置き場所（docs/data-model.md の「読み書きの入口」）。1つの関数にまとめ、
 // 組織を分けるときはここだけを直す。当たるのは、ログインできるか（入れる組織と届いた招待があるか）、ログインの直後の組織の選択、
 // 届いた招待の一覧、初めてのログインで users.account_id を埋めること、招待の URL の秘密のハッシュから待っている指名と招待を引くこと。
-// 今あるのは、組織の選択と届いた招待の一覧、ログインできるか、users.account_id を埋めること。残りは #58 で足す。
+// 今あるのは、組織の選択と届いた招待の一覧、ログインできるか、users.account_id を埋めること、運用者の一覧の管理者の状態。残りは #58 で足す。
 // ログインできるか（hasLoginAccess）は、組織の選択と同じ読み取り（readAccountOrganizations）を使う。判定の元を1つにするため。
 // 使うのはログインのとき（login.ts）だけで、アカウントに結ばれる前の指名の行も数える。セッションの判定（register.ts）は、
 // 組織の選択と同じ結果（結ばれる前の行を数えない）を使う。結ばれる前の行だけを持つ人のセッションを、結べないまま残さないため
@@ -10,6 +10,7 @@
 // （組織の中の入口は organizationId で絞るが、これは組織をまたぐ入口で、ログインの手段と ID と account_id が空であることで絞る）。
 // 1つのアカウントに複数のログインを結ぶとき（#57）は、同じ組織に同じアカウントの行が2つできて、users_organization_account
 // （organization_id と account_id の一意）に当たりうる。そのとき、この UPDATE を見直す
+import type { AdminStatus } from '../../shared/operations/operator/list-organizations.ts';
 import { commonDb, crossOrganizationEntries } from './entries.ts';
 import type { LoginId } from './enter-organization.ts';
 import { MAX_BOUND_PARAMETERS } from './send.ts';
@@ -233,6 +234,59 @@ export function linkUserStatement(db: OrganizationEntry, accountId: string, logi
       .where('account_id', 'is', null)
       .where('login_provider', '=', login.provider)
       .where('login_subject', '=', login.subject),
+  );
+}
+
+// 組織ごとの管理者の状態（運用者の組織の一覧）。人の名前や ID は返さず、状態だけを返す。
+//   none: 無効でない管理者（is_admin = 1）の行が無い
+//   pending: その行はあるが、どれも account_id が空（指名した人がまだログインしていない）
+//   active: それ以外
+// 組織の ID の束を organization_id IN (...) で渡し、DB ごとに1回で数える（束縛の上限で区切る）。users_organization_login の索引に乗る。
+// 引数の組織の ID すべてに状態を返す（行が無い組織は none）
+export function adminStatusesOf(env: Env, organizationIds: readonly string[]): Promise<Map<string, AdminStatus>> {
+  return adminStatusesIn(organizationIds, crossOrganizationEntries(env));
+}
+
+// 管理者の数と、アカウントに結ばれた管理者の数を数える文。DB を複数にしたときは、DB ごとの結果を足し合わせる
+export function adminCountsStatement(db: OrganizationEntry, organizationIds: readonly string[]) {
+  return db.statement((q) =>
+    q
+      .selectFrom('users')
+      .select((eb) => [
+        'organization_id',
+        eb.fn.countAll<number>().as('admins'),
+        eb.fn.count<number>('account_id').as('linked'),
+      ])
+      .where('organization_id', 'in', organizationIds)
+      .where('is_admin', '=', 1)
+      .where('disabled_at', 'is', null)
+      .groupBy('organization_id'),
+  );
+}
+
+// 入口の一覧を受け取る本体。index.ts は出さない。DB を複数にした場合を、テストが testing.ts から確かめる
+export async function adminStatusesIn(
+  organizationIds: readonly string[],
+  entries: readonly OrganizationEntry[],
+): Promise<Map<string, AdminStatus>> {
+  const counts = new Map<string, { admins: number; linked: number }>();
+  for (const db of entries) {
+    // is_admin = 1 の値も束縛するので、組織の ID は上限より1つ少なく区切る
+    for (const chunk of chunksOf(organizationIds, MAX_BOUND_PARAMETERS - 1)) {
+      for (const row of await db.rows(adminCountsStatement(db, chunk))) {
+        const total = counts.get(row.organization_id) ?? { admins: 0, linked: 0 };
+        total.admins += Number(row.admins);
+        total.linked += Number(row.linked);
+        counts.set(row.organization_id, total);
+      }
+    }
+  }
+  return new Map(
+    organizationIds.map((id): [string, AdminStatus] => {
+      const total = counts.get(id);
+      if (total === undefined || total.admins === 0) return [id, 'none'];
+      return [id, total.linked === 0 ? 'pending' : 'active'];
+    }),
   );
 }
 
