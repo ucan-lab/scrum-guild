@@ -209,7 +209,9 @@ export function loginRoutes(options: LoginRoutesOptions): Hono<AppEnv> {
   //   1. 画面の移動でなければ（ほかのサイトからのフォームの POST は Sec-Fetch-Site が cross-site）、本文を読まず、数えず、行も書かず、ログインの画面へ戻す
   //   2. 秘密が決まった形（base64url の43文字）でなければ、ハッシュも DB の問い合わせ（レート制限を含む）もせずに invite で断る
   //   3. 戻り先を `/` にして、レート制限、state の行と Cookie、Google への移動は GET と同じ。state の行に秘密のハッシュだけを入れる
-  // 秘密そのものは state の行にもログにも出さない
+  // 秘密そのものは state の行にもログにも出さない。
+  // Origin の検査は掛けない: /invite は Referrer-Policy: no-referrer なので、フォームの POST の Origin が null になりうる
+  // （Origin を必須にすると、正しい利用者の POST を断ってしまう）。ほかのサイトからの POST は、上の 1 の Sec-Fetch で止める
   app.post('/:provider/start', async (c) => {
     const provider = c.req.param('provider');
     if (provider !== 'google') return c.notFound();

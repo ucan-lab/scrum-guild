@@ -1362,7 +1362,8 @@
        <div class="field"><label class="field-label" for="d-iu">招待の URL</label>
          <div class="input-row"><input class="input mono" id="d-iu" value="https://scrum-guild.dev/invite#Qm7tX2vLr9aKpE4wZc8hN3bYd6fGs1uJ0oTiRl5eWxA" readonly>
            <button class="btn" type="button" data-toast="招待の URL をコピーしました">${icon("link")}コピー</button></div></div>
-       <div class="callout is-warn">${icon("alert")}<span>この URL はこの画面を閉じると二度と出ません。期限は14日です。なくしたり切れたりしたら、招待し直してください。</span></div>`,
+       <div class="callout is-info">${icon("check")}<span>次のメールアドレスの Google アカウントでログインするよう伝えてください。<b class="mono wrap-anywhere">mio.hoshino@example.com</b></span></div>
+       <div class="callout is-warn">${icon("alert")}<span>この URL はこの画面を閉じると二度と出せません。期限は14日（2026/11/09 09:00 まで）です。期限までに本人へ伝えてください。</span></div>`,
       `<button class="btn is-primary" type="button" data-close-dialog>閉じる</button>`);
   }
   document.addEventListener("change", (ev) => {

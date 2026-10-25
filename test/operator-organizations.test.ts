@@ -179,8 +179,7 @@ describe('組織の作成', () => {
       slug,
       name: 'さくら開発',
       admin_login_name: 'minato-aoba',
-      invite_url: null,
-      invite_expires_at: null,
+      invite: null,
     });
 
     const organization = await organizationRow(slug);
@@ -788,10 +787,14 @@ describe('Google のメールアドレスでの指名', () => {
     const { slug, res } = await createWithGoogle('  Mio.Hoshino@Example.com ');
     expect(res.status).toBe(200);
     expect(res.headers.get('Cache-Control')).toBe('no-store');
-    const body = (await res.json()) as Record<string, string>;
-    expect(Object.keys(body).sort()).toEqual(['admin_login_name', 'invite_expires_at', 'invite_url', 'name', 'slug']);
+    const body = (await res.json()) as {
+      admin_login_name: string;
+      invite: { url: string; expires_at: string };
+    } & Record<string, unknown>;
+    expect(Object.keys(body).sort()).toEqual(['admin_login_name', 'invite', 'name', 'slug']);
+    expect(Object.keys(body.invite).sort()).toEqual(['expires_at', 'url']);
     expect(body.admin_login_name).toBe('mio.hoshino@example.com');
-    const url = new URL(body.invite_url!);
+    const url = new URL(body.invite.url);
     expect(url.pathname).toBe('/invite');
     const claimToken = url.hash.slice(1);
     expect(claimToken).toMatch(/^[A-Za-z0-9_-]{43}$/);
@@ -807,7 +810,7 @@ describe('Google のメールアドレスでの指名', () => {
       login_subject: null,
       login_email: 'mio.hoshino@example.com',
       claim_token_hash: await sha256Hex(claimToken),
-      claim_expires_at: body.invite_expires_at,
+      claim_expires_at: body.invite.expires_at,
       name: 'mio.hoshino@example.com',
       is_admin: 1,
     });
@@ -857,7 +860,7 @@ describe('Google のメールアドレスでの指名', () => {
   test('一覧は招待の URL を返さない（応答の本文にも、一覧の項目にもない）', async () => {
     const token = await operatorToken();
     const { slug, res } = await createWithGoogle('mio2@example.com');
-    const claimToken = new URL(((await res.json()) as { invite_url: string }).invite_url).hash.slice(1);
+    const claimToken = new URL(((await res.json()) as { invite: { url: string } }).invite.url).hash.slice(1);
     const listedRes = await post(app, listOrganizations, { token });
     expect(await listedRes.text()).not.toContain(claimToken);
     expect(slug).toBeTruthy();

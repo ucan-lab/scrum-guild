@@ -143,15 +143,18 @@ describe('運用者の指名から結ぶまで', () => {
     expect(created.status).toBe(200);
     // 秘密は応答の本文にだけある
     expect(created.headers.get('Cache-Control')).toBe('no-store');
-    const body = (await created.json()) as { invite_url: string; invite_expires_at: string; admin_login_name: string };
+    const body = (await created.json()) as {
+      invite: { url: string; expires_at: string };
+      admin_login_name: string;
+    };
     expect(body.admin_login_name).toBe(EMAIL);
-    const invite = new URL(body.invite_url);
+    const invite = new URL(body.invite.url);
     expect(invite.origin + invite.pathname).toBe(`${new URL(env.PUBLIC_ORIGIN).origin}/invite`);
     const claimToken = invite.hash.slice(1);
     expect(claimToken).toMatch(/^[A-Za-z0-9_-]{43}$/);
     const claimHash = await sha256Hex(claimToken);
-    expect(Date.parse(body.invite_expires_at) - Date.now()).toBeGreaterThan(14 * DAY_MS - 60_000);
-    expect(Date.parse(body.invite_expires_at) - Date.now()).toBeLessThanOrEqual(14 * DAY_MS);
+    expect(Date.parse(body.invite.expires_at) - Date.now()).toBeGreaterThan(14 * DAY_MS - 60_000);
+    expect(Date.parse(body.invite.expires_at) - Date.now()).toBeLessThanOrEqual(14 * DAY_MS);
     for (const [name, value] of created.headers) {
       expect(value, name).not.toContain(claimToken);
     }
@@ -842,7 +845,157 @@ describe('待つ行を引く文', () => {
   });
 });
 
+describe('書き込みの時点の判定', () => {
+  const claimInput = (tokenHash: string, now: Date = new Date()) => ({
+    tokenHash,
+    email: EMAIL,
+    login: { provider: 'google', subject: googleUser('星野 澪').sub },
+    name: '星野 澪',
+    now,
+  });
+
+  async function waitingRows(organization: OrganizationFixture) {
+    const db = orgDbOf(organization.id);
+    return db.rows(
+      db.statement((q) => q.selectFrom('users').selectAll().where('organization_id', '=', organization.id)),
+    );
+  }
+
+  test('指名: 読んだ後で期限を越えたら結ばれず、行は待ったままで、記録も書かない', async () => {
+    const waiting = await waitingAdmin({ expiresAt: inDays(1) });
+    // 読み取りは今の時刻で通り、batch() を組む直前の時刻は期限の後
+    const outcome = await claimPendingLoginForTest(
+      env,
+      claimInput(waiting.hash),
+      [],
+      () => new Date(Date.now() + 2 * DAY_MS),
+    );
+    expect(outcome).toBeUndefined();
+    expect((await waitingRows(waiting.organization))[0]).toMatchObject({
+      login_subject: null,
+      claim_token_hash: waiting.hash,
+    });
+    expect((await changeLogsOf(waiting.organization.id)).filter((log) => log.action === 'update')).toEqual([]);
+  });
+
+  test('招待: 読んだ後で期限を越えたら結ばれず、行は待ったまま', async () => {
+    const waiting = await waitingInvitation({ expiresAt: inDays(1) });
+    const outcome = await claimPendingLoginForTest(
+      env,
+      claimInput(waiting.hash),
+      [],
+      () => new Date(Date.now() + 2 * DAY_MS),
+    );
+    expect(outcome).toBeUndefined();
+    expect(await invitationRow(waiting.organization, waiting.row.id)).toMatchObject({
+      status: 'pending',
+      login_subject: null,
+      claim_token_hash: waiting.hash,
+    });
+    expect((await changeLogsOf(waiting.organization.id)).filter((log) => log.action === 'update')).toEqual([]);
+  });
+
+  test.each([
+    ['指名', waitingAdmin],
+    ['招待', waitingInvitation],
+  ] as const)(
+    '%s: claim_expires_at が now とちょうど同じ時刻では結ばれない（読むときも、書くときも）',
+    async (_label, make) => {
+      const expiresAt = new Date(Date.now() + DAY_MS);
+      const readsAtExpiry = await make({ expiresAt: expiresAt.toISOString() });
+      expect(await claimPendingLoginForTest(env, claimInput(readsAtExpiry.hash, expiresAt), [])).toBeUndefined();
+
+      const writesAtExpiry = await make({ expiresAt: expiresAt.toISOString() });
+      expect(await claimPendingLoginForTest(env, claimInput(writesAtExpiry.hash), [], () => expiresAt)).toBeUndefined();
+
+      // 期限の1ミリ秒前なら結ばれる
+      const justBefore = await make({ expiresAt: expiresAt.toISOString() });
+      const outcome = await claimPendingLoginForTest(
+        env,
+        claimInput(justBefore.hash),
+        [],
+        () => new Date(expiresAt.getTime() - 1),
+      );
+      expect(outcome).toBeDefined();
+    },
+  );
+
+  test('待つ行が無効にされていたら結べない。読んだ後で無効にされても、書く文の条件で外れる', async () => {
+    const disabled = await waitingAdmin();
+    const disabledDb = orgDbOf(disabled.organization.id);
+    await disabledDb.batch([
+      disabledDb.statement((q) =>
+        q.updateTable('users').set({ disabled_at: new Date().toISOString() }).where('id', '=', disabled.row.id),
+      ),
+    ]);
+    expect(await claimPendingLoginForTest(env, claimInput(disabled.hash), [])).toBeUndefined();
+
+    // 読んだ直後に無効にする
+    const racing = await waitingAdmin();
+    const racingDb = orgDbOf(racing.organization.id);
+    const interrupted = afterFirstQuery(
+      env,
+      (sql) => sql.startsWith('select') && sql.includes('"claim_token_hash"') && sql.includes('from "users"'),
+      async () => {
+        await racingDb.batch([
+          racingDb.statement((q) =>
+            q.updateTable('users').set({ disabled_at: new Date().toISOString() }).where('id', '=', racing.row.id),
+          ),
+        ]);
+      },
+    );
+    expect(await claimPendingLoginForTest(interrupted, claimInput(racing.hash), [])).toBeUndefined();
+    expect((await waitingRows(racing.organization))[0]).toMatchObject({
+      login_subject: null,
+      claim_token_hash: racing.hash,
+    });
+  });
+
+  test('停止した組織の招待（invitations）は結ばれず、行は待ったまま', async () => {
+    const waiting = await waitingInvitation();
+    const common = commonDb(env);
+    await common.batch([
+      common.statement((q) =>
+        q
+          .updateTable('organizations')
+          .set({ suspended_at: '2026-10-22T00:00:00.000Z' })
+          .where('id', '=', waiting.organization.id),
+      ),
+    ]);
+    const browser = newBrowser();
+    const result = await browser.loginWithInvite(googleUser('星野 澪', { email: EMAIL }), waiting.token);
+    expect(result.location).toBe(INVITE_FAILED);
+    expect(browser.cookies.has(SESSION_COOKIE)).toBe(false);
+    expect(await invitationRow(waiting.organization, waiting.row.id)).toMatchObject({
+      status: 'pending',
+      login_subject: null,
+      claim_token_hash: waiting.hash,
+    });
+  });
+});
+
 describe('結んだ後のアカウント', () => {
+  test('招待を結んだ後でアカウントの作成が失敗して retry になっても、sub を埋めた招待は残り、次の Google のログインで入れる', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const waiting = await waitingInvitation();
+    const user = googleUser('星野 澪', { email: EMAIL });
+    const failing = envWithD1Hooks(loginEnv, {
+      beforeBatch: (sqls) => {
+        if (sqls.some((sql) => sql.startsWith('insert into "accounts"'))) throw new Error('secret SQL detail');
+      },
+    });
+    const first = await newBrowser(failing).loginWithInvite(user, waiting.token);
+    expect(first.location).toBe('/login?error=retry');
+    expect(await invitationRow(waiting.organization, waiting.row.id)).toMatchObject({
+      status: 'pending',
+      login_subject: user.sub,
+      claim_token_hash: null,
+    });
+    // 招待の URL は使い切っている。/login から Google でログインすれば、sub で当たって入れる
+    const retry = await newBrowser().loginWithGoogle(user);
+    expect(retry.location).toBe('/');
+  });
+
   test('アカウントの作成が失敗して再試行になっても、sub を埋めた行は残り、次の Google のログインで入れる', async () => {
     vi.spyOn(console, 'error').mockImplementation(() => {});
     const waiting = await waitingAdmin();

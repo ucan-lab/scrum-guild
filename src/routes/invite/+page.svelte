@@ -31,29 +31,47 @@
     claimToken = usable ? token : '';
   });
 
+  // 押した後は、Google へ移るまでの間の2回目以降の押下を無視する（2回送ると、state の行とレート制限の枠を2つ使う）
+  let moving = $state(false);
+
   function start(): void {
-    if (!usable || form === undefined || field === undefined) return;
+    if (!usable || moving || form === undefined || field === undefined) return;
+    moving = true;
     field.value = claimToken;
     form.submit();
   }
+
+  // 戻るで bfcache から復元されたときは、ボタンを押せる状態に戻す
+  function restore(event: PageTransitionEvent): void {
+    if (event.persisted) moving = false;
+  }
 </script>
+
+<svelte:window onpageshow={restore} />
 
 <svelte:head>
   <title>{t('pageTitle', { page: t('inviteTitle', { app: t('appName') }), app: t('appName') })}</title>
 </svelte:head>
 
-<Gate>
-  <GateSheet brand title={t('inviteTitle', { app: t('appName') })}>
-    {#if usable === false}
-      <div class="callout is-warn" role="alert"><Icon name="alert" /><span>{t('loginErrorInvite')}</span></div>
-    {:else if usable === true}
-      <p>{t('inviteLead')}</p>
-      <!-- 画面の経路ではなく Worker への POST。秘密は URL ではなく本文で送る -->
-      <form method="POST" action="/api/auth/google/start" bind:this={form} data-sveltekit-reload>
-        <input type="hidden" name={CLAIM_TOKEN_FIELD} bind:this={field} />
-      </form>
-      <button class="btn is-wide is-google" type="button" onclick={start}><GoogleMark />{t('loginWithGoogle')}</button>
-      <p class="gate-note">{t('inviteNote')}</p>
-    {/if}
-  </GateSheet>
-</Gate>
+<!-- 読み上げの領域。常に置き、文字だけを替える（後から挿入した領域は読み上げられないことがある） -->
+<div class="visually-hidden" role="status">{moving ? t('inviteMoving') : ''}</div>
+<!-- URL を読み終える前は、本文が空の紙を出さない -->
+{#if usable !== undefined}
+  <Gate>
+    <GateSheet brand title={t('inviteTitle', { app: t('appName') })}>
+      {#if usable === false}
+        <div class="callout is-warn" role="alert"><Icon name="alert" /><span>{t('inviteUnusable')}</span></div>
+      {:else}
+        <p>{t('inviteLead')}</p>
+        <!-- 画面の経路ではなく Worker への POST。秘密は URL ではなく本文で送る -->
+        <form method="POST" action="/api/auth/google/start" bind:this={form} data-sveltekit-reload>
+          <input type="hidden" name={CLAIM_TOKEN_FIELD} bind:this={field} />
+        </form>
+        <button class="btn is-wide is-google" type="button" aria-disabled={moving ? 'true' : undefined} onclick={start}
+          ><GoogleMark />{moving ? t('inviteMoving') : t('loginWithGoogle')}</button
+        >
+        <p class="gate-note">{t('inviteNote')}</p>
+      {/if}
+    </GateSheet>
+  </Gate>
+{/if}

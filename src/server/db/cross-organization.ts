@@ -14,6 +14,7 @@
 //     （organization_id と account_id の一意）に当たりうる。そのとき、この UPDATE を見直す
 //   - claimPendingLogin: 招待の URL の秘密のハッシュで引いた1行の組織の ID（と、招待ならその組織のワークスペース）で絞って書く
 import { sql, type Expression, type ExpressionBuilder, type SqlBool } from 'kysely';
+import { WAITING_USER_NAME_IN_LOG } from '../../shared/claim-token.ts';
 import type { AdminStatus } from '../../shared/operations/operator/list-organizations.ts';
 import { uuidv7 } from '../uuid.ts';
 import { commonDb, crossOrganizationEntries } from './entries.ts';
@@ -327,9 +328,6 @@ export async function linkLoginToAccountIn(
 // ---- 招待の URL から、メールアドレスで待つ指名と招待に結ぶ ----
 // 手順は docs/data-model.md の「メールアドレスで待つ指名と招待」の 5 と 6。
 
-// 結んだ記録（change_logs）に残す、待っていた users の行の名前。待つ間の users.name はメールアドレスなので、記録には入れない
-const WAITING_NAME_IN_LOG = 'Google の招待（ログイン待ち）';
-
 export type ClaimInput = {
   // 招待の URL の秘密の SHA-256（小文字の16進）
   tokenHash: string;
@@ -366,6 +364,7 @@ export function pendingUserStatement(db: OrganizationEntry, tokenHash: string, n
       .select(['id', 'organization_id', 'login_email', 'created_at'])
       .where('claim_token_hash', '=', tokenHash)
       .where('login_subject', 'is', null)
+      .where('disabled_at', 'is', null)
       .where('claim_expires_at', '>', now.toISOString()),
   );
 }
@@ -442,6 +441,8 @@ function waitingUserIsValid(eb: Builder, c: ClaimContext) {
       .where('wu.id', '=', c.pending.id)
       .where('wu.organization_id', '=', c.pending.organizationId)
       .where('wu.login_subject', 'is', null)
+      // 無効にされた待つ行は結べない（読んでから書くまでに無効にされた場合も外す）
+      .where('wu.disabled_at', 'is', null)
       .where('wu.claim_token_hash', '=', c.tokenHash)
       .where('wu.claim_expires_at', '>', c.nowIso),
   );
@@ -608,7 +609,7 @@ function userClaimStatements(db: OrganizationEntry, c: ClaimContext, name: strin
         actorUserId: pending.id,
         changes: JSON.stringify({
           login_subject: [null, login.subject],
-          name: [WAITING_NAME_IN_LOG, name],
+          name: [WAITING_USER_NAME_IN_LOG, name],
         }),
       },
       (eb) => eb.and([userClaimIsOpen(eb, c), eb.not(sameLoginExists(eb))]),
@@ -629,6 +630,7 @@ function userClaimStatements(db: OrganizationEntry, c: ClaimContext, name: strin
         .where('id', '=', pending.id)
         .where('organization_id', '=', pending.organizationId)
         .where('login_subject', 'is', null)
+        .where('disabled_at', 'is', null)
         .where('claim_token_hash', '=', c.tokenHash)
         .where('claim_expires_at', '>', nowIso)
         .where((eb) =>
@@ -701,11 +703,15 @@ export function claimPendingLogin(env: Env, input: ClaimInput): Promise<ClaimOut
   return claimPendingLoginIn(env, input, crossOrganizationEntries(env));
 }
 
+// 書き込みの時点の時刻。待つ行を読んでから batch() を組むまでに時間がたつので、期限の判定は input.now ではなく、組む直前のこの時刻で行う
+type WriteClock = () => Date;
+
 // 入口の一覧を受け取る本体。index.ts は出さない。DB を複数にした場合を、テストが testing.ts から確かめる
 export async function claimPendingLoginIn(
   env: Env,
   input: ClaimInput,
   entries: readonly OrganizationEntry[],
+  writeClock: WriteClock = () => new Date(),
 ): Promise<ClaimOutcome | undefined> {
   for (const db of entries) {
     const pending = await findPendingClaim(db, input.tokenHash, input.now);
@@ -717,7 +723,8 @@ export async function claimPendingLoginIn(
     const context: ClaimContext = {
       pending,
       tokenHash: input.tokenHash,
-      nowIso: input.now.toISOString(),
+      // 読み取りを終えた後の時刻。読んだ後で期限を越えた待つ行は、書く文の「有効」の条件で外れる
+      nowIso: writeClock().toISOString(),
       login: input.login,
     };
     const results = await db.batch(

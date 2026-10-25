@@ -58,7 +58,7 @@
     name: string;
     admin:
       | { kind: 'named'; loginName: string }
-      | { kind: 'invite'; email: string; inviteUrl: string; expiresAt: string | null }
+      | { kind: 'invite'; email: string; inviteUrl: string; expiresAt: string }
       | { kind: 'existing'; status: AdminStatus };
   };
   type Existing = { slug: string; name: string; sameName: boolean; adminStatus: AdminStatus };
@@ -352,15 +352,14 @@
       created = {
         slug: result.data.slug,
         name: result.data.name,
-        admin:
-          typeof result.data.invite_url === 'string'
-            ? {
-                kind: 'invite',
-                email: result.data.admin_login_name,
-                inviteUrl: result.data.invite_url,
-                expiresAt: result.data.invite_expires_at,
-              }
-            : { kind: 'named', loginName: result.data.admin_login_name },
+        admin: result.data.invite
+          ? {
+              kind: 'invite',
+              email: result.data.admin_login_name,
+              inviteUrl: result.data.invite.url,
+              expiresAt: result.data.invite.expires_at,
+            }
+          : { kind: 'named', loginName: result.data.admin_login_name },
       };
       await invalidateAll();
       return;
@@ -619,15 +618,14 @@
       </div>
     </div>
     <div class="callout is-info">
-      <Icon name="check" /><span>{t('operatorInviteTell', { email: created.admin.email })}</span>
+      <Icon name="check" />
+      <span>
+        {t('operatorInviteTell')}
+        <b class="mono wrap-anywhere">{created.admin.email}</b>
+      </span>
     </div>
     <div class="callout is-warn">
-      <Icon name="alert" /><span
-        >{t('operatorInviteOnce', {
-          ...words,
-          expires: created.admin.expiresAt === null ? '' : formatDateTime(created.admin.expiresAt),
-        })}</span
-      >
+      <Icon name="alert" /><span>{t('operatorInviteOnce', { expires: formatDateTime(created.admin.expiresAt) })}</span>
     </div>
   {:else}
     <p tabindex="-1" bind:this={doneLead}>

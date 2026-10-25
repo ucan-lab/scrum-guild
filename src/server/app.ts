@@ -120,11 +120,12 @@ export function createApp(
     return c.json(body);
   });
 
-  // ログインの開始と戻り先。ブラウザの GET の移動なので、操作の定義の外に直に書く（/api/health と同じ例外）
+  // ログインの開始と戻り先。ブラウザの GET の移動と、招待の URL の画面のフォームの POST（POST /api/auth/google/start）なので、
+  // 操作の定義の外に直に書く（/api/health と同じ例外）
   const fetcher = options.fetcher ?? ((input, init) => fetch(input, init));
   app.route('/auth', loginRoutes({ fetcher }));
 
-  // 操作の定義から登録するルート。ルートを直に書かない（/api/health と /api/auth/ の下の GET だけが例外）
+  // 操作の定義から登録するルート。ルートを直に書かない（/api/health と /api/auth/ の下の GET、POST /api/auth/google/start だけが例外）
   app.route('/', operationsApp(operations, { fetcher }));
 
   app.notFound((c) => c.json(errorBody('not_found', 'not found'), 404));

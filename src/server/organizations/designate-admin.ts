@@ -3,6 +3,7 @@
 // 入口は確かめた組織の OrganizationDb。組織の ID はそこから取り、呼び出し側の入力から取らない。
 // account_id は、指名する人が既にアカウントを持つとき（共通の DB の account_logins に当たったとき）に呼び出し側が渡す。
 // 共通の表は別の入口で読んで渡し、この書き込みの batch() に共通の表を混ぜない（docs/data-model.md の「読み書きの入口」）
+import { WAITING_USER_NAME_IN_LOG } from '../../shared/claim-token.ts';
 import type { OrganizationDb, Statement } from '../db/index.ts';
 import { uuidv7 } from '../uuid.ts';
 
@@ -24,9 +25,6 @@ export type AdminNominee =
       name: string;
       accountId: null;
     };
-
-// 待つ行を指名したときの change_logs に残す名前（結んだときの記録と同じ。メールアドレスは記録に入れない）
-const WAITING_NAME_IN_LOG = 'Google の招待（ログイン待ち）';
 
 export type AdminDesignation = {
   nominee: AdminNominee;
@@ -78,7 +76,7 @@ export function adminDesignationStatements(
           // 待つ行は、メールアドレス、秘密のハッシュ、期限を記録に入れない
           changes_json: JSON.stringify({
             is_admin: [null, 1],
-            name: [null, 'waiting' in nominee ? WAITING_NAME_IN_LOG : nominee.name],
+            name: [null, 'waiting' in nominee ? WAITING_USER_NAME_IN_LOG : nominee.name],
             login_provider: [null, nominee.provider],
             ...('waiting' in nominee ? {} : { login_subject: [null, nominee.subject] }),
             // 既にアカウントのある人は、指名のときに結ぶ

@@ -36,7 +36,7 @@ const googleAdmin = z.object({ provider: z.literal('google'), email: z.string().
 // 組織の作り方は docs/data-model.md の「書き込みの単位」。共通の DB の organizations、続けて組織の DB の
 // 最初の管理者の users の2回に分けて書く。users が入らなかったときは、管理者のいない組織が残る（一覧の admin_status が none）。
 // 人数と添付ファイルの上限は既定の値で作る。重なる slug は 409 の conflict、GitHub に届かないときは 503 の unavailable。
-// Google の指名では、応答の本文にだけ招待の URL（invite_url）と期限（invite_expires_at）を入れる（二度と出ない。
+// Google の指名では、応答の本文にだけ招待の URL と期限（invite の url と expires_at）を入れる（二度と出ない。
 // 応答はどれも Cache-Control: no-store）。GitHub の指名では null
 export const createOrganization = defineOperation({
   name: 'create-organization',
@@ -62,7 +62,6 @@ export const createOrganization = defineOperation({
     // Google の指名ではそろえたメールアドレス
     admin_login_name: z.string(),
     // Google の指名で作った招待の URL（<公開 URL>/invite#<秘密>）と、その期限（ISO 8601）
-    invite_url: z.string().nullable(),
-    invite_expires_at: z.string().nullable(),
+    invite: z.object({ url: z.string(), expires_at: z.string() }).nullable(),
   }),
 });

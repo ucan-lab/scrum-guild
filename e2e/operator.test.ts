@@ -136,8 +136,7 @@ test.describe('運用者', () => {
           slug: 'sakura-dev',
           name: 'さくら開発',
           admin_login_name: 'kotone-dev',
-          invite_url: null,
-          invite_expires_at: null,
+          invite: null,
         },
       });
     });
@@ -621,8 +620,7 @@ test.describe('運用者', () => {
           slug: 'sakura-dev',
           name: 'さくら開発',
           admin_login_name: 'mio.hoshino@example.com',
-          invite_url: inviteUrl,
-          invite_expires_at: '2026-11-09T00:00:00.000Z',
+          invite: { url: inviteUrl, expires_at: '2026-11-09T00:00:00.000Z' },
         },
       });
     });
@@ -640,9 +638,15 @@ test.describe('運用者', () => {
     await expect(dialog.getByLabel('招待の URL')).toHaveValue(inviteUrl);
     await expect(dialog.getByRole('button', { name: 'コピー' })).toBeVisible();
     await expect(
-      dialog.getByText('mio.hoshino@example.com の Google アカウントでログインするよう伝えてください。'),
+      dialog.getByText('次のメールアドレスの Google アカウントでログインするよう伝えてください。'),
     ).toBeVisible();
-    await expect(dialog.getByText('この画面を閉じると二度と出ません')).toBeVisible();
+    // メールアドレスは等幅で、狭い幅では折り返す
+    const email = dialog.locator('b.mono.wrap-anywhere');
+    await expect(email).toHaveText('mio.hoshino@example.com');
+    await expect(dialog.getByText('この画面を閉じると二度と出せません')).toBeVisible();
+    await expect(dialog.getByText('期限までに本人へ伝えてください')).toBeVisible();
+    // まだ無い操作（指名し直し）は勧めない
+    await expect(dialog).not.toContainText('指名し直');
     await expect(dialog.getByText('期限は14日（2026/11/09 09:00 まで）')).toBeVisible();
     // メールアドレスは前後の空白を除いて送る（大文字小文字はサーバーがそろえる）
     expect(created).toEqual({

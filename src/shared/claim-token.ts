@@ -11,3 +11,6 @@ export const INVITE_PATH = '/invite';
 
 // 招待の URL の期限（作ってから14日）
 export const CLAIM_LIFETIME_DAYS = 14;
+
+// 待つ間の users.name はメールアドレスなので、change_logs には代わりにこの名前を残す（指名したときと結んだときで同じ）
+export const WAITING_USER_NAME_IN_LOG = 'Google の招待（ログイン待ち）';

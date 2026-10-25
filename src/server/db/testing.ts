@@ -166,9 +166,15 @@ export function adminCountsStatementForTest(env: Env, organizationIds: readonly 
   return adminCountsStatement(db, organizationIds, new Date());
 }
 
-// 招待の URL の秘密のハッシュで待つ行を引く文と、結ぶ batch() を、組織の中の DB が複数あるときに確かめる
-export function claimPendingLoginForTest(env: Env, input: ClaimInput, extraDatabases: readonly FakeDatabase[]) {
-  return claimPendingLoginIn(env, input, entriesWith(env, extraDatabases));
+// 招待の URL の秘密のハッシュで待つ行を引く文と、結ぶ batch() を、組織の中の DB が複数あるときに確かめる。
+// writeClock は、読み取りを終えて batch() を組む直前の時刻（省略は今）。読んだ後で期限を越える場合を作るのに差し込む
+export function claimPendingLoginForTest(
+  env: Env,
+  input: ClaimInput,
+  extraDatabases: readonly FakeDatabase[],
+  writeClock?: () => Date,
+) {
+  return claimPendingLoginIn(env, input, entriesWith(env, extraDatabases), writeClock);
 }
 
 // 待っている指名と招待を引く文。実行計画の確認に使う

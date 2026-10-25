@@ -209,8 +209,7 @@ async function createWithGoogleAdmin(
     slug: input.slug,
     name: input.name,
     admin_login_name: email,
-    invite_url: operator.inviteUrl(claimToken),
-    invite_expires_at: claimExpiresAt,
+    invite: { url: operator.inviteUrl(claimToken), expires_at: claimExpiresAt },
   };
 }
 
@@ -286,7 +285,6 @@ export const createOrganizationOperation = implement(createOrganization, async (
     slug: input.slug,
     name: input.name,
     admin_login_name: invitee.loginName,
-    invite_url: null,
-    invite_expires_at: null,
+    invite: null,
   };
 });

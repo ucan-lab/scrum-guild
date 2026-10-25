@@ -87,8 +87,47 @@ test('秘密が無い、形の合わない URL は、使えない旨を出して
 test('/login?error=invite は、使えない旨を出す', async ({ page }) => {
   await page.goto('/login?error=invite');
   await expect(page.getByRole('alert')).toContainText(
-    'この招待の URL は使えません。期限が切れたか、取り消されたか、招待されたのと別のアカウントでログインしています。招待した人に確かめてください。',
+    'この招待の URL は使えません。期限が切れたか、取り消されたか、招待されたのと別のアカウントでログインしています。招待した人に確かめるか、届いた招待の URL をもう一度開いてください。',
   );
+});
+
+test('戻る・再読み込みで URL の続きが消えた画面は、届いた招待の URL をもう一度開くよう案内する', async ({ page }) => {
+  await page.goto(`/invite#${CLAIM_TOKEN}`);
+  await expect(page.getByRole('button', { name: 'Google でログイン' })).toBeVisible();
+  await page.reload();
+  await expect(page.getByRole('alert')).toContainText('届いた招待の URL をもう一度開いてください');
+  await expect(page.getByRole('button', { name: 'Google でログイン' })).toHaveCount(0);
+});
+
+test('ボタンを押した後の2回目以降の押下は無視し、文言を進行中に替える。読み上げの領域は常にある', async ({ page }) => {
+  let posts = 0;
+  await page.route('**/api/auth/google/start', async (route) => {
+    posts++;
+    await route.fulfill({ status: 302, headers: { Location: '/login?error=invite' } });
+  });
+  await page.goto(`/invite#${CLAIM_TOKEN}`);
+  // 画面全体の読み込みの領域と、この画面の領域。どちらも常に置き、文字だけが替わる
+  const statuses = page.locator('[role="status"]');
+  await expect(statuses).toHaveCount(2);
+  await expect(statuses.filter({ hasText: 'Google へ移っています' })).toHaveCount(0);
+  // 移動が始まると Playwright は DOM を読めなくなるので、ページの中で2回押して、移る前の状態を読む
+  const before = await page.evaluate(async () => {
+    const button = document.querySelector<HTMLButtonElement>('main button.is-google')!;
+    button.click();
+    button.click();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    return {
+      ariaDisabled: button.getAttribute('aria-disabled'),
+      label: button.textContent,
+      statuses: [...document.querySelectorAll('[role="status"]')].map((element) => element.textContent),
+    };
+  });
+  expect(before.ariaDisabled).toBe('true');
+  expect(before.label).toBe('Google へ移っています');
+  expect(before.statuses).toHaveLength(2);
+  expect(before.statuses).toContain('Google へ移っています');
+  await expect(page).toHaveURL(/\/login\?error=invite$/);
+  expect(posts).toBe(1);
 });
 
 test('ほかの画面の Referrer-Policy は変えない', async ({ page }) => {
