@@ -1,4 +1,4 @@
-// Bash の判定。本番に触る操作、main への push、--force-with-lease 以外の force push、シークレット、gh pr merge を通さないマージを止め、
+// Bash の判定。本番に触る操作、main の上のコミットと main への push、--force-with-lease 以外の force push、シークレット、gh pr merge を通さないマージを止め、
 // gh pr merge、依存の変更、マイグレーションの作成、判定しきれない push では人の確認を挟む（docs/development.md の「Claude の設定とフック」）。
 // permissions.deny の前方一致では npx wrangler や pnpm exec wrangler の言い換えを取りこぼすので、語に分けて判定する。
 // 踏み線であって守りの本体ではない。変数の中身と、パイプで sh に流す中身は見えない。
@@ -85,6 +85,9 @@ function judgeWrangler(args) {
 
 const GIT_FLAGS_WITH_VALUE = new Set(['-C', '-c', '--git-dir', '--work-tree', '--namespace']);
 const PUSH_FLAGS_WITH_VALUE = new Set(['-o', '--push-option', '--repo', '--receive-pack', '--exec']);
+// main の上で新しいコミットを作る操作。pull --ff-only と merge --ff-only は main を origin に追いつかせるだけなので通す
+const COMMITTING = new Set(['commit', 'merge', 'cherry-pick', 'revert', 'am']);
+const STOPPING = new Set(['--abort', '--quit', '--ff-only']);
 
 // git は長いオプションを一意な省略形でも受け付ける（--force-w は --force-with-lease、--mi は --mirror）
 function isOption(arg, full, shortest) {
@@ -105,6 +108,9 @@ function judgeGit(args, dir, branchOf) {
   const sub = args[i];
   const rest = args.slice(i + 1);
   if (sub === 'add' && rest.some(mentionsSecret)) return [DENY, '.dev.vars と .env は git に入れない'];
+  if (COMMITTING.has(sub) && !rest.some((a) => STOPPING.has(a)) && gitDir && branchOf(gitDir) === 'main') {
+    return [DENY, `main の上で git ${sub} はしない。ワークツリーで作業ブランチを切り、PR を通す`];
+  }
   if (sub !== 'push') return null;
 
   const forced = rest.some((a) => a === '--force' || isOption(a, '--mirror', 4) || /^-[a-zA-Z]*f[a-zA-Z]*$/.test(a));
@@ -130,7 +136,7 @@ function judgeGit(args, dir, branchOf) {
   for (const target of targets.filter((t) => !unknown(t))) {
     const name = (target === 'HEAD' || target === '@' ? current : target).replace(/^(refs\/)?heads\//, '');
     if (name === 'main') {
-      return [DENY, 'main へは push しない。作業ブランチから PR を通す（文書だけの変更も、push は人が行う）'];
+      return [DENY, 'main へは push しない。作業ブランチから PR を通す（文書だけの変更も同じ）'];
     }
   }
   if (targets.some((t) => /[$*]/.test(t))) return [ASK, '変数か glob を含む refspec は、main を含むかを判定できない'];

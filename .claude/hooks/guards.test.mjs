@@ -209,6 +209,33 @@ describe('bash-rules: 止める', () => {
     assert.equal(decision('git push origin HEAD', 'main'), 'deny');
   });
 
+  test('main の上でコミットを作る操作', () => {
+    for (const command of [
+      'git commit -m "docs: x"',
+      'git commit --no-verify -m x',
+      'git commit --amend',
+      'git merge x',
+      'git merge --continue',
+      'git cherry-pick abc',
+      'git revert abc',
+      'git am 0001.patch',
+      'git -c core.hooksPath=/dev/null commit -m x',
+    ]) {
+      assert.equal(decision(command, 'main'), 'deny', command);
+    }
+    assert.match(verdict('git commit -m x', 'main')[1], /作業ブランチ/);
+    assert.equal(decision('git checkout main && git commit -m x'), 'deny');
+    assert.equal(decision('git commit -m x'), 'allow');
+    assert.equal(decision('git pull --ff-only', 'main'), 'allow');
+    assert.equal(decision('git merge --ff-only origin/main', 'main'), 'allow');
+    assert.equal(decision('git merge --abort', 'main'), 'allow');
+    assert.equal(decision('git cherry-pick --quit', 'main'), 'allow');
+    const branchOf = (dir) => (dir === '/repo' ? 'main' : 'x');
+    assert.equal(judgeBash('cd worktrees/x && git commit -m x', { cwd: '/repo', branchOf }), null);
+    assert.equal(judgeBash('git -C worktrees/x commit -m x', { cwd: '/repo', branchOf }), null);
+    assert.equal(judgeBash('git -C /repo commit -m x', { cwd: '/w', branchOf })?.[0], 'deny');
+  });
+
   test('同じコマンドの中で切り替えた先のブランチで判定する', () => {
     assert.equal(decision('git checkout main && git push'), 'deny');
     assert.equal(decision('git switch main; git push origin HEAD'), 'deny');

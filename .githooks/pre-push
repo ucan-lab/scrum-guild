@@ -1,0 +1,8 @@
+#!/bin/sh
+# リモートの main への push（削除と force push も含む）を止める。main は PR の squash merge でだけ進める
+while read -r _local_ref _local_sha remote_ref _remote_sha; do
+  if [ "$remote_ref" = "refs/heads/main" ]; then
+    echo "main へは push しない。作業ブランチから PR を通す（docs/development.md の「\`main\` を守る仕組み」）" >&2
+    exit 1
+  fi
+done
