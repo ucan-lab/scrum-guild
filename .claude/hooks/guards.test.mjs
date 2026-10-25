@@ -971,6 +971,56 @@ describe('bash-rules: 確認を挟む', () => {
     'cp /tmp/Wrangler* .',
     'cp -t . /tmp/wrangler*',
     'cp /tmp/conf*.json .wrangler/deploy/',
+    // -t の前の値を取るフラグの値（-S の -t、--suffix の --）はオプションではない。-t と読めても最後の位置引数を宛先として見る判定を残す
+    'cp -S -t /tmp/evil wrangler.jsonc',
+    'cp --suffix -t /tmp/evil wrangler.jsonc',
+    'cp --suf -t /tmp/evil wrangler.jsonc',
+    'cp -S -t /tmp/evil .claude/hooks/guard-bash.mjs',
+    'cp -S -t /tmp/evil migrations/0001_x.sql',
+    'ginstall -S -t /tmp/evil wrangler.jsonc',
+    'install -m 600 -t /tmp/evil wrangler.jsonc',
+    'install --mode -t /tmp/evil wrangler.jsonc',
+    'mv -t /tmp .githooks/pre-commit',
+    'cp -t /tmp wrangler.jsonc',
+    'cp -t /tmp/ wrangler.jsonc',
+    'cp --target-directory=/tmp wrangler.jsonc',
+    // -t の値が展開で決まるときは、置かれる先を判定できないので、元の名前が設定に当たれば止める
+    'cp -t "$PWD" /tmp/x/wrangler.jsonc',
+    'cp -t $(pwd) /tmp/x/wrangler.jsonc',
+    'cp -t$PWD /tmp/x/wrangler.jsonc',
+    'cp --target-directory="$PWD" /tmp/x/wrangler.jsonc',
+    'cp --target-directory $X /tmp/x/wrangler.toml',
+    'cp -t "$PWD" /tmp/wrangler*',
+    // -t の宛先は必ずディレクトリ。実在を確かめられない（cd $X の後）ときも元の名前を付けて見る
+    'cd $X; cp -t .wrangler/deploy /tmp/config.json',
+    'cp -t .wrangler/deploy /tmp/config.json',
+    // {a,b} の元は語ぜんたいで展開し、展開したそれぞれの basename を見る
+    'cp /tmp/{x/wrangler.jsonc,y} .',
+    'cp {/tmp/a,/tmp/wrangler.jsonc} .',
+    'cp /tmp/{a,b}/wrangler.toml .',
+    'cp /tmp/{1..3}/wrangler.json .',
+    'cp /tmp/{a..c}/wrangler.jsonc .',
+    'cp /tmp/{x,wrangler.js*} .',
+    // 展開が MAX_BRACE_EXPANSION を超える元は、照合せずに確認を挟む
+    'cp /tmp/x{1..100000}a .',
+    'cp -t . /tmp/x{1..100000}a',
+    // 括弧の glob は後ろの語を別の区切りに切る。サブコマンドまでの git の引数のどれかが括弧の glob で終わるときは確認を挟む
+    'git --no-pager(N) commit -m x',
+    'git -c a=b(N) commit -m x',
+    'git -P(N) commit -m x',
+    'git x(N) commit -m y',
+    'git -C . --no-pager(N) commit -m y',
+    'git --no-pager(N) push origin main',
+    'git (a|b) commit -m x',
+    // cd の位置引数が2つ以上は、zsh の語の置き換え（cd 旧 新）で、移った先を判定できない
+    'cd sr? && cd src x && git commit -m y',
+    'cd src x && git commit -m y',
+    'cd -L src x && git commit -m y',
+    // cd -P は .. を物理パスで辿るので、字面から移った先を判定できない
+    'cd -P .. && git commit -m y',
+    'cd -P src/.. && git commit -m y',
+    'cd -LP ../x && git commit -m y',
+    'pushd -P .. && git commit -m y',
     // インタープリタの本文とヒアドキュメントの本文に出る wrangler の設定
     `node -e "require('fs').writeFileSync('wrangler.jsonc','x')"`,
     `python3 -c "open('.wrangler/deploy/config.json','w')"`,
@@ -1119,6 +1169,9 @@ describe('bash-rules: 確認を挟む', () => {
       'cd -LP src && git commit -m x',
       'cd -L -P src && git commit -m x',
       'pushd -L src && git commit -m x',
+      // -P でも .. を含まなければ字面で解決する。-L の .. は字面で辿る
+      'cd -P src && git commit -m x',
+      'cd -L .. && git commit -m x',
       // 展開できない cd の後でも、絶対パスの cd は解決し直す
       'cd sr? && cd /repo && git commit -m x',
       'cd $X && cd /repo/src && git commit -m x',
@@ -1395,12 +1448,20 @@ describe('bash-rules: 通す', () => {
     'cp x /tmp/',
     'cp x src/',
     'cp wrangler.jsonc.bak .',
-    // -t の宛先は元ではないので、設定を別の場所へ写す形と、設定に当たらない元は通す
-    'cp -t /tmp wrangler.jsonc',
-    'cp -t /tmp/ wrangler.jsonc',
+    // -t で設定に当たらない元を写す形
     'cp -t src x',
     'cp -t . /tmp/x',
-    'cp --target-directory=/tmp wrangler.jsonc',
+    'cp -t "$PWD" /tmp/x',
+    'cp -t "$PWD" /tmp/x/config.json',
+    'cp -S .bak -t src x',
+    // {a,b} の元は語ぜんたいで展開し、展開したそれぞれの basename を見る。設定に当たらなければ通す
+    'cp /tmp/{x/y,z} .',
+    'cp {/tmp/a,/tmp/b} .',
+    'cp /tmp/{a,b}.md .',
+    // 展開が多い元も、宛先がディレクトリでなければ見ない
+    'cp /tmp/x{1..100000}a /tmp/out.txt',
+    // cd の位置引数が1つで、-P でも .. を含まなければ解決する
+    'cd -P src && ls',
     // rsync の -t は --times で、宛先を取らない
     'rsync -t wrangler.jsonc /tmp/',
     // 文字を1つも含まない glob と、設定の名前に当たらない glob
@@ -1636,6 +1697,12 @@ describe('bash-rules: 展開の大きい glob', () => {
     ['node x.ts {1..1000000} scripts/deploy.ts', 'deny'],
     ['node x.ts {1..256}', 'allow'],
     ['node x.ts {1..3}', 'allow'],
+    // コピーの元の {a,b} は、展開を数えてから展開する
+    ['cp /tmp/x{1..100000}a .', 'ask'],
+    [`cp /tmp/${'{a,b}'.repeat(14)} .`, 'ask'],
+    ['cp /tmp/x{1..256}a .', 'allow'],
+    ['cp /tmp/x{1..3}a .', 'allow'],
+    ['cp /tmp/wrangler.{json,toml,x{1..3}} .', 'ask'],
   ]) {
     test(`${command.slice(0, 60)} は 1 秒以内に ${expected}`, () => {
       const [decided, ms] = timed(command);
