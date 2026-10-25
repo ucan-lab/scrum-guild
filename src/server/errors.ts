@@ -2,7 +2,7 @@
 import { HTTPException } from 'hono/http-exception';
 import type { ErrorBody, ErrorCode } from '../shared/errors.ts';
 
-export type ErrorStatus = 400 | 401 | 403 | 404 | 409 | 413 | 429;
+export type ErrorStatus = 400 | 401 | 403 | 404 | 409 | 413 | 429 | 503;
 
 // message は応答にそのまま出す値を持たない。code から作る
 export class ApiError extends Error {

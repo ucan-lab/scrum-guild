@@ -3,6 +3,8 @@
 // 組織を確かめた結果を確かめずに作る口と、表の照合に要る値（列の定数と、DB のカタログ）を出す
 import { sql } from 'kysely';
 import {
+  adminCountsStatement,
+  adminStatusesIn,
   hasLoginAccessIn,
   invitationsStatement,
   linkLoginToAccountIn,
@@ -135,6 +137,22 @@ export function linkLoginToAccountForTest(
   extraDatabases: readonly FakeDatabase[],
 ) {
   return linkLoginToAccountIn(env, accountId, login, now, entriesWith(env, extraDatabases));
+}
+
+// 運用者の一覧の管理者の状態を、組織の中の DB が複数あるときに確かめる
+export function adminStatusesForTest(
+  env: Env,
+  organizationIds: readonly string[],
+  extraDatabases: readonly FakeDatabase[],
+) {
+  return adminStatusesIn(organizationIds, entriesWith(env, extraDatabases));
+}
+
+// 管理者の状態を数える文。実行計画の確認に使う
+export function adminCountsStatementForTest(env: Env, organizationIds: readonly string[]) {
+  const [db] = crossOrganizationEntries(env);
+  if (db === undefined) throw new Error('組織の中の DB が無い');
+  return adminCountsStatement(db, organizationIds);
 }
 
 // 文の実行計画（EXPLAIN QUERY PLAN の detail の列）。索引に乗るかを確かめるのに使う

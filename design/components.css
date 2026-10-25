@@ -243,6 +243,8 @@ h1, h2, h3 { text-wrap: balance; }
   background: hsl(var(--h, 210) 40% 38%); color: #fff; font-size: 11px; font-weight: 700; flex: none;
 }
 .avatar.is-lg { width: 36px; height: 36px; font-size: 14px; }
+/* ログインの手段の側のアバターの画像（運用者が指名する人を確かめるときなど）。頭文字の円と同じ大きさで重ねる */
+.avatar > img { width: 100%; height: 100%; border-radius: 50%; object-fit: cover; }
 .avatar.is-none { background: transparent; border: 1px dashed var(--color-faint); color: var(--color-muted); }
 .avatar.is-left { opacity: 0.45; }
 .avatar-stack { display: inline-flex; }
@@ -770,6 +772,8 @@ a.choice > div > span, .choice.is-static > div > span { display: block; }
 .gate-brand .brand-seal { width: 34px; height: 34px; font-size: 17px; }
 .gate-title { font-family: var(--font-display); font-weight: var(--weight-display); font-size: var(--text-2xl); line-height: var(--leading-tight); }
 .gate-note { font-size: var(--text-xs); color: var(--color-muted); }
+/* 表を載せる枠の外の画面（運用）。紙の幅を広げる */
+.gate.is-wide .gate-stack, .gate.is-wide .gate-sheet { width: min(960px, 100%); }
 .btn.is-wide { width: 100%; padding-block: 10px; }
 
 /* ===== 知らせ（トースト） ===== */

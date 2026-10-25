@@ -1,5 +1,16 @@
 // 運用者だけの操作の定義（permission: 'operator'）。運用者の権限を決める定義なので、人が差分を読む領域（docs/development.md の「マージの判定」）。
-// 本物の操作は組織の作成などの Issue で足す
+// 運用者は組織の中に特権を持たない。ここの操作の応答に、組織の中のデータ（人の名前など）を入れない
 import type { AnyOperationDefinition } from '../define.ts';
+import { createOrganization } from './create-organization.ts';
+import { listOrganizations } from './list-organizations.ts';
+import { resolveGithubUser } from './resolve-github-user.ts';
 
-export const operatorOperations: readonly AnyOperationDefinition[] = [];
+export { createOrganization, listOrganizations, resolveGithubUser };
+export { createOrganizationProblems, type CreateOrganizationProblem } from './create-organization.ts';
+export { adminStatuses, type AdminStatus } from './list-organizations.ts';
+
+export const operatorOperations: readonly AnyOperationDefinition[] = [
+  listOrganizations,
+  resolveGithubUser,
+  createOrganization,
+];

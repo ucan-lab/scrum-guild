@@ -42,7 +42,7 @@ const PROVIDERS: ReadonlySet<string> = new Set(['github']);
 
 // 資格情報が未設定の手段は undefined（その手段のログインを受け付けない）。
 // トークンの取り消しは応答を待たせずに走らせ（waitUntil）、失敗は固定の文でログに出す
-function githubMethod(c: Context<AppEnv>, fetcher: typeof fetch): LoginMethod | undefined {
+export function githubMethod(c: Context<AppEnv>, fetcher: typeof fetch): LoginMethod | undefined {
   const credentials = githubCredentials(c.env);
   if (credentials === undefined) return undefined;
   return createGithubLoginMethod(credentials, fetcher, {

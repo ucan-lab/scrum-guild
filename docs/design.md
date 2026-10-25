@@ -71,7 +71,11 @@
 
 | 画面 | 主な中身 | 見る人 |
 | --- | --- | --- |
-| 運用 | 組織の一覧（slug、名前、ユーザー数と人数の上限、ワークスペース数、タスク数、添付ファイルの合計と上限、最後に使われた日時、停止の有無）、組織の作成（slug、名前、最初の管理者）、停止と再開、管理者の指名し直し、人数と添付ファイルの上限の変更 | 運用者 |
+| 運用 | 組織の一覧（slug、名前、ユーザー数と人数の上限、ワークスペース数、タスク数、添付ファイルの合計と上限、最後に使われた日時、停止の有無、管理者の状態）、組織の作成（slug、名前、最初の管理者）、停止と再開、管理者の指名し直し、人数と添付ファイルの上限の変更 | 運用者 |
+
+- 組織の一覧の名前の横に、管理者の状態の印を付ける。管理者がいない組織は「管理者がいない」（`is-danger`）、指名した人がまだログインしていない組織は「管理者はログイン待ち」（`is-warn`）。ログイン済みの管理者がいる組織には付けない。停止中の組織は「停止中」（`is-warn`）。`/operator` は運用者だけが開け、運用者でない人は `/` に戻す。
+- 組織を作るダイアログでは、slug と表示名を入れ、最初の管理者のログインの手段（GitHub か Google）を選ぶ。GitHub はユーザー名を入れて「確かめる」を押すと、解決した人（アバター、ユーザー名、表示名、GitHub のユーザー ID）が出る。ユーザー名は1字違いでも別の人に当たるので、運用者が確かめるまで「作る」は押せない。ユーザー名を直すと確かめた結果は消え、もう一度確かめるまで作れない。GitHub の組織のアカウントは、個人のアカウントでないことを示して断る。GitHub に届かないときは、入力の誤りと分けて、時間をおいてもう一度試すよう伝える。Google を選ぶと、まだ使えないと出して作れない。
+- 作った後は、同じダイアログを完了の表示に切り替える。組織の URL（`<画面のオリジン>/<slug>/`）とコピーのボタン、「GitHub の `<ユーザー名>` でログインするよう伝えてください」を出す。Scrum Guild はメールを送らず、運用者が伝える。閉じると一覧を読み直した結果が見える。
 
 ### 経路と組織の枠
 
@@ -210,10 +214,11 @@
 | （見本に無い）見つからない、読み込みの失敗 | `NotFoundPage.svelte`、`LoadFailed.svelte` | 組織の枠の中に出す「見つからない」と、枠の外の `LoadFailed`（`inShell` を付けると枠の中に出す）。管理者でない人が開いた組織の管理と、存在しない（別の組織の）ワークスペースに使う |
 | `openDialog`、`closeDialog` | `Dialog.svelte` | ブラウザの `<dialog>` を `showModal()` で開く。フォーカスの閉じ込めと Esc はブラウザに任せ、閉じたら開いたボタンにフォーカスを戻す。Safari と Firefox はクリックしたボタンにフォーカスを移さないので、開く側は `show(event.currentTarget)` で開く操作を起こした要素を渡す。外側を押して閉じるのは、押し始めと離した所の両方が背景のときだけ（中で選択を始めて外で離しても閉じない）。`dismissible` を偽にすると、×、Esc、背景、footer に渡す `close` の閉じる操作をすべて無視する（送っている最中など）。CSS は components.css の `dialog.dialog` |
 | `toast` | `ToastRegion.svelte`、`src/lib/toast.svelte.ts` | `ToastRegion` を `+layout.svelte` に1つ置き、`showToast()` で出す。HTML でなく文字列を渡す。同時に出すのは3件までで、あふれたら古いものから消す。モーダルのダイアログが開くと外側は inert になり、トップレイヤーに出し直した領域（`popover="manual"`）も inert のままで読み上げが届かない。そのため `Dialog.svelte` の中にも領域を持ち、ダイアログが開いている間は中の領域に出して、外側の領域は隠す |
-| `avatar`、`avatarOf` | `Avatar.svelte` | 色相は `users.id` から計算し（`src/lib/avatar-hue.ts`）、`style:--h` で渡す。DB に列は持たない。ユーザーがいるときは名前が必須で、`role="img"` と `aria-label` を付ける |
+| `avatar`、`avatarOf` | `Avatar.svelte` | 色相は `users.id` から計算し（`src/lib/avatar-hue.ts`）、`style:--h` で渡す。DB に列は持たない。ユーザーがいるときは名前が必須で、`role="img"` と `aria-label` を付ける。ログインの手段の側のアバターの画像（運用者が指名する人を確かめるときの GitHub のアバター）は `image` で渡し、頭文字の円の中に画像を重ねる（`.avatar > img`）。画像のホストは CSP の `img-src` に足した `https://avatars.githubusercontent.com` だけ |
+| 組織の作成のダイアログ（`createOrganization`） | `CreateOrganizationDialog.svelte` | 運用の画面だけが使う。slug と表示名、最初の管理者のログインの手段、GitHub のユーザー名の解決と確かめ、作った後の完了の表示（組織の URL とコピー）を、1つの `Dialog` の中で切り替える。ダイアログを閉じると入力を捨てる |
 | `t`、`DICT` | `src/shared/vocabulary.ts`、`src/lib/vocabulary.svelte.ts` | 言葉の辞書（`docs/development.md` の「言葉の辞書」） |
 | `THEMES`、`setTheme`、`applyTheme` | `src/shared/theme.ts`、`src/lib/theme.svelte.ts` | テーマの先当ては `docs/development.md` の「テーマの先当て」 |
-| `.gate`、`.gate-sheet`（枠の外の画面） | `Gate.svelte`、`GateSheet.svelte`、`LoadFailed.svelte`、`LoadingSheet.svelte` | 組織の選択、見つからない、運用の仮の画面の外側（`main`。mount のときにテーマと言葉づかいを既定に戻す）と、紙1枚。先頭の紙に `brand` を付けると、ブランドと h1 の見出しが出る。紙を縦に並べる `.gate-stack` は components.css に持つ。`LoadFailed` は読み込みの失敗と「もう一度試す」、`LoadingSheet` は外の画面から移る間の読み込み中の表示 |
+| `.gate`、`.gate-sheet`（枠の外の画面） | `Gate.svelte`、`GateSheet.svelte`、`LoadFailed.svelte`、`LoadingSheet.svelte` | 組織の選択、見つからない、運用の外側（`main`。mount のときにテーマと言葉づかいを既定に戻す）と、紙1枚。先頭の紙に `brand` を付けると、ブランドと h1 の見出しが出る。表を載せる運用の画面は `Gate` の `wide`（`.gate.is-wide`。紙の幅を 960px まで広げる）。紙を縦に並べる `.gate-stack` は components.css に持つ。`LoadFailed` は読み込みの失敗と「もう一度試す」、`LoadingSheet` は外の画面から移る間の読み込み中の表示 |
 
 - 画面は `.svelte` に `<style>` を書かない。足りない CSS は components.css とカタログに先に足す。フックと `pnpm lint` が止める。
 - インラインの `style` 属性は CSP に止められる。動く値は `style:--h` のように CSSOM で当てる（Svelte の `style:` ディレクティブ）。

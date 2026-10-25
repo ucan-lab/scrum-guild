@@ -1,8 +1,9 @@
 <script lang="ts" module>
-  // userId が null なら担当なしで、名前を持たない。userId があるときは名前を必須にする
+  // userId が null なら担当なしで、名前を持たない。userId があるときは名前を必須にする。
+  // image はログインの手段の側のアバターの画像の URL（運用者が指名する人を確かめるときなど）。無ければ頭文字の円
   export type AvatarProps =
-    | { userId: null; name?: undefined; large?: boolean; left?: undefined }
-    | { userId: string; name: string; large?: boolean; left?: boolean };
+    | { userId: null; name?: undefined; large?: boolean; left?: undefined; image?: undefined }
+    | { userId: string; name: string; large?: boolean; left?: boolean; image?: string | null };
 </script>
 
 <script lang="ts">
@@ -11,7 +12,7 @@
 
   // kit.js の avatar / avatarOf。色相は users.id から計算し、style:--h（CSSOM）で渡す。
   // style 属性の文字列は CSP の style-src に止められる。画像として読み上げられるよう role="img" と aria-label を付ける
-  let { userId, name, large = false, left = false }: AvatarProps = $props();
+  let { userId, name, large = false, left = false, image = null }: AvatarProps = $props();
 
   const label = $derived(name === undefined ? t('unassigned') : `${name}${left ? t('leftMember') : ''}`);
   const initial = $derived(name === undefined ? '?' : ([...name][0] ?? '?'));
@@ -27,6 +28,8 @@
     style:--h={hueOf(userId)}
     role="img"
     aria-label={label}
-    title={label}>{initial}</span
+    title={label}
   >
+    {#if image}<img src={image} alt="" referrerpolicy="no-referrer" />{:else}{initial}{/if}
+  </span>
 {/if}

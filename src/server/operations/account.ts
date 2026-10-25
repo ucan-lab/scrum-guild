@@ -2,7 +2,7 @@
 // アカウントに結んだログインの手段と ID、入れる組織と届いた招待は、使われたときに1回だけ引く
 // （登録の関数のログインできる条件の判定と、my-organizations の処理が、同じ読み取りの結果を使う）
 import { accountLogins } from '../auth/account-logins.ts';
-import { isOperatorLogin } from '../auth/operators.ts';
+import { isOperatorLogin, operatorLoginIdOf } from '../auth/operators.ts';
 import { listAccountOrganizations, type AccountOrganizations, type LoginId } from '../db/index.ts';
 
 export type OutsideAccount = {
@@ -10,6 +10,8 @@ export type OutsideAccount = {
   organizations(): Promise<AccountOrganizations>;
   // シークレットの運用者の一覧に、このアカウントのログインが載っているか
   isOperator(): Promise<boolean>;
+  // 運用者の一覧に載っているログインの ID（`github:12345` の形）。運用者でなければ undefined
+  operatorLoginId(): Promise<string | undefined>;
   // アカウントに結んだログインの手段と ID。登録の関数が、組織に入れるかの判定（enterOrganization）に渡す。引くのは1回だけ
   logins(): Promise<readonly LoginId[]>;
 };
@@ -23,5 +25,6 @@ export function outsideAccount(env: Env, accountId: string): OutsideAccount {
     organizations: () =>
       (organizations ??= (async () => listAccountOrganizations(env, { accountId, logins: await loadLogins() }))()),
     isOperator: async () => isOperatorLogin(env, await loadLogins()),
+    operatorLoginId: async () => operatorLoginIdOf(env, await loadLogins()),
   };
 }

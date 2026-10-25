@@ -810,8 +810,20 @@
       `<label class="field" for="d-ks"><span class="field-label">URL の名前（slug）</span><input class="input mono" id="d-ks" placeholder="例: sakura-dev"><span class="field-hint">英小文字、数字、ハイフンで 2〜40 字。あとから変えられません。</span></label>
          <label class="field" for="d-kn"><span class="field-label">表示名</span><input class="input" id="d-kn" placeholder="例: さくら開発"></label>
        ${loginTarget("d-ka", { title: `最初の${t("admin")}のログインの手段`, hints: adminHints() })}
-       <div class="callout is-info">${icon("link")}<span>URL は <span class="mono">scrum-guild.dev/&lt;slug&gt;/</span> になります。Google で指名したときは、作ったあとに出る招待の URL を${t("admin")}に伝えてください。</span></div>`,
-      `<button class="btn is-quiet" type="button" data-close-dialog>やめる</button><button class="btn is-primary" type="button" data-invite-link="d-ka" data-invite-done="${t("organization")}を作りました">作る</button>`),
+       <div class="form-actions" id="d-kz"><button class="btn" type="button" data-verify-admin="d-ka">確かめる</button></div>
+       <div id="d-kv" hidden>
+         <div class="callout is-info" role="status">${icon("shield")}<span>この人を最初の${t("admin")}にします。アバター、ユーザー名、表示名が、伝えたい人のものか確かめてください。ユーザー名は 1 字違いでも別の人に当たります。</span></div>
+         <div class="choice is-static">${avatar("星野 琴音", 3, { lg: true })}<div><b>星野 琴音</b><span class="mono">kotone-dev</span><span>GitHub のユーザー ID 5550001</span></div></div>
+       </div>
+       <div class="callout is-info">${icon("link")}<span>URL は <span class="mono">scrum-guild.dev/&lt;slug&gt;/</span> になります。GitHub で指名したときは、確かめた人の「作る」のあとに、組織の URL を${t("admin")}に伝えてください。Google で指名したときは、作ったあとに出る招待の URL を${t("admin")}に伝えてください。</span></div>`,
+      `<button class="btn is-quiet" type="button" data-close-dialog>やめる</button><button class="btn is-primary" id="d-kb" type="button" data-org-create="d-ka" disabled>作る</button>`),
+    // 作った後。組織の URL とコピー、管理者になる人に伝えること
+    organizationCreated: () => openDialog(`${t("organization")}を作りました`,
+      `<p>Scrum Guild はメールを送りません。${t("admin")}になる人に、次の URL とログインの手段を伝えてください。</p>
+       <div class="form-row"><label class="field" for="d-ou"><span class="field-label">${t("organization")}の URL</span><input class="input mono" id="d-ou" value="https://scrum-guild.dev/sakura-dev/" readonly></label>
+         <button class="btn" type="button" data-toast="URL をコピーしました">${icon("link")}コピー</button></div>
+       <div class="callout is-info">${icon("check")}<span>GitHub の kotone-dev でログインするよう伝えてください。</span></div>`,
+      `<button class="btn is-primary" type="button" data-close-dialog>閉じる</button>`),
     reassignAdmin: () => openDialog(`${t("admin")}を指名し直す`,
       `<p>くもラボには今${t("admin")}がいません。新しい${t("admin")}を、GitHub のユーザー名か Google のメールアドレスで指名します。</p>
        ${loginTarget("d-ra", { hints: adminHints() })}
@@ -1281,6 +1293,13 @@
     field.querySelector("[data-login-label]").textContent = via.label;
     input.placeholder = via.example;
     field.querySelectorAll("[data-login-hint]").forEach((h) => (h.hidden = h.dataset.loginHint !== el.value));
+    // 組織の作成のダイアログ: GitHub は確かめるまで作れない。Google は確かめる人がいないので、そのまま作れる
+    if (el.dataset.loginVia === "d-ka" && document.getElementById("d-kb")) {
+      const google = el.value === "google";
+      document.getElementById("d-kz").hidden = google;
+      document.getElementById("d-kv").hidden = true;
+      document.getElementById("d-kb").disabled = !google;
+    }
   });
 
   // ---- 操作（見本の中だけで動き、保存はしない） ----
@@ -1336,6 +1355,18 @@
       document.querySelector("#drawer [data-drawer-size]")?.focus({ preventScroll: true }); return;
     }
     if ((el = hit("data-invite-link"))) { inviteLink(el.dataset.inviteLink, el.dataset.inviteDone); return; }
+    // 組織の作成: GitHub は解決した人を見せ、確かめてから作れる。作った後は組織の URL を出す
+    if ((el = hit("data-verify-admin"))) {
+      document.getElementById("d-kv").hidden = false;
+      document.getElementById("d-kb").disabled = false;
+      return;
+    }
+    if ((el = hit("data-org-create"))) {
+      const via = document.querySelector(`[data-login-via="${el.dataset.orgCreate}"]:checked`)?.value;
+      if (via === "google") { inviteLink(el.dataset.orgCreate, `${t("organization")}を作りました`); return; }
+      DIALOGS.organizationCreated();
+      return;
+    }
     if ((el = hit("data-dialog"))) { if (el.dataset.dialog === "createTask") delete D.files.new; DIALOGS[el.dataset.dialog](); return; }
     if ((el = hit("data-file"))) { DIALOGS.previewFile(el.dataset.file); return; }
     if ((el = hit("data-delete-file"))) { closeDialog(); DIALOGS.deleteFile(el.dataset.deleteFile); return; }

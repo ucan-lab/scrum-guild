@@ -4,9 +4,9 @@
 import {
   LoginMethodError,
   type AuthorizationRequest,
+  type InviteeResolution,
   type LoginMethod,
   type LoginProfile,
-  type ResolvedInvitee,
   type VerificationRequest,
 } from './login-method.ts';
 
@@ -81,6 +81,11 @@ function avatarUrlOf(value: unknown): string | null {
   } catch {
     return null;
   }
+}
+
+// 手段の側の名前。空白だけ、または文字列でなければ null
+function displayNameOf(value: unknown): string | null {
+  return typeof value === 'string' && value.trim() !== '' ? value.trim().slice(0, MAX_DISPLAY_NAME_LENGTH) : null;
 }
 
 export type GithubOptions = {
@@ -164,10 +169,7 @@ export function createGithubLoginMethod(
     return {
       subject: subjectOf(body.id),
       loginName: loginNameOf(body.login),
-      displayName:
-        typeof body.name === 'string' && body.name.trim() !== ''
-          ? body.name.trim().slice(0, MAX_DISPLAY_NAME_LENGTH)
-          : null,
+      displayName: displayNameOf(body.name),
       avatarUrl: avatarUrlOf(body.avatar_url),
     };
   }
@@ -221,8 +223,8 @@ export function createGithubLoginMethod(
 
     // ユーザー名は変えられるので、招待のときにユーザー ID に解決して突き合わせる。クライアントの資格情報で呼び、
     // 認証なしの呼び出しの上限（IP ごと、1時間に60回）に Workers の共有の IP が当たらないようにする
-    async resolveInvitee(reference: string): Promise<ResolvedInvitee | undefined> {
-      if (!USERNAME_PATTERN.test(reference)) return undefined;
+    async resolveInvitee(reference: string): Promise<InviteeResolution> {
+      if (!USERNAME_PATTERN.test(reference)) return { kind: 'not_found' };
       const res = await send(`${USERS_URL}${encodeURIComponent(reference)}`, {
         headers: {
           Accept: 'application/vnd.github+json',
@@ -233,7 +235,7 @@ export function createGithubLoginMethod(
       });
       if (res.status === 404) {
         await discard(res);
-        return undefined;
+        return { kind: 'not_found' };
       }
       if (!res.ok) {
         await discard(res);
@@ -241,7 +243,18 @@ export function createGithubLoginMethod(
       }
       const body = await readJson(res);
       if (!isRecord(body)) throw unexpected('ユーザーの応答');
-      return { subject: subjectOf(body.id), loginName: loginNameOf(body.login) };
+      // type は User（個人）、Organization（組織）、Bot など。個人以外はログインできず、管理者や招待の相手にすると誰も入れない
+      if (typeof body.type !== 'string') throw unexpected('アカウントの種類');
+      if (body.type !== 'User') return { kind: 'not_a_user' };
+      return {
+        kind: 'found',
+        invitee: {
+          subject: subjectOf(body.id),
+          loginName: loginNameOf(body.login),
+          displayName: displayNameOf(body.name),
+          avatarUrl: avatarUrlOf(body.avatar_url),
+        },
+      };
     },
   };
 }

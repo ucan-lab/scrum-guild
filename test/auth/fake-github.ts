@@ -3,7 +3,14 @@
 // code は1回しか使えない
 import type { GithubOptions } from '../../src/server/auth/github.ts';
 
-export type FakeGithubUser = { id: number; login: string; name?: string | null; avatar_url?: string | null };
+// type は GitHub のアカウントの種類。省略は個人（User）。組織のアカウントは Organization
+export type FakeGithubUser = {
+  id: number;
+  login: string;
+  name?: string | null;
+  avatar_url?: string | null;
+  type?: string;
+};
 
 // createGithubLoginMethod に渡す、何もしない既定の仕事の渡し先（取り消しは待たずに走らせ、ログは出さない）
 export const quietGithubOptions: GithubOptions = { background: (work) => void work, warn: () => {} };
@@ -33,6 +40,7 @@ export function createFakeGithub() {
     token?: 'server-error' | 'not-json' | 'wrong-shape';
     user?: 'server-error' | 'unauthorized';
     revoke?: 'server-error' | 'network';
+    lookup?: 'server-error' | 'rate-limited';
   } = {};
 
   const json = (body: unknown, status = 200) =>
@@ -109,8 +117,14 @@ export function createFakeGithub() {
 
     const lookup = /^https:\/\/api\.github\.com\/users\/([^/]+)$/.exec(url);
     if (lookup !== null) {
+      // 認証なしの呼び出しの上限（403 や 429）や障害
+      if (failNext.lookup !== undefined) {
+        const status = failNext.lookup === 'rate-limited' ? 403 : 502;
+        delete failNext.lookup;
+        return json({ message: 'API rate limit exceeded' }, status);
+      }
       const user = directory.get(decodeURIComponent(lookup[1]!).toLowerCase());
-      return user === undefined ? json({ message: 'Not Found' }, 404) : json(user);
+      return user === undefined ? json({ message: 'Not Found' }, 404) : json({ type: 'User', ...user });
     }
 
     return new Response('unexpected request', { status: 599 });

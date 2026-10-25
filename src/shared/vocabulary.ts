@@ -248,10 +248,107 @@ export const dictionary = defineDictionary({
   ),
   operatorOpen: organization('運用の画面へ', '運用の画面へ'),
   pageOperator: organization('運用', '運用'),
-  operatorEmptyTitle: organization('運用の画面は準備中です', '運用の画面は準備中です'),
+  // 運用の画面。{organization} {admin} は、それぞれ辞書の同じ名前の項目で埋める
+  operatorNotice: organization(
+    '運用者は{organization}の中（タスク、メンバー、記録、添付ファイルの中身など）を見られません。ここに出すのは名前、slug、状態だけです。',
+    '運用者は{organization}の中（タスク、メンバー、記録、添付ファイルの中身など）を見られません。ここに出すのは名前、slug、状態だけです。',
+  ),
+  operatorEmptyTitle: organization('{organization}がまだありません', '{organization}がまだありません'),
   operatorEmptyText: organization(
-    '組織の一覧と作成は、この画面に並びます。',
-    '組織の一覧と作成は、この画面に並びます。',
+    '{organization}を作り、最初の{admin}を指名してください。',
+    '{organization}を作り、最初の{admin}を指名してください。',
+  ),
+  operatorCreate: organization('{organization}を作る', '{organization}を作る'),
+  operatorColumnOrganization: organization('{organization}・slug', '{organization}・slug'),
+  operatorColumnCreated: organization('作った日時', '作った日時'),
+  operatorSuspended: organization('停止中', '停止中'),
+  operatorAdminNone: organization('{admin}がいない', '{admin}がいない'),
+  operatorAdminPending: organization('{admin}はログイン待ち', '{admin}はログイン待ち'),
+
+  // 組織の作成のダイアログ
+  operatorCreateTitle: organization('{organization}を作る', '{organization}を作る'),
+  operatorSlugLabel: organization('URL の名前（slug）', 'URL の名前（slug）'),
+  operatorSlugExample: organization('例: sakura-dev', '例: sakura-dev'),
+  operatorSlugHint: organization(
+    '英小文字、数字、ハイフンで 2〜40 字。あとから変えられません。',
+    '英小文字、数字、ハイフンで 2〜40 字。あとから変えられません。',
+  ),
+  operatorNameLabel: organization('表示名', '表示名'),
+  operatorNameExample: organization('例: さくら開発', '例: さくら開発'),
+  operatorAdminVia: organization('最初の{admin}のログインの手段', '最初の{admin}のログインの手段'),
+  operatorGithubName: organization('GitHub', 'GitHub'),
+  operatorGoogleName: organization('Google', 'Google'),
+  operatorGithubUserLabel: organization('GitHub のユーザー名', 'GitHub のユーザー名'),
+  operatorGithubUserExample: organization('例: kotone-dev', '例: kotone-dev'),
+  operatorGithubUserHint: organization(
+    'GitHub のユーザー ID に解決します。次の「確かめる」で、指名する人を見て確かめてから作ります。',
+    'GitHub のユーザー ID に解決します。次の「確かめる」で、指名する人を見て確かめてから作ります。',
+  ),
+  operatorGoogleSoon: organization(
+    'Google での指名はまだ使えません。GitHub を選んでください。',
+    'Google での指名はまだ使えません。GitHub を選んでください。',
+  ),
+  operatorVerify: organization('確かめる', '確かめる'),
+  operatorVerifying: organization('確かめています', '確かめています'),
+  operatorVerifyLead: organization(
+    'この人を最初の{admin}にします。アバター、ユーザー名、表示名が、伝えたい人のものか確かめてください。ユーザー名は 1 字違いでも別の人に当たります。',
+    'この人を最初の{admin}にします。アバター、ユーザー名、表示名が、伝えたい人のものか確かめてください。ユーザー名は 1 字違いでも別の人に当たります。',
+  ),
+  operatorNoDisplayName: organization('表示名なし', '表示名なし'),
+  operatorGithubId: organization('GitHub のユーザー ID {id}', 'GitHub のユーザー ID {id}'),
+  operatorCancel: organization('やめる', 'やめる'),
+  operatorSubmit: organization('作る', '作る'),
+  operatorSubmitting: organization('作っています', '作っています'),
+  operatorErrorSlugRequired: organization('slug を入れてください。', 'slug を入れてください。'),
+  operatorErrorSlugFormat: organization(
+    '英小文字、数字、ハイフンで 2〜40 字にしてください。',
+    '英小文字、数字、ハイフンで 2〜40 字にしてください。',
+  ),
+  operatorErrorSlugReserved: organization(
+    'この名前はアプリが使うので付けられません。',
+    'この名前はアプリが使うので付けられません。',
+  ),
+  operatorErrorSlugTaken: organization('この slug はもう使われています。', 'この slug はもう使われています。'),
+  operatorErrorNameRequired: organization('表示名を入れてください。', '表示名を入れてください。'),
+  operatorErrorUserRequired: organization('ユーザー名を入れてください。', 'ユーザー名を入れてください。'),
+  operatorErrorUserNotFound: organization(
+    'そのユーザー名の人が GitHub にいません。',
+    'そのユーザー名の人が GitHub にいません。',
+  ),
+  operatorErrorNotUser: organization(
+    'GitHub の組織のアカウントなどで、個人のアカウントではありません。ログインできないので指名できません。',
+    'GitHub の組織のアカウントなどで、個人のアカウントではありません。ログインできないので指名できません。',
+  ),
+  operatorErrorUserChanged: organization(
+    '確かめたあとに、ユーザー名の持ち主が変わりました。もう一度確かめてください。',
+    '確かめたあとに、ユーザー名の持ち主が変わりました。もう一度確かめてください。',
+  ),
+  operatorErrorGithubUnavailable: organization(
+    'GitHub に届きませんでした。しばらくしてから、もう一度試してください。',
+    'GitHub に届きませんでした。しばらくしてから、もう一度試してください。',
+  ),
+  operatorErrorCreate: organization(
+    '{organization}を作れませんでした。一覧を確かめてから、もう一度試してください。',
+    '{organization}を作れませんでした。一覧を確かめてから、もう一度試してください。',
+  ),
+  operatorErrorUnreachable: organization('サーバーに届きませんでした。', 'サーバーに届きませんでした。'),
+
+  // 作った後の表示
+  operatorDoneTitle: organization('{organization}を作りました', '{organization}を作りました'),
+  operatorDoneLead: organization(
+    'Scrum Guild はメールを送りません。{admin}になる人に、次の URL とログインの手段を伝えてください。',
+    'Scrum Guild はメールを送りません。{admin}になる人に、次の URL とログインの手段を伝えてください。',
+  ),
+  operatorDoneUrlLabel: organization('{organization}の URL', '{organization}の URL'),
+  operatorCopy: organization('コピー', 'コピー'),
+  operatorCopied: organization('URL をコピーしました', 'URL をコピーしました'),
+  operatorCopyFailed: organization(
+    'コピーできませんでした。URL を選んでコピーしてください。',
+    'コピーできませんでした。URL を選んでコピーしてください。',
+  ),
+  operatorDoneTell: organization(
+    'GitHub の {name} でログインするよう伝えてください。',
+    'GitHub の {name} でログインするよう伝えてください。',
   ),
 
   // API の疎通の表示（仮の画面）

@@ -448,21 +448,61 @@ describe('ログインの手段の型（GitHub の招待する人の指し方）
 
   test('ユーザー名をユーザー ID に解決する。ID は10進の文字列で、名前は GitHub が返す綴りにする', async () => {
     const { github, method: login } = method();
-    github.addUser({ id: 583231, login: 'octo-cat' });
-    expect(await login.resolveInvitee('Octo-Cat')).toEqual({ subject: '583231', loginName: 'octo-cat' });
+    github.addUser({
+      id: 583231,
+      login: 'octo-cat',
+      name: ' Octo Cat ',
+      avatar_url: 'https://avatars.githubusercontent.com/u/583231',
+    });
+    expect(await login.resolveInvitee('Octo-Cat')).toEqual({
+      kind: 'found',
+      invitee: {
+        subject: '583231',
+        loginName: 'octo-cat',
+        displayName: 'Octo Cat',
+        avatarUrl: 'https://avatars.githubusercontent.com/u/583231',
+      },
+    });
     expect(github.calls.at(-1)?.authorization).toBe(`Basic ${btoa(`${FAKE_CLIENT_ID}:${FAKE_CLIENT_SECRET}`)}`);
   });
 
-  test('いないユーザー名は undefined', async () => {
+  test('表示名が無い、アバターが GitHub のホストでない、は null で返す', async () => {
+    const { github, method: login } = method();
+    github.addUser({ id: 583232, login: 'plain-cat', name: null, avatar_url: 'https://evil.example/a.png' });
+    expect(await login.resolveInvitee('plain-cat')).toEqual({
+      kind: 'found',
+      invitee: { subject: '583232', loginName: 'plain-cat', displayName: null, avatarUrl: null },
+    });
+  });
+
+  test('いないユーザー名は not_found', async () => {
     const { method: login } = method();
-    expect(await login.resolveInvitee('nobody-here')).toBeUndefined();
+    expect(await login.resolveInvitee('nobody-here')).toEqual({ kind: 'not_found' });
+  });
+
+  test.each(['Organization', 'Bot'])(
+    '個人のアカウントでない（type が %s）相手は、not_found と分けて not_a_user で返す',
+    async (type) => {
+      const { github, method: login } = method();
+      github.addUser({ id: 9001, login: 'acme-corp', type });
+      expect(await login.resolveInvitee('acme-corp')).toEqual({ kind: 'not_a_user' });
+    },
+  );
+
+  test('type が無い応答は、想定と違う応答として失敗で投げる', async () => {
+    const noType = createGithubLoginMethod(
+      { clientId: FAKE_CLIENT_ID, clientSecret: FAKE_CLIENT_SECRET },
+      async () => new Response(JSON.stringify({ id: 1, login: 'octo-cat' }), { status: 200 }),
+      quietGithubOptions,
+    );
+    await expect(noType.resolveInvitee('octo-cat')).rejects.toBeInstanceOf(LoginMethodError);
   });
 
   test.each(['', '-leading', 'trailing-', 'dou--ble', 'a'.repeat(40), '../etc', 'a b', 'ユーザー'])(
-    'GitHub のユーザー名の形でない %j は、GitHub に問い合わせずに undefined',
+    'GitHub のユーザー名の形でない %j は、GitHub に問い合わせずに not_found',
     async (name) => {
       const { github, method: login } = method();
-      expect(await login.resolveInvitee(name)).toBeUndefined();
+      expect(await login.resolveInvitee(name)).toEqual({ kind: 'not_found' });
       expect(github.calls).toHaveLength(0);
     },
   );
@@ -482,7 +522,10 @@ describe('ログインの手段の型（GitHub の招待する人の指し方）
   test('EMU のように `_` を含むログイン名は解決できる', async () => {
     const { github, method: method_ } = method();
     github.addUser({ id: 77, login: 'octo_acme-corp' }, 'octo_acme-corp'.replaceAll('_', '-'));
-    expect(await method_.resolveInvitee('octo-acme-corp')).toEqual({ subject: '77', loginName: 'octo_acme-corp' });
+    expect(await method_.resolveInvitee('octo-acme-corp')).toMatchObject({
+      kind: 'found',
+      invitee: { subject: '77', loginName: 'octo_acme-corp' },
+    });
   });
 
   test('GitHub が 5xx を返したら、見つからないのではなく失敗として投げる', async () => {

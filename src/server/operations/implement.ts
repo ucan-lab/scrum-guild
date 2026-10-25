@@ -15,6 +15,7 @@ import type {
   VerifiedWorkspace,
 } from '../db/index.ts';
 import type { OutsideAccount } from './account.ts';
+import type { OperatorTools } from './operator-tools.ts';
 
 // 応答を待たせずに続ける仕事。応答の後も終わるまで Worker が残る（waitUntil）。失敗は登録の関数が例外の名前だけをログに残す。
 // 読む操作が副作用として書くものに使う（書き込みは db.batch で送る）
@@ -35,6 +36,8 @@ export type OutsideContext<Input> = {
   session: CurrentSession;
   input: Input;
 };
+// 運用者の操作（permission: 'operator'）。登録の関数が運用者を確かめた後に、運用者の道具を渡す
+export type OperatorContext<Input> = OutsideContext<Input> & { operator: OperatorTools };
 // organization は入るときに引いた組織の行（名前、言葉づかい、既定のテーマ）。組織の中の処理は共通の入口を持たない
 export type OrganizationContext<Input> = {
   db: OrganizationDb;
@@ -46,7 +49,9 @@ export type OrganizationContext<Input> = {
 export type WorkspaceContext<Input> = OrganizationContext<Input> & { workspace: VerifiedWorkspace };
 
 export type ContextOf<D extends AnyOperationDefinition> = D extends OutsideOperationDefinition
-  ? OutsideContext<z.output<D['input']>>
+  ? D['permission'] extends 'operator'
+    ? OperatorContext<z.output<D['input']>>
+    : OutsideContext<z.output<D['input']>>
   : D extends WorkspaceOperationDefinition
     ? WorkspaceContext<z.output<D['input']>>
     : OrganizationContext<z.output<D['input']>>;

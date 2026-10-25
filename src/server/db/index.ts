@@ -15,7 +15,9 @@ export {
   type OrganizationActor,
   type OrganizationSummary,
 } from './enter-organization.ts';
+export { insertOrganization, type CreatedOrganization, type NewOrganization } from './create-organization.ts';
 export {
+  adminStatusesOf,
   hasLoginAccess,
   type LoginAccessTarget,
   linkLoginToAccount,

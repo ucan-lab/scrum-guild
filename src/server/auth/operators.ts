@@ -33,6 +33,14 @@ export function isOperator(operators: ReadonlySet<string>, logins: readonly Logi
   return logins.some((login) => operators.has(`${login.provider}:${login.subject}`));
 }
 
+// 運用者の一覧に載っているログインの ID（`github:12345` の形）。複数のログインを結んだ人は、一覧に載っているものを使う。
+// 載っていなければ undefined。運用者の操作の記録（organizations.created_by_operator、change_logs.operator）に残す値
+export function operatorLoginIdOf(env: object, logins: readonly LoginId[]): string | undefined {
+  const operators = operatorLoginIds(env);
+  if (!operators.ok) return undefined;
+  return logins.map((login) => `${login.provider}:${login.subject}`).find((id) => operators.ids.has(id));
+}
+
 // シークレットの運用者の一覧に、これらのログインのどれかが載っているか。運用者の判定の式はここに1つだけ置く
 // （登録の関数が account.isOperator() で、ログインの分かれ道が login.ts で呼ぶ）。
 // 設定の誤りは app のミドルウェアが先に 500 にしているので、ここに来る一覧は解釈できている。未設定は運用者がいない
