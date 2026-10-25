@@ -21,6 +21,10 @@ describe('組織の slug', () => {
     assert.equal(slugProblem('api'), 'reserved');
   });
 
+  test('Cloudflare が Worker より先に受け取るパス（cdn-cgi）も予約した名前に入っている', () => {
+    assert.equal(slugProblem('cdn-cgi'), 'reserved');
+  });
+
   test('形は organizations.slug の CHECK と同じ（英小文字と数字で始まり、英小文字、数字、ハイフンで 2〜40 字）', () => {
     for (const ok of ['sakura-dev', 'a1', '9lives', 'a'.repeat(40), 'a-b-c'])
       assert.equal(slugProblem(ok), undefined, ok);

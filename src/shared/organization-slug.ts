@@ -8,8 +8,10 @@ export const SLUG_PATTERN = /^[a-z0-9][a-z0-9-]{1,39}$/;
 
 // 画面と API が最上段に使う名前。組織の slug にすると、その組織の URL が画面か API と重なる。
 // 画面の最上段のルート（src/routes/ の直下）を足したら、ここにも足す（scripts/organization-slug.test.ts が落とす）。
-// `_app` は SvelteKit の静的ファイルの置き場所。slug の形には合わないが、予約の一覧として持つ
+// `_app` は SvelteKit の静的ファイルの置き場所。slug の形には合わないが、予約の一覧として持つ。
+// `cdn-cgi` は Cloudflare が Worker より先に受け取るパスで、組織の URL にすると届かない
 export const reservedSlugs: readonly string[] = [
+  'cdn-cgi',
   'api',
   'auth',
   'login',
