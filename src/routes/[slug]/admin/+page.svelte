@@ -47,7 +47,10 @@
   </PageHead>
 
   <div class="settings">
-    <Setting title={t('workspace')} description={t('adminWorkspacesDesc', { workspace: t('workspace') })}>
+    <Setting
+      title={t('workspace')}
+      description={t('adminWorkspacesDesc', { workspace: t('workspace'), member: t('member'), leader: t('leader') })}
+    >
       {#if workspaces.length === 0}
         <EmptyState
           icon="users"
@@ -66,8 +69,8 @@
             <thead>
               <tr>
                 <th>{t('fieldName')}</th>
-                <th class="is-num">{t('workspaceMemberCountHeader', { member: t('member'), leader: t('leader') })}</th>
-                <th class="is-num">{t('workspaceLeaderCountHeader', { leader: t('leader') })}</th>
+                <th class="is-num">{t('member')}</th>
+                <th class="is-num">{t('leader')}</th>
                 <th>{t('createdOn')}</th>
               </tr>
             </thead>

@@ -539,6 +539,8 @@ details[open] > summary .tree-caret { transform: rotate(90deg); }
 .table .is-num { text-align: right; font-family: var(--font-mono); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .table a { color: var(--color-fg); }
 .table .mono, .table .btn { white-space: nowrap; }
+/* 先頭の列（名前）が1字ずつ折れるほど縮まないようにする。足りない幅は .table-wrap の横スクロールで受ける */
+.table th:first-child, .table td:first-child { min-width: 8em; }
 .table-actions { display: flex; gap: var(--space-2); justify-content: flex-end; }
 
 /* ===== レイドの詳細 ===== */
@@ -789,7 +791,8 @@ a.choice > div > span, .choice.is-static > div > span { display: block; }
 .banner { display: flex; gap: var(--space-3); align-items: center; flex-wrap: wrap; padding: var(--space-2) var(--space-4); background: var(--color-accent); color: var(--color-on-accent); font-size: var(--text-sm); border-radius: var(--radius-1); }
 .banner .btn { margin-left: auto; }
 
-@media (max-width: 860px) {
+/* 左のメニュー（240px）の分だけ本文が狭いので、メニューのある幅でも説明と本文を縦に並べ、本文の表を潰さない */
+@media (max-width: 1080px) {
   .setting { grid-template-columns: minmax(0, 1fr); gap: var(--space-3); }
 }
 .person { display: inline-flex; align-items: center; gap: var(--space-2); white-space: nowrap; }

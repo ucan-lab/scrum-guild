@@ -129,8 +129,8 @@ export const dictionary = defineDictionary({
   // 組織の管理の画面（管理者）。{workspace} と {leader} は、その言葉づかいの言葉を画面が渡す
   adminEyebrow: organization('{admin}だけが見られます', '{admin}だけが見られます'),
   adminWorkspacesDesc: organization(
-    '作った{workspace}の一覧です。閉じた{workspace}も含みます。',
-    '作った{workspace}の一覧です。閉じた{workspace}も含みます。',
+    '作った{workspace}の一覧です。閉じた{workspace}も含みます。{member}の数は{leader}を含みます。',
+    '作った{workspace}の一覧です。閉じた{workspace}も含みます。{member}の数は{leader}を含みます。',
   ),
   workspaceListLabel: organization('{workspace}の一覧', '{workspace}の一覧'),
   workspaceEmptyText: organization(
@@ -138,8 +138,6 @@ export const dictionary = defineDictionary({
     'チームや用途ごとに作ります。{member}の招待は、作った{workspace}の{leader}が行います。',
   ),
   workspaceOpenLabel: organization('開いている{workspace}', '開いている{workspace}'),
-  workspaceMemberCountHeader: organization('{member}数（{leader}を含む）', '{member}数（{leader}を含む）'),
-  workspaceLeaderCountHeader: organization('{leader}数', '{leader}数'),
   fieldName: organization('名前', '名前'),
   createdOn: organization('作った日', '作った日'),
   workspaceClosedChip: organization('閉じた {date}', '閉じた {date}'),
