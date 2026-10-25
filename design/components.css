@@ -666,6 +666,12 @@ dialog.dialog::backdrop { background: none; }
 .segmented input:focus-visible + span { outline: 2px solid var(--color-accent); outline-offset: -3px; }
 .segmented input:disabled { cursor: not-allowed; }
 .segmented input:disabled + span { opacity: .5; }
+/* 狭い幅と、指で押す画面では、押す所を 44px 四方以上にする。完了の操作の丸は見た目の大きさのまま、押せる範囲だけを広げる */
+@media (max-width: 760px), (pointer: coarse) {
+  .segmented span { display: flex; align-items: center; justify-content: center; min-width: 44px; min-height: 44px; }
+  .done-btn { position: relative; }
+  .done-btn::after { content: ""; position: absolute; left: 50%; top: 50%; width: 44px; height: 44px; transform: translate(-50%, -50%); }
+}
 .choice-list { display: grid; gap: var(--space-2); }
 .choice { display: flex; gap: var(--space-3); align-items: flex-start; padding: var(--space-3) var(--space-4); border: 1px solid var(--color-line); border-radius: var(--radius-1); background: var(--color-surface); cursor: pointer; }
 .choice:has(input:checked) { border-color: var(--color-accent); background: var(--color-accent-soft); }
