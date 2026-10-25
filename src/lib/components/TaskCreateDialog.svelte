@@ -174,7 +174,13 @@
         <div class="segmented" role="radiogroup" aria-labelledby={pointsLabelId} aria-describedby={pointsHintId}>
           {#each pointChoices as choice (choice)}
             <label>
-              <input type="radio" name="{ids}-points" value={choice} bind:group={points} />
+              <input
+                type="radio"
+                name="{ids}-points"
+                value={choice}
+                bind:group={points}
+                aria-label={choice === null ? t('pointsUnsetTitle') : undefined}
+              />
               <span>{choice === null ? t('pointsUnsetMark') : choice}</span>
             </label>
           {/each}
