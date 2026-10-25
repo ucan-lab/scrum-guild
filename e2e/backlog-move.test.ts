@@ -187,11 +187,13 @@ test('先に送った並べ替えが断られて読み直したら、待って�
 }) => {
   await createWorkspace(page, '捨てるパーティ', 'game');
   for (const title of ['見積もりを送る', '請求書を出す', '議事録をまとめる']) await addTask(page, title);
-  // 1件目の応答を遅らせて断り、その間に2件を待たせる
+  // 1件目の応答を、3回目を押し終えるまで止めてから断る。その間に2件を待たせる
   let sent = 0;
+  let release!: () => void;
+  const clicked = new Promise<void>((resolve) => (release = resolve));
   await page.route('**/api/aoba/task-move', async (route) => {
     sent++;
-    await new Promise((resolve) => setTimeout(resolve, 500));
+    await clicked;
     await route.fulfill({
       status: 409,
       json: { error: { code: 'conflict', message: 'conflict', details: { reason: 'changed' } } },
@@ -200,6 +202,7 @@ test('先に送った並べ替えが断られて読み直したら、待って�
   await page.getByRole('button', { name: '下へ: 見積もりを送る' }).click();
   await page.getByRole('button', { name: '上へ: 議事録をまとめる' }).click();
   await page.getByRole('button', { name: '上へ: 議事録をまとめる' }).click();
+  release();
   await expect(
     page.getByRole('status').filter({ hasText: '動かしている間に一覧が読み直されたため、一覧を読み直しました' }),
   ).toBeVisible();
