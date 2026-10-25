@@ -288,6 +288,7 @@ favicon と同じマーク（下の「favicon」）の横に、名前「Scrum Gu
 | `toast` | `ToastRegion.svelte`、`src/lib/toast.svelte.ts` | `ToastRegion` を `+layout.svelte` に1つ置き、`showToast()` で出す。HTML でなく文字列を渡す。同時に出すのは3件までで、あふれたら古いものから消す。モーダルのダイアログが開くと外側は inert になり、トップレイヤーに出し直した領域（`popover="manual"`）も inert のままで読み上げが届かない。そのため `Dialog.svelte` の中にも領域を持ち、ダイアログが開いている間は中の領域に出して、外側の領域は隠す |
 | `avatar`、`avatarOf` | `Avatar.svelte` | 色相は `users.id` から計算し（`src/lib/avatar-hue.ts`）、`style:--h` で渡す。DB に列は持たない。ユーザーがいるときは名前が必須で、`role="img"` と `aria-label` を付ける。ログインの手段の側のアバターの画像（運用者が指名する人を確かめるときの GitHub のアバター）は `image` で渡し、頭文字の円の中に画像を重ねる（`.avatar > img`）。画像のホストは CSP の `img-src` に足した `https://avatars.githubusercontent.com` と `https://lh3.googleusercontent.com` だけ。画像が読み込めないときは頭文字に戻る。見本は `design/kit.js` の `avatar(name, hue, { image })` で、カタログの「人とレベル」に画像と読み込めない例がある（画像は架空の data URI で、外へ通信しない） |
 | 組織の作成のダイアログ（`createOrganization`） | `CreateOrganizationDialog.svelte` | 運用の画面だけが使う。slug と表示名、最初の管理者のログインの手段、GitHub のユーザー名の解決と確かめ、作った後の完了の表示（組織の URL とコピー）を、1つの `Dialog` の中で切り替える。ダイアログを閉じると入力を捨てる |
+| `markdownSample`（見本の本文） | `Markdown.svelte`、`MarkdownBlocks.svelte`、`src/lib/markdown.ts` | Markdown の本文。`Markdown` に `source`（Markdown の文字列）と `headingStart`（`#` を何段の見出しにするか。既定 3）を渡す。枠の `.doc-box` は部品が出す。変換と規則は `markdown.ts`（Worker で走らせる）、変換済みの節を描くのは `MarkdownBlocks`、`Markdown` は Worker の結果を待って `MarkdownBlocks` に渡す。下の「Markdown の本文」 |
 | `t`、`DICT` | `src/shared/vocabulary.ts`、`src/lib/vocabulary.svelte.ts` | 言葉の辞書（`docs/development.md` の「言葉の辞書」） |
 | `THEMES`、`setTheme`、`applyTheme` | `src/shared/theme.ts`、`src/lib/theme.svelte.ts` | テーマの先当ては `docs/development.md` の「テーマの先当て」 |
 | `.gate`、`.gate-sheet`（枠の外の画面） | `Gate.svelte`、`GateSheet.svelte`、`LoadFailed.svelte`、`LoadingSheet.svelte` | 組織の選択、見つからない、運用の外側（`main`。mount のときにテーマと言葉づかいを既定に戻す）と、紙1枚。先頭の紙に `brand` を付けると、ブランドと h1 の見出しが出る。表を載せる運用の画面は `Gate` の `wide`（`.gate.is-wide`。紙の幅を 960px まで広げる。運用の一覧は、要件の集計の列（ユーザー数、ワークスペース数、タスク数、添付ファイル、最後に使われた日時）を並べる幅で作り、集計を足す前の列の少ない間もこの幅にする。見本はカタログの「枠の外の画面」）。紙を縦に並べる `.gate-stack` は components.css に持つ。`LoadFailed` は読み込みの失敗と「もう一度試す」、`LoadingSheet` は外の画面から移る間の読み込み中の表示 |
@@ -296,6 +297,27 @@ favicon と同じマーク（下の「favicon」）の横に、名前「Scrum Gu
 - インラインの `style` 属性は CSP に止められる。動く値は `style:--h` のように CSSOM で当てる（Svelte の `style:` ディレクティブ）。
 - アイコンと言葉の辞書は、見本と本番の二重持ち。`scripts/design-parity.test.ts`（`pnpm test` の `node --test`）が `design/icons.js` と `kit.js` の `DICT` を読み、見本にあるアイコンとキーが本番に同じ中身で在ることを突き合わせる。片方だけを直すと、このテストが落ちる。
 - 照合の対象は見本にあるキーだけで、本番の辞書は画面の文言を足して大きくなってよい。見本を直した PR では、`src/lib/icons.ts` と `src/shared/vocabulary.ts` も一緒に直す。
+
+### Markdown の本文
+
+タスクの本文、コメント、決まった欄、ストーリーとエピックの本文を `Markdown.svelte` で描く。見た目は components.css の `.doc-box` の中の要素（見出し、段落、リスト、チェックリスト、引用、コード、区切り線、打ち消し線、表）として持ち、トークンだけを使う。見本はカタログの「Markdown の本文」。
+
+- 構文木を `src/lib/markdown.ts` が安全な節（段落、見出し、引用、リスト、コード、区切り線、表と、文字、コード、強調、打ち消し線、リンク、改行）に直し、`MarkdownBlocks.svelte` はその節を再帰で描くだけにする。HTML の文字列を作らない（`{@html}` を使わない）。インラインの `style` 属性も使わない（CSP）
+- 生の HTML（`html` の節）は文字で出す
+- リンクは絶対の `http:` と `https:` だけ。URL を `new URL` で解析して判定し、解析した形を `href` にする。相対リンク、`mailto:`、`javascript:`、`data:` は文字で出す。参照形式（`[x][1]`）は定義を引いて同じ規則にかけ、自動リンクにも同じ規則が効く。リンクは `rel="noopener noreferrer"` と `target="_blank"`。組織の中のリンク（タスクの ID の参照）は、その機能を作るときに決める
+- 画像は読み込まない。`http:`、`https:` の画像は代わりの文字（無ければ URL）を文字にしたリンクにし、それ以外は代わりの文字だけにする。Scrum Guild の添付ファイルだけを画像として出す口は、添付ファイルの機能で足す
+- 入れ子（引用、リスト、表、強調、リンク）は32段まで描き、超えた分は書かれたままの Markdown を文字で出す。本文は最大10万字で、`>` を並べるだけで再帰の部品のスタックがあふれるため
+- 変換は Web Worker（`src/lib/markdown.worker.ts`）で行い、メインのスレッドで走らせない。`*_` の連なりや深い入れ子の本文は、変換に数秒から分かかり、同じ組織のメンバーが書いた本文で画面が固まるため。Worker は全部の本文で1つを共有し、要求を1本ずつ送る（`src/lib/markdown-parser.ts`）
+  - 変換が1秒（`MARKDOWN_TIMEOUT_MS`）で終わらない本文は、Worker を `terminate()` して次の要求のために作り直し、その本文は文字のまま出す。数え始めは Worker に送った時点。待たされた時間は数えない
+  - 変換が終わるまでと、時間切れ、Worker のエラー、Worker が使えない環境は、本文を書かれたまま文字で出す（`.doc-box.is-plain`。改行を保つ）
+  - `source` が変わったら古い要求の結果を捨て、部品が消えたら待ちの要求を取り下げる
+  - Worker は自分のオリジンのファイル（`/_app/immutable/workers/`）で、CSP は `worker-src` を足さず `script-src 'self'` で通る。`blob:` と `data:` の Worker にしない
+  - Worker の束は `decode-named-character-reference` を DOM を使わない版に解決する（`scripts/markdown-worker-entities.ts`）。既定の `browser` の版は `document` を呼び、Worker では落ちるため
+  - 安全の規則（リンク、画像、HTML、入れ子）は、変換の単体テストと、変換済みの節を描く `MarkdownBlocks` の描画テストで守る
+- 見出しは `headingStart` の段から始め（`#` が `h3`、`##` が `h4`）、`h6` で止める。大きさは要素でなく Markdown の段のクラス（`.doc-h1` から `.doc-h6`）で決める
+- チェックリストの箱は `disabled` で出す（押しても保存されない）。`li.is-task`
+- GFM は自動リンク、打ち消し線（`~~` のみ）、表、チェックリストの4つ。脚注は本文ごとに `id` を生やし、同じ画面に本文が並ぶと衝突するので入れない
+- 表の列の寄せは `th` と `td` の `.is-center`、`.is-right`。表は `.doc-table` で包み、幅が足りないと横に動かす
 
 ## 見本を作って補ったこと
 

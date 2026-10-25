@@ -419,6 +419,12 @@ const SECTIONS = [
      <div class="field"><span class="field-label">使っている量と上限</span><div class="grid-2">${SQ.meter(3.1, 10)}${SQ.meter(8.3, 10)}${SQ.meter(10, 10)}<div class="panel">${SQ.meter(21.7, 50, { small: true })}</div></div></div>`,
     ["画像（PNG、JPEG、GIF、WebP）と動画（MP4、WebM）は画面で見せる。それ以外はダウンロードだけ。", "失敗は理由と数字を出す（何 MB を超えたか）。上限に達したら、上げる場所を止めて、誰が何をすれば添付できるかを書く。", "量の色は 80% を超えたら警告、上限で危険。色だけでなく、割合と文字を添える。", "消すときは、戻せないことと、差し込んだ所がどうなるかを確認のダイアログで伝える。"],
     ".files .file-thumbs .file-thumb .file-thumb-label .file-art .is-video / .file-row .file-main .file-name .file-meta .file-actions .is-error .file-bar / .dropzone .is-over .is-disabled / .md-figure .comment-files .composer-foot / .preview .dialog-sheet.is-wide / .meter .meter-small .is-warn .is-full")],
+  ["markdown", "Markdown の本文", () => block("markdown", "Markdown の本文", "タスクの本文、コメント、決まった欄、ストーリーとエピックの本文を描く。生の HTML は文字で出し、リンクは http と https の絶対 URL だけにする。",
+    `<div class="field"><span class="field-label">見出し、段落、リスト、チェックリスト、引用、コード、区切り線、表</span>${SQ.markdownSample()}</div>
+     <div class="field"><span class="field-label">リンクにしないもの（HTML、相対リンク、mailto:、外部の画像）</span>${SQ.markdownSample("unsafe")}</div>
+     <div class="field"><span class="field-label">変換が終わるまでと、1秒で終わらなかったとき（書かれたまま出す）</span>${SQ.markdownSample("plain")}</div>`,
+    [".doc-box の中の要素として描く。画面に固有の CSS は持たない。", "見出しは始まりの段を画面が渡す（既定は # が h3、## が h4、h6 で止める）。大きさは Markdown の段のクラス（.doc-h1 から .doc-h6）で決める。", "リンクは新しいタブで開き、開いた先から元の画面を操作させない（rel=\"noopener noreferrer\"）。相対リンク、mailto:、javascript:、data: はリンクにせず文字で出す。", "画像は読み込まない。http と https の画像は代わりの文字（無ければ URL）のリンクにし、それ以外は代わりの文字だけにする。", "チェックリストの箱は押せない（disabled）。押しても保存されない。", "入れ子は32段まで描き、超えた分は書かれたままの文字で出す。", "変換は Worker で行う。終わるまでと、1秒で終わらなかった本文は、Markdown の記号のまま改行も保って出す（.is-plain）。"],
+    ".doc-box h1-h6 .doc-h1 .doc-h6 / ul ol li.is-task / blockquote pre code hr del a / .doc-table table th td .is-center .is-right / .doc-box.is-plain")],
   ["assistant", "AI のアシスタント", () => block("assistant", "AI のアシスタント", "画面から AI に、言葉で質問したり操作を頼んだりする。上の帯のボタンか Ctrl+K でパレットを開いて頼み、続けて話したいときだけ「横の欄で続ける」で右の欄へ移す。画面の見本でも、上の帯から開いて試せる。",
     assistDemo(),
     ["開いている画面（タスクの詳細を開いていればそのタスク）を前提として渡し、入力の下の札で示す。札の × で外せる。", "読むだけの頼みごとは、そのまま答える。答えに出た" + t("task") + "は押すと詳細が開く。", "変える頼みごとは、行ごとに「項目・今・変えた後」を出し、人が「実行する」を押してから1回で変える。外した行は変えない。5 件を超えると、先頭の 5 件だけ出して残りを畳み、残りを開くまで実行できない。", "できないことは、できない理由と、誰に頼めばできるかを書く。失敗したときは、何も変えていないことを書く。", "送る先と、会話を保存しないことを、いつも下に出す。", "横の欄は、1500px 以上の画面では本文を左へ寄せ、それより狭いと右に重ねる。タスクの詳細の引き出しは横の欄の上に出す。", "操作の色は押せる所だけに使う。アシスタントの名前、考え中の印、確認の枠は文字と形で示す。現代風でも光らせない。"],
