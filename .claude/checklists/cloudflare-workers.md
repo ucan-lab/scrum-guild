@@ -30,6 +30,8 @@
 
 - 通信先が、取り込み元（Backlog、GitHub）と GitHub のログイン、Google のログイン（認可の URL への移動と、トークンのエンドポイント `oauth2.googleapis.com` だけ）以外に及ぶこと（テレメトリは送らない。AI の機能を入れたときの Anthropic の扱いは `docs/ai.md`）
 - `fetch()` にタイムアウトが無い（`AbortSignal.timeout()` を渡す）
+- `fetch()` に `redirect: 'error'` を渡している。Workers は `follow` と `manual` しか受け付けず、`TypeError` で全部の通信が落ちる。追わないなら `'manual'` にし、3xx は `res.ok` の分岐で失敗にする
+- 外への通信のテストで、差し替えた fetcher が `RequestInit` を確かめていない。fetcher の中で `new Request(input, init)` を作り、Workers の実行環境が設定を受け付けることまで見る
 - 取り込み元の応答を、型を検証せずに使っている。大きさを確かめずに D1 に入れている
 - 利用者が指定した URL へサーバーから通信している（SSRF）
 
