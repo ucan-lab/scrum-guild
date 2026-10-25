@@ -42,7 +42,13 @@
 <div class="entry" class:is-done={done}>
   <span aria-hidden="true"></span>
   <div class="entry-main">
-    <a class="entry-title" href="{taskHref}?task={encodeURIComponent(task.id)}">{task.title}</a>
+    <!-- 開く先（詳細の引き出し）はまだ無い。押しても、フォーカスとスクロールの位置は動かさない -->
+    <a
+      class="entry-title"
+      href="{taskHref}?task={encodeURIComponent(task.id)}"
+      data-sveltekit-keepfocus
+      data-sveltekit-noscroll>{task.title}</a
+    >
   </div>
   <div class="entry-end">
     {#if task.due_on !== null}

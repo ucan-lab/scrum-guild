@@ -270,7 +270,8 @@ export const dictionary = defineDictionary({
   // 親の選択欄。選べるのは、親のないストーリー。{story} {done} は、その言葉づかいの言葉を画面が渡す
   taskParent: workspace('親の{story}', '親の{story}'),
   taskParentNone: workspace('なし', 'なし'),
-  taskCreatedUnder: workspace('{story}の末尾に足しました', '{story}の末尾に足しました'),
+  // {title} は親のストーリーの題
+  taskCreatedUnder: workspace('{story}「{title}」の末尾に足しました', '{story}「{title}」の末尾に足しました'),
   taskParentGone: workspace(
     'この{story}は見つかりません。親を選び直してください',
     'この{story}は見つかりません。親を選び直してください',
@@ -323,6 +324,35 @@ export const dictionary = defineDictionary({
     '閉じた{workspace}の{story}は、読み取りだけできます',
     '閉じた{workspace}の{story}は、読み取りだけできます',
   ),
+  // ストーリーのダイアログ専用の文言（タスクのダイアログの文言を流用しない）
+  storyTitleRequired: organization('タイトルを入れてください', 'タイトルを入れてください'),
+  storyTitleTooLong: organization('タイトルは {max} 字までです', 'タイトルは {max} 字までです'),
+  storyTitleInvalidCharacter: organization(
+    'タイトルに使えない文字（制御文字、ゼロ幅のスペースなど）が含まれています',
+    'タイトルに使えない文字（制御文字、ゼロ幅のスペースなど）が含まれています',
+  ),
+  storyCreateSubmit: organization('作る', '作る'),
+  storyCreating: organization('作っています', '作っています'),
+  storyCreateFailed: organization(
+    '作れませんでした。もう一度試してください。',
+    '作れませんでした。もう一度試してください。',
+  ),
+  // 画面の検査を通った後に、サーバーが 400 で断ったとき。どの欄かは分からない
+  storyBadRequest: organization(
+    '入力を受け付けられませんでした。内容を確かめて、もう一度試してください。',
+    '入力を受け付けられませんでした。内容を確かめて、もう一度試してください。',
+  ),
+  storyLoading: organization('読み込んでいます', '読み込んでいます'),
+  storyLoadFailed: workspace(
+    'この{story}を読み込めませんでした。もう一度試してください。',
+    'この{story}を読み込めませんでした。もう一度試してください。',
+  ),
+  dueInvalid: workspace('{due}は正しい日付で入れてください', '{due}は正しい日付で入れてください'),
+  storyLinkOpen: organization('開く', '開く'),
+  storyLinkOpenLabel: organization('リンクを新しいタブで開く', 'リンクを新しいタブで開く'),
+  // 木の行の開閉のボタンの読み上げの名前。{title} はストーリーの題
+  treeOpen: workspace('{title}を開く', '{title}を開く'),
+  treeClose: workspace('{title}を閉じる', '{title}を閉じる'),
 
   // 組織の選択と、枠の外の画面（組織の切り替え、見つからない、運用の仮の画面）
   organizationChooseTitle: organization('冒険者ギルドを選ぶ', '組織を選ぶ'),

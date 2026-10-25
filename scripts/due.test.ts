@@ -1,14 +1,7 @@
-// 期日の判定（src/shared/due.ts）とストーリーの欄の決まり（src/shared/story.ts）。Worker と画面の両方が使うので、Node でも確かめる
+// 期日の判定（src/shared/due.ts）。Worker と画面の両方が使うので、Node でも確かめる
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 import { dueStatus, isCalendarDate, weekEndOf } from '../src/shared/due.ts';
-import {
-  STORY_TEXT_MAX_LENGTH,
-  linkUrlProblem,
-  longTextProblem,
-  normalizeLinkUrl,
-  normalizeLongText,
-} from '../src/shared/story.ts';
 
 describe('isCalendarDate', () => {
   test('暦に存在する日付だけ通す', () => {
@@ -108,59 +101,5 @@ describe('dueStatus', () => {
   test('使えない期日は例外', () => {
     assert.throws(() => dueStatus('2026-02-30', '2026-10-26', 1), RangeError);
     assert.throws(() => dueStatus('', '2026-10-26', 1), RangeError);
-  });
-});
-
-describe('normalizeLongText', () => {
-  test('改行をそろえ、前後の空白を除き、空は null', () => {
-    assert.equal(normalizeLongText('  a\r\nb\rc  '), 'a\nb\nc');
-    assert.equal(normalizeLongText(' \n\t '), null);
-    assert.equal(normalizeLongText(''), null);
-  });
-});
-
-describe('longTextProblem', () => {
-  test('改行とタブは使え、それ以外の制御文字と見えない文字は断る', () => {
-    assert.equal(longTextProblem('a\n\tb'), null);
-    assert.equal(longTextProblem('a\u{0000}b'), 'invalid_character');
-    assert.equal(longTextProblem('a\u{200B}b'), 'invalid_character');
-    assert.equal(longTextProblem('a\u{202E}b'), 'invalid_character');
-  });
-
-  test('1万字まで。コードポイントで数える', () => {
-    assert.equal(longTextProblem('あ'.repeat(STORY_TEXT_MAX_LENGTH)), null);
-    assert.equal(longTextProblem('😀'.repeat(STORY_TEXT_MAX_LENGTH)), null);
-    assert.equal(longTextProblem('あ'.repeat(STORY_TEXT_MAX_LENGTH + 1)), 'too_long');
-  });
-});
-
-describe('linkUrlProblem', () => {
-  test('http と https の URL だけ', () => {
-    assert.equal(linkUrlProblem('https://example.com/a?b=c#d'), null);
-    assert.equal(linkUrlProblem('http://localhost:8787/x'), null);
-    assert.equal(linkUrlProblem('HTTPS://example.com'), null);
-    for (const ng of [
-      'ftp://example.com',
-      'javascript:alert(1)',
-      'data:text/html,x',
-      'http:/example.com',
-      'https://',
-      'example.com',
-      'https://exa mple.com',
-      'https://example.com/\u{200B}',
-    ]) {
-      assert.equal(linkUrlProblem(ng), 'invalid_url', ng);
-    }
-  });
-
-  test('2048字まで', () => {
-    const prefix = 'https://example.com/';
-    assert.equal(linkUrlProblem(prefix + 'a'.repeat(2048 - prefix.length)), null);
-    assert.equal(linkUrlProblem(prefix + 'a'.repeat(2049 - prefix.length)), 'too_long');
-  });
-
-  test('前の空白を除き、空は null', () => {
-    assert.equal(normalizeLinkUrl('  https://example.com  '), 'https://example.com');
-    assert.equal(normalizeLinkUrl('   '), null);
   });
 });

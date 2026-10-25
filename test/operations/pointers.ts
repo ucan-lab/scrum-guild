@@ -43,6 +43,10 @@ export const pointers: Pointers = {
   'task-create': async (target) => ({ workspace_id: target.workspace.id, title: '見積もりを送る', points: 3 }),
   'backlog-tree': async (target) => ({ workspace_id: target.workspace.id }),
   'story-create': async (target) => ({ workspace_id: target.workspace.id, title: '見積もりを整える' }),
+  'story-get': async (target) => ({
+    workspace_id: target.workspace.id,
+    story_id: (await createStory(target.organization, target.workspace.id, target.admin.userId!)).id,
+  }),
   // 呼ぶたびにストーリーを作る（変える欄が同じだと、2回目は何も書かないため）
   'story-update': async (target) => ({
     workspace_id: target.workspace.id,

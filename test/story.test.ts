@@ -2,7 +2,7 @@
 // 組織の分離と権限の種類ごとの許可と拒否は、一覧を回す test/operation-registry.test.ts が確かめる
 import { env } from 'cloudflare:workers';
 import { describe, expect, test } from 'vitest';
-import { storyCreate, storyUpdate } from '../src/shared/operations/story/index.ts';
+import { storyCreate, storyGet, storyUpdate } from '../src/shared/operations/story/index.ts';
 import { createApp } from '../src/server/app.ts';
 import { orgDb, verifyWorkspace } from '../src/server/db/index.ts';
 import { implementedOperations } from '../src/server/operations/index.ts';
@@ -40,6 +40,10 @@ function update(target: Target, storyId: string, body: Record<string, unknown>, 
   });
 }
 
+function actorOf(person: Person) {
+  return { accountId: person.accountId, userId: person.userId, isAdmin: false, invitedOnly: false };
+}
+
 async function rowOf(target: Target, storyId: string) {
   const db = orgDb(env, target.organization.verified);
   return db.first(
@@ -70,16 +74,17 @@ describe('story-create', () => {
     const first = await create(target, {
       title: '  ポイント制度を公開する  ',
       acceptance_criteria_md: '- 残高が見える\r\n- 失効日が見える',
-      body_md: '  本文  ',
+      body_md: '\n\n  本文  \n',
       due_on: '2026-10-30',
-      link_url: ' https://example.com/spec ',
+      link_url: ' HTTPS://Example.com/spec ',
     });
     expect(first.status).toBe(200);
     const { story } = (await first.json()) as StoryBody;
     expect(story).toMatchObject({
       title: 'ポイント制度を公開する',
       acceptance_criteria_md: '- 残高が見える\n- 失効日が見える',
-      body_md: '本文',
+      // 先頭の字下げは残し、前後の空行と末尾の空白を落とす。リンクは URL を解釈した形にそろえる
+      body_md: '  本文',
       due_on: '2026-10-30',
       link_url: 'https://example.com/spec',
     });
@@ -117,7 +122,7 @@ describe('story-create', () => {
     expect(JSON.parse(logs[0]!.changes_json)).toEqual({
       title: [null, 'ポイント制度を公開する'],
       acceptance_criteria_md: [null, '- 残高が見える\n- 失効日が見える'],
-      body_md: [null, '本文'],
+      body_md: [null, '  本文'],
       due_on: [null, '2026-10-30'],
       link_url: [null, 'https://example.com/spec'],
     });
@@ -155,6 +160,8 @@ describe('story-create', () => {
     ['リンクの // が欠けている', { title: 'x', link_url: 'http:/example.com' }],
     ['リンクにホストが無い', { title: 'x', link_url: 'https://' }],
     ['リンクに空白', { title: 'x', link_url: 'https://example.com/a b' }],
+    ['リンクにユーザー名とパスワード', { title: 'x', link_url: 'https://user:pass@example.com/' }],
+    ['リンクにユーザー名', { title: 'x', link_url: 'https://user@example.com/' }],
     ['リンクが2049字', { title: 'x', link_url: `https://example.com/${'a'.repeat(2030)}` }],
   ])('%s は 400', async (_name, body) => {
     const target = await createTarget();
@@ -362,5 +369,216 @@ describe('story-update', () => {
     });
     expect(await rowOf(target, story.id)).toEqual(story);
     expect(await logsOf(target, story.id)).toEqual([]);
+  });
+
+  test('変わる欄が無い要求も、読んでから閉じたワークスペースなら 409 の workspace_closed', async () => {
+    const target = await createTarget();
+    const story = await seeded(target);
+    const db = orgDb(env, target.organization.verified);
+    const actor = actorOf(target.member);
+    const workspace = await verifyWorkspace(db, actor, target.workspace.id);
+    await db.run(
+      db.statement((q) =>
+        q
+          .updateTable('workspaces')
+          .set({ closed_at: '2026-10-22T00:00:00.000Z' })
+          .where('id', '=', target.workspace.id)
+          .where('organization_id', '=', target.organization.id),
+      ),
+    );
+    const context = {
+      db,
+      actor,
+      workspace,
+      input: { workspace_id: target.workspace.id, story_id: story.id, title: story.title },
+      defer: () => {},
+    } as never;
+    await expect(storyUpdateOperation.handler(context)).rejects.toMatchObject({
+      status: 409,
+      code: 'workspace_closed',
+    });
+  });
+
+  describe('同じ欄を同時に変える要求', () => {
+    // 処理を直に呼ぶ。ストーリーを読む文が答えを返した直後に、race を呼ぶ（n は何回目の読み取りか）。
+    // 「同じ値を読んだ2つの要求が、順に書く」状況を、読み取りの後に別の更新を挟んで作る
+    async function updateWithRace(
+      target: Target,
+      person: Person,
+      input: Record<string, unknown>,
+      race: (n: number, db: ReturnType<typeof orgDb>) => Promise<void>,
+    ) {
+      const db = orgDb(env, target.organization.verified);
+      const actor = actorOf(person);
+      const workspace = await verifyWorkspace(db, actor, target.workspace.id);
+      let reads = 0;
+      const racing = new Proxy(db, {
+        get(base, key) {
+          // 入口は #private を持つので、メソッドは本物の入口に結んで返す
+          const value = Reflect.get(base, key, base);
+          if (typeof value !== 'function') return value;
+          if (key !== 'first') return value.bind(base);
+          return async (...args: unknown[]) => {
+            const result = await (value as (...a: unknown[]) => Promise<unknown>).apply(base, args);
+            // ストーリーの行を返した読み取りだけを数える（閉じたかどうかの読み取りは数えない）
+            if ((result as { title?: string } | undefined)?.title !== undefined) await race(++reads, base);
+            return result;
+          };
+        },
+      });
+      const context = {
+        db: racing,
+        actor,
+        workspace,
+        input: { workspace_id: target.workspace.id, ...input },
+        defer: () => {},
+      } as never;
+      return storyUpdateOperation.handler(context) as Promise<StoryBody>;
+    }
+
+    test('先に別の要求が同じ欄を変えたら、読み直してやり直し、履歴が [元, A]、[A, B] と連なる', async () => {
+      const target = await createTarget();
+      const story = await createStory(target.organization, target.workspace.id, target.admin.userId!, {
+        title: '元のタイトル',
+      });
+      // 要求 B は「元のタイトル」を読んだ。書く前に、要求 A が先に A へ変える
+      const result = await updateWithRace(target, target.member, { story_id: story.id, title: 'B' }, async (n) => {
+        if (n === 1) expect((await update(target, story.id, { title: 'A' }, target.leader)).status).toBe(200);
+      });
+      expect(result.story.title).toBe('B');
+      expect((await rowOf(target, story.id))!.title).toBe('B');
+
+      const logs = await logsOf(target, story.id);
+      const pairs = logs.map((log) => ({
+        actor: log.actor_user_id,
+        title: JSON.parse(log.changes_json).title as [string, string],
+      }));
+      expect(pairs).toHaveLength(2);
+      expect(pairs).toContainEqual({ actor: target.leader.userId, title: ['元のタイトル', 'A'] });
+      // B の履歴の「前」は、読み直した A。元のタイトルを前にしない
+      expect(pairs).toContainEqual({ actor: target.member.userId, title: ['A', 'B'] });
+    });
+
+    test('先に別の要求が同じ値へ変えていたら、書くものが無くなり、履歴は1件のまま', async () => {
+      const target = await createTarget();
+      const story = await createStory(target.organization, target.workspace.id, target.admin.userId!, {
+        title: '元のタイトル',
+      });
+      const result = await updateWithRace(target, target.member, { story_id: story.id, title: 'X' }, async (n) => {
+        if (n === 1) expect((await update(target, story.id, { title: 'X' }, target.leader)).status).toBe(200);
+      });
+      expect(result.story.title).toBe('X');
+      const logs = await logsOf(target, story.id);
+      expect(logs).toHaveLength(1);
+      expect(logs[0]!.actor_user_id).toBe(target.leader.userId);
+      expect(JSON.parse(logs[0]!.changes_json)).toEqual({ title: ['元のタイトル', 'X'] });
+    });
+
+    test('同じ値を続けて2回送っても、履歴は1件', async () => {
+      const target = await createTarget();
+      const story = await seeded(target);
+      expect((await update(target, story.id, { title: '同じ値' })).status).toBe(200);
+      expect((await update(target, story.id, { title: '同じ値' }, target.leader)).status).toBe(200);
+      expect(await logsOf(target, story.id)).toHaveLength(1);
+    });
+
+    test('別の欄を先に変えた要求とは、やり直しにならず、両方の変更と履歴が残る', async () => {
+      const target = await createTarget();
+      const story = await seeded(target);
+      let updates = 0;
+      const result = await updateWithRace(
+        target,
+        target.member,
+        { story_id: story.id, title: 'Bのタイトル' },
+        async (n) => {
+          if (n === 1) {
+            const res = await update(target, story.id, { link_url: 'https://example.com/a' }, target.leader);
+            expect(res.status).toBe(200);
+            updates++;
+          }
+        },
+      );
+      expect(updates).toBe(1);
+      expect(result.story).toMatchObject({ title: 'Bのタイトル', link_url: 'https://example.com/a' });
+      expect(await logsOf(target, story.id)).toHaveLength(2);
+    });
+
+    test('負け続けて3回やり直しても書けなければ、409 の conflict で、履歴は書かない', async () => {
+      const target = await createTarget();
+      const story = await seeded(target);
+      let rounds = 0;
+      await expect(
+        updateWithRace(target, target.member, { story_id: story.id, title: 'Z' }, async (n, base) => {
+          rounds = n;
+          await base.run(
+            base.statement((q) =>
+              q
+                .updateTable('stories')
+                .set({ title: `割り込み ${n}` })
+                .where('id', '=', story.id)
+                .where('workspace_id', '=', target.workspace.id),
+            ),
+          );
+        }),
+      ).rejects.toMatchObject({ status: 409, code: 'conflict' });
+      expect(rounds).toBeGreaterThanOrEqual(3);
+      expect(await logsOf(target, story.id)).toEqual([]);
+      expect((await rowOf(target, story.id))!.title).toMatch(/^割り込み /);
+    });
+  });
+});
+
+describe('story-get', () => {
+  function get(target: Target, storyId: string, person: Person = target.member) {
+    return post(app, storyGet, {
+      slug: target.slug,
+      token: person.token,
+      body: { workspace_id: target.workspace.id, story_id: storyId },
+    });
+  }
+
+  test('ダイアログに出す欄を全部返す', async () => {
+    const target = await createTarget();
+    const story = await createStory(target.organization, target.workspace.id, target.admin.userId!, {
+      title: '読む',
+      acceptance_criteria_md: '- 基準',
+      body_md: '本文',
+      due_on: '2026-10-30',
+      link_url: 'https://example.com/a',
+    });
+    const res = await get(target, story.id);
+    expect(res.status).toBe(200);
+    expect(((await res.json()) as StoryBody).story).toEqual({
+      id: story.id,
+      title: '読む',
+      acceptance_criteria_md: '- 基準',
+      body_md: '本文',
+      due_on: '2026-10-30',
+      link_url: 'https://example.com/a',
+    });
+  });
+
+  test('閉じたワークスペースでも読める', async () => {
+    const target = await createTarget({ closed: true });
+    const story = await createStory(target.organization, target.workspace.id, target.admin.userId!);
+    expect((await get(target, story.id, target.admin)).status).toBe(200);
+  });
+
+  test('別の組織・別のワークスペース・削除済み・存在しないストーリーは 404', async () => {
+    const target = await createTarget();
+    const foreign = await createTarget();
+    const adminId = target.admin.userId!;
+    const ids = [
+      (await createStory(foreign.organization, foreign.workspace.id, foreign.admin.userId!)).id,
+      (await createStory(target.organization, target.otherWorkspace.id, adminId)).id,
+      (await createStory(target.organization, target.workspace.id, adminId, { deleted_at: '2026-10-21T00:00:00.000Z' }))
+        .id,
+      '019a0000-0000-7000-8000-00000000ffff',
+    ];
+    for (const id of ids) {
+      const res = await get(target, id);
+      expect(res.status, id).toBe(404);
+      expect(await errorCodeOf(res)).toBe('not_found');
+    }
   });
 });

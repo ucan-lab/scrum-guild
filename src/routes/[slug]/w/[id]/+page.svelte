@@ -23,8 +23,8 @@
   // 並べ替え、絞り込み、折りたたみを開ける操作、エピックの段は、それぞれの機能の Issue で足す。
   // 見出しは見本どおり画面の名前（掲示板／バックログ）で、小見出しがワークスペースの名前。見出しの右に、ストーリーを作るボタンと起票のボタン。
   // 閉じていれば、閉じた日を印で出し、作る操作と完了の操作は出さない（ストーリーのダイアログは読み取り専用で開く）。
-  // 完了にした行は、読み直すまで完了の印を付けてその場に残す。「完了 / 全体」と折りたたみの件数は読み直した値なので、その行は読み直すまで入らない。
-  // 起票したタスクは、読み直さずに親の配下（親なしなら一覧の末尾）に足し、親の「全体」のポイントにも足す。
+  // 完了にした行は、読み直すまで完了の印を付けてその場に残し、その行のポイントを親の「完了」に即時に足す。折りたたみの件数は読み直した値なので、その行は読み直すまで入らない。
+  // 起票したタスクは、読み直さずに親の配下（親なしなら一覧の末尾）に足し、親の「全体」のポイントにも足す。親の行が畳まれていれば開く。
   // ストーリーを作った、直したときは、木を読み直す。
   // 完了の操作を送っている最中の行（pendingIds）は、読み直しでは捨てず、応答が来たら外す
   let { data }: PageProps = $props();
@@ -67,11 +67,20 @@
     return story.points_all + extra.reduce((sum, entry) => sum + (entry.task.points ?? 0), 0);
   }
 
+  // 完了にした行のポイントを、親の「完了」に足す。完了にした行は、読み直した一覧では未完了だった行か、足した行なので、
+  // 読み直した「完了」の合計には入っていない
+  function pointsDoneOf(story: BacklogStory): number {
+    const done = storyRows(story).filter((task) => completedIds.includes(task.id));
+    return story.points_done + done.reduce((sum, task) => sum + (task.points ?? 0), 0);
+  }
+
   const completingStatus = $derived(pendingIds.length > 0 ? t('taskCompleting', { done: t('done') }) : '');
   let taskDialog = $state<ReturnType<typeof TaskCreateDialog>>();
   let storyDialog = $state<ReturnType<typeof StoryDialog>>();
   // 完了にした行の完了の印へフォーカスを移すために持つ。描き直しには使わない
   const entries: Record<string, ReturnType<typeof TaskEntry> | undefined> = {};
+  // ストーリーの行。起票した親の行を開くために持つ
+  const treeRows: Record<string, ReturnType<typeof TreeStory> | undefined> = {};
 
   async function complete(task: BacklogTask): Promise<void> {
     if (workspace === null || pendingIds.includes(task.id)) return;
@@ -117,6 +126,15 @@
 
   function created(task: BacklogTask, storyId: string | null): void {
     added = [...added, { task, storyId }];
+    // 畳まれている親の行は開いて、足した行が見えるようにする
+    if (storyId !== null) treeRows[storyId]?.expand();
+  }
+
+  // 直す対象のストーリーが消えていた。木を読み直し、フォーカスを見出しへ移す（ダイアログが閉じて、戻る先が無いため）
+  async function storyGone(): Promise<void> {
+    await invalidateAll();
+    await tick();
+    document.querySelector<HTMLElement>('h1.page-title')?.focus();
   }
 </script>
 
@@ -177,12 +195,14 @@
       <div class="tree">
         {#each tree.stories as story (story.id)}
           <TreeStory
+            bind:this={treeRows[story.id]}
             {story}
             tasks={storyRows(story)}
+            pointsDone={pointsDoneOf(story)}
             pointsAll={pointsAllOf(story)}
             {clock}
             {canWrite}
-            onEdit={(target, trigger) => storyDialog?.show(trigger, target)}
+            onEdit={(target, trigger) => storyDialog?.show(trigger, target.id)}
             onAddTask={(target, trigger) => taskDialog?.show(trigger, target.id)}
             row={taskRow}
           />
@@ -219,6 +239,7 @@
     workspaceId={workspace.id}
     {canWrite}
     onsaved={() => void invalidateAll()}
+    ongone={() => void storyGone()}
   />
   {#if canWrite}
     <TaskCreateDialog

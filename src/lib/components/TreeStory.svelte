@@ -6,15 +6,17 @@
   import Icon from './Icon.svelte';
 
   // kit.js の treeStory（バックログの木のストーリーの行と、配下）。親のないストーリーの行。
-  // 行は summary で、中に置く2つのボタン（題と「＋タスク」）は、押しても行の開閉を起こさない。
+  // 行は普通の要素で、開閉は左端の caret のボタン（aria-expanded と aria-controls）だけが受け持つ。
   // 題を押すとストーリーのダイアログ（onEdit）、「＋タスク」を押すと親を選んだタスクのダイアログ（onAddTask）を開く。
-  // 開閉は、クリックはボタンの既定の動作を止めて避ける。キーボードの Enter と Space は summary にも届くので、
-  // ボタンの上のキー入力は summary へ伝えない。閉じたワークスペース（canWrite が偽）では「＋タスク」を出さず、題は読み取り専用で開く。
-  // tasks は未完了の行（画面が足した行を含む）、pointsAll は足した行のポイントを含む全体の合計。
+  // この3つは独立したボタンなので、押しても行は開閉しない。開閉の状態は部品の中に持ち、expand() で開ける（起票した親を開く）。
+  // 閉じたワークスペース（canWrite が偽）と、完了したストーリーには「＋タスク」を出さない（題は読み取り専用で開く）。
+  // 完了したストーリーの期日には色を付けない。
+  // tasks は未完了の行（画面が足した行を含む）。pointsDone と pointsAll は、画面が足した行と完了にした行の分を含む合計。
   // 配下のタスクの行は row の snippet で描く（完了の操作は画面の側が持つ）
   let {
     story,
     tasks,
+    pointsDone,
     pointsAll,
     clock,
     canWrite,
@@ -24,6 +26,7 @@
   }: {
     story: BacklogStory;
     tasks: readonly BacklogTask[];
+    pointsDone: number;
     pointsAll: number;
     clock: { today: string; weekStart: number };
     canWrite: boolean;
@@ -32,49 +35,51 @@
     row: Snippet<[BacklogTask]>;
   } = $props();
 
-  // Enter と Space は、ボタンの上で押されたものを summary（行の開閉）へ伝えない
-  function keepFromSummary(event: KeyboardEvent): void {
-    if (event.key === 'Enter' || event.key === ' ') event.stopPropagation();
+  const bodyId = $props.id();
+  let expanded = $state(true);
+  const finished = $derived(story.completed_at !== null);
+
+  export function expand(): void {
+    expanded = true;
   }
 </script>
 
-<details class="tree-group" open>
-  <summary class="tree-row is-story is-root">
-    <span class="tree-caret"><Icon name="chevron" /></span>
+<div class="tree-group">
+  <div class="tree-row is-story is-root">
+    <button
+      class="tree-caret"
+      type="button"
+      aria-expanded={expanded}
+      aria-controls={bodyId}
+      aria-label={expanded ? t('treeClose', { title: story.title }) : t('treeOpen', { title: story.title })}
+      onclick={() => (expanded = !expanded)}
+    >
+      <Icon name="chevron" />
+    </button>
     <span class="kind is-story" title={t('story')}><Icon name="check" /></span>
     <span class="tree-title">
-      <button
-        class="tree-link"
-        type="button"
-        onclick={(event) => {
-          event.preventDefault();
-          onEdit(story, event.currentTarget);
-        }}
-        onkeydown={keepFromSummary}>{story.title}</button
+      <button class="tree-link" type="button" onclick={(event) => onEdit(story, event.currentTarget)}
+        >{story.title}</button
       >
       {#if story.due_on !== null}
-        <DueChip dueOn={story.due_on} today={clock.today} weekStart={clock.weekStart} />
+        <DueChip dueOn={story.due_on} today={clock.today} weekStart={clock.weekStart} done={finished} />
       {/if}
     </span>
     <span class="tree-end">
       <span class="tree-ratio" title={t('treeRatioTitle', { done: t('done') })}
-        >{t('treeRatio', { done: t('done'), value: story.points_done, all: pointsAll })}</span
+        >{t('treeRatio', { done: t('done'), value: pointsDone, all: pointsAll })}</span
       >
-      {#if canWrite}
+      {#if canWrite && !finished}
         <button
           class="btn is-sm"
           type="button"
           aria-label={t('storyAddTaskLabel', { task: t('task'), title: story.title })}
-          onclick={(event) => {
-            event.preventDefault();
-            onAddTask(story, event.currentTarget);
-          }}
-          onkeydown={keepFromSummary}><Icon name="plus" />{t('task')}</button
+          onclick={(event) => onAddTask(story, event.currentTarget)}><Icon name="plus" />{t('task')}</button
         >
       {/if}
     </span>
-  </summary>
-  <div class="tree-children">
+  </div>
+  <div class="tree-children" id={bodyId} hidden={!expanded}>
     {#each tasks as task (task.id)}
       {@render row(task)}
     {/each}
@@ -84,4 +89,4 @@
       <p class="tree-folded">{t('storyNoTasks', { task: t('task') })}</p>
     {/if}
   </div>
-</details>
+</div>

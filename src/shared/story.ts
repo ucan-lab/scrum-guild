@@ -29,9 +29,13 @@ export const STORY_TEXT_MAX_LENGTH = 10_000;
 
 export type LongTextProblem = 'too_long' | 'invalid_character';
 
-// 改行は \r\n と \r を \n にそろえ、前後の空白を除く。空は null
+// 改行は \r\n と \r を \n にそろえ、前後の空行と末尾の空白だけを落とす。先頭の行の字下げ（Markdown のコードブロックなど）は残す。
+// 空白だけなら null
 export function normalizeLongText(raw: string): string | null {
-  const value = raw.replace(/\r\n?/g, '\n').trim();
+  const value = raw
+    .replace(/\r\n?/g, '\n')
+    .replace(/^(?:[^\S\n]*\n)+/u, '')
+    .replace(/\s+$/u, '');
   return value === '' ? null : value;
 }
 
@@ -73,27 +77,36 @@ export function normalizeLinkUrl(raw: string): string | null {
   return value === '' ? null : value;
 }
 
-// DB の CHECK（LIKE 'http://%' OR 'https://%'）に通る形だけを認める。value は normalizeLinkUrl を通した後の値
+// DB の CHECK（LIKE 'http://%' OR 'https://%'）に通る形だけを認める。ユーザー名とパスワードを含む URL（https://user:pass@host）は
+// 資格情報を保存して画面に出してしまうので断る。value は normalizeLinkUrl を通した後の値。
+// 保存する値は canonicalLinkUrl で正規化した href なので、その長さも上限に数える
 export function linkUrlProblem(value: string): LinkUrlProblem | null {
   if ([...value].length > LINK_URL_MAX_LENGTH) return 'too_long';
   if (!/^https?:\/\//i.test(value) || /\s/u.test(value) || hasHiddenCharacter(value)) return 'invalid_url';
   try {
     const url = new URL(value);
-    return (url.protocol === 'http:' || url.protocol === 'https:') && url.hostname !== '' ? null : 'invalid_url';
+    if (url.protocol !== 'http:' && url.protocol !== 'https:') return 'invalid_url';
+    if (url.hostname === '' || url.username !== '' || url.password !== '') return 'invalid_url';
+    return [...url.href].length > LINK_URL_MAX_LENGTH ? 'too_long' : null;
   } catch {
     return 'invalid_url';
   }
+}
+
+// 保存する URL。解釈した href にそろえる（ホスト名の大文字小文字、空のパスの `/`、記号の符号化）。linkUrlProblem を通した値だけを渡す
+export function canonicalLinkUrl(value: string): string {
+  return new URL(value).href;
 }
 
 export const linkUrlSchema = z
   .string()
   .transform((raw, ctx) => {
     const value = normalizeLinkUrl(raw);
-    const problem = value === null ? null : linkUrlProblem(value);
-    if (problem !== null) {
-      ctx.addIssue({ code: 'custom', message: `リンクが使えない（${problem}）` });
+    if (value === null) return null;
+    if (linkUrlProblem(value) !== null) {
+      ctx.addIssue({ code: 'custom', message: 'リンクが使えない（http か https の URL、2048 字まで）' });
       return z.NEVER;
     }
-    return value;
+    return canonicalLinkUrl(value);
   })
   .nullable();

@@ -17,7 +17,8 @@ export const backlogTaskSchema = z.object({
 
 export type BacklogTask = z.output<typeof backlogTaskSchema>;
 
-export const backlogStorySchema = storyDetailSchema.extend({
+// 木の行が使う項目だけ。受け入れ基準と本文は長いので載せず、ダイアログを開くときに story-get で読む
+export const backlogStorySchema = storyDetailSchema.omit({ acceptance_criteria_md: true, body_md: true }).extend({
   // 完了した日時。完了したストーリーは、タスクの親に選べない
   completed_at: z.string().nullable(),
   // 配下の未完了のタスク（position の順）

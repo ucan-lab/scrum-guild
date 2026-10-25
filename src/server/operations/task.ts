@@ -195,18 +195,20 @@ export const taskCreateOperation = implement(taskCreate, async ({ db, actor, wor
 
 type TaskPoints = 0 | 1 | 2 | 3 | 5 | 8 | 13 | null;
 
-// 親のないストーリーの配下の、削除していないバックログのタスク。ストーリー側もワークスペースで絞る
+// 親のないストーリーの配下の、削除していないバックログのタスク。ストーリーから引いてタスクを結ぶ（FROM stories CROSS JOIN tasks）。
+// SQLite は INNER JOIN だと、親のないタスクも含めた tasks_workspace_tray を先に走査する計画を選ぶので、CROSS JOIN で順序を固定し、
+// タスク側を `tasks_story`（story_id, position の部分索引）で引く（結ぶ条件は WHERE に書く）。両側をワークスペースで絞る
 function tasksUnderRootStories(from: Pick<QueryCreator<Tables>, 'selectFrom'>, workspaceId: string) {
   return from
-    .selectFrom('tasks')
-    .innerJoin('stories', (join) =>
-      join.onRef('stories.id', '=', 'tasks.story_id').onRef('stories.workspace_id', '=', 'tasks.workspace_id'),
-    )
-    .where('tasks.workspace_id', '=', workspaceId)
-    .where('tasks.tray', '=', 'backlog')
-    .where('tasks.deleted_at', 'is', null)
+    .selectFrom('stories')
+    .crossJoin('tasks')
+    .whereRef('tasks.story_id', '=', 'stories.id')
+    .whereRef('tasks.workspace_id', '=', 'stories.workspace_id')
+    .where('stories.workspace_id', '=', workspaceId)
     .where('stories.epic_id', 'is', null)
-    .where('stories.deleted_at', 'is', null);
+    .where('stories.deleted_at', 'is', null)
+    .where('tasks.tray', '=', 'backlog')
+    .where('tasks.deleted_at', 'is', null);
 }
 
 // 件数に上限を付けない。重さは 5 万件で測る Issue で決める
@@ -225,22 +227,14 @@ export const backlogTreeOperation = implement(backlogTree, async ({ db, workspac
       db.statement((q) =>
         q
           .selectFrom('stories')
-          .select([
-            'stories.id',
-            'stories.title',
-            'stories.acceptance_criteria_md',
-            'stories.body_md',
-            'stories.due_on',
-            'stories.link_url',
-            'stories.completed_at',
-          ])
+          .select(['stories.id', 'stories.title', 'stories.due_on', 'stories.link_url', 'stories.completed_at'])
           .where('stories.workspace_id', '=', workspaceId)
           .where('stories.epic_id', 'is', null)
           .where('stories.deleted_at', 'is', null)
           .orderBy('stories.position')
           .orderBy('stories.id'),
       ),
-      // 配下の未完了のタスク
+      // 配下の未完了のタスク。ORDER BY を付けると SQLite が tasks_story を使わない計画を選ぶので、並べるのは下で行う
       db.statement((q) =>
         tasksUnderRootStories(q, workspaceId)
           .leftJoin('users', (join) =>
@@ -252,18 +246,17 @@ export const backlogTreeOperation = implement(backlogTree, async ({ db, workspac
             'tasks.title',
             'tasks.points',
             'tasks.due_on',
+            'tasks.position',
             'tasks.assignee_user_id',
             'users.name as assignee_name',
           ])
-          .where('tasks.completed_at', 'is', null)
-          .orderBy('tasks.position')
-          .orderBy('tasks.id'),
+          .where('tasks.completed_at', 'is', null),
       ),
       // ストーリーごとの、完了した件数とポイントの合計。未見積もりは 0
       db.statement((q) =>
         tasksUnderRootStories(q, workspaceId)
           .select((eb) => [
-            'tasks.story_id',
+            'stories.id as story_id',
             eb.fn
               .sum<number>(eb.case().when('tasks.completed_at', 'is not', null).then(1).else(0).end())
               .as('completed_count'),
@@ -279,7 +272,7 @@ export const backlogTreeOperation = implement(backlogTree, async ({ db, workspac
               .as('points_done'),
             eb.fn.sum<number>(eb.fn.coalesce('tasks.points', eb.lit(0))).as('points_all'),
           ])
-          .groupBy('tasks.story_id'),
+          .groupBy('stories.id'),
       ),
       db.statement((q) =>
         backlogTasksUnder(q, workspaceId, null)
@@ -324,8 +317,11 @@ export const backlogTreeOperation = implement(backlogTree, async ({ db, workspac
     assignee: row.assignee_user_id === null ? null : { id: row.assignee_user_id, name: row.assignee_name ?? '' },
   });
 
+  // position の順（同じ値なら id の順）。position は fractional-indexing の ASCII の文字列なので、文字列の比較が SQLite の並びと同じ
+  const byPosition = (a: { position: string; id: string }, b: { position: string; id: string }) =>
+    a.position === b.position ? (a.id < b.id ? -1 : 1) : a.position < b.position ? -1 : 1;
   const tasksByStory = new Map<string, ReturnType<typeof taskOf>[]>();
-  for (const row of storyTasksResult.rows) {
+  for (const row of [...storyTasksResult.rows].sort(byPosition)) {
     const list = tasksByStory.get(row.story_id!) ?? [];
     list.push(taskOf(row));
     tasksByStory.set(row.story_id!, list);
@@ -511,12 +507,15 @@ export const taskCompleteOperation = implement(taskComplete, async ({ db, actor,
             .leftJoin('epics', (join) =>
               join.onRef('epics.id', '=', 'stories.epic_id').onRef('epics.workspace_id', '=', 'tasks.workspace_id'),
             )
-            .leftJoin('categories', (join) =>
-              join
-                .on('categories.id', '=', (eb) =>
-                  eb.fn.coalesce('epics.category_id', 'stories.category_id', 'tasks.category_id'),
-                )
-                .onRef('categories.workspace_id', '=', 'tasks.workspace_id'),
+            // 段ごとに、同じワークスペースの区分だけを結ぶ。別のワークスペースの区分が結ばれていても、その段は飛ばして次の段へ下りる
+            .leftJoin('categories as ec', (join) =>
+              join.onRef('ec.id', '=', 'epics.category_id').onRef('ec.workspace_id', '=', 'tasks.workspace_id'),
+            )
+            .leftJoin('categories as sc', (join) =>
+              join.onRef('sc.id', '=', 'stories.category_id').onRef('sc.workspace_id', '=', 'tasks.workspace_id'),
+            )
+            .leftJoin('categories as tc', (join) =>
+              join.onRef('tc.id', '=', 'tasks.category_id').onRef('tc.workspace_id', '=', 'tasks.workspace_id'),
             )
             .select((eb) => [
               eb.val(completionId).as('id'),
@@ -527,11 +526,22 @@ export const taskCompleteOperation = implement(taskComplete, async ({ db, actor,
               'tasks.points as points',
               'tasks.assignee_user_id as assignee_user_id',
               'tasks.sprint_id as sprint_id',
-              eb.fn.coalesce('epics.category_id', 'stories.category_id', 'tasks.category_id').as('category_id'),
-              // 月ごとに計上する区分のときだけ入る。既定は完了した月（ワークスペースのタイムゾーン）
+              eb.fn.coalesce('ec.id', 'sc.id', 'tc.id').as('category_id'),
+              // 引き継いだ区分が月ごとに計上するときだけ入る。既定は完了した月（ワークスペースのタイムゾーン）
               eb
                 .case()
-                .when('categories.is_billed_monthly', '=', 1)
+                .when(
+                  eb
+                    .case()
+                    .when('ec.id', 'is not', null)
+                    .then(eb.ref('ec.is_billed_monthly'))
+                    .when('sc.id', 'is not', null)
+                    .then(eb.ref('sc.is_billed_monthly'))
+                    .else(eb.ref('tc.is_billed_monthly'))
+                    .end(),
+                  '=',
+                  1,
+                )
                 .then(billingMonth)
                 .else(null)
                 .end()

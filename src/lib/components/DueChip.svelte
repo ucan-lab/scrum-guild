@@ -6,7 +6,8 @@
 
   // kit.js の dueChip。期日の印。今日の日付と週の始まりは、API が返したワークスペースの値を渡す（ブラウザの時計に頼らない）。
   // 過ぎた期日は赤で警告のアイコンと「期日切れ」、今日と今週は橙で時計のアイコン、それ以外は色なし。
-  // 色だけに頼らず、必ずアイコンと文字を添える。完了したタスクは色を付けない（done）
+  // 色だけに頼らず、必ずアイコンと文字を添える。完了したもの（done）には色を付けない。
+  // 読めない日付（API の値が壊れているなど）は、画面を落とさず、色なしの印で元の文字を出す
   let {
     dueOn,
     today,
@@ -14,7 +15,14 @@
     done = false,
   }: { dueOn: string; today: string; weekStart: number; done?: boolean } = $props();
 
-  const status = $derived(done ? 'later' : dueStatus(dueOn, today, weekStart));
+  const status = $derived.by(() => {
+    if (done) return 'later';
+    try {
+      return dueStatus(dueOn, today, weekStart);
+    } catch {
+      return 'unreadable';
+    }
+  });
   const date = $derived(formatMonthDay(dueOn));
 </script>
 
@@ -25,5 +33,5 @@
 {:else if status === 'this_week'}
   <span class="chip is-warn"><Icon name="clock" />{t('dueThisWeek', { date })}</span>
 {:else}
-  <span class="chip"><Icon name="clock" />{date}</span>
+  <span class="chip"><Icon name="clock" />{status === 'unreadable' ? dueOn : date}</span>
 {/if}

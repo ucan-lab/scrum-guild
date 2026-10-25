@@ -4,7 +4,7 @@ import type { ImplementedOperation } from './implement.ts';
 import { createOrganizationOperation, listOrganizationsOperation, resolveGithubUserOperation } from './operator.ts';
 import { myOrganizationsOperation, organizationInfoOperation } from './organization.ts';
 import { logoutOperation, meOperation } from './session.ts';
-import { storyCreateOperation, storyUpdateOperation } from './story.ts';
+import { storyCreateOperation, storyGetOperation, storyUpdateOperation } from './story.ts';
 import { backlogTreeOperation, taskCompleteOperation, taskCreateOperation } from './task.ts';
 import {
   workspaceCreateOperation,
@@ -22,6 +22,7 @@ export const implementedOperations: readonly ImplementedOperation[] = [
   meOperation,
   logoutOperation,
   storyCreateOperation,
+  storyGetOperation,
   storyUpdateOperation,
   taskCreateOperation,
   backlogTreeOperation,
