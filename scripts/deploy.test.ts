@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 import { describe, test } from 'node:test';
 import { deploy, PRODUCTION_URL, versionFromHealth, type DeployDeps, type WranglerResult } from './deploy.ts';
 
@@ -356,5 +357,14 @@ describe('deploy-production.ts', () => {
     });
     assert.equal(result.status, 0, result.stderr);
     assert.equal(result.stdout.trim(), 'imported');
+  });
+
+  test('直に動かすと deploy() が動く（import.meta.main が偽のまま成功に見えない）', { skip }, () => {
+    // WORKERS_CI を外すので、deploy() は wrangler を呼ぶ前に終了コード 1 で終わる
+    const childEnv = { ...process.env, WORKERS_CI: undefined };
+    const file = fileURLToPath(new URL('./deploy-production.ts', import.meta.url));
+    const result = spawnSync(process.execPath, [file], { encoding: 'utf8', env: childEnv });
+    assert.equal(result.status, 1, result.stderr);
+    assert.match(result.stderr, /Workers Builds の外では動かしません/);
   });
 });
