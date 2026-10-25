@@ -11,11 +11,15 @@
   import { t } from '../vocabulary.svelte.ts';
 
   // kit.js の avatar / avatarOf。色相は users.id から計算し、style:--h（CSSOM）で渡す。
-  // style 属性の文字列は CSP の style-src に止められる。画像として読み上げられるよう role="img" と aria-label を付ける
+  // style 属性の文字列は CSP の style-src に止められる。画像として読み上げられるよう role="img" と aria-label を付ける。
+  // 画像が読み込めないとき（CSP、通信、URL の失効）は、頭文字の円に戻す
   let { userId, name, large = false, left = false, image = null }: AvatarProps = $props();
+
+  let failedImage = $state<string | null>(null);
 
   const label = $derived(name === undefined ? t('unassigned') : `${name}${left ? t('leftMember') : ''}`);
   const initial = $derived(name === undefined ? '?' : ([...name][0] ?? '?'));
+  const shownImage = $derived(image && image !== failedImage ? image : null);
 </script>
 
 {#if userId === null}
@@ -30,6 +34,11 @@
     aria-label={label}
     title={label}
   >
-    {#if image}<img src={image} alt="" referrerpolicy="no-referrer" />{:else}{initial}{/if}
+    {#if shownImage}<img
+        src={shownImage}
+        alt=""
+        referrerpolicy="no-referrer"
+        onerror={() => (failedImage = shownImage)}
+      />{:else}{initial}{/if}
   </span>
 {/if}

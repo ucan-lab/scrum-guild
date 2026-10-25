@@ -33,12 +33,14 @@ export function isOperator(operators: ReadonlySet<string>, logins: readonly Logi
   return logins.some((login) => operators.has(`${login.provider}:${login.subject}`));
 }
 
-// 運用者の一覧に載っているログインの ID（`github:12345` の形）。複数のログインを結んだ人は、一覧に載っているものを使う。
-// 載っていなければ undefined。運用者の操作の記録（organizations.created_by_operator、change_logs.operator）に残す値
+// 運用者の一覧に載っているログインの ID（`github:12345` の形）。複数のログインを結んだ人が、一覧のログインを2つ以上持つときは、
+// 一覧の並びで先のものを使う（ログインを引く順に結果が左右されない）。載っていなければ undefined。
+// 運用者の操作の記録（organizations.created_by_operator、change_logs.operator）に残す値
 export function operatorLoginIdOf(env: object, logins: readonly LoginId[]): string | undefined {
   const operators = operatorLoginIds(env);
   if (!operators.ok) return undefined;
-  return logins.map((login) => `${login.provider}:${login.subject}`).find((id) => operators.ids.has(id));
+  const owned = new Set(logins.map((login) => `${login.provider}:${login.subject}`));
+  return [...operators.ids].find((id) => owned.has(id));
 }
 
 // シークレットの運用者の一覧に、これらのログインのどれかが載っているか。運用者の判定の式はここに1つだけ置く

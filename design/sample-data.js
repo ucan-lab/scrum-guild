@@ -307,7 +307,7 @@ Object.assign(window.SQ_DATA, {
     name: "運用担当",
     organizations: [
       { slug: "aoba", name: "あおば開発", users: 5, limit: 15, wss: 3, tasks: 1284, used: 25.1, quota: 30, lastUsed: "10/20 09:12", created: "2026-06-01", admins: 2 },
-      { slug: "hibari", name: "ひばり工房", users: 15, limit: 15, wss: 1, tasks: 212, used: 0.4, quota: 30, lastUsed: "10/19 18:40", created: "2026-09-15", admins: 1 },
+      { slug: "hibari", name: "ひばり工房", users: 15, limit: 15, wss: 1, tasks: 212, used: 0.4, quota: 30, lastUsed: "10/19 18:40", created: "2026-09-15", admins: 1, adminPending: true },
       { slug: "kumo-lab", name: "くもラボ", users: 38, limit: 50, wss: 4, tasks: 3410, used: 21.7, quota: 100, lastUsed: "10/18 11:03", created: "2026-07-10", admins: 0 },
       { slug: "nagi", name: "なぎ設計", users: 2, limit: 15, wss: 1, tasks: 96, used: 0.1, quota: 30, lastUsed: "09/02 15:21", created: "2026-08-01", admins: 1, suspended: "2026-09-30", purgeOn: "2026-10-30" },
     ],

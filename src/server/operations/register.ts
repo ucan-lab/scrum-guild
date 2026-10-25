@@ -227,7 +227,7 @@ async function execute(
     if (definition.permission === 'operator') {
       const operatorLoginId = await account.operatorLoginId();
       if (operatorLoginId === undefined) throw new ApiError(403, 'forbidden');
-      operator = operatorTools(c.env, operatorLoginId, (provider) =>
+      operator = operatorTools(c.env, { loginId: operatorLoginId, requestId: c.get('requestId') }, (provider) =>
         provider === 'github' ? githubMethod(c, options.fetcher) : undefined,
       );
     }

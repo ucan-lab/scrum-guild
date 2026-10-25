@@ -475,6 +475,20 @@ describe('ログインの手段の型（GitHub の招待する人の指し方）
     });
   });
 
+  test('表示名の制御文字と書式文字（双方向の制御、ゼロ幅）は取り除き、取り除いて空になれば null', async () => {
+    const { github, method: login } = method();
+    github.addUser({ id: 583233, login: 'bidi-cat', name: '星野‮​ 澪\u0007' });
+    github.addUser({ id: 583234, login: 'blank-cat', name: '​‮' });
+    expect(await login.resolveInvitee('bidi-cat')).toMatchObject({
+      kind: 'found',
+      invitee: { displayName: '星野 澪' },
+    });
+    expect(await login.resolveInvitee('blank-cat')).toMatchObject({
+      kind: 'found',
+      invitee: { displayName: null },
+    });
+  });
+
   test('いないユーザー名は not_found', async () => {
     const { method: login } = method();
     expect(await login.resolveInvitee('nobody-here')).toEqual({ kind: 'not_found' });

@@ -6,7 +6,13 @@ import { listOrganizations } from './list-organizations.ts';
 import { resolveGithubUser } from './resolve-github-user.ts';
 
 export { createOrganization, listOrganizations, resolveGithubUser };
-export { createOrganizationProblems, type CreateOrganizationProblem } from './create-organization.ts';
+export {
+  createOrganizationProblems,
+  hasHiddenCharacter,
+  ORGANIZATION_NAME_MAX_LENGTH,
+  type CreateOrganizationProblem,
+} from './create-organization.ts';
+export { GITHUB_USERNAME_MAX_LENGTH } from './resolve-github-user.ts';
 export { adminStatuses, type AdminStatus } from './list-organizations.ts';
 
 export const operatorOperations: readonly AnyOperationDefinition[] = [

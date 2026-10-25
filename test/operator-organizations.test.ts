@@ -5,7 +5,8 @@ import { env } from 'cloudflare:workers';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { createApp } from '../src/server/app.ts';
 import { implementedOperations } from '../src/server/operations/index.ts';
-import { commonDb, orgDb } from '../src/server/db/index.ts';
+import { operatorLoginIdOf } from '../src/server/auth/operators.ts';
+import { commonDb, insertOrganization, orgDb } from '../src/server/db/index.ts';
 import {
   adminCountsStatementForTest,
   adminStatusesForTest,
@@ -22,7 +23,7 @@ import {
 import { organizationInfo } from '../src/shared/operations/organization/index.ts';
 import { createFakeGithub } from './auth/fake-github.ts';
 import { createLoginApp, FakeBrowser } from './auth/browser.ts';
-import { accountLoginOf, githubUser } from './auth/helpers.ts';
+import { githubUser } from './auth/helpers.ts';
 import {
   createAccount,
   createAccountLogin,
@@ -277,7 +278,11 @@ describe('組織の作成', () => {
     expect(res.status).toBe(200);
 
     const organization = await organizationRow(slug);
-    expect((await usersOf(organization!.id))[0]?.account_id).toBe(person.accountId);
+    const users = await usersOf(organization!.id);
+    expect(users[0]?.account_id).toBe(person.accountId);
+    // 管理者の指名の change_logs に、結んだアカウントも残る
+    const designation = (await changeLogsOf(organization!.id)).find((log) => log.entity_type === 'user');
+    expect(JSON.parse(designation!.changes_json)).toMatchObject({ account_id: [null, person.accountId] });
 
     // セッションはそのまま。ログインし直さずに入れる
     const entered = await post(app, organizationInfo, { slug, token: person.token });
@@ -286,8 +291,7 @@ describe('組織の作成', () => {
     expect((await listed(await operatorToken(), slug))?.admin_status).toBe('active');
   });
 
-  test('運用者自身を管理者に指名しても、運用者のセッションの組織の中への入り方は他の人と同じ', async () => {
-    // 運用者は組織の中に特権を持たない。指名されていない組織には入れない
+  test('運用者は組織の中に特権を持たず、指名されていない組織には入れない', async () => {
     const slug = newSlug();
     const other = githubUser('someone-else');
     github.addUser(other);
@@ -295,6 +299,33 @@ describe('組織の作成', () => {
     await post(app, create, { token, body: { slug, name: '別の工房', admin: adminOf(other) } });
     const res = await post(app, organizationInfo, { slug, token });
     expect(res.status).toBe(404);
+  });
+
+  test('運用者自身を管理者に指名すると、管理者として入れる', async () => {
+    // 運用者のログイン（github:9000000000000001）のアカウントは account_logins にあるので、指名のときに結ばれる
+    const operatorUser = { id: 9000000000000001, login: 'ops-user', name: '運用担当' };
+    github.addUser(operatorUser);
+    const slug = newSlug();
+    const token = await operatorToken();
+    const res = await post(app, create, { token, body: { slug, name: '運用者の工房', admin: adminOf(operatorUser) } });
+    expect(res.status).toBe(200);
+    const entered = await post(app, organizationInfo, { slug, token });
+    expect(entered.status).toBe(200);
+    expect(await entered.json()).toMatchObject({ me: { is_admin: true } });
+  });
+
+  test('組織の表示名に制御文字と書式文字（双方向の制御、ゼロ幅）は使えない', async () => {
+    const user = githubUser('hidden-name');
+    github.addUser(user);
+    for (const name of ['工房‮', '工​房', '工\u0007房']) {
+      const slug = newSlug();
+      const res = await post(app, create, {
+        token: await operatorToken(),
+        body: { slug, name, admin: adminOf(user) },
+      });
+      expect(res.status, JSON.stringify(name)).toBe(400);
+      expect(await organizationRow(slug)).toBeUndefined();
+    }
   });
 
   test.each([
@@ -575,20 +606,113 @@ describe('組織の一覧', () => {
   });
 });
 
-describe('指名する人のアカウント', () => {
-  test('アカウントのある GitHub のログインは、指名のとき共通の入口から引いて users.account_id に入れる', async () => {
-    const user = githubUser('login-lookup');
+describe('書き込みの途中の失敗と割り込み', () => {
+  const isOrganizationInsert = (sqls: readonly string[]) =>
+    sqls.some((sql) => sql.startsWith('insert into "organizations"'));
+
+  test('INSERT がコミットされた後に応答だけ失敗しても、行が自分のものなら成功として続け、管理者も書く', async () => {
+    const user = githubUser('lost-response');
     github.addUser(user);
-    const account = await createAccount();
-    await createAccountLogin(account.id, { login_provider: 'github', login_subject: String(user.id) });
     const slug = newSlug();
+    let lost = false;
+    const lossyEnv = envWithD1Hooks(testEnv, {
+      afterBatch: (sqls) => {
+        if (lost || !isOrganizationInsert(sqls)) return;
+        lost = true;
+        throw new Error('connection lost');
+      },
+    });
     const res = await post(app, create, {
       token: await operatorToken(),
       body: { slug, name: '工房', admin: adminOf(user) },
+      env: lossyEnv,
     });
+    expect(lost).toBe(true);
     expect(res.status).toBe(200);
     const organization = await organizationRow(slug);
-    expect((await usersOf(organization!.id))[0]?.account_id).toBe(account.id);
-    expect(await accountLoginOf(user)).toMatchObject({ account_id: account.id });
+    expect(await usersOf(organization!.id)).toHaveLength(1);
+    expect(await changeLogsOf(organization!.id)).toHaveLength(2);
+  });
+
+  test('応答が失敗し、行も読み直せないときは、元の例外を cause に付けて投げる', async () => {
+    const slug = newSlug();
+    const original = new Error('connection lost');
+    const brokenEnv = envWithD1Hooks(testEnv, {
+      afterBatch: (sqls) => {
+        if (isOrganizationInsert(sqls)) throw original;
+      },
+      afterQuery: async (sql) => {
+        if (sql.includes('from "organizations"')) throw new Error('read failed');
+      },
+    });
+    const failure = await insertOrganization(brokenEnv, {
+      slug,
+      name: '工房',
+      createdByOperator: OPERATOR_LOGIN_ID,
+      now: new Date(),
+    }).catch((err: unknown) => err);
+    expect(failure).toBeInstanceOf(Error);
+    expect((failure as Error).cause).toBe(original);
+  });
+
+  test('応答が失敗し、同じ slug の行が別の ID で既にあれば、slug_taken', async () => {
+    const taken = await createOrganizationRow();
+    const failingEnv = envWithD1Hooks(testEnv, {
+      beforeBatch: (sqls) => {
+        if (isOrganizationInsert(sqls)) throw new Error('write failed');
+      },
+    });
+    const result = await insertOrganization(failingEnv, {
+      slug: taken.slug,
+      name: '工房',
+      createdByOperator: OPERATOR_LOGIN_ID,
+      now: new Date(),
+    });
+    expect(result).toBe('slug_taken');
+  });
+
+  test('アカウントが無いと読んだ後、書くまでの間にその人が初めてログインを終えても、users.account_id を結ぶ', async () => {
+    const user = githubUser('first-login-window');
+    github.addUser(user);
+    const slug = newSlug();
+    let accountId: string | undefined;
+    const racingEnv = envWithD1Hooks(testEnv, {
+      // users を書いた直後に、その人の最初のログイン（accounts と account_logins）が完了する
+      afterBatch: async (sqls) => {
+        if (accountId !== undefined || !sqls.some((sql) => sql.startsWith('insert into "users"'))) return;
+        const account = await createAccount();
+        accountId = account.id;
+        await createAccountLogin(account.id, { login_provider: 'github', login_subject: String(user.id) });
+      },
+    });
+    const res = await post(app, create, {
+      token: await operatorToken(),
+      body: { slug, name: '工房', admin: adminOf(user) },
+      env: racingEnv,
+    });
+    expect(res.status).toBe(200);
+    expect(accountId).toBeDefined();
+    const organization = await organizationRow(slug);
+    expect((await usersOf(organization!.id))[0]?.account_id).toBe(accountId);
+  });
+});
+
+describe('運用者のログインの ID', () => {
+  const logins = [
+    { provider: 'github', subject: '9' },
+    { provider: 'github', subject: '1' },
+    { provider: 'github', subject: '2' },
+  ];
+
+  test('一覧に2つ載っていても、一覧の並びで先のものを選び、ログインを引く順に左右されない', () => {
+    const list = { OPERATOR_LOGIN_IDS: 'github:2,github:1' };
+    expect(operatorLoginIdOf(list, logins)).toBe('github:2');
+    expect(operatorLoginIdOf(list, [...logins].reverse())).toBe('github:2');
+  });
+
+  test('一覧に載っていないログインだけなら undefined。載っていないログインが先に返っても、載っている方を選ぶ', () => {
+    const list = { OPERATOR_LOGIN_IDS: 'github:1' };
+    expect(operatorLoginIdOf(list, logins.slice(0, 1))).toBeUndefined();
+    expect(operatorLoginIdOf(list, logins)).toBe('github:1');
   });
 });

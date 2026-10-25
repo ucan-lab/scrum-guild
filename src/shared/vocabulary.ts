@@ -308,8 +308,28 @@ export const dictionary = defineDictionary({
     'この名前はアプリが使うので付けられません。',
     'この名前はアプリが使うので付けられません。',
   ),
-  operatorErrorSlugTaken: organization('この slug はもう使われています。', 'この slug はもう使われています。'),
+  operatorErrorSlugTaken: organization(
+    'この slug はもう使われています。今作った{organization}かもしれないので、一覧を確かめてください。',
+    'この slug はもう使われています。今作った{organization}かもしれないので、一覧を確かめてください。',
+  ),
   operatorErrorNameRequired: organization('表示名を入れてください。', '表示名を入れてください。'),
+  operatorErrorNameLong: organization('表示名は 80 字までです。', '表示名は 80 字までです。'),
+  operatorErrorNameInvalid: organization(
+    '表示名に使えない文字（制御文字など）が含まれています。',
+    '表示名に使えない文字（制御文字など）が含まれています。',
+  ),
+  operatorErrorInvalid: organization(
+    '入力に誤りがあります。内容を確かめてください。',
+    '入力に誤りがあります。内容を確かめてください。',
+  ),
+  operatorErrorVerifyFailed: organization(
+    'ユーザー名を確かめられませんでした。もう一度試してください。',
+    'ユーザー名を確かめられませんでした。もう一度試してください。',
+  ),
+  operatorErrorVerifyAgain: organization(
+    'ユーザー名を直したので、もう一度確かめてください。',
+    'ユーザー名を直したので、もう一度確かめてください。',
+  ),
   operatorErrorUserRequired: organization('ユーザー名を入れてください。', 'ユーザー名を入れてください。'),
   operatorErrorUserNotFound: organization(
     'そのユーザー名の人が GitHub にいません。',
@@ -328,8 +348,8 @@ export const dictionary = defineDictionary({
     'GitHub に届きませんでした。しばらくしてから、もう一度試してください。',
   ),
   operatorErrorCreate: organization(
-    '{organization}を作れませんでした。一覧を確かめてから、もう一度試してください。',
-    '{organization}を作れませんでした。一覧を確かめてから、もう一度試してください。',
+    '{organization}を作れたか分かりません。サーバーでは作られていることがあるので、一覧を確かめてから、もう一度試してください。',
+    '{organization}を作れたか分かりません。サーバーでは作られていることがあるので、一覧を確かめてから、もう一度試してください。',
   ),
   operatorErrorUnreachable: organization('サーバーに届きませんでした。', 'サーバーに届きませんでした。'),
 

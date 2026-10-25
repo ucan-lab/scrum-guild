@@ -5,21 +5,20 @@
   import GateSheet from '../../lib/components/GateSheet.svelte';
   import Icon from '../../lib/components/Icon.svelte';
   import LoadFailed from '../../lib/components/LoadFailed.svelte';
+  import { formatDateTime } from '../../lib/format-datetime.ts';
   import { t } from '../../lib/vocabulary.svelte.ts';
   import type { PageProps } from './$types';
 
   // 運用の画面（design/operator.html）。組織の一覧と、組織の作成。組織の中のデータは出さない。
   // 入れる組織が無い運用者が、ログインの直後にここへ来る。人数、ワークスペース数などの集計、停止と再開、
-  // 管理者の指名し直しは、後の Issue で足す
+  // 管理者の指名し直しは、後の Issue で足す。
+  // 作成のダイアログは一覧の読み込みの成否に関わらず置く。作った後に一覧の読み直しが失敗しても、完了の表示（組織の URL）を消さない
   let { data }: PageProps = $props();
 
   let dialog = $state<ReturnType<typeof CreateOrganizationDialog>>();
   let dialogOpen = $state(false);
 
   const words = $derived({ organization: t('organization'), admin: t('admin') });
-
-  // 作った日時は UTC の ISO 文字列。日付と時刻までを出す
-  const createdAt = (iso: string) => iso.slice(0, 16).replace('T', ' ');
 </script>
 
 <svelte:head>
@@ -31,12 +30,12 @@
 {:else}
   <Gate wide>
     <GateSheet brand title={t('pageOperator')}>
-      <div class="callout is-info"><Icon name="shield" /><span>{t('operatorNotice', words)}</span></div>
       <div class="form-actions">
         <button class="btn is-primary" type="button" onclick={(event) => dialog?.show(event.currentTarget)}>
           <Icon name="plus" />{t('operatorCreate', words)}
         </button>
       </div>
+      <div class="callout is-info"><Icon name="shield" /><span>{t('operatorNotice', words)}</span></div>
       {#if data.organizations.length === 0}
         <EmptyState icon="shield" title={t('operatorEmptyTitle', words)} text={t('operatorEmptyText', words)} />
       {:else}
@@ -61,7 +60,7 @@
                     {/if}
                     <br /><span class="mono props-note">{organization.slug}</span>
                   </td>
-                  <td class="mono">{createdAt(organization.created_at)}</td>
+                  <td class="mono">{formatDateTime(organization.created_at)}</td>
                 </tr>
               {/each}
             </tbody>
@@ -70,5 +69,5 @@
       {/if}
     </GateSheet>
   </Gate>
-  <CreateOrganizationDialog bind:this={dialog} bind:open={dialogOpen} />
 {/if}
+<CreateOrganizationDialog bind:this={dialog} bind:open={dialogOpen} />

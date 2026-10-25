@@ -83,9 +83,12 @@ function avatarUrlOf(value: unknown): string | null {
   }
 }
 
-// 手段の側の名前。空白だけ、または文字列でなければ null
+// 手段の側の名前。制御文字（Cc）と書式文字（Cf。双方向の制御、ゼロ幅）は取り除く。名前の見え方を偽って、
+// 似せたアカウントを指名させるのに使われうるため。取り除いて空になる、空白だけ、文字列でない、のどれかなら null
 function displayNameOf(value: unknown): string | null {
-  return typeof value === 'string' && value.trim() !== '' ? value.trim().slice(0, MAX_DISPLAY_NAME_LENGTH) : null;
+  if (typeof value !== 'string') return null;
+  const cleaned = value.replace(/[\p{Cc}\p{Cf}]/gu, '').trim();
+  return cleaned === '' ? null : cleaned.slice(0, MAX_DISPLAY_NAME_LENGTH);
 }
 
 export type GithubOptions = {

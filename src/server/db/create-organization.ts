@@ -40,12 +40,19 @@ export async function insertOrganization(
       ),
     ]);
   } catch (err) {
-    // UNIQUE に当たったかは例外の文面でなく、slug の行が今あるかで見分ける
-    const taken = await common.first(
-      common.statement((q) => q.selectFrom('organizations').select('id').where('slug', '=', input.slug)),
-    );
-    if (taken !== undefined) return 'slug_taken';
-    throw err;
+    // UNIQUE に当たったかは例外の文面でなく、slug の行を読み直して見分ける。
+    // 自分の INSERT がコミットされた後に応答だけ失敗した場合は、行の ID が自分の ID なので、成功として続ける
+    let existing: { id: string } | undefined;
+    try {
+      existing = await common.first(
+        common.statement((q) => q.selectFrom('organizations').select('id').where('slug', '=', input.slug)),
+      );
+    } catch {
+      // 読み直せないときは、重なりとも成功とも言えない。元の例外を cause に残して投げる
+      throw new Error('slug の行を読み直せなかったので、組織を作れたか分からない', { cause: err });
+    }
+    if (existing === undefined) throw err;
+    if (existing.id !== organizationId) return 'slug_taken';
   }
   return { organizationId, db: orgDb(env, issueVerifiedOrganization(organizationId)) };
 }

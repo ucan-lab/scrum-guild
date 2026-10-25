@@ -29,14 +29,17 @@ async function resolveGithubUsername(
   operator: OperatorTools,
   username: string,
   path: string,
+  operation: string,
 ): Promise<ResolvedInvitee> {
   const method = operator.loginMethod('github');
-  if (method === undefined) throw unavailable('GitHub のクライアントの ID と秘密が設定されていない');
+  if (method === undefined) {
+    throw unavailable(operator, operation, 'GitHub のクライアントの ID と秘密が設定されていない');
+  }
   let resolution;
   try {
     resolution = await method.resolveInvitee(username);
   } catch (err) {
-    if (err instanceof LoginMethodError) throw unavailable(err.message);
+    if (err instanceof LoginMethodError) throw unavailable(operator, operation, err.message);
     throw err;
   }
   switch (resolution.kind) {
@@ -50,8 +53,18 @@ async function resolveGithubUsername(
 }
 
 // reason は固定の文（LoginMethodError の message か、こちらの文）。応答には出さない
-function unavailable(reason: string): ApiError {
-  console.warn(JSON.stringify({ level: 'warn', code: 'unavailable', route: 'operator', provider: 'github', reason }));
+function unavailable(operator: OperatorTools, operation: string, reason: string): ApiError {
+  console.warn(
+    JSON.stringify({
+      level: 'warn',
+      code: 'unavailable',
+      requestId: operator.requestId,
+      operation,
+      route: 'operator',
+      provider: 'github',
+      reason,
+    }),
+  );
   return new ApiError(503, 'unavailable');
 }
 
@@ -97,7 +110,7 @@ export const listOrganizationsOperation = implement(listOrganizations, async ({ 
 });
 
 export const resolveGithubUserOperation = implement(resolveGithubUser, async ({ operator, input }) => {
-  const invitee = await resolveGithubUsername(operator, input.username, 'username');
+  const invitee = await resolveGithubUsername(operator, input.username, 'username', 'resolve-github-user');
   return {
     login_subject: invitee.subject,
     login_name: invitee.loginName,
@@ -112,6 +125,8 @@ export const resolveGithubUserOperation = implement(resolveGithubUser, async ({ 
 //   4. 指名する人のアカウントを共通の DB で引く  5. organizations を書く（同時に作られて UNIQUE に当たれば 409）
 //   6. 組織の DB に、最初の管理者の users と change_logs の2行を1回の batch() で書く
 // 6 が失敗すると、管理者のいない組織が残る（一覧の admin_status が none）。指名し直しは Issue #60
+const OPERATION = 'create-organization';
+
 export const createOrganizationOperation = implement(createOrganization, async ({ db, operator, input }) => {
   const problem = slugProblem(input.slug);
   if (problem !== undefined) {
@@ -128,7 +143,7 @@ export const createOrganizationOperation = implement(createOrganization, async (
 
   if (await slugExists(db, input.slug)) throw new ApiError(409, 'conflict');
 
-  const invitee = await resolveGithubUsername(operator, admin.username, 'admin.username');
+  const invitee = await resolveGithubUsername(operator, admin.username, 'admin.username', OPERATION);
   if (invitee.subject !== admin.login_subject) {
     throw invalid('admin.login_subject', 'github_user_changed', '確かめたユーザー ID と、解決し直した ID が違う');
   }
@@ -167,6 +182,8 @@ export const createOrganizationOperation = implement(createOrganization, async (
       JSON.stringify({
         level: 'error',
         code: 'internal',
+        requestId: operator.requestId,
+        operation: OPERATION,
         route: 'operator',
         reason: '組織を作ったが、最初の管理者を書けなかった。管理者のいない組織が残る',
         organizationId: created.organizationId,
@@ -174,6 +191,29 @@ export const createOrganizationOperation = implement(createOrganization, async (
       }),
     );
     throw err;
+  }
+
+  // アカウントが無いと読んだ後、書くまでの間にその人が初めてログインを終えると、users.account_id が空のまま残る
+  // （ログインの結ぶ書き込みは、まだ書いていない行に当たらない）。書いた後に引き直し、できていれば結ぶ。
+  // 結ぶ文は account_id が空の行だけに当たるので、何度流しても同じ結果。失敗しても次のログインで結ばれる
+  if (accountId === null) {
+    try {
+      const later = await findAccountId(db, 'github', invitee.subject);
+      if (later !== null) await operator.linkLogin(later, { provider: 'github', subject: invitee.subject }, new Date());
+    } catch (err) {
+      console.error(
+        JSON.stringify({
+          level: 'error',
+          code: 'internal',
+          requestId: operator.requestId,
+          operation: OPERATION,
+          route: 'operator',
+          reason: '指名した人のアカウントを結べなかった。次のログインで結ばれる',
+          organizationId: created.organizationId,
+          error: err instanceof Error ? err.name : typeof err,
+        }),
+      );
+    }
   }
 
   return { slug: input.slug, name: input.name, admin_login_name: invitee.loginName };

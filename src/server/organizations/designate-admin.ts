@@ -61,6 +61,8 @@ export function adminDesignationStatements(
             name: [null, nominee.name],
             login_provider: [null, nominee.provider],
             login_subject: [null, nominee.subject],
+            // 既にアカウントのある人は、指名のときに結ぶ
+            ...(nominee.accountId === null ? {} : { account_id: [null, nominee.accountId] }),
           }),
           created_at: at,
         }),
