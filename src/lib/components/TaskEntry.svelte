@@ -48,12 +48,12 @@
     onMove?.(task, delta);
   }
 
-  // 行の中にフォーカスがあるときの Alt と ↑ ↓
+  // 行の中にフォーカスがあるときの Alt と ↑ ↓。端でも画面に渡す（画面が、動かせないことを読み上げる）
   function keydown(event: KeyboardEvent): void {
     if (!movable || !event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
     if (event.key !== 'ArrowUp' && event.key !== 'ArrowDown') return;
     event.preventDefault();
-    move(event.key === 'ArrowUp' ? -1 : 1);
+    onMove?.(task, event.key === 'ArrowUp' ? -1 : 1);
   }
 
   let mark = $state<HTMLElement>();
@@ -73,7 +73,8 @@
 
 <!-- キーは中のリンクとボタンから届く。行そのものはフォーカスを受けない -->
 <!-- svelte-ignore a11y_no_static_element_interactions -->
-<div class="entry" class:is-done={done} onkeydown={keydown}>
+<!-- data-row-id は、画面が読み直した後に同じ行の操作へフォーカスを戻すのに使う -->
+<div class="entry" class:is-done={done} onkeydown={keydown} data-row-id={task.id}>
   <span aria-hidden="true"></span>
   <div class="entry-main">
     <!-- 押しても、フォーカスとスクロールの位置は動かさない（引き出しが閉じたとき、data-task-id で探してフォーカスを戻す） -->

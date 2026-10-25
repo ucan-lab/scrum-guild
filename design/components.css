@@ -550,6 +550,15 @@ button.tree-link { border: 0; background: none; padding: 0; font: inherit; text-
 .kind .ico { width: 13px; height: 13px; }
 .kind.is-epic { color: var(--color-xp); background: var(--color-xp-soft); }
 .kind.is-story { color: var(--color-accent); background: var(--color-accent-soft); }
+/* 一覧の幅が狭いとき（メニューの横で 760px を少し超える幅など）は、画面の幅でなく一覧の幅で、行の右端（期日、ポイント、担当、
+   並べ替え、完了の操作）を題の下へ折り返す。右端が横に並んだままだと、題の列が数文字の幅に縮むため */
+.tree, .book { container-type: inline-size; }
+@container (max-width: 640px) {
+  .entry { grid-template-columns: 32px minmax(0, 1fr); }
+  .entry-end { grid-column: 2; flex-wrap: wrap; }
+  .tree-row { grid-template-columns: 20px 24px minmax(0, 1fr); }
+  .tree-ratio, .tree-end { grid-column: 3; }
+}
 
 /* ===== 計画: 横に並ぶスプリント（レーン） ===== */
 .lanes { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-4); align-items: start; }

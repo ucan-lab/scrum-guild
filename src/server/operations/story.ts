@@ -11,7 +11,15 @@ import type { OrganizationDb, OrganizationTables, QueryCreator } from '../db/ind
 import { ApiError } from '../errors.ts';
 import { uuidv7 } from '../uuid.ts';
 import { implement } from './implement.ts';
-import { placeAfter, placeFirst, placeLast, type MovePlan } from './move-position.ts';
+import {
+  MAX_TIES,
+  moveConflict,
+  placeAfter,
+  placeFirst,
+  placeLast,
+  type MovePlan,
+  type Positioned,
+} from './move-position.ts';
 import { actorUserIdOf, changeLogColumns, openWorkspace, throwIfClosed } from './write-guards.ts';
 
 // ストーリーのダイアログの欄。作るときの履歴に使う
@@ -318,26 +326,26 @@ function epicRow(from: Pick<QueryCreator<Tables>, 'selectFrom'>, workspaceId: st
     .where('epics.deleted_at', 'is', null);
 }
 
-// 親にするエピックを読む。無ければ 404、完了か中止していれば 409 の conflict
-async function readParentEpic(db: OrganizationDb, workspaceId: string, epicId: string) {
+// 移す先のエピックを読む。無ければ 404。親が変わるときだけ、完了か中止していれば 409（parent_completed）
+async function readMoveEpic(db: OrganizationDb, workspaceId: string, epicId: string, changing: boolean) {
   const epic = await db.first(
     db.statement((q) =>
       epicRow(q, workspaceId, epicId).select(['epics.id', 'epics.title', 'epics.completed_at', 'epics.canceled_at']),
     ),
   );
   if (epic === undefined) throw new ApiError(404, 'not_found');
-  if (epic.completed_at !== null || epic.canceled_at !== null) throw new ApiError(409, 'conflict');
+  if (changing && (epic.completed_at !== null || epic.canceled_at !== null)) throw moveConflict('parent_completed');
   return { id: epic.id, title: epic.title };
 }
 
-// 移すストーリーの新しい位置を決める。考え方はタスクの移動（task.ts の planTaskMove）と同じ
+// 移すストーリーの新しい位置と、読んだ直前の行を決める。考え方はタスクの移動（task.ts の planTaskMove）と同じ
 async function planStoryMove(
   db: OrganizationDb,
   workspaceId: string,
   epicId: string | null,
   storyId: string,
   afterId: string | null | undefined,
-): Promise<MovePlan> {
+): Promise<{ plan: MovePlan; after: Positioned | null }> {
   const columns = ['stories.id', 'stories.position'] as const;
   if (afterId === undefined) {
     const last = await db.first(
@@ -349,7 +357,7 @@ async function planStoryMove(
           .limit(1),
       ),
     );
-    return placeLast(last);
+    return { plan: placeLast(last), after: null };
   }
   if (afterId === null) {
     const first = await db.first(
@@ -361,7 +369,7 @@ async function planStoryMove(
           .limit(1),
       ),
     );
-    return placeFirst(first);
+    return { plan: placeFirst(first), after: null };
   }
   const after = await db.first(
     db.statement((q) =>
@@ -375,7 +383,8 @@ async function planStoryMove(
         .select(columns)
         .where('stories.position', '=', after.position)
         .where('stories.id', '>', after.id)
-        .orderBy('stories.id'),
+        .orderBy('stories.id')
+        .limit(MAX_TIES + 1),
     ),
     db.statement((q) =>
       siblingStories(q, workspaceId, epicId, storyId)
@@ -386,7 +395,7 @@ async function planStoryMove(
         .limit(1),
     ),
   ] as const);
-  return placeAfter(after, ties.rows, next.rows[0]);
+  return { plan: placeAfter(after, ties.rows, next.rows[0]), after };
 }
 
 // 移すストーリーと、今の親の題（履歴に残す）
@@ -417,9 +426,9 @@ export const storyMoveOperation = implement(storyMove, async ({ db, actor, works
   const current = await movingStory(db, workspaceId, storyId);
   if (current === undefined) throw new ApiError(404, 'not_found');
   const parentId = input.epic_id;
-  const parent = parentId === null ? null : await readParentEpic(db, workspaceId, parentId);
-  const plan = await planStoryMove(db, workspaceId, parentId, storyId, afterId);
   const parentChanged = current.epic_id !== parentId;
+  const parent = parentId === null ? null : await readMoveEpic(db, workspaceId, parentId, parentChanged);
+  const { plan, after } = await planStoryMove(db, workspaceId, parentId, storyId, afterId);
 
   const at = now();
   const updatedAt = at.toISOString();
@@ -455,15 +464,20 @@ export const storyMoveOperation = implement(storyMove, async ({ db, actor, works
             eb.exists(
               epicRow(q, workspaceId, parentId!)
                 .select('epics.id')
-                .where('epics.completed_at', 'is', null)
-                .where('epics.canceled_at', 'is', null),
+                .$if(parentChanged, (sb) =>
+                  sb.where('epics.completed_at', 'is', null).where('epics.canceled_at', 'is', null),
+                ),
             ),
           ),
         )
-        .$if(afterId != null, (qb) =>
+        // 直前の行が、今も読んだ値の位置にある
+        .$if(after !== null, (qb) =>
           qb.where((eb) =>
             eb.exists(
-              siblingStories(q, workspaceId, parentId, storyId).select('stories.id').where('stories.id', '=', afterId!),
+              siblingStories(q, workspaceId, parentId, storyId)
+                .select('stories.id')
+                .where('stories.id', '=', after!.id)
+                .where('stories.position', '=', after!.position),
             ),
           ),
         ),
@@ -472,7 +486,7 @@ export const storyMoveOperation = implement(storyMove, async ({ db, actor, works
       db.statement((q) =>
         q
           .updateTable('stories')
-          .set({ position: row.to })
+          .set({ position: row.to, updated_at: updatedAt })
           .where('id', '=', row.id)
           .where('workspace_id', '=', workspaceId)
           .where('epic_id', parentId === null ? 'is' : '=', parentId)
@@ -517,12 +531,13 @@ export const storyMoveOperation = implement(storyMove, async ({ db, actor, works
   ]);
 
   if ((results[0]?.changes ?? 0) === 0) {
-    // 読んでから書くまでに、閉じたか、ストーリーか親か直前の行が消えたか、親が完了したか、別の要求が先に親を移した
+    // 読んでから書くまでに、閉じたか、ストーリーか親か直前の行が消えたか、親が完了したか、
+    // 別の要求が先に親を移したか直前の行を動かした
     await throwIfClosed(db, workspaceId);
     if ((await movingStory(db, workspaceId, storyId)) === undefined) throw new ApiError(404, 'not_found');
-    if (parentId !== null) await readParentEpic(db, workspaceId, parentId);
+    if (parentId !== null) await readMoveEpic(db, workspaceId, parentId, parentChanged);
     if (afterId != null) await planStoryMove(db, workspaceId, parentId, storyId, afterId);
-    throw new ApiError(409, 'conflict');
+    throw moveConflict('changed');
   }
   return { story_id: storyId, epic_id: parentId };
 });

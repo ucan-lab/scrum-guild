@@ -52,7 +52,8 @@
     if (onMove === undefined || !event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
     if (event.key !== 'ArrowUp' && event.key !== 'ArrowDown') return;
     event.preventDefault();
-    move(event.key === 'ArrowUp' ? -1 : 1);
+    // 端でも画面に渡す（画面が、動かせないことを読み上げる）
+    onMove(story, event.key === 'ArrowUp' ? -1 : 1);
   }
 
   const bodyId = $props.id();
@@ -67,7 +68,7 @@
 <div class="tree-group">
   <!-- キーは中のボタンから届く。行そのものはフォーカスを受けない -->
   <!-- svelte-ignore a11y_no_static_element_interactions -->
-  <div class="tree-row is-story is-root" onkeydown={keydown}>
+  <div class="tree-row is-story is-root" onkeydown={keydown} data-row-id={story.id}>
     <button
       class="tree-caret"
       type="button"

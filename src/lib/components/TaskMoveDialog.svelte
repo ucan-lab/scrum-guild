@@ -25,7 +25,9 @@
 
   let open = $state(false);
   let dialog = $state<ReturnType<typeof Dialog>>();
+  // 動かすタスク。送ったら空にして、閉じるまでの2回目の送信を無視する。見出しの題は閉じるまで残す
   let task = $state<BacklogTask | null>(null);
+  let heading = $state('');
   let current = $state<string | null>(null);
   let choice = $state(NONE);
 
@@ -33,6 +35,7 @@
 
   export function show(trigger: HTMLElement | null, target: BacklogTask, storyId: string | null): void {
     task = target;
+    heading = target.title;
     current = storyId;
     // 今が親なしなら、最初のストーリーを選んでおく
     choice = storyId === null ? (candidates[0]?.id ?? NONE) : NONE;
@@ -44,6 +47,8 @@
     if (task === null) return;
     const moving = task;
     const storyId = choice === NONE ? null : choice;
+    // 閉じるまでの間にもう一度送られても（Enter の連打など）、2回目は無視する
+    task = null;
     open = false;
     // 今の親のままなら、何も送らずに閉じる
     if (storyId === current) return;
@@ -53,7 +58,7 @@
   }
 </script>
 
-<Dialog bind:this={dialog} bind:open title={t('moveParentTitle', { title: task?.title ?? '' })}>
+<Dialog bind:this={dialog} bind:open title={t('moveParentTitle', { title: heading })}>
   <form id={formId} class="form" onsubmit={submit} novalidate>
     <div class="field">
       <label class="field-label" for={targetId}>{t('moveParentField')}</label>

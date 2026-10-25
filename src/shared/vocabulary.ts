@@ -383,6 +383,23 @@ export const dictionary = defineDictionary({
     '{done}した{story}の下へは移せません。一覧を読み直します',
     '{done}した{story}の下へは移せません。一覧を読み直します',
   ),
+  // 動かした行か、直前の行か、親が見つからなかった（404）。どれが消えたかは分からない
+  moveGone: organization(
+    '一覧が変わったため移せませんでした。一覧を読み直します',
+    '一覧が変わったため移せませんでした。一覧を読み直します',
+  ),
+  moveTaskDone: workspace(
+    'この{task}は{done}しています。一覧を読み直します',
+    'この{task}は{done}しています。一覧を読み直します',
+  ),
+  // 動かしている間に一覧が読み直され、まだ送っていなかった移動を捨てたとき
+  moveReloaded: organization(
+    '動かしている間に一覧が読み直されたため、一覧を読み直しました。並びが変わっていなければ、もう一度動かしてください',
+    '動かしている間に一覧が読み直されたため、一覧を読み直しました。並びが変わっていなければ、もう一度動かしてください',
+  ),
+  // 端の行で Alt と ↑ ↓ を押したときの読み上げ
+  moveAtTop: organization('いちばん上です', 'いちばん上です'),
+  moveAtBottom: organization('いちばん下です', 'いちばん下です'),
   // 親を移すダイアログ。見出しに、どのタスクを動かすかを添える
   moveParentTitle: workspace('「{title}」の親を移す', '「{title}」の親を移す'),
   moveParentField: organization('移す先', '移す先'),

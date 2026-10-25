@@ -151,8 +151,72 @@ test('並べ替えを断られたら、理由を知らせて読み直す', async
   await page.route('**/api/aoba/task-move', (route) =>
     route.fulfill({ status: 409, json: { error: { code: 'workspace_closed', message: 'workspace_closed' } } }),
   );
-  await page.getByRole('button', { name: '下へ: 見積もりを送る' }).click();
+  const down = page.getByRole('button', { name: '下へ: 見積もりを送る' });
+  await down.click();
   await expect(page.getByRole('status').filter({ hasText: '終了したパーティには書き込めません' })).toBeVisible();
-  // 読み直すと、送れなかった並べ替えは元に戻る
+  // 読み直すと、送れなかった並べ替えは元に戻り、フォーカスは同じ行の同じ操作に戻る
   await expect(rootTitles(page)).toHaveText(['見積もりを送る', '請求書を出す']);
+  await expect(down).toBeFocused();
+
+  // 409 の conflict は、理由（details.reason）で知らせる文を選ぶ
+  for (const [reason, message] of [
+    ['task_completed', 'このクエストは完遂しています。一覧を読み直します'],
+    ['changed', 'ほかの画面で変わったため、移せませんでした。一覧を読み直します'],
+  ] as const) {
+    await page.unrouteAll();
+    await page.route('**/api/aoba/task-move', (route) =>
+      route.fulfill({ status: 409, json: { error: { code: 'conflict', message: 'conflict', details: { reason } } } }),
+    );
+    await down.click();
+    await expect(page.getByRole('status').filter({ hasText: message })).toBeVisible();
+    await expect(rootTitles(page)).toHaveText(['見積もりを送る', '請求書を出す']);
+  }
+  // 404 は、どの行が消えたかが分からないので、一覧が変わったことを知らせる
+  await page.unrouteAll();
+  await page.route('**/api/aoba/task-move', (route) =>
+    route.fulfill({ status: 404, json: { error: { code: 'not_found', message: 'not found' } } }),
+  );
+  await down.click();
+  await expect(
+    page.getByRole('status').filter({ hasText: '一覧が変わったため移せませんでした。一覧を読み直します' }),
+  ).toBeVisible();
+});
+
+test('端の行で Alt と ↑ ↓ を押すと、動かせないことを読み上げる', async ({ page }) => {
+  await createWorkspace(page, '端のパーティ', 'game');
+  for (const title of ['見積もりを送る', '請求書を出す']) await addTask(page, title);
+  await page.getByRole('link', { name: '見積もりを送る' }).focus();
+  await page.keyboard.press('Alt+ArrowUp');
+  await expect(page.getByRole('status').filter({ hasText: 'いちばん上です' })).toBeAttached();
+  await page.getByRole('link', { name: '請求書を出す' }).focus();
+  await page.keyboard.press('Alt+ArrowDown');
+  await expect(page.getByRole('status').filter({ hasText: 'いちばん下です' })).toBeAttached();
+  await expect(rootTitles(page)).toHaveText(['見積もりを送る', '請求書を出す']);
+});
+
+// seed のワークスペース（受託開発チーム）。ストーリーの下に、期日、ポイント、担当の付いたタスクがある
+const SEED_GAME_WORKSPACE = '/aoba/w/019a0000-0000-7000-8000-000000000401';
+
+test('メニューの横で一覧が狭い幅でも、題の列は縮みすぎず、狭い画面でも横にはみ出さない', async ({ page }) => {
+  for (const width of [800, 900, 390, 320]) {
+    await page.setViewportSize({ width, height: 900 });
+    await page.goto(SEED_GAME_WORKSPACE);
+    const title = page.locator('.tree-children .entry .entry-title').first();
+    await expect(title).toBeVisible();
+    // 題の列は 120px 以上（右端の操作が並んだままだと、数文字の幅に縮む）
+    for (const locator of [title, page.locator('.tree-row.is-story .tree-title').first()]) {
+      const box = await locator.boundingBox();
+      expect(box!.width, `${width}px`).toBeGreaterThanOrEqual(width <= 320 ? 100 : 120);
+    }
+    const overflow = await page.evaluate(
+      () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+    );
+    expect(overflow, `${width}px`).toBeLessThanOrEqual(0);
+  }
+  // 狭い幅では、並べ替えのボタンは 44px 四方
+  await page.setViewportSize({ width: 390, height: 900 });
+  const up = page.locator('.tree-children .entry .order-actions .icon-btn').first();
+  const box = await up.boundingBox();
+  expect(box!.width).toBeGreaterThanOrEqual(44);
+  expect(box!.height).toBeGreaterThanOrEqual(44);
 });

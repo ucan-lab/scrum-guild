@@ -7,7 +7,15 @@ import type { OrganizationDb, OrganizationTables, QueryCreator } from '../db/ind
 import { ApiError } from '../errors.ts';
 import { uuidv7 } from '../uuid.ts';
 import { implement } from './implement.ts';
-import { placeAfter, placeFirst, placeLast, type MovePlan } from './move-position.ts';
+import {
+  MAX_TIES,
+  moveConflict,
+  placeAfter,
+  placeFirst,
+  placeLast,
+  type MovePlan,
+  type Positioned,
+} from './move-position.ts';
 import { actorUserIdOf, changeLogColumns, openWorkspace, throwIfClosed } from './write-guards.ts';
 
 type Tables = OrganizationTables;
@@ -645,15 +653,15 @@ function siblingTasks(
   return backlogTasksUnder(from, workspaceId, storyId).where('tasks.id', '!=', taskId);
 }
 
-// 移すタスクの新しい位置を決める。直前の行が移す先に無ければ 404。親の行の全件は読まず、直前の行と同じ値の行と、
-// それより大きい値の最初の行だけを読む
+// 移すタスクの新しい位置と、読んだ直前の行を決める。直前の行が移す先に無ければ 404。親の行の全件は読まず、直前の行と同じ値の行
+// （上限 MAX_TIES より1行多くまで）と、それより大きい値の最初の行だけを読む
 async function planTaskMove(
   db: OrganizationDb,
   workspaceId: string,
   storyId: string | null,
   taskId: string,
   afterId: string | null | undefined,
-): Promise<MovePlan> {
+): Promise<{ plan: MovePlan; after: Positioned | null }> {
   const columns = ['tasks.id', 'tasks.position'] as const;
   if (afterId === undefined) {
     const last = await db.first(
@@ -665,7 +673,7 @@ async function planTaskMove(
           .limit(1),
       ),
     );
-    return placeLast(last);
+    return { plan: placeLast(last), after: null };
   }
   if (afterId === null) {
     const first = await db.first(
@@ -677,7 +685,7 @@ async function planTaskMove(
           .limit(1),
       ),
     );
-    return placeFirst(first);
+    return { plan: placeFirst(first), after: null };
   }
   const after = await db.first(
     db.statement((q) => siblingTasks(q, workspaceId, storyId, taskId).select(columns).where('tasks.id', '=', afterId)),
@@ -689,7 +697,8 @@ async function planTaskMove(
         .select(columns)
         .where('tasks.position', '=', after.position)
         .where('tasks.id', '>', after.id)
-        .orderBy('tasks.id'),
+        .orderBy('tasks.id')
+        .limit(MAX_TIES + 1),
     ),
     db.statement((q) =>
       siblingTasks(q, workspaceId, storyId, taskId)
@@ -700,7 +709,20 @@ async function planTaskMove(
         .limit(1),
     ),
   ] as const);
-  return placeAfter(after, ties.rows, next.rows[0]);
+  return { plan: placeAfter(after, ties.rows, next.rows[0]), after };
+}
+
+// 移す先の親のストーリーを読む。無ければ 404。親が変わるときだけ、完了していれば 409（parent_completed）。
+// 同じ親の中の並べ替えは、完了したストーリーの下でもできる
+async function readMoveParent(db: OrganizationDb, workspaceId: string, storyId: string, changing: boolean) {
+  const story = await db.first(
+    db.statement((q) =>
+      storyRow(q, workspaceId, storyId).select(['stories.id', 'stories.title', 'stories.completed_at']),
+    ),
+  );
+  if (story === undefined) throw new ApiError(404, 'not_found');
+  if (changing && story.completed_at !== null) throw moveConflict('parent_completed');
+  return { id: story.id, title: story.title };
 }
 
 // 移すタスク。削除していないバックログのタスクで、今の親の題（履歴に残す）も読む
@@ -729,16 +751,16 @@ export const taskMoveOperation = implement(taskMove, async ({ db, actor, workspa
   const afterId = input.after_task_id;
   if (afterId === taskId) throw new ApiError(400, 'invalid_input');
 
-  // 移すタスクが無ければ 404、完了していれば 409。完了したタスクは画面に行が無く、並べ替えの対象にしない
+  // 移すタスクが無ければ 404、完了していれば 409（task_completed）。完了したタスクは画面に行が無く、並べ替えの対象にしない
   const current = await movingTask(db, workspaceId, taskId);
   if (current === undefined) throw new ApiError(404, 'not_found');
-  if (current.completed_at !== null) throw new ApiError(409, 'conflict');
+  if (current.completed_at !== null) throw moveConflict('task_completed');
 
-  // 移す先の親は、同じワークスペースの削除していない、完了していないストーリー。無ければ 404、完了していれば 409
+  // 移す先の親は、同じワークスペースの削除していないストーリー。無ければ 404。親が変わるなら、完了していれば 409
   const parentId = input.story_id;
-  const parent = parentId === null ? null : await readParentStory(db, workspaceId, parentId);
-  const plan = await planTaskMove(db, workspaceId, parentId, taskId, afterId);
   const parentChanged = current.story_id !== parentId;
+  const parent = parentId === null ? null : await readMoveParent(db, workspaceId, parentId, parentChanged);
+  const { plan, after } = await planTaskMove(db, workspaceId, parentId, taskId, afterId);
 
   const at = now();
   const updatedAt = at.toISOString();
@@ -754,7 +776,8 @@ export const taskMoveOperation = implement(taskMove, async ({ db, actor, workspa
       .where('tasks.updated_at', '=', updatedAt);
 
   const results = await db.batch([
-    // 条件は、読んだときの親のままで、閉じていないワークスペース、移す先の親と直前の行が今もあること
+    // 条件は、読んだときの親のままで、閉じていないワークスペース、移す先の親（親が変わるなら完了していない）が今もあり、
+    // 直前の行が今も読んだ値の位置にあること
     db.statement((q) =>
       q
         .updateTable('tasks')
@@ -775,14 +798,19 @@ export const taskMoveOperation = implement(taskMove, async ({ db, actor, workspa
         .$if(parentId !== null, (qb) =>
           qb.where((eb) =>
             eb.exists(
-              storyRow(q, workspaceId, parentId!).select('stories.id').where('stories.completed_at', 'is', null),
+              storyRow(q, workspaceId, parentId!)
+                .select('stories.id')
+                .$if(parentChanged, (sb) => sb.where('stories.completed_at', 'is', null)),
             ),
           ),
         )
-        .$if(afterId != null, (qb) =>
+        .$if(after !== null, (qb) =>
           qb.where((eb) =>
             eb.exists(
-              siblingTasks(q, workspaceId, parentId, taskId).select('tasks.id').where('tasks.id', '=', afterId!),
+              siblingTasks(q, workspaceId, parentId, taskId)
+                .select('tasks.id')
+                .where('tasks.id', '=', after!.id)
+                .where('tasks.position', '=', after!.position),
             ),
           ),
         ),
@@ -792,7 +820,7 @@ export const taskMoveOperation = implement(taskMove, async ({ db, actor, workspa
       db.statement((q) =>
         q
           .updateTable('tasks')
-          .set({ position: row.to })
+          .set({ position: row.to, updated_at: updatedAt })
           .where('id', '=', row.id)
           .where('workspace_id', '=', workspaceId)
           .where('story_id', parentId === null ? 'is' : '=', parentId)
@@ -838,14 +866,15 @@ export const taskMoveOperation = implement(taskMove, async ({ db, actor, workspa
   ]);
 
   if ((results[0]?.changes ?? 0) === 0) {
-    // 読んでから書くまでに、閉じたか、タスクが消えたか完了したか、親か直前の行が消えたか、別の要求が先に親を移した
+    // 読んでから書くまでに、閉じたか、タスクが消えたか完了したか、親か直前の行が消えたか、親が完了したか、
+    // 別の要求が先に親を移したか直前の行を動かした
     await throwIfClosed(db, workspaceId);
     const latest = await movingTask(db, workspaceId, taskId);
     if (latest === undefined) throw new ApiError(404, 'not_found');
-    if (latest.completed_at !== null) throw new ApiError(409, 'conflict');
-    if (parentId !== null) await readParentStory(db, workspaceId, parentId);
+    if (latest.completed_at !== null) throw moveConflict('task_completed');
+    if (parentId !== null) await readMoveParent(db, workspaceId, parentId, parentChanged);
     if (afterId != null) await planTaskMove(db, workspaceId, parentId, taskId, afterId);
-    throw new ApiError(409, 'conflict');
+    throw moveConflict('changed');
   }
   return { task_id: taskId, story_id: parentId };
 });

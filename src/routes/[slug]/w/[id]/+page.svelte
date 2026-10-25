@@ -17,6 +17,7 @@
   import { storyMove } from '../../../../shared/operations/story/index.ts';
   import type { BacklogStory, BacklogTask } from '../../../../shared/operations/task/backlog-tree.ts';
   import { taskComplete, taskMove } from '../../../../shared/operations/task/index.ts';
+  import { moveConflictReasonOf } from '../../../../shared/operations/task/task-move.ts';
   import type { PageProps } from './$types';
 
   // ワークスペースの画面（backlog.html の木と起票）。最上段は見本どおり「親のないストーリー → 親のないタスク」の2段で、
@@ -25,6 +26,7 @@
   // 並べ替えは、行の「上へ」「下へ」と Alt と ↑ ↓ で、同じ親（親なしのタスク、親のないストーリーはそれぞれの段）の中で1つ動かす。
   // タスクの行の「親を移す」は、ダイアログで選んだ親の末尾へ移す。どちらも先に画面を動かしてから送り、送る順は守る（moveQueue）。
   // 失敗したら理由を知らせて読み直す。動かした並びは読み直すまで画面に持ち、読み直したら捨てる（読み直した値が送った後の並び）。
+  // 送り終える前に木が読み直されたら、送り終えた後にもう一度読み直す（捨てた移動があれば知らせる）。
   // 見出しは見本どおり画面の名前（掲示板／バックログ）で、小見出しがワークスペースの名前。見出しの右に、ストーリーを作るボタンと起票のボタン。
   // 閉じていれば、作る操作と完了の操作は出さない（ストーリーのダイアログは読み取り専用で開く。閉じていることはワークスペースの枠の帯が伝える）。
   // 完了にした行は、読み直すまで完了の印を付けてその場に残し、その行のポイントを親の「完了」に即時に足す。折りたたみの件数は読み直した値なので、その行は読み直すまで入らない。
@@ -224,31 +226,107 @@
     return { ids: next, index: to, after: to === 0 ? null : next[to - 1]! };
   }
 
-  // 動かす操作を、押した順に送る。失敗したら理由を知らせて読み直す（画面で動かした並びは、読み直しで捨てる）
-  function send(call: () => Promise<ApiResult<unknown>>, messages: { gone: string; conflict: string }): void {
+  // 画面で動かした並びを捨てる。まだ送っていない操作も、世代を進めて捨てる
+  function discardMoves(): void {
+    movedParents = {};
+    taskOrders = {};
+    storyOrder = null;
+    moveGeneration++;
+  }
+
+  // 木を読み直す。読み直しが失敗しても、送れなかった並びを出し続けない
+  async function reloadTree(): Promise<void> {
+    try {
+      await invalidateAll();
+    } finally {
+      discardMoves();
+    }
+  }
+
+  // 失敗した移動の理由。409 の conflict は、サーバーが details.reason に載せた理由で分ける
+  function moveFailureMessage(result: { status: number; error: { code: string; details?: unknown } | null }): string {
+    if (result.status === 404) return t('moveGone');
+    if (result.status !== 409) return t('moveFailed');
+    if (result.error?.code === 'workspace_closed') return t('workspaceClosedReadOnly', { workspace: t('workspace') });
+    switch (moveConflictReasonOf(result.error?.details)) {
+      case 'parent_completed':
+        return t('moveParentDone', { done: t('done'), story: t('story') });
+      case 'task_completed':
+        return t('moveTaskDone', { task: t('task'), done: t('done') });
+      case 'changed':
+        return t('moveConflict');
+      default:
+        return t('moveFailed');
+    }
+  }
+
+  // フォーカスのある行（data-row-id）と、その行の中で何番目の操作か。読み直した後に同じ操作へ戻す
+  function focusedControl(): { rowId: string; index: number } | null {
+    const active = document.activeElement;
+    const row = active instanceof HTMLElement ? active.closest<HTMLElement>('[data-row-id]') : null;
+    if (row === null || !(active instanceof HTMLElement)) return null;
+    const index = [...row.querySelectorAll<HTMLElement>('a, button')].indexOf(active);
+    return index === -1 ? null : { rowId: row.dataset.rowId ?? '', index };
+  }
+
+  async function restoreFocus(saved: { rowId: string; index: number } | null, lost: boolean): Promise<void> {
+    if (saved === null && !lost) return;
+    await tick();
+    const row =
+      saved === null
+        ? null
+        : [...document.querySelectorAll<HTMLElement>('[data-row-id]')].find((el) => el.dataset.rowId === saved.rowId);
+    const control = saved === null ? undefined : row?.querySelectorAll<HTMLElement>('a, button')[saved.index];
+    (control ?? document.querySelector<HTMLElement>('h1.page-title'))?.focus();
+  }
+
+  // 押したが、まだ結果を受け取っていない移動の数（待っているものと送っているもの）。
+  // その間に木が読み直されたら（reloadedWhileMoving）、送っている移動が読み直しの後に届いて古い並びが残りうるので、
+  // 送り終えた後にもう一度読み直す。待っていて捨てた移動（droppedMoves）があれば、そのことを知らせる
+  let pendingMoves = 0;
+  let reloadedWhileMoving = false;
+  let droppedMoves = 0;
+  $effect.pre(() => {
+    void tree;
+    if (pendingMoves > 0) reloadedWhileMoving = true;
+  });
+
+  async function settleMoves(): Promise<void> {
+    if (pendingMoves > 0 || !reloadedWhileMoving) return;
+    reloadedWhileMoving = false;
+    const dropped = droppedMoves;
+    droppedMoves = 0;
+    await reloadTree();
+    if (dropped > 0) showToast(t('moveReloaded'), 'alert');
+  }
+
+  // 動かす操作を、押した順に送る。失敗したら理由を知らせて読み直し、フォーカスを同じ操作（無ければ見出し）へ戻す
+  function send(call: () => Promise<ApiResult<unknown>>): void {
     const mine = moveGeneration;
     const workspaceId = workspace?.id;
+    pendingMoves++;
     moveQueue = moveQueue
       .then(async () => {
-        if (mine !== moveGeneration) return;
-        const result = await call();
-        // 送っている間に別のワークスペースへ移っていたら、古い応答で状態を触らない
-        if (result.ok || workspaceId !== page.params.id) return;
-        if (result.status !== 401) {
-          const closed = result.status === 409 && result.error?.code === 'workspace_closed';
-          showToast(
-            result.status === 404
-              ? messages.gone
-              : closed
-                ? t('workspaceClosedReadOnly', { workspace: t('workspace') })
-                : result.status === 409
-                  ? messages.conflict
-                  : t('moveFailed'),
-            'alert',
-          );
+        let result: ApiResult<unknown>;
+        try {
+          if (mine !== moveGeneration) {
+            droppedMoves++;
+            return;
+          }
+          result = await call();
+        } finally {
+          pendingMoves--;
         }
-        // 401 は、枠の読み直しがログインの画面へ移す
-        await invalidateAll();
+        // 送っている間に別のワークスペースへ移っていたら、古い応答で状態を触らない
+        if (!result.ok && workspaceId === page.params.id) {
+          // 401 は、枠の読み直しがログインの画面へ移す
+          if (result.status !== 401) showToast(moveFailureMessage(result), 'alert');
+          const saved = focusedControl();
+          const lost = document.activeElement === null || document.activeElement === document.body;
+          await reloadTree();
+          await restoreFocus(saved, lost);
+        }
+        await settleMoves();
       })
       .catch(() => {});
   }
@@ -262,16 +340,17 @@
       task.id,
       delta,
     );
-    if (next === null) return;
+    // 端で Alt と ↑ ↓ を押したときは、動かせないことを読み上げる
+    if (next === null) {
+      void announce(delta < 0 ? t('moveAtTop') : t('moveAtBottom'));
+      return;
+    }
     const restore = holdFocus();
     taskOrders = { ...taskOrders, [key]: next.ids };
     void restore();
     void announce(t('moveAnnounced', { title: task.title, index: next.index + 1 }));
     const input = { workspace_id: workspace.id, task_id: task.id, story_id: parentId, after_task_id: next.after };
-    send(() => callOperation(taskMove, input, { slug: page.params.slug ?? '' }), {
-      gone: t('taskGone', { task: t('task') }),
-      conflict: t('moveConflict'),
-    });
+    send(() => callOperation(taskMove, input, { slug: page.params.slug ?? '' }));
   }
 
   function reorderStory(story: BacklogStory, delta: -1 | 1): void {
@@ -281,16 +360,16 @@
       story.id,
       delta,
     );
-    if (next === null) return;
+    if (next === null) {
+      void announce(delta < 0 ? t('moveAtTop') : t('moveAtBottom'));
+      return;
+    }
     const restore = holdFocus();
     storyOrder = next.ids;
     void restore();
     void announce(t('moveAnnounced', { title: story.title, index: next.index + 1 }));
     const input = { workspace_id: workspace.id, story_id: story.id, epic_id: null, after_story_id: next.after };
-    send(() => callOperation(storyMove, input, { slug: page.params.slug ?? '' }), {
-      gone: t('storyGone', { story: t('story') }),
-      conflict: t('moveConflict'),
-    });
+    send(() => callOperation(storyMove, input, { slug: page.params.slug ?? '' }));
   }
 
   function openMoveDialog(task: BacklogTask, trigger: HTMLElement): void {
@@ -314,10 +393,7 @@
         : t('moveAnnouncedUnder', { title: task.title, story: t('story'), parent: parent.title }),
     );
     const input = { workspace_id: workspace.id, task_id: task.id, story_id: storyId };
-    send(() => callOperation(taskMove, input, { slug: page.params.slug ?? '' }), {
-      gone: t('taskGone', { task: t('task') }),
-      conflict: storyId === null ? t('moveConflict') : t('moveParentDone', { done: t('done'), story: t('story') }),
-    });
+    send(() => callOperation(taskMove, input, { slug: page.params.slug ?? '' }));
   }
 </script>
 

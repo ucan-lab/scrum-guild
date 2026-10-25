@@ -52,12 +52,12 @@ SQ.mount("backlog", () => {
       <select class="select" id="f-conn" aria-label="${t("connection")}"><option>${t("connection")}: すべて</option><option>ミナトの Backlog</option><option>ミナトの GitHub</option></select>
       <select class="select" id="f-src" aria-label="取り込み元のプロジェクトとリポジトリ"><option>プロジェクト・リポジトリ: すべて</option><option>SHOP（Backlog）</option><option>acme/shop（GitHub）</option></select>
     </div>
-    <p class="action-note">上にあるものほど優先します。行はドラッグで、キーボードでは行を選んで Alt と ↑ ↓ で並べ替えます。</p>
+    <p class="action-note">上にあるものほど優先します。行の「上へ」「下へ」か、行の中にフォーカスを置いて Alt と ↑ ↓ で並べ替えます。</p>
     <div class="tree">
       ${treeEpic("e1")}
       ${treeEpic("e2")}
-      ${treeStory("s4", true)}
-      <div>${rootTasks.map((x) => entry(x, { showAssignee: true })).join("")}
+      ${treeStory("s4", true, { order: { first: true, last: true } })}
+      <div>${rootTasks.map((x, i) => entry(x, { showAssignee: true, order: { first: i === 0, last: i === rootTasks.length - 1, parent: true } })).join("")}
         ${rootDone ? `<p class="tree-folded is-root">親のない完了 ${rootDone} 件を折りたたんでいます</p>` : ""}</div>
     </div>
     </section>`;

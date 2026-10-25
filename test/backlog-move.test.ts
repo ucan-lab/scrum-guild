@@ -6,20 +6,62 @@ import { storyMove } from '../src/shared/operations/story/index.ts';
 import { taskMove } from '../src/shared/operations/task/index.ts';
 import { createApp } from '../src/server/app.ts';
 import { orgDb, verifyWorkspace } from '../src/server/db/index.ts';
+import { envWithD1Hooks } from '../src/server/db/testing.ts';
 import { implementedOperations } from '../src/server/operations/index.ts';
+import { MAX_TIES } from '../src/server/operations/move-position.ts';
 import { taskMoveOperation } from '../src/server/operations/task.ts';
 import { createCategory, createEpic, createStory, createTask } from './factories.ts';
 import { errorCodeOf, post } from './operations/harness.ts';
-import { createTarget, type Person, type Target } from './operations/world.ts';
+import { createTarget, testEnv, type Person, type Target } from './operations/world.ts';
 
 const app = createApp(implementedOperations);
 
-function moveTask(target: Target, body: Record<string, unknown>, person: Person = target.member) {
+function moveTask(
+  target: Target,
+  body: Record<string, unknown>,
+  person: Person = target.member,
+  requestEnv: Env = testEnv,
+) {
   return post(app, taskMove, {
     slug: target.slug,
     token: person.token,
     body: { workspace_id: target.workspace.id, ...body },
+    env: requestEnv,
   });
+}
+
+// 応答のエラーの code と、409 の理由（details.reason）
+async function errorOf(res: Response) {
+  const body = (await res.json()) as { error: { code: string; details?: { reason?: string } } };
+  return { code: body.error.code, reason: body.error.details?.reason };
+}
+
+// 読んでから書くまでに別の要求が割り込んだ状況を作る。match に当たる問い合わせが答えた直後に、一度だけ change を流す
+function racing(match: (sql: string) => boolean, change: () => Promise<void>): Env {
+  let done = false;
+  return envWithD1Hooks(testEnv, {
+    afterQuery: async (sql) => {
+      if (done || !match(sql)) return;
+      done = true;
+      await change();
+    },
+  });
+}
+
+// 移すタスクの読み取り（今の親の題を結ぶ）と、直前の行の読み取り
+const readsMovingTask = (sql: string) => sql.includes('"story_title"');
+const readsAfterRow = (sql: string) =>
+  sql.startsWith('select "tasks"."id", "tasks"."position" from "tasks"') &&
+  sql.includes('"tasks"."id" = ?') &&
+  !sql.includes('order by');
+
+async function updateTask(target: Target, id: string, values: Record<string, unknown>) {
+  const db = orgDb(env, target.organization.verified);
+  await db.run(
+    db.statement((q) =>
+      q.updateTable('tasks').set(values).where('id', '=', id).where('workspace_id', '=', target.workspace.id),
+    ),
+  );
 }
 
 function moveStory(target: Target, body: Record<string, unknown>, person: Person = target.member) {
@@ -252,7 +294,7 @@ describe('task-move の親の移動', () => {
     const [moving] = await rootTasks(target, ['a0']);
     const res = await moveTask(target, { task_id: moving, story_id: done.id });
     expect(res.status).toBe(409);
-    expect(await errorCodeOf(res)).toBe('conflict');
+    expect(await errorOf(res)).toEqual({ code: 'conflict', reason: 'parent_completed' });
     expect(await taskOrder(target, done.id)).toEqual([]);
     expect(await logsOf(target, moving!)).toEqual([]);
   });
@@ -267,7 +309,7 @@ describe('task-move で断るもの', () => {
     });
     const res = await moveTask(target, { task_id: done.id, story_id: null, after_task_id: null });
     expect(res.status).toBe(409);
-    expect(await errorCodeOf(res)).toBe('conflict');
+    expect(await errorOf(res)).toEqual({ code: 'conflict', reason: 'task_completed' });
   });
 
   test('閉じたワークスペースでは 409 の workspace_closed', async () => {
@@ -436,7 +478,7 @@ describe('story-move', () => {
       const epic = await createEpic(target.organization, target.workspace.id, adminId, overrides);
       const res = await moveStory(target, { story_id: moving.id, epic_id: epic.id });
       expect(res.status).toBe(409);
-      expect(await errorCodeOf(res)).toBe('conflict');
+      expect(await errorOf(res)).toEqual({ code: 'conflict', reason: 'parent_completed' });
       expect(await storyOrder(target, epic.id)).toEqual([]);
     }
   });
@@ -472,5 +514,124 @@ describe('story-move', () => {
     const res = await moveStory(target, { story_id: story.id, epic_id: null, after_story_id: null }, target.admin);
     expect(res.status).toBe(409);
     expect(await errorCodeOf(res)).toBe('workspace_closed');
+  });
+
+  test('完了したエピックの下でも、同じエピックの中の並べ替えはできる', async () => {
+    const target = await createTarget();
+    const adminId = target.admin.userId!;
+    const epic = await createEpic(target.organization, target.workspace.id, adminId, {
+      completed_at: '2026-10-21T00:00:00.000Z',
+      completed_by: adminId,
+    });
+    const first = await createStory(target.organization, target.workspace.id, adminId, { epic_id: epic.id });
+    const second = await createStory(target.organization, target.workspace.id, adminId, {
+      epic_id: epic.id,
+      position: 'a1',
+    });
+    const res = await moveStory(target, { story_id: second.id, epic_id: epic.id, after_story_id: null });
+    expect(res.status).toBe(200);
+    expect(await storyOrder(target, epic.id)).toEqual([second.id, first.id]);
+  });
+});
+
+describe('task-move の親と直前の行の範囲', () => {
+  test('完了したストーリーの下でも、同じストーリーの中の並べ替えはできる', async () => {
+    const target = await createTarget();
+    const done = await createStory(target.organization, target.workspace.id, target.admin.userId!, {
+      completed_at: '2026-10-21T00:00:00.000Z',
+      completed_by: target.admin.userId,
+    });
+    const [first, second] = await rootTasks(target, ['a0', 'a1'], done.id);
+    const res = await moveTask(target, { task_id: second, story_id: done.id, after_task_id: null });
+    expect(res.status).toBe(200);
+    expect(await taskOrder(target, done.id)).toEqual([second, first]);
+    expect(await logsOf(target, second!)).toEqual([]);
+  });
+
+  test('同じ組織の別のワークスペースの親と直前の行は 404', async () => {
+    const target = await createTarget();
+    const adminId = target.admin.userId!;
+    const otherStory = await createStory(target.organization, target.otherWorkspace.id, adminId);
+    const otherTask = await createTask(target.organization, target.otherWorkspace.id, adminId);
+    const [moving] = await rootTasks(target, ['a0']);
+    for (const body of [
+      { task_id: moving, story_id: otherStory.id },
+      { task_id: moving, story_id: null, after_task_id: otherTask.id },
+    ]) {
+      const res = await moveTask(target, body);
+      expect(res.status, JSON.stringify(body)).toBe(404);
+      expect(await errorCodeOf(res)).toBe('not_found');
+    }
+  });
+
+  test('受信箱のタスクは 404', async () => {
+    const target = await createTarget();
+    const inbox = await createTask(target.organization, target.workspace.id, target.admin.userId!, {
+      tray: 'inbox',
+      is_imported: 1,
+      created_by: null,
+    });
+    const res = await moveTask(target, { task_id: inbox.id, story_id: null });
+    expect(res.status).toBe(404);
+    expect(await errorCodeOf(res)).toBe('not_found');
+  });
+
+  test('同じ値の続きが上限を超えたら、振り直さず 409（ties）', async () => {
+    const target = await createTarget();
+    const ties = (
+      await rootTasks(
+        target,
+        Array.from({ length: MAX_TIES + 2 }, () => 'a1'),
+      )
+    ).sort();
+    const [moving] = await rootTasks(target, ['a2']);
+    const res = await moveTask(target, { task_id: moving, story_id: null, after_task_id: ties[0] });
+    expect(res.status).toBe(409);
+    expect(await errorOf(res)).toEqual({ code: 'conflict', reason: 'ties' });
+    expect((await rowOf(target, 'tasks', moving!))!.position).toBe('a2');
+  });
+});
+
+describe('task-move で、読んでから書くまでに別の要求が割り込んだとき', () => {
+  test('別の要求が先に親を移したら 409（changed）で、振り直しも履歴も書かない', async () => {
+    const target = await createTarget();
+    const story = await createStory(target.organization, target.workspace.id, target.admin.userId!);
+    const [head] = await rootTasks(target, ['a0']);
+    const ties = (await rootTasks(target, ['a1', 'a1'])).sort();
+    const [moving] = await rootTasks(target, ['a2']);
+    const raced = racing(readsMovingTask, () => updateTask(target, moving!, { story_id: story.id }));
+    const res = await moveTask(
+      target,
+      { task_id: moving, story_id: null, after_task_id: ties[0] },
+      target.member,
+      raced,
+    );
+    expect(res.status).toBe(409);
+    expect(await errorOf(res)).toEqual({ code: 'conflict', reason: 'changed' });
+    // 同じ値の続きは振り直していない
+    for (const id of ties) expect((await rowOf(target, 'tasks', id))!.position).toBe('a1');
+    expect(await taskOrder(target, null)).toEqual([head, ...ties]);
+    expect(await taskOrder(target, story.id)).toEqual([moving]);
+    expect(await logsOf(target, moving!)).toEqual([]);
+  });
+
+  test('直前の行が動いていたら 409（changed）', async () => {
+    const target = await createTarget();
+    const [a, b, c] = await rootTasks(target, ['a0', 'a1', 'a2']);
+    const raced = racing(readsAfterRow, () => updateTask(target, a!, { position: 'a5' }));
+    const res = await moveTask(target, { task_id: c, story_id: null, after_task_id: a }, target.member, raced);
+    expect(res.status).toBe(409);
+    expect(await errorOf(res)).toEqual({ code: 'conflict', reason: 'changed' });
+    expect(await taskOrder(target, null)).toEqual([b, c, a]);
+  });
+
+  test('直前の行が消えていたら 404', async () => {
+    const target = await createTarget();
+    const [a, b, c] = await rootTasks(target, ['a0', 'a1', 'a2']);
+    const raced = racing(readsAfterRow, () => updateTask(target, a!, { deleted_at: '2026-10-22T00:00:00.000Z' }));
+    const res = await moveTask(target, { task_id: c, story_id: null, after_task_id: a }, target.member, raced);
+    expect(res.status).toBe(404);
+    expect(await errorCodeOf(res)).toBe('not_found');
+    expect(await taskOrder(target, null)).toEqual([b, c]);
   });
 });
