@@ -290,8 +290,30 @@ export const workspaceInfoOperation = implement(workspaceInfo, async ({ db, work
   };
 });
 
-// 閉じると開き直しの書き込み。change_logs の INSERT を先に、workspaces の UPDATE を後に置き、2つが同じ条件を持つ:
-// ワークスペースが今 before の状態（null は開いている、日時はその日時で閉じている）で、操作する人が同じ組織の無効でない管理者。
+// 閉じると開き直しの文が持つ条件。ワークスペースが今 before の状態（null は開いている、日時はその日時で閉じている）であること（inState）と、
+// 操作する人が同じ組織の無効でない管理者であること（isAdmin）。履歴の INSERT と workspaces の UPDATE が同じ関数から組む。
+// UPDATE の中は、update の式の組み立て（eb）が selectFrom の型で adminUsers に渡せないため、文の QueryCreator（q）から組む
+function closeGuard(
+  from: Pick<QueryCreator<Tables>, 'selectFrom'>,
+  organizationId: string,
+  workspaceId: string,
+  actorUserId: string,
+  before: string | null,
+) {
+  return {
+    inState: from
+      .selectFrom('workspaces')
+      .select('workspaces.id')
+      .where('workspaces.id', '=', workspaceId)
+      .where('workspaces.organization_id', '=', organizationId)
+      .where((eb) =>
+        before === null ? eb('workspaces.closed_at', 'is', null) : eb('workspaces.closed_at', '=', before),
+      ),
+    isAdmin: adminUsers(from, organizationId).select('users.id').where('users.id', '=', actorUserId),
+  };
+}
+
+// 閉じると開き直しの書き込み。change_logs の INSERT を先に、workspaces の UPDATE を後に置き、2つが同じ条件（closeGuard）を持つ。
 // 1回の batch は1つのトランザクションで文が順に走るので、先の文が通ったときは UPDATE も同じ状態を見て必ず通り、
 // 通らなかったときは UPDATE も通らない。UPDATE の後に履歴の条件を置くと、同じ時刻の2つの要求の両方に履歴が入りうる。
 // 当たらなかったときは読み直して、状態が変わっていれば 409、そうでなければ（呼んだ人が管理者でなくなった）404
@@ -338,23 +360,10 @@ async function writeClosedState(
               eb.val(JSON.stringify({ closed_at: [before, after] })).as('changes_json'),
               eb.val(stamp).as('created_at'),
             ])
-            .where((eb) =>
-              eb.and([
-                eb.exists(
-                  eb
-                    .selectFrom('workspaces')
-                    .select('workspaces.id')
-                    .where('workspaces.id', '=', workspaceId)
-                    .where('workspaces.organization_id', '=', organizationId)
-                    .where((web) =>
-                      before === null
-                        ? web('workspaces.closed_at', 'is', null)
-                        : web('workspaces.closed_at', '=', before),
-                    ),
-                ),
-                eb.exists(adminUsers(eb, organizationId).select('users.id').where('users.id', '=', actorUserId)),
-              ]),
-            ),
+            .where((eb) => {
+              const guard = closeGuard(eb, organizationId, workspaceId, actorUserId, before);
+              return eb.and([eb.exists(guard.inState), eb.exists(guard.isAdmin)]);
+            }),
         ),
     ),
     db.statement((q) =>
@@ -363,10 +372,10 @@ async function writeClosedState(
         .set({ closed_at: after, updated_at: stamp })
         .where('workspaces.id', '=', workspaceId)
         .where('workspaces.organization_id', '=', organizationId)
-        .where((eb) =>
-          before === null ? eb('workspaces.closed_at', 'is', null) : eb('workspaces.closed_at', '=', before),
-        )
-        .where((eb) => eb.exists(adminUsers(q, organizationId).select('users.id').where('users.id', '=', actorUserId))),
+        .where((eb) => {
+          const guard = closeGuard(q, organizationId, workspaceId, actorUserId, before);
+          return eb.and([eb.exists(guard.inState), eb.exists(guard.isAdmin)]);
+        }),
     ),
   ]);
   if ((results[1]?.changes ?? 0) > 0) return stamp;

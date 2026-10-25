@@ -7,14 +7,7 @@ import { createApp } from '../src/server/app.ts';
 import { ApiError } from '../src/server/errors.ts';
 import { implement } from '../src/server/operations/implement.ts';
 import { implementedOperations } from '../src/server/operations/index.ts';
-import {
-  assertPointersCover,
-  checkRowIsolation,
-  defineOperationChecks,
-  errorCodeOf,
-  inputFor,
-  post,
-} from './operations/harness.ts';
+import { assertPointersCover, checkRowIsolation, defineOperationChecks, post } from './operations/harness.ts';
 import { operatorGithub, pointers } from './operations/pointers.ts';
 import { provisionalOperations, provisionalPointers, renameWorkspace, taskTitle } from './operations/provisional.ts';
 import { createTarget } from './operations/world.ts';
@@ -116,30 +109,19 @@ assertPointersCover(implementedOperations, pointers);
 describe('本番の一覧の分離と権限', () =>
   defineOperationChecks(implementedOperations, pointers, { fetcher: operatorGithub.fetcher }));
 
-// 一覧のうち、allowClosed の無いワークスペースの下の write を、閉じたワークスペースで呼ぶ。一覧に足した操作も自動で入る
+// allowClosed の無いワークスペースの下の write を、閉じたワークスペースで呼んで 409 の workspace_closed になることは、
+// 一覧の各操作に当てる検査（defineOperationChecks。test/operations/harness.ts）が確かめる。
+// ここでは、その検査が対象にする操作の範囲が、期待どおりであることだけを見る
 describe('本番の閉じたワークスペースへの書き込み', () => {
   const guarded = implementedOperations
     .map((operation) => operation.definition)
     .filter(isWorkspaceOperation)
     .filter((definition) => definition.mode === 'write' && definition.allowClosed !== true);
-  const app = createApp(implementedOperations, { fetcher: operatorGithub.fetcher });
 
   test('止める書き込みの一覧は、タスクの作成と完了を含み、開き直す操作を含まない', () => {
     const names = guarded.map((definition) => definition.name);
     expect(names).toEqual(expect.arrayContaining(['task-create', 'task-complete', 'workspace-close']));
     expect(names).not.toContain('workspace-reopen');
-  });
-
-  test.each(guarded.map((definition) => definition.name))('%s は 409 の workspace_closed で断る', async (name) => {
-    const definition = guarded.find((candidate) => candidate.name === name)!;
-    const closed = await createTarget({ closed: true });
-    const res = await post(app, definition, {
-      slug: closed.slug,
-      token: closed.admin.token,
-      body: await inputFor(pointers, definition, closed),
-    });
-    expect(res.status).toBe(409);
-    expect(await errorCodeOf(res)).toBe('workspace_closed');
   });
 });
 

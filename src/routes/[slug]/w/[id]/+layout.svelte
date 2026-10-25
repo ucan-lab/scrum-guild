@@ -39,7 +39,7 @@
       <span>
         {t('workspaceClosedBanner', { date: formatLocalDate(workspace.closedAt) })}
         {#if isAdmin}
-          <a href={resolve('/[slug]/admin', { slug: page.params.slug ?? '' })}
+          <a href={resolve('/[slug]/admin', { slug: data.slug })}
             >{t('workspaceClosedBannerLink', { page: t('pageOrgAdmin') })}</a
           >
         {/if}

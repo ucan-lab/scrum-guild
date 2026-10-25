@@ -658,8 +658,8 @@ export const dictionary = defineDictionary({
   workspaceReopenLabel: organization('「{name}」を開き直す', '「{name}」を開き直す'),
   workspaceCloseTitle: organization('{workspace}を閉じる', '{workspace}を閉じる'),
   workspaceCloseText: organization(
-    '「{name}」を閉じると読み取り専用になり、{task}の作成や{done}などの書き込みができなくなります。閉じた後も、この画面から開き直せます。',
-    '「{name}」を閉じると読み取り専用になり、{task}の作成や{done}などの書き込みができなくなります。閉じた後も、この画面から開き直せます。',
+    '「{name}」を閉じると読み取り専用になり、中の書き込みはすべてできなくなります。閉じた後も、この画面から開き直せます。',
+    '「{name}」を閉じると読み取り専用になり、中の書き込みはすべてできなくなります。閉じた後も、この画面から開き直せます。',
   ),
   workspaceClosing: organization('閉じています', '閉じています'),
   workspaceReopening: organization('開き直しています', '開き直しています'),
@@ -673,8 +673,20 @@ export const dictionary = defineDictionary({
     '{workspace}を開き直せませんでした。もう一度試してください。',
     '{workspace}を開き直せませんでした。もう一度試してください。',
   ),
-  workspaceAlreadyClosed: organization('「{name}」は、すでに閉じています', '「{name}」は、すでに閉じています'),
-  workspaceAlreadyOpen: organization('「{name}」は、すでに開いています', '「{name}」は、すでに開いています'),
+  // 別の画面で先に操作されていた（409）。閉じた状態か開いた状態かは言い切らず、読み直した一覧を見てもらう
+  workspaceStateChanged: organization(
+    '「{name}」の状態が変わっていました。一覧を更新しました',
+    '「{name}」の状態が変わっていました。一覧を更新しました',
+  ),
+  // 見つからない、または操作できない（404、403）
+  workspaceUnavailable: organization(
+    '「{name}」を操作できませんでした。見つからないか、操作できない状態です。一覧を更新しました',
+    '「{name}」を操作できませんでした。見つからないか、操作できない状態です。一覧を更新しました',
+  ),
+  workspaceListRefreshFailed: organization(
+    '{workspace}の一覧を更新できませんでした',
+    '{workspace}の一覧を更新できませんでした',
+  ),
   workspaceListLoadFailed: organization(
     '{workspace}の一覧を読み込めませんでした',
     '{workspace}の一覧を読み込めませんでした',

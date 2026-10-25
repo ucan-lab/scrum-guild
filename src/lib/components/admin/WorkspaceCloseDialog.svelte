@@ -10,7 +10,7 @@
   // 送っている間は、「閉じる」を押しても無視し（aria-disabled）、ダイアログも閉じられない。二重送信はそれだけで防ぐ。
   // 結果は onfinish で親に渡し、トーストと一覧の読み直しは親が行う。送り始めた後に部品が外れた（画面を離れた、組織が替わった）ときは、
   // 古い応答を親に渡さず、状態も更新しない（generation）
-  type Outcome = 'closed' | 'already_closed' | 'unauthenticated';
+  type Outcome = 'closed' | 'state_changed' | 'unavailable' | 'unauthenticated';
   let { slug, onfinish }: { slug: string; onfinish: (outcome: Outcome) => void } = $props();
 
   let open = $state(false);
@@ -56,9 +56,13 @@
       } else if (result.status === 401) {
         onfinish('unauthenticated');
       } else if (result.status === 409 && result.error?.code === 'workspace_closed') {
-        // 別の画面で先に閉じられていた。閉じた状態を読み直してもらう
+        // 別の画面で先に閉じられていた。閉じ直されたのか、開き直されたのかは言い切らず、読み直した一覧を見てもらう
         open = false;
-        onfinish('already_closed');
+        onfinish('state_changed');
+      } else if (result.status === 404 || result.status === 403) {
+        // 見つからない、または操作できない。もう一度試しても直らないので、理由を知らせて閉じ、一覧を読み直してもらう
+        open = false;
+        onfinish('unavailable');
       } else {
         submitError = t('workspaceCloseFailed', { workspace: t('workspace') });
       }
@@ -77,7 +81,7 @@
   dismissible={!submitting}
   title={t('workspaceCloseTitle', { workspace: t('workspace') })}
 >
-  <p>{t('workspaceCloseText', { name: target?.name ?? '', task: t('task'), done: t('done') })}</p>
+  <p>{t('workspaceCloseText', { name: target?.name ?? '' })}</p>
   {#if submitError !== null}
     <div class="callout is-danger" role="alert"><Icon name="alert" /><span>{submitError}</span></div>
   {/if}

@@ -43,6 +43,8 @@ test.describe('管理者（あおば開発のミナト）', () => {
     const dialog = page.getByRole('dialog', { name: 'パーティを閉じる' });
     await expect(dialog).toContainText('読み取り専用');
     await expect(dialog).toContainText('開き直せます');
+    // 本文は言葉づかいに依らない（対象のワークスペースの名前だけを埋める）
+    await expect(dialog).not.toContainText('{');
     await expect(dialog.locator('.is-danger')).toHaveCount(0);
     // やめれば何も起きない
     await dialog.getByRole('button', { name: 'やめる' }).click();
@@ -67,6 +69,14 @@ test.describe('管理者（あおば開発のミナト）', () => {
     const banner = page.locator('.callout');
     await expect(banner).toHaveCount(1);
     await expect(banner).toContainText(BANNER);
+    // リンクは本文と同じ色（既定のリンクの青にしない）で、下線を引く
+    const link = banner.getByRole('link', { name: '組織の管理で開き直す' });
+    const colors = await banner.evaluate((el) => [
+      getComputedStyle(el.querySelector('a')!).color,
+      getComputedStyle(el.querySelector('span')!).color,
+    ]);
+    expect(colors[0]).toBe(colors[1]);
+    await expect(link).toHaveCSS('text-decoration-line', 'underline');
     await expect(banner.getByRole('button')).toHaveCount(0);
     await expect(page.getByRole('button', { name: '依頼を出す' })).toHaveCount(0);
     // 見出しの右上の「閉じた <日>」の印は、帯と重なるので出さない
@@ -150,12 +160,101 @@ test.describe('管理者（あおば開発のミナト）', () => {
     });
     await dialog.getByRole('button', { name: `「${name}」を閉じる` }).click();
     await expect(dialog).toBeHidden();
-    await expect(page.getByRole('status').filter({ hasText: `「${name}」は、すでに閉じています` })).toBeVisible();
+    // 閉じ直されたのか、開き直されたのかは言い切らない
+    await expect(page.getByRole('status').filter({ hasText: `「${name}」の状態が変わっていました` })).toBeVisible();
     await expect(row.locator('.chip')).toHaveText(/^閉じた /);
 
     await page.unroute('**/api/aoba/workspace-close');
     await row.getByRole('button', { name: `「${name}」を開き直す` }).click();
     await expect(row.locator('.chip')).toHaveCount(0);
+  });
+
+  // 受託開発チームを、一覧の上だけで閉じた状態にする（seed のワークスペースを閉じない）。操作は route で差し替える
+  const SEED_NAME = '受託開発チーム';
+  async function showSeedWorkspaceClosed(page: Page, onList: (call: number) => 'real' | 'fail') {
+    let calls = 0;
+    await page.route('**/api/aoba/workspace-list', async (route) => {
+      calls++;
+      if (onList(calls) === 'fail') {
+        return route.fulfill({ status: 500, json: { error: { code: 'internal', message: 'x' } } });
+      }
+      const response = await route.fetch();
+      const body = (await response.json()) as { workspaces: { name: string; closed_at: string | null }[] };
+      for (const workspace of body.workspaces) {
+        if (workspace.name === SEED_NAME) workspace.closed_at = '2026-10-22T00:00:00.000Z';
+      }
+      return route.fulfill({ response, json: body });
+    });
+    return () => calls;
+  }
+
+  test('390px の幅でも、操作の列は右端に固定されて見える', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 800 });
+    await page.goto('/aoba/admin');
+    const button = page
+      .locator('tbody tr', { hasText: SEED_NAME })
+      .getByRole('button', { name: `「${SEED_NAME}」を閉じる` });
+    // 縦には、その行まで動かす。横には、表がはみ出していても動かさずに見える
+    await button.scrollIntoViewIfNeeded();
+    await expect(button).toBeInViewport({ ratio: 1 });
+    // 押す所は 44px 以上
+    expect((await button.boundingBox())?.height).toBeGreaterThanOrEqual(44);
+  });
+
+  test('閉じる確認で 404 を受けたら、理由を出してダイアログを閉じ、一覧を読み直す', async ({ page }) => {
+    await page.route('**/api/aoba/workspace-close', (route) =>
+      route.fulfill({ status: 404, json: { error: { code: 'not_found', message: 'x' } } }),
+    );
+    let listCalls = 0;
+    await page.route('**/api/aoba/workspace-list', (route) => {
+      listCalls++;
+      return route.continue();
+    });
+    await page.goto('/aoba/admin');
+    const row = page.locator('tbody tr', { hasText: SEED_NAME });
+    await row.getByRole('button', { name: `「${SEED_NAME}」を閉じる` }).click();
+    const dialog = page.getByRole('dialog', { name: 'パーティを閉じる' });
+    await dialog.getByRole('button', { name: `「${SEED_NAME}」を閉じる` }).click();
+
+    await expect(dialog).toBeHidden();
+    await expect(page.getByRole('status').filter({ hasText: `「${SEED_NAME}」を操作できませんでした` })).toBeVisible();
+    await expect.poll(() => listCalls).toBe(2);
+  });
+
+  test('開き直しが 409 の conflict になったら、状態が変わっていたことを知らせて読み直す', async ({ page }) => {
+    const listCalls = await showSeedWorkspaceClosed(page, () => 'real');
+    await page.route('**/api/aoba/workspace-reopen', (route) =>
+      route.fulfill({ status: 409, json: { error: { code: 'conflict', message: 'x' } } }),
+    );
+    await page.goto('/aoba/admin');
+    const row = page.locator('tbody tr', { hasText: SEED_NAME });
+    await row.getByRole('button', { name: `「${SEED_NAME}」を開き直す` }).click();
+
+    // 「すでに開いています」とは言い切らない（閉じ直された場合もある）
+    await expect(
+      page.getByRole('status').filter({ hasText: `「${SEED_NAME}」の状態が変わっていました` }),
+    ).toBeVisible();
+    await expect(page.getByText('すでに開いています')).toHaveCount(0);
+    await expect.poll(listCalls).toBe(2);
+  });
+
+  test('操作の後の読み直しに失敗したら、一覧を残したまま知らせ、「もう一度試す」で読み直せる', async ({ page }) => {
+    // 2回目（操作の後の読み直し）だけ失敗させる
+    await showSeedWorkspaceClosed(page, (call) => (call === 2 ? 'fail' : 'real'));
+    await page.route('**/api/aoba/workspace-reopen', (route) =>
+      route.fulfill({ json: { workspace_id: '019a0000-0000-7000-8000-000000000401' } }),
+    );
+    await page.goto('/aoba/admin');
+    const row = page.locator('tbody tr', { hasText: SEED_NAME });
+    await row.getByRole('button', { name: `「${SEED_NAME}」を開き直す` }).click();
+
+    const notice = page.getByRole('alert').filter({ hasText: 'パーティの一覧を更新できませんでした' });
+    await expect(notice).toBeVisible();
+    // 今の一覧は残る
+    await expect(row).toBeVisible();
+    await notice.getByRole('button', { name: 'もう一度試す' }).click();
+    await expect(notice).toHaveCount(0);
+    await expect(row).toBeVisible();
   });
 
   test('一覧を読み込めないときは節の中に知らせ、「もう一度試す」で読み直せる。ほかの部分は出る', async ({ page }) => {
