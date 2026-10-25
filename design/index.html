@@ -201,7 +201,7 @@ const SECTIONS = [
       <div class="field"><span class="field-label">左のメニューの上（26px）</span><span class="brand">${SQ.brandMark}<span class="brand-name">Scrum Guild</span></span></div>
       <div class="field"><span class="field-label">枠の外の画面の先頭（34px）</span><div class="gate-brand">${SQ.brandMark}<span class="brand-name">Scrum Guild</span></div></div>
     </div>`,
-    ["マークの色はテーマで変えない。タブの favicon と画面のロゴを同じ印に見せるため。", "マークは aria-hidden にし、名前は横の文字で読ませる（読み上げは「Scrum Guild」の1回）。", "マークだけを置かない。名前は折り返さない。", "形や色を変えるときは、static/favicon.svg、kit.js の brandMark、BrandMark.svelte をそろえて直し（scripts/design-parity.test.ts が突き合わせる）、static/favicon.ico を scripts/generate-favicon.ts で作り直す。"],
+    ["マークの色はテーマで変えない。タブの favicon と画面のロゴを同じ印に見せるため。", "マークは aria-hidden にし、名前は横の文字で読ませる（読み上げは「Scrum Guild」の1回）。", "マークだけを置かない。名前は通常の文字の大きさなら1行に収まり、文字を拡大したときは、はみ出さずに折り返す。", "形や色を変えるときは、static/favicon.svg、kit.js の brandMark、BrandMark.svelte をそろえて直し（scripts/design-parity.test.ts が突き合わせる）、static/favicon.ico を scripts/generate-favicon.ts で作り直す。"],
     ".brand .brand-mark .brand-name / .gate-brand / SQ.brandMark")],
   ["icons", "アイコン", () => block("icons", "アイコン", "24px の格子に線だけで描く。icons.js を読み込むとスプライトが入る。",
     `<div class="cat-grid" style="grid-template-columns:repeat(auto-fill,minmax(96px,1fr))">${(window.SQ_ICONS || []).map((n) => `<div class="icon-cell">${icon(n)}<span>${n}</span></div>`).join("")}</div>`,
