@@ -192,7 +192,7 @@ test('存在しないタスクの ID で開くと、トーストで知らせて�
   await expect(page.getByRole('dialog')).toHaveCount(0);
 });
 
-test('閉じたワークスペースは読み取り専用で開く（seed のひばり工房ではなく、画面の応答を差し替えて確かめる）', async ({
+test('終了したワークスペースは読み取り専用で開く（seed のひばり工房ではなく、画面の応答を差し替えて確かめる）', async ({
   page,
 }) => {
   await createWorkspace(page, '閉じたパーティ', 'game');
@@ -207,7 +207,7 @@ test('閉じたワークスペースは読み取り専用で開く（seed のひ
   await page.reload();
   await page.locator('.entry', { hasText: '読むだけ' }).getByRole('link', { name: '読むだけ' }).click();
   const drawer = page.getByRole('dialog', { name: '読むだけ' });
-  await expect(drawer.getByText('閉じたパーティのクエストは、読み取りだけできます')).toBeVisible();
+  await expect(drawer.getByText('終了したパーティのクエストは、読み取りだけできます')).toBeVisible();
   await expect(drawer.getByRole('button', { name: '編集' })).toHaveCount(0);
   await expect(drawer.getByRole('button', { name: /削除する/ })).toHaveCount(0);
   for (const radio of await drawer.getByRole('radio').all()) await expect(radio).toBeDisabled();
@@ -428,7 +428,7 @@ test('保存を409で断られたとき、送った欄に合う文を出す。�
     route.fulfill({ status: 409, json: { error: { code: 'workspace_closed', message: 'closed' } } }),
   );
   await drawer.getByRole('radio', { name: '8', exact: true }).check();
-  await expect(drawer.getByText('閉じたパーティには書き込めません')).toBeVisible();
+  await expect(drawer.getByText('終了したパーティには書き込めません')).toBeVisible();
   await expect.poll(() => workspaceRequests.length).toBeGreaterThan(0);
   expect(organizationRequests).toEqual([]);
   await expect(drawer).toBeVisible();

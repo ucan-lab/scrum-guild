@@ -806,8 +806,8 @@ export const dictionary = defineDictionary({
     '入力を受け付けられませんでした。内容を確かめて、もう一度試してください。',
   ),
   taskReadOnly: workspace(
-    '閉じた{workspace}の{task}は、読み取りだけできます',
-    '閉じた{workspace}の{task}は、読み取りだけできます',
+    '終了した{workspace}の{task}は、読み取りだけできます',
+    '終了した{workspace}の{task}は、読み取りだけできます',
   ),
   // 書きかけがあるまま閉じる（か別のタスクへ移る）ときの確認
   discardTitle: organization('書きかけを捨てますか', '書きかけを捨てますか'),

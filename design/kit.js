@@ -700,7 +700,7 @@ const looooooooooooooooooooooooooooooooooongLine = "コードの長い1行は、
           <button class="pill drawer-close" type="button" data-close-drawer aria-label="閉じる">${icon("x")}</button>
         </span>
       </div>
-      ${drawerReadOnly() ? `<div class="callout is-info">${icon("shield")}<span>閉じた${t("workspace")}の${t("task")}は、読み取りだけできます</span></div>` : ""}
+      ${drawerReadOnly() ? `<div class="callout is-info">${icon("shield")}<span>終了した${t("workspace")}の${t("task")}は、読み取りだけできます</span></div>` : ""}
       ${drawerTitleHtml(x)}
       ${x.srcDone && !x.doneAt ? `<div class="callout is-ok">${icon("check")}<span>取り込み元で完了になりました。完了にするかはここで決めます。</span></div>` : ""}
       <dl class="props">

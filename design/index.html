@@ -422,7 +422,7 @@ const SECTIONS = [
       <div class="field"><span class="field-label">タイトル、リンク、本文を直している途中</span>${drawerDemo("b", "t1", ["title", "link", "body"])}</div>
       <div class="field"><span class="field-label">完了した${t("task")}（${t("points")}は直せない）</span>${drawerDemo("c", "t7")}</div>
       <div class="field"><span class="field-label">リンクを直していて、断られた（欄の下に理由。入力は残る）</span>${drawerDemo("d", "t1", ["link"], { errors: { link: "http か https で始まる URL を入れてください" }, drafts: { link: "ftp://example.com/spec" } })}</div>
-      <div class="field"><span class="field-label">閉じた${t("workspace")}（読み取り専用。直す口と削除を出さない）</span>${drawerDemo("e", "t1", [], { view: "readonly" })}</div>
+      <div class="field"><span class="field-label">終了した${t("workspace")}（読み取り専用。直す口と削除を出さない）</span>${drawerDemo("e", "t1", [], { view: "readonly" })}</div>
       <div class="field"><span class="field-label">取り込んだ${t("task")}（タイトルは直せない。削除でなく${t("archive")}へ移す）</span>${drawerDemo("g", "t2")}</div>
       <div class="field"><span class="field-label">読み込み中</span>${drawerDemo("h", "t1", [], { view: "loading" })}</div>
       <div class="field"><span class="field-label">読み込めなかった（もう一度試す）</span>${drawerDemo("i", "t1", [], { view: "failed" })}</div>
@@ -431,7 +431,7 @@ const SECTIONS = [
       "欄ごとにその場で直す。タイトルとリンクは、値そのもの（<code>.edit-trigger</code>）を押すと入力欄に替わり、Enter か「保存」で確定、Esc か「取り消し」で戻す。本文は「編集」で書く欄に替わり、保存か取り消しで描いた本文に戻る（Enter は改行）。" + `${t("points")}と${t("due")}は選んだら保存する。保存した欄は、その場で一覧の行に反映する。`,
       `完了した${t("task")}の${t("points")}は直せない。欄は読み取り専用にし、薄めずに選んだ値の色を保って、鍵のアイコンと「${t("done")}した${t("task")}の${t("points")}は直せません」を添える（理由の文は欄の <code>aria-describedby</code> に結ぶ。経験値と${t("sprint")}の集計が完了の記録の値を使うため）。ほかの属性は完了の後も直せる。`,
       "書きかけ（直している途中で、値が元と違う欄）があるまま閉じる（か別の" + t("task") + "へ移る）ときは、アプリの中のダイアログで捨てるかを確かめる。安全な側（書き続ける）を主ボタンにし、ブラウザの <code>confirm</code> は使わない。削除も確認を挟み、消したら引き出しを閉じる。",
-      "広げた形は <code>aria-modal=\"false\"</code>（左のメニューを押せるため）、横に出した形は <code>aria-modal=\"true\"</code> で外側を操作できなくする。閉じたワークスペースでは直す口と削除を出さず、読み取り専用で開く。"],
+      "広げた形は <code>aria-modal=\"false\"</code>（左のメニューを押せるため）、横に出した形は <code>aria-modal=\"true\"</code> で外側を操作できなくする。終了したワークスペースでは直す口と削除を出さず、読み取り専用で開く。"],
     ".drawer .is-full .scrim .drawer-top .drawer-tools .drawer-size .drawer-close .drawer-title / .edit-trigger .is-empty .edit-form .edit-actions .field-head / .props .props-note / .doc-box .is-empty / .done-bar .done-bar-dod / .thanks / .tabs .tab / .thread .comment .is-deleted / .history")],
   ["files", "添付ファイル", () => block("files", "添付ファイル", "タスク、ストーリー、エピック、コメントに付ける。画像と動画は縮小した絵、それ以外は1行。押すとプレビューが開く。「ファイルを選ぶ」で上げる動きを試せる（3回目は大きすぎて失敗する）。",
     `<div class="field"><span class="field-label">一覧と上げる場所</span>${SQ.attachments("t1")}</div>
