@@ -1,10 +1,21 @@
 // Bash の判定。本番に触る操作、WORKERS_CI の設定、main の上のコミットと main への push、--force-with-lease 以外の force push、シークレット、gh pr merge を通さないマージを止め、
-// gh pr merge、依存の変更、マイグレーションの作成、判定しきれない push と場所を判定できないデプロイのスクリプトでは人の確認を挟む（docs/development.md の「Claude の設定とフック」）。
+// gh pr merge、依存の変更、マイグレーションの作成、判定しきれない push と場所を判定できないデプロイのスクリプト、
+// 道具の名前が展開で決まるコマンドでは人の確認を挟む（docs/development.md の「Claude の設定とフック」）。
 // permissions.deny の前方一致では npx wrangler や pnpm exec wrangler の言い換えを取りこぼすので、語に分けて判定する。
 // 踏み線であって守りの本体ではない。変数の中身と、パイプで sh に流す中身は見えない。
 import { existsSync } from 'node:fs';
 import path from 'node:path';
-import { baseName, commandIndex, positionals, splitSegments } from './shell-words.mjs';
+import {
+  DYNAMIC,
+  baseName,
+  commandIndex,
+  concatWords,
+  expandsAt,
+  positionals,
+  shapeAt,
+  sliceWords,
+  splitSegments,
+} from './shell-words.mjs';
 
 const DENY = 'deny';
 const ASK = 'ask';
@@ -51,49 +62,77 @@ const PRODUCTION_REASON = 'デプロイ、版、本番のログ、D1 と R2 の�
 // wrangler の yargs は、真偽のフラグが重なると後の値を採り、--local の次の語が true か false ならそれを値として読み、
 // --local= の値は "true" のときだけ true にする。r2 と kv は local が false だと本番に向く。
 // ここと下の yargs の読み方は、wrangler 4.152.0 に同梱の yargs 17.7.2 と yargs-parser 21.1.1 で確かめた（2026-10-25）。
-// 後の値を採る規則は真似ず、打ち消しが1つでもあれば順番に関わらず止める
+// 後の値を採る規則は真似ず、打ち消しが1つでもあれば順番に関わらず止める。
+// --local の次の語は、展開した結果が false になりうるとき（"fal$X"）も打ち消しとみなす
 function negatesLocal(words) {
   return words.some(
     (a, i) =>
       a.startsWith('--no-local') ||
       (a.startsWith('--local=') && a !== '--local=true') ||
-      (a === '--local' && words[i + 1] === 'false'),
+      (a === '--local' && mayBe(shapeAt(words, i + 1), 'false')),
   );
 }
 
+// 実行時に決まる位置（DYNAMIC）を任意の文字列として、shape が text になりうるか
+function mayBe(shape, text) {
+  const pattern = shape.split(DYNAMIC).map((part) => part.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+  return new RegExp(`^${pattern.join('.*')}$`, 's').test(text);
+}
+
 // yargs が読む語。-- の後ろはフラグにならず、リダイレクトはシェルが argv から外す（--local >/dev/null false は --local false）。
-// 値を取るフラグの値も除く。ただし - で始まる語は yargs が値にせずフラグとして読むので残す
+// 値を取るフラグの値も除く。ただし - で始まる語は yargs が値にせずフラグとして読むので残す。展開の印は語と一緒に残す
 function flagWords(args) {
   const end = args.indexOf('--');
-  const head = end === -1 ? args : args.slice(0, end);
-  const words = [];
+  const head = end === -1 ? args : sliceWords(args, 0, end);
+  const kept = [];
   for (let i = 0; i < head.length; i++) {
     const a = head[i];
     if (/^[<>]/.test(a) || (a.includes('=') && WRANGLER_FLAGS_WITH_VALUE.has(a.split('=')[0]))) continue;
-    if (WRANGLER_FLAGS_WITH_VALUE.has(a) && head[i + 1] !== undefined && !head[i + 1].startsWith('-')) {
-      words.push(a);
-      i++;
-      continue;
-    }
-    words.push(a);
+    kept.push(i);
+    if (WRANGLER_FLAGS_WITH_VALUE.has(a) && head[i + 1] !== undefined && !head[i + 1].startsWith('-')) i++;
   }
-  return words;
+  return concatWords(...kept.map((i) => sliceWords(head, i, i + 1)));
 }
 
-// 変数、$(...)、brace 展開、glob は、シェルが展開した後に --no-local や --remote になりうる（--local{,=false}、--remot{e,e}）
-const EXPANDS = /[$`{}*?[\]]/;
+// 引用符の外の変数、$(...)、brace 展開、glob は、シェルが展開した後に --no-local や --remote になるか、別の語に分かれうる
+// （--local{,=false}、--binding {KV,--no-local}、--binding $(echo KV --no-local)）。値を取るフラグの値も同じ
+const UNQUOTED_REASON = [
+  DENY,
+  'wrangler の引数を引用符の外の変数、$(...)、{a,b}、glob、zsh の (a|b) で組み立てると、展開した後に本番に向くかを判定できない',
+];
+// 引用符の中の展開でも、展開した結果が - で始まると yargs はフラグとして読む。値を取るフラグの次の語でも値にしない（--file "$X" で X=--remote）。
+// --flag="$X" の形なら、yargs は = の右を - で始まっても値として読む
+const LEADING_REASON = [
+  DENY,
+  'wrangler の引数を変数や $(...) で始めるか、フラグの名前に展開を入れると、展開した結果をフラグとして読みうる。値を取るフラグの値は --flag="$X" の形で、位置引数は固定の文字で始めて（"./$X"、"attachments/$K"）渡す',
+];
+
+// 引用符の中の展開を含む語が、展開した後にフラグになりうるか。shape は shapeAt の形（実行時に決まる位置が DYNAMIC）。
+// 先頭が展開の語と、- で始まり展開を含む語（--re$X）が当たる。値を取るフラグの = の形で、= の右だけに展開があるもの（--file=$(…)）は除く
+function mayBecomeFlag(shape) {
+  if (!shape.includes(DYNAMIC)) return false;
+  if (shape.startsWith(DYNAMIC)) return true;
+  if (!shape.startsWith('-')) return false;
+  const eq = shape.indexOf('=');
+  return eq === -1 || shape.slice(0, eq).includes(DYNAMIC) || !WRANGLER_FLAGS_WITH_VALUE.has(shape.slice(0, eq));
+}
 
 // yargs はフラグの名前を改行の手前で切り（'--local<改行>' は --local）、. の後ろをドット記法で読む（--local.x=1 で local が配列になり、
 // r2 と kv は本番に向く）。名前の完全一致で見る判定が外れるので、名前に空白、改行、. を含むフラグは止める。
 // -1.5 のような負の数は、yargs が値として読むので除く
 const UNREADABLE_FLAG = /^-(?!\d)[^=]*[\s.]/;
 
+// wrangler dev の -r は --remote の別名で、yargs は -lr のようにまとめた短いフラグも1文字ずつ読み、別名の長い形 --r も読む。
+// d1、r2、kv には -r が無いので、サブコマンドを問わず = より前に r を含む短いフラグを止める。負の数（-1.5）は除く。
+// 別名は wrangler 4.152.0 の dev の remote（alias: "r"）と local（alias: "l"）で確かめた（2026-10-25）
+const SHORT_REMOTE = /^-(?![-\d])[^=]*r/;
+
 function judgeWrangler(args) {
   const isRemote = args.some(
     (a) =>
-      a === '-r' ||
-      a === '--remote' ||
-      (a.startsWith('--remote=') && a !== '--remote=false') ||
+      SHORT_REMOTE.test(a) ||
+      ['--remote', '--r'].includes(a) ||
+      (/^--(remote|r)=/.test(a) && !/^--(remote|r)=false$/.test(a)) ||
       /^--(x|experimental)-remote-bindings/.test(a),
   );
   if (isRemote) return [DENY, '--remote を付けた wrangler は本番に触るので、Workers Builds だけが実行する'];
@@ -110,9 +149,11 @@ function judgeWrangler(args) {
   if (words.some((a) => UNREADABLE_FLAG.test(a))) {
     return [DENY, 'wrangler のフラグの名前に空白、改行、. を含むと、wrangler がどのフラグと読むかを判定できない'];
   }
-  if (words.some((a) => EXPANDS.test(a))) {
-    return [DENY, 'wrangler の引数を変数、$(...)、{a,b}、glob で組み立てると、展開した後に本番に向くかを判定できない（値を取るフラグの値は除く）'];
-  }
+  // 展開は、値を取るフラグの値も含めた -- より前の全部の語で見る。-- の後ろは yargs がフラグとして読まず、リダイレクトは argv に入らない
+  const end = args.indexOf('--');
+  const argv = [...args.keys()].filter((i) => (end === -1 || i < end) && !/^[<>]/.test(args[i]));
+  if (argv.some((i) => expandsAt(args, i))) return UNQUOTED_REASON;
+  if (argv.some((i) => mayBecomeFlag(shapeAt(args, i)))) return LEADING_REASON;
 
   const [sub, sub1, sub2] = pos;
   const hasLocal = words.includes('--local') || words.includes('--local=true');
@@ -434,7 +475,8 @@ const EXEC_FLAGS_WITH_VALUE = new Set([...PACKAGE_FLAGS_WITH_VALUE, '-p', '--pac
 const SHELL_MODE_FLAGS = new Set(['-c', '--shell-mode', '--call']);
 
 // pnpm exec env X=1 node x、npm exec -- tsx x、yarn node x、yarn run node x、corepack pnpm dlx tsx x のように道具を経由するとき、
-// 経由先を返す。{ words, dir } は経由先のコマンドの語の並びで、judgeSegment に掛け直すので env、代入、timeout などの前置きも同じ規則で効く。
+// 経由先を返す。{ start, dir } の start は経由先のコマンドが args の何番目から始まるかで、judgeSegment に掛け直すので env、代入、timeout などの前置きも同じ規則で効く。
+// 語ではなく位置を返すのは、呼び出し元が語と展開の印を一緒に切り出すため。
 // { script, dir } は exec -c のシェルの文字列で、judgeBash に掛け直す。経由しなければ null。
 // exec と dlx の後ろは何でも経由先とし、exec の無い形（yarn node x、yarn run node x）は実行の道具のときだけ経由先とする。
 // 作業場所は -C、--dir、--cwd、--prefix の値で解決し直し、~ か $ で始まる値は判定できない（null）とする
@@ -475,7 +517,7 @@ function viaPackageManager(tool, args, dir) {
       continue;
     }
     if (!viaExec && !RUNNERS.has(baseName(a))) return null;
-    return { words: rest.slice(i), dir };
+    return { start: args.length - rest.length + i, dir };
   }
   return null;
 }
@@ -603,6 +645,7 @@ function braceSize(inner) {
 // --import ./scripts/deploy-production.ts#.test.ts は Node が # 以降を URL のフラグメントとして捨てる
 const isTestFile = (word) => /^[\w./*-]+$/.test(word) && word.endsWith('.test.ts');
 
+const TOOL_EXPANDS_REASON = '道具の名前を変数、$(...)、glob で渡すと、何を実行するか（wrangler で本番に触るか）を判定できない。人が確かめる';
 const DEPLOY_REASON = [DENY, 'デプロイのスクリプトは Workers Builds だけが実行する'];
 const UNKNOWN_DIR_REASON = [ASK, 'デプロイのスクリプトらしい語を、作業場所を判定できない（cd ~ や変数の先）まま渡している。人が確かめる'];
 const BIG_GLOB_REASON = [ASK, '展開の大きい glob（{1..1000} など）は、デプロイのスクリプトに当たるかを判定しない。人が確かめる'];
@@ -689,7 +732,9 @@ function judgeSegment(words, ctx) {
   if (setsWorkersCi(words, ci)) results.push([DENY, WORKERS_CI_REASON]);
   if (ci === -1) return results;
   const tool = baseName(words[ci]);
-  const args = words.slice(ci + 1);
+  const args = sliceWords(words, ci + 1);
+  // 道具の名前が変数や $(...)、glob で決まると、何を実行するかが分からない（"$(which wrangler)" deploy）
+  if (shapeAt(words, ci).includes(DYNAMIC) || expandsAt(words, ci)) results.push([ASK, TOOL_EXPANDS_REASON]);
   // env -C は後ろのコマンドの作業場所を変える。経由先に掛け直すとき（envFrom）は、前置きの env の分を解決済みなので重ねない
   ctx = { ...ctx, dir: dirAfterEnv(words, ci, ctx.dir, ctx.envFrom ?? 0) };
 
@@ -711,12 +756,13 @@ function judgeSegment(words, ctx) {
     if (ctx.depth + 1 > MAX_DEPTH) results.push([ASK, 'コマンドの入れ子が深く、判定しきれない']);
     else {
       const inner = { ...ctx, dir: via.dir, envFrom: ci, depth: ctx.depth + 1 };
-      results.push(...judgeSegment([...words.slice(0, ci), ...via.words], inner));
+      results.push(...judgeSegment(concatWords(sliceWords(words, 0, ci), sliceWords(args, via.start)), inner));
     }
   }
 
+  // wrangler の語そのものに展開の印があれば（./*/wrangler）、引数を読まずに止める
   const wrangler = findWrangler(words, ci);
-  if (wrangler !== -1) results.push(judgeWrangler(words.slice(wrangler + 1)));
+  if (wrangler !== -1) results.push(expandsAt(words, wrangler) ? UNQUOTED_REASON : judgeWrangler(sliceWords(words, wrangler + 1)));
 
   const nextCtx = { ...ctx, cwd: ctx.dir, depth: ctx.depth + 1 };
   if (tool === 'git') {
