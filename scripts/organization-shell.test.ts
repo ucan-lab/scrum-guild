@@ -141,6 +141,15 @@ describe('メニュー', () => {
     assert.ok(labels({ hasWorkspace: true, inWorkspaceScreen: true, workspaceId: 'w1' }).includes('pageMembers'));
   });
 
+  test('ワークスペースの画面を開いている間は、バックログへ戻る項目を出す', () => {
+    const items = visibleNav(undefined, { hasWorkspace: true, inWorkspaceScreen: true, workspaceId: 'w1' }).flatMap(
+      (section) => section.items,
+    );
+    assert.equal(items.find((item) => item.label === 'backlog')?.href, '/[slug]/w/[id]');
+    const outside = visibleNav(undefined, { hasWorkspace: true }).flatMap((section) => section.items);
+    assert.ok(!outside.some((item) => item.label === 'backlog'));
+  });
+
   test('ワークスペースの画面を開いている間は、所属が無くても、項目の無いワークスペースの節の見出しを出す', () => {
     const headings = (options: Parameters<typeof visibleNav>[1]) =>
       visibleNav(undefined, options).map((section) => section.heading);

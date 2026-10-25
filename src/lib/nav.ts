@@ -3,7 +3,7 @@ import type { IconName } from './icons.ts';
 
 // メニューの行き先。NavMenu が slug（ワークスペースの経路はワークスペースの ID も）で resolve する。
 // ワークスペースの経路（WorkspaceNavRoute）は、ワークスペースの画面を開いている間だけ出す。ワークスペースの外では行き先が決まらないため
-const workspaceRoutes = ['/[slug]/w/[id]/members'] as const;
+const workspaceRoutes = ['/[slug]/w/[id]', '/[slug]/w/[id]/members'] as const;
 export type WorkspaceNavRoute = (typeof workspaceRoutes)[number];
 export type NavRoute = '/[slug]' | '/[slug]/admin' | WorkspaceNavRoute;
 
@@ -74,7 +74,7 @@ export const navSections: NavSection[] = [
     inWorkspace: true,
     items: [
       { icon: 'inbox', label: 'inbox', href: null },
-      { icon: 'board', label: 'backlog', href: null },
+      { icon: 'board', label: 'backlog', href: '/[slug]/w/[id]' },
       { icon: 'columns', label: 'sprint', href: null },
       { icon: 'calendar', label: 'plan', href: null },
       { icon: 'flag', label: 'epic', href: null },
