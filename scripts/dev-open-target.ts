@@ -56,7 +56,7 @@ export function parseDevOpenArgs(argv: readonly string[]): ({ ok: true } & DevOp
   if (!isSeedWho(resolvedWho)) {
     return {
       ok: false,
-      reason: `知らない who: ${resolvedWho}。選べるのは次の4つ（開く path は / で始める。完全な URL は受け付けない）\n${whoChoices()}`,
+      reason: `知らない who: ${resolvedWho}。選べるのは次のとおり（開く path は / で始める。完全な URL は受け付けない）\n${whoChoices()}`,
     };
   }
   return { ok: true, preview, who: resolvedWho, path: path ?? DEFAULT_PATH };
