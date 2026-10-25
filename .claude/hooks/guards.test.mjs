@@ -1471,6 +1471,54 @@ describe('bash-rules: 別のチェックアウトを指す glob', () => {
   });
 });
 
+describe('bash-rules: wrangler の設定へのコピーの宛先', () => {
+  // リポジトリの根（scripts/deploy-production.ts のある所）とその中のディレクトリ、根の外のディレクトリを実在させる
+  const root = realpathSync(mkdtempSync(path.join(os.tmpdir(), 'guard-copy-')));
+  const outside = realpathSync(mkdtempSync(path.join(os.tmpdir(), 'guard-outside-')));
+  for (const dir of ['scripts', '.wrangler/deploy', 'apps/api']) mkdirSync(path.join(root, dir), { recursive: true });
+  writeFileSync(path.join(root, 'scripts', 'deploy-production.ts'), '');
+  after(() => {
+    rmSync(root, { recursive: true, force: true });
+    rmSync(outside, { recursive: true, force: true });
+  });
+  const from = (cwd, command) => judgeBash(command, { cwd, branchOf: () => 'x' })?.[0] ?? 'allow';
+
+  test('末尾が / でない実在のディレクトリへのコピーは、元の名前を付けて見る', () => {
+    assert.equal(from(root, 'cp /tmp/config.json .wrangler/deploy'), 'ask');
+    assert.equal(from(root, 'cp /tmp/wrangler.jsonc apps/api'), 'ask');
+    assert.equal(from(root, 'mv /tmp/wrangler.toml apps/api'), 'ask');
+    assert.equal(from(root, 'cd apps && cp /tmp/wrangler.jsonc api'), 'ask');
+    // 元の名前が設定でなければ、実在のディレクトリでも通す。実在しない宛先は、ディレクトリとして見ない
+    assert.equal(from(root, 'cp /tmp/x.json .wrangler/deploy'), 'allow');
+    assert.equal(from(root, 'cp /tmp/wrangler.jsonc apps/missing'), 'allow');
+  });
+
+  test('根の中の絶対パスの宛先は、元の名前を付けて見る', () => {
+    assert.equal(from(root, `cp /tmp/wrangler.jsonc ${root}/apps/api/`), 'ask');
+    assert.equal(from(root, `cp /tmp/wrangler.jsonc ${root}/apps/api`), 'ask');
+    assert.equal(from(root, `cp /tmp/config.json ${root}/.wrangler/deploy`), 'ask');
+    assert.equal(from(path.join(root, 'apps', 'api'), `cp /tmp/wrangler.jsonc ${root}/apps/api/`), 'ask');
+    assert.equal(from(path.join(root, 'apps', 'api'), 'cp /tmp/wrangler.jsonc ..'), 'ask');
+    assert.equal(from(root, `cp /tmp/x.json ${root}/apps/api/`), 'allow');
+  });
+
+  test('根の外の絶対パスの宛先は、別の場所への複製なので通す', () => {
+    assert.equal(from(root, 'cp wrangler.jsonc /tmp/'), 'allow');
+    assert.equal(from(root, `cp wrangler.jsonc ${outside}/`), 'allow');
+    assert.equal(from(root, `cp wrangler.jsonc ${outside}`), 'allow');
+    assert.equal(from(root, `cp /tmp/wrangler.jsonc ${outside}/../`), 'allow');
+    assert.equal(from(path.join(root, 'apps', 'api'), `cp wrangler.jsonc ${outside}/`), 'allow');
+    // 作業場所が分からない絶対パスの宛先と、~ で始まる宛先は見ない
+    assert.equal(from(root, 'cd ~ && cp /tmp/wrangler.jsonc /home/x/'), 'allow');
+    assert.equal(from(root, 'cp /tmp/wrangler.jsonc ~/'), 'allow');
+  });
+
+  test('宛先を書いた通りのファイルの名前で比べる判定は変わらない', () => {
+    assert.equal(from(root, `cp x ${outside}/wrangler.jsonc`), 'ask');
+    assert.equal(from(root, 'cp x .wrangler/deploy/config.json'), 'ask');
+  });
+});
+
 describe('bash-rules: 展開の大きい glob', () => {
   const timed = (command) => {
     const started = Date.now();
