@@ -135,6 +135,7 @@ export function splitSegments(command) {
         if (command.startsWith('$(', j)) {
           const end = closingParen(command, j + 2);
           nested.push(command.slice(j + 2, end));
+          word += SUBSTITUTION;
           j = end + 1;
           continue;
         }
@@ -142,6 +143,7 @@ export function splitSegments(command) {
           const end = command.indexOf('`', j + 1);
           const stop = end === -1 ? command.length : end;
           nested.push(command.slice(j + 1, stop));
+          word += SUBSTITUTION;
           j = stop + 1;
           continue;
         }

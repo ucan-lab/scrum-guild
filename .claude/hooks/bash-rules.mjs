@@ -49,17 +49,37 @@ const PRODUCTION_REASON = 'デプロイ、版、本番のログ、D1 と R2 の�
 
 // wrangler の yargs は、真偽のフラグが重なると後の値を採り、--local の次の語が true か false ならそれを値として読み、
 // --local= の値は "true" のときだけ true にする。r2 と kv は local が false だと本番に向く。
-// 後の値を採る規則は真似ず、打ち消しが1つでもあれば順番に関わらず止める。次の語が変数なら false かを判定できない
-function localProblem(args) {
-  for (const [i, a] of args.entries()) {
-    const next = args[i + 1];
-    if (a.startsWith('--no-local') || (a.startsWith('--local=') && a !== '--local=true') || (a === '--local' && next === 'false')) {
-      return 'negated';
-    }
-    if (a === '--local' && next?.includes('$')) return 'variable';
-  }
-  return null;
+// 後の値を採る規則は真似ず、打ち消しが1つでもあれば順番に関わらず止める
+function negatesLocal(words) {
+  return words.some(
+    (a, i) =>
+      a.startsWith('--no-local') ||
+      (a.startsWith('--local=') && a !== '--local=true') ||
+      (a === '--local' && words[i + 1] === 'false'),
+  );
 }
+
+// yargs が読む語。-- の後ろはフラグにならず、リダイレクトはシェルが argv から外す（--local >/dev/null false は --local false）。
+// 値を取るフラグの値も除く。ただし - で始まる語は yargs が値にせずフラグとして読むので残す
+function flagWords(args) {
+  const end = args.indexOf('--');
+  const head = end === -1 ? args : args.slice(0, end);
+  const words = [];
+  for (let i = 0; i < head.length; i++) {
+    const a = head[i];
+    if (/^[<>]/.test(a) || (a.includes('=') && WRANGLER_FLAGS_WITH_VALUE.has(a.split('=')[0]))) continue;
+    if (WRANGLER_FLAGS_WITH_VALUE.has(a) && head[i + 1] !== undefined && !head[i + 1].startsWith('-')) {
+      words.push(a);
+      i++;
+      continue;
+    }
+    words.push(a);
+  }
+  return words;
+}
+
+// 変数、$(...)、brace 展開、glob は、シェルが展開した後に --no-local や --remote になりうる（--local{,=false}、--remot{e,e}）
+const EXPANDS = /[$`{}*?[\]]/;
 
 // yargs はフラグの名前を改行の手前で切り（'--local<改行>' は --local）、. の後ろをドット記法で読む（--local.x=1 で local が配列になり、
 // r2 と kv は本番に向く）。名前の完全一致で見る判定が外れるので、名前に空白、改行、. を含むフラグは止める
@@ -86,15 +106,16 @@ function judgeWrangler(args) {
   if (pos.includes('secret') || pos.includes('login')) return [DENY, SECRET_REASON];
   if (pos.some((p) => WRANGLER_PRODUCTION.has(p))) return [DENY, `wrangler ${pos[0]} は本番に触る。${PRODUCTION_REASON}`];
 
+  const words = flagWords(args);
+  if (words.some((a) => EXPANDS.test(a))) {
+    return [DENY, 'wrangler の引数を変数、$(...)、{a,b}、glob で組み立てると、展開した後に本番に向くかを判定できない（値を取るフラグの値は除く）'];
+  }
+
   const [sub, sub1, sub2] = pos;
-  const hasLocal = args.includes('--local') || args.includes('--local=true');
+  const hasLocal = words.includes('--local') || words.includes('--local=true');
   const needLocal = (what) => {
-    const problem = localProblem(args);
-    if (problem === 'negated') {
+    if (negatesLocal(words)) {
       return [DENY, `${what} の --no-local、--local=<true 以外>、--local false は local を打ち消して本番に向く。--local だけを付ける`];
-    }
-    if (problem === 'variable') {
-      return [DENY, `${what} の --local の次の語を変数や $(...) で渡すと、local を打ち消すかを判定できない`];
     }
     return hasLocal ? null : [DENY, `${what} は --local を付けて手元の D1、R2、KV に向けて実行する`];
   };
