@@ -625,8 +625,10 @@ button.tree-link { border: 0; background: none; padding: 0; font: inherit; text-
   background: var(--color-surface); border-left: var(--rule-double); box-shadow: var(--shadow-float); overflow-y: auto;
   padding-block: calc(var(--space-4) + env(safe-area-inset-top, 0px)) calc(var(--space-10) + env(safe-area-inset-bottom, 0px));
   padding-left: var(--space-6); padding-right: max(var(--space-6), env(safe-area-inset-right, 0px));
-  display: grid; gap: var(--space-5); align-content: start;
+  display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--space-5); align-content: start;
 }
+/* 引き出しの中の URL は折り返す。折り返さないと、2048 字の URL が列を広げて本文まで横にはみ出す */
+.drawer .source-key { white-space: normal; overflow-wrap: anywhere; }
 /*
  * 広げた状態は左のメニュー（.app の 240px）を残して右側を覆い、中身は読める幅（960px）で中央に寄せる。
  * padding の % は引き出しではなく画面の幅を指すので、メニューの幅を引いてから割る。
@@ -655,7 +657,27 @@ button.tree-link { border: 0; background: none; padding: 0; font: inherit; text-
 /* Markdown の変換が終わるまでと、時間切れのときに、本文を書かれたまま出す。注記（.props-note）は枠の上 */
 .doc-box.is-plain { display: block; white-space: pre-wrap; }
 .props-note + .doc-box { margin-top: var(--space-1); }
-/* Markdown の本文（Markdown.svelte）。見出しの要素は引数の段で決まるので、大きさは Markdown の段のクラス（doc-h1 から doc-h6）で決める。
+/* 欄ごとに直す（引き出し）。値そのものが押せるボタン（.edit-trigger）で、押すと入力欄（.edit-form）に替わる。
+   押せると分かるよう、触れたときに点線の罫を出し、鉛筆を添える。保存と取り消しは入力欄の下（.edit-actions） */
+.edit-trigger {
+  display: inline-flex; align-items: center; gap: var(--space-2); max-width: 100%;
+  padding: 2px var(--space-2); margin: -2px calc(-1 * var(--space-2));
+  border: 1px dashed transparent; border-radius: var(--radius-1);
+  background: none; color: inherit; font: inherit; text-align: left; cursor: text;
+}
+.edit-trigger:hover { border-color: var(--color-line); background: var(--color-sunken); }
+.edit-trigger > span { min-width: 0; overflow-wrap: anywhere; }
+.edit-trigger .ico { flex: none; color: var(--color-muted); }
+.edit-trigger.is-empty { color: var(--color-muted); }
+/* 読む形の包み。直している間は hidden で隠し、読む形は包みの外の並び（props の dd など）にそのまま入る */
+.edit-view { display: contents; }
+.edit-view[hidden] { display: none; }
+.props dd > .input { width: auto; max-width: 100%; }
+.edit-form { display: grid; gap: var(--space-2); width: 100%; }
+.edit-form > .field { margin: 0; }
+.edit-actions { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
+/* 欄の名前と、右端の操作（本文の「編集」） */
+.field-head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); }/* Markdown の本文（Markdown.svelte）。見出しの要素は引数の段で決まるので、大きさは Markdown の段のクラス（doc-h1 から doc-h6）で決める。
    引き出しの題（.drawer-title は --text-xl）より小さくし、h3 以下は本文と同じ大きさのまま、罫と字間で見分ける */
 .doc-box :is(h1, h2, h3, h4, h5, h6) { margin: 0; font-family: var(--font-display); font-weight: var(--weight-display); line-height: var(--leading-tight); text-wrap: balance; }
 .doc-box :is(h1, h2, h3, h4, h5, h6):not(:first-child) { margin-top: var(--space-3); }
@@ -738,7 +760,7 @@ dialog.dialog::backdrop { background: none; }
 }
 .dialog-head { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-3); }
 .dialog-title { font-family: var(--font-display); font-weight: var(--weight-display); font-size: var(--text-xl); line-height: var(--leading-tight); min-width: 0; overflow-wrap: anywhere; }
-.dialog-body { display: grid; gap: var(--space-4); font-size: var(--text-sm); }
+.dialog-body { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--space-4); font-size: var(--text-sm); overflow-wrap: anywhere; }
 .dialog-foot { display: flex; justify-content: flex-end; gap: var(--space-2); flex-wrap: wrap; padding-top: var(--space-2); border-top: 1px solid var(--color-rule); }
 .dialog-sheet.is-danger { border-top-color: var(--color-danger); }
 
@@ -752,6 +774,9 @@ dialog.dialog::backdrop { background: none; }
 .segmented input:focus-visible + span { outline: 2px solid var(--color-accent); outline-offset: -3px; }
 .segmented input:disabled { cursor: not-allowed; }
 .segmented input:disabled + span { opacity: .5; }
+/* 読み取り専用（完了したタスクのポイントなど）は薄めず、選んだ値の色を保つ。読み取り専用であることは、鍵のアイコンと理由の文で示す */
+.segmented.is-readonly input:disabled { cursor: default; }
+.segmented.is-readonly input:disabled + span { opacity: 1; }
 /* 狭い幅と、指で押す画面では、押す所を 44px 四方以上にする。完了の操作の丸は見た目の大きさのまま、押せる範囲だけを広げる */
 @media (max-width: 760px), (pointer: coarse) {
   .segmented span { display: flex; align-items: center; justify-content: center; min-width: 44px; min-height: 44px; }
@@ -762,6 +787,11 @@ dialog.dialog::backdrop { background: none; }
      操作の並びで高さを変えると、横に並ぶヒントの文字が上にずれるため */
   .tree-caret, button.tree-link, .tree-row .btn.is-sm, .form-actions .btn.is-sm, .callout-actions .btn.is-sm { position: relative; }
   .tree-caret::after, button.tree-link::after, .tree-row .btn.is-sm::after, .form-actions .btn.is-sm::after, .callout-actions .btn.is-sm::after {
+    content: ""; position: absolute; left: 50%; top: 50%; width: max(100%, 44px); height: max(100%, 44px); transform: translate(-50%, -50%);
+  }
+  /* 引き出しの中の小さなボタン（保存、取り消し、編集、削除、クリア）と、押すと直せる値も同じ。重なる行の押せる範囲は、下の余白で分ける */
+  .drawer .btn.is-sm, .drawer .link-btn, .drawer .edit-trigger { position: relative; }
+  .drawer .btn.is-sm::after, .drawer .link-btn::after, .drawer .edit-trigger::after {
     content: ""; position: absolute; left: 50%; top: 50%; width: max(100%, 44px); height: max(100%, 44px); transform: translate(-50%, -50%);
   }
 }

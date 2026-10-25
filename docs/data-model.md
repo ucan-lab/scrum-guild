@@ -692,6 +692,7 @@ Google の人は、ログインするまで `sub` が分からない。そのた
   - `(assignee_user_id, deleted_at, completed_at) WHERE assignee_user_id IS NOT NULL`: 外部キーの検査と、自分の今日、積載量（担当の未完了のタスク）
   - `(completed_by) WHERE completed_by IS NOT NULL`、`(created_by) WHERE created_by IS NOT NULL`: 外部キーの検査
 - 手で作るタスクの `title` は、前後の空白を除いて 1〜200 字。字数の数え方と断る文字は `workspaces.name` と同じ。
+- 引き出しで直す欄（`task-update`）の決まりは、ストーリーと同じ。`body_md` は 1 万字まで（`stories.body_md` と同じ正規化。空は `NULL`）、`link_url` は http と https の URL だけで 2048 字まで（解釈した URL にそろえる）、`due_on` は暦に存在する日付。取り込んだタスクはリンクを持たず（上の CHECK）、タイトルは同期で書き直すので、どちらも直せない。完了したタスクのポイントは直せない（「書き込みの単位」の「タスクの変更」）。1件の読み取り（`task-detail`）は、これらの欄と、取り込んだタスクか、完了した日時、呼んだ人が削除できるかを返す。本文は長いので、バックログの木には載せない。
 - 「今日やる」は、`today_on` が今日（ワークスペースのタイムゾーン）なら今日の印、それより前で未完了なら前日からの持ち越しとして示す。担当が替わったら消す。
 - 区分は、親のエピック、親のストーリー、タスク自身の順に、最初に入っているものを使う。読むときに結合して出し、タスクには写さない。完了の記録（`completions.category_id`）には、完了した時点の値を写す。
 - `repository_id` は、取り込むときに `repositories` の `(workspace_id, provider, source_container_id)` が `task_sources` と一致する行があれば入れる。同期では書き換えない。
@@ -983,6 +984,8 @@ D1 は対話的なトランザクションを持たない。まとめて書く�
 | --- | --- |
 | タスクの完了 | `tasks`、`completions`、`sprint_entries`（スプリントの外なら書かない）、`xp_grants`（完了、起票、詳細、手助け）、`change_logs`、`notifications` |
 | タスクの作成 | `tasks`、`change_logs`。`tasks` の文は `INSERT ... SELECT ... WHERE EXISTS`（閉じていないワークスペース。担当を指すときは、そのワークスペースに今所属している無効でない人。親を指すときは、同じワークスペースの削除していない、完了していないストーリー）にし、`change_logs`（担当と親も残す）は作った行があるときだけ入れる。何も入らなければ、閉じていれば 409（`workspace_closed`）、親が完了していれば 409（`conflict`）、そうでなければ 404 |
+| タスクの変更 | `tasks`、`change_logs`。ストーリーの変更と同じ書き方: 先に読んだ今の値と違う欄だけを `UPDATE` の `SET` に入れ（送られない欄は触らない）、条件は `id`、`workspace_id`、`deleted_at IS NULL`、閉じていないワークスペースと、書く欄ごとの `<列> IS :読んだ値`。`change_logs`（`entity_type = 'task'`、`action = 'update'`、変わった列だけの `{"列": [前, 後]}`）は、直前の `UPDATE` が行を変えたときだけ入れる（`INSERT ... SELECT ... WHERE changes() > 0`。下の「直前の文に結ぶ」）。欄は `title`、`points`、`due_on`、`link_url`、`body_md` で、担当、区分、リポジトリは変えない。断る変更は読んだ時点で 409（`conflict`）にする: 完了したタスク（`completed_at IS NOT NULL`）のポイント（経験値とスプリントの集計が `completions.points` を使うため。同じ値を送るだけなら断らない）と、取り込んだタスク（`is_imported = 1`）のタイトルとリンク。ポイントを書く文は `completed_at IS NULL` も条件にし、読んでから書くまでに完了にされたら止める（次の周の読み直しで 409）。何も入らなければ、閉じていれば 409（`workspace_closed`）、タスクが無ければ 404、どちらでもなければ（別の要求が先に同じ欄を変えた）読み直して差を作り直し、やり直す（3 回まで。超えたら 409 の `conflict`）。変える欄が無い要求は何も書かず、閉じたワークスペースは 409 にする |
+| タスクの削除 | `tasks`（`deleted_at` と `updated_at`）、`change_logs`（`action = 'delete'`、`{"deleted_at": [null, <日時>]}`）。論理削除なので、`completions`、`xp_grants`（経験値）は残す。バックログの木のストーリーごとの合計（削除していないタスクだけ）からは外れる。削除できるのは、手で作ったタスクの作った人（`tasks.created_by`）とリーダー（管理者を含む）で、権限が無ければ 403（`forbidden`）。取り込んだタスクは、権限があっても 409（`conflict`）で削除できず（アーカイブで外す。`docs/requirements.md` の「削除」）、`task-detail` の `can_delete` も偽にする。タスクが無ければ（別の組織、別のワークスペース、削除済みを含む）権限より先に 404。`tasks` の文の条件は `id`、`workspace_id`、`deleted_at IS NULL`、閉じていないワークスペースで、`change_logs` は直前の `UPDATE` が行を変えたときだけ入れる。何も入らなければ、閉じていれば 409（`workspace_closed`）、そうでなければ 404（別の要求が先に削除した） |
 | ストーリーの作成 | `stories`、`change_logs`。`stories` の文は `INSERT ... SELECT ... WHERE EXISTS`（閉じていないワークスペース）にし、`change_logs` は作った行があるときだけ入れる。何も入らなければ、閉じていれば 409（`workspace_closed`）、そうでなければ 404 |
 | ストーリーの変更 | `stories`、`change_logs`。先に読んだ今の値と違う欄だけを `UPDATE` の `SET` に入れる（送られない欄は触らない）。条件は `id`、`workspace_id`、`deleted_at IS NULL`、閉じていないワークスペースと、書く欄ごとの `<列> IS :読んだ値`（読んでから書くまでに別の要求が同じ欄を変えていたら、更新は通らない。履歴の「前」がずれるのと、同じ値の指定の取りこぼしを防ぐ）。`change_logs` は、この更新の `updated_at` と書いた値が入った行があるときだけ入れる。何も入らなければ、閉じていれば 409（`workspace_closed`）、ストーリーが無ければ 404、どちらでもなければ（別の要求が先に同じ欄を変えた）読み直して差を作り直し、やり直す（3 回まで。超えたら 409 の `conflict`）。読み直して書くものが無くなれば、何も書かずに今の値を返す。変える欄が無い要求も、閉じたワークスペースは 409 にする |
 | 完了を戻す | `tasks`、`completions` の削除、`xp_grants`（打ち消し）、`change_logs` |
@@ -1001,6 +1004,8 @@ D1 は対話的なトランザクションを持たない。まとめて書く�
 | コメントの削除 | `comments`、そのコメントの `attachments` の削除、`change_logs`、続けて R2 のファイルの削除 |
 
 先に読んだ値で判定してから書く操作（最後の管理者、完了の可否など）は、書く文の `WHERE` に同じ条件を入れ、影響した行の数で競合を見つける。
+
+直前の文に結ぶ: 履歴の `INSERT ... SELECT` は、直前の `UPDATE` が行を変えたことを `WHERE changes() > 0` で条件にする（`src/server/db/previous-statement.ts` の `previousStatementChanged`）。D1 の `batch()` は全部の文を1つの接続の1つのトランザクションで順に流すので、`changes()` は直前の文の件数になる（テストで確かめている）。履歴の行や時刻の一致で「自分の更新か」を見分けると、止めた時計（`DEV_NOW`）や同じ値を書く要求では、負けた要求も一致して履歴を二重に書く。この条件は直前の文だけを見るので、変える文の直後に置く。タスクの変更と削除が使う。
 
 タスクの完了（`task-complete`）の文と条件。ポイント、担当、区分、作った人は先に読まず、`INSERT ... SELECT` で `tasks` の行から取る。読むのは、計上月を決めるワークスペースのタイムゾーンと、変更の履歴に残す完了にした人の名前だけ。`batch()` は件数 0 の文があっても後ろの文を書くので、後ろの文は先の文が通ったことを自分の条件に持つ。この版の完了は、スプリントに入っていないバックログのタスク（親のないタスクと、ストーリーの下のタスク）を対象にし、1 の条件（`tray = 'backlog' AND sprint_id IS NULL`）で守る。対象でないタスク（受信箱やアーカイブのタスク、スプリントに入っているタスク）は、何も書かず 404 にする。`sprint_entries` を足すときに、スプリントに入っているタスクへ対象を広げる。
 

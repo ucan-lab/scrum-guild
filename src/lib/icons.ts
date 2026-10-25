@@ -28,6 +28,7 @@ export const icons = {
   chevron: '<path d="M9 6l6 6-6 6"/>',
   trend: '<path d="M3 17l6-6 4 4 8-8"/><path d="M15 7h6v6"/>',
   shield: '<path d="M12 3l8 3v6c0 4.5-3.4 8-8 9-4.6-1-8-4.5-8-9V6z"/>',
+  lock: '<path d="M5 11h14v9H5z"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/>',
   mail: '<path d="M3 6h18v12H3z"/><path d="M3 7l9 6 9-6"/>',
   grip: '<path d="M9 6h.01M15 6h.01M9 12h.01M15 12h.01M9 18h.01M15 18h.01"/>',
   up: '<path d="M12 19V5M6 11l6-6 6 6"/>',

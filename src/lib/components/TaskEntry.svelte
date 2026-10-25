@@ -8,7 +8,7 @@
   import Icon from './Icon.svelte';
 
   // kit.js の entry（台帳の1行）と doneControl。今あるのは、タイトル（`?task=<ID>` へのリンク）、期日の印、ポイント、担当、
-  // 完了の操作と完了の印。リンクの開く先（詳細の引き出し）は、タスクの詳細の Issue で足す。
+  // 完了の操作と完了の印。リンクは詳細の引き出しを開く（/[slug]/w/[id] のレイアウトが `?task=<ID>` を見て置く）。
   // 先頭の「今日やる」、親は、それぞれの機能の Issue で足す。先頭の枠（.entry の1列目）は、その機能が入るまで空の要素で埋める。
   // 期日の印は、API が返したワークスペースの今日の日付と週の始まり（clock）で決める。完了にした行は色を付けない。
   // 完了の操作が押されると、onComplete を呼ぶ。完了にした行は、done を真にして完了の印を付ける。
@@ -42,10 +42,11 @@
 <div class="entry" class:is-done={done}>
   <span aria-hidden="true"></span>
   <div class="entry-main">
-    <!-- 開く先（詳細の引き出し）はまだ無い。押しても、フォーカスとスクロールの位置は動かさない -->
+    <!-- 押しても、フォーカスとスクロールの位置は動かさない（引き出しが閉じたとき、data-task-id で探してフォーカスを戻す） -->
     <a
       class="entry-title"
       href="{taskHref}?task={encodeURIComponent(task.id)}"
+      data-task-id={task.id}
       data-sveltekit-keepfocus
       data-sveltekit-noscroll>{task.title}</a
     >
