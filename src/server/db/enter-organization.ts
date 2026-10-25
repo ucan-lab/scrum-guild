@@ -18,7 +18,19 @@ export type OrganizationActor = {
   readonly invitedOnly: boolean;
 };
 
-export type OrganizationEntry = { readonly db: OrganizationDb; readonly actor: OrganizationActor };
+// 組織の行（共通の表）のうち、処理が読むもの。処理に共通の入口を渡さず、入るときに引いた値を渡す
+export type OrganizationSummary = {
+  readonly slug: string;
+  readonly name: string;
+  readonly vocabulary: string;
+  readonly theme: string;
+};
+
+export type OrganizationEntry = {
+  readonly db: OrganizationDb;
+  readonly actor: OrganizationActor;
+  readonly organization: OrganizationSummary;
+};
 
 // 組織を引けない、停止している、入れない、のどれでも undefined を返す。呼び出し側はどれも同じ 404 にする。
 // loadLogins は招待で入る分岐に来たときだけ呼ぶ（管理者と所属のある人には要らないので、引かない）
@@ -29,7 +41,12 @@ export async function enterOrganization(
 ): Promise<OrganizationEntry | undefined> {
   const common = commonDb(env);
   const organization = await common.first(
-    common.statement((q) => q.selectFrom('organizations').select(['id', 'suspended_at']).where('slug', '=', slug)),
+    common.statement((q) =>
+      q
+        .selectFrom('organizations')
+        .select(['id', 'suspended_at', 'slug', 'name', 'vocabulary', 'theme'])
+        .where('slug', '=', slug),
+    ),
   );
   if (organization === undefined || organization.suspended_at !== null) return undefined;
 
@@ -53,6 +70,12 @@ export async function enterOrganization(
   const entry = (isAdmin: boolean, invitedOnly: boolean): OrganizationEntry => ({
     db,
     actor: { accountId: account.accountId, userId: user?.id ?? null, isAdmin, invitedOnly },
+    organization: {
+      slug: organization.slug,
+      name: organization.name,
+      vocabulary: organization.vocabulary,
+      theme: organization.theme,
+    },
   });
 
   if (user !== undefined && user.is_admin === 1) return entry(true, false);

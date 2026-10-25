@@ -6,7 +6,7 @@ import {
   type Vocabularies,
 } from '../shared/vocabulary.ts';
 
-// 今の言葉づかい。本物の値を API から入れるのは #53（ワークスペースと組織の設定）。それまでは既定のゲームの言葉
+// 今の言葉づかい。組織の枠が、組織の操作の結果を入れる（organization.svelte.ts）。入るまでは既定のゲームの言葉
 export const vocabularies: Vocabularies = $state({ ...defaultVocabularies });
 
 // テンプレートから呼ぶと、言葉づかいが変わったときに描き直される。{名前} を持つ項目は params で埋める

@@ -12,6 +12,7 @@ import {
 import { sessionCookieName, sessionCookieOptions } from '../../shared/session-cookie.ts';
 import type { AppEnv } from '../app-env.ts';
 import { accountLogins } from '../auth/account-logins.ts';
+import { outsideAccount } from './account.ts';
 import { isOperator, operatorLoginIds } from '../auth/operators.ts';
 import { readSession } from '../auth/session.ts';
 import {
@@ -139,7 +140,12 @@ async function execute(c: Context<AppEnv>, operation: ImplementedOperation, trac
       if (!operators.ok || !isOperator(operators.ids, logins)) throw new ApiError(403, 'forbidden');
     }
     const input = await readInput(c, definition.input);
-    result = await handler({ db: commonDb(c.env), accountId: session.accountId, input });
+    result = await handler({
+      db: commonDb(c.env),
+      accountId: session.accountId,
+      account: outsideAccount(c.env, session.accountId),
+      input,
+    });
   } else {
     // 運用者かどうかは組織に入れるかを変えない。入れる組織が無い運用者は、組織が無いときと同じ 404 になる
     const slug = c.req.param('slug');
@@ -149,7 +155,7 @@ async function execute(c: Context<AppEnv>, operation: ImplementedOperation, trac
       loadLogins: () => accountLogins(c.env, session.accountId),
     });
     if (entry === undefined) throw new ApiError(404, 'not_found');
-    const { db, actor } = entry;
+    const { db, actor, organization } = entry;
     trace.organizationId = db.organizationId;
     trace.userId = actor.userId;
     checkOrganizationPermission(definition.permission, actor);
@@ -165,9 +171,9 @@ async function execute(c: Context<AppEnv>, operation: ImplementedOperation, trac
         throw new ApiError(409, 'workspace_closed');
       }
       assertVerifiedWorkspace(workspace);
-      result = await handler({ db, actor, input, workspace });
+      result = await handler({ db, actor, organization, input, workspace });
     } else {
-      result = await handler({ db, actor, input });
+      result = await handler({ db, actor, organization, input });
     }
   }
 

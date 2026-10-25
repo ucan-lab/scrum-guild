@@ -717,6 +717,7 @@ a.choice > div > span { display: block; }
 /* ===== ログインの画面（枠の外） ===== */
 .gate { min-height: 100vh; display: grid; place-items: center; padding-block: var(--space-8);
   padding-left: max(var(--space-4), env(safe-area-inset-left, 0px)); padding-right: max(var(--space-4), env(safe-area-inset-right, 0px)); }
+.gate-stack { display: grid; gap: var(--space-6); width: min(440px, 100%); }
 .gate-sheet { width: min(440px, 100%); display: grid; gap: var(--space-5); background: var(--color-surface); border: 1px solid var(--color-line); border-top: 5px solid var(--color-accent); box-shadow: var(--shadow-sheet); padding: var(--space-8) var(--space-6); border-radius: var(--radius-1); }
 .gate-brand { display: flex; align-items: center; gap: var(--space-2); }
 .gate-brand .brand-seal { width: 34px; height: 34px; font-size: 17px; }

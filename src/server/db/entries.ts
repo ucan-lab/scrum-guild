@@ -1,6 +1,6 @@
 // 2つの入口を作る関数。D1 には、ここの commonDb と orgDb からだけ問い合わせる
 import { compileOnlyKysely, DbEntry } from './entry.ts';
-import { commonDatabase, organizationDatabase } from './select-database.ts';
+import { allOrganizationDatabases, commonDatabase, organizationDatabase } from './select-database.ts';
 import type { CommonTables, OrganizationTables } from './tables.ts';
 import type { VerifiedOrganization } from './verify-organization.ts';
 
@@ -28,6 +28,14 @@ export class OrganizationDb extends DbEntry<OrganizationTables, 'organization'> 
 // 共通の6表（accounts、account_logins、sessions、oauth_states、rate_limits、organizations）
 export function commonDb(env: Env): CommonDb {
   return new DbEntry<CommonTables, 'common'>(commonDatabase(env), commonQueries);
+}
+
+// 組織をまたいで組織の中の表を読む入口。組織で絞らないので、cross-organization.ts だけが使う（index.ts は出さない）。
+// 組織の中の操作の処理には渡さない
+export function crossOrganizationEntries(env: Env): DbEntry<OrganizationTables, 'organization'>[] {
+  return allOrganizationDatabases(env).map(
+    (d1) => new DbEntry<OrganizationTables, 'organization'>(d1, organizationQueries),
+  );
 }
 
 // 組織の中の16表。組織を確かめた結果が無いと作れない

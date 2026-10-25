@@ -76,7 +76,12 @@ export const dictionary = defineDictionary({
   countUnit: organization('件', '件'),
   unassigned: workspace('担い手なし', '担当なし'),
   leftMember: workspace('（離脱済み）', '（離脱済み）'),
-  placeholderUserName: organization('仮の利用者', '仮の利用者'),
+  loadFailedTitle: organization('読み込めませんでした', '読み込めませんでした'),
+  loadFailedText: organization(
+    'しばらくしてから、もう一度試してください。',
+    'しばらくしてから、もう一度試してください。',
+  ),
+  retry: organization('もう一度試す', 'もう一度試す'),
 
   // メニューの項目と見出し。ワークスペースの外の画面は organization
   pageToday: organization('自分の今日', '自分の今日'),
@@ -102,6 +107,49 @@ export const dictionary = defineDictionary({
     'いまは API の疎通だけを確かめる仮の画面です。',
   ),
 
+  // 自分の今日の空の状態。ワークスペースがまだない管理者に、最初のワークスペースを作るボタンを出す
+  firstWorkspaceTitle: organization('まだ{workspace}がありません', 'まだ{workspace}がありません'),
+  firstWorkspaceText: organization(
+    '最初の{workspace}を作って、冒険者を招きましょう。',
+    '最初の{workspace}を作って、メンバーを招きましょう。',
+  ),
+  firstWorkspaceCreate: organization('{workspace}を作る', '{workspace}を作る'),
+
+  // 組織の選択と、枠の外の画面（組織の切り替え、見つからない、運用の仮の画面）
+  organizationChooseTitle: organization('冒険者ギルドを選ぶ', '組織を選ぶ'),
+  organizationChooseLead: organization(
+    '入れる冒険者ギルドが {count} つあります。名前や稼働の設定は冒険者ギルドごとに別です。',
+    '入れる組織が {count} つあります。名前や稼働の設定は組織ごとに別です。',
+  ),
+  organizationChooseNote: organization(
+    'あとから、メニューの上の冒険者ギルドの切り替えで選び直せます。',
+    'あとから、メニューの上の組織の切り替えで選び直せます。',
+  ),
+  organizationList: organization('冒険者ギルドの一覧へ', '組織の一覧へ'),
+  noOrganizationTitle: organization('入れる冒険者ギルドがありません', '入れる組織がありません'),
+  noOrganizationText: organization(
+    'ギルドマスターから招待が届くと、ここに出ます。',
+    '管理者から招待が届くと、ここに出ます。',
+  ),
+  invitationsHeading: organization('届いた招待', '届いた招待'),
+  invitationPending: organization('承諾待ちの招待があります', '承諾待ちの招待があります'),
+  invitationsNote: organization(
+    'すべての冒険者ギルドに届いた招待をまとめて出します。',
+    'すべての組織に届いた招待をまとめて出します。',
+  ),
+  organizationNotFoundTitle: organization('冒険者ギルドが見つかりません', '組織が見つかりません'),
+  organizationNotFoundText: organization(
+    'URL が違うか、入れない冒険者ギルドです。',
+    'URL が違うか、入れない組織です。',
+  ),
+  operatorOpen: organization('運用の画面へ', '運用の画面へ'),
+  pageOperator: organization('運用', '運用'),
+  operatorEmptyTitle: organization('運用の画面は準備中です', '運用の画面は準備中です'),
+  operatorEmptyText: organization(
+    '運用者のログインで入りました。入れる組織はまだありません。',
+    '運用者のログインで入りました。入れる組織はまだありません。',
+  ),
+
   // API の疎通の表示（仮の画面）
   apiHeading: organization('API の疎通', 'API の疎通'),
   apiStatus: organization('API: {status}（版 {version}）', 'API: {status}（版 {version}）'),
@@ -122,7 +170,6 @@ export const dictionary = defineDictionary({
   themeSimpleDark: organization('シンプル（ダーク）', 'シンプル（ダーク）'),
   themeMedieval: organization('中世風', '中世風'),
   themeModern: organization('現代風', '現代風'),
-  vocabLabel: organization('言葉', '言葉'),
 });
 
 export type DictionaryKey = keyof typeof dictionary;

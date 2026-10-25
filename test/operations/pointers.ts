@@ -3,4 +3,7 @@
 // キーは操作の名前。値は、対象の組織の行を指す成功する入力を作る関数（別の組織の対象を渡すと 404 になる入力）
 import type { Pointers } from './harness.ts';
 
-export const pointers: Pointers = {};
+export const pointers: Pointers = {
+  // 入力は空。組織は URL の slug で決まる
+  organization: { noReference: {} },
+};

@@ -2,6 +2,8 @@
 // 画面からの呼び出し（src/lib/api.ts）と、Hono への登録（src/server/operations/）が同じ定義を読む。
 // 処理は定義に持たせない。画面の束に Worker のコードを入れないため
 import type { z } from 'zod';
+// 定義が zod のスキーマを作る前に、設定を済ませる（定義はこのファイルを import する）
+import '../zod-config.ts';
 
 // 要る権限と、その範囲。権限の一覧も型も、実行時の検査もこの表から導く。
 //   outside: 組織の外（/api/<name>）

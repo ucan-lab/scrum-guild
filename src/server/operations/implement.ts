@@ -7,10 +7,23 @@ import type {
   OutsideOperationDefinition,
   WorkspaceOperationDefinition,
 } from '../../shared/operations/define.ts';
-import type { CommonDb, OrganizationActor, OrganizationDb, VerifiedWorkspace } from '../db/index.ts';
+import type {
+  CommonDb,
+  OrganizationActor,
+  OrganizationDb,
+  OrganizationSummary,
+  VerifiedWorkspace,
+} from '../db/index.ts';
+import type { OutsideAccount } from './account.ts';
 
-export type OutsideContext<Input> = { db: CommonDb; accountId: string; input: Input };
-export type OrganizationContext<Input> = { db: OrganizationDb; actor: OrganizationActor; input: Input };
+export type OutsideContext<Input> = { db: CommonDb; accountId: string; account: OutsideAccount; input: Input };
+// organization は入るときに引いた組織の行（名前、言葉づかい、既定のテーマ）。組織の中の処理は共通の入口を持たない
+export type OrganizationContext<Input> = {
+  db: OrganizationDb;
+  actor: OrganizationActor;
+  organization: OrganizationSummary;
+  input: Input;
+};
 export type WorkspaceContext<Input> = OrganizationContext<Input> & { workspace: VerifiedWorkspace };
 
 export type ContextOf<D extends AnyOperationDefinition> = D extends OutsideOperationDefinition

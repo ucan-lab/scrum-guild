@@ -73,6 +73,18 @@
 | --- | --- | --- |
 | 運用 | 組織の一覧（slug、名前、ユーザー数と人数の上限、ワークスペース数、タスク数、添付ファイルの合計と上限、最後に使われた日時、停止の有無）、組織の作成（slug、名前、最初の管理者）、停止と再開、管理者の指名し直し、人数と添付ファイルの上限の変更 | 運用者 |
 
+### 経路と組織の枠
+
+- 経路: 組織の画面は `/<slug>/...`、ワークスペースの画面は `/<slug>/w/<ワークスペースの ID>/...`（例 `/aoba/w/019a.../backlog`。ID をそのまま使う）。組織の外は `/`（ログインの直後の振り分けと組織の選択）、`/login`、`/operator`、`/invite`。経路の最上段に使う名前は slug にできない。
+- ログインの直後の `/`（`src/routes/+page.ts`）: `my-organizations` の結果で振り分ける。届いた招待が無く、入れる組織が1つならその組織へ。入れる組織が無い運用者は `/operator` へ。それ以外（入れる組織が2つ以上、届いた招待がある、入れる組織も運用者の印も無い）は、`/` がそのまま組織の選択の画面になる。
+- 組織の選択: 「入れる組織」は管理者か所属のある組織だけ。承諾待ちの招待だけの組織は「届いた招待」に組織の名前だけを出す（承諾と辞退は招待の承諾の Issue で作る）。
+- `/<slug>` のレイアウト（`src/routes/[slug]/+layout.ts` と `+layout.svelte`）: `organization` の操作の結果（組織の名前、言葉づかい、既定のテーマ、この組織での自分、所属するワークスペース）で `data-theme` と言葉づかいを当て、枠（左のメニューと上の帯）を出す。枠は root のレイアウトではなくここに置き、ログインと組織の選択の画面には出さない。上の帯には、この組織での自分の名前と、管理者なら管理者の印を出す。
+- 組織に入れない slug と存在しない slug は、どちらも同じ「見つからない」の画面（枠なし）で、API はどちらも 404。読み込みに失敗した（通信の失敗、5xx）ときは、見つからない画面ではなく「もう一度試す」を出す。
+- 組織の切り替え: メニューの上に置く。入れる組織が2つ以上あるか、届いた招待があるときだけ出し、最後の項目は組織の選択の画面（`/`）へ戻る。
+- 未ログイン（401 の `unauthenticated`）は `/login?return_to=<今のパスとクエリを encodeURIComponent したもの>` へ移す。ログインの後に戻す処理はログインの画面が受け持つ。
+- `users.last_seen_at` は、`organization` の操作を呼んだときに、前回から1時間以上たっているときだけ書く。
+- 自分の今日が空のときは、ワークスペースが無い管理者には最初のワークスペースを作るボタンを出す。メニューには、所属するワークスペースが無い人に、組織の画面（自分の今日、通知、自分の設定、組織の管理）だけを出す。
+
 ### 画面の上に重ねるもの
 
 - スプリントの作成（開始日、長さ、名前）、開始（ゴールの入力）、終了（持ち越し先、ゴールの達成）のダイアログ
@@ -177,8 +189,8 @@
 
 | `kit.js` | 本番 | 補足 |
 | --- | --- | --- |
-| `icons.js` のスプライトと `icon` | `IconSprite.svelte`、`Icon.svelte` | スプライトは `+layout.svelte` に1つ置く。アイコンの定義は `src/lib/icons.ts` |
-| `mount`（枠） | `AppShell.svelte`、`NavMenu.svelte` | 左のメニューと上の帯。組織とワークスペースの切り替え、アシスタントのボタンは置き場所だけで、中身は snippet で渡す。メニューの項目は `src/lib/nav.ts`。画面がまだ無い項目（`href` が `null`）はメニューに出さず、項目が1つも無いグループは見出しごと出さない（色を薄くするだけの「まだ無い」の示し方は、色だけに頼りコントラストも足りないので採らない）。上の帯は、アシスタント、開発用の切り替え、ログインした人の表示のどれかを渡したときだけ出す |
+| `icons.js` のスプライトと `icon` | `IconSprite.svelte`、`Icon.svelte` | スプライトは root の `+layout.svelte` に1つ置く。アイコンの定義は `src/lib/icons.ts` |
+| `mount`（枠） | `AppShell.svelte`、`NavMenu.svelte`、`OrganizationSwitcher.svelte` | 左のメニューと上の帯。`/[slug]` のレイアウトだけが使い、`slug` と、所属するワークスペースがあるか（`hasWorkspace`。無ければワークスペースの中の見出しを出さない）を渡す。組織の切り替えは `OrganizationSwitcher` を snippet で渡す。ワークスペースの切り替え、アシスタントのボタンは置き場所だけで、中身は snippet で渡す。メニューの項目は `src/lib/nav.ts`。画面がまだ無い項目（`href` が `null`）はメニューに出さず、項目が1つも無いグループは見出しごと出さない（色を薄くするだけの「まだ無い」の示し方は、色だけに頼りコントラストも足りないので採らない）。上の帯は、アシスタント、開発用の切り替え、ログインした人の表示のどれかを渡したときだけ出す |
 | `pageHead` | `PageHead.svelte` | |
 | `section` | `Section.svelte` | |
 | `emptyState` | `EmptyState.svelte` | |
@@ -187,7 +199,7 @@
 | `avatar`、`avatarOf` | `Avatar.svelte` | 色相は `users.id` から計算し（`src/lib/avatar-hue.ts`）、`style:--h` で渡す。DB に列は持たない。ユーザーがいるときは名前が必須で、`role="img"` と `aria-label` を付ける |
 | `t`、`DICT` | `src/shared/vocabulary.ts`、`src/lib/vocabulary.svelte.ts` | 言葉の辞書（`docs/development.md` の「言葉の辞書」） |
 | `THEMES`、`setTheme`、`applyTheme` | `src/shared/theme.ts`、`src/lib/theme.svelte.ts` | テーマの先当ては `docs/development.md` の「テーマの先当て」 |
-| 上の帯の「言葉」と「テーマ」 | `DevSwitches.svelte` | `import.meta.env.DEV` のときだけ出し、本番の build に入れない。#53 で消す |
+| `.gate`、`.gate-sheet`（枠の外の画面） | `Gate.svelte`、`GateSheet.svelte` | 組織の選択、見つからない、運用の仮の画面の外側と、紙1枚。先頭の紙に `brand` を付けると、ブランドと h1 の見出しが出る。紙を縦に並べる `.gate-stack` は components.css に持つ |
 
 - 画面は `.svelte` に `<style>` を書かない。足りない CSS は components.css とカタログに先に足す。フックと `pnpm lint` が止める。
 - インラインの `style` 属性は CSP に止められる。動く値は `style:--h` のように CSSOM で当てる（Svelte の `style:` ディレクティブ）。

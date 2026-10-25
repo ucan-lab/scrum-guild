@@ -11,7 +11,7 @@ function storage(): ThemeStorage | null {
 
 // 今のテーマ。null は属性なし（シンプル（自動））。
 // 描く前の先当ては static/theme-init.js の役目で、ここは画面が動き出してから値を持ち、切り替えを受け持つ。
-// 本物の値（users.theme、なければ organizations.theme）を API から入れるのは #53
+// 本物の値（users.theme、なければ organizations.theme）は組織の枠が入れる（organization.svelte.ts）
 export const themeState: { current: Theme | null } = $state({
   current: readStoredThemeOrNull(),
 });

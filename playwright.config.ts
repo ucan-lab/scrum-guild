@@ -17,7 +17,8 @@ export default defineConfig({
   },
   projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
   webServer: {
-    command: 'pnpm preview',
+    // ログインした画面は seed のセッションで開くので、サーバーを立てる前に seed を入れ直す（手元の D1 の行は消える）
+    command: 'pnpm db:seed && pnpm preview',
     url: `${baseURL}/api/health`,
     // 手元では立てたままの preview を使えるが、CI では必ずこのコミットで build し直す
     reuseExistingServer: !process.env.CI,

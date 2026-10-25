@@ -25,7 +25,7 @@
 
 `ai.md` の「操作の定義を1か所に持つ」の形。
 
-- 定義: 操作ごとに、名前、説明、入力と出力の zod のスキーマ、`read` か `write`、要る権限を1つのオブジェクトに書き、`src/shared/operations/` に置く（`defineOperation()`）。一覧は `src/shared/operations/index.ts`。運用者の操作は `src/shared/operations/operator/`（人が差分を読む領域）。定義は処理を持たない。画面の束に Worker のコードを入れないため。
+- 定義: 操作ごとに、名前、説明、入力と出力の zod のスキーマ、`read` か `write`、要る権限を1つのオブジェクトに書き、`src/shared/operations/` に置く（`defineOperation()`）。一覧は `src/shared/operations/index.ts`。運用者の操作は `src/shared/operations/operator/`（人が差分を読む領域）。定義は処理を持たない。画面の束に Worker のコードを入れないため。定義は画面の束にも入るので、`define.ts` が `src/shared/zod-config.ts` を先に読み込み、zod の eval の試し（`new Function`）を止める（`jitless`）。画面の CSP に `'unsafe-eval'` が無く、試しが違反として報告されるため。
 - 処理: `src/server/operations/` で `implement(定義, 処理)` の形に書き、`src/server/operations/index.ts` の一覧に足す。Hono のルートは、この一覧を `createApp()` が1つの関数（`operationsApp()`）で登録する。ルートを直に書かない（`/api/health` だけが例外）。仮の操作は本番の一覧に入れず、テストの中で定義する。
 - URL: `POST /api/<slug>/<操作の名前>`。組織の外の操作（ログインだけ、運用者）は `POST /api/<操作の名前>`。読む操作も POST にする。API の応答はどれもキャッシュしないので、GET にしない損は小さく、Origin の検査をすべての操作に同じに掛けられる。入力は JSON の本文だけで、`Content-Type: application/json` を要る。URL は名前から作り、定義に持たせない。名前は英小文字と数字をハイフンでつないだ1語（`task-title` など）で、一覧で重ならない。URL の形は `operationPath()` に1つだけ持ち、画面と登録の関数が同じ値を使う。
 - 権限の種類（`permission`）:
@@ -51,7 +51,7 @@
   - 入力: 壊れた JSON や形の違う入力は 400 の `invalid_input` で、`details` に項目ごとの `path`、`code`、`message` を入れる。本文は 1MiB までで、`Content-Length` の無い本文も読んだ分を数えて止め、超えれば 413（`code` は `invalid_input`）。未ログインの呼び出しには本文を読ませない。
   - 出力: 戻り値を出力のスキーマで検証し、スキーマに無い項目は落とす。形が合わなければ 500。検証した値（変換を通した出力）をそのまま送り、画面は同じスキーマで検証し直さない。
   - ログ: 「API のエラーとログ」の項目を操作ごとに1行出す。413 を含め、失敗の `code` と `status` も残る。
-- 処理が受け取るもの: 検証済みの入力 `input` と、確かめた DB の入口だけ。組織の外の操作は共通の入口 `db` と `accountId`、組織の中の操作は組織の中の入口 `db`（組織を確かめないと作れない）と `actor`（`userId`、`isAdmin`、`invitedOnly`。`invitee` の操作では `userId` が null になりうる）、ワークスペースの下の操作はさらに `workspace`。`workspace` の型 `VerifiedWorkspace` は `VerifiedOrganization` と同じ作りで、`src/server/db/` の外では作れない（`test/operations-types.ts` が `@ts-expect-error` で確かめる）。組織の中の入口は問い合わせを絞らないので、処理は自分の文を、入口の `organizationId`（組織の直下の表）か、`workspace.workspaceId`（ワークスペースの下の表）で絞る。入力の ID だけで引かない。
+- 処理が受け取るもの: 検証済みの入力 `input` と、確かめた DB の入口だけ。組織の外の操作は共通の入口 `db` と `accountId` と `account`（入れる組織と届いた招待を組織をまたいで読む `organizations()`、運用者かを返す `isOperator()`。`src/server/operations/account.ts`）、組織の中の操作は組織の中の入口 `db`（組織を確かめないと作れない）と `actor`（`userId`、`isAdmin`、`invitedOnly`。`invitee` の操作では `userId` が null になりうる）と `organization`（入るときに引いた組織の slug、名前、言葉づかい、既定のテーマ）、ワークスペースの下の操作はさらに `workspace`。`workspace` の型 `VerifiedWorkspace` は `VerifiedOrganization` と同じ作りで、`src/server/db/` の外では作れない（`test/operations-types.ts` が `@ts-expect-error` で確かめる）。組織の中の入口は問い合わせを絞らないので、処理は自分の文を、入口の `organizationId`（組織の直下の表）か、`workspace.workspaceId`（ワークスペースの下の表）で絞る。入力の ID だけで引かない。
 - 画面からは、`src/lib/api.ts` の `callOperation(定義, 入力, { slug })` で呼ぶ。入力と出力の型は定義から推論し、組織の中の操作は `slug` を要る。結果は `ApiResult` で、応答が JSON でなければ失敗として扱う（出力の形はサーバーが検証済み）。出力のスキーマの変換は JSON にできる値を返すものに限る。
 - 組織の分離のテストと権限のテストは、定義の一覧を回して全操作に当てる（`test/operation-registry.test.ts`）。新しい操作を足しても、回すテストを書き足す必要はない。足すのは、組織の中の操作ごとのテスト用の関数だけで、`test/operations/pointers.ts` に操作の名前をキーにして書く。
   - テスト用の関数は、対象の組織（`Target`。組織、管理者、リーダー、一般のメンバー、別のワークスペースのメンバー、承諾待ちの招待だけの人）を受け取り、その組織の行を指す成功する入力を返す。別の組織の対象を渡した入力が 404 になり、自分の組織の対象を渡した入力が成功することを、同じ関数で確かめる（404 が入力の誤りや権限の不足ではないと言えるようにするため）。
@@ -90,10 +90,9 @@
 - 辞書は `src/shared/vocabulary.ts` に置く。キーごとに、ゲームの言葉（`game`）とスクラムの言葉（`scrum`）の両方を必須にする。`workspace('パーティ', 'ワークスペース')` のように2つ渡す形なので、片方を消すと `pnpm check` が落ちる。言葉が同じ項目（`reward` など）も両方書く。
 - キーには、言葉づかいを決める単位（`scope`）がある。`workspace` はワークスペースの設定で切り替わる。`organization` は管理者が決める組織の設定で切り替わり、冒険者ギルド、ギルドマスター、ギルドの書記のほか、ワークスペースの外の画面の名前（自分の今日、通知、自分の設定、組織の管理）と、枠の共通の文言（閉じる、件など）を入れる（`docs/requirements.md` の「ゲームの仕組み」）。`word(key, { workspace, organization })` が引く。
 - 語順や記号を含む文は、`{名前}` の置き換えを持つ1項目にする（`pageTitle` の `{page} - {app}`、`apiStatus` など）。`t(key, { 名前: 値 })` で埋める。ゲームとスクラムで置き換えの名前をそろえることは `scripts/vocabulary.test.ts` が確かめる。テンプレートに語順や記号を直に書かない。
-- 画面は `src/lib/vocabulary.svelte.ts` の `t(key)` で文言を出し、直に書かない。今の言葉づかいはここのストアが持ち、既定は両方ともゲームの言葉。本物の値を API から入れるのは #53。
+- 画面は `src/lib/vocabulary.svelte.ts` の `t(key)` で文言を出し、直に書かない。今の言葉づかいはここのストアが持ち、既定は両方ともゲームの言葉。組織の枠（`src/routes/[slug]/+layout.svelte`）が、組織の操作の結果の `organization.vocabulary` を、組織の言葉とワークスペースの言葉の両方に入れる（`src/lib/organization.svelte.ts`）。ワークスペースの中の画面は、そのワークスペースの `vocabulary` でワークスペースの言葉を上書きする。
 - 辞書の型の保証は `src/shared/vocabulary.typecheck.ts` が持つ。片方の言葉が欠けた項目が型で落ちることを `@ts-expect-error` で確かめ、落ちなくなると `pnpm check` が落ちる。
 - 見本の `design/kit.js` の `DICT` にあるキーは、本番も同じ中身で持つ。`scripts/design-parity.test.ts` が突き合わせる（`docs/design.md` の「デザインシステムの構成」）。
-- 開発用のサーバー（`pnpm dev`）では、上の帯の「言葉」でゲームとスクラムを切り替えられる。`pnpm preview` と本番の build には入らない。
 
 ### 書体
 
@@ -113,8 +112,7 @@
 - 描く前の先当ては `static/theme-init.js` の役目。`src/app.html` の head が同期（`async` と `defer` なし）で読み、覚えている値を `data-theme` に入れる。インラインにすると CSP のハッシュから漏れて止まるので、自分のオリジンのファイルにしてある。`localStorage` が使えない、値が壊れているときは何もせず、属性なしで描く。
 - `static/theme-init.js` は同期で読むので、小さなファイルでも読み終えるまで HTML の解析が止まる。`_headers` では `Cache-Control` を指定せず、Cloudflare の既定（毎回確かめる）のまま配る。描画のたびに「変わっていないか」の問い合わせが1往復増えるが、ファイルは数百バイトで、ちらつきを無くす利点が上回るので受け入れた。名前にハッシュを入れて `immutable` にすれば往復は無くなる一方、`app.html` から名前を引く仕掛けが要り、遅れが問題になってから足せば足りる。
 - キーと値は `src/shared/theme.ts` と同じにする。`scripts/theme.test.ts` が、`static/theme-init.js` を偽の `localStorage` で動かして確かめる。
-- 画面が動き出してからの切り替えとストアは `src/lib/theme.svelte.ts`。本物の値（`users.theme`、なければ `organizations.theme`）を API から入れて上書きするのは #53。
-- 開発用のサーバーでは、上の帯の「テーマ」で5つを順に切り替えられる。`pnpm preview` と本番の build には入らない（`import.meta.env.DEV`）。
+- 画面が動き出してからの切り替えとストアは `src/lib/theme.svelte.ts`。本物の値は組織の枠が入れる。組織の操作の結果の `me.theme`（`users.theme`）、なければ `organization.theme`（`organizations.theme`）を `setTheme` に渡すので、`data-theme` と `localStorage` が同じ値になる（`src/lib/organization.svelte.ts`）。組織を切り替えたときも同じで、切り替えた先の値に替わる。
 
 ### 架空のデータ
 
@@ -357,7 +355,7 @@ PR ごとに GitHub Actions で回す。`.github/workflows/ci.yml` の各ジョ�
 | check | 型の検査（`tsc`、`svelte-check`）、lint、整形、Claude のフックのテスト（`node --test .claude/hooks/*.test.mjs`） |
 | test | Workers の実行環境で動かす（`@cloudflare/vitest-plugin`。`@cloudflare/vitest-pool-workers` から名前が変わった）。テストの D1 には `test/apply-migrations.ts` が全マイグレーションを当てる。1つのテストファイルの中では、前のテストが入れた行が残るので、一意の列にはテストごとに新しい値を使う。組織の分離のテストを含む。`scripts/` の `node --test` は、seed を一時の D1 に2回流して中身を数える |
 | migration | 空の D1 に全マイグレーションを順に当てて通るか確かめ、続けて同じ D1 に seed を2回流す（`pnpm db:migrate:fresh`）。マイグレーションと seed のずれと、seed を流し直せることを PR ごとに確かめるため。0件なら当てずに成功で終える。ベータが始まったら、既にあるマイグレーションのファイルの書き換えも落とす（上の「DB を作り直してよい期間」） |
-| e2e | `pnpm e2e`。`pnpm preview` で build して `wrangler dev` を立て、Playwright でシェルの表示、`/api/health` の版と D1 への疎通、CSP の違反が無いこと（`securitypolicyviolation` とコンソールのエラー）を確かめる。版には PR の head の SHA を渡し、`/api/health` と画面の build に埋めた版（SvelteKit が書き出す `/_app/version.json`）がどちらもその値になることも見る。スクリーンショットと、失敗したときの trace を成果物の `e2e` に上げる。4つのテーマと2つの言葉の組み合わせのスクリーンショットは、画面ができてから足す。trace は要求と応答と Cookie を丸ごと残し、成果物はリポジトリを読める人が誰でも取れるので、e2e には本物の認証情報を渡さない（ログインは seed のセッションで通す） |
+| e2e | `pnpm e2e`。`pnpm db:seed` で手元の D1 に seed を入れ直し（行は消える）、`pnpm preview` で build して `wrangler dev` を立て、Playwright で、seed の Cookie でログインした組織の選択と組織の枠（組織が1つの人、2つの人、入れない組織を開いた人。`e2e/organizations.test.ts`）、シェルの表示、`/api/health` の版と D1 への疎通、CSP の違反が無いこと（`securitypolicyviolation` とコンソールのエラー）を確かめる。版には PR の head の SHA を渡し、`/api/health` と画面の build に埋めた版（SvelteKit が書き出す `/_app/version.json`）がどちらもその値になることも見る。スクリーンショットと、失敗したときの trace を成果物の `e2e` に上げる。4つのテーマと2つの言葉の組み合わせのスクリーンショットは、画面ができてから足す。trace は要求と応答と Cookie を丸ごと残し、成果物はリポジトリを読める人が誰でも取れるので、e2e には本物の認証情報を渡さない（ログインは seed のセッションで通す） |
 | ai-review | `anthropics/claude-code-action` で、スキル `ai-review` が差分に応じて `.claude/agents/` のレビューのエージェントを呼び分け、CRITICAL と HIGH を `finding-verifier` の反証にかけてから、指摘を PR に書く。`.github/workflows/ai-review.yml` に分けて置く |
 | label | パスを見て `needs-human` のラベルを付ける（上の「マージの判定」）。`.github/workflows/label.yml` に分けて置き、`pull_request_target` で動かす。ワークフローも規則も PR のベース（`main`）の版が使われるので、PR の側で書き換えてもラベルは付く。別のブランチをベースに開いてから `main` へ付け替えたときも、判定し直す。PR のコードはチェックアウトしない（書き込みのトークンで PR のコードを動かさないため） |
 | ci-ok | ai-review と label を除く上のジョブをまとめる1つのジョブ。マージの前に確かめるのは、これと label |
