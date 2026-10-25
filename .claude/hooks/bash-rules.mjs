@@ -8,6 +8,7 @@ import { existsSync, statSync } from 'node:fs';
 import path from 'node:path';
 import {
   DYNAMIC,
+  abbreviates,
   baseName,
   commandIndex,
   concatWords,
@@ -829,7 +830,8 @@ function judgeDeployScript(words, ci, dir) {
   return judgeDeployWords(scriptWords, dir);
 }
 
-// env -C <dir> と env --chdir=<dir> は、その後ろのコマンドの作業場所を変える。
+// env -C <dir> と env --chdir=<dir> は、その後ろのコマンドの作業場所を変える。GNU の env は長いオプションを一意な省略形でも
+// 受け付けるので、--c、--ch、--c=<dir> も --chdir と読む。
 // ~ か $ で始まる値と、展開の印のある値は判定できない（null）とする
 function dirAfterEnv(words, ci, dir, from) {
   for (let i = from; i < ci; i++) {
@@ -842,8 +844,10 @@ function dirAfterEnv(words, ci, dir, from) {
         j++;
         continue;
       }
-      if (w === '-C' || w === '--chdir') value = words[(valueAt = ++j)];
-      else if (w.startsWith('--chdir=')) value = w.slice('--chdir='.length);
+      const long = /^--([a-z-]+)(=([\s\S]*))?$/.exec(w);
+      const chdir = long && abbreviates(long[1], 'chdir');
+      if (w === '-C' || (chdir && long[2] === undefined)) value = words[(valueAt = ++j)];
+      else if (chdir) value = long[3];
       else if (/^-C./.test(w)) value = w.slice(2);
       else continue;
       dir = !dir || !value || /^[~$]/.test(value) || isUnresolved(words, valueAt) ? null : path.resolve(dir, value);
@@ -855,12 +859,13 @@ function dirAfterEnv(words, ci, dir, from) {
 // env の -S、--split-string、--split-string=…、-S"…"、-iS のようにまとめた短いフラグ。env -S は文字列をシェルと違う規則で分けて
 // 実行する（引用符の外の \_ が区切り、# から後ろを捨てる、\c、${VAR} だけを展開する。GNU の env は別の解き方をする）ので、
 // 中身は読まずに確認を挟む。値を取る短いフラグ（-C、-u、-P）の後ろの S は値の一部なので除く。
-// GNU の env は長いオプションを一意な省略形でも受け付ける（--split、--sp=x）ので、--split-string の先頭の一部も拾う
+// GNU の env は長いオプションを一意な省略形でも受け付ける。s から始まる長いオプションは split-string だけなので、
+// --s、--sp=x、--split も拾う
 const ENV_SPLIT_REASON = 'env -S は文字列をシェルと違う規則で分けて実行するので、何を実行するかを判定できない。人が確かめる';
 function isEnvSplitFlag(word) {
   if (/^-[^-CuPS]*S/.test(word)) return true;
-  const long = /^--(sp[a-z-]*)(=|$)/.exec(word);
-  return Boolean(long) && 'split-string'.startsWith(long[1]);
+  const long = /^--([a-z-]+)(=|$)/.exec(word);
+  return Boolean(long) && abbreviates(long[1], 'split-string');
 }
 function splitsString(words, prefixes, ci) {
   const end = ci === -1 ? words.length : ci;

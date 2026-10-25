@@ -109,6 +109,9 @@ describe('shell-words', () => {
     assert.equal(toolOf('xargs --delim x node'), 'node');
     assert.equal(toolOf('xargs -J X -R 1 -S 2 git'), 'git');
     assert.equal(toolOf('xargs -I {} -P 4 node'), 'node');
+    assert.equal(toolOf('env --c src git'), 'git');
+    assert.equal(toolOf('env --chdir src git'), 'git');
+    assert.equal(toolOf('sudo --c src git'), 'src');
     assert.equal(toolOf('sudo -a x ls'), 'x');
     assert.equal(toolOf('nice -a x ls'), 'x');
     assert.equal(toolOf('xargs sudo -a x ls'), 'x');
@@ -842,6 +845,9 @@ describe('bash-rules: 確認を挟む', () => {
     "env --split-string 'x'",
     "env --split-string='x'",
     "env --split-str='x'",
+    "env --s 'wrangler deploy'",
+    'env --s=x',
+    "env --sp 'x'",
     "env -i -S 'wrangler\\_deploy'",
     "env FOO=1 -S 'x'",
     "sudo env -S 'x'",
@@ -998,12 +1004,16 @@ describe('bash-rules: 確認を挟む', () => {
       'env -Csr? git commit -m x',
       'env --chdir=sr? git commit -m x',
       'env --chdir {src,x} git commit -m x',
+      'env --c=sr? git commit -m x',
+      'env --c sr? git commit -m x',
+      'env --ch={src,x} git commit -m x',
+      'env --chd "src$X" git commit -m x',
       'env -C "src$X" git commit -m x',
     ]) {
       assert.equal(decisionOn(command), 'ask', command);
     }
     // 展開の印のない行き先は解決し、main の作業コピーでは止める
-    for (const command of ['cd src && git commit -m x', 'pnpm -C src exec git commit -m x', 'env -C src git commit -m x']) {
+    for (const command of ['cd src && git commit -m x', 'pnpm -C src exec git commit -m x', 'env -C src git commit -m x', 'env --c src git commit -m x', 'env --chd=src git commit -m x']) {
       assert.equal(decisionOn(command), 'deny', command);
     }
     assert.equal(decisionOn('cd sr? && ls'), undefined);

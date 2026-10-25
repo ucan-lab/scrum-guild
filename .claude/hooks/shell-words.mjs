@@ -476,6 +476,11 @@ export function baseName(word) {
   return name.replace(/(.)@[^@]*$/, '$1');
 }
 
+// GNU の getopt は長いオプションを一意な省略形でも受け付ける。--ch は --chdir、--s は --split-string（name は -- を除いた1文字以上の名前）
+export function abbreviates(name, full) {
+  return name.length > 0 && full.startsWith(name);
+}
+
 // xargs だけが値を取るフラグ（-a と --arg-file は引数を読むファイル、--delimiter は区切り、-J、-R、-S は BSD の置換と行数と置換の長さ）。
 // sudo -a のように他の前置きでは値を取らないので、直前の前置きが xargs のときだけ効かせる。
 // GNU の getopt は長いオプションを一意な省略形でも受け付ける（--arg、--delim）。-afile や --arg-file=file の連結の形は1語で済む
@@ -483,7 +488,13 @@ const XARGS_FLAGS_WITH_VALUE = new Set(['-a', '-J', '-R', '-S']);
 function takesValueInXargs(word) {
   if (XARGS_FLAGS_WITH_VALUE.has(word)) return true;
   const long = /^--([a-z-]+)$/.exec(word);
-  return Boolean(long) && ('arg-file'.startsWith(long[1]) || 'delimiter'.startsWith(long[1]));
+  return Boolean(long) && (abbreviates(long[1], 'arg-file') || abbreviates(long[1], 'delimiter'));
+}
+
+// env の --chdir とその省略形（--c、--ch）。GNU env の長いオプションで c から始まるのは chdir だけ。値は次の語
+function takesValueInEnv(word) {
+  const long = /^--([a-z-]+)$/.exec(word);
+  return Boolean(long) && abbreviates(long[1], 'chdir');
 }
 
 // index は実行する道具の位置（見つからなければ -1）、prefixes は道具の前で飛ばした前置きの語（env、xargs など）の位置
@@ -494,7 +505,13 @@ function scanCommand(words) {
     const w = words[i];
     if (w === '' || isAssignment(w) || /^[<>]/.test(w)) continue;
     if (w.startsWith('-')) {
-      if (PREFIX_FLAGS_WITH_VALUE.has(w) || (previous === 'xargs' && takesValueInXargs(w))) i++;
+      if (
+        PREFIX_FLAGS_WITH_VALUE.has(w) ||
+        (previous === 'xargs' && takesValueInXargs(w)) ||
+        (previous === 'env' && takesValueInEnv(w))
+      ) {
+        i++;
+      }
       continue;
     }
     // timeout 300 や watch -n 2 の数
