@@ -8,6 +8,9 @@ on:
     # ベースの付け替えは label.yml が拾い、push し直すまで label を失敗にする
     types: [opened, synchronize, reopened]
 
+# label.yml が、どの PR のどのベースで動いた実行かを読む。中身はイベントの時点で決まり、後からベースを変えても変わらない
+run-name: "ci pr=${{ github.event.pull_request.number }} base=${{ github.event.pull_request.base.ref }}"
+
 # 同じ PR の古い実行は止める
 concurrency:
   group: ci-${{ github.event.pull_request.number }}
