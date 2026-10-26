@@ -2,19 +2,27 @@ name: playwright
 description: Playwright の chromium を入れる。ブラウザは Playwright の版ごとにキャッシュし、apt での依存の導入（--with-deps）は行わない
 
 # 先に ./.github/actions/setup で依存を入れておく（版は pnpm-lock.yaml の @playwright/test で決まる）。
-# キャッシュは PR から main の分を読めるので、main への push で cache.yml が同じ手順を走らせて温める
+# キャッシュは PR から main の分を読めるので、main への push と週1回の実行で cache.yml が同じ手順を走らせて温める
 runs:
   using: composite
   steps:
-    - id: version
-      name: Playwright の版を読む
+    # 版を読めないとキーが版によらなくなり、古いブラウザを戻し続けるので止める。
+    # キーにはランナーのイメージ（ImageOS）も入れる。--with-deps を使わないので、イメージが替わったら作り直す
+    - id: key
+      name: キャッシュのキーを決める
       shell: bash
-      run: echo "version=$(pnpm exec playwright --version | awk '{print $2}')" >> "$GITHUB_OUTPUT"
+      run: |
+        version=$(pnpm exec playwright --version | awk '{print $2}')
+        if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+ ]]; then
+          echo "Playwright の版を読めない: '$version'" >&2
+          exit 1
+        fi
+        echo "key=playwright-${ImageOS}-${RUNNER_ARCH}-${version}" >> "$GITHUB_OUTPUT"
 
     - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
         path: ~/.cache/ms-playwright
-        key: playwright-${{ runner.os }}-${{ steps.version.outputs.version }}
+        key: ${{ steps.key.outputs.key }}
 
     # --with-deps は付けない。apt は Ubuntu のミラーの速さに左右され、2分を超えた実行があった（#250）。
     # ランナーのイメージには chromium の動くライブラリが既にあり、画面の書体は @fontsource から自前で配る。

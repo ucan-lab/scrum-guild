@@ -400,21 +400,21 @@ Bash の判定を `permissions.deny` に置かないのは、規則が前方一�
 
 ## CI
 
-PR ごとに GitHub Actions で回す。`.github/workflows/ci.yml` の各ジョブは `package.json` のスクリプトを呼ぶだけにし、手順をワークフローに持たない。
+PR ごとに GitHub Actions で回す。`.github/workflows/ci.yml` の各ジョブは `package.json` のスクリプトを呼ぶだけにし、手順をワークフローに持たない。下の表の cache だけは、PR ではなく main で動く別のワークフローで、setup と playwright は各ジョブが使う composite action。
 
 | ジョブ | 中身 |
 | --- | --- |
 | changes | 変わったファイルを見て、文書だけの PR かを判定する（下の「文書だけの PR」） |
 | setup | 各ジョブの先頭で動く共通の用意（`.github/actions/setup`）。Node を `.node-version` から、pnpm を `packageManager` から入れ（corepack に頼らない）、ロックファイルどおりに依存を入れる |
-| playwright | e2e のジョブの用意（`.github/actions/playwright`）。chromium を入れる。ブラウザ（`~/.cache/ms-playwright`）は Playwright の版ごとにキャッシュする。`--with-deps` は付けず、apt を通らない。apt の取得は Ubuntu のミラーの速さに左右され、25.9MB に2分を超えた実行があったため（#250）。ランナーのイメージには chromium が動くライブラリが既にあり、画面の書体は @fontsource から自前で配るので、システムの書体も要らない。Playwright を上げて e2e がライブラリの不足で落ちたら、`pnpm exec playwright install-deps chromium` を足す |
-| cache | PR が読むキャッシュを main に作る（`.github/workflows/cache.yml`）。キャッシュは作ったブランチと PR のベースのブランチからしか読めず、CI は PR でしか動かないので、main に作らないとどの PR も1回目は外れる。main への push のうちキーが変わりうるもの（ロックファイル、`.node-version`、`package.json`、`.github/actions/`）と、手動の実行で、setup と playwright だけを走らせる。テストは走らせず、`ci-ok` にも含めない |
+| playwright | e2e のジョブの用意（`.github/actions/playwright`）。chromium を入れる。ブラウザ（`~/.cache/ms-playwright`）はキャッシュし、キーはランナーのイメージ（`ImageOS`）、CPU、Playwright の版にする。版を読めなければ止める（キーが版によらなくなると、古いブラウザを戻し続けるため）。`--with-deps` は付けず、apt を通らない。apt の取得は Ubuntu のミラーの速さに左右され、25.9MB に2分を超えた実行があったため（#250）。ランナーのイメージには chromium が動くライブラリが既にあり、画面の書体は @fontsource から自前で配る。システムの日本語の書体が無くても、e2e が通り、スクリーンショットの日本語が崩れないことを #250 の CI で確かめる。Playwright を上げるかイメージが替わって、e2e がライブラリの不足で落ちたら、`pnpm exec playwright install-deps chromium` を足す |
+| cache | PR が読むキャッシュを main に作る（`.github/workflows/cache.yml`）。キャッシュは作ったブランチと PR のベースのブランチからしか読めず、CI は PR でしか動かないので、main に作らないとどの PR も1回目は外れる。当たるのはベースが `main` の PR だけ。setup と playwright だけを走らせ、Playwright のブラウザと pnpm のストアを温める。動くのは、main への push のうちどちらかのキーか中身が変わりうるもの（ロックファイル、`.node-version`、`package.json`、`.github/actions/`）、週1回の定期（7日読まれないキャッシュは消えるため）、手動の実行。テストは走らせず、`ci-ok` にも含めない |
 | check | 型の検査（`tsc`、`svelte-check`）、lint、整形、Claude のフックのテスト（`node --test .claude/hooks/*.test.mjs`） |
 | test | vitest の3つのプロジェクトで動かす（`vitest.config.ts`）。`workers` は API のテストを Workers の実行環境で動かす（`test/`。`@cloudflare/vitest-plugin`。`@cloudflare/vitest-pool-workers` から名前が変わった）。`web` は画面のコードのテストを node の環境で動かす（`src/` の `*.test.ts`。Workers の実行環境では `.svelte` を描けないので、`svelte/server` の `render` で部品を HTML にして確かめる。テストは確かめる対象の隣に置く）。`web-client` は部品の配線（`*.svelte.ts` の `$effect`）を、DOM なしのブラウザ向けの実行で確かめる（`src/` の `*.svelte.test.ts`。環境は `scripts/vitest-client-environment.ts`。`$effect.root` と `flushSync` で動かし、部品そのものは mount しない）。テストの D1 には `test/apply-migrations.ts` が全マイグレーションを当てる。1つのテストファイルの中では、前のテストが入れた行が残るので、一意の列にはテストごとに新しい値を使う。組織の分離のテストを含む。`scripts/` の `node --test` は、seed を一時の D1 に2回流して中身を数える |
 | migration | 空の D1 に全マイグレーションを順に当てて通るか確かめ、続けて同じ D1 に seed を2回流す（`pnpm db:migrate:fresh`）。マイグレーションと seed のずれと、seed を流し直せることを PR ごとに確かめるため。0件なら当てずに成功で終える。ベータが始まったら、既にあるマイグレーションのファイルの書き換えも落とす（上の「DB を作り直してよい期間」） |
 | e2e | `pnpm e2e --shard=<i>/3`。CI の長さを決めるジョブなので、マトリクスで3つのシャードに分けて並べる（ファイル単位で割り振られ、シャードごとにランナーと手元の D1 が別になる。`fail-fast` は切り、1つが落ちても残りを走らせる。`ci-ok` の `needs` ではマトリクスが1つの結果にまとまり、1つでも落ちれば失敗になるので、`ciOkVerdict` は変えない。チェックの名前は `e2e (1)`〜`e2e (3)` になる）。シャードごとに `pnpm preview` で build して `wrangler dev` を立て、サーバーが立ってから `e2e/global-setup.ts` が `pnpm db:seed` で手元の D1 に seed を入れ直し（行は消える。立てたままのサーバーを使い回すときも流れる。CI のジョブに seed の段は足さない）、Playwright で、seed の Cookie でログインした組織の選択と組織の枠（組織が1つの人、2つの人、入れない組織を開いた人。`e2e/organizations.test.ts`）、ログインの画面（枠の外、`return_to` の整え方、`?error=` の文言）と seed の Cookie での `me`（`e2e/login.test.ts`）、運用の画面の一覧と組織の作成のダイアログ（`e2e/operator.test.ts`。e2e の Worker には運用者の一覧のシークレットも GitHub への通信も無いので、運用者の操作の応答は差し替える。運用者でない人の 403 と `/` への戻しは本物のサーバーで見る）、シェルの表示、`/api/health` の版と D1 への疎通、CSP の違反が無いこと（`securitypolicyviolation` とコンソールのエラー）を確かめる。版には PR の head の SHA を渡し、`/api/health` と画面の build に埋めた版（SvelteKit が書き出す `/_app/version.json`）がどちらもその値になることも見る。スクリーンショットと、失敗したときの trace を、シャードごとの成果物 `e2e-1`〜`e2e-3` に上げる。4つのテーマと2つの言葉の組み合わせのスクリーンショットは、画面ができてから足す。trace は要求と応答と Cookie を丸ごと残し、成果物はリポジトリを読める人が誰でも取れるので、e2e には本物の認証情報を渡さない（ログインは seed のセッションで通す） |
 | ai-review | `anthropics/claude-code-action` で、スキル `ai-review` が差分に応じて `.claude/agents/` のレビューのエージェントを呼び分け、CRITICAL と HIGH を `finding-verifier` の反証にかけてから、指摘を PR に書く。`.github/workflows/ai-review.yml` に分けて置く |
 | label | パスを見て `needs-human` のラベルを付ける（上の「マージの判定」）。`.github/workflows/label.yml` に分けて置き、`pull_request_target` で動かす。ワークフローも規則も PR のベース（`main`）の版が使われるので、PR の側で書き換えてもラベルは付く。別のブランチをベースに開いてから `main` へ付け替えたときも、判定し直す。PR のコードはチェックアウトしない（書き込みのトークンで PR のコードを動かさないため） |
-| ci-ok | ai-review と label を除く上のジョブをまとめる1つのジョブ。マージの前に確かめるのは、これと label |
+| ci-ok | `ci.yml` の changes、check、test、migration、e2e をまとめる1つのジョブ。マージの前に確かめるのは、これと label |
 
 ai-review は Claude のサブスクリプションで動かす。手元で `claude setup-token` を実行して作った OAuth トークンを、リポジトリのシークレット `CLAUDE_CODE_OAUTH_TOKEN` に置く。従量の費用はかからないが、使用量の上限は手元の対話の利用と共有になる。
 
