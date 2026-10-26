@@ -311,7 +311,7 @@ favicon と同じマーク（下の「favicon」）の横に、名前「Scrum Gu
 | `DIALOGS.moveTask`、`DIALOGS.moveStory` | `MoveParentDialog.svelte` | タスクとストーリーの親を移すダイアログ。移す先は `.select` で、親なしと、画面が渡す親の候補（`parents`。タスクなら完了していないストーリー、ストーリーなら完了も中止もしていないエピック）のうち今の親でないもの。閉じてから、動かす行と移す先を `onmove` で画面に渡す（送るのは画面）。送った後の2回目の送信は無視する。バックログの画面の節に書いたとおり。見本はカタログの「ダイアログと演出」の「親を移す」と「<ストーリー>の親を移す」 |
 | `createEpic`、`editEpic`、`viewEpic`（見本の `epicDialog`） | `EpicDialog.svelte` | エピックの作成と変更のダイアログ。欄と組み方は `StoryDialog` から<受け入れ基準>を除いたもの。文言はエピック用の辞書の項目（`epic*`）を使い、ストーリーのダイアログの項目を流用しない（欄の名前とリンクの誤りのような、ダイアログによらない項目は共通）。バックログの画面の節に書いたとおり。見本はカタログの「ダイアログと演出」（作る、直す、終了したワークスペースの読み取り専用） |
 | `.tree-note` | `TreeStory.svelte` の中 | 木の行の操作に添える短い説明（「残り N 件の<タスク>」、取り消せない理由）。`.tree-ratio` と同じ小さい文字で、狭い幅では折り返す |
-| `.chip.is-done` | `TreeEpic.svelte` の中 | クリアと完了の印。完了の印（`.hanko`）と同じ役の色（`--color-done`）で、`.chip.is-ok`（良い状態）と分ける。見本はカタログの「印と囲みの知らせ」と「木」 |
+| `.chip.is-done` | `TreeEpic.svelte` の中 | クリアと完了の印。完了の印（`.hanko`）と同じ役の色（`--color-done`）で、`.chip.is-ok`（良い状態）と分ける。地は `--color-surface` のまま色を混ぜない（混ぜると中世風の朱が 4.5:1 に届かない。混ぜない地では、どのテーマも 5:1 以上）。見本はカタログの「印と囲みの知らせ」と「木」 |
 | `dueChip` | `DueChip.svelte` | 期日の印。今日の日付と週の始まりは、API が返したワークスペースの値を渡す。判定は `src/shared/due.ts` |
 | `createStory`、`editStory`（見本の `storyDialog`） | `StoryDialog.svelte` | ストーリーの作成と変更のダイアログ。バックログの画面の節に書いたとおり。欄は `.input`、`.textarea`、日付の入力（`.input` の `type="date"`）。期日とリンクは `.form-row.is-start` で並べ、リンクの「開く」は `.input-row` の中に置く。見本はカタログの「ダイアログと演出」（作る、直す、終了したワークスペースの読み取り専用） |
 | `setting`（ワークスペースの節の中身） | `src/lib/components/admin/WorkspacesSetting.svelte`、`SectionBoundary.svelte`、`section-load.svelte.ts` | 組織の管理の節の部品。`Setting` を使い、読み込みの状態は `SectionLoad`、その表示（読み込み中、失敗、読み直しの失敗）は `SectionBoundary` に任せて、自分では一覧と操作だけを持つ。「終了する」と「再開する」は、前の節の組織の管理の項目 |

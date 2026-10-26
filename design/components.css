@@ -248,8 +248,10 @@ h1, h2, h3 { text-wrap: balance; }
 .chip.is-warn { color: var(--color-warn); background: var(--color-warn-soft); border-color: currentColor; }
 .chip.is-todo { color: var(--color-warn); border-color: currentColor; border-style: dashed; }
 .chip.is-ok { color: var(--color-ok); background: var(--color-ok-soft); border-color: currentColor; }
-/* 完了とクリアの印。完了の印（.hanko）と同じ役の色で、テーマが変える（中世風は朱） */
-.chip.is-done { color: var(--color-done); background: color-mix(in srgb, var(--color-done) 10%, var(--color-surface)); border-color: currentColor; }
+/* 完了とクリアの印。完了の印（.hanko）と同じ役の色で、テーマが変える（中世風は朱）。地は色を混ぜず --color-surface のままにする。
+   --color-done を 10% 混ぜた地では、中世風の朱（#c8352b）が 4.37:1 で 4.5:1 に届かないため。混ぜない地での比は、
+   シンプル 5.37、シンプル（ダーク）8.54、中世風 5.06、現代風 11.82 */
+.chip.is-done { color: var(--color-done); background: var(--color-surface); border-color: currentColor; }
 .chip.is-carry { border-style: dashed; }
 .tag {
   font-size: var(--text-xs); padding: 0 6px; border-radius: var(--radius-1);
