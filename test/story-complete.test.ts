@@ -57,7 +57,9 @@ function racing(match: (sqls: readonly string[]) => boolean, change: () => Promi
 
 // 完了にする前の状態の読み取り（ストーリー、未完了の件数、受け取り手）
 const readsCompletion = (sqls: readonly string[]) =>
-  sqls[0]?.startsWith('select "stories"."id", "stories"."completed_at" from "stories"') === true;
+  sqls[0]?.startsWith(
+    'select "stories"."id", "stories"."completed_at", "epics"."completed_at" as "epic_completed_at"',
+  ) === true;
 
 async function storyRow(target: Target, storyId: string) {
   const db = orgDb(env, target.organization.verified);
@@ -279,6 +281,55 @@ describe('story-complete', () => {
     });
     await createTask(target.organization, target.workspace.id, target.admin.userId!, { story_id: other.id });
     expect((await complete(target, story.id)).status).toBe(200);
+  });
+
+  test('親のエピックが完了か中止していれば 409 の conflict（parent_completed）で、何も書かない', async () => {
+    const target = await createTarget();
+    const adminId = target.admin.userId!;
+    for (const overrides of [
+      { completed_at: AT, completed_by: adminId },
+      { canceled_at: AT, canceled_by: adminId },
+    ]) {
+      const epic = await createEpic(target.organization, target.workspace.id, adminId, overrides);
+      const story = await emptyStory(target, { epic_id: epic.id });
+      await completedTask(target, story.id, target.member.userId!);
+      const res = await complete(target, story.id);
+      expect(res.status).toBe(409);
+      expect(await errorOf(res)).toEqual({ code: 'conflict', reason: 'parent_completed' });
+      expect((await storyRow(target, story.id))!.completed_at).toBeNull();
+      expect(await storyGrants(target, story.id)).toEqual([]);
+      expect(await logsOf(target, story.id)).toEqual([]);
+    }
+    // 開いているエピックの下と、削除したエピックの下なら完了にできる
+    for (const overrides of [{}, { completed_at: AT, completed_by: adminId, deleted_at: AT }]) {
+      const epic = await createEpic(target.organization, target.workspace.id, adminId, overrides);
+      const story = await emptyStory(target, { epic_id: epic.id });
+      expect((await complete(target, story.id)).status).toBe(200);
+    }
+  });
+
+  test('読んでから書くまでに親のエピックが完了したら、何も書かず 409 の conflict（parent_completed）', async () => {
+    const target = await createTarget();
+    const adminId = target.admin.userId!;
+    const epic = await createEpic(target.organization, target.workspace.id, adminId);
+    const story = await emptyStory(target, { epic_id: epic.id });
+    const raced = racing(readsCompletion, async () => {
+      const db = orgDb(env, target.organization.verified);
+      await db.run(
+        db.statement((q) =>
+          q
+            .updateTable('epics')
+            .set({ completed_at: AT, completed_by: adminId })
+            .where('id', '=', epic.id)
+            .where('workspace_id', '=', target.workspace.id),
+        ),
+      );
+    });
+    const res = await complete(target, story.id, target.member, raced);
+    expect(res.status).toBe(409);
+    expect(await errorOf(res)).toEqual({ code: 'conflict', reason: 'parent_completed' });
+    expect((await storyRow(target, story.id))!.completed_at).toBeNull();
+    expect(await logsOf(target, story.id)).toEqual([]);
   });
 
   test('すでに完了していれば 409 の conflict（completed）', async () => {

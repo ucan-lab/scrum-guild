@@ -230,6 +230,29 @@ test('クリアしたレイドの下の完遂した達成目標は、取り消�
   expect(sent).toBe(0);
 });
 
+test('中止したレイドの下の達成目標は、完遂にするを押せず、理由を出す', async ({ page }) => {
+  await page.route('**/api/aoba/backlog-tree', async (route) => {
+    const response = await route.fetch();
+    const body = (await response.json()) as { epics: { canceled_at: string | null }[] };
+    const epics = body.epics.map((epic) => ({ ...epic, canceled_at: '2026-10-22T00:00:00.000Z' }));
+    await route.fulfill({ response, json: { ...body, epics } });
+  });
+  let sent = 0;
+  page.on('request', (request) => {
+    if (request.url().endsWith('/story-complete')) sent++;
+  });
+  await page.goto(SEED_GAME_WORKSPACE);
+  await expect(
+    rowGroup(page, 'ポイントの交換先を増やす').locator('.tree-row.is-epic .chip', { hasText: '中止' }),
+  ).toBeVisible();
+  const story = rowGroup(page, SEED_EPIC_STORY);
+  const complete = story.getByRole('button', { name: `完遂にする: ${SEED_EPIC_STORY}` });
+  await expect(complete).toHaveAttribute('aria-disabled', 'true');
+  await expect(complete).toHaveAccessibleDescription('完遂か中止したレイドの下の達成目標は完遂にできません');
+  await complete.click({ force: true });
+  expect(sent).toBe(0);
+});
+
 test('ストーリーの行は、メニューの横の幅と指で押す画面でも、題の列を 12rem 以上に保ち、横にはみ出さない', async ({
   browser,
   baseURL,

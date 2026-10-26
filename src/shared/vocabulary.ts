@@ -483,6 +483,11 @@ export const dictionary = defineDictionary({
     '{done}か中止した{epic}の下の{story}は取り消せません',
     '{done}か中止した{epic}の下の{story}は取り消せません',
   ),
+  // 親のエピックが完了か中止しているとき、「完了にする」の横に出す（完了にすると取り消せなくなるため、断る）
+  storyCompleteBlocked: workspace(
+    '{done}か中止した{epic}の下の{story}は{done}にできません',
+    '{done}か中止した{epic}の下の{story}は{done}にできません',
+  ),
   storyReopen: organization('取り消す', '取り消す'),
   storyReopenLabel: workspace('{done}を取り消す: {title}', '{done}を取り消す: {title}'),
   storyCompleting: workspace('{done}にしています', '{done}にしています'),
@@ -500,6 +505,10 @@ export const dictionary = defineDictionary({
   storyNotDone: workspace(
     'この{story}は{done}していません。一覧を読み直します',
     'この{story}は{done}していません。一覧を読み直します',
+  ),
+  storyCompleteParentDone: workspace(
+    '{done}か中止した{epic}の下の{story}は、{done}にできません。一覧を読み直します',
+    '{done}か中止した{epic}の下の{story}は、{done}にできません。一覧を読み直します',
   ),
   storyReopenParentDone: workspace(
     '{done}か中止した{epic}の下の{story}は、取り消せません。一覧を読み直します',

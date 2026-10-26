@@ -633,7 +633,19 @@ async function readCompletion(db: OrganizationDb, workspaceId: string, storyId: 
     db.statement((q) =>
       q
         .selectFrom('stories')
-        .select(['stories.id', 'stories.completed_at'])
+        // 親のエピック。削除したエピックは親として数えない
+        .leftJoin('epics', (join) =>
+          join
+            .onRef('epics.id', '=', 'stories.epic_id')
+            .onRef('epics.workspace_id', '=', 'stories.workspace_id')
+            .on('epics.deleted_at', 'is', null),
+        )
+        .select([
+          'stories.id',
+          'stories.completed_at',
+          'epics.completed_at as epic_completed_at',
+          'epics.canceled_at as epic_canceled_at',
+        ])
         .where('stories.id', '=', storyId)
         .where('stories.workspace_id', '=', workspaceId)
         .where('stories.deleted_at', 'is', null),
@@ -649,6 +661,7 @@ async function readCompletion(db: OrganizationDb, workspaceId: string, storyId: 
   if (story === undefined) return undefined;
   return {
     completedAt: story.completed_at,
+    parentFinished: story.epic_completed_at !== null || story.epic_canceled_at !== null,
     openCount: Number(openResult.rows[0]?.count ?? 0),
     recipients: recipientResult.rows.map((row) => row.user_id),
   };
@@ -702,6 +715,11 @@ export const storyCompleteOperation = implement(storyComplete, async ({ db, acto
       await throwIfClosed(db, workspaceId);
       throw completionConflict('completed');
     }
+    // 完了か中止したエピックの下で完了にすると、取り消せず（parent_completed）、付けた経験値も打ち消せなくなるので断る
+    if (state.parentFinished) {
+      await throwIfClosed(db, workspaceId);
+      throw completionConflict('parent_completed');
+    }
     if (state.openCount > 0) {
       await throwIfClosed(db, workspaceId);
       throw completionConflict('open_tasks');
@@ -724,6 +742,20 @@ export const storyCompleteOperation = implement(storyComplete, async ({ db, acto
             eb.and([
               eb.exists(openWorkspace(q, organizationId, workspaceId)),
               eb.not(eb.exists(openTasksUnder(q, workspaceId, storyId))),
+              // 今の親のエピック（削除したものを除く）が、完了も中止もしていない。読んでから書くまでに親が移っても、今の親で見る
+              eb.not(
+                eb.exists(
+                  eb
+                    .selectFrom('epics')
+                    .select('epics.id')
+                    .whereRef('epics.id', '=', 'stories.epic_id')
+                    .where('epics.workspace_id', '=', workspaceId)
+                    .where('epics.deleted_at', 'is', null)
+                    .where((sb) =>
+                      sb.or([sb('epics.completed_at', 'is not', null), sb('epics.canceled_at', 'is not', null)]),
+                    ),
+                ),
+              ),
               eb.not(
                 eb.exists(
                   recipientGrants(q, workspaceId, storyId)
@@ -803,7 +835,7 @@ export const storyCompleteOperation = implement(storyComplete, async ({ db, acto
     ]);
 
     if ((results[0]?.changes ?? 0) > 0) return { story_id: storyId, completed_at: completedAt };
-    // 閉じていれば 409 の workspace_closed。そうでなければ読み直して、消えた、完了した、未完了のタスクが増えたかを見て、
+    // 閉じていれば 409 の workspace_closed。そうでなければ読み直して、消えた、完了した、親のエピックが完了か中止した、未完了のタスクが増えたかを見て、
     // どれでもなければ（受け取り手が変わった）やり直す
     await throwIfClosed(db, workspaceId);
   }

@@ -293,7 +293,10 @@
       case 'not_completed':
         return { message: t('storyNotDone', words), reload: true };
       case 'parent_completed':
-        return { message: t('storyReopenParentDone', words), reload: true };
+        return {
+          message: action === 'complete' ? t('storyCompleteParentDone', words) : t('storyReopenParentDone', words),
+          reload: true,
+        };
       case 'changed':
         return { message: t('storyCompletionChanged'), reload: true };
       default:
@@ -593,7 +596,7 @@
   {@const place = storyPlaces[story.id]}
   {@const epic = parentEpicOf(story.id)}
   <!-- 親のないストーリーは、移す先のエピックがあるときだけ「親を移す」を出す（エピックの下のストーリーは、親なしへ移せる）。
-       完了か中止したエピックの下では、取り消しは必ず断られるので、押せない理由を出す -->
+       完了か中止したエピックの下では、完了と取り消しは必ず断られるので、押せない理由を出す -->
 
   <TreeStory
     bind:this={treeRows[story.id]}
@@ -606,7 +609,7 @@
     nested={place?.parentId != null}
     remaining={remainingOf(story)}
     pending={Object.hasOwn(storyPending, story.id)}
-    reopenBlocked={epic !== undefined && (epic.completed_at !== null || epic.canceled_at !== null)}
+    parentFinished={epic !== undefined && (epic.completed_at !== null || epic.canceled_at !== null)}
     onComplete={canWrite ? (target) => void setStoryCompletion(target, 'complete') : undefined}
     onReopen={canWrite ? (target) => void setStoryCompletion(target, 'reopen') : undefined}
     onEdit={(target, trigger) => storyDialog?.show(trigger, target.id)}

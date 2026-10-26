@@ -353,13 +353,16 @@
 
   // ストーリーの完了の操作（本番の TreeStory）。完了したストーリーは完了の印と「取り消す」。完了していなければ「完了にする」で、
   // 配下の未完了のタスクが残るあいだは aria-disabled にして、横に「残り N 件」を添える
-  // 親のエピックが完了か中止していれば（blocked）、取り消しは押せない aria-disabled にして、理由を横に出す。
+  // 親のエピックが完了か中止していれば（blocked）、完了と取り消しは押せない aria-disabled にして、理由を横に出す。
   // 残りの件数は見える文字で、押せない理由の全文は見えない文字で置き、どちらも aria-describedby で結ぶ
   function storyDoneControl(key, st, remaining, blocked) {
     if (st.doneAt) {
       const reason = blocked ? `<span class="tree-note" id="tree-${key}-blocked">${t("done")}か中止した${t("epic")}の下の${t("story")}は取り消せません</span>` : "";
       return `<span class="hanko" role="img" aria-label="${esc(st.title)}: ${t("done")}">${icon("check")}<b>完</b></span>
         ${reason}<button class="btn is-sm is-quiet" type="button" aria-label="${t("done")}を取り消す: ${esc(st.title)}"${blocked ? ` aria-disabled="true" aria-describedby="tree-${key}-blocked"` : ` data-toast="${t("story")}の${t("done")}を取り消しました"`}>取り消す</button>`;
+    }
+    if (blocked) {
+      return `<span class="tree-note" id="tree-${key}-blocked">${t("done")}か中止した${t("epic")}の下の${t("story")}は${t("done")}にできません</span><button class="btn is-sm" type="button" aria-label="${t("complete")}: ${esc(st.title)}" aria-disabled="true" aria-describedby="tree-${key}-blocked">${icon("check")}${t("complete")}</button>`;
     }
     const note = remaining
       ? `<span class="tree-note" id="tree-${key}-remaining">残り ${remaining} 件の${t("task")}</span><span class="visually-hidden" id="tree-${key}-reason">未完了の${t("task")}が残っているあいだは${t("done")}にできません</span>`
