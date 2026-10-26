@@ -188,6 +188,10 @@ test.describe('管理者（あおば開発のミナト）', () => {
     const button = section.getByRole('button', { name: '2026-11-03 を消す' });
     await button.scrollIntoViewIfNeeded();
     await expect(button).toBeInViewport({ ratio: 1 });
+    // 狭い幅では、指で押す画面でなくても押せる範囲を 44px 四方にする
+    const box = await button.boundingBox();
+    expect(box?.width).toBeGreaterThanOrEqual(44);
+    expect(box?.height).toBeGreaterThanOrEqual(44);
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(320);
   });
 

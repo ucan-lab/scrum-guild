@@ -637,7 +637,8 @@ button.tree-link { border: 0; background: none; padding: 0; font: inherit; text-
 .party-list .party-list-text { min-width: 0; overflow-wrap: anywhere; }
 /* 日付は、隣の名前が長くても縮めず、ハイフンで折らない */
 .party-list .mono { flex: none; white-space: nowrap; }
-@media (pointer: coarse) {
+/* 狭い幅と指で押す画面では、行の操作のボタンを 44px 四方にする（バックログの並べ替えのボタンと同じ範囲） */
+@media (max-width: 760px), (pointer: coarse) {
   .party-list .icon-btn { min-width: 44px; min-height: 44px; }
 }
 .ac-box { background: var(--color-sunken); border-radius: var(--radius-1); padding: var(--space-3) var(--space-4); font-size: var(--text-sm); }
