@@ -280,7 +280,7 @@
           aria-describedby={usernameDescribedBy}
           oninput={changeUsername}
           onkeydown={(event) => {
-            if (event.key === 'Enter' && !event.isComposing) {
+            if (event.key === 'Enter' && !event.isComposing && event.keyCode !== 229) {
               event.preventDefault();
               void verify();
             }
