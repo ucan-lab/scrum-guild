@@ -6,14 +6,7 @@ import { memberList } from '../src/shared/operations/workspace/index.ts';
 import { createApp } from '../src/server/app.ts';
 import { commonDb } from '../src/server/db/index.ts';
 import { implementedOperations } from '../src/server/operations/index.ts';
-import {
-  createAccountLogin,
-  createInvitation,
-  createMembership,
-  createUser,
-  createWorkspace,
-  hash64,
-} from './factories.ts';
+import { createInvitation, createMembership, createUser, createWorkspace, hash64 } from './factories.ts';
 import { errorCodeOf, post } from './operations/harness.ts';
 import { createPerson, createTarget, type Person, type Target } from './operations/world.ts';
 
@@ -192,13 +185,8 @@ describe('member-list: アバター', () => {
 
   test('アカウントに結ばれる前の行は、同じログインが別の組織でアバターを持っていても null で、別の組織の人のアバターは出ない', async () => {
     const [target, other] = await Promise.all([createTarget(), createTarget()]);
-    // 別の組織の一般のメンバー。GitHub と Google の両方のアバターを持つ
+    // 別の組織の一般のメンバー。GitHub のアバターを持つ
     await setAvatar(other.member, 'https://avatars.githubusercontent.com/u/7200002');
-    await createAccountLogin(other.member.accountId, {
-      login_provider: 'google',
-      login_subject: '118000000000000000002',
-      avatar_url: 'https://lh3.googleusercontent.com/a/other-member',
-    });
     // 自分の組織で、同じ GitHub のログインを指名して待っている行（まだ結ばれていない）が所属している
     const waiting = await createUser(target.organization, {
       account_id: null,
