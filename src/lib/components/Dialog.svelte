@@ -49,11 +49,13 @@
     open = false;
   }
 
-  // 入力欄か主ボタンを先に、なければ閉じるボタンにフォーカスを置く
+  // 入力欄か主ボタンを先に、なければ閉じるボタンにフォーカスを置く。ラジオは選ばれているものにだけ置く
+  // （矢印キーで動くのは選ばれた項目からなので、選ばれていない項目に置くと読み上げが今の値と食い違う）
   function focusFirst(): void {
     const first =
-      dialog.querySelector<HTMLElement>('input, textarea, select, .btn.is-primary') ??
-      dialog.querySelector<HTMLElement>('[data-close-dialog]');
+      dialog.querySelector<HTMLElement>(
+        'input:not([type="radio"]), input[type="radio"]:checked, textarea, select, .btn.is-primary',
+      ) ?? dialog.querySelector<HTMLElement>('[data-close-dialog]');
     first?.focus();
   }
 
