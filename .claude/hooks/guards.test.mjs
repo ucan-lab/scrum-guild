@@ -2010,6 +2010,23 @@ describe('bash-rules: リダイレクトは argv の外で読む', () => {
     assert.equal(decision('echo x > "$(mktemp -d)/out.log"'), 'allow');
   });
 
+  test('算術の << と < はヒアドキュメントとリダイレクトに読まず、中の置換は判定する', () => {
+    for (const command of [
+      'echo $((1<<2))\nls',
+      'echo "$((1 << 2))"\nls',
+      '(( x = 1 << 2 ))\nls',
+      'for (( i = 0; i < 3; i++ )); do echo $i; done',
+      'if (( 1 < 2 )); then ls; fi',
+      'x=$(echo $((1<<2)))\nls',
+    ]) {
+      assert.equal(decision(command), 'allow', command);
+    }
+    assert.equal(decision('echo $((1<<2))\nwrangler deploy'), 'deny');
+    assert.equal(decision('(( x = 1 << 2 ))\nwrangler deploy'), 'deny');
+    assert.equal(decision('echo $(( $(wrangler deploy) + 1 ))'), 'deny');
+    assert.equal(decision('(( $(cat .dev.vars) ))'), 'deny');
+  });
+
   test('置換が複数並ぶ先と、未設定の変数を挟む先も、位置ごとに埋めて照合する', () => {
     for (const command of ['echo x > $(echo .dev)$(echo .vars)', 'echo x > $(echo .dev).$(echo vars)', 'echo x > .dev${UNSET}.vars']) {
       assert.equal(decision(command), 'deny', command);

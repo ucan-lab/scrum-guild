@@ -101,9 +101,9 @@ function readParameter(text, start) {
     const ch = text[j];
     if (ch === '\\') j++;
     else if (text.startsWith('$(', j)) {
-      const close = closingParen(text, j + 2);
-      substitutions.push(text.slice(j + 2, close));
-      j = close;
+      const { inner, end } = readSubstitution(text, j);
+      substitutions.push(...inner);
+      j = end;
     } else if (ch === '`') {
       const close = text.indexOf('`', j + 1);
       const stop = close === -1 ? text.length : close;
@@ -162,6 +162,7 @@ function closingParen(text, start) {
   for (let j = start; j < text.length; j++) {
     const ch = text[j];
     if (ch === '\\') j++;
+    else if (text.startsWith('$((', j)) j = arithmeticEnd(text, j + 3);
     else if (text.startsWith('<<', j) && text[j + 2] !== '<') {
       const match = /^<<-?\s*(['"]?)([\w-]+)\1/.exec(text.slice(j));
       if (!match) continue;
@@ -180,7 +181,31 @@ function closingParen(text, start) {
   return text.length;
 }
 
-// 引用符も \ も無い終わりの印のヒアドキュメントの本文で、シェルが実行する置換（$(…)、`…`、${X:-$(…)}）の中身。
+// (( の後ろから、算術を閉じる )) の2つ目の ) の位置を返す。算術の中の << と < はシフトと比較で、ヒアドキュメントとリダイレクトではない
+function arithmeticEnd(text, start) {
+  let depth = 2;
+  for (let j = start; j < text.length; j++) {
+    const ch = text[j];
+    if (ch === '\\') j++;
+    else if (text.startsWith('$(', j) && text[j + 2] !== '(') j = closingParen(text, j + 2);
+    else if (ch === '(') depth++;
+    else if (ch === ')' && --depth === 0) return j;
+  }
+  return text.length;
+}
+
+// text[j] の $( から始まる置換を読み、別の区切りとして判定する中身の一覧 inner と、閉じの ) の位置 end を返す。
+// $(( … )) は算術なので、中身をコマンドとして読まず、中の $(…) と `…` だけを取り出す（$((1<<2)) の << をヒアドキュメントと読まない）
+function readSubstitution(text, j) {
+  if (text[j + 2] === '(') {
+    const end = arithmeticEnd(text, j + 3);
+    return { inner: substitutionsIn(text.slice(j + 3, end - 1)), end };
+  }
+  const end = closingParen(text, j + 2);
+  return { inner: [text.slice(j + 2, end)], end };
+}
+
+// 引用符も \ も無い終わりの印のヒアドキュメントの本文と、算術（$(( … ))、(( … ))）の中で、シェルが実行する置換（$(…)、`…`、${X:-$(…)}）の中身。
 // 本文の中の引用符は文字なので読み飛ばさない。\ は次の1文字を文字にする（\$(x) は実行しない）
 function substitutionsIn(body) {
   const found = [];
@@ -188,9 +213,9 @@ function substitutionsIn(body) {
     const ch = body[j];
     if (ch === '\\') j++;
     else if (body.startsWith('$(', j)) {
-      const close = closingParen(body, j + 2);
-      found.push(body.slice(j + 2, close));
-      j = close;
+      const { inner, end } = readSubstitution(body, j);
+      found.push(...inner);
+      j = end;
     } else if (ch === '`') {
       const close = body.indexOf('`', j + 1);
       const stop = close === -1 ? body.length : close;
@@ -312,10 +337,18 @@ export function splitSegments(command) {
       i = stop;
       continue;
     }
-    if (command.startsWith('$(', i) || c === '`') {
-      const end = c === '`' ? command.indexOf('`', i + 1) : closingParen(command, i + 2);
+    if (command.startsWith('$(', i)) {
+      const { inner, end } = readSubstitution(command, i);
+      nested.push(...inner);
+      add(SUBSTITUTION, true);
+      expands = true;
+      i = end;
+      continue;
+    }
+    if (c === '`') {
+      const end = command.indexOf('`', i + 1);
       const stop = end === -1 ? command.length : end;
-      nested.push(command.slice(c === '`' ? i + 1 : i + 2, stop));
+      nested.push(command.slice(i + 1, stop));
       add(SUBSTITUTION, true);
       expands = true;
       i = stop;
@@ -339,8 +372,8 @@ export function splitSegments(command) {
           continue;
         }
         if (command.startsWith('$(', j)) {
-          const end = closingParen(command, j + 2);
-          nested.push(command.slice(j + 2, end));
+          const { inner, end } = readSubstitution(command, j);
+          nested.push(...inner);
           add(SUBSTITUTION, true);
           j = end + 1;
           continue;
@@ -443,6 +476,15 @@ export function splitSegments(command) {
       }
       openRedirect = { op, nestedFrom: nested.length };
       i = j - 1;
+      continue;
+    }
+
+    // コマンドの頭の (( … ))（for (( … )) も）は算術のコマンド。中の << と < はシフトと比較なので、リダイレクトとヒアドキュメントに読まない。
+    // 中の置換は実行されるので、別の区切りとして取り出す
+    if (command.startsWith('((', i) && !inWord && !openRedirect && (commandIndex(words) === -1 || words.at(-1) === 'for')) {
+      const end = arithmeticEnd(command, i + 2);
+      nested.push(...substitutionsIn(command.slice(i + 2, end - 1)));
+      i = end;
       continue;
     }
 
