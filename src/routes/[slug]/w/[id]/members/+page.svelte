@@ -149,7 +149,12 @@
               <tr>
                 <td class="is-name"
                   ><span class="person is-wrap"
-                    ><Avatar userId={member.id} name={member.name} image={member.avatar_url} />{member.name}</span
+                    ><Avatar
+                      userId={member.id}
+                      name={member.name}
+                      image={member.avatar_url}
+                      decorative
+                    />{member.name}</span
                   ></td
                 >
                 <td>{roleLabel(member.role)}</td>

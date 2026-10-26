@@ -40,7 +40,10 @@ test.describe('リーダー（あおば開発のミナト）', () => {
     await expect(rows).toHaveCount(2);
     // 名前の前に頭文字の円（その文字も td の文字に入る）
     await expect(rows.nth(0).locator('td').nth(0)).toHaveText('ミミナト');
-    await expect(rows.nth(0).locator('td').nth(0).getByRole('img', { name: 'ミナト' })).toBeVisible();
+    // 名前は横の文字が読むので、アバターは読み上げから外す
+    const avatar = rows.nth(0).locator('td').nth(0).locator('.avatar');
+    await expect(avatar).toBeVisible();
+    await expect(avatar).toHaveAttribute('aria-hidden', 'true');
     await expect(rows.nth(0).locator('td').nth(1)).toHaveText('パーティリーダー');
     await expect(rows.nth(0).locator('td').nth(2)).toHaveText('2026-10-01');
     await expect(rows.nth(1).locator('td').nth(0)).toHaveText('ハハルカ');
@@ -189,12 +192,12 @@ test.describe('リーダー（あおば開発のミナト）', () => {
     );
     await page.goto(MEMBERS_PATH);
     const rows = page.getByRole('table', { name: '所属している人の一覧' }).locator('tbody tr');
-    const minato = rows.nth(0).getByRole('img', { name: 'ミナト' });
+    const minato = rows.nth(0).locator('.avatar');
     await expect(minato.locator('img')).toHaveAttribute('src', 'https://avatars.githubusercontent.com/u/7300001');
     await expect(minato.locator('img')).toBeVisible();
     // 画像のある人は頭文字を出さない
     await expect(rows.nth(0).locator('td').nth(0)).toHaveText('ミナト');
-    const haruka = rows.nth(1).getByRole('img', { name: 'ハルカ' });
+    const haruka = rows.nth(1).locator('.avatar');
     await expect(haruka).toHaveText('ハ');
     await expect(haruka.locator('img')).toHaveCount(0);
     expect(await collect()).toEqual([]);
