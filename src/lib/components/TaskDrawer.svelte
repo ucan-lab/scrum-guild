@@ -434,6 +434,8 @@
     if (alive) {
       task = result.data.task;
       clock = { today: result.data.today, weekStart: result.data.week_start };
+      // 別の人の変更を読み直したので、その変更が載った履歴も読み直す
+      void loadHistory();
     }
     return result.data.task;
   }
