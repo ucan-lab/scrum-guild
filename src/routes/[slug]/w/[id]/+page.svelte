@@ -12,6 +12,7 @@
   import TaskMoveDialog from '../../../../lib/components/TaskMoveDialog.svelte';
   import TreeStory from '../../../../lib/components/TreeStory.svelte';
   import { callOperation, type ApiResult } from '../../../../lib/api.ts';
+  import { MoveQueue } from '../../../../lib/move-queue.ts';
   import { showToast } from '../../../../lib/toast.svelte.ts';
   import { t } from '../../../../lib/vocabulary.svelte.ts';
   import { storyMove } from '../../../../shared/operations/story/index.ts';
@@ -24,7 +25,7 @@
   // それぞれ position の順。ストーリーの下には未完了のタスクを並べ、完了したタスクは件数の1行にする。
   // 絞り込み、折りたたみを開ける操作、ドラッグでの並べ替え、エピックの段は、それぞれの機能の Issue で足す。
   // 並べ替えは、行の「上へ」「下へ」と Alt と ↑ ↓ で、同じ親（親なしのタスク、親のないストーリーはそれぞれの段）の中で1つ動かす。
-  // タスクの行の「親を移す」は、ダイアログで選んだ親の末尾へ移す。どちらも先に画面を動かしてから送り、送る順は守る（moveQueue）。
+  // タスクの行の「親を移す」は、ダイアログで選んだ親の末尾へ移す。どちらも先に画面を動かしてから送り、送る順は守る（MoveQueue）。
   // 失敗したら理由を知らせて読み直す。動かした並びは読み直すまで画面に持ち、読み直したら捨てる（読み直した値が送った後の並び）。
   // 送り終える前に木が読み直されたら、送り終えた後にもう一度読み直す（捨てた移動があれば知らせる）。
   // 見出しは見本どおり画面の名前（掲示板／バックログ）で、小見出しがワークスペースの名前。見出しの右に、ストーリーを作るボタンと起票のボタン。
@@ -52,9 +53,11 @@
   let movedParents = $state<Record<string, string | null>>({});
   let taskOrders = $state<Record<string, string[]>>({});
   let storyOrder = $state<string[] | null>(null);
-  // 動かす操作は、押した順に1つずつ送る。読み直したら世代を進め、まだ送っていない古い操作は捨てる
-  let moveQueue: Promise<void> = Promise.resolve();
-  let moveGeneration = 0;
+  // 動かす操作は、押した順に1つずつ送る（src/lib/move-queue.ts）。読み直したら、まだ送っていない古い操作は捨てる
+  const moves = new MoveQueue<ApiResult<unknown>>({
+    reload: () => reloadTree(),
+    dropped: () => showToast(t('moveReloaded'), 'alert'),
+  });
   $effect.pre(() => {
     void tree;
     added = [];
@@ -62,7 +65,7 @@
     movedParents = {};
     taskOrders = {};
     storyOrder = null;
-    moveGeneration++;
+    moves.reloaded();
   });
 
   // order の順に並べる。order に無い行（後から足した行）は、元の順のまま後ろに置く
@@ -231,7 +234,7 @@
     movedParents = {};
     taskOrders = {};
     storyOrder = null;
-    moveGeneration++;
+    moves.discard();
   }
 
   // 木を読み直す。読み直しが失敗しても、送れなかった並びを出し続けない
@@ -280,55 +283,19 @@
     (control ?? document.querySelector<HTMLElement>('h1.page-title'))?.focus();
   }
 
-  // 押したが、まだ結果を受け取っていない移動の数（待っているものと送っているもの）。
-  // その間に木が読み直されたら（reloadedWhileMoving）、送っている移動が読み直しの後に届いて古い並びが残りうるので、
-  // 送り終えた後にもう一度読み直す。待っていて捨てた移動（droppedMoves）があれば、そのことを知らせる
-  let pendingMoves = 0;
-  let reloadedWhileMoving = false;
-  let droppedMoves = 0;
-  $effect.pre(() => {
-    void tree;
-    if (pendingMoves > 0) reloadedWhileMoving = true;
-  });
-
-  async function settleMoves(): Promise<void> {
-    if (pendingMoves > 0 || !reloadedWhileMoving) return;
-    reloadedWhileMoving = false;
-    const dropped = droppedMoves;
-    droppedMoves = 0;
-    await reloadTree();
-    if (dropped > 0) showToast(t('moveReloaded'), 'alert');
-  }
-
   // 動かす操作を、押した順に送る。失敗したら理由を知らせて読み直し、フォーカスを同じ操作（無ければ見出し）へ戻す
   function send(call: () => Promise<ApiResult<unknown>>): void {
-    const mine = moveGeneration;
     const workspaceId = workspace?.id;
-    pendingMoves++;
-    moveQueue = moveQueue
-      .then(async () => {
-        let result: ApiResult<unknown>;
-        try {
-          if (mine !== moveGeneration) {
-            droppedMoves++;
-            return;
-          }
-          result = await call();
-        } finally {
-          pendingMoves--;
-        }
-        // 送っている間に別のワークスペースへ移っていたら、古い応答で状態を触らない
-        if (!result.ok && workspaceId === page.params.id) {
-          // 401 は、枠の読み直しがログインの画面へ移す
-          if (result.status !== 401) showToast(moveFailureMessage(result), 'alert');
-          const saved = focusedControl();
-          const lost = document.activeElement === null || document.activeElement === document.body;
-          await reloadTree();
-          await restoreFocus(saved, lost);
-        }
-        await settleMoves();
-      })
-      .catch(() => {});
+    void moves.send(call, async (result) => {
+      // 送っている間に別のワークスペースへ移っていたら、古い応答で状態を触らない
+      if (result.ok || workspaceId !== page.params.id) return;
+      // 401 は、枠の読み直しがログインの画面へ移す
+      if (result.status !== 401) showToast(moveFailureMessage(result), 'alert');
+      const saved = focusedControl();
+      const lost = document.activeElement === null || document.activeElement === document.body;
+      await reloadTree();
+      await restoreFocus(saved, lost);
+    });
   }
 
   function reorderTask(task: BacklogTask, delta: -1 | 1): void {

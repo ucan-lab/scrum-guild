@@ -182,6 +182,34 @@ test('並べ替えを断られたら、理由を知らせて読み直す', async
   ).toBeVisible();
 });
 
+test('先に送った並べ替えが断られて読み直したら、待っていた並べ替えは送らずに捨て、そのことを知らせる', async ({
+  page,
+}) => {
+  await createWorkspace(page, '捨てるパーティ', 'game');
+  for (const title of ['見積もりを送る', '請求書を出す', '議事録をまとめる']) await addTask(page, title);
+  // 1件目の応答を、3回目を押し終えるまで止めてから断る。その間に2件を待たせる
+  let sent = 0;
+  let release!: () => void;
+  const clicked = new Promise<void>((resolve) => (release = resolve));
+  await page.route('**/api/aoba/task-move', async (route) => {
+    sent++;
+    await clicked;
+    await route.fulfill({
+      status: 409,
+      json: { error: { code: 'conflict', message: 'conflict', details: { reason: 'changed' } } },
+    });
+  });
+  await page.getByRole('button', { name: '下へ: 見積もりを送る' }).click();
+  await page.getByRole('button', { name: '上へ: 議事録をまとめる' }).click();
+  await page.getByRole('button', { name: '上へ: 議事録をまとめる' }).click();
+  release();
+  await expect(
+    page.getByRole('status').filter({ hasText: '動かしている間に一覧が読み直されたため、一覧を読み直しました' }),
+  ).toBeVisible();
+  await expect(rootTitles(page)).toHaveText(['見積もりを送る', '請求書を出す', '議事録をまとめる']);
+  expect(sent).toBe(1);
+});
+
 test('端の行で Alt と ↑ ↓ を押すと、動かせないことを読み上げる', async ({ page }) => {
   await createWorkspace(page, '端のパーティ', 'game');
   for (const title of ['見積もりを送る', '請求書を出す']) await addTask(page, title);
@@ -219,4 +247,23 @@ test('メニューの横で一覧が狭い幅でも、題の列は縮みすぎ�
   const box = await up.boundingBox();
   expect(box!.width).toBeGreaterThanOrEqual(44);
   expect(box!.height).toBeGreaterThanOrEqual(44);
+});
+
+test('一覧が広いまま指で押す画面（タブレットの横置き）でも、44px のボタンで題の列を縮めすぎない', async ({
+  browser,
+  baseURL,
+}) => {
+  // 一覧の幅が 640px を少し超える幅。右端は題の下へ折り返さないので、44px のボタンが題の列を押しのけうる
+  const context = await browser.newContext({ hasTouch: true, isMobile: true, viewport: { width: 960, height: 768 } });
+  await signIn(context, baseURL, 'admin');
+  const page = await context.newPage();
+  await page.goto(SEED_GAME_WORKSPACE);
+  expect(await page.evaluate(() => matchMedia('(pointer: coarse)').matches)).toBe(true);
+  const up = page.locator('.tree-children .entry .order-actions .icon-btn').first();
+  expect((await up.boundingBox())!.width).toBeGreaterThanOrEqual(44);
+  // 題の列は 12rem（192px）を保つ
+  for (const main of await page.locator('.tree-children .entry .entry-main').all()) {
+    expect((await main.boundingBox())!.width).toBeGreaterThanOrEqual(190);
+  }
+  await context.close();
 });
