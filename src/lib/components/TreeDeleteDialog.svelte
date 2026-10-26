@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { tick } from 'svelte';
   import { invalidateAll } from '$app/navigation';
   import { DELETE_OTHERS_CHILDREN_REASON, type DeleteChildrenMode } from '../../shared/operations/delete-children.ts';
   import { epicDelete, epicGet } from '../../shared/operations/epic/index.ts';
@@ -45,10 +46,13 @@
   let dialog = $state<ReturnType<typeof Dialog>>();
   let target = $state<Target | null>(null);
   let mode = $state<DeleteChildrenMode>('keep');
+  // 削除できるか。読み直しで偽になったら（リーダーから外されたなど）、主ボタンを押せなくする
+  let canDelete = $state(true);
   let loading = $state(false);
   let submitting = $state(false);
   let submitError = $state<string | null>(null);
   let generation = 0;
+  let cancelButton = $state<HTMLButtonElement>();
 
   const ids = $props.id();
   const legendId = `${ids}-children`;
@@ -80,7 +84,17 @@
           canDeleteChildren: result.data.can_delete_children,
         };
         if (!result.data.can_delete_children) mode = 'keep';
-        if (!result.data.can_delete) submitError = t('taskDeleteForbidden', { leader: t('leader') });
+        canDelete = result.data.can_delete;
+        if (!canDelete) submitError = t('taskDeleteForbidden', { leader: t('leader') });
+        // 配下が無くなって選択肢が消えると、そこにあったフォーカスが body に落ちる。描き直した後にやめるボタンへ移す
+        await tick();
+        if (
+          mine === generation &&
+          open &&
+          (document.activeElement === null || document.activeElement === document.body)
+        ) {
+          cancelButton?.focus();
+        }
       } else if (result.status === 401) {
         await invalidateAll();
       } else if (result.status === 404) {
@@ -96,6 +110,7 @@
     generation++;
     target = next;
     mode = 'keep';
+    canDelete = true;
     submitting = false;
     submitError = null;
     dialog?.show(trigger);
@@ -112,7 +127,7 @@
   }
 
   async function submit(): Promise<void> {
-    if (target === null || submitting || loading) return;
+    if (target === null || submitting || loading || !canDelete) return;
     const current = target;
     const mine = generation;
     submitting = true;
@@ -218,10 +233,10 @@
   {/if}
   <span class="visually-hidden" role="status">{status}</span>
   {#snippet footer(close)}
-    <button class="btn is-quiet" type="button" aria-disabled={submitting} onclick={close}
+    <button class="btn is-quiet" type="button" aria-disabled={submitting} onclick={close} bind:this={cancelButton}
       >{t('taskDeleteCancel')}</button
     >
-    <button class="btn is-danger" type="button" aria-disabled={submitting || loading} onclick={submit}>
+    <button class="btn is-danger" type="button" aria-disabled={submitting || loading || !canDelete} onclick={submit}>
       {submitting ? t('taskDeleting') : t('taskDeleteConfirm')}
     </button>
   {/snippet}
