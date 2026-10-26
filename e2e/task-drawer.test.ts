@@ -178,7 +178,8 @@ test('担い手を引き出しで選ぶと、木の行にアバターが出る�
   await select.selectOption({ label: 'ミナト' });
   await expect(page.getByRole('status').filter({ hasText: '保存しました' })).toBeVisible();
   // 引き出しのアバターは、名前を選択欄が読むので、読み上げから外す（見た目と title は残す）
-  const drawerAvatar = drawer.locator('.avatar[title="ミナト"]');
+  // （変更の履歴の行にも、変えた人のアバターが出るので、属性の欄に絞る）
+  const drawerAvatar = drawer.locator('.props .avatar[title="ミナト"]');
   await expect(drawerAvatar).toBeVisible();
   await expect(drawerAvatar).toHaveAttribute('aria-hidden', 'true');
   await expect(row.getByRole('img', { name: 'ミナト' })).toBeVisible();
@@ -346,6 +347,71 @@ async function openDrawer(page: Page, title: string) {
   const drawer = page.getByRole('dialog', { name: title });
   await expect(drawer).toBeVisible();
   return drawer;
+}
+
+// 変更の履歴: 難易度と担い手を直すと、新しい順に、日時と人と、列の名前と前と後が出る。列の名前は言葉づかいの辞書の言葉
+for (const [vocabulary, words] of [
+  [
+    'game',
+    {
+      create: '依頼を出す',
+      points: '難易度',
+      assignee: '担い手',
+      unassigned: '担い手なし',
+      created: '依頼を出した',
+      updated: '書き換えた',
+    },
+  ],
+  [
+    'scrum',
+    {
+      create: '起票',
+      points: 'ポイント',
+      assignee: '担当',
+      unassigned: '担当なし',
+      created: '作成した',
+      updated: '変更した',
+    },
+  ],
+] as const) {
+  test(`変更の履歴を新しい順に、${vocabulary === 'game' ? 'ゲーム' : 'スクラム'}の言葉の列の名前で出す`, async ({
+    page,
+  }) => {
+    const collect = await watchViolations(page);
+    await createWorkspace(page, `履歴の${vocabulary}チーム`, vocabulary);
+    const title = `履歴をたどる（${vocabulary}）`;
+    await page.getByRole('button', { name: words.create }).click();
+    const dialog = page.getByRole('dialog', { name: words.create });
+    await dialog.getByLabel('タイトル').fill(title);
+    await dialog.getByRole('button', { name: words.create }).click();
+    await expect(dialog).toBeHidden();
+
+    const drawer = await openDrawer(page, title);
+    const history = drawer.getByRole('region', { name: '変更の履歴' });
+    const items = history.locator('.history > li');
+    // 開いたときに読む。作成の行だけ
+    await expect(items).toHaveCount(1);
+    await expect(items.nth(0)).toContainText(words.created);
+    await expect(items.nth(0).locator('time')).toHaveText(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/);
+    await expect(items.nth(0)).toContainText('ミナト');
+
+    await drawer.getByRole('radio', { name: '5', exact: true }).check();
+    await expect(items).toHaveCount(2);
+    await drawer.getByRole('combobox', { name: words.assignee }).selectOption({ label: 'ミナト' });
+    // 保存した後に読み直す。新しい順
+    await expect(items).toHaveCount(3);
+    await expect(items.nth(0).locator('> .props-note')).toHaveText(words.updated);
+    await expect(items.nth(0).locator('.history-changes li span')).toHaveText([
+      words.assignee,
+      `${words.unassigned} → ミナト`,
+    ]);
+    await expect(items.nth(1).locator('.history-changes li span')).toHaveText([words.points, '未見積もり → 5']);
+    await expect(items.nth(2).locator('> .props-note')).toHaveText(words.created);
+    await expect(items.nth(2).locator('.history-changes li').first().locator('span')).toHaveText(['タイトル', title]);
+    // 続きは無い
+    await expect(history.getByRole('button', { name: 'さらに読む' })).toHaveCount(0);
+    expect(await collect()).toEqual([]);
+  });
 }
 
 test('2048 字に近い URL を保存しても、390px の引き出しが横にはみ出さない', async ({ page }) => {

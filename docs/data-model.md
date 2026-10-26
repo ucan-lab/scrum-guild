@@ -988,6 +988,7 @@ Google の人は、ログインするまで `sub` が分からない。そのた
 - 索引: `(entity_type, entity_id, created_at)`、`(organization_id, created_at)`、`(workspace_id, created_at)`。
 - 索引: `(actor_user_id) WHERE actor_user_id IS NOT NULL`。外部キーの検査。
 - タスク、ストーリー、エピックの履歴はメンバー全員が、それ以外はリーダーと管理者が見られる。見られる範囲は `entity_type` で決める。
+- タスクの履歴は `task-history`（`member`、読み取り）で読む。`entity_type = 'task'`、`entity_id`、`organization_id`、`workspace_id` で絞り、新しい順（`created_at` の降順、同じなら `id` の降順）に1回 50 件まで返す（`change_logs_entity` の索引に乗る）。51 件目まで読み、続きがあれば `next`（`{ created_at, id }`）を返し、次は `before` に渡して `(created_at, id) < before` で読む。タスクはそのワークスペースのものなら削除したものも読め、閉じたワークスペースでも読める。無いタスクと、別のワークスペース、別の組織のタスクは 404。返すのは、行ごとの `action`、`created_at`、変えた人（`actor`。組織で絞った `users` の今の名前の `{ id, name }` か、`actor_user_id` が空なら `null`）、変えた欄（`changes`。`changes_json` に保存した順の `{ field, before, after }`）と、時刻を出すワークスペースの `timezone`。値は `null`、文字列、数、`{ id, name }`（人、区分、親。親のストーリーの `{ id, title }` も `{ id, name }` にそろえる）で、人や親の名前は `changes_json` に残したそのときの名前。本文（`body_md`）は長いので、値を返さず欄の名前だけを返す（`before` と `after` は `null`）。欄ごとに決まった形に合わない値は `null` にし、知らない欄も落とさず欄の名前だけを返す。オブジェクトでない `changes_json` は変更なしとして扱う。
 - 同期による取り込み元の属性の書き換えは残さない。量が多く、取り込み元で見られるため。
 - 期間で消さず、残し続ける。容量が気になったら、手順書のエクスポート（`wrangler d1 export`）で退避する。
 
