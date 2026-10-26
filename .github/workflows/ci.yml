@@ -4,15 +4,16 @@ name: ci
 # 各ジョブは package.json のスクリプトを呼ぶだけにし、手順をここに持たない
 on:
   pull_request:
-    # edited はベースを付け替えたときのため。head が同じままでも差分が変わり、文書だけと判定した前の結果が残るので判定し直す
-    types: [opened, synchronize, reopened, edited]
+    # edited では動かさない。タイトルや本文の編集で何もしない実行ができると、マージの欄では前の実行の結果が隠れるため（#252）。
+    # ベースの付け替えは label.yml が拾い、push し直すまで label を失敗にする
+    types: [opened, synchronize, reopened]
 
-# 同じ PR の古い実行は止める。タイトルや本文の編集（ベースを変えない edited）は何もしない実行なので、
-# 別のグループに置き、進んでいる実行を止めないようにする
+# label.yml が、どの PR のどのベースで動いた実行かを読む。中身はイベントの時点で決まり、後からベースを変えても変わらない
+run-name: "ci pr=${{ github.event.pull_request.number }} base=${{ github.event.pull_request.base.ref }}"
+
+# 同じ PR の古い実行は止める
 concurrency:
-  group: >-
-    ci-${{ github.event.pull_request.number }}${{
-    github.event.action == 'edited' && github.event.changes.base == null && format('-noop-{0}', github.run_id) || '' }}
+  group: ci-${{ github.event.pull_request.number }}
   cancel-in-progress: true
 
 permissions:
@@ -21,7 +22,6 @@ permissions:
 jobs:
   # 文書だけの PR では重いジョブを飛ばす。paths-ignore を使うと ci-ok そのものが出なくなるので、ここで判定する
   changes:
-    if: github.event.action != 'edited' || github.event.changes.base != null
     runs-on: ubuntu-latest
     timeout-minutes: 5
     outputs:
@@ -123,12 +123,11 @@ jobs:
 
   # マージの前に確かめるのはこれと label（ai-review は助言なので含めない）。
   # 文書だけなら重いジョブは飛んでいてよく、そうでなければすべて成功していなければならない。
-  # ベースを変えない edited では飛ばす（skipped の ci-ok は、マージの判定で数えない）。
-  # 取り消された実行でも always() で動かして failure を残す。!cancelled() にすると skipped になり、
-  # ベースを付け替えた実行を取り消したときに、前のベースで文書だけと判定した success だけが同じ head に残るため
+  # 取り消された実行でも always() で動かして failure を残す。!cancelled() にすると ci-ok が skipped になり、
+  # 同じ head の結果がマージの欄で skipped しか出ず、成功していないことが読み取りにくくなるため
   ci-ok:
     needs: [changes, check, test, migration, e2e]
-    if: always() && (github.event.action != 'edited' || github.event.changes.base != null)
+    if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:

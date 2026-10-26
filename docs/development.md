@@ -413,7 +413,7 @@ PR ごとに GitHub Actions で回す。`.github/workflows/ci.yml` の各ジョ�
 | migration | 空の D1 に全マイグレーションを順に当てて通るか確かめ、続けて同じ D1 に seed を2回流す（`pnpm db:migrate:fresh`）。マイグレーションと seed のずれと、seed を流し直せることを PR ごとに確かめるため。0件なら当てずに成功で終える。ベータが始まったら、既にあるマイグレーションのファイルの書き換えも落とす（上の「DB を作り直してよい期間」） |
 | e2e | `pnpm e2e --shard=<i>/3`。CI の長さを決めるジョブなので、マトリクスで3つのシャードに分けて並べる（ファイル単位で割り振られ、シャードごとにランナーと手元の D1 が別になる。`fail-fast` は切り、1つが落ちても残りを走らせる。`ci-ok` の `needs` ではマトリクスが1つの結果にまとまり、1つでも落ちれば失敗になるので、`ciOkVerdict` は変えない。チェックの名前は `e2e (1)`〜`e2e (3)` になる）。シャードごとに `pnpm preview` で build して `wrangler dev` を立て、サーバーが立ってから `e2e/global-setup.ts` が `pnpm db:seed` で手元の D1 に seed を入れ直し（行は消える。立てたままのサーバーを使い回すときも流れる。CI のジョブに seed の段は足さない）、Playwright で、seed の Cookie でログインした組織の選択と組織の枠（組織が1つの人、2つの人、入れない組織を開いた人。`e2e/organizations.test.ts`）、ログインの画面（枠の外、`return_to` の整え方、`?error=` の文言）と seed の Cookie での `me`（`e2e/login.test.ts`）、運用の画面の一覧と組織の作成のダイアログ（`e2e/operator.test.ts`。e2e の Worker には運用者の一覧のシークレットも GitHub への通信も無いので、運用者の操作の応答は差し替える。運用者でない人の 403 と `/` への戻しは本物のサーバーで見る）、シェルの表示、`/api/health` の版と D1 への疎通、CSP の違反が無いこと（`securitypolicyviolation` とコンソールのエラー）を確かめる。版には PR の head の SHA を渡し、`/api/health` と画面の build に埋めた版（SvelteKit が書き出す `/_app/version.json`）がどちらもその値になることも見る。スクリーンショットと、失敗したときの trace を、シャードごとの成果物 `e2e-1`〜`e2e-3` に上げる。4つのテーマと2つの言葉の組み合わせのスクリーンショットは、画面ができてから足す。trace は要求と応答と Cookie を丸ごと残し、成果物はリポジトリを読める人が誰でも取れるので、e2e には本物の認証情報を渡さない（ログインは seed のセッションで通す） |
 | ai-review | `anthropics/claude-code-action` で、スキル `ai-review` が差分に応じて `.claude/agents/` のレビューのエージェントを呼び分け、CRITICAL と HIGH を `finding-verifier` の反証にかけてから、指摘を PR に書く。`.github/workflows/ai-review.yml` に分けて置く |
-| label | パスを見て `needs-human` のラベルを付ける（上の「マージの判定」）。`.github/workflows/label.yml` に分けて置き、`pull_request_target` で動かす。ワークフローも規則も PR のベース（`main`）の版が使われるので、PR の側で書き換えてもラベルは付く。別のブランチをベースに開いてから `main` へ付け替えたときも、判定し直す。PR のコードはチェックアウトしない（書き込みのトークンで PR のコードを動かさないため） |
+| label | パスを見て `needs-human` のラベルを付ける（上の「マージの判定」）。`.github/workflows/label.yml` に分けて置き、`pull_request_target` で動かす。ワークフローも規則も PR のベース（`main`）の版が使われるので、PR の側で書き換えてもラベルは付く。別のブランチをベースに開いてから `main` へ付け替えたときも、判定し直す。PR のコードはチェックアウトしない（書き込みのトークンで PR のコードを動かさないため）。ジョブはどのイベントでも飛ばさず、ラベルもどのイベントでも付け直す。ベースを付け替えた後にその head で CI が動き直していなければ、失敗で終わる（下の「文書だけの PR」）。判定はイベントの中身でなく、そのときの PR の状態から行い、`concurrency` も置かない |
 | ci-ok | `ci.yml` の changes、check、test、migration、e2e をまとめる1つのジョブ。マージの前に確かめるのは、これと label |
 
 ai-review は Claude のサブスクリプションで動かす。手元で `claude setup-token` を実行して作った OAuth トークンを、リポジトリのシークレット `CLAUDE_CODE_OAUTH_TOKEN` に置く。従量の費用はかからないが、使用量の上限は手元の対話の利用と共有になる。
@@ -437,10 +437,19 @@ ai-review は Claude のサブスクリプションで動かす。手元で `cla
 - 文書だけでなければ、4つがすべて成功のときだけ `ci-ok` が成功で終わる。飛んだもの、落ちたもの、取り消されたものが1つでもあれば失敗
 - `changes` そのものが成功しなかったときも、`ci-ok` は失敗で終わる
 - リネームは移動元と移動先の両方を見る。`src/` から `docs/` へ移しただけの PR を文書だけとみなさないため
-- PR のベースを付け替えたとき（`edited` のうちベースが変わったもの）も判定し直す。head が同じでも差分が変わり、前の実行で文書だけと判定した `ci-ok` の成功が残るため。タイトルや本文の編集では `ci-ok` も skipped で終わり、マージの判定では skipped を数えない。この何もしない実行は、進んでいる実行を取り消さないよう、別の `concurrency` のグループに置く
+- PR のベースを付け替えても `ci.yml` は動かない（`edited` で動かさない）。head が同じでも差分が変わり、前のベースで出た `ci-ok` の成功（文書だけと判定したものを含む）が残る。そこで `label` が毎回 API で次を比べ、付け替えの後にこの PR の今のベースで CI が動いていなければ失敗で終える。
+  - PR の履歴（timeline）の最後の付け替え（人の `base_ref_changed` と、重ねた PR の下がマージされたときの自動の `automatic_base_change_succeeded`）の時刻
+  - 付け替えの `edited` のときは、そのイベントの時刻（PR の `updated_at`）も付け替えの時刻に入れる。履歴への反映が遅れても見落とさないため。イベントの中身は、判定を厳しくする側にだけ使う
+  - その head の `ci.yml` の実行のうち、名前（`run-name` の `ci pr=<番号> base=<ベース>`）がこの PR と今のベースに当たり、実行に結び付いた PR（`pull_requests`）にこの PR があり、承認待ちでないものが作られた時刻（`created_at`）。名前はイベントの時点で決まるので、付け替えの直前のイベントで作られた実行は前のベースを名に持ち、数えない。名前はベースのブランチの `ci.yml` で書き換えられるので、`pull_requests` の番号でも絞り、同じ head の別の PR の実行を数えない。古い実行の再実行は前のベースのままで、`created_at` も変わらないので数えない
+  - fork の PR の実行は `pull_requests` が空になるので、fork の PR でベースを付け替えると、push しても `label` は通らない（止まる側に倒れる）。人が差分を読んでマージする
+  - 新しいベースを取り込んで push すると、`ci.yml` が動き直す。head が変わるので、前の head に残った `label` の失敗はマージの判定に入らない
+  - マージの判定は `label` の成功を求めるので、付け替えて push し直していない PR はマージされない。状態をラベルやイベントの中身に持たないので、ラベルを外す、続けて本文を編集する、のどれでも抜けられない。API を読めなければ失敗に倒す
+- `label.yml` はベースの版で動くので、この判定を変えたときは、マージの後にベースを付け替えた PR で確かめる。#252 の後に確かめるのは、付け替えで `label` が失敗すること、push で成功に戻ること、本文の編集で `ci.yml` が動かないこと。自動の付け替え（`automatic_base_change_succeeded`）が REST の履歴に出るかは、重ねた PR の下をマージする機会に確かめる
+- `run-name` を足す前に動いた `ci.yml` の実行は、名前が PR のタイトルのままなので数えない。#252 のマージより前に開いた PR でベースを付け替えたら、push し直す
+- 何もしない実行（ジョブがすべて skipped で終わる実行）を、マージの判定に使う `ci.yml` と `label.yml` では作らない。助言の `ai-review.yml`（`review`）は、ほかのラベルを付けたときに skipped の実行を作るが、判定に使わないので対象にしない。同じワークフローの実行が同じ head に後からできると、マージの欄はその新しい方の結果だけを出す。タイトルや本文の編集で skipped の実行ができ、本来の CI の失敗が「All checks have passed」の下に隠れたことがある（#252）。そのため `ci.yml` は `edited` で動かさず、`label.yml` はどのイベントでもジョブを飛ばさずに、そのときの状態で成功か失敗かを出す
 - ワークフローの `paths-ignore` は使わない。飛ばすとワークフローごと動かず、`ci-ok` そのものが出なくなるため
 
-同じ PR の古い実行は `concurrency` で止める。ワークフローの `permissions` は `contents: read` だけにし、action はすべてコミットの SHA で固定する。
+同じ PR の古い実行は `concurrency` で止める。`ci.yml` の `permissions` は `contents: read` だけにし、action はすべてコミットの SHA で固定する。`label.yml` は、ラベルを付ける `pull-requests: write` と、付け替えの判定で PR の履歴と `ci.yml` の実行を読む `issues: read`、`actions: read` を持つ（PR のコードはチェックアウトしない）。
 
 GitHub Actions の無料枠は、private のリポジトリで月 2,000 分。e2e と AI レビューで足りなくなりそうなら、上と同じく対象の PR を絞る。e2e のシャードは、それぞれが準備、Playwright の導入、build を繰り返す（1つあたり約1分）ので、分ける前より1回あたり約2分多く数える。
 
