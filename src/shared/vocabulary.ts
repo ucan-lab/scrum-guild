@@ -467,7 +467,7 @@ export const dictionary = defineDictionary({
   operatorCreate: organization('{organization}を作る', '{organization}を作る'),
   operatorColumnOrganization: organization('{organization}・slug', '{organization}・slug'),
   operatorColumnCreated: organization('作った日時', '作った日時'),
-  // 一覧の印。{date} は停止した日（ブラウザのタイムゾーンの日付）と、解約で消す予定日（UTC の日付）
+  // 一覧の印。{date} は停止した日と、解約で消す予定日。どちらも UTC の日付（消す予定日を UTC の日付で数えるのにそろえる）
   operatorSuspended: organization('停止 {date}', '停止 {date}'),
   operatorPurgeOn: organization('{date} に消す', '{date} に消す'),
   operatorActionsHeader: organization('操作', '操作'),
