@@ -263,8 +263,12 @@ export const taskAssignOperation = implement(taskAssign, async ({ db, actor, wor
       await throwIfClosed(db, workspaceId);
       return { task: detailOf(current, actor, workspace) };
     }
-    // 完了したタスクの担当は替えない（完了の経験値と完了の記録が、完了した時点の担当を使うため）
-    if (current.completed_at !== null) throw new ApiError(409, 'conflict');
+    // 完了したタスクの担当は替えない（完了の経験値と完了の記録が、完了した時点の担当を使うため）。
+    // 閉じたワークスペースは、完了したタスクでも workspace_closed で答える
+    if (current.completed_at !== null) {
+      await throwIfClosed(db, workspaceId);
+      throw new ApiError(409, 'conflict');
+    }
 
     // 新しい担当は、このワークスペースに今所属している、無効でない人だけ。読んで名前を残し、書く文にも同じ条件を入れる
     let next: { id: string; name: string } | null = null;

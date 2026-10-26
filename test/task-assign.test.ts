@@ -266,6 +266,42 @@ describe('task-assign', () => {
     expect(await logsOf(target, task.id)).toEqual([]);
   });
 
+  test('閉じたワークスペースの完了したタスクは、conflict でなく 409 の workspace_closed', async () => {
+    const target = await namedTarget({ closed: true });
+    const task = await seeded(target, {
+      assignee_user_id: target.member.userId,
+      completed_at: '2026-10-21T00:00:00.000Z',
+      completed_by: target.member.userId,
+    });
+    for (const userId of [target.leader.userId, null]) {
+      const res = await assign(target, task.id, userId, target.admin);
+      expect(res.status).toBe(409);
+      expect(await errorCodeOf(res)).toBe('workspace_closed');
+    }
+    // 登録の関数の手前の検査を通った後（読んでから閉じた）を想定し、処理を直に呼んでも同じ答えになる
+    const db = orgDb(env, target.organization.verified);
+    const actor = {
+      accountId: target.member.accountId,
+      userId: target.member.userId,
+      isAdmin: false,
+      invitedOnly: false,
+    };
+    const workspace = await verifyWorkspace(db, actor, target.workspace.id);
+    const context = {
+      db,
+      actor,
+      workspace,
+      input: { workspace_id: target.workspace.id, task_id: task.id, assignee_user_id: target.leader.userId },
+      defer: () => {},
+    } as never;
+    await expect(taskAssignOperation.handler(context)).rejects.toMatchObject({
+      status: 409,
+      code: 'workspace_closed',
+    });
+    expect(await rowOf(target, task.id)).toEqual(task);
+    expect(await logsOf(target, task.id)).toEqual([]);
+  });
+
   describe('読んでから書くまでの競合', () => {
     // 処理を直に呼び、タスクの行を返した読み取りの直後に race を呼ぶ（n は何回目の読み取りか）
     async function runWithRace(

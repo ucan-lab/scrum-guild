@@ -102,6 +102,9 @@
     // 候補に無い親（完了した、消えた）は選ばず、親なしで開く
     story = storyId !== null && stories.some((candidate) => candidate.id === storyId) ? storyId : '';
     assignee = '';
+    // 前に開いたとき（別のワークスペースのときを含む）の候補と、読めなかった知らせを残さない
+    candidates = [];
+    candidatesFailed = false;
     titleError = null;
     submitError = null;
     submitting = false;
@@ -109,10 +112,16 @@
     void loadCandidates(generation);
   }
 
-  // 担当の候補を読む。開き直した後と部品が外れた後の応答は捨てる。選んでいた人が候補から消えたら、担当なしに戻す
+  // 担当の候補を読む。開き直した後と部品が外れた後の応答と、後から読み直した分より古い応答は捨てる。
+  // 選んでいた人が候補から消えたら、担当なしに戻す
+  let candidatesVersion = 0;
+  let candidatesLoading = $state(false);
   async function loadCandidates(mine: number): Promise<void> {
+    const version = ++candidatesVersion;
+    candidatesLoading = true;
     const result = await callOperation(memberList, { workspace_id: workspaceId }, { slug });
-    if (mine !== generation) return;
+    if (mine !== generation || version !== candidatesVersion) return;
+    candidatesLoading = false;
     if (!result.ok) {
       candidatesFailed = true;
       return;
@@ -120,6 +129,16 @@
     candidates = result.data.members.map((member) => ({ id: member.id, name: member.name }));
     candidatesFailed = false;
     if (assignee !== '' && !candidates.some((candidate) => candidate.id === assignee)) assignee = '';
+  }
+
+  // 候補を読み直す。読めたら、押したボタンは消えるので、担当の選択欄へフォーカスを移す
+  async function retryCandidates(): Promise<void> {
+    if (candidatesLoading) return;
+    const mine = generation;
+    await loadCandidates(mine);
+    if (mine !== generation || candidatesFailed) return;
+    await tick();
+    assigneeSelect?.focus();
   }
 
   // 木を読み直して、親の候補を更新する。選んでいた親が候補から消えたら、親なしに戻して true を返す
@@ -257,7 +276,8 @@
         {/if}
       </div>
 
-      <div class="form-row">
+      <!-- 片方の下にだけ知らせが出ても、もう片方の欄が下へずれないよう、上で揃える -->
+      <div class="form-row is-start">
         <div class="field">
           <label class="field-label" for={parentId}>{t('taskParent', { story: t('story') })}</label>
           <select class="select" id={parentId} bind:this={parentSelect} bind:value={story}>
@@ -285,6 +305,16 @@
             <span class="field-hint" id={assigneeNoteId}
               >{t('assigneeCandidatesFailed', { assignee: t('assignee') })}</span
             >
+            <div class="form-actions">
+              <button
+                class="btn is-sm is-quiet"
+                type="button"
+                aria-disabled={candidatesLoading}
+                onclick={() => void retryCandidates()}
+              >
+                {candidatesLoading ? t('retrying') : t('retry')}
+              </button>
+            </div>
           {/if}
         </div>
       </div>

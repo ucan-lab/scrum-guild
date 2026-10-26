@@ -992,7 +992,7 @@ const looooooooooooooooooooooooooooooooooongLine = "コードの長い1行は、
     viewStory: () => storyDialog(t("story"), { ...D.stories.s4, link: "https://example.com/notes/42" }, true),
     createTask: () => openDialog(`${t("create")}`,
       `<label class="field" for="d-title"><span class="field-label">タイトル</span><input class="input" id="d-title" placeholder="何をするか"></label>
-       <div class="form-row">
+       <div class="form-row is-start">
          <label class="field" for="d-parent"><span class="field-label">親の${t("story")}</span><select class="select" id="d-parent"><option>なし</option>${Object.values(D.stories).map((x) => `<option>${esc(x.title)}</option>`).join("")}</select></label>
          <label class="field" for="d-who"><span class="field-label">${t("assignee")}</span><select class="select" id="d-who"><option>担当なし</option>${Object.values(D.users).filter((u) => !u.left).map((u) => `<option>${esc(u.name)}</option>`).join("")}</select></label>
        </div>

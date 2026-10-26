@@ -37,9 +37,11 @@
   // 送る欄は、今の値と違うものだけ。保存したら、その欄だけを応答で入れ替え、画面が木を読み直す（onchanged）。
   // ポイントの保存は1本ずつ送る。送っている間に選び直したら、最後の選択だけを溜め、送り終えた後に送る（矢印キーで動かしても要求が飛び交わず、
   // 応答の順が前後しない）。期日は、年が4桁そろった値だけを、少し待ってから（カレンダーで選んだとき）か、欄を離れる／Enter で保存する。
-  // 担当は、アバターと選択欄で、選んだら task-assign で保存する（1本ずつ送り、送っている間に選び直した分は最後の選択だけを送る）。
+  // 担当は、アバターと選択欄で、選んで少し待ってから（閉じた選択欄の矢印キーは1つ動くたびに change を出すため）か、欄を離れたときに、
+  // 最後の値だけを task-assign で保存する（期日と同じく、待っている間は書きかけに数える。送るのは1本ずつで、送っている間に選び直した分は
+  // 最後の選択だけを送る）。選択欄を出している間は、名前を選択欄が読むので、アバターは読み上げから外す。
   // 候補は、読み込めた後に member-list の members（今所属している人）を読む。今の担当が候補にいない（抜けた）ときは、
-  // その人を「名前（離脱済み）」の選択肢として残す。候補を読めなければ、担当なしと今の担当だけを選べ、読めなかったことを添える。
+  // その人を「名前（離脱済み）」の選択肢として残す。候補を読めなければ、担当なしと今の担当だけを選べ、読めなかったことと「もう一度試す」を添える。
   // 完了したタスクの担当は替えない（アバターと名前だけにして理由を添える）。
   // 完了したタスクのポイントは直せない（欄を読み取り専用にして理由を添える）。取り込んだタスクのタイトルとリンクと削除も直せない。
   // 閉じたワークスペース（canWrite が偽）では、直す口と削除を出さず、読み取り専用で開く。
@@ -105,9 +107,9 @@
 
   // 直している途中の欄ごとの書きかけ（保存の要求を送っている間も数える）
   const dirty = $state({ title: false, link: false, body: false });
-  // 書きかけ。タイトル、リンク、本文の書きかけと、まだ送っていない期日の入力（待っている間と、打ちかけ）
+  // 書きかけ。タイトル、リンク、本文の書きかけと、まだ送っていない期日の入力（待っている間と、打ちかけ）と担当の選択（待っている間）
   function hasDraft(): boolean {
-    return dirty.title || dirty.link || dirty.body || dueUnsent();
+    return dirty.title || dirty.link || dirty.body || dueUnsent() || assigneeChoice !== null;
   }
 
   // 選んだポイント。送っている間（と、続けて選んだ分を送り終えるまで）は、最後に選んだ値を見せる
@@ -134,6 +136,7 @@
   $effect(() => () => {
     alive = false;
     clearTimeout(dueTimer);
+    clearTimeout(assigneeTimer);
   });
 
   // 捨てると決めた後、閉じる／移るために確認を飛ばす
@@ -144,14 +147,26 @@
   let candidates = $state<readonly { id: string; name: string }[] | null>(null);
   let candidatesFailed = $state(false);
   let candidatesVersion = 0;
-  // 選んだ担当（空は担当なし）。送っている間（と、続けて選んだ分を送り終えるまで）は、最後に選んだ値を見せる
+  let candidatesLoading = $state(false);
+  // 選択欄で選んで、まだ送っていない担当（待っている間）。閉じた選択欄で矢印キーを押すと、1つ動くたびに change が出るので、
+  // 期日と同じく少し待ってから（か欄を離れたときに）最後の値だけを送る
+  let assigneeChoice = $state<{ value: string } | null>(null);
+  let assigneeTimer: ReturnType<typeof setTimeout> | undefined;
+  let assigneeSelect = $state<HTMLSelectElement>();
+  // 送っている担当（空は担当なし）。送っている間（と、続けて選んだ分を送り終えるまで）は、最後に選んだ値を見せる
   let assigneePending = $state<{ value: string } | null>(null);
   let assigneeError = $state<string | null>(null);
   let assigneeSending = false;
 
   const pointsEditable = $derived(canWrite && task !== null && task.completed_at === null);
   const assigneeEditable = $derived(canWrite && task !== null && task.completed_at === null);
-  const assigneeShownId = $derived(assigneePending !== null ? assigneePending.value : (task?.assignee?.id ?? ''));
+  const assigneeShownId = $derived(
+    assigneeChoice !== null
+      ? assigneeChoice.value
+      : assigneePending !== null
+        ? assigneePending.value
+        : (task?.assignee?.id ?? ''),
+  );
   // 選択欄の選択肢。候補に、今の担当が候補にいなければ（抜けた、候補を読めなかった）その人を足す
   const assigneeOptions = $derived.by(() => {
     const options: { id: string; name: string; left: boolean }[] = (candidates ?? []).map((candidate) => ({
@@ -164,6 +179,13 @@
   });
   // アバターに出す人。選んだ候補か今の担当
   const assigneeShown = $derived(assigneeOptions.find((option) => option.id === assigneeShownId) ?? null);
+  // 選択欄の値を、見せる値に合わせる。保存に失敗して前の値へ戻すときと、候補を読み直して選択肢が替わったときも合わせる
+  $effect(() => {
+    const select = assigneeSelect;
+    const value = assigneeShownId;
+    void assigneeOptions;
+    if (select !== undefined && select.value !== value) select.value = value;
+  });
   const titleEditable = $derived(canWrite && task !== null && !task.is_imported);
   const done = $derived(task?.completed_at != null);
 
@@ -323,18 +345,58 @@
     return result.data.task;
   }
 
-  // ---- 担当（選んだら保存する。1本ずつ送る） ----
-  // 候補を読む。読めなければ、担当なしと今の担当だけを選べるままにし、読めなかったことを添える
+  // ---- 担当（選んで少し待ってから、か欄を離れたときに保存する。1本ずつ送る） ----
+  // 候補を読む。読めなければ、担当なしと今の担当だけを選べるままにし、読めなかったことと「もう一度試す」を添える
   async function loadCandidates(): Promise<void> {
     const mine = ++candidatesVersion;
+    candidatesLoading = true;
     const result = await callOperation(memberList, { workspace_id: workspaceId }, { slug });
     if (!alive || mine !== candidatesVersion) return;
+    candidatesLoading = false;
     if (result.ok) {
       candidates = result.data.members.map((member) => ({ id: member.id, name: member.name }));
       candidatesFailed = false;
     } else {
       candidatesFailed = true;
     }
+  }
+
+  // 候補を読み直す。読めたら、押したボタンは消えるので、担当の選択欄へフォーカスを移す
+  async function retryCandidates(): Promise<void> {
+    if (candidatesLoading) return;
+    await loadCandidates();
+    if (!alive || candidatesFailed) return;
+    await tick();
+    assigneeSelect?.focus();
+  }
+
+  function onAssigneeChange(event: Event & { currentTarget: HTMLSelectElement }): void {
+    assigneeChoice = { value: event.currentTarget.value };
+    scheduleAssignee();
+  }
+
+  // 待ってから送る。捨てるかの確認を出している間は送らず、待ちを延ばす（期日と同じ）
+  function scheduleAssignee(): void {
+    clearTimeout(assigneeTimer);
+    assigneeTimer = setTimeout(() => {
+      if (asking) scheduleAssignee();
+      else if (!leaving) commitAssignee();
+    }, DUE_DEBOUNCE_MS);
+  }
+
+  function onAssigneeBlur(): void {
+    // 捨てるかの確認にフォーカスが移ったときと、捨てると決めて部品が外れるときは、送らない（期日と同じ）
+    if (asking || leaving) return;
+    commitAssignee();
+  }
+
+  // 待っている選択を、送る列へ渡す
+  function commitAssignee(): void {
+    clearTimeout(assigneeTimer);
+    const choice = assigneeChoice;
+    if (choice === null) return;
+    assigneeChoice = null;
+    chooseAssignee(choice.value);
   }
 
   function chooseAssignee(value: string): void {
@@ -397,12 +459,17 @@
         }
         return null;
       }
-      if (latest.ok && alive) {
-        task = latest.data.task;
-        clock = { today: latest.data.today, weekStart: latest.data.week_start };
+      if (!latest.ok) {
+        // 読み直せなかった（通信、5xx など）。どちらが理由か分からないので、ふつうの失敗の文にする
+        message = t('taskSaveFailed');
+      } else {
+        if (alive) {
+          task = latest.data.task;
+          clock = { today: latest.data.today, weekStart: latest.data.week_start };
+          void loadCandidates();
+        }
+        message = t('assigneeNotMember', { workspace: t('workspace'), assignee: t('assignee') });
       }
-      if (alive) void loadCandidates();
-      message = t('assigneeNotMember', { workspace: t('workspace'), assignee: t('assignee') });
     } else if (result.status === 401) {
       onstale();
       message = t('taskSaveFailed');
@@ -755,16 +822,24 @@
           {#if assigneeEditable}<label for={assigneeId}>{t('assignee')}</label>{:else}{t('assignee')}{/if}
         </dt>
         <dd>
+          <!-- 選択欄を出している間は、名前を選択欄が読むので、アバターは読み上げから外す（二重に読ませない） -->
           {#if assigneeShown === null}
-            <Avatar userId={null} />
+            <Avatar userId={null} decorative={assigneeEditable} />
           {:else}
-            <Avatar userId={assigneeShown.id} name={assigneeShown.name} left={assigneeShown.left} />
+            <Avatar
+              userId={assigneeShown.id}
+              name={assigneeShown.name}
+              left={assigneeShown.left}
+              decorative={assigneeEditable}
+            />
           {/if}
           {#if assigneeEditable}
             <select
               class="select"
               id={assigneeId}
-              onchange={(event) => chooseAssignee(event.currentTarget.value)}
+              bind:this={assigneeSelect}
+              onchange={onAssigneeChange}
+              onblur={onAssigneeBlur}
               aria-invalid={assigneeError !== null}
               aria-describedby={[
                 candidatesFailed ? assigneeNoteId : null,
@@ -784,6 +859,14 @@
               <span class="props-note" id={assigneeNoteId}
                 >{t('assigneeCandidatesFailed', { assignee: t('assignee') })}</span
               >
+              <button
+                class="btn is-sm is-quiet"
+                type="button"
+                aria-disabled={candidatesLoading}
+                onclick={() => void retryCandidates()}
+              >
+                {candidatesLoading ? t('retrying') : t('retry')}
+              </button>
             {/if}
           {:else}
             <span

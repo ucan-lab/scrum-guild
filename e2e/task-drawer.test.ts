@@ -177,7 +177,10 @@ test('担い手を引き出しで選ぶと、木の行にアバターが出る�
   await expect(select.getByRole('option', { name: 'ミナト' })).toBeAttached();
   await select.selectOption({ label: 'ミナト' });
   await expect(page.getByRole('status').filter({ hasText: '保存しました' })).toBeVisible();
-  await expect(drawer.getByRole('img', { name: 'ミナト' })).toBeVisible();
+  // 引き出しのアバターは、名前を選択欄が読むので、読み上げから外す（見た目と title は残す）
+  const drawerAvatar = drawer.locator('.avatar[title="ミナト"]');
+  await expect(drawerAvatar).toBeVisible();
+  await expect(drawerAvatar).toHaveAttribute('aria-hidden', 'true');
   await expect(row.getByRole('img', { name: 'ミナト' })).toBeVisible();
 
   await select.selectOption({ label: '担い手なし' });
@@ -203,6 +206,83 @@ test('担い手を引き出しで選ぶと、木の行にアバターが出る�
   await expect(
     page.getByRole('dialog', { name: '担い手つきの依頼' }).getByRole('combobox', { name: '担い手' }),
   ).toHaveValue(/[0-9a-f-]{36}/);
+});
+
+test('担い手は選んで少し待ってから最後の値だけを送り、断られたら理由を出して前の値に戻す', async ({ page }) => {
+  await createWorkspace(page, '担い手の断られるパーティ', 'game');
+  await addTask(page, '担い手が断られる');
+  // 候補を読めないときは知らせ、「もう一度試す」で読み直せる
+  await page.route('**/api/aoba/member-list', (route) =>
+    route.fulfill({ status: 500, json: { error: { code: 'internal', message: 'x' } } }),
+  );
+  const drawer = await openDrawer(page, '担い手が断られる');
+  const select = drawer.getByRole('combobox', { name: '担い手' });
+  await expect(drawer.getByText('担い手の候補を読み込めませんでした')).toBeVisible();
+  await expect(select.getByRole('option')).toHaveText(['担い手なし']);
+  await page.unroute('**/api/aoba/member-list');
+  await drawer.getByRole('button', { name: 'もう一度試す' }).click();
+  await expect(select.getByRole('option', { name: 'ミナト' })).toBeAttached();
+  await expect(drawer.getByText('担い手の候補を読み込めませんでした')).toHaveCount(0);
+  await expect(select).toBeFocused();
+
+  // 閉じた選択欄で矢印キーを続けて押しても、途中の値は送らず、待った後に最後の値だけを送る
+  const bodies: { assignee_user_id: string | null }[] = [];
+  page.on('request', (request) => {
+    if (request.url().endsWith('/api/aoba/task-assign')) bodies.push(request.postDataJSON());
+  });
+  await select.press('ArrowDown');
+  await select.press('ArrowUp');
+  await select.press('ArrowDown');
+  await expect(page.getByRole('status').filter({ hasText: '保存しました' })).toBeVisible();
+  expect(bodies).toHaveLength(1);
+  expect(bodies[0]!.assignee_user_id).toMatch(/[0-9a-f-]{36}/);
+  await select.selectOption({ label: '担い手なし' });
+  await expect.poll(() => bodies.length).toBe(2);
+  await expect(
+    page.locator('.entry', { hasText: '担い手が断られる' }).getByRole('img', { name: '担い手なし' }),
+  ).toBeVisible();
+
+  // 同時に替えられた（409 の conflict）
+  const raced = 'ほかの人が同時に直したため、保存できませんでした';
+  await page.route('**/api/aoba/task-assign', (route) =>
+    route.fulfill({ status: 409, json: { error: { code: 'conflict', message: 'conflict' } } }),
+  );
+  let request = page.waitForRequest('**/api/aoba/task-assign');
+  await select.selectOption({ label: 'ミナト' });
+  await request;
+  await expect(drawer.locator('.props').getByText(raced, { exact: false })).toBeVisible();
+  await expect(select).toHaveValue('');
+
+  // 閉じた（409 の workspace_closed）
+  await page.unroute('**/api/aoba/task-assign');
+  await page.route('**/api/aoba/task-assign', (route) =>
+    route.fulfill({ status: 409, json: { error: { code: 'workspace_closed', message: 'closed' } } }),
+  );
+  request = page.waitForRequest('**/api/aoba/task-assign');
+  await select.selectOption({ label: 'ミナト' });
+  await request;
+  await expect(drawer.getByText('終了したパーティには書き込めません')).toBeVisible();
+  await expect(select).toHaveValue('');
+
+  // 選んだ人が所属を外れていた（404 で、タスクはある）。理由を出し、候補を読み直す（読み直した候補にはもういない）
+  await page.unroute('**/api/aoba/task-assign');
+  await page.route('**/api/aoba/task-assign', (route) =>
+    route.fulfill({ status: 404, json: { error: { code: 'not_found', message: 'not_found' } } }),
+  );
+  await page.route('**/api/aoba/member-list', async (route) => {
+    const response = await route.fetch();
+    const body = (await response.json()) as Record<string, unknown>;
+    await route.fulfill({ response, json: { ...body, members: [] } });
+  });
+  request = page.waitForRequest('**/api/aoba/task-assign');
+  const reload = page.waitForRequest('**/api/aoba/member-list');
+  await select.selectOption({ label: 'ミナト' });
+  await request;
+  await reload;
+  await expect(drawer.getByText('選んだ人は、もうこのパーティにいません。担い手を選び直してください')).toBeVisible();
+  await expect(select.getByRole('option', { name: 'ミナト' })).toHaveCount(0);
+  await expect(select).toHaveValue('');
+  await expect(drawer).toBeVisible();
 });
 
 test('広げると aria-modal が外れ、左のメニューを押せる。広げた形は次に開くときも残る', async ({ page }) => {
