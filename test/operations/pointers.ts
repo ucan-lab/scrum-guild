@@ -214,6 +214,18 @@ export const pointers: Pointers = {
     epic_id: (await createEpic(target.organization, target.workspace.id, target.admin.userId!)).id,
     title: `見直した ${crypto.randomUUID().slice(0, 8)}`,
   }),
+  // 呼ぶたびにエピックを作る（削除すると2回目は 404 になるため）。作った人は一般のメンバー（作った人なら削除できる）
+  'epic-delete': async (target) => ({
+    workspace_id: target.workspace.id,
+    epic_id: (await createEpic(target.organization, target.workspace.id, target.member.userId!)).id,
+    children: 'keep',
+  }),
+  // 呼ぶたびにストーリーを作る。作った人は一般のメンバー
+  'story-delete': async (target) => ({
+    workspace_id: target.workspace.id,
+    story_id: (await createStory(target.organization, target.workspace.id, target.member.userId!)).id,
+    children: 'delete',
+  }),
   // 呼ぶたびにストーリーとタスクを作り、タスクをそのストーリーの下へ移す
   'task-move': async (target) => {
     const adminId = target.admin.userId!;

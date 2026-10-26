@@ -21,6 +21,7 @@
   import { t } from '../vocabulary.svelte.ts';
   import Dialog from './Dialog.svelte';
   import Icon from './Icon.svelte';
+  import TreeDeleteDialog from './TreeDeleteDialog.svelte';
 
   // ストーリーのダイアログ。作るときも直すときも同じ欄（タイトル、受け入れ基準、本文、期日、リンク）で、タイトル以外は空でよい。
   // 直すときは、開いたら story-get で1件を読む（受け入れ基準と本文は長いので、木には載せない）。読んでいる間は読み込み中を出し、
@@ -31,6 +32,7 @@
   // 送っている間の扱いと、古い応答を捨てる generation は TaskCreateDialog と同じ。
   // 作れたら、保存できたら閉じて、画面が木を読み直す（onsaved）。本文と受け入れ基準は、この版では文字のまま持つ
   // 区分（categories から選ぶ）は親のないストーリーだけが持つ。エピックの下のストーリーは、エピックの区分を「親から引き継ぎ」で読み取り専用に出す
+  // 直すときは、欄の下に「この<ストーリー>を削除する」を置く（EpicDialog と同じ。story-get の can_delete が偽の人には出さない）
   let {
     slug,
     workspaceId,
@@ -47,7 +49,7 @@
     // 区分の一覧を読めなかった（選択肢は区分なしと今の区分だけ）
     categoriesFailed: boolean;
     onsaved: () => void;
-    // 直す対象が消えていた（404）。画面が木を読み直し、見出しへフォーカスを移す
+    // 直す対象が消えていた（404）か、削除した。画面が木を読み直し、見出しへフォーカスを移す
     ongone: () => void;
   } = $props();
 
@@ -75,6 +77,11 @@
   let loadState = $state<'loading' | 'ready' | 'failed'>('ready');
   // 開いたときに読んだ値（直すときだけ）
   let editing = $state<StoryDetail | null>(null);
+  // 呼んだ人が削除できるか（作った人かリーダー）と、配下の件数。story-get が返す
+  let canDelete = $state(false);
+  let childTasks = $state(0);
+  let canDeleteChildren = $state(false);
+  let deleteDialog = $state<ReturnType<typeof TreeDeleteDialog>>();
   let title = $state('');
   let acceptance = $state('');
   let body = $state('');
@@ -133,6 +140,9 @@
     if (mine !== generation) return;
     if (result.ok) {
       fill(result.data.story);
+      canDelete = result.data.can_delete;
+      childTasks = result.data.children.tasks;
+      canDeleteChildren = result.data.can_delete_children;
       loadState = 'ready';
       // 欄は読めてから出るので、開いたときのフォーカス（閉じるボタン）から、タイトルへ移す
       await tick();
@@ -157,6 +167,9 @@
     reloadOnClose = false;
     storyId = targetId;
     fill(null);
+    canDelete = false;
+    childTasks = 0;
+    canDeleteChildren = false;
     errors = {};
     submitError = null;
     submitting = false;
@@ -305,6 +318,27 @@
     } finally {
       if (mine === generation) submitting = false;
     }
+  }
+
+  // 削除の確認を開く。件数とまとめて削除できるかは、確認が開いたときに story-get で読み直す（EpicDialog と同じ）
+  function askDelete(event: MouseEvent): void {
+    if (editing === null || submitting) return;
+    const trigger = event.currentTarget instanceof HTMLElement ? event.currentTarget : null;
+    deleteDialog?.show(
+      { kind: 'story', id: editing.id, title: editing.title, stories: 0, tasks: childTasks, canDeleteChildren },
+      trigger,
+    );
+  }
+
+  function deleteFinished(outcome: 'deleted' | 'gone' | 'closed'): void {
+    if (outcome === 'closed') {
+      reloadOnClose = true;
+      return;
+    }
+    open = false;
+    if (outcome === 'deleted') showToast(t('storyDeleted', { story: t('story') }), 'check');
+    else showToast(t('storyGone', { story: t('story') }), 'alert');
+    ongone();
   }
 
   const status = $derived(
@@ -475,6 +509,17 @@
           </div>
         </div>
       </fieldset>
+      {#if editing !== null && !readOnly}
+        <div class="form-actions">
+          {#if canDelete}
+            <button class="btn is-sm is-quiet is-danger" type="button" aria-disabled={submitting} onclick={askDelete}>
+              <Icon name="trash" />{t('storyDelete', { story: t('story') })}
+            </button>
+          {:else}
+            <span class="field-hint">{t('taskDeleteWho', { leader: t('leader') })}</span>
+          {/if}
+        </div>
+      {/if}
     {/if}
 
     {#if submitError !== null}
@@ -500,3 +545,5 @@
     {/if}
   {/snippet}
 </Dialog>
+
+<TreeDeleteDialog bind:this={deleteDialog} {slug} {workspaceId} onfinish={deleteFinished} />

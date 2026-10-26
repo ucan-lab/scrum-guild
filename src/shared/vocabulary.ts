@@ -1590,6 +1590,40 @@ export const dictionary = defineDictionary({
     '削除できませんでした。もう一度試してください。',
   ),
   taskDeleteForbidden: workspace('作った人と{leader}だけが削除できます', '作った人と{leader}だけが削除できます'),
+  // エピックとストーリーの削除（ダイアログの下のボタンと、配下の扱いを選ぶ確認。TreeDeleteDialog）。
+  // 削除できる人、確認の本文と結び、送っている間、失敗の文はタスクの削除と同じ言葉を使う
+  epicDelete: workspace('この{epic}を削除する', 'この{epic}を削除する'),
+  storyDelete: workspace('この{story}を削除する', 'この{story}を削除する'),
+  epicDeleteTitle: workspace('{epic}を削除する', '{epic}を削除する'),
+  storyDeleteTitle: workspace('{story}を削除する', '{story}を削除する'),
+  treeDeleteChildren: organization('配下の扱い', '配下の扱い'),
+  treeDeleteKeep: organization('配下を親なしで残す', '配下を親なしで残す'),
+  treeDeleteAll: organization('配下もまとめて削除する', '配下もまとめて削除する'),
+  // 言葉と数、数と「件」の間は改行させない空白（U+00A0）
+  epicDeleteKeepHint: workspace(
+    '{story} {stories} 件は親なしの{story}として末尾へ移り、その下の{task} {tasks} 件は{story}の下のままです。{category}は{epic}の{category}を写します。',
+    '{story} {stories} 件は親なしの{story}として末尾へ移り、その下の{task} {tasks} 件は{story}の下のままです。{category}は{epic}の{category}を写します。',
+  ),
+  epicDeleteAllHint: workspace(
+    '{story} {stories} 件と{task} {tasks} 件を削除します。取り込んだ{task}は削除せず、{archive}へ移します。',
+    '{story} {stories} 件と{task} {tasks} 件を削除します。取り込んだ{task}は削除せず、{archive}へ移します。',
+  ),
+  storyDeleteKeepHint: workspace(
+    '{task} {tasks} 件は親なしの{task}として末尾へ移ります。{category}は{story}の{category}を写します。',
+    '{task} {tasks} 件は親なしの{task}として末尾へ移ります。{category}は{story}の{category}を写します。',
+  ),
+  storyDeleteAllHint: workspace(
+    '{task} {tasks} 件を削除します。取り込んだ{task}は削除せず、{archive}へ移します。',
+    '{task} {tasks} 件を削除します。取り込んだ{task}は削除せず、{archive}へ移します。',
+  ),
+  treeDeleteAllLeaderOnly: workspace(
+    '配下に他の人が作ったものがあるため、まとめて削除できるのは{leader}だけです。',
+    '配下に他の人が作ったものがあるため、まとめて削除できるのは{leader}だけです。',
+  ),
+  epicDeleteNoChildren: workspace('配下の{story}はありません。', '配下の{story}はありません。'),
+  storyDeleteNoChildren: workspace('配下の{task}はありません。', '配下の{task}はありません。'),
+  epicDeleted: workspace('{epic}を削除しました', '{epic}を削除しました'),
+  storyDeleted: workspace('{story}を削除しました', '{story}を削除しました'),
   // 変更の履歴（引き出しの「変更の履歴」の節。src/lib/task-history.ts が列の名前と値を文にする）
   historyTitle: workspace('変更の履歴', '変更の履歴'),
   historyEmpty: workspace('まだ変更はありません。', 'まだ変更はありません。'),

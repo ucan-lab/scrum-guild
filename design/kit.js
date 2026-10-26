@@ -1017,8 +1017,9 @@ const looooooooooooooooooooooooooooooooooongLine = "コードの長い1行は、
   }
 
   // ストーリーの作成と変更のダイアログ。閉じたワークスペース（readOnly）では、欄を readonly にして保存のボタンを出さない
-  // （日付の入力は readonly を受けないので、読み取り専用の text にして日付を出す）。リンクに値があれば、欄の横に「開く」を置く
-  function storyDialog(title, st, readOnly = false) {
+  // （日付の入力は readonly を受けないので、読み取り専用の text にして日付を出す）。リンクに値があれば、欄の横に「開く」を置く。
+  // 直すときは、欄の下に「この<ストーリー>を削除する」を置く（canDelete が偽の人には、ボタンの代わりに削除できる人を出す）
+  function storyDialog(title, st, readOnly = false, canDelete = true) {
     const link = st && st.link ? st.link : "";
     const ro = readOnly ? " readonly" : "";
     openDialog(title,
@@ -1035,7 +1036,8 @@ const looooooooooooooooooooooooooooooooooongLine = "コードの長い1行は、
            : `<input class="input" id="d-sd" type="date" value="${st && st.due ? st.due : ""}">`}</label>
          <div class="field"><label class="field-label" for="d-sl">リンク</label>
            <span class="input-row"><input class="input" id="d-sl" type="url" placeholder="https://" value="${esc(link)}"${ro}>${link ? `<a class="btn" href="${esc(link)}" target="_blank" rel="noopener noreferrer" aria-label="リンクを新しいタブで開く">開く</a>` : ""}</span></div>
-       </div>`,
+       </div>
+       ${st && !readOnly ? treeDeleteActions("story", canDelete) : ""}`,
       readOnly
         ? `<button class="btn is-primary" type="button" data-close-dialog>閉じる</button>`
         : `<button class="btn is-quiet" type="button" data-close-dialog>やめる</button><button class="btn is-primary" type="button" data-close-dialog data-toast="${st ? "保存しました" : `${t("story")}を作りました`}">${st ? "保存する" : "作る"}</button>`);
@@ -1049,9 +1051,45 @@ const looooooooooooooooooooooooooooooooooongLine = "コードの長い1行は、
     if (!groups.some((g) => g.eid !== null)) return options(sids);
     return groups.map((g) => `<optgroup label="${g.eid === null ? `親なしの${t("story")}` : esc(D.epics[g.eid].title)}">${options(g.sids)}</optgroup>`).join("");
   }
+  // エピックとストーリーのダイアログの下の削除の行。削除できない人（作った人でもリーダーでもない）には、ボタンの代わりに削除できる人を出す
+  function treeDeleteActions(kind, canDelete) {
+    return `<div class="form-actions">${canDelete
+      ? `<button class="btn is-sm is-quiet is-danger" type="button" data-dialog="${kind === "epic" ? "deleteEpic" : "deleteStory"}">${icon("trash")}この${t(kind)}を削除する</button>`
+      : `<span class="field-hint">削除できるのは作った人と${t("leader")}です。</span>`}</div>`;
+  }
+  // エピックとストーリーの削除の確認（本番の TreeDeleteDialog）。kind は "epic" か "story"。
+  // opts.empty は配下の無い形（選択肢を出さない）、opts.leaderOnly は「まとめて削除する」を選べない形（リーダーでない人で、他の人の作った配下がある）。
+  // 見本は1枠のダイアログなので、元のエピックとストーリーのダイアログを置き換えて開く。本番は元のダイアログの上に重ねて開き、
+  // 開いたときに get を読み直して件数と可否を差し替える
+  function treeDeleteDialog(kind, id, opts = {}) {
+    const item = kind === "epic" ? D.epics[id] : D.stories[id];
+    const stories = opts.empty ? 0 : kind === "epic" ? Object.keys(D.stories).filter((sid) => D.stories[sid].epic === id).length : 0;
+    const tasks = opts.empty ? 0 : tasksWhere((x) => x.story && (kind === "epic" ? D.stories[x.story].epic === id : x.story === id)).length;
+    const has = kind === "epic" ? stories > 0 : tasks > 0;
+    const nb = " ";
+    const keep = kind === "epic"
+      ? `${t("story")}${nb}${stories}${nb}件は親なしの${t("story")}として末尾へ移り、その下の${t("task")}${nb}${tasks}${nb}件は${t("story")}の下のままです。${t("category")}は${t("epic")}の${t("category")}を写します。`
+      : `${t("task")}${nb}${tasks}${nb}件は親なしの${t("task")}として末尾へ移ります。${t("category")}は${t("story")}の${t("category")}を写します。`;
+    const all = kind === "epic"
+      ? `${t("story")}${nb}${stories}${nb}件と${t("task")}${nb}${tasks}${nb}件を削除します。取り込んだ${t("task")}は削除せず、${t("archive")}へ移します。`
+      : `${t("task")}${nb}${tasks}${nb}件を削除します。取り込んだ${t("task")}は削除せず、${t("archive")}へ移します。`;
+    openDialog(`${t(kind)}を削除する`,
+      `<p class="wrap-anywhere">「${esc(item.title)}」を削除します。削除したものは画面から消え、この版では戻せません。</p>
+       ${has
+         ? `<div class="field"><span class="field-label" id="d-del-label">配下の扱い</span>
+           <div class="choice-list" role="radiogroup" aria-labelledby="d-del-label">
+             <label class="choice"><input type="radio" name="d-del" checked><div><b>配下を親なしで残す</b><span>${keep}</span></div></label>
+             <label class="choice"><input type="radio" name="d-del"${opts.leaderOnly ? ` disabled aria-describedby="d-del-leader"` : ""}><div><b>配下もまとめて削除する</b><span>${all}</span></div></label>
+           </div>${opts.leaderOnly ? `<span class="field-hint" id="d-del-leader">配下に他の人が作ったものがあるため、まとめて削除できるのは${t("leader")}だけです。</span>` : ""}</div>`
+         : `<p class="field-hint">配下の${t(kind === "epic" ? "story" : "task")}はありません。</p>`}
+       <p class="field-hint">完了の記録と経験値は残ります。</p>`,
+      `<button class="btn is-quiet" type="button" data-close-dialog>やめる</button><button class="btn is-danger" type="button" data-close-dialog data-toast="${t(kind)}を削除しました">削除する</button>`);
+    document.querySelector(".dialog-sheet").classList.add("is-danger");
+  }
   // エピックの作成と変更のダイアログ（本番の EpicDialog）。欄はストーリーのダイアログから受け入れ基準を除いたもの。
-  // バックログの見出しの「エピックを作る」と、木のエピックの行の題から開く。依頼主、クリア報酬、討伐隊はエピックの画面（#65）で直す
-  function epicDialog(title, e, readOnly = false) {
+  // バックログの見出しの「エピックを作る」と、木のエピックの行の題から開く。依頼主、クリア報酬、討伐隊はエピックの画面（#65）で直す。
+  // 直すときは、欄の下に「この<エピック>を削除する」を置く（ストーリーのダイアログと同じ）
+  function epicDialog(title, e, readOnly = false, canDelete = true) {
     const link = e && e.link ? e.link : "";
     const ro = readOnly ? " readonly" : "";
     openDialog(title,
@@ -1065,7 +1103,8 @@ const looooooooooooooooooooooooooooooooooongLine = "コードの長い1行は、
            : `<input class="input" id="d-ed" type="date" value="${e && e.due ? e.due : ""}">`}</label>
          <div class="field"><label class="field-label" for="d-el">リンク</label>
            <span class="input-row"><input class="input" id="d-el" type="url" placeholder="https://" value="${esc(link)}"${ro}>${link ? `<a class="btn" href="${esc(link)}" target="_blank" rel="noopener noreferrer" aria-label="リンクを新しいタブで開く">開く</a>` : ""}</span></div>
-       </div>`,
+       </div>
+       ${e && !readOnly ? treeDeleteActions("epic", canDelete) : ""}`,
       readOnly
         ? `<button class="btn is-primary" type="button" data-close-dialog>閉じる</button>`
         : `<button class="btn is-quiet" type="button" data-close-dialog>やめる</button><button class="btn is-primary" type="button" data-close-dialog data-toast="${e ? `${t("epic")}を保存しました` : `${t("epic")}を作りました`}">${e ? "保存する" : "作る"}</button>`);
@@ -1111,6 +1150,9 @@ const looooooooooooooooooooooooooooooooooongLine = "コードの長い1行は、
     createEpic: () => epicDialog(`${t("epic")}を作る`, null),
     editEpic: () => epicDialog(t("epic"), D.epics.e1),
     viewEpic: () => epicDialog(t("epic"), D.epics.e1, true),
+    // 作った人でもリーダーでもない人が開いたとき。削除のボタンの代わりに削除できる人を出す
+    editStoryNotOwner: () => storyDialog(t("story"), D.stories.s4, false, false),
+    editEpicNotOwner: () => epicDialog(t("epic"), D.epics.e1, false, false),
     createTask: () => openDialog(`${t("create")}`,
       `<label class="field" for="d-title"><span class="field-label">タイトル</span><input class="input" id="d-title" placeholder="何をするか"></label>
        <div class="form-row is-start">
@@ -1160,16 +1202,12 @@ const looooooooooooooooooooooooooooooooooongLine = "コードの長い1行は、
            <span class="field-hint" id="d-move-story-hint">移す先の末尾に置きます。</span></label>`,
         `<button class="btn is-quiet" type="button" data-close-dialog>やめる</button><button class="btn is-primary" type="button" data-close-dialog>移す</button>`);
     },
-    deleteEpic: () => {
-      openDialog(`${t("epic")}を削除する`,
-        `<p>「${esc(D.epics.e1.title)}」を削除します。削除したものは画面から消え、この版では戻せません。</p>
-         <div class="choice-list">
-           <label class="choice"><input type="radio" name="d-del" checked><div><b>配下を親なしで残す</b><span>${t("story")} 2 件と${t("task")} 6 件は、そのまま${t("backlog")}に残ります。</span></div></label>
-           <label class="choice"><input type="radio" name="d-del"><div><b>配下もまとめて削除する</b><span>取り込んだ${t("task")}は削除せず、${t("archive")}へ移します。経験値は残ります。</span></div></label>
-         </div>`,
-        `<button class="btn is-quiet" type="button" data-close-dialog>やめる</button><button class="btn is-danger" type="button" data-close-dialog data-toast="削除しました">削除する</button>`);
-      document.querySelector(".dialog-sheet").classList.add("is-danger");
-    },
+    // エピックとストーリーの削除（本番の TreeDeleteDialog）。それぞれのダイアログの下の「この<エピック>を削除する」から開く。
+    // 配下の件数と、配下の扱い（既定は残す）を選ばせる。配下が無ければ選ばせず、その旨だけを出す。長いタイトルは折り返す
+    deleteEpic: () => treeDeleteDialog("epic", "e1"),
+    deleteStory: () => treeDeleteDialog("story", "s4"),
+    deleteStoryEmpty: () => treeDeleteDialog("story", "s4", { empty: true }),
+    deleteStoryLeaderOnly: () => treeDeleteDialog("story", "s4", { leaderOnly: true }),
     cancelEpic: () => openDialog(`${t("epic")}を中止する`,
       `<p>「${esc(D.epics.e1.title)}」を中止します。中止した${t("epic")}に${t("reward")}は出ません。</p>
        <p class="field-hint">${t("task")}や${t("story")}の完了ですでに確定した経験値は残ります。中止は${t("requester")}と${t("leader")}ができます。</p>`,
