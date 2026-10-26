@@ -203,49 +203,70 @@
   let historyTimezone = $state('UTC');
   // 「さらに読む」の状態
   let historyMore = $state<'idle' | 'loading' | 'failed'>('idle');
+  // 先頭を読み直している間（「さらに読む」を止め、「もう一度試す」を押せなくする）
+  let historyReloading = $state(false);
+  // 行を出した後の読み直し（保存した後）に失敗した。行は残し、節の上に失敗と「もう一度試す」を添える
+  let historyReloadFailed = $state(false);
   let historyVersion = 0;
   let historyHeading = $state<HTMLElement>();
   // 言葉づかいを切り替えたら、列の名前と操作の言葉も描き直す（t を $derived の中で呼ぶ）
   const historyViews = $derived(historyEntries.map((entry) => historyEntryView(entry, historyTimezone, t)));
 
-  // 先頭の 50 件を読み直す。読み直している間は、前に読めた行を残す（保存のたびに消えてちらつかない）
-  async function loadHistory(): Promise<void> {
+  // 先頭の 50 件を読み直す。読み直している間は、前に読めた行を残す（保存のたびに消えてちらつかない）。
+  // 失敗したら、行がまだ無ければ節を失敗の表示に、行があれば行を残して失敗を添える。
+  // focusAfter は「もう一度試す」から読んだとき。読めたらボタンが消えるので、節の見出しへフォーカスを移す
+  async function loadHistory(focusAfter = false): Promise<void> {
     const mine = ++historyVersion;
-    if (historyState === 'failed') historyState = 'loading';
+    historyReloading = true;
     historyMore = 'idle';
     const result = await callOperation(taskHistory, { workspace_id: workspaceId, task_id: taskId }, { slug });
     if (!alive || mine !== historyVersion) return;
+    historyReloading = false;
+    // 読み直している間に始まった続きの応答は、古い先頭に足すことになるので捨てる
+    historyVersion++;
     if (result.ok) {
       historyEntries = result.data.entries;
       historyNext = result.data.next;
       historyTimezone = result.data.timezone;
       historyState = 'ready';
+      historyReloadFailed = false;
+      if (focusAfter) {
+        await tick();
+        if (alive) historyHeading?.focus();
+      }
       return;
     }
-    historyState = 'failed';
+    if (historyState === 'ready') historyReloadFailed = true;
+    else historyState = 'failed';
   }
 
-  // 続きの 50 件を足す。先頭を読み直したら（保存した後）、古い続きの応答は捨てる
-  async function loadMoreHistory(): Promise<void> {
+  function retryHistory(): void {
+    if (historyReloading) return;
+    void loadHistory(true);
+  }
+
+  // 続きの 50 件を足す。先頭を読み直している間は押しても何もしない。先頭を読み直したら、古い続きの応答は捨てる
+  async function loadMoreHistory(): Promise<'added' | 'dropped' | 'failed'> {
     const before = historyNext;
-    if (before === null || historyMore === 'loading') return;
+    if (before === null || historyMore === 'loading' || historyReloading) return 'dropped';
     const mine = historyVersion;
     historyMore = 'loading';
     const result = await callOperation(taskHistory, { workspace_id: workspaceId, task_id: taskId, before }, { slug });
-    if (!alive || mine !== historyVersion) return;
+    if (!alive || mine !== historyVersion) return 'dropped';
     if (result.ok) {
       historyEntries = [...historyEntries, ...result.data.entries];
       historyNext = result.data.next;
       historyMore = 'idle';
-      return;
+      return 'added';
     }
     historyMore = 'failed';
+    return 'failed';
   }
 
-  // 「さらに読む」。読み終えて続きが無くなると押したボタンが消えるので、フォーカスを節の見出しへ移す
+  // 「さらに読む」。読み足して続きが無くなると押したボタンが消えるので、フォーカスを節の見出しへ移す
   async function showMoreHistory(): Promise<void> {
-    await loadMoreHistory();
-    if (!alive || historyNext !== null) return;
+    const outcome = await loadMoreHistory();
+    if (!alive || outcome !== 'added' || historyNext !== null) return;
     await tick();
     historyHeading?.focus();
   }
@@ -1112,22 +1133,38 @@
     </div>
 
     <!-- 変更の履歴（kit.js の drawerHtml の .history）。コメント（#171）が入ったら、見本どおりのタブにする -->
-    <section class="field" aria-labelledby={historyHeadingId} aria-busy={historyState === 'loading'}>
+    <section
+      class="field"
+      aria-labelledby={historyHeadingId}
+      aria-busy={historyState === 'loading' || historyReloading}
+    >
       <h3 class="field-label" id={historyHeadingId} tabindex="-1" bind:this={historyHeading}>{t('historyTitle')}</h3>
       {#if historyState === 'loading'}
         <p class="field-hint">{t('loading')}</p>
       {:else if historyState === 'failed'}
+        <!-- 読み直している間も、失敗の表示とボタンを残す（ボタンは押せなくし、読み直していることを示す） -->
         <div class="callout is-danger" role="alert"><Icon name="alert" /><span>{t('historyLoadFailed')}</span></div>
         <div class="form-actions">
-          <button class="btn is-sm" type="button" onclick={() => void loadHistory()}>{t('retry')}</button>
+          <button class="btn is-sm" type="button" aria-disabled={historyReloading} onclick={retryHistory}>
+            {historyReloading ? t('retrying') : t('retry')}
+          </button>
         </div>
       {:else}
+        {#if historyReloadFailed}
+          <!-- 保存した後の読み直しに失敗した。前に読めた行は残し、上に失敗と「もう一度試す」を添える -->
+          <div class="form-actions">
+            <span class="field-error" role="alert"><Icon name="alert" />{t('historyReloadFailed')}</span>
+            <button class="btn is-sm is-quiet" type="button" aria-disabled={historyReloading} onclick={retryHistory}>
+              {historyReloading ? t('retrying') : t('retry')}
+            </button>
+          </div>
+        {/if}
         <ul class="history">
           {#each historyViews as view (view.id)}
             <li>
               <time class="mono" datetime={view.createdAt}>{view.at}</time>
               {#if view.actor !== null}
-                <Avatar userId={view.actor.id} name={view.actor.name} decorative />
+                <Avatar userId={view.actor.id} name={view.actorName} decorative />
               {/if}
               <span>{view.actorName}</span>
               <span class="props-note">{view.summary}</span>
@@ -1151,7 +1188,7 @@
             <button
               class="btn is-sm"
               type="button"
-              aria-disabled={historyMore === 'loading'}
+              aria-disabled={historyMore === 'loading' || historyReloading}
               onclick={() => void showMoreHistory()}
             >
               {historyMore === 'loading' ? t('loading') : t('historyMore')}

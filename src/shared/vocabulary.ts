@@ -1203,9 +1203,13 @@ export const dictionary = defineDictionary({
   historyNone: workspace('なし', 'なし'),
   historyFieldOther: workspace('そのほかの欄', 'そのほかの欄'),
   historyFieldParent: workspace('親の{story}', '親の{story}'),
-  historyFieldCompletedAt: workspace('{done}した日時', '{done}した日時'),
-  historyFieldCompletedBy: workspace('{done}した人', '{done}した人'),
-  historyFieldDeletedAt: workspace('削除した日時', '削除した日時'),
+  // 名前が空の人、区分、親（読めなかった名前）
+  historyUnknownName: workspace('不明', '不明'),
+  // 保存した後の読み直しに失敗したとき。前に読めた行は残し、節の上に添える
+  historyReloadFailed: workspace(
+    '最新の変更の履歴を読み込めませんでした。',
+    '最新の変更の履歴を読み込めませんでした。',
+  ),
 
   // Markdown の本文。変換が終わらなかった本文を、書かれたまま出すときの注記
   markdownPlainNote: workspace('整形せずに表示しています', '整形せずに表示しています'),

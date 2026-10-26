@@ -22,28 +22,23 @@ export type HistoryEntryView = {
   lines: HistoryLine[];
 };
 
-// 列の名前から辞書の言葉へ。ここに無い列は「そのほかの欄」として、値を出さない
-const FIELD_LABELS: Readonly<Record<string, (t: Translate) => string>> = {
-  title: (t) => t('fieldTitle'),
-  points: (t) => t('points'),
-  due_on: (t) => t('due'),
-  link_url: (t) => t('fieldLink'),
-  body_md: (t) => t('fieldBody'),
-  assignee: (t) => t('assignee'),
-  story: (t) => t('historyFieldParent', { story: t('story') }),
-  category: (t) => t('category'),
-  today_on: (t) => t('sectionToday'),
-  completed_at: (t) => t('historyFieldCompletedAt', { done: t('done') }),
-  completed_by: (t) => t('historyFieldCompletedBy', { done: t('done') }),
-  deleted_at: (t) => t('historyFieldDeletedAt'),
-};
+// 列の名前から辞書の言葉へ。ここに無い列は「そのほかの欄」として、値を出さない。
+// 完了と削除の行は操作だけを出すので、その列（completed_at、completed_by、deleted_at）は表に入れない。
+// 列の名前は保存した JSON のキーなので、__proto__ などで Object の持ち物を引かないよう Map で持つ
+const FIELD_LABELS: ReadonlyMap<string, (t: Translate) => string> = new Map([
+  ['title', (t: Translate) => t('fieldTitle')],
+  ['points', (t: Translate) => t('points')],
+  ['due_on', (t: Translate) => t('due')],
+  ['link_url', (t: Translate) => t('fieldLink')],
+  ['body_md', (t: Translate) => t('fieldBody')],
+  ['assignee', (t: Translate) => t('assignee')],
+  ['story', (t: Translate) => t('historyFieldParent', { story: t('story') })],
+  ['category', (t: Translate) => t('category')],
+  ['today_on', (t: Translate) => t('sectionToday')],
+]);
 
 // 値を出さない列（本文は長いので、API も値を返さない）
 const VALUELESS_FIELDS = new Set(['body_md']);
-// 日時の列。ワークスペースのタイムゾーンで出す（期日と今日やるは暦の日付なので、そのまま）
-const TIMESTAMP_FIELDS = new Set(['completed_at', 'deleted_at']);
-// 空の値を、それぞれの意味の言葉で出す列
-const PERSON_FIELDS = new Set(['assignee', 'completed_by']);
 
 const formatters = new Map<string, Intl.DateTimeFormat>();
 
@@ -80,35 +75,39 @@ export function formatHistoryTime(iso: string, timeZone: string): string {
 
 // 列の名前。知らない列は「そのほかの欄」
 export function historyFieldLabel(field: string, t: Translate): string {
-  return (FIELD_LABELS[field] ?? ((tr: Translate) => tr('historyFieldOther')))(t);
+  return FIELD_LABELS.get(field)?.(t) ?? t('historyFieldOther');
 }
 
-function valueText(field: string, value: TaskHistoryValue, timeZone: string, t: Translate): string {
+// 名前。空（読めなかった名前）は「不明」
+function nameText(name: string, t: Translate): string {
+  return name === '' ? t('historyUnknownName') : name;
+}
+
+function valueText(field: string, value: TaskHistoryValue, t: Translate): string {
   if (value === null) {
     if (field === 'points') return t('pointsUnsetTitle');
-    if (PERSON_FIELDS.has(field)) return t('unassigned');
+    if (field === 'assignee') return t('unassigned');
     return t('historyNone');
   }
-  if (typeof value === 'object') return value.name;
-  if (typeof value === 'number') return String(value);
-  return TIMESTAMP_FIELDS.has(field) ? formatHistoryTime(value, timeZone) : value;
+  if (typeof value === 'object') return nameText(value.name, t);
+  return String(value);
 }
 
-function lineOf(
-  change: TaskHistoryEntry['changes'][number],
-  created: boolean,
-  timeZone: string,
-  t: Translate,
-): HistoryLine {
+// 作成の行に出す値か。空の値（null と空の文字）は出さない
+function hasValue(value: TaskHistoryValue): boolean {
+  return value !== null && value !== '';
+}
+
+function lineOf(change: TaskHistoryEntry['changes'][number], created: boolean, t: Translate): HistoryLine {
   const label = historyFieldLabel(change.field, t);
   // 本文と知らない列は、値を出さず、直したことだけを出す
-  if (VALUELESS_FIELDS.has(change.field) || !(change.field in FIELD_LABELS)) {
+  if (VALUELESS_FIELDS.has(change.field) || !FIELD_LABELS.has(change.field)) {
     return { label: null, text: t('historyFieldEdited', { field: label }) };
   }
-  const after = valueText(change.field, change.after, timeZone, t);
+  const after = valueText(change.field, change.after, t);
   // 作成は、作ったときの値だけを出す
   if (created) return { label, text: after };
-  return { label, text: t('historyChange', { before: valueText(change.field, change.before, timeZone, t), after }) };
+  return { label, text: t('historyChange', { before: valueText(change.field, change.before, t), after }) };
 }
 
 export function historyEntryView(entry: TaskHistoryEntry, timeZone: string, t: Translate): HistoryEntryView {
@@ -117,15 +116,21 @@ export function historyEntryView(entry: TaskHistoryEntry, timeZone: string, t: T
     createdAt: entry.created_at,
     at: formatHistoryTime(entry.created_at, timeZone),
     actor: entry.actor,
-    actorName: entry.actor?.name ?? t('historyActorSystem'),
+    actorName: entry.actor === null ? t('historyActorSystem') : nameText(entry.actor.name, t),
   };
   // 完了と削除は、何をしたかだけを出す（日時と人は行の頭にある）
   if (entry.action === 'complete') return { ...base, summary: t('historyCompleted', { done: t('done') }), lines: [] };
   if (entry.action === 'delete') return { ...base, summary: t('historyDeleted'), lines: [] };
-  const created = entry.action === 'create';
+  if (entry.action === 'create') {
+    // 作成は、空でない初めの値だけを出す（本文と知らない列は、直したことだけ）
+    const changes = entry.changes.filter(
+      (change) => !FIELD_LABELS.has(change.field) || VALUELESS_FIELDS.has(change.field) || hasValue(change.after),
+    );
+    return { ...base, summary: t('historyCreated'), lines: changes.map((change) => lineOf(change, true, t)) };
+  }
   return {
     ...base,
-    summary: created ? t('historyCreated') : t('historyUpdated'),
-    lines: entry.changes.map((change) => lineOf(change, created, timeZone, t)),
+    summary: t('historyUpdated'),
+    lines: entry.changes.map((change) => lineOf(change, false, t)),
   };
 }

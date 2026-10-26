@@ -710,7 +710,7 @@ const looooooooooooooooooooooooooooooooooongLine = "コードの長い1行は、
       ? `<div class="doc-box is-empty">まだ書かれていません。${t("task")}を完了にした時点ですべて埋まっていると、最後に書いた人に経験値が付きます。</div>`
       : `<div class="doc-box"><ul>${(parent ? parent.ac.slice(0, 2) : ["結果を確かめる手順が書かれている"]).map((a) => `<li>${esc(a)}</li>`).join("")}</ul></div>`;
     // 変更の履歴の列の名前（本番は src/lib/task-history.ts の表）。作成は作ったときの値を、変更は前と後を、欄ごとの行（.history-changes）で出す
-    const HIST = { column: t("column"), points: t("points"), sprint: t("sprint"), assignee: t("assignee") };
+    const HIST = { title: "タイトル", points: t("points"), due: t("due"), assignee: t("assignee") };
     if (drawer.view === "loading" || drawer.view === "failed") return drawerStateHtml();
     return `
       <div class="drawer-top">

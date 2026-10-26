@@ -93,13 +93,14 @@ describe('historyEntryView', () => {
     expect(historyEntryView(entry({ action: 'complete' }), 'UTC', scrum).summary).toBe('完了にした');
   });
 
-  test('作成は、作ったときの値だけを出す', () => {
+  test('作成は、作ったときの空でない値だけを出す', () => {
     const view = historyEntryView(
       entry({
         action: 'create',
         changes: [
           { field: 'title', before: null, after: '見積もりを送る' },
           { field: 'points', before: null, after: null },
+          { field: 'link_url', before: null, after: '' },
           { field: 'assignee', before: null, after: member },
         ],
       }),
@@ -109,7 +110,6 @@ describe('historyEntryView', () => {
     expect(view.summary).toBe('作成した');
     expect(view.lines).toEqual([
       { label: 'タイトル', text: '見積もりを送る' },
-      { label: 'ポイント', text: '未見積もり' },
       { label: '担当', text: '若葉 湊' },
     ]);
     expect(historyEntryView(entry({ action: 'create' }), 'UTC', game).summary).toBe('依頼を出した');
@@ -142,7 +142,7 @@ describe('historyEntryView', () => {
     expect(historyFieldLabel('mystery', game)).toBe('そのほかの欄');
   });
 
-  test('日時の列はタイムゾーンで出す。変えた人がいなければ定期処理か運用者', () => {
+  test('知らない操作は変更として出し、表に無い列（完了の日時など）は「そのほかの欄」。変えた人がいなければ定期処理か運用者', () => {
     const view = historyEntryView(
       entry({
         action: 'reopen',
@@ -154,6 +154,34 @@ describe('historyEntryView', () => {
     );
     expect(view.actorName).toBe('定期処理か運用者');
     expect(view.summary).toBe('変更した');
-    expect(view.lines).toEqual([{ label: '完了した日時', text: '2026-10-26 00:05 → なし' }]);
+    expect(view.lines).toEqual([{ label: null, text: 'そのほかの欄を直した' }]);
+  });
+
+  test('__proto__ などの列の名前も、知らない列として扱う', () => {
+    for (const field of ['__proto__', 'constructor', 'toString']) {
+      expect(historyFieldLabel(field, scrum)).toBe('そのほかの欄');
+      expect(historyEntryView(entry({ changes: [{ field, before: 1, after: 2 }] }), 'UTC', scrum).lines).toEqual([
+        { label: null, text: 'そのほかの欄を直した' },
+      ]);
+    }
+  });
+
+  test('空の名前は「不明」と出す（人、親、変えた人）', () => {
+    const view = historyEntryView(
+      entry({
+        actor: { id: 'u9', name: '' },
+        changes: [
+          { field: 'assignee', before: { id: 'u1', name: '' }, after: member },
+          { field: 'story', before: { id: 's1', name: '' }, after: null },
+        ],
+      }),
+      'UTC',
+      game,
+    );
+    expect(view.actorName).toBe('不明');
+    expect(view.lines).toEqual([
+      { label: '担い手', text: '不明 → 若葉 湊' },
+      { label: '親の達成目標', text: '不明 → なし' },
+    ]);
   });
 });
