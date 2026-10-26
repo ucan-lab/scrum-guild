@@ -35,13 +35,20 @@
   const isLeader = $derived(workspace !== null && (workspace.role === 'leader' || isAdmin));
   const isClosed = $derived(workspace !== null && workspace.closedAt !== null);
   const canLead = $derived(isLeader && !isClosed);
-  // 空の状態の補足。作れない理由を、終了したワークスペースか、リーダーでないかで分ける
-  const emptyNote = $derived(
+  const sprintWords = $derived({
+    sprint: t('sprint'),
+    task: t('task'),
+    points: t('points'),
+    capacity: t('capacity'),
+    leader: t('leader'),
+  });
+  // 空の状態の説明。終了したワークスペース、リーダー、リーダーでない人で、辞書の項目ごと分ける（文をつながない）
+  const emptyText = $derived(
     isClosed
       ? t('sprintEmptyClosedText', { sprint: t('sprint'), workspace: t('workspace') })
       : isLeader
-        ? ''
-        : t('sprintEmptyWho', { sprint: t('sprint'), leader: t('leader') }),
+        ? t('sprintEmptyText', sprintWords)
+        : t('sprintEmptyMemberText', sprintWords),
   );
 
   let sprintDialog = $state<ReturnType<typeof SprintDialog>>();
@@ -114,14 +121,6 @@
     await tick();
     focusHeading();
   }
-
-  const sprintWords = $derived({
-    sprint: t('sprint'),
-    task: t('task'),
-    points: t('points'),
-    capacity: t('capacity'),
-    leader: t('leader'),
-  });
 </script>
 
 <svelte:head>
@@ -149,11 +148,7 @@
   <div class="visually-hidden" role="status">{deleting ? t('sprintDeleting') : ''}</div>
 
   {#if plan.sprints.length === 0}
-    <EmptyState
-      icon="calendar"
-      title={t('sprintEmptyTitle', sprintWords)}
-      text={t('sprintEmptyText', sprintWords) + emptyNote}
-    />
+    <EmptyState icon="calendar" title={t('sprintEmptyTitle', sprintWords)} text={emptyText} />
   {:else}
     <div class="lanes">
       {#each plan.sprints as sprint (sprint.id)}

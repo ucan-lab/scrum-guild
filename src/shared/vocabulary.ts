@@ -1348,7 +1348,11 @@ export const dictionary = defineDictionary({
     '{sprint}は、期間を区切って{task}を進める単位です。作ると、ここに先の{sprint}が並び、入れた{points}と{capacity}を見比べられます。終えた{sprint}がたまると、ベロシティも出ます。',
     '{sprint}は、期間を区切って{task}を進める単位です。作ると、ここに先の{sprint}が並び、入れた{points}と{capacity}を見比べられます。終えた{sprint}がたまると、ベロシティも出ます。',
   ),
-  sprintEmptyWho: workspace('{sprint}を作るのは{leader}です。', '{sprint}を作るのは{leader}です。'),
+  // リーダーでない人の空の状態。作り方の案内の代わりに、作るのは誰かを添える
+  sprintEmptyMemberText: workspace(
+    '{sprint}は、期間を区切って{task}を進める単位です。{sprint}を作るのは{leader}です。',
+    '{sprint}は、期間を区切って{task}を進める単位です。{sprint}を作るのは{leader}です。',
+  ),
   sprintEmptyClosedText: workspace(
     '終了した{workspace}には、{sprint}を作れません。',
     '終了した{workspace}には、{sprint}を作れません。',
