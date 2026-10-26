@@ -1264,7 +1264,7 @@ body.has-assist .toasts { right: calc(400px + var(--space-4)); }
 :root[data-theme="modern"] .emblem { filter: drop-shadow(0 0 6px var(--color-xp)); }
 :root[data-theme="modern"] .gauge-got { box-shadow: 0 0 10px var(--color-xp); }
 :root[data-theme="modern"] .xp-num, :root[data-theme="modern"] .stat-num { text-shadow: 0 0 14px color-mix(in srgb, var(--color-xp) 60%, transparent); }
-:root[data-theme="modern"] .panel-title b, :root[data-theme="modern"] .notice-label { text-shadow: 0 0 8px color-mix(in srgb, currentColor 70%, transparent); }
+:root[data-theme="modern"] .panel-title b, :root[data-theme="modern"] .panel-title h2, :root[data-theme="modern"] .notice-label { text-shadow: 0 0 8px color-mix(in srgb, currentColor 70%, transparent); }
 :root[data-theme="modern"] .notice, :root[data-theme="modern"] .dialog-sheet, :root[data-theme="modern"] .celebrate-sheet, :root[data-theme="modern"] .gate-sheet { border-top-width: 1px; }
 :root[data-theme="modern"] .celebrate-stamp {
   width: auto; height: auto; border-radius: var(--radius-1); padding: var(--space-3) var(--space-6);
