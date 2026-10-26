@@ -1,7 +1,7 @@
 // e2e（pnpm e2e）: pnpm preview と同じく build して wrangler dev を立て、本番と同じ配り方の画面と API を確かめる。
 import { defineConfig, devices } from '@playwright/test';
 import { devPorts } from './scripts/dev-ports.ts';
-import { applyE2eServerVersion, reuseExistingServer } from './scripts/e2e-server.ts';
+import { applyE2eServerVersion, E2E_SERVER_COMMAND, reuseExistingServer } from './scripts/e2e-server.ts';
 
 const baseURL = `http://localhost:${devPorts(process.env).api}`;
 
@@ -23,9 +23,8 @@ export default defineConfig({
   },
   projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
   webServer: {
-    // package.json の preview と同じ中身。preview を変えたらここもそろえる。pnpm を通すと、pnpm がスクリプトを別のプロセスグループで動かし、
-    // 終わりに Playwright がグループへ送る SIGKILL が wrangler と workerd に届かず、サーバーが残ることがある
-    command: 'pnpm build && node scripts/dev.ts --preview',
+    // package.json の preview と同じ中身（scripts/e2e-server.test.ts が一致を確かめる）
+    command: E2E_SERVER_COMMAND,
     url: `${baseURL}/api/health`,
     // 既定では、答えるサーバーが既にあれば止まる。使い回すのは E2E_REUSE_SERVER=1 のときだけ（CI では使い回さない）
     reuseExistingServer: reuseExistingServer(process.env),

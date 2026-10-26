@@ -1,13 +1,24 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { describe, test } from 'node:test';
 import {
   applyE2eServerVersion,
+  E2E_SERVER_COMMAND,
   e2eHealthURL,
   e2eServerVersion,
   healthUnreachable,
   reuseExistingServer,
   serverVersionMismatch,
 } from './e2e-server.ts';
+
+describe('E2E_SERVER_COMMAND', () => {
+  test('package.json の preview と同じ中身', () => {
+    const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')) as {
+      scripts: Record<string, string>;
+    };
+    assert.equal(E2E_SERVER_COMMAND, pkg.scripts.preview);
+  });
+});
 
 describe('reuseExistingServer', () => {
   test('手元では E2E_REUSE_SERVER=1 のときだけ使い回す', () => {

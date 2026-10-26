@@ -5,6 +5,11 @@ import { devPorts } from './dev-ports.ts';
 
 type Env = Record<string, string | undefined>;
 
+// webServer の command。package.json の preview と同じ中身を、pnpm のスクリプトを通さずに動かす。
+// pnpm を通すと、pnpm がスクリプトを別のプロセスグループで動かし、終わりに Playwright がグループへ送る SIGKILL が
+// wrangler と workerd に届かず、サーバーが残ることがある
+export const E2E_SERVER_COMMAND = 'pnpm build && node scripts/dev.ts --preview';
+
 // 立てたままのサーバーを使い回すのは、手元で E2E_REUSE_SERVER=1 を付けたときだけ。CI では必ずこのコミットで build する
 export function reuseExistingServer(env: Env): boolean {
   return !env.CI && env.E2E_REUSE_SERVER === '1';
