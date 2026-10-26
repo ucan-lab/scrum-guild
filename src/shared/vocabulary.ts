@@ -510,6 +510,11 @@ export const dictionary = defineDictionary({
     '切り替えた日から {days} 日後に、運用の手順でデータをすべて消します。それまでは再開できます。',
     '切り替えた日から {days} 日後に、運用の手順でデータをすべて消します。それまでは再開できます。',
   ),
+  // 開いた直後は今の理由が選ばれていて「変える」を押せないので、その理由と次にできることを伝える
+  operatorChangeUnchangedHint: organization(
+    '今の理由です。別の理由を選ぶと変えられます。',
+    '今の理由です。別の理由を選ぶと変えられます。',
+  ),
   operatorChangeSubmit: organization('変える', '変える'),
   operatorChanging: organization('変えています', '変えています'),
   operatorChangeDone: organization('「{name}」の停止の理由を変えました', '「{name}」の停止の理由を変えました'),

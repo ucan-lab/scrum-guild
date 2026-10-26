@@ -32,6 +32,7 @@
 
   const ids = $props.id();
   const reasonLabelId = `${ids}-reason`;
+  const unchangedHintId = `${ids}-unchanged`;
   const changing = $derived(target?.currentKind !== undefined);
   const unchanged = $derived(changing && kind === target?.currentKind);
   const days = String(PURGE_AFTER_DAYS);
@@ -129,6 +130,9 @@
         </div>
       </label>
     </div>
+    {#if unchanged}
+      <span class="field-hint" id={unchangedHintId}>{t('operatorChangeUnchangedHint')}</span>
+    {/if}
   </div>
   {#if submitError !== null}
     <div class="callout is-danger" role="alert"><Icon name="alert" /><span>{submitError}</span></div>
@@ -137,7 +141,13 @@
   {#snippet footer(close)}
     <button class="btn is-quiet" type="button" aria-disabled={submitting} onclick={close}>{t('cancel')}</button>
     {#if changing}
-      <button class="btn is-primary" type="button" aria-disabled={submitting || unchanged} onclick={submit}>
+      <button
+        class="btn is-primary"
+        type="button"
+        aria-disabled={submitting || unchanged}
+        aria-describedby={unchanged ? unchangedHintId : undefined}
+        onclick={submit}
+      >
         {submitting ? t('operatorChanging') : t('operatorChangeSubmit')}
       </button>
     {:else}
