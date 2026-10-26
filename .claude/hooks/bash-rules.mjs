@@ -541,21 +541,31 @@ function redirectTexts(redirect) {
   return texts;
 }
 
-// 先の shape の DYNAMIC を、pieces と ${NAME:-既定値} の既定値で埋めた文字列。固定の文字を持たない先（"$(mktemp)"）は、中身がそのまま名前になるので埋めない
+// 先の shape の DYNAMIC を、pieces と ${NAME:-既定値} の既定値と空文字（未設定の変数）で埋めた文字列。
+// 位置が1つだけで固定の文字を持たない先（"$(mktemp)"）は、中身がそのまま名前になるので埋めない。
+// 位置が複数あれば、位置ごとに別の語を割り当てた組み合わせを見る（$(echo .dev)$(echo .vars) は .dev と .vars をつないだ .dev.vars）。
+// 組み合わせが MAX_FILLED を超えるときは、全部の位置を同じ語で埋めた形と、1か所だけ埋めた形に絞る
 function fillDynamic({ target, shape }, pieces) {
-  if (!shape.includes(DYNAMIC) || !shape.replaceAll(DYNAMIC, '')) return [];
-  const defaults = [...target.matchAll(/\$\{[^}:=?+-]*:?[-=+?]([^}]*)\}/g)].map((m) => m[1]);
   const parts = shape.split(DYNAMIC);
+  const positions = parts.length - 1;
+  if (positions === 0 || (positions === 1 && !parts.join(''))) return [];
+  const defaults = [...target.matchAll(/\$\{[^}:=?+-]*:?[-=+?]([^}]*)\}/g)].map((m) => m[1]);
+  const options = [...new Set(['', ...pieces, ...defaults])];
+  if (options.length ** positions <= MAX_FILLED) {
+    let filled = [parts[0]];
+    for (let k = 1; k < parts.length; k++) filled = filled.flatMap((prefix) => options.map((o) => prefix + o + parts[k]));
+    return filled;
+  }
   const filled = [];
-  for (const piece of new Set([...pieces, ...defaults])) {
+  for (const piece of options) {
     filled.push(parts.join(piece));
-    // 位置が複数あるときは、1か所だけを埋めた形も見る（残りは空）
-    if (parts.length > 2 && parts.length <= MAX_DYNAMIC_POSITIONS + 1) {
-      for (let k = 0; k < parts.length - 1; k++) filled.push(parts.reduce((acc, p, idx) => acc + p + (idx === k ? piece : ''), ''));
+    if (positions <= MAX_DYNAMIC_POSITIONS) {
+      for (let k = 0; k < positions; k++) filled.push(parts.reduce((acc, p, idx) => acc + p + (idx === k ? piece : ''), ''));
     }
   }
   return filled;
 }
+const MAX_FILLED = 4096;
 const MAX_DYNAMIC_POSITIONS = 4;
 
 // ヒアドキュメントとヒアストリングの本文（中の置換の中身を含む）。照合に使う

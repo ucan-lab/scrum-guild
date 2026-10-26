@@ -2010,6 +2010,15 @@ describe('bash-rules: リダイレクトは argv の外で読む', () => {
     assert.equal(decision('echo x > "$(mktemp -d)/out.log"'), 'allow');
   });
 
+  test('置換が複数並ぶ先と、未設定の変数を挟む先も、位置ごとに埋めて照合する', () => {
+    for (const command of ['echo x > $(echo .dev)$(echo .vars)', 'echo x > $(echo .dev).$(echo vars)', 'echo x > .dev${UNSET}.vars']) {
+      assert.equal(decision(command), 'deny', command);
+    }
+    assert.equal(decision('echo x > $(echo .claude)/$(echo settings.json)'), 'ask');
+    assert.equal(decision('echo x > "$(mktemp -d)/$(date +%s).log"'), 'allow');
+    assert.equal(decision('echo x > /tmp/${NAME}.log'), 'allow');
+  });
+
   test('置換の中で引用符を挟んで崩した名前も、引用符を解いて照合する', () => {
     assert.equal(decision(`echo x > "$(echo .en'v')"`), 'deny');
     assert.equal(decision(`echo x > "$(echo .claude/hook's'/guard-bash.mjs)"`), 'ask');
