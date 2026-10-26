@@ -568,6 +568,7 @@ describe('組織の一覧', () => {
       slug: organization.slug,
       name: '一覧の工房',
       suspended_at: '2026-10-20T00:00:00.000Z',
+      purge_on: null,
       created_at: organization.created_at,
       admin_status: 'pending',
     });

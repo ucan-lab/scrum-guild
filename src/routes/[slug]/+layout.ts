@@ -12,7 +12,11 @@ export const load: LayoutLoad = async ({ params, fetch, url }) => {
     callOperation(organizationInfo, {}, { slug: params.slug, fetcher: fetch }),
     callOperation(myOrganizations, {}, { fetcher: fetch }),
   ]);
-  if (isUnauthenticated(organization) || isUnauthenticated(accountOrganizations)) redirect(307, loginUrl(url));
+  // 停止した組織にしか入れない人は、組織の選択の読み取りがセッションを消して 401（理由 suspended）を返すので、ログインの画面へ移す。
+  // ほかに入れる組織がある人は、組織の操作が 403 の organization_suspended を返し、組織の枠が停止の画面を出す
+  if (isUnauthenticated(organization) || isUnauthenticated(accountOrganizations)) {
+    redirect(307, loginUrl(url, organization, accountOrganizations));
+  }
 
   return {
     slug: params.slug,

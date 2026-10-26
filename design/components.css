@@ -608,6 +608,19 @@ button.tree-link { border: 0; background: none; padding: 0; font: inherit; text-
 /* 操作の列（th と td に is-actions を付ける）。狭い幅で表が横にはみ出しても、操作を右端に固定して隠さない。
    重なる行の文字が透けないよう、表の地と同じ色で塗る */
 .table th.is-actions, .table td.is-actions { position: sticky; right: 0; background: var(--color-surface); white-space: nowrap; }
+/* 操作が2つ並ぶ行の表（table に is-stacked）。狭い幅では、固定した操作の列が名前の列を覆うので、列をやめて1行を縦に積む
+   （名前、ほかの列、操作の順）。見出しの行は見えなくし、見出しの代わりに td の data-label を値の前に出す。
+   thead は読み上げのために残す。操作は折り返し、固定を外す。ボタンの高さは .table .btn.is-sm の 44px のまま */
+@media (max-width: 760px) {
+  .table.is-stacked, .table.is-stacked tbody { display: block; }
+  .table.is-stacked thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  .table.is-stacked tr { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--space-1); padding: var(--space-3) var(--space-4); border-top: 1px solid var(--color-rule); }
+  .table.is-stacked tbody tr:first-child { border-top: 0; }
+  .table.is-stacked td { display: block; padding: 0; border: 0; text-align: left; }
+  .table.is-stacked td[data-label]::before { content: attr(data-label) "　"; font-family: var(--font-body); font-size: var(--text-xs); color: var(--color-muted); }
+  .table.is-stacked td.is-actions { position: static; }
+  .table.is-stacked .table-actions { flex-wrap: wrap; justify-content: flex-start; }
+}
 
 /* ===== レイドの詳細 ===== */
 .raid-body { display: grid; gap: var(--space-3); max-width: 66ch; }

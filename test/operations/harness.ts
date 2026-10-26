@@ -10,7 +10,16 @@ import {
 import { sessionCookieName } from '../../src/shared/session-cookie.ts';
 import { createApp } from '../../src/server/app.ts';
 import type { ImplementedOperation } from '../../src/server/operations/implement.ts';
-import { createTarget, getOperator, testEnv, withNewSession, type Person, type Target } from './world.ts';
+import {
+  admitElsewhere,
+  createPerson,
+  createTarget,
+  getOperator,
+  testEnv,
+  withNewSession,
+  type Person,
+  type Target,
+} from './world.ts';
 
 // 対象の組織の行を指す、成功する入力を作る。別の組織の対象を渡すと、同じ入力が 404 になる。
 // 入力が組織の中の行を指さない操作は、成功する入力を noReference に書く（分離の検査はスラッグだけになる）。
@@ -145,14 +154,22 @@ export function defineOperationChecks(
     let own: Target;
     let other: Target;
     let closed: Target;
+    let suspended: Target;
     let operator: Person;
     beforeAll(async () => {
-      [own, other, closed, operator] = await Promise.all([
+      [own, other, closed, suspended, operator] = await Promise.all([
         createTarget(),
         createTarget(),
         createTarget({ closed: true }),
+        createTarget({ suspended: true }),
         getOperator().then(withNewSession),
       ]);
+      // 停止した組織にしか入れない人は、403 の前にセッションを消されて 401 になる。ほかの組織にも入れる人にして、403 を見る
+      await Promise.all(
+        [suspended.admin, suspended.leader, suspended.member, suspended.bystander, suspended.invitee].map(
+          admitElsewhere,
+        ),
+      );
     });
 
     // 成功の応答が定義の出力の形であることまで確かめる
@@ -214,6 +231,33 @@ export function defineOperationChecks(
 
     test('自分の組織の行を指す入力は成功し、別の組織の行を指す入力は 404', () =>
       checkRowIsolation(app, definition, pointers, own, other));
+
+    // 停止した組織は、停止していなければ入れた人（管理者、所属、承諾待ちの招待）にだけ停止を伝え、入れない人は組織が無いときと同じ 404。
+    // 権限の検査より前なので、権限の種類によらず同じ結果になる
+    test('停止した組織では、入れたはずの人に 403 の organization_suspended、入れない人に 404', async () => {
+      const body = await input(suspended);
+      for (const person of [
+        suspended.admin,
+        suspended.leader,
+        suspended.member,
+        suspended.bystander,
+        suspended.invitee,
+      ]) {
+        const res = await post(app, definition, { slug: suspended.slug, token: person.token, body });
+        expect(res.status).toBe(403);
+        expect(await errorCodeOf(res)).toBe('organization_suspended');
+      }
+      // 入れない人。別の組織の管理者と、この組織で無効にされた管理者（ほかの組織には入れる）。
+      // どの組織にも入れない人は、ログインできる条件を失って 401 になるので、ほかの組織に入れる人で見る
+      const disabledAdmin = await admitElsewhere(
+        await createPerson({ organization: suspended.organization, admin: true, disabled: true }),
+      );
+      for (const person of [other.admin, disabledAdmin]) {
+        const res = await post(app, definition, { slug: suspended.slug, token: person.token, body });
+        expect(res.status).toBe(404);
+        expect(await errorCodeOf(res)).toBe('not_found');
+      }
+    });
 
     // 承諾待ちの招待だけの人には、招待の操作（invitee）以外を見せない。すべての権限の種類で当てる
     test('承諾待ちの招待だけの人は、invitee の操作だけに通る', async () => {

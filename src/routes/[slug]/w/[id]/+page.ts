@@ -11,6 +11,6 @@ import type { PageLoad } from './$types';
 export const load: PageLoad = async ({ params, fetch, url, depends }) => {
   depends('app:backlog-tree');
   const result = await callOperation(backlogTree, { workspace_id: params.id }, { slug: params.slug, fetcher: fetch });
-  if (isUnauthenticated(result)) redirect(307, loginUrl(url));
+  if (isUnauthenticated(result)) redirect(307, loginUrl(url, result));
   return { tree: result.ok ? result.data : null };
 };

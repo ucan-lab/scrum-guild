@@ -65,7 +65,7 @@ export const listOrganizationsOperation = implement(listOrganizations, async ({ 
     db.statement((q) =>
       q
         .selectFrom('organizations')
-        .select(['id', 'slug', 'name', 'suspended_at', 'created_at'])
+        .select(['id', 'slug', 'name', 'suspended_at', 'purge_on', 'created_at'])
         .orderBy('created_at', 'desc')
         .orderBy('slug'),
     ),
@@ -79,6 +79,7 @@ export const listOrganizationsOperation = implement(listOrganizations, async ({ 
       slug: row.slug,
       name: row.name,
       suspended_at: row.suspended_at,
+      purge_on: row.purge_on,
       created_at: row.created_at,
       admin_status: statuses.get(row.id) ?? ('none' as const),
     })),

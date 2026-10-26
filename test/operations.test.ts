@@ -366,7 +366,9 @@ describe('組織に入れる人', () => {
   const enter = (slug: string, token: string) => post(app, organizationProfile, { slug, token });
   const enterAsInvitee = (slug: string, token: string) => post(app, inviteeProfile, { slug, token });
 
-  test('停止した組織には管理者も入れず 404', async () => {
+  // 停止していなければ入れた人には、停止していることを 403 の organization_suspended で伝える。
+  // 入れない人への 404 は、全部の組織の中の操作について test/operations/harness.ts が回す
+  test('停止した組織には管理者も入れず、403 の organization_suspended', async () => {
     const { organization, adminUser } = await org();
     await admitElsewhere(adminUser);
     expect((await enter(organization.slug, adminUser.token)).status).toBe(200);
@@ -380,8 +382,8 @@ describe('組織に入れる人', () => {
       ),
     ]);
     const res = await enter(organization.slug, adminUser.token);
-    expect(res.status).toBe(404);
-    expect(await errorCodeOf(res)).toBe('not_found');
+    expect(res.status).toBe(403);
+    expect(await errorCodeOf(res)).toBe('organization_suspended');
   });
 
   test('無効にされた人は、管理者でも所属や招待があっても 404', async () => {

@@ -3,6 +3,11 @@
 import type { ImplementedOperation } from './implement.ts';
 import { invitationCreateOperation, invitationRevokeOperation, inviteeResolveOperation } from './invitation.ts';
 import { createOrganizationOperation, listOrganizationsOperation, resolveGithubUserOperation } from './operator.ts';
+import {
+  organizationResumeOperation,
+  organizationSuspendOperation,
+  organizationSuspensionUpdateOperation,
+} from './operator-suspension.ts';
 import { myOrganizationsOperation, organizationInfoOperation } from './organization.ts';
 import { logoutOperation, meOperation } from './session.ts';
 import { storyCreateOperation, storyGetOperation, storyMoveOperation, storyUpdateOperation } from './story.ts';
@@ -22,6 +27,9 @@ export const implementedOperations: readonly ImplementedOperation[] = [
   listOrganizationsOperation,
   resolveGithubUserOperation,
   createOrganizationOperation,
+  organizationSuspendOperation,
+  organizationSuspensionUpdateOperation,
+  organizationResumeOperation,
   myOrganizationsOperation,
   organizationInfoOperation,
   meOperation,

@@ -68,7 +68,7 @@
 
 - 組織の中の表は、リクエストの組織から DB を選ぶ1つの関数を通して読み書きする。今はどの組織でも同じ DB を返す。
 - 共通の表は、共通の DB を返す別の関数を通して読み書きする。
-- 1回の `batch()` に、共通の表と組織の中の表を混ぜない。今これに当たる操作は「書き込みの単位」の組織の作成、組織の設定の変更、メンバーの離脱で、どれも2回に分けて書く。
+- 1回の `batch()` に、共通の表と組織の中の表を混ぜない。今これに当たる操作は「書き込みの単位」の組織の作成、組織の設定の変更、組織の停止と再開、メンバーの離脱で、どれも2回に分けて書く。
 - 組織をまたいで読む処理は、1つの関数にまとめる。当たるのは、ログインできるか（入れる組織と届いた招待があるか）、ログインの直後の組織の選択、届いた招待の一覧、初めてのログインで `users.account_id` を埋めること、招待の URL の秘密のハッシュから待っている指名と招待を引くこと、運用者の一覧の管理者の状態を数えること。今は組織の中の表を持つ DB が1つで、`allOrganizationDatabases()`（`db/select-database.ts`）が返す DB ごとに、組織の中の表（`users`、`memberships`、`invitations`）を引き、共通の表（`organizations`）を別の問い合わせで引いて、アプリで合わせる。`users` と `invitations` は、アカウントに結んだログインの手段と ID の組ごとに、`users_login` と `invitations_login_pending` の索引で引く（全件を読まない）。分けたときは、この関数だけを、DB の一覧を全部返す形に直すか、共通の DB にログインの ID（`login_provider` と `login_subject`）と組織の組の索引、招待の URL の秘密のハッシュと組織の組の索引を持つ形に直す。どちらにするかは分けるときに決める。
 - 組織をまたいで読む関数（`listAccountOrganizations`）の前提。アカウントは必ず1つ以上のログインを持つ（0件なら、一覧は何も引かずに空を返す）。`users` の行のログイン（`login_provider`、`login_subject`）は、結んだアカウントのログインのどれかである。一覧はログインの手段と ID で `users` を引いてから `account_id` で絞るのに対し、`enterOrganization` は `account_id` で引くので、この前提が崩れると、一覧と入れる組織がずれる。ログインの付け替えや統合を入れるときは、この関数を直す。結ぶ書き込み（ログインのたびの、`account_id` が空の行の埋め直し）は、この前提を崩さない。
 - 組織の選択（`listAccountOrganizations`）が返す届いた招待は、1組織1件で、組織の名前と slug だけを持つ（`{ organization_name, slug }`）。slug は、承諾と辞退の操作（#187 で作る。今は無い）をその組織の slug の下で呼ぶのに使う。ワークスペースや招待した人など、組織の中の値は入れない。
@@ -201,7 +201,7 @@
 | vocabulary | TEXT | NOT NULL、`game` か `scrum`、既定 `game` | ワークスペースの外の言葉づかい |
 | theme | TEXT | NOT NULL、`simple`、`simple_light`、`simple_dark`、`medieval`、`modern` のどれか、既定 `simple` | 組織の既定のテーマ。`simple` は OS の明暗に合わせる |
 | suspended_at | TEXT | | 停止した日時。入っていれば誰も入れず、定期処理も止める |
-| purge_on | TEXT | | 解約で停止したときの、データを消す予定日（停止から30日後）。一時的な停止では空 |
+| purge_on | TEXT | | 解約で停止したときの、データを消す予定日（解約で停止した日か、停止中に解約へ切り替えた日の30日後）。一時的な停止では空 |
 | member_limit | INTEGER | NOT NULL、既定 15、`CHECK (member_limit > 0)` | 人数の上限。運用者が決める |
 | attachment_quota_bytes | INTEGER | NOT NULL、既定 32212254720 | 添付ファイルの合計の上限（既定 30GB）。運用者が決める |
 | attachment_quota_warned_at | TEXT | | 合計が上限の80%を超えたと管理者に通知した日時。合計が80%を下回るか、上限を上げたら空に戻す |
@@ -211,9 +211,9 @@
 
 - 運用者の画面で作る。作るときに最初の管理者の `users` を同じバッチで入れる（アカウントがまだなければ、`account_id` が空の `users` の行で待つ。下の `users` を参照）。
 - アプリが使う名前（`api`、`login`、`operator` など）を slug にできないことは、アプリが検査する。予約した名前の一覧は `src/shared/organization-slug.ts` に持ち、画面の最上段のルートを足したら合わせて足す（`scripts/organization-slug.test.ts` が照合する）。
-- 続けて書く `users` と `change_logs` の入口は、組織の作成の関数（`src/server/db/create-organization.ts`）が作る。入口を作れるのは `organizations` に挿入した組織の ID だけで、任意の組織の ID から入口を作る関数は `db/` の外へ出さない。同時に作られて `slug` の UNIQUE に当たったときは、`slug` の行が今あるかを読み直し、重なりとして 409 を返す。
+- 続けて書く `users` と `change_logs` の入口は、組織の作成の関数（`src/server/db/create-organization.ts`）が作る。入口を作れるのは `organizations` に挿入した組織の ID だけで、任意の組織の ID から入口を作る関数は `db/` の外へ出さない。既にある組織の中の表に運用者が書くもの（停止、再開、停止の理由の切り替えの `change_logs`。管理者の指名し直しも同じ）は、組織の中の入口を渡さず、履歴を1行足すだけの関数 `appendOperatorChangeLog`（`src/server/db/operator-change-log.ts`）にする。組織を確かめた結果はこの関数の中で作って外へ出さず、停止中の組織にも書ける。組織の ID は、呼び出し側が共通の表の `organizations` から読んだ値を渡し、行が無い ID は `change_logs.organization_id` の外部キーが断る。この関数を import できるのは運用者の道具（`operator-tools.ts` の `appendChangeLog`。`operator` の列に運用者のログインの ID を入れる）だけで、ESLint の入口を守る規則（`eslint.config.db-entry.js`）が止める。同時に作られて `slug` の UNIQUE に当たったときは、`slug` の行が今あるかを読み直し、重なりとして 409 を返す。
 - 人数は保存せず、招待のたびに数える。対象は、無効にしていない管理者と、いずれかのワークスペースに今所属しているか承諾待ちの招待を持つ人（まだアカウントのない人への招待を含む）で、同じ人は1人とする。招待のうち、閉じたワークスペースへの招待と、同じ組織で無効にされた人（同じ `(login_provider, login_subject)`）への招待は数えない。人数が `member_limit` 以上なら、まだ数えられていない人の招待を断る。すでに数えられている人（同じ `(login_provider, login_subject)` の、無効でない管理者、いずれかのワークスペースに今所属している人、数えられる承諾待ちの招待を持つ人）は、上限でも招待できる。数えるのは GitHub に問い合わせた後で、数えてから書くまでの間に同時に招待されたときはそのまま認める（超えるのは同時に送った招待の数まで）。
-- 解約した組織は、`purge_on` を過ぎたら運用の手順でこの組織の行をすべて消し、R2 の `<organization_id>/` で始まるファイルも消す。再開したら `suspended_at` と `purge_on` を空に戻す。
+- 解約した組織は、`purge_on` を過ぎたら運用の手順でこの組織の行をすべて消し、R2 の `<organization_id>/` で始まるファイルも消す。再開したら `suspended_at` と `purge_on` を空に戻す。`purge_on` は、解約で停止した日時の UTC の日付の30日後（`YYYY-MM-DD`）。停止中に解約へ切り替えたときは、切り替えた日時の UTC の日付の30日後で、予定日を過ぎていてもデータを消すまでは再開できる。
 
 ### users
 
@@ -971,9 +971,9 @@ Google の人は、ログインするまで `sub` が分からない。そのた
 | --- | --- | --- | --- |
 | id | TEXT | PK | |
 | organization_id | TEXT | NOT NULL、FK organizations | |
-| workspace_id | TEXT | FK workspaces | 組織の変更（組織の作成、管理者の指名、ユーザーの無効化、組織の休日）では空 |
+| workspace_id | TEXT | FK workspaces | 組織の変更（組織の作成、停止、再開、管理者の指名、ユーザーの無効化、組織の休日）では空 |
 | actor_user_id | TEXT | FK users | 空なら同期などの定期処理か運用者の操作 |
-| operator | TEXT | | 運用者の操作（管理者の指名し直しなど）のときの運用者のログインの ID（`github:12345`、`google:<sub>` の形） |
+| operator | TEXT | | 運用者の操作（組織の作成、停止、再開、管理者の指名し直し）のときの運用者のログインの ID（`github:12345`、`google:<sub>` の形） |
 | entity_type | TEXT | NOT NULL | `task`、`story`、`epic`、`sprint`、`membership`、`invitation`、`allocation`、`connection`、`completion`、`user`、`workspace`、`organization` など |
 | entity_id | TEXT | NOT NULL | |
 | action | TEXT | NOT NULL | `create`、`update`、`delete`、`complete`、`reopen`、`archive`、`close` など |
@@ -1008,6 +1008,7 @@ D1 は対話的なトランザクションを持たない。まとめて書く�
 | 取り込み（1件） | `tasks`（結ばれたリポジトリがあれば `repository_id` も）、`task_sources`、`task_source_payloads` |
 | 組織の作成 | 共通の DB の `organizations`、続けて組織の DB の最初の管理者の `users` と `change_logs` の2行（組織の作成と管理者の指名） |
 | 組織の設定の変更 | 共通の DB の `organizations`（`vocabulary`、`theme`、`updated_at`）を、それだけの `batch()` で書き、続けて組織の DB の `change_logs` を別の `batch()` で書く。`organizations` の文の条件は `id` と、書く欄ごとの `<列> IS :読んだ値`。変わった行が無ければ（別の要求が先に変えた）409 の `conflict` で、`change_logs` は書かない |
+| 組織の停止、再開、停止の理由の切り替え | 共通の DB の `organizations`（`suspended_at`、`purge_on`、`updated_at`）、続けて組織の DB の `change_logs` の1行。`organizations` の `UPDATE` は今の状態を条件にする（停止は `suspended_at IS NULL`、再開は読んだ `suspended_at` と同じ、理由の切り替えは停止中で、読んだ `purge_on` と同じ）。条件に外れたら（`changes` が 0）409 の `conflict` で、`change_logs` は書かない。理由の切り替えは `suspended_at` を変えず、解約にすると `purge_on` を切り替えた日の UTC の日付の30日後に、一時的な停止にすると空にする。今と同じ理由（`purge_on` が空かどうかで決まる）への切り替えも 409。`change_logs` は `entity_type` が `organization`、`entity_id` が組織の ID、`workspace_id` と `actor_user_id` が空、`operator` が運用者のログインの ID。`action` と `changes_json` は、停止が `suspend` と `{"suspended_at": [前, 後], "purge_on": [前, 後]}`、再開が `resume` と同じ形、理由の切り替えが `update` と `{"purge_on": [前, 後]}`。`change_logs` の書き込みに失敗しても、`organizations` の状態を正として成功を返す（ログには操作、`action`、組織の ID、`changes_json` と同じ前後の値、操作の日時、例外の名前だけを出し、欠けた行は運用者がログから手で補う） |
 | ワークスペースの作成 | `workspaces`、`workspace_point_rates`（作った月、4）、`board_columns`（4行。完了の列は末尾）、`detail_fields`（1行）、最初のリーダーの `memberships`、`change_logs`（ワークスペースと所属の2行）。どの文も `INSERT ... SELECT ... WHERE EXISTS`（最初のリーダーが同じ組織にいて、無効でなく、`login_subject` があり、管理者か、いずれかのワークスペースに今所属している。かつ、作る人が同じ組織の、無効でない管理者）にし、全部入るか何も入らないかにする。何も入らなければ 404 |
 | ワークスペースを閉じる | `change_logs`（`entity_type` は `workspace`、`action` は `close`、`changes_json` は `{"closed_at": [null, 閉じた日時]}`）、`workspaces`（`closed_at`、`updated_at`）。この順に書き、どちらの文も同じ条件（ワークスペースが組織のもので `closed_at IS NULL`、かつ呼んだ人が同じ組織の無効でない管理者）を持つ。1回の `batch()` は文を順に流すので、履歴が入るのは `workspaces` が書き換わるときだけ。何も入らなければ、読み直して閉じていれば 409（`workspace_closed`）、そうでなければ 404 |
 | ワークスペースを開き直す | 閉じるのと同じ形で、`action` は `reopen`、`changes_json` は `{"closed_at": [前の日時, null]}`、`workspaces` の条件は `closed_at = 前の日時`（読んだ値）。何も入らなければ、読み直して `closed_at` が読んだ値と違えば 409（`conflict`）、同じなら 404。開いているワークスペースには、書く前に 409（`conflict`） |

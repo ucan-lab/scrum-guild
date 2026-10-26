@@ -9,7 +9,13 @@
 // セッションの判定（結ばれる前の行を数えない）は test/session-access.test.ts と test/login.test.ts が確かめる
 import { env } from 'cloudflare:workers';
 import { describe, expect, test } from 'vitest';
-import { commonDb, hasLoginAccess, linkLoginToAccount, listAccountOrganizations } from '../src/server/db/index.ts';
+import {
+  commonDb,
+  hasLoginAccess,
+  linkLoginToAccount,
+  listAccountOrganizations,
+  readLoginAccess,
+} from '../src/server/db/index.ts';
 import { failUserWrites } from './auth/helpers.ts';
 import {
   AT,
@@ -111,7 +117,11 @@ describe('hasLoginAccess', () => {
     });
     expect(await hasLoginAccess(env, person.who)).toBe(true);
     // 結ばれるまで、その組織には入れない（enterOrganization は account_id で引く）ので、一覧には出さない
-    expect(await listAccountOrganizations(env, person.who)).toEqual({ organizations: [], invitations: [] });
+    expect(await listAccountOrganizations(env, person.who)).toEqual({
+      organizations: [],
+      invitations: [],
+      suspended: false,
+    });
   });
 
   test('初めてのログイン（アカウントが無い）でも、指名の行と招待を、ログインの手段と ID で引ける', async () => {
@@ -157,6 +167,38 @@ describe('hasLoginAccess', () => {
       db.statement((q) => q.updateTable('organizations').set({ suspended_at: AT }).where('id', '=', organization.id)),
     ]);
     expect(await hasLoginAccess(env, person.who)).toBe(false);
+  });
+
+  test('停止した組織に入れたはずの人は、停止した組織を一覧に出さず、suspended だけを返す。入れたはずでない人には返さない', async () => {
+    const admin = await visitor();
+    await admin.join(await createOrganization({ suspended_at: AT }), { is_admin: 1 });
+    expect(await listAccountOrganizations(env, admin.who)).toEqual({
+      organizations: [],
+      invitations: [],
+      suspended: true,
+    });
+    expect(await readLoginAccess(env, admin.who)).toEqual({ allowed: false, suspended: true });
+
+    const invited = await visitor();
+    const { organization, workspace, owner } = await organizationWithOwner();
+    await createInvitation(organization, workspace.id, owner.id, invited.identity);
+    const db = commonDb(env);
+    await db.batch([
+      db.statement((q) => q.updateTable('organizations').set({ suspended_at: AT }).where('id', '=', organization.id)),
+    ]);
+    expect(await readLoginAccess(env, invited.who)).toEqual({ allowed: false, suspended: true });
+
+    // 停止した組織で無効にされた人は、停止していなければ入れた人ではない
+    const disabled = await visitor();
+    await disabled.join(await createOrganization({ suspended_at: AT }), { is_admin: 1, disabled_at: AT });
+    expect(await readLoginAccess(env, disabled.who)).toEqual({ allowed: false, suspended: false });
+
+    // 停止していない組織にも入れる人は、通して suspended も知らせる（使うのは通らなかったときだけ）
+    const both = await visitor();
+    await both.join(await createOrganization({ suspended_at: AT }), { is_admin: 1 });
+    await both.join(await createOrganization(), { is_admin: 1 });
+    expect((await readLoginAccess(env, both.who)).allowed).toBe(true);
+    expect((await listAccountOrganizations(env, both.who)).organizations).toHaveLength(1);
   });
 });
 

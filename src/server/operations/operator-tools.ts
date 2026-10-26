@@ -1,16 +1,20 @@
 // 運用者の操作の処理に渡す道具。env を処理に渡さず、決まった呼び出しだけを渡す（account.ts と同じ作り）。
 // 登録の関数が、運用者の権限を確かめた操作にだけ渡す。組織の中の表を、組織で絞らずに読み書きする入口は渡さない。
 // 組織で絞らずに書くのは linkLogin だけ。組織の作成で、アカウントが無いと読んだ後に、その人が初めてログインを終えた場合に、
-// 書いた後の結び直しで呼ぶ（ログインのたびの結び直しと同じ文で、account_id が空でログインの手段と ID が同じ行だけに当たる）
+// 書いた後の結び直しで呼ぶ（ログインのたびの結び直しと同じ文で、account_id が空でログインの手段と ID が同じ行だけに当たる）。
+// 既にある組織の中の表に書くのは、変更の履歴を1行足す appendChangeLog だけ（組織の中の入口は渡さない）。
+// 足す関数（appendOperatorChangeLog）を import できるのはこのファイルだけで、ESLint が守る（eslint.config.db-entry.js）
 import { INVITE_PATH } from '../../shared/claim-token.ts';
 import type { InviteeResolver } from '../auth/login-method.ts';
 import {
   adminStatusesOf,
+  appendOperatorChangeLog,
   insertOrganization,
   linkLoginToAccount,
   type CreatedOrganization,
   type LoginId,
   type NewOrganization,
+  type OperatorChangeLog,
 } from '../db/index.ts';
 import type { AdminStatus } from '../../shared/operations/operator/list-organizations.ts';
 
@@ -29,6 +33,9 @@ export type OperatorTools = {
   insertOrganization(input: Omit<NewOrganization, 'createdByOperator'>): Promise<CreatedOrganization | 'slug_taken'>;
   // 指名で待っている users の行（account_id が空で、ログインの手段と ID が同じ）にアカウントを結ぶ。何度流しても同じ結果
   linkLogin(accountId: string, login: LoginId, now: Date): Promise<void>;
+  // 既にある組織の変更の履歴に、運用者の操作を1行足す。operator はこの運用者のログインの ID が入る。停止中の組織にも足せる。
+  // 組織の ID は共通の表の organizations から読んだ値を渡す（行が無い ID は外部キーが断る）
+  appendChangeLog(organizationId: string, entry: Omit<OperatorChangeLog, 'operator'>): Promise<void>;
 };
 
 export function operatorTools(
@@ -44,5 +51,7 @@ export function operatorTools(
     adminStatuses: (organizationIds, now) => adminStatusesOf(env, organizationIds, now),
     insertOrganization: (input) => insertOrganization(env, { ...input, createdByOperator: context.loginId }),
     linkLogin: (accountId, login, now) => linkLoginToAccount(env, accountId, login, now),
+    appendChangeLog: (organizationId, entry) =>
+      appendOperatorChangeLog(env, organizationId, { ...entry, operator: context.loginId }),
   };
 }

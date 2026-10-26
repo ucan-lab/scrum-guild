@@ -26,9 +26,12 @@ import type { OrganizationTables } from './tables.ts';
 // 入れる組織と、承諾待ちの招待がある組織。入れる組織は管理者か、いずれかのワークスペースに今所属する組織。
 // 招待は入れる組織の分も含める（届いた招待はすべての組織の分をまとめて出す）。招待は組織の名前と slug しか持たない
 // （slug は承諾と辞退の操作を、その組織の slug の下で呼ぶのに使う）
+// suspended は、入れる組織か承諾待ちの招待が、停止した組織に1つでもあるか（停止していなければ入れた人か）。組織の一覧と
+// 招待の一覧には停止した組織を出さず、入れる組織を失った人のログインの画面に「所属する組織が停止している」を出すのに使う
 export type AccountOrganizations = {
   readonly organizations: readonly { readonly slug: string; readonly name: string }[];
   readonly invitations: readonly { readonly organization_name: string; readonly slug: string }[];
+  readonly suspended: boolean;
 };
 
 type Account = { accountId: string; logins: readonly LoginId[] };
@@ -97,7 +100,7 @@ export function invitationsStatement(db: OrganizationEntry, login: LoginId) {
   );
 }
 
-// 停止した組織は含めない。無効にされた人の扱いは enterOrganization と同じにする。
+// 停止した組織は organizations と invitations に含めず、入れたはずの組織が停止していることだけを suspended で返す。無効にされた人の扱いは enterOrganization と同じにする。
 // - このアカウントの行が無効なら、入れず、招待も出さない
 // - 管理者の行か今の所属があれば入れる。そのとき、手段と ID が一致する別の無効な行は見ない
 // - 入れない組織の招待は、手段と ID が一致する無効な行があれば出さない
@@ -129,18 +132,33 @@ export function hasLoginAccess(env: Env, who: LoginAccessTarget): Promise<boolea
 
 export type LoginAccessTarget = { accountId: string | undefined; logins: readonly LoginId[] };
 
+// ログインできるかと、できないときに停止した組織が理由か。ログインの画面に出す理由（denied か suspended）を決めるのに使う
+export type LoginAccess = { readonly allowed: boolean; readonly suspended: boolean };
+
+export function readLoginAccess(env: Env, who: LoginAccessTarget): Promise<LoginAccess> {
+  return readLoginAccessIn(env, who, crossOrganizationEntries(env));
+}
+
+export async function readLoginAccessIn(
+  env: Env,
+  who: LoginAccessTarget,
+  entries: readonly OrganizationEntry[],
+): Promise<LoginAccess> {
+  const { organizations, invitations, suspended } = await readAccountOrganizations(
+    env,
+    { ...who, includeUnlinked: true },
+    entries,
+  );
+  return { allowed: organizations.length > 0 || invitations.length > 0, suspended };
+}
+
 // 入口の一覧を受け取る本体。index.ts は出さない。DB を複数にした場合を、テストが testing.ts から確かめる
 export async function hasLoginAccessIn(
   env: Env,
   who: LoginAccessTarget,
   entries: readonly OrganizationEntry[],
 ): Promise<boolean> {
-  const { organizations, invitations } = await readAccountOrganizations(
-    env,
-    { ...who, includeUnlinked: true },
-    entries,
-  );
-  return organizations.length > 0 || invitations.length > 0;
+  return (await readLoginAccessIn(env, who, entries)).allowed;
 }
 
 async function readAccountOrganizations(
@@ -148,7 +166,7 @@ async function readAccountOrganizations(
   account: Reading,
   entries: readonly OrganizationEntry[],
 ): Promise<AccountOrganizations> {
-  if (account.logins.length === 0) return { organizations: [], invitations: [] };
+  if (account.logins.length === 0) return { organizations: [], invitations: [], suspended: false };
 
   const enterable = new Set<string>();
   // 入れず、招待も出さない組織
@@ -195,23 +213,23 @@ async function readAccountOrganizations(
     rows.push(
       ...(await common.rows(
         common.statement((q) =>
-          q
-            .selectFrom('organizations')
-            .select(['id', 'slug', 'name'])
-            .where('id', 'in', chunk)
-            .where('suspended_at', 'is', null),
+          q.selectFrom('organizations').select(['id', 'slug', 'name', 'suspended_at']).where('id', 'in', chunk),
         ),
       )),
     );
   }
-  rows.sort((a, b) => (a.name === b.name ? (a.slug < b.slug ? -1 : 1) : a.name < b.name ? -1 : 1));
+  // 停止した組織は一覧にも招待にも出さず、入れたはずかどうかだけを返す
+  const suspended = rows.some((row) => row.suspended_at !== null);
+  const active = rows.filter((row) => row.suspended_at === null);
+  active.sort((a, b) => (a.name === b.name ? (a.slug < b.slug ? -1 : 1) : a.name < b.name ? -1 : 1));
 
   const shown = new Set(invitedShown);
   return {
-    organizations: rows.filter((row) => enterable.has(row.id)).map(({ slug, name }) => ({ slug, name })),
-    invitations: rows
+    organizations: active.filter((row) => enterable.has(row.id)).map(({ slug, name }) => ({ slug, name })),
+    invitations: active
       .filter((row) => shown.has(row.id))
       .map((row) => ({ organization_name: row.name, slug: row.slug })),
+    suspended,
   };
 }
 

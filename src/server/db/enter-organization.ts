@@ -34,13 +34,25 @@ export type OrganizationEntry = {
   readonly organization: OrganizationSummary;
 };
 
-// 組織を引けない、停止している、入れない、のどれでも undefined を返す。呼び出し側はどれも同じ 404 にする。
+// 停止した組織の結果。停止していなければ入れた人にだけ返す（組織の中の入口は渡さない。ログに残す組織の ID だけを持つ）。
+// 呼び出し側は 403 の organization_suspended にする
+export type SuspendedOrganization = { readonly suspended: true; readonly organizationId: string };
+
+export type EnteredOrganization = OrganizationEntry | SuspendedOrganization | undefined;
+
+export function isSuspendedOrganization(entered: EnteredOrganization): entered is SuspendedOrganization {
+  return entered !== undefined && 'suspended' in entered;
+}
+
+// 組織を引けない、入れないは undefined を返す。呼び出し側はどちらも同じ 404 にする（組織があることを外に漏らさない）。
+// 停止した組織は、停止していなければ入れた人（無効でない管理者、今の所属、承諾待ちの招待。停止していない組織と同じ判定）には
+// SuspendedOrganization を返し、入れない人には undefined を返す。
 // loadLogins は招待で入る分岐に来たときだけ呼ぶ（管理者と所属のある人には要らないので、引かない）
 export async function enterOrganization(
   env: Env,
   slug: string,
   account: { accountId: string; loadLogins: () => Promise<readonly LoginId[]> },
-): Promise<OrganizationEntry | undefined> {
+): Promise<EnteredOrganization> {
   const common = commonDb(env);
   const organization = await common.first(
     common.statement((q) =>
@@ -50,7 +62,8 @@ export async function enterOrganization(
         .where('slug', '=', slug),
     ),
   );
-  if (organization === undefined || organization.suspended_at !== null) return undefined;
+  if (organization === undefined) return undefined;
+  const suspended = organization.suspended_at !== null;
 
   // 組織の中の表を引くための入口。判定に通るまで、この入口は呼び出し側へ渡さない
   const db = orgDb(env, issueVerifiedOrganization(organization.id));
@@ -69,17 +82,21 @@ export async function enterOrganization(
   // 無効にされた人は、管理者でも所属や招待があっても入れない
   if (user !== undefined && user.disabled_at !== null) return undefined;
 
-  const entry = (isAdmin: boolean, invitedOnly: boolean): OrganizationEntry => ({
-    db,
-    actor: { accountId: account.accountId, userId: user?.id ?? null, isAdmin, invitedOnly },
-    organization: {
-      slug: organization.slug,
-      name: organization.name,
-      // 列の CHECK が守る値。列挙に無い値が来ても、操作の出力のスキーマ（z.enum）が 500 で止める
-      vocabulary: organization.vocabulary as Vocabulary,
-      theme: organization.theme as Theme,
-    },
-  });
+  // 入れる人と決まったところで、停止していれば入口を渡さずに停止を知らせる
+  const entry = (isAdmin: boolean, invitedOnly: boolean): OrganizationEntry | SuspendedOrganization =>
+    suspended
+      ? { suspended: true, organizationId }
+      : {
+          db,
+          actor: { accountId: account.accountId, userId: user?.id ?? null, isAdmin, invitedOnly },
+          organization: {
+            slug: organization.slug,
+            name: organization.name,
+            // 列の CHECK が守る値。列挙に無い値が来ても、操作の出力のスキーマ（z.enum）が 500 で止める
+            vocabulary: organization.vocabulary as Vocabulary,
+            theme: organization.theme as Theme,
+          },
+        };
 
   if (user !== undefined && user.is_admin === 1) return entry(true, false);
 

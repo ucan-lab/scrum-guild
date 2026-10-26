@@ -13,6 +13,7 @@
   // ?error= はサーバーが付ける（src/server/auth/login-routes.ts の LoginError）。知らない値は出さない
   const errorMessages: Record<string, DictionaryKey> = {
     denied: 'loginErrorDenied',
+    suspended: 'loginErrorSuspended',
     retry: 'loginErrorRetry',
     too_many: 'loginErrorTooMany',
     unavailable: 'loginErrorUnavailable',
