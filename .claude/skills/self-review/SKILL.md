@@ -146,7 +146,7 @@ CRITICAL と HIGH は、別の Issue にするかをユーザーに提案する�
 
 `git add <paths> && git commit -m "..."` のように 1 コマンドにまとめる。
 件名には、変更した対象と内容を書く（例: `fix: fill_results.py で結果の未指定と不正値を検出する`）。「レビュー指摘に対応する」のように、指摘への対応であることしか分からない件名にしない（理由: squash merge ではコミットメッセージが本文に残り、マージ後は直せない）。
-PR 作成後は `git push` まで行い、手順 0 の check-runs で CI が通ることを確かめる（`review` は手順 0 と同じく除く。修正は通常の push で積む。force push はベースを取り込む `sync-base` の中だけ）。
+PR 作成後は、手順 7 の直しをすべてコミットしてから `git push` を1回だけ行い、手順 0 の check-runs で CI が通ることを確かめる（`review` は手順 0 と同じく除く。修正は通常の push で積む。force push はベースを取り込む `sync-base` の中だけ）。コミットごとに push しない（理由: push のたびに CI のジョブがすべて走り直し、前の実行の取り消しが終わるまで次の実行も始まらない。`docs/development.md` の「開発の流れ」）。
 
 ### 9. pr-create に引き継ぐ
 
