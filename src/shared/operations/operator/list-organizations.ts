@@ -10,7 +10,7 @@ export const adminStatuses = ['none', 'pending', 'expired', 'active'] as const;
 export type AdminStatus = (typeof adminStatuses)[number];
 
 // 組織をまたぐ一覧。組織の中のデータ（人の名前、ID、ログインの ID など）は返さず、組織ごとの集計（数と日時）だけを返す。
-// 集計の数え方は docs/data-model.md の「運用者の組織の一覧」。添付ファイルの合計は出さない（#68 で足す）
+// 集計の数え方は docs/data-model.md の users の節の、運用者の組織の一覧の集計を書いた箇条書き。添付ファイルの合計は出さない（#68 で足す）
 export const listOrganizations = defineOperation({
   name: 'list-organizations',
   description:

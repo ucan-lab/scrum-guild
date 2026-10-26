@@ -9,8 +9,9 @@
 //   - 引数が文字列のリテラルでない import()、createRequire、process.getBuiltinModule（import の検査を抜けるため）
 //   - D1 の binding（env.DB、env['DB']、env[`DB`]、{ DB } の取り出し、Reflect.get(env, 'DB')、Env['DB']）
 //   - D1Database の型
-//   - 運用者の履歴の関数（appendOperatorChangeLog。import、export from、名前空間からの参照、取り出し）。
-//     使えるのは運用者の道具 src/server/operations/operator-tools.ts だけ。組織の中の表に運用者が書く口を、処理から直に呼ばせない
+//   - 運用者の道具だけの関数（運用者の履歴の appendOperatorChangeLog と、組織をまたいで数える adminStatusesOf、organizationUsageOf。
+//     import、export from、名前空間からの参照、取り出し）。使えるのは運用者の道具 src/server/operations/operator-tools.ts だけ。
+//     組織の中の表に運用者が書く口と、組織で絞らずに数える口を、処理から直に呼ばせない
 // 例外は、入口を通さない次の 2 つのテストだけ（規則を丸ごと外す）。
 //   test/apply-migrations.ts: 全マイグレーションを D1 の binding に直に当てる。入口より前に要る
 //   test/schema.test.ts: CHECK や一意を確かめるため、型を外れた生の INSERT を送る。入口の型を通すと、壊れた値を書けない
@@ -20,7 +21,9 @@ const DB_DIR = 'src/server/db/';
 const EXCEPTIONS = new Set(['test/apply-migrations.ts', 'test/schema.test.ts']);
 const BINDING = 'DB';
 // 運用者の道具だけが使える db/ の関数
-const OPERATOR_TOOLS_ONLY = new Set(['appendOperatorChangeLog']);
+// appendOperatorChangeLog は組織の中の表に運用者が書く口。adminStatusesOf と organizationUsageOf は、組織で絞らずに
+// すべての組織の中の表を数える口（運用者の組織の一覧だけが使う）
+const OPERATOR_TOOLS_ONLY = new Set(['appendOperatorChangeLog', 'adminStatusesOf', 'organizationUsageOf']);
 const OPERATOR_TOOLS = 'src/server/operations/operator-tools.ts';
 // 第2引数に名前を取って、プロパティを読む関数
 const PROPERTY_READERS = new Set(['get', 'getOwnPropertyDescriptor']);
@@ -50,7 +53,7 @@ const rule = {
       dynamicImport:
         'import() の引数は文字列のリテラルにする。式で渡すと、kysely と db/ の内部のファイルの検査を抜けられる',
       operatorToolsOnly:
-        '運用者の履歴の関数は、運用者の道具（src/server/operations/operator-tools.ts）だけが使う。処理には道具が包んだ関数を渡す',
+        '運用者の履歴の関数と、組織をまたいで数える関数は、運用者の道具（src/server/operations/operator-tools.ts）だけが使う。処理には道具が包んだ関数を渡す',
       createRequire:
         'createRequire と process.getBuiltinModule を使わない。import の検査を抜けて kysely と db/ の内部のファイルを読めてしまう',
       binding: 'D1 の binding（DB）を直に使わない。src/server/db/ の入口（commonDb、orgDb）から問い合わせる',

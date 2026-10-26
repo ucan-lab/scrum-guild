@@ -14,6 +14,7 @@ import {
   envWithD1Hooks,
   organizationUsageForTest,
   queryPlanForTest,
+  seatStatementsForTest,
   usageCountsStatementsForTest,
   verifiedOrganizationForTest,
   type FakeStatement,
@@ -925,6 +926,31 @@ describe('組織ごとの集計', () => {
       const plan = await queryPlanForTest(env, statement);
       for (const line of plan) expect(line).not.toMatch(/^SCAN (workspaces|tasks|users|t|w)\b/);
     }
+  });
+
+  test('人数を数える2文（users と承諾待ちの招待）は、表を全件読まない', async () => {
+    for (const statement of seatStatementsForTest(env, ['x'])) {
+      const plan = await queryPlanForTest(env, statement);
+      for (const line of plan) expect(line).not.toMatch(/SCAN (users|invitations|memberships|workspaces|i|w|m|d)\b/);
+      expect(plan.join('\n')).toMatch(
+        /SEARCH (users|w) USING (COVERING )?INDEX (users_organization_login|workspaces_organization_id)/,
+      );
+    }
+  });
+
+  test('別の組織のワークスペースを指す所属の行では、人数に数えない', async () => {
+    const token = await operatorToken();
+    const target = await createOrganizationRow();
+    const other = await createOrganizationRow();
+    const otherAdmin = await createUser(other, { is_admin: 1 });
+    const otherWorkspace = await createWorkspace(other, otherAdmin.id);
+    // この組織の、管理者でない人。所属の行は別の組織のワークスペースを指す（外部キーはワークスペースの組織を見ない）
+    const stray = await createUser(target);
+    await createMembership(target, otherWorkspace.id, stray.id);
+    expect((await usageListed(token, target.slug))?.seats.used).toBe(0);
+    expect((await seatHoldersOf(orgDbOf(target.id), new Date())).size).toBe(0);
+    // 別の組織の側でも、その人は別の組織の users の行なので数えない（数えるのは管理者の1人だけ）
+    expect((await usageListed(token, other.slug))?.seats.used).toBe(1);
   });
 });
 

@@ -22,7 +22,7 @@ export function personKey(row: {
 }
 
 // 人数に数える users の行。無効にしていない人のうち、管理者か、その組織のいずれかのワークスペースに今所属している人
-function seatUsersStatement(db: OrganizationEntry, organizationIds: readonly string[]) {
+export function seatUsersStatement(db: OrganizationEntry, organizationIds: readonly string[]) {
   return db.statement((q) =>
     q
       .selectFrom('users')
@@ -48,7 +48,7 @@ function seatUsersStatement(db: OrganizationEntry, organizationIds: readonly str
 
 // 人数に数える承諾待ちの招待。閉じたワークスペースへの招待と、同じ組織で無効にされた人（同じログインの手段と ID）への招待を除く。
 // 期限の過ぎた Google の招待は、読んだ後に時刻で除く
-function seatInvitationsStatement(db: OrganizationEntry, organizationIds: readonly string[]) {
+export function seatInvitationsStatement(db: OrganizationEntry, organizationIds: readonly string[]) {
   return db.statement((q) =>
     q
       .selectFrom('invitations as i')
@@ -79,7 +79,9 @@ function seatInvitationsStatement(db: OrganizationEntry, organizationIds: readon
 // 保存せず、呼ばれるたびに数える。数える人は member_limit でおおよそ抑えられ、読む行もワークスペースの所属と承諾待ちの招待
 // （1つのワークスペースで数十件の想定）なので、件数で区切らずに読み、アプリで重なりと期限切れを除く。
 // 組織の ID は束縛の上限で区切り、DB ごと、区切りごとに2文を1回の batch() で読む。DB を複数にしたときは、DB ごとの集合を合わせる。
-// 引数の組織の ID すべてに集合を返す（数える人がいない組織は空の集合）
+// 引数の組織の ID すべてに集合を返す（数える人がいない組織は空の集合）。
+// DB を分けるときに直す場所の1つ（docs/data-model.md の users の節の、運用者の組織の一覧の集計の「DB を分けるとき」）。
+// 今は全部の入口に全部の組織の ID を渡す
 export async function seatHoldersIn(
   entries: readonly OrganizationEntry[],
   organizationIds: readonly string[],

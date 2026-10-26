@@ -1,13 +1,19 @@
 import { describe, expect, test } from 'vitest';
-import { formatCount, formatGigabytes, formatUtcDate } from './format.ts';
+import { formatCount, formatUtcDate, quotaSize } from './format.ts';
 
-describe('formatGigabytes', () => {
-  test('1024³ バイトを 1 GB として、小数は1桁まで出す', () => {
-    expect(formatGigabytes(32212254720)).toBe('30');
-    expect(formatGigabytes(1024 ** 3 * 1.5)).toBe('1.5');
-    expect(formatGigabytes(1024 ** 3 * 1.04)).toBe('1');
-    expect(formatGigabytes(1024 ** 4)).toBe('1,024');
-    expect(formatGigabytes(0)).toBe('0');
+describe('quotaSize', () => {
+  test('1 GB 以上は、1024³ バイトを 1 GB として、小数は1桁まで出す', () => {
+    expect(quotaSize(32212254720)).toEqual({ size: '30', unit: 'gb' });
+    expect(quotaSize(1024 ** 3 * 1.5)).toEqual({ size: '1.5', unit: 'gb' });
+    expect(quotaSize(1024 ** 3 * 1.04)).toEqual({ size: '1', unit: 'gb' });
+    expect(quotaSize(1024 ** 3)).toEqual({ size: '1', unit: 'gb' });
+    expect(quotaSize(1024 ** 4)).toEqual({ size: '1,024', unit: 'gb' });
+  });
+
+  test('1 GB 未満は「0 GB」にせず、MB で出す', () => {
+    expect(quotaSize(1024 ** 3 - 1)).toEqual({ size: '1,024', unit: 'mb' });
+    expect(quotaSize(512 * 1024 ** 2)).toEqual({ size: '512', unit: 'mb' });
+    expect(quotaSize(1024 ** 2 * 0.5)).toEqual({ size: '0.5', unit: 'mb' });
   });
 });
 

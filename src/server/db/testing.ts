@@ -21,6 +21,7 @@ import {
   type ClaimInput,
 } from './cross-organization.ts';
 import { commonDb, crossOrganizationEntries, entriesOf } from './entries.ts';
+import { seatInvitationsStatement, seatUsersStatement } from './seats.ts';
 import type { LoginId } from './enter-organization.ts';
 import { compiledQueryOf, type Scope, type Statement } from './entry.ts';
 import { explainQueryPlan } from './send.ts';
@@ -176,6 +177,13 @@ export function organizationUsageForTest(
   now: Date = new Date(),
 ) {
   return organizationUsageIn(organizationIds, entriesWith(env, extraDatabases), now);
+}
+
+// 人数を数える2文（users と承諾待ちの招待）。実行計画の確認に使う
+export function seatStatementsForTest(env: Env, organizationIds: readonly string[]) {
+  const [db] = crossOrganizationEntries(env);
+  if (db === undefined) throw new Error('組織の中の DB が無い');
+  return [seatUsersStatement(db, organizationIds), seatInvitationsStatement(db, organizationIds)] as const;
 }
 
 // 組織ごとの集計の文（ワークスペースの数、タスクの数、最後に使われた日時）。実行計画の確認に使う

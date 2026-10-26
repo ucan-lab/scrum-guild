@@ -27,14 +27,16 @@ export function browserTimezone(): string {
 }
 
 const countFormatter = new Intl.NumberFormat('ja-JP');
-const gigabyteFormatter = new Intl.NumberFormat('ja-JP', { maximumFractionDigits: 1 });
+const sizeFormatter = new Intl.NumberFormat('ja-JP', { maximumFractionDigits: 1 });
 
 // 件数を3桁ごとの区切りで出す（1,284）
 export function formatCount(count: number): string {
   return countFormatter.format(count);
 }
 
-// バイト数を GB（1 GB = 1024³ バイト）の数にする。小数は1桁まで（30、1.5）。単位は言葉の辞書の側で付ける
-export function formatGigabytes(bytes: number): string {
-  return gigabyteFormatter.format(bytes / 1024 ** 3);
+// 容量の上限の大きさと単位。1 GB（1024³ バイト）以上は GB、それ未満は MB（1024² バイト）にする。
+// 1 GB 未満を GB で丸めると「0 GB」になるため。小数は1桁まで（30、1.5、512）。単位の文字は言葉の辞書の側で付ける
+export function quotaSize(bytes: number): { size: string; unit: 'gb' | 'mb' } {
+  if (bytes >= 1024 ** 3) return { size: sizeFormatter.format(bytes / 1024 ** 3), unit: 'gb' };
+  return { size: sizeFormatter.format(bytes / 1024 ** 2), unit: 'mb' };
 }

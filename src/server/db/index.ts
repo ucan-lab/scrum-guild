@@ -34,6 +34,7 @@ export {
   type OrganizationSettingsChange,
 } from './organization-common.ts';
 export {
+  // adminStatusesOf と organizationUsageOf は、運用者の道具（operations/operator-tools.ts）だけが import できる（eslint.config.db-entry.js）
   adminStatusesOf,
   organizationUsageOf,
   type OrganizationUsage,

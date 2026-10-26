@@ -132,7 +132,10 @@ test.describe('運用者', () => {
     await expect(suspendedButtons.first()).not.toHaveClass(/is-danger/);
     await expect(suspendedButtons.last()).not.toHaveClass(/is-danger/);
     // 2026-10-01T09:30Z は、東京のブラウザでは 18:30
-    await expect(rows.filter({ hasText: 'あおば開発' }).locator('.mono').last()).toHaveText('2026/10/01 18:30');
+    // 作った日時は列にせず、名前の列の slug の行に並べる
+    await expect(rows.filter({ hasText: 'あおば開発' }).locator('td.is-name .props-note')).toHaveText(
+      'aoba · 作成 2026/10/01 18:30',
+    );
     expect(await collect()).toEqual([]);
   });
 
@@ -155,6 +158,7 @@ test.describe('運用者', () => {
         seats: { used: 0, limit: 15 },
         workspace_count: 0,
         task_count: 0,
+        attachment_quota_bytes: 512 * 1024 ** 2,
         last_used_at: null,
       }),
     ]);
@@ -169,7 +173,6 @@ test.describe('運用者', () => {
       'クエストの数',
       '添付ファイルの上限',
       '最後に使われた日時',
-      '作った日時',
       '操作',
     ]);
     const aoba = rows.filter({ hasText: 'あおば開発' });
@@ -189,11 +192,41 @@ test.describe('運用者', () => {
     const tsubame = rows.filter({ hasText: 'つばめ商会' });
     await expect(tsubame.locator('td[data-label="最後に使われた日時"]')).toHaveText('まだ使われていない');
     await expect(tsubame.locator('td[data-label="人数 / 上限"]')).toHaveText('0 / 15');
-    // 1280px の画面では、作った日時の列まで横スクロールせずに収まる
-    await page.setViewportSize({ width: 1280, height: 800 });
-    expect(await page.locator('.table-wrap').evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
+    // 1 GB 未満の上限は「0 GB」にせず MB で出す
+    await expect(tsubame.locator('td[data-label="添付ファイルの上限"]')).toHaveText('512 MB');
+    // 数と単位の間は不可分の空白で、積んだ行でも割れない
+    expect(await aoba.locator('td[data-label="人数 / 上限"]').textContent()).toContain('5 / 15');
+    expect(await aoba.locator('td[data-label="添付ファイルの上限"]').textContent()).toContain('30 GB');
     expect(await collect()).toEqual([]);
   });
+
+  // 名前の列の印が折り返さないと、印の長さが列の幅になり、停止中の行の操作（2つのボタン）と合わせて表が横にはみ出していた
+  for (const width of [1280, 1024]) {
+    test(`${width}px の画面で、停止中の行と長い管理者の状態の印があっても、表の中で横スクロールしない`, async ({
+      page,
+    }) => {
+      await mockList(page, [
+        organization({ admin_status: 'expired', seats: { used: 15, limit: 15 } }),
+        organization({ slug: 'hibari', name: 'ひばり工房', admin_status: 'pending' }),
+        organization({
+          slug: 'ibis-transport-and-logistics',
+          name: 'とき運送ロジスティクス東日本',
+          suspended_at: '2026-10-11T00:00:00.000Z',
+          purge_on: '2026-11-10',
+          admin_status: 'expired',
+          task_count: 123456,
+        }),
+      ]);
+      await page.setViewportSize({ width, height: 800 });
+      await page.goto('/operator');
+      await expect(page.locator('.table tbody tr')).toHaveCount(3);
+      const wrap = page.locator('.table-wrap');
+      const sizes = await wrap.evaluate((el) => ({ scroll: el.scrollWidth, client: el.clientWidth }));
+      if (width === 1280) expect(sizes.scroll).toBeLessThanOrEqual(sizes.client);
+      // 1024px で収まらないときも、ページは横にはみ出さず、表の中のスクロールで受ける
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    });
+  }
 
   // 狭い幅では、固定した操作の列が名前の列を覆い、どの組織への操作か見えなくなっていた。1行を縦に積み、名前と操作を両方見せる
   for (const width of [320, 390]) {
@@ -211,7 +244,8 @@ test.describe('運用者', () => {
           name: 'とき運送',
           suspended_at: '2026-10-11T00:00:00.000Z',
           purge_on: '2026-11-10',
-          admin_status: 'none',
+          // 印の中でいちばん長い文（ギルドマスターの招待の URL は期限切れ）
+          admin_status: 'expired',
           last_used_at: null,
         }),
       ]);
@@ -225,6 +259,14 @@ test.describe('運用者', () => {
       const seatCell = page.locator('.table tbody tr').filter({ hasText: 'かもめ社' }).locator('td').nth(1);
       expect(await seatCell.evaluate((el) => getComputedStyle(el, '::before').content)).toContain('人数 / 上限');
       await expect(seatCell.locator('.chip')).toHaveText('上限に達した');
+      // 印は右端で切れず、行の中で折り返す
+      const chips = page.locator('.table tbody .chip');
+      await expect(chips.filter({ hasText: '招待の URL は期限切れ' })).toBeVisible();
+      for (const chip of await chips.all()) {
+        const box = (await chip.boundingBox())!;
+        expect(box.x).toBeGreaterThanOrEqual(wrapBox.x);
+        expect(box.x + box.width).toBeLessThanOrEqual(wrapBox.x + wrapBox.width);
+      }
 
       for (const [name, buttonTexts] of [
         ['あおば開発', ['停止する']],

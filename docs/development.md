@@ -102,7 +102,7 @@
   - 引数が文字列のリテラルでない `import()`、`createRequire`、`process.getBuiltinModule`。import の検査を抜けられるため
   - D1 の binding: `env.DB`、`env['DB']`、``env[`DB`]``、`{ DB }`、`{ 'DB': d }`、`{ ['DB']: d }` の取り出し、`Reflect.get(env, 'DB')`、`Env['DB']`
   - `D1Database` の型
-  - 運用者の履歴の関数 `appendOperatorChangeLog`（import、`export from`、名前空間からの参照、取り出し）。使えるのは運用者の道具 `src/server/operations/operator-tools.ts` だけ。既にある組織の中の `change_logs` に運用者が1行足す口で、組織の中の入口は渡さない。処理には、道具が `operator` の列を埋めて包んだ `appendChangeLog` を渡す
+  - 運用者の履歴の関数 `appendOperatorChangeLog`（import、`export from`、名前空間からの参照、取り出し）。使えるのは運用者の道具 `src/server/operations/operator-tools.ts` だけ。既にある組織の中の `change_logs` に運用者が1行足す口で、組織の中の入口は渡さない。処理には、道具が `operator` の列を埋めて包んだ `appendChangeLog` を渡す。組織で絞らずにすべての組織の中の表を数える `adminStatusesOf` と `organizationUsageOf`（運用者の組織の一覧）も、同じく運用者の道具だけが使える
 - 規則の例外は、入口を通さない次の2つのテストだけ。`test/apply-migrations.ts`（全マイグレーションを binding に直に当てる）と `test/schema.test.ts`（CHECK や一意を確かめるため、型を外れた生の INSERT を送る）。ほかのテストは入口とファクトリーを通す
 - 規則のテスト: `scripts/eslint-db-entry.test.ts` が、`ESLint` クラスに文字列を渡して、禁じる形が `src/server/`、`src/lib/`、`src/routes/`、`src/shared/`、`scripts/`、`e2e/`、`test/` で落ち、`db/` の中、入口のモジュールの import、`test/` からの `db/testing.ts`、例外の2ファイルが通ることを確かめる。解析できない形（`env[key]` など、キーが変数のもの）は規則で止められないので、差分を読む人が見る
 - テスト用の口: `db/testing.ts` が、確かめずに `VerifiedOrganization` を作る `verifiedOrganizationForTest`、表の照合に使う列の定数（`commonTableColumns`、`organizationTableColumns`、`ColumnSpec`）と DB のカタログを読む関数、組み立てた SQL を読む `compiledQueryForTest` を出す。`test/` からだけ import でき、ほかの場所から import すると ESLint が落とす。Worker の束にも入らない
