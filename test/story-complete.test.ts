@@ -631,6 +631,16 @@ describe('story-reopen', () => {
     expect(await balances(target, story.id)).toEqual({ [leaving]: 0 });
   });
 
+  test('閉じたワークスペースでは 409 の workspace_closed で、何も書かない', async () => {
+    const target = await createTarget({ closed: true });
+    const story = await emptyStory(target, { completed_at: AT, completed_by: target.admin.userId! });
+    const res = await reopen(target, story.id, target.admin);
+    expect(res.status).toBe(409);
+    expect(await errorCodeOf(res)).toBe('workspace_closed');
+    expect((await storyRow(target, story.id))!.completed_at).toBe(AT);
+    expect(await logsOf(target, story.id)).toEqual([]);
+  });
+
   test('完了していなければ 409 の conflict（not_completed）', async () => {
     const target = await createTarget();
     const story = await emptyStory(target);
