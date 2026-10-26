@@ -906,15 +906,22 @@ test.describe('運用者', () => {
 
     const button = page.getByRole('button', { name: '「ひばり工房」の停止の理由を変える' });
     await button.click();
-    await expect(dialog.getByRole('radio', { name: /一時的に止める/ })).toBeChecked();
-    // 今と同じ理由では、「変える」を押しても何も送らない
+    const current = dialog.getByRole('radio', { name: /一時的に止める/ });
+    await expect(current).toBeChecked();
+    // 最初のフォーカスは、選ばれている今の理由に置く
+    await expect(current).toBeFocused();
+    // 今と同じ理由では、「変える」を押しても何も送らない。押せない理由を見える文字と読み上げで伝える
     const change = dialog.getByRole('button', { name: '変える' });
     await expect(change).toHaveAttribute('aria-disabled', 'true');
+    await expect(change).toHaveAccessibleDescription('今の理由です。別の理由を選ぶと変えられます。');
+    await expect(dialog.getByText('今の理由です。別の理由を選ぶと変えられます。')).toBeVisible();
     await change.click({ force: true });
     expect(sent).toBeUndefined();
 
     await dialog.getByRole('radio', { name: /解約/ }).check();
     await expect(change).toHaveAttribute('aria-disabled', 'false');
+    await expect(change).not.toHaveAttribute('aria-describedby');
+    await expect(dialog.getByText('今の理由です。別の理由を選ぶと変えられます。')).toBeHidden();
     await change.click();
     await expect(dialog).toBeHidden();
     expect(sent).toEqual({ slug: 'hibari', kind: 'cancellation' });
