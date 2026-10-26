@@ -28,6 +28,7 @@ PR の読み書きは `gh api` の REST で行う。クラウドのセッショ�
 GraphQL でしかできない操作（人へのリプライを PENDING review に入れる）だけは `gh api graphql` を試し、403 なら手順 4 のフォールバックに切り替える。
 
 - `{owner}` `{repo}` `{branch}` は `gh` がカレントのリポジトリとブランチに置き換える。置き換わらずに 404 になるときは、`git remote get-url origin` と `git branch --show-current` から読んで直に書く
+- `gh` が無いか認証で失敗するときは、`pr-create` の「GitHub の操作」の「`gh` が使えないとき」に従い、GitHub の MCP ツールで代える
 - 作業ファイルはスクラッチパッドに置く。スクラッチパッドが無い環境（クラウド）では `/tmp` の下に置く
 
 ## 入力
