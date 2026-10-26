@@ -2,6 +2,7 @@
   import type { Snippet } from 'svelte';
   import type { BacklogStory, BacklogTask } from '../../shared/operations/task/backlog-tree.ts';
   import { t } from '../vocabulary.svelte.ts';
+  import DefinitionChip from './DefinitionChip.svelte';
   import DueChip from './DueChip.svelte';
   import Icon from './Icon.svelte';
 
@@ -120,6 +121,10 @@
       <button class="tree-link" type="button" onclick={(event) => onEdit(story, event.currentTarget)}
         >{story.title}</button
       >
+      <!-- 区分は親のないストーリーにだけ出す（エピックの下では、エピックの行に出ている区分を引き継ぐ） -->
+      {#if !nested && story.category !== null}
+        <DefinitionChip kind="category" name={story.category.name} />
+      {/if}
       {#if story.due_on !== null}
         <DueChip dueOn={story.due_on} today={clock.today} weekStart={clock.weekStart} done={finished} />
       {/if}

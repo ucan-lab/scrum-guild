@@ -2,6 +2,7 @@
   import type { Snippet } from 'svelte';
   import type { BacklogEpic } from '../../shared/operations/task/backlog-tree.ts';
   import { t } from '../vocabulary.svelte.ts';
+  import DefinitionChip from './DefinitionChip.svelte';
   import DueChip from './DueChip.svelte';
   import Icon from './Icon.svelte';
 
@@ -55,6 +56,10 @@
       <button class="tree-link" type="button" onclick={(event) => onEdit(epic, event.currentTarget)}
         >{epic.title}</button
       >
+      <!-- 区分はエピックに振ったものを出す（配下のストーリーとタスクは引き継ぐので、繰り返さない） -->
+      {#if epic.category !== null}
+        <DefinitionChip kind="category" name={epic.category.name} />
+      {/if}
       {#if epic.completed_at !== null}
         <span class="chip is-done"><Icon name="check" />{t('epicCleared')}</span>
       {:else if epic.canceled_at !== null}

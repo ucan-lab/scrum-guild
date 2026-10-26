@@ -143,6 +143,20 @@ describe('メニュー', () => {
     assert.ok(labels({ hasWorkspace: true, inWorkspaceScreen: true, workspaceId: 'w1' }).includes('pageMembers'));
   });
 
+  test('ワークスペースの設定は、開いているワークスペースのリーダーと管理者にだけ出す', () => {
+    const labels = (options: Parameters<typeof visibleNav>[1]) =>
+      visibleNav(undefined, { hasWorkspace: true, inWorkspaceScreen: true, workspaceId: 'w1', ...options }).flatMap(
+        (section) => section.items.map((item) => item.label),
+      );
+    const settings = navSections.flatMap((section) => section.items).find((item) => item.label === 'pageSettings');
+    assert.equal(settings?.href, '/[slug]/w/[id]/settings');
+    assert.ok(labels({ isLeader: true }).includes('pageSettings'));
+    assert.ok(labels({ isAdmin: true }).includes('pageSettings'));
+    assert.ok(!labels({}).includes('pageSettings'));
+    // ワークスペースの外では、リーダーでも出さない
+    assert.ok(!labels({ inWorkspaceScreen: false, isLeader: true }).includes('pageSettings'));
+  });
+
   test('ワークスペースの画面を開いている間は、バックログへ戻る項目を出す', () => {
     const items = visibleNav(undefined, { hasWorkspace: true, inWorkspaceScreen: true, workspaceId: 'w1' }).flatMap(
       (section) => section.items,

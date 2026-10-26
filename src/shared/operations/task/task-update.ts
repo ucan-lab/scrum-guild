@@ -12,11 +12,13 @@ import { taskDetailSchema } from './task.ts';
 //   - 完了したタスクのポイント（経験値とスプリントの集計が、完了の記録の値を使うため）
 //   - 取り込んだタスクのタイトルとリンク（タイトルは同期で書き直し、リンクは手で作ったタスクだけが持つ）
 // 書く文は「読んだ値のままなら」という条件つきで、別の要求が先に同じ欄を変えていたら、読み直してやり直す（3 回まで。超えたら 409 の conflict）。
-// 担当（task-assign）、区分、リポジトリは、この操作では変えない。返すのは、書いた後に読み直した値
+//   - 親のあるタスクの区分（details.reason は has_parent。区分は親から引き継ぐ）
+// 区分（category_id）とリポジトリ（repository_id）は、同じワークスペースの削除していないものでなければ 404。
+// 担当（task-assign）は、この操作では変えない。返すのは、書いた後に読み直した値
 export const taskUpdate = defineOperation({
   name: 'task-update',
   description:
-    'タスクのタイトル、ポイント、期日、リンク、本文のうち、送った欄だけを変える。変わる欄が無ければ何も書かない',
+    'タスクのタイトル、ポイント、期日、リンク、本文、リポジトリ、区分（親のないタスクだけ）のうち、送った欄だけを変える。変わる欄が無ければ何も書かない',
   mode: 'write',
   permission: 'member',
   workspace: true,
@@ -28,6 +30,8 @@ export const taskUpdate = defineOperation({
     due_on: dueOnSchema.optional(),
     link_url: linkUrlSchema.optional(),
     body_md: longTextSchema.optional(),
+    repository_id: idSchema.nullable().optional(),
+    category_id: idSchema.nullable().optional(),
   }),
   output: z.object({ task: taskDetailSchema }),
 });

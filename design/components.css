@@ -253,6 +253,9 @@ h1, h2, h3 { text-wrap: balance; }
    シンプル 5.37、シンプル（ダーク）8.54、中世風 5.06、現代風 11.82 */
 .chip.is-done { color: var(--color-done); background: var(--color-surface); border-color: currentColor; }
 .chip.is-carry { border-style: dashed; }
+/* 区分とリポジトリの名前の印。名前は利用者が付ける（50 字まで）ので、行の幅を超えたら折り返して全文を出す。アイコンは縮めない */
+.chip.is-name { white-space: normal; overflow-wrap: anywhere; max-width: 100%; align-items: flex-start; }
+.chip.is-name > .ico { flex: none; margin-top: 0.3em; }
 .tag {
   font-size: var(--text-xs); padding: 0 6px; border-radius: var(--radius-1);
   background: var(--color-sunken); color: var(--color-fg); line-height: 1.8; white-space: nowrap;
@@ -829,7 +832,7 @@ dialog.dialog::backdrop { background: none; }
 .segmented { justify-self: start; max-width: 100%; flex-wrap: wrap; display: inline-flex; border: 1px solid var(--color-line); border-radius: var(--radius-1); background: var(--color-surface); overflow: hidden; }
 .segmented label { position: relative; }
 .segmented input { position: absolute; opacity: 0; inset: 0; cursor: pointer; }
-.segmented span { display: block; padding: 6px 14px; font-size: var(--text-sm); color: var(--color-muted); }
+.segmented span { display: block; padding: 6px 14px; font-size: var(--text-sm); color: var(--color-muted); overflow-wrap: anywhere; }
 .segmented label + label span { border-left: 1px solid var(--color-line); }
 .segmented input:checked + span { background: var(--color-accent); color: var(--color-on-accent); font-weight: 700; }
 .segmented input:focus-visible + span { outline: 2px solid var(--color-accent); outline-offset: -3px; }
@@ -874,6 +877,8 @@ a.choice > div > span, .choice.is-static > div > span { display: block; }
 .toggle input::after { content: ""; position: absolute; top: 2px; left: 2px; width: 14px; height: 14px; border-radius: 50%; background: var(--color-surface); box-shadow: 0 0 0 1px var(--color-line); transition: left var(--duration-fast); }
 .toggle input:checked { background: var(--color-accent); border-color: var(--color-accent); }
 .toggle input:checked::after { left: 18px; }
+/* 送っている間のように、押してもフォーカスを失わせたくない押せない切り替えは aria-disabled にする（押した結果は画面が止める） */
+.toggle input[aria-disabled="true"] { opacity: 0.5; cursor: not-allowed; }
 .weekdays { display: flex; gap: var(--space-1); flex-wrap: wrap; }
 .weekdays label { position: relative; }
 .weekdays input { position: absolute; opacity: 0; inset: 0; cursor: pointer; }
@@ -888,6 +893,13 @@ a.choice > div > span, .choice.is-static > div > span { display: block; }
 .order-list .grip { color: var(--color-faint); cursor: grab; display: inline-grid; }
 .order-list .input { padding-block: 5px; }
 .order-list .fixed { font-weight: 700; padding-inline: 10px; display: flex; gap: var(--space-2); align-items: center; }
+/* 行の中身に名前と切り替え（か選択欄）を並べる（区分の「月ごとに計上する」、リポジトリの入る先）。狭い幅では名前の下へ折り返す */
+.order-list .order-main { display: flex; flex-wrap: wrap; gap: var(--space-2) var(--space-3); align-items: center; min-width: 0; }
+.order-list .order-main > .input, .order-list .order-main > .order-name { flex: 1 1 140px; min-width: 0; }
+.order-list .order-name { overflow-wrap: anywhere; }
+/* ドラッグの印（.grip）を持たない一覧。先頭の列を持たず、中身と操作の2列にする */
+.order-list.is-plain li { grid-template-columns: minmax(0, 1fr) auto; }
+.order-list .order-main > .select { flex: 1 1 180px; min-width: 0; }
 .order-actions { display: flex; gap: 2px; align-items: center; }
 .icon-btn { display: inline-grid; place-items: center; width: 30px; height: 30px; border: 1px solid transparent; background: none; border-radius: var(--radius-1); color: var(--color-muted); }
 .icon-btn:hover { border-color: var(--color-line); color: var(--color-fg); }
@@ -896,9 +908,16 @@ a.choice > div > span, .choice.is-static > div > span { display: block; }
 .icon-btn[aria-disabled="true"] { opacity: 0.35; cursor: not-allowed; }
 .icon-btn[aria-disabled="true"]:hover { border-color: transparent; color: var(--color-muted); }
 /* 狭い幅と、指で押す画面では、バックログの行の並べ替えのボタンを 44px 四方にする（並んだボタンの押せる範囲が重ならないよう、見た目ごと広げる）。
-   狭い幅では行の操作が題の下へ折り返す。設定の列の並べ替え（.order-list）は入力欄と同じ行に並ぶので、ここでは広げない */
+   狭い幅では行の操作が題の下へ折り返す。
+   設定の並べ替えられる一覧（.order-list）の行は、名前や入力欄と同じ行に並び、行の高さを変えたくないので、見た目は変えず押せる範囲だけを
+   44px 四方に広げる（::after と、切り替えは ::before）。並んだボタンの押せる範囲が重ならないよう、ボタンの間を 14px 空ける（30 + 14 = 44） */
 @media (max-width: 760px), (pointer: coarse) {
   .entry-end .order-actions .icon-btn, .tree-end .order-actions .icon-btn { width: 44px; height: 44px; }
+  .order-list .order-actions { gap: 14px; }
+  .order-list .icon-btn, .order-list .edit-trigger, .order-list .toggle { position: relative; }
+  .order-list .icon-btn::after, .order-list .edit-trigger::after, .order-list .toggle::before {
+    content: ""; position: absolute; left: 50%; top: 50%; width: max(100%, 44px); height: max(100%, 44px); transform: translate(-50%, -50%);
+  }
 }
 /* 一覧が広いまま指で押す画面（タブレットの横置きなど）では、行の右端が題の下へ折り返さないまま 44px のボタンが並ぶ。
    題の列に 12rem を先に取り、右端は残りの幅に収まらなければ中で折り返す（右端の列は max-content まで、題の列を押しのけない） */

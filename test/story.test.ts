@@ -555,6 +555,8 @@ describe('story-get', () => {
       body_md: '本文',
       due_on: '2026-10-30',
       link_url: 'https://example.com/a',
+      epic_id: null,
+      category: null,
     });
   });
 

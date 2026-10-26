@@ -5,10 +5,12 @@
 import { createFakeGithub } from '../auth/fake-github.ts';
 import { githubUser } from '../auth/helpers.ts';
 import {
+  createCategory,
   createEpic,
   createInvitation,
   createOrganization,
   createOrganizationHoliday,
+  createRepository,
   createSprint,
   createStory,
   createTask,
@@ -213,7 +215,54 @@ export const pointers: Pointers = {
     workspace_id: target.workspace.id,
     sprint_id: (await createSprint(target.organization, target.workspace.id)).id,
   }),
+  'category-repository-list': async (target) => ({ workspace_id: target.workspace.id }),
+  // 名前は呼ぶたびに変える（同じ名前は 409 になるため）
+  'category-create': async (target) => ({ workspace_id: target.workspace.id, name: `保守 ${uniqueSuffix()}` }),
+  'category-update': async (target) => ({
+    workspace_id: target.workspace.id,
+    category_id: (await createCategory(target.organization, target.workspace.id, { name: `保守 ${uniqueSuffix()}` }))
+      .id,
+    name: `追加案件 ${uniqueSuffix()}`,
+  }),
+  'category-move': async (target) => ({
+    workspace_id: target.workspace.id,
+    category_id: (await createCategory(target.organization, target.workspace.id, { name: `保守 ${uniqueSuffix()}` }))
+      .id,
+    after_category_id: null,
+  }),
+  // 呼ぶたびに区分を作る（削除した区分は続けて削除できない）
+  'category-delete': async (target) => ({
+    workspace_id: target.workspace.id,
+    category_id: (await createCategory(target.organization, target.workspace.id, { name: `保守 ${uniqueSuffix()}` }))
+      .id,
+  }),
+  'repository-create': async (target) => ({ workspace_id: target.workspace.id, name: `shop-api-${uniqueSuffix()}` }),
+  'repository-update': async (target) => ({
+    workspace_id: target.workspace.id,
+    repository_id: (
+      await createRepository(target.organization, target.workspace.id, { name: `shop-api-${uniqueSuffix()}` })
+    ).id,
+    name: `shop-web-${uniqueSuffix()}`,
+  }),
+  'repository-move': async (target) => ({
+    workspace_id: target.workspace.id,
+    repository_id: (
+      await createRepository(target.organization, target.workspace.id, { name: `shop-api-${uniqueSuffix()}` })
+    ).id,
+    after_repository_id: null,
+  }),
+  'repository-delete': async (target) => ({
+    workspace_id: target.workspace.id,
+    repository_id: (
+      await createRepository(target.organization, target.workspace.id, { name: `shop-api-${uniqueSuffix()}` })
+    ).id,
+  }),
 };
+
+// 区分とリポジトリの名前を、呼ぶたびに変える
+function uniqueSuffix(): string {
+  return crypto.randomUUID().slice(0, 8);
+}
 
 // sprint-create の開始日。2030-01-07 から 28 日ずつ進める
 let sprintStarts = 0;

@@ -5,6 +5,7 @@ import { epicCreate, epicGet, epicUpdate, type EpicDetail } from '../../shared/o
 import { previousStatementChanged, type OrganizationDb } from '../db/index.ts';
 import { ApiError } from '../errors.ts';
 import { uuidv7 } from '../uuid.ts';
+import { categoryRow, readCategoryRef, refOf } from './definition-refs.ts';
 import { implement } from './implement.ts';
 import { actorUserIdOf, changeLogColumns, openWorkspace, throwIfClosed } from './write-guards.ts';
 
@@ -14,13 +15,28 @@ const EDITABLE_FIELDS = ['title', 'body_md', 'due_on', 'link_url'] as const;
 // 同時の更新に負けたときにやり直す回数の上限。超えたら 409 の conflict（story-update と同じ）
 const MAX_UPDATE_ATTEMPTS = 3;
 
-// 削除していないエピックの、ダイアログが出す欄。ワークスペースで必ず絞る
-async function readEpic(db: OrganizationDb, workspaceId: string, epicId: string): Promise<EpicDetail | undefined> {
+type EpicRow = EpicDetail & { category_name: string | null };
+
+// 削除していないエピックの、ダイアログが出す欄と、区分の名前（履歴に残す）。ワークスペースで必ず絞る
+async function readEpic(db: OrganizationDb, workspaceId: string, epicId: string): Promise<EpicRow | undefined> {
   return db.first(
     db.statement((q) =>
       q
         .selectFrom('epics')
-        .select(['epics.id', 'epics.title', 'epics.body_md', 'epics.due_on', 'epics.link_url'])
+        .leftJoin('categories', (join) =>
+          join
+            .onRef('categories.id', '=', 'epics.category_id')
+            .onRef('categories.workspace_id', '=', 'epics.workspace_id'),
+        )
+        .select([
+          'epics.id',
+          'epics.title',
+          'epics.body_md',
+          'epics.due_on',
+          'epics.link_url',
+          'epics.category_id',
+          'categories.name as category_name',
+        ])
         .where('epics.id', '=', epicId)
         .where('epics.workspace_id', '=', workspaceId)
         .where('epics.deleted_at', 'is', null),
@@ -28,16 +44,30 @@ async function readEpic(db: OrganizationDb, workspaceId: string, epicId: string)
   );
 }
 
+function detailOf(row: EpicRow): EpicDetail {
+  return {
+    id: row.id,
+    title: row.title,
+    body_md: row.body_md,
+    due_on: row.due_on,
+    link_url: row.link_url,
+    category_id: row.category_id,
+  };
+}
+
 export const epicGetOperation = implement(epicGet, async ({ db, workspace, input }) => {
   const epic = await readEpic(db, workspace.workspaceId, input.epic_id);
   if (epic === undefined) throw new ApiError(404, 'not_found');
-  return { epic };
+  return { epic: detailOf(epic) };
 });
 
 export const epicCreateOperation = implement(epicCreate, async ({ db, actor, workspace, input }) => {
   const actorUserId = actorUserIdOf(actor);
   const organizationId = db.organizationId;
   const workspaceId = workspace.workspaceId;
+
+  // 区分は、同じワークスペースの削除していない区分だけ。読んで名前を履歴に残し、書く文にも同じ条件を入れる
+  const category = input.category_id === null ? null : await readCategoryRef(db, workspaceId, input.category_id);
 
   // 位置はエピックの末尾。完了と中止したエピックも並びに残っているので、それも含めた末尾に置く
   const last = await db.first(
@@ -60,6 +90,7 @@ export const epicCreateOperation = implement(epicCreate, async ({ db, actor, wor
   for (const field of EDITABLE_FIELDS) {
     if (field !== 'title' && input[field] !== null) created[field] = [null, input[field]];
   }
+  if (category !== null) created.category = [null, category];
 
   const results = await db.batch([
     db.statement((q) =>
@@ -72,6 +103,7 @@ export const epicCreateOperation = implement(epicCreate, async ({ db, actor, wor
           'body_md',
           'due_on',
           'link_url',
+          'category_id',
           'reward_tier',
           'requester_user_id',
           'created_by',
@@ -88,6 +120,7 @@ export const epicCreateOperation = implement(epicCreate, async ({ db, actor, wor
               eb.val(input.body_md).as('body_md'),
               eb.val(input.due_on).as('due_on'),
               eb.val(input.link_url).as('link_url'),
+              eb.val(category?.id ?? null).as('category_id'),
               eb.val(EPIC_DEFAULT_REWARD_TIER).as('reward_tier'),
               // 依頼主は作った人。変える操作は #65 で足す
               eb.val(actorUserId).as('requester_user_id'),
@@ -96,7 +129,10 @@ export const epicCreateOperation = implement(epicCreate, async ({ db, actor, wor
               eb.val(createdAt).as('created_at'),
               eb.val(createdAt).as('updated_at'),
             ])
-            .where((eb) => eb.exists(openWorkspace(eb, organizationId, workspaceId))),
+            .where((eb) => eb.exists(openWorkspace(eb, organizationId, workspaceId)))
+            .$if(category !== null, (qb) =>
+              qb.where((eb) => eb.exists(categoryRow(eb, workspaceId, category!.id).select('categories.id'))),
+            ),
         ),
     ),
     // 作った行があるときだけ履歴を書く
@@ -130,7 +166,7 @@ export const epicCreateOperation = implement(epicCreate, async ({ db, actor, wor
     ),
   ]);
 
-  // 読んでから書くまでに、ワークスペースが閉じたら何も入らない
+  // 読んでから書くまでに、ワークスペースが閉じたか、区分が削除されたら何も入らない
   if ((results[0]?.changes ?? 0) === 0) {
     await throwIfClosed(db, workspaceId);
     throw new ApiError(404, 'not_found');
@@ -142,6 +178,7 @@ export const epicCreateOperation = implement(epicCreate, async ({ db, actor, wor
       body_md: input.body_md,
       due_on: input.due_on,
       link_url: input.link_url,
+      category_id: category?.id ?? null,
     },
   };
 });
@@ -152,12 +189,14 @@ type UpdatedFields = {
   body_md?: string | null;
   due_on?: string | null;
   link_url?: string | null;
+  category_id?: string | null;
 };
 
-// 読んだ値と、送られた値の差。送られた欄のうち、読んだ値と違うものだけを書く
-function diffOf(current: EpicDetail, input: UpdatedFields) {
+// 読んだ値と、送られた値の差。送られた欄のうち、読んだ値と違うものだけを書く。区分の履歴は {id, name} で残す
+// （next は送られた区分の名前。区分を外すときと送られないときは null）
+function diffOf(current: EpicRow, input: UpdatedFields, nextCategory: { id: string; name: string } | null) {
   const values: UpdatedFields = {};
-  const changes: Record<string, [string | null, string | null]> = {};
+  const changes: Record<string, [unknown, unknown]> = {};
   if (input.title !== undefined && input.title !== current.title) {
     values.title = input.title;
     changes.title = [current.title, input.title];
@@ -167,6 +206,10 @@ function diffOf(current: EpicDetail, input: UpdatedFields) {
     if (next === undefined || next === current[field]) continue;
     values[field] = next;
     changes[field] = [current[field], next];
+  }
+  if (input.category_id !== undefined && input.category_id !== current.category_id) {
+    values.category_id = input.category_id;
+    changes.category = [refOf(current.category_id, current.category_name), nextCategory];
   }
   return { values, changes, isEmpty: Object.keys(changes).length === 0 };
 }
@@ -185,11 +228,16 @@ export const epicUpdateOperation = implement(epicUpdate, async ({ db, actor, wor
       await throwIfClosed(db, workspaceId);
       throw new ApiError(404, 'not_found');
     }
-    const { values, changes, isEmpty } = diffOf(current, input);
+    // 振る区分は、同じワークスペースの削除していない区分だけ（無ければ 404）。書く文にも同じ条件を入れる
+    const nextCategory =
+      input.category_id == null || input.category_id === current.category_id
+        ? null
+        : await readCategoryRef(db, workspaceId, input.category_id);
+    const { values, changes, isEmpty } = diffOf(current, input, nextCategory);
     if (isEmpty) {
       // 書くものが無くても、閉じたワークスペースは断る
       await throwIfClosed(db, workspaceId);
-      return { epic: current };
+      return { epic: detailOf(current) };
     }
 
     const at = now();
@@ -210,6 +258,10 @@ export const epicUpdateOperation = implement(epicUpdate, async ({ db, actor, wor
               ...(values.body_md === undefined ? [] : [eb('body_md', 'is', current.body_md)]),
               ...(values.due_on === undefined ? [] : [eb('due_on', 'is', current.due_on)]),
               ...(values.link_url === undefined ? [] : [eb('link_url', 'is', current.link_url)]),
+              ...(values.category_id === undefined ? [] : [eb('category_id', 'is', current.category_id)]),
+              ...(nextCategory === null
+                ? []
+                : [eb.exists(categoryRow(q, workspaceId, nextCategory.id).select('categories.id'))]),
             ]),
           ),
       ),
@@ -240,9 +292,10 @@ export const epicUpdateOperation = implement(epicUpdate, async ({ db, actor, wor
     if ((results[0]?.changes ?? 0) > 0) {
       const updated = await readEpic(db, workspaceId, epicId);
       if (updated === undefined) throw new ApiError(404, 'not_found');
-      return { epic: updated };
+      return { epic: detailOf(updated) };
     }
-    // 閉じていれば 409 の workspace_closed。無ければ 404。どちらでもなければ、別の要求が先に同じ欄を変えたので、読み直してやり直す
+    // 閉じていれば 409 の workspace_closed。無ければ 404。区分が削除されていれば、次の周の読み取りが 404 にする。
+    // どれでもなければ、別の要求が先に同じ欄を変えたので、読み直してやり直す
     await throwIfClosed(db, workspaceId);
     if ((await readEpic(db, workspaceId, epicId)) === undefined) throw new ApiError(404, 'not_found');
   }

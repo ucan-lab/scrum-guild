@@ -20,6 +20,7 @@ import {
 } from '../db/index.ts';
 import { ApiError } from '../errors.ts';
 import { uuidv7 } from '../uuid.ts';
+import { categoryConflict, categoryRow, readCategoryRef, refOf } from './definition-refs.ts';
 import { implement } from './implement.ts';
 import {
   MAX_TIES,
@@ -38,12 +39,25 @@ const EDITABLE_FIELDS = ['title', 'acceptance_criteria_md', 'body_md', 'due_on',
 // 同時の更新に負けたときにやり直す回数の上限。超えたら 409 の conflict
 const MAX_UPDATE_ATTEMPTS = 3;
 
-// 削除していないストーリーの、ダイアログが出す欄。ワークスペースで必ず絞る
-async function readStory(db: OrganizationDb, workspaceId: string, storyId: string): Promise<StoryDetail | undefined> {
-  return db.first(
+// 削除していないストーリーの、ダイアログが出す欄と、自身に振った区分（履歴と書く文の条件に使う）。ワークスペースで必ず絞る。
+// 区分は、親のエピックがあればその区分（削除していないもの）を引き継ぎ、無ければ自身の区分を出す
+async function readStory(db: OrganizationDb, workspaceId: string, storyId: string) {
+  const row = await db.first(
     db.statement((q) =>
       q
         .selectFrom('stories')
+        .leftJoin('epics', (join) =>
+          join.onRef('epics.id', '=', 'stories.epic_id').onRef('epics.workspace_id', '=', 'stories.workspace_id'),
+        )
+        .leftJoin('categories as ec', (join) =>
+          join
+            .onRef('ec.id', '=', 'epics.category_id')
+            .onRef('ec.workspace_id', '=', 'stories.workspace_id')
+            .on('ec.deleted_at', 'is', null),
+        )
+        .leftJoin('categories as sc', (join) =>
+          join.onRef('sc.id', '=', 'stories.category_id').onRef('sc.workspace_id', '=', 'stories.workspace_id'),
+        )
         .select([
           'stories.id',
           'stories.title',
@@ -51,24 +65,57 @@ async function readStory(db: OrganizationDb, workspaceId: string, storyId: strin
           'stories.body_md',
           'stories.due_on',
           'stories.link_url',
+          'stories.epic_id',
+          'stories.category_id',
+          'sc.name as category_name',
+          'sc.deleted_at as category_deleted_at',
+          'ec.id as epic_category_id',
+          'ec.name as epic_category_name',
         ])
         .where('stories.id', '=', storyId)
         .where('stories.workspace_id', '=', workspaceId)
         .where('stories.deleted_at', 'is', null),
     ),
   );
+  return row;
+}
+
+type StoryRow = NonNullable<Awaited<ReturnType<typeof readStory>>>;
+
+function detailOf(row: StoryRow): StoryDetail {
+  const category =
+    row.epic_id !== null
+      ? row.epic_category_id === null
+        ? null
+        : { id: row.epic_category_id, name: row.epic_category_name ?? '', inherited: true }
+      : row.category_id === null || row.category_deleted_at !== null
+        ? null
+        : { id: row.category_id, name: row.category_name ?? '', inherited: false };
+  return {
+    id: row.id,
+    title: row.title,
+    acceptance_criteria_md: row.acceptance_criteria_md,
+    body_md: row.body_md,
+    due_on: row.due_on,
+    link_url: row.link_url,
+    epic_id: row.epic_id,
+    category,
+  };
 }
 
 export const storyGetOperation = implement(storyGet, async ({ db, workspace, input }) => {
   const story = await readStory(db, workspace.workspaceId, input.story_id);
   if (story === undefined) throw new ApiError(404, 'not_found');
-  return { story };
+  return { story: detailOf(story) };
 });
 
 export const storyCreateOperation = implement(storyCreate, async ({ db, actor, workspace, input }) => {
   const actorUserId = actorUserIdOf(actor);
   const organizationId = db.organizationId;
   const workspaceId = workspace.workspaceId;
+
+  // 区分は、同じワークスペースの削除していない区分だけ。読んで名前を履歴に残し、書く文にも同じ条件を入れる
+  const category = input.category_id === null ? null : await readCategoryRef(db, workspaceId, input.category_id);
 
   // 位置は親のないストーリーの末尾。完了したストーリーも並びに残っているので、それも含めた末尾に置く
   const last = await db.first(
@@ -92,6 +139,7 @@ export const storyCreateOperation = implement(storyCreate, async ({ db, actor, w
   for (const field of EDITABLE_FIELDS) {
     if (field !== 'title' && input[field] !== null) created[field] = [null, input[field]];
   }
+  if (category !== null) created.category = [null, category];
 
   const results = await db.batch([
     db.statement((q) =>
@@ -106,6 +154,7 @@ export const storyCreateOperation = implement(storyCreate, async ({ db, actor, w
           'body_md',
           'due_on',
           'link_url',
+          'category_id',
           'created_by',
           'position',
           'created_at',
@@ -122,12 +171,16 @@ export const storyCreateOperation = implement(storyCreate, async ({ db, actor, w
               eb.val(input.body_md).as('body_md'),
               eb.val(input.due_on).as('due_on'),
               eb.val(input.link_url).as('link_url'),
+              eb.val(category?.id ?? null).as('category_id'),
               eb.val(actorUserId).as('created_by'),
               eb.val(position).as('position'),
               eb.val(createdAt).as('created_at'),
               eb.val(createdAt).as('updated_at'),
             ])
-            .where((eb) => eb.exists(openWorkspace(eb, organizationId, workspaceId))),
+            .where((eb) => eb.exists(openWorkspace(eb, organizationId, workspaceId)))
+            .$if(category !== null, (qb) =>
+              qb.where((eb) => eb.exists(categoryRow(eb, workspaceId, category!.id).select('categories.id'))),
+            ),
         ),
     ),
     // 作った行があるときだけ履歴を書く
@@ -161,7 +214,7 @@ export const storyCreateOperation = implement(storyCreate, async ({ db, actor, w
     ),
   ]);
 
-  // 読んでから書くまでに、ワークスペースが閉じたら何も入らない
+  // 読んでから書くまでに、ワークスペースが閉じたか、区分が削除されたら何も入らない
   if ((results[0]?.changes ?? 0) === 0) {
     await throwIfClosed(db, workspaceId);
     throw new ApiError(404, 'not_found');
@@ -174,6 +227,8 @@ export const storyCreateOperation = implement(storyCreate, async ({ db, actor, w
       body_md: input.body_md,
       due_on: input.due_on,
       link_url: input.link_url,
+      epic_id: null,
+      category: category === null ? null : { ...category, inherited: false },
     },
   };
 });
@@ -185,12 +240,14 @@ type UpdatedFields = {
   body_md?: string | null;
   due_on?: string | null;
   link_url?: string | null;
+  category_id?: string | null;
 };
 
-// 読んだ値と、送られた値の差。送られた欄のうち、読んだ値と違うものだけを書く
-function diffOf(current: StoryDetail, input: UpdatedFields) {
+// 読んだ値と、送られた値の差。送られた欄のうち、読んだ値と違うものだけを書く。区分の履歴は {id, name} で残す
+// （nextCategory は送られた区分。外すときと送られないときは null）
+function diffOf(current: StoryRow, input: UpdatedFields, nextCategory: { id: string; name: string } | null) {
   const values: UpdatedFields = {};
-  const changes: Record<string, [string | null, string | null]> = {};
+  const changes: Record<string, [unknown, unknown]> = {};
   if (input.title !== undefined && input.title !== current.title) {
     values.title = input.title;
     changes.title = [current.title, input.title];
@@ -200,6 +257,10 @@ function diffOf(current: StoryDetail, input: UpdatedFields) {
     if (next === undefined || next === current[field]) continue;
     values[field] = next;
     changes[field] = [current[field], next];
+  }
+  if (input.category_id !== undefined && input.category_id !== current.category_id) {
+    values.category_id = input.category_id;
+    changes.category = [refOf(current.category_id, current.category_name), nextCategory];
   }
   return { values, changes, isEmpty: Object.keys(changes).length === 0 };
 }
@@ -219,11 +280,16 @@ export const storyUpdateOperation = implement(storyUpdate, async ({ db, actor, w
       await throwIfClosed(db, workspaceId);
       throw new ApiError(404, 'not_found');
     }
-    const { values, changes, isEmpty } = diffOf(current, input);
+    // 区分は親のないストーリーだけが持つ（エピックの下では引き継ぐ）。振る区分は、同じワークスペースの削除していない区分だけ（無ければ 404）
+    const categoryChanging = input.category_id !== undefined && input.category_id !== current.category_id;
+    if (categoryChanging && current.epic_id !== null) throw categoryConflict('has_parent');
+    const nextCategory =
+      !categoryChanging || input.category_id == null ? null : await readCategoryRef(db, workspaceId, input.category_id);
+    const { values, changes, isEmpty } = diffOf(current, input, nextCategory);
     if (isEmpty) {
       // 書くものが無くても、閉じたワークスペースは断る
       await throwIfClosed(db, workspaceId);
-      return { story: current };
+      return { story: detailOf(current) };
     }
 
     const at = now();
@@ -247,6 +313,13 @@ export const storyUpdateOperation = implement(storyUpdate, async ({ db, actor, w
               ...(values.body_md === undefined ? [] : [eb('body_md', 'is', current.body_md)]),
               ...(values.due_on === undefined ? [] : [eb('due_on', 'is', current.due_on)]),
               ...(values.link_url === undefined ? [] : [eb('link_url', 'is', current.link_url)]),
+              // 区分は、読んだ値のままで、親が無く、振る区分が削除されていない
+              ...(values.category_id === undefined
+                ? []
+                : [eb('category_id', 'is', current.category_id), eb('epic_id', 'is', null)]),
+              ...(nextCategory === null
+                ? []
+                : [eb.exists(categoryRow(q, workspaceId, nextCategory.id).select('categories.id'))]),
             ]),
           ),
       ),
@@ -288,6 +361,9 @@ export const storyUpdateOperation = implement(storyUpdate, async ({ db, actor, w
                           ...(values.body_md === undefined ? [] : [sb('stories.body_md', 'is', values.body_md)]),
                           ...(values.due_on === undefined ? [] : [sb('stories.due_on', 'is', values.due_on)]),
                           ...(values.link_url === undefined ? [] : [sb('stories.link_url', 'is', values.link_url)]),
+                          ...(values.category_id === undefined
+                            ? []
+                            : [sb('stories.category_id', 'is', values.category_id)]),
                         ]),
                       ),
                   ),
@@ -301,9 +377,10 @@ export const storyUpdateOperation = implement(storyUpdate, async ({ db, actor, w
     if ((results[0]?.changes ?? 0) > 0) {
       const updated = await readStory(db, workspaceId, storyId);
       if (updated === undefined) throw new ApiError(404, 'not_found');
-      return { story: updated };
+      return { story: detailOf(updated) };
     }
     // 閉じていれば 409 の workspace_closed。無ければ 404。どちらでもなければ、別の要求が先に同じ欄を変えたので、読み直してやり直す
+    // （エピックの下へ移されていれば次の周が has_parent に、区分が削除されていれば次の周の読み取りが 404 にする）
     await throwIfClosed(db, workspaceId);
     if ((await readStory(db, workspaceId, storyId)) === undefined) throw new ApiError(404, 'not_found');
   }

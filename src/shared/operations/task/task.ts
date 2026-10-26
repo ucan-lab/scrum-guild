@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { taskPointsSchema } from '../../task.ts';
+import { definitionRefSchema, resolvedCategorySchema } from '../definition/definition.ts';
 
 // タスクの詳細の引き出しが出す項目。読む操作と、変える操作が、書いた後の値として返す。
 // 本文は長い（1 万字まで）ので、バックログの木（backlog-tree）には載せない
@@ -19,6 +20,12 @@ export const taskDetailSchema = z.object({
   completed_at: z.string().nullable(),
   // 呼んだ人が削除できるか（作った人とリーダー、管理者）。画面が削除の操作を出すかを決める
   can_delete: z.boolean(),
+  // 親のストーリー。親のあるタスクは区分を振れない（親から引き継ぐ）
+  story_id: z.string().nullable(),
+  // 引き継ぎを解いた区分（親のエピック、親のストーリー、タスク自身の順）。inherited は親から引き継いだもの
+  category: resolvedCategorySchema.nullable(),
+  // 振ったリポジトリ。親から引き継がない
+  repository: definitionRefSchema.nullable(),
 });
 
 export type TaskDetail = z.output<typeof taskDetailSchema>;

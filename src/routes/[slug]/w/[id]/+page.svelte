@@ -148,6 +148,8 @@
           id: story.id,
           title: story.title,
           group: epic === undefined ? null : { id: epic.id, title: epic.title },
+          // 起票のダイアログで、この親を選んだときに引き継ぐ区分
+          category: story.category,
         };
       }),
   );
@@ -589,6 +591,7 @@
     canMoveDown={place !== undefined && place.index < place.count - 1}
     onMove={canWrite ? reorderTask : undefined}
     onMoveParent={canWrite && (place?.parentId != null || openStories.length > 0) ? openMoveDialog : undefined}
+    showCategory={place?.parentId == null}
   />
 {/snippet}
 
@@ -709,6 +712,8 @@
     slug={page.params.slug ?? ''}
     workspaceId={workspace.id}
     {canWrite}
+    categories={data.definitions?.categories ?? []}
+    categoriesFailed={data.definitions === null}
     onsaved={() => void invalidateAll()}
     ongone={() => void rowGone()}
   />
@@ -717,6 +722,8 @@
     slug={page.params.slug ?? ''}
     workspaceId={workspace.id}
     {canWrite}
+    categories={data.definitions?.categories ?? []}
+    categoriesFailed={data.definitions === null}
     onsaved={() => void invalidateAll()}
     ongone={() => void rowGone()}
   />
@@ -726,6 +733,9 @@
       slug={page.params.slug ?? ''}
       workspaceId={workspace.id}
       stories={openStories}
+      categories={data.definitions?.categories ?? []}
+      repositories={data.definitions?.repositories ?? []}
+      definitionsFailed={data.definitions === null}
       oncreated={created}
     />
     <MoveParentDialog bind:this={moveDialog} parents={openStories} onmove={moveParent} />

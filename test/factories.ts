@@ -271,6 +271,29 @@ export async function createCategory(
   return row;
 }
 
+export async function createRepository(
+  organization: OrganizationFixture,
+  workspaceId: string,
+  overrides: Partial<Row<OrganizationTables, 'repositories'>> = {},
+) {
+  const row: Row<OrganizationTables, 'repositories'> = {
+    id: uuidv7(),
+    workspace_id: workspaceId,
+    name: 'shop-api',
+    provider: null,
+    source_container_id: null,
+    source_container_name: null,
+    position: 'a0',
+    deleted_at: null,
+    created_at: AT,
+    updated_at: AT,
+    ...overrides,
+  };
+  const db = orgDb(env, organization.verified);
+  await db.run(db.statement((q) => q.insertInto('repositories').values(row)));
+  return row;
+}
+
 // エピック。依頼主と作った人が要る
 export async function createEpic(
   organization: OrganizationFixture,

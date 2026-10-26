@@ -19,6 +19,17 @@ import { logoutOperation, meOperation } from './session.ts';
 import { sprintCreateOperation, sprintDeleteOperation, sprintListOperation, sprintUpdateOperation } from './sprint.ts';
 import { epicCreateOperation, epicGetOperation, epicUpdateOperation } from './epic.ts';
 import {
+  categoryCreateOperation,
+  categoryDeleteOperation,
+  categoryMoveOperation,
+  categoryRepositoryListOperation,
+  categoryUpdateOperation,
+  repositoryCreateOperation,
+  repositoryDeleteOperation,
+  repositoryMoveOperation,
+  repositoryUpdateOperation,
+} from './definition.ts';
+import {
   storyCompleteOperation,
   storyCreateOperation,
   storyGetOperation,
@@ -86,4 +97,13 @@ export const implementedOperations: readonly ImplementedOperation[] = [
   inviteeResolveOperation,
   invitationCreateOperation,
   invitationRevokeOperation,
+  categoryRepositoryListOperation,
+  categoryCreateOperation,
+  categoryUpdateOperation,
+  categoryMoveOperation,
+  categoryDeleteOperation,
+  repositoryCreateOperation,
+  repositoryUpdateOperation,
+  repositoryMoveOperation,
+  repositoryDeleteOperation,
 ];

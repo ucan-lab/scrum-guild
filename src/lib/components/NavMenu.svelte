@@ -1,8 +1,10 @@
 <script lang="ts">
   import type { Snippet } from 'svelte';
   import { resolve } from '$app/paths';
+  import { page } from '$app/state';
   import { isWorkspaceId, isWorkspaceRoute, visibleNav } from '../nav.ts';
   import { t } from '../vocabulary.svelte.ts';
+  import { workspaceViewOf } from '../workspace.ts';
   import Icon from './Icon.svelte';
 
   // kit.js の navHtml。current は今の画面のパス、slug は今の組織。画面のある項目だけを出す（nav.ts の visibleNav）。
@@ -10,7 +12,8 @@
   // workspaceSwitcher を渡すのは、ワークスペースの画面を開いている間。所属していない管理者にも、
   // ワークスペースの節の見出しと、今のワークスペースを出す。ワークスペースの切り替えの中身は、画面を作る Issue で足す。
   // ワークスペースの経路の項目（メンバーなど）は、workspaceId を渡したときだけ出す。渡すのは、開いているワークスペースの ID。
-  // 組織の切り替えはメニューの外（AppShell のブランドの下）に置く
+  // 組織の切り替えはメニューの外（AppShell のブランドの下）に置く。
+  // ワークスペースの設定は、開いているワークスペースのリーダーと管理者にだけ出す。ロールは、ワークスペースの枠が読み込んだ値（page.data）から取る
   let {
     current,
     slug,
@@ -31,6 +34,7 @@
     visibleNav(undefined, {
       hasWorkspace,
       isAdmin,
+      isLeader: workspaceViewOf(page.data)?.role === 'leader',
       inWorkspaceScreen: workspaceSwitcher !== undefined,
       workspaceId: workspaceId ?? null,
     }),

@@ -7,6 +7,8 @@ export const epicDetailSchema = z.object({
   body_md: z.string().nullable(),
   due_on: z.string().nullable(),
   link_url: z.string().nullable(),
+  // 振った区分。配下のストーリーとタスクが引き継ぐ。無ければ null
+  category_id: z.string().nullable(),
 });
 
 export type EpicDetail = z.output<typeof epicDetailSchema>;

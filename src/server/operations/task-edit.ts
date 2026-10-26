@@ -3,6 +3,14 @@ import { taskAssign, taskDelete, taskDetail, taskUpdate, type TaskDetail } from 
 import { previousStatementChanged, type OrganizationDb, type VerifiedWorkspace } from '../db/index.ts';
 import { ApiError } from '../errors.ts';
 import { uuidv7 } from '../uuid.ts';
+import {
+  categoryConflict,
+  categoryRow,
+  readCategoryRef,
+  readRepositoryRef,
+  refOf,
+  repositoryRow,
+} from './definition-refs.ts';
 import { implement } from './implement.ts';
 import { activeMemberName, actorUserIdOf, changeLogColumns, openWorkspace, throwIfClosed } from './write-guards.ts';
 
@@ -28,6 +36,32 @@ async function readTask(db: OrganizationDb, workspaceId: string, taskId: string)
             .on('assignee_membership.workspace_id', '=', workspaceId)
             .on('assignee_membership.left_at', 'is', null),
         )
+        // 区分は、親のストーリーの親のエピック、ストーリー、タスク自身の順に引き継ぐ。親の段は、同じワークスペースの削除していない区分だけを結ぶ。
+        // 自身の区分とリポジトリは、履歴と書く文の条件に使うので削除したものも結び、削除したかを読む
+        .leftJoin('stories', (join) =>
+          join.onRef('stories.id', '=', 'tasks.story_id').on('stories.workspace_id', '=', workspaceId),
+        )
+        .leftJoin('epics', (join) =>
+          join.onRef('epics.id', '=', 'stories.epic_id').on('epics.workspace_id', '=', workspaceId),
+        )
+        .leftJoin('categories as ec', (join) =>
+          join
+            .onRef('ec.id', '=', 'epics.category_id')
+            .on('ec.workspace_id', '=', workspaceId)
+            .on('ec.deleted_at', 'is', null),
+        )
+        .leftJoin('categories as sc', (join) =>
+          join
+            .onRef('sc.id', '=', 'stories.category_id')
+            .on('sc.workspace_id', '=', workspaceId)
+            .on('sc.deleted_at', 'is', null),
+        )
+        .leftJoin('categories as tc', (join) =>
+          join.onRef('tc.id', '=', 'tasks.category_id').on('tc.workspace_id', '=', workspaceId),
+        )
+        .leftJoin('repositories', (join) =>
+          join.onRef('repositories.id', '=', 'tasks.repository_id').on('repositories.workspace_id', '=', workspaceId),
+        )
         .select([
           'tasks.id',
           'tasks.title',
@@ -43,6 +77,17 @@ async function readTask(db: OrganizationDb, workspaceId: string, taskId: string)
           'assignee.name as assignee_name',
           'assignee.disabled_at as assignee_disabled_at',
           'assignee_membership.id as assignee_membership_id',
+          'tasks.story_id',
+          'tasks.category_id',
+          'tasks.repository_id',
+          'ec.id as epic_category_id',
+          'ec.name as epic_category_name',
+          'sc.id as story_category_id',
+          'sc.name as story_category_name',
+          'tc.name as category_name',
+          'tc.deleted_at as category_deleted_at',
+          'repositories.name as repository_name',
+          'repositories.deleted_at as repository_deleted_at',
         ])
         .where('tasks.id', '=', taskId)
         .where('tasks.workspace_id', '=', workspaceId)
@@ -84,6 +129,26 @@ function assigneeOf(row: TaskRow): TaskDetail['assignee'] {
   };
 }
 
+// 引き継ぎを解いた区分。親のあるタスクは親の区分（エピック、ストーリーの順）、親のないタスクは自身の区分（削除していないもの）
+function categoryOf(row: TaskRow): TaskDetail['category'] {
+  if (row.story_id !== null) {
+    if (row.epic_category_id !== null) {
+      return { id: row.epic_category_id, name: row.epic_category_name ?? '', inherited: true };
+    }
+    if (row.story_category_id !== null) {
+      return { id: row.story_category_id, name: row.story_category_name ?? '', inherited: true };
+    }
+    return null;
+  }
+  if (row.category_id === null || row.category_deleted_at !== null) return null;
+  return { id: row.category_id, name: row.category_name ?? '', inherited: false };
+}
+
+function repositoryOf(row: TaskRow): TaskDetail['repository'] {
+  if (row.repository_id === null || row.repository_deleted_at !== null) return null;
+  return { id: row.repository_id, name: row.repository_name ?? '' };
+}
+
 function detailOf(
   row: TaskRow,
   actor: { userId: string | null; isAdmin: boolean },
@@ -100,6 +165,9 @@ function detailOf(
     is_imported: row.is_imported === 1,
     completed_at: row.completed_at,
     can_delete: canDelete(row, actor, workspace),
+    story_id: row.story_id,
+    category: categoryOf(row),
+    repository: repositoryOf(row),
   };
 }
 
@@ -120,19 +188,24 @@ export const taskDetailOperation = implement(taskDetail, async ({ db, actor, wor
   return { task: detailOf(task, actor, workspace), today: todayIn(settings.timezone), week_start: settings.week_start };
 });
 
-// 書く欄。ポイントと期日、リンク、本文は空にできる
+// 書く欄。ポイントと期日、リンク、本文、区分、リポジトリは空にできる
 type UpdatedFields = {
   title?: string;
   points?: TaskPoints;
   due_on?: string | null;
   link_url?: string | null;
   body_md?: string | null;
+  category_id?: string | null;
+  repository_id?: string | null;
 };
 
-// 読んだ値と、送られた値の差。送られた欄のうち、読んだ値と違うものだけを書く
-function diffOf(current: TaskRow, input: UpdatedFields) {
+type Ref = { id: string; name: string } | null;
+
+// 読んだ値と、送られた値の差。送られた欄のうち、読んだ値と違うものだけを書く。
+// 区分とリポジトリの履歴は {id, name} で残す（next は送られた値の名前。外すときと送られないときは null）
+function diffOf(current: TaskRow, input: UpdatedFields, next: { category: Ref; repository: Ref }) {
   const values: UpdatedFields = {};
-  const changes: Record<string, [string | number | null, string | number | null]> = {};
+  const changes: Record<string, [unknown, unknown]> = {};
   if (input.title !== undefined && input.title !== current.title) {
     values.title = input.title;
     changes.title = [current.title, input.title];
@@ -147,16 +220,39 @@ function diffOf(current: TaskRow, input: UpdatedFields) {
     values[field] = next;
     changes[field] = [current[field], next];
   }
+  if (input.category_id !== undefined && input.category_id !== current.category_id) {
+    values.category_id = input.category_id;
+    changes.category = [refOf(current.category_id, current.category_name), next.category];
+  }
+  if (input.repository_id !== undefined && input.repository_id !== current.repository_id) {
+    values.repository_id = input.repository_id;
+    changes.repository = [refOf(current.repository_id, current.repository_name), next.repository];
+  }
   return { values, changes, isEmpty: Object.keys(changes).length === 0 };
+}
+
+// 送られた区分とリポジトリを読む。今と同じか外す（null）なら読まない。無ければ 404
+async function readNextRefs(db: OrganizationDb, workspaceId: string, current: TaskRow, input: UpdatedFields) {
+  const category =
+    input.category_id == null || input.category_id === current.category_id
+      ? null
+      : await readCategoryRef(db, workspaceId, input.category_id);
+  const repository =
+    input.repository_id == null || input.repository_id === current.repository_id
+      ? null
+      : await readRepositoryRef(db, workspaceId, input.repository_id);
+  return { category, repository };
 }
 
 // 変えられない変更を断る。完了したタスクのポイントは、経験値とスプリントの集計が完了の記録の値を使うので、ずれないように変えない。
 // 取り込んだタスクのタイトルは同期で書き直し、リンクは手で作ったタスクだけが持つ
+// 区分は親のないタスクだけが持つ（親のあるタスクは親から引き継ぐ）
 function assertEditable(current: TaskRow, values: UpdatedFields): void {
   if (values.points !== undefined && current.completed_at !== null) throw new ApiError(409, 'conflict');
   if (current.is_imported === 1 && (values.title !== undefined || values.link_url !== undefined)) {
     throw new ApiError(409, 'conflict');
   }
+  if (values.category_id !== undefined && current.story_id !== null) throw categoryConflict('has_parent');
 }
 
 export const taskUpdateOperation = implement(taskUpdate, async ({ db, actor, workspace, input }) => {
@@ -174,13 +270,16 @@ export const taskUpdateOperation = implement(taskUpdate, async ({ db, actor, wor
       await throwIfClosed(db, workspaceId);
       throw new ApiError(404, 'not_found');
     }
-    const { values, changes, isEmpty } = diffOf(current, input);
-    if (isEmpty) {
+    const draft = diffOf(current, input, { category: null, repository: null });
+    if (draft.isEmpty) {
       // 書くものが無くても、閉じたワークスペースは断る
       await throwIfClosed(db, workspaceId);
       return { task: detailOf(current, actor, workspace) };
     }
-    assertEditable(current, values);
+    assertEditable(current, draft.values);
+    // 振る区分とリポジトリは、同じワークスペースの削除していないものだけ（無ければ 404）。書く文にも同じ条件を入れる
+    const next = await readNextRefs(db, workspaceId, current, input);
+    const { values, changes } = diffOf(current, input, next);
 
     const at = now();
     const updatedAt = at.toISOString();
@@ -203,6 +302,18 @@ export const taskUpdateOperation = implement(taskUpdate, async ({ db, actor, wor
               ...(values.due_on === undefined ? [] : [eb('due_on', 'is', current.due_on)]),
               ...(values.link_url === undefined ? [] : [eb('link_url', 'is', current.link_url)]),
               ...(values.body_md === undefined ? [] : [eb('body_md', 'is', current.body_md)]),
+              // 区分は、読んだ値のままで、親が無い（task-move が親の下へ移すと区分を空にする）
+              ...(values.category_id === undefined
+                ? []
+                : [eb('category_id', 'is', current.category_id), eb('story_id', 'is', null)]),
+              ...(values.repository_id === undefined ? [] : [eb('repository_id', 'is', current.repository_id)]),
+              // 振る区分とリポジトリが、今も削除されていない
+              ...(next.category === null
+                ? []
+                : [eb.exists(categoryRow(q, workspaceId, next.category.id).select('categories.id'))]),
+              ...(next.repository === null
+                ? []
+                : [eb.exists(repositoryRow(q, workspaceId, next.repository.id).select('repositories.id'))]),
             ]),
           ),
       ),
@@ -235,7 +346,7 @@ export const taskUpdateOperation = implement(taskUpdate, async ({ db, actor, wor
       return { task: detailOf(updated, actor, workspace) };
     }
     // 閉じていれば 409 の workspace_closed。無ければ 404。どちらでもなければ、別の要求が先に同じ欄を変えたので、読み直してやり直す
-    // （完了にされていたら、次の周の assertEditable が 409 にする）
+    // （完了にされていたか親の下へ移されていたら、次の周の assertEditable が 409 に、区分かリポジトリが削除されていたら、次の周の読み取りが 404 にする）
     await throwIfClosed(db, workspaceId);
     if ((await readTask(db, workspaceId, taskId)) === undefined) throw new ApiError(404, 'not_found');
   }
