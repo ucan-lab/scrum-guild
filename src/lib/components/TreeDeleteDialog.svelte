@@ -97,7 +97,9 @@
         // 削除できるに戻ったら、前の読み直しで出した権限の文だけを消す（送った後の失敗の文は残す）
         if (!canDelete) submitError = forbidden;
         else if (submitError === forbidden) submitError = null;
-        // 配下が無くなって選択肢が消えると、そこにあったフォーカスが body に落ちる。描き直した後にやめるボタンへ移す
+        // 配下が無くなって選択肢が消えると、そこにあったフォーカスが body に落ちる。描き直した後にやめるボタンへ移す。
+        // 読み終えた状態（主ボタンと status）は、描き直しを待たずに出す
+        loading = false;
         await tick();
         if (
           mine === generation &&
