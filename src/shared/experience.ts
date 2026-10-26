@@ -7,3 +7,6 @@ export const XP_TASK_CREATED = 10;
 
 // タスクの完了。完了した時点の担当者に、担当がいなければ完了にした人に付く
 export const XP_TASK_COMPLETED = 30;
+
+// ストーリーの完了。配下のタスクで完了の経験値を受け取った人全員に、1人1回ずつ付く（取り消すと打ち消す）
+export const XP_STORY_COMPLETED = 20;

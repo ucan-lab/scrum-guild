@@ -351,13 +351,26 @@
     }).join("")}</div></div>`;
   }
 
-  // バックログの木。opts.order を渡すと、ストーリーの行に「上へ」「下へ」を、配下のタスクの行に並べ替えと「親を移す」を出す
+  // ストーリーの完了の操作（本番の TreeStory）。完了したストーリーは完了の印と「取り消す」。完了していなければ「完了にする」で、
+  // 配下の未完了のタスクが残るあいだは aria-disabled にして、横に「残り N 件」を添える
+  function storyDoneControl(sid, st, remaining) {
+    if (st.doneAt) {
+      return `<span class="hanko" role="img" aria-label="${esc(st.title)}: ${t("done")}">${icon("check")}<b>完</b></span>
+        <button class="btn is-sm is-quiet" type="button" aria-label="${t("done")}を取り消す: ${esc(st.title)}" data-toast="${t("story")}の${t("done")}を取り消しました">取り消す</button>`;
+    }
+    const note = remaining ? `<span class="tree-note" id="tree-${sid}-remaining" title="未完了の${t("task")}が残っているあいだは${t("done")}にできません">残り ${remaining} 件</span>` : "";
+    return `${note}<button class="btn is-sm" type="button" aria-label="${t("complete")}: ${esc(st.title)}"${remaining ? ` aria-disabled="true" aria-describedby="tree-${sid}-remaining"` : ` data-toast="${t("story")}を${t("done")}にしました"`}>${icon("check")}${t("complete")}</button>`;
+  }
+
+  // バックログの木。opts.order を渡すと、ストーリーの行に「上へ」「下へ」（order.parent が真なら「親を移す」も）を、
+  // 配下のタスクの行に並べ替えと「親を移す」を出す。opts.doneAt で、完了したストーリーとして描ける（カタログの見本）
   function treeStory(sid, solo, opts = {}) {
-    const st = D.stories[sid];
+    const st = opts.doneAt ? { ...D.stories[sid], doneAt: opts.doneAt } : D.stories[sid];
     const list = tasksWhere((x) => x.story === sid);
-    const open = list.filter((x) => !x.doneAt);
+    const open = opts.doneAt ? [] : list.filter((x) => !x.doneAt);
     const done = list.length - open.length;
-    const p = storyPts(sid);
+    const pts = storyPts(sid);
+    const p = opts.doneAt ? { done: pts.all, all: pts.all } : pts;
     return `<div class="tree-group">
       <div class="tree-row is-story ${solo ? "is-root" : ""}">
         ${treeCaret(`tree-${sid}`, st.title)}
@@ -365,7 +378,8 @@
         <span class="tree-title"><button class="tree-link" type="button" data-dialog="editStory">${esc(st.title)}</button>${solo && st.cat ? ` <span class="chip">${esc(D.categories[st.cat].name)}</span>` : ""} ${dueChip(st.due)}</span>
         <span class="tree-end">
           <span class="tree-ratio" title="完了 / 全体">${t("done")} ${p.done} / ${p.all} pt</span>
-          <button class="btn is-sm" type="button" data-dialog="createTask" aria-label="${t("task")}を足す: ${esc(st.title)}">${icon("plus")}${t("task")}</button>
+          ${st.doneAt ? "" : `<button class="btn is-sm" type="button" data-dialog="createTask" aria-label="${t("task")}を足す: ${esc(st.title)}">${icon("plus")}${t("task")}</button>`}
+          ${storyDoneControl(sid, st, open.length)}
           ${opts.order ? orderActions(st.title, opts.order) : ""}
         </span>
       </div>
@@ -378,7 +392,9 @@
   function treeCaret(bodyId, title) {
     return `<button class="tree-caret" type="button" aria-expanded="true" aria-controls="${bodyId}" aria-label="${esc(title)}を閉じる" data-tree-toggle="${bodyId}" data-tree-title="${esc(title)}">${icon("chevron")}</button>`;
   }
-  function treeEpic(eid) {
+  // エピックの行（本番の TreeEpic）。題はエピックのダイアログを開くボタン。opts.order を渡すと、配下のストーリーの行に
+  // 並べ替えと「親を移す」を出す。エピックの画面へのリンクと並べ替えは、エピックの画面の Issue（#65）で足す
+  function treeEpic(eid, opts = {}) {
     const e = D.epics[eid];
     const p = epicPts(eid);
     const stories = Object.keys(D.stories).filter((s) => D.stories[s].epic === eid);
@@ -386,10 +402,12 @@
       <div class="tree-row is-epic">
         ${treeCaret(`tree-${eid}`, e.title)}
         <span class="kind is-epic" title="${t("epic")}">${icon("flag")}</span>
-        <span class="tree-title"><a href="epic.html" class="tree-link">${esc(e.title)}</a> <span class="chip">${esc(D.categories[e.cat].name)}</span> ${dueChip(e.due)}</span>
-        <span class="tree-ratio" title="完了 / 全体">${t("done")} ${p.done} / ${p.all} pt</span>
+        <span class="tree-title"><button class="tree-link" type="button" data-dialog="editEpic">${esc(e.title)}</button> <span class="chip">${esc(D.categories[e.cat].name)}</span> ${dueChip(e.due)}</span>
+        <span class="tree-end"><span class="tree-ratio" title="完了 / 全体">${t("done")} ${p.done} / ${p.all} pt</span></span>
       </div>
-      <div class="tree-children" id="tree-${eid}">${stories.map((s) => treeStory(s)).join("")}</div>
+      <div class="tree-children" id="tree-${eid}">${stories.map((s, i) => treeStory(s, false,
+        opts.order ? { order: { first: i === 0, last: i === stories.length - 1, parent: true } } : {})).join("")}
+        ${stories.length ? "" : `<p class="tree-folded">${t("story")}はまだありません</p>`}</div>
     </div>`;
   }
 
@@ -954,6 +972,26 @@ const looooooooooooooooooooooooooooooooooongLine = "コードの長い1行は、
         ? `<button class="btn is-primary" type="button" data-close-dialog>閉じる</button>`
         : `<button class="btn is-quiet" type="button" data-close-dialog>やめる</button><button class="btn is-primary" type="button" data-close-dialog data-toast="${st ? "保存しました" : `${t("story")}を作りました`}">${st ? "保存する" : "作る"}</button>`);
   }
+  // エピックの作成と変更のダイアログ（本番の EpicDialog）。欄はストーリーのダイアログから受け入れ基準を除いたもの。
+  // バックログの見出しの「エピックを作る」と、木のエピックの行の題から開く。依頼主、クリア報酬、討伐隊はエピックの画面（#65）で直す
+  function epicDialog(title, e, readOnly = false) {
+    const link = e && e.link ? e.link : "";
+    const ro = readOnly ? " readonly" : "";
+    openDialog(title,
+      `${readOnly ? `<div class="callout is-info">${icon("shield")}<span>終了した${t("workspace")}の${t("epic")}は、読み取りだけできます。</span></div>` : ""}
+       <label class="field" for="d-et"><span class="field-label">タイトル</span><input class="input" id="d-et" placeholder="何を成し遂げるか" value="${e ? esc(e.title) : ""}"${ro}></label>
+       <label class="field" for="d-eb"><span class="field-label">本文</span><textarea class="textarea" id="d-eb"${ro}>${e ? esc((e.body || []).join("\n\n")) : ""}</textarea></label>
+       <div class="form-row is-start">
+         <label class="field" for="d-ed"><span class="field-label">${t("due")}</span>${readOnly
+           ? `<input class="input" id="d-ed" type="text" readonly value="${e && e.due ? e.due : ""}">`
+           : `<input class="input" id="d-ed" type="date" value="${e && e.due ? e.due : ""}">`}</label>
+         <div class="field"><label class="field-label" for="d-el">リンク</label>
+           <span class="input-row"><input class="input" id="d-el" type="url" placeholder="https://" value="${esc(link)}"${ro}>${link ? `<a class="btn" href="${esc(link)}" target="_blank" rel="noopener noreferrer" aria-label="リンクを新しいタブで開く">開く</a>` : ""}</span></div>
+       </div>`,
+      readOnly
+        ? `<button class="btn is-primary" type="button" data-close-dialog>閉じる</button>`
+        : `<button class="btn is-quiet" type="button" data-close-dialog>やめる</button><button class="btn is-primary" type="button" data-close-dialog data-toast="${e ? `${t("epic")}を保存しました` : `${t("epic")}を作りました`}">${e ? "保存する" : "作る"}</button>`);
+  }
   const DIALOGS = {
     sprintCreate: () => {
       const d = sprintDefaults();
@@ -993,6 +1031,9 @@ const looooooooooooooooooooooooooooooooooongLine = "コードの長い1行は、
     createStory: () => storyDialog(`${t("story")}を作る`, null),
     editStory: () => storyDialog(t("story"), D.stories.s4),
     viewStory: () => storyDialog(t("story"), { ...D.stories.s4, link: "https://example.com/notes/42" }, true),
+    createEpic: () => epicDialog(`${t("epic")}を作る`, null),
+    editEpic: () => epicDialog(t("epic"), D.epics.e1),
+    viewEpic: () => epicDialog(t("epic"), D.epics.e1, true),
     createTask: () => openDialog(`${t("create")}`,
       `<label class="field" for="d-title"><span class="field-label">タイトル</span><input class="input" id="d-title" placeholder="何をするか"></label>
        <div class="form-row is-start">
@@ -1022,13 +1063,22 @@ const looooooooooooooooooooooooooooooooooongLine = "コードの長い1行は、
         `<button class="btn is-primary" type="button" data-close-dialog>やめる</button><button class="btn is-danger" type="button" ${drawer.id ? "data-delete-task" : `data-close-dialog data-toast="削除しました"`}>削除する</button>`);
       document.querySelector(".dialog-sheet").classList.add("is-danger");
     },
-    // タスクの親を移す（本番の TaskMoveDialog）。移す先は親なしと、完了していない親のないストーリー（今の親を除く）。移す先の末尾に置く
+    // タスクの親を移す（本番の MoveParentDialog）。移す先は親なしと、完了していないストーリー（今の親を除く）。移す先の末尾に置く
     moveTask: () => {
       const x = tasksWhere((task) => task.story === "s4" && !task.doneAt)[0];
-      const others = Object.entries(D.stories).filter(([sid, s]) => sid !== "s4" && !s.epic && !s.doneAt);
+      const others = Object.entries(D.stories).filter(([sid, s]) => sid !== "s4" && !s.doneAt);
       openDialog(`「${esc(x ? x.title : "")}」の親を移す`,
         `<label class="field" for="d-move"><span class="field-label">移す先</span><select class="select" id="d-move" aria-describedby="d-move-hint"><option>親なし</option>${others.map(([, s]) => `<option>${esc(s.title)}</option>`).join("")}</select>
            <span class="field-hint" id="d-move-hint">移す先の末尾に置きます。</span></label>`,
+        `<button class="btn is-quiet" type="button" data-close-dialog>やめる</button><button class="btn is-primary" type="button" data-close-dialog>移す</button>`);
+    },
+    // ストーリーの親を移す（本番の MoveParentDialog。タスクの親を移すのと同じ部品）。移す先は親なしと、完了も中止もしていないエピック（今の親を除く）
+    moveStory: () => {
+      const st = D.stories.s1;
+      const others = Object.entries(D.epics).filter(([eid, e]) => eid !== st.epic && !e.cleared && !e.canceled);
+      openDialog(`「${esc(st.title)}」の親を移す`,
+        `<label class="field" for="d-move-story"><span class="field-label">移す先</span><select class="select" id="d-move-story" aria-describedby="d-move-story-hint"><option>親なし</option>${others.map(([, e]) => `<option>${esc(e.title)}</option>`).join("")}</select>
+           <span class="field-hint" id="d-move-story-hint">移す先の末尾に置きます。</span></label>`,
         `<button class="btn is-quiet" type="button" data-close-dialog>やめる</button><button class="btn is-primary" type="button" data-close-dialog>移す</button>`);
     },
     deleteEpic: () => {

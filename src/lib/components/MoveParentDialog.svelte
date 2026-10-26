@@ -1,60 +1,60 @@
-<script lang="ts">
+<script lang="ts" generics="T extends { id: string; title: string }">
   import { tick } from 'svelte';
-  import type { BacklogTask } from '../../shared/operations/task/backlog-tree.ts';
   import { t } from '../vocabulary.svelte.ts';
   import Dialog from './Dialog.svelte';
 
-  // タスクの親を移すダイアログ。移す先は、親なしと、stories（画面が渡す、完了していない親のないストーリー）のうち今の親でないもの。
-  // show(trigger, task, storyId) で、動かすタスクと今の親（null は親なし）を渡して開く。
-  // 「移す」を押したら閉じて、onmove に動かすタスクと移す先を渡す。送るのと失敗の扱いは画面が持つ（並べ替えと同じく、先に画面を動かす）。
+  // 親を移すダイアログ。タスクの親（ストーリー）と、ストーリーの親（エピック）を移すときに使う。
+  // 移す先は、親なしと、parents（画面が渡す、親にできる行。タスクなら完了していないストーリー、ストーリーなら完了も中止もしていない
+  // エピック）のうち今の親でないもの。show(trigger, item, parentId) で、動かす行と今の親（null は親なし）を渡して開く。
+  // 「移す」を押したら閉じて、onmove に動かす行と移す先を渡す。送るのと失敗の扱いは画面が持つ（並べ替えと同じく、先に画面を動かす）。
   // 移す先の末尾に置く（API には直前の行を送らない）
   let {
-    stories,
+    parents,
     onmove,
   }: {
-    stories: readonly { id: string; title: string }[];
-    onmove: (task: BacklogTask, storyId: string | null) => void;
+    parents: readonly { id: string; title: string }[];
+    onmove: (item: T, parentId: string | null) => void;
   } = $props();
 
   const ids = $props.id();
   const formId = `${ids}-form`;
   const targetId = `${ids}-target`;
   const hintId = `${ids}-hint`;
-  // 親なしの選択肢の値。ストーリーの ID とぶつからない
+  // 親なしの選択肢の値。親の ID とぶつからない
   const NONE = '';
 
   let open = $state(false);
   let dialog = $state<ReturnType<typeof Dialog>>();
-  // 動かすタスク。送ったら空にして、閉じるまでの2回目の送信を無視する。見出しの題は閉じるまで残す
-  let task = $state<BacklogTask | null>(null);
+  // 動かす行。送ったら空にして、閉じるまでの2回目の送信を無視する。見出しの題は閉じるまで残す
+  let item = $state<T | null>(null);
   let heading = $state('');
   let current = $state<string | null>(null);
   let choice = $state(NONE);
 
-  const candidates = $derived(stories.filter((story) => story.id !== current));
+  const candidates = $derived(parents.filter((parent) => parent.id !== current));
 
-  export function show(trigger: HTMLElement | null, target: BacklogTask, storyId: string | null): void {
-    task = target;
+  export function show(trigger: HTMLElement | null, target: T, parentId: string | null): void {
+    item = target;
     heading = target.title;
-    current = storyId;
-    // 今が親なしなら、最初のストーリーを選んでおく
-    choice = storyId === null ? (candidates[0]?.id ?? NONE) : NONE;
+    current = parentId;
+    // 今が親なしなら、最初の候補を選んでおく
+    choice = parentId === null ? (candidates[0]?.id ?? NONE) : NONE;
     dialog?.show(trigger);
   }
 
   async function submit(event: SubmitEvent): Promise<void> {
     event.preventDefault();
-    if (task === null) return;
-    const moving = task;
-    const storyId = choice === NONE ? null : choice;
+    if (item === null) return;
+    const moving = item;
+    const parentId = choice === NONE ? null : choice;
     // 閉じるまでの間にもう一度送られても（Enter の連打など）、2回目は無視する
-    task = null;
+    item = null;
     open = false;
     // 今の親のままなら、何も送らずに閉じる
-    if (storyId === current) return;
+    if (parentId === current) return;
     // ダイアログが閉じて画面に戻ってから渡す（画面が、作り直した行へフォーカスを移せるように）
     await tick();
-    onmove(moving, storyId);
+    onmove(moving, parentId);
   }
 </script>
 

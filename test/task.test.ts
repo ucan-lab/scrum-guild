@@ -464,7 +464,7 @@ describe('backlog-tree', () => {
     await createStory(organization, workspaceId, adminId, { deleted_at: '2026-10-21T00:00:00.000Z' });
     const elsewhere = await createStory(organization, target.otherWorkspace.id, adminId);
     await createTask(organization, target.otherWorkspace.id, adminId, { story_id: elsewhere.id, points: 8 });
-    // エピックの下のストーリーは、最上段に出さない（エピックの画面の Issue で足す）。その下のタスクの数も、親のないストーリーに混ざらない
+    // エピックの下のストーリーは、親のないストーリーの段に出さない（エピックの行の配下に出る）。その下のタスクの数も、親のないストーリーに混ざらない
     const epic = await createEpic(organization, workspaceId, adminId);
     const underEpic = await createStory(organization, workspaceId, adminId, {
       title: 'エピックの下',
@@ -495,6 +495,99 @@ describe('backlog-tree', () => {
     // ストーリーの下のタスクは、親のないタスクの段にも件数にも入らない
     expect(body.tasks).toEqual([]);
     expect(body.completed_count).toBe(0);
+  });
+
+  test('エピックを position の順に、配下のストーリー（配下のタスクつき）とポイントの合計つきで返す', async () => {
+    const target = await createTarget();
+    const adminId = target.admin.userId!;
+    const workspaceId = target.workspace.id;
+    const { organization } = target;
+    const later = await createEpic(organization, workspaceId, adminId, { title: '後', position: 'a1' });
+    const earlier = await createEpic(organization, workspaceId, adminId, {
+      title: '先',
+      position: 'a0',
+      body_md: '本文',
+      due_on: '2026-11-30',
+      link_url: 'https://example.com/e',
+      completed_at: '2026-10-21T00:00:00.000Z',
+      completed_by: adminId,
+    });
+    const canceled = await createEpic(organization, workspaceId, adminId, {
+      position: 'a2',
+      canceled_at: '2026-10-21T00:00:00.000Z',
+      canceled_by: adminId,
+    });
+    // 削除したエピックと、別のワークスペースのエピックは返さない。削除したエピックの下のストーリーも出さない
+    const deleted = await createEpic(organization, workspaceId, adminId, { deleted_at: '2026-10-21T00:00:00.000Z' });
+    await createStory(organization, workspaceId, adminId, { epic_id: deleted.id });
+    await createEpic(organization, target.otherWorkspace.id, adminId);
+
+    const second = await createStory(organization, workspaceId, adminId, { epic_id: earlier.id, position: 'a1' });
+    const first = await createStory(organization, workspaceId, adminId, {
+      epic_id: earlier.id,
+      position: 'a0',
+      completed_at: '2026-10-22T00:00:00.000Z',
+      completed_by: adminId,
+    });
+    await createStory(organization, workspaceId, adminId, {
+      epic_id: earlier.id,
+      deleted_at: '2026-10-21T00:00:00.000Z',
+    });
+    const open = await createTask(organization, workspaceId, adminId, { story_id: second.id, points: 3 });
+    await createTask(organization, workspaceId, adminId, {
+      story_id: first.id,
+      points: 5,
+      completed_at: '2026-10-21T00:00:00.000Z',
+      completed_by: adminId,
+    });
+    await createTask(organization, workspaceId, adminId, {
+      story_id: second.id,
+      points: 13,
+      deleted_at: '2026-10-21T00:00:00.000Z',
+    });
+    const root = await createStory(organization, workspaceId, adminId, { title: '親なし' });
+
+    const res = await tree(target);
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as TreeBody & {
+      epics: {
+        id: string;
+        title: string;
+        due_on: string | null;
+        link_url: string | null;
+        completed_at: string | null;
+        canceled_at: string | null;
+        stories: TreeBody['stories'];
+        points_done: number;
+        points_all: number;
+      }[];
+    };
+    expect(body.epics.map((epic) => epic.id)).toEqual([earlier.id, later.id, canceled.id]);
+    // 本文は長いので載せない（ダイアログを開くときに epic-get で読む）
+    expect(body.epics[0]).not.toHaveProperty('body_md');
+    expect(body.epics[0]).toMatchObject({
+      title: '先',
+      due_on: '2026-11-30',
+      link_url: 'https://example.com/e',
+      completed_at: '2026-10-21T00:00:00.000Z',
+      canceled_at: null,
+      points_done: 5,
+      points_all: 8,
+    });
+    expect(body.epics[0]!.stories.map((story) => story.id)).toEqual([first.id, second.id]);
+    expect(body.epics[0]!.stories[0]).toMatchObject({
+      completed_at: '2026-10-22T00:00:00.000Z',
+      tasks: [],
+      completed_task_count: 1,
+      points_done: 5,
+      points_all: 5,
+    });
+    expect(body.epics[0]!.stories[0]).not.toHaveProperty('epic_id');
+    expect(body.epics[0]!.stories[1]!.tasks.map((task) => task.id)).toEqual([open.id]);
+    expect(body.epics[1]).toMatchObject({ stories: [], points_done: 0, points_all: 0 });
+    expect(body.epics[2]).toMatchObject({ canceled_at: '2026-10-21T00:00:00.000Z' });
+    // エピックの下のストーリーは、親のないストーリーの段に入らない
+    expect(body.stories.map((story) => story.id)).toEqual([root.id]);
   });
 
   test('今日の日付はワークスペースのタイムゾーンで、週の始まりと一緒に返す', async () => {

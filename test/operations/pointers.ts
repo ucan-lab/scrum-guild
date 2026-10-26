@@ -5,6 +5,7 @@
 import { createFakeGithub } from '../auth/fake-github.ts';
 import { githubUser } from '../auth/helpers.ts';
 import {
+  createEpic,
   createInvitation,
   createOrganization,
   createOrganizationHoliday,
@@ -118,6 +119,32 @@ export const pointers: Pointers = {
   'story-update': async (target) => ({
     workspace_id: target.workspace.id,
     story_id: (await createStory(target.organization, target.workspace.id, target.admin.userId!)).id,
+    title: `見直した ${crypto.randomUUID().slice(0, 8)}`,
+  }),
+  // 呼ぶたびに配下の無いストーリーを作る（完了にすると、2回目は 409 になるため）
+  'story-complete': async (target) => ({
+    workspace_id: target.workspace.id,
+    story_id: (await createStory(target.organization, target.workspace.id, target.admin.userId!)).id,
+  }),
+  // 呼ぶたびに完了したストーリーを作る
+  'story-reopen': async (target) => ({
+    workspace_id: target.workspace.id,
+    story_id: (
+      await createStory(target.organization, target.workspace.id, target.admin.userId!, {
+        completed_at: '2026-10-22T00:00:00.000Z',
+        completed_by: target.admin.userId!,
+      })
+    ).id,
+  }),
+  'epic-create': async (target) => ({ workspace_id: target.workspace.id, title: '会員ランクを公開する' }),
+  'epic-get': async (target) => ({
+    workspace_id: target.workspace.id,
+    epic_id: (await createEpic(target.organization, target.workspace.id, target.admin.userId!)).id,
+  }),
+  // 呼ぶたびにエピックを作る（変える欄が同じだと、2回目は何も書かないため）
+  'epic-update': async (target) => ({
+    workspace_id: target.workspace.id,
+    epic_id: (await createEpic(target.organization, target.workspace.id, target.admin.userId!)).id,
     title: `見直した ${crypto.randomUUID().slice(0, 8)}`,
   }),
   // 呼ぶたびにストーリーとタスクを作り、タスクをそのストーリーの下へ移す

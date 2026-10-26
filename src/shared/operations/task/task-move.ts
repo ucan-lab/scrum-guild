@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { idSchema } from '../../id.ts';
+import { conflictReasonOf } from '../conflict-reason.ts';
 import { defineOperation } from '../define.ts';
 
 // 移動を 409 の conflict で断った理由（タスクの移動とストーリーの移動で共通）。
@@ -10,9 +11,7 @@ export type MoveConflictReason = (typeof moveConflictReasons)[number];
 
 // 409 の応答の details から理由を取り出す。形が違えば undefined
 export function moveConflictReasonOf(details: unknown): MoveConflictReason | undefined {
-  if (typeof details !== 'object' || details === null || !('reason' in details)) return undefined;
-  const { reason } = details;
-  return (moveConflictReasons as readonly unknown[]).includes(reason) ? (reason as MoveConflictReason) : undefined;
+  return conflictReasonOf(details, moveConflictReasons);
 }
 
 // バックログのタスクを並べ替える、親を移す。story_id は移す先の親のストーリー（null は親なし）。

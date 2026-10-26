@@ -350,7 +350,12 @@ test('完了したストーリーには「＋タスク」を出さず、期日�
 
   await page.getByRole('button', { name: '依頼を出す' }).click();
   const parent = page.getByRole('dialog', { name: '依頼を出す' }).getByLabel('親の達成目標');
-  await expect(parent.locator('option')).toHaveText(['なし', '問い合わせの一次回答を早くする']);
+  // エピックの下の完了していないストーリーも、木の順（エピックの下が先）で候補に出る
+  await expect(parent.locator('option')).toHaveText([
+    'なし',
+    '送料の割引にポイントを使える',
+    '問い合わせの一次回答を早くする',
+  ]);
 });
 
 test('親のストーリーが消えていたら、理由を出し、その場で候補を読み直して親なしに戻し、親の選択欄にフォーカスを移す', async ({
@@ -379,7 +384,11 @@ test('親のストーリーが消えていたら、理由を出し、その場�
   await dialog.getByRole('button', { name: '依頼を出す' }).click();
   await expect(dialog.getByText('この達成目標は見つかりません。親を選び直してください')).toBeVisible();
   const parent = dialog.getByLabel('親の達成目標');
-  await expect(parent.locator('option')).toHaveText(['なし', 'ポイントの付与と失効を管理画面で確かめられる']);
+  await expect(parent.locator('option')).toHaveText([
+    'なし',
+    '送料の割引にポイントを使える',
+    'ポイントの付与と失効を管理画面で確かめられる',
+  ]);
   await expect(parent).toHaveValue('');
   await expect(parent).toBeFocused();
   // ダイアログは開いたまま。親を選び直して作れる

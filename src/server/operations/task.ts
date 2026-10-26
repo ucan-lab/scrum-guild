@@ -186,27 +186,28 @@ export const taskCreateOperation = implement(taskCreate, async ({ db, actor, wor
 
 type TaskPoints = 0 | 1 | 2 | 3 | 5 | 8 | 13 | null;
 
-// 親のないストーリーの配下の、削除していないバックログのタスク。ストーリーから引いてタスクを結ぶ（FROM stories CROSS JOIN tasks）。
-// SQLite は INNER JOIN だと、親のないタスクも含めた tasks_workspace_tray を先に走査する計画を選ぶので、CROSS JOIN で順序を固定し、
-// タスク側を `tasks_story`（story_id, position の部分索引）で引く（結ぶ条件は WHERE に書く）。両側をワークスペースで絞る
-function tasksUnderRootStories(from: Pick<QueryCreator<Tables>, 'selectFrom'>, workspaceId: string) {
+// ストーリー（親のないものとエピックの下のもの）の配下の、削除していないバックログのタスク。ストーリーから引いてタスクを結ぶ
+// （FROM stories CROSS JOIN tasks）。SQLite は INNER JOIN だと、親のないタスクも含めた tasks_workspace_tray を先に走査する計画を
+// 選ぶので、CROSS JOIN で順序を固定し、ストーリー側を `stories_workspace_epic` の先頭の列（workspace_id）で、タスク側を
+// `tasks_story`（story_id, position の部分索引）で引く（結ぶ条件は WHERE に書く）。両側をワークスペースで絞る
+function tasksUnderStories(from: Pick<QueryCreator<Tables>, 'selectFrom'>, workspaceId: string) {
   return from
     .selectFrom('stories')
     .crossJoin('tasks')
     .whereRef('tasks.story_id', '=', 'stories.id')
     .whereRef('tasks.workspace_id', '=', 'stories.workspace_id')
     .where('stories.workspace_id', '=', workspaceId)
-    .where('stories.epic_id', 'is', null)
     .where('stories.deleted_at', 'is', null)
     .where('tasks.tray', '=', 'backlog')
     .where('tasks.deleted_at', 'is', null);
 }
 
-// 件数に上限を付けない。重さは 5 万件で測る Issue で決める
+// 件数に上限を付けない。重さは 5 万件で測る Issue で決める。
+// ストーリーは親のないものとエピックの下のものを1つの文で読み、epic_id で分ける（削除したエピックの下のストーリーは出さない）
 export const backlogTreeOperation = implement(backlogTree, async ({ db, workspace }) => {
   const organizationId = db.organizationId;
   const workspaceId = workspace.workspaceId;
-  const [workspaceResult, storiesResult, storyTasksResult, totalsResult, rootOpenResult, rootDoneResult] =
+  const [workspaceResult, epicsResult, storiesResult, storyTasksResult, totalsResult, rootOpenResult, rootDoneResult] =
     await db.batch([
       db.statement((q) =>
         q
@@ -217,17 +218,39 @@ export const backlogTreeOperation = implement(backlogTree, async ({ db, workspac
       ),
       db.statement((q) =>
         q
+          .selectFrom('epics')
+          .select([
+            'epics.id',
+            'epics.title',
+            'epics.due_on',
+            'epics.link_url',
+            'epics.completed_at',
+            'epics.canceled_at',
+          ])
+          .where('epics.workspace_id', '=', workspaceId)
+          .where('epics.deleted_at', 'is', null)
+          .orderBy('epics.position')
+          .orderBy('epics.id'),
+      ),
+      db.statement((q) =>
+        q
           .selectFrom('stories')
-          .select(['stories.id', 'stories.title', 'stories.due_on', 'stories.link_url', 'stories.completed_at'])
+          .select([
+            'stories.id',
+            'stories.epic_id',
+            'stories.title',
+            'stories.due_on',
+            'stories.link_url',
+            'stories.completed_at',
+          ])
           .where('stories.workspace_id', '=', workspaceId)
-          .where('stories.epic_id', 'is', null)
           .where('stories.deleted_at', 'is', null)
           .orderBy('stories.position')
           .orderBy('stories.id'),
       ),
       // 配下の未完了のタスク。ORDER BY を付けると SQLite が tasks_story を使わない計画を選ぶので、並べるのは下で行う
       db.statement((q) =>
-        tasksUnderRootStories(q, workspaceId)
+        tasksUnderStories(q, workspaceId)
           .leftJoin('users', (join) =>
             join.onRef('users.id', '=', 'tasks.assignee_user_id').on('users.organization_id', '=', organizationId),
           )
@@ -245,7 +268,7 @@ export const backlogTreeOperation = implement(backlogTree, async ({ db, workspac
       ),
       // ストーリーごとの、完了した件数とポイントの合計。未見積もりは 0
       db.statement((q) =>
-        tasksUnderRootStories(q, workspaceId)
+        tasksUnderStories(q, workspaceId)
           .select((eb) => [
             'stories.id as story_id',
             eb.fn
@@ -319,19 +342,48 @@ export const backlogTreeOperation = implement(backlogTree, async ({ db, workspac
   }
   const totalsByStory = new Map(totalsResult.rows.map((row) => [row.story_id!, row]));
 
+  type StoryRow = (typeof storiesResult.rows)[number];
+  // 応答には epic_id を載せない（親はエピックの行の配下に並べることで示す）
+  const storyOf = (story: StoryRow) => {
+    const totals = totalsByStory.get(story.id);
+    return {
+      id: story.id,
+      title: story.title,
+      due_on: story.due_on,
+      link_url: story.link_url,
+      completed_at: story.completed_at,
+      tasks: tasksByStory.get(story.id) ?? [],
+      completed_task_count: Number(totals?.completed_count ?? 0),
+      points_done: Number(totals?.points_done ?? 0),
+      points_all: Number(totals?.points_all ?? 0),
+    };
+  };
+  // エピックごとの配下のストーリー（position の順のまま分ける）
+  const storiesByEpic = new Map<string, ReturnType<typeof storyOf>[]>();
+  const rootStories: ReturnType<typeof storyOf>[] = [];
+  for (const row of storiesResult.rows) {
+    if (row.epic_id === null) {
+      rootStories.push(storyOf(row));
+      continue;
+    }
+    const list = storiesByEpic.get(row.epic_id) ?? [];
+    list.push(storyOf(row));
+    storiesByEpic.set(row.epic_id, list);
+  }
+
   return {
     today: todayIn(settings.timezone),
     week_start: settings.week_start,
-    stories: storiesResult.rows.map((story) => {
-      const totals = totalsByStory.get(story.id);
+    epics: epicsResult.rows.map((epic) => {
+      const stories = storiesByEpic.get(epic.id) ?? [];
       return {
-        ...story,
-        tasks: tasksByStory.get(story.id) ?? [],
-        completed_task_count: Number(totals?.completed_count ?? 0),
-        points_done: Number(totals?.points_done ?? 0),
-        points_all: Number(totals?.points_all ?? 0),
+        ...epic,
+        stories,
+        points_done: stories.reduce((sum, story) => sum + story.points_done, 0),
+        points_all: stories.reduce((sum, story) => sum + story.points_all, 0),
       };
     }),
+    stories: rootStories,
     tasks: rootOpenResult.rows.map(taskOf),
     completed_count: Number(rootDoneResult.rows[0]?.count ?? 0),
   };
