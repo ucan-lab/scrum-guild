@@ -1315,6 +1315,93 @@ export const dictionary = defineDictionary({
   holidayListLoadFailed: organization('休日の一覧を読み込めませんでした', '休日の一覧を読み込めませんでした'),
   holidayListRefreshFailed: organization('休日の一覧を更新できませんでした', '休日の一覧を更新できませんでした'),
 
+  // 組織の変更の履歴（組織の管理の画面）。{organization}、{admin}、{workspace}、{member} は、その言葉づかいの言葉を画面が渡す。
+  // 内容の文は organization-history の種類ごとに1つ。{name} は人か組織かワークスペースの名前、{date} は消す予定日（YYYY-MM-DD）
+  orgHistoryTitle: organization('変更の履歴', '変更の履歴'),
+  orgHistoryDesc: organization(
+    '{admin}の指名、運用者の操作、{workspace}の作成と終了など、{organization}の単位の変更を新しい順に出します。{workspace}の中の変更（{member}の所属など）は出しません。',
+    '{admin}の指名、運用者の操作、{workspace}の作成と終了など、{organization}の単位の変更を新しい順に出します。{workspace}の中の変更（{member}の所属など）は出しません。',
+  ),
+  orgHistoryListLabel: organization('{organization}の変更の履歴', '{organization}の変更の履歴'),
+  orgHistoryColumnAt: organization('日時', '日時'),
+  orgHistoryColumnActor: organization('した人', 'した人'),
+  orgHistoryColumnEvent: organization('内容', '内容'),
+  orgHistoryActorOperator: organization('運用者', '運用者'),
+  orgHistoryActorSystem: organization('自動の処理', '自動の処理'),
+  // 人の行が無い（まとめて消えた）か、まだ名前の分からない人
+  orgHistoryUnknownPerson: organization('名前の分からない人', '名前の分からない人'),
+  orgHistoryOrganizationCreated: organization(
+    '{organization}「{name}」を作りました',
+    '{organization}「{name}」を作りました',
+  ),
+  orgHistoryOrganizationCreatedNoName: organization('{organization}を作りました', '{organization}を作りました'),
+  orgHistoryOrganizationSuspended: organization(
+    '{organization}を停止しました（消す予定日 {date}）',
+    '{organization}を停止しました（消す予定日 {date}）',
+  ),
+  orgHistoryOrganizationSuspendedTemporary: organization(
+    '{organization}を一時的に停止しました',
+    '{organization}を一時的に停止しました',
+  ),
+  orgHistoryOrganizationResumed: organization('{organization}を再開しました', '{organization}を再開しました'),
+  orgHistorySuspensionChanged: organization(
+    '停止の理由を解約に切り替えました（消す予定日 {date}）',
+    '停止の理由を解約に切り替えました（消す予定日 {date}）',
+  ),
+  orgHistorySuspensionChangedTemporary: organization(
+    '停止の理由を一時的な停止に切り替えました',
+    '停止の理由を一時的な停止に切り替えました',
+  ),
+  orgHistoryOrganizationSettingsChanged: organization(
+    '{organization}の設定を変更しました',
+    '{organization}の設定を変更しました',
+  ),
+  orgHistoryAdminDesignated: organization('{name}を{admin}に指名しました', '{name}を{admin}に指名しました'),
+  // Google の招待で指名し、本人がまだログインしていない（名前はメールアドレスなので出さない）
+  orgHistoryAdminDesignatedGoogle: organization(
+    'Google で招待した人を{admin}に指名しました',
+    'Google で招待した人を{admin}に指名しました',
+  ),
+  orgHistoryAdminLoginLinked: organization(
+    '{name}が Google でログインし、{admin}の指名を受けました',
+    '{name}が Google でログインし、{admin}の指名を受けました',
+  ),
+  orgHistoryAdminDesignationMerged: organization(
+    'Google の招待で、{name}を{admin}にしました',
+    'Google の招待で、{name}を{admin}にしました',
+  ),
+  orgHistoryAdminRevoked: organization('{name}の{admin}を解除しました', '{name}の{admin}を解除しました'),
+  orgHistoryUserDisabled: organization('{name}を無効にしました', '{name}を無効にしました'),
+  orgHistoryUserEnabled: organization('{name}を有効に戻しました', '{name}を有効に戻しました'),
+  orgHistoryWorkspaceCreated: organization('{workspace}「{name}」を作りました', '{workspace}「{name}」を作りました'),
+  orgHistoryWorkspaceCreatedNoName: organization('{workspace}を作りました', '{workspace}を作りました'),
+  orgHistoryWorkspaceClosed: organization('{workspace}「{name}」を終了しました', '{workspace}「{name}」を終了しました'),
+  orgHistoryWorkspaceReopened: organization(
+    '{workspace}「{name}」を再開しました',
+    '{workspace}「{name}」を再開しました',
+  ),
+  // ワークスペースの行が無く、名前の分からない終了と再開
+  orgHistoryWorkspaceClosedNoName: organization('{workspace}を終了しました', '{workspace}を終了しました'),
+  orgHistoryWorkspaceReopenedNoName: organization('{workspace}を再開しました', '{workspace}を再開しました'),
+  // 知らない組（entity_type と action）
+  orgHistoryOther: organization('{organization}を変更しました', '{organization}を変更しました'),
+  orgHistoryEmptyTitle: organization('まだ変更の履歴がありません', 'まだ変更の履歴がありません'),
+  orgHistoryEmptyText: organization(
+    '{admin}の指名や{workspace}の作成をすると、ここに残ります。',
+    '{admin}の指名や{workspace}の作成をすると、ここに残ります。',
+  ),
+  orgHistoryMore: organization('古い履歴を読む', '古い履歴を読む'),
+  // 「古い履歴を読む」で足した件数。読み上げに伝える
+  orgHistoryLoadedMore: organization('{count} 件を読みました', '{count} 件を読みました'),
+  orgHistoryMoreFailed: organization(
+    '続きを読み込めませんでした。もう一度試してください。',
+    '続きを読み込めませんでした。もう一度試してください。',
+  ),
+  // 「古い履歴を読む」で最後まで読んだ（ボタンが消えるので、ここへフォーカスを移す）
+  orgHistoryEnd: organization('これより前の履歴はありません', 'これより前の履歴はありません'),
+  orgHistoryLoadFailed: organization('変更の履歴を読み込めませんでした', '変更の履歴を読み込めませんでした'),
+  orgHistoryRefreshFailed: organization('変更の履歴を更新できませんでした', '変更の履歴を更新できませんでした'),
+
   // 終了したワークスペースの帯（ワークスペースの中の全画面）。{date} は終了した日、{page} は組織の管理の画面の名前
   workspaceClosedBanner: workspace(
     '{date} に終了しました。読み取り専用です。',

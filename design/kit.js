@@ -41,7 +41,7 @@
     if (role === "admin") {
       return { ...common, users: { [D.me]: me }, workspaces: {}, members: [], seats: { ...D.seats, used: 1 },
         admin: { ...D.admin, users: [{ who: D.me, admin: true, wss: 0, lastLogin: "10/20" }], workspaces: [], holidays: [],
-          allocTotals: [], loadTotals: [], audit: [["10/20 09:00", null, `${me.name}を最初の管理者に指名した`]] } };
+          allocTotals: [], loadTotals: [], audit: [["2026/10/20 09:00", null, "adminDesignated", me.name]], auditMore: false } };
     }
     const members = role === "leader"
       ? [{ who: D.me, role: "leader", joined: "2026-10-20", alloc: null }]

@@ -1,0 +1,180 @@
+<script lang="ts">
+  import { tick } from 'svelte';
+  import { page } from '$app/state';
+  import { organizationHistory } from '../../../shared/operations/organization/index.ts';
+  import type { OutputOf } from '../../../shared/operations/define.ts';
+  import { callOperation } from '../../api.ts';
+  import { formatDateTime } from '../../format-datetime.ts';
+  import { isUnauthenticated, loginUrl } from '../../login-redirect.ts';
+  import { historyActorName, historyEventText, type HistoryEntry } from '../../organization-history.ts';
+  import { t } from '../../vocabulary.svelte.ts';
+  import Avatar from '../Avatar.svelte';
+  import EmptyState from '../EmptyState.svelte';
+  import Icon from '../Icon.svelte';
+  import Setting from '../Setting.svelte';
+  import SectionBoundary from './SectionBoundary.svelte';
+  import { SectionLoad } from './section-load.svelte.ts';
+
+  // 組織の管理の画面（admin.html）の変更の履歴の節。最初の50件の読み込みは SectionLoad、その表示は SectionBoundary に任せる。
+  // 「古い履歴を読む」は、前のページの最後の行のカーソルで次の50件を読み、今の一覧の後ろに足す。
+  // 読んでいる間はボタンを aria-disabled と aria-busy にして押しても無視し、「読み込んでいます」を、読めたら「N 件を読みました」を
+  // 読み上げに伝える。続きの読み込みの失敗は、読めた行を残したまま、ボタンの隣に理由を出す（もう一度押せば同じカーソルで読み直す）。
+  // 最後まで読んでボタンが消えたら、代わりに出す「これより前の履歴はありません」へフォーカスを移す
+  let { slug }: { slug: string } = $props();
+
+  type Cursor = NonNullable<OutputOf<typeof organizationHistory>['next']>;
+
+  const currentSlug = $derived(slug);
+
+  let entries = $state<HistoryEntry[]>([]);
+  let next = $state<Cursor | null>(null);
+  let loadingMore = $state(false);
+  let moreFailed = $state(false);
+  // 「古い履歴を読む」で最後まで読んだ。最初のページで終わったときは、終わりの文を出さない
+  let reachedEnd = $state(false);
+  let endNote = $state<HTMLElement>();
+  // 直前の「古い履歴を読む」で足した件数。読み上げに「N 件を読みました」と伝える
+  let loadedCount = $state<number | null>(null);
+
+  const section = new SectionLoad(
+    () => callOperation(organizationHistory, {}, { slug: currentSlug }),
+    (data) => {
+      entries = data.entries;
+      next = data.next;
+      reachedEnd = false;
+      moreFailed = false;
+      loadedCount = null;
+    },
+  );
+
+  // slug が替わったら、前の組織の履歴を捨てて読み直す
+  section.attach(
+    () => currentSlug,
+    () => {
+      entries = [];
+      next = null;
+      loadingMore = false;
+      moreFailed = false;
+      reachedEnd = false;
+      loadedCount = null;
+    },
+  );
+
+  async function loadMore(): Promise<void> {
+    if (loadingMore || next === null) return;
+    const token = section.token();
+    const before = next;
+    loadingMore = true;
+    moreFailed = false;
+    loadedCount = null;
+    try {
+      const result = await callOperation(organizationHistory, { before }, { slug: currentSlug });
+      if (!section.isCurrent(token)) return;
+      if (isUnauthenticated(result)) {
+        window.location.assign(loginUrl(page.url, result));
+        return;
+      }
+      if (!result.ok) {
+        moreFailed = true;
+        return;
+      }
+      // カーソルより前の行だけが返るので重ならないが、同じ id の行を2度描かない（each の key が重なると描けない）
+      const seen = new Set(entries.map((entry) => entry.id));
+      const added = result.data.entries.filter((entry) => !seen.has(entry.id));
+      entries = [...entries, ...added];
+      next = result.data.next;
+      loadedCount = added.length;
+      if (next === null) {
+        reachedEnd = true;
+        // 押したボタンが消えるので、終わりの文へフォーカスを移す
+        await tick();
+        if (section.isCurrent(token)) endNote?.focus();
+      }
+    } finally {
+      if (section.isCurrent(token)) loadingMore = false;
+    }
+  }
+</script>
+
+<Setting
+  title={t('orgHistoryTitle')}
+  description={t('orgHistoryDesc', {
+    admin: t('admin'),
+    workspace: t('workspace'),
+    organization: t('organization'),
+    member: t('member'),
+  })}
+>
+  <SectionBoundary {section} failedTitle={t('orgHistoryLoadFailed')} refreshFailedText={t('orgHistoryRefreshFailed')}>
+    {#if entries.length === 0}
+      <EmptyState
+        icon="clock"
+        title={t('orgHistoryEmptyTitle')}
+        text={t('orgHistoryEmptyText', { admin: t('admin'), workspace: t('workspace') })}
+      />
+    {:else}
+      <div class="table-wrap">
+        <table class="table is-stacked" aria-label={t('orgHistoryListLabel', { organization: t('organization') })}>
+          <thead>
+            <tr>
+              <th>{t('orgHistoryColumnAt')}</th>
+              <th>{t('orgHistoryColumnActor')}</th>
+              <th>{t('orgHistoryColumnEvent')}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {#each entries as entry (entry.id)}
+              {@const actorName = historyActorName(entry.actor, t)}
+              <tr>
+                <td class="mono"><time datetime={entry.created_at}>{formatDateTime(entry.created_at)}</time></td>
+                <td data-label={t('orgHistoryColumnActor')}>
+                  <!-- 名前の分からない人には、仮の頭文字のアバターを出さない -->
+                  {#if entry.actor.kind === 'user' && entry.actor.name !== null}
+                    <span class="person is-wrap"
+                      ><Avatar userId={entry.actor.id} name={actorName} decorative />{actorName}</span
+                    >
+                  {:else}
+                    <span class="props-note">{actorName}</span>
+                  {/if}
+                </td>
+                <!-- 内容は利用者が付けた名前（空白の無い長い名前を含む）を含むので、途中で折る -->
+                <td class="is-wrap" data-label={t('orgHistoryColumnEvent')}>{historyEventText(entry.event, t)}</td>
+              </tr>
+            {/each}
+          </tbody>
+        </table>
+      </div>
+      <!-- 続きを読む操作の行。最後まで読んだ後も行を残し、ボタンの代わりに終わりの文を置く（読み上げの領域を消さないため）。
+           読み上げの領域（状態と失敗）は行の中に置き、空のときに節の行の間隔を足さない -->
+      {#if next !== null || reachedEnd}
+        <div class="form-actions">
+          {#if next !== null}
+            <button
+              class="btn is-sm"
+              type="button"
+              aria-disabled={loadingMore}
+              aria-busy={loadingMore}
+              onclick={loadMore}
+            >
+              {t('orgHistoryMore')}
+            </button>
+          {:else}
+            <!-- tabindex="-1" は、最後まで読んでボタンが消えたときに、プログラムからフォーカスを置くため -->
+            <span class="props-note" tabindex="-1" bind:this={endNote}>{t('orgHistoryEnd')}</span>
+          {/if}
+          <span class="field-hint" role="status"
+            >{loadingMore
+              ? t('loading')
+              : loadedCount !== null
+                ? t('orgHistoryLoadedMore', { count: loadedCount })
+                : ''}</span
+          >
+          <span role="alert"
+            >{#if moreFailed}<span class="field-error"><Icon name="alert" />{t('orgHistoryMoreFailed')}</span
+              >{/if}</span
+          >
+        </div>
+      {/if}
+    {/if}
+  </SectionBoundary>
+</Setting>

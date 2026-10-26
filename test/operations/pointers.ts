@@ -51,6 +51,8 @@ export const pointers: Pointers = {
   'organization-settings-update': {
     noReference: { vocabulary: { from: 'game', to: 'scrum' }, theme: { from: 'simple', to: 'medieval' } },
   },
+  // カーソルを渡さなければ最新から読む。組織は URL の slug で決まる
+  'organization-history': { noReference: {} },
   'workspace-list': { noReference: {} },
   'workspace-leader-candidates': { noReference: {} },
   workspace: async (target) => ({ workspace_id: target.workspace.id }),
