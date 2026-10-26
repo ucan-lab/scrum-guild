@@ -14,8 +14,10 @@
   // tasks は未完了の行（画面が足した行を含む）。pointsDone と pointsAll は、画面が足した行と完了にした行の分を含む合計。
   // 配下のタスクの行は row の snippet で描く（完了の操作は画面の側が持つ）。
   // onComplete を渡すと（書き込めるとき）、完了していないストーリーに「完了にする」を出す。配下の未完了のタスク（remaining。
-  // 画面で完了にした行は数えない）が残るあいだは、押しても何も起きない aria-disabled にして、横に「残り N 件」を出す。
-  // 完了したストーリーには完了の印（.hanko）を付け、onReopen を渡すと「取り消す」を出す。送っている間（pending）は、どちらも aria-disabled。
+  // 画面で完了にした行は数えない）が残るあいだは、押しても何も起きない aria-disabled にして、横に「残り N 件の<タスク>」を出し、
+  // 押せない理由の全文（見えない文字）と一緒に aria-describedby で結ぶ。
+  // 完了したストーリーには完了の印（.hanko）を付け、onReopen を渡すと「取り消す」を出す。親のエピックが完了か中止していれば
+  // （reopenBlocked）、取り消しは必ず断られるので aria-disabled にし、理由を横に出す。送っている間（pending）は、どちらも aria-disabled。
   // onMove を渡すと（書き込めるとき）、行の右端に「上へ」「下へ」を出し、ストーリーの行の中で Alt と ↑ ↓ を押しても同じことをする。
   // キーは配下のタスクの行には掛けない（タスクの行は自分で受け持つ）。端の向きは aria-disabled にする。
   // onMoveParent を渡すと「親を移す」（親のエピックを選ぶダイアログ）も出す
@@ -32,6 +34,7 @@
     nested = false,
     remaining = 0,
     pending = false,
+    reopenBlocked = false,
     onComplete,
     onReopen,
     canMoveUp = false,
@@ -51,6 +54,7 @@
     nested?: boolean;
     remaining?: number;
     pending?: boolean;
+    reopenBlocked?: boolean;
     onComplete?: (story: BacklogStory) => void;
     onReopen?: (story: BacklogStory) => void;
     canMoveUp?: boolean;
@@ -74,6 +78,8 @@
 
   const bodyId = $props.id();
   const remainingId = `${bodyId}-remaining`;
+  const reasonId = `${bodyId}-reason`;
+  const blockedId = `${bodyId}-blocked`;
   let expanded = $state(true);
   const finished = $derived(story.completed_at !== null);
 
@@ -142,28 +148,35 @@
           <Icon name="check" /><b>{t('doneStamp')}</b>
         </span>
         {#if onReopen !== undefined}
+          {#if reopenBlocked}
+            <span class="tree-note" id={blockedId}
+              >{t('storyReopenBlocked', { done: t('done'), epic: t('epic'), story: t('story') })}</span
+            >
+          {/if}
           <button
             class="btn is-sm is-quiet"
             type="button"
             aria-label={t('storyReopenLabel', { done: t('done'), title: story.title })}
-            aria-disabled={pending}
+            aria-describedby={reopenBlocked ? blockedId : undefined}
+            aria-disabled={pending || reopenBlocked}
             bind:this={reopenButton}
             onclick={() => {
-              if (!pending) onReopen(story);
+              if (!pending && !reopenBlocked) onReopen(story);
             }}>{t('storyReopen')}</button
           >
         {/if}
       {:else if onComplete !== undefined}
         {#if remaining > 0}
-          <span class="tree-note" id={remainingId} title={t('storyRemainingNote', { task: t('task'), done: t('done') })}
-            >{t('storyRemaining', { count: remaining })}</span
+          <span class="tree-note" id={remainingId}>{t('storyRemaining', { count: remaining, task: t('task') })}</span>
+          <span class="visually-hidden" id={reasonId}
+            >{t('storyRemainingNote', { task: t('task'), done: t('done') })}</span
           >
         {/if}
         <button
           class="btn is-sm"
           type="button"
           aria-label={t('storyCompleteLabel', { complete: t('complete'), title: story.title })}
-          aria-describedby={remaining > 0 ? remainingId : undefined}
+          aria-describedby={remaining > 0 ? `${remainingId} ${reasonId}` : undefined}
           aria-disabled={pending || remaining > 0}
           bind:this={completeButton}
           onclick={() => {

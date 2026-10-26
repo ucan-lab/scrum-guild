@@ -1,11 +1,12 @@
 // D1 への入口。D1 には、ここの commonDb と orgDb からだけ問い合わせる（docs/development.md の「入口を守る規則」）。
 // src/server/db/ の外からは、このモジュール以外を import しない（ESLint が落とす）。
-// 生の SQL（kysely の sql）は db/ の中だけで使うので出さない（固定の条件 previousStatementChanged だけを、値として出す）。
+// 生の SQL（kysely の sql）は db/ の中だけで使うので出さない（固定の条件 previousStatementChanged と、一覧を1つの値で渡す jsonList だけを出す）。
 // 照合用の値はテストの口（testing.ts）から出す
 export type { Insertable, QueryCreator, Selectable } from 'kysely';
 export type { Statement } from './entry.ts';
 export { commonDb, orgDb, type CommonDb, type OrganizationDb } from './entries.ts';
 export { DatabaseUnavailableError, pingDatabase } from './ping.ts';
+export { jsonList } from './json-list.ts';
 export { previousStatementChanged } from './previous-statement.ts';
 export type { CommonTables, OrganizationTables } from './tables.ts';
 export type { VerifiedOrganization } from './verify-organization.ts';

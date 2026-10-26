@@ -38,7 +38,7 @@
   // ストーリーの「完了にする」は、配下の未完了のタスク（画面で完了にした行は数えない）が残るあいだは押せない。完了と取り消しは、通ったら木を読み直す。
   // 起票したタスクは、読み直さずに親の配下（親なしなら一覧の末尾）に足し、親の「全体」のポイントにも足す。親の行が畳まれていれば開く。
   // エピックとストーリーを作った、直したときは、木を読み直す。
-  // 完了の操作を送っている最中の行（pendingIds、storyPendingIds）は、読み直しでは捨てず、応答が来たら外す
+  // 完了の操作を送っている最中の行（pendingIds、storyPending）は、読み直しでは捨てず、応答が来たら外す
   let { data }: PageProps = $props();
 
   const workspace = $derived(data.workspace);
@@ -54,8 +54,8 @@
   let added = $state<{ task: BacklogTask; storyId: string | null }[]>([]);
   let completedIds = $state<string[]>([]);
   let pendingIds = $state<string[]>([]);
-  // 完了か取り消しを送っている最中のストーリー
-  let storyPendingIds = $state<string[]>([]);
+  // 完了か取り消しを送っている最中のストーリーと、送っている操作
+  let storyPending = $state<Record<string, 'complete' | 'reopen'>>({});
   // 画面で親を移したタスク（値は移す先の親。null は親なし）と、並べ替えた親ごとの id の並び（キーは親の ID か ROOT）。
   // ストーリーも同じ形で持つ（親はエピック）
   let movedParents = $state<Record<string, string | null>>({});
@@ -132,8 +132,18 @@
   const rootStoryList = $derived(storyLists[ROOT] ?? []);
   // 木の順（エピックの下、親のないものの順）に並べたストーリー
   const allStories = $derived([...epics.flatMap((epic) => storyLists[epic.id] ?? []), ...rootStoryList]);
-  // タスクの親に選べるストーリー（完了していないもの）と、ストーリーの親に選べるエピック（完了も中止もしていないもの）
-  const openStories = $derived(allStories.filter((story) => story.completed_at === null));
+  // 今その下に並んでいる、ストーリーの親のエピック。親なしなら undefined
+  function parentEpicOf(storyId: string): BacklogEpic | undefined {
+    const epicId = storyPlaces[storyId]?.parentId;
+    return epicId == null ? undefined : epics.find((epic) => epic.id === epicId);
+  }
+  // タスクの親に選べるストーリー（完了していないもの）。選択欄は親のエピックの題（親なしは null）でまとめる。
+  // ストーリーの親に選べるエピック（完了も中止もしていないもの）
+  const openStories = $derived(
+    allStories
+      .filter((story) => story.completed_at === null)
+      .map((story) => ({ id: story.id, title: story.title, group: parentEpicOf(story.id)?.title ?? null })),
+  );
   const openEpics = $derived(epics.filter((epic) => epic.completed_at === null && epic.canceled_at === null));
 
   const taskLists = $derived(
@@ -189,9 +199,14 @@
     };
   }
 
-  const completingStatus = $derived(
-    pendingIds.length > 0 || storyPendingIds.length > 0 ? t('taskCompleting', { done: t('done') }) : '',
-  );
+  // 送っている操作の読み上げ。タスクの完了、ストーリーの完了、ストーリーの取り消しの順に、送っているものを1つ選ぶ
+  const completingStatus = $derived.by(() => {
+    const storyActions = Object.values(storyPending);
+    if (pendingIds.length > 0) return t('taskCompleting', { done: t('done') });
+    if (storyActions.includes('complete')) return t('storyCompleting', { done: t('done') });
+    if (storyActions.includes('reopen')) return t('storyReopening', { done: t('done') });
+    return '';
+  });
   let taskDialog = $state<ReturnType<typeof TaskCreateDialog>>();
   let storyDialog = $state<ReturnType<typeof StoryDialog>>();
   let epicDialog = $state<ReturnType<typeof EpicDialog>>();
@@ -281,8 +296,8 @@
 
   // ストーリーを完了にする、取り消す。通ったら木を読み直し、作り直した行の操作（取り消すか完了にする）へフォーカスを移す
   async function setStoryCompletion(story: BacklogStory, action: 'complete' | 'reopen'): Promise<void> {
-    if (workspace === null || storyPendingIds.includes(story.id)) return;
-    storyPendingIds = [...storyPendingIds, story.id];
+    if (workspace === null || Object.hasOwn(storyPending, story.id)) return;
+    storyPending = { ...storyPending, [story.id]: action };
     const workspaceId = workspace.id;
     try {
       const input = { workspace_id: workspaceId, story_id: story.id };
@@ -315,7 +330,7 @@
       if (row) row.focusCompletion();
       else document.querySelector<HTMLElement>('h1.page-title')?.focus();
     } finally {
-      storyPendingIds = storyPendingIds.filter((id) => id !== story.id);
+      storyPending = Object.fromEntries(Object.entries(storyPending).filter(([id]) => id !== story.id));
     }
   }
 
@@ -498,11 +513,21 @@
     taskOrders = { ...taskOrders, [key]: [...ids, task.id] };
     if (storyId !== null) expandStory(storyId);
     const parent = storyId === null ? undefined : allStories.find((story) => story.id === storyId);
+    // 親のストーリーがエピックの下なら、エピックの題も添える（同じ題のストーリーが、別のエピックの下にありうるため）
+    const parentEpic = storyId === null ? undefined : parentEpicOf(storyId);
     void tick().then(() => entries[task.id]?.focusMoveParent());
     void announce(
       parent === undefined
         ? t('moveAnnouncedRoot', { title: task.title })
-        : t('moveAnnouncedUnder', { title: task.title, story: t('story'), parent: parent.title }),
+        : parentEpic === undefined
+          ? t('moveAnnouncedUnder', { title: task.title, story: t('story'), parent: parent.title })
+          : t('moveAnnouncedUnderEpic', {
+              title: task.title,
+              epic: t('epic'),
+              epicTitle: parentEpic.title,
+              story: t('story'),
+              parent: parent.title,
+            }),
     );
     const input = { workspace_id: workspace.id, task_id: task.id, story_id: storyId };
     send(() => callOperation(taskMove, input, { slug: page.params.slug ?? '' }), 'task');
@@ -559,7 +584,10 @@
 
 {#snippet storyRow(story: BacklogStory)}
   {@const place = storyPlaces[story.id]}
-  <!-- 親のないストーリーは、移す先のエピックがあるときだけ「親を移す」を出す（エピックの下のストーリーは、親なしへ移せる） -->
+  {@const epic = parentEpicOf(story.id)}
+  <!-- 親のないストーリーは、移す先のエピックがあるときだけ「親を移す」を出す（エピックの下のストーリーは、親なしへ移せる）。
+       完了か中止したエピックの下では、取り消しは必ず断られるので、押せない理由を出す -->
+
   <TreeStory
     bind:this={treeRows[story.id]}
     {story}
@@ -570,7 +598,8 @@
     {canWrite}
     nested={place?.parentId != null}
     remaining={remainingOf(story)}
-    pending={storyPendingIds.includes(story.id)}
+    pending={Object.hasOwn(storyPending, story.id)}
+    reopenBlocked={epic !== undefined && (epic.completed_at !== null || epic.canceled_at !== null)}
     onComplete={canWrite ? (target) => void setStoryCompletion(target, 'complete') : undefined}
     onReopen={canWrite ? (target) => void setStoryCompletion(target, 'reopen') : undefined}
     onEdit={(target, trigger) => storyDialog?.show(trigger, target.id)}
@@ -617,7 +646,7 @@
   {:else}
     <section class="section" aria-label={t('backlogTasksLabel', { backlog: t('backlog'), task: t('task') })}>
       {#if canWrite}
-        <p class="action-note">{t('backlogOrderNote')}</p>
+        <p class="action-note">{t('backlogOrderNote', { story: t('story'), task: t('task') })}</p>
       {/if}
       <div class="tree">
         {#each epics as epic (epic.id)}

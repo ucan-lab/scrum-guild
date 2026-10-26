@@ -248,6 +248,8 @@ h1, h2, h3 { text-wrap: balance; }
 .chip.is-warn { color: var(--color-warn); background: var(--color-warn-soft); border-color: currentColor; }
 .chip.is-todo { color: var(--color-warn); border-color: currentColor; border-style: dashed; }
 .chip.is-ok { color: var(--color-ok); background: var(--color-ok-soft); border-color: currentColor; }
+/* 完了とクリアの印。完了の印（.hanko）と同じ役の色で、テーマが変える（中世風は朱） */
+.chip.is-done { color: var(--color-done); background: color-mix(in srgb, var(--color-done) 10%, var(--color-surface)); border-color: currentColor; }
 .chip.is-carry { border-style: dashed; }
 .tag {
   font-size: var(--text-xs); padding: 0 6px; border-radius: var(--radius-1);
@@ -525,7 +527,9 @@ a.brand { color: inherit; text-decoration: none; }
 /* ===== バックログの木 ===== */
 .tree { background: var(--color-surface); border: 1px solid var(--color-line); border-left: var(--rule-double); border-radius: var(--radius-1); }
 .tree > * + * { border-top: 1px solid var(--color-line); }
-.tree-row { display: grid; grid-template-columns: 20px 24px minmax(0, 1fr) auto; gap: var(--space-2); align-items: center; padding: var(--space-3) var(--space-4) var(--space-3) var(--space-2); }
+/* 右端が横に並ぶ幅では、題の列に 12rem を先に取り、右端は残りの幅に収まらなければ中で折り返す（指で押す画面の 44px のボタンでも、
+   題の列を押しのけない） */
+.tree-row { display: grid; grid-template-columns: 20px 24px minmax(12rem, 1fr) minmax(0, max-content); gap: var(--space-2); align-items: center; padding: var(--space-3) var(--space-4) var(--space-3) var(--space-2); }
 .tree-row:hover { background: color-mix(in srgb, var(--color-accent-soft) 45%, transparent); }
 .tree-row.is-epic { background: var(--color-sunken); }
 .tree-row.is-epic .tree-title { font-family: var(--font-display); font-weight: var(--weight-display); font-size: var(--text-lg); letter-spacing: 0.03em; }
@@ -546,7 +550,7 @@ button.tree-link { border: 0; background: none; padding: 0; font: inherit; text-
 .tree-end { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: var(--space-1) var(--space-3); }
 .tree-ratio { font-family: var(--font-mono); font-size: var(--text-xs); color: var(--color-muted); white-space: nowrap; }
 /* 行の操作に添える短い説明（ストーリーの「完了にする」が押せない理由の「残り N 件」など） */
-.tree-note { font-size: var(--text-xs); color: var(--color-muted); white-space: nowrap; }
+.tree-note { font-size: var(--text-xs); color: var(--color-muted); min-width: 0; overflow-wrap: anywhere; }
 .tree-folded { font-size: var(--text-xs); color: var(--color-muted); padding: var(--space-2) var(--space-4) var(--space-2) var(--space-10); border-top: 1px solid var(--color-rule); }
 .tree-children .tree-children .tree-folded { padding-left: calc(var(--space-10) + var(--space-6)); }
 .tree-folded.is-root { padding-left: var(--space-4); }
@@ -560,6 +564,10 @@ button.tree-link { border: 0; background: none; padding: 0; font: inherit; text-
 @container (max-width: 640px) {
   .entry { grid-template-columns: 32px minmax(0, 1fr); }
   .entry-end { grid-column: 2; flex-wrap: wrap; }
+}
+/* ストーリーの行の右端（「完了 / 全体」、＋タスク、残りの件数、完了にする、並べ替えと親を移す）は、タスクの行より長い（450px 前後）。
+   一覧の幅が 800px 以下なら、題の下へ折り返す */
+@container (max-width: 800px) {
   .tree-row { grid-template-columns: 20px 24px minmax(0, 1fr); }
   .tree-ratio, .tree-end { grid-column: 3; }
 }

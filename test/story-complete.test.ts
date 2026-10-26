@@ -335,6 +335,117 @@ describe('story-complete', () => {
     expect(await logsOf(target, story.id)).toEqual([]);
   });
 
+  test('受け取り手が0人と読んだ後に1人増えても、やり直してその人に付ける', async () => {
+    const target = await createTarget();
+    const story = await emptyStory(target);
+    // 配下のタスクは完了しているが、まだ完了の経験値の付与が無い（読んだ受け取り手は0人）
+    const task = await createTask(target.organization, target.workspace.id, target.admin.userId!, {
+      story_id: story.id,
+      completed_at: AT,
+      completed_by: target.member.userId!,
+    });
+    const raced = racing(readsCompletion, async () => {
+      await insertGrant(target, { user_id: target.member.userId!, task_id: task.id, amount: 30 });
+    });
+    const res = await complete(target, story.id, target.member, raced);
+    expect(res.status).toBe(200);
+    expect(await balances(target, story.id)).toEqual({ [target.member.userId!]: XP_STORY_COMPLETED });
+  });
+
+  test('受け取り手が100人を超えても（D1 の1文の bind の上限）、完了にでき、全員に付ける', async () => {
+    const target = await createTarget();
+    const story = await emptyStory(target);
+    const db = orgDb(env, target.organization.verified);
+    const userIds: string[] = [];
+    const statements = [];
+    for (let index = 0; index < 110; index++) {
+      const userId = uuidv7();
+      const taskId = uuidv7();
+      userIds.push(userId);
+      statements.push(
+        db.statement((q) =>
+          q.insertInto('users').values({
+            id: userId,
+            organization_id: target.organization.id,
+            account_id: null,
+            login_provider: 'github',
+            login_subject: `${8100000 + index}${crypto.randomUUID().slice(0, 4).replace(/\D/g, '1')}`,
+            login_email: null,
+            claim_token_hash: null,
+            claim_expires_at: null,
+            name: `冒険者 ${index}`,
+            is_admin: 0,
+            work_start_on: null,
+            work_end_on: null,
+            disabled_at: null,
+            last_seen_at: null,
+            theme: null,
+            created_at: AT,
+            updated_at: AT,
+          }),
+        ),
+        db.statement((q) =>
+          q.insertInto('memberships').values({
+            id: uuidv7(),
+            workspace_id: target.workspace.id,
+            user_id: userId,
+            role: 'member',
+            joined_on: '2026-10-01',
+            left_on: null,
+            joined_at: AT,
+            left_at: null,
+          }),
+        ),
+        db.statement((q) =>
+          q.insertInto('tasks').values({
+            id: taskId,
+            workspace_id: target.workspace.id,
+            is_imported: 0,
+            tray: 'backlog',
+            title: `見積もり ${index}`,
+            body_md: null,
+            link_url: null,
+            story_id: story.id,
+            category_id: null,
+            repository_id: null,
+            sprint_id: null,
+            column_id: null,
+            assignee_user_id: userId,
+            points: 1,
+            due_on: null,
+            today_on: null,
+            completed_at: AT,
+            completed_by: userId,
+            position: 'a0',
+            column_position: null,
+            created_by: target.admin.userId!,
+            created_at: AT,
+            updated_at: AT,
+            deleted_at: null,
+          }),
+        ),
+      );
+    }
+    await db.batch(statements);
+    for (const [index, userId] of userIds.entries()) {
+      const tasks = await db.rows(
+        db.statement((q) =>
+          q
+            .selectFrom('tasks')
+            .select('id')
+            .where('workspace_id', '=', target.workspace.id)
+            .where('assignee_user_id', '=', userId),
+        ),
+      );
+      expect(tasks, String(index)).toHaveLength(1);
+      await insertGrant(target, { user_id: userId, task_id: tasks[0]!.id, amount: 30 });
+    }
+
+    const res = await complete(target, story.id);
+    expect(res.status).toBe(200);
+    expect(await storyGrants(target, story.id)).toHaveLength(110);
+  });
+
   test('読んでから書くまでに受け取り手が増えたら、読み直してやり直し、増えた人にも付ける', async () => {
     const target = await createTarget();
     const story = await emptyStory(target);
@@ -434,7 +545,7 @@ describe('story-reopen', () => {
     });
   });
 
-  test('止めた時計で、完了、取り消し、完了を同じ時刻に流しても落ちない', async () => {
+  test('止めた時計で、完了、取り消し、完了を同じ時刻に流しても落ちず、2回目の完了は同じキーの付与を付け直さない', async () => {
     const target = await createTarget();
     const story = await emptyStory(target);
     await completedTask(target, story.id, target.member.userId!);
@@ -443,6 +554,30 @@ describe('story-reopen', () => {
     expect((await reopen(target, story.id, target.member, frozen)).status).toBe(200);
     expect((await complete(target, story.id, target.member, frozen)).status).toBe(200);
     expect((await storyRow(target, story.id))!.completed_at).toBe('2026-10-26T01:00:00.000Z');
+    // 開発用の時計だけで起きる。完了の回のキー（完了した日時を含む）が同じなので、付与と打ち消しの1組だけが残り、合計は 0
+    expect(await storyGrants(target, story.id)).toHaveLength(2);
+    expect(await balances(target, story.id)).toEqual({ [target.member.userId!]: 0 });
+  });
+
+  test('受け取った人が所属を外れていても、取り消すと打ち消す', async () => {
+    const target = await createTarget();
+    const story = await emptyStory(target);
+    const leaving = await newMember(target);
+    await completedTask(target, story.id, leaving);
+    expect((await complete(target, story.id, target.member, clockAt('2026-10-26T01:00:00.000Z'))).status).toBe(200);
+    expect(await balances(target, story.id)).toEqual({ [leaving]: XP_STORY_COMPLETED });
+    const db = orgDb(env, target.organization.verified);
+    await db.run(
+      db.statement((q) =>
+        q
+          .updateTable('memberships')
+          .set({ left_on: '2026-10-26', left_at: '2026-10-26T01:30:00.000Z' })
+          .where('user_id', '=', leaving)
+          .where('workspace_id', '=', target.workspace.id),
+      ),
+    );
+    expect((await reopen(target, story.id, target.member, clockAt('2026-10-26T02:00:00.000Z'))).status).toBe(200);
+    expect(await balances(target, story.id)).toEqual({ [leaving]: 0 });
   });
 
   test('完了していなければ 409 の conflict（not_completed）', async () => {

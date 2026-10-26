@@ -12,6 +12,7 @@ import {
 } from '../../shared/operations/story/index.ts';
 import type { StoryCompletionConflictReason } from '../../shared/operations/story/story-complete.ts';
 import {
+  jsonList,
   previousStatementChanged,
   type OrganizationDb,
   type OrganizationTables,
@@ -727,7 +728,8 @@ export const storyCompleteOperation = implement(storyComplete, async ({ db, acto
                 eb.exists(
                   recipientGrants(q, workspaceId, storyId)
                     .select('g.id')
-                    .$if(recipients.length > 0, (sb) => sb.where('g.user_id', 'not in', recipients)),
+                    // 受け取り手が多くても bind の上限に当たらないよう、一覧は1つの値で渡す
+                    .where('g.user_id', 'not in', jsonList(recipients)),
                 ),
               ),
             ]),

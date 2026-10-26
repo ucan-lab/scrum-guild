@@ -2,7 +2,7 @@ import { generateKeyBetween } from 'fractional-indexing';
 import { now } from '../../shared/clock.ts';
 import { EPIC_DEFAULT_REWARD_TIER } from '../../shared/epic.ts';
 import { epicCreate, epicGet, epicUpdate, type EpicDetail } from '../../shared/operations/epic/index.ts';
-import type { OrganizationDb } from '../db/index.ts';
+import { previousStatementChanged, type OrganizationDb } from '../db/index.ts';
 import { ApiError } from '../errors.ts';
 import { uuidv7 } from '../uuid.ts';
 import { implement } from './implement.ts';
@@ -172,7 +172,7 @@ function diffOf(current: EpicDetail, input: UpdatedFields) {
 }
 
 // 書き方は story-update と同じ（src/server/operations/story.ts）。読んだ値からの差を、読んだ値のままなら、という条件つきで書き、
-// 通らなかったら読み直して差を作り直す
+// 通らなかったら読み直して差を作り直す。履歴だけは、直前の UPDATE に結ぶ（previousStatementChanged）
 export const epicUpdateOperation = implement(epicUpdate, async ({ db, actor, workspace, input }) => {
   const actorUserId = actorUserIdOf(actor);
   const organizationId = db.organizationId;
@@ -213,7 +213,8 @@ export const epicUpdateOperation = implement(epicUpdate, async ({ db, actor, wor
             ]),
           ),
       ),
-      // 自分の更新が通ったときだけ履歴を書く。条件は story-update と同じく、この更新の updated_at と書いた値が入った行があること
+      // 直前の UPDATE が行を変えたときだけ履歴を書く（docs/data-model.md の「直前の文に結ぶ」。止めた時計や同じ値を書く要求で、
+      // 負けた要求が履歴を二重に書かないため）
       db.statement((q) =>
         q
           .insertInto('change_logs')
@@ -231,28 +232,7 @@ export const epicUpdateOperation = implement(epicUpdate, async ({ db, actor, wor
                 eb.val(JSON.stringify(changes)).as('changes_json'),
                 eb.val(updatedAt).as('created_at'),
               ])
-              .where((eb) =>
-                eb.and([
-                  eb.exists(
-                    eb
-                      .selectFrom('epics')
-                      .select('epics.id')
-                      .where((sb) =>
-                        sb.and([
-                          sb('epics.id', '=', epicId),
-                          sb('epics.workspace_id', '=', workspaceId),
-                          sb('epics.deleted_at', 'is', null),
-                          sb('epics.updated_at', '=', updatedAt),
-                          ...(values.title === undefined ? [] : [sb('epics.title', 'is', values.title)]),
-                          ...(values.body_md === undefined ? [] : [sb('epics.body_md', 'is', values.body_md)]),
-                          ...(values.due_on === undefined ? [] : [sb('epics.due_on', 'is', values.due_on)]),
-                          ...(values.link_url === undefined ? [] : [sb('epics.link_url', 'is', values.link_url)]),
-                        ]),
-                      ),
-                  ),
-                  eb.exists(openWorkspace(eb, organizationId, workspaceId)),
-                ]),
-              ),
+              .where(previousStatementChanged),
           ),
       ),
     ]);

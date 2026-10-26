@@ -137,9 +137,9 @@
   const readOnly = $derived(!canWrite);
 
   const titleMessages = $derived<Record<EpicTitleProblem, string>>({
-    required: t('storyTitleRequired'),
-    too_long: t('storyTitleTooLong', { max: EPIC_TITLE_MAX_LENGTH }),
-    invalid_character: t('storyTitleInvalidCharacter'),
+    required: t('epicTitleRequired'),
+    too_long: t('epicTitleTooLong', { max: EPIC_TITLE_MAX_LENGTH }),
+    invalid_character: t('epicTitleInvalidCharacter'),
   });
 
   function bodyProblemMessage(raw: string): string | null {
@@ -232,9 +232,9 @@
           showToast(t('epicGone', { epic: t('epic') }), 'alert');
           ongone();
         } else if (result.status === 400) {
-          submitError = t('storyBadRequest');
+          submitError = t('epicBadRequest');
         } else {
-          submitError = editing === null ? t('storyCreateFailed') : t('storySaveFailed');
+          submitError = editing === null ? t('epicCreateFailed') : t('epicSaveFailed');
         }
         return;
       }
@@ -249,11 +249,11 @@
 
   const status = $derived(
     loadState === 'loading'
-      ? t('storyLoading')
+      ? t('epicLoading')
       : submitting
         ? epicId === null
-          ? t('storyCreating')
-          : t('storySaving')
+          ? t('epicCreating')
+          : t('epicSaving')
         : '',
   );
   const dialogTitle = $derived(epicId === null ? t('epicCreate', { epic: t('epic') }) : t('epic'));
@@ -273,7 +273,7 @@
 <Dialog bind:this={dialog} bind:open dismissible={!submitting} title={dialogTitle}>
   <form id={formId} class="form" onsubmit={submit} novalidate aria-busy={loadState === 'loading'}>
     {#if loadState === 'loading'}
-      <p class="field-hint" aria-hidden="true">{t('storyLoading')}</p>
+      <p class="field-hint" aria-hidden="true">{t('epicLoading')}</p>
     {:else if loadState === 'failed'}
       <div class="callout is-danger" role="alert">
         <Icon name="alert" /><span>{t('epicLoadFailed', { epic: t('epic') })}</span>
@@ -360,7 +360,7 @@
                   href={openHref}
                   target="_blank"
                   rel="external noopener noreferrer"
-                  aria-label={t('storyLinkOpenLabel')}>{t('storyLinkOpen')}</a
+                  aria-label={t('epicLinkOpenLabel')}>{t('epicLinkOpen')}</a
                 >
               {/if}
             </div>
@@ -387,7 +387,7 @@
         aria-disabled={submitting || loadState !== 'ready'}
         bind:this={submitButton}
       >
-        {submitting ? status : epicId === null ? t('storyCreateSubmit') : t('storySave')}
+        {submitting ? status : epicId === null ? t('epicCreateSubmit') : t('epicSave')}
       </button>
     {/if}
   {/snippet}

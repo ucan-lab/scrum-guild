@@ -1,5 +1,6 @@
 <script lang="ts" generics="T extends { id: string; title: string }">
   import { tick } from 'svelte';
+  import { groupParents, type ParentOption } from '../parent-options.ts';
   import { t } from '../vocabulary.svelte.ts';
   import Dialog from './Dialog.svelte';
 
@@ -12,7 +13,7 @@
     parents,
     onmove,
   }: {
-    parents: readonly { id: string; title: string }[];
+    parents: readonly ParentOption[];
     onmove: (item: T, parentId: string | null) => void;
   } = $props();
 
@@ -32,6 +33,8 @@
   let choice = $state(NONE);
 
   const candidates = $derived(parents.filter((parent) => parent.id !== current));
+  // ストーリーの候補は、親のエピックごとに optgroup でまとめる（エピックの候補は group を持たないので、まとめない）
+  const candidateGroups = $derived(groupParents(candidates));
 
   export function show(trigger: HTMLElement | null, target: T, parentId: string | null): void {
     item = target;
@@ -66,8 +69,18 @@
         {#if current !== null}
           <option value={NONE}>{t('moveParentNone')}</option>
         {/if}
-        {#each candidates as option (option.id)}
-          <option value={option.id}>{option.title}</option>
+        {#each candidateGroups.groups as group, index (index)}
+          {#if candidateGroups.grouped}
+            <optgroup label={group.label ?? t('parentRootGroup', { story: t('story') })}>
+              {#each group.options as option (option.id)}
+                <option value={option.id}>{option.title}</option>
+              {/each}
+            </optgroup>
+          {:else}
+            {#each group.options as option (option.id)}
+              <option value={option.id}>{option.title}</option>
+            {/each}
+          {/if}
         {/each}
       </select>
       <span class="field-hint" id={hintId}>{t('moveParentHint')}</span>

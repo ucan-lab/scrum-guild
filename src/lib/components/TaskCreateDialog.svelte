@@ -11,6 +11,7 @@
     type TaskTitleProblem,
   } from '../../shared/task.ts';
   import { callOperation } from '../api.ts';
+  import { groupParents, type ParentOption } from '../parent-options.ts';
   import { showToast } from '../toast.svelte.ts';
   import { t } from '../vocabulary.svelte.ts';
   import Dialog from './Dialog.svelte';
@@ -33,9 +34,12 @@
   }: {
     slug: string;
     workspaceId: string;
-    stories: readonly { id: string; title: string }[];
+    stories: readonly ParentOption[];
     oncreated: (task: BacklogTask, storyId: string | null) => void;
   } = $props();
+
+  // 親の選択欄は、親のエピックごとに optgroup でまとめる（同じ題のストーリーが、別のエピックの下にありうるため）
+  const parentGroups = $derived(groupParents(stories));
 
   type PointsChoice = (typeof TASK_POINT_VALUES)[number] | null;
   // 先頭が「未」（未見積もり）
@@ -282,8 +286,18 @@
           <label class="field-label" for={parentId}>{t('taskParent', { story: t('story') })}</label>
           <select class="select" id={parentId} bind:this={parentSelect} bind:value={story}>
             <option value="">{t('taskParentNone')}</option>
-            {#each stories as option (option.id)}
-              <option value={option.id}>{option.title}</option>
+            {#each parentGroups.groups as group, index (index)}
+              {#if parentGroups.grouped}
+                <optgroup label={group.label ?? t('parentRootGroup', { story: t('story') })}>
+                  {#each group.options as option (option.id)}
+                    <option value={option.id}>{option.title}</option>
+                  {/each}
+                </optgroup>
+              {:else}
+                {#each group.options as option (option.id)}
+                  <option value={option.id}>{option.title}</option>
+                {/each}
+              {/if}
             {/each}
           </select>
         </div>

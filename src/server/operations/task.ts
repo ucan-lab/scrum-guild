@@ -203,7 +203,8 @@ function tasksUnderStories(from: Pick<QueryCreator<Tables>, 'selectFrom'>, works
 }
 
 // 件数に上限を付けない。重さは 5 万件で測る Issue で決める。
-// ストーリーは親のないものとエピックの下のものを1つの文で読み、epic_id で分ける（削除したエピックの下のストーリーは出さない）
+// ストーリーは親のないものとエピックの下のものを1つの文で読み、epic_id で分ける。削除したエピックの下のストーリーも
+// （その配下のタスクも）読むが、エピックの一覧に親が無いので、どこにも並べずに捨てる
 export const backlogTreeOperation = implement(backlogTree, async ({ db, workspace }) => {
   const organizationId = db.organizationId;
   const workspaceId = workspace.workspaceId;

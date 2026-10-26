@@ -82,14 +82,21 @@ test('ゲームの言葉: レイドを作り、達成目標を下へ移し、配
   await story.getByRole('button', { name: 'クエストを足す: 残高が見える' }).click();
   const taskDialog = page.getByRole('dialog', { name: '依頼を出す' });
   await expect(taskDialog.getByLabel('親の達成目標').locator('option:checked')).toHaveText('残高が見える');
+  // 親の候補は、親のエピックの題でまとめる
+  await expect(taskDialog.getByLabel('親の達成目標').locator('optgroup')).toHaveAttribute(
+    'label',
+    'ポイント制度を公開する',
+  );
   await taskDialog.getByLabel('タイトル').fill('残高の API を作る');
   await taskDialog.getByRole('radio', { name: '3', exact: true }).check();
   await taskDialog.getByRole('button', { name: '依頼を出す' }).click();
   await expect(taskDialog).toBeHidden();
   const completeStory = story.getByRole('button', { name: '完遂にする: 残高が見える' });
   await expect(completeStory).toHaveAttribute('aria-disabled', 'true');
-  await expect(story.locator('.tree-note')).toHaveText('残り 1 件');
-  await expect(completeStory).toHaveAccessibleDescription('残り 1 件');
+  await expect(story.locator('.tree-note')).toHaveText('残り 1 件のクエスト');
+  await expect(completeStory).toHaveAccessibleDescription(
+    '残り 1 件のクエスト 未完了のクエストが残っているあいだは完遂にできません',
+  );
   await expect(epic.locator('.tree-row.is-epic .tree-ratio')).toHaveText('完遂 0 / 3 pt');
   // 押しても何も送らない
   let sent = 0;
@@ -187,4 +194,67 @@ test('スクラムの言葉: 配下の無いストーリーは完了にでき、
   await story.getByRole('button', { name: '完了を取り消す: 検知を早くする' }).click();
   await expect(page.getByRole('status').filter({ hasText: 'ストーリーの完了を取り消しました' })).toBeVisible();
   await expect(story.getByRole('button', { name: '完了にする: 検知を早くする' })).toBeVisible();
+});
+
+// seed のワークスペース（受託開発チーム）。エピック「ポイントの交換先を増やす」の下に、ストーリー「送料の割引にポイントを使える」がある
+const SEED_GAME_WORKSPACE = '/aoba/w/019a0000-0000-7000-8000-000000000401';
+const SEED_EPIC_STORY = '送料の割引にポイントを使える';
+const SEED_ROOT_STORY = 'ポイントの付与と失効を管理画面で確かめられる';
+
+test('クリアしたレイドの下の完遂した達成目標は、取り消しを押せず、理由を出す', async ({ page }) => {
+  // 木の応答で、seed のエピックをクリア済みに、その下のストーリーを完了にする
+  await page.route('**/api/aoba/backlog-tree', async (route) => {
+    const response = await route.fetch();
+    const body = (await response.json()) as { epics: { completed_at: string | null; stories: object[] }[] };
+    const epics = body.epics.map((epic) => ({
+      ...epic,
+      completed_at: '2026-10-22T00:00:00.000Z',
+      stories: epic.stories.map((story) => ({ ...story, completed_at: '2026-10-21T00:00:00.000Z' })),
+    }));
+    await route.fulfill({ response, json: { ...body, epics } });
+  });
+  let sent = 0;
+  page.on('request', (request) => {
+    if (request.url().endsWith('/story-reopen')) sent++;
+  });
+  await page.goto(SEED_GAME_WORKSPACE);
+  const epic = rowGroup(page, 'ポイントの交換先を増やす');
+  await expect(epic.locator('.tree-row.is-epic .chip.is-done')).toHaveText('クリア済み');
+  const story = rowGroup(page, SEED_EPIC_STORY);
+  const reopen = story.getByRole('button', { name: `完遂を取り消す: ${SEED_EPIC_STORY}` });
+  await expect(reopen).toHaveAttribute('aria-disabled', 'true');
+  await expect(reopen).toHaveAccessibleDescription('完遂か中止したレイドの下の達成目標は取り消せません');
+  await expect(story.locator('.tree-note')).toBeVisible();
+  // aria-disabled のボタンは Playwright が押せないものとして待つので、待たずに押す
+  await reopen.click({ force: true });
+  expect(sent).toBe(0);
+});
+
+test('ストーリーの行は、メニューの横の幅と指で押す画面でも、題の列を 12rem 以上に保ち、横にはみ出さない', async ({
+  browser,
+  baseURL,
+}) => {
+  for (const options of [
+    { viewport: { width: 960, height: 768 }, hasTouch: true, isMobile: true },
+    { viewport: { width: 1024, height: 900 } },
+    { viewport: { width: 1280, height: 900 } },
+    { viewport: { width: 1280, height: 900 }, hasTouch: true, isMobile: true },
+  ]) {
+    const context = await browser.newContext(options);
+    await signIn(context, baseURL, 'admin');
+    const page = await context.newPage();
+    await page.goto(SEED_GAME_WORKSPACE);
+    const label = `${options.viewport.width}px${options.hasTouch ? ' coarse' : ''}`;
+    // 親のないストーリーと、エピックの下のストーリー（一段字下げする）
+    for (const title of [SEED_ROOT_STORY, SEED_EPIC_STORY]) {
+      const row = rowGroup(page, title).locator(':scope > .tree-row');
+      await expect(row).toBeVisible();
+      expect((await row.locator('.tree-title').boundingBox())!.width, `${label} ${title}`).toBeGreaterThanOrEqual(190);
+    }
+    const overflow = await page.evaluate(
+      () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+    );
+    expect(overflow, label).toBeLessThanOrEqual(0);
+    await context.close();
+  }
 });

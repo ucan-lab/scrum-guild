@@ -56,7 +56,7 @@
         >{epic.title}</button
       >
       {#if epic.completed_at !== null}
-        <span class="chip is-ok"><Icon name="check" />{t('epicCleared')}</span>
+        <span class="chip is-done"><Icon name="check" />{t('epicCleared')}</span>
       {:else if epic.canceled_at !== null}
         <span class="chip">{t('epicCanceled')}</span>
       {/if}
