@@ -1,7 +1,11 @@
 // シェルのコマンドを、区切り（; && || | & 改行 ( )）ごとの語の並びに分ける。
 // 引用符の中の区切りは区切りとして扱わないので、grep "wrangler deploy" のような文字列は1語になる。
 // $(...) と `...` は（二重引用符の中でも）実行されるので、別の区切りとして取り出す。
-// コメントは捨てる。リダイレクトは '<' か '>' で始まる1語にまとめ、ヒアドキュメントの本文は '<<本文' の1語にする。
+// コメントは捨てる。語の並びには、シェルが道具に渡す argv だけを残す。
+// リダイレクト、ヒアドキュメント、ヒアストリングは、区切りに付けた列挙されない属性 redirects に { op, target, substitutions } で持つ。
+// 語の並びに混ぜると、引用符の中の ">.dev.vars" と見分けられず、argv の位置を数える判定が取り違えるため。
+// op は > >> < << <<< &> >| などの記号（記述子の番号と zsh の ! は含めない）、target は引数の位置と同じ読み方で引用符と \ を解いた先
+// （ヒアドキュメントは本文）、substitutions は先の中の $(…) と `…` の中身。中身は別の区切りとしても取り出す。
 // 完全なシェルの解釈ではない。判定に使うのは、各区切りで先頭に来る道具の名前と引数だけ。
 // 区切りの配列は、語ごとに2つの印を列挙されない属性に持つ。引用符を外した文字列だけでは、"a b?" と a\ b? や {a,--no-local}、
 // '$x' と "$x" を見分けられないため。
@@ -30,10 +34,16 @@ const CASE_LABEL_REST = /^(\|[ \t]*[^\s;&|()<>]+[ \t]*)*\)/;
 // 記号だけでできた予約語と test の道具（{ … }、[ -f x ]、[[ … ]]）は展開しない
 const LITERAL_WORDS = new Set(['{', '}', '[', ']', '[[', ']]']);
 
-function withMarks(words, expands, shapes) {
+function withMarks(words, expands, shapes, redirects = []) {
   Object.defineProperty(words, 'expands', { value: expands, configurable: true });
   Object.defineProperty(words, 'shapes', { value: shapes, configurable: true });
+  Object.defineProperty(words, 'redirects', { value: redirects, configurable: true });
   return words;
+}
+
+// 区切りのリダイレクト。印の無い配列（splitSegments を通っていない語）は持たない
+export function redirectsOf(words) {
+  return words.redirects ?? [];
 }
 
 // i 番目の語が展開で別の語に分かれるか、別の文字列になりうるか。印の無い配列（splitSegments を通っていない語）は、記号があれば展開とみなす
@@ -51,21 +61,24 @@ export function followsGlobGroup(words) {
   return words.followsGlobGroup === true;
 }
 
-// 語と印を一緒に切り出す。Array.prototype.slice は印を落とすので、判定の途中で語を切り出すときはこれを使う
+// 語と印を一緒に切り出す。Array.prototype.slice は印を落とすので、判定の途中で語を切り出すときはこれを使う。
+// リダイレクトは語の位置を持たず区切りぜんたいに掛かるので、切り出しても全部を運ぶ
 export function sliceWords(words, start, end) {
   return withMarks(
     words.slice(start, end),
     words.map((_, i) => expandsAt(words, i)).slice(start, end),
     words.map((_, i) => shapeAt(words, i)).slice(start, end),
+    redirectsOf(words),
   );
 }
 
-// 語と印を一緒につなぐ
+// 語と印を一緒につなぐ。切り出した部分をつなぎ直すと同じリダイレクトが重なるので、同じ項目は1つにする
 export function concatWords(...parts) {
   return withMarks(
     parts.flatMap((p) => [...p]),
     parts.flatMap((p) => p.map((_, i) => expandsAt(p, i))),
     parts.flatMap((p) => p.map((_, i) => shapeAt(p, i))),
+    [...new Set(parts.flatMap(redirectsOf))],
   );
 }
 
@@ -188,8 +201,20 @@ export function splitSegments(command) {
     shape += dynamic ? DYNAMIC : text;
     inWord = true;
   };
+  // 演算子（> など）を読んだ後で、先の語を待っているリダイレクト。次の1語は argv ではなく、この先になる
+  let openRedirect = null;
+  // 先の語が来なかったリダイレクト（echo x >; …）は、空の先で閉じる
+  const closeRedirect = () => {
+    if (!openRedirect) return;
+    words.redirects.push({ op: openRedirect.op, target: '', substitutions: [] });
+    openRedirect = null;
+  };
   const endWord = () => {
-    if (inWord) {
+    if (inWord && openRedirect) {
+      // 先の中の $(…) と `…` の中身は、nested に積んだ分から取る（別の区切りとしても判定される）
+      words.redirects.push({ op: openRedirect.op, target: word, substitutions: nested.slice(openRedirect.nestedFrom) });
+      openRedirect = null;
+    } else if (inWord) {
       words.push(word);
       words.expands.push(expands && !LITERAL_WORDS.has(word));
       words.shapes.push(shape);
@@ -201,21 +226,16 @@ export function splitSegments(command) {
   };
   const endSegment = () => {
     endWord();
-    if (words.length > 0) {
+    closeRedirect();
+    if (words.length > 0 || words.redirects.length > 0) {
       if (afterGlobGroup) Object.defineProperty(words, 'followsGlobGroup', { value: true, configurable: true });
       segments.push(words);
     }
     words = withMarks([], [], []);
   };
-  // リダイレクトとヒアドキュメントの本文の語。シェルは argv に渡さないので、展開の印は付けない
-  const pushLiteral = (owner, text) => {
-    owner.push(text);
-    owner.expands.push(false);
-    owner.shapes.push(text);
-  };
 
-  // 引用符を外した1語を読む。リダイレクトの宛先とヒアドキュメントの終わりの印に使う
-  const readWord = (start) => {
+  // 引用符を外した1語を読む。ヒアドキュメントの終わりの印に使う
+  const readDelimiter = (start) => {
     let j = start;
     while (command[j] === ' ' || command[j] === '\t') j++;
     let text = '';
@@ -342,24 +362,26 @@ export function splitSegments(command) {
     }
     const isRedirect = c === '<' || c === '>' || (c === '&' && command[i + 1] === '>');
     if (isRedirect) {
-      // 2>&1 の 2 のような番号は語に残さない
-      if (inWord && /^\d+$/.test(word)) {
+      // 2>&1 の 2 のような番号は語に残さない。先を待っているリダイレクトの後ろ（> 2>x）の数字は先なので残す
+      if (!openRedirect && inWord && /^\d+$/.test(word)) {
         word = '';
         shape = '';
         inWord = false;
       }
       endWord();
+      closeRedirect();
       if (command.startsWith('<<<', i)) {
-        const [text, next] = readWord(i + 3);
-        pushLiteral(words, `<<<${text}`);
-        i = next - 1;
+        openRedirect = { op: '<<<', nestedFrom: nested.length };
+        i += 2;
         continue;
       }
       if (command.startsWith('<<', i)) {
         const start = command[i + 2] === '-' ? i + 3 : i + 2;
-        const [delimiter, next] = readWord(start);
-        // 本文は改行の後で読み、この区切りの語に '<<本文' として足す
-        heredocs.push({ delimiter, words });
+        const [delimiter, next] = readDelimiter(start);
+        // 本文は改行の後で読み、この項目の target に足す。<<- も同じ op（タブを外す違いは、本文の行を trim して照合するので区別しない）
+        const redirect = { op: '<<', target: '', substitutions: [] };
+        words.redirects.push(redirect);
+        heredocs.push({ delimiter, redirect });
         i = next - 1;
         continue;
       }
@@ -367,21 +389,24 @@ export function splitSegments(command) {
       while ('<>&|'.includes(command[j]) && j - i < 3) j++;
       // zsh の >!、>>!、&>!、>&! は、既にあるファイルを上書きする >。! を宛先の語に残さない
       if (command[j] === '!' && command.slice(i, j).includes('>')) j++;
-      const op = command.slice(i, j);
+      const op = command.slice(i, j).replace(/!$/, '');
+      // 記述子の複製と閉じ（2>&1、>&2、<&0、>&-）は、書き込み先にも読み込み元にも数えない
       if (op.endsWith('&') && /[\d-]/.test(command[j] ?? '')) {
         while (/[\d-]/.test(command[j] ?? '')) j++;
         i = j - 1;
         continue;
       }
-      const [text, next] = readWord(j);
-      pushLiteral(words, `${op.includes('<') ? '<' : '>'}${text}`);
-      i = next - 1;
+      openRedirect = { op, nestedFrom: nested.length };
+      i = j - 1;
       continue;
     }
 
     const op = OPERATORS.find((o) => command.startsWith(o, i));
     if (op) {
-      const pending = inWord ? [...words, word] : [...words];
+      // 先の語が続かない演算子（echo x > ; …）は、リダイレクトを空の先で閉じる
+      if (!inWord) closeRedirect();
+      // 先を読んでいる語は argv ではないので、道具の位置の判定には数えない
+      const pending = inWord && !openRedirect ? [...words, word] : [...words];
       // [[ … ]] の中の ( ) と、=~ の後ろか括弧の中の | は、条件式と正規表現の文字（[[ $x =~ ^(a|b)$ ]]）。
       // 閉じていない [[ に、後ろのコマンドを | で飲み込ませないよう、| は =~ の後ろか括弧の中に限る
       const inTest = pending[commandIndex(pending)] === '[[' && !pending.includes(']]');
@@ -400,6 +425,7 @@ export function splitSegments(command) {
         shape = '';
         inWord = false;
         expands = false;
+        openRedirect = null;
         words = withMarks([], [], []);
         afterGlobGroup = false;
         i += label[0].length - 1;
@@ -430,7 +456,7 @@ export function splitSegments(command) {
       // ヒアドキュメントの本文（行の終わりから終わりの印の行まで）は、区切りとして読まない
       if (op === '\n' && heredocs.length > 0) {
         let j = i + 1;
-        for (const { delimiter, words: owner } of heredocs) {
+        for (const { delimiter, redirect } of heredocs) {
           const body = [];
           while (j < command.length) {
             const end = command.indexOf('\n', j);
@@ -440,7 +466,7 @@ export function splitSegments(command) {
             if (line.trim() === delimiter) break;
             body.push(line);
           }
-          pushLiteral(owner, `<<${body.join('\n')}`);
+          redirect.target = body.join('\n');
         }
         heredocs.length = 0;
         i = j - 1;
@@ -449,7 +475,7 @@ export function splitSegments(command) {
     }
     // zsh は語の先頭の =名前 を道具のパスに展開する（=wrangler は /…/wrangler）。道具の位置では = を外して道具の名前として読む。
     // 引数の位置（echo =.env）は、道具が見つからなければ zsh が実行を止めるので、文字のまま読む
-    if (c === '=' && !inWord && commandIndex(words) === -1 && /[\w.-]/.test(command[i + 1] ?? '')) continue;
+    if (c === '=' && !inWord && !openRedirect && commandIndex(words) === -1 && /[\w.-]/.test(command[i + 1] ?? '')) continue;
     // ~名前（zsh の hash -d、bash の ~- と ~+、~user）は、語の先頭か = と : の後ろで別の文字列に展開される。
     // ~ だけと ~/ は家のディレクトリなので文字として読む
     if (c === '~' && (!inWord || /[=:]$/.test(word)) && !/^~(\/|$|[\s;&|<>()])/.test(command.slice(i))) {
@@ -534,7 +560,7 @@ function scanCommand(words) {
   let previous = '';
   for (let i = 0; i < words.length; i++) {
     const w = words[i];
-    if (w === '' || isAssignment(w) || /^[<>]/.test(w)) continue;
+    if (w === '' || isAssignment(w)) continue;
     if (w.startsWith('-')) {
       const takesValue =
         previous === 'xargs'
@@ -565,12 +591,12 @@ export function prefixIndexes(words) {
   return scanCommand(words).prefixes;
 }
 
-// 値を取るフラグとリダイレクトを飛ばして、位置の引数の位置を返す。展開の印を引くとき（git push の refspec）に使う
+// 値を取るフラグを飛ばして、位置の引数の位置を返す。展開の印を引くとき（git push の refspec）に使う
 export function positionalIndexes(args, flagsWithValue = new Set()) {
   const result = [];
   for (let i = 0; i < args.length; i++) {
     const a = args[i];
-    if (a === '--' || /^[<>]/.test(a)) continue;
+    if (a === '--') continue;
     if (a.startsWith('-')) {
       if (flagsWithValue.has(a)) i++;
       continue;
@@ -580,7 +606,7 @@ export function positionalIndexes(args, flagsWithValue = new Set()) {
   return result;
 }
 
-// 値を取るフラグとリダイレクトを飛ばして、位置の引数だけを返す
+// 値を取るフラグを飛ばして、位置の引数だけを返す
 export function positionals(args, flagsWithValue = new Set()) {
   return positionalIndexes(args, flagsWithValue).map((i) => args[i]);
 }
