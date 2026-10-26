@@ -606,6 +606,54 @@ describe('月の形', () => {
   });
 });
 
+describe('organization_holidays', () => {
+  async function holiday(orgId: string, userId: string, holidayOn: string | null, name: string | null = null) {
+    return run(
+      `INSERT INTO organization_holidays (organization_id, holiday_on, name, created_by, created_at) VALUES (?, ?, ?, ?, ?)`,
+      orgId,
+      holidayOn,
+      name,
+      userId,
+      AT,
+    );
+  }
+
+  test('同じ組織の同じ日付は1行だけ。別の組織なら同じ日付を持てる', async () => {
+    const { orgId, userId } = await workspace();
+    const other = await workspace();
+    await holiday(orgId, userId, '2026-11-03');
+    await expect(holiday(orgId, userId, '2026-11-03')).rejects.toThrow(/UNIQUE|PRIMARY KEY/);
+    await expect(holiday(other.orgId, other.userId, '2026-11-03')).resolves.toBeTruthy();
+  });
+
+  test.each([['2026/11/03'], ['2026-02-30'], ['2026-11-3'], ['1999-12-31'], ['2100-01-01']])(
+    '日付 %s は CHECK に当たる',
+    async (holidayOn) => {
+      const { orgId, userId } = await workspace();
+      await expect(holiday(orgId, userId, holidayOn)).rejects.toThrow(/CHECK/);
+    },
+  );
+
+  test('2000-01-01 と 2099-12-31 は入る', async () => {
+    const { orgId, userId } = await workspace();
+    await expect(holiday(orgId, userId, '2000-01-01')).resolves.toBeTruthy();
+    await expect(holiday(orgId, userId, '2099-12-31')).resolves.toBeTruthy();
+  });
+
+  test('日付は空にできない', async () => {
+    const { orgId, userId } = await workspace();
+    await expect(holiday(orgId, userId, null)).rejects.toThrow(/NOT NULL/);
+  });
+
+  test('名前は NULL か 1〜40 字。空の文字列は持たない。字数はコードポイントで数える', async () => {
+    const { orgId, userId } = await workspace();
+    await expect(holiday(orgId, userId, '2026-11-03', null)).resolves.toBeTruthy();
+    await expect(holiday(orgId, userId, '2026-11-06', '')).rejects.toThrow(/CHECK/);
+    await expect(holiday(orgId, userId, '2026-11-04', '🎌'.repeat(40))).resolves.toBeTruthy();
+    await expect(holiday(orgId, userId, '2026-11-05', 'あ'.repeat(41))).rejects.toThrow(/CHECK/);
+  });
+});
+
 describe('xp_grants.dedupe_key', () => {
   test('同じキーの付与は2つ作れない', async () => {
     const { userId, workspaceId } = await workspace();

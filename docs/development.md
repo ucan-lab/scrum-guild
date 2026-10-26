@@ -87,7 +87,7 @@
 
 置き場所は `src/server/db/`（人が差分を読む領域。「マージの判定」）。外から import してよいのは入口のモジュール `db/index.ts` だけ。
 
-- 入口は2つ。`commonDb(env)` は共通の6表だけを型に持ち、`orgDb(env, organization)` は組織の中の16表だけを型に持つ。`organization` は `VerifiedOrganization`（組織を確かめた結果）で、private な印を持つクラスなので、同じ形のオブジェクトは型の検査を通らず、値は凍結されて `organizationId` も書き換えられない。`index.ts` が出すのは型だけである。作る関数 `issueVerifiedOrganization()` は `db/verify-organization.ts` のモジュールの関数で、クラスの static にはしていないため、手に入れた値から辿れない。コンストラクターは作る関数だけが持つ札を要求し、値の `constructor` からは作り直せない。`orgDb` は、作る関数が登録したものだけを実行時に受け取る。組織を確かめる処理は `db/enter-organization.ts`（「操作の定義」）
+- 入口は2つ。`commonDb(env)` は共通の6表だけを型に持ち、`orgDb(env, organization)` は組織の中の17表だけを型に持つ。`organization` は `VerifiedOrganization`（組織を確かめた結果）で、private な印を持つクラスなので、同じ形のオブジェクトは型の検査を通らず、値は凍結されて `organizationId` も書き換えられない。`index.ts` が出すのは型だけである。作る関数 `issueVerifiedOrganization()` は `db/verify-organization.ts` のモジュールの関数で、クラスの static にはしていないため、手に入れた値から辿れない。コンストラクターは作る関数だけが持つ札を要求し、値の `constructor` からは作り直せない。`orgDb` は、作る関数が登録したものだけを実行時に受け取る。組織を確かめる処理は `db/enter-organization.ts`（「操作の定義」）
 - `orgDb` は組織の絞り込みを付けない。呼び出し側が、自分の文を `organization_id` か、確かめたワークスペース（`VerifiedWorkspace`。作りは `VerifiedOrganization` と同じで、`db/verify-workspace.ts` の外では作れない）の `workspaceId` で絞る。絞り込みに使う組織の ID は、リクエストの入力ではなく、入口の `organizationId`（確かめた組織の ID。読み取り専用）から取る。絞り込みを入口に寄せない。ワークスペースの下の表は、ワークスペースの ID で絞るのが組織の分離の単位になるため。すべての組織の中の操作に、別の組織の ID で 404 になることを確かめるテストを、定義の一覧から回す
 - 表の型は `db/tables.ts` の定数（列名、型、NULL を許すか、DEFAULT があるか）から導く。DEFAULT のある列と NULL を許す列は INSERT で省ける。列名は DB と同じスネークケースのままで、`CamelCasePlugin` は使わない。表を足すときは、マイグレーションと同じ PR で定数に足す
 - 表の型の照合: `test/table-columns.test.ts` が、全マイグレーションを当てた D1 の `sqlite_master` と `PRAGMA table_info` を定数と突き合わせる。表の一覧、列名、型、NOT NULL、DEFAULT の有無、主キーの NOT NULL がずれると落ちる

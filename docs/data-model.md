@@ -1,6 +1,6 @@
 # Scrum Guild データモデル
 
-状態: 確定。要件定義（`requirements.md`）を D1（SQLite）のテーブルに落としたもの。最初のマイグレーション（`migrations/0001_create_initial_tables.sql`）で、共通の6表と、一本道に要る組織の中の16表を作った。残りの表は、使う機能の Issue でマイグレーションを足して作る
+状態: 確定。要件定義（`requirements.md`）を D1（SQLite）のテーブルに落としたもの。最初のマイグレーション（`migrations/0001_create_initial_tables.sql`）で、共通の6表と、一本道に要る組織の中の16表を作った。`organization_holidays` は `migrations/0004_add_organization_holidays.sql` で足した。残りの表は、使う機能の Issue でマイグレーションを足して作る
 
 ## 決まりごと
 
@@ -254,14 +254,19 @@
 | 列 | 型 | 制約 | 説明 |
 | --- | --- | --- | --- |
 | organization_id | TEXT | PK、FK organizations | |
-| holiday_on | TEXT | PK | |
-| name | TEXT | | 「元日」など |
+| holiday_on | TEXT | PK、`CHECK (holiday_on IS date(holiday_on) AND holiday_on BETWEEN '2000-01-01' AND '2099-12-31')` | 2000〜2099 年の日付だけ |
+| name | TEXT | `CHECK (name IS NULL OR length(name) BETWEEN 1 AND 40)` | 「元日」など。無くてよい（空は NULL で、空の文字列は持たない） |
 | created_by | TEXT | NOT NULL、FK users | |
 | created_at | TEXT | NOT NULL | |
 
-- 索引: `(created_by)`。外部キーの検査。
-
-一括の登録は `INSERT ... ON CONFLICT DO NOTHING` で行う。
+- 作ったのは `migrations/0004_add_organization_holidays.sql`（#194）。積載量（#66）が、全員の稼働しない日として読む。
+- 索引: `(created_by)`。外部キーの検査。組織ごとの一覧は主キーの先頭の `organization_id` で引く。
+- 操作はどれも管理者だけ（`organization-holiday-list`、`organization-holiday-add`、`organization-holiday-delete`）。どの文も `organization_id` を確かめた組織で絞る。一覧は日付の古い順に全件を返す。
+- 日付は 2000〜2099 年だけ。貼り付けた一覧の年の打ち間違い（1926、2206 など）を、暦にある日付のまま入れないため。画面の解析は理由 `out_of_range` で示し、API は 400 で断り、DB の CHECK も当たる。`YYYY-MM-DD` の形どうしなら文字の順が日付の順なので、`BETWEEN` で比べる。
+- 名前は前後の空白を除いて 40 字まで（コードポイントで数える）。見えない文字（制御文字、ゼロ幅のスペースなど）を含む名前は断る。決まりは `src/shared/text-rules.ts` の `shortTextProblem` と同じで、空だけは通して NULL にする。画面の貼り付けの解析（`src/shared/holiday.ts`）と API の検証が同じ判定を使う。
+- 一括の登録は `INSERT ... ON CONFLICT DO NOTHING ... RETURNING holiday_on` で行う。登録済みの日付は飛ばし、名前も書き換えない。入った件数は `RETURNING` の行で数え、送った件数との差を登録済みとして返す。1回に送れるのは 100 件まで。D1 の1文の束縛は 100 個までなので、5列の行を 20 件ずつの文に分け、全部を1回の `batch()` で送る（途中で落ちれば何も入らない）。同じ送信の中で同じ日付が重なれば 400 で断る。
+- 削除は組織と日付で1行を消す。消えた行が無ければ 404 の `not_found`。確かめのダイアログは挟まない（入れ直せるため）。
+- 休日の登録と削除は `change_logs` に書かない。組織の変更の履歴（#193）が扱うのは、権限、組織の設定、運用者の操作で、休日は積載量の入力にすぎないため。
 
 ## ユーザーの稼働
 
@@ -1014,6 +1019,8 @@ D1 は対話的なトランザクションを持たない。まとめて書く�
 | ワークスペースを開き直す | 閉じるのと同じ形で、`action` は `reopen`、`changes_json` は `{"closed_at": [前の日時, null]}`、`workspaces` の条件は `closed_at = 前の日時`（読んだ値）。何も入らなければ、読み直して `closed_at` が読んだ値と違えば 409（`conflict`）、同じなら 404。開いているワークスペースには、書く前に 409（`conflict`） |
 | 招待（GitHub） | `invitations`、`change_logs`（`entity_type = 'invitation'`、`action = 'create'`、`{"login_provider": [null, …], "login_subject": [null, …], "login_name": [null, …], "role": [null, …]}`）。書く前に、ユーザー名を解決し直して画面が確かめた ID と違えば 409（`invitee_changed`）、そのワークスペースに今所属している無効でない人なら 409（`already_member`）、同じワークスペースに同じ `(login_provider, login_subject)` の承諾待ちの招待があれば 409（`already_invited`）、人数（`organizations` の「人数」）が `member_limit` 以上で、招待する人がまだ数えられていなければ 409（`member_limit_reached`）。無効にされた人であることでは断らない（人数には数えないので、上限では新しい人と同じく `member_limit_reached` になる）。`invitations` の文は `INSERT ... SELECT ... WHERE`（閉じていないワークスペース、所属していない、承諾待ちの招待が無い）にし、`change_logs` は直前の文が行を入れたときだけ入れる（下の「直前の文に結ぶ」）。何も入らなければ、読み直して閉じていれば 409（`workspace_closed`）、所属か招待があればその 409、どちらでもなければ 404。人数は書く文の条件に入れない（同時に招待して超えたときは、そのまま認める。超えるのは同時に送った招待の数まで） |
 | 招待の取り消し | `invitations`（`status = 'revoked'`、`responded_at`）、`change_logs`（`action = 'update'`、`{"status": ["pending", "revoked"]}`）。招待はワークスペースで絞って読み、無ければ（別のワークスペース、別の組織を含む）404、承諾待ちでなければ 409（`conflict`）。`invitations` の文の条件は `id`、`workspace_id`、`status = 'pending'`、閉じていないワークスペースで、`change_logs` は直前の文が行を変えたときだけ入れる。何も入らなければ、閉じていれば 409（`workspace_closed`）、そうでなければ 409（`conflict`） |
+| 組織の休日の登録 | `organization_holidays`。1文の束縛は100個までなので、20行ずつの `INSERT ... ON CONFLICT DO NOTHING RETURNING holiday_on` に分け、全部を1回の `batch()` で送る。返った行の数が登録した日数で、残りは登録済み。`change_logs` は書かない |
+| 組織の休日の削除 | `organization_holidays`（組織と日付で絞る1行）。消えた行が無ければ 404。`change_logs` は書かない |
 | Google の招待の URL から結ぶ | 組織の DB の `users` か `invitations`、`change_logs`（「メールアドレスで待つ指名と招待」の 6）、続けて共通の DB の `accounts` と `account_logins` |
 | 初めてのログイン | 共通の DB の `accounts` と `account_logins`、続けて組織の DB の `users.account_id`（指名で待っていた行に結ぶ）、続けて共通の DB の `sessions`。2回目以降は `account_logins` と `accounts.last_login_at` の書き直し、`users.account_id` を結び直す書き込み、`sessions` の順 |
 | 添付ファイルを上げる | R2 にファイルを書き、続けて `attachments` |

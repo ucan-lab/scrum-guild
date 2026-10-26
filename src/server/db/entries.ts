@@ -41,7 +41,7 @@ export function entriesOf(databases: readonly D1Database[]): DbEntry<Organizatio
   return databases.map((d1) => new DbEntry<OrganizationTables, 'organization'>(d1, organizationQueries));
 }
 
-// 組織の中の16表。組織を確かめた結果が無いと作れない
+// 組織の中の17表。組織を確かめた結果が無いと作れない
 export function orgDb(env: Env, organization: VerifiedOrganization): OrganizationDb {
   return new OrganizationDb(organizationDatabase(env, organization), organization.organizationId);
 }

@@ -986,6 +986,92 @@ export const dictionary = defineDictionary({
     '{workspace}の一覧を読み込めませんでした',
   ),
 
+  // 組織の休日（組織の管理の画面）。{workspace} と {capacity} は、その言葉づかいの言葉を画面が渡す。
+  // {date} は休日の日付（YYYY-MM-DD）、{line} は貼り付けた行の番号、{text} はその行、{max} は上限
+  holidaysTitle: organization('組織の休日', '組織の休日'),
+  holidaysDesc: organization(
+    '祝日など、すべての{workspace}に効く休日。日付の一覧を貼り付けて、まとめて登録できます。',
+    '祝日など、すべての{workspace}に効く休日。日付の一覧を貼り付けて、まとめて登録できます。',
+  ),
+  holidayPasteLabel: organization('貼り付けて登録', '貼り付けて登録'),
+  holidayPastePlaceholder: organization(
+    '2027-02-11 建国記念の日\n2027-02-23 天皇誕生日',
+    '2027-02-11 建国記念の日\n2027-02-23 天皇誕生日',
+  ),
+  holidayPasteHint: organization(
+    '1行に1日。日付（2026-11-03 か 2026/11/3、2000〜2099 年）のあとに、空白、タブ、カンマで区切って名前を書けます。表計算から写した行は、名前より後の列を読みません。登録済みの日付は飛ばします。',
+    '1行に1日。日付（2026-11-03 か 2026/11/3、2000〜2099 年）のあとに、空白、タブ、カンマで区切って名前を書けます。表計算から写した行は、名前より後の列を読みません。登録済みの日付は飛ばします。',
+  ),
+  holidaySubmit: organization('登録する', '登録する'),
+  holidaySubmitting: organization('登録しています', '登録しています'),
+  holidayAdded: organization('{added} 日を登録しました', '{added} 日を登録しました'),
+  holidayAddedWithSkipped: organization(
+    '{added} 日を登録しました（{skipped} 日は登録済み）',
+    '{added} 日を登録しました（{skipped} 日は登録済み）',
+  ),
+  holidayNothingToAdd: organization(
+    '登録できる行がありません。1行に1日、日付から書いてください。',
+    '登録できる行がありません。1行に1日、日付から書いてください。',
+  ),
+  holidayTooMany: organization(
+    '登録できる行が {count} 日あります。1回に登録できるのは {max} 日までです。分けて登録してください。',
+    '登録できる行が {count} 日あります。1回に登録できるのは {max} 日までです。分けて登録してください。',
+  ),
+  holidayAddFailed: organization(
+    '登録できませんでした。もう一度試してください。',
+    '登録できませんでした。もう一度試してください。',
+  ),
+  // 画面の解析と API の検証は同じ決まりなので、ふつうは起きない（400）
+  holidayAddRejected: organization(
+    '登録できない行がありました。日付と名前を確かめてください。',
+    '登録できない行がありました。日付と名前を確かめてください。',
+  ),
+  holidayProblemsLabel: organization('登録しない行', '登録しない行'),
+  // 理由の要約。読み上げ（role="alert"）にはこの文だけを入れ、行ごとの理由は入れない
+  holidayProblemsSummary: organization(
+    '{count} 行を登録しません。直して、もう一度「登録する」を押してください。',
+    '{count} 行を登録しません。直して、もう一度「登録する」を押してください。',
+  ),
+  // 理由の一覧に出しきれない行の数
+  holidayProblemsMore: organization('ほか {count} 行', 'ほか {count} 行'),
+  holidayProblemLine: organization('{line} 行目「{text}」: {reason}', '{line} 行目「{text}」: {reason}'),
+  holidayProblemInvalidDate: organization(
+    '日付の形ではありません（2026-11-03 か 2026/11/3）',
+    '日付の形ではありません（2026-11-03 か 2026/11/3）',
+  ),
+  holidayProblemNoSuchDate: organization('暦に無い日付です', '暦に無い日付です'),
+  holidayProblemOutOfRange: organization(
+    '{first}〜{last} 年の日付だけを登録できます',
+    '{first}〜{last} 年の日付だけを登録できます',
+  ),
+  holidayProblemTooLong: organization('名前は {max} 字までです', '名前は {max} 字までです'),
+  holidayProblemInvalidCharacter: organization(
+    '名前に使えない文字（制御文字、ゼロ幅のスペースなど）が含まれています',
+    '名前に使えない文字（制御文字、ゼロ幅のスペースなど）が含まれています',
+  ),
+  holidayProblemDuplicate: organization('同じ日付が前の行にあります', '同じ日付が前の行にあります'),
+  holidayListLabel: organization('登録した休日', '登録した休日'),
+  holidayEmptyTitle: organization('まだ休日がありません', 'まだ休日がありません'),
+  holidayEmptyText: organization(
+    '登録した日は、{capacity}の計算で全員が稼働しない日になります。',
+    '登録した日は、{capacity}の計算で全員が稼働しない日になります。',
+  ),
+  holidayDeleteLabel: organization('{date} を消す', '{date} を消す'),
+  holidayDeleting: organization('消しています', '消しています'),
+  holidayDeleted: organization('{date} を消しました', '{date} を消しました'),
+  holidayDeletedWithName: organization('{date}（{name}）を消しました', '{date}（{name}）を消しました'),
+  // 別の画面で先に消されていた（404）
+  holidayAlreadyDeleted: organization(
+    '{date} は見つかりませんでした。一覧を確かめてください',
+    '{date} は見つかりませんでした。一覧を確かめてください',
+  ),
+  holidayDeleteFailed: organization(
+    '{date} を消せませんでした。もう一度試してください。',
+    '{date} を消せませんでした。もう一度試してください。',
+  ),
+  holidayListLoadFailed: organization('休日の一覧を読み込めませんでした', '休日の一覧を読み込めませんでした'),
+  holidayListRefreshFailed: organization('休日の一覧を更新できませんでした', '休日の一覧を更新できませんでした'),
+
   // 終了したワークスペースの帯（ワークスペースの中の全画面）。{date} は終了した日、{page} は組織の管理の画面の名前
   workspaceClosedBanner: workspace(
     '{date} に終了しました。読み取り専用です。',

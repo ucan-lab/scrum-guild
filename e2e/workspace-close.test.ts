@@ -294,7 +294,9 @@ test.describe('管理者（あおば開発のミナト）', () => {
     await expect(notice).toHaveCount(0);
     await expect(row).toBeVisible();
     // 押したボタンが消えるので、節の中身へフォーカスが移る
-    await expect(page.locator('.setting-body[tabindex="-1"]')).toBeFocused();
+    await expect(
+      page.getByRole('region', { name: 'パーティ', exact: true }).locator('.setting-body[tabindex="-1"]'),
+    ).toBeFocused();
   });
 
   test('「もう一度試す」を押していない読み込みの結果では、「まだ読み込めませんでした」を出さない', async ({ page }) => {
@@ -411,7 +413,8 @@ test.describe('管理者（あおば開発のミナト）', () => {
       await route.continue();
     });
     await page.goto('/aoba/admin', { waitUntil: 'commit' });
-    const region = page.locator('[data-section-status]');
+    // ワークスペースの節の領域（ほかの節も同じ領域を持つ）
+    const region = page.getByRole('region', { name: 'パーティ', exact: true }).locator('[data-section-status]');
     await expect(region).toHaveText('読み込んでいます');
     const log = await page.evaluate(() => (window as unknown as { __sectionStatusLog: string[] }).__sectionStatusLog);
     expect(log[0]).toBe('added:');

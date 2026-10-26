@@ -1,4 +1,4 @@
-// 22表の列。migrations/0001_create_initial_tables.sql の写しで、列名は DB と同じスネークケースのまま持つ。
+// 23表の列。migrations/ の全マイグレーションを当てた後の写しで、列名は DB と同じスネークケースのまま持つ。
 // 共通の表と組織の中の表の区分は docs/data-model.md の「共通の表と組織の中の表」。表を足すときは、
 // マイグレーションと同じ PR でここに足す（足し忘れと列のずれは test/table-columns.test.ts が落とす）
 import {
@@ -72,6 +72,14 @@ export const organizationTableColumns = {
     theme: textOrNull,
     created_at: text,
     updated_at: text,
+  },
+  // migrations/0004_add_organization_holidays.sql で足した
+  organization_holidays: {
+    organization_id: text,
+    holiday_on: text,
+    name: textOrNull,
+    created_by: text,
+    created_at: text,
   },
   workspaces: {
     id: text,

@@ -4,7 +4,14 @@
 // 組織の外の操作は、入力が必須の項目を持つときだけ足す（運用者の操作は、成功する入力を作る）
 import { createFakeGithub } from '../auth/fake-github.ts';
 import { githubUser } from '../auth/helpers.ts';
-import { createInvitation, createOrganization, createStory, createTask, createWorkspace } from '../factories.ts';
+import {
+  createInvitation,
+  createOrganization,
+  createOrganizationHoliday,
+  createStory,
+  createTask,
+  createWorkspace,
+} from '../factories.ts';
 import type { Pointers } from './harness.ts';
 import { SUSPENDED_AT } from './world.ts';
 
@@ -27,6 +34,14 @@ export const pointers: Pointers = {
     timezone: 'Asia/Tokyo',
     vocabulary: 'game',
     leader_user_id: target.admin.userId,
+  }),
+  'organization-holiday-list': { noReference: {} },
+  // 日付は組織の中の行を指さない（登録済みなら飛ばすだけで成功する）
+  'organization-holiday-add': { noReference: { holidays: [{ holiday_on: '2026-11-03', name: '文化の日' }] } },
+  // 呼ぶたびに、対象の組織に別の日付の休日を作る（消した日付は続けて消せないため）。
+  // 別の組織の対象を渡すと、その組織にだけある日付になり、自分の組織では 404
+  'organization-holiday-delete': async (target) => ({
+    holiday_on: (await createOrganizationHoliday(target.organization, target.admin.userId!)).holiday_on,
   }),
   'workspace-list': { noReference: {} },
   'workspace-leader-candidates': { noReference: {} },

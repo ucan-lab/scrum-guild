@@ -217,6 +217,8 @@ h1, h2, h3 { text-wrap: balance; }
 .field-label { font-size: var(--text-sm); font-weight: 700; }
 .field-hint { font-size: var(--text-xs); color: var(--color-muted); }
 .field-error { font-size: var(--text-xs); color: var(--color-danger); display: flex; gap: 4px; align-items: center; }
+/* 1つの欄に複数の誤りがあるとき（貼り付けた行ごとの理由など）。.field-error の見出しの下に並べる */
+.field-error-list { margin: 0; padding-left: 1.6em; display: grid; gap: 2px; font-size: var(--text-xs); color: var(--color-danger); overflow-wrap: anywhere; }
 .input, .select, .textarea {
   width: 100%; border: 1px solid var(--color-line); background: var(--color-surface); border-radius: var(--radius-1);
   padding: 7px 10px; font-size: var(--text-md);
@@ -629,6 +631,16 @@ button.tree-link { border: 0; background: none; padding: 0; font: inherit; text-
 .party-list li { display: flex; align-items: center; gap: var(--space-2); font-size: var(--text-sm); }
 .party-list .role { font-size: var(--text-xs); color: var(--color-muted); }
 .party-list .emblem { margin-left: auto; }
+/* 行の右端に寄せる操作（消すボタンなど） */
+.party-list .party-list-end { margin-left: auto; flex: none; }
+/* 長い名前（空白の無い英数字を含む）を折り返し、右端の操作を押し出さない */
+.party-list .party-list-text { min-width: 0; overflow-wrap: anywhere; }
+/* 日付は、隣の名前が長くても縮めず、ハイフンで折らない */
+.party-list .mono { flex: none; white-space: nowrap; }
+/* 狭い幅と指で押す画面では、行の操作のボタンを 44px 四方にする（バックログの並べ替えのボタンと同じ範囲） */
+@media (max-width: 760px), (pointer: coarse) {
+  .party-list .icon-btn { min-width: 44px; min-height: 44px; }
+}
 .ac-box { background: var(--color-sunken); border-radius: var(--radius-1); padding: var(--space-3) var(--space-4); font-size: var(--text-sm); }
 .ac-box b { display: block; font-size: var(--text-xs); color: var(--color-muted); font-weight: 400; letter-spacing: 0.06em; margin-bottom: 2px; }
 .ac-box ul { margin: 0; padding-left: 1.2em; display: grid; gap: 2px; }

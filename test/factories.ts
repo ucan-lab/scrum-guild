@@ -226,6 +226,30 @@ export async function createMembership(
   return row;
 }
 
+// 組織の休日の日付。主キー（組織と日付）にぶつからないよう、呼ぶたびに1日進める（2040-01-01 から）
+let holidayDay = 0;
+function nextHolidayOn(): string {
+  return new Date(Date.UTC(2040, 0, 1 + holidayDay++)).toISOString().slice(0, 10);
+}
+
+export async function createOrganizationHoliday(
+  organization: OrganizationFixture,
+  createdBy: string,
+  overrides: Partial<Row<OrganizationTables, 'organization_holidays'>> = {},
+) {
+  const row: Row<OrganizationTables, 'organization_holidays'> = {
+    organization_id: organization.id,
+    holiday_on: nextHolidayOn(),
+    name: '創立記念日',
+    created_by: createdBy,
+    created_at: AT,
+    ...overrides,
+  };
+  const db = orgDb(env, organization.verified);
+  await db.run(db.statement((q) => q.insertInto('organization_holidays').values(row)));
+  return row;
+}
+
 export async function createCategory(
   organization: OrganizationFixture,
   workspaceId: string,
