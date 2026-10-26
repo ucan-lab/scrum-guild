@@ -92,10 +92,10 @@ describe('parseHolidayPaste（貼り付けた休日の一覧を行ごとに読�
     ]);
   });
 
-  test('タブで区切った表計算の行は、名前の後の列を捨てる', () => {
+  test('タブで区切った表計算の行は、名前の後の列を捨て、名前の列が空なら名前なしにする', () => {
     expect(parseHolidayPaste('2026-11-03\t文化の日\t祝日\t備考\n2026-11-23\t\t勤労感謝の日\t祝日').holidays).toEqual([
       { holiday_on: '2026-11-03', name: '文化の日' },
-      { holiday_on: '2026-11-23', name: '勤労感謝の日' },
+      { holiday_on: '2026-11-23', name: null },
     ]);
   });
 

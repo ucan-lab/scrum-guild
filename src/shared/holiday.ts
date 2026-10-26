@@ -68,12 +68,14 @@ function isSeparator(char: string): boolean {
 }
 
 // 1行を日付の字句と名前の残りに分ける。日付の字句は最初の区切りの前まで。
-// 区切りは、空白の並びか、前後に空白を置いてよいカンマ1つ（「2026-11-03, 文化の日」）。名前の先頭の空白は名前の側で除く
+// 区切りは、タブ1つ（表計算の列。続くタブは空の名前の列）、空白の並び、前後に空白を置いてよいカンマ1つ（「2026-11-03, 文化の日」）。
+// 名前の先頭の空白は名前の側で除く
 function splitLine(line: string): { token: string; rest: string } {
   let index = 0;
   while (index < line.length && !isSeparator(line[index]!)) index++;
   const token = line.slice(0, index);
   let rest = line.slice(index);
+  if (rest.startsWith('\t')) return { token, rest: rest.slice(1) };
   const trimmed = rest.trimStart();
   if (trimmed.startsWith(',')) rest = trimmed.slice(1);
   return { token, rest };
@@ -83,9 +85,8 @@ function splitLine(line: string): { token: string; rest: string } {
 // 表計算から写した行は、列がタブで続くので、名前の中の最初のタブより後（3列目より後）は捨てる。
 // CSV の名前は、前後の二重引用符を1組だけ外す（"文化の日" は 文化の日）
 function nameFromRest(rest: string): string {
-  const leading = rest.trimStart();
-  const tab = leading.indexOf('\t');
-  const name = (tab === -1 ? leading : leading.slice(0, tab)).trim();
+  const tab = rest.indexOf('\t');
+  const name = (tab === -1 ? rest : rest.slice(0, tab)).trim();
   return name.length >= 2 && name.startsWith('"') && name.endsWith('"') ? name.slice(1, -1) : name;
 }
 
