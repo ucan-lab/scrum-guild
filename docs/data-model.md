@@ -201,7 +201,7 @@
 | vocabulary | TEXT | NOT NULL、`game` か `scrum`、既定 `game` | ワークスペースの外の言葉づかい |
 | theme | TEXT | NOT NULL、`simple`、`simple_light`、`simple_dark`、`medieval`、`modern` のどれか、既定 `simple` | 組織の既定のテーマ。`simple` は OS の明暗に合わせる |
 | suspended_at | TEXT | | 停止した日時。入っていれば誰も入れず、定期処理も止める |
-| purge_on | TEXT | | 解約で停止したときの、データを消す予定日（停止から30日後）。一時的な停止では空 |
+| purge_on | TEXT | | 解約で停止したときの、データを消す予定日（解約で停止した日か、停止中に解約へ切り替えた日の30日後）。一時的な停止では空 |
 | member_limit | INTEGER | NOT NULL、既定 15、`CHECK (member_limit > 0)` | 人数の上限。運用者が決める |
 | attachment_quota_bytes | INTEGER | NOT NULL、既定 32212254720 | 添付ファイルの合計の上限（既定 30GB）。運用者が決める |
 | attachment_quota_warned_at | TEXT | | 合計が上限の80%を超えたと管理者に通知した日時。合計が80%を下回るか、上限を上げたら空に戻す |
@@ -213,7 +213,7 @@
 - アプリが使う名前（`api`、`login`、`operator` など）を slug にできないことは、アプリが検査する。予約した名前の一覧は `src/shared/organization-slug.ts` に持ち、画面の最上段のルートを足したら合わせて足す（`scripts/organization-slug.test.ts` が照合する）。
 - 続けて書く `users` と `change_logs` の入口は、組織の作成の関数（`src/server/db/create-organization.ts`）が作る。入口を作れるのは `organizations` に挿入した組織の ID だけで、任意の組織の ID から入口を作る関数は `db/` の外へ出さない。既にある組織の中の表に運用者が書くもの（停止、再開、停止の理由の切り替えの `change_logs`。管理者の指名し直しも同じ）は、組織の中の入口を渡さず、履歴を1行足すだけの関数 `appendOperatorChangeLog`（`src/server/db/operator-change-log.ts`）にする。組織を確かめた結果はこの関数の中で作って外へ出さず、停止中の組織にも書ける。組織の ID は、呼び出し側が共通の表の `organizations` から読んだ値を渡し、行が無い ID は `change_logs.organization_id` の外部キーが断る。この関数を import できるのは運用者の道具（`operator-tools.ts` の `appendChangeLog`。`operator` の列に運用者のログインの ID を入れる）だけで、ESLint の入口を守る規則（`eslint.config.db-entry.js`）が止める。同時に作られて `slug` の UNIQUE に当たったときは、`slug` の行が今あるかを読み直し、重なりとして 409 を返す。
 - 人数は保存せず、招待のたびに数える。対象は、無効にしていない管理者と、いずれかのワークスペースに今所属しているか承諾待ちの招待を持つ人（まだアカウントのない人への招待を含む）で、同じ人は1人とする。招待のうち、閉じたワークスペースへの招待と、同じ組織で無効にされた人（同じ `(login_provider, login_subject)`）への招待は数えない。人数が `member_limit` 以上なら、まだ数えられていない人の招待を断る。すでに数えられている人（同じ `(login_provider, login_subject)` の、無効でない管理者、いずれかのワークスペースに今所属している人、数えられる承諾待ちの招待を持つ人）は、上限でも招待できる。数えるのは GitHub に問い合わせた後で、数えてから書くまでの間に同時に招待されたときはそのまま認める（超えるのは同時に送った招待の数まで）。
-- 解約した組織は、`purge_on` を過ぎたら運用の手順でこの組織の行をすべて消し、R2 の `<organization_id>/` で始まるファイルも消す。再開したら `suspended_at` と `purge_on` を空に戻す。`purge_on` は、停止した日時の UTC の日付の30日後（`YYYY-MM-DD`）で、予定日を過ぎていてもデータを消すまでは再開できる。
+- 解約した組織は、`purge_on` を過ぎたら運用の手順でこの組織の行をすべて消し、R2 の `<organization_id>/` で始まるファイルも消す。再開したら `suspended_at` と `purge_on` を空に戻す。`purge_on` は、解約で停止した日時の UTC の日付の30日後（`YYYY-MM-DD`）。停止中に解約へ切り替えたときは、切り替えた日時の UTC の日付の30日後で、予定日を過ぎていてもデータを消すまでは再開できる。
 
 ### users
 
