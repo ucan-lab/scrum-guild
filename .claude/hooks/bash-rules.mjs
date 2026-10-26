@@ -20,6 +20,7 @@ import {
   positionals,
   prefixIndexes,
   prefixName,
+  redirectsOf,
   shapeAt,
   sliceWords,
   splitSegments,
@@ -97,7 +98,7 @@ function mayBe(shape, text) {
   return new RegExp(`^${pattern.join('.*')}$`, 's').test(text);
 }
 
-// yargs が読む語。-- の後ろはフラグにならず、リダイレクトはシェルが argv から外す（--local >/dev/null false は --local false）。
+// yargs が読む語。-- の後ろはフラグにならない（リダイレクトは args に入らないので、--local >/dev/null false は --local false）。
 // 値を取るフラグの値も除く。ただし - で始まる語は yargs が値にせずフラグとして読むので残す。展開の印は語と一緒に残す
 function flagWords(args) {
   const end = args.indexOf('--');
@@ -105,7 +106,7 @@ function flagWords(args) {
   const kept = [];
   for (let i = 0; i < head.length; i++) {
     const a = head[i];
-    if (/^[<>]/.test(a) || (a.includes('=') && WRANGLER_FLAGS_WITH_VALUE.has(a.split('=')[0]))) continue;
+    if (a.includes('=') && WRANGLER_FLAGS_WITH_VALUE.has(a.split('=')[0])) continue;
     kept.push(i);
     if (WRANGLER_FLAGS_WITH_VALUE.has(a) && head[i + 1] !== undefined && !head[i + 1].startsWith('-')) i++;
   }
@@ -178,10 +179,9 @@ function judgeWrangler(args) {
   if (words.some((a) => UNREADABLE_FLAG.test(a))) {
     return [DENY, 'wrangler のフラグの名前に空白、改行、. を含むと、wrangler がどのフラグと読むかを判定できない'];
   }
-  // 展開は、値を取るフラグの値も含めた -- より前の全部の語で見る。-- の後ろは yargs がフラグとして読まず、リダイレクトは argv に入らない
+  // 展開は、値を取るフラグの値も含めた -- より前の全部の語で見る。-- の後ろは yargs がフラグとして読まない
   const end = args.indexOf('--');
-  // <-> のような数値の glob は < で始まるが、リダイレクトではなく展開の印の付いた語
-  const argv = [...args.keys()].filter((i) => (end === -1 || i < end) && (!/^[<>]/.test(args[i]) || expandsAt(args, i)));
+  const argv = [...args.keys()].filter((i) => end === -1 || i < end);
   if (argv.some((i) => expandsAt(args, i))) return UNQUOTED_REASON;
   if (argv.some((i) => mayBecomeFlag(shapeAt(args, i)))) return LEADING_REASON;
 
@@ -519,25 +519,77 @@ const SEARCHERS = new Set(['grep', 'egrep', 'fgrep', 'rg', 'ag']);
 const SEARCH_FLAGS_WITH_VALUE = new Set(['-e', '-f', '--regexp', '--file', '-g', '--glob', '-t', '--type', '-A', '-B', '-C', '-m']);
 
 const INTERPRETERS = new Set(['node', 'python', 'python3', 'ruby', 'perl', 'deno', 'bun']);
-const isHeredoc = (word) => word.startsWith('<<');
-const heredocBody = (word) => word.replace(/^<<<?/, '');
+// リダイレクトの種類。op は記述子の番号と zsh の ! を含まない。<> は読み書きで開き、切り詰めずに先頭から上書きできるので、読み込み元と書き込み先の両方に数える
+const isHeredocRedirect = (r) => r.op === '<<' || r.op === '<<<';
+const isReadRedirect = (r) => r.op.includes('<') && !isHeredocRedirect(r);
+const isWriteRedirect = (r) => r.op === '<>' || !r.op.includes('<');
+// リダイレクトの先（本文）と、その中の $(…) と `…` の中身。置換の出力が先や本文になる（> "$(echo .dev.vars)"、
+// python3 <<< "$(echo 'open(".env")')"）が、置換が書き込みでも実行でもない道具（echo）だけなら、別の区切りの判定には当たらないため。
+// 中身は、そのまま、空白や引用符で区切った語ごと、シェルと同じく引用符を解いた語ごと（"$(echo .en'v')" の .env）で返す
+// 先に置換が文字を挟んで続く形（> $(echo .claude/settings).json、cat < $(echo .dev).vars）は、先の shape の実行時に決まる位置（DYNAMIC）を
+// 中身の語で埋めた文字列も返す。名前が置換の境目にまたがり、先の文字列にも中身にも名前が現れないため。
+// 埋めるのは中身の語だけなので、> "$(mktemp)"、> "$(mktemp -d)/out.log"、> /tmp/$(date +%s).log は名前に当たらず通る。
+// 先の ${X:-.dev}.vars の既定値も語として埋める
+const redirectTextsCache = new WeakMap();
+function redirectTexts(redirect) {
+  let texts = redirectTextsCache.get(redirect);
+  if (!texts) {
+    const pieces = redirect.substitutions.flatMap((s) => [s, ...s.split(CODE_SEPARATORS).filter(Boolean), ...splitSegments(s).flat()]);
+    texts = [redirect.target, ...pieces, ...fillDynamic(redirect, pieces)];
+    redirectTextsCache.set(redirect, texts);
+  }
+  return texts;
+}
+
+// 先の shape の DYNAMIC を、pieces と ${NAME:-既定値} の既定値と空文字（未設定の変数）で埋めた文字列。
+// 位置が1つだけで固定の文字を持たない先（"$(mktemp)"）は、中身がそのまま名前になるので埋めない。
+// 位置が複数あれば、位置ごとに別の語を割り当てた組み合わせを見る（$(echo .dev)$(echo .vars) は .dev と .vars をつないだ .dev.vars）。
+// 組み合わせが MAX_FILLED を超えるときは、全部の位置を同じ語で埋めた形と、1か所だけ埋めた形に絞る
+function fillDynamic({ target, shape }, pieces) {
+  const parts = shape.split(DYNAMIC);
+  const positions = parts.length - 1;
+  if (positions === 0 || (positions === 1 && !parts.join(''))) return [];
+  const defaults = [...target.matchAll(/\$\{[^}:=?+-]*:?[-=+?]([^}]*)\}/g)].map((m) => m[1]);
+  const options = [...new Set(['', ...pieces, ...defaults])];
+  if (options.length ** positions <= MAX_FILLED) {
+    let filled = [parts[0]];
+    for (let k = 1; k < parts.length; k++) filled = filled.flatMap((prefix) => options.map((o) => prefix + o + parts[k]));
+    return filled;
+  }
+  const filled = [];
+  for (const piece of options) {
+    filled.push(parts.join(piece));
+    if (positions <= MAX_DYNAMIC_POSITIONS) {
+      for (let k = 0; k < positions; k++) filled.push(parts.reduce((acc, p, idx) => acc + p + (idx === k ? piece : ''), ''));
+    }
+  }
+  return filled;
+}
+const MAX_FILLED = 4096;
+const MAX_DYNAMIC_POSITIONS = 4;
+
+// ヒアドキュメントとヒアストリングの本文（中の置換の中身を含む）。照合に使う
+const heredocBodies = (words) => redirectsOf(words).filter(isHeredocRedirect).flatMap(redirectTexts);
+// シェルに渡す本文。judgeBash に掛けるのは本文と置換の中身だけで、照合用に区切った語は掛けない
+const heredocScripts = (words) => redirectsOf(words).filter(isHeredocRedirect).flatMap((r) => [r.target, ...r.substitutions]);
+// リダイレクトの先の語（本文を含む）。語の並びに混ぜて数える判定（xargs の名前の流し込み、変数の設定）が見落とさないために使う
+const redirectTargets = (words) => redirectsOf(words).map((r) => r.target);
 
 // 読み書き共通の文言。ワークツリーの .dev.vars は本体の本物へのリンクなので、.dev.vars への書き込みは本体の値を上書きする
 const SECRET_FILE_REASON = '.dev.vars と .env は開発用のシークレット。読むのも書くのも人が ! を付けて打つ。例は .dev.vars.example に置く';
 
 // words は区切りの全部の語（< .env cmd のように、道具の前に置いた入力も見る）
 function judgeSecretAccess(tool, args, words) {
-  if (words.some((a) => a.startsWith('<') && !isHeredoc(a) && mentionsSecret(a))) return true;
-  // 書き込み先（>）と、文書として流すヒアドキュメントの本文は読み取りではない
-  const plain = args.filter((a) => !/^[<>]/.test(a));
-  if (INTERPRETERS.has(tool)) return [...plain, ...args.filter(isHeredoc).map(heredocBody)].some(mentionsSecret);
+  if (redirectsOf(words).some((r) => isReadRedirect(r) && redirectTexts(r).some(mentionsSecret))) return true;
+  // 書き込み先（>）と、文書として流すヒアドキュメントの本文は args に入らないので、args は読み取りの引数として見てよい
+  if (INTERPRETERS.has(tool)) return [...args, ...heredocBodies(args)].some(mentionsSecret);
   if (SEARCHERS.has(tool)) {
     // 最初の位置の引数は探す文字列なので、grep ".dev.vars" docs のような検索は通す
     const pos = positionals(args, SEARCH_FLAGS_WITH_VALUE);
     const files = args.some((a) => ['-e', '-f', '--regexp', '--file'].includes(a)) ? pos : pos.slice(1);
     return files.some(mentionsSecret);
   }
-  if (READERS.has(tool) || SHELLS.has(tool)) return plain.some(mentionsSecret);
+  if (READERS.has(tool) || SHELLS.has(tool)) return args.some(mentionsSecret);
   if (COPIERS.has(tool)) {
     // ここで見るのはコピーの元。書き込み先は writesTo が見る（cp .dev.vars.example .dev.vars はそちらで止まる）
     const pos = positionals(args);
@@ -553,8 +605,7 @@ const withoutGlobGroup = (word) => word.replace(/(\(…\))+$/, '');
 // Write と Edit のフック（file-rules.mjs）が守るファイル。Bash から書き換えるときは人の確認を挟む。
 // .claude、.githooks、migrations のディレクトリそのもの（mv .claude /tmp/x、cp -r /tmp/x/migrations .、中身ごとのコピーの宛先 .claude/）も含める
 function isProtectedPath(word) {
-  const written = word.replace(/^>+/, '');
-  return [written, withoutGlobGroup(written)].some((w) =>
+  return [word, withoutGlobGroup(word)].some((w) =>
     /(^|\/)\.claude\/(settings[^/]*\.json$|hooks(\/|$))|(^|\/)\.claude\/?$|(^|\/)\.githooks(\/|$)|(^|\/)migrations(\/|$)/.test(w),
   );
 }
@@ -569,7 +620,7 @@ const PROTECTED_CANDIDATES = ['.claude/settings.json', '.claude/settings.local.j
 function protectedAt(dir) {
   const root = dir && (repoRootOf(dir) ?? dir);
   return (word) => {
-    const written = withoutGlobGroup(word.replace(/^>+/, ''));
+    const written = withoutGlobGroup(word);
     if (expansionSize(written) > MAX_BRACE_EXPANSION) return true;
     return expandBraces(written).some((w) => {
       const absolute = dir ? path.resolve(dir, w) : null;
@@ -610,16 +661,14 @@ const WRANGLER_CONFIG_PATH = new RegExp(
   'i',
 );
 function isWranglerConfig(word) {
-  const written = word.replace(/^>+/, '');
-  return WRANGLER_CONFIG_PATH.test(written) || WRANGLER_CONFIG_PATH.test(withoutGlobGroup(written));
+  return WRANGLER_CONFIG_PATH.test(word) || WRANGLER_CONFIG_PATH.test(withoutGlobGroup(word));
 }
 
 // 書かれた語のほかに、正規化した語（.wrangler//deploy/./config.json）と、作業場所が分かるときは作業場所から解決した絶対パス
 // （cd .wrangler/deploy && … > config.json）でも設定に当たるかを見る。作業場所が null のときは書かれた語だけで見る
 function wranglerConfigAt(dir) {
   return (word) => {
-    const written = word.replace(/^>+/, '');
-    return isWranglerConfig(written) || isWranglerConfig(path.posix.normalize(written)) || Boolean(dir && isWranglerConfig(path.resolve(dir, written)));
+    return isWranglerConfig(word) || isWranglerConfig(path.posix.normalize(word)) || Boolean(dir && isWranglerConfig(path.resolve(dir, word)));
   };
 }
 
@@ -761,8 +810,14 @@ function targetDirectoryOf(args) {
   return null;
 }
 
+// 書き込みのリダイレクトの先が matches に当たるか。先の中の置換の中身（> "$(echo .claude)/settings.json"）も redirectTexts で照合する。
+// > "$(mktemp)" は mktemp が当たらず通る
+function redirectHits(matches, redirect) {
+  return redirectTexts(redirect).some(matches);
+}
+
 // 書き込み先のどれかが matches（isProtectedPath か mentionsSecret）に当たるか。守る先とシークレットで道具の表を共用する。
-// words は区切りの全部の語。リダイレクトの先は道具の前に置いたもの（> f cat x）や、道具の無い区切り（> f、exec > f）にもあるので args でなく words で見る。
+// words は区切りの全部の語。リダイレクトは語の並びの外にある区切りの属性で、道具の前に置いたもの（> f cat x）や、道具の無い区切り（> f、exec > f）にもあるので args でなく words で見る。
 // anyOperand は、書き込み先か読み取り元かを区別せずに止めてよいとき（シークレット）に付ける。
 // コピーの宛先は、GNU の並べ替え（install x .dev.vars -m 600）で最後とは限らないので、位置引数のどれかを見る。
 // find -exec は書くか読むかが分からないので、名前が引数にあれば止める。
@@ -771,7 +826,7 @@ function targetDirectoryOf(args) {
 // intoDirectory は wrangler の設定と守る先の判定に付け、宛先がディレクトリのコピーを元の名前で見る（copiesIntoDirectory の into）。
 // anyInstallOperand を付けると（wrangler の設定）、install は GNU の並べ替えがあるので位置引数のどれかも見る
 function writesTo(matches, tool, args, words, { anyOperand = false, intoDirectory = null } = {}) {
-  if (words.some((w) => w.startsWith('>') && matches(w.replace(/^>+/, '')))) return true;
+  if (redirectsOf(words).some((r) => isWriteRedirect(r) && redirectHits(matches, r))) return true;
   if (GNU_PREFIXED.has(tool)) tool = tool.slice(1);
   const pos = positionals(args);
   if (['sed', 'perl'].includes(tool) && args.some((a) => /^-[a-zA-Z]*i|^--in-place/.test(a))) {
@@ -819,7 +874,7 @@ function placedIntoUnknown(matches, sources, destinationShape, into) {
 // 拾えるよう、空白、引用符、括弧で区切った語も見る
 function interpreterWords(tool, args) {
   if (!INTERPRETERS.has(tool)) return [];
-  const bodies = [...args.filter((a) => !/^[<>]/.test(a)), ...args.filter(isHeredoc).map(heredocBody)];
+  const bodies = [...args, ...heredocBodies(args)];
   return bodies.flatMap((b) => [b, ...b.split(CODE_SEPARATORS).filter(Boolean)]);
 }
 
@@ -957,11 +1012,7 @@ function runnerWords(args) {
   const result = [];
   for (let i = 0; i < args.length; i++) {
     const a = args[i];
-    if (a === '--' || a.startsWith('>')) continue;
-    if (a.startsWith('<')) {
-      if (isHeredoc(a)) result.push(heredocBody(a));
-      continue;
-    }
+    if (a === '--') continue;
     if (!a.startsWith('-')) {
       result.push(a);
       continue;
@@ -973,11 +1024,11 @@ function runnerWords(args) {
     }
     if (eq !== -1) result.push(a.slice(eq + 1));
   }
-  return result;
+  return [...result, ...heredocBodies(args)];
 }
 
 // node < scripts/deploy-production.ts と bash < scripts/deploy.sh の読み込み元。道具の前に置いた < も拾う
-const stdinTargets = (words) => words.filter((w) => w.startsWith('<') && !isHeredoc(w)).map((w) => w.slice(1));
+const stdinTargets = (words) => redirectsOf(words).filter(isReadRedirect).flatMap(redirectTexts);
 
 function matchesGlob(target, pattern) {
   // 無い Node で false を返すと素通りになる。投げれば guard-bash が exit 2 で止める
@@ -1119,7 +1170,7 @@ function judgeDeployWords(words, dir) {
 // 実行の道具、スクリプトを読む道具（シェル、source、.）、デプロイのスクリプトそのものに渡した語を判定する。止めるものが無ければ null
 function judgeDeployScript(words, ci, dir) {
   const tool = baseName(words[ci]);
-  const args = words.slice(ci + 1);
+  const args = sliceWords(words, ci + 1);
   // node --test は並べたファイルを全部実行するので、先頭だけでなく位置引数を全部見る。
   // --test の無い node と bash では2つ目からはただの引数だが、取りこぼすより止めすぎるほうを取る。
   // 道具の語、スクリプトを読む道具の位置引数、< の読み込み元は区切らずに見る。実行の道具の引数だけは、-e の値と本文を含むので語に区切る
@@ -1178,6 +1229,7 @@ function splitsString(words, prefixes, ci) {
 
 const CF_WRANGLER_REASON = 'cf-wrangler は引数の読み方が wrangler と違い（util.parseArgs）、dev は本番の資源に向きうる。このリポジトリでは使わない';
 const XARGS_WRANGLER_REASON = 'xargs は標準入力から wrangler に引数を足すので、--remote が加わるかを判定できない。wrangler は xargs の後ろに置かない';
+const HEREDOC_UNTERMINATED_REASON = 'ヒアドキュメントの終わりの印の行が見つからず、後ろのコマンドを全部本文として読むので、何を実行するかを判定できない。人が確かめる';
 const XARGS_REASON = 'xargs は標準入力から引数を足すので、何を実行するか（デプロイ、main への push、シークレットの読み取り）を判定できない。人が確かめる';
 // xargs の後ろに置いても、足される引数で書き込みや実行に変わらない読むだけの道具。xargs を外したときと同じ判定で通す。
 // rg の --pre、ag の --pager、file の -C は、標準入力から足した引数でコマンドを実行や書き込みをするので含めない
@@ -1256,7 +1308,7 @@ function judgeSegment(words, ctx) {
     // bash -c "..."、bash -lc "..."、bash <<< "..."、bash <<EOF の中身も同じ規則で見る
     const c = args.findIndex((a) => /^-[a-zA-Z]*c[a-zA-Z]*$/.test(a));
     if (c !== -1 && args[c + 1]) results.push(judgeBash(args[c + 1], nextCtx));
-    for (const a of args.filter(isHeredoc)) results.push(judgeBash(heredocBody(a), nextCtx));
+    for (const body of heredocScripts(args)) results.push(judgeBash(body, nextCtx));
   }
   return results.filter(Boolean);
 }
@@ -1302,7 +1354,7 @@ function variablesSetBy(words, ci) {
   const isPrefix = (i) => ci !== -1 && i < ci && isAssignment(words[i]);
   for (const [name, pattern] of Object.entries(VARIABLE_MENTIONS)) {
     if (words.some((w, i) => isPrefix(i) && w.startsWith(`${name}=`))) once.add(name);
-    if (words.some((w, i) => !isPrefix(i) && pattern.test(w))) after.add(name);
+    if (words.some((w, i) => !isPrefix(i) && pattern.test(w)) || redirectTargets(words).some((t) => pattern.test(t))) after.add(name);
   }
   if (ci !== -1) {
     const tool = baseName(words[ci]);
@@ -1316,12 +1368,11 @@ function variablesSetBy(words, ci) {
 function nextDir(words, ci, dir, env) {
   // popd は、ディレクトリのスタックの中身を追わないので判定できない
   if (words[ci] === 'popd') return null;
-  // リダイレクト（cd >/dev/null src）、-L と -P（シンボリックリンクの扱い）、オプションの終わりの -- は行き先ではないので飛ばす
+  // -L と -P（シンボリックリンクの扱い）、オプションの終わりの -- は行き先ではないので飛ばす（リダイレクトは words に入らない）
   const operands = [];
   let physical = false;
   let options = true;
   for (let j = ci + 1; j < words.length; j++) {
-    if (/^[<>]/.test(words[j])) continue;
     if (options && /^-[LP]+$/.test(words[j])) {
       physical ||= words[j].includes('P');
       continue;
@@ -1362,14 +1413,15 @@ export function judgeBash(command, { cwd, branchOf, scriptOf = () => undefined, 
   // xargs がどこかの区切りにあれば、コマンド全体のどこかの語がシークレットの名前に当たるだけで止める。
   // 名前が見えない形（ls -a | xargs grep TOKEN）は止められない
   const hasXargs = segments.some((words) => prefixIndexes(words).some((i) => prefixName(words[i]) === 'xargs'));
-  if (hasXargs && segments.some((words) => words.some(mentionsSecret))) results.push([DENY, SECRET_FILE_REASON]);
+  if (hasXargs && segments.some((words) => [...words, ...redirectTargets(words)].some(mentionsSecret))) results.push([DENY, SECRET_FILE_REASON]);
   for (const words of segments) {
     // 括弧の glob（cp /tmp/x(N) wrangler.jsonc）の閉じの後ろの語は、同じコマンドの引数なのに別の区切りに切られ、前の区切りからは見えない。
     // 道具を問わず、何をどこへ渡すかを判定できないものとする。後ろがリダイレクトだけ（ls *(N) 2>/dev/null）なら、宛先はこの区切りで見るので通す
-    if (followsGlobGroup(words) && words.some((w) => !/^[<>]/.test(w))) {
+    if (followsGlobGroup(words) && words.length > 0) {
       results.push([ASK, 'zsh の括弧の glob（x(N)、(a|b)）は後ろの語を別の区切りに切るので、コマンドの引数（コピーの宛先、git のサブコマンド）を判定できない。人が確かめる']);
     }
     const ci = commandIndex(words);
+    if (redirectsOf(words).some((r) => r.unterminated)) results.push([ASK, HEREDOC_UNTERMINATED_REASON]);
     // 同じコマンドの中で CDPATH、GIT_DIR、GIT_WORK_TREE を設定したら、その区切りから後ろは設定されたものとして見る（入れ子の bash -c にも渡す）。
     // 道具の前の一回限りの代入は、この区切りだけ（segmentEnv）に効かせる。名前を含む語は、設定を終えた後の区切りに効かせる
     // （git commit -m "GIT_DIR を直す" のメッセージの語で、そのコミット自身を止めない）

@@ -1,7 +1,14 @@
 // シェルのコマンドを、区切り（; && || | & 改行 ( )）ごとの語の並びに分ける。
 // 引用符の中の区切りは区切りとして扱わないので、grep "wrangler deploy" のような文字列は1語になる。
 // $(...) と `...` は（二重引用符の中でも）実行されるので、別の区切りとして取り出す。
-// コメントは捨てる。リダイレクトは '<' か '>' で始まる1語にまとめ、ヒアドキュメントの本文は '<<本文' の1語にする。
+// コメントは捨てる。語の並びには、シェルが道具に渡す argv だけを残す。
+// リダイレクト、ヒアドキュメント、ヒアストリングは、区切りに付けた列挙されない属性 redirects に { op, target, shape, substitutions } で持つ。
+// 語の並びに混ぜると、引用符の中の ">.dev.vars" と見分けられず、argv の位置を数える判定が取り違えるため。
+// op は > >> < << <<< &> >| >>&| などの記号（記述子の番号と zsh の ! は含めない）、target は引数の位置と同じ読み方で引用符と \ を解いた先
+// （ヒアドキュメントは本文）、shape は語の shapes と同じ作りの先（実行時に決まる位置が DYNAMIC）、
+// substitutions は先の中の $(…) と `…` の中身。中身は別の区切りとしても取り出す。
+// 終わりの印に引用符も \ も無いヒアドキュメントは、シェルが本文の置換を実行するので、本文の中身も substitutions に入れて別の区切りにする。
+// 終わりの印の行が見つからないヒアドキュメントの項目には unterminated を付ける（後ろのコマンドを全部本文に飲むので、判定の側が確認を挟む）
 // 完全なシェルの解釈ではない。判定に使うのは、各区切りで先頭に来る道具の名前と引数だけ。
 // 区切りの配列は、語ごとに2つの印を列挙されない属性に持つ。引用符を外した文字列だけでは、"a b?" と a\ b? や {a,--no-local}、
 // '$x' と "$x" を見分けられないため。
@@ -30,10 +37,16 @@ const CASE_LABEL_REST = /^(\|[ \t]*[^\s;&|()<>]+[ \t]*)*\)/;
 // 記号だけでできた予約語と test の道具（{ … }、[ -f x ]、[[ … ]]）は展開しない
 const LITERAL_WORDS = new Set(['{', '}', '[', ']', '[[', ']]']);
 
-function withMarks(words, expands, shapes) {
+function withMarks(words, expands, shapes, redirects = []) {
   Object.defineProperty(words, 'expands', { value: expands, configurable: true });
   Object.defineProperty(words, 'shapes', { value: shapes, configurable: true });
+  Object.defineProperty(words, 'redirects', { value: redirects, configurable: true });
   return words;
+}
+
+// 区切りのリダイレクト。印の無い配列（splitSegments を通っていない語）は持たない
+export function redirectsOf(words) {
+  return words.redirects ?? [];
 }
 
 // i 番目の語が展開で別の語に分かれるか、別の文字列になりうるか。印の無い配列（splitSegments を通っていない語）は、記号があれば展開とみなす
@@ -51,21 +64,24 @@ export function followsGlobGroup(words) {
   return words.followsGlobGroup === true;
 }
 
-// 語と印を一緒に切り出す。Array.prototype.slice は印を落とすので、判定の途中で語を切り出すときはこれを使う
+// 語と印を一緒に切り出す。Array.prototype.slice は印を落とすので、判定の途中で語を切り出すときはこれを使う。
+// リダイレクトは語の位置を持たず区切りぜんたいに掛かるので、切り出しても全部を運ぶ
 export function sliceWords(words, start, end) {
   return withMarks(
     words.slice(start, end),
     words.map((_, i) => expandsAt(words, i)).slice(start, end),
     words.map((_, i) => shapeAt(words, i)).slice(start, end),
+    redirectsOf(words),
   );
 }
 
-// 語と印を一緒につなぐ
+// 語と印を一緒につなぐ。切り出した部分をつなぎ直すと同じリダイレクトが重なるので、同じ項目は1つにする
 export function concatWords(...parts) {
   return withMarks(
     parts.flatMap((p) => [...p]),
     parts.flatMap((p) => p.map((_, i) => expandsAt(p, i))),
     parts.flatMap((p) => p.map((_, i) => shapeAt(p, i))),
+    [...new Set(parts.flatMap(redirectsOf))],
   );
 }
 
@@ -85,9 +101,9 @@ function readParameter(text, start) {
     const ch = text[j];
     if (ch === '\\') j++;
     else if (text.startsWith('$(', j)) {
-      const close = closingParen(text, j + 2);
-      substitutions.push(text.slice(j + 2, close));
-      j = close;
+      const { inner, end } = readSubstitution(text, j);
+      substitutions.push(...inner);
+      j = end;
     } else if (ch === '`') {
       const close = text.indexOf('`', j + 1);
       const stop = close === -1 ? text.length : close;
@@ -146,6 +162,7 @@ function closingParen(text, start) {
   for (let j = start; j < text.length; j++) {
     const ch = text[j];
     if (ch === '\\') j++;
+    else if (text.startsWith('$((', j)) j = arithmeticEnd(text, j + 3);
     else if (text.startsWith('<<', j) && text[j + 2] !== '<') {
       const match = /^<<-?\s*(['"]?)([\w-]+)\1/.exec(text.slice(j));
       if (!match) continue;
@@ -162,6 +179,55 @@ function closingParen(text, start) {
     else if (ch === ')' && --depth === 0) return j;
   }
   return text.length;
+}
+
+// (( の後ろから、算術を閉じる )) の2つ目の ) の位置を返す。算術の中の << と < はシフトと比較で、ヒアドキュメントとリダイレクトではない
+function arithmeticEnd(text, start) {
+  let depth = 2;
+  for (let j = start; j < text.length; j++) {
+    const ch = text[j];
+    if (ch === '\\') j++;
+    else if (text.startsWith('$(', j) && text[j + 2] !== '(') j = closingParen(text, j + 2);
+    else if (ch === '(') depth++;
+    else if (ch === ')' && --depth === 0) return j;
+  }
+  return text.length;
+}
+
+// text[j] の $( から始まる置換を読み、別の区切りとして判定する中身の一覧 inner と、閉じの ) の位置 end を返す。
+// $(( … )) は算術なので、中身をコマンドとして読まず、中の $(…) と `…` だけを取り出す（$((1<<2)) の << をヒアドキュメントと読まない）
+function readSubstitution(text, j) {
+  if (text[j + 2] === '(') {
+    const end = arithmeticEnd(text, j + 3);
+    return { inner: substitutionsIn(text.slice(j + 3, end - 1)), end };
+  }
+  const end = closingParen(text, j + 2);
+  return { inner: [text.slice(j + 2, end)], end };
+}
+
+// 引用符も \ も無い終わりの印のヒアドキュメントの本文と、算術（$(( … ))、(( … ))）の中で、シェルが実行する置換（$(…)、`…`、${X:-$(…)}）の中身。
+// 本文の中の引用符は文字なので読み飛ばさない。\ は次の1文字を文字にする（\$(x) は実行しない）
+function substitutionsIn(body) {
+  const found = [];
+  for (let j = 0; j < body.length; j++) {
+    const ch = body[j];
+    if (ch === '\\') j++;
+    else if (body.startsWith('$(', j)) {
+      const { inner, end } = readSubstitution(body, j);
+      found.push(...inner);
+      j = end;
+    } else if (ch === '`') {
+      const close = body.indexOf('`', j + 1);
+      const stop = close === -1 ? body.length : close;
+      found.push(body.slice(j + 1, stop));
+      j = stop;
+    } else if (ch === '$') {
+      const { end, substitutions } = readParameter(body, j);
+      found.push(...substitutions);
+      j = end - 1;
+    }
+  }
+  return found;
 }
 
 export function splitSegments(command) {
@@ -188,8 +254,20 @@ export function splitSegments(command) {
     shape += dynamic ? DYNAMIC : text;
     inWord = true;
   };
+  // 演算子（> など）を読んだ後で、先の語を待っているリダイレクト。次の1語は argv ではなく、この先になる
+  let openRedirect = null;
+  // 先の語が来なかったリダイレクト（echo x >; …）は、空の先で閉じる
+  const closeRedirect = () => {
+    if (!openRedirect) return;
+    words.redirects.push({ op: openRedirect.op, target: '', shape: '', substitutions: [] });
+    openRedirect = null;
+  };
   const endWord = () => {
-    if (inWord) {
+    if (inWord && openRedirect) {
+      // 先の中の $(…) と `…` の中身は、nested に積んだ分から取る（別の区切りとしても判定される）
+      words.redirects.push({ op: openRedirect.op, target: word, shape, substitutions: nested.slice(openRedirect.nestedFrom) });
+      openRedirect = null;
+    } else if (inWord) {
       words.push(word);
       words.expands.push(expands && !LITERAL_WORDS.has(word));
       words.shapes.push(shape);
@@ -201,37 +279,47 @@ export function splitSegments(command) {
   };
   const endSegment = () => {
     endWord();
-    if (words.length > 0) {
+    closeRedirect();
+    if (words.length > 0 || words.redirects.length > 0) {
       if (afterGlobGroup) Object.defineProperty(words, 'followsGlobGroup', { value: true, configurable: true });
       segments.push(words);
     }
     words = withMarks([], [], []);
   };
-  // リダイレクトとヒアドキュメントの本文の語。シェルは argv に渡さないので、展開の印は付けない
-  const pushLiteral = (owner, text) => {
-    owner.push(text);
-    owner.expands.push(false);
-    owner.shapes.push(text);
-  };
 
-  // 引用符を外した1語を読む。リダイレクトの宛先とヒアドキュメントの終わりの印に使う
-  const readWord = (start) => {
+  // ヒアドキュメントの終わりの印を、引数の位置と同じ読み方（引用符、\、$'…'）で読む。
+  // 引用符か \ が1つでもあれば quoted で、シェルは本文を展開しない（<<'EOF'、<<\EOF、<<E\OF）
+  const readDelimiter = (start) => {
     let j = start;
     while (command[j] === ' ' || command[j] === '\t') j++;
     let text = '';
+    let quoted = false;
     while (j < command.length && !WORD_END.has(command[j])) {
       const ch = command[j];
       if (ch === "'" || ch === '"') {
+        quoted = true;
         const end = command.indexOf(ch, j + 1);
         const stop = end === -1 ? command.length : end;
         text += command.slice(j + 1, stop);
         j = stop + 1;
+      } else if (ch === '$' && command[j + 1] === "'") {
+        quoted = true;
+        const { decoded, end } = decodeAnsiC(command, j + 2);
+        text += decoded;
+        j = end + 1;
+      } else if (ch === '\\' && j + 1 < command.length) {
+        // \<改行> は行継続で、印の一部にも引用にもならない
+        if (command[j + 1] !== '\n') {
+          quoted = true;
+          text += command[j + 1];
+        }
+        j += 2;
       } else {
         text += ch;
         j++;
       }
     }
-    return [text, j];
+    return [text, j, quoted];
   };
 
   for (let i = 0; i < command.length; i++) {
@@ -249,10 +337,18 @@ export function splitSegments(command) {
       i = stop;
       continue;
     }
-    if (command.startsWith('$(', i) || c === '`') {
-      const end = c === '`' ? command.indexOf('`', i + 1) : closingParen(command, i + 2);
+    if (command.startsWith('$(', i)) {
+      const { inner, end } = readSubstitution(command, i);
+      nested.push(...inner);
+      add(SUBSTITUTION, true);
+      expands = true;
+      i = end;
+      continue;
+    }
+    if (c === '`') {
+      const end = command.indexOf('`', i + 1);
       const stop = end === -1 ? command.length : end;
-      nested.push(command.slice(c === '`' ? i + 1 : i + 2, stop));
+      nested.push(command.slice(i + 1, stop));
       add(SUBSTITUTION, true);
       expands = true;
       i = stop;
@@ -276,8 +372,8 @@ export function splitSegments(command) {
           continue;
         }
         if (command.startsWith('$(', j)) {
-          const end = closingParen(command, j + 2);
-          nested.push(command.slice(j + 2, end));
+          const { inner, end } = readSubstitution(command, j);
+          nested.push(...inner);
           add(SUBSTITUTION, true);
           j = end + 1;
           continue;
@@ -342,46 +438,62 @@ export function splitSegments(command) {
     }
     const isRedirect = c === '<' || c === '>' || (c === '&' && command[i + 1] === '>');
     if (isRedirect) {
-      // 2>&1 の 2 のような番号は語に残さない
-      if (inWord && /^\d+$/.test(word)) {
+      // 2>&1 の 2 のような番号は語に残さない。先を待っているリダイレクトの後ろ（> 2>x）の数字は先なので残す
+      if (!openRedirect && inWord && /^\d+$/.test(word)) {
         word = '';
         shape = '';
         inWord = false;
       }
       endWord();
+      closeRedirect();
       if (command.startsWith('<<<', i)) {
-        const [text, next] = readWord(i + 3);
-        pushLiteral(words, `<<<${text}`);
-        i = next - 1;
+        openRedirect = { op: '<<<', nestedFrom: nested.length };
+        i += 2;
         continue;
       }
       if (command.startsWith('<<', i)) {
         const start = command[i + 2] === '-' ? i + 3 : i + 2;
-        const [delimiter, next] = readWord(start);
-        // 本文は改行の後で読み、この区切りの語に '<<本文' として足す
-        heredocs.push({ delimiter, words });
+        const [delimiter, next, quoted] = readDelimiter(start);
+        // 本文は改行の後で読み、この項目の target に足す。<<- も同じ op（タブを外す違いは、本文の行を trim して照合するので区別しない）
+        const redirect = { op: '<<', target: '', shape: '', substitutions: [] };
+        words.redirects.push(redirect);
+        heredocs.push({ delimiter, redirect, quoted });
         i = next - 1;
         continue;
       }
       let j = i;
       while ('<>&|'.includes(command[j]) && j - i < 3) j++;
-      // zsh の >!、>>!、&>!、>&! は、既にあるファイルを上書きする >。! を宛先の語に残さない
-      if (command[j] === '!' && command.slice(i, j).includes('>')) j++;
-      const op = command.slice(i, j);
+      // zsh の >!、>>!、&>!、>&! は、既にあるファイルを上書きする >。! を宛先の語に残さない。
+      // >>&| と &>>| は 3 文字に収まらず、末尾の | がパイプに切れるので、| も同じに読む
+      const written = command.slice(i, j);
+      if ((command[j] === '!' || (command[j] === '|' && !written.endsWith('|'))) && written.includes('>')) j++;
+      const op = command.slice(i, j).replace(/!$/, '');
+      // 記述子の複製と閉じ（2>&1、>&2、<&0、>&-）は、書き込み先にも読み込み元にも数えない
       if (op.endsWith('&') && /[\d-]/.test(command[j] ?? '')) {
         while (/[\d-]/.test(command[j] ?? '')) j++;
         i = j - 1;
         continue;
       }
-      const [text, next] = readWord(j);
-      pushLiteral(words, `${op.includes('<') ? '<' : '>'}${text}`);
-      i = next - 1;
+      openRedirect = { op, nestedFrom: nested.length };
+      i = j - 1;
+      continue;
+    }
+
+    // コマンドの頭の (( … ))（for (( … )) も）は算術のコマンド。中の << と < はシフトと比較なので、リダイレクトとヒアドキュメントに読まない。
+    // 中の置換は実行されるので、別の区切りとして取り出す
+    if (command.startsWith('((', i) && !inWord && !openRedirect && (commandIndex(words) === -1 || words.at(-1) === 'for')) {
+      const end = arithmeticEnd(command, i + 2);
+      nested.push(...substitutionsIn(command.slice(i + 2, end - 1)));
+      i = end;
       continue;
     }
 
     const op = OPERATORS.find((o) => command.startsWith(o, i));
     if (op) {
-      const pending = inWord ? [...words, word] : [...words];
+      // 先の語が続かない演算子（echo x > ; …）は、リダイレクトを空の先で閉じる
+      if (!inWord) closeRedirect();
+      // 先を読んでいる語は argv ではないので、道具の位置の判定には数えない
+      const pending = inWord && !openRedirect ? [...words, word] : [...words];
       // [[ … ]] の中の ( ) と、=~ の後ろか括弧の中の | は、条件式と正規表現の文字（[[ $x =~ ^(a|b)$ ]]）。
       // 閉じていない [[ に、後ろのコマンドを | で飲み込ませないよう、| は =~ の後ろか括弧の中に限る
       const inTest = pending[commandIndex(pending)] === '[[' && !pending.includes(']]');
@@ -394,12 +506,14 @@ export function splitSegments(command) {
       testDepth = 0;
       // 対応する ( の無い ) の前の1語は、case のラベル（*.md)、*)）。| で並べたラベル（*.md|*.txt)）も、) までをまとめてラベルとする。
       // ラベルはコマンドではないので捨てる。2語以上（wrangler deploy )）は構文エラーだが、判定から落とさずに区切りとして読む
-      const label = depth === 0 && pending.length <= 1 ? CASE_LABEL_REST.exec(command.slice(i)) : null;
+      // リダイレクトのある区切り（bash <<< "…")、cat < f)）は、道具とその入出力なのでラベルにしない（捨てると redirects ごと判定から落ちる）
+      const label = depth === 0 && pending.length <= 1 && words.redirects.length === 0 && !openRedirect ? CASE_LABEL_REST.exec(command.slice(i)) : null;
       if (label) {
         word = '';
         shape = '';
         inWord = false;
         expands = false;
+        openRedirect = null;
         words = withMarks([], [], []);
         afterGlobGroup = false;
         i += label[0].length - 1;
@@ -430,17 +544,26 @@ export function splitSegments(command) {
       // ヒアドキュメントの本文（行の終わりから終わりの印の行まで）は、区切りとして読まない
       if (op === '\n' && heredocs.length > 0) {
         let j = i + 1;
-        for (const { delimiter, words: owner } of heredocs) {
+        for (const { delimiter, redirect, quoted } of heredocs) {
           const body = [];
-          while (j < command.length) {
+          let closed = false;
+          while (j < command.length && !closed) {
             const end = command.indexOf('\n', j);
             const lineEnd = end === -1 ? command.length : end;
             const line = command.slice(j, lineEnd);
             j = lineEnd + 1;
-            if (line.trim() === delimiter) break;
-            body.push(line);
+            if (line.trim() === delimiter) closed = true;
+            else body.push(line);
           }
-          pushLiteral(owner, `<<${body.join('\n')}`);
+          redirect.target = body.join('\n');
+          // 終わりの印の行が無いと、後ろのコマンドを全部本文に飲む。判定の側が確認を挟めるよう印を残す
+          if (!closed) redirect.unterminated = true;
+          // 引用符も \ も無い印の本文は、シェルが $(…)、`…`、${…} の中の置換を実行する
+          if (!quoted) {
+            const inner = substitutionsIn(redirect.target);
+            nested.push(...inner);
+            redirect.substitutions.push(...inner);
+          }
         }
         heredocs.length = 0;
         i = j - 1;
@@ -449,7 +572,7 @@ export function splitSegments(command) {
     }
     // zsh は語の先頭の =名前 を道具のパスに展開する（=wrangler は /…/wrangler）。道具の位置では = を外して道具の名前として読む。
     // 引数の位置（echo =.env）は、道具が見つからなければ zsh が実行を止めるので、文字のまま読む
-    if (c === '=' && !inWord && commandIndex(words) === -1 && /[\w.-]/.test(command[i + 1] ?? '')) continue;
+    if (c === '=' && !inWord && !openRedirect && commandIndex(words) === -1 && /[\w.-]/.test(command[i + 1] ?? '')) continue;
     // ~名前（zsh の hash -d、bash の ~- と ~+、~user）は、語の先頭か = と : の後ろで別の文字列に展開される。
     // ~ だけと ~/ は家のディレクトリなので文字として読む
     if (c === '~' && (!inWord || /[=:]$/.test(word)) && !/^~(\/|$|[\s;&|<>()])/.test(command.slice(i))) {
@@ -534,7 +657,7 @@ function scanCommand(words) {
   let previous = '';
   for (let i = 0; i < words.length; i++) {
     const w = words[i];
-    if (w === '' || isAssignment(w) || /^[<>]/.test(w)) continue;
+    if (w === '' || isAssignment(w)) continue;
     if (w.startsWith('-')) {
       const takesValue =
         previous === 'xargs'
@@ -565,12 +688,12 @@ export function prefixIndexes(words) {
   return scanCommand(words).prefixes;
 }
 
-// 値を取るフラグとリダイレクトを飛ばして、位置の引数の位置を返す。展開の印を引くとき（git push の refspec）に使う
+// 値を取るフラグを飛ばして、位置の引数の位置を返す。展開の印を引くとき（git push の refspec）に使う
 export function positionalIndexes(args, flagsWithValue = new Set()) {
   const result = [];
   for (let i = 0; i < args.length; i++) {
     const a = args[i];
-    if (a === '--' || /^[<>]/.test(a)) continue;
+    if (a === '--') continue;
     if (a.startsWith('-')) {
       if (flagsWithValue.has(a)) i++;
       continue;
@@ -580,7 +703,7 @@ export function positionalIndexes(args, flagsWithValue = new Set()) {
   return result;
 }
 
-// 値を取るフラグとリダイレクトを飛ばして、位置の引数だけを返す
+// 値を取るフラグを飛ばして、位置の引数だけを返す
 export function positionals(args, flagsWithValue = new Set()) {
   return positionalIndexes(args, flagsWithValue).map((i) => args[i]);
 }
