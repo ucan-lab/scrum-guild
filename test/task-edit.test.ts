@@ -21,6 +21,7 @@ type Detail = {
   points: number | null;
   due_on: string | null;
   link_url: string | null;
+  assignee: { id: string; name: string; left: boolean } | null;
   is_imported: boolean;
   completed_at: string | null;
   can_delete: boolean;
@@ -129,6 +130,7 @@ describe('task-detail', () => {
       points: 5,
       due_on: '2026-10-30',
       link_url: 'https://example.com/spec',
+      assignee: null,
       is_imported: false,
       completed_at: null,
       can_delete: true,

@@ -25,6 +25,27 @@ export function openWorkspace(
     .where('workspaces.closed_at', 'is', null);
 }
 
+// そのワークスペースに今所属している、無効でなく login_subject のある人の名前。いなければ行が無い。
+// 担当にできる人の条件で、担当を指す書き込み（task-create、task-assign）が、読む文と書く文の条件（EXISTS）の両方に使う。
+// 画面が候補に出すメンバーの一覧（member-list）と同じ人にする（Google で待っている、login_subject の無い行は担当にしない）
+export function activeMemberName(
+  from: Pick<QueryCreator<Tables>, 'selectFrom'>,
+  organizationId: string,
+  workspaceId: string,
+  userId: string,
+) {
+  return from
+    .selectFrom('memberships as m')
+    .innerJoin('users as u', 'u.id', 'm.user_id')
+    .select('u.name')
+    .where('m.workspace_id', '=', workspaceId)
+    .where('m.user_id', '=', userId)
+    .where('m.left_at', 'is', null)
+    .where('u.organization_id', '=', organizationId)
+    .where('u.disabled_at', 'is', null)
+    .where('u.login_subject', 'is not', null);
+}
+
 // 条件で落ちた書き込みの理由を、書いた後に読み直して決める。閉じていれば登録の関数と同じ 409 の workspace_closed
 export async function throwIfClosed(db: OrganizationDb, workspaceId: string): Promise<void> {
   const row = await db.first(

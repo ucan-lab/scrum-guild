@@ -2,6 +2,7 @@
   import { tick } from 'svelte';
   import { invalidateAll } from '$app/navigation';
   import { taskCreate } from '../../shared/operations/task/index.ts';
+  import { memberList } from '../../shared/operations/workspace/index.ts';
   import type { BacklogTask } from '../../shared/operations/task/backlog-tree.ts';
   import {
     TASK_POINT_VALUES,
@@ -15,8 +16,11 @@
   import Dialog from './Dialog.svelte';
   import Icon from './Icon.svelte';
 
-  // kit.js の createTask。タイトル、親のストーリー、ポイント（担当は API でだけ渡せる）。リポジトリ、添付ファイルは、それぞれの機能の Issue で足す。
+  // kit.js の createTask。タイトル、親のストーリー、担当、ポイント。リポジトリ、添付ファイルは、それぞれの機能の Issue で足す。
   // 親の選択欄は、親なしと、stories（画面が渡す、完了していない親のないストーリー）。show(trigger, storyId) で親を選んだ状態で開ける。
+  // 担当の選択欄は、担当なし（既定）と、開くたびに member-list で読む、そのワークスペースに今所属している人。
+  // 読めなければ担当なしだけで作れ、読めなかったことを添える。選んだ人が所属を外れていた（404）ときは、理由を出し、候補を読み直して
+  // 担当なしに戻し、担当の選択欄へフォーカスを移す。
   // 送っている間は、「作る」を押しても無視し（aria-disabled）、ダイアログも閉じられない。二重送信はそれだけで防ぐ。
   // 作れたら閉じて、作ったタスクと親の ID を oncreated に渡す（画面が親の配下か一覧の末尾に足す）。
   // 親が消えた（404）か完了した（409）ときは、理由を出し、その場で木を読み直して候補を更新する（選んでいた親が消えたら親なしに戻し、親の選択欄へフォーカスを移す）。
@@ -42,6 +46,8 @@
   const titleId = `${ids}-title`;
   const titleErrorId = `${ids}-title-error`;
   const parentId = `${ids}-parent`;
+  const assigneeId = `${ids}-assignee`;
+  const assigneeNoteId = `${ids}-assignee-note`;
   const pointsLabelId = `${ids}-points`;
   const pointsHintId = `${ids}-points-hint`;
 
@@ -50,11 +56,17 @@
   let titleInput = $state<HTMLInputElement>();
   let submitButton = $state<HTMLButtonElement>();
   let parentSelect = $state<HTMLSelectElement>();
+  let assigneeSelect = $state<HTMLSelectElement>();
 
   let title = $state('');
   let points = $state<PointsChoice>(null);
   // 選んだ親のストーリーの ID。空は親なし
   let story = $state('');
+  // 選んだ担当の ID。空は担当なし
+  let assignee = $state('');
+  // 担当の候補（そのワークスペースに今所属している人）。読み込む前と読めなかったときは空
+  let candidates = $state<readonly { id: string; name: string }[]>([]);
+  let candidatesFailed = $state(false);
   let titleError = $state<string | null>(null);
   let submitError = $state<string | null>(null);
   let submitting = $state(false);
@@ -89,10 +101,54 @@
     points = null;
     // 候補に無い親（完了した、消えた）は選ばず、親なしで開く
     story = storyId !== null && stories.some((candidate) => candidate.id === storyId) ? storyId : '';
+    assignee = '';
+    // 前に開いたとき（別のワークスペースのときを含む）の候補と、読めなかった知らせを残さない
+    candidates = [];
+    candidatesFailed = false;
     titleError = null;
     submitError = null;
     submitting = false;
     dialog?.show(trigger);
+    void loadCandidates(generation);
+  }
+
+  // 担当の候補を読む。開き直した後と部品が外れた後の応答と、後から読み直した分より古い応答は捨てる。
+  // 選んでいた人が候補から消えたら、担当なしに戻す
+  let candidatesVersion = 0;
+  let candidatesLoading = $state(false);
+  async function loadCandidates(mine: number): Promise<void> {
+    const version = ++candidatesVersion;
+    candidatesLoading = true;
+    const result = await callOperation(memberList, { workspace_id: workspaceId }, { slug });
+    if (mine !== generation || version !== candidatesVersion) return;
+    candidatesLoading = false;
+    if (!result.ok) {
+      candidatesFailed = true;
+      return;
+    }
+    candidates = result.data.members.map((member) => ({ id: member.id, name: member.name }));
+    candidatesFailed = false;
+    if (assignee !== '' && !candidates.some((candidate) => candidate.id === assignee)) assignee = '';
+  }
+
+  // 候補を読み直す。読めたら、押したボタンは消えるので、担当の選択欄へフォーカスを移す
+  async function retryCandidates(): Promise<void> {
+    if (candidatesLoading) return;
+    const mine = generation;
+    await loadCandidates(mine);
+    if (mine !== generation || candidatesFailed) return;
+    await tick();
+    assigneeSelect?.focus();
+  }
+
+  // 木を読み直して、親の候補を更新する。選んでいた親が候補から消えたら、親なしに戻して true を返す
+  async function reloadParents(mine: number): Promise<boolean> {
+    const chosen = story;
+    await invalidateAll();
+    if (mine !== generation || chosen === '') return false;
+    if (stories.some((candidate) => candidate.id === chosen)) return false;
+    story = '';
+    return true;
   }
 
   const titleMessages = $derived<Record<TaskTitleProblem, string>>({
@@ -121,10 +177,17 @@
     submitButton?.focus();
     let focusTitle = false;
     let focusParent = false;
+    let focusAssignee = false;
     try {
       const result = await callOperation(
         taskCreate,
-        { workspace_id: workspaceId, title: title.trim(), points, story_id: story === '' ? null : story },
+        {
+          workspace_id: workspaceId,
+          title: title.trim(),
+          points,
+          assignee_user_id: assignee === '' ? null : assignee,
+          story_id: story === '' ? null : story,
+        },
         { slug },
       );
       if (mine !== generation) return;
@@ -138,22 +201,25 @@
           submitError = t('workspaceClosedReadOnly', { workspace: t('workspace') });
           // 閉じたら画面を読み直して、閉じた表示（起票と完了の操作を出さない）に切り替える
           reloadOnClose = true;
-        } else if (
-          story !== '' &&
-          (result.status === 404 || (result.status === 409 && result.error?.code === 'conflict'))
-        ) {
-          // 親が消えたか、完了した。理由を出し、その場で木を読み直して候補を更新する。選んでいた親が候補から消えたら、親なしに戻して、
+        } else if (story !== '' && result.status === 409 && result.error?.code === 'conflict') {
+          // 親が完了した。理由を出し、その場で木を読み直して候補を更新する。選んでいた親が候補から消えたら、親なしに戻して、
           // 選び直せるよう親の選択欄へフォーカスを移す（ダイアログは閉じない）
-          submitError =
-            result.status === 404
-              ? t('taskParentGone', { story: t('story') })
-              : t('taskParentDone', { story: t('story'), done: t('done') });
-          const chosen = story;
-          await invalidateAll();
+          submitError = t('taskParentDone', { story: t('story'), done: t('done') });
+          focusParent = await reloadParents(mine);
+        } else if (result.status === 404 && (story !== '' || assignee !== '')) {
+          // 親が消えたか、担当が所属を外れた。親を選んでいれば木を読み直し、親が候補から消えていれば親の理由を出す。
+          // 親が無事で担当を選んでいれば、担当の理由を出し、候補を読み直して担当なしに戻し、担当の選択欄へフォーカスを移す
+          const parentGone = story !== '' && (await reloadParents(mine));
           if (mine !== generation) return;
-          if (!stories.some((candidate) => candidate.id === chosen)) {
-            story = '';
-            focusParent = true;
+          if (parentGone || assignee === '') {
+            submitError = t('taskParentGone', { story: t('story') });
+            focusParent = parentGone;
+          } else {
+            submitError = t('assigneeNotMember', { workspace: t('workspace'), assignee: t('assignee') });
+            assignee = '';
+            focusAssignee = true;
+            await loadCandidates(mine);
+            if (mine !== generation) return;
           }
         } else if (result.status === 400) {
           // 画面の検査を通った後に断られたのは、タイトルだけ（ポイントは選ぶ形）
@@ -176,9 +242,9 @@
     } finally {
       if (mine === generation) {
         submitting = false;
-        if (focusTitle || focusParent) {
+        if (focusTitle || focusParent || focusAssignee) {
           await tick();
-          (focusParent ? parentSelect : titleInput)?.focus();
+          (focusAssignee ? assigneeSelect : focusParent ? parentSelect : titleInput)?.focus();
         }
       }
     }
@@ -210,14 +276,52 @@
         {/if}
       </div>
 
-      <div class="field">
-        <label class="field-label" for={parentId}>{t('taskParent', { story: t('story') })}</label>
-        <select class="select" id={parentId} bind:this={parentSelect} bind:value={story}>
-          <option value="">{t('taskParentNone')}</option>
-          {#each stories as option (option.id)}
-            <option value={option.id}>{option.title}</option>
-          {/each}
-        </select>
+      <!-- 片方の下にだけ知らせが出ても、もう片方の欄が下へずれないよう、上で揃える -->
+      <div class="form-row is-start">
+        <div class="field">
+          <label class="field-label" for={parentId}>{t('taskParent', { story: t('story') })}</label>
+          <select class="select" id={parentId} bind:this={parentSelect} bind:value={story}>
+            <option value="">{t('taskParentNone')}</option>
+            {#each stories as option (option.id)}
+              <option value={option.id}>{option.title}</option>
+            {/each}
+          </select>
+        </div>
+        <div class="field">
+          <label class="field-label" for={assigneeId}>{t('assignee')}</label>
+          <select
+            class="select"
+            id={assigneeId}
+            bind:this={assigneeSelect}
+            bind:value={assignee}
+            aria-busy={candidatesLoading}
+            aria-describedby={candidatesFailed ? assigneeNoteId : undefined}
+          >
+            <option value="">{t('unassigned')}</option>
+            {#each candidates as option (option.id)}
+              <option value={option.id}>{option.name}</option>
+            {/each}
+          </select>
+          {#if candidatesLoading && !candidatesFailed}
+            <!-- 候補を読んでいる間は、選択肢が担当なしだけなので、まだ読んでいることを示す -->
+            <span class="field-hint" role="status">{t('loading')}</span>
+          {/if}
+          {#if candidatesFailed}
+            <span class="field-hint" id={assigneeNoteId}
+              >{t('assigneeCandidatesFailed', { assignee: t('assignee') })}</span
+            >
+            <div class="form-actions">
+              <button
+                class="btn is-sm is-quiet"
+                type="button"
+                aria-disabled={candidatesLoading}
+                onclick={() => void retryCandidates()}
+              >
+                {candidatesLoading ? t('retrying') : t('retry')}
+              </button>
+            </div>
+          {/if}
+        </div>
       </div>
 
       <div class="field">

@@ -95,6 +95,13 @@ export const pointers: Pointers = {
     task_id: (await createTask(target.organization, target.workspace.id, target.admin.userId!)).id,
     title: `見直した ${crypto.randomUUID().slice(0, 8)}`,
   }),
+  // 呼ぶたびに担当のいないタスクを作り、ワークスペースに今所属している一般のメンバーを担当にする（同じ担当だと、2回目は何も書かないため）。
+  // 別の組織の対象を渡すと、タスクも担当も別の組織の行なので 404
+  'task-assign': async (target) => ({
+    workspace_id: target.workspace.id,
+    task_id: (await createTask(target.organization, target.workspace.id, target.admin.userId!)).id,
+    assignee_user_id: target.member.userId,
+  }),
   // 呼ぶたびに、一般のメンバーが作ったタスクを作る（削除できるのは作った人とリーダーなので、メンバーも通る。削除したタスクは続けて削除できない）
   'task-delete': async (target) => ({
     workspace_id: target.workspace.id,

@@ -5,7 +5,7 @@ import { createOrganizationOperation, listOrganizationsOperation, resolveGithubU
 import { myOrganizationsOperation, organizationInfoOperation } from './organization.ts';
 import { logoutOperation, meOperation } from './session.ts';
 import { storyCreateOperation, storyGetOperation, storyMoveOperation, storyUpdateOperation } from './story.ts';
-import { taskDeleteOperation, taskDetailOperation, taskUpdateOperation } from './task-edit.ts';
+import { taskAssignOperation, taskDeleteOperation, taskDetailOperation, taskUpdateOperation } from './task-edit.ts';
 import { backlogTreeOperation, taskCompleteOperation, taskCreateOperation, taskMoveOperation } from './task.ts';
 import {
   memberListOperation,
@@ -34,6 +34,7 @@ export const implementedOperations: readonly ImplementedOperation[] = [
   taskCompleteOperation,
   taskDetailOperation,
   taskUpdateOperation,
+  taskAssignOperation,
   taskDeleteOperation,
   taskMoveOperation,
   workspaceCreateOperation,
