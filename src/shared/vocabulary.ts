@@ -1097,7 +1097,9 @@ export const dictionary = defineDictionary({
     '画面の見た目の既定。自分で選んでいないユーザーに効きます。会社で使うならシンプルが無難です。',
     '画面の見た目の既定。自分で選んでいないユーザーに効きます。会社で使うならシンプルが無難です。',
   ),
-  orgSettingsSaving: organization('変えています', '変えています'),
+  // 節ごとの「保存する」。選んだ値が今の値と違うときだけ押せる
+  orgSettingsSave: organization('保存する', '保存する'),
+  orgSettingsSaving: organization('保存しています', '保存しています'),
   orgVocabularyChanged: organization('言葉づかいを「{label}」に変えました', '言葉づかいを「{label}」に変えました'),
   orgThemeChanged: organization('既定のテーマを「{label}」に変えました', '既定のテーマを「{label}」に変えました'),
   // ほかの管理者が先に同じ項目を変えていた（409）。読み直した値を見てもらう
@@ -1105,9 +1107,15 @@ export const dictionary = defineDictionary({
     'ほかの{admin}が先に変えていました。今の値を読み直したので、確かめてから選び直してください',
     'ほかの{admin}が先に変えていました。今の値を読み直したので、確かめてから選び直してください',
   ),
+  // 見つからない、または操作できない（404、403。管理者でなくなったなど）。読み直した画面を見てもらう
+  orgSettingsUnavailable: organization(
+    '保存できませんでした。操作できない状態です。画面を読み直しました。',
+    '保存できませんでした。操作できない状態です。画面を読み直しました。',
+  ),
+  // 通信の失敗と 5xx。選んだ値は残すので、そのまま押し直せる
   orgSettingsFailed: organization(
-    '変えられませんでした。もう一度試してください。',
-    '変えられませんでした。もう一度試してください。',
+    '保存できませんでした。もう一度「保存する」を押してください。',
+    '保存できませんでした。もう一度「保存する」を押してください。',
   ),
 
   // ワークスペースを終了する、再開する（組織の管理の画面。API の操作の名前は workspace-close と workspace-reopen のまま）。

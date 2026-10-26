@@ -13,21 +13,34 @@
 
   // 組織の管理の画面（admin.html）の「ワークスペースの外の言葉づかい」と「既定のテーマ」の2つの節。
   // 値は組織の枠が読んだ値（organization 操作の結果）を受け取り、節は自分で読まない。
-  // ラジオを選ぶとすぐ送る。送っている間は、両方の節の選択肢を aria-disabled にして選んでも無視する（フォーカスは残す）。
-  // 通ったら知らせを出し、組織の枠を読み直して自分の画面にも当てる（テーマは自分で選んでいなければ変わる）。
-  // 409（ほかの管理者が先に変えた）は知らせて読み直す。401 はログインへ。ほかの失敗は選択を元の値に戻して知らせる
+  // 選ぶことと確定することを分ける（矢印のキーでラジオを動かすたびに、組織の全員の既定を変えない）。節ごとの「保存する」は、
+  // 選んだ値が今の値と違うときだけ押せる。送っている間はそのボタンを aria-disabled にして押しても無視し、ラジオは選べたままにする
+  // （結果は送った値で判断する）。通ったら知らせを出し、組織の枠を読み直して自分の画面にも当てる（テーマは自分で選んでいなければ変わる）。
+  // 409（ほかの管理者が先に変えた）と 403、404 は知らせて読み直し、今の値を見せる。401 はログインへ。
+  // ほかの失敗（通信、5xx）は選んだ値を残して知らせ、そのまま押し直せる
   let { slug, vocabulary, theme }: { slug: string; vocabulary: Vocabulary; theme: Theme } = $props();
 
-  type Change = InputOf<typeof organizationSettingsUpdate>;
+  type Field = 'vocabulary' | 'theme';
+  type Values = { vocabulary: Vocabulary; theme: Theme };
 
   const ids = $props.id();
-  // 送っている項目と値。送っている間は、その値を選んだ状態で見せる。終われば空にし、受け取った値（読み直した組織の枠の値）に戻る
-  let pending = $state<Change | null>(null);
+  // 選んだがまだ保存していない値。null は選んでいない（今の値を見せる）
+  let drafts = $state<{ vocabulary: Vocabulary | null; theme: Theme | null }>({ vocabulary: null, theme: null });
+  // 送っている値。節ごとに持つ
+  let sending = $state<{ vocabulary: Vocabulary | null; theme: Theme | null }>({ vocabulary: null, theme: null });
 
-  const shownVocabulary = $derived(pending?.vocabulary ?? vocabulary);
-  const shownTheme = $derived(pending?.theme ?? theme);
-  const busy = $derived(pending !== null);
+  const current = $derived<Values>({ vocabulary, theme });
+  const chosen = $derived<Values>({
+    vocabulary: drafts.vocabulary ?? vocabulary,
+    theme: drafts.theme ?? theme,
+  });
   const vocabularies: readonly Vocabulary[] = ['game', 'scrum'];
+
+  // slug が替わったら、前の組織で選んだ値を捨てる
+  $effect(() => {
+    void slug;
+    drafts = { vocabulary: null, theme: null };
+  });
 
   function vocabularyLabel(value: Vocabulary): string {
     return t(value === 'game' ? 'vocabularyGameLabel' : 'vocabularyScrumLabel');
@@ -42,20 +55,26 @@
     });
   }
 
-  // 送っている間は選んでも無視する。矢印のキーでの移動も click を経るので、ここで止まる
-  function guard(event: MouseEvent): void {
-    if (busy) event.preventDefault();
+  function canSave(field: Field): boolean {
+    return sending[field] === null && chosen[field] !== current[field];
   }
 
-  async function send(change: Change): Promise<void> {
-    if (busy) return;
+  // 送った値のままなら、選んだ値を捨てて受け取った値（読み直した組織の枠の値）を見せる。送っている間に選び直していれば残す
+  function dropDraft(field: Field, sent: string): void {
+    if (drafts[field] === sent) drafts = { ...drafts, [field]: null };
+  }
+
+  async function save(field: Field): Promise<void> {
+    if (!canSave(field)) return;
     const sentSlug = slug;
+    const value = chosen[field];
+    const change = { [field]: value } as InputOf<typeof organizationSettingsUpdate>;
     // 知らせの文言は、送る前の言葉づかいで決める（言葉づかいを変えると、読み直した後は新しい言葉になる）
     const success =
-      change.vocabulary !== undefined
-        ? t('orgVocabularyChanged', { label: vocabularyLabel(change.vocabulary) })
-        : t('orgThemeChanged', { label: t(themeLabelKeys[change.theme!]) });
-    pending = change;
+      field === 'vocabulary'
+        ? t('orgVocabularyChanged', { label: vocabularyLabel(value as Vocabulary) })
+        : t('orgThemeChanged', { label: t(themeLabelKeys[value as Theme]) });
+    sending = { ...sending, [field]: value };
     try {
       const result = await callOperation(organizationSettingsUpdate, change, { slug: sentSlug });
       if (sentSlug !== slug) return;
@@ -65,64 +84,70 @@
       }
       if (result.ok) {
         showToast(success, 'check');
-        await invalidateAll();
       } else if (result.status === 409 && result.error?.code === 'conflict') {
         showToast(t('orgSettingsConflict', { admin: t('admin') }), 'alert');
-        await invalidateAll();
+      } else if (result.status === 403 || result.status === 404) {
+        showToast(t('orgSettingsUnavailable'), 'alert');
       } else {
+        // 選んだ値は残し、そのまま押し直せる
         showToast(t('orgSettingsFailed'), 'alert');
+        return;
       }
+      await invalidateAll();
+      if (sentSlug === slug) dropDraft(field, value);
     } finally {
-      // 失敗したときと、読み直した値が選んだ値と違うときは、選択が受け取った値に戻る
-      pending = null;
+      sending = { ...sending, [field]: null };
     }
   }
+
+  const status = $derived(sending.vocabulary !== null || sending.theme !== null ? t('orgSettingsSaving') : '');
 </script>
 
 <Setting
   title={t('orgVocabularyTitle', { workspace: t('workspace') })}
   description={t('orgVocabularyDesc', { workspace: t('workspace'), leader: t('leader') })}
 >
-  <div
-    class="choice-list"
-    role="radiogroup"
-    aria-label={t('orgVocabularyTitle', { workspace: t('workspace') })}
-    aria-busy={busy}
-  >
+  <div class="choice-list" role="radiogroup" aria-label={t('orgVocabularyTitle', { workspace: t('workspace') })}>
     {#each vocabularies as value (value)}
       <label class="choice">
         <input
           type="radio"
           name="{ids}-vocabulary"
           {value}
-          checked={shownVocabulary === value}
-          aria-disabled={busy}
-          onclick={guard}
-          onchange={() => send({ vocabulary: value })}
+          checked={chosen.vocabulary === value}
+          onchange={() => (drafts = { ...drafts, vocabulary: value })}
         />
         <div><b>{vocabularyLabel(value)}</b><span>{vocabularyExample(value)}</span></div>
       </label>
     {/each}
   </div>
+  <div class="form-actions">
+    <button class="btn" type="button" aria-disabled={!canSave('vocabulary')} onclick={() => save('vocabulary')}>
+      {sending.vocabulary !== null ? t('orgSettingsSaving') : t('orgSettingsSave')}
+    </button>
+  </div>
 </Setting>
 
 <Setting title={t('orgThemeTitle')} description={t('orgThemeDesc')}>
-  <div class="choice-list" role="radiogroup" aria-label={t('orgThemeTitle')} aria-busy={busy}>
+  <div class="choice-list" role="radiogroup" aria-label={t('orgThemeTitle')}>
     {#each themes as value (value)}
       <label class="choice">
         <input
           type="radio"
           name="{ids}-theme"
           {value}
-          checked={shownTheme === value}
-          aria-disabled={busy}
-          onclick={guard}
-          onchange={() => send({ theme: value })}
+          checked={chosen.theme === value}
+          onchange={() => (drafts = { ...drafts, theme: value })}
         />
         <div><b>{t(themeLabelKeys[value])}</b><span>{t(themeNoteKeys[value])}</span></div>
       </label>
     {/each}
   </div>
+  <div class="form-actions">
+    <button class="btn" type="button" aria-disabled={!canSave('theme')} onclick={() => save('theme')}>
+      {sending.theme !== null ? t('orgSettingsSaving') : t('orgSettingsSave')}
+    </button>
+  </div>
   <!-- 送っている間の読み上げ。領域は常に置き、中の文字だけを替える -->
-  <span class="visually-hidden" role="status">{busy ? t('orgSettingsSaving') : ''}</span>
+  <span class="visually-hidden" role="status">{status}</span>
 </Setting>

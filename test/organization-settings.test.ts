@@ -155,6 +155,30 @@ describe('organization-settings-update', () => {
     expect(await changeLogsOf(target.organization)).toEqual([]);
   });
 
+  test('両方を送り、片方だけを別の要求が先に変えていたら、もう片方も書かず 409 の conflict にする', async () => {
+    const target = await createTarget();
+    let interrupted = false;
+    const racing = envWithD1Hooks(testEnv, {
+      // 入るときに組織の行を引いた直後に、別の要求が言葉づかいだけを変える
+      afterQuery: async (sql) => {
+        if (interrupted || !sql.includes('from "organizations"')) return;
+        interrupted = true;
+        const db = commonDb(env);
+        await db.run(
+          db.statement((q) =>
+            q.updateTable('organizations').set({ vocabulary: 'scrum' }).where('id', '=', target.organization.id),
+          ),
+        );
+      },
+    });
+    const res = await update(target, { vocabulary: 'scrum', theme: 'medieval' }, { env: racing });
+    expect(interrupted).toBe(true);
+    expect(res.status).toBe(409);
+    expect(await errorCodeOf(res)).toBe('conflict');
+    expect(await organizationRow(target.organization)).toMatchObject({ vocabulary: 'scrum', theme: 'simple' });
+    expect(await changeLogsOf(target.organization)).toEqual([]);
+  });
+
   test('履歴を書けなくても成功し、ログに操作、組織の ID、前後の値、日時、例外の名前だけを残す', async () => {
     const errorLog = vi.spyOn(console, 'error').mockImplementation(() => {});
     const target = await createTarget();

@@ -855,9 +855,6 @@ dialog.dialog::backdrop { background: none; }
 .choice input { margin-top: 4px; accent-color: var(--color-accent); }
 .choice b { display: block; font-size: var(--text-sm); overflow-wrap: anywhere; }
 .choice span { font-size: var(--text-xs); color: var(--color-muted); overflow-wrap: anywhere; }
-/* 選べない選択肢。aria-disabled は、送っている最中で選んでも何も起きないが、フォーカスは残したいもの（.btn の aria-disabled と同じ考え方）。
-   中の説明は読める濃さに留める */
-.choice:has(input:disabled, input[aria-disabled="true"]) { opacity: 0.6; cursor: not-allowed; }
 /* 押すと移る選択肢（組織の選択など）。choice と同じ見た目のリンク */
 a.choice { color: inherit; text-decoration: none; align-items: center; }
 a.choice:hover, a.choice:focus-visible { border-color: var(--color-accent); }

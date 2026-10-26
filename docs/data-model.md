@@ -198,8 +198,8 @@
 | id | TEXT | PK | |
 | slug | TEXT | NOT NULL、UNIQUE、`CHECK (slug GLOB '[a-z0-9]*' AND slug NOT GLOB '*[^a-z0-9-]*' AND length(slug) BETWEEN 2 AND 40)` | URL の先頭に入れる名前。後から変えない |
 | name | TEXT | NOT NULL | 組織の表示名 |
-| vocabulary | TEXT | NOT NULL、`game` か `scrum`、既定 `game` | ワークスペースの外の言葉づかい |
-| theme | TEXT | NOT NULL、`simple`、`simple_light`、`simple_dark`、`medieval`、`modern` のどれか、既定 `simple` | 組織の既定のテーマ。`simple` は OS の明暗に合わせる |
+| vocabulary | TEXT | NOT NULL、`game` か `scrum`、既定 `game` | ワークスペースの外の言葉づかい。管理者が組織の管理の画面（`organization-settings-update`）で変え、変えると `updated_at` と `change_logs` が動く（「書き込みの単位」の組織の設定の変更） |
+| theme | TEXT | NOT NULL、`simple`、`simple_light`、`simple_dark`、`medieval`、`modern` のどれか、既定 `simple` | 組織の既定のテーマ。`simple` は OS の明暗に合わせる。管理者が組織の管理の画面（`organization-settings-update`）で変え、変えると `updated_at` と `change_logs` が動く |
 | suspended_at | TEXT | | 停止した日時。入っていれば誰も入れず、定期処理も止める |
 | purge_on | TEXT | | 解約で停止したときの、データを消す予定日（解約で停止した日か、停止中に解約へ切り替えた日の30日後）。一時的な停止では空 |
 | member_limit | INTEGER | NOT NULL、既定 15、`CHECK (member_limit > 0)` | 人数の上限。運用者が決める |
@@ -1029,7 +1029,7 @@ D1 は対話的なトランザクションを持たない。まとめて書く�
 | メンバーの離脱 | `memberships`、担当を外す `tasks`、`epic_party_members`、`connections`、`change_logs`。ログインできなくなったときは、続けて共通の DB の `sessions` を消す |
 | 取り込み（1件） | `tasks`（結ばれたリポジトリがあれば `repository_id` も）、`task_sources`、`task_source_payloads` |
 | 組織の作成 | 共通の DB の `organizations`、続けて組織の DB の最初の管理者の `users` と `change_logs` の2行（組織の作成と管理者の指名） |
-| 組織の設定の変更 | 共通の DB の `organizations`（`vocabulary`、`theme`、`updated_at`）を、それだけの `batch()` で書き、続けて組織の DB の `change_logs` を別の `batch()` で書く。`organizations` の文の条件は `id` と、書く欄ごとの `<列> IS :読んだ値`。変わった行が無ければ（別の要求が先に変えた）409 の `conflict` で、`change_logs` は書かない。操作は `organization-settings-update`（管理者）で、入力は `vocabulary` と `theme` のどちらか1つ以上（無ければ 400）。前の値は入るときに引いた組織の行で、それと同じ値の項目は書かない。書く項目が無ければ何も書かずに今の値を返す。返すのは書いた後の `{ vocabulary, theme }`。`change_logs` は `entity_type` が `organization`、`entity_id` が組織の ID、`workspace_id` と `operator` が空、`actor_user_id` が管理者の `users` の ID、`action` が `update`、`changes_json` が変えた項目だけの `{"vocabulary": [前, 後], "theme": [前, 後]}`。`change_logs` の書き込みに失敗しても、`organizations` の値を正として成功を返す（ログには操作、`action`、組織の ID、`changes_json` と同じ前後の値、操作の日時、例外の名前だけを出し、欠けた行はログから手で補える） |
+| 組織の設定の変更 | 共通の DB の `organizations`（`vocabulary`、`theme`、`updated_at`）を、それだけの `batch()` で書き、続けて組織の DB の `change_logs` を別の `batch()` で書く。`organizations` の文の条件は `id` と、書く欄ごとの `<列> IS :読んだ値`。変わった行が無ければ（別の要求が先に変えた）409 の `conflict` で、`change_logs` は書かない。操作は `organization-settings-update`（管理者）で、入力は `vocabulary` と `theme` のどちらか1つ以上（無ければ 400）。前の値は入るときに引いた組織の行で、それと同じ値の項目は書かない。同じ値として外した項目は書く文の条件にも入れず、その項目の競合は見ない（返す値は入るときに引いた値）。書く項目が無ければ何も書かずに今の値を返す。返すのは書いた後の `{ vocabulary, theme }`。`change_logs` は `entity_type` が `organization`、`entity_id` が組織の ID、`workspace_id` と `operator` が空、`actor_user_id` が管理者の `users` の ID、`action` が `update`、`changes_json` が変えた項目だけの `{"vocabulary": [前, 後], "theme": [前, 後]}`。`change_logs` の `batch()` が例外を投げたときは、`organizations` の値を正として成功を返し、ログに操作、`action`、組織の ID、`changes_json` と同じ前後の値、操作の日時、例外の名前だけを出す（欠けた行はこのログから手で補える）。`organizations` を書いた後に処理そのものが止まったとき（Worker の打ち切りなど）は、履歴もログも残らない |
 | 組織の停止、再開、停止の理由の切り替え | 共通の DB の `organizations`（`suspended_at`、`purge_on`、`updated_at`）、続けて組織の DB の `change_logs` の1行。`organizations` の `UPDATE` は今の状態を条件にする（停止は `suspended_at IS NULL`、再開は読んだ `suspended_at` と同じ、理由の切り替えは停止中で、読んだ `purge_on` と同じ）。条件に外れたら（`changes` が 0）409 の `conflict` で、`change_logs` は書かない。理由の切り替えは `suspended_at` を変えず、解約にすると `purge_on` を切り替えた日の UTC の日付の30日後に、一時的な停止にすると空にする。今と同じ理由（`purge_on` が空かどうかで決まる）への切り替えも 409。`change_logs` は `entity_type` が `organization`、`entity_id` が組織の ID、`workspace_id` と `actor_user_id` が空、`operator` が運用者のログインの ID。`action` と `changes_json` は、停止が `suspend` と `{"suspended_at": [前, 後], "purge_on": [前, 後]}`、再開が `resume` と同じ形、理由の切り替えが `update` と `{"purge_on": [前, 後]}`。`change_logs` の書き込みに失敗しても、`organizations` の状態を正として成功を返す（ログには操作、`action`、組織の ID、`changes_json` と同じ前後の値、操作の日時、例外の名前だけを出し、欠けた行は運用者がログから手で補う） |
 | ワークスペースの作成 | `workspaces`、`workspace_point_rates`（作った月、4）、`board_columns`（4行。完了の列は末尾）、`detail_fields`（1行）、最初のリーダーの `memberships`、`change_logs`（ワークスペースと所属の2行）。どの文も `INSERT ... SELECT ... WHERE EXISTS`（最初のリーダーが同じ組織にいて、無効でなく、`login_subject` があり、管理者か、いずれかのワークスペースに今所属している。かつ、作る人が同じ組織の、無効でない管理者）にし、全部入るか何も入らないかにする。何も入らなければ 404 |
 | ワークスペースを閉じる | `change_logs`（`entity_type` は `workspace`、`action` は `close`、`changes_json` は `{"closed_at": [null, 閉じた日時]}`）、`workspaces`（`closed_at`、`updated_at`）。この順に書き、どちらの文も同じ条件（ワークスペースが組織のもので `closed_at IS NULL`、かつ呼んだ人が同じ組織の無効でない管理者）を持つ。1回の `batch()` は文を順に流すので、履歴が入るのは `workspaces` が書き換わるときだけ。何も入らなければ、読み直して閉じていれば 409（`workspace_closed`）、そうでなければ 404 |
@@ -1060,7 +1060,7 @@ D1 は対話的なトランザクションを持たない。まとめて書く�
 共通の DB と組織の DB に分けて書く操作は、途中で失敗したときの扱いを決めておく。
 
 - 組織の作成で `users` が入らなかったときは、管理者のいない組織が残る。運用者の一覧では管理者の状態が `none` になり、画面は「管理者がいない」と出す。管理者の指名し直しで入れる。`change_logs` は `users` と同じ `batch()` で書くので、残らない。
-- 組織の設定の変更で `change_logs` が入らなかったときは、`organizations` の変更だけが残り、その変更の履歴は残らない。応答は成功のまま返し、画面も成功として扱う。欠けた行は、ログ（操作、組織の ID、前後の値、日時）から手で補える。
+- 組織の設定の変更で `change_logs` が入らなかったときは、`organizations` の変更だけが残り、その変更の履歴は残らない。`change_logs` の `batch()` が例外を投げたときは、応答は成功のまま返し、画面も成功として扱う。そのときは欠けた行を、ログ（操作、組織の ID、前後の値、日時）から手で補える。`organizations` を書いた後に処理そのものが止まったときは、履歴もログも残らない。
 - Google の招待の URL から結んだあと、アカウントが作れなかったときは、`sub` を埋めた行だけが残る。次に Google でログインすれば `sub` で当たり、アカウントの作成に進む。
 - ログインで `users.account_id` を結べなかったときは、`accounts` と `account_logins` だけが残る。セッションは作らず、「もう一度ログインしてください」を出す。ログインのたびに、そのログインの ID（手段と手段の中の ID）で `account_id` が空の `users` を結び直す（結んだ行は当たらなくなるので、何度流しても同じ結果）ので、次のログインで結ばれる。組織に入れるかの判定は `users.account_id` で行うので、結ばれるまでその組織には入れない。
 - 同じ人の最初のログインが並行したときは、片方の `batch()` が `account_logins` の主キーで落ちて、`accounts` ごと戻る。落ちた側は、もう片方が作った行を読み直して続ける。
