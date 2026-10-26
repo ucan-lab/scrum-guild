@@ -46,7 +46,7 @@ jobs:
           fi
 
       # ci.yml は edited で動かないので、ベースを付け替えても ci-ok は前のベースの結果のまま残る。
-      # PR の履歴の最後の付け替えより後に、この head で ci.yml が動いていなければ失敗にする（push か再開で動き直す）。
+      # PR の履歴の最後の付け替えより後に、この PR の今のベースで ci.yml が動いていなければ失敗にする（新しいベースを取り込んで push すると動き直す）。
       # 読めなければ失敗に倒す。前のステップが落ちても動かす
       - name: ベースの付け替えの後に CI が動き直したかを確かめる
         if: always()
@@ -55,7 +55,6 @@ jobs:
           REPO: ${{ github.repository }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-          ACTION: ${{ github.event.action }}
         run: |
           set -euo pipefail
           # 人の付け替えと、重ねた PR の下がマージされたときの GitHub の自動の付け替えの両方を拾う
@@ -81,11 +80,10 @@ jobs:
             if [[ "$latest" > "$changed" ]]; then
               exit 0
             fi
-            # push と再開の直後は、同じイベントで始まる ci.yml の実行がまだ見えないことがあるので待つ
-            if [ "$ACTION" != synchronize ] && [ "$ACTION" != reopened ]; then
-              break
+            # push の直後は ci.yml の実行がまだ見えないことがある。続けてタイトルの編集などが来ても同じなので、どのイベントでも待つ
+            if [ "$attempt" -lt 6 ]; then
+              sleep 10
             fi
-            sleep 10
           done
           echo "::error::ベースを付け替えたあと、この head で CI が動き直していません。新しいベースを取り込んで push してください"
           exit 1
