@@ -1349,6 +1349,10 @@ export const dictionary = defineDictionary({
     '{sprint}は、期間を区切って{task}を進める単位です。作ると、ここに先の{sprint}が並び、入れた{points}と{capacity}を見比べられます。終えた{sprint}がたまると、ベロシティも出ます。',
   ),
   sprintEmptyWho: workspace('{sprint}を作るのは{leader}です。', '{sprint}を作るのは{leader}です。'),
+  sprintEmptyClosedText: workspace(
+    '終了した{workspace}には、{sprint}を作れません。',
+    '終了した{workspace}には、{sprint}を作れません。',
+  ),
   sprintEditAction: workspace('直す', '直す'),
   sprintEditLabel: workspace('直す: {label}', '直す: {label}'),
   sprintDeleteAction: workspace('削除する', '削除する'),
@@ -1385,7 +1389,10 @@ export const dictionary = defineDictionary({
     'この{sprint}は見つかりません。一覧を読み直します',
     'この{sprint}は見つかりません。一覧を読み直します',
   ),
-  sprintForbidden: workspace('{sprint}を作り、直すのは{leader}です', '{sprint}を作り、直すのは{leader}です'),
+  sprintForbidden: workspace(
+    '{sprint}を作り、直し、削除するのは{leader}です',
+    '{sprint}を作り、直し、削除するのは{leader}です',
+  ),
   sprintBadRequest: workspace(
     '入力を受け付けられませんでした。値を見直してください',
     '入力を受け付けられませんでした。値を見直してください',

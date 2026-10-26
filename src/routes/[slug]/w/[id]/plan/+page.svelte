@@ -32,8 +32,16 @@
   const slug = $derived(page.params.slug ?? '');
   const isAdmin = $derived(data.organization?.me.is_admin === true);
   // 作る、直す、削除するのは、終了していないワークスペースのリーダーと管理者だけ（API も同じ権限で断る）
-  const canLead = $derived(
-    workspace !== null && workspace.closedAt === null && (workspace.role === 'leader' || isAdmin),
+  const isLeader = $derived(workspace !== null && (workspace.role === 'leader' || isAdmin));
+  const isClosed = $derived(workspace !== null && workspace.closedAt !== null);
+  const canLead = $derived(isLeader && !isClosed);
+  // 空の状態の補足。作れない理由を、終了したワークスペースか、リーダーでないかで分ける
+  const emptyNote = $derived(
+    isClosed
+      ? t('sprintEmptyClosedText', { sprint: t('sprint'), workspace: t('workspace') })
+      : isLeader
+        ? ''
+        : t('sprintEmptyWho', { sprint: t('sprint'), leader: t('leader') }),
   );
 
   let sprintDialog = $state<ReturnType<typeof SprintDialog>>();
@@ -144,7 +152,7 @@
     <EmptyState
       icon="calendar"
       title={t('sprintEmptyTitle', sprintWords)}
-      text={t('sprintEmptyText', sprintWords) + (canLead ? '' : t('sprintEmptyWho', sprintWords))}
+      text={t('sprintEmptyText', sprintWords) + emptyNote}
     />
   {:else}
     <div class="lanes">
