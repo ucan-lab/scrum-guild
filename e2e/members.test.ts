@@ -1,9 +1,10 @@
 // メンバーの画面。seed のセッション（seed/sessions.ts）の Cookie で開く。
 // あおば開発の受託開発チームは、ミナト（管理者でリーダー）とハルカ（一般）が所属し、承諾待ちの招待が1件ある（seed/data.sql）
 import { expect, test } from '@playwright/test';
-import { signIn, watchViolations } from './helpers.ts';
+import { createWorkspace, signIn, watchViolations } from './helpers.ts';
 
 const AOBA_WORKSPACE_ID = '019a0000-0000-7000-8000-000000000401';
+const HARUKA_USER_ID = '019a0000-0000-7000-8000-000000000302';
 const MEMBERS_PATH = `/aoba/w/${AOBA_WORKSPACE_ID}/members`;
 // アバターのホストへの要求に返す 1px の PNG（e2e/operator.test.ts と同じ）
 const PIXEL = Buffer.from(
@@ -34,7 +35,7 @@ test.describe('リーダー（あおば開発のミナト）', () => {
     const tally = page.locator('.tally > div');
     await expect(tally).toHaveText(['所属 2', 'パーティリーダー 1', '招待中 1']);
 
-    // 所属している人。リーダーが先。ロールは文字で、操作の部品は出ない
+    // 所属している人。リーダーが先。リーダーと管理者には、ロールの選択欄と、自分の行の「抜ける」、他人の行の「外す」
     const members = page.getByRole('table', { name: '所属している人の一覧' });
     const rows = members.locator('tbody tr');
     await expect(rows).toHaveCount(2);
@@ -46,11 +47,20 @@ test.describe('リーダー（あおば開発のミナト）', () => {
     const avatar = rows.nth(0).locator('td').nth(0).locator('.avatar');
     await expect(avatar).toBeVisible();
     await expect(avatar).toHaveAttribute('aria-hidden', 'true');
-    await expect(rows.nth(0).locator('td').nth(1)).toHaveText('パーティリーダー');
+    await expect(page.getByRole('combobox', { name: 'ミナトのロール' })).toHaveValue('leader');
     await expect(rows.nth(0).locator('td').nth(2)).toHaveText('2026-10-01');
+    await expect(rows.nth(0).getByRole('button')).toHaveText('抜ける');
+    await expect(rows.nth(0).getByRole('button')).toHaveAccessibleName('受託開発チームから抜ける');
     await expect(rows.nth(1).locator('td').nth(0)).toHaveText(/^ハハルカ\d+$/);
-    await expect(rows.nth(1).locator('td').nth(1)).toHaveText('一般');
-    await expect(members.locator('select, button')).toHaveCount(0);
+    await expect(page.getByRole('combobox', { name: 'ハルカのロール' })).toHaveValue('member');
+    await expect(page.getByRole('combobox', { name: 'ハルカのロール' }).locator('option')).toHaveText([
+      'パーティリーダー',
+      '一般',
+    ]);
+    await expect(rows.nth(1).getByRole('button', { name: 'ハルカを外す' })).toHaveText('外す');
+    await expect(page.locator('.action-note')).toHaveText(
+      '外すと、その人の未完了のクエストは担当なしに戻ります。完了の記録と経験値は残ります。',
+    );
 
     // 承諾待ちの招待。招待した日はワークスペースのタイムゾーン（東京）の日付
     const invitations = page.getByRole('table', { name: '承諾待ちの招待の一覧' });
@@ -205,6 +215,213 @@ test.describe('リーダー（あおば開発のミナト）', () => {
     expect(await collect()).toEqual([]);
   });
 
+  // seed の所属はほかのファイルも数えるので、外す API と外した後の一覧は差し替える（サーバーの処理は test/membership.test.ts が確かめる）
+  test('「外す」は確かめのダイアログを挟んで送り、外した人を一覧から消してトーストで知らせる', async ({ page }) => {
+    const collect = await watchViolations(page);
+    let sent: unknown = null;
+    await page.route('**/api/aoba/membership-leave', (route) => {
+      sent = route.request().postDataJSON();
+      return route.fulfill({ json: { user_id: HARUKA_USER_ID } });
+    });
+    await page.route('**/api/aoba/member-list', async (route) => {
+      const response = await route.fetch();
+      const json = (await response.json()) as { members: { id: string }[] };
+      const members = sent === null ? json.members : json.members.filter((member) => member.id !== HARUKA_USER_ID);
+      await route.fulfill({ response, json: { ...json, members } });
+    });
+    await page.goto(MEMBERS_PATH);
+    const rows = page.getByRole('table', { name: '所属している人の一覧' }).locator('tbody tr');
+    await expect(rows).toHaveCount(2);
+
+    // やめると送らない
+    const remove = page.getByRole('button', { name: 'ハルカを外す' });
+    await remove.click();
+    const dialog = page.getByRole('dialog', { name: 'ハルカを外しますか' });
+    await expect(dialog).toContainText(
+      'ハルカはパーティから外れます。担当していた未完了のクエストは担当なしに戻ります。完了の記録と経験値は残ります。戻すには、もう一度招待します。',
+    );
+    await dialog.getByRole('button', { name: 'やめる' }).click();
+    await expect(dialog).toBeHidden();
+    await expect(remove).toBeFocused();
+    expect(sent).toBeNull();
+
+    await remove.click();
+    await dialog.getByRole('button', { name: '外す' }).click();
+    await expect(page.locator('.toasts:visible .toast')).toHaveText('ハルカを外しました');
+    expect(sent).toEqual({ workspace_id: AOBA_WORKSPACE_ID, user_id: HARUKA_USER_ID });
+    await expect(rows).toHaveCount(1);
+    await expect(page.getByRole('heading', { level: 2, name: '所属している人' })).toBeFocused();
+    expect(await collect()).toEqual([]);
+  });
+
+  test('外すのに失敗したら同じ行のボタンへフォーカスを戻し、自分の離脱が 404（先に抜けていた）なら抜けたのと同じく組織のトップへ移る', async ({
+    page,
+  }) => {
+    await page.route('**/api/aoba/membership-leave', (route) => {
+      const body = route.request().postDataJSON() as { user_id: string };
+      return body.user_id === HARUKA_USER_ID
+        ? route.fulfill({ status: 500, json: { error: { code: 'internal', message: 'x' } } })
+        : route.fulfill({ status: 404, json: { error: { code: 'not_found', message: 'x' } } });
+    });
+    await page.goto(MEMBERS_PATH);
+    const remove = page.getByRole('button', { name: 'ハルカを外す' });
+    await remove.click();
+    await page.getByRole('dialog', { name: 'ハルカを外しますか' }).getByRole('button', { name: '外す' }).click();
+    await expect(page.locator('.toasts:visible .toast')).toHaveText(
+      'メンバーを外せませんでした。もう一度試してください。',
+    );
+    await expect(remove).toBeFocused();
+
+    // ミナトは受託開発チームの唯一のリーダーなので、リーダーがいなくなることを添える
+    await page.getByRole('button', { name: '受託開発チームから抜ける' }).click();
+    const dialog = page.getByRole('dialog', { name: '受託開発チームから抜けますか' });
+    await expect(dialog).toContainText(
+      'このパーティのパーティリーダーがいなくなります。新しいパーティリーダーはギルドマスターが任命します。',
+    );
+    await dialog.getByRole('button', { name: '抜ける' }).click();
+    await expect(page).toHaveURL(/\/aoba$/);
+    await expect(page.locator('.toasts:visible .toast').last()).toHaveText('受託開発チームから抜けました');
+  });
+
+  // 一般のメンバーが別のタブで先に抜けていたときは、登録の関数の member の権限で 403 になる。それも抜けたのと同じく扱う
+  test('自分の離脱が 403（先に抜けていた）でも、抜けたのと同じく組織のトップへ移る', async ({ page }) => {
+    await page.route('**/api/aoba/membership-leave', (route) =>
+      route.fulfill({ status: 403, json: { error: { code: 'forbidden', message: 'x' } } }),
+    );
+    await page.goto(MEMBERS_PATH);
+    await page.getByRole('button', { name: '受託開発チームから抜ける' }).click();
+    await page
+      .getByRole('dialog', { name: '受託開発チームから抜けますか' })
+      .getByRole('button', { name: '抜ける' })
+      .click();
+    await expect(page).toHaveURL(/\/aoba$/);
+    await expect(page.locator('.toasts:visible .toast').last()).toHaveText('受託開発チームから抜けました');
+  });
+
+  test('他人の唯一のリーダーを一般に戻すときも、リーダーがいなくなることを確かめ、やめると送らずに戻す', async ({
+    page,
+  }) => {
+    let called = false;
+    await page.route('**/api/aoba/membership-role-update', (route) => {
+      called = true;
+      return route.abort();
+    });
+    // ハルカだけがリーダーの一覧にする（管理者のミナトは一般でも付け替えられる）
+    await page.route('**/api/aoba/member-list', async (route) => {
+      const response = await route.fetch();
+      const json = (await response.json()) as { members: { id: string; role: string }[] };
+      const members = json.members.map((member) => ({
+        ...member,
+        role: member.id === HARUKA_USER_ID ? 'leader' : 'member',
+      }));
+      await route.fulfill({ response, json: { ...json, members } });
+    });
+    await page.goto(MEMBERS_PATH);
+    const role = page.getByRole('combobox', { name: 'ハルカのロール' });
+    await expect(role).toHaveValue('leader');
+    await role.selectOption('member');
+    const dialog = page.getByRole('dialog', { name: 'ハルカを一般に戻しますか' });
+    await expect(dialog).toContainText(
+      'ハルカは一般に戻り、ロールの付け替え、招待、冒険者を外すことができなくなります。',
+    );
+    await expect(dialog).toContainText(
+      'このパーティのパーティリーダーがいなくなります。新しいパーティリーダーはギルドマスターが任命します。',
+    );
+    await dialog.getByRole('button', { name: 'やめる' }).click();
+    await expect(dialog).toBeHidden();
+    await expect(role).toHaveValue('leader');
+    expect(called).toBe(false);
+  });
+
+  test('ロールの選択欄で付け替え、先に変わっていて断られたら、トーストで知らせて今の値に戻す', async ({ page }) => {
+    const sent: unknown[] = [];
+    let reply: { status: number; json: unknown } = { status: 200, json: {} };
+    let harukaRole = 'member';
+    await page.route('**/api/aoba/membership-role-update', (route) => {
+      const body = route.request().postDataJSON() as { role: string };
+      sent.push(body);
+      if (reply.status === 200) harukaRole = body.role;
+      return route.fulfill({ status: reply.status, json: reply.json });
+    });
+    await page.route('**/api/aoba/member-list', async (route) => {
+      const response = await route.fetch();
+      const json = (await response.json()) as { members: { id: string; role: string }[] };
+      const members = json.members.map((member) =>
+        member.id === HARUKA_USER_ID ? { ...member, role: harukaRole } : member,
+      );
+      await route.fulfill({ response, json: { ...json, members } });
+    });
+    await page.goto(MEMBERS_PATH);
+    const role = page.getByRole('combobox', { name: 'ハルカのロール' });
+
+    reply = { status: 200, json: { user_id: HARUKA_USER_ID, role: 'leader' } };
+    await role.selectOption('leader');
+    await expect(page.locator('.toasts:visible .toast')).toHaveText('ハルカをパーティリーダーにしました');
+    expect(sent).toEqual([{ workspace_id: AOBA_WORKSPACE_ID, user_id: HARUKA_USER_ID, role: 'leader' }]);
+    await expect(page.locator('.tally > div').nth(1)).toHaveText('パーティリーダー 2');
+    await expect(role).toHaveValue('leader');
+
+    reply = { status: 409, json: { error: { code: 'conflict', message: 'x' } } };
+    await role.selectOption('member');
+    await expect(page.locator('.toasts:visible .toast').last()).toHaveText(
+      '冒険者のロールが先に変わっていました。一覧を読み直しました。',
+    );
+    await expect(role).toHaveValue('leader');
+  });
+
+  // 本物の API で、作ったワークスペースのロールを付け替え、抜ける（seed の所属は変えない）
+  test('自分で作ったワークスペースで、自分を一般に戻してリーダーに戻し、抜けると組織のトップへ移る', async ({
+    page,
+  }) => {
+    const collect = await watchViolations(page);
+    const name = `名簿確認チーム${Date.now() % 100000}`;
+    await createWorkspace(page, name, 'game');
+    await page.goto(`${new URL(page.url()).pathname}/members`);
+    const role = page.getByRole('combobox', { name: 'ミナトのロール' });
+    await expect(role).toHaveValue('leader');
+
+    // 管理者は一般に戻しても付け替えられるが、唯一のリーダーなので、リーダーがいなくなることを確かめる。0人になっても止めない
+    await role.selectOption('member');
+    const demote = page.getByRole('dialog', { name: '自分を一般に戻しますか' });
+    await expect(demote).toHaveText(
+      /パーティリーダーがいなくなります。新しいパーティリーダーはギルドマスターが任命します。/,
+    );
+    // 管理者には「付け替えができなくなる」は出さない
+    await expect(demote).not.toContainText('できなくなります');
+    await demote.getByRole('button', { name: '一般に戻す' }).click();
+    await expect(page.locator('.toasts:visible .toast')).toHaveText('ミナトを一般にしました');
+    await expect(page.locator('.tally > div').nth(1)).toHaveText('パーティリーダー 0');
+    await expect(role).toHaveValue('member');
+    await role.selectOption('leader');
+    await expect(page.locator('.toasts:visible .toast').last()).toHaveText('ミナトをパーティリーダーにしました');
+    await expect(page.locator('.tally > div').nth(1)).toHaveText('パーティリーダー 1');
+
+    await page.getByRole('button', { name: `${name}から抜ける` }).click();
+    const dialog = page.getByRole('dialog', { name: `${name}から抜けますか` });
+    await expect(dialog).toContainText('担当していた未完了のクエストは担当なしに戻ります。');
+    await dialog.getByRole('button', { name: '抜ける' }).click();
+    await expect(page).toHaveURL(/\/aoba$/);
+    await expect(page.locator('.toasts:visible .toast').last()).toHaveText(`${name}から抜けました`);
+    // 管理者は所属していなくても開ける。所属している人はいない
+    await page.goBack();
+    await expect(page.getByText('所属している人はいません')).toBeVisible();
+    expect(await collect()).toEqual([]);
+  });
+
+  test('終了したワークスペースでは、ロールの選択欄も外す、抜けるも出さない', async ({ page }) => {
+    await page.route('**/api/aoba/workspace', async (route) => {
+      const response = await route.fetch();
+      const json = (await response.json()) as Record<string, unknown>;
+      await route.fulfill({ response, json: { ...json, closed_at: '2026-10-25T00:00:00.000Z' } });
+    });
+    await page.goto(MEMBERS_PATH);
+    const members = page.getByRole('table', { name: '所属している人の一覧' });
+    await expect(members.locator('tbody tr')).toHaveCount(2);
+    await expect(members.locator('tbody tr').nth(0).locator('td').nth(1)).toHaveText('パーティリーダー');
+    await expect(members.locator('select, button')).toHaveCount(0);
+    await expect(page.locator('.action-note')).toHaveCount(0);
+  });
+
   test('390px の幅で、長い名前（空白の無い30字以上）と長いメールアドレスは折り返し、所属の表ははみ出さず、招待の表は取り消すを右端に固定する', async ({
     page,
   }) => {
@@ -259,6 +476,9 @@ test.describe('リーダー（あおば開発のミナト）', () => {
       true,
     );
     await expect(page.getByText('2026-10-01')).toBeInViewport();
+    // 行の操作があるので、狭い幅では1行を縦に積み、ロールの選択欄と「外す」も表の中に収まる
+    await expect(page.getByRole('combobox', { name: `${longName}のロール` })).toBeInViewport();
+    await expect(page.getByRole('button', { name: `${longName}を外す` })).toBeInViewport();
     // 招待の表は 390px の高さでは下にあるので、縦に送ってから見る。取り消す の列は、表が横にはみ出しても右端に固定されて見える
     // （はみ出す分は表の中の横スクロールで受ける。components.css の .is-actions）
     await invitationsTable.scrollIntoViewIfNeeded();
@@ -289,13 +509,43 @@ test.describe('一般のユーザー（あおば開発のハルカ）', () => {
 
     await expect(page.getByRole('heading', { level: 1, name: 'メンバー' })).toBeVisible();
     await expect(page.locator('.tally > div')).toHaveText(['所属 2', 'パーティリーダー 1']);
-    await expect(page.getByRole('table', { name: '所属している人の一覧' }).locator('tbody tr')).toHaveCount(2);
+    const rows = page.getByRole('table', { name: '所属している人の一覧' }).locator('tbody tr');
+    await expect(rows).toHaveCount(2);
+    // ロールは文字で、自分の行の「抜ける」だけを出す（ロールの選択欄、外す、表の下の注意は出ない）
+    await expect(rows.nth(0).locator('td').nth(1)).toHaveText('パーティリーダー');
+    await expect(rows.nth(1).locator('td').nth(1)).toHaveText('一般');
+    await expect(page.getByRole('combobox')).toHaveCount(0);
+    await expect(rows.nth(0).getByRole('button')).toHaveCount(0);
+    await expect(rows.nth(1).getByRole('button')).toHaveText('抜ける');
+    await expect(page.getByRole('button', { name: /を外す$/ })).toHaveCount(0);
+    await expect(page.locator('.action-note')).toHaveCount(0);
     await expect(page.getByRole('heading', { level: 2, name: '承諾待ちの招待' })).toHaveCount(0);
     await expect(page.getByText('sora--seed')).toHaveCount(0);
     // 招待の操作も出ない
     await expect(page.getByRole('heading', { level: 2, name: '招待する' })).toHaveCount(0);
     await expect(page.getByRole('button', { name: /招待する|取り消す|確かめる/ })).toHaveCount(0);
     expect(await collect()).toEqual([]);
+  });
+
+  test('「抜ける」は確かめのダイアログを挟み、ほかに所属が無ければ組織に入れなくなると知らせる。やめると送らない', async ({
+    page,
+  }) => {
+    let called = false;
+    await page.route('**/api/aoba/membership-leave', (route) => {
+      called = true;
+      return route.abort();
+    });
+    await page.goto(MEMBERS_PATH);
+    const leave = page.getByRole('button', { name: '受託開発チームから抜ける' });
+    await leave.click();
+    const dialog = page.getByRole('dialog', { name: '受託開発チームから抜けますか' });
+    await expect(dialog).toContainText(
+      'ほかに所属しているパーティが無いので、抜けると、この冒険者ギルドに入れなくなります。',
+    );
+    await dialog.getByRole('button', { name: 'やめる' }).click();
+    await expect(dialog).toBeHidden();
+    await expect(leave).toBeFocused();
+    expect(called).toBe(false);
   });
 
   test('別の組織のワークスペースの ID は「見つからない」', async ({ page }) => {

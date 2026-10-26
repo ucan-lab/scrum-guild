@@ -2,25 +2,45 @@
 // 同じ PR でここに足す。足し忘れると test/operation-registry.test.ts が落ちる。
 // キーは操作の名前。値は、対象の組織の行を指す成功する入力を作る関数（別の組織の対象を渡すと 404 になる入力）。
 // 組織の外の操作は、入力が必須の項目を持つときだけ足す（運用者の操作は、成功する入力を作る）
+import { env } from 'cloudflare:workers';
+import { orgDb } from '../../src/server/db/index.ts';
 import { createFakeGithub } from '../auth/fake-github.ts';
 import { githubUser } from '../auth/helpers.ts';
 import {
   createCategory,
   createEpic,
   createInvitation,
+  createMembership,
   createOrganization,
   createOrganizationHoliday,
   createRepository,
   createSprint,
   createStory,
   createTask,
+  createUser,
   createWorkspace,
 } from '../factories.ts';
 import type { Pointers } from './harness.ts';
-import { SUSPENDED_AT } from './world.ts';
+import { SUSPENDED_AT, type Target } from './world.ts';
 
 // 運用者の操作が問い合わせる GitHub。operation-registry.test.ts が fetcher を createApp に渡す
 export const operatorGithub = createFakeGithub();
+
+// そのワークスペースに今の所属が無ければ、一般のメンバーとして作る
+async function ensureMembership(target: Target, workspaceId: string, userId: string): Promise<void> {
+  const db = orgDb(env, target.organization.verified);
+  const current = await db.first(
+    db.statement((q) =>
+      q
+        .selectFrom('memberships')
+        .select('id')
+        .where('workspace_id', '=', workspaceId)
+        .where('user_id', '=', userId)
+        .where('left_at', 'is', null),
+    ),
+  );
+  if (current === undefined) await createMembership(target.organization, workspaceId, userId, { role: 'member' });
+}
 
 // 個人のアカウントの GitHub のユーザーを足して返す。呼ぶたびに別の人
 function newGithubUser() {
@@ -97,6 +117,22 @@ export const pointers: Pointers = {
       })
     ).id,
   }),
+  // 呼ぶたびに、一般のメンバーを1人足して、その人をリーダーにする（同じ人を続けてリーダーにすると、2回目は何も書かないため。
+  // 対象の一般のメンバー（target.member）を指すと、リーダーになって権限の検査の「一般のメンバーは 403」が崩れる）
+  'membership-role-update': async (target) => {
+    const user = await createUser(target.organization, { name: '朝霧 律' });
+    await createMembership(target.organization, target.workspace.id, user.id, { role: 'member' });
+    return { workspace_id: target.workspace.id, user_id: user.id, role: 'leader' };
+  },
+  // 対象の一般のメンバー（target.member）を指す。一般のメンバーは自分なら抜けられ、リーダーと管理者は外せるので、どの呼ぶ人でも通る。
+  // 抜けた所属は続けて抜けられないので、呼ぶたびに今の所属を作り直す。別のワークスペース（otherWorkspace）にも所属させ、
+  // 抜けても入れる組織を失わない（セッションを消されると、同じ describe の後の検査が 401 になるため）
+  'membership-leave': async (target) => {
+    const userId = target.member.userId!;
+    await ensureMembership(target, target.workspace.id, userId);
+    await ensureMembership(target, target.otherWorkspace.id, userId);
+    return { workspace_id: target.workspace.id, user_id: userId };
+  },
   // 入力は空。呼んだ人のログインに当たる、この組織の招待を返す
   'invitation-list': { noReference: {} },
   // 呼ぶたびに対象の組織に新しいワークスペースを作り、呼ぶ人を招待する（承諾すると所属するので、同じワークスペースには続けて承諾できない）。

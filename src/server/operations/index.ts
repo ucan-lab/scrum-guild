@@ -8,6 +8,7 @@ import {
   invitationDeclineOperation,
   invitationListOperation,
 } from './invitation-response.ts';
+import { membershipLeaveOperation, membershipRoleUpdateOperation } from './membership.ts';
 import { createOrganizationOperation, listOrganizationsOperation, resolveGithubUserOperation } from './operator.ts';
 import {
   organizationResumeOperation,
@@ -103,6 +104,8 @@ export const implementedOperations: readonly ImplementedOperation[] = [
   workspaceLeaderCandidatesOperation,
   workspaceInfoOperation,
   memberListOperation,
+  membershipRoleUpdateOperation,
+  membershipLeaveOperation,
   workspaceCloseOperation,
   workspaceReopenOperation,
   inviteeResolveOperation,
