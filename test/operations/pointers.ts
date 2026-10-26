@@ -154,6 +154,10 @@ export const pointers: Pointers = {
     task_id: (await createTask(target.organization, target.workspace.id, target.admin.userId!)).id,
     assignee_user_id: target.member.userId,
   }),
+  'task-history': async (target) => ({
+    workspace_id: target.workspace.id,
+    task_id: (await createTask(target.organization, target.workspace.id, target.admin.userId!)).id,
+  }),
   // 呼ぶたびに、一般のメンバーが作ったタスクを作る（削除できるのは作った人とリーダーなので、メンバーも通る。削除したタスクは続けて削除できない）
   'task-delete': async (target) => ({
     workspace_id: target.workspace.id,

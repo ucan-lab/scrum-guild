@@ -5,8 +5,10 @@
     taskAssign,
     taskDelete,
     taskDetail,
+    taskHistory,
     taskUpdate,
     type TaskDetail,
+    type TaskHistoryEntry,
   } from '../../shared/operations/task/index.ts';
   import { memberList } from '../../shared/operations/workspace/index.ts';
   import {
@@ -20,6 +22,7 @@
   } from '../../shared/story.ts';
   import { TASK_POINT_VALUES, TASK_TITLE_MAX_LENGTH, taskTitleProblem } from '../../shared/task.ts';
   import { callOperation } from '../api.ts';
+  import { historyEntryView } from '../task-history.ts';
   import { showToast } from '../toast.svelte.ts';
   import { t } from '../vocabulary.svelte.ts';
   import Avatar from './Avatar.svelte';
@@ -50,7 +53,10 @@
   // 捨てるかをアプリの中のダイアログで確かめる。捨てると決めたら、閉じる／移る。送っている最中の要求は止められず、そのまま通る。
   // 閉じた後に返った保存の応答も、通ったら木を読み直してトーストで知らせ、失敗はトーストで知らせる（saveFields）。
   // 引き出しが読み直すのは木（onchanged）かワークスペースの枠（onstale）だけで、組織の枠は読み直さない。
-  // 削除は確認のダイアログを挟む。消したら閉じ、トーストで知らせ、画面が木を読み直す（onremoved）
+  // 削除は確認のダイアログを挟む。消したら閉じ、トーストで知らせ、画面が木を読み直す（onremoved）。
+  // 本文の下に「変更の履歴」の節を置く（task-history。新しい順に 50 件ずつで、続きは「さらに読む」で足す）。
+  // 読み込めたときと、引き出しで保存した後に読み直す。列の名前と値の文は src/lib/task-history.ts が辞書の言葉で作る。
+  // コメント（#171）が入ったら、見本（kit.js の drawerHtml）どおりのタブにする
   let {
     slug,
     workspaceId,
@@ -86,6 +92,7 @@
   const assigneeNoteId = `${ids}-assignee-note`;
   const assigneeErrorId = `${ids}-assignee-error`;
   const readOnlyId = `${ids}-readonly`;
+  const historyHeadingId = `${ids}-history`;
 
   type PointsChoice = (typeof TASK_POINT_VALUES)[number] | null;
   // 先頭が「未」（未見積もり）
@@ -189,6 +196,90 @@
   const titleEditable = $derived(canWrite && task !== null && !task.is_imported);
   const done = $derived(task?.completed_at != null);
 
+  // ---- 変更の履歴（task-history） ----
+  let historyState = $state<'loading' | 'ready' | 'failed'>('loading');
+  let historyEntries = $state.raw<readonly TaskHistoryEntry[]>([]);
+  let historyNext = $state<{ created_at: string; id: string } | null>(null);
+  let historyTimezone = $state('UTC');
+  // 「さらに読む」の状態
+  let historyMore = $state<'idle' | 'loading' | 'failed'>('idle');
+  // 先頭を読み直している間（「さらに読む」を止め、「もう一度試す」を押せなくする）
+  let historyReloading = $state(false);
+  // 行を出した後の読み直し（保存した後）に失敗した。行は残し、節の上に失敗と「もう一度試す」を添える
+  let historyReloadFailed = $state(false);
+  let historyVersion = 0;
+  let historyHeading = $state<HTMLElement>();
+  // 「さらに読む」で足したことの知らせ。節の中に常に置いた role="status" の領域に入れる
+  let historyAdded = $state('');
+  // 履歴の読み込みの進み具合を読み上げに伝える（見える「読み込んでいます」は aria-hidden にする）
+  const historyStatus = $derived(historyState === 'loading' || historyMore === 'loading' ? t('loading') : historyAdded);
+  // 言葉づかいを切り替えたら、列の名前と操作の言葉も描き直す（t を $derived の中で呼ぶ）
+  const historyViews = $derived(historyEntries.map((entry) => historyEntryView(entry, historyTimezone, t)));
+
+  // 先頭の 50 件を読み直す。読み直している間は、前に読めた行を残す（保存のたびに消えてちらつかない）。
+  // 失敗したら、行がまだ無ければ節を失敗の表示に、行があれば行を残して失敗を添える。
+  // focusAfter は「もう一度試す」から読んだとき。読めたらボタンが消えるので、節の見出しへフォーカスを移す
+  async function loadHistory(focusAfter = false): Promise<void> {
+    const mine = ++historyVersion;
+    historyReloading = true;
+    historyMore = 'idle';
+    const result = await callOperation(taskHistory, { workspace_id: workspaceId, task_id: taskId }, { slug });
+    if (!alive || mine !== historyVersion) return;
+    historyReloading = false;
+    if (result.ok) {
+      historyEntries = result.data.entries;
+      historyNext = result.data.next;
+      historyTimezone = result.data.timezone;
+      historyState = 'ready';
+      historyReloadFailed = false;
+      if (focusAfter) {
+        await tick();
+        if (alive) historyHeading?.focus();
+      }
+      return;
+    }
+    // 404 はタスクが消えた（別の人が削除した）。もう一度試しても読めないので、閉じる側へ回す
+    if (result.status === 404) {
+      if (!taskGone) gone();
+      return;
+    }
+    if (historyState === 'ready') historyReloadFailed = true;
+    else historyState = 'failed';
+  }
+
+  function retryHistory(): void {
+    if (historyReloading) return;
+    void loadHistory(true);
+  }
+
+  // 続きの 50 件を足す。先頭を読み直している間は押しても何もしない。先頭を読み直したら、古い続きの応答は捨てる
+  async function loadMoreHistory(): Promise<'added' | 'dropped' | 'failed'> {
+    const before = historyNext;
+    if (before === null || historyMore === 'loading' || historyReloading) return 'dropped';
+    const mine = historyVersion;
+    historyMore = 'loading';
+    historyAdded = '';
+    const result = await callOperation(taskHistory, { workspace_id: workspaceId, task_id: taskId, before }, { slug });
+    if (!alive || mine !== historyVersion) return 'dropped';
+    if (result.ok) {
+      historyEntries = [...historyEntries, ...result.data.entries];
+      historyNext = result.data.next;
+      historyMore = 'idle';
+      historyAdded = t('historyMoreAdded', { count: result.data.entries.length });
+      return 'added';
+    }
+    historyMore = 'failed';
+    return 'failed';
+  }
+
+  // 「さらに読む」。読み足して続きが無くなると押したボタンが消えるので、フォーカスを節の見出しへ移す
+  async function showMoreHistory(): Promise<void> {
+    const outcome = await loadMoreHistory();
+    if (!alive || outcome !== 'added' || historyNext !== null) return;
+    await tick();
+    historyHeading?.focus();
+  }
+
   async function load(): Promise<void> {
     const mine = ++loadVersion;
     loadState = 'loading';
@@ -198,6 +289,7 @@
       task = result.data.task;
       clock = { today: result.data.today, weekStart: result.data.week_start };
       loadState = 'ready';
+      void loadHistory();
       // 担当を選べるときだけ、候補を読む（読み取り専用では選択欄を出さない）
       if (canWrite && result.data.task.completed_at === null && candidates === null) void loadCandidates();
       // 開いたときの読み上げに、見出しが読まれるようにする。閉じるボタンか何も無い所にフォーカスがあるときだけ移す
@@ -289,6 +381,7 @@
         const merged: TaskDetail = { ...task, completed_at: saved.completed_at, can_delete: saved.can_delete };
         for (const key of Object.keys(fields) as (keyof Fields)[]) Object.assign(merged, { [key]: saved[key] });
         task = merged;
+        void loadHistory();
       }
       showToast(t('taskSaved'), 'check');
       onchanged();
@@ -341,6 +434,8 @@
     if (alive) {
       task = result.data.task;
       clock = { today: result.data.today, weekStart: result.data.week_start };
+      // 別の人の変更を読み直したので、その変更が載った履歴も読み直す
+      void loadHistory();
     }
     return result.data.task;
   }
@@ -442,6 +537,7 @@
       if (alive && task !== null) {
         const saved = result.data.task;
         task = { ...task, assignee: saved.assignee, completed_at: saved.completed_at, can_delete: saved.can_delete };
+        void loadHistory();
       }
       showToast(t('taskSaved'), 'check');
       onchanged();
@@ -1046,6 +1142,77 @@
         {@render bodyView()}
       {/if}
     </div>
+
+    <!-- 変更の履歴（kit.js の drawerHtml の .history）。コメント（#171）が入ったら、見本どおりのタブにする -->
+    <section
+      class="field"
+      aria-labelledby={historyHeadingId}
+      aria-busy={historyState === 'loading' || historyReloading}
+    >
+      <h3 class="field-label" id={historyHeadingId} tabindex="-1" bind:this={historyHeading}>{t('historyTitle')}</h3>
+      <!-- 読み込みの進み具合と、足した件数の読み上げの領域。常に置き、中の文字だけを替える -->
+      <span class="visually-hidden" role="status">{historyStatus}</span>
+      {#if historyState === 'loading'}
+        <p class="field-hint" aria-hidden="true">{t('loading')}</p>
+      {:else if historyState === 'failed'}
+        <!-- 読み直している間も、失敗の表示とボタンを残す（ボタンは押せなくし、読み直していることを示す） -->
+        <div class="callout is-danger" role="alert"><Icon name="alert" /><span>{t('historyLoadFailed')}</span></div>
+        <div class="form-actions">
+          <button class="btn is-sm" type="button" aria-disabled={historyReloading} onclick={retryHistory}>
+            {historyReloading ? t('retrying') : t('retry')}
+          </button>
+        </div>
+      {:else}
+        {#if historyReloadFailed}
+          <!-- 保存した後の読み直しに失敗した。前に読めた行は残し、上に失敗と「もう一度試す」を添える -->
+          <div class="form-actions">
+            <span class="field-error" role="alert"><Icon name="alert" />{t('historyReloadFailed')}</span>
+            <button class="btn is-sm is-quiet" type="button" aria-disabled={historyReloading} onclick={retryHistory}>
+              {historyReloading ? t('retrying') : t('retry')}
+            </button>
+          </div>
+        {/if}
+        <ul class="history">
+          {#each historyViews as view (view.id)}
+            <li>
+              <time class="mono" datetime={view.createdAt}>{view.at}</time>
+              {#if view.actor !== null}
+                <Avatar userId={view.actor.id} name={view.actorName} decorative />
+              {/if}
+              <span>{view.actorName}</span>
+              <span class="props-note">{view.summary}</span>
+              {#if view.lines.length > 0}
+                <ul class="history-changes">
+                  {#each view.lines as line, index (index)}
+                    <li>
+                      {#if line.label !== null}<span class="props-note">{line.label}</span>{/if}
+                      <span>{line.text}</span>
+                    </li>
+                  {/each}
+                </ul>
+              {/if}
+            </li>
+          {:else}
+            <li class="props-note">{t('historyEmpty')}</li>
+          {/each}
+        </ul>
+        {#if historyNext !== null}
+          <div class="form-actions">
+            <button
+              class="btn is-sm"
+              type="button"
+              aria-disabled={historyMore === 'loading' || historyReloading}
+              onclick={() => void showMoreHistory()}
+            >
+              {historyMore === 'loading' ? t('loading') : t('historyMore')}
+            </button>
+          </div>
+        {/if}
+        {#if historyMore === 'failed'}
+          <span class="field-error" role="alert"><Icon name="alert" />{t('historyMoreFailed')}</span>
+        {/if}
+      {/if}
+    </section>
 
     {#if canWrite}
       <div class="form-actions">

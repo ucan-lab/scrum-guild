@@ -178,7 +178,8 @@ test('担い手を引き出しで選ぶと、木の行にアバターが出る�
   await select.selectOption({ label: 'ミナト' });
   await expect(page.getByRole('status').filter({ hasText: '保存しました' })).toBeVisible();
   // 引き出しのアバターは、名前を選択欄が読むので、読み上げから外す（見た目と title は残す）
-  const drawerAvatar = drawer.locator('.avatar[title="ミナト"]');
+  // （変更の履歴の行にも、変えた人のアバターが出るので、属性の欄に絞る）
+  const drawerAvatar = drawer.locator('.props .avatar[title="ミナト"]');
   await expect(drawerAvatar).toBeVisible();
   await expect(drawerAvatar).toHaveAttribute('aria-hidden', 'true');
   await expect(row.getByRole('img', { name: 'ミナト' })).toBeVisible();
@@ -346,6 +347,153 @@ async function openDrawer(page: Page, title: string) {
   const drawer = page.getByRole('dialog', { name: title });
   await expect(drawer).toBeVisible();
   return drawer;
+}
+
+test('変更の履歴: 読めなければ「もう一度試す」で読み直し、保存の後の読み直しに失敗しても行を残し、「さらに読む」で続きを足す', async ({
+  page,
+}) => {
+  await createWorkspace(page, '履歴の読み込みパーティ', 'game');
+  await addTask(page, '履歴を読み直す');
+
+  // 初めに読めない。失敗の文と「もう一度試す」を出す
+  await page.route('**/api/aoba/task-history', (route) =>
+    route.fulfill({ status: 500, json: { error: { code: 'internal', message: 'x' } } }),
+  );
+  const drawer = await openDrawer(page, '履歴を読み直す');
+  const history = drawer.getByRole('region', { name: '変更の履歴' });
+  const items = history.locator('.history > li');
+  await expect(history.getByText('変更の履歴を読み込めませんでした。')).toBeVisible();
+  await page.unroute('**/api/aoba/task-history');
+  await history.getByRole('button', { name: 'もう一度試す' }).click();
+  await expect(items).toHaveCount(1);
+  await expect(history.getByRole('heading', { name: '変更の履歴' })).toBeFocused();
+
+  // 保存した後の読み直しに失敗しても、前の行を残し、上に失敗を添える
+  await page.route('**/api/aoba/task-history', (route) =>
+    route.fulfill({ status: 500, json: { error: { code: 'internal', message: 'x' } } }),
+  );
+  await drawer.getByRole('radio', { name: '5', exact: true }).check();
+  await expect(history.getByText('最新の変更の履歴を読み込めませんでした。')).toBeVisible();
+  await expect(items).toHaveCount(1);
+  await page.unroute('**/api/aoba/task-history');
+  await history.getByRole('button', { name: 'もう一度試す' }).click();
+  await expect(items).toHaveCount(2);
+  await expect(history.getByText('最新の変更の履歴を読み込めませんでした。')).toHaveCount(0);
+
+  // 先頭の応答を1件と続き（next）に差し替える。「さらに読む」で、続きを本物の API から足す
+  const befores: unknown[] = [];
+  await page.route('**/api/aoba/task-history', async (route) => {
+    const body = route.request().postDataJSON() as { before?: unknown };
+    if (body.before !== undefined) {
+      befores.push(body.before);
+      await route.continue();
+      return;
+    }
+    const response = await route.fetch();
+    const json = (await response.json()) as { entries: { id: string; created_at: string }[]; next: unknown };
+    const first = json.entries[0]!;
+    await route.fulfill({
+      response,
+      json: { ...json, entries: [first], next: { created_at: first.created_at, id: first.id } },
+    });
+  });
+  await drawer.getByRole('radio', { name: '8', exact: true }).check();
+  await expect(items).toHaveCount(1);
+  await expect(items.nth(0).locator('.history-changes li span')).toHaveText(['難易度', '5 → 8']);
+  await history.getByRole('button', { name: 'さらに読む' }).click();
+  await expect(items).toHaveCount(3);
+  await expect(items.nth(1).locator('.history-changes li span')).toHaveText(['難易度', '未見積もり → 5']);
+  await expect(items.nth(2)).toContainText('依頼を出した');
+  await expect(history.getByRole('button', { name: 'さらに読む' })).toHaveCount(0);
+  await expect(history.getByRole('heading', { name: '変更の履歴' })).toBeFocused();
+  expect(befores).toHaveLength(1);
+});
+
+test('変更の履歴が無ければ「まだ変更はありません。」', async ({ page }) => {
+  await createWorkspace(page, '履歴の無いパーティ', 'game');
+  await addTask(page, '履歴の無い依頼');
+  await page.route('**/api/aoba/task-history', (route) =>
+    route.fulfill({ status: 200, json: { entries: [], next: null, timezone: 'Asia/Tokyo' } }),
+  );
+  const drawer = await openDrawer(page, '履歴の無い依頼');
+  await expect(drawer.getByRole('region', { name: '変更の履歴' }).getByText('まだ変更はありません。')).toBeVisible();
+});
+
+test('変更の履歴が 404（タスクが消えた）なら、「もう一度試す」を出さず、トーストで知らせて閉じる', async ({ page }) => {
+  await createWorkspace(page, '履歴が消えるパーティ', 'game');
+  await addTask(page, '履歴が消える依頼');
+  await page.route('**/api/aoba/task-history', (route) =>
+    route.fulfill({ status: 404, json: { error: { code: 'not_found', message: 'not_found' } } }),
+  );
+  await page.locator('.entry').getByRole('link', { name: '履歴が消える依頼' }).click();
+  await expect(page.getByRole('status').filter({ hasText: 'このクエストは見つかりません' })).toBeVisible();
+  await expect(page).not.toHaveURL(/\?task=/);
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+});
+
+// 変更の履歴: 難易度と担い手を直すと、新しい順に、日時と人と、列の名前と前と後が出る。列の名前は言葉づかいの辞書の言葉
+for (const [vocabulary, words] of [
+  [
+    'game',
+    {
+      create: '依頼を出す',
+      points: '難易度',
+      assignee: '担い手',
+      unassigned: '担い手なし',
+      created: '依頼を出した',
+      updated: '書き換えた',
+    },
+  ],
+  [
+    'scrum',
+    {
+      create: '起票',
+      points: 'ポイント',
+      assignee: '担当',
+      unassigned: '担当なし',
+      created: '作成した',
+      updated: '変更した',
+    },
+  ],
+] as const) {
+  test(`変更の履歴を新しい順に、${vocabulary === 'game' ? 'ゲーム' : 'スクラム'}の言葉の列の名前で出す`, async ({
+    page,
+  }) => {
+    const collect = await watchViolations(page);
+    await createWorkspace(page, `履歴の${vocabulary}チーム`, vocabulary);
+    const title = `履歴をたどる（${vocabulary}）`;
+    await page.getByRole('button', { name: words.create }).click();
+    const dialog = page.getByRole('dialog', { name: words.create });
+    await dialog.getByLabel('タイトル').fill(title);
+    await dialog.getByRole('button', { name: words.create }).click();
+    await expect(dialog).toBeHidden();
+
+    const drawer = await openDrawer(page, title);
+    const history = drawer.getByRole('region', { name: '変更の履歴' });
+    const items = history.locator('.history > li');
+    // 開いたときに読む。作成の行だけ
+    await expect(items).toHaveCount(1);
+    await expect(items.nth(0)).toContainText(words.created);
+    await expect(items.nth(0).locator('time')).toHaveText(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/);
+    await expect(items.nth(0)).toContainText('ミナト');
+
+    await drawer.getByRole('radio', { name: '5', exact: true }).check();
+    await expect(items).toHaveCount(2);
+    await drawer.getByRole('combobox', { name: words.assignee }).selectOption({ label: 'ミナト' });
+    // 保存した後に読み直す。新しい順
+    await expect(items).toHaveCount(3);
+    await expect(items.nth(0).locator('> .props-note')).toHaveText(words.updated);
+    await expect(items.nth(0).locator('.history-changes li span')).toHaveText([
+      words.assignee,
+      `${words.unassigned} → ミナト`,
+    ]);
+    await expect(items.nth(1).locator('.history-changes li span')).toHaveText([words.points, '未見積もり → 5']);
+    await expect(items.nth(2).locator('> .props-note')).toHaveText(words.created);
+    await expect(items.nth(2).locator('.history-changes li').first().locator('span')).toHaveText(['タイトル', title]);
+    // 続きは無い
+    await expect(history.getByRole('button', { name: 'さらに読む' })).toHaveCount(0);
+    expect(await collect()).toEqual([]);
+  });
 }
 
 test('2048 字に近い URL を保存しても、390px の引き出しが横にはみ出さない', async ({ page }) => {

@@ -1183,6 +1183,35 @@ export const dictionary = defineDictionary({
     '削除できませんでした。もう一度試してください。',
   ),
   taskDeleteForbidden: workspace('作った人と{leader}だけが削除できます', '作った人と{leader}だけが削除できます'),
+  // 変更の履歴（引き出しの「変更の履歴」の節。src/lib/task-history.ts が列の名前と値を文にする）
+  historyTitle: workspace('変更の履歴', '変更の履歴'),
+  historyEmpty: workspace('まだ変更はありません。', 'まだ変更はありません。'),
+  historyLoadFailed: workspace('変更の履歴を読み込めませんでした。', '変更の履歴を読み込めませんでした。'),
+  historyMore: workspace('さらに読む', 'さらに読む'),
+  historyMoreFailed: workspace(
+    '続きを読み込めませんでした。もう一度試してください。',
+    '続きを読み込めませんでした。もう一度試してください。',
+  ),
+  // 変えた人のいない行（同期などの定期処理と、運用者の操作）
+  historyActorSystem: workspace('定期処理か運用者', '定期処理か運用者'),
+  historyCreated: workspace('依頼を出した', '作成した'),
+  historyUpdated: workspace('書き換えた', '変更した'),
+  historyCompleted: workspace('{done}にした', '{done}にした'),
+  historyDeleted: workspace('削除した', '削除した'),
+  historyChange: workspace('{before} → {after}', '{before} → {after}'),
+  historyFieldEdited: workspace('{field}を直した', '{field}を直した'),
+  historyNone: workspace('なし', 'なし'),
+  historyFieldOther: workspace('そのほかの欄', 'そのほかの欄'),
+  historyFieldParent: workspace('親の{story}', '親の{story}'),
+  // 名前が空の人、区分、親（読めなかった名前）
+  historyUnknownName: workspace('不明', '不明'),
+  // 「さらに読む」で行を足したことを、読み上げに伝える
+  historyMoreAdded: workspace('{count} 件を足しました', '{count} 件を足しました'),
+  // 保存した後の読み直しに失敗したとき。前に読めた行は残し、節の上に添える
+  historyReloadFailed: workspace(
+    '最新の変更の履歴を読み込めませんでした。',
+    '最新の変更の履歴を読み込めませんでした。',
+  ),
 
   // Markdown の本文。変換が終わらなかった本文を、書かれたまま出すときの注記
   markdownPlainNote: workspace('整形せずに表示しています', '整形せずに表示しています'),

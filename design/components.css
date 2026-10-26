@@ -757,6 +757,14 @@ button.tree-link { border: 0; background: none; padding: 0; font: inherit; text-
 .history { list-style: none; margin: 0; padding: var(--space-4) 0 0; display: grid; gap: var(--space-2); font-size: var(--text-sm); }
 .history li { display: flex; gap: var(--space-2); align-items: center; flex-wrap: wrap; }
 .history .mono { font-size: var(--text-xs); color: var(--color-muted); }
+/* 長い名前（変えた人）も、行の中で折り返す */
+.history li > span { min-width: 0; overflow-wrap: anywhere; }
+/* 1件の変更の、欄ごとの前と後。行の頭（日時、人、操作）の下に折り返して並べる。長い値（URL）は折り返す */
+.history-changes { flex-basis: 100%; list-style: none; margin: 0; padding: 0 0 0 var(--space-4); display: grid; gap: var(--space-1); }
+.history-changes li { align-items: baseline; }
+.history-changes span { min-width: 0; overflow-wrap: anywhere; }
+/* タブの下でなく、欄の見出し（.field の .field-label）の下に置くときは、上の余白を欄の間隔に任せる */
+.field > .history { padding-top: 0; }
 
 .cap.is-unset { background: repeating-linear-gradient(135deg, var(--color-gauge) 0 4px, transparent 4px 8px); }
 a.notice-title.notice-link { color: var(--color-fg); text-decoration: none; }

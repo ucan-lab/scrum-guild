@@ -62,6 +62,7 @@
     capacity: ["積載量", "作業量と基準"], over: ["重量オーバー", "超過"], done: ["完遂", "完了"], column: ["行程", "列"],
     doneToday: ["今日の完遂", "今日の完了"], complete: ["完遂にする", "完了にする"],
     requester: ["依頼主", "作成者"], party: ["討伐隊", "参加者"], accept: ["受注する", "参加する"], leave: ["討伐隊を抜ける", "参加をやめる"],
+    historyCreated: ["依頼を出した", "作成した"], historyUpdated: ["書き換えた", "変更した"],
     reward: ["クリア報酬", "クリア報酬"], clear: ["レイドをクリアする", "エピックを完了にする"], create: ["依頼を出す", "起票"],
     leader: ["パーティリーダー", "リーダー"], member: ["冒険者", "メンバー"], dod: ["パーティの掟", "完成の定義"],
     vocab: ["ゲームの言葉", "スクラムの言葉"], organization: ["冒険者ギルド", "組織"], admin: ["ギルドマスター", "管理者"],
@@ -709,7 +710,8 @@ const looooooooooooooooooooooooooooooooooongLine = "コードの長い1行は、
     const fieldBody = x.unfilled
       ? `<div class="doc-box is-empty">まだ書かれていません。${t("task")}を完了にした時点ですべて埋まっていると、最後に書いた人に経験値が付きます。</div>`
       : `<div class="doc-box"><ul>${(parent ? parent.ac.slice(0, 2) : ["結果を確かめる手順が書かれている"]).map((a) => `<li>${esc(a)}</li>`).join("")}</ul></div>`;
-    const HIST = { column: t("column"), points: t("points"), sprint: t("sprint"), create: "作成" };
+    // 変更の履歴の列の名前（本番は src/lib/task-history.ts の表）。作成は作ったときの値を、変更は前と後を、欄ごとの行（.history-changes）で出す
+    const HIST = { title: "タイトル", points: t("points"), due: t("due"), assignee: t("assignee") };
     if (drawer.view === "loading" || drawer.view === "failed") return drawerStateHtml();
     return `
       <div class="drawer-top">
@@ -773,7 +775,8 @@ const looooooooooooooooooooooooooooooooooongLine = "コードの長い1行は、
           <div class="composer-foot"><button class="btn is-sm is-quiet" type="button" data-pick-file="comment-new:${x.id}">${icon("clip")}ファイルを添付</button>
             <span class="field-hint">画像は貼り付けても添付できます。</span><button class="btn" type="button">送る</button></div>
         </div>` : `
-        <ul class="history">${history.map((h) => `<li><span class="mono">${h[0]}</span>${avatarOf(h[1])}<span>${esc(user(h[1]).name)}</span><span class="props-note">${HIST[h[2]]}</span><span>${esc(h[3])}</span></li>`).join("") || `<li class="props-note">まだ変更はありません。</li>`}</ul>`}
+        <ul class="history">${history.map((h) => `<li><span class="mono">${h[0]}</span>${avatarOf(h[1])}<span>${esc(user(h[1]).name)}</span><span class="props-note">${h[2] === "create" ? t("historyCreated") : t("historyUpdated")}</span>
+          ${h[3].length ? `<ul class="history-changes">${h[3].map(([field, text]) => `<li><span class="props-note">${HIST[field]}</span><span>${esc(text)}</span></li>`).join("")}</ul>` : ""}</li>`).join("") || `<li class="props-note">まだ変更はありません。</li>`}</ul>`}
       </div>
       ${drawerReadOnly() ? "" : `<div class="form-actions">${x.src
         ? `<button class="btn is-sm is-quiet" type="button" data-toast="${t("archive")}へ移しました">${icon("archive")}${t("archive")}へ移す</button><span class="field-hint">取り込んだ${t("task")}は削除せず、${t("archive")}へ移して外します。</span>`
