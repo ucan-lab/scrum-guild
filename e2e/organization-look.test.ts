@@ -56,6 +56,9 @@ test.describe('管理者（くもラボのカイ）', () => {
     await expect(section.getByRole('radio')).toHaveCount(5);
     await expect(section.getByRole('radio', { name: /^シンプル（自動）/ })).toBeChecked();
     await expect(section).toContainText('冒険者ギルドの帳簿。紙と墨、完了に朱の判子');
+    // 2つの「保存する」は、読み上げの名前でどの節のものかが分かる
+    await expect(page.getByRole('button', { name: '保存する 既定のテーマ', exact: true })).toHaveCount(1);
+    await expect(page.getByRole('button', { name: '保存する パーティの外の言葉づかい', exact: true })).toHaveCount(1);
     // 今の値のままなら押せない
     await expect(save).toHaveAttribute('aria-disabled', 'true');
     expect(await themeOf(browser, baseURL, 'lookMember')).toBe('simple');
@@ -114,7 +117,7 @@ test.describe('管理者（くもラボのカイ）', () => {
     const save = section.getByRole('button', { name: /^保存/ });
     await save.click();
     // 送っている間はボタンを aria-disabled にし、押しても送らない。ラジオは選べたまま
-    await expect(save).toHaveText('保存しています');
+    await expect(save).toHaveText(/^保存しています/);
     await expect(save).toHaveAttribute('aria-disabled', 'true');
     // aria-disabled のボタンは Playwright が押せないものとして待つので、確かめを飛ばして押す
     await save.click({ force: true });

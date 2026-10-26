@@ -136,6 +136,8 @@
   <div class="form-actions">
     <button class="btn" type="button" aria-disabled={!canSave('vocabulary')} onclick={() => save('vocabulary')}>
       {sending.vocabulary !== null ? t('orgSettingsSaving') : t('orgSettingsSave')}
+      <!-- 2つの節に同じ「保存する」が並ぶので、読み上げの名前にどの節のものかを足す（見える文字は名前の先頭に残す） -->
+      <span class="visually-hidden">{t('orgVocabularyTitle', { workspace: t('workspace') })}</span>
     </button>
   </div>
   <!-- 失敗の知らせ。領域は常に置き、中の文字だけを替える -->
@@ -162,6 +164,7 @@
   <div class="form-actions">
     <button class="btn" type="button" aria-disabled={!canSave('theme')} onclick={() => save('theme')}>
       {sending.theme !== null ? t('orgSettingsSaving') : t('orgSettingsSave')}
+      <span class="visually-hidden">{t('orgThemeTitle')}</span>
     </button>
   </div>
   <!-- 失敗の知らせ。領域は常に置き、中の文字だけを替える -->
