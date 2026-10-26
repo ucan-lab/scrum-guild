@@ -10,15 +10,34 @@ export function reuseExistingServer(env: Env): boolean {
   return !env.CI && env.E2E_REUSE_SERVER === '1';
 }
 
-// build と wrangler dev に渡す版。渡されていればそのまま使う（CI は PR の head の SHA）。
-// 手元で渡されず、使い回さないときは、この実行だけの値にする。使い回すときは、版を渡さずに立てた preview と同じ dev
+// build と wrangler dev に渡す版。CI は渡された PR の head の SHA をそのまま使う。
+// 手元で使い回さないときは、この実行だけの値にする。渡された版があれば、その後ろに足す（同じ版で立てた前のサーバーを見分けるため）。
+// 使い回すときは、渡された版か、版を渡さずに立てた preview と同じ dev
 export function e2eServerVersion(env: Env, now: number): string {
-  if (env.APP_VERSION) return env.APP_VERSION;
-  return reuseExistingServer(env) ? 'dev' : `e2e-${now.toString(36)}`;
+  if (env.CI || reuseExistingServer(env)) return env.APP_VERSION || 'dev';
+  const run = `e2e-${now.toString(36)}`;
+  return env.APP_VERSION ? `${env.APP_VERSION}-${run}` : run;
+}
+
+// 版を決めて env に置く。playwright.config.ts はワーカーでも読み直されるので、決めた版を E2E_SERVER_VERSION に残し、
+// 読み直しでは足し直さない。ワーカーは起動した側の env を受け継ぐので、同じ実行の中では1つの値になる
+export function applyE2eServerVersion(env: Env, now: number): string {
+  env.E2E_SERVER_VERSION ||= e2eServerVersion(env, now);
+  env.APP_VERSION = env.E2E_SERVER_VERSION;
+  return env.APP_VERSION;
 }
 
 export function e2eHealthURL(env: Env): string {
   return `http://localhost:${devPorts(env).api}/api/health`;
+}
+
+// 前のサーバーが答えないまま接続だけ受けると、globalSetup はいつまでも待つので上限を置く
+export const HEALTH_TIMEOUT_MS = 10_000;
+
+export function healthUnreachable(env: Env, cause: unknown): string {
+  const port = devPorts(env).api;
+  const reason = cause instanceof Error ? cause.message : String(cause);
+  return `/api/health に問い合わせられない（${reason}）。ポート ${port} で前のサーバーが固まっていないかを確かめ、止めてからやり直す（lsof -i :${port} で探す）`;
 }
 
 // /api/health の版が期待と違えば、止める理由を返す

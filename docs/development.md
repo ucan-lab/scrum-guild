@@ -269,10 +269,10 @@ GitHub は無料のプランのまま使う（2026-10-23 に決めた）。無�
 
 `pnpm e2e` は、実行のたびに `pnpm preview` と同じ中身（`pnpm build && node scripts/dev.ts --preview`）で build し直してサーバーを立て、終わると止める（`playwright.config.ts`、`scripts/e2e-server.ts`）。通った結果も落ちた結果も、今のコードで build したサーバーのものにするため（#132）。
 
-- 手元で `APP_VERSION` を渡さなければ、その実行だけの版（`e2e-<時刻>`）で build する。サーバーが立った後、`e2e/global-setup.ts` が `/api/health` の版と比べ、違えば seed を入れずに止まる。止まったときの文言は、前の e2e か `pnpm preview` のサーバーが API のポートで答えていることと、探し方（`lsof -i :<ポート>`）を出す。`APP_VERSION` を渡したときはその値と比べるので、続けて走らせるときは毎回違う値にする
+- 手元では、その実行だけの版（`e2e-<時刻>`。`APP_VERSION` を渡したときは `<渡した版>-e2e-<時刻>`）で build する。サーバーが立った後、`e2e/global-setup.ts` が `/api/health` の版と比べ、違えば seed を入れずに止まる。止まったときの文言は、前の e2e か `pnpm preview` のサーバーが API のポートで答えていることと、探し方（`lsof -i :<ポート>`）を出す。`/api/health` が10秒答えないときも、同じ案内で止まる。CI は渡した SHA をそのまま使う（ランナーが毎回新しく、前のサーバーが無い）
 - 起動の前に API のポートの `/api/health` に答えるサーバーがあれば、Playwright が `... is already used` で止まる。`pnpm dev` も `pnpm preview` も同じポートの `wrangler dev` を使うので、立てたまま e2e を走らせるときは止めるか、`DEV_PORT_OFFSET` をずらす
-- 立てたままの `pnpm preview` を使い回すのは、`E2E_REUSE_SERVER=1 pnpm e2e` と明示したときだけ。build し直さないので、そのサーバーを立てた後のコードの変更は映らない。版の比べ方は同じで、`APP_VERSION` を渡さなければ `dev` と比べる（版を渡さずに立てた `pnpm preview` はそのまま使える）。CI は付けても使い回さない
-- サーバーを pnpm のスクリプト（`pnpm preview`）で立てないのは、pnpm がスクリプトを別のプロセスグループで動かすため。Playwright は終わりにサーバーのプロセスグループへ `SIGKILL` を送るので、`wrangler` と `workerd` に届かず、前の実行のサーバーが残ることがある（Linux では pnpm の親が死ぬと子も止まり、残らなかった。pnpm を通さず別のグループに置いたサーバーは残り続けた）。残ったサーバーには、次の実行の build の途中にも Playwright が当たり、build を待たずに先へ進むので、上の版の比べ方で止める
+- 立てたままの `pnpm preview` を使い回すのは、`E2E_REUSE_SERVER=1 pnpm e2e` と明示したときだけ。build し直さないので、そのサーバーを立てた後のコードの変更は映らない。版は実行ごとの値を足さず、渡した `APP_VERSION` か、渡さなければ `dev` と比べる（版を渡さずに立てた `pnpm preview` はそのまま使える）。`pnpm dev` は版が `dev` で比べ方を通るが、`PUBLIC_ORIGIN` が vite の URL なので、更新系の API が Origin の検査で 403 になる。使い回せるのは `pnpm preview` だけ。CI は付けても使い回さない
+- サーバーを pnpm のスクリプト（`pnpm preview`）で立てないのは、pnpm がスクリプトを別のプロセスグループで動かすため。Playwright は終わりにサーバーのプロセスグループへ `SIGKILL` を送るので、`wrangler` と `workerd` に届かず、前の実行のサーバーが残りうる。2026-10-26 にクラウドの Linux の環境（pnpm 12.12.0、Playwright 1.64.1）で確かめたところ、pnpm を通したサーバーは pnpm の親が死ぬと止まり残らなかったが、pnpm を通さず別のグループに置いたサーバーは残り続けた。#132 の手元（残った環境）は確かめていないので、原因はこの推定にとどまる。残ったサーバーには、次の実行の build の途中にも Playwright が当たり、build を待たずに先へ進むので、上の版の比べ方で止める
 
 ### 依存を入れたばかりの作業コピー
 

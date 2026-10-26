@@ -3,13 +3,18 @@
 // webServer が立ってから動くので、立てたままのサーバー（E2E_REUSE_SERVER=1）を使い回すときも流れる。
 // seed は --local だけを付ける（本番の D1 には入れない。scripts/db-seed.ts）
 import { spawnSync } from 'node:child_process';
-import { e2eHealthURL, serverVersionMismatch } from '../scripts/e2e-server.ts';
+import { e2eHealthURL, HEALTH_TIMEOUT_MS, healthUnreachable, serverVersionMismatch } from '../scripts/e2e-server.ts';
 
 export default async function globalSetup(): Promise<void> {
   // 版は playwright.config.ts が決めて process.env に置く
   const expected = process.env.APP_VERSION ?? '';
-  const res = await fetch(e2eHealthURL(process.env));
-  const body: unknown = await res.json().catch(() => undefined);
+  let body: unknown;
+  try {
+    const res = await fetch(e2eHealthURL(process.env), { signal: AbortSignal.timeout(HEALTH_TIMEOUT_MS) });
+    body = await res.json().catch(() => undefined);
+  } catch (error) {
+    throw new Error(healthUnreachable(process.env, error), { cause: error });
+  }
   const actual = typeof body === 'object' && body !== null && 'version' in body ? body.version : undefined;
   const mismatch = serverVersionMismatch(expected, actual, process.env);
   if (mismatch) throw new Error(mismatch);

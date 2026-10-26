@@ -1,13 +1,12 @@
 // e2e（pnpm e2e）: pnpm preview と同じく build して wrangler dev を立て、本番と同じ配り方の画面と API を確かめる。
 import { defineConfig, devices } from '@playwright/test';
 import { devPorts } from './scripts/dev-ports.ts';
-import { e2eServerVersion, reuseExistingServer } from './scripts/e2e-server.ts';
+import { applyE2eServerVersion, reuseExistingServer } from './scripts/e2e-server.ts';
 
 const baseURL = `http://localhost:${devPorts(process.env).api}`;
 
-// サーバーの build と、e2e/global-setup.ts と e2e/shell.test.ts が比べる版。ワーカーは設定を読み直すが、
-// この process.env を受け継ぐので、同じ実行の中では1つの値になる（scripts/e2e-server.ts）
-process.env.APP_VERSION = e2eServerVersion(process.env, Date.now());
+// サーバーの build と、e2e/global-setup.ts と e2e/shell.test.ts が比べる版（scripts/e2e-server.ts）
+applyE2eServerVersion(process.env, Date.now());
 
 export default defineConfig({
   testDir: 'e2e',
@@ -24,7 +23,7 @@ export default defineConfig({
   },
   projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
   webServer: {
-    // pnpm preview と同じ中身。pnpm を通すと、pnpm がスクリプトを別のプロセスグループで動かし、
+    // package.json の preview と同じ中身。preview を変えたらここもそろえる。pnpm を通すと、pnpm がスクリプトを別のプロセスグループで動かし、
     // 終わりに Playwright がグループへ送る SIGKILL が wrangler と workerd に届かず、サーバーが残ることがある
     command: 'pnpm build && node scripts/dev.ts --preview',
     url: `${baseURL}/api/health`,
