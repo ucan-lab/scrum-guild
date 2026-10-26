@@ -58,7 +58,8 @@ async function logChange(
 }
 
 // 順: 1. 画面が見ていた値（from）を入るときに引いた値（organization）と比べ、違えば 409。from と to が同じ項目は外す
-// （書く項目が無ければ書かずに今の値を返す）  2. organizations を、from のままなら書く（入ってから書くまでに別の要求が変えていたら 409）  3. change_logs に残す（失敗しても成功を返す）
+// （書く項目が無ければ書かずに今の値を返す）  2. organizations を、停止しておらず from のままなら書く（入ってから書くまでに
+// 停止されていたら 403、別の要求が変えていたら 409）  3. change_logs に残す（失敗しても成功を返す）
 export const organizationSettingsUpdateOperation = implement(
   organizationSettingsUpdate,
   async ({ db, actor, organization, tools, input }) => {
@@ -88,7 +89,9 @@ export const organizationSettingsUpdateOperation = implement(
     if (change.vocabulary === undefined && change.theme === undefined) return after;
 
     const at = now();
-    if (!(await tools.writeOrganizationSettings(change, at))) throw new ApiError(409, 'conflict');
+    const written = await tools.writeOrganizationSettings(change, at);
+    if (written === 'suspended') throw new ApiError(403, 'organization_suspended');
+    if (written === 'conflict') throw new ApiError(409, 'conflict');
     await logChange(db, { actorUserId, changes, at });
     return after;
   },

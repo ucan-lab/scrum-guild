@@ -18,6 +18,7 @@ import {
   type OrganizationDb,
   type OrganizationRow,
   type OrganizationSettingsChange,
+  type OrganizationSettingsWrite,
 } from '../db/index.ts';
 
 export type OrganizationTools = {
@@ -25,10 +26,11 @@ export type OrganizationTools = {
   inviteeResolver(provider: string): InviteeResolver | undefined;
   // 自分の組織の行のうち、入るときに引かない値（人数の上限）
   readOrganization(): Promise<OrganizationRow>;
-  // 自分の組織の言葉づかいと既定のテーマを、先に読んだ値（from）のままなら書く（渡した項目と updated_at だけ）。管理者の操作からだけ呼ぶ。
-  // 書けたら true、別の要求が先に変えていたら false（呼び出し側は 409 にする）。変更の記録（change_logs）は書かない。
-  // 組織の中の表なので、呼び出し側が true のときだけ別の batch() で書く
-  writeOrganizationSettings(change: OrganizationSettingsChange, now: Date): Promise<boolean>;
+  // 自分の組織の言葉づかいと既定のテーマを、停止しておらず、先に読んだ値（from）のままなら書く（渡した項目と updated_at だけ）。
+  // 管理者の操作からだけ呼ぶ。書けたら written、入ってから書くまでに停止されていたら suspended（呼び出し側は 403 にする）、
+  // 別の要求が先に変えていたら conflict（409 にする）。変更の記録（change_logs）は書かない。
+  // 組織の中の表なので、呼び出し側が written のときだけ別の batch() で書く
+  writeOrganizationSettings(change: OrganizationSettingsChange, now: Date): Promise<OrganizationSettingsWrite>;
   // ログインできる条件を失った人のセッションを消す。組織を離れる、無効にするなどの書き込みの batch() の後に、defer に渡して呼ぶ
   // （失敗しても応答を変えない。消し忘れても、組織に入れるかはリクエストのたびに確かめるので入れない）。
   // users の ID は自分の組織の行だけを見る（別の組織の ID は何もしない）。アカウントに結ばれていない行、運用者、
