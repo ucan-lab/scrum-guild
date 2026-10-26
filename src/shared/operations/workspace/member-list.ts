@@ -5,7 +5,8 @@ import { defineOperation } from '../define.ts';
 const roleSchema = z.enum(['leader', 'member']);
 
 // メンバーの画面が使う。members は今所属していて、無効でなく、login_subject のある人（Google で待っている行は出さない）。
-// 並びはリーダーが先、続いて参加日、名前、ID。
+// 並びはリーダーが先、続いて参加日、名前、ID。avatar_url はログインの手段の側のアバターの画像の URL（account_logins.avatar_url）で、
+// アカウントに結ばれる前の人とアバターの無い人は null。画面は null のとき頭文字の円を出す。
 // invitations はリーダーと管理者（所属していない管理者を含む）にだけ配列で返し、一般のメンバーには null。
 // 承諾待ち（status = 'pending'）のものすべて。期限（Google の招待だけが持つ）の過ぎたものも返し、expired で示す。
 // リーダーが期限切れに気づいて招待し直せるようにするため（docs/data-model.md の「メールアドレスで待つ指名と招待」）。
@@ -27,6 +28,7 @@ export const memberList = defineOperation({
         name: z.string(),
         role: roleSchema,
         joined_on: z.string(),
+        avatar_url: z.string().nullable(),
       }),
     ),
     invitations: z

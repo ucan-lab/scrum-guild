@@ -5,6 +5,11 @@ import { signIn, watchViolations } from './helpers.ts';
 
 const AOBA_WORKSPACE_ID = '019a0000-0000-7000-8000-000000000401';
 const MEMBERS_PATH = `/aoba/w/${AOBA_WORKSPACE_ID}/members`;
+// アバターのホストへの要求に返す 1px の PNG（e2e/operator.test.ts と同じ）
+const PIXEL = Buffer.from(
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=',
+  'base64',
+);
 
 test.describe('リーダー（あおば開発のミナト）', () => {
   test.beforeEach(async ({ context, baseURL }) => {
@@ -162,6 +167,39 @@ test.describe('リーダー（あおば開発のミナト）', () => {
     await expect(page.getByRole('button', { name: '招待する' })).toBeDisabled();
   });
 
+  test('アバターのある人は画像、無い人は頭文字の円で出る', async ({ page }) => {
+    const collect = await watchViolations(page);
+    // seed のログインはアバターを持たないので、member-list の応答にアバターを足し、アバターのホストへは出ずに画像を差し替える
+    await page.route('**/api/aoba/member-list', async (route) => {
+      const response = await route.fetch();
+      const json = (await response.json()) as { members: { name: string }[] };
+      await route.fulfill({
+        response,
+        json: {
+          ...json,
+          members: json.members.map((member) => ({
+            ...member,
+            avatar_url: member.name === 'ミナト' ? 'https://avatars.githubusercontent.com/u/7300001' : null,
+          })),
+        },
+      });
+    });
+    await page.route('https://avatars.githubusercontent.com/**', (route) =>
+      route.fulfill({ body: PIXEL, contentType: 'image/png' }),
+    );
+    await page.goto(MEMBERS_PATH);
+    const rows = page.getByRole('table', { name: '所属している人の一覧' }).locator('tbody tr');
+    const minato = rows.nth(0).getByRole('img', { name: 'ミナト' });
+    await expect(minato.locator('img')).toHaveAttribute('src', 'https://avatars.githubusercontent.com/u/7300001');
+    await expect(minato.locator('img')).toBeVisible();
+    // 画像のある人は頭文字を出さない
+    await expect(rows.nth(0).locator('td').nth(0)).toHaveText('ミナト');
+    const haruka = rows.nth(1).getByRole('img', { name: 'ハルカ' });
+    await expect(haruka).toHaveText('ハ');
+    await expect(haruka.locator('img')).toHaveCount(0);
+    expect(await collect()).toEqual([]);
+  });
+
   test('390px の幅で、長い名前（空白の無い30字以上）と長いメールアドレスは折り返し、所属の表ははみ出さず、招待の表は取り消すを右端に固定する', async ({
     page,
   }) => {
@@ -171,7 +209,9 @@ test.describe('リーダー（あおば開発のミナト）', () => {
     await page.route('**/api/aoba/member-list', (route) =>
       route.fulfill({
         json: {
-          members: [{ id: AOBA_WORKSPACE_ID, name: longName, role: 'leader', joined_on: '2026-10-01' }],
+          members: [
+            { id: AOBA_WORKSPACE_ID, name: longName, role: 'leader', joined_on: '2026-10-01', avatar_url: null },
+          ],
           // Google の招待は手段の列に期限か「期限切れ」が並び、その列も広がる
           invitations: [
             {

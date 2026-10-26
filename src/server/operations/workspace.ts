@@ -248,6 +248,9 @@ export const memberListOperation = implement(memberList, async ({ db, actor, wor
   const timezone = workspaceResult.rows[0]?.timezone;
   if (timezone === undefined) throw new ApiError(404, 'not_found');
   const at = now().getTime();
+  // アバターは共通の表（account_logins）にあるので、組織の道具から全員の分を1回で引く。
+  // 引いた ID はどれも自分の組織の行なので、キーが無いのは処理の間に消えた行だけで、null として扱う
+  const avatars = await tools.avatarsOf(memberResult.rows.map((row) => row.id));
 
   return {
     members: memberResult.rows.map((row) => ({
@@ -256,6 +259,7 @@ export const memberListOperation = implement(memberList, async ({ db, actor, wor
       // role は列の CHECK が守る値。列挙に無い値が来ても、出力のスキーマ（z.enum）が 500 で止める
       role: row.role as 'leader' | 'member',
       joined_on: row.joined_on,
+      avatar_url: avatars.get(row.id) ?? null,
     })),
     invitations:
       invitationResult === undefined
