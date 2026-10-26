@@ -46,7 +46,9 @@ export const pointers: Pointers = {
     holiday_on: (await createOrganizationHoliday(target.organization, target.admin.userId!)).holiday_on,
   }),
   // 組織は URL の slug で決まり、入力は組織の中の行を指さない（同じ値なら書かずに成功する）
-  'organization-settings-update': { noReference: { vocabulary: 'scrum', theme: 'medieval' } },
+  'organization-settings-update': {
+    noReference: { vocabulary: { from: 'game', to: 'scrum' }, theme: { from: 'simple', to: 'medieval' } },
+  },
   'workspace-list': { noReference: {} },
   'workspace-leader-candidates': { noReference: {} },
   workspace: async (target) => ({ workspace_id: target.workspace.id }),

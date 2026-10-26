@@ -19,8 +19,22 @@ afterEach(() => {
 });
 
 type SettingsInput = { vocabulary?: string; theme?: string };
+type UpdateOptions = { token?: string; env?: Env; from?: { vocabulary?: string; theme?: string } };
 
-function update(target: Target, body: SettingsInput, options: { token?: string; env?: Env } = {}) {
+// 書く値（to）だけを受け取り、画面が見ていた値（from）は作った組織の既定（game、simple）か options.from で補う
+function update(target: Target, body: SettingsInput, options: UpdateOptions = {}) {
+  const from = { vocabulary: 'game', theme: 'simple', ...options.from };
+  return send(
+    target,
+    {
+      ...(body.vocabulary === undefined ? {} : { vocabulary: { from: from.vocabulary, to: body.vocabulary } }),
+      ...(body.theme === undefined ? {} : { theme: { from: from.theme, to: body.theme } }),
+    },
+    options,
+  );
+}
+
+function send(target: Target, body: unknown, options: UpdateOptions = {}) {
   return post(app, organizationSettingsUpdate, {
     slug: target.slug,
     token: options.token ?? target.admin.token,
@@ -82,7 +96,7 @@ describe('organization-settings-update', () => {
     expect(JSON.parse(logs[0]!.changes_json)).toEqual({ vocabulary: ['game', 'scrum'], theme: ['simple', 'medieval'] });
   });
 
-  test('今と同じ値の項目は書かず、履歴にも残さない', async () => {
+  test('見ていた値と同じ値の項目は書かず、履歴にも残さない', async () => {
     const target = await createTarget();
     const res = await update(target, { vocabulary: 'game', theme: 'modern' });
     expect(res.status).toBe(200);
@@ -105,11 +119,27 @@ describe('organization-settings-update', () => {
 
   test('空の入力と、知らない値は 400 の invalid_input', async () => {
     const target = await createTarget();
-    for (const body of [{}, { theme: 'neon' }, { vocabulary: 'agile' }]) {
-      const res = await update(target, body);
+    for (const body of [
+      {},
+      { theme: { from: 'simple', to: 'neon' } },
+      { vocabulary: { from: 'game', to: 'agile' } },
+      { theme: 'medieval' },
+      { vocabulary: { to: 'scrum' } },
+    ]) {
+      const res = await send(target, body);
       expect(res.status).toBe(400);
       expect(await errorCodeOf(res)).toBe('invalid_input');
     }
+    expect(await changeLogsOf(target.organization)).toEqual([]);
+  });
+
+  test('画面が見ていた値が今の値と違えば（ほかの管理者が先に変えた）409 の conflict で、どの項目も書かない', async () => {
+    const target = await createTarget();
+    // 見ていた言葉づかいが古い。テーマは今の値のまま
+    const res = await update(target, { vocabulary: 'game', theme: 'modern' }, { from: { vocabulary: 'scrum' } });
+    expect(res.status).toBe(409);
+    expect(await errorCodeOf(res)).toBe('conflict');
+    expect(await organizationRow(target.organization)).toMatchObject({ vocabulary: 'game', theme: 'simple' });
     expect(await changeLogsOf(target.organization)).toEqual([]);
   });
 

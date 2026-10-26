@@ -4,18 +4,20 @@ import { defineOperation } from '../define.ts';
 
 const vocabulary = z.enum(['game', 'scrum']);
 const theme = z.enum(themes);
+const vocabularyChange = z.object({ from: vocabulary, to: vocabulary });
+const themeChange = z.object({ from: theme, to: theme });
 
 // 組織の言葉づかいと既定のテーマ（docs/data-model.md の「書き込みの単位」の組織の設定の変更）。管理者だけ。
-// どちらか1つ以上を渡す。今と同じ値の項目は書かず、書く項目が無ければ何も書かずに今の値を返す。
-// 入ってから書くまでに同じ項目を別の要求が変えていたら 409 の conflict
+// どちらか1つ以上を、画面が見ていた前の値（from）と書く値（to）の組で渡す。from が今の値と違えば（ほかの管理者が先に変えた）
+// 409 の conflict。from と to が同じ項目は書かず、書く項目が無ければ何も書かずに今の値を返す
 export const organizationSettingsUpdate = defineOperation({
   name: 'organization-settings-update',
   description:
-    '組織の言葉づかいと既定のテーマを変える（どちらか1つ以上）。今と同じ値の項目は書かない。書いた後の値を返す。変更の履歴（change_logs）に残す',
+    '組織の言葉づかいと既定のテーマを、見ていた前の値と書く値の組で変える（どちらか1つ以上）。前の値が今の値と違えば 409。書いた後の値を返す。変更の履歴（change_logs）に残す',
   mode: 'write',
   permission: 'admin',
   input: z
-    .object({ vocabulary: vocabulary.optional(), theme: theme.optional() })
+    .object({ vocabulary: vocabularyChange.optional(), theme: themeChange.optional() })
     .refine((value) => value.vocabulary !== undefined || value.theme !== undefined, {
       message: '言葉づかいか既定のテーマのどちらかを渡す',
     }),

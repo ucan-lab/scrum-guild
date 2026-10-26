@@ -57,22 +57,29 @@ async function logChange(
   }
 }
 
-// 順: 1. 入るときに引いた値（organization）と比べ、同じ値の項目を外す（書く項目が無ければ書かずに今の値を返す）
-// 2. organizations を、読んだ値のままなら書く（別の要求が先に変えていたら 409）  3. change_logs に残す（失敗しても成功を返す）
+// 順: 1. 画面が見ていた値（from）を入るときに引いた値（organization）と比べ、違えば 409。from と to が同じ項目は外す
+// （書く項目が無ければ書かずに今の値を返す）  2. organizations を、from のままなら書く（入ってから書くまでに別の要求が変えていたら 409）  3. change_logs に残す（失敗しても成功を返す）
 export const organizationSettingsUpdateOperation = implement(
   organizationSettingsUpdate,
   async ({ db, actor, organization, tools, input }) => {
     // permission: 'admin' は users の行がある管理者だけを通す。型の上の null を 404 で閉じる
     const actorUserId = actorUserIdOf(actor);
+    // 画面が見ていた値が今の値と違えば、ほかの管理者が先に変えている（気づかずに上書きしない）
+    if (
+      (input.vocabulary !== undefined && input.vocabulary.from !== organization.vocabulary) ||
+      (input.theme !== undefined && input.theme.from !== organization.theme)
+    ) {
+      throw new ApiError(409, 'conflict');
+    }
     const change: { -readonly [K in keyof OrganizationSettingsChange]: OrganizationSettingsChange[K] } = {};
     const changes: SettingsChanges = {};
-    if (input.vocabulary !== undefined && input.vocabulary !== organization.vocabulary) {
-      change.vocabulary = { from: organization.vocabulary, to: input.vocabulary };
-      changes.vocabulary = [organization.vocabulary, input.vocabulary];
+    if (input.vocabulary !== undefined && input.vocabulary.to !== input.vocabulary.from) {
+      change.vocabulary = input.vocabulary;
+      changes.vocabulary = [input.vocabulary.from, input.vocabulary.to];
     }
-    if (input.theme !== undefined && input.theme !== organization.theme) {
-      change.theme = { from: organization.theme, to: input.theme };
-      changes.theme = [organization.theme, input.theme];
+    if (input.theme !== undefined && input.theme.to !== input.theme.from) {
+      change.theme = input.theme;
+      changes.theme = [input.theme.from, input.theme.to];
     }
     const after = {
       vocabulary: change.vocabulary?.to ?? organization.vocabulary,

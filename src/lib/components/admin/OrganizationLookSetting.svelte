@@ -68,7 +68,8 @@
     if (!canSave(field)) return;
     const sentSlug = slug;
     const value = chosen[field];
-    const change = { [field]: value } as InputOf<typeof organizationSettingsUpdate>;
+    // 見ていた値（from）も送る。ほかの管理者が先に変えていれば 409 になり、気づかずに上書きしない
+    const change = { [field]: { from: current[field], to: value } } as InputOf<typeof organizationSettingsUpdate>;
     // 知らせの文言は、送る前の言葉づかいで決める（言葉づかいを変えると、読み直した後は新しい言葉になる）
     const success =
       field === 'vocabulary'
