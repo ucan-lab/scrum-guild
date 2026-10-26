@@ -110,6 +110,7 @@
   const categoryId = `${ids}-category`;
   const categoryErrorId = `${ids}-category-error`;
   const historyHeadingId = `${ids}-history`;
+  const dodHeadingId = `${ids}-dod`;
 
   type PointsChoice = (typeof TASK_POINT_VALUES)[number] | null;
   // 先頭が「未」（未見積もり）
@@ -1487,9 +1488,14 @@
           </button>
         {/if}
         {#if definitionOfDone !== null}
+          <!-- 題は h3（引き出しの題が h2）で、本文の見出しは h4 から。長い定義でも帯が伸びないよう、本文は高さを抑えて中で送る。
+               送る領域はキーボードで届くようフォーカスを置け、題で名前を付ける -->
           <div class="done-bar-dod">
-            <b>{t('dod')}</b>
-            <Markdown source={definitionOfDone} headingStart={4} />
+            <h3 class="done-bar-dod-title" id={dodHeadingId}>{t('dod')}</h3>
+            <!-- svelte-ignore a11y_no_noninteractive_tabindex (MarkdownBlocks のコードの枠と同じ理由。送る領域にキーボードで届くため) -->
+            <div class="done-bar-dod-body" tabindex="0" role="region" aria-labelledby={dodHeadingId}>
+              <Markdown source={definitionOfDone} headingStart={4} />
+            </div>
           </div>
         {/if}
       </div>

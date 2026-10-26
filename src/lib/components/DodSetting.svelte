@@ -1,5 +1,6 @@
 <script lang="ts">
   import { tick, untrack } from 'svelte';
+  import { beforeNavigate, goto } from '$app/navigation';
   import { page } from '$app/state';
   import {
     DEFINITION_OF_DONE_MAX_LENGTH,
@@ -11,6 +12,7 @@
   import { isUnauthenticated, loginUrl } from '../login-redirect.ts';
   import { showToast } from '../toast.svelte.ts';
   import { t } from '../vocabulary.svelte.ts';
+  import ConfirmDialog from './ConfirmDialog.svelte';
   import Icon from './Icon.svelte';
   import Markdown from './Markdown.svelte';
   import Setting from './Setting.svelte';
@@ -19,6 +21,9 @@
   // Markdown の欄と「保存する」。空にして保存すると空（null）になり、どこにも出さない。保存は workspace-dod-update で、
   // 書いた後は画面が枠（app:workspace）を読み直す（onsaved。バックログの画面と詳細の引き出しは、枠の値を出す）。
   // 欄の値は、保存した値（value）から変えていない間だけ、読み直した値に合わせる（変えている途中の文は上書きしない）。
+  // 書きかけ（保存した値から変えた文。送っている間も数える）があるまま別の画面へ移る（左のメニュー、戻る／進む）ときは、
+  // 詳細の引き出しと同じく、捨てるかをアプリの中のダイアログで確かめる。同じ画面のままの移動（`?task=` で引き出しを開くなど）は通す。
+  // ページを離れる（タブを閉じる、外のサイト）ときは、cancel() がブラウザの確認を出す。
   // 閉じたワークスペース（canWrite が偽）では、欄を出さずに Markdown で読み取り専用に出す
   let {
     slug,
@@ -66,9 +71,41 @@
   const dod = $derived(t('dod'));
   const changed = $derived(normalizeLongText(draft) !== base);
 
+  // ---- 書きかけのまま移るときの確かめ（TaskDrawer と同じ扱い） ----
+  let discardDialog = $state<ReturnType<typeof ConfirmDialog>>();
+  let asking = false;
+  let leaving = false;
+  beforeNavigate((navigation) => {
+    if (leaving || !canWrite || !(changed || sending)) return;
+    if (navigation.to === null) {
+      navigation.cancel();
+      return;
+    }
+    const to = navigation.to.url;
+    if (to.origin === location.origin && to.pathname === location.pathname) return;
+    const delta = navigation.type === 'popstate' ? navigation.delta : undefined;
+    navigation.cancel();
+    if (asking) return;
+    asking = true;
+    void (discardDialog?.ask() ?? Promise.resolve(false))
+      .then((discard) => {
+        if (!discard) return;
+        leaving = true;
+        if (to.origin !== location.origin) location.href = to.href;
+        else if (delta !== undefined && delta !== 0) history.go(delta);
+        // eslint-disable-next-line svelte/no-navigation-without-resolve -- 行き先は SvelteKit が解決した URL（navigation.to）で、経路から作り直せない
+        else void goto(to);
+      })
+      .finally(() => {
+        asking = false;
+      });
+  });
+
   function problemText(normalized: string | null): string | null {
     const problem = normalized === null ? null : definitionOfDoneProblem(normalized);
-    if (problem === 'too_long') return t('dodTooLong', { dod, max: DEFINITION_OF_DONE_MAX_LENGTH });
+    if (problem === 'too_long') {
+      return t('dodTooLong', { dod, max: DEFINITION_OF_DONE_MAX_LENGTH.toLocaleString('ja-JP') });
+    }
     if (problem === 'invalid_character') return t('dodInvalidCharacter', { dod });
     return null;
   }
@@ -130,10 +167,8 @@
         await onsaved();
         return;
       }
-      error =
-        result.status === 400
-          ? { text: t('dodInvalidCharacter', { dod }), invalid: true }
-          : { text: t('dodSaveFailed', { dod }), invalid: false };
+      // 400 は画面の検査を通った後なので、理由を決めつけず、ほかの失敗と同じ文にする
+      error = { text: t('dodSaveFailed', { dod }), invalid: false };
     } finally {
       sending = false;
       if (status === t('dodSaving', { dod })) status = '';
@@ -141,13 +176,14 @@
   }
 </script>
 
-<Setting title={dod} description={t('dodDesc', { task: t('task'), column: t('column') })}>
+<Setting title={dod} description={t('dodDesc', { task: t('task'), backlog: t('backlog') })}>
   {#if canWrite}
     <form class="field" class:is-invalid={error?.invalid === true} onsubmit={save} novalidate>
       <label class="field-label" for={fieldId}>{t('dodFieldLabel')}</label>
       <textarea
         class="textarea"
         id={fieldId}
+        rows="8"
         bind:this={field}
         bind:value={draft}
         oninput={() => {
@@ -173,3 +209,13 @@
     <div class="doc-box is-empty">{t('dodEmptyReadOnly', { dod })}</div>
   {/if}
 </Setting>
+
+<ConfirmDialog
+  bind:this={discardDialog}
+  title={t('discardTitle')}
+  confirmLabel={t('discardConfirm')}
+  cancelLabel={t('discardKeep')}
+  danger
+>
+  <p>{t('discardText')}</p>
+</ConfirmDialog>

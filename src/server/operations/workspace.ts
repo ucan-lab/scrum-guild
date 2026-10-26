@@ -311,7 +311,8 @@ export const workspaceInfoOperation = implement(workspaceInfo, async ({ db, work
     name: row.name,
     vocabulary: row.vocabulary as 'game' | 'scrum',
     closed_at: row.closed_at,
-    definition_of_done_md: row.definition_of_done_md,
+    // 書く操作は空を null にそろえるが、空の文字列の行があっても、画面には「空」として渡す
+    definition_of_done_md: row.definition_of_done_md === '' ? null : row.definition_of_done_md,
     role: workspace.actorRole,
   };
 });

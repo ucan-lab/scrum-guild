@@ -43,6 +43,7 @@ SQ.mount("backlog", () => {
       ["is-warn", "", "未見積もり", open.filter((x) => x.pts == null).length],
       ["", "", `${t("sprint")}に入っていない`, open.filter((x) => !x.sprint).length],
     ], actions, SQ.teamXp())}
+    ${D.definitionOfDone.length ? `<details class="dod"><summary>${t("dod")}</summary><div class="doc-box"><ul>${D.definitionOfDone.map((d) => `<li>${SQ.esc(d)}</li>`).join("")}</ul></div></details>` : ""}
     <section class="section" aria-label="${t("backlog")}の${t("task")}">
     <div class="toolbar" role="search">
       <label class="search" for="q">${icon("search")}<input id="q" type="search" placeholder="タイトルや SHOP-128 で探す"></label>

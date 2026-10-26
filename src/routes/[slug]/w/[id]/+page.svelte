@@ -47,6 +47,8 @@
   const workspace = $derived(data.workspace);
   const tree = $derived(data.tree);
   const canWrite = $derived(workspace !== null && workspace.closedAt === null);
+  // 完成の定義の畳みを開いたか。開くまで本文を描かない
+  let dodOpen = $state(false);
   // 期日の印を決める、ワークスペースの今日の日付と週の始まり（API の値）
   const clock = $derived({ today: tree?.today ?? '', weekStart: tree?.week_start ?? 1 });
 
@@ -656,11 +658,12 @@
     {/snippet}
   </PageHead>
 
-  <!-- 完成の定義（components.css の .dod）。木の上に1つだけ畳んで置き、行ごとには繰り返さない。空なら出さない -->
+  <!-- 完成の定義（components.css の .dod）。木の上に1つだけ畳んで置き、行ごとには繰り返さない。空なら出さない。
+       本文は開くまで描かない（長い定義の変換と描画を、開かない人に払わせない） -->
   {#if workspace.definitionOfDone !== null}
-    <details class="dod">
+    <details class="dod" bind:open={dodOpen}>
       <summary>{t('dod')}</summary>
-      <Markdown source={workspace.definitionOfDone} headingStart={3} />
+      {#if dodOpen}<Markdown source={workspace.definitionOfDone} headingStart={2} />{/if}
     </details>
   {/if}
 

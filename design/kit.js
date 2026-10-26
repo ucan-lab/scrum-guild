@@ -84,7 +84,7 @@
   // ---- 小さな道具 ----
   const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
   // 完成の定義。本番はワークスペースの Markdown を Markdown の部品（.doc-box）で描く。見本は箇条書きの Markdown を描いた形。
-  // 空なら、完了の列（.dod）にも完了の操作の横（.done-bar-dod）にも出さない
+  // 空なら、完了の列（.dod）にも、バックログの木の上（.dod）にも、完了の操作の横（.done-bar-dod）にも出さない
   const dodDoc = () => `<div class="doc-box"><ul>${D.definitionOfDone.map((d) => `<li>${esc(d)}</li>`).join("")}</ul></div>`;
   const icon = (id) => `<svg class="ico" aria-hidden="true"><use href="#i-${id}"/></svg>`;
   const md = (d) => `${+d.slice(5, 7)}/${+d.slice(8, 10)}`;
@@ -817,7 +817,7 @@ const looooooooooooooooooooooooooooooooooongLine = "コードの長い1行は、
       <div class="done-bar">
         ${x.doneAt ? `<span class="hanko" role="img" aria-label="${t("done")}">${icon("check")}<b>完</b></span><span>${t("done")} ${esc(x.doneAt)}</span><button class="link-btn" type="button" data-undo="${x.id}">戻す</button>`
           : `<button class="btn is-primary" type="button" data-done="${x.id}">${icon("check")}${t("complete")}</button>`}
-        ${D.definitionOfDone.length ? `<div class="done-bar-dod"><b>${t("dod")}</b>${dodDoc()}</div>` : ""}
+        ${D.definitionOfDone.length ? `<div class="done-bar-dod"><h3 class="done-bar-dod-title" id="drawer-dod">${t("dod")}</h3><div class="done-bar-dod-body" tabindex="0" role="region" aria-labelledby="drawer-dod">${dodDoc()}</div></div>` : ""}
       </div>
       <div class="field">
         <span class="field-label">${icon("heart")} 感謝</span>

@@ -8,8 +8,9 @@ import {
 } from '../src/shared/operations/workspace/workspace-dod-update.ts';
 import { workspaceInfo } from '../src/shared/operations/workspace/index.ts';
 import { createApp } from '../src/server/app.ts';
-import { orgDb } from '../src/server/db/index.ts';
+import { orgDb, verifyWorkspace } from '../src/server/db/index.ts';
 import { implementedOperations } from '../src/server/operations/index.ts';
+import { workspaceDodUpdateOperation } from '../src/server/operations/workspace.ts';
 import { createWorkspace } from './factories.ts';
 import { errorCodeOf, post } from './operations/harness.ts';
 import { createTarget, type Person, type Target } from './operations/world.ts';
@@ -158,6 +159,21 @@ describe('workspace-dod-update', () => {
     expect(await logsOf(other)).toHaveLength(0);
   });
 
+  test('空の文字列の行は、workspace の操作が null にそろえて返す', async () => {
+    const target = await createTarget();
+    const db = orgDb(env, target.organization.verified);
+    await db.run(
+      db.statement((q) =>
+        q
+          .updateTable('workspaces')
+          .set({ definition_of_done_md: '' })
+          .where('id', '=', target.workspace.id)
+          .where('organization_id', '=', target.organization.id),
+      ),
+    );
+    expect(await read(target)).toBeNull();
+  });
+
   test('同じ組織の別のワークスペースの値は変えない', async () => {
     const target = await createTarget();
     const sibling = await createWorkspace(target.organization, target.admin.userId!, {
@@ -165,5 +181,89 @@ describe('workspace-dod-update', () => {
     });
     expect((await update(target, '- レビューを通した')).status).toBe(200);
     expect(await stored(target, sibling.id)).toBe('- 別のチームの掟');
+  });
+});
+
+// 処理を直に呼び、完成の定義を読む文が答えを返した直後に race を呼ぶ（n は何回目の読み取りか）。
+// 「今の値を読んだ後、書く前に別の要求が書く」状況を作る（test/task-edit.test.ts の runWithRace と同じ作り）
+async function runWithRace(target: Target, person: Person, value: string, race: (n: number) => Promise<void>) {
+  const db = orgDb(env, target.organization.verified);
+  const actor = { accountId: person.accountId, userId: person.userId, isAdmin: false, invitedOnly: false };
+  const workspace = await verifyWorkspace(db, actor, target.workspace.id);
+  let reads = 0;
+  const racing = new Proxy(db, {
+    get(base, key) {
+      // 入口は #private を持つので、メソッドは本物の入口に結んで返す
+      const method = Reflect.get(base, key, base);
+      if (typeof method !== 'function') return method;
+      if (key !== 'first') return method.bind(base);
+      return async (...args: unknown[]) => {
+        const result = await (method as (...a: unknown[]) => Promise<unknown>).apply(base, args);
+        // 完成の定義を返した読み取りだけを数える（閉じたかどうかの読み取りは数えない）
+        if (typeof result === 'object' && result !== null && 'definition_of_done_md' in result) await race(++reads);
+        return result;
+      };
+    },
+  });
+  const context = {
+    db: racing,
+    actor,
+    workspace,
+    input: { workspace_id: target.workspace.id, definition_of_done_md: value },
+    defer: () => {},
+  } as never;
+  return workspaceDodUpdateOperation.handler(context);
+}
+
+describe('workspace-dod-update の競合（読んだ後、書く前に別の要求が書く）', () => {
+  test('負けた周は履歴を書かず、読み直してやり直す。最後に書いた値が残り、履歴の「前」は実際に上書きした値', async () => {
+    const target = await createTarget();
+    const result = await runWithRace(target, target.leader, '- 自分の掟', async (n) => {
+      // 1回目の読み取りの後にだけ、管理者が別の値を書く
+      if (n === 1) expect((await update(target, '- 先に書いた掟', target.admin)).status).toBe(200);
+    });
+    expect(result).toEqual({ definition_of_done_md: '- 自分の掟' });
+    expect(await stored(target)).toBe('- 自分の掟');
+    expect(await logsOf(target)).toMatchObject([
+      { actor_user_id: target.admin.userId, changes: { definition_of_done_md: [null, '- 先に書いた掟'] } },
+      { actor_user_id: target.leader.userId, changes: { definition_of_done_md: ['- 先に書いた掟', '- 自分の掟'] } },
+    ]);
+  });
+
+  test('3回続けて負けたら 409 の conflict で、自分の履歴は書かない', async () => {
+    const target = await createTarget();
+    await expect(
+      runWithRace(target, target.leader, '- 自分の掟', async (n) => {
+        expect((await update(target, `- 別の掟 ${n}`, target.admin)).status).toBe(200);
+      }),
+    ).rejects.toMatchObject({ status: 409, code: 'conflict' });
+    expect(await stored(target)).toBe('- 別の掟 3');
+    const logs = await logsOf(target);
+    expect(logs.map((log) => log.actor_user_id)).toEqual([
+      target.admin.userId,
+      target.admin.userId,
+      target.admin.userId,
+    ]);
+  });
+
+  test('読んだ後にワークスペースが閉じたら、何も書かず 409 の workspace_closed', async () => {
+    const target = await createTarget();
+    await expect(
+      runWithRace(target, target.leader, '- 自分の掟', async (n) => {
+        if (n !== 1) return;
+        const db = orgDb(env, target.organization.verified);
+        await db.run(
+          db.statement((q) =>
+            q
+              .updateTable('workspaces')
+              .set({ closed_at: '2026-10-22T00:00:00.000Z' })
+              .where('id', '=', target.workspace.id)
+              .where('organization_id', '=', target.organization.id),
+          ),
+        );
+      }),
+    ).rejects.toMatchObject({ status: 409, code: 'workspace_closed' });
+    expect(await stored(target)).toBeNull();
+    expect(await logsOf(target)).toHaveLength(0);
   });
 });

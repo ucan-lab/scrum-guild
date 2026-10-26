@@ -31,6 +31,8 @@ export const workspaceDodUpdate = defineOperation({
   mode: 'write',
   permission: 'leader',
   workspace: true,
+  // 10 万字の本文と、前後の全文を持つ履歴を書くので、回数で抑える
+  rateLimit: { max: 30, windowSeconds: 600 },
   input: z.object({ workspace_id: idSchema, definition_of_done_md: definitionOfDoneSchema }),
   output: z.object({ definition_of_done_md: z.string().nullable() }),
 });
