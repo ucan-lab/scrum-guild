@@ -419,7 +419,14 @@
       {#if story === ''}
         <div class="field">
           <label class="field-label" for={categoryId}>{t('category')}</label>
-          <select class="select" id={categoryId} bind:this={categorySelect} bind:value={category}>
+          <!-- 一覧を読めなかったときは、リポジトリの欄の下に出した同じ知らせを、区分の選択欄にも結ぶ -->
+          <select
+            class="select"
+            id={categoryId}
+            bind:this={categorySelect}
+            bind:value={category}
+            aria-describedby={definitionsFailed ? repositoryHintId : undefined}
+          >
             <option value="">{t('categoryNone', { category: t('category') })}</option>
             {#each categories as option (option.id)}
               <option value={option.id}>{option.name}</option>

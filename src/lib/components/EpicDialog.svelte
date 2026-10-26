@@ -379,7 +379,7 @@
               {/each}
             </select>
           {/if}
-          {#if categoriesFailed}
+          {#if categoriesFailed && !readOnly}
             <span class="field-hint" id="{categoryId}-note"
               >{t('definitionsLoadFailed', { category: t('category') })}</span
             >
