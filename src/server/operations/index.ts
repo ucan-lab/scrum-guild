@@ -47,6 +47,7 @@ import {
 } from './story.ts';
 import { taskAssignOperation, taskDeleteOperation, taskDetailOperation, taskUpdateOperation } from './task-edit.ts';
 import { taskHistoryOperation } from './task-history.ts';
+import { epicDeleteOperation, storyDeleteOperation } from './tree-delete.ts';
 import { backlogTreeOperation, taskCompleteOperation, taskCreateOperation, taskMoveOperation } from './task.ts';
 import {
   memberListOperation,
@@ -87,6 +88,8 @@ export const implementedOperations: readonly ImplementedOperation[] = [
   storyMoveOperation,
   storyCompleteOperation,
   storyReopenOperation,
+  epicDeleteOperation,
+  storyDeleteOperation,
   sprintListOperation,
   sprintCreateOperation,
   sprintUpdateOperation,

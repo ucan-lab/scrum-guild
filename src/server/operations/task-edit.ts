@@ -12,7 +12,14 @@ import {
   repositoryRow,
 } from './definition-refs.ts';
 import { implement } from './implement.ts';
-import { activeMemberName, actorUserIdOf, changeLogColumns, openWorkspace, throwIfClosed } from './write-guards.ts';
+import {
+  activeMemberName,
+  actorUserIdOf,
+  changeLogColumns,
+  mayDeleteOwned,
+  openWorkspace,
+  throwIfClosed,
+} from './write-guards.ts';
 
 // 同時の更新に負けたときにやり直す回数の上限。超えたら 409 の conflict
 const MAX_UPDATE_ATTEMPTS = 3;
@@ -105,9 +112,7 @@ function mayDelete(
   actor: { userId: string | null; isAdmin: boolean },
   workspace: VerifiedWorkspace,
 ): boolean {
-  return (
-    actor.isAdmin || workspace.actorRole === 'leader' || (actor.userId !== null && task.created_by === actor.userId)
-  );
+  return mayDeleteOwned(task.created_by, actor, workspace);
 }
 
 // 削除できるか。取り込んだタスクは削除で片付けず、アーカイブで外す（docs/requirements.md の「削除」）ので、権限があっても削除できない

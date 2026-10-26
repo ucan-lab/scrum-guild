@@ -10,6 +10,15 @@ export function actorUserIdOf(actor: { userId: string | null }): string {
   return actor.userId;
 }
 
+// タスク、ストーリー、エピックを削除する権限。作った人（created_by）とリーダー（管理者を含む）（docs/requirements.md の「削除」）
+export function mayDeleteOwned(
+  createdBy: string | null,
+  actor: { userId: string | null; isAdmin: boolean },
+  workspace: { actorRole: string | null },
+): boolean {
+  return actor.isAdmin || workspace.actorRole === 'leader' || (actor.userId !== null && createdBy === actor.userId);
+}
+
 // 閉じていないワークスペース。書く文の条件に入れ、読んでから書くまでの間にワークスペースが閉じた競合を止める
 // （登録の関数が見る閉じたかどうかは、読み取りの時点の値）
 export function openWorkspace(

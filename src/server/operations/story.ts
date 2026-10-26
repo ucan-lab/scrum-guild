@@ -31,7 +31,8 @@ import {
   type MovePlan,
   type Positioned,
 } from './move-position.ts';
-import { actorUserIdOf, changeLogColumns, openWorkspace, throwIfClosed } from './write-guards.ts';
+import { storyChildCounts } from './tree-delete.ts';
+import { actorUserIdOf, changeLogColumns, mayDeleteOwned, openWorkspace, throwIfClosed } from './write-guards.ts';
 
 // ストーリーのダイアログの欄。作るときの履歴に使う
 const EDITABLE_FIELDS = ['title', 'acceptance_criteria_md', 'body_md', 'due_on', 'link_url'] as const;
@@ -67,6 +68,7 @@ async function readStory(db: OrganizationDb, workspaceId: string, storyId: strin
           'stories.link_url',
           'stories.epic_id',
           'stories.category_id',
+          'stories.created_by',
           'sc.name as category_name',
           'sc.deleted_at as category_deleted_at',
           'ec.id as epic_category_id',
@@ -103,10 +105,15 @@ function detailOf(row: StoryRow): StoryDetail {
   };
 }
 
-export const storyGetOperation = implement(storyGet, async ({ db, workspace, input }) => {
+// 削除のボタンと確認のために、呼んだ人が削除できるか（作った人かリーダー。管理者を含む）と、配下の件数も返す
+export const storyGetOperation = implement(storyGet, async ({ db, actor, workspace, input }) => {
   const story = await readStory(db, workspace.workspaceId, input.story_id);
   if (story === undefined) throw new ApiError(404, 'not_found');
-  return { story: detailOf(story) };
+  return {
+    story: detailOf(story),
+    can_delete: mayDeleteOwned(story.created_by, actor, workspace),
+    children: await storyChildCounts(db, workspace.workspaceId, story.id),
+  };
 });
 
 export const storyCreateOperation = implement(storyCreate, async ({ db, actor, workspace, input }) => {
