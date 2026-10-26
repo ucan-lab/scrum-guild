@@ -1,6 +1,6 @@
 ---
 name: finding-verifier
-description: レビューのエージェントが出した CRITICAL と HIGH の指摘を、1件ずつ反証にかける検証役。指摘の前提をコードと文書で確かめ、成り立たないと示せたものだけを反証とする。self-review と CI の AI レビューが、重い指摘を落とすかを決める前に呼ぶ。
+description: レビューのエージェントが出した CRITICAL と HIGH の指摘を、1件ずつ反証にかける検証役。指摘の前提をコードと文書で確かめ、成り立たないと示せたものだけを反証とする。done-check と CI の AI レビューが、重い指摘を落とすかを決める前に呼ぶ。
 tools: ["Read", "Grep", "Glob", "Bash"]
 model: opus
 effort: high

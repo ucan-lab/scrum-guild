@@ -1,6 +1,6 @@
 ---
 name: ストーリー
-about: 利用者から見える1つのふるまい。エピックのサブ Issue にし、タスクをサブ Issue に持つ。issue-plan のスキルが書くのと同じ形
+about: 利用者から見える1つのふるまい。エピックのサブ Issue にし、タスクをサブ Issue に持つ。backlog-add のスキルが書くのと同じ形
 title: ""
 labels: [story]
 ---

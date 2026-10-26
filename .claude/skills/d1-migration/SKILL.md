@@ -134,7 +134,7 @@ PRAGMA defer_foreign_keys = false;
 1. 1つ目の PR: コードが消す列を使わなくする、または新しい制約を守るようにする。マイグレーションは入れないか、広げる変更だけにする
 2. 2つ目の PR: 縮めるマイグレーションを入れる。1つ目の PR の版が本番に出た後に着手する
 
-1つ目の PR を作るセッションは、縮める Issue を `issue-plan` で立て（`area:*` のラベルとマイルストーンも `issue-plan` に従う）、`migration` のラベルを付け、1つ目の PR の本文から指す。Issue の背景に「1つ目の PR（#<番号>）の版が本番に出てから着手する」と書く（理由: 縮める作業は後回しにすると忘れられ、使わない列や付いていない制約が残る。セッションは前の会話を覚えていない）。
+1つ目の PR を作るセッションは、縮める Issue を `backlog-add` で立て（`area:*` のラベルとマイルストーンも `backlog-add` に従う）、`migration` のラベルを付け、1つ目の PR の本文から指す。Issue の背景に「1つ目の PR（#<番号>）の版が本番に出てから着手する」と書く（理由: 縮める作業は後回しにすると忘れられ、使わない列や付いていない制約が残る。セッションは前の会話を覚えていない）。
 
 #### 縮める Issue に着手するとき
 
@@ -210,7 +210,7 @@ PR を作る直前に、手順 1 の開いた PR の確かめをもう一度行�
 - 手順 6 で当てた D1 と結果（`foreign_key_check`、索引の比較）
 - 縮める変更を後に回したなら、立てた縮める Issue
 
-`self-review` では `database-reviewer` が `.claude/checklists/database.md` を当てる。
+`done-check` では `database-reviewer` が `.claude/checklists/database.md` を当てる。
 
 ## 報告
 

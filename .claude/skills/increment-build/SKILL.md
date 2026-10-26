@@ -1,19 +1,19 @@
 ---
-name: issue-run
-description: 1つの Issue を、着手前の確かめ、grill-me、Issue への記録、ワークツリー、実装の委譲を経て self-review と PR まで進める。「#123 を進めて」「この Issue に着手して」「/issue-run 123」と言われたときに使う。何に着手するかを選ぶのは next-up、Issue を分けるのは issue-plan。
+name: increment-build
+description: 1つの Issue を、着手前の確かめ、backlog-refine、Issue への記録、ワークツリー、実装の委譲を経て done-check と PR まで進める。「#123 を進めて」「この Issue に着手して」「/increment-build 123」と言われたときに使う。何に着手するかを選ぶのは backlog-pick、Issue を分けるのは backlog-add。
 ---
 
-# issue-run
+# increment-build
 
 ## 仕事
 
-1つのタスク（または子の無いストーリー）の Issue を、実装して `self-review` に渡す。`self-review` が `pr-create` と `pr-feedback` へ続け、PR、レビューへの対応、マージの後片付けまでを受け持つ。
+1つのタスク（または子の無いストーリー）の Issue を、実装して `done-check` に渡す。`done-check` が `pr-create` と `pr-feedback` へ続け、PR、レビューへの対応、マージの後片付けまでを受け持つ。
 終わりは「`pr-feedback` が後片付けを終えている」状態。
 人が担うのは判断だけにする。判断が要る点は推す案を先頭にした `AskUserQuestion` で聞き、チャットの文章で選ばせない。
 
 ## 入力
 
-Issue の番号。並べて進めているほかの Issue があれば、その番号と重なりうるファイル、`DEV_PORT_OFFSET` の値（`next-up` のプロンプトが渡す）。
+Issue の番号。並べて進めているほかの Issue があれば、その番号と重なりうるファイル、`DEV_PORT_OFFSET` の値（`backlog-pick` のプロンプトが渡す）。
 
 ## 手順
 
@@ -41,12 +41,12 @@ gh api "repos/{owner}/{repo}/pulls?state=open&per_page=100" --jq '.[] | {number,
 ### 2. 詰める
 
 Issue の本文、コメント、親の Issue、本文が指す `docs/` を読む。
-本文に書かれていない難所があれば、`status:refining` を付けてから `grill-me` で1つずつ聞く。調べれば分かることは聞かずに決めて伝える。`grill-me` の落とし先は、手順 3 の Issue の本文と決まっている。
+本文に書かれていない難所があれば、`status:refining` を付けてから `backlog-refine` で1つずつ聞く。調べれば分かることは聞かずに決めて伝える。`backlog-refine` の落とし先は、手順 3 の Issue の本文と決まっている。
 難所が無ければ飛ばす。人に聞けない実行では、前提を自分で置いて手順 3 で Issue に書き、PR の本文にも書く（`pr-create` に渡す）。
 
 ### 3. 記録する
 
-決めたことを Issue の本文に「着手前に詰めたこと（日付、grill-me）」の節で足し、やることと完了条件も直す。
+決めたことを Issue の本文に「着手前に詰めたこと（日付、backlog-refine）」の節で足し、やることと完了条件も直す。
 後の Issue に関わることは、その Issue にコメントで申し送る。決めたことを会話だけに残さない（並べたセッションと次のセッションが読めないため）。
 
 ### 4. ワークツリーを切る
@@ -60,7 +60,7 @@ git worktree add worktrees/<名前> -b <名前> origin/main
 
 `post-checkout` が `status:in-progress` を付けて `status:refining` を外す。
 ワークツリーで `pnpm install` を走らせる（依存はワークツリーごとに入れる。`docs/development.md` の「ワークツリーで作業する」）。
-以降の git、`pnpm`、`self-review` は、ワークツリーの絶対パスの中で行う。Bash のカレントは呼び出しごとに本体へ戻るので、コマンドごとに `cd <絶対パス> ||` を付けるか `git -C <絶対パス>` で打つ。
+以降の git、`pnpm`、`done-check` は、ワークツリーの絶対パスの中で行う。Bash のカレントは呼び出しごとに本体へ戻るので、コマンドごとに `cd <絶対パス> ||` を付けるか `git -C <絶対パス>` で打つ。
 
 クラウドのセッションはワークツリーを切らず、ラベルを手で付け替える（`docs/development.md` の「Issue の状態」）。
 Issue に、ブランチ名とセッションの識別をコメントで残す（同じ文書の「並行して作業するときの決まり」）。
@@ -85,15 +85,15 @@ Issue に、ブランチ名とセッションの識別をコメントで残す�
 
 戻ったら、受け入れ条件の検査を自分で走らせ直す。エージェントの報告を検査の結果として扱わない。
 `git status --short` に身に覚えのない変更があれば止まり、人に確かめる。
-通ったらコミットし、Skill ツールで `self-review` を起動する。レビューと直し方の基準は `self-review` に従う。直す量が多ければ、実装したエージェントに SendMessage でまとめて直させ、戻らなければ自分で直す。
+通ったらコミットし、Skill ツールで `done-check` を起動する。レビューと直し方の基準は `done-check` に従う。直す量が多ければ、実装したエージェントに SendMessage でまとめて直させ、戻らなければ自分で直す。
 
 ### 7. 渡した後
 
-`self-review` から `pr-create`、`pr-feedback` へ続ける。ストーリーの最後のタスクなら、`pr-feedback` の説明資料で親のストーリーの受け入れ条件を示す。
+`done-check` から `pr-create`、`pr-feedback` へ続ける。ストーリーの最後のタスクなら、`pr-feedback` の説明資料で親のストーリーの受け入れ条件を示す。
 マージの後は `pr-feedback` の後片付けまで続ける。
 
 ## 止まる条件
 
 - 手順 1 のどれかに当てはまる
-- 詰めた結果、Issue を分けたほうがよい（`issue-plan` に戻す）
+- 詰めた結果、Issue を分けたほうがよい（`backlog-add` に戻す）
 - 検査が落ちて、原因が分からない
