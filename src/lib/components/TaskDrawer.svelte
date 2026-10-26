@@ -822,16 +822,11 @@
           {#if assigneeEditable}<label for={assigneeId}>{t('assignee')}</label>{:else}{t('assignee')}{/if}
         </dt>
         <dd>
-          <!-- 選択欄を出している間は、名前を選択欄が読むので、アバターは読み上げから外す（二重に読ませない） -->
+          <!-- 名前は隣の選択欄か文字が読むので、アバターはいつも読み上げから外す（二重に読ませない） -->
           {#if assigneeShown === null}
-            <Avatar userId={null} decorative={assigneeEditable} />
+            <Avatar userId={null} decorative />
           {:else}
-            <Avatar
-              userId={assigneeShown.id}
-              name={assigneeShown.name}
-              left={assigneeShown.left}
-              decorative={assigneeEditable}
-            />
+            <Avatar userId={assigneeShown.id} name={assigneeShown.name} left={assigneeShown.left} decorative />
           {/if}
           {#if assigneeEditable}
             <select
