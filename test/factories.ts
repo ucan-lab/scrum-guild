@@ -373,3 +373,33 @@ export async function createTask(
   await db.run(db.statement((q) => q.insertInto('tasks').values(row)));
   return row;
 }
+
+// 先のスプリント（planned）。期間の重なりは操作が断るもので、ここでは確かめない（重ねたいテストは期間を渡す）
+export async function createSprint(
+  organization: OrganizationFixture,
+  workspaceId: string,
+  overrides: Partial<Row<OrganizationTables, 'sprints'>> = {},
+) {
+  const row: Row<OrganizationTables, 'sprints'> = {
+    id: uuidv7(),
+    workspace_id: workspaceId,
+    name: null,
+    goal: null,
+    start_on: '2026-11-02',
+    end_on: '2026-11-15',
+    status: 'planned',
+    extended_days: 0,
+    is_goal_achieved: null,
+    started_at: null,
+    started_by: null,
+    closed_at: null,
+    closed_by: null,
+    deleted_at: null,
+    created_at: AT,
+    updated_at: AT,
+    ...overrides,
+  };
+  const db = orgDb(env, organization.verified);
+  await db.run(db.statement((q) => q.insertInto('sprints').values(row)));
+  return row;
+}

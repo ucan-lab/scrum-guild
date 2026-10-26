@@ -17,7 +17,7 @@
 <script src="kit.js"></script>
 <script>
 "use strict";
-// 計画: ベロシティ、先のスプリント、積載量、エピックごとの残り
+// 計画: ベロシティ、先のスプリント、積載量、エピックごとの残り。リーダーには、始まる前のスプリントの「直す」「削除する」を出す
 const { D, t, icon, esc, md, pageHead, pts, avatarOf, capacityRows, sumPts, progress, dueChip } = SQ;
 
 function velocity() {
@@ -54,6 +54,10 @@ function lane(id, avg) {
     </div>
     ${list.map((x) => `<div class="lane-row ${x.doneAt ? "is-done" : ""}">${pts(x.pts)}<a href="#" data-task="${x.id}">${esc(x.title)}</a>${avatarOf(x.who)}</div>`).join("") || `<p class="action-note">まだ何も入っていません</p>`}
     <button class="btn is-sm" type="button">${icon("plus")}${t("backlog")}から入れる</button>
+    ${s.status === "planned" && SQ.user(D.me).role === "leader" ? `<div class="form-actions">
+      <button class="btn is-sm" type="button" data-dialog="sprintEdit" aria-label="直す: ${esc(SQ.sprintLabel(id))}">${icon("pen")}直す</button>
+      <button class="btn is-sm is-quiet is-danger" type="button" data-dialog="deleteSprint" aria-label="削除する: ${esc(SQ.sprintLabel(id))}">${icon("trash")}削除する</button>
+    </div>` : ""}
   </section>`;
 }
 
