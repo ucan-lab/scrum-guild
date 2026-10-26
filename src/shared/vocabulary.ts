@@ -1205,6 +1205,8 @@ export const dictionary = defineDictionary({
   historyFieldParent: workspace('親の{story}', '親の{story}'),
   // 名前が空の人、区分、親（読めなかった名前）
   historyUnknownName: workspace('不明', '不明'),
+  // 「さらに読む」で行を足したことを、読み上げに伝える
+  historyMoreAdded: workspace('{count} 件を足しました', '{count} 件を足しました'),
   // 保存した後の読み直しに失敗したとき。前に読めた行は残し、節の上に添える
   historyReloadFailed: workspace(
     '最新の変更の履歴を読み込めませんでした。',

@@ -209,6 +209,10 @@
   let historyReloadFailed = $state(false);
   let historyVersion = 0;
   let historyHeading = $state<HTMLElement>();
+  // 「さらに読む」で足したことの知らせ。節の中に常に置いた role="status" の領域に入れる
+  let historyAdded = $state('');
+  // 履歴の読み込みの進み具合を読み上げに伝える（見える「読み込んでいます」は aria-hidden にする）
+  const historyStatus = $derived(historyState === 'loading' || historyMore === 'loading' ? t('loading') : historyAdded);
   // 言葉づかいを切り替えたら、列の名前と操作の言葉も描き直す（t を $derived の中で呼ぶ）
   const historyViews = $derived(historyEntries.map((entry) => historyEntryView(entry, historyTimezone, t)));
 
@@ -251,12 +255,14 @@
     if (before === null || historyMore === 'loading' || historyReloading) return 'dropped';
     const mine = historyVersion;
     historyMore = 'loading';
+    historyAdded = '';
     const result = await callOperation(taskHistory, { workspace_id: workspaceId, task_id: taskId, before }, { slug });
     if (!alive || mine !== historyVersion) return 'dropped';
     if (result.ok) {
       historyEntries = [...historyEntries, ...result.data.entries];
       historyNext = result.data.next;
       historyMore = 'idle';
+      historyAdded = t('historyMoreAdded', { count: result.data.entries.length });
       return 'added';
     }
     historyMore = 'failed';
@@ -1139,8 +1145,10 @@
       aria-busy={historyState === 'loading' || historyReloading}
     >
       <h3 class="field-label" id={historyHeadingId} tabindex="-1" bind:this={historyHeading}>{t('historyTitle')}</h3>
+      <!-- 読み込みの進み具合と、足した件数の読み上げの領域。常に置き、中の文字だけを替える -->
+      <span class="visually-hidden" role="status">{historyStatus}</span>
       {#if historyState === 'loading'}
-        <p class="field-hint">{t('loading')}</p>
+        <p class="field-hint" aria-hidden="true">{t('loading')}</p>
       {:else if historyState === 'failed'}
         <!-- 読み直している間も、失敗の表示とボタンを残す（ボタンは押せなくし、読み直していることを示す） -->
         <div class="callout is-danger" role="alert"><Icon name="alert" /><span>{t('historyLoadFailed')}</span></div>
