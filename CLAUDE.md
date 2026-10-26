@@ -28,7 +28,7 @@ Node は `.node-version`（26）、pnpm は `package.json` の `packageManager` 
 - lint と整形: `pnpm lint`、`pnpm format:check`、直すときは `pnpm format`
 - build: `pnpm build`（`build/` に書き出し、`build/_headers` を作る）
 - フックのテスト: `node --test .claude/hooks/*.test.mjs`
-- e2e: `pnpm e2e`（`pnpm preview` を立て、手元の D1 を seed で入れ直してから Playwright で確かめる。手元の D1 の行は消える。初めは `pnpm exec playwright install chromium`）
+- e2e: `pnpm e2e`（`pnpm preview` を立て、手元の D1 を seed で入れ直してから Playwright で確かめる。手元の D1 の行は消える。初めは `pnpm exec playwright install chromium`）。`pnpm e2e e2e/members.test.ts` のようにファイルを渡せる。手元は関わるファイルだけにし、全件は CI に任せる（`docs/development.md` の「開発の流れ」）
 - 空の D1 に全マイグレーションを当て、seed を2回流して確かめる: `pnpm db:migrate:fresh`
 - 手元の D1 にマイグレーションを当て、全部の行を消して seed を入れ直す: `pnpm db:seed`（ログインに使うトークンは `seed/sessions.ts`）
 - seed のセッションでログインした手元の画面を、見えるブラウザで開く: `pnpm dev:open [--preview] [who] [path]`（例 `pnpm dev:open admin /aoba`。先に `pnpm db:seed` と `pnpm dev` を済ませる。`DEV_PORT_OFFSET` は立てたときと同じ値を付ける）
