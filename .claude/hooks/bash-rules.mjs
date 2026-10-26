@@ -1230,7 +1230,7 @@ function splitsString(words, prefixes, ci) {
 const CF_WRANGLER_REASON = 'cf-wrangler は引数の読み方が wrangler と違い（util.parseArgs）、dev は本番の資源に向きうる。このリポジトリでは使わない';
 const XARGS_WRANGLER_REASON = 'xargs は標準入力から wrangler に引数を足すので、--remote が加わるかを判定できない。wrangler は xargs の後ろに置かない';
 const HEREDOC_UNTERMINATED_REASON = 'ヒアドキュメントの終わりの印の行が見つからず、後ろのコマンドを全部本文として読むので、何を実行するかを判定できない。人が確かめる';
-const XARGS_REASON ='xargs は標準入力から引数を足すので、何を実行するか（デプロイ、main への push、シークレットの読み取り）を判定できない。人が確かめる';
+const XARGS_REASON = 'xargs は標準入力から引数を足すので、何を実行するか（デプロイ、main への push、シークレットの読み取り）を判定できない。人が確かめる';
 // xargs の後ろに置いても、足される引数で書き込みや実行に変わらない読むだけの道具。xargs を外したときと同じ判定で通す。
 // rg の --pre、ag の --pager、file の -C は、標準入力から足した引数でコマンドを実行や書き込みをするので含めない
 const XARGS_READERS = new Set(['grep', 'egrep', 'fgrep', 'wc', 'ls', 'cat', 'head', 'tail', 'stat']);
