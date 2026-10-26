@@ -166,8 +166,11 @@
       else showToast(t('holidayDeleteFailed', { date: holiday.holiday_on }), 'alert');
       await section.load();
       if (!section.isCurrent(token)) return;
-      // 押したボタンは行ごと消えるので、同じ位置の行（無ければ前の行）の削除ボタンへ、一覧が空なら貼り付けの欄へフォーカスを移す
+      // 押したボタンは行ごと消えるので、同じ位置の行（無ければ前の行）の削除ボタンへ、一覧が空なら貼り付けの欄へフォーカスを移す。
+      // 待つ間にほかの欄へ移っていれば（フォーカスが一覧の外で、body でもなければ）、その人の今の操作からフォーカスを奪わない
       await tick();
+      const active = document.activeElement;
+      if (active !== null && active !== document.body && !list?.contains(active)) return;
       const buttons = list?.querySelectorAll<HTMLButtonElement>('button') ?? [];
       const next = buttons[Math.min(index, buttons.length - 1)];
       (next ?? pasteInput)?.focus();

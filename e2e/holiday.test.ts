@@ -138,6 +138,25 @@ test.describe('管理者（あおば開発のミナト）', () => {
     await expect(section.getByRole('list', { name: '登録した休日' })).toContainText('2026-11-23');
   });
 
+  test('消す応答を待つ間に貼り付けの欄へ移っていたら、応答の後もフォーカスを欄に残す', async ({ page }) => {
+    let release: () => void = () => {};
+    const released = new Promise<void>((resolve) => (release = resolve));
+    // seed の行を消さないよう、応答は 404 に差し替える（フォーカスを移す処理は成功と同じ道を通る）
+    await page.route('**/api/aoba/organization-holiday-delete', async (route) => {
+      await released;
+      await route.fulfill({ status: 404, json: { error: { code: 'not_found', message: 'x' } } });
+    });
+    await page.goto('/aoba/admin');
+    const section = sectionOf(page);
+    await section.getByRole('button', { name: '2026-11-23 を消す' }).click();
+    const paste = section.getByLabel('貼り付けて登録');
+    await paste.focus();
+    release();
+    await expect(page.getByRole('status').filter({ hasText: '2026-11-23 は見つかりませんでした' })).toBeVisible();
+    await expect(section.getByRole('button', { name: '2026-11-23 を消す' })).toBeEnabled();
+    await expect(paste).toBeFocused();
+  });
+
   test('送っている間は欄を readonly にし、送れた後に残す行は押した時点の内容から作る', async ({ page }) => {
     let release: () => void = () => {};
     const released = new Promise<void>((resolve) => (release = resolve));
