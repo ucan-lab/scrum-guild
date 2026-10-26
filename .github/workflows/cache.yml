@@ -1,0 +1,40 @@
+name: cache
+
+# PR のワークフローが読むキャッシュを main に作る（docs/development.md の「CI」）。
+# キャッシュは作ったブランチと、PR のベースのブランチからしか読めない。CI は PR でしか動かないので、
+# main に作らないと、どの PR も1回目はキャッシュに当たらない。ここでは依存とブラウザを入れるだけで、テストは走らせない。
+# 温まるのは Playwright のブラウザ（.github/actions/playwright）と、setup が保存する pnpm のストア
+on:
+  push:
+    branches: [main]
+    # どちらかのキャッシュのキーか中身が変わりうるもの。ブラウザのキーは pnpm-lock.yaml の Playwright の版で、
+    # pnpm のストアは pnpm-lock.yaml、.node-version、package.json（packageManager）で変わる。キーが同じなら保存しない
+    paths:
+      - pnpm-lock.yaml
+      - .node-version
+      - package.json
+      - .github/actions/**
+      - .github/workflows/cache.yml
+  # 7日読まれないキャッシュは消えるので、PR が無い週のあとも main に残るよう週1回温める。キーに当たれば保存しないので軽い
+  schedule:
+    - cron: "17 3 * * 1"
+  workflow_dispatch:
+
+# ブランチごとに分ける。ほかのブランチの手動の実行で、main の暖機を取り消さないため
+concurrency:
+  group: cache-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  warm:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+      - uses: ./.github/actions/playwright
