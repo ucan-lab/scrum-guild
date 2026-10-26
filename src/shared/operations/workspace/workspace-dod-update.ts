@@ -24,7 +24,7 @@ const definitionOfDoneSchema = z.string().transform((raw, ctx) => {
 
 // ワークスペースの完成の定義（Markdown）を書く。リーダー（管理者を含む）だけ。空白だけの値は空（null）にする。
 // 今の値と同じなら何も書かない。変えたときは、変更の履歴（entity_type = 'workspace'、update、
-// {"definition_of_done_md": [前, 後]}）を同じ batch() で書く。閉じたワークスペースは 409 の workspace_closed
+// {"definition_of_done_md_length": [前の字数, 後の字数]}。全文は残さない）を同じ batch() で書く。閉じたワークスペースは 409 の workspace_closed
 export const workspaceDodUpdate = defineOperation({
   name: 'workspace-dod-update',
   description: 'ワークスペースの完成の定義（Markdown）を書く。空白だけなら空にする。変えたら変更の履歴に残す',

@@ -320,6 +320,11 @@ export const workspaceInfoOperation = implement(workspaceInfo, async ({ db, work
 // 同時の更新に負けたときにやり直す回数の上限。超えたら 409 の conflict
 const DOD_MAX_ATTEMPTS = 3;
 
+// 履歴に残す完成の定義の字数（コードポイントで数える。字数の上限と同じ数え方）。空（null）は 0
+function lengthOf(value: string | null): number {
+  return value === null ? 0 : [...value].length;
+}
+
 // 完成の定義を書く。読んだ値と違うときだけ、読んだ値のままで閉じていなければ、という条件つきで workspaces を書き、
 // 書けたときだけ変更の履歴を入れる（INSERT ... SELECT ... WHERE changes() > 0）。2つの文は1回の batch()。
 // 書けなければ、閉じていれば 409 の workspace_closed、そうでなければ（別の要求が先に変えた）読み直してやり直す
@@ -372,7 +377,10 @@ export const workspaceDodUpdateOperation = implement(workspaceDodUpdate, async (
                 eb.val('workspace').as('entity_type'),
                 eb.val(workspaceId).as('entity_id'),
                 eb.val('update').as('action'),
-                eb.val(JSON.stringify({ definition_of_done_md: [before, next] })).as('changes_json'),
+                // 全文（10 万字まで）を前後で積むと共有の D1 が膨らむので、履歴には前後の字数（コードポイント。空は 0）だけを残す
+                eb
+                  .val(JSON.stringify({ definition_of_done_md_length: [lengthOf(before), lengthOf(next)] }))
+                  .as('changes_json'),
                 eb.val(stamp).as('created_at'),
               ])
               .where(previousStatementChanged),

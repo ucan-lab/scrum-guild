@@ -82,7 +82,7 @@ describe('workspace-dod-update', () => {
         action: 'update',
         workspace_id: target.workspace.id,
         actor_user_id: target.leader.userId,
-        changes: { definition_of_done_md: [null, '- レビューを通した\n- テストが通る'] },
+        changes: { definition_of_done_md_length: [0, [...'- レビューを通した\n- テストが通る'].length] },
       },
     ]);
   });
@@ -99,7 +99,7 @@ describe('workspace-dod-update', () => {
     expect(logs).toHaveLength(2);
     expect(logs[1]).toMatchObject({
       actor_user_id: target.admin.userId,
-      changes: { definition_of_done_md: ['- レビューを通した', null] },
+      changes: { definition_of_done_md_length: [[...'- レビューを通した'].length, 0] },
     });
   });
 
@@ -225,8 +225,14 @@ describe('workspace-dod-update の競合（読んだ後、書く前に別の要�
     expect(result).toEqual({ definition_of_done_md: '- 自分の掟' });
     expect(await stored(target)).toBe('- 自分の掟');
     expect(await logsOf(target)).toMatchObject([
-      { actor_user_id: target.admin.userId, changes: { definition_of_done_md: [null, '- 先に書いた掟'] } },
-      { actor_user_id: target.leader.userId, changes: { definition_of_done_md: ['- 先に書いた掟', '- 自分の掟'] } },
+      {
+        actor_user_id: target.admin.userId,
+        changes: { definition_of_done_md_length: [0, [...'- 先に書いた掟'].length] },
+      },
+      {
+        actor_user_id: target.leader.userId,
+        changes: { definition_of_done_md_length: [[...'- 先に書いた掟'].length, [...'- 自分の掟'].length] },
+      },
     ]);
   });
 
