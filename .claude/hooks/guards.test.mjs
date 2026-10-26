@@ -1299,19 +1299,26 @@ describe('bash-rules: 確認を挟む', () => {
     assert.equal(decisionOnMain('cd /repo && git commit -m y', { CDPATH: '/w' }), 'deny');
   });
 
-  test('popd、引数なしの pushd、pushd +N と -N、dirs の後は、作業場所を判定できないので確認を挟む', () => {
+  test('popd、引数なしの pushd、pushd +N と -N、eval、source、. の後は、作業場所を判定できないので確認を挟む', () => {
     for (const command of [
       'pushd worktrees/x && popd && git commit -m y',
       'pushd worktrees/x && pushd && git commit -m y',
       'pushd worktrees/x && pushd +1 && git commit -m y',
       'pushd worktrees/x && pushd -1 && git commit -m y',
-      'pushd worktrees/x && dirs -c && git commit -m y',
       'cd worktrees/x && cd +1 && git commit -m y',
+      // main の上でも、popd と eval、source、. の後は止めずに確認を挟む
+      'popd; git commit -m y',
+      'eval "cd /repo"; git commit -m y',
+      'source x.sh; git commit -m y',
+      '. x.sh && git commit -m y',
     ]) {
       assert.equal(decisionOnMain(command), 'ask', command);
     }
     // popd の後でも、絶対パスの cd は解決し直す
     assert.equal(decisionOnMain('popd && cd /repo && git commit -m y'), 'deny');
+    // dirs は表示とスタックの操作だけで、作業場所を変えない
+    assert.equal(decisionOnMain('dirs; git commit -m y'), 'deny');
+    assert.equal(decisionOnMain('cd worktrees/x && dirs -c && git commit -m y'), 'allow');
   });
 
   test('前の区切りで GIT_DIR か GIT_WORK_TREE を設定した後の git は、作業コピーを判定できないので確認を挟む', () => {
@@ -1389,6 +1396,122 @@ describe('bash-rules: 確認を挟む', () => {
     ]) {
       assert.equal(decision(command), 'ask', command);
     }
+  });
+
+  test('最後の語の末尾の括弧の glob は、外した名前でも書き込み先を見る', () => {
+    for (const command of [
+      'cp /tmp/evil wrangler.jsonc(N)',
+      'cp /tmp/evil wrangler.jsonc(.)',
+      'cp /tmp/evil .claude/settings.json(N)',
+      'tee wrangler.jsonc(N) < /tmp/evil',
+      'sed -i s/a/b/ wrangler.jsonc(N)',
+      'mv /tmp/evil wrangler.jsonc(N)',
+      'rm .githooks/pre-push(N)',
+      'cp -t . /tmp/x/wrangler.jsonc(N)',
+      'cp -t .claude /tmp/settings.json(N)',
+    ]) {
+      assert.equal(decision(command), 'ask', command);
+    }
+  });
+
+  test('CDPATH と GIT_DIR は、どこかの語に名前があれば設定したものとして、後ろの区切りを見る', () => {
+    const decisionAway = (command) => judgeBash(command, { cwd: '/w', branchOf: () => 'x' })?.[0] ?? 'allow';
+    for (const command of [
+      'read CDPATH <<< /repo; cd src && git commit -m y',
+      'printf -v CDPATH /repo; cd src && git commit -m y',
+      'for CDPATH in /repo; do cd src && git commit -m y; done',
+      ': ${CDPATH:=/repo}; cd src && git commit -m y',
+      'cdpath=(/repo); cd src && git commit -m y',
+      "eval 'export GIT_DIR=/repo/.git'; git commit -m y",
+      'eval "GIT_DIR=/repo/.git"; git commit -m y',
+      'export $(echo GIT_DIR=/repo/.git); git commit -m y',
+      'X=GIT_DIR=/repo/.git; export $X; git commit -m y',
+      'declare -x "$V"; git commit -m y',
+      'read GIT_WORK_TREE < f; git commit -m y',
+    ]) {
+      assert.equal(decisionAway(command), 'ask', command);
+    }
+  });
+
+  test('道具の前の一回限りの代入は、その区切りだけに効かせる', () => {
+    const decisionAway = (command) => judgeBash(command, { cwd: '/w', branchOf: () => 'x' })?.[0] ?? 'allow';
+    // cd 自身と git 自身の前の代入は、その区切りに効かせる
+    assert.equal(decisionAway('CDPATH=/repo cd src && git commit -m y'), 'ask');
+    assert.equal(decisionAway('GIT_DIR=/repo/.git git commit -m y'), 'ask');
+    assert.equal(decisionAway('env GIT_WORK_TREE=/repo git commit -m y'), 'ask');
+    // 後ろの区切りへは伝えない
+    assert.equal(decisionAway('GIT_DIR=/x git status; git commit -m y'), 'allow');
+    assert.equal(decisionAway('CDPATH=/x ls; cd src && git commit -m y'), 'allow');
+    // 道具の無い区切りの代入は後ろへ伝える
+    assert.equal(decisionAway('GIT_DIR=/x; git commit -m y'), 'ask');
+  });
+
+  test('守る先のディレクトリそのもの、{a,b}、glob の語、中身ごとのコピーの宛先に確認を挟む', () => {
+    for (const command of [
+      'mv .claude /tmp/x',
+      'mv .claude/ /tmp/x',
+      'mv -t /tmp .claude',
+      'mv .githooks /tmp/x',
+      'mv migrations /tmp/x',
+      'cp -r /tmp/x/.claude .',
+      'cp -r /tmp/x/migrations .',
+      'mv .claude/settings.json{,.bak}',
+      'echo x > .claude/settings.json{,2}',
+      'mv .claude/* /tmp/x',
+      'mv .claude/hook* /tmp/x',
+      'mv .gith* /tmp/x',
+      'cp /tmp/s.json .claude/settings.js*',
+      'cp -r /tmp/evil/. .claude/',
+      'cp -r /tmp/evil/ .claude',
+      'rsync -a /tmp/evil/ .claude/',
+      'ditto /tmp/evil .claude',
+      'cp -r /tmp/evil/. migrations',
+      // 展開が多すぎる語は照合せずに確認を挟む
+      'mv .claude/x{1..1000} /tmp',
+    ]) {
+      assert.equal(decision(command), 'ask', command);
+    }
+  });
+
+  test('守る先は、作業場所から解決したパスと、宛先が展開で決まるコピーでも見る', () => {
+    for (const command of [
+      'cd .claude && cp /tmp/settings.json .',
+      'cd .githooks && cp /tmp/x pre-commit',
+      'cd .claude && mv settings.json /tmp/x',
+      'cd .claude && echo x > settings.local.json',
+      'cp /tmp/settings.json /elsewhere/.claude/',
+      'cp /tmp/settings.json ~/repo/.claude/',
+      'cp -r /tmp/x/.claude ~/repo/',
+      'cp -t "$PWD/.claude" /tmp/settings.json',
+      'cp -t "$D" /tmp/settings.json',
+      'cp -t "$D" /tmp/pre-commit',
+      'cp -t "$D" /tmp/0002_x.sql',
+      'cp /tmp/settings.json $PWD/.claude',
+      'cp -t$PWD/.claude /tmp/x',
+      'cp /tmp/settings.json "$D"',
+    ]) {
+      assert.equal(decision(command), 'ask', command);
+    }
+  });
+
+  test('git の引数の展開が --no-verify や -n になりうるときは確認を挟む', () => {
+    for (const command of [
+      'git commit {--no-verify,} -m y',
+      'X=--no-verify; git commit $X -m y',
+      'git commit --no-verif* -m y',
+      'git commit --no-$X -m y',
+      'git commit $(echo --no-verify) -m y',
+      'git commit "$X" -m y',
+      'git commit -m $msg',
+      'git commit -m {y,--no-verify}',
+      'git merge "$OPT" x',
+      'git push origin x $NV',
+      'git push "$OPT" origin x',
+    ]) {
+      assert.equal(decision(command), 'ask', command);
+    }
+    assert.match(verdict('git commit $X -m y')[1], /--no-verify/);
+    assert.equal(decision('git commit $X -m y', 'main'), 'deny');
   });
 });
 
@@ -1697,6 +1820,26 @@ describe('bash-rules: 通す', () => {
     'mv /tmp/x /tmp/y',
     // 空の CDPATH と、CDPATH の無いワークツリーの cd
     'cd src && git commit -m y',
+    // 値を取るフラグの値の引用符の中の展開は、フラグにならない
+    'git commit -m "$msg"',
+    'git commit -m "fix $X"',
+    'git commit -m"$msg"',
+    'git commit --message="$msg"',
+    'git commit --author="$A" -m y',
+    'git commit -F "$F"',
+    'git commit -m y -- "$FILE"',
+    'git commit -m y src/*.ts',
+    // メッセージの語に名前があっても、そのコミット自身は止めない
+    'git commit -m "GIT_DIR と CDPATH の扱いを直す"',
+    // 宛先が展開で決まっても、守る先に置かれうる名前でなければ通す
+    'cp -t "$D" /tmp/x.txt',
+    'cp /tmp/x.txt "$D"',
+    // 守る先の外の glob と、守る先の外のディレクトリ
+    'rm -f /tmp/*',
+    'rm -rf node_modules/*',
+    'cp -r /tmp/x/. docs/',
+    'mv .claude/skills/x /tmp/x',
+    'dirs -v',
   ]) {
     test(command, () => assert.equal(decision(command), 'allow'));
   }
@@ -2123,6 +2266,21 @@ describe('入口', () => {
         sh(['checkout', '-q', 'trunk'], main);
         sh(['branch', '-q', '-D', 'main'], main);
       }
+    });
+
+    test('Bash の判定は、フックのプロセスの環境の CDPATH を見る', () => {
+      const bash = (command, cwd, cdpath) => {
+        const input = JSON.stringify({ tool_name: 'Bash', cwd, tool_input: { command } });
+        const env = { ...cleanEnv, CDPATH: cdpath };
+        const result = spawnSync(process.execPath, [path.join(hooks, 'guard-bash.mjs')], { input, encoding: 'utf8', env });
+        assert.equal(result.status, 0, result.stderr);
+        return result.stdout ? JSON.parse(result.stdout).hookSpecificOutput.permissionDecision : 'allow';
+      };
+      mkdirSync(path.join(worktree, 'src'), { recursive: true });
+      // CDPATH に本体があると、ワークツリーの cd src は本体の src へ移りうる
+      assert.equal(bash('cd src && git commit -m y', worktree, `${main}:.`), 'ask');
+      // 空の CDPATH は無いものとする
+      assert.equal(bash('cd src && git commit -m y', worktree, ''), 'allow');
     });
 
     test('main の作業コピーの書き換えを止め、ワークツリーと別のリポジトリは通す', () => {

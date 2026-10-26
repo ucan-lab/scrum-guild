@@ -277,7 +277,7 @@ function judgeGitCommand(sub, rest, gitDir, branchOf) {
   }
   // --no-verify は .githooks/ の pre-commit と pre-push を外す。このフックが作業コピーを読み違えたときの第二の守りが無くなるので、
   // main の上の判定を先に効かせた後、ブランチを問わず人が確かめる
-  if (COMMITTING.has(sub) && skipsHooks(rest, sub === 'commit')) return [ASK, NO_VERIFY_REASON];
+  if (COMMITTING.has(sub) && (skipsHooks(rest, sub === 'commit') || mayAddFlag(rest, GIT_SHORT_FLAGS_WITH_VALUE))) return [ASK, NO_VERIFY_REASON];
   if (sub !== 'push') return null;
 
   const forced = rest.some((a) => a === '--force' || isOption(a, '--mirror', 4) || /^-[a-zA-Z]*f[a-zA-Z]*$/.test(a));
@@ -312,7 +312,7 @@ function judgeGitCommand(sub, rest, gitDir, branchOf) {
       return [DENY, 'main へは push しない。作業ブランチから PR を通す（文書だけの変更も同じ）'];
     }
   }
-  if (skipsHooks(rest, false)) return [ASK, NO_VERIFY_REASON];
+  if (skipsHooks(rest, false) || mayAddFlag(rest, 'o')) return [ASK, NO_VERIFY_REASON];
   if (targets.some((t) => t.expands)) return [ASK, '変数、$(...)、{a,b}、glob を含む refspec は、main を含むかを判定できない'];
   // リモートの位置の語が展開で複数の語に分かれる（git push {origin,x} main）と、後ろの語がリモートから refspec にずれる
   if (!hasRepo && pos.length > 0 && expandsAt(rest, pos[0])) return [ASK, 'push するリモートの語が展開で複数の語に分かれうるので、refspec を判定できない'];
@@ -321,7 +321,42 @@ function judgeGitCommand(sub, rest, gitDir, branchOf) {
   return null;
 }
 
-const NO_VERIFY_REASON = '--no-verify と commit の -n は、main を守る git のフック（.githooks/ の pre-commit と pre-push）を外す。人が確かめる';
+const NO_VERIFY_REASON =
+  '--no-verify と commit の -n（展開した結果がそうなりうる語も）は、main を守る git のフック（.githooks/ の pre-commit と pre-push）を外す。人が確かめる';
+// commit、merge、pull などの値を取るフラグ。値の語は、先頭が展開でもフラグとして読まれない（git commit -m "$msg"）
+const GIT_SHORT_FLAGS_WITH_VALUE = 'mFcCtsXo';
+const GIT_LONG_FLAGS_WITH_VALUE = new Set([
+  '--message', '--file', '--author', '--date', '--template', '--reuse-message', '--reedit-message', '--fixup', '--cleanup', '--trailer',
+  '--strategy', '--strategy-option', ...PUSH_FLAGS_WITH_VALUE,
+]);
+
+// 展開した結果が - で始まり、git がフラグ（--no-verify、-n）として読みうる語があるか（wrangler の mayBecomeFlag と UNQUOTED_REASON と同じ考え方）。
+// 引用符の外の変数と $(…) は語を分けるので位置を問わず、{a,b}、glob、括弧の glob は先頭にあるとき（{--no-verify,}）、
+// 引用符の中の展開は先頭にあるとき（"$X"）、- で始まる語はフラグの名前に展開を含むとき（--no-verif*、--no-$X）に当たる。
+// 値を取るフラグの値（-m "$msg"、--author="$A"、-m"$msg"）は、語を分けない限りフラグにならないので通す。-- の後ろはパスなので見ない
+function mayAddFlag(args, shortWithValue) {
+  for (let i = 0; i < args.length; i++) {
+    const a = args[i];
+    if (a === '--') return false;
+    const shape = shapeAt(args, i);
+    const splits = expandsAt(args, i);
+    if (splits && (shape.includes(DYNAMIC) || /^[{*?[(]/.test(a))) return true;
+    if (shape.startsWith(DYNAMIC)) return true;
+    if (!shape.startsWith('-')) continue;
+    const dynamicAt = shape.indexOf(DYNAMIC);
+    const name = dynamicAt === -1 ? shape : shape.slice(0, dynamicAt);
+    const long = shape.startsWith('--');
+    const valueAt = long ? name.indexOf('=') : [...name].findIndex((c, k) => k > 0 && shortWithValue.includes(c));
+    if ((dynamicAt !== -1 || splits) && valueAt === -1) return true;
+    // 値を取るフラグが語の最後なら、次の語はその値。語を分ける展開（-m $msg、-m {a,--no-verify}）だけを見る
+    const takesNext = long ? GIT_LONG_FLAGS_WITH_VALUE.has(shape) : valueAt === shape.length - 1;
+    if (takesNext && i + 1 < args.length) {
+      i++;
+      if (expandsAt(args, i) && (shapeAt(args, i).includes(DYNAMIC) || args[i].includes('{'))) return true;
+    }
+  }
+  return false;
+}
 // commit の値を取る短いフラグ。まとめた短いフラグ（-am x）の中では、これ以降は値の一部（-mn は「n」というメッセージ）
 const COMMIT_SHORT_FLAGS_WITH_VALUE = 'mFcCt';
 
@@ -509,13 +544,57 @@ function judgeSecretAccess(tool, args, words) {
   return false;
 }
 
-// Write と Edit のフック（file-rules.mjs）が守るファイル。Bash から書き換えるときは人の確認を挟む
+// zsh の括弧の glob を語の末尾に付けた形（wrangler.jsonc(N)、wrangler.jsonc(.)）は、当たればその名前のファイルに展開される。
+// 後ろに語が続かないと judgeBash の区切りの判定に当たらないので、照合の前に外した形でも見る
+const withoutGlobGroup = (word) => word.replace(/(\(…\))+$/, '');
+
+// Write と Edit のフック（file-rules.mjs）が守るファイル。Bash から書き換えるときは人の確認を挟む。
+// .claude、.githooks、migrations のディレクトリそのもの（mv .claude /tmp/x、cp -r /tmp/x/migrations .、中身ごとのコピーの宛先 .claude/）も含める
 function isProtectedPath(word) {
-  return /(^|\/)\.claude\/(settings[^/]*\.json$|hooks(\/|$))|(^|\/)\.githooks(\/|$)|(^|\/)migrations\//.test(word.replace(/^>+/, ''));
+  const written = word.replace(/^>+/, '');
+  return [written, withoutGlobGroup(written)].some((w) =>
+    /(^|\/)\.claude\/(settings[^/]*\.json$|hooks(\/|$))|(^|\/)\.claude\/?$|(^|\/)\.githooks(\/|$)|(^|\/)migrations(\/|$)/.test(w),
+  );
+}
+// 守る先の候補（リポジトリの根からの相対パス）。glob の語（mv .claude/* /tmp/x、mv .gith* /tmp/x）はこれに照合する
+const PROTECTED_CANDIDATES = ['.claude/settings.json', '.claude/settings.local.json', '.claude/hooks', '.githooks', 'migrations'];
+
+// 語が守る先に当たるか。{a,b} は展開してから（mv .claude/settings.json{,.bak}）、書かれた語、正規化した語、作業場所が分かるときは
+// 作業場所から解決した絶対パス（cd .claude && cp /tmp/settings.json .）で見る（wranglerConfigAt と同じ）。
+// glob の語は、作業場所が分かるときは根（scripts/deploy-production.ts のあるディレクトリ。見つからなければ作業場所）の候補の絶対パスに、
+// 分からないときは候補の相対パスに照合する。根の外の glob（rm /tmp/*）は止めない。
+// 展開が MAX_BRACE_EXPANSION を超える語は、照合せずに当たるものとして扱う（BIG_GLOB_REASON と同じ）
+function protectedAt(dir) {
+  const root = dir && (repoRootOf(dir) ?? dir);
+  return (word) => {
+    const written = withoutGlobGroup(word.replace(/^>+/, ''));
+    if (expansionSize(written) > MAX_BRACE_EXPANSION) return true;
+    return expandBraces(written).some((w) => {
+      const absolute = dir ? path.resolve(dir, w) : null;
+      if ([w, path.posix.normalize(w), absolute].some((f) => f && isProtectedPath(f))) return true;
+      if (!GLOB_CHARS.test(w)) return false;
+      return root ? PROTECTED_CANDIDATES.some((c) => matchesGlob(path.join(root, c), absolute)) : PROTECTED_CANDIDATES.some((c) => matchesGlob(c, w));
+    });
+  };
 }
 // 宛先がディレクトリのコピーで、元が glob（cp /tmp/settings* .claude/）のときに、守る先に置かれうる名前。
-// .githooks/ と migrations/ の下はどの名前でも守る先なので、.claude/ の下の名前だけを並べる
+// .githooks/ と migrations/ の下はどの名前でも守る先なので、.claude/ の下の名前だけを並べる。
+// ディレクトリそのものの名前（cp -r /tmp/x/migrations .）は、glob でない元の名前として isProtectedPath が見るので並べない
+// （並べると、cp /tmp/* . の * が migrations に当たって止まる）
 const PROTECTED_NAMES = ['settings.json', 'settings.local.json', 'hooks'];
+const PROTECTED_DIRECTORY_NAMES = ['.claude', '.githooks', 'migrations'];
+// 宛先が展開で決まるコピー（cp -t "$D" /tmp/settings.json）で、守る先に置かれうる元の名前。.githooks の名前は git のフックの名前
+const GIT_HOOK_NAMES = new Set([
+  'applypatch-msg', 'pre-applypatch', 'post-applypatch', 'pre-commit', 'pre-merge-commit', 'prepare-commit-msg', 'commit-msg', 'post-commit',
+  'pre-rebase', 'post-checkout', 'post-merge', 'pre-push', 'pre-receive', 'update', 'proc-receive', 'post-receive', 'post-update',
+  'reference-transaction', 'push-to-checkout', 'pre-auto-gc', 'post-rewrite', 'sendemail-validate', 'fsmonitor-watchman', 'post-index-change',
+]);
+function placedInProtected(name) {
+  const plain = withoutGlobGroup(name);
+  return [...PROTECTED_NAMES, ...PROTECTED_DIRECTORY_NAMES].includes(plain) || GIT_HOOK_NAMES.has(plain) || /\.sql$/i.test(plain);
+}
+// 宛先の展開されない部分が守る先の名前を含むか（cp -t "$PWD/.claude" …、cp -t$PWD/.githooks …）
+const PROTECTED_DIRECTORY_HINT = /(^|\/|\0)(\.claude|\.githooks|migrations)(\/|$)/;
 
 // wrangler の設定と、-c が無いときの転送先を決める .wrangler/deploy/config.json。remote の binding を入れると wrangler dev が本番に届く。
 // APFS は大文字小文字を区別しないので、Wrangler.jsonc も同じファイルを指す（i）
@@ -529,7 +608,8 @@ const WRANGLER_CONFIG_PATH = new RegExp(
   'i',
 );
 function isWranglerConfig(word) {
-  return WRANGLER_CONFIG_PATH.test(word.replace(/^>+/, ''));
+  const written = word.replace(/^>+/, '');
+  return WRANGLER_CONFIG_PATH.test(written) || WRANGLER_CONFIG_PATH.test(withoutGlobGroup(written));
 }
 
 // 書かれた語のほかに、正規化した語（.wrangler//deploy/./config.json）と、作業場所が分かるときは作業場所から解決した絶対パス
@@ -552,24 +632,27 @@ function isDirectoryTarget(dest, dir) {
 }
 
 // 宛先がディレクトリのコピーは、元の名前でそのディレクトリに置かれる（cp /tmp/wrangler.jsonc .）。元の basename を宛先に付けて見る。
-// 絶対パスの宛先は、作業場所が分かり、その根（scripts/deploy-production.ts のあるディレクトリ）の中のときだけ見る
+// wrangler の設定では、絶対パスの宛先は、作業場所が分かり、その根（scripts/deploy-production.ts のあるディレクトリ）の中のときだけ見る
 // （cp wrangler.jsonc /tmp/ は別の場所への複製）。~ で始まる宛先は見ない。
+// 守る先（anywhere）は、別のチェックアウトや ~ の下の .claude/ も守るので、この絞り込みをしない。
 // -t の宛先は必ずディレクトリ（実在を確かめられない cd $X の後や、まだ無いディレクトリでも）なので、isDirectory を付けて呼ぶ。
-// into は { dir, names, bareGlob } で、dir は作業場所、names と bareGlob は namesCopiedFrom に渡す glob の候補
+// into は { dir, names, bareGlob, anywhere } で、dir は作業場所、names と bareGlob は namesCopiedFrom に渡す glob の候補
 function copiesIntoDirectory(matches, pos, into, isDirectory = false) {
   const { dir } = into;
   const dest = pos.at(-1);
   if (pos.length < 2 || !dest || !(isDirectory || isDirectoryTarget(dest, dir))) return false;
-  if (dest.startsWith('~')) return false;
-  if (dest.startsWith('/')) {
+  if (!into.anywhere && dest.startsWith('~')) return false;
+  if (!into.anywhere && dest.startsWith('/')) {
     const root = dir && (repoRootOf(dir) ?? dir);
     const absolute = path.resolve(dest);
     if (!root || !(absolute === root || absolute.startsWith(root + path.sep))) return false;
   }
   // 展開が多すぎて名前を出せない元は、設定に当たるかを判定できないので当たるものとして扱う（BIG_GLOB_REASON と同じ）
+  // glob の元は、namesCopiedFrom が候補の名前に照合した結果で見る。glob のまま宛先に付けて照合すると、
+  // 宛先にもともとある名前（cp /tmp/* . の * と ./migrations）に当たってしまう
   return pos.slice(0, -1).some((src) => {
     const names = namesCopiedFrom(src, into);
-    return names === null || names.some((name) => matches(path.posix.join(dest, name)));
+    return names === null || names.some((name) => !GLOB_CHARS.test(name) && matches(path.posix.join(dest, name)));
   });
 }
 
@@ -581,7 +664,8 @@ function copiesIntoDirectory(matches, pos, into, isDirectory = false) {
 function namesCopiedFrom(src, { names, bareGlob = false }) {
   if (expansionSize(src) > MAX_BRACE_EXPANSION) return null;
   return expandBraces(src).flatMap((word) => {
-    const name = path.posix.basename(word);
+    // 末尾の括弧の glob（/tmp/x/wrangler.jsonc(N)）は、当たれば外した名前で置かれる
+    const name = path.posix.basename(withoutGlobGroup(word));
     if (!GLOB_CHARS.test(name) || (!bareGlob && !/[\w.]/.test(name))) return [name];
     const pattern = name.toLowerCase();
     return [name, ...names.filter((n) => matchesGlob(n, pattern))];
@@ -700,7 +784,7 @@ function writesTo(matches, tool, args, words, { anyOperand = false, intoDirector
       const sources = positionals(args.filter((_, j) => j !== target.valueAt));
       if (isUnresolved(args, target.at)) {
         // 宛先が展開で決まる（-t "$PWD"）ときは置かれる先を判定できないので、元の名前が設定の名前に当たれば止める
-        if (intoDirectory !== null && sources.some((src) => namesCopiedFrom(src, intoDirectory)?.some(matches) ?? true)) return true;
+        if (intoDirectory !== null && placedIntoUnknown(matches, sources, shapeAt(args, target.at), intoDirectory)) return true;
       } else {
         if (anyOperand ? [...sources, target.dir].some(matches) : matches(target.dir)) return true;
         if (intoDirectory !== null && copiesIntoDirectory(matches, [...sources, target.dir], intoDirectory, true)) return true;
@@ -708,12 +792,25 @@ function writesTo(matches, tool, args, words, { anyOperand = false, intoDirector
     }
     const anyDestination = anyOperand || (intoDirectory?.anyInstallOperand === true && tool === 'install');
     if (anyDestination ? pos.some(matches) : matches(pos.at(-1) ?? '')) return true;
+    // 守る先は、最後の位置引数が展開で決まる（cp /tmp/settings.json "$D"）ときも -t と同じに見る
+    const last = positionalIndexes(args).at(-1);
+    if (intoDirectory?.unresolvedDestination && pos.length >= 2 && isUnresolved(args, last)) {
+      if (placedIntoUnknown(matches, pos.slice(0, -1), shapeAt(args, last), intoDirectory)) return true;
+    }
     return intoDirectory !== null && copiesIntoDirectory(matches, pos, intoDirectory);
   }
   if (tool === 'dd') return args.some((a) => a.startsWith('of=') && matches(a.slice('of='.length)));
   if (tool === 'find') return anyOperand && args.some((a) => FIND_ACTIONS.has(a)) && args.some(matches);
   if (tool === 'git') return args.some((a) => a.startsWith('--output=') && matches(a.slice('--output='.length)));
   return false;
+}
+
+// 宛先が展開で決まるコピーで、元が守りたい先に置かれうるか。into.placeable があれば元の名前をそれで（守る先の名前、git のフックの名前、*.sql）、
+// 無ければ matches で（wrangler の設定の名前）見る。into.destinationHint は宛先の展開されない部分（shape）で見る（"$PWD/.claude"）。
+// 展開が多すぎて名前を出せない元は当たるものとして扱う
+function placedIntoUnknown(matches, sources, destinationShape, into) {
+  if (into.destinationHint?.test(destinationShape)) return true;
+  return sources.some((src) => namesCopiedFrom(src, into)?.some(into.placeable ?? matches) ?? true);
 }
 
 // インタープリタに渡した語。位置引数とヒアドキュメントの本文は、-e の本文の中のパス（writeFileSync('wrangler.jsonc')）を
@@ -732,8 +829,18 @@ function judgeFileWrites(tool, args, words, dir = null) {
     results.push([DENY, SECRET_FILE_REASON]);
   }
   // mv は元を消すので、元が守る先（mv .githooks/pre-commit /tmp/）でも守りが外れる。コピーの元（cp .claude/hooks/x.mjs /tmp/）は見ない
-  const movesProtected = ['mv', 'gmv'].includes(tool) && positionals(args).some(isProtectedPath);
-  if (writesTo(isProtectedPath, tool, args, words, { intoDirectory: { dir, names: PROTECTED_NAMES, bareGlob: true } }) || movesProtected) {
+  const isProtected = protectedAt(dir);
+  const movesProtected = ['mv', 'gmv'].includes(tool) && positionals(args).some(isProtected);
+  const intoProtected = {
+    dir,
+    names: PROTECTED_NAMES,
+    bareGlob: true,
+    anywhere: true,
+    unresolvedDestination: true,
+    placeable: placedInProtected,
+    destinationHint: PROTECTED_DIRECTORY_HINT,
+  };
+  if (writesTo(isProtected, tool, args, words, { intoDirectory: intoProtected }) || movesProtected) {
     results.push([ASK, '守る仕組み（Claude の設定とフック）とマイグレーションの書き換えは人が確かめる']);
   }
   const isConfig = wranglerConfigAt(dir);
@@ -1134,7 +1241,8 @@ function judgeSegment(words, ctx) {
 
   const nextCtx = { ...ctx, cwd: ctx.dir, depth: ctx.depth + 1 };
   if (tool === 'git') {
-    // 道具の前の代入と、前の区切りの export などで GIT_DIR か GIT_WORK_TREE を設定した後（ctx.env、judgeBash が積む）は、git が別の作業コピーを見る
+    // 道具の前の代入と、前の区切りの export などで GIT_DIR か GIT_WORK_TREE を設定した後（ctx.env、judgeBash が積む）は、git が別の作業コピーを見る。
+    // 道具の前の代入は、経由先に掛け直したとき（pnpm exec env GIT_DIR=x git）にも見えるよう語で見る
     const envMovesGit = words.slice(0, ci).some((w) => /^GIT_(DIR|WORK_TREE)=/.test(w)) || GIT_LOCATION_VARIABLES.some((name) => ctx.env?.[name]);
     results.push(judgeGit(args, envMovesGit ? null : ctx.dir, ctx.branchOf));
   }
@@ -1172,12 +1280,69 @@ const LOCATION_VARIABLES = ['CDPATH', ...GIT_LOCATION_VARIABLES];
 // 同じコマンドの中で設定した変数の値。値は読まないので、設定されたことだけを表す空でない文字列
 const SET_IN_COMMAND = '(このコマンドの中で設定)';
 
-// 区切りが name を設定するか。道具の前の代入（CDPATH=x cd src）、単独の代入（GIT_DIR=x;）、export、declare、typeset などの引数
-// （export CDPATH=x、export GIT_DIR）を見る。値は読まない（空の代入や unset で戻すのも追わず、止めすぎる側に倒す）
-function setsVariable(words, ci, name) {
-  const assigns = (w) => isAssignment(w) && w.replace(/(\[[^\]]*\])?\+?=[\s\S]*$/, '') === name;
-  if (words.slice(0, ci === -1 ? words.length : ci).some(assigns)) return true;
-  return ci !== -1 && ENV_DECLARERS.has(baseName(words[ci])) && words.slice(ci + 1).some((w) => w === name || assigns(w));
+// 語に変数の名前があるか。zsh の cdpath は CDPATH と結び付いた配列（cdpath=(x)）
+const VARIABLE_MENTIONS = {
+  CDPATH: /(^|[^\w])(CDPATH|cdpath)([^\w]|$)/,
+  GIT_DIR: /(^|[^\w])GIT_DIR([^\w]|$)/,
+  GIT_WORK_TREE: /(^|[^\w])GIT_WORK_TREE([^\w]|$)/,
+};
+// 中身をこのシェルで動かす道具。中で cd、export をしても見えないので、後ろの作業場所と GIT_DIR を判定できないものとする
+const IN_SHELL_RUNNERS = new Set(['eval', 'source', '.']);
+
+// 区切りが設定する LOCATION_VARIABLES の名前を { once, after } で返す。値は読まない（空の代入や unset で戻すのも追わず、止めすぎる側に倒す）。
+// once は道具の前の一回限りの代入（GIT_DIR=x git status、CDPATH=x cd src）で、その区切りだけに効く。
+// after はその区切りから後ろに効くもの。設定の書き方は read CDPATH、printf -v CDPATH、for CDPATH in、: ${CDPATH:=x}、cdpath=(x) と多いので、
+// 道具の前の代入を除くどこかの語に名前があれば設定とみなす（単独の代入と export、declare などの引数もこれに当たる）。
+// export、declare などの引数に展開の語（export $(echo GIT_DIR=x)、export $X）があるときと、eval、source、. の後は、全部の名前を設定とみなす
+function variablesSetBy(words, ci) {
+  const once = new Set();
+  const after = new Set();
+  const isPrefix = (i) => ci !== -1 && i < ci && isAssignment(words[i]);
+  for (const [name, pattern] of Object.entries(VARIABLE_MENTIONS)) {
+    if (words.some((w, i) => isPrefix(i) && w.startsWith(`${name}=`))) once.add(name);
+    if (words.some((w, i) => !isPrefix(i) && pattern.test(w))) after.add(name);
+  }
+  if (ci !== -1) {
+    const tool = baseName(words[ci]);
+    const declaresUnknown = ENV_DECLARERS.has(tool) && words.some((_, i) => i > ci && isUnresolved(words, i));
+    if (declaresUnknown || IN_SHELL_RUNNERS.has(tool)) for (const name of LOCATION_VARIABLES) after.add(name);
+  }
+  return { once, after };
+}
+
+// cd、pushd、popd の後の作業場所。判定できなければ null。env は区切りに効く環境変数（CDPATH）
+function nextDir(words, ci, dir, env) {
+  // popd は、ディレクトリのスタックの中身を追わないので判定できない
+  if (words[ci] === 'popd') return null;
+  // リダイレクト（cd >/dev/null src）、-L と -P（シンボリックリンクの扱い）、オプションの終わりの -- は行き先ではないので飛ばす
+  const operands = [];
+  let physical = false;
+  let options = true;
+  for (let j = ci + 1; j < words.length; j++) {
+    if (/^[<>]/.test(words[j])) continue;
+    if (options && /^-[LP]+$/.test(words[j])) {
+      physical ||= words[j].includes('P');
+      continue;
+    }
+    if (options && words[j] === '--') {
+      options = false;
+      continue;
+    }
+    options = false;
+    operands.push(j);
+  }
+  const at = operands[0];
+  const to = words[at];
+  // 行き先が2つ以上ある cd は、zsh では語の置き換え（cd 旧 新）、bash ではエラー。どこへ移るかを判定できない
+  // cd -P は .. を物理パスで辿るので、シンボリックリンクを経由した行き先では path.resolve の字面と別の場所へ移る
+  const walksUp = physical && /(^|\/)\.\.(\/|$)/.test(to ?? '');
+  // 絶対パスの行き先は、前の作業場所が判定できなくても（cd sr? && cd /abs）解決し直せる
+  const needsDir = !to?.startsWith('/');
+  // CDPATH があると、相対の行き先（./x と ../x も。シェルごとの扱いの差は追わない）は CDPATH のディレクトリから探される。
+  // 引数なしの pushd（入れ替え）と +N、-N（スタックの回転。zsh の cd も同じ）は、スタックの中身を追わないので判定できない
+  const viaCdpath = needsDir && Boolean(env.CDPATH);
+  if (!to || operands.length > 1 || walksUp || viaCdpath || /^[~$-]|^\+\d*$/.test(to) || isUnresolved(words, at) || (needsDir && !dir)) return null;
+  return path.resolve(dir ?? '/', to);
 }
 
 // 一番重い判定を [決定, 理由] で返す。止めるものが無ければ null
@@ -1203,60 +1368,28 @@ export function judgeBash(command, { cwd, branchOf, scriptOf = () => undefined, 
       results.push([ASK, 'zsh の括弧の glob（x(N)、(a|b)）は後ろの語を別の区切りに切るので、コマンドの引数（コピーの宛先、git のサブコマンド）を判定できない。人が確かめる']);
     }
     const ci = commandIndex(words);
-    // 同じコマンドの中で CDPATH、GIT_DIR、GIT_WORK_TREE を設定したら、その区切りから後ろは設定されたものとして見る（入れ子の bash -c にも渡す）
-    for (const name of LOCATION_VARIABLES) {
-      if (setsVariable(words, ci, name)) env = { ...env, [name]: env[name] || SET_IN_COMMAND };
-    }
-    // popd、dirs（-c などでスタックを変える）は、スタックの中身を追わないので、作業場所を判定できないものとする
-    if (ci !== -1 && ['popd', 'dirs'].includes(words[ci])) {
-      if (setsWorkersCi(words, ci)) results.push([DENY, WORKERS_CI_REASON]);
-      results.push(...judgeFileWrites('', [], words, dir));
-      dir = null;
-      continue;
-    }
-    // cd の後の git push は、移った先のブランチで判定する。展開できない cd の先は判定できないものとする
-    if (ci !== -1 && ['cd', 'pushd'].includes(words[ci])) {
+    // 同じコマンドの中で CDPATH、GIT_DIR、GIT_WORK_TREE を設定したら、その区切りから後ろは設定されたものとして見る（入れ子の bash -c にも渡す）。
+    // 道具の前の一回限りの代入は、この区切りだけ（segmentEnv）に効かせる。名前を含む語は、設定を終えた後の区切りに効かせる
+    // （git commit -m "GIT_DIR を直す" のメッセージの語で、そのコミット自身を止めない）
+    const { once, after } = variablesSetBy(words, ci);
+    const mark = (names) => Object.fromEntries([...names].map((name) => [name, env[name] || SET_IN_COMMAND]));
+    const segmentEnv = { ...env, ...mark(once) };
+    env = { ...env, ...mark(after) };
+    // cd の後の git push は、移った先のブランチで判定する。展開できない cd の先と popd の後は判定できないものとする
+    if (ci !== -1 && ['cd', 'pushd', 'popd'].includes(words[ci])) {
       if (setsWorkersCi(words, ci)) results.push([DENY, WORKERS_CI_REASON]);
       // cd . > .dev.vars のようにリダイレクトを付けられる。道具として見ない（cd の引数は書き込み先ではない）
       results.push(...judgeFileWrites('', [], words, dir));
-      // リダイレクト（cd >/dev/null src）、-L と -P（シンボリックリンクの扱い）、オプションの終わりの -- は行き先ではないので飛ばす
-      const operands = [];
-      let physical = false;
-      let options = true;
-      for (let j = ci + 1; j < words.length; j++) {
-        if (/^[<>]/.test(words[j])) continue;
-        if (options && /^-[LP]+$/.test(words[j])) {
-          physical ||= words[j].includes('P');
-          continue;
-        }
-        if (options && words[j] === '--') {
-          options = false;
-          continue;
-        }
-        options = false;
-        operands.push(j);
-      }
-      const at = operands[0];
-      const to = words[at];
-      // 行き先が2つ以上ある cd は、zsh では語の置き換え（cd 旧 新）、bash ではエラー。どこへ移るかを判定できない
-      // cd -P は .. を物理パスで辿るので、シンボリックリンクを経由した行き先では path.resolve の字面と別の場所へ移る
-      const walksUp = physical && /(^|\/)\.\.(\/|$)/.test(to ?? '');
-      // 絶対パスの行き先は、前の作業場所が判定できなくても（cd sr? && cd /abs）解決し直せる
-      const needsDir = !to?.startsWith('/');
-      // CDPATH があると、相対の行き先（./x と ../x も。シェルごとの扱いの差は追わない）は CDPATH のディレクトリから探される。
-      // 引数なしの pushd（入れ替え）と +N、-N（スタックの回転。zsh の cd も同じ）は、スタックの中身を追わないので判定できない
-      const viaCdpath = needsDir && Boolean(env.CDPATH);
-      dir =
-        !to || operands.length > 1 || walksUp || viaCdpath || /^[~$-]|^\+\d*$/.test(to) || isUnresolved(words, at) || (needsDir && !dir)
-          ? null
-          : path.resolve(dir ?? '/', to);
+      dir = nextDir(words, ci, dir, segmentEnv);
       continue;
     }
-    results.push(...judgeSegment(words, { dir, branchOf: currentBranch, scriptOf, depth, env }));
+    results.push(...judgeSegment(words, { dir, branchOf: currentBranch, scriptOf, depth, env: segmentEnv }));
     if (ci !== -1 && baseName(words[ci]) === 'git' && dir) {
       const branch = switchedBranch(words.slice(ci + 1));
       if (branch !== null) switched.set(dir, branch);
     }
+    // eval、source、. は中身をこのシェルで動かすので、中の cd の後を判定できない（popd と同じ扱い）
+    if (ci !== -1 && IN_SHELL_RUNNERS.has(baseName(words[ci]))) dir = null;
   }
   return results.find(([d]) => d === DENY) ?? results.find(([d]) => d === ASK) ?? null;
 }
