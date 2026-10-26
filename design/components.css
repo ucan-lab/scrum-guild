@@ -630,6 +630,8 @@ button.tree-link { border: 0; background: none; padding: 0; font: inherit; text-
 .table .is-num { text-align: right; font-family: var(--font-mono); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .table a { color: var(--color-fg); }
 .table .mono, .table .btn { white-space: nowrap; }
+/* 表の行の中の選択欄（メンバーのロールなど）。列が縮んでも選んだ値が読めるよう、中身の幅を保ち、行の高さに合わせて小さくする */
+.table .select { width: auto; padding-block: 4px; font-size: var(--text-sm); }
 /* 名前の列（th と td に is-name を付ける）が1字ずつ折れるほど縮まないようにする。足りない幅は .table-wrap の横スクロールで受ける */
 .table .is-name { min-width: 8em; }
 /* 名前の列の印（停止、管理者の状態など）は、長い文でも列の幅で折り返す。折らないと、印の長さが名前の列の幅になり、

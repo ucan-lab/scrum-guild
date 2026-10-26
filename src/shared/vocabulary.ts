@@ -971,7 +971,7 @@ export const dictionary = defineDictionary({
   ),
 
   // メンバーの画面（ワークスペースの画面）。{leader} {member} {admin} は、その言葉づかいの言葉を画面が渡す。
-  // ロールは文字で出す（付け替え、外す、抜ける は後の Issue で足す）。
+  // ロールは、リーダーと管理者には選択欄で、一般のメンバーには文字で出す。
   // 以下のキーのうち、ゲームとスクラムで同じ文字列にしているのは見本（design/members.html）どおりの意図による
   // （例: 「一般」はゲームの言葉でも「一般」。見本はロールの select の「一般」を言葉づかいで替えない）。
   // 言葉づかいで変わるのは、{leader} {member} {admin} などの辞書の言葉を埋め込むところだけ
@@ -1021,6 +1021,71 @@ export const dictionary = defineDictionary({
   invitationRevokeFailed: workspace(
     '招待を取り消せませんでした。もう一度試してください。',
     '招待を取り消せませんでした。もう一度試してください。',
+  ),
+  // 所属している人の行の操作。ロールの付け替えと「外す」はリーダーと管理者に、「抜ける」は自分の行に出す。
+  // {name} は人の名前、{role} はロールの名前、{task} {workspace} {organization} {leader} {admin} は、その言葉づかいの言葉を画面が渡す
+  memberActionsHeader: workspace('操作', '操作'),
+  memberRoleLabel: workspace('{name}のロール', '{name}のロール'),
+  memberRemove: workspace('外す', '外す'),
+  memberRemoveLabel: workspace('{name}を外す', '{name}を外す'),
+  memberLeave: workspace('抜ける', '抜ける'),
+  memberLeaveLabel: workspace('{workspace}から抜ける', '{workspace}から抜ける'),
+  membersActionNote: workspace(
+    '外すと、その人の未完了の{task}は担当なしに戻ります。完了の記録と経験値は残ります。',
+    '外すと、その人の未完了の{task}は担当なしに戻ります。完了の記録と経験値は残ります。',
+  ),
+  memberWorking: workspace('メンバーを更新しています', 'メンバーを更新しています'),
+  memberRemoveTitle: workspace('{name}を外しますか', '{name}を外しますか'),
+  memberRemoveText: workspace(
+    '{name}は{workspace}から外れます。担当していた未完了の{task}は担当なしに戻ります。完了の記録と経験値は残ります。戻すには、もう一度招待します。',
+    '{name}は{workspace}から外れます。担当していた未完了の{task}は担当なしに戻ります。完了の記録と経験値は残ります。戻すには、もう一度招待します。',
+  ),
+  memberLeaveTitle: workspace('{workspace}から抜けますか', '{workspace}から抜けますか'),
+  memberLeaveText: workspace(
+    '担当していた未完了の{task}は担当なしに戻ります。完了の記録と経験値は残ります。戻るには、もう一度招待を受けてください。',
+    '担当していた未完了の{task}は担当なしに戻ります。完了の記録と経験値は残ります。戻るには、もう一度招待を受けてください。',
+  ),
+  // 管理者でなく、ほかに所属するワークスペースが無い人が抜けるとき
+  memberLeaveLastText: workspace(
+    'ほかに所属している{workspace}が無いので、抜けると、この{organization}に入れなくなります。担当していた未完了の{task}は担当なしに戻ります。完了の記録と経験値は残ります。戻るには、もう一度招待を受けてください。',
+    'ほかに所属している{workspace}が無いので、抜けると、この{organization}に入れなくなります。担当していた未完了の{task}は担当なしに戻ります。完了の記録と経験値は残ります。戻るには、もう一度招待を受けてください。',
+  ),
+  memberDemoteTitle: workspace('自分を一般に戻しますか', '自分を一般に戻しますか'),
+  memberDemoteText: workspace(
+    '一般に戻すと、ロールの付け替え、招待、メンバーを外すことができなくなります。{leader}に戻るには、ほかの{leader}か{admin}に頼んでください。',
+    '一般に戻すと、ロールの付け替え、招待、メンバーを外すことができなくなります。{leader}に戻るには、ほかの{leader}か{admin}に頼んでください。',
+  ),
+  memberDemoteConfirm: workspace('一般に戻す', '一般に戻す'),
+  memberRoleChanged: workspace('{name}を{role}にしました', '{name}を{role}にしました'),
+  memberRemoved: workspace('{name}を外しました', '{name}を外しました'),
+  memberLeft: workspace('{workspace}から抜けました', '{workspace}から抜けました'),
+  memberErrorClosed: workspace(
+    '終了した{workspace}のメンバーは変えられません。画面を読み直しました。',
+    '終了した{workspace}のメンバーは変えられません。画面を読み直しました。',
+  ),
+  memberErrorForbidden: workspace(
+    'この操作ができるのは{leader}と{admin}だけです。画面を読み直しました。',
+    'この操作ができるのは{leader}と{admin}だけです。画面を読み直しました。',
+  ),
+  memberErrorChanged: workspace(
+    'メンバーのロールが先に変わっていました。一覧を読み直しました。',
+    'メンバーのロールが先に変わっていました。一覧を読み直しました。',
+  ),
+  memberErrorNotFound: workspace(
+    'その人はもう所属していませんでした。一覧を読み直しました。',
+    'その人はもう所属していませんでした。一覧を読み直しました。',
+  ),
+  memberRoleFailed: workspace(
+    'ロールを付け替えられませんでした。もう一度試してください。',
+    'ロールを付け替えられませんでした。もう一度試してください。',
+  ),
+  memberRemoveFailed: workspace(
+    'メンバーを外せませんでした。もう一度試してください。',
+    'メンバーを外せませんでした。もう一度試してください。',
+  ),
+  memberLeaveFailed: workspace(
+    '{workspace}から抜けられませんでした。もう一度試してください。',
+    '{workspace}から抜けられませんでした。もう一度試してください。',
   ),
   // 「招待する」の節（リーダーと管理者）。ログインの手段は GitHub だけ（Google は #190 で足す）。
   // {organization} {admin} {workspace} は、その言葉づかいの言葉を画面が渡す
