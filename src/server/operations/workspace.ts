@@ -248,7 +248,7 @@ export const memberListOperation = implement(memberList, async ({ db, actor, wor
   const timezone = workspaceResult.rows[0]?.timezone;
   if (timezone === undefined) throw new ApiError(404, 'not_found');
   const at = now().getTime();
-  // アバターは共通の表（account_logins）にあるので、組織の道具から全員の分を1回で引く。
+  // アバターは共通の表（account_logins）にあるので、組織の道具を全員の ID で1回呼んで引く。
   // 引いた ID はどれも自分の組織の行なので、キーが無いのは処理の間に消えた行だけで、null として扱う
   const avatars = await tools.avatarsOf(memberResult.rows.map((row) => row.id));
 
