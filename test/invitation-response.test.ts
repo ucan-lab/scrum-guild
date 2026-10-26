@@ -6,6 +6,7 @@ import { organizationInfo } from '../src/shared/operations/organization/index.ts
 import { invitationAccept, invitationDecline, invitationList } from '../src/shared/operations/workspace/index.ts';
 import { createApp } from '../src/server/app.ts';
 import { orgDb } from '../src/server/db/index.ts';
+import { envWithD1Hooks } from '../src/server/db/testing.ts';
 import { implementedOperations } from '../src/server/operations/index.ts';
 import {
   createAccountLogin,
@@ -19,7 +20,7 @@ import {
   type OrganizationFixture,
 } from './factories.ts';
 import { errorCodeOf, post } from './operations/harness.ts';
-import { admitElsewhere, createPerson, type Person } from './operations/world.ts';
+import { admitElsewhere, createPerson, testEnv, type Person } from './operations/world.ts';
 
 const app = createApp(implementedOperations, { fetcher: fetch });
 
@@ -35,12 +36,35 @@ function list(organization: OrganizationFixture, person: Person) {
   return post(app, invitationList, { slug: organization.slug, token: person.token });
 }
 
-function accept(organization: OrganizationFixture, person: Person, invitationId: string) {
+function accept(organization: OrganizationFixture, person: Person, invitationId: string, options: { env?: Env } = {}) {
   return post(app, invitationAccept, {
     slug: organization.slug,
     token: person.token,
     body: { invitation_id: invitationId },
+    ...options,
   });
+}
+
+// 組織の中の表の、この組織の行の数（users、memberships、change_logs）と、招待の行。別の組織への呼び出しで何も変わらないことを見る
+async function snapshotOf(organization: OrganizationFixture, invitationId: string) {
+  const db = orgDb(env, organization.verified);
+  const [users, memberships, logs] = await db.batch([
+    db.statement((q) => q.selectFrom('users').select('id').where('organization_id', '=', organization.id)),
+    db.statement((q) =>
+      q
+        .selectFrom('memberships')
+        .innerJoin('workspaces', 'workspaces.id', 'memberships.workspace_id')
+        .select('memberships.id')
+        .where('workspaces.organization_id', '=', organization.id),
+    ),
+    db.statement((q) => q.selectFrom('change_logs').select('id').where('organization_id', '=', organization.id)),
+  ] as const);
+  return {
+    invitation: await invitationRow(organization, invitationId),
+    users: users.rows.length,
+    memberships: memberships.rows.length,
+    logs: logs.rows.length,
+  };
 }
 
 function decline(organization: OrganizationFixture, person: Person, invitationId: string) {
@@ -392,9 +416,100 @@ describe('invitation-accept', () => {
     expect(await invitationRow(organization, theirs.id)).toMatchObject({ status: 'pending' });
     expect(await usersWithLogin(organization, invitee.login)).toHaveLength(0);
   });
+
+  test('2つの組織に招待を持つ人が、組織 A の slug で組織 B の招待を承諾すると 404 で、B の行は変わらない', async () => {
+    const a = await organizationWithOwner();
+    const b = await organizationWithOwner();
+    const invitee = await createPerson();
+    await createInvitation(a.organization, a.workspace.id, a.owner.id, invitee.login);
+    const inB = await createInvitation(b.organization, b.workspace.id, b.owner.id, invitee.login);
+    const before = await snapshotOf(b.organization, inB.id);
+
+    await expectError(await accept(a.organization, invitee, inB.id), 404, 'not_found');
+    expect(await snapshotOf(b.organization, inB.id)).toEqual(before);
+    expect(before.invitation).toMatchObject({ status: 'pending' });
+    expect(await usersWithLogin(a.organization, invitee.login)).toHaveLength(0);
+  });
+
+  test('2つ目のログイン宛ての招待を承諾すると、users の名前はそのログインのログイン名になる', async () => {
+    const { organization, owner, workspace } = await organizationWithOwner();
+    const invitee = await createPerson();
+    const google = await createAccountLogin(invitee.accountId, {
+      login_provider: 'google',
+      login_subject: '118000000000000000301',
+      login_name: 'kai@example.com',
+    });
+    const login = { provider: 'google', subject: google.login_subject };
+    const invitation = await createInvitation(organization, workspace.id, owner.id, login);
+
+    expect((await accept(organization, invitee, invitation.id)).status).toBe(200);
+    const users = await usersWithLogin(organization, login);
+    expect(users).toHaveLength(1);
+    expect(users[0]).toMatchObject({ account_id: invitee.accountId, name: 'kai@example.com' });
+    expect(await usersWithLogin(organization, invitee.login)).toHaveLength(0);
+  });
+
+  test('組織に入った後、招待のログインの無効な行があれば 404（読んでから書くまでに無効にされても、書く文の条件で止める）', async () => {
+    const { organization, owner, workspace } = await organizationWithOwner();
+    // GitHub で所属している人に、2つ目のログイン（Google）宛ての招待。組織に入るときの確かめは、users の行がある人には
+    // 招待のログインの無効な行を見ないので、承諾の読み取りと書く文の条件だけが止める
+    const person = await createPerson({ organization, membership: { workspaceId: workspace.id, role: 'member' } });
+    const google = await createAccountLogin(person.accountId, {
+      login_provider: 'google',
+      login_subject: '118000000000000000302',
+      login_name: 'sota@example.com',
+    });
+    const login = { provider: 'google', subject: google.login_subject };
+    const another = await createWorkspace(organization, owner.id, { name: '広報' });
+    const invitation = await createInvitation(organization, another.id, owner.id, login);
+    const disable = () =>
+      createUser(organization, {
+        account_id: null,
+        login_provider: login.provider,
+        login_subject: login.subject,
+        disabled_at: '2026-10-21T00:00:00.000Z',
+      });
+
+    // 読み取りの最後（そのワークスペースの今の所属）の後、書く前に無効な行を入れる
+    let raced = false;
+    const racing = envWithD1Hooks(testEnv, {
+      afterQuery: async (sql) => {
+        if (raced || !sql.includes('from "memberships" as "cm"')) return;
+        raced = true;
+        await disable();
+      },
+    });
+    await expectError(await accept(organization, person, invitation.id, { env: racing }), 404, 'not_found');
+    expect(raced).toBe(true);
+    expect(await membershipsIn(organization, another.id, person.userId!)).toHaveLength(0);
+    expect(await invitationRow(organization, invitation.id)).toMatchObject({ status: 'pending' });
+    expect(await logsOf(organization, 'invitation', invitation.id)).toHaveLength(0);
+
+    // 先に無効な行があれば、読み取りで 404
+    const second = await createInvitation(
+      organization,
+      (await createWorkspace(organization, owner.id)).id,
+      owner.id,
+      login,
+    );
+    await expectError(await accept(organization, person, second.id), 404, 'not_found');
+  });
 });
 
 describe('invitation-decline', () => {
+  test('2つの組織に招待を持つ人が、組織 A の slug で組織 B の招待を辞退すると 404 で、B の行は変わらない', async () => {
+    const a = await organizationWithOwner();
+    const b = await organizationWithOwner();
+    const invitee = await createPerson();
+    await createInvitation(a.organization, a.workspace.id, a.owner.id, invitee.login);
+    const inB = await createInvitation(b.organization, b.workspace.id, b.owner.id, invitee.login);
+    const before = await snapshotOf(b.organization, inB.id);
+
+    await expectError(await decline(a.organization, invitee, inB.id), 404, 'not_found');
+    expect(await snapshotOf(b.organization, inB.id)).toEqual(before);
+    expect(before.invitation).toMatchObject({ status: 'pending' });
+  });
+
   test('辞退すると declined になり、変更の履歴が1行残り、招待だけの組織には入れなくなる', async () => {
     const { organization, owner, workspace } = await organizationWithOwner();
     // 組織に入れなくなった後の 404 を、どの組織にも入れなくなった 401 と分けて見るため、ほかの組織に入れる人にする

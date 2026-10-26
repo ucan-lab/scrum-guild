@@ -589,31 +589,32 @@ export const dictionary = defineDictionary({
   invitationDeclining: organization('招待を辞退しています', '招待を辞退しています'),
   invitationDeclined: organization('招待を辞退しました', '招待を辞退しました'),
   invitationErrorNotFound: organization(
-    '招待が見つかりませんでした。取り消されたか、別のアカウントに宛てた招待です。一覧を読み直しました。',
-    '招待が見つかりませんでした。取り消されたか、別のアカウントに宛てた招待です。一覧を読み直しました。',
+    '招待が見つかりませんでした。取り消されたか、別のアカウントに宛てた招待です。',
+    '招待が見つかりませんでした。取り消されたか、別のアカウントに宛てた招待です。',
   ),
   invitationErrorChanged: organization(
-    '招待の状態が変わっていました。取り消されたか、承諾か辞退が済んでいます。一覧を読み直しました。',
-    '招待の状態が変わっていました。取り消されたか、承諾か辞退が済んでいます。一覧を読み直しました。',
+    '招待の状態が変わっていました。取り消されたか、承諾か辞退が済んでいます。',
+    '招待の状態が変わっていました。取り消されたか、承諾か辞退が済んでいます。',
   ),
   invitationErrorClosed: organization(
-    'この{workspace}は終了したため、承諾できませんでした。一覧を読み直しました。',
-    'この{workspace}は終了したため、承諾できませんでした。一覧を読み直しました。',
+    'この{workspace}は終了したため、承諾できませんでした。',
+    'この{workspace}は終了したため、承諾できませんでした。',
   ),
   invitationErrorAlreadyMember: organization(
-    'もうこの{workspace}に所属しています。一覧を読み直しました。',
-    'もうこの{workspace}に所属しています。一覧を読み直しました。',
+    'もうこの{workspace}に所属しています。',
+    'もうこの{workspace}に所属しています。',
   ),
   invitationErrorUnreachable: organization(
     '通信できませんでした。時間をおいてもう一度試してください。',
     '通信できませんでした。時間をおいてもう一度試してください。',
   ),
   invitationErrorFailed: organization(
-    '招待を処理できませんでした。一覧を読み直しました。もう一度試してください。',
-    '招待を処理できませんでした。一覧を読み直しました。もう一度試してください。',
+    '招待を処理できませんでした。時間をおいてもう一度試してください。',
+    '招待を処理できませんでした。時間をおいてもう一度試してください。',
   ),
-  // 組織に入れる人が招待の画面から組織の画面へ戻るリンク。{organization} は組織の名前
-  invitationInboxBack: organization('{organization}の画面へ戻る', '{organization}の画面へ戻る'),
+  // 組織に入れる人が招待の画面から組織の画面へ戻るリンク。組織の名前は入れない（区切りの無い長い名前で、狭い幅からはみ出さないように）
+  invitationInboxBack: organization('冒険者ギルドの画面へ戻る', '組織の画面へ戻る'),
+  invitationAccepted: organization('招待を承諾しました', '招待を承諾しました'),
   organizationNotFoundTitle: organization('冒険者ギルドが見つかりません', '組織が見つかりません'),
   organizationNotFoundText: organization(
     'URL が違うか、入れない冒険者ギルドです。',

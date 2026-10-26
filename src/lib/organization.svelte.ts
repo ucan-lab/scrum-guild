@@ -1,6 +1,7 @@
 import type { OutputOf } from '../shared/operations/define.ts';
 import type { organizationInfo } from '../shared/operations/organization/index.ts';
 import type { invitationList } from '../shared/operations/workspace/index.ts';
+import { applyTheme } from '../shared/theme.ts';
 import { defaultVocabularies } from '../shared/vocabulary.ts';
 import { setTheme } from './theme.svelte.ts';
 import { setVocabularies, setWorkspaceVocabulary } from './vocabulary.svelte.ts';
@@ -15,9 +16,10 @@ export function applyOrganization(view: OrganizationView): void {
 }
 
 // 承諾待ちの招待だけの人の招待の画面。organization の操作を読めないので、届いた招待の一覧（invitation-list）が返す
-// 組織の言葉づかいと既定のテーマを当てる（自分のテーマはまだ無い）。ワークスペースの言葉も組織の言葉づかいに合わせる
+// 組織の言葉づかいと既定のテーマを当てる（自分のテーマはまだ無い）。ワークスペースの言葉も組織の言葉づかいに合わせる。
+// テーマは属性だけを当て、localStorage には覚えない（まだ入っていない組織の値を、次の描画の先当てに持ち越さない）
 export function applyInvitedOrganization(view: OutputOf<typeof invitationList>['organization']): void {
-  setTheme(view.theme);
+  applyTheme(view.theme, document.documentElement);
   setVocabularies({ organization: view.vocabulary, workspace: view.vocabulary });
   setWorkspaceVocabulary(null);
 }

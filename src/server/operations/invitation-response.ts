@@ -118,6 +118,9 @@ function personRow(from: From, organizationId: string, userId: string | null, lo
     .select('p.id')
     .where('p.organization_id', '=', organizationId)
     .where('p.disabled_at', 'is', null);
+  // userId が null の人（このアカウントに結んだ users の行が無い）が同じログインの行を持つのは、account_id が空の行が残っているときだけ。
+  // そうした行はログインのたびの結び直し（linkLoginToAccount）で埋まるので、残りうるのは、ログインした後にその行が作られ、
+  // まだログインし直していない間だけという前提で、ログインの手段と ID で引く
   return userId !== null
     ? base.where('p.id', '=', userId)
     : base.where('p.login_provider', '=', login.provider).where('p.login_subject', '=', login.subject);
@@ -164,39 +167,42 @@ function acceptableInvitation(
     .where((eb) =>
       eb.and([
         eb.exists(openWorkspace(from, organizationId, workspaceId)),
-        eb.not(
-          eb.exists(
-            from
-              .selectFrom('users as d')
-              .select('d.id')
-              .where('d.organization_id', '=', organizationId)
-              .where('d.disabled_at', 'is not', null)
-              .where((inner) =>
-                inner.or([
-                  inner.and([
-                    inner('d.login_provider', '=', login.provider),
-                    inner('d.login_subject', '=', login.subject),
-                  ]),
-                  inner('d.account_id', '=', accountId),
-                ]),
-              ),
-          ),
-        ),
+        eb.not(eb.exists(disabledPerson(from, organizationId, login, accountId))),
       ]),
     );
 }
 
-// 承諾を断る理由を、読んだ値から決める。無ければ 404、承諾待ちでなければ 409 の conflict、閉じていれば 409 の workspace_closed、
+// 同じ組織の、招待のログインか呼んだ人のアカウントの、無効にされた users の行。
+// 組織に入るときの確かめ（enterOrganization）は、users の行がある人には招待のログインの無効な行を見ないので、承諾でも見る
+function disabledPerson(from: From, organizationId: string, login: Login, accountId: string) {
+  return from
+    .selectFrom('users as d')
+    .select('d.id')
+    .where('d.organization_id', '=', organizationId)
+    .where('d.disabled_at', 'is not', null)
+    .where((inner) =>
+      inner.or([
+        inner.and([inner('d.login_provider', '=', login.provider), inner('d.login_subject', '=', login.subject)]),
+        inner('d.account_id', '=', accountId),
+      ]),
+    );
+}
+
+// 承諾を断る理由を、読んだ値から決める。無いか、この組織で無効にされた人なら 404、承諾待ちでなければ 409 の conflict、閉じていれば 409 の workspace_closed、
 // そのワークスペースに今所属していれば 409 の already_member。どれでもなければ、招待と、そのログイン（呼んだ人のもの）を返す
 async function acceptableOrThrow(
   db: OrganizationDb,
   invitation: Awaited<ReturnType<typeof readOwnInvitation>>,
   userId: string | null,
+  accountId: string,
 ) {
   if (invitation === undefined || invitation.login_subject === null) throw new ApiError(404, 'not_found');
+  const login: Login = { provider: invitation.login_provider, subject: invitation.login_subject };
+  // この組織で無効にされた人（招待のログインか、このアカウントの行）は、組織に入れない人と同じ 404
+  const disabled = await db.first(db.statement((q) => disabledPerson(q, db.organizationId, login, accountId).limit(1)));
+  if (disabled !== undefined) throw new ApiError(404, 'not_found');
   if (invitation.status !== 'pending') throw new ApiError(409, 'conflict');
   if (invitation.closed_at !== null) throw new ApiError(409, 'workspace_closed');
-  const login: Login = { provider: invitation.login_provider, subject: invitation.login_subject };
   const workspaceId = invitation.workspace_id;
   const member = await db.first(
     db.statement((q) => currentMembership(q, db.organizationId, workspaceId, userId, login).limit(1)),
@@ -221,6 +227,7 @@ export const invitationAcceptOperation = implement(invitationAccept, async ({ db
     db,
     await readOwnInvitation(db, invitationId, logins),
     actor.userId,
+    actor.accountId,
   );
   const workspaceId = invitation.workspace_id;
   const userId = actor.userId;
@@ -398,7 +405,7 @@ export const invitationAcceptOperation = implement(invitationAccept, async ({ db
   // 読んでから書くまでに、取り消し、辞退、別の要求の承諾が先に済んだ、閉じた、所属した
   const updated = results[insertUser.length + 1];
   if ((updated?.changes ?? 0) === 0) {
-    await acceptableOrThrow(db, await readOwnInvitation(db, invitationId, logins), userId);
+    await acceptableOrThrow(db, await readOwnInvitation(db, invitationId, logins), userId, actor.accountId);
     throw new ApiError(409, 'conflict');
   }
   return { workspace_id: workspaceId };
