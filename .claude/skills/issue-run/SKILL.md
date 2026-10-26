@@ -24,6 +24,8 @@ gh api repos/{owner}/{repo}/issues/<番号> --jq '{state, title, pr: (.pull_requ
 gh api "repos/{owner}/{repo}/pulls?state=open&per_page=100" --jq '.[] | {number, head: .head.ref, refs: ([.body // "" | scan("(?i)(?:closes|fixes|refs) #([0-9]+)") | .[0]])}'
 ```
 
+`gh` が無いか認証で失敗するときは、`pr-create` の「GitHub の操作」の「`gh` が使えないとき」に従い、GitHub の MCP ツール（`issue_read`、`list_pull_requests`）で代える。
+
 次のどれかなら止まり、理由を伝える。
 
 - 閉じている、PR の番号だった、`epic` か子を持つ（子のタスクを進める）

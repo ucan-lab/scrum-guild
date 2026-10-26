@@ -21,6 +21,7 @@ force push はこのスキルの中だけで行う。PR の指摘への対応と
   2. PR が無ければ（出力が空か `null`）デフォルトブランチ: `gh api repos/{owner}/{repo} --jq .default_branch`
 
 GitHub の操作は `gh api` の REST で行う（クラウドのセッションでは、GraphQL を使う `gh pr` が 403 で止まる）。`{owner}` `{repo}` `{branch}` が置き換わらずに 404 になるときは、`git remote get-url origin` と `git branch --show-current` から読んで直に書く。
+`gh` が無いか認証で失敗するときは、`pr-create` の「GitHub の操作」の「`gh` が使えないとき」に従い、GitHub の MCP ツールで代える（PR のベースは `list_pull_requests` の `head` で絞って `base` を見る）。
 
 決めたベースは着手時に一文で伝える。
 

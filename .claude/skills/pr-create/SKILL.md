@@ -11,7 +11,7 @@ description: PRのタイトル・本文・アサイン・レビュワー・ラ�
 
 ## 前提条件
 
-- `gh` CLI が認証済みで使えること（`GH_TOKEN` があればそれを使う。トークンの内容は表示・記録しない）
+- `gh` CLI が認証済みで使えること（`GH_TOKEN` があればそれを使う。トークンの内容は表示・記録しない）。使えなければ「GitHub の操作」の「`gh` が使えないとき」に従う
 - カレントブランチがリモートにpush済みであること。未pushなら `git push -u origin <branch>` を提案してから進む
 - 対象はGitHubのPR。Backlogのプルリクエストはこのスキルの対象外
 
@@ -22,6 +22,22 @@ GraphQL でしかできない操作（既存の PENDING review への追記、�
 
 - `{owner}` `{repo}` `{branch}` は `gh` がカレントのリポジトリとブランチに置き換える。置き換わらずに 404 になるときは、`git remote get-url origin` と `git branch --show-current` から読んで直に書く
 - 作業ファイルはスクラッチパッドに置く。スクラッチパッドが無い環境（クラウド）では `/tmp` の下に置く
+
+### `gh` が使えないとき
+
+クラウドのセッションでは、`gh` が無いか、`GH_TOKEN` が無効で認証に失敗する（`gh auth status` が「The token in GH_TOKEN is invalid」）ことがある。そのときは GitHub の MCP ツール（`mcp__github__*`。名前だけ見えていれば ToolSearch で読み込む）で同じ操作を行う。
+
+| 操作 | MCP ツール |
+| --- | --- |
+| 開いた PR の一覧 | `list_pull_requests`（`fields` で絞る） |
+| PR の作成 | `create_pull_request` |
+| アサイン、ラベル、マイルストーン | `issue_write` の `update`（PR の番号を渡す） |
+| インラインコメント | `pull_request_review_write` の `create`（`event` 無しで PENDING）→ `add_comment_to_pending_review` → `pull_request_review_write` の `submit_pending`（`COMMENT`） |
+| Issue の本文の読み書き、コメント | `issue_read`、`issue_write`、`add_issue_comment` |
+
+- `milestone` は番号で渡す。読む側のツールはタイトルしか返さないので、番号は `search_issues` の結果の `milestone.number` で分かる。付けた後に読み直し、意図したマイルストーンになったかを確かめる
+- `issue_write` の `labels` は足すのでなく丸ごと置き換える。今のラベル（`issue_read` の `get_labels`）に足した一覧を渡す
+- `issue_write` の `body` は行ごとに置き換えられず、本文を丸ごと渡す。書く直前に `issue_read` で取り直した本文を元にする（前に取った本文を元にすると、その後に人が書き足した分を消す）
 
 ## Step 0: モード判定
 
