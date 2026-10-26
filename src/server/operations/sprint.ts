@@ -275,10 +275,10 @@ export const sprintUpdateOperation = implement(sprintUpdate, async ({ db, actor,
               eb('status', '=', 'planned'),
               eb.exists(openWorkspace(q, organizationId, workspaceId)),
               ...(rangeChanged ? [eb.not(eb.exists(overlapping(q, workspaceId, startOn, endOn, sprintId)))] : []),
-              // 書く列が、読んだときの値のまま
+              // 書く列が、読んだときの値のまま。期間を変えるときは、片側だけを書くときも両端を守る
+              // （最終日と重なりの検査は読んだ開始日と最終日から決めたので、もう片側を別の要求が動かしていたら書かない）
               ...(values.name === undefined ? [] : [eb('name', 'is', current.name)]),
-              ...(values.start_on === undefined ? [] : [eb('start_on', 'is', current.start_on)]),
-              ...(values.end_on === undefined ? [] : [eb('end_on', 'is', current.end_on)]),
+              ...(rangeChanged ? [eb('start_on', 'is', current.start_on), eb('end_on', 'is', current.end_on)] : []),
             ]),
           ),
       ),
