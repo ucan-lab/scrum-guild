@@ -490,4 +490,89 @@ describe('読んでから書くまでの競合', () => {
     );
     expect((await membershipsOf(target, target.leader.userId!))[0]!.left_at).not.toBeNull();
   });
+
+  // ワークスペースを閉じる（workspace-close の書き込みと同じ列）。登録の関数が見た「開いている」の後に閉じられた競合を作る
+  async function closeWorkspace(target: Target) {
+    const db = dbOf(target);
+    await db.run(
+      db.statement((q) =>
+        q
+          .updateTable('workspaces')
+          .set({ closed_at: '2026-10-26T00:00:00.000Z' })
+          .where('id', '=', target.workspace.id)
+          .where('organization_id', '=', target.organization.id),
+      ),
+    );
+  }
+
+  test('読んだ後にワークスペースが閉じられたら、ロールの付け替えは 409 の workspace_closed で書かない', async () => {
+    const target = await createTarget();
+    const [membership] = await membershipsOf(target, target.member.userId!);
+    await expect(
+      runWithRace(
+        membershipRoleUpdateOperation,
+        target,
+        target.leader,
+        { user_id: target.member.userId, role: 'leader' },
+        () => closeWorkspace(target),
+      ),
+    ).rejects.toMatchObject({ status: 409, code: 'workspace_closed' });
+    expect((await membershipsOf(target, target.member.userId!))[0]!.role).toBe('member');
+    expect(await logsOf(target, 'membership', membership!.id)).toHaveLength(0);
+  });
+
+  test('読んだ後にワークスペースが閉じられたら、離脱は 409 の workspace_closed で書かない', async () => {
+    const target = await createTarget();
+    const userId = target.member.userId!;
+    const task = await createTask(target.organization, target.workspace.id, userId, { assignee_user_id: userId });
+    await expect(
+      runWithRace(membershipLeaveOperation, target, target.member, { user_id: userId }, () => closeWorkspace(target)),
+    ).rejects.toMatchObject({ status: 409, code: 'workspace_closed' });
+    const [membership] = await membershipsOf(target, userId);
+    expect(membership!.left_at).toBeNull();
+    expect(await logsOf(target, 'membership', membership!.id)).toHaveLength(0);
+    expect((await taskOf(target, task.id))!.assignee_user_id).toBe(userId);
+    expect(await logsOf(target, 'task', task.id)).toHaveLength(0);
+  });
+
+  test('読んだ後に相手の所属が終わったら、ロールの付け替えは 404 で書かない', async () => {
+    const target = await createTarget();
+    const userId = target.member.userId!;
+    const [membership] = await membershipsOf(target, userId);
+    await expect(
+      runWithRace(
+        membershipRoleUpdateOperation,
+        target,
+        target.leader,
+        { user_id: userId, role: 'leader' },
+        async () => {
+          expect((await leave(target, target.admin, userId)).status).toBe(200);
+        },
+      ),
+    ).rejects.toMatchObject({ status: 404, code: 'not_found' });
+    const [after] = await membershipsOf(target, userId);
+    expect(after!.role).toBe('member');
+    // 離脱の履歴だけで、ロールの変更は残らない
+    expect((await logsOf(target, 'membership', membership!.id)).map((log) => log.action)).toEqual(['delete']);
+  });
+});
+
+describe('閉じたワークスペース', () => {
+  test('ロールの付け替えと離脱は 409 の workspace_closed で、何も書かない', async () => {
+    const target = await createTarget({ closed: true });
+    const userId = target.member.userId!;
+    const task = await createTask(target.organization, target.workspace.id, userId, { assignee_user_id: userId });
+    const updated = await updateRole(target, target.leader, userId, 'leader');
+    expect(updated.status).toBe(409);
+    expect(await errorCodeOf(updated)).toBe('workspace_closed');
+    const left = await leave(target, target.member, userId);
+    expect(left.status).toBe(409);
+    expect(await errorCodeOf(left)).toBe('workspace_closed');
+
+    const [membership] = await membershipsOf(target, userId);
+    expect(membership).toMatchObject({ role: 'member', left_at: null, left_on: null });
+    expect(await logsOf(target, 'membership', membership!.id)).toHaveLength(0);
+    expect((await taskOf(target, task.id))!.assignee_user_id).toBe(userId);
+    expect(await logsOf(target, 'task', task.id)).toHaveLength(0);
+  });
 });
