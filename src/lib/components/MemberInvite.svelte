@@ -128,7 +128,11 @@
     }
     const problem = problemCodeOf(result);
     if (problem !== undefined) return { field: 'username', key: problemKeys[problem]! };
-    if (code !== undefined && Object.hasOwn(conflictKeys, code)) return { field: 'username', key: conflictKeys[code]! };
+    if (code !== undefined && Object.hasOwn(conflictKeys, code)) {
+      // 別のリーダーが先に招待したか、承諾されたときは、一覧を読み直して今の所属と招待を出す
+      if (code === 'already_member' || code === 'already_invited') await onchanged();
+      return { field: 'username', key: conflictKeys[code]! };
+    }
     // 回数の上限。招待の送信では、確かめた結果を残したまま、しばらく後に押し直せるようにする
     if (code === 'rate_limited') {
       return context === 'verify'
