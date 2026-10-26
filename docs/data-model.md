@@ -156,7 +156,7 @@
 
 ### rate_limits
 
-ログインと手動の同期のレート制限。
+ログイン、手動の同期、招待（GitHub に問い合わせる `invitee-resolve` と `invitation-create`）のレート制限。
 
 | 列 | 型 | 制約 | 説明 |
 | --- | --- | --- | --- |
