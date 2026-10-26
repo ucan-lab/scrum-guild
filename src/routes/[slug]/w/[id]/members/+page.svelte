@@ -55,7 +55,8 @@
   // 送っている行の操作。1件ずつ送り、送っている間はほかの行の操作を押しても無視する
   let changing = $state<string | null>(null);
   // 確かめのダイアログで聞いている操作
-  type Pending = { kind: 'remove' | 'leave' | 'demote'; member: Member };
+  // demote は自分を一般に戻す、demoteOther は他人の唯一のリーダーを一般に戻す
+  type Pending = { kind: 'remove' | 'leave' | 'demote' | 'demoteOther'; member: Member };
   let pending = $state<Pending | null>(null);
   let confirmDialog = $state<ReturnType<typeof ConfirmDialog>>();
 
@@ -89,10 +90,11 @@
       return;
     }
     const self = me !== null && member.id === me.id;
-    // 自分をリーダーから一般に戻すと、付け替えも招待もできなくなるので確かめる。管理者は戻しても付け替えられるので、
-    // 唯一のリーダーのとき（リーダーがいなくなる）だけ確かめる
-    if (self && role === 'member' && (!(me?.is_admin ?? false) || leaderCount === 1)) {
-      const confirmed = await confirmAction({ kind: 'demote', member }, select);
+    // 自分をリーダーから一般に戻すと、付け替えも招待もできなくなるので確かめる（管理者は戻しても付け替えられるので除く）。
+    // 自分か他人かによらず、唯一のリーダーを一般に戻すとき（リーダーがいなくなる）も確かめる
+    const lastLeader = role === 'member' && member.role === 'leader' && leaderCount === 1;
+    if ((self && role === 'member' && !(me?.is_admin ?? false)) || lastLeader) {
+      const confirmed = await confirmAction({ kind: self ? 'demote' : 'demoteOther', member }, select);
       if (!confirmed) {
         select.value = member.role;
         return;
@@ -364,14 +366,16 @@
       ? t('memberRemoveTitle', { name: pending.member.name })
       : pending?.kind === 'leave'
         ? t('memberLeaveTitle', { workspaceName: workspace.name })
-        : t('memberDemoteTitle')}
+        : pending?.kind === 'demoteOther'
+          ? t('memberDemoteOtherTitle', { name: pending.member.name })
+          : t('memberDemoteTitle')}
     confirmLabel={pending?.kind === 'remove'
       ? t('memberRemove')
       : pending?.kind === 'leave'
         ? t('memberLeave')
         : t('memberDemoteConfirm')}
     cancelLabel={t('cancel')}
-    danger={pending?.kind !== 'demote'}
+    danger={pending?.kind === 'remove' || pending?.kind === 'leave'}
   >
     {#if pending?.kind === 'remove'}
       <p>{t('memberRemoveText', { name: pending.member.name, workspace: t('workspace'), task: t('task') })}</p>
@@ -385,6 +389,8 @@
       </p>
     {:else if pending?.kind === 'demote' && !(me?.is_admin ?? false)}
       <p>{t('memberDemoteText', { leader: t('leader'), admin: t('admin') })}</p>
+    {:else if pending?.kind === 'demoteOther'}
+      <p>{t('memberDemoteOtherText', { name: pending.member.name })}</p>
     {/if}
     {#if pending !== null && pending.member.role === 'leader' && leaderCount === 1}
       <p>{t('memberLastLeaderNote', { workspace: t('workspace'), leader: t('leader'), admin: t('admin') })}</p>

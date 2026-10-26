@@ -283,6 +283,41 @@ test.describe('リーダー（あおば開発のミナト）', () => {
     await expect(page.locator('.toasts:visible .toast').last()).toHaveText('受託開発チームから抜けました');
   });
 
+  test('他人の唯一のリーダーを一般に戻すときも、リーダーがいなくなることを確かめ、やめると送らずに戻す', async ({
+    page,
+  }) => {
+    let called = false;
+    await page.route('**/api/aoba/membership-role-update', (route) => {
+      called = true;
+      return route.abort();
+    });
+    // ハルカだけがリーダーの一覧にする（管理者のミナトは一般でも付け替えられる）
+    await page.route('**/api/aoba/member-list', async (route) => {
+      const response = await route.fetch();
+      const json = (await response.json()) as { members: { id: string; role: string }[] };
+      const members = json.members.map((member) => ({
+        ...member,
+        role: member.id === HARUKA_USER_ID ? 'leader' : 'member',
+      }));
+      await route.fulfill({ response, json: { ...json, members } });
+    });
+    await page.goto(MEMBERS_PATH);
+    const role = page.getByRole('combobox', { name: 'ハルカのロール' });
+    await expect(role).toHaveValue('leader');
+    await role.selectOption('member');
+    const dialog = page.getByRole('dialog', { name: 'ハルカを一般に戻しますか' });
+    await expect(dialog).toContainText(
+      'ハルカは一般に戻り、ロールの付け替え、招待、メンバーを外すことができなくなります。',
+    );
+    await expect(dialog).toContainText(
+      'このパーティのパーティリーダーがいなくなります。新しいパーティリーダーはギルドマスターが任命します。',
+    );
+    await dialog.getByRole('button', { name: 'やめる' }).click();
+    await expect(dialog).toBeHidden();
+    await expect(role).toHaveValue('leader');
+    expect(called).toBe(false);
+  });
+
   test('ロールの選択欄で付け替え、先に変わっていて断られたら、トーストで知らせて今の値に戻す', async ({ page }) => {
     const sent: unknown[] = [];
     let reply: { status: number; json: unknown } = { status: 200, json: {} };

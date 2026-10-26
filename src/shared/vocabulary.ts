@@ -1057,6 +1057,12 @@ export const dictionary = defineDictionary({
     '一般に戻すと、ロールの付け替え、招待、メンバーを外すことができなくなります。{leader}に戻るには、ほかの{leader}か{admin}に頼んでください。',
   ),
   memberDemoteConfirm: workspace('一般に戻す', '一般に戻す'),
+  // 他人の唯一のリーダーを一般に戻すとき（続けて memberLastLeaderNote を添える）
+  memberDemoteOtherTitle: workspace('{name}を一般に戻しますか', '{name}を一般に戻しますか'),
+  memberDemoteOtherText: workspace(
+    '{name}は一般に戻り、ロールの付け替え、招待、メンバーを外すことができなくなります。',
+    '{name}は一般に戻り、ロールの付け替え、招待、メンバーを外すことができなくなります。',
+  ),
   memberRoleChanged: workspace('{name}を{role}にしました', '{name}を{role}にしました'),
   memberRemoved: workspace('{name}を外しました', '{name}を外しました'),
   memberLeft: workspace('{workspaceName}から抜けました', '{workspaceName}から抜けました'),
