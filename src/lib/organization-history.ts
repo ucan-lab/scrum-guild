@@ -12,11 +12,11 @@ type Translate = (key: DictionaryKey, params?: TemplateParams) => string;
 export function historyActorName(actor: HistoryEntry['actor'], translate: Translate): string {
   switch (actor.kind) {
     case 'user':
-      return actor.name ?? translate('historyUnknownPerson');
+      return actor.name ?? translate('orgHistoryUnknownPerson');
     case 'operator':
-      return translate('historyActorOperator');
+      return translate('orgHistoryActorOperator');
     case 'system':
-      return translate('historyActorSystem');
+      return translate('orgHistoryActorSystem');
   }
 }
 
@@ -26,52 +26,52 @@ export function historyEventText(event: HistoryEntry['event'], translate: Transl
     admin: translate('admin'),
     workspace: translate('workspace'),
   };
-  const person = (name: string | null) => name ?? translate('historyUnknownPerson');
+  const person = (name: string | null) => name ?? translate('orgHistoryUnknownPerson');
   switch (event.kind) {
     case 'organization_created':
       return event.name === null
-        ? translate('historyOrganizationCreatedNoName', words)
-        : translate('historyOrganizationCreated', { ...words, name: event.name });
+        ? translate('orgHistoryOrganizationCreatedNoName', words)
+        : translate('orgHistoryOrganizationCreated', { ...words, name: event.name });
     case 'organization_suspended':
       return event.purge_on === null
-        ? translate('historyOrganizationSuspendedTemporary', words)
-        : translate('historyOrganizationSuspended', { ...words, date: event.purge_on });
+        ? translate('orgHistoryOrganizationSuspendedTemporary', words)
+        : translate('orgHistoryOrganizationSuspended', { ...words, date: event.purge_on });
     case 'organization_resumed':
-      return translate('historyOrganizationResumed', words);
+      return translate('orgHistoryOrganizationResumed', words);
     case 'organization_suspension_changed':
       return event.purge_on === null
-        ? translate('historySuspensionChangedTemporary', words)
-        : translate('historySuspensionChanged', { ...words, date: event.purge_on });
+        ? translate('orgHistorySuspensionChangedTemporary', words)
+        : translate('orgHistorySuspensionChanged', { ...words, date: event.purge_on });
     case 'organization_settings_changed':
-      return translate('historyOrganizationSettingsChanged', words);
+      return translate('orgHistoryOrganizationSettingsChanged', words);
     case 'admin_designated':
       return event.name === null
-        ? translate('historyAdminDesignatedGoogle', words)
-        : translate('historyAdminDesignated', { ...words, name: event.name });
+        ? translate('orgHistoryAdminDesignatedGoogle', words)
+        : translate('orgHistoryAdminDesignated', { ...words, name: event.name });
     case 'admin_login_linked':
-      return translate('historyAdminLoginLinked', { ...words, name: person(event.name) });
+      return translate('orgHistoryAdminLoginLinked', { ...words, name: person(event.name) });
     case 'admin_designation_merged':
-      return translate('historyAdminDesignationMerged', { ...words, name: person(event.name) });
+      return translate('orgHistoryAdminDesignationMerged', { ...words, name: person(event.name) });
     case 'admin_revoked':
-      return translate('historyAdminRevoked', { ...words, name: person(event.name) });
+      return translate('orgHistoryAdminRevoked', { ...words, name: person(event.name) });
     case 'user_disabled':
-      return translate('historyUserDisabled', { ...words, name: person(event.name) });
+      return translate('orgHistoryUserDisabled', { ...words, name: person(event.name) });
     case 'user_enabled':
-      return translate('historyUserEnabled', { ...words, name: person(event.name) });
+      return translate('orgHistoryUserEnabled', { ...words, name: person(event.name) });
     // ワークスペースの名前が分からない行（ワークスペースの行が無い）は、名前を添えない文にする
     case 'workspace_created':
       return event.workspace_name === null
-        ? translate('historyWorkspaceCreatedNoName', words)
-        : translate('historyWorkspaceCreated', { ...words, name: event.workspace_name });
+        ? translate('orgHistoryWorkspaceCreatedNoName', words)
+        : translate('orgHistoryWorkspaceCreated', { ...words, name: event.workspace_name });
     case 'workspace_closed':
       return event.workspace_name === null
-        ? translate('historyWorkspaceClosedNoName', words)
-        : translate('historyWorkspaceClosed', { ...words, name: event.workspace_name });
+        ? translate('orgHistoryWorkspaceClosedNoName', words)
+        : translate('orgHistoryWorkspaceClosed', { ...words, name: event.workspace_name });
     case 'workspace_reopened':
       return event.workspace_name === null
-        ? translate('historyWorkspaceReopenedNoName', words)
-        : translate('historyWorkspaceReopened', { ...words, name: event.workspace_name });
+        ? translate('orgHistoryWorkspaceReopenedNoName', words)
+        : translate('orgHistoryWorkspaceReopened', { ...words, name: event.workspace_name });
     case 'other':
-      return translate('historyOther', words);
+      return translate('orgHistoryOther', words);
   }
 }

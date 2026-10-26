@@ -97,29 +97,29 @@
 </script>
 
 <Setting
-  title={t('historyTitle')}
-  description={t('historyDesc', {
+  title={t('orgHistoryTitle')}
+  description={t('orgHistoryDesc', {
     admin: t('admin'),
     workspace: t('workspace'),
     organization: t('organization'),
     member: t('member'),
   })}
 >
-  <SectionBoundary {section} failedTitle={t('historyLoadFailed')} refreshFailedText={t('historyRefreshFailed')}>
+  <SectionBoundary {section} failedTitle={t('orgHistoryLoadFailed')} refreshFailedText={t('orgHistoryRefreshFailed')}>
     {#if entries.length === 0}
       <EmptyState
         icon="clock"
-        title={t('historyEmptyTitle')}
-        text={t('historyEmptyText', { admin: t('admin'), workspace: t('workspace') })}
+        title={t('orgHistoryEmptyTitle')}
+        text={t('orgHistoryEmptyText', { admin: t('admin'), workspace: t('workspace') })}
       />
     {:else}
       <div class="table-wrap">
-        <table class="table is-stacked" aria-label={t('historyListLabel', { organization: t('organization') })}>
+        <table class="table is-stacked" aria-label={t('orgHistoryListLabel', { organization: t('organization') })}>
           <thead>
             <tr>
-              <th>{t('historyColumnAt')}</th>
-              <th>{t('historyColumnActor')}</th>
-              <th>{t('historyColumnEvent')}</th>
+              <th>{t('orgHistoryColumnAt')}</th>
+              <th>{t('orgHistoryColumnActor')}</th>
+              <th>{t('orgHistoryColumnEvent')}</th>
             </tr>
           </thead>
           <tbody>
@@ -127,7 +127,7 @@
               {@const actorName = historyActorName(entry.actor, t)}
               <tr>
                 <td class="mono"><time datetime={entry.created_at}>{formatDateTime(entry.created_at)}</time></td>
-                <td data-label={t('historyColumnActor')}>
+                <td data-label={t('orgHistoryColumnActor')}>
                   <!-- 名前の分からない人には、仮の頭文字のアバターを出さない -->
                   {#if entry.actor.kind === 'user' && entry.actor.name !== null}
                     <span class="person is-wrap"
@@ -138,7 +138,7 @@
                   {/if}
                 </td>
                 <!-- 内容は利用者が付けた名前（空白の無い長い名前を含む）を含むので、途中で折る -->
-                <td class="is-wrap" data-label={t('historyColumnEvent')}>{historyEventText(entry.event, t)}</td>
+                <td class="is-wrap" data-label={t('orgHistoryColumnEvent')}>{historyEventText(entry.event, t)}</td>
               </tr>
             {/each}
           </tbody>
@@ -156,21 +156,22 @@
               aria-busy={loadingMore}
               onclick={loadMore}
             >
-              {t('historyMore')}
+              {t('orgHistoryMore')}
             </button>
           {:else}
             <!-- tabindex="-1" は、最後まで読んでボタンが消えたときに、プログラムからフォーカスを置くため -->
-            <span class="props-note" tabindex="-1" bind:this={endNote}>{t('historyEnd')}</span>
+            <span class="props-note" tabindex="-1" bind:this={endNote}>{t('orgHistoryEnd')}</span>
           {/if}
           <span class="field-hint" role="status"
             >{loadingMore
               ? t('loading')
               : loadedCount !== null
-                ? t('historyLoadedMore', { count: loadedCount })
+                ? t('orgHistoryLoadedMore', { count: loadedCount })
                 : ''}</span
           >
           <span role="alert"
-            >{#if moreFailed}<span class="field-error"><Icon name="alert" />{t('historyMoreFailed')}</span>{/if}</span
+            >{#if moreFailed}<span class="field-error"><Icon name="alert" />{t('orgHistoryMoreFailed')}</span
+              >{/if}</span
           >
         </div>
       {/if}
