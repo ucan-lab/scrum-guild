@@ -175,9 +175,12 @@ test('確認は開いたときに件数とまとめて削除できるかを読�
   const confirm = page.getByRole('dialog', { name: 'ストーリーを削除する' });
   const submit = confirm.getByRole('button', { name: '削除する' });
   await expect(submit).toHaveAttribute('aria-disabled', 'true');
-  await expect(confirm.getByText('タスク 1 件は親なしのタスク')).toBeVisible();
+  const choices = confirm.getByRole('radiogroup');
+  await expect(choices.getByText('タスク 1 件は親なしのタスク')).toBeVisible();
   release();
-  await expect(confirm.getByText('タスク 3 件は親なしのタスク')).toBeVisible();
+  // 件数が変わったことは、読み上げの領域にも出す
+  await expect(confirm.getByRole('status').filter({ hasText: /タスク\s3\s件は親なしのタスク/ })).toHaveCount(1);
+  await expect(choices.getByText('タスク 3 件は親なしのタスク')).toBeVisible();
   await expect(submit).toHaveAttribute('aria-disabled', 'false');
   const all = confirm.getByRole('radio', { name: /配下もまとめて削除する/ });
   await expect(all).toBeDisabled();
@@ -192,6 +195,101 @@ test('確認は開いたときに件数とまとめて削除できるかを読�
   await expect(storyDialog).toBeHidden();
   await expect(page.getByRole('status').filter({ hasText: 'ストーリーを削除しました' })).toBeVisible();
   await expect(page.locator('.entry', { hasText: '返信の型を作る' })).toHaveCount(1);
+});
+
+test('確認を開いた後の読み直しで配下が無くなったら、選択肢を消してやめるボタンへフォーカスを移し、変わった中身を読み上げの領域に出す', async ({
+  context,
+  baseURL,
+  page,
+}) => {
+  await signIn(context, baseURL, 'admin');
+  await createWorkspace(page, '配下が消えるワークスペース', 'scrum');
+  await create(page, 'ストーリーを作る', '請求書の発行');
+  await addTask(page, '請求書の発行', '宛名を直す', '起票');
+  await page.waitForLoadState('networkidle');
+
+  await page.getByRole('button', { name: '請求書の発行', exact: true }).click();
+  const storyDialog = page.getByRole('dialog', { name: 'ストーリー', exact: true });
+  await expect(storyDialog.getByLabel('タイトル')).toHaveValue('請求書の発行');
+
+  // 別の画面で配下のタスクが外された形にする。応答を待たせて、選択肢にフォーカスが置かれてから差し替える
+  let release: () => void = () => {};
+  const held = new Promise<void>((resolve) => (release = resolve));
+  await page.route('**/story-get', async (route) => {
+    const response = await route.fetch();
+    const body = (await response.json()) as Record<string, unknown>;
+    await held;
+    await route.fulfill({ response, json: { ...body, children: { tasks: 0 } } });
+  });
+  await storyDialog.getByRole('button', { name: 'このストーリーを削除する' }).click();
+  const confirm = page.getByRole('dialog', { name: 'ストーリーを削除する' });
+  await expect(confirm.getByRole('radio', { name: /配下を親なしで残す/ })).toBeFocused();
+  release();
+  await expect(confirm.getByRole('radio')).toHaveCount(0);
+  await expect(confirm.getByRole('button', { name: 'やめる' })).toBeFocused();
+  await expect(confirm.getByRole('status').filter({ hasText: '配下のタスクはありません。' })).toHaveCount(1);
+  await page.unroute('**/story-get');
+});
+
+test('読み直しで削除できなくなったら主ボタンを押せなくし、閉じた後に届いた 404 では元のダイアログを閉じない', async ({
+  context,
+  baseURL,
+  page,
+}) => {
+  await signIn(context, baseURL, 'admin');
+  await createWorkspace(page, '権限が変わるワークスペース', 'scrum');
+  await create(page, 'ストーリーを作る', '在庫の通知');
+  await page.waitForLoadState('networkidle');
+
+  await page.getByRole('button', { name: '在庫の通知', exact: true }).click();
+  const storyDialog = page.getByRole('dialog', { name: 'ストーリー', exact: true });
+  await expect(storyDialog.getByLabel('タイトル')).toHaveValue('在庫の通知');
+  const deleteStory = storyDialog.getByRole('button', { name: 'このストーリーを削除する' });
+  const confirm = page.getByRole('dialog', { name: 'ストーリーを削除する' });
+
+  // 別の画面でリーダーから外された形にする。主ボタンは押せず、押しても送らない
+  let deletes = 0;
+  await page.route('**/story-delete', async (route) => {
+    deletes++;
+    await route.continue();
+  });
+  await page.route('**/story-get', async (route) => {
+    const response = await route.fetch();
+    const body = (await response.json()) as Record<string, unknown>;
+    await route.fulfill({ response, json: { ...body, can_delete: false } });
+  });
+  await deleteStory.click();
+  const submit = confirm.getByRole('button', { name: '削除する' });
+  await expect(confirm.getByRole('alert')).toHaveText('作った人とリーダーだけが削除できます');
+  await expect(submit).toHaveAttribute('aria-disabled', 'true');
+  await submit.click({ force: true });
+  await expect(confirm).toBeVisible();
+  expect(deletes).toBe(0);
+  await confirm.getByRole('button', { name: 'やめる' }).click();
+  await expect(confirm).toBeHidden();
+  await page.unroute('**/story-get');
+
+  // 読み直しの応答が届く前に確認を閉じ、その後に 404 が届いても、元のダイアログは開いたまま
+  let release: () => void = () => {};
+  const held = new Promise<void>((resolve) => (release = resolve));
+  let answered: () => void = () => {};
+  const done = new Promise<void>((resolve) => (answered = resolve));
+  await page.route('**/story-get', async (route) => {
+    await held;
+    await route.fulfill({ status: 404, json: { error: { code: 'not_found', message: 'not found' } } });
+    answered();
+  });
+  await deleteStory.click();
+  await expect(confirm).toBeVisible();
+  await confirm.getByRole('button', { name: 'やめる' }).click();
+  await expect(confirm).toBeHidden();
+  release();
+  await done;
+  await page.waitForLoadState('networkidle');
+  await expect(storyDialog).toBeVisible();
+  await expect(deleteStory).toBeFocused();
+  await page.unroute('**/story-get');
+  await page.unroute('**/story-delete');
 });
 
 // seed のワークスペース（受託開発チーム）。エピック「ポイントの交換先を増やす」とストーリーは、管理者のミナトが作った

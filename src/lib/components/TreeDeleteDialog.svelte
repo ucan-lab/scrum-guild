@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { tick } from 'svelte';
   import { invalidateAll } from '$app/navigation';
   import { DELETE_OTHERS_CHILDREN_REASON, type DeleteChildrenMode } from '../../shared/operations/delete-children.ts';
   import { epicDelete, epicGet } from '../../shared/operations/epic/index.ts';
@@ -45,10 +46,15 @@
   let dialog = $state<ReturnType<typeof Dialog>>();
   let target = $state<Target | null>(null);
   let mode = $state<DeleteChildrenMode>('keep');
+  // 削除できるか。読み直しで偽になったら（リーダーから外されたなど）、主ボタンを押せなくする
+  let canDelete = $state(true);
+  // 読み直しで件数が変わったときに status へ出す文
+  let announcement = $state('');
   let loading = $state(false);
   let submitting = $state(false);
   let submitError = $state<string | null>(null);
   let generation = 0;
+  let cancelButton = $state<HTMLButtonElement>();
 
   const ids = $props.id();
   const legendId = `${ids}-children`;
@@ -70,9 +76,11 @@
         current.kind === 'epic'
           ? await callOperation(epicGet, { workspace_id: workspaceId, epic_id: current.id }, { slug })
           : await callOperation(storyGet, { workspace_id: workspaceId, story_id: current.id }, { slug });
-      if (mine !== generation) return;
+      // 確認を閉じた後に届いた応答は捨てる（遅れた 404 で元のダイアログまで閉じない）
+      if (mine !== generation || !open) return;
       if (result.ok) {
         const children = result.data.children;
+        const before = target;
         target = {
           ...current,
           stories: 'stories' in children ? children.stories : 0,
@@ -80,7 +88,26 @@
           canDeleteChildren: result.data.can_delete_children,
         };
         if (!result.data.can_delete_children) mode = 'keep';
-        if (!result.data.can_delete) submitError = t('taskDeleteForbidden', { leader: t('leader') });
+        // 件数が変わったら、取り消せない操作の中身が変わったことを読み上げにも伝える（変わった後の説明の文を status に出す）
+        if (before !== null && (before.stories !== target.stories || before.tasks !== target.tasks)) {
+          announcement = childrenText(target, mode);
+        }
+        canDelete = result.data.can_delete;
+        const forbidden = t('taskDeleteForbidden', { leader: t('leader') });
+        // 削除できるに戻ったら、前の読み直しで出した権限の文だけを消す（送った後の失敗の文は残す）
+        if (!canDelete) submitError = forbidden;
+        else if (submitError === forbidden) submitError = null;
+        // 配下が無くなって選択肢が消えると、そこにあったフォーカスが body に落ちる。描き直した後にやめるボタンへ移す。
+        // 読み終えた状態（主ボタンと status）は、描き直しを待たずに出す
+        loading = false;
+        await tick();
+        if (
+          mine === generation &&
+          open &&
+          (document.activeElement === null || document.activeElement === document.body)
+        ) {
+          cancelButton?.focus();
+        }
       } else if (result.status === 401) {
         await invalidateAll();
       } else if (result.status === 404) {
@@ -96,6 +123,8 @@
     generation++;
     target = next;
     mode = 'keep';
+    canDelete = true;
+    announcement = '';
     submitting = false;
     submitError = null;
     dialog?.show(trigger);
@@ -112,7 +141,7 @@
   }
 
   async function submit(): Promise<void> {
-    if (target === null || submitting || loading) return;
+    if (target === null || submitting || loading || !canDelete) return;
     const current = target;
     const mine = generation;
     submitting = true;
@@ -147,7 +176,22 @@
     }
   }
 
-  const status = $derived(submitting ? t('taskDeleting') : loading ? t('loading') : '');
+  // 配下の扱いの説明。配下が無ければその旨、あれば選んでいる扱いの説明（画面に出す文と同じ）
+  function childrenText(current: Target, children: DeleteChildrenMode): string {
+    const values = { ...words, stories: current.stories, tasks: current.tasks };
+    const empty = current.kind === 'epic' ? current.stories === 0 : current.tasks === 0;
+    if (empty) {
+      return current.kind === 'epic'
+        ? t('epicDeleteNoChildren', { story: t('story') })
+        : t('storyDeleteNoChildren', { task: t('task') });
+    }
+    if (current.kind === 'epic') {
+      return children === 'keep' ? t('epicDeleteKeepHint', values) : t('epicDeleteAllHint', values);
+    }
+    return children === 'keep' ? t('storyDeleteKeepHint', values) : t('storyDeleteAllHint', values);
+  }
+
+  const status = $derived(submitting ? t('taskDeleting') : loading ? t('loading') : announcement);
   const counts = $derived({ stories: target?.stories ?? 0, tasks: target?.tasks ?? 0 });
   const words = $derived({
     epic: t('epic'),
@@ -218,10 +262,10 @@
   {/if}
   <span class="visually-hidden" role="status">{status}</span>
   {#snippet footer(close)}
-    <button class="btn is-quiet" type="button" aria-disabled={submitting} onclick={close}
+    <button class="btn is-quiet" type="button" aria-disabled={submitting} onclick={close} bind:this={cancelButton}
       >{t('taskDeleteCancel')}</button
     >
-    <button class="btn is-danger" type="button" aria-disabled={submitting || loading} onclick={submit}>
+    <button class="btn is-danger" type="button" aria-disabled={submitting || loading || !canDelete} onclick={submit}>
       {submitting ? t('taskDeleting') : t('taskDeleteConfirm')}
     </button>
   {/snippet}
