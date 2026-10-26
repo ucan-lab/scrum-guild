@@ -97,7 +97,7 @@ jobs:
     strategy:
       # 1つが落ちても残りを走らせ、落ちたテストを一度に見られるようにする
       fail-fast: false
-      # 数を変えるときは docs/development.md の「CI」の e2e の行（--shard の分母と成果物の名前）も直す
+      # --shard の分母は strategy.job-total で追従する。数を変えるときは docs/development.md の「CI」の e2e の行（/3 と成果物の名前）も直す
       matrix:
         shard: [1, 2, 3]
     env:
