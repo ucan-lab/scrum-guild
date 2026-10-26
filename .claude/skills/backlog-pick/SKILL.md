@@ -1,9 +1,9 @@
 ---
-name: next-up
-description: 進捗を確かめ、今着手できる Issue を選んで、並べて進めるレーンとセッションに貼るプロンプトを出す。「進捗を確認して」「次は何をやる」「今着手できるもの」「並べて進めたい」と言われたときに使う。1つの Issue を進めるのは issue-run、進捗の図を直すのは progress-chart。
+name: backlog-pick
+description: 進捗を確かめ、今着手できる Issue を選んで、並べて進めるレーンとセッションに貼るプロンプトを出す。「進捗を確認して」「次は何をやる」「今着手できるもの」「並べて進めたい」と言われたときに使う。1つの Issue を進めるのは increment-build、進捗の図を直すのは progress-chart。
 ---
 
-# next-up
+# backlog-pick
 
 ## 仕事
 
@@ -25,7 +25,7 @@ gh api "repos/{owner}/{repo}/issues?state=open&per_page=100" --paginate --jq '.[
 gh api "repos/{owner}/{repo}/pulls?state=open&per_page=100" --jq '.[] | {number, head: .head.ref, refs: ([.body // "" | scan("(?i)(?:closes|fixes|refs) #([0-9]+)") | .[0]])}'
 ```
 
-`blocked` は、開いている前に要るもの（blocked by）の数で、閉じたものは数えない。前に要るものは GitHub の依存関係だけを正とし、本文の表から読まない（`issue-plan` が登録のときにつなぐ）。
+`blocked` は、開いている前に要るもの（blocked by）の数で、閉じたものは数えない。前に要るものは GitHub の依存関係だけを正とし、本文の表から読まない（`backlog-add` が登録のときにつなぐ）。
 
 Issue を指す開いた PR は、ブランチ名の `<番号>-` の先頭か、本文の `Closes #<番号>` と `Refs #<番号>` で引く。クラウドのセッションのブランチ（`claude/*`）は番号を持たないため。
 
@@ -40,7 +40,7 @@ Issue を指す開いた PR は、ブランチ名の `<番号>-` の先頭か、
 | 要件整理中 | `status:refining` |
 | 待ち | `blocked > 0`、または親（`parent` をたどった先のどれか）が待ち |
 | 子を進める | 子を持つ `story` と `epic`。中身は子の Issue が入る組で見る |
-| 分ける前 | 子の無い `epic`。`issue-plan` の書くモードで分けるレーンの候補 |
+| 分ける前 | 子の無い `epic`。`backlog-add` の書くモードで分けるレーンの候補 |
 | 着手できる | 残り。タスクと、子の無い `story` |
 
 待ちの Issue が待っている番号は、次で引く。
@@ -63,7 +63,7 @@ gh api repos/{owner}/{repo}/issues/<番号>/dependencies/blocked_by --jq '[.[] |
 - `needs-human` の Issue は、人が差分を読む量を添える
 
 人の番が多いときは、着手を足すより人の番を先に片付ける案を推す。並べるほど、人が読む PR が増えるため。
-次に来るのが分ける前のエピックなら、`issue-plan` で分けるレーンを1本入れる。
+次に来るのが分ける前のエピックなら、`backlog-add` で分けるレーンを1本入れる。
 
 ### 4. 聞く
 
@@ -75,13 +75,13 @@ gh api repos/{owner}/{repo}/issues/<番号>/dependencies/blocked_by --jq '[.[] |
 人が選んだレーンごとに、新しいセッションに貼るプロンプトをコードブロックで出す。レーンには、手元の開発用のサーバーのポートをずらす `DEV_PORT_OFFSET` を 10 ずつ（0、10、20）割り当てる。既にあるワークツリーで使っている値は避ける。
 
 ```text
-/issue-run <番号>
+/increment-build <番号>
 DEV_PORT_OFFSET=<値>。並行: #<相手の番号>（<相手が変えるもの>）。重なりうるファイル: <パス、無ければ「なし」>
-<2つ目を受け持つなら>終えたら同じセッションで /issue-run <次の番号>
+<2つ目を受け持つなら>終えたら同じセッションで /increment-build <次の番号>
 ```
 
-分けるレーンは `issue-plan の書くモードで #<番号> をストーリーとタスクに分けて` とする。
-このセッションで始めるレーンがあれば、Skill ツールで `issue-run` を起動する。
+分けるレーンは `backlog-add の書くモードで #<番号> をストーリーとタスクに分けて` とする。
+このセッションで始めるレーンがあれば、Skill ツールで `increment-build` を起動する。
 
 ## 出力
 

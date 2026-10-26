@@ -11,7 +11,7 @@ description: 進んだベースブランチを fetch して、現在のブラン
 終わりは「ベースの最新が HEAD の祖先になり、`--force-with-lease` での push を終えた」状態。
 merge では取り込まない（理由: PR の履歴に merge のコミットを残さない）。
 
-force push はこのスキルの中だけで行う。PR の指摘への対応と self-review の修正は、通常の push で積む。
+force push はこのスキルの中だけで行う。PR の指摘への対応と done-check の修正は、通常の push で積む。
 
 ## 入力
 

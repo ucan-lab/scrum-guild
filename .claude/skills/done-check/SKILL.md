@@ -1,9 +1,9 @@
 ---
-name: self-review
+name: done-check
 description: 自分の差分を点検する。Issue の完了条件との突き合わせ、規約違反の確認、レビューエージェントによる指摘出しを行い、直してからコミットする。PR 作成後は、rebase・push・CI・レビューコメントの解決を確認してから点検する。「セルフレビュー」「PR 前に見て」「実装終わったので確認して」と言われたときに使う。PR を作る段階は pr-create、PR に付いた指摘への対応は pr-feedback を使う。
 ---
 
-# self-review
+# done-check
 
 ## 仕事
 
@@ -51,7 +51,7 @@ gh api "repos/{owner}/{repo}/commits/<head_sha>/check-runs" --jq '.check_runs[] 
 ```
 
 `review` は AI レビュー（`.github/workflows/ai-review.yml`）のチェックで、助言なので `ci-ok` に含めず、落ちてもマージの判定を止めない（`docs/development.md` の「CI」）。
-`review` の `status` と `conclusion` が何でも、この前提は満たすものとして扱う（理由: 回した先の pr-feedback も `review` の失敗は直さないので、数に入れると self-review が先へ進めない）。
+`review` の `status` と `conclusion` が何でも、この前提は満たすものとして扱う（理由: 回した先の pr-feedback も `review` の失敗は直さないので、数に入れると done-check が先へ進めない）。
 実行中の `review` が後から付ける指摘は、pr-feedback の手順 1 が完了を待って拾う。
 
 ```bash
@@ -101,7 +101,7 @@ Issue の「確認方法」を自分で実行し、完了条件を満たすか�
 | 変更の及ぶ先 | 確かめ方 |
 | --- | --- |
 | API | `wrangler dev` を立て、Cookie を付けてリクエストを送り、レスポンスと D1 の中身を見る。組織をまたぐ操作は、別の組織の ID で呼んで 404 になることも見る |
-| 画面 | 手元は `terminal-browser` で Cookie を置いて開き、操作して表示と状態を見る。ブラウザの無いクラウドのセッションは、変えた画面の e2e のファイルを走らせてスクリーンショットを見る（絞り方は `issue-run` の受け入れ条件と同じ） |
+| 画面 | 手元は `terminal-browser` で Cookie を置いて開き、操作して表示と状態を見る。ブラウザの無いクラウドのセッションは、変えた画面の e2e のファイルを走らせてスクリーンショットを見る（絞り方は `increment-build` の受け入れ条件と同じ） |
 | 挙動の変わらない変更（リファクタ、型、ドキュメント、設定） | 手順 4 で足りる。省いた旨を出力に書く |
 
 動かせなかった項目は、確かめられなかった項目として出力に書く（理由: 確認済みと書くと、マージの判定で人が動作確認を省く）。
@@ -152,7 +152,7 @@ PR があるときは、手順 7 の直しをすべてコミットしてから�
 ### 9. pr-create に引き継ぐ
 
 PR 作成前なら、Skill ツールで `pr-create` を起動する。
-pr-create の手順から呼ばれた self-review なら、起動せずに pr-create の続きに戻る（互いに呼び合って止まらなくなるため）。
+pr-create の手順から呼ばれた done-check なら、起動せずに pr-create の続きに戻る（互いに呼び合って止まらなくなるため）。
 PR 作成後はここで終える。
 
 ## 出力

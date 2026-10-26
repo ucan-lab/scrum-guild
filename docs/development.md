@@ -164,7 +164,7 @@
 
 ## 初版の作る順
 
-最初の一本は、運用者が組織を作る → GitHub でログインする → ワークスペースを作る → タスクを1件作って完了する、の一本道にする（2026-10-22 に決めた）。認証、組織の分離、操作の定義、`batch()` での書き込み、画面を一度に通し、CI/CD と本番へのデプロイもこの一本に含める。Issue への分け方は `issue-plan` で決める。目安は次のとおり。
+最初の一本は、運用者が組織を作る → GitHub でログインする → ワークスペースを作る → タスクを1件作って完了する、の一本道にする（2026-10-22 に決めた）。認証、組織の分離、操作の定義、`batch()` での書き込み、画面を一度に通し、CI/CD と本番へのデプロイもこの一本に含める。Issue への分け方は `backlog-add` で決める。目安は次のとおり。
 
 1. 土台: pnpm、SvelteKit の SPA モード、Hono、wrangler の設定、ESLint と Prettier、`CLAUDE.md` の「コマンド」、セキュリティのヘッダー、`/api/health`。Claude の設定とフック（下の「Claude の設定とフック」）は先に入れる
 2. CI と CD: `ci-ok`、Workers Builds とデプロイのスクリプト、煙のテスト、`docs/operations.md`
@@ -215,7 +215,7 @@ GitHub は無料のプランのまま使う（2026-10-23 に決めた）。無�
 - 1つのセッションが受け持つ Issue は、始めてから終えるまでで2つまでにする。受け持った Issue の PR がマージされるか閉じられたら、次の Issue は新しいセッションで始める。4つを続けて回したセッションは途中で会話が要約され、2つを並べたセッションは要約されずに済んだ。決めたことと申し送りは Issue の本文かコメントに書き、会話だけに残さない
 - 着手したら、Issue にブランチ名とセッションの識別をコメントで残す。並べたセッションのどれが受け持っているかを、人が Issue から引けるようにするため。手元のセッションはスクラッチパッドのパス（`.../<セッション ID>/scratchpad`）の `scratchpad` の1つ上の名前を、クラウドのセッションはセッションの URL を書く
 - ベースが進んだら `sync-base` で rebase して取り込み、`--force-with-lease` で push する（2026-10-25 に決めた）。PR のコミットをベースの最新の上に一直線に並べ、コミットごとの差分にベースの変更を混ぜないため。squash merge なので `main` の履歴には影響しない
-- force push はベースの取り込み（`sync-base`、スタック PR の `gh stack`）のときだけ使う。PR の指摘への対応と self-review の修正は通常の push で積む。取り込みの force push でもレビュワーが前に読んだコミットは書き換わるので、レビューの途中なら取り込んだことを PR にコメントで残す
+- force push はベースの取り込み（`sync-base`、スタック PR の `gh stack`）のときだけ使う。PR の指摘への対応と done-check の修正は通常の push で積む。取り込みの force push でもレビュワーが前に読んだコミットは書き換わるので、レビューの途中なら取り込んだことを PR にコメントで残す
 
 ### ワークツリーで作業する
 
@@ -285,10 +285,10 @@ GitHub は無料のプランのまま使う（2026-10-23 に決めた）。無�
 
 | 工程 | 担い手 | 道具 |
 | --- | --- | --- |
-| 何を作るか、仕様の判断 | 人 | `grill-me` で詰め、`docs/` に書く |
-| Issue と完了条件 | AI が書き、人が確かめる | `issue-plan` |
+| 何を作るか、仕様の判断 | 人 | `backlog-refine` で詰め、`docs/` に書く |
+| Issue と完了条件 | AI が書き、人が確かめる | `backlog-add` |
 | 実装とテスト | AI（手元のセッションはワークツリー、クラウドのセッションはそのままの環境。受け持つ Issue の数は「並行して作業するときの決まり」） | `CLAUDE.md`、リポジトリのスキル |
-| 点検 | 実装したのとは別のエージェント | `self-review`、CI の AI レビュー |
+| 点検 | 実装したのとは別のエージェント | `done-check`、CI の AI レビュー |
 | マージ | パスの規則と人 | 下の「マージの判定」 |
 
 ### AI の誤りを機械で止める
@@ -331,19 +331,32 @@ Bash の判定を `permissions.deny` に置かないのは、規則が前方一�
 
 | スキル、エージェント | 扱い |
 | --- | --- |
-| `issue-plan`、`pr-create`、`pr-feedback`、`self-review`、`grill-me`、`ui-polish`、`japanese-tech-writing` | 残す |
+| `backlog-add`、`pr-create`、`pr-feedback`、`done-check`、`backlog-refine`、`ui-polish`、`japanese-tech-writing` | 残す |
 | `sync-base` | `rebase-base` をこのリポジトリ向けに書き換えた。rebase で取り込み、lease の SHA を明示した `--force-with-lease` で push まで行う |
 | `d1-migration` | 足した（2026-10-25）。戻せないマイグレーションを書く手順。変更を広げると縮めるに分け、縮める変更は先に使わなくする版を出してから別の PR で行う。マイグレーションを当てた後に `wrangler rollback` しても、古いコードが新しいスキーマで動くようにするため。並行の確かめ、`data-model.md` を同じ PR で直すこと、表の作り直し、空の D1 と行の入った D1 での確かめも扱う |
 | `requirements` | 外した。Backlog の要望を要件に落とす受託向けのスキルで、このリポジトリでは使い道が薄い |
 | `database-reviewer` | D1（SQLite）向けに書き直した。`batch()` の原子性、共通の表と組織の中の表の混在、組織での絞り込み、マイグレーションを戻せるか、インデックスを見る。観点を当てた後に、PR の保証を疑ってデータを壊す筋書きを組み立てる |
 | `code-reviewer`、`security-reviewer` | PHP と Laravel の記述を外し、Workers、Hono、D1、R2、Svelte を前提にした。どちらも `multi-tenant.md` と `cloudflare-workers.md` を読む。観点を当てた後に、PR の主張を疑って差分を壊す筋書きを組み立てる（`security-reviewer` は攻撃者を決めて組み立てる） |
-| `finding-verifier` | 足した。CRITICAL と HIGH の指摘の前提をコードと文書で確かめ、成り立たないと示せたものだけを反証とする。CI の AI レビューはすべての CRITICAL と HIGH を、`self-review` は直さないつもりのものを渡す |
+| `finding-verifier` | 足した。CRITICAL と HIGH の指摘の前提をコードと文書で確かめ、成り立たないと示せたものだけを反証とする。CI の AI レビューはすべての CRITICAL と HIGH を、`done-check` は直さないつもりのものを渡す |
 | `ui-reviewer` | 足した。画面の差分のコードを `docs/design.md` とチェックリストの `ui.md` に突き合わせ、色の役割、テーマ、言葉の切り替え、状態、アクセシビリティ、狭い幅での崩れを見る。観点を当てた後に、PR の確認を疑って画面を壊す筋書きを組み立てる。撮った画像での採点は `screen-review` が受け持つ |
-| `next-up` | 足した（2026-10-26）。開いている Issue と PR から着手できるものを選び、変えるファイルが重ならないレーンに組み、セッションに貼るプロンプトを出す。前に要るものは GitHub の依存関係（blocked by）だけから読む |
-| `issue-run` | 足した（2026-10-26）。1つの Issue を、着手前の確かめ、`grill-me`、Issue への記録、ワークツリー、`ucan:implementer` への委譲を経て `self-review` に渡す |
+| `backlog-pick` | 足した（2026-10-26）。開いている Issue と PR から着手できるものを選び、変えるファイルが重ならないレーンに組み、セッションに貼るプロンプトを出す。前に要るものは GitHub の依存関係（blocked by）だけから読む |
+| `increment-build` | 足した（2026-10-26）。1つの Issue を、着手前の確かめ、`backlog-refine`、Issue への記録、ワークツリー、`ucan:implementer` への委譲を経て `done-check` に渡す |
 | `progress-chart` | 足した（2026-10-26）。人の手元の進捗の図（claude.ai の Artifact）を GitHub の状態に合わせて直す。Artifact のツールのある手元のセッションでだけ使う |
 | `add-operation` | 足した（2026-10-25）。操作の定義を1つ足す型紙。定義、処理、一覧への登録、組織の分離のテスト用の関数、権限のテスト、画面から呼ぶ口までを一続きで作る |
 | `.claude/checklists/` | `cloudflare-workers.md` と `multi-tenant.md` を足した。`database.md` を D1 向けに書き直し、`languages/typescript.md` から使わないフレームワーク（Vue、Nuxt、Express、Sequelize）の節を外し、SvelteKit の節を SPA モード向けに直した |
+
+### 名前の付け方
+
+工程のスキルは、扱うスクラムの成果物で名前を付ける（2026-10-26 に決めた。#306）。名前から工程の順が `backlog-` → `increment-` → `done-` → `pr-` と読めるようにするため。開発の流れにスプリントは無いので、スクラムのイベント名（`sprint-plan` など）は使わない。スクラムが決めていない技術の作業（PR）は `pr-` のまま置く。道具や型紙のスキル（`sync-base`、`d1-migration`、`add-operation`、`ui-polish` など）は工程ではないので、この付け方に合わせない。
+
+| 工程 | スキル | 成果物 | 前の名前 |
+| --- | --- | --- | --- |
+| 起票 | `backlog-add` | プロダクトバックログに項目を積む | `issue-plan` |
+| 要件整理 | `backlog-refine` | プロダクトバックログの項目を詰める（リファインメント） | `grill-me` |
+| 着手の選択 | `backlog-pick` | 次に着手する項目を選ぶ | `next-up` |
+| 実装 | `increment-build` | 項目をインクリメントにする | `issue-run` |
+| 点検 | `done-check` | 完成の定義を満たすかを確かめる | `self-review` |
+| PR 作成、指摘への対応 | `pr-create`、`pr-feedback` | スクラムの外の技術の作業 | 変えていない |
 
 ### 新しく作るもの
 
@@ -359,11 +372,11 @@ Bash の判定を `permissions.deny` に置かないのは、規則が前方一�
 ## 開発の流れ
 
 1. アイディアは `docs/ideas.md` か Issue に置く
-2. `issue-plan` で Issue を書く。エピック、ストーリー、タスクのどれかと親を決め（下の「Issue の運用」）、完了条件、触る領域、マイグレーションの有無を書く
-3. 人が着手を決める。ほかの Issue と並べるときは、上の「並行して作業するときの決まり」で変えるファイルの重なりを見る。`next-up` が、着手できるものとレーンの案、セッションに貼るプロンプトを出す。手順 4 から 6 は `issue-run` が一続きで進める
-4. Issue の本文に書かれていない難所があれば、`grill-me` で人と詰め（詰める間は `status:refining`、下の「Issue の状態」）、決めたことを `issue-plan` で Issue の本文に足す。後の Issue に関わることはその Issue にコメントで申し送る。難所が無い Issue と、人に聞けない実行では飛ばし、置いた前提を PR に書く
+2. `backlog-add` で Issue を書く。エピック、ストーリー、タスクのどれかと親を決め（下の「Issue の運用」）、完了条件、触る領域、マイグレーションの有無を書く
+3. 人が着手を決める。ほかの Issue と並べるときは、上の「並行して作業するときの決まり」で変えるファイルの重なりを見る。`backlog-pick` が、着手できるものとレーンの案、セッションに貼るプロンプトを出す。手順 4 から 6 は `increment-build` が一続きで進める
+4. Issue の本文に書かれていない難所があれば、`backlog-refine` で人と詰め（詰める間は `status:refining`、下の「Issue の状態」）、決めたことを `backlog-add` で Issue の本文に足す。後の Issue に関わることはその Issue にコメントで申し送る。難所が無い Issue と、人に聞けない実行では飛ばし、置いた前提を PR に書く
 5. 着手したことを Issue にコメントで残し（上の「並行して作業するときの決まり」）、手元のセッションは Issue ごとのワークツリーで（切ると `status:in-progress` が付く）、クラウドのセッションはそのままの環境で（`status:in-progress` を自分で付ける。下の「Issue の状態」）実装する（上の「ワークツリーで作業する」）。テストは実装と一緒に書く
-6. `self-review` で点検し、`pr-create` で PR を出す
+6. `done-check` で点検し、`pr-create` で PR を出す
 7. CI と AI レビューを待ち、指摘には `pr-feedback` で応える
 8. セッションが、Issue と PR でしたことをその場限りの Artifact の説明資料で見せ、人が判断すべきことと、マージするかを `AskUserQuestion` で聞く
 9. 下の「マージの判定」に従って、人がマージする。人の指示があれば、セッションがマージする
@@ -374,7 +387,7 @@ Bash の判定を `permissions.deny` に置かないのは、規則が前方一�
 待ちを増やさないための決まり（2026-10-26 に決めた。#247）。
 
 - PR への push は、直しをすべてコミットしてから1回にまとめる。コミットは指摘ごとに分けたままでよい。push のたびに CI のジョブがすべて走り直し、前の実行の取り消しが終わるまで次の実行も始まらないため（PR #246 の run 193 から 194 で約75秒待った）
-- 手元の e2e は、変えた画面と流れに関わるファイルだけを走らせる（`pnpm e2e e2e/members.test.ts` のように渡す）。e2e のファイルは画面ごとに分かれているので、API だけを変えたときは、その操作を呼ぶ画面のファイルを選ぶ。全件は CI が PR ごとに走らせる。この決まりの本文はここに置き、`CLAUDE.md` と `issue-run` からは参照する
+- 手元の e2e は、変えた画面と流れに関わるファイルだけを走らせる（`pnpm e2e e2e/members.test.ts` のように渡す）。e2e のファイルは画面ごとに分かれているので、API だけを変えたときは、その操作を呼ぶ画面のファイルを選ぶ。全件は CI が PR ごとに走らせる。この決まりの本文はここに置き、`CLAUDE.md` と `increment-build` からは参照する
 - 次のような、どの画面にも効くものを変えたときは、手元でも全件を走らせる。共通の枠（`src/routes/+layout.svelte`、`src/routes/[slug]/+layout.svelte`）、`src/lib/` の共通の部品と `src/lib/components/`、言葉の辞書、テーマ、ログインと認証（`src/server/auth/`）、権限の検査（`src/server/operations/register.ts` など）、セキュリティのヘッダーと CSP（`scripts/headers.ts`）、`seed/`。どれに当たるか迷ったら全件を走らせる
 
 ### マージの判定
@@ -640,12 +653,12 @@ Issue はエピック、ストーリー、タスクの3階層にし、親子は�
 - ストーリーの受け入れ条件は、利用者（土台のストーリーは運用者か開発者）から見えるふるまいで書く（「管理者として、招待の URL から Google でログインして組織に入れる」）。テーブルや関数の名前で書かない
 - 利用者から見えるふるまいにならない土台の作業（マイグレーション、入口、CI）は、土台のストーリーにまとめる。受け入れ条件は、運用者か開発者が確かめられるふるまいで書く（「運用者として、本番の `/api/health` で DB に届くことを確かめられる」）
 - 1つの PR で収まるストーリーは、タスクに分けずにストーリーのまま実装してよい。そのときはタスクの節（やること、確認方法、マイグレーション）もストーリーに書き、PR では閉じず、人が確かめて閉じる
-- 前に要るものは、待つ側の Issue に GitHub の依存関係（blocked by）でつなぐ（2026-10-26 に決めた）。本文の「前に要るもの」の表は人が読むためのもので、着手できるかは依存関係で判定する（`next-up`）。Issue の一覧の `issue_dependencies_summary.blocked_by` は開いている依存だけを数えるので、0 なら前に要るものはすべて閉じている。つなぐのは `issue-plan` の登録の手順
+- 前に要るものは、待つ側の Issue に GitHub の依存関係（blocked by）でつなぐ（2026-10-26 に決めた）。本文の「前に要るもの」の表は人が読むためのもので、着手できるかは依存関係で判定する（`backlog-pick`）。Issue の一覧の `issue_dependencies_summary.blocked_by` は開いている依存だけを数えるので、0 なら前に要るものはすべて閉じている。つなぐのは `backlog-add` の登録の手順
 - 親の無いタスクも置いてよい（不具合、定期の確認で立つ Issue、`d1-migration` の縮める Issue）。PR のマージで閉じる。この運用を決める前に立てた Issue は、着手するときに親を決めてつなぐ
 - PR の本文は、タスクを `Closes #<番号>` で指す。ストーリーとエピックは `Refs #<番号>` で指し、`Closes` を使わない。マージで閉じると、人が受け入れ条件を確かめる前に閉じるため
 - ストーリーの最後のタスクの PR では、`pr-feedback` の説明資料で親のストーリーの受け入れ条件を示し、人に確かめて閉じてもらう
 - ラベル: 階層の `epic`、`story`、状態の `status:refining`、`status:in-progress`（下の「Issue の状態」）、人が差分を読む `needs-human`、マイグレーションの `migration`、領域の `area:auth`、`area:organization`、`area:workspace`、`area:task`、`area:import`、`area:attachment`、`area:ui`、`area:infra`、`area:docs`、不具合の `bug`、AI レビューをもう一度回す `ai-review`。GitHub に作り、`bug` 以外の既定のラベルは消した（2026-10-22）。重複や対応しないものは、ラベルではなく Issue を閉じるときの理由で表す
-- テンプレート: タスクは `.github/ISSUE_TEMPLATE/plan.md`、ストーリーは `.github/ISSUE_TEMPLATE/story.md`。`issue-plan` が書く形と同じにする
+- テンプレート: タスクは `.github/ISSUE_TEMPLATE/plan.md`、ストーリーは `.github/ISSUE_TEMPLATE/story.md`。`backlog-add` が書く形と同じにする
 - 領域のラベルは、並行して作業するときのぶつかりを見分けるのにも使う。同じ領域の PR を同時に何本も開かない。ラベルが違っても重なる共通の層は、「並行して作業するときの決まり」で変えるファイルを比べて見る
 
 ### Issue の状態
@@ -654,7 +667,7 @@ Issue はエピック、ストーリー、タスクの3階層にし、親子は�
 
 | 状態 | 表し方 | 付け替えるきっかけ |
 | --- | --- | --- |
-| 要件整理中 | `status:refining` | `grill-me` で Issue を詰め始めたとき、`issue-plan` の書くモードで既にある Issue の計画を書き始めたとき。セッションが付ける |
+| 要件整理中 | `status:refining` | `backlog-refine` で Issue を詰め始めたとき、`backlog-add` の書くモードで既にある Issue の計画を書き始めたとき。セッションが付ける |
 | 作業中 | `status:in-progress` | 番号付きのブランチ（`<番号>-<名前>`）のワークツリーを新しく切ったとき。`.githooks/post-checkout` が付け、`status:refining` を外す。クラウドのセッションはワークツリーを切らないので、着手したときに `gh api -X POST repos/{owner}/{repo}/issues/<番号>/labels -f 'labels[]=status:in-progress'` で付け、`status:refining` を外す |
 | レビュー中 | その Issue を指す開いた PR があること。ラベルは使わない | PR の作成 |
 | 済み | Issue が閉じたこと | タスクは PR のマージ、ストーリーとエピックは人が閉じる |
