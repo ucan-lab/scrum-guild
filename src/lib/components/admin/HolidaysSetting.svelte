@@ -2,6 +2,8 @@
   import { tick } from 'svelte';
   import { page } from '$app/state';
   import {
+    HOLIDAY_FIRST_YEAR,
+    HOLIDAY_LAST_YEAR,
     HOLIDAY_NAME_MAX_LENGTH,
     HOLIDAYS_PER_REQUEST,
     parseHolidayPaste,
@@ -14,6 +16,7 @@
   } from '../../../shared/operations/organization/index.ts';
   import type { OutputOf } from '../../../shared/operations/define.ts';
   import { callOperation } from '../../api.ts';
+  import { problemLineText, remainingPasteText, visibleProblems } from '../../holiday-paste.ts';
   import { isUnauthenticated, loginUrl } from '../../login-redirect.ts';
   import { showToast } from '../../toast.svelte.ts';
   import { t } from '../../vocabulary.svelte.ts';
@@ -25,9 +28,10 @@
 
   // 組織の管理の画面（admin.html）の組織の休日の節。読み込みの状態は SectionLoad、その表示は SectionBoundary に任せる。
   // 貼り付けた文字は src/shared/holiday.ts の parseHolidayPaste で行ごとに読み、正しい行だけを送る（API も同じ決まりで検証し直す）。
-  // 形の合わない行は「登録する」を押した後に、行の番号と理由を欄の下に出す。送れたら、欄には直す行（重なった日付の行は除く）だけを残す。
+  // 形の合わない行は「登録する」を押した後に、行の番号と理由を欄の下に出す（10 行まで。読み上げの領域には要約だけを入れる）。
+  // 送れたら、欄には直す行（重なった日付の行は除く）だけを、送った時点の解析の結果から残す。
   // 正しい行が上限を超えたら送らず、分けるよう示す。削除は確かめのダイアログを挟まない（入れ直せるため）。
-  // 送っている間は、「登録する」とどの行の削除も aria-disabled にして押しても無視する。登録と削除の後は一覧を読み直す
+  // 送っている間は、欄を readonly に、「登録する」とどの行の削除を aria-disabled にして押しても無視する。登録と削除の後は一覧を読み直す
   let { slug }: { slug: string } = $props();
 
   type Holiday = OutputOf<typeof organizationHolidayList>['holidays'][number];
@@ -51,6 +55,8 @@
   const parsed = $derived(parseHolidayPaste(text));
   const problems = $derived(attempted ? parsed.problems : []);
   const invalid = $derived(problems.length > 0 || submitError !== null);
+  // 一覧に出すのは 10 行まで。超えた分は「ほか n 行」にまとめる
+  const shownProblems = $derived(visibleProblems(problems));
 
   const section = new SectionLoad(
     () => callOperation(organizationHolidayList, {}, { slug: currentSlug }),
@@ -77,6 +83,8 @@
         return t('holidayProblemInvalidDate');
       case 'no_such_date':
         return t('holidayProblemNoSuchDate');
+      case 'out_of_range':
+        return t('holidayProblemOutOfRange', { first: HOLIDAY_FIRST_YEAR, last: HOLIDAY_LAST_YEAR });
       case 'too_long':
         return t('holidayProblemTooLong', { max: HOLIDAY_NAME_MAX_LENGTH });
       case 'invalid_character':
@@ -91,21 +99,15 @@
     if (text.trim() === '') attempted = false;
   }
 
-  // 送れた後に欄へ残す行。直せば登録できる行だけで、重なった日付の行（前の行の日付を登録した）は落とす
-  function remainingText(): string {
-    return parsed.problems
-      .filter((problem) => problem.reason !== 'duplicate')
-      .map((problem) => problem.text)
-      .join('\n');
-  }
-
   async function submit(): Promise<void> {
     if (busy !== null) return;
     attempted = true;
     submitError = null;
-    const toSend = parsed.holidays;
+    // 送った時点の解析の結果。送れた後に欄へ残す行も、この結果から作る（欄は送っている間 readonly にするが、それに頼らない）
+    const snapshot = parsed;
+    const toSend = snapshot.holidays;
     if (toSend.length === 0) {
-      if (parsed.problems.length === 0) submitError = t('holidayNothingToAdd');
+      if (snapshot.problems.length === 0) submitError = t('holidayNothingToAdd');
       return;
     }
     if (toSend.length > HOLIDAYS_PER_REQUEST) {
@@ -123,7 +125,7 @@
           skipped === 0 ? t('holidayAdded', { added }) : t('holidayAddedWithSkipped', { added, skipped }),
           'check',
         );
-        text = remainingText();
+        text = remainingPasteText(snapshot.problems);
         if (text === '') attempted = false;
         await section.load();
       } else if (isUnauthenticated(result)) {
@@ -153,8 +155,14 @@
         window.location.assign(loginUrl(page.url));
         return;
       }
-      if (result.ok) showToast(t('holidayDeleted', { date: holiday.holiday_on }), 'check');
-      else if (result.status === 404) showToast(t('holidayAlreadyDeleted', { date: holiday.holiday_on }), 'alert');
+      if (result.ok) {
+        showToast(
+          holiday.name === null
+            ? t('holidayDeleted', { date: holiday.holiday_on })
+            : t('holidayDeletedWithName', { date: holiday.holiday_on, name: holiday.name }),
+          'check',
+        );
+      } else if (result.status === 404) showToast(t('holidayAlreadyDeleted', { date: holiday.holiday_on }), 'alert');
       else showToast(t('holidayDeleteFailed', { date: holiday.holiday_on }), 'alert');
       await section.load();
       if (!section.isCurrent(token)) return;
@@ -181,24 +189,34 @@
       bind:value={text}
       oninput={edited}
       placeholder={t('holidayPastePlaceholder')}
+      readonly={busy === 'adding'}
       aria-invalid={invalid}
       aria-describedby={invalid ? `${errorId} ${hintId}` : hintId}></textarea>
-    <!-- 誤りの領域は常に置き、中身だけを替える（送った後に出た理由を読み上げに伝える） -->
+    <!-- 誤りの要約の領域は常に置き、中身だけを替える（送った後に出た誤りを読み上げに伝える）。
+         行ごとの理由は長くなりうるので、この領域（role="alert"）の外に置き、読み上げには要約だけを伝える -->
     <div id={errorId} role="alert">
       {#if submitError !== null}
         <span class="field-error"><Icon name="alert" />{submitError}</span>
-      {/if}
-      {#if problems.length > 0}
-        <span class="field-error"><Icon name="alert" />{t('holidayProblemsNote')}</span>
-        <ul class="field-error-list" aria-label={t('holidayProblemsLabel')}>
-          {#each problems as problem (problem.line)}
-            <li>
-              {t('holidayProblemLine', { line: problem.line, text: problem.text, reason: reasonText(problem.reason) })}
-            </li>
-          {/each}
-        </ul>
+      {:else if problems.length > 0}
+        <span class="field-error"><Icon name="alert" />{t('holidayProblemsSummary', { count: problems.length })}</span>
       {/if}
     </div>
+    {#if problems.length > 0}
+      <ul class="field-error-list" aria-label={t('holidayProblemsLabel')}>
+        {#each shownProblems.shown as problem (problem.line)}
+          <li>
+            {t('holidayProblemLine', {
+              line: problem.line,
+              text: problemLineText(problem.text),
+              reason: reasonText(problem.reason),
+            })}
+          </li>
+        {/each}
+        {#if shownProblems.hidden > 0}
+          <li>{t('holidayProblemsMore', { count: shownProblems.hidden })}</li>
+        {/if}
+      </ul>
+    {/if}
     <span class="field-hint" id={hintId}>{t('holidayPasteHint')}</span>
   </div>
   <div class="form-actions">

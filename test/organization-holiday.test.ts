@@ -136,6 +136,8 @@ describe('organization-holiday-add と organization-holiday-list', () => {
     ],
     ['暦に無い日付', [{ holiday_on: '2026-02-30', name: null }]],
     ['YYYY/M/D の日付（解析は画面が行う）', [{ holiday_on: '2026/11/3', name: null }]],
+    ['2000 年より前の日付', [{ holiday_on: '1999-12-31', name: null }]],
+    ['2099 年より後の日付', [{ holiday_on: '2100-01-01', name: null }]],
     ['長すぎる名前', [{ holiday_on: '2026-11-03', name: 'あ'.repeat(41) }]],
     ['見えない文字を含む名前', [{ holiday_on: '2026-11-03', name: '文化\u{200B}の日' }]],
   ])('%sは 400 の invalid_input で、何も入れない', async (_, holidays) => {
@@ -144,6 +146,15 @@ describe('organization-holiday-add と organization-holiday-list', () => {
     expect(res.status).toBe(400);
     expect(await errorCodeOf(res)).toBe('invalid_input');
     expect(await readRows(target.organization)).toEqual([]);
+  });
+
+  test('登録できる年の端（2000-01-01 と 2099-12-31）は入る', async () => {
+    const target = await createTarget();
+    const res = await add(target, [
+      { holiday_on: '2000-01-01', name: '元日' },
+      { holiday_on: '2099-12-31', name: null },
+    ]);
+    expect(await res.json()).toEqual({ added: 2, skipped: 0 });
   });
 
   test('一覧は自分の組織の休日だけを返す', async () => {

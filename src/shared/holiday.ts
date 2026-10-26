@@ -5,8 +5,11 @@ import './zod-config.ts';
 import { isCalendarDate } from './due.ts';
 import { BLANK_CHARACTERS, shortTextProblem } from './text-rules.ts';
 
-// 名前は前後の空白を除いて 40 字まで（コードポイントで数える）。DB の CHECK（length(name) <= 40）と同じ上限
+// 名前は前後の空白を除いて 40 字まで（コードポイントで数える）。DB の CHECK（length(name) BETWEEN 1 AND 40）と同じ上限
 export const HOLIDAY_NAME_MAX_LENGTH = 40;
+// 登録できる年の範囲。DB の CHECK（holiday_on BETWEEN '2000-01-01' AND '2099-12-31'）と同じ。年の打ち間違い（1926、2206）を止める
+export const HOLIDAY_FIRST_YEAR = 2000;
+export const HOLIDAY_LAST_YEAR = 2099;
 // 1回の登録で送れる日数。D1 の1文の束縛（100）で区切って文を並べるので、ここは1回の batch の大きさを抑える上限
 export const HOLIDAYS_PER_REQUEST = 100;
 
@@ -15,9 +18,20 @@ export type Holiday = { holiday_on: string; name: string | null };
 // 行ごとの理由。画面は辞書を通して文にする
 // - invalid_date: 日付の形（YYYY-MM-DD か YYYY/M/D）でない
 // - no_such_date: 形は合うが暦に無い日付（2026-02-30）
+// - out_of_range: 暦の日付だが、登録できる年（HOLIDAY_FIRST_YEAR〜HOLIDAY_LAST_YEAR）の外
 // - too_long、invalid_character: 名前が長すぎる、見えない文字（制御文字、ゼロ幅のスペースなど）を含む
 // - duplicate: 同じ日付が前の行にある（前の行を使う）
-export type HolidayLineProblem = 'invalid_date' | 'no_such_date' | 'too_long' | 'invalid_character' | 'duplicate';
+export type HolidayLineProblem =
+  'invalid_date' | 'no_such_date' | 'out_of_range' | 'too_long' | 'invalid_character' | 'duplicate';
+
+// YYYY-MM-DD の文字列は、同じ形どうしなら文字の順が日付の順になる
+const FIRST_DAY = `${HOLIDAY_FIRST_YEAR}-01-01`;
+const LAST_DAY = `${HOLIDAY_LAST_YEAR}-12-31`;
+
+// 暦に存在する YYYY-MM-DD の日付を渡す。登録できる年の中か
+export function isHolidayYearInRange(holidayOn: string): boolean {
+  return holidayOn >= FIRST_DAY && holidayOn <= LAST_DAY;
+}
 
 // line は1から数えた行の番号。text は前後の空白を除いた行
 export type HolidayPasteProblem = { line: number; text: string; reason: HolidayLineProblem };
@@ -65,6 +79,16 @@ function splitLine(line: string): { token: string; rest: string } {
   return { token, rest };
 }
 
+// 日付の後の残りから名前を取り出す（前後の空白はまだ除かない）。
+// 表計算から写した行は、列がタブで続くので、名前の中の最初のタブより後（3列目より後）は捨てる。
+// CSV の名前は、前後の二重引用符を1組だけ外す（"文化の日" は 文化の日）
+function nameFromRest(rest: string): string {
+  const leading = rest.trimStart();
+  const tab = leading.indexOf('\t');
+  const name = (tab === -1 ? leading : leading.slice(0, tab)).trim();
+  return name.length >= 2 && name.startsWith('"') && name.endsWith('"') ? name.slice(1, -1) : name;
+}
+
 // 貼り付けた文字を、1行に1日として読む。空の行は飛ばす。同じ日付が重なれば、前の行を使い、後の行を duplicate にする。
 // 正しい行が HOLIDAYS_PER_REQUEST を超えても、ここでは切らない（画面が分けて送るよう示す）
 export function parseHolidayPaste(text: string): HolidayPaste {
@@ -80,7 +104,8 @@ export function parseHolidayPaste(text: string): HolidayPaste {
     const holidayOn = normalizeDate(token);
     if (holidayOn === null) return problem('invalid_date');
     if (!isCalendarDate(holidayOn)) return problem('no_such_date');
-    const name = normalizeHolidayName(rest);
+    if (!isHolidayYearInRange(holidayOn)) return problem('out_of_range');
+    const name = normalizeHolidayName(nameFromRest(rest));
     const nameProblem = holidayNameProblem(name);
     if (nameProblem !== null) return problem(nameProblem);
     if (seen.has(holidayOn)) return problem('duplicate');
@@ -90,10 +115,10 @@ export function parseHolidayPaste(text: string): HolidayPaste {
   return { holidays, problems };
 }
 
-// 日付は YYYY-MM-DD の暦の日付だけ（API は解析済みの値を受けるので、YYYY/M/D は受けない）
-export const holidayOnSchema = z
-  .string()
-  .refine(isCalendarDate, { message: '休日の日付が使えない（YYYY-MM-DD の暦の日付）' });
+// 日付は YYYY-MM-DD の暦の日付で、登録できる年の中だけ（API は解析済みの値を受けるので、YYYY/M/D は受けない）
+export const holidayOnSchema = z.string().refine((value) => isCalendarDate(value) && isHolidayYearInRange(value), {
+  message: `休日の日付が使えない（YYYY-MM-DD の暦の日付で ${HOLIDAY_FIRST_YEAR}〜${HOLIDAY_LAST_YEAR} 年）`,
+});
 
 // 名前は前後の空白を除き、空（空白だけを含む）は null にそろえる。null はそのまま通す
 export const holidayNameSchema = z

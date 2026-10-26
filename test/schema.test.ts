@@ -626,9 +626,18 @@ describe('organization_holidays', () => {
     await expect(holiday(other.orgId, other.userId, '2026-11-03')).resolves.toBeTruthy();
   });
 
-  test.each([['2026/11/03'], ['2026-02-30'], ['2026-11-3']])('日付 %s は CHECK に当たる', async (holidayOn) => {
+  test.each([['2026/11/03'], ['2026-02-30'], ['2026-11-3'], ['1999-12-31'], ['2100-01-01']])(
+    '日付 %s は CHECK に当たる',
+    async (holidayOn) => {
+      const { orgId, userId } = await workspace();
+      await expect(holiday(orgId, userId, holidayOn)).rejects.toThrow(/CHECK/);
+    },
+  );
+
+  test('2000-01-01 と 2099-12-31 は入る', async () => {
     const { orgId, userId } = await workspace();
-    await expect(holiday(orgId, userId, holidayOn)).rejects.toThrow(/CHECK/);
+    await expect(holiday(orgId, userId, '2000-01-01')).resolves.toBeTruthy();
+    await expect(holiday(orgId, userId, '2099-12-31')).resolves.toBeTruthy();
   });
 
   test('日付は空にできない', async () => {
@@ -636,9 +645,10 @@ describe('organization_holidays', () => {
     await expect(holiday(orgId, userId, null)).rejects.toThrow(/NOT NULL/);
   });
 
-  test('名前は空か 40 字まで。字数はコードポイントで数える', async () => {
+  test('名前は NULL か 1〜40 字。空の文字列は持たない。字数はコードポイントで数える', async () => {
     const { orgId, userId } = await workspace();
     await expect(holiday(orgId, userId, '2026-11-03', null)).resolves.toBeTruthy();
+    await expect(holiday(orgId, userId, '2026-11-06', '')).rejects.toThrow(/CHECK/);
     await expect(holiday(orgId, userId, '2026-11-04', '🎌'.repeat(40))).resolves.toBeTruthy();
     await expect(holiday(orgId, userId, '2026-11-05', 'あ'.repeat(41))).rejects.toThrow(/CHECK/);
   });

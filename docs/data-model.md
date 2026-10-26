@@ -254,14 +254,15 @@
 | 列 | 型 | 制約 | 説明 |
 | --- | --- | --- | --- |
 | organization_id | TEXT | PK、FK organizations | |
-| holiday_on | TEXT | PK、`CHECK (holiday_on IS date(holiday_on))` | |
-| name | TEXT | `CHECK (name IS NULL OR length(name) <= 40)` | 「元日」など。無くてよい（空は NULL） |
+| holiday_on | TEXT | PK、`CHECK (holiday_on IS date(holiday_on) AND holiday_on BETWEEN '2000-01-01' AND '2099-12-31')` | 2000〜2099 年の日付だけ |
+| name | TEXT | `CHECK (name IS NULL OR length(name) BETWEEN 1 AND 40)` | 「元日」など。無くてよい（空は NULL で、空の文字列は持たない） |
 | created_by | TEXT | NOT NULL、FK users | |
 | created_at | TEXT | NOT NULL | |
 
 - 作ったのは `migrations/0004_add_organization_holidays.sql`（#194）。積載量（#66）が、全員の稼働しない日として読む。
 - 索引: `(created_by)`。外部キーの検査。組織ごとの一覧は主キーの先頭の `organization_id` で引く。
 - 操作はどれも管理者だけ（`organization-holiday-list`、`organization-holiday-add`、`organization-holiday-delete`）。どの文も `organization_id` を確かめた組織で絞る。一覧は日付の古い順に全件を返す。
+- 日付は 2000〜2099 年だけ。貼り付けた一覧の年の打ち間違い（1926、2206 など）を、暦にある日付のまま入れないため。画面の解析は理由 `out_of_range` で示し、API は 400 で断り、DB の CHECK も当たる。`YYYY-MM-DD` の形どうしなら文字の順が日付の順なので、`BETWEEN` で比べる。
 - 名前は前後の空白を除いて 40 字まで（コードポイントで数える）。見えない文字（制御文字、ゼロ幅のスペースなど）を含む名前は断る。決まりは `src/shared/text-rules.ts` の `shortTextProblem` と同じで、空だけは通して NULL にする。画面の貼り付けの解析（`src/shared/holiday.ts`）と API の検証が同じ判定を使う。
 - 一括の登録は `INSERT ... ON CONFLICT DO NOTHING ... RETURNING holiday_on` で行う。登録済みの日付は飛ばし、名前も書き換えない。入った件数は `RETURNING` の行で数え、送った件数との差を登録済みとして返す。1回に送れるのは 100 件まで。D1 の1文の束縛は 100 個までなので、5列の行を 20 件ずつの文に分け、全部を1回の `batch()` で送る（途中で落ちれば何も入らない）。同じ送信の中で同じ日付が重なれば 400 で断る。
 - 削除は組織と日付で1行を消す。消えた行が無ければ 404 の `not_found`。確かめのダイアログは挟まない（入れ直せるため）。

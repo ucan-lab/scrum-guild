@@ -36,9 +36,12 @@ test.describe('管理者（あおば開発のミナト）', () => {
     await expect(paste).toHaveAttribute('aria-invalid', 'true');
     const problems = section.getByRole('list', { name: '登録しない行' });
     await expect(problems.getByRole('listitem')).toHaveText(['1 行目「2027-02-30 無い日」: 暦に無い日付です']);
+    // 欄に結ぶのは要約（読み上げの領域）で、行ごとの一覧はその領域の外に置く
     const describedBy = (await paste.getAttribute('aria-describedby')) ?? '';
-    const errorId = describedBy.split(' ')[0]!;
-    await expect(section.locator(`[id="${errorId}"]`)).toContainText('暦に無い日付です');
+    const summary = section.locator(`[id="${describedBy.split(' ')[0]!}"]`);
+    await expect(summary).toHaveAttribute('role', 'alert');
+    await expect(summary).toHaveText('1 行を登録しません。直して、もう一度「登録する」を押してください。');
+    await expect(summary.getByRole('list')).toHaveCount(0);
 
     // 登録済みの日付は飛ばし、名前も書き換えない
     await paste.fill('2027-02-11 書き換えた名前');
@@ -51,7 +54,7 @@ test.describe('管理者（あおば開発のミナト）', () => {
 
     // 消す。確かめのダイアログは挟まず、同じ位置の次の行の削除ボタンへフォーカスが移る
     await section.getByRole('button', { name: '2027-02-11 を消す' }).click();
-    await expect(page.getByRole('status').filter({ hasText: '2027-02-11 を消しました' })).toBeVisible();
+    await expect(page.getByRole('status').filter({ hasText: '2027-02-11（建国記念の日）を消しました' })).toBeVisible();
     await expect(list.getByRole('listitem').filter({ hasText: '2027-02-11' })).toHaveCount(0);
     await expect(section.getByRole('button', { name: '2027-02-23 を消す' })).toBeFocused();
 
@@ -75,6 +78,88 @@ test.describe('管理者（あおば開発のミナト）', () => {
       '1 行目「国民の祝日・休日月日,国民の祝日・休日名称」: 日付の形ではありません（2026-11-03 か 2026/11/3）',
     ]);
     expect(addCalls).toBe(0);
+  });
+
+  test('登録できる行が上限の 100 を超えたら送らず、分けて登録するよう出す', async ({ page }) => {
+    let addCalls = 0;
+    await page.route('**/api/aoba/organization-holiday-add', (route) => {
+      addCalls++;
+      return route.continue();
+    });
+    await page.goto('/aoba/admin');
+    const section = sectionOf(page);
+    const lines = Array.from({ length: 101 }, (_, i) => new Date(Date.UTC(2031, 0, 1 + i)).toISOString().slice(0, 10));
+    const paste = section.getByLabel('貼り付けて登録');
+    await paste.fill(lines.join('\n'));
+    await section.getByRole('button', { name: '登録する' }).click();
+    await expect(section.getByRole('alert')).toHaveText(
+      '登録できる行が 101 日あります。1回に登録できるのは 100 日までです。分けて登録してください。',
+    );
+    await expect(paste).toHaveAttribute('aria-invalid', 'true');
+    expect(addCalls).toBe(0);
+  });
+
+  test('理由の一覧は 10 行までで、残りは「ほか n 行」にまとめ、長い行は切って出す', async ({ page }) => {
+    await page.goto('/aoba/admin');
+    const section = sectionOf(page);
+    const long = `x${'あ'.repeat(50)}`;
+    const lines = [long, ...Array.from({ length: 11 }, (_, i) => `1999-01-${String(i + 1).padStart(2, '0')}`)];
+    await section.getByLabel('貼り付けて登録').fill(lines.join('\n'));
+    await section.getByRole('button', { name: '登録する' }).click();
+    const items = section.getByRole('list', { name: '登録しない行' }).getByRole('listitem');
+    await expect(items).toHaveCount(11);
+    await expect(items.first()).toHaveText(
+      `1 行目「${long.slice(0, 40)}…」: 日付の形ではありません（2026-11-03 か 2026/11/3）`,
+    );
+    await expect(items.nth(1)).toHaveText('2 行目「1999-01-01」: 2000〜2099 年の日付だけを登録できます');
+    await expect(items.last()).toHaveText('ほか 2 行');
+    await expect(section.getByRole('alert')).toHaveText(
+      '12 行を登録しません。直して、もう一度「登録する」を押してください。',
+    );
+  });
+
+  test('消すときに、別の画面で先に消されていた（404）なら、見つからなかったと知らせて読み直す', async ({ page }) => {
+    await page.route('**/api/aoba/organization-holiday-delete', (route) =>
+      route.fulfill({ status: 404, json: { error: { code: 'not_found', message: 'x' } } }),
+    );
+    let listCalls = 0;
+    await page.route('**/api/aoba/organization-holiday-list', (route) => {
+      listCalls++;
+      return route.continue();
+    });
+    await page.goto('/aoba/admin');
+    const section = sectionOf(page);
+    await section.getByRole('button', { name: '2026-11-23 を消す' }).click();
+    await expect(
+      page.getByRole('status').filter({ hasText: '2026-11-23 は見つかりませんでした。一覧を確かめてください' }),
+    ).toBeVisible();
+    await expect.poll(() => listCalls).toBe(2);
+    // 実際には消していないので、行は残る
+    await expect(section.getByRole('list', { name: '登録した休日' })).toContainText('2026-11-23');
+  });
+
+  test('送っている間は欄を readonly にし、送れた後に残す行は押した時点の内容から作る', async ({ page }) => {
+    let release: () => void = () => {};
+    const released = new Promise<void>((resolve) => (release = resolve));
+    await page.route('**/api/aoba/organization-holiday-add', async (route) => {
+      await released;
+      await route.fulfill({ json: { added: 1, skipped: 0 } });
+    });
+    await page.goto('/aoba/admin');
+    const section = sectionOf(page);
+    const paste = section.getByLabel('貼り付けて登録');
+    await paste.fill('2027-03-01 創立記念日\n2027-02-30 無い日');
+    await section.getByRole('button', { name: '登録する' }).click();
+    await expect(paste).toHaveAttribute('readonly', '');
+    // readonly を越えて欄が書き換わっても（スクリプトなど）、残す行は押した時点の解析の結果から作る
+    await paste.evaluate((el: HTMLTextAreaElement) => {
+      el.value += '\n2027-13-01 打ち足した行';
+      el.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    release();
+    await expect(page.getByRole('status').filter({ hasText: '1 日を登録しました' })).toBeVisible();
+    await expect(paste).toHaveValue('2027-02-30 無い日');
+    await expect(paste).not.toHaveAttribute('readonly');
   });
 
   test('320px の幅でも、節は横にはみ出さず、削除のボタンは右端に見える', async ({ page }) => {

@@ -77,6 +77,36 @@ describe('parseHolidayPaste（貼り付けた休日の一覧を行ごとに読�
     expect(result.problems[0]?.text).toBe('国民の祝日・休日月日,国民の祝日・休日名称');
   });
 
+  test.each([
+    ['1999-12-31', 'out_of_range'],
+    ['2100-01-01', 'out_of_range'],
+    ['1926/11/3', 'out_of_range'],
+  ])('%s は登録できる年（2000〜2099）の外', (date, reason) => {
+    expect(parseHolidayPaste(`${date} 祝日`).problems.map((problem) => problem.reason)).toEqual([reason]);
+  });
+
+  test('2000-01-01 と 2099-12-31 は通る', () => {
+    expect(parseHolidayPaste('2000-01-01 元日\n2099-12-31').holidays).toEqual([
+      { holiday_on: '2000-01-01', name: '元日' },
+      { holiday_on: '2099-12-31', name: null },
+    ]);
+  });
+
+  test('タブで区切った表計算の行は、名前の後の列を捨てる', () => {
+    expect(parseHolidayPaste('2026-11-03\t文化の日\t祝日\t備考\n2026-11-23\t\t勤労感謝の日\t祝日').holidays).toEqual([
+      { holiday_on: '2026-11-03', name: '文化の日' },
+      { holiday_on: '2026-11-23', name: '勤労感謝の日' },
+    ]);
+  });
+
+  test('CSV の名前の前後の二重引用符を1組だけ外す', () => {
+    expect(parseHolidayPaste('2027/1/1,"元日"\n2027/1/11,""成人の日""\n2027/2/11,""').holidays).toEqual([
+      { holiday_on: '2027-01-01', name: '元日' },
+      { holiday_on: '2027-01-11', name: '"成人の日"' },
+      { holiday_on: '2027-02-11', name: null },
+    ]);
+  });
+
   test('名前はちょうど上限の字数まで通る。字数はコードポイントで数える', () => {
     const name = '🎌'.repeat(HOLIDAY_NAME_MAX_LENGTH);
     expect(parseHolidayPaste(`2026-11-03 ${name}`).holidays).toEqual([{ holiday_on: '2026-11-03', name }]);
@@ -108,7 +138,9 @@ describe('normalizeHolidayName', () => {
 describe('API の検証のスキーマ', () => {
   test('日付は YYYY-MM-DD の暦の日付だけ', () => {
     expect(holidayOnSchema.safeParse('2026-11-03').success).toBe(true);
-    for (const value of ['2026/11/3', '2026-02-30', '2026-11-3', '']) {
+    expect(holidayOnSchema.safeParse('2000-01-01').success).toBe(true);
+    expect(holidayOnSchema.safeParse('2099-12-31').success).toBe(true);
+    for (const value of ['2026/11/3', '2026-02-30', '2026-11-3', '', '1999-12-31', '2100-01-01']) {
       expect(holidayOnSchema.safeParse(value).success, value).toBe(false);
     }
   });

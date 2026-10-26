@@ -53,9 +53,11 @@ SQ.mount("admin", () => `
       ${D.storage.byWorkspace.length ? `<div class="table-wrap"><table class="table"><thead><tr><th>${t("workspace")}</th><th class="is-num">ファイル</th><th class="is-num">合計</th></tr></thead>
         <tbody>${D.storage.byWorkspace.map(([ws, n, gb]) => `<tr><td>${esc(D.workspaces[ws].name)}</td><td class="is-num">${n} 件</td><td class="is-num">${gb} GB</td></tr>`).join("")}</tbody></table></div>` : ""}`)}
     ${setting("組織の休日", `祝日など、すべての${t("workspace")}に効く休日。日付の一覧を貼り付けて、まとめて登録できます。`, `
-      <label class="field" for="paste"><span class="field-label">貼り付けて登録</span><textarea class="textarea" id="paste" placeholder="2027-02-11 建国記念の日&#10;2027-02-23 天皇誕生日"></textarea><span class="field-hint">1行に1日。日付のあとに名前を書けます。登録済みの日付は飛ばします。</span></label>
+      <div class="field"><label class="field-label" for="paste">貼り付けて登録</label><textarea class="textarea" id="paste" aria-describedby="paste-hint" placeholder="2027-02-11 建国記念の日&#10;2027-02-23 天皇誕生日"></textarea><span class="field-hint" id="paste-hint">1行に1日。日付（2026-11-03 か 2026/11/3、2000〜2099 年）のあとに、空白、タブ、カンマで区切って名前を書けます。表計算から写した行は、名前より後の列を読みません。登録済みの日付は飛ばします。</span></div>
       <div class="form-actions"><button class="btn" type="button" data-toast="2 日を登録しました">登録する</button></div>
-      <ul class="party-list">${A.holidays.map(([d, n]) => `<li><span class="mono">${d}</span><span class="party-list-text">${esc(n)}</span><button class="icon-btn is-danger party-list-end" type="button" aria-label="${d} を消す">${icon("trash")}</button></li>`).join("")}</ul>`)}
+      ${!A.holidays.length
+        ? SQ.emptyState("calendar", "まだ休日がありません", `登録した日は、${t("capacity")}の計算で全員が稼働しない日になります。`)
+        : `<ul class="party-list" aria-label="登録した休日">${A.holidays.map(([d, n]) => `<li><span class="mono">${d}</span>${n ? `<span class="party-list-text">${esc(n)}</span>` : ""}<button class="icon-btn is-danger party-list-end" type="button" aria-label="${d} を消す" data-toast="${d}${n ? `（${esc(n)}）` : " "}を消しました">${icon("trash")}</button></li>`).join("")}</ul>`}`)}
     ${setting(`${t("workspace")}の外の言葉づかい`, `「冒険者ギルド」「ギルドマスター」などの言葉。${t("workspace")}の中の言葉づかいは、それぞれの${t("leader")}が決めます。`, `
       <div class="choice-list">
         <label class="choice"><input type="radio" name="kv" checked><div><b>ゲームの言葉</b><span>冒険者ギルド、ギルドマスター</span></div></label>

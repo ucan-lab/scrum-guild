@@ -999,8 +999,8 @@ export const dictionary = defineDictionary({
     '2027-02-11 建国記念の日\n2027-02-23 天皇誕生日',
   ),
   holidayPasteHint: organization(
-    '1行に1日。日付（2026-11-03 か 2026/11/3）のあとに、空白かカンマで区切って名前を書けます。登録済みの日付は飛ばします。',
-    '1行に1日。日付（2026-11-03 か 2026/11/3）のあとに、空白かカンマで区切って名前を書けます。登録済みの日付は飛ばします。',
+    '1行に1日。日付（2026-11-03 か 2026/11/3、2000〜2099 年）のあとに、空白、タブ、カンマで区切って名前を書けます。表計算から写した行は、名前より後の列を読みません。登録済みの日付は飛ばします。',
+    '1行に1日。日付（2026-11-03 か 2026/11/3、2000〜2099 年）のあとに、空白、タブ、カンマで区切って名前を書けます。表計算から写した行は、名前より後の列を読みません。登録済みの日付は飛ばします。',
   ),
   holidaySubmit: organization('登録する', '登録する'),
   holidaySubmitting: organization('登録しています', '登録しています'),
@@ -1027,16 +1027,23 @@ export const dictionary = defineDictionary({
     '登録できない行がありました。日付と名前を確かめてください。',
   ),
   holidayProblemsLabel: organization('登録しない行', '登録しない行'),
-  holidayProblemsNote: organization(
-    '次の行は登録しません。直して、もう一度「登録する」を押してください。',
-    '次の行は登録しません。直して、もう一度「登録する」を押してください。',
+  // 理由の要約。読み上げ（role="alert"）にはこの文だけを入れ、行ごとの理由は入れない
+  holidayProblemsSummary: organization(
+    '{count} 行を登録しません。直して、もう一度「登録する」を押してください。',
+    '{count} 行を登録しません。直して、もう一度「登録する」を押してください。',
   ),
+  // 理由の一覧に出しきれない行の数
+  holidayProblemsMore: organization('ほか {count} 行', 'ほか {count} 行'),
   holidayProblemLine: organization('{line} 行目「{text}」: {reason}', '{line} 行目「{text}」: {reason}'),
   holidayProblemInvalidDate: organization(
     '日付の形ではありません（2026-11-03 か 2026/11/3）',
     '日付の形ではありません（2026-11-03 か 2026/11/3）',
   ),
   holidayProblemNoSuchDate: organization('暦に無い日付です', '暦に無い日付です'),
+  holidayProblemOutOfRange: organization(
+    '{first}〜{last} 年の日付だけを登録できます',
+    '{first}〜{last} 年の日付だけを登録できます',
+  ),
   holidayProblemTooLong: organization('名前は {max} 字までです', '名前は {max} 字までです'),
   holidayProblemInvalidCharacter: organization(
     '名前に使えない文字（制御文字、ゼロ幅のスペースなど）が含まれています',
@@ -1052,6 +1059,7 @@ export const dictionary = defineDictionary({
   holidayDeleteLabel: organization('{date} を消す', '{date} を消す'),
   holidayDeleting: organization('消しています', '消しています'),
   holidayDeleted: organization('{date} を消しました', '{date} を消しました'),
+  holidayDeletedWithName: organization('{date}（{name}）を消しました', '{date}（{name}）を消しました'),
   // 別の画面で先に消されていた（404）
   holidayAlreadyDeleted: organization(
     '{date} は見つかりませんでした。一覧を確かめてください',
