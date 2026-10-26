@@ -29,6 +29,8 @@ export const memberList = defineOperation({
         role: roleSchema,
         joined_on: z.string(),
         avatar_url: z.string().nullable(),
+        // その人のレベル（組織の中の経験値の合計から出す。src/shared/experience.ts）。経験値の数値は返さない
+        level: z.number().int(),
       }),
     ),
     invitations: z

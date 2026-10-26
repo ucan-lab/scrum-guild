@@ -42,7 +42,7 @@ SQ.mount("backlog", () => {
       ["is-warn", "pen", `${t("detail")} 未記入`, open.filter((x) => x.unfilled).length],
       ["is-warn", "", "未見積もり", open.filter((x) => x.pts == null).length],
       ["", "", `${t("sprint")}に入っていない`, open.filter((x) => !x.sprint).length],
-    ], actions)}
+    ], actions, SQ.teamXp())}
     <section class="section" aria-label="${t("backlog")}の${t("task")}">
     <div class="toolbar" role="search">
       <label class="search" for="q">${icon("search")}<input id="q" type="search" placeholder="タイトルや SHOP-128 で探す"></label>

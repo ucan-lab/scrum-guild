@@ -72,6 +72,7 @@
     logoutFailed: ["ログアウトできませんでした。時間をおいてもう一度試してください。", "ログアウトできませんでした。時間をおいてもう一度試してください。"],
     markdownPlainNote: ["整形せずに表示しています", "整形せずに表示しています"], markdownNewTab: ["新しいタブで開きます", "新しいタブで開きます"],
     markdownCodeRegion: ["コード", "コード"], markdownTableRegion: ["表", "表"],
+    teamXpLabel: ["パーティ全体の経験値", "チーム全体の経験値"],
   };
   let vocab = 0;
   const listeners = [];
@@ -330,14 +331,15 @@
       ${body}
     </section>`;
   }
-  function pageHead(eyebrow, title, tallies = [], actions = "") {
+  // meta は集計の下に置く1行（バックログの画面のチーム全体の経験値 teamXp など）
+  function pageHead(eyebrow, title, tallies = [], actions = "", meta = "") {
     const tally = tallies.length
       ? `<dl class="tally">${tallies.map(([cls, ic, label, n]) => `<div class="${n ? cls : ""}"><dt>${ic ? icon(ic) : ""}${label}</dt><dd>${n}</dd></div>`).join("")}</dl>`
       : "";
     return `<header class="page-head">
       ${eyebrow ? `<span class="page-eyebrow">${eyebrow}</span>` : ""}
       <div class="page-head-row"><h1 class="page-title">${title}</h1>${actions ? `<div class="page-actions">${actions}</div>` : ""}</div>
-      ${tally}
+      ${tally}${meta}
     </header>`;
   }
 
@@ -496,6 +498,15 @@
       ${l.rows ? `<dl class="breakdown">${l.rows.map(([n, v]) => `<div><dt>${esc(n)}</dt><dd>${v.toLocaleString()}</dd></div>`).join("")}
         <div class="is-total"><dt>すべての${t("workspace")}</dt><dd>${l.total.toLocaleString()}</dd></div></dl>` : ""}
     </section>`;
+  }
+
+  // チーム全体の経験値。ワークスペースの全員の合計の1つの数で、人ごとの値は出さない。バックログの画面の見出しの中に置く
+  function teamXp(total = D.teamXp) {
+    return `<p class="team-xp">${t("teamXpLabel")}<b>${total.toLocaleString()}</b><small>XP</small></p>`;
+  }
+  // 経験値の明細の値。付与は経験値の色、打ち消し（負の値）は赤
+  function xpDelta(v) {
+    return `<span class="xp-delta ${v < 0 ? "is-minus" : ""}">${v > 0 ? "+" : ""}${v}</span>`;
   }
 
   // 積載量の1行。opts: tolerance、none（未見積もりの件数）、unset（配分未設定）、lead（名前の前に置く HTML）
@@ -1977,7 +1988,7 @@ const looooooooooooooooooooooooooooooooooongLine = "コードの長い1行は、
     onRedraw: (fn) => extraRedraws.push(fn), openDrawer, drawerHtml, drawerState: drawer,
     user, task, tasksWhere, repoTag, categoryTag, repoPicker, sprintLabel, colName, categoryOf, storyPts, epicPts, dueOf,
     avatar, avatarOf, SAMPLE_PHOTO, BROKEN_PHOTO, emblem, pts, dueChip, taskDue, tier, sourceKey, entry, orderActions, book, section, pageHead,
-    card, board, treeStory, treeEpic, sprintNotice, raidNotice, progress, levelPanel, load, capacityRows,
+    card, board, treeStory, treeEpic, sprintNotice, raidNotice, progress, levelPanel, teamXp, xpDelta, load, capacityRows,
     openDialog, closeDialog, toast, celebrate, miniCap, redraw: () => redrawAll(), DIALOGS, loginTarget, orgMenuHtml, accountMenuHtml,
     filesOf, fileThumb, fileRow, dropzone, attachments, mdBody, markdownSample, meter,
     PROVIDER, ASSIST_KEY, assistMsg, assistBlocked, assistSuggest, openAssist,

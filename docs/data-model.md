@@ -974,7 +974,19 @@ Google の人は、ログインするまで `sub` が分からない。そのた
 - 感謝の回数の上限は、`action = 'help'` の行を `helper_sender_user_id` と受け取った人で絞り、`confirmed_at` がワークスペースのタイムゾーンで同じ週に入るものを数えて判定する。
 - 索引: `(user_id, workspace_id)`、`(workspace_id, user_id)`、`(task_id)`、`(story_id)`、`(epic_id)`、`(reverses_grant_id)`。`(workspace_id, user_id)` はチーム全体の合計とメンバーごとの合計に使う。`(user_id, workspace_id)` は `user_id` の外部キーの検査にも使う。
 - 索引: `(helper_sender_user_id) WHERE helper_sender_user_id IS NOT NULL`。外部キーの検査。
-- レベル、合計、チーム全体の合計は `SUM(amount)` で出す。
+- レベル、合計、チーム全体の合計は `SUM(amount)` で出す。読み方は次の「経験値の読み方」。
+
+#### 経験値の読み方
+
+`xp_grants` は `organization_id` を持たないので、どの読み取りも `workspaces` と結合して `workspaces.organization_id` を入口の組織で絞る（別の組織のワークスペースを指す行は数えない）。経験値の数値と明細は本人にだけ返し、ほかの人に返すのはレベルだけにする（`docs/requirements.md` の「ゲームの仕組み」）。ほかの人の数値を返す操作は作らない。
+
+- 組織の合計: その組織のワークスペースの `xp_grants` のうち、`user_id` が本人の行の `SUM(amount)`。抜けたワークスペースと閉じたワークスペースの分も含む。行が無ければ 0。索引 `(user_id, workspace_id)` に乗る。
+- レベル: 組織の合計から `src/shared/experience.ts` の `levelOf` で出す（レベル `L` に達する合計は `50 × L × (L − 1)`、次のレベルまでに要るのは `100 × L`、合計が 0 を下回ってもレベル1、上限なし）。DB に列を持たず、読むたびに計算する。`levelProgressOf` が、今のレベルの始まり、次のレベルに要る合計、ゲージの割合（確定 = `(合計 − 今のレベルの始まり) / (100 × L)`、負なら 0。見込み = `見込み / (100 × L)` を残りの幅 `1 − 確定` で切る）を出す。
+- 見込み: 今所属している（`memberships.left_at IS NULL`）閉じていないワークスペースで、本人が作った（`tasks.created_by`）、手で作った（`is_imported = 0`）、未完了（`completed_at IS NULL`）、削除していない（`deleted_at IS NULL`）、ポイントが1以上のタスク1件につき `XP_TASK_CREATED`（起票の経験値）。手で作ったタスクはいつもバックログにある（`tasks` の CHECK）ので、アーカイブで外れるものは無く、条件に `tray = 'backlog'` を足して索引 `tasks_workspace_tray` に乗せる。詳細の経験値の見込みは、詳細を作る Issue で足す。
+- ワークスペースごとの内訳（`experience-summary` の `workspaces`）: 明細のあるワークスペースと、今所属しているワークスペース（閉じたものも含む。明細が無ければ 0）。各行はワークスペースの確定の合計と見込み。並びは名前の昇順、同じ名前は ID の昇順（文字の符号の順）。組織の合計と見込みは、内訳の合計と同じ。
+- 明細（`experience-grants`）: 本人の行を `confirmed_at` の降順、同じなら `id` の降順に、1回 50 件まで。続きは、前の応答の `next`（最後の行の `{confirmed_at, id}`。無ければ null）を `before` に渡し、`(confirmed_at, id) < before` で読む。`confirmed_at` はミリ秒まで UTC の形（`toISOString`）だけを受け付け、形の違うカーソルは 400。各行は ID、確定日時、ワークスペースの ID と名前、`action`、内容、`amount`（打ち消しは負の値。画面は元の行動に「の打ち消し」を添える）。内容は、付与が指すタスク、ストーリー、エピックのタイトル（この順に最初にあるもの。論理削除なので削除したものも出す。結合する行も付与と同じワークスペースに絞る）で、どれも指さない行は null。
+- チーム全体の合計（`experience-team-total`）: そのワークスペースの `xp_grants` の `SUM(amount)` の1つの数（抜けた人の分も含む）。人ごとの値は返さない。索引 `(workspace_id, user_id)` に乗る。所属している人と管理者が読める。
+- メンバーの一覧（`member-list`）の各行の `level` と、組織の枠（`organization`）の `me.level`: その人の組織の合計から出したレベルだけを返し、合計は返さない。メンバーの一覧は、そのワークスペースに今所属している人ごとの組織の合計を、1つの文（`GROUP BY user_id`）で読む。
 
 ### notifications
 

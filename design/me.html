@@ -61,8 +61,9 @@ SQ.mount("me", () => `
             ${SQ.THEMES.map((v) => `<label class="choice"><input type="radio" name="my-theme" value="${v}" data-pick-theme><div><b>${SQ.THEME_LABEL[v]}</b><span>${SQ.THEME_NOTE[v]}</span></div></label>`).join("")}
           </div>`)}
         ${setting("経験値の明細", `本人だけが見られます。打ち消しは負の値で残ります。手で足し引きする操作はありません。`, `
-          <div class="table-wrap"><table class="table"><thead><tr><th>確定日時</th><th>行動</th><th>内容</th><th class="is-num">XP</th></tr></thead>
-            <tbody>${M.xp.map(([at, a, w, v]) => `<tr><td class="mono">${at}</td><td><span class="tag">${a}</span></td><td>${esc(w)}</td><td class="is-num" style="color:${v < 0 ? "var(--color-danger)" : "var(--color-xp)"}">${v > 0 ? "+" : ""}${v}</td></tr>`).join("")}</tbody></table></div>`)}
+          <div class="table-wrap"><table class="table"><thead><tr><th>確定日時</th><th>${t("workspace")}</th><th>行動</th><th class="is-name">内容</th><th class="is-num">XP</th></tr></thead>
+            <tbody>${M.xp.map(([at, a, w, v, ws]) => `<tr><td class="mono">${at}</td><td>${esc(ws)}</td><td><span class="tag">${a}</span></td><td class="is-name">${esc(w)}</td><td class="is-num">${SQ.xpDelta(v)}</td></tr>`).join("")}</tbody></table></div>
+          <div class="form-actions"><button class="btn is-sm" type="button" data-toast="見本のため、続きはありません">続きを読む</button></div>`)}
       </div>
     </div>
     <aside class="layout-side">

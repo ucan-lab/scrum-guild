@@ -395,7 +395,7 @@ describe('organization', () => {
       theme: 'medieval',
       has_workspaces: true,
     });
-    expect(result.me).toEqual({ id: person.userId, name: '星野 澪', is_admin: false, theme: null });
+    expect(result.me).toEqual({ id: person.userId, name: '星野 澪', is_admin: false, theme: null, level: 1 });
     expect(result.workspaces).toEqual([
       { id: first.id, name: 'あ開発', role: 'member' },
       { id: second.id, name: 'う開発', role: 'leader' },

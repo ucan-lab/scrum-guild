@@ -276,6 +276,10 @@ export const pointers: Pointers = {
       await createRepository(target.organization, target.workspace.id, { name: `shop-api-${uniqueSuffix()}` })
     ).id,
   }),
+  // 呼んだ人の分だけを読み、入力は行を指さない（明細の続きの位置は行を指さず、別の組織の位置でも読む範囲が変わるだけ）
+  'experience-summary': { noReference: {} },
+  'experience-grants': { noReference: {} },
+  'experience-team-total': async (target) => ({ workspace_id: target.workspace.id }),
 };
 
 // 区分とリポジトリの名前を、呼ぶたびに変える

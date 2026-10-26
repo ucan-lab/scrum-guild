@@ -449,3 +449,33 @@ export async function createSprint(
   await db.run(db.statement((q) => q.insertInto('sprints').values(row)));
   return row;
 }
+
+// 経験値の明細の1行。既定は起票の 10 で、dedupe_key は呼ぶたびに別の値にする。打ち消しは amount を負にして reverses_grant_id で元を指す
+export async function createXpGrant(
+  organization: OrganizationFixture,
+  workspaceId: string,
+  userId: string,
+  overrides: Partial<Row<OrganizationTables, 'xp_grants'>> = {},
+) {
+  const id = overrides.id ?? uuidv7();
+  const row: Row<OrganizationTables, 'xp_grants'> = {
+    id,
+    workspace_id: workspaceId,
+    user_id: userId,
+    action: 'task_created',
+    task_id: null,
+    story_id: null,
+    epic_id: null,
+    completion_id: null,
+    thank_id: null,
+    helper_sender_user_id: null,
+    amount: 10,
+    reverses_grant_id: null,
+    dedupe_key: `test:${id}`,
+    confirmed_at: AT,
+    ...overrides,
+  };
+  const db = orgDb(env, organization.verified);
+  await db.run(db.statement((q) => q.insertInto('xp_grants').values(row)));
+  return row;
+}

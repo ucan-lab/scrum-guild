@@ -150,6 +150,7 @@ describe('member-list: メンバー', () => {
       role: 'leader',
       joined_on: '2026-10-02',
       avatar_url: null,
+      level: 1,
     });
   });
 });
