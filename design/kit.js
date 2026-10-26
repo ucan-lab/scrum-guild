@@ -972,6 +972,21 @@ const looooooooooooooooooooooooooooooooooongLine = "コードの長い1行は、
     }
     return { start: addDays(last.end, 1), days: daysBetween(last.start, last.end) + 1 };
   }
+  // スプリントの作成と変更のダイアログ（本番の SprintDialog）。id を渡すと、そのスプリントの値で「直す」として開く。
+  // 期間がほかのスプリントと重なるときは、送った後にダイアログの中へ理由（callout.is-danger）を出し、開いたままにする
+  function sprintDialog(id) {
+    const s = id ? D.sprints[id] : null;
+    const d = s ? { start: s.start, days: daysBetween(s.start, s.end) + 1 } : sprintDefaults();
+    openDialog(s ? `${t("sprint")}を直す` : `${t("sprint")}を作る`,
+      `<div class="form-row">
+         <label class="field" for="d-ss"><span class="field-label">開始日</span><input class="input" id="d-ss" type="date" value="${d.start}"></label>
+         <label class="field" for="d-sd"><span class="field-label">長さ（日）</span><input class="input" id="d-sd" type="number" min="1" max="28" value="${d.days}"></label>
+         <div class="field"><span class="field-label">最終日</span><span class="mono">${withWeekday(addDays(d.start, d.days - 1))}</span></div>
+       </div>
+       <label class="field" for="d-sn"><span class="field-label">名前（任意）</span><input class="input" id="d-sn" placeholder="空なら期間を名前にします" value="${s && s.name ? esc(s.name) : ""}"></label>
+       <p class="field-hint">長さは 1〜28 日。作ったあと、${t("backlog")}から${t("task")}を入れてから始めます。</p>`,
+      `<button class="btn is-quiet" type="button" data-close-dialog>やめる</button><button class="btn is-primary" type="button" data-close-dialog data-toast="${t("sprint")}を${s ? "保存しました" : "作りました"}">${s ? "保存する" : "作る"}</button>`);
+  }
 
   // ストーリーの作成と変更のダイアログ。閉じたワークスペース（readOnly）では、欄を readonly にして保存のボタンを出さない
   // （日付の入力は readonly を受けないので、読み取り専用の text にして日付を出す）。リンクに値があれば、欄の横に「開く」を置く
@@ -1024,17 +1039,16 @@ const looooooooooooooooooooooooooooooooooongLine = "コードの長い1行は、
         : `<button class="btn is-quiet" type="button" data-close-dialog>やめる</button><button class="btn is-primary" type="button" data-close-dialog data-toast="${e ? `${t("epic")}を保存しました` : `${t("epic")}を作りました`}">${e ? "保存する" : "作る"}</button>`);
   }
   const DIALOGS = {
-    sprintCreate: () => {
-      const d = sprintDefaults();
-      openDialog(`${t("sprint")}を作る`,
-        `<div class="form-row">
-           <label class="field" for="d-ss"><span class="field-label">開始日</span><input class="input" id="d-ss" type="date" value="${d.start}"></label>
-           <label class="field" for="d-sd"><span class="field-label">長さ（日）</span><input class="input" id="d-sd" type="number" min="1" max="28" value="${d.days}"></label>
-           <div class="field"><span class="field-label">最終日</span><span class="mono">${withWeekday(addDays(d.start, d.days - 1))}</span></div>
-         </div>
-         <label class="field" for="d-sn"><span class="field-label">名前（任意）</span><input class="input" id="d-sn" placeholder="空なら期間を名前にします"></label>
-         <p class="field-hint">長さは 1〜28 日。作ったあと、${t("backlog")}から${t("task")}を入れてから始めます。</p>`,
-        `<button class="btn is-quiet" type="button" data-close-dialog>やめる</button><button class="btn is-primary" type="button" data-close-dialog data-toast="${t("sprint")}を作りました">作る</button>`);
+    sprintCreate: () => sprintDialog(null),
+    // 始まる前のスプリントを直す（本番の SprintDialog）。計画の画面の先のスプリントの「直す」から開く。欄は作るときと同じ
+    sprintEdit: () => sprintDialog("sp16"),
+    // 始まる前のスプリントの削除（本番は ConfirmDialog）。計画の画面の先のスプリントの「削除する」から開く
+    deleteSprint: () => {
+      const s = D.sprints.sp16;
+      openDialog(`${t("sprint")}を削除する`,
+        `<p>「${esc(sprintLabel("sp16"))}」（${md(s.start)}〜${md(s.end)}）を削除します。削除したものは画面から消え、この版では戻せません。</p>`,
+        `<button class="btn is-primary" type="button" data-close-dialog>やめる</button><button class="btn is-danger" type="button" data-close-dialog data-toast="${t("sprint")}を削除しました">削除する</button>`);
+      document.querySelector(".dialog-sheet").classList.add("is-danger");
     },
     sprintStart: () => openDialog(`${t("sprint")}を始める`,
       `<p>${sprintLabel("sp15")}（${md(D.sprints.sp15.start)}〜${md(D.sprints.sp15.end)}）を始めます。入っている${t("task")}は 3 件、11 pt です。</p>

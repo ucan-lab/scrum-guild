@@ -5,6 +5,7 @@ import { epicOperations } from './epic/index.ts';
 import { operatorOperations } from './operator/index.ts';
 import { organizationOperations } from './organization/index.ts';
 import { sessionOperations } from './session/index.ts';
+import { sprintOperations } from './sprint/index.ts';
 import { storyOperations } from './story/index.ts';
 import { taskOperations } from './task/index.ts';
 import { workspaceOperations } from './workspace/index.ts';
@@ -14,6 +15,7 @@ export const operations: readonly AnyOperationDefinition[] = [
   ...organizationOperations,
   ...epicOperations,
   ...sessionOperations,
+  ...sprintOperations,
   ...storyOperations,
   ...taskOperations,
   ...workspaceOperations,

@@ -1333,6 +1333,99 @@ export const dictionary = defineDictionary({
     '最新の変更の履歴を読み込めませんでした。',
   ),
 
+  // 計画の画面（design/plan.html）と、スプリントの作成と変更のダイアログ（kit.js の sprintCreate）
+  planPageName: workspace('{plan}・{name}', '{plan}・{name}'),
+  sprintCreate: workspace('{sprint}を作る', '{sprint}を作る'),
+  sprintEdit: workspace('{sprint}を直す', '{sprint}を直す'),
+  // 名前のあるスプリントは名前を、無いものは期間を名前として出す（kit.js の sprintLabel）
+  sprintLabelNamed: workspace('{sprint} {name}', '{sprint} {name}'),
+  sprintLabelPeriod: workspace('{sprint} {start}〜{end}', '{sprint} {start}〜{end}'),
+  sprintPeriod: workspace('{start}〜{end}', '{start}〜{end}'),
+  sprintLengthDays: workspace('{length} 日', '{length} 日'),
+  sprintActive: workspace('進行中', '進行中'),
+  sprintEmptyTitle: workspace('まだ{sprint}がありません', 'まだ{sprint}がありません'),
+  sprintEmptyText: workspace(
+    '{sprint}は、期間を区切って{task}を進める単位です。作ると、ここに先の{sprint}が並び、入れた{points}と{capacity}を見比べられます。終えた{sprint}がたまると、ベロシティも出ます。',
+    '{sprint}は、期間を区切って{task}を進める単位です。作ると、ここに先の{sprint}が並び、入れた{points}と{capacity}を見比べられます。終えた{sprint}がたまると、ベロシティも出ます。',
+  ),
+  sprintEmptyWho: workspace('{sprint}を作るのは{leader}です。', '{sprint}を作るのは{leader}です。'),
+  sprintEditAction: workspace('直す', '直す'),
+  sprintEditLabel: workspace('直す: {label}', '直す: {label}'),
+  sprintDeleteAction: workspace('削除する', '削除する'),
+  sprintDeleteLabel: workspace('削除する: {label}', '削除する: {label}'),
+  sprintFieldStart: workspace('開始日', '開始日'),
+  sprintFieldLength: workspace('長さ（日）', '長さ（日）'),
+  sprintFieldEnd: workspace('最終日', '最終日'),
+  sprintFieldName: workspace('名前（任意）', '名前（任意）'),
+  sprintNamePlaceholder: workspace('空なら期間を名前にします', '空なら期間を名前にします'),
+  sprintFormHint: workspace(
+    '長さは {min}〜{max} 日。作ったあと、{backlog}から{task}を入れてから始めます。',
+    '長さは {min}〜{max} 日。作ったあと、{backlog}から{task}を入れてから始めます。',
+  ),
+  sprintStartRequired: workspace('開始日を入れてください', '開始日を入れてください'),
+  sprintLengthInvalid: workspace(
+    '長さは {min}〜{max} の整数で入れてください',
+    '長さは {min}〜{max} の整数で入れてください',
+  ),
+  sprintEndOutOfRange: workspace('最終日が暦の範囲を外れます', '最終日が暦の範囲を外れます'),
+  sprintNameTooLong: workspace('名前は {max} 字までです', '名前は {max} 字までです'),
+  sprintNameInvalidCharacter: workspace(
+    '名前に使えない文字（制御文字や見えない文字）が入っています',
+    '名前に使えない文字（制御文字や見えない文字）が入っています',
+  ),
+  sprintOverlap: workspace(
+    '期間が、ほかの{sprint}と重なっています。開始日か長さを変えてください',
+    '期間が、ほかの{sprint}と重なっています。開始日か長さを変えてください',
+  ),
+  sprintStarted: workspace(
+    'この{sprint}はもう始まっているので、直せません。一覧を読み直します',
+    'この{sprint}はもう始まっているので、直せません。一覧を読み直します',
+  ),
+  sprintGone: workspace(
+    'この{sprint}は見つかりません。一覧を読み直します',
+    'この{sprint}は見つかりません。一覧を読み直します',
+  ),
+  sprintForbidden: workspace('{sprint}を作り、直すのは{leader}です', '{sprint}を作り、直すのは{leader}です'),
+  sprintBadRequest: workspace(
+    '入力を受け付けられませんでした。値を見直してください',
+    '入力を受け付けられませんでした。値を見直してください',
+  ),
+  sprintCreateSubmit: workspace('作る', '作る'),
+  sprintCreating: workspace('作っています', '作っています'),
+  sprintCreated: workspace('{sprint}を作りました', '{sprint}を作りました'),
+  sprintCreateFailed: workspace('作れませんでした。もう一度試してください', '作れませんでした。もう一度試してください'),
+  sprintSave: workspace('保存する', '保存する'),
+  sprintSaving: workspace('保存しています', '保存しています'),
+  sprintSaved: workspace('{sprint}を保存しました', '{sprint}を保存しました'),
+  sprintSaveFailed: workspace(
+    '保存できませんでした。もう一度試してください',
+    '保存できませんでした。もう一度試してください',
+  ),
+  sprintDeleteTitle: workspace('{sprint}を削除する', '{sprint}を削除する'),
+  sprintDeleteText: workspace(
+    '「{label}」（{period}）を削除します。削除したものは画面から消え、この版では戻せません。',
+    '「{label}」（{period}）を削除します。削除したものは画面から消え、この版では戻せません。',
+  ),
+  sprintDeleting: workspace('削除しています', '削除しています'),
+  sprintDeleted: workspace('{sprint}を削除しました', '{sprint}を削除しました'),
+  sprintDeleteStarted: workspace(
+    'この{sprint}はもう始まっているので、削除できません。一覧を読み直します',
+    'この{sprint}はもう始まっているので、削除できません。一覧を読み直します',
+  ),
+  sprintDeleteFailed: workspace(
+    '削除できませんでした。もう一度試してください',
+    '削除できませんでした。もう一度試してください',
+  ),
+  // 日付に曜日を添える（kit.js の withWeekday）。曜日は 0 が日曜
+  dateWithWeekday: organization('{date}（{weekday}）', '{date}（{weekday}）'),
+  weekday0: organization('日', '日'),
+  weekday1: organization('月', '月'),
+  weekday2: organization('火', '火'),
+  weekday3: organization('水', '水'),
+  weekday4: organization('木', '木'),
+  weekday5: organization('金', '金'),
+  weekday6: organization('土', '土'),
+
   // Markdown の本文。変換が終わらなかった本文を、書かれたまま出すときの注記
   markdownPlainNote: workspace('整形せずに表示しています', '整形せずに表示しています'),
   // リンクは新しいタブで開く。リンクの補足（aria-describedby）として読み上げに伝える

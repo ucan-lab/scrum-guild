@@ -9,6 +9,7 @@ import {
   createInvitation,
   createOrganization,
   createOrganizationHoliday,
+  createSprint,
   createStory,
   createTask,
   createWorkspace,
@@ -190,4 +191,29 @@ export const pointers: Pointers = {
     workspace_id: target.workspace.id,
     task_id: (await createTask(target.organization, target.workspace.id, target.member.userId!)).id,
   }),
+  'sprint-list': async (target) => ({ workspace_id: target.workspace.id }),
+  // 呼ぶたびに、前の呼び出しと重ならない期間を指す（同じワークスペースに続けて作ると、2回目は 409 の overlap になるため）
+  'sprint-create': async (target) => ({
+    workspace_id: target.workspace.id,
+    start_on: nextSprintStart(),
+    length: 14,
+  }),
+  // 呼ぶたびに先のスプリントを作る（変える欄が同じだと、2回目は何も書かないため）
+  'sprint-update': async (target) => ({
+    workspace_id: target.workspace.id,
+    sprint_id: (await createSprint(target.organization, target.workspace.id)).id,
+    name: `見直した ${crypto.randomUUID().slice(0, 8)}`,
+  }),
+  // 呼ぶたびに先のスプリントを作る（削除したスプリントは続けて削除できない）
+  'sprint-delete': async (target) => ({
+    workspace_id: target.workspace.id,
+    sprint_id: (await createSprint(target.organization, target.workspace.id)).id,
+  }),
 };
+
+// sprint-create の開始日。2030-01-07 から 28 日ずつ進める
+let sprintStarts = 0;
+function nextSprintStart(): string {
+  const at = new Date(Date.UTC(2030, 0, 7) + sprintStarts++ * 28 * 86_400_000);
+  return at.toISOString().slice(0, 10);
+}
