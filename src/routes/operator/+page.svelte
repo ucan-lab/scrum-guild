@@ -162,11 +162,10 @@
                     {:else if organization.admin_status === 'expired'}
                       <span class="chip is-danger"><Icon name="alert" />{t('operatorAdminExpired', words)}</span>
                     {/if}
+                    <!-- slug と日時はキーと日付なので等幅の書体（.mono）で出す -->
                     <br /><span class="props-note"
-                      >{t('operatorSlugCreated', {
-                        slug: organization.slug,
-                        date: formatDateTime(organization.created_at),
-                      })}</span
+                      ><span class="mono">{organization.slug}</span> · {t('operatorCreatedLabel')}
+                      <span class="mono">{formatDateTime(organization.created_at)}</span></span
                     >
                   </td>
                   <td class="is-num" data-label={t('operatorColumnSeats')}>

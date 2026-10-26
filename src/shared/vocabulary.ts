@@ -599,7 +599,7 @@ export const dictionary = defineDictionary({
   operatorQuotaSize: organization('{size} GB', '{size} GB'),
   operatorQuotaSizeMb: organization('{size} MB', '{size} MB'),
   // 名前の列の2行目。{slug} は組織の slug、{date} は作った日時（ブラウザのタイムゾーン。format-datetime.ts）
-  operatorSlugCreated: organization('{slug} · 作成 {date}', '{slug} · 作成 {date}'),
+  operatorCreatedLabel: organization('作成', '作成'),
   operatorNeverUsed: organization('まだ使われていない', 'まだ使われていない'),
   // 一覧の印。{date} は停止した日と、解約で消す予定日。どちらも UTC の日付（消す予定日を UTC の日付で数えるのにそろえる）
   operatorSuspended: organization('停止 {date}', '停止 {date}'),

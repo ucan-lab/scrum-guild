@@ -136,6 +136,11 @@ test.describe('運用者', () => {
     await expect(rows.filter({ hasText: 'あおば開発' }).locator('td.is-name .props-note')).toHaveText(
       'aoba · 作成 2026/10/01 18:30',
     );
+    // slug と日時は等幅の書体で出す
+    await expect(rows.filter({ hasText: 'あおば開発' }).locator('td.is-name .props-note .mono')).toHaveText([
+      'aoba',
+      '2026/10/01 18:30',
+    ]);
     expect(await collect()).toEqual([]);
   });
 
