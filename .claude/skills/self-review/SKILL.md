@@ -49,7 +49,9 @@ PR があれば、ベースは `origin/<base>` とし、次の前提をすべて
 gh api "repos/{owner}/{repo}/commits/<head_sha>/check-runs" --jq '.check_runs[] | {name, status, conclusion, url: .html_url}'
 ```
 
-`review` は AI レビュー（`.github/workflows/ai-review.yml`）のチェックで、助言なので `ci-ok` に含めず、落ちてもマージの判定を止めない（`docs/development.md` の「CI」）。落ちたか実行中でも、この前提を満たさないとはみなさない（理由: 回した先の pr-feedback も `review` の失敗は直さないので、数に入れると self-review が先へ進めない）。
+`review` は AI レビュー（`.github/workflows/ai-review.yml`）のチェックで、助言なので `ci-ok` に含めず、落ちてもマージの判定を止めない（`docs/development.md` の「CI」）。
+`review` の `status` と `conclusion` が何でも、この前提は満たすものとして扱う（理由: 回した先の pr-feedback も `review` の失敗は直さないので、数に入れると self-review が先へ進めない）。
+実行中の `review` が後から付ける指摘は、pr-feedback の手順 1 が完了を待って拾う。
 
 ```bash
 gh api graphql -f query='{ repository(owner:"<owner>", name:"<repo>") { pullRequest(number:<number>) { reviewThreads(first:100) { nodes { isResolved path comments(first:1) { nodes { body author { login } } } } } } } }'
@@ -144,7 +146,7 @@ CRITICAL と HIGH は、別の Issue にするかをユーザーに提案する�
 
 `git add <paths> && git commit -m "..."` のように 1 コマンドにまとめる。
 件名には、変更した対象と内容を書く（例: `fix: fill_results.py で結果の未指定と不正値を検出する`）。「レビュー指摘に対応する」のように、指摘への対応であることしか分からない件名にしない（理由: squash merge ではコミットメッセージが本文に残り、マージ後は直せない）。
-PR 作成後は `git push` まで行い、手順 0 の check-runs で CI が通ることを確かめる（修正は通常の push で積む。force push はベースを取り込む `sync-base` の中だけ）。
+PR 作成後は `git push` まで行い、手順 0 の check-runs で CI が通ることを確かめる（`review` は手順 0 と同じく除く。修正は通常の push で積む。force push はベースを取り込む `sync-base` の中だけ）。
 
 ### 9. pr-create に引き継ぐ
 
