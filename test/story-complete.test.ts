@@ -658,6 +658,14 @@ describe('story-reopen', () => {
     const open = await createEpic(target.organization, target.workspace.id, adminId);
     const story = await emptyStory(target, { epic_id: open.id, completed_at: AT, completed_by: adminId });
     expect((await reopen(target, story.id)).status).toBe(200);
+    // 削除したエピックは親として数えない（クリアしてから削除したものも）。409 の changed にならずに取り消せる
+    for (const overrides of [{ deleted_at: AT }, { completed_at: AT, completed_by: adminId, deleted_at: AT }]) {
+      const deleted = await createEpic(target.organization, target.workspace.id, adminId, overrides);
+      const under = await emptyStory(target, { epic_id: deleted.id, completed_at: AT, completed_by: adminId });
+      const res = await reopen(target, under.id);
+      expect(res.status).toBe(200);
+      expect((await storyRow(target, under.id))!.completed_at).toBeNull();
+    }
   });
 
   test('2つの画面から同時に取り消すと、片方は 409 の conflict（not_completed）で、打ち消しは1回分', async () => {

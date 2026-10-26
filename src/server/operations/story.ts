@@ -848,8 +848,12 @@ function readReopening(db: OrganizationDb, workspaceId: string, storyId: string)
     db.statement((q) =>
       q
         .selectFrom('stories')
+        // 親のエピック。削除したエピックは親として数えない（削除したエピックの下のストーリーの扱いは、エピックの削除の #65 で決める）
         .leftJoin('epics', (join) =>
-          join.onRef('epics.id', '=', 'stories.epic_id').onRef('epics.workspace_id', '=', 'stories.workspace_id'),
+          join
+            .onRef('epics.id', '=', 'stories.epic_id')
+            .onRef('epics.workspace_id', '=', 'stories.workspace_id')
+            .on('epics.deleted_at', 'is', null),
         )
         .leftJoin('users', (join) =>
           join.onRef('users.id', '=', 'stories.completed_by').on('users.organization_id', '=', db.organizationId),
@@ -932,13 +936,19 @@ export const storyReopenOperation = implement(storyReopen, async ({ db, actor, w
         .where('completed_at', '=', completedAt)
         .where('epic_id', epicId === null ? 'is' : '=', epicId)
         .where((eb) => eb.exists(openWorkspace(q, organizationId, workspaceId)))
-        .$if(epicId !== null, (qb) =>
-          qb.where((eb) =>
+        // 親のエピック（削除したものを除く）が、完了も中止もしていない。読むときと同じく、削除したエピックは親として数えない
+        .where((eb) =>
+          eb.not(
             eb.exists(
-              epicRow(q, workspaceId, epicId!)
+              eb
+                .selectFrom('epics')
                 .select('epics.id')
-                .where('epics.completed_at', 'is', null)
-                .where('epics.canceled_at', 'is', null),
+                .whereRef('epics.id', '=', 'stories.epic_id')
+                .where('epics.workspace_id', '=', workspaceId)
+                .where('epics.deleted_at', 'is', null)
+                .where((sb) =>
+                  sb.or([sb('epics.completed_at', 'is not', null), sb('epics.canceled_at', 'is not', null)]),
+                ),
             ),
           ),
         ),
