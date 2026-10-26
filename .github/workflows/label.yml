@@ -55,12 +55,16 @@ jobs:
           REPO: ${{ github.repository }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          # 付け替えの edited のときだけ、そのイベントの時刻（PR の updated_at）。履歴への反映が遅れても見落とさないよう、
+          # イベントの中身は判定を厳しくする側にだけ使う
+          EVENT_CHANGED: ${{ github.event.action == 'edited' && github.event.changes.base != null && github.event.pull_request.updated_at || '' }}
         run: |
           set -euo pipefail
           # 人の付け替えと、重ねた PR の下がマージされたときの GitHub の自動の付け替えの両方を拾う
-          changed=$(gh api --paginate "repos/$REPO/issues/$PR_NUMBER/timeline?per_page=100" \
-            --jq '.[] | select(.event == "base_ref_changed" or .event == "automatic_base_change_succeeded") | .created_at' |
-            sort | tail -n 1)
+          # gh の失敗で止まるよう、代入で受けてから並べる（まとめてパイプに流すと、途中の失敗が消える）
+          timeline=$(gh api --paginate "repos/$REPO/issues/$PR_NUMBER/timeline?per_page=100" \
+            --jq '.[] | select(.event == "base_ref_changed" or .event == "automatic_base_change_succeeded") | .created_at')
+          changed=$(printf '%s\n%s\n' "$timeline" "$EVENT_CHANGED" | sed '/^$/d' | sort | tail -n 1)
           if [ -z "$changed" ]; then
             echo "ベースの付け替えは無い"
             exit 0
@@ -69,12 +73,17 @@ jobs:
           base=$(gh api "repos/$REPO/pulls/$PR_NUMBER" --jq .base.ref)
           echo "最後のベースの付け替え: $changed、今のベース: $base"
           for attempt in 1 2 3 4 5 6; do
-            # 数えるのは、この PR の今のベースで動いた実行（ci.yml の run-name）だけ。付け替えの直前のイベントで作られた実行は前のベースを、
-            # 同じ head の別の PR の実行は別の PR を名に持つので数えない。承認待ちで走っていない実行も数えない
+            # 数えるのは、この PR の今のベースで動いた、承認待ちでない実行だけ。
+            # - 名前（ci.yml の run-name）はイベントの時点のベースを持つ。付け替えの直前のイベントで作られた実行は前のベースを名に持つ
+            # - 名前はベースのブランチの ci.yml で書き換えられるので、実行に結び付いた PR（pull_requests）の番号でも絞る。
+            #   同じ head の別の PR の実行は、名前を偽っても数えない。fork の PR の実行は pull_requests が空なので、付け替えた後は通らない側に倒れる
             # ブランチ名を jq の式に埋めず、--arg で渡す
             latest=$(gh api "repos/$REPO/actions/workflows/ci.yml/runs?head_sha=$HEAD_SHA&event=pull_request&per_page=100" |
-              jq -r --arg title "ci pr=$PR_NUMBER base=$base" \
-                '[.workflow_runs[] | select(.display_title == $title and .status != "waiting" and .status != "action_required" and .conclusion != "action_required") | .created_at] | max // ""')
+              jq -r --arg title "ci pr=$PR_NUMBER base=$base" --argjson pr "$PR_NUMBER" \
+                '[.workflow_runs[]
+                  | select(.display_title == $title and any(.pull_requests[]?; .number == $pr))
+                  | select(.status != "waiting" and .status != "action_required" and .conclusion != "action_required")
+                  | .created_at] | max // ""')
             echo "この head の ci.yml の最後の実行: ${latest:-無し}"
             # 時刻は同じ形の UTC の ISO 8601 なので、文字列で比べられる
             if [[ "$latest" > "$changed" ]]; then
