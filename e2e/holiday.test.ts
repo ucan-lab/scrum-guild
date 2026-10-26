@@ -190,6 +190,25 @@ test.describe('管理者（あおば開発のミナト）', () => {
     await expect(button).toBeInViewport({ ratio: 1 });
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(320);
   });
+
+  test('320px の幅で空白の無い40字の名前でも、日付は1行のまま折れない', async ({ page }) => {
+    await page.route('**/api/aoba/organization-holiday-list', (route) =>
+      route.fulfill({
+        json: { holidays: [{ holiday_on: '2027-11-03', name: 'SoukyuKaihatsuKyokaiSouritsuKinenbiKyuj' }] },
+      }),
+    );
+    await page.setViewportSize({ width: 320, height: 800 });
+    await page.goto('/aoba/admin');
+    const item = sectionOf(page).getByRole('list', { name: '登録した休日' }).getByRole('listitem').first();
+    const date = item.locator('.mono');
+    await expect(date).toHaveText('2027-11-03');
+    // 2行に折れれば、高さは文字の大きさの2倍を超える
+    const ratio = await date.evaluate(
+      (el) => el.getBoundingClientRect().height / parseFloat(getComputedStyle(el).fontSize),
+    );
+    expect(ratio).toBeLessThan(2);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(320);
+  });
 });
 
 test.describe('一般のユーザー（あおば開発のハルカ）', () => {

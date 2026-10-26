@@ -635,6 +635,8 @@ button.tree-link { border: 0; background: none; padding: 0; font: inherit; text-
 .party-list .party-list-end { margin-left: auto; flex: none; }
 /* 長い名前（空白の無い英数字を含む）を折り返し、右端の操作を押し出さない */
 .party-list .party-list-text { min-width: 0; overflow-wrap: anywhere; }
+/* 日付は、隣の名前が長くても縮めず、ハイフンで折らない */
+.party-list .mono { flex: none; white-space: nowrap; }
 @media (pointer: coarse) {
   .party-list .icon-btn { min-width: 44px; min-height: 44px; }
 }
