@@ -14,7 +14,10 @@ import { implement } from './implement.ts';
 type Cursor = { created_at: string; id: string };
 
 // 履歴の行を読む文。索引 change_logs_entity（entity_type, entity_id, created_at）に乗る。
-// 続きは (created_at, id) < before で読む（created_at が同じ行は id の降順で切る）。
+// 続きは (created_at, id) < before で読む（created_at が同じ行は id の降順で切る）。続きの条件は索引の範囲にせず、
+// そのタスクの行（entity_type, entity_id で引く範囲）の中で絞る。1件のタスクの履歴は多くても数百行で、
+// created_at の範囲を書き足すと、SQLite が organization_id や workspace_id の索引を選び、組織やワークスペースの全履歴を読むため。
+// 本文（body_md）は長いので、DB の側で値を [null, null] に置き換えてから読む（欄の名前と並びは残る。全文を Worker へ運ばない）。
 // 変えた人の名前は、組織で絞った users の今の名前
 export function taskHistoryStatement(db: OrganizationDb, workspaceId: string, taskId: string, before?: Cursor) {
   const organizationId = db.organizationId;
@@ -24,11 +27,23 @@ export function taskHistoryStatement(db: OrganizationDb, workspaceId: string, ta
       .leftJoin('users as actor', (join) =>
         join.onRef('actor.id', '=', 'change_logs.actor_user_id').on('actor.organization_id', '=', organizationId),
       )
-      .select([
+      .select((eb) => [
         'change_logs.id',
         'change_logs.action',
         'change_logs.created_at',
-        'change_logs.changes_json',
+        eb
+          .case()
+          .when(eb.fn('json_type', ['change_logs.changes_json', eb.val('$.body_md')]), 'is not', null)
+          .then(
+            eb.fn<string>('json_set', [
+              'change_logs.changes_json',
+              eb.val('$.body_md'),
+              eb.fn('json', [eb.val('[null,null]')]),
+            ]),
+          )
+          .else(eb.ref('change_logs.changes_json'))
+          .end()
+          .as('changes_json'),
         'change_logs.actor_user_id',
         'actor.name as actor_name',
       ])
@@ -55,11 +70,13 @@ const TEXT_FIELDS = new Set(['title', 'link_url', 'due_on', 'today_on', 'complet
 const NUMBER_FIELDS = new Set(['points']);
 const NAMED_FIELDS = new Set(['assignee', 'completed_by', 'story', 'category']);
 
+// ID があれば、名前が読めなくても（空、ストーリーのタイトルが null）値を落とさず、名前を空で返す（画面は「不明」と出す）
 function namedValue(value: unknown): TaskHistoryValue {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) return null;
   const record = value as Record<string, unknown>;
-  const name = typeof record.name === 'string' ? record.name : record.title;
-  return typeof record.id === 'string' && typeof name === 'string' ? { id: record.id, name } : null;
+  if (typeof record.id !== 'string') return null;
+  const name = typeof record.name === 'string' ? record.name : typeof record.title === 'string' ? record.title : '';
+  return { id: record.id, name };
 }
 
 // 1つの値を、欄の形にそろえる。形の合わない値は null にする（欄は落とさない）
@@ -115,6 +132,7 @@ export const taskHistoryOperation = implement(taskHistory, async ({ db, workspac
       id: row.id,
       action: row.action,
       created_at: row.created_at,
+      // actor_user_id があっても、組織で絞った users に名前が無ければ（別の組織の人を指す壊れた行）null にする
       actor:
         row.actor_user_id !== null && row.actor_name !== null ? { id: row.actor_user_id, name: row.actor_name } : null,
       changes: changesOf(row.changes_json),

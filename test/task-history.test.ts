@@ -349,13 +349,73 @@ describe('task-history', () => {
     expect(body.entries).toHaveLength(1);
   });
 
-  test('履歴を読む文は、索引 change_logs_entity で引く', async () => {
+  test('履歴を読む文は、続きを読むときも、索引 change_logs_entity でそのタスクの行だけを引く', async () => {
     const target = await createTarget();
     const db = orgDb(env, target.organization.verified);
-    for (const before of [undefined, { created_at: AT, id: '019a0000-0000-7000-8000-000000000001' }]) {
-      const plan = (await queryPlanForTest(env, taskHistoryStatement(db, target.workspace.id, 'x', before))).join('\n');
-      expect(plan).toMatch(/SEARCH change_logs USING INDEX change_logs_entity \(entity_type=\? AND entity_id=\?/);
-      expect(plan).not.toMatch(/SCAN change_logs\b/);
-    }
+    const first = (await queryPlanForTest(env, taskHistoryStatement(db, target.workspace.id, 'x'))).join('\n');
+    expect(first).toMatch(/SEARCH change_logs USING INDEX change_logs_entity \(entity_type=\? AND entity_id=\?\)/);
+    expect(first).not.toMatch(/SCAN change_logs\b/);
+    const next = (
+      await queryPlanForTest(
+        env,
+        taskHistoryStatement(db, target.workspace.id, 'x', {
+          created_at: AT,
+          id: '019a0000-0000-7000-8000-000000000001',
+        }),
+      )
+    ).join('\n');
+    expect(next).toMatch(/SEARCH change_logs USING INDEX change_logs_entity \(entity_type=\? AND entity_id=\?/);
+    expect(next).not.toMatch(/SCAN change_logs\b/);
+  });
+
+  test('長い本文は、応答に本文を含めず、欄の名前と並びを残す', async () => {
+    const target = await createTarget();
+    const task = await createTask(target.organization, target.workspace.id, target.admin.userId!);
+    const body = '本'.repeat(10_000);
+    await insertLogs(target, [
+      {
+        entity_id: task.id,
+        changes_json: JSON.stringify({ points: [1, 2], body_md: [body, `${body}改`], title: ['a', 'b'] }),
+      },
+    ]);
+    const res = await history(target, task.id);
+    expect(res.status).toBe(200);
+    const text = await res.clone().text();
+    expect(text).not.toContain('本本');
+    expect(((await res.json()) as HistoryBody).entries[0]!.changes).toEqual([
+      { field: 'points', before: 1, after: 2 },
+      { field: 'body_md', before: null, after: null },
+      { field: 'title', before: 'a', after: 'b' },
+    ]);
+  });
+
+  test('同じ entity_id でも別の組織の行は返さない。別の組織の人を指す変えた人は null', async () => {
+    const target = await createTarget();
+    const foreign = await createTarget();
+    const task = await createTask(target.organization, target.workspace.id, target.admin.userId!);
+    await insertLogs(foreign, [{ entity_id: task.id, workspace_id: target.workspace.id }]);
+    await insertLogs(target, [{ entity_id: task.id, actor_user_id: foreign.admin.userId }]);
+    const body = await historyBody(target, task.id);
+    expect(body.entries).toHaveLength(1);
+    expect(body.entries[0]!.actor).toBeNull();
+  });
+
+  test('名前が空か、親のタイトルが null でも、ID があれば値を落とさず名前を空で返す', async () => {
+    const target = await createTarget();
+    const task = await createTask(target.organization, target.workspace.id, target.admin.userId!);
+    await insertLogs(target, [
+      {
+        entity_id: task.id,
+        changes_json: JSON.stringify({
+          assignee: [{ id: 'u1', name: '' }, null],
+          story: [{ id: 's1', title: null }, null],
+        }),
+      },
+    ]);
+    const body = await historyBody(target, task.id);
+    expect(body.entries[0]!.changes).toEqual([
+      { field: 'assignee', before: { id: 'u1', name: '' }, after: null },
+      { field: 'story', before: { id: 's1', name: '' }, after: null },
+    ]);
   });
 });
