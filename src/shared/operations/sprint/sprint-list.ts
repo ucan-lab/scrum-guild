@@ -16,6 +16,5 @@ export const sprintList = defineOperation({
   output: z.object({
     sprints: z.array(sprintSummarySchema),
     defaults: z.object({ start_on: z.string(), length: z.number().int() }),
-    today: z.string(),
   }),
 });

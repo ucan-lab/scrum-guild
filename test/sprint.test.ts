@@ -23,7 +23,6 @@ type SprintBody = {
 type ListBody = {
   sprints: SprintBody['sprint'][];
   defaults: { start_on: string; length: number };
-  today: string;
 };
 
 function list(target: Target, person: Person = target.member) {
@@ -135,7 +134,6 @@ describe('sprint-list', () => {
     const res = await list(target);
     expect(res.status).toBe(200);
     const body = (await res.json()) as ListBody;
-    expect(body.today).toBe('2026-10-26');
     expect(body.sprints).toEqual([
       { id: active.id, name: null, start_on: '2026-10-26', end_on: '2026-11-08', length: 14, status: 'active' },
       { id: later.id, name: '年末', start_on: '2026-11-09', end_on: '2026-11-22', length: 14, status: 'planned' },

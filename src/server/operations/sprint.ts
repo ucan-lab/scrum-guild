@@ -123,7 +123,6 @@ export const sprintListOperation = implement(sprintList, async ({ db, workspace 
   return {
     sprints: (sprintsResult?.rows ?? []).map(summaryOf),
     defaults: sprintDefaults(previousResult?.rows[0] ?? null, today, settings.week_start),
-    today,
   };
 });
 
