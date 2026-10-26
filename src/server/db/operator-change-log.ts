@@ -11,9 +11,10 @@ import { issueVerifiedOrganization } from './verify-organization.ts';
 export type OperatorChangeLog = {
   // 運用者のログインの ID（`github:12345` の形）。change_logs.operator に書く
   operator: string;
-  entityType: string;
+  // 運用者が履歴に残すのは組織そのものへの操作だけ。管理者の指名し直し（#217）を足すときに、ここへ種類を足す
+  entityType: 'organization';
   entityId: string;
-  action: string;
+  action: 'suspend' | 'resume' | 'update';
   // `{"列名": [前, 後]}`
   changes: Readonly<Record<string, readonly [unknown, unknown]>>;
   at: Date;
