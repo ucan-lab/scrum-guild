@@ -60,19 +60,80 @@ test.describe('リーダー（あおば開発のミナト）', () => {
     expect(await collect()).toEqual([]);
   });
 
-  test('人数が上限に達していると、理由と管理者に相談するよう出し、招待の操作を押せない', async ({ page }) => {
+  test('人数が上限に達していると、理由と管理者に相談するよう出し、まだ数えられていない人は招待できず、数えられている人は招待できる', async ({
+    page,
+  }) => {
     await page.route('**/api/aoba/member-list', async (route) => {
       const response = await route.fetch();
       const json = (await response.json()) as Record<string, unknown>;
       await route.fulfill({ response, json: { ...json, seats: { used: 15, limit: 15 } } });
     });
+    let counted = false;
+    await page.route('**/api/aoba/invitee-resolve', (route) =>
+      route.fulfill({
+        json: {
+          login_subject: counted ? '9000000000000102' : '9000000000000401',
+          login_name: counted ? 'haruka--seed' : 'tsumugi--seed',
+          display_name: null,
+          avatar_url: null,
+          already_counted: counted,
+        },
+      }),
+    );
     await page.goto(MEMBERS_PATH);
     await expect(page.locator('.callout.is-warn')).toHaveText(
-      '冒険者ギルドの人数が上限（15 人）に達しているため、招待できません。上限を上げるにはギルドマスターに相談してください。',
+      '冒険者ギルドの人数が上限（15 人）に達しているため、新しい人は招待できません。すでに冒険者ギルドにいる人は招待できます。上限を上げるにはギルドマスターに相談してください。',
     );
-    await expect(page.getByLabel('GitHub のユーザー名')).toBeDisabled();
-    await expect(page.getByRole('button', { name: '確かめる' })).toBeDisabled();
+    // 確かめることはできる
+    const username = page.getByLabel('GitHub のユーザー名');
+    const invite = page.getByRole('button', { name: '招待する' });
+    await expect(username).toBeEnabled();
+    await expect(page.getByRole('button', { name: '確かめる' })).toBeEnabled();
+    await expect(invite).toBeDisabled();
+
+    // まだ数えられていない人は、理由を添えて招待できない
+    await username.fill('tsumugi--seed');
+    await page.getByRole('button', { name: '確かめる' }).click();
+    await expect(page.locator('.choice')).toContainText('tsumugi--seed');
+    await expect(invite).toBeDisabled();
+    await expect(invite).toHaveAccessibleDescription(
+      'この人はまだ冒険者ギルドの人数に数えられていないため、上限に達している間は招待できません。',
+    );
+
+    // すでに数えられている人は招待できる
+    counted = true;
+    await username.fill('haruka--seed');
+    await page.getByRole('button', { name: '確かめる' }).click();
+    await expect(page.locator('.choice')).toContainText('haruka--seed');
+    await expect(invite).toBeEnabled();
+  });
+
+  test('招待の送信が上限で断られたら、上限の枠を知らせてフォーカスを移す', async ({ page }) => {
+    await page.route('**/api/aoba/invitee-resolve', (route) =>
+      route.fulfill({
+        json: {
+          login_subject: '9000000000000401',
+          login_name: 'tsumugi--seed',
+          display_name: null,
+          avatar_url: null,
+          already_counted: false,
+        },
+      }),
+    );
+    await page.route('**/api/aoba/invitation-create', (route) =>
+      route.fulfill({ status: 409, json: { error: { code: 'member_limit_reached', message: 'x' } } }),
+    );
+    await page.goto(MEMBERS_PATH);
+    await page.getByLabel('GitHub のユーザー名').fill('tsumugi--seed');
+    await page.getByRole('button', { name: '確かめる' }).click();
+    await expect(page.locator('.choice')).toContainText('tsumugi--seed');
+    await page.getByRole('button', { name: '招待する' }).click();
+    const alert = page.getByRole('alert').filter({ hasText: '上限' });
+    await expect(alert).toBeVisible();
+    await expect(alert).toBeFocused();
     await expect(page.getByRole('button', { name: '招待する' })).toBeDisabled();
+    // 失敗した後の読み上げの領域に「確かめました」を残さない
+    await expect(page.locator('.panel [role="status"]')).toHaveText('');
   });
 
   test('招待を断られたら、理由をユーザー名の欄に出し、確かめ直すまで招待できない', async ({ page }) => {
@@ -83,6 +144,7 @@ test.describe('リーダー（あおば開発のミナト）', () => {
           login_name: 'haruka--seed',
           display_name: 'ハルカ',
           avatar_url: null,
+          already_counted: true,
         },
       }),
     );
@@ -210,7 +272,13 @@ test.describe('リーダー（ひばり工房のリン）', () => {
 
     await page.route('**/api/hibari/invitee-resolve', (route) =>
       route.fulfill({
-        json: { login_subject: '9000000000000301', login_name: 'nagi--seed', display_name: '凪', avatar_url: null },
+        json: {
+          login_subject: '9000000000000301',
+          login_name: 'nagi--seed',
+          display_name: '凪',
+          avatar_url: null,
+          already_counted: false,
+        },
       }),
     );
     await page.getByLabel('GitHub のユーザー名').fill('nagi--seed');
@@ -261,8 +329,9 @@ test.describe('リーダー（ひばり工房のリン）', () => {
       '2026-10-20',
       '取り消す',
     ]);
-    // 入力は空に戻る
+    // 入力は空に戻り、続けて招待できるようユーザー名の欄へフォーカスが戻る
     await expect(page.getByLabel('GitHub のユーザー名')).toHaveValue('');
+    await expect(page.getByLabel('GitHub のユーザー名')).toBeFocused();
     await page.unroute('**/api/hibari/member-list');
 
     // seed の招待を本物の API で取り消す。読み直した一覧から消える
@@ -270,6 +339,8 @@ test.describe('リーダー（ひばり工房のリン）', () => {
     await expect(page.locator('.toasts:visible .toast').last()).toHaveText('招待を取り消しました');
     await expect(page.getByText('kaede--seed')).toHaveCount(0);
     await expect(page.getByText('承諾待ちの招待はありません')).toBeVisible();
+    // 押したボタンが消えたので、行が残っていない節の見出しへフォーカスを移す
+    await expect(page.getByRole('heading', { level: 2, name: '承諾待ちの招待' })).toBeFocused();
     expect(await collect()).toEqual([]);
   });
 });

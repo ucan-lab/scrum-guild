@@ -11,6 +11,7 @@ import {
 } from '../src/shared/operations/workspace/index.ts';
 import { createApp } from '../src/server/app.ts';
 import { commonDb, orgDb } from '../src/server/db/index.ts';
+import { envWithD1Hooks } from '../src/server/db/testing.ts';
 import { implementedOperations } from '../src/server/operations/index.ts';
 import { createFakeGithub, type FakeGithubUser } from './auth/fake-github.ts';
 import { githubUser } from './auth/helpers.ts';
@@ -23,7 +24,7 @@ import {
   type OrganizationFixture,
 } from './factories.ts';
 import { errorCodeOf, post } from './operations/harness.ts';
-import { createPerson, createTarget, type Person, type Target } from './operations/world.ts';
+import { createPerson, createTarget, testEnv, type Person, type Target } from './operations/world.ts';
 
 const github = createFakeGithub();
 const app = createApp(implementedOperations, { fetcher: github.fetcher });
@@ -145,8 +146,27 @@ describe('invitee-resolve', () => {
         login_name: user.login,
         display_name: '朝霧 葵',
         avatar_url: 'https://avatars.githubusercontent.com/u/1',
+        already_counted: false,
       });
     }
+  });
+
+  test('すでに組織の人数に数えられている人（別のワークスペースの人、承諾待ちの招待の人、管理者）は already_counted が真', async () => {
+    const target = await createTarget();
+    for (const person of [target.bystander, target.invitee, target.admin]) {
+      const res = await resolve(target, target.leader, asGithubUser(person).login);
+      expect(res.status).toBe(200);
+      expect(((await res.json()) as { already_counted: boolean }).already_counted).toBe(true);
+    }
+  });
+
+  test('別の組織のワークスペースは 404 で、GitHub に問い合わせない', async () => {
+    const [target, other] = await Promise.all([createTarget(), createTarget()]);
+    const before = github.calls.length;
+    const res = await resolve(target, target.admin, newUser().login, other.workspace.id);
+    expect(res.status).toBe(404);
+    expect(await errorCodeOf(res)).toBe('not_found');
+    expect(github.calls.length).toBe(before);
   });
 
   test('一般のメンバーは 403', async () => {
@@ -309,26 +329,94 @@ describe('invitation-create', () => {
     expect(await errorCodeOf(down)).toBe('unavailable');
   });
 
-  test('人数が上限以上なら 409 の member_limit_reached。すでに数えられている人でも断り、GitHub に問い合わせない', async () => {
+  test('人数が上限以上なら、まだ数えられていない人は 409 の member_limit_reached で、すでに数えられている人は招待できる', async () => {
     const target = await createTarget();
     // 管理者、リーダー、一般、別のワークスペースの人、承諾待ちの招待の人の5人
     expect(await seatsOf(target)).toEqual({ used: 5, limit: 15 });
     await setMemberLimit(target.organization, 5);
 
-    const before = github.calls.length;
+    const before = await invitationRows(target.organization, target.workspace.id);
     const full = await invite(target, target.leader, newUser());
     expect(full.status).toBe(409);
     expect(await errorCodeOf(full)).toBe('member_limit_reached');
-    const counted = await invite(target, target.leader, asGithubUser(target.bystander));
-    expect(counted.status).toBe(409);
-    expect(await errorCodeOf(counted)).toBe('member_limit_reached');
-    expect(github.calls.length).toBe(before);
+    expect(await invitationRows(target.organization, target.workspace.id)).toHaveLength(before.length);
+
+    // 別のワークスペースに所属している人と、別のワークスペースに承諾待ちの招待がある人、所属していない管理者
+    expect((await invite(target, target.leader, asGithubUser(target.bystander))).status).toBe(200);
+    expect(
+      (await invite(target, target.admin, asGithubUser(target.invitee), { workspaceId: target.otherWorkspace.id }))
+        .status,
+    ).toBe(200);
+    expect((await invite(target, target.leader, asGithubUser(target.admin))).status).toBe(200);
+    expect(await seatsOf(target)).toEqual({ used: 5, limit: 5 });
 
     // 1人分空けると1人だけ招待でき、次は断る
     await setMemberLimit(target.organization, 6);
     expect((await invite(target, target.leader, newUser())).status).toBe(200);
     expect(await seatsOf(target)).toEqual({ used: 6, limit: 6 });
     expect(await errorCodeOf(await invite(target, target.leader, newUser()))).toBe('member_limit_reached');
+  });
+
+  test('アカウントと操作ごとに 10 分に 30 回まで。31 回目は 429 の rate_limited', async () => {
+    const target = await createTarget();
+    const user = newUser();
+    // 1回目だけが招待でき、続きは already_invited で断られるが、どれも回数に数える
+    for (let i = 0; i < 30; i++) {
+      expect([200, 409]).toContain((await invite(target, target.leader, user)).status);
+    }
+    const res = await invite(target, target.leader, newUser());
+    expect(res.status).toBe(429);
+    expect(await errorCodeOf(res)).toBe('rate_limited');
+  });
+
+  test('同じ人を同時に招待すると、1件だけ入り、もう片方は 409 の already_invited で、履歴も1行', async () => {
+    const target = await createTarget();
+    const user = newUser();
+    // 先の要求が所属と招待を読んだ直後に、もう片方の要求を最後まで通す
+    let raced: Promise<Response> | undefined;
+    const racing = envWithD1Hooks(testEnv, {
+      afterBatch: async (sqls) => {
+        if (raced !== undefined || !sqls.some((sql) => sql.includes('from "invitations"') && sql.includes('limit')))
+          return;
+        raced = invite(target, target.admin, user);
+        await raced;
+      },
+    });
+    const first = await post(app, invitationCreate, {
+      slug: target.slug,
+      token: target.leader.token,
+      env: racing,
+      body: {
+        workspace_id: target.workspace.id,
+        provider: 'github',
+        username: user.login,
+        login_subject: String(user.id),
+        role: 'member',
+      },
+    });
+    const second = await raced!;
+    expect(second.status).toBe(200);
+    expect(first.status).toBe(409);
+    expect(await errorCodeOf(first)).toBe('already_invited');
+
+    const rows = (await invitationRows(target.organization, target.workspace.id)).filter(
+      (row) => row.login_subject === String(user.id),
+    );
+    expect(rows).toHaveLength(1);
+    expect(await invitationLogs(target.organization, rows[0]!.id)).toHaveLength(1);
+    const db = orgDb(env, target.organization.verified);
+    const created = await db.rows(
+      db.statement((q) =>
+        q
+          .selectFrom('change_logs')
+          .select('id')
+          .where('organization_id', '=', target.organization.id)
+          .where('entity_type', '=', 'invitation')
+          .where('action', '=', 'create'),
+      ),
+    );
+    // 承諾待ちの招待の人（createTarget）は履歴を持たないので、この招待の1行だけ
+    expect(created).toHaveLength(1);
   });
 
   test('閉じたワークスペースへの招待は 409 の workspace_closed', async () => {
@@ -422,9 +510,76 @@ describe('member-list の組織の人数', () => {
     );
     expect(await seatsOf(target)).toEqual({ used: 6, limit: 15 });
   });
+
+  test('閉じたワークスペースへの招待と、無効にされた人への招待は数えない', async () => {
+    const target = await createTarget();
+    const organization = target.organization;
+    const closed = await createWorkspace(organization, target.admin.userId!, {
+      closed_at: '2026-10-22T00:00:00.000Z',
+    });
+    await createInvitation(organization, closed.id, target.admin.userId!, {
+      provider: 'github',
+      subject: '7999999101',
+    });
+    const disabled = await createUser(organization, {
+      login_subject: '7999999102',
+      disabled_at: '2026-10-21T00:00:00.000Z',
+    });
+    await createInvitation(organization, target.workspace.id, target.admin.userId!, {
+      provider: 'github',
+      subject: disabled.login_subject!,
+    });
+    expect(await seatsOf(target)).toEqual({ used: 5, limit: 15 });
+  });
+
+  test('別の組織の管理者、所属、招待は数えない', async () => {
+    const [target, other] = await Promise.all([createTarget(), createTarget()]);
+    await createPerson({ organization: other.organization, admin: true });
+    await createInvitation(other.organization, other.workspace.id, other.admin.userId!, {
+      provider: 'github',
+      subject: '7999999103',
+    });
+    // 別の組織にいる人と同じログインの手段と ID でも、この組織の人数には入らない
+    await createInvitation(other.organization, other.workspace.id, other.admin.userId!, {
+      provider: 'github',
+      subject: target.member.login.subject,
+    });
+    expect(await seatsOf(target)).toEqual({ used: 5, limit: 15 });
+    expect(await seatsOf(other)).toEqual({ used: 8, limit: 15 });
+  });
 });
 
 describe('invitation-revoke', () => {
+  test('同時に取り消すと、片方だけが取り消し、もう片方は 409 の conflict で、履歴は1行', async () => {
+    const target = await createTarget();
+    const invitation = await createInvitation(target.organization, target.workspace.id, target.admin.userId!, {
+      provider: 'github',
+      subject: '7999999104',
+    });
+    // 先の要求が招待の状態を読んだ直後に、もう片方の要求を最後まで通す
+    let raced: Promise<Response> | undefined;
+    const racing = envWithD1Hooks(testEnv, {
+      afterQuery: async (sql) => {
+        if (raced !== undefined || !sql.includes('select "invitations"."status"')) return;
+        raced = revoke(target, target.admin, invitation.id);
+        await raced;
+      },
+    });
+    const first = await post(app, invitationRevoke, {
+      slug: target.slug,
+      token: target.leader.token,
+      env: racing,
+      body: { workspace_id: target.workspace.id, invitation_id: invitation.id },
+    });
+    const second = await raced!;
+    expect(second.status).toBe(200);
+    expect(first.status).toBe(409);
+    expect(await errorCodeOf(first)).toBe('conflict');
+    const logs = await invitationLogs(target.organization, invitation.id);
+    expect(logs).toHaveLength(1);
+    expect(logs[0]!.actor_user_id).toBe(target.admin.userId);
+  });
+
   test('リーダーが取り消すと、取り消し済みになって承諾待ちの一覧から消え、変更の履歴に残る', async () => {
     const target = await createTarget();
     const invitation = await createInvitation(target.organization, target.workspace.id, target.admin.userId!, {

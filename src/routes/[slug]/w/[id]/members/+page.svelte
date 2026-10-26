@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { tick } from 'svelte';
   import { invalidate } from '$app/navigation';
   import { page } from '$app/state';
   import { callOperation } from '../../../../../lib/api.ts';
@@ -48,27 +49,53 @@
   // 取り消しの失敗は、どれももう一度押しても直らないことが多いので、トーストで知らせて読み直す。
   // 先に承諾、辞退、取り消しが済んでいた（409 の conflict）、見つからない（404）、閉じた、権限を失った
   async function revoke(invitationId: string): Promise<void> {
-    if (revoking !== null || workspace === null) return;
+    if (revoking !== null || workspace === null || invitations === null) return;
     revoking = invitationId;
-    const result = await callOperation(
-      invitationRevoke,
-      { workspace_id: workspace.id, invitation_id: invitationId },
-      { slug },
-    );
-    if (!result.ok && isUnauthenticated(result)) {
-      window.location.assign(loginUrl(page.url));
+    // 読み直した後にフォーカスを置く行。消えた行の位置に繰り上がる次の行（無ければ前の行）
+    const index = invitations.findIndex((invitation) => invitation.id === invitationId);
+    try {
+      const result = await callOperation(
+        invitationRevoke,
+        { workspace_id: workspace.id, invitation_id: invitationId },
+        { slug },
+      );
+      if (!result.ok && isUnauthenticated(result)) {
+        window.location.assign(loginUrl(page.url));
+        return;
+      }
+      const words = { workspace: t('workspace') };
+      if (result.ok) showToast(t('invitationRevoked'), 'check');
+      else if (result.error?.code === 'workspace_closed' || result.status === 403) {
+        showToast(t(result.status === 403 ? 'inviteErrorForbidden' : 'inviteErrorClosed', words), 'alert');
+        await invalidate('app:workspace');
+      } else if (result.error?.code === 'conflict') showToast(t('invitationRevokeChanged'), 'alert');
+      else if (result.status === 404) showToast(t('invitationRevokeNotFound'), 'alert');
+      else if (result.status === 0) showToast(t('inviteErrorUnreachable'), 'alert');
+      else showToast(t('invitationRevokeFailed'), 'alert');
+      await reload();
+    } finally {
+      revoking = null;
+    }
+    await focusAfterRevoke(index);
+  }
+
+  // 押したボタンが消えてもフォーカスを失わないよう、同じ位置の行の「取り消す」へ移す。行が無くなれば節の見出しへ移す
+  async function focusAfterRevoke(index: number): Promise<void> {
+    await tick();
+    const buttons = Array.from(document.querySelectorAll<HTMLButtonElement>('[data-revoke-invitation]'));
+    const next = buttons[Math.min(Math.max(index, 0), buttons.length - 1)];
+    if (next !== undefined) {
+      next.focus();
       return;
     }
-    const words = { workspace: t('workspace') };
-    if (result.ok) showToast(t('invitationRevoked'), 'check');
-    else if (result.error?.code === 'workspace_closed' || result.status === 403) {
-      showToast(t(result.status === 403 ? 'inviteErrorForbidden' : 'inviteErrorClosed', words), 'alert');
-      await invalidate('app:workspace');
-    } else if (result.error?.code === 'conflict') showToast(t('invitationRevokeChanged'), 'alert');
-    else if (result.status === 404) showToast(t('invitationRevokeNotFound'), 'alert');
-    else showToast(t('invitationRevokeFailed'), 'alert');
-    await reload();
-    revoking = null;
+    invitationsHeading()?.focus();
+  }
+
+  // 承諾待ちの招待の節の見出し（Section が id を付ける）。フォーカスを受けられるようにして返す
+  function invitationsHeading(): HTMLElement | null {
+    const heading = document.getElementById('members-invitations');
+    heading?.setAttribute('tabindex', '-1');
+    return heading;
   }
 
   const leaderCount = $derived(members?.filter((member) => member.role === 'leader').length ?? 0);
@@ -142,7 +169,10 @@
         limit: String(seats.limit),
       })}
     >
-      <MemberInvite {slug} workspaceId={workspace.id} {seats} onchanged={reload} />
+      <!-- ワークスペースを替えたら、入力と確かめた結果を捨てる -->
+      {#key workspace.id}
+        <MemberInvite {slug} workspaceId={workspace.id} {seats} onchanged={reload} />
+      {/key}
     </Section>
   {/if}
 
@@ -189,6 +219,7 @@
                       <button
                         class="btn is-sm is-quiet"
                         type="button"
+                        data-revoke-invitation
                         aria-label={t('invitationRevokeLabel', { name: invitation.login_name })}
                         aria-disabled={revoking !== null}
                         onclick={() => revoke(invitation.id)}>{t('invitationRevoke')}</button

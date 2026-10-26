@@ -26,10 +26,11 @@ function personKey(row: { login_provider: string; login_subject: string | null; 
     : `${row.login_provider}:email:${row.login_email ?? ''}`;
 }
 
-// 組織の人数。無効にしていない人のうち、管理者か、いずれかのワークスペースに今所属している人と、
-// 承諾待ちの招待（まだアカウントのない人への招待を含む。期限の過ぎた Google の招待は数えない）を持つ人を、同じ人は1人として数える。
+// 組織の人数に数える人（personKey の集合）。無効にしていない人のうち、管理者か、いずれかのワークスペースに今所属している人と、
+// 承諾待ちの招待（まだアカウントのない人への招待を含む）を持つ人を、同じ人は1人として数える。招待のうち、期限の過ぎた Google の招待、
+// 閉じたワークスペースへの招待、同じ組織で無効にされた人（同じログインの手段と ID）への招待は数えない。
 // 保存せず、招待のたびと、メンバーの画面を開くたびに数える。行は member_limit で抑えられるので、アプリで重なりを除く
-export async function countSeats(db: OrganizationDb, at: Date): Promise<number> {
+async function seatHolders(db: OrganizationDb, at: Date): Promise<Set<string>> {
   const organizationId = db.organizationId;
   const [userResult, invitationResult] = await db.batch([
     db.statement((q) =>
@@ -59,7 +60,21 @@ export async function countSeats(db: OrganizationDb, at: Date): Promise<number> 
         .innerJoin('workspaces as w', 'w.id', 'i.workspace_id')
         .select(['i.login_provider', 'i.login_subject', 'i.login_email', 'i.claim_expires_at'])
         .where('w.organization_id', '=', organizationId)
-        .where('i.status', '=', 'pending'),
+        .where('w.closed_at', 'is', null)
+        .where('i.status', '=', 'pending')
+        .where((eb) =>
+          eb.not(
+            eb.exists(
+              eb
+                .selectFrom('users as d')
+                .select('d.id')
+                .where('d.organization_id', '=', organizationId)
+                .where('d.disabled_at', 'is not', null)
+                .whereRef('d.login_provider', '=', 'i.login_provider')
+                .whereRef('d.login_subject', '=', 'i.login_subject'),
+            ),
+          ),
+        ),
     ),
   ] as const);
   const people = new Set(userResult.rows.map(personKey));
@@ -69,16 +84,31 @@ export async function countSeats(db: OrganizationDb, at: Date): Promise<number> 
     if (row.claim_expires_at !== null && Date.parse(row.claim_expires_at) <= time) continue;
     people.add(personKey(row));
   }
-  return people.size;
+  return people;
 }
 
-// 組織の人数と上限。member-list がリーダーと管理者に返し、招待の作成が上限の判定に使う
+type Seats = { used: number; limit: number };
+
+// 組織の人数と上限。login を渡すと、その人がすでに人数に数えられているか（counted）も返す。
+// member-list がリーダーと管理者に返し、招待する人の解決が counted を、招待の作成が上限の判定に使う
+export async function readSeats(db: OrganizationDb, tools: OrganizationTools): Promise<Seats>;
 export async function readSeats(
   db: OrganizationDb,
   tools: OrganizationTools,
-): Promise<{ used: number; limit: number }> {
-  const [used, organization] = await Promise.all([countSeats(db, now()), tools.readOrganization()]);
-  return { used, limit: organization.memberLimit };
+  login: Login,
+): Promise<Seats & { counted: boolean }>;
+export async function readSeats(
+  db: OrganizationDb,
+  tools: OrganizationTools,
+  login?: Login,
+): Promise<Seats & { counted?: boolean }> {
+  const [people, organization] = await Promise.all([seatHolders(db, now()), tools.readOrganization()]);
+  const seats = { used: people.size, limit: organization.memberLimit };
+  if (login === undefined) return seats;
+  return {
+    ...seats,
+    counted: people.has(personKey({ login_provider: login.provider, login_subject: login.subject, login_email: null })),
+  };
 }
 
 // ワークスペースに今所属している、無効でない、同じログインの手段と ID の人
@@ -118,32 +148,33 @@ async function throwIfMemberOrInvited(db: OrganizationDb, workspaceId: string, l
   if (pendingResult.rows.length > 0) throw new ApiError(409, 'already_invited');
 }
 
+// already_counted は、その人がすでに組織の人数に数えられているか。人数が上限に達していても、数えられている人は招待できるので、
+// 画面が「招待する」を押せるかを決めるのに使う
 export const inviteeResolveOperation = implement(inviteeResolve, async ({ db, tools, input }) => {
   const invitee = await resolveGithubUsername(tools.inviteeResolver(input.provider), input.username, 'username', {
     operation: inviteeResolve.name,
     route: 'organization',
     organizationId: db.organizationId,
   });
+  const seats = await readSeats(db, tools, { provider: input.provider, subject: invitee.subject });
   return {
     login_subject: invitee.subject,
     login_name: invitee.loginName,
     display_name: invitee.displayName,
     avatar_url: invitee.avatarUrl,
+    already_counted: seats.counted,
   };
 });
 
-// 作る順: 人数を数えて上限なら断る（GitHub に問い合わせずに）→ ユーザー名を解決し直して、画面が確かめた ID と照合する →
-// 所属と承諾待ちの招待を読んで断る → invitations と change_logs を1回の batch で書く。
+// 作る順: ユーザー名を解決し直して、画面が確かめた ID と照合する → 所属と承諾待ちの招待を読んで断る →
+// 人数を数え、上限以上で、招待する人がまだ数えられていなければ断る → invitations と change_logs を1回の batch で書く。
 // invitations の文は INSERT ... SELECT ... WHERE（閉じていないワークスペース、所属していない、承諾待ちの招待が無い）にし、
 // change_logs は直前の文が行を入れたときだけ入れる。読んでから書くまでに条件が崩れたら、読み直して理由を返す。
-// 人数は書く文の条件に入れない（同時に招待して少し超えたときは、そのまま認める）
+// 人数は書く文の条件に入れない。数えてから書くまでの間に同時に招待されたときは、そのまま認める（超えるのは同時に送った招待の数まで）
 export const invitationCreateOperation = implement(invitationCreate, async ({ db, actor, workspace, tools, input }) => {
   const actorUserId = actorUserIdOf(actor);
   const organizationId = db.organizationId;
   const workspaceId = workspace.workspaceId;
-
-  const seats = await readSeats(db, tools);
-  if (seats.used >= seats.limit) throw new ApiError(409, 'member_limit_reached');
 
   const invitee = await resolveGithubUsername(tools.inviteeResolver(input.provider), input.username, 'username', {
     operation: invitationCreate.name,
@@ -153,6 +184,9 @@ export const invitationCreateOperation = implement(invitationCreate, async ({ db
   if (invitee.subject !== input.login_subject) throw new ApiError(409, 'invitee_changed');
   const login: Login = { provider: input.provider, subject: invitee.subject };
   await throwIfMemberOrInvited(db, workspaceId, login);
+
+  const seats = await readSeats(db, tools, login);
+  if (!seats.counted && seats.used >= seats.limit) throw new ApiError(409, 'member_limit_reached');
 
   const at = now();
   const createdAt = at.toISOString();

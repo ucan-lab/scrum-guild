@@ -16,7 +16,8 @@
   // 順は、GitHub のユーザー名を入れ、「確かめる」で解決して招待する人（アバター、ユーザー名、表示名）を見て確かめ、ロールを選んで招待する。
   // 打ち間違いで別の人を招待しないため、確かめるまで招待できない。招待するときは確かめたユーザー ID を渡し、サーバーが解決し直して
   // 違えば断る（運用者の組織の作成のダイアログ CreateOrganizationDialog と同じ作り）。ログインの手段は GitHub だけを出す（Google は #190）。
-  // 組織の人数が上限に達しているときは、理由と管理者に相談するよう出し、入力と招待のボタンを押せなくする。
+  // 組織の人数が上限に達しているときは、理由と管理者に相談するよう出す。確かめることはでき、確かめた人がまだ人数に数えられて
+  // いなければ（invitee-resolve の already_counted が偽）、理由を添えて招待のボタンを押せなくする（数えられている人は招待できる）。
   // 応答が遅れて届いても、古い入力の結果で今の状態を書き換えない（ユーザー名を直すと世代が進み、前の応答を捨てる）。
   // 招待できたら、承諾待ちの一覧と人数を読み直す（onchanged）。権限を失った、ワークスペースが閉じた、などは画面ごと読み直す
   let {
@@ -37,6 +38,8 @@
     loginName: string;
     displayName: string | null;
     avatarUrl: string | null;
+    // すでに組織の人数に数えられている人か（上限に達していても招待できる）
+    alreadyCounted: boolean;
   };
   type Field = 'username' | 'form';
   type FailedResult = Extract<ApiResult<unknown>, { ok: false }>;
@@ -46,25 +49,32 @@
   let resolved = $state<Resolved | null>(null);
   let busy = $state<'idle' | 'resolving' | 'inviting'>('idle');
   let error = $state<{ field: Field; key: DictionaryKey } | null>(null);
+  // 招待の送信が上限（member_limit_reached）で断られた。上限の枠を role="alert" で出してフォーカスを移す
+  let limitAlert = $state(false);
   let formCallout = $state<HTMLElement>();
+  let limitCallout = $state<HTMLElement>();
   let inputEpoch = 0;
 
   const full = $derived(seats.used >= seats.limit);
+  // 上限に達していても、すでに人数に数えられている人は招待できる
+  const blockedByLimit = $derived((full || limitAlert) && resolved !== null && !resolved.alreadyCounted);
   const inviting = $derived(busy === 'inviting');
   const words = $derived({ organization: t('organization'), admin: t('admin'), workspace: t('workspace') });
   const organizationUrl = $derived(`${page.url.origin}/${slug}/`);
   const usernameDescribedBy = $derived(
     error?.field === 'username' ? 'invite-username-error invite-username-hint' : 'invite-username-hint',
   );
-  // 読み上げの領域の文字。領域は常に置き、文字だけを替える
+  // 読み上げの領域の文字。領域は常に置き、文字だけを替える。失敗したときは、理由を出す枠（role="alert"）が読み上げるので空にする
   const live = $derived(
     busy === 'inviting'
       ? t('inviteSubmitting')
       : busy === 'resolving'
         ? t('inviteVerifying')
-        : resolved !== null
-          ? t('inviteLiveVerified', { name: resolved.loginName })
-          : '',
+        : error !== null || limitAlert
+          ? ''
+          : resolved !== null
+            ? t('inviteLiveVerified', { name: resolved.loginName })
+            : '',
   );
 
   // 入力の誤りの理由（details の code）と、409 の code を、辞書のキーに写す
@@ -107,15 +117,24 @@
       await onchanged();
       return null;
     }
-    // 人数が上限に達した: 読み直すと、上限に達したことの表示に替わる
+    // 人数が上限に達していて、この人はまだ数えられていない: 上限の枠を alert で出し、人数を読み直す
     if (code === 'member_limit_reached') {
+      limitAlert = true;
+      if (resolved !== null) resolved = { ...resolved, alreadyCounted: false };
       await onchanged();
+      await tick();
+      limitCallout?.focus();
       return null;
     }
     const problem = problemCodeOf(result);
     if (problem !== undefined) return { field: 'username', key: problemKeys[problem]! };
     if (code !== undefined && Object.hasOwn(conflictKeys, code)) return { field: 'username', key: conflictKeys[code]! };
-    if (code === 'rate_limited') return { field: 'username', key: 'inviteErrorTooMany' };
+    // 回数の上限。招待の送信では、確かめた結果を残したまま、しばらく後に押し直せるようにする
+    if (code === 'rate_limited') {
+      return context === 'verify'
+        ? { field: 'username', key: 'inviteErrorTooMany' }
+        : { field: 'form', key: 'inviteErrorTooManyInvites' };
+    }
     if (result.status === 503) {
       return { field: context === 'verify' ? 'username' : 'form', key: 'inviteErrorGithubUnavailable' };
     }
@@ -140,10 +159,11 @@
     resolved = null;
     if (busy === 'resolving') busy = 'idle';
     error = null;
+    limitAlert = false;
   }
 
   async function verify(): Promise<void> {
-    if (busy !== 'idle' || full) return;
+    if (busy !== 'idle') return;
     const value = username.trim();
     if (value === '') {
       error = { field: 'username', key: 'inviteErrorUserRequired' };
@@ -152,6 +172,7 @@
     }
     resolved = null;
     error = null;
+    limitAlert = false;
     busy = 'resolving';
     const epoch = inputEpoch;
     const result = await callOperation(
@@ -169,6 +190,7 @@
         loginName: result.data.login_name,
         displayName: result.data.display_name,
         avatarUrl: result.data.avatar_url,
+        alreadyCounted: result.data.already_counted,
       };
       return;
     }
@@ -179,7 +201,7 @@
   }
 
   async function submit(): Promise<void> {
-    if (busy !== 'idle' || full || resolved === null) return;
+    if (busy !== 'idle' || resolved === null || blockedByLimit) return;
     // 確かめた人と、欄のユーザー名が違うまま招待しない（欄を直したら確かめた結果は捨てるが、念のため送る前にも見る）
     if (username.trim() !== resolved.username) {
       resolved = null;
@@ -206,9 +228,13 @@
       inputEpoch++;
       username = '';
       resolved = null;
+      limitAlert = false;
       role = 'member';
       showToast(t('inviteDone', { name: result.data.login_name }), 'check');
       await onchanged();
+      // 続けて別の人を招待できるよう、ユーザー名の欄へ戻す
+      await tick();
+      document.getElementById('invite-username')?.focus();
       return;
     }
     const failure = await failureOf(result, 'invite');
@@ -223,8 +249,8 @@
 <div class="panel">
   <!-- 読み上げの領域。常に置き、文字だけを替える（後から挿入した領域は読み上げられないことがある） -->
   <div class="visually-hidden" role="status">{live}</div>
-  {#if full}
-    <div class="callout is-warn">
+  {#if full || limitAlert}
+    <div class="callout is-warn" role={limitAlert ? 'alert' : undefined} tabindex="-1" bind:this={limitCallout}>
       <Icon name="alert" /><span>{t('inviteLimitReached', { ...words, limit: String(seats.limit) })}</span>
     </div>
   {/if}
@@ -233,7 +259,7 @@
       <span class="field-label" id="invite-via-label">{t('inviteViaLabel')}</span>
       <div class="segmented" role="radiogroup" aria-labelledby="invite-via-label">
         <label>
-          <input type="radio" name="invite-via" value="github" checked disabled={full} />
+          <input type="radio" name="invite-via" value="github" checked />
           <span>{t('loginProviderGithub')}</span>
         </label>
       </div>
@@ -245,7 +271,6 @@
           class="input mono"
           id="invite-username"
           bind:value={username}
-          disabled={full}
           readonly={inviting}
           maxlength={GITHUB_USERNAME_MAX_LENGTH}
           placeholder={t('inviteGithubUserExample')}
@@ -261,7 +286,7 @@
             }
           }}
         />
-        <button class="btn" type="button" disabled={full} aria-disabled={busy !== 'idle'} onclick={verify}>
+        <button class="btn" type="button" aria-disabled={busy !== 'idle'} onclick={verify}>
           {busy === 'resolving' ? t('inviteVerifying') : t('inviteVerify')}
         </button>
       </div>
@@ -285,17 +310,20 @@
         <span>{t('inviteGithubId', { id: resolved.loginSubject })}</span>
       </div>
     </div>
+    {#if blockedByLimit}
+      <p class="props-note" id="invite-limit-note">{t('inviteNotCountedAtLimit', words)}</p>
+    {/if}
   {/if}
   <div class="form-row">
     <div class="field">
       <span class="field-label" id="invite-role-label">{t('memberRoleHeader')}</span>
       <div class="segmented" role="radiogroup" aria-labelledby="invite-role-label">
         <label>
-          <input type="radio" name="invite-role" value="member" bind:group={role} disabled={full || inviting} />
+          <input type="radio" name="invite-role" value="member" bind:group={role} disabled={inviting} />
           <span>{t('roleMember')}</span>
         </label>
         <label>
-          <input type="radio" name="invite-role" value="leader" bind:group={role} disabled={full || inviting} />
+          <input type="radio" name="invite-role" value="leader" bind:group={role} disabled={inviting} />
           <span>{t('leader')}</span>
         </label>
       </div>
@@ -303,8 +331,9 @@
     <button
       class="btn is-primary"
       type="button"
-      disabled={full || resolved === null}
+      disabled={resolved === null || blockedByLimit}
       aria-disabled={busy !== 'idle'}
+      aria-describedby={blockedByLimit ? 'invite-limit-note' : undefined}
       onclick={submit}
     >
       <Icon name="mail" />{inviting ? t('inviteSubmitting') : t('inviteSubmit')}
@@ -315,5 +344,5 @@
       <Icon name="alert" /><span>{t(error.key, words)}</span>
     </div>
   {/if}
-  <span class="field-hint">{t('inviteSendNote', { ...words, url: organizationUrl })}</span>
+  <span class="field-hint">{t('inviteSendNote', words)} <span class="mono wrap-anywhere">{organizationUrl}</span></span>
 </div>

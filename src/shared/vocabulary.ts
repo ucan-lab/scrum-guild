@@ -772,15 +772,20 @@ export const dictionary = defineDictionary({
   inviteGithubId: workspace('GitHub のユーザー ID {id}', 'GitHub のユーザー ID {id}'),
   inviteSubmit: workspace('招待する', '招待する'),
   inviteSubmitting: workspace('招待しています', '招待しています'),
+  // 続けて組織の URL を出す（長い URL を折り返せるよう、URL は別の要素にする）
   inviteSendNote: workspace(
-    'Scrum Guild は招待をメールで送りません。{organization}の URL（{url}）を本人に伝えてください。',
-    'Scrum Guild は招待をメールで送りません。{organization}の URL（{url}）を本人に伝えてください。',
+    'Scrum Guild は招待をメールで送りません。次の{organization}の URL を本人に伝えてください。',
+    'Scrum Guild は招待をメールで送りません。次の{organization}の URL を本人に伝えてください。',
   ),
   inviteDone: workspace('{name} を招待しました', '{name} を招待しました'),
   inviteLiveVerified: workspace('確かめました: {name}', '確かめました: {name}'),
   inviteLimitReached: workspace(
-    '{organization}の人数が上限（{limit} 人）に達しているため、招待できません。上限を上げるには{admin}に相談してください。',
-    '{organization}の人数が上限（{limit} 人）に達しているため、招待できません。上限を上げるには{admin}に相談してください。',
+    '{organization}の人数が上限（{limit} 人）に達しているため、新しい人は招待できません。すでに{organization}にいる人は招待できます。上限を上げるには{admin}に相談してください。',
+    '{organization}の人数が上限（{limit} 人）に達しているため、新しい人は招待できません。すでに{organization}にいる人は招待できます。上限を上げるには{admin}に相談してください。',
+  ),
+  inviteNotCountedAtLimit: workspace(
+    'この人はまだ{organization}の人数に数えられていないため、上限に達している間は招待できません。',
+    'この人はまだ{organization}の人数に数えられていないため、上限に達している間は招待できません。',
   ),
   inviteErrorUserRequired: workspace('ユーザー名を入れてください。', 'ユーザー名を入れてください。'),
   inviteErrorVerifyAgain: workspace(
@@ -818,6 +823,10 @@ export const dictionary = defineDictionary({
   inviteErrorTooMany: workspace(
     '確かめる回数が多すぎます。しばらく待ってから、もう一度試してください。',
     '確かめる回数が多すぎます。しばらく待ってから、もう一度試してください。',
+  ),
+  inviteErrorTooManyInvites: workspace(
+    '招待する回数が多すぎます。しばらく待ってから、もう一度試してください。',
+    '招待する回数が多すぎます。しばらく待ってから、もう一度試してください。',
   ),
   inviteErrorGithubUnavailable: workspace(
     'GitHub に届きませんでした。しばらくしてから、もう一度試してください。',
