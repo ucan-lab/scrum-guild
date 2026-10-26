@@ -226,8 +226,6 @@
     const result = await callOperation(taskHistory, { workspace_id: workspaceId, task_id: taskId }, { slug });
     if (!alive || mine !== historyVersion) return;
     historyReloading = false;
-    // 読み直している間に始まった続きの応答は、古い先頭に足すことになるので捨てる
-    historyVersion++;
     if (result.ok) {
       historyEntries = result.data.entries;
       historyNext = result.data.next;
