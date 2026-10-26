@@ -175,9 +175,12 @@ test('確認は開いたときに件数とまとめて削除できるかを読�
   const confirm = page.getByRole('dialog', { name: 'ストーリーを削除する' });
   const submit = confirm.getByRole('button', { name: '削除する' });
   await expect(submit).toHaveAttribute('aria-disabled', 'true');
-  await expect(confirm.getByText('タスク 1 件は親なしのタスク')).toBeVisible();
+  const choices = confirm.getByRole('radiogroup');
+  await expect(choices.getByText('タスク 1 件は親なしのタスク')).toBeVisible();
   release();
-  await expect(confirm.getByText('タスク 3 件は親なしのタスク')).toBeVisible();
+  // 件数が変わったことは、読み上げの領域にも出す
+  await expect(confirm.getByRole('status').filter({ hasText: /タスク\s3\s件は親なしのタスク/ })).toHaveCount(1);
+  await expect(choices.getByText('タスク 3 件は親なしのタスク')).toBeVisible();
   await expect(submit).toHaveAttribute('aria-disabled', 'false');
   const all = confirm.getByRole('radio', { name: /配下もまとめて削除する/ });
   await expect(all).toBeDisabled();
@@ -192,6 +195,40 @@ test('確認は開いたときに件数とまとめて削除できるかを読�
   await expect(storyDialog).toBeHidden();
   await expect(page.getByRole('status').filter({ hasText: 'ストーリーを削除しました' })).toBeVisible();
   await expect(page.locator('.entry', { hasText: '返信の型を作る' })).toHaveCount(1);
+});
+
+test('確認を開いた後の読み直しで配下が無くなったら、選択肢を消してやめるボタンへフォーカスを移し、変わった中身を読み上げの領域に出す', async ({
+  context,
+  baseURL,
+  page,
+}) => {
+  await signIn(context, baseURL, 'admin');
+  await createWorkspace(page, '配下が消えるワークスペース', 'scrum');
+  await create(page, 'ストーリーを作る', '請求書の発行');
+  await addTask(page, '請求書の発行', '宛名を直す', '起票');
+  await page.waitForLoadState('networkidle');
+
+  await page.getByRole('button', { name: '請求書の発行', exact: true }).click();
+  const storyDialog = page.getByRole('dialog', { name: 'ストーリー', exact: true });
+  await expect(storyDialog.getByLabel('タイトル')).toHaveValue('請求書の発行');
+
+  // 別の画面で配下のタスクが外された形にする。応答を待たせて、選択肢にフォーカスが置かれてから差し替える
+  let release: () => void = () => {};
+  const held = new Promise<void>((resolve) => (release = resolve));
+  await page.route('**/story-get', async (route) => {
+    const response = await route.fetch();
+    const body = (await response.json()) as Record<string, unknown>;
+    await held;
+    await route.fulfill({ response, json: { ...body, children: { tasks: 0 } } });
+  });
+  await storyDialog.getByRole('button', { name: 'このストーリーを削除する' }).click();
+  const confirm = page.getByRole('dialog', { name: 'ストーリーを削除する' });
+  await expect(confirm.getByRole('radio', { name: /配下を親なしで残す/ })).toBeFocused();
+  release();
+  await expect(confirm.getByRole('radio')).toHaveCount(0);
+  await expect(confirm.getByRole('button', { name: 'やめる' })).toBeFocused();
+  await expect(confirm.getByRole('status').filter({ hasText: '配下のタスクはありません。' })).toHaveCount(1);
+  await page.unroute('**/story-get');
 });
 
 // seed のワークスペース（受託開発チーム）。エピック「ポイントの交換先を増やす」とストーリーは、管理者のミナトが作った

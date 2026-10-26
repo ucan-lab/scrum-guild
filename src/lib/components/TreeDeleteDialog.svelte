@@ -48,6 +48,8 @@
   let mode = $state<DeleteChildrenMode>('keep');
   // 削除できるか。読み直しで偽になったら（リーダーから外されたなど）、主ボタンを押せなくする
   let canDelete = $state(true);
+  // 読み直しで件数が変わったときに status へ出す文
+  let announcement = $state('');
   let loading = $state(false);
   let submitting = $state(false);
   let submitError = $state<string | null>(null);
@@ -78,6 +80,7 @@
       if (mine !== generation || !open) return;
       if (result.ok) {
         const children = result.data.children;
+        const before = target;
         target = {
           ...current,
           stories: 'stories' in children ? children.stories : 0,
@@ -85,6 +88,10 @@
           canDeleteChildren: result.data.can_delete_children,
         };
         if (!result.data.can_delete_children) mode = 'keep';
+        // 件数が変わったら、取り消せない操作の中身が変わったことを読み上げにも伝える（変わった後の説明の文を status に出す）
+        if (before !== null && (before.stories !== target.stories || before.tasks !== target.tasks)) {
+          announcement = childrenText(target, mode);
+        }
         canDelete = result.data.can_delete;
         if (!canDelete) submitError = t('taskDeleteForbidden', { leader: t('leader') });
         // 配下が無くなって選択肢が消えると、そこにあったフォーカスが body に落ちる。描き直した後にやめるボタンへ移す
@@ -112,6 +119,7 @@
     target = next;
     mode = 'keep';
     canDelete = true;
+    announcement = '';
     submitting = false;
     submitError = null;
     dialog?.show(trigger);
@@ -163,7 +171,22 @@
     }
   }
 
-  const status = $derived(submitting ? t('taskDeleting') : loading ? t('loading') : '');
+  // 配下の扱いの説明。配下が無ければその旨、あれば選んでいる扱いの説明（画面に出す文と同じ）
+  function childrenText(current: Target, children: DeleteChildrenMode): string {
+    const values = { ...words, stories: current.stories, tasks: current.tasks };
+    const empty = current.kind === 'epic' ? current.stories === 0 : current.tasks === 0;
+    if (empty) {
+      return current.kind === 'epic'
+        ? t('epicDeleteNoChildren', { story: t('story') })
+        : t('storyDeleteNoChildren', { task: t('task') });
+    }
+    if (current.kind === 'epic') {
+      return children === 'keep' ? t('epicDeleteKeepHint', values) : t('epicDeleteAllHint', values);
+    }
+    return children === 'keep' ? t('storyDeleteKeepHint', values) : t('storyDeleteAllHint', values);
+  }
+
+  const status = $derived(submitting ? t('taskDeleting') : loading ? t('loading') : announcement);
   const counts = $derived({ stories: target?.stories ?? 0, tasks: target?.tasks ?? 0 });
   const words = $derived({
     epic: t('epic'),
