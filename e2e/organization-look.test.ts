@@ -147,7 +147,9 @@ test.describe('管理者（くもラボのカイ）', () => {
     await expect(page.locator('.me .chip')).toHaveText('ギルドマスター');
   });
 
-  test('通信の失敗では選んだ値を残して押し直せる。409 と 403 は知らせて読み直し、今の値に戻す', async ({ page }) => {
+  test('失敗は節の中に次の操作まで残す。通信の失敗では選んだ値を残して押し直せ、409 と 403 は読み直して今の値に戻す', async ({
+    page,
+  }) => {
     await page.goto('/kumo/admin');
     const section = themeSection(page);
     const save = section.getByRole('button', { name: '保存する' });
@@ -158,7 +160,7 @@ test.describe('管理者（くもラボのカイ）', () => {
     );
     await section.getByRole('radio', { name: /^現代風/ }).check();
     await save.click();
-    await expect(page.getByRole('status').filter({ hasText: '保存できませんでした。もう一度' })).toBeVisible();
+    await expect(section.getByRole('alert')).toContainText('保存できませんでした。もう一度');
     await expect(section.getByRole('radio', { name: /^現代風/ })).toBeChecked();
     await expect(save).toHaveAttribute('aria-disabled', 'false');
     await page.unroute(UPDATE_ROUTE);
@@ -168,9 +170,7 @@ test.describe('管理者（くもラボのカイ）', () => {
       route.fulfill({ status: 409, json: { error: { code: 'conflict', message: 'test' } } }),
     );
     await save.click();
-    await expect(
-      page.getByRole('status').filter({ hasText: 'ほかのギルドマスターが先に変えていました' }),
-    ).toBeVisible();
+    await expect(section.getByRole('alert')).toContainText('ほかのギルドマスターが先に変えていました');
     await expect(section.getByRole('radio', { name: /^シンプル（自動）/ })).toBeChecked();
     await expect(save).toHaveAttribute('aria-disabled', 'true');
     await page.unroute(UPDATE_ROUTE);
@@ -181,7 +181,10 @@ test.describe('管理者（くもラボのカイ）', () => {
     );
     await section.getByRole('radio', { name: /^現代風/ }).check();
     await save.click();
-    await expect(page.getByRole('status').filter({ hasText: '操作できない状態です' })).toBeVisible();
+    await expect(section.getByRole('alert')).toContainText('操作できない状態です');
     await expect(section.getByRole('radio', { name: /^シンプル（自動）/ })).toBeChecked();
+    // 次に選ぶと、知らせは消える
+    await section.getByRole('radio', { name: /^中世風/ }).check();
+    await expect(section.getByRole('alert')).toHaveText('');
   });
 });

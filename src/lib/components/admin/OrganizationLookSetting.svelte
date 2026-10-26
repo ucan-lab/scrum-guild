@@ -9,6 +9,7 @@
   import { isUnauthenticated, loginUrl } from '../../login-redirect.ts';
   import { showToast } from '../../toast.svelte.ts';
   import { t, tIn } from '../../vocabulary.svelte.ts';
+  import Icon from '../Icon.svelte';
   import Setting from '../Setting.svelte';
 
   // 組織の管理の画面（admin.html）の「ワークスペースの外の言葉づかい」と「既定のテーマ」の2つの節。
@@ -17,7 +18,8 @@
   // 選んだ値が今の値と違うときだけ押せる。送っている間はそのボタンを aria-disabled にして押しても無視し、ラジオは選べたままにする
   // （結果は送った値で判断する）。通ったら知らせを出し、組織の枠を読み直して自分の画面にも当てる（テーマは自分で選んでいなければ変わる）。
   // 409（ほかの管理者が先に変えた）と 403、404 は知らせて読み直し、今の値を見せる。401 はログインへ。
-  // ほかの失敗（通信、5xx）は選んだ値を残して知らせ、そのまま押し直せる
+  // ほかの失敗（通信、5xx）は選んだ値を残して知らせ、そのまま押し直せる。
+  // 失敗の知らせは、トーストでなく節の中（role="alert"）に、次に選ぶか押すまで残す（消えると、失敗したのか未操作なのか分からない）
   let { slug, vocabulary, theme }: { slug: string; vocabulary: Vocabulary; theme: Theme } = $props();
 
   type Field = 'vocabulary' | 'theme';
@@ -28,6 +30,8 @@
   let drafts = $state<{ vocabulary: Vocabulary | null; theme: Theme | null }>({ vocabulary: null, theme: null });
   // 送っている値。節ごとに持つ
   let sending = $state<{ vocabulary: Vocabulary | null; theme: Theme | null }>({ vocabulary: null, theme: null });
+  // 節ごとの失敗の知らせ。次に選ぶか押すまで残す
+  let errors = $state<{ vocabulary: string | null; theme: string | null }>({ vocabulary: null, theme: null });
 
   const current = $derived<Values>({ vocabulary, theme });
   const chosen = $derived<Values>({
@@ -40,6 +44,7 @@
   $effect(() => {
     void slug;
     drafts = { vocabulary: null, theme: null };
+    errors = { vocabulary: null, theme: null };
   });
 
   function vocabularyLabel(value: Vocabulary): string {
@@ -53,6 +58,11 @@
       organization: tIn('organization', scope),
       admin: tIn('admin', scope),
     });
+  }
+
+  function choose(field: Field, value: string): void {
+    drafts = { ...drafts, [field]: value };
+    errors = { ...errors, [field]: null };
   }
 
   function canSave(field: Field): boolean {
@@ -76,6 +86,7 @@
         ? t('orgVocabularyChanged', { label: vocabularyLabel(value as Vocabulary) })
         : t('orgThemeChanged', { label: t(themeLabelKeys[value as Theme]) });
     sending = { ...sending, [field]: value };
+    errors = { ...errors, [field]: null };
     try {
       const result = await callOperation(organizationSettingsUpdate, change, { slug: sentSlug });
       if (sentSlug !== slug) return;
@@ -86,12 +97,12 @@
       if (result.ok) {
         showToast(success, 'check');
       } else if (result.status === 409 && result.error?.code === 'conflict') {
-        showToast(t('orgSettingsConflict', { admin: t('admin') }), 'alert');
+        errors = { ...errors, [field]: t('orgSettingsConflict', { admin: t('admin') }) };
       } else if (result.status === 403 || result.status === 404) {
-        showToast(t('orgSettingsUnavailable'), 'alert');
+        errors = { ...errors, [field]: t('orgSettingsUnavailable') };
       } else {
         // 選んだ値は残し、そのまま押し直せる
-        showToast(t('orgSettingsFailed'), 'alert');
+        errors = { ...errors, [field]: t('orgSettingsFailed') };
         return;
       }
       await invalidateAll();
@@ -116,7 +127,7 @@
           name="{ids}-vocabulary"
           {value}
           checked={chosen.vocabulary === value}
-          onchange={() => (drafts = { ...drafts, vocabulary: value })}
+          onchange={() => choose('vocabulary', value)}
         />
         <div><b>{vocabularyLabel(value)}</b><span>{vocabularyExample(value)}</span></div>
       </label>
@@ -126,6 +137,10 @@
     <button class="btn" type="button" aria-disabled={!canSave('vocabulary')} onclick={() => save('vocabulary')}>
       {sending.vocabulary !== null ? t('orgSettingsSaving') : t('orgSettingsSave')}
     </button>
+  </div>
+  <!-- 失敗の知らせ。領域は常に置き、中の文字だけを替える -->
+  <div role="alert">
+    {#if errors.vocabulary !== null}<span class="field-error"><Icon name="alert" />{errors.vocabulary}</span>{/if}
   </div>
 </Setting>
 
@@ -138,7 +153,7 @@
           name="{ids}-theme"
           {value}
           checked={chosen.theme === value}
-          onchange={() => (drafts = { ...drafts, theme: value })}
+          onchange={() => choose('theme', value)}
         />
         <div><b>{t(themeLabelKeys[value])}</b><span>{t(themeNoteKeys[value])}</span></div>
       </label>
@@ -148,6 +163,10 @@
     <button class="btn" type="button" aria-disabled={!canSave('theme')} onclick={() => save('theme')}>
       {sending.theme !== null ? t('orgSettingsSaving') : t('orgSettingsSave')}
     </button>
+  </div>
+  <!-- 失敗の知らせ。領域は常に置き、中の文字だけを替える -->
+  <div role="alert">
+    {#if errors.theme !== null}<span class="field-error"><Icon name="alert" />{errors.theme}</span>{/if}
   </div>
   <!-- 送っている間の読み上げ。領域は常に置き、中の文字だけを替える -->
   <span class="visually-hidden" role="status">{status}</span>
