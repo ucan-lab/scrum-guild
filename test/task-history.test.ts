@@ -118,7 +118,7 @@ async function insertLogs(
 }
 
 describe('task-history', () => {
-  test('作成、変更、移動、担当、完了、削除を新しい順に、変えた人の今の名前と、そのときの値で返す', async () => {
+  test('作成、変更、移動、担当、完了を新しい順に、変えた人の今の名前と、そのときの値で返す。削除した後は 404', async () => {
     const target = await createTarget();
     await rename(target, target.member, '若葉 湊');
     await rename(target, target.leader, '朝霧 楓');
@@ -141,12 +141,10 @@ describe('task-history', () => {
     await call(target, taskMove, { task_id: taskId, story_id: other.id }, target.member, at(3));
     await call(target, taskAssign, { task_id: taskId, assignee_user_id: target.leader.userId }, target.member, at(4));
     await call(target, taskComplete, { task_id: taskId }, target.leader, at(5));
-    await call(target, taskDelete, { task_id: taskId }, target.member, at(6));
     // 後で名前を変えても、値はそのときの名前のまま。変えた人は今の名前
     await rename(target, target.member, '若葉 湊（改名）');
     await rename(target, target.leader, '朝霧 楓（改名）');
 
-    // 削除したタスクも読める
     const res = await history(target, taskId);
     expect(res.status).toBe(200);
     const text = await res.clone().text();
@@ -158,11 +156,6 @@ describe('task-history', () => {
     const member = { id: target.member.userId!, name: '若葉 湊（改名）' };
     const leader = { id: target.leader.userId!, name: '朝霧 楓（改名）' };
     expect(body.entries.map(({ action, actor, changes }) => ({ action, actor, changes }))).toEqual([
-      {
-        action: 'delete',
-        actor: member,
-        changes: [{ field: 'deleted_at', before: null, after: '2026-10-26T01:00:06.000Z' }],
-      },
       {
         action: 'complete',
         actor: leader,
@@ -214,13 +207,18 @@ describe('task-history', () => {
       },
     ]);
     expect(body.entries.map((entry) => entry.created_at)).toEqual([
-      '2026-10-26T01:00:06.000Z',
       '2026-10-26T01:00:05.000Z',
       '2026-10-26T01:00:04.000Z',
       '2026-10-26T01:00:03.000Z',
       '2026-10-26T01:00:02.000Z',
       '2026-10-26T01:00:01.000Z',
     ]);
+
+    // 削除したタスクは画面から隠すので、履歴も読めない（削除の履歴はリーダーと管理者の画面で見る）
+    await call(target, taskDelete, { task_id: taskId }, target.member, at(6));
+    const gone = await history(target, taskId);
+    expect(gone.status).toBe(404);
+    expect(await errorCodeOf(gone)).toBe('not_found');
   });
 
   test('1回 50 件まで返し、同じ時刻の行が続いても next で漏れなく重ならずに続きを読める', async () => {
@@ -339,14 +337,22 @@ describe('task-history', () => {
     }
   });
 
-  test('削除したタスクと、閉じたワークスペースのタスクも読める', async () => {
+  test('閉じたワークスペースのタスクも読める。削除したタスクは、リーダーと管理者にも 404', async () => {
     const target = await createTarget({ closed: true });
-    const task = await createTask(target.organization, target.workspace.id, target.admin.userId!, {
-      deleted_at: '2026-10-21T00:00:00.000Z',
-    });
+    const task = await createTask(target.organization, target.workspace.id, target.admin.userId!);
     await insertLogs(target, [{ entity_id: task.id }]);
     const body = await historyBody(target, task.id);
     expect(body.entries).toHaveLength(1);
+
+    const deleted = await createTask(target.organization, target.workspace.id, target.admin.userId!, {
+      deleted_at: '2026-10-21T00:00:00.000Z',
+    });
+    await insertLogs(target, [{ entity_id: deleted.id }]);
+    for (const person of [target.member, target.leader, target.admin]) {
+      const res = await history(target, deleted.id, undefined, person);
+      expect(res.status).toBe(404);
+      expect(await errorCodeOf(res)).toBe('not_found');
+    }
   });
 
   test('履歴を読む文は、続きを読むときも、索引 change_logs_entity でそのタスクの行だけを引く', async () => {

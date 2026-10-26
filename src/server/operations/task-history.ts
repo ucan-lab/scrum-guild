@@ -109,7 +109,7 @@ export const taskHistoryOperation = implement(taskHistory, async ({ db, workspac
   const organizationId = db.organizationId;
   const workspaceId = workspace.workspaceId;
   const [task, rows] = await Promise.all([
-    // タスクがそのワークスペースにあるか（削除したものも読める）と、時刻を出すワークスペースのタイムゾーン
+    // タスクがそのワークスペースにあるか（削除したものは画面から隠すので 404）と、時刻を出すワークスペースのタイムゾーン
     db.first(
       db.statement((q) =>
         q
@@ -118,6 +118,7 @@ export const taskHistoryOperation = implement(taskHistory, async ({ db, workspac
           .select(['tasks.id', 'workspaces.timezone'])
           .where('tasks.id', '=', input.task_id)
           .where('tasks.workspace_id', '=', workspaceId)
+          .where('tasks.deleted_at', 'is', null)
           .where('workspaces.organization_id', '=', organizationId),
       ),
     ),

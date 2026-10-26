@@ -29,7 +29,8 @@ const cursorSchema = z.object({ created_at: z.string().min(1).max(40), id: idSch
 
 // 詳細の引き出しの「変更の履歴」。タスク1件の change_logs を新しい順（created_at の降順、同じなら id の降順）に、
 // 1回 50 件まで返す。続きがあれば next（次に before へ渡す値）を返す。閉じたワークスペースでも読める。
-// タスクはそのワークスペースのものなら、削除したものも読める（削除の行を返すため）。無いタスク、別のワークスペースと別の組織のタスクは 404。
+// 削除したタスクは画面から隠すので、履歴も読めない（削除の履歴はリーダーと管理者が後の変更の履歴の画面で見る）。
+// 無いタスク、削除したタスク、別のワークスペースと別の組織のタスクは 404。
 // 時刻は画面がワークスペースのタイムゾーン（timezone）で出す
 export const taskHistory = defineOperation({
   name: 'task-history',
