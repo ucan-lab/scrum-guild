@@ -283,6 +283,21 @@ test.describe('リーダー（あおば開発のミナト）', () => {
     await expect(page.locator('.toasts:visible .toast').last()).toHaveText('受託開発チームから抜けました');
   });
 
+  // 一般のメンバーが別のタブで先に抜けていたときは、登録の関数の member の権限で 403 になる。それも抜けたのと同じく扱う
+  test('自分の離脱が 403（先に抜けていた）でも、抜けたのと同じく組織のトップへ移る', async ({ page }) => {
+    await page.route('**/api/aoba/membership-leave', (route) =>
+      route.fulfill({ status: 403, json: { error: { code: 'forbidden', message: 'x' } } }),
+    );
+    await page.goto(MEMBERS_PATH);
+    await page.getByRole('button', { name: '受託開発チームから抜ける' }).click();
+    await page
+      .getByRole('dialog', { name: '受託開発チームから抜けますか' })
+      .getByRole('button', { name: '抜ける' })
+      .click();
+    await expect(page).toHaveURL(/\/aoba$/);
+    await expect(page.locator('.toasts:visible .toast').last()).toHaveText('受託開発チームから抜けました');
+  });
+
   test('他人の唯一のリーダーを一般に戻すときも、リーダーがいなくなることを確かめ、やめると送らずに戻す', async ({
     page,
   }) => {

@@ -145,8 +145,9 @@
         window.location.assign(loginUrl(page.url));
         return;
       }
-      // 自分の離脱が 404 なのは、別のタブなどで先に抜けていたとき。抜けたのと同じく扱う
-      if (self && (result.ok || result.status === 404)) {
+      // 自分の離脱が 404 か 403 なのは、別のタブなどで先に抜けていたとき（管理者は所属が無いので 404、
+      // 一般のメンバーは登録の関数の member の権限で 403）。抜けたのと同じく扱う
+      if (self && (result.ok || result.status === 404 || result.status === 403)) {
         showToast(t('memberLeft', { workspaceName }), 'check');
         // 抜けたワークスペースには入れない。組織の枠の値（所属するワークスペース）も読み直す
         await goto(leavesOrganization ? resolve('/') : resolve('/[slug]', { slug }), { invalidateAll: true });
