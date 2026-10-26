@@ -1,0 +1,34 @@
+name: cache
+
+# PR のワークフローが読むキャッシュを main に作る（docs/development.md の「CI」）。
+# キャッシュは作ったブランチと、PR のベースのブランチからしか読めない。CI は PR でしか動かないので、
+# main に作らないと、どの PR も1回目はキャッシュに当たらない。ここでは依存とブラウザを入れるだけで、テストは走らせない
+on:
+  push:
+    branches: [main]
+    # キャッシュのキーが変わりうるものだけ。キーが同じなら actions/cache は保存しない
+    paths:
+      - pnpm-lock.yaml
+      - .node-version
+      - package.json
+      - .github/actions/**
+      - .github/workflows/cache.yml
+  workflow_dispatch:
+
+concurrency:
+  group: cache
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  warm:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+      - uses: ./.github/actions/playwright
