@@ -20,7 +20,7 @@
 // 組織の管理（管理者）: ユーザー、ワークスペース、添付ファイルの合計、組織の休日、言葉づかい、既定のテーマ、配分と積載量の合計、取り込み元の応答、AI の機能、変更の履歴
 const { D, t, icon, esc, pageHead, avatarOf, user, meter } = SQ;
 const A = D.admin;
-// 変更の履歴の内容の文。本番の辞書（src/shared/vocabulary.ts の history*）と同じ文を、言葉づかいに合わせて作る
+// 変更の履歴の内容の文。本番の辞書（src/shared/vocabulary.ts の orgHistory*）と同じ文を、言葉づかいに合わせて作る
 const AUDIT = {
   organizationCreated: (name) => `${t("organization")}「${name}」を作りました`,
   adminDesignated: (name) => `${name}を${t("admin")}に指名しました`,
