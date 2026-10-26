@@ -47,12 +47,15 @@ function render() {
     </section>
     <section class="gate-sheet">
       <h2 class="dialog-title">届いた招待</h2>
-      <div class="panel" style="gap:var(--space-2)">
-        <b>デザイン相談室</b>
-        <span class="props-note">ひばり工房・ユイさんから・一般・10/19</span>
-        <div class="form-actions"><button class="btn is-primary is-sm" type="button">承諾する</button><button class="btn is-quiet is-sm" type="button">辞退する</button></div>
+      <p>ひばり工房から届いた招待です。承諾すると、その${t("workspace")}に入れます。</p>
+      <div class="choice-list">
+        <div class="choice is-static"><div>
+          <b>デザイン相談室</b>
+          <span>ひばり工房・ユイさんから・一般・2026-10-19</span>
+          <div class="form-actions"><button class="btn is-primary is-sm" type="button">承諾する</button><button class="btn is-quiet is-sm" type="button">辞退する</button></div>
+        </div></div>
       </div>
-      <p class="gate-note">ログインした直後に、承諾していない招待があれば、すべての${t("organization")}の分をまとめて出します。</p>
+      <p class="gate-note">${t("organization")}ごとの招待の画面（/&lt;slug&gt;/invitations）の見本です。組織の選択の画面の届いた招待から開きます。入れる${t("organization")}が無く招待だけの人は、その${t("organization")}のどの画面を開いてもこの画面になります。</p>
     </section>
     <p class="gate-note" style="text-align:center"><a href="index.html">デザインシステムのカタログへ戻る</a></p>
   </div></div>`;

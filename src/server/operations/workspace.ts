@@ -135,8 +135,8 @@ function currentMemberships(from: Pick<QueryCreator<Tables>, 'selectFrom'>, orga
 }
 
 // 保存されたタイムゾーンが Intl で作れない行があっても、一覧全体を落とさない。その行だけ UTC の日付にする。
-// operation は、ログに残す呼び出し元の操作の名前
-function createdOn(timezone: string, createdAt: string, operation: string): string {
+// operation は、ログに残す呼び出し元の操作の名前。届いた招待の一覧と承諾（invitation-response.ts）も使う
+export function createdOn(timezone: string, createdAt: string, operation: string): string {
   const at = new Date(createdAt);
   try {
     return todayIn(timezone, at);

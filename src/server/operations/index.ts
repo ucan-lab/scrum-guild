@@ -2,6 +2,11 @@
 // 仮の操作はテストの中で定義し、ここに入れない
 import type { ImplementedOperation } from './implement.ts';
 import { invitationCreateOperation, invitationRevokeOperation, inviteeResolveOperation } from './invitation.ts';
+import {
+  invitationAcceptOperation,
+  invitationDeclineOperation,
+  invitationListOperation,
+} from './invitation-response.ts';
 import { createOrganizationOperation, listOrganizationsOperation, resolveGithubUserOperation } from './operator.ts';
 import {
   organizationResumeOperation,
@@ -106,4 +111,7 @@ export const implementedOperations: readonly ImplementedOperation[] = [
   repositoryUpdateOperation,
   repositoryMoveOperation,
   repositoryDeleteOperation,
+  invitationListOperation,
+  invitationAcceptOperation,
+  invitationDeclineOperation,
 ];

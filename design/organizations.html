@@ -36,12 +36,13 @@ function render() {
     </section>
     <section class="gate-sheet">
       <h2 class="dialog-title">届いた招待</h2>
-      ${D.receivedInvites.map((i) => `<div class="choice is-static"><div>
-        <b>${esc(i.ws)}</b>
-        <span>${esc(i.organization)}・${esc(i.by)}さんから・${i.role === "member" ? "一般" : t("leader")}・${esc(i.at)}</span>
-        <div class="form-actions"><button class="btn is-primary is-sm" type="button">承諾する</button><button class="btn is-quiet is-sm" type="button">辞退する</button></div></div>
-      </div>`).join("")}
-      <p class="gate-note">すべての${t("organization")}に届いた招待をまとめて出します。承諾すると、その${t("organization")}に入れるようになります。</p>
+      <div class="choice-list">
+      ${[...new Set(D.receivedInvites.map((i) => i.organization))].map((name) => `<a class="choice" href="login.html"><div>
+        <b>${esc(name)}</b>
+        <span>承諾待ちの招待があります</span></div>
+      </a>`).join("")}
+      </div>
+      <p class="gate-note">すべての${t("organization")}に届いた招待を、${t("organization")}ごとに1件にまとめて出します。押すと、その${t("organization")}の招待の画面（見本は login.html の「届いた招待」）で承諾か辞退を選べます。</p>
     </section>
     <p class="gate-note" style="text-align:center"><a href="index.html">デザインシステムのカタログへ戻る</a></p>
   </div></div>`;

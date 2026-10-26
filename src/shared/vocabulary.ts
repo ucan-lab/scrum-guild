@@ -552,15 +552,68 @@ export const dictionary = defineDictionary({
   // 入れる組織は無いが、届いた招待がある人
   noOrganizationInvitedTitle: organization('まだ入れる冒険者ギルドがありません', 'まだ入れる組織がありません'),
   noOrganizationInvitedText: organization(
-    '届いた招待の承諾と辞退は、この画面にこれから加わります。',
-    '届いた招待の承諾と辞退は、この画面にこれから加わります。',
+    '下の届いた招待から冒険者ギルドを選び、招待を承諾すると入れます。',
+    '下の届いた招待から組織を選び、招待を承諾すると入れます。',
   ),
   invitationsHeading: organization('届いた招待', '届いた招待'),
   invitationPending: organization('承諾待ちの招待があります', '承諾待ちの招待があります'),
   invitationsNote: organization(
-    'すべての冒険者ギルドに届いた招待をまとめて出します。',
-    'すべての組織に届いた招待をまとめて出します。',
+    'すべての冒険者ギルドに届いた招待を、冒険者ギルドごとにまとめて出します。押すと、承諾するか辞退するかを選べます。',
+    'すべての組織に届いた招待を、組織ごとにまとめて出します。押すと、承諾するか辞退するかを選べます。',
   ),
+  // 招待の画面（/<slug>/invitations と、組織に入れず招待だけがある人の組織の画面）。
+  // {organization} は組織の名前、{workspace} はワークスペースの言葉、{name} はワークスペースの名前
+  invitationInboxLead: organization(
+    '{organization}から届いた招待です。承諾すると、その{workspace}に入れます。',
+    '{organization}から届いた招待です。承諾すると、その{workspace}に入れます。',
+  ),
+  invitationInboxEmptyTitle: organization('承諾待ちの招待はありません', '承諾待ちの招待はありません'),
+  invitationInboxEmptyText: organization(
+    'この冒険者ギルドに届いた招待は、承諾か辞退が済んだか、取り消されました。',
+    'この組織に届いた招待は、承諾か辞退が済んだか、取り消されました。',
+  ),
+  // {inviter} は招待した人の名前、{role} はロール、{date} は招待した日（YYYY-MM-DD）
+  invitationInboxMeta: organization(
+    '{organization}・{inviter}さんから・{role}・{date}',
+    '{organization}・{inviter}さんから・{role}・{date}',
+  ),
+  invitationInboxClosed: organization(
+    'この{workspace}は終了しているため、承諾できません。辞退はできます。',
+    'この{workspace}は終了しているため、承諾できません。辞退はできます。',
+  ),
+  invitationAccept: organization('承諾する', '承諾する'),
+  invitationDecline: organization('辞退する', '辞退する'),
+  invitationAcceptLabel: organization('{name}への招待を承諾する', '{name}への招待を承諾する'),
+  invitationDeclineLabel: organization('{name}への招待を辞退する', '{name}への招待を辞退する'),
+  invitationAccepting: organization('招待を承諾しています', '招待を承諾しています'),
+  invitationDeclining: organization('招待を辞退しています', '招待を辞退しています'),
+  invitationDeclined: organization('招待を辞退しました', '招待を辞退しました'),
+  invitationErrorNotFound: organization(
+    '招待が見つかりませんでした。取り消されたか、別のアカウントに宛てた招待です。一覧を読み直しました。',
+    '招待が見つかりませんでした。取り消されたか、別のアカウントに宛てた招待です。一覧を読み直しました。',
+  ),
+  invitationErrorChanged: organization(
+    '招待の状態が変わっていました。取り消されたか、承諾か辞退が済んでいます。一覧を読み直しました。',
+    '招待の状態が変わっていました。取り消されたか、承諾か辞退が済んでいます。一覧を読み直しました。',
+  ),
+  invitationErrorClosed: organization(
+    'この{workspace}は終了したため、承諾できませんでした。一覧を読み直しました。',
+    'この{workspace}は終了したため、承諾できませんでした。一覧を読み直しました。',
+  ),
+  invitationErrorAlreadyMember: organization(
+    'もうこの{workspace}に所属しています。一覧を読み直しました。',
+    'もうこの{workspace}に所属しています。一覧を読み直しました。',
+  ),
+  invitationErrorUnreachable: organization(
+    '通信できませんでした。時間をおいてもう一度試してください。',
+    '通信できませんでした。時間をおいてもう一度試してください。',
+  ),
+  invitationErrorFailed: organization(
+    '招待を処理できませんでした。一覧を読み直しました。もう一度試してください。',
+    '招待を処理できませんでした。一覧を読み直しました。もう一度試してください。',
+  ),
+  // 組織に入れる人が招待の画面から組織の画面へ戻るリンク。{organization} は組織の名前
+  invitationInboxBack: organization('{organization}の画面へ戻る', '{organization}の画面へ戻る'),
   organizationNotFoundTitle: organization('冒険者ギルドが見つかりません', '組織が見つかりません'),
   organizationNotFoundText: organization(
     'URL が違うか、入れない冒険者ギルドです。',

@@ -617,7 +617,7 @@ test.describe('ログインしていない人と、組織が無い人', () => {
     await expect(page.getByText('運用者のログインで入りました')).toHaveCount(0);
   });
 
-  test('入れる組織が1つでも届いた招待があれば組織の選択の画面を出し、招待は組織の名前だけを出す', async ({
+  test('入れる組織が1つでも届いた招待があれば組織の選択の画面を出し、招待は組織の名前と招待の画面へのリンクで出す', async ({
     page,
     context,
     baseURL,
@@ -634,14 +634,14 @@ test.describe('ログインしていない人と、組織が無い人', () => {
     );
     await page.goto('/');
     await expect(page).toHaveURL(/\/$/);
-    await expect(page.locator('a.choice')).toHaveText([/あおば開発/]);
+    await expect(page.locator('a.choice')).toHaveText([/あおば開発/, /つばめ商会/]);
     await expect(page.getByRole('heading', { level: 2, name: '届いた招待' })).toBeVisible();
-    await expect(page.locator('.choice.is-static')).toContainText('つばめ商会');
+    await expect(page.getByRole('link', { name: /つばめ商会/ })).toHaveAttribute('href', '/tsubame/invitations');
     // 届いた招待の行は記録の面（.panel）ではない。.panel は現代風で光るため
     await expect(page.locator('.panel')).toHaveCount(0);
   });
 
-  test('入れる組織は無く、招待だけが届いている人には、招待を承諾する画面がこれから加わることを出す', async ({
+  test('入れる組織は無く、招待だけが届いている人には、届いた招待から選んで承諾すると入れることを出す', async ({
     page,
     context,
     baseURL,
@@ -658,7 +658,7 @@ test.describe('ログインしていない人と、組織が無い人', () => {
     );
     await page.goto('/');
     await expect(page.getByText('まだ入れる冒険者ギルドがありません')).toBeVisible();
-    await expect(page.getByText('届いた招待の承諾と辞退は、この画面にこれから加わります。')).toBeVisible();
+    await expect(page.getByText('下の届いた招待から冒険者ギルドを選び、招待を承諾すると入れます。')).toBeVisible();
     await expect(page.getByText('招待が届くと、ここに出ます')).toHaveCount(0);
   });
 

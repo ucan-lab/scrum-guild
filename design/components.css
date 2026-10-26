@@ -872,6 +872,8 @@ a.choice > div, .choice.is-static > div { flex: 1; min-width: 0; }
 a.choice > div > span, .choice.is-static > div > span { display: block; }
 /* 押せない行（届いた招待など）。choice と同じ枠で、光らせない */
 .choice.is-static { cursor: default; }
+/* 行の中の操作（届いた招待の承諾と辞退）。名前と説明の下に、間を空けて並べる */
+.choice.is-static .form-actions { margin-top: var(--space-2); }
 .toggle { display: inline-flex; align-items: center; gap: var(--space-2); font-size: var(--text-sm); cursor: pointer; }
 .toggle input { appearance: none; width: 36px; height: 20px; border-radius: 10px; background: var(--color-gauge); border: 1px solid var(--color-line); position: relative; margin: 0; cursor: pointer; flex: none; }
 .toggle input::after { content: ""; position: absolute; top: 2px; left: 2px; width: 14px; height: 14px; border-radius: 50%; background: var(--color-surface); box-shadow: 0 0 0 1px var(--color-line); transition: left var(--duration-fast); }
