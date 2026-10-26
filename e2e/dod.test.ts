@@ -19,7 +19,7 @@ async function addTask(page: Page, title: string): Promise<void> {
 }
 
 async function openSettings(page: Page): Promise<void> {
-  await page.locator('.nav-item', { hasText: '設定' }).click();
+  await page.getByRole('link', { name: '設定', exact: true }).click();
   await expect(page.getByRole('heading', { level: 1, name: '設定' })).toBeVisible();
 }
 
