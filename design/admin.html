@@ -20,6 +20,12 @@
 // 組織の管理（管理者）: ユーザー、ワークスペース、添付ファイルの合計、組織の休日、言葉づかい、既定のテーマ、配分と積載量の合計、取り込み元の応答、AI の機能、変更の履歴
 const { D, t, icon, esc, pageHead, avatarOf, user, meter } = SQ;
 const A = D.admin;
+// 変更の履歴の内容の文。本番の辞書（src/shared/vocabulary.ts の history*）と同じ文を、言葉づかいに合わせて作る
+const AUDIT = {
+  organizationCreated: (name) => `${t("organization")}「${name}」を作りました`,
+  adminDesignated: (name) => `${name}を${t("admin")}に指名しました`,
+  userDisabled: (name) => `${name}を無効にしました`,
+};
 function setting(title, desc, body) {
   return `<section class="setting"><div class="setting-head"><h2 class="setting-title">${title}</h2><p class="setting-desc">${desc}</p></div><div class="setting-body">${body}</div></section>`;
 }
@@ -92,9 +98,8 @@ SQ.mount("admin", () => `
       ? SQ.emptyState("clock", "まだ変更の履歴がありません", `${t("admin")}の指名や${t("workspace")}の作成をすると、ここに残ります。`)
       : `
       <div class="table-wrap"><table class="table is-stacked" aria-label="${t("organization")}の変更の履歴"><thead><tr><th>日時</th><th>した人</th><th>内容</th></tr></thead>
-        <tbody>${A.audit.map(([at, who, what]) => `<tr><td class="mono">${at}</td><td data-label="した人">${who ? `<span class="person is-wrap">${avatarOf(who)}${esc(user(who).name)}</span>` : `<span class="props-note">運用者</span>`}</td><td data-label="内容">${esc(what)}</td></tr>`).join("")}</tbody></table></div>
-      <!-- 本番は50件ずつ読み、続きがあるときだけ出す。押すと次の50件を表の後ろに足す -->
-      <div class="form-actions"><button class="btn is-sm" type="button">さらに読む</button></div>`)}
+        <tbody>${A.audit.map(([at, who, kind, name]) => `<tr><td class="mono">${at}</td><td data-label="した人">${who ? `<span class="person is-wrap">${avatarOf(who)}${esc(user(who).name)}</span>` : `<span class="props-note">運用者</span>`}</td><td class="is-wrap" data-label="内容">${esc(AUDIT[kind](name))}</td></tr>`).join("")}</tbody></table></div>
+      ${A.auditMore ? `<div class="form-actions"><button class="btn is-sm" type="button">古い履歴を読む</button></div>` : ""}`)}
   </div>`);
 // 見本の中だけの切り替え。有効を外すと、アシスタントは「使えません」の表示になる
 document.addEventListener("change", (ev) => {

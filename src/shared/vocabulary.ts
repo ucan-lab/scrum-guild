@@ -1377,6 +1377,9 @@ export const dictionary = defineDictionary({
   historyWorkspaceCreatedNoName: organization('{workspace}を作りました', '{workspace}を作りました'),
   historyWorkspaceClosed: organization('{workspace}「{name}」を終了しました', '{workspace}「{name}」を終了しました'),
   historyWorkspaceReopened: organization('{workspace}「{name}」を再開しました', '{workspace}「{name}」を再開しました'),
+  // ワークスペースの行が無く、名前の分からない終了と再開
+  historyWorkspaceClosedNoName: organization('{workspace}を終了しました', '{workspace}を終了しました'),
+  historyWorkspaceReopenedNoName: organization('{workspace}を再開しました', '{workspace}を再開しました'),
   // 知らない組（entity_type と action）
   historyOther: organization('{organization}を変更しました', '{organization}を変更しました'),
   historyEmptyTitle: organization('まだ変更の履歴がありません', 'まだ変更の履歴がありません'),
@@ -1384,12 +1387,14 @@ export const dictionary = defineDictionary({
     '{admin}の指名や{workspace}の作成をすると、ここに残ります。',
     '{admin}の指名や{workspace}の作成をすると、ここに残ります。',
   ),
-  historyMore: organization('さらに読む', 'さらに読む'),
+  historyMore: organization('古い履歴を読む', '古い履歴を読む'),
+  // 「古い履歴を読む」で足した件数。読み上げに伝える
+  historyLoadedMore: organization('{count} 件を読みました', '{count} 件を読みました'),
   historyMoreFailed: organization(
     '続きを読み込めませんでした。もう一度試してください。',
     '続きを読み込めませんでした。もう一度試してください。',
   ),
-  // 「さらに読む」で最後まで読んだ（ボタンが消えるので、ここへフォーカスを移す）
+  // 「古い履歴を読む」で最後まで読んだ（ボタンが消えるので、ここへフォーカスを移す）
   historyEnd: organization('これより前の履歴はありません', 'これより前の履歴はありません'),
   historyLoadFailed: organization('変更の履歴を読み込めませんでした', '変更の履歴を読み込めませんでした'),
   historyRefreshFailed: organization('変更の履歴を更新できませんでした', '変更の履歴を更新できませんでした'),

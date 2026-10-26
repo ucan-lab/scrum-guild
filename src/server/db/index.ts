@@ -9,6 +9,7 @@ export { commonDb, orgDb, type CommonDb, type OrganizationDb } from './entries.t
 export { DatabaseUnavailableError, pingDatabase } from './ping.ts';
 export { jsonList } from './json-list.ts';
 export { previousStatementChanged } from './previous-statement.ts';
+export { organizationHistoryRowFilter } from './organization-history-filter.ts';
 export { uuidv7Sql } from './uuid-sql.ts';
 export type { CommonTables, OrganizationTables } from './tables.ts';
 export type { VerifiedOrganization } from './verify-organization.ts';

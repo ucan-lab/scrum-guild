@@ -80,6 +80,7 @@ describe('historyEventText', () => {
         'ワークスペース「旧サイト保守」を終了しました',
       ],
       [{ kind: 'workspace_closed', workspace_name: null }, 'パーティを終了しました', 'ワークスペースを終了しました'],
+      [{ kind: 'workspace_reopened', workspace_name: null }, 'パーティを再開しました', 'ワークスペースを再開しました'],
       [
         { kind: 'workspace_reopened', workspace_name: '旧サイト保守' },
         'パーティ「旧サイト保守」を再開しました',

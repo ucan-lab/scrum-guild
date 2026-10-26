@@ -1,7 +1,7 @@
 // 組織の変更の履歴。管理者が組織の管理の画面の最後の節で、seed の履歴（seed/data.sql の change_logs）を新しい順に見る。
 // seed のセッション（seed/sessions.ts）の Cookie で開く。あおば開発の管理者はミナト、一般のユーザーはハルカ。
 // ほかのファイルが並列にワークスペースを作って終了するので、行の数は数えず、seed の行どうしの順だけを見る。
-// 「さらに読む」は、応答を差し替えて確かめる（seed の行は 50 件に満たない）
+// 「古い履歴を読む」は、応答を差し替えて確かめる（seed の行は 50 件に満たない）
 import { expect, test, type Page, type Route } from '@playwright/test';
 import { signIn, watchViolations } from './helpers.ts';
 
@@ -73,12 +73,12 @@ test.describe('管理者（あおば開発のミナト）', () => {
     // した人がユーザーなら名前とアバター、運用者は文字だけ
     await expect(rows.filter({ hasText: '受託開発チーム' }).getByRole('img')).toHaveCount(0);
     await expect(rows.filter({ hasText: '受託開発チーム' }).locator('.avatar')).toHaveCount(1);
-    // seed の履歴は 50 件に満たないので、「さらに読む」は出ない
-    await expect(sectionOf(page).getByRole('button', { name: 'さらに読む' })).toHaveCount(0);
+    // seed の履歴は 50 件に満たないので、「古い履歴を読む」は出ない
+    await expect(sectionOf(page).getByRole('button', { name: '古い履歴を読む' })).toHaveCount(0);
     expect(await collect()).toEqual([]);
   });
 
-  test('「さらに読む」で次のページを後ろに足し、最後まで読んだら終わりの文へフォーカスを移す', async ({ page }) => {
+  test('「古い履歴を読む」で次のページを後ろに足し、最後まで読んだら終わりの文へフォーカスを移す', async ({ page }) => {
     const first = [entry(1, '一番目'), entry(2, '二番目')];
     const second = [entry(3, '三番目')];
     const bodies: unknown[] = [];
@@ -99,7 +99,7 @@ test.describe('管理者（あおば開発のミナト）', () => {
     const rows = tableOf(page).locator('tbody tr');
     await expect(rows).toHaveCount(2);
 
-    const more = section.getByRole('button', { name: 'さらに読む' });
+    const more = section.getByRole('button', { name: '古い履歴を読む' });
     await more.click();
     // 読んでいる間は押しても無視し、読み上げに伝える
     await expect(more).toHaveAttribute('aria-disabled', 'true');
@@ -114,6 +114,8 @@ test.describe('管理者（あおば開発のミナト）', () => {
     await expect(rows.first()).toContainText('自動の処理');
     await expect(more).toHaveCount(0);
     await expect(section.getByText('これより前の履歴はありません')).toBeFocused();
+    // 読めた件数を読み上げに伝える（ボタンが消えても、読み上げの領域は残る）
+    await expect(section.getByRole('status').filter({ hasText: '1 件を読みました' })).toBeAttached();
     // 2回目の呼び出しは、前のページの最後の行のカーソルを送る。読んでいる間に押した分は送らない
     expect(bodies).toEqual([{}, { before: cursorOf(first[1]!) }]);
   });
@@ -135,7 +137,7 @@ test.describe('管理者（あおば開発のミナト）', () => {
     await page.goto('/aoba/admin');
     const section = sectionOf(page);
     const rows = tableOf(page).locator('tbody tr');
-    const more = section.getByRole('button', { name: 'さらに読む' });
+    const more = section.getByRole('button', { name: '古い履歴を読む' });
     await more.click();
     await expect(section.getByRole('alert')).toHaveText('続きを読み込めませんでした。もう一度試してください。');
     await expect(rows).toHaveCount(1);
@@ -165,6 +167,36 @@ test.describe('管理者（あおば開発のミナト）', () => {
     await expect(row).toBeInViewport({ ratio: 1 });
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(320);
   });
+
+  for (const width of [320, 1280]) {
+    test(`${width}px の幅で、空白の無い50字の名前も内容の列で折り返し、横にはみ出さない`, async ({ page }) => {
+      const long = 'W'.repeat(50);
+      await page.route('**/api/aoba/organization-history', (route) =>
+        route.fulfill({
+          json: {
+            entries: [
+              { ...entry(1, long), actor: { kind: 'user', id: '019a0000-0000-7000-8000-000000000301', name: long } },
+              { ...entry(2, long), actor: { kind: 'user', id: '019a0000-0000-7000-8000-000000000999', name: null } },
+            ],
+            next: null,
+          },
+        }),
+      );
+      await page.setViewportSize({ width, height: 800 });
+      await page.goto('/aoba/admin');
+      const table = tableOf(page);
+      const rows = table.locator('tbody tr');
+      await expect(rows.first()).toContainText(`パーティ「${long}」を作りました`);
+      await rows.first().scrollIntoViewIfNeeded();
+      // 表の枠の中でも、画面でも、横にはみ出さない
+      const wrap = sectionOf(page).locator('.table-wrap');
+      expect(await wrap.evaluate((el) => el.scrollWidth - el.clientWidth)).toBeLessThanOrEqual(0);
+      expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
+      // 名前の分からない人は、仮の頭文字のアバターを出さず、文字だけにする
+      await expect(rows.nth(1)).toContainText('名前の分からない人');
+      await expect(rows.nth(1).locator('.avatar')).toHaveCount(0);
+    });
+  }
 });
 
 test.describe('一般のユーザー（あおば開発のハルカ）', () => {

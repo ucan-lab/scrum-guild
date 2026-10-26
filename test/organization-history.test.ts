@@ -11,9 +11,18 @@ import {
 import { workspaceClose, workspaceCreate, workspaceReopen } from '../src/shared/operations/workspace/index.ts';
 import { createApp } from '../src/server/app.ts';
 import { orgDb } from '../src/server/db/index.ts';
+import { queryPlanForTest } from '../src/server/db/testing.ts';
 import { implementedOperations } from '../src/server/operations/index.ts';
+import { organizationHistoryStatement } from '../src/server/operations/organization-history.ts';
 import { designateAdmin } from '../src/server/organizations/designate-admin.ts';
-import { createAccount, createChangeLog, createUser, uuidv7, type OrganizationFixture } from './factories.ts';
+import {
+  createAccount,
+  createChangeLog,
+  createUser,
+  createWorkspace,
+  uuidv7,
+  type OrganizationFixture,
+} from './factories.ts';
 import { errorCodeOf, post } from './operations/harness.ts';
 import { createTarget, OPERATOR_LOGIN_ID, type Target } from './operations/world.ts';
 
@@ -365,11 +374,27 @@ describe('organization-history', () => {
       [userLog({ is_admin: [1, 0] }), { kind: 'admin_revoked', name: '汐見 アオイ' }],
       [userLog({ disabled_at: [null, minutesLater(0)] }), { kind: 'user_disabled', name: '汐見 アオイ' }],
       [userLog({ disabled_at: [minutesLater(0), null] }), { kind: 'user_enabled', name: '汐見 アオイ' }],
-      // Google の招待で指名した人が、同じ組織に既にいた（cross-organization.ts の統合の記録）
+      // Google の招待で指名した人が、同じ組織に既にいた（cross-organization.ts の統合の記録。した人は本人）
       [
-        userLog({ is_admin: [0, 1], disabled_at: [minutesLater(0), null] }),
+        { ...userLog({ is_admin: [0, 1], disabled_at: [minutesLater(0), null] }), actor_user_id: person.id },
         { kind: 'admin_designation_merged', name: '汐見 アオイ' },
       ],
+      // 別の管理者が有効に戻して管理者にした記録は、統合と見なさない
+      [userLog({ is_admin: [0, 1], disabled_at: [minutesLater(0), null] }), { kind: 'other' }],
+      // 本人の記録でも、統合の列（is_admin と disabled_at）のほかを含めば統合と見なさない
+      [
+        {
+          ...userLog({ is_admin: [0, 1], disabled_at: [minutesLater(0), null], name: ['汐見', '汐見 アオイ'] }),
+          actor_user_id: person.id,
+        },
+        { kind: 'other' },
+      ],
+      // ログインの結び付け: 本人が、空の sub を埋めたときだけ。sub の付け替えや、別の人の記録は other
+      [
+        { ...userLog({ login_subject: ['424242000002', '424242000003'] }), actor_user_id: person.id },
+        { kind: 'other' },
+      ],
+      [userLog({ login_subject: [null, '424242000004'] }), { kind: 'other' }],
       // 知らない組
       [userLog({ theme: [null, 'simple'] }), { kind: 'other' }],
       [userLog({}, 'delete'), { kind: 'other' }],
@@ -386,6 +411,90 @@ describe('organization-history', () => {
     // 名前の無い組（other）にも、値は足さない
     for (const entry of history.entries) {
       expect(Object.keys(entry).toSorted()).toEqual(['actor', 'created_at', 'event', 'id']);
+    }
+  });
+
+  test('記録の名前がメールアドレスに見える（@ を含む）なら使わず、users の今の名前にする（ログインを待つ行は null）', async () => {
+    const target = await createTarget();
+    const linked = await createUser(target.organization, { name: '浜辺 ルイ' });
+    const waiting = await createUser(target.organization, {
+      login_provider: 'google',
+      login_subject: null,
+      login_email: 'rui.wait@example.com',
+      claim_token_hash: 'c'.repeat(64),
+      claim_expires_at: minutesLater(60 * 24),
+      name: 'rui.wait@example.com',
+      is_admin: 1,
+    });
+    const designation = (entityId: string, name: string, minutes: number) =>
+      log(target.organization, {
+        operator: OPERATOR_LOGIN_ID,
+        entity_type: 'user',
+        entity_id: entityId,
+        action: 'create',
+        changes_json: JSON.stringify({ is_admin: [null, 1], name: [null, name] }),
+        created_at: minutesLater(minutes),
+      });
+    await designation(linked.id, 'rui@example.com', 2);
+    await designation(waiting.id, 'rui.wait@example.com', 1);
+
+    const res = await call(target);
+    const text = await res.text();
+    expect(text).not.toContain('@example.com');
+    expect((JSON.parse(text) as History).entries.map((entry) => entry.event)).toEqual([
+      { kind: 'admin_designated', name: '浜辺 ルイ' },
+      { kind: 'admin_designated', name: null },
+    ]);
+  });
+
+  test('別の組織の人やワークスペースを指す行は、名前を null にする（結ぶ表も組織で絞る）', async () => {
+    const target = await createTarget();
+    const other = await createTarget();
+    const stranger = await createUser(other.organization, { name: '別組織 タロウ' });
+    const strangerWorkspace = await createWorkspace(other.organization, other.admin.userId!, {
+      name: '別組織のチーム',
+    });
+    await log(target.organization, {
+      actor_user_id: stranger.id,
+      entity_type: 'user',
+      entity_id: stranger.id,
+      action: 'update',
+      changes_json: JSON.stringify({ is_admin: [0, 1] }),
+      created_at: minutesLater(2),
+    });
+    await log(target.organization, {
+      workspace_id: target.workspace.id,
+      actor_user_id: target.admin.userId,
+      entity_type: 'workspace',
+      entity_id: strangerWorkspace.id,
+      action: 'close',
+      changes_json: JSON.stringify({ closed_at: [null, minutesLater(1)] }),
+      created_at: minutesLater(1),
+    });
+
+    const res = await call(target);
+    const text = await res.text();
+    expect(text).not.toContain('別組織');
+    expect((JSON.parse(text) as History).entries.map((entry) => [entry.actor, entry.event])).toEqual([
+      [
+        { kind: 'user', id: stranger.id, name: null },
+        { kind: 'admin_designated', name: null },
+      ],
+      [
+        { kind: 'user', id: target.admin.userId, name: '星野 澪' },
+        { kind: 'workspace_closed', workspace_name: null },
+      ],
+    ]);
+  });
+
+  test('部分索引 change_logs_organization_history で引き、組織の行を全部は読まず、並べ替えも索引で済ませる', async () => {
+    const target = await createTarget();
+    const db = orgDb(env, target.organization.verified);
+    for (const before of [null, { created_at: minutesLater(0), id: uuidv7() }]) {
+      const plan = (await queryPlanForTest(env, organizationHistoryStatement(db, before))).join('\n');
+      expect(plan, plan).toMatch(/SEARCH cl USING INDEX change_logs_organization_history \(organization_id=\?/);
+      expect(plan, plan).not.toMatch(/TEMP B-TREE/);
+      expect(plan, plan).not.toMatch(/^SCAN /m);
     }
   });
 

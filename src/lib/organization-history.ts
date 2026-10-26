@@ -65,11 +65,11 @@ export function historyEventText(event: HistoryEntry['event'], translate: Transl
         : translate('historyWorkspaceCreated', { ...words, name: event.workspace_name });
     case 'workspace_closed':
       return event.workspace_name === null
-        ? translate('workspaceClosed', words)
+        ? translate('historyWorkspaceClosedNoName', words)
         : translate('historyWorkspaceClosed', { ...words, name: event.workspace_name });
     case 'workspace_reopened':
       return event.workspace_name === null
-        ? translate('workspaceReopened', words)
+        ? translate('historyWorkspaceReopenedNoName', words)
         : translate('historyWorkspaceReopened', { ...words, name: event.workspace_name });
     case 'other':
       return translate('historyOther', words);

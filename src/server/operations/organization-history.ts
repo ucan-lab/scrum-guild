@@ -7,16 +7,17 @@ import {
   organizationHistory,
 } from '../../shared/operations/organization/organization-history.ts';
 import type { OutputOf } from '../../shared/operations/define.ts';
+import { organizationHistoryRowFilter, type OrganizationDb } from '../db/index.ts';
 import { implement } from './implement.ts';
 
 type Entry = OutputOf<typeof organizationHistory>['entries'][number];
 type HistoryEvent = Entry['event'];
-
-// 組織の単位で出す、ワークスペースの行の action
-const WORKSPACE_ACTIONS = ['create', 'close', 'reopen'] as const;
+type Cursor = NonNullable<OutputOf<typeof organizationHistory>['next']>;
 
 type HistoryRow = {
   entity_type: string;
+  entity_id: string;
+  actor_user_id: string | null;
   action: string;
   changes_json: string;
   // users の今の名前。login_subject の無い行（Google の招待でログインを待つ行。name はメールアドレス）は null にして読む
@@ -45,10 +46,18 @@ function textOrNull(value: unknown): string | null {
   return typeof value === 'string' ? value : null;
 }
 
-// 記録にそのときの名前があればそれを、無ければ（ログインを待つ行の仮の名前を含む）users の今の名前
+// 記録にそのときの名前があればそれを、無ければ users の今の名前（ログインを待つ行は null で読む）。
+// 記録の名前でも、ログインを待つ行の仮の名前と、メールアドレスに見えるもの（@ を含む）は使わない
 function personName(changes: Changes, row: HistoryRow): string | null {
   const logged = textOrNull(pairOf(changes, 'name')?.[1]);
-  return logged !== null && logged !== WAITING_USER_NAME_IN_LOG ? logged : row.entity_user_name;
+  return logged !== null && logged !== WAITING_USER_NAME_IN_LOG && !logged.includes('@')
+    ? logged
+    : row.entity_user_name;
+}
+
+// 本人が自分の行に書いた記録（Google の招待の URL から結んだとき。src/server/db/cross-organization.ts の claimLogStatement）
+function bySelf(row: HistoryRow): boolean {
+  return row.actor_user_id !== null && row.actor_user_id === row.entity_id;
 }
 
 function userEvent(action: string, changes: Changes, row: HistoryRow): HistoryEvent {
@@ -59,19 +68,25 @@ function userEvent(action: string, changes: Changes, row: HistoryRow): HistoryEv
     return isAdmin?.[1] === 1 ? { kind: 'admin_designated', name: personName(changes, row) } : { kind: 'other' };
   }
   if (action !== 'update') return { kind: 'other' };
-  // Google の招待で指名した人の初めてのログイン（待つ行に sub を埋めた）
-  if (pairOf(changes, 'login_subject') !== undefined) {
-    return { kind: 'admin_login_linked', name: personName(changes, row) };
+  // Google の招待で指名した人の初めてのログイン（本人が、待つ行の空の sub を埋めた）
+  const loginSubject = pairOf(changes, 'login_subject');
+  if (loginSubject !== undefined) {
+    return loginSubject[0] === null && bySelf(row)
+      ? { kind: 'admin_login_linked', name: personName(changes, row) }
+      : { kind: 'other' };
   }
-  // Google の招待で指名した人が、同じ組織に既にいた（その人を管理者にして無効を解いた）
-  if (isAdmin?.[1] === 1 && disabledAt !== undefined) {
-    return { kind: 'admin_designation_merged', name: row.entity_user_name };
+  // Google の招待で指名した人が、同じ組織に既にいた（本人の行を管理者にして無効を解いた、統合の記録。
+  // 列は is_admin と disabled_at だけ）。別の管理者が有効に戻して管理者にした記録とは、した人で分ける
+  if (isAdmin !== undefined && disabledAt !== undefined) {
+    return isAdmin[1] === 1 && disabledAt[1] === null && bySelf(row) && Object.keys(changes).length === 2
+      ? { kind: 'admin_designation_merged', name: row.entity_user_name }
+      : { kind: 'other' };
   }
-  if (isAdmin !== undefined && disabledAt === undefined) {
+  if (isAdmin !== undefined) {
     if (isAdmin[1] === 1) return { kind: 'admin_designated', name: row.entity_user_name };
     if (isAdmin[0] === 1) return { kind: 'admin_revoked', name: row.entity_user_name };
   }
-  if (disabledAt !== undefined && isAdmin === undefined) {
+  if (disabledAt !== undefined) {
     if (disabledAt[0] === null && disabledAt[1] !== null) return { kind: 'user_disabled', name: row.entity_user_name };
     if (disabledAt[0] !== null && disabledAt[1] === null) return { kind: 'user_enabled', name: row.entity_user_name };
   }
@@ -114,7 +129,7 @@ function workspaceEvent(action: string, changes: Changes, row: HistoryRow): Hist
 }
 
 // entity_type と action（と changes_json の列）の組を、画面の文の種類にする。知らない組は other
-export function historyEvent(row: HistoryRow): HistoryEvent {
+function historyEvent(row: HistoryRow): HistoryEvent {
   const changes = parseChanges(row.changes_json);
   switch (row.entity_type) {
     case 'organization':
@@ -129,67 +144,65 @@ export function historyEvent(row: HistoryRow): HistoryEvent {
 }
 
 // 1回に PAGE_SIZE + 1 行を読み、余った1行で続きがあるかを決める。並びは created_at と id の新しい順で、同じ日時は id で決める。
-// 索引 change_logs_organization (organization_id, created_at) を、組織の等号と created_at <= カーソルの範囲で使う
-// （同じ日時の中の id の並べ替えだけが、索引の外の小さな並べ替えになる）。
+// 部分索引 change_logs_organization_history (organization_id, created_at, id) を、組織の等号と created_at <= カーソルの範囲で使い、
+// 並べ替えも索引の順で済ませる。部分索引を使わせるため、出す行の条件は索引と同じ式（organizationHistoryRowFilter）で書く。
 // した人と対象の名前は、同じ文で users と workspaces を組織で絞って結んで引く（どちらも組織の中の表）
-export const organizationHistoryOperation = implement(organizationHistory, async ({ db, input }) => {
-  const before = input.before ?? null;
+// テスト（test/organization-history.test.ts）が実行計画を見るので、文を組む関数を分ける
+export function organizationHistoryStatement(db: OrganizationDb, before: Cursor | null) {
   const organizationId = db.organizationId;
-  const rows = await db.rows(
-    db.statement((q) =>
-      q
-        .selectFrom('change_logs as cl')
-        .leftJoin('users as au', (join) =>
-          join.onRef('au.id', '=', 'cl.actor_user_id').on('au.organization_id', '=', organizationId),
-        )
-        .leftJoin('users as eu', (join) =>
-          join
-            .onRef('eu.id', '=', 'cl.entity_id')
-            .on('cl.entity_type', '=', 'user')
-            .on('eu.organization_id', '=', organizationId),
-        )
-        .leftJoin('workspaces as w', (join) =>
-          join
-            .onRef('w.id', '=', 'cl.entity_id')
-            .on('cl.entity_type', '=', 'workspace')
-            .on('w.organization_id', '=', organizationId),
-        )
-        .select((eb) => [
-          'cl.id',
-          'cl.created_at',
-          'cl.entity_type',
-          'cl.action',
-          'cl.changes_json',
-          'cl.actor_user_id',
-          // 運用者のログインの ID は読まず、運用者の操作かどうかだけを読む
-          eb('cl.operator', 'is not', null).as('by_operator'),
-          eb.case().when('au.login_subject', 'is not', null).then(eb.ref('au.name')).else(null).end().as('actor_name'),
-          eb
-            .case()
-            .when('eu.login_subject', 'is not', null)
-            .then(eb.ref('eu.name'))
-            .else(null)
-            .end()
-            .as('entity_user_name'),
-          'w.name as workspace_name',
-        ])
-        .where('cl.organization_id', '=', organizationId)
-        .where((eb) =>
-          eb.or([
-            eb('cl.workspace_id', 'is', null),
-            eb.and([eb('cl.entity_type', '=', 'workspace'), eb('cl.action', 'in', WORKSPACE_ACTIONS)]),
-          ]),
-        )
-        .$if(before !== null, (query) =>
-          query
-            .where('cl.created_at', '<=', before!.created_at)
-            .where((eb) => eb.or([eb('cl.created_at', '<', before!.created_at), eb('cl.id', '<', before!.id)])),
-        )
-        .orderBy('cl.created_at', 'desc')
-        .orderBy('cl.id', 'desc')
-        .limit(ORGANIZATION_HISTORY_PAGE_SIZE + 1),
-    ),
+  return db.statement((q) =>
+    q
+      .selectFrom('change_logs as cl')
+      .leftJoin('users as au', (join) =>
+        join.onRef('au.id', '=', 'cl.actor_user_id').on('au.organization_id', '=', organizationId),
+      )
+      .leftJoin('users as eu', (join) =>
+        join
+          .onRef('eu.id', '=', 'cl.entity_id')
+          .on('cl.entity_type', '=', 'user')
+          .on('eu.organization_id', '=', organizationId),
+      )
+      .leftJoin('workspaces as w', (join) =>
+        join
+          .onRef('w.id', '=', 'cl.entity_id')
+          .on('cl.entity_type', '=', 'workspace')
+          .on('w.organization_id', '=', organizationId),
+      )
+      .select((eb) => [
+        'cl.id',
+        'cl.created_at',
+        'cl.entity_type',
+        'cl.entity_id',
+        'cl.action',
+        'cl.changes_json',
+        'cl.actor_user_id',
+        // 運用者のログインの ID は読まず、運用者の操作かどうかだけを読む
+        eb('cl.operator', 'is not', null).as('by_operator'),
+        eb.case().when('au.login_subject', 'is not', null).then(eb.ref('au.name')).else(null).end().as('actor_name'),
+        eb
+          .case()
+          .when('eu.login_subject', 'is not', null)
+          .then(eb.ref('eu.name'))
+          .else(null)
+          .end()
+          .as('entity_user_name'),
+        'w.name as workspace_name',
+      ])
+      .where('cl.organization_id', '=', organizationId)
+      .where(organizationHistoryRowFilter('cl'))
+      .$if(before !== null, (query) =>
+        query
+          .where('cl.created_at', '<=', before!.created_at)
+          .where((eb) => eb.or([eb('cl.created_at', '<', before!.created_at), eb('cl.id', '<', before!.id)])),
+      )
+      .orderBy('cl.created_at', 'desc')
+      .orderBy('cl.id', 'desc')
+      .limit(ORGANIZATION_HISTORY_PAGE_SIZE + 1),
   );
+}
+
+export const organizationHistoryOperation = implement(organizationHistory, async ({ db, input }) => {
+  const rows = await db.rows(organizationHistoryStatement(db, input.before ?? null));
 
   const page = rows.slice(0, ORGANIZATION_HISTORY_PAGE_SIZE);
   const last = page.at(-1);
