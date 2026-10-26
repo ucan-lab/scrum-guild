@@ -7,7 +7,7 @@ import { createApp } from '../src/server/app.ts';
 import { orgDb, verifyWorkspace } from '../src/server/db/index.ts';
 import { implementedOperations } from '../src/server/operations/index.ts';
 import { taskAssignOperation } from '../src/server/operations/task-edit.ts';
-import { createTask } from './factories.ts';
+import { createMembership, createTask, createUser } from './factories.ts';
 import { errorCodeOf, post } from './operations/harness.ts';
 import { createPerson, createTarget, type Person, type Target } from './operations/world.ts';
 
@@ -179,7 +179,7 @@ describe('task-assign', () => {
     expect(await logsOf(target, unassigned.id)).toEqual([]);
   });
 
-  test('担当にできない人（別のワークスペースの人、所属していない管理者、抜けた人、無効にされた人、別の組織の人）は 404 で、何も書かない', async () => {
+  test('担当にできない人（別のワークスペースの人、Google で待っている人、所属していない管理者、抜けた人、無効にされた人、別の組織の人）は 404 で、何も書かない', async () => {
     const target = await namedTarget();
     const foreign = await createTarget();
     const left = await createPerson({
@@ -192,9 +192,20 @@ describe('task-assign', () => {
       disabled: true,
       membership: { workspaceId: target.workspace.id, role: 'member' },
     });
+    // Google で待っている行（login_subject が空）。メンバーの一覧（member-list）が候補に出さない人
+    const waiting = await createUser(target.organization, {
+      login_provider: 'google',
+      login_subject: null,
+      login_email: 'waiting@example.com',
+      claim_token_hash: 'a'.repeat(64),
+      claim_expires_at: '2099-01-01T00:00:00.000Z',
+      name: 'waiting@example.com',
+    });
+    await createMembership(target.organization, target.workspace.id, waiting.id, { role: 'member' });
     const task = await seeded(target, { today_on: '2026-10-25' });
     for (const userId of [
       target.bystander.userId,
+      waiting.id,
       target.admin.userId,
       left.userId,
       disabled.userId,
