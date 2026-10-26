@@ -34,7 +34,9 @@ try {
   const input = JSON.parse(readFileSync(0, 'utf8'));
   const command = input.tool_input?.command;
   if (typeof command === 'string') {
-    const verdict = judgeBash(command, { cwd: input.cwd ?? process.cwd(), branchOf, scriptOf });
+    // セッションの CDPATH は、相対の cd の行き先を cwd の外へ変える（judgeBash は空文字を無いものとする）
+    const env = { CDPATH: process.env.CDPATH };
+    const verdict = judgeBash(command, { cwd: input.cwd ?? process.cwd(), branchOf, scriptOf, env });
     if (verdict) {
       const [decision, reason] = verdict;
       process.stdout.write(

@@ -8,6 +8,8 @@
 // - expands: 語が展開で別の語に分かれるか、別の文字列になりうるか。引用符の外の変数、置換、brace、glob、zsh の括弧の glob、
 //   zsh の数値の glob（<->、<1-10>）、~名前 と、引用符の中の変数のうち QUOTED_PARAMETER に当たらないもの（"$@"、"${a[@]}"、"${(f)x}"、"$=x"、"$x[@]"）
 // - shapes: 語の中で実行時に決まる位置（引用符の内外の変数と置換、~名前）を DYNAMIC に置き換えた文字列
+// 区切りそのものにも、zsh の括弧の glob の閉じの ) の直後から始まったか（followsGlobGroup）の印を列挙されない属性に持つ。
+// 括弧の glob（cp /tmp/x(N) wrangler.jsonc）は ( で区切りを切るので、閉じの後ろの語（wrangler.jsonc）は同じコマンドの引数なのに別の区切りに入る
 
 const OPERATORS = ['&&', '||', ';', '|', '&', '\n', '(', ')'];
 // コマンド置換の位置に残す印。中身は別の区切りとして判定し、元の語には「中身が実行時に決まる」ことだけを残す
@@ -42,6 +44,11 @@ export function expandsAt(words, i) {
 // i 番目の語の、実行時に決まる位置を DYNAMIC に置き換えた文字列。印の無い配列は、$ を全部実行時に決まるものとみなす
 export function shapeAt(words, i) {
   return words.shapes?.[i] ?? (words[i] ?? '').replaceAll('$', DYNAMIC);
+}
+
+// 区切りが括弧の glob の閉じの ) の直後から始まったか。始まったなら、その語は前の区切りのコマンドの続き
+export function followsGlobGroup(words) {
+  return words.followsGlobGroup === true;
 }
 
 // 語と印を一緒に切り出す。Array.prototype.slice は印を落とすので、判定の途中で語を切り出すときはこれを使う
@@ -170,6 +177,10 @@ export function splitSegments(command) {
   let depth = 0;
   // [[ … ]] の中で開いている ( の数
   let testDepth = 0;
+  // 開いている ( ごとに、括弧の glob か（サブシェルや関数の定義でないか）
+  const groups = [];
+  // 今の区切りが、括弧の glob の閉じの ) の直後から始まったか
+  let afterGlobGroup = false;
 
   // 語に文字を足す。shapes には、実行時に決まる位置なら DYNAMIC を、そうでなければ同じ文字を足す
   const add = (text, dynamic = false) => {
@@ -190,7 +201,10 @@ export function splitSegments(command) {
   };
   const endSegment = () => {
     endWord();
-    if (words.length > 0) segments.push(words);
+    if (words.length > 0) {
+      if (afterGlobGroup) Object.defineProperty(words, 'followsGlobGroup', { value: true, configurable: true });
+      segments.push(words);
+    }
     words = withMarks([], [], []);
   };
   // リダイレクトとヒアドキュメントの本文の語。シェルは argv に渡さないので、展開の印は付けない
@@ -387,23 +401,31 @@ export function splitSegments(command) {
         inWord = false;
         expands = false;
         words = withMarks([], [], []);
+        afterGlobGroup = false;
         i += label[0].length - 1;
         continue;
       }
+      let closesGlobGroup = false;
       if (op === '(') {
         // 道具の後ろに書ける ( は、zsh の glob（(a|b)、x(N)）と関数の定義（f() { … }）だけ。前置きだけの後ろ（if (、! (、time (）はサブシェル。
         // zsh は (KV|--no-local) を作業場所のファイルの名前に展開するので、区切りは切ったまま、括弧の位置に展開の印の付いた GLOB_GROUP を残す。
         // 語に続く括弧（--(remote|x)、x(N)）はその語の一部にし、-- やリダイレクトの後ろの括弧も argv の語として残す。
+        // 括弧の glob の閉じにすぐ続く ( （(a|b)(N)）も同じ語の続きの glob。
         // 中身の無い () は関数の定義なので残さない
-        if (commandIndex(pending) !== -1 && !/^\(\s*\)/.test(command.slice(i))) {
+        const continuesGlob = afterGlobGroup && pending.length === 0 && command[i - 1] === ')';
+        const isGlob = (commandIndex(pending) !== -1 || continuesGlob) && !/^\(\s*\)/.test(command.slice(i));
+        if (isGlob) {
           add(GLOB_GROUP);
           expands = true;
         }
+        groups.push(isGlob);
         depth++;
       } else if (op === ')') {
         depth = Math.max(0, depth - 1);
+        closesGlobGroup = groups.pop() === true;
       }
       endSegment();
+      afterGlobGroup = closesGlobGroup;
       i += op.length - 1;
       // ヒアドキュメントの本文（行の終わりから終わりの印の行まで）は、区切りとして読まない
       if (op === '\n' && heredocs.length > 0) {
@@ -543,8 +565,8 @@ export function prefixIndexes(words) {
   return scanCommand(words).prefixes;
 }
 
-// 値を取るフラグとリダイレクトを飛ばして、位置の引数だけを返す
-export function positionals(args, flagsWithValue = new Set()) {
+// 値を取るフラグとリダイレクトを飛ばして、位置の引数の位置を返す。展開の印を引くとき（git push の refspec）に使う
+export function positionalIndexes(args, flagsWithValue = new Set()) {
   const result = [];
   for (let i = 0; i < args.length; i++) {
     const a = args[i];
@@ -553,7 +575,12 @@ export function positionals(args, flagsWithValue = new Set()) {
       if (flagsWithValue.has(a)) i++;
       continue;
     }
-    result.push(a);
+    result.push(i);
   }
   return result;
+}
+
+// 値を取るフラグとリダイレクトを飛ばして、位置の引数だけを返す
+export function positionals(args, flagsWithValue = new Set()) {
+  return positionalIndexes(args, flagsWithValue).map((i) => args[i]);
 }
