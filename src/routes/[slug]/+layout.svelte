@@ -7,6 +7,7 @@
   import EmptyState from '../../lib/components/EmptyState.svelte';
   import Gate from '../../lib/components/Gate.svelte';
   import GateSheet from '../../lib/components/GateSheet.svelte';
+  import InvitationInbox from '../../lib/components/InvitationInbox.svelte';
   import LoadFailed from '../../lib/components/LoadFailed.svelte';
   import OrganizationSwitcher from '../../lib/components/OrganizationSwitcher.svelte';
   import { applyOrganization } from '../../lib/organization.svelte.ts';
@@ -17,10 +18,16 @@
   // 組織の枠。組織の操作の結果で data-theme と言葉づかいを当て、左のメニューと上の帯を出す。
   // 組織に入れないときと無いときは、どちらも同じ「見つからない」の画面（どちらかを漏らさない）。
   // 見つからないのは、API が not_found の 404 を返したときだけ。停止しているのは、organization_suspended の 403
-  // （停止していなければ入れた人にだけ返る。入れない人は見つからない）。ほかの失敗（通信、5xx、権限）は読み込みの失敗
+  // （停止していなければ入れた人にだけ返る。入れない人は見つからない）。ほかの失敗（通信、5xx、権限）は読み込みの失敗。
+  // 招待の画面（InvitationInbox）は枠を持たない。組織に入れず招待だけがある人にはどの経路でも出し、
+  // /<slug>/invitations のページは組織に入れる人にも枠を出さずに出す
   let { data, children }: { data: LayoutData; children: Snippet } = $props();
 
   const organization = $derived(data.organization);
+  // 招待の画面。組織に入れず招待だけがある人には、どの経路でも招待の画面を出す（data.invitationInbox）。
+  // /<slug>/invitations のページ（page.data に invitationPage がある）は、組織に入れる人にも枠を出さずにページだけを出す
+  const inbox = $derived(organization ? null : data.invitationInbox);
+  const invitationPage = $derived(page.data.invitationPage !== undefined && (organization !== null || inbox !== null));
   const notFound = $derived(data.failure?.status === 404 && data.failure.code === 'not_found');
   const suspended = $derived(data.failure?.status === 403 && data.failure.code === 'organization_suspended');
   // 今開いているワークスペース（/[slug]/w/[id] の枠が読み込む）。メニューにワークスペースの節を出し、
@@ -42,14 +49,18 @@
 
 <!-- 組織の中の画面は、それぞれの題名を持つ。見つからない画面だけが、ここで題名を決める -->
 <svelte:head>
-  {#if !organization && notFound}
+  {#if !organization && !inbox && notFound}
     <title>{t('pageTitle', { page: t('organizationNotFoundTitle'), app: t('appName') })}</title>
   {:else if !organization && suspended}
     <title>{t('pageTitle', { page: t('organizationSuspendedTitle'), app: t('appName') })}</title>
   {/if}
 </svelte:head>
 
-{#if organization}
+{#if invitationPage}
+  {@render children()}
+{:else if inbox}
+  <InvitationInbox slug={data.slug} list={inbox} member={false} />
+{:else if organization}
   {#snippet organizationSwitcher()}
     {#if switcherOrganizations}
       <OrganizationSwitcher

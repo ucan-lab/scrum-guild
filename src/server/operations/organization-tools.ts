@@ -3,7 +3,8 @@
 // 登録の関数が、組織に入れると確かめた後に、その組織の入口（OrganizationDb）に結んで作る。どの道具も組織の ID を引数に取らず、
 // 組織の行は確かめた組織の ID で、組織の中の表は organization_id で絞る。共通の表と組織の中の表は別の問い合わせで引き、1回の batch() に混ぜない。
 // 道具は権限ごとに分けず、組織の中のすべての操作に渡す。道具の中で入った人（actor）を確かめ、承諾待ちの招待だけの人の操作からは
-// どの道具も使えず、組織の設定の書き込みは管理者の操作からだけ使える。当たらない呼び出しは処理の誤りなので、投げて 500 にする
+// 自分のログインの読み取り（myLogins）のほかの道具を使えず、組織の設定の書き込みは管理者の操作からだけ使える。
+// 当たらない呼び出しは処理の誤りなので、投げて 500 にする
 import { accountLogins } from '../auth/account-logins.ts';
 import type { InviteeResolver } from '../auth/login-method.ts';
 import { isOperatorLogin } from '../auth/operators.ts';
@@ -37,7 +38,14 @@ export type OrganizationTools = {
   // 自分の組織の users の ID ごとのアバターの URL。アカウントに結ばれていない人、ログインしたことの無い人、アバターの無い人は null。
   // 別の組織の ID と、存在しない ID はキーを持たない
   avatarsOf(userIds: readonly string[]): Promise<Map<string, string | null>>;
+  // 呼んだ人のアカウント（actor.accountId）に結んだログインの手段、ID、ログイン名。届いた招待の一覧、承諾、辞退が、
+  // 招待の (login_provider, login_subject) と突き合わせ、承諾で作る users の名前を決めるのに使う。
+  // この道具だけは、承諾待ちの招待だけの人の操作からも使える。1回のリクエストで1回だけ引く
+  myLogins(): Promise<readonly MyLogin[]>;
 };
+
+// アカウントに結んだログイン。loginName はログインの手段の側の名前（GitHub のユーザー名など）
+export type MyLogin = { readonly provider: string; readonly subject: string; readonly loginName: string };
 
 export function organizationTools(
   env: Env,
@@ -50,6 +58,7 @@ export function organizationTools(
     if (actor.invitedOnly) throw new Error('承諾待ちの招待だけの人の操作から、組織の道具を使った');
     return use();
   };
+  let logins: Promise<readonly MyLogin[]> | undefined;
   return {
     inviteeResolver: (provider) => member(() => inviteeResolver(provider)),
     readOrganization: () => member(() => readOrganizationRow(env, db)),
@@ -60,7 +69,24 @@ export function organizationTools(
       }),
     endSessionsIfLoginLost: (userId) => member(() => endSessionsIfLoginLost(env, db, userId)),
     avatarsOf: (userIds) => member(() => userAvatarsOf(env, db, userIds)),
+    myLogins: () => (logins ??= readMyLogins(env, actor.accountId)),
   };
+}
+
+// 共通の表（account_logins）だけを、共通の入口から引く。組織の中の表とは別の問い合わせにする
+async function readMyLogins(env: Env, accountId: string): Promise<readonly MyLogin[]> {
+  const common = commonDb(env);
+  const rows = await common.rows(
+    common.statement((q) =>
+      q
+        .selectFrom('account_logins')
+        .select(['login_provider', 'login_subject', 'login_name'])
+        .where('account_id', '=', accountId)
+        .orderBy('login_provider')
+        .orderBy('login_subject'),
+    ),
+  );
+  return rows.map((row) => ({ provider: row.login_provider, subject: row.login_subject, loginName: row.login_name }));
 }
 
 async function endSessionsIfLoginLost(env: Env, db: OrganizationDb, userId: string): Promise<void> {

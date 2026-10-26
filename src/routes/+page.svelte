@@ -10,7 +10,7 @@
   import type { PageProps } from './$types';
 
   // 組織の選択。入れる組織が2つ以上の人と、届いた招待がある人に出す（1つだけで招待も無い人は +page.ts が組織へ移す）。
-  // 承諾と辞退は別の画面で作る。ここは招待が届いていることと、組織の名前だけを出す
+  // 届いた招待は組織ごとに1件で、押すとその組織の招待の画面（/<slug>/invitations）へ移り、そこで承諾か辞退を選ぶ
   let { data }: PageProps = $props();
 </script>
 
@@ -50,14 +50,16 @@
     </GateSheet>
     {#if data.invitations.length > 0}
       <GateSheet title={t('invitationsHeading')}>
-        {#each data.invitations as invitation, index (index)}
-          <div class="choice is-static">
-            <div>
-              <b>{invitation.organization_name}</b>
-              <span>{t('invitationPending')}</span>
-            </div>
-          </div>
-        {/each}
+        <div class="choice-list">
+          {#each data.invitations as invitation (invitation.slug)}
+            <a class="choice" href={resolve('/[slug]/invitations', { slug: invitation.slug })}>
+              <div>
+                <b>{invitation.organization_name}</b>
+                <span>{t('invitationPending')}</span>
+              </div>
+            </a>
+          {/each}
+        </div>
         <p class="gate-note">{t('invitationsNote')}</p>
       </GateSheet>
     {/if}

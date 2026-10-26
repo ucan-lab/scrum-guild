@@ -95,6 +95,23 @@ export const pointers: Pointers = {
       })
     ).id,
   }),
+  // 入力は空。呼んだ人のログインに当たる、この組織の招待を返す
+  'invitation-list': { noReference: {} },
+  // 呼ぶたびに対象の組織に新しいワークスペースを作り、呼ぶ人を招待する（承諾すると所属するので、同じワークスペースには続けて承諾できない）。
+  // 別の組織の対象を渡すと、招待はその組織の行なので、自分の組織の slug では 404
+  'invitation-accept': async (target, caller) => {
+    const workspace = await createWorkspace(target.organization, target.admin.userId!);
+    return {
+      invitation_id: (await createInvitation(target.organization, workspace.id, target.admin.userId!, caller.login)).id,
+    };
+  },
+  // 呼ぶたびに対象の組織に新しいワークスペースを作り、呼ぶ人を招待する（辞退した招待は続けて辞退できない）
+  'invitation-decline': async (target, caller) => {
+    const workspace = await createWorkspace(target.organization, target.admin.userId!);
+    return {
+      invitation_id: (await createInvitation(target.organization, workspace.id, target.admin.userId!, caller.login)).id,
+    };
+  },
   'resolve-github-user': async () => ({ username: newGithubUser().login }),
   // slug は呼ぶたびに別の値にする（重なると 409 になる）
   'create-organization': async () => {

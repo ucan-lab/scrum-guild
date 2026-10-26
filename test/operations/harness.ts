@@ -24,7 +24,8 @@ import {
 // 対象の組織の行を指す、成功する入力を作る。別の組織の対象を渡すと、同じ入力が 404 になる。
 // 入力が組織の中の行を指さない操作は、成功する入力を noReference に書く（分離の検査はスラッグだけになる）。
 // 入力に `_id` で終わる項目がある操作には書けない（行を指しているので、関数で作る）
-export type Pointer = ((target: Target) => Promise<unknown>) | { noReference: unknown };
+// caller は、その入力で呼ぶ人。届いた招待の承諾と辞退のように、呼んだ人に宛てた行を指す操作が使う（省略は対象の組織の管理者）
+export type Pointer = ((target: Target, caller: Person) => Promise<unknown>) | { noReference: unknown };
 export type Pointers = Readonly<Record<string, Pointer>>;
 
 type App = ReturnType<typeof createApp>;
@@ -109,10 +110,11 @@ export async function inputFor(
   pointers: Pointers,
   definition: AnyOperationDefinition,
   target: Target,
+  caller: Person = target.admin,
 ): Promise<unknown> {
   const pointer = pointers[definition.name];
   if (pointer === undefined) return {};
-  return typeof pointer === 'function' ? pointer(target) : pointer.noReference;
+  return typeof pointer === 'function' ? pointer(target, caller) : pointer.noReference;
 }
 
 // 自分の組織の行を指す入力は成功し、別の組織の行を指す入力は 404 になる。404 が入力の誤りや権限の不足ではなく、
@@ -128,7 +130,7 @@ export async function checkRowIsolation(
   const ok = await post(app, definition, {
     slug: own.slug,
     token: own.admin.token,
-    body: await inputFor(pointers, definition, own),
+    body: await inputFor(pointers, definition, own, own.admin),
   });
   expect(ok.status, '自分の組織の行を指す入力').toBe(200);
   const pointer = pointers[definition.name];
@@ -136,7 +138,7 @@ export async function checkRowIsolation(
   const res = await post(app, definition, {
     slug: own.slug,
     token: own.admin.token,
-    body: await inputFor(pointers, definition, other),
+    body: await inputFor(pointers, definition, other, own.admin),
   });
   expect(res.status, '別の組織の行を指す入力').toBe(404);
   expect(await errorCodeOf(res)).toBe('not_found');
@@ -177,7 +179,7 @@ export function defineOperationChecks(
       expect(res.status).toBe(200);
       expect(definition.output.safeParse(await res.json()).success).toBe(true);
     };
-    const input = (target: Target) => inputFor(pointers, definition, target);
+    const input = (target: Target, caller?: Person) => inputFor(pointers, definition, target, caller);
 
     test('Origin が公開する URL と違う、または無いと 403', async () => {
       const token = (isOutsideOperation(definition) ? operator : own.admin).token;
@@ -264,7 +266,7 @@ export function defineOperationChecks(
       const res = await post(app, definition, {
         slug: own.slug,
         token: own.invitee.token,
-        body: await input(own),
+        body: await input(own, own.invitee),
       });
       if (definition.permission === 'invitee') {
         await expectOk(res);
@@ -278,10 +280,12 @@ export function defineOperationChecks(
     switch (permission) {
       case 'invitee':
       case 'organization':
+        // 入力は呼ぶ人ごとに作る（届いた招待の承諾のように、呼んだ人に宛てた行を指す操作のため）
         test('組織に入れる人は、所属がなくても成功する', async () => {
-          const body = await input(own);
           for (const person of [own.admin, own.leader, own.member, own.bystander]) {
-            await expectOk(await post(app, definition, { slug: own.slug, token: person.token, body }));
+            await expectOk(
+              await post(app, definition, { slug: own.slug, token: person.token, body: await input(own, person) }),
+            );
           }
         });
         break;

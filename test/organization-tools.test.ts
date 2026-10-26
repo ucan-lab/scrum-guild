@@ -100,6 +100,17 @@ const inviteeReadsOrganization = defineOperation({
   output: z.object({ member_limit: z.number() }),
 });
 
+const myLogins = defineOperation({
+  name: 'tools-my-logins',
+  description: '呼んだ人のアカウントに結んだログインを返す',
+  mode: 'read',
+  permission: 'invitee',
+  input: z.object({}),
+  output: z.object({
+    logins: z.array(z.object({ provider: z.string(), subject: z.string(), login_name: z.string() })),
+  }),
+});
+
 const github = createFakeGithub();
 const app = createApp(
   [
@@ -131,6 +142,13 @@ const app = createApp(
     })),
     implement(inviteeReadsOrganization, async ({ tools }) => ({
       member_limit: (await tools.readOrganization()).memberLimit,
+    })),
+    implement(myLogins, async ({ tools }) => ({
+      logins: (await tools.myLogins()).map((login) => ({
+        provider: login.provider,
+        subject: login.subject,
+        login_name: login.loginName,
+      })),
     })),
   ],
   { fetcher: github.fetcher },
@@ -261,6 +279,40 @@ describe('道具を使える人', () => {
 
     const res = await post(app, inviteeReadsOrganization, { slug: own.slug, token: invitee.token });
     expect(res.status).toBe(500);
+  });
+});
+
+describe('自分のログイン', () => {
+  test('承諾待ちの招待だけの人の操作からも使え、呼んだ人のアカウントに結んだログインだけを返す', async () => {
+    const own = await createOrganization();
+    const owner = await createUser(own, { is_admin: 1 });
+    const workspace = await createWorkspace(own, owner.id);
+    const invitee = await createPerson();
+    await createAccountLogin(invitee.accountId, {
+      login_provider: 'google',
+      login_subject: '118000000000000000042',
+      login_name: 'mio@example.com',
+    });
+    await createInvitation(own, workspace.id, owner.id, invitee.login);
+    // 同じ組織のほかの人のログインは出ない
+    await createPerson({ organization: own, admin: true });
+
+    const result = (await ok(await post(app, myLogins, { slug: own.slug, token: invitee.token }))) as {
+      logins: { provider: string; subject: string; login_name: string }[];
+    };
+    expect(result.logins).toEqual([
+      { provider: 'github', subject: invitee.login.subject, login_name: 'mio-hoshino' },
+      { provider: 'google', subject: '118000000000000000042', login_name: 'mio@example.com' },
+    ]);
+  });
+
+  test('組織に入れる人の操作からも使える', async () => {
+    const own = await createOrganization();
+    const admin = await createPerson({ organization: own, admin: true });
+    const result = (await ok(await post(app, myLogins, { slug: own.slug, token: admin.token }))) as {
+      logins: { subject: string }[];
+    };
+    expect(result.logins.map((login) => login.subject)).toEqual([admin.login.subject]);
   });
 });
 
