@@ -840,6 +840,7 @@
               bind:this={assigneeSelect}
               onchange={onAssigneeChange}
               onblur={onAssigneeBlur}
+              aria-busy={candidatesLoading}
               aria-invalid={assigneeError !== null}
               aria-describedby={[
                 candidatesFailed ? assigneeNoteId : null,
@@ -855,6 +856,10 @@
                 >
               {/each}
             </select>
+            {#if candidatesLoading && !candidatesFailed}
+              <!-- 候補を読んでいる間は、選択肢が担当なしと今の担当だけなので、まだ読んでいることを示す -->
+              <span class="props-note" role="status">{t('loading')}</span>
+            {/if}
             {#if candidatesFailed}
               <span class="props-note" id={assigneeNoteId}
                 >{t('assigneeCandidatesFailed', { assignee: t('assignee') })}</span

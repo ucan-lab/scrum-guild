@@ -294,6 +294,7 @@
             id={assigneeId}
             bind:this={assigneeSelect}
             bind:value={assignee}
+            aria-busy={candidatesLoading}
             aria-describedby={candidatesFailed ? assigneeNoteId : undefined}
           >
             <option value="">{t('unassigned')}</option>
@@ -301,6 +302,10 @@
               <option value={option.id}>{option.name}</option>
             {/each}
           </select>
+          {#if candidatesLoading && !candidatesFailed}
+            <!-- 候補を読んでいる間は、選択肢が担当なしだけなので、まだ読んでいることを示す -->
+            <span class="field-hint" role="status">{t('loading')}</span>
+          {/if}
           {#if candidatesFailed}
             <span class="field-hint" id={assigneeNoteId}
               >{t('assigneeCandidatesFailed', { assignee: t('assignee') })}</span
