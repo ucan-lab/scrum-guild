@@ -7,7 +7,8 @@ runs:
   using: composite
   steps:
     # 版を読めないとキーが版によらなくなり、古いブラウザを戻し続けるので止める。
-    # キーにはランナーのイメージ（ImageOS）も入れる。--with-deps を使わないので、イメージが替わったら作り直す
+    # キーには OS のメジャー版（ImageOS。ubuntu24 など）も入れる。--with-deps を使わないので、ubuntu-latest が次の版に替わったら作り直す。
+    # イメージの週ごとの更新では ImageOS は替わらない
     - id: key
       name: キャッシュのキーを決める
       shell: bash
