@@ -93,7 +93,10 @@
           announcement = childrenText(target, mode);
         }
         canDelete = result.data.can_delete;
-        if (!canDelete) submitError = t('taskDeleteForbidden', { leader: t('leader') });
+        const forbidden = t('taskDeleteForbidden', { leader: t('leader') });
+        // 削除できるに戻ったら、前の読み直しで出した権限の文だけを消す（送った後の失敗の文は残す）
+        if (!canDelete) submitError = forbidden;
+        else if (submitError === forbidden) submitError = null;
         // 配下が無くなって選択肢が消えると、そこにあったフォーカスが body に落ちる。描き直した後にやめるボタンへ移す
         await tick();
         if (
