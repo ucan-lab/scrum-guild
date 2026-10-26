@@ -87,11 +87,19 @@ jobs:
       - uses: ./.github/actions/setup
       - run: pnpm db:migrate:fresh
 
+  # CI の長さを決めるジョブなので、ファイル単位のシャードに分けて並べる。シャードごとにランナーと手元の D1 が別になる。
+  # ci-ok の needs では、マトリクスのジョブは1つの結果にまとまる（1つでも落ちれば failure）
   e2e:
     needs: changes
     if: needs.changes.outputs.docs_only != 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    strategy:
+      # 1つが落ちても残りを走らせ、落ちたテストを一度に見られるようにする
+      fail-fast: false
+      # --shard の分母は strategy.job-total で追従する。数を変えるときは docs/development.md の「CI」の e2e の行（/3 と成果物の名前）も直す
+      matrix:
+        shard: [1, 2, 3]
     env:
       # 画面と /api/health に同じ版が出ることも確かめる
       APP_VERSION: ${{ github.event.pull_request.head.sha }}
@@ -101,11 +109,11 @@ jobs:
           persist-credentials: false
       - uses: ./.github/actions/setup
       - run: pnpm exec playwright install --with-deps chromium
-      - run: pnpm e2e
+      - run: pnpm e2e --shard=${{ matrix.shard }}/${{ strategy.job-total }}
       - if: ${{ !cancelled() }}
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: e2e
+          name: e2e-${{ matrix.shard }}
           # 落ちたジョブを再実行すると同じ名前で上げ直すため
           overwrite: true
           path: |

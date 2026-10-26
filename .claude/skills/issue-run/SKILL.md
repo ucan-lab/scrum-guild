@@ -73,7 +73,7 @@ Issue に、ブランチ名とセッションの識別をコメントで残す�
 - 仕様を変えたら、同じ差分で `docs/` を直す
 - `pnpm check`、`pnpm lint`、`pnpm format:check`、`pnpm test`、`pnpm build` が通る
 - マイグレーションを足したら `pnpm db:migrate:fresh` が通る（書き方は `d1-migration`）
-- 画面か API の流れを変えたら `pnpm e2e` が通る。`DEV_PORT_OFFSET` を渡されていれば、`pnpm e2e` と `pnpm dev` に付ける
+- 画面か API の流れを変えたら、変えた画面と流れに関わる e2e のファイルが通る（`pnpm e2e e2e/members.test.ts` のようにファイルを渡す）。どの画面にも効くものを変えたときと、迷ったときは全件が通る。ファイルの選び方と、全件を走らせる変更の一覧は `docs/development.md` の「開発の流れ」に従う。`DEV_PORT_OFFSET` を渡されていれば、`pnpm e2e` と `pnpm dev` に付ける
 - `.claude/hooks/` を変えたら `node --test .claude/hooks/*.test.mjs` が通る
 - コミットしない。ファイルは Edit と Write で書く（Bash で書いたファイルはフックがコミットを止める）。`pkill` を使わない
 
