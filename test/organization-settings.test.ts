@@ -11,7 +11,7 @@ import { envWithD1Hooks } from '../src/server/db/testing.ts';
 import { implementedOperations } from '../src/server/operations/index.ts';
 import type { OrganizationFixture } from './factories.ts';
 import { errorCodeOf, post } from './operations/harness.ts';
-import { createTarget, testEnv, type Target } from './operations/world.ts';
+import { createTarget, suspendAfterEntering, testEnv, type Target } from './operations/world.ts';
 
 const app = createApp(implementedOperations);
 
@@ -212,26 +212,10 @@ describe('organization-settings-update', () => {
 
   test('入ってから書くまでに組織が停止されたら 403 の organization_suspended で、設定は書き換わらず、履歴も残らない', async () => {
     const target = await createTarget();
-    let suspended = false;
-    const racing = envWithD1Hooks(testEnv, {
-      // 入るときに組織の行を引いた直後に、運用者が組織を停止する
-      afterQuery: async (sql) => {
-        if (suspended || !sql.includes('from "organizations"')) return;
-        suspended = true;
-        const db = commonDb(env);
-        await db.run(
-          db.statement((q) =>
-            q
-              .updateTable('organizations')
-              .set({ suspended_at: '2026-10-24T00:00:00.000Z' })
-              .where('id', '=', target.organization.id),
-          ),
-        );
-      },
-    });
+    const racing = suspendAfterEntering(testEnv, target.organization.id);
     const before = await organizationRow(target.organization);
-    const res = await update(target, { vocabulary: 'scrum', theme: 'medieval' }, { env: racing });
-    expect(suspended).toBe(true);
+    const res = await update(target, { vocabulary: 'scrum', theme: 'medieval' }, { env: racing.env });
+    expect(racing.suspended()).toBe(true);
     expect(res.status).toBe(403);
     expect(await errorCodeOf(res)).toBe('organization_suspended');
     expect(await organizationRow(target.organization)).toEqual(before);

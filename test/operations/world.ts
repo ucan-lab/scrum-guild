@@ -11,7 +11,9 @@ import {
   createWorkspace,
   type OrganizationFixture,
 } from '../factories.ts';
+import { commonDb } from '../../src/server/db/index.ts';
 import { FAKE_CLIENT_ID, FAKE_CLIENT_SECRET } from '../auth/fake-github.ts';
+import { afterFirstQuery } from '../auth/helpers.ts';
 
 // 運用者の一覧。Person.operator が持つログインの ID はこの先頭
 export const OPERATOR_LOGIN_ID = 'github:9000000000000001';
@@ -128,6 +130,26 @@ export type Target = {
 };
 
 export const SUSPENDED_AT = '2026-10-20T00:00:00.000Z';
+
+// 入るときに組織の行を引いた直後に、運用者がその組織を停止する D1（入ってから書くまでに停止されたときを見る）。
+// suspended() は停止を割り込ませたか。入るときの読み込みの形が変わって割り込めなければ false のままなので、テストで確かめる
+export function suspendAfterEntering(base: Env, organizationId: string): { env: Env; suspended: () => boolean } {
+  let suspended = false;
+  const racing = afterFirstQuery(
+    base,
+    (sql) => sql.includes('from "organizations"'),
+    async () => {
+      suspended = true;
+      const db = commonDb(baseEnv);
+      await db.run(
+        db.statement((q) =>
+          q.updateTable('organizations').set({ suspended_at: SUSPENDED_AT }).where('id', '=', organizationId),
+        ),
+      );
+    },
+  );
+  return { env: racing, suspended: () => suspended };
+}
 
 // suspended は組織を停止した状態で作る（停止した組織で、入れたはずの人に 403 の organization_suspended を返すことを見る）
 export async function createTarget(options: { closed?: boolean; suspended?: boolean } = {}): Promise<Target> {

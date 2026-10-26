@@ -8,7 +8,6 @@ import { defineOperation } from '../src/shared/operations/define.ts';
 import { themes } from '../src/shared/theme.ts';
 import { createApp } from '../src/server/app.ts';
 import { commonDb } from '../src/server/db/index.ts';
-import { envWithD1Hooks } from '../src/server/db/testing.ts';
 import { implement } from '../src/server/operations/implement.ts';
 import { createFakeGithub } from './auth/fake-github.ts';
 import { githubUser } from './auth/helpers.ts';
@@ -22,7 +21,14 @@ import {
   createWorkspace,
 } from './factories.ts';
 import { post } from './operations/harness.ts';
-import { admitElsewhere, createPerson, getOperator, testEnv } from './operations/world.ts';
+import {
+  admitElsewhere,
+  createPerson,
+  getOperator,
+  SUSPENDED_AT,
+  suspendAfterEntering,
+  testEnv,
+} from './operations/world.ts';
 
 const organizationRow = defineOperation({
   name: 'tools-organization-row',
@@ -244,26 +250,13 @@ describe('組織の行', () => {
     ]) {
       const own = await createOrganization({ theme: 'modern' });
       const admin = await createPerson({ organization: own, admin: true });
-      let suspended = false;
-      const racing = envWithD1Hooks(testEnv, {
-        // 入るときに組織の行を引いた直後に、運用者が組織を停止する
-        afterQuery: async (sql) => {
-          if (suspended || !sql.includes('from "organizations"')) return;
-          suspended = true;
-          const db = commonDb(env);
-          await db.run(
-            db.statement((q) =>
-              q.updateTable('organizations').set({ suspended_at: '2026-10-24T00:00:00.000Z' }).where('id', '=', own.id),
-            ),
-          );
-        },
-      });
+      const racing = suspendAfterEntering(testEnv, own.id);
       const before = await organizationRowOf(own.id);
       expect(
-        await ok(await post(app, writeSettings, { slug: own.slug, token: admin.token, body, env: racing })),
+        await ok(await post(app, writeSettings, { slug: own.slug, token: admin.token, body, env: racing.env })),
       ).toEqual({ result: 'suspended' });
-      expect(suspended).toBe(true);
-      expect(await organizationRowOf(own.id)).toEqual({ ...before, suspended_at: '2026-10-24T00:00:00.000Z' });
+      expect(racing.suspended()).toBe(true);
+      expect(await organizationRowOf(own.id)).toEqual({ ...before, suspended_at: SUSPENDED_AT });
     }
   });
 });
