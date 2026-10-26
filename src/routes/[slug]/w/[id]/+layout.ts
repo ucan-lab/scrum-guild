@@ -11,8 +11,8 @@ let known: KnownWorkspace | null = null;
 // ワークスペースの枠が使う値。存在しない ID と別の組織の ID は、どちらも 404 の not_found で workspace が null になる
 // （どちらかを漏らさない）。所属していない管理者も入れる（role が null）。
 // url は 401 のときだけ読む（読むと、移るたびにこの load が走り直る）。
-// `app:workspace` は、引き出しが閉じたことを知った（`workspace_closed`）後に、この枠だけを読み直す印
-// （組織の枠の load を走らせない）
+// `app:workspace` は、引き出しが閉じたことを知った（`workspace_closed`）後と、設定の画面で完成の定義を書いた後に、
+// この枠だけを読み直す印（組織の枠の load を走らせない）
 export const load: LayoutLoad = async ({ params, fetch, url, depends }) => {
   depends('app:workspace');
   const result = await callOperation(workspaceInfo, { workspace_id: params.id }, { slug: params.slug, fetcher: fetch });
@@ -24,6 +24,7 @@ export const load: LayoutLoad = async ({ params, fetch, url, depends }) => {
         name: result.data.name,
         vocabulary: result.data.vocabulary,
         closedAt: result.data.closed_at,
+        definitionOfDone: result.data.definition_of_done_md,
         role: result.data.role,
       }
     : null;

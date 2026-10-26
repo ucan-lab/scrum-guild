@@ -6,6 +6,7 @@
   import EpicDialog from '../../../../lib/components/EpicDialog.svelte';
   import Icon from '../../../../lib/components/Icon.svelte';
   import LoadFailed from '../../../../lib/components/LoadFailed.svelte';
+  import Markdown from '../../../../lib/components/Markdown.svelte';
   import MoveParentDialog from '../../../../lib/components/MoveParentDialog.svelte';
   import PageHead from '../../../../lib/components/PageHead.svelte';
   import StoryDialog from '../../../../lib/components/StoryDialog.svelte';
@@ -39,12 +40,15 @@
   // ストーリーの「完了にする」は、配下の未完了のタスク（画面で完了にした行は数えない）が残るあいだは押せない。完了と取り消しは、通ったら木を読み直す。
   // 起票したタスクは、読み直さずに親の配下（親なしなら一覧の末尾）に足し、親の「全体」のポイントにも足す。親の行が畳まれていれば開く。
   // エピックとストーリーを作った、直したときは、木を読み直す。
-  // 完了の操作を送っている最中の行（pendingIds、storyPending）は、読み直しでは捨てず、応答が来たら外す
+  // 完了の操作を送っている最中の行（pendingIds、storyPending）は、読み直しでは捨てず、応答が来たら外す。
+  // 見出しの下に、ワークスペースの完成の定義（枠の値。空なら出さない）を畳んで1つだけ置く
   let { data }: PageProps = $props();
 
   const workspace = $derived(data.workspace);
   const tree = $derived(data.tree);
   const canWrite = $derived(workspace !== null && workspace.closedAt === null);
+  // 完成の定義の畳みを開いたか。開くまで本文を描かない
+  let dodOpen = $state(false);
   // 期日の印を決める、ワークスペースの今日の日付と週の始まり（API の値）
   const clock = $derived({ today: tree?.today ?? '', weekStart: tree?.week_start ?? 1 });
 
@@ -653,6 +657,15 @@
       {/if}
     {/snippet}
   </PageHead>
+
+  <!-- 完成の定義（components.css の .dod）。木の上に1つだけ畳んで置き、行ごとには繰り返さない。空なら出さない。
+       本文は開くまで描かない（長い定義の変換と描画を、開かない人に払わせない） -->
+  {#if workspace.definitionOfDone !== null}
+    <details class="dod" bind:open={dodOpen}>
+      <summary>{t('dod')}</summary>
+      {#if dodOpen}<Markdown source={workspace.definitionOfDone} headingStart={2} />{/if}
+    </details>
+  {/if}
 
   <!-- 完了の操作を送っている最中の読み上げと、動かした結果の読み上げ。領域は常に置き、中の文字だけを替える -->
   <span class="visually-hidden" role="status">{completingStatus}</span>

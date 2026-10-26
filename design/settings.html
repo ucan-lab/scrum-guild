@@ -58,8 +58,10 @@ SQ.mount("settings", () => `
       `<div><button class="btn is-sm" type="button">${icon("plus")}${t("column")}を足す</button></div>`)}
     ${setting(`${t("detail")}の決まった欄`, `${t("task")}ごとに書く欄。${t("task")}を完了にした時点ですべて埋まっていると、最後に書いた人に経験値が付きます。`,
       orderList(D.detailFields) + `<div><button class="btn is-sm" type="button">${icon("plus")}欄を足す</button></div>`)}
-    ${setting(t("dod"), `すべての${t("task")}に共通する完了の基準。完了の${t("column")}と完了の操作の横に出します。`, `
-      <label class="field" for="dod"><span class="field-label">Markdown</span><textarea class="textarea" id="dod">${D.definitionOfDone.map((d) => `- ${esc(d)}`).join("\n")}</textarea></label>`)}
+    ${setting(t("dod"), `すべての${t("task")}に共通する完了の基準。${t("backlog")}の上と、完了の操作の横に出します。`, `
+      <div class="field"><label class="field-label" for="dod">Markdown</label><textarea class="textarea" id="dod" rows="8" aria-describedby="dod-hint">${D.definitionOfDone.map((d) => `- ${esc(d)}`).join("\n")}</textarea>
+        <span class="field-hint" id="dod-hint">Markdown で書けます。空にして保存すると、どこにも出しません。</span>
+        <div class="form-actions"><button class="btn is-primary" type="button" aria-disabled="true">保存する</button></div></div>`)}
     ${setting(t("category"), `${t("epic")}に振ると配下が引き継ぎます。「月ごとに計上する」${t("category")}は、完了の記録に計上月を持ちます。`,
       orderList(Object.values(D.categories).map((c) => ({ html: `<span class="order-main"><input class="input" value="${esc(c.name)}" aria-label="名前"><label class="toggle"><input type="checkbox" ${c.monthly ? "checked" : ""}><span>月ごとに計上する</span></label></span>` }))) +
       `<div><button class="btn is-sm" type="button">${icon("plus")}${t("category")}を足す</button></div>`)}

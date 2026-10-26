@@ -113,6 +113,7 @@
         workspaceId={workspace.id}
         {taskId}
         {canWrite}
+        definitionOfDone={workspace.definitionOfDone}
         onclose={() => void withoutTask()}
         onchanged={() => void invalidate('app:backlog-tree')}
         onstale={() => void invalidate('app:workspace')}

@@ -1791,6 +1791,43 @@ export const dictionary = defineDictionary({
   markdownCodeRegion: workspace('コード', 'コード'),
   markdownTableRegion: workspace('表', '表'),
 
+  // 完成の定義（設定の画面の節、詳細の引き出しの完了の操作の横、バックログの画面の上）。{dod} はその言葉づかいの言葉を画面が渡す。
+  // スプリントの画面の完了の列に出すようになったら、説明の文にも足す
+  dodDesc: workspace(
+    'すべての{task}に共通する完了の基準。{backlog}の上と、完了の操作の横に出します。',
+    'すべての{task}に共通する完了の基準。{backlog}の上と、完了の操作の横に出します。',
+  ),
+  dodFieldLabel: workspace('Markdown', 'Markdown'),
+  dodHint: workspace(
+    'Markdown で書けます。空にして保存すると、どこにも出しません。',
+    'Markdown で書けます。空にして保存すると、どこにも出しません。',
+  ),
+  dodSave: workspace('保存する', '保存する'),
+  dodSaving: workspace('{dod}を保存しています', '{dod}を保存しています'),
+  dodSaved: workspace('{dod}を保存しました', '{dod}を保存しました'),
+  dodCleared: workspace('{dod}を空にしました', '{dod}を空にしました'),
+  dodUnchanged: workspace('保存した内容から変わっていません', '保存した内容から変わっていません'),
+  // {max} は桁区切りの数（100,000）を画面が渡す
+  dodTooLong: workspace('{dod}は {max} 字までです', '{dod}は {max} 字までです'),
+  dodInvalidCharacter: workspace('{dod}に使えない文字が含まれています', '{dod}に使えない文字が含まれています'),
+  dodSaveFailed: workspace(
+    '{dod}を保存できませんでした。もう一度「保存する」を押してください。',
+    '{dod}を保存できませんでした。もう一度「保存する」を押してください。',
+  ),
+  // 403 と 404（リーダーでなくなった、ワークスペースが見つからない）。枠を読み直す
+  dodUnavailable: workspace(
+    '保存できませんでした。操作できない状態です。画面を読み直しました。',
+    '保存できませんでした。操作できない状態です。画面を読み直しました。',
+  ),
+  // ほかの画面で同時に書かれて、やり直しても書けなかった（409 の conflict）。書いた文は欄に残す
+  dodConflict: workspace(
+    'ほかの画面で同時に変わったため、保存できませんでした。もう一度「保存する」を押してください。',
+    'ほかの画面で同時に変わったため、保存できませんでした。もう一度「保存する」を押してください。',
+  ),
+  dodEmptyReadOnly: workspace('まだ{dod}がありません。', 'まだ{dod}がありません。'),
+  // 詳細の引き出しの完了の印の横。{at} は完了した日時
+  taskCompletedAt: workspace('{done} {at}', '{done} {at}'),
+
   // ワークスペースの設定の画面（/[slug]/w/[id]/settings。見本は design/settings.html）
   settingsPageName: workspace('{settings}・{name}', '{settings}・{name}'),
   settingsForbiddenTitle: workspace('この画面には入れません', 'この画面には入れません'),

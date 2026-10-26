@@ -4,19 +4,26 @@ import {
   memberList,
   workspaceClose,
   workspaceCreate,
+  workspaceDodUpdate,
   workspaceInfo,
   workspaceLeaderCandidates,
   workspaceList,
   workspaceReopen,
 } from '../../shared/operations/workspace/index.ts';
-import type { Insertable, OrganizationDb, OrganizationTables, QueryCreator } from '../db/index.ts';
+import {
+  previousStatementChanged,
+  type Insertable,
+  type OrganizationDb,
+  type OrganizationTables,
+  type QueryCreator,
+} from '../db/index.ts';
 import { ApiError } from '../errors.ts';
 import { uuidv7 } from '../uuid.ts';
 import { amountOf, memberExperienceTotalsStatement } from './experience.ts';
 import { implement } from './implement.ts';
 import { readSeats } from './invitation.ts';
 import { newWorkspaceRows } from './workspace-rows.ts';
-import { actorUserIdOf, changeLogColumns } from './write-guards.ts';
+import { actorUserIdOf, changeLogColumns, throwIfClosed } from './write-guards.ts';
 
 type Tables = OrganizationTables;
 
@@ -293,7 +300,7 @@ export const workspaceInfoOperation = implement(workspaceInfo, async ({ db, work
     db.statement((q) =>
       q
         .selectFrom('workspaces')
-        .select(['name', 'vocabulary', 'closed_at'])
+        .select(['name', 'vocabulary', 'closed_at', 'definition_of_done_md'])
         .where('id', '=', workspace.workspaceId)
         .where('organization_id', '=', workspace.organizationId),
     ),
@@ -304,8 +311,86 @@ export const workspaceInfoOperation = implement(workspaceInfo, async ({ db, work
     name: row.name,
     vocabulary: row.vocabulary as 'game' | 'scrum',
     closed_at: row.closed_at,
+    // 書く操作は空を null にそろえるが、空の文字列の行があっても、画面には「空」として渡す
+    definition_of_done_md: row.definition_of_done_md === '' ? null : row.definition_of_done_md,
     role: workspace.actorRole,
   };
+});
+
+// 同時の更新に負けたときにやり直す回数の上限。超えたら 409 の conflict
+const DOD_MAX_ATTEMPTS = 3;
+
+// 履歴に残す完成の定義の字数（コードポイントで数える。字数の上限と同じ数え方）。空（null）は 0
+function lengthOf(value: string | null): number {
+  return value === null ? 0 : [...value].length;
+}
+
+// 完成の定義を書く。読んだ値と違うときだけ、読んだ値のままで閉じていなければ、という条件つきで workspaces を書き、
+// 書けたときだけ変更の履歴を入れる（INSERT ... SELECT ... WHERE changes() > 0）。2つの文は1回の batch()。
+// 書けなければ、閉じていれば 409 の workspace_closed、そうでなければ（別の要求が先に変えた）読み直してやり直す
+export const workspaceDodUpdateOperation = implement(workspaceDodUpdate, async ({ db, actor, workspace, input }) => {
+  const actorUserId = actorUserIdOf(actor);
+  const organizationId = db.organizationId;
+  const workspaceId = workspace.workspaceId;
+  const next = input.definition_of_done_md;
+
+  for (let attempt = 0; attempt < DOD_MAX_ATTEMPTS; attempt++) {
+    const row = await db.first(
+      db.statement((q) =>
+        q
+          .selectFrom('workspaces')
+          .select('definition_of_done_md')
+          .where('id', '=', workspaceId)
+          .where('organization_id', '=', organizationId),
+      ),
+    );
+    if (row === undefined) throw new ApiError(404, 'not_found');
+    const before = row.definition_of_done_md;
+    if (before === next) {
+      await throwIfClosed(db, workspaceId);
+      return { definition_of_done_md: next };
+    }
+
+    const at = now();
+    const stamp = at.toISOString();
+    const results = await db.batch([
+      db.statement((q) =>
+        q
+          .updateTable('workspaces')
+          .set({ definition_of_done_md: next, updated_at: stamp })
+          .where('id', '=', workspaceId)
+          .where('organization_id', '=', organizationId)
+          .where('closed_at', 'is', null)
+          .where('definition_of_done_md', 'is', before),
+      ),
+      db.statement((q) =>
+        q
+          .insertInto('change_logs')
+          .columns(changeLogColumns)
+          .expression(
+            q
+              .selectNoFrom((eb) => [
+                eb.val(uuidv7(at)).as('id'),
+                eb.val(organizationId).as('organization_id'),
+                eb.val(workspaceId).as('workspace_id'),
+                eb.val(actorUserId).as('actor_user_id'),
+                eb.val('workspace').as('entity_type'),
+                eb.val(workspaceId).as('entity_id'),
+                eb.val('update').as('action'),
+                // 全文（10 万字まで）を前後で積むと共有の D1 が膨らむので、履歴には前後の字数（コードポイント。空は 0）だけを残す
+                eb
+                  .val(JSON.stringify({ definition_of_done_md_length: [lengthOf(before), lengthOf(next)] }))
+                  .as('changes_json'),
+                eb.val(stamp).as('created_at'),
+              ])
+              .where(previousStatementChanged),
+          ),
+      ),
+    ]);
+    if ((results[0]?.changes ?? 0) > 0) return { definition_of_done_md: next };
+    await throwIfClosed(db, workspaceId);
+  }
+  throw new ApiError(409, 'conflict');
 });
 
 // 閉じると開き直しの文が持つ条件。ワークスペースが今 before の状態（null は開いている、日時はその日時で閉じている）であること（inState）と、
