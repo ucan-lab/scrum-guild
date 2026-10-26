@@ -7,12 +7,9 @@ on:
     types: [opened, synchronize, reopened, edited, unlabeled]
 
 jobs:
+  # ジョブは飛ばさない。飛ばした実行（skipped）が同じ head に後からできると、マージの欄では前の実行の結果が隠れるため（#252）。
+  # どのイベントでも、そのときの状態で成功か失敗かを出す
   label:
-    # edited はベースを付け替えたときだけ動かす（別のブランチをベースに開いてから main へ付け替えて逃れる経路を塞ぐ）。
-    # unlabeled は人が needs-human を外したときだけ動かし、パスに当たっていれば付け直す
-    if: >-
-      (github.event.action != 'edited' || github.event.changes.base != null) &&
-      (github.event.action != 'unlabeled' || github.event.label.name == 'needs-human')
     runs-on: ubuntu-latest
     timeout-minutes: 5
     concurrency:
@@ -21,10 +18,20 @@ jobs:
     permissions:
       contents: read
       pull-requests: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      REPO: ${{ github.repository }}
+      PR_NUMBER: ${{ github.event.pull_request.number }}
+      # ラベルを付け直すのは、作成、push、再開、ベースの付け替え（別のブランチをベースに開いてから main へ付け替えて逃れる経路を塞ぐ）、
+      # 人が needs-human を外したとき（パスに当たっていれば付け直す）。タイトルや本文の編集と、ほかのラベルを外したときは付け直さない
+      RELABEL: >-
+        ${{ (github.event.action != 'edited' || github.event.changes.base != null) &&
+        (github.event.action != 'unlabeled' || github.event.label.name == 'needs-human') }}
     steps:
       # actions/checkout を置かない。pull_request_target のトークンは書き込めるので、PR のコードを取り込むと
       # そのコードが書き込みの権限で動く。labeler は手元に規則が無ければ、API でベースの版を読む
-      - uses: actions/labeler@bf12e9b00b37c5c0ca2b87b79b2daf7891dbda13 # v7.0.0
+      - if: env.RELABEL == 'true'
+        uses: actions/labeler@bf12e9b00b37c5c0ca2b87b79b2daf7891dbda13 # v7.0.0
         with:
           # 付けるだけで外さない。外すのは人
           sync-labels: false
@@ -32,14 +39,33 @@ jobs:
       # labeler は移動先のパスしか見ないので、守るパスの外へのリネームを拾えない。
       # 変更ファイルの一覧は 3000 件までしか返らない。どちらも規則で判定できないので、当たれば needs-human を付ける
       - name: リネームと大きな PR に needs-human を付ける
+        if: env.RELABEL == 'true'
         env:
-          GH_TOKEN: ${{ github.token }}
-          REPO: ${{ github.repository }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
           CHANGED_FILES: ${{ github.event.pull_request.changed_files }}
         run: |
           renamed=$(gh api --paginate "repos/$REPO/pulls/$PR_NUMBER/files" --jq '.[] | select(.status == "renamed") | .filename' | wc -l)
           echo "renamed=$renamed changed_files=$CHANGED_FILES"
           if [ "$renamed" -gt 0 ] || [ "$CHANGED_FILES" -gt 3000 ]; then
             gh api "repos/$REPO/issues/$PR_NUMBER/labels" -f 'labels[]=needs-human' --silent
+          fi
+
+      # ci.yml は edited で動かないので、ベースを付け替えても ci-ok は前のベースの結果のまま残る。
+      # 付け替えたら base-changed を付けて label を失敗にし、push で ci.yml が新しいベースで動き直したら外す
+      - name: ベースの付け替えを push まで止める
+        env:
+          ACTION: ${{ github.event.action }}
+          BASE_CHANGED: ${{ github.event.action == 'edited' && github.event.changes.base != null }}
+        run: |
+          if [ "$BASE_CHANGED" = true ]; then
+            gh api "repos/$REPO/issues/$PR_NUMBER/labels" -f 'labels[]=base-changed' --silent
+          fi
+          has_label() {
+            gh api "repos/$REPO/issues/$PR_NUMBER/labels?per_page=100" --jq '.[].name' | grep -qx base-changed
+          }
+          if [ "$ACTION" = synchronize ] && has_label; then
+            gh api -X DELETE "repos/$REPO/issues/$PR_NUMBER/labels/base-changed" --silent
+          fi
+          if has_label; then
+            echo "::error::ベースを付け替えたあと push していません。新しいベースを取り込んで push すると、CI が新しいベースで動き直し、base-changed は外れます"
+            exit 1
           fi
