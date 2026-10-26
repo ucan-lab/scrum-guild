@@ -8,8 +8,9 @@ import { ApiError } from '../errors.ts';
 import { implement } from './implement.ts';
 import { actorUserIdOf } from './write-guards.ts';
 
-// 1文に入れる行の数。D1 の1文の束縛は 100 個までで、1行が5列（organization_id、holiday_on、name、created_by、created_at）を束縛するので 20 行
-const ROWS_PER_STATEMENT = 20;
+// D1 の1文の束縛の上限（src/server/db/send.ts の MAX_BOUND_PARAMETERS と同じ。超えた文は送る前にそこで止まる）。
+// 1文に入れる行の数は、これを1行の列の数で割って決める（今は5列で20行）。列を足しても上限を超えない
+const D1_BOUND_PARAMETERS = 100;
 
 // 件数に上限を付けない。祝日と会社の休日で、1年に20日前後の想定
 export const organizationHolidayListOperation = implement(organizationHolidayList, async ({ db }) => {
@@ -38,9 +39,10 @@ export const organizationHolidayAddOperation = implement(organizationHolidayAdd,
     created_by: actorUserId,
     created_at: createdAt,
   }));
+  const rowsPerStatement = Math.floor(D1_BOUND_PARAMETERS / Object.keys(rows[0]!).length);
   const statements = [];
-  for (let start = 0; start < rows.length; start += ROWS_PER_STATEMENT) {
-    const chunk = rows.slice(start, start + ROWS_PER_STATEMENT);
+  for (let start = 0; start < rows.length; start += rowsPerStatement) {
+    const chunk = rows.slice(start, start + rowsPerStatement);
     statements.push(
       db.statement((q) =>
         q
