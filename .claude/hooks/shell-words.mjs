@@ -2,10 +2,13 @@
 // 引用符の中の区切りは区切りとして扱わないので、grep "wrangler deploy" のような文字列は1語になる。
 // $(...) と `...` は（二重引用符の中でも）実行されるので、別の区切りとして取り出す。
 // コメントは捨てる。語の並びには、シェルが道具に渡す argv だけを残す。
-// リダイレクト、ヒアドキュメント、ヒアストリングは、区切りに付けた列挙されない属性 redirects に { op, target, substitutions } で持つ。
+// リダイレクト、ヒアドキュメント、ヒアストリングは、区切りに付けた列挙されない属性 redirects に { op, target, shape, substitutions } で持つ。
 // 語の並びに混ぜると、引用符の中の ">.dev.vars" と見分けられず、argv の位置を数える判定が取り違えるため。
-// op は > >> < << <<< &> >| などの記号（記述子の番号と zsh の ! は含めない）、target は引数の位置と同じ読み方で引用符と \ を解いた先
-// （ヒアドキュメントは本文）、substitutions は先の中の $(…) と `…` の中身。中身は別の区切りとしても取り出す。
+// op は > >> < << <<< &> >| >>&| などの記号（記述子の番号と zsh の ! は含めない）、target は引数の位置と同じ読み方で引用符と \ を解いた先
+// （ヒアドキュメントは本文）、shape は語の shapes と同じ作りの先（実行時に決まる位置が DYNAMIC）、
+// substitutions は先の中の $(…) と `…` の中身。中身は別の区切りとしても取り出す。
+// 終わりの印に引用符も \ も無いヒアドキュメントは、シェルが本文の置換を実行するので、本文の中身も substitutions に入れて別の区切りにする。
+// 終わりの印の行が見つからないヒアドキュメントの項目には unterminated を付ける（後ろのコマンドを全部本文に飲むので、判定の側が確認を挟む）
 // 完全なシェルの解釈ではない。判定に使うのは、各区切りで先頭に来る道具の名前と引数だけ。
 // 区切りの配列は、語ごとに2つの印を列挙されない属性に持つ。引用符を外した文字列だけでは、"a b?" と a\ b? や {a,--no-local}、
 // '$x' と "$x" を見分けられないため。
@@ -177,6 +180,31 @@ function closingParen(text, start) {
   return text.length;
 }
 
+// 引用符も \ も無い終わりの印のヒアドキュメントの本文で、シェルが実行する置換（$(…)、`…`、${X:-$(…)}）の中身。
+// 本文の中の引用符は文字なので読み飛ばさない。\ は次の1文字を文字にする（\$(x) は実行しない）
+function substitutionsIn(body) {
+  const found = [];
+  for (let j = 0; j < body.length; j++) {
+    const ch = body[j];
+    if (ch === '\\') j++;
+    else if (body.startsWith('$(', j)) {
+      const close = closingParen(body, j + 2);
+      found.push(body.slice(j + 2, close));
+      j = close;
+    } else if (ch === '`') {
+      const close = body.indexOf('`', j + 1);
+      const stop = close === -1 ? body.length : close;
+      found.push(body.slice(j + 1, stop));
+      j = stop;
+    } else if (ch === '$') {
+      const { end, substitutions } = readParameter(body, j);
+      found.push(...substitutions);
+      j = end - 1;
+    }
+  }
+  return found;
+}
+
 export function splitSegments(command) {
   const segments = [];
   const nested = [];
@@ -206,13 +234,13 @@ export function splitSegments(command) {
   // 先の語が来なかったリダイレクト（echo x >; …）は、空の先で閉じる
   const closeRedirect = () => {
     if (!openRedirect) return;
-    words.redirects.push({ op: openRedirect.op, target: '', substitutions: [] });
+    words.redirects.push({ op: openRedirect.op, target: '', shape: '', substitutions: [] });
     openRedirect = null;
   };
   const endWord = () => {
     if (inWord && openRedirect) {
       // 先の中の $(…) と `…` の中身は、nested に積んだ分から取る（別の区切りとしても判定される）
-      words.redirects.push({ op: openRedirect.op, target: word, substitutions: nested.slice(openRedirect.nestedFrom) });
+      words.redirects.push({ op: openRedirect.op, target: word, shape, substitutions: nested.slice(openRedirect.nestedFrom) });
       openRedirect = null;
     } else if (inWord) {
       words.push(word);
@@ -234,24 +262,39 @@ export function splitSegments(command) {
     words = withMarks([], [], []);
   };
 
-  // 引用符を外した1語を読む。ヒアドキュメントの終わりの印に使う
+  // ヒアドキュメントの終わりの印を、引数の位置と同じ読み方（引用符、\、$'…'）で読む。
+  // 引用符か \ が1つでもあれば quoted で、シェルは本文を展開しない（<<'EOF'、<<\EOF、<<E\OF）
   const readDelimiter = (start) => {
     let j = start;
     while (command[j] === ' ' || command[j] === '\t') j++;
     let text = '';
+    let quoted = false;
     while (j < command.length && !WORD_END.has(command[j])) {
       const ch = command[j];
       if (ch === "'" || ch === '"') {
+        quoted = true;
         const end = command.indexOf(ch, j + 1);
         const stop = end === -1 ? command.length : end;
         text += command.slice(j + 1, stop);
         j = stop + 1;
+      } else if (ch === '$' && command[j + 1] === "'") {
+        quoted = true;
+        const { decoded, end } = decodeAnsiC(command, j + 2);
+        text += decoded;
+        j = end + 1;
+      } else if (ch === '\\' && j + 1 < command.length) {
+        // \<改行> は行継続で、印の一部にも引用にもならない
+        if (command[j + 1] !== '\n') {
+          quoted = true;
+          text += command[j + 1];
+        }
+        j += 2;
       } else {
         text += ch;
         j++;
       }
     }
-    return [text, j];
+    return [text, j, quoted];
   };
 
   for (let i = 0; i < command.length; i++) {
@@ -377,18 +420,20 @@ export function splitSegments(command) {
       }
       if (command.startsWith('<<', i)) {
         const start = command[i + 2] === '-' ? i + 3 : i + 2;
-        const [delimiter, next] = readDelimiter(start);
+        const [delimiter, next, quoted] = readDelimiter(start);
         // 本文は改行の後で読み、この項目の target に足す。<<- も同じ op（タブを外す違いは、本文の行を trim して照合するので区別しない）
-        const redirect = { op: '<<', target: '', substitutions: [] };
+        const redirect = { op: '<<', target: '', shape: '', substitutions: [] };
         words.redirects.push(redirect);
-        heredocs.push({ delimiter, redirect });
+        heredocs.push({ delimiter, redirect, quoted });
         i = next - 1;
         continue;
       }
       let j = i;
       while ('<>&|'.includes(command[j]) && j - i < 3) j++;
-      // zsh の >!、>>!、&>!、>&! は、既にあるファイルを上書きする >。! を宛先の語に残さない
-      if (command[j] === '!' && command.slice(i, j).includes('>')) j++;
+      // zsh の >!、>>!、&>!、>&! は、既にあるファイルを上書きする >。! を宛先の語に残さない。
+      // >>&| と &>>| は 3 文字に収まらず、末尾の | がパイプに切れるので、| も同じに読む
+      const written = command.slice(i, j);
+      if ((command[j] === '!' || (command[j] === '|' && !written.endsWith('|'))) && written.includes('>')) j++;
       const op = command.slice(i, j).replace(/!$/, '');
       // 記述子の複製と閉じ（2>&1、>&2、<&0、>&-）は、書き込み先にも読み込み元にも数えない
       if (op.endsWith('&') && /[\d-]/.test(command[j] ?? '')) {
@@ -419,7 +464,8 @@ export function splitSegments(command) {
       testDepth = 0;
       // 対応する ( の無い ) の前の1語は、case のラベル（*.md)、*)）。| で並べたラベル（*.md|*.txt)）も、) までをまとめてラベルとする。
       // ラベルはコマンドではないので捨てる。2語以上（wrangler deploy )）は構文エラーだが、判定から落とさずに区切りとして読む
-      const label = depth === 0 && pending.length <= 1 ? CASE_LABEL_REST.exec(command.slice(i)) : null;
+      // リダイレクトのある区切り（bash <<< "…")、cat < f)）は、道具とその入出力なのでラベルにしない（捨てると redirects ごと判定から落ちる）
+      const label = depth === 0 && pending.length <= 1 && words.redirects.length === 0 && !openRedirect ? CASE_LABEL_REST.exec(command.slice(i)) : null;
       if (label) {
         word = '';
         shape = '';
@@ -456,17 +502,26 @@ export function splitSegments(command) {
       // ヒアドキュメントの本文（行の終わりから終わりの印の行まで）は、区切りとして読まない
       if (op === '\n' && heredocs.length > 0) {
         let j = i + 1;
-        for (const { delimiter, redirect } of heredocs) {
+        for (const { delimiter, redirect, quoted } of heredocs) {
           const body = [];
-          while (j < command.length) {
+          let closed = false;
+          while (j < command.length && !closed) {
             const end = command.indexOf('\n', j);
             const lineEnd = end === -1 ? command.length : end;
             const line = command.slice(j, lineEnd);
             j = lineEnd + 1;
-            if (line.trim() === delimiter) break;
-            body.push(line);
+            if (line.trim() === delimiter) closed = true;
+            else body.push(line);
           }
           redirect.target = body.join('\n');
+          // 終わりの印の行が無いと、後ろのコマンドを全部本文に飲む。判定の側が確認を挟めるよう印を残す
+          if (!closed) redirect.unterminated = true;
+          // 引用符も \ も無い印の本文は、シェルが $(…)、`…`、${…} の中の置換を実行する
+          if (!quoted) {
+            const inner = substitutionsIn(redirect.target);
+            nested.push(...inner);
+            redirect.substitutions.push(...inner);
+          }
         }
         heredocs.length = 0;
         i = j - 1;

@@ -85,6 +85,47 @@ describe('shell-words', () => {
     assert.deepEqual(redirectPairs('cat <<EOF\na\nb\nEOF'), [['<<', 'a\nb']]);
     assert.deepEqual(redirectPairs('cat <<-EOF\n\ta\n\tEOF'), [['<<', '\ta']]);
   });
+  test('終わりの印を引数の位置と同じに読み、引用符か \\ があれば本文は展開しない', () => {
+    // 印に引用符も \ も無い本文だけ、中の置換を取り出す
+    const body = (command) => splitSegments(command)[0].redirects[0];
+    assert.deepEqual(splitSegments('cat <<EOF\n$(wrangler deploy)\nEOF'), [['cat'], ['wrangler', 'deploy']]);
+    assert.deepEqual(body('cat <<EOF\n$(wrangler deploy)\nEOF').substitutions, ['wrangler deploy']);
+    assert.deepEqual(body('cat <<EOF\n`wrangler deploy` ${X:-$(a b)}\nEOF').substitutions, ['wrangler deploy', 'a b']);
+    assert.deepEqual(body('cat <<EOF\n\\$(wrangler deploy)\nEOF').substitutions, []);
+    for (const marker of ["'EOF'", '"EOF"', '\\EOF', 'E\\OF', "$'EOF'", "$'\\x45OF'"]) {
+      const command = `cat <<${marker}\n$(wrangler deploy)\nEOF\nls`;
+      assert.deepEqual(splitSegments(command), [['cat'], ['ls']], marker);
+      assert.deepEqual(body(command).substitutions, [], marker);
+      assert.equal(body(command).target, '$(wrangler deploy)', marker);
+    }
+  });
+  test('終わりの印の行が無いヒアドキュメントには unterminated を付ける', () => {
+    assert.equal(splitSegments('cat <<EOF\nx\nwrangler deploy')[0].redirects[0].unterminated, true);
+    assert.equal(splitSegments("cat <<'EOF'\nx\nEOF")[0].redirects[0].unterminated, undefined);
+    assert.equal(splitSegments('cat <<EOF\nx\nEOF')[0].redirects[0].unterminated, undefined);
+    // 改行が無ければ本文は始まらない（$((1 << 2)) の算術の << を含む）
+    assert.equal(splitSegments('echo $((1 << 2))')[0].redirects.length, 0);
+  });
+  test('zsh の >>&| と &>>| の末尾の | はパイプに切らない', () => {
+    assert.deepEqual(splitSegments('echo x >>&| f'), [['echo', 'x']]);
+    assert.deepEqual(redirectPairs('echo x >>&| f'), [['>>&|', 'f']]);
+    assert.deepEqual(redirectPairs('echo x &>>| f'), [['&>>|', 'f']]);
+    assert.deepEqual(redirectPairs('echo x >| f'), [['>|', 'f']]);
+    assert.deepEqual(redirectPairs('echo x >>| f'), [['>>|', 'f']]);
+    assert.deepEqual(splitSegments('echo x >&2 | wc'), [['echo', 'x'], ['wc']]);
+  });
+  test('先の shape は、実行時に決まる位置を DYNAMIC にした文字列を持つ', () => {
+    const shapeOf = (command) => splitSegments(command)[0].redirects[0].shape;
+    assert.equal(shapeOf('echo x > $(a).json'), '\0.json');
+    assert.equal(shapeOf('echo x > "$(a)/b"'), '\0/b');
+    assert.equal(shapeOf('echo x > f'), 'f');
+    assert.equal(shapeOf('echo x > ${X:-.dev}.vars'), '\0.vars');
+  });
+  test('リダイレクトのある区切りは、case のラベルとして捨てない', () => {
+    const lastPairs = (command) => redirectsOf(splitSegments(command).at(-1)).map((r) => [r.op, r.target]);
+    assert.deepEqual(lastPairs('(case x in a) :;; esac; cat < f)'), [['<', 'f']]);
+    assert.deepEqual(lastPairs('(case x in a) :;; esac; bash <<< "w")'), [['<<<', 'w']]);
+  });
   test('redirects は sliceWords と concatWords が運ぶ。つなぎ直しても重ならない', () => {
     const [words] = splitSegments('FOO=1 env node x > f');
     assert.deepEqual(redirectsOf(sliceWords(words, 2)).map((r) => r.target), ['f']);
@@ -1969,6 +2010,38 @@ describe('bash-rules: リダイレクトは argv の外で読む', () => {
     assert.equal(decision('echo x > "$(mktemp -d)/out.log"'), 'allow');
   });
 
+  test('置換の中で引用符を挟んで崩した名前も、引用符を解いて照合する', () => {
+    assert.equal(decision(`echo x > "$(echo .en'v')"`), 'deny');
+    assert.equal(decision(`echo x > "$(echo .claude/hook's'/guard-bash.mjs)"`), 'ask');
+    assert.equal(decision(`echo x > "$(echo wrang'ler.jsonc')"`), 'ask');
+  });
+
+  test('読み込み元とヒアストリングの置換の中身も、シークレットの読み取りとして照合する', () => {
+    for (const command of [
+      'cat < "$(echo .env)"',
+      'cat < "`echo .dev.vars`"',
+      `python3 <<< "$(echo 'print(open(".env").read())')"`,
+      `pnpm exec python3 <<< "$(echo 'print(open(".env").read())')"`,
+    ]) {
+      assert.equal(decision(command), 'deny', command);
+    }
+    assert.equal(decision('cat < "$(mktemp)"'), 'allow');
+  });
+
+  test('<> は読み書きで開くので、書き込み先にも数える', () => {
+    assert.equal(decision('echo x <> .claude/settings.json'), 'ask');
+    assert.equal(decision('echo x <> wrangler.jsonc'), 'ask');
+    assert.equal(decision('echo x <> .dev.vars'), 'deny');
+    assert.equal(decision('cat <> /tmp/x'), 'allow');
+  });
+
+  test('経由先の判定にもリダイレクトが運ばれる', () => {
+    assert.equal(decision('pnpm exec tee > .dev.vars'), 'deny');
+    assert.equal(decision('pnpm exec cat > .claude/settings.json'), 'ask');
+    assert.equal(decision('pnpm exec bash <<EOF\nwrangler deploy\nEOF'), 'deny');
+    assert.equal(decision('env FOO=1 node <<EOF\nrequire("fs").readFileSync(".env")\nEOF'), 'deny');
+  });
+
   test('先の中の置換は、二重引用符の中でも別の区切りとして判定する', () => {
     for (const command of ['echo x > "$(wrangler deploy)"', 'echo x > "`wrangler deploy`"', 'cat < "$(wrangler deploy)"', 'bash <<< "$(wrangler deploy)"']) {
       assert.equal(decision(command), 'deny', command);
@@ -1995,6 +2068,74 @@ describe('bash-rules: リダイレクトは argv の外で読む', () => {
     assert.equal(decision('bash <<< "wrangler deploy"'), 'deny');
     assert.equal(decision("node <<'EOF'\nrequire('fs').readFileSync('.dev.vars')\nEOF"), 'deny');
     assert.equal(decision("cat <<'EOF' > /tmp/b.md\nwrangler deploy\nEOF"), 'allow');
+  });
+
+  test('リダイレクトのある区切りは、case のラベルの後ろでも判定に残る', () => {
+    assert.equal(decision('(case x in a) :;; esac; bash <<< "wrangler deploy")'), 'deny');
+    assert.equal(decision('(case x in a) :;; esac; cat < .dev.vars)'), 'deny');
+    assert.equal(decision('x=$(case a in a) :;; esac; node < scripts/deploy-production.ts)'), 'deny');
+    assert.equal(decision('(case x in a) :;; esac; bash <<< "git push origin main")', 'main'), 'deny');
+    assert.equal(decision('(case x in a) :;; esac; cat > .claude/settings.json)'), 'ask');
+    assert.equal(decision('case x in a) echo hi;; esac'), 'allow');
+  });
+
+  test('置換に文字が続く先は、実行時に決まる位置を中身の語で埋めて名前に当たるかを見る', () => {
+    for (const command of ['echo x > $(echo .dev).vars', 'echo x > "$(echo .dev).vars"', 'echo x > ${X:-.dev}.vars', 'cat < $(echo .dev).vars']) {
+      assert.equal(decision(command), 'deny', command);
+    }
+    for (const command of [
+      'echo x > $(echo .claude/settings).json',
+      'echo x > $(echo wrangler).jsonc',
+      'echo x > $(echo .githoo)ks/pre-commit',
+      'echo x > $(echo migration)s/0001.sql',
+    ]) {
+      assert.equal(decision(command), 'ask', command);
+    }
+    for (const command of ['echo x > "$(mktemp)"', 'echo x > "$(mktemp -d)/out.log"', 'echo x > /tmp/$(date +%s).log', 'echo x > $(mktemp).log']) {
+      assert.equal(decision(command), 'allow', command);
+    }
+  });
+
+  test('引用符も \\ も無い印のヒアドキュメントは本文の置換を実行するので判定する。引用符付きは文字', () => {
+    assert.equal(decision('cat <<EOF\n$(wrangler deploy)\nEOF'), 'deny');
+    assert.equal(decision('cat <<EOF\n`wrangler deploy`\nEOF'), 'deny');
+    assert.equal(decision('cat > /tmp/x <<EOF\n$(cat .dev.vars)\nEOF'), 'deny');
+    assert.equal(decision('cat <<EOF\n${X:-$(wrangler deploy)}\nEOF'), 'deny');
+    for (const marker of ["'EOF'", '"EOF"', '\\EOF', "$'EOF'"]) {
+      assert.equal(decision(`cat <<${marker}\n$(wrangler deploy)\nEOF`), 'allow', marker);
+    }
+    assert.equal(decision("cat <<'EOF'\nhello\nEOF"), 'allow');
+  });
+
+  test('終わりの印を \\ と $\'…\' で書いても、後ろのコマンドを本文に飲ませない', () => {
+    for (const marker of ['\\EOF', 'E\\OF', "$'EOF'", "'EOF'", '"EOF"']) {
+      assert.equal(decision(`cat <<${marker}\nx\nEOF\nwrangler deploy`), 'deny', marker);
+    }
+  });
+
+  test('終わりの印の行が見つからないヒアドキュメントは確認を挟む', () => {
+    const [d, reason] = verdict('cat <<EOF\nx\nwrangler deploy');
+    assert.equal(d, 'ask');
+    assert.match(reason, /終わりの印/);
+    assert.equal(decision("cat <<'EOF'\nx\nEOF"), 'allow');
+    assert.equal(decision('echo $((1 << 2))'), 'allow');
+  });
+
+  test('zsh の >>&| と &>>| への書き込みを止める', () => {
+    assert.equal(decision('echo x >>&| .dev.vars'), 'deny');
+    assert.equal(decision('echo x &>>| .dev.vars'), 'deny');
+    assert.equal(decision('echo x >>| .dev.vars'), 'deny');
+    assert.equal(decision('echo x >>&| wrangler.jsonc'), 'ask');
+    assert.equal(decision('echo x &>>| wrangler.jsonc'), 'ask');
+    assert.equal(decision('echo x >&2 | wc'), 'allow');
+  });
+
+  test('シェルに渡す本文は、本文と置換の中身だけを判定に掛ける（照合用の語は掛けない）', () => {
+    const started = Date.now();
+    const words = Array.from({ length: 20000 }, (_, i) => `w${i}`).join(' ');
+    // 置換が実行する道具の名前を決めるので、確認は挟む。ここで見るのは判定にかかる時間
+    assert.equal(decision(`bash <<< "$(echo ${words})"`), 'ask');
+    assert.ok(Date.now() - started < 1500, '語ごとに judgeBash を呼ばない');
   });
 
   test('読み込み元のリダイレクトは、道具の前に置いても読み取りとして止める', () => {

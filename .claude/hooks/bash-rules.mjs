@@ -519,12 +519,49 @@ const SEARCHERS = new Set(['grep', 'egrep', 'fgrep', 'rg', 'ag']);
 const SEARCH_FLAGS_WITH_VALUE = new Set(['-e', '-f', '--regexp', '--file', '-g', '--glob', '-t', '--type', '-A', '-B', '-C', '-m']);
 
 const INTERPRETERS = new Set(['node', 'python', 'python3', 'ruby', 'perl', 'deno', 'bun']);
-// リダイレクトの種類。op は記述子の番号と zsh の ! を含まない。<> は読み込み元として見る
+// リダイレクトの種類。op は記述子の番号と zsh の ! を含まない。<> は読み書きで開き、切り詰めずに先頭から上書きできるので、読み込み元と書き込み先の両方に数える
 const isHeredocRedirect = (r) => r.op === '<<' || r.op === '<<<';
 const isReadRedirect = (r) => r.op.includes('<') && !isHeredocRedirect(r);
-const isWriteRedirect = (r) => !r.op.includes('<');
-// ヒアドキュメントとヒアストリングの本文
-const heredocBodies = (words) => redirectsOf(words).filter(isHeredocRedirect).map((r) => r.target);
+const isWriteRedirect = (r) => r.op === '<>' || !r.op.includes('<');
+// リダイレクトの先（本文）と、その中の $(…) と `…` の中身。置換の出力が先や本文になる（> "$(echo .dev.vars)"、
+// python3 <<< "$(echo 'open(".env")')"）が、置換が書き込みでも実行でもない道具（echo）だけなら、別の区切りの判定には当たらないため。
+// 中身は、そのまま、空白や引用符で区切った語ごと、シェルと同じく引用符を解いた語ごと（"$(echo .en'v')" の .env）で返す
+// 先に置換が文字を挟んで続く形（> $(echo .claude/settings).json、cat < $(echo .dev).vars）は、先の shape の実行時に決まる位置（DYNAMIC）を
+// 中身の語で埋めた文字列も返す。名前が置換の境目にまたがり、先の文字列にも中身にも名前が現れないため。
+// 埋めるのは中身の語だけなので、> "$(mktemp)"、> "$(mktemp -d)/out.log"、> /tmp/$(date +%s).log は名前に当たらず通る。
+// 先の ${X:-.dev}.vars の既定値も語として埋める
+const redirectTextsCache = new WeakMap();
+function redirectTexts(redirect) {
+  let texts = redirectTextsCache.get(redirect);
+  if (!texts) {
+    const pieces = redirect.substitutions.flatMap((s) => [s, ...s.split(CODE_SEPARATORS).filter(Boolean), ...splitSegments(s).flat()]);
+    texts = [redirect.target, ...pieces, ...fillDynamic(redirect, pieces)];
+    redirectTextsCache.set(redirect, texts);
+  }
+  return texts;
+}
+
+// 先の shape の DYNAMIC を、pieces と ${NAME:-既定値} の既定値で埋めた文字列。固定の文字を持たない先（"$(mktemp)"）は、中身がそのまま名前になるので埋めない
+function fillDynamic({ target, shape }, pieces) {
+  if (!shape.includes(DYNAMIC) || !shape.replaceAll(DYNAMIC, '')) return [];
+  const defaults = [...target.matchAll(/\$\{[^}:=?+-]*:?[-=+?]([^}]*)\}/g)].map((m) => m[1]);
+  const parts = shape.split(DYNAMIC);
+  const filled = [];
+  for (const piece of new Set([...pieces, ...defaults])) {
+    filled.push(parts.join(piece));
+    // 位置が複数あるときは、1か所だけを埋めた形も見る（残りは空）
+    if (parts.length > 2 && parts.length <= MAX_DYNAMIC_POSITIONS + 1) {
+      for (let k = 0; k < parts.length - 1; k++) filled.push(parts.reduce((acc, p, idx) => acc + p + (idx === k ? piece : ''), ''));
+    }
+  }
+  return filled;
+}
+const MAX_DYNAMIC_POSITIONS = 4;
+
+// ヒアドキュメントとヒアストリングの本文（中の置換の中身を含む）。照合に使う
+const heredocBodies = (words) => redirectsOf(words).filter(isHeredocRedirect).flatMap(redirectTexts);
+// シェルに渡す本文。judgeBash に掛けるのは本文と置換の中身だけで、照合用に区切った語は掛けない
+const heredocScripts = (words) => redirectsOf(words).filter(isHeredocRedirect).flatMap((r) => [r.target, ...r.substitutions]);
 // リダイレクトの先の語（本文を含む）。語の並びに混ぜて数える判定（xargs の名前の流し込み、変数の設定）が見落とさないために使う
 const redirectTargets = (words) => redirectsOf(words).map((r) => r.target);
 
@@ -533,17 +570,16 @@ const SECRET_FILE_REASON = '.dev.vars と .env は開発用のシークレット
 
 // words は区切りの全部の語（< .env cmd のように、道具の前に置いた入力も見る）
 function judgeSecretAccess(tool, args, words) {
-  if (redirectsOf(words).some((r) => isReadRedirect(r) && mentionsSecret(r.target))) return true;
-  // 書き込み先（>）と、文書として流すヒアドキュメントの本文は読み取りではない。args は argv だけなので、そのまま読み取りの引数
-  const plain = args;
-  if (INTERPRETERS.has(tool)) return [...plain, ...heredocBodies(args)].some(mentionsSecret);
+  if (redirectsOf(words).some((r) => isReadRedirect(r) && redirectTexts(r).some(mentionsSecret))) return true;
+  // 書き込み先（>）と、文書として流すヒアドキュメントの本文は args に入らないので、args は読み取りの引数として見てよい
+  if (INTERPRETERS.has(tool)) return [...args, ...heredocBodies(args)].some(mentionsSecret);
   if (SEARCHERS.has(tool)) {
     // 最初の位置の引数は探す文字列なので、grep ".dev.vars" docs のような検索は通す
     const pos = positionals(args, SEARCH_FLAGS_WITH_VALUE);
     const files = args.some((a) => ['-e', '-f', '--regexp', '--file'].includes(a)) ? pos : pos.slice(1);
     return files.some(mentionsSecret);
   }
-  if (READERS.has(tool) || SHELLS.has(tool)) return plain.some(mentionsSecret);
+  if (READERS.has(tool) || SHELLS.has(tool)) return args.some(mentionsSecret);
   if (COPIERS.has(tool)) {
     // ここで見るのはコピーの元。書き込み先は writesTo が見る（cp .dev.vars.example .dev.vars はそちらで止まる）
     const pos = positionals(args);
@@ -764,12 +800,10 @@ function targetDirectoryOf(args) {
   return null;
 }
 
-// 書き込みのリダイレクトの先が matches に当たるか。先の中の $(…) と `…` の中身（> "$(echo .dev.vars)"、> "$(echo .claude)/settings.json"）も、
-// 何を書くかを決める文字列なので、そのまま、と空白や引用符で区切った語ごとに照合する。置換が書き込みでも実行でもない道具（echo）だけなら、
-// 別の区切りの判定には当たらないため。> "$(mktemp)" は mktemp が当たらず通る
+// 書き込みのリダイレクトの先が matches に当たるか。先の中の置換の中身（> "$(echo .claude)/settings.json"）も redirectTexts で照合する。
+// > "$(mktemp)" は mktemp が当たらず通る
 function redirectHits(matches, redirect) {
-  const inner = redirect.substitutions.flatMap((s) => [s, ...s.split(CODE_SEPARATORS).filter(Boolean)]);
-  return [redirect.target, ...inner].some(matches);
+  return redirectTexts(redirect).some(matches);
 }
 
 // 書き込み先のどれかが matches（isProtectedPath か mentionsSecret）に当たるか。守る先とシークレットで道具の表を共用する。
@@ -984,7 +1018,7 @@ function runnerWords(args) {
 }
 
 // node < scripts/deploy-production.ts と bash < scripts/deploy.sh の読み込み元。道具の前に置いた < も拾う
-const stdinTargets = (words) => redirectsOf(words).filter(isReadRedirect).map((r) => r.target);
+const stdinTargets = (words) => redirectsOf(words).filter(isReadRedirect).flatMap(redirectTexts);
 
 function matchesGlob(target, pattern) {
   // 無い Node で false を返すと素通りになる。投げれば guard-bash が exit 2 で止める
@@ -1185,7 +1219,8 @@ function splitsString(words, prefixes, ci) {
 
 const CF_WRANGLER_REASON = 'cf-wrangler は引数の読み方が wrangler と違い（util.parseArgs）、dev は本番の資源に向きうる。このリポジトリでは使わない';
 const XARGS_WRANGLER_REASON = 'xargs は標準入力から wrangler に引数を足すので、--remote が加わるかを判定できない。wrangler は xargs の後ろに置かない';
-const XARGS_REASON = 'xargs は標準入力から引数を足すので、何を実行するか（デプロイ、main への push、シークレットの読み取り）を判定できない。人が確かめる';
+const HEREDOC_UNTERMINATED_REASON = 'ヒアドキュメントの終わりの印の行が見つからず、後ろのコマンドを全部本文として読むので、何を実行するかを判定できない。人が確かめる';
+const XARGS_REASON ='xargs は標準入力から引数を足すので、何を実行するか（デプロイ、main への push、シークレットの読み取り）を判定できない。人が確かめる';
 // xargs の後ろに置いても、足される引数で書き込みや実行に変わらない読むだけの道具。xargs を外したときと同じ判定で通す。
 // rg の --pre、ag の --pager、file の -C は、標準入力から足した引数でコマンドを実行や書き込みをするので含めない
 const XARGS_READERS = new Set(['grep', 'egrep', 'fgrep', 'wc', 'ls', 'cat', 'head', 'tail', 'stat']);
@@ -1263,7 +1298,7 @@ function judgeSegment(words, ctx) {
     // bash -c "..."、bash -lc "..."、bash <<< "..."、bash <<EOF の中身も同じ規則で見る
     const c = args.findIndex((a) => /^-[a-zA-Z]*c[a-zA-Z]*$/.test(a));
     if (c !== -1 && args[c + 1]) results.push(judgeBash(args[c + 1], nextCtx));
-    for (const body of heredocBodies(args)) results.push(judgeBash(body, nextCtx));
+    for (const body of heredocScripts(args)) results.push(judgeBash(body, nextCtx));
   }
   return results.filter(Boolean);
 }
@@ -1376,6 +1411,7 @@ export function judgeBash(command, { cwd, branchOf, scriptOf = () => undefined, 
       results.push([ASK, 'zsh の括弧の glob（x(N)、(a|b)）は後ろの語を別の区切りに切るので、コマンドの引数（コピーの宛先、git のサブコマンド）を判定できない。人が確かめる']);
     }
     const ci = commandIndex(words);
+    if (redirectsOf(words).some((r) => r.unterminated)) results.push([ASK, HEREDOC_UNTERMINATED_REASON]);
     // 同じコマンドの中で CDPATH、GIT_DIR、GIT_WORK_TREE を設定したら、その区切りから後ろは設定されたものとして見る（入れ子の bash -c にも渡す）。
     // 道具の前の一回限りの代入は、この区切りだけ（segmentEnv）に効かせる。名前を含む語は、設定を終えた後の区切りに効かせる
     // （git commit -m "GIT_DIR を直す" のメッセージの語で、そのコミット自身を止めない）
