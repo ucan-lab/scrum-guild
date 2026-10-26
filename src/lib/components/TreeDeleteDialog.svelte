@@ -74,7 +74,8 @@
         current.kind === 'epic'
           ? await callOperation(epicGet, { workspace_id: workspaceId, epic_id: current.id }, { slug })
           : await callOperation(storyGet, { workspace_id: workspaceId, story_id: current.id }, { slug });
-      if (mine !== generation) return;
+      // 確認を閉じた後に届いた応答は捨てる（遅れた 404 で元のダイアログまで閉じない）
+      if (mine !== generation || !open) return;
       if (result.ok) {
         const children = result.data.children;
         target = {
