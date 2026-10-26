@@ -1475,13 +1475,16 @@
     {#if task.completed_at !== null || canWrite || definitionOfDone !== null}
       <div class="done-bar">
         {#if task.completed_at !== null}
-          <!-- tabindex="-1" は、完了にした後にフォーカスを置くため（キーボードの Tab 順には入らない） -->
-          <span class="hanko" role="img" aria-label={t('done')} tabindex="-1" bind:this={doneMark}
-            ><Icon name="check" /><b>{t('doneStamp')}</b></span
-          >
-          <time datetime={task.completed_at}
-            >{t('taskCompletedAt', { done: t('done'), at: formatDateTime(task.completed_at) })}</time
-          >
+          <!-- 印と日時は .done-bar-done で縦の中心をそろえる（帯は完成の定義に合わせて上端でそろえるため） -->
+          <span class="done-bar-done">
+            <!-- tabindex="-1" は、完了にした後にフォーカスを置くため（キーボードの Tab 順には入らない） -->
+            <span class="hanko" role="img" aria-label={t('done')} tabindex="-1" bind:this={doneMark}
+              ><Icon name="check" /><b>{t('doneStamp')}</b></span
+            >
+            <time datetime={task.completed_at}
+              >{t('taskCompletedAt', { done: t('done'), at: formatDateTime(task.completed_at) })}</time
+            >
+          </span>
         {:else if canWrite}
           <button class="btn is-primary" type="button" aria-disabled={completing} onclick={() => void complete()}>
             <Icon name="check" />{t('complete')}

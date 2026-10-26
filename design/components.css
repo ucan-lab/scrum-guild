@@ -783,6 +783,8 @@ button.tree-link { border: 0; background: none; padding: 0; font: inherit; text-
 .doc-box :is(th, td).is-center { text-align: center; }
 .doc-box :is(th, td).is-right { text-align: right; }
 .done-bar { display: flex; align-items: flex-start; gap: var(--space-3); flex-wrap: wrap; padding: var(--space-3) var(--space-4); border: 1px solid var(--color-line); border-radius: var(--radius-1); background: var(--color-bg); }
+/* 完了した印（.hanko）と日時。帯は上端でそろえるので、印と日時はここで縦の中心をそろえる */
+.done-bar-done { display: inline-flex; align-items: center; gap: var(--space-3); }
 /* 完了の操作の横の完成の定義。見出し（b）の下に Markdown の本文（.doc-box）を置く。空なら出さない */
 .done-bar-dod { font-size: var(--text-xs); color: var(--color-muted); flex: 1 1 220px; min-width: 0; display: grid; gap: var(--space-1); }
 /* 題は引き出しの中の小見出し（h3）。帯の小さい文字のまま太字にする */
