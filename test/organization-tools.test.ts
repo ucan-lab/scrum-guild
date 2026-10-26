@@ -21,7 +21,14 @@ import {
   createWorkspace,
 } from './factories.ts';
 import { post } from './operations/harness.ts';
-import { admitElsewhere, createPerson, getOperator } from './operations/world.ts';
+import {
+  admitElsewhere,
+  createPerson,
+  getOperator,
+  SUSPENDED_AT,
+  suspendAfterEntering,
+  testEnv,
+} from './operations/world.ts';
 
 const organizationRow = defineOperation({
   name: 'tools-organization-row',
@@ -51,7 +58,7 @@ const writeSettings = defineOperation({
     vocabulary: z.object({ from: z.enum(['game', 'scrum']), to: z.enum(['game', 'scrum']) }).optional(),
     theme: z.object({ from: z.enum(themes), to: z.enum(themes) }).optional(),
   }),
-  output: z.object({ written: z.boolean() }),
+  output: z.object({ result: z.enum(['written', 'conflict', 'suspended']) }),
 });
 
 const endSessions = defineOperation({
@@ -88,7 +95,7 @@ const memberWritesSettings = defineOperation({
   mode: 'write',
   permission: 'organization',
   input: z.object({}),
-  output: z.object({ written: z.boolean() }),
+  output: z.object({ result: z.enum(['written', 'conflict', 'suspended']) }),
 });
 
 const inviteeReadsOrganization = defineOperation({
@@ -119,7 +126,7 @@ const app = createApp(
       member_limit: (await tools.readOrganization()).memberLimit,
     })),
     implement(writeSettings, async ({ tools, input }) => ({
-      written: await tools.writeOrganizationSettings(input, new Date('2026-10-25T00:00:00.000Z')),
+      result: await tools.writeOrganizationSettings(input, new Date('2026-10-25T00:00:00.000Z')),
     })),
     implement(endSessions, async ({ tools, input }) => {
       await tools.endSessionsIfLoginLost(input.user_id);
@@ -135,7 +142,7 @@ const app = createApp(
       return { kind: result.kind, login_subject: result.kind === 'found' ? result.invitee.subject : null };
     }),
     implement(memberWritesSettings, async ({ tools }) => ({
-      written: await tools.writeOrganizationSettings(
+      result: await tools.writeOrganizationSettings(
         { vocabulary: { from: 'game', to: 'scrum' } },
         new Date('2026-10-25T00:00:00.000Z'),
       ),
@@ -207,7 +214,7 @@ describe('組織の行', () => {
           body: { vocabulary: { from: 'game', to: 'scrum' }, theme: { from: 'simple', to: 'medieval' } },
         }),
       ),
-    ).toEqual({ written: true });
+    ).toEqual({ result: 'written' });
     expect(await organizationRowOf(own.id)).toMatchObject({
       vocabulary: 'scrum',
       theme: 'medieval',
@@ -231,12 +238,12 @@ describe('組織の行', () => {
     const admin = await createPerson({ organization: own, admin: true });
     const before = await organizationRowOf(own.id);
     expect(await ok(await post(app, writeSettings, { slug: own.slug, token: admin.token, body: {} }))).toEqual({
-      written: true,
+      result: 'written',
     });
     expect(await organizationRowOf(own.id)).toEqual(before);
   });
 
-  test('読んだ値が今の値と違えば false で、行は変わらない', async () => {
+  test('読んだ値が今の値と違えば conflict で、行は変わらない', async () => {
     const own = await createOrganization({ vocabulary: 'scrum', theme: 'modern' });
     const admin = await createPerson({ organization: own, admin: true });
     const before = await organizationRowOf(own.id);
@@ -247,10 +254,28 @@ describe('組織の行', () => {
       { vocabulary: { from: 'scrum', to: 'game' }, theme: { from: 'simple', to: 'medieval' } },
     ]) {
       expect(await ok(await post(app, writeSettings, { slug: own.slug, token: admin.token, body }))).toEqual({
-        written: false,
+        result: 'conflict',
       });
     }
     expect(await organizationRowOf(own.id)).toEqual(before);
+  });
+
+  test('入ってから書くまでに組織が停止されたら suspended で、読んだ値が古くても conflict より先に返し、行は変わらない', async () => {
+    for (const body of [
+      { vocabulary: { from: 'game', to: 'scrum' } },
+      // 読んだ値が古い（今は modern）。停止を先に伝える
+      { theme: { from: 'medieval', to: 'simple' } },
+    ]) {
+      const own = await createOrganization({ theme: 'modern' });
+      const admin = await createPerson({ organization: own, admin: true });
+      const racing = suspendAfterEntering(testEnv, own.id);
+      const before = await organizationRowOf(own.id);
+      expect(
+        await ok(await post(app, writeSettings, { slug: own.slug, token: admin.token, body, env: racing.env })),
+      ).toEqual({ result: 'suspended' });
+      expect(racing.suspended()).toBe(true);
+      expect(await organizationRowOf(own.id)).toEqual({ ...before, suspended_at: SUSPENDED_AT });
+    }
   });
 });
 

@@ -30,19 +30,25 @@ export async function readOrganizationRow(env: Env, db: OrganizationDb): Promise
   return { memberLimit: row.member_limit };
 }
 
-// 自分の組織の言葉づかいと既定のテーマを、読んだ値のままなら、という条件つきで書く（書く項目ごとの `<列> IS :読んだ値`）。
+// 組織の設定を書いた結果。written は書けた（書く項目が無かったときも）、suspended は入ってから書くまでに組織が停止された、
+// conflict は読んでから書くまでに別の要求が値を変えていた
+export type OrganizationSettingsWrite = 'written' | 'conflict' | 'suspended';
+
+// 自分の組織の言葉づかいと既定のテーマを、停止しておらず、読んだ値のままなら、という条件つきで書く
+// （`suspended_at IS NULL` と、書く項目ごとの `<列> IS :読んだ値`）。
 // 共通の表だけの batch() で送る（変更の記録は組織の中の表なので、呼び出し側が書けたときだけ別の batch() で書く）。
-// 書けたら true、読んでから書くまでに別の要求が変えていた（行が変わらなかった）ら false。書く項目が無ければ何も書かず true
+// 同じ batch() の後ろで組織の行を読み直し（書く文と同じ時点の状態）、行が変わらなければ、停止していれば suspended、
+// そうでなければ conflict。書く項目が無ければ何も書かず written
 export async function writeOrganizationSettings(
   env: Env,
   db: OrganizationDb,
   change: OrganizationSettingsChange,
   now: Date,
-): Promise<boolean> {
+): Promise<OrganizationSettingsWrite> {
   const { vocabulary, theme } = change;
-  if (vocabulary === undefined && theme === undefined) return true;
+  if (vocabulary === undefined && theme === undefined) return 'written';
   const common = commonDb(env);
-  const [result] = await common.batch([
+  const [result, read] = await common.batch([
     common.statement((q) => {
       let query = q
         .updateTable('organizations')
@@ -51,13 +57,17 @@ export async function writeOrganizationSettings(
           ...(theme === undefined ? {} : { theme: theme.to }),
           updated_at: now.toISOString(),
         })
-        .where('id', '=', db.organizationId);
+        .where('id', '=', db.organizationId)
+        .where('suspended_at', 'is', null);
       if (vocabulary !== undefined) query = query.where('vocabulary', 'is', vocabulary.from);
       if (theme !== undefined) query = query.where('theme', 'is', theme.from);
       return query;
     }),
+    common.statement((q) => q.selectFrom('organizations').select('suspended_at').where('id', '=', db.organizationId)),
   ] as const);
-  return result.changes > 0;
+  if (result.changes > 0) return 'written';
+  const row = read.rows[0];
+  return row !== undefined && row.suspended_at !== null ? 'suspended' : 'conflict';
 }
 
 // 自分の組織の users の ID ごとのアバターの URL。組織の中の表（users）を organization_id で絞ってアカウントとログインの手段と ID を引き、

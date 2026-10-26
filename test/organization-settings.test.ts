@@ -1,6 +1,7 @@
 // 組織の言葉づかいと既定のテーマの変更（organization-settings-update）の振る舞い。
 // 組織の分離と権限の種類ごとの許可と拒否は、一覧を回す test/operation-registry.test.ts が確かめる。
-// ここでは、書いた値と変更の履歴、同じ値の扱い、競合の 409、履歴を書けなくても成功すること、組織の枠の値への効き方を確かめる
+// ここでは、書いた値と変更の履歴、同じ値の扱い、競合の 409、入った後に停止されたときの 403、履歴を書けなくても成功すること、
+// 組織の枠の値への効き方を確かめる
 import { env } from 'cloudflare:workers';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { organizationInfo, organizationSettingsUpdate } from '../src/shared/operations/organization/index.ts';
@@ -10,7 +11,7 @@ import { envWithD1Hooks } from '../src/server/db/testing.ts';
 import { implementedOperations } from '../src/server/operations/index.ts';
 import type { OrganizationFixture } from './factories.ts';
 import { errorCodeOf, post } from './operations/harness.ts';
-import { createTarget, testEnv, type Target } from './operations/world.ts';
+import { createTarget, suspendAfterEntering, testEnv, type Target } from './operations/world.ts';
 
 const app = createApp(implementedOperations);
 
@@ -206,6 +207,18 @@ describe('organization-settings-update', () => {
     expect(res.status).toBe(409);
     expect(await errorCodeOf(res)).toBe('conflict');
     expect(await organizationRow(target.organization)).toMatchObject({ vocabulary: 'scrum', theme: 'simple' });
+    expect(await changeLogsOf(target.organization)).toEqual([]);
+  });
+
+  test('入ってから書くまでに組織が停止されたら 403 の organization_suspended で、設定は書き換わらず、履歴も残らない', async () => {
+    const target = await createTarget();
+    const racing = suspendAfterEntering(testEnv, target.organization.id);
+    const before = await organizationRow(target.organization);
+    const res = await update(target, { vocabulary: 'scrum', theme: 'medieval' }, { env: racing.env });
+    expect(racing.suspended()).toBe(true);
+    expect(res.status).toBe(403);
+    expect(await errorCodeOf(res)).toBe('organization_suspended');
+    expect(await organizationRow(target.organization)).toEqual(before);
     expect(await changeLogsOf(target.organization)).toEqual([]);
   });
 
