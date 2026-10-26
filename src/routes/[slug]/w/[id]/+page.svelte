@@ -137,12 +137,19 @@
     const epicId = storyPlaces[storyId]?.parentId;
     return epicId == null ? undefined : epics.find((epic) => epic.id === epicId);
   }
-  // タスクの親に選べるストーリー（完了していないもの）。選択欄は親のエピックの題（親なしは null）でまとめる。
+  // タスクの親に選べるストーリー（完了していないもの）。選択欄は親のエピック（親なしは null）でまとめる。
   // ストーリーの親に選べるエピック（完了も中止もしていないもの）
   const openStories = $derived(
     allStories
       .filter((story) => story.completed_at === null)
-      .map((story) => ({ id: story.id, title: story.title, group: parentEpicOf(story.id)?.title ?? null })),
+      .map((story) => {
+        const epic = parentEpicOf(story.id);
+        return {
+          id: story.id,
+          title: story.title,
+          group: epic === undefined ? null : { id: epic.id, title: epic.title },
+        };
+      }),
   );
   const openEpics = $derived(epics.filter((epic) => epic.completed_at === null && epic.canceled_at === null));
 
