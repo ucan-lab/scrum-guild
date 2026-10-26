@@ -62,6 +62,7 @@ type Grants = {
     workspace_name: string;
     action: string;
     content: string | null;
+    content_hidden: boolean;
     amount: number;
   }[];
   next: { confirmed_at: string; id: string } | null;
@@ -249,7 +250,7 @@ describe('experience-grants', () => {
 
     const listed = await call<Grants>(experienceGrants, target, target.member);
     expect(listed.next).toBeNull();
-    const common = { workspace_id: workspaceId, workspace_name: '青葉チーム' };
+    const common = { workspace_id: workspaceId, workspace_name: '青葉チーム', content_hidden: false };
     expect(listed.grants).toEqual([
       {
         ...common,
@@ -318,6 +319,55 @@ describe('experience-grants', () => {
     const listed = await call<Grants>(experienceGrants, target, target.member);
     expect(listed.grants).toHaveLength(EXPERIENCE_GRANTS_PAGE_SIZE);
     expect(listed.next).toBeNull();
+  });
+
+  test('今所属していないワークスペースの行は、名前と値は出し、内容（タイトル）は伏せる', async () => {
+    const target = await createTarget();
+    const organization = target.organization;
+    const memberId = target.member.userId!;
+    // 抜けたワークスペース
+    const left = await createWorkspace(organization, target.admin.userId!, { name: 'い班' });
+    await createMembership(organization, left.id, memberId, {
+      left_at: '2026-10-21T00:00:00.000Z',
+      left_on: '2026-10-21',
+    });
+    const leftTask = await createTask(organization, left.id, memberId, { title: '抜けた後に書き換えた題' });
+    await createXpGrant(organization, left.id, memberId, {
+      task_id: leftTask.id,
+      amount: 30,
+      confirmed_at: '2026-10-20T00:00:00.000Z',
+    });
+    // 今所属しているワークスペースの行は内容を出す
+    const task = await createTask(organization, target.workspace.id, memberId, { title: '請求書の様式を直す' });
+    await createXpGrant(organization, target.workspace.id, memberId, {
+      task_id: task.id,
+      confirmed_at: '2026-10-22T00:00:00.000Z',
+    });
+
+    const listed = await call<Grants>(experienceGrants, target, target.member);
+    expect(
+      listed.grants.map(({ workspace_name, content, content_hidden, amount }) => ({
+        workspace_name,
+        content,
+        content_hidden,
+        amount,
+      })),
+    ).toEqual([
+      { workspace_name: '青葉チーム', content: '請求書の様式を直す', content_hidden: false, amount: 10 },
+      { workspace_name: 'い班', content: null, content_hidden: true, amount: 30 },
+    ]);
+    expect(stringsIn(listed)).not.toContain('抜けた後に書き換えた題');
+  });
+
+  test('所属していない管理者の明細（所属を外れたワークスペースの行）も、内容を伏せる', async () => {
+    const target = await createTarget();
+    const task = await createTask(target.organization, target.workspace.id, target.admin.userId!, {
+      title: '見せない題',
+    });
+    await createXpGrant(target.organization, target.workspace.id, target.admin.userId!, { task_id: task.id });
+    const listed = await call<Grants>(experienceGrants, target, target.admin);
+    expect(listed.grants).toHaveLength(1);
+    expect(listed.grants[0]).toMatchObject({ content: null, content_hidden: true, workspace_name: '青葉チーム' });
   });
 
   test('別の組織のワークスペースを指す行は出ない', async () => {
@@ -409,6 +459,24 @@ describe('レベル（member-list と organization）', () => {
     for (const member of listed.members) {
       expect(Object.keys(member).sort()).toEqual(['avatar_url', 'id', 'joined_on', 'level', 'name', 'role']);
     }
+  });
+
+  test('メンバーの一覧のレベルは、別の組織のワークスペースを指す明細を数えない', async () => {
+    const target = await createTarget();
+    const leaderId = target.leader.userId!;
+    await createXpGrant(target.organization, target.workspace.id, leaderId, { amount: 50 });
+    // 別の組織のワークスペースに、リーダーの ID で書かれた壊れた行。数えるとレベル3（50 + 500 = 550）になる
+    const other = await createTarget();
+    await createXpGrant(other.organization, other.workspace.id, leaderId, { amount: 500 });
+
+    const res = await post(app, memberList, {
+      slug: target.slug,
+      token: target.member.token,
+      body: { workspace_id: target.workspace.id },
+    });
+    expect(res.status).toBe(200);
+    const listed = (await res.json()) as { members: { id: string; level: number }[] };
+    expect(listed.members.find((member) => member.id === leaderId)?.level).toBe(1);
   });
 
   test('組織の枠の me に自分のレベル。数値と、ほかの人の値は返さない', async () => {

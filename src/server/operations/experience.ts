@@ -51,13 +51,14 @@ export function memberExperienceTotalsStatement(db: OrganizationDb, workspaceId:
   );
 }
 
-// SUM の結果を数にする（D1 は整数で返す。念のため数でない値は 0 として扱う）
-function amountOf(value: unknown): number {
+// SUM と COUNT の結果を数にする（D1 は整数で返す。null と数でない値は 0 として扱う）。合計を読むどの処理もこれを使う
+export function amountOf(value: unknown): number {
   const number = Number(value ?? 0);
   return Number.isFinite(number) ? number : 0;
 }
 
-// 名前の昇順、同じ名前は ID の昇順（SQL の並びと同じく、文字の符号の順で比べる）
+// 名前の昇順、同じ名前は ID の昇順。JavaScript の文字列の比較（UTF-16 の符号単位の順）で並べる。
+// 内訳は2つの文の結果を合わせて作るので、SQL では並べない
 function byNameThenId(a: { name: string; id: string }, b: { name: string; id: string }): number {
   if (a.name !== b.name) return a.name < b.name ? -1 : 1;
   return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
@@ -89,7 +90,8 @@ export const experienceSummaryOperation = implement(experienceSummary, async ({ 
         .where('w.organization_id', '=', organizationId),
     ),
     // 見込み。今所属している閉じていないワークスペースで、自分が手で作った、未完了の、削除していない、ポイントが1以上のタスクの件数。
-    // 手で作ったタスクはいつもバックログにある（tasks の CHECK）ので、tray = 'backlog' で索引 tasks_workspace_tray に乗せる
+    // 実行計画は、索引 tasks_created_by（created_by）から本人のタスクを引き、memberships_current で今の所属を確かめる。
+    // 手で作ったタスクはいつもバックログにある（tasks の CHECK）ので、tray = 'backlog' は結果を変えない念押しの条件
     db.statement((q) =>
       q
         .selectFrom('memberships as m')
@@ -142,7 +144,8 @@ export const experienceGrantsOperation = implement(experienceGrants, async ({ db
   const before = input.before;
 
   // 1件多く読んで、続きがあるかを知る。内容は、付与が指すタスク、ストーリー、エピックのタイトル（削除したものも、論理削除なので残る）。
-  // 結合する行も、付与と同じワークスペースのものに絞る
+  // 結合する行も、付与と同じワークスペースのものに絞る。今所属していないワークスペース（抜けた、所属していない管理者）の行は、
+  // 内容を null にして content_hidden を立てる（抜けた後のタイトルを読ませない）。ワークスペースの名前と値は出す
   const rows = await db.rows(
     db.statement((q) =>
       q
@@ -157,6 +160,10 @@ export const experienceGrantsOperation = implement(experienceGrants, async ({ db
         .leftJoin('epics as e', (join) =>
           join.onRef('e.id', '=', 'g.epic_id').onRef('e.workspace_id', '=', 'g.workspace_id'),
         )
+        // 今の所属（memberships_current で一意）
+        .leftJoin('memberships as m', (join) =>
+          join.onRef('m.workspace_id', '=', 'g.workspace_id').on('m.user_id', '=', userId).on('m.left_at', 'is', null),
+        )
         .select((eb) => [
           'g.id',
           'g.confirmed_at',
@@ -164,7 +171,14 @@ export const experienceGrantsOperation = implement(experienceGrants, async ({ db
           'w.name as workspace_name',
           'g.action',
           'g.amount',
-          eb.fn.coalesce('t.title', 's.title', 'e.title').as('content'),
+          'm.id as membership_id',
+          eb
+            .case()
+            .when('m.id', 'is', null)
+            .then(eb.val<string | null>(null))
+            .else(eb.fn.coalesce('t.title', 's.title', 'e.title'))
+            .end()
+            .as('content'),
         ])
         .where('g.user_id', '=', userId)
         .where('w.organization_id', '=', organizationId)
@@ -192,7 +206,8 @@ export const experienceGrantsOperation = implement(experienceGrants, async ({ db
       workspace_name: row.workspace_name,
       // action は列の CHECK が守る値。列挙に無い値が来ても、出力のスキーマ（z.enum）が 500 で止める
       action: row.action as ExperienceAction,
-      content: row.content,
+      content: row.membership_id === null ? null : row.content,
+      content_hidden: row.membership_id === null,
       amount: row.amount,
     })),
     next:

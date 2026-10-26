@@ -1651,7 +1651,7 @@ export const dictionary = defineDictionary({
     '次のレベルまでの {confirmed}% を確定、{prospective}% が見込み',
   ),
   levelLegendConfirmed: organization('確定', '確定'),
-  levelLegendProspect: organization('見込み（{task}の完了で確定）', '見込み（{task}の完了で確定）'),
+  levelLegendProspect: organization('見込み（{task}の{done}で確定）', '見込み（{task}の{done}で確定）'),
   levelBreakdownLabel: organization('{workspace}ごとの経験値', '{workspace}ごとの経験値'),
   levelBreakdownTotal: organization('すべての{workspace}', 'すべての{workspace}'),
   levelLoadFailed: organization('レベルを読み込めませんでした', 'レベルを読み込めませんでした'),
@@ -1675,8 +1675,17 @@ export const dictionary = defineDictionary({
   xpActionReversal: organization('{action}の打ち消し', '{action}の打ち消し'),
   xpEmptyTitle: organization('経験値の明細はまだありません', '経験値の明細はまだありません'),
   xpEmptyText: organization(
-    '{task}を完了にすると、起票や完了の経験値がここに並びます。',
-    '{task}を完了にすると、起票や完了の経験値がここに並びます。',
+    '{task}を{complete}と、起票や{done}の経験値がここに並びます。',
+    '{task}を{complete}と、起票や{done}の経験値がここに並びます。',
+  ),
+  xpContentHidden: organization(
+    '（今所属していない{workspace}の内容は表示しません）',
+    '（今所属していない{workspace}の内容は表示しません）',
+  ),
+  retrySection: organization('もう一度試す（{section}）', 'もう一度試す（{section}）'),
+  meOtherSettingsNote: organization(
+    '今は経験値だけを見られます。1日の基準、休み、テーマなどの設定は、これから足します。',
+    '今は経験値だけを見られます。1日の基準、休み、テーマなどの設定は、これから足します。',
   ),
   xpLedgerFailedTitle: organization('経験値の明細を読み込めませんでした', '経験値の明細を読み込めませんでした'),
   xpLoadMore: organization('続きを読む', '続きを読む'),

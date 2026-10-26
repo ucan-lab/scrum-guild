@@ -19,13 +19,23 @@
   } = $props();
 
   const titleId = $props.id();
+  let title = $state<HTMLElement>();
+
+  // 読み直した後に、面の題へフォーカスを移す（自分の設定の画面の「もう一度試す」）
+  export function focusTitle(): void {
+    title?.focus();
+  }
   const progress = $derived(levelProgressOf(total, prospective));
   const confirmedPercent = $derived(Math.round(progress.confirmedRatio * 100));
   const prospectivePercent = $derived(Math.round(progress.prospectiveRatio * 100));
 </script>
 
 <section class="panel" aria-labelledby={titleId}>
-  <div class="panel-title"><b id={titleId}>{t('levelPanelTitle')}</b>{t('levelPanelNote')}</div>
+  <!-- 題は見出し（h2）。tabindex="-1" は、読み直した後にプログラムからフォーカスを置くため（focusTitle） -->
+  <div class="panel-title">
+    <h2 id={titleId} tabindex="-1" bind:this={title}>{t('levelPanelTitle')}</h2>
+    {t('levelPanelNote')}
+  </div>
   <div class="level">
     <Emblem level={progress.level} />
     <div>
@@ -46,20 +56,23 @@
   </div>
   <div class="legend">
     <span><i class="is-got"></i>{t('levelLegendConfirmed')}</span>
-    <span><i class="is-soon"></i>{t('levelLegendProspect', { task: t('task') })}</span>
+    <span><i class="is-soon"></i>{t('levelLegendProspect', { task: t('task'), done: t('done') })}</span>
   </div>
   {#if workspaces !== null && workspaces.length > 0}
-    <dl class="breakdown" aria-label={t('levelBreakdownLabel', { workspace: t('workspace') })}>
-      {#each workspaces as workspace (workspace.id)}
-        <div>
-          <dt>{workspace.name}</dt>
-          <dd>{formatCount(workspace.total)}</dd>
+    <!-- dl は役割を持たないので、名前は包む group に付ける -->
+    <div role="group" aria-label={t('levelBreakdownLabel', { workspace: t('workspace') })}>
+      <dl class="breakdown">
+        {#each workspaces as workspace (workspace.id)}
+          <div>
+            <dt>{workspace.name}</dt>
+            <dd>{formatCount(workspace.total)}</dd>
+          </div>
+        {/each}
+        <div class="is-total">
+          <dt>{t('levelBreakdownTotal', { workspace: t('workspace') })}</dt>
+          <dd>{formatCount(total)}</dd>
         </div>
-      {/each}
-      <div class="is-total">
-        <dt>{t('levelBreakdownTotal', { workspace: t('workspace') })}</dt>
-        <dd>{formatCount(total)}</dd>
-      </div>
-    </dl>
+      </dl>
+    </div>
   {/if}
 </section>

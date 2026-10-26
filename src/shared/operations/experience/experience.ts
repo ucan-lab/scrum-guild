@@ -49,8 +49,11 @@ export const experienceGrantSchema = z.object({
   workspace_id: z.string(),
   workspace_name: z.string(),
   action: z.enum(experienceActions),
-  // 付与のもとになったタスク、ストーリー、エピックのタイトル（削除したものも出す）。どれも指さない行は null
+  // 付与のもとになったタスク、ストーリー、エピックのタイトル（削除したものも出す）。どれも指さない行と、
+  // 今所属していないワークスペースの行（content_hidden）は null
   content: z.string().nullable(),
+  // 今所属していないワークスペース（抜けた、所属していない管理者）の行なので、内容を伏せた
+  content_hidden: z.boolean(),
   // 正なら付与、負なら打ち消し
   amount: z.number().int(),
 });

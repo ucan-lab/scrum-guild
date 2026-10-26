@@ -3,7 +3,7 @@ import { levelOf } from '../../shared/experience.ts';
 import { myOrganizations, organizationInfo } from '../../shared/operations/organization/index.ts';
 import type { Theme } from '../../shared/theme.ts';
 import { ApiError } from '../errors.ts';
-import { userExperienceTotalStatement } from './experience.ts';
+import { amountOf, userExperienceTotalStatement } from './experience.ts';
 import { implement } from './implement.ts';
 
 // users.last_seen_at を書き直す間隔。組織の枠を開くたびに書かないための上限
@@ -79,7 +79,7 @@ export const organizationInfoOperation = implement(organizationInfo, async ({ db
       is_admin: actor.isAdmin,
       // 列の CHECK が守る値（組織の theme と同じ列挙）
       theme: user.theme as Theme | null,
-      level: levelOf(Number(experienceResult.rows[0]?.total ?? 0)),
+      level: levelOf(amountOf(experienceResult.rows[0]?.total)),
     },
     workspaces: workspaceResult.rows.map((row) => ({
       id: row.id,

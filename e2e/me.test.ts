@@ -31,7 +31,8 @@ test.describe('自分の設定（ミナト）', () => {
       'aria-label',
       /^次のレベルまでの \d+% を確定、\d+% が見込み$/,
     );
-    await expect(panel.locator('.legend > span')).toHaveText(['確定', '見込み（クエストの完了で確定）']);
+    await expect(panel.locator('.legend > span')).toHaveText(['確定', '見込み（クエストの完遂で確定）']);
+    await expect(panel.getByRole('group', { name: 'パーティごとの経験値' })).toBeVisible();
     // ほかのファイルの e2e がミナトをリーダーにしたワークスペースを足すので、受託開発チームがあることと、末尾の合計だけを見る
     await expect(panel.locator('.breakdown dt', { hasText: '受託開発チーム' })).toHaveCount(1);
     await expect(panel.locator('.breakdown .is-total dt')).toHaveText('すべてのパーティ');
@@ -107,35 +108,196 @@ test.describe('自分の設定（ミナト）', () => {
     await page.route('**/api/aoba/experience-grants', (route) => route.fulfill({ json: { grants: [], next: null } }));
     await page.goto('/aoba/me');
     await expect(page.getByText('経験値の明細はまだありません')).toBeVisible();
-    await expect(page.getByText('クエストを完了にすると、起票や完了の経験値がここに並びます。')).toBeVisible();
+    // ゲームの言葉の「完遂」で出す（辞書の complete と done）
+    await expect(page.getByText('クエストを完遂にすると、起票や完遂の経験値がここに並びます。')).toBeVisible();
     await expect(page.getByRole('table', { name: '経験値の明細' })).toHaveCount(0);
   });
 
-  test('面と明細が読めなければ、それぞれに失敗と「もう一度試す」を出し、読み直せる', async ({ page }) => {
-    let fail = true;
+  test('面と明細が読めなければ、それぞれに失敗と節ごとの「もう一度試す」を出し、押した節だけを読み直して題へフォーカスを移す', async ({
+    page,
+  }) => {
+    const failing = new Set(['experience-summary', 'experience-grants']);
     for (const name of ['experience-summary', 'experience-grants']) {
       await page.route(`**/api/hibari/${name}`, (route) =>
-        fail ? route.fulfill({ status: 500, json: { error: { code: 'internal', message: 'x' } } }) : route.continue(),
+        failing.has(name)
+          ? route.fulfill({ status: 500, json: { error: { code: 'internal', message: 'x' } } })
+          : route.continue(),
       );
     }
     await page.goto('/hibari/me');
     await expect(page.getByRole('heading', { level: 1, name: '自分の設定' })).toBeVisible();
+    await expect(page.getByText('今は経験値だけを見られます。')).toBeVisible();
     await expect(page.getByText('レベルを読み込めませんでした')).toBeVisible();
     await expect(page.getByText('経験値の明細を読み込めませんでした')).toBeVisible();
-    await expect(page.getByRole('button', { name: 'もう一度試す' })).toHaveCount(2);
+    const retrySummary = page.getByRole('button', { name: 'もう一度試す（レベル）' });
+    const retryGrants = page.getByRole('button', { name: 'もう一度試す（経験値の明細）' });
+    await expect(retrySummary).toBeVisible();
+    await expect(retryGrants).toBeVisible();
 
-    fail = false;
-    await page.getByRole('button', { name: 'もう一度試す' }).first().click();
-    await expect(page.getByRole('region', { name: 'レベル' }).locator('.xp-num')).toHaveText('0XP');
+    // 面だけが読めるようになった。面を読み直しても、明細はまだ失敗のまま
+    failing.delete('experience-summary');
+    await retrySummary.click();
+    const panel = page.getByRole('region', { name: 'レベル' });
+    await expect(panel.locator('.xp-num')).toHaveText('0XP');
+    await expect(panel.getByRole('heading', { level: 2, name: 'レベル' })).toBeFocused();
+    await expect(page.getByText('経験値の明細を読み込めませんでした')).toBeVisible();
+
+    // 明細はまた失敗すると、その節にだけ「まだ読み込めませんでした」
+    await retryGrants.click();
+    await expect(page.getByRole('region', { name: '経験値の明細' }).getByRole('status').last()).toHaveText(
+      'まだ読み込めませんでした',
+    );
+    failing.delete('experience-grants');
+    await retryGrants.click();
     await expect(page.getByRole('table', { name: '経験値の明細' }).locator('tbody tr')).toHaveCount(50);
+    await expect(page.getByRole('heading', { level: 2, name: '経験値の明細' })).toBeFocused();
   });
 
-  test('390px の幅でも、明細の表とレベルの面が画面からはみ出さない', async ({ page }) => {
+  test('面を読み直しても、「続きを読む」で足した明細の行は残る', async ({ page }) => {
+    let failSummary = true;
+    await page.route('**/api/hibari/experience-summary', (route) =>
+      failSummary
+        ? route.fulfill({ status: 500, json: { error: { code: 'internal', message: 'x' } } })
+        : route.continue(),
+    );
+    await page.goto('/hibari/me');
+    const rows = page.getByRole('table', { name: '経験値の明細' }).locator('tbody tr');
+    await expect(rows).toHaveCount(50);
+    await page.getByRole('button', { name: '続きを読む' }).click();
+    await expect(rows).toHaveCount(52);
+
+    failSummary = false;
+    await page.getByRole('button', { name: 'もう一度試す（レベル）' }).click();
+    await expect(page.getByRole('region', { name: 'レベル' }).locator('.xp-num')).toHaveText('0XP');
+    await expect(rows).toHaveCount(52);
+  });
+
+  test('今所属していないワークスペースの明細は、内容を伏せた旨を出す', async ({ page }) => {
+    await page.route('**/api/aoba/experience-grants', (route) =>
+      route.fulfill({
+        json: {
+          grants: [
+            {
+              id: '019a0000-0000-7000-8000-00000000fff1',
+              confirmed_at: '2026-09-18T01:30:00.000Z',
+              workspace_id: '019a0000-0000-7000-8000-00000000fff2',
+              workspace_name: '旧パーティ',
+              action: 'task_completed',
+              content: null,
+              content_hidden: true,
+              amount: 30,
+            },
+          ],
+          next: null,
+        },
+      }),
+    );
+    await page.goto('/aoba/me');
+    const cells = page.getByRole('table', { name: '経験値の明細' }).locator('tbody tr').first().locator('td');
+    await expect(cells.nth(1)).toHaveText('旧パーティ');
+    await expect(cells.nth(3)).toHaveText('（今所属していないパーティの内容は表示しません）');
+    await expect(cells.nth(4)).toHaveText('+30');
+  });
+
+  test('PC の幅（1100px と 1440px）では、明細の表を本文の幅いっぱいに出し、押しつぶさない', async ({ page }) => {
+    for (const width of [1100, 1440]) {
+      await page.setViewportSize({ width, height: 900 });
+      await page.goto('/hibari/me');
+      const table = page.getByRole('table', { name: '経験値の明細' });
+      await expect(table.locator('tbody tr')).toHaveCount(50);
+      // 説明は表の上（.setting の見出しの列に入れない）
+      await expect(page.locator('.setting')).toHaveCount(0);
+      const sizes = await page.evaluate(() => {
+        const wrap = document.querySelector('.table-wrap')!;
+        const main = document.querySelector('.layout-main')!;
+        const content = document.querySelector('.table tbody td.is-name')!;
+        return {
+          overflow: wrap.scrollWidth - wrap.clientWidth,
+          wrapWidth: wrap.getBoundingClientRect().width,
+          mainWidth: main.getBoundingClientRect().width,
+          contentWidth: content.getBoundingClientRect().width,
+        };
+      });
+      expect(sizes.overflow).toBeLessThanOrEqual(0);
+      expect(sizes.wrapWidth).toBeGreaterThanOrEqual(sizes.mainWidth - 1);
+      expect(sizes.contentWidth).toBeGreaterThan(120);
+    }
+  });
+
+  test('390px の幅では表の行を縦に積み、XP の値が見え、明細の表とレベルの面が画面からはみ出さない', async ({
+    page,
+  }) => {
     await page.setViewportSize({ width: 390, height: 800 });
     await page.goto('/hibari/me');
-    await expect(page.getByRole('table', { name: '経験値の明細' }).locator('tbody tr')).toHaveCount(50);
+    const rows = page.getByRole('table', { name: '経験値の明細' }).locator('tbody tr');
+    await expect(rows).toHaveCount(50);
+    // 見出しの行の代わりに data-label を値の前に出す
+    const xp = rows.first().locator('td[data-label="XP"]');
+    await expect(xp.locator('.xp-delta')).toBeVisible();
+    // 明細はレベルの面の下にあるので、行まで送ってから、値が横に切れずに見えることを確かめる
+    await xp.scrollIntoViewIfNeeded();
+    await expect(xp.locator('.xp-delta')).toBeInViewport({ ratio: 1 });
+    const box = await xp.boundingBox();
+    expect(box !== null && box.x >= 0 && box.x + box.width <= 390).toBe(true);
     const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
     expect(overflow).toBeLessThanOrEqual(0);
+  });
+
+  test('320px の幅で、区切りの無い長い名前（小見出し、ワークスペース、内容、内訳）と大きな合計も折り返し、はみ出さない', async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 320, height: 800 });
+    const longName = 'ミナト'.repeat(15);
+    const longWorkspace = 'とても長いパーティの名前'.repeat(5);
+    const longTitle = 'ポイント付与のバッチを作る'.repeat(6);
+    await page.route('**/api/hibari/organization', async (route) => {
+      const response = await route.fetch();
+      const json = (await response.json()) as { me: { name: string } };
+      json.me.name = longName;
+      await route.fulfill({ response, json });
+    });
+    await page.route('**/api/hibari/experience-summary', (route) =>
+      route.fulfill({
+        json: {
+          total: 99999,
+          level: 45,
+          level_start: 99000,
+          next_level_at: 103500,
+          prospective: 40,
+          workspaces: [{ id: 'w1', name: longWorkspace, total: 99999, prospective: 40 }],
+        },
+      }),
+    );
+    await page.route('**/api/hibari/experience-grants', (route) =>
+      route.fulfill({
+        json: {
+          grants: [
+            {
+              id: '019a0000-0000-7000-8000-00000000fff3',
+              confirmed_at: '2026-10-16T06:20:00.000Z',
+              workspace_id: 'w1',
+              workspace_name: longWorkspace,
+              action: 'task_completed',
+              content: longTitle,
+              content_hidden: false,
+              amount: 30,
+            },
+          ],
+          next: null,
+        },
+      }),
+    );
+    await page.goto('/hibari/me');
+    await expect(page.locator('.page-eyebrow')).toHaveText(longName);
+    await expect(page.locator('.breakdown dt').first()).toHaveText(longWorkspace);
+    await expect(page.getByRole('table', { name: '経験値の明細' }).locator('tbody tr')).toHaveCount(1);
+    const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+    expect(overflow).toBeLessThanOrEqual(0);
+    // 面と表の中身が、面と表の枠の外へはみ出さない
+    const inside = await page.evaluate(() =>
+      [...document.querySelectorAll('.panel, .table-wrap')].every((box) => box.scrollWidth <= box.clientWidth),
+    );
+    expect(inside).toBe(true);
   });
 });
 
