@@ -238,6 +238,11 @@
       }
       return;
     }
+    // 404 はタスクが消えた（別の人が削除した）。もう一度試しても読めないので、閉じる側へ回す
+    if (result.status === 404) {
+      if (!taskGone) gone();
+      return;
+    }
     if (historyState === 'ready') historyReloadFailed = true;
     else historyState = 'failed';
   }

@@ -419,6 +419,18 @@ test('変更の履歴が無ければ「まだ変更はありません。」', as
   await expect(drawer.getByRole('region', { name: '変更の履歴' }).getByText('まだ変更はありません。')).toBeVisible();
 });
 
+test('変更の履歴が 404（タスクが消えた）なら、「もう一度試す」を出さず、トーストで知らせて閉じる', async ({ page }) => {
+  await createWorkspace(page, '履歴が消えるパーティ', 'game');
+  await addTask(page, '履歴が消える依頼');
+  await page.route('**/api/aoba/task-history', (route) =>
+    route.fulfill({ status: 404, json: { error: { code: 'not_found', message: 'not_found' } } }),
+  );
+  await page.locator('.entry').getByRole('link', { name: '履歴が消える依頼' }).click();
+  await expect(page.getByRole('status').filter({ hasText: 'このクエストは見つかりません' })).toBeVisible();
+  await expect(page).not.toHaveURL(/\?task=/);
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+});
+
 // 変更の履歴: 難易度と担い手を直すと、新しい順に、日時と人と、列の名前と前と後が出る。列の名前は言葉づかいの辞書の言葉
 for (const [vocabulary, words] of [
   [
