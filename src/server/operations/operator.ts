@@ -65,15 +65,24 @@ export const listOrganizationsOperation = implement(listOrganizations, async ({ 
     db.statement((q) =>
       q
         .selectFrom('organizations')
-        .select(['id', 'slug', 'name', 'suspended_at', 'purge_on', 'created_at'])
+        .select([
+          'id',
+          'slug',
+          'name',
+          'suspended_at',
+          'purge_on',
+          'created_at',
+          'member_limit',
+          'attachment_quota_bytes',
+        ])
         .orderBy('created_at', 'desc')
         .orderBy('slug'),
     ),
   );
-  const statuses = await operator.adminStatuses(
-    rows.map((row) => row.id),
-    new Date(),
-  );
+  // 共通の表（organizations）と組織の中の表は別々に読む。集計は組織の ID の束で、組織ごとに数える
+  const ids = rows.map((row) => row.id);
+  const at = new Date();
+  const [statuses, usage] = await Promise.all([operator.adminStatuses(ids, at), operator.organizationUsage(ids, at)]);
   return {
     organizations: rows.map((row) => ({
       slug: row.slug,
@@ -82,6 +91,11 @@ export const listOrganizationsOperation = implement(listOrganizations, async ({ 
       purge_on: row.purge_on,
       created_at: row.created_at,
       admin_status: statuses.get(row.id) ?? ('none' as const),
+      seats: { used: usage.get(row.id)?.seatsUsed ?? 0, limit: row.member_limit },
+      workspace_count: usage.get(row.id)?.workspaceCount ?? 0,
+      task_count: usage.get(row.id)?.taskCount ?? 0,
+      attachment_quota_bytes: row.attachment_quota_bytes,
+      last_used_at: usage.get(row.id)?.lastUsedAt ?? null,
     })),
   };
 });

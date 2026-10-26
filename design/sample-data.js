@@ -302,15 +302,16 @@ Object.assign(window.SQ_DATA, {
     ],
   },
 
-  // 運用者の画面。組織の中のデータは持たず、数と日時だけ
+  // 運用者の画面。組織の中のデータは持たず、数、上限、日時だけ。添付ファイルは上限だけを持つ（使った量の合計は #68 で足す）。
+  // 日時は本番（format-datetime.ts）と同じ形で、日付と時刻の間は不可分の空白（ ）
   operator: {
     name: "運用担当",
     organizations: [
-      { slug: "aoba", name: "あおば開発", users: 5, limit: 15, wss: 3, tasks: 1284, used: 25.1, quota: 30, lastUsed: "10/20 09:12", created: "2026-06-01", admins: 2 },
-      { slug: "hibari", name: "ひばり工房", users: 15, limit: 15, wss: 1, tasks: 212, used: 0.4, quota: 30, lastUsed: "10/19 18:40", created: "2026-09-15", admins: 1, adminPending: true },
-      { slug: "tsubame", name: "つばめ商会", users: 1, limit: 15, wss: 0, tasks: 0, used: 0, quota: 30, lastUsed: "—", created: "2026-10-05", admins: 1, adminExpired: true },
-      { slug: "kumo-lab", name: "くもラボ", users: 38, limit: 50, wss: 4, tasks: 3410, used: 21.7, quota: 100, lastUsed: "10/18 11:03", created: "2026-07-10", admins: 0 },
-      { slug: "nagi", name: "なぎ設計", users: 2, limit: 15, wss: 1, tasks: 96, used: 0.1, quota: 30, lastUsed: "09/02 15:21", created: "2026-08-01", admins: 1, suspended: "2026-09-30", purgeOn: "2026-10-30" },
+      { slug: "aoba", name: "あおば開発", users: 5, limit: 15, wss: 3, tasks: 1284, quota: 30, lastUsed: "2026/10/20 09:12", created: "2026/06/01 09:00", admins: 2 },
+      { slug: "hibari", name: "ひばり工房", users: 15, limit: 15, wss: 1, tasks: 212, quota: 30, lastUsed: "2026/10/19 18:40", created: "2026/09/15 10:20", admins: 1, adminPending: true },
+      { slug: "tsubame", name: "つばめ商会", users: 1, limit: 15, wss: 0, tasks: 0, quota: 30, lastUsed: null, created: "2026/10/05 14:05", admins: 1, adminExpired: true },
+      { slug: "kumo-lab", name: "くもラボ", users: 38, limit: 50, wss: 4, tasks: 3410, quota: 100, lastUsed: "2026/10/18 11:03", created: "2026/07/10 09:45", admins: 0 },
+      { slug: "nagi", name: "なぎ設計", users: 2, limit: 15, wss: 1, tasks: 96, quota: 30, lastUsed: "2026/09/02 15:21", created: "2026/08/01 16:30", admins: 1, suspended: "2026-09-30", purgeOn: "2026-10-30" },
     ],
   },
 });

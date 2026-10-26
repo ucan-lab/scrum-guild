@@ -18,6 +18,11 @@ type ListedOrganization = {
   purge_on: string | null;
   created_at: string;
   admin_status: 'none' | 'pending' | 'expired' | 'active';
+  seats: { used: number; limit: number };
+  workspace_count: number;
+  task_count: number;
+  attachment_quota_bytes: number;
+  last_used_at: string | null;
 };
 
 const organization = (overrides: Partial<ListedOrganization>): ListedOrganization => ({
@@ -27,6 +32,11 @@ const organization = (overrides: Partial<ListedOrganization>): ListedOrganizatio
   purge_on: null,
   created_at: '2026-10-01T09:30:00.000Z',
   admin_status: 'active',
+  seats: { used: 5, limit: 15 },
+  workspace_count: 3,
+  task_count: 1284,
+  attachment_quota_bytes: 32212254720,
+  last_used_at: '2026-10-20T00:12:00.000Z',
   ...overrides,
 });
 
@@ -122,22 +132,126 @@ test.describe('運用者', () => {
     await expect(suspendedButtons.first()).not.toHaveClass(/is-danger/);
     await expect(suspendedButtons.last()).not.toHaveClass(/is-danger/);
     // 2026-10-01T09:30Z は、東京のブラウザでは 18:30
-    await expect(rows.filter({ hasText: 'あおば開発' }).locator('.mono').last()).toHaveText('2026/10/01 18:30');
+    // 作った日時は列にせず、名前の列の slug の行に並べる
+    await expect(rows.filter({ hasText: 'あおば開発' }).locator('td.is-name .props-note')).toHaveText(
+      'aoba · 作成 2026/10/01 18:30',
+    );
+    // slug と日時は等幅の書体で出す
+    await expect(rows.filter({ hasText: 'あおば開発' }).locator('td.is-name .props-note .mono')).toHaveText([
+      'aoba',
+      '2026/10/01 18:30',
+    ]);
     expect(await collect()).toEqual([]);
   });
+
+  test('組織ごとの集計（人数と上限、ワークスペースとタスクの数、添付ファイルの上限、最後に使われた日時）を出し、上限に達した組織に印を付ける', async ({
+    page,
+  }) => {
+    await mockList(page, [
+      organization({}),
+      organization({
+        slug: 'hibari',
+        name: 'ひばり工房',
+        seats: { used: 15, limit: 15 },
+        workspace_count: 1,
+        task_count: 212,
+        attachment_quota_bytes: 107374182400,
+      }),
+      organization({
+        slug: 'tsubame',
+        name: 'つばめ商会',
+        seats: { used: 0, limit: 15 },
+        workspace_count: 0,
+        task_count: 0,
+        attachment_quota_bytes: 512 * 1024 ** 2,
+        last_used_at: null,
+      }),
+    ]);
+    const collect = await watchViolations(page);
+    await page.goto('/operator');
+    const rows = page.locator('.table tbody tr');
+    await expect(rows).toHaveCount(3);
+    await expect(page.locator('.table thead th')).toHaveText([
+      '冒険者ギルド・slug',
+      '人数 / 上限',
+      'パーティの数',
+      'クエストの数',
+      '添付ファイルの上限',
+      '最後に使われた日時',
+      '操作',
+    ]);
+    const aoba = rows.filter({ hasText: 'あおば開発' });
+    await expect(aoba.locator('td[data-label="人数 / 上限"]')).toHaveText('5 / 15');
+    await expect(aoba.locator('td[data-label="パーティの数"]')).toHaveText('3');
+    await expect(aoba.locator('td[data-label="クエストの数"]')).toHaveText('1,284');
+    await expect(aoba.locator('td[data-label="添付ファイルの上限"]')).toHaveText('30 GB');
+    // 2026-10-20T00:12Z は、東京のブラウザでは 09:12
+    await expect(aoba.locator('td[data-label="最後に使われた日時"]')).toHaveText('2026/10/20 09:12');
+    await expect(aoba.locator('.chip')).toHaveCount(0);
+    // 人数が上限以上なら「上限に達した」の印
+    const hibari = rows.filter({ hasText: 'ひばり工房' });
+    await expect(hibari.locator('td[data-label="人数 / 上限"]')).toContainText('15 / 15');
+    await expect(hibari.locator('td[data-label="人数 / 上限"] .chip.is-warn')).toHaveText('上限に達した');
+    await expect(hibari.locator('td[data-label="添付ファイルの上限"]')).toHaveText('100 GB');
+    // だれも使っていない組織は、日時の代わりに文で示す
+    const tsubame = rows.filter({ hasText: 'つばめ商会' });
+    await expect(tsubame.locator('td[data-label="最後に使われた日時"]')).toHaveText('まだ使われていない');
+    await expect(tsubame.locator('td[data-label="人数 / 上限"]')).toHaveText('0 / 15');
+    // 1 GB 未満の上限は「0 GB」にせず MB で出す
+    await expect(tsubame.locator('td[data-label="添付ファイルの上限"]')).toHaveText('512 MB');
+    // 数と単位の間は不可分の空白で、積んだ行でも割れない
+    expect(await aoba.locator('td[data-label="人数 / 上限"]').textContent()).toContain('5 / 15');
+    expect(await aoba.locator('td[data-label="添付ファイルの上限"]').textContent()).toContain('30 GB');
+    expect(await collect()).toEqual([]);
+  });
+
+  // 名前の列の印が折り返さないと、印の長さが列の幅になり、停止中の行の操作（2つのボタン）と合わせて表が横にはみ出していた
+  for (const width of [1280, 1024]) {
+    test(`${width}px の画面で、停止中の行と長い管理者の状態の印があっても、表の中で横スクロールしない`, async ({
+      page,
+    }) => {
+      await mockList(page, [
+        organization({ admin_status: 'expired', seats: { used: 15, limit: 15 } }),
+        organization({ slug: 'hibari', name: 'ひばり工房', admin_status: 'pending' }),
+        organization({
+          slug: 'ibis-transport-and-logistics',
+          name: 'とき運送ロジスティクス東日本',
+          suspended_at: '2026-10-11T00:00:00.000Z',
+          purge_on: '2026-11-10',
+          admin_status: 'expired',
+          task_count: 123456,
+        }),
+      ]);
+      await page.setViewportSize({ width, height: 800 });
+      await page.goto('/operator');
+      await expect(page.locator('.table tbody tr')).toHaveCount(3);
+      const wrap = page.locator('.table-wrap');
+      const sizes = await wrap.evaluate((el) => ({ scroll: el.scrollWidth, client: el.clientWidth }));
+      if (width === 1280) expect(sizes.scroll).toBeLessThanOrEqual(sizes.client);
+      // 1024px で収まらないときも、ページは横にはみ出さず、表の中のスクロールで受ける
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    });
+  }
 
   // 狭い幅では、固定した操作の列が名前の列を覆い、どの組織への操作か見えなくなっていた。1行を縦に積み、名前と操作を両方見せる
   for (const width of [320, 390]) {
     test(`${width}px の幅でも、停止中の行の名前と操作が重ならず、横にはみ出さない`, async ({ page }) => {
       await mockList(page, [
         organization({}),
-        organization({ slug: 'kamome', name: 'かもめ社', suspended_at: '2026-10-10T20:00:00.000Z' }),
+        organization({
+          slug: 'kamome',
+          name: 'かもめ社',
+          suspended_at: '2026-10-10T20:00:00.000Z',
+          seats: { used: 15, limit: 15 },
+        }),
         organization({
           slug: 'ibis',
           name: 'とき運送',
           suspended_at: '2026-10-11T00:00:00.000Z',
           purge_on: '2026-11-10',
-          admin_status: 'none',
+          // 印の中でいちばん長い文（ギルドマスターの招待の URL は期限切れ）
+          admin_status: 'expired',
+          last_used_at: null,
         }),
       ]);
       await page.setViewportSize({ width, height: 900 });
@@ -146,6 +260,18 @@ test.describe('運用者', () => {
       await expect(page.locator('.table tbody tr')).toHaveCount(3);
       const wrapBox = (await wrap.boundingBox())!;
       expect(await wrap.evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
+      // 積んだ行では、見出しの代わりに data-label を値の前に出す
+      const seatCell = page.locator('.table tbody tr').filter({ hasText: 'かもめ社' }).locator('td').nth(1);
+      expect(await seatCell.evaluate((el) => getComputedStyle(el, '::before').content)).toContain('人数 / 上限');
+      await expect(seatCell.locator('.chip')).toHaveText('上限に達した');
+      // 印は右端で切れず、行の中で折り返す
+      const chips = page.locator('.table tbody .chip');
+      await expect(chips.filter({ hasText: '招待の URL は期限切れ' })).toBeVisible();
+      for (const chip of await chips.all()) {
+        const box = (await chip.boundingBox())!;
+        expect(box.x).toBeGreaterThanOrEqual(wrapBox.x);
+        expect(box.x + box.width).toBeLessThanOrEqual(wrapBox.x + wrapBox.width);
+      }
 
       for (const [name, buttonTexts] of [
         ['あおば開発', ['停止する']],

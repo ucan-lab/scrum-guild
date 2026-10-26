@@ -11,6 +11,8 @@ import {
   appendOperatorChangeLog,
   insertOrganization,
   linkLoginToAccount,
+  organizationUsageOf,
+  type OrganizationUsage,
   type CreatedOrganization,
   type LoginId,
   type NewOrganization,
@@ -29,6 +31,8 @@ export type OperatorTools = {
   inviteUrl(claimToken: string): string;
   // 組織ごとの管理者の状態。人の名前や ID は返さない。期限の過ぎた待つ行は expired に数える
   adminStatuses(organizationIds: readonly string[], now: Date): Promise<Map<string, AdminStatus>>;
+  // 組織ごとの集計（人数、閉じていないワークスペースの数、削除していないタスクの数、最後に使われた日時）。人の名前や ID は返さない
+  organizationUsage(organizationIds: readonly string[], now: Date): Promise<Map<string, OrganizationUsage>>;
   // organizations に書き、続けて最初の管理者を書く組織の入口を返す。slug が重なれば 'slug_taken'
   insertOrganization(input: Omit<NewOrganization, 'createdByOperator'>): Promise<CreatedOrganization | 'slug_taken'>;
   // 指名で待っている users の行（account_id が空で、ログインの手段と ID が同じ）にアカウントを結ぶ。何度流しても同じ結果
@@ -49,6 +53,7 @@ export function operatorTools(
     inviteeResolver,
     inviteUrl: (claimToken) => `${new URL(env.PUBLIC_ORIGIN).origin}${INVITE_PATH}#${claimToken}`,
     adminStatuses: (organizationIds, now) => adminStatusesOf(env, organizationIds, now),
+    organizationUsage: (organizationIds, now) => organizationUsageOf(env, organizationIds, now),
     insertOrganization: (input) => insertOrganization(env, { ...input, createdByOperator: context.loginId }),
     linkLogin: (accountId, login, now) => linkLoginToAccount(env, accountId, login, now),
     appendChangeLog: (organizationId, entry) =>

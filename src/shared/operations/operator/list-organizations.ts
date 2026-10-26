@@ -9,11 +9,12 @@ import { defineOperation } from '../define.ts';
 export const adminStatuses = ['none', 'pending', 'expired', 'active'] as const;
 export type AdminStatus = (typeof adminStatuses)[number];
 
-// 組織をまたぐ一覧。組織の中のデータ（人の名前、ID など）は返さない。ユーザー数などの集計は組織の停止と再開の Issue で足す
+// 組織をまたぐ一覧。組織の中のデータ（人の名前、ID、ログインの ID など）は返さず、組織ごとの集計（数と日時）だけを返す。
+// 集計の数え方は docs/data-model.md の users の節の、運用者の組織の一覧の集計を書いた箇条書き。添付ファイルの合計は出さない（#68 で足す）
 export const listOrganizations = defineOperation({
   name: 'list-organizations',
   description:
-    '組織の一覧を返す。slug、名前、停止した日時、データを消す予定日、作った日時、管理者の状態だけで、組織の中のデータは返さない',
+    '組織の一覧を返す。slug、名前、停止した日時、データを消す予定日、作った日時、管理者の状態と、組織ごとの集計（人数と上限、閉じていないワークスペースの数、削除していないタスクの数、添付ファイルの上限、最後に使われた日時）だけで、組織の中のデータは返さない',
   mode: 'read',
   permission: 'operator',
   input: z.object({}),
@@ -27,6 +28,16 @@ export const listOrganizations = defineOperation({
         purge_on: z.string().nullable(),
         created_at: z.string(),
         admin_status: z.enum(adminStatuses),
+        // 組織の人数（used。数え方は docs/data-model.md の organizations の「人数」で、招待の上限と同じ）と上限（limit。member_limit）
+        seats: z.object({ used: z.number().int(), limit: z.number().int() }),
+        // 閉じていない（closed_at が空）ワークスペースの数
+        workspace_count: z.number().int(),
+        // 削除していない（deleted_at が空）タスクの数。受信箱、アーカイブ、閉じたワークスペースの分も含める
+        task_count: z.number().int(),
+        // 添付ファイルの上限（バイト）。organizations.attachment_quota_bytes のまま。使った量の合計は出さない（#68）
+        attachment_quota_bytes: z.number().int(),
+        // 組織の人（無効にした人も含む）が最後に使った日時（users.last_seen_at の最大）。だれも使っていなければ null
+        last_used_at: z.string().nullable(),
       }),
     ),
   }),

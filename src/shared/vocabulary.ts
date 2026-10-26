@@ -576,8 +576,8 @@ export const dictionary = defineDictionary({
   pageOperator: organization('運用', '運用'),
   // 運用の画面。{organization} {admin} は、それぞれ辞書の同じ名前の項目で埋める
   operatorNotice: organization(
-    '運用者は{organization}の中（タスク、メンバー、記録、添付ファイルの中身など）を見られません。ここに出すのは名前、slug、状態だけです。',
-    '運用者は{organization}の中（タスク、メンバー、記録、添付ファイルの中身など）を見られません。ここに出すのは名前、slug、状態だけです。',
+    '運用者は{organization}の中（タスク、メンバー、記録、添付ファイルの中身など）を見られません。ここに出すのは名前、slug、状態と、数、上限、日時だけです。',
+    '運用者は{organization}の中（タスク、メンバー、記録、添付ファイルの中身など）を見られません。ここに出すのは名前、slug、状態と、数、上限、日時だけです。',
   ),
   operatorEmptyTitle: organization('{organization}がまだありません', '{organization}がまだありません'),
   operatorEmptyText: organization(
@@ -586,7 +586,21 @@ export const dictionary = defineDictionary({
   ),
   operatorCreate: organization('{organization}を作る', '{organization}を作る'),
   operatorColumnOrganization: organization('{organization}・slug', '{organization}・slug'),
-  operatorColumnCreated: organization('作った日時', '作った日時'),
+  // 組織ごとの集計の列。{workspace} {task} は辞書の同じ名前の項目で埋める
+  operatorColumnSeats: organization('人数 / 上限', '人数 / 上限'),
+  operatorColumnWorkspaces: organization('{workspace}の数', '{workspace}の数'),
+  operatorColumnTasks: organization('{task}の数', '{task}の数'),
+  operatorColumnQuota: organization('添付ファイルの上限', '添付ファイルの上限'),
+  operatorColumnLastUsed: organization('最後に使われた日時', '最後に使われた日時'),
+  // {used} は人数、{limit} は人数の上限。空白は不可分の空白（U+00A0）で、積んだ行でも数の間で割れない
+  operatorSeats: organization('{used} / {limit}', '{used} / {limit}'),
+  operatorSeatsFull: organization('上限に達した', '上限に達した'),
+  // {size} は GB か MB の数（1 GB 未満は MB。src/lib/format.ts の quotaSize）。空白は不可分の空白
+  operatorQuotaSize: organization('{size} GB', '{size} GB'),
+  operatorQuotaSizeMb: organization('{size} MB', '{size} MB'),
+  // 名前の列の2行目。{slug} は組織の slug、{date} は作った日時（ブラウザのタイムゾーン。format-datetime.ts）
+  operatorCreatedLabel: organization('作成', '作成'),
+  operatorNeverUsed: organization('まだ使われていない', 'まだ使われていない'),
   // 一覧の印。{date} は停止した日と、解約で消す予定日。どちらも UTC の日付（消す予定日を UTC の日付で数えるのにそろえる）
   operatorSuspended: organization('停止 {date}', '停止 {date}'),
   operatorPurgeOn: organization('{date} に消す', '{date} に消す'),

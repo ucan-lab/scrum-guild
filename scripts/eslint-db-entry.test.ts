@@ -181,6 +181,24 @@ describe('運用者の履歴の関数（appendOperatorChangeLog）', () => {
   });
 });
 
+describe('組織をまたいで数える関数（adminStatusesOf、organizationUsageOf）', () => {
+  for (const name of ['adminStatusesOf', 'organizationUsageOf']) {
+    const imported = `import { ${name} } from './db/index.ts'; export const a = ${name};`;
+    const namespaced = `import * as db from './db/index.ts'; export const a = db.${name};`;
+
+    test(`${name}: 運用者の道具のファイルだけが使える`, async () => {
+      assert.equal(await violations('src/server/operations/operator-tools.ts', imported), 0);
+    });
+
+    for (const file of [...outside, 'src/server/operations/operator.ts', 'src/server/operations/invitation.ts']) {
+      test(`${name}: ${file} で落ちる`, async () => {
+        assert.ok((await violations(file, imported)) >= 1);
+        assert.ok((await violations(file, namespaced)) >= 1);
+      });
+    }
+  }
+});
+
 test('.svelte の script も同じ規則で落ちる', async () => {
   const code = `<script lang="ts">\n  import { sql } from 'kysely';\n  const a = (env: Env) => env.DB;\n  console.log(sql, a);\n</script>\n`;
   assert.equal(await violations('src/routes/+page.svelte', code), 2);

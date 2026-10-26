@@ -1,8 +1,8 @@
 // 組織をまたいで読む処理の置き場所（docs/data-model.md の「読み書きの入口」）。1つの関数にまとめ、
 // 組織を分けるときはここだけを直す。当たるのは、ログインできるか（入れる組織と届いた招待があるか）、ログインの直後の組織の選択、
 // 届いた招待の一覧、初めてのログインで users.account_id を埋めること、招待の URL の秘密のハッシュから待っている指名と招待を引くこと。
-// 今あるのは、組織の選択と届いた招待の一覧、ログインできるか、users.account_id を埋めること、運用者の一覧の管理者の状態、
-// 招待の URL の秘密のハッシュから待っている指名と招待を引いて結ぶこと（claimPendingLogin）。
+// 今あるのは、組織の選択と届いた招待の一覧、ログインできるか、users.account_id を埋めること、運用者の一覧の管理者の状態と
+// 組織ごとの集計（organizationUsage。人数の数え方は seats.ts）、招待の URL の秘密のハッシュから待っている指名と招待を引いて結ぶこと（claimPendingLogin）。
 // ログインできるか（hasLoginAccess）は、組織の選択と同じ読み取り（readAccountOrganizations）を使う。判定の元を1つにするため。
 // 使うのはログインのとき（login.ts）だけで、アカウントに結ばれる前の指名の行も数える。セッションの判定（register.ts）は、
 // 組織の選択と同じ結果（結ばれる前の行を数えない）を使う。結ばれる前の行だけを持つ人のセッションを、結べないまま残さないため。
@@ -18,8 +18,10 @@ import { sql, type Expression, type ExpressionBuilder, type SqlBool } from 'kyse
 import { WAITING_USER_NAME_IN_LOG } from '../../shared/claim-token.ts';
 import type { AdminStatus } from '../../shared/operations/operator/list-organizations.ts';
 import { uuidv7 } from '../uuid.ts';
+import { chunksOf } from './chunks.ts';
 import { commonDb, crossOrganizationEntries } from './entries.ts';
 import type { LoginId } from './enter-organization.ts';
+import { seatHoldersIn } from './seats.ts';
 import { MAX_BOUND_PARAMETERS } from './send.ts';
 import type { OrganizationTables } from './tables.ts';
 
@@ -42,12 +44,6 @@ type Account = { accountId: string; logins: readonly LoginId[] };
 // セッションの判定で数えると、結ばれる前の行だけの人が、どこにも入れないままセッションを持ち続ける）
 type Reading = { accountId: string | undefined; logins: readonly LoginId[]; includeUnlinked: boolean };
 type OrganizationEntry = ReturnType<typeof crossOrganizationEntries>[number];
-
-function chunksOf<T>(items: readonly T[], size: number): T[][] {
-  const chunks: T[][] = [];
-  for (let start = 0; start < items.length; start += size) chunks.push(items.slice(start, start + size));
-  return chunks;
-}
 
 // 手段と ID の一致で users_login（login_provider, login_subject）の索引に乗せ、account_id の一致はその上の絞り込みにする。
 // 手段と ID の組ごとに1文にする（OR でつなぐと、索引を使わず全件を読む計画になることがある）。
@@ -329,6 +325,98 @@ export async function adminStatusesIn(
       if (total === undefined || total.admins === 0) return [id, 'none'];
       if (total.linked > 0) return [id, 'active'];
       return [id, total.expired === total.admins ? 'expired' : 'pending'];
+    }),
+  );
+}
+
+// 組織ごとの集計（運用者の組織の一覧）。人の名前や ID は返さず、数と日時だけを返す。
+//   seatsUsed: 人数に数える人の数（数え方は seats.ts。招待の上限と member-list の seats と同じ）
+//   workspaceCount: 閉じていない（closed_at が空）ワークスペースの数
+//   taskCount: 削除していない（deleted_at が空）タスクの数。受信箱、アーカイブ、閉じたワークスペースの分も含める
+//   lastUsedAt: 組織の users.last_seen_at の最大（無効にした人も含む）。だれも使っていなければ null
+export type OrganizationUsage = {
+  seatsUsed: number;
+  workspaceCount: number;
+  taskCount: number;
+  lastUsedAt: string | null;
+};
+
+// ワークスペースの数、タスクの数、最後に使われた日時を数える文。どれも organization_id IN (...) で絞り、組織ごとに GROUP BY する
+export function usageCountsStatements(db: OrganizationEntry, organizationIds: readonly string[]) {
+  return [
+    db.statement((q) =>
+      q
+        .selectFrom('workspaces')
+        .select((eb) => ['organization_id', eb.fn.countAll<number>().as('count')])
+        .where('organization_id', 'in', organizationIds)
+        .where('closed_at', 'is', null)
+        .groupBy('organization_id'),
+    ),
+    db.statement((q) =>
+      q
+        .selectFrom('tasks as t')
+        .innerJoin('workspaces as w', 'w.id', 't.workspace_id')
+        .select((eb) => ['w.organization_id', eb.fn.countAll<number>().as('count')])
+        .where('w.organization_id', 'in', organizationIds)
+        .where('t.deleted_at', 'is', null)
+        .groupBy('w.organization_id'),
+    ),
+    db.statement((q) =>
+      q
+        .selectFrom('users')
+        .select((eb) => ['organization_id', eb.fn.max('last_seen_at').as('last_seen_at')])
+        .where('organization_id', 'in', organizationIds)
+        .groupBy('organization_id'),
+    ),
+  ] as const;
+}
+
+export function organizationUsageOf(
+  env: Env,
+  organizationIds: readonly string[],
+  now: Date,
+): Promise<Map<string, OrganizationUsage>> {
+  return organizationUsageIn(organizationIds, crossOrganizationEntries(env), now);
+}
+
+// 入口の一覧を受け取る本体。index.ts は出さない。DB を複数にした場合を、テストが testing.ts から確かめる。
+// 初版の組織の数（数十まで）では件数で区切らず、全部の組織を読む（組織の ID は束縛の上限で区切る）。
+// DB を複数にしたときは、人数は DB ごとの集合を合わせ、数は足し、日時は大きい方を取る。引数の組織の ID すべてに値を返す
+export async function organizationUsageIn(
+  organizationIds: readonly string[],
+  entries: readonly OrganizationEntry[],
+  now: Date,
+): Promise<Map<string, OrganizationUsage>> {
+  const usage = new Map(
+    organizationIds.map((id): [string, Omit<OrganizationUsage, 'seatsUsed'>] => [
+      id,
+      { workspaceCount: 0, taskCount: 0, lastUsedAt: null },
+    ]),
+  );
+  const seats = await seatHoldersIn(entries, organizationIds, now);
+  for (const db of entries) {
+    for (const chunk of chunksOf(organizationIds, MAX_BOUND_PARAMETERS)) {
+      const [workspaces, tasks, users] = await db.batch(usageCountsStatements(db, chunk));
+      for (const row of workspaces.rows) {
+        const total = usage.get(row.organization_id);
+        if (total !== undefined) total.workspaceCount += Number(row.count);
+      }
+      for (const row of tasks.rows) {
+        const total = usage.get(row.organization_id);
+        if (total !== undefined) total.taskCount += Number(row.count);
+      }
+      for (const row of users.rows) {
+        const total = usage.get(row.organization_id);
+        const seen = row.last_seen_at;
+        if (total === undefined || seen === null) continue;
+        if (total.lastUsedAt === null || Date.parse(seen) > Date.parse(total.lastUsedAt)) total.lastUsedAt = seen;
+      }
+    }
+  }
+  return new Map(
+    organizationIds.map((id): [string, OrganizationUsage] => {
+      const total = usage.get(id) ?? { workspaceCount: 0, taskCount: 0, lastUsedAt: null };
+      return [id, { seatsUsed: seats.get(id)?.size ?? 0, ...total }];
     }),
   );
 }
