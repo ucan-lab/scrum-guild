@@ -277,7 +277,7 @@ function judgeGitCommand(sub, rest, gitDir, branchOf) {
   }
   // --no-verify は .githooks/ の pre-commit と pre-push を外す。このフックが作業コピーを読み違えたときの第二の守りが無くなるので、
   // main の上の判定を先に効かせた後、ブランチを問わず人が確かめる
-  if (COMMITTING.has(sub) && (skipsHooks(rest, sub === 'commit') || mayAddFlag(rest, GIT_SHORT_FLAGS_WITH_VALUE))) return [ASK, NO_VERIFY_REASON];
+  if (COMMITTING.has(sub) && (skipsHooks(rest, sub === 'commit') || mayAddFlag(rest, GIT_SHORT_FLAGS_WITH_VALUE[sub]))) return [ASK, NO_VERIFY_REASON];
   if (sub !== 'push') return null;
 
   const forced = rest.some((a) => a === '--force' || isOption(a, '--mirror', 4) || /^-[a-zA-Z]*f[a-zA-Z]*$/.test(a));
@@ -323,8 +323,10 @@ function judgeGitCommand(sub, rest, gitDir, branchOf) {
 
 const NO_VERIFY_REASON =
   '--no-verify と commit の -n（展開した結果がそうなりうる語も）は、main を守る git のフック（.githooks/ の pre-commit と pre-push）を外す。人が確かめる';
-// commit、merge、pull などの値を取るフラグ。値の語は、先頭が展開でもフラグとして読まれない（git commit -m "$msg"）
-const GIT_SHORT_FLAGS_WITH_VALUE = 'mFcCtsXo';
+// サブコマンドごとの値を取る短いフラグ。値の語は、先頭が展開でもフラグとして読まれない（git commit -m "$msg"）。
+// 同じ文字でも値を取るかはサブコマンドで違う（commit の -s は --signoff、merge の -s は --strategy）。
+// 値を取らないフラグを入れると次の語を値として飛ばし、展開した --no-verify を見逃す（git commit -s "$X"）ので、確かめたものだけを並べる
+const GIT_SHORT_FLAGS_WITH_VALUE = { commit: 'mFcCt', merge: 'mFsX', pull: 'sX', 'cherry-pick': 'mX', revert: 'mX', am: '' };
 const GIT_LONG_FLAGS_WITH_VALUE = new Set([
   '--message', '--file', '--author', '--date', '--template', '--reuse-message', '--reedit-message', '--fixup', '--cleanup', '--trailer',
   '--strategy', '--strategy-option', ...PUSH_FLAGS_WITH_VALUE,

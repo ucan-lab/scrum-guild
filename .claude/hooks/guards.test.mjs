@@ -1507,6 +1507,10 @@ describe('bash-rules: 確認を挟む', () => {
       'git merge "$OPT" x',
       'git push origin x $NV',
       'git push "$OPT" origin x',
+      // commit の -s（--signoff）と -o（--only）は値を取らないので、次の語はフラグになりうる
+      'git commit -s "$X" -m y',
+      'git commit -o "$X" -m y',
+      'git am -s "$X"',
     ]) {
       assert.equal(decision(command), 'ask', command);
     }
@@ -1829,6 +1833,9 @@ describe('bash-rules: 通す', () => {
     'git commit -F "$F"',
     'git commit -m y -- "$FILE"',
     'git commit -m y src/*.ts',
+    'git merge -s "$S" x',
+    // ヒアドキュメントで書いたメッセージを -m に渡す形
+    `git commit -m "$(cat <<'EOF'\nfix: x\n\nRefs #1\nEOF\n)"`,
     // メッセージの語に名前があっても、そのコミット自身は止めない
     'git commit -m "GIT_DIR と CDPATH の扱いを直す"',
     // 宛先が展開で決まっても、守る先に置かれうる名前でなければ通す
