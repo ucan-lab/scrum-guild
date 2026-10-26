@@ -29,7 +29,8 @@ function personKey(row: { login_provider: string; login_subject: string | null; 
 // 組織の人数に数える人（personKey の集合）。無効にしていない人のうち、管理者か、いずれかのワークスペースに今所属している人と、
 // 承諾待ちの招待（まだアカウントのない人への招待を含む）を持つ人を、同じ人は1人として数える。招待のうち、期限の過ぎた Google の招待、
 // 閉じたワークスペースへの招待、同じ組織で無効にされた人（同じログインの手段と ID）への招待は数えない。
-// 保存せず、招待のたびと、メンバーの画面を開くたびに数える。行は member_limit で抑えられるので、アプリで重なりを除く
+// 保存せず、招待のたびと、メンバーの画面を開くたびに数える。数える人は member_limit でおおよそ抑えられ、読む行もワークスペースの所属と
+// 承諾待ちの招待（1つのワークスペースで数十件の想定）なので、件数で区切らずに読み、アプリで重なりと期限切れを除く
 async function seatHolders(db: OrganizationDb, at: Date): Promise<Set<string>> {
   const organizationId = db.organizationId;
   const [userResult, invitationResult] = await db.batch([
