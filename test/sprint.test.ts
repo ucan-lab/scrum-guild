@@ -4,7 +4,8 @@ import { env } from 'cloudflare:workers';
 import { describe, expect, test } from 'vitest';
 import { sprintCreate, sprintDelete, sprintList, sprintUpdate } from '../src/shared/operations/sprint/index.ts';
 import { createApp } from '../src/server/app.ts';
-import { orgDb } from '../src/server/db/index.ts';
+import { orgDb, verifyWorkspace } from '../src/server/db/index.ts';
+import { sprintUpdateOperation } from '../src/server/operations/sprint.ts';
 import { implementedOperations } from '../src/server/operations/index.ts';
 import { createSprint } from './factories.ts';
 import { errorCodeOf, post } from './operations/harness.ts';
@@ -414,6 +415,100 @@ describe('sprint-update', () => {
     const res = await update(target, sprint.id, { name: '直す' }, target.admin);
     expect(res.status).toBe(409);
     expect(await errorCodeOf(res)).toBe('workspace_closed');
+  });
+
+  // 読んでから書くまでに別の要求が割り込む。処理を直に呼び、スプリントの行を読んだ直後（n 回目）に race を走らせる
+  describe('読んだ後に別の要求が割り込む', () => {
+    async function updateWithRace(
+      target: Target,
+      input: Record<string, unknown>,
+      race: (n: number, db: ReturnType<typeof orgDb>) => Promise<void>,
+    ) {
+      const db = orgDb(env, target.organization.verified);
+      const actor = {
+        accountId: target.leader.accountId,
+        userId: target.leader.userId,
+        isAdmin: false,
+        invitedOnly: false,
+      };
+      const workspace = await verifyWorkspace(db, actor, target.workspace.id);
+      let reads = 0;
+      const racing = new Proxy(db, {
+        get(base, key) {
+          const value = Reflect.get(base, key, base);
+          if (typeof value !== 'function') return value;
+          if (key !== 'first') return value.bind(base);
+          return async (...args: unknown[]) => {
+            const result = await (value as (...a: unknown[]) => Promise<unknown>).apply(base, args);
+            if ((result as { status?: string } | undefined)?.status !== undefined) await race(++reads, base);
+            return result;
+          };
+        },
+      });
+      const context = {
+        db: racing,
+        actor,
+        workspace,
+        input: { workspace_id: target.workspace.id, ...input },
+        defer: () => {},
+      } as never;
+      return sprintUpdateOperation.handler(context) as Promise<SprintBody>;
+    }
+
+    function setRange(db: ReturnType<typeof orgDb>, target: Target, sprintId: string, range: Record<string, string>) {
+      return db.run(
+        db.statement((q) =>
+          q
+            .updateTable('sprints')
+            .set(range)
+            .where('id', '=', sprintId)
+            .where('workspace_id', '=', target.workspace.id),
+        ),
+      );
+    }
+
+    test('開始日だけを書く間に別の要求が最終日を動かしたら、その上に書かず、読み直して決め直す', async () => {
+      const target = await createTarget();
+      const sprint = await createSprint(target.organization, target.workspace.id);
+      // 11-02〜11-15 を読み、開始日を 11-01、長さを 15 日にする（最終日は変わらないので、書く列は開始日だけ）。
+      // 読んだ後に最終日が 11-29 に伸びる。片側だけを守ると 11-01〜11-29（29 日）を書いて長さの CHECK に当たる。
+      // 両端を守るので書かず、読み直して 11-01〜11-15 にする
+      const result = await updateWithRace(
+        target,
+        { sprint_id: sprint.id, start_on: '2026-11-01', length: 15 },
+        async (n, base) => {
+          if (n === 1) await setRange(base, target, sprint.id, { end_on: '2026-11-29' });
+        },
+      );
+      expect(result.sprint).toMatchObject({ start_on: '2026-11-01', end_on: '2026-11-15', length: 15 });
+      const logs = (await logsOf(target, sprint.id)).map((log) => JSON.parse(log.changes_json));
+      expect(logs).toEqual([{ start_on: ['2026-11-02', '2026-11-01'], end_on: ['2026-11-29', '2026-11-15'] }]);
+    });
+
+    test('名前を送る間に別の要求が名前を変えたら、読み直してやり直し、履歴が連なる', async () => {
+      const target = await createTarget();
+      const sprint = await createSprint(target.organization, target.workspace.id, { name: '元' });
+      const result = await updateWithRace(target, { sprint_id: sprint.id, name: 'B' }, async (n) => {
+        if (n === 1) expect((await update(target, sprint.id, { name: 'A' })).status).toBe(200);
+      });
+      expect(result.sprint.name).toBe('B');
+      const names = (await logsOf(target, sprint.id)).map((log) => JSON.parse(log.changes_json).name);
+      expect(names).toEqual([
+        ['元', 'A'],
+        ['A', 'B'],
+      ]);
+    });
+
+    test('負け続けて3回やり直しても書けなければ、409 の conflict で、履歴は書かない', async () => {
+      const target = await createTarget();
+      const sprint = await createSprint(target.organization, target.workspace.id);
+      await expect(
+        updateWithRace(target, { sprint_id: sprint.id, length: 7 }, async (n, base) => {
+          await setRange(base, target, sprint.id, { end_on: `2026-11-${String(15 + n).padStart(2, '0')}` });
+        }),
+      ).rejects.toMatchObject({ status: 409, code: 'conflict' });
+      expect(await logsOf(target, sprint.id)).toEqual([]);
+    });
   });
 });
 
