@@ -1035,7 +1035,7 @@ export const dictionary = defineDictionary({
     '外すと、その人の未完了の{task}は担当なしに戻ります。完了の記録と経験値は残ります。',
     '外すと、その人の未完了の{task}は担当なしに戻ります。完了の記録と経験値は残ります。',
   ),
-  memberWorking: workspace('メンバーを更新しています', 'メンバーを更新しています'),
+  memberWorking: workspace('{member}を更新しています', '{member}を更新しています'),
   memberRemoveTitle: workspace('{name}を外しますか', '{name}を外しますか'),
   memberRemoveText: workspace(
     '{name}は{workspace}から外れます。担当していた未完了の{task}は担当なしに戻ります。完了の記録と経験値は残ります。戻すには、もう一度招待します。',
@@ -1053,15 +1053,15 @@ export const dictionary = defineDictionary({
   ),
   memberDemoteTitle: workspace('自分を一般に戻しますか', '自分を一般に戻しますか'),
   memberDemoteText: workspace(
-    '一般に戻すと、ロールの付け替え、招待、メンバーを外すことができなくなります。{leader}に戻るには、ほかの{leader}か{admin}に頼んでください。',
-    '一般に戻すと、ロールの付け替え、招待、メンバーを外すことができなくなります。{leader}に戻るには、ほかの{leader}か{admin}に頼んでください。',
+    '一般に戻すと、ロールの付け替え、招待、{member}を外すことができなくなります。{leader}に戻るには、ほかの{leader}か{admin}に頼んでください。',
+    '一般に戻すと、ロールの付け替え、招待、{member}を外すことができなくなります。{leader}に戻るには、ほかの{leader}か{admin}に頼んでください。',
   ),
   memberDemoteConfirm: workspace('一般に戻す', '一般に戻す'),
   // 他人の唯一のリーダーを一般に戻すとき（続けて memberLastLeaderNote を添える）
   memberDemoteOtherTitle: workspace('{name}を一般に戻しますか', '{name}を一般に戻しますか'),
   memberDemoteOtherText: workspace(
-    '{name}は一般に戻り、ロールの付け替え、招待、メンバーを外すことができなくなります。',
-    '{name}は一般に戻り、ロールの付け替え、招待、メンバーを外すことができなくなります。',
+    '{name}は一般に戻り、ロールの付け替え、招待、{member}を外すことができなくなります。',
+    '{name}は一般に戻り、ロールの付け替え、招待、{member}を外すことができなくなります。',
   ),
   memberRoleChanged: workspace('{name}を{role}にしました', '{name}を{role}にしました'),
   memberRemoved: workspace('{name}を外しました', '{name}を外しました'),
@@ -1072,16 +1072,16 @@ export const dictionary = defineDictionary({
     'この{workspace}の{leader}がいなくなります。新しい{leader}は{admin}が任命します。',
   ),
   memberErrorClosed: workspace(
-    '終了した{workspace}のメンバーは変えられません。画面を読み直しました。',
-    '終了した{workspace}のメンバーは変えられません。画面を読み直しました。',
+    '終了した{workspace}の{member}は変えられません。画面を読み直しました。',
+    '終了した{workspace}の{member}は変えられません。画面を読み直しました。',
   ),
   memberErrorForbidden: workspace(
     'この操作ができるのは{leader}と{admin}だけです。画面を読み直しました。',
     'この操作ができるのは{leader}と{admin}だけです。画面を読み直しました。',
   ),
   memberErrorChanged: workspace(
-    'メンバーのロールが先に変わっていました。一覧を読み直しました。',
-    'メンバーのロールが先に変わっていました。一覧を読み直しました。',
+    '{member}のロールが先に変わっていました。一覧を読み直しました。',
+    '{member}のロールが先に変わっていました。一覧を読み直しました。',
   ),
   memberErrorNotFound: workspace(
     'その人はもう所属していませんでした。一覧を読み直しました。',

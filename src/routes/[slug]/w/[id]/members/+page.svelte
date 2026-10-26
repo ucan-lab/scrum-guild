@@ -72,11 +72,11 @@
 
   // 行の操作の失敗は、どれももう一度押しても直らないことが多いので、トーストで知らせて読み直す
   async function reportFailure(result: Exclude<ApiResult<unknown>, { ok: true }>, failed: string): Promise<void> {
-    const words = { workspace: t('workspace'), leader: t('leader'), admin: t('admin') };
+    const words = { workspace: t('workspace'), member: t('member'), leader: t('leader'), admin: t('admin') };
     if (result.error?.code === 'workspace_closed' || result.status === 403) {
       showToast(t(result.status === 403 ? 'memberErrorForbidden' : 'memberErrorClosed', words), 'alert');
       await invalidate('app:workspace');
-    } else if (result.error?.code === 'conflict') showToast(t('memberErrorChanged'), 'alert');
+    } else if (result.error?.code === 'conflict') showToast(t('memberErrorChanged', words), 'alert');
     else if (result.status === 404) showToast(t('memberErrorNotFound'), 'alert');
     else if (result.status === 0) showToast(t('inviteErrorUnreachable'), 'alert');
     else showToast(failed, 'alert');
@@ -358,7 +358,9 @@
       {/if}
     {/if}
     <!-- 読み上げの領域。常に置き、文字だけを替える -->
-    <div class="visually-hidden" role="status">{changing === null ? '' : t('memberWorking')}</div>
+    <div class="visually-hidden" role="status">
+      {changing === null ? '' : t('memberWorking', { member: t('member') })}
+    </div>
   </Section>
 
   <ConfirmDialog
@@ -389,9 +391,9 @@
         })}
       </p>
     {:else if pending?.kind === 'demote' && !(me?.is_admin ?? false)}
-      <p>{t('memberDemoteText', { leader: t('leader'), admin: t('admin') })}</p>
+      <p>{t('memberDemoteText', { member: t('member'), leader: t('leader'), admin: t('admin') })}</p>
     {:else if pending?.kind === 'demoteOther'}
-      <p>{t('memberDemoteOtherText', { name: pending.member.name })}</p>
+      <p>{t('memberDemoteOtherText', { name: pending.member.name, member: t('member') })}</p>
     {/if}
     {#if pending !== null && pending.member.role === 'leader' && leaderCount === 1}
       <p>{t('memberLastLeaderNote', { workspace: t('workspace'), leader: t('leader'), admin: t('admin') })}</p>

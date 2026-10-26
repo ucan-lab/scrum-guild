@@ -322,7 +322,7 @@ test.describe('リーダー（あおば開発のミナト）', () => {
     await role.selectOption('member');
     const dialog = page.getByRole('dialog', { name: 'ハルカを一般に戻しますか' });
     await expect(dialog).toContainText(
-      'ハルカは一般に戻り、ロールの付け替え、招待、メンバーを外すことができなくなります。',
+      'ハルカは一般に戻り、ロールの付け替え、招待、冒険者を外すことができなくなります。',
     );
     await expect(dialog).toContainText(
       'このパーティのパーティリーダーがいなくなります。新しいパーティリーダーはギルドマスターが任命します。',
@@ -364,7 +364,7 @@ test.describe('リーダー（あおば開発のミナト）', () => {
     reply = { status: 409, json: { error: { code: 'conflict', message: 'x' } } };
     await role.selectOption('member');
     await expect(page.locator('.toasts:visible .toast').last()).toHaveText(
-      'メンバーのロールが先に変わっていました。一覧を読み直しました。',
+      '冒険者のロールが先に変わっていました。一覧を読み直しました。',
     );
     await expect(role).toHaveValue('leader');
   });
