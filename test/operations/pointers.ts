@@ -77,6 +77,11 @@ export const pointers: Pointers = {
   'workspace-leader-candidates': { noReference: {} },
   workspace: async (target) => ({ workspace_id: target.workspace.id }),
   'member-list': async (target) => ({ workspace_id: target.workspace.id }),
+  // 同じ値を続けて送っても、書かずに成功する
+  'workspace-dod-update': async (target) => ({
+    workspace_id: target.workspace.id,
+    definition_of_done_md: '- レビューを通した',
+  }),
   // 成功すると状態が変わるので、呼ぶたびに別のワークスペースを作る（続けて呼ぶと 409 になるため）。
   // 閉じた対象（createTarget({ closed: true })）では閉じたワークスペースそのものを指し、閉じたものへの書き込みが 409 になることを見る
   'workspace-close': async (target) => ({

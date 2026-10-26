@@ -239,7 +239,14 @@ describe('workspace-create', () => {
       body: { workspace_id: other },
     });
     expect(info.status).toBe(200);
-    expect(await info.json()).toEqual({ name: '保守チーム', vocabulary: 'game', closed_at: null, role: null });
+    // 作った直後の完成の定義は空
+    expect(await info.json()).toEqual({
+      name: '保守チーム',
+      vocabulary: 'game',
+      closed_at: null,
+      definition_of_done_md: null,
+      role: null,
+    });
     // 所属しない一般のユーザーは入れない
     const denied = await post(app, workspaceInfo, {
       slug: target.slug,
@@ -677,7 +684,12 @@ describe('workspace', () => {
     await createMembership(target.organization, workspace.id, target.member.userId!, { role: 'member' });
     await createMembership(target.organization, workspace.id, target.leader.userId!, { role: 'leader' });
 
-    const expected = { name: '社内ツール', vocabulary: 'scrum', closed_at: '2026-10-22T00:00:00.000Z' };
+    const expected = {
+      name: '社内ツール',
+      vocabulary: 'scrum',
+      closed_at: '2026-10-22T00:00:00.000Z',
+      definition_of_done_md: null,
+    };
     expect(await (await read(target, target.member, workspace.id)).json()).toEqual({ ...expected, role: 'member' });
     expect(await (await read(target, target.leader, workspace.id)).json()).toEqual({ ...expected, role: 'leader' });
     expect(await (await read(target, target.admin, workspace.id)).json()).toEqual({ ...expected, role: null });

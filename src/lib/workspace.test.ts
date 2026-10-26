@@ -6,6 +6,7 @@ const view = (id: string): WorkspaceView => ({
   name: '青葉チーム',
   vocabulary: 'game',
   closedAt: null,
+  definitionOfDone: null,
   role: 'member',
 });
 const known = (key: string): KnownWorkspace => ({ key, workspace: view(key.split('/')[1]!) });

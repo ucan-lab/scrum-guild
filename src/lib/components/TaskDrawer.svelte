@@ -3,6 +3,7 @@
   import { beforeNavigate, goto } from '$app/navigation';
   import {
     taskAssign,
+    taskComplete,
     taskDelete,
     taskDetail,
     taskHistory,
@@ -24,6 +25,7 @@
   import { TASK_POINT_VALUES, TASK_TITLE_MAX_LENGTH, taskTitleProblem } from '../../shared/task.ts';
   import { callOperation } from '../api.ts';
   import { withCurrent } from '../definition-options.ts';
+  import { formatDateTime } from '../format-datetime.ts';
   import { historyEntryView } from '../task-history.ts';
   import { showToast } from '../toast.svelte.ts';
   import { t } from '../vocabulary.svelte.ts';
@@ -59,12 +61,17 @@
   // 削除は確認のダイアログを挟む。消したら閉じ、トーストで知らせ、画面が木を読み直す（onremoved）。
   // 本文の下に「変更の履歴」の節を置く（task-history。新しい順に 50 件ずつで、続きは「さらに読む」で足す）。
   // 読み込めたときと、引き出しで保存した後に読み直す。列の名前と値の文は src/lib/task-history.ts が辞書の言葉で作る。
-  // コメント（#171）が入ったら、見本（kit.js の drawerHtml）どおりのタブにする
+  // コメント（#171）が入ったら、見本（kit.js の drawerHtml）どおりのタブにする。
+  // 本文の下に完了の帯（.done-bar）を置く。完了していなくて書けるときは「完了にする」（task-complete。確かめのダイアログは挟まない）、
+  // 完了していれば完了の印と完了した日時を出し、横にワークスペースの完成の定義（空なら出さない）を Markdown で出す。
+  // 完了にしたら、応答の日時を入れ、履歴を読み直し、画面が木を読み直す（onchanged）。押したボタンは消えるので、印へフォーカスを移す。
+  // 完了を戻す操作は #240 で足す
   let {
     slug,
     workspaceId,
     taskId,
     canWrite,
+    definitionOfDone,
     onclose,
     onchanged,
     onstale,
@@ -74,6 +81,8 @@
     workspaceId: string;
     taskId: string;
     canWrite: boolean;
+    // ワークスペースの完成の定義（Markdown）。空なら null で、完了の操作の横に何も出さない
+    definitionOfDone: string | null;
     // 閉じる。画面の枠が `?task=` を外し、フォーカスを行へ戻す
     onclose: () => void;
     // 欄を保存した。画面が木だけを読み直す（枠の読み直しが一時的に失敗しても、引き出しと書きかけを失わないため）
@@ -208,7 +217,8 @@
     const select = categorySelect;
     const value = categoryShownId;
     void categoryOptions;
-    if (select !== undefined && select.value !== value) select.value = value;
+    // 選択欄が外れると（閉じた、親の下へ移された）bind:this が null になるので、null も外す
+    if (select != null && select.value !== value) select.value = value;
   });
   const categoryEditable = $derived(canWrite && task !== null && task.story_id === null);
 
@@ -233,12 +243,13 @@
   });
   // アバターに出す人。選んだ候補か今の担当
   const assigneeShown = $derived(assigneeOptions.find((option) => option.id === assigneeShownId) ?? null);
-  // 選択欄の値を、見せる値に合わせる。保存に失敗して前の値へ戻すときと、候補を読み直して選択肢が替わったときも合わせる
+  // 選択欄の値を、見せる値に合わせる。保存に失敗して前の値へ戻すときと、候補を読み直して選択肢が替わったときも合わせる。
+  // 引き出しの中で完了にすると選択欄が外れ、bind:this が null になるので、null も外す
   $effect(() => {
     const select = assigneeSelect;
     const value = assigneeShownId;
     void assigneeOptions;
-    if (select !== undefined && select.value !== value) select.value = value;
+    if (select != null && select.value !== value) select.value = value;
   });
   const titleEditable = $derived(canWrite && task !== null && !task.is_imported);
   const done = $derived(task?.completed_at != null);
@@ -956,6 +967,57 @@
     void commitDue(true);
   }
 
+  // ---- 完了にする（確かめのダイアログは挟まない。1本だけ送る） ----
+  let completing = $state(false);
+  let doneMark = $state<HTMLElement>();
+
+  async function complete(): Promise<void> {
+    if (task === null || completing || task.completed_at !== null) return;
+    completing = true;
+    try {
+      const result = await callOperation(taskComplete, { workspace_id: workspaceId, task_id: taskId }, { slug });
+      if (!alive) {
+        // 送っている間に閉じられた。通ったら木を読み直して知らせ、失敗は知らせる
+        if (result.ok) {
+          showToast(t('taskCompleted', { task: t('task'), done: t('done') }), 'check');
+          onchanged();
+        } else if (result.status !== 409 || result.error?.code !== 'conflict') {
+          showToast(t('taskCompleteFailed', { done: t('done') }), 'alert');
+        }
+        return;
+      }
+      if (result.ok) {
+        if (task !== null) task = { ...task, completed_at: result.data.completed_at };
+        showToast(t('taskCompleted', { task: t('task'), done: t('done') }), 'check');
+        void loadHistory();
+        onchanged();
+      } else if (result.status === 401) {
+        onstale();
+        return;
+      } else if (result.status === 404) {
+        gone();
+        return;
+      } else if (result.status === 409 && result.error?.code === 'workspace_closed') {
+        showToast(t('workspaceClosedReadOnly', { workspace: t('workspace') }), 'alert');
+        onstale();
+        return;
+      } else if (result.status === 409) {
+        // 別の画面で先に完了にされていた。読み直して、完了の印で示す
+        showToast(t('taskAlreadyDone', { task: t('task'), done: t('done') }), 'check');
+        await refresh();
+        onchanged();
+      } else {
+        showToast(t('taskCompleteFailed', { done: t('done') }), 'alert');
+        return;
+      }
+    } finally {
+      if (alive) completing = false;
+    }
+    // 押したボタンは完了の印に替わって消えるので、フォーカスを印へ移す
+    await tick();
+    if (alive) doneMark?.focus();
+  }
+
   // ---- 削除 ----
   async function remove(event: MouseEvent): Promise<void> {
     if (task === null || deleting || asking) return;
@@ -1010,7 +1072,15 @@
     }
   }
 
-  const status = $derived(loadState === 'loading' ? t('loading') : deleting ? t('taskDeleting') : '');
+  const status = $derived(
+    loadState === 'loading'
+      ? t('loading')
+      : deleting
+        ? t('taskDeleting')
+        : completing
+          ? t('taskCompleting', { done: t('done') })
+          : '',
+  );
 </script>
 
 {#snippet titleView(begin: ((event: Event) => void) | null)}
@@ -1399,6 +1469,31 @@
         {@render bodyView()}
       {/if}
     </div>
+
+    <!-- 完了の帯（kit.js の drawerHtml の .done-bar）。完了を戻す操作は #240 で足す -->
+    {#if task.completed_at !== null || canWrite || definitionOfDone !== null}
+      <div class="done-bar">
+        {#if task.completed_at !== null}
+          <!-- tabindex="-1" は、完了にした後にフォーカスを置くため（キーボードの Tab 順には入らない） -->
+          <span class="hanko" role="img" aria-label={t('done')} tabindex="-1" bind:this={doneMark}
+            ><Icon name="check" /><b>{t('doneStamp')}</b></span
+          >
+          <time datetime={task.completed_at}
+            >{t('taskCompletedAt', { done: t('done'), at: formatDateTime(task.completed_at) })}</time
+          >
+        {:else if canWrite}
+          <button class="btn is-primary" type="button" aria-disabled={completing} onclick={() => void complete()}>
+            <Icon name="check" />{t('complete')}
+          </button>
+        {/if}
+        {#if definitionOfDone !== null}
+          <div class="done-bar-dod">
+            <b>{t('dod')}</b>
+            <Markdown source={definitionOfDone} headingStart={4} />
+          </div>
+        {/if}
+      </div>
+    {/if}
 
     <!-- 変更の履歴（kit.js の drawerHtml の .history）。コメント（#171）が入ったら、見本どおりのタブにする -->
     <section

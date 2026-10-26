@@ -530,7 +530,7 @@ a.brand { color: inherit; text-decoration: none; }
 .board-empty { font-size: var(--text-xs); color: var(--color-faint); padding: var(--space-2); }
 .dod { font-size: var(--text-xs); color: var(--color-muted); background: var(--color-surface); border: 1px dashed var(--color-line); border-radius: var(--radius-1); padding: 6px var(--space-3); }
 .dod summary { cursor: pointer; color: var(--color-fg); font-weight: 700; }
-.dod ul { margin: 6px 0 0; padding-left: 1.2em; display: grid; gap: 2px; }
+.dod > .doc-box { margin-top: 6px; }
 .card { background: var(--color-surface); border: 1px solid var(--color-line); border-radius: var(--radius-1); padding: var(--space-3); display: grid; gap: var(--space-2); }
 .card:hover { border-color: var(--color-muted); }
 .card-parent { font-size: var(--text-xs); color: var(--color-muted); overflow-wrap: anywhere; }
@@ -783,8 +783,11 @@ button.tree-link { border: 0; background: none; padding: 0; font: inherit; text-
 .doc-box :is(th, td).is-center { text-align: center; }
 .doc-box :is(th, td).is-right { text-align: right; }
 .done-bar { display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap; padding: var(--space-3) var(--space-4); border: 1px solid var(--color-line); border-radius: var(--radius-1); background: var(--color-bg); }
-.done-bar-dod { font-size: var(--text-xs); color: var(--color-muted); flex: 1 1 220px; }
-.done-bar-dod b { color: var(--color-fg); margin-right: var(--space-2); }
+/* 完了の操作の横の完成の定義。見出し（b）の下に Markdown の本文（.doc-box）を置く。空なら出さない */
+.done-bar-dod { font-size: var(--text-xs); color: var(--color-muted); flex: 1 1 220px; min-width: 0; display: grid; gap: var(--space-1); }
+.done-bar-dod > b { color: var(--color-fg); }
+/* 完成の定義の Markdown（.done-bar-dod と .dod の中）は、囲みの中なので .doc-box の枠と余白を外し、囲みの小さい文字のまま描く */
+:is(.done-bar-dod, .dod) .doc-box { border: 0; border-radius: 0; padding: 0; font-size: inherit; }
 .thanks { display: flex; gap: var(--space-2); flex-wrap: wrap; }
 .btn.is-on { border-color: var(--color-accent); color: var(--color-accent); background: var(--color-accent-soft); }
 .btn .avatar { width: 20px; height: 20px; font-size: 10px; }
