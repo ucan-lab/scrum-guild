@@ -8,7 +8,7 @@ import { inviteProviderSchema } from './invitee-resolve.ts';
 // ID が違えば 409 の invitee_changed（確かめた後にユーザー名が付け替えられた場合に、別の人を招待しない）。
 // 断る順は、解決できない（400 の invalid_input。理由は invitee-resolve と同じ）、ID の違い、今所属している（409 の already_member）、
 // 同じワークスペースに承諾待ちの招待がある（409 の already_invited）、組織の人数が上限以上で、招待する人がまだ数えられていない
-// （409 の member_limit_reached。すでに数えられている人は上限でも招待できる）。無効にされた人への招待は断らない。
+// （409 の member_limit_reached。すでに数えられている人は上限でも招待できる）。無効にされた人であることでは断らない（人数に数えないので、上限では新しい人と同じく断る）。
 // 人数の数え方は docs/data-model.md の organizations の「人数」。同時に招待して超えたときはそのまま認める（超えるのは同時に送った招待の数まで）。
 // invitations と change_logs（action: create）を1回の batch で書く
 export const invitationCreate = defineOperation({
