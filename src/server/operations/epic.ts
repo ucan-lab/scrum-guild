@@ -7,8 +7,8 @@ import { ApiError } from '../errors.ts';
 import { uuidv7 } from '../uuid.ts';
 import { categoryRow, readCategoryRef, refOf } from './definition-refs.ts';
 import { implement } from './implement.ts';
-import { epicChildCounts } from './tree-delete.ts';
-import { actorUserIdOf, changeLogColumns, mayDeleteOwned, openWorkspace, throwIfClosed } from './write-guards.ts';
+import { epicDeletion } from './tree-delete.ts';
+import { actorUserIdOf, changeLogColumns, openWorkspace, throwIfClosed } from './write-guards.ts';
 
 // エピックのダイアログの欄。作るときの履歴に使う
 const EDITABLE_FIELDS = ['title', 'body_md', 'due_on', 'link_url'] as const;
@@ -57,15 +57,11 @@ function detailOf(row: EpicRow): EpicDetail {
   };
 }
 
-// 削除のボタンと確認のために、呼んだ人が削除できるか（作った人かリーダー。管理者を含む）と、配下の件数も返す
+// 削除のボタンと確認のために、呼んだ人が削除できるか（作った人かリーダー。管理者を含む）、まとめて削除できるかと、配下の件数も返す
 export const epicGetOperation = implement(epicGet, async ({ db, actor, workspace, input }) => {
   const epic = await readEpic(db, workspace.workspaceId, input.epic_id);
   if (epic === undefined) throw new ApiError(404, 'not_found');
-  return {
-    epic: detailOf(epic),
-    can_delete: mayDeleteOwned(epic.created_by, actor, workspace),
-    children: await epicChildCounts(db, workspace.workspaceId, epic.id),
-  };
+  return { epic: detailOf(epic), ...(await epicDeletion(db, actor, workspace, epic)) };
 });
 
 export const epicCreateOperation = implement(epicCreate, async ({ db, actor, workspace, input }) => {

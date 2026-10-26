@@ -1599,21 +1599,26 @@ export const dictionary = defineDictionary({
   treeDeleteChildren: organization('配下の扱い', '配下の扱い'),
   treeDeleteKeep: organization('配下を親なしで残す', '配下を親なしで残す'),
   treeDeleteAll: organization('配下もまとめて削除する', '配下もまとめて削除する'),
+  // 言葉と数、数と「件」の間は改行させない空白（U+00A0）
   epicDeleteKeepHint: workspace(
-    '{story} {stories} 件は親なしの{story}として末尾へ移り、その下の{task} {tasks} 件は{story}の下のままです。{category}は{epic}のものを写します。',
-    '{story} {stories} 件は親なしの{story}として末尾へ移り、その下の{task} {tasks} 件は{story}の下のままです。{category}は{epic}のものを写します。',
+    '{story} {stories} 件は親なしの{story}として末尾へ移り、その下の{task} {tasks} 件は{story}の下のままです。{category}は{epic}の{category}を写します。',
+    '{story} {stories} 件は親なしの{story}として末尾へ移り、その下の{task} {tasks} 件は{story}の下のままです。{category}は{epic}の{category}を写します。',
   ),
   epicDeleteAllHint: workspace(
-    '{story} {stories} 件と{task} {tasks} 件を削除します。取り込んだ{task}は削除せず、{archive}へ移します。',
-    '{story} {stories} 件と{task} {tasks} 件を削除します。取り込んだ{task}は削除せず、{archive}へ移します。',
+    '{story} {stories} 件と{task} {tasks} 件を削除します。取り込んだ{task}は削除せず、{archive}へ移します。',
+    '{story} {stories} 件と{task} {tasks} 件を削除します。取り込んだ{task}は削除せず、{archive}へ移します。',
   ),
   storyDeleteKeepHint: workspace(
-    '{task} {tasks} 件は親なしの{task}として末尾へ移ります。{category}は{story}が引き継いでいたものを写します。',
-    '{task} {tasks} 件は親なしの{task}として末尾へ移ります。{category}は{story}が引き継いでいたものを写します。',
+    '{task} {tasks} 件は親なしの{task}として末尾へ移ります。{category}は{story}の{category}を写します。',
+    '{task} {tasks} 件は親なしの{task}として末尾へ移ります。{category}は{story}の{category}を写します。',
   ),
   storyDeleteAllHint: workspace(
-    '{task} {tasks} 件を削除します。取り込んだ{task}は削除せず、{archive}へ移します。',
-    '{task} {tasks} 件を削除します。取り込んだ{task}は削除せず、{archive}へ移します。',
+    '{task} {tasks} 件を削除します。取り込んだ{task}は削除せず、{archive}へ移します。',
+    '{task} {tasks} 件を削除します。取り込んだ{task}は削除せず、{archive}へ移します。',
+  ),
+  treeDeleteAllLeaderOnly: workspace(
+    '配下に他の人が作ったものがあるため、まとめて削除できるのは{leader}だけです。',
+    '配下に他の人が作ったものがあるため、まとめて削除できるのは{leader}だけです。',
   ),
   epicDeleteNoChildren: workspace('配下の{story}はありません。', '配下の{story}はありません。'),
   storyDeleteNoChildren: workspace('配下の{task}はありません。', '配下の{task}はありません。'),

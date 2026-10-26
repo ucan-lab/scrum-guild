@@ -75,6 +75,7 @@
   // 呼んだ人が削除できるか（作った人かリーダー）と、配下の件数。epic-get が返す
   let canDelete = $state(false);
   let childCounts = $state({ stories: 0, tasks: 0 });
+  let canDeleteChildren = $state(false);
   let deleteDialog = $state<ReturnType<typeof TreeDeleteDialog>>();
   let title = $state('');
   let body = $state('');
@@ -138,6 +139,7 @@
       fill(result.data.epic);
       canDelete = result.data.can_delete;
       childCounts = result.data.children;
+      canDeleteChildren = result.data.can_delete_children;
       loadState = 'ready';
       await tick();
       if (mine === generation) document.getElementById(fieldIds.title)?.focus();
@@ -163,6 +165,7 @@
     fill(null);
     canDelete = false;
     childCounts = { stories: 0, tasks: 0 };
+    canDeleteChildren = false;
     errors = {};
     submitError = null;
     submitting = false;
@@ -300,11 +303,14 @@
     }
   }
 
-  // 削除の確認を開く。配下の件数は開いたときに読んだもの（読んでから増えた分も、サーバーは今の配下で扱う）
+  // 削除の確認を開く。件数とまとめて削除できるかは、確認が開いたときに epic-get で読み直す（それまでは、このダイアログが読んだ値を出す）
   function askDelete(event: MouseEvent): void {
     if (editing === null || submitting) return;
     const trigger = event.currentTarget instanceof HTMLElement ? event.currentTarget : null;
-    deleteDialog?.show({ kind: 'epic', id: editing.id, title: editing.title, ...childCounts }, trigger);
+    deleteDialog?.show(
+      { kind: 'epic', id: editing.id, title: editing.title, ...childCounts, canDeleteChildren },
+      trigger,
+    );
   }
 
   function deleteFinished(outcome: 'deleted' | 'gone' | 'closed'): void {

@@ -369,6 +369,10 @@ const SECTIONS = [
       <button class="btn" type="button" data-dialog="editRecord">完了の記録を直す</button>
       <button class="btn is-danger" type="button" data-dialog="deleteEpic">${t("epic")}を削除する</button>
       <button class="btn is-danger" type="button" data-dialog="deleteStory">${t("story")}を削除する</button>
+      <button class="btn is-danger" type="button" data-dialog="deleteStoryEmpty">${t("story")}を削除する（配下なし）</button>
+      <button class="btn is-danger" type="button" data-dialog="deleteStoryLeaderOnly">${t("story")}を削除する（まとめて削除できない）</button>
+      <button class="btn" type="button" data-dialog="editEpicNotOwner">${t("epic")}を直す（削除できない人）</button>
+      <button class="btn" type="button" data-dialog="editStoryNotOwner">${t("story")}を直す（削除できない人）</button>
       <button class="btn" type="button" data-dialog="discardDraft">書きかけを捨てるか確かめる（引き出し）</button>
       <button class="btn is-danger" type="button" data-dialog="deleteTask">${t("task")}を削除する（引き出し）</button>
     </div>
@@ -385,13 +389,14 @@ const SECTIONS = [
       <div class="field"><span class="field-label">スイッチ</span><label class="toggle"><input type="checkbox" checked><span>月ごとに計上する</span></label></div>
       <div class="field"><span class="field-label">曜日</span><div class="weekdays">${["日", "月", "火", "水", "木", "金", "土"].map((w, i) => `<label><input type="checkbox" ${i > 0 && i < 6 ? "checked" : ""} aria-label="${w}曜日"><span>${w}</span></label>`).join("")}</div></div>
       <div class="choice-list"><label class="choice"><input type="radio" name="cc" checked><div><b>次の${t("sprint")}へ持ち越す</b><span>同じ${t("task")}をそのまま移します。</span></div></label><label class="choice"><input type="radio" name="cc"><div><b>${t("backlog")}へ戻す</b><span>どの${t("sprint")}にも入っていない状態にします。</span></div></label></div>
+      <div class="field"><span class="field-label" id="cc-off-label">選べない choice</span><div class="choice-list" role="radiogroup" aria-labelledby="cc-off-label"><label class="choice"><input type="radio" name="cc-off" checked><div><b>配下を親なしで残す</b><span>${t("task")} 3 件は親なしの${t("task")}として末尾へ移ります。</span></div></label><label class="choice"><input type="radio" name="cc-off" disabled aria-describedby="cc-off-hint"><div><b>配下もまとめて削除する</b><span>${t("task")} 3 件を削除します。</span></div></label></div><span class="field-hint" id="cc-off-hint">配下に他の人が作ったものがあるため、まとめて削除できるのは${t("leader")}だけです。</span></div>
       <div class="choice-list"><a class="choice" href="#choices"><div><b>あおば開発</b><span class="mono">scrum-guild.dev/aoba/</span><span>${t("workspace")} 2</span></div><span class="chip">${t("admin")}</span></a></div>
       <div class="choice-list"><a class="choice" href="#choices"><div><b>ひばり工房</b><span>承諾待ちの招待があります</span></div></a></div>
       <div class="choice-list"><div class="choice is-static"><div><b>デザイン相談室</b><span>ひばり工房・リンさんから・一般・2026-10-19</span><div class="form-actions"><button class="btn is-primary is-sm" type="button">承諾する</button><button class="btn is-quiet is-sm" type="button">辞退する</button></div></div></div></div>
       <div class="field"><span class="field-label">押せない segmented</span><div class="segmented" role="radiogroup" aria-label="押せない例"><label><input type="radio" name="cs-off" checked disabled><span>GitHub</span></label><label><input type="radio" name="cs-off" disabled><span>Google</span></label></div></div>
       ${SQ.loginTarget("cat-login", { hints: { github: "GitHub のユーザー ID に解決して招待します。", google: "招待の URL を作り、本人がそこから Google でログインすると入れます。" } })}
     </div>`,
-    ["2〜7個の短い選択肢は segmented、説明が要る選択肢は choice、その場で効くオンとオフはスイッチ。", "押すとすぐ移る選択肢（組織の選択）は a.choice にする。ラジオを持たず、行の全体がリンクになる。", "組織の選択の届いた招待は、その組織の招待の画面へ移る a.choice にする。", "行の中に操作を置く行（招待の画面の届いた招待。承諾する、辞退する）は .choice.is-static にし、操作は中の .form-actions に並べる。記録の面の .panel は光るので、ここには使わない。","招待と管理者の指名で人を指す欄は loginTarget。先に手段を選び、選んだ手段に合わせて欄の名前、例、説明を差し替える。"], ".segmented / .toggle / .weekdays / .choice-list .choice / a.choice / .choice.is-static / SQ.loginTarget")],
+    ["2〜7個の短い選択肢は segmented、説明が要る選択肢は choice、その場で効くオンとオフはスイッチ。", "押すとすぐ移る選択肢（組織の選択）は a.choice にする。ラジオを持たず、行の全体がリンクになる。", "選べない choice は input に disabled を付ける（.choice:has(input:disabled) が薄くする）。選べない理由は選択肢の下の .field-hint に出し、input の aria-describedby で結ぶ（エピックとストーリーの削除の確認の「まとめて削除する」）。","組織の選択の届いた招待は、その組織の招待の画面へ移る a.choice にする。", "行の中に操作を置く行（招待の画面の届いた招待。承諾する、辞退する）は .choice.is-static にし、操作は中の .form-actions に並べる。記録の面の .panel は光るので、ここには使わない。","招待と管理者の指名で人を指す欄は loginTarget。先に手段を選び、選んだ手段に合わせて欄の名前、例、説明を差し替える。"], ".segmented / .toggle / .weekdays / .choice-list .choice / .choice:has(input:disabled) / a.choice / .choice.is-static / SQ.loginTarget")],
   ["org-menu", "組織の切り替え", () => block("org-menu", "組織の切り替え", "左のメニューの上（ブランドの下）に置く。開閉するメニューで、中は各組織へのリンクと、最後に組織の選択の画面へ戻るリンク。入れる組織が2つ以上、または届いた招待があるときだけ出す。",
     `<div class="two"><div class="field"><span class="field-label">閉じているとき（招待なし）</span><div style="max-width:240px">${SQ.orgMenuHtml({ open: false, id: "cat-org-menu-closed", live: false, invited: false })}</div></div>
       <div class="field"><span class="field-label">開いているとき（今の組織に aria-current="page" とチェック）</span><div style="max-width:240px">${SQ.orgMenuHtml({ open: true, id: "cat-org-menu-open", live: false, invited: false })}</div></div>

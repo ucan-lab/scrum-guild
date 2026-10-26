@@ -7,6 +7,8 @@ import { deleteChildrenSchema } from '../delete-children.ts';
 // 配下の扱い（children）は必須。keep は配下のタスクを親なしにし（区分はストーリーが引き継いでいた区分を写す。位置は親のないタスクの
 // 末尾に、元の並びのまま）、delete は配下のタスク（完了したものも含む）をまとめて削除する。取り込んだタスクは削除せずアーカイブへ移す。
 // 削除できるのは、作った人とリーダー（管理者を含む）。それ以外は 403 の forbidden。
+// リーダーと管理者でない人の delete は、削除していない手で作った配下のタスクがすべて本人の作ったもののときだけ通し、
+// 他の人の作ったものがあれば 403 の forbidden（details.reason は others_children）。取り込んだタスクは数えない。
 // 無いストーリー（別の組織・別のワークスペース・削除済みを含む）は、権限より先に 404
 export const storyDelete = defineOperation({
   name: 'story-delete',

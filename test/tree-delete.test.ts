@@ -8,8 +8,9 @@ import { storyDelete, storyGet } from '../src/shared/operations/story/index.ts';
 import { backlogTree, taskComplete } from '../src/shared/operations/task/index.ts';
 import { createApp } from '../src/server/app.ts';
 import { orgDb } from '../src/server/db/index.ts';
-import { envWithD1Hooks } from '../src/server/db/testing.ts';
+import { envWithD1Hooks, queryPlanForTest } from '../src/server/db/testing.ts';
 import { implementedOperations } from '../src/server/operations/index.ts';
+import { deleteStatements } from '../src/server/operations/tree-delete.ts';
 import { AT, createCategory, createEpic, createSprint, createStory, createTask, uuidv7 } from './factories.ts';
 import { errorCodeOf, post } from './operations/harness.ts';
 import { createPerson, createTarget, testEnv, type Person, type Target } from './operations/world.ts';
@@ -592,6 +593,253 @@ describe('権限と断るもの', () => {
     expect((await storyRow(target, story.id)).epic_id).toBe(epic.id);
     expect(await allLogs(target)).toEqual([]);
   });
+
+  // 根を読んだ直後に、別の要求が根を削除するか、ワークスペースを閉じる
+  const rootRead = {
+    epic: 'select "epics"."id", "epics"."created_by" from "epics"',
+    story: 'select "stories"."id", "stories"."created_by" from "stories"',
+  } as const;
+  test.each([
+    ['epic', 'delete', 'deleted', 404, 'not_found'],
+    ['story', 'keep', 'deleted', 404, 'not_found'],
+    ['story', 'delete', 'deleted', 404, 'not_found'],
+    ['epic', 'keep', 'closed', 409, 'workspace_closed'],
+    ['epic', 'delete', 'closed', 409, 'workspace_closed'],
+    ['story', 'keep', 'closed', 409, 'workspace_closed'],
+    ['story', 'delete', 'closed', 409, 'workspace_closed'],
+  ] as const)(
+    '%s を %s で消す要求の、読んでから書くまでに %s なら %i で、配下も履歴も書かない',
+    async (kind, mode, change, status, code) => {
+      const target = await createTarget();
+      const ws = target.workspace.id;
+      const me = target.member.userId!;
+      const epic = await createEpic(target.organization, ws, me);
+      const story = await createStory(target.organization, ws, me, { epic_id: epic.id });
+      const task = await createTask(target.organization, ws, me, { story_id: story.id });
+      const fromSource = await createTask(target.organization, ws, me, imported({ story_id: story.id }));
+      let done = false;
+      const racing = envWithD1Hooks(testEnv, {
+        afterQuery: async (sql) => {
+          if (done || !sql.startsWith(rootRead[kind])) return;
+          done = true;
+          const db = dbOf(target);
+          if (change === 'closed') {
+            await db.run(
+              db.statement((q) =>
+                q
+                  .updateTable('workspaces')
+                  .set({ closed_at: '2026-10-21T00:00:00.000Z' })
+                  .where('id', '=', ws)
+                  .where('organization_id', '=', target.organization.id),
+              ),
+            );
+          } else {
+            await db.run(
+              db.statement((q) =>
+                q
+                  .updateTable(kind === 'epic' ? 'epics' : ('stories' as 'epics'))
+                  .set({ deleted_at: '2026-10-21T00:00:00.000Z' })
+                  .where('id', '=', kind === 'epic' ? epic.id : story.id)
+                  .where('workspace_id', '=', ws),
+              ),
+            );
+          }
+        },
+      });
+      const res =
+        kind === 'epic'
+          ? await removeEpic(target, epic.id, mode, target.member, racing)
+          : await removeStory(target, story.id, mode, target.member, racing);
+      expect(done).toBe(true);
+      expect(res.status).toBe(status);
+      expect(await errorCodeOf(res)).toBe(code);
+      expect(await storyRow(target, story.id)).toMatchObject({ epic_id: epic.id });
+      expect(await taskRow(target, task.id)).toMatchObject({ story_id: story.id, deleted_at: null });
+      expect(await taskRow(target, fromSource.id)).toMatchObject({ story_id: story.id, tray: 'backlog' });
+      expect(await allLogs(target)).toEqual([]);
+    },
+  );
+});
+
+describe('一般のメンバーのまとめて削除', () => {
+  async function setup() {
+    const target = await createTarget();
+    const other = await createPerson({
+      organization: target.organization,
+      membership: { workspaceId: target.workspace.id, role: 'member' },
+    });
+    return { target, ws: target.workspace.id, me: target.member.userId!, other };
+  }
+
+  test('他の人の作った配下（ストーリー、その下のタスク、ストーリーのタスク。完了したものも）があれば 403 の forbidden で、何も書かない', async () => {
+    const { target, ws, me, other } = await setup();
+    // エピックの下に他の人のストーリー
+    const e1 = await createEpic(target.organization, ws, me);
+    await createStory(target.organization, ws, other.userId!, { epic_id: e1.id });
+    // エピックの下の自分のストーリーの、他の人の完了したタスク
+    const e2 = await createEpic(target.organization, ws, me);
+    const s2 = await createStory(target.organization, ws, me, { epic_id: e2.id });
+    await createTask(target.organization, ws, other.userId!, {
+      story_id: s2.id,
+      completed_at: '2026-10-21T00:00:00.000Z',
+      completed_by: other.userId!,
+    });
+    // ストーリーの下の他の人のタスク
+    const s3 = await createStory(target.organization, ws, me);
+    await createTask(target.organization, ws, other.userId!, { story_id: s3.id });
+
+    for (const res of [
+      await removeEpic(target, e1.id, 'delete'),
+      await removeEpic(target, e2.id, 'delete'),
+      await removeStory(target, s3.id, 'delete'),
+    ]) {
+      expect(res.status).toBe(403);
+      expect(await res.json()).toMatchObject({ error: { code: 'forbidden', details: { reason: 'others_children' } } });
+    }
+    expect((await epicRow(target, e1.id)).deleted_at).toBeNull();
+    expect((await epicRow(target, e2.id)).deleted_at).toBeNull();
+    expect((await storyRow(target, s3.id)).deleted_at).toBeNull();
+    expect(await allLogs(target)).toEqual([]);
+    // 配下を残すなら、同じ人でも消せる
+    expect((await removeStory(target, s3.id, 'keep')).status).toBe(200);
+  });
+
+  test('配下がすべて自分の作ったものなら通す。取り込んだタスクと削除した他の人の配下は数えない', async () => {
+    const { target, ws, me, other } = await setup();
+    const epic = await createEpic(target.organization, ws, me);
+    const story = await createStory(target.organization, ws, me, { epic_id: epic.id });
+    const mine = await createTask(target.organization, ws, me, { story_id: story.id });
+    const fromSource = await createTask(target.organization, ws, me, imported({ story_id: story.id }));
+    await createTask(target.organization, ws, other.userId!, {
+      story_id: story.id,
+      deleted_at: '2026-10-21T00:00:00.000Z',
+    });
+    await createStory(target.organization, ws, other.userId!, {
+      epic_id: epic.id,
+      deleted_at: '2026-10-21T00:00:00.000Z',
+    });
+    expect((await removeEpic(target, epic.id, 'delete')).status).toBe(200);
+    expect((await storyRow(target, story.id)).deleted_at).not.toBeNull();
+    expect((await taskRow(target, mine.id)).deleted_at).not.toBeNull();
+    expect((await taskRow(target, fromSource.id)).tray).toBe('archive');
+  });
+
+  test('リーダーと管理者は、他の人の作った配下があってもまとめて削除できる', async () => {
+    const { target, ws, me, other } = await setup();
+    for (const person of [target.leader, target.admin]) {
+      const epic = await createEpic(target.organization, ws, me);
+      const story = await createStory(target.organization, ws, other.userId!, { epic_id: epic.id });
+      await createTask(target.organization, ws, other.userId!, { story_id: story.id });
+      expect((await removeEpic(target, epic.id, 'delete', person)).status).toBe(200);
+      expect((await storyRow(target, story.id)).deleted_at).not.toBeNull();
+    }
+  });
+
+  test.each(['epic', 'story'] as const)(
+    '%s: 読んでから書くまでに他の人のタスクが配下へ移されたら 403 で、何も書かない',
+    async (kind) => {
+      const { target, ws, me, other } = await setup();
+      const epic = await createEpic(target.organization, ws, me);
+      const story = await createStory(target.organization, ws, me, { epic_id: kind === 'epic' ? epic.id : null });
+      const mine = await createTask(target.organization, ws, me, { story_id: story.id });
+      const theirs = await createTask(target.organization, ws, other.userId!);
+      // 他の人の作った配下を探す読み取り（無かった）の直後に、他の人のタスクをストーリーの下へ移す
+      const othersRead =
+        kind === 'epic' ? 'select "os"."id" from "stories" as "os"' : 'select "ot"."id" from "tasks" as "ot"';
+      let done = false;
+      const racing = envWithD1Hooks(testEnv, {
+        afterQuery: async (sql) => {
+          if (done || !sql.startsWith(othersRead)) return;
+          done = true;
+          const db = dbOf(target);
+          await db.run(
+            db.statement((q) =>
+              q
+                .updateTable('tasks')
+                .set({ story_id: story.id })
+                .where('id', '=', theirs.id)
+                .where('workspace_id', '=', ws),
+            ),
+          );
+        },
+      });
+      const res =
+        kind === 'epic'
+          ? await removeEpic(target, epic.id, 'delete', target.member, racing)
+          : await removeStory(target, story.id, 'delete', target.member, racing);
+      expect(done).toBe(true);
+      expect(res.status).toBe(403);
+      expect(await res.json()).toMatchObject({ error: { code: 'forbidden', details: { reason: 'others_children' } } });
+      expect((await epicRow(target, epic.id)).deleted_at).toBeNull();
+      expect((await storyRow(target, story.id)).deleted_at).toBeNull();
+      expect((await taskRow(target, mine.id)).deleted_at).toBeNull();
+      expect(await allLogs(target)).toEqual([]);
+    },
+  );
+
+  test('epic-get と story-get の can_delete_children は、リーダーと管理者か、他の人の作った配下が無いとき真', async () => {
+    const { target, ws, me, other } = await setup();
+    const epic = await createEpic(target.organization, ws, me);
+    const story = await createStory(target.organization, ws, me, { epic_id: epic.id });
+    const read = async (person: Person) => ({
+      epic: (await (
+        await post(app, epicGet, {
+          slug: target.slug,
+          token: person.token,
+          body: { workspace_id: ws, epic_id: epic.id },
+        })
+      ).json()) as { can_delete: boolean; can_delete_children: boolean },
+      story: (await (
+        await post(app, storyGet, {
+          slug: target.slug,
+          token: person.token,
+          body: { workspace_id: ws, story_id: story.id },
+        })
+      ).json()) as { can_delete: boolean; can_delete_children: boolean },
+    });
+    const flags = (value: { epic: { can_delete_children: boolean }; story: { can_delete_children: boolean } }) => [
+      value.epic.can_delete_children,
+      value.story.can_delete_children,
+    ];
+    expect(flags(await read(target.member))).toEqual([true, true]);
+    await createTask(target.organization, ws, other.userId!, { story_id: story.id });
+    expect(flags(await read(target.member))).toEqual([false, false]);
+    expect(flags(await read(target.leader))).toEqual([true, true]);
+    expect(flags(await read(target.admin))).toEqual([true, true]);
+    // 削除できない人は、まとめて削除もできない
+    const outsider = await read(other);
+    expect([outsider.epic.can_delete, outsider.epic.can_delete_children]).toEqual([false, false]);
+  });
+});
+
+describe('実行計画', () => {
+  test.each(['epic', 'story'] as const)(
+    '%s を根にした文は、配下のストーリーを stories_workspace_epic、タスクを tasks_story で引き、タスクの表を走査しない',
+    async (kind) => {
+      const target = await createTarget();
+      const db = dbOf(target);
+      const context = {
+        organizationId: target.organization.id,
+        workspaceId: target.workspace.id,
+        actorUserId: target.member.userId!,
+        at: new Date(AT),
+        deletedAt: AT,
+        ownerOnly: target.member.userId!,
+      };
+      for (const mode of ['keep', 'delete'] as const) {
+        const { statements } = deleteStatements(db, context, { kind, id: uuidv7() }, mode);
+        const plans = await Promise.all(
+          statements.map(async (statement) => (await queryPlanForTest(env, statement)).join('\n')),
+        );
+        const all = plans.join('\n');
+        if (kind === 'epic') expect(all).toContain('stories_workspace_epic');
+        expect(all).toContain('tasks_story');
+        // 配下のタスク（ut、t、ot）を tasks_workspace_tray や全件の走査で引かない（移す先の末尾を読む a だけが使う）
+        expect(all).not.toMatch(/\b(ut|t|ot) USING (COVERING )?INDEX tasks_workspace_tray/);
+        expect(all).not.toMatch(/^\s*SCAN (tasks|stories|ut|t|s|us|es|os|ot)\s*$/m);
+      }
+    },
+  );
 });
 
 describe('文の数', () => {

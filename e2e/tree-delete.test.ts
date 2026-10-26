@@ -68,10 +68,13 @@ test('スクラムの言葉: エピックを配下を残して削除し、残っ
   const keep = confirm.getByRole('radio', { name: /配下を親なしで残す/ });
   await expect(keep).toBeChecked();
   await expect(keep).toBeFocused();
+  // 言葉と数、数と「件」の間は改行させない空白（U+00A0）
   await expect(
-    confirm.getByText(/ストーリー 1 件は親なしのストーリーとして末尾へ移り、その下のタスク 1 件/),
+    confirm.getByText(
+      'ストーリー 1 件は親なしのストーリーとして末尾へ移り、その下のタスク 1 件はストーリーの下のままです。区分はエピックの区分を写します。',
+    ),
   ).toBeVisible();
-  await expect(confirm.getByText(/ストーリー 1 件とタスク 1 件を削除します/)).toBeVisible();
+  await expect(confirm.getByText('ストーリー 1 件とタスク 1 件を削除します')).toBeVisible();
 
   // やめると、削除のボタンへ戻る
   await confirm.getByRole('button', { name: 'やめる' }).click();
@@ -96,7 +99,7 @@ test('スクラムの言葉: エピックを配下を残して削除し、残っ
   await storyDialog.getByRole('button', { name: 'このストーリーを削除する' }).click();
   const storyConfirm = page.getByRole('dialog', { name: 'ストーリーを削除する' });
   await expect(
-    storyConfirm.getByText(/タスク 1 件を削除します。取り込んだタスクは削除せず、アーカイブへ移します/),
+    storyConfirm.getByText('タスク 1 件を削除します。取り込んだタスクは削除せず、アーカイブへ移します'),
   ).toBeVisible();
   await storyConfirm.getByRole('radio', { name: /配下もまとめて削除する/ }).check();
   await storyConfirm.getByRole('button', { name: '削除する' }).click();
@@ -141,6 +144,54 @@ test('ゲームの言葉: 配下の無いレイドは選ばせずに削除する
   await expect(epicDialog).toBeHidden();
   await expect(page.getByRole('status').filter({ hasText: 'レイドを削除しました' })).toBeVisible();
   await expect(page.getByRole('button', { name: '倉庫の棚卸し', exact: true })).toHaveCount(0);
+});
+
+test('確認は開いたときに件数とまとめて削除できるかを読み直し、読んでいる間は削除を押せない。まとめて削除できなければ選択肢を押せなくし、理由を出す', async ({
+  context,
+  baseURL,
+  page,
+}) => {
+  await signIn(context, baseURL, 'admin');
+  await createWorkspace(page, '読み直しのワークスペース', 'scrum');
+  await create(page, 'ストーリーを作る', '問い合わせの窓口');
+  await addTask(page, '問い合わせの窓口', '返信の型を作る', '起票');
+  await page.waitForLoadState('networkidle');
+
+  await page.getByRole('button', { name: '問い合わせの窓口', exact: true }).click();
+  const storyDialog = page.getByRole('dialog', { name: 'ストーリー', exact: true });
+  await expect(storyDialog.getByLabel('タイトル')).toHaveValue('問い合わせの窓口');
+
+  // ダイアログを開いた後に、別の画面で他の人のタスクが2件足された形にする（確認を開いたときの読み直しの応答を書き換える）。
+  // 応答を待たせて、読んでいる間は削除を押せないことも確かめる
+  let release: () => void = () => {};
+  const held = new Promise<void>((resolve) => (release = resolve));
+  await page.route('**/story-get', async (route) => {
+    const response = await route.fetch();
+    const body = (await response.json()) as Record<string, unknown>;
+    await held;
+    await route.fulfill({ response, json: { ...body, can_delete_children: false, children: { tasks: 3 } } });
+  });
+  await storyDialog.getByRole('button', { name: 'このストーリーを削除する' }).click();
+  const confirm = page.getByRole('dialog', { name: 'ストーリーを削除する' });
+  const submit = confirm.getByRole('button', { name: '削除する' });
+  await expect(submit).toHaveAttribute('aria-disabled', 'true');
+  await expect(confirm.getByText('タスク 1 件は親なしのタスク')).toBeVisible();
+  release();
+  await expect(confirm.getByText('タスク 3 件は親なしのタスク')).toBeVisible();
+  await expect(submit).toHaveAttribute('aria-disabled', 'false');
+  const all = confirm.getByRole('radio', { name: /配下もまとめて削除する/ });
+  await expect(all).toBeDisabled();
+  await expect(all).toHaveAccessibleDescription(
+    '配下に他の人が作ったものがあるため、まとめて削除できるのはリーダーだけです。',
+  );
+  await expect(confirm.getByRole('radio', { name: /配下を親なしで残す/ })).toBeChecked();
+  await page.unroute('**/story-get');
+
+  // 残す削除はできる
+  await submit.click();
+  await expect(storyDialog).toBeHidden();
+  await expect(page.getByRole('status').filter({ hasText: 'ストーリーを削除しました' })).toBeVisible();
+  await expect(page.locator('.entry', { hasText: '返信の型を作る' })).toHaveCount(1);
 });
 
 // seed のワークスペース（受託開発チーム）。エピック「ポイントの交換先を増やす」とストーリーは、管理者のミナトが作った

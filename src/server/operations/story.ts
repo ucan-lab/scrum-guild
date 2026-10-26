@@ -31,8 +31,8 @@ import {
   type MovePlan,
   type Positioned,
 } from './move-position.ts';
-import { storyChildCounts } from './tree-delete.ts';
-import { actorUserIdOf, changeLogColumns, mayDeleteOwned, openWorkspace, throwIfClosed } from './write-guards.ts';
+import { storyDeletion } from './tree-delete.ts';
+import { actorUserIdOf, changeLogColumns, openWorkspace, throwIfClosed } from './write-guards.ts';
 
 // ストーリーのダイアログの欄。作るときの履歴に使う
 const EDITABLE_FIELDS = ['title', 'acceptance_criteria_md', 'body_md', 'due_on', 'link_url'] as const;
@@ -105,15 +105,11 @@ function detailOf(row: StoryRow): StoryDetail {
   };
 }
 
-// 削除のボタンと確認のために、呼んだ人が削除できるか（作った人かリーダー。管理者を含む）と、配下の件数も返す
+// 削除のボタンと確認のために、呼んだ人が削除できるか（作った人かリーダー。管理者を含む）、まとめて削除できるかと、配下の件数も返す
 export const storyGetOperation = implement(storyGet, async ({ db, actor, workspace, input }) => {
   const story = await readStory(db, workspace.workspaceId, input.story_id);
   if (story === undefined) throw new ApiError(404, 'not_found');
-  return {
-    story: detailOf(story),
-    can_delete: mayDeleteOwned(story.created_by, actor, workspace),
-    children: await storyChildCounts(db, workspace.workspaceId, story.id),
-  };
+  return { story: detailOf(story), ...(await storyDeletion(db, actor, workspace, story)) };
 });
 
 export const storyCreateOperation = implement(storyCreate, async ({ db, actor, workspace, input }) => {
@@ -932,7 +928,8 @@ function readReopening(db: OrganizationDb, workspaceId: string, storyId: string)
     db.statement((q) =>
       q
         .selectFrom('stories')
-        // 親のエピック。削除したエピックは親として数えない（削除したエピックの下のストーリーの扱いは、エピックの削除の #65 で決める）
+        // 親のエピック。削除したエピックは親として数えない（エピックの削除（epic-delete）は配下のストーリーを親なしにするか一緒に
+        // 削除するので、削除したエピックの下に削除していないストーリーは残らない。それより前に入った行が残っていても、取り消せる）
         .leftJoin('epics', (join) =>
           join
             .onRef('epics.id', '=', 'stories.epic_id')

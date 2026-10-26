@@ -106,22 +106,13 @@ async function readTask(db: OrganizationDb, workspaceId: string, taskId: string)
 
 type TaskRow = NonNullable<Awaited<ReturnType<typeof readTask>>>;
 
-// 削除する権限。作った人とリーダー（管理者を含む）
-function mayDelete(
-  task: Pick<TaskRow, 'created_by'>,
-  actor: { userId: string | null; isAdmin: boolean },
-  workspace: VerifiedWorkspace,
-): boolean {
-  return mayDeleteOwned(task.created_by, actor, workspace);
-}
-
-// 削除できるか。取り込んだタスクは削除で片付けず、アーカイブで外す（docs/requirements.md の「削除」）ので、権限があっても削除できない
+// 削除できるか。削除する権限は作った人とリーダー（管理者を含む。mayDeleteOwned）。取り込んだタスクは削除で片付けず、アーカイブで外す（docs/requirements.md の「削除」）ので、権限があっても削除できない
 function canDelete(
   task: Pick<TaskRow, 'created_by' | 'is_imported'>,
   actor: { userId: string | null; isAdmin: boolean },
   workspace: VerifiedWorkspace,
 ): boolean {
-  return task.is_imported === 0 && mayDelete(task, actor, workspace);
+  return task.is_imported === 0 && mayDeleteOwned(task.created_by, actor, workspace);
 }
 
 // 担当と、今そのワークスペースに所属していないか（抜けた、無効にされた）
@@ -479,7 +470,7 @@ export const taskDeleteOperation = implement(taskDelete, async ({ db, actor, wor
     await throwIfClosed(db, workspaceId);
     throw new ApiError(404, 'not_found');
   }
-  if (!mayDelete(task, actor, workspace)) throw new ApiError(403, 'forbidden');
+  if (!mayDeleteOwned(task.created_by, actor, workspace)) throw new ApiError(403, 'forbidden');
   // 取り込んだタスクはアーカイブで外す。削除は手で作ったタスクだけ
   if (task.is_imported === 1) throw new ApiError(409, 'conflict');
 

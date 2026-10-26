@@ -8,6 +8,8 @@ import { deleteChildrenSchema } from '../delete-children.ts';
 // 元の並びのまま）、その下のタスクはストーリーの下のまま。delete は配下のストーリーと、その下のタスク（完了したものも含む）を
 // まとめて削除する。取り込んだタスクは削除せずアーカイブへ移す。
 // 削除できるのは、作った人とリーダー（管理者を含む）。それ以外は 403 の forbidden。
+// リーダーと管理者でない人の delete は、削除していない配下（ストーリーと、手で作ったタスク。取り込んだタスクは削除せずアーカイブへ
+// 移すので数えない）がすべて本人の作ったもののときだけ通し、他の人の作ったものがあれば 403 の forbidden（details.reason は others_children）。
 // 無いエピック（別の組織・別のワークスペース・削除済みを含む）は、権限より先に 404
 export const epicDelete = defineOperation({
   name: 'epic-delete',
