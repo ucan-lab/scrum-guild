@@ -108,6 +108,8 @@ export function changesOf(changesJson: string): TaskHistoryEntry['changes'] {
 export const taskHistoryOperation = implement(taskHistory, async ({ db, workspace, input }) => {
   const organizationId = db.organizationId;
   const workspaceId = workspace.workspaceId;
+  // タスクの確かめと履歴の読みを並べて送る（引き出しを開くたびに読むので、待つ時間を1往復ぶんにする）。
+  // 404 のときは履歴の文も走るが、組織とワークスペースで絞っていて、結果は捨てる
   const [task, rows] = await Promise.all([
     // タスクがそのワークスペースにあるか（削除したものは画面から隠すので 404）と、時刻を出すワークスペースのタイムゾーン
     db.first(
