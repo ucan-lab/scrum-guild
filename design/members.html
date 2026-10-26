@@ -27,11 +27,11 @@ SQ.mount("members", () => {
     const u = user(m.who);
     const allocOptions = `<option ${m.alloc == null ? "selected" : ""}>未設定</option>` + Array.from({ length: 21 }, (_, i) => i * 5).map((v) => `<option ${m.alloc === v ? "selected" : ""}>${v}%</option>`).join("");
     return `<tr>
-      <td><span class="person">${avatarOf(m.who)}${esc(u.name)}${emblem(u.level, true)}</span></td>
-      <td>${m.left ? `<span class="props-note">離脱済み</span>` : `<select class="select" aria-label="${esc(u.name)}のロール"><option ${m.role === "leader" ? "selected" : ""}>${t("leader")}</option><option ${m.role === "member" ? "selected" : ""}>一般</option></select>`}</td>
-      <td class="is-num">${fmt(m.joined)}${m.left ? `〜${fmt(m.left)}` : ""}</td>
-      <td>${m.left ? "—" : `<select class="select" aria-label="${esc(u.name)}の11月の配分">${allocOptions}</select>`}</td>
-      <td>${m.left ? "" : m.who === D.me ? `<button class="btn is-sm is-quiet" type="button">抜ける</button>` : `<button class="btn is-sm is-quiet is-danger" type="button">外す</button>`}</td>
+      <td class="is-name"><span class="person">${avatarOf(m.who)}${esc(u.name)}${emblem(u.level, true)}</span></td>
+      <td data-label="ロール">${m.left ? `<span class="props-note">離脱済み</span>` : `<select class="select" aria-label="${esc(u.name)}のロール"><option ${m.role === "leader" ? "selected" : ""}>${t("leader")}</option><option ${m.role === "member" ? "selected" : ""}>一般</option></select>`}</td>
+      <td class="is-num" data-label="所属">${fmt(m.joined)}${m.left ? `〜${fmt(m.left)}` : ""}</td>
+      <td data-label="配分（11月）">${m.left ? "—" : `<select class="select" aria-label="${esc(u.name)}の11月の配分">${allocOptions}</select>`}</td>
+      <td class="is-actions">${m.left ? "" : m.who === D.me ? `<button class="btn is-sm is-quiet" type="button">抜ける</button>` : `<button class="btn is-sm is-quiet is-danger" type="button">外す</button>`}</td>
     </tr>`;
   }).join("");
   return `
@@ -42,7 +42,7 @@ SQ.mount("members", () => {
       ["", "mail", "招待中", D.invitations.length],
     ])}
     <section class="section"><div class="section-head"><h2 class="section-title">所属している人</h2><span class="section-hint">配分は11月の値。他の${t("workspace")}の配分は見えません</span></div>
-      <div class="table-wrap"><table class="table"><thead><tr><th>名前</th><th>ロール</th><th class="is-num">所属</th><th>配分（11月）</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>
+      <div class="table-wrap"><table class="table is-stacked"><thead><tr><th class="is-name">名前</th><th>ロール</th><th class="is-num">所属</th><th>配分（11月）</th><th class="is-actions"><span class="visually-hidden">操作</span></th></tr></thead><tbody>${rows}</tbody></table></div>
       <p class="action-note">外すと、その人の未完了の${t("task")}は担当なしに戻り、${t("party")}からも外れます。完了の記録と経験値は残ります。</p>
     </section>
     <section class="section"><div class="section-head"><h2 class="section-title">招待する</h2><span class="section-hint">${t("organization")}の人数 ${D.seats.used} / ${D.seats.limit} 人</span></div>

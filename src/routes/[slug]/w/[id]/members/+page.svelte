@@ -89,8 +89,9 @@
       return;
     }
     const self = me !== null && member.id === me.id;
-    // 自分をリーダーから一般に戻すと、付け替えも招待もできなくなるので確かめる
-    if (self && role === 'member' && !(me?.is_admin ?? false)) {
+    // 自分をリーダーから一般に戻すと、付け替えも招待もできなくなるので確かめる。管理者は戻しても付け替えられるので、
+    // 唯一のリーダーのとき（リーダーがいなくなる）だけ確かめる
+    if (self && role === 'member' && (!(me?.is_admin ?? false) || leaderCount === 1)) {
       const confirmed = await confirmAction({ kind: 'demote', member }, select);
       if (!confirmed) {
         select.value = member.role;
@@ -135,18 +136,21 @@
     if (!confirmed) return;
     changing = member.id;
     const workspaceName = workspace.name;
+    let removed: boolean | undefined;
     try {
       const result = await callOperation(membershipLeave, { workspace_id: workspace.id, user_id: member.id }, { slug });
       if (!result.ok && isUnauthenticated(result)) {
         window.location.assign(loginUrl(page.url));
         return;
       }
-      if (result.ok && self) {
-        showToast(t('memberLeft', { workspace: workspaceName }), 'check');
+      // 自分の離脱が 404 なのは、別のタブなどで先に抜けていたとき。抜けたのと同じく扱う
+      if (self && (result.ok || result.status === 404)) {
+        showToast(t('memberLeft', { workspaceName }), 'check');
         // 抜けたワークスペースには入れない。組織の枠の値（所属するワークスペース）も読み直す
         await goto(leavesOrganization ? resolve('/') : resolve('/[slug]', { slug }), { invalidateAll: true });
         return;
       }
+      removed = result.ok;
       if (result.ok) showToast(t('memberRemoved', { name: member.name }), 'check');
       else
         await reportFailure(
@@ -158,7 +162,13 @@
       changing = null;
     }
     await tick();
-    focusBelongingHeading();
+    // 外せたら行が消えるので節の見出しへ。失敗したら同じ行のボタンへ戻し、行が無くなっていれば見出しへ
+    const button =
+      removed === true
+        ? null
+        : document.querySelector<HTMLButtonElement>(`[data-member-action="${CSS.escape(member.id)}"]`);
+    if (button !== null) button.focus();
+    else focusBelongingHeading();
   }
 
   function focusBelongingHeading(): void {
@@ -318,7 +328,8 @@
                       <button
                         class="btn is-sm is-quiet"
                         type="button"
-                        aria-label={t('memberLeaveLabel', { workspace: workspace.name })}
+                        data-member-action={member.id}
+                        aria-label={t('memberLeaveLabel', { workspaceName: workspace.name })}
                         aria-disabled={changing !== null}
                         onclick={(event) => removeMember(event, member)}>{t('memberLeave')}</button
                       >
@@ -326,6 +337,7 @@
                       <button
                         class="btn is-sm is-quiet is-danger"
                         type="button"
+                        data-member-action={member.id}
                         aria-label={t('memberRemoveLabel', { name: member.name })}
                         aria-disabled={changing !== null}
                         onclick={(event) => removeMember(event, member)}>{t('memberRemove')}</button
@@ -351,7 +363,7 @@
     title={pending?.kind === 'remove'
       ? t('memberRemoveTitle', { name: pending.member.name })
       : pending?.kind === 'leave'
-        ? t('memberLeaveTitle', { workspace: workspace.name })
+        ? t('memberLeaveTitle', { workspaceName: workspace.name })
         : t('memberDemoteTitle')}
     confirmLabel={pending?.kind === 'remove'
       ? t('memberRemove')
@@ -371,8 +383,11 @@
           task: t('task'),
         })}
       </p>
-    {:else if pending?.kind === 'demote'}
+    {:else if pending?.kind === 'demote' && !(me?.is_admin ?? false)}
       <p>{t('memberDemoteText', { leader: t('leader'), admin: t('admin') })}</p>
+    {/if}
+    {#if pending !== null && pending.member.role === 'leader' && leaderCount === 1}
+      <p>{t('memberLastLeaderNote', { workspace: t('workspace'), leader: t('leader'), admin: t('admin') })}</p>
     {/if}
   </ConfirmDialog>
 

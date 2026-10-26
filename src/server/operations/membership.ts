@@ -32,6 +32,39 @@ function listedMembership(from: From, organizationId: string, workspaceId: strin
     .where('u.login_subject', 'is not', null);
 }
 
+// 呼んだ人が、ロールの付け替えと他人を外す権限を今も持つ: 同じ組織の無効でない管理者（admin）か、このワークスペースの今のリーダー（leader）。
+// 書く文の条件（どちらかの EXISTS）と、書けなかったときの読み直しが同じ式を使う（workspace.ts の closeGuard と同じ形）。
+// 登録の関数が確かめた権限は読み取りの時点の値なので、読んでから書くまでに管理者やリーダーを外された人の要求を、書く文で止める
+function actorAuthority(from: From, organizationId: string, workspaceId: string, actorUserId: string) {
+  return {
+    admin: from
+      .selectFrom('users as au')
+      .select('au.id')
+      .where('au.id', '=', actorUserId)
+      .where('au.organization_id', '=', organizationId)
+      .where('au.disabled_at', 'is', null)
+      .where('au.is_admin', '=', 1),
+    leader: from
+      .selectFrom('memberships as am')
+      .innerJoin('users as alu', 'alu.id', 'am.user_id')
+      .select('am.id')
+      .where('am.workspace_id', '=', workspaceId)
+      .where('am.user_id', '=', actorUserId)
+      .where('am.left_at', 'is', null)
+      .where('am.role', '=', 'leader')
+      .where('alu.organization_id', '=', organizationId)
+      .where('alu.disabled_at', 'is', null),
+  };
+}
+
+async function actorStillAuthorized(db: OrganizationDb, workspaceId: string, actorUserId: string): Promise<boolean> {
+  const [admin, leader] = await db.batch([
+    db.statement((q) => actorAuthority(q, db.organizationId, workspaceId, actorUserId).admin.limit(1)),
+    db.statement((q) => actorAuthority(q, db.organizationId, workspaceId, actorUserId).leader.limit(1)),
+  ] as const);
+  return admin.rows.length > 0 || leader.rows.length > 0;
+}
+
 async function readMembership(db: OrganizationDb, workspaceId: string, userId: string) {
   const row = await db.first(
     db.statement((q) =>
@@ -59,13 +92,14 @@ export const membershipRoleUpdateOperation = implement(
     const at = now();
     const stamp = at.toISOString();
     const results = await db.batch([
-      // 読んだロールのまま、今の所属で、相手が一覧に出る人で、ワークスペースが開いているときだけ書く
+      // 読んだロールのまま、今の所属で、相手が一覧に出る人で、ワークスペースが開いていて、呼んだ人が今も管理者かリーダーのときだけ書く
       db.statement((q) =>
         q
           .updateTable('memberships')
           .set({ role: input.role })
-          .where((eb) =>
-            eb.and([
+          .where((eb) => {
+            const authority = actorAuthority(q, organizationId, workspaceId, actorUserId);
+            return eb.and([
               eb('id', '=', current.id),
               eb('workspace_id', '=', workspaceId),
               eb('user_id', '=', userId),
@@ -73,8 +107,9 @@ export const membershipRoleUpdateOperation = implement(
               eb('role', '=', current.role),
               eb.exists(listedMembership(q, organizationId, workspaceId, userId).select('m.id')),
               eb.exists(openWorkspace(q, organizationId, workspaceId)),
-            ]),
-          ),
+              eb.or([eb.exists(authority.admin), eb.exists(authority.leader)]),
+            ]);
+          }),
       ),
       // 直前の UPDATE が行を変えたときだけ、ロールの変更を残す
       db.statement((q) =>
@@ -100,9 +135,10 @@ export const membershipRoleUpdateOperation = implement(
     ]);
     if ((results[0]?.changes ?? 0) > 0) return { user_id: userId, role: input.role };
 
-    // 読んでから書くまでに、閉じた、抜けた（外された）、別の要求がロールを変えた
+    // 読んでから書くまでに、閉じた、抜けた（外された）、呼んだ人が権限を失った、別の要求がロールを変えた
     await throwIfClosed(db, workspaceId);
     if ((await readMembership(db, workspaceId, userId)) === undefined) throw new ApiError(404, 'not_found');
+    if (!(await actorStillAuthorized(db, workspaceId, actorUserId))) throw new ApiError(403, 'forbidden');
     throw new ApiError(409, 'conflict');
   },
 );
@@ -123,8 +159,9 @@ export const membershipLeaveOperation = implement(
 
     const current = await readMembership(db, workspaceId, userId);
     if (current === undefined) throw new ApiError(404, 'not_found');
-    // 他人を外せるのは、そのワークスペースのリーダーと管理者だけ
-    if (userId !== actorUserId && !actor.isAdmin && workspace.actorRole !== 'leader') {
+    // 他人を外せるのは、そのワークスペースのリーダーと管理者だけ。書く文でも同じ条件を確かめる（自分が抜けるときは確かめない）
+    const removingOther = userId !== actorUserId;
+    if (removingOther && !actor.isAdmin && workspace.actorRole !== 'leader') {
       throw new ApiError(403, 'forbidden');
     }
 
@@ -160,15 +197,18 @@ export const membershipLeaveOperation = implement(
         q
           .updateTable('memberships')
           .set({ left_on: leftOn, left_at: leftAt })
-          .where((eb) =>
-            eb.and([
+          .where((eb) => {
+            const authority = actorAuthority(q, organizationId, workspaceId, actorUserId);
+            return eb.and([
               eb('id', '=', membershipId),
               eb('workspace_id', '=', workspaceId),
               eb('user_id', '=', userId),
               eb('left_at', 'is', null),
               eb.exists(openWorkspace(q, organizationId, workspaceId)),
-            ]),
-          ),
+              // 他人を外すときは、呼んだ人が今も管理者かリーダーであること
+              ...(removingOther ? [eb.or([eb.exists(authority.admin), eb.exists(authority.leader)])] : []),
+            ]);
+          }),
       ),
       // 直前の UPDATE が行を変えたときだけ、所属の終わりを残す。所属の作成（{"user": [null, 人], "role": [null, ロール]}）と対にし、
       // 人（そのときの名前）とロールは、終えた行から取る
@@ -202,6 +242,7 @@ export const membershipLeaveOperation = implement(
                 eb.val(leftAt).as('created_at'),
               ])
               .where('lm.id', '=', membershipId)
+              .where('lm.workspace_id', '=', workspaceId)
               .where('lu.organization_id', '=', organizationId)
               .where(previousStatementChanged),
           ),
@@ -273,8 +314,12 @@ export const membershipLeaveOperation = implement(
     ]);
 
     if ((results[0]?.changes ?? 0) === 0) {
-      // 読んでから書くまでに、閉じたか、先に抜けた（外された）
+      // 読んでから書くまでに、閉じたか、先に抜けた（外された）か、他人を外す人が権限を失った
       await throwIfClosed(db, workspaceId);
+      if ((await readMembership(db, workspaceId, userId)) === undefined) throw new ApiError(404, 'not_found');
+      if (removingOther && !(await actorStillAuthorized(db, workspaceId, actorUserId))) {
+        throw new ApiError(403, 'forbidden');
+      }
       throw new ApiError(404, 'not_found');
     }
     // 入れる組織を失った人のセッションを、応答を待たせずに消す（組織に入れるかはリクエストのたびに確かめるので、消し損ねても入れない）

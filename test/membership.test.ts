@@ -6,11 +6,12 @@ import { organizationInfo } from '../src/shared/operations/organization/index.ts
 import { taskComplete } from '../src/shared/operations/task/index.ts';
 import { memberList, membershipLeave, membershipRoleUpdate } from '../src/shared/operations/workspace/index.ts';
 import { createApp } from '../src/server/app.ts';
-import { commonDb, orgDb } from '../src/server/db/index.ts';
+import { commonDb, orgDb, verifyWorkspace } from '../src/server/db/index.ts';
 import { implementedOperations } from '../src/server/operations/index.ts';
+import { membershipLeaveOperation, membershipRoleUpdateOperation } from '../src/server/operations/membership.ts';
 import { createMembership, createTask, createUser, hash64 } from './factories.ts';
 import { errorCodeOf, post } from './operations/harness.ts';
-import { createPerson, createTarget, type Person, type Target } from './operations/world.ts';
+import { createPerson, createTarget, testEnv, type Person, type Target } from './operations/world.ts';
 
 const app = createApp(implementedOperations);
 
@@ -22,12 +23,26 @@ function updateRole(target: Target, person: Person, userId: string, role: 'leade
   });
 }
 
-function leave(target: Target, person: Person, userId: string, workspaceId: string = target.workspace.id) {
+function leave(
+  target: Target,
+  person: Person,
+  userId: string,
+  workspaceId: string = target.workspace.id,
+  requestEnv?: Env,
+) {
   return post(app, membershipLeave, {
     slug: target.slug,
     token: person.token,
     body: { workspace_id: workspaceId, user_id: userId },
+    ...(requestEnv === undefined ? {} : { env: requestEnv }),
   });
+}
+
+// 開発用の時計（DEV_NOW）を置いた環境（test/task-edit.test.ts と同じ）。DEV_NOW は、ループバックの公開 URL のときだけ使える
+const FROZEN_AT = '2026-10-26T10:00:00+09:00';
+const FROZEN_ISO = '2026-10-26T01:00:00.000Z';
+function frozenEnv(): Env {
+  return Object.assign({}, testEnv, { PUBLIC_ORIGIN: 'http://localhost:8787', DEV_NOW: FROZEN_AT });
 }
 
 function dbOf(target: Target) {
@@ -339,5 +354,140 @@ describe('離脱', () => {
       body: { workspace_id: target.workspace.id },
     });
     expect(list.status).toBe(403);
+  });
+
+  test('時計を止めた二重の離脱（同じ時刻の2つの要求）でも、所属とタスクの履歴は1回分のまま', async () => {
+    const target = await createTarget();
+    const userId = target.member.userId!;
+    const task = await createTask(target.organization, target.workspace.id, userId, { assignee_user_id: userId });
+    const requestEnv = frozenEnv();
+    const [first, second] = await Promise.all([
+      leave(target, target.leader, userId, target.workspace.id, requestEnv),
+      leave(target, target.admin, userId, target.workspace.id, requestEnv),
+    ]);
+    expect([first.status, second.status].sort()).toEqual([200, 404]);
+    // 続けてもう一度送っても、同じ時刻のまま 404 で何も書かない
+    expect((await leave(target, target.leader, userId, target.workspace.id, requestEnv)).status).toBe(404);
+
+    const [membership] = await membershipsOf(target, userId);
+    expect(membership!.left_at).toBe(FROZEN_ISO);
+    expect(await logsOf(target, 'membership', membership!.id)).toHaveLength(1);
+    expect(await logsOf(target, 'task', task.id)).toHaveLength(1);
+    expect((await taskOf(target, task.id))!.assignee_user_id).toBeNull();
+  });
+});
+
+// 読んでから書くまでに別の要求が割り込む。処理を直に呼び、相手の所属（role を持つ行）を読んだ直後に race を走らせる
+describe('読んでから書くまでの競合', () => {
+  async function runWithRace(
+    operation: typeof membershipRoleUpdateOperation,
+    target: Target,
+    caller: Person,
+    input: Record<string, unknown>,
+    race: () => Promise<void>,
+  ) {
+    const db = orgDb(env, target.organization.verified);
+    const actor = { accountId: caller.accountId, userId: caller.userId, isAdmin: false, invitedOnly: false };
+    const workspace = await verifyWorkspace(db, actor, target.workspace.id);
+    let raced = false;
+    const racing = new Proxy(db, {
+      get(base, key) {
+        const value = Reflect.get(base, key, base);
+        if (typeof value !== 'function') return value;
+        if (key !== 'first') return value.bind(base);
+        return async (...args: unknown[]) => {
+          const result = await (value as (...a: unknown[]) => Promise<unknown>).apply(base, args);
+          if (!raced && (result as { role?: string } | undefined)?.role !== undefined) {
+            raced = true;
+            await race();
+          }
+          return result;
+        };
+      },
+    });
+    const context = {
+      db: racing,
+      actor,
+      workspace,
+      tools: { endSessionsIfLoginLost: async () => {} },
+      input: { workspace_id: target.workspace.id, ...input },
+      defer: () => {},
+    } as never;
+    return operation.handler(context);
+  }
+
+  // リーダーを一般に戻す（別の要求が先にロールを変えた、または呼んだ人がリーダーを外された）
+  async function setRole(target: Target, userId: string, role: 'leader' | 'member') {
+    const db = dbOf(target);
+    await db.run(
+      db.statement((q) =>
+        q
+          .updateTable('memberships')
+          .set({ role })
+          .where('workspace_id', '=', target.workspace.id)
+          .where('user_id', '=', userId)
+          .where('left_at', 'is', null),
+      ),
+    );
+  }
+
+  test('読んだロールが古い（間に別の要求が変えた）と 409 の conflict で、履歴は増えない', async () => {
+    const target = await createTarget();
+    const [membership] = await membershipsOf(target, target.member.userId!);
+    await expect(
+      runWithRace(
+        membershipRoleUpdateOperation,
+        target,
+        target.leader,
+        { user_id: target.member.userId, role: 'leader' },
+        async () => {
+          // 別の要求が先にリーダーにした（その要求の履歴が1行入る）
+          expect((await updateRole(target, target.admin, target.member.userId!, 'leader')).status).toBe(200);
+        },
+      ),
+    ).rejects.toMatchObject({ status: 409, code: 'conflict' });
+    expect(await logsOf(target, 'membership', membership!.id)).toHaveLength(1);
+    expect((await membershipsOf(target, target.member.userId!))[0]!.role).toBe('leader');
+  });
+
+  test('読んだ後にリーダーを外された人のロールの付け替えは、403 の forbidden で書かない', async () => {
+    const target = await createTarget();
+    const [membership] = await membershipsOf(target, target.member.userId!);
+    await expect(
+      runWithRace(
+        membershipRoleUpdateOperation,
+        target,
+        target.leader,
+        { user_id: target.member.userId, role: 'leader' },
+        () => setRole(target, target.leader.userId!, 'member'),
+      ),
+    ).rejects.toMatchObject({ status: 403, code: 'forbidden' });
+    expect((await membershipsOf(target, target.member.userId!))[0]!.role).toBe('member');
+    expect(await logsOf(target, 'membership', membership!.id)).toHaveLength(0);
+  });
+
+  test('読んだ後にリーダーを外された人が他人を外すと、403 の forbidden で書かない', async () => {
+    const target = await createTarget();
+    const userId = target.member.userId!;
+    const task = await createTask(target.organization, target.workspace.id, userId, { assignee_user_id: userId });
+    await expect(
+      runWithRace(membershipLeaveOperation, target, target.leader, { user_id: userId }, () =>
+        setRole(target, target.leader.userId!, 'member'),
+      ),
+    ).rejects.toMatchObject({ status: 403, code: 'forbidden' });
+    const [membership] = await membershipsOf(target, userId);
+    expect(membership!.left_at).toBeNull();
+    expect(await logsOf(target, 'membership', membership!.id)).toHaveLength(0);
+    expect((await taskOf(target, task.id))!.assignee_user_id).toBe(userId);
+    expect(await logsOf(target, 'task', task.id)).toHaveLength(0);
+  });
+
+  test('自分が抜けるときは、読んだ後にリーダーを外されていても抜けられる', async () => {
+    const target = await createTarget();
+    await createMembership(target.organization, target.otherWorkspace.id, target.leader.userId!);
+    await runWithRace(membershipLeaveOperation, target, target.leader, { user_id: target.leader.userId }, () =>
+      setRole(target, target.leader.userId!, 'member'),
+    );
+    expect((await membershipsOf(target, target.leader.userId!))[0]!.left_at).not.toBeNull();
   });
 });

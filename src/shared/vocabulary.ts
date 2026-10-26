@@ -1023,13 +1023,14 @@ export const dictionary = defineDictionary({
     '招待を取り消せませんでした。もう一度試してください。',
   ),
   // 所属している人の行の操作。ロールの付け替えと「外す」はリーダーと管理者に、「抜ける」は自分の行に出す。
-  // {name} は人の名前、{role} はロールの名前、{task} {workspace} {organization} {leader} {admin} は、その言葉づかいの言葉を画面が渡す
+  // {name} は人の名前、{role} はロールの名前、{workspaceName} は開いているワークスペースの名前、
+  // {task} {workspace} {organization} {leader} {admin} は、その言葉づかいの言葉を画面が渡す
   memberActionsHeader: workspace('操作', '操作'),
   memberRoleLabel: workspace('{name}のロール', '{name}のロール'),
   memberRemove: workspace('外す', '外す'),
   memberRemoveLabel: workspace('{name}を外す', '{name}を外す'),
   memberLeave: workspace('抜ける', '抜ける'),
-  memberLeaveLabel: workspace('{workspace}から抜ける', '{workspace}から抜ける'),
+  memberLeaveLabel: workspace('{workspaceName}から抜ける', '{workspaceName}から抜ける'),
   membersActionNote: workspace(
     '外すと、その人の未完了の{task}は担当なしに戻ります。完了の記録と経験値は残ります。',
     '外すと、その人の未完了の{task}は担当なしに戻ります。完了の記録と経験値は残ります。',
@@ -1040,7 +1041,7 @@ export const dictionary = defineDictionary({
     '{name}は{workspace}から外れます。担当していた未完了の{task}は担当なしに戻ります。完了の記録と経験値は残ります。戻すには、もう一度招待します。',
     '{name}は{workspace}から外れます。担当していた未完了の{task}は担当なしに戻ります。完了の記録と経験値は残ります。戻すには、もう一度招待します。',
   ),
-  memberLeaveTitle: workspace('{workspace}から抜けますか', '{workspace}から抜けますか'),
+  memberLeaveTitle: workspace('{workspaceName}から抜けますか', '{workspaceName}から抜けますか'),
   memberLeaveText: workspace(
     '担当していた未完了の{task}は担当なしに戻ります。完了の記録と経験値は残ります。戻るには、もう一度招待を受けてください。',
     '担当していた未完了の{task}は担当なしに戻ります。完了の記録と経験値は残ります。戻るには、もう一度招待を受けてください。',
@@ -1058,7 +1059,12 @@ export const dictionary = defineDictionary({
   memberDemoteConfirm: workspace('一般に戻す', '一般に戻す'),
   memberRoleChanged: workspace('{name}を{role}にしました', '{name}を{role}にしました'),
   memberRemoved: workspace('{name}を外しました', '{name}を外しました'),
-  memberLeft: workspace('{workspace}から抜けました', '{workspace}から抜けました'),
+  memberLeft: workspace('{workspaceName}から抜けました', '{workspaceName}から抜けました'),
+  // 唯一のリーダーが抜ける、外される、自分を一般に戻すときに、確かめのダイアログへ添える
+  memberLastLeaderNote: workspace(
+    'この{workspace}の{leader}がいなくなります。新しい{leader}は{admin}が任命します。',
+    'この{workspace}の{leader}がいなくなります。新しい{leader}は{admin}が任命します。',
+  ),
   memberErrorClosed: workspace(
     '終了した{workspace}のメンバーは変えられません。画面を読み直しました。',
     '終了した{workspace}のメンバーは変えられません。画面を読み直しました。',

@@ -254,6 +254,35 @@ test.describe('リーダー（あおば開発のミナト）', () => {
     expect(await collect()).toEqual([]);
   });
 
+  test('外すのに失敗したら同じ行のボタンへフォーカスを戻し、自分の離脱が 404（先に抜けていた）なら抜けたのと同じく組織のトップへ移る', async ({
+    page,
+  }) => {
+    await page.route('**/api/aoba/membership-leave', (route) => {
+      const body = route.request().postDataJSON() as { user_id: string };
+      return body.user_id === HARUKA_USER_ID
+        ? route.fulfill({ status: 500, json: { error: { code: 'internal', message: 'x' } } })
+        : route.fulfill({ status: 404, json: { error: { code: 'not_found', message: 'x' } } });
+    });
+    await page.goto(MEMBERS_PATH);
+    const remove = page.getByRole('button', { name: 'ハルカを外す' });
+    await remove.click();
+    await page.getByRole('dialog', { name: 'ハルカを外しますか' }).getByRole('button', { name: '外す' }).click();
+    await expect(page.locator('.toasts:visible .toast')).toHaveText(
+      'メンバーを外せませんでした。もう一度試してください。',
+    );
+    await expect(remove).toBeFocused();
+
+    // ミナトは受託開発チームの唯一のリーダーなので、リーダーがいなくなることを添える
+    await page.getByRole('button', { name: '受託開発チームから抜ける' }).click();
+    const dialog = page.getByRole('dialog', { name: '受託開発チームから抜けますか' });
+    await expect(dialog).toContainText(
+      'このパーティのパーティリーダーがいなくなります。新しいパーティリーダーはギルドマスターが任命します。',
+    );
+    await dialog.getByRole('button', { name: '抜ける' }).click();
+    await expect(page).toHaveURL(/\/aoba$/);
+    await expect(page.locator('.toasts:visible .toast').last()).toHaveText('受託開発チームから抜けました');
+  });
+
   test('ロールの選択欄で付け替え、先に変わっていて断られたら、トーストで知らせて今の値に戻す', async ({ page }) => {
     const sent: unknown[] = [];
     let reply: { status: number; json: unknown } = { status: 200, json: {} };
@@ -301,8 +330,15 @@ test.describe('リーダー（あおば開発のミナト）', () => {
     const role = page.getByRole('combobox', { name: 'ミナトのロール' });
     await expect(role).toHaveValue('leader');
 
-    // 管理者は一般に戻しても付け替えられるので、確かめのダイアログを挟まない。リーダーが0人になっても止めない
+    // 管理者は一般に戻しても付け替えられるが、唯一のリーダーなので、リーダーがいなくなることを確かめる。0人になっても止めない
     await role.selectOption('member');
+    const demote = page.getByRole('dialog', { name: '自分を一般に戻しますか' });
+    await expect(demote).toHaveText(
+      /パーティリーダーがいなくなります。新しいパーティリーダーはギルドマスターが任命します。/,
+    );
+    // 管理者には「付け替えができなくなる」は出さない
+    await expect(demote).not.toContainText('できなくなります');
+    await demote.getByRole('button', { name: '一般に戻す' }).click();
     await expect(page.locator('.toasts:visible .toast')).toHaveText('ミナトを一般にしました');
     await expect(page.locator('.tally > div').nth(1)).toHaveText('パーティリーダー 0');
     await expect(role).toHaveValue('member');

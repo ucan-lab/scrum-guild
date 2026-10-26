@@ -224,6 +224,9 @@ h1, h2, h3 { text-wrap: balance; }
   padding: 7px 10px; font-size: var(--text-md);
 }
 .input:focus, .select:focus, .textarea:focus { outline: 2px solid var(--color-accent); outline-offset: -1px; border-color: var(--color-accent); }
+/* 送っている間のように、押してもフォーカスを失わせたくない押せない選択欄は aria-disabled にする（.btn の aria-disabled と同じ見た目。
+   選んだ値の変更は画面が止めて元に戻す） */
+.select[aria-disabled="true"] { opacity: 0.45; cursor: not-allowed; }
 .textarea { min-height: 96px; resize: vertical; line-height: var(--leading-body); }
 .field.is-invalid .input, .field.is-invalid .textarea { border-color: var(--color-danger); }
 .search { display: flex; align-items: center; gap: 6px; border: 1px solid var(--color-line); background: var(--color-surface); border-radius: var(--radius-1); padding: 0 10px; color: var(--color-muted); }
@@ -630,8 +633,9 @@ button.tree-link { border: 0; background: none; padding: 0; font: inherit; text-
 .table .is-num { text-align: right; font-family: var(--font-mono); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .table a { color: var(--color-fg); }
 .table .mono, .table .btn { white-space: nowrap; }
-/* 表の行の中の選択欄（メンバーのロールなど）。列が縮んでも選んだ値が読めるよう、中身の幅を保ち、行の高さに合わせて小さくする */
-.table .select { width: auto; padding-block: 4px; font-size: var(--text-sm); }
+/* 表の行の中の選択欄（メンバーのロールなど）。列が縮んでも選んだ値が読めるよう、中身の幅を保ち、行の高さに合わせて小さくする。
+   狭い幅と指で押す画面では、表の中の小さいボタンと同じく 44px の高さにする（下の @media） */
+.table .select { width: auto; padding-block: var(--space-1); font-size: var(--text-sm); }
 /* 名前の列（th と td に is-name を付ける）が1字ずつ折れるほど縮まないようにする。足りない幅は .table-wrap の横スクロールで受ける */
 .table .is-name { min-width: 8em; }
 /* 名前の列の印（停止、管理者の状態など）は、長い文でも列の幅で折り返す。折らないと、印の長さが名前の列の幅になり、
@@ -859,6 +863,7 @@ dialog.dialog::backdrop { background: none; }
 @media (max-width: 760px), (pointer: coarse) {
   .segmented span { display: flex; align-items: center; justify-content: center; min-width: 44px; min-height: 44px; }
   .table .btn.is-sm { min-width: 44px; min-height: 44px; }
+  .table .select { min-height: 44px; }
   .done-btn { position: relative; }
   .done-btn::after { content: ""; position: absolute; left: 50%; top: 50%; width: 44px; height: 44px; transform: translate(-50%, -50%); }
   /* 木の行のボタン（開閉の caret、題、＋タスク）と、操作の並びの小さいボタンも、見た目は変えず、押せる範囲だけを 44px 四方以上に広げる。
