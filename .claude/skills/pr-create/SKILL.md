@@ -38,7 +38,7 @@ GraphQL でしかできない操作（既存の PENDING review への追記、�
 | インラインコメント | `pull_request_review_write` の `create`（`event` 無しで PENDING）→ `add_comment_to_pending_review`（`subjectType` は `LINE`。`line` が通らなければ `FILE` で足すので、Step 6 の GraphQL は要らない）→ `pull_request_review_write` の `submit_pending`（`COMMENT`） |
 | Issue の本文の読み書き、コメント | `issue_read`、`issue_write`、`add_issue_comment` |
 
-- `milestone` は番号で渡す。`issue_read` と `list_pull_requests` はマイルストーンのタイトルしか返さないので、番号はそのマイルストーンの付いた Issue を `search_issues` で引き、結果の `milestone.number` で知る。付けた後に読み直し、意図したマイルストーンになったかを確かめる
+- `milestone` は番号で渡す。`issue_read` と `list_pull_requests` はマイルストーンのタイトルしか返さないので、番号は Step 1 の実績を `search_pull_requests`（`repo:<owner>/<repo> is:merged`、`fields` に `milestone`）で引き、結果の `milestone.number` で知る（`search_issues` は自然文の検索で、絞り込みの書式が効かないことがある）。付けた後に読み直し、意図したマイルストーンになったかを確かめる
 - `issue_write` の `labels` と `assignees` は足すのでなく丸ごと置き換える。書く直前に取り直した今の一覧に足した形で渡し、外す変更はしない（Step 5-B が置き換えの `PUT` を禁じるのと同じく、人が設定したものを消さないため）
 - `issue_write` の `body` は行ごとに置き換えられず、本文を丸ごと渡す。書く直前に `issue_read` で取り直した本文を元にする（前に取った本文を元にすると、その後に人が書き足した分を消す）。書いた後に取り直し、意図した箇所だけが変わったことを確かめる
 - マージは MCP ツールで代えない（`gh pr merge --match-head-commit` とフックの確認を通らないため）。人に任せる
