@@ -96,12 +96,15 @@ test.describe('自分の設定（ミナト）', () => {
     await page.goto('/hibari/me');
     const rows = page.getByRole('table', { name: '経験値の明細' }).locator('tbody tr');
     await expect(rows).toHaveCount(50);
+    // 知らせの領域は押す前から置き、失敗したときに文字だけを入れる（読み上げに確かに伝えるため）
+    await expect(page.getByRole('alert')).toHaveText('');
     await page.getByRole('button', { name: '続きを読む' }).click();
     await expect(page.getByRole('alert')).toHaveText('続きを読み込めませんでした。もう一度試してください');
+    await expect(page.locator('.callout.is-warn', { hasText: '続きを読み込めませんでした' })).toBeVisible();
     await expect(rows).toHaveCount(50);
     await page.getByRole('button', { name: '続きを読む' }).click();
     await expect(rows).toHaveCount(52);
-    await expect(page.getByRole('alert')).toHaveCount(0);
+    await expect(page.getByRole('alert')).toHaveText('');
   });
 
   test('明細が無ければ空の状態を出す', async ({ page }) => {

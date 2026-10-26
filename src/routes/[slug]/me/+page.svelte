@@ -279,10 +279,12 @@
     </div>
     <!-- 続きを読んでいる間を読み上げに伝える。領域は常に置き、中の文字だけを替える -->
     <span class="visually-hidden" role="status">{loadingMore ? t('loading') : ''}</span>
+    <!-- 続きの失敗も、領域を常に置いて文字だけを入れる（領域と文字を同時に描くと、読み上げないことがあるため） -->
+    <span class="visually-hidden" role="alert">{next !== null && loadMoreFailed ? t('xpLoadMoreFailed') : ''}</span>
     {#if next !== null}
       {#if loadMoreFailed}
-        <div class="callout is-warn">
-          <Icon name="alert" /><span role="alert">{t('xpLoadMoreFailed')}</span>
+        <div class="callout is-warn" aria-hidden="true">
+          <Icon name="alert" /><span>{t('xpLoadMoreFailed')}</span>
         </div>
       {/if}
       <div class="form-actions">
