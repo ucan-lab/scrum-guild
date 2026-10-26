@@ -4,6 +4,7 @@
   import { page } from '$app/state';
   import { callOperation } from '../../../../../lib/api.ts';
   import Avatar from '../../../../../lib/components/Avatar.svelte';
+  import Emblem from '../../../../../lib/components/Emblem.svelte';
   import EmptyState from '../../../../../lib/components/EmptyState.svelte';
   import LoadFailed from '../../../../../lib/components/LoadFailed.svelte';
   import MemberInvite from '../../../../../lib/components/MemberInvite.svelte';
@@ -17,6 +18,7 @@
 
   // メンバーの画面（members.html の「所属している人」と「招待する」の節と頭の数字）。名前（アバター付き）、ロール、参加日を文字で出す。
   // アバターは member-list が返す画像（avatar_url）を出し、無い人（アカウントに結ばれる前、アバターの無い人）と読み込めないときは頭文字の円。
+  // 名前の横に、その人のレベルの小さい紋章を添える（経験値の数値は API も返さない）。
   // 承諾待ちの招待と組織の人数は、リーダーと管理者にだけ API が返す（一般のメンバーは null）ので、null のときは
   // 「招待する」と「承諾待ちの招待」の節も「招待中」の数も出さない。終了したワークスペースでは、招待と取り消しの操作を出さない。
   // 期限の過ぎた Google の招待は、一覧に「期限切れ」と出し、「招待中」の数には入れない（docs/data-model.md）。
@@ -154,7 +156,7 @@
                       name={member.name}
                       image={member.avatar_url}
                       decorative
-                    />{member.name}</span
+                    />{member.name}<Emblem level={member.level} small /></span
                   ></td
                 >
                 <td>{roleLabel(member.role)}</td>

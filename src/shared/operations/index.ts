@@ -3,6 +3,7 @@
 import type { AnyOperationDefinition } from './define.ts';
 import { definitionOperations } from './definition/index.ts';
 import { epicOperations } from './epic/index.ts';
+import { experienceOperations } from './experience/index.ts';
 import { operatorOperations } from './operator/index.ts';
 import { organizationOperations } from './organization/index.ts';
 import { sessionOperations } from './session/index.ts';
@@ -15,6 +16,7 @@ export const operations: readonly AnyOperationDefinition[] = [
   ...operatorOperations,
   ...organizationOperations,
   ...epicOperations,
+  ...experienceOperations,
   ...sessionOperations,
   ...sprintOperations,
   ...storyOperations,

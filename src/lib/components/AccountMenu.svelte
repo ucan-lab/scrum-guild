@@ -2,13 +2,15 @@
   import { logoutState, performLogout } from '../logout-action.svelte.ts';
   import { t } from '../vocabulary.svelte.ts';
   import Avatar from './Avatar.svelte';
+  import Emblem from './Emblem.svelte';
   import Icon from './Icon.svelte';
 
   // kit.js の accountMenuHtml。上の帯の自分の名前を押すと開くメニューで、中は「ログアウト」の1項目（後で「自分の設定」も入る）。
   // 開閉は OrganizationSwitcher と同じ: ボタン、メニューの外を押す、Tab でメニューの外へ出る、Esc。
   // メニューの中にフォーカスがあるときに閉じたら、ボタンへフォーカスを戻す（隠れた要素にフォーカスを残さない）。
   // ログアウトを押しても閉じない。結果が返るまで項目を止めて「ログアウトしています」を見せ、失敗したら項目を戻す
-  let { userId, name, isAdmin }: { userId: string; name: string; isAdmin: boolean } = $props();
+  // level は自分のレベル。名前（と管理者の印）の横に小さい紋章で出す（kit.js の accountMenuHtml と同じ並び）
+  let { userId, name, isAdmin, level }: { userId: string; name: string; isAdmin: boolean; level: number } = $props();
 
   const listId = $props.id();
   let open = $state(false);
@@ -56,6 +58,7 @@
     <span class="me">
       <Avatar {userId} {name} />{name}
       {#if isAdmin}<span class="chip">{t('admin')}</span>{/if}
+      <Emblem {level} small />
     </span>
     <Icon name="chevron" />
   </button>

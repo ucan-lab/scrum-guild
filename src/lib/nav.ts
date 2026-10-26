@@ -10,7 +10,7 @@ const workspaceRoutes = [
   '/[slug]/w/[id]/settings',
 ] as const;
 export type WorkspaceNavRoute = (typeof workspaceRoutes)[number];
-export type NavRoute = '/[slug]' | '/[slug]/admin' | WorkspaceNavRoute;
+export type NavRoute = '/[slug]' | '/[slug]/me' | '/[slug]/admin' | WorkspaceNavRoute;
 
 export function isWorkspaceRoute(route: NavRoute): route is WorkspaceNavRoute {
   return (workspaceRoutes as readonly string[]).includes(route);
@@ -90,7 +90,7 @@ export const navSections: NavSection[] = [
     items: [
       { icon: 'sun', label: 'pageToday', href: '/[slug]' },
       { icon: 'bell', label: 'pageNotifications', href: null },
-      { icon: 'users', label: 'pageMe', href: null },
+      { icon: 'users', label: 'pageMe', href: '/[slug]/me' },
       { icon: 'shield', label: 'pageOrgAdmin', href: '/[slug]/admin', adminOnly: true },
     ],
   },

@@ -9,6 +9,7 @@
   import MoveParentDialog from '../../../../lib/components/MoveParentDialog.svelte';
   import PageHead from '../../../../lib/components/PageHead.svelte';
   import StoryDialog from '../../../../lib/components/StoryDialog.svelte';
+  import TeamExperience from '../../../../lib/components/TeamExperience.svelte';
   import TaskCreateDialog from '../../../../lib/components/TaskCreateDialog.svelte';
   import TaskEntry from '../../../../lib/components/TaskEntry.svelte';
   import TreeEpic from '../../../../lib/components/TreeEpic.svelte';
@@ -32,7 +33,7 @@
   // 失敗したら理由を知らせて読み直す。動かした並びは読み直すまで画面に持ち、読み直したら捨てる（読み直した値が送った後の並び）。
   // 送り終える前に木が読み直されたら、送り終えた後にもう一度読み直す（捨てた移動があれば知らせる）。
   // 見出しは見本どおり画面の名前（掲示板／バックログ）で、小見出しがワークスペースの名前。見出しの右に、エピックを作るボタン、
-  // ストーリーを作るボタンと起票のボタン。
+  // ストーリーを作るボタンと起票のボタン。見出しの集計の下に、チーム全体の経験値（読めたときだけ）。
   // 閉じていれば、作る操作と完了の操作は出さない（エピックとストーリーのダイアログは読み取り専用で開く。閉じていることはワークスペースの枠の帯が伝える）。
   // 完了にしたタスクの行は、読み直すまで完了の印を付けてその場に残し、その行のポイントを親の「完了」に即時に足す。折りたたみの件数は読み直した値なので、その行は読み直すまで入らない。
   // ストーリーの「完了にする」は、配下の未完了のタスク（画面で完了にした行は数えない）が残るあいだは押せない。完了と取り消しは、通ったら木を読み直す。
@@ -628,7 +629,16 @@
 {#if workspace && tree === null}
   <LoadFailed inShell />
 {:else if workspace && tree}
-  <PageHead title={t('backlog')} eyebrow={workspace.name} focusable>
+  <!-- チーム全体の経験値は、読めたときだけ見出しの中に出す（読めなくても画面は開く） -->
+  {#snippet teamExperience()}
+    {#if data.teamTotal !== null}<TeamExperience total={data.teamTotal} />{/if}
+  {/snippet}
+  <PageHead
+    title={t('backlog')}
+    eyebrow={workspace.name}
+    focusable
+    meta={data.teamTotal === null ? undefined : teamExperience}
+  >
     {#snippet actions()}
       {#if canWrite}
         <button class="btn" type="button" onclick={(event) => epicDialog?.show(event.currentTarget)}>

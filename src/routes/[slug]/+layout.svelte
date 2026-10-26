@@ -76,7 +76,12 @@
     {#if openWorkspace?.role === null}
       <span class="chip">{t('notMemberAdminChip', { admin: t('admin') })}</span>
     {/if}
-    <AccountMenu userId={organization.me.id} name={organization.me.name} isAdmin={organization.me.is_admin} />
+    <AccountMenu
+      userId={organization.me.id}
+      name={organization.me.name}
+      isAdmin={organization.me.is_admin}
+      level={organization.me.level}
+    />
   {/snippet}
   {#snippet workspaceSwitcher()}
     {#if openWorkspace}

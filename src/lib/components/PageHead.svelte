@@ -10,14 +10,23 @@
   import Icon from './Icon.svelte';
 
   // kit.js の pageHead。画面の見出し（h1）、上の小さな見出し、集計、右上の操作。
-  // focusable は、画面を移った後に見出しへフォーカスを置く画面（作ったワークスペースの画面）が付ける
+  // focusable は、画面を移った後に見出しへフォーカスを置く画面（作ったワークスペースの画面）が付ける。
+  // meta は集計の下に置く1行（バックログの画面のチーム全体の経験値。kit.js の pageHead の meta）
   let {
     title,
     eyebrow,
     tallies = [],
     actions,
+    meta,
     focusable = false,
-  }: { title: string; eyebrow?: string; tallies?: Tally[]; actions?: Snippet; focusable?: boolean } = $props();
+  }: {
+    title: string;
+    eyebrow?: string;
+    tallies?: Tally[];
+    actions?: Snippet;
+    meta?: Snippet;
+    focusable?: boolean;
+  } = $props();
 </script>
 
 <header class="page-head">
@@ -41,4 +50,5 @@
       {/each}
     </dl>
   {/if}
+  {#if meta}{@render meta()}{/if}
 </header>

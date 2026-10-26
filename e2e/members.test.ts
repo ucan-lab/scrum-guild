@@ -39,14 +39,16 @@ test.describe('リーダー（あおば開発のミナト）', () => {
     const rows = members.locator('tbody tr');
     await expect(rows).toHaveCount(2);
     // 名前の前に頭文字の円（その文字も td の文字に入る）
-    await expect(rows.nth(0).locator('td').nth(0)).toHaveText('ミミナト');
+    // 名前の後ろにレベルの小さい紋章（数字だけ。ほかのファイルの e2e がタスクを完了にすると上がりうる）
+    await expect(rows.nth(0).locator('td').nth(0)).toHaveText(/^ミミナト\d+$/);
+    await expect(rows.nth(0).locator('.emblem.is-sm')).toHaveAttribute('aria-label', /^レベル \d+$/);
     // 名前は横の文字が読むので、アバターは読み上げから外す
     const avatar = rows.nth(0).locator('td').nth(0).locator('.avatar');
     await expect(avatar).toBeVisible();
     await expect(avatar).toHaveAttribute('aria-hidden', 'true');
     await expect(rows.nth(0).locator('td').nth(1)).toHaveText('パーティリーダー');
     await expect(rows.nth(0).locator('td').nth(2)).toHaveText('2026-10-01');
-    await expect(rows.nth(1).locator('td').nth(0)).toHaveText('ハハルカ');
+    await expect(rows.nth(1).locator('td').nth(0)).toHaveText(/^ハハルカ\d+$/);
     await expect(rows.nth(1).locator('td').nth(1)).toHaveText('一般');
     await expect(members.locator('select, button')).toHaveCount(0);
 
@@ -195,8 +197,8 @@ test.describe('リーダー（あおば開発のミナト）', () => {
     const minato = rows.nth(0).locator('.avatar');
     await expect(minato.locator('img')).toHaveAttribute('src', 'https://avatars.githubusercontent.com/u/7300001');
     await expect(minato.locator('img')).toBeVisible();
-    // 画像のある人は頭文字を出さない
-    await expect(rows.nth(0).locator('td').nth(0)).toHaveText('ミナト');
+    // 画像のある人は頭文字を出さない（名前の後ろはレベルの紋章の数字）
+    await expect(rows.nth(0).locator('td').nth(0)).toHaveText(/^ミナト\d+$/);
     const haruka = rows.nth(1).locator('.avatar');
     await expect(haruka).toHaveText('ハ');
     await expect(haruka.locator('img')).toHaveCount(0);
@@ -213,7 +215,14 @@ test.describe('リーダー（あおば開発のミナト）', () => {
       route.fulfill({
         json: {
           members: [
-            { id: AOBA_WORKSPACE_ID, name: longName, role: 'leader', joined_on: '2026-10-01', avatar_url: null },
+            {
+              id: AOBA_WORKSPACE_ID,
+              name: longName,
+              role: 'leader',
+              joined_on: '2026-10-01',
+              avatar_url: null,
+              level: 12,
+            },
           ],
           // Google の招待は手段の列に期限か「期限切れ」が並び、その列も広がる
           invitations: [

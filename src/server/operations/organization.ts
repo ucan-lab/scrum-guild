@@ -1,7 +1,9 @@
 import { now } from '../../shared/clock.ts';
+import { levelOf } from '../../shared/experience.ts';
 import { myOrganizations, organizationInfo } from '../../shared/operations/organization/index.ts';
 import type { Theme } from '../../shared/theme.ts';
 import { ApiError } from '../errors.ts';
+import { amountOf, userExperienceTotalStatement } from './experience.ts';
 import { implement } from './implement.ts';
 
 // users.last_seen_at を書き直す間隔。組織の枠を開くたびに書かないための上限
@@ -20,7 +22,7 @@ export const organizationInfoOperation = implement(organizationInfo, async ({ db
   const staleBefore = new Date(at.getTime() - LAST_SEEN_INTERVAL_MS).toISOString();
 
   // 画面に返す値を読む。書き込みは混ぜず、書き込みが失敗しても画面は開く
-  const [userResult, workspaceResult, anyWorkspaceResult] = await db.batch([
+  const [userResult, workspaceResult, anyWorkspaceResult, experienceResult] = await db.batch([
     db.statement((q) =>
       q
         .selectFrom('users')
@@ -42,6 +44,8 @@ export const organizationInfoOperation = implement(organizationInfo, async ({ db
     db.statement((q) =>
       q.selectFrom('workspaces').select('id').where('organization_id', '=', db.organizationId).limit(1),
     ),
+    // アカウントのメニューの紋章に出すレベルの元。合計そのものは返さない
+    userExperienceTotalStatement(db, userId),
   ] as const);
 
   const user = userResult.rows[0];
@@ -75,6 +79,7 @@ export const organizationInfoOperation = implement(organizationInfo, async ({ db
       is_admin: actor.isAdmin,
       // 列の CHECK が守る値（組織の theme と同じ列挙）
       theme: user.theme as Theme | null,
+      level: levelOf(amountOf(experienceResult.rows[0]?.total)),
     },
     workspaces: workspaceResult.rows.map((row) => ({
       id: row.id,

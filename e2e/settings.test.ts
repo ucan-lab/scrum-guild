@@ -6,7 +6,8 @@ import { createWorkspace, signIn, watchViolations } from './helpers.ts';
 const SEED_GAME_WORKSPACE = '/aoba/w/019a0000-0000-7000-8000-000000000401';
 
 async function openSettings(page: Page): Promise<void> {
-  await page.locator('.nav-item', { hasText: '設定' }).click();
+  // 「自分の設定」の項目にも当たらないよう、全体が「設定」の項目だけを選ぶ
+  await page.locator('.nav-item', { hasText: /^\s*設定\s*$/ }).click();
   await expect(page).toHaveURL(/\/aoba\/w\/[0-9a-f-]{36}\/settings$/);
   await expect(page.getByRole('heading', { level: 1, name: '設定' })).toBeVisible();
 }
@@ -169,7 +170,7 @@ test.describe('一般のメンバー（あおば開発のハルカ）', () => {
     await page.goto(SEED_GAME_WORKSPACE);
     await expect(page.getByRole('heading', { level: 1, name: '掲示板' })).toBeVisible();
     await expect(page.locator('.nav-item', { hasText: 'メンバー' })).toBeVisible();
-    await expect(page.locator('.nav-item', { hasText: '設定' })).toHaveCount(0);
+    await expect(page.locator('.nav-item', { hasText: /^\s*設定\s*$/ })).toHaveCount(0);
     await page.goto(`${SEED_GAME_WORKSPACE}/settings`);
     await expect(page.getByText('この画面には入れません')).toBeVisible();
     await expect(page.getByLabel('新しい系統の名前')).toHaveCount(0);

@@ -1,4 +1,5 @@
 import { now, todayIn } from '../../shared/clock.ts';
+import { levelOf } from '../../shared/experience.ts';
 import {
   memberList,
   workspaceClose,
@@ -11,6 +12,7 @@ import {
 import type { Insertable, OrganizationDb, OrganizationTables, QueryCreator } from '../db/index.ts';
 import { ApiError } from '../errors.ts';
 import { uuidv7 } from '../uuid.ts';
+import { amountOf, memberExperienceTotalsStatement } from './experience.ts';
 import { implement } from './implement.ts';
 import { readSeats } from './invitation.ts';
 import { newWorkspaceRows } from './workspace-rows.ts';
@@ -238,10 +240,15 @@ export const memberListOperation = implement(memberList, async ({ db, actor, wor
       .orderBy('id'),
   );
 
-  const [[workspaceResult, memberResult, invitationResult], seats] = await Promise.all([
+  // レベルの元になる、人ごとの組織の中の合計。所属と同じ batch で読む。合計そのものは返さない
+  const totalsStatement = memberExperienceTotalsStatement(db, workspaceId);
+
+  const [[workspaceResult, memberResult, totalsResult, invitationResult], seats] = await Promise.all([
     canSeeInvitations
-      ? db.batch([workspaceStatement, membersStatement, invitationsStatement] as const)
-      : db.batch([workspaceStatement, membersStatement] as const).then((results) => [...results, undefined] as const),
+      ? db.batch([workspaceStatement, membersStatement, totalsStatement, invitationsStatement] as const)
+      : db
+          .batch([workspaceStatement, membersStatement, totalsStatement] as const)
+          .then((results) => [...results, undefined] as const),
     canSeeInvitations ? readSeats(db, tools) : null,
   ]);
 
@@ -251,6 +258,7 @@ export const memberListOperation = implement(memberList, async ({ db, actor, wor
   // アバターは共通の表（account_logins）にあるので、組織の道具を全員の ID で1回呼んで引く。
   // 引いた ID はどれも自分の組織の行なので、キーが無いのは処理の間に消えた行だけで、null として扱う
   const avatars = await tools.avatarsOf(memberResult.rows.map((row) => row.id));
+  const totals = new Map(totalsResult.rows.map((row) => [row.user_id, amountOf(row.total)]));
 
   return {
     members: memberResult.rows.map((row) => ({
@@ -260,6 +268,7 @@ export const memberListOperation = implement(memberList, async ({ db, actor, wor
       role: row.role as 'leader' | 'member',
       joined_on: row.joined_on,
       avatar_url: avatars.get(row.id) ?? null,
+      level: levelOf(totals.get(row.id) ?? 0),
     })),
     invitations:
       invitationResult === undefined
