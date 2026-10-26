@@ -39,4 +39,20 @@ export const SEED_SESSIONS = {
     accountId: '019a0000-0000-7000-8000-000000000104',
     description: 'operator と同じアカウントの2本目（e2e のログアウトが消す）',
   },
+  // くもラボ（e2e の組織の言葉づかいと既定のテーマだけが使い、組織の値を書き換える組織）の3人。ほかの組織には入らない
+  lookAdmin: {
+    token: 'dev-seed-look-admin-00000000000000000000000',
+    accountId: '019a0000-0000-7000-8000-000000000105',
+    description: 'くもラボの管理者（カイ）。e2e の組織の言葉づかいと既定のテーマが使う',
+  },
+  lookMember: {
+    token: 'dev-seed-look-member-0000000000000000000000',
+    accountId: '019a0000-0000-7000-8000-000000000106',
+    description: 'くもラボの一般のユーザーで、テーマを選んでいない（ソウタ）',
+  },
+  lookThemed: {
+    token: 'dev-seed-look-themed-0000000000000000000000',
+    accountId: '019a0000-0000-7000-8000-000000000107',
+    description: 'くもラボの一般のユーザーで、自分のテーマ（シンプル（ダーク））を選んでいる（コハル）',
+  },
 } as const satisfies Record<string, SeedSession>;

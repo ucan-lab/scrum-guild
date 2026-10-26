@@ -5,6 +5,7 @@ import { readFileSync } from 'node:fs';
 import { describe, test } from 'node:test';
 import vm from 'node:vm';
 import { iconViewBox, icons } from '../src/lib/icons.ts';
+import { themeLabelKeys, themeNoteKeys, themes } from '../src/shared/theme.ts';
 import { dictionary } from '../src/shared/vocabulary.ts';
 
 const read = (file: string) => readFileSync(new URL(`../design/${file}`, import.meta.url), 'utf8');
@@ -135,6 +136,22 @@ describe('見本との照合', () => {
       const entry = production[key];
       assert.ok(entry, `本番の辞書に ${key} が無い`);
       assert.deepEqual([entry.game, entry.scrum], [...design[key]], `${key} の中身`);
+    }
+  });
+
+  test('テーマの名前と説明は、見本の THEME_LABEL と THEME_NOTE と同じ', () => {
+    const readObject = (name: string): Record<string, string> => {
+      const literal = new RegExp(`\\n {2}const ${name} = (\\{[\\s\\S]*?\\});`).exec(read('kit.js'))?.[1];
+      assert.ok(literal, `design/kit.js に ${name} が見つからない（書き方を変えたら、このテストの取り出し方も直す）`);
+      return vm.runInNewContext(`(${literal})`);
+    };
+    const labels = readObject('THEME_LABEL');
+    const notes = readObject('THEME_NOTE');
+    for (const theme of themes) {
+      const label = dictionary[themeLabelKeys[theme]];
+      const note = dictionary[themeNoteKeys[theme]];
+      assert.deepEqual([label.game, label.scrum], [labels[theme], labels[theme]], `${theme} の名前`);
+      assert.deepEqual([note.game, note.scrum], [notes[theme], notes[theme]], `${theme} の説明`);
     }
   });
 

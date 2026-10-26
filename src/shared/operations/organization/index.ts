@@ -3,6 +3,7 @@ import type { AnyOperationDefinition } from '../define.ts';
 import { myOrganizations } from './my-organizations.ts';
 import { organizationInfo } from './organization.ts';
 import { organizationHolidayAdd, organizationHolidayDelete, organizationHolidayList } from './organization-holiday.ts';
+import { organizationSettingsUpdate } from './organization-settings.ts';
 
 export {
   myOrganizations,
@@ -10,6 +11,7 @@ export {
   organizationHolidayDelete,
   organizationHolidayList,
   organizationInfo,
+  organizationSettingsUpdate,
 };
 
 export const organizationOperations: readonly AnyOperationDefinition[] = [
@@ -18,4 +20,5 @@ export const organizationOperations: readonly AnyOperationDefinition[] = [
   organizationHolidayList,
   organizationHolidayAdd,
   organizationHolidayDelete,
+  organizationSettingsUpdate,
 ];

@@ -7,7 +7,7 @@ import type { DictionaryKey } from './vocabulary.ts';
 export const themes = ['simple', 'simple_light', 'simple_dark', 'medieval', 'modern'] as const;
 export type Theme = (typeof themes)[number];
 
-// テーマを選ぶ設定の画面が使う、テーマごとの辞書のキー。今は画面から使わないが、全テーマに辞書の名前があることを
+// テーマを選ぶ画面（組織の管理の既定のテーマ）が使う、テーマごとの辞書のキー。全テーマに辞書の名前があることを
 // scripts/theme.test.ts が確かめる（テーマを足したとき、辞書の名前の足し忘れを止める）
 export const themeLabelKeys: Record<Theme, DictionaryKey> = {
   simple: 'themeSimple',
@@ -15,6 +15,15 @@ export const themeLabelKeys: Record<Theme, DictionaryKey> = {
   simple_dark: 'themeSimpleDark',
   medieval: 'themeMedieval',
   modern: 'themeModern',
+};
+
+// テーマごとの説明の辞書のキー。中身は見本の design/kit.js の THEME_NOTE と同じ文（scripts/design-parity.test.ts が突き合わせる）
+export const themeNoteKeys: Record<Theme, DictionaryKey> = {
+  simple: 'themeNoteSimple',
+  simple_light: 'themeNoteSimpleLight',
+  simple_dark: 'themeNoteSimpleDark',
+  medieval: 'themeNoteMedieval',
+  modern: 'themeNoteModern',
 };
 
 // 描く前に読むので、static/theme-init.js と同じキーにする
