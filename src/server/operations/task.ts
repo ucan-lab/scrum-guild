@@ -6,6 +6,14 @@ import { MIN_POINTS_FOR_EXPERIENCE } from '../../shared/task.ts';
 import type { OrganizationDb, OrganizationTables, QueryCreator } from '../db/index.ts';
 import { ApiError } from '../errors.ts';
 import { uuidv7 } from '../uuid.ts';
+import {
+  categoryConflict,
+  categoryRow,
+  readCategoryRef,
+  readRepositoryRef,
+  refOf,
+  repositoryRow,
+} from './definition-refs.ts';
 import { implement } from './implement.ts';
 import {
   MAX_TIES,
@@ -73,7 +81,13 @@ export const taskCreateOperation = implement(taskCreate, async ({ db, actor, wor
 
   // 親は、同じワークスペースの削除していない、完了していないストーリー。無ければ 404、完了していれば 409。書く文にも同じ条件を入れる
   const parentId = input.story_id;
+  // 区分は親のないタスクだけが持つ（親の下では引き継ぐ）
+  if (parentId !== null && input.category_id !== null) throw categoryConflict('has_parent');
   const parent = parentId === null ? null : await readParentStory(db, workspaceId, parentId);
+  // 区分とリポジトリは、同じワークスペースの削除していないものだけ。無ければ 404。読んで名前を残し、書く文にも同じ条件を入れる
+  const category = input.category_id === null ? null : await readCategoryRef(db, workspaceId, input.category_id);
+  const repository =
+    input.repository_id === null ? null : await readRepositoryRef(db, workspaceId, input.repository_id);
 
   // 位置は親の配下（親なしなら、親のないタスク）の末尾。完了したタスクも並びに残っているので、それも含めた末尾に置く。
   // 同時に作ると同じ位置になりうる。同じ位置の行は id の順に並ぶ（同じミリ秒の中では作った順とは限らない）
@@ -99,6 +113,8 @@ export const taskCreateOperation = implement(taskCreate, async ({ db, actor, wor
           'title',
           'points',
           'story_id',
+          'category_id',
+          'repository_id',
           'assignee_user_id',
           'position',
           'created_by',
@@ -115,6 +131,8 @@ export const taskCreateOperation = implement(taskCreate, async ({ db, actor, wor
               eb.val(input.title).as('title'),
               eb.val(input.points).as('points'),
               eb.val(parent?.id ?? null).as('story_id'),
+              eb.val(category?.id ?? null).as('category_id'),
+              eb.val(repository?.id ?? null).as('repository_id'),
               eb.val(assignee?.id ?? null).as('assignee_user_id'),
               eb.val(position).as('position'),
               eb.val(actorUserId).as('created_by'),
@@ -131,6 +149,12 @@ export const taskCreateOperation = implement(taskCreate, async ({ db, actor, wor
                   storyRow(eb, workspaceId, parent!.id).select('stories.id').where('stories.completed_at', 'is', null),
                 ),
               ),
+            )
+            .$if(category !== null, (qb) =>
+              qb.where((eb) => eb.exists(categoryRow(eb, workspaceId, category!.id).select('categories.id'))),
+            )
+            .$if(repository !== null, (qb) =>
+              qb.where((eb) => eb.exists(repositoryRow(eb, workspaceId, repository!.id).select('repositories.id'))),
             ),
         ),
     ),
@@ -156,6 +180,8 @@ export const taskCreateOperation = implement(taskCreate, async ({ db, actor, wor
                     points: [null, input.points],
                     ...(assignee === null ? {} : { assignee: [null, assignee] }),
                     ...(parent === null ? {} : { story: [null, parent] }),
+                    ...(category === null ? {} : { category: [null, category] }),
+                    ...(repository === null ? {} : { repository: [null, repository] }),
                   }),
                 )
                 .as('changes_json'),
@@ -174,14 +200,16 @@ export const taskCreateOperation = implement(taskCreate, async ({ db, actor, wor
     ),
   ]);
 
-  // 読んでから書くまでに、ワークスペースが閉じたか、担当が所属を外れたか、親が消えたか完了したら何も入らない
+  // 読んでから書くまでに、ワークスペースが閉じたか、担当が所属を外れたか、親が消えたか完了したか、区分かリポジトリが削除されたら何も入らない
   if ((results[0]?.changes ?? 0) === 0) {
     await throwIfClosed(db, workspaceId);
-    // 親が消えていれば 404、完了していれば 409。親は無事なら、担当が外れたので 404
+    // 親が消えていれば 404、完了していれば 409。親は無事なら、担当が外れたか区分かリポジトリが消えたので 404
     if (parent !== null) await readParentStory(db, workspaceId, parent.id);
     throw new ApiError(404, 'not_found');
   }
-  return { task: { id: taskId, title: input.title, points: input.points, due_on: null, assignee } };
+  return {
+    task: { id: taskId, title: input.title, points: input.points, due_on: null, assignee, category, repository },
+  };
 });
 
 type TaskPoints = 0 | 1 | 2 | 3 | 5 | 8 | 13 | null;
@@ -220,6 +248,13 @@ export const backlogTreeOperation = implement(backlogTree, async ({ db, workspac
       db.statement((q) =>
         q
           .selectFrom('epics')
+          // 区分は、同じワークスペースの削除していないものだけを結ぶ（下の行も同じ）
+          .leftJoin('categories', (join) =>
+            join
+              .onRef('categories.id', '=', 'epics.category_id')
+              .on('categories.workspace_id', '=', workspaceId)
+              .on('categories.deleted_at', 'is', null),
+          )
           .select([
             'epics.id',
             'epics.title',
@@ -227,6 +262,8 @@ export const backlogTreeOperation = implement(backlogTree, async ({ db, workspac
             'epics.link_url',
             'epics.completed_at',
             'epics.canceled_at',
+            'categories.id as category_ref_id',
+            'categories.name as category_name',
           ])
           .where('epics.workspace_id', '=', workspaceId)
           .where('epics.deleted_at', 'is', null)
@@ -236,6 +273,12 @@ export const backlogTreeOperation = implement(backlogTree, async ({ db, workspac
       db.statement((q) =>
         q
           .selectFrom('stories')
+          .leftJoin('categories', (join) =>
+            join
+              .onRef('categories.id', '=', 'stories.category_id')
+              .on('categories.workspace_id', '=', workspaceId)
+              .on('categories.deleted_at', 'is', null),
+          )
           .select([
             'stories.id',
             'stories.epic_id',
@@ -243,17 +286,26 @@ export const backlogTreeOperation = implement(backlogTree, async ({ db, workspac
             'stories.due_on',
             'stories.link_url',
             'stories.completed_at',
+            'categories.id as category_ref_id',
+            'categories.name as category_name',
           ])
           .where('stories.workspace_id', '=', workspaceId)
           .where('stories.deleted_at', 'is', null)
           .orderBy('stories.position')
           .orderBy('stories.id'),
       ),
-      // 配下の未完了のタスク。ORDER BY を付けると SQLite が tasks_story を使わない計画を選ぶので、並べるのは下で行う
+      // 配下の未完了のタスク。ORDER BY を付けると SQLite が tasks_story を使わない計画を選ぶので、並べるのは下で行う。
+      // 区分は親から引き継ぐので、タスク自身の区分は読まない
       db.statement((q) =>
         tasksUnderStories(q, workspaceId)
           .leftJoin('users', (join) =>
             join.onRef('users.id', '=', 'tasks.assignee_user_id').on('users.organization_id', '=', organizationId),
+          )
+          .leftJoin('repositories', (join) =>
+            join
+              .onRef('repositories.id', '=', 'tasks.repository_id')
+              .on('repositories.workspace_id', '=', workspaceId)
+              .on('repositories.deleted_at', 'is', null),
           )
           .select([
             'tasks.story_id',
@@ -264,6 +316,8 @@ export const backlogTreeOperation = implement(backlogTree, async ({ db, workspac
             'tasks.position',
             'tasks.assignee_user_id',
             'users.name as assignee_name',
+            'repositories.id as repository_ref_id',
+            'repositories.name as repository_name',
           ])
           .where('tasks.completed_at', 'is', null),
       ),
@@ -294,6 +348,18 @@ export const backlogTreeOperation = implement(backlogTree, async ({ db, workspac
           .leftJoin('users', (join) =>
             join.onRef('users.id', '=', 'tasks.assignee_user_id').on('users.organization_id', '=', organizationId),
           )
+          .leftJoin('categories', (join) =>
+            join
+              .onRef('categories.id', '=', 'tasks.category_id')
+              .on('categories.workspace_id', '=', workspaceId)
+              .on('categories.deleted_at', 'is', null),
+          )
+          .leftJoin('repositories', (join) =>
+            join
+              .onRef('repositories.id', '=', 'tasks.repository_id')
+              .on('repositories.workspace_id', '=', workspaceId)
+              .on('repositories.deleted_at', 'is', null),
+          )
           .select([
             'tasks.id',
             'tasks.title',
@@ -301,6 +367,10 @@ export const backlogTreeOperation = implement(backlogTree, async ({ db, workspac
             'tasks.due_on',
             'tasks.assignee_user_id',
             'users.name as assignee_name',
+            'categories.id as category_ref_id',
+            'categories.name as category_name',
+            'repositories.id as repository_ref_id',
+            'repositories.name as repository_name',
           ])
           .where('tasks.completed_at', 'is', null)
           .orderBy('tasks.position')
@@ -323,14 +393,31 @@ export const backlogTreeOperation = implement(backlogTree, async ({ db, workspac
     due_on: string | null;
     assignee_user_id: string | null;
     assignee_name: string | null;
+    repository_ref_id: string | null;
+    repository_name: string | null;
   };
-  const taskOf = (row: Row) => ({
+  type Ref = { id: string; name: string } | null;
+  // category は引き継ぎを解いた区分（親のないタスクは自身の区分、ストーリーの下のタスクは親の区分）
+  const taskOf = (row: Row, category: Ref) => ({
     id: row.id,
     title: row.title,
     points: row.points as TaskPoints,
     due_on: row.due_on,
     assignee: row.assignee_user_id === null ? null : { id: row.assignee_user_id, name: row.assignee_name ?? '' },
+    category,
+    repository: refOf(row.repository_ref_id, row.repository_name),
   });
+
+  // 区分は、エピック、ストーリー、タスクの順に引き継ぐ。エピックの区分を先に引いておく
+  const epicCategories = new Map<string, Ref>(
+    epicsResult.rows.map((epic) => [epic.id, refOf(epic.category_ref_id, epic.category_name)]),
+  );
+  type StoryRow = (typeof storiesResult.rows)[number];
+  const storyCategoryOf = (story: StoryRow): Ref =>
+    story.epic_id === null
+      ? refOf(story.category_ref_id, story.category_name)
+      : (epicCategories.get(story.epic_id) ?? null);
+  const storyCategories = new Map<string, Ref>(storiesResult.rows.map((story) => [story.id, storyCategoryOf(story)]));
 
   // position の順（同じ値なら id の順）。position は fractional-indexing の ASCII の文字列なので、文字列の比較が SQLite の並びと同じ
   const byPosition = (a: { position: string; id: string }, b: { position: string; id: string }) =>
@@ -338,12 +425,11 @@ export const backlogTreeOperation = implement(backlogTree, async ({ db, workspac
   const tasksByStory = new Map<string, ReturnType<typeof taskOf>[]>();
   for (const row of [...storyTasksResult.rows].sort(byPosition)) {
     const list = tasksByStory.get(row.story_id!) ?? [];
-    list.push(taskOf(row));
+    list.push(taskOf(row, storyCategories.get(row.story_id!) ?? null));
     tasksByStory.set(row.story_id!, list);
   }
   const totalsByStory = new Map(totalsResult.rows.map((row) => [row.story_id!, row]));
 
-  type StoryRow = (typeof storiesResult.rows)[number];
   // 応答には epic_id を載せない（親はエピックの行の配下に並べることで示す）
   const storyOf = (story: StoryRow) => {
     const totals = totalsByStory.get(story.id);
@@ -353,6 +439,7 @@ export const backlogTreeOperation = implement(backlogTree, async ({ db, workspac
       due_on: story.due_on,
       link_url: story.link_url,
       completed_at: story.completed_at,
+      category: storyCategories.get(story.id) ?? null,
       tasks: tasksByStory.get(story.id) ?? [],
       completed_task_count: Number(totals?.completed_count ?? 0),
       points_done: Number(totals?.points_done ?? 0),
@@ -375,17 +462,19 @@ export const backlogTreeOperation = implement(backlogTree, async ({ db, workspac
   return {
     today: todayIn(settings.timezone),
     week_start: settings.week_start,
+    // 区分を結んだ列（category_ref_id、category_name）は、出力のスキーマに無いので応答から落ちる
     epics: epicsResult.rows.map((epic) => {
       const stories = storiesByEpic.get(epic.id) ?? [];
       return {
         ...epic,
+        category: epicCategories.get(epic.id) ?? null,
         stories,
         points_done: stories.reduce((sum, story) => sum + story.points_done, 0),
         points_all: stories.reduce((sum, story) => sum + story.points_all, 0),
       };
     }),
     stories: rootStories,
-    tasks: rootOpenResult.rows.map(taskOf),
+    tasks: rootOpenResult.rows.map((row) => taskOf(row, refOf(row.category_ref_id, row.category_name))),
     completed_count: Number(rootDoneResult.rows[0]?.count ?? 0),
   };
 });

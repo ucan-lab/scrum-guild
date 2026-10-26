@@ -8,11 +8,13 @@ import { backlogTaskSchema } from './backlog-tree.ts';
 // 親は story_id で指す。同じワークスペースの、削除していないストーリーでなければ 404、完了したストーリーなら 409 の conflict。
 // position は親の配下の末尾（親なしなら、親のないタスクの末尾）。
 // 作った人（created_by）は呼んだ人。担当はそのワークスペースに今所属している人だけで、そうでなければ存在しないときと同じ 404。
+// 区分（category_id）は親のないタスクだけが持つ。親と一緒に送ると 409 の conflict（has_parent）。区分とリポジトリ（repository_id）は、
+// 同じワークスペースの削除していないものでなければ 404（別の組織も 404）。
 // 経験値は作ったときには付かず、完了にした時点で（ポイントが 1 以上なら）付く
 export const taskCreate = defineOperation({
   name: 'task-create',
   description:
-    'バックログにタスクを作る。タイトル、ポイント（未設定か 0、1、2、3、5、8、13）、担当（任意）、親のストーリー（任意）を指す。位置は親の配下の末尾',
+    'バックログにタスクを作る。タイトル、ポイント（未設定か 0、1、2、3、5、8、13）、担当（任意）、親のストーリー（任意）、リポジトリ（任意）、区分（親のないときだけ、任意）を指す。位置は親の配下の末尾',
   mode: 'write',
   permission: 'member',
   workspace: true,
@@ -22,6 +24,8 @@ export const taskCreate = defineOperation({
     points: taskPointsSchema.nullable().default(null),
     assignee_user_id: idSchema.nullable().default(null),
     story_id: idSchema.nullable().default(null),
+    repository_id: idSchema.nullable().default(null),
+    category_id: idSchema.nullable().default(null),
   }),
   output: z.object({ task: backlogTaskSchema }),
 });

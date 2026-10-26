@@ -55,6 +55,12 @@
       <button class="tree-link" type="button" onclick={(event) => onEdit(epic, event.currentTarget)}
         >{epic.title}</button
       >
+      <!-- 区分はエピックに振ったものを出す（配下のストーリーとタスクは引き継ぐので、繰り返さない） -->
+      {#if epic.category !== null}
+        <span class="chip"
+          ><span class="visually-hidden">{t('chipPrefix', { kind: t('category') })}</span>{epic.category.name}</span
+        >
+      {/if}
       {#if epic.completed_at !== null}
         <span class="chip is-done"><Icon name="check" />{t('epicCleared')}</span>
       {:else if epic.canceled_at !== null}

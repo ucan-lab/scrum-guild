@@ -888,6 +888,10 @@ a.choice > div > span, .choice.is-static > div > span { display: block; }
 .order-list .grip { color: var(--color-faint); cursor: grab; display: inline-grid; }
 .order-list .input { padding-block: 5px; }
 .order-list .fixed { font-weight: 700; padding-inline: 10px; display: flex; gap: var(--space-2); align-items: center; }
+/* 行の中身に名前と切り替え（か選択欄）を並べる（区分の「月ごとに計上する」、リポジトリの入る先）。狭い幅では名前の下へ折り返す */
+.order-list .order-main { display: flex; flex-wrap: wrap; gap: var(--space-2) var(--space-3); align-items: center; min-width: 0; }
+.order-list .order-main > .input, .order-list .order-main > .order-name { flex: 1 1 140px; min-width: 0; }
+.order-list .order-main > .select { flex: 1 1 180px; min-width: 0; }
 .order-actions { display: flex; gap: 2px; align-items: center; }
 .icon-btn { display: inline-grid; place-items: center; width: 30px; height: 30px; border: 1px solid transparent; background: none; border-radius: var(--radius-1); color: var(--color-muted); }
 .icon-btn:hover { border-color: var(--color-line); color: var(--color-fg); }

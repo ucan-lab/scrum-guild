@@ -16,7 +16,9 @@
   // canComplete が偽（閉じたワークスペース）の行は、完了の操作を出さない。pending の間は押しても無視する（aria-disabled）
   // onMove を渡すと、「上へ」「下へ」（同じ親の中で1つ動かす）を出し、行の中で Alt と ↑ ↓ を押しても同じことをする。
   // 端で動かせない向き（canMoveUp、canMoveDown が偽）は、フォーカスを失わないよう disabled でなく aria-disabled にする。
-  // onMoveParent を渡すと「親を移す」も出す。完了にした行には出さない
+  // onMoveParent を渡すと「親を移す」も出す。完了にした行には出さない。
+  // タイトルの下（.entry-meta）に、振ったリポジトリ（kit.js の repoTag。git のアイコン）と、showCategory のとき（親のないタスク）だけ区分を出す。
+  // 親のあるタスクの区分は親の行に出ているので、繰り返さない
   let {
     task,
     clock,
@@ -28,6 +30,7 @@
     canMoveDown = false,
     onMove,
     onMoveParent,
+    showCategory = false,
   }: {
     task: BacklogTask;
     clock: { today: string; weekStart: number };
@@ -39,7 +42,10 @@
     canMoveDown?: boolean;
     onMove?: (task: BacklogTask, delta: -1 | 1) => void;
     onMoveParent?: (task: BacklogTask, trigger: HTMLElement) => void;
+    showCategory?: boolean;
   } = $props();
+
+  const category = $derived(showCategory ? task.category : null);
 
   const movable = $derived(onMove !== undefined && !done);
 
@@ -85,6 +91,21 @@
       data-sveltekit-keepfocus
       data-sveltekit-noscroll>{task.title}</a
     >
+    {#if task.repository !== null || category !== null}
+      <span class="entry-meta">
+        {#if task.repository !== null}
+          <span class="chip"
+            ><Icon name="git" /><span class="visually-hidden">{t('chipPrefix', { kind: t('repository') })}</span>{task
+              .repository.name}</span
+          >
+        {/if}
+        {#if category !== null}
+          <span class="chip"
+            ><span class="visually-hidden">{t('chipPrefix', { kind: t('category') })}</span>{category.name}</span
+          >
+        {/if}
+      </span>
+    {/if}
   </div>
   <div class="entry-end">
     {#if task.due_on !== null}

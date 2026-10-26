@@ -156,8 +156,13 @@ test('完了したタスクの難易度は直せず、理由を添える。ほ�
       .first()
       .evaluate((el) => getComputedStyle(el).opacity),
   ).toBe('1');
-  for (const radio of await drawer.getByRole('radio').all()) await expect(radio).toBeDisabled();
-  // 期限は完了の後も直せる
+  for (const radio of await drawer.getByRole('radiogroup', { name: '難易度' }).getByRole('radio').all()) {
+    await expect(radio).toBeDisabled();
+  }
+  // 期限とリポジトリは完了の後も直せる
+  await expect(
+    drawer.getByRole('radiogroup', { name: 'リポジトリ' }).getByRole('radio', { name: 'なし' }),
+  ).toBeEnabled();
   await drawer.getByLabel('期限').fill('2099-01-02');
   await expect(page.getByRole('status').filter({ hasText: '保存しました' })).toBeVisible();
 });

@@ -4,6 +4,7 @@
   import { taskCreate } from '../../shared/operations/task/index.ts';
   import { memberList } from '../../shared/operations/workspace/index.ts';
   import type { BacklogTask } from '../../shared/operations/task/backlog-tree.ts';
+  import type { DefinitionRef } from '../../shared/operations/definition/definition.ts';
   import {
     TASK_POINT_VALUES,
     TASK_TITLE_MAX_LENGTH,
@@ -16,8 +17,12 @@
   import { t } from '../vocabulary.svelte.ts';
   import Dialog from './Dialog.svelte';
   import Icon from './Icon.svelte';
+  import RepositoryPicker from './RepositoryPicker.svelte';
 
-  // kit.js の createTask。タイトル、親のストーリー、担当、ポイント。リポジトリ、添付ファイルは、それぞれの機能の Issue で足す。
+  // kit.js の createTask。タイトル、親のストーリー、担当、リポジトリ、区分、ポイント。添付ファイルは、その機能の Issue で足す。
+  // リポジトリは1回押して選ぶボタンの並び（RepositoryPicker）で、既定は「なし」（一覧が1つだけならそれ）。
+  // 区分の選択欄は親なしのときだけ出し、親を選んでいるあいだは親の区分を「親から引き継ぎ」で示す（区分は親なしのタスクだけが持つ）。
+  // 選んだ区分かリポジトリが送るまでに削除されていた（404）ときは、理由を出し、一覧を読み直して「なし」に戻す。
   // 親の選択欄は、親なしと、stories（画面が渡す、完了していないストーリー。エピックの下のものも含め、木の順）。show(trigger, storyId) で親を選んだ状態で開ける。
   // 担当の選択欄は、担当なし（既定）と、開くたびに member-list で読む、そのワークスペースに今所属している人。
   // 読めなければ担当なしだけで作れ、読めなかったことを添える。選んだ人が所属を外れていた（404）ときは、理由を出し、候補を読み直して
@@ -30,11 +35,16 @@
     slug,
     workspaceId,
     stories,
+    categories,
+    repositories,
     oncreated,
   }: {
     slug: string;
     workspaceId: string;
-    stories: readonly ParentOption[];
+    // category は、その親を選んだときに引き継ぐ区分
+    stories: readonly (ParentOption & { category?: DefinitionRef | null })[];
+    categories: readonly DefinitionRef[];
+    repositories: readonly DefinitionRef[];
     oncreated: (task: BacklogTask, storyId: string | null) => void;
   } = $props();
 
@@ -54,6 +64,9 @@
   const assigneeNoteId = `${ids}-assignee-note`;
   const pointsLabelId = `${ids}-points`;
   const pointsHintId = `${ids}-points-hint`;
+  const repositoryLabelId = `${ids}-repository`;
+  const repositoryHintId = `${ids}-repository-hint`;
+  const categoryId = `${ids}-category`;
 
   let open = $state(false);
   let dialog = $state<ReturnType<typeof Dialog>>();
@@ -68,6 +81,13 @@
   let story = $state('');
   // 選んだ担当の ID。空は担当なし
   let assignee = $state('');
+  // 選んだリポジトリの ID。null はなし
+  let repository = $state<string | null>(null);
+  // 選んだ区分の ID。空は区分なし。親を選んでいるあいだは送らない
+  let category = $state('');
+  let categorySelect = $state<HTMLSelectElement>();
+  // 選んでいる親が引き継がせる区分
+  const parentCategory = $derived(stories.find((candidate) => candidate.id === story)?.category ?? null);
   // 担当の候補（そのワークスペースに今所属している人）。読み込む前と読めなかったときは空
   let candidates = $state<readonly { id: string; name: string }[]>([]);
   let candidatesFailed = $state(false);
@@ -106,6 +126,9 @@
     // 候補に無い親（完了した、消えた）は選ばず、親なしで開く
     story = storyId !== null && stories.some((candidate) => candidate.id === storyId) ? storyId : '';
     assignee = '';
+    // リポジトリの既定は「なし」。一覧が1つだけなら、それを選んでおく
+    repository = repositories.length === 1 ? repositories[0]!.id : null;
+    category = '';
     // 前に開いたとき（別のワークスペースのときを含む）の候補と、読めなかった知らせを残さない
     candidates = [];
     candidatesFailed = false;
@@ -155,6 +178,24 @@
     return true;
   }
 
+  // 選んだ区分かリポジトリが削除されていたかを、一覧を読み直して確かめる。消えていたら「なし」に戻し、どちらが消えたかを返す
+  async function droppedDefinition(mine: number): Promise<'repository' | 'category' | null> {
+    const chosenRepository = repository;
+    const chosenCategory = story === '' ? category : '';
+    if (chosenRepository === null && chosenCategory === '') return null;
+    await invalidateAll();
+    if (mine !== generation) return null;
+    if (chosenRepository !== null && !repositories.some((candidate) => candidate.id === chosenRepository)) {
+      repository = null;
+      return 'repository';
+    }
+    if (chosenCategory !== '' && !categories.some((candidate) => candidate.id === chosenCategory)) {
+      category = '';
+      return 'category';
+    }
+    return null;
+  }
+
   const titleMessages = $derived<Record<TaskTitleProblem, string>>({
     required: t('taskTitleRequired'),
     too_long: t('taskTitleTooLong', { max: TASK_TITLE_MAX_LENGTH }),
@@ -182,6 +223,7 @@
     let focusTitle = false;
     let focusParent = false;
     let focusAssignee = false;
+    let focusDefinition: 'repository' | 'category' | null = null;
     try {
       const result = await callOperation(
         taskCreate,
@@ -191,6 +233,9 @@
           points,
           assignee_user_id: assignee === '' ? null : assignee,
           story_id: story === '' ? null : story,
+          repository_id: repository,
+          // 区分は親なしのタスクだけが持つ
+          category_id: story === '' && category !== '' ? category : null,
         },
         { slug },
       );
@@ -201,7 +246,13 @@
           await invalidateAll();
           return;
         }
-        if (result.status === 409 && result.error?.code === 'workspace_closed') {
+        // 404 は、選んだ区分かリポジトリが削除されたかを先に確かめる（親と担当は、下で確かめる）
+        const dropped = result.status === 404 ? await droppedDefinition(mine) : null;
+        if (mine !== generation) return;
+        if (dropped !== null) {
+          submitError = t('definitionRefGone', { kind: dropped === 'repository' ? t('repository') : t('category') });
+          focusDefinition = dropped;
+        } else if (result.status === 409 && result.error?.code === 'workspace_closed') {
           submitError = t('workspaceClosedReadOnly', { workspace: t('workspace') });
           // 閉じたら画面を読み直して、閉じた表示（起票と完了の操作を出さない）に切り替える
           reloadOnClose = true;
@@ -246,7 +297,12 @@
     } finally {
       if (mine === generation) {
         submitting = false;
-        if (focusTitle || focusParent || focusAssignee) {
+        if (focusDefinition !== null) {
+          await tick();
+          if (focusDefinition === 'category') categorySelect?.focus();
+          else
+            document.querySelector<HTMLInputElement>(`[aria-labelledby="${repositoryLabelId}"] input:checked`)?.focus();
+        } else if (focusTitle || focusParent || focusAssignee) {
           await tick();
           (focusAssignee ? assigneeSelect : focusParent ? parentSelect : titleInput)?.focus();
         }
@@ -337,6 +393,38 @@
           {/if}
         </div>
       </div>
+
+      <div class="field">
+        <span class="field-label" id={repositoryLabelId}>{t('repository')}</span>
+        <RepositoryPicker
+          {repositories}
+          bind:value={repository}
+          labelledBy={repositoryLabelId}
+          describedBy={repositoryHintId}
+        />
+        <span class="field-hint" id={repositoryHintId}>{t('repositoryHint', { task: t('task') })}</span>
+      </div>
+
+      <!-- 区分は親なしのタスクだけが持つ。親を選んでいるあいだは、親から引き継ぐ区分を文字で示す -->
+      {#if story === ''}
+        <div class="field">
+          <label class="field-label" for={categoryId}>{t('category')}</label>
+          <select class="select" id={categoryId} bind:this={categorySelect} bind:value={category}>
+            <option value="">{t('categoryNone', { category: t('category') })}</option>
+            {#each categories as option (option.id)}
+              <option value={option.id}>{option.name}</option>
+            {/each}
+          </select>
+        </div>
+      {:else}
+        <div class="field">
+          <span class="field-label">{t('category')}</span>
+          <span
+            >{parentCategory?.name ?? t('categoryNone', { category: t('category') })}
+            <span class="props-note">{t('categoryInherited')}</span></span
+          >
+        </div>
+      {/if}
 
       <div class="field">
         <span class="field-label" id={pointsLabelId}>{t('points')}</span>

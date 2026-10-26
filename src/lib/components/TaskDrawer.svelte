@@ -11,6 +11,7 @@
     type TaskHistoryEntry,
   } from '../../shared/operations/task/index.ts';
   import { memberList } from '../../shared/operations/workspace/index.ts';
+  import { categoryRepositoryList, type DefinitionRef } from '../../shared/operations/definition/index.ts';
   import {
     LINK_URL_MAX_LENGTH,
     STORY_TEXT_MAX_LENGTH,
@@ -22,6 +23,7 @@
   } from '../../shared/story.ts';
   import { TASK_POINT_VALUES, TASK_TITLE_MAX_LENGTH, taskTitleProblem } from '../../shared/task.ts';
   import { callOperation } from '../api.ts';
+  import { withCurrent } from '../definition-options.ts';
   import { historyEntryView } from '../task-history.ts';
   import { showToast } from '../toast.svelte.ts';
   import { t } from '../vocabulary.svelte.ts';
@@ -32,6 +34,7 @@
   import Icon from './Icon.svelte';
   import InlineEdit from './InlineEdit.svelte';
   import Markdown from './Markdown.svelte';
+  import RepositoryPicker from './RepositoryPicker.svelte';
 
   // タスクの詳細の引き出しの中身（kit.js の drawerHtml）。`?task=<ID>` が付いている間、画面の枠（/[slug]/w/[id] のレイアウト）が置く。
   // 開いたら task-detail で1件を読む（本文は長いので、木には載せない）。読んでいる間は読み込み中を出し、読めなければ
@@ -92,6 +95,10 @@
   const assigneeNoteId = `${ids}-assignee-note`;
   const assigneeErrorId = `${ids}-assignee-error`;
   const readOnlyId = `${ids}-readonly`;
+  const repositoryLabelId = `${ids}-repository`;
+  const repositoryErrorId = `${ids}-repository-error`;
+  const categoryId = `${ids}-category`;
+  const categoryErrorId = `${ids}-category-error`;
   const historyHeadingId = `${ids}-history`;
 
   type PointsChoice = (typeof TASK_POINT_VALUES)[number] | null;
@@ -116,7 +123,7 @@
   const dirty = $state({ title: false, link: false, body: false });
   // 書きかけ。タイトル、リンク、本文の書きかけと、まだ送っていない期日の入力（待っている間と、打ちかけ）と担当の選択（待っている間）
   function hasDraft(): boolean {
-    return dirty.title || dirty.link || dirty.body || dueUnsent() || assigneeChoice !== null;
+    return dirty.title || dirty.link || dirty.body || dueUnsent() || assigneeChoice !== null || categoryChoice !== null;
   }
 
   // 選んだポイント。送っている間（と、続けて選んだ分を送り終えるまで）は、最後に選んだ値を見せる
@@ -144,6 +151,7 @@
     alive = false;
     clearTimeout(dueTimer);
     clearTimeout(assigneeTimer);
+    clearTimeout(categoryTimer);
   });
 
   // 捨てると決めた後、閉じる／移るために確認を飛ばす
@@ -164,6 +172,41 @@
   let assigneePending = $state<{ value: string } | null>(null);
   let assigneeError = $state<string | null>(null);
   let assigneeSending = false;
+
+  // 区分とリポジトリの選択肢（直せるときだけ読む）。読む前と読めなかったときは null
+  let definitions = $state<{ categories: DefinitionRef[]; repositories: DefinitionRef[] } | null>(null);
+  // 送っているリポジトリ（null はなし）。送っている間（と、続けて選んだ分を送り終えるまで）は、最後に選んだ値を見せる
+  let repositoryPending = $state<{ value: string | null } | null>(null);
+  let repositoryError = $state<string | null>(null);
+  let repositorySending = false;
+  const repositoryShown = $derived(
+    repositoryPending !== null ? repositoryPending.value : (task?.repository?.id ?? null),
+  );
+  // 選択欄で選んで、まだ送っていない区分（待っている間）と、送っている区分。空は区分なし
+  let categoryChoice = $state<{ value: string } | null>(null);
+  let categoryTimer: ReturnType<typeof setTimeout> | undefined;
+  let categoryPending = $state<{ value: string } | null>(null);
+  let categoryError = $state<string | null>(null);
+  let categorySending = false;
+  let categorySelect = $state<HTMLSelectElement>();
+  // 自身に振った区分（親から引き継いだものは除く）
+  const ownCategory = $derived(task?.category != null && !task.category.inherited ? task.category : null);
+  const categoryShownId = $derived(
+    categoryChoice !== null
+      ? categoryChoice.value
+      : categoryPending !== null
+        ? categoryPending.value
+        : (ownCategory?.id ?? ''),
+  );
+  const categoryOptions = $derived(withCurrent(definitions?.categories ?? [], ownCategory));
+  // 選択欄の値を、見せる値に合わせる（保存に失敗して前の値へ戻すとき、選択肢が替わったとき）
+  $effect(() => {
+    const select = categorySelect;
+    const value = categoryShownId;
+    void categoryOptions;
+    if (select !== undefined && select.value !== value) select.value = value;
+  });
+  const categoryEditable = $derived(canWrite && task !== null && task.story_id === null);
 
   const pointsEditable = $derived(canWrite && task !== null && task.completed_at === null);
   const assigneeEditable = $derived(canWrite && task !== null && task.completed_at === null);
@@ -292,6 +335,8 @@
       void loadHistory();
       // 担当を選べるときだけ、候補を読む（読み取り専用では選択欄を出さない）
       if (canWrite && result.data.task.completed_at === null && candidates === null) void loadCandidates();
+      // リポジトリと区分を直せるときだけ、選択肢を読む
+      if (canWrite && definitions === null) void loadDefinitions();
       // 開いたときの読み上げに、見出しが読まれるようにする。閉じるボタンか何も無い所にフォーカスがあるときだけ移す
       await tick();
       if (!alive) return;
@@ -367,8 +412,12 @@
     });
   });
 
-  // 保存に使う応答の扱い。送った欄だけを応答で入れ替える（別の欄の保存と前後しても、古い値で戻さない）
-  type Fields = Partial<Pick<TaskDetail, 'title' | 'points' | 'due_on' | 'link_url' | 'body_md'>>;
+  // 保存に使う応答の扱い。送った欄だけを応答で入れ替える（別の欄の保存と前後しても、古い値で戻さない）。
+  // リポジトリと区分は ID で送り、応答の repository と category で入れ替える
+  type Fields = Partial<Pick<TaskDetail, 'title' | 'points' | 'due_on' | 'link_url' | 'body_md'>> & {
+    repository_id?: string | null;
+    category_id?: string | null;
+  };
 
   // 欄を書く。成功なら null、失敗ならエラーの文。404 は閉じる側へ回す（文は返さず、taskGone を立てる）。
   // 引き出しが閉じた後に返った応答（欄を離れた直後に × を押した、ポイントを選んだ直後に閉じた）も、黙って捨てない:
@@ -379,13 +428,26 @@
       if (alive && task !== null) {
         const saved = result.data.task;
         const merged: TaskDetail = { ...task, completed_at: saved.completed_at, can_delete: saved.can_delete };
-        for (const key of Object.keys(fields) as (keyof Fields)[]) Object.assign(merged, { [key]: saved[key] });
+        for (const key of Object.keys(fields) as (keyof Fields)[]) {
+          if (key === 'repository_id') merged.repository = saved.repository;
+          else if (key === 'category_id') merged.category = saved.category;
+          else Object.assign(merged, { [key]: saved[key] });
+        }
         task = merged;
         void loadHistory();
       }
       showToast(t('taskSaved'), 'check');
       onchanged();
       return null;
+    }
+    // 選んだリポジトリか区分が削除されていた（タスクはある）。一覧を読み直して、選び直してもらう
+    if (result.status === 404 && (fields.repository_id != null || fields.category_id != null) && (await refresh())) {
+      if (alive) void loadDefinitions();
+      const message = t('definitionRefGone', {
+        kind: fields.repository_id != null ? t('repository') : t('category'),
+      });
+      if (!alive) showToast(message, 'alert');
+      return message;
     }
     if (result.status === 404) {
       taskGone = true;
@@ -423,6 +485,9 @@
     }
     if (current?.is_imported && ('title' in fields || 'link_url' in fields)) {
       return t('taskImportedLocked', { task: t('task') });
+    }
+    if ('category_id' in fields && current?.story_id != null) {
+      return t('categoryHasParent', { task: t('task'), category: t('category') });
     }
     return t('taskSaveRaced');
   }
@@ -668,6 +733,93 @@
       if (taskGone) pointsPending = null;
     } finally {
       pointsSending = false;
+    }
+  }
+
+  // ---- リポジトリと区分 ----
+  // 選択肢は、直せるときだけ category-repository-list で読む。読めなければ、なしと今の値だけを選べる
+  async function loadDefinitions(): Promise<void> {
+    const result = await callOperation(categoryRepositoryList, { workspace_id: workspaceId }, { slug });
+    if (alive && result.ok) definitions = result.data;
+  }
+
+  // リポジトリは、選んだら保存する（ポイントと同じく1本ずつ送り、送っている間に選び直した分は最後の選択だけを送る）
+  function chooseRepository(value: string | null): void {
+    repositoryPending = { value };
+    if (!repositorySending) void sendRepository();
+  }
+
+  async function sendRepository(): Promise<void> {
+    repositorySending = true;
+    try {
+      while (repositoryPending !== null && !taskGone) {
+        const choice = repositoryPending.value;
+        if (task === null || choice === (task.repository?.id ?? null)) {
+          repositoryPending = null;
+          break;
+        }
+        repositoryError = null;
+        const message = await saveFields({ repository_id: choice });
+        if (message !== null) {
+          repositoryError = message;
+          if (repositoryPending === null || repositoryPending.value === choice) repositoryPending = null;
+          continue;
+        }
+        if (repositoryPending !== null && repositoryPending.value === choice) repositoryPending = null;
+      }
+      if (taskGone) repositoryPending = null;
+    } finally {
+      repositorySending = false;
+    }
+  }
+
+  // 区分は、担当と同じく、選んで少し待ってから（閉じた選択欄の矢印キーは1つ動くたびに change を出すため）か、欄を離れたときに、
+  // 最後の値だけを保存する。親のあるタスクには出さない（親から引き継ぐ）
+  function onCategoryChange(event: Event & { currentTarget: HTMLSelectElement }): void {
+    categoryChoice = { value: event.currentTarget.value };
+    clearTimeout(categoryTimer);
+    categoryTimer = setTimeout(function wait() {
+      if (asking) categoryTimer = setTimeout(wait, DUE_DEBOUNCE_MS);
+      else if (!leaving) commitCategory();
+    }, DUE_DEBOUNCE_MS);
+  }
+
+  function onCategoryBlur(): void {
+    if (asking || leaving) return;
+    commitCategory();
+  }
+
+  function commitCategory(): void {
+    clearTimeout(categoryTimer);
+    const choice = categoryChoice;
+    if (choice === null) return;
+    categoryChoice = null;
+    categoryPending = { value: choice.value };
+    if (!categorySending) void sendCategory();
+  }
+
+  async function sendCategory(): Promise<void> {
+    categorySending = true;
+    try {
+      while (categoryPending !== null && !taskGone) {
+        const choice = categoryPending.value;
+        const own = task?.category != null && !task.category.inherited ? task.category.id : '';
+        if (task === null || choice === own || task.story_id !== null) {
+          categoryPending = null;
+          break;
+        }
+        categoryError = null;
+        const message = await saveFields({ category_id: choice === '' ? null : choice });
+        if (message !== null) {
+          categoryError = message;
+          if (categoryPending === null || categoryPending.value === choice) categoryPending = null;
+          continue;
+        }
+        if (categoryPending !== null && categoryPending.value === choice) categoryPending = null;
+      }
+      if (taskGone) categoryPending = null;
+    } finally {
+      categorySending = false;
     }
   }
 
@@ -1059,6 +1211,60 @@
           {/if}
           {#if dueError !== null}
             <span class="field-error" id={dueErrorId} role="alert"><Icon name="alert" />{dueError}</span>
+          {/if}
+        </dd>
+      </div>
+      <div>
+        <dt id={repositoryLabelId}>{t('repository')}</dt>
+        <dd>
+          <!-- 1回押して選ぶボタンの並び。選んだら保存する。読み取り専用では、選んだ値の色を保ったまま押せない形にする -->
+          <RepositoryPicker
+            repositories={definitions?.repositories ?? []}
+            value={repositoryShown}
+            current={task.repository}
+            labelledBy={repositoryLabelId}
+            describedBy={[!canWrite ? readOnlyId : null, repositoryError !== null ? repositoryErrorId : null]
+              .filter((id) => id !== null)
+              .join(' ') || undefined}
+            readonly={!canWrite}
+            onchange={chooseRepository}
+          />
+          {#if repositoryError !== null}
+            <span class="field-error" id={repositoryErrorId} role="alert"><Icon name="alert" />{repositoryError}</span>
+          {/if}
+        </dd>
+      </div>
+      <div>
+        <dt>
+          {#if categoryEditable}<label for={categoryId}>{t('category')}</label>{:else}{t('category')}{/if}
+        </dt>
+        <dd>
+          {#if categoryEditable}
+            <select
+              class="select"
+              id={categoryId}
+              bind:this={categorySelect}
+              onchange={onCategoryChange}
+              onblur={onCategoryBlur}
+              aria-invalid={categoryError !== null}
+              aria-describedby={categoryError !== null ? categoryErrorId : undefined}
+            >
+              <option value="" selected={categoryShownId === ''}
+                >{t('categoryNone', { category: t('category') })}</option
+              >
+              {#each categoryOptions as option (option.id)}
+                <option value={option.id} selected={option.id === categoryShownId}>{option.name}</option>
+              {/each}
+            </select>
+          {:else}
+            <!-- 親から引き継いだ区分と、読み取り専用のときは文字で出す -->
+            <span>{task.category?.name ?? t('categoryNone', { category: t('category') })}</span>
+          {/if}
+          {#if task.story_id !== null}
+            <span class="props-note">{t('categoryInherited')}</span>
+          {/if}
+          {#if categoryError !== null}
+            <span class="field-error" id={categoryErrorId} role="alert"><Icon name="alert" />{categoryError}</span>
           {/if}
         </dd>
       </div>

@@ -120,6 +120,12 @@
       <button class="tree-link" type="button" onclick={(event) => onEdit(story, event.currentTarget)}
         >{story.title}</button
       >
+      <!-- 区分は親のないストーリーにだけ出す（エピックの下では、エピックの行に出ている区分を引き継ぐ） -->
+      {#if !nested && story.category !== null}
+        <span class="chip"
+          ><span class="visually-hidden">{t('chipPrefix', { kind: t('category') })}</span>{story.category.name}</span
+        >
+      {/if}
       {#if story.due_on !== null}
         <DueChip dueOn={story.due_on} today={clock.today} weekStart={clock.weekStart} done={finished} />
       {/if}

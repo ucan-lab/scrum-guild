@@ -12,7 +12,9 @@
     normalizeLinkUrl,
     normalizeLongText,
   } from '../../shared/story.ts';
+  import type { DefinitionRef } from '../../shared/operations/definition/definition.ts';
   import { callOperation } from '../api.ts';
+  import { withCurrent } from '../definition-options.ts';
   import { showToast } from '../toast.svelte.ts';
   import { t } from '../vocabulary.svelte.ts';
   import Dialog from './Dialog.svelte';
@@ -24,16 +26,19 @@
   // 閉じたワークスペース（canWrite が偽）では読み取り専用で開き、保存のボタンを出さない。
   // 依頼主、クリア報酬、討伐隊、クリアと中止は、エピックの画面の Issue（#65）で足す。
   // 作れたら、保存できたら閉じて、画面が木を読み直す（onsaved）。本文は、この版では文字のまま持つ
+  // 区分（categories から選ぶ。区分なしも選べる）は、配下のストーリーとタスクが引き継ぐ
   let {
     slug,
     workspaceId,
     canWrite,
+    categories,
     onsaved,
     ongone,
   }: {
     slug: string;
     workspaceId: string;
     canWrite: boolean;
+    categories: readonly DefinitionRef[];
     onsaved: () => void;
     // 直す対象が消えていた（404）。画面が木を読み直し、見出しへフォーカスを移す
     ongone: () => void;
@@ -47,6 +52,7 @@
     due: `${ids}-due`,
     link: `${ids}-link`,
   } as const;
+  const categoryId = `${ids}-category`;
 
   type FieldName = keyof typeof fieldIds;
 
@@ -63,6 +69,18 @@
   let body = $state('');
   let dueOn = $state('');
   let link = $state('');
+  // 選んだ区分の ID。空は区分なし
+  let category = $state('');
+  // 区分の選択肢。今の区分が一覧に無い（一覧を読めなかった）ときも、選んだまま描けるよう足す
+  const categoryOptions = $derived(
+    withCurrent(
+      categories,
+      editing?.category_id == null ? null : { id: editing.category_id, name: t('historyUnknownName') },
+    ),
+  );
+  const categoryName = $derived(
+    categoryOptions.find((option) => option.id === category)?.name ?? t('categoryNone', { category: t('category') }),
+  );
   let errors = $state<Partial<Record<FieldName, string>>>({});
   let submitError = $state<string | null>(null);
   let submitting = $state(false);
@@ -94,6 +112,7 @@
     body = epic?.body_md ?? '';
     dueOn = epic?.due_on ?? '';
     link = epic?.link_url ?? '';
+    category = epic?.category_id ?? '';
   }
 
   async function load(id: string, mine: number): Promise<void> {
@@ -180,6 +199,7 @@
       body_md: normalizeLongText(body),
       due_on: dueOn === '' ? null : dueOn,
       link_url: normalizeLinkUrl(link),
+      category_id: category === '' ? null : category,
     };
     if (original === null) return next;
     const changed: Partial<typeof next> = {};
@@ -187,7 +207,15 @@
     if (next.body_md !== original.body_md) changed.body_md = next.body_md;
     if (next.due_on !== original.due_on) changed.due_on = next.due_on;
     if (next.link_url !== original.link_url) changed.link_url = next.link_url;
+    if (next.category_id !== original.category_id) changed.category_id = next.category_id;
     return changed;
+  }
+
+  // 404 の理由を分ける。作るとき（id が null）は、エピックはまだ無いので、区分が理由
+  async function epicExists(id: string | null): Promise<boolean> {
+    if (id === null) return true;
+    const result = await callOperation(epicGet, { workspace_id: workspaceId, epic_id: id }, { slug });
+    return result.ok;
   }
 
   async function submit(event: SubmitEvent): Promise<void> {
@@ -227,7 +255,14 @@
         if (result.status === 409 && result.error?.code === 'workspace_closed') {
           submitError = t('workspaceClosedReadOnly', { workspace: t('workspace') });
           reloadOnClose = true;
+        } else if (result.status === 404 && fields.category_id != null && (await epicExists(editing?.id ?? null))) {
+          // エピックはあるので、選んだ区分が削除されていた。一覧を読み直して、選び直してもらう
+          if (mine !== generation) return;
+          submitError = t('definitionRefGone', { kind: t('category') });
+          category = '';
+          void invalidateAll();
         } else if (result.status === 404 && editing !== null) {
+          if (mine !== generation) return;
           open = false;
           showToast(t('epicGone', { epic: t('epic') }), 'alert');
           ongone();
@@ -318,6 +353,21 @@
             aria-invalid={errors.body !== undefined}
             aria-describedby={errors.body !== undefined ? `${fieldIds.body}-error` : undefined}></textarea>
           {@render error('body')}
+        </div>
+
+        <div class="field">
+          {#if readOnly}
+            <span class="field-label">{t('category')}</span>
+            <span>{categoryName}</span>
+          {:else}
+            <label class="field-label" for={categoryId}>{t('category')}</label>
+            <select class="select" id={categoryId} bind:value={category}>
+              <option value="">{t('categoryNone', { category: t('category') })}</option>
+              {#each categoryOptions as option (option.id)}
+                <option value={option.id}>{option.name}</option>
+              {/each}
+            </select>
+          {/if}
         </div>
 
         <div class="form-row is-start">

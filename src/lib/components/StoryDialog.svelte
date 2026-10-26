@@ -14,7 +14,9 @@
     storyTitleProblem,
     type StoryTitleProblem,
   } from '../../shared/story.ts';
+  import { categoryConflictReasonOf, type DefinitionRef } from '../../shared/operations/definition/definition.ts';
   import { callOperation } from '../api.ts';
+  import { withCurrent } from '../definition-options.ts';
   import { showToast } from '../toast.svelte.ts';
   import { t } from '../vocabulary.svelte.ts';
   import Dialog from './Dialog.svelte';
@@ -28,16 +30,19 @@
   // （欄は readonly。日付の入力は readonly を受けないので、読み取り専用の text に日付を出す）。
   // 送っている間の扱いと、古い応答を捨てる generation は TaskCreateDialog と同じ。
   // 作れたら、保存できたら閉じて、画面が木を読み直す（onsaved）。本文と受け入れ基準は、この版では文字のまま持つ
+  // 区分（categories から選ぶ）は親のないストーリーだけが持つ。エピックの下のストーリーは、エピックの区分を「親から引き継ぎ」で読み取り専用に出す
   let {
     slug,
     workspaceId,
     canWrite,
+    categories,
     onsaved,
     ongone,
   }: {
     slug: string;
     workspaceId: string;
     canWrite: boolean;
+    categories: readonly DefinitionRef[];
     onsaved: () => void;
     // 直す対象が消えていた（404）。画面が木を読み直し、見出しへフォーカスを移す
     ongone: () => void;
@@ -52,6 +57,7 @@
     due: `${ids}-due`,
     link: `${ids}-link`,
   } as const;
+  const categoryId = `${ids}-category`;
 
   type FieldName = keyof typeof fieldIds;
 
@@ -71,6 +77,16 @@
   let body = $state('');
   let dueOn = $state('');
   let link = $state('');
+  // 選んだ区分の ID。空は区分なし。エピックの下のストーリーでは使わない
+  let category = $state('');
+  // 自身に振った区分（引き継いだものは除く）
+  const ownCategory = $derived(editing?.category != null && !editing.category.inherited ? editing.category : null);
+  const hasParent = $derived(editing?.epic_id != null);
+  // 区分の選択肢。今の区分が一覧に無い（一覧を読めなかった）ときも、選んだまま描けるよう足す
+  const categoryOptions = $derived(withCurrent(categories, ownCategory));
+  const categoryName = $derived(
+    categoryOptions.find((option) => option.id === category)?.name ?? t('categoryNone', { category: t('category') }),
+  );
   let errors = $state<Partial<Record<FieldName, string>>>({});
   let submitError = $state<string | null>(null);
   let submitting = $state(false);
@@ -103,6 +119,7 @@
     body = story?.body_md ?? '';
     dueOn = story?.due_on ?? '';
     link = story?.link_url ?? '';
+    category = story?.category != null && !story.category.inherited ? story.category.id : '';
   }
 
   // 直すときの1件を読む。応答が来た時点で開き直されていたら（generation が進んでいたら）捨てる
@@ -194,6 +211,7 @@
       body_md: normalizeLongText(body),
       due_on: dueOn === '' ? null : dueOn,
       link_url: normalizeLinkUrl(link),
+      category_id: category === '' ? null : category,
     };
     if (original === null) return next;
     const changed: Partial<typeof next> = {};
@@ -203,7 +221,16 @@
     if (next.body_md !== original.body_md) changed.body_md = next.body_md;
     if (next.due_on !== original.due_on) changed.due_on = next.due_on;
     if (next.link_url !== original.link_url) changed.link_url = next.link_url;
+    // 区分は親のないストーリーだけが持つ（エピックの下のストーリーには送らない）
+    if (!hasParent && next.category_id !== (ownCategory?.id ?? null)) changed.category_id = next.category_id;
     return changed;
+  }
+
+  // 404 の理由を分ける。作るとき（id が null）は、ストーリーはまだ無いので、区分が理由
+  async function storyExists(id: string | null): Promise<boolean> {
+    if (id === null) return true;
+    const result = await callOperation(storyGet, { workspace_id: workspaceId, story_id: id }, { slug });
+    return result.ok;
   }
 
   async function submit(event: SubmitEvent): Promise<void> {
@@ -244,8 +271,19 @@
         if (result.status === 409 && result.error?.code === 'workspace_closed') {
           submitError = t('workspaceClosedReadOnly', { workspace: t('workspace') });
           reloadOnClose = true;
+        } else if (result.status === 409 && categoryConflictReasonOf(result.error?.details) === 'has_parent') {
+          // 開いた後にエピックの下へ移された。区分は引き継ぐので、読み直してもらう
+          submitError = t('categoryHasParent', { task: t('story'), category: t('category') });
+          reloadOnClose = true;
+        } else if (result.status === 404 && fields.category_id != null && (await storyExists(editing?.id ?? null))) {
+          // ストーリーはあるので、選んだ区分が削除されていた。一覧を読み直して、選び直してもらう
+          if (mine !== generation) return;
+          submitError = t('definitionRefGone', { kind: t('category') });
+          category = '';
+          void invalidateAll();
         } else if (result.status === 404 && editing !== null) {
           // ストーリーが消えている。閉じて、木を読み直す
+          if (mine !== generation) return;
           open = false;
           showToast(t('storyGone', { story: t('story') }), 'alert');
           ongone();
@@ -352,6 +390,27 @@
             aria-invalid={errors.body !== undefined}
             aria-describedby={errors.body !== undefined ? `${fieldIds.body}-error` : undefined}></textarea>
           {@render error('body')}
+        </div>
+
+        <div class="field">
+          {#if hasParent}
+            <span class="field-label">{t('category')}</span>
+            <span
+              >{editing?.category?.name ?? t('categoryNone', { category: t('category') })}
+              <span class="props-note">{t('categoryInherited')}</span></span
+            >
+          {:else if readOnly}
+            <span class="field-label">{t('category')}</span>
+            <span>{categoryName}</span>
+          {:else}
+            <label class="field-label" for={categoryId}>{t('category')}</label>
+            <select class="select" id={categoryId} bind:value={category}>
+              <option value="">{t('categoryNone', { category: t('category') })}</option>
+              {#each categoryOptions as option (option.id)}
+                <option value={option.id}>{option.name}</option>
+              {/each}
+            </select>
+          {/if}
         </div>
 
         <div class="form-row is-start">

@@ -160,6 +160,7 @@ describe('epic-get', () => {
       body_md: '元の本文',
       due_on: '2026-10-30',
       link_url: 'https://example.com/old',
+      category_id: null,
     });
 
     const closed = await createTarget({ closed: true });

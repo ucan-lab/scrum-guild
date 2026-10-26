@@ -1513,6 +1513,88 @@ export const dictionary = defineDictionary({
   // 横にスクロールするコードと表の枠の名前。キーボードで枠にフォーカスを置いて動かすため、読み上げに名前を伝える
   markdownCodeRegion: workspace('コード', 'コード'),
   markdownTableRegion: workspace('表', '表'),
+
+  // ワークスペースの設定の画面（/[slug]/w/[id]/settings。見本は design/settings.html）
+  settingsPageName: workspace('{settings}・{name}', '{settings}・{name}'),
+  settingsForbiddenTitle: workspace('この画面には入れません', 'この画面には入れません'),
+  settingsForbiddenText: workspace(
+    '{settings}を開けるのは{leader}と{admin}だけです。',
+    '{settings}を開けるのは{leader}と{admin}だけです。',
+  ),
+  repository: workspace('リポジトリ', 'リポジトリ'),
+  categoriesDesc: workspace(
+    '{epic}に振ると配下が引き継ぎます。「月ごとに計上する」{category}は、完了の記録に計上月を持ちます。切り替えても、すでにある完了の記録の計上月は変わりません。',
+    '{epic}に振ると配下が引き継ぎます。「月ごとに計上する」{category}は、完了の記録に計上月を持ちます。切り替えても、すでにある完了の記録の計上月は変わりません。',
+  ),
+  repositoriesDesc: workspace(
+    '{task}がどのリポジトリの作業かを示します。{task}に1つまで振れ、起票のときにボタンで選びます。',
+    '{task}がどのリポジトリの作業かを示します。{task}に1つまで振れ、起票のときにボタンで選びます。',
+  ),
+  categoryBilledMonthly: workspace('月ごとに計上する', '月ごとに計上する'),
+  categoryBilledMonthlyLabel: workspace('月ごとに計上する: {name}', '月ごとに計上する: {name}'),
+  definitionListLabel: workspace('{kind}の一覧', '{kind}の一覧'),
+  definitionEmptyTitle: workspace('まだ{kind}がありません', 'まだ{kind}がありません'),
+  definitionEmptyText: workspace('下の欄から足せます。', '下の欄から足せます。'),
+  definitionEmptyReadOnly: workspace('まだ{kind}がありません。', 'まだ{kind}がありません。'),
+  definitionNewLabel: workspace('新しい{kind}の名前', '新しい{kind}の名前'),
+  definitionAdd: workspace('{kind}を足す', '{kind}を足す'),
+  definitionRenameHint: workspace('名前を直す', '名前を直す'),
+  definitionNameLabel: workspace('{kind}の名前', '{kind}の名前'),
+  definitionDuplicate: workspace('同じ名前の{kind}があります', '同じ名前の{kind}があります'),
+  definitionLimit: workspace(
+    '{kind}は {max} 件までです。使わないものを削除してから足してください',
+    '{kind}は {max} 件までです。使わないものを削除してから足してください',
+  ),
+  definitionBadRequest: workspace('名前に使えない文字が含まれています', '名前に使えない文字が含まれています'),
+  definitionSaveFailed: workspace(
+    '保存できませんでした。もう一度試してください。',
+    '保存できませんでした。もう一度試してください。',
+  ),
+  definitionAdded: workspace('「{name}」を足しました', '「{name}」を足しました'),
+  definitionSaving: workspace('保存しています', '保存しています'),
+  definitionGone: workspace(
+    'この{kind}はほかの画面で削除されています。一覧を読み直します',
+    'この{kind}はほかの画面で削除されています。一覧を読み直します',
+  ),
+  definitionChanged: workspace(
+    'ほかの画面で変わったため、できませんでした。一覧を読み直します',
+    'ほかの画面で変わったため、できませんでした。一覧を読み直します',
+  ),
+  definitionMoved: workspace('「{name}」を {position} 番目に移しました', '「{name}」を {position} 番目に移しました'),
+  definitionMoveFailed: workspace('移せませんでした。一覧を読み直します', '移せませんでした。一覧を読み直します'),
+  definitionDeleteLabel: workspace('削除: {name}', '削除: {name}'),
+  definitionDeleteTitle: workspace('「{name}」を削除する', '「{name}」を削除する'),
+  categoryDeleteText: workspace(
+    '振っていた{epic}、{story}、{task}は{category}なしに戻ります。完了の記録は元の{category}のまま残ります。',
+    '振っていた{epic}、{story}、{task}は{category}なしに戻ります。完了の記録は元の{category}のまま残ります。',
+  ),
+  repositoryDeleteText: workspace(
+    '振っていた{task}はリポジトリなしに戻ります。',
+    '振っていた{task}はリポジトリなしに戻ります。',
+  ),
+  definitionDeleted: workspace('「{name}」を削除しました', '「{name}」を削除しました'),
+  definitionDeleteFailed: workspace(
+    '削除できませんでした。もう一度試してください。',
+    '削除できませんでした。もう一度試してください。',
+  ),
+  // 起票のダイアログ、エピックとストーリーのダイアログ、詳細の引き出しの区分とリポジトリ
+  categoryNone: workspace('{category}なし', '{category}なし'),
+  categoryInherited: workspace('親から引き継ぎ', '親から引き継ぎ'),
+  repositoryNone: workspace('なし', 'なし'),
+  repositoryHint: workspace(
+    '複数のリポジトリにまたがる作業は、リポジトリごとに{task}を分けます。',
+    '複数のリポジトリにまたがる作業は、リポジトリごとに{task}を分けます。',
+  ),
+  categoryHasParent: workspace(
+    '親のある{task}には{category}を振れません。親の{category}を引き継ぎます。',
+    '親のある{task}には{category}を振れません。親の{category}を引き継ぎます。',
+  ),
+  definitionRefGone: workspace(
+    '選んだ{kind}は削除されています。選び直してください',
+    '選んだ{kind}は削除されています。選び直してください',
+  ),
+  // 木の行の区分とリポジトリの印。見えない文字で種類を添える
+  chipPrefix: workspace('{kind}：', '{kind}：'),
 });
 
 export type DictionaryKey = keyof typeof dictionary;
