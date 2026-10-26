@@ -9,11 +9,13 @@ const roleSchema = z.enum(['leader', 'member']);
 // invitations はリーダーと管理者（所属していない管理者を含む）にだけ配列で返し、一般のメンバーには null。
 // 承諾待ち（status = 'pending'）のものすべて。期限（Google の招待だけが持つ）の過ぎたものも返し、expired で示す。
 // リーダーが期限切れに気づいて招待し直せるようにするため（docs/data-model.md の「メールアドレスで待つ指名と招待」）。
-// invited_on と expires_on はワークスペースのタイムゾーンでの日付（YYYY-MM-DD）。expires_on は期限の無い GitHub の招待では null
+// invited_on と expires_on はワークスペースのタイムゾーンでの日付（YYYY-MM-DD）。expires_on は期限の無い GitHub の招待では null。
+// seats は組織の人数（used。数え方は docs/data-model.md の organizations の「人数」）と上限（limit。member_limit）で、
+// invitations と同じくリーダーと管理者にだけ返し、一般のメンバーには null。「招待する」の節が、上限に達したかを決めるのに使う
 export const memberList = defineOperation({
   name: 'member-list',
   description:
-    'ワークスペースに今所属している人の名前、ロール、参加日と、リーダーと管理者には承諾待ちの招待（一般のメンバーには null）を返す',
+    'ワークスペースに今所属している人の名前、ロール、参加日と、リーダーと管理者には承諾待ちの招待と組織の人数と上限（一般のメンバーには null）を返す',
   mode: 'read',
   permission: 'member',
   workspace: true,
@@ -40,5 +42,6 @@ export const memberList = defineOperation({
         }),
       )
       .nullable(),
+    seats: z.object({ used: z.number().int(), limit: z.number().int() }).nullable(),
   }),
 });

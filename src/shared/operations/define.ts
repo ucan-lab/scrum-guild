@@ -33,8 +33,8 @@ export const permissions = Object.keys(permissionScopes) as Permission[];
 const OPERATION_NAME_PATTERN = /^[a-z][a-z0-9]*(-[a-z0-9]+)*$/;
 
 // 操作の回数の上限。アカウントごと、操作ごとに数え、窓の中で max を超えた呼び出しは 429 の rate_limited で断る。
-// アプリ側のレート制限を設けるのは、ログインと手動の同期だけ（docs/requirements.md の「運用」）。ログインは GET の
-// 直書きの例外（src/server/auth/login-routes.ts）で IP ごとに数え、定義に付けるのは同期のような重い操作
+// アプリ側のレート制限を設けるのは、ログイン、手動の同期、招待する人の解決だけ（docs/requirements.md の「運用」）。ログインは GET の
+// 直書きの例外（src/server/auth/login-routes.ts）で IP ごとに数え、定義に付けるのは同期や GitHub への問い合わせのような重い操作
 export type RateLimit = { readonly max: number; readonly windowSeconds: number };
 
 type Common<Input, Output> = {

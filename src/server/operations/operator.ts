@@ -9,12 +9,13 @@ import {
 import { CLAIM_LIFETIME_DAYS } from '../../shared/claim-token.ts';
 import { normalizeEmail } from '../../shared/email.ts';
 import { slugProblem } from '../../shared/organization-slug.ts';
-import { LoginMethodError, type ResolvedInvitee } from '../auth/login-method.ts';
+import type { ResolvedInvitee } from '../auth/login-method.ts';
 import { randomToken, sha256Hex } from '../auth/tokens.ts';
 import { commonDb, type CreatedOrganization, type Statement } from '../db/index.ts';
 import { ApiError } from '../errors.ts';
 import { adminDesignationStatements } from '../organizations/designate-admin.ts';
 import { uuidv7 } from '../uuid.ts';
+import { resolveGithubUsername } from './github-invitee.ts';
 import { implement } from './implement.ts';
 import type { OperatorTools } from './operator-tools.ts';
 
@@ -26,49 +27,18 @@ function invalid(path: string, code: CreateOrganizationProblem, message: string)
   return new ApiError(400, 'invalid_input', [{ path, code, message }]);
 }
 
-// GitHub のユーザー名をユーザー ID に解決する。当たる人がいない、個人のアカウントでない、は入力の誤り（400）。
-// 届かない（GitHub の上限、障害、資格情報の未設定）は 503 の unavailable にして、入力の誤りと分ける
-async function resolveGithubUsername(
+// GitHub のユーザー名をユーザー ID に解決する（判定は github-invitee.ts。招待の操作と同じ）
+function resolveForOperator(
   operator: OperatorTools,
   username: string,
   path: string,
   operation: string,
 ): Promise<ResolvedInvitee> {
-  const resolver = operator.inviteeResolver('github');
-  if (resolver === undefined) {
-    throw unavailable(operator, operation, 'GitHub のクライアントの ID と秘密が設定されていない');
-  }
-  let resolution;
-  try {
-    resolution = await resolver.resolveInvitee(username);
-  } catch (err) {
-    if (err instanceof LoginMethodError) throw unavailable(operator, operation, err.message);
-    throw err;
-  }
-  switch (resolution.kind) {
-    case 'found':
-      return resolution.invitee;
-    case 'not_found':
-      throw invalid(path, 'github_user_not_found', 'GitHub にそのユーザー名の人がいない');
-    case 'not_a_user':
-      throw invalid(path, 'github_not_a_user', 'GitHub の個人のアカウントではない');
-  }
-}
-
-// reason は固定の文（LoginMethodError の message か、こちらの文）。応答には出さない
-function unavailable(operator: OperatorTools, operation: string, reason: string): ApiError {
-  console.warn(
-    JSON.stringify({
-      level: 'warn',
-      code: 'unavailable',
-      requestId: operator.requestId,
-      operation,
-      route: 'operator',
-      provider: 'github',
-      reason,
-    }),
-  );
-  return new ApiError(503, 'unavailable');
+  return resolveGithubUsername(operator.inviteeResolver('github'), username, path, {
+    operation,
+    route: 'operator',
+    requestId: operator.requestId,
+  });
 }
 
 async function slugExists(db: CommonDb, slug: string): Promise<boolean> {
@@ -116,7 +86,7 @@ export const listOrganizationsOperation = implement(listOrganizations, async ({ 
 });
 
 export const resolveGithubUserOperation = implement(resolveGithubUser, async ({ operator, input }) => {
-  const invitee = await resolveGithubUsername(operator, input.username, 'username', resolveGithubUser.name);
+  const invitee = await resolveForOperator(operator, input.username, 'username', resolveGithubUser.name);
   return {
     login_subject: invitee.subject,
     login_name: invitee.loginName,
@@ -235,7 +205,7 @@ export const createOrganizationOperation = implement(createOrganization, async (
 
   if (await slugExists(db, input.slug)) throw new ApiError(409, 'conflict');
 
-  const invitee = await resolveGithubUsername(operator, admin.username, 'admin.username', createOrganization.name);
+  const invitee = await resolveForOperator(operator, admin.username, 'admin.username', createOrganization.name);
   if (invitee.subject !== admin.login_subject) {
     throw invalid('admin.login_subject', 'github_user_changed', '確かめたユーザー ID と、解決し直した ID が違う');
   }

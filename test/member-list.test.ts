@@ -59,8 +59,9 @@ describe('member-list: 招待を返す相手', () => {
     }
     const listed = await list(target, target.member);
     expect(listed.invitations).toBeNull();
-    // 欄を返さない形でなく、null で返す
-    expect(Object.keys(listed).sort()).toEqual(['invitations', 'members']);
+    // 欄を返さない形でなく、null で返す（組織の人数も同じ）
+    expect(Object.keys(listed).sort()).toEqual(['invitations', 'members', 'seats']);
+    expect((listed as Listed & { seats: unknown }).seats).toBeNull();
   });
 
   test('管理者のロールが一般で所属していても、招待が返る', async () => {
