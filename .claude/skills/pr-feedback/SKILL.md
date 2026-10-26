@@ -322,7 +322,7 @@ gh api "repos/{owner}/{repo}/commits/<head>/check-runs" --paginate --jq '.check_
 
 - `needs-human` が付いていればマージしない
 - `base` が `main` でなければマージしない（別のブランチへの PR では、`ci-ok` はそのブランチとの差分しか見ていない）
-- `label` は同じ head に何件も付く（作成、push、本文の編集、ラベルを外したときに動く）。`skipped` を除いた `label` が1件以上あり、すべて `completed` で `success` のときだけ成功とみなす。1件も無い、実行中、`success` 以外があるときは成功とみなさない。ベースを付け替えて push していない PR では `label` が失敗する（`base-changed` のラベルが付く。`docs/development.md` の「文書だけの PR」）。`sync-base` で取り込んで push し直す
+- `label` は同じ head に何件も付く（作成、push、再開、タイトルや本文の編集、ラベルを外したときに動き、飛ばない）。`label` が1件以上あり、すべて `completed` で `success` のときだけ成功とみなす。1件も無い、実行中、`success` 以外があるときは成功とみなさない。ベースを付け替えた後にその head で CI が動き直していなければ `label` が失敗する（`docs/development.md` の「文書だけの PR」）。`sync-base` で取り込んで push し直す
 - `ci-ok` も同じ基準で見る。文書だけの PR でも `ci-ok` は飛ばずに動くので、1件も無ければ成功とみなさない
 - `review` を除くどの名前のチェックでも、`completed` でないもの、`conclusion` が `failure`、`cancelled`、`timed_out`、`action_required` のものが1件でもあればマージしない。`review`（AI レビュー）は助言で、マージの判定を止めない
 - 満たさなければマージせず、理由を伝えて人にマージを依頼する

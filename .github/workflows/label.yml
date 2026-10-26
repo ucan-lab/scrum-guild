@@ -6,32 +6,25 @@ on:
   pull_request_target:
     types: [opened, synchronize, reopened, edited, unlabeled]
 
+# どのイベントでも、イベントの中身ではなく、そのときの PR の状態から判定する（#252）。
+# - ジョブを飛ばさない。飛ばした実行（skipped）が同じ head に後からできると、マージの欄では前の実行の結果が隠れる
+# - concurrency を置かない。同じグループの待ちの実行は新しい実行に置き換えられて取り消され、ベースを付け替えた実行が消えうる
 jobs:
-  # ジョブは飛ばさない。飛ばした実行（skipped）が同じ head に後からできると、マージの欄では前の実行の結果が隠れるため（#252）。
-  # どのイベントでも、そのときの状態で成功か失敗かを出す
   label:
     runs-on: ubuntu-latest
     timeout-minutes: 5
-    concurrency:
-      group: label-${{ github.event.pull_request.number }}
-      cancel-in-progress: false
     permissions:
       contents: read
       pull-requests: write
-    env:
-      GH_TOKEN: ${{ github.token }}
-      REPO: ${{ github.repository }}
-      PR_NUMBER: ${{ github.event.pull_request.number }}
-      # ラベルを付け直すのは、作成、push、再開、ベースの付け替え（別のブランチをベースに開いてから main へ付け替えて逃れる経路を塞ぐ）、
-      # 人が needs-human を外したとき（パスに当たっていれば付け直す）。タイトルや本文の編集と、ほかのラベルを外したときは付け直さない
-      RELABEL: >-
-        ${{ (github.event.action != 'edited' || github.event.changes.base != null) &&
-        (github.event.action != 'unlabeled' || github.event.label.name == 'needs-human') }}
+      # PR の履歴（timeline）と ci.yml の実行を読む
+      issues: read
+      actions: read
     steps:
       # actions/checkout を置かない。pull_request_target のトークンは書き込めるので、PR のコードを取り込むと
-      # そのコードが書き込みの権限で動く。labeler は手元に規則が無ければ、API でベースの版を読む
-      - if: env.RELABEL == 'true'
-        uses: actions/labeler@bf12e9b00b37c5c0ca2b87b79b2daf7891dbda13 # v7.0.0
+      # そのコードが書き込みの権限で動く。labeler は手元に規則が無ければ、API でベースの版を読む。
+      # どのイベントでも付け直す（付けるだけなので何度走っても同じ）。別のブランチをベースに開いてから main へ付け替えて逃れる経路と、
+      # 人が needs-human を外した後も、パスに当たっていれば付け直す
+      - uses: actions/labeler@bf12e9b00b37c5c0ca2b87b79b2daf7891dbda13 # v7.0.0
         with:
           # 付けるだけで外さない。外すのは人
           sync-labels: false
@@ -39,10 +32,13 @@ jobs:
       # labeler は移動先のパスしか見ないので、守るパスの外へのリネームを拾えない。
       # 変更ファイルの一覧は 3000 件までしか返らない。どちらも規則で判定できないので、当たれば needs-human を付ける
       - name: リネームと大きな PR に needs-human を付ける
-        if: env.RELABEL == 'true'
         env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
           CHANGED_FILES: ${{ github.event.pull_request.changed_files }}
         run: |
+          set -euo pipefail
           renamed=$(gh api --paginate "repos/$REPO/pulls/$PR_NUMBER/files" --jq '.[] | select(.status == "renamed") | .filename' | wc -l)
           echo "renamed=$renamed changed_files=$CHANGED_FILES"
           if [ "$renamed" -gt 0 ] || [ "$CHANGED_FILES" -gt 3000 ]; then
@@ -50,22 +46,38 @@ jobs:
           fi
 
       # ci.yml は edited で動かないので、ベースを付け替えても ci-ok は前のベースの結果のまま残る。
-      # 付け替えたら base-changed を付けて label を失敗にし、push で ci.yml が新しいベースで動き直したら外す
-      - name: ベースの付け替えを push まで止める
+      # PR の履歴の最後の付け替えより後に、この head で ci.yml が動いていなければ失敗にする（push か再開で動き直す）。
+      # 読めなければ失敗に倒す。前のステップが落ちても動かす
+      - name: ベースの付け替えの後に CI が動き直したかを確かめる
+        if: always()
         env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           ACTION: ${{ github.event.action }}
-          BASE_CHANGED: ${{ github.event.action == 'edited' && github.event.changes.base != null }}
         run: |
-          if [ "$BASE_CHANGED" = true ]; then
-            gh api "repos/$REPO/issues/$PR_NUMBER/labels" -f 'labels[]=base-changed' --silent
+          set -euo pipefail
+          changed=$(gh api --paginate "repos/$REPO/issues/$PR_NUMBER/timeline?per_page=100" \
+            --jq '.[] | select(.event == "base_ref_changed") | .created_at' | sort | tail -n 1)
+          if [ -z "$changed" ]; then
+            echo "ベースの付け替えは無い"
+            exit 0
           fi
-          has_label() {
-            gh api "repos/$REPO/issues/$PR_NUMBER/labels?per_page=100" --jq '.[].name' | grep -qx base-changed
-          }
-          if [ "$ACTION" = synchronize ] && has_label; then
-            gh api -X DELETE "repos/$REPO/issues/$PR_NUMBER/labels/base-changed" --silent
-          fi
-          if has_label; then
-            echo "::error::ベースを付け替えたあと push していません。新しいベースを取り込んで push すると、CI が新しいベースで動き直し、base-changed は外れます"
-            exit 1
-          fi
+          echo "最後のベースの付け替え: $changed"
+          for attempt in 1 2 3 4 5 6; do
+            latest=$(gh api "repos/$REPO/actions/workflows/ci.yml/runs?head_sha=$HEAD_SHA&event=pull_request&per_page=100" \
+              --jq '[.workflow_runs[].created_at] | max // ""')
+            echo "この head の ci.yml の最後の実行: ${latest:-無し}"
+            # 時刻は同じ形の UTC の ISO 8601 なので、文字列で比べられる
+            if [[ "$latest" > "$changed" ]]; then
+              exit 0
+            fi
+            # push と再開の直後は、同じイベントで始まる ci.yml の実行がまだ見えないことがあるので待つ
+            if [ "$ACTION" != synchronize ] && [ "$ACTION" != reopened ]; then
+              break
+            fi
+            sleep 10
+          done
+          echo "::error::ベースを付け替えたあと、この head で CI が動き直していません。新しいベースを取り込んで push してください"
+          exit 1
