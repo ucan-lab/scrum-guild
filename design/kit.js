@@ -62,6 +62,7 @@
     capacity: ["積載量", "作業量と基準"], over: ["重量オーバー", "超過"], done: ["完遂", "完了"], column: ["行程", "列"],
     doneToday: ["今日の完遂", "今日の完了"], complete: ["完遂にする", "完了にする"],
     requester: ["依頼主", "作成者"], party: ["討伐隊", "参加者"], accept: ["受注する", "参加する"], leave: ["討伐隊を抜ける", "参加をやめる"],
+    historyCreated: ["依頼を出した", "作成した"], historyUpdated: ["書き換えた", "変更した"],
     reward: ["クリア報酬", "クリア報酬"], clear: ["レイドをクリアする", "エピックを完了にする"], create: ["依頼を出す", "起票"],
     leader: ["パーティリーダー", "リーダー"], member: ["冒険者", "メンバー"], dod: ["パーティの掟", "完成の定義"],
     vocab: ["ゲームの言葉", "スクラムの言葉"], organization: ["冒険者ギルド", "組織"], admin: ["ギルドマスター", "管理者"],
@@ -774,7 +775,7 @@ const looooooooooooooooooooooooooooooooooongLine = "コードの長い1行は、
           <div class="composer-foot"><button class="btn is-sm is-quiet" type="button" data-pick-file="comment-new:${x.id}">${icon("clip")}ファイルを添付</button>
             <span class="field-hint">画像は貼り付けても添付できます。</span><button class="btn" type="button">送る</button></div>
         </div>` : `
-        <ul class="history">${history.map((h) => `<li><span class="mono">${h[0]}</span>${avatarOf(h[1])}<span>${esc(user(h[1]).name)}</span><span class="props-note">${h[2] === "create" ? "作成した" : "変更した"}</span>
+        <ul class="history">${history.map((h) => `<li><span class="mono">${h[0]}</span>${avatarOf(h[1])}<span>${esc(user(h[1]).name)}</span><span class="props-note">${h[2] === "create" ? t("historyCreated") : t("historyUpdated")}</span>
           ${h[3].length ? `<ul class="history-changes">${h[3].map(([field, text]) => `<li><span class="props-note">${HIST[field]}</span><span>${esc(text)}</span></li>`).join("")}</ul>` : ""}</li>`).join("") || `<li class="props-note">まだ変更はありません。</li>`}</ul>`}
       </div>
       ${drawerReadOnly() ? "" : `<div class="form-actions">${x.src
