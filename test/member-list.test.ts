@@ -1,8 +1,10 @@
 // メンバーの一覧の振る舞い。
 // 組織の分離と権限の種類ごとの許可と拒否は、一覧を回す test/operation-registry.test.ts が確かめる
+import { env } from 'cloudflare:workers';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { memberList } from '../src/shared/operations/workspace/index.ts';
 import { createApp } from '../src/server/app.ts';
+import { commonDb } from '../src/server/db/index.ts';
 import { implementedOperations } from '../src/server/operations/index.ts';
 import { createInvitation, createMembership, createUser, createWorkspace, hash64 } from './factories.ts';
 import { errorCodeOf, post } from './operations/harness.ts';
@@ -15,7 +17,7 @@ afterEach(() => {
 });
 
 type Listed = {
-  members: { id: string; name: string; role: string; joined_on: string }[];
+  members: { id: string; name: string; role: string; joined_on: string; avatar_url: string | null }[];
   invitations:
     | {
         id: string;
@@ -147,7 +149,66 @@ describe('member-list: メンバー', () => {
       name: 'お',
       role: 'leader',
       joined_on: '2026-10-02',
+      avatar_url: null,
     });
+  });
+});
+
+// account_logins は共通の表なので、共通の表の入口から書く
+async function setAvatar(person: Person, avatarUrl: string): Promise<void> {
+  const db = commonDb(env);
+  await db.run(
+    db.statement((q) =>
+      q
+        .updateTable('account_logins')
+        .set({ avatar_url: avatarUrl })
+        .where('login_provider', '=', person.login.provider)
+        .where('login_subject', '=', person.login.subject),
+    ),
+  );
+}
+
+describe('member-list: アバター', () => {
+  test('アカウントに結ばれた人はログインの手段のアバターを返し、アバターの無い人は null', async () => {
+    const target = await createTarget();
+    const avatarUrl = 'https://avatars.githubusercontent.com/u/7200001';
+    await setAvatar(target.leader, avatarUrl);
+
+    const listed = await list(target, target.member);
+    expect(new Map(listed.members.map((member) => [member.id, member.avatar_url]))).toEqual(
+      new Map([
+        [target.leader.userId, avatarUrl],
+        [target.member.userId, null],
+      ]),
+    );
+  });
+
+  test('アカウントに結ばれる前の行は、同じログインが別の組織でアバターを持っていても null で、別の組織の人のアバターは出ない', async () => {
+    const [target, other] = await Promise.all([createTarget(), createTarget()]);
+    // 別の組織の一般のメンバー。GitHub のアバターを持つ
+    await setAvatar(other.member, 'https://avatars.githubusercontent.com/u/7200002');
+    // 自分の組織で、同じ GitHub のログインを指名して待っている行（まだ結ばれていない）が所属している
+    const waiting = await createUser(target.organization, {
+      account_id: null,
+      login_provider: other.member.login.provider,
+      login_subject: other.member.login.subject,
+      name: '指名で待つ人',
+    });
+    await createMembership(target.organization, target.workspace.id, waiting.id);
+
+    const listed = await list(target, target.leader);
+    expect(new Map(listed.members.map((member) => [member.id, member.avatar_url]))).toEqual(
+      new Map([
+        [target.leader.userId, null],
+        [target.member.userId, null],
+        [waiting.id, null],
+      ]),
+    );
+    // 別の組織の側からは、その人のアバターが出る（差し替えた値が効いていることを確かめる）
+    const otherListed = await list(other, other.leader);
+    expect(otherListed.members.find((member) => member.id === other.member.userId)?.avatar_url).toBe(
+      'https://avatars.githubusercontent.com/u/7200002',
+    );
   });
 });
 

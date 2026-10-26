@@ -16,6 +16,7 @@
   import type { PageProps } from './$types';
 
   // メンバーの画面（members.html の「所属している人」と「招待する」の節と頭の数字）。名前（アバター付き）、ロール、参加日を文字で出す。
+  // アバターは member-list が返す画像（avatar_url）を出し、無い人（アカウントに結ばれる前、アバターの無い人）と読み込めないときは頭文字の円。
   // 承諾待ちの招待と組織の人数は、リーダーと管理者にだけ API が返す（一般のメンバーは null）ので、null のときは
   // 「招待する」と「承諾待ちの招待」の節も「招待中」の数も出さない。終了したワークスペースでは、招待と取り消しの操作を出さない。
   // 期限の過ぎた Google の招待は、一覧に「期限切れ」と出し、「招待中」の数には入れない（docs/data-model.md）。
@@ -147,7 +148,14 @@
             {#each members as member (member.id)}
               <tr>
                 <td class="is-name"
-                  ><span class="person is-wrap"><Avatar userId={member.id} name={member.name} />{member.name}</span></td
+                  ><span class="person is-wrap"
+                    ><Avatar
+                      userId={member.id}
+                      name={member.name}
+                      image={member.avatar_url}
+                      decorative
+                    />{member.name}</span
+                  ></td
                 >
                 <td>{roleLabel(member.role)}</td>
                 <td class="mono">{member.joined_on}</td>
