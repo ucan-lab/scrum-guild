@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test';
 import { signIn, watchViolations } from './helpers.ts';
 
-// build と wrangler dev に渡した版。埋めていなければ dev（docs/development.md の「版」）
+// build と wrangler dev に渡した版。playwright.config.ts が決めて process.env に置く（docs/development.md の「e2e のサーバー」）
 const version = process.env.APP_VERSION || 'dev';
 
 // 枠の部品は組織の中の画面が使う。あおば開発だけに入れるユーザー（ハルカ）で、組織の画面を開く
