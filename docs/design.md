@@ -307,7 +307,7 @@ favicon と同じマーク（下の「favicon」）の横に、名前「Scrum Gu
 | `.callout-actions` | （CSS のみ） | 囲みの中の操作（ボタンと状態の文）。右に寄り、狭い幅では本文の下へ折り返す。見本はカタログの「囲みの知らせ」。読み直しの失敗の囲み（`SectionBoundary`）が使う。狭い幅と指で押す画面では、中の `.btn.is-sm` の押せる範囲を、見た目を変えずに 44px 四方以上へ広げる（`.form-actions` の中も同じ） |
 | `DIALOGS.closeWorkspace` | `src/lib/components/admin/WorkspaceCloseDialog.svelte` | 終了する前の確認。見本は `admin.html` の「終了する」（`data-dialog="closeWorkspace"`）。本文は見本と本番で同じ文 |
 | `setting`（組織の休日の節の中身） | `src/lib/components/admin/HolidaysSetting.svelte`、`src/lib/holiday-paste.ts` | 前の節の「組織の休日の節」。見本は `admin.html` の「組織の休日」。貼り付けの解析は `src/shared/holiday.ts` で、API の検証と同じ決まり |
-| `.party-list .party-list-text`、`.party-list-end` | （CSS のみ） | 一覧の行の、折り返す長い名前と、右端に寄せる操作（消すボタン）。指で押す画面では、行の `.icon-btn` を 44px 四方にする。見本はカタログの「一覧の行」 |
+| `.party-list .party-list-text`、`.party-list-end` | （CSS のみ） | 一覧の行の、折り返す長い名前と、右端に寄せる操作（消すボタン）。狭い幅（760px 以下）と指で押す画面では、行の `.icon-btn` を 44px 四方にする。日付（`.mono`）は縮めず、ハイフンで折らない。見本はカタログの「一覧の行」 |
 | `.field-error-list` | （CSS のみ） | 1つの欄の複数の誤り（貼り付けた行ごとの理由）。`.field-error` の要約の下に並べる。見本はカタログの「入力と道具の帯」 |
 | `.table th.is-actions`、`td.is-actions` | （CSS のみ） | 表の行ごとの操作の列。狭い幅で表が横にはみ出しても右端に固定する。組織の管理のワークスペースの表が使う。見本はカタログの「表」。狭い幅と指で押す画面では、表の中の `.btn.is-sm` も 44px 四方以上にする |
 | `.table.is-stacked`、`.table-actions` | （CSS のみ） | 操作が2つ並ぶ行がある表。操作を `.table-actions` で包み、table に `is-stacked` を付ける。760px 以下では列をやめ、1行を名前、ほかの列、操作の順に縦に積み、操作の固定を外す（固定した操作の列が名前の列を覆わないため）。見出しの行は見えなくし、名前以外の `td` の `data-label` を値の前に出す。運用の画面の組織の表が使う。見本はカタログの「表」の一番下と `operator.html` |

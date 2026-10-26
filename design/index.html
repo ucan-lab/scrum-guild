@@ -335,7 +335,7 @@ const SECTIONS = [
       <li><span class="mono">2026-11-04</span><span class="party-list-text">SoukyuKaihatsuKyokaiSouritsuKinenbiKyujitsu</span><button class="icon-btn is-danger party-list-end" type="button" aria-label="2026-11-04 を消す">${icon("trash")}</button></li>
       <li><span class="mono">2026-12-29</span><button class="icon-btn is-danger party-list-end" type="button" aria-label="2026-12-29 を消す">${icon("trash")}</button></li>
     </ul>`,
-    ["名前など利用者が付けた文字は .party-list-text に入れる。空白の無い長い名前も折り返し、右端の操作を押し出さない（2行目）。", "名前の無い行（3行目）も、操作は右端にそろう。", "右端に寄せる操作には .party-list-end を付ける。style で余白を書かない。", "操作のボタンは読み上げの名前に、どの行かを添える（「2026-11-03 を消す」）。指で押す画面では、行の .icon-btn を 44px 四方にする。"], ".party-list .party-list-text .party-list-end")],
+    ["名前など利用者が付けた文字は .party-list-text に入れる。空白の無い長い名前も折り返し、右端の操作を押し出さない（2行目）。", "名前の無い行（3行目）も、操作は右端にそろう。", "右端に寄せる操作には .party-list-end を付ける。style で余白を書かない。", "操作のボタンは読み上げの名前に、どの行かを添える（「2026-11-03 を消す」）。狭い幅（760px 以下）と指で押す画面では、行の .icon-btn を 44px 四方にする。日付（.mono）は縮めず、ハイフンで折らない。"], ".party-list .party-list-text .party-list-end")],
   ["dialogs", "ダイアログと演出", () => block("dialogs", "ダイアログと演出", "押すと本物と同じものが開く。Esc か外側を押すと閉じ、開いた元のボタンに戻る。確認が要るのは、取り消せない操作と、まとめて状態を変える操作だけ。",
     `<div class="cat-row">
       <button class="btn" type="button" data-dialog="sprintCreate">${t("sprint")}を作る</button>
