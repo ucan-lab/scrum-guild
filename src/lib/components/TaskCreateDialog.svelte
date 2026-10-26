@@ -37,6 +37,7 @@
     stories,
     categories,
     repositories,
+    definitionsFailed,
     oncreated,
   }: {
     slug: string;
@@ -45,6 +46,8 @@
     stories: readonly (ParentOption & { category?: DefinitionRef | null })[];
     categories: readonly DefinitionRef[];
     repositories: readonly DefinitionRef[];
+    // 区分とリポジトリの一覧を読めなかった（選択肢は「なし」だけ）
+    definitionsFailed: boolean;
     oncreated: (task: BacklogTask, storyId: string | null) => void;
   } = $props();
 
@@ -184,7 +187,8 @@
     const chosenCategory = story === '' ? category : '';
     if (chosenRepository === null && chosenCategory === '') return null;
     await invalidateAll();
-    if (mine !== generation) return null;
+    // 一覧を読み直せなかったときは、消えたかどうかを決めない（読めなかった一覧は空なので、どれも消えたように見える）
+    if (mine !== generation || definitionsFailed) return null;
     if (chosenRepository !== null && !repositories.some((candidate) => candidate.id === chosenRepository)) {
       repository = null;
       return 'repository';
@@ -402,7 +406,13 @@
           labelledBy={repositoryLabelId}
           describedBy={repositoryHintId}
         />
-        <span class="field-hint" id={repositoryHintId}>{t('repositoryHint', { task: t('task') })}</span>
+        <span class="field-hint" id={repositoryHintId}
+          >{definitionsFailed
+            ? t('definitionsLoadFailed', { category: t('category') })
+            : repositories.length === 0
+              ? t('repositoryEmptyHint', { leader: t('leader'), settings: t('pageSettings') })
+              : t('repositoryHint', { task: t('task') })}</span
+        >
       </div>
 
       <!-- 区分は親なしのタスクだけが持つ。親を選んでいるあいだは、親から引き継ぐ区分を文字で示す -->

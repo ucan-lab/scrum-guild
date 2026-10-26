@@ -97,6 +97,7 @@
   const readOnlyId = `${ids}-readonly`;
   const repositoryLabelId = `${ids}-repository`;
   const repositoryErrorId = `${ids}-repository-error`;
+  const definitionsNoteId = `${ids}-definitions-note`;
   const categoryId = `${ids}-category`;
   const categoryErrorId = `${ids}-category-error`;
   const historyHeadingId = `${ids}-history`;
@@ -175,6 +176,9 @@
 
   // 区分とリポジトリの選択肢（直せるときだけ読む）。読む前と読めなかったときは null
   let definitions = $state<{ categories: DefinitionRef[]; repositories: DefinitionRef[] } | null>(null);
+  let definitionsLoading = $state(false);
+  let definitionsFailed = $state(false);
+  let definitionsVersion = 0;
   // 送っているリポジトリ（null はなし）。送っている間（と、続けて選んだ分を送り終えるまで）は、最後に選んだ値を見せる
   let repositoryPending = $state<{ value: string | null } | null>(null);
   let repositoryError = $state<string | null>(null);
@@ -738,9 +742,28 @@
 
   // ---- リポジトリと区分 ----
   // 選択肢は、直せるときだけ category-repository-list で読む。読めなければ、なしと今の値だけを選べる
+  // 読めなければ、担当の候補と同じく、読めなかったことと「もう一度試す」を添える
   async function loadDefinitions(): Promise<void> {
+    const mine = ++definitionsVersion;
+    definitionsLoading = true;
     const result = await callOperation(categoryRepositoryList, { workspace_id: workspaceId }, { slug });
-    if (alive && result.ok) definitions = result.data;
+    if (!alive || mine !== definitionsVersion) return;
+    definitionsLoading = false;
+    if (result.ok) {
+      definitions = result.data;
+      definitionsFailed = false;
+    } else {
+      definitionsFailed = true;
+    }
+  }
+
+  // 読み直す。読めたら、押したボタンは消えるので、リポジトリの今の選択へフォーカスを移す
+  async function retryDefinitions(): Promise<void> {
+    if (definitionsLoading) return;
+    await loadDefinitions();
+    if (!alive || definitionsFailed) return;
+    await tick();
+    document.querySelector<HTMLInputElement>(`[aria-labelledby="${repositoryLabelId}"] input:checked`)?.focus();
   }
 
   // リポジトリは、選んだら保存する（ポイントと同じく1本ずつ送り、送っている間に選び直した分は最後の選択だけを送る）
@@ -1223,12 +1246,34 @@
             value={repositoryShown}
             current={task.repository}
             labelledBy={repositoryLabelId}
-            describedBy={[!canWrite ? readOnlyId : null, repositoryError !== null ? repositoryErrorId : null]
+            describedBy={[
+              !canWrite ? readOnlyId : null,
+              definitionsFailed ? definitionsNoteId : null,
+              repositoryError !== null ? repositoryErrorId : null,
+            ]
               .filter((id) => id !== null)
               .join(' ') || undefined}
             readonly={!canWrite}
+            busy={definitionsLoading}
             onchange={chooseRepository}
           />
+          {#if definitionsLoading && !definitionsFailed}
+            <!-- 選択肢を読んでいる間は、なしと今の値だけなので、まだ読んでいることを示す -->
+            <span class="props-note" role="status">{t('loading')}</span>
+          {/if}
+          {#if definitionsFailed}
+            <span class="props-note" id={definitionsNoteId}
+              >{t('definitionsLoadFailed', { category: t('category') })}</span
+            >
+            <button
+              class="btn is-sm is-quiet"
+              type="button"
+              aria-disabled={definitionsLoading}
+              onclick={() => void retryDefinitions()}
+            >
+              {definitionsLoading ? t('retrying') : t('retry')}
+            </button>
+          {/if}
           {#if repositoryError !== null}
             <span class="field-error" id={repositoryErrorId} role="alert"><Icon name="alert" />{repositoryError}</span>
           {/if}
@@ -1246,8 +1291,14 @@
               bind:this={categorySelect}
               onchange={onCategoryChange}
               onblur={onCategoryBlur}
+              aria-busy={definitionsLoading}
               aria-invalid={categoryError !== null}
-              aria-describedby={categoryError !== null ? categoryErrorId : undefined}
+              aria-describedby={[
+                definitionsFailed ? definitionsNoteId : null,
+                categoryError !== null ? categoryErrorId : null,
+              ]
+                .filter((id) => id !== null)
+                .join(' ') || undefined}
             >
               <option value="" selected={categoryShownId === ''}
                 >{t('categoryNone', { category: t('category') })}</option

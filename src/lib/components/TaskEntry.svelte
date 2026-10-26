@@ -4,6 +4,7 @@
   import type { BacklogTask } from '../../shared/operations/task/backlog-tree.ts';
   import { t } from '../vocabulary.svelte.ts';
   import Avatar from './Avatar.svelte';
+  import DefinitionChip from './DefinitionChip.svelte';
   import DueChip from './DueChip.svelte';
   import Icon from './Icon.svelte';
 
@@ -94,15 +95,10 @@
     {#if task.repository !== null || category !== null}
       <span class="entry-meta">
         {#if task.repository !== null}
-          <span class="chip"
-            ><Icon name="git" /><span class="visually-hidden">{t('chipPrefix', { kind: t('repository') })}</span>{task
-              .repository.name}</span
-          >
+          <DefinitionChip kind="repository" name={task.repository.name} />
         {/if}
         {#if category !== null}
-          <span class="chip"
-            ><span class="visually-hidden">{t('chipPrefix', { kind: t('category') })}</span>{category.name}</span
-          >
+          <DefinitionChip kind="category" name={category.name} />
         {/if}
       </span>
     {/if}

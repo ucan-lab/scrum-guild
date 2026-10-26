@@ -17,7 +17,7 @@ import {
   type DefinitionConflictReason,
 } from '../../shared/operations/definition/index.ts';
 import {
-  jsonList,
+  uuidv7Sql,
   previousStatementChanged,
   type OrganizationActor,
   type OrganizationDb,
@@ -72,7 +72,7 @@ const repositorySpec: DefinitionSpec = {
   items: [{ table: 'tasks', column: 'repository_id', entityType: 'task' }],
 };
 
-// 同時の更新と削除に負けたときにやり直す回数の上限。超えたら 409 の conflict
+// 同時の更新に負けたときにやり直す回数の上限。超えたら 409 の conflict
 const MAX_ATTEMPTS = 3;
 
 // 型の上では categories として扱う（上の説明のとおり、両方の表に同じ列だけを使う）
@@ -476,137 +476,119 @@ async function moveDefinition(
   }
 }
 
-// 振った先の、削除していない行
-function itemRows(from: From, item: ItemTarget, workspaceId: string, definitionId: string) {
-  const { table, column } = asItem(item);
-  return from
-    .selectFrom(table)
-    .where('workspace_id', '=', workspaceId)
-    .where('deleted_at', 'is', null)
-    .where(column, '=', definitionId);
-}
-
-// 削除する（論理削除）。振っていた行は、同じ batch() で振っていない状態に戻し、行ごとに履歴を残す。
-// 読んだ後に振られた行を、履歴なしに戻さないよう、削除の文は「振っている行が読んだ行だけ」を条件にし、通らなければ読み直してやり直す。
+// 削除する（論理削除）。1回の batch()（1つのトランザクション）に、定義の削除、表ごとに1文の履歴（振っていた行ごとに1行）、
+// 表ごとに1文の戻す文を並べる。履歴と戻す文は、どちらも「自分の削除が通った」と「今振っている削除していない行」を条件にし、
+// 履歴を戻す文より前に置く。振っていた行の数によらず文の数は決まっている（区分は 2 + 3 + 3、リポジトリは 2 + 1 + 1）。
 // 削除した後は、振る書き込み（作成と変更）が削除していない定義だけを条件にするので、新しく振られない。完了の記録は変えない
 async function deleteDefinition({ db, actor, workspace }: Context, spec: DefinitionSpec, id: string): Promise<void> {
   const actorUserId = actorUserIdOf(actor);
   const organizationId = db.organizationId;
   const workspaceId = workspace.workspaceId;
 
-  for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
-    const current = await readDefinition(db, spec, workspaceId, id);
-    if (current === undefined) {
-      await throwIfClosed(db, workspaceId);
-      throw new ApiError(404, 'not_found');
-    }
-    const affected = await db.batch(
-      spec.items.map((item) => db.statement((q) => itemRows(q, item, workspaceId, id).select('id'))),
-    );
-    const idsByItem = spec.items.map((_, index) => (affected[index]?.rows ?? []).map((row) => row.id));
-    const at = now();
-    const deletedAt = at.toISOString();
-    const ref = { id, name: current.name };
-    // 自分の削除が通った、という条件。後ろの文はこれを自分の条件に持つ
-    const deletedByMe = (from: From) =>
-      from
-        .selectFrom(asTable(spec.table))
-        .select('id')
-        .where('id', '=', id)
-        .where('workspace_id', '=', workspaceId)
-        .where('deleted_at', '=', deletedAt);
+  const at = now();
+  const deletedAt = at.toISOString();
+  // 自分の削除が通った定義の行（d）。後ろの文はこれと結んで、自分の削除が通ったことを条件に持つ。
+  // 止めた時計で2回目の削除が同じ時刻を書いても、振っていた行は1回目が戻しているので、後ろの文は何も書かない
+  const deletedRef = `${spec.table} as d` as 'categories as d';
 
-    const results = await db.batch([
-      db.statement((q) =>
-        q
-          .updateTable(asTable(spec.table))
-          .set({ deleted_at: deletedAt, updated_at: deletedAt })
-          .where((eb) =>
-            eb.and([
-              eb('id', '=', id),
-              eb('workspace_id', '=', workspaceId),
-              eb('deleted_at', 'is', null),
-              eb.exists(openWorkspace(q, organizationId, workspaceId)),
-              // 振っている行が、読んだ行だけ
-              ...spec.items.map((item, index) =>
-                eb.not(
-                  eb.exists(
-                    itemRows(q, item, workspaceId, id)
-                      .select('id')
-                      .where('id', 'not in', jsonList(idsByItem[index] ?? [])),
-                  ),
-                ),
-              ),
-            ]),
-          ),
-      ),
-      db.statement((q) =>
-        q
+  const results = await db.batch([
+    db.statement((q) =>
+      q
+        .updateTable(asTable(spec.table))
+        .set({ deleted_at: deletedAt, updated_at: deletedAt })
+        .where((eb) =>
+          eb.and([
+            eb('id', '=', id),
+            eb('workspace_id', '=', workspaceId),
+            eb('deleted_at', 'is', null),
+            eb.exists(openWorkspace(q, organizationId, workspaceId)),
+          ]),
+        ),
+    ),
+    db.statement((q) =>
+      q
+        .insertInto('change_logs')
+        .columns(changeLogColumns)
+        .expression(
+          changeLogValues(q, {
+            id: uuidv7(at),
+            organizationId,
+            workspaceId,
+            actorUserId,
+            entityType: spec.entityType,
+            entityId: id,
+            action: 'delete',
+            changes: { deleted_at: [null, deletedAt] },
+            at: deletedAt,
+          }).where(previousStatementChanged),
+        ),
+    ),
+    // 振っていた行の履歴。表ごとに1文で、戻す前に、今振っている削除していない行のすべてに書く。
+    // ID は行ごとに SQL の中で UUIDv7 の形に作り、区分の名前は定義の行から取る
+    ...spec.items.map((item) =>
+      db.statement((q) => {
+        const { table, column } = asItem(item);
+        return q
           .insertInto('change_logs')
           .columns(changeLogColumns)
           .expression(
-            changeLogValues(q, {
-              id: uuidv7(at),
-              organizationId,
-              workspaceId,
-              actorUserId,
-              entityType: spec.entityType,
-              entityId: id,
-              action: 'delete',
-              changes: { deleted_at: [null, deletedAt] },
-              at: deletedAt,
-            }).where(previousStatementChanged),
-          ),
-      ),
-      // 振っていた行ごとの履歴。戻す前に、まだ振っている行にだけ書く
-      ...spec.items.flatMap((item, index) =>
-        (idsByItem[index] ?? []).map((itemId) =>
-          db.statement((q) =>
             q
-              .insertInto('change_logs')
-              .columns(changeLogColumns)
-              .expression(
-                changeLogValues(q, {
-                  id: uuidv7(at),
-                  organizationId,
-                  workspaceId,
-                  actorUserId,
-                  entityType: item.entityType,
-                  entityId: itemId,
-                  action: 'update',
-                  changes: { [spec.entityType]: [ref, null] },
-                  at: deletedAt,
-                }).where((eb) =>
-                  eb.and([
-                    eb.exists(deletedByMe(eb)),
-                    eb.exists(itemRows(eb, item, workspaceId, id).select('id').where('id', '=', itemId)),
-                  ]),
-                ),
-              ),
-          ),
-        ),
-      ),
-      // 振っていた行を戻す
-      ...spec.items.map((item, index) =>
-        db.statement((q) => {
-          const { table, column } = asItem(item);
-          return q
-            .updateTable(table)
-            .set({ [column]: null, updated_at: deletedAt })
-            .where('workspace_id', '=', workspaceId)
-            .where('deleted_at', 'is', null)
-            .where(column, '=', id)
-            .where('id', 'in', jsonList(idsByItem[index] ?? []))
-            .where((eb) => eb.exists(deletedByMe(q)));
-        }),
-      ),
-    ]);
-    if ((results[0]?.changes ?? 0) > 0) return;
-    // 閉じていれば 409、無ければ（先に削除された）404。どちらでもなければ、読んだ後に振られた行があるので、読み直してやり直す
-    await throwIfClosed(db, workspaceId);
-    if ((await readDefinition(db, spec, workspaceId, id)) === undefined) throw new ApiError(404, 'not_found');
-  }
-  throw new ApiError(409, 'conflict');
+              .selectFrom(`${table} as i` as 'tasks as i')
+              .innerJoin(deletedRef, (join) =>
+                join.on('d.id', '=', id).on('d.workspace_id', '=', workspaceId).on('d.deleted_at', '=', deletedAt),
+              )
+              .select((eb) => [
+                uuidv7Sql(at).as('id'),
+                eb.val(organizationId).as('organization_id'),
+                eb.val(workspaceId).as('workspace_id'),
+                eb.val(actorUserId).as('actor_user_id'),
+                eb.val(item.entityType).as('entity_type'),
+                eb.ref('i.id').as('entity_id'),
+                eb.val('update').as('action'),
+                eb
+                  .fn<string>('json_object', [
+                    eb.val(spec.entityType),
+                    eb.fn('json_array', [
+                      eb.fn('json_object', [eb.val('id'), eb.ref('d.id'), eb.val('name'), eb.ref('d.name')]),
+                      eb.lit(null),
+                    ]),
+                  ])
+                  .as('changes_json'),
+                eb.val(deletedAt).as('created_at'),
+              ])
+              .where(`i.${column}` as 'i.category_id', '=', id)
+              .where('i.workspace_id', '=', workspaceId)
+              .where('i.deleted_at', 'is', null),
+          );
+      }),
+    ),
+    // 振っていた行を戻す。条件は履歴の文と同じ
+    ...spec.items.map((item) =>
+      db.statement((q) => {
+        const { table, column } = asItem(item);
+        return q
+          .updateTable(table)
+          .set({ [column]: null, updated_at: deletedAt })
+          .where('workspace_id', '=', workspaceId)
+          .where('deleted_at', 'is', null)
+          .where(column, '=', id)
+          .where((eb) =>
+            eb.exists(
+              eb
+                .selectFrom(deletedRef)
+                .select('d.id')
+                .where('d.id', '=', id)
+                .where('d.workspace_id', '=', workspaceId)
+                .where('d.deleted_at', '=', deletedAt),
+            ),
+          );
+      }),
+    ),
+  ]);
+  if ((results[0]?.changes ?? 0) > 0) return;
+  // 閉じていれば 409、無い（先に削除された、別のワークスペース、別の組織を含む）なら 404
+  await throwIfClosed(db, workspaceId);
+  throw new ApiError(404, 'not_found');
 }
 
 function categoryOf(row: Current) {

@@ -27,9 +27,10 @@ import {
   taskUpdate,
 } from '../src/shared/operations/task/index.ts';
 import { createApp } from '../src/server/app.ts';
-import { orgDb } from '../src/server/db/index.ts';
+import { orgDb, verifyWorkspace } from '../src/server/db/index.ts';
 import { implementedOperations } from '../src/server/operations/index.ts';
-import { createCategory, createEpic, createRepository, createStory, createTask } from './factories.ts';
+import { taskUpdateOperation } from '../src/server/operations/task-edit.ts';
+import { AT, createCategory, createEpic, createRepository, createStory, createTask, uuidv7 } from './factories.ts';
 import { post } from './operations/harness.ts';
 import { createTarget, type Person, type Target } from './operations/world.ts';
 
@@ -599,5 +600,231 @@ describe('タスク、ストーリー、エピックに振る', () => {
     });
     expect(res.body.stories.find((story) => story.id === rootStory.id)?.category).toEqual({ id: own.id, name: '保守' });
     expect(res.body.tasks[0]).toMatchObject({ category: { id: own.id, name: '保守' }, repository: null });
+  });
+});
+
+// UUIDv7 の形（src/server/uuid.ts と同じ。小文字の16進、版は 7、variant は 8〜b）
+const UUIDV7 = /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+
+describe('多くの行に振った区分とリポジトリの削除', () => {
+  test('1200 件の親のないタスクに振った区分とリポジトリを消せ、行ごとに履歴が1つずつ入り、ID は一意で UUIDv7 の形', async () => {
+    const target = await createTarget();
+    const category = await createCategory(target.organization, target.workspace.id, { name: '保守' });
+    const repository = await createRepository(target.organization, target.workspace.id, { name: 'point-api' });
+    const db = orgDb(env, target.organization.verified);
+    const COUNT = 1200;
+    const ids = Array.from({ length: COUNT }, (_, index) => uuidv7(Date.now() + index));
+    for (let start = 0; start < COUNT; start += 100) {
+      await db.batch(
+        ids.slice(start, start + 100).map((id) =>
+          db.statement((q) =>
+            q.insertInto('tasks').values({
+              id,
+              workspace_id: target.workspace.id,
+              is_imported: 0,
+              tray: 'backlog',
+              title: '見積もりを送る',
+              category_id: category.id,
+              repository_id: repository.id,
+              position: 'a0',
+              created_by: target.admin.userId!,
+              created_at: AT,
+              updated_at: AT,
+            }),
+          ),
+        ),
+      );
+    }
+
+    expect((await call(categoryDelete, target, { category_id: category.id })).status).toBe(200);
+    expect((await call(repositoryDelete, target, { repository_id: repository.id })).status).toBe(200);
+
+    const remaining = await db.first(
+      db.statement((q) =>
+        q
+          .selectFrom('tasks')
+          .select((eb) => eb.fn.countAll<number>().as('count'))
+          .where('workspace_id', '=', target.workspace.id)
+          .where((eb) => eb.or([eb('category_id', 'is not', null), eb('repository_id', 'is not', null)])),
+      ),
+    );
+    expect(Number(remaining?.count)).toBe(0);
+    const logs = await db.rows(
+      db.statement((q) =>
+        q
+          .selectFrom('change_logs')
+          .select(['id', 'entity_id', 'changes_json', 'action', 'actor_user_id', 'created_at'])
+          .where('organization_id', '=', target.organization.id)
+          .where('workspace_id', '=', target.workspace.id)
+          .where('entity_type', '=', 'task'),
+      ),
+    );
+    expect(logs).toHaveLength(COUNT * 2);
+    expect(new Set(logs.map((log) => log.id)).size).toBe(COUNT * 2);
+    for (const log of logs) {
+      expect(log.id).toMatch(UUIDV7);
+      expect(log.action).toBe('update');
+      expect(log.actor_user_id).toBe(target.leader.userId);
+    }
+    const categoryLogs = logs.filter((log) => log.changes_json.includes('"category"'));
+    const repositoryLogs = logs.filter((log) => log.changes_json.includes('"repository"'));
+    expect(new Set(categoryLogs.map((log) => log.entity_id))).toEqual(new Set(ids));
+    expect(new Set(repositoryLogs.map((log) => log.entity_id))).toEqual(new Set(ids));
+    expect(JSON.parse(categoryLogs[0]!.changes_json)).toEqual({ category: [{ id: category.id, name: '保守' }, null] });
+    expect(JSON.parse(repositoryLogs[0]!.changes_json)).toEqual({
+      repository: [{ id: repository.id, name: 'point-api' }, null],
+    });
+    // ID の先頭の48ビットは、履歴の created_at と同じ時刻
+    const log = categoryLogs[0]!;
+    expect(parseInt(log.id.replace(/-/g, '').slice(0, 12), 16)).toBe(Date.parse(log.created_at));
+  });
+});
+
+describe('本文の ID が指す区分とリポジトリ', () => {
+  // 別の組織、別のワークスペース、削除済みの区分とリポジトリ
+  async function strangers(target: Target) {
+    const other = await createTarget();
+    return {
+      categories: [
+        (await createCategory(other.organization, other.workspace.id)).id,
+        (await createCategory(target.organization, target.otherWorkspace.id)).id,
+        (await createCategory(target.organization, target.workspace.id, { deleted_at: '2026-10-21T00:00:00.000Z' })).id,
+      ],
+      repositories: [
+        (await createRepository(other.organization, other.workspace.id)).id,
+        (await createRepository(target.organization, target.otherWorkspace.id)).id,
+        (await createRepository(target.organization, target.workspace.id, { deleted_at: '2026-10-21T00:00:00.000Z' }))
+          .id,
+      ],
+    };
+  }
+
+  test('epic-create、epic-update、story-create、story-update の category_id は 404 で、何も書かない', async () => {
+    const target = await createTarget();
+    const { categories } = await strangers(target);
+    const epic = await createEpic(target.organization, target.workspace.id, target.admin.userId!);
+    const story = await createStory(target.organization, target.workspace.id, target.admin.userId!);
+    for (const categoryId of categories) {
+      expect(
+        (await call(epicCreate, target, { title: '作らない', category_id: categoryId }, target.member)).status,
+      ).toBe(404);
+      expect(
+        (await call(storyCreate, target, { title: '作らない', category_id: categoryId }, target.member)).status,
+      ).toBe(404);
+      expect(
+        (await call(epicUpdate, target, { epic_id: epic.id, category_id: categoryId }, target.member)).status,
+      ).toBe(404);
+      expect(
+        (await call(storyUpdate, target, { story_id: story.id, category_id: categoryId }, target.member)).status,
+      ).toBe(404);
+    }
+    const db = orgDb(env, target.organization.verified);
+    const created = await db.rows(
+      db.statement((q) =>
+        q
+          .selectFrom('epics')
+          .select('id')
+          .where('workspace_id', '=', target.workspace.id)
+          .where('title', '=', '作らない')
+          .unionAll(
+            q
+              .selectFrom('stories')
+              .select('id')
+              .where('workspace_id', '=', target.workspace.id)
+              .where('title', '=', '作らない'),
+          ),
+      ),
+    );
+    expect(created).toEqual([]);
+    expect(await categoryIdOf(target, 'epics', epic.id)).toBeNull();
+    expect(await categoryIdOf(target, 'stories', story.id)).toBeNull();
+    expect(await logsOf(target, 'epic', epic.id)).toEqual([]);
+    expect(await logsOf(target, 'story', story.id)).toEqual([]);
+  });
+
+  test('repository-update、repository-move、repository-delete の repository_id と after_repository_id は 404 で、何も書かない', async () => {
+    const target = await createTarget();
+    const { repositories } = await strangers(target);
+    const mine = await createRepository(target.organization, target.workspace.id, {
+      name: 'point-api',
+      position: 'a0',
+    });
+    for (const repositoryId of repositories) {
+      expect((await call(repositoryUpdate, target, { repository_id: repositoryId, name: '改名' })).status).toBe(404);
+      expect(
+        (await call(repositoryMove, target, { repository_id: repositoryId, after_repository_id: null })).status,
+      ).toBe(404);
+      expect((await call(repositoryDelete, target, { repository_id: repositoryId })).status).toBe(404);
+      expect(
+        (await call(repositoryMove, target, { repository_id: mine.id, after_repository_id: repositoryId })).status,
+      ).toBe(404);
+    }
+    const db = orgDb(env, target.organization.verified);
+    const rows = await db.rows(
+      db.statement((q) =>
+        q
+          .selectFrom('repositories')
+          .select(['id', 'name', 'position', 'deleted_at', 'updated_at'])
+          .where('id', 'in', repositories),
+      ),
+    );
+    for (const row of rows) expect(row.updated_at).toBe(AT);
+    expect(rows.map((row) => row.name)).not.toContain('改名');
+    const own = await db.first(
+      db.statement((q) => q.selectFrom('repositories').select(['position', 'updated_at']).where('id', '=', mine.id)),
+    );
+    expect(own).toEqual({ position: 'a0', updated_at: AT });
+    for (const id of repositories) expect(await logsOf(target, 'repository', id)).toEqual([]);
+  });
+
+  test('task-update は、読んだ後に区分が削除されると、書く文の条件で止まり 404 になり、何も書かない', async () => {
+    const target = await createTarget();
+    const category = await createCategory(target.organization, target.workspace.id, { name: '保守' });
+    const task = await createTask(target.organization, target.workspace.id, target.member.userId!);
+    const db = orgDb(env, target.organization.verified);
+    const actor = {
+      accountId: target.member.accountId,
+      userId: target.member.userId,
+      isAdmin: false,
+      invitedOnly: false,
+    };
+    const verified = await verifyWorkspace(db, actor, target.workspace.id);
+    // 区分を読んだ直後（名前だけを返す読み取りの後）に、別の要求が区分を削除した状況を作る
+    let injected = false;
+    const spied = new Proxy(db, {
+      get(base, key) {
+        const value = Reflect.get(base, key, base);
+        if (typeof value !== 'function') return value;
+        if (key !== 'first') return value.bind(base);
+        return async (...args: unknown[]) => {
+          const result = (await (value as (...a: unknown[]) => Promise<unknown>).apply(base, args)) as
+            Record<string, unknown> | undefined;
+          if (!injected && result?.name === '保守' && result.title === undefined) {
+            injected = true;
+            await base.run(
+              base.statement((q) =>
+                q
+                  .updateTable('categories')
+                  .set({ deleted_at: '2026-10-22T00:00:00.000Z' })
+                  .where('id', '=', category.id)
+                  .where('workspace_id', '=', target.workspace.id),
+              ),
+            );
+          }
+          return result;
+        };
+      },
+    });
+    const context = {
+      db: spied,
+      actor,
+      workspace: verified,
+      input: { workspace_id: target.workspace.id, task_id: task.id, category_id: category.id },
+      defer: () => {},
+    } as never;
+    await expect(taskUpdateOperation.handler(context)).rejects.toMatchObject({ status: 404 });
+    expect(injected).toBe(true);
+    expect(await categoryIdOf(target, 'tasks', task.id)).toBeNull();
+    expect(await logsOf(target, 'task', task.id)).toEqual([]);
   });
 });

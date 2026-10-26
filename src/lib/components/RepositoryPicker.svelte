@@ -14,6 +14,7 @@
     labelledBy,
     describedBy,
     readonly = false,
+    busy = false,
     onchange,
   }: {
     repositories: readonly DefinitionRef[];
@@ -22,6 +23,8 @@
     labelledBy: string;
     describedBy?: string;
     readonly?: boolean;
+    // 選択肢を読み込んでいる間
+    busy?: boolean;
     onchange?: (value: string | null) => void;
   } = $props();
 
@@ -40,6 +43,7 @@
   role="radiogroup"
   aria-labelledby={labelledBy}
   aria-describedby={describedBy}
+  aria-busy={busy || undefined}
 >
   <label>
     <input type="radio" {name} value="" checked={value === null} disabled={readonly} onchange={() => choose(null)} />

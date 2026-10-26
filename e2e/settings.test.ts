@@ -111,6 +111,17 @@ test.describe('リーダー（あおば開発のミナト）', () => {
     await page.getByRole('button', { name: '系統を足す' }).click();
     await expect(page.getByRole('alert').filter({ hasText: '同じ名前の系統があります' })).toBeVisible();
     await expect(page.getByLabel('新しい系統の名前')).toBeFocused();
+
+    // 書いた後の読み直しが失敗しても、前の一覧を残し、更新できなかったことと「もう一度試す」を出す
+    await page.route('**/api/aoba/category-repository-list', (route) => route.fulfill({ status: 503, body: '' }));
+    await page.getByLabel('新しい系統の名前').fill('追加案件');
+    await page.getByRole('button', { name: '系統を足す' }).click();
+    await expect(page.getByRole('alert').filter({ hasText: '一覧を更新できませんでした' })).toBeVisible();
+    await expect(page.getByRole('list', { name: '系統の一覧' }).getByText('保守', { exact: true })).toBeVisible();
+    await page.unroute('**/api/aoba/category-repository-list');
+    await page.getByRole('button', { name: 'もう一度試す' }).click();
+    await expect(page.getByRole('alert').filter({ hasText: '一覧を更新できませんでした' })).toHaveCount(0);
+    await expect(page.getByRole('list', { name: '系統の一覧' }).getByText('追加案件', { exact: true })).toBeVisible();
     await page.locator('.nav-item', { hasText: '掲示板' }).click();
 
     // 親のないストーリーに区分を振る
@@ -159,6 +170,8 @@ test.describe('一般のメンバー（あおば開発のハルカ）', () => {
     await page.goto(`${SEED_GAME_WORKSPACE}/settings`);
     await expect(page.getByText('この画面には入れません')).toBeVisible();
     await expect(page.getByLabel('新しい系統の名前')).toHaveCount(0);
+    await page.getByRole('link', { name: '掲示板へ戻る' }).click();
+    await expect(page.getByRole('heading', { level: 1, name: '掲示板' })).toBeVisible();
   });
 
   test('seed の区分とリポジトリが木の行に出る', async ({ page }) => {

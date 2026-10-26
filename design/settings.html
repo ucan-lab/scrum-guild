@@ -73,7 +73,7 @@ SQ.mount("settings", () => `
       </div>
       <div class="table-wrap"><table class="table"><thead><tr><th>適用を始めた月</th><th class="is-num">1 ${t("points")}</th></tr></thead><tbody>${D.pointRates.map(([m, h]) => `<tr><td class="mono">${m}</td><td class="is-num">${h} 時間</td></tr>`).join("")}</tbody></table></div>`)}
     ${setting(`${t("workspace")}の休日`, `この${t("workspace")}だけの休日。組織の休日（祝日など）は管理者が登録します。`, `
-      <ul class="party-list">${D.workspaceHolidays.map(([d, n]) => `<li><span class="mono">${d}</span><span>${esc(n)}</span><button class="icon-btn is-danger" type="button" aria-label="${d} を消す" style="margin-left:auto">${icon("trash")}</button></li>`).join("")}</ul>
+      <ul class="party-list">${D.workspaceHolidays.map(([d, n]) => `<li><span class="mono">${d}</span><span class="party-list-text">${esc(n)}</span><button class="icon-btn is-danger party-list-end" type="button" aria-label="${d} を消す">${icon("trash")}</button></li>`).join("")}</ul>
       <div class="form-row"><label class="field" for="hd"><span class="field-label">日付</span><input class="input" id="hd" type="date"></label><label class="field" for="hn"><span class="field-label">名前</span><input class="input" id="hn"></label><button class="btn" type="button">足す</button></div>`)}
   </div>`);
 </script>

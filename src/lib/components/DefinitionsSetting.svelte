@@ -31,8 +31,9 @@
   // ワークスペースの設定の画面の、区分（kind = 'category'）とリポジトリ（kind = 'repository'）の節（見本は design/settings.html）。
   // 見本の「保存する」でまとめる形は採らず、行ごとにすぐ書く: 足す（下の欄）、名前を直す（InlineEdit）、月ごとに計上するの切り替え（区分だけ）、
   // 上へ／下へ（.order-actions。端の向きは aria-disabled）、削除（確かめのダイアログを挟む）。書いた後は画面が一覧を読み直す（onchanged）。
-  // 送るのは1本ずつで、送っている間はほかの操作を押しても無視する。閉じたワークスペース（canWrite が偽）では名前だけを読み取り専用で出す。
-  // 取り込み元の入る先との結び付けは #67 で足す
+  // 足す、切り替え、並べ替え、削除は1本ずつ送り、送っている間はほかの操作を押しても無視する（aria-disabled）。名前の確定は InlineEdit が
+  // 二重に送らないので、ほかの操作と重なっても送る。閉じたワークスペース（canWrite が偽）では名前だけを読み取り専用で出す。
+  // 取り込み元の入る先との結び付けは #67、行のドラッグは #166 で足す
   type Item = { id: string; name: string; is_billed_monthly?: boolean };
 
   let {
@@ -51,7 +52,7 @@
     canWrite: boolean;
     // 書いた（か、ほかの画面の変更を知った）後に、一覧を読み直す
     onchanged: () => Promise<void>;
-    // ワークスペースが閉じていた。枠ごと読み直す
+    // ワークスペースが閉じていたか、見つからなかった。枠ごと読み直す
     onstale: () => void;
   } = $props();
 
@@ -62,12 +63,34 @@
   const kindWord = $derived(kind === 'category' ? t('category') : t('repository'));
   let newName = $state('');
   let addError = $state<string | null>(null);
+  // 足す、切り替え、並べ替え、削除を送っている間（名前の確定は数えない）
   let busy = $state(false);
   let status = $state('');
   let list = $state<HTMLOListElement>();
   let newInput = $state<HTMLInputElement>();
   let deleteDialog = $state<ReturnType<typeof ConfirmDialog>>();
   let deleting = $state<Item | null>(null);
+
+  // 読み上げの領域の文。同じ文を続けて出しても読まれるよう、いったん空にしてから入れる
+  async function announce(text: string): Promise<void> {
+    status = '';
+    await tick();
+    status = text;
+  }
+
+  // 1本ずつ送る操作。送っている間は status に text を出し、終わったら消す
+  async function exclusive(text: string, run: () => Promise<void>): Promise<boolean> {
+    if (busy) return false;
+    busy = true;
+    status = text;
+    try {
+      await run();
+    } finally {
+      busy = false;
+      if (status === text) status = '';
+    }
+    return true;
+  }
 
   function nameProblem(raw: string): string | null {
     const problem = definitionNameProblem(raw.trim());
@@ -105,6 +128,13 @@
     return null;
   }
 
+  function failureText(result: ApiResult<unknown>): string {
+    return (
+      conflictText(result) ??
+      (!result.ok && result.status === 400 ? t('definitionBadRequest') : t('definitionSaveFailed', { kind: kindWord }))
+    );
+  }
+
   async function add(event: SubmitEvent): Promise<void> {
     event.preventDefault();
     if (busy) return;
@@ -114,9 +144,7 @@
       return;
     }
     const name = newName.trim();
-    busy = true;
-    status = t('definitionSaving');
-    try {
+    await exclusive(t('definitionSaving', { kind: kindWord }), async () => {
       const result =
         kind === 'category'
           ? await callOperation(categoryCreate, { workspace_id: workspaceId, name }, { slug })
@@ -127,73 +155,61 @@
         await onchanged();
         return;
       }
+      // 足す操作の 404 は、ワークスペースが見つからない（消えた、入れなくなった）。枠ごと読み直す
+      if (!isUnauthenticated(result) && result.status === 404) {
+        showToast(t('definitionAddNotFound'), 'alert');
+        onstale();
+        return;
+      }
       if (handledCommon(result)) return;
-      addError =
-        conflictText(result) ?? (result.status === 400 ? t('definitionBadRequest') : t('definitionSaveFailed'));
+      addError = failureText(result);
       newInput?.focus();
-    } finally {
-      busy = false;
-      status = '';
-    }
+    });
   }
 
   // 名前を直す（InlineEdit の save）。エラーの文か、成功の null を返す
   async function rename(item: Item, raw: string): Promise<string | null> {
     const name = raw.trim();
     if (name === item.name) return null;
-    if (busy) return t('definitionSaving');
-    busy = true;
-    try {
-      const result =
-        kind === 'category'
-          ? await callOperation(categoryUpdate, { workspace_id: workspaceId, category_id: item.id, name }, { slug })
-          : await callOperation(
-              repositoryUpdate,
-              { workspace_id: workspaceId, repository_id: item.id, name },
-              { slug },
-            );
-      if (result.ok) {
-        showToast(t('taskSaved'), 'check');
-        await onchanged();
-        return null;
-      }
-      if (handledCommon(result)) {
-        await onchanged();
-        return null;
-      }
-      return conflictText(result) ?? (result.status === 400 ? t('definitionBadRequest') : t('definitionSaveFailed'));
-    } finally {
-      busy = false;
+    const result =
+      kind === 'category'
+        ? await callOperation(categoryUpdate, { workspace_id: workspaceId, category_id: item.id, name }, { slug })
+        : await callOperation(repositoryUpdate, { workspace_id: workspaceId, repository_id: item.id, name }, { slug });
+    if (result.ok) {
+      showToast(t('definitionSaved', { name }), 'check');
+      await onchanged();
+      return null;
     }
+    if (handledCommon(result)) {
+      await onchanged();
+      return null;
+    }
+    return failureText(result);
   }
 
-  // 月ごとに計上するかを切り替える（区分だけ）。断られたら、切り替えを元に戻して知らせる
+  // 月ごとに計上するかを切り替える（区分だけ）。送っている間の押下は、切り替えずに無視する
+  function guardToggle(event: MouseEvent): void {
+    if (busy) event.preventDefault();
+  }
+
   async function toggleBilled(item: Item, event: Event & { currentTarget: HTMLInputElement }): Promise<void> {
     const input = event.currentTarget;
     const next = input.checked;
-    if (busy) {
-      input.checked = !next;
-      return;
-    }
-    busy = true;
-    status = t('definitionSaving');
-    try {
+    const started = await exclusive(t('definitionSaving', { kind: kindWord }), async () => {
       const result = await callOperation(
         categoryUpdate,
         { workspace_id: workspaceId, category_id: item.id, is_billed_monthly: next },
         { slug },
       );
       if (result.ok) {
-        showToast(t('taskSaved'), 'check');
+        showToast(t('definitionSaved', { name: item.name }), 'check');
       } else {
         input.checked = item.is_billed_monthly === true;
-        if (!handledCommon(result)) showToast(t('definitionSaveFailed'), 'alert');
+        if (!handledCommon(result)) showToast(t('definitionSaveFailed', { kind: kindWord }), 'alert');
       }
       await onchanged();
-    } finally {
-      busy = false;
-      status = '';
-    }
+    });
+    if (!started) input.checked = !next;
   }
 
   // 1つ上か下へ動かす。動かした後は、同じ行の同じボタンへフォーカスを戻す（行の要素は並び替えで動く）
@@ -203,8 +219,8 @@
     if (busy || item === undefined || target < 0 || target >= items.length) return;
     // 上へは2つ上の行の直後（先頭なら直前の行なし）、下へは次の行の直後
     const afterId = delta < 0 ? (items[index - 2]?.id ?? null) : items[index + 1]!.id;
-    busy = true;
-    try {
+    let moved = false;
+    await exclusive('', async () => {
       const result =
         kind === 'category'
           ? await callOperation(
@@ -217,16 +233,14 @@
               { workspace_id: workspaceId, repository_id: item.id, after_repository_id: afterId },
               { slug },
             );
-      if (result.ok) {
-        status = t('definitionMoved', { name: item.name, position: target + 1 });
-      } else if (!handledCommon(result)) {
+      if (result.ok) moved = true;
+      else if (!handledCommon(result)) {
         const reason = result.status === 409 ? moveConflictReasonOf(result.error?.details) : undefined;
         showToast(reason === 'changed' ? t('definitionChanged') : t('definitionMoveFailed'), 'alert');
       }
       await onchanged();
-    } finally {
-      busy = false;
-    }
+    });
+    if (moved) await announce(t('definitionMoved', { name: item.name, position: target + 1 }));
     await tick();
     list
       ?.querySelector<HTMLButtonElement>(
@@ -239,10 +253,8 @@
     if (busy) return;
     deleting = item;
     const confirmed = (await deleteDialog?.ask(trigger)) ?? false;
-    if (!confirmed || busy) return;
-    busy = true;
-    status = t('definitionSaving');
-    try {
+    if (!confirmed) return;
+    const started = await exclusive(t('definitionDeleting', { kind: kindWord }), async () => {
       const result =
         kind === 'category'
           ? await callOperation(categoryDelete, { workspace_id: workspaceId, category_id: item.id }, { slug })
@@ -252,10 +264,8 @@
         showToast(result.status === 409 ? t('definitionChanged') : t('definitionDeleteFailed'), 'alert');
       }
       await onchanged();
-    } finally {
-      busy = false;
-      status = '';
-    }
+    });
+    if (!started) return;
     // 押したボタンは行ごと消えるので、同じ位置の行（無ければ前の行）の削除ボタンへ、一覧が空なら足す欄へフォーカスを移す
     await tick();
     const buttons = list?.querySelectorAll<HTMLButtonElement>('[data-delete]') ?? [];
@@ -272,18 +282,18 @@
 >
   {#if items.length === 0}
     <EmptyState
-      icon={kind === 'category' ? 'flag' : 'git'}
+      icon={kind === 'category' ? 'tag' : 'git'}
       title={canWrite
         ? t('definitionEmptyTitle', { kind: kindWord })
         : t('definitionEmptyReadOnly', { kind: kindWord })}
       text={canWrite ? t('definitionEmptyText') : undefined}
     />
   {:else}
-    <ol class="order-list" aria-label={t('definitionListLabel', { kind: kindWord })} bind:this={list}>
+    <!-- 行のドラッグ（.grip）は #166 で足す。それまでは先頭の列を持たない形（.is-plain） -->
+    <ol class="order-list is-plain" aria-label={t('definitionListLabel', { kind: kindWord })} bind:this={list}>
       {#each items as item, index (item.id)}
         <li data-definition-id={item.id}>
-          <span aria-hidden="true"></span>
-          <span class="order-main">
+          <div class="order-main">
             {#if canWrite}
               <div class="order-name">
                 <InlineEdit
@@ -309,6 +319,8 @@
                     type="checkbox"
                     checked={item.is_billed_monthly === true}
                     aria-label={t('categoryBilledMonthlyLabel', { name: item.name })}
+                    aria-disabled={busy}
+                    onclick={guardToggle}
                     onchange={(event) => void toggleBilled(item, event)}
                   />
                   <span aria-hidden="true">{t('categoryBilledMonthly')}</span>
@@ -320,7 +332,7 @@
                 <span class="props-note">{t('categoryBilledMonthly')}</span>
               {/if}
             {/if}
-          </span>
+          </div>
           {#if canWrite}
             <span class="order-actions">
               <button
@@ -346,13 +358,11 @@
                 type="button"
                 data-delete
                 aria-label={t('definitionDeleteLabel', { name: item.name })}
-                title={t('taskDeleteConfirm')}
+                title={t('definitionDeleteAction')}
                 aria-disabled={busy}
                 onclick={(event) => void remove(item, index, event.currentTarget)}><Icon name="trash" /></button
               >
             </span>
-          {:else}
-            <span></span>
           {/if}
         </li>
       {/each}
@@ -391,8 +401,8 @@
 <ConfirmDialog
   bind:this={deleteDialog}
   title={t('definitionDeleteTitle', { name: deleting?.name ?? '' })}
-  confirmLabel={t('taskDeleteConfirm')}
-  cancelLabel={t('taskDeleteCancel')}
+  confirmLabel={t('definitionDeleteConfirm')}
+  cancelLabel={t('cancel')}
   danger
 >
   <p>

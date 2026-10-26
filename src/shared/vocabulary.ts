@@ -1547,11 +1547,30 @@ export const dictionary = defineDictionary({
   ),
   definitionBadRequest: workspace('名前に使えない文字が含まれています', '名前に使えない文字が含まれています'),
   definitionSaveFailed: workspace(
-    '保存できませんでした。もう一度試してください。',
-    '保存できませんでした。もう一度試してください。',
+    '{kind}を保存できませんでした。もう一度試してください。',
+    '{kind}を保存できませんでした。もう一度試してください。',
+  ),
+  definitionSaved: workspace('「{name}」を保存しました', '「{name}」を保存しました'),
+  definitionAddNotFound: workspace('足せませんでした。画面を読み直します', '足せませんでした。画面を読み直します'),
+  definitionDeleting: workspace('{kind}を削除しています', '{kind}を削除しています'),
+  definitionDeleteAction: workspace('削除', '削除'),
+  definitionDeleteConfirm: workspace('削除する', '削除する'),
+  settingsRefreshFailed: workspace('一覧を更新できませんでした', '一覧を更新できませんでした'),
+  settingsBackToBacklog: workspace('{backlog}へ戻る', '{backlog}へ戻る'),
+  definitionsLoadFailed: workspace(
+    '{category}とリポジトリの一覧を読み込めませんでした。',
+    '{category}とリポジトリの一覧を読み込めませんでした。',
+  ),
+  repositoryEmptyHint: workspace(
+    'リポジトリは{leader}が{settings}の画面で足せます。',
+    'リポジトリは{leader}が{settings}の画面で足せます。',
+  ),
+  categoryCurrentUnread: workspace(
+    '今の{category}（一覧を読み込めませんでした）',
+    '今の{category}（一覧を読み込めませんでした）',
   ),
   definitionAdded: workspace('「{name}」を足しました', '「{name}」を足しました'),
-  definitionSaving: workspace('保存しています', '保存しています'),
+  definitionSaving: workspace('{kind}を保存しています', '{kind}を保存しています'),
   definitionGone: workspace(
     'この{kind}はほかの画面で削除されています。一覧を読み直します',
     'この{kind}はほかの画面で削除されています。一覧を読み直します',

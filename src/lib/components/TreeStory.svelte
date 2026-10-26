@@ -2,6 +2,7 @@
   import type { Snippet } from 'svelte';
   import type { BacklogStory, BacklogTask } from '../../shared/operations/task/backlog-tree.ts';
   import { t } from '../vocabulary.svelte.ts';
+  import DefinitionChip from './DefinitionChip.svelte';
   import DueChip from './DueChip.svelte';
   import Icon from './Icon.svelte';
 
@@ -122,9 +123,7 @@
       >
       <!-- 区分は親のないストーリーにだけ出す（エピックの下では、エピックの行に出ている区分を引き継ぐ） -->
       {#if !nested && story.category !== null}
-        <span class="chip"
-          ><span class="visually-hidden">{t('chipPrefix', { kind: t('category') })}</span>{story.category.name}</span
-        >
+        <DefinitionChip kind="category" name={story.category.name} />
       {/if}
       {#if story.due_on !== null}
         <DueChip dueOn={story.due_on} today={clock.today} weekStart={clock.weekStart} done={finished} />

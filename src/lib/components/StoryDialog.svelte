@@ -36,6 +36,7 @@
     workspaceId,
     canWrite,
     categories,
+    categoriesFailed,
     onsaved,
     ongone,
   }: {
@@ -43,6 +44,8 @@
     workspaceId: string;
     canWrite: boolean;
     categories: readonly DefinitionRef[];
+    // 区分の一覧を読めなかった（選択肢は区分なしと今の区分だけ）
+    categoriesFailed: boolean;
     onsaved: () => void;
     // 直す対象が消えていた（404）。画面が木を読み直し、見出しへフォーカスを移す
     ongone: () => void;
@@ -404,12 +407,22 @@
             <span>{categoryName}</span>
           {:else}
             <label class="field-label" for={categoryId}>{t('category')}</label>
-            <select class="select" id={categoryId} bind:value={category}>
+            <select
+              class="select"
+              id={categoryId}
+              bind:value={category}
+              aria-describedby={categoriesFailed ? `${categoryId}-note` : undefined}
+            >
               <option value="">{t('categoryNone', { category: t('category') })}</option>
               {#each categoryOptions as option (option.id)}
                 <option value={option.id}>{option.name}</option>
               {/each}
             </select>
+            {#if categoriesFailed}
+              <span class="field-hint" id="{categoryId}-note"
+                >{t('definitionsLoadFailed', { category: t('category') })}</span
+              >
+            {/if}
           {/if}
         </div>
 

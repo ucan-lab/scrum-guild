@@ -186,8 +186,20 @@
     return x.src ? `<span class="source-key">${icon(SRC[x.src.kind].icon)} ${esc(x.src.key)}</span>` : "";
   }
   // リポジトリ。行とカードでは名前の印、起票と詳細と受信箱では1回押して選ぶボタンの並び
+  // 区分とリポジトリの名前の印（本番の DefinitionChip）。長い名前は折り返す（.chip.is-name）。種類は見えない文字で読み上げに添える
+  function nameChip(iconName, kind, name) {
+    return `<span class="chip is-name">${icon(iconName)}<span><span class="visually-hidden">${kind}：</span>${esc(name)}</span></span>`;
+  }
   function repoTag(x) {
-    return x.repo ? `<span class="chip">${icon("git")}${esc(D.repositories[x.repo].name)}</span>` : "";
+    return x.repo ? nameChip("git", "リポジトリ", D.repositories[x.repo].name) : "";
+  }
+  function categoryTag(id) {
+    return id ? nameChip("tag", t("category"), D.categories[id].name) : "";
+  }
+  // 区分の選択欄（本番のエピック、ストーリー、起票のダイアログと、引き出し）。先頭が「区分なし」
+  function categorySelect(id, current, readOnly) {
+    if (readOnly) return `<span>${current ? esc(D.categories[current].name) : `${t("category")}なし`}</span>`;
+    return `<select class="select" id="${id}"><option>${t("category")}なし</option>${Object.entries(D.categories).map(([cid, c]) => `<option ${cid === current ? "selected" : ""}>${esc(c.name)}</option>`).join("")}</select>`;
   }
   function repoPicker(name, current, opts = {}) {
     const ids = Object.keys(D.repositories);
@@ -230,7 +242,7 @@
         ${title}
         <span class="entry-meta">
           ${opts.showWs ? `<span class="tag">${esc(D.workspaces[x.ws].name)}</span>` : ""}
-          ${repoTag(x)}${sourceKey(x)}
+          ${repoTag(x)}${x.story ? "" : categoryTag(x.cat)}${sourceKey(x)}
           ${showParent && parent ? `<span>${icon("flag")} ${esc(parent)}</span>` : ""}
           ${x.doneAt ? `<span>${t("done")} ${esc(x.doneAt)}</span>` : colName(x) ? `<span class="status-dot">${esc(colName(x))}</span>` : ""}
           ${taskFlags(x)}${opts.meta ? opts.meta(x) : ""}
@@ -385,7 +397,7 @@
       <div class="tree-row is-story ${solo ? "is-root" : ""}">
         ${treeCaret(`tree-${key}`, st.title)}
         <span class="kind is-story" title="${t("story")}">${icon("check")}</span>
-        <span class="tree-title"><button class="tree-link" type="button" data-dialog="editStory">${esc(st.title)}</button>${solo && st.cat ? ` <span class="chip">${esc(D.categories[st.cat].name)}</span>` : ""} ${dueChip(st.due)}</span>
+        <span class="tree-title"><button class="tree-link" type="button" data-dialog="editStory">${esc(st.title)}</button>${solo && st.cat ? ` ${categoryTag(st.cat)}` : ""} ${dueChip(st.due)}</span>
         <span class="tree-end">
           <span class="tree-ratio" title="完了 / 全体">${t("done")} ${p.done} / ${p.all} pt</span>
           ${st.doneAt ? "" : `<button class="btn is-sm" type="button" data-dialog="createTask" aria-label="${t("task")}を足す: ${esc(st.title)}">${icon("plus")}${t("task")}</button>`}
@@ -404,7 +416,7 @@
   }
   // エピックの行（本番の TreeEpic）。題はエピックのダイアログを開くボタン。opts.order を渡すと、配下のストーリーの行に
   // 並べ替えと「親を移す」を出す。エピックの画面へのリンクと並べ替えは、エピックの画面の Issue（#65）で足す。
-  // 本番と同じく、区分の印は出さない（区分の操作は、区分の Issue で足す）。
+  // 区分の印はエピックに振ったものを出す（配下の行では繰り返さない。本番と同じ）。
   // カタログの見本用に、opts.cleared（クリア済み。配下は完了したストーリー）、opts.canceled（中止）、opts.empty（配下なし）、
   // opts.key（同じエピックを2回描くときの id の区別）を受ける。完了か中止したエピックは、期日に色を付けず、配下の取り消しを押せなくする
   function treeEpic(eid, opts = {}) {
@@ -421,7 +433,7 @@
       <div class="tree-row is-epic">
         ${treeCaret(`tree-${key}`, e.title)}
         <span class="kind is-epic" title="${t("epic")}">${icon("flag")}</span>
-        <span class="tree-title"><button class="tree-link" type="button" data-dialog="editEpic">${esc(e.title)}</button> ${state} ${dueChip(e.due, { done: finished })}</span>
+        <span class="tree-title"><button class="tree-link" type="button" data-dialog="editEpic">${esc(e.title)}</button> ${categoryTag(e.cat)} ${state} ${dueChip(e.due, { done: finished })}</span>
         <span class="tree-end"><span class="tree-ratio" title="完了 / 全体">${t("done")} ${p.done} / ${p.all} pt</span></span>
       </div>
       <div class="tree-children" id="tree-${key}">${stories.map((s, i) => treeStory(s, false, {
@@ -773,7 +785,9 @@ const looooooooooooooooooooooooooooooooooongLine = "コードの長い1行は、
         <div><dt>親</dt><dd>${parent ? `${icon("flag")} ${esc(parent.title)}${epic ? `<span class="props-note">${esc(epic.title)}</span>` : ""}` : "なし"}</dd></div>
         <div><dt>${t("sprint")}</dt><dd>${x.sprint ? esc(sprintLabel(x.sprint)) : t("backlog")}</dd></div>
         <div><dt>リポジトリ</dt><dd>${repoPicker("drawer-repo", x.repo || null, { for: x.id })}</dd></div>
-        <div><dt>${t("category")}</dt><dd>${cat ? `${esc(D.categories[cat.id].name)}${cat.inherited ? `<span class="props-note">親から引き継ぎ</span>` : ""}` : `${t("category")}なし`}</dd></div>
+        <div><dt>${cat && cat.inherited ? t("category") : `<label for="drawer-cat">${t("category")}</label>`}</dt><dd>${cat && cat.inherited
+          ? `${cat.id ? esc(D.categories[cat.id].name) : `${t("category")}なし`}<span class="props-note">親から引き継ぎ</span>`
+          : categorySelect("drawer-cat", cat ? cat.id : null, drawerReadOnly())}</dd></div>
         ${x.src ? "" : `<div><dt>リンク</dt><dd>${drawerLinkHtml(x)}</dd></div>`}
         <div><dt>今日やる</dt><dd><button class="sun" type="button" data-sun="${x.id}" aria-pressed="${x.todayOn === D.today}" aria-label="今日やる">${icon("sun")}</button>${x.todayOn === D.today ? "今日やる" : ""}</dd></div>
       </dl>
@@ -998,6 +1012,9 @@ const looooooooooooooooooooooooooooooooooongLine = "コードの長い1行は、
        <label class="field" for="d-st"><span class="field-label">タイトル</span><input class="input" id="d-st" placeholder="どこまで進めば区切りか" value="${st ? esc(st.title) : ""}"${ro}></label>
        <label class="field" for="d-sa"><span class="field-label">${t("ac")}</span><textarea class="textarea" id="d-sa"${ro}>${st ? esc((st.ac || []).join("\n")) : ""}</textarea></label>
        <label class="field" for="d-sb"><span class="field-label">本文</span><textarea class="textarea" id="d-sb"${ro}></textarea></label>
+       ${st && st.epic
+         ? `<div class="field"><span class="field-label">${t("category")}</span><span>${D.epics[st.epic].cat ? esc(D.categories[D.epics[st.epic].cat].name) : `${t("category")}なし`} <span class="props-note">親から引き継ぎ</span></span></div>`
+         : `<div class="field">${readOnly ? `<span class="field-label">${t("category")}</span>` : `<label class="field-label" for="d-sc">${t("category")}</label>`}${categorySelect("d-sc", st ? st.cat : null, readOnly)}</div>`}
        <div class="form-row is-start">
          <label class="field" for="d-sd"><span class="field-label">${t("due")}</span>${readOnly
            ? `<input class="input" id="d-sd" type="text" readonly value="${st && st.due ? st.due : ""}">`
@@ -1027,6 +1044,7 @@ const looooooooooooooooooooooooooooooooooongLine = "コードの長い1行は、
       `${readOnly ? `<div class="callout is-info">${icon("shield")}<span>終了した${t("workspace")}の${t("epic")}は、読み取りだけできます。</span></div>` : ""}
        <label class="field" for="d-et"><span class="field-label">タイトル</span><input class="input" id="d-et" placeholder="何を成し遂げるか" value="${e ? esc(e.title) : ""}"${ro}></label>
        <label class="field" for="d-eb"><span class="field-label">本文</span><textarea class="textarea" id="d-eb"${ro}>${e ? esc((e.body || []).join("\n\n")) : ""}</textarea></label>
+       <div class="field">${readOnly ? `<span class="field-label">${t("category")}</span>` : `<label class="field-label" for="d-ec">${t("category")}</label>`}${categorySelect("d-ec", e ? e.cat : null, readOnly)}</div>
        <div class="form-row is-start">
          <label class="field" for="d-ed"><span class="field-label">${t("due")}</span>${readOnly
            ? `<input class="input" id="d-ed" type="text" readonly value="${e && e.due ? e.due : ""}">`
@@ -1087,6 +1105,8 @@ const looooooooooooooooooooooooooooooooooongLine = "コードの長い1行は、
        </div>
        <div class="field"><span class="field-label">リポジトリ</span>${repoPicker("d-repo")}
          <span class="field-hint">複数のリポジトリにまたがる作業は、リポジトリごとに${t("task")}を分けます。</span></div>
+       <div class="field"><label class="field-label" for="d-cat">${t("category")}</label>${categorySelect("d-cat", null, false)}
+         <span class="field-hint">${t("category")}は親なしの${t("task")}だけが持ちます。親を選んでいるあいだは、この欄の代わりに親の${t("category")}を「親から引き継ぎ」で示します。</span></div>
        <div class="field"><span class="field-label">${t("points")}</span>
          <div class="segmented" role="radiogroup">${["未", 0, 1, 2, 3, 5, 8, 13].map((v, i) => `<label><input type="radio" name="d-pts" ${i === 0 ? "checked" : ""}><span>${v}</span></label>`).join("")}</div>
          <span class="field-hint">「未」は未見積もり。起票の経験値は、1 以上の${t("points")}が振られたまま${t("task")}が完了すると付きます。</span></div>
@@ -1955,7 +1975,7 @@ const looooooooooooooooooooooooooooooooooongLine = "コードの長い1行は、
     first, firstHref, firstSteps, emptyState,
     D, t, brandMark, googleMark, THEMES, THEME_LABEL, THEME_NOTE, setVocab, toggleVocab, onChange, esc, icon, md, sumPts, cycleTheme, setTheme, applyTheme, mount,
     onRedraw: (fn) => extraRedraws.push(fn), openDrawer, drawerHtml, drawerState: drawer,
-    user, task, tasksWhere, repoTag, repoPicker, sprintLabel, colName, categoryOf, storyPts, epicPts, dueOf,
+    user, task, tasksWhere, repoTag, categoryTag, repoPicker, sprintLabel, colName, categoryOf, storyPts, epicPts, dueOf,
     avatar, avatarOf, SAMPLE_PHOTO, BROKEN_PHOTO, emblem, pts, dueChip, taskDue, tier, sourceKey, entry, orderActions, book, section, pageHead,
     card, board, treeStory, treeEpic, sprintNotice, raidNotice, progress, levelPanel, load, capacityRows,
     openDialog, closeDialog, toast, celebrate, miniCap, redraw: () => redrawAll(), DIALOGS, loginTarget, orgMenuHtml, accountMenuHtml,

@@ -713,6 +713,7 @@
     workspaceId={workspace.id}
     {canWrite}
     categories={data.definitions?.categories ?? []}
+    categoriesFailed={data.definitions === null}
     onsaved={() => void invalidateAll()}
     ongone={() => void rowGone()}
   />
@@ -722,6 +723,7 @@
     workspaceId={workspace.id}
     {canWrite}
     categories={data.definitions?.categories ?? []}
+    categoriesFailed={data.definitions === null}
     onsaved={() => void invalidateAll()}
     ongone={() => void rowGone()}
   />
@@ -733,6 +735,7 @@
       stories={openStories}
       categories={data.definitions?.categories ?? []}
       repositories={data.definitions?.repositories ?? []}
+      definitionsFailed={data.definitions === null}
       oncreated={created}
     />
     <MoveParentDialog bind:this={moveDialog} parents={openStories} onmove={moveParent} />
