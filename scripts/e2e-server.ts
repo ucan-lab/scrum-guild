@@ -54,3 +54,37 @@ export function serverVersionMismatch(expected: string, actual: unknown, env: En
     : `この実行で build したサーバーでなく、前の e2e か pnpm preview のサーバーがポート ${port} で答えている。そのプロセスを止めてからやり直す（lsof -i :${port} で探す）`;
   return `/api/health の版が ${JSON.stringify(actual)} で、期待した ${expected} と違う。${hint}`;
 }
+
+export type HealthResponse = { ok: boolean; status: number; json(): Promise<unknown> };
+
+export type E2eGlobalSetupDeps = {
+  fetchHealth: (url: string, signal: AbortSignal) => Promise<HealthResponse>;
+  seed: () => void;
+};
+
+// e2e/global-setup.ts の中身。答えたサーバーがこの実行で build したものかを確かめてから seed を入れる。
+// 違えば seed を入れずに止める（前のサーバーの D1 に入れても、そのサーバーで走らせないため）
+export async function e2eGlobalSetup(env: Env, deps: E2eGlobalSetupDeps): Promise<void> {
+  const reason = await e2eServerProblem(env, deps.fetchHealth);
+  if (reason) throw new Error(reason);
+  deps.seed();
+}
+
+async function e2eServerProblem(env: Env, fetchHealth: E2eGlobalSetupDeps['fetchHealth']): Promise<string | undefined> {
+  let res: HealthResponse;
+  try {
+    res = await fetchHealth(e2eHealthURL(env), AbortSignal.timeout(HEALTH_TIMEOUT_MS));
+  } catch (error) {
+    return healthUnreachable(env, error);
+  }
+  const port = devPorts(env).api;
+  // サーバーは答えたが、設定の誤りなどで正しく動いていない。前のサーバーとは限らないので、ログを見る案内にする
+  if (!res.ok) {
+    return `/api/health が ${res.status} を返した。立てたサーバーの出力（[WebServer] の行）か、ポート ${port} で答えているサーバーを確かめる（lsof -i :${port} で探す）`;
+  }
+  const body = await res.json().catch(() => undefined);
+  if (typeof body !== 'object' || body === null || !('version' in body)) {
+    return `/api/health の応答に版が無い。このリポジトリでないサーバーがポート ${port} で答えていないかを確かめる（lsof -i :${port} で探す）`;
+  }
+  return serverVersionMismatch(env.APP_VERSION ?? '', body.version, env);
+}

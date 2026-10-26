@@ -4,8 +4,11 @@ import { describe, test } from 'node:test';
 import {
   applyE2eServerVersion,
   E2E_SERVER_COMMAND,
+  e2eGlobalSetup,
+  type E2eGlobalSetupDeps,
   e2eHealthURL,
   e2eServerVersion,
+  type HealthResponse,
   healthUnreachable,
   reuseExistingServer,
   serverVersionMismatch,
@@ -72,6 +75,65 @@ describe('applyE2eServerVersion', () => {
     const env: Record<string, string | undefined> = { CI: 'true', APP_VERSION: 'abc123' };
     assert.equal(applyE2eServerVersion(env, 1_000), 'abc123');
     assert.equal(env.APP_VERSION, 'abc123');
+  });
+});
+
+describe('e2eGlobalSetup', () => {
+  const env = { DEV_PORT_OFFSET: '60', APP_VERSION: 'e2e-1' };
+
+  function setup(fetchHealth: E2eGlobalSetupDeps['fetchHealth']) {
+    const calls: string[] = [];
+    const run = e2eGlobalSetup(env, {
+      fetchHealth: async (url, signal) => {
+        calls.push(`fetch ${url}`);
+        return fetchHealth(url, signal);
+      },
+      seed: () => {
+        calls.push('seed');
+      },
+    });
+    return { run, calls };
+  }
+
+  const answer = (status: number, body: unknown): HealthResponse => ({
+    ok: status >= 200 && status < 300,
+    status,
+    json: async () => body,
+  });
+
+  test('版が同じなら seed を入れる', async () => {
+    const { run, calls } = setup(async () => answer(200, { status: 'ok', version: 'e2e-1' }));
+    await run;
+    assert.deepEqual(calls, ['fetch http://localhost:8847/api/health', 'seed']);
+  });
+
+  test('版が違えば seed の前に止める', async () => {
+    const { run, calls } = setup(async () => answer(200, { status: 'ok', version: 'old' }));
+    await assert.rejects(run, /"old".*e2e-1/);
+    assert.deepEqual(calls, ['fetch http://localhost:8847/api/health']);
+  });
+
+  test('問い合わせられない、または時間切れなら、ポートの探し方を出して止める', async () => {
+    const { run, calls } = setup(async () => {
+      throw new Error('The operation was aborted due to timeout');
+    });
+    await assert.rejects(run, /timeout.*lsof -i :8847/);
+    assert.equal(calls.includes('seed'), false);
+  });
+
+  test('2xx でなければ、前のサーバーと決めつけずにステータスを出す', async () => {
+    const { run } = setup(async () => answer(503, { error: { code: 'internal' } }));
+    await assert.rejects(run, (error: Error) => {
+      assert.match(error.message, /503/);
+      assert.doesNotMatch(error.message, /前の e2e/);
+      return true;
+    });
+  });
+
+  test('JSON でない、または版の無い応答は、別のサーバーを疑う案内で止める', async () => {
+    const notJson: HealthResponse = { ok: true, status: 200, json: () => Promise.reject(new SyntaxError('x')) };
+    await assert.rejects(setup(async () => notJson).run, /版が無い.*lsof -i :8847/);
+    await assert.rejects(setup(async () => answer(200, { status: 'ok' })).run, /版が無い/);
   });
 });
 
