@@ -328,7 +328,7 @@ rollback で戻るのは、版が持つものすべて。コードと設定の�
 
 - 解約で消す予定日を過ぎていても、データを消すまでは再開できる
 - 停止、再開、停止の理由の変更は、その組織の変更の履歴（`change_logs`。`entity_type` が `organization`、`action` が `suspend`、`resume`、`update`、`operator` に運用者のログインの ID）に残る
-- 履歴の書き込みに失敗しても、操作は成功する。このとき `organizations` の状態を正とし、Workers Logs の `reason: "組織の状態は書けたが、変更の履歴を書けなかった"` の行（`operation`、`action`、`organizationId`、`error`（例外の名前）が付く）を見て、欠けた履歴の行を手で補う
+- 履歴の書き込みに失敗しても、操作は成功する。このとき `organizations` の状態を正とし、Workers Logs の `reason: "組織の状態は書けたが、変更の履歴を書けなかった"` の行（`operation`、`action`、`organizationId`、`changes`（`changes_json` と同じ前後の値）、`at`（操作の日時）、`error`（例外の名前）が付く）を見て、欠けた履歴の行を手で補う
 - 一覧が「状態が変わっていました」と出したときは、別の画面で先に操作が済んでいる。読み直した一覧を見て、必要なら操作し直す
 
 データを消す手順は、解約した組織が出る前に、ここに書く。

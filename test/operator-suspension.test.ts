@@ -415,7 +415,7 @@ describe('変更の履歴', () => {
     });
   });
 
-  test('履歴を書けなくても停止と再開は成功し、ログに組織の ID と例外の名前だけを残す', async () => {
+  test('履歴を書けなくても停止と再開は成功し、ログに組織の ID、前後の値、日時、例外の名前だけを残す', async () => {
     const errorLog = vi.spyOn(console, 'error').mockImplementation(() => {});
     const organization = await createOrganization();
     const failing = envWithD1Hooks(testEnv, {
@@ -428,6 +428,7 @@ describe('変更の履歴', () => {
     expect((await suspendBy(token, organization.slug, 'temporary', failing)).status).toBe(200);
     expect((await organizationRow(organization.id))?.suspended_at).not.toBeNull();
     expect(await changeLogsOf(organization.id)).toEqual([]);
+    const suspendedAt = (await organizationRow(organization.id))?.suspended_at;
 
     expect((await resumeBy(token, organization.slug, failing)).status).toBe(200);
     expect((await organizationRow(organization.id))?.suspended_at).toBeNull();
@@ -440,6 +441,11 @@ describe('変更の履歴', () => {
       expect(line).toContain('"error":"Error"');
       expect(line).not.toContain('secret SQL detail');
     }
+    // 再開で organizations から消えた停止の日時を、ログから補える
+    const resumed = JSON.parse(logged[1]!) as { action: string; changes: unknown; at: string };
+    expect(resumed.action).toBe('resume');
+    expect(resumed.changes).toEqual({ suspended_at: [suspendedAt, null], purge_on: [null, null] });
+    expect(Number.isNaN(Date.parse(resumed.at))).toBe(false);
   });
 });
 

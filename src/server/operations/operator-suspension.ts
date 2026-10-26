@@ -34,7 +34,7 @@ type Suspension = { suspended_at: string | null; purge_on: string | null };
 const kindOf = (suspension: Suspension): SuspensionKind =>
   suspension.purge_on === null ? 'temporary' : 'cancellation';
 
-// 組織の変更の履歴に運用者の操作として残す。書けなくても投げず、組織の ID と例外の名前だけをログに残す
+// 組織の変更の履歴に運用者の操作として残す。書けなくても投げず、組織の ID、変更の前後の値、日時、例外の名前だけをログに残す
 // （例外の message に SQL や接続の詳細が混ざりうる）。organizations は書けているので、欠けた行は運用者がログから手で補える
 async function logChange(
   operator: OperatorTools,
@@ -65,6 +65,9 @@ async function logChange(
         reason: '組織の状態は書けたが、変更の履歴を書けなかった',
         action: log.action,
         organizationId: log.organizationId,
+        // 再開と切り替えは organizations の前の値を消すので、欠けた行を補えるよう前後の値と日時を残す（日時と日付だけ）
+        changes: log.changes,
+        at: log.at.toISOString(),
         error: err instanceof Error ? err.name : typeof err,
       }),
     );
