@@ -14,6 +14,7 @@ import {
   organizationHolidayDeleteOperation,
   organizationHolidayListOperation,
 } from './organization-holiday.ts';
+import { organizationSettingsUpdateOperation } from './organization-settings.ts';
 import { logoutOperation, meOperation } from './session.ts';
 import { sprintCreateOperation, sprintDeleteOperation, sprintListOperation, sprintUpdateOperation } from './sprint.ts';
 import { epicCreateOperation, epicGetOperation, epicUpdateOperation } from './epic.ts';
@@ -50,6 +51,7 @@ export const implementedOperations: readonly ImplementedOperation[] = [
   organizationHolidayListOperation,
   organizationHolidayAddOperation,
   organizationHolidayDeleteOperation,
+  organizationSettingsUpdateOperation,
   meOperation,
   logoutOperation,
   epicCreateOperation,

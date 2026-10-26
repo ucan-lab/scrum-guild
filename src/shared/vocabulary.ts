@@ -1062,6 +1062,53 @@ export const dictionary = defineDictionary({
   themeSimpleDark: organization('シンプル（ダーク）', 'シンプル（ダーク）'),
   themeMedieval: organization('中世風', '中世風'),
   themeModern: organization('現代風', '現代風'),
+  // テーマの説明。見本の design/kit.js の THEME_NOTE と同じ文（src/shared/theme.ts の themeNoteKeys）
+  themeNoteSimple: organization(
+    '業務の道具として落ち着いた見た目。OS のライトとダークに合わせる',
+    '業務の道具として落ち着いた見た目。OS のライトとダークに合わせる',
+  ),
+  themeNoteSimpleLight: organization(
+    '業務の道具として落ち着いた見た目。いつも明るい地',
+    '業務の道具として落ち着いた見た目。いつも明るい地',
+  ),
+  themeNoteSimpleDark: organization(
+    '業務の道具として落ち着いた見た目。いつも暗い地',
+    '業務の道具として落ち着いた見た目。いつも暗い地',
+  ),
+  themeNoteMedieval: organization(
+    '冒険者ギルドの帳簿。紙と墨、完了に朱の判子',
+    '冒険者ギルドの帳簿。紙と墨、完了に朱の判子',
+  ),
+  themeNoteModern: organization(
+    'ハンターに届くシステムのウィンドウ。暗い地に光る枠',
+    'ハンターに届くシステムのウィンドウ。暗い地に光る枠',
+  ),
+
+  // 組織の言葉づかいと既定のテーマ（組織の管理の画面）。{workspace} と {leader} は、その言葉づかいの言葉を画面が渡す。
+  // 言葉づかいの選択肢の例（orgVocabularyNote）は、その言葉づかいの {organization} と {admin} を画面が渡す
+  orgVocabularyTitle: organization('{workspace}の外の言葉づかい', '{workspace}の外の言葉づかい'),
+  orgVocabularyDesc: organization(
+    '「冒険者ギルド」「ギルドマスター」などの言葉。{workspace}の中の言葉づかいは、それぞれの{leader}が決めます。',
+    '「組織」「管理者」などの言葉。{workspace}の中の言葉づかいは、それぞれの{leader}が決めます。',
+  ),
+  orgVocabularyNote: organization('{organization}、{admin}', '{organization}、{admin}'),
+  orgThemeTitle: organization('既定のテーマ', '既定のテーマ'),
+  orgThemeDesc: organization(
+    '画面の見た目の既定。自分で選んでいないユーザーに効きます。会社で使うならシンプルが無難です。',
+    '画面の見た目の既定。自分で選んでいないユーザーに効きます。会社で使うならシンプルが無難です。',
+  ),
+  orgSettingsSaving: organization('変えています', '変えています'),
+  orgVocabularyChanged: organization('言葉づかいを「{label}」に変えました', '言葉づかいを「{label}」に変えました'),
+  orgThemeChanged: organization('既定のテーマを「{label}」に変えました', '既定のテーマを「{label}」に変えました'),
+  // ほかの管理者が先に同じ項目を変えていた（409）。読み直した値を見てもらう
+  orgSettingsConflict: organization(
+    'ほかの{admin}が先に変えていました。今の値を読み直したので、確かめてから選び直してください',
+    'ほかの{admin}が先に変えていました。今の値を読み直したので、確かめてから選び直してください',
+  ),
+  orgSettingsFailed: organization(
+    '変えられませんでした。もう一度試してください。',
+    '変えられませんでした。もう一度試してください。',
+  ),
 
   // ワークスペースを終了する、再開する（組織の管理の画面。API の操作の名前は workspace-close と workspace-reopen のまま）。
   // {workspace} は、その言葉づかいの言葉を画面が渡す。{name} はワークスペースの名前

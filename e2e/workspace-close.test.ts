@@ -377,7 +377,8 @@ test.describe('管理者（あおば開発のミナト）', () => {
     await page.goto('/aoba/admin');
     // 見出しと節の見出しは出ている
     await expect(page.getByRole('heading', { level: 1, name: '組織の管理' })).toBeVisible();
-    await expect(page.getByRole('heading', { level: 2, name: 'パーティ' })).toBeVisible();
+    // 「パーティの外の言葉づかい」の節と分けるため、名前は完全に一致させる
+    await expect(page.getByRole('heading', { level: 2, name: 'パーティ', exact: true })).toBeVisible();
     await expect(page.getByText('パーティの一覧を読み込めませんでした')).toBeVisible();
     await expect(page.getByRole('button', { name: 'パーティを作る' })).toBeVisible();
 
