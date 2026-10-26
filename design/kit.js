@@ -994,6 +994,15 @@ const looooooooooooooooooooooooooooooooooongLine = "コードの長い1行は、
         ? `<button class="btn is-primary" type="button" data-close-dialog>閉じる</button>`
         : `<button class="btn is-quiet" type="button" data-close-dialog>やめる</button><button class="btn is-primary" type="button" data-close-dialog data-toast="${st ? "保存しました" : `${t("story")}を作りました`}">${st ? "保存する" : "作る"}</button>`);
   }
+  // 親の選択欄のストーリーの候補（本番の src/lib/parent-options.ts）。木の順（エピックの下、親のないもの）に並べ、
+  // エピックの下の候補があるときだけ、親のエピックごとの optgroup にまとめ、親のないストーリーは「親なしの<ストーリー>」にまとめる
+  function storyOptions(sids) {
+    const order = [...Object.keys(D.epics), null];
+    const groups = order.map((eid) => ({ eid, sids: sids.filter((sid) => (D.stories[sid].epic || null) === eid) })).filter((g) => g.sids.length);
+    const options = (list) => list.map((sid) => `<option>${esc(D.stories[sid].title)}</option>`).join("");
+    if (!groups.some((g) => g.eid !== null)) return options(sids);
+    return groups.map((g) => `<optgroup label="${g.eid === null ? `親なしの${t("story")}` : esc(D.epics[g.eid].title)}">${options(g.sids)}</optgroup>`).join("");
+  }
   // エピックの作成と変更のダイアログ（本番の EpicDialog）。欄はストーリーのダイアログから受け入れ基準を除いたもの。
   // バックログの見出しの「エピックを作る」と、木のエピックの行の題から開く。依頼主、クリア報酬、討伐隊はエピックの画面（#65）で直す
   function epicDialog(title, e, readOnly = false) {
@@ -1059,7 +1068,7 @@ const looooooooooooooooooooooooooooooooooongLine = "コードの長い1行は、
     createTask: () => openDialog(`${t("create")}`,
       `<label class="field" for="d-title"><span class="field-label">タイトル</span><input class="input" id="d-title" placeholder="何をするか"></label>
        <div class="form-row is-start">
-         <label class="field" for="d-parent"><span class="field-label">親の${t("story")}</span><select class="select" id="d-parent"><option>なし</option>${Object.values(D.stories).map((x) => `<option>${esc(x.title)}</option>`).join("")}</select></label>
+         <label class="field" for="d-parent"><span class="field-label">親の${t("story")}</span><select class="select" id="d-parent"><option>なし</option>${storyOptions(Object.keys(D.stories).filter((sid) => !D.stories[sid].doneAt))}</select></label>
          <label class="field" for="d-who"><span class="field-label">${t("assignee")}</span><select class="select" id="d-who"><option>担当なし</option>${Object.values(D.users).filter((u) => !u.left).map((u) => `<option>${esc(u.name)}</option>`).join("")}</select></label>
        </div>
        <div class="field"><span class="field-label">リポジトリ</span>${repoPicker("d-repo")}
@@ -1088,9 +1097,9 @@ const looooooooooooooooooooooooooooooooooongLine = "コードの長い1行は、
     // タスクの親を移す（本番の MoveParentDialog）。移す先は親なしと、完了していないストーリー（今の親を除く）。移す先の末尾に置く
     moveTask: () => {
       const x = tasksWhere((task) => task.story === "s4" && !task.doneAt)[0];
-      const others = Object.entries(D.stories).filter(([sid, s]) => sid !== "s4" && !s.doneAt);
+      const others = Object.keys(D.stories).filter((sid) => sid !== "s4" && !D.stories[sid].doneAt);
       openDialog(`「${esc(x ? x.title : "")}」の親を移す`,
-        `<label class="field" for="d-move"><span class="field-label">移す先</span><select class="select" id="d-move" aria-describedby="d-move-hint"><option>親なし</option>${others.map(([, s]) => `<option>${esc(s.title)}</option>`).join("")}</select>
+        `<label class="field" for="d-move"><span class="field-label">移す先</span><select class="select" id="d-move" aria-describedby="d-move-hint"><option>親なし</option>${storyOptions(others)}</select>
            <span class="field-hint" id="d-move-hint">移す先の末尾に置きます。</span></label>`,
         `<button class="btn is-quiet" type="button" data-close-dialog>やめる</button><button class="btn is-primary" type="button" data-close-dialog>移す</button>`);
     },
