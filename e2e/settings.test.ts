@@ -122,6 +122,9 @@ test.describe('リーダー（あおば開発のミナト）', () => {
     await page.getByRole('button', { name: 'もう一度試す' }).click();
     await expect(page.getByRole('alert').filter({ hasText: '一覧を更新できませんでした' })).toHaveCount(0);
     await expect(page.getByRole('list', { name: '系統の一覧' }).getByText('追加案件', { exact: true })).toBeVisible();
+    // 押したボタンが消えるので、先頭の節の見出しへフォーカスを移し、読み直せたことを常に置いた領域で伝える
+    await expect(page.locator('.settings .setting-title').first()).toBeFocused();
+    await expect(page.getByRole('status').filter({ hasText: '一覧を更新しました' })).toHaveCount(1);
     await page.locator('.nav-item', { hasText: '掲示板' }).click();
 
     // 親のないストーリーに区分を振る

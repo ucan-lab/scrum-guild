@@ -1556,6 +1556,7 @@ export const dictionary = defineDictionary({
   definitionDeleteAction: workspace('削除', '削除'),
   definitionDeleteConfirm: workspace('削除する', '削除する'),
   settingsRefreshFailed: workspace('一覧を更新できませんでした', '一覧を更新できませんでした'),
+  settingsRefreshed: workspace('一覧を更新しました', '一覧を更新しました'),
   settingsBackToBacklog: workspace('{backlog}へ戻る', '{backlog}へ戻る'),
   definitionsLoadFailed: workspace(
     '{category}とリポジトリの一覧を読み込めませんでした。',

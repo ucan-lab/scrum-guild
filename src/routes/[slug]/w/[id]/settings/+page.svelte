@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { tick } from 'svelte';
   import { invalidate } from '$app/navigation';
   import { resolve } from '$app/paths';
   import { page } from '$app/state';
@@ -47,16 +48,27 @@
     refreshFailed = data.definitions === null && kept !== null;
   }
 
+  // 「もう一度試す」で読み直せたら、押したボタンが囲みごと消えるので、先頭の節の見出しへフォーカスを移し、
+  // 常に置いた読み上げの領域で伝える（囲みの中の status は一緒に消えて読まれないため）
+  let refreshedMessage = $state('');
   async function retry(): Promise<void> {
     if (retrying) return;
     retrying = true;
     retryFailed = false;
+    refreshedMessage = '';
     try {
       await reload();
       retryFailed = refreshFailed;
     } finally {
       retrying = false;
     }
+    if (retryFailed) return;
+    refreshedMessage = t('settingsRefreshed');
+    await tick();
+    const heading = document.querySelector<HTMLElement>('.settings .setting-title');
+    if (!heading) return;
+    if (!heading.hasAttribute('tabindex')) heading.setAttribute('tabindex', '-1');
+    heading.focus();
   }
 
   function stale(): void {
@@ -92,6 +104,7 @@
   <LoadFailed inShell />
 {:else if workspace && definitions !== null}
   <PageHead title={t('pageSettings')} eyebrow={workspace.name} />
+  <p class="visually-hidden" role="status">{refreshedMessage}</p>
   {#if refreshFailed}
     <div class="callout is-warn">
       <Icon name="alert" /><span role="alert">{t('settingsRefreshFailed')}</span>
