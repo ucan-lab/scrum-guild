@@ -337,6 +337,20 @@ describe('task-history', () => {
     }
   });
 
+  test('続きの位置の created_at が、change_logs に書く日時の形（ミリ秒まで UTC）でなければ 400', async () => {
+    const target = await createTarget();
+    const task = await createTask(target.organization, target.workspace.id, target.admin.userId!);
+    for (const created_at of ['zzz', '2026-10-26', '2026-10-26T01:00:00Z', '2026-10-26T01:00:00.000+09:00']) {
+      const res = await history(target, task.id, { created_at, id: '019a0000-0000-7000-8000-000000000001' });
+      expect(res.status, created_at).toBe(400);
+    }
+    const res = await history(target, task.id, {
+      created_at: '2026-10-26T01:00:00.000Z',
+      id: '019a0000-0000-7000-8000-000000000001',
+    });
+    expect(res.status).toBe(200);
+  });
+
   test('閉じたワークスペースのタスクも読める。削除したタスクは、リーダーと管理者にも 404', async () => {
     const target = await createTarget({ closed: true });
     const task = await createTask(target.organization, target.workspace.id, target.admin.userId!);

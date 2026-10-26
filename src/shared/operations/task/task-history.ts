@@ -25,7 +25,8 @@ export const taskHistoryEntrySchema = z.object({
   changes: z.array(z.object({ field: z.string(), before: taskHistoryValueSchema, after: taskHistoryValueSchema })),
 });
 
-const cursorSchema = z.object({ created_at: z.string().min(1).max(40), id: idSchema });
+// 続きの位置。created_at は change_logs に書く形（toISOString の、ミリ秒まで UTC の日時）だけを受け付ける
+const cursorSchema = z.object({ created_at: z.iso.datetime({ precision: 3 }), id: idSchema });
 
 // 詳細の引き出しの「変更の履歴」。タスク1件の change_logs を新しい順（created_at の降順、同じなら id の降順）に、
 // 1回 50 件まで返す。続きがあれば next（次に before へ渡す値）を返す。閉じたワークスペースでも読める。
