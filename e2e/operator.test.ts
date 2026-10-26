@@ -126,6 +126,53 @@ test.describe('運用者', () => {
     expect(await collect()).toEqual([]);
   });
 
+  // 狭い幅では、固定した操作の列が名前の列を覆い、どの組織への操作か見えなくなっていた。1行を縦に積み、名前と操作を両方見せる
+  for (const width of [320, 390]) {
+    test(`${width}px の幅でも、停止中の行の名前と操作が重ならず、横にはみ出さない`, async ({ page }) => {
+      await mockList(page, [
+        organization({}),
+        organization({ slug: 'kamome', name: 'かもめ社', suspended_at: '2026-10-10T20:00:00.000Z' }),
+        organization({
+          slug: 'ibis',
+          name: 'とき運送',
+          suspended_at: '2026-10-11T00:00:00.000Z',
+          purge_on: '2026-11-10',
+          admin_status: 'none',
+        }),
+      ]);
+      await page.setViewportSize({ width, height: 900 });
+      await page.goto('/operator');
+      const wrap = page.locator('.table-wrap');
+      await expect(page.locator('.table tbody tr')).toHaveCount(3);
+      const wrapBox = (await wrap.boundingBox())!;
+      expect(await wrap.evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
+
+      for (const [name, buttonTexts] of [
+        ['あおば開発', ['停止する']],
+        ['かもめ社', ['停止の理由を変える', '再開する']],
+        ['とき運送', ['停止の理由を変える', '再開する']],
+      ] as const) {
+        const row = page.locator('.table tbody tr').filter({ hasText: name });
+        const nameBox = (await row.locator('td.is-name').boundingBox())!;
+        // 名前のセルは表の見える幅に収まり、名前の文字は隠れない
+        expect(nameBox.x).toBeGreaterThanOrEqual(wrapBox.x);
+        expect(nameBox.x + nameBox.width).toBeLessThanOrEqual(wrapBox.x + wrapBox.width);
+        await expect(row.locator('td.is-name')).toContainText(name);
+        for (const text of buttonTexts) {
+          const button = row.getByRole('button', { name: new RegExp(text) });
+          await expect(button).toBeVisible();
+          const box = (await button.boundingBox())!;
+          // 名前のセルの下に置く（名前の上には重ならない）。押せる範囲は 44px 四方以上で、表の見える幅に収まる
+          expect(box.y).toBeGreaterThanOrEqual(nameBox.y + nameBox.height);
+          expect(box.height).toBeGreaterThanOrEqual(44);
+          expect(box.width).toBeGreaterThanOrEqual(44);
+          expect(box.x).toBeGreaterThanOrEqual(wrapBox.x);
+          expect(box.x + box.width).toBeLessThanOrEqual(wrapBox.x + wrapBox.width);
+        }
+      }
+    });
+  }
+
   test('組織が無いときは、作る案内を出す', async ({ page }) => {
     await mockList(page, []);
     await page.goto('/operator');

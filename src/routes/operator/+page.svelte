@@ -21,6 +21,7 @@
   // 運用の画面（design/operator.html）。組織の一覧と、組織の作成、停止と再開。組織の中のデータは出さない。
   // 入れる組織が無い運用者が、ログインの直後にここへ来る。人数、ワークスペース数などの集計、
   // 管理者の指名し直しは、後の Issue で足す。
+  // 表は table.is-stacked。狭い幅では、固定した操作の列が名前の列を覆うので、1行を縦に積む（名前、作った日、操作）
   // 作成のダイアログは一覧の読み込みの成否に関わらず置く。作った後に一覧の読み直しが失敗しても、完了の表示（組織の URL）を消さない。
   // 「停止する」は確認のダイアログ（停止の理由を選ぶ）を経て、「再開する」は確認なしで送る。
   // 再開を送っている間は、どの行のボタンも aria-disabled にして押しても無視する
@@ -115,7 +116,7 @@
         <EmptyState icon="shield" title={t('operatorEmptyTitle', words)} text={t('operatorEmptyText', words)} />
       {:else}
         <div class="table-wrap">
-          <table class="table">
+          <table class="table is-stacked">
             <thead>
               <tr>
                 <th class="is-name">{t('operatorColumnOrganization', words)}</th>
@@ -145,7 +146,8 @@
                     {/if}
                     <br /><span class="mono props-note">{organization.slug}</span>
                   </td>
-                  <td class="mono">{formatDateTime(organization.created_at)}</td>
+                  <td class="mono" data-label={t('operatorColumnCreated')}>{formatDateTime(organization.created_at)}</td
+                  >
                   <td class="is-actions">
                     <!-- 停止中の行は「停止の理由を変える」と「再開する」、それ以外は「停止する」。右端のボタンは同じ要素のまま
                          文字だけを替え、読み直しでフォーカスを失わない。読み上げの名前に、どの組織かを添える。
