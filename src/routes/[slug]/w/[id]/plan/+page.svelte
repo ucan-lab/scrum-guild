@@ -107,7 +107,7 @@
       else if (result.error?.code === 'workspace_closed') {
         showToast(t('workspaceClosedReadOnly', words), 'alert');
         await invalidate('app:workspace');
-      } else if (sprintConflictReasonOf(result.error?.details) === 'started') {
+      } else if (result.error?.code === 'conflict' && sprintConflictReasonOf(result.error.details) === 'started') {
         showToast(t('sprintDeleteStarted', words), 'alert');
       } else if (result.status === 404) showToast(t('sprintGone', words), 'alert');
       else if (result.status === 403) {
