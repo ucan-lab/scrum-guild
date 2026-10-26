@@ -250,6 +250,29 @@ export async function createOrganizationHoliday(
   return row;
 }
 
+// 変更の履歴の1行。既定は組織の変更（workspace_id が空）で、運用者の操作でも人の操作でもない行
+export async function createChangeLog(
+  organization: OrganizationFixture,
+  overrides: Partial<Row<OrganizationTables, 'change_logs'>> = {},
+) {
+  const row: Row<OrganizationTables, 'change_logs'> = {
+    id: uuidv7(),
+    organization_id: organization.id,
+    workspace_id: null,
+    actor_user_id: null,
+    operator: null,
+    entity_type: 'organization',
+    entity_id: organization.id,
+    action: 'update',
+    changes_json: '{}',
+    created_at: AT,
+    ...overrides,
+  };
+  const db = orgDb(env, organization.verified);
+  await db.run(db.statement((q) => q.insertInto('change_logs').values(row)));
+  return row;
+}
+
 export async function createCategory(
   organization: OrganizationFixture,
   workspaceId: string,

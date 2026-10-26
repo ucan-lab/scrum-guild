@@ -2,11 +2,13 @@
 import type { AnyOperationDefinition } from '../define.ts';
 import { myOrganizations } from './my-organizations.ts';
 import { organizationInfo } from './organization.ts';
+import { organizationHistory } from './organization-history.ts';
 import { organizationHolidayAdd, organizationHolidayDelete, organizationHolidayList } from './organization-holiday.ts';
 import { organizationSettingsUpdate } from './organization-settings.ts';
 
 export {
   myOrganizations,
+  organizationHistory,
   organizationHolidayAdd,
   organizationHolidayDelete,
   organizationHolidayList,
@@ -21,4 +23,5 @@ export const organizationOperations: readonly AnyOperationDefinition[] = [
   organizationHolidayAdd,
   organizationHolidayDelete,
   organizationSettingsUpdate,
+  organizationHistory,
 ];

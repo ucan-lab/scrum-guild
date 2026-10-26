@@ -13,6 +13,11 @@ function bannerOf(page: Page) {
   return page.locator('.callout', { hasText: 'に終了しました。読み取り専用です。' });
 }
 
+// 管理の画面のワークスペースの節。変更の履歴の節も表を持ち、ワークスペースの名前の行が出るので、節で絞る
+function workspacesOf(page: Page) {
+  return page.getByRole('region', { name: 'パーティ', exact: true });
+}
+
 // 管理の画面から、自分をリーダーにワークスペースを作る。作ると、そのワークスペースの画面へ移る
 async function createWorkspace(page: Page, name: string): Promise<string> {
   await page.goto('/aoba/admin');
@@ -39,7 +44,7 @@ test.describe('管理者（あおば開発のミナト）', () => {
     await expect(page.getByRole('button', { name: '依頼を出す' })).toBeVisible();
 
     await page.goto('/aoba/admin');
-    const row = page.locator('tbody tr', { hasText: name });
+    const row = workspacesOf(page).locator('tbody tr', { hasText: name });
     const closeButton = row.getByRole('button', { name: `「${name}」を終了する` });
     await expect(closeButton).toHaveText('終了する');
     await closeButton.click();
@@ -112,7 +117,7 @@ test.describe('管理者（あおば開発のミナト）', () => {
       await route.continue();
     });
     await page.goto('/aoba/admin');
-    const row = page.locator('tbody tr', { hasText: name });
+    const row = workspacesOf(page).locator('tbody tr', { hasText: name });
     await row.getByRole('button', { name: `「${name}」を終了する` }).click();
     const dialog = page.getByRole('dialog', { name: `「${name}」を終了しますか？` });
     await dialog.getByRole('button', { name: `「${name}」を終了する` }).click();
@@ -142,7 +147,7 @@ test.describe('管理者（あおば開発のミナト）', () => {
     const name = '失敗の確認パーティ';
     await createWorkspace(page, name);
     await page.goto('/aoba/admin');
-    const row = page.locator('tbody tr', { hasText: name });
+    const row = workspacesOf(page).locator('tbody tr', { hasText: name });
 
     await page.route('**/api/aoba/workspace-close', (route) =>
       route.fulfill({ status: 500, json: { error: { code: 'internal', message: 'x' } } }),
@@ -204,7 +209,9 @@ test.describe('管理者（あおば開発のミナト）', () => {
       .getByRole('button', { name: `「${SEED_NAME}」を終了する` });
     // 表が横にはみ出す幅であること（固定を外すと、操作の列は横スクロールの先に隠れる）
     await expect(button).toBeAttached();
-    const overflow = await page.locator('.table-wrap').evaluate((el) => el.scrollWidth - el.clientWidth);
+    const overflow = await workspacesOf(page)
+      .locator('.table-wrap')
+      .evaluate((el) => el.scrollWidth - el.clientWidth);
     expect(overflow).toBeGreaterThan(0);
     // 縦には、その行まで動かす。横には、表がはみ出していても動かさずに見える
     await button.scrollIntoViewIfNeeded();
@@ -221,7 +228,7 @@ test.describe('管理者（あおば開発のミナト）', () => {
       route.fulfill({ status: 404, json: { error: { code: 'not_found', message: 'x' } } }),
     );
     await page.goto('/aoba/admin');
-    const row = page.locator('tbody tr', { hasText: name });
+    const row = workspacesOf(page).locator('tbody tr', { hasText: name });
     await row.getByRole('button', { name: `「${name}」を終了する` }).scrollIntoViewIfNeeded();
     await row.getByRole('button', { name: `「${name}」を終了する` }).click();
     const dialog = page.getByRole('dialog', { name: `「${name}」を終了しますか？` });
@@ -247,7 +254,7 @@ test.describe('管理者（あおば開発のミナト）', () => {
       return route.continue();
     });
     await page.goto('/aoba/admin');
-    const row = page.locator('tbody tr', { hasText: SEED_NAME });
+    const row = workspacesOf(page).locator('tbody tr', { hasText: SEED_NAME });
     await row.getByRole('button', { name: `「${SEED_NAME}」を終了する` }).click();
     const dialog = page.getByRole('dialog', { name: `「${SEED_NAME}」を終了しますか？` });
     await dialog.getByRole('button', { name: `「${SEED_NAME}」を終了する` }).click();
@@ -263,7 +270,7 @@ test.describe('管理者（あおば開発のミナト）', () => {
       route.fulfill({ status: 409, json: { error: { code: 'conflict', message: 'x' } } }),
     );
     await page.goto('/aoba/admin');
-    const row = page.locator('tbody tr', { hasText: SEED_NAME });
+    const row = workspacesOf(page).locator('tbody tr', { hasText: SEED_NAME });
     await row.getByRole('button', { name: `「${SEED_NAME}」を再開する` }).click();
 
     // 「すでに開いています」とは言い切らない（終了し直された場合もある）
@@ -281,7 +288,7 @@ test.describe('管理者（あおば開発のミナト）', () => {
       route.fulfill({ json: { workspace_id: '019a0000-0000-7000-8000-000000000401' } }),
     );
     await page.goto('/aoba/admin');
-    const row = page.locator('tbody tr', { hasText: SEED_NAME });
+    const row = workspacesOf(page).locator('tbody tr', { hasText: SEED_NAME });
     await row.getByRole('button', { name: `「${SEED_NAME}」を再開する` }).click();
 
     const notice = page.locator('.callout', { hasText: 'パーティの一覧を更新できませんでした' });
@@ -294,9 +301,7 @@ test.describe('管理者（あおば開発のミナト）', () => {
     await expect(notice).toHaveCount(0);
     await expect(row).toBeVisible();
     // 押したボタンが消えるので、節の中身へフォーカスが移る
-    await expect(
-      page.getByRole('region', { name: 'パーティ', exact: true }).locator('.setting-body[tabindex="-1"]'),
-    ).toBeFocused();
+    await expect(workspacesOf(page).locator('.setting-body[tabindex="-1"]')).toBeFocused();
   });
 
   test('「もう一度試す」を押していない読み込みの結果では、「まだ読み込めませんでした」を出さない', async ({ page }) => {
@@ -306,7 +311,7 @@ test.describe('管理者（あおば開発のミナト）', () => {
       route.fulfill({ json: { workspace_id: '019a0000-0000-7000-8000-000000000401' } }),
     );
     await page.goto('/aoba/admin');
-    const row = page.locator('tbody tr', { hasText: SEED_NAME });
+    const row = workspacesOf(page).locator('tbody tr', { hasText: SEED_NAME });
     const reopen = row.getByRole('button', { name: `「${SEED_NAME}」を再開する` });
     const notice = page.locator('.callout', { hasText: 'パーティの一覧を更新できませんでした' });
 
@@ -347,7 +352,7 @@ test.describe('管理者（あおば開発のミナト）', () => {
       }),
     );
     await page.goto('/aoba/admin');
-    const row = page.locator('tbody tr', { hasText: SEED_NAME });
+    const row = workspacesOf(page).locator('tbody tr', { hasText: SEED_NAME });
     const close = row.getByRole('button', { name: `「${SEED_NAME}」を終了する` });
     const dialog = page.getByRole('dialog', { name: `「${SEED_NAME}」を終了しますか？` });
 
@@ -383,7 +388,7 @@ test.describe('管理者（あおば開発のミナト）', () => {
     await expect(page.getByRole('button', { name: 'パーティを作る' })).toBeVisible();
 
     await page.getByRole('button', { name: 'もう一度試す' }).click();
-    await expect(page.locator('tbody tr', { hasText: '受託開発チーム' })).toBeVisible();
+    await expect(workspacesOf(page).locator('tbody tr', { hasText: '受託開発チーム' })).toBeVisible();
     await expect(page.getByText('パーティの一覧を読み込めませんでした')).toHaveCount(0);
   });
 
@@ -421,7 +426,7 @@ test.describe('管理者（あおば開発のミナト）', () => {
     expect(log[0]).toBe('added:');
     expect(log.indexOf('text:読み込んでいます')).toBeGreaterThan(0);
     // 読めたら、領域は残したまま文字を消す
-    await expect(page.locator('tbody tr', { hasText: '受託開発チーム' })).toBeVisible();
+    await expect(workspacesOf(page).locator('tbody tr', { hasText: '受託開発チーム' })).toBeVisible();
     await expect(region).toHaveCount(1);
     await expect(region).toHaveText('');
   });

@@ -1,7 +1,12 @@
 // ワークスペースの作成、組織の管理の画面、ワークスペースの枠。seed のセッション（seed/sessions.ts）の Cookie で開く。
 // あおば開発の管理者はミナト、一般のユーザーはハルカ。ひばり工房のワークスペースの ID は seed/data.sql の値
-import { expect, test } from '@playwright/test';
+import { expect, test, type Page } from '@playwright/test';
 import { signIn, watchViolations } from './helpers.ts';
+
+// 管理の画面のワークスペースの一覧の行。変更の履歴の節もワークスペースの名前の行を持つので、節で絞る
+function workspaceRow(page: Page, name: string) {
+  return page.getByRole('region', { name: 'パーティ', exact: true }).locator('tbody tr', { hasText: name });
+}
 
 const HIBARI_WORKSPACE_ID = '019a0000-0000-7000-8000-000000000402';
 
@@ -25,7 +30,7 @@ test.describe('管理者（あおば開発のミナト）', () => {
     await expect(page.locator('thead th').nth(2)).toHaveText('パーティリーダー数');
     expect(await page.locator('th.is-name').evaluate((th) => getComputedStyle(th).minWidth)).not.toBe('auto');
 
-    const row = page.locator('tbody tr', { hasText: '受託開発チーム' });
+    const row = workspaceRow(page, '受託開発チーム');
     await expect(row.getByRole('link', { name: '受託開発チーム' })).toHaveAttribute('href', /\/aoba\/w\/019a0000-/);
     // メンバー数（リーダーを含む）、リーダー数、作った日（ワークスペースのタイムゾーン）
     await expect(row.locator('td').nth(1)).toHaveText('2');
@@ -69,7 +74,7 @@ test.describe('管理者（あおば開発のミナト）', () => {
 
     // 一覧に出て、リーダーが1人のメンバーが1人
     await page.goto('/aoba/admin');
-    const row = page.locator('tbody tr', { hasText: '保守チーム' });
+    const row = workspaceRow(page, '保守チーム');
     await expect(row.locator('td').nth(1)).toHaveText('1');
     await expect(row.locator('td').nth(2)).toHaveText('1');
   });

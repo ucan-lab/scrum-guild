@@ -14,6 +14,7 @@ import {
   organizationSuspensionUpdateOperation,
 } from './operator-suspension.ts';
 import { myOrganizationsOperation, organizationInfoOperation } from './organization.ts';
+import { organizationHistoryOperation } from './organization-history.ts';
 import {
   organizationHolidayAddOperation,
   organizationHolidayDeleteOperation,
@@ -68,6 +69,7 @@ export const implementedOperations: readonly ImplementedOperation[] = [
   organizationHolidayAddOperation,
   organizationHolidayDeleteOperation,
   organizationSettingsUpdateOperation,
+  organizationHistoryOperation,
   meOperation,
   logoutOperation,
   epicCreateOperation,
