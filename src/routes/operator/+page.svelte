@@ -10,7 +10,7 @@
   import LoadFailed from '../../lib/components/LoadFailed.svelte';
   import LogoutButton from '../../lib/components/LogoutButton.svelte';
   import OrganizationSuspendDialog from '../../lib/components/OrganizationSuspendDialog.svelte';
-  import { formatUtcDate } from '../../lib/format.ts';
+  import { formatCount, formatGigabytes, formatUtcDate } from '../../lib/format.ts';
   import { formatDateTime } from '../../lib/format-datetime.ts';
   import { isUnauthenticated, loginUrl } from '../../lib/login-redirect.ts';
   import { showToast } from '../../lib/toast.svelte.ts';
@@ -19,9 +19,11 @@
   import type { PageProps } from './$types';
 
   // 運用の画面（design/operator.html）。組織の一覧と、組織の作成、停止と再開。組織の中のデータは出さない。
-  // 入れる組織が無い運用者が、ログインの直後にここへ来る。人数、ワークスペース数などの集計、
-  // 管理者の指名し直しは、後の Issue で足す。
-  // 表は table.is-stacked。狭い幅では、固定した操作の列が名前の列を覆うので、1行を縦に積む（名前、作った日、操作）
+  // 入れる組織が無い運用者が、ログインの直後にここへ来る。組織ごとの集計（人数と上限、ワークスペースの数、タスクの数、
+  // 添付ファイルの上限、最後に使われた日時）は数と日時だけで、人の名前や ID は出さない。人数が上限以上なら「上限に達した」の印を出す。
+  // 添付ファイルの使った量は出さない（#68）。管理者の指名し直しは後の Issue で足す。
+  // 表は table.is-stacked。狭い幅では、固定した操作の列が名前の列を覆うので、1行を縦に積む（名前、集計、日時、操作）。
+  // 積んだ行では、見出しの代わりに data-label を値の前に出す
   // 作成のダイアログは一覧の読み込みの成否に関わらず置く。作った後に一覧の読み直しが失敗しても、完了の表示（組織の URL）を消さない。
   // 「停止する」は確認のダイアログ（停止の理由を選ぶ）を経て、「再開する」は確認なしで送る。
   // 再開を送っている間は、どの行のボタンも aria-disabled にして押しても無視する
@@ -35,7 +37,12 @@
   // 再開を送っている行
   let resumingSlug = $state<string | null>(null);
 
-  const words = $derived({ organization: t('organization'), admin: t('admin') });
+  const words = $derived({
+    organization: t('organization'),
+    admin: t('admin'),
+    workspace: t('workspace'),
+    task: t('task'),
+  });
 
   type Row = { slug: string; name: string; suspended_at: string | null; purge_on: string | null };
 
@@ -120,6 +127,11 @@
             <thead>
               <tr>
                 <th class="is-name">{t('operatorColumnOrganization', words)}</th>
+                <th class="is-num">{t('operatorColumnSeats')}</th>
+                <th class="is-num">{t('operatorColumnWorkspaces', words)}</th>
+                <th class="is-num">{t('operatorColumnTasks', words)}</th>
+                <th class="is-num">{t('operatorColumnQuota')}</th>
+                <th>{t('operatorColumnLastUsed')}</th>
                 <th>{t('operatorColumnCreated')}</th>
                 <th class="is-actions"><span class="visually-hidden">{t('operatorActionsHeader')}</span></th>
               </tr>
@@ -146,6 +158,28 @@
                     {/if}
                     <br /><span class="mono props-note">{organization.slug}</span>
                   </td>
+                  <td class="is-num" data-label={t('operatorColumnSeats')}>
+                    {t('operatorSeats', { used: organization.seats.used, limit: organization.seats.limit })}
+                    {#if organization.seats.used >= organization.seats.limit}
+                      <br /><span class="chip is-warn"><Icon name="alert" />{t('operatorSeatsFull')}</span>
+                    {/if}
+                  </td>
+                  <td class="is-num" data-label={t('operatorColumnWorkspaces', words)}
+                    >{formatCount(organization.workspace_count)}</td
+                  >
+                  <td class="is-num" data-label={t('operatorColumnTasks', words)}
+                    >{formatCount(organization.task_count)}</td
+                  >
+                  <td class="is-num" data-label={t('operatorColumnQuota')}
+                    >{t('operatorQuotaSize', { size: formatGigabytes(organization.attachment_quota_bytes) })}</td
+                  >
+                  {#if organization.last_used_at === null}
+                    <td class="props-note" data-label={t('operatorColumnLastUsed')}>{t('operatorNeverUsed')}</td>
+                  {:else}
+                    <td class="mono" data-label={t('operatorColumnLastUsed')}
+                      >{formatDateTime(organization.last_used_at)}</td
+                    >
+                  {/if}
                   <td class="mono" data-label={t('operatorColumnCreated')}>{formatDateTime(organization.created_at)}</td
                   >
                   <td class="is-actions">

@@ -17,8 +17,10 @@
 <script src="kit.js"></script>
 <script>
 "use strict";
-// 運用（運用者）: 組織の一覧、作成、停止と再開、管理者の指名し直し。組織の中のデータは出さない
-const { D, t, icon, esc, pageHead, meter } = SQ;
+// 運用（運用者）: 組織の一覧、作成、停止と再開、管理者の指名し直し。組織の中のデータは出さない。
+// 組織ごとの集計は、人数と上限、閉じていないワークスペースの数、削除していないタスクの数、添付ファイルの上限、最後に使われた日時。
+// 人数が上限以上なら「上限に達した」の印を出す。添付ファイルの使った量は出さない（#68 で足す）
+const { D, t, icon, esc, pageHead } = SQ;
 const K = D.operator.organizations;
 
 SQ.mount("operator", () => `
@@ -27,13 +29,14 @@ SQ.mount("operator", () => `
     ["", "", "停止中", K.filter((k) => k.suspended).length],
     [K.some((k) => !k.admins) ? "is-danger" : "", "", `${t("admin")}がいない`, K.filter((k) => !k.admins).length],
   ], `<button class="btn is-primary" type="button" data-dialog="createOrganization">${icon("plus")}${t("organization")}を作る</button>`)}
-  <div class="callout is-info">${icon("shield")}<span>運用者は${t("organization")}の中（タスク、メンバー、記録、添付ファイルの中身など）を見られません。ここに出すのは数、大きさ、日時だけです。</span></div>
-  <div class="table-wrap"><table class="table is-stacked"><thead><tr><th>${t("organization")}・slug</th><th class="is-num">人数 / 上限</th><th class="is-num">${t("workspace")}</th><th class="is-num">${t("task")}</th><th>添付ファイル</th><th>最後に使われた</th><th class="is-actions"><span class="visually-hidden">操作</span></th></tr></thead>
+  <div class="callout is-info">${icon("shield")}<span>運用者は${t("organization")}の中（タスク、メンバー、記録、添付ファイルの中身など）を見られません。ここに出すのは名前、slug、状態と、数、上限、日時だけです。</span></div>
+  <div class="table-wrap"><table class="table is-stacked"><thead><tr><th class="is-name">${t("organization")}・slug</th><th class="is-num">人数 / 上限</th><th class="is-num">${t("workspace")}の数</th><th class="is-num">${t("task")}の数</th><th class="is-num">添付ファイルの上限</th><th>最後に使われた日時</th><th>作った日時</th><th class="is-actions"><span class="visually-hidden">操作</span></th></tr></thead>
     <tbody>${K.map((k) => `<tr>
-      <td>${esc(k.name)}${k.suspended ? ` <span class="chip is-warn">停止 ${esc(k.suspended)}</span>` : ""}${k.purgeOn ? ` <span class="chip is-danger">${esc(k.purgeOn)} に消す</span>` : ""}${!k.admins ? ` <span class="chip is-danger">${t("admin")}がいない</span>` : ""}${k.adminPending ? ` <span class="chip is-warn">${icon("clock")}${t("admin")}は指名済み、ログイン待ち</span>` : ""}${k.adminExpired ? ` <span class="chip is-danger">${icon("alert")}${t("admin")}の招待の URL は期限切れ</span>` : ""}<br><span class="mono props-note">${esc(k.slug)}</span></td>
-      <td class="is-num" data-label="人数 / 上限">${k.users} / ${k.limit}${k.users >= k.limit ? `<br><span class="chip is-warn">${icon("alert")}上限</span>` : ""}</td><td class="is-num" data-label="${t("workspace")}">${k.wss}</td><td class="is-num" data-label="${t("task")}">${k.tasks.toLocaleString()}</td>
-      <td data-label="添付ファイル">${meter(k.used, k.quota, { small: true })}<button class="link-btn" type="button" data-dialog="changeQuota">人数と容量の上限を変える</button></td>
-      <td class="mono" data-label="最後に使われた">${esc(k.lastUsed)}</td>
+      <td class="is-name">${esc(k.name)}${k.suspended ? ` <span class="chip is-warn">停止 ${esc(k.suspended)}</span>` : ""}${k.purgeOn ? ` <span class="chip is-danger">${esc(k.purgeOn)} に消す</span>` : ""}${!k.admins ? ` <span class="chip is-danger">${t("admin")}がいない</span>` : ""}${k.adminPending ? ` <span class="chip is-warn">${icon("clock")}${t("admin")}は指名済み、ログイン待ち</span>` : ""}${k.adminExpired ? ` <span class="chip is-danger">${icon("alert")}${t("admin")}の招待の URL は期限切れ</span>` : ""}<br><span class="mono props-note">${esc(k.slug)}</span></td>
+      <td class="is-num" data-label="人数 / 上限">${k.users} / ${k.limit}${k.users >= k.limit ? `<br><span class="chip is-warn">${icon("alert")}上限に達した</span>` : ""}</td><td class="is-num" data-label="${t("workspace")}の数">${k.wss}</td><td class="is-num" data-label="${t("task")}の数">${k.tasks.toLocaleString()}</td>
+      <td class="is-num" data-label="添付ファイルの上限">${k.quota} GB<br><button class="link-btn" type="button" data-dialog="changeQuota">人数と容量の上限を変える</button></td>
+      ${k.lastUsed ? `<td class="mono" data-label="最後に使われた日時">${esc(k.lastUsed)}</td>` : `<td class="props-note" data-label="最後に使われた日時">まだ使われていない</td>`}
+      <td class="mono" data-label="作った日時">${esc(k.created)}</td>
       <td class="is-actions"><span class="table-actions">
         <button class="btn is-sm is-quiet" type="button" data-dialog="reassignAdmin">${t("admin")}を指名</button>
         ${k.suspended ? `<button class="btn is-sm is-quiet" type="button" data-dialog="changeSuspension">停止の理由を変える</button><button class="btn is-sm is-quiet" type="button" data-toast="再開しました">再開する</button>` :`<button class="btn is-sm is-quiet is-danger" type="button" data-dialog="suspendOrganization">停止する</button>`}

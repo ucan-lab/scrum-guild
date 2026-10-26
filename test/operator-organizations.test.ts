@@ -7,12 +7,14 @@ import { createApp } from '../src/server/app.ts';
 import { implementedOperations } from '../src/server/operations/index.ts';
 import { operatorLoginIdOf } from '../src/server/auth/operators.ts';
 import { sha256Hex } from '../src/server/auth/tokens.ts';
-import { commonDb, insertOrganization, orgDb } from '../src/server/db/index.ts';
+import { commonDb, insertOrganization, orgDb, seatHoldersOf } from '../src/server/db/index.ts';
 import {
   adminCountsStatementForTest,
   adminStatusesForTest,
   envWithD1Hooks,
+  organizationUsageForTest,
   queryPlanForTest,
+  usageCountsStatementsForTest,
   verifiedOrganizationForTest,
   type FakeStatement,
 } from '../src/server/db/testing.ts';
@@ -28,8 +30,14 @@ import { githubUser } from './auth/helpers.ts';
 import {
   createAccount,
   createAccountLogin,
+  createInvitation,
+  createMembership,
   createOrganization as createOrganizationRow,
+  createTask,
   createUser,
+  createWorkspace,
+  hash64,
+  type OrganizationFixture,
 } from './factories.ts';
 import { errorCodeOf, post } from './operations/harness.ts';
 import {
@@ -571,6 +579,12 @@ describe('組織の一覧', () => {
       purge_on: null,
       created_at: organization.created_at,
       admin_status: 'pending',
+      // 指名した管理者は、ログインする前から人数に数える
+      seats: { used: 1, limit: 15 },
+      workspace_count: 0,
+      task_count: 0,
+      attachment_quota_bytes: 32212254720,
+      last_used_at: null,
     });
   });
 
@@ -642,6 +656,275 @@ describe('組織の一覧', () => {
     const plan = await queryPlanForTest(env, adminCountsStatementForTest(env, ['x']));
     for (const line of plan) expect(line).not.toMatch(/^SCAN users\b/);
     expect(plan.join('\n')).toMatch(/users_organization_login|users_organization_account/);
+  });
+});
+
+type Usage = {
+  seats: { used: number; limit: number };
+  workspace_count: number;
+  task_count: number;
+  attachment_quota_bytes: number;
+  last_used_at: string | null;
+};
+
+async function usageListed(token: string, slug: string): Promise<Usage | undefined> {
+  const res = await post(app, listOrganizations, { token });
+  expect(res.status).toBe(200);
+  const body = (await res.json()) as { organizations: (Usage & { slug: string })[] };
+  const item = body.organizations.find((entry) => entry.slug === slug);
+  if (item === undefined) return undefined;
+  const { seats, workspace_count, task_count, attachment_quota_bytes, last_used_at } = item;
+  return { seats, workspace_count, task_count, attachment_quota_bytes, last_used_at };
+}
+
+// 人数の境目を1つの組織に揃える。数える人は管理者、所属している人、承諾待ちの GitHub の招待、期限内の Google の招待の4人。
+// 名前、ログインの ID、メールアドレス、ワークスペースの名前、タスクの名前は、応答に出てはいけない値にする
+async function seedUsage(organization: OrganizationFixture, subjects: { member: string; invitee: string }) {
+  const admin = await createUser(organization, {
+    is_admin: 1,
+    account_id: (await createAccount()).id,
+    name: '漏れてはいけない管理者',
+    last_seen_at: '2026-10-20T01:00:00.000Z',
+  });
+  const open = await createWorkspace(organization, admin.id, { name: '漏れてはいけないパーティ' });
+  const closed = await createWorkspace(organization, admin.id, { closed_at: '2026-10-22T00:00:00.000Z' });
+  // 所属している人。閉じたワークスペースにも所属が残っていて、同じ人なので1人
+  const member = await createUser(organization, {
+    login_subject: subjects.member,
+    last_seen_at: '2026-10-21T03:00:00.000Z',
+  });
+  await createMembership(organization, open.id, member.id);
+  await createMembership(organization, closed.id, member.id);
+  // 管理者が所属もしている（1人のまま）
+  await createMembership(organization, open.id, admin.id);
+  // 無効にされた人（所属が残っていても人数に数えない。最後に使われた日時には数える）
+  const disabled = await createUser(organization, {
+    disabled_at: '2026-10-23T00:00:00.000Z',
+    last_seen_at: '2026-10-25T08:00:00.000Z',
+  });
+  await createMembership(organization, open.id, disabled.id);
+  // 離れた人と、所属の無い人
+  const left = await createUser(organization);
+  await createMembership(organization, open.id, left.id, {
+    left_on: '2026-10-10',
+    left_at: '2026-10-10T00:00:00.000Z',
+  });
+  await createUser(organization);
+  // 承諾待ちの GitHub の招待。開いたワークスペースと閉じたワークスペースの両方に招待しても1人
+  const github = { provider: 'github', subject: subjects.invitee };
+  await createInvitation(organization, open.id, admin.id, github, { login_name: 'leak-invitee-name' });
+  await createInvitation(organization, closed.id, admin.id, github);
+  // 閉じたワークスペースだけへの招待、無効にされた人への招待、取り消した招待は数えない
+  await createInvitation(organization, closed.id, admin.id, { provider: 'github', subject: `${subjects.invitee}9` });
+  await createInvitation(organization, open.id, admin.id, { provider: 'github', subject: disabled.login_subject! });
+  await createInvitation(
+    organization,
+    open.id,
+    admin.id,
+    { provider: 'github', subject: `${subjects.invitee}8` },
+    { status: 'revoked' },
+  );
+  // 期限の過ぎた Google の招待は数えず、期限内の Google の招待は2つのワークスペースに招待しても1人
+  const google = { provider: 'google', subject: '' };
+  await createInvitation(organization, open.id, admin.id, google, {
+    login_subject: null,
+    login_email: 'leak-expired@example.test',
+    claim_token_hash: hash64(),
+    claim_expires_at: '2026-10-01T00:00:00.000Z',
+  });
+  const third = await createWorkspace(organization, admin.id);
+  for (const workspaceId of [open.id, third.id]) {
+    await createInvitation(organization, workspaceId, admin.id, google, {
+      login_subject: null,
+      login_email: 'leak-waiting@example.test',
+      claim_token_hash: hash64(),
+      claim_expires_at: '2999-01-01T00:00:00.000Z',
+    });
+  }
+  // タスク: 開いたワークスペースのバックログ、受信箱、アーカイブと、閉じたワークスペースの1件は数え、削除したものは数えない
+  await createTask(organization, open.id, admin.id, { title: '漏れてはいけないクエスト' });
+  await createTask(organization, open.id, admin.id, { tray: 'inbox', is_imported: 1 });
+  await createTask(organization, open.id, admin.id, { tray: 'archive', is_imported: 1 });
+  await createTask(organization, closed.id, admin.id);
+  await createTask(organization, open.id, admin.id, { deleted_at: '2026-10-24T00:00:00.000Z' });
+}
+
+describe('組織ごとの集計', () => {
+  test('人数、閉じていないワークスペースの数、削除していないタスクの数、添付ファイルの上限、最後に使われた日時を返す', async () => {
+    const token = await operatorToken();
+    const organization = await createOrganizationRow({ member_limit: 4, attachment_quota_bytes: 107374182400 });
+    await seedUsage(organization, { member: '7999998001', invitee: '7999998002' });
+
+    expect(await usageListed(token, organization.slug)).toEqual({
+      // 管理者、所属している人、GitHub の招待、期限内の Google の招待
+      seats: { used: 4, limit: 4 },
+      // 開いたワークスペース2つ（閉じたものは数えない）
+      workspace_count: 2,
+      // バックログ、受信箱、アーカイブ、閉じたワークスペースの分
+      task_count: 4,
+      attachment_quota_bytes: 107374182400,
+      // 無効にされた人の日時も含めた最大
+      last_used_at: '2026-10-25T08:00:00.000Z',
+    });
+    // 招待の上限と member-list の seats と同じ数え方（同じ関数を通る）
+    expect((await seatHoldersOf(orgDbOf(organization.id), new Date())).size).toBe(4);
+  });
+
+  test('管理者だけの組織は1人。だれも使っていなければ last_used_at は null', async () => {
+    const token = await operatorToken();
+    const organization = await createOrganizationRow();
+    await createUser(organization, { is_admin: 1, account_id: (await createAccount()).id });
+    expect(await usageListed(token, organization.slug)).toEqual({
+      seats: { used: 1, limit: 15 },
+      workspace_count: 0,
+      task_count: 0,
+      attachment_quota_bytes: 32212254720,
+      last_used_at: null,
+    });
+  });
+
+  test('別の組織の人、所属、招待、ワークスペース、タスクは数えない。同じログインの手段と ID でも組織ごとに数える', async () => {
+    const token = await operatorToken();
+    const target = await createOrganizationRow({ member_limit: 30 });
+    const other = await createOrganizationRow({ member_limit: 30 });
+    await seedUsage(target, { member: '7999998101', invitee: '7999998102' });
+    // 別の組織に、同じログインの手段と ID の人と招待、さらに多くの行を置く
+    await seedUsage(other, { member: '7999998101', invitee: '7999998102' });
+    const otherAdmin = await createUser(other, { is_admin: 1, last_seen_at: '2026-10-26T00:00:00.000Z' });
+    const otherWorkspace = await createWorkspace(other, otherAdmin.id);
+    await createTask(other, otherWorkspace.id, otherAdmin.id);
+    // 別の組織で無効にされた人と同じログインへの招待は、この組織では数える（無効にされたかは組織ごと）
+    await createUser(other, { login_subject: '7999998103', disabled_at: '2026-10-23T00:00:00.000Z' });
+    const targetAdmin = await createUser(target, { is_admin: 1 });
+    const targetWorkspace = await createWorkspace(target, targetAdmin.id);
+    await createInvitation(target, targetWorkspace.id, targetAdmin.id, { provider: 'github', subject: '7999998103' });
+
+    expect(await usageListed(token, target.slug)).toEqual({
+      // seedUsage の4人と、足した管理者と、招待した人
+      seats: { used: 6, limit: 30 },
+      workspace_count: 3,
+      task_count: 4,
+      attachment_quota_bytes: 32212254720,
+      last_used_at: '2026-10-25T08:00:00.000Z',
+    });
+    expect(await usageListed(token, other.slug)).toEqual({
+      seats: { used: 5, limit: 30 },
+      workspace_count: 3,
+      task_count: 5,
+      attachment_quota_bytes: 32212254720,
+      last_used_at: '2026-10-26T00:00:00.000Z',
+    });
+  });
+
+  test('応答に組織の中のデータ（人の名前、ログインの ID、メールアドレス、ワークスペースやタスクの名前、組織の ID）を入れない', async () => {
+    const organization = await createOrganizationRow();
+    await seedUsage(organization, { member: '7999998201', invitee: '7999998202' });
+    const res = await post(app, listOrganizations, { token: await operatorToken() });
+    expect(res.status).toBe(200);
+    const text = await res.text();
+    for (const leaked of ['漏れてはいけない', '7999998201', '7999998202', 'leak-', '@example.test', organization.id]) {
+      expect(text).not.toContain(leaked);
+    }
+    const item = (JSON.parse(text) as { organizations: Record<string, unknown>[] }).organizations.find(
+      (entry) => entry.slug === organization.slug,
+    );
+    expect(Object.keys(item ?? {}).sort()).toEqual([
+      'admin_status',
+      'attachment_quota_bytes',
+      'created_at',
+      'last_used_at',
+      'name',
+      'purge_on',
+      'seats',
+      'slug',
+      'suspended_at',
+      'task_count',
+      'workspace_count',
+    ]);
+  });
+
+  test('組織の ID が束縛の上限を超えても、区切って1組織ずつ数える', async () => {
+    const organization = await createOrganizationRow();
+    await seedUsage(organization, { member: '7999998301', invitee: '7999998302' });
+    const filler = Array.from({ length: 250 }, () => crypto.randomUUID());
+    const ids = [...filler.slice(0, 120), organization.id, ...filler.slice(120)];
+    const usage = await organizationUsageForTest(env, ids, []);
+    expect(usage.size).toBe(ids.length);
+    expect(usage.get(organization.id)).toEqual({
+      seatsUsed: 4,
+      workspaceCount: 2,
+      taskCount: 4,
+      lastUsedAt: '2026-10-25T08:00:00.000Z',
+    });
+    expect(usage.get(filler[0]!)).toEqual({ seatsUsed: 0, workspaceCount: 0, taskCount: 0, lastUsedAt: null });
+  });
+
+  test('組織の中の DB が複数でも、人数は同じ人を1人にして合わせ、数は足し、日時は新しい方を取る', async () => {
+    const organization = await createOrganizationRow();
+    const admin = await createUser(organization, {
+      is_admin: 1,
+      login_subject: '7999998401',
+      last_seen_at: '2026-10-20T00:00:00.000Z',
+    });
+    const workspace = await createWorkspace(organization, admin.id);
+    await createTask(organization, workspace.id, admin.id);
+    const batches: number[] = [];
+    const second = {
+      prepare: (text: string) => ({ bind: () => ({ text, all: async () => ({ results: [], meta: { changes: 0 } }) }) }),
+      batch: async (statements: FakeStatement[]) => {
+        batches.push(statements.length);
+        const result = (results: unknown[]) => ({ results, meta: { changes: 0 } });
+        // 人数の2文（users、招待）と、集計の3文（ワークスペース、タスク、最後に使われた日時）
+        if (statements.length === 2) {
+          return [
+            result([
+              // 1つ目の DB と同じ人（1人のまま）と、別の人
+              {
+                organization_id: organization.id,
+                login_provider: 'github',
+                login_subject: '7999998401',
+                login_email: null,
+              },
+              {
+                organization_id: organization.id,
+                login_provider: 'github',
+                login_subject: '7999998402',
+                login_email: null,
+              },
+            ]),
+            result([
+              {
+                organization_id: organization.id,
+                login_provider: 'google',
+                login_subject: null,
+                login_email: 'waiting@example.test',
+                claim_expires_at: '2999-01-01T00:00:00.000Z',
+              },
+            ]),
+          ];
+        }
+        return [
+          result([{ organization_id: organization.id, count: 2 }]),
+          result([{ organization_id: organization.id, count: 5 }]),
+          result([{ organization_id: organization.id, last_seen_at: '2026-10-22T00:00:00.000Z' }]),
+        ];
+      },
+    };
+    const usage = await organizationUsageForTest(env, [organization.id], [second]);
+    expect(usage.get(organization.id)).toEqual({
+      seatsUsed: 3,
+      workspaceCount: 3,
+      taskCount: 6,
+      lastUsedAt: '2026-10-22T00:00:00.000Z',
+    });
+    expect(batches).toEqual([2, 3]);
+  });
+
+  test('ワークスペースの数とタスクの数と最後に使われた日時を数える文は、表を全件読まない', async () => {
+    for (const statement of usageCountsStatementsForTest(env, ['x'])) {
+      const plan = await queryPlanForTest(env, statement);
+      for (const line of plan) expect(line).not.toMatch(/^SCAN (workspaces|tasks|users|t|w)\b/);
+    }
   });
 });
 

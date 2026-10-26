@@ -624,14 +624,17 @@ button.tree-link { border: 0; background: none; padding: 0; font: inherit; text-
 .table th.is-actions, .table td.is-actions { position: sticky; right: 0; background: var(--color-surface); white-space: nowrap; }
 /* 操作が2つ並ぶ行の表（table に is-stacked）。狭い幅では、固定した操作の列が名前の列を覆うので、列をやめて1行を縦に積む
    （名前、ほかの列、操作の順）。見出しの行は見えなくし、見出しの代わりに td の data-label を値の前に出す。
-   thead は読み上げのために残す。操作は折り返し、固定を外す。ボタンの高さは .table .btn.is-sm の 44px のまま */
+   thead は読み上げのために残す。操作は折り返し、固定を外す。ボタンの高さは .table .btn.is-sm の 44px のまま。
+   data-label のある td は、見出しと値の間で折り返せるようにする（.mono と .is-num の nowrap のままだと、長い見出しと日時が
+   1行に収まらず横にはみ出す）。見出しそのものは折らない。日時の日付と時刻の間は折り返さない空白（format-datetime.ts）なので割れない */
 @media (max-width: 760px) {
   .table.is-stacked, .table.is-stacked tbody { display: block; }
   .table.is-stacked thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
   .table.is-stacked tr { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--space-1); padding: var(--space-3) var(--space-4); border-top: 1px solid var(--color-rule); }
   .table.is-stacked tbody tr:first-child { border-top: 0; }
   .table.is-stacked td { display: block; padding: 0; border: 0; text-align: left; }
-  .table.is-stacked td[data-label]::before { content: attr(data-label) "　"; font-family: var(--font-body); font-size: var(--text-xs); color: var(--color-muted); }
+  .table.is-stacked td[data-label] { white-space: normal; }
+  .table.is-stacked td[data-label]::before { content: attr(data-label) "　"; font-family: var(--font-body); font-size: var(--text-xs); color: var(--color-muted); white-space: nowrap; }
   .table.is-stacked td.is-actions { position: static; }
   .table.is-stacked .table-actions { flex-wrap: wrap; justify-content: flex-start; }
 }
@@ -982,7 +985,8 @@ a.choice > div > span, .choice.is-static > div > span { display: block; }
 .gate-title { font-family: var(--font-display); font-weight: var(--weight-display); font-size: var(--text-2xl); line-height: var(--leading-tight); }
 .gate-note { font-size: var(--text-xs); color: var(--color-muted); }
 /* 表を載せる枠の外の画面（運用）。紙の幅を広げる */
-.gate.is-wide .gate-stack, .gate.is-wide .gate-sheet { width: min(960px, 100%); }
+/* 運用の組織の一覧は、名前、集計の5列、作った日時、操作を並べるので、1280px の画面で横スクロールせずに収まる幅にする */
+.gate.is-wide .gate-stack, .gate.is-wide .gate-sheet { width: min(1120px, 100%); }
 .btn.is-wide { width: 100%; padding-block: 10px; }
 
 /* ===== 知らせ（トースト） ===== */

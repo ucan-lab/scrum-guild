@@ -1,9 +1,12 @@
-// メンバーの招待の操作（解決、作成、取り消し）と、組織の人数の数え方（docs/data-model.md の organizations の「人数」）。
+// メンバーの招待の操作（解決、作成、取り消し）と、組織の人数と上限の読み取り（数え方は src/server/db/seats.ts。
+// docs/data-model.md の organizations の「人数」）。
 // 招待する人のユーザー名の解決は、組織の道具の解決器を通す（共通の表とログインの手段に、処理が直に触れない）
 import { now } from '../../shared/clock.ts';
 import { invitationCreate, invitationRevoke, inviteeResolve } from '../../shared/operations/workspace/index.ts';
 import {
+  personKey,
   previousStatementChanged,
+  seatHoldersOf,
   type OrganizationDb,
   type OrganizationTables,
   type QueryCreator,
@@ -17,76 +20,6 @@ import { actorUserIdOf, changeLogColumns, openWorkspace, throwIfClosed } from '.
 
 type Tables = OrganizationTables;
 type From = Pick<QueryCreator<Tables>, 'selectFrom'>;
-
-// 1人の見分け方。sub の行は (login_provider, login_subject)、Google で待つ行は (login_provider, login_email) で1人
-// （docs/data-model.md の「メールアドレスで待つ指名と招待」）
-function personKey(row: { login_provider: string; login_subject: string | null; login_email: string | null }): string {
-  return row.login_subject !== null
-    ? `${row.login_provider}:subject:${row.login_subject}`
-    : `${row.login_provider}:email:${row.login_email ?? ''}`;
-}
-
-// 組織の人数に数える人（personKey の集合）。無効にしていない人のうち、管理者か、いずれかのワークスペースに今所属している人と、
-// 承諾待ちの招待（まだアカウントのない人への招待を含む）を持つ人を、同じ人は1人として数える。招待のうち、期限の過ぎた Google の招待、
-// 閉じたワークスペースへの招待、同じ組織で無効にされた人（同じログインの手段と ID）への招待は数えない。
-// 保存せず、招待のたびと、メンバーの画面を開くたびに数える。数える人は member_limit でおおよそ抑えられ、読む行もワークスペースの所属と
-// 承諾待ちの招待（1つのワークスペースで数十件の想定）なので、件数で区切らずに読み、アプリで重なりと期限切れを除く
-async function seatHolders(db: OrganizationDb, at: Date): Promise<Set<string>> {
-  const organizationId = db.organizationId;
-  const [userResult, invitationResult] = await db.batch([
-    db.statement((q) =>
-      q
-        .selectFrom('users')
-        .select(['users.login_provider', 'users.login_subject', 'users.login_email'])
-        .where('users.organization_id', '=', organizationId)
-        .where('users.disabled_at', 'is', null)
-        .where((eb) =>
-          eb.or([
-            eb('users.is_admin', '=', 1),
-            eb.exists(
-              eb
-                .selectFrom('memberships as m')
-                .innerJoin('workspaces as w', 'w.id', 'm.workspace_id')
-                .select('m.id')
-                .whereRef('m.user_id', '=', 'users.id')
-                .where('m.left_at', 'is', null)
-                .where('w.organization_id', '=', organizationId),
-            ),
-          ]),
-        ),
-    ),
-    db.statement((q) =>
-      q
-        .selectFrom('invitations as i')
-        .innerJoin('workspaces as w', 'w.id', 'i.workspace_id')
-        .select(['i.login_provider', 'i.login_subject', 'i.login_email', 'i.claim_expires_at'])
-        .where('w.organization_id', '=', organizationId)
-        .where('w.closed_at', 'is', null)
-        .where('i.status', '=', 'pending')
-        .where((eb) =>
-          eb.not(
-            eb.exists(
-              eb
-                .selectFrom('users as d')
-                .select('d.id')
-                .where('d.organization_id', '=', organizationId)
-                .where('d.disabled_at', 'is not', null)
-                .whereRef('d.login_provider', '=', 'i.login_provider')
-                .whereRef('d.login_subject', '=', 'i.login_subject'),
-            ),
-          ),
-        ),
-    ),
-  ] as const);
-  const people = new Set(userResult.rows.map(personKey));
-  const time = at.getTime();
-  for (const row of invitationResult.rows) {
-    // 期限の判定は member-list の expired と同じく時刻で比べる
-    if (row.claim_expires_at !== null && Date.parse(row.claim_expires_at) <= time) continue;
-    people.add(personKey(row));
-  }
-  return people;
-}
 
 type Seats = { used: number; limit: number };
 
@@ -103,7 +36,7 @@ export async function readSeats(
   tools: OrganizationTools,
   login?: Login,
 ): Promise<Seats & { counted?: boolean }> {
-  const [people, organization] = await Promise.all([seatHolders(db, now()), tools.readOrganization()]);
+  const [people, organization] = await Promise.all([seatHoldersOf(db, now()), tools.readOrganization()]);
   const seats = { used: people.size, limit: organization.memberLimit };
   if (login === undefined) return seats;
   return {

@@ -1,5 +1,22 @@
 import { describe, expect, test } from 'vitest';
-import { formatUtcDate } from './format.ts';
+import { formatCount, formatGigabytes, formatUtcDate } from './format.ts';
+
+describe('formatGigabytes', () => {
+  test('1024³ バイトを 1 GB として、小数は1桁まで出す', () => {
+    expect(formatGigabytes(32212254720)).toBe('30');
+    expect(formatGigabytes(1024 ** 3 * 1.5)).toBe('1.5');
+    expect(formatGigabytes(1024 ** 3 * 1.04)).toBe('1');
+    expect(formatGigabytes(1024 ** 4)).toBe('1,024');
+    expect(formatGigabytes(0)).toBe('0');
+  });
+});
+
+describe('formatCount', () => {
+  test('3桁ごとに区切る', () => {
+    expect(formatCount(1284)).toBe('1,284');
+    expect(formatCount(0)).toBe('0');
+  });
+});
 
 describe('formatUtcDate', () => {
   test('UTC の日付にする。ブラウザのタイムゾーンで日付が変わる時刻でも、UTC の日付のまま', () => {

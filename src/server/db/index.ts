@@ -22,6 +22,8 @@ export {
   type OrganizationSummary,
 } from './enter-organization.ts';
 export { insertOrganization, type CreatedOrganization, type NewOrganization } from './create-organization.ts';
+// 組織の人数に数える人。組織の中の処理には、確かめた組織の入口だけを受ける seatHoldersOf を出す（組織の ID の束は受けない）
+export { personKey, seatHoldersOf } from './seats.ts';
 // 運用者の道具（operations/operator-tools.ts）だけが import できる（eslint.config.db-entry.js）
 export { appendOperatorChangeLog, type OperatorChangeLog } from './operator-change-log.ts';
 export {
@@ -33,6 +35,8 @@ export {
 } from './organization-common.ts';
 export {
   adminStatusesOf,
+  organizationUsageOf,
+  type OrganizationUsage,
   claimPendingLogin,
   type ClaimInput,
   type ClaimOutcome,

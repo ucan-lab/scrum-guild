@@ -12,6 +12,8 @@ import {
   linkUserStatement,
   listAccountOrganizationsIn,
   membershipsStatement,
+  organizationUsageIn,
+  usageCountsStatements,
   pendingInvitationStatement,
   pendingUserStatement,
   usersStatement,
@@ -164,6 +166,23 @@ export function adminCountsStatementForTest(env: Env, organizationIds: readonly 
   const [db] = crossOrganizationEntries(env);
   if (db === undefined) throw new Error('組織の中の DB が無い');
   return adminCountsStatement(db, organizationIds, new Date());
+}
+
+// 運用者の一覧の組織ごとの集計を、組織の中の DB が複数あるときに確かめる
+export function organizationUsageForTest(
+  env: Env,
+  organizationIds: readonly string[],
+  extraDatabases: readonly FakeDatabase[],
+  now: Date = new Date(),
+) {
+  return organizationUsageIn(organizationIds, entriesWith(env, extraDatabases), now);
+}
+
+// 組織ごとの集計の文（ワークスペースの数、タスクの数、最後に使われた日時）。実行計画の確認に使う
+export function usageCountsStatementsForTest(env: Env, organizationIds: readonly string[]) {
+  const [db] = crossOrganizationEntries(env);
+  if (db === undefined) throw new Error('組織の中の DB が無い');
+  return usageCountsStatements(db, organizationIds);
 }
 
 // 招待の URL の秘密のハッシュで待つ行を引く文と、結ぶ batch() を、組織の中の DB が複数あるときに確かめる。

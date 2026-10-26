@@ -25,3 +25,16 @@ export function formatMonthDay(date: string): string {
 export function browserTimezone(): string {
   return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
 }
+
+const countFormatter = new Intl.NumberFormat('ja-JP');
+const gigabyteFormatter = new Intl.NumberFormat('ja-JP', { maximumFractionDigits: 1 });
+
+// 件数を3桁ごとの区切りで出す（1,284）
+export function formatCount(count: number): string {
+  return countFormatter.format(count);
+}
+
+// バイト数を GB（1 GB = 1024³ バイト）の数にする。小数は1桁まで（30、1.5）。単位は言葉の辞書の側で付ける
+export function formatGigabytes(bytes: number): string {
+  return gigabyteFormatter.format(bytes / 1024 ** 3);
+}
