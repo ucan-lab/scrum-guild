@@ -8,6 +8,7 @@ import {
   ORGANIZATION_HISTORY_PAGE_SIZE,
   organizationHistory,
 } from '../src/shared/operations/organization/organization-history.ts';
+import { organizationSettingsUpdate } from '../src/shared/operations/organization/index.ts';
 import { workspaceClose, workspaceCreate, workspaceReopen } from '../src/shared/operations/workspace/index.ts';
 import { createApp } from '../src/server/app.ts';
 import { orgDb } from '../src/server/db/index.ts';
@@ -151,6 +152,21 @@ describe('organization-history', () => {
     for (const entry of history.entries) {
       expect(entry.actor).toEqual({ kind: 'user', id: target.admin.userId, name: '星野 澪' });
     }
+  });
+
+  test('組織の言葉づかいと既定のテーマの変更の操作が書いた行を、組織の設定の変更として返す', async () => {
+    const target = await createTarget();
+    const res = await post(app, organizationSettingsUpdate, {
+      slug: target.slug,
+      token: target.admin.token,
+      body: { vocabulary: { from: 'game', to: 'scrum' }, theme: { from: 'simple', to: 'medieval' } },
+    });
+    expect(res.status).toBe(200);
+
+    const history = await read(target);
+    expect(history.entries).toHaveLength(1);
+    expect(history.entries[0]!.event).toEqual({ kind: 'organization_settings_changed' });
+    expect(history.entries[0]!.actor).toEqual({ kind: 'user', id: target.admin.userId, name: '星野 澪' });
   });
 
   test(`${ORGANIZATION_HISTORY_PAGE_SIZE} 件ずつ返し、カーソルで続きを重なりも抜けも無く読める（同じ日時は id で並ぶ）`, async () => {
