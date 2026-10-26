@@ -37,7 +37,8 @@ export type OrganizationSettingsWrite = 'written' | 'conflict' | 'suspended';
 // 自分の組織の言葉づかいと既定のテーマを、停止しておらず、読んだ値のままなら、という条件つきで書く
 // （`suspended_at IS NULL` と、書く項目ごとの `<列> IS :読んだ値`）。
 // 共通の表だけの batch() で送る（変更の記録は組織の中の表なので、呼び出し側が書けたときだけ別の batch() で書く）。
-// 行が変わらなければ組織の行を読み直し、停止していれば suspended、そうでなければ conflict。書く項目が無ければ何も書かず written
+// 同じ batch() の後ろで組織の行を読み直し（書く文と同じ時点の状態）、行が変わらなければ、停止していれば suspended、
+// そうでなければ conflict。書く項目が無ければ何も書かず written
 export async function writeOrganizationSettings(
   env: Env,
   db: OrganizationDb,
@@ -47,7 +48,7 @@ export async function writeOrganizationSettings(
   const { vocabulary, theme } = change;
   if (vocabulary === undefined && theme === undefined) return 'written';
   const common = commonDb(env);
-  const [result] = await common.batch([
+  const [result, read] = await common.batch([
     common.statement((q) => {
       let query = q
         .updateTable('organizations')
@@ -62,11 +63,10 @@ export async function writeOrganizationSettings(
       if (theme !== undefined) query = query.where('theme', 'is', theme.from);
       return query;
     }),
+    common.statement((q) => q.selectFrom('organizations').select('suspended_at').where('id', '=', db.organizationId)),
   ] as const);
   if (result.changes > 0) return 'written';
-  const row = await common.first(
-    common.statement((q) => q.selectFrom('organizations').select('suspended_at').where('id', '=', db.organizationId)),
-  );
+  const row = read.rows[0];
   return row !== undefined && row.suspended_at !== null ? 'suspended' : 'conflict';
 }
 
