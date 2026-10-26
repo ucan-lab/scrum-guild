@@ -6,5 +6,5 @@ import { sql, type RawBuilder } from 'kysely';
 // （SQLite は非決定の関数を行ごとに評価する）
 export function uuidv7Sql(at: Date): RawBuilder<string> {
   const millis = at.getTime();
-  return sql<string>`(substr(printf('%012x', ${millis}), 1, 8) || '-' || substr(printf('%012x', ${millis}), 9, 4) || '-7' || substr(lower(hex(randomblob(2))), 2) || '-' || substr('89ab', 1 + (abs(random()) % 4), 1) || substr(lower(hex(randomblob(2))), 2) || '-' || lower(hex(randomblob(6))))`;
+  return sql<string>`(substr(printf('%012x', ${millis}), 1, 8) || '-' || substr(printf('%012x', ${millis}), 9, 4) || '-7' || substr(lower(hex(randomblob(2))), 2) || '-' || substr('89ab', 1 + (random() & 3), 1) || substr(lower(hex(randomblob(2))), 2) || '-' || lower(hex(randomblob(6))))`;
 }
