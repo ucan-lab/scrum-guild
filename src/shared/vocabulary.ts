@@ -355,9 +355,10 @@ export const dictionary = defineDictionary({
   treeClose: workspace('{title}を閉じる', '{title}を閉じる'),
 
   // バックログの並べ替えと親の移動。{title} は動かす行の題
+  // {story} {task} は、その言葉づかいの言葉を画面が渡す。エピックの並べ替えは、エピックの画面の Issue（#65）で足す
   backlogOrderNote: workspace(
-    '上にあるものほど優先します。行の「上へ」「下へ」か、行の中にフォーカスを置いて Alt と ↑ ↓ で並べ替えます。',
-    '上にあるものほど優先します。行の「上へ」「下へ」か、行の中にフォーカスを置いて Alt と ↑ ↓ で並べ替えます。',
+    '上にあるものほど優先します。{story}と{task}は、行の「上へ」「下へ」か、行の中にフォーカスを置いて Alt と ↑ ↓ で並べ替えます。',
+    '上にあるものほど優先します。{story}と{task}は、行の「上へ」「下へ」か、行の中にフォーカスを置いて Alt と ↑ ↓ で並べ替えます。',
   ),
   moveUp: organization('上へ', '上へ'),
   moveDown: organization('下へ', '下へ'),
@@ -406,6 +407,125 @@ export const dictionary = defineDictionary({
   moveParentNone: organization('親なし', '親なし'),
   moveParentHint: organization('移す先の末尾に置きます。', '移す先の末尾に置きます。'),
   moveParentSubmit: organization('移す', '移す'),
+  // ストーリーの親（エピック）を移すときの、完了か中止したエピックの下へは移せない知らせ
+  moveEpicDone: workspace(
+    '{done}か中止した{epic}の下へは移せません。一覧を読み直します',
+    '{done}か中止した{epic}の下へは移せません。一覧を読み直します',
+  ),
+
+  // エピックの行（木の最上段）。{title} はエピックの題
+  epicCreate: workspace('{epic}を作る', '{epic}を作る'),
+  epicCleared: workspace('クリア済み', '完了'),
+  epicCanceled: workspace('中止', '中止'),
+  epicNoStories: workspace('{story}はまだありません', '{story}はまだありません'),
+  // エピックのダイアログ（作るときも直すときも同じ欄）。欄の文言はストーリーのダイアログと同じ項目を使う
+  epicTitlePlaceholder: workspace('何を成し遂げるか', '何を成し遂げるか'),
+  epicCreated: workspace('{epic}を作りました', '{epic}を作りました'),
+  epicSaved: workspace('{epic}を保存しました', '{epic}を保存しました'),
+  epicGone: workspace(
+    'この{epic}は見つかりません。一覧を読み直します',
+    'この{epic}は見つかりません。一覧を読み直します',
+  ),
+  epicReadOnly: workspace(
+    '終了した{workspace}の{epic}は、読み取りだけできます',
+    '終了した{workspace}の{epic}は、読み取りだけできます',
+  ),
+  epicLoadFailed: workspace(
+    'この{epic}を読み込めませんでした。もう一度試してください。',
+    'この{epic}を読み込めませんでした。もう一度試してください。',
+  ),
+  // エピックのダイアログ専用の文言（ストーリーのダイアログの文言を流用しない）
+  epicTitleRequired: organization('タイトルを入れてください', 'タイトルを入れてください'),
+  epicTitleTooLong: organization('タイトルは {max} 字までです', 'タイトルは {max} 字までです'),
+  epicTitleInvalidCharacter: organization(
+    'タイトルに使えない文字（制御文字、ゼロ幅のスペースなど）が含まれています',
+    'タイトルに使えない文字（制御文字、ゼロ幅のスペースなど）が含まれています',
+  ),
+  epicCreateSubmit: organization('作る', '作る'),
+  epicCreating: organization('作っています', '作っています'),
+  epicCreateFailed: organization(
+    '作れませんでした。もう一度試してください。',
+    '作れませんでした。もう一度試してください。',
+  ),
+  epicSave: organization('保存する', '保存する'),
+  epicSaving: organization('保存しています', '保存しています'),
+  epicSaveFailed: organization(
+    '保存できませんでした。もう一度試してください。',
+    '保存できませんでした。もう一度試してください。',
+  ),
+  // 画面の検査を通った後に、サーバーが 400 で断ったとき。どの欄かは分からない
+  epicBadRequest: organization(
+    '入力を受け付けられませんでした。内容を確かめて、もう一度試してください。',
+    '入力を受け付けられませんでした。内容を確かめて、もう一度試してください。',
+  ),
+  epicLoading: organization('読み込んでいます', '読み込んでいます'),
+  epicLinkOpen: organization('開く', '開く'),
+  epicLinkOpenLabel: organization('リンクを新しいタブで開く', 'リンクを新しいタブで開く'),
+  // 親の選択欄で、親のないストーリーをまとめる見出し
+  parentRootGroup: workspace('親なしの{story}', '親なしの{story}'),
+  // タスクを、エピックの下のストーリーへ移したときの知らせ。{epicTitle} は親のストーリーの親のエピックの題
+  moveAnnouncedUnderEpic: workspace(
+    '「{title}」を{epic}「{epicTitle}」の{story}「{parent}」の末尾へ移しました',
+    '「{title}」を{epic}「{epicTitle}」の{story}「{parent}」の末尾へ移しました',
+  ),
+
+  // ストーリーの完了と取り消し。{title} はストーリーの題。同じ名前のボタンが並ぶので、読み上げの名前に題を添える
+  storyCompleteLabel: workspace('{complete}: {title}', '{complete}: {title}'),
+  // 配下に未完了のタスクが残っているあいだ、完了の操作の横に出す
+  storyRemaining: workspace('残り {count} 件の{task}', '残り {count} 件の{task}'),
+  // 押せない理由の全文。見えない文字で置き、完了の操作の aria-describedby から指す
+  storyRemainingNote: workspace(
+    '未完了の{task}が残っているあいだは{done}にできません',
+    '未完了の{task}が残っているあいだは{done}にできません',
+  ),
+  // 親のエピックが完了か中止しているとき、「取り消す」の横に出す
+  storyReopenBlocked: workspace(
+    '{done}か中止した{epic}の下の{story}は取り消せません',
+    '{done}か中止した{epic}の下の{story}は取り消せません',
+  ),
+  // 親のエピックが完了か中止しているとき、「完了にする」の横に出す（完了にすると取り消せなくなるため、断る）
+  storyCompleteBlocked: workspace(
+    '{done}か中止した{epic}の下の{story}は{done}にできません',
+    '{done}か中止した{epic}の下の{story}は{done}にできません',
+  ),
+  storyReopen: organization('取り消す', '取り消す'),
+  storyReopenLabel: workspace('{done}を取り消す: {title}', '{done}を取り消す: {title}'),
+  storyCompleting: workspace('{done}にしています', '{done}にしています'),
+  storyReopening: workspace('{done}を取り消しています', '{done}を取り消しています'),
+  storyCompleted: workspace('{story}を{done}にしました', '{story}を{done}にしました'),
+  storyReopened: workspace('{story}の{done}を取り消しました', '{story}の{done}を取り消しました'),
+  storyOpenTasks: workspace(
+    '未完了の{task}が残っているため、{done}にできません。一覧を読み直します',
+    '未完了の{task}が残っているため、{done}にできません。一覧を読み直します',
+  ),
+  storyAlreadyDone: workspace(
+    'この{story}は、すでに{done}です。一覧を読み直します',
+    'この{story}は、すでに{done}です。一覧を読み直します',
+  ),
+  storyNotDone: workspace(
+    'この{story}は{done}していません。一覧を読み直します',
+    'この{story}は{done}していません。一覧を読み直します',
+  ),
+  storyCompleteParentDone: workspace(
+    '{done}か中止した{epic}の下の{story}は、{done}にできません。一覧を読み直します',
+    '{done}か中止した{epic}の下の{story}は、{done}にできません。一覧を読み直します',
+  ),
+  storyReopenParentDone: workspace(
+    '{done}か中止した{epic}の下の{story}は、取り消せません。一覧を読み直します',
+    '{done}か中止した{epic}の下の{story}は、取り消せません。一覧を読み直します',
+  ),
+  storyCompletionChanged: organization(
+    'ほかの画面で変わったため、できませんでした。一覧を読み直します',
+    'ほかの画面で変わったため、できませんでした。一覧を読み直します',
+  ),
+  storyCompleteFailed: workspace(
+    '{done}にできませんでした。もう一度試してください。',
+    '{done}にできませんでした。もう一度試してください。',
+  ),
+  storyReopenFailed: organization(
+    '取り消せませんでした。もう一度試してください。',
+    '取り消せませんでした。もう一度試してください。',
+  ),
 
   // 組織の選択と、枠の外の画面（組織の切り替え、見つからない、運用の仮の画面）
   organizationChooseTitle: organization('冒険者ギルドを選ぶ', '組織を選ぶ'),

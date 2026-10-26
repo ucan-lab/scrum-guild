@@ -267,6 +267,7 @@ const SECTIONS = [
     <div class="cat-row">
       <span class="chip is-todo">${icon("pen")}${t("detail")} 未記入</span>
       <span class="chip is-ok">${icon("check")}取り込み元で完了</span>
+      <span class="chip is-done">${icon("check")}クリア済み</span>
       <span class="chip is-carry">${icon("redo")}昨日から持ち越し</span>
       <span class="chip is-danger">${icon("alert")}取り込み元で見つからない</span>
     </div>
@@ -281,8 +282,8 @@ const SECTIONS = [
     <div class="callout is-warn">${icon("alert")}<span>10月は配分の合計が 110% です。本人にだけ見えています。</span></div>
     <div class="callout is-info">${icon("archive")}<span>2026-10-22 に終了しました。読み取り専用です。 <a href="admin.html">組織の管理で再開する</a></span></div>
     <div class="callout is-warn">${icon("alert")}<span role="alert">${t("workspace")}の一覧を更新できませんでした</span><div class="callout-actions"><button class="btn is-sm" type="button">もう一度試す</button><span class="field-hint" role="status">まだ読み込めませんでした</span></div></div>`,
-    ["期日の印は、期限切れが赤、今日と今週が橙、それより先は色なし。完了したら色を付けない。", "取り込み元の期限には「（取り込み元）」を添える。", "ポイントは枠付きの数字、未見積もりは点線の「未」。", "クリア報酬の段階（小・中・大）は、ポイントと混ざらないよう別の形（tier）にする。", "囲みに操作を付けるときは、ボタンと状態の文を .callout-actions にまとめる。右に寄り、狭い幅では本文の下へ折り返す。狭い幅と指で押す画面では、中の小さいボタン（.btn.is-sm）の押せる範囲を、見た目を変えずに 44px 四方以上へ広げる（.form-actions の中も同じ）。失敗の知らせ（role=\"alert\"）は本文の span に付け、状態の文（role=\"status\"）を alert の中に入れ子にしない。", "終了したワークスペースの帯は .callout.is-info で、ワークスペースの中のどの画面にも先頭に置く。再開するボタンは置かず、管理者には組織の管理へのリンクだけを添える。"],
-    ".chip .is-danger .is-warn .is-todo .is-ok .is-carry / .tag / .status-dot / .source-key / .pts .is-none / .tier / .kind .is-epic .is-story / .callout .is-ok .is-warn .is-info .callout-actions")],
+    ["期日の印は、期限切れが赤、今日と今週が橙、それより先は色なし。完了したら色を付けない。", "is-ok は取り込み元の状態や進行中のような「良い状態」、is-done はクリアと完了（完了の印と同じ役の色。中世風では朱）。", "取り込み元の期限には「（取り込み元）」を添える。", "ポイントは枠付きの数字、未見積もりは点線の「未」。", "クリア報酬の段階（小・中・大）は、ポイントと混ざらないよう別の形（tier）にする。", "囲みに操作を付けるときは、ボタンと状態の文を .callout-actions にまとめる。右に寄り、狭い幅では本文の下へ折り返す。狭い幅と指で押す画面では、中の小さいボタン（.btn.is-sm）の押せる範囲を、見た目を変えずに 44px 四方以上へ広げる（.form-actions の中も同じ）。失敗の知らせ（role=\"alert\"）は本文の span に付け、状態の文（role=\"status\"）を alert の中に入れ子にしない。", "終了したワークスペースの帯は .callout.is-info で、ワークスペースの中のどの画面にも先頭に置く。再開するボタンは置かず、管理者には組織の管理へのリンクだけを添える。"],
+    ".chip .is-danger .is-warn .is-todo .is-ok .is-done .is-carry / .tag / .status-dot / .source-key / .pts .is-none / .tier / .kind .is-epic .is-story / .callout .is-ok .is-warn .is-info .callout-actions")],
   ["people", "人とレベル", () => block("people", "人とレベル", "他の人に見せるのはレベルだけ。経験値の数字は本人だけ。",
     `<div class="cat-row">
       ${avatarOf("u1")}${avatarOf("u2", { lg: true })}${avatar(null)}${avatarOf("u5")}
@@ -301,10 +302,11 @@ const SECTIONS = [
     ["列の名前はリーダーが付けたもので、言葉づかいを切り替えても訳さない。完了の列だけは「完遂」か「完了」と出す。", "カードの操作（列の移動）は、ドラッグの他にキーボードでもできるようにする。"],
     ".board-wrap .board .board-col .is-done .board-col-head .board-col-name / .dod / .card .card-parent .card-title .card-meta .card-foot .card-end")],
   ["tree", "木", () => block("tree", "木（バックログ）", "エピック、ストーリー、タスクの階層。エピックの行は一段下の地と明朝で区切る。",
-    `<div class="tree">${treeEpic("e2")}${treeStory("s4", true)}</div>` +
+    `<div class="tree">${treeEpic("e2")}${treeStory("s4", true)}${treeStory("s1", true, { doneAt: "2026-10-22" })}</div>` +
+    `<div class="tree">${treeEpic("e1", { cleared: true, key: "e1-cleared" })}${treeEpic("e2", { canceled: true, empty: true, key: "e2-canceled" })}${treeEpic("e1", { empty: true, key: "e1-empty" })}</div>` +
     `<div class="cat-row"><span class="order-actions"><button class="icon-btn" type="button" aria-label="上へ" title="上へ" aria-disabled="true">${icon("up")}</button><button class="icon-btn" type="button" aria-label="下へ" title="下へ">${icon("down")}</button><button class="icon-btn" type="button" aria-label="親を移す" title="親を移す">${icon("swap")}</button></span><span class="field-hint">行の並べ替えと親の移動。先頭の行の「上へ」は aria-disabled</span></div>`,
-    ["右端の数は「完了 / 全体」のポイント。", "完了したタスクは折りたたみ、件数だけ出す。", "行は普通の要素（div）で、開閉は左端の caret のボタン（button.tree-caret の aria-expanded と aria-controls）だけが受け持つ。details と summary は使わない（行の中のボタンと開閉がぶつかるため）。", "ストーリーの題はボタン（button.tree-link）で、押すとダイアログが開く。行の右端の「＋タスク」（.tree-end）は、親を選んだ状態でタスクのダイアログを開く。caret、題、「＋タスク」は独立したボタンで、狭い幅（760px 以下）と指で押す画面では、見た目は変えず押せる範囲を 44px 四方以上に広げる。", "書き込めるときは、タスクの行（.entry-end）と親のないストーリーの行（.tree-end）の右に .order-actions の「上へ」「下へ」を置き、タスクの行には「親を移す」も添える。行の中で Alt と ↑ ↓ を押しても同じ。端の向きは、押した後もフォーカスが残るよう disabled でなく aria-disabled にする。狭い幅と指で押す画面では、ボタンを 44px 四方にする。"],
-    ".tree .tree-group .tree-row .is-epic .is-story .is-root .tree-caret .tree-title .tree-ratio .tree-end .tree-children .tree-folded / button.tree-link / button.tree-caret[aria-expanded] / .order-actions .icon-btn[aria-disabled]")],
+    ["最上段はエピック、親のないストーリー、親のないタスクの順。エピックの行の題はボタン（button.tree-link）で、押すとエピックのダイアログが開く。配下が無いエピックには「ストーリーはまだありません」の1行を出す。", "右端の数は「完了 / 全体」のポイント。エピックの行は、配下のストーリーの合計。", "完了したタスクは折りたたみ、件数だけ出す。", "ストーリーの行の右端に「完了にする」（.btn.is-sm）を置く。配下に未完了のタスクが残るあいだは、押してもフォーカスが残るよう aria-disabled にし、横に「残り N 件のタスク」（.tree-note）と、見えない文字の押せない理由を置き、どちらも aria-describedby で結ぶ。完了したストーリー（1つ目の木の下の行）は、「＋タスク」を出さず、完了の印（.hanko）と「取り消す」（.btn.is-sm.is-quiet）を置く。", "2つ目の木は、クリア済みのエピック（.chip.is-done。完了の印と同じ役の色）、中止したエピック（.chip）、配下の無いエピック。完了か中止したエピックの期日には色を付けず、配下の「取り消す」は必ず断られるので aria-disabled にして、理由（.tree-note）を横に出す。エピックの行には区分の印を出さない（本番と同じ）。", "ストーリーの行の「親を移す」は、親なしと、完了も中止もしていないエピックから選ぶ（タスクの「親を移す」と同じダイアログ）。", "行は普通の要素（div）で、開閉は左端の caret のボタン（button.tree-caret の aria-expanded と aria-controls）だけが受け持つ。details と summary は使わない（行の中のボタンと開閉がぶつかるため）。", "ストーリーの題はボタン（button.tree-link）で、押すとダイアログが開く。行の右端の「＋タスク」（.tree-end）は、親を選んだ状態でタスクのダイアログを開く。caret、題、「＋タスク」は独立したボタンで、狭い幅（760px 以下）と指で押す画面では、見た目は変えず押せる範囲を 44px 四方以上に広げる。", "書き込めるときは、タスクの行（.entry-end）と親のないストーリーの行（.tree-end）の右に .order-actions の「上へ」「下へ」を置き、タスクの行には「親を移す」も添える。行の中で Alt と ↑ ↓ を押しても同じ。端の向きは、押した後もフォーカスが残るよう disabled でなく aria-disabled にする。狭い幅と指で押す画面では、ボタンを 44px 四方にする。"],
+    ".tree .tree-group .tree-row .is-epic .is-story .is-root .tree-caret .tree-title .tree-ratio .tree-note .tree-end .tree-children .tree-folded / .chip.is-done / button.tree-link / button.tree-caret[aria-expanded] / .order-actions .icon-btn[aria-disabled]")],
   ["notices", "貼り紙", () => block("notices", "貼り紙", "掲示する物（スプリントゴール、レイド）は、上辺に太い線を引いた紙として見せる。レイドは金、クリア済みは朱。",
     `<div class="notice-grid">${sprintNotice("sp14")}${raidNotice("e1")}${raidNotice("e2", { cleared: true })}</div>`,
     ["依頼主の名前の横に朱の「印」を添える。", "クリアしたレイドには「済」の判子を押す。"], ".notice .is-raid .is-cleared / .notice-label .notice-title .notice-meta .notice-facts .notice-foot / .day-ticks / .progress / .seal")],
@@ -344,6 +346,10 @@ const SECTIONS = [
       <button class="btn" type="button" data-dialog="sprintEnd">${t("sprint")}を終える</button>
       <button class="btn" type="button" data-dialog="createTask">${t("create")}</button>
       <button class="btn" type="button" data-dialog="moveTask">親を移す</button>
+      <button class="btn" type="button" data-dialog="moveStory">${t("story")}の親を移す</button>
+      <button class="btn" type="button" data-dialog="createEpic">${t("epic")}を作る</button>
+      <button class="btn" type="button" data-dialog="editEpic">${t("epic")}を直す</button>
+      <button class="btn" type="button" data-dialog="viewEpic">${t("epic")}（終了した${t("workspace")}）</button>
       <button class="btn" type="button" data-dialog="createStory">${t("story")}を作る</button>
       <button class="btn" type="button" data-dialog="editStory">${t("story")}を直す</button>
       <button class="btn" type="button" data-dialog="viewStory">${t("story")}（終了した${t("workspace")}）</button>

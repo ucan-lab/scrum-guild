@@ -3,37 +3,42 @@
   import { invalidateAll } from '$app/navigation';
   import { page } from '$app/state';
   import EmptyState from '../../../../lib/components/EmptyState.svelte';
+  import EpicDialog from '../../../../lib/components/EpicDialog.svelte';
   import Icon from '../../../../lib/components/Icon.svelte';
   import LoadFailed from '../../../../lib/components/LoadFailed.svelte';
+  import MoveParentDialog from '../../../../lib/components/MoveParentDialog.svelte';
   import PageHead from '../../../../lib/components/PageHead.svelte';
   import StoryDialog from '../../../../lib/components/StoryDialog.svelte';
   import TaskCreateDialog from '../../../../lib/components/TaskCreateDialog.svelte';
   import TaskEntry from '../../../../lib/components/TaskEntry.svelte';
-  import TaskMoveDialog from '../../../../lib/components/TaskMoveDialog.svelte';
+  import TreeEpic from '../../../../lib/components/TreeEpic.svelte';
   import TreeStory from '../../../../lib/components/TreeStory.svelte';
   import { callOperation, type ApiResult } from '../../../../lib/api.ts';
   import { MoveQueue } from '../../../../lib/move-queue.ts';
   import { showToast } from '../../../../lib/toast.svelte.ts';
   import { t } from '../../../../lib/vocabulary.svelte.ts';
-  import { storyMove } from '../../../../shared/operations/story/index.ts';
-  import type { BacklogStory, BacklogTask } from '../../../../shared/operations/task/backlog-tree.ts';
+  import { storyComplete, storyMove, storyReopen } from '../../../../shared/operations/story/index.ts';
+  import { storyCompletionConflictReasonOf } from '../../../../shared/operations/story/story-complete.ts';
+  import type { BacklogEpic, BacklogStory, BacklogTask } from '../../../../shared/operations/task/backlog-tree.ts';
   import { taskComplete, taskMove } from '../../../../shared/operations/task/index.ts';
   import { moveConflictReasonOf } from '../../../../shared/operations/task/task-move.ts';
   import type { PageProps } from './$types';
 
-  // ワークスペースの画面（backlog.html の木と起票）。最上段は見本どおり「親のないストーリー → 親のないタスク」の2段で、
-  // それぞれ position の順。ストーリーの下には未完了のタスクを並べ、完了したタスクは件数の1行にする。
-  // 絞り込み、折りたたみを開ける操作、ドラッグでの並べ替え、エピックの段は、それぞれの機能の Issue で足す。
-  // 並べ替えは、行の「上へ」「下へ」と Alt と ↑ ↓ で、同じ親（親なしのタスク、親のないストーリーはそれぞれの段）の中で1つ動かす。
-  // タスクの行の「親を移す」は、ダイアログで選んだ親の末尾へ移す。どちらも先に画面を動かしてから送り、送る順は守る（MoveQueue）。
+  // ワークスペースの画面（backlog.html の木と起票）。最上段は見本どおり「エピック → 親のないストーリー → 親のないタスク」の3段で、
+  // それぞれ position の順。エピックの下にはストーリーを、ストーリーの下には未完了のタスクを並べ、完了したタスクは件数の1行にする。
+  // 絞り込み、折りたたみを開ける操作、ドラッグでの並べ替え、エピックの並べ替えは、それぞれの機能の Issue で足す。
+  // 並べ替えは、行の「上へ」「下へ」と Alt と ↑ ↓ で、同じ親（親なしのタスク、親のないストーリー、エピックの下のストーリーはそれぞれの並び）の中で1つ動かす。
+  // タスクとストーリーの行の「親を移す」は、ダイアログで選んだ親の末尾へ移す。どちらも先に画面を動かしてから送り、送る順は守る（MoveQueue）。
   // 失敗したら理由を知らせて読み直す。動かした並びは読み直すまで画面に持ち、読み直したら捨てる（読み直した値が送った後の並び）。
   // 送り終える前に木が読み直されたら、送り終えた後にもう一度読み直す（捨てた移動があれば知らせる）。
-  // 見出しは見本どおり画面の名前（掲示板／バックログ）で、小見出しがワークスペースの名前。見出しの右に、ストーリーを作るボタンと起票のボタン。
-  // 閉じていれば、作る操作と完了の操作は出さない（ストーリーのダイアログは読み取り専用で開く。閉じていることはワークスペースの枠の帯が伝える）。
-  // 完了にした行は、読み直すまで完了の印を付けてその場に残し、その行のポイントを親の「完了」に即時に足す。折りたたみの件数は読み直した値なので、その行は読み直すまで入らない。
+  // 見出しは見本どおり画面の名前（掲示板／バックログ）で、小見出しがワークスペースの名前。見出しの右に、エピックを作るボタン、
+  // ストーリーを作るボタンと起票のボタン。
+  // 閉じていれば、作る操作と完了の操作は出さない（エピックとストーリーのダイアログは読み取り専用で開く。閉じていることはワークスペースの枠の帯が伝える）。
+  // 完了にしたタスクの行は、読み直すまで完了の印を付けてその場に残し、その行のポイントを親の「完了」に即時に足す。折りたたみの件数は読み直した値なので、その行は読み直すまで入らない。
+  // ストーリーの「完了にする」は、配下の未完了のタスク（画面で完了にした行は数えない）が残るあいだは押せない。完了と取り消しは、通ったら木を読み直す。
   // 起票したタスクは、読み直さずに親の配下（親なしなら一覧の末尾）に足し、親の「全体」のポイントにも足す。親の行が畳まれていれば開く。
-  // ストーリーを作った、直したときは、木を読み直す。
-  // 完了の操作を送っている最中の行（pendingIds）は、読み直しでは捨てず、応答が来たら外す
+  // エピックとストーリーを作った、直したときは、木を読み直す。
+  // 完了の操作を送っている最中の行（pendingIds、storyPending）は、読み直しでは捨てず、応答が来たら外す
   let { data }: PageProps = $props();
 
   const workspace = $derived(data.workspace);
@@ -42,17 +47,21 @@
   // 期日の印を決める、ワークスペースの今日の日付と週の始まり（API の値）
   const clock = $derived({ today: tree?.today ?? '', weekStart: tree?.week_start ?? 1 });
 
-  // 親なしのタスクの並びのキー。ストーリーの ID とぶつからない
+  // 親なしのタスクと親のないストーリーの並びのキー。ストーリーとエピックの ID とぶつからない
   const ROOT = '';
 
   // 読み直したら（枠の読み直し、ワークスペースの切り替え）、足した行と完了の印と、画面で動かした並びを捨てる
   let added = $state<{ task: BacklogTask; storyId: string | null }[]>([]);
   let completedIds = $state<string[]>([]);
   let pendingIds = $state<string[]>([]);
-  // 画面で親を移したタスク（値は移す先の親。null は親なし）と、並べ替えた親ごとの id の並び（キーは親の ID か ROOT）、ストーリーの並び
+  // 完了か取り消しを送っている最中のストーリーと、送っている操作
+  let storyPending = $state<Record<string, 'complete' | 'reopen'>>({});
+  // 画面で親を移したタスク（値は移す先の親。null は親なし）と、並べ替えた親ごとの id の並び（キーは親の ID か ROOT）。
+  // ストーリーも同じ形で持つ（親はエピック）
   let movedParents = $state<Record<string, string | null>>({});
   let taskOrders = $state<Record<string, string[]>>({});
-  let storyOrder = $state<string[] | null>(null);
+  let movedStoryParents = $state<Record<string, string | null>>({});
+  let storyOrders = $state<Record<string, string[]>>({});
   // 動かす操作は、押した順に1つずつ送る（src/lib/move-queue.ts）。読み直したら、まだ送っていない古い操作は捨てる
   const moves = new MoveQueue<ApiResult<unknown>>({
     reload: () => reloadTree(),
@@ -64,7 +73,8 @@
     completedIds = [];
     movedParents = {};
     taskOrders = {};
-    storyOrder = null;
+    movedStoryParents = {};
+    storyOrders = {};
     moves.reloaded();
   });
 
@@ -78,46 +88,92 @@
       .map((entry) => entry.row);
   }
 
-  // 親ごとの未完了の行（キーは親の ID か ROOT）。読み直した一覧と足した行が重なっても（起票の直後に読み直したときなど）、
-  // 同じ id の行は1つにする。画面で親を移した行は移す先に置き、並べ替えた親はその並びに従う
-  function listTasks(): Record<string, BacklogTask[]> {
-    const lists: Record<string, BacklogTask[]> = {};
+  // 親ごとの行（キーは親の ID か ROOT）。画面で親を移した行は移す先に置き、並べ替えた親はその並びに従う
+  function grouped<T extends { id: string }>(
+    rows: readonly { row: T; parentId: string | null }[],
+    moved: Record<string, string | null>,
+    orders: Record<string, string[]>,
+  ): Record<string, T[]> {
+    const lists: Record<string, T[]> = {};
     const seen: Record<string, true> = {};
-    const place = (task: BacklogTask, parentId: string | null) => {
-      if (seen[task.id]) return;
-      seen[task.id] = true;
-      const moved = Object.hasOwn(movedParents, task.id) ? (movedParents[task.id] ?? null) : parentId;
-      (lists[moved ?? ROOT] ??= []).push(task);
-    };
-    for (const story of tree?.stories ?? []) for (const task of story.tasks) place(task, story.id);
-    for (const task of tree?.tasks ?? []) place(task, null);
-    for (const entry of added) place(entry.task, entry.storyId);
+    for (const { row, parentId } of rows) {
+      // 読み直した一覧と足した行が重なっても（起票の直後に読み直したときなど）、同じ id の行は1つにする
+      if (seen[row.id]) continue;
+      seen[row.id] = true;
+      const target = Object.hasOwn(moved, row.id) ? (moved[row.id] ?? null) : parentId;
+      (lists[target ?? ROOT] ??= []).push(row);
+    }
     for (const [key, list] of Object.entries(lists)) {
-      const order = taskOrders[key];
+      const order = orders[key];
       if (order !== undefined) lists[key] = sortedBy(list, order);
     }
     return lists;
   }
-  const taskLists = $derived(listTasks());
 
-  // タスクの行の、親と並びの中の位置。上へ、下へのボタンの端の判定と、親を移すダイアログの今の親に使う
-  function placeTasks(lists: Record<string, BacklogTask[]>) {
+  // 親ごとの行の、親と並びの中の位置。上へ、下へのボタンの端の判定と、親を移すダイアログの今の親に使う
+  function placesOf<T extends { id: string }>(lists: Record<string, T[]>) {
     const places: Record<string, { parentId: string | null; index: number; count: number }> = {};
     for (const [key, list] of Object.entries(lists)) {
-      list.forEach((task, index) => {
-        places[task.id] = { parentId: key === ROOT ? null : key, index, count: list.length };
+      list.forEach((row, index) => {
+        places[row.id] = { parentId: key === ROOT ? null : key, index, count: list.length };
       });
     }
     return places;
   }
-  const taskPlaces = $derived(placeTasks(taskLists));
 
-  const storyList = $derived(storyOrder === null ? (tree?.stories ?? []) : sortedBy(tree?.stories ?? [], storyOrder));
+  const epics = $derived(tree?.epics ?? []);
+  // 読み直した木のストーリー（エピックの下のものと親のないもの）と、その親
+  const loadedStories = $derived([
+    ...epics.flatMap((epic) => epic.stories.map((story) => ({ row: story, parentId: epic.id as string | null }))),
+    ...(tree?.stories ?? []).map((story) => ({ row: story, parentId: null })),
+  ]);
+  const storyLists = $derived(grouped(loadedStories, movedStoryParents, storyOrders));
+  const storyPlaces = $derived(placesOf(storyLists));
+  const rootStoryList = $derived(storyLists[ROOT] ?? []);
+  // 木の順（エピックの下、親のないものの順）に並べたストーリー
+  const allStories = $derived([...epics.flatMap((epic) => storyLists[epic.id] ?? []), ...rootStoryList]);
+  // 今その下に並んでいる、ストーリーの親のエピック。親なしなら undefined
+  function parentEpicOf(storyId: string): BacklogEpic | undefined {
+    const epicId = storyPlaces[storyId]?.parentId;
+    return epicId == null ? undefined : epics.find((epic) => epic.id === epicId);
+  }
+  // タスクの親に選べるストーリー（完了していないもの）。選択欄は親のエピック（親なしは null）でまとめる。
+  // ストーリーの親に選べるエピック（完了も中止もしていないもの）
+  const openStories = $derived(
+    allStories
+      .filter((story) => story.completed_at === null)
+      .map((story) => {
+        const epic = parentEpicOf(story.id);
+        return {
+          id: story.id,
+          title: story.title,
+          group: epic === undefined ? null : { id: epic.id, title: epic.title },
+        };
+      }),
+  );
+  const openEpics = $derived(epics.filter((epic) => epic.completed_at === null && epic.canceled_at === null));
+
+  const taskLists = $derived(
+    grouped(
+      [
+        ...loadedStories.flatMap(({ row: story }) => story.tasks.map((task) => ({ row: task, parentId: story.id }))),
+        ...(tree?.tasks ?? []).map((task) => ({ row: task, parentId: null })),
+        ...added.map((entry) => ({ row: entry.task, parentId: entry.storyId })),
+      ],
+      movedParents,
+      taskOrders,
+    ),
+  );
+  const taskPlaces = $derived(placesOf(taskLists));
   const rootRows = $derived(taskLists[ROOT] ?? []);
-  const openStories = $derived(storyList.filter((story) => story.completed_at === null));
 
   function storyRows(story: BacklogStory): BacklogTask[] {
     return taskLists[story.id] ?? [];
+  }
+
+  // 配下の未完了のタスクの件数。画面で完了にした行は数えない（読み直すまで行は残るが、完了している）
+  function remainingOf(story: BacklogStory): number {
+    return storyRows(story).filter((task) => !completedIds.includes(task.id)).length;
   }
 
   // 親の「全体」のポイント。足した行と、画面で移してきた行の分を足し、画面で外へ移した行の分を引く
@@ -138,13 +194,41 @@
     return story.points_done + done.reduce((sum, task) => sum + (task.points ?? 0), 0);
   }
 
-  const completingStatus = $derived(pendingIds.length > 0 ? t('taskCompleting', { done: t('done') }) : '');
+  // エピックの合計は、今その下に並ぶストーリーの合計（画面で移したストーリーと、足した行、完了にした行の分を含む）
+  function epicStories(epic: BacklogEpic): BacklogStory[] {
+    return storyLists[epic.id] ?? [];
+  }
+  function epicPoints(epic: BacklogEpic): { done: number; all: number } {
+    const stories = epicStories(epic);
+    return {
+      done: stories.reduce((sum, story) => sum + pointsDoneOf(story), 0),
+      all: stories.reduce((sum, story) => sum + pointsAllOf(story), 0),
+    };
+  }
+
+  // 送っている操作の読み上げ。タスクの完了、ストーリーの完了、ストーリーの取り消しの順に、送っているものを1つ選ぶ
+  const completingStatus = $derived.by(() => {
+    const storyActions = Object.values(storyPending);
+    if (pendingIds.length > 0) return t('taskCompleting', { done: t('done') });
+    if (storyActions.includes('complete')) return t('storyCompleting', { done: t('done') });
+    if (storyActions.includes('reopen')) return t('storyReopening', { done: t('done') });
+    return '';
+  });
   let taskDialog = $state<ReturnType<typeof TaskCreateDialog>>();
   let storyDialog = $state<ReturnType<typeof StoryDialog>>();
+  let epicDialog = $state<ReturnType<typeof EpicDialog>>();
   // 完了にした行の完了の印へフォーカスを移すために持つ。描き直しには使わない
   const entries: Record<string, ReturnType<typeof TaskEntry> | undefined> = {};
-  // ストーリーの行。起票した親の行を開くために持つ
+  // ストーリーとエピックの行。起票した親の行を開く、完了の後にフォーカスを戻すために持つ
   const treeRows: Record<string, ReturnType<typeof TreeStory> | undefined> = {};
+  const epicRows: Record<string, ReturnType<typeof TreeEpic> | undefined> = {};
+
+  // ストーリーの行と、その親のエピックの行を開く
+  function expandStory(storyId: string): void {
+    treeRows[storyId]?.expand();
+    const epicId = storyPlaces[storyId]?.parentId;
+    if (epicId != null) epicRows[epicId]?.expand();
+  }
 
   async function complete(task: BacklogTask): Promise<void> {
     if (workspace === null || pendingIds.includes(task.id)) return;
@@ -188,20 +272,93 @@
     }
   }
 
+  // 断られたストーリーの完了と取り消しの理由。409 の conflict は、サーバーが details.reason に載せた理由で分ける。
+  // reload が偽の失敗（通信、5xx）は、読み直さずに知らせる
+  function completionFailureMessage(
+    result: { status: number; error: { code: string; details?: unknown } | null },
+    action: 'complete' | 'reopen',
+  ): { message: string; reload: boolean } {
+    const failed = action === 'complete' ? t('storyCompleteFailed', { done: t('done') }) : t('storyReopenFailed');
+    if (result.status === 404) return { message: t('storyGone', { story: t('story') }), reload: true };
+    if (result.status !== 409) return { message: failed, reload: false };
+    if (result.error?.code === 'workspace_closed') {
+      return { message: t('workspaceClosedReadOnly', { workspace: t('workspace') }), reload: true };
+    }
+    const words = { story: t('story'), task: t('task'), epic: t('epic'), done: t('done') };
+    switch (storyCompletionConflictReasonOf(result.error?.details)) {
+      case 'open_tasks':
+        return { message: t('storyOpenTasks', words), reload: true };
+      case 'completed':
+        return { message: t('storyAlreadyDone', words), reload: true };
+      case 'not_completed':
+        return { message: t('storyNotDone', words), reload: true };
+      case 'parent_completed':
+        return {
+          message: action === 'complete' ? t('storyCompleteParentDone', words) : t('storyReopenParentDone', words),
+          reload: true,
+        };
+      case 'changed':
+        return { message: t('storyCompletionChanged'), reload: true };
+      default:
+        return { message: failed, reload: true };
+    }
+  }
+
+  // ストーリーを完了にする、取り消す。通ったら木を読み直し、作り直した行の操作（取り消すか完了にする）へフォーカスを移す
+  async function setStoryCompletion(story: BacklogStory, action: 'complete' | 'reopen'): Promise<void> {
+    if (workspace === null || Object.hasOwn(storyPending, story.id)) return;
+    storyPending = { ...storyPending, [story.id]: action };
+    const workspaceId = workspace.id;
+    try {
+      const input = { workspace_id: workspaceId, story_id: story.id };
+      const options = { slug: page.params.slug ?? '' };
+      const result =
+        action === 'complete'
+          ? await callOperation(storyComplete, input, options)
+          : await callOperation(storyReopen, input, options);
+      if (workspaceId !== page.params.id) return;
+      if (!result.ok && result.status === 401) {
+        await invalidateAll();
+        return;
+      }
+      if (result.ok) {
+        showToast(
+          action === 'complete'
+            ? t('storyCompleted', { story: t('story'), done: t('done') })
+            : t('storyReopened', { story: t('story'), done: t('done') }),
+          'check',
+        );
+      } else {
+        const failure = completionFailureMessage(result, action);
+        showToast(failure.message, 'alert');
+        if (!failure.reload) return;
+      }
+      await invalidateAll();
+      await tick();
+      // 行が消えていたら（読み直した木に無ければ）、見出しへ移す
+      const row = treeRows[story.id];
+      if (row) row.focusCompletion();
+      else document.querySelector<HTMLElement>('h1.page-title')?.focus();
+    } finally {
+      storyPending = Object.fromEntries(Object.entries(storyPending).filter(([id]) => id !== story.id));
+    }
+  }
+
   function created(task: BacklogTask, storyId: string | null): void {
     added = [...added, { task, storyId }];
     // 畳まれている親の行は開いて、足した行が見えるようにする
-    if (storyId !== null) treeRows[storyId]?.expand();
+    if (storyId !== null) expandStory(storyId);
   }
 
-  // 直す対象のストーリーが消えていた。木を読み直し、フォーカスを見出しへ移す（ダイアログが閉じて、戻る先が無いため）
-  async function storyGone(): Promise<void> {
+  // 直す対象のストーリーかエピックが消えていた。木を読み直し、フォーカスを見出しへ移す（ダイアログが閉じて、戻る先が無いため）
+  async function rowGone(): Promise<void> {
     await invalidateAll();
     await tick();
     document.querySelector<HTMLElement>('h1.page-title')?.focus();
   }
 
-  let moveDialog = $state<ReturnType<typeof TaskMoveDialog>>();
+  let moveDialog = $state<ReturnType<typeof MoveParentDialog<BacklogTask>>>();
+  let storyMoveDialog = $state<ReturnType<typeof MoveParentDialog<BacklogStory>>>();
   // 動かした結果の読み上げ。領域は常に置き、中の文字だけを替える。同じ文が続いても読まれるよう、一度空にしてから入れる
   let moveStatus = $state('');
   async function announce(message: string): Promise<void> {
@@ -233,7 +390,8 @@
   function discardMoves(): void {
     movedParents = {};
     taskOrders = {};
-    storyOrder = null;
+    movedStoryParents = {};
+    storyOrders = {};
     moves.discard();
   }
 
@@ -246,14 +404,20 @@
     }
   }
 
-  // 失敗した移動の理由。409 の conflict は、サーバーが details.reason に載せた理由で分ける
-  function moveFailureMessage(result: { status: number; error: { code: string; details?: unknown } | null }): string {
+  // 失敗した移動の理由。409 の conflict は、サーバーが details.reason に載せた理由で分ける。
+  // 親が完了していたときの文は、動かした行がタスク（親はストーリー）かストーリー（親はエピック）かで変える
+  function moveFailureMessage(
+    result: { status: number; error: { code: string; details?: unknown } | null },
+    kind: 'task' | 'story',
+  ): string {
     if (result.status === 404) return t('moveGone');
     if (result.status !== 409) return t('moveFailed');
     if (result.error?.code === 'workspace_closed') return t('workspaceClosedReadOnly', { workspace: t('workspace') });
     switch (moveConflictReasonOf(result.error?.details)) {
       case 'parent_completed':
-        return t('moveParentDone', { done: t('done'), story: t('story') });
+        return kind === 'task'
+          ? t('moveParentDone', { done: t('done'), story: t('story') })
+          : t('moveEpicDone', { done: t('done'), epic: t('epic') });
       case 'task_completed':
         return t('moveTaskDone', { task: t('task'), done: t('done') });
       case 'changed':
@@ -284,13 +448,13 @@
   }
 
   // 動かす操作を、押した順に送る。失敗したら理由を知らせて読み直し、フォーカスを同じ操作（無ければ見出し）へ戻す
-  function send(call: () => Promise<ApiResult<unknown>>): void {
+  function send(call: () => Promise<ApiResult<unknown>>, kind: 'task' | 'story'): void {
     const workspaceId = workspace?.id;
     void moves.send(call, async (result) => {
       // 送っている間に別のワークスペースへ移っていたら、古い応答で状態を触らない
       if (result.ok || workspaceId !== page.params.id) return;
       // 401 は、枠の読み直しがログインの画面へ移す
-      if (result.status !== 401) showToast(moveFailureMessage(result), 'alert');
+      if (result.status !== 401) showToast(moveFailureMessage(result, kind), 'alert');
       const saved = focusedControl();
       const lost = document.activeElement === null || document.activeElement === document.body;
       await reloadTree();
@@ -317,13 +481,15 @@
     void restore();
     void announce(t('moveAnnounced', { title: task.title, index: next.index + 1 }));
     const input = { workspace_id: workspace.id, task_id: task.id, story_id: parentId, after_task_id: next.after };
-    send(() => callOperation(taskMove, input, { slug: page.params.slug ?? '' }));
+    send(() => callOperation(taskMove, input, { slug: page.params.slug ?? '' }), 'task');
   }
 
   function reorderStory(story: BacklogStory, delta: -1 | 1): void {
     if (workspace === null) return;
+    const parentId = storyPlaces[story.id]?.parentId ?? null;
+    const key = parentId ?? ROOT;
     const next = shifted(
-      storyList.map((row) => row.id),
+      (storyLists[key] ?? []).map((row) => row.id),
       story.id,
       delta,
     );
@@ -332,15 +498,19 @@
       return;
     }
     const restore = holdFocus();
-    storyOrder = next.ids;
+    storyOrders = { ...storyOrders, [key]: next.ids };
     void restore();
     void announce(t('moveAnnounced', { title: story.title, index: next.index + 1 }));
-    const input = { workspace_id: workspace.id, story_id: story.id, epic_id: null, after_story_id: next.after };
-    send(() => callOperation(storyMove, input, { slug: page.params.slug ?? '' }));
+    const input = { workspace_id: workspace.id, story_id: story.id, epic_id: parentId, after_story_id: next.after };
+    send(() => callOperation(storyMove, input, { slug: page.params.slug ?? '' }), 'story');
   }
 
   function openMoveDialog(task: BacklogTask, trigger: HTMLElement): void {
     moveDialog?.show(trigger, task, taskPlaces[task.id]?.parentId ?? null);
+  }
+
+  function openStoryMoveDialog(story: BacklogStory, trigger: HTMLElement): void {
+    storyMoveDialog?.show(trigger, story, storyPlaces[story.id]?.parentId ?? null);
   }
 
   // 親を移す（ダイアログが閉じた後に呼ばれる）。移す先の末尾に置き（API には直前の行を送らない）、畳まれていれば開く。
@@ -351,16 +521,45 @@
     const ids = (taskLists[key] ?? []).map((row) => row.id).filter((id) => id !== task.id);
     movedParents = { ...movedParents, [task.id]: storyId };
     taskOrders = { ...taskOrders, [key]: [...ids, task.id] };
-    if (storyId !== null) treeRows[storyId]?.expand();
-    const parent = storyId === null ? undefined : storyList.find((story) => story.id === storyId);
+    if (storyId !== null) expandStory(storyId);
+    const parent = storyId === null ? undefined : allStories.find((story) => story.id === storyId);
+    // 親のストーリーがエピックの下なら、エピックの題も添える（同じ題のストーリーが、別のエピックの下にありうるため）
+    const parentEpic = storyId === null ? undefined : parentEpicOf(storyId);
     void tick().then(() => entries[task.id]?.focusMoveParent());
     void announce(
       parent === undefined
         ? t('moveAnnouncedRoot', { title: task.title })
-        : t('moveAnnouncedUnder', { title: task.title, story: t('story'), parent: parent.title }),
+        : parentEpic === undefined
+          ? t('moveAnnouncedUnder', { title: task.title, story: t('story'), parent: parent.title })
+          : t('moveAnnouncedUnderEpic', {
+              title: task.title,
+              epic: t('epic'),
+              epicTitle: parentEpic.title,
+              story: t('story'),
+              parent: parent.title,
+            }),
     );
     const input = { workspace_id: workspace.id, task_id: task.id, story_id: storyId };
-    send(() => callOperation(taskMove, input, { slug: page.params.slug ?? '' }));
+    send(() => callOperation(taskMove, input, { slug: page.params.slug ?? '' }), 'task');
+  }
+
+  // ストーリーの親（エピック）を移す。タスクの親を移すのと同じ形
+  function moveStoryParent(story: BacklogStory, epicId: string | null): void {
+    if (workspace === null) return;
+    const key = epicId ?? ROOT;
+    const ids = (storyLists[key] ?? []).map((row) => row.id).filter((id) => id !== story.id);
+    movedStoryParents = { ...movedStoryParents, [story.id]: epicId };
+    storyOrders = { ...storyOrders, [key]: [...ids, story.id] };
+    if (epicId !== null) epicRows[epicId]?.expand();
+    const parent = epicId === null ? undefined : epics.find((epic) => epic.id === epicId);
+    void tick().then(() => treeRows[story.id]?.focusMoveParent());
+    void announce(
+      parent === undefined
+        ? t('moveAnnouncedRoot', { title: story.title })
+        : t('moveAnnouncedUnder', { title: story.title, story: t('epic'), parent: parent.title }),
+    );
+    const input = { workspace_id: workspace.id, story_id: story.id, epic_id: epicId };
+    send(() => callOperation(storyMove, input, { slug: page.params.slug ?? '' }), 'story');
   }
 </script>
 
@@ -393,12 +592,45 @@
   />
 {/snippet}
 
+{#snippet storyRow(story: BacklogStory)}
+  {@const place = storyPlaces[story.id]}
+  {@const epic = parentEpicOf(story.id)}
+  <!-- 親のないストーリーは、移す先のエピックがあるときだけ「親を移す」を出す（エピックの下のストーリーは、親なしへ移せる）。
+       完了か中止したエピックの下では、完了と取り消しは必ず断られるので、押せない理由を出す -->
+
+  <TreeStory
+    bind:this={treeRows[story.id]}
+    {story}
+    tasks={storyRows(story)}
+    pointsDone={pointsDoneOf(story)}
+    pointsAll={pointsAllOf(story)}
+    {clock}
+    {canWrite}
+    nested={place?.parentId != null}
+    remaining={remainingOf(story)}
+    pending={Object.hasOwn(storyPending, story.id)}
+    parentFinished={epic !== undefined && (epic.completed_at !== null || epic.canceled_at !== null)}
+    onComplete={canWrite ? (target) => void setStoryCompletion(target, 'complete') : undefined}
+    onReopen={canWrite ? (target) => void setStoryCompletion(target, 'reopen') : undefined}
+    onEdit={(target, trigger) => storyDialog?.show(trigger, target.id)}
+    onAddTask={(target, trigger) => taskDialog?.show(trigger, target.id)}
+    row={taskRow}
+    canMoveUp={place !== undefined && place.index > 0}
+    canMoveDown={place !== undefined && place.index < place.count - 1}
+    onMove={canWrite ? reorderStory : undefined}
+    onMoveParent={canWrite && (place?.parentId != null || openEpics.length > 0) ? openStoryMoveDialog : undefined}
+  />
+{/snippet}
+
 {#if workspace && tree === null}
   <LoadFailed inShell />
 {:else if workspace && tree}
   <PageHead title={t('backlog')} eyebrow={workspace.name} focusable>
     {#snippet actions()}
       {#if canWrite}
+        <button class="btn" type="button" onclick={(event) => epicDialog?.show(event.currentTarget)}>
+          <Icon name="plus" />{t('epicCreate', { epic: t('epic') })}
+        </button>
         <button class="btn" type="button" onclick={(event) => storyDialog?.show(event.currentTarget)}>
           <Icon name="plus" />{t('storyCreate', { story: t('story') })}
         </button>
@@ -413,7 +645,7 @@
   <span class="visually-hidden" role="status">{completingStatus}</span>
   <span class="visually-hidden" role="status">{moveStatus}</span>
 
-  {#if tree.stories.length === 0 && rootRows.length === 0 && tree.completed_count === 0}
+  {#if epics.length === 0 && tree.stories.length === 0 && rootRows.length === 0 && tree.completed_count === 0}
     <EmptyState
       icon="board"
       title={t('backlogEmptyTitle', { task: t('task') })}
@@ -424,29 +656,31 @@
   {:else}
     <section class="section" aria-label={t('backlogTasksLabel', { backlog: t('backlog'), task: t('task') })}>
       {#if canWrite}
-        <p class="action-note">{t('backlogOrderNote')}</p>
+        <p class="action-note">{t('backlogOrderNote', { story: t('story'), task: t('task') })}</p>
       {/if}
       <div class="tree">
-        {#each storyList as story, index (story.id)}
-          <TreeStory
-            bind:this={treeRows[story.id]}
-            {story}
-            tasks={storyRows(story)}
-            pointsDone={pointsDoneOf(story)}
-            pointsAll={pointsAllOf(story)}
+        {#each epics as epic (epic.id)}
+          {@const points = epicPoints(epic)}
+          <TreeEpic
+            bind:this={epicRows[epic.id]}
+            {epic}
+            pointsDone={points.done}
+            pointsAll={points.all}
             {clock}
-            {canWrite}
-            onEdit={(target, trigger) => storyDialog?.show(trigger, target.id)}
-            onAddTask={(target, trigger) => taskDialog?.show(trigger, target.id)}
-            row={taskRow}
-            canMoveUp={index > 0}
-            canMoveDown={index < storyList.length - 1}
-            onMove={canWrite ? reorderStory : undefined}
-          />
+            empty={epicStories(epic).length === 0}
+            onEdit={(target, trigger) => epicDialog?.show(trigger, target.id)}
+          >
+            {#each epicStories(epic) as story (story.id)}
+              {@render storyRow(story)}
+            {/each}
+          </TreeEpic>
+        {/each}
+        {#each rootStoryList as story (story.id)}
+          {@render storyRow(story)}
         {/each}
         {#if rootRows.length > 0 || tree.completed_count > 0}
           <div>
-            {#if rootRows.length === 0 && tree.stories.length === 0}
+            {#if rootRows.length === 0 && epics.length === 0 && tree.stories.length === 0}
               <EmptyState
                 icon="board"
                 title={t('backlogNoOpenTitle', { task: t('task') })}
@@ -469,14 +703,22 @@
     </section>
   {/if}
 
-  <!-- ストーリーのダイアログは、閉じたワークスペースでも読み取り専用で開く -->
+  <!-- エピックとストーリーのダイアログは、閉じたワークスペースでも読み取り専用で開く -->
+  <EpicDialog
+    bind:this={epicDialog}
+    slug={page.params.slug ?? ''}
+    workspaceId={workspace.id}
+    {canWrite}
+    onsaved={() => void invalidateAll()}
+    ongone={() => void rowGone()}
+  />
   <StoryDialog
     bind:this={storyDialog}
     slug={page.params.slug ?? ''}
     workspaceId={workspace.id}
     {canWrite}
     onsaved={() => void invalidateAll()}
-    ongone={() => void storyGone()}
+    ongone={() => void rowGone()}
   />
   {#if canWrite}
     <TaskCreateDialog
@@ -486,6 +728,7 @@
       stories={openStories}
       oncreated={created}
     />
-    <TaskMoveDialog bind:this={moveDialog} stories={openStories} onmove={moveParent} />
+    <MoveParentDialog bind:this={moveDialog} parents={openStories} onmove={moveParent} />
+    <MoveParentDialog bind:this={storyMoveDialog} parents={openEpics} onmove={moveStoryParent} />
   {/if}
 {/if}

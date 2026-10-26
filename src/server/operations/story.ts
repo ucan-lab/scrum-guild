@@ -1,13 +1,23 @@
 import { generateKeyBetween } from 'fractional-indexing';
 import { now } from '../../shared/clock.ts';
+import { XP_STORY_COMPLETED } from '../../shared/experience.ts';
 import {
+  storyComplete,
   storyCreate,
   storyGet,
   storyMove,
+  storyReopen,
   storyUpdate,
   type StoryDetail,
 } from '../../shared/operations/story/index.ts';
-import type { OrganizationDb, OrganizationTables, QueryCreator } from '../db/index.ts';
+import type { StoryCompletionConflictReason } from '../../shared/operations/story/story-complete.ts';
+import {
+  jsonList,
+  previousStatementChanged,
+  type OrganizationDb,
+  type OrganizationTables,
+  type QueryCreator,
+} from '../db/index.ts';
 import { ApiError } from '../errors.ts';
 import { uuidv7 } from '../uuid.ts';
 import { implement } from './implement.ts';
@@ -562,4 +572,465 @@ export const storyMoveOperation = implement(storyMove, async ({ db, actor, works
     throw moveConflict('changed');
   }
   return { story_id: storyId, epic_id: parentId };
+});
+
+// ストーリーの完了と取り消しを 409 の conflict で断る。理由は details.reason に載せる
+function completionConflict(reason: StoryCompletionConflictReason): ApiError {
+  return new ApiError(409, 'conflict', { reason });
+}
+
+// 配下の、削除していない未完了のバックログのタスク。1件でもあれば完了にできない
+function openTasksUnder(from: Pick<QueryCreator<Tables>, 'selectFrom'>, workspaceId: string, storyId: string) {
+  return from
+    .selectFrom('tasks')
+    .select('tasks.id')
+    .where('tasks.story_id', '=', storyId)
+    .where('tasks.workspace_id', '=', workspaceId)
+    .where('tasks.tray', '=', 'backlog')
+    .where('tasks.deleted_at', 'is', null)
+    .where('tasks.completed_at', 'is', null);
+}
+
+// ストーリーの完了の経験値を受け取る人の、元の付与。配下の削除していないタスクの、打ち消されていない完了の経験値（task_completed）で、
+// 受け取った人が今そのワークスペースに所属しているもの。タスクから引いて付与を結ぶ（tasks_story と xp_grants_task の索引）
+function recipientGrants(from: Pick<QueryCreator<Tables>, 'selectFrom'>, workspaceId: string, storyId: string) {
+  return from
+    .selectFrom('tasks')
+    .crossJoin('xp_grants as g')
+    .whereRef('g.task_id', '=', 'tasks.id')
+    .where('tasks.story_id', '=', storyId)
+    .where('tasks.workspace_id', '=', workspaceId)
+    .where('tasks.deleted_at', 'is', null)
+    .where('g.workspace_id', '=', workspaceId)
+    .where('g.action', '=', 'task_completed')
+    .where('g.reverses_grant_id', 'is', null)
+    .where((eb) =>
+      eb.and([
+        eb.not(
+          eb.exists(
+            eb
+              .selectFrom('xp_grants as r')
+              .select('r.id')
+              .whereRef('r.reverses_grant_id', '=', 'g.id')
+              .where('r.workspace_id', '=', workspaceId),
+          ),
+        ),
+        eb.exists(
+          eb
+            .selectFrom('memberships')
+            .select('memberships.id')
+            .whereRef('memberships.user_id', '=', 'g.user_id')
+            .where('memberships.workspace_id', '=', workspaceId)
+            .where('memberships.left_at', 'is', null),
+        ),
+      ]),
+    );
+}
+
+// 完了にする前の状態。ストーリーの完了した日時、配下の未完了のタスクの件数、経験値の受け取り手
+async function readCompletion(db: OrganizationDb, workspaceId: string, storyId: string) {
+  const [storyResult, openResult, recipientResult] = await db.batch([
+    db.statement((q) =>
+      q
+        .selectFrom('stories')
+        // 親のエピック。削除したエピックは親として数えない
+        .leftJoin('epics', (join) =>
+          join
+            .onRef('epics.id', '=', 'stories.epic_id')
+            .onRef('epics.workspace_id', '=', 'stories.workspace_id')
+            .on('epics.deleted_at', 'is', null),
+        )
+        .select([
+          'stories.id',
+          'stories.completed_at',
+          'epics.completed_at as epic_completed_at',
+          'epics.canceled_at as epic_canceled_at',
+        ])
+        .where('stories.id', '=', storyId)
+        .where('stories.workspace_id', '=', workspaceId)
+        .where('stories.deleted_at', 'is', null),
+    ),
+    db.statement((q) =>
+      openTasksUnder(q, workspaceId, storyId)
+        .clearSelect()
+        .select((eb) => eb.fn.countAll<number>().as('count')),
+    ),
+    db.statement((q) => recipientGrants(q, workspaceId, storyId).select('g.user_id').distinct().orderBy('g.user_id')),
+  ] as const);
+  const story = storyResult.rows[0];
+  if (story === undefined) return undefined;
+  return {
+    completedAt: story.completed_at,
+    parentFinished: story.epic_completed_at !== null || story.epic_canceled_at !== null,
+    openCount: Number(openResult.rows[0]?.count ?? 0),
+    recipients: recipientResult.rows.map((row) => row.user_id),
+  };
+}
+
+const storyGrantColumns = [
+  'id',
+  'workspace_id',
+  'user_id',
+  'action',
+  'story_id',
+  'amount',
+  'reverses_grant_id',
+  'dedupe_key',
+  'confirmed_at',
+] as const;
+
+// 自分の履歴の行がある、という条件。経験値の付与と打ち消しは、これで自分の更新が通ったことを見る
+// （履歴は直前の UPDATE が行を変えたときだけ入り、id はこの要求だけの値なので、止めた時計でも負けた要求とは一致しない）
+function ownLog(from: Pick<QueryCreator<Tables>, 'selectFrom'>, workspaceId: string, logId: string) {
+  return from
+    .selectFrom('change_logs')
+    .select('change_logs.id')
+    .where('change_logs.id', '=', logId)
+    .where('change_logs.workspace_id', '=', workspaceId);
+}
+
+// 完了の文は、配下に未完了のタスクが無いことと、受け取り手が読んだときのまま（読んだ人の外に、受け取る人が増えていない）ことを条件にする。
+// 受け取り手が変わって通らなかったら（読んでから書くまでに、配下のタスクが完了した、所属が戻ったなど）、読み直してやり直す
+export const storyCompleteOperation = implement(storyComplete, async ({ db, actor, workspace, input }) => {
+  const userId = actorUserIdOf(actor);
+  const organizationId = db.organizationId;
+  const workspaceId = workspace.workspaceId;
+  const storyId = input.story_id;
+
+  // 履歴に残す自分の名前
+  const user = await db.first(
+    db.statement((q) =>
+      q.selectFrom('users').select('name').where('id', '=', userId).where('organization_id', '=', organizationId),
+    ),
+  );
+  if (user === undefined) throw new ApiError(404, 'not_found');
+
+  for (let attempt = 0; attempt < MAX_UPDATE_ATTEMPTS; attempt++) {
+    const state = await readCompletion(db, workspaceId, storyId);
+    if (state === undefined) {
+      await throwIfClosed(db, workspaceId);
+      throw new ApiError(404, 'not_found');
+    }
+    if (state.completedAt !== null) {
+      await throwIfClosed(db, workspaceId);
+      throw completionConflict('completed');
+    }
+    // 完了か中止したエピックの下で完了にすると、取り消せず（parent_completed）、付けた経験値も打ち消せなくなるので断る
+    if (state.parentFinished) {
+      await throwIfClosed(db, workspaceId);
+      throw completionConflict('parent_completed');
+    }
+    if (state.openCount > 0) {
+      await throwIfClosed(db, workspaceId);
+      throw completionConflict('open_tasks');
+    }
+
+    const at = now();
+    const completedAt = at.toISOString();
+    const logId = uuidv7(at);
+    const { recipients } = state;
+    const results = await db.batch([
+      db.statement((q) =>
+        q
+          .updateTable('stories')
+          .set({ completed_at: completedAt, completed_by: userId, updated_at: completedAt })
+          .where('id', '=', storyId)
+          .where('workspace_id', '=', workspaceId)
+          .where('deleted_at', 'is', null)
+          .where('completed_at', 'is', null)
+          .where((eb) =>
+            eb.and([
+              eb.exists(openWorkspace(q, organizationId, workspaceId)),
+              eb.not(eb.exists(openTasksUnder(q, workspaceId, storyId))),
+              // 今の親のエピック（削除したものを除く）が、完了も中止もしていない。読んでから書くまでに親が移っても、今の親で見る
+              eb.not(
+                eb.exists(
+                  eb
+                    .selectFrom('epics')
+                    .select('epics.id')
+                    .whereRef('epics.id', '=', 'stories.epic_id')
+                    .where('epics.workspace_id', '=', workspaceId)
+                    .where('epics.deleted_at', 'is', null)
+                    .where((sb) =>
+                      sb.or([sb('epics.completed_at', 'is not', null), sb('epics.canceled_at', 'is not', null)]),
+                    ),
+                ),
+              ),
+              eb.not(
+                eb.exists(
+                  recipientGrants(q, workspaceId, storyId)
+                    .select('g.id')
+                    // 受け取り手が多くても bind の上限に当たらないよう、一覧は1つの値で渡す
+                    .where('g.user_id', 'not in', jsonList(recipients)),
+                ),
+              ),
+            ]),
+          ),
+      ),
+      // 直前の UPDATE が行を変えたときだけ
+      db.statement((q) =>
+        q
+          .insertInto('change_logs')
+          .columns(changeLogColumns)
+          .expression(
+            q
+              .selectNoFrom((eb) => [
+                eb.val(logId).as('id'),
+                eb.val(organizationId).as('organization_id'),
+                eb.val(workspaceId).as('workspace_id'),
+                eb.val(userId).as('actor_user_id'),
+                eb.val('story').as('entity_type'),
+                eb.val(storyId).as('entity_id'),
+                eb.val('complete').as('action'),
+                eb
+                  .val(
+                    JSON.stringify({
+                      completed_at: [null, completedAt],
+                      completed_by: [null, { id: userId, name: user.name }],
+                    }),
+                  )
+                  .as('changes_json'),
+                eb.val(completedAt).as('created_at'),
+              ])
+              .where(previousStatementChanged),
+          ),
+      ),
+      // 受け取り手に1人1回ずつ。書くときにも、元の付与が打ち消されていないことと、所属していることを確かめる
+      ...recipients.map((recipient) => {
+        const dedupeKey = `story_completed:${storyId}:${recipient}:${completedAt}`;
+        return db.statement((q) =>
+          q
+            .insertInto('xp_grants')
+            .columns(storyGrantColumns)
+            .expression(
+              q
+                .selectNoFrom((eb) => [
+                  eb.val(uuidv7(at)).as('id'),
+                  eb.val(workspaceId).as('workspace_id'),
+                  eb.val(recipient).as('user_id'),
+                  eb.val('story_completed').as('action'),
+                  eb.val(storyId).as('story_id'),
+                  eb.val(XP_STORY_COMPLETED).as('amount'),
+                  eb.val(null).as('reverses_grant_id'),
+                  eb.val(dedupeKey).as('dedupe_key'),
+                  eb.val(completedAt).as('confirmed_at'),
+                ])
+                .where((eb) =>
+                  eb.and([
+                    eb.exists(ownLog(eb, workspaceId, logId)),
+                    eb.exists(
+                      recipientGrants(eb, workspaceId, storyId).select('g.id').where('g.user_id', '=', recipient),
+                    ),
+                    // 止めた時計（DEV_NOW）で、完了、取り消し、完了を同じ時刻に流すと、同じキーの行が残っている
+                    eb.not(
+                      eb.exists(
+                        eb.selectFrom('xp_grants').select('xp_grants.id').where('xp_grants.dedupe_key', '=', dedupeKey),
+                      ),
+                    ),
+                  ]),
+                ),
+            ),
+        );
+      }),
+    ]);
+
+    if ((results[0]?.changes ?? 0) > 0) return { story_id: storyId, completed_at: completedAt };
+    // 閉じていれば 409 の workspace_closed。そうでなければ読み直して、消えた、完了した、親のエピックが完了か中止した、未完了のタスクが増えたかを見て、
+    // どれでもなければ（受け取り手が変わった）やり直す
+    await throwIfClosed(db, workspaceId);
+  }
+  throw completionConflict('changed');
+});
+
+// 取り消す前の状態。完了した日時と完了にした人（履歴に残す名前）、親のエピックの完了と中止
+function readReopening(db: OrganizationDb, workspaceId: string, storyId: string) {
+  return db.first(
+    db.statement((q) =>
+      q
+        .selectFrom('stories')
+        // 親のエピック。削除したエピックは親として数えない（削除したエピックの下のストーリーの扱いは、エピックの削除の #65 で決める）
+        .leftJoin('epics', (join) =>
+          join
+            .onRef('epics.id', '=', 'stories.epic_id')
+            .onRef('epics.workspace_id', '=', 'stories.workspace_id')
+            .on('epics.deleted_at', 'is', null),
+        )
+        .leftJoin('users', (join) =>
+          join.onRef('users.id', '=', 'stories.completed_by').on('users.organization_id', '=', db.organizationId),
+        )
+        .select([
+          'stories.id',
+          'stories.epic_id',
+          'stories.completed_at',
+          'stories.completed_by',
+          'users.name as completed_by_name',
+          'epics.completed_at as epic_completed_at',
+          'epics.canceled_at as epic_canceled_at',
+        ])
+        .where('stories.id', '=', storyId)
+        .where('stories.workspace_id', '=', workspaceId)
+        .where('stories.deleted_at', 'is', null),
+    ),
+  );
+}
+
+// 読んだ状態から、取り消せない理由を投げる。取り消せるなら何もしない
+function throwIfNotReopenable(
+  story: Awaited<ReturnType<typeof readReopening>>,
+): asserts story is NonNullable<typeof story> {
+  if (story === undefined) throw new ApiError(404, 'not_found');
+  if (story.completed_at === null) throw completionConflict('not_completed');
+  if (story.epic_id !== null && (story.epic_completed_at !== null || story.epic_canceled_at !== null)) {
+    throw completionConflict('parent_completed');
+  }
+}
+
+export const storyReopenOperation = implement(storyReopen, async ({ db, actor, workspace, input }) => {
+  const userId = actorUserIdOf(actor);
+  const organizationId = db.organizationId;
+  const workspaceId = workspace.workspaceId;
+  const storyId = input.story_id;
+
+  const story = await readReopening(db, workspaceId, storyId);
+  throwIfNotReopenable(story);
+  const completedAt = story.completed_at!;
+  const epicId = story.epic_id;
+
+  // 打ち消す付与。このストーリーの、打ち消されていない完了の経験値。完了した日時が読んだ値のままなら（書く文の条件）、
+  // 読んでから書くまでに新しい付与は入らない（入るのは、取り消してからもう一度完了にしたときだけ）
+  const grants = await db.rows(
+    db.statement((q) =>
+      q
+        .selectFrom('xp_grants as g')
+        .select(['g.id', 'g.user_id', 'g.amount'])
+        .where('g.story_id', '=', storyId)
+        .where('g.workspace_id', '=', workspaceId)
+        .where('g.action', '=', 'story_completed')
+        .where('g.reverses_grant_id', 'is', null)
+        .where((eb) =>
+          eb.not(
+            eb.exists(
+              eb
+                .selectFrom('xp_grants as r')
+                .select('r.id')
+                .whereRef('r.reverses_grant_id', '=', 'g.id')
+                .where('r.workspace_id', '=', workspaceId),
+            ),
+          ),
+        )
+        .orderBy('g.id'),
+    ),
+  );
+
+  const at = now();
+  const reopenedAt = at.toISOString();
+  const logId = uuidv7(at);
+  const results = await db.batch([
+    db.statement((q) =>
+      q
+        .updateTable('stories')
+        .set({ completed_at: null, completed_by: null, updated_at: reopenedAt })
+        .where('id', '=', storyId)
+        .where('workspace_id', '=', workspaceId)
+        .where('deleted_at', 'is', null)
+        .where('completed_at', '=', completedAt)
+        .where('epic_id', epicId === null ? 'is' : '=', epicId)
+        .where((eb) => eb.exists(openWorkspace(q, organizationId, workspaceId)))
+        // 親のエピック（削除したものを除く）が、完了も中止もしていない。読むときと同じく、削除したエピックは親として数えない
+        .where((eb) =>
+          eb.not(
+            eb.exists(
+              eb
+                .selectFrom('epics')
+                .select('epics.id')
+                .whereRef('epics.id', '=', 'stories.epic_id')
+                .where('epics.workspace_id', '=', workspaceId)
+                .where('epics.deleted_at', 'is', null)
+                .where((sb) =>
+                  sb.or([sb('epics.completed_at', 'is not', null), sb('epics.canceled_at', 'is not', null)]),
+                ),
+            ),
+          ),
+        ),
+    ),
+    // 直前の UPDATE が行を変えたときだけ
+    db.statement((q) =>
+      q
+        .insertInto('change_logs')
+        .columns(changeLogColumns)
+        .expression(
+          q
+            .selectNoFrom((eb) => [
+              eb.val(logId).as('id'),
+              eb.val(organizationId).as('organization_id'),
+              eb.val(workspaceId).as('workspace_id'),
+              eb.val(userId).as('actor_user_id'),
+              eb.val('story').as('entity_type'),
+              eb.val(storyId).as('entity_id'),
+              eb.val('reopen').as('action'),
+              eb
+                .val(
+                  JSON.stringify({
+                    completed_at: [completedAt, null],
+                    completed_by: [
+                      story.completed_by === null
+                        ? null
+                        : { id: story.completed_by, name: story.completed_by_name ?? '' },
+                      null,
+                    ],
+                  }),
+                )
+                .as('changes_json'),
+              eb.val(reopenedAt).as('created_at'),
+            ])
+            .where(previousStatementChanged),
+        ),
+    ),
+    // 打ち消しの明細。元の行を指し、負の値を足す
+    ...grants.map((grant) =>
+      db.statement((q) =>
+        q
+          .insertInto('xp_grants')
+          .columns(storyGrantColumns)
+          .expression(
+            q
+              .selectNoFrom((eb) => [
+                eb.val(uuidv7(at)).as('id'),
+                eb.val(workspaceId).as('workspace_id'),
+                eb.val(grant.user_id).as('user_id'),
+                eb.val('story_completed').as('action'),
+                eb.val(storyId).as('story_id'),
+                eb.val(-grant.amount).as('amount'),
+                eb.val(grant.id).as('reverses_grant_id'),
+                eb.val(`reversal:${grant.id}`).as('dedupe_key'),
+                eb.val(reopenedAt).as('confirmed_at'),
+              ])
+              .where((eb) =>
+                eb.and([
+                  eb.exists(ownLog(eb, workspaceId, logId)),
+                  eb.not(
+                    eb.exists(
+                      eb
+                        .selectFrom('xp_grants')
+                        .select('xp_grants.id')
+                        .where('xp_grants.reverses_grant_id', '=', grant.id)
+                        .where('xp_grants.workspace_id', '=', workspaceId),
+                    ),
+                  ),
+                ]),
+              ),
+          ),
+      ),
+    ),
+  ]);
+
+  if ((results[0]?.changes ?? 0) === 0) {
+    // 読んでから書くまでに、閉じたか、消えたか、別の要求が先に取り消したか、親のエピックが完了か中止したか、
+    // 取り消してからもう一度完了にされた（完了した日時が変わった）
+    await throwIfClosed(db, workspaceId);
+    const latest = await readReopening(db, workspaceId, storyId);
+    throwIfNotReopenable(latest);
+    throw completionConflict('changed');
+  }
+  return { story_id: storyId };
 });

@@ -15,7 +15,15 @@ import {
   organizationHolidayListOperation,
 } from './organization-holiday.ts';
 import { logoutOperation, meOperation } from './session.ts';
-import { storyCreateOperation, storyGetOperation, storyMoveOperation, storyUpdateOperation } from './story.ts';
+import { epicCreateOperation, epicGetOperation, epicUpdateOperation } from './epic.ts';
+import {
+  storyCompleteOperation,
+  storyCreateOperation,
+  storyGetOperation,
+  storyMoveOperation,
+  storyReopenOperation,
+  storyUpdateOperation,
+} from './story.ts';
 import { taskAssignOperation, taskDeleteOperation, taskDetailOperation, taskUpdateOperation } from './task-edit.ts';
 import { taskHistoryOperation } from './task-history.ts';
 import { backlogTreeOperation, taskCompleteOperation, taskCreateOperation, taskMoveOperation } from './task.ts';
@@ -43,10 +51,15 @@ export const implementedOperations: readonly ImplementedOperation[] = [
   organizationHolidayDeleteOperation,
   meOperation,
   logoutOperation,
+  epicCreateOperation,
+  epicGetOperation,
+  epicUpdateOperation,
   storyCreateOperation,
   storyGetOperation,
   storyUpdateOperation,
   storyMoveOperation,
+  storyCompleteOperation,
+  storyReopenOperation,
   taskCreateOperation,
   backlogTreeOperation,
   taskCompleteOperation,
