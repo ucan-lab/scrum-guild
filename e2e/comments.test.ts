@@ -2,7 +2,7 @@
 // 直している途中に消されたら書きかけを残して知らせる、終了したワークスペースでは書く欄と操作を出さない。
 // seed のセッション（seed/sessions.ts）の Cookie で開く。あおば開発の管理者（リーダー）はミナト、一般はハルカ
 import type { Browser, Locator, Page } from '@playwright/test';
-import { expect, test } from './fixtures.ts';
+import { expect, steadyScreenshots, test } from './fixtures.ts';
 import { createWorkspace, signIn, watchViolations } from './helpers.ts';
 
 test.use({ timezoneId: 'Asia/Tokyo' });
@@ -30,6 +30,7 @@ async function openDrawer(page: Page, title: string): Promise<Locator> {
 // 人ごとの画面。seed のセッションの Cookie を置いて開く
 async function pageAs(browser: Browser, baseURL: string | undefined, who: 'admin' | 'member'): Promise<Page> {
   const context = await browser.newContext({ timezoneId: 'Asia/Tokyo' });
+  await steadyScreenshots(context);
   await signIn(context, baseURL, who);
   return context.newPage();
 }
@@ -360,7 +361,8 @@ test('リーダーは人のコメントを消せるが直せず、直してい�
   browser,
   baseURL,
 }) => {
-  const body = `テンプレートの件、確認お願いします ${Date.now()}`;
+  // 実行ごとに変わる値（時刻）を画面に出さない（CI の evidence が画像をハッシュで比べるため）。繰り返しと再試行では足す
+  const body = `テンプレートの件、確認お願いします ${test.info().repeatEachIndex}-${test.info().retry}`;
   const member = await pageAs(browser, baseURL, 'member');
   const leader = await pageAs(browser, baseURL, 'admin');
   try {
@@ -398,16 +400,22 @@ test('リーダーは人のコメントを消せるが直せず、直してい�
 });
 
 test('一般のメンバーには、人のコメントの「編集」と「削除」を出さない', async ({ browser, baseURL }) => {
-  const body = `ミナトのコメント ${Date.now()}`;
+  // 実行ごとに変わる値（時刻）を画面に出さない（CI の evidence が画像をハッシュで比べるため）。繰り返しと再試行では足す
+  const body = `ミナトのコメント ${test.info().repeatEachIndex}-${test.info().retry}`;
   const leader = await pageAs(browser, baseURL, 'admin');
   const member = await pageAs(browser, baseURL, 'member');
   try {
     await leader.goto(SEED_TASK_URL);
-    await sendComment(leader.getByRole('dialog', { name: SEED_TASK_TITLE }), body);
+    const mine = await sendComment(leader.getByRole('dialog', { name: SEED_TASK_TITLE }), body);
     await member.goto(SEED_TASK_URL);
     const comment = member.getByRole('dialog', { name: SEED_TASK_TITLE }).locator('.comment', { hasText: body });
     await expect(comment).toBeVisible();
     await expect(comment.getByRole('button')).toHaveCount(0);
+
+    // 後始末: 書いたコメントを消し、同じタスクを開くほかのテストの画面に本文を残さない（消した印は残る）
+    await mine.getByRole('button', { name: '削除', exact: true }).click();
+    await leader.getByRole('dialog', { name: 'コメントを削除する' }).getByRole('button', { name: '削除する' }).click();
+    await expect(mine.locator('.comment-body')).toHaveText('削除されました');
   } finally {
     await leader.context().close();
     await member.context().close();

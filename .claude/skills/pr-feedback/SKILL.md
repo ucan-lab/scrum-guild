@@ -46,8 +46,9 @@ gh api "repos/{owner}/{repo}/commits/<head_sha>/check-runs" --jq '.check_runs[] 
 ```
 
 作成者以外の人のレビュワーごとに、最後の `APPROVED` か `CHANGES_REQUESTED` を見る（手順 8 で使う）。
-`review` を除き、`conclusion` が `failure`、`timed_out`、`cancelled` の CI があれば、レビュー指摘より先に直す（理由: CI が赤いとレビュワーは読み始めない）。
+`review` と `evidence` を除き、`conclusion` が `failure`、`timed_out`、`cancelled` の CI があれば、レビュー指摘より先に直す（理由: CI が赤いとレビュワーは読み始めない）。
 `review` は下の AI レビューで、助言なので `ci-ok` に含めず、落ちてもマージの判定を止めない。
+`evidence` は e2e の変更前と変更後の画像を PR にコメントで並べるジョブで、同じく助言なので `ci-ok` に含めず、落ちてもマージの判定を止めない（`docs/development.md` の「e2e の画像のコメント」）。UI が変わる PR で落ちていたら、ジョブの注記とログを見て、画像が付かない理由を人に伝える。
 
 CI の AI レビュー（`.github/workflows/ai-review.yml`、チェックの名前は `review`）が終わるまで、手順 2 に進まない（理由: 途中で集めると、後から付いた指摘を拾い損ねる）。
 
@@ -321,7 +322,7 @@ gh api "repos/{owner}/{repo}/commits/<head>/check-runs" --paginate --jq '.check_
 - `base` が `main` でなければマージしない（別のブランチへの PR では、`ci-ok` はそのブランチとの差分しか見ていない）
 - `label` は同じ head に何件も付く（作成、push、再開、タイトルや本文の編集、ラベルを外したときに動き、飛ばない）。`label` が1件以上あり、すべて `completed` で `success` のときだけ成功とみなす。1件も無い、実行中、`success` 以外があるときは成功とみなさない。ベースを付け替えた後にその head で CI が動き直していなければ `label` が失敗する（`docs/development.md` の「文書だけの PR」）。`sync-base` で取り込んで push し直す
 - `ci-ok` も同じ基準で見る。文書だけの PR でも `ci-ok` は飛ばずに動くので、1件も無ければ成功とみなさない
-- `review` を除くどの名前のチェックでも、`completed` でないもの、`conclusion` が `failure`、`cancelled`、`timed_out`、`action_required` のものが1件でもあればマージしない。`review`（AI レビュー）は助言で、マージの判定を止めない
+- `review` と `evidence` を除くどの名前のチェックでも、`completed` でないもの、`conclusion` が `failure`、`cancelled`、`timed_out`、`action_required` のものが1件でもあればマージしない。`review`（AI レビュー）と `evidence`（e2e の画像のコメント）は助言で、マージの判定を止めない
 - 満たさなければマージせず、理由を伝えて人にマージを依頼する
 - 満たせば `gh pr merge <number> --squash --match-head-commit <head>` を打つ（確かめた後に push された head をマージしないため）。フックが確認を挟む。head が変わって失敗したら、この確認からやり直す
 - ユーザーが確認で断ったら、マージせずに止まる
@@ -359,7 +360,7 @@ gh api "repos/{owner}/{repo}/pulls/<number>" --jq '{merged, base: .base.ref, hea
 - AI レビューが走る PR（手順 1 の 1 に当たらない PR）では、`ai-review` の実行が全て `completed` になり、最後の契機より後の実行が出たか、手順 1 の取り直しを終えてから指摘を集めている
 - 全ての指摘にリプライが付いている
 - 人へのリプライは、ユーザーの Submit か承認を経て投稿されている
-- 手順 1 の check-runs に、`review` を除いて失敗が無い
+- 手順 1 の check-runs に、`review` と `evidence` を除いて失敗が無い
 - 説明資料を見せ、人の判断が要ることとマージの扱いに `AskUserQuestion` で答えが出ている
 - 作成者以外の人のレビューが付いた PR では、そのレビュワーの最後の状態が `APPROVED` になっている
 - 人の指摘のうちチェックリストに無かったものが、追記されたか、追記しない判断がユーザーから出ている

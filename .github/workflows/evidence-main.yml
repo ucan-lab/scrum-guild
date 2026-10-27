@@ -1,0 +1,149 @@
+name: evidence-main
+
+# main の e2e のスクリーンショットを、PR の evidence のジョブが比べる変更前の画像として、main 用の R2 のバケットに上げる
+# （docs/development.md の「e2e の画像のコメント」）。画像は中身のハッシュを名前にして main/img/<ハッシュ>.png に置き、
+# 前の main と同じ画像は上げない。どの画面がどの画像かの一覧を main/<SHA>.json と、最新を指す main/latest.json に置く。
+# ci.yml に push を足すと、label と ci-ok が PR の実行だけを見る前提が崩れるので、別のファイルにする
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# 順に1つずつ動かす。取り消さないのは、走っている実行が一覧を書きかけで止まらないようにするため。
+# 待っている実行は新しいものに置き換わる。飛んだコミットの一覧は無く、そのコミットをベースにした PR は main の最新と比べる
+concurrency:
+  group: evidence-main
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  # 人がバケットとシークレットを用意する前は、e2e を回さずに注記を出して成功で終える。
+  # main 用の鍵は Environment の evidence-main（deployment branches を main だけに絞る）のシークレットにあり、
+  # その Environment を付けたジョブでないと有無も読めないので、このジョブにも付ける
+  config:
+    if: github.ref == 'refs/heads/main'
+    environment: evidence-main
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      ready: ${{ steps.config.outputs.ready }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .node-version
+
+      # シークレットは値でなく有無だけを渡す
+      - id: config
+        name: 上げる先の設定を確かめる
+        env:
+          EVIDENCE_MAIN_R2_ACCESS_KEY_ID: ${{ secrets.EVIDENCE_MAIN_R2_ACCESS_KEY_ID != '' }}
+          EVIDENCE_MAIN_R2_SECRET_ACCESS_KEY: ${{ secrets.EVIDENCE_MAIN_R2_SECRET_ACCESS_KEY != '' }}
+          EVIDENCE_R2_ENDPOINT: ${{ vars.EVIDENCE_R2_ENDPOINT }}
+          EVIDENCE_MAIN_BUCKET: ${{ vars.EVIDENCE_MAIN_BUCKET }}
+          EVIDENCE_MAIN_PUBLIC_URL: ${{ vars.EVIDENCE_MAIN_PUBLIC_URL }}
+        run: node scripts/evidence-config.ts main
+
+  # ci.yml の e2e と同じ手順と同じシャードで撮る（シャードの数は画像に効かない。画面の名前はテストで決まる）。
+  # 鍵を使わないので Environment を付けない
+  e2e:
+    needs: config
+    if: needs.config.outputs.ready == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3]
+    env:
+      APP_VERSION: ${{ github.sha }}
+      # PR の e2e と同じく、比べる画像を撮る（e2e/fixtures.ts）
+      E2E_EVIDENCE: '1'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+      - uses: ./.github/actions/playwright
+      - run: pnpm e2e --shard=${{ matrix.shard }}/${{ strategy.job-total }}
+      # 中身の並びは ci.yml の e2e の成果物と同じにする（scripts/evidence.ts は <成果物>/test-results/ の下を読む）。
+      # 次の upload のジョブが読むだけなので短く残す。落ちたシャードがあれば upload は動かない
+      - if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: e2e-main-${{ matrix.shard }}
+          overwrite: true
+          path: |
+            test-results/
+            playwright-report/
+          retention-days: 3
+
+  upload:
+    needs: e2e
+    environment: evidence-main
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .node-version
+
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: e2e-main-*
+          path: ${{ runner.temp }}/e2e
+
+      # 比べる対象から外す画面（scripts/evidence.ts の EXCLUDED_SCREENS）は、一覧にも上げる画像にも入れない
+      - name: 画像の一覧を作る
+        env:
+          RESULTS_DIR: ${{ runner.temp }}/e2e
+          OUT_DIR: ${{ runner.temp }}/evidence
+          EVIDENCE_MAIN_PUBLIC_URL: ${{ vars.EVIDENCE_MAIN_PUBLIC_URL }}
+          SHA: ${{ github.sha }}
+        run: node scripts/evidence-main.ts
+
+      # 画像を先に上げ、一覧は後に置く。一覧が指す画像は必ずバケットにある。
+      # main/latest.json は、このコミットが今も main の先頭のときだけ書き換える（古いコミットの手動の実行で最新を戻さないため）。
+      # R2 は AWS CLI の既定のチェックサムの付け方を受け付けないので、要るときだけにする。
+      # 送る先の名前が決まった形（scripts/evidence.ts の UPLOAD_KEY。main 用は main/img/<ハッシュ>.png）でなければ送らずに止める
+      - name: R2 に上げる
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.EVIDENCE_MAIN_R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.EVIDENCE_MAIN_R2_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto
+          AWS_REQUEST_CHECKSUM_CALCULATION: when_required
+          AWS_RESPONSE_CHECKSUM_VALIDATION: when_required
+          ENDPOINT: ${{ vars.EVIDENCE_R2_ENDPOINT }}
+          BUCKET: ${{ vars.EVIDENCE_MAIN_BUCKET }}
+          OUT_DIR: ${{ runner.temp }}/evidence
+          SHA: ${{ github.sha }}
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        # エンドポイントは https://<アカウント ID>.r2.cloudflarestorage.com。末尾に / があっても動くよう外す
+        run: |
+          ENDPOINT=${ENDPOINT%/}
+          while IFS=$'\t' read -r file key; do
+            if [[ ! "$key" =~ ^main/img/[0-9a-f]{64}\.png$ ]]; then
+              echo "送る先の名前の形が違う: $key" >&2
+              exit 1
+            fi
+            aws s3 cp "$file" "s3://$BUCKET/$key" --endpoint-url "$ENDPOINT" \
+              --content-type image/png --cache-control 'public, max-age=31536000, immutable' --only-show-errors
+          done < "$OUT_DIR/uploads.tsv"
+          json=(--endpoint-url "$ENDPOINT" --content-type application/json --cache-control no-cache --only-show-errors)
+          aws s3 cp "$OUT_DIR/manifest.json" "s3://$BUCKET/main/$SHA.json" "${json[@]}"
+          head=$(gh api "repos/$REPO/commits/main" --jq .sha)
+          if [ "$head" = "$SHA" ]; then
+            aws s3 cp "$OUT_DIR/manifest.json" "s3://$BUCKET/main/latest.json" "${json[@]}"
+          else
+            echo "::notice title=main/latest.json を書き換えない::main の先頭が $head に進んでいる"
+          fi
