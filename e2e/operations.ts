@@ -12,7 +12,8 @@ import {
 
 // e2e で操作の応答を差し替えるヘルパー（docs/development.md の「e2e の書き方」）。page.route を直に書かず、ここを通す。
 // URL、入力の型、出力の型を操作の定義から導き、届いた入力と返す出力を実行時にも定義のスキーマで確かめる。
-// どれも、張った route だけを外す関数を返す。テストの後の後始末は e2e/fixtures.ts がする
+// どれも、張った route だけを外す関数を返す。テストの後の後始末は e2e/fixtures.ts がする。
+// fixture が効くのはテストの引数の page だけで、自分で newPage した page では、テストの終わりに自分で unrouteAll を待つ
 
 // 組織の中の操作は slug を要る。組織の外の操作には渡せない（src/lib/api.ts の CallArguments と同じ作り）
 type ScopeArguments<D extends AnyOperationDefinition> = D extends OutsideOperationDefinition
@@ -48,15 +49,25 @@ async function rejectCall(route: Route, message: string): Promise<void> {
   await route.fulfill({ status: 500, json: body });
 }
 
+// 失敗をもう付けた throw。route の処理の catch で、二重に付けない
+class ReportedError extends Error {}
+
+// route.fetch() そのものの失敗（テストの終わり、通信の失敗）。失敗を付けずに元のまま投げ直す
+class FetchError extends Error {
+  constructor(cause: unknown) {
+    super(String(cause), { cause });
+  }
+}
+
 // スキーマに通す前の値にあって、通した後の値に無い項目の path。undefined の項目は JSON に出ないので数えない
-function droppedPaths(given: unknown, parsed: unknown, path: readonly string[] = []): string[] {
+export function droppedPaths(given: unknown, parsed: unknown, path: readonly string[] = []): string[] {
   if (Array.isArray(given) && Array.isArray(parsed)) {
     return given.flatMap((item: unknown, index) => droppedPaths(item, parsed[index], [...path, String(index)]));
   }
   if (!isPlainObject(given) || !isPlainObject(parsed)) return [];
   return Object.entries(given).flatMap(([key, value]) => {
     if (value === undefined) return [];
-    if (!(key in parsed)) return [[...path, key].join('.')];
+    if (!Object.hasOwn(parsed, key)) return [[...path, key].join('.')];
     return droppedPaths(value, parsed[key], [...path, key]);
   });
 }
@@ -87,7 +98,19 @@ export async function routeOperation<D extends AnyOperationDefinition>(
   const url = `**${operationPath(definition, slug)}`;
   const name = definition.name;
   const routeHandler = async (route: Route) => {
-    const body: unknown = route.request().postDataJSON();
+    // 応答を返したか。処理が途中で throw したとき、まだ返していなければ失敗を付けて 500 を返す
+    let answered = false;
+    const answer = <T>(promise: Promise<T>): Promise<T> => {
+      answered = true;
+      return promise;
+    };
+    let body: unknown;
+    try {
+      body = route.request().postDataJSON();
+    } catch {
+      await rejectCall(route, `操作 ${name} の入力が JSON でない`);
+      return;
+    }
     const input = definition.input.safeParse(body);
     if (!input.success) {
       await rejectCall(route, `操作 ${name} の入力が定義のスキーマに合わない\n${z.prettifyError(input.error)}`);
@@ -96,16 +119,22 @@ export async function routeOperation<D extends AnyOperationDefinition>(
     const call: OperationCall<D> = {
       input: body as InputOf<D>,
       route,
-      passThrough: () => route.continue(),
+      passThrough: () => answer(route.continue()),
       fetch: async () => {
-        const response = await route.fetch();
-        const json: unknown = await response.json().catch(() => null);
+        const response = await route.fetch().catch((error: unknown) => {
+          throw new FetchError(error);
+        });
+        const json: unknown = await response.json().catch(() => undefined);
+        if (json === undefined && response.ok()) {
+          // 転送が効かず index.html が返ったときなど。書き換えの続きは throw で止め、下の catch が失敗を付ける
+          throw new Error(`操作 ${name} の本物の応答が JSON でない（${response.status()}）`);
+        }
         if (!response.ok()) {
           // 失敗の応答はそのまま画面へ渡し、書き換えの続きは throw で止める
           const message = `操作 ${name} の本物の応答が失敗した（${response.status()}）: ${JSON.stringify(json)}`;
           expect.soft(false, message).toBe(true);
-          await route.fulfill({ response });
-          throw new Error(message);
+          await answer(route.fulfill({ response }));
+          throw new ReportedError(message);
         }
         // サーバーが出力のスキーマで検証した値。出力のスキーマに変換は無いので、そのまま出力の型で渡す
         return json as OutputOf<D>;
@@ -113,26 +142,37 @@ export async function routeOperation<D extends AnyOperationDefinition>(
       fulfill: async (output) => {
         const parsed = definition.output.safeParse(output);
         if (!parsed.success) {
-          await rejectCall(route, `操作 ${name} の出力が定義のスキーマに合わない\n${z.prettifyError(parsed.error)}`);
+          await answer(
+            rejectCall(route, `操作 ${name} の出力が定義のスキーマに合わない\n${z.prettifyError(parsed.error)}`),
+          );
           return;
         }
         // z.object は定義に無い項目を黙って落とす。書き換えで名前を間違えた項目も、型の検査を抜けることがあるので止める
         const unknown = droppedPaths(output, parsed.data);
         if (unknown.length > 0) {
-          await rejectCall(route, `操作 ${name} の出力に定義のスキーマに無い項目がある: ${unknown.join(', ')}`);
+          await answer(rejectCall(route, `操作 ${name} の出力に定義のスキーマに無い項目がある: ${unknown.join(', ')}`));
           return;
         }
         // サーバーと同じく、スキーマに通した値を返す
-        await route.fulfill({ status: 200, json: parsed.data });
+        await answer(route.fulfill({ status: 200, json: parsed.data }));
       },
       fail: async (status, code, options = {}) => {
         const error: ErrorBody['error'] = { code, message: options.message ?? code };
         if ('details' in options) error.details = options.details;
-        await route.fulfill({ status, json: { error } satisfies ErrorBody });
+        await answer(route.fulfill({ status, json: { error } satisfies ErrorBody }));
       },
-      abort: () => route.abort(),
+      abort: () => answer(route.abort()),
     };
-    await handler(call);
+    try {
+      await handler(call);
+    } catch (error) {
+      if (error instanceof ReportedError) return;
+      // テストの後の「route.fetch: Test ended」は、元の失敗のまま投げ、fixture の unrouteAll（ignoreErrors）に捨てさせる
+      if (error instanceof FetchError) throw error.cause;
+      const message = `操作 ${name} の route の処理が失敗した: ${String(error)}`;
+      if (answered) expect.soft(false, message).toBe(true);
+      else await rejectCall(route, message);
+    }
   };
   await page.route(url, routeHandler);
   return () => page.unroute(url, routeHandler);
