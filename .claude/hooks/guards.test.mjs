@@ -2637,6 +2637,328 @@ describe('bash-rules: wrangler の設定へのコピーの宛先', () => {
   });
 });
 
+// 作業場所が分からない（null）か、根が見つからない（/repo）ときの判定。どちらでも同じに見る
+const literally = (command) => [null, '/repo'].map((cwd) => judgeBash(command, { cwd, branchOf: () => 'x' })?.[0] ?? 'allow');
+
+describe('bash-rules: 守る先と根の祖先の削除と移動（作業場所を字面で見る）', () => {
+  for (const command of [
+    // 守る先そのもの
+    'rm -rf .claude',
+    'rm -rf migrations',
+    'mv .claude /tmp/x',
+    'rmdir .githooks',
+    'rmdir .claude/hooks',
+    'rmdir migrations',
+    'grm -rf .githooks',
+    'gmv migrations /tmp/x',
+    // . と .. だけからなる語、/、~。末尾の / は外して見る
+    'rm -rf .',
+    'rm -rf ./',
+    'rm -rf .//',
+    'rm -rf ./.',
+    'rm -rf ..',
+    'rm -rf ../',
+    'rm -rf ./..',
+    'rm -rf ../..',
+    'rm -rf ../../',
+    'rm -rf /',
+    'rm -rf ~',
+    'rm -rf ~/',
+    'rm -rf src .',
+    'rmdir ..',
+    'rmdir .',
+    // 引用符とエスケープ、フラグの並べ方
+    "rm -rf '.'",
+    'rm -rf "."',
+    'rm -rf \\.',
+    'rm -r -f -- .',
+    'rm -fr ..',
+    'rm --recursive --force .',
+    // 前置きと g の付いた名前
+    'grm -rf .',
+    'command rm -rf .',
+    'sudo rm -rf .',
+    'env rm -rf .',
+    'nice rm -rf ..',
+    // 移動の元。-t があれば位置引数の全部が元
+    'mv . /tmp/x',
+    'mv .. /tmp/x',
+    'mv -t /tmp .',
+    'mv -t /tmp x .',
+    'mv --target-directory=/tmp ..',
+    'gmv . /tmp/x',
+    // リダイレクト、シェルへの渡し方、cd と pushd の後
+    'rm -rf . 2>/dev/null',
+    'rm -rf . > /dev/null 2>&1',
+    "bash -c 'rm -rf .'",
+    "sh -c 'rm -rf .'",
+    "bash <<< 'rm -rf .'",
+    "bash <<'EOF'\nrm -rf .\nEOF",
+    "eval 'rm -rf .'",
+    'cd .. && rm -rf ..',
+    'cd src && rm -rf ..',
+    'pushd src && rm -rf ..',
+    'true; rm -rf .',
+  ]) {
+    test(`${command} は確認を挟む`, () => assert.deepEqual(literally(command), ['ask', 'ask'], command));
+  }
+
+  for (const command of [
+    'rm -rf worktrees/x',
+    'rm -rf node_modules',
+    'rm -rf build',
+    'rm -rf ./build',
+    'rm -rf .svelte-kit',
+    'rm -rf src',
+    'rm -rf ../x',
+    'rm -rf ~/tmp/x',
+    'rm -rf /tmp/x',
+    'rm -f x.txt',
+    'rmdir build',
+    'mv build /tmp/x',
+    // 宛先の . は消すか動かす元ではない
+    'mv /tmp/x .',
+    'mv /tmp/x ..',
+    'mv -t . /tmp/x',
+    'cp -r . /tmp/x',
+    'ls -la .',
+  ]) {
+    test(`${command} は通す`, () => assert.deepEqual(literally(command), ['allow', 'allow'], command));
+  }
+});
+
+describe('bash-rules: find の -delete と -exec（作業場所を字面で見る）', () => {
+  for (const command of [
+    'find .claude/hooks -delete',
+    "find migrations -name '*.sql' -delete",
+    'find .githooks -type f -delete',
+    'find . -delete',
+    'find ./ -name x -delete',
+    'find -L . -delete',
+    'find .. -delete',
+    'find src .githooks -name x -delete',
+    // -exec 系は {} を起点に置き換えて掛け直す
+    'find .claude/hooks -type f -exec rm {} \\;',
+    "find .claude/hooks -type f -exec rm {} ';'",
+    'find .githooks -exec sed -i s/a/b/ {} +',
+    'find . -exec rm -rf {} +',
+    'find .. -exec rm -rf {} \\;',
+    'find .claude -execdir rm {} \\;',
+    'find .claude -ok rm {} \\;',
+    'find .githooks -okdir rm {} +',
+    'find migrations -exec mv {} /tmp/x \\;',
+    'find .githooks -exec cp /tmp/x {} \\;',
+    'find src .claude -exec rm {} +',
+    // 語の中の {} も置き換える
+    "find .claude/hooks -name x -exec sh -c 'echo y > {}' \\;",
+    'find .githooks -exec rm {}/pre-commit \\;',
+    // 読み取りの -exec の後ろに書き込みの -exec を続ける
+    'find .claude/hooks -exec grep x {} \\; -exec rm {} \\;',
+    'cd .claude && find hooks -delete',
+    'sudo find .claude -delete',
+    "bash -c 'find . -delete'",
+  ]) {
+    test(`${command} は確認を挟む`, () => assert.deepEqual(literally(command), ['ask', 'ask'], command));
+  }
+
+  for (const command of [
+    'find .claude/hooks -exec grep x {} +',
+    "find .claude/hooks -name '*.mjs' -exec cat {} \\;",
+    'find . -exec grep x {} +',
+    'find . -type f -exec wc -l {} +',
+    "find migrations -name '*.sql' -print",
+    "find . -name '*.log'",
+    'find build -delete',
+    "find src -name '*.tmp' -delete",
+    'find build -exec rm {} +',
+    'find node_modules/.cache -delete',
+  ]) {
+    test(`${command} は通す`, () => assert.deepEqual(literally(command), ['allow', 'allow'], command));
+  }
+});
+
+describe('bash-rules: git clean の -x と -X', () => {
+  for (const command of [
+    'git clean -fdx',
+    'git clean -xdf',
+    'git clean -d -x -f',
+    'git clean -ffdx',
+    'git clean -Xf',
+    'git clean -dX',
+    'git clean -x -f',
+    'git clean -fdx -- src',
+    'git clean -f -e x -x',
+    'git -C sub clean -fdx',
+    'git -c x=y clean -fdx',
+    'cd src && git clean -fdx',
+    "bash -c 'git clean -fdx'",
+  ]) {
+    test(`${command} は確認を挟む`, () => assert.deepEqual(literally(command), ['ask', 'ask'], command));
+  }
+
+  for (const command of [
+    'git clean -fd',
+    'git clean -n -x',
+    'git clean -ndx',
+    'git clean -xn',
+    'git clean --dry-run -fdx',
+    'git clean --dry -fdx',
+    // -e は値を取るので、続く x を -x に数えない
+    'git clean -f -exyz',
+    'git clean -f -e x',
+    "git clean -fd -e '*.log'",
+    // -- の後ろはパス
+    'git clean -f -- -x',
+  ]) {
+    test(`${command} は通す`, () => assert.deepEqual(literally(command), ['allow', 'allow'], command));
+  }
+});
+
+describe('bash-rules: 根と根の祖先の削除と移動（作業場所が分かる）', () => {
+  // 本体の根と、その中の worktrees/x（ワークツリーの根）を実在させる。どちらにも scripts/deploy-production.ts がある
+  const main = realpathSync(mkdtempSync(path.join(os.tmpdir(), 'guard-ancestor-')));
+  const wt = path.join(main, 'worktrees', 'x');
+  for (const root of [main, wt]) {
+    for (const dir of ['scripts', 'src', 'node_modules', 'build', '.claude/hooks', '.githooks', 'migrations']) mkdirSync(path.join(root, dir), { recursive: true });
+    writeFileSync(path.join(root, 'scripts', 'deploy-production.ts'), '');
+  }
+  after(() => rmSync(main, { recursive: true, force: true }));
+  const name = path.basename(main);
+  const parent = path.dirname(main);
+  const from = (cwd, command) => judgeBash(command, { cwd, branchOf: () => 'x' })?.[0] ?? 'allow';
+  // テストの名前に一時ディレクトリの名前を出さない（走らせるたびに変わる）
+  const shown = (command) => command.replaceAll(main, '<根>').replaceAll(name, '<根の名前>');
+
+  for (const command of [
+    'rm -rf .',
+    'rm -rf ./',
+    'rm -rf .//',
+    'rm -rf ./.',
+    "rm -rf '.'",
+    'rm -rf "."',
+    'rm -rf \\.',
+    'rm -r -f -- .',
+    'rm -rf ..',
+    'rm -rf ../..',
+    'rm -rf /',
+    'rm -rf src/..',
+    `rm -rf ${main}`,
+    `rm -rf ${main}/`,
+    `rm -rf ${parent}`,
+    `cd .. && rm -rf ${name}`,
+    'cd .. && rm -rf ..',
+    'pushd src && rm -rf ..',
+    'rm -rf . 2>/dev/null',
+    "bash -c 'rm -rf .'",
+    "sh -c 'rm -rf .'",
+    "bash <<< 'rm -rf .'",
+    "bash <<'EOF'\nrm -rf .\nEOF",
+    "eval 'rm -rf .'",
+    'grm -rf .',
+    'command rm -rf .',
+    'sudo rm -rf .',
+    'env rm -rf .',
+    'mv . /tmp/x',
+    'mv -t /tmp .',
+    'mv src/.. /tmp/x',
+    'gmv . /tmp/x',
+    'rmdir ..',
+    'rmdir .',
+    'find . -delete',
+    'find ./ -name x -delete',
+    'find -L . -delete',
+    'find .. -delete',
+    `find ${main} -delete`,
+    'find . -exec rm -rf {} +',
+    // 根の中の守る先
+    'rm -rf .claude',
+    'rm -rf migrations',
+    'mv .claude /tmp/x',
+    'rmdir .githooks',
+    'find .claude/hooks -delete',
+    "find migrations -name '*.sql' -delete",
+    'find .claude/hooks -type f -exec rm {} \\;',
+    'find .githooks -exec sed -i s/a/b/ {} +',
+    `rm -rf ${main}/.githooks`,
+    'git clean -fdx',
+    'git clean -Xf',
+  ]) {
+    test(`本体の根から ${shown(command)} は確認を挟む`, () => assert.equal(from(main, command), 'ask', command));
+  }
+
+  for (const command of [
+    'rm -rf src',
+    'rm -rf node_modules',
+    'rm -rf build',
+    'rm -rf ./build',
+    'rm -rf worktrees/x',
+    `rm -rf ${main}/src`,
+    `rm -rf ${parent}/guard-other`,
+    'rm -rf /tmp/x',
+    'mv build /tmp/x',
+    'mv /tmp/x .',
+    'cp -r . /tmp/x',
+    'rmdir build',
+    'find build -delete',
+    'find .claude/hooks -exec grep x {} +',
+    "find .claude/hooks -name '*.mjs' -exec cat {} \\;",
+    'find . -type f -exec wc -l {} +',
+    'git clean -fd',
+    'git clean -n -x',
+    'git clean -f -e x',
+  ]) {
+    test(`本体の根から ${shown(command)} は通す`, () => assert.equal(from(main, command), 'allow', command));
+  }
+
+  for (const command of ['rm -rf ..', 'rm -rf ../', 'rm -rf ../..', 'rm -rf ../.', 'find .. -delete', 'mv .. /tmp/x', 'rmdir ..', 'cd .. && rm -rf .', 'pushd .. && rm -rf .']) {
+    test(`根の下の src から ${command} は確認を挟む`, () => assert.equal(from(path.join(main, 'src'), command), 'ask', command));
+  }
+
+  for (const command of ['rm -rf ./', 'rm -rf .', 'rm -rf ../build', 'find . -delete', 'mv . /tmp/x', `rm -rf ${main}/src`]) {
+    test(`根の下の src から ${shown(command)} は通す`, () => assert.equal(from(path.join(main, 'src'), command), 'allow', command));
+  }
+
+  for (const command of [
+    'rm -rf .',
+    'rm -rf ..',
+    // 本体の根
+    'rm -rf ../..',
+    'rm -rf ../../',
+    `rm -rf ${main}`,
+    `rm -rf ${wt}`,
+    'cd ../.. && rm -rf .',
+    'find ../.. -delete',
+    'mv ../.. /tmp/x',
+    "bash -c 'rm -rf ../..'",
+    // ワークツリーの中の守る先は、リンクか本物かを区別しない
+    'rm -rf .claude',
+    'rmdir .githooks',
+    'git clean -fdx',
+  ]) {
+    test(`ワークツリーから ${shown(command)} は確認を挟む`, () => assert.equal(from(wt, command), 'ask', command));
+  }
+
+  for (const command of ['rm -rf src', 'rm -rf node_modules', 'rm -rf build', 'find build -delete', 'git clean -fd']) {
+    test(`ワークツリーから ${command} は通す`, () => assert.equal(from(wt, command), 'allow', command));
+  }
+
+  test('~ で始まる語は、ホームに解決して根と比べる', () => {
+    // os.homedir() は HOME を読むので、根の祖先をホームにする
+    const original = process.env.HOME;
+    process.env.HOME = parent;
+    try {
+      for (const command of ['rm -rf ~', 'rm -rf ~/', `rm -rf ~/${name}`, `rm -rf ~/${name}/`, `mv ~/${name} /tmp/x`, `find ~/${name} -delete`]) {
+        assert.equal(from(main, command), 'ask', command);
+      }
+      for (const command of ['rm -rf ~/guard-other', `rm -rf ~/${name}/src`, `rm -rf ~/${name}/worktrees/x`]) {
+        assert.equal(from(main, command), 'allow', command);
+      }
+    } finally {
+      process.env.HOME = original;
+    }
+  });
+});
+
 describe('bash-rules: 展開の大きい glob', () => {
   const timed = (command) => {
     const started = Date.now();
