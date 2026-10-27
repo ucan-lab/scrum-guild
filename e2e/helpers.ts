@@ -163,7 +163,7 @@ export const TARGET_SIZE = 44;
 // 幅 390px の画面。高さは、よくあるスマホの縦置きの値にする
 export const NARROW_VIEWPORT = { width: 390, height: 844 };
 
-// 見えている押せる要素について、中心から 44px 四方の四隅と辺の中点と中心を document.elementFromPoint で調べ、
+// 見えている押せる要素について、中心と、中心から上下左右と斜めに 21px の点を document.elementFromPoint で調べ、
 // 要素自身か子孫（入力欄は結び付いた label も）に当たることを確かめる。見た目を小さく保ち ::before と ::after で
 // 押せる範囲を広げた部品は、疑似要素に当たると要素自身が返るので通る。
 // 数えないもの: inert の中（引き出しの後ろの画面）、見えないもの（checkVisibility が偽、幅か高さが 0）、文中のリンク
@@ -374,8 +374,8 @@ async function measureLayout(
           scrolled.set(ancestor, [ancestor.scrollLeft, ancestor.scrollTop]);
         }
       };
-      // 四隅は、44px の円の上（中心から斜めに 22px）の点にする。角を丸めた 44px のボタンは、箱の角の点では丸みの外に出て
-      // 外れるため。辺の中点は箱の辺の上で調べるので、縦と横に 44px あることはそちらで確かめる
+      // 四隅は、44px の円の上（中心から斜めに reach）の点にする。角を丸めた 44px のボタンは、箱の角の点では丸みの外に出て
+      // 外れるため。縦と横の大きさは、上下左右の点で確かめる（reach が 21px なので、43px 前後の箱は通る）
       const d = Math.SQRT1_2;
       const offsets: [string, number, number][] = [
         ['中心', 0, 0],
