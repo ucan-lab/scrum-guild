@@ -909,6 +909,8 @@ dialog.dialog::backdrop { background: none; }
   .drawer .btn.is-sm::after, .drawer .link-btn::after, .drawer .edit-trigger::after, .drawer .tab::after {
     content: ""; position: absolute; left: 50%; top: 50%; width: max(100%, 44px); height: max(100%, 44px); transform: translate(-50%, -50%);
   }
+  /* コメントの見出しの「編集」「削除」は、広げた分（上下に約 9px）が本文の1行目のリンクに重ならないよう、見出しの下を空ける */
+  .comment-head:has(.comment-actions) { margin-bottom: var(--space-3); }
 }
 .choice-list { display: grid; gap: var(--space-2); }
 .choice { display: flex; gap: var(--space-3); align-items: flex-start; padding: var(--space-3) var(--space-4); border: 1px solid var(--color-line); border-radius: var(--radius-1); background: var(--color-surface); cursor: pointer; }
