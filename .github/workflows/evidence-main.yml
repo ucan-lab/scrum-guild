@@ -113,8 +113,12 @@ jobs:
 
       # 画像を先に上げ、一覧は後に置く。一覧が指す画像は必ずバケットにある。
       # main/latest.json は、このコミットが今も main の先頭のときだけ書き換える（古いコミットの手動の実行で最新を戻さないため）。
+      # 画像は、scripts/evidence-main.ts が送る先の名前どおりに UPLOAD_DIR へ並べ、aws s3 cp --recursive の1回で送る
+      # （AWS CLI が中で並べて送る）。上げる画像が無ければ画像は送らず、一覧は置く。
       # R2 は AWS CLI の既定のチェックサムの付け方を受け付けないので、要るときだけにする。
-      # 送る先の名前が決まった形（scripts/evidence.ts の UPLOAD_KEY。main 用は main/img/<ハッシュ>.png）でなければ送らずに止める
+      # UPLOAD_DIR に普通のファイルとディレクトリのほか（シンボリックリンクなど）があるか、ファイルの名前が決まった形
+      # （scripts/evidence.ts の UPLOAD_KEY。main 用は main/img/<ハッシュ>.png）でなければ送らずに止める。
+      # 名前は1行ずつ確かめるので、改行を含む名前は行が割れて形の検査で落ちる
       - name: R2 に上げる
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.EVIDENCE_MAIN_R2_ACCESS_KEY_ID }}
@@ -125,20 +129,36 @@ jobs:
           ENDPOINT: ${{ vars.EVIDENCE_R2_ENDPOINT }}
           BUCKET: ${{ vars.EVIDENCE_MAIN_BUCKET }}
           OUT_DIR: ${{ runner.temp }}/evidence
+          UPLOAD_DIR: ${{ runner.temp }}/evidence/upload
           SHA: ${{ github.sha }}
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
         # エンドポイントは https://<アカウント ID>.r2.cloudflarestorage.com。末尾に / があっても動くよう外す
         run: |
+          set -euo pipefail
           ENDPOINT=${ENDPOINT%/}
-          while IFS=$'\t' read -r file key; do
+          other=$(find "$UPLOAD_DIR" -mindepth 1 ! -type f ! -type d -printf '%P\n')
+          if [ -n "$other" ]; then
+            echo "普通のファイルとディレクトリのほかがある: $other" >&2
+            exit 1
+          fi
+          keys=$(mktemp)
+          find "$UPLOAD_DIR" -type f -printf '%P\n' > "$keys"
+          count=0
+          while IFS= read -r key; do
             if [[ ! "$key" =~ ^main/img/[0-9a-f]{64}\.png$ ]]; then
               echo "送る先の名前の形が違う: $key" >&2
               exit 1
             fi
-            aws s3 cp "$file" "s3://$BUCKET/$key" --endpoint-url "$ENDPOINT" \
+            count=$((count + 1))
+          done < "$keys"
+          if [ "$count" -eq 0 ]; then
+            echo "上げる画像が無いので、画像は送らない"
+          else
+            aws s3 cp "$UPLOAD_DIR" "s3://$BUCKET/" --recursive --endpoint-url "$ENDPOINT" \
               --content-type image/png --cache-control 'public, max-age=31536000, immutable' --only-show-errors
-          done < "$OUT_DIR/uploads.tsv"
+            echo "画像を $count 枚送った"
+          fi
           json=(--endpoint-url "$ENDPOINT" --content-type application/json --cache-control no-cache --only-show-errors)
           aws s3 cp "$OUT_DIR/manifest.json" "s3://$BUCKET/main/$SHA.json" "${json[@]}"
           head=$(gh api "repos/$REPO/commits/main" --jq .sha)

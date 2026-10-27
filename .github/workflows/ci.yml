@@ -194,9 +194,13 @@ jobs:
         run: node scripts/evidence-pr.ts
 
       # PR にしか無い画像を、ランナーの AWS CLI で PR 用のバケット（R2 の S3 互換の API）に送る。
+      # scripts/evidence-pr.ts が上げる画像を送る先の名前どおりに UPLOAD_DIR へ並べ、aws s3 cp --recursive の1回で送る
+      # （AWS CLI が中で並べて送る）。画像が無ければ送らない。
       # R2 は AWS CLI の既定のチェックサムの付け方を受け付けないので、要るときだけにする。
       # 画像は中身のハッシュを名前にするので、同じ名前は同じ中身で、長くキャッシュしてよい。
-      # 送る先の名前が決まった形（scripts/evidence.ts の UPLOAD_KEY。PR 用は img/<ハッシュ>.png）でなければ送らずに止める
+      # UPLOAD_DIR に普通のファイルとディレクトリのほか（シンボリックリンクなど）があるか、ファイルの名前が決まった形
+      # （scripts/evidence.ts の UPLOAD_KEY。PR 用は img/<ハッシュ>.png）でなければ送らずに止める。
+      # 名前は1行ずつ確かめるので、改行を含む名前は行が割れて形の検査で落ちる
       - if: steps.config.outputs.ready == 'true'
         name: 画像を R2 に上げる
         env:
@@ -207,18 +211,33 @@ jobs:
           AWS_RESPONSE_CHECKSUM_VALIDATION: when_required
           ENDPOINT: ${{ vars.EVIDENCE_R2_ENDPOINT }}
           BUCKET: ${{ vars.EVIDENCE_PR_BUCKET }}
-          UPLOADS: ${{ runner.temp }}/evidence/uploads.tsv
+          UPLOAD_DIR: ${{ runner.temp }}/evidence/upload
         # エンドポイントは https://<アカウント ID>.r2.cloudflarestorage.com。末尾に / があっても動くよう外す
         run: |
+          set -euo pipefail
           ENDPOINT=${ENDPOINT%/}
-          while IFS=$'\t' read -r file key; do
+          other=$(find "$UPLOAD_DIR" -mindepth 1 ! -type f ! -type d -printf '%P\n')
+          if [ -n "$other" ]; then
+            echo "普通のファイルとディレクトリのほかがある: $other" >&2
+            exit 1
+          fi
+          keys=$(mktemp)
+          find "$UPLOAD_DIR" -type f -printf '%P\n' > "$keys"
+          count=0
+          while IFS= read -r key; do
             if [[ ! "$key" =~ ^img/[0-9a-f]{64}\.png$ ]]; then
               echo "送る先の名前の形が違う: $key" >&2
               exit 1
             fi
-            aws s3 cp "$file" "s3://$BUCKET/$key" --endpoint-url "$ENDPOINT" \
-              --content-type image/png --cache-control 'public, max-age=31536000, immutable' --only-show-errors
-          done < "$UPLOADS"
+            count=$((count + 1))
+          done < "$keys"
+          if [ "$count" -eq 0 ]; then
+            echo "上げる画像が無いので送らない"
+            exit 0
+          fi
+          aws s3 cp "$UPLOAD_DIR" "s3://$BUCKET/" --recursive --endpoint-url "$ENDPOINT" \
+            --content-type image/png --cache-control 'public, max-age=31536000, immutable' --only-show-errors
+          echo "画像を $count 枚送った"
 
       # 目印（scripts/evidence.ts の COMMENT_MARKER と同じ文字列）を含む github-actions[bot] のコメントを探して書き換える。
       # 無ければ、変わった画面、新しい画面、無くなった画面のどれかがあるか、比べられなかったときだけ付ける
