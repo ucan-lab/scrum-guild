@@ -16,10 +16,14 @@ export const init: ClientInit = () => {
 // 送るのは、コードが投げた例外（unknown）だけ。error() で投げた例外（app）と、SvelteKit が作る失敗（framework。見つからない
 // 経路の 404 など）は、画面の不具合ではないので送らない。経路は、失敗した移動の先の route.id（page はまだ移る前を指しうる）。
 // 最初の描画の失敗では、SvelteKit が渡す event の経路が空のことがあるので、そのときは page の route.id を使う。
-// この hook は投げてはいけないので、どこで失敗しても握りつぶす
+// この hook は投げてはいけないので、どこで失敗しても握りつぶす。
+// handleError を定義すると SvelteKit の既定（console.error(error)）が動かないので、コードが投げた例外はコンソールにも残す
+// （DevTools と pnpm dev で原因を追うため）。SvelteKit の 404 などは、既定と同じく出さない（e2e の watchViolations が数える）
 export const handleError: HandleClientError = ({ error, kind, event }) => {
+  if (kind !== 'unknown') return;
+  console.error(error);
   try {
-    if (kind === 'unknown') reporter?.onCaughtError(error, event?.route?.id ?? page.route.id);
+    reporter?.onCaughtError(error, event?.route?.id ?? page.route.id);
   } catch {
     // 送る処理の例外は握りつぶす
   }

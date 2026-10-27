@@ -44,9 +44,15 @@ test('load の失敗（SvelteKit が受け、handleError に渡す例外）も�
   // TypeError を起こす
   await failOperation(page, organizationInfo, { slug: 'e2e-client-error' }, 404, 'not_found');
   await routeOperation(page, myOrganizations, (call) => call.route.fulfill({ status: 200, json: {} }));
+  // handleError を定義しても、SvelteKit の既定と同じく、例外をコンソールに残す（DevTools と pnpm dev で原因を追うため）
+  const consoleErrors: string[] = [];
+  page.on('console', (message) => {
+    if (message.type() === 'error') consoleErrors.push(message.text());
+  });
   const waiting = page.waitForRequest(isReport);
   await page.goto('/e2e-client-error');
   const body = await captured(page, waiting);
   expect(body).toMatchObject({ kind: 'error', name: 'TypeError', route: '/[slug]' });
   expect(JSON.stringify(body)).not.toContain('e2e-client-error');
+  expect(consoleErrors.some((text) => text.includes('TypeError'))).toBe(true);
 });
