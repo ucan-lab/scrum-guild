@@ -347,7 +347,7 @@ gh api "repos/{owner}/{repo}/pulls/<number>" --jq '{merged, base: .base.ref, hea
    - その PR のワークツリー（`worktrees/<head>`）に入って `sync-base` を呼ぶ。ワークツリーが無いか、未コミットの変更があれば、追従させずに PR の番号と理由を報告する（別のセッションが作業している恐れがあるため）
    - レビューの途中か人のマージ待ちの PR は、取り込んだことを PR にコメントで残す（`docs/development.md` の「並行して作業するときの決まり」）。新しい head では CI が走り直すので、人がマージする PR ならそのことも伝える
    - コンフリクトの意図が読めずに止まったら、その PR の番号と理由を報告する
-4. PR が指す Issue（ブランチ名の `<番号>-` の先頭か、本文の `Refs`。子を持つストーリーとエピックは除く）に `status:accepting` が付き、開いたままであることを確かめる（`gh api "repos/{owner}/{repo}/issues/<番号>" --jq '{state, labels: [.labels[].name]}'`）。付けるのはマージで動く `accepting.yml` で、数十秒かかるので、付いていなければ間を空けて取り直す。それでも付かなければ、ワークフローの実行（`gh api "repos/{owner}/{repo}/actions/workflows/accepting.yml/runs?per_page=5"`）を見て報告する。マージでは Issue は閉じず、人が受け入れで閉じる。セッションは閉じない（`docs/development.md` の「Issue の運用」）
+4. PR が指す Issue（ブランチ名の `<番号>-` の先頭か、本文の `Refs`。子を持つストーリーとエピックは除く）に `status:accepting` が付き、開いたままであることを確かめる（`gh api "repos/{owner}/{repo}/issues/<番号>" --jq '{state, labels: [.labels[].name]}'`）。付けるのはマージで動く `accepting.yml` で、数十秒かかるので、付いていなければ30秒おきに5回まで取り直す。それでも付かなければ、ワークフローの実行（`gh api "repos/{owner}/{repo}/actions/workflows/accepting.yml/runs?per_page=5"`）を見て報告する。マージでは Issue は閉じず、人が受け入れで閉じる。セッションは閉じない（`docs/development.md` の「Issue の運用」）
 5. Artifact のツールがある手元のセッションなら、Skill ツールで `progress-chart` を起動して進捗の図を直す。無ければ飛ばし、飛ばしたことを報告する
 
 ## 出力
