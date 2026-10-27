@@ -658,7 +658,11 @@ describe('送る段のシェル', () => {
       encoding: 'utf8',
     });
     const calls = readFileSync(join(root, 'calls'), 'utf8').split('\n').filter(Boolean);
-    return { status: result.status, images: calls.filter((call) => call.includes('--content-type image/png')) };
+    return {
+      status: result.status,
+      stderr: result.stderr,
+      images: calls.filter((call) => call.includes('--content-type image/png')),
+    };
   };
 
   for (const [path, name, prefix] of [
@@ -725,6 +729,15 @@ describe('送る段のシェル', () => {
         assert.deepEqual(images, []);
       });
     }
+
+    test(`${path}: 弾いた名前は、ワークフローのコマンドに読まれない形で出す`, () => {
+      const { status, stderr } = withUpload((upload) => {
+        writeFileSync(join(upload, prefix, `x\n::error::forged.png`), 'x');
+      });
+      assert.notEqual(status, 0);
+      assert.match(stderr, /送る先の名前の形が違う/);
+      assert.doesNotMatch(stderr, /^::/m);
+    });
   }
 });
 

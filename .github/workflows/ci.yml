@@ -219,7 +219,7 @@ jobs:
           ENDPOINT=${ENDPOINT%/}
           other=$(find "$UPLOAD_DIR" -mindepth 1 ! -type f ! -type d)
           if [ -n "$other" ]; then
-            echo "普通のファイルとディレクトリのほかがある: $other" >&2
+            printf '普通のファイルとディレクトリのほかがある: %q\n' "$other" >&2
             exit 1
           fi
           keys=$(mktemp)
@@ -228,7 +228,7 @@ jobs:
           while IFS= read -r -d '' path; do
             key=${path#"$UPLOAD_DIR"/}
             if [[ ! "$key" =~ ^img/[0-9a-f]{64}\.png$ ]]; then
-              echo "送る先の名前の形が違う: $key" >&2
+              printf '送る先の名前の形が違う: %q\n' "$key" >&2
               exit 1
             fi
             count=$((count + 1))
