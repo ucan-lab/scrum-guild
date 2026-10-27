@@ -907,7 +907,6 @@ dialog.dialog::backdrop { background: none; }
   .btn:not(.is-sm), .input, .select { min-height: 44px; }
   .segmented span { display: flex; align-items: center; justify-content: center; min-width: 44px; min-height: 44px; }
   .table .btn.is-sm { min-width: 44px; min-height: 44px; }
-  .table .select { min-height: 44px; }
   .done-btn { position: relative; }
   .done-btn::after { content: ""; position: absolute; left: 50%; top: 50%; width: 44px; height: 44px; transform: translate(-50%, -50%); }
   /* 見た目は変えず、押せる範囲だけを 44px 四方以上に広げる部品。木の行のボタン（開閉の caret、題、＋タスク）、操作の並びと
