@@ -96,7 +96,10 @@ function isProjectOnMain(root, dir) {
   }
 }
 
-// origin/main か main にあれば true、どちらの ref も引けなければ undefined
+// origin/main か main にあれば true、どちらの ref も引けなければ undefined。
+// 大文字小文字を崩した名前（Migrations/0001_x.sql）は、macOS では main にあるファイルを指すので、同じ名前を小文字で比べても探す。
+// git ls-tree のパスは大文字小文字を区別するので、根から migrations の名前のディレクトリを探し、その下を並べて比べる。
+// 比べられなければ undefined（確認を挟む）
 function existsOnMain(root, rel) {
   const refs = ['origin/main', 'main'].filter((ref) => {
     try {
@@ -107,15 +110,31 @@ function existsOnMain(root, rel) {
     }
   });
   if (refs.length === 0) return undefined;
-  return refs.some((ref) => {
+  const folded = rel.toLowerCase();
+  const directory = folded.split('/')[0];
+  let unknown = false;
+  for (const ref of refs) {
     try {
       git(root, ['cat-file', '-e', `${ref}:${rel}`]);
       return true;
     } catch {
-      return false;
+      // 同じ名前が無いだけなら、下の大文字小文字を崩した照合に進む
     }
-  });
+    try {
+      const directories = git(root, ['ls-tree', '--name-only', ref]).split('\n').filter((name) => name.toLowerCase() === directory);
+      for (const name of directories) {
+        const files = git(root, ['ls-tree', '-r', '--name-only', ref, '--', `${name}/`]).split('\n');
+        if (files.some((file) => file.toLowerCase() === folded)) return true;
+      }
+    } catch {
+      unknown = true;
+    }
+  }
+  return unknown ? undefined : false;
 }
+
+// 守る先は大文字小文字を区別せずに見る（file-rules.mjs と同じ）
+const startsWithFolded = (rel, prefix) => rel.toLowerCase().startsWith(prefix);
 
 try {
   const { judgeFile } = await import('./file-rules.mjs');
@@ -127,9 +146,9 @@ try {
     const verdict = judgeFile({
       rel,
       onMain: isProjectOnMain(root, dir),
-      inWorktree: (rel.startsWith('.claude/hooks/') || rel.startsWith('.githooks/')) && isOtherWorktree(root, dir),
+      inWorktree: (startsWithFolded(rel, '.claude/hooks/') || startsWithFolded(rel, '.githooks/')) && isOtherWorktree(root, dir),
       contents: writtenContents(input.tool_name, input.tool_input),
-      shippedOnMain: rel.startsWith('migrations/') ? existsOnMain(root, rel) : false,
+      shippedOnMain: startsWithFolded(rel, 'migrations/') ? existsOnMain(root, rel) : false,
     });
     if (verdict) {
       const [decision, reason] = verdict;

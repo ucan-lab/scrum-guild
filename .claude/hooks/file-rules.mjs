@@ -9,6 +9,8 @@ import path from 'node:path';
 // 一番重い判定を [決定, 理由] で返す。止めるものが無ければ null
 export function judgeFile({ rel, contents, shippedOnMain, inWorktree = false, onMain = false }) {
   const name = path.basename(rel);
+  // 守る先は大文字小文字を区別しない。macOS の APFS では .Claude/Settings.json も本物の設定を指す
+  const folded = rel.toLowerCase();
 
   // 文書も含めて、変更はすべて作業ブランチで作り PR を通す。main の作業コピーは読むだけにする
   if (onMain) {
@@ -16,7 +18,7 @@ export function judgeFile({ rel, contents, shippedOnMain, inWorktree = false, on
   }
 
   // 設定は disableAllHooks でフックごと切れるので、どこでも確かめる
-  if (/^\.claude\/settings[^/]*\.json$/.test(rel)) {
+  if (/^\.claude\/settings[^/]*\.json$/.test(folded)) {
     return ['ask', '守る仕組み（Claude の設定）の変更は人が確かめる'];
   }
   // wrangler は -c が無いとき、このファイルがあれば書かれた別の設定へ転送する。ignore されていて、remote の binding を持つ設定へ向けられる
@@ -25,13 +27,13 @@ export function judgeFile({ rel, contents, shippedOnMain, inWorktree = false, on
     return ['ask', 'wrangler の設定の転送先（.wrangler/deploy/config.json）の書き換えは人が確かめる。remote の binding を持つ設定へ向けると wrangler dev が本番に届く'];
   }
   // セッションが使うのは $CLAUDE_PROJECT_DIR のフック。別のワークツリーでの書き換えは PR で人が読むまで効かない
-  if ((rel.startsWith('.claude/hooks/') || rel.startsWith('.githooks/')) && !inWorktree) {
+  if ((folded.startsWith('.claude/hooks/') || folded.startsWith('.githooks/')) && !inWorktree) {
     return ['ask', '守る仕組み（フック）の変更は人が確かめる。ワークツリーで書き換えて PR を通す'];
   }
-  if (rel.startsWith('migrations/') && shippedOnMain) {
+  if (folded.startsWith('migrations/') && shippedOnMain) {
     return ['deny', 'マイグレーションは足すだけにし、main にあるファイルを書き換えない。直すときは新しい番号のファイルを足す'];
   }
-  if (rel.startsWith('migrations/') && shippedOnMain === undefined) {
+  if (folded.startsWith('migrations/') && shippedOnMain === undefined) {
     return ['ask', 'main を引けず、このマイグレーションが既に main にあるかを判定できない'];
   }
   if (/^\+(page|layout)\.server\.[jt]s$|^\+server\.[jt]s$|^hooks\.server\.[jt]s$/.test(name)) {

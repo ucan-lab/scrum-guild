@@ -1,7 +1,8 @@
 // Bash の判定。本番に触る操作、WORKERS_CI の設定、main の上のコミットと main への push、--force-with-lease 以外の force push、
 // シークレット（.dev.vars と .env）の読み取りと書き込み、gh pr merge を通さないマージを止め、
 // gh pr merge、依存の変更、マイグレーションの作成、判定しきれない push と場所を判定できないデプロイのスクリプト、git のフックを外す --no-verify、
-// 道具の名前が展開で決まるコマンド、env -S、読むだけの道具以外の xargs、wrangler の設定の書き換えと wrangler dev の -c では人の確認を挟む（docs/development.md の「Claude の設定とフック」）。
+// 道具の名前が展開で決まるコマンド、env -S、読むだけの道具以外の xargs、wrangler の設定の書き換えと wrangler dev の -c、
+// インタープリタの本文の中の wrangler と守る先の名前では人の確認を挟む（docs/development.md の「Claude の設定とフック」）。
 // permissions.deny の前方一致では npx wrangler や pnpm exec wrangler の言い換えを取りこぼすので、語に分けて判定する。
 // 踏み線であって守りの本体ではない。変数の中身と、パイプで sh に流す中身は見えない。
 import { existsSync, statSync } from 'node:fs';
@@ -18,6 +19,7 @@ import {
   isAssignment,
   positionalIndexes,
   positionals,
+  prefixCommands,
   prefixIndexes,
   prefixName,
   redirectsOf,
@@ -31,12 +33,17 @@ const ASK = 'ask';
 const MAX_DEPTH = 5;
 
 // 引数を実行しない道具。これ以外の道具の後ろに wrangler の語があれば、wrangler の実行とみなす
-// （npx dotenv -- wrangler、find -exec wrangler、docker run ... wrangler のような前置きを列挙しきれないため）
+// （npx dotenv -- wrangler、find -exec wrangler、docker run ... wrangler のような前置きを列挙しきれないため）。
+// シークレットの名前も同じ考え方で、これ以外の道具の引数にあれば止める（judgeSecretAccess）
 const NON_EXECUTING = new Set([
   'echo', 'printf', 'cat', 'less', 'more', 'head', 'tail', 'grep', 'egrep', 'fgrep', 'rg', 'ag', 'sed', 'awk', 'sort',
   'wc', 'diff', 'ls', 'tree', 'stat', 'file', 'which', 'type', 'man', 'git', 'gh', 'jq', 'yq', 'code', 'open',
-  'mkdir', 'touch', 'rm', 'cp', 'mv', 'ln', 'chmod', 'tee', 'test', '[',
+  'mkdir', 'touch', 'rm', 'cp', 'mv', 'ln', 'chmod', 'tee', 'test', '[', '[[',
+  // パスを扱うだけの道具（ワークツリーの .dev.vars のリンクを readlink .dev.vars で確かめる）
+  'readlink', 'realpath', 'basename', 'dirname',
 ]);
+// 引数を実行しない道具か。Homebrew の g 付きの名前（gls、gecho）は、GNU_PREFIXED にあるものだけ g を外して引く
+const isNonExecuting = (tool) => NON_EXECUTING.has(GNU_PREFIXED.has(tool) ? tool.slice(1) : tool);
 // 依存の情報を見るだけのサブコマンド（npm view wrangler versions など）
 const PACKAGE_INFO = new Set([
   'view', 'info', 'show', 'why', 'list', 'ls', 'outdated', 'search', 'home', 'repo', 'docs', 'bugs', 'audit',
@@ -61,7 +68,7 @@ function findWrangler(words, ci) {
   const isTool = (word) => isWrangler(word) || isCfWrangler(word);
   if (isTool(words[ci])) return ci;
   const tool = baseName(words[ci]);
-  if (NON_EXECUTING.has(tool)) return -1;
+  if (isNonExecuting(tool)) return -1;
   if (tool in PACKAGE_CHANGES && PACKAGE_INFO.has(positionals(words.slice(ci + 1), PACKAGE_FLAGS_WITH_VALUE)[0])) return -1;
   for (let i = ci + 1; i < words.length; i++) {
     if (words[i - 1] === '-p' || words[i - 1] === '--package') continue;
@@ -513,12 +520,12 @@ const READERS = new Set([
   // 中身を外へ送る（curl -d @.env、curl -F file=@.dev.vars）
   'curl', 'wget', 'http', 'https', 'nc',
 ]);
-const COPIERS = new Set(['cp', 'mv', 'scp', 'rsync', 'ln']);
-const SHELLS = new Set(['bash', 'sh', 'zsh', 'dash']);
+// -c の中身を Bash のコマンドとして読むシェル。デプロイのスクリプトを読む道具（SCRIPT_READERS）にも入る
+const SHELLS = new Set(['bash', 'sh', 'zsh', 'dash', 'ksh', 'mksh', 'csh', 'tcsh', 'fish']);
 const SEARCHERS = new Set(['grep', 'egrep', 'fgrep', 'rg', 'ag']);
 const SEARCH_FLAGS_WITH_VALUE = new Set(['-e', '-f', '--regexp', '--file', '-g', '--glob', '-t', '--type', '-A', '-B', '-C', '-m']);
 
-const INTERPRETERS = new Set(['node', 'python', 'python3', 'ruby', 'perl', 'deno', 'bun']);
+const INTERPRETERS = new Set(['node', 'python', 'python3', 'ruby', 'perl', 'deno', 'bun', 'osascript', 'php', 'tclsh']);
 // リダイレクトの種類。op は記述子の番号と zsh の ! を含まない。<> は読み書きで開き、切り詰めずに先頭から上書きできるので、読み込み元と書き込み先の両方に数える
 const isHeredocRedirect = (r) => r.op === '<<' || r.op === '<<<';
 const isReadRedirect = (r) => r.op.includes('<') && !isHeredocRedirect(r);
@@ -576,13 +583,19 @@ const heredocScripts = (words) => redirectsOf(words).filter(isHeredocRedirect).f
 const redirectTargets = (words) => redirectsOf(words).map((r) => r.target);
 
 // 読み書き共通の文言。ワークツリーの .dev.vars は本体の本物へのリンクなので、.dev.vars への書き込みは本体の値を上書きする
-const SECRET_FILE_REASON = '.dev.vars と .env は開発用のシークレット。読むのも書くのも人が ! を付けて打つ。例は .dev.vars.example に置く';
+const SECRET_FILE_REASON =
+  '.dev.vars と .env は開発用のシークレット。読むのも書くのも人に任せる（手元のセッションでは ! を付けて打ってもらう）。例は .dev.vars.example に置く';
 
 // words は区切りの全部の語（< .env cmd のように、道具の前に置いた入力も見る）
 function judgeSecretAccess(tool, args, words) {
   if (redirectsOf(words).some((r) => isReadRedirect(r) && redirectTexts(r).some(mentionsSecret))) return true;
+  if (GNU_PREFIXED.has(tool)) tool = tool.slice(1);
+  // 引数を実行しない道具以外は、引数のどれかに名前があれば止める（sqlite3 x.db '.output .dev.vars'、expect -c 'spawn cat .dev.vars'、
+  // docker run --env-file .env x のように、表に無い道具の読み書きを列挙しきれないため）。pnpm test -- --grep .env のような止めすぎは人に任せる。
+  // find は探すだけの形（find . -name .dev.vars）が多いので外し、-exec などと -fprint などの書き込み先（writesTo）で見る
+  if (!isNonExecuting(tool) && tool !== 'find' && args.some(mentionsSecret)) return true;
   // 書き込み先（>）と、文書として流すヒアドキュメントの本文は args に入らないので、args は読み取りの引数として見てよい
-  if (INTERPRETERS.has(tool)) return [...args, ...heredocBodies(args)].some(mentionsSecret);
+  if (INTERPRETERS.has(tool)) return heredocBodies(args).some(mentionsSecret);
   if (SEARCHERS.has(tool)) {
     // 最初の位置の引数は探す文字列なので、grep ".dev.vars" docs のような検索は通す
     const pos = positionals(args, SEARCH_FLAGS_WITH_VALUE);
@@ -590,7 +603,7 @@ function judgeSecretAccess(tool, args, words) {
     return files.some(mentionsSecret);
   }
   if (READERS.has(tool) || SHELLS.has(tool)) return args.some(mentionsSecret);
-  if (COPIERS.has(tool)) {
+  if (COPY_TOOLS.has(tool)) {
     // ここで見るのはコピーの元。書き込み先は writesTo が見る（cp .dev.vars.example .dev.vars はそちらで止まる）
     const pos = positionals(args);
     return pos.slice(0, -1).some(mentionsSecret);
@@ -603,10 +616,11 @@ function judgeSecretAccess(tool, args, words) {
 const withoutGlobGroup = (word) => word.replace(/(\(…\))+$/, '');
 
 // Write と Edit のフック（file-rules.mjs）が守るファイル。Bash から書き換えるときは人の確認を挟む。
-// .claude、.githooks、migrations のディレクトリそのもの（mv .claude /tmp/x、cp -r /tmp/x/migrations .、中身ごとのコピーの宛先 .claude/）も含める
+// .claude、.githooks、migrations のディレクトリそのもの（mv .claude /tmp/x、cp -r /tmp/x/migrations .、中身ごとのコピーの宛先 .claude/）も含める。
+// APFS は大文字小文字を区別しないので、.Claude/Settings.json も同じファイルを指す（i）
 function isProtectedPath(word) {
   return [word, withoutGlobGroup(word)].some((w) =>
-    /(^|\/)\.claude\/(settings[^/]*\.json$|hooks(\/|$))|(^|\/)\.claude\/?$|(^|\/)\.githooks(\/|$)|(^|\/)migrations(\/|$)/.test(w),
+    /(^|\/)\.claude\/(settings[^/]*\.json$|hooks(\/|$))|(^|\/)\.claude\/?$|(^|\/)\.githooks(\/|$)|(^|\/)migrations(\/|$)/i.test(w),
   );
 }
 // 守る先の候補（リポジトリの根からの相対パス）。glob の語（mv .claude/* /tmp/x、mv .gith* /tmp/x）はこれに照合する
@@ -616,6 +630,7 @@ const PROTECTED_CANDIDATES = ['.claude/settings.json', '.claude/settings.local.j
 // 作業場所から解決した絶対パス（cd .claude && cp /tmp/settings.json .）で見る（wranglerConfigAt と同じ）。
 // glob の語は、作業場所が分かるときは根（scripts/deploy-production.ts のあるディレクトリ。見つからなければ作業場所）の候補の絶対パスに、
 // 分からないときは候補の相対パスに照合する。根の外の glob（rm /tmp/*）は止めない。
+// isProtectedPath と同じく大文字小文字を区別しないよう、候補も glob も小文字にそろえて照合する（mv .Claude/* /tmp/x、mv .GITH* /tmp/x）。
 // 展開が MAX_BRACE_EXPANSION を超える語は、照合せずに当たるものとして扱う（BIG_GLOB_REASON と同じ）
 function protectedAt(dir) {
   const root = dir && (repoRootOf(dir) ?? dir);
@@ -626,7 +641,8 @@ function protectedAt(dir) {
       const absolute = dir ? path.resolve(dir, w) : null;
       if ([w, path.posix.normalize(w), absolute].some((f) => f && isProtectedPath(f))) return true;
       if (!GLOB_CHARS.test(w)) return false;
-      return root ? PROTECTED_CANDIDATES.some((c) => matchesGlob(path.join(root, c), absolute)) : PROTECTED_CANDIDATES.some((c) => matchesGlob(c, w));
+      const [base, pattern] = root ? [root.toLowerCase(), absolute.toLowerCase()] : ['', w.toLowerCase()];
+      return PROTECTED_CANDIDATES.some((c) => matchesGlob(base ? path.join(base, c) : c, pattern));
     });
   };
 }
@@ -643,11 +659,11 @@ const GIT_HOOK_NAMES = new Set([
   'reference-transaction', 'push-to-checkout', 'pre-auto-gc', 'post-rewrite', 'sendemail-validate', 'fsmonitor-watchman', 'post-index-change',
 ]);
 function placedInProtected(name) {
-  const plain = withoutGlobGroup(name);
-  return [...PROTECTED_NAMES, ...PROTECTED_DIRECTORY_NAMES].includes(plain) || GIT_HOOK_NAMES.has(plain) || /\.sql$/i.test(plain);
+  const plain = withoutGlobGroup(name).toLowerCase();
+  return [...PROTECTED_NAMES, ...PROTECTED_DIRECTORY_NAMES].includes(plain) || GIT_HOOK_NAMES.has(plain) || /\.sql$/.test(plain);
 }
 // 宛先の展開されない部分が守る先の名前を含むか（cp -t "$PWD/.claude" …、cp -t$PWD/.githooks …）
-const PROTECTED_DIRECTORY_HINT = /(^|\/|\0)(\.claude|\.githooks|migrations)(\/|$)/;
+const PROTECTED_DIRECTORY_HINT = /(^|\/|\0)(\.claude|\.githooks|migrations)(\/|$)/i;
 
 // wrangler の設定と、-c が無いときの転送先を決める .wrangler/deploy/config.json。remote の binding を入れると wrangler dev が本番に届く。
 // APFS は大文字小文字を区別しないので、Wrangler.jsonc も同じファイルを指す（i）
@@ -769,9 +785,17 @@ function braceOptions(inner) {
   return values;
 }
 
-// Homebrew の GNU coreutils は g を前に付けた名前で入る（gcp、gsed）。g を外した名前で表を引く。全部の名前から g を外すと gh や git が崩れるので、名前の集合を持つ
-const GNU_PREFIXED = new Set(['gcp', 'gmv', 'gln', 'ginstall', 'grm', 'gsed', 'gdd', 'gtee', 'gtruncate', 'gshred']);
+// Homebrew の GNU coreutils、grep、gawk、gsed は g を前に付けた名前で入る（gcp、gsed、gcat）。書き込みと読み取りの判定は g を外した名前で表を引く。
+// 全部の名前から g を外すと gh や git が崩れるので、名前の集合を持つ
+const GNU_PREFIXED = new Set([
+  'gcp', 'gmv', 'gln', 'ginstall', 'grm', 'gsed', 'gdd', 'gtee', 'gtruncate', 'gshred', 'gtouch',
+  'gcat', 'ghead', 'gtail', 'ggrep', 'gegrep', 'gfgrep', 'gawk', 'gsort', 'guniq', 'gwc', 'gcut', 'gtr', 'god', 'gbase64',
+  'gtar', 'gfind', 'gpatch', 'gunlink',
+  // 引数を実行しない道具（NON_EXECUTING）も g を外して引く
+  'greadlink', 'grealpath', 'gbasename', 'gdirname', 'gls', 'gstat', 'gecho', 'gprintf',
+]);
 const MULTI_ARG_WRITERS = new Set(['tee', 'rm', 'truncate', 'unlink', 'shred', 'srm', 'sponge', 'ed', 'ex', 'patch']);
+// コピーの道具。宛先は writesTo が、元は judgeSecretAccess が見る
 const COPY_TOOLS = new Set(['cp', 'mv', 'ln', 'rsync', 'install', 'scp', 'ditto']);
 // -t DIR（GNU の coreutils）を持つ道具。rsync の -t は --times、scp の -t はサーバー側の印で、宛先を取らない
 const TARGET_DIRECTORY_TOOLS = new Set(['cp', 'mv', 'ln', 'install']);
@@ -780,6 +804,67 @@ const SHORT_FLAGS_WITH_VALUE = 'Smgo';
 // 値を取る長いオプション。GNU は一意な省略形（--suf）も受け付ける
 const LONG_FLAGS_WITH_VALUE = ['suffix', 'mode', 'owner', 'group', 'strip-program', 'sparse', 'no-preserve'];
 const FIND_ACTIONS = new Set(['-delete', '-exec', '-execdir', '-ok', '-okdir']);
+const TOUCH_FLAGS_WITH_VALUE = new Set(['-r', '-d', '-t', '--reference', '--date']);
+// find の書き込み先を値に取るアクション（-fprintf は値の次に書式を取る）
+const FIND_OUTPUTS = new Set(['-fprint', '-fprint0', '-fprintf', '-fls']);
+
+// 値を取るオプション（targetDirectoryOf と同じ表）の値を除いた位置引数。install x .claude/hooks/y -m 600 の 600 は -m の値で、宛先は y。
+// -- の後ろは全部が位置引数
+function copyOperands(args) {
+  const result = [];
+  for (let i = 0; i < args.length; i++) {
+    const a = args[i];
+    if (a === '--') return [...result, ...args.slice(i + 1)];
+    const long = /^--([a-z-]+)(=[\s\S]*)?$/.exec(a);
+    if (long) {
+      if (long[2] === undefined && LONG_FLAGS_WITH_VALUE.some((full) => abbreviates(long[1], full))) i++;
+      continue;
+    }
+    if (!/^-[^-<>]/.test(a)) {
+      result.push(a);
+      continue;
+    }
+    const at = [...a].findIndex((c, k) => k > 0 && SHORT_FLAGS_WITH_VALUE.includes(c));
+    if (at === a.length - 1) i++;
+  }
+  return result;
+}
+
+// tar のアーカイブ（-f の値）。-cf x のようにまとめた形、-cfx、--file x、--file=x、ダッシュの無い古い形（tar cf x）。
+// { archives, directories, modes } の directories は -C の値（-C x、-Cx、--directory x、--directory=x）で、展開するときの書き込み先。
+// modes は動作の文字（c、r、u、A、x、t、d と、長い形を同じ文字にそろえたもの）
+const TAR_LONG_MODES = {
+  create: 'c', append: 'r', update: 'u', concatenate: 'A', catenate: 'A', delete: 'D', extract: 'x', get: 'x', list: 't', diff: 'd', compare: 'd',
+};
+function tarOperands(args) {
+  const archives = [];
+  const directories = [];
+  const modes = new Set();
+  const take = (flag, value) => (flag === 'f' ? archives : directories).push(value ?? '');
+  for (let i = 0; i < args.length; i++) {
+    const a = args[i];
+    if (a === '--') break;
+    const long = /^--([a-z-]+)(=([\s\S]*))?$/.exec(a);
+    if (long) {
+      if (TAR_LONG_MODES[long[1]]) modes.add(TAR_LONG_MODES[long[1]]);
+      if (long[1] === 'file' || long[1] === 'directory') take(long[1] === 'file' ? 'f' : 'C', long[2] === undefined ? args[++i] : long[3]);
+    } else if (i === 0 && /^[a-zA-Z]+$/.test(a)) {
+      // 古い形は、f と C の位置を問わず、文字の順に次の語が値（tar cfz x.tgz y、tar xfC x.tar dir）
+      for (const c of a) {
+        if ('crutAxd'.includes(c)) modes.add(c);
+        if (c === 'f' || c === 'C') take(c, args[++i]);
+      }
+    } else if (/^-[^-]/.test(a)) {
+      for (let k = 1; k < a.length; k++) {
+        if ('crutAxd'.includes(a[k])) modes.add(a[k]);
+        if (a[k] !== 'f' && a[k] !== 'C') continue;
+        take(a[k], k + 1 < a.length ? a.slice(k + 1) : args[++i]);
+        break;
+      }
+    }
+  }
+  return { archives, directories, modes };
+}
 
 // -t DIR、-tDIR、-vt DIR、--target-directory DIR、--target-directory=DIR（GNU は長いオプションを一意な省略形でも受け付ける）の宛先。
 // { dir, valueAt, at } の valueAt は、値が独立した語のときのその位置（連結の形は -1）、at は値を含む語の位置。無ければ null。
@@ -822,7 +907,7 @@ function redirectHits(matches, redirect) {
 // コピーの宛先は、GNU の並べ替え（install x .dev.vars -m 600）で最後とは限らないので、位置引数のどれかを見る。
 // find -exec は書くか読むかが分からないので、名前が引数にあれば止める。
 // 守る先では、コピーの元（cp .claude/hooks/x.mjs /tmp/）と find -exec での読み取り（find .claude/hooks -exec grep）に確認を挟まないよう、
-// コピーは最後の引数だけを見て、find は見ない。
+// コピーは最後の引数（と、値を取るオプションの値を除いた最後の引数）だけを見て、find は -fprint などの書き込み先だけを見る。
 // intoDirectory は wrangler の設定と守る先の判定に付け、宛先がディレクトリのコピーを元の名前で見る（copiesIntoDirectory の into）。
 // anyInstallOperand を付けると（wrangler の設定）、install は GNU の並べ替えがあるので位置引数のどれかも見る
 function writesTo(matches, tool, args, words, { anyOperand = false, intoDirectory = null } = {}) {
@@ -832,6 +917,8 @@ function writesTo(matches, tool, args, words, { anyOperand = false, intoDirector
   if (['sed', 'perl'].includes(tool) && args.some((a) => /^-[a-zA-Z]*i|^--in-place/.test(a))) {
     return pos.some(matches);
   }
+  // touch の -r、-d、-t の値は、時刻を読むファイルか時刻で、書き込み先ではない（touch -r .claude/hooks/x docs/new.md）
+  if (tool === 'touch') return positionals(args, TOUCH_FLAGS_WITH_VALUE).some(matches);
   if (MULTI_ARG_WRITERS.has(tool)) return pos.some(matches);
   if (COPY_TOOLS.has(tool)) {
     const target = TARGET_DIRECTORY_TOOLS.has(tool) ? targetDirectoryOf(args) : null;
@@ -848,7 +935,7 @@ function writesTo(matches, tool, args, words, { anyOperand = false, intoDirector
       }
     }
     const anyDestination = anyOperand || (intoDirectory?.anyInstallOperand === true && tool === 'install');
-    if (anyDestination ? pos.some(matches) : matches(pos.at(-1) ?? '')) return true;
+    if (anyDestination ? pos.some(matches) : matches(pos.at(-1) ?? '') || matches(copyOperands(args).at(-1) ?? '')) return true;
     // 守る先は、最後の位置引数が展開で決まる（cp /tmp/settings.json "$D"）ときも -t と同じに見る
     const last = positionalIndexes(args).at(-1);
     if (intoDirectory?.unresolvedDestination && pos.length >= 2 && isUnresolved(args, last)) {
@@ -857,8 +944,30 @@ function writesTo(matches, tool, args, words, { anyOperand = false, intoDirector
     return intoDirectory !== null && copiesIntoDirectory(matches, pos, intoDirectory);
   }
   if (tool === 'dd') return args.some((a) => a.startsWith('of=') && matches(a.slice('of='.length)));
-  if (tool === 'find') return anyOperand && args.some((a) => FIND_ACTIONS.has(a)) && args.some(matches);
-  if (tool === 'git') return args.some((a) => a.startsWith('--output=') && matches(a.slice('--output='.length)));
+  if (tool === 'tar') {
+    // -f のアーカイブに書くのは作る、足す、更新する、つなぐ、消す（c、r、u、A、--delete）とき、-C の先に書くのは展開（x）だけ。
+    // 一覧（t）と比べる（d）は読むだけ。動作を判定できないときは両方を書き込み先とみなす
+    const { archives, directories, modes } = tarOperands(args);
+    const unknown = modes.size === 0;
+    const writesArchive = unknown || [...'cruAD'].some((m) => modes.has(m));
+    const extracts = unknown || modes.has('x');
+    return [...(writesArchive ? archives : []), ...(extracts ? directories : [])].some(matches);
+  }
+  if (tool === 'find') {
+    if (args.some((a, j) => FIND_OUTPUTS.has(a) && matches(args[j + 1] ?? ''))) return true;
+    return anyOperand && args.some((a) => FIND_ACTIONS.has(a)) && args.some(matches);
+  }
+  if (tool === 'git') {
+    // git archive の -o と git format-patch の -o（出力のディレクトリ）も、値を書き込み先として見る
+    const sub = positionals(args, GIT_FLAGS_WITH_VALUE)[0];
+    const short = sub === 'archive' || sub === 'format-patch';
+    return args.some(
+      (a, j) =>
+        (/^--output(-directory)?=/.test(a) && matches(a.slice(a.indexOf('=') + 1))) ||
+        ((a === '--output' || a === '--output-directory' || (short && a === '-o')) && matches(args[j + 1] ?? '')) ||
+        (short && /^-o./.test(a) && matches(a.slice(2))),
+    );
+  }
   return false;
 }
 
@@ -876,6 +985,55 @@ function interpreterWords(tool, args) {
   if (!INTERPRETERS.has(tool)) return [];
   const bodies = [...args, ...heredocBodies(args)];
   return bodies.flatMap((b) => [b, ...b.split(CODE_SEPARATORS).filter(Boolean)]);
+}
+
+// インタープリタの本文（-e、-c、-r、-p、--eval の値と、-pe のようにまとめた形の値、ヒアドキュメントとヒアストリングの本文）を、
+// 空白、引用符、括弧で区切った語。位置引数のファイル（node --test .claude/hooks/guards.test.mjs）は本文ではないので入れない
+// 連結した値（perl -e'…'、python3 -c'…'）も本文とする。本文を取る短いフラグはインタープリタごとに違う。
+// -c は python では本文、node、perl、ruby では構文の確かめ、php では設定のパス。-r は php では本文、node と ruby では require。
+// perl の -p は行ごとに回すだけのフラグ。node の --print も -p と同じ。tclsh と deno は本文をヒアドキュメントとヒアストリングでだけ見る
+const BODY_FLAGS = { node: 'ep', bun: 'ep', python: 'c', python3: 'c', ruby: 'e', perl: 'eE', php: 'rRBE', osascript: 'e' };
+function interpreterBodyWords(tool, args) {
+  const bodies = heredocBodies(args);
+  const flags = BODY_FLAGS[tool] ?? '';
+  for (let i = 0; i < args.length; i++) {
+    const a = args[i];
+    const long = /^--(eval|print)(=([\s\S]*))?$/.exec(a);
+    if (long) {
+      if (long[2] !== undefined) bodies.push(long[3]);
+      else if (args[i + 1] !== undefined) bodies.push(args[i + 1]);
+      continue;
+    }
+    if (!/^-[a-zA-Z]/.test(a)) continue;
+    const at = [...a].findIndex((c, k) => k > 0 && flags.includes(c));
+    if (at === -1) continue;
+    // 最初の本文のフラグより後ろが連結した値。-pe 'code' のように文字だけの語が本文のフラグで終われば、次の語も本文とする
+    if (at + 1 < a.length) bodies.push(a.slice(at + 1));
+    if (new RegExp(`^-[a-zA-Z]*[${flags}]$`).test(a) && args[i + 1] !== undefined) bodies.push(args[i + 1]);
+  }
+  return bodies.flatMap((b) => b.split(CODE_SEPARATORS).filter(Boolean));
+}
+
+// fish の -c のほかに中身を Bash のコマンドとして読む値（--command、--command=、-C、--init-command、--init-command=）
+function fishCommands(args) {
+  const found = [];
+  for (let i = 0; i < args.length; i++) {
+    const long = /^--(command|init-command)(=([\s\S]*))?$/.exec(args[i]);
+    if (long) found.push(long[2] === undefined ? (args[++i] ?? '') : long[3]);
+    else if (args[i] === '-C') found.push(args[++i] ?? '');
+  }
+  return found;
+}
+
+// 本文の中の wrangler（python3 -c 'os.system("wrangler deploy")'）と守る先（writeFileSync(".claude/settings.json", …)）には確認を挟む。
+// 本文の中のコマンドの引数（--remote など）は読めないので、止めずに人が確かめる
+function judgeInterpreterBody(tool, args) {
+  const words = interpreterBodyWords(tool, args);
+  if (words.some((w) => isWrangler(w) || isCfWrangler(w))) {
+    return [ASK, 'インタープリタの本文から wrangler を動かすと、本番に触るかを判定できない。人が確かめる'];
+  }
+  if (words.some(isProtectedPath)) return [ASK, 'インタープリタの本文に守る仕組み（Claude の設定とフック）とマイグレーションの名前がある。書き換えは人が確かめる'];
+  return null;
 }
 
 // 道具の無い区切り（> f、exec > f）と cd、pushd のリダイレクトも見るので、tool を空、args を空にして呼べる。
@@ -909,7 +1067,7 @@ function judgeFileWrites(tool, args, words, dir = null) {
 
 // WORKERS_CI=1 は deploy() が本番に触る唯一の条件で、付けるのは Workers Builds だけ。値は問わず、名前がちょうど WORKERS_CI のものだけを見る
 // （WORKERS_CI_COMMIT_SHA は Workers Builds が渡す別の変数）
-const WORKERS_CI_REASON = 'WORKERS_CI は Workers Builds だけが付ける。人が試すときは ! で打つ';
+const WORKERS_CI_REASON = 'WORKERS_CI は Workers Builds だけが付ける。試すのは人に任せる（手元のセッションでは ! を付けて打ってもらう）';
 const ENV_DECLARERS = new Set(['export', 'declare', 'typeset', 'readonly', 'local']);
 
 // ci は道具の位置（WORKERS_CI=1; export WORKERS_CI の最初の区切りのように、道具が無いときは -1）。
@@ -923,7 +1081,7 @@ function setsWorkersCi(words, ci) {
   const tool = baseName(words[ci]);
   const args = words.slice(ci + 1);
   if (ENV_DECLARERS.has(tool)) return args.some((w) => /^WORKERS_CI(\+?=|$)/.test(w));
-  return !NON_EXECUTING.has(tool) && args.some((w) => WORKERS_CI_ASSIGN.test(w));
+  return !isNonExecuting(tool) && args.some((w) => WORKERS_CI_ASSIGN.test(w));
 }
 
 // 引数のスクリプトを動かす道具。テストが偽の wrangler で動くため、デプロイのスクリプトを渡すと本番の入口が動く
@@ -1257,6 +1415,9 @@ function judgeSegment(words, ctx) {
   const prefixes = prefixIndexes(words);
   // env -S の文字列は、道具の名前の位置に1語として見えるか、フラグに紛れて道具が見つからない。ci が -1 でも見る
   if (splitsString(words, prefixes, ci)) results.push([ASK, ENV_SPLIT_REASON]);
+  const nextCtx = { ...ctx, cwd: ctx.dir, depth: ctx.depth + 1 };
+  // script -qc "…"（util-linux）の文字列は、後ろに道具が無いので ci が -1 でも見る
+  results.push(...prefixCommands(words).map((script) => judgeBash(script, nextCtx)).filter(Boolean));
   if (ci === -1) return results;
   // 道具の名前が変数や $(...)、glob で決まると、何を実行するかが分からない（"$(which wrangler)" deploy）
   if (shapeAt(words, ci).includes(DYNAMIC) || expandsAt(words, ci)) results.push([ASK, TOOL_EXPANDS_REASON]);
@@ -1293,7 +1454,7 @@ function judgeSegment(words, ctx) {
     else if (!isReader || xargsReadsFile(words.slice(xargs + 1, ci))) results.push([ASK, XARGS_REASON]);
   }
 
-  const nextCtx = { ...ctx, cwd: ctx.dir, depth: ctx.depth + 1 };
+  if (INTERPRETERS.has(tool)) results.push(judgeInterpreterBody(tool, args));
   if (tool === 'git') {
     // 道具の前の代入と、前の区切りの export などで GIT_DIR か GIT_WORK_TREE を設定した後（ctx.env、judgeBash が積む）は、git が別の作業コピーを見る。
     // 道具の前の代入は、経由先に掛け直したとき（pnpm exec env GIT_DIR=x git）にも見えるよう語で見る
@@ -1308,6 +1469,7 @@ function judgeSegment(words, ctx) {
     // bash -c "..."、bash -lc "..."、bash <<< "..."、bash <<EOF の中身も同じ規則で見る
     const c = args.findIndex((a) => /^-[a-zA-Z]*c[a-zA-Z]*$/.test(a));
     if (c !== -1 && args[c + 1]) results.push(judgeBash(args[c + 1], nextCtx));
+    if (tool === 'fish') for (const body of fishCommands(args)) results.push(judgeBash(body, nextCtx));
     for (const body of heredocScripts(args)) results.push(judgeBash(body, nextCtx));
   }
   return results.filter(Boolean);
