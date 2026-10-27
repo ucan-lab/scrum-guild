@@ -929,6 +929,9 @@ dialog.dialog::backdrop { background: none; }
   /* 木の行の右端が折り返したとき、上の段の「＋タスク」の広げた分が、下の段の 44px のボタンに重ならないよう段の間を空ける */
   /* --space-3 では、上の段の「＋タスク」と下の段の「完了にする」の広げた範囲が重なる（e2e/layout-narrow-workspace.test.ts で確かめた） */
   .tree-end { row-gap: var(--space-5); }
+  /* 右端が題の下へ折り返したとき、題の広げた範囲（下へ約 10px）と、右端の1段目の「＋タスク」の広げた範囲（上へ約 10px）が
+     重ならないよう、題と右端の間も空ける。--space-2 では重なる。字の高さは書体で変わるので、--space-5 より1段広く取る */
+  .tree-row { row-gap: var(--space-6); }
   /* 表の名前の列のリンク（組織の管理のワークスペースの名前）は、2行に折り返しても 44px の高さの1つの箱にする */
   .table .is-name a { display: inline-flex; align-items: center; min-height: 44px; }
   /* コメントの見出しの「編集」「削除」は、広げた分（上下に約 9px）が本文の1行目のリンクに重ならないよう、見出しの下を空ける */
