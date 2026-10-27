@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test } from './fixtures.ts';
 import { watchViolations } from './helpers.ts';
 
 // 招待の URL を開く画面（/invite#<秘密>）。本物の Google へは行かないので、ログインを始める POST の応答は差し替える。

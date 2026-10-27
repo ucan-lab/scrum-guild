@@ -1,6 +1,7 @@
 // 一本道: ストーリーを作る → 「＋タスク」でその下にタスクを作る → 完了にする → 「完了 / 全体」がその場で変わる（読み直しても同じ）。
 // seed のセッション（seed/sessions.ts）の Cookie で開く。あおば開発の管理者はミナト。CSP の違反も確かめる
-import { expect, test, type Locator, type Page } from '@playwright/test';
+import type { Locator, Page } from '@playwright/test';
+import { expect, test } from './fixtures.ts';
 import { createWorkspace, signIn, watchViolations } from './helpers.ts';
 
 test.use({ timezoneId: 'Asia/Tokyo' });

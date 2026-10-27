@@ -1,7 +1,8 @@
 // 組織の休日。管理者が貼り付けて登録し（形の合わない行は理由を出す）、一覧で確かめ、消す。
 // seed のセッション（seed/sessions.ts）の Cookie で開く。あおば開発の管理者はミナト、一般のユーザーはハルカ。
 // 登録して消すのは 2027 年の日付で、seed の休日（2026 年）とは重ねない
-import { expect, test, type Page } from '@playwright/test';
+import type { Page } from '@playwright/test';
+import { expect, test } from './fixtures.ts';
 import { signIn, watchViolations } from './helpers.ts';
 
 function sectionOf(page: Page) {

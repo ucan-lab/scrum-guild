@@ -1,7 +1,8 @@
 // ログアウト。組織の中は上の帯のアカウントのメニュー、組織の外（/operator）は紙の下のボタンから押す。
 // e2e は seed のセッションを全ファイルで共有して並列に走るので、本物のログアウトは専用の行（adminLogout、operatorLogout。
 // seed/sessions.ts）だけで行い、共有の admin、member、operator は消さない。失敗と待ちの見せ方は、logout の応答を差し替えて確かめる
-import { expect, test, type Page } from '@playwright/test';
+import type { Page } from '@playwright/test';
+import { expect, test } from './fixtures.ts';
 import { SEED_SESSIONS } from '../seed/sessions.ts';
 import { sessionCookieName } from '../src/shared/session-cookie.ts';
 import { signIn } from './helpers.ts';

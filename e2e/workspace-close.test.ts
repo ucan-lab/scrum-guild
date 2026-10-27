@@ -1,7 +1,8 @@
 // ワークスペースを終了する、再開する。管理者が終了する（確認のダイアログを経る）→ 帯を確かめる → 再開する。
 // seed のセッション（seed/sessions.ts）の Cookie で開く。あおば開発の管理者はミナト、一般のユーザーはハルカ。
 // 終了して確かめるワークスペースは、管理の画面から作った専用のもの（seed のワークスペースを終了したままにしない）
-import { expect, test, type Page } from '@playwright/test';
+import type { Page } from '@playwright/test';
+import { expect, test } from './fixtures.ts';
 import { signIn, watchViolations } from './helpers.ts';
 
 test.use({ timezoneId: 'Asia/Tokyo' });

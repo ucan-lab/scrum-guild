@@ -1,7 +1,7 @@
 // 計画の画面: リーダーが先のスプリントを作り、直し（重なりは断られてダイアログに理由が出る）、削除する。
 // 一般のメンバーには作成、変更、削除のボタンが出ない。スプリントが無いワークスペースでは空の状態が出る。
 // seed のセッション（seed/sessions.ts）の Cookie で開く。あおば開発の管理者はミナト（ひばり工房では一般のユーザー）、一般のユーザーはハルカ
-import { expect, test } from '@playwright/test';
+import { expect, test } from './fixtures.ts';
 import { createWorkspace, signIn, watchViolations } from './helpers.ts';
 
 test.use({ timezoneId: 'Asia/Tokyo' });

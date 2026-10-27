@@ -55,4 +55,24 @@ export default defineConfig(
       ],
     },
   },
+  {
+    // e2e のテストは test を e2e/fixtures.ts から取る。テストの後で route を外し、
+    // 終わった後の route.fetch() の失敗が次のテストに付かないようにするため（#318）。型と expect は止めない
+    files: ['e2e/**/*.test.ts'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          paths: [
+            {
+              name: '@playwright/test',
+              importNames: ['test'],
+              message:
+                "e2e のテストは test を './fixtures.ts' から import する（docs/development.md の「e2e の書き方」）",
+            },
+          ],
+        },
+      ],
+    },
+  },
 );

@@ -1,7 +1,8 @@
 // バックログの並べ替えと親の移動: 「上へ」「下へ」と Alt と ↑ ↓ で並べ替え、読み直しても並びが残る。
 // 「親を移す」のダイアログでストーリーの下へ移し、親なしへ戻す。ストーリーも並べ替える。
 // seed のセッション（seed/sessions.ts）の Cookie で開く。あおば開発の管理者はミナト。CSP の違反も確かめる
-import { expect, test, type Page } from '@playwright/test';
+import type { Page } from '@playwright/test';
+import { expect, test } from './fixtures.ts';
 import { createWorkspace, dragTo, signIn, watchViolations } from './helpers.ts';
 
 test.use({ timezoneId: 'Asia/Tokyo' });

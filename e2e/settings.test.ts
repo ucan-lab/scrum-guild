@@ -1,6 +1,7 @@
 // ワークスペースの設定の画面（区分とリポジトリ）と、起票と木と引き出しでの使い方。
 // seed のセッション（seed/sessions.ts）の Cookie で開く。行を足すテストは、自分で作ったワークスペースで行う（seed の行は他の e2e も読むため）
-import { expect, test, type Page } from '@playwright/test';
+import type { Page } from '@playwright/test';
+import { expect, test } from './fixtures.ts';
 import { createWorkspace, dragTo, signIn, watchViolations } from './helpers.ts';
 
 const SEED_GAME_WORKSPACE = '/aoba/w/019a0000-0000-7000-8000-000000000401';

@@ -2,7 +2,7 @@
 // あおば開発のミナトは、完了したタスクの起票と完了の明細2行（seed/data.sql）。ひばり工房のミナト（同じアカウント）は、
 // 完了と打ち消しをくり返した明細 52 行（合計 0）で、「続きを読む」を確かめる。
 // ほかのファイルの e2e がタスクを完了にすると、あおば開発のミナトの明細とレベルは増えうるので、数は ひばり工房で確かめる
-import { expect, test } from '@playwright/test';
+import { expect, test } from './fixtures.ts';
 import { signIn, watchViolations } from './helpers.ts';
 
 const AOBA_WORKSPACE_ID = '019a0000-0000-7000-8000-000000000401';

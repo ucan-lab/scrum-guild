@@ -1,7 +1,8 @@
 // 完成の定義: 設定の画面で書く → バックログの木の上に畳んで出る → 詳細の引き出しの完了の操作の横に出る →
 // 引き出しから完了にすると、完了の印と日時に替わる → 空にすると、どこにも出なくなる。
 // seed のセッション（seed/sessions.ts）の Cookie で開く。行を足すので、自分で作ったワークスペースで行う
-import { expect, test, type Page } from '@playwright/test';
+import type { Page } from '@playwright/test';
+import { expect, test } from './fixtures.ts';
 import { createWorkspace, signIn, watchViolations } from './helpers.ts';
 
 test.use({ timezoneId: 'Asia/Tokyo' });
