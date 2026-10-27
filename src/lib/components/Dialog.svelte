@@ -95,10 +95,12 @@
     open = false;
     const target = opener;
     opener = null;
-    if (target === null) return;
-    // 文書から外れた、文書にあっても押せなくなった（disabled、隠れた）要素へは戻せない
-    target.focus();
-    if (document.activeElement !== target && focusLost()) focusPageHeading();
+    // 開いた要素が無い（開いた時点でフォーカスが body にあった）、文書から外れた、
+    // 文書にあっても押せなくなった（disabled、隠れた）ときは戻せない
+    target?.focus();
+    if (target === null || document.activeElement !== target) {
+      if (focusLost()) focusPageHeading();
+    }
   }
 
   // フォーカスの行き先が無い（body に落ちた、閉じたダイアログの中に残っている）か。
