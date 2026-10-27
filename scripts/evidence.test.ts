@@ -1,6 +1,16 @@
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  chmodSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, relative } from 'node:path';
 import { describe, test } from 'node:test';
@@ -593,6 +603,113 @@ describe('上げる先の名前の形', () => {
       assert.match(key, UPLOAD_KEY);
     }
   });
+});
+
+// ワークフローの段の run: | の中身を取り出す（依存を入れないので YAML のパーサーは使わない）
+function stepScript(path: string, name: string): string {
+  const lines = readFileSync(new URL(`../${path}`, import.meta.url), 'utf8').split('\n');
+  const start = lines.findIndex((line) => line.trim().replace(/^- /, '') === `name: ${name}`);
+  assert.ok(start >= 0, `${path} に段「${name}」が無い`);
+  const run = lines.findIndex((line, i) => i > start && /^\s+run: \|$/.test(line));
+  assert.ok(run > start, `${path} の段「${name}」に run: | が無い`);
+  const indent = lines[run].search(/\S/);
+  const body: string[] = [];
+  for (const line of lines.slice(run + 1)) {
+    if (line.trim() !== '' && line.search(/\S/) <= indent) break;
+    body.push(line.slice(indent + 2));
+  }
+  return body.join('\n');
+}
+
+describe('送る段のシェル', () => {
+  // 引数を1行ずつ記録するだけの aws と gh を PATH の先頭に置いて動かす
+  const run = (script: string, root: string, upload: string) => {
+    const bin = join(root, 'bin');
+    mkdirSync(bin, { recursive: true });
+    for (const tool of ['aws', 'gh']) {
+      writeFileSync(join(bin, tool), `#!/bin/sh\necho "${tool} $*" >> "${join(root, 'calls')}"\n`);
+      chmodSync(join(bin, tool), 0o755);
+    }
+    writeFileSync(join(root, 'calls'), '');
+    const result = spawnSync('bash', ['-e', '-o', 'pipefail', '-c', script], {
+      env: {
+        PATH: `${bin}:${process.env.PATH}`,
+        ENDPOINT: 'https://r2.example/',
+        BUCKET: 'bucket',
+        UPLOAD_DIR: upload,
+        OUT_DIR: root,
+        SHA: 'f'.repeat(40),
+        REPO: 'o/r',
+      },
+      encoding: 'utf8',
+    });
+    const calls = readFileSync(join(root, 'calls'), 'utf8').split('\n').filter(Boolean);
+    return { status: result.status, images: calls.filter((call) => call.includes('--content-type image/png')) };
+  };
+
+  for (const [path, name, prefix] of [
+    ['.github/workflows/ci.yml', '画像を R2 に上げる', 'img'],
+    ['.github/workflows/evidence-main.yml', 'R2 に上げる', 'main/img'],
+  ] as const) {
+    const script = stepScript(path, name);
+    const withUpload = (fill: (upload: string) => void) => {
+      const root = mkdtempSync(join(tmpdir(), 'evidence-step-'));
+      try {
+        const upload = join(root, 'upload');
+        mkdirSync(join(upload, prefix), { recursive: true });
+        writeFileSync(join(root, 'manifest.json'), '{}');
+        fill(upload);
+        return run(script, root, upload);
+      } finally {
+        rmSync(root, { recursive: true, force: true });
+      }
+    };
+
+    test(`${path}: 何枚でも、画像は aws s3 cp --recursive の1回で送る`, () => {
+      const { status, images } = withUpload((upload) => {
+        for (const c of ['a', 'b', 'c']) writeFileSync(join(upload, prefix, `${c.repeat(64)}.png`), 'x');
+      });
+      assert.equal(status, 0);
+      assert.equal(images.length, 1);
+      assert.match(images[0], /--recursive/);
+      assert.match(images[0], /--cache-control public, max-age=31536000, immutable/);
+    });
+
+    test(`${path}: 上げる画像が無ければ、画像を送らずに成功で終わる`, () => {
+      const { status, images } = withUpload(() => {});
+      assert.equal(status, 0);
+      assert.deepEqual(images, []);
+    });
+
+    for (const [label, fill] of [
+      ['形の外れた名前', (upload: string) => writeFileSync(join(upload, prefix, 'evil.png'), 'x')],
+      ['別のバケットの接頭辞', (upload: string) => writeFileSync(join(upload, `${'a'.repeat(64)}.png`), 'x')],
+      ['改行のある名前', (upload: string) => writeFileSync(join(upload, prefix, `${'a'.repeat(64)}.png\n`), 'x')],
+      [
+        // 1行ずつ読むと img/<h>.png と img/<h>.png の2行に割れ、どちらも形に合ってしまう
+        '改行で2つの名前に見えるディレクトリ',
+        (upload: string) => {
+          const dir = join(upload, prefix, `${'a'.repeat(64)}.png\n${prefix}`);
+          mkdirSync(dir, { recursive: true });
+          writeFileSync(join(dir, `${'c'.repeat(64)}.png`), 'x');
+        },
+      ],
+      [
+        'シンボリックリンク',
+        (upload: string) => symlinkSync('/etc/hostname', join(upload, prefix, `${'a'.repeat(64)}.png`)),
+      ],
+      ['送るディレクトリが無い', (upload: string) => rmSync(upload, { recursive: true })],
+    ] as const) {
+      test(`${path}: ${label}があれば、何も送らずに止まる`, () => {
+        const { status, images } = withUpload((upload) => {
+          writeFileSync(join(upload, prefix, `${'b'.repeat(64)}.png`), 'x');
+          fill(upload);
+        });
+        assert.notEqual(status, 0);
+        assert.deepEqual(images, []);
+      });
+    }
+  }
 });
 
 describe('readScreenFiles', () => {
