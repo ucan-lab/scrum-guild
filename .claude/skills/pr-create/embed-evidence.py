@@ -63,11 +63,28 @@ def load_comment(path):
     return comments[0] if comments else None
 
 
+class BadData(Exception):
+    pass
+
+
 def read_data(comment):
+    """JSON の行が無ければ None。あるのに読めないか形が違えば BadData"""
     for line in comment['body'].splitlines():
         line = line.strip()
         if line.startswith(DATA) and line.endswith(' -->'):
-            return json.loads(line[len(DATA):-len(' -->')])
+            try:
+                data = json.loads(line[len(DATA):-len(' -->')])
+            except json.JSONDecodeError as error:
+                raise BadData(f'JSON として読めない: {error.msg}') from None
+            if not (
+                isinstance(data, dict)
+                and isinstance(data.get('headSha'), str)
+                and (data.get('comparedSha') is None or isinstance(data.get('comparedSha'), str))
+                and isinstance(data.get('screens'), list)
+                and all(isinstance(s, dict) and isinstance(s.get('key'), str) for s in data['screens'])
+            ):
+                raise BadData('headSha、comparedSha、screens の形が違う')
+            return data
     return None
 
 
@@ -75,7 +92,12 @@ def embed(section, comment_path, head_sha, reason):
     """(書き換えた節, 報告の行) を返す"""
     if reason is None:
         comment = load_comment(comment_path)
-        data = read_data(comment) if comment else None
+        data = None
+        try:
+            data = read_data(comment) if comment else None
+        except BadData as error:
+            reason = f'コメントの JSON の行を読めない（{error}）'
+    if reason is None:
         if comment is None:
             reason = 'CI の evidence のコメントが無い（変わった画面が無いか、evidence が動いていない）'
         elif data is None:

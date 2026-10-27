@@ -791,6 +791,19 @@ describe('embed-evidence.py', () => {
     assert.ok(stdout.includes(`前の画像を残した印: ['${k('changed')}', '${k('new')}']`), stdout);
   });
 
+  test('JSON の行が壊れているか項目が欠けていれば、落ちずに理由を書く', () => {
+    for (const json of [
+      '{"headSha":',
+      '{"headSha":"x"}',
+      '[]',
+      `{"headSha":"${sha('b')}","comparedSha":"a","screens":[{}]}`,
+    ]) {
+      const body = `${COMMENT_MARKER}\n${DATA_MARKER}${json} -->\n`;
+      const { out } = run(prBody, comments(body), sha('b'));
+      assert.ok(out.includes('CI の画像は付かなかった: コメントの JSON の行を読めない'), json);
+    }
+  });
+
   test('付かなかった理由を渡すと、コメントを読まずに印の中をその理由にする', () => {
     const { out } = run(prBody, '[]', sha('b'), 'evidence のジョブが失敗した');
     assert.ok(out.includes(block(k('new'), 'CI の画像は付かなかった: evidence のジョブが失敗した。\n')));
