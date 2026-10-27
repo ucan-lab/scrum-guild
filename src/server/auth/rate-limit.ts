@@ -35,6 +35,19 @@ export const LOGIN_GLOBAL_RATE_LIMIT_KEY = 'login:global';
 
 export const LOGIN_RATE_LIMIT_POLICIES: readonly RateLimitPolicy[] = Object.values(LOGIN_RATE_LIMITS);
 
+// 画面のエラーの送信（POST /api/client-errors、Issue #376）で数える枠。キーはログインと分ける
+// （`client-error:<IP>`、`client-error48:<…>`、`client-error:global`）
+export const CLIENT_ERROR_RATE_LIMITS = {
+  network: { max: 20, windowMs: 10 * 60 * 1000 },
+  ipv6Site: { max: 40, windowMs: 10 * 60 * 1000 },
+  global: { max: 300, windowMs: 10 * 60 * 1000 },
+} as const satisfies Record<string, RateLimitPolicy>;
+
+// 上限の内なら true。上限に届いた枠は覗いて、数えずに断る
+export async function consumeClientErrorRateLimits(_env: Env, _ip: string | undefined, _now: Date): Promise<boolean> {
+  throw new Error('未実装');
+}
+
 // consumeRateLimit に渡る全部の枠（ログインの枠と、操作の定義の rateLimit）のうち、最長の窓。
 // この窓を過ぎた行は、どの枠から見ても数え直しになるので消してよい（src/server/scheduled/cleanup-expired.ts）。
 // 操作の定義は src/shared/operations の operations（sessionOperations を含む全部）。register.ts の enforceRateLimit が
