@@ -21,6 +21,7 @@ import {
   NAME_LIMIT,
   parseManifest,
   prUploads,
+  MAX_IMAGE_BYTES,
   readScreenFiles,
   screenKey,
   screenTitle,
@@ -509,14 +510,39 @@ describe('目印', () => {
   });
 });
 
+// PNG のシグネチャで始まる中身（readScreenFiles は PNG でないファイルを読まない）
+const png = (rest: string) =>
+  Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), Buffer.from(rest)]);
+
 describe('readScreenFiles', () => {
+  test('PNG でないファイルと、上限より大きいファイルは読まない（公開のバケットに任意のファイルを上げさせない）', () => {
+    const root = mkdtempSync(join(tmpdir(), 'evidence-'));
+    try {
+      const files: [string, Buffer][] = [
+        ['ok-chromium', png('ok')],
+        ['html-chromium', Buffer.from('<html><script>alert(1)</script></html>')],
+        ['big-chromium', Buffer.concat([png(''), Buffer.alloc(MAX_IMAGE_BYTES)])],
+      ];
+      for (const [dir, content] of files) {
+        mkdirSync(join(root, 'e2e-1', 'test-results', dir), { recursive: true });
+        writeFileSync(join(root, 'e2e-1', 'test-results', dir, 'evidence-1.png'), content);
+      }
+      assert.deepEqual(
+        readScreenFiles(root).map(({ path }) => path),
+        ['ok-chromium/evidence-1.png'],
+      );
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   test('成果物ごとの test-results/ の下の evidence の画像を読み、中身の SHA-256 を付ける', () => {
     const root = mkdtempSync(join(tmpdir(), 'evidence-'));
     try {
       for (const [shard, dir, content] of [
-        ['e2e-1', 'a-chromium', 'A'],
-        ['e2e-2', 'b-chromium', 'B'],
-      ]) {
+        ['e2e-1', 'a-chromium', png('A')],
+        ['e2e-2', 'b-chromium', png('B')],
+      ] as const) {
         mkdirSync(join(root, shard, 'test-results', dir), { recursive: true });
         writeFileSync(join(root, shard, 'test-results', dir, 'evidence-1.png'), content);
         writeFileSync(join(root, shard, 'test-results', dir, 'test-failed-1.png'), 'F');
@@ -529,8 +555,8 @@ describe('readScreenFiles', () => {
       assert.deepEqual(
         files.map(({ path, hash }) => ({ path, hash })),
         [
-          { path: 'a-chromium/evidence-1.png', hash: createHash('sha256').update('A').digest('hex') },
-          { path: 'b-chromium/evidence-1.png', hash: createHash('sha256').update('B').digest('hex') },
+          { path: 'a-chromium/evidence-1.png', hash: createHash('sha256').update(png('A')).digest('hex') },
+          { path: 'b-chromium/evidence-1.png', hash: createHash('sha256').update(png('B')).digest('hex') },
         ],
       );
       assert.equal(files[0].local, join(root, 'e2e-1', 'test-results', 'a-chromium', 'evidence-1.png'));
@@ -544,7 +570,7 @@ describe('readScreenFiles', () => {
     try {
       for (const dir of ['ok-chromium', 'bad\nname-chromium', 'tab\tname-chromium']) {
         mkdirSync(join(root, 'e2e-1', 'test-results', dir), { recursive: true });
-        writeFileSync(join(root, 'e2e-1', 'test-results', dir, 'evidence-1.png'), dir);
+        writeFileSync(join(root, 'e2e-1', 'test-results', dir, 'evidence-1.png'), png(dir));
       }
       assert.deepEqual(
         readScreenFiles(root).map(({ path }) => path),

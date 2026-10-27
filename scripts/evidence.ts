@@ -2,7 +2,7 @@
 // 比べる、上げる先の名前を決める、コメントの本文を組むところをここに置き、node --test にかける。
 // R2 への送信とコメントの書き換えはワークフローの段が行う
 import { createHash } from 'node:crypto';
-import { appendFileSync, readdirSync, readFileSync } from 'node:fs';
+import { appendFileSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 
 // 画面の名前（test-results/ のテストごとのディレクトリと画像のファイル名）から、画像の中身の SHA-256 への対応
@@ -435,7 +435,12 @@ function pushUnused(lines: string[], unused: readonly Exclusion[] | undefined): 
 // ダウンロードした成果物の下の test-results/ を探し、PNG のハッシュを読む。
 // 成果物はシャードごとに <root>/e2e-<n>/test-results/ に入る。
 // path は test-results/ からの相対、local は手元のパス（上げるときに読む）。
-// 名前に制御文字を含むテストのディレクトリは読まない（上げる一覧の行が崩れないように）
+// 名前に制御文字を含むテストのディレクトリは読まない（上げる一覧の行が崩れないように）。
+// PNG のシグネチャで始まらないファイルと MAX_IMAGE_BYTES より大きいファイルも読まない。
+// e2e/ は needs-human に当たらないので、テストが置いた任意のファイルを公開のバケットに上げさせないため
+export const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
+const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+
 export function readScreenFiles(root: string): { path: string; local: string; hash: string }[] {
   const files: { path: string; local: string; hash: string }[] = [];
   const walk = (dir: string) => {
@@ -451,7 +456,10 @@ export function readScreenFiles(root: string): { path: string; local: string; ha
         for (const file of readdirSync(join(path, test.name))) {
           if (!IMAGE_FILE.test(file)) continue;
           const local = join(path, test.name, file);
-          const hash = createHash('sha256').update(readFileSync(local)).digest('hex');
+          if (statSync(local).size > MAX_IMAGE_BYTES) continue;
+          const content = readFileSync(local);
+          if (!content.subarray(0, PNG_SIGNATURE.length).equals(PNG_SIGNATURE)) continue;
+          const hash = createHash('sha256').update(content).digest('hex');
           files.push({ path: `${test.name}/${file}`, local, hash });
         }
       }
