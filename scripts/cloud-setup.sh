@@ -129,10 +129,11 @@ fi
 info "pnpm: $(command -v pnpm) $(pnpm --version 2>/dev/null)"
 
 if [ -n "$repo" ] && cd "$repo"; then
-  # ストアはリポジトリの外にあり、スナップショットに残る。スナップショットを作るときのブランチのスクリプトを
-  # root で動かして後のセッションに残さないよう、--ignore-scripts にする（毎回の session-start.sh はスクリプトも動かす）
+  # ストアはリポジトリの外にあり、スナップショットに残る。スナップショットを作るときのブランチのコードを
+  # root で動かして後のセッションに残さないよう、依存のスクリプトと .pnpmfile を動かさない（毎回の session-start.sh は動かす）。
+  # 下の playwright だけは、ロックファイルから入れた Playwright 本体のコードを root で動かす
   log=$(mktemp)
-  if within 120 pnpm install --frozen-lockfile --ignore-scripts >"$log" 2>&1; then
+  if within 120 pnpm install --frozen-lockfile --ignore-scripts --ignore-pnpmfile >"$log" 2>&1; then
     # 記録は伏せる処理を通していないので、スナップショットに残さない
     rm -f "$log"
   else
