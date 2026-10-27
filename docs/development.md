@@ -554,7 +554,7 @@ PR ごとのプレビュー環境は持たず、Workers Builds の preview build
 
 PR のエビデンスの画像は CI が e2e のスクリーンショットから作る（#337）。セッションは撮らず、手元でもクラウドでも、このコメントの画像の URL を PR の本文の `## エビデンス` 節に埋め込む（`pr-create` の `evidence.md`。CI の完了の後に `pr-feedback` が行い、push で画像が変われば差し替える）。
 
-- 本文への埋め込み: 載せるのは PR が変えたと判定した画面だけで、説明の文章はセッションが書く。画像に枠や注記は無い。セッションが読むのは、コメントの目印の次の行の JSON（`<!-- e2e-evidence-data {...} -->`。`scripts/evidence.ts` の `evidenceData`）。中身は、撮った PR の head の SHA（`headSha`）、比べた main の一覧のコミット（`comparedSha`。比べられなければ `null`）、画像で並べる画面ごとの名前（`key`）と変更前（`before`。新しい画面には無い）と変更後（`after`）の公開の URL。`>` は `>` に逃がし、HTML コメントを途中で閉じさせない
+- 本文への埋め込み: 載せるのは PR が変えたと判定した画面だけで、説明の文章はセッションが書く。画像に枠や注記は無い。セッションが読むのは、コメントの目印の次の行の JSON（`<!-- e2e-evidence-data {...} -->`。`scripts/evidence.ts` の `evidenceData`）。中身は、撮った PR の head の SHA（`headSha`）、比べた main の一覧のコミット（`comparedSha`。比べられなければ `null`）、画像で並べる画面ごとの名前（`key`）と変更前（`before`。新しい画面には無い）と変更後（`after`）の公開の URL。`>` は JSON の Unicode の逃がし（`u003e` の形）にし、HTML コメントを途中で閉じさせない。埋め込みは `.claude/skills/pr-create/embed-evidence.py` が行い、`scripts/evidence.test.ts` が `commentBody` の出力で確かめる
 - 本文の画像の期限: PR 用のバケットの画像は 90 日で消え、古い PR の本文の変更後の画像は切れる。画像の名前は中身のハッシュなので、マージの後の `main` で同じ画面が同じ描画なら、main 用のバケットの `main/img/<同じハッシュ>.png` が同じ画像
 - 置き方: バケットを2つに分ける。main 用のバケットには、どの画面がどの画像かの一覧（`main/<SHA>.json` と、最新を指す `main/latest.json`）と `main` の画像（`main/img/<ハッシュ>.png`）を置く。PR 用のバケットには、PR にしか無い画像（`img/<ハッシュ>.png`）だけを置く。画像は中身の SHA-256 を名前にし、同じ画像は一度しか上げないので、`main` へのマージごとに上がるのは変わった画像だけになる。コメントは、変更前の画像を main 用の公開の URL から、PR にしか無い変更後の画像を PR 用の公開の URL から指す
 - 画面の見分け方: Playwright の `test-results/` の、テストごとのディレクトリの名前（再試行の `-retry<n>` を除く）と、`e2e/fixtures.ts` がテストの終わりに撮る画像の名前（`evidence-<n>.png`。開いている画面ごとに n が増える）。テストの名前を変えると、別の画面として新しい画面と無くなった画面に出る

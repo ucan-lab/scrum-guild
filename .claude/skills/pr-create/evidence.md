@@ -47,77 +47,32 @@ UI 変更と判定した画面ごとに、変えた画面と状態を開く e2e 
 
 ## 3. 画像を埋め込む
 
-`pr-feedback` の手順 5 で、check-runs がすべて `completed` になった後に行う。
+`pr-feedback` の手順 5 で、check-runs がすべて `completed` になった後に行う。push のたびに毎回行う。本文の `<!-- evidence: <SHA> -->` が今の head と同じでも飛ばさない（同じコミットで CI を走らせ直すと画像が変わることがあり、本文に印を足しても SHA は変わらないため）。
 
-1. `evidence` のチェックが成功していなければ、節は書き換えず、ジョブの注記とログから画像が付かない理由を報告する
-2. コメントと本文を取る。本文は書き換える直前に取り直す（人や他のセッションの編集を消さないため）
+1. コメント、本文、PR の head の SHA を取る。本文は書き換える直前に取り直す（人や他のセッションの編集を消さないため）
 
    ```bash
    gh api "repos/{owner}/{repo}/issues/<n>/comments" --paginate --slurp > "<スクラッチパッドの絶対パス>/evidence-comments.json"
    gh api "repos/{owner}/{repo}/pulls/<n>" --jq .body > "<スクラッチパッドの絶対パス>/pr-body.md"
+   gh api "repos/{owner}/{repo}/pulls/<n>" --jq .head.sha
    ```
 
-3. 下のスクリプトをスクラッチパッドに書き、`python3 -I <スクリプト> <本文> <コメント> <出力>` で走らせる。コメントの目印 `<!-- e2e-evidence -->` の次の行の JSON（`<!-- e2e-evidence-data {...} -->`。`scripts/evidence.ts` の `evidenceData`）を読み、印ごとに画像の表を入れ、`<!-- evidence: ... -->` をコメントが撮った head の SHA にする
-4. 出力が本文と違えば、`gh api -X PATCH repos/{owner}/{repo}/pulls/<n> -F body=@<出力>` で書き換える。同じなら書き換えない（画像が変わっていない）
-5. スクリプトが出した次のものを報告に書く
-   - コメントに出たのに、印の無い画面: PR が変えたと判定していない画面。本文には載せない。揺れか、意図しない変更の印なので、画像を見て、どちらかを報告する
-   - 印があるのに、コメントに無い画面: 20 画面の上限を超えたか、e2e がその状態を写していないか、`main` と同じ画像になった。印の中は「出ていない」と書いた文章になる
-   - 比べられなかった（`comparedSha` が `null`）: 変更前の一覧が無いか読めない。印の中は書き換えない
+2. [embed-evidence.py](embed-evidence.py) を走らせる。`evidence` のチェックが成功していなければ、最後に付かなかった理由（例 `evidence のジョブが失敗した`）を渡す。理由はジョブの注記とログから取る
 
-```python
-import json
-import re
-import sys
+   ```bash
+   python3 -I <このディレクトリの絶対パス>/embed-evidence.py <本文> <コメント> <出力> <head の SHA> [<付かなかった理由>]
+   ```
 
-MARKER = '<!-- e2e-evidence -->'
-DATA = '<!-- e2e-evidence-data '
+   スクリプトは、コメントの目印 `<!-- e2e-evidence -->` の次の行の JSON（`<!-- e2e-evidence-data {...} -->`。`scripts/evidence.ts` の `evidenceData`）を読み、`## エビデンス` 節の中だけを書き換える。印ごとに画像の表を入れ、`<!-- evidence: ... -->` を head の SHA にし、コメントへのリンクを入れる。次のときは画像を入れず、印の中に「CI の画像は付かなかった: <理由>」と書く
+   - コメントが無い、またはコメントに JSON の行が無い
+   - コメントの `headSha` が今の head と違う（前の push のコメントが残っている）
+   - CI が比べられなかった（`comparedSha` が `null`）
+   - 付かなかった理由を渡した
 
-body_path, comments_path, out_path = sys.argv[1:4]
-body = open(body_path, encoding='utf-8').read().replace('\r\n', '\n')
-pages = json.load(open(comments_path, encoding='utf-8'))
-comments = [
-    c for page in pages for c in page
-    if c['user']['login'] == 'github-actions[bot]' and MARKER in c['body']
-]
-if not comments:
-    sys.exit('evidence のコメントが無い（変わった画面が無いか、evidence が動いていない）')
-comment = comments[0]
-lines = [l.strip() for l in comment['body'].splitlines() if l.strip().startswith(DATA)]
-if not lines:
-    sys.exit('コメントに JSON の行が無い（JSON を出す前の版のコメント。push し直して CI を待つ）')
-data = json.loads(lines[0][len(DATA):-len(' -->')])
-if data['comparedSha'] is None:
-    sys.exit('CI が比べられなかった（変更前の画像の一覧が無いか読めない）。節は書き換えない')
+3. 出力の最後の行が「本文を書き換える」のときだけ、`gh api -X PATCH repos/{owner}/{repo}/pulls/<n> -F body=@<出力>` で書き換える。書き換えると `label` のワークフロー（`edited` で動く）が走るので、check-runs を取り直し、`label` が `completed` になるまで待つ
+4. スクリプトが出した次のものを、`pr-feedback` の説明資料の「確かめたこと」に書く
+   - コメントに出たのに印の無い画面: PR が変えたと判定していない画面。本文には載せない。揺れか意図しない変更のどちらかなので、画像を見て判断を添える
+   - 印があるのにコメントに無い画面: 20 画面の上限を超えたか、e2e がその状態を写していないか、`main` と同じ画像になった。印の中は「出ていない」と書いた文章になる
+   - 埋め込めなかった理由
 
-screens = {s['key']: s for s in data['screens']}
-marked = []
-
-def table(screen):
-    img = lambda url: f'<img src="{url}" width="400px">'
-    if 'before' in screen:
-        return f'| 変更前 | 変更後 |\n| ---- | ---- |\n| {img(screen["before"])} | {img(screen["after"])} |'
-    return f'| 変更後 |\n| ---- |\n| {img(screen["after"])} |'
-
-def fill(m):
-    key = m.group(2)
-    marked.append(key)
-    screen = screens.get(key)
-    inner = table(screen) if screen else 'CI のコメントに、この画面の画像は出ていない。'
-    return f'{m.group(1)}\n{inner}\n\n{m.group(3)}'
-
-body = re.sub(r'(<!-- evidence-images: (.+?) -->)\n.*?(<!-- /evidence-images -->)', fill, body, flags=re.S)
-body = re.sub(r'<!-- evidence: \S+ -->', f'<!-- evidence: {data["headSha"]} -->', body, count=1)
-body = re.sub(
-    r'(<!-- evidence-comment -->).*?(<!-- /evidence-comment -->)',
-    lambda m: f'{m.group(1)}[CI の `evidence` のコメント（e2e の画面の差分）]({comment["html_url"]}){m.group(2)}',
-    body,
-    flags=re.S,
-)
-open(out_path, 'w', encoding='utf-8').write(body)
-
-print('埋め込んだ画面:', [k for k in marked if k in screens])
-print('印があるのにコメントに無い画面:', [k for k in marked if k not in screens])
-print('コメントに出たのに印の無い画面:', [k for k in screens if k not in marked])
-```
-
-`<!-- evidence: <SHA> -->` が、コメントの JSON の `headSha` と同じなら、画像は埋め込み済みなので 3 を飛ばしてよい。
+`gh` が使えないセッションは、[github-mcp.md](github-mcp.md) のとおり MCP ツールで代える。コメントは `issue_read` の `get_comments`、本文と head の SHA は `pull_request_read` の `get` で読み、スクリプトの形（コメントはページの配列の配列、本文はファイル）に書き出してから走らせる。書き換えは `update_pull_request` の `body` で行う。
