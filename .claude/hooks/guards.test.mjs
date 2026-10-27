@@ -4837,12 +4837,16 @@ describe('bash-rules: #356 = の形の - で始まる値と - を重ねた名前
   }
 
   // 長いフラグの並びでも止まらずに判定を返す（読み方の数の上限で枝を切る）
-  test('[読み方の上限] 2000 個のフラグの npx も 5 秒以内に allow 以外を返す', () => {
+  test('[読み方の上限] 2000 個のフラグの npx も 5 秒以内に判定を返す', () => {
     const started = Date.now();
-    for (const command of [`npx ${'--zz x '.repeat(2000)}-c 'wrangler deploy'`, `npx ${'-m '.repeat(2000)}-c 'wrangler deploy'`]) {
-      assert.notEqual(pm(command), 'allow', command.slice(0, 40));
+    // 表に無いフラグの並びは読み方の上限で確認に回り、値を取らない -m の並びは -c を --call と読んで止める
+    for (const [command, expected] of [
+      [`npx ${'--zz x '.repeat(2000)}-c 'wrangler deploy'`, 'ask'],
+      [`npx ${'-m '.repeat(2000)}-c 'wrangler deploy'`, 'deny'],
+    ]) {
+      assert.equal(pm(command), expected, command.slice(0, 40));
     }
-    assert.ok(Date.now() - started < 5000);
+    assert.ok(Date.now() - started < 5000, `${Date.now() - started}ms かかった`);
   });
 
   // nopt（npm 11.20 の node_modules/nopt/lib/nopt-lib.js の parse）は、= の形（--message=-c）も = で2語に分けてから同じ String の枝を通す。
@@ -4937,14 +4941,14 @@ describe('bash-rules: #356 nopt の値の取り方と npm init と create の --
   // npm（npx ではない）の nopt の読み直しも、長いフラグの並びで止まらずに返す
   test('[読み方の上限] 2000 個のフラグの npm も 5 秒以内に判定を返す', () => {
     const started = Date.now();
-    for (const command of [
-      `npm ${'--cal '.repeat(2000)}exec -c 'wrangler deploy'`,
-      `npm exec ${'--sc x '.repeat(2000)}-c 'wrangler deploy'`,
-      `npm ${'-y=-s '.repeat(2000)}exec -c 'wrangler deploy'`,
+    for (const [command, expected] of [
+      [`npm ${'--cal '.repeat(2000)}exec -c 'wrangler deploy'`, 'ask'],
+      [`npm exec ${'--sc x '.repeat(2000)}-c 'wrangler deploy'`, 'deny'],
+      [`npm ${'-y=-s '.repeat(2000)}exec -c 'wrangler deploy'`, 'deny'],
     ]) {
-      assert.notEqual(pm(command), 'allow', command.slice(0, 40));
+      assert.equal(pm(command), expected, command.slice(0, 40));
     }
-    assert.ok(Date.now() - started < 5000);
+    assert.ok(Date.now() - started < 5000, `${Date.now() - started}ms かかった`);
   });
 
   // nopt（npm 11.20 の node_modules/nopt/lib/nopt-lib.js の parse）は、型が String だけでも Boolean でもないフラグ
