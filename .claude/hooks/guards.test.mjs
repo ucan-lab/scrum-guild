@@ -860,6 +860,10 @@ describe('bash-rules: 止める', () => {
     assert.equal(decision("fish -C 'git commit -m y'", 'main'), 'deny');
     assert.equal(decision("fish --init-command 'git commit -m y'", 'main'), 'deny');
     assert.equal(decision("fish --init-command='git commit -m y'", 'main'), 'deny');
+    // arch の -d は前置きの共通の表にもあり、値ごと飛ばす
+    assert.equal(decision('arch -d FOO git commit -m y', 'main'), 'deny');
+    assert.equal(decision('arch -d FOO -e BAR=1 -arch arm64 git commit -m y', 'main'), 'deny');
+    assert.equal(decision('arch -d FOO git commit -m y'), 'allow');
     assert.equal(decision('script -qc "git commit -m y"'), 'allow');
     assert.equal(decision('script -t -c "git commit -m y" /dev/null'), 'allow');
     assert.equal(decision("fish --command 'git commit -m y'"), 'allow');
@@ -2820,6 +2824,20 @@ describe('入口', () => {
         assert.equal(decide(path.join(worktree, 'Migrations/0002_x.sql'), main), 'allow');
       } finally {
         sh(['branch', '-q', '-D', 'main'], main);
+      }
+    });
+
+    test('main の ref の木を並べられなければ、マイグレーションが main にあるかを判定できないので確認を挟む', () => {
+      // origin/main を木を持たない blob に向け、ref は引けるが git ls-tree が失敗する形を作る
+      const blobFile = path.join(tmp, 'blob.txt');
+      writeFileSync(blobFile, 'x');
+      const hashed = spawnSync('git', ['hash-object', '-w', blobFile], { cwd: main, encoding: 'utf8', env: cleanEnv });
+      assert.equal(hashed.status, 0, hashed.stderr);
+      sh(['update-ref', 'refs/remotes/origin/main', hashed.stdout.trim()], main);
+      try {
+        assert.equal(decide(path.join(worktree, 'Migrations/0003_x.sql'), main), 'ask');
+      } finally {
+        sh(['update-ref', '-d', 'refs/remotes/origin/main'], main);
       }
     });
 
