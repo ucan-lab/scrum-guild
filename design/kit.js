@@ -239,7 +239,7 @@
   // order: { first, last, parent }。端の向きは aria-disabled（フォーカスを失わない）。parent が真なら「親を移す」も出す
   function orderActions(title, order) {
     const btn = (name, label, disabled) =>
-      `<button class="icon-btn" type="button" aria-label="${label}: ${esc(title)}" title="${label}"${disabled === undefined ? "" : ` aria-disabled="${disabled}"`}>${icon(name)}</button>`;
+      `<button class="icon-btn" type="button" data-order="${name}" aria-label="${label}: ${esc(title)}" title="${label}"${disabled === undefined ? "" : ` aria-disabled="${disabled}"`}>${icon(name)}</button>`;
     return `<span class="order-actions">${btn("up", "上へ", Boolean(order.first))}${btn("down", "下へ", Boolean(order.last))}${order.parent ? btn("swap", "親を移す") : ""}</span>`;
   }
 
