@@ -4750,3 +4750,21 @@ describe('bash-rules: #356 崩す（1周目）', () => {
     test(`[欠陥] ${command} は ${expected}（-m は -c を値に取らない）`, () => check(command, expected));
   }
 });
+
+describe('bash-rules: #356 npx-cli.js の前読みと nopt の String のフラグ', () => {
+  for (const [command, expected] of [
+    // npx は表に無いまとめ（-yn）の次の語を値に取り、npm は -y -n と広げるので foo は名前にならず、-c が npm の --call になる
+    [`npx -yn foo -c 'wrangler deploy'`, 'deny'],
+    // 取り除いたフラグの = の形は値を持つので、次の語は消さない
+    [`npx --npm=x -c 'git push origin main'`, 'deny'],
+    // --call も String なので、次の -c を値に取らない
+    [`npm exec --call -c 'wrangler deploy'`, 'deny'],
+    [`npm exec -sm -c 'wrangler deploy'`, 'deny'],
+    // 位置引数の後ろの -n と -c は、その道具の引数
+    [`npx foo -n bar -c 'echo hi'`, 'allow'],
+    ['npx -n foo vitest run', 'allow'],
+    ['npx -m vitest run', 'allow'],
+  ]) {
+    test(`${command} は ${expected}`, () => assert.deepEqual(literally(command), [expected, expected], command));
+  }
+});
