@@ -492,6 +492,8 @@ export function stageUploads(
   for (const hash of new Set(hashes)) {
     const local = locals.get(hash);
     if (local === undefined) throw new Error(`上げる画像が手元に無い: ${hash}`);
+    // readScreenFiles が制御文字のあるテストのディレクトリを読まないので、ここに来るのはその守りが崩れたときだけ。
+    // 公開のバケットに送るものの出どころなので、深い守りとして止める
     if (/\p{Cc}/u.test(local)) throw new Error(`上げる画像のパスに制御文字がある: ${JSON.stringify(local)}`);
     const dest = join(dir, imageObjectKey(bucket, hash));
     mkdirSync(dirname(dest), { recursive: true });
