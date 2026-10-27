@@ -2,7 +2,7 @@
 // 比べる、上げる先の名前を決める、コメントの本文を組むところをここに置き、node --test にかける。
 // R2 への送信とコメントの書き換えはワークフローの段が行う
 import { createHash } from 'node:crypto';
-import { appendFileSync, copyFileSync, mkdirSync, readdirSync, readFileSync, statSync } from 'node:fs';
+import { appendFileSync, copyFileSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 
 // 画面の名前（test-results/ のテストごとのディレクトリと画像のファイル名）から、画像の中身の SHA-256 への対応
@@ -478,6 +478,7 @@ export function localFiles(files: readonly { local: string; hash: string }[]): M
 }
 
 // 上げる画像を、dir の下に上げる先の名前どおりに写す。ワークフローの段は dir を aws s3 cp --recursive の1回で送る。
+// dir に前からあったものは消してから写す（--recursive は dir の中をすべて送るため）。
 // 画像が無くても dir は作る。写した枚数を返す
 export function stageUploads(
   hashes: readonly string[],
@@ -485,6 +486,7 @@ export function stageUploads(
   locals: Map<string, string>,
   dir: string,
 ): number {
+  rmSync(dir, { recursive: true, force: true });
   mkdirSync(dir, { recursive: true });
   let count = 0;
   for (const hash of new Set(hashes)) {

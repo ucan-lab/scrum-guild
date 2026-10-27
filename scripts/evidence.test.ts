@@ -398,6 +398,18 @@ describe('stageUploads', () => {
     });
   });
 
+  test('写す先に前からあったものは消してから写す（上げる画像でないものを送らない）', () => {
+    withTemp((root, locals) => {
+      const dir = join(root, 'up');
+      mkdirSync(join(dir, 'img'), { recursive: true });
+      writeFileSync(join(dir, 'img', `${h('8')}.png`), 'old');
+      writeFileSync(join(dir, 'stray.txt'), 'old');
+      assert.equal(stageUploads([h('1')], 'pr', locals, dir), 1);
+      assert.deepEqual(readdirSync(dir), ['img']);
+      assert.deepEqual(readdirSync(join(dir, 'img')), [`${h('1')}.png`]);
+    });
+  });
+
   test('手元に無いハッシュと、形の外れたハッシュは投げる', () => {
     withTemp((root, locals) => {
       const dir = join(root, 'up');
