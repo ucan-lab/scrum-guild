@@ -87,12 +87,18 @@ describe('メッセージの引用符の中身が伏せられずに残る手口'
 });
 
 describe('200字の切り口', () => {
+  // 絵文字を含む語は英字だけでない語として伏せる（Issue #376 の「実装中に変えたこと」の手順4）。
+  // 伏せた後に切るので、切り口でサロゲートペアの上位だけが残ることはない
   test('切り口でサロゲートペアを割らない（上位だけを残さない）', () => {
+    const lone = /[\uD800-\uDBFF](?![\uDC00-\uDFFF])/;
     const masked = maskClientErrorMessage(`${'a'.repeat(CLIENT_ERROR_LOGGED_MESSAGE_LENGTH - 1)}😀tail`);
-    expect(masked).toBe('a'.repeat(CLIENT_ERROR_LOGGED_MESSAGE_LENGTH - 1));
-    expect(maskClientErrorMessage(`${'a'.repeat(CLIENT_ERROR_LOGGED_MESSAGE_LENGTH - 2)}😀tail`)).toBe(
-      `${'a'.repeat(CLIENT_ERROR_LOGGED_MESSAGE_LENGTH - 2)}😀`,
+    expect(masked).toBe('…');
+    expect(masked).not.toMatch(lone);
+    const spaced = maskClientErrorMessage(`${'a'.repeat(CLIENT_ERROR_LOGGED_MESSAGE_LENGTH - 2)} 😀tail`);
+    expect(spaced).toBe(
+      `${'a'.repeat(CLIENT_ERROR_LOGGED_MESSAGE_LENGTH - 2)} …`.slice(0, CLIENT_ERROR_LOGGED_MESSAGE_LENGTH),
     );
+    expect(spaced).not.toMatch(lone);
   });
 });
 

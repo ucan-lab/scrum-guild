@@ -6,7 +6,8 @@ import { CLIENT_ERROR_LOGGED_MESSAGE_LENGTH } from '../src/shared/client-error.t
 describe('maskClientErrorMessage', () => {
   test.each([
     ["Cannot read properties of undefined (reading 'title')", "Cannot read properties of undefined (reading '…')"],
-    ['Unexpected token "secret" in JSON', 'Unexpected token "…" in JSON'],
+    // ` in ` の後ろは末尾まで伏せる（Issue #376 の「実装中に変えたこと」の手順3）
+    ['Unexpected token "secret" in JSON', 'Unexpected token "…" in …'],
     ['Template `hidden value` failed', 'Template `…` failed'],
     [`a 'one' b "two" c \`three\` d`, `a '…' b "…" c \`…\` d`],
     ['task 0192f0aa-1b2c-7d3e-8f40-123456789abc not found', 'task … not found'],
