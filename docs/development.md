@@ -276,6 +276,12 @@ GitHub は無料のプランのまま使う（2026-10-23 に決めた）。無�
 - 立てたままの `pnpm preview` を使い回すのは、`E2E_REUSE_SERVER=1 pnpm e2e` と明示したときだけ。build し直さないので、そのサーバーを立てた後のコードの変更は映らない。版は実行ごとの値を足さず、渡した `APP_VERSION` か、渡さなければ `dev` と比べる（版を渡さずに立てた `pnpm preview` はそのまま使える）。`pnpm dev` は版が `dev` で比べ方を通るが、`PUBLIC_ORIGIN` が vite の URL なので、更新系の API が Origin の検査で 403 になる。使い回せるのは `pnpm preview` だけ。CI は付けても使い回さない
 - サーバーを pnpm のスクリプト（`pnpm preview`）で立てないのは、pnpm がスクリプトを別のプロセスグループで動かすため。Playwright は終わりにサーバーのプロセスグループへ `SIGKILL` を送るので、`wrangler` と `workerd` に届かず、前の実行のサーバーが残りうる。2026-10-26 にクラウドの Linux の環境（pnpm 12.12.0、Playwright 1.64.1）で確かめたところ、pnpm を通したサーバーは pnpm の親が死ぬと止まり残らなかったが、pnpm を通さず別のグループに置いたサーバーは残り続けた。pnpm を通さない今の起動の形では、`scripts/dev.ts`、`wrangler`、`workerd` が Playwright の立てたグループに入り、グループへの `SIGKILL` でも、走っている `pnpm e2e` への `SIGINT`（Ctrl+C）でも、サーバーは残らなかった（同じ日に同じ環境で、プロセスのグループと `/api/health` を見て確かめた）。#132 の手元（残った環境）は確かめていないので、原因はこの推定にとどまり、止める守りの主は上の版の比べ方にある。残ったサーバーには、次の実行の build の途中にも Playwright が当たり、build を待たずに先へ進むので、版の比べ方で止める
 
+### e2e の書き方
+
+- `test` と `expect` は `e2e/fixtures.ts` から import する。`@playwright/test` から `test` を直に import すると `pnpm lint` が止める（`eslint.config.js` の `e2e/**/*.test.ts` の `no-restricted-imports`）。型は `@playwright/test` から import してよい
+- `fixtures.ts` の `page` は、テストの後で `page.unrouteAll({ behavior: 'ignoreErrors' })` を待つ。`page.route()` の処理の中で `route.fetch()` を待つテストは、画面が終わりに飛ばした読み直しがテストの後に届くと「route.fetch: Test ended」で落ち、その失敗が同じワーカーで次に走るテストに付く。2026-10-27 に、`e2e/members.test.ts` の route の処理に遅れを入れると必ずこの形で落ち、fixture を入れると落ちないことを確かめた（#318）
+- `ignoreErrors` は、テストの後に届いた要求の失敗を黙って捨てる。テストの終わりの読み直しそのものを確かめたいときは、`page.waitForResponse()` で応答を待ってから終える
+
 ### 依存を入れたばかりの作業コピー
 
 `pnpm install` の後（`prepare`）と、`pnpm dev`、`pnpm test`、`pnpm check` の前に、`scripts/prepare.ts` が `svelte-kit sync` と `wrangler types` を走らせ、空の `build/` を作る。`tsconfig.json` は `svelte-kit sync` が作る `$app/tsconfig` を継ぎ、Worker の型は `wrangler types` が作る `worker-configuration.d.ts`（git に入れない）を読み、wrangler の設定の `assets` は `build/` を指す。どれも、`pnpm build` より先に型の検査とテストを通すための準備。

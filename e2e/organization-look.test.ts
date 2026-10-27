@@ -2,7 +2,8 @@
 // 組織の値を書き換えるので、このファイルだけが使う seed の組織、くもラボで確かめる（seed/README.md）。
 // 管理者はカイ（lookAdmin。テーマを選んでいない）、一般のユーザーはテーマを選んでいないソウタ（lookMember）と、
 // 自分のテーマ（シンプル（ダーク））を選んだコハル（lookThemed）。変えた値は、各テストの終わりに画面から元に戻す
-import { expect, test, type Browser, type Page } from '@playwright/test';
+import type { Browser, Page } from '@playwright/test';
+import { expect, test } from './fixtures.ts';
 import type { SEED_SESSIONS } from '../seed/sessions.ts';
 import { signIn, watchViolations } from './helpers.ts';
 

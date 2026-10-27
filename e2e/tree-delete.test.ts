@@ -1,7 +1,8 @@
 // エピックとストーリーの削除: ダイアログの下の「この<エピック>を削除する」から、配下の件数と配下の扱い（残す、まとめて削除する）を
 // 選ぶ確認を開き、削除したら木を読み直す。削除できない人には削除のボタンを出さない。
 // seed のセッション（seed/sessions.ts）の Cookie で開く。あおば開発の管理者はミナト、一般のユーザーはハルカ。CSP の違反も確かめる
-import { expect, test, type Page } from '@playwright/test';
+import type { Page } from '@playwright/test';
+import { expect, test } from './fixtures.ts';
 import { createWorkspace, signIn, watchViolations } from './helpers.ts';
 
 test.use({ timezoneId: 'Asia/Tokyo' });

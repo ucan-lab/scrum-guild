@@ -2,7 +2,8 @@
 // seed のセッション（seed/sessions.ts）の Cookie で開く。あおば開発の管理者はミナト、一般のユーザーはハルカ。
 // ほかのファイルが並列にワークスペースを作って終了するので、行の数は数えず、seed の行どうしの順だけを見る。
 // 「古い履歴を読む」は、応答を差し替えて確かめる（seed の行は 50 件に満たない）
-import { expect, test, type Page, type Route } from '@playwright/test';
+import type { Page, Route } from '@playwright/test';
+import { expect, test } from './fixtures.ts';
 import { signIn, watchViolations } from './helpers.ts';
 
 test.use({ timezoneId: 'Asia/Tokyo' });

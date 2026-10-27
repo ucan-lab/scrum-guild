@@ -1,7 +1,8 @@
 // 一本道: タスクを作る → 行のリンクで引き出しを開く → 属性を直す → 本文に <script> を含む Markdown を書く（描かれた本文に CSP の違反が無い）
 // → 書きかけのまま閉じると確かめる → 削除すると木から消える。
 // seed のセッション（seed/sessions.ts）の Cookie で開く。あおば開発の管理者はミナト
-import { expect, test, type Page } from '@playwright/test';
+import type { Page } from '@playwright/test';
+import { expect, test } from './fixtures.ts';
 import { createWorkspace, signIn, watchViolations } from './helpers.ts';
 
 test.use({ timezoneId: 'Asia/Tokyo' });

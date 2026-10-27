@@ -1,5 +1,6 @@
 // 組織の選択と組織の枠。seed のセッション（seed/sessions.ts）の Cookie で、組織が1つの人、2つの人、入れない組織を開いた人を確かめる
-import { expect, test, type Page } from '@playwright/test';
+import type { Page } from '@playwright/test';
+import { expect, test } from './fixtures.ts';
 import type { OutputOf } from '../src/shared/operations/define.ts';
 import type { organizationInfo } from '../src/shared/operations/organization/index.ts';
 import { signIn, watchViolations } from './helpers.ts';

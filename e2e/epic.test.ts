@@ -1,7 +1,8 @@
 // 一本道: エピックを作る → ストーリーを作ってエピックの下へ移す → タスクを足して完了にする → ストーリーを完了にする → 取り消す。
 // 未完了のタスクが残るあいだは「完了にする」が押せず、残りの件数が出る。完了と取り消しを断られたら、理由を知らせて読み直す。
 // seed のセッション（seed/sessions.ts）の Cookie で開く。あおば開発の管理者はミナト。CSP の違反も確かめる
-import { expect, test, type Page } from '@playwright/test';
+import type { Page } from '@playwright/test';
+import { expect, test } from './fixtures.ts';
 import { createWorkspace, signIn, watchViolations } from './helpers.ts';
 
 test.use({ timezoneId: 'Asia/Tokyo' });

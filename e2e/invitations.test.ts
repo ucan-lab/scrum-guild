@@ -2,7 +2,8 @@
 // seed の招待だけが届いた人（ヒナタ、seed/sessions.ts の invitee）には、ひばり工房のデザイン相談室への承諾待ちの招待が1件ある（seed/data.sql）。
 // 本物の API で承諾するのは最初のテストだけで、承諾すると招待は残らない。ほかのテストは、承諾の後でも同じに動くよう、
 // 組織の枠と招待の操作の応答を差し替える。サーバーの処理は test/invitation-response.test.ts が確かめる
-import { expect, test, type Page } from '@playwright/test';
+import type { Page } from '@playwright/test';
+import { expect, test } from './fixtures.ts';
 import { signIn, watchViolations } from './helpers.ts';
 
 const DESIGN_WORKSPACE_ID = '019a0000-0000-7000-8000-000000000404';
