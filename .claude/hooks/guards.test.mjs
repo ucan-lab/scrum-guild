@@ -835,6 +835,7 @@ describe('bash-rules: 止める', () => {
     'git archive --output=.env HEAD',
     'gtar -cf .dev.vars /dev/null',
     'gfind . -fprint .dev.vars',
+    'tar -xf /tmp/x.tar -C .dev.vars',
   ]) {
     test(command, () => assert.equal(decision(command), 'deny'));
   }
@@ -1306,6 +1307,15 @@ describe('bash-rules: 確認を挟む', () => {
     // 古い形の tar は、f の位置を問わず次の語がアーカイブ
     'tar cfz .claude/hooks/x.tgz y',
     'tar cvfz .claude/hooks/x.tgz y',
+    // tar の -C は、展開するときの書き込み先（動作を判定できないときも）
+    'tar -xf /tmp/x.tar -C .claude/hooks',
+    'tar -C .githooks -xf /tmp/x.tar',
+    'tar -x --directory .claude/hooks -f /tmp/x.tar',
+    'tar -xf /tmp/x.tar --directory=.claude/hooks',
+    'tar -xf /tmp/x.tar -C.claude/hooks',
+    'tar xfC /tmp/x.tar .githooks',
+    'tar --extract -f /tmp/x.tar -C migrations',
+    'tar -f /tmp/x.tar -C .claude/hooks',
     // g を外して引く道具
     'gtar -cf .claude/hooks/x /dev/null',
     'gfind . -fprint .claude/hooks/x',
@@ -2131,6 +2141,9 @@ describe('bash-rules: 通す', () => {
     'gfind . -name .dev.vars',
     // 古い形の tar の、守る先でないアーカイブ
     'tar cfz /tmp/x.tgz docs',
+    // 作るときの -C は読む元
+    'tar -cf /tmp/x.tar -C .claude/hooks .',
+    'tar --create --file=/tmp/x.tar --directory=.githooks .',
     // 本文に守る名前も wrangler も無い、連結した値と足したフラグ
     `perl -e'print 1'`,
     `php -r'echo 1;'`,

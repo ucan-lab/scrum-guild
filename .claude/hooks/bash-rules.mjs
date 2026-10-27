@@ -826,24 +826,40 @@ function copyOperands(args) {
   return result;
 }
 
-// tar のアーカイブ（-f の値）。-cf x のようにまとめた形、-cfx、--file x、--file=x、ダッシュの無い古い形（tar cf x）
-function tarArchives(args) {
-  const result = [];
+// tar のアーカイブ（-f の値）。-cf x のようにまとめた形、-cfx、--file x、--file=x、ダッシュの無い古い形（tar cf x）。
+// { archives, directories, modes } の directories は -C の値（-C x、-Cx、--directory x、--directory=x）で、展開するときの書き込み先。
+// modes は動作の文字（c、r、u、A、x、t、d と、長い形を同じ文字にそろえたもの）
+const TAR_LONG_MODES = {
+  create: 'c', append: 'r', update: 'u', concatenate: 'A', catenate: 'A', delete: 'D', extract: 'x', get: 'x', list: 't', diff: 'd', compare: 'd',
+};
+function tarOperands(args) {
+  const archives = [];
+  const directories = [];
+  const modes = new Set();
+  const take = (flag, value) => (flag === 'f' ? archives : directories).push(value ?? '');
   for (let i = 0; i < args.length; i++) {
     const a = args[i];
     if (a === '--') break;
-    if (a === '--file') result.push(args[++i] ?? '');
-    else if (a.startsWith('--file=')) result.push(a.slice('--file='.length));
-    else if (i === 0 && /^[a-zA-Z]+$/.test(a)) {
-      // 古い形は、f の位置を問わず次の語がアーカイブ（tar cfz x.tgz y、tar cvfz x.tgz y）
-      if (a.includes('f')) result.push(args[++i] ?? '');
+    const long = /^--([a-z-]+)(=([\s\S]*))?$/.exec(a);
+    if (long) {
+      if (TAR_LONG_MODES[long[1]]) modes.add(TAR_LONG_MODES[long[1]]);
+      if (long[1] === 'file' || long[1] === 'directory') take(long[1] === 'file' ? 'f' : 'C', long[2] === undefined ? args[++i] : long[3]);
+    } else if (i === 0 && /^[a-zA-Z]+$/.test(a)) {
+      // 古い形は、f と C の位置を問わず、文字の順に次の語が値（tar cfz x.tgz y、tar xfC x.tar dir）
+      for (const c of a) {
+        if ('crutAxd'.includes(c)) modes.add(c);
+        if (c === 'f' || c === 'C') take(c, args[++i]);
+      }
     } else if (/^-[^-]/.test(a)) {
-      const at = a.indexOf('f');
-      if (at === -1) continue;
-      result.push(at === a.length - 1 ? (args[++i] ?? '') : a.slice(at + 1));
+      for (let k = 1; k < a.length; k++) {
+        if ('crutAxd'.includes(a[k])) modes.add(a[k]);
+        if (a[k] !== 'f' && a[k] !== 'C') continue;
+        take(a[k], k + 1 < a.length ? a.slice(k + 1) : args[++i]);
+        break;
+      }
     }
   }
-  return result;
+  return { archives, directories, modes };
 }
 
 // -t DIR、-tDIR、-vt DIR、--target-directory DIR、--target-directory=DIR（GNU は長いオプションを一意な省略形でも受け付ける）の宛先。
@@ -924,7 +940,12 @@ function writesTo(matches, tool, args, words, { anyOperand = false, intoDirector
     return intoDirectory !== null && copiesIntoDirectory(matches, pos, intoDirectory);
   }
   if (tool === 'dd') return args.some((a) => a.startsWith('of=') && matches(a.slice('of='.length)));
-  if (tool === 'tar') return tarArchives(args).some(matches);
+  if (tool === 'tar') {
+    // -C の先に書くのは展開（x）だけ。動作を判定できないときも書き込み先とみなす
+    const { archives, directories, modes } = tarOperands(args);
+    const extracts = modes.has('x') || modes.size === 0;
+    return [...archives, ...(extracts ? directories : [])].some(matches);
+  }
   if (tool === 'find') {
     if (args.some((a, j) => FIND_OUTPUTS.has(a) && matches(args[j + 1] ?? ''))) return true;
     return anyOperand && args.some((a) => FIND_ACTIONS.has(a)) && args.some(matches);
