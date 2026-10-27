@@ -4625,3 +4625,128 @@ describe('bash-rules: #356 npx と pnpx を npm exec と pnpm dlx として読�
     }
   });
 });
+
+describe('bash-rules: #356 崩す（1周目）', () => {
+  const packages = {
+    '/repo': {
+      test: 'node --test',
+      // スクリプトの本体の npx と npm exec
+      viaNpx: 'npx foo',
+      viaExec: 'npm exec foo',
+      callNpx: `npx -c 'wrangler deploy'`,
+    },
+    '/repo/sub': { test: 'wrangler deploy' },
+  };
+  const packageDirOf = (dir) => {
+    if (!dir) return undefined;
+    return Object.keys(packages)
+      .filter((p) => dir === p || dir.startsWith(`${p}/`))
+      .sort((a, b) => b.length - a.length)[0];
+  };
+  const scriptOf = (dir, name) => {
+    const at = packageDirOf(dir);
+    return at ? packages[at][name] : undefined;
+  };
+  const pm = (command, cwd = '/repo') => judgeBash(command, { cwd, branchOf: () => '356-npx-pnpx-exec', scriptOf, packageDirOf })?.[0] ?? 'allow';
+  const check = (command, expected) => {
+    assert.equal(pm(command), expected, command);
+    assert.deepEqual(literally(command), [expected, expected], command);
+  };
+
+  // npx-cli.js（npm 11.20）のフラグの読み方で、-c の前の語を値として飛ばす形。どれも実機の npx で -c の文字列が動く
+  // （npx -yc 'echo HI20'、npx --n foo -c 'echo HI41'、npx -n=foo -c 'echo HI42'、npx --node-arg foo -c 'echo HI9'、
+  // npx --npm foo -c 'echo HI10'、npx --shell sh -c 'echo HI19'、npx -c='echo HI22'、npx -ym foo -c 'echo HI40' で確かめた）
+  for (const command of [
+    // nopt のまとめ（-y -m）の最後の m が foo を値に取る
+    `npx -ym foo -c 'wrangler deploy'`,
+    // 取り除かれたフラグ（--n、--npm、--node-arg）は値ごと消える
+    `npx --n foo -c 'wrangler deploy'`,
+    `npx -n=foo -c 'wrangler deploy'`,
+    `npx --node-arg foo -c 'wrangler deploy'`,
+    `npx --npm foo -c 'wrangler deploy'`,
+    // --shell は --script-shell に読み替えて値を取る
+    `npx --shell sh -c 'wrangler deploy'`,
+    `npx -c='wrangler deploy'`,
+    `npx --call= -c 'wrangler deploy'`,
+    `npx --no-install -c 'wrangler deploy'`,
+    `npx -d -c 'wrangler deploy'`,
+  ]) {
+    test(`[すり抜け] ${command} は止まる`, () => check(command, 'deny'));
+  }
+
+  // 前置きと入れ子
+  for (const [command, expected] of [
+    [`sudo -u x npx -c 'wrangler deploy'`, 'deny'],
+    [`xargs npx -c 'wrangler deploy'`, 'deny'],
+    [`nohup npx -c 'wrangler deploy'`, 'deny'],
+    [`time npx -c 'wrangler deploy'`, 'deny'],
+    [`echo $(npx -c 'wrangler deploy')`, 'deny'],
+    ["echo `npx -c 'wrangler deploy'`", 'deny'],
+    [`corepack npx@10 -c 'wrangler deploy'`, 'deny'],
+    [`corepack pnpx@9 -c 'wrangler deploy'`, 'deny'],
+    [`npx npx -c 'wrangler deploy'`, 'deny'],
+    [`npx -y npx -c 'wrangler deploy'`, 'deny'],
+    [`pnpx npx -c 'wrangler deploy'`, 'deny'],
+    [`npx pnpx -c 'wrangler deploy'`, 'deny'],
+    // env -C の行き先から npx の -c を判定する
+    [`env -C .claude npx -c 'rm -rf hooks'`, 'ask'],
+  ]) {
+    test(`[すり抜け] ${command} は ${expected}`, () => check(command, expected));
+  }
+
+  // package.json のスクリプトの本体の npx も読む。前の区切りの npm_config_call はスクリプトの中の npx と npm exec にも効く
+  for (const [command, expected] of [
+    ['npm run callNpx', 'deny'],
+    ['pnpm callNpx', 'deny'],
+    ['export npm_config_call=x; npm run viaNpx', 'ask'],
+    ['export npm_config_call=x; pnpm viaNpx', 'ask'],
+    ['export npm_config_call=x; npm run viaExec', 'ask'],
+    ['npm run viaNpx', 'allow'],
+  ]) {
+    test(`[完了条件] ${command} は ${expected}`, () => assert.equal(pm(command), expected, command));
+  }
+
+  // npm_config_call の設定の書き方（CDPATH と同じく、名前が語に出れば設定とみなす）
+  for (const command of [
+    'read npm_config_call; npx foo',
+    'printf -v npm_config_call x; npx foo',
+    'for npm_config_call in x; do npx foo; done',
+    ': ${npm_config_call:=x}; npx foo',
+    'f() { export npm_config_call=x; }; f; npx foo',
+    'if true; then export npm_config_call=x; fi; npx foo',
+    'export npm_config_call=x || npx foo',
+    'export npm_config_call=x && \\\nnpx foo',
+    'export npm_config_call=x; exec npx foo',
+    'export npm_config_call=x; xargs -I{} npx foo {}',
+    `export npm_config_call=x; npm exec -c 'npx foo'`,
+    'export npm_config_call=x; npx npx foo',
+  ]) {
+    test(`[完了条件] ${JSON.stringify(command)} は確認を挟む`, () => check(command, 'ask'));
+  }
+
+  // 以下は実装の欠陥（失敗する）。
+  // npx-cli.js（npm 11.20）は取り除いた短いフラグ -n を removedOpts に入れ、opts にもあるので次の語を値ごと消す。
+  // その後の -c は npm の --call として動く。実機: `npx -n foo -c 'echo HI2'` は
+  // 「npx: the --n argument has been removed.」の後に HI2 を出す。フックは -n を値を取らないフラグ（NPM_SHORT の n）と読み、
+  // foo を名前として -- を差し込むので、-c を foo の引数とみなして通す
+  for (const [command, expected] of [
+    [`npx -n foo -c 'wrangler deploy'`, 'deny'],
+    [`npx -n foo -c 'git push origin main'`, 'deny'],
+    [`npx -n foo -c "rm -rf .claude/hooks"`, 'ask'],
+  ]) {
+    test(`[欠陥] ${command} は ${expected}（npx は -n を値ごと消す）`, () => check(command, expected));
+  }
+
+  // npm の -m は --message（nopt の型は String だけ）。nopt は String の型のフラグの次の語が -x か --x で始まれば値に取らない
+  // （node_modules/nopt/lib/nopt-lib.js の isTypeDef(argType, StringType) の枝）。npx-cli.js も message を opts に持たないので、
+  // 次の -c を値に取らない。実機: `npx -m -c 'echo HI8'`、`npm exec -m -c 'echo HI13'`、`npx -s -m -c 'echo HI44'` はどれも HI を出す。
+  // フックは NPM_SHORT で m を値を取るフラグと読み、-c を --message の値として飛ばすので通す（npm exec にもある #355 からの欠陥）
+  for (const [command, expected] of [
+    [`npx -m -c 'wrangler deploy'`, 'deny'],
+    [`npm exec -m -c 'wrangler deploy'`, 'deny'],
+    [`npx -s -m -c 'git push origin main'`, 'deny'],
+    [`npx -m -c "rm -rf .claude/hooks"`, 'ask'],
+  ]) {
+    test(`[欠陥] ${command} は ${expected}（-m は -c を値に取らない）`, () => check(command, expected));
+  }
+});
