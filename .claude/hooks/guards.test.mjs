@@ -835,6 +835,9 @@ describe('bash-rules: 止める', () => {
     'git archive --output=.env HEAD',
     'gtar -cf .dev.vars /dev/null',
     'gfind . -fprint .dev.vars',
+    // g を外しても引数を実行しない道具でなければ、後ろの wrangler と WORKERS_CI を見る
+    'gfind . -maxdepth 0 -exec wrangler deploy \\;',
+    'gfind . -maxdepth 0 -exec env WORKERS_CI=1 node x \\;',
     'tar -xf /tmp/x.tar -C .dev.vars',
   ]) {
     test(command, () => assert.equal(decision(command), 'deny'));
@@ -2173,6 +2176,11 @@ describe('bash-rules: 通す', () => {
     'ruby -c .claude/hooks/x.rb',
     'ruby -r .claude/hooks/x y.rb',
     'php -c .claude/hooks/php.ini x.php',
+    // g を外した名前で、引数を実行しない道具の表を引く（wrangler と WORKERS_CI の判定も同じ）
+    'gls node_modules/.bin/wrangler docs',
+    'ggrep wrangler docs/development.md',
+    'gecho WORKERS_CI=1',
+    'ggrep WORKERS_CI=1 docs',
     // 本文に守る名前も wrangler も無い、連結した値と足したフラグ
     `perl -e'print 1'`,
     `php -r'echo 1;'`,

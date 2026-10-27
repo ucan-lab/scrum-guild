@@ -42,6 +42,8 @@ const NON_EXECUTING = new Set([
   // パスを扱うだけの道具（ワークツリーの .dev.vars のリンクを readlink .dev.vars で確かめる）
   'readlink', 'realpath', 'basename', 'dirname',
 ]);
+// 引数を実行しない道具か。Homebrew の g 付きの名前（gls、gecho）は、GNU_PREFIXED にあるものだけ g を外して引く
+const isNonExecuting = (tool) => NON_EXECUTING.has(GNU_PREFIXED.has(tool) ? tool.slice(1) : tool);
 // 依存の情報を見るだけのサブコマンド（npm view wrangler versions など）
 const PACKAGE_INFO = new Set([
   'view', 'info', 'show', 'why', 'list', 'ls', 'outdated', 'search', 'home', 'repo', 'docs', 'bugs', 'audit',
@@ -66,7 +68,7 @@ function findWrangler(words, ci) {
   const isTool = (word) => isWrangler(word) || isCfWrangler(word);
   if (isTool(words[ci])) return ci;
   const tool = baseName(words[ci]);
-  if (NON_EXECUTING.has(tool)) return -1;
+  if (isNonExecuting(tool)) return -1;
   if (tool in PACKAGE_CHANGES && PACKAGE_INFO.has(positionals(words.slice(ci + 1), PACKAGE_FLAGS_WITH_VALUE)[0])) return -1;
   for (let i = ci + 1; i < words.length; i++) {
     if (words[i - 1] === '-p' || words[i - 1] === '--package') continue;
@@ -591,7 +593,7 @@ function judgeSecretAccess(tool, args, words) {
   // 引数を実行しない道具以外は、引数のどれかに名前があれば止める（sqlite3 x.db '.output .dev.vars'、expect -c 'spawn cat .dev.vars'、
   // docker run --env-file .env x のように、表に無い道具の読み書きを列挙しきれないため）。pnpm test -- --grep .env のような止めすぎは人に任せる。
   // find は探すだけの形（find . -name .dev.vars）が多いので外し、-exec などと -fprint などの書き込み先（writesTo）で見る
-  if (!NON_EXECUTING.has(tool) && tool !== 'find' && args.some(mentionsSecret)) return true;
+  if (!isNonExecuting(tool) && tool !== 'find' && args.some(mentionsSecret)) return true;
   // 書き込み先（>）と、文書として流すヒアドキュメントの本文は args に入らないので、args は読み取りの引数として見てよい
   if (INTERPRETERS.has(tool)) return heredocBodies(args).some(mentionsSecret);
   if (SEARCHERS.has(tool)) {
@@ -788,7 +790,7 @@ const GNU_PREFIXED = new Set([
   'gcat', 'ghead', 'gtail', 'ggrep', 'gegrep', 'gfgrep', 'gawk', 'gsort', 'guniq', 'gwc', 'gcut', 'gtr', 'god', 'gbase64',
   'gtar', 'gfind', 'gpatch', 'gunlink',
   // 引数を実行しない道具（NON_EXECUTING）も g を外して引く
-  'greadlink', 'grealpath', 'gbasename', 'gdirname', 'gls', 'gstat',
+  'greadlink', 'grealpath', 'gbasename', 'gdirname', 'gls', 'gstat', 'gecho', 'gprintf',
 ]);
 const MULTI_ARG_WRITERS = new Set(['tee', 'rm', 'truncate', 'unlink', 'shred', 'srm', 'sponge', 'ed', 'ex', 'patch', 'touch']);
 // コピーの道具。宛先は writesTo が、元は judgeSecretAccess が見る
@@ -1077,7 +1079,7 @@ function setsWorkersCi(words, ci) {
   const tool = baseName(words[ci]);
   const args = words.slice(ci + 1);
   if (ENV_DECLARERS.has(tool)) return args.some((w) => /^WORKERS_CI(\+?=|$)/.test(w));
-  return !NON_EXECUTING.has(tool) && args.some((w) => WORKERS_CI_ASSIGN.test(w));
+  return !isNonExecuting(tool) && args.some((w) => WORKERS_CI_ASSIGN.test(w));
 }
 
 // 引数のスクリプトを動かす道具。テストが偽の wrangler で動くため、デプロイのスクリプトを渡すと本番の入口が動く
