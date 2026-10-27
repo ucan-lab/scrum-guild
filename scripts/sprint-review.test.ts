@@ -88,11 +88,18 @@ describe('check-criterion.py', () => {
     assert.ok(stderr.includes('- [ ] 見つけたことが最後にまとめて起票の候補として出る'), stderr);
   });
 
-  test('チェック済みと未チェックが1行ずつなら、未チェックの行に印を付ける', () => {
+  test('チェック済みを含めて2行以上に当たるなら、未チェックが1行でも断り、チェック済みの行も候補に並べる', () => {
+    // 前の条件に当てたつもりの打ち直しで、人が OK と言っていない別の条件に印を付けないため
     const both = ['- [x] 一覧が出る（本番）', '- [ ] 一覧が出る（手元）'].join('\n');
-    const { out, stdout } = ok(both, '一覧が出る');
-    assert.equal(out, ['- [x] 一覧が出る（本番）', '- [x] 一覧が出る（手元）'].join('\n'));
-    assert.match(stdout, /本文を書き換える\n$/);
+    const stderr = refused(both, '一覧が出る');
+    assert.ok(stderr.includes('- [x] 一覧が出る（本番）'), stderr);
+    assert.ok(stderr.includes('- [ ] 一覧が出る（手元）'), stderr);
+    // 1行に絞れる文字列なら付ける
+    assert.equal(
+      ok(both, '一覧が出る（手元）').out,
+      ['- [x] 一覧が出る（本番）', '- [x] 一覧が出る（手元）'].join('\n'),
+    );
+    assert.match(ok(both, '一覧が出る（本番）').stdout, /本文は変わらない\n$/);
   });
 
   test('フェンスのコードブロックの中の行は数えない', () => {
