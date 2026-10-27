@@ -211,7 +211,7 @@
       // 移る先を確定して移る。組織の枠のデータ（has_workspaces、所属するワークスペース）の読み直しは、移る動作に任せる
       // （先に読み直すと、読み直しが失敗したときに、作ったのに移らなくなる）
       await goto(resolve('/[slug]/w/[id]', { slug: targetSlug, id: result.data.workspace_id }), {
-        invalidateAll: true,
+        refreshAll: true,
       });
       // 移った先の見出しへフォーカスを置く（移った画面の題は、SvelteKit のルートの読み上げが伝える）
       await tick();

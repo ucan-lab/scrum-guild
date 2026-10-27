@@ -150,7 +150,7 @@
       if (self && (result.ok || result.status === 404 || result.status === 403)) {
         showToast(t('memberLeft', { workspaceName }), 'check');
         // 抜けたワークスペースには入れない。組織の枠の値（所属するワークスペース）も読み直す
-        await goto(leavesOrganization ? resolve('/') : resolve('/[slug]', { slug }), { invalidateAll: true });
+        await goto(leavesOrganization ? resolve('/') : resolve('/[slug]', { slug }), { refreshAll: true });
         return;
       }
       removed = result.ok;
