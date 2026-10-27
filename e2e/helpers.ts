@@ -338,7 +338,8 @@ async function measureLayout(
       );
       // 文中のリンク（WCAG 2.5.8 の例外）。Markdown の本文（.doc-box）の中のリンクと、inline のリンクのうち、文の入れ物
       // （p、li、dd、td、label）の中にあって、入れ物の自分以外の文字が 5 文字以上あるもの。「キー: x」のように前後に数文字しか
-      // 無い単独のリンクや、文の入れ物の外（div の直下など）のリンクは、文中と見ずに数える
+      // 無い単独のリンクや、文の入れ物の外（div の直下など）のリンクは、文中と見ずに数える。
+      // 数える文字は、自分を含めて入れ物の中のリンクとボタンの文字を除いたもの（リンクだけが並ぶ li を文と見ないため）
       const sentenceMinimum = 5;
       const inSentence = (element: Element): boolean => {
         if (!element.matches('a, [role="link"]')) return false;
@@ -346,8 +347,13 @@ async function measureLayout(
         if (getComputedStyle(element).display !== 'inline') return false;
         const container = element.parentElement?.closest('p, li, dd, td, label');
         if (container === null || container === undefined) return false;
-        const others = (container.textContent ?? '').replace(element.textContent ?? '', '').replace(/\s/g, '');
-        return [...others].length >= sentenceMinimum;
+        const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT);
+        let others = '';
+        for (let node = walker.nextNode(); node !== null; node = walker.nextNode()) {
+          if (node.parentElement?.closest('a, button, [role="link"], [role="button"]') === null)
+            others += node.textContent ?? '';
+        }
+        return [...others.replace(/\s/g, '')].length >= sentenceMinimum;
       };
       // 調べる箱。入力欄を包む label は、全体が押せる範囲なので label の箱にする（区切りのボタン .segmented の選択肢は、
       // 見えない input が既定の余白の分だけ label より小さく、中心もずれる）。折り返した inline の要素は、外接の箱の中心が

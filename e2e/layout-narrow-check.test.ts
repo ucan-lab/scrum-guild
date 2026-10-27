@@ -161,6 +161,15 @@ test('前後に数文字しかない小さな単独のリンク（「キー: x�
   expect((await findTargetSizeViolations(page)).map((violation) => violation.target)).toEqual(['a']);
 });
 
+test('リンクだけが並ぶ入れ物（li）のリンクは、隣のリンクの文字を文と見ずに数えて落とす', async ({ page }) => {
+  await page.setContent(`<!doctype html>
+<html lang="en">
+  <head><title>Links</title><style>body { margin: 0; padding: 40px; }</style></head>
+  <body><ul><li><a href="#a">ABC-1</a> <a href="#b">ABC-2</a></li></ul></body>
+</html>`);
+  expect(await findTargetSizeViolations(page)).toHaveLength(2);
+});
+
 test('押せる要素も文字を持つ要素も1つも数えなかった組み合わせがあれば、入口が落ちる', async ({ page }) => {
   // 画面が描けていないまま測ると、違反が0件で通ってしまう
   await page.setContent(
