@@ -3000,18 +3000,18 @@ describe('bash-rules: #313 を崩す（1周目）', () => {
   const from = (cwd, command) => judgeBash(command, { cwd, branchOf: () => 'x' })?.[0] ?? 'allow';
   const shown = (command) => command.replaceAll(main, '<根>').replaceAll(name, '<根の名前>');
 
-  // --- 落ちる（実装の欠陥） ---
+  // --- 直した穴 ---
 
   // BSD の find（macOS の /usr/bin/find）は起点の前に -E、-X、-d、-s、-x を取る（find [-H | -L | -P] [-EXdsx] [-f path] path ...）。
-  // 実装はこれらで起点の読み取りを止めて起点を . とみなすので、根の下から根の守る先と根を消す形が通る
+  // これらを飛ばして起点を読み、根の下から根の守る先と根を消す形を止める
   for (const command of ['find -E ../migrations -delete', 'find -x .. -delete', 'find -s ../.githooks -exec rm {} +']) {
     test(`根の下の src から ${command} は確認を挟む（BSD の find の起点の前のオプション）`, () => assert.equal(from(src, command), 'ask', command));
   }
-  // 同じ読み違いで、守る先でも根でもない起点を . とみなして止めすぎる（find build -delete は通すと決めた形）
+  // 起点を . と読み違えて、守る先でも根でもない起点で止めすぎない（find build -delete は通すと決めた形）
   test('find -x build -delete は通す（BSD の find の起点の前のオプション）', () => assert.deepEqual(literally('find -x build -delete'), ['allow', 'allow']));
 
   // GNU の find は起点の前の -- をオプションの終わりとして受け付ける（find -- a -name b -print は a/b を出す。findutils 4.9.0 で確かめた）。
-  // 実装は -- で起点の読み取りを止めて起点を . とみなすので、根の下から守る先を消す形が通り、守る先でない起点で止めすぎる
+  // -- の後ろを起点として読み、根の下から守る先を消す形を止め、守る先でない起点では止めない
   test('根の下の src から find -- ../.githooks -delete は確認を挟む', () => assert.equal(from(src, 'find -- ../.githooks -delete'), 'ask'));
   test('find -- build -delete は通す', () => assert.deepEqual(literally('find -- build -delete'), ['allow', 'allow']));
 
@@ -3021,23 +3021,23 @@ describe('bash-rules: #313 を崩す（1周目）', () => {
     test(`${command} は確認を挟む（-n を --no-dry-run で打ち消す）`, () => assert.deepEqual(literally(command), ['ask', 'ask'], command));
   }
   // git の --end-of-options は -- と同じくオプションの終わりで、後ろの -n はパス（git clean -f --end-of-options -n . は実際に消す。git 2.43.0）。
-  // Issue の「-- の後ろはパス」と同じ扱いになるべきところを、実装は -n を試し実行と読んで通す
+  // Issue の「-- の後ろはパス」と同じく扱い、後ろの -n を試し実行と読まない
   test('git clean -fx --end-of-options -n . は確認を挟む', () => assert.deepEqual(literally('git clean -fx --end-of-options -n .'), ['ask', 'ask']));
 
   // GNU の mv には --strip-program が無く、--strip と --st は --strip-trailing-slashes の一意な省略形（coreutils 9.4 の mv --strip d e は d を動かす）。
-  // 実装は cp と install の --strip-program の値として次の語を飛ばすので、動かす元の根を見落とす（--strip-trailing-slashes と書けば確認になる）
+  // cp と install の --strip-program の値として次の語を飛ばさず、動かす元の根を見る（--strip-trailing-slashes と書いたときと同じ）
   for (const command of [`mv --strip ${main} /tmp/x`, `mv --st ${main} /tmp/x`]) {
     test(`根の下の src から ${shown(command)} は確認を挟む（mv の --strip の省略形）`, () => assert.equal(from(src, command), 'ask', command));
   }
 
-  // {a,b} はシェルが展開してから渡す（glob ではなく、#293 の範囲でもない）。守る先の判定は {a,b} を展開する（mv .claude{,.bak} は確認になる）のに、
-  // 根と根の祖先の判定は展開しないので、rm -rf {.,build} が rm -rf . build と同じものとして見られない
+  // {a,b} はシェルが展開してから渡す（glob ではなく、#293 の範囲でもない）。守る先の判定（mv .claude{,.bak} は確認になる）と同じく、
+  // 根と根の祖先の判定も展開してから見て、rm -rf {.,build} を rm -rf . build と同じものとして見る
   test('rm -rf {.,build} は確認を挟む（{a,b} の展開の後の .）', () => assert.deepEqual(literally('rm -rf {.,build}'), ['ask', 'ask']));
   test('本体の根から rm -rf {<根>,x} は確認を挟む', () => assert.equal(from(main, `rm -rf {${main},x}`), 'ask'));
   test('根の下の src から find {..,build} -delete は確認を挟む', () => assert.equal(from(src, 'find {..,build} -delete'), 'ask'));
 
   // find の -exec の後ろの find は、起点のそれぞれに置き換えて掛け直すので、起点の数の入れ子の深さ乗だけ判定が増える。
-  // 300 文字に満たないコマンドで、9 秒かかった後に RangeError（Maximum call stack size exceeded）を投げる。judgeBash が例外を投げると
+  // 上限が無いと 300 文字に満たないコマンドで 9 秒かかり、RangeError（Maximum call stack size exceeded）を投げた。judgeBash が例外を投げると
   // フックはそのコマンドを判定できずに止まる。展開の大きい glob（上の describe）と同じく、1 秒以内に例外を投げずに決める
   test('起点の多い find の -exec を入れ子にしても、1 秒以内に例外を投げずに確認を挟む', () => {
     const starts = Array.from({ length: 11 }, (_, i) => `s${i}`).join(' ');
@@ -3169,11 +3169,11 @@ describe('bash-rules: #313 を崩す（2周目）', () => {
   const from = (cwd, command) => judgeBash(command, { cwd, branchOf: () => 'x' })?.[0] ?? 'allow';
   const shown = (command) => command.replaceAll(main, '<根>').replaceAll(parent, '<根の親>').replaceAll(name, '<根の名前>');
 
-  // --- 落ちる（実装の欠陥） ---
+  // --- 直した穴 ---
 
   // find の -execdir と -okdir は、見つけたファイルのあるディレクトリでコマンドを動かす（findutils 4.9.0 の find .claude/hooks -execdir pwd \; は .claude を出し、
   // find .claude/hooks -execdir rm -rf hooks \; は .claude/hooks を消す。find .githooks/pre-commit -execdir rm pre-push \; は .githooks/pre-push を消す）。
-  // 実装は掛け直すコマンドを find の作業場所のまま見るので、そのディレクトリから見た名前で守る先を消す形が通る
+  // 掛け直すコマンドをそのディレクトリで見て、そこから見た名前で守る先を消す形を止める
   for (const command of ['find .claude/hooks -execdir rm -rf hooks \\;', 'find .claude/hooks -okdir rm -rf hooks \\;', 'find .githooks -execdir rm pre-commit \\;']) {
     test(`${command} は確認を挟む（-execdir の作業場所）`, () => assert.deepEqual(literally(command), ['ask', 'ask'], command));
     test(`本体の根から ${command} は確認を挟む（-execdir の作業場所）`, () => assert.equal(from(main, command), 'ask', command));
@@ -3182,23 +3182,23 @@ describe('bash-rules: #313 を崩す（2周目）', () => {
   test('本体の根から find src/a -execdir rm -rf ../../<根の名前> \\; は確認を挟む（-execdir の作業場所）', () =>
     assert.equal(from(main, `find src/a -execdir rm -rf ../../${name} \\;`), 'ask'));
 
-  // 作業場所が分からないときの字面の判定は、/ と . と .. を正規化せずに見る。/. は /、~/. は ~、src/.. は . と同じ道で、
-  // find はその下を全部消す（findutils 4.9.0 の find f/g/. -delete は f/g の中身を消し、k の中の find l/.. -delete は k の中身を消す）。
-  // 作業場所が分かるときは解決して確認になり（find /. -delete、find src/.. -delete）、守る先の判定も path.posix.normalize で正規化する。
-  // 字面の判定だけが、Issue の「. と .. だけからなる語、/、~」と同じ道を取りこぼす
+  // /. は /、~/. は ~、src/.. は . と同じ道で、find はその下を全部消す
+  // （findutils 4.9.0 の find f/g/. -delete は f/g の中身を消し、k の中の find l/.. -delete は k の中身を消す）。
+  // 作業場所が分かるときの解決（find /. -delete、find src/.. -delete）と守る先の判定（path.posix.normalize）と同じく、
+  // 作業場所が分からないときの字面の判定も正規化してから、Issue の「. と .. だけからなる語、/、~」に当てる
   for (const command of ['find /. -delete', 'find /.. -delete', 'find ~/. -delete', 'find src/.. -delete', 'find ./src/.. -delete']) {
     test(`${command} は確認を挟む（字面の判定の正規化）`, () => assert.deepEqual(literally(command), ['ask', 'ask'], command));
   }
 
   // GNU の env -C（--chdir）は後ろのコマンドの作業場所を変える（coreutils 9.4 の env -C /tmp pwd は /tmp を出す）。
-  // 作業場所が分からないとき、cd .claude && rm -rf hooks は書かれた行き先をつないで確認になるのに、env -C .claude rm -rf hooks は
-  // 前と後の作業場所がどちらも null で「変わっていない」と読み、行き先をつながないので通す
+  // 作業場所が分からないときは、cd .claude && rm -rf hooks と同じく env -C .claude rm -rf hooks も書かれた行き先をつないで見る
+  // （前と後の作業場所がどちらも null でも、「変わっていない」と読まない）
   for (const command of ['env -C .claude rm -rf hooks', 'env --chdir=.claude find hooks -delete', 'env -C .claude/hooks rmdir ../hooks']) {
     test(`${command} は確認を挟む（作業場所が分からないときの env -C）`, () => assert.deepEqual(literally(command), ['ask', 'ask'], command));
   }
 
-  // MAX_FIND_COMMANDS は掛け直すコマンドの数だけを数え、1 つずつの重さを数えない。cp x{1..256}* … . は 1 つなら十数 ms で決まるのに、
-  // 起点を 256 並べると 600 文字に満たないコマンドで 3 秒を超える（1周目の入れ子の find と同じく、1 秒以内に決める）
+  // 掛け直すコマンドの数だけでなく、1 つずつの重さも上限に数える。cp x{1..256}* … . は 1 つなら十数 ms で決まるが、
+  // 数だけで切ると起点を 256 並べた 600 文字に満たないコマンドで 3 秒を超えた（1周目の入れ子の find と同じく、1 秒以内に決める）
   test('起点の多い find の -exec の後ろが重いコマンドでも、1 秒以内に決める', () => {
     const command = `find ${'a '.repeat(256)}-exec cp ${'x{1..256}* '.repeat(5)}. \\;`;
     const started = Date.now();
@@ -3206,7 +3206,7 @@ describe('bash-rules: #313 を崩す（2周目）', () => {
     assert.ok(Date.now() - started < 1000, `${Date.now() - started}ms かかった`);
   });
 
-  // 止めすぎ: mv -t の位置引数を、値を取る -S（--suffix）の値ごと元として見る（-t の無い mv -b -S '~' build /tmp/x は通る）。
+  // 止めすぎない: mv -t の位置引数から、値を取る -S（--suffix）の値を除いて元を見る（-t の無い mv -b -S '~' build /tmp/x と同じ）。
   // '~' は GNU の既定のバックアップの接尾辞で、引用符の中なのでホームにもならない
   test("mv -S '~' -t /tmp/x build は通す（-t のときの -S の値）", () => assert.deepEqual(literally("mv -S '~' -t /tmp/x build"), ['allow', 'allow']));
 
@@ -3369,42 +3369,41 @@ describe('bash-rules: #313 を崩す（3周目）', () => {
   const from = (cwd, command) => judgeBash(command, { cwd, branchOf: () => 'x' })?.[0] ?? 'allow';
   const shown = (command) => command.replaceAll(main, '<根>').replaceAll(name, '<根の名前>').replaceAll(name.toUpperCase(), '<根の名前の大文字>');
 
-  // --- 落ちる（実装の欠陥） ---
+  // --- 直した穴 ---
 
   // -execdir は、見つけたファイルのそれぞれについて、そのファイルのあるディレクトリでコマンドを動かす。起点の下の深いファイルは起点ではなく
   // そのファイルの親で動く（findutils 4.9.0 の find . -execdir pwd \; は ./.claude、./.claude/hooks、./.githooks も出し、
-  // find . -execdir rm -f pre-commit \; は .githooks/pre-commit を消した）。実装は「起点の中のファイルは起点で動く」として起点の親と起点しか見ないので、
-  // 起点が守る先の祖先（. や根）のとき、守る先の中の名前で消す形が通る
+  // find . -execdir rm -f pre-commit \; は .githooks/pre-commit を消した）。起点の親と起点だけでなく起点の下の守る先のディレクトリも見て、
+  // 起点が守る先の祖先（. や根）のとき、守る先の中の名前で消す形を止める
   for (const command of ['find . -execdir rm pre-commit \\;', 'find . -execdir rm -rf hooks \\;', 'find -execdir rmdir hooks \\;']) {
     test(`${command} は確認を挟む（-execdir は起点の下のディレクトリでも動く）`, () => assert.deepEqual(literally(command), ['ask', 'ask'], command));
     test(`本体の根から ${command} は確認を挟む（-execdir は起点の下のディレクトリでも動く）`, () => assert.equal(from(main, command), 'ask', command));
   }
 
   // {a,b} はシェルが展開してから find に渡す（bash の find {x,.claude/settings.json} -maxdepth 0 -execdir pwd \; は . と .claude を出し、
-  // -execdir rmdir hooks \; は .claude/hooks を消した）。実装は展開する前の語に path.posix.dirname を掛けるので、作業場所が {x,.claude になり、
-  // .claude の中で動くことを見落とす（{} の無い find .claude/settings.json -execdir rmdir hooks \; は確認になる）
+  // -execdir rmdir hooks \; は .claude/hooks を消した）。展開した後の語に path.posix.dirname を掛け（展開の前に掛けると作業場所が {x,.claude になる）、
+  // {} の無い find .claude/settings.json -execdir rmdir hooks \; と同じく .claude の中で動くことを見る
   for (const command of ['find {x,.claude/settings.json} -execdir rmdir hooks \\;', 'find {.claude/settings.json,x} -execdir rm -rf hooks \\;']) {
     test(`${command} は確認を挟む（-execdir の起点の {a,b}）`, () => assert.deepEqual(literally(command), ['ask', 'ask'], command));
     test(`本体の根から ${command} は確認を挟む（-execdir の起点の {a,b}）`, () => assert.equal(from(main, command), 'ask', command));
   }
 
   // pnpm の -C と --dir は、pnpm exec の作業場所を変える（pnpm 12.12.0 の pnpm -C .claude exec pwd と pnpm -C .claude exec -c pwd は .claude を出す）。
-  // 作業場所が分からないとき、2周目で直した env -C と同じく、前と後の作業場所がどちらも null で「変わっていない」と読み、書かれた行き先をつながないので通す
+  // 作業場所が分からないときは、2周目の env -C と同じく書かれた行き先をつないで見る（前と後の作業場所がどちらも null でも、「変わっていない」と読まない）
   for (const command of ['pnpm -C .claude exec rm -rf hooks', 'pnpm --dir .claude exec find hooks -delete', "pnpm -C .claude exec -c 'rm -rf hooks'"]) {
     test(`${command} は確認を挟む（作業場所が分からないときの pnpm -C）`, () => assert.deepEqual(literally(command), ['ask', 'ask'], command));
   }
 
   // env -C の値が絶対パスなら、前の作業場所が分からなくても行き先は決まる（coreutils 9.4 の env -C /tmp pwd は /tmp を出す）。
-  // cd は「絶対パスの行き先は、前の作業場所が判定できなくても解決し直せる」（nextDir）とし、-execdir の movedTo も絶対パスをそのまま行き先にするのに、
-  // dirAfterEnv は前の作業場所（dir）と書かれた行き先（place）が null なら絶対パスの値でも null のままにするので、popd や eval の後の env -C で守る先を消す形が通る
-  // （popd; cd /repo/.claude && rm -rf hooks は確認になる）
+  // cd（nextDir）と -execdir（movedTo）と同じく、dirAfterEnv も前の作業場所（dir）と書かれた行き先（place）が null のまま絶対パスの値を行き先にし、
+  // popd や eval の後の env -C で守る先を消す形を止める（popd; cd /repo/.claude && rm -rf hooks と同じ）
   for (const command of ['popd; env -C /repo/.claude rm -rf hooks', 'eval true; env --chdir=/repo/.claude find hooks -delete']) {
     test(`${command} は確認を挟む（作業場所が分からない後の env -C の絶対パス）`, () => assert.deepEqual(literally(command), ['ask', 'ask'], command));
   }
   test('本体の根から popd; env -C <根>/.claude rm -rf hooks は確認を挟む', () => assert.equal(from(main, `popd; env -C ${main}/.claude rm -rf hooks`), 'ask'));
 
-  // 掛け直すコマンドの重さ（MAX_FIND_WEIGHT）は、-exec の後ろの語の {a,b} の展開を数えるのに、{} に入る起点の語の展開を数えない。
-  // x{1..256}* を起点に 32 並べ、-exec cp の後ろに {} を 30 並べると、重さは 32 × 32 で上限の 8192 に収まり、500 文字に満たないコマンドで 1 秒を超える
+  // 掛け直すコマンドの重さ（MAX_FIND_WEIGHT）は、-exec の後ろの語の {a,b} の展開に加え、{} に入る起点の語の展開も数える。
+  // 起点の展開を数えないと、x{1..256}* を起点に 32 並べ -exec cp の後ろに {} を 30 並べた 500 文字に満たないコマンドが上限に収まり、1 秒を超えた
   // （起点を 1 つにすれば十数 ms、-exec の後ろに x{1..256}* を書けば重さで止まる）
   test('find の起点が重い glob でも、-exec で {} に入れて掛け直すのを 1 秒以内に決める', () => {
     const command = `find ${'x{1..256}* '.repeat(32)}-exec cp ${'{} '.repeat(30)}. \\;`;
@@ -3413,14 +3412,14 @@ describe('bash-rules: #313 を崩す（3周目）', () => {
     assert.ok(Date.now() - started < 1000, `${Date.now() - started}ms かかった`);
   });
 
-  // 止めすぎ: 字面の判定は path.posix.normalize の後で ~ に当てるので、./~ を ~ と読む。シェルのチルダの展開は語の先頭の ~ だけで、
-  // ./~ は作業場所の ~ という名前のファイル（誤って作った ~ を消す定番の書き方）。作業場所が分かるときは解決して通すのに、字面だけが止める
+  // 止めすぎない: 字面の判定は、語の先頭が ~ のときだけ ~ をホームと読む（path.posix.normalize の後の ./~ を ~ と読まない）。シェルのチルダの展開は語の先頭の ~ だけで、
+  // ./~ は作業場所の ~ という名前のファイル（誤って作った ~ を消す定番の書き方）。作業場所が分かるときの解決と同じく通す
   for (const command of ['rm -rf ./~', 'mv ./~ /tmp/x']) {
     test(`${command} は通す（./~ はホームではない）`, () => assert.deepEqual(literally(command), ['allow', 'allow'], command));
   }
 
   // APFS は大文字小文字を区別しない（守る先とシークレットと wrangler の設定の判定は、この理由で i を付けて照合する）。macOS の手元では
-  // cd .. && rm -rf <根の名前の大文字> は根を消すのに、根と根の祖先の判定は大文字小文字を区別して比べるので通す
+  // cd .. && rm -rf <根の名前の大文字> は根を消すので、根と根の祖先の判定も大文字小文字を区別せずに比べる
   test('本体の根から cd .. && rm -rf <根の名前の大文字> は確認を挟む（APFS）', () =>
     assert.equal(from(main, `cd .. && rm -rf ${name.toUpperCase()}`), 'ask', shown(`cd .. && rm -rf ${name.toUpperCase()}`)));
 
@@ -3481,6 +3480,61 @@ describe('bash-rules: #313 を崩す（3周目）', () => {
   for (const command of ['find worktrees/x -execdir rm -rf {} +', "find . -name x -execdir cat {} \\;"]) {
     test(`本体の根から ${command} は通す（崩す 3 周目）`, () => assert.equal(from(main, command), 'allow', command));
   }
+});
+
+describe('bash-rules: #313 のレビューで直した穴', () => {
+  const main = realpathSync(mkdtempSync(path.join(os.tmpdir(), 'guard-review-')));
+  mkdirSync(path.join(main, 'scripts'), { recursive: true });
+  writeFileSync(path.join(main, 'scripts', 'deploy-production.ts'), '');
+  after(() => rmSync(main, { recursive: true, force: true }));
+  const from = (cwd, command) => judgeBash(command, { cwd, branchOf: () => 'x' })?.[0] ?? 'allow';
+
+  // ホームを引けない（HOME が無く passwd にも無い）と os.homedir() は投げる。~ で始まる語は判定できないものとして確認を挟み、例外で止めない
+  test('ホームを引けないとき、~ で始まる語の削除は例外を投げずに確認を挟む', () => {
+    const original = os.homedir;
+    os.homedir = () => {
+      throw new Error('no home');
+    };
+    try {
+      for (const command of ['rm -rf ~', 'rm -rf ~/x', 'mv ~/x /tmp/y', 'find ~/x -delete']) {
+        assert.doesNotThrow(() => from(main, command), command);
+        assert.equal(from(main, command), 'ask', command);
+      }
+    } finally {
+      os.homedir = original;
+    }
+  });
+
+  // 根がホームの外にあっても（HOME=/root、根=/home/user/x）、ホームそのものと / は字面の判定と同じく確認を挟む
+  test('根がホームの外にあっても、ホームそのものと / の削除は確認を挟む', () => {
+    const original = process.env.HOME;
+    const home = mkdtempSync(path.join(os.tmpdir(), 'guard-home-'));
+    process.env.HOME = home;
+    try {
+      for (const command of ['rm -rf ~', 'rm -rf ~/', 'rm -rf ~/.', `rm -rf ${home}`, 'mv ~ /tmp/x', 'rm -rf /', 'find / -delete']) {
+        assert.equal(from(main, command), 'ask', command);
+      }
+      assert.equal(from(main, 'rm -rf ~/x'), 'allow');
+    } finally {
+      process.env.HOME = original;
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
+
+  // mv の値を取る短いオプションは -S だけ（-g、-m、-o は install のもの）。mv -g . /tmp/x の . は値ではなく元
+  for (const command of ['mv -g . /tmp/x', 'mv -m .. /tmp/x', 'mv -o . /tmp/x', 'mv -g -t /tmp .']) {
+    test(`${command} は確認を挟む（mv の短いオプション）`, () => assert.deepEqual(literally(command), ['ask', 'ask'], command));
+  }
+  test("mv -S '~' build /tmp/x は通す（-S は値を取る）", () => assert.deepEqual(literally("mv -S '~' build /tmp/x"), ['allow', 'allow']));
+
+  // -execdir の起点の {a,b} の展開が多いと、展開ごとに起点が守る先を含みうるかを見るので重い。展開の数で先に見積もって決める
+  test('-execdir の起点の {a,b} の展開が多くても、1 秒以内に確認を挟む', () => {
+    const command = `find ${'x{1..256} '.repeat(200)}-execdir rm {} \\;`;
+    const started = Date.now();
+    const decided = from(main, command);
+    assert.equal(decided, 'ask');
+    assert.ok(Date.now() - started < 1000, `${Date.now() - started}ms かかった`);
+  });
 });
 
 describe('bash-rules: 展開の大きい glob', () => {

@@ -857,31 +857,34 @@ const TARGET_DIRECTORY_TOOLS = new Set(['cp', 'mv', 'ln', 'install']);
 const SHORT_FLAGS_WITH_VALUE = 'Smgo';
 // 値を取る長いオプション。GNU は一意な省略形（--suf）も受け付ける
 const LONG_FLAGS_WITH_VALUE = ['suffix', 'mode', 'owner', 'group', 'strip-program', 'sparse', 'no-preserve'];
-// mv が値を取る長いオプションは --suffix だけ。--strip と --st は --strip-trailing-slashes の省略形で値を取らない（coreutils 9.4 で確かめた）
-const MV_LONG_FLAGS_WITH_VALUE = ['suffix'];
-const longFlagsWithValue = (tool) => (tool === 'mv' ? MV_LONG_FLAGS_WITH_VALUE : LONG_FLAGS_WITH_VALUE);
+// 値を取るオプションの表 { long, short }。cp、ln、install は共通の表で読む
+const COPY_FLAGS_WITH_VALUE = { long: LONG_FLAGS_WITH_VALUE, short: SHORT_FLAGS_WITH_VALUE };
+// mv が値を取るのは --suffix と -S だけ（-t は targetDirectoryOf が読む）。--strip と --st は --strip-trailing-slashes の省略形で値を取らず
+// （coreutils 9.4 で確かめた）、-m、-g、-o は install のもの（mv -g . /tmp/x の . は元）
+const MV_FLAGS_WITH_VALUE = { long: ['suffix'], short: 'S' };
+const flagsWithValueOf = (tool) => (tool === 'mv' ? MV_FLAGS_WITH_VALUE : COPY_FLAGS_WITH_VALUE);
 const FIND_ACTIONS = new Set(['-delete', '-exec', '-execdir', '-ok', '-okdir']);
 const TOUCH_FLAGS_WITH_VALUE = new Set(['-r', '-d', '-t', '--reference', '--date']);
 // find の書き込み先を値に取るアクション（-fprintf は値の次に書式を取る）
 const FIND_OUTPUTS = new Set(['-fprint', '-fprint0', '-fprintf', '-fls']);
 
 // 値を取るオプション（targetDirectoryOf と同じ表）の値を除いた位置引数。install x .claude/hooks/y -m 600 の 600 は -m の値で、宛先は y。
-// -- の後ろは全部が位置引数。longFlags は道具ごとの値を取る長いオプション（longFlagsWithValue）
-function copyOperands(args, longFlags = LONG_FLAGS_WITH_VALUE) {
+// -- の後ろは全部が位置引数。flags は道具ごとの値を取るオプションの表（flagsWithValueOf）
+function copyOperands(args, flags = COPY_FLAGS_WITH_VALUE) {
   const result = [];
   for (let i = 0; i < args.length; i++) {
     const a = args[i];
     if (a === '--') return [...result, ...args.slice(i + 1)];
     const long = /^--([a-z-]+)(=[\s\S]*)?$/.exec(a);
     if (long) {
-      if (long[2] === undefined && longFlags.some((full) => abbreviates(long[1], full))) i++;
+      if (long[2] === undefined && flags.long.some((full) => abbreviates(long[1], full))) i++;
       continue;
     }
     if (!/^-[^-<>]/.test(a)) {
       result.push(a);
       continue;
     }
-    const at = [...a].findIndex((c, k) => k > 0 && SHORT_FLAGS_WITH_VALUE.includes(c));
+    const at = [...a].findIndex((c, k) => k > 0 && flags.short.includes(c));
     if (at === a.length - 1) i++;
   }
   return result;
@@ -926,7 +929,7 @@ function tarOperands(args) {
 // -t DIR、-tDIR、-vt DIR、--target-directory DIR、--target-directory=DIR（GNU は長いオプションを一意な省略形でも受け付ける）の宛先。
 // { dir, valueAt, at } の valueAt は、値が独立した語のときのその位置（連結の形は -1）、at は値を含む語の位置。無ければ null。
 // 他の値を取るフラグ（-S -t /tmp/x の -t、--suffix -- の --）の次の語は、その値であってオプションではないので飛ばす
-function targetDirectoryOf(args, longFlags = LONG_FLAGS_WITH_VALUE) {
+function targetDirectoryOf(args, flags = COPY_FLAGS_WITH_VALUE) {
   for (let i = 0; i < args.length; i++) {
     const a = args[i];
     if (a === '--') return null;
@@ -935,12 +938,12 @@ function targetDirectoryOf(args, longFlags = LONG_FLAGS_WITH_VALUE) {
       if (abbreviates(long[1], 'target-directory')) {
         return long[2] === undefined ? (args[i + 1] === undefined ? null : { dir: args[i + 1], valueAt: i + 1, at: i + 1 }) : { dir: long[3], valueAt: -1, at: i };
       }
-      if (long[2] === undefined && longFlags.some((full) => abbreviates(long[1], full))) i++;
+      if (long[2] === undefined && flags.long.some((full) => abbreviates(long[1], full))) i++;
       continue;
     }
     if (!/^-[^-<>]/.test(a)) continue;
     for (let k = 1; k < a.length; k++) {
-      if (SHORT_FLAGS_WITH_VALUE.includes(a[k])) {
+      if (flags.short.includes(a[k])) {
         if (k + 1 === a.length) i++;
         break;
       }
@@ -978,7 +981,7 @@ function writesTo(matches, tool, args, words, { anyOperand = false, intoDirector
   if (tool === 'touch') return positionals(args, TOUCH_FLAGS_WITH_VALUE).some(matches);
   if (MULTI_ARG_WRITERS.has(tool)) return pos.some(matches);
   if (COPY_TOOLS.has(tool)) {
-    const target = TARGET_DIRECTORY_TOOLS.has(tool) ? targetDirectoryOf(args, longFlagsWithValue(tool)) : null;
+    const target = TARGET_DIRECTORY_TOOLS.has(tool) ? targetDirectoryOf(args, flagsWithValueOf(tool)) : null;
     if (target) {
       // -t のときの宛先は target のディレクトリで、位置引数は全部が元。
       // 読み違えても取りこぼさないよう、この後の「最後の位置引数を宛先として見る」判定も残し、どちらかに当たれば止める
@@ -992,7 +995,7 @@ function writesTo(matches, tool, args, words, { anyOperand = false, intoDirector
       }
     }
     const anyDestination = anyOperand || (intoDirectory?.anyInstallOperand === true && tool === 'install');
-    if (anyDestination ? pos.some(matches) : matches(pos.at(-1) ?? '') || matches(copyOperands(args, longFlagsWithValue(tool)).at(-1) ?? '')) return true;
+    if (anyDestination ? pos.some(matches) : matches(pos.at(-1) ?? '') || matches(copyOperands(args, flagsWithValueOf(tool)).at(-1) ?? '')) return true;
     // 守る先は、最後の位置引数が展開で決まる（cp /tmp/settings.json "$D"）ときも -t と同じに見る
     const last = positionalIndexes(args).at(-1);
     if (intoDirectory?.unresolvedDestination && pos.length >= 2 && isUnresolved(args, last)) {
@@ -1144,13 +1147,13 @@ function removedPaths(tool, args) {
   if (GNU_PREFIXED.has(tool)) tool = tool.slice(1);
   if (tool === 'rm' || tool === 'rmdir') return positionals(args);
   if (tool === 'mv') {
-    const target = targetDirectoryOf(args, MV_LONG_FLAGS_WITH_VALUE);
-    if (!target) return copyOperands(args, MV_LONG_FLAGS_WITH_VALUE).slice(0, -1);
+    const target = targetDirectoryOf(args, MV_FLAGS_WITH_VALUE);
+    if (!target) return copyOperands(args, MV_FLAGS_WITH_VALUE).slice(0, -1);
     // -t のときは位置引数の全部が元。-t の値の語（連結の形は -t を含む語ごと）を外し、-S などの値も除く（mv -S '~' -t /tmp/x build の ~）
     const flagWord = target.valueAt === -1 ? target.at : -1;
     return copyOperands(
       args.filter((_, j) => j !== target.valueAt && j !== flagWord),
-      MV_LONG_FLAGS_WITH_VALUE,
+      MV_FLAGS_WITH_VALUE,
     );
   }
   if (tool === 'find' && args.includes('-delete')) return findStartingPoints(args);
@@ -1163,7 +1166,16 @@ function removedPaths(tool, args) {
 function removesRoot(word, dir, roots) {
   if (roots.length > 0 && (dir || /^[/~]/.test(word))) {
     if (/^~(?!\/|$)/.test(word)) return false;
-    const absolute = word.startsWith('~') ? path.join(os.homedir(), word.slice(1)) : path.resolve(dir ?? '/', word);
+    // HOME が無く passwd にも無いと os.homedir() は投げる。ホームを引けない ~ は判定できないので当たるものとする
+    let home = null;
+    try {
+      home = path.resolve(os.homedir());
+    } catch {
+      if (word.startsWith('~')) return true;
+    }
+    const absolute = word.startsWith('~') ? path.resolve(path.join(home, word.slice(1))) : path.resolve(dir ?? '/', word);
+    // ホームそのものと / は、字面の判定と同じく根との関係を問わず当たる（根がホームの外にあっても rm -rf ~ は止める）
+    if (absolute === '/' || absolute === home) return true;
     // APFS は大文字小文字を区別しないので、小文字にそろえて比べる（守る先と同じ）
     return roots.some((root) => {
       const inside = path.relative(absolute.toLowerCase(), root.toLowerCase());
@@ -1225,6 +1237,10 @@ function findCommands(args, holdsProtected) {
   const count = execs.length * starts.length;
   if (count > MAX_FIND_COMMANDS) return { count, weight: Infinity, build: () => [] };
   const size = (word) => Math.min(expansionSize(word), MAX_BRACE_EXPANSION + 1);
+  // -execdir 系は起点の展開ごとに守る先を含みうるかを見るので重い。重さの下限（展開ごとに作業場所 2 つ × 語の数）を先に見積もり、
+  // 上限を超えるなら組み合わせを作らずに打ち切る
+  const leastWeight = execs.reduce((sum, { at, inDir }) => sum + (inDir ? starts.reduce((s, start) => s + size(start), 0) * 2 * at.length : 0), 0);
+  if (leastWeight > MAX_FIND_WEIGHT) return { count, weight: Infinity, build: () => [] };
   // 掛け直す組み合わせ。{ at, placed, tos } の placed は {} に入れる語、tos は作業場所の候補
   const plans = execs.flatMap(({ at, inDir }) =>
     starts.flatMap((start) => {
