@@ -38,6 +38,8 @@ export type BacklogDndOptions = {
   enabled: () => boolean;
   // 落とせる場所に落とした
   onDrop: (drop: Drop) => void;
+  // 落とせる場所に落としたが、つかんでいる間に木が読み直されていたので取りやめた
+  onStale: () => void;
 };
 
 const OPERATIONS = { 'reorder-before': 'before', 'reorder-after': 'after', combine: 'into' } as const;
@@ -106,7 +108,9 @@ export class BacklogDnd {
     const stale = this.#grabbed !== this.#generation;
     this.item = null;
     this.mark = null;
-    if (drop !== null && !stale) this.#options.onDrop(drop);
+    if (drop === null) return;
+    if (stale) this.#options.onStale();
+    else this.#options.onDrop(drop);
   }
 
   // つまみ（.grip）。つかんだ間は、行全体を見た目の影にする

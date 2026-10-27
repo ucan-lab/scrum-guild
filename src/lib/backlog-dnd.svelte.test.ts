@@ -14,8 +14,9 @@ const drop = resolveDrop(index, { kind: 'task', id: 't3' }, { kind: 'story', id:
 
 function setup() {
   const onDrop = vi.fn();
-  const dnd = new BacklogDnd({ index: () => index, enabled: () => true, onDrop });
-  return { dnd, onDrop };
+  const onStale = vi.fn();
+  const dnd = new BacklogDnd({ index: () => index, enabled: () => true, onDrop, onStale });
+  return { dnd, onDrop, onStale };
 }
 
 describe('BacklogDnd のドラッグの取りやめ', () => {
@@ -31,8 +32,8 @@ describe('BacklogDnd のドラッグの取りやめ', () => {
     expect(dnd.mark).toBeNull();
   });
 
-  test('つかんでいる間に木が読み直されたら（reset）、そのドラッグは取りやめ、離しても onDrop を呼ばない', () => {
-    const { dnd, onDrop } = setup();
+  test('つかんでいる間に木が読み直されたら（reset）、そのドラッグは取りやめ、離しても onDrop を呼ばず、取りやめを知らせる', () => {
+    const { dnd, onDrop, onStale } = setup();
     dnd.grab({ kind: 'task', id: 't3' });
     dnd.hover(drop);
     dnd.reset();
@@ -44,6 +45,15 @@ describe('BacklogDnd のドラッグの取りやめ', () => {
     expect(dnd.mark).toBeNull();
     dnd.release(drop);
     expect(onDrop).not.toHaveBeenCalled();
+    expect(onStale).toHaveBeenCalledTimes(1);
+  });
+
+  test('読み直しの後に落とせない場所で離したときは、取りやめを知らせない', () => {
+    const { dnd, onStale } = setup();
+    dnd.grab({ kind: 'task', id: 't3' });
+    dnd.reset();
+    dnd.release(null);
+    expect(onStale).not.toHaveBeenCalled();
   });
 
   test('読み直しの後につかみ直したドラッグは、通常どおり落とせる', () => {

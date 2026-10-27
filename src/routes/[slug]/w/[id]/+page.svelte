@@ -194,6 +194,7 @@
     index: () => dropIndex,
     enabled: () => canWrite,
     onDrop: (drop) => (drop.move.kind === 'task' ? dropTask(drop.move) : dropStory(drop.move)),
+    onStale: () => showToast(t('moveReloaded'), 'alert'),
   });
   // 木の行へ渡す。書き込めないときは渡さず、つまみも落とし先も出さない
   const rowDnd = $derived(canWrite ? dnd : undefined);
