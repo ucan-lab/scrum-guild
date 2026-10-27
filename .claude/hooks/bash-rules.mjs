@@ -4,7 +4,7 @@
 // 道具の名前が展開で決まるコマンド、env -S、読むだけの道具以外の xargs、wrangler の設定の書き換えと wrangler dev の -c、
 // インタープリタの本文の中の wrangler と守る先の名前、展開を含む package.json のスクリプトの引数、
 // 場所か package.json を判定できないパッケージマネージャーのスクリプトの実行、npm が知らないコマンド、展開で決まるスクリプトの名前、
-// 表に無いフラグの読み方が多すぎるコマンドでは人の確認を挟む（docs/development.md の「Claude の設定とフック」）。
+// 表に無いフラグの読み方が多すぎるコマンド、読めない短いフラグのまとめでは人の確認を挟む（docs/development.md の「Claude の設定とフック」）。
 // permissions.deny の前方一致では npx wrangler や pnpm exec wrangler の言い換えを取りこぼすので、語に分けて判定する。
 // 踏み線であって守りの本体ではない。変数の中身と、パイプで sh に流す中身は見えない。
 import { existsSync, statSync } from 'node:fs';
@@ -71,7 +71,10 @@ function findWrangler(words, ci) {
   if (isTool(words[ci])) return ci;
   const tool = baseName(words[ci]);
   if (isNonExecuting(tool)) return -1;
-  if (Object.hasOwn(PACKAGE_MANAGERS, tool) && PACKAGE_INFO.has(positionals(words.slice(ci + 1), PACKAGE_FLAGS_WITH_VALUE)[0])) return -1;
+  // 依存の情報を見るだけのサブコマンドの後ろの wrangler は実行ではない。corepack の後ろの道具も同じに見る（corepack npm view wrangler）
+  const corepack = tool === 'corepack' ? 1 : 0;
+  const manager = managerOf(corepack ? (words[ci + 1] ?? '') : words[ci]);
+  if (manager && PACKAGE_INFO.has(positionals(words.slice(ci + 1 + corepack), PACKAGE_FLAGS_WITH_VALUE)[0])) return -1;
   for (let i = ci + 1; i < words.length; i++) {
     if (words[i - 1] === '-p' || words[i - 1] === '--package') continue;
     if (isTool(words[i])) return i;
@@ -471,7 +474,7 @@ function judgeHttpClient(tool, args) {
   return judgeGitHubWrite(args, method);
 }
 
-// 値を取るフラグ。場所を変えるフラグ（PACKAGE_MANAGERS の dirFlags）は道具ごとに先に読み、ほかの道具のものはここで値を飛ばす
+// 値を取るフラグ。findWrangler が依存の情報を見るサブコマンドを探すときに使う。スクリプトの読み取りは道具ごとの表（PACKAGE_MANAGERS の flags）で読む
 const PACKAGE_FLAGS_WITH_VALUE = new Set(['-C', '--dir', '--filter', '-F', '--prefix', '--cwd', '--workspace']);
 const DEPLOY_SCRIPT = /(^|[:_-])deploy([:_-]|$)/;
 
@@ -482,6 +485,8 @@ const UNKNOWN_PACKAGE_REASON =
 const NAME_EXPANDS_REASON = 'スクリプトやコマンドの名前を変数、$(...)、glob で渡すと、何を実行するかを判定できない。人が確かめる';
 const NPM_UNKNOWN_REASON = 'npm のコマンドの表（cmd-list の deref）で引けない名前は、版が上がって増えたコマンドかもしれず、何を実行するかを判定できない。人が確かめる';
 const MANY_READINGS_REASON = '表に無いフラグの次の語を値とも名前とも読むと、読み方が 8 通りを超え、どのスクリプトを走らせるかを判定しきれない。人が確かめる';
+const UNREADABLE_FLAG_REASON =
+  '短いフラグのまとめ（npm -Cls、pnpm -xC）の中の、場所かシェルの文字列を取るフラグを道具がどう読むかを判定できない。人が確かめる';
 const DEEP_REASON = 'コマンドの入れ子が深く、判定しきれない';
 
 // 組み込みのコマンドの名前から正規の名前を引く表。plain は別名の無いコマンド、aliased は { 正規の名前: '別名 …' }
@@ -553,71 +558,166 @@ function derefNpm(word) {
   return found;
 }
 
-// 道具ごとの読み方。commandOf は組み込みのコマンドの正規の名前（無ければ undefined）、dirFlags は package.json を探す場所を変えるフラグ
-// （-C は -Csub の連結の形も。pnpm の --prefix は 12.12 で効くことを確かめた）、dirAnywhere は名前より後ろの場所のフラグも読むか
-// （npm だけ。pnpm、yarn、bun は名前より後ろのフラグをスクリプトに渡す）、exec は後ろを経由先のコマンドとして動かすコマンド、
-// shell は後ろの文字列をシェルで動かすコマンド、changes は依存を変えるコマンド、flagsWithValue は道具だけが値を取るフラグ。
-// runsMissing は組み込みにもスクリプトにも無い名前を PATH のコマンドとして動かすか、unknownAsks は組み込みに無い名前を確認に回すか
-// （npm は無い名前を実行せずにエラーにする）、lifecycle は install などがライフサイクルのスクリプトを走らせるか（yarn は扱わない）
+// npm 11.20.0 の @npmcli/config の設定の名前のうち c と p で始まるもの（2026-10-27）。nopt は長いフラグを、設定の名前の一意な前置きでも引く
+// （--prefi は --prefix、--cal は --call。--ca は ca の設定そのもの、--pre は prefer-online などとも当たるので前置きにならない）
+const NPM_CONFIG_NAMES_CP = [
+  'ca', 'cache', 'cache-max', 'cache-min', 'cafile', 'call', 'cert', 'cidr', 'color', 'commit-hooks', 'cpu', 'package', 'package-lock',
+  'package-lock-only', 'pack-destination', 'packages', 'parseable', 'prefer-dedupe', 'prefer-offline', 'prefer-online', 'prefix', 'preid',
+  'production', 'progress', 'provenance', 'provenance-file', 'proxy', 'packages-all', 'packages-and-scopes-permission', 'password',
+];
+function npmLongName(flag) {
+  const name = flag.slice(2);
+  if (!/^--[cp]/.test(flag) || NPM_CONFIG_NAMES_CP.includes(name)) return flag;
+  const matches = NPM_CONFIG_NAMES_CP.filter((n) => n.startsWith(name));
+  return matches.length === 1 ? `--${matches[0]}` : flag;
+}
+
+// フラグの種類。dir は package.json を探す場所、call は npm のシェルの文字列（値を取る）、shell は pnpm の shell-mode（値を取らない）、
+// value はほかの値を取るフラグ、flag は値を取らないフラグ。表に無いフラグは、次の語を値と読む形と読まない形の両方で見る。
+// 道具をまたいで1つの表にすると、bun の --dir や npm の --filter（値を取らない）の次の語を値と取り違える
+// pnpm 12.12.0 の pnpm --help と pnpm exec --help の短いフラグ（C と F は値を取る。c は exec の --shell-mode で、exec の前にも置ける）。
+// clap はまとめた短いフラグを前から読み、値を取るフラグの後ろの残り（無ければ次の語）を値にする（-yC sub、-yCsub、-rc）
+const PNPM_SHORT = { C: 'dir', F: 'value', c: 'shell', v: 'flag', y: 'flag', r: 'flag', w: 'flag', h: 'flag' };
+// npm 11.20.0 の @npmcli/config の shorthands の1文字のもの（C は --prefix、c は --call、w は --workspace、L は --location、m は --message）。
+// nopt はまとめた短いフラグを1文字ずつ広げ、最後のフラグが値を取るなら次の語を値にする（-sC ls）
+const NPM_SHORT = {
+  C: 'dir', c: 'call', w: 'value', L: 'value', m: 'value',
+  ...Object.fromEntries([...'dqsnafglpSBDEOP?Hhvy'].map((c) => [c, 'flag'])),
+};
+// 経由先のコマンドの前で値を取るフラグ（pnpm dlx --package x、npm exec --package x）
+const EXEC_FLAGS_WITH_VALUE = new Set(['-p', '--package']);
+
+// 道具ごとの読み方。commandOf は組み込みのコマンドの正規の名前（無ければ undefined）、flags は長いフラグと短いフラグ1つの表、
+// short と shortStyle は短いフラグのまとめの読み方（clap か nopt）、longName は長いフラグの前置きを正規の名前に直す関数、
+// dirAnywhere は名前の後ろの場所のフラグもいつも読むか（npm だけ。pnpm、yarn、bun はスクリプトの名前の後ろのフラグをスクリプトに渡すが、
+// 組み込みのコマンドの後ろのものは読む）、exec は後ろを経由先のコマンドとして動かすコマンド、shell は後ろの文字列をシェルで動かすコマンド、
+// changes は依存を変えるコマンド、runsMissing は組み込みにもスクリプトにも無い名前を PATH のコマンドとして動かすか、
+// unknownAsks は組み込みに無い名前を確認に回すか（npm は無い名前を実行せずにエラーにする）、installScripts はパッケージを渡さない install と
+// ci が走らせるライフサイクルのスクリプト、bareInstall は名前の無い形を install として動かすか（yarn）、linkInstalls は引数の無い link が
+// install と同じライフサイクルを走らせるか（npm）。pnpm の --prefix は 12.12 で効くことを確かめた
 const PACKAGE_MANAGERS = {
   pnpm: {
     commandOf: (word) => PNPM_COMMANDS.get(word),
-    dirFlags: ['-C', '--dir', '--prefix'],
+    // 今の表（PACKAGE_FLAGS_WITH_VALUE）のうち、場所のフラグ以外も値を取るものとして読む
+    flags: {
+      '--dir': 'dir', '--prefix': 'dir', '--filter': 'value', '--cwd': 'value', '--workspace': 'value', '--shell-mode': 'shell',
+    },
+    short: PNPM_SHORT,
+    shortStyle: 'clap',
     exec: ['exec', 'dlx'],
     changes: ['add', 'remove', 'update'],
     runsMissing: true,
-    lifecycle: true,
+    installScripts: ['pnpm:devPreinstall', 'install', 'prepare'],
   },
   npm: {
     commandOf: derefNpm,
-    dirFlags: ['-C', '--prefix'],
+    flags: { '--prefix': 'dir', '--call': 'call', '--workspace': 'value' },
+    short: NPM_SHORT,
+    shortStyle: 'nopt',
+    longName: npmLongName,
+    calls: true,
     dirAnywhere: true,
     exec: ['exec'],
     changes: ['uninstall', 'update'],
-    // npm の -w は値（ワークスペースの名前）を取る。pnpm の -w は値を取らない（--workspace-root）
-    flagsWithValue: ['-w'],
     unknownAsks: true,
-    lifecycle: true,
+    installScripts: ['install', 'prepare', 'prepublish'],
+    linkInstalls: true,
   },
   yarn: {
     commandOf: (word) => YARN_COMMANDS.get(word),
-    dirFlags: ['--cwd'],
+    flags: { '--cwd': 'dir' },
     exec: ['exec', 'dlx'],
     changes: ['add', 'remove', 'up', 'upgrade'],
+    installScripts: ['install', 'prepare', 'prepublish'],
+    bareInstall: true,
   },
   bun: {
     commandOf: (word) => BUN_COMMANDS.get(word),
-    dirFlags: ['--cwd'],
+    flags: {
+      '--cwd': 'dir', '--filter': 'value', '-F': 'value',
+      // 本文と読み込むモジュールを取るフラグ。本文は judgeInterpreterBody が見る
+      ...Object.fromEntries(['-e', '--eval', '-p', '--print', '-r', '--preload', '--require', '--import'].map((f) => [f, 'value'])),
+    },
     exec: ['x'],
     shell: ['exec'],
     changes: ['add', 'remove', 'update', 'upgrade'],
-    // 本文と読み込むモジュールを取るフラグ。本文は judgeInterpreterBody が見る
-    flagsWithValue: ['-e', '--eval', '-p', '--print', '-r', '--preload', '--require', '--import'],
     runsMissing: true,
-    lifecycle: true,
+    installScripts: ['install', 'prepare'],
   },
+};
+// yarnpkg は yarn のパッケージのもう1つの bin（yarn 1.22 と corepack 0.34 の bin で確かめた）
+const PACKAGE_MANAGER_BINS = { yarnpkg: 'yarn' };
+const managerOf = (word) => {
+  const name = baseName(word);
+  if (Object.hasOwn(PACKAGE_MANAGER_BINS, name)) return PACKAGE_MANAGER_BINS[name];
+  return Object.hasOwn(PACKAGE_MANAGERS, name) ? name : undefined;
 };
 
 // 組み込みのコマンドのうち、スクリプトを走らせるもの。値は走らせるスクリプトの名前で、それぞれ pre と post も走る。
 // restart は restart、stop、start を走らせる（npm は restart が無ければ stop と start）
 const SCRIPT_COMMANDS = { test: ['test'], start: ['start'], stop: ['stop'], restart: ['restart', 'stop', 'start'] };
-// パッケージを渡さない install と ci が走らせるライフサイクルのスクリプト。install-test 系はその後に test も走らせる
-const LIFECYCLE = ['install', 'prepare'];
-const INSTALL_COMMANDS = { install: LIFECYCLE, ci: LIFECYCLE, 'install-test': [...LIFECYCLE, 'test'], 'install-ci-test': [...LIFECYCLE, 'test'] };
+// 名前の後ろのフラグをスクリプトに渡すコマンド（pnpm test -C sub は今の場所の test に -C sub を足す）。restart は組み込みとして場所を読む
+const PASSES_FLAGS = new Set(['test', 'start', 'stop']);
+// pack と publish が走らせるライフサイクルのスクリプト（npm 11.20 と pnpm 12.12 の pack で prepack と prepare、npm の publish で prepublishOnly も
+// 走ることを確かめた）。それぞれ pre と post も見るので、postpack と postpublish も入る
+const PACK_SCRIPTS = ['prepack', 'prepare', 'postpack'];
+const PUBLISH_SCRIPTS = ['prepublishOnly', ...PACK_SCRIPTS, 'publish'];
 // 名前の後ろにパッケージを渡すと依存を足すコマンド。パッケージの無い install はロックファイルどおりに入れるだけ
 const INSTALLS_PACKAGE = new Set(['install', 'add']);
 // 表に無いフラグの読み方の上限。超えたら判定せずに確認を挟む
 const MAX_READINGS = 8;
 
-// i 番目の語が場所を変えるフラグなら、{ value, valueAt, end } を返す。end はフラグの最後の語の位置（-C sub、-Csub、--dir=sub）
-function dirFlagAt(spec, args, i) {
+// i 番目の語（- で始まる）を道具の表で読み、{ end, dir, attachedDir, call, shell, unknown, unreadable } を返す。end はフラグの最後の語の位置。
+// dir、attachedDir、call は { value, valueAt }。attachedDir は npm の -C<dir> の連結の形（npm 11.20 は今の場所で動かすが、版の違いを避けて
+// 連結の先でも判定する）、unknown は表に無いフラグ、unreadable はまとめの途中の場所か call のフラグ（npm -Cls）。
+// exec が true のとき（経由先のコマンドの前）は --package と -p も値を取るものとして読む
+function readFlag(spec, args, i, exec = false) {
   const a = args[i];
   const eq = a.indexOf('=');
-  if (spec.dirFlags.includes(eq === -1 ? a : a.slice(0, eq))) {
-    return eq === -1 ? { value: args[i + 1], valueAt: i + 1, end: i + 1 } : { value: a.slice(eq + 1), valueAt: i, end: i };
+  const raw = eq === -1 ? a : a.slice(0, eq);
+  const long = raw.startsWith('--');
+  const name = long && spec.longName ? spec.longName(raw) : raw;
+  const kind = exec && EXEC_FLAGS_WITH_VALUE.has(raw) ? 'value' : (spec.flags[name] ?? (raw.length === 2 && !long ? spec.short?.[raw[1]] : undefined));
+  if (kind === 'shell' || kind === 'flag') return { end: i, shell: kind === 'shell' };
+  if (kind) {
+    const value = eq === -1 ? { value: args[i + 1], valueAt: i + 1 } : { value: a.slice(eq + 1), valueAt: i };
+    return { end: eq === -1 ? i + 1 : i, [kind]: value };
   }
-  if (spec.dirFlags.includes('-C') && /^-C./.test(a)) return { value: a.slice(2), valueAt: i, end: i };
-  return null;
+  if (eq !== -1) return { end: i };
+  if (!long && raw.length > 2 && spec.short) return shortFlags(spec, args, i);
+  return { end: i, unknown: true };
+}
+
+// 短いフラグのまとめ（-yC sub、-sC ls）を読む
+function shortFlags(spec, args, i) {
+  const chars = args[i].slice(1);
+  const valueOf = (rest) => (rest ? { end: i, value: { value: rest, valueAt: i } } : { end: i + 1, value: { value: args[i + 1], valueAt: i + 1 } });
+  const isTarget = (c) => ['dir', 'call', 'shell'].includes(spec.short[c]);
+  if (spec.shortStyle === 'clap') {
+    let shell = false;
+    for (let k = 0; k < chars.length; k++) {
+      const kind = spec.short[chars[k]];
+      // 表に無い文字が値を取るかもしれず、その後ろの C や c をどう読むかが分からない
+      if (!kind) return [...chars.slice(k + 1)].some(isTarget) ? { end: i, unreadable: true } : { end: i, unknown: true };
+      if (kind === 'shell') shell = true;
+      if (kind === 'dir' || kind === 'value') {
+        const { end, value } = valueOf(chars.slice(k + 1));
+        return { end, shell, ...(kind === 'dir' ? { dir: value } : {}) };
+      }
+    }
+    return { end: i, shell };
+  }
+  if (![...chars].every((c) => Object.hasOwn(spec.short, c))) {
+    // -C.. や -Cnode_modules/zod は、1文字ずつに広げられないので連結の形として読む
+    if (chars[0] === 'C') return { end: i, attachedDir: { value: chars.slice(1), valueAt: i } };
+    if (chars[0] === 'c') return { end: i, call: { value: chars.slice(1), valueAt: i } };
+    return { end: i, unknown: true };
+  }
+  const last = chars.at(-1);
+  if ([...chars.slice(0, -1)].some(isTarget)) return { end: i, unreadable: true };
+  if (spec.short[last] === 'flag') return { end: i };
+  const { end, value } = valueOf('');
+  return { end, ...(spec.short[last] === 'dir' ? { dir: value } : spec.short[last] === 'call' ? { call: value } : {}) };
 }
 
 // 場所のフラグの値を cwd から解決する。~ か $ で始まる値と、展開の印のある値（sr?、{a,b}、"src$X"。= の形と連結の形は語ぜんたいで見る）は
@@ -626,16 +726,21 @@ function movedDir(cwd, words, { value, valueAt }) {
   return !cwd || !value || /^[~$]/.test(value) || isUnresolved(words, valueAt) ? null : path.resolve(cwd, value);
 }
 
-// npm は名前の後ろの -C と --prefix も読む（-- の前まで。後ろのものが勝つ）。場所のフラグが無ければ undefined
-function dirAnywhere(spec, args, cwd) {
-  let dir;
-  for (let i = 0; i < args.length && args[i] !== '--'; i++) {
-    const flag = dirFlagAt(spec, args, i);
-    if (!flag) continue;
-    dir = movedDir(cwd, args, flag);
+// from から後ろ（-- の前まで）の場所のフラグを読み、package.json を探す場所の候補を返す。後ろのものが勝つ。場所のフラグが無ければ undefined。
+// npm は名前の後ろの -C と --prefix も読み（npm test --prefix sub）、pnpm、yarn、bun も組み込みのコマンドの後ろのものは読む
+// （pnpm install -C sub、bun install --cwd sub、yarn install --cwd sub）。npm の連結の形は今の場所と連結の先の両方を候補にし、
+// まとめの途中の場所のフラグ（npm -Cls）は場所が分からない（null）とする
+function dirAnywhere(spec, args, from, cwd) {
+  let dirs;
+  for (let i = from; i < args.length && args[i] !== '--'; i++) {
+    if (!args[i].startsWith('-')) continue;
+    const flag = readFlag(spec, args, i);
+    if (flag.dir) dirs = [movedDir(cwd, args, flag.dir)];
+    else if (flag.attachedDir) dirs = [...(dirs ?? [cwd]), movedDir(cwd, args, flag.attachedDir)];
+    else if (flag.unreadable) dirs = [null];
     i = flag.end;
   }
-  return dir;
+  return dirs;
 }
 
 // 道具の前の npm_config_prefix=（npm は大文字小文字を区別しないので NPM_CONFIG_PREFIX も）の値の場所。
@@ -647,31 +752,51 @@ function configuredDirs(prefix, cwd) {
   });
 }
 
-// args の from から、名前より前のフラグを読み、{ at, dir }（名前の位置と package.json を探す場所。名前が無ければ at は -1）の並びを返す。
+// args の from から、名前より前のフラグを道具の表で読み、{ readings } か { reason }（判定しきれない理由）を返す。
+// readings は { at, dir, shell }（名前の位置、package.json を探す場所、pnpm の shell-mode が付いたか。名前が無ければ at は -1）の並び。
 // 表に無いフラグ（= の無い形）の次の語は、値と読む形と名前と読む形の両方を返す（pnpm --loglevel error test は error も test も名前に取る）。
-// 読み方が MAX_READINGS を超えたら null
-function nameReadings(spec, args, from, dir, cwd) {
-  const flagsWithValue = new Set([...PACKAGE_FLAGS_WITH_VALUE, ...(spec.flagsWithValue ?? [])]);
+// 読み方が MAX_READINGS を超えるか、短いフラグのまとめを読めなければ reason を返す。
+// exec が true のとき（経由先のコマンドの前）は、-- の次の語を名前に取る（pnpm exec -c -- '…'）
+function nameReadings(spec, args, from, dir, cwd, { exec = false, shell = false } = {}) {
   const readings = [];
-  const walk = (start, dir) => {
+  let unreadable = false;
+  const walk = (start, dir, shell) => {
     for (let i = start; i < args.length && readings.length <= MAX_READINGS; i++) {
       const a = args[i];
-      if (a === '--') return void readings.push({ at: i + 1 < args.length ? i + 1 : -1, dir });
-      if (!a.startsWith('-') || a === '-') return void readings.push({ at: i, dir });
-      const flag = dirFlagAt(spec, args, i);
-      if (flag) {
-        // npm の場所は dirAnywhere が名前の後ろまで読んで決める
-        if (!spec.dirAnywhere) dir = movedDir(cwd, args, flag);
-        i = flag.end;
-      } else if (!a.includes('=')) {
-        if (flagsWithValue.has(a)) i++;
-        else if (i + 1 < args.length && !args[i + 1].startsWith('-')) walk(i + 2, dir);
-      }
+      if (a === '--') return void readings.push({ at: i + 1 < args.length ? i + 1 : -1, dir, shell });
+      if (!a.startsWith('-') || a === '-') return void readings.push({ at: i, dir, shell });
+      const flag = readFlag(spec, args, i, exec);
+      unreadable ||= Boolean(flag.unreadable);
+      // npm の場所は dirAnywhere が名前の後ろまで読んで決める
+      if (flag.dir && !spec.dirAnywhere) dir = movedDir(cwd, args, flag.dir);
+      shell ||= flag.shell;
+      if (flag.unknown && i + 1 < args.length && !args[i + 1].startsWith('-')) walk(i + 2, dir, shell);
+      i = flag.end;
     }
-    readings.push({ at: -1, dir });
+    readings.push({ at: -1, dir, shell });
   };
-  walk(from, dir);
-  return readings.length > MAX_READINGS ? null : readings;
+  walk(from, dir, shell);
+  if (unreadable) return { reason: UNREADABLE_FLAG_REASON };
+  return readings.length > MAX_READINGS ? { reason: MANY_READINGS_REASON } : { readings };
+}
+
+// npm の --call、-c、--cal=…（前置き）の値。npm exec と npm x は、これをシェルの文字列として動かす（-- の前なら名前の前でも後ろでも効く）
+function npmCalls(spec, args) {
+  const calls = [];
+  for (let i = 0; i < args.length && args[i] !== '--'; i++) {
+    if (!args[i].startsWith('-')) continue;
+    const flag = readFlag(spec, args, i);
+    if (flag.unreadable) return null;
+    if (flag.call) calls.push(flag.call.value ?? '');
+    i = flag.end;
+  }
+  return calls;
+}
+
+// 道具の前の代入の npm_config_call=（npm は大文字小文字を区別しない）の値。npm exec、npm x、npx はこれをシェルの文字列として動かす
+// （npm 11.20 で確かめた）。道具を問わず見る
+function configuredCalls(words, ci) {
+  return words.flatMap((w, i) => ((ci === -1 || i < ci) && isAssignment(w) ? (/^npm_config_call=([\s\S]+)$/i.exec(w)?.slice(1) ?? []) : []));
 }
 
 // パッケージマネージャー（pnpm、npm、yarn、bun。corepack の後ろも）のコマンドから、どのスクリプトとコマンドを、どの package.json から
@@ -679,12 +804,12 @@ function nameReadings(spec, args, from, dir, cwd) {
 // 判定の並びを返す
 function judgePackageManager(manager, args, prefix, ctx) {
   const spec = PACKAGE_MANAGERS[manager];
-  const anywhere = spec.dirAnywhere ? dirAnywhere(spec, args, ctx.dir) : undefined;
-  const dirs = anywhere === undefined ? [ctx.dir, ...configuredDirs(prefix, ctx.dir)] : [anywhere];
+  const anywhere = spec.dirAnywhere ? dirAnywhere(spec, args, 0, ctx.dir) : undefined;
+  const dirs = anywhere ?? [ctx.dir, ...configuredDirs(prefix, ctx.dir)];
   const results = [];
   for (const dir of dirs) {
-    const readings = nameReadings(spec, args, 0, dir, ctx.dir);
-    if (!readings) return [[ASK, MANY_READINGS_REASON]];
+    const { readings, reason } = nameReadings(spec, args, 0, dir, ctx.dir);
+    if (reason) return [[ASK, reason]];
     for (const reading of readings) results.push(...judgeName(spec, args, prefix, ctx, reading));
   }
   return results;
@@ -693,8 +818,13 @@ function judgePackageManager(manager, args, prefix, ctx) {
 // at の名前を判定する。builtins が false のとき（run の後ろ）は、組み込みのコマンドとして引かず、スクリプトの名前として読む。
 // package.json のスクリプトにある名前は、組み込みより先にスクリプトとして見る（pnpm 12 は clean、purge、tasks で同名のスクリプトを優先する。
 // ほかの組み込みでも止めすぎの側に倒し、組み込みとしても見る）
-function judgeName(spec, args, prefix, ctx, { at, dir }, builtins = true) {
-  if (at === -1) return [];
+function judgeName(spec, args, prefix, ctx, reading, builtins = true) {
+  const { at, dir } = reading;
+  if (at === -1) {
+    // yarn は名前の無い形（yarn、yarn --frozen-lockfile）で install を走らせる（yarn 1.22 で確かめた）。版と help の表示は除く
+    const shows = args.some((a) => /^(-v|--version|-h|--help)$/.test(a));
+    return builtins && spec.bareInstall && !shows ? judgeCommand(spec, 'install', args, prefix, ctx, reading) : [];
+  }
   const name = args[at];
   if (isUnresolved(args, at)) return [[ASK, NAME_EXPANDS_REASON]];
   if (DEPLOY_SCRIPT.test(name)) return [[DENY, 'デプロイは Workers Builds だけが行う']];
@@ -714,37 +844,80 @@ function judgeName(spec, args, prefix, ctx, { at, dir }, builtins = true) {
     return [...results, ...via, ...judgeScripts([name], rest, dir, ctx)];
   }
   if (isScript) results.push(...judgeScripts([name], rest, dir, ctx));
-  return [...results, ...judgeCommand(spec, command, args, prefix, ctx, { at, dir, known, isScript })];
+  return [...results, ...judgeCommand(spec, command, args, prefix, ctx, reading)];
 }
 
-// 組み込みのコマンドを判定する
-function judgeCommand(spec, command, args, prefix, ctx, { at, dir, known, isScript }) {
+// 組み込みのコマンドを判定する。reading の at は名前の位置（名前の無い yarn では -1）
+function judgeCommand(spec, command, args, prefix, ctx, { at, dir, shell }) {
   // run の後ろはスクリプトの名前。pnpm with <版> の後ろは、pnpm のコマンドとして読み直す
   if (command === 'run' || command === 'with') {
-    const readings = nameReadings(spec, args, at + (command === 'run' ? 1 : 2), dir, ctx.dir);
-    if (!readings) return [[ASK, MANY_READINGS_REASON]];
+    const { readings, reason } = nameReadings(spec, args, at + (command === 'run' ? 1 : 2), dir, ctx.dir, { shell });
+    if (reason) return [[ASK, reason]];
     return readings.flatMap((reading) => judgeName(spec, args, prefix, ctx, reading, command === 'with'));
   }
-  if (spec.exec.includes(command)) {
-    const target = execTarget(spec, args, at + 1, dir);
-    if (!target) return [];
-    if (target.script === undefined) return judgeVia(prefix, args, target.start, target.dir, ctx);
-    return [judgeBash(target.script, { ...ctx, cwd: target.dir, depth: ctx.depth + 1 })].filter(Boolean);
-  }
+  if (spec.exec.includes(command)) return judgeExec(spec, args, prefix, ctx, { at, dir, shell });
   const rest = sliceWords(args, at + 1);
   // bun exec "<文字列>" は、最初の位置引数をシェルの文字列として動かす（2つ目からは使わない）
   if (spec.shell?.includes(command)) {
-    const script = positionals(rest)[0];
+    const script = commandPositionals(spec, args, at + 1)[0];
     return script === undefined ? [] : [judgeBash(script, { ...ctx, cwd: dir, depth: ctx.depth + 1 })].filter(Boolean);
   }
-  if (spec.changes.includes(command) || (INSTALLS_PACKAGE.has(command) && positionals(rest, PACKAGE_FLAGS_WITH_VALUE).length > 0)) {
+  if (spec.changes.includes(command) || (INSTALLS_PACKAGE.has(command) && commandPositionals(spec, args, at + 1).length > 0)) {
     return [[ASK, PACKAGE_CHANGE_REASON]];
   }
+  // 組み込みのコマンドの後ろの場所のフラグも読む（pnpm install -C sub。npm は dirAnywhere が読んである）。
+  // test、start、stop の後ろはスクリプトに渡るので読まない（pnpm test -C sub は今の場所の test）
+  const dirs = spec.dirAnywhere || PASSES_FLAGS.has(command) ? [dir] : (dirAnywhere(spec, args, at + 1, ctx.dir) ?? [dir]);
   const name = args[at];
-  if (SCRIPT_COMMANDS[command]) return judgeScripts(SCRIPT_COMMANDS[command].filter((n) => !isScript || n !== name), rest, dir, ctx);
-  if (spec.lifecycle && INSTALL_COMMANDS[command]) return judgeScripts(INSTALL_COMMANDS[command], [], dir, ctx);
-  // ほかの組み込みも、同じ名前の pre と post のスクリプトがあれば見る（止めすぎの側。場所が分からなくても確認は挟まない）
-  return known && !isScript ? judgeScripts([name], rest, dir, ctx) : [];
+  return dirs.flatMap((d) => {
+    if (SCRIPT_COMMANDS[command]) return judgeScripts(SCRIPT_COMMANDS[command], rest, d, ctx);
+    const lifecycle = lifecycleOf(spec, command, args, at);
+    if (lifecycle) return judgeScripts(lifecycle, [], d, ctx);
+    // ほかの組み込みも、同じ名前の pre と post のスクリプトがあれば見る（止めすぎの側。場所が分からなくても確認は挟まない）
+    return d && ctx.packageDirOf(d) ? judgeScripts([name], rest, d, ctx) : [];
+  });
+}
+
+// 組み込みのコマンドが走らせるライフサイクルのスクリプトの名前。走らせなければ undefined
+function lifecycleOf(spec, command, args, at) {
+  if (command === 'install' || command === 'ci') return spec.installScripts;
+  if (command === 'install-test' || command === 'install-ci-test') return [...spec.installScripts, 'test'];
+  if (command === 'pack') return PACK_SCRIPTS;
+  if (command === 'publish') return PUBLISH_SCRIPTS;
+  // 引数の無い npm link は、このパッケージを大域に入れ、install と prepare を走らせる（npm 11.20 で大域の場所を一時の場所に向けて確かめた）
+  if (command === 'link' && spec.linkInstalls && commandPositionals(spec, args, at + 1).length === 0) return ['install', 'prepare'];
+  return undefined;
+}
+
+// exec（pnpm exec、pnpm dlx、npm exec、npm x、yarn exec、bun x）の後ろの経由先を判定する。
+// pnpm の shell-mode（-c、--shell-mode。exec の前でも後ろでも効き、値を取らない）では、位置引数を空白でつないだ文字列をシェルで動かす。
+// npm の --call（-c、一意な前置きの --cal も）の値と、道具の前の npm_config_call= の値もシェルの文字列として動かす（後者は judgeSegment が見る）
+function judgeExec(spec, args, prefix, ctx, { at, dir, shell }) {
+  const results = [];
+  if (spec.calls) {
+    const calls = npmCalls(spec, args);
+    if (!calls) return [[ASK, UNREADABLE_FLAG_REASON]];
+    for (const script of calls) results.push(judgeBash(script, { ...ctx, cwd: dir, depth: ctx.depth + 1 }));
+  }
+  const { readings, reason } = nameReadings(spec, args, at + 1, dir, ctx.dir, { exec: true, shell });
+  if (reason) return [...results, [ASK, reason]];
+  for (const target of readings) {
+    if (target.at === -1) continue;
+    if (target.shell) results.push(judgeBash(args.slice(target.at).join(' '), { ...ctx, cwd: target.dir, depth: ctx.depth + 1 }));
+    else results.push(...judgeVia(prefix, args, target.at, target.dir, ctx));
+  }
+  return results.filter(Boolean);
+}
+
+// from から後ろの位置引数（フラグとその値を飛ばす。-- の後ろは全部）
+function commandPositionals(spec, args, from) {
+  const result = [];
+  for (let i = from; i < args.length; i++) {
+    if (args[i] === '--') return [...result, ...args.slice(i + 1)];
+    if (args[i].startsWith('-')) i = readFlag(spec, args, i).end;
+    else result.push(args[i]);
+  }
+  return result;
 }
 
 // dir から見た package.json の names のスクリプトの中身を、pre と post も含めて同じ規則で見る。
@@ -1382,39 +1555,6 @@ function isUnresolved(words, i) {
   return expandsAt(words, i) || shapeAt(words, i).includes(DYNAMIC);
 }
 
-// exec の後ろで作業場所を変えるフラグ（pnpm exec -C x、yarn exec --cwd x）。道具を問わず読む。--flag=値 の形も読む
-const DIR_FLAGS = new Set(['-C', '--dir', '--cwd', '--prefix']);
-const EXEC_FLAGS_WITH_VALUE = new Set([...PACKAGE_FLAGS_WITH_VALUE, '-p', '--package']);
-// exec の後ろのコマンドを、道具ではなくシェルの文字列として渡すフラグ（pnpm exec -c "…"、npm exec --call="…"）
-const SHELL_MODE_FLAGS = new Set(['-c', '--shell-mode', '--call']);
-
-// pnpm exec env X=1 node x、npm exec -- tsx x、pnpm dlx tsx x、bun x tsx x の exec の後ろ（from から）の経由先を返す。
-// { start, dir } の start は経由先のコマンドが args の何番目から始まるかで、judgeVia が judgeSegment に掛け直す。
-// 語ではなく位置を返すのは、呼び出し元が語と展開の印を一緒に切り出すため。
-// { script, dir } は exec -c のシェルの文字列で、judgeBash に掛け直す。経由先が無ければ null。
-// 作業場所は -C、--dir、--cwd、--prefix の値で解決し直し、~ か $ で始まる値と、展開の印のある値（sr?、{a,b}、"src$X"）は判定できない（null）とする
-function execTarget(spec, args, from, dir) {
-  for (let i = from; i < args.length; i++) {
-    const a = args[i];
-    if (!a.startsWith('-')) return { start: i, dir };
-    const eq = a.indexOf('=');
-    const name = eq === -1 ? a : a.slice(0, eq);
-    // pnpm -Csr? のように -C に値を連結した形も -C として読む
-    const attached = !DIR_FLAGS.has(name) && /^-C./.test(a);
-    if (DIR_FLAGS.has(name) || attached) {
-      // = の形と連結の形の値は、語ぜんたいの展開の印で見る
-      const valueAt = eq === -1 && !attached ? ++i : i;
-      const value = attached ? a.slice(2) : eq === -1 ? args[valueAt] : a.slice(eq + 1);
-      dir = movedDir(dir, args, { value, valueAt });
-    } else if (SHELL_MODE_FLAGS.has(name)) {
-      const script = eq === -1 ? args[i + 1] : a.slice(eq + 1);
-      return script ? { script, dir } : null;
-    } else if (eq === -1 && (EXEC_FLAGS_WITH_VALUE.has(a) || spec.flagsWithValue?.includes(a))) {
-      i++;
-    }
-  }
-  return null;
-}
 
 // 実行の道具が読むファイルの候補。位置引数、--flag=値 の右側（--import=、--require= など）、
 // ヒアドキュメントとヒアストリングの本文を返す。リダイレクトは stdinTargets が別に見る
@@ -1670,6 +1810,8 @@ function judgeSegment(words, ctx) {
   const nextCtx = { ...ctx, cwd: ctx.dir, depth: ctx.depth + 1 };
   // script -qc "…"（util-linux）の文字列は、後ろに道具が無いので ci が -1 でも見る
   results.push(...prefixCommands(words).map((script) => judgeBash(script, nextCtx)).filter(Boolean));
+  // npm_config_call='…' npx のように、道具の前の代入で npm exec にシェルの文字列を渡す。npx だけなら ci は -1 なので先に見る
+  results.push(...configuredCalls(words, ci).map((script) => judgeBash(script, nextCtx)).filter(Boolean));
   if (ci === -1) return results;
   // 道具の名前が変数や $(...)、glob で決まると、何を実行するかが分からない（"$(which wrangler)" deploy）
   if (shapeAt(words, ci).includes(DYNAMIC) || expandsAt(words, ci)) results.push([ASK, TOOL_EXPANDS_REASON]);
@@ -1678,11 +1820,14 @@ function judgeSegment(words, ctx) {
   if (!results.some(([d]) => d === DENY)) results.push(judgeDeployScript(words, ci, ctx.dir));
 
   // パッケージマネージャーは、走らせるスクリプトの中身と、pnpm exec env WORKERS_CI=1 node x のような経由先を前置きごと同じ規則で見る。
-  // corepack <道具>[@版] は、その道具として読む
+  // corepack <道具>[@版] は、その道具として読む。corepack の後ろの npx と pnpx は、corepack を外して直に打つ形と同じに見る
   const corepack = tool === 'corepack';
-  const manager = corepack ? baseName(args[0] ?? '') : tool;
-  if (Object.hasOwn(PACKAGE_MANAGERS, manager)) {
+  const manager = managerOf(corepack ? (args[0] ?? '') : words[ci]);
+  if (manager) {
     results.push(...judgePackageManager(manager, corepack ? sliceWords(args, 1) : args, sliceWords(words, 0, ci), ctx));
+  } else if (corepack && ['npx', 'pnpx'].includes(baseName(args[0] ?? ''))) {
+    if (ctx.depth + 1 > MAX_DEPTH) results.push([ASK, DEEP_REASON]);
+    else results.push(...judgeSegment(concatWords(sliceWords(words, 0, ci), args), { ...ctx, envFrom: ci, depth: ctx.depth + 1 }));
   }
 
   // wrangler の語そのものに展開の印があれば（./*/wrangler）、引数を読まずに止める
@@ -1811,7 +1956,7 @@ function nextDir(words, ci, dir, env) {
 // packageDirOf(dir) はその package.json のあるディレクトリ（道具がスクリプトを動かす場所）を返す。
 // env はセッションの環境変数のうち作業場所の判定を変えるもの（guard-bash.mjs が CDPATH を渡す）。空文字は無いものとする
 export function judgeBash(command, { cwd, branchOf, scriptOf = () => undefined, packageDirOf = (d) => d, depth = 0, env = {} }) {
-  if (depth > MAX_DEPTH) return [ASK, 'コマンドの入れ子が深く、判定しきれない'];
+  if (depth > MAX_DEPTH) return [ASK, DEEP_REASON];
   let dir = cwd;
   // 同じコマンドの中で checkout や switch をした後の push は、切り替えた先のブランチで判定する
   const switched = new Map();

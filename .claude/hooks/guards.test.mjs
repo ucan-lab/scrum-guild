@@ -3271,3 +3271,138 @@ describe('入口', () => {
     });
   });
 });
+
+describe('bash-rules: #341 のレビューの指摘', () => {
+  // 振る舞いは pnpm 12.12、npm 11.20、yarn 1.22、bun 1.4 に、中身を echo にした package.json を並べて確かめた（2026-10-27）
+  const packages = {
+    '/repo': { test: 'node --test', hello: 'echo hello', start: 'echo start', stop: 'echo stop', restart: 'echo restart' },
+    // 名前はデプロイに見えないが、本体は本番に出す
+    '/repo/sub': { test: 'wrangler deploy', prepare: 'wrangler deploy', restart: 'wrangler deploy', start: 'wrangler deploy', hello: 'wrangler deploy' },
+    '/repo/ls': { test: 'wrangler deploy' },
+    '/repo/node_modules/zod': { test: 'echo zod' },
+    '/repo/prepublish': { prepublish: 'wrangler deploy' },
+    '/repo/dev-preinstall': { 'pnpm:devPreinstall': 'wrangler deploy' },
+    '/repo/publish': { prepublishOnly: 'wrangler deploy' },
+  };
+  const packageDirOf = (dir) => {
+    if (!dir) return undefined;
+    return Object.keys(packages)
+      .filter((p) => dir === p || dir.startsWith(`${p}/`))
+      .sort((a, b) => b.length - a.length)[0];
+  };
+  const scriptOf = (dir, name) => {
+    const at = packageDirOf(dir);
+    return at ? packages[at][name] : undefined;
+  };
+  const pm = (command, cwd = '/repo') => judgeBash(command, { cwd, branchOf: () => '341-package-manager', scriptOf, packageDirOf })?.[0] ?? 'allow';
+
+  // [指摘の番号, コマンド, 期待, 作業場所]
+  const cases = [
+    // 1. exec の shell-mode。pnpm は exec の前の -c も受け付け、-c は値を取らない。npm の --call は値で、一意な前置き（--cal）も効く
+    [1, `pnpm -c exec 'wrangler deploy'`, 'deny'],
+    [1, `pnpm --shell-mode exec 'wrangler deploy'`, 'deny'],
+    [1, `pnpm -c dlx 'wrangler deploy'`, 'deny'],
+    [1, `pnpm -rc exec 'wrangler deploy'`, 'deny'],
+    [1, `pnpm exec -c -- 'wrangler deploy'`, 'deny'],
+    [1, `pnpm exec -c -C . 'wrangler deploy'`, 'deny'],
+    [1, `pnpm exec --shell-mode=true 'wrangler deploy'`, 'deny'],
+    // pnpm の shell-mode は位置引数を空白でつないで動かす
+    [1, 'pnpm exec -c git push origin main', 'deny'],
+    [1, `npm --call='wrangler deploy' exec`, 'deny'],
+    [1, `npm --cal='wrangler deploy' x`, 'deny'],
+    [1, `npm exec --cal='wrangler deploy'`, 'deny'],
+    [1, `npm -c 'wrangler deploy' exec`, 'deny'],
+    [1, `npm -sc 'wrangler deploy' exec`, 'deny'],
+    [1, `pnpm exec -c 'echo hi'`, 'allow'],
+    // --ca は call の前置きではなく、ca の設定そのもの
+    [1, 'npm --ca=x.pem exec vitest run', 'allow'],
+    // 2. 値を取るフラグの表は道具ごと。bun の --dir、--prefix、--workspace と、npm の --dir、--filter、-F は値を取らない
+    [2, `bun run --dir bash -c 'wrangler deploy'`, 'deny'],
+    [2, `bun run --prefix bash -c 'wrangler deploy'`, 'deny'],
+    [2, `bun --workspace bash -c 'wrangler deploy'`, 'deny'],
+    [2, 'npm --dir test ls -- scripts/deploy-production.ts', 'deny'],
+    [2, 'npm --filter test ls -- scripts/deploy-production.ts', 'deny'],
+    [2, 'npm -F test ls -- scripts/deploy-production.ts', 'deny'],
+    [2, 'npm exec --dir node scripts/deploy-production.ts', 'deny'],
+    [2, 'bun --filter web test', 'allow'],
+    // 3. npm は -C<dir> の連結の形を場所として読まない（今の場所で判定する。版の違いを避けて連結の先でも判定する）
+    [3, 'npm -Cnode_modules/zod test -- scripts/deploy-production.ts', 'deny'],
+    [3, 'npm -C.. test', 'deny', '/repo/sub'],
+    // 4. 道具の前の npm_config_call=（大文字小文字を問わない）で npm exec、npm x、npx が文字列を動かす
+    [4, `npm_config_call='wrangler deploy' npm exec`, 'deny'],
+    [4, `npm_config_call='wrangler deploy' npm x`, 'deny'],
+    [4, `NPM_CONFIG_CALL='wrangler deploy' npx`, 'deny'],
+    [4, `Npm_Config_Call='wrangler deploy' npm exec`, 'deny'],
+    [4, `env npm_config_call='git push origin main' npm exec`, 'deny'],
+    [4, `npm_config_call='echo hi' npm exec`, 'allow'],
+    // 5. 組み込みのコマンドでは、pnpm と bun も名前の後ろの場所のフラグを読む。スクリプトの名前の後ろはスクリプトに渡る
+    [5, 'pnpm install -C sub', 'deny'],
+    [5, 'pnpm ci -C sub', 'deny'],
+    [5, 'pnpm install-test -C sub', 'deny'],
+    [5, 'pnpm restart -C sub', 'deny'],
+    [5, 'pnpm pack --dir sub', 'deny'],
+    [5, 'bun install --cwd sub', 'deny'],
+    [5, 'pnpm start -C sub', 'allow'],
+    [5, 'pnpm hello -C sub', 'allow'],
+    [5, 'pnpm run hello -C sub', 'allow'],
+    // 6. pnpm の短いフラグのまとめ（clap）。値を取らないフラグの後ろの C は場所
+    [6, 'pnpm -yC sub test', 'deny'],
+    [6, 'pnpm -yCsub test', 'deny'],
+    [6, 'pnpm -wC sub test', 'deny'],
+    [6, 'pnpm -y test', 'allow'],
+    // 7. npm の長いフラグの一意な前置き（nopt）
+    [7, 'npm --prefi=sub test', 'deny'],
+    [7, 'npm test --prefi=sub', 'deny'],
+    [7, 'npm test --prefi sub', 'deny'],
+    // --pre は prefer-online などとも当たり、一意でないので prefix ではない
+    [7, 'npm --pre=sub test', 'allow'],
+    // 8. npm の短いフラグのまとめの最後の C は、次の語を場所に取る
+    [8, 'npm -sC ls test', 'deny'],
+    [8, 'npm -dC ls test', 'deny'],
+    // 9. ライフサイクルの漏れ
+    [9, 'cd prepublish && npm install', 'deny'],
+    [9, 'cd prepublish && npm ci', 'deny'],
+    [9, 'cd prepublish && npm it', 'deny'],
+    [9, 'cd prepublish && yarn', 'deny'],
+    [9, 'cd prepublish && yarn install --frozen-lockfile', 'deny'],
+    [9, 'cd dev-preinstall && pnpm install', 'deny'],
+    [9, 'cd sub && npm pack', 'deny'],
+    [9, 'cd sub && pnpm pack', 'deny'],
+    [9, 'cd publish && npm publish', 'deny'],
+    [9, 'cd sub && npm link', 'deny'],
+    [9, 'cd sub && yarn', 'deny'],
+    [9, 'yarn', 'allow'],
+    [9, 'yarn', 'ask', '/elsewhere'],
+    // 10. yarnpkg は yarn の別の bin 名。corepack の後ろの npx、pnpx は直に打つ形と同じに見る
+    [10, 'yarnpkg node scripts/deploy-production.ts', 'deny'],
+    [10, 'yarnpkg --cwd sub test', 'deny'],
+    [10, 'corepack yarnpkg node scripts/deploy-production.ts', 'deny'],
+    [10, 'corepack npx node scripts/deploy-production.ts', 'deny'],
+    [10, 'corepack pnpx tsx scripts/deploy.ts', 'deny'],
+    [10, 'corepack npx vitest run', 'allow'],
+    // 11. 依存の情報を見るだけのサブコマンドは、corepack の後ろでも wrangler の実行とみなさない
+    [11, 'corepack npm view wrangler versions', 'allow'],
+    [11, 'corepack pnpm why wrangler', 'allow'],
+  ];
+
+  for (const [item, command, expected, cwd] of cases) {
+    test(`[${item}] ${command}${cwd ? `（${cwd} で）` : ''} は ${expected}`, () => assert.equal(pm(command, cwd), expected));
+  }
+
+  // 12. package.json に無い名前を、Object.prototype のキー（constructor、toString）としてスクリプトの中身に取らない
+  test('[12] guard-bash.mjs は Object.prototype のキーをスクリプトとして引かない', () => {
+    const hooks = path.dirname(fileURLToPath(import.meta.url));
+    const dir = mkdtempSync(path.join(os.tmpdir(), 'guard-proto-'));
+    try {
+      writeFileSync(path.join(dir, 'package.json'), JSON.stringify({ scripts: { test: 'echo ok' } }));
+      for (const command of ['pnpm constructor', 'pnpm run toString', 'yarn hasOwnProperty', 'npm run valueOf']) {
+        const input = JSON.stringify({ tool_name: 'Bash', cwd: dir, tool_input: { command } });
+        const result = spawnSync(process.execPath, [path.join(hooks, 'guard-bash.mjs')], { input, encoding: 'utf8' });
+        assert.equal(result.status, 0, command);
+        assert.equal(result.stdout, '', command);
+      }
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
