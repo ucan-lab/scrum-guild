@@ -179,7 +179,7 @@
   // ドラッグの判定に渡す、今の木の並び（画面で動かした並びを含む）
   const dropIndex = $derived(
     indexTree({
-      openEpics: epics.filter((epic) => epic.completed_at === null && epic.canceled_at === null).map((epic) => epic.id),
+      openEpics: openEpics.map((epic) => epic.id),
       storyLists: Object.fromEntries(
         Object.entries(storyLists).map(([key, list]) => [
           key,
