@@ -3,7 +3,9 @@
 // 外す操作つきのトーストで知らせる。seed のセッション（seed/sessions.ts）の Cookie で開く。あおば開発の管理者はミナト。CSP の違反も確かめる
 import type { Page } from '@playwright/test';
 import { expect, test } from './fixtures.ts';
+import { taskMove } from '../src/shared/operations/task/task-move.ts';
 import { createWorkspace, signIn, watchViolations } from './helpers.ts';
+import { routeOperation } from './operations.ts';
 
 test.use({ timezoneId: 'Asia/Tokyo' });
 
@@ -232,9 +234,9 @@ test('絞っているときに、木に出ていない達成目標へ親を移�
   // 移す要求を止めておき、通った後の読み直し（フォーカスを失っていれば見出しへ移す）より前の状態を確かめる
   let release: () => void = () => {};
   const held = new Promise<void>((resolve) => (release = resolve));
-  await page.route('**/api/aoba/task-move', async (route) => {
+  await routeOperation(page, taskMove, { slug: 'aoba' }, async (call) => {
     await held;
-    await route.continue();
+    await call.passThrough();
   });
   const opener = page.getByRole('button', { name: '親を移す: 自分のクエスト' });
   await dialog.getByRole('button', { name: '移す' }).click();
