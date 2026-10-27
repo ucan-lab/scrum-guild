@@ -245,7 +245,7 @@ GitHub は無料のプランのまま使う（2026-10-23 に決めた）。無�
 
 `pnpm dev` は、SvelteKit の `vite dev`（画面と HMR）と `wrangler dev`（API）の2つを立てる（`scripts/dev.ts`）。vite が `/api` を `wrangler dev` へ転送するので、画面と API は同じオリジンのままになり、Cookie がそのまま使える。片方が止まると、もう片方も止まる。
 
-- vite は、根の `worktrees/`、`playwright-report/`、`build/` を監視しない（`vite.config.ts` の `server.watch.ignored`。`test-results/` は vite がはじめから外す）。本体で `pnpm dev` を立てたまま、並べたワークツリーのブランチの切り替えや e2e、`pnpm build` が `.html` を書き換えると、開いている画面が読み直されて白くなるため（#367）
+- vite は、根の `worktrees/`、`playwright-report/`、`build/` を監視しない（`vite.config.ts` の `server.watch.ignored` に `scripts/dev-watch.ts` の述語を渡す。glob にすると、置き場所のパスの `(` や `[` を記号と読んで外れなくなるため。`test-results/` は vite がはじめから外す）。本体で `pnpm dev` を立てたまま、並べたワークツリーのブランチの切り替えや e2e、`pnpm build` が `.html` を書き換えると、開いている画面が読み直されて白くなるため（#367）
 - Worker を vite の中で動かす `@cloudflare/vite-plugin` は使わない。SvelteKit との同居を公式に支持していると確かめられず、2つのプラグインが dev サーバーと build の両方を触るので、片方の更新で壊れやすいため
 - `pnpm preview` は、build した `build/` と API を `wrangler dev` だけで配る。本番と同じ配り方（Workers Static Assets、`_headers`、SPA の fallback）を確かめる口で、HMR は効かない
 - 開発の URL は2つある。`pnpm dev` は `http://localhost:5173`、`pnpm preview` は `http://localhost:8787`。Origin の検査は、この URL を `PUBLIC_ORIGIN` として `wrangler dev` に渡して行う（`scripts/dev.ts`）。ブラウザが送る Origin と合わない URL（`127.0.0.1` など）で開くと、更新系の API は 403 になる。GitHub の OAuth の戻り先もこの URL から作る（`<画面の URL>/api/auth/github/callback`）ので、開発用の OAuth App の Redirect URI とポートまで合わせる（`docs/operations.md` の「GitHub OAuth App」）。Google の戻り先も同じ（`<画面の URL>/api/auth/google/callback`）で、クライアントの承認済みのリダイレクト URI にこの URL（`pnpm dev` の `http://localhost:5173` と `pnpm preview` の `http://localhost:8787`）を足して合わせる（`docs/operations.md` の「Google の OAuth クライアント」）。運用者が作る招待の URL も `PUBLIC_ORIGIN` から作る（`<PUBLIC_ORIGIN>/invite#<秘密>`）

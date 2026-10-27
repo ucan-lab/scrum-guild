@@ -3,6 +3,7 @@ import adapter from '@sveltejs/adapter-static';
 import { sveltekit } from '@sveltejs/kit/vite';
 import { defineConfig } from 'vite';
 import { devPorts } from './scripts/dev-ports.ts';
+import { devWatchIgnored } from './scripts/dev-watch.ts';
 import { fontsourceWoff2Only } from './scripts/fontsource-woff2.ts';
 import { decodeNamedCharacterReferenceFile } from './scripts/markdown-worker-entities.ts';
 import { pageCspDirectives } from './src/shared/security-headers.ts';
@@ -37,8 +38,7 @@ export default defineConfig({
     strictPort: true,
     // 本番の run_worker_first と同じく /api と /api/ の下だけを送る（'/api' は前方一致で /api-keys まで拾う）
     proxy: { '^/api(/|$)': `http://localhost:${ports.api}` },
-    // 並べたワークツリー、e2e の報告、build の書き出しの .html の変更で、開いている画面を読み直させない
-    // （test-results/ は vite がはじめから外す。根からの絶対パスにし、src/ の下の同じ名前を巻き込まない）
-    watch: { ignored: ['worktrees', 'playwright-report', 'build'].map((dir) => `${root}${dir}/**`) },
+    // 根の worktrees/、playwright-report/、build/ を監視しない（理由は scripts/dev-watch.ts）
+    watch: { ignored: [devWatchIgnored(root)] },
   },
 });
