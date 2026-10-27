@@ -593,6 +593,8 @@ describe('上げる先の名前の形', () => {
       assert.ok(workflow.includes('/evidence/upload'), path);
       assert.ok(workflow.includes('! -type f ! -type d'), path);
       assert.ok(workflow.includes('set -euo pipefail'), path);
+      // 送る段は下の「送る段のシェル」が手元でも走らせるので、macOS の find に無い GNU の拡張を使わない
+      assert.ok(!workflow.includes('-printf'), path);
       // 送るのは UPLOAD_DIR を丸ごとの1回だけで、1枚ずつ送るループは残さない
       assert.equal(workflow.match(/aws s3 cp "\$UPLOAD_DIR" "s3:\/\/\$BUCKET\/" --recursive/g)?.length, 1, path);
       assert.ok(!workflow.includes("while IFS=$'\\t'"), path);

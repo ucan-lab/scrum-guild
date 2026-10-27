@@ -118,7 +118,8 @@ jobs:
       # R2 は AWS CLI の既定のチェックサムの付け方を受け付けないので、要るときだけにする。
       # UPLOAD_DIR に普通のファイルとディレクトリのほか（シンボリックリンクなど）があるか、ファイルの名前が決まった形
       # （scripts/evidence.ts の UPLOAD_KEY。main 用は main/img/<ハッシュ>.png）でなければ送らずに止める。
-      # 名前は NUL で区切って1つずつ確かめるので、改行を含む名前も1つの名前のまま形の検査にかかる
+      # 名前は NUL で区切って1つずつ確かめるので、改行を含む名前も1つの名前のまま形の検査にかかる。
+      # find は GNU の拡張（書式を指定した出力など）を使わない（scripts/evidence.test.ts がこの段を macOS の手元でも走らせるため）
       - name: R2 に上げる
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.EVIDENCE_MAIN_R2_ACCESS_KEY_ID }}
@@ -137,15 +138,16 @@ jobs:
         run: |
           set -euo pipefail
           ENDPOINT=${ENDPOINT%/}
-          other=$(find "$UPLOAD_DIR" -mindepth 1 ! -type f ! -type d -printf '%P\n')
+          other=$(find "$UPLOAD_DIR" -mindepth 1 ! -type f ! -type d)
           if [ -n "$other" ]; then
             echo "普通のファイルとディレクトリのほかがある: $other" >&2
             exit 1
           fi
           keys=$(mktemp)
-          find "$UPLOAD_DIR" -type f -printf '%P\0' > "$keys"
+          find "$UPLOAD_DIR" -type f -print0 > "$keys"
           count=0
-          while IFS= read -r -d '' key; do
+          while IFS= read -r -d '' path; do
+            key=${path#"$UPLOAD_DIR"/}
             if [[ ! "$key" =~ ^main/img/[0-9a-f]{64}\.png$ ]]; then
               echo "送る先の名前の形が違う: $key" >&2
               exit 1
