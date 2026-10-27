@@ -12,6 +12,7 @@ description: >-
 
 Issue の読み書きは `gh api` の REST で行う。クラウドのセッションでは、GraphQL を使う `gh issue` が 403 で止まるため。
 `{owner}` と `{repo}` は `gh` がカレントのリポジトリに置き換える。置き換わらずに 404 になるときは、`git remote get-url origin` から owner と repo を読んで直に書く。
+`gh` が無いか認証で失敗するときは、`pr-create/github-mcp.md` に従い、GitHub の MCP ツールで代える（Issue の作成は `issue_write` の `create`。作るときに `parent_issue_number` を渡せば親につながり、既にある Issue をつなぐときだけ `sub_issue_write` を使う。前に要るものは `issue_dependency_write`）。
 
 ## 手順
 
