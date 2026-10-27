@@ -1,184 +1,123 @@
 # エビデンス（UI が変わる PR）
 
-画面の見た目か挙動が変わる PR では、変更前と変更後のスクリーンショットか GIF を本文の `## エビデンス` 節に貼る。
+画面の見た目か挙動が変わる PR では、本文の `## エビデンス` 節に、変えた画面の変更前と変更後の画像を並べる。
 PR テンプレートにこの節が無ければ `## 変更点` の直後に足す。
 
-撮影（`terminal-browser`）と画像の添付（`gh pr edit --attach`）は手元の環境でしかできない。
-クラウドのセッションでは撮らずに、CI の `evidence` のジョブが PR に付ける e2e の変更前と変更後の画像のコメントを使う（下の「クラウドのセッション」）。
-手元のセッションは 1 から 6 の手順で撮って貼る。
+画像はセッションが撮らない。CI の `evidence` のジョブが e2e のスクリーンショットを `main` の画像と比べ、R2 に上げて PR にコメント（見出しは「e2e の画面の差分」）を付けるので、その画像の URL を本文に埋め込む（`docs/development.md` の「e2e の画像のコメント」）。手元のセッションもクラウドのセッションも同じ手順で行う。
 
-## クラウドのセッション
+- 作成の時点（`pr-create`）: 1 と 2 で、画面ごとの説明と画像の置き場の印だけを書く
+- CI の完了の後（`pr-feedback` の手順 5）: 3 で、印に画像を埋め込む。push で画像が変わったときも同じ手順で差し替える
 
-CI の `evidence` のジョブは、e2e のスクリーンショットのうち、ベースの `main` と違う画面だけを変更前と変更後の2列で並べたコメント（見出しは「e2e の画面の差分」）を PR に1つ付け、push のたびに書き換える（`docs/development.md` の「CI」）。
-画像が付くのは e2e が開く画面だけなので、撮る代わりに次を行う。
+画像が付くのは e2e が開く画面だけで、枠や注記は付かず、動きは写らない。どこを見ればよいか、どの操作のときの動きかは説明の文章で伝える。
 
-1. 1 の判定で UI 変更とした画面ごとに、変えた画面と状態を開く e2e のテストがあるかを確かめる。無ければ、done-check の手順 5 に戻ってテストを足す（PR を作る前に済ませる）
-2. エビデンス節には、画面ごとに何が変わったかを文章で書く。画像には枠や注記が付かないので、どこを見ればよいかをこの文章で伝える。動きが変わる画面は、どの操作をしたときの動きかも書く（スクリーンショットはテストの終わりの1枚なので、動きは写らない）
-3. 作成の時点ではコメントはまだ無いので、節に「画像は CI の `evidence` のコメント（e2e の画面の差分）」と書いておく。CI が終わったら、コメントの URL を取って節のその行をリンクに直す（本文の書き換えは `gh api -X PATCH repos/{owner}/{repo}/pulls/<n> -F body=@<ファイル>`）
-
-   ```bash
-   gh api "repos/{owner}/{repo}/issues/<n>/comments" --paginate \
-     --jq '.[] | select(.user.login == "github-actions[bot]" and (.body | contains("<!-- e2e-evidence -->"))) | .html_url'
-   ```
-
-4. コメントが付かないときは、ジョブの注記を見る。シークレットか変数が無いと注記を出して上げずに終わるので、その旨を節に書き、報告で伝える。変わった画面が無いと出たのに UI 変更と判定していたら、その画面を e2e が開いていないか、開いた状態が変えた所を写していない。1 に戻る
-
-```markdown
-## エビデンス
-
-画像は CI の `evidence` のコメント（[e2e の画面の差分](<コメントの URL>)）にある。
-
-- <画面名>（`<テストのディレクトリの名前>`）: <何が変わったか>
-```
-
-## 1. UI が変わるかを判定する
+## 1. UI が変わる画面を決める
 
 Step 2 で読んだ差分から判定する。テンプレート、コンポーネント、CSS、画面に出る文言、画像の変更は UI 変更とみなす。
 API やバッチだけの変更でも、画面の表示結果が変わるなら UI 変更に含める。
 判定に迷ったら UI 変更として扱う。
 
-UI 変更と判定したら、画面ごとに撮り方を決める。
+UI 変更と判定した画面ごとに、変えた画面と状態を開く e2e のテストを決め、その画面の名前（キー）を取る。
 
-| 変更の中身 | 撮り方 |
-| ---- | ---- |
-| 見た目だけが変わる（文言、配置、色、画像） | スクリーンショット（PNG） |
-| 動きが変わる（アニメーション、トランジション、JavaScript による開閉や切り替え、入力に応じた表示の変化、読み込み中の表示、画面遷移の流れ） | GIF |
+- キーは `<テストのディレクトリの名前>/evidence-<n>.png`。CI のコメントの JSON の `key` と同じ形
+- 取り方: ワークツリーで `E2E_EVIDENCE=1 pnpm e2e <ファイル>` を走らせ、`test-results/<ディレクトリ>/evidence-<n>.png` を見る（再試行の `-retry<n>` はキーに含めない）。`n` はテストの終わりに開いている画面ごとに 1 から増える
+- 撮れた画像を Read し、変えた所が写っているかを確かめる。写っていなければ、テストの終わりの画面が変えた状態になるようにテストを足すか直す
+- 変えた画面と状態を開くテストが無ければ、`done-check` の手順 5 に戻ってテストを足す（PR を作る前に済ませる）
 
-静止画1枚で差分が伝わるならスクリーンショットにする。GIF は装飾できず、レビュワーは再生が終わるまで待つことになるため。
-
-## 2. 撮り直しが要るかを判定する
-
-エビデンス節には撮影時のコミットを HTML コメントで残す。
-
-```markdown
-<!-- evidence: <撮影時の HEAD の SHA> -->
-```
-
-- 作成モード、または更新モードで本文にエビデンス節が無い → 撮る
-- 更新モードで `evidence:` の SHA がある → `git diff <SHA>..HEAD --stat` を見る。UI 変更に当たるファイルが無ければ撮り直さず、既存の節をそのまま使う
-- 更新モードでエビデンス節はあるが SHA が無い → 最新かをユーザーに聞く
-
-撮り直すのは、差分で見た目が変わった画面だけ。変わっていない画面の画像は残す。
-
-## 3. 撮る
-
-ブラウザ操作は `terminal-browser` を使う。画面ごとに変更前と変更後を同じ URL、同じ画面幅、同じスクロール位置で撮る。
-
-- 変更後: 作業ブランチの HEAD を手元の開発サーバーで表示する
-- 変更前: ベースブランチの状態。本体の作業コピーでは撮らず、`git worktree add --detach worktrees/<ブランチ名>-before origin/<base>` で一時のワークツリーを切り、依存を入れて、`DEV_PORT_OFFSET` を変更後と別の値にして seed と `pnpm preview` を立てて撮る（理由: seed は手元の D1 の行を全部消すので、本体で当てると人が使っている手元の D1 を消す）。撮った後はサーバーを止め、`git worktree remove --force worktrees/<ブランチ名>-before` で外す。マイグレーションやビルドの差で手元に再現できなければ、ステージングなどベースと同じ状態の環境を使ってよいかユーザーに聞く
-- 新しく作った画面: ベースにその画面が無いので、変更後だけを撮る
-
-抽選やシャッフルのように乱数で表示が変わる画面は、変更前と変更後で乱数を固定して撮る。ページのスクリプトより先に `Math.random` を固定シードの関数に差し替えておく（Playwright なら `context.addInitScript`）。結果がそろうので見比べやすくなり、見た目を変えていないはずの画面は画像のハッシュが一致することで裏付けられる。
-
-ファイル名は `<ブランチ名>-<画面>-before.png` と `<ブランチ名>-<画面>-after.png` にする（GIF は拡張子を `.gif` にする）。GitHub にアップロードすると、このファイル名が `alt` に入り、URL との対応を取る手がかりになる。
-
-Service Worker を持つアプリは、同じオリジン（ホストとポート）で前に開いた版をキャッシュから返すことがある。そのセッションで使っていないポートでも、以前のセッションで登録した SW が残っていることがあるので、撮る前に必ず SW を外してキャッシュを消し、読み直す。差分にある CSS や文言が実際に効いているかを、撮る前に `eval` で確かめる。
-
-ログインが要る画面でログイン画面が出たら、ユーザーにログインを頼む。
-
-選択状態を持つ UI（メニュー、タブ、トグル、ラジオ）が変わるなら、貼る1枚とは別に、選択肢ごとの状態を開いて見た目を確かめる。チェックマークや強調の有無で幅や折り返しが変わり、1つの状態の画像では崩れが写らないことがある。多言語対応の画面では、この確認をロケールごとに行う。
-
-### GIF を撮る
-
-`terminal-browser` の `record` で WebM に録画し、`ffmpeg` で GIF に変換する。
-
-```
-terminal-browser action -- open <URL>
-terminal-browser action -- snapshot -i
-terminal-browser action -- record start <絶対パス>/<ブランチ名>-<画面>-after.webm
-terminal-browser action -- wait 500
-terminal-browser action -- click @e3
-terminal-browser action -- wait 1000
-terminal-browser action -- record stop
-terminal-browser action done
-```
-
-- 操作する要素の ref は、録画前に `snapshot -i` で決めておく。録画中に探すと、迷った時間まで動画に残ってしまう
-- `record start` は新しいブラウザコンテキストで現在の URL を開き直す。cookie と localStorage は引き継がれるものの、クリックで開いたモーダルなどの画面の状態は消えるため、見せたい動きの起点になる操作は `record start` のあとに行う
-- 各操作のあとに `wait` を挟み、アニメーションや通信の終わりを待つ
-- 録画のフレームレートは 10fps。ページを開き直した直後から録られるので、冒頭の読み込み中の画面が長ければ変換時に `-ss <秒>` で切る
-- 変更前も同じ URL、同じ操作、同じ `wait` で録る。変更前にその動き自体が無い（新しい機能）なら変更後だけでよい
-
-変換はパレットを作ってから行う。パレットを使わないと GIF の色が荒れる。
-
-```bash
-ffmpeg -y -i <入力>.webm \
-  -vf "fps=12,scale=800:-1:flags=lanczos,split[a][b];[a]palettegen[p];[b][p]paletteuse" \
-  <ブランチ名>-<画面>-after.gif
-```
-
-GitHub に上げられる画像は1枚10MBまで。超えたら `fps` を 8 に、`scale` を 640 に下げるか、録画を短くする。1本は10秒以内に収める。
-
-変換した GIF から動きの途中のフレームを1枚取り出して Read し、見せたい動きが写っているかを確かめる。
-
-```bash
-ffmpeg -v error -y -ss <秒> -i <GIF> -frames:v 1 <確認用>.png
-```
-
-#### `record` が使えないとき
-
-`record start` が `Failed to create browser context` で失敗する環境がある。そのときは CDP（`terminal-browser ls --json` の `cdpPort`）に直接つなぎ、ページの時計を止めて 1 コマずつ撮る。
-
-1. `setTimeout` `clearTimeout` `performance.now` `requestAnimationFrame` を、自前の時計で進む版に差し替える。CSS アニメーションは `document.getAnimations()` を `pause()` し、`currentTime` をその時計に合わせる
-2. 時計を 100ms 進めるたびに `Page.captureScreenshot` で 1 コマ撮る。撮る時間がかかっても、GIF は実時間と同じ速さになる。進めた直後は Canvas の描画がまだ合成されていないため、撮る前に実時間で 150ms ほど待つこと
-3. `ffmpeg -framerate 10 -i f%03d.png` で GIF に組む（パレットの作り方は上と同じ）
-
-ページを開き直すと `set viewport` の指定が外れ、コマの大きさが変更前と変更後でずれる。撮る直前に `Emulation.setDeviceMetricsOverride` で幅、高さ、倍率を指定し直す。
-
-## 4. 変更点を装飾する
-
-`skitch` スキルで変更後の画像に装飾を載せる（pr-create からの起動は明示的な依頼として扱う）。
-
-- 変わった箇所を `box` で囲む
-- 何が変わったかを `text` で短く添える（例: 「ボタン文言を変更」）
-- 変更前の画像は、消えた要素や移動した要素を示したいときだけ装飾する
-- 画面に機密（メールアドレス、氏名、金額、トークン）が映っていたら `redact` で消す
-
-出力された `-annotated.png` を Read して、枠が変更箇所に合っているかを確かめる。
-
-GIF は装飾しない。何を見ればよいかは Step 5 の補足に文章で書く。
-GIF に映った機密は後から消せない。録画前にテストデータへ差し替えるか、機密が映らない画面で録る。
-
-## 5. 本文に組む
-
-画面ごとに `###` を立て、変更前と変更後を横に並べる。画像だけで伝わらない差分は表の下に1〜2行で書く。
-新しく作った画面は、表を変更後の1列にし、新しい画面なので変更前が無いことを表の下に書く。
-GIF の画面では、どの操作をしたときの動きかを表の下に必ず書く（例: 「保存ボタンを押してからトーストが出るまで」）。GIF も PNG と同じ書き方で埋め込む。
+## 2. 作成の時点の節を書く
 
 ```markdown
 ## エビデンス
 
-<!-- evidence: <撮影時の HEAD の SHA> -->
+<!-- evidence: pending -->
 
 ### <画面名>
 
-| 変更前 | 変更後 |
-| ---- | ---- |
-| <img src="<変更前の URL>" width="400px"> | <img src="<変更後の URL>" width="400px"> |
+<何が変わったか。どこを見ればよいか。動きが変わる画面は、どの操作をしたときの動きか>
 
-<差分の補足。不要なら省く>
+<!-- evidence-images: <キー> -->
+画像は CI の完了の後に入る。
+<!-- /evidence-images -->
+
+全画面の差分は <!-- evidence-comment -->CI の `evidence` のコメント（e2e の画面の差分）<!-- /evidence-comment --> にある。
 ```
 
-上は最終形。送信用の本文では、画像セルを Markdown の画像記法で書き、ローカルの絶対パスを参照させる。
-`gh` の `--attach` が参照先を URL に書き換えるのは `![alt](path)` とリンクだけで、`<img src>` は書き換えないため。
+- 画面ごとに `###` と説明と印の組を並べる。説明は印の外に書く（3 は印の中だけを書き換える）
+- 新しく作った画面は、説明に「新しい画面なので変更前は無い」と書く
+- 1つのテストが2つの画面を撮るなら、キーごとに印を分ける
 
-```markdown
-| ![変更前](/abs/path/<ブランチ名>-<画面>-before-annotated.png) | ![変更後](/abs/path/<ブランチ名>-<画面>-after-annotated.png) |
-```
+## 3. 画像を埋め込む
 
-## 6. 画像を添付して `<img>` に直す
+`pr-feedback` の手順 5 で、check-runs がすべて `completed` になった後に行う。
 
-REST の API には画像を添付する手段が無い。手元の `gh` の `--attach` を使う。
-`--attach` は新しい `gh` にしか無い（2.101.0 にはある）。`gh pr edit --help` に無ければ `gh` の更新をユーザーに頼む。
-
-1. PR を作ったあと、`gh pr edit <n> --body-file <本文> --attach <絶対パス>` で、本文で参照した画像ごとに `--attach` を付ける。本文のパスと `--attach` のパスは同じ文字列にする
-2. 実行後の本文を取り直す
+1. `evidence` のチェックが成功していなければ、節は書き換えず、ジョブの注記とログから画像が付かない理由を報告する
+2. コメントと本文を取る。本文は書き換える直前に取り直す（人や他のセッションの編集を消さないため）
 
    ```bash
-   gh api repos/{owner}/{repo}/pulls/<n> --jq .body > "<スクラッチパッドの絶対パス>/pr-body-attached.md"
+   gh api "repos/{owner}/{repo}/issues/<n>/comments" --paginate --slurp > "<スクラッチパッドの絶対パス>/evidence-comments.json"
+   gh api "repos/{owner}/{repo}/pulls/<n>" --jq .body > "<スクラッチパッドの絶対パス>/pr-body.md"
    ```
 
-3. エビデンス節の `![alt](<URL>)` を `<img src="<URL>" width="400px">` に置き換え、`gh api -X PATCH repos/{owner}/{repo}/pulls/<n> -F body=@<ファイル>` で上書きする。置き換えは Python で行う
-4. 本文にローカルパスが残っていないかを確かめる。残っていたらその画像のアップロードが失敗している（`gh` は一部失敗でも本文を更新し、終了コードだけ非 0 にする）。その画像だけ `gh pr edit <n> --body-file <取り直した本文> --attach <パス>` で上げ直してから 3 に戻る
+3. 下のスクリプトをスクラッチパッドに書き、`python3 -I <スクリプト> <本文> <コメント> <出力>` で走らせる。コメントの目印 `<!-- e2e-evidence -->` の次の行の JSON（`<!-- e2e-evidence-data {...} -->`。`scripts/evidence.ts` の `evidenceData`）を読み、印ごとに画像の表を入れ、`<!-- evidence: ... -->` をコメントが撮った head の SHA にする
+4. 出力が本文と違えば、`gh api -X PATCH repos/{owner}/{repo}/pulls/<n> -F body=@<出力>` で書き換える。同じなら書き換えない（画像が変わっていない）
+5. スクリプトが出した次のものを報告に書く
+   - コメントに出たのに、印の無い画面: PR が変えたと判定していない画面。本文には載せない。揺れか、意図しない変更の印なので、画像を見て、どちらかを報告する
+   - 印があるのに、コメントに無い画面: 20 画面の上限を超えたか、e2e がその状態を写していないか、`main` と同じ画像になった。印の中は「出ていない」と書いた文章になる
+   - 比べられなかった（`comparedSha` が `null`）: 変更前の一覧が無いか読めない。印の中は書き換えない
 
-本文で参照していない画像を `--attach` に渡すと、本文の末尾に追記される。渡すのは本文で参照した画像だけにする。
+```python
+import json
+import re
+import sys
+
+MARKER = '<!-- e2e-evidence -->'
+DATA = '<!-- e2e-evidence-data '
+
+body_path, comments_path, out_path = sys.argv[1:4]
+body = open(body_path, encoding='utf-8').read().replace('\r\n', '\n')
+pages = json.load(open(comments_path, encoding='utf-8'))
+comments = [
+    c for page in pages for c in page
+    if c['user']['login'] == 'github-actions[bot]' and MARKER in c['body']
+]
+if not comments:
+    sys.exit('evidence のコメントが無い（変わった画面が無いか、evidence が動いていない）')
+comment = comments[0]
+lines = [l.strip() for l in comment['body'].splitlines() if l.strip().startswith(DATA)]
+if not lines:
+    sys.exit('コメントに JSON の行が無い（JSON を出す前の版のコメント。push し直して CI を待つ）')
+data = json.loads(lines[0][len(DATA):-len(' -->')])
+if data['comparedSha'] is None:
+    sys.exit('CI が比べられなかった（変更前の画像の一覧が無いか読めない）。節は書き換えない')
+
+screens = {s['key']: s for s in data['screens']}
+marked = []
+
+def table(screen):
+    img = lambda url: f'<img src="{url}" width="400px">'
+    if 'before' in screen:
+        return f'| 変更前 | 変更後 |\n| ---- | ---- |\n| {img(screen["before"])} | {img(screen["after"])} |'
+    return f'| 変更後 |\n| ---- |\n| {img(screen["after"])} |'
+
+def fill(m):
+    key = m.group(2)
+    marked.append(key)
+    screen = screens.get(key)
+    inner = table(screen) if screen else 'CI のコメントに、この画面の画像は出ていない。'
+    return f'{m.group(1)}\n{inner}\n\n{m.group(3)}'
+
+body = re.sub(r'(<!-- evidence-images: (.+?) -->)\n.*?(<!-- /evidence-images -->)', fill, body, flags=re.S)
+body = re.sub(r'<!-- evidence: \S+ -->', f'<!-- evidence: {data["headSha"]} -->', body, count=1)
+body = re.sub(
+    r'(<!-- evidence-comment -->).*?(<!-- /evidence-comment -->)',
+    lambda m: f'{m.group(1)}[CI の `evidence` のコメント（e2e の画面の差分）]({comment["html_url"]}){m.group(2)}',
+    body,
+    flags=re.S,
+)
+open(out_path, 'w', encoding='utf-8').write(body)
+
+print('埋め込んだ画面:', [k for k in marked if k in screens])
+print('印があるのにコメントに無い画面:', [k for k in marked if k not in screens])
+print('コメントに出たのに印の無い画面:', [k for k in screens if k not in marked])
+```
+
+`<!-- evidence: <SHA> -->` が、コメントの JSON の `headSha` と同じなら、画像は埋め込み済みなので 3 を飛ばしてよい。

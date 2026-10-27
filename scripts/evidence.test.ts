@@ -19,6 +19,8 @@ import {
   COMMENT_MARKER,
   commentBody,
   compareScreens,
+  DATA_MARKER,
+  evidenceData,
   EXCLUDED_SCREENS,
   fetchManifest,
   imageObjectKey,
@@ -42,6 +44,7 @@ import {
   UPLOAD_KEY,
   withoutExcluded,
   type Comparison,
+  type EvidenceData,
   type Fetcher,
 } from './evidence.ts';
 
@@ -582,11 +585,74 @@ describe('commentBody', () => {
   });
 });
 
+describe('コメントの JSON の行', () => {
+  const mainUrl = 'https://main.example.test';
+  const prUrl = 'https://pr.example.test';
+  const base = { [k('changed')]: h('1'), [k('gone')]: h('3') };
+  const comparison = compareScreens(base, { [k('changed')]: h('2'), [k('new')]: h('1') }, []);
+  const input = { base, mainUrl, prUrl, headSha: sha('b'), baseSha: sha('a'), comparedSha: sha('a') };
+
+  // セッションと同じく、目印の次の行から JSON を読む
+  const readData = (body: string) => {
+    const line = body.split('\n')[1];
+    assert.ok(line.startsWith(DATA_MARKER) && line.endsWith(' -->'), line);
+    return JSON.parse(line.slice(DATA_MARKER.length, -' -->'.length)) as unknown;
+  };
+
+  test('目印の次の行に、画像で並べる画面と表と同じ URL を置く。新しい画面は変更後だけ', () => {
+    const body = commentBody({ ...input, comparison, mainUrl: `${mainUrl}/`, prUrl: `${prUrl}//` });
+    const data = readData(body);
+    assert.deepEqual(data, {
+      headSha: sha('b'),
+      comparedSha: sha('a'),
+      screens: [
+        { key: k('changed'), before: `${mainUrl}/main/img/${h('1')}.png`, after: `${prUrl}/img/${h('2')}.png` },
+        { key: k('new'), after: `${mainUrl}/main/img/${h('1')}.png` },
+      ],
+    });
+    assert.deepEqual(data, evidenceData({ ...input, comparison }));
+    for (const screen of (data as EvidenceData).screens) {
+      for (const url of [screen.before, screen.after].filter((u) => u !== undefined)) {
+        assert.ok(body.includes(`<img src="${url}" width="400">`), url);
+      }
+    }
+  });
+
+  test('上限を超えて画像を出さない画面は入れない', () => {
+    const many = Object.fromEntries(
+      Array.from({ length: 3 }, (_, i) => [k(`s${i}`), createHash('sha256').update(`${i}`).digest('hex')]),
+    );
+    const data = readData(commentBody({ ...input, comparison: compareScreens({}, many, []), base: {}, limit: 2 }));
+    assert.deepEqual(
+      (data as EvidenceData).screens.map(({ key }) => key),
+      [k('s0'), k('s1')],
+    );
+  });
+
+  test('比べられなかったときは screens を空にし、comparedSha を null にする', () => {
+    const data = readData(commentBody({ ...input, comparison, base: {}, comparedSha: undefined }));
+    assert.deepEqual(data, { headSha: sha('b'), comparedSha: null, screens: [] });
+  });
+
+  test('画面の名前の > と改行を逃がし、HTML コメントを途中で閉じない', () => {
+    const odd = 'a-->b\n<!--c>';
+    const body = commentBody({ ...input, comparison: compareScreens({}, { [k(odd)]: h('9') }, []), base: {} });
+    const line = body.split('\n')[1];
+    assert.equal(line.indexOf('-->'), line.length - '-->'.length);
+    assert.equal((readData(body) as EvidenceData).screens[0].key, k(odd));
+  });
+});
+
 describe('目印', () => {
   test('ci.yml と pr-create の evidence.md は scripts/evidence.ts と同じ目印で探す', () => {
     for (const path of ['.github/workflows/ci.yml', '.claude/skills/pr-create/evidence.md']) {
       assert.ok(readFileSync(new URL(`../${path}`, import.meta.url), 'utf8').includes(COMMENT_MARKER), path);
     }
+  });
+
+  test('pr-create の evidence.md は scripts/evidence.ts と同じ JSON の前置きで読む', () => {
+    const text = readFileSync(new URL('../.claude/skills/pr-create/evidence.md', import.meta.url), 'utf8');
+    assert.ok(text.includes(DATA_MARKER.trim()));
   });
 });
 

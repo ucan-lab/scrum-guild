@@ -19,6 +19,10 @@ export type Bucket = 'main' | 'pr';
 // .github/workflows/ci.yml と .claude/skills/pr-create/evidence.md にも同じ文字列を書く（scripts/evidence.test.ts が確かめる）
 export const COMMENT_MARKER = '<!-- e2e-evidence -->';
 
+// 目印の次の行に置く、セッションが読む JSON の前置き。PR の本文のエビデンス節に画像を埋め込むときに読む
+// （.claude/skills/pr-create/evidence.md にも同じ文字列を書く。scripts/evidence.test.ts が確かめる）
+export const DATA_MARKER = '<!-- e2e-evidence-data ';
+
 // コメントに画像で並べる画面の上限。残りは名前だけを並べる
 export const IMAGE_LIMIT = 20;
 
@@ -362,10 +366,48 @@ export type CommentInput = {
 const short = (sha: string) => sha.slice(0, 7);
 const trimUrl = (url: string) => url.replace(/\/+$/, '');
 
+// セッションが読む JSON。画面は画像で並べる画面（shownScreens の shown）と同じで、URL も表の画像と同じ。
+// 比べられなかったときは screens を空にする
+export type EvidenceData = {
+  headSha: string;
+  comparedSha: string | null;
+  screens: { key: string; before?: string; after: string }[];
+};
+
+export function evidenceData(input: CommentInput): EvidenceData {
+  const { headSha, comparedSha } = input;
+  if (comparedSha === undefined) return { headSha, comparedSha: null, screens: [] };
+  const url = imageUrl(input);
+  const { shown } = shownScreens(input.comparison, input.limit);
+  return {
+    headSha,
+    comparedSha,
+    screens: shown.map(({ key, before, after }) => ({
+      key,
+      ...(before !== undefined && { before: url(before) }),
+      after: url(after),
+    })),
+  };
+}
+
+// 1行の HTML コメントにする。JSON.stringify が改行と制御文字を逃がし、> を逃がして --> を作らない
+function dataLine(data: EvidenceData): string {
+  return `${DATA_MARKER}${JSON.stringify(data).replace(/>/g, '\\u003e')} -->`;
+}
+
+// 画像の公開の URL。ベースの一覧にある画像は main 用のバケット、無い画像は PR 用のバケットを指す
+function imageUrl(input: CommentInput): (hash: string) => string {
+  const inMain = new Set(Object.values(input.base));
+  return (hash) => {
+    const bucket: Bucket = inMain.has(hash) ? 'main' : 'pr';
+    return `${trimUrl(bucket === 'main' ? input.mainUrl : input.prUrl)}/${imageObjectKey(bucket, hash)}`;
+  };
+}
+
 // PR に付けるコメントの本文
 export function commentBody(input: CommentInput): string {
-  const { comparison, base, headSha, baseSha, comparedSha } = input;
-  const lines = [COMMENT_MARKER, '## e2e の画面の差分', ''];
+  const { comparison, headSha, baseSha, comparedSha } = input;
+  const lines = [COMMENT_MARKER, dataLine(evidenceData(input)), '## e2e の画面の差分', ''];
   // CI の e2e は、PR の head をベースにマージした状態（refs/pull/<番号>/merge）を撮る
   const subject = `${short(headSha)} をベース（${short(baseSha)}）にマージした状態の e2e のスクリーンショット`;
 
@@ -393,12 +435,8 @@ export function commentBody(input: CommentInput): string {
 
   const { shown, rest } = shownScreens(comparison, input.limit);
   if (shown.length === 0) lines.push('', '変わった画面と新しい画面は無い。');
-  const inMain = new Set(Object.values(base));
-  const image = (hash: string) => {
-    const bucket: Bucket = inMain.has(hash) ? 'main' : 'pr';
-    const url = trimUrl(bucket === 'main' ? input.mainUrl : input.prUrl);
-    return `<img src="${url}/${imageObjectKey(bucket, hash)}" width="400">`;
-  };
+  const url = imageUrl(input);
+  const image = (hash: string) => `<img src="${url(hash)}" width="400">`;
   for (const screen of shown) {
     if (screen.before === undefined) {
       lines.push(
