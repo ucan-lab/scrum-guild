@@ -95,6 +95,50 @@ describe('MoveQueue', () => {
     expect(dropped).not.toHaveBeenCalled();
   });
 
+  test('reloadOnSuccess の操作が通ったら、列が空になった後に1回だけ読み直し、続けて押した操作は捨てない', async () => {
+    const { queue, sent, reload, dropped } = setup();
+    const first = deferred();
+    const onFailed = async () => {};
+    void queue.send(
+      () => {
+        sent.push('a');
+        return first.promise;
+      },
+      onFailed,
+      true,
+    );
+    const last = queue.send(
+      async () => {
+        sent.push('b');
+        return { ok: true, name: 'b' };
+      },
+      onFailed,
+      true,
+    );
+    first.resolve({ ok: true, name: 'a' });
+    await last;
+    expect(sent).toEqual(['a', 'b']);
+    expect(reload).toHaveBeenCalledTimes(1);
+    expect(dropped).not.toHaveBeenCalled();
+    // 印は持ち越さない。次の操作が reloadOnSuccess でなければ読み直さない
+    await queue.send(async () => ({ ok: true, name: 'c' }), onFailed);
+    expect(reload).toHaveBeenCalledTimes(1);
+  });
+
+  test('reloadOnSuccess の操作が断られたら、読み直すのは画面（onFailed）だけ', async () => {
+    const { queue, reload } = setup();
+    const failed: string[] = [];
+    await queue.send(
+      async () => ({ ok: false, name: 'a' }),
+      async (result) => {
+        failed.push(result.name);
+      },
+      true,
+    );
+    expect(failed).toEqual(['a']);
+    expect(reload).not.toHaveBeenCalled();
+  });
+
   test('先の操作が断られて読み直したら、待っていた操作は送らずに捨て、最後にもう一度読み直して知らせる', async () => {
     const { queue, sent, failed, reload, dropped } = setup();
     const first = deferred();

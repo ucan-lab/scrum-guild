@@ -211,3 +211,32 @@ test('絞っているときに作ったクエストや達成目標が当たら�
   await expect(page).toHaveURL(/\/aoba\/admin$/);
   expect(await collect()).toEqual([]);
 });
+
+test('絞っているときに、木に出ていない達成目標へ親を移すと、通った後に木を読み直して移した先の下に出す', async ({
+  page,
+}) => {
+  const collect = await watchViolations(page);
+  await createWorkspace(page, '絞り込みと親の移動のパーティ', 'game');
+  await create(page, '達成目標を作る', '配下の無い目標');
+  await addTask(page, '自分のクエスト', { assignee: 'ミナト' });
+  await addTask(page, '自分の2つ目', { assignee: 'ミナト' });
+  await filterBar(page).getByRole('combobox', { name: '担い手' }).selectOption({ label: '自分' });
+  await expect(page).toHaveURL(/\?assignee=me$/);
+  // 配下に当たるクエストの無い達成目標は、担い手で絞ると出ない
+  await expect(page.getByRole('button', { name: '配下の無い目標', exact: true })).toHaveCount(0);
+
+  // 親の候補には、木に出ていない達成目標も出る
+  await page.getByRole('button', { name: '親を移す: 自分のクエスト' }).click();
+  const dialog = page.getByRole('dialog', { name: '「自分のクエスト」の親を移す' });
+  await dialog.getByLabel('移す先').selectOption({ label: '配下の無い目標' });
+  await dialog.getByRole('button', { name: '移す' }).click();
+  await expect(dialog).toBeHidden();
+  // 通った後に読み直すので、移した先の達成目標が当たるようになり、その下に出る。もう1つは親なしのまま
+  await expect(page.getByRole('button', { name: '配下の無い目標', exact: true })).toBeVisible();
+  await expect(taskTitles(page)).toHaveText(['自分のクエスト', '自分の2つ目']);
+  // 再読み込みしても同じ（サーバーに通っている）
+  await page.reload();
+  await expect(page.getByRole('button', { name: '配下の無い目標', exact: true })).toBeVisible();
+  await expect(taskTitles(page)).toHaveText(['自分のクエスト', '自分の2つ目']);
+  expect(await collect()).toEqual([]);
+});

@@ -49,7 +49,8 @@
   // 行の先頭のつまみのドラッグ（BacklogDnd。判定は backlog-drop.ts）は、離れた位置や別の親へ、行の間の線か親の行の囲みに落として動かす。
   // ドラッグの間に木が読み直されたら、そのドラッグは取りやめる。落とした行は、少しのあいだ光らせる。
   // どれも先に画面を動かしてから送り、送る順は守る（MoveQueue）。
-  // 失敗したら理由を知らせて読み直す。動かした並びは読み直すまで画面に持ち、読み直したら捨てる（読み直した値が送った後の並び）。
+  // 失敗したら理由を知らせて読み直す。絞っているときの親の移動は、通った後にも、列が空になってから読み直す（移す先が木に無いことがある）。
+  // 動かした並びは読み直すまで画面に持ち、読み直したら捨てる（読み直した値が送った後の並び）。
   // 送り終える前に木が読み直されたら、送り終えた後にもう一度読み直す（捨てた移動があれば知らせる）。
   // 見出しは見本どおり画面の名前（掲示板／バックログ）で、小見出しがワークスペースの名前。見出しの右に、エピックを作るボタン、
   // ストーリーを作るボタンと起票のボタン。見出しの集計の下に、チーム全体の経験値（読めたときだけ）。
@@ -57,6 +58,7 @@
   // 完了にしたタスクの行は、読み直すまで完了の印を付けてその場に残し、その行のポイントを親の「完了」に即時に足す。折りたたみの件数は読み直した値なので、その行は読み直すまで入らない。
   // ストーリーの「完了にする」は、配下の未完了のタスク（画面で完了にした行は数えない）が残るあいだは押せない。完了と取り消しは、通ったら木を読み直す。
   // 起票したタスクは、読み直さずに親の配下（親なしなら一覧の末尾）に足し、親の「全体」のポイントにも足す。親の行が畳まれていれば開く。
+  // ただし絞っているときは、末尾に足さずに木を読み直す（上の帯の段落）。
   // エピックとストーリーを作った、直したときは、木を読み直す。
   // 完了の操作を送っている最中の行（pendingIds、storyPending）は、読み直しでは捨てず、応答が来たら外す。
   // 見出しの下に、ワークスペースの完成の定義（枠の値。空なら出さない）を畳んで1つだけ置く
@@ -110,7 +112,13 @@
   let storyOrders = $state<Record<string, string[]>>({});
   // 動かす操作は、押した順に1つずつ送る（src/lib/move-queue.ts）。読み直したら、まだ送っていない古い操作は捨てる
   const moves = new MoveQueue<ApiResult<unknown>>({
-    reload: () => reloadTree(),
+    // 列が空になった後の読み直し。親を移した行が木から消えてフォーカスを失っていれば、見出しへ移す
+    reload: async () => {
+      const saved = focusedControl();
+      const lost = document.activeElement === null || document.activeElement === document.body;
+      await reloadTree();
+      await restoreFocus(saved, lost);
+    },
     dropped: () => showToast(t('moveReloaded'), 'alert'),
   });
   $effect.pre(() => {
@@ -249,7 +257,7 @@
   );
   const dnd = new BacklogDnd({
     index: () => dropIndex,
-    enabled: () => canWrite,
+    enabled: () => canWrite && !filtering,
     onDrop: (drop) => (drop.move.kind === 'task' ? dropTask(drop.move) : dropStory(drop.move)),
     onStale: () => showToast(t('moveReloaded'), 'alert'),
   });
@@ -613,27 +621,24 @@
   }
 
   // 動かす操作を、押した順に送る。失敗したら理由を知らせて読み直し、フォーカスを同じ操作（無ければ見出し）へ戻す
-  // reloadOnSuccess は、通った後にも木を読み直す（絞っているときの親の移動。移す先の親が木に無いことがあり、どの行を出すかはサーバーが決める）
+  // reloadOnSuccess は、通った後にも、列が空になってから木を読み直す（絞っているときの親の移動。移す先の親が木に無いことがあり、
+  // どの行を出すかはサーバーが決める。読み直すのは MoveQueue で、onFailed は断られたときだけ呼ばれる）
   function send(call: () => Promise<ApiResult<unknown>>, kind: 'task' | 'story', reloadOnSuccess = false): void {
     const workspaceId = workspace?.id;
-    void moves.send(call, async (result) => {
-      // 送っている間に別のワークスペースへ移っていたら、古い応答で状態を触らない
-      if (workspaceId !== page.params.id) return;
-      if (result.ok) {
-        if (reloadOnSuccess) {
-          const saved = focusedControl();
-          await reloadTree();
-          await restoreFocus(saved, false);
-        }
-        return;
-      }
-      // 401 は、枠の読み直しがログインの画面へ移す
-      if (result.status !== 401) showToast(moveFailureMessage(result, kind), 'alert');
-      const saved = focusedControl();
-      const lost = document.activeElement === null || document.activeElement === document.body;
-      await reloadTree();
-      await restoreFocus(saved, lost);
-    });
+    void moves.send(
+      call,
+      async (result) => {
+        // 送っている間に別のワークスペースへ移っていたら、古い応答で状態を触らない
+        if (workspaceId !== page.params.id || result.ok) return;
+        // 401 は、枠の読み直しがログインの画面へ移す
+        if (result.status !== 401) showToast(moveFailureMessage(result, kind), 'alert');
+        const saved = focusedControl();
+        const lost = document.activeElement === null || document.activeElement === document.body;
+        await reloadTree();
+        await restoreFocus(saved, lost);
+      },
+      reloadOnSuccess,
+    );
   }
 
   function reorderTask(task: BacklogTask, delta: -1 | 1): void {
@@ -705,9 +710,14 @@
   // 親を移したときの読み上げ。index（0 始まり）を渡すと「N 番目」まで伝え、渡さなければ「末尾へ」と伝える
   function taskParentAnnouncement(task: BacklogTask, storyId: string | null, index?: number): string {
     // 移す先は候補（絞っているときは木に無いストーリーもある）から引く
-    const parent = storyId === null ? undefined : openStories.find((story) => story.id === storyId);
+    // 候補に無ければ（選んだ後に完了した）、木の行から引く
+    const parent =
+      storyId === null
+        ? undefined
+        : (openStories.find((story) => story.id === storyId) ?? allStories.find((story) => story.id === storyId));
     // 親のストーリーがエピックの下なら、エピックの題も添える（同じ題のストーリーが、別のエピックの下にありうるため）
-    const parentEpic = parent?.group ?? undefined;
+    const parentEpic =
+      parent === undefined ? undefined : 'group' in parent ? (parent.group ?? undefined) : parentEpicOf(parent.id);
     const at = index === undefined ? undefined : index + 1;
     if (parent === undefined) {
       return at === undefined

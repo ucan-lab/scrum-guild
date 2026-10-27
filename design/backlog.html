@@ -50,7 +50,11 @@ document.addEventListener("input", (ev) => {
   document.getElementById("totals-note").hidden = !filtering;
   document.querySelectorAll(".order-actions .icon-btn:not(:last-child)").forEach((b) => (b.hidden = filtering));
   // つまみも隠す（ドラッグも隣を使う並べ替えなので、絞っている間は止める）
-  document.querySelectorAll(".grip").forEach((g) => (g.hidden = filtering));
+  document.querySelectorAll(".grip").forEach((g) => {
+    g.hidden = filtering;
+    // つまみの列も空けない（本番は行の has-grip を外す）
+    g.parentElement.classList.toggle("has-grip", !filtering);
+  });
 });
 document.addEventListener("click", (ev) => {
   if (!ev.target.closest || !ev.target.closest("#f-clear")) return;
