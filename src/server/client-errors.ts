@@ -74,13 +74,47 @@ export function clientErrorRoutes(): Hono<AppEnv> {
   return app;
 }
 
-// 引用符（'…'、"…"、`…`）の中身。閉じていない引用符はそのまま残す
-const QUOTED = /'[^']*'|"[^"]*"|`[^`]*`/g;
+const QUOTES = ["'", '"', '`'] as const;
 const UUID = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi;
+
+// 引用符で囲まれうる範囲を伏せる。引用符を開きと閉じの対で読むと、入れ子の引用符（JSON.parse が message に入れる本文）、
+// 短縮形の '（can't）、画面が切って閉じなくなった引用符で、中身が外に出る。そこで、引用符の種類ごとに、元の文字列で
+// 最初に現れた位置から最後に現れた位置までを1つの範囲にし（1つだけなら末尾まで）、3種の範囲を合わせて重なりをまとめてから、
+// 範囲ごとに両端の文字の間を … にする。種類ごとに順に置き換えると、先の置き換えが後の種類の引用符を消し、範囲がずれて漏れるため、
+// 範囲は置き換える前の文字列で求める。伏せすぎは許す（漏らさないことを先にする）
+function maskQuoted(text: string): string {
+  const ranges: [start: number, end: number][] = [];
+  for (const quote of QUOTES) {
+    const first = text.indexOf(quote);
+    if (first === -1) continue;
+    const last = text.lastIndexOf(quote);
+    // 閉じていなければ末尾まで（end は含まない位置）
+    ranges.push([first, last === first ? text.length : last + 1]);
+  }
+  ranges.sort((a, b) => a[0] - b[0]);
+  let result = '';
+  let cursor = 0;
+  let current: [number, number] | undefined;
+  const flush = (range: [number, number]) => {
+    const [start, end] = range;
+    const closed = end - start >= 2 && QUOTES.some((quote) => quote === text[end - 1]);
+    result += text.slice(cursor, start) + text[start] + '…' + (closed ? text[end - 1] : '');
+    cursor = end;
+  };
+  for (const range of ranges) {
+    if (current !== undefined && range[0] < current[1]) current[1] = Math.max(current[1], range[1]);
+    else {
+      if (current !== undefined) flush(current);
+      current = [range[0], range[1]];
+    }
+  }
+  if (current !== undefined) flush(current);
+  return result + text.slice(cursor);
+}
 
 // 引用符の中身と UUID らしい値を … に置き換えてから、先頭 200 字にする。切ってから伏せると、200字をまたぐ引用符の中身が漏れる
 export function maskClientErrorMessage(text: string): string {
-  const masked = text.replace(QUOTED, (quoted) => `${quoted[0]}…${quoted[0]}`).replace(UUID, '…');
+  const masked = maskQuoted(text).replace(UUID, '…');
   if (masked.length <= CLIENT_ERROR_LOGGED_MESSAGE_LENGTH) return masked;
   // サロゲートペアの片方だけを残さない
   const end = CLIENT_ERROR_LOGGED_MESSAGE_LENGTH;

@@ -26,8 +26,9 @@ type ClientErrorLocation = NonNullable<ClientErrorReport['location']>;
 
 // V8 の書き方（`    at 関数名 (URL:行:列)` か `    at URL:行:列`）
 const V8_FRAME = /^\s*at (?:.*\()?(.+?):(\d+):(\d+)\)?$/;
-// Firefox と Safari の書き方（`関数名@URL:行:列`）
-const AT_SIGN_FRAME = /^[^@\s]*@(.+):(\d+):(\d+)$/;
+// Firefox と Safari の書き方（`関数名@URL:行:列`）。Safari はモジュールの最上位と大域のコードを `module code@…`、
+// `global code@…` と空白を含む名前で書くので、名前に空白を許す
+const AT_SIGN_FRAME = /^[^@]*@(.+):(\d+):(\d+)$/;
 
 export function createClientErrorReporter(options: ClientErrorReporterOptions): ClientErrorReporter {
   const sentKeys = new Set<string>();

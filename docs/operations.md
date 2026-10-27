@@ -354,7 +354,7 @@ rollback で戻るのは、版が持つものすべて。コードと設定の�
 | `requestId` | 送信を受けた呼び出しの `cf-ray` |
 | `kind` | `error`（捕まえていない例外）か `unhandledrejection`（捕まえていない Promise の拒否） |
 | `name` | 例外の名前（`TypeError` など）。英字40字までに合わなければ `Error` |
-| `message` | メッセージ。引用符の中身と UUID を `…` に伏せた先頭200字。Error でない拒否は文字列ならそのまま、ほかは `Non-Error rejection (<型>)` |
+| `message` | メッセージ。引用符で囲まれうる範囲（種類ごとに最初の引用符から最後の引用符まで、1つだけなら末尾まで）と UUID を `…` に伏せた先頭200字。伏せすぎることがある（`can't save 'x'` は `can'…'` になる）ので、元の文言は `name` と場所から、手元で再現して確かめる。Error でない拒否は文字列ならそのまま、ほかは `Non-Error rejection (<型>)` |
 | `location` | 起きた場所の1か所（`file`、`line`、`column`）。`file` は `/_app/` の下のファイルで、ほかのオリジンや拡張機能なら `external`。場所が取れなければ `null` |
 | `route` | 画面の `route.id`（`/[slug]/w/[id]/plan` など）。当たらない経路は `null` |
 | `clientVersion` | 画面の版（build のコミットの SHA）。開いたままの古い画面からは、前の版の SHA が来る |
