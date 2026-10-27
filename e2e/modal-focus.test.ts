@@ -4,7 +4,7 @@ import type { Page } from '@playwright/test';
 import { expect, test } from './fixtures.ts';
 import { expectModalFocus } from './helpers.ts';
 
-// 落ちるはずの確かめで待ちすぎない
+// 落ちるはずの確かめで待ちすぎない。通るはずの確かめは既定の待ちにする（混んだ CI で誤って落ちないため）
 const timeout = 500;
 
 type Broken = 'none' | 'no-focus-in' | 'no-escape' | 'no-return';
@@ -54,9 +54,10 @@ function targets(page: Page) {
 
 test('決まりどおりのダイアログでは通る', async ({ page }) => {
   await setDialog(page, 'none');
-  await expectModalFocus(page, targets(page));
+  const { opener, modal } = targets(page);
+  await expectModalFocus(page, { opener, modal });
   // キーボードで開いても通る
-  await expectModalFocus(page, { ...targets(page), press: 'Enter' });
+  await expectModalFocus(page, { opener, modal, press: 'Enter' });
 });
 
 test('開いても中にフォーカスが入らなければ落ちる', async ({ page }) => {

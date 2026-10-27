@@ -8,7 +8,7 @@
 
   // kit.js の openDialog / closeDialog。ブラウザの <dialog> の showModal() で開くので、
   // フォーカスの閉じ込めと Esc での閉じは任せる。閉じたら、開いたときにフォーカスのあった要素へ戻す。
-  // その要素が文書から外れていたら（開いている間に行が作り直された、消えた）、画面の見出しへ移す。
+  // その要素へ戻せなければ（開いている間に行が作り直された、消えた、押せなくなった）、画面の見出しへ移す。
   // 開閉は open で持つ。footer の snippet には閉じる関数が渡る。
   // Safari と Firefox はクリックしたボタンにフォーカスを移さない（activeElement が body になる）ので、
   // 開く操作を起こした要素は show(trigger) で渡すと確実に戻せる
@@ -96,8 +96,9 @@
     const target = opener;
     opener = null;
     if (target === null) return;
-    if (target.isConnected) target.focus();
-    else if (focusLost()) focusPageHeading();
+    // 文書から外れた、文書にあっても押せなくなった（disabled、隠れた）要素へは戻せない
+    target.focus();
+    if (document.activeElement !== target && focusLost()) focusPageHeading();
   }
 
   // フォーカスの行き先が無い（body に落ちた、閉じたダイアログの中に残っている）か。
