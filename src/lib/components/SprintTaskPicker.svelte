@@ -171,9 +171,11 @@
     };
   }
 
-  function taskMeta(group: Group, task: BacklogTask): string {
-    const parts = group.id === null ? [] : [group.title];
-    if (task.points !== null) parts.push(t('pointsLabel', { points: t('points'), value: task.points }));
+  function taskMeta(task: BacklogTask): string {
+    // 親のストーリーの題は見出しにあるので、繰り返さない
+    const parts = [
+      task.points === null ? t('pointsUnsetTitle') : t('pointsLabel', { points: t('points'), value: task.points }),
+    ];
     if (task.sprint !== null) parts.push(t('sprintTaskAddInSprint', { label: sprintLabel(task.sprint, t) }));
     return parts.join('・');
   }
@@ -316,7 +318,7 @@
                 <div class="pick-row is-head"><span>{group.title}</span></div>
               {/if}
               {#each group.shown as task (task.id)}
-                {@const meta = taskMeta(group, task)}
+                {@const meta = taskMeta(task)}
                 <label class="pick-row is-child">
                   <input
                     type="checkbox"
