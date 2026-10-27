@@ -4782,8 +4782,8 @@ describe('bash-rules: #356 崩す（2周目）', () => {
     [`npx --cal 'wrangler deploy'`, 'deny'],
     // npm の shorthands の2文字の名前（--dd は --loglevel verbose の2語に広がる）。npx は元の次の語を取らない
     [`npx --dd -c 'wrangler deploy'`, 'deny'],
-    // 1文字の名前の = の形（-d=foo は --loglevel info foo に広がる）
-    [`npx -d=foo -c 'wrangler deploy'`, 'deny'],
+    // 1文字の名前の = の形（-d=foo は --loglevel info foo に広がり、npx が foo の前に -- を差し込むので、-c は foo の引数）
+    [`npx -d=foo -c 'wrangler deploy'`, 'allow'],
     // String の型のフラグの前置き（--mes は --message）も - で始まる次の語を値に取らない
     [`npx --mes -c 'wrangler deploy'`, 'deny'],
     // 表に無い String の型のフラグ（--tag）は両方の読み方で見るので、次の -c を --call と読む形も残る
