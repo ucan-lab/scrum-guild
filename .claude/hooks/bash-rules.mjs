@@ -2,7 +2,7 @@
 // シークレット（.dev.vars と .env）の読み取りと書き込み、gh pr merge を通さないマージを止め、
 // gh pr merge、依存の変更、マイグレーションの作成、判定しきれない push と場所を判定できないデプロイのスクリプト、git のフックを外す --no-verify、
 // 道具の名前が展開で決まるコマンド、env -S、読むだけの道具以外の xargs、wrangler の設定の書き換えと wrangler dev の -c、
-// インタープリタの本文の中の wrangler と守る先の名前では人の確認を挟む（docs/development.md の「Claude の設定とフック」）。
+// インタープリタの本文の中の wrangler と守る先の名前、展開を含む package.json のスクリプトの引数では人の確認を挟む（docs/development.md の「Claude の設定とフック」）。
 // permissions.deny の前方一致では npx wrangler や pnpm exec wrangler の言い換えを取りこぼすので、語に分けて判定する。
 // 踏み線であって守りの本体ではない。変数の中身と、パイプで sh に流す中身は見えない。
 import { existsSync, statSync } from 'node:fs';
@@ -478,6 +478,8 @@ const PACKAGE_CHANGES = {
 const PACKAGE_FLAGS_WITH_VALUE = new Set(['-C', '--dir', '--filter', '-F', '--prefix', '--cwd', '--workspace']);
 const DEPLOY_SCRIPT = /(^|[:_-])deploy([:_-]|$)/;
 
+const SCRIPT_ARGS_EXPAND_REASON = 'スクリプトの後ろの引数に変数、$(...)、glob があると、本体の末尾に足して実行される中身を判定できない';
+
 function judgePackageManager(tool, args, ctx) {
   const indexes = positionalIndexes(args, PACKAGE_FLAGS_WITH_VALUE);
   const pos = indexes.map((i) => args[i]);
@@ -508,8 +510,6 @@ function judgePackageManager(tool, args, ctx) {
   if (body && extra.some((_, i) => isUnresolved(extra, i))) results.push([ASK, SCRIPT_ARGS_EXPAND_REASON]);
   return results.find(([d]) => d === DENY) ?? results.find(([d]) => d === ASK) ?? null;
 }
-
-const SCRIPT_ARGS_EXPAND_REASON = 'スクリプトの後ろの引数に変数、$(...)、glob があると、本体の末尾に足して実行される中身を判定できない';
 
 // 語をシェルの1語として単引用符で包み、本体の末尾に足す
 function appendWords(body, words) {

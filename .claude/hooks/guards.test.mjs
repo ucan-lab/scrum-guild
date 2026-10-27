@@ -515,6 +515,9 @@ describe('bash-rules: 止める', () => {
     'npm run r2:get -- --no-local',
     'yarn r2:get -- --no-local',
     'bun run r2:get -- --no-local',
+    'npm run r2:get -- --no-local -- x',
+    // 止める語と展開が並んでも、確認ではなく止める
+    'pnpm test scripts/deploy-production.ts $X',
     'bash scripts/deploy.sh',
     './scripts/deploy.sh',
     'node scripts/deploy.ts',
@@ -1914,6 +1917,8 @@ describe('bash-rules: 通す', () => {
     'pnpm test scripts/db-seed.ts',
     'pnpm test --reporter dot',
     'npm test -- scripts/dev.test.ts',
+    // 消すのは最初の -- だけ。2つ目の -- の後ろは、本体でも位置引数として渡る
+    'npm run r2:get -- --local -- --no-local',
     // package.json に無い名前は、展開があっても確認を挟まない
     'pnpm nosuch $X',
     // 足す語は引用符で包むので、引数の中の区切りは別のコマンドにならない
@@ -2772,6 +2777,18 @@ describe('入口', () => {
     const result = run(path.join(hooks, 'guard-bash.mjs'), bashInput('ls'));
     assert.equal(result.status, 0);
     assert.equal(result.stdout, '');
+  });
+
+  test('スクリプトは上へ探した package.json から引き、その場所で後ろの引数を判定する', () => {
+    const pkg = path.join(tmp, 'pkg');
+    mkdirSync(path.join(pkg, 'src', 'deep'), { recursive: true });
+    mkdirSync(path.join(pkg, 'scripts'));
+    writeFileSync(path.join(pkg, 'scripts', 'deploy-production.ts'), '');
+    writeFileSync(path.join(pkg, 'package.json'), JSON.stringify({ scripts: { test: 'node --test scripts/*.test.ts' } }));
+    const fromDeep = (command) =>
+      run(path.join(hooks, 'guard-bash.mjs'), JSON.stringify({ tool_name: 'Bash', cwd: path.join(pkg, 'src', 'deep'), tool_input: { command } }));
+    assert.equal(JSON.parse(fromDeep(`pnpm test '*/deploy-production.ts'`).stdout).hookSpecificOutput.permissionDecision, 'deny');
+    assert.equal(fromDeep(`pnpm test '*/x.test.ts'`).stdout, '');
   });
 
   test('シンボリックリンク経由で起動しても判定する', () => {
