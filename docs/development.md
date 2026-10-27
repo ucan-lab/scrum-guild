@@ -291,7 +291,7 @@ GitHub は無料のプランのまま使う（2026-10-23 に決めた）。無�
 - 操作の定義の無い直書きのルート（`/api/auth/google/start` などの GET の例外、`/api/health`）は、例外として `page.route()` で書く
 - 操作を呼ぶ `page.route()` は、まだ多くのファイルに残っている。順にヘルパーへ置き換え、すべて終えた後に lint で止める（#332）。それまでは書き手と点検で守る
 - 画面のアクセシビリティは、`e2e/a11y-screens.test.ts`（主な画面）と `e2e/a11y-open.test.ts`（開いた状態）が axe で確かめる。シャードに散るようファイルを分けた。関数は `e2e/helpers.ts` の `expectNoA11yViolationsInThemes`。検査が空振りしないことは `e2e/a11y-check.test.ts` が壊した HTML で確かめる。直せない違反の除外は `e2e/ui-exclusions.ts` に置く（`docs/design.md` の「アクセシビリティを機械で確かめる」）
-- 通ったテストの画面は、`fixtures.ts` の `page` が route を外す前に `evidence-<n>.png` に撮る（CI の `evidence` が比べる。下の「e2e の画像のコメント」）。通信が 300ms 止まるのを待ち（上限 2 秒）、書体と描画を待って、アニメーションとトランジションを終わりまで進めてから撮る。Playwright のテストの終わりのスクリーンショット（`screenshot: 'on'`）は、読み込みやトーストの出入りの途中を撮り、同じコミットで2回撮ると 316 枚のうち 145 枚が違った（#337）ので、落ちたテストの画像（`only-on-failure`）だけにした。`playwright.config.ts` は Chromium の描画を1本のスレッドで丸ごと行う引数（`--disable-partial-raster`、`--num-raster-threads=1`、`--disable-gpu-rasterization`）で立てる。無いと、影や罫線の数画素が色の値 1〜2 だけ揺れた。待つ分と1本のスレッドで描く分だけ e2e は延び、2026-10-27 の手元の全件で約 5 分 10 秒から約 6 分 20 秒になった。CI の `e2e` のシャードも延びるので、`ci-ok` の待ちは伸びる（`evidence` のジョブそのものは待ちを伸ばさない）
+- 通ったテスト（`testInfo.status` が `passed`）の画面は、`fixtures.ts` の `page` が route を外す前に `evidence-<n>.png` に撮る（CI の `evidence` が比べる。下の「e2e の画像のコメント」）。落ちた、時間切れ、飛ばしたテストでは撮らない。テストの後の撮影は後片付けの枠（テストと同じ長さの別の枠）で数えられる。テストの中で閉じる context を撮る分はテストの時間に入るので、1枚ごとに撮る分の最長（8 秒）をテストの上限に足す。2026-10-27 の手元の全件で、最長のテストは約 12 秒（`settings.test.ts` の区分とリポジトリを足すテスト）、テストの中で context を閉じて撮る最長は約 7 秒（`organization-look.test.ts`。撮影を入れる前は約 5.5 秒）で、上限の 30 秒には余裕がある。通信が 300ms 止まるのを待ち（上限 2 秒）、書体と描画を待って、アニメーションとトランジションを終わりまで進めてから撮る。Playwright のテストの終わりのスクリーンショット（`screenshot: 'on'`）は、読み込みやトーストの出入りの途中を撮り、同じコミットで2回撮ると 316 枚のうち 145 枚が違った（#337）ので、落ちたテストの画像（`only-on-failure`）だけにした。`playwright.config.ts` は Chromium の描画を1本のスレッドで丸ごと行う引数（`--disable-partial-raster`、`--num-raster-threads=1`、`--disable-gpu-rasterization`）で立てる。無いと、影や罫線の数画素が色の値 1〜2 だけ揺れた。待つ分と1本のスレッドで描く分だけ e2e は延び、2026-10-27 の手元の全件で約 5 分 10 秒から約 6 分 20 秒になった。CI の `e2e` のシャードも延びるので、`ci-ok` の待ちは伸びる（`evidence` のジョブそのものは待ちを伸ばさない）
 - `fixtures.ts` の `context` は、撮るたびに変わる文字（サーバーが付ける時刻の `<time>`、組織の画面の API の版、入力欄のカーソル）を透明にする。場所と大きさは残るので、並びの変化は写り、`toBeVisible` と `toHaveText` も変わらない。画面の CSP は style 要素を止めるので、構築可能なスタイルシートを init script で当てる。`browser.newContext()` で作った context には、テストの中で `steadyScreenshots(context)` を呼ぶ。呼んだ context は、閉じる前とテストの終わりに撮る
 
 ### バックログの木を 5 万件で測る
@@ -538,29 +538,47 @@ PR ごとのプレビュー環境は持たず、Workers Builds の preview build
 
 クラウドのセッションは撮影と画像の添付ができない（`pr-create` の `evidence.md`）ので、CI が e2e のスクリーンショットから PR のエビデンスを作る（#337）。
 
-- 置き方: 画像は中身の SHA-256 を名前にして置く。`main` の画像は `main/img/<ハッシュ>.png`、PR にしか無い画像は `pr/img/<ハッシュ>.png`。どの画面がどの画像かの一覧は `main/<SHA>.json` と、最新を指す `main/latest.json`。同じ画像は一度しか上げないので、`main` へのマージごとに上がるのは変わった画像だけになる
+- 置き方: バケットを2つに分ける。main 用のバケットには、どの画面がどの画像かの一覧（`main/<SHA>.json` と、最新を指す `main/latest.json`）と `main` の画像（`main/img/<ハッシュ>.png`）を置く。PR 用のバケットには、PR にしか無い画像（`img/<ハッシュ>.png`）だけを置く。画像は中身の SHA-256 を名前にし、同じ画像は一度しか上げないので、`main` へのマージごとに上がるのは変わった画像だけになる。コメントは、変更前の画像を main 用の公開の URL から、PR にしか無い変更後の画像を PR 用の公開の URL から指す
 - 画面の見分け方: Playwright の `test-results/` の、テストごとのディレクトリの名前（再試行の `-retry<n>` を除く）と、`e2e/fixtures.ts` がテストの終わりに撮る画像の名前（`evidence-<n>.png`。開いている画面ごとに n が増える）。テストの名前を変えると、別の画面として新しい画面と無くなった画面に出る
-- `evidence-main`（`main` への push と手動の実行）: `ci.yml` の e2e と同じ手順で3つのシャードに分けて撮り、`scripts/evidence-main.ts` が `main/latest.json` に無い画像だけを上げる一覧と、このコミットの一覧を作る。画像を上げてから `main/<SHA>.json` を置き、そのコミットがまだ `main` の先頭のときだけ `main/latest.json` を書き換える。順に1つずつ動かし（`concurrency`）、e2e が落ちたら何も上げない。ランナーの時間は、マージ1回あたり約3分半増える
-- `evidence`（PR）: `needs: [changes, e2e]`。e2e がすべて成功したときだけ動き、文書だけの PR、fork と Bot の PR では動かない。比べる処理を使うので PR の head をチェックアウトする（`ci.yml` も PR の head の版が動くので、守りは弱くならない）。成果物 `e2e-*` を落とし、`scripts/evidence-pr.ts` がベース（`pull_request.base.sha`）の一覧と比べる。ベースの一覧がまだ無ければ `main/latest.json` と比べ、そのことをコメントに書く（ベースより後に `main` に入った変更も差分に出る）。どちらも無ければ比べられないことだけを書く
-- コメント: 目印の HTML コメント（`<!-- e2e-evidence -->`）を含む `github-actions[bot]` のコメントを探して書き換え、無ければ付ける。変わった画面が無く、まだコメントも無ければ付けない。変わった画面は変更前と変更後の2列、新しい画面は変更後だけで、テストのディレクトリの名前を見出しにする。画像で並べるのは 20 画面までで、残りと無くなった画面は名前だけを並べる。PR に上げるのは、コメントに画像で出す変更後の画像のうち `main` の一覧に無いものだけ。画像に枠や注記は付かないので、何が変わったかは PR の本文に文章で書く
-- 権限: `evidence` の `permissions` は `contents: read` と `pull-requests: write` だけ。コメントはワークフローのトークン（`GITHUB_TOKEN`）で `gh api` から書く。R2 の鍵は R2 に送る段の `env` にだけ渡し、ほかの段にはシークレットの有無だけを渡す。セッションの環境には Cloudflare の資格情報を置かない（上の「クラウド環境」）
-- 送り方: ランナーの AWS CLI で R2 の S3 互換の API に送る。R2 は AWS CLI の既定のチェックサムの付け方を受け付けないので、`AWS_REQUEST_CHECKSUM_CALCULATION` と `AWS_RESPONSE_CHECKSUM_VALIDATION` を `when_required` にする。一覧は公開の URL から読む
+- `evidence-main`（`main` への push と手動の実行）: `ci.yml` の e2e と同じ手順で3つのシャードに分けて撮り、`scripts/evidence-main.ts` が `main/latest.json` に無い画像だけを上げる一覧と、このコミットの一覧を作る。比べる対象から外す画面（下の「画像の揺れ」）は、一覧にも上げる画像にも入れない。前の一覧を読めなければ、注記を出してすべての画像を上げる（同じ名前は同じ中身なので壊れない）。画像を上げてから `main/<SHA>.json` を置き、そのコミットがまだ `main` の先頭のときだけ `main/latest.json` を書き換える。順に1つずつ動かし（`concurrency`）、e2e が落ちたら何も上げない。ランナーの時間は、マージ1回あたり約3分半増える
+- `evidence`（PR）: `needs: [changes, e2e]`。e2e がすべて成功したときだけ動き、文書だけの PR、fork と Bot の PR では動かない。比べる処理を使うので PR の head をチェックアウトする（下の「鍵とバケットの守り」）。成果物 `e2e-*` を落とし、`scripts/evidence-pr.ts` がベース（`pull_request.base.sha`）の一覧と比べる。ベースの一覧がまだ無ければ `main/latest.json` と比べ、そのことをコメントに書く（ベースより後に `main` に入った変更も差分に出る）。どちらも無ければ比べられないことだけを書く。一覧を読めない（404 のほかの失敗。10 秒で打ち切る）ときは、ジョブを落とさずに注記を出し、比べられなかったことと理由をコメントに書く（`evidence` は助言なので赤くしない）
+- 撮るもの: CI の e2e は、PR の head をベースにマージした状態（`refs/pull/<番号>/merge`）を撮る。コメントもそう書く。比べるベースは、実行を起こしたイベントの時点の `pull_request.base.sha` に決まる。落ちたジョブだけを再実行すると、イベントも撮ったマージの状態も前のままなので、その後に `main` が進んでも、比べる先は進まない。進んだ `main` と比べたいときは、`sync-base` で取り込んで push し直す
+- コメント: 目印の HTML コメント（`<!-- e2e-evidence -->`）を含む `github-actions[bot]` のコメントを探して書き換え、無ければ付ける。コメントが無いときに新しく付けるのは、変わった画面、新しい画面、無くなった画面のどれかがあるときと、比べられなかったときだけ（`scripts/evidence.ts` の `shouldPost`）。無くなった画面だけでも付ける。変わった画面が無く、外した画面だけなら付けない。既にあるコメントは、付けないときも書き換える。変わった画面は変更前と変更後の2列、新しい画面は変更後だけで、テストのディレクトリの名前を見出しにする。画像で並べるのは 20 画面までで、残り、無くなった画面、外した画面は名前だけを並べる（どの一覧も 100 件で切り、残りは数だけを書く）。PR に上げるのは、コメントに画像で出す変更後の画像のうち `main` の一覧に無いものだけ。画像に枠や注記は付かないので、何が変わったかは PR の本文に文章で書く
+- 権限: `evidence` の `permissions` は `contents: read` と `pull-requests: write` だけ。コメントはワークフローのトークン（`GITHUB_TOKEN`）で `gh api` から書く。セッションの環境には Cloudflare の資格情報を置かない（上の「クラウド環境」）
+- 送り方: ランナーの AWS CLI で R2 の S3 互換の API に送る。R2 は AWS CLI の既定のチェックサムの付け方を受け付けないので、`AWS_REQUEST_CHECKSUM_CALCULATION` と `AWS_RESPONSE_CHECKSUM_VALIDATION` を `when_required` にする。送る段は、送る先の名前が決まった形（main 用は `main/img/<ハッシュ>.png`、PR 用は `img/<ハッシュ>.png`。`scripts/evidence.ts` の `UPLOAD_KEY`）でなければ止まる。一覧は公開の URL から読み、SHA、画面の名前、ハッシュのどれかの形が違えば、一覧ごと無いものとして扱う
 - `ci-ok` との関係: `evidence` は `ci-ok` の `needs` に入れない。見た目を確かめる助けで、落ちても `ci-ok` は落ちず、e2e の後に動くので、このジョブがマージの判定の待ちを伸ばすことはない（揺れない画像を撮るために e2e そのものは延びた。上の「e2e の書き方」）
-- 画像の揺れ: 同じコミットで撮り直しても画像が変わる画面は、テストの土台（`e2e/fixtures.ts`）でそろえる（上の「e2e の書き方」）。そろえられない画面は、理由を添えて `scripts/evidence.ts` の `EXCLUDED_SCREENS` に入れ、比べる対象から外す（コメントには名前と理由だけを出す）。画面を変えない PR に変わった画面が出たら、その画面をそろえるか、この一覧に足す。2026-10-27 の時点で、316 画面のうち 56 画面を外している（多くは、並べて走るほかのテストが作ったワークスペースを並べる組織の管理の画面）。確かめるときは、同じコミットで `pnpm e2e` を2回走らせ（`test-results/` を退避してから2回目）、`evidence-<n>.png` のハッシュを比べる
+- 画像の揺れ: 同じコミットで撮り直しても画像が変わる画面は、テストの土台（`e2e/fixtures.ts`）でそろえる（上の「e2e の書き方」）。そろえられない画面は、理由を添えて `scripts/evidence.ts` の `EXCLUDED_SCREENS` に入れ、比べる対象から外す（コメントには名前と理由だけを出す）。画面を変えない PR に変わった画面が出たら、その画面をそろえるか、この一覧に足す。外すのは1つのテストずつにし、describe の単位で外さない。外した画面と理由は一覧（`EXCLUDED_SCREENS`）を見る。どの画面にも当たらなくなった項目（テストの名前を変えたか消した後に残ったもの）は、コメントの「当たらない除外」とジョブの注記に出るので、一覧から外す。確かめるときは、同じコミットで `pnpm e2e` を2回走らせ（`test-results/` を退避してから2回目）、`evidence-<n>.png` のハッシュを比べる
 - 日付で変わる画面: サーバーの今日（期日の印の色、終了の日付など）で変わる画面は、同じ日の2回撮りでは見つからない。`main` の画像と日をまたいで比べると、変えていない画面が出ることがある。見つけたら、テストの応答を決まった日付に差し替えるか、上の一覧に足す
+- ランナーのイメージの更新: `ubuntu-latest` のイメージ（Chromium の描画に使う書体やライブラリ）か Playwright の版が替わると、変えていない画面も含めて全画面が変わった画面に出ることがある。そのときは `evidence-main` を手で動かして `main` の画像を撮り直す。撮り直す前にできた PR は、ベースの一覧（古いイメージで撮ったもの）と比べるので、`sync-base` で撮り直した後の `main` を取り込んで push し直す
+
+#### 鍵とバケットの守り
+
+- PR の `evidence` は、PR の head のコードを PR 用の鍵（リポジトリのシークレット）を持つジョブで動かす。同じリポジトリに push できる人は、PR のワークフローや `scripts/` を書き換えて、この鍵を取れる前提で考える。鍵を段ごとの `env` に分けて渡すのは、ログなどに見せない工夫で、境界ではない
+- main 用の鍵は Environment の `evidence-main` のシークレットに置き、deployment branches を `main` だけに絞る。PR の実行（`refs/pull/<番号>/merge`）はこの Environment に入れないので、PR から main の変更前の画像と一覧はすり替えられない。`evidence-main.yml` で鍵を読むジョブ（`config` と `upload`）にだけ `environment: evidence-main` を付ける。Environment のシークレットは、その Environment を付けたジョブでないと有無も読めない
+- 鍵はそれぞれのバケットだけの Object Read & Write に絞る。PR 用の鍵が漏れても、書けるのは PR 用のバケットだけ
+- `evidence` のコメントは PR の head のコードが作る。`.github/` や `scripts/` を変える PR（`needs-human` が付く）では、コメントの画像と文章を信用せず、人が差分を読んで決める
+- 鍵が漏れた疑いがあれば、Cloudflare のダッシュボードの R2 の API トークンの画面で、その鍵のトークンを失効させ、同じ権限（そのバケットだけの Object Read & Write）で作り直す。新しいアクセスキーとシークレットキーを、PR 用はリポジトリのシークレットに、main 用は Environment の `evidence-main` のシークレットに入れ直す。main 用の鍵が漏れたときは、main 用のバケットの一覧と画像がすり替えられていないかも見て、疑わしければ `evidence-main` を手で動かして撮り直す
 
 人が用意するもの（セッションは本番の Cloudflare のアカウントに触らないので行えない）。どれかが無いと、`evidence` と `evidence-main` は上げずに、足りない名前をジョブの注記に出して成功で終える。人の用意の前にマージしても CI は赤くならない。
 
-| 種類 | 名前 | 中身 |
+| 置き場所 | 名前 | 中身 |
 | --- | --- | --- |
-| シークレット | `EVIDENCE_R2_ACCESS_KEY_ID` | 画像用のバケットだけの Object Read & Write に絞った R2 の API トークンのアクセスキー |
-| シークレット | `EVIDENCE_R2_SECRET_ACCESS_KEY` | 同じトークンのシークレットキー |
-| シークレット | `EVIDENCE_R2_ENDPOINT` | R2 の S3 互換のエンドポイント（`https://<アカウント ID>.r2.cloudflarestorage.com`。末尾の `/` は付けない。付いていても外して使う） |
-| 変数 | `EVIDENCE_R2_BUCKET` | 画像用のバケットの名前だけ（例 `scrum-guild-evidence`。`s3://` や URL にしない） |
-| 変数 | `EVIDENCE_PUBLIC_URL` | バケットの公開の URL（`https://pub-xxxx.r2.dev` か独自のドメインの URL。末尾の `/` は付けない。付いていても外して使う） |
+| Environment `evidence-main` のシークレット | `EVIDENCE_MAIN_R2_ACCESS_KEY_ID` | main 用のバケットだけの Object Read & Write に絞った R2 の API トークンのアクセスキー |
+| Environment `evidence-main` のシークレット | `EVIDENCE_MAIN_R2_SECRET_ACCESS_KEY` | 同じトークンのシークレットキー |
+| リポジトリのシークレット | `EVIDENCE_PR_R2_ACCESS_KEY_ID` | PR 用のバケットだけの Object Read & Write に絞った R2 の API トークンのアクセスキー |
+| リポジトリのシークレット | `EVIDENCE_PR_R2_SECRET_ACCESS_KEY` | 同じトークンのシークレットキー |
+| リポジトリの変数 | `EVIDENCE_R2_ENDPOINT` | R2 の S3 互換のエンドポイント（`https://<アカウント ID>.r2.cloudflarestorage.com`。2つのバケットは同じアカウントなので1つ。秘密でないので変数にする。末尾の `/` は付けない。付いていても外して使う） |
+| リポジトリの変数 | `EVIDENCE_MAIN_BUCKET` | main 用のバケットの名前だけ（例 `scrum-guild-evidence`。`s3://` や URL にしない） |
+| リポジトリの変数 | `EVIDENCE_MAIN_PUBLIC_URL` | main 用のバケットの公開の URL（`https://pub-xxxx.r2.dev` か独自のドメインの URL。末尾の `/` は付けない。付いていても外して使う） |
+| リポジトリの変数 | `EVIDENCE_PR_BUCKET` | PR 用のバケットの名前だけ（例 `scrum-guild-evidence-pr`） |
+| リポジトリの変数 | `EVIDENCE_PR_PUBLIC_URL` | PR 用のバケットの公開の URL（書き方は main 用と同じ） |
 
-- バケットは本番の添付ファイルのバケットとは別に作り、公開の URL を有効にする。画像は公開になるが、中身は seed の架空のデータだけ（e2e に本物の認証情報を渡さない）
-- 古い画像を消す期限（ライフサイクルの規則）は、人が `pr/` の前置きにだけ 90 日で付ける。`main/` は変更前の画像として指され続けるので期限を付けない。画像は1枚 50〜100KB ほどで、変わった画像だけを上げるので、R2 の無料の枠（保存 10GB/月、書き込み 100 万回/月）に収まる見込み
+PR の `evidence` は PR 用の鍵と変数に `EVIDENCE_MAIN_PUBLIC_URL` を足して、`evidence-main` は main 用の鍵と変数を見る。
+
+- バケットを2つ（main 用と PR 用）、本番の添付ファイルのバケットとは別に作り、それぞれ公開の URL を有効にする。公開の URL は `r2.dev` か、本番と別の登録ドメインにする（本番のドメインの下に置くと、PR の head が上げた画像が本番と同じサイトから配られるため）。画像は公開になるが、中身は seed の架空のデータだけ（e2e に本物の認証情報を渡さない）
+- R2 の API トークンを2つ作り、それぞれ1つのバケットだけの Object Read & Write に絞る
+- GitHub の Environment `evidence-main` を作り、deployment branches を `main` だけに絞ってから、main 用の鍵を入れる。`evidence-main.yml` が先に動くと、Environment は絞りの無いまま作られるので、鍵を入れる前に必ず絞る
+- 古い画像を消す期限（ライフサイクルの規則）は、PR 用のバケット全体にだけ 90 日で付ける。main 用のバケットは変更前の画像として指され続けるので期限を付けない。画像は1枚 50〜100KB ほどで、変わった画像だけを上げるので、R2 の無料の枠（保存 10GB/月、書き込み 100 万回/月）に収まる見込み
 - 用意した後は、`evidence-main` を手で動かして `main/latest.json` を作る。作るまでの PR のコメントは、比べられないことだけを書く
 
 ## CD

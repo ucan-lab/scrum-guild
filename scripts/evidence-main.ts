@@ -1,6 +1,8 @@
 // evidence-main のワークフロー: main の e2e の画像の一覧を作り、前の main（main/latest.json）に無い画像だけを上げる一覧を書く。
-// 環境変数: RESULTS_DIR（成果物を落とした所）、OUT_DIR（書き出す所）、EVIDENCE_PUBLIC_URL、SHA（main のコミット）。
-// 書き出すもの: OUT_DIR/uploads.tsv（手元のパス<TAB>上げる先の名前）、OUT_DIR/manifest.json（main/<SHA>.json と main/latest.json の中身）
+// 比べる対象から外す画面（scripts/evidence.ts の EXCLUDED_SCREENS）は、一覧にも上げる画像にも入れない。
+// 環境変数: RESULTS_DIR（成果物を落とした所）、OUT_DIR（書き出す所）、EVIDENCE_MAIN_PUBLIC_URL、SHA（main のコミット）。
+// 書き出すもの: OUT_DIR/uploads.tsv（手元のパス<TAB>main 用のバケットの中の名前）、
+// OUT_DIR/manifest.json（main/<SHA>.json と main/latest.json の中身）
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
@@ -10,24 +12,39 @@ import {
   localFiles,
   mainUploads,
   manifestObjectKey,
+  notice,
   readScreenFiles,
   requiredEnv,
+  unusedExclusions,
   uploadLines,
+  withoutExcluded,
   type Manifest,
 } from './evidence.ts';
 
 const resultsDir = requiredEnv('RESULTS_DIR');
 const outDir = requiredEnv('OUT_DIR');
-const publicUrl = requiredEnv('EVIDENCE_PUBLIC_URL');
+const publicUrl = requiredEnv('EVIDENCE_MAIN_PUBLIC_URL');
 const sha = requiredEnv('SHA');
 // 名前の形を先に確かめる（上げる段は main/<SHA>.json に置く）
 manifestObjectKey(sha);
 
 const files = readScreenFiles(resultsDir);
-const images = collectScreens(files);
-if (Object.keys(images).length === 0) throw new Error(`${resultsDir} にスクリーンショットが無い`);
+const all = collectScreens(files);
+if (Object.keys(all).length === 0) throw new Error(`${resultsDir} にスクリーンショットが無い`);
+const images = withoutExcluded(all);
+const unused = unusedExclusions(Object.keys(all));
+if (unused.length > 0) notice('当たらない除外', unused.map(({ pattern }) => pattern.source).join(' / '));
 
-const previous = await fetchManifest(publicUrl, LATEST_MANIFEST);
+// 前の一覧を読めなければ、すべての画像を上げる（同じ名前は同じ中身なので、上げ直しても壊れない）
+let previous: Manifest | undefined;
+try {
+  previous = await fetchManifest(publicUrl, LATEST_MANIFEST);
+} catch (error) {
+  notice(
+    '前の main の一覧を読めない',
+    `${error instanceof Error ? error.message : String(error)}。すべての画像を上げる`,
+  );
+}
 const uploads = mainUploads(images, previous?.images);
 const manifest: Manifest = { sha, images };
 
@@ -35,5 +52,5 @@ mkdirSync(outDir, { recursive: true });
 writeFileSync(join(outDir, 'uploads.tsv'), uploadLines(uploads, 'main', localFiles(files)));
 writeFileSync(join(outDir, 'manifest.json'), JSON.stringify(manifest, null, 2) + '\n');
 console.log(
-  `前の main: ${previous ? previous.sha : '無し'}。画面 ${Object.keys(images).length}、上げる画像 ${uploads.length}`,
+  `前の main: ${previous ? previous.sha : '無し'}。画面 ${Object.keys(images).length}（外した ${Object.keys(all).length - Object.keys(images).length}）、上げる画像 ${uploads.length}`,
 );

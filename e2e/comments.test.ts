@@ -406,11 +406,16 @@ test('一般のメンバーには、人のコメントの「編集」と「削�
   const member = await pageAs(browser, baseURL, 'member');
   try {
     await leader.goto(SEED_TASK_URL);
-    await sendComment(leader.getByRole('dialog', { name: SEED_TASK_TITLE }), body);
+    const mine = await sendComment(leader.getByRole('dialog', { name: SEED_TASK_TITLE }), body);
     await member.goto(SEED_TASK_URL);
     const comment = member.getByRole('dialog', { name: SEED_TASK_TITLE }).locator('.comment', { hasText: body });
     await expect(comment).toBeVisible();
     await expect(comment.getByRole('button')).toHaveCount(0);
+
+    // 後始末: 書いたコメントを消し、同じタスクを開くほかのテストの画面に本文を残さない（消した印は残る）
+    await mine.getByRole('button', { name: '削除', exact: true }).click();
+    await leader.getByRole('dialog', { name: 'コメントを削除する' }).getByRole('button', { name: '削除する' }).click();
+    await expect(mine.locator('.comment-body')).toHaveText('削除されました');
   } finally {
     await leader.context().close();
     await member.context().close();

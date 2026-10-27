@@ -1,4 +1,4 @@
-// e2e のスクリーンショットを PR に並べる処理（docs/development.md の「CI」の evidence と evidence-main）。
+// e2e のスクリーンショットを PR に並べる処理（docs/development.md の「e2e の画像のコメント」の evidence と evidence-main）。
 // 比べる、上げる先の名前を決める、コメントの本文を組むところをここに置き、node --test にかける。
 // R2 への送信とコメントの書き換えはワークフローの段が行う
 import { createHash } from 'node:crypto';
@@ -8,65 +8,166 @@ import { join } from 'node:path';
 // 画面の名前（test-results/ のテストごとのディレクトリと画像のファイル名）から、画像の中身の SHA-256 への対応
 export type Screens = Record<string, string>;
 
-// main/<SHA>.json と main/latest.json の中身
+// main 用のバケットの main/<SHA>.json と main/latest.json の中身
 export type Manifest = { sha: string; images: Screens };
 
-// 既存のコメントを探す目印。書き換えるのはこれを含む github-actions[bot] のコメントだけ
+// 画像を置くバケット。main 用（一覧と main の画像。鍵は Environment の evidence-main にだけある）と、
+// PR 用（PR にしか無い画像。鍵はリポジトリのシークレットで、PR の head のコードから取れる）を分ける
+export type Bucket = 'main' | 'pr';
+
+// 既存のコメントを探す目印。書き換えるのはこれを含む github-actions[bot] のコメントだけ。
+// .github/workflows/ci.yml と .claude/skills/pr-create/evidence.md にも同じ文字列を書く（scripts/evidence.test.ts が確かめる）
 export const COMMENT_MARKER = '<!-- e2e-evidence -->';
 
 // コメントに画像で並べる画面の上限。残りは名前だけを並べる
 export const IMAGE_LIMIT = 20;
 
-// 名前だけを並べる一覧の、1つあたりの上限
+// 名前だけを並べる一覧の、1つあたりの上限（GitHub のコメントは 65536 字まで）
 export const NAME_LIMIT = 100;
 
 export const LATEST_MANIFEST = 'main/latest.json';
 
+// 公開の URL から一覧を読むときの上限
+export const FETCH_TIMEOUT_MS = 10_000;
+
+// R2 に送る先の名前の形。ワークフローの送る段も同じ形で確かめ、外れたら送らずに止める
+export const UPLOAD_KEY = /^(main\/)?img\/[0-9a-f]{64}\.png$/;
+
+const HASH = /^[0-9a-f]{64}$/;
+const SHA = /^[0-9a-f]{40}$/;
+// テストのディレクトリの名前。Playwright がテストのファイルと名前から作る。制御文字（改行、タブを含む）と / を含むものは扱わない
+const TEST_DIR = /^[^/\p{Cc}]+$/u;
+const IMAGE_FILE = /^evidence-(\d+)\.png$/;
+
+export type Exclusion = { pattern: RegExp; reason: string };
+
+const CROWDED_ADMIN = '組織の管理の画面は、並べて走るほかのテストが作ったワークスペースの一覧と数を出す';
+const SCROLL = 'テストの中の操作が、上の節の読み込みの前か後かで、スクロールの位置が変わる';
+
 // 同じコミットで撮り直しても画像が変わる画面。そろえられない理由を添え、比べる対象から外す。
-// 目印はテストごとのディレクトリの名前（Playwright が付ける。テストのファイルと名前から作られる）
-// 一覧は、同じコミットで e2e を2回走らせて違った画面から作った（#337。2026-10-27）。
-// e2e/fixtures.ts で時刻、版、描画の揺れはそろえたので、残るのはテストの外から来る違いだけ
+// 目印はテストごとのディレクトリの名前で、1つのテストだけに当てる（describe の単位で外さない）。
+// 一覧は、同じコミットで e2e を2回ずつ4回走らせて違った画面から作った（#337。2026-10-27）。
+// e2e/fixtures.ts で時刻、版、描画の揺れはそろえたので、残るのはテストの外から来る違いだけ。
+// どのテストにも当たらなくなった項目は、evidence のコメントと注記に「当たらない除外」として出る
 export const EXCLUDED_SCREENS: readonly Exclusion[] = [
+  ...[
+    '-056aa-知らせ、「もう一度試す」で読み直せる。ほかの部分は出る-',
+    '-26b45-る。別の画面で先に終了されていたら、読み直して知らせる-',
+    '-325f9--になったら、状態が変わっていたことを知らせて読み直す-',
+    '-41529-受けたら、理由を出してダイアログを閉じ、一覧を読み直す-',
+    '-46fae-、一覧を残したまま知らせ、「もう一度試す」で読み直せる-',
+    '-66847-前でも、確認の見出しとトーストは折り返してはみ出さない-',
+    '-69546-込みの結果では、「まだ読み込めませんでした」を出さない-',
+    '-ba220-中は、空の読み上げの領域を先に描き、後から文字を入れる-',
+    '-c1b83-直しが後で返っても、新しい一覧を古い一覧で上書きしない-',
+    '-cac75-しても無視し、ダイアログも閉じられず、1回しか送らない-',
+    'ミナト）-390px-の幅でも、操作の列は右端に固定されて見える-',
+  ].map((part) => ({ pattern: exactTest('workspace-close-管理者（あおば開発の', part), reason: CROWDED_ADMIN })),
+  ...[
+    '-サ-02a1b-、送り終えて欄が戻った後に、名前の欄へフォーカスを戻す-',
+    '-ブラウザのタイムゾーンが断られたら、直せない理由を伝える-',
+    '-候-48501-もう一度試す」は読み直している間も残り、直ったら作れる-',
+    '-候補を読み込めないときの欄は、理由の文を二重に出さない-',
+    '-別-89686-中の言葉づかいがスクラムになり、所属していない印が出る-',
+    '-名前が空か51字以上だと、送らずに知らせる-',
+    '-選-cdecc-て-404-になったら、選び直しを促し、候補を取り直す-',
+    '-組-364e6-ワークスペースの一覧を出し、メニューに組織の管理が入る-',
+    '-自分をリーダーに、ゲームの言葉で作ると、そのワークスペースの画面へ移る-',
+  ].map((part) => ({ pattern: exactTest('workspace-管理者（あおば開発のミナト）', part), reason: CROWDED_ADMIN })),
+  ...[
+    '-登録できる行が上限の-100-を超えたら送らず、分けて登録するよう出す-',
+    '-登録できる行が無ければ送らず、理由を出す-',
+    '-送って-c36c4-ly-にし、送れた後に残す行は押した時点の内容から作る-',
+  ].map((part) => ({ pattern: exactTest('holiday-管理者（あおば開発のミナト）', part), reason: CROWDED_ADMIN })),
   {
-    pattern: /^(workspace|workspace-close|holiday)-管理者（あおば開発の/,
-    reason: '組織の管理の画面は、並べて走るほかのテストが作ったワークスペースの一覧と数を出す',
-  },
-  {
-    pattern: /^members-.*組織のトップへ移る/,
+    pattern: exactTest(
+      'members-リーダー（あおば開発のミナト）',
+      '-自分-fff02-一般に戻してリーダーに戻し、抜けると組織のトップへ移る-',
+    ),
     reason: '組織のトップは、並べて走るほかのテストが作ったワークスペースを並べる',
   },
-  {
-    pattern: /^history-管理者/,
+  ...[
+    '-320px-の幅でも、節は横にはみ出さず、行を縦に積む-',
+    '-see-190fe-で出る。運用者は「運用者」とだけ出て、所属の行は出ない-',
+  ].map((part) => ({
+    pattern: exactTest('history-管理者（あおば開発のミナト）', part),
     reason: '組織の履歴は、並べて走るほかのテストの操作を新しい順に出す',
-  },
+  })),
   {
-    pattern: /^invitations-招待だけが届いた人（ヒナタ）-d2986-/,
+    pattern: exactTest(
+      'invitations-招待だけが届いた人（ヒナタ）',
+      '-d2986-が出て、招待の画面で承諾するとそのワークスペースに入る-',
+    ),
     reason: '承諾したときに作られる人の ID（実行ごとに変わる）でアバターの色が決まる',
   },
+  ...[
+    exactTest(
+      'epic-スクラムの言葉',
+      '-配下の無いストーリーは完了にでき、断られたら理由を知らせて読み直す。狭い幅でもはみ出さない-',
+    ),
+    exactTest('task', '-完了の操作を送っている間は、押せない印と読み上げを出し、応答が来たら完了の印に替わる-'),
+  ].map((pattern) => ({
+    pattern,
+    reason: 'テストの終わりが、前の操作のトーストが消える時刻と近く、残るトーストの数か位置が変わる',
+  })),
+  ...[
+    exactTest('task-drawer', '-矢印キーで難易度を続けて動かしても、保存は1本ずつで、最後の選択が残る-'),
+    // 後始末でコメントを消しても揺れが残った（#337）
+    exactTest('comments', '-一般のメンバーには、人のコメントの「編集」と「削除」を出さない-'),
+  ].map((pattern) => ({
+    pattern,
+    reason:
+      'テストの終わりが、引き出しの担い手とリポジトリの候補を読み終える時刻と近く、「読み込んでいます」が残るかが変わる',
+  })),
   {
-    pattern: /^epic-スクラムの言葉-配下の無いストーリーは完了にでき/,
-    reason: 'テストの終わりが、前の操作のトーストが消える時刻と近く、残るトーストの数が変わる',
+    pattern: exactTest(
+      'task-drawer',
+      '-期日の保存中に次の値を選んでも、先の応答で入力欄が上書きされず、次の値が送られる-',
+    ),
+    reason: SCROLL,
   },
   {
-    pattern:
-      /^(task-drawer-矢印キーで難易度を続けて動かしても|task-drawer-期日の保存中に次の値を選んでも|me-自分の設定（ミナト）-390px-の幅では表の|comments-一般のメンバーには、人のコメントの「編集」と「削除」を出さない|organization-look-管理者（くもラボ-301d1-)/,
-    reason: 'テストの中の操作が、上の節の読み込みの前か後かで、スクロールの位置が変わる',
+    pattern: exactTest(
+      'me-自分の設定（ミナト）',
+      '-390px-の幅では表の-d511f-の値が見え、明細の表とレベルの面が画面からはみ出さない-',
+    ),
+    reason: SCROLL,
+  },
+  {
+    pattern: exactTest('organization-look-管理者（くもラボ', '-301d1-押し直せ、409-と-403-は読み直して今の値に戻す-'),
+    reason: SCROLL,
   },
 ];
 
-// 上げる先とコメントに要る、シークレットと変数の名前。値はワークフローが持ち、ここでは有無だけを見る
-export const REQUIRED_SETTINGS = [
-  'EVIDENCE_R2_ACCESS_KEY_ID',
-  'EVIDENCE_R2_SECRET_ACCESS_KEY',
-  'EVIDENCE_R2_ENDPOINT',
-  'EVIDENCE_R2_BUCKET',
-  'EVIDENCE_PUBLIC_URL',
-] as const;
+// テストのディレクトリの名前（<前置き><テストの名前の部分>chromium）の1つだけに当たる正規表現にする
+function exactTest(prefix: string, part: string): RegExp {
+  const escape = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return new RegExp(`^${escape(prefix)}${escape(part)}chromium$`);
+}
 
-// ワークフローは、シークレットを値でなく有無（'true' か 'false'）で、変数を値で <名前> の環境変数に渡す。
-// どれかが無ければ、上げずに成功で終えるための理由を返す（人がバケットを用意する前にマージしても CI を赤くしない）
-export function missingSettings(env: Record<string, string | undefined>): string[] {
-  return REQUIRED_SETTINGS.filter((name) => {
+// ワークフローが渡す、シークレットの有無（'true' か 'false'）と変数の値の名前。PR のジョブは PR 用、main のジョブは main 用を見る。
+// PR のジョブは、変更前の画像と一覧を main 用の公開の URL から読むので、その変数も要る
+export const REQUIRED_SETTINGS: Record<Bucket, readonly string[]> = {
+  pr: [
+    'EVIDENCE_PR_R2_ACCESS_KEY_ID',
+    'EVIDENCE_PR_R2_SECRET_ACCESS_KEY',
+    'EVIDENCE_R2_ENDPOINT',
+    'EVIDENCE_PR_BUCKET',
+    'EVIDENCE_PR_PUBLIC_URL',
+    'EVIDENCE_MAIN_PUBLIC_URL',
+  ],
+  main: [
+    'EVIDENCE_MAIN_R2_ACCESS_KEY_ID',
+    'EVIDENCE_MAIN_R2_SECRET_ACCESS_KEY',
+    'EVIDENCE_R2_ENDPOINT',
+    'EVIDENCE_MAIN_BUCKET',
+    'EVIDENCE_MAIN_PUBLIC_URL',
+  ],
+};
+
+// どれかが無ければ、上げずに成功で終えるための名前を返す（人がバケットを用意する前にマージしても CI を赤くしない）
+export function missingSettings(env: Record<string, string | undefined>, bucket: Bucket): string[] {
+  return REQUIRED_SETTINGS[bucket].filter((name) => {
     const value = env[name]?.trim() ?? '';
     return value === '' || value === 'false';
   });
@@ -79,10 +180,17 @@ export function screenKey(relative: string): { key: string; attempt: number } | 
   const parts = relative.split('/');
   if (parts.length !== 2) return undefined;
   const [dir, file] = parts;
-  if (!/^evidence-\d+\.png$/.test(file)) return undefined;
+  if (!TEST_DIR.test(dir) || !IMAGE_FILE.test(file)) return undefined;
   const retry = /^(.+)-retry(\d+)$/.exec(dir);
   return retry ? { key: `${retry[1]}/${file}`, attempt: Number(retry[2]) } : { key: `${dir}/${file}`, attempt: 0 };
 }
+
+// 一覧のキーとして受け付ける形（screenKey が作る形）
+export function isScreenKey(key: string): boolean {
+  return screenKey(key)?.key === key;
+}
+
+const byName = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
 
 // 撮った画像の一覧から画面ごとのハッシュを決める。再試行があれば最後の試行の画像を使う
 export function collectScreens(files: readonly { path: string; hash: string }[]): Screens {
@@ -97,7 +205,23 @@ export function collectScreens(files: readonly { path: string; hash: string }[])
   return Object.fromEntries([...picked].sort(([a], [b]) => byName(a, b)).map(([key, { hash }]) => [key, hash]));
 }
 
-export type Exclusion = { pattern: RegExp; reason: string };
+export function excludedReason(key: string, exclusions: readonly Exclusion[] = EXCLUDED_SCREENS): string | undefined {
+  return exclusions.find(({ pattern }) => pattern.test(key.split('/')[0]))?.reason;
+}
+
+// 外す一覧に当たる画面を除く。main の一覧と上げる画像には、外した画面を入れない
+export function withoutExcluded(screens: Screens, exclusions: readonly Exclusion[] = EXCLUDED_SCREENS): Screens {
+  return Object.fromEntries(Object.entries(screens).filter(([key]) => excludedReason(key, exclusions) === undefined));
+}
+
+// どの画面にも当たらない除外（テストの名前を変えたか消した後に残ったもの）
+export function unusedExclusions(
+  keys: Iterable<string>,
+  exclusions: readonly Exclusion[] = EXCLUDED_SCREENS,
+): Exclusion[] {
+  const dirs = [...keys].map((key) => key.split('/')[0]);
+  return exclusions.filter(({ pattern }) => !dirs.some((dir) => pattern.test(dir)));
+}
 
 export type Comparison = {
   changed: { key: string; before: string; after: string }[];
@@ -105,8 +229,6 @@ export type Comparison = {
   removed: string[];
   excluded: { key: string; reason: string }[];
 };
-
-const byName = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
 
 // ベースと head の画面を比べる。外す一覧に当たる画面は、どちらにあっても比べない
 export function compareScreens(
@@ -117,9 +239,9 @@ export function compareScreens(
   const result: Comparison = { changed: [], added: [], removed: [], excluded: [] };
   const keys = [...new Set([...Object.keys(base), ...Object.keys(head)])].sort(byName);
   for (const key of keys) {
-    const before = base[key];
-    const after = head[key];
-    const reason = exclusions.find(({ pattern }) => pattern.test(key.split('/')[0]))?.reason;
+    const before = Object.hasOwn(base, key) ? base[key] : undefined;
+    const after = Object.hasOwn(head, key) ? head[key] : undefined;
+    const reason = excludedReason(key, exclusions);
     if (reason !== undefined) result.excluded.push({ key, reason });
     else if (after === undefined) result.removed.push(key);
     else if (before === undefined) result.added.push({ key, after });
@@ -128,23 +250,26 @@ export function compareScreens(
   return result;
 }
 
-export function imageObjectKey(prefix: 'main' | 'pr', hash: string): string {
-  if (!/^[0-9a-f]{64}$/.test(hash)) throw new Error(`画像のハッシュの形が違う: ${hash}`);
-  return `${prefix}/img/${hash}.png`;
+// バケットの中の画像の名前。main 用は main/img/<ハッシュ>.png、PR 用は img/<ハッシュ>.png
+export function imageObjectKey(bucket: Bucket, hash: string): string {
+  if (!HASH.test(hash)) throw new Error(`画像のハッシュの形が違う: ${hash}`);
+  return bucket === 'main' ? `main/img/${hash}.png` : `img/${hash}.png`;
 }
 
 export function manifestObjectKey(sha: string): string {
-  if (!/^[0-9a-f]{40}$/.test(sha)) throw new Error(`コミットの SHA の形が違う: ${sha}`);
+  if (!SHA.test(sha)) throw new Error(`コミットの SHA の形が違う: ${sha}`);
   return `main/${sha}.json`;
 }
 
-// 公開の URL から読んだ一覧を確かめる。形が違えば無いものとして扱う（比べずに、そのことをコメントに書く）
+// 公開の URL から読んだ一覧を確かめる。SHA、画面の名前、ハッシュのどれかの形が違えば、一覧ごと無いものとして扱う
 export function parseManifest(value: unknown): Manifest | undefined {
-  if (typeof value !== 'object' || value === null) return undefined;
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return undefined;
   const { sha, images } = value as Record<string, unknown>;
-  if (typeof sha !== 'string' || typeof images !== 'object' || images === null) return undefined;
+  if (typeof sha !== 'string' || !SHA.test(sha)) return undefined;
+  if (typeof images !== 'object' || images === null || Array.isArray(images)) return undefined;
   const entries = Object.entries(images);
-  if (!entries.every(([, hash]) => typeof hash === 'string' && /^[0-9a-f]{64}$/.test(hash))) return undefined;
+  if (!entries.every(([key, hash]) => isScreenKey(key) && typeof hash === 'string' && HASH.test(hash)))
+    return undefined;
   return { sha, images: Object.fromEntries(entries) as Screens };
 }
 
@@ -160,8 +285,14 @@ export function shownScreens(
   return { shown: all.slice(0, limit), rest: all.slice(limit).map(({ key }) => key) };
 }
 
-// PR の画像のうち上げるもの。コメントに出す変更後の画像で、ベースの一覧（main/img にある）に無いものだけを、
-// ハッシュの重なりを除いて pr/img に上げる
+// コメントが無いときに新しく付けるか。変わった画面、新しい画面、無くなった画面のどれかがあるか、比べられなかったときに付ける。
+// 既にあるコメントは、付けないときも書き換える（前の push の画像を残さない）
+export function shouldPost(comparison: Comparison, compared: boolean): boolean {
+  return !compared || comparison.changed.length + comparison.added.length + comparison.removed.length > 0;
+}
+
+// PR の画像のうち上げるもの。コメントに出す変更後の画像で、ベースの一覧（main 用のバケットにある）に無いものだけを、
+// ハッシュの重なりを除いて PR 用のバケットに上げる
 export function prUploads(shown: readonly { after: string }[], base: Screens): string[] {
   const inMain = new Set(Object.values(base));
   return [...new Set(shown.map(({ after }) => after).filter((hash) => !inMain.has(hash)))];
@@ -173,45 +304,58 @@ export function mainUploads(head: Screens, previous: Screens | undefined): strin
   return [...new Set(Object.values(head))].filter((hash) => !known.has(hash)).sort();
 }
 
-// 見出し。テストのディレクトリの名前（テストのファイルと名前）に、2枚目からは何枚目かを添える
+// 見出し。テストのディレクトリの名前（テストのファイルと名前）に、2枚目からは何枚目かを添える。
+// Markdown を崩さないよう、バッククォートと制御文字（改行を含む）は落とす
 export function screenTitle(key: string): string {
   const [dir, file] = key.split('/');
-  const index = Number(/^evidence-(\d+)\.png$/.exec(file ?? '')?.[1] ?? '1');
-  const name = `\`${dir.replaceAll('`', '')}\``;
+  const index = Number(IMAGE_FILE.exec(file ?? '')?.[1] ?? '1');
+  const name = `\`${dir.replace(/[`\p{Cc}]/gu, '')}\``;
   return index > 1 ? `${name}（${index}枚目）` : name;
 }
 
 export type CommentInput = {
   comparison: Comparison;
   base: Screens;
-  publicUrl: string;
+  // 変更前の画像（main 用のバケット）と、PR にしか無い画像（PR 用のバケット）の公開の URL
+  mainUrl: string;
+  prUrl: string;
   headSha: string;
   baseSha: string;
-  // 比べた main の一覧のコミット。ベースの一覧が無く main の最新と比べたときは baseSha と違う
+  // 比べた main の一覧のコミット。ベースの一覧が無く main の最新と比べたときは baseSha と違う。比べられなければ undefined
   comparedSha: string | undefined;
+  // 一覧を読めなかった理由（404 のほかの失敗）
+  problem?: string;
+  // どの画面にも当たらない除外
+  unused?: readonly Exclusion[];
   limit?: number;
 };
 
 const short = (sha: string) => sha.slice(0, 7);
+const trimUrl = (url: string) => url.replace(/\/+$/, '');
 
 // PR に付けるコメントの本文
 export function commentBody(input: CommentInput): string {
   const { comparison, base, headSha, baseSha, comparedSha } = input;
-  const url = input.publicUrl.replace(/\/+$/, '');
   const lines = [COMMENT_MARKER, '## e2e の画面の差分', ''];
+  // CI の e2e は、PR の head をベースにマージした状態（refs/pull/<番号>/merge）を撮る
+  const subject = `${short(headSha)} をベース（${short(baseSha)}）にマージした状態の e2e のスクリーンショット`;
 
   if (comparedSha === undefined) {
-    lines.push(
-      `ベース（${short(baseSha)}）と main の最新のどちらの画像の一覧も無いので、${short(headSha)} の画面を比べていない。`,
-      '`main` に push すると、`evidence-main` が変更前の画像を上げる。',
-    );
+    if (input.problem !== undefined) {
+      lines.push(`変更前の画像の一覧を読めなかった（${input.problem}）ので、${subject}を比べていない。`);
+    } else {
+      lines.push(
+        `ベース（${short(baseSha)}）と main の最新のどちらの画像の一覧も無いので、${subject}を比べていない。`,
+        '`main` に push すると、`evidence-main` が変更前の画像を上げる。',
+      );
+    }
+    pushUnused(lines, input.unused);
     return lines.join('\n') + '\n';
   }
 
-  const fellBack = comparedSha !== baseSha;
   const counts = `変わった画面 ${comparison.changed.length}、新しい画面 ${comparison.added.length}、無くなった画面 ${comparison.removed.length}`;
-  lines.push(`${short(headSha)} の e2e のスクリーンショットを、${short(comparedSha)} の画像と比べた。${counts}。`);
-  if (fellBack) {
+  lines.push(`${subject}を、main の ${short(comparedSha)} の画像と比べた。${counts}。`);
+  if (comparedSha !== baseSha) {
     lines.push(
       '',
       `ベース（${short(baseSha)}）の画像がまだ無いので、main の最新（${short(comparedSha)}）と比べた。ベースより後に main に入った変更も差分に出る。`,
@@ -219,10 +363,13 @@ export function commentBody(input: CommentInput): string {
   }
 
   const { shown, rest } = shownScreens(comparison, input.limit);
-  if (shown.length === 0) lines.push('', '変わった画面は無い。');
+  if (shown.length === 0) lines.push('', '変わった画面と新しい画面は無い。');
   const inMain = new Set(Object.values(base));
-  const image = (hash: string) =>
-    `<img src="${url}/${imageObjectKey(inMain.has(hash) ? 'main' : 'pr', hash)}" width="400">`;
+  const image = (hash: string) => {
+    const bucket: Bucket = inMain.has(hash) ? 'main' : 'pr';
+    const url = trimUrl(bucket === 'main' ? input.mainUrl : input.prUrl);
+    return `<img src="${url}/${imageObjectKey(bucket, hash)}" width="400">`;
+  };
   for (const screen of shown) {
     if (screen.before === undefined) {
       lines.push(
@@ -245,27 +392,50 @@ export function commentBody(input: CommentInput): string {
     }
   }
 
-  // GitHub のコメントは 65536 字までなので、名前の一覧も上限で切る
-  const list = (title: string, keys: readonly string[]) => {
-    if (keys.length === 0) return;
-    lines.push('', '<details>', `<summary>${title}（${keys.length}）</summary>`, '');
-    for (const key of keys.slice(0, NAME_LIMIT)) lines.push(`- ${screenTitle(key)}`);
-    if (keys.length > NAME_LIMIT) lines.push(`- ほか ${keys.length - NAME_LIMIT} 画面`);
-    lines.push('', '</details>');
-  };
-  list(`${input.limit ?? IMAGE_LIMIT} 画面を超えて画像を出さなかった画面`, rest);
-  list('無くなった画面', comparison.removed);
-  if (comparison.excluded.length > 0) {
-    lines.push('', '<details>', `<summary>比べる対象から外した画面（${comparison.excluded.length}）</summary>`, '');
-    for (const { key, reason } of comparison.excluded) lines.push(`- ${screenTitle(key)}: ${reason}`);
-    lines.push('', '</details>');
-  }
+  pushList(
+    lines,
+    `${input.limit ?? IMAGE_LIMIT} 画面を超えて画像を出さなかった画面`,
+    rest.map((key) => `- ${screenTitle(key)}`),
+  );
+  pushList(
+    lines,
+    '無くなった画面',
+    comparison.removed.map((key) => `- ${screenTitle(key)}`),
+  );
+  pushList(
+    lines,
+    '比べる対象から外した画面',
+    comparison.excluded.map(({ key, reason }) => `- ${screenTitle(key)}: ${reason}`),
+  );
+  pushUnused(lines, input.unused);
   return lines.join('\n') + '\n';
+}
+
+// 名前の一覧を畳んで出す。上限を超えた分は数だけを書く
+function pushList(lines: string[], title: string, items: readonly string[]): void {
+  if (items.length === 0) return;
+  lines.push('', '<details>', `<summary>${title}（${items.length}）</summary>`, '', ...items.slice(0, NAME_LIMIT));
+  if (items.length > NAME_LIMIT) lines.push(`- ほか ${items.length - NAME_LIMIT} 画面`);
+  lines.push('', '</details>');
+}
+
+function pushUnused(lines: string[], unused: readonly Exclusion[] | undefined): void {
+  if (!unused?.length) return;
+  lines.push(
+    '',
+    `どの画面にも当たらない除外が ${unused.length} 件ある。テストの名前を変えたか消したなら、\`scripts/evidence.ts\` の \`EXCLUDED_SCREENS\` から外す。`,
+  );
+  pushList(
+    lines,
+    '当たらない除外',
+    unused.map(({ pattern }) => `- \`${pattern.source.replace(/[`\p{Cc}]/gu, '')}\``),
+  );
 }
 
 // ダウンロードした成果物の下の test-results/ を探し、PNG のハッシュを読む。
 // 成果物はシャードごとに <root>/e2e-<n>/test-results/ に入る。
-// path は test-results/ からの相対、local は手元のパス（上げるときに読む）
+// path は test-results/ からの相対、local は手元のパス（上げるときに読む）。
+// 名前に制御文字を含むテストのディレクトリは読まない（上げる一覧の行が崩れないように）
 export function readScreenFiles(root: string): { path: string; local: string; hash: string }[] {
   const files: { path: string; local: string; hash: string }[] = [];
   const walk = (dir: string) => {
@@ -277,9 +447,9 @@ export function readScreenFiles(root: string): { path: string; local: string; ha
         continue;
       }
       for (const test of readdirSync(path, { withFileTypes: true })) {
-        if (!test.isDirectory()) continue;
+        if (!test.isDirectory() || !TEST_DIR.test(test.name)) continue;
         for (const file of readdirSync(join(path, test.name))) {
-          if (!file.endsWith('.png')) continue;
+          if (!IMAGE_FILE.test(file)) continue;
           const local = join(path, test.name, file);
           const hash = createHash('sha256').update(readFileSync(local)).digest('hex');
           files.push({ path: `${test.name}/${file}`, local, hash });
@@ -299,26 +469,51 @@ export function localFiles(files: readonly { local: string; hash: string }[]): M
 }
 
 // 上げる一覧を、ワークフローの段が読む「手元のパス<TAB>上げる先の名前」の行にする
-export function uploadLines(hashes: readonly string[], prefix: 'main' | 'pr', locals: Map<string, string>): string {
+export function uploadLines(hashes: readonly string[], bucket: Bucket, locals: Map<string, string>): string {
   return hashes
     .map((hash) => {
       const local = locals.get(hash);
       if (local === undefined) throw new Error(`上げる画像が手元に無い: ${hash}`);
-      return `${local}\t${imageObjectKey(prefix, hash)}\n`;
+      if (/\p{Cc}/u.test(local)) throw new Error(`上げる画像のパスに制御文字がある: ${JSON.stringify(local)}`);
+      return `${local}\t${imageObjectKey(bucket, hash)}\n`;
     })
     .join('');
 }
 
-// 公開の URL から一覧を読む。無い（404）か形が違えば undefined。ほかの失敗は投げる（比べずに進めると、全部を新しい画面として出すため）
+export type Fetcher = (
+  url: string,
+  init: { signal: AbortSignal },
+) => Promise<{ ok: boolean; status: number; json(): Promise<unknown> }>;
+
+// 公開の URL から一覧を読む。無い（404）か形が違えば undefined。ほかの失敗（時間切れを含む）は投げる
 export async function fetchManifest(
   publicUrl: string,
   objectKey: string,
-  fetcher: (url: string) => Promise<{ ok: boolean; status: number; json(): Promise<unknown> }> = fetch,
+  fetcher: Fetcher = fetch,
+  timeoutMs = FETCH_TIMEOUT_MS,
 ): Promise<Manifest | undefined> {
-  const res = await fetcher(`${publicUrl.replace(/\/+$/, '')}/${objectKey}`);
+  const res = await fetcher(`${trimUrl(publicUrl)}/${objectKey}`, { signal: AbortSignal.timeout(timeoutMs) });
   if (res.status === 404) return undefined;
   if (!res.ok) throw new Error(`${objectKey} を読めない（${res.status}）`);
   return parseManifest(await res.json().catch(() => undefined));
+}
+
+// PR が比べる一覧を読む。ベースのコミットの一覧が無ければ main の最新を読む。
+// 404 のほかの失敗は、ジョブを落とさずに理由を返す（evidence は助言なので赤くしない。比べられなかったとコメントに書く）
+export async function loadBaseManifest(
+  mainUrl: string,
+  baseSha: string,
+  fetcher: Fetcher = fetch,
+  timeoutMs = FETCH_TIMEOUT_MS,
+): Promise<{ manifest?: Manifest; problem?: string }> {
+  try {
+    const manifest =
+      (await fetchManifest(mainUrl, manifestObjectKey(baseSha), fetcher, timeoutMs)) ??
+      (await fetchManifest(mainUrl, LATEST_MANIFEST, fetcher, timeoutMs));
+    return manifest ? { manifest } : {};
+  } catch (error) {
+    return { problem: error instanceof Error ? error.message : String(error) };
+  }
 }
 
 // 以下はワークフローから動かす scripts/evidence-*.ts が使う
@@ -334,4 +529,10 @@ export function writeOutput(name: string, value: string | boolean): void {
   const line = `${name}=${value}\n`;
   if (process.env.GITHUB_OUTPUT) appendFileSync(process.env.GITHUB_OUTPUT, line);
   else process.stdout.write(line);
+}
+
+// ジョブの注記。改行と制御文字はワークフローのコマンドを崩すので空白にする
+export function notice(title: string, message: string): void {
+  const clean = (text: string) => text.replace(/\p{Cc}+/gu, ' ');
+  console.log(`::notice title=${clean(title)}::${clean(message)}`);
 }

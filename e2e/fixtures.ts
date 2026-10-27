@@ -19,6 +19,9 @@ export const STEADY_SCREENSHOT_CSS = [
 // 通信が止まったとみなすまでの間と、待つ上限（わざと返さない要求を置いたテストでは上限まで待つ）
 const QUIET_MS = 300;
 const QUIET_TIMEOUT_MS = 2_000;
+const SCREENSHOT_TIMEOUT_MS = 5_000;
+// 1枚を撮る時間の最長（通信を待つ上限、書体と描画を待つ分、撮る上限）
+const CAPTURE_BUDGET_MS = QUIET_TIMEOUT_MS + 1_000 + SCREENSHOT_TIMEOUT_MS;
 
 const pending = new WeakMap<BrowserContext, Set<Request>>();
 const captured = new WeakSet<Page>();
@@ -59,14 +62,18 @@ async function waitQuiet(requests: Set<Request> | undefined): Promise<void> {
   }
 }
 
-// context の開いている画面を、開いた順に evidence-<n>.png に撮る。落ちたテストでは撮らない（失敗の画像は Playwright が撮る）
+// context の開いている画面を、開いた順に evidence-<n>.png に撮る。通ったテストだけを撮る（失敗の画像は Playwright が撮る）
 async function captureEvidence(context: BrowserContext, info: TestInfo): Promise<void> {
-  if (info.status !== info.expectedStatus) return;
+  // 落ちた、時間切れ、飛ばした（test.skip）テストでは撮らない。test.fail の印を付けて期待どおり落ちたテストも撮らない
+  if (info.status !== 'passed') return;
   for (const page of context.pages()) {
     if (captured.has(page) || page.isClosed()) continue;
     captured.add(page);
     const index = (counters.get(info) ?? 0) + 1;
     counters.set(info, index);
+    // テストの中で閉じる context を撮る時間は、テストの時間に数えられる。撮る分の最長をテストの上限に足し、
+    // 撮ることでテストが時間切れにならないようにする（テストの後の撮影は、後片付けの別の枠で数えられる）
+    if (info.timeout > 0) info.setTimeout(info.timeout + CAPTURE_BUDGET_MS);
     try {
       await waitQuiet(pending.get(context));
       await page.evaluate(() =>
@@ -74,7 +81,11 @@ async function captureEvidence(context: BrowserContext, info: TestInfo): Promise
           () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))),
         ),
       );
-      await page.screenshot({ path: info.outputPath(`evidence-${index}.png`), animations: 'disabled', timeout: 5_000 });
+      await page.screenshot({
+        path: info.outputPath(`evidence-${index}.png`),
+        animations: 'disabled',
+        timeout: SCREENSHOT_TIMEOUT_MS,
+      });
     } catch {
       // 撮れなくてもテストは落とさない（画像が無い画面は、evidence で新しい画面か無くなった画面に出る）
     }

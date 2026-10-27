@@ -43,7 +43,7 @@ PR があれば、ベースは `origin/<base>` とし、次の前提をすべて
 | --- | --- | --- |
 | 最新のベースを取り込み済み | `git fetch origin && git merge-base --is-ancestor origin/<base> HEAD` | 終了コード 0 |
 | 最新のコミットを push 済み | `git rev-parse HEAD` と `head_sha` を比べる。`git status --short` も見る | 一致し、未コミットの変更が無い |
-| CI が成功 | 下の check-runs | `review` を除き、全て `status` が `completed` で、`conclusion` が `success`、`skipped`、`neutral` のどれか |
+| CI が成功 | 下の check-runs | `review` と `evidence` を除き、全て `status` が `completed` で、`conclusion` が `success`、`skipped`、`neutral` のどれか |
 | レビューコメントを解決済み | 下の GraphQL | `isResolved: false` のスレッドが 0 件 |
 
 ```bash
@@ -53,6 +53,7 @@ gh api "repos/{owner}/{repo}/commits/<head_sha>/check-runs" --jq '.check_runs[] 
 `review` は AI レビュー（`.github/workflows/ai-review.yml`）のチェックで、助言なので `ci-ok` に含めず、落ちてもマージの判定を止めない（`docs/development.md` の「CI」）。
 `review` の `status` と `conclusion` が何でも、この前提は満たすものとして扱う（理由: 回した先の pr-feedback も `review` の失敗は直さないので、数に入れると done-check が先へ進めない）。
 実行中の `review` が後から付ける指摘は、pr-feedback の手順 1 が完了を待って拾う。
+`evidence` は e2e の画像を PR にコメントで並べるジョブ（`.github/workflows/ci.yml`）で、同じく助言なので `ci-ok` に含めない。`review` と同じく、何で終わっても満たすものとして扱う。UI が変わる PR で落ちていたら、画像が付かないことを出力に書く。
 
 ```bash
 gh api graphql -f query='{ repository(owner:"<owner>", name:"<repo>") { pullRequest(number:<number>) { reviewThreads(first:100) { nodes { isResolved path comments(first:1) { nodes { body author { login } } } } } } } }'
@@ -64,7 +65,7 @@ gh api graphql -f query='{ repository(owner:"<owner>", name:"<repo>") { pullRequ
 
 - ベースの取り込みが未了: `sync-base` で rebase して `--force-with-lease` で push する
 - push が未了: `git push` を提案する
-- CI が失敗: pr-feedback で直す。`review` を除いて `status` が `completed` でないものがあれば、間を空けて check-runs を取り直し、結果が出てから再確認する
+- CI が失敗: pr-feedback で直す。`review` と `evidence` を除いて `status` が `completed` でないものがあれば、間を空けて check-runs を取り直し、結果が出てから再確認する
 - 未解決のスレッドがある: pr-feedback で対応する
 
 全て満たせば手順 1 へ進む。
@@ -101,7 +102,7 @@ Issue の「確認方法」を自分で実行し、完了条件を満たすか�
 | 変更の及ぶ先 | 確かめ方 |
 | --- | --- |
 | API | `wrangler dev` を立て、Cookie を付けてリクエストを送り、レスポンスと D1 の中身を見る。組織をまたぐ操作は、別の組織の ID で呼んで 404 になることも見る |
-| 画面 | 手元は `terminal-browser` で Cookie を置いて開き、操作して表示と状態を見る。ブラウザの無いクラウドのセッションは、変えた画面の e2e のファイルを走らせてスクリーンショットを見る（絞り方は `increment-build` の受け入れ条件と同じ）。変えた画面と状態を開く e2e のテストが無ければ足す。PR のエビデンスの画像は、e2e が開く画面にだけ CI の `evidence` が付けるため（`pr-create` の `evidence.md` の「クラウドのセッション」） |
+| 画面 | 手元は `terminal-browser` で Cookie を置いて開き、操作して表示と状態を見る。ブラウザの無いクラウドのセッションは、変えた画面の e2e のファイルを走らせてスクリーンショットを見る（絞り方は `increment-build` の受け入れ条件と同じ）。通ったテストの画像は `test-results/<テスト>/evidence-<n>.png`、落ちたテストの画像は `test-results/<テスト>/test-failed-<n>.png` にある。変えた画面と状態を開く e2e のテストが無ければ足す。PR のエビデンスの画像は、e2e が開く画面にだけ CI の `evidence` が付けるため（`pr-create` の `evidence.md` の「クラウドのセッション」） |
 | 挙動の変わらない変更（リファクタ、型、ドキュメント、設定） | 手順 4 で足りる。省いた旨を出力に書く |
 
 動かせなかった項目は、確かめられなかった項目として出力に書く（理由: 確認済みと書くと、マージの判定で人が動作確認を省く）。
@@ -149,7 +150,7 @@ CRITICAL と HIGH は、別の Issue にするかをユーザーに提案する�
 
 `git add <paths> && git commit -m "..."` のように 1 コマンドにまとめる。
 件名には、変更した対象と内容を書く（例: `fix: fill_results.py で結果の未指定と不正値を検出する`）。「レビュー指摘に対応する」のように、指摘への対応であることしか分からない件名にしない（理由: squash merge ではコミットメッセージが本文に残り、マージ後は直せない）。
-PR があるときは、手順 7 の直しをすべてコミットしてからまとめて `git push` し、手順 0 の check-runs で CI が通ることを確かめる（`review` は手順 0 と同じく除く。修正は通常の push で積む。force push はベースを取り込む `sync-base` の中だけ）。コミットごとに push しない。CI の失敗を直した後の push は、その直しをまとめてから行う（理由: push のたびに CI のジョブがすべて走り直し、前の実行の取り消しが終わるまで次の実行も始まらない。`docs/development.md` の「開発の流れ」）。
+PR があるときは、手順 7 の直しをすべてコミットしてからまとめて `git push` し、手順 0 の check-runs で CI が通ることを確かめる（`review` と `evidence` は手順 0 と同じく除く。修正は通常の push で積む。force push はベースを取り込む `sync-base` の中だけ）。コミットごとに push しない。CI の失敗を直した後の push は、その直しをまとめてから行う（理由: push のたびに CI のジョブがすべて走り直し、前の実行の取り消しが終わるまで次の実行も始まらない。`docs/development.md` の「開発の流れ」）。
 
 ### 9. pr-create に引き継ぐ
 
