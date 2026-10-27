@@ -9,8 +9,13 @@ on:
 
 jobs:
   accepting:
-    # マージされずに閉じた PR と、main 以外（重ねた PR の下）へのマージでは動かさない
-    if: github.event.pull_request.merged == true && github.event.pull_request.base.ref == 'main'
+    # マージされずに閉じた PR と、main 以外（重ねた PR の下）へのマージでは動かさない。
+    # fork の PR も動かさない。ブランチ名は fork の側の決まりで付き、本文の Refs も外の人が書けるので、
+    # 関係の無い Issue の作業中を外して受け入れ待ちにできてしまう。fork の PR が指す Issue は人が付け替える
+    if: >-
+      github.event.pull_request.merged == true
+      && github.event.pull_request.base.ref == 'main'
+      && github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
@@ -38,35 +43,51 @@ jobs:
             echo "指している Issue は無い"
             exit 0
           fi
+          # 1件につき API を最大4回呼ぶ。本文に Refs を並べてトークンの呼び出しの上限を使い切らせないよう、数を絞る
+          count=$(printf '%s\n' "$numbers" | wc -l | tr -d ' ')
+          if [ "$count" -gt 20 ]; then
+            echo "::error::Refs が ${count} 件ある。20 件までにしか付けないので、付けずに止める。要る Issue には人が付ける"
+            exit 1
+          fi
 
+          # 1件の失敗で後ろの番号を取りこぼさないよう、失敗は数えて最後に落とす。落ちたら Actions から走らせ直す（付け外しは何度走っても同じ）
+          err=$(mktemp)
+          failed=0
           for n in $numbers; do
-            # PR でなく、開いていて、サブ Issue を持たないものだけに付ける。
-            # 子を持つストーリーとエピックの受け入れ待ちは子から決まるので、自分には付けない
-            # 本文の書き間違いで無い番号を指しても、ほかの番号には付けたいので、無い番号（404）だけを飛ばす
-            if ! issue=$(gh api "repos/$REPO/issues/$n" --jq '[(.pull_request != null), .state, (.sub_issues_summary.total // 0)] | @tsv' 2>&1); then
-              if [[ "$issue" == *"HTTP 404"* ]]; then
+            # 本文の書き間違いで無い番号を指しても、ほかの番号には付けたいので、無い番号（404）は失敗に数えない
+            if ! issue=$(gh api "repos/$REPO/issues/$n" --jq '[(.pull_request != null), .state, (.sub_issues_summary.total // 0)] | @tsv' 2>"$err"); then
+              if grep -q 'HTTP 404' "$err"; then
                 echo "#$n は無い"
-                continue
+              else
+                echo "::error::#$n を読めなかった: $(cat "$err")"
+                failed=$((failed + 1))
               fi
-              echo "$issue" >&2
-              exit 1
+              continue
             fi
             read -r is_pr state children <<< "$issue"
+            # PR でなく、開いていて、サブ Issue を持たないものだけに付ける。
+            # 子を持つストーリーとエピックの受け入れ待ちは子から決まるので、自分には付けない
             if [ "$is_pr" = "true" ] || [ "$state" != "open" ] || [ "$children" -gt 0 ]; then
               echo "#$n は対象外（pr=$is_pr state=$state children=$children）"
               continue
             fi
-            gh api "repos/$REPO/issues/$n/labels" -f 'labels[]=status:accepting' --silent
+            if ! gh api "repos/$REPO/issues/$n/labels" -f 'labels[]=status:accepting' --silent 2>"$err"; then
+              echo "::error::#$n に status:accepting を付けられなかった: $(cat "$err")"
+              failed=$((failed + 1))
+              continue
+            fi
             echo "#$n に status:accepting を付けた"
             for label in status%3Ain-progress status%3Arefining; do
-              # 付いていないラベルを外すと 404 が返る。それは成功と同じに扱い、ほかの失敗は落とす
-              if ! out=$(gh api -X DELETE "repos/$REPO/issues/$n/labels/$label" --silent 2>&1); then
-                if [[ "$out" == *"HTTP 404"* ]]; then
-                  continue
-                fi
-                echo "$out" >&2
-                exit 1
+              # 付いていないラベルを外すと 404 が返る。それは成功と同じに扱う
+              if gh api -X DELETE "repos/$REPO/issues/$n/labels/$label" --silent 2>"$err"; then
+                echo "#$n から $label を外した"
+              elif ! grep -q 'HTTP 404' "$err"; then
+                echo "::error::#$n から $label を外せなかった: $(cat "$err")"
+                failed=$((failed + 1))
               fi
-              echo "#$n から $label を外した"
             done
           done
+          if [ "$failed" -gt 0 ]; then
+            echo "::error::${failed} 件の付け外しに失敗した。Actions からこの実行を走らせ直す"
+            exit 1
+          fi
