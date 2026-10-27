@@ -478,6 +478,8 @@ const PACKAGE_CHANGES = {
 const PACKAGE_FLAGS_WITH_VALUE = new Set(['-C', '--dir', '--filter', '-F', '--prefix', '--cwd', '--workspace']);
 const DEPLOY_SCRIPT = /(^|[:_-])deploy([:_-]|$)/;
 
+const SCRIPT_ARGS_EXPAND_REASON = 'スクリプトの後ろの引数に変数、$(...)、glob があると、本体の末尾に足して実行される中身を判定できない';
+
 function judgePackageManager(tool, args, ctx) {
   const indexes = positionalIndexes(args, PACKAGE_FLAGS_WITH_VALUE);
   const pos = indexes.map((i) => args[i]);
@@ -508,8 +510,6 @@ function judgePackageManager(tool, args, ctx) {
   if (body && extra.some((_, i) => isUnresolved(extra, i))) results.push([ASK, SCRIPT_ARGS_EXPAND_REASON]);
   return results.find(([d]) => d === DENY) ?? results.find(([d]) => d === ASK) ?? null;
 }
-
-const SCRIPT_ARGS_EXPAND_REASON = 'スクリプトの後ろの引数に変数、$(...)、glob があると、本体の末尾に足して実行される中身を判定できない';
 
 // 語をシェルの1語として単引用符で包み、本体の末尾に足す
 function appendWords(body, words) {
