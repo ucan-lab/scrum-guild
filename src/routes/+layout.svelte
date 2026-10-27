@@ -11,20 +11,13 @@
   import '../../design/tokens.css';
   import '../../design/components.css';
   import type { Snippet } from 'svelte';
-  import { onMount } from 'svelte';
-  import { version } from '$app/env';
-  import { navigating, page } from '$app/state';
-  import { installClientErrorReporter } from '../lib/client-error-report.ts';
+  import { navigating } from '$app/state';
   import IconSprite from '../lib/components/IconSprite.svelte';
   import LoadingSheet from '../lib/components/LoadingSheet.svelte';
   import ToastRegion from '../lib/components/ToastRegion.svelte';
   import { t } from '../lib/vocabulary.svelte.ts';
 
   let { children }: { children: Snippet } = $props();
-
-  // 捕まえていない例外と Promise の拒否を、Workers Logs に1行で残すよう送る（ログイン前の画面も含む全画面）。
-  // 経路は route.id だけを渡す（slug、ID、クエリを送らない）
-  onMount(() => installClientErrorReporter(() => page.route.id, version));
 
   // 枠の外の画面（組織の選択、見つからない、運用）から移る間は、読み込み中の表示を出す。
   // 組織の枠の中から移る間は、今の画面を残す（枠ごと消さない）。

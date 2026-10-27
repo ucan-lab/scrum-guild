@@ -63,7 +63,7 @@ export function clientErrorRoutes(): Hono<AppEnv> {
                 column: report.location.column,
               },
         route: report.route !== null && KNOWN_ROUTE_IDS.has(report.route) ? report.route : null,
-        clientVersion: report.clientVersion,
+        clientVersion: clientVersionOf(report.clientVersion),
         version: c.env.APP_VERSION || 'dev',
         browser: browserOf(c.req.header('User-Agent')),
       }),
@@ -175,6 +175,11 @@ export function maskClientErrorMessage(text: string): string {
   const end = CLIENT_ERROR_LOGGED_MESSAGE_LENGTH;
   const code = masked.charCodeAt(end - 1);
   return masked.slice(0, code >= 0xd800 && code <= 0xdbff ? end - 1 : end);
+}
+
+// 画面の版は build のコミットの SHA（e2e は `<SHA>-e2e-<時刻>`、手元は dev）。誰でも送れる文字列なので、形が合わなければ出さない
+function clientVersionOf(version: string): string {
+  return /^[A-Za-z0-9._-]{1,64}$/.test(version) ? version : 'invalid';
 }
 
 export function clientErrorName(name: string): string {

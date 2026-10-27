@@ -1,5 +1,4 @@
-// 画面のエラーを送る側（client-error-report.ts、Issue #376）を崩しにいくテストの3周目。
-// client-error-report.test.ts、client-error-report-break.test.ts、client-error-report-break2.test.ts が確かめていない手口だけを置く
+// 画面のエラーを送る側（client-error-report.ts、Issue #376）が送る本文の大きさ。サーバーの上限（4KiB）に収める
 import { describe, expect, test } from 'vitest';
 import { CLIENT_ERROR_MAX_BODY_BYTES, type ClientErrorReport } from '../shared/client-error.ts';
 import { createClientErrorReporter } from './client-error-report.ts';

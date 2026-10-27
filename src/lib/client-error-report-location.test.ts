@@ -1,5 +1,5 @@
-// 画面のエラーを送る側（client-error-report.ts、Issue #376）を崩しにいくテスト。
-// client-error-report.test.ts が確かめていない手口だけを置く
+// 画面のエラーを送る側（client-error-report.ts、Issue #376）が location.file に入れる値。
+// 同じオリジンの /_app/ の下のパスだけを送り、ほかは external にする
 import { describe, expect, test } from 'vitest';
 import type { ClientErrorReport } from '../shared/client-error.ts';
 import { createClientErrorReporter } from './client-error-report.ts';
@@ -20,8 +20,6 @@ function setup() {
 const errorEvent = (filename: string): ErrorEvent =>
   ({ message: 'boom', filename, lineno: 3, colno: 4, error: new Error('boom') }) as unknown as ErrorEvent;
 
-const rejectionEvent = (reason: unknown): PromiseRejectionEvent => ({ reason }) as unknown as PromiseRejectionEvent;
-
 describe('file に同じオリジンの /_app/ の下以外を入れない', () => {
   test.each([
     ['プロトコルを省いた別のホスト', '//evil.example.test/_app/immutable/chunks/abc.js'],
@@ -35,19 +33,23 @@ describe('file に同じオリジンの /_app/ の下以外を入れない', () 
   });
 });
 
-describe('Promise の拒否の stack の先頭のフレーム', () => {
-  // 根拠: Issue の「着手前に詰めたこと」の「スタック」は、Promise の拒否は stack の先頭のフレームから場所を取ると決めた。
-  // Safari（JavaScriptCore）は、モジュールの最上位と大域のコードのフレームを `module code@URL:行:列`、`global code@URL:行:列`
-  // と空白を含む名前で書く。AT_SIGN_FRAME が名前に空白を許さないので先頭のフレームを読み飛ばし、2つ目のフレーム
-  // （別の場所）か null を送る
-  test.each(['module code', 'global code'])('Safari の %s@URL:行:列 も先頭のフレームとして読む', (frameName) => {
+describe('ErrorEvent の filename がオリジンを持たない URL', () => {
+  test.each([
+    // data: の URL は origin が null。中身（スクリプトの本文）を送らない
+    ['data: の URL', 'data:text/javascript,const%20token%3D%22secret-376%22'],
+    // blob: の URL は、作ったページのオリジンを origin に持つが、パスは /_app/ の下でない
+    ['同じオリジンの blob: の URL', `blob:${ORIGIN}/_app/0190f3e2-0000-7000-8000-000000000376`],
+    ['about:blank', 'about:blank'],
+  ])('%s は external', (_label, filename) => {
     const { reporter, sent } = setup();
-    const reason = new Error('boom');
-    reason.stack = [
-      `${frameName}@${ORIGIN}/_app/immutable/entry/app.js:3:15`,
-      `@${ORIGIN}/_app/immutable/chunks/other.js:9:9`,
-    ].join('\n');
-    reporter.onRejection(rejectionEvent(reason));
-    expect(sent[0]?.location).toEqual({ file: '/_app/immutable/entry/app.js', line: 3, column: 15 });
+    reporter.onError(errorEvent(filename));
+    expect(sent[0]?.location).toEqual({ file: 'external', line: 3, column: 4 });
+    expect(JSON.stringify(sent[0])).not.toContain('secret-376');
+  });
+
+  test('資格情報の入った同じオリジンの URL は、資格情報を落としたパスにする', () => {
+    const { reporter, sent } = setup();
+    reporter.onError(errorEvent('https://user:pass-376@scrum-guild.example.test/_app/immutable/chunks/abc.js'));
+    expect(sent[0]?.location).toEqual({ file: '/_app/immutable/chunks/abc.js', line: 3, column: 4 });
   });
 });
