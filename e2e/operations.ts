@@ -52,8 +52,9 @@ async function rejectCall(route: Route, message: string): Promise<void> {
 // 失敗をもう付けた throw。route の処理の catch で、二重に付けない
 class ReportedError extends Error {}
 
-// route.fetch() そのものの失敗（テストの終わり、通信の失敗）。失敗を付けずに元のまま投げ直す
-class FetchError extends Error {
+// Playwright の route の呼び出し（fetch、fulfill、continue、abort）そのものの失敗（テストの終わり、通信の失敗）。
+// 失敗を付けずに元のまま投げ直す
+class RouteCallError extends Error {
   constructor(cause: unknown) {
     super(String(cause), { cause });
   }
@@ -102,7 +103,9 @@ export async function routeOperation<D extends AnyOperationDefinition>(
     let answered = false;
     const answer = <T>(promise: Promise<T>): Promise<T> => {
       answered = true;
-      return promise;
+      return promise.catch((error: unknown) => {
+        throw new RouteCallError(error);
+      });
     };
     let body: unknown;
     try {
@@ -122,7 +125,7 @@ export async function routeOperation<D extends AnyOperationDefinition>(
       passThrough: () => answer(route.continue()),
       fetch: async () => {
         const response = await route.fetch().catch((error: unknown) => {
-          throw new FetchError(error);
+          throw new RouteCallError(error);
         });
         const json: unknown = await response.json().catch(() => undefined);
         if (json === undefined && response.ok()) {
@@ -167,8 +170,9 @@ export async function routeOperation<D extends AnyOperationDefinition>(
       await handler(call);
     } catch (error) {
       if (error instanceof ReportedError) return;
-      // テストの後の「route.fetch: Test ended」は、元の失敗のまま投げ、fixture の unrouteAll（ignoreErrors）に捨てさせる
-      if (error instanceof FetchError) throw error.cause;
+      // テストの後の「route.fetch: Test ended」などは、元の失敗のまま投げ、fixture の unrouteAll（ignoreErrors）に捨てさせる。
+      // 失敗を付けると、終わったテストか次のテストに付くため
+      if (error instanceof RouteCallError) throw error.cause;
       const message = `操作 ${name} の route の処理が失敗した: ${String(error)}`;
       if (answered) expect.soft(false, message).toBe(true);
       else await rejectCall(route, message);
