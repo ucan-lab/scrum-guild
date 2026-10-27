@@ -2590,6 +2590,8 @@ describe('入口', () => {
         assert.equal(decide(path.join(worktree, 'docs/x.md'), main), 'allow');
         assert.equal(decide(path.join(other, 'x.md'), main), 'allow');
         assert.equal(decide(path.join(main, 'newdir/deep/b.md'), main), 'deny');
+        // クラウドのセッションでも、main のブランチにいる本体は止める
+        assert.equal(decide(path.join(main, 'docs/x.md'), main, { CLAUDE_CODE_REMOTE: 'true' }), 'deny');
         // プロジェクトを引けなければ、止める側に倒す
         assert.equal(decide(path.join(main, 'docs/x.md'), ''), 'deny');
         assert.equal(decide(path.join(main, 'docs/x.md'), path.join(tmp, 'gone')), 'deny');
@@ -2601,6 +2603,9 @@ describe('入口', () => {
         sh(['checkout', '-q', '--detach'], main);
         assert.equal(decide(path.join(main, 'docs/x.md'), main), 'deny');
         assert.equal(decide(path.join(main, 'docs/x.md'), main, { CLAUDE_CODE_REMOTE: 'true' }), 'allow');
+        for (const value of ['1', 'false', '']) {
+          assert.equal(decide(path.join(main, 'docs/x.md'), main, { CLAUDE_CODE_REMOTE: value }), 'deny');
+        }
         sh(['checkout', '-q', '--detach'], worktree);
         assert.equal(decide(path.join(worktree, 'docs/x.md'), main), 'allow');
         sh(['checkout', '-q', '1-x'], worktree);
