@@ -237,7 +237,7 @@ jobs:
             echo "上げる画像が無いので送らない"
             exit 0
           fi
-          aws s3 cp "$UPLOAD_DIR" "s3://$BUCKET/" --recursive --endpoint-url "$ENDPOINT" \
+          aws s3 cp "$UPLOAD_DIR" "s3://$BUCKET/" --recursive --no-follow-symlinks --endpoint-url "$ENDPOINT" \
             --content-type image/png --cache-control 'public, max-age=31536000, immutable' --only-show-errors
           echo "画像を $count 枚送った"
 

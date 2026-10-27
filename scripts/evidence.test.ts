@@ -674,6 +674,8 @@ describe('送る段のシェル', () => {
       assert.equal(status, 0);
       assert.equal(images.length, 1);
       assert.match(images[0], /--recursive/);
+      // 送る前の検査に加え、AWS CLI もシンボリックリンクの先を読まない
+      assert.match(images[0], /--no-follow-symlinks/);
       assert.match(images[0], /--cache-control public, max-age=31536000, immutable/);
     });
 
