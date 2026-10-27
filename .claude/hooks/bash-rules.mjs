@@ -2,10 +2,13 @@
 // シークレット（.dev.vars と .env）の読み取りと書き込み、gh pr merge を通さないマージを止め、
 // gh pr merge、依存の変更、マイグレーションの作成、判定しきれない push と場所を判定できないデプロイのスクリプト、git のフックを外す --no-verify、
 // 道具の名前が展開で決まるコマンド、env -S、読むだけの道具以外の xargs、wrangler の設定の書き換えと wrangler dev の -c、
-// インタープリタの本文の中の wrangler と守る先の名前、展開を含む package.json のスクリプトの引数では人の確認を挟む（docs/development.md の「Claude の設定とフック」）。
+// インタープリタの本文の中の wrangler と守る先の名前、展開を含む package.json のスクリプトの引数、
+// 守る先とリポジトリの根とその祖先の削除と移動（rm、rmdir、mv、find -delete）、git clean の -x と -X では人の確認を挟む。
+// find の -exec 系は {} を起点に置き換えて同じ規則に掛け直す（docs/development.md の「Claude の設定とフック」）。
 // permissions.deny の前方一致では npx wrangler や pnpm exec wrangler の言い換えを取りこぼすので、語に分けて判定する。
 // 踏み線であって守りの本体ではない。変数の中身と、パイプで sh に流す中身は見えない。
 import { existsSync, statSync } from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import {
   DYNAMIC,
@@ -285,6 +288,7 @@ function judgeGitCommand(sub, rest, gitDir, branchOf) {
   // --no-verify は .githooks/ の pre-commit と pre-push を外す。このフックが作業コピーを読み違えたときの第二の守りが無くなるので、
   // main の上の判定を先に効かせた後、ブランチを問わず人が確かめる
   if (COMMITTING.has(sub) && (skipsHooks(rest, sub === 'commit') || mayAddFlag(rest, GIT_SHORT_FLAGS_WITH_VALUE[sub]))) return [ASK, NO_VERIFY_REASON];
+  if (sub === 'clean' && cleansIgnored(rest)) return [ASK, CLEAN_IGNORED_REASON];
   if (sub !== 'push') return null;
 
   const forced = rest.some((a) => a === '--force' || isOption(a, '--mirror', 4) || /^-[a-zA-Z]*f[a-zA-Z]*$/.test(a));
@@ -326,6 +330,43 @@ function judgeGitCommand(sub, rest, gitDir, branchOf) {
   // 作業ブランチへの --force-with-lease は、sync-base の rebase の後に使うので通す
   if (targets.some(unknown)) return [ASK, 'push する先のブランチを判定できない（cd ~ や変数の先、git の管理外）'];
   return null;
+}
+
+// 本体の作業コピーの git clean -x は、ワークツリーのリンクの先の .dev.vars（本体の本物）も消す。作業場所を問わず人が確かめる
+const CLEAN_IGNORED_REASON =
+  'git clean の -x、-X と ! で始まる -e は ignore したファイル（.dev.vars とそのリンク、.wrangler の手元の D1 と R2）も消す。消える先を git clean -n -x で見てから人が確かめる';
+
+// git clean の引数に -x か -X（-fdx のようにまとめた形も）があり、-n と --dry-run（一意な省略形の --d も）が無いか。
+// -e と --exclude は値を取るので、-exyz の xyz と -e x の x は数えない。-- と --end-of-options の後ろはパスなので見ない。
+// git の parse-options は後に書いたものを採るので、--no-dry-run（--no-dry などの省略形も）の後は試し実行ではない（git clean -n --no-dry-run -f は消す）
+// -e と --exclude の値が ! で始まると、ignore の規則を打ち消して ignore したファイル（.dev.vars）も消す（git clean -fd -e '!*' は -x と同じ）
+const negatesIgnore = (value) => value?.startsWith('!') === true;
+function cleansIgnored(args) {
+  let ignored = false;
+  let dryRun = false;
+  for (let i = 0; i < args.length; i++) {
+    const a = args[i];
+    if (a === '--' || a === '--end-of-options') break;
+    if (a.startsWith('--')) {
+      if (isOption(a, '--dry-run', 3)) dryRun = true;
+      if (isOption(a, '--no-dry-run', 6)) dryRun = false;
+      if (isOption(a, '--exclude', 3)) {
+        const eq = a.indexOf('=');
+        if (negatesIgnore(eq === -1 ? args[++i] : a.slice(eq + 1))) ignored = true;
+      }
+      continue;
+    }
+    if (!/^-./.test(a)) continue;
+    for (let k = 1; k < a.length; k++) {
+      if (a[k] === 'n') dryRun = true;
+      if (a[k] === 'x' || a[k] === 'X') ignored = true;
+      if (a[k] === 'e') {
+        if (negatesIgnore(k + 1 === a.length ? args[++i] : a.slice(k + 1))) ignored = true;
+        break;
+      }
+    }
+  }
+  return ignored && !dryRun;
 }
 
 const NO_VERIFY_REASON =
@@ -806,7 +847,7 @@ function braceOptions(inner) {
 // Homebrew の GNU coreutils、grep、gawk、gsed は g を前に付けた名前で入る（gcp、gsed、gcat）。書き込みと読み取りの判定は g を外した名前で表を引く。
 // 全部の名前から g を外すと gh や git が崩れるので、名前の集合を持つ
 const GNU_PREFIXED = new Set([
-  'gcp', 'gmv', 'gln', 'ginstall', 'grm', 'gsed', 'gdd', 'gtee', 'gtruncate', 'gshred', 'gtouch',
+  'gcp', 'gmv', 'gln', 'ginstall', 'grm', 'grmdir', 'gsed', 'gdd', 'gtee', 'gtruncate', 'gshred', 'gtouch',
   'gcat', 'ghead', 'gtail', 'ggrep', 'gegrep', 'gfgrep', 'gawk', 'gsort', 'guniq', 'gwc', 'gcut', 'gtr', 'god', 'gbase64',
   'gtar', 'gfind', 'gpatch', 'gunlink',
   // 引数を実行しない道具（NON_EXECUTING）も g を外して引く
@@ -821,28 +862,34 @@ const TARGET_DIRECTORY_TOOLS = new Set(['cp', 'mv', 'ln', 'install']);
 const SHORT_FLAGS_WITH_VALUE = 'Smgo';
 // 値を取る長いオプション。GNU は一意な省略形（--suf）も受け付ける
 const LONG_FLAGS_WITH_VALUE = ['suffix', 'mode', 'owner', 'group', 'strip-program', 'sparse', 'no-preserve'];
+// 値を取るオプションの表 { long, short }。cp、ln、install は共通の表で読む
+const COPY_FLAGS_WITH_VALUE = { long: LONG_FLAGS_WITH_VALUE, short: SHORT_FLAGS_WITH_VALUE };
+// mv が値を取るのは --suffix と -S だけ（-t は targetDirectoryOf が読む）。--strip と --st は --strip-trailing-slashes の省略形で値を取らず
+// （coreutils 9.4 で確かめた）、-m、-g、-o は install のもの（mv -g . /tmp/x の . は元）
+const MV_FLAGS_WITH_VALUE = { long: ['suffix'], short: 'S' };
+const flagsWithValueOf = (tool) => (tool === 'mv' ? MV_FLAGS_WITH_VALUE : COPY_FLAGS_WITH_VALUE);
 const FIND_ACTIONS = new Set(['-delete', '-exec', '-execdir', '-ok', '-okdir']);
 const TOUCH_FLAGS_WITH_VALUE = new Set(['-r', '-d', '-t', '--reference', '--date']);
 // find の書き込み先を値に取るアクション（-fprintf は値の次に書式を取る）
 const FIND_OUTPUTS = new Set(['-fprint', '-fprint0', '-fprintf', '-fls']);
 
 // 値を取るオプション（targetDirectoryOf と同じ表）の値を除いた位置引数。install x .claude/hooks/y -m 600 の 600 は -m の値で、宛先は y。
-// -- の後ろは全部が位置引数
-function copyOperands(args) {
+// -- の後ろは全部が位置引数。flags は道具ごとの値を取るオプションの表（flagsWithValueOf）
+function copyOperands(args, flags = COPY_FLAGS_WITH_VALUE) {
   const result = [];
   for (let i = 0; i < args.length; i++) {
     const a = args[i];
     if (a === '--') return [...result, ...args.slice(i + 1)];
     const long = /^--([a-z-]+)(=[\s\S]*)?$/.exec(a);
     if (long) {
-      if (long[2] === undefined && LONG_FLAGS_WITH_VALUE.some((full) => abbreviates(long[1], full))) i++;
+      if (long[2] === undefined && flags.long.some((full) => abbreviates(long[1], full))) i++;
       continue;
     }
     if (!/^-[^-<>]/.test(a)) {
       result.push(a);
       continue;
     }
-    const at = [...a].findIndex((c, k) => k > 0 && SHORT_FLAGS_WITH_VALUE.includes(c));
+    const at = [...a].findIndex((c, k) => k > 0 && flags.short.includes(c));
     if (at === a.length - 1) i++;
   }
   return result;
@@ -887,7 +934,7 @@ function tarOperands(args) {
 // -t DIR、-tDIR、-vt DIR、--target-directory DIR、--target-directory=DIR（GNU は長いオプションを一意な省略形でも受け付ける）の宛先。
 // { dir, valueAt, at } の valueAt は、値が独立した語のときのその位置（連結の形は -1）、at は値を含む語の位置。無ければ null。
 // 他の値を取るフラグ（-S -t /tmp/x の -t、--suffix -- の --）の次の語は、その値であってオプションではないので飛ばす
-function targetDirectoryOf(args) {
+function targetDirectoryOf(args, flags = COPY_FLAGS_WITH_VALUE) {
   for (let i = 0; i < args.length; i++) {
     const a = args[i];
     if (a === '--') return null;
@@ -896,12 +943,12 @@ function targetDirectoryOf(args) {
       if (abbreviates(long[1], 'target-directory')) {
         return long[2] === undefined ? (args[i + 1] === undefined ? null : { dir: args[i + 1], valueAt: i + 1, at: i + 1 }) : { dir: long[3], valueAt: -1, at: i };
       }
-      if (long[2] === undefined && LONG_FLAGS_WITH_VALUE.some((full) => abbreviates(long[1], full))) i++;
+      if (long[2] === undefined && flags.long.some((full) => abbreviates(long[1], full))) i++;
       continue;
     }
     if (!/^-[^-<>]/.test(a)) continue;
     for (let k = 1; k < a.length; k++) {
-      if (SHORT_FLAGS_WITH_VALUE.includes(a[k])) {
+      if (flags.short.includes(a[k])) {
         if (k + 1 === a.length) i++;
         break;
       }
@@ -939,7 +986,7 @@ function writesTo(matches, tool, args, words, { anyOperand = false, intoDirector
   if (tool === 'touch') return positionals(args, TOUCH_FLAGS_WITH_VALUE).some(matches);
   if (MULTI_ARG_WRITERS.has(tool)) return pos.some(matches);
   if (COPY_TOOLS.has(tool)) {
-    const target = TARGET_DIRECTORY_TOOLS.has(tool) ? targetDirectoryOf(args) : null;
+    const target = TARGET_DIRECTORY_TOOLS.has(tool) ? targetDirectoryOf(args, flagsWithValueOf(tool)) : null;
     if (target) {
       // -t のときの宛先は target のディレクトリで、位置引数は全部が元。
       // 読み違えても取りこぼさないよう、この後の「最後の位置引数を宛先として見る」判定も残し、どちらかに当たれば止める
@@ -953,7 +1000,7 @@ function writesTo(matches, tool, args, words, { anyOperand = false, intoDirector
       }
     }
     const anyDestination = anyOperand || (intoDirectory?.anyInstallOperand === true && tool === 'install');
-    if (anyDestination ? pos.some(matches) : matches(pos.at(-1) ?? '') || matches(copyOperands(args).at(-1) ?? '')) return true;
+    if (anyDestination ? pos.some(matches) : matches(pos.at(-1) ?? '') || matches(copyOperands(args, flagsWithValueOf(tool)).at(-1) ?? '')) return true;
     // 守る先は、最後の位置引数が展開で決まる（cp /tmp/settings.json "$D"）ときも -t と同じに見る
     const last = positionalIndexes(args).at(-1);
     if (intoDirectory?.unresolvedDestination && pos.length >= 2 && isUnresolved(args, last)) {
@@ -1083,6 +1130,177 @@ function judgeFileWrites(tool, args, words, dir = null) {
   return results;
 }
 
+const REMOVES_PROTECTED_REASON = '守る仕組み（Claude の設定とフック）とマイグレーションを消すか動かすと守りが外れる。何が消えるかを人が確かめる';
+const REMOVES_ROOT_REASON = 'リポジトリの根かその祖先（.、..、/、~ など）を消すか動かすと、作業コピーと守る仕組みごと失う。どこを消すかを人が確かめる';
+// 消すか動かす道具の元を、守る先かリポジトリの根とその祖先かで見る。rm -rf worktrees/x は根の祖先でも守る先でもないので通す
+function judgeRemoval(tool, args, ctx) {
+  const removed = removedPaths(tool, args);
+  return removed.length === 0 ? null : removalJudge(ctx)(removed);
+}
+
+// 消すか動かす語の並びを判定する関数。守る先の照合と根は ctx ごとに1回だけ作る（-execdir の起点ごとに呼ぶため）
+function removalJudge(ctx) {
+  const isProtected = protectedAt(ctx.dir);
+  // 作業場所が分からないまま cd した先（cd .claude && find hooks -delete）は、書かれた行き先をつないで見る
+  const written = (word) => (ctx.dir || ctx.place == null || path.posix.isAbsolute(word) ? word : path.posix.join(ctx.place, word));
+  const roots = [...new Set([ctx.root, ctx.dir && repoRootOf(ctx.dir)].filter(Boolean))];
+  // 作業場所が分からなくなった後（cd -P ..、popd、cd ~）は、始めの根の名前と根の祖先の名前で消す形（rm -rf scrum-guild）を止める
+  const rootNames = !ctx.dir && ctx.root ? ancestorNames(ctx.root) : null;
+  const namesRoot = (w) => rootNames?.has(path.posix.basename(path.posix.normalize(w)).toLowerCase()) === true;
+  // {a,b} はシェルが展開してから渡すので、展開した語のどれかで見る（rm -rf {.,build}）。展開が大きすぎる語は当たるものとする（protectedAt と同じ）
+  const hitsRoot = (w) => expansionSize(w) > MAX_BRACE_EXPANSION || expandBraces(w).some((e) => removesRoot(e, ctx.dir, roots) || namesRoot(e));
+  return (removed) => {
+    if (removed.some((w) => isProtected(w) || isProtected(written(w)))) return [ASK, REMOVES_PROTECTED_REASON];
+    if (removed.some(hitsRoot)) return [ASK, REMOVES_ROOT_REASON];
+    return null;
+  };
+}
+
+// 根とその祖先のディレクトリの名前（小文字。APFS は大文字小文字を区別しない）
+function ancestorNames(root) {
+  const names = new Set();
+  for (let d = root; d !== path.dirname(d); d = path.dirname(d)) names.add(path.basename(d).toLowerCase());
+  return names;
+}
+
+// 消すか動かす元。rm と rmdir は位置引数の全部、mv は宛先を除いた位置引数（-t があれば位置引数の全部）、find は -delete があるときの起点
+function removedPaths(tool, args) {
+  if (GNU_PREFIXED.has(tool)) tool = tool.slice(1);
+  if (tool === 'rm' || tool === 'rmdir') return positionals(args);
+  if (tool === 'mv') {
+    const target = targetDirectoryOf(args, MV_FLAGS_WITH_VALUE);
+    if (!target) return copyOperands(args, MV_FLAGS_WITH_VALUE).slice(0, -1);
+    // -t のときは位置引数の全部が元。-t の値の語（連結の形は -t を含む語ごと）を外し、-S などの値も除く（mv -S '~' -t /tmp/x build の ~）
+    const flagWord = target.valueAt === -1 ? target.at : -1;
+    return copyOperands(
+      args.filter((_, j) => j !== target.valueAt && j !== flagWord),
+      MV_FLAGS_WITH_VALUE,
+    );
+  }
+  if (tool === 'find' && args.includes('-delete')) return findStartingPoints(args);
+  return [];
+}
+
+// 語がリポジトリの根か根の祖先（/ を含む）を指すか。根が分かり、語を解決できる（作業場所が分かるか、/ か ~ で始まる）ときは絶対パスで比べる。
+// ~ は判定のたびに os.homedir() で解決する（HOME が変わりうる）。~名前 は解決しない。
+// それ以外は字面で、末尾の / を外して . と .. だけからなる語（.、./..、../..）、/、~ に当てる。
+// ~+ は作業場所（$PWD）なので、作業場所が分かれば解決し、分からなければ . と同じに見る。~- は前の作業場所（$OLDPWD）で、判定できないので当たるものとする
+function removesRoot(word, dir, roots) {
+  if (/^~-(\/|$)/.test(word)) return true;
+  if (/^~\+(\/|$)/.test(word)) word = (dir && roots.length > 0 ? dir : '.') + word.slice(2);
+  if (roots.length > 0 && (dir || /^[/~]/.test(word))) {
+    if (/^~(?!\/|$)/.test(word)) return false;
+    // HOME が無く passwd にも無いと os.homedir() は投げる。ホームを引けない ~ は判定できないので当たるものとする
+    let home = null;
+    try {
+      home = path.resolve(os.homedir());
+    } catch {
+      if (word.startsWith('~')) return true;
+    }
+    const absolute = word.startsWith('~') ? path.resolve(path.join(home, word.slice(1))) : path.resolve(dir ?? '/', word);
+    // ホームそのものと / は、字面の判定と同じく根との関係を問わず当たる（根がホームの外にあっても rm -rf ~ は止める）
+    if (absolute === '/' || absolute === home) return true;
+    // APFS は大文字小文字を区別しないので、小文字にそろえて比べる（守る先と同じ）
+    return roots.some((root) => {
+      const inside = path.relative(absolute.toLowerCase(), root.toLowerCase());
+      return inside !== '..' && !inside.startsWith(`..${path.sep}`) && !path.isAbsolute(inside);
+    });
+  }
+  // /. は /、~/. は ~、src/.. は . と同じ道なので、正規化してから見る。~ がホームになるのは語の先頭のときだけ（./~ は ~ という名前のファイル）
+  const bare = path.posix.normalize(word).replace(/\/+$/, '') || '/';
+  return bare === '/' || (bare === '~' && word.startsWith('~')) || /^\.\.?(\/+\.\.?)*$/.test(bare);
+}
+
+// find の起点。前に置くオプション（GNU の -H、-L、-P、-D の値、-O と、オプションの終わりの --。
+// BSD の -E、-X、-d、-s、-x（-Ex のようにまとめた形も）と、値を起点として取る -f path）の後ろから、- か ( か ! で始まる語の手前まで。無ければ .
+function findStartingPoints(args) {
+  const starts = [];
+  let i = 0;
+  for (; i < args.length; i++) {
+    const a = args[i];
+    if (a === '--') {
+      i++;
+      break;
+    }
+    if (a === '-D') i++;
+    else if (a === '-f') {
+      if (args[i + 1] !== undefined) starts.push(args[++i]);
+    } else if (!/^-([HLPEXdsx]+|O\d*)$/.test(a)) break;
+  }
+  for (; i < args.length && !/^[-(!),]/.test(args[i]); i++) starts.push(args[i]);
+  return starts.length > 0 ? starts : ['.'];
+}
+
+const FIND_EXECS = new Set(['-exec', '-execdir', '-ok', '-okdir']);
+// find の -exec 系で、{} を起点に置き換えて掛け直すコマンドの数と重さ（findCommands の weight）の上限（コマンドぜんたいで数える）。
+// 重さは、起点 256 の grep x {} + を通し、重い glob を並べた cp を 1 秒以内に止める大きさにする
+const MAX_FIND_COMMANDS = 256;
+const MAX_FIND_WEIGHT = 8192;
+const FIND_COMMANDS_REASON = [ASK, 'find の起点と -exec の入れ子が多く、{} を起点に置き換えて掛け直すコマンドが多すぎるので判定しない。何を実行するかを人が確かめる'];
+// find の -exec、-execdir、-ok、-okdir の後ろのコマンド（; か、{} の後ろの + まで）。語の中の {} も含めて、{} を起点のそれぞれに置き換えた語の並び。
+// 書き込み（rm、sed -i）か読み取り（grep、cat）かを、置き換えた後のコマンドで今の規則に判定させる
+// -execdir と -okdir は、見つけたファイルのそれぞれについて、そのファイルのあるディレクトリで動かす。起点そのものは起点の親で {} が ./<basename> になる。
+// 起点の下の深いファイルの親は数えきれないので、有限の候補で見る。起点の親と起点に加え、起点が守る先を含みうる（根か根の祖先、守る先かその中。holdsProtected）ときは、
+// 起点の下の守る先のディレクトリ（PROTECTED_SUBDIRS）も作業場所にする（find . -execdir rm pre-commit \; は .githooks/pre-commit を消す）。
+// 起点の {a,b} は、シェルが展開してから渡すので展開してから dirname を取る（find {x,.claude/settings.json} -execdir は .claude でも動く）。
+// { words, to } の to は、find の作業場所から見た掛け直すときの作業場所（-exec は null）。
+// 判定の前に { count, weight } で重さを返す。count は -exec 系の数と起点の数の積、weight は作業場所の数と、掛け直すコマンドの語の数と
+// 語の {a,b} の展開の数（{} に入る起点の展開も掛ける）の和の積
+const PROTECTED_SUBDIRS = ['.claude', '.claude/hooks', '.githooks', 'migrations', 'hooks'];
+function findCommands(args, holdsProtected) {
+  const starts = findStartingPoints(args);
+  const execs = [];
+  for (let i = 0; i < args.length; i++) {
+    if (!FIND_EXECS.has(args[i])) continue;
+    let end = i + 1;
+    while (end < args.length && args[end] !== ';' && !(args[end] === '+' && args[end - 1] === '{}')) end++;
+    const at = [...Array(end - i - 1).keys()].map((k) => i + 1 + k);
+    if (at.length > 0) execs.push({ at, inDir: args[i].endsWith('dir') });
+    i = end;
+  }
+  // runsFound は、-exec 系の後ろのコマンドの道具の位置（前置きを飛ばした位置）の語に {} があるか
+  const runsFound = execs.some(({ at }) => {
+    const words = sliceWords(args, at[0], at.at(-1) + 1);
+    const ci = commandIndex(words);
+    return ci !== -1 && words[ci].includes('{}');
+  });
+  const count = execs.length * starts.length;
+  if (count > MAX_FIND_COMMANDS) return { count, weight: Infinity, build: () => [], runsFound };
+  const size = (word) => Math.min(expansionSize(word), MAX_BRACE_EXPANSION + 1);
+  // -execdir 系は起点の展開ごとに守る先を含みうるかを見るので重い。重さの下限（展開ごとに作業場所 2 つ × 語の数）を先に見積もり、
+  // 上限を超えるなら組み合わせを作らずに打ち切る
+  const leastWeight = execs.reduce((sum, { at, inDir }) => sum + (inDir ? starts.reduce((s, start) => s + size(start), 0) * 2 * at.length : 0), 0);
+  if (leastWeight > MAX_FIND_WEIGHT) return { count, weight: Infinity, build: () => [], runsFound };
+  // 掛け直す組み合わせ。{ at, placed, tos } の placed は {} に入れる語、tos は作業場所の候補
+  const plans = execs.flatMap(({ at, inDir }) =>
+    starts.flatMap((start) => {
+      if (!inDir) return [{ at, placed: start, tos: [null] }];
+      if (expansionSize(start) > MAX_BRACE_EXPANSION) return [{ at, placed: start, tos: [], tooBig: true }];
+      return expandBraces(start).map((e) => ({
+        at,
+        placed: `./${path.posix.basename(e)}`,
+        tos: [path.posix.dirname(e), e, ...(holdsProtected(e) ? PROTECTED_SUBDIRS.map((c) => path.posix.join(e, c)) : [])],
+      }));
+    }),
+  );
+  const weightOf = ({ at, placed, tos, tooBig }) =>
+    tooBig ? Infinity : tos.length * at.reduce((w, k) => w + 1 + (args[k].includes('{}') ? size(args[k].replaceAll('{}', '')) * size(placed) : size(args[k])), 0);
+  const weight = plans.reduce((sum, plan) => sum + weightOf(plan), 0);
+  const build = () =>
+    plans.flatMap(({ at, placed, tos }) => {
+      const words = concatWords(...at.map((k) => (args[k].includes('{}') ? [args[k].replaceAll('{}', placed)] : sliceWords(args, k, k + 1))));
+      return tos.map((to) => ({ words, to }));
+    });
+  return { count, weight, build, runsFound };
+}
+
+// 作業場所を to（書かれた行き先）へ移した ctx。作業場所が分からないときは、書かれた行き先（place）につなぐ。~ と展開で決まる行き先は判定できない
+function movedTo(ctx, to, unresolved = false) {
+  if (unresolved || /^[~$]/.test(to)) return { ...ctx, dir: null, place: null };
+  if (path.posix.isAbsolute(to)) return { ...ctx, dir: to, place: to };
+  return { ...ctx, dir: ctx.dir && path.resolve(ctx.dir, to), place: ctx.place == null ? null : path.posix.join(ctx.place, to) };
+}
+
 // WORKERS_CI=1 は deploy() が本番に触る唯一の条件で、付けるのは Workers Builds だけ。値は問わず、名前がちょうど WORKERS_CI のものだけを見る
 // （WORKERS_CI_COMMIT_SHA は Workers Builds が渡す別の変数）
 const WORKERS_CI_REASON = 'WORKERS_CI は Workers Builds だけが付ける。試すのは人に任せる（手元のセッションでは ! を付けて打ってもらう）';
@@ -1135,8 +1353,9 @@ const SHELL_MODE_FLAGS = new Set(['-c', '--shell-mode', '--call']);
 // 語ではなく位置を返すのは、呼び出し元が語と展開の印を一緒に切り出すため。
 // { script, dir } は exec -c のシェルの文字列で、judgeBash に掛け直す。経由しなければ null。
 // exec と dlx の後ろは何でも経由先とし、exec の無い形（yarn node x、yarn run node x）は実行の道具のときだけ経由先とする。
-// 作業場所は -C、--dir、--cwd、--prefix の値で解決し直し、~ か $ で始まる値と、展開の印のある値（sr?、{a,b}、"src$X"）は判定できない（null）とする
-function viaPackageManager(tool, args, dir) {
+// 作業場所は -C、--dir、--cwd、--prefix の値で解決し直し、~ か $ で始まる値と、展開の印のある値（sr?、{a,b}、"src$X"）は判定できない（null）とする。
+// 書かれた行き先（place）も、env -C と同じく作業場所が分からなくても値をつなぎ、返す値に入れる（pnpm -C .claude exec rm -rf hooks）
+function viaPackageManager(tool, args, dir, place = null) {
   let manager = tool;
   let rest = args;
   if (tool === 'corepack') {
@@ -1157,10 +1376,12 @@ function viaPackageManager(tool, args, dir) {
         // = の形と連結の形の値は、語ぜんたいの展開の印で見る
         const valueAt = eq === -1 && !attached ? ++i : i;
         const value = attached ? a.slice(2) : eq === -1 ? rest[valueAt] : a.slice(eq + 1);
-        dir = !dir || !value || /^[~$]/.test(value) || isUnresolved(rest, valueAt) ? null : path.resolve(dir, value);
+        const unknown = !value || /^[~$]/.test(value) || isUnresolved(rest, valueAt);
+        dir = !dir || unknown ? null : path.resolve(dir, value);
+        place = place == null || unknown ? null : path.posix.isAbsolute(value) ? value : path.posix.join(place, value);
       } else if (viaExec && SHELL_MODE_FLAGS.has(name)) {
         const script = eq === -1 ? rest[i + 1] : a.slice(eq + 1);
-        return script ? { script, dir } : null;
+        return script ? { script, dir, place } : null;
       } else if (eq === -1 && (EXEC_FLAGS_WITH_VALUE.has(a) || (manager === 'npm' && a === '-w'))) {
         // npm の -w は値（ワークスペースの名前）を取る。pnpm の -w は値を取らない（--workspace-root）
         i++;
@@ -1177,7 +1398,7 @@ function viaPackageManager(tool, args, dir) {
       continue;
     }
     if (!viaExec && !RUNNERS.has(baseName(a))) return null;
-    return { start: args.length - rest.length + i, dir };
+    return { start: args.length - rest.length + i, dir, place };
   }
   return null;
 }
@@ -1218,11 +1439,26 @@ function matchesGlob(target, pattern) {
 }
 
 // dir から上へ、scripts/deploy-production.ts のあるディレクトリ（リポジトリの根）を探す。見つからなければ null
+// 探した結果は、辿ったディレクトリのそれぞれについて覚える（深い作業場所で -execdir の起点ごとに探すと、段数の2乗で重くなるため）。
+// 覚えるのは judgeBash の1回の呼び出しの間だけ（rootCache.clear()）
+const rootCache = new Map();
 function repoRootOf(dir) {
+  const visited = [];
+  let found = null;
   for (let d = dir; ; d = path.dirname(d)) {
-    if (existsSync(path.join(d, DEPLOY_ENTRIES[1]))) return d;
-    if (d === path.dirname(d)) return null;
+    if (rootCache.has(d)) {
+      found = rootCache.get(d);
+      break;
+    }
+    visited.push(d);
+    if (existsSync(path.join(d, DEPLOY_ENTRIES[1]))) {
+      found = d;
+      break;
+    }
+    if (d === path.dirname(d)) break;
   }
+  for (const d of visited) rootCache.set(d, found);
+  return found;
 }
 
 // glob の固定の部分（最初の glob の文字より前のディレクトリ）
@@ -1363,8 +1599,9 @@ function judgeDeployScript(words, ci, dir) {
 
 // env -C <dir> と env --chdir=<dir> は、その後ろのコマンドの作業場所を変える。GNU の env は長いオプションを一意な省略形でも
 // 受け付けるので、--c、--ch、--c=<dir> も --chdir と読む。
-// ~ か $ で始まる値と、展開の印のある値は判定できない（null）とする
-function dirAfterEnv(words, ci, dir, from) {
+// ~ か $ で始まる値と、展開の印のある値は判定できない（null）とする。
+// { dir, place } を返し、place（書かれた行き先）は cd と同じく作業場所が分からなくても値をつなぐ（env -C .claude rm -rf hooks）
+function dirAfterEnv(words, ci, dir, from, place) {
   for (let i = from; i < ci; i++) {
     if (prefixName(words[i]) !== 'env') continue;
     for (let j = i + 1; j < ci; j++) {
@@ -1381,10 +1618,13 @@ function dirAfterEnv(words, ci, dir, from) {
       else if (chdir) value = long[3];
       else if (/^-C./.test(w)) value = w.slice(2);
       else continue;
-      dir = !dir || !value || /^[~$]/.test(value) || isUnresolved(words, valueAt) ? null : path.resolve(dir, value);
+      const unknown = !value || /^[~$]/.test(value) || isUnresolved(words, valueAt);
+      // 絶対パスの値は、前の作業場所が分からなくても行き先が決まる（nextDir と同じ）
+      dir = unknown ? null : path.isAbsolute(value) ? path.resolve(value) : dir && path.resolve(dir, value);
+      place = place == null || unknown ? null : path.posix.isAbsolute(value) ? value : path.posix.join(place, value);
     }
   }
-  return dir;
+  return { dir, place };
 }
 
 // env の -S、--split-string、--split-string=…、-S"…"、-iS のようにまとめた短いフラグ。env -S は文字列をシェルと違う規則で分けて
@@ -1428,8 +1668,13 @@ function judgeSegment(words, ctx) {
   const tool = ci === -1 ? '' : baseName(words[ci]);
   const args = ci === -1 ? [] : sliceWords(words, ci + 1);
   // env -C は後ろのコマンドの作業場所を変える。経由先に掛け直すとき（envFrom）は、前置きの env の分を解決済みなので重ねない
-  if (ci !== -1) ctx = { ...ctx, dir: dirAfterEnv(words, ci, ctx.dir, ctx.envFrom ?? 0) };
+  // 字面の行き先（place）も、env -C の値をつないで追う
+  if (ci !== -1) {
+    ctx = { ...ctx, ...dirAfterEnv(words, ci, ctx.dir, ctx.envFrom ?? 0, ctx.place) };
+  }
   results.push(...judgeFileWrites(tool, args, words, ctx.dir));
+  const removal = judgeRemoval(tool, args, ctx);
+  if (removal) results.push(removal);
   const prefixes = prefixIndexes(words);
   // env -S の文字列は、道具の名前の位置に1語として見えるか、フラグに紛れて道具が見つからない。ci が -1 でも見る
   if (splitsString(words, prefixes, ci)) results.push([ASK, ENV_SPLIT_REASON]);
@@ -1445,14 +1690,39 @@ function judgeSegment(words, ctx) {
 
   // pnpm exec env WORKERS_CI=1 node x のように道具を経由するときは、経由先を前置きごと同じ規則で見る。
   // pnpm exec -c "…" のシェルの文字列は judgeBash に渡す
-  const via = viaPackageManager(tool, args, ctx.dir);
+  const via = viaPackageManager(tool, args, ctx.dir, ctx.place);
   if (via?.script !== undefined) {
-    results.push(judgeBash(via.script, { ...ctx, cwd: via.dir, depth: ctx.depth + 1 }));
+    results.push(judgeBash(via.script, { ...ctx, cwd: via.dir, place: via.place, depth: ctx.depth + 1 }));
   } else if (via) {
     if (ctx.depth + 1 > MAX_DEPTH) results.push([ASK, 'コマンドの入れ子が深く、判定しきれない']);
     else {
-      const inner = { ...ctx, dir: via.dir, envFrom: ci, depth: ctx.depth + 1 };
+      const inner = { ...ctx, dir: via.dir, place: via.place, envFrom: ci, depth: ctx.depth + 1 };
       results.push(...judgeSegment(concatWords(sliceWords(words, 0, ci), sliceWords(args, via.start)), inner));
+    }
+  }
+
+  // find の -exec 系は、{} を起点に置き換えたコマンドを同じ規則で見る（find .claude/hooks -exec rm {} \; は rm .claude/hooks）
+  // 入れ子の find は起点の数の深さ乗に増えるので、コマンドぜんたいで掛け直す数を MAX_FIND_COMMANDS までにする
+  if (tool === 'find' || tool === 'gfind') {
+    // 起点が守る先を含みうるかは、起点を消すときの判定（守る先か、根か根の祖先か）で見る
+    const judgeRemoved = removalJudge(ctx);
+    const { count, weight, build, runsFound } = findCommands(args, (start) => judgeRemoved([start]) !== null);
+    // 道具の位置に {} があると、見つけたファイルそのものを実行する（-exec {} deploy \; は wrangler でありうる）
+    if (runsFound) results.push([ASK, TOOL_EXPANDS_REASON]);
+    const budget = ctx.findBudget;
+    if (count > budget.left || weight > budget.weight) {
+      budget.left = 0;
+      budget.weight = 0;
+      results.push(FIND_COMMANDS_REASON);
+    } else if (count > 0 && ctx.depth + 1 > MAX_DEPTH) {
+      results.push([ASK, 'コマンドの入れ子が深く、判定しきれない']);
+    } else if (count > 0) {
+      budget.left -= count;
+      budget.weight -= weight;
+      for (const { words: command, to } of build()) {
+        const inner = to === null ? ctx : movedTo(ctx, to);
+        results.push(...judgeSegment(command, { ...inner, envFrom: 0, depth: ctx.depth + 1 }));
+      }
     }
   }
 
@@ -1546,6 +1816,14 @@ function variablesSetBy(words, ci) {
 
 // cd、pushd、popd の後の作業場所。判定できなければ null。env は区切りに効く環境変数（CDPATH）
 function nextDir(words, ci, dir, env) {
+  const to = cdTarget(words, ci, env);
+  // 絶対パスの行き先は、前の作業場所が判定できなくても（cd sr? && cd /abs）解決し直せる
+  if (to === null || (!to.startsWith('/') && !dir)) return null;
+  return path.resolve(dir ?? '/', to);
+}
+
+// cd、pushd の行き先の語。前の作業場所が分からないことは問わず、行き先の語だけで判定できなければ null
+function cdTarget(words, ci, env) {
   // popd は、ディレクトリのスタックの中身を追わないので判定できない
   if (words[ci] === 'popd') return null;
   // -L と -P（シンボリックリンクの扱い）、オプションの終わりの -- は行き先ではないので飛ばす（リダイレクトは words に入らない）
@@ -1569,20 +1847,40 @@ function nextDir(words, ci, dir, env) {
   // 行き先が2つ以上ある cd は、zsh では語の置き換え（cd 旧 新）、bash ではエラー。どこへ移るかを判定できない
   // cd -P は .. を物理パスで辿るので、シンボリックリンクを経由した行き先では path.resolve の字面と別の場所へ移る
   const walksUp = physical && /(^|\/)\.\.(\/|$)/.test(to ?? '');
-  // 絶対パスの行き先は、前の作業場所が判定できなくても（cd sr? && cd /abs）解決し直せる
-  const needsDir = !to?.startsWith('/');
   // CDPATH があると、相対の行き先（./x と ../x も。シェルごとの扱いの差は追わない）は CDPATH のディレクトリから探される。
   // 引数なしの pushd（入れ替え）と +N、-N（スタックの回転。zsh の cd も同じ）は、スタックの中身を追わないので判定できない
-  const viaCdpath = needsDir && Boolean(env.CDPATH);
-  if (!to || operands.length > 1 || walksUp || viaCdpath || /^[~$-]|^\+\d*$/.test(to) || isUnresolved(words, at) || (needsDir && !dir)) return null;
-  return path.resolve(dir ?? '/', to);
+  const viaCdpath = !to?.startsWith('/') && Boolean(env.CDPATH);
+  if (!to || operands.length > 1 || walksUp || viaCdpath || /^[~$-]|^\+\d*$/.test(to) || isUnresolved(words, at)) return null;
+  return to;
 }
 
 // 一番重い判定を [決定, 理由] で返す。止めるものが無ければ null
 // branchOf(dir) は dir のブランチ、scriptOf(dir, name) は dir から見た package.json のスクリプトの中身、
 // packageDirOf(dir) はその package.json のあるディレクトリ（道具がスクリプトを動かす場所）を返す。
-// env はセッションの環境変数のうち作業場所の判定を変えるもの（guard-bash.mjs が CDPATH を渡す）。空文字は無いものとする
-export function judgeBash(command, { cwd, branchOf, scriptOf = () => undefined, packageDirOf = (d) => d, depth = 0, env = {} }) {
+// env はセッションの環境変数のうち作業場所の判定を変えるもの（guard-bash.mjs が CDPATH を渡す）。空文字は無いものとする。
+// root は消すか動かすのを止めるリポジトリの根で、入れ子では外の作業場所の根を引き継ぐ（cd .. && rm -rf <根の名前>）。
+// place は作業場所を、外の作業場所からの書かれた行き先（cd .claude の .claude）で表したもの。作業場所が分からないときの守る先の判定に使う。
+// findBudget は find の -exec 系で掛け直せる残りの数で、入れ子でも同じものを共有する
+export function judgeBash(command, options) {
+  // 根を探した結果は、ひとつのコマンドを判定する間だけ覚える（入れ子の呼び出しは depth が 1 以上）
+  if (!options.depth) rootCache.clear();
+  return judgeCommand(command, options);
+}
+
+function judgeCommand(
+  command,
+  {
+    cwd,
+    branchOf,
+    scriptOf = () => undefined,
+    packageDirOf = (d) => d,
+    depth = 0,
+    env = {},
+    root = cwd ? repoRootOf(cwd) : null,
+    place = '',
+    findBudget = { left: MAX_FIND_COMMANDS, weight: MAX_FIND_WEIGHT },
+  },
+) {
   if (depth > MAX_DEPTH) return [ASK, 'コマンドの入れ子が深く、判定しきれない'];
   let dir = cwd;
   // 同じコマンドの中で checkout や switch をした後の push は、切り替えた先のブランチで判定する
@@ -1616,15 +1914,20 @@ export function judgeBash(command, { cwd, branchOf, scriptOf = () => undefined, 
       // cd . > .dev.vars のようにリダイレクトを付けられる。道具として見ない（cd の引数は書き込み先ではない）
       results.push(...judgeFileWrites('', [], words, dir));
       dir = nextDir(words, ci, dir, segmentEnv);
+      const to = cdTarget(words, ci, segmentEnv);
+      place = to === null || place === null ? null : to.startsWith('/') ? to : path.posix.join(place, to);
       continue;
     }
-    results.push(...judgeSegment(words, { dir, branchOf: currentBranch, scriptOf, packageDirOf, depth, env: segmentEnv }));
+    results.push(...judgeSegment(words, { dir, branchOf: currentBranch, scriptOf, packageDirOf, depth, env: segmentEnv, root, place, findBudget }));
     if (ci !== -1 && baseName(words[ci]) === 'git' && dir) {
       const branch = switchedBranch(words.slice(ci + 1));
       if (branch !== null) switched.set(dir, branch);
     }
     // eval、source、. は中身をこのシェルで動かすので、中の cd の後を判定できない（popd と同じ扱い）
-    if (ci !== -1 && IN_SHELL_RUNNERS.has(baseName(words[ci]))) dir = null;
+    if (ci !== -1 && IN_SHELL_RUNNERS.has(baseName(words[ci]))) {
+      dir = null;
+      place = null;
+    }
   }
   return results.find(([d]) => d === DENY) ?? results.find(([d]) => d === ASK) ?? null;
 }
