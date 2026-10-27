@@ -106,7 +106,8 @@ install_node_in() {
   mv "$tmp/node" "$node_dir"
 }
 if install_node; then
-  # VM の PATH には /opt/node22/bin があるので、シェルの初期化で先頭に足す（Claude の Bash は初期化ファイルから環境を作る）。
+  # VM の PATH には /opt/node22/bin があるので、シェルの初期化で先頭に足す。Claude の Bash は初期化ファイルを読まないので、
+  # そちらは session-start.sh が CLAUDE_ENV_FILE で先頭に足す。
   # Ubuntu の .bashrc は対話でないと冒頭で return するので、末尾ではなく先頭に置く
   line="export PATH=\"${node_dir}/bin:\$PATH\""
   echo "$line" >/etc/profile.d/scrum-guild-node.sh
@@ -154,10 +155,11 @@ if [ -n "$repo" ] && cd "$repo"; then
   rm -rf node_modules
 fi
 
-# セッションの Bash と同じく、初期化ファイルを読んだシェルで選ばれる版を確かめる
-got=$(bash -ic 'node --version' 2>/dev/null | tail -n 1)
+# セッションの Bash は初期化ファイルを読まず、session-start.sh が CLAUDE_ENV_FILE で /opt/node<主版>/bin を選ばせる。
+# そこに置いた node の版を確かめる
+got=$("${node_dir}/bin/node" --version 2>/dev/null)
 if [[ "$got" != "v${node_major}."* ]]; then
-  warn "初期化ファイルを読んだシェルの node が ${got:-不明} で、${node_major} と合わない"
+  warn "${node_dir}/bin/node が ${got:-動かない} で、${node_major} と合わない"
 fi
 
 info "完了"
