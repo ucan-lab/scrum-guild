@@ -804,6 +804,24 @@ describe('embed-evidence.py', () => {
     }
   });
 
+  test('閉じの印が欠けた印は書き換えず、次の画面の説明と印を消さずに報告する', () => {
+    const broken = prBody.replace(
+      `${block(k('changed'))}`,
+      block(k('changed')).replace('<!-- /evidence-images -->', ''),
+    );
+    const { out, stdout } = run(broken, comments(comment()), sha('b'));
+    assert.ok(
+      out.includes(
+        '変えた画面の説明\n\n<!-- evidence-images: changed/evidence-1.png -->\n画像は CI の完了の後に入る。\n',
+      ),
+    );
+    assert.ok(out.includes('新しい画面の説明'));
+    assert.ok(
+      out.includes(block(k('new'), `| 変更後 |\n| ---- |\n| <img src="${prUrl}/img/${h('4')}.png" width="400"> |\n`)),
+    );
+    assert.ok(stdout.includes(`閉じの印が無い印: ['${k('changed')}']`), stdout);
+  });
+
   test('付かなかった理由を渡すと、コメントを読まずに印の中をその理由にする', () => {
     const { out } = run(prBody, '[]', sha('b'), 'evidence のジョブが失敗した');
     assert.ok(out.includes(block(k('new'), 'CI の画像は付かなかった: evidence のジョブが失敗した。\n')));

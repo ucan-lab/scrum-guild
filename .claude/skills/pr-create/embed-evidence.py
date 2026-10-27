@@ -42,7 +42,15 @@ def bad_urls(screens):
     return [u for u in urls if not isinstance(u, str) or not IMAGE_URL.fullmatch(u)]
 
 
-IMAGES = re.compile(r'(<!-- evidence-images: ([^\n]+?) -->)[ \t]*\n(.*?)(<!-- /evidence-images -->)', re.S)
+# 中身は次の開始の印をまたがない。閉じの印が欠けた印は当たらずに残り、次の画面の説明と印を呑まない
+IMAGES = re.compile(
+    r'(<!-- evidence-images: ([^\n]+?) -->)[ \t]*\n((?:(?!<!-- evidence-images: ).)*?)(<!-- /evidence-images -->)', re.S
+)
+
+
+def unclosed(section, marked):
+    keys = re.findall(r'<!-- evidence-images: ([^\n]+?) -->', section)
+    return [k for k in keys if k not in marked]
 
 
 def fill(section, inner_of):
@@ -123,6 +131,7 @@ def embed(section, comment_path, head_sha, reason):
             f'埋め込めない: {reason}',
             f'理由を書いた印: {[k for k in marked if k not in kept]}',
             f'前の画像を残した印: {kept}',
+            f'閉じの印が無い印: {unclosed(section, marked)}',
         ]
 
     screens = {s['key']: s for s in data['screens']}
@@ -141,6 +150,7 @@ def embed(section, comment_path, head_sha, reason):
         f'埋め込んだ画面: {[k for k in marked if k in screens]}',
         f'印があるのにコメントに無い画面: {[k for k in marked if k not in screens]}',
         f'コメントに出たのに印の無い画面: {[k for k in screens if k not in marked]}',
+        f'閉じの印が無い印: {unclosed(section, marked)}',
     ]
 
 
