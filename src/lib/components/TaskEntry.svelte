@@ -122,8 +122,7 @@
       class="entry-title"
       href="{taskHref}{taskQuery}{encodeURIComponent(task.id)}"
       data-task-id={task.id}
-      data-sveltekit-keepfocus
-      data-sveltekit-noscroll>{task.title}</a
+      data-sveltekit-reset="false">{task.title}</a
     >
     {#if task.repository !== null || category !== null}
       <span class="entry-meta">
