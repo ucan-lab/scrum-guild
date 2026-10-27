@@ -102,7 +102,7 @@ h1, h2, h3 { text-wrap: balance; }
 /* 狭い幅と、指で押す画面では、押す所を 44px 以上にする。左のメニューのロゴと項目（狭い幅では上の帯に並ぶ）も同じ */
 @media (max-width: 760px), (pointer: coarse) {
   .org-menu-list a, .account-menu-list button, .account-menu-button { min-height: 44px; }
-  .brand, .nav-item { min-height: 44px; }
+  .brand, .nav-item:not(.is-later) { min-height: 44px; }
 }
 /* アカウントのメニュー。上の帯の自分の名前を押すと開く。リストの見た目は組織の切り替えと同じ（上の .org-menu-list と並べて書く）で、
    帯の下に重ねて出す（帯の高さを変えない）。広い幅ではボタンの右端に合わせて開く。760px 以下は、帯が左に寄って
@@ -910,25 +910,24 @@ dialog.dialog::backdrop { background: none; }
   .table .select { min-height: 44px; }
   .done-btn { position: relative; }
   .done-btn::after { content: ""; position: absolute; left: 50%; top: 50%; width: 44px; height: 44px; transform: translate(-50%, -50%); }
-  /* 木の行のボタン（開閉の caret、題、＋タスク）と、操作の並びの小さいボタンも、見た目は変えず、押せる範囲だけを 44px 四方以上に広げる。
-     操作の並びで高さを変えると、横に並ぶヒントの文字が上にずれるため */
-  /* 絞り込みの帯の端の「絞り込みを外す」も同じ */
-  /* バックログの行の題（.entry-title）と、上の帯の小さな切り替え（.pill。引き出しの閉じるも）も同じ。.pill は元から position: relative */
+  /* 見た目は変えず、押せる範囲だけを 44px 四方以上に広げる部品。木の行のボタン（開閉の caret、題、＋タスク）、操作の並びと
+     囲みの中と絞り込みの帯の端の小さいボタン（高さを変えると、横に並ぶヒントの文字が上にずれるため）、バックログの行の押せる題
+     （.entry-title）、上の帯の小さな切り替え（.pill。引き出しの閉じるも。.pill は元から position: relative） */
   .tree-caret, button.tree-link, .tree-row .btn.is-sm, .form-actions .btn.is-sm, .callout-actions .btn.is-sm, .toolbar-end .btn.is-sm,
-  .entry-title { position: relative; }
+  a.entry-title, button.entry-title { position: relative; }
   .tree-caret::after, button.tree-link::after, .tree-row .btn.is-sm::after, .form-actions .btn.is-sm::after, .callout-actions .btn.is-sm::after,
-  .toolbar-end .btn.is-sm::after, .entry-title::after, .pill::after {
+  .toolbar-end .btn.is-sm::after, a.entry-title::after, button.entry-title::after, .pill::after {
     content: ""; position: absolute; left: 50%; top: 50%; width: max(100%, 44px); height: max(100%, 44px); transform: translate(-50%, -50%);
   }
-  /* 引き出しの中の小さなボタン（保存、取り消し、編集、削除、クリア）と、押すと直せる値と、タブ（コメントと変更の履歴）も同じ。
-     重なる行の押せる範囲は、下の余白で分ける */
-  .drawer .btn.is-sm, .drawer .link-btn, .drawer .edit-trigger, .drawer .tab { position: relative; }
-  .drawer .btn.is-sm::after, .drawer .link-btn::after, .drawer .edit-trigger::after, .drawer .tab::after {
+  /* 引き出しの中の小さなボタン（保存、取り消し、編集、削除、クリア）と、押すと直せる値も同じ。重なる行の押せる範囲は、下の余白で分ける */
+  .drawer .btn.is-sm, .drawer .link-btn, .drawer .edit-trigger { position: relative; }
+  .drawer .btn.is-sm::after, .drawer .link-btn::after, .drawer .edit-trigger::after {
     content: ""; position: absolute; left: 50%; top: 50%; width: max(100%, 44px); height: max(100%, 44px); transform: translate(-50%, -50%);
   }
-  /* 引き出しのタブは、広げた分が下のタブの中身（.thread）に覆われるので、見た目ごと 44px の高さにする */
+  /* 引き出しのタブ（コメントと変更の履歴）は、広げた分が下のタブの中身（.thread）に覆われるので、見た目ごと 44px の高さにする */
   .drawer .tab { min-height: 44px; }
   /* 木の行の右端が折り返したとき、上の段の「＋タスク」の広げた分が、下の段の 44px のボタンに重ならないよう段の間を空ける */
+  /* --space-3 では、上の段の「＋タスク」と下の段の「完了にする」の広げた範囲が重なる（e2e/layout-narrow-workspace.test.ts で確かめた） */
   .tree-end { row-gap: var(--space-5); }
   /* 表の名前の列のリンク（組織の管理のワークスペースの名前）は、2行に折り返しても 44px の高さの1つの箱にする */
   .table .is-name a { display: inline-flex; align-items: center; min-height: 44px; }
@@ -994,16 +993,17 @@ a.choice > div > span, .choice.is-static > div > span { display: block; }
 .icon-btn[aria-disabled="true"]:hover { border-color: transparent; color: var(--color-muted); }
 /* 狭い幅と、指で押す画面では、バックログの行の並べ替えのボタンを 44px 四方にする（並んだボタンの押せる範囲が重ならないよう、見た目ごと広げる）。
    狭い幅では行の操作が題の下へ折り返す。
-   設定の並べ替えられる一覧（.order-list）の行は、名前や入力欄と同じ行に並び、行の高さを変えたくないので、見た目は変えず押せる範囲だけを
-   44px 四方に広げる（::after と、切り替えは ::before）。並んだボタンの押せる範囲が重ならないよう、ボタンの間を 14px 空ける（30 + 14 = 44） */
+   設定の並べ替えられる一覧（.order-list）の行の入力欄と選択欄（どこでも .input と .select は 44px の高さ）と切り替え（.toggle）は、
+   見た目ごと 44px の高さにする。「上へ」「下へ」「削除」（.icon-btn）と名前（.edit-trigger）は、見た目は変えず ::after で押せる範囲
+   だけを 44px 四方に広げる。並んだボタンの押せる範囲が重ならないよう、ボタンの間を 14px 空ける（30 + 14 = 44）。名前の下へ折り返す
+   切り替えとの間は --space-3 空ける（名前の広げた範囲が切り替えに重ならないように） */
 @media (max-width: 760px), (pointer: coarse) {
   .entry-end .order-actions .icon-btn, .tree-end .order-actions .icon-btn { width: 44px; height: 44px; }
   .order-list .order-actions { gap: 14px; }
-  .order-list .icon-btn, .order-list .edit-trigger, .order-list .toggle { position: relative; }
-  /* 狭い幅で名前の下へ折り返す切り替えは、行を 44px の高さにし、名前との間を空ける（名前の広げた分と重ならないように） */
   .order-list .order-main { row-gap: var(--space-3); }
   .order-list .toggle { min-height: 44px; }
-  .order-list .icon-btn::after, .order-list .edit-trigger::after, .order-list .toggle::before {
+  .order-list .icon-btn, .order-list .edit-trigger { position: relative; }
+  .order-list .icon-btn::after, .order-list .edit-trigger::after {
     content: ""; position: absolute; left: 50%; top: 50%; width: max(100%, 44px); height: max(100%, 44px); transform: translate(-50%, -50%);
   }
 }

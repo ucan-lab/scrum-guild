@@ -217,7 +217,8 @@ test.describe('管理者（あおば開発のミナト）', () => {
     // 縦には、その行まで動かす。横には、表がはみ出していても動かさずに見える
     await button.scrollIntoViewIfNeeded();
     await expect(button).toBeInViewport({ ratio: 1 });
-    // 押す所の 44px は、e2e/layout-narrow.test.ts が確かめる
+    // 押す所は 44px 以上
+    expect((await button.boundingBox())?.height).toBeGreaterThanOrEqual(44);
   });
 
   test('空白の無い長い名前でも、確認の見出しとトーストは折り返してはみ出さない', async ({ page }) => {

@@ -167,23 +167,43 @@ export const NARROW_VIEWPORT = { width: 390, height: 844 };
 // 要素自身か子孫（入力欄は結び付いた label も）に当たることを確かめる。見た目を小さく保ち ::before と ::after で
 // 押せる範囲を広げた部品は、疑似要素に当たると要素自身が返るので通る。
 // 数えないもの: inert の中（引き出しの後ろの画面）、見えないもの（checkVisibility が偽、幅か高さが 0）、文中のリンク
-// （Markdown の本文 .doc-box の中と、前後に文字の並ぶ inline のリンク）。disabled と aria-disabled は数える。
-// 点が画面の外に出るときは画面の内側に寄せる（画面の端より外は押せない）。画面の外の要素は scrollIntoView で中央へ入れる
+// （下の inSentence）。disabled と aria-disabled は数える。折り返した inline の要素は、行の箱のうち一番大きいものの中心から調べる。
+// 点が画面の外に出るときは画面の内側に寄せる（画面の端より外は押せない）。画面の外の要素は scrollIntoView で中央へ入れ、
+// 調べた後は、動かした window と祖先の入れ物の位置を元に戻す
 export async function findTargetSizeViolations(page: Page): Promise<LayoutViolation[]> {
-  return evaluateLayout(page, 'target-44');
+  return (await measureLayout(page, 'target-44')).violations;
 }
 
 // ページ全体が横に動かない（scrollWidth が画面の幅以下）ことと、文字を持つ要素（文字のノードを直に持つ要素と入力欄）の
-// 右端が画面の右端を越えないことを確かめる。overflow-x が auto か scroll の入れ物の中は、中で横に送れるので許す。
-// hidden か clip の入れ物の中は、入れ物の右端で切った位置で見る。inert の中と見えないものは数えない
+// 右端が画面の右端を越えないことを確かめる。横に送る設計の入れ物（LAYOUT_SCROLL_CONTAINERS）の中は、中で横に送れるので許す。
+// ほかの入れ物（overflow-x が hidden、clip、auto、scroll）の中は、入れ物の右端で切った位置で見る。そのうちスクロールする入れ物
+// （auto、scroll）は、入れ物そのものが横にはみ出している（scrollWidth が clientWidth を越える）ことも違反にする。
+// overflow-y を auto にした箱は overflow-x の計算値も auto になるので、縦にだけスクロールさせる引き出しや dialog もここに入る。
+// inert の中と見えないものは数えない
 export async function findOverflowViolations(page: Page): Promise<LayoutViolation[]> {
-  return evaluateLayout(page, 'overflow');
+  return (await measureLayout(page, 'overflow')).violations;
 }
 
-// 2つの検査は、要素のセレクタの作り方を共有するので、1つの evaluate にまとめる
-async function evaluateLayout(page: Page, rule: LayoutViolation['rule']): Promise<LayoutViolation[]> {
+// 横に送る設計の入れ物。design/components.css で overflow-x: auto を明示しているもの。中の要素が画面の右端を越えても、
+// 入れ物の中で横に送れるので許す（組織の管理のワークスペースの表、狭い幅の上の帯のメニュー、Markdown の本文の表とコードなど）。
+// 部品を足して横に送る入れ物を作ったら、ここにも足す
+export const LAYOUT_SCROLL_CONTAINERS = [
+  '.table-wrap',
+  '.board-wrap',
+  '.nav',
+  '.doc-box',
+  '.doc-box pre',
+  '.doc-table',
+];
+
+// 2つの検査は、要素のセレクタの作り方を共有するので、1つの evaluate にまとめる。counted は調べた要素の数
+// （押せる要素か、文字を持つ要素）。0 件なら画面が描けていないまま測ったことになる（createLayoutCheck が落とす）
+async function measureLayout(
+  page: Page,
+  rule: LayoutViolation['rule'],
+): Promise<{ violations: LayoutViolation[]; counted: number }> {
   return page.evaluate(
-    ({ rule, size }) => {
+    ({ rule, size, scrollContainers }) => {
       const root = document.documentElement;
       // 短く一意なセレクタ。id、なければ class（Svelte の svelte- は除く）と、要るときだけ :nth-of-type を、一意になるまで上へ足す
       // $props.id() の作る id（c12、c12-due など）は、描く順で変わるので使わない
@@ -218,7 +238,8 @@ async function evaluateLayout(page: Page, rule: LayoutViolation['rule']): Promis
           const candidate = parts.join(' > ');
           if (document.querySelectorAll(candidate).length === 1) return candidate;
         }
-        return parts.join(' > ');
+        // html そのもの（body の外の余白に当たったときなど）は、上の繰り返しに入らない
+        return parts.length === 0 ? 'html' : parts.join(' > ');
       };
       const visible = (element: Element): boolean => {
         if (element.closest('[inert]') !== null) return false;
@@ -249,11 +270,26 @@ async function evaluateLayout(page: Page, rule: LayoutViolation['rule']): Promis
           }
           return value;
         };
+        const allowed = scrollContainers.join(', ');
+        let counted = 0;
         for (const element of document.body.querySelectorAll('*')) {
+          if (!visible(element)) continue;
+          // 横に送る設計に無いスクロールする入れ物は、入れ物そのものが横にはみ出していれば違反にする（小数の丸めの差は見ない）
+          const own = overflowX(element);
+          if ((own === 'auto' || own === 'scroll') && !element.matches(allowed)) {
+            if (element.scrollWidth > element.clientWidth + 0.5) {
+              violations.push({
+                rule,
+                target: selectorOf(element),
+                detail: `中身の幅 ${element.scrollWidth}px が入れ物の幅 ${element.clientWidth}px を越え、中で横に送れる（横に送る設計なら LAYOUT_SCROLL_CONTAINERS に足す）`,
+              });
+            }
+          }
           const textual =
             element.matches('input:not([type="hidden"]), select, textarea') ||
             [...element.childNodes].some((node) => node.nodeType === Node.TEXT_NODE && node.textContent!.trim() !== '');
-          if (!textual || !visible(element)) continue;
+          if (!textual) continue;
+          counted++;
           let right = element.getBoundingClientRect().right;
           let scrolls = false;
           for (
@@ -262,11 +298,12 @@ async function evaluateLayout(page: Page, rule: LayoutViolation['rule']): Promis
             ancestor = ancestor.parentElement
           ) {
             const value = overflowX(ancestor);
-            if (value === 'auto' || value === 'scroll') {
+            if (value === 'visible') continue;
+            if ((value === 'auto' || value === 'scroll') && ancestor.matches(allowed)) {
               scrolls = true;
               break;
             }
-            if (value === 'hidden' || value === 'clip') right = Math.min(right, ancestor.getBoundingClientRect().right);
+            right = Math.min(right, ancestor.getBoundingClientRect().right);
           }
           // 小数の丸めの差は見ない
           if (!scrolls && right > viewportWidth + 0.5) {
@@ -277,7 +314,7 @@ async function evaluateLayout(page: Page, rule: LayoutViolation['rule']): Promis
             });
           }
         }
-        return violations;
+        return { violations, counted };
       }
 
       const scrollX = window.scrollX;
@@ -299,16 +336,37 @@ async function evaluateLayout(page: Page, rule: LayoutViolation['rule']): Promis
           '[role="menuitem"]',
         ].join(', '),
       );
-      // 文中のリンク。Markdown の本文の中か、inline で、親に自分の外の文字がある
+      // 文中のリンク（WCAG 2.5.8 の例外）。Markdown の本文（.doc-box）の中のリンクと、inline のリンクのうち、文の入れ物
+      // （p、li、dd、td、label）の中にあって、入れ物の自分以外の文字が 5 文字以上あるもの。「キー: x」のように前後に数文字しか
+      // 無い単独のリンクや、文の入れ物の外（div の直下など）のリンクは、文中と見ずに数える
+      const sentenceMinimum = 5;
       const inSentence = (element: Element): boolean => {
         if (!element.matches('a, [role="link"]')) return false;
         if (element.closest('.doc-box') !== null) return true;
         if (getComputedStyle(element).display !== 'inline') return false;
-        const parent = element.parentElement;
-        if (parent === null) return false;
-        return [...parent.childNodes].some(
-          (node) => node !== element && node.nodeType === Node.TEXT_NODE && node.textContent!.trim() !== '',
+        const container = element.parentElement?.closest('p, li, dd, td, label');
+        if (container === null || container === undefined) return false;
+        const others = (container.textContent ?? '').replace(element.textContent ?? '', '').replace(/\s/g, '');
+        return [...others].length >= sentenceMinimum;
+      };
+      // 調べる箱。入力欄を包む label は、全体が押せる範囲なので label の箱にする（区切りのボタン .segmented の選択肢は、
+      // 見えない input が既定の余白の分だけ label より小さく、中心もずれる）。折り返した inline の要素は、外接の箱の中心が
+      // 行の間に落ちるので、行の箱（getClientRects）のうち一番大きいものにする
+      const boxOf = (element: Element, labels: readonly HTMLLabelElement[]): DOMRect => {
+        const target = labels.find((label) => label.contains(element)) ?? element;
+        const rects = [...target.getClientRects()];
+        if (rects.length < 2) return target.getBoundingClientRect();
+        return rects.reduce((largest, rect) =>
+          rect.width * rect.height > largest.width * largest.height ? rect : largest,
         );
+      };
+      // scrollIntoView で動いた入れ物を、調べた後に元へ戻すため、祖先の入れ物の位置を初めて見たときに控える
+      const scrolled = new Map<Element, [number, number]>();
+      const remember = (element: Element): void => {
+        for (let ancestor = element.parentElement; ancestor !== null; ancestor = ancestor.parentElement) {
+          if (ancestor === root || ancestor === document.body || scrolled.has(ancestor)) continue;
+          scrolled.set(ancestor, [ancestor.scrollLeft, ancestor.scrollTop]);
+        }
       };
       // 四隅は、44px の円の上（中心から斜めに 22px）の点にする。角を丸めた 44px のボタンは、箱の角の点では丸みの外に出て
       // 外れるため。辺の中点は箱の辺の上で調べるので、縦と横に 44px あることはそちらで確かめる
@@ -325,14 +383,18 @@ async function evaluateLayout(page: Page, rule: LayoutViolation['rule']): Promis
         ['右下', d, d],
       ];
       const clamp = (value: number, max: number): number => Math.min(Math.max(value, 0), max - 1);
+      let counted = 0;
       for (const element of candidates) {
         if (!visible(element) || inSentence(element)) continue;
+        counted++;
         const labels = [...((element as HTMLInputElement).labels ?? [])];
-        // 入力欄を包む label は、全体が押せる範囲なので、label の箱の中心から調べる（区切りのボタン .segmented の選択肢は、
-        // 見えない input が既定の余白の分だけ label より小さく、中心もずれる）
-        const box = labels.find((label) => label.contains(element)) ?? element;
-        box.scrollIntoView({ block: 'center', inline: 'nearest', behavior: 'instant' });
-        const rect = box.getBoundingClientRect();
+        remember(element);
+        (labels.find((label) => label.contains(element)) ?? element).scrollIntoView({
+          block: 'center',
+          inline: 'nearest',
+          behavior: 'instant',
+        });
+        const rect = boxOf(element, labels);
         const centerX = rect.left + rect.width / 2;
         const centerY = rect.top + rect.height / 2;
         const misses: string[] = [];
@@ -353,10 +415,11 @@ async function evaluateLayout(page: Page, rule: LayoutViolation['rule']): Promis
           });
         }
       }
+      for (const [element, [left, top]] of scrolled) element.scrollTo({ left, top, behavior: 'instant' });
       window.scrollTo({ left: scrollX, top: scrollY, behavior: 'instant' });
-      return violations;
+      return { violations, counted };
     },
-    { rule, size: TARGET_SIZE },
+    { rule, size: TARGET_SIZE, scrollContainers: LAYOUT_SCROLL_CONTAINERS },
   );
 }
 
@@ -378,12 +441,19 @@ export function createLayoutCheck(
 ): { inThemes: (page: Page, label: string) => Promise<void>; finish: () => void } {
   const used = new Set<UiExclusion>();
   const found = new Map<string, LayoutFound>();
+  // 押せる要素か文字を持つ要素を1つも数えなかった組み合わせ。画面が描けていないまま測ると、違反が0件で通ってしまう
+  const noTargets: string[] = [];
+  const noText: string[] = [];
   return {
     // 落ち着いた画面に3つのテーマを順に当て、はみ出しと 44px を測る。label は言葉づかいの名前（落ちたときの文に出す）
     async inThemes(page, label) {
       for (const theme of LAYOUT_THEMES) {
         await applyTheme(page, theme);
-        const violations = [...(await findOverflowViolations(page)), ...(await findTargetSizeViolations(page))];
+        const overflow = await measureLayout(page, 'overflow');
+        const targets = await measureLayout(page, 'target-44');
+        const violations = [...overflow.violations, ...targets.violations];
+        if (overflow.counted === 0) noText.push(`${theme}・${label}`);
+        if (targets.counted === 0) noTargets.push(`${theme}・${label}`);
         // 画面の読み直し（組織の枠の applyOrganization）で DB のテーマに戻っていたら、別のテーマを測ったことになる
         const applied = await page.evaluate(() => document.documentElement.dataset.theme);
         if (applied !== theme)
@@ -401,6 +471,10 @@ export function createLayoutCheck(
     },
     finish() {
       const failures: string[] = [];
+      if (noTargets.length > 0)
+        failures.push(`[${screen}] 押せる要素を 1 つも数えなかった組み合わせがある: ${noTargets.join('、')}`);
+      if (noText.length > 0)
+        failures.push(`[${screen}] 文字を持つ要素を 1 つも数えなかった組み合わせがある: ${noText.join('、')}`);
       if (found.size > 0) failures.push(`[${screen}] ${formatLayoutViolations([...found.values()])}`);
       const stale = exclusions.filter((exclusion) => !used.has(exclusion));
       if (stale.length > 0) failures.push(formatStaleExclusions(stale));
@@ -439,6 +513,9 @@ export async function useVocabulary(page: Page, slug: string, vocabulary: Vocabu
   };
 }
 
+// 狭い幅の検査で開く組織（seed のあおば開発）。主な画面はどれもこの組織の中にある
+const NARROW_LAYOUT_SLUG = 'aoba';
+
 // 主な画面を幅 390px で、言葉2つ × テーマ3つの組み合わせで開き、横のはみ出しと 44px の押せる範囲を確かめる。
 // open は画面を開き、落ち着いたとみなす要素を待つ。w はその言葉づかいの辞書の文言（見出しの名前などに使う）。
 // 開いた後、要求が止み、見えている所の読み込みが終わり、上の帯の組織の言葉が当てた言葉づかいになってから測る
@@ -446,12 +523,11 @@ export async function expectNarrowLayout(
   page: Page,
   screen: UiScreen,
   open: (w: (key: DictionaryKey, params?: TemplateParams) => string) => Promise<void>,
-  { slug = 'aoba' }: { slug?: string } = {},
 ): Promise<void> {
   await page.setViewportSize(NARROW_VIEWPORT);
   const check = createLayoutCheck(screen);
   for (const vocabulary of LAYOUT_VOCABULARIES) {
-    const unroute = await useVocabulary(page, slug, vocabulary);
+    const unroute = await useVocabulary(page, NARROW_LAYOUT_SLUG, vocabulary);
     const vocabularies = { workspace: vocabulary, organization: vocabulary };
     await open((key, params) => word(key, vocabularies, params));
     await page.waitForLoadState('networkidle');
