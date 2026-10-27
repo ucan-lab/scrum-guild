@@ -985,12 +985,13 @@ function interpreterWords(tool, args) {
 
 // インタープリタの本文（-e、-c、-r、-p、--eval の値と、-pe のようにまとめた形の値、ヒアドキュメントとヒアストリングの本文）を、
 // 空白、引用符、括弧で区切った語。位置引数のファイル（node --test .claude/hooks/guards.test.mjs）は本文ではないので入れない
-// 連結した値（perl -e'…'、python3 -c'…'）も本文とする。perl の -E と、php の -R と -B（行ごとと最初に動かすコード）は、その道具でだけ本文を取る
-// （python3 -B は値を取らない）。node の --print も -p と同じ
-const BODY_FLAGS = { perl: 'ecrpE', php: 'ecrpRB' };
+// 連結した値（perl -e'…'、python3 -c'…'）も本文とする。本文を取る短いフラグはインタープリタごとに違う。
+// -c は python では本文、node、perl、ruby では構文の確かめ、php では設定のパス。-r は php では本文、node と ruby では require。
+// perl の -p は行ごとに回すだけのフラグ。node の --print も -p と同じ。tclsh と deno は本文をヒアドキュメントとヒアストリングでだけ見る
+const BODY_FLAGS = { node: 'ep', bun: 'ep', python: 'c', python3: 'c', ruby: 'e', perl: 'eE', php: 'rRBE', osascript: 'e' };
 function interpreterBodyWords(tool, args) {
   const bodies = heredocBodies(args);
-  const flags = BODY_FLAGS[tool] ?? 'ecrp';
+  const flags = BODY_FLAGS[tool] ?? '';
   for (let i = 0; i < args.length; i++) {
     const a = args[i];
     const long = /^--(eval|print)(=([\s\S]*))?$/.exec(a);

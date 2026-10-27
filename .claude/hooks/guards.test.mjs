@@ -1317,6 +1317,9 @@ describe('bash-rules: 確認を挟む', () => {
     'tar --extract -f /tmp/x.tar -C migrations',
     'tar -f /tmp/x.tar -C .claude/hooks',
     // -f のアーカイブに書くのは、作る、足す、更新する、つなぐ、消すとき（動作を判定できないときも）
+    `php -E 'system("wrangler deploy");'`,
+    `bun -e 'Bun.spawnSync(["wrangler", "deploy"])'`,
+    `python -c 'open(".claude/settings.json", "w")'`,
     'tar -rf .claude/hooks/x y',
     'tar -uf .claude/hooks/x y',
     'tar -Af .claude/hooks/x /tmp/y.tar',
@@ -2161,6 +2164,15 @@ describe('bash-rules: 通す', () => {
     '[[ -L .dev.vars ]]',
     '[[ -f .env ]] && echo ok',
     '[ -L .dev.vars ]',
+    // 本文を取るフラグはインタープリタごと。構文の確かめ（-c、--check）、require（-r）、設定（php -c）の値は本文ではない
+    'node -c .claude/hooks/x.mjs',
+    'node --check .claude/hooks/x.mjs',
+    'node -r .claude/hooks/x.mjs y.mjs',
+    'perl -c .claude/hooks/x.pl',
+    'perl -p .claude/hooks/x.pl',
+    'ruby -c .claude/hooks/x.rb',
+    'ruby -r .claude/hooks/x y.rb',
+    'php -c .claude/hooks/php.ini x.php',
     // 本文に守る名前も wrangler も無い、連結した値と足したフラグ
     `perl -e'print 1'`,
     `php -r'echo 1;'`,
