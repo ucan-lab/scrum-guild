@@ -492,15 +492,20 @@ function judgePackageManager(tool, args, ctx) {
   if (DEPLOY_SCRIPT.test(name)) return [DENY, 'デプロイは Workers Builds だけが行う'];
   // package.json のスクリプトの中身も同じ規則で見る。pre と post のスクリプトも一緒に走る。
   // 名前より後ろの語は、道具が引用符で包んで本体の末尾に足す（pnpm test x は node --test scripts/*.test.ts 'x'）。
-  // 道具ごとの違い（npm が -- の前のフラグを取る、npm、yarn、bun が -- を消す）はまねず、全部の語を足す。足しすぎても判定は緩まない
+  // npm が -- の前のフラグを取る違いはまねず、全部の語を足す。-- は pnpm が残し、npm、yarn、bun が消すので、
+  // 残した形と最初の -- を消した形の両方を見る（git や wrangler の判定は -- の後ろをフラグとして読まないため）
   const extra = sliceWords(args, indexes[['run', 'run-script'].includes(pos[0]) ? 1 : 0] + 1);
-  const results = [`pre${name}`, name, `post${name}`]
-    .map((n) => [n, ctx.scriptOf(ctx.dir, n)])
-    .filter(([, body]) => body)
-    .map(([n, body]) => judgeBash(n === name ? appendWords(body, extra) : body, { ...ctx, cwd: ctx.dir, depth: ctx.depth + 1 }))
-    .filter(Boolean);
+  const separator = extra.indexOf('--');
+  const appended = separator === -1 ? [extra] : [extra, concatWords(sliceWords(extra, 0, separator), sliceWords(extra, separator + 1))];
+  // 道具は package.json のあるディレクトリでスクリプトを動かすので、本体と足した語もそこで判定する（cd src && pnpm test '*/x.ts'）
+  const scriptCtx = { ...ctx, cwd: ctx.dir && ctx.packageDirOf(ctx.dir), depth: ctx.depth + 1 };
+  const body = ctx.scriptOf(ctx.dir, name);
+  const results = [
+    ...[`pre${name}`, `post${name}`].map((n) => ctx.scriptOf(ctx.dir, n)).filter(Boolean).map((b) => judgeBash(b, scriptCtx)),
+    ...(body ? appended.map((words) => judgeBash(appendWords(body, words), scriptCtx)) : []),
+  ].filter(Boolean);
   // 足した語は引用符で包むので、展開（$X、$(…)、glob）の印が消え、直に打つより緩く読みうる
-  if (ctx.scriptOf(ctx.dir, name) && extra.some((_, i) => isUnresolved(extra, i))) results.push([ASK, SCRIPT_ARGS_EXPAND_REASON]);
+  if (body && extra.some((_, i) => isUnresolved(extra, i))) results.push([ASK, SCRIPT_ARGS_EXPAND_REASON]);
   return results.find(([d]) => d === DENY) ?? results.find(([d]) => d === ASK) ?? null;
 }
 
@@ -1574,9 +1579,10 @@ function nextDir(words, ci, dir, env) {
 }
 
 // 一番重い判定を [決定, 理由] で返す。止めるものが無ければ null
-// branchOf(dir) は dir のブランチ、scriptOf(dir, name) は dir から見た package.json のスクリプトの中身を返す。
+// branchOf(dir) は dir のブランチ、scriptOf(dir, name) は dir から見た package.json のスクリプトの中身、
+// packageDirOf(dir) はその package.json のあるディレクトリ（道具がスクリプトを動かす場所）を返す。
 // env はセッションの環境変数のうち作業場所の判定を変えるもの（guard-bash.mjs が CDPATH を渡す）。空文字は無いものとする
-export function judgeBash(command, { cwd, branchOf, scriptOf = () => undefined, depth = 0, env = {} }) {
+export function judgeBash(command, { cwd, branchOf, scriptOf = () => undefined, packageDirOf = (d) => d, depth = 0, env = {} }) {
   if (depth > MAX_DEPTH) return [ASK, 'コマンドの入れ子が深く、判定しきれない'];
   let dir = cwd;
   // 同じコマンドの中で checkout や switch をした後の push は、切り替えた先のブランチで判定する
@@ -1612,7 +1618,7 @@ export function judgeBash(command, { cwd, branchOf, scriptOf = () => undefined, 
       dir = nextDir(words, ci, dir, segmentEnv);
       continue;
     }
-    results.push(...judgeSegment(words, { dir, branchOf: currentBranch, scriptOf, depth, env: segmentEnv }));
+    results.push(...judgeSegment(words, { dir, branchOf: currentBranch, scriptOf, packageDirOf, depth, env: segmentEnv }));
     if (ci !== -1 && baseName(words[ci]) === 'git' && dir) {
       const branch = switchedBranch(words.slice(ci + 1));
       if (branch !== null) switched.set(dir, branch);

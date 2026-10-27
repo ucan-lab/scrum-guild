@@ -21,6 +21,9 @@ const scripts = {
   start: 'wrangler deploy',
   lint: 'eslint .',
   postlint: 'wrangler deploy',
+  pretest: 'echo pre',
+  commit: 'git commit -m x',
+  'r2:get': 'wrangler r2 object get b/k --local',
 };
 const ctx = (branch) => ({ cwd: '/repo', branchOf: () => branch, scriptOf: (dir, name) => (dir ? scripts[name] : undefined) });
 const verdict = (command, branch = '21-claude-settings') => judgeBash(command, ctx(branch));
@@ -508,6 +511,10 @@ describe('bash-rules: 止める', () => {
     'bun run test scripts/deploy-production.ts',
     'pnpm test ./.dev.vars',
     'npm test -- .dev.vars',
+    // npm、yarn、bun は -- を消して渡すので、-- の後ろも本体のフラグとして読む
+    'npm run r2:get -- --no-local',
+    'yarn r2:get -- --no-local',
+    'bun run r2:get -- --no-local',
     'bash scripts/deploy.sh',
     './scripts/deploy.sh',
     'node scripts/deploy.ts',
@@ -1378,6 +1385,9 @@ describe('bash-rules: 確認を挟む', () => {
     'pnpm test $X',
     'pnpm test "$(cat list)"',
     'npm run test -- "$F"',
+    'pnpm test {a,b}.test.ts',
+    'npm run commit -- --no-verify',
+    'yarn commit -- --no-verify',
   ]) {
     test(command, () => assert.equal(decision(command), 'ask'));
   }
@@ -1904,6 +1914,8 @@ describe('bash-rules: 通す', () => {
     'pnpm test scripts/db-seed.ts',
     'pnpm test --reporter dot',
     'npm test -- scripts/dev.test.ts',
+    // package.json に無い名前は、展開があっても確認を挟まない
+    'pnpm nosuch $X',
     // 足す語は引用符で包むので、引数の中の区切りは別のコマンドにならない
     "pnpm test 'a; wrangler deploy'",
     "pnpm test 'a && wrangler deploy'",
@@ -2496,6 +2508,19 @@ describe('bash-rules: glob の照合先は実在するデプロイの入口', ()
   ]) {
     test(`${command} は通す`, () => assert.equal(inRoot(command), 'allow'));
   }
+
+  test('スクリプトの後ろの引数は、下のディレクトリから打っても package.json のある場所で照合する', () => {
+    mkdirSync(path.join(root, 'src'), { recursive: true });
+    const viaScript = (command) =>
+      judgeBash(command, {
+        cwd: root,
+        branchOf: () => 'x',
+        scriptOf: (dir, name) => (dir ? { test: 'node --test scripts/*.test.ts' }[name] : undefined),
+        packageDirOf: (dir) => dir && root,
+      })?.[0] ?? 'allow';
+    assert.equal(viaScript(`cd src && pnpm test '*/deploy-production.ts'`), 'deny');
+    assert.equal(viaScript(`cd src && pnpm test '*/x.test.ts'`), 'allow');
+  });
 
   test('path.matchesGlob が無い Node では glob を素通りさせず、投げて止める', () => {
     const original = path.matchesGlob;

@@ -20,13 +20,18 @@ function branchOf(dir) {
   }
 }
 
-function scriptOf(dir, name) {
+// dir から上へ探した最初の package.json のあるディレクトリ。無ければ undefined
+function packageDirOf(dir) {
   if (!dir) return undefined;
   for (let d = dir; ; d = path.dirname(d)) {
-    const file = path.join(d, 'package.json');
-    if (existsSync(file)) return JSON.parse(readFileSync(file, 'utf8')).scripts?.[name];
+    if (existsSync(path.join(d, 'package.json'))) return d;
     if (d === path.dirname(d)) return undefined;
   }
+}
+
+function scriptOf(dir, name) {
+  const d = packageDirOf(dir);
+  return d && JSON.parse(readFileSync(path.join(d, 'package.json'), 'utf8')).scripts?.[name];
 }
 
 try {
@@ -36,7 +41,7 @@ try {
   if (typeof command === 'string') {
     // セッションの CDPATH は、相対の cd の行き先を cwd の外へ変える（judgeBash は空文字を無いものとする）
     const env = { CDPATH: process.env.CDPATH };
-    const verdict = judgeBash(command, { cwd: input.cwd ?? process.cwd(), branchOf, scriptOf, env });
+    const verdict = judgeBash(command, { cwd: input.cwd ?? process.cwd(), branchOf, scriptOf, packageDirOf, env });
     if (verdict) {
       const [decision, reason] = verdict;
       process.stdout.write(
