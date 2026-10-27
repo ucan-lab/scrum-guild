@@ -1323,6 +1323,11 @@ describe('bash-rules: 確認を挟む', () => {
     `php -E 'system("wrangler deploy");'`,
     `bun -e 'Bun.spawnSync(["wrangler", "deploy"])'`,
     `python -c 'open(".claude/settings.json", "w")'`,
+    // 守る先の候補に照合する glob も、大文字小文字を区別しない
+    'mv .Claude/* /tmp/x',
+    'mv .GITH* /tmp/x',
+    'rm -rf MIGR*',
+    'mv .CLAUDE/Settings.* /tmp/x',
     'tar -rf .claude/hooks/x y',
     'tar -uf .claude/hooks/x y',
     'tar -Af .claude/hooks/x /tmp/y.tar',
@@ -2177,6 +2182,9 @@ describe('bash-rules: 通す', () => {
     'ruby -r .claude/hooks/x y.rb',
     'php -c .claude/hooks/php.ini x.php',
     // g を外した名前で、引数を実行しない道具の表を引く（wrangler と WORKERS_CI の判定も同じ）
+    // 大文字小文字を崩しても守る先の候補に当たらない glob
+    'mv .Claude/skills/* /tmp/x',
+    'rm -f /tmp/MIGR*',
     'gls node_modules/.bin/wrangler docs',
     'ggrep wrangler docs/development.md',
     'gecho WORKERS_CI=1',

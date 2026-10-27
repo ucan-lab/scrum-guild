@@ -630,6 +630,7 @@ const PROTECTED_CANDIDATES = ['.claude/settings.json', '.claude/settings.local.j
 // 作業場所から解決した絶対パス（cd .claude && cp /tmp/settings.json .）で見る（wranglerConfigAt と同じ）。
 // glob の語は、作業場所が分かるときは根（scripts/deploy-production.ts のあるディレクトリ。見つからなければ作業場所）の候補の絶対パスに、
 // 分からないときは候補の相対パスに照合する。根の外の glob（rm /tmp/*）は止めない。
+// isProtectedPath と同じく大文字小文字を区別しないよう、候補も glob も小文字にそろえて照合する（mv .Claude/* /tmp/x、mv .GITH* /tmp/x）。
 // 展開が MAX_BRACE_EXPANSION を超える語は、照合せずに当たるものとして扱う（BIG_GLOB_REASON と同じ）
 function protectedAt(dir) {
   const root = dir && (repoRootOf(dir) ?? dir);
@@ -640,7 +641,8 @@ function protectedAt(dir) {
       const absolute = dir ? path.resolve(dir, w) : null;
       if ([w, path.posix.normalize(w), absolute].some((f) => f && isProtectedPath(f))) return true;
       if (!GLOB_CHARS.test(w)) return false;
-      return root ? PROTECTED_CANDIDATES.some((c) => matchesGlob(path.join(root, c), absolute)) : PROTECTED_CANDIDATES.some((c) => matchesGlob(c, w));
+      const [base, pattern] = root ? [root.toLowerCase(), absolute.toLowerCase()] : ['', w.toLowerCase()];
+      return PROTECTED_CANDIDATES.some((c) => matchesGlob(base ? path.join(base, c) : c, pattern));
     });
   };
 }
