@@ -648,6 +648,7 @@ async function addOnce(
       q
         .selectFrom('tasks')
         .select('tasks.column_position')
+        .where('tasks.workspace_id', '=', workspaceId)
         .where('tasks.sprint_id', '=', sprintId)
         .where('tasks.column_id', '=', firstColumn(q, workspaceId))
         .where('tasks.deleted_at', 'is', null)
