@@ -70,6 +70,8 @@
     submitError = null;
     submitting = false;
     loadFailed = false;
+    // 前に開いたときの読み込みが続いていても、その応答は generation で捨てるので、ここで読み直せるようにする
+    loading = false;
     dialog?.show(trigger);
     void load(false);
   }

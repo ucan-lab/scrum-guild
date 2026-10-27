@@ -263,6 +263,27 @@ test('入れるダイアログ: 読めなければ枠と「もう一度試す」
   await expect(picker.getByRole('group', { name: '入れるクエスト' }).getByRole('checkbox')).toHaveCount(1);
   await picker.getByRole('button', { name: 'やめる' }).click();
   await expect(page.locator('.lane-row a')).toHaveText(['地図を描く']);
+
+  // 読んでいる間に閉じて開き直しても、読み込み中のまま止まらない（古い応答は捨て、開き直しで読み直す）
+  let release!: () => void;
+  const held = new Promise<void>((resolve) => (release = resolve));
+  let first = true;
+  await page.route('**/api/aoba/backlog-tree', async (route) => {
+    if (first) {
+      first = false;
+      await held;
+    }
+    await route.continue();
+  });
+  const addButton = page.getByRole('button', { name: /^掲示板から入れる/ });
+  await addButton.click();
+  await expect(picker.locator('.action-note')).toHaveText('読み込んでいます');
+  await picker.getByRole('button', { name: 'やめる' }).click();
+  await expect(picker).toBeHidden();
+  await addButton.click();
+  await expect(picker.getByRole('group', { name: '入れるクエスト' }).getByRole('checkbox')).toHaveCount(1);
+  release();
+  await expect(picker.getByRole('group', { name: '入れるクエスト' }).getByRole('checkbox')).toHaveCount(1);
 });
 
 test('スクラムの言葉: スプリントが無いときは空の状態を出し、一般のメンバーには作るのはリーダーだと伝える', async ({
