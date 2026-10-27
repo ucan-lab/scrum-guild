@@ -10,6 +10,17 @@ type Env = Record<string, string | undefined>;
 // wrangler と workerd に届かず、サーバーが残ることがある
 export const E2E_SERVER_COMMAND = 'pnpm build && node scripts/dev.ts --preview';
 
+// E2E_DEV_BUILD=1 のときは、Svelte と SvelteKit の開発時の警告が出る build にする（#375。e2e/fixtures.ts が警告で落とす）。
+// vite build --mode development では警告のコードが入らない（mode は変わるが NODE_ENV は production のまま）。
+// NODE_ENV は build にだけ付け、wrangler には渡さない
+export function isDevBuild(env: Env): boolean {
+  return env.E2E_DEV_BUILD === '1';
+}
+
+export function e2eServerCommand(env: Env): string {
+  return isDevBuild(env) ? `NODE_ENV=development ${E2E_SERVER_COMMAND}` : E2E_SERVER_COMMAND;
+}
+
 // 立てたままのサーバーを使い回すのは、手元で E2E_REUSE_SERVER=1 を付けたときだけ。CI では必ずこのコミットで build する
 export function reuseExistingServer(env: Env): boolean {
   return !env.CI && env.E2E_REUSE_SERVER === '1';

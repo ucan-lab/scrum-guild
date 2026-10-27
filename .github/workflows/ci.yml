@@ -26,6 +26,7 @@ jobs:
     timeout-minutes: 5
     outputs:
       docs_only: ${{ steps.docs.outputs.docs_only }}
+      dev_build: ${{ steps.docs.outputs.dev_build }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -39,13 +40,13 @@ jobs:
       # --no-renames: リネームを移動先の名前だけで見ると、src/ から docs/ への移動が文書だけに見えるため。
       # -z: 日本語や空白を含む名前を git が引用して書き換えないようにするため
       - id: docs
-        name: 文書だけかを判定する
+        name: 文書だけかと、開発モードの e2e を走らせるかを判定する
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
           set -o pipefail
-          git diff --name-only --no-renames -z "$BASE_SHA...$HEAD_SHA" | node scripts/docs-only.ts | tee -a "$GITHUB_OUTPUT"
+          git diff --name-only --no-renames -z "$BASE_SHA...$HEAD_SHA" | node scripts/changes.ts | tee -a "$GITHUB_OUTPUT"
 
   check:
     needs: changes
@@ -129,6 +130,39 @@ jobs:
             playwright-report/
           retention-days: 14
 
+  # 開発モードの build（NODE_ENV=development）で e2e を流し、Svelte と SvelteKit の開発時の警告が出たテストを落とす（#375。e2e/fixtures.ts）。
+  # 本番の build では警告が出ないので、上の e2e では拾えない。画面のコード、依存、e2e と build の仕組みが変わった PR だけ走らせる
+  # （scripts/ci.ts の needsDevBuild）。画像は撮らない。走らないときは ci-ok が skipped を期待する
+  e2e-dev:
+    needs: changes
+    if: needs.changes.outputs.docs_only != 'true' && needs.changes.outputs.dev_build == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      # 数を変えるときは docs/development.md の「CI」の e2e-dev の行も直す
+      matrix:
+        shard: [1, 2, 3]
+    env:
+      APP_VERSION: ${{ github.event.pull_request.head.sha }}
+      E2E_DEV_BUILD: '1'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+      - uses: ./.github/actions/playwright
+      - run: pnpm e2e --shard=${{ matrix.shard }}/${{ strategy.job-total }}
+      - if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: e2e-dev-${{ matrix.shard }}
+          overwrite: true
+          path: |
+            test-results/
+            playwright-report/
+          retention-days: 14
+
   # e2e のスクリーンショットのうち、ベースの main と違う画面だけを画像用の R2 のバケットに上げ、変更前と変更後を並べた
   # コメントを PR に1つ付けて、push のたびに書き換える（docs/development.md の「CI」）。
   # 見た目を確かめる助けで、マージの判定には入れない（ci-ok の needs に入れない。落ちても ci-ok は落ちず、このジョブの分の待ちも伸びない）。
@@ -174,7 +208,8 @@ jobs:
       - if: steps.config.outputs.ready == 'true'
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
-          pattern: e2e-*
+          # e2e のシャードの成果物（e2e-1 など）だけ。開発モードの e2e-dev-<n> は画像を撮らないので混ぜない
+          pattern: e2e-[0-9]*
           path: ${{ runner.temp }}/e2e
 
       # ベースの一覧（main/<ベースの SHA>.json）は main 用の公開の URL から読む。無ければ main/latest.json と比べ、そのことをコメントに書く。
@@ -271,7 +306,7 @@ jobs:
   # 取り消された実行でも always() で動かして failure を残す。!cancelled() にすると ci-ok が skipped になり、
   # 同じ head の結果がマージの欄で skipped しか出ず、成功していないことが読み取りにくくなるため
   ci-ok:
-    needs: [changes, check, test, migration, e2e]
+    needs: [changes, check, test, migration, e2e, e2e-dev]
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 5

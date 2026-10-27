@@ -7,6 +7,7 @@ import {
   e2eGlobalSetup,
   type E2eGlobalSetupDeps,
   e2eHealthURL,
+  e2eServerCommand,
   e2eServerVersion,
   type HealthResponse,
   healthUnreachable,
@@ -20,6 +21,23 @@ describe('E2E_SERVER_COMMAND', () => {
       scripts: Record<string, string>;
     };
     assert.equal(E2E_SERVER_COMMAND, pkg.scripts.preview);
+  });
+});
+
+describe('e2eServerCommand', () => {
+  test('既定は preview と同じ中身', () => {
+    assert.equal(e2eServerCommand({}), E2E_SERVER_COMMAND);
+  });
+
+  test('E2E_DEV_BUILD=1 のときだけ、build に NODE_ENV=development を付ける', () => {
+    assert.equal(e2eServerCommand({ E2E_DEV_BUILD: '1' }), `NODE_ENV=development ${E2E_SERVER_COMMAND}`);
+    assert.equal(e2eServerCommand({ E2E_DEV_BUILD: 'true' }), E2E_SERVER_COMMAND);
+    assert.equal(e2eServerCommand({ E2E_DEV_BUILD: '0' }), E2E_SERVER_COMMAND);
+  });
+
+  test('NODE_ENV は最初の build にだけ掛かり、サーバーの起動には掛からない', () => {
+    const command = e2eServerCommand({ E2E_DEV_BUILD: '1' });
+    assert.match(command, /^NODE_ENV=development pnpm build && node scripts\/dev\.ts --preview$/);
   });
 });
 
