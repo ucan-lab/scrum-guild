@@ -1,5 +1,5 @@
 import { expect, test } from './fixtures.ts';
-import { signIn, watchViolations } from './helpers.ts';
+import { expectModalFocus, signIn, watchViolations } from './helpers.ts';
 
 // build と wrangler dev に渡した版。playwright.config.ts が決めて process.env に置く（docs/development.md の「e2e のサーバー」）
 const version = process.env.APP_VERSION || 'dev';
@@ -75,14 +75,8 @@ test('ダイアログをキーボードだけで開閉でき、閉じたら開�
   const collect = await watchViolations(page);
   await page.goto(today);
   const opener = page.getByRole('button', { name: '詳細を見る' });
-  await opener.focus();
-  await page.keyboard.press('Enter');
-
   const dialog = page.getByRole('dialog', { name: 'API の詳細' });
-  await expect(dialog).toBeVisible();
-  await page.keyboard.press('Escape');
-  await expect(dialog).toBeHidden();
-  await expect(opener).toBeFocused();
+  await expectModalFocus(page, { opener, modal: dialog, press: 'Enter' });
 
   // 閉じるボタンからも同じく戻る
   await page.keyboard.press('Enter');
@@ -100,14 +94,7 @@ test('クリックでボタンにフォーカスが乗らなくても、閉じ�
   await page.goto(today);
   const opener = page.getByRole('button', { name: '詳細を見る' });
   await opener.evaluate((button) => button.addEventListener('mousedown', (event) => event.preventDefault()));
-  await opener.click();
-  const dialog = page.getByRole('dialog', { name: 'API の詳細' });
-  await expect(dialog).toBeVisible();
-  expect(await page.evaluate(() => document.activeElement?.closest('dialog') !== null)).toBe(true);
-
-  await page.keyboard.press('Escape');
-  await expect(dialog).toBeHidden();
-  await expect(opener).toBeFocused();
+  await expectModalFocus(page, { opener, modal: page.getByRole('dialog', { name: 'API の詳細' }) });
 });
 
 test('ダイアログの外側を押すと閉じ、中と外をまたいでドラッグしても閉じない', async ({ page }) => {
