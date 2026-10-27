@@ -3,10 +3,13 @@
 //
 // 決まり:
 // - タスクの親は、完了していないストーリーか親なし。ストーリーの親は、完了も中止もしていないエピックか親なし。
-//   タスクをエピックの直下へ、ストーリーをストーリーの下へは落とせない（何も示さない）
+//   タスクをエピックの直下へ、ストーリーをストーリーの下へは落とせない（何も示さない）。
+//   サーバーが断るのは親が変わるときだけなので、今の親の中での並べ替えは、親が完了か中止していても落とせる（ボタンと同じ）
+// - 画面で完了にしたタスクは、サーバーが断るので、つかんでも落とせない
 // - before / after は行と行の間の線。タスクはタスクの行の前後、ストーリーはストーリーの行の前後に落とす
 // - into は親の行を囲む。タスクはストーリーの行、ストーリーはエピックの行に重ねると、その配下の末尾に入る
 // - 折りたたみの行と空の案内の行（tail）の前後は、その配下の末尾として扱う
+// - 親なしの段が空のときは、つかんでいる間だけ落とし先の行（slot）を出し、into で親なしの末尾に入る
 // - 元と同じ位置なら null（何も示さず、何も送らない）
 import { insertAround, insertAtEnd, type Insertion } from './list-drop.ts';
 
@@ -15,9 +18,12 @@ export const ROOT = '';
 
 export type DragItem = { kind: 'task' | 'story'; id: string };
 
-// 重ねる行。tail は折りたたみの行と空の案内の行で、parent はそれが並ぶ先の親の種類（root は親なしのタスクの折りたたみの行）
+// 重ねる行。tail は折りたたみの行と空の案内の行で、parent はそれが並ぶ先の親の種類（root は親なしのタスクの折りたたみの行）。
+// slot は、親なしの段が空のときだけ出す落とし先（task-root は親なしのタスク、story-root は親のないストーリー）
 export type DropRow =
-  { kind: 'task' | 'story' | 'epic'; id: string } | { kind: 'tail'; parent: 'story' | 'epic' | 'root'; id: string };
+  | { kind: 'task' | 'story' | 'epic'; id: string }
+  | { kind: 'tail'; parent: 'story' | 'epic' | 'root'; id: string }
+  | { kind: 'slot'; parent: 'task-root' | 'story-root' };
 
 export type Operation = 'before' | 'after' | 'into';
 
@@ -29,12 +35,15 @@ export type TreeModel = {
   storyLists: Readonly<Record<string, readonly { id: string; open: boolean }[]>>;
   // 親ごとのタスクの ID
   taskLists: Readonly<Record<string, readonly string[]>>;
+  // 画面で完了にしたタスクの ID（読み直すまで行は残る）
+  completedTasks: readonly string[];
 };
 
 export type TreeIndex = {
   model: TreeModel;
   openEpic: ReadonlySet<string>;
   openStory: ReadonlySet<string>;
+  completedTask: ReadonlySet<string>;
   storyParent: ReadonlyMap<string, string>;
   taskParent: ReadonlyMap<string, string>;
   // 親ごとのストーリーの ID（storyLists から id だけ取り出したもの）
@@ -56,49 +65,65 @@ export function indexTree(model: TreeModel): TreeIndex {
   for (const [parent, list] of Object.entries(model.taskLists)) {
     for (const id of list) taskParent.set(id, parent);
   }
-  return { model, openEpic: new Set(model.openEpics), openStory, storyParent, taskParent, storyIds };
+  return {
+    model,
+    openEpic: new Set(model.openEpics),
+    openStory,
+    completedTask: new Set(model.completedTasks),
+    storyParent,
+    taskParent,
+    storyIds,
+  };
 }
 
 // 行を、ドラッグの印を付ける要素に結ぶ名前
 export function rowKey(row: DropRow): string {
+  if (row.kind === 'slot') return `slot:${row.parent}`;
   return row.kind === 'tail' ? `tail:${row.parent}:${row.id}` : `${row.kind}:${row.id}`;
 }
 
 export type OperationSet = Record<Operation, boolean>;
 const NONE: OperationSet = { before: false, after: false, into: false };
+const AROUND: OperationSet = { before: true, after: true, into: false };
+const INTO: OperationSet = { before: false, after: false, into: true };
 
-// 重ねた行に落とせる操作（位置が今と同じになるかは見ない。それは resolveDrop が決める）
+// 重ねた行に落とせる操作（位置が今と同じになるかは見ない。それは resolveDrop が決める）。
+// 行き先の親が今の親と同じなら、親の状態（完了、中止）は見ない
 export function availableOperations(index: TreeIndex, item: DragItem, row: DropRow): OperationSet {
   if (item.kind === 'task') {
+    if (index.completedTask.has(item.id)) return NONE;
+    const current = index.taskParent.get(item.id);
+    // 行き先のストーリー（親なしは ROOT）に落とせるか
+    const accepts = (parent: string) => parent === ROOT || parent === current || index.openStory.has(parent);
     switch (row.kind) {
       case 'task': {
         const parent = index.taskParent.get(row.id);
-        return parent !== undefined && (parent === ROOT || index.openStory.has(parent))
-          ? { before: true, after: true, into: false }
-          : NONE;
+        return parent !== undefined && accepts(parent) ? AROUND : NONE;
       }
       case 'story':
-        return index.openStory.has(row.id) ? { before: false, after: false, into: true } : NONE;
+        return accepts(row.id) ? INTO : NONE;
       case 'tail':
-        if (row.parent === 'root') return { before: true, after: true, into: false };
-        return row.parent === 'story' && index.openStory.has(row.id)
-          ? { before: true, after: true, into: false }
-          : NONE;
+        if (row.parent === 'root') return AROUND;
+        return row.parent === 'story' && accepts(row.id) ? AROUND : NONE;
+      case 'slot':
+        return row.parent === 'task-root' ? INTO : NONE;
       default:
         return NONE;
     }
   }
+  const current = index.storyParent.get(item.id);
+  const accepts = (parent: string) => parent === ROOT || parent === current || index.openEpic.has(parent);
   switch (row.kind) {
     case 'story': {
       const parent = index.storyParent.get(row.id);
-      return parent !== undefined && (parent === ROOT || index.openEpic.has(parent))
-        ? { before: true, after: true, into: false }
-        : NONE;
+      return parent !== undefined && accepts(parent) ? AROUND : NONE;
     }
     case 'epic':
-      return index.openEpic.has(row.id) ? { before: false, after: false, into: true } : NONE;
+      return accepts(row.id) ? INTO : NONE;
     case 'tail':
-      return row.parent === 'epic' && index.openEpic.has(row.id) ? { before: true, after: true, into: false } : NONE;
+      return row.parent === 'epic' && accepts(row.id) ? AROUND : NONE;
+    case 'slot':
+      return row.parent === 'story-root' ? INTO : NONE;
     default:
       return NONE;
   }
@@ -158,8 +183,8 @@ function destination(
     const insertion = insertAround(lists[parent] ?? [], item.id, row.id, operation);
     return insertion === null ? null : { parent, insertion };
   }
-  // 親の行に重ねる（into）か、折りたたみの行と空の案内の行の前後は、その配下の末尾
-  const parent = row.kind === 'tail' ? (row.parent === 'root' ? ROOT : row.id) : row.id;
+  // 親の行に重ねる（into）か、折りたたみの行と空の案内の行の前後は、その配下の末尾。slot と親なしの折りたたみの行は、親なしの末尾
+  const parent = row.kind === 'slot' || (row.kind === 'tail' && row.parent === 'root') ? ROOT : row.id;
   const insertion = insertAtEnd(lists[parent] ?? [], item.id);
   return insertion === null ? null : { parent, insertion };
 }

@@ -10,9 +10,8 @@ import {
   monitorForElements,
 } from '@atlaskit/pragmatic-drag-and-drop/element/adapter';
 import type { ElementDragPayload } from '@atlaskit/pragmatic-drag-and-drop/element/adapter';
+import { DropFlash } from './drop-flash.svelte.ts';
 import { insertAround, type Insertion } from './list-drop.ts';
-
-const FLASH_MS = 900;
 
 type Cleanup = () => void;
 
@@ -35,8 +34,7 @@ export class ListDnd {
   // 落とす位置の印
   mark = $state<Mark | null>(null);
   // 落として、光らせている行
-  flashed = $state<string | null>(null);
-  #flashTimer: ReturnType<typeof setTimeout> | undefined;
+  readonly #flashed = new DropFlash<string>();
 
   constructor(options: ListDndOptions) {
     this.#options = options;
@@ -46,10 +44,13 @@ export class ListDnd {
     return this.mark?.id === id ? this.mark.edge : undefined;
   }
 
+  isFlashing(id: string): boolean {
+    return this.#flashed.value === id;
+  }
+
+  // 落とした行を、少しのあいだ光らせる（同じ行を続けて落としても、もう一度光る）
   flash(id: string): void {
-    clearTimeout(this.#flashTimer);
-    this.flashed = id;
-    this.#flashTimer = setTimeout(() => (this.flashed = null), FLASH_MS);
+    this.#flashed.show(id);
   }
 
   #sourceOf(source: ElementDragPayload): string | null {

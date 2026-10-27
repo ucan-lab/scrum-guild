@@ -25,10 +25,9 @@ import {
   type Operation,
   type TreeIndex,
 } from './backlog-drop.ts';
+import { DropFlash } from './drop-flash.svelte.ts';
 
 const SOURCE_TYPE = 'backlog-row';
-// 落とした行を光らせる長さ。design/tokens.css の --duration-flash（800ms）より少し長くして、演出の終わりまで印を残す
-const FLASH_MS = 900;
 
 type Cleanup = () => void;
 
@@ -54,11 +53,10 @@ export class BacklogDnd {
   // 落とす位置の印
   mark = $state<DropMark | null>(null);
   // 落として、光らせている行
-  flashed = $state<DragItem | null>(null);
+  readonly #flashed = new DropFlash<DragItem>();
   // 木が読み直されるたびに進める。つかんだ時の値と違えば、そのドラッグは取りやめる
   #generation = 0;
   #grabbed = 0;
-  #flashTimer: ReturnType<typeof setTimeout> | undefined;
 
   constructor(options: BacklogDndOptions) {
     this.#options = options;
@@ -75,23 +73,40 @@ export class BacklogDnd {
   }
 
   isFlashing(kind: DragItem['kind'], id: string): boolean {
-    return this.flashed?.kind === kind && this.flashed.id === id;
+    const flashed = this.#flashed.value;
+    return flashed?.kind === kind && flashed.id === id;
   }
 
-  // 落とした行を、少しのあいだ光らせる
+  // 落とした行を、少しのあいだ光らせる（同じ行を続けて落としても、もう一度光る）
   flash(item: DragItem): void {
-    clearTimeout(this.#flashTimer);
-    this.flashed = item;
-    this.#flashTimer = setTimeout(() => (this.flashed = null), FLASH_MS);
+    this.#flashed.show(item);
   }
 
-  // 木が読み直された。つかんでいるドラッグは取りやめる
+  // 木が読み直された。つかんでいるドラッグは取りやめる（離しても何も送らない）
   reset(): void {
     this.#generation++;
     this.item = null;
     this.mark = null;
-    clearTimeout(this.#flashTimer);
-    this.flashed = null;
+    this.#flashed.clear();
+  }
+
+  // ドラッグの出来事の受け口。monitor() が呼び、判定の結果（Drop。落とせない場所は null）を渡す。
+  // つかんでから木が読み直されていたら、そのドラッグは取りやめる
+  grab(item: DragItem | null): void {
+    this.item = item;
+    this.mark = null;
+    this.#grabbed = this.#generation;
+  }
+
+  hover(drop: Drop | null): void {
+    this.#show(this.#grabbed === this.#generation ? drop : null);
+  }
+
+  release(drop: Drop | null): void {
+    const stale = this.#grabbed !== this.#generation;
+    this.item = null;
+    this.mark = null;
+    if (drop !== null && !stale) this.#options.onDrop(drop);
   }
 
   // つまみ（.grip）。つかんだ間は、行全体を見た目の影にする
@@ -142,19 +157,10 @@ export class BacklogDnd {
     return combine(
       monitorForElements({
         canMonitor: ({ source }) => itemOf(source) !== null,
-        onDragStart: ({ source }) => {
-          this.item = itemOf(source);
-          this.mark = null;
-          this.#grabbed = this.#generation;
-        },
-        onDrag: ({ source, location }) => this.#show(this.#resolve(source, location)),
-        onDropTargetChange: ({ source, location }) => this.#show(this.#resolve(source, location)),
-        onDrop: ({ source, location }) => {
-          const drop = this.#resolve(source, location);
-          this.item = null;
-          this.mark = null;
-          if (drop !== null) this.#options.onDrop(drop);
-        },
+        onDragStart: ({ source }) => this.grab(itemOf(source)),
+        onDrag: ({ source, location }) => this.hover(this.#resolve(source, location)),
+        onDropTargetChange: ({ source, location }) => this.hover(this.#resolve(source, location)),
+        onDrop: ({ source, location }) => this.release(this.#resolve(source, location)),
       }),
       autoScrollWindowForElements({ canScroll: ({ source }) => itemOf(source) !== null }),
     );
@@ -164,8 +170,6 @@ export class BacklogDnd {
     source: ElementDragPayload,
     location: { current: { dropTargets: readonly { data: Record<string | symbol, unknown> }[] } },
   ): Drop | null {
-    // ドラッグの間に木が読み直されたら取りやめる
-    if (this.#grabbed !== this.#generation) return null;
     const item = itemOf(source);
     const target = location.current.dropTargets[0];
     if (item === null || target === undefined) return null;

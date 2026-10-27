@@ -361,12 +361,70 @@ test('畳んだストーリーの行やタスクの無いストーリーの行�
   expect(await collect()).toEqual([]);
 });
 
+test('親なしの段が空でも、つかんでいる間だけ出る落とし先に落として、タスクを親なしへ引き出せる', async ({ page }) => {
+  const collect = await watchViolations(page);
+  await createWorkspace(page, '引き出しパーティ', 'game');
+  await addStory(page, 'ポイント制度を公開する');
+  await page.getByRole('button', { name: 'クエストを足す: ポイント制度を公開する' }).click();
+  const taskDialog = page.getByRole('dialog', { name: '依頼を出す' });
+  await taskDialog.getByLabel('タイトル').fill('付与のバッチを書く');
+  await taskDialog.getByRole('button', { name: '依頼を出す' }).click();
+  await expect(taskDialog).toBeHidden();
+  await expect(rootTitles(page)).toHaveCount(0);
+  // つかんでいないときは、落とし先を出さない
+  await expect(page.locator('.tree-slot')).toHaveCount(0);
+
+  const slot = page.locator('.tree-slot .dropzone');
+  await dragTo(page, taskGrip(page, '付与のバッチを書く'), slot, 'middle', async () => {
+    // つかんでいる間は出て、重ねると囲む
+    await expect(slot).toHaveClass(/is-over/);
+    await expect(slot).toContainText('親なしのクエストへ移す');
+  });
+  await expect(rootTitles(page)).toHaveText(['付与のバッチを書く']);
+  await expect(storyGroup(page, 'ポイント制度を公開する').locator('.entry-title')).toHaveCount(0);
+  await expect(page.locator('.tree-slot')).toHaveCount(0);
+  await expect(
+    page.getByRole('status').filter({ hasText: '「付与のバッチを書く」を親なしの末尾へ移しました' }),
+  ).toBeAttached();
+
+  await page.waitForLoadState('networkidle');
+  await page.reload();
+  await expect(rootTitles(page)).toHaveText(['付与のバッチを書く']);
+  expect(await collect()).toEqual([]);
+});
+
+test('終了したワークスペースでは、つまみを出さない', async ({ page }) => {
+  const name = '終了したつまみパーティ';
+  await createWorkspace(page, name, 'game');
+  await addTask(page, '見積もりを送る');
+  await expect(page.locator('.entry .grip')).toBeVisible();
+  const workspaceUrl = page.url();
+  // 管理の画面から終了する
+  await page.goto('/aoba/admin');
+  const row = page.getByRole('region', { name: 'パーティ', exact: true }).locator('tbody tr', { hasText: name });
+  await row.getByRole('button', { name: `「${name}」を終了する` }).click();
+  await page
+    .getByRole('dialog', { name: `「${name}」を終了しますか？` })
+    .getByRole('button', { name: `「${name}」を終了する` })
+    .click();
+  await expect(row.locator('.chip')).toHaveText(/^終了 \d{4}-\d{2}-\d{2}$/);
+
+  await page.goto(workspaceUrl);
+  await expect(rootTitles(page)).toHaveText(['見積もりを送る']);
+  await expect(page.locator('.grip')).toHaveCount(0);
+  await expect(page.locator('.action-note')).toHaveCount(0);
+});
+
 test('狭い幅ではつまみを出さず、題の列も空けない', async ({ page }) => {
   await createWorkspace(page, 'つまみのパーティ', 'game');
   await addTask(page, '見積もりを送る');
   await expect(page.locator('.entry .grip')).toBeVisible();
+  await expect(page.locator('.drag-note')).toBeVisible();
   await page.setViewportSize({ width: 390, height: 900 });
   await expect(page.locator('.entry .grip')).toBeHidden();
+  // つまみに触れる案内の文も隠し、「上へ」「下へ」の案内は残す
+  await expect(page.locator('.drag-note')).toBeHidden();
+  await expect(page.getByText(/上にあるものほど優先します/)).toBeVisible();
   // つまみの列を空けないので、題は左端から始まる
   const row = await page.locator('.entry').boundingBox();
   const title = await page.locator('.entry-title').boundingBox();

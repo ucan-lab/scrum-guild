@@ -934,7 +934,8 @@ a.choice > div > span, .choice.is-static > div > span { display: block; }
 
 /* ===== 並べ替えられる一覧（列、決まった欄、区分） ===== */
 .order-list { list-style: none; margin: 0; padding: 0; border: 1px solid var(--color-line); border-left: var(--rule-double); border-radius: var(--radius-1); background: var(--color-surface); }
-.order-list li { --row-indent: var(--space-3); display: grid; grid-template-columns: 24px minmax(0, 1fr) auto; gap: var(--space-2); align-items: center; padding: var(--space-2) var(--space-3); position: relative; }
+.order-list li { --row-indent: var(--space-3); display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: var(--space-2); align-items: center; padding: var(--space-2) var(--space-3); position: relative; }
+.order-list li:has(> .grip) { grid-template-columns: 24px minmax(0, 1fr) auto; }
 .order-list li + li { border-top: 1px solid var(--color-rule); }
 /* 行の先頭のつまみ（飾りで、aria-hidden）。つかむ場所はここだけで、題や入力欄の文字は選べる。
    ドラッグの代わりは「上へ」「下へ」。つかめない行（完了にした直後の行、エピックの行）は .is-off にして、列だけ空ける */
@@ -998,9 +999,19 @@ a.choice > div > span, .choice.is-static > div > span { display: block; }
 [data-drop="after"]::after { bottom: -4px; }
 .tree-row[data-drop="into"] { background: var(--color-accent-soft); outline: 1px solid var(--color-accent); outline-offset: -1px; }
 .is-dragging { opacity: 0.4; transition: opacity var(--duration-fast); }
-@keyframes drop-flash { from { background-color: var(--color-accent-soft); } to { background-color: transparent; } }
-.entry.is-dropped, .tree-row.is-dropped, .order-list li.is-dropped { animation: drop-flash var(--duration-flash) ease-out; }
+/* 地の色と accent-soft の差が小さいテーマ（シンプルの暗など）でも見えるよう、光る間は accent の細い枠も同じ長さで出す */
+@keyframes drop-flash {
+  from { background-color: var(--color-accent-soft); outline-color: var(--color-accent); }
+  to { background-color: transparent; outline-color: transparent; }
+}
+.entry.is-dropped, .tree-row.is-dropped, .order-list li.is-dropped {
+  outline: 1px solid transparent; outline-offset: -1px; animation: drop-flash var(--duration-flash) ease-out;
+}
+/* 親なしの段が空のとき、行をつかんでいる間だけ出す落とし先。中身は .dropzone で、重ねると .is-over にする */
+.tree-slot { padding: var(--space-3) var(--space-4); }
+/* つまみのドラッグに触れる案内の文。つまみを出さない条件（下）では、この文も隠す */
 @media (max-width: 760px), (pointer: coarse) {
+  .drag-note { display: none; }
   .grip { display: none; }
   .entry.has-grip, .tree-row.has-grip { --grip-col: initial; }
   .order-list li:has(> .grip) { grid-template-columns: minmax(0, 1fr) auto; }

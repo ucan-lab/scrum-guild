@@ -9,7 +9,7 @@ import {
   type DropRow,
 } from './backlog-drop.ts';
 
-// e1 は開いたエピック、e2 は完了か中止したエピック。s5 は完了したストーリー
+// e1 は開いたエピック、e2 は完了か中止したエピック。s5 は完了したストーリー。t8 は画面で完了にして、行が残っているタスク
 const index = indexTree({
   openEpics: ['e1'],
   storyLists: {
@@ -17,7 +17,10 @@ const index = indexTree({
       { id: 's1', open: true },
       { id: 's2', open: true },
     ],
-    e2: [{ id: 's3', open: true }],
+    e2: [
+      { id: 's3', open: true },
+      { id: 's6', open: true },
+    ],
     [ROOT]: [
       { id: 's4', open: true },
       { id: 's5', open: false },
@@ -26,9 +29,10 @@ const index = indexTree({
   taskLists: {
     s1: ['t1', 't2', 't3'],
     s2: [],
-    s5: ['t9'],
+    s5: ['t9', 't10'],
     [ROOT]: ['t7', 't8'],
   },
+  completedTasks: ['t8'],
 });
 
 const task = (id: string): DragItem => ({ kind: 'task', id });
@@ -72,6 +76,28 @@ describe('availableOperations（タスクを運ぶとき）', () => {
     const { before, after } = availableOperations(index, task('t1'), storyRow('s2'));
     expect(before || after).toBe(false);
   });
+
+  test('今の親の中なら、親が完了したストーリーでも並べ替えられる（サーバーが断るのは親が変わるときだけ）', () => {
+    expect(availableOperations(index, task('t9'), taskRow('t10'))).toEqual(only('before', 'after'));
+    expect(availableOperations(index, task('t9'), storyRow('s5'))).toEqual(only('into'));
+    expect(availableOperations(index, task('t9'), tail('story', 's5'))).toEqual(only('before', 'after'));
+    // 完了していない親へは移せ、別の完了した親へは移せない
+    expect(availableOperations(index, task('t9'), storyRow('s2'))).toEqual(only('into'));
+    expect(availableOperations(index, task('t1'), taskRow('t10'))).toEqual(only());
+  });
+
+  test('画面で完了にしたタスクは、どこにも落とせない。その行の前後には落とせる', () => {
+    expect(availableOperations(index, task('t8'), taskRow('t1'))).toEqual(only());
+    expect(availableOperations(index, task('t8'), storyRow('s2'))).toEqual(only());
+    expect(resolveDrop(index, task('t8'), taskRow('t7'), 'before')).toBeNull();
+    expect(resolveDrop(index, task('t8'), storyRow('s2'), 'into')).toBeNull();
+    expect(resolveDrop(index, task('t7'), taskRow('t8'), 'after')?.move).toMatchObject({ afterId: 't8', index: 1 });
+  });
+
+  test('親なしの段が空のときの落とし先（slot）は、タスクをつかんでいるときだけ囲める', () => {
+    expect(availableOperations(index, task('t1'), { kind: 'slot', parent: 'task-root' })).toEqual(only('into'));
+    expect(availableOperations(index, task('t1'), { kind: 'slot', parent: 'story-root' })).toEqual(only());
+  });
 });
 
 describe('availableOperations（ストーリーを運ぶとき）', () => {
@@ -91,6 +117,23 @@ describe('availableOperations（ストーリーを運ぶとき）', () => {
     expect(availableOperations(index, story('s4'), tail('epic', 'e2'))).toEqual(only());
     expect(availableOperations(index, story('s4'), tail('story', 's2'))).toEqual(only());
     expect(availableOperations(index, story('s4'), taskRow('t1'))).toEqual(only());
+  });
+
+  test('今のエピックの中なら、エピックが完了か中止していても並べ替えられる', () => {
+    expect(availableOperations(index, story('s3'), storyRow('s6'))).toEqual(only('before', 'after'));
+    expect(availableOperations(index, story('s3'), epicRow('e2'))).toEqual(only('into'));
+    expect(resolveDrop(index, story('s3'), storyRow('s6'), 'after')?.move).toMatchObject({
+      parentId: 'e2',
+      afterId: 's6',
+      reparent: false,
+    });
+    // 別のエピックからは入れない
+    expect(availableOperations(index, story('s1'), storyRow('s6'))).toEqual(only());
+  });
+
+  test('親のないストーリーが0件のときの落とし先（slot）は、ストーリーをつかんでいるときだけ囲める', () => {
+    expect(availableOperations(index, story('s1'), { kind: 'slot', parent: 'story-root' })).toEqual(only('into'));
+    expect(availableOperations(index, story('s1'), { kind: 'slot', parent: 'task-root' })).toEqual(only());
   });
 });
 
@@ -248,6 +291,40 @@ describe('resolveDrop（ストーリー）', () => {
   });
 });
 
+describe('resolveDrop（親なしの段が空のときの落とし先）', () => {
+  // ストーリーの下にだけタスクがあり、親なしのタスクも親のないストーリーも無い木
+  const sparse = indexTree({
+    openEpics: ['e1'],
+    storyLists: { e1: [{ id: 's1', open: true }] },
+    taskLists: { s1: ['t1', 't2'] },
+    completedTasks: [],
+  });
+
+  test('タスクを引き出すと、親なしの末尾に入る（直前の行を渡さない）', () => {
+    const drop = resolveDrop(sparse, task('t1'), { kind: 'slot', parent: 'task-root' }, 'into');
+    expect(drop?.move).toEqual({
+      kind: 'task',
+      id: 't1',
+      parentId: null,
+      afterId: undefined,
+      index: 0,
+      atEnd: true,
+      reparent: true,
+    });
+    expect(drop?.mark).toEqual({ row: { kind: 'slot', parent: 'task-root' }, operation: 'into' });
+  });
+
+  test('ストーリーを引き出すと、親なしの末尾に入る', () => {
+    const drop = resolveDrop(sparse, story('s1'), { kind: 'slot', parent: 'story-root' }, 'into');
+    expect(drop?.move).toMatchObject({ kind: 'story', parentId: null, afterId: undefined, index: 0, reparent: true });
+  });
+
+  test('つかんだ行の種類と合わない落とし先には落とせない', () => {
+    expect(resolveDrop(sparse, task('t1'), { kind: 'slot', parent: 'story-root' }, 'into')).toBeNull();
+    expect(resolveDrop(sparse, story('s1'), { kind: 'slot', parent: 'task-root' }, 'into')).toBeNull();
+  });
+});
+
 describe('rowKey', () => {
   test('行の種類と ID から、印を付ける要素を結ぶ名前を作る', () => {
     expect(rowKey(taskRow('t1'))).toBe('task:t1');
@@ -255,5 +332,6 @@ describe('rowKey', () => {
     expect(rowKey(epicRow('e1'))).toBe('epic:e1');
     expect(rowKey(tail('story', 's2'))).toBe('tail:story:s2');
     expect(rowKey(tail('root'))).toBe('tail:root:');
+    expect(rowKey({ kind: 'slot', parent: 'task-root' })).toBe('slot:task-root');
   });
 });

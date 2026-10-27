@@ -63,15 +63,18 @@ export async function dragTo(
   beforeRelease?: () => Promise<void>,
 ): Promise<void> {
   const from = await handle.boundingBox();
-  const to = await row.boundingBox();
-  if (from === null || to === null) throw new Error('つまみか行が見えていない');
+  if (from === null) throw new Error('つまみが見えていない');
   const startX = from.x + from.width / 2;
   const startY = from.y + from.height / 2;
-  const endX = to.x + to.width / 2;
-  const endY = where === 'top' ? to.y + 3 : where === 'bottom' ? to.y + to.height - 3 : to.y + to.height / 2;
   await page.mouse.move(startX, startY);
   await page.mouse.down();
   await page.mouse.move(startX + 4, startY + 4, { steps: 3 });
+  // 行き先の行は、つかんだ後に出るもの（親なしの段が空のときの落とし先）もあるので、つかんでから位置を測る
+  await row.waitFor({ state: 'visible' });
+  const to = await row.boundingBox();
+  if (to === null) throw new Error('行が見えていない');
+  const endX = to.x + to.width / 2;
+  const endY = where === 'top' ? to.y + 3 : where === 'bottom' ? to.y + to.height - 3 : to.y + to.height / 2;
   await page.mouse.move(endX, endY, { steps: 12 });
   // 同じ場所でもう一度動かし、重ねた行の更新を確かにする
   await page.mouse.move(endX + 1, endY);

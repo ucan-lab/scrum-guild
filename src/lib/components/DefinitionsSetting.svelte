@@ -319,17 +319,15 @@
       {#each items as item, index (item.id)}
         <li
           class:is-dragging={dnd.dragging === item.id}
-          class:is-dropped={dnd.flashed === item.id}
+          class:is-dropped={dnd.isFlashing(item.id)}
           data-definition-id={item.id}
           data-drop={dnd.markOf(item.id)}
           {@attach canWrite ? dnd.target(item.id) : undefined}
         >
           <!-- つかむのは先頭のつまみだけ（飾りで aria-hidden。キーボードと読み上げの人は「上へ」「下へ」）。
-               書き込めない一覧と送っている間は、列だけ空ける -->
-          {#if canWrite && !busy}
+               書き込めない一覧には出さない。送っている間は出したまま、つかめない（enabled が偽） -->
+          {#if canWrite}
             <span class="grip" aria-hidden="true" {@attach dnd.handle(item.id)}><Icon name="grip" /></span>
-          {:else}
-            <span class="grip is-off" aria-hidden="true"></span>
           {/if}
           <div class="order-main">
             {#if canWrite}

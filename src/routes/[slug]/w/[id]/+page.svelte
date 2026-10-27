@@ -187,6 +187,7 @@
         ]),
       ),
       taskLists: Object.fromEntries(Object.entries(taskLists).map(([key, list]) => [key, list.map((task) => task.id)])),
+      completedTasks: completedIds,
     }),
   );
   const dnd = new BacklogDnd({
@@ -204,6 +205,9 @@
   });
   // 親なしのタスクの折りたたみの行は、親なしの末尾の落とし先
   const rootTail: DropRow = { kind: 'tail', parent: 'root', id: ROOT };
+  // 親なしの段が空のとき、行をつかんでいる間だけ出す落とし先（親なしのタスクと、親のないストーリーそれぞれ）
+  const taskSlot: DropRow = { kind: 'slot', parent: 'task-root' };
+  const storySlot: DropRow = { kind: 'slot', parent: 'story-root' };
 
   function storyRows(story: BacklogStory): BacklogTask[] {
     return taskLists[story.id] ?? [];
@@ -566,33 +570,48 @@
     send(() => callOperation(taskMove, input, { slug: page.params.slug ?? '' }), 'task');
   }
 
-  // 親を移して末尾に置いたときの読み上げ
-  function taskParentAnnouncement(task: BacklogTask, storyId: string | null): string {
+  // 親を移したときの読み上げ。index（0 始まり）を渡すと「N 番目」まで伝え、渡さなければ「末尾へ」と伝える
+  function taskParentAnnouncement(task: BacklogTask, storyId: string | null, index?: number): string {
     const parent = storyId === null ? undefined : allStories.find((story) => story.id === storyId);
     // 親のストーリーがエピックの下なら、エピックの題も添える（同じ題のストーリーが、別のエピックの下にありうるため）
     const parentEpic = storyId === null ? undefined : parentEpicOf(storyId);
-    if (parent === undefined) return t('moveAnnouncedRoot', { title: task.title });
-    if (parentEpic === undefined) {
-      return t('moveAnnouncedUnder', { title: task.title, story: t('story'), parent: parent.title });
+    const at = index === undefined ? undefined : index + 1;
+    if (parent === undefined) {
+      return at === undefined
+        ? t('moveAnnouncedRoot', { title: task.title })
+        : t('moveAnnouncedAtRoot', { title: task.title, index: at });
     }
-    return t('moveAnnouncedUnderEpic', {
+    if (parentEpic === undefined) {
+      const words = { title: task.title, story: t('story'), parent: parent.title };
+      return at === undefined ? t('moveAnnouncedUnder', words) : t('moveAnnouncedAtUnder', { ...words, index: at });
+    }
+    const words = {
       title: task.title,
       epic: t('epic'),
       epicTitle: parentEpic.title,
       story: t('story'),
       parent: parent.title,
-    });
+    };
+    return at === undefined
+      ? t('moveAnnouncedUnderEpic', words)
+      : t('moveAnnouncedAtUnderEpic', { ...words, index: at });
   }
 
-  function storyParentAnnouncement(story: BacklogStory, epicId: string | null): string {
+  function storyParentAnnouncement(story: BacklogStory, epicId: string | null, index?: number): string {
     const parent = epicId === null ? undefined : epics.find((epic) => epic.id === epicId);
-    return parent === undefined
-      ? t('moveAnnouncedRoot', { title: story.title })
-      : t('moveAnnouncedUnder', { title: story.title, story: t('epic'), parent: parent.title });
+    const at = index === undefined ? undefined : index + 1;
+    if (parent === undefined) {
+      return at === undefined
+        ? t('moveAnnouncedRoot', { title: story.title })
+        : t('moveAnnouncedAtRoot', { title: story.title, index: at });
+    }
+    const words = { title: story.title, story: t('epic'), parent: parent.title };
+    return at === undefined ? t('moveAnnouncedUnder', words) : t('moveAnnouncedAtUnder', { ...words, index: at });
   }
 
   // つまみのドラッグで落とした。ボタンの並べ替えと同じく、先に画面を動かしてから送る。
-  // 親を移して末尾に置いたときは移した先を、それ以外は何番目かを読み上げる。行は動くが、フォーカスは動かさない（マウスの操作）。
+  // 親を移したときは、移した先の親を含む文（末尾なら「末尾へ」、途中なら「N 番目」）を、同じ親の中なら「N 番目」を読み上げる。
+  // 行は動くが、フォーカスは動かさない（マウスの操作）。
   // 落とした行は光らせる。畳まれた親は開く。直前の行は、末尾に置くときだけ省く
   function dropTask(move: DropMove): void {
     if (workspace === null) return;
@@ -608,8 +627,8 @@
     if (move.parentId !== null) expandStory(move.parentId);
     dnd.flash({ kind: 'task', id: task.id });
     void announce(
-      move.atEnd && move.reparent
-        ? taskParentAnnouncement(task, move.parentId)
+      move.reparent
+        ? taskParentAnnouncement(task, move.parentId, move.atEnd ? undefined : move.index)
         : t('moveAnnounced', { title: task.title, index: move.index + 1 }),
     );
     const input = {
@@ -633,8 +652,8 @@
     if (move.parentId !== null) epicRows[move.parentId]?.expand();
     dnd.flash({ kind: 'story', id: story.id });
     void announce(
-      move.atEnd && move.reparent
-        ? storyParentAnnouncement(story, move.parentId)
+      move.reparent
+        ? storyParentAnnouncement(story, move.parentId, move.atEnd ? undefined : move.index)
         : t('moveAnnounced', { title: story.title, index: move.index + 1 }),
     );
     const input = {
@@ -671,6 +690,16 @@
     </title>
   {/if}
 </svelte:head>
+
+{#snippet dropSlot(row: DropRow, label: string)}
+  <!-- 親なしの段が空のとき、行をつかんでいる間だけ出す落とし先。重ねると囲み（.is-over）、離すと親なしの末尾に入る -->
+  <div class="tree-slot">
+    <div class="dropzone" class:is-over={rowDnd?.markOf(row) === 'into'} {@attach rowDnd?.target(row)}>
+      <Icon name="swap" />
+      <span class="dropzone-text"><b>{label}</b></span>
+    </div>
+  </div>
+{/snippet}
 
 {#snippet taskRow(task: BacklogTask)}
   {@const place = taskPlaces[task.id]}
@@ -775,7 +804,10 @@
   {:else}
     <section class="section" aria-label={t('backlogTasksLabel', { backlog: t('backlog'), task: t('task') })}>
       {#if canWrite}
-        <p class="action-note">{t('backlogOrderNote', { story: t('story'), task: t('task') })}</p>
+        <p class="action-note">
+          {t('backlogOrderNote', { story: t('story'), task: t('task') })}
+          <span class="drag-note">{t('backlogDragNote')}</span>
+        </p>
       {/if}
       <div class="tree">
         {#each epics as epic (epic.id)}
@@ -798,6 +830,9 @@
         {#each rootStoryList as story (story.id)}
           {@render storyRow(story)}
         {/each}
+        {#if rootStoryList.length === 0 && rowDnd?.item?.kind === 'story'}
+          {@render dropSlot(storySlot, t('dropSlotStory', { story: t('story') }))}
+        {/if}
         {#if rootRows.length > 0 || tree.completed_count > 0}
           <div>
             {#if rootRows.length === 0 && epics.length === 0 && tree.stories.length === 0}
@@ -818,6 +853,8 @@
               </p>
             {/if}
           </div>
+        {:else if rowDnd?.item?.kind === 'task'}
+          {@render dropSlot(taskSlot, t('dropSlotTask', { task: t('task') }))}
         {/if}
       </div>
     </section>

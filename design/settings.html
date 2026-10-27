@@ -32,7 +32,7 @@ function orderList(items, opts = {}) {
         <button class="icon-btn" type="button" aria-label="下へ" ${i === n - 1 ? "disabled" : ""}>${icon("down")}</button>
         <button class="icon-btn is-danger" type="button" aria-label="削除" ${opts.lockLast && n === 1 ? "disabled" : ""}>${icon("trash")}</button>
       </span></li>`).join("")}
-    ${opts.fixed ? `<li><span></span><span class="fixed">${opts.fixed}</span><span class="props-note">常に末尾</span></li>` : ""}
+    ${opts.fixed ? `<li><span class="grip is-off" aria-hidden="true"></span><span class="fixed">${opts.fixed}</span><span class="props-note">常に末尾</span></li>` : ""}
   </ol>`;
 }
 function setting(title, desc, body) {
