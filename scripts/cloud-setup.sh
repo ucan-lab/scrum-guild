@@ -133,14 +133,13 @@ if [ -n "$repo" ] && cd "$repo"; then
   # root で動かして後のセッションに残さないよう、依存のスクリプトと .pnpmfile を動かさない（毎回の session-start.sh は動かす）。
   # 下の playwright だけは、ロックファイルから入れた Playwright 本体のコードを root で動かす
   log=$(mktemp)
-  if within 120 pnpm install --frozen-lockfile --ignore-scripts --ignore-pnpmfile >"$log" 2>&1; then
-    # 記録は伏せる処理を通していないので、スナップショットに残さない
-    rm -f "$log"
-  else
-    warn "pnpm install が失敗した（$log の末尾）"
+  if ! within 120 pnpm install --frozen-lockfile --ignore-scripts --ignore-pnpmfile >"$log" 2>&1; then
+    warn "pnpm install が失敗した（記録の末尾）"
     # .npmrc の認証の値や、URL に埋めた user:pass が出力に混ざっても出さない
     tail -n 20 "$log" | grep -viE 'token|auth|password|secret' | sed -E 's#://[^/@[:space:]]+@#://***@#g' >&2
   fi
+  # 記録は伏せる処理を通していないので、スナップショットに残さない
+  rm -f "$log"
 
   # 配布元（cdn.playwright.dev、playwright.download.prss.microsoft.com）を許可ドメインに足していないと失敗する。
   # 動かすのに要るライブラリは apt で入れる。apt の失敗でブラウザの取得を止めないよう、別の段にする
