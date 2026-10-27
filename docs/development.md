@@ -329,7 +329,7 @@ Bash の判定を `permissions.deny` に置かないのは、規則が前方一�
 
 | 仕組み | 中身 |
 | --- | --- |
-| セットアップスクリプト（`scripts/cloud-setup.sh`） | Node を nodejs.org から `/opt/node<主版>` に入れる（`.node-version` が主版だけならその最新、`x.y.z` ならその版。足りなければ `libatomic1` を apt で足す）。`/etc/profile.d` と `/root/.bashrc` の先頭で PATH の前に置き、初期化ファイルを読むシェル（セッションの Bash）で選ばれるようにする。`packageManager` の版の pnpm を `npm install -g` で入れ、`pnpm install --frozen-lockfile --ignore-scripts` で pnpm のストアを温め、`playwright install chromium` と `playwright install-deps chromium` で chromium と動かすのに要るライブラリを入れる。リポジトリが見つからなければ Node と pnpm だけを入れる |
+| セットアップスクリプト（`scripts/cloud-setup.sh`） | Node を nodejs.org から `/opt/node<主版>` に入れる（`.node-version` が主版だけならその最新、`x.y.z` ならその版。足りなければ `libatomic1` を apt で足す）。`/etc/profile.d` と `/root/.bashrc` の先頭で PATH の前に置き、初期化ファイルを読むシェル（セッションの Bash）で選ばれるようにする。`packageManager` の版の pnpm を `npm install -g` で入れ、`pnpm install --frozen-lockfile --ignore-scripts` で pnpm のストアを温め、`playwright install chromium` と `playwright install-deps chromium` で chromium と動かすのに要るライブラリを入れ、組んだ `node_modules` は消す（毎回の `pnpm install` にスクリプトまで組ませるため）。リポジトリが見つからなければ Node と pnpm だけを入れる |
 | `session-start.sh` | 「Claude の設定とフック」の表のとおり。ストアが温まっているので、取得は差分だけになる。フックは初期化ファイルを読まないので、VM の既定の Node 22 で動く（`engines` の下限より新しい） |
 
 スクリプトは、終了コードが 0 以外だとセッションが始まらないので、どの段の失敗も警告にとどめて 0 で終える。約5分を超えるとスナップショットが作られないので、全体を 270 秒の予算に収め、各段の上限を残りの時間で切り詰める（残りが 20 秒を切れば後の段を飛ばす）。スナップショットを作るときの clone のブランチの中身を root で動かして後のセッションに残さないよう、依存のスクリプトと `.pnpmfile.cjs` は動かさない（`--ignore-scripts --ignore-pnpmfile`）。

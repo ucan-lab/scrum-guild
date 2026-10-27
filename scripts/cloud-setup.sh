@@ -149,6 +149,9 @@ if [ -n "$repo" ] && cd "$repo"; then
     within 90 node_modules/.bin/playwright install-deps chromium >/dev/null 2>&1 \
       || warn "chromium の動くライブラリを apt で入れられなかった"
   fi
+  # --ignore-scripts で組んだ node_modules を残すと、session-start.sh の pnpm install が組み済みとみなし、
+  # esbuild と workerd のビルドが走らないままになりうる。ストアと chromium だけを残す
+  rm -rf node_modules
 fi
 
 # セッションの Bash と同じく、初期化ファイルを読んだシェルで選ばれる版を確かめる
