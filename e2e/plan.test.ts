@@ -167,6 +167,15 @@ test('スクラムの言葉: ストーリーごとと1件ずつ入れ、外し�
   await search.fill('');
   await expect(send).toBeChecked();
   await expect(form).not.toBeChecked();
+  // 検索欄で Enter を押しても送らない（選んだものが入ってしまわない）
+  let adds = 0;
+  page.on('request', (request) => {
+    if (request.url().endsWith('/sprint-task-add')) adds++;
+  });
+  await search.press('Enter');
+  await expect(picker).toBeVisible();
+  await expect(picker.locator('.callout')).toHaveCount(0);
+  expect(adds).toBe(0);
   await send.uncheck();
   // 見出しを選ぶと配下がまとめて選ばれ、1件外すと見出しは一部だけの印（indeterminate）になる
   await story.check();

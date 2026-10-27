@@ -269,6 +269,10 @@
         type="search"
         bind:this={searchInput}
         bind:value={query}
+        onkeydown={(event) => {
+          // 検索欄の Enter で、選んだものを送らない（入れるのは主ボタンだけ）
+          if (event.key === 'Enter' && !event.isComposing) event.preventDefault();
+        }}
         aria-label={t('sprintTaskPickSearch', { task: t('task'), story: t('story') })}
         placeholder={t('sprintTaskPickSearchPlaceholder')}
         autocomplete="off"
