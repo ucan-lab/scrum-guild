@@ -1,12 +1,15 @@
+import { fileURLToPath } from 'node:url';
 import adapter from '@sveltejs/adapter-static';
 import { sveltekit } from '@sveltejs/kit/vite';
 import { defineConfig } from 'vite';
 import { devPorts } from './scripts/dev-ports.ts';
+import { devWatchIgnored } from './scripts/dev-watch.ts';
 import { fontsourceWoff2Only } from './scripts/fontsource-woff2.ts';
 import { decodeNamedCharacterReferenceFile } from './scripts/markdown-worker-entities.ts';
 import { pageCspDirectives } from './src/shared/security-headers.ts';
 
 const ports = devPorts(process.env);
+const root = fileURLToPath(new URL('.', import.meta.url));
 
 export default defineConfig({
   plugins: [
@@ -35,5 +38,7 @@ export default defineConfig({
     strictPort: true,
     // 本番の run_worker_first と同じく /api と /api/ の下だけを送る（'/api' は前方一致で /api-keys まで拾う）
     proxy: { '^/api(/|$)': `http://localhost:${ports.api}` },
+    // 根の worktrees/、playwright-report/、build/ を監視しない（理由は scripts/dev-watch.ts）
+    watch: { ignored: [devWatchIgnored(root)] },
   },
 });
