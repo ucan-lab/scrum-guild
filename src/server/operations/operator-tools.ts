@@ -2,8 +2,9 @@
 // 登録の関数が、運用者の権限を確かめた操作にだけ渡す。組織の中の表を、組織で絞らずに読み書きする入口は渡さない。
 // 組織で絞らずに書くのは linkLogin だけ。組織の作成で、アカウントが無いと読んだ後に、その人が初めてログインを終えた場合に、
 // 書いた後の結び直しで呼ぶ（ログインのたびの結び直しと同じ文で、account_id が空でログインの手段と ID が同じ行だけに当たる）。
-// 既にある組織の中の表に書くのは、変更の履歴を1行足す appendChangeLog だけ（組織の中の入口は渡さない）。
-// 足す関数（appendOperatorChangeLog）を import できるのはこのファイルだけで、ESLint が守る（eslint.config.db-entry.js）
+// 既にある組織の中の表に書くのは、変更の履歴を1行足す appendChangeLog と、管理者を指名し直す reassignAdmin だけ
+// （組織の中の入口は渡さない）。包む関数（appendOperatorChangeLog、reassignOrganizationAdmin）を import できるのは
+// このファイルだけで、ESLint が守る（eslint.config.db-entry.js）
 import { INVITE_PATH } from '../../shared/claim-token.ts';
 import type { InviteeResolver } from '../auth/login-method.ts';
 import {

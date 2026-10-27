@@ -851,8 +851,8 @@ export const dictionary = defineDictionary({
     '「{slug}」の{organization}はもう作られています。名前が入力と違うので、この入力で作ったものではないかもしれません。',
   ),
   operatorAlreadyCreatedNoAdmin: organization(
-    '最初の{admin}が書かれていません。{admin}の指名し直しは、運用の画面にこれから加わります。',
-    '最初の{admin}が書かれていません。{admin}の指名し直しは、運用の画面にこれから加わります。',
+    '最初の{admin}が書かれていません。一覧の「{admin}を指名」から、{admin}を指名し直してください。',
+    '最初の{admin}が書かれていません。一覧の「{admin}を指名」から、{admin}を指名し直してください。',
   ),
   operatorShowCreated: organization('作られた{organization}の URL を見る', '作られた{organization}の URL を見る'),
   // ダイアログの読み上げの領域（常に置き、文字だけを替える）
@@ -870,14 +870,14 @@ export const dictionary = defineDictionary({
     'この slug の{organization}は、もう作られています。次の URL を確かめてください。誰を{admin}に指名したかは、ここでは分かりません。',
     'この slug の{organization}は、もう作られています。次の URL を確かめてください。誰を{admin}に指名したかは、ここでは分かりません。',
   ),
-  // 招待の URL は作った直後の応答にしか出ないので、ここでは出せない。出し直すには指名し直しの操作が要る
+  // 招待の URL は作った直後の応答にしか出ないので、ここでは出せない。出し直すには指名し直す（新しい招待の URL が出る）
   operatorExistingAdminPending: organization(
-    '指名された{admin}は、まだログインしていません。Google で指名したときの招待の URL は、ここでは出せません。URL を渡せていなければ、指名し直す操作が入るまで、この{organization}は使い始められません。',
-    '指名された{admin}は、まだログインしていません。Google で指名したときの招待の URL は、ここでは出せません。URL を渡せていなければ、指名し直す操作が入るまで、この{organization}は使い始められません。',
+    '指名された{admin}は、まだログインしていません。Google で指名したときの招待の URL は、ここでは出せません。URL を渡せていなければ、一覧の「{admin}を指名」から指名し直してください。新しい招待の URL が出ます。',
+    '指名された{admin}は、まだログインしていません。Google で指名したときの招待の URL は、ここでは出せません。URL を渡せていなければ、一覧の「{admin}を指名」から指名し直してください。新しい招待の URL が出ます。',
   ),
   operatorExistingAdminExpired: organization(
-    '指名された{admin}の招待の URL は、期限が切れています。URL はもう出せず、指名し直す操作が入るまで、この{organization}は使い始められません。',
-    '指名された{admin}の招待の URL は、期限が切れています。URL はもう出せず、指名し直す操作が入るまで、この{organization}は使い始められません。',
+    '指名された{admin}の招待の URL は、期限が切れています。URL はもう出せないので、一覧の「{admin}を指名」から指名し直してください。',
+    '指名された{admin}の招待の URL は、期限が切れています。URL はもう出せないので、一覧の「{admin}を指名」から指名し直してください。',
   ),
   operatorExistingAdminActive: organization(
     '{admin}は、もうログインしています。',
@@ -956,6 +956,68 @@ export const dictionary = defineDictionary({
   operatorInviteTell: organization(
     '次のメールアドレスの Google アカウントでログインするよう伝えてください。',
     '次のメールアドレスの Google アカウントでログインするよう伝えてください。',
+  ),
+  // 招待の URL を失ったときと、期限が切れたときの直し方
+  operatorInviteReissue: organization(
+    'URL を失ったときや期限が切れたときは、一覧の「{admin}を指名」から指名し直すと、新しい招待の URL が出ます。',
+    'URL を失ったときや期限が切れたときは、一覧の「{admin}を指名」から指名し直すと、新しい招待の URL が出ます。',
+  ),
+
+  // 管理者の指名し直し（一覧の各行のボタンと、そのダイアログ）。{name} は組織の名前
+  operatorReassignAction: organization('{admin}を指名', '{admin}を指名'),
+  operatorReassignLabel: organization('「{name}」の{admin}を指名', '「{name}」の{admin}を指名'),
+  operatorReassignTitle: organization('{admin}を指名し直す', '{admin}を指名し直す'),
+  // ダイアログの最初の文。開いたときの一覧の管理者の状態で変える
+  operatorReassignLeadNone: organization(
+    '「{name}」には今{admin}がいません。新しい{admin}を、GitHub のユーザー名か Google のメールアドレスで指名します。',
+    '「{name}」には今{admin}がいません。新しい{admin}を、GitHub のユーザー名か Google のメールアドレスで指名します。',
+  ),
+  operatorReassignLeadPending: organization(
+    '「{name}」の{admin}は指名済みで、まだログインしていません。{admin}を、GitHub のユーザー名か Google のメールアドレスで指名し直します。',
+    '「{name}」の{admin}は指名済みで、まだログインしていません。{admin}を、GitHub のユーザー名か Google のメールアドレスで指名し直します。',
+  ),
+  operatorReassignLeadExpired: organization(
+    '「{name}」の{admin}の招待の URL は、期限が切れています。{admin}を、GitHub のユーザー名か Google のメールアドレスで指名し直します。',
+    '「{name}」の{admin}の招待の URL は、期限が切れています。{admin}を、GitHub のユーザー名か Google のメールアドレスで指名し直します。',
+  ),
+  operatorReassignLeadActive: organization(
+    '「{name}」には、ログインした{admin}がいます。{admin}が辞めたときなどに、新しい{admin}を、GitHub のユーザー名か Google のメールアドレスで指名します。今の{admin}は外れません。',
+    '「{name}」には、ログインした{admin}がいます。{admin}が辞めたときなどに、新しい{admin}を、GitHub のユーザー名か Google のメールアドレスで指名します。今の{admin}は外れません。',
+  ),
+  operatorReassignVia: organization('{admin}のログインの手段', '{admin}のログインの手段'),
+  operatorReassignGithubUserHint: organization(
+    'GitHub のユーザー ID に解決します。「確かめる」を押して、指名する人を見て確かめてから指名します。',
+    'GitHub のユーザー ID に解決します。「確かめる」を押して、指名する人を見て確かめてから指名します。',
+  ),
+  operatorReassignVerifyLead: organization(
+    'この人を{admin}にします。アバター、ユーザー名、表示名が、伝えたい人のものか確かめてください。ユーザー名は 1 字違いでも別の人に当たります。',
+    'この人を{admin}にします。アバター、ユーザー名、表示名が、伝えたい人のものか確かめてください。ユーザー名は 1 字違いでも別の人に当たります。',
+  ),
+  operatorReassignNote: organization(
+    'この{organization}のユーザーでなくてもかまいません。指名しても、運用者はこの{organization}の中を見られるようにはなりません。まだログインしていない前の指名は消えます。',
+    'この{organization}のユーザーでなくてもかまいません。指名しても、運用者はこの{organization}の中を見られるようにはなりません。まだログインしていない前の指名は消えます。',
+  ),
+  operatorReassignHistoryNote: organization(
+    '指名は{organization}の変更の履歴に、運用者の操作として残ります。',
+    '指名は{organization}の変更の履歴に、運用者の操作として残ります。',
+  ),
+  operatorReassignSubmit: organization('指名する', '指名する'),
+  operatorReassignSubmitting: organization('指名しています', '指名しています'),
+  operatorReassignDoneTitle: organization('{admin}を指名しました', '{admin}を指名しました'),
+  operatorLiveReassigning: organization('指名しています', '指名しています'),
+  operatorLiveReassigned: organization('指名しました', '指名しました'),
+  // 指名し直しの失敗。409 は、読んでから書くまでに同じ人の行が変わった（何も書かれていない）
+  operatorReassignConflict: organization(
+    '指名している間に、この{organization}の人の状態が変わりました。一覧を確かめてから、もう一度試してください。',
+    '指名している間に、この{organization}の人の状態が変わりました。一覧を確かめてから、もう一度試してください。',
+  ),
+  operatorReassignNotFound: organization(
+    'この{organization}が見つかりません。一覧を確かめてください。',
+    'この{organization}が見つかりません。一覧を確かめてください。',
+  ),
+  operatorReassignFailed: organization(
+    '指名し直せたか分かりません。一覧で{admin}の状態を確かめてから、もう一度試してください。',
+    '指名し直せたか分かりません。一覧で{admin}の状態を確かめてから、もう一度試してください。',
   ),
 
   // API の疎通の表示（仮の画面）
@@ -1584,6 +1646,15 @@ export const dictionary = defineDictionary({
   orgHistoryAdminDesignationMerged: organization(
     'Google の招待で、{name}を{admin}にしました',
     'Google の招待で、{name}を{admin}にしました',
+  ),
+  // 運用者が管理者を指名し直したときに、まだログインしていない前の指名を取り消した。Google の招待で待っていた人は名前が分からない
+  orgHistoryAdminDesignationRemoved: organization(
+    '{name}への{admin}の指名を取り消しました',
+    '{name}への{admin}の指名を取り消しました',
+  ),
+  orgHistoryAdminDesignationRemovedNoName: organization(
+    'Google で招待した人への{admin}の指名を取り消しました',
+    'Google で招待した人への{admin}の指名を取り消しました',
   ),
   orgHistoryAdminRevoked: organization('{name}の{admin}を解除しました', '{name}の{admin}を解除しました'),
   orgHistoryUserDisabled: organization('{name}を無効にしました', '{name}を無効にしました'),

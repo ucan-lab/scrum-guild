@@ -61,6 +61,16 @@ describe('historyEventText', () => {
         'Google の招待で、ハルカをギルドマスターにしました',
         'Google の招待で、ハルカを管理者にしました',
       ],
+      [
+        { kind: 'admin_designation_removed', name: 'ソラ' },
+        'ソラへのギルドマスターの指名を取り消しました',
+        'ソラへの管理者の指名を取り消しました',
+      ],
+      [
+        { kind: 'admin_designation_removed', name: null },
+        'Google で招待した人へのギルドマスターの指名を取り消しました',
+        'Google で招待した人への管理者の指名を取り消しました',
+      ],
       [{ kind: 'admin_revoked', name: 'リン' }, 'リンのギルドマスターを解除しました', 'リンの管理者を解除しました'],
       [
         { kind: 'user_disabled', name: null },

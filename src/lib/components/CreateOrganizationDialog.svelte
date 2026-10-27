@@ -627,6 +627,7 @@
     <div class="callout is-warn">
       <Icon name="alert" /><span>{t('operatorInviteOnce', { expires: formatDateTime(created.admin.expiresAt) })}</span>
     </div>
+    <p class="field-hint">{t('operatorInviteReissue', words)}</p>
   {:else}
     <p tabindex="-1" bind:this={doneLead}>
       {t(created.admin.kind === 'named' ? 'operatorDoneLead' : 'operatorExistingLead', words)}

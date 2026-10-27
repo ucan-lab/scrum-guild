@@ -1,5 +1,5 @@
 // 運用者による管理者の指名の書き込み（組織の DB の users と change_logs）。組織の作成の最初の管理者と、
-// 管理者の指名し直し（Issue #60）が同じ関数を使う。
+// 管理者の指名し直し（src/server/db/operator-reassign-admin.ts）が同じ関数を使う。
 // 入口は確かめた組織の OrganizationDb。組織の ID はそこから取り、呼び出し側の入力から取らない。
 // account_id は、指名する人が既にアカウントを持つとき（共通の DB の account_logins に当たったとき）に呼び出し側が渡す。
 // 共通の表は別の入口で読んで渡し、この書き込みの batch() に共通の表を混ぜない（docs/data-model.md の「読み書きの入口」）

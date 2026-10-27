@@ -23,6 +23,8 @@ type HistoryRow = {
   // users の今の名前。login_subject の無い行（Google の招待でログインを待つ行。name はメールアドレス）は null にして読む
   entity_user_name: string | null;
   workspace_name: string | null;
+  // 運用者の操作か（operator の列が空でない）。SQLite の真偽は 0 と 1
+  by_operator: unknown;
 };
 
 type Changes = Record<string, unknown>;
@@ -55,6 +57,12 @@ function personName(changes: Changes, row: HistoryRow): string | null {
     : row.entity_user_name;
 }
 
+// 消した行の記録の前の名前。ログインを待つ行の仮の名前と、メールアドレスに見えるもの（@ を含む）は使わない
+function removedPersonName(changes: Changes): string | null {
+  const logged = textOrNull(pairOf(changes, 'name')?.[0]);
+  return logged !== null && logged !== WAITING_USER_NAME_IN_LOG && !logged.includes('@') ? logged : null;
+}
+
 // 本人が自分の行に書いた記録（Google の招待の URL から結んだとき。src/server/db/cross-organization.ts の claimLogStatement）
 function bySelf(row: HistoryRow): boolean {
   return row.actor_user_id !== null && row.actor_user_id === row.entity_id;
@@ -66,6 +74,13 @@ function userEvent(action: string, changes: Changes, row: HistoryRow): HistoryEv
   // 運用者の指名（users の作成）。Google の招待は、ログインするまで名前が分からない
   if (action === 'create') {
     return isAdmin?.[1] === 1 ? { kind: 'admin_designated', name: personName(changes, row) } : { kind: 'other' };
+  }
+  // 運用者が管理者を指名し直したときに消した、まだログインしていない前の指名（src/server/db/operator-reassign-admin.ts）。
+  // 行は消えているので、名前は記録の前の値から取る。人がした users の削除は other のまま
+  if (action === 'delete') {
+    return row.actor_user_id === null && row.by_operator && isAdmin?.[0] === 1 && isAdmin[1] === null
+      ? { kind: 'admin_designation_removed', name: removedPersonName(changes) }
+      : { kind: 'other' };
   }
   if (action !== 'update') return { kind: 'other' };
   // Google の招待で指名した人の初めてのログイン（本人が、待つ行の空の sub を埋めた）
