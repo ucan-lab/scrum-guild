@@ -994,8 +994,8 @@ export const dictionary = defineDictionary({
     'この人を{admin}にします。アバター、ユーザー名、表示名が、伝えたい人のものか確かめてください。ユーザー名は 1 字違いでも別の人に当たります。',
   ),
   operatorReassignNote: organization(
-    'この{organization}のユーザーでなくてもかまいません。指名しても、運用者はこの{organization}の中を見られるようにはなりません。まだログインしていない前の指名は消えます。',
-    'この{organization}のユーザーでなくてもかまいません。指名しても、運用者はこの{organization}の中を見られるようにはなりません。まだログインしていない前の指名は消えます。',
+    'この{organization}のユーザーでなくてもかまいません。指名しても、運用者はこの{organization}の中を見られるようにはなりません。まだログインしていない前の指名は取り消されます。',
+    'この{organization}のユーザーでなくてもかまいません。指名しても、運用者はこの{organization}の中を見られるようにはなりません。まだログインしていない前の指名は取り消されます。',
   ),
   operatorReassignHistoryNote: organization(
     '指名は{organization}の変更の履歴に、運用者の操作として残ります。',

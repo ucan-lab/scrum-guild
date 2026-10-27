@@ -26,7 +26,7 @@ export type AdminReassignmentResult = {
   userId: string;
   // created: 新しい行を入れた。updated: 既にいる人を管理者にした（か、有効に戻した）。unchanged: 既に有効な管理者だった
   outcome: 'created' | 'updated' | 'unchanged';
-  // 消した前の指名の数
+  // 消した前の指名の数（消せずに管理者の印だけを外した、ワークスペースの所属を持つ行は数えない）
   removed: number;
 };
 
@@ -119,27 +119,33 @@ function promoteStatements(
 // 時刻や書いた値の一致で「自分の書き込みか」は見分けない（src/server/db/previous-statement.ts）
 type NomineeState = { kind: 'active' } | { kind: 'read'; row: CandidateRow };
 
-// 消す前の指名の条件（書く時点の行に当てる）。その組織の account_id が空の行で、指名する人自身の行ではなく、
+// 取り消す前の指名の条件（書く時点の行に当てる）。その組織の account_id が空の行で、指名する人自身の行ではなく、
 // 指名する人の行が NomineeState の状態であること。読んだ ID には絞らない。読んでから書くまでに別の指名し直しが入れた、
-// まだログインしていない指名も消す。読んだ後に結ばれた行（account_id が埋まった行）は当たらない
-function removableWhere(db: OrganizationDb, nomineeUserId: string, state: NomineeState) {
-  return (eb: ExpressionBuilder<OrganizationTables, 'users'>) =>
-    eb.and([
+// まだログインしていない指名も取り消す。読んだ後に結ばれた行（account_id が埋まった行）は当たらない。
+// membership は、ワークスペースの所属を持つ行か（with）、持たない行か（without）。持たない行は消し、持つ行は消せない
+// （memberships.user_id が行を指す。組織の管理者が、まだログインしていない指名の行をワークスペースの最初のリーダーに選べる）
+// ので、残して管理者の印を外す（is_admin = 1 の行だけ）。所属を持つ行はリーダーの候補（login_subject のある行）なので、
+// Google で待つ行（login_subject が空で、招待の秘密を持つ）は含まれない
+function removableWhere(
+  db: OrganizationDb,
+  nomineeUserId: string,
+  state: NomineeState,
+  membership: 'with' | 'without',
+) {
+  return (eb: ExpressionBuilder<OrganizationTables, 'users'>) => {
+    const hasMembership = eb.exists(
+      eb
+        .selectFrom('memberships')
+        .innerJoin('workspaces', 'workspaces.id', 'memberships.workspace_id')
+        .select('memberships.id')
+        .whereRef('memberships.user_id', '=', 'users.id')
+        .where('workspaces.organization_id', '=', db.organizationId),
+    );
+    return eb.and([
       eb('users.organization_id', '=', db.organizationId),
       eb('users.account_id', 'is', null),
       eb('users.id', '!=', nomineeUserId),
-      // ワークスペースの所属を持つ行は消さず残す（memberships.user_id が行を指す。組織の管理者が、まだログインしていない
-      // 指名の行をワークスペースの最初のリーダーに選べる）。記録も作らず、消した数にも数えない
-      eb.not(
-        eb.exists(
-          eb
-            .selectFrom('memberships')
-            .innerJoin('workspaces', 'workspaces.id', 'memberships.workspace_id')
-            .select('memberships.id')
-            .whereRef('memberships.user_id', '=', 'users.id')
-            .where('workspaces.organization_id', '=', db.organizationId),
-        ),
-      ),
+      ...(membership === 'with' ? [hasMembership, eb('users.is_admin', '=', 1)] : [eb.not(hasMembership)]),
       eb.exists(
         eb
           .selectFrom('users as nominee')
@@ -157,18 +163,24 @@ function removableWhere(db: OrganizationDb, nomineeUserId: string, state: Nomine
           ),
       ),
     ]);
+  };
 }
 
-// 前の指名を消す。先に、消す行ごとの change_logs（user の delete）を同じ条件の INSERT ... SELECT で作り、続けて DELETE する。
-// 同じ batch() の中なので、2つの文は同じ行に当たる。記録は行の前の値を残す。Google で待つ行（login_subject が空）は、
+// 前の指名を取り消す4つの文。
+//   0. 消す行ごとの change_logs（user の delete）を、同じ条件の INSERT ... SELECT で作る
+//   1. 所属を持たない前の指名を DELETE する
+//   2. 所属を持つ前の指名ごとの change_logs（user の update、{"is_admin":[1,0]}。履歴の「管理者の解除」）を作る
+//   3. 所属を持つ前の指名の管理者の印を外す（UPDATE で is_admin = 0）
+// 同じ batch() の中なので、記録の文と書く文は同じ行に当たる。消す記録は行の前の値を残す。Google で待つ行（login_subject が空）は、
 // メールアドレス、秘密のハッシュ、期限を入れず、名前は仮の名前にし、login_subject の列を持たない
 function removeStatements(
   db: OrganizationDb,
   nomineeUserId: string,
   input: AdminReassignment,
   state: NomineeState,
-): [Statement<'organization'>, Statement<'organization'>] {
-  const where = removableWhere(db, nomineeUserId, state);
+): [Statement<'organization'>, Statement<'organization'>, Statement<'organization'>, Statement<'organization'>] {
+  const where = removableWhere(db, nomineeUserId, state, 'without');
+  const demotable = removableWhere(db, nomineeUserId, state, 'with');
   return [
     db.statement((q) =>
       q
@@ -196,6 +208,31 @@ function removeStatements(
         ),
     ),
     db.statement((q) => q.deleteFrom('users').where(where)),
+    db.statement((q) =>
+      q
+        .insertInto('change_logs')
+        .columns(changeLogColumns)
+        .expression(
+          q
+            .selectFrom('users')
+            .select((eb) => [
+              uuidv7Sql(input.now).as('id'),
+              eb.val(db.organizationId).as('organization_id'),
+              eb.val(null).as('workspace_id'),
+              eb.val(null).as('actor_user_id'),
+              eb.val(input.operator).as('operator'),
+              eb.val('user').as('entity_type'),
+              eb.ref('users.id').as('entity_id'),
+              eb.val('update').as('action'),
+              eb.val(JSON.stringify({ is_admin: [1, 0] })).as('changes_json'),
+              eb.val(input.now.toISOString()).as('created_at'),
+            ])
+            .where(demotable),
+        ),
+    ),
+    db.statement((q) =>
+      q.updateTable('users').set({ is_admin: 0, updated_at: input.now.toISOString() }).where(demotable),
+    ),
   ];
 }
 
@@ -305,8 +342,9 @@ export async function reassignOrganizationAdmin(
   const removal = removeStatements(db, userId, input, updating ? { kind: 'read', row: existing } : { kind: 'active' });
   const check = outcome === 'unchanged' ? [activeAdminStatement(db, userId)] : [];
   const statements = updating ? [...removal, ...designation] : [...designation, ...removal, ...check];
-  // 結果の位置。前の指名の DELETE と、既にいる人の UPDATE
-  const deleteIndex = updating ? 1 : designation.length + 1;
+  // 結果の位置。前の指名の DELETE（removeStatements の 1）と、既にいる人の UPDATE（removeStatements の4つの文の後ろ）。
+  // 管理者の印を外した行の数は返さない（removed は消した行の数のまま）
+  const deleteIndex = (updating ? 0 : designation.length) + 1;
   const updateIndex = updating ? removal.length : -1;
 
   let results: readonly { changes: number; rows: readonly unknown[] }[];

@@ -1188,7 +1188,7 @@ test.describe('運用者', () => {
       const dialog = await openReassign(page, 'ひばり工房');
       // 文は開いたときの管理者の状態で変える
       await expect(dialog).toContainText('「ひばり工房」には今ギルドマスターがいません');
-      await expect(dialog).toContainText('まだログインしていない前の指名は消えます');
+      await expect(dialog).toContainText('まだログインしていない前の指名は取り消されます');
       await expect(dialog).toContainText('運用者の操作として残ります');
       await expect(dialog).not.toContainText('{');
       // 確かめるまで指名できない
