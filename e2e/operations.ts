@@ -25,7 +25,7 @@ type FailOptions = { details?: unknown; message?: string };
 export type OperationCall<D extends AnyOperationDefinition> = {
   // 画面が送った入力。定義の入力のスキーマに通ったものだけが届く
   readonly input: InputOf<D>;
-  // Playwright の route そのもの。スキーマに合わない本文を返すときの抜け道
+  // Playwright の route そのもの。スキーマに合わない本文を返すときの抜け道。取り出したら、応答は自分で返す
   readonly route: Route;
   // 本物の API へ流す
   passThrough(): Promise<void>;
@@ -121,7 +121,11 @@ export async function routeOperation<D extends AnyOperationDefinition>(
     }
     const call: OperationCall<D> = {
       input: body as InputOf<D>,
-      route,
+      // route を取り出したら、応答は呼び出した側が返したものとして扱う（返さなかったかを見ない。二重に返さない）
+      get route() {
+        answered = true;
+        return route;
+      },
       passThrough: () => answer(route.continue()),
       fetch: async () => {
         const response = await route.fetch().catch((error: unknown) => {
@@ -168,6 +172,8 @@ export async function routeOperation<D extends AnyOperationDefinition>(
     };
     try {
       await handler(call);
+      // 応答を返さずに終わると、画面の要求が止まったまま別の待ちで落ちる。操作の名前を添えて落とす
+      if (!answered) await rejectCall(route, `操作 ${name} の route の処理が応答を返さなかった`);
     } catch (error) {
       if (error instanceof ReportedError) return;
       // テストの後の「route.fetch: Test ended」などは、元の失敗のまま投げ、fixture の unrouteAll（ignoreErrors）に捨てさせる。
