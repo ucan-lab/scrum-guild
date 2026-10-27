@@ -24,7 +24,10 @@ test('タスクの引き出しを開いた状態に axe の違反が無い', asy
 test('タスクを作るダイアログ（Dialog）を開いた状態に axe の違反が無い', async ({ page }) => {
   await page.goto(WORKSPACE);
   await expect(page.getByRole('heading', { level: 1, name: '掲示板' })).toBeVisible();
-  await page.getByRole('button', { name: '依頼を出す' }).click();
+  const create = page.getByRole('button', { name: '依頼を出す' });
+  await expect(create).toBeVisible();
+  await waitForSettled(page);
+  await create.click();
   const dialog = page.getByRole('dialog', { name: '依頼を出す' });
   await expect(dialog.getByLabel('タイトル')).toBeVisible();
   await expect(page.locator('[aria-busy="true"]:visible')).toHaveCount(0);
