@@ -23,8 +23,9 @@
   // （parentFinished）、完了と取り消しは必ず断られるので aria-disabled にし、理由を横に出す。送っている間（pending）は、どちらも aria-disabled。
   // onMove を渡すと（書き込めるとき）、行の右端に「上へ」「下へ」を出し、ストーリーの行の中で Alt と ↑ ↓ を押しても同じことをする。
   // キーは配下のタスクの行には掛けない（タスクの行は自分で受け持つ）。端の向きは aria-disabled にする。
-  // onMoveParent を渡すと「親を移す」（親のエピックを選ぶダイアログ）も出す。
-  // onMove と dnd を渡すと（書き込めるとき）、行の先頭にドラッグのつまみ（.grip。飾りで aria-hidden）を置く。つかむのはここだけ。
+  // onMoveParent を渡すと「親を移す」（親のエピックを選ぶダイアログ）も出す。絞り込み中は、画面が onMove を渡さず
+  // （並べ替えは隣を使うため。Alt と ↑ ↓ も効かない）、「親を移す」だけを出す
+  // onMove と dnd を渡すと（書き込めて、絞っていないとき）、行の先頭にドラッグのつまみ（.grip。飾りで aria-hidden）を置く。つかむのはここだけ。
   // 行は、タスクを運ぶときの落とし先（囲み。離すと配下の末尾に入り、畳まれていれば開く）と、ストーリーを運ぶときの前後の線の落とし先を兼ねる。
   // 前後の線は、開いた配下の途中に入らないよう、配下を含めた塊（.tree-group）に引く。
   // 折りたたみの行と空の案内の行の前後は、配下の末尾の落とし先
@@ -224,24 +225,26 @@
           }}><Icon name="check" />{t('complete')}</button
         >
       {/if}
-      {#if onMove !== undefined}
+      {#if onMove !== undefined || onMoveParent !== undefined}
         <span class="order-actions">
-          <button
-            class="icon-btn"
-            type="button"
-            aria-label={t('moveUpLabel', { title: story.title })}
-            title={t('moveUp')}
-            aria-disabled={!canMoveUp}
-            onclick={() => move(-1)}><Icon name="up" /></button
-          >
-          <button
-            class="icon-btn"
-            type="button"
-            aria-label={t('moveDownLabel', { title: story.title })}
-            title={t('moveDown')}
-            aria-disabled={!canMoveDown}
-            onclick={() => move(1)}><Icon name="down" /></button
-          >
+          {#if onMove !== undefined}
+            <button
+              class="icon-btn"
+              type="button"
+              aria-label={t('moveUpLabel', { title: story.title })}
+              title={t('moveUp')}
+              aria-disabled={!canMoveUp}
+              onclick={() => move(-1)}><Icon name="up" /></button
+            >
+            <button
+              class="icon-btn"
+              type="button"
+              aria-label={t('moveDownLabel', { title: story.title })}
+              title={t('moveDown')}
+              aria-disabled={!canMoveDown}
+              onclick={() => move(1)}><Icon name="down" /></button
+            >
+          {/if}
           {#if onMoveParent !== undefined}
             <button
               class="icon-btn"

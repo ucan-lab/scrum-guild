@@ -186,7 +186,20 @@ export const pointers: Pointers = {
     slug: (await createOrganization({ suspended_at: SUSPENDED_AT, purge_on: '2026-11-19' })).slug,
   }),
   'task-create': async (target) => ({ workspace_id: target.workspace.id, title: '見積もりを送る', points: 3 }),
-  'backlog-tree': async (target) => ({ workspace_id: target.workspace.id }),
+  // 絞り込みの値も、対象の組織の行を指す（別の組織を指したときの当たり方は test/backlog-filter.test.ts）
+  'backlog-tree': async (target) => {
+    const category = await createCategory(target.organization, target.workspace.id);
+    const repository = await createRepository(target.organization, target.workspace.id);
+    const epic = await createEpic(target.organization, target.workspace.id, target.admin.userId!);
+    return {
+      workspace_id: target.workspace.id,
+      assignee_user_id: target.member.userId,
+      category_id: category.id,
+      repository_id: repository.id,
+      epic_id: epic.id,
+      query: '見積もり',
+    };
+  },
   'story-create': async (target) => ({ workspace_id: target.workspace.id, title: '見積もりを整える' }),
   'story-get': async (target) => ({
     workspace_id: target.workspace.id,

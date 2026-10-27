@@ -2,8 +2,16 @@ import { generateKeyBetween } from 'fractional-indexing';
 import { monthIn, now, todayIn } from '../../shared/clock.ts';
 import { XP_TASK_COMPLETED, XP_TASK_CREATED } from '../../shared/experience.ts';
 import { backlogTree, taskComplete, taskCreate, taskMove } from '../../shared/operations/task/index.ts';
+import { searchWordsOf } from '../../shared/backlog-filter.ts';
 import { MIN_POINTS_FOR_EXPERIENCE } from '../../shared/task.ts';
-import type { OrganizationDb, OrganizationTables, QueryCreator } from '../db/index.ts';
+import {
+  titleContainsAll,
+  unindexed,
+  type ExpressionBuilder,
+  type OrganizationDb,
+  type OrganizationTables,
+  type QueryCreator,
+} from '../db/index.ts';
 import { ApiError } from '../errors.ts';
 import { uuidv7 } from '../uuid.ts';
 import {
@@ -217,7 +225,8 @@ type TaskPoints = 0 | 1 | 2 | 3 | 5 | 8 | 13 | null;
 // ストーリー（親のないものとエピックの下のもの）の配下の、削除していないバックログのタスク。ストーリーから引いてタスクを結ぶ
 // （FROM stories CROSS JOIN tasks）。SQLite は INNER JOIN だと、親のないタスクも含めた tasks_workspace_tray を先に走査する計画を
 // 選ぶので、CROSS JOIN で順序を固定し、ストーリー側を `stories_workspace_epic` の先頭の列（workspace_id）で、タスク側を
-// `tasks_story`（story_id, position の部分索引）で引く（結ぶ条件は WHERE に書く）。両側をワークスペースで絞る
+// `tasks_story`（story_id, position の部分索引。未完了だけを読む文は `tasks_story_open`）で引く（結ぶ条件は WHERE に書く）。
+// 両側をワークスペースで絞る
 function tasksUnderStories(from: Pick<QueryCreator<Tables>, 'selectFrom'>, workspaceId: string) {
   return from
     .selectFrom('stories')
@@ -230,158 +239,300 @@ function tasksUnderStories(from: Pick<QueryCreator<Tables>, 'selectFrom'>, works
     .where('tasks.deleted_at', 'is', null);
 }
 
-// 件数に上限を付けない。重さは 5 万件で測る Issue で決める。
+// users の行の人が、そのワークスペースに今所属していて担当にできる人か（activeMemberName、member-list と同じ条件）
+function currentMember(eb: ExpressionBuilder<Tables, 'users'>, workspaceId: string) {
+  return eb.and([
+    eb('users.disabled_at', 'is', null),
+    eb('users.login_subject', 'is not', null),
+    eb.exists(
+      eb
+        .selectFrom('memberships as m')
+        .select('m.id')
+        .whereRef('m.user_id', '=', 'users.id')
+        .where('m.workspace_id', '=', workspaceId)
+        .where('m.left_at', 'is', null),
+    ),
+  ]);
+}
+
+// バックログの木の絞り込み（定義の backlog-tree.ts）。undefined は絞らない、null は「なし」。words は検索の語（空なら検索しない）
+export type BacklogTreeFilter = {
+  assignee?: string | null;
+  category?: string | null;
+  repository?: string | null;
+  epic?: string | null;
+  words: readonly string[];
+};
+
+// ストーリーの下の未完了のタスク。ORDER BY を付けると SQLite が tasks_story_open を使わない計画を選ぶので、並べるのは読んだ後に行う。
+// 区分は親から引き継ぐので、タスク自身の区分は読まない。
+// 絞り込みは WHERE に足す。区分、エピック、検索は、タスクか親（ストーリー、その親のエピック）のどれかが当たれば当たり
+// （区分とエピックは親から引き継ぐので、親で決まる）。担当とリポジトリは、タスク自身で決める。
+// 担当の列は索引に使わせない（tasks_story_open を足す前は、SQLite が tasks_story の代わりに tasks_assignee_user をストーリーごとに
+// 引く計画を選び、5 万件で 10 秒かかった。tasks_story_open があれば今はそれを選ぶが、計画が揺れないよう止めておく。
+// test/backlog-filter.test.ts が実行計画で確かめる）
+export function openStoryTasksStatement(db: OrganizationDb, workspaceId: string, filter: BacklogTreeFilter) {
+  const { assignee, category, repository, epic, words } = filter;
+  const organizationId = db.organizationId;
+  return db.statement((q) =>
+    tasksUnderStories(q, workspaceId)
+      .leftJoin('users', (join) =>
+        join.onRef('users.id', '=', 'tasks.assignee_user_id').on('users.organization_id', '=', organizationId),
+      )
+      .leftJoin('repositories', (join) =>
+        join
+          .onRef('repositories.id', '=', 'tasks.repository_id')
+          .on('repositories.workspace_id', '=', workspaceId)
+          .on('repositories.deleted_at', 'is', null),
+      )
+      .select([
+        'tasks.story_id',
+        'tasks.id',
+        'tasks.title',
+        'tasks.points',
+        'tasks.due_on',
+        'tasks.position',
+        'tasks.assignee_user_id',
+        'users.name as assignee_name',
+        'repositories.id as repository_ref_id',
+        'repositories.name as repository_name',
+      ])
+      .where('tasks.completed_at', 'is', null)
+      .$if(assignee !== undefined, (qb) =>
+        qb.where(unindexed('tasks.assignee_user_id'), assignee === null ? 'is' : '=', assignee!),
+      )
+      .$if(repository !== undefined, (qb) => qb.where('repositories.id', repository === null ? 'is' : '=', repository!))
+      .$if(category !== undefined, (qb) =>
+        qb.where((eb) => {
+          // 引き継ぎを解いた区分の ID（親のないストーリーは自身の区分、エピックの下ならエピックの区分）。
+          // 削除した区分を指していることもあるので、同じワークスペースの削除していない区分かも確かめる
+          const resolved = eb
+            .case()
+            .when('stories.epic_id', 'is', null)
+            .then(eb.ref('stories.category_id'))
+            .else(
+              eb
+                .selectFrom('epics as parent_epic')
+                .select('parent_epic.category_id')
+                .whereRef('parent_epic.id', '=', 'stories.epic_id')
+                .where('parent_epic.workspace_id', '=', workspaceId),
+            )
+            .end();
+          const live = eb
+            .selectFrom('categories as live_category')
+            .select('live_category.id')
+            .where('live_category.workspace_id', '=', workspaceId)
+            .where('live_category.deleted_at', 'is', null);
+          return category === null
+            ? eb.not(eb.exists(live.where('live_category.id', '=', resolved)))
+            : eb.and([eb(resolved, '=', category!), eb.exists(live.where('live_category.id', '=', category!))]);
+        }),
+      )
+      .$if(epic !== undefined, (qb) => qb.where('stories.epic_id', epic === null ? 'is' : '=', epic!))
+      .$if(words.length > 0, (qb) =>
+        qb.where((eb) =>
+          eb.or([
+            titleContainsAll('tasks.title', words),
+            titleContainsAll('stories.title', words),
+            eb.exists(
+              eb
+                .selectFrom('epics as hit_epic')
+                .select('hit_epic.id')
+                .whereRef('hit_epic.id', '=', 'stories.epic_id')
+                .where('hit_epic.workspace_id', '=', workspaceId)
+                .where(titleContainsAll('hit_epic.title', words)),
+            ),
+          ]),
+        ),
+      ),
+  );
+}
+
+// 件数に上限を付けない（5 万件で測った数は docs/data-model.md）。
 // ストーリーは親のないものとエピックの下のものを1つの文で読み、epic_id で分ける。削除したエピックの下のストーリーも
-// （その配下のタスクも）読むが、エピックの一覧に親が無いので、どこにも並べずに捨てる
-export const backlogTreeOperation = implement(backlogTree, async ({ db, workspace }) => {
+// （その配下のタスクも）読むが、エピックの一覧に親が無いので、どこにも並べずに捨てる。
+// 絞り込み（定義の backlog-tree.ts）は、タスクの2つの文の WHERE で絞る。ストーリーとエピックは全部読み（ポイントの合計を全体の値で返し、
+// 親そのものが当たるかを決めるため）、検索の語がそろうかの印（title_hit）だけを足して、どれを残すかをここで決める
+export const backlogTreeOperation = implement(backlogTree, async ({ db, actor, workspace, input }) => {
   const organizationId = db.organizationId;
   const workspaceId = workspace.workspaceId;
-  const [workspaceResult, epicsResult, storiesResult, storyTasksResult, totalsResult, rootOpenResult, rootDoneResult] =
-    await db.batch([
-      db.statement((q) =>
-        q
-          .selectFrom('workspaces')
-          .select(['workspaces.timezone', 'workspaces.week_start'])
-          .where('workspaces.id', '=', workspaceId)
-          .where('workspaces.organization_id', '=', organizationId),
-      ),
-      db.statement((q) =>
-        q
-          .selectFrom('epics')
-          // 区分は、同じワークスペースの削除していないものだけを結ぶ（下の行も同じ）
-          .leftJoin('categories', (join) =>
-            join
-              .onRef('categories.id', '=', 'epics.category_id')
-              .on('categories.workspace_id', '=', workspaceId)
-              .on('categories.deleted_at', 'is', null),
-          )
-          .select([
-            'epics.id',
-            'epics.title',
-            'epics.due_on',
-            'epics.link_url',
-            'epics.completed_at',
-            'epics.canceled_at',
-            'categories.id as category_ref_id',
-            'categories.name as category_name',
-          ])
-          .where('epics.workspace_id', '=', workspaceId)
-          .where('epics.deleted_at', 'is', null)
-          .orderBy('epics.position')
-          .orderBy('epics.id'),
-      ),
-      db.statement((q) =>
-        q
-          .selectFrom('stories')
-          .leftJoin('categories', (join) =>
-            join
-              .onRef('categories.id', '=', 'stories.category_id')
-              .on('categories.workspace_id', '=', workspaceId)
-              .on('categories.deleted_at', 'is', null),
-          )
-          .select([
-            'stories.id',
-            'stories.epic_id',
-            'stories.title',
-            'stories.due_on',
-            'stories.link_url',
-            'stories.completed_at',
-            'categories.id as category_ref_id',
-            'categories.name as category_name',
-          ])
-          .where('stories.workspace_id', '=', workspaceId)
-          .where('stories.deleted_at', 'is', null)
-          .orderBy('stories.position')
-          .orderBy('stories.id'),
-      ),
-      // 配下の未完了のタスク。ORDER BY を付けると SQLite が tasks_story を使わない計画を選ぶので、並べるのは下で行う。
-      // 区分は親から引き継ぐので、タスク自身の区分は読まない
-      db.statement((q) =>
-        tasksUnderStories(q, workspaceId)
-          .leftJoin('users', (join) =>
-            join.onRef('users.id', '=', 'tasks.assignee_user_id').on('users.organization_id', '=', organizationId),
-          )
-          .leftJoin('repositories', (join) =>
-            join
-              .onRef('repositories.id', '=', 'tasks.repository_id')
-              .on('repositories.workspace_id', '=', workspaceId)
-              .on('repositories.deleted_at', 'is', null),
-          )
-          .select([
-            'tasks.story_id',
-            'tasks.id',
-            'tasks.title',
-            'tasks.points',
-            'tasks.due_on',
-            'tasks.position',
-            'tasks.assignee_user_id',
-            'users.name as assignee_name',
-            'repositories.id as repository_ref_id',
-            'repositories.name as repository_name',
-          ])
-          .where('tasks.completed_at', 'is', null),
-      ),
-      // ストーリーごとの、完了した件数とポイントの合計。未見積もりは 0
-      db.statement((q) =>
-        tasksUnderStories(q, workspaceId)
-          .select((eb) => [
-            'stories.id as story_id',
-            eb.fn
-              .sum<number>(eb.case().when('tasks.completed_at', 'is not', null).then(1).else(0).end())
-              .as('completed_count'),
-            eb.fn
-              .sum<number>(
-                eb
-                  .case()
-                  .when('tasks.completed_at', 'is not', null)
-                  .then(eb.fn.coalesce('tasks.points', eb.lit(0)))
-                  .else(0)
-                  .end(),
-              )
-              .as('points_done'),
-            eb.fn.sum<number>(eb.fn.coalesce('tasks.points', eb.lit(0))).as('points_all'),
-          ])
-          .groupBy('stories.id'),
-      ),
-      db.statement((q) =>
-        backlogTasksUnder(q, workspaceId, null)
-          .leftJoin('users', (join) =>
-            join.onRef('users.id', '=', 'tasks.assignee_user_id').on('users.organization_id', '=', organizationId),
-          )
-          .leftJoin('categories', (join) =>
-            join
-              .onRef('categories.id', '=', 'tasks.category_id')
-              .on('categories.workspace_id', '=', workspaceId)
-              .on('categories.deleted_at', 'is', null),
-          )
-          .leftJoin('repositories', (join) =>
-            join
-              .onRef('repositories.id', '=', 'tasks.repository_id')
-              .on('repositories.workspace_id', '=', workspaceId)
-              .on('repositories.deleted_at', 'is', null),
-          )
-          .select([
-            'tasks.id',
-            'tasks.title',
-            'tasks.points',
-            'tasks.due_on',
-            'tasks.assignee_user_id',
-            'users.name as assignee_name',
-            'categories.id as category_ref_id',
-            'categories.name as category_name',
-            'repositories.id as repository_ref_id',
-            'repositories.name as repository_name',
-          ])
-          .where('tasks.completed_at', 'is', null)
-          .orderBy('tasks.position')
-          .orderBy('tasks.id'),
-      ),
-      db.statement((q) =>
-        backlogTasksUnder(q, workspaceId, null)
-          .select((eb) => eb.fn.countAll<number>().as('count'))
-          .where('tasks.completed_at', 'is not', null),
-      ),
-    ] as const);
+  // 'me' は呼んだ人。users の行が無い人（型の上だけ）は、どのタスクにも当たらない空の ID にする
+  const assignee = input.assignee_user_id === 'me' ? (actor.userId ?? '') : input.assignee_user_id;
+  const category = input.category_id;
+  const repository = input.repository_id;
+  const epic = input.epic_id;
+  const words = input.query === undefined ? [] : searchWordsOf(input.query);
+  const searching = words.length > 0;
+  // タスクにしか無い条件（担当、リポジトリ）で絞っているか。そのときは、当たるタスクを持たない親を出さない
+  const taskOnly = assignee !== undefined || repository !== undefined;
+  const filtering = taskOnly || category !== undefined || epic !== undefined || searching;
+  const filter: BacklogTreeFilter = { assignee, category, repository, epic, words };
+  const [
+    workspaceResult,
+    epicsResult,
+    storiesResult,
+    storyTasksResult,
+    totalsResult,
+    rootOpenResult,
+    rootDoneResult,
+    assigneesResult,
+  ] = await db.batch([
+    db.statement((q) =>
+      q
+        .selectFrom('workspaces')
+        .select(['workspaces.timezone', 'workspaces.week_start'])
+        .where('workspaces.id', '=', workspaceId)
+        .where('workspaces.organization_id', '=', organizationId),
+    ),
+    db.statement((q) =>
+      q
+        .selectFrom('epics')
+        // 区分は、同じワークスペースの削除していないものだけを結ぶ（下の行も同じ）
+        .leftJoin('categories', (join) =>
+          join
+            .onRef('categories.id', '=', 'epics.category_id')
+            .on('categories.workspace_id', '=', workspaceId)
+            .on('categories.deleted_at', 'is', null),
+        )
+        .select([
+          'epics.id',
+          'epics.title',
+          'epics.due_on',
+          'epics.link_url',
+          'epics.completed_at',
+          'epics.canceled_at',
+          'categories.id as category_ref_id',
+          'categories.name as category_name',
+        ])
+        // 検索しているときだけ、エピックの題が語をそろえて含むかを足す（1 か 0）
+        .$if(searching, (qb) => qb.select(titleContainsAll('epics.title', words).as('title_hit')))
+        .where('epics.workspace_id', '=', workspaceId)
+        .where('epics.deleted_at', 'is', null)
+        .orderBy('epics.position')
+        .orderBy('epics.id'),
+    ),
+    db.statement((q) =>
+      q
+        .selectFrom('stories')
+        .leftJoin('categories', (join) =>
+          join
+            .onRef('categories.id', '=', 'stories.category_id')
+            .on('categories.workspace_id', '=', workspaceId)
+            .on('categories.deleted_at', 'is', null),
+        )
+        .select([
+          'stories.id',
+          'stories.epic_id',
+          'stories.title',
+          'stories.due_on',
+          'stories.link_url',
+          'stories.completed_at',
+          'categories.id as category_ref_id',
+          'categories.name as category_name',
+        ])
+        .$if(searching, (qb) => qb.select(titleContainsAll('stories.title', words).as('title_hit')))
+        .where('stories.workspace_id', '=', workspaceId)
+        .where('stories.deleted_at', 'is', null)
+        .orderBy('stories.position')
+        .orderBy('stories.id'),
+    ),
+    openStoryTasksStatement(db, workspaceId, filter),
+    // ストーリーごとの、完了した件数とポイントの合計。未見積もりは 0
+    db.statement((q) =>
+      tasksUnderStories(q, workspaceId)
+        .select((eb) => [
+          'stories.id as story_id',
+          eb.fn
+            .sum<number>(eb.case().when('tasks.completed_at', 'is not', null).then(1).else(0).end())
+            .as('completed_count'),
+          eb.fn.sum<number>(eb.case().when('tasks.completed_at', 'is', null).then(1).else(0).end()).as('open_count'),
+          eb.fn
+            .sum<number>(
+              eb
+                .case()
+                .when('tasks.completed_at', 'is not', null)
+                .then(eb.fn.coalesce('tasks.points', eb.lit(0)))
+                .else(0)
+                .end(),
+            )
+            .as('points_done'),
+          eb.fn.sum<number>(eb.fn.coalesce('tasks.points', eb.lit(0))).as('points_all'),
+        ])
+        .groupBy('stories.id'),
+    ),
+    db.statement((q) =>
+      backlogTasksUnder(q, workspaceId, null)
+        .leftJoin('users', (join) =>
+          join.onRef('users.id', '=', 'tasks.assignee_user_id').on('users.organization_id', '=', organizationId),
+        )
+        .leftJoin('categories', (join) =>
+          join
+            .onRef('categories.id', '=', 'tasks.category_id')
+            .on('categories.workspace_id', '=', workspaceId)
+            .on('categories.deleted_at', 'is', null),
+        )
+        .leftJoin('repositories', (join) =>
+          join
+            .onRef('repositories.id', '=', 'tasks.repository_id')
+            .on('repositories.workspace_id', '=', workspaceId)
+            .on('repositories.deleted_at', 'is', null),
+        )
+        .select([
+          'tasks.id',
+          'tasks.title',
+          'tasks.points',
+          'tasks.due_on',
+          'tasks.assignee_user_id',
+          'users.name as assignee_name',
+          'categories.id as category_ref_id',
+          'categories.name as category_name',
+          'repositories.id as repository_ref_id',
+          'repositories.name as repository_name',
+        ])
+        .where('tasks.completed_at', 'is', null)
+        .$if(assignee !== undefined, (qb) =>
+          qb.where('tasks.assignee_user_id', assignee === null ? 'is' : '=', assignee!),
+        )
+        .$if(repository !== undefined, (qb) =>
+          qb.where('repositories.id', repository === null ? 'is' : '=', repository!),
+        )
+        .$if(category !== undefined, (qb) => qb.where('categories.id', category === null ? 'is' : '=', category!))
+        // 親のないタスクはエピックの下に無いので、エピックで絞ると（エピックなしを除いて）どれも当たらない
+        .$if(typeof epic === 'string', (qb) => qb.limit(0))
+        .$if(searching, (qb) => qb.where(titleContainsAll('tasks.title', words)))
+        .orderBy('tasks.position')
+        .orderBy('tasks.id'),
+    ),
+    db.statement((q) =>
+      backlogTasksUnder(q, workspaceId, null)
+        .select((eb) => eb.fn.countAll<number>().as('count'))
+        .where('tasks.completed_at', 'is not', null),
+    ),
+    // 担当の絞り込みの選択肢。今所属している人（担当にできる人と同じ条件）と、未完了のバックログのタスクの担当に残っている人
+    db.statement((q) =>
+      q
+        .selectFrom('users')
+        .select((eb) => ['users.id', 'users.name', currentMember(eb, workspaceId).as('is_current')])
+        .where('users.organization_id', '=', organizationId)
+        .where((eb) =>
+          eb.or([
+            currentMember(eb, workspaceId),
+            eb.exists(
+              eb
+                .selectFrom('tasks as assigned')
+                .select('assigned.id')
+                .whereRef('assigned.assignee_user_id', '=', 'users.id')
+                .where('assigned.workspace_id', '=', workspaceId)
+                .where('assigned.tray', '=', 'backlog')
+                .where('assigned.deleted_at', 'is', null)
+                .where('assigned.completed_at', 'is', null),
+            ),
+          ]),
+        )
+        .orderBy('users.name')
+        .orderBy('users.id'),
+    ),
+  ] as const);
 
   const settings = workspaceResult.rows[0];
   if (settings === undefined) throw new ApiError(404, 'not_found');
@@ -442,40 +593,96 @@ export const backlogTreeOperation = implement(backlogTree, async ({ db, workspac
       category: storyCategories.get(story.id) ?? null,
       tasks: tasksByStory.get(story.id) ?? [],
       completed_task_count: Number(totals?.completed_count ?? 0),
+      open_task_count: Number(totals?.open_count ?? 0),
       points_done: Number(totals?.points_done ?? 0),
       points_all: Number(totals?.points_all ?? 0),
     };
   };
-  // エピックごとの配下のストーリー（position の順のまま分ける）
+  // 親そのものが、区分、エピック、検索の絞り込みのすべてに当たるか。検索は、自身か親のエピックの題が語をそろえて含めば当たり
+  type EpicRow = (typeof epicsResult.rows)[number];
+  const titleHit = (row: { title_hit?: unknown }) => !searching || Number(row.title_hit) === 1;
+  const epicsById = new Map(epicsResult.rows.map((row) => [row.id, row]));
+  const epicSelfHit = (row: EpicRow) =>
+    (category === undefined || (epicCategories.get(row.id)?.id ?? null) === category) &&
+    (epic === undefined || row.id === epic) &&
+    titleHit(row);
+  const storySelfHit = (row: StoryRow) => {
+    const parent = row.epic_id === null ? undefined : epicsById.get(row.epic_id);
+    return (
+      (category === undefined || (storyCategories.get(row.id)?.id ?? null) === category) &&
+      (epic === undefined || row.epic_id === epic) &&
+      (titleHit(row) || (parent !== undefined && Number(parent.title_hit) === 1))
+    );
+  };
+
+  // エピックごとの配下のストーリー（position の順のまま分ける）。ポイントの合計は、絞っていても配下の全部のストーリーで数える
   const storiesByEpic = new Map<string, ReturnType<typeof storyOf>[]>();
+  const epicTotals = new Map<string, { done: number; all: number }>();
   const rootStories: ReturnType<typeof storyOf>[] = [];
   for (const row of storiesResult.rows) {
+    const story = storyOf(row);
+    if (row.epic_id !== null) {
+      const totals = epicTotals.get(row.epic_id) ?? { done: 0, all: 0 };
+      epicTotals.set(row.epic_id, { done: totals.done + story.points_done, all: totals.all + story.points_all });
+    }
+    // 絞っているときは、当たるタスクを持つストーリーと、（担当とリポジトリで絞っていなければ）そのものが当たるストーリーだけを残す
+    if (filtering && story.tasks.length === 0 && (taskOnly || !storySelfHit(row))) continue;
     if (row.epic_id === null) {
-      rootStories.push(storyOf(row));
+      rootStories.push(story);
       continue;
     }
     const list = storiesByEpic.get(row.epic_id) ?? [];
-    list.push(storyOf(row));
+    list.push(story);
     storiesByEpic.set(row.epic_id, list);
   }
+
+  // 絞っているときの、親に選べるストーリー（完了していないもの）。木の順（エピックの順にその下のもの、続けて親のないもの）。
+  // 削除したエピックの下のストーリーは、木と同じく出さない
+  const openStoryChoices = () => {
+    const choiceOf = (row: StoryRow) => ({
+      id: row.id,
+      title: row.title,
+      epic_id: row.epic_id,
+      category: storyCategories.get(row.id) ?? null,
+    });
+    const open = storiesResult.rows.filter((row) => row.completed_at === null);
+    return [
+      ...epicsResult.rows.flatMap((epicRow) => open.filter((row) => row.epic_id === epicRow.id).map(choiceOf)),
+      ...open.filter((row) => row.epic_id === null).map(choiceOf),
+    ];
+  };
 
   return {
     today: todayIn(settings.timezone),
     week_start: settings.week_start,
-    // 区分を結んだ列（category_ref_id、category_name）は、出力のスキーマに無いので応答から落ちる
-    epics: epicsResult.rows.map((epic) => {
-      const stories = storiesByEpic.get(epic.id) ?? [];
-      return {
-        ...epic,
-        category: epicCategories.get(epic.id) ?? null,
-        stories,
-        points_done: stories.reduce((sum, story) => sum + story.points_done, 0),
-        points_all: stories.reduce((sum, story) => sum + story.points_all, 0),
-      };
-    }),
+    // 区分を結んだ列（category_ref_id、category_name）と検索の印（title_hit）は、出力のスキーマに無いので応答から落ちる。
+    // 絞っているときは、残したストーリーを持つエピックと、（担当とリポジトリで絞っていなければ）そのものが当たるエピックだけを残す
+    epics: epicsResult.rows
+      .filter((row) => !filtering || storiesByEpic.has(row.id) || (!taskOnly && epicSelfHit(row)))
+      .map((row) => ({
+        ...row,
+        category: epicCategories.get(row.id) ?? null,
+        stories: storiesByEpic.get(row.id) ?? [],
+        points_done: epicTotals.get(row.id)?.done ?? 0,
+        points_all: epicTotals.get(row.id)?.all ?? 0,
+      })),
     stories: rootStories,
     tasks: rootOpenResult.rows.map((row) => taskOf(row, refOf(row.category_ref_id, row.category_name))),
-    completed_count: Number(rootDoneResult.rows[0]?.count ?? 0),
+    // 絞っているときは出さない（画面は折りたたみの1行を出さない）
+    completed_count: filtering ? null : Number(rootDoneResult.rows[0]?.count ?? 0),
+    choices: {
+      // 今所属している人を先に、それぞれ名前の順（並べ替えは安定）
+      assignees: assigneesResult.rows
+        .map((row) => ({ id: row.id, name: row.name, current: Number(row.is_current) === 1 }))
+        .sort((a, b) => Number(b.current) - Number(a.current)),
+      // 絞ると木から消えるエピックも選べるよう、全部を返す
+      epics: epicsResult.rows.map((row) => ({
+        id: row.id,
+        title: row.title,
+        finished: row.completed_at !== null || row.canceled_at !== null,
+      })),
+      stories: filtering ? openStoryChoices() : null,
+    },
   };
 });
 

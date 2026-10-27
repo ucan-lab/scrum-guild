@@ -19,7 +19,8 @@
     "test": "node scripts/prepare.ts && vitest run && node --test scripts/*.test.ts",
     "e2e": "playwright test",
     "db:migrate:fresh": "node scripts/migrate-fresh.ts",
-    "db:seed": "node scripts/db-seed.ts"
+    "db:seed": "node scripts/db-seed.ts",
+    "bench:backlog": "node scripts/prepare.ts && node scripts/backlog-bench.ts"
   },
   "dependencies": {
     "@atlaskit/pragmatic-drag-and-drop": "^4.0.0",

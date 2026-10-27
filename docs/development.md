@@ -283,6 +283,10 @@ GitHub は無料のプランのまま使う（2026-10-23 に決めた）。無�
 - fixture が外すのは、テストの引数の `page` に張った route だけ。`browser.newContext()` で作った context と page、`context.route()` には効かない。そこで `route.fetch()` を使うなら、テストの終わりで自分で `unrouteAll({ behavior: 'ignoreErrors' })` を待つ
 - `ignoreErrors` は、テストの後に届いた要求の失敗を黙って捨てる。テストの終わりの読み直しそのものを確かめたいときは、`page.waitForResponse()` で応答を待ってから終える
 
+### バックログの木を 5 万件で測る
+
+`pnpm bench:backlog`（`scripts/backlog-bench.ts`）は、使い捨ての場所（`--persist-to` の一時ディレクトリ）の D1 に全マイグレーションと seed と 5 万件のタスクのワークスペース（現実の形と最悪の形）を入れ、その D1 で `wrangler dev`（ポート 8797。`--port` で替える）を立てて、`backlog-tree` を絞らない、担当、検索などの読み方ごとに測る（#165）。手元の開発用の D1 と本番には触らない。`--runs` で回数（既定 10）を替える。`--prepare-only <場所>` は、その場所の D1 に入れて終える（測らず、消さない）ので、遅い文を `wrangler d1 execute DB --local --persist-to <場所> --command "EXPLAIN QUERY PLAN ..."` で見るのに使う。測った数と結論は `docs/data-model.md` の `tasks` の節。木を読む文、索引、絞り込みを変えたら流し直し、数が変わったら書き直す。
+
 ### 依存を入れたばかりの作業コピー
 
 `pnpm install` の後（`prepare`）と、`pnpm dev`、`pnpm test`、`pnpm check` の前に、`scripts/prepare.ts` が `svelte-kit sync` と `wrangler types` を走らせ、空の `build/` を作る。`tsconfig.json` は `svelte-kit sync` が作る `$app/tsconfig` を継ぎ、Worker の型は `wrangler types` が作る `worker-configuration.d.ts`（git に入れない）を読み、wrangler の設定の `assets` は `build/` を指す。どれも、`pnpm build` より先に型の検査とテストを通すための準備。

@@ -1,7 +1,9 @@
 <script lang="ts">
   import { tick } from 'svelte';
-  import { invalidateAll } from '$app/navigation';
-  import { page } from '$app/state';
+  import { SvelteURLSearchParams } from 'svelte/reactivity';
+  import { goto, invalidate, invalidateAll } from '$app/navigation';
+  import { navigating, page } from '$app/state';
+  import BacklogFilterBar from '../../../../lib/components/BacklogFilterBar.svelte';
   import EmptyState from '../../../../lib/components/EmptyState.svelte';
   import EpicDialog from '../../../../lib/components/EpicDialog.svelte';
   import Icon from '../../../../lib/components/Icon.svelte';
@@ -18,6 +20,14 @@
   import { callOperation, type ApiResult } from '../../../../lib/api.ts';
   import { BacklogDnd } from '../../../../lib/backlog-dnd.svelte.ts';
   import { indexTree, ROOT, type DropMove, type DropRow } from '../../../../lib/backlog-drop.ts';
+  import {
+    emptyFilter,
+    filterFromParams,
+    filterSearch,
+    isFiltering,
+    sameFilter,
+    type BacklogFilter,
+  } from '../../../../lib/backlog-filter.ts';
   import { MoveQueue } from '../../../../lib/move-queue.ts';
   import { showToast } from '../../../../lib/toast.svelte.ts';
   import { t } from '../../../../lib/vocabulary.svelte.ts';
@@ -30,7 +40,10 @@
 
   // ワークスペースの画面（backlog.html の木と起票）。最上段は見本どおり「エピック → 親のないストーリー → 親のないタスク」の3段で、
   // それぞれ position の順。エピックの下にはストーリーを、ストーリーの下には未完了のタスクを並べ、完了したタスクは件数の1行にする。
-  // 絞り込み、折りたたみを開ける操作、エピックの並べ替え（#308）は、それぞれの機能の Issue で足す。
+  // 木の上に絞り込みの帯（BacklogFilterBar）を置く。絞り込みは URL の問い合わせに持ち（replace で履歴を積まない）、load がサーバーで絞った木を読む。
+  // 絞っている間は「上へ」「下へ」と Alt と ↑ ↓ を出さず（親を移すは残す）、案内を替える。当たるものが無ければ、木の代わりに無いことと外す操作を出す。
+  // 絞っているときに作ったタスク、ストーリー、エピックは、読み直した木に無ければ、絞り込みを外す操作つきのトーストで知らせる。
+  // 絞っている間は、つまみのドラッグも出さない（並べ替えは隣を使うため）。折りたたみを開ける操作、エピックの並べ替え（#308）は、それぞれの機能の Issue で足す。
   // 並べ替えは、行の「上へ」「下へ」と Alt と ↑ ↓ で、同じ親（親なしのタスク、親のないストーリー、エピックの下のストーリーはそれぞれの並び）の中で1つ動かす。
   // タスクとストーリーの行の「親を移す」は、ダイアログで選んだ親の末尾へ移す。
   // 行の先頭のつまみのドラッグ（BacklogDnd。判定は backlog-drop.ts）は、離れた位置や別の親へ、行の間の線か親の行の囲みに落として動かす。
@@ -51,6 +64,32 @@
 
   const workspace = $derived(data.workspace);
   const tree = $derived(data.tree);
+  // 木を読んだときの絞り込み（URL の問い合わせ）。絞っている間は並べ替え（上へ、下へ、Alt と ↑ ↓）を出さない
+  const filter = $derived(data.filter);
+  const filtering = $derived(isFiltering(filter));
+  // 絞り込みの値を変えて読み直している間（同じ画面の中で、絞り込みの値が変わる移動。`?task=` だけの移動は含めない）。
+  // 前の木を残したまま、木を aria-busy にする（components.css が少し薄くする）
+  const reloading = $derived.by(() => {
+    const target = navigating.to;
+    if (target === null || target.url.pathname !== page.url.pathname) return false;
+    return !sameFilter(filterFromParams(target.url.searchParams), filter);
+  });
+  // 行のリンクの問い合わせ（今の絞り込みを残して task を足す）。行ごとに作らず、ここで1回だけ組み、行は task の値だけを足す
+  const taskQueryBase = $derived.by(() => {
+    const query = new SvelteURLSearchParams(page.url.search);
+    query.delete('task');
+    const rest = query.toString();
+    return rest === '' ? '?task=' : `?${rest}&task=`;
+  });
+  // 親のない完了の件数。絞っているときは返らない（null）ので 0 として扱い、折りたたみの1行を出さない
+  const rootDone = $derived(tree?.completed_count ?? 0);
+  // 絞り込みの結果の読み上げ（出したタスクの行の数か、当たるものが無いこと）。絞っていなければ空
+  const filterResult = $derived.by(() => {
+    if (!filtering || tree === null) return '';
+    const rows = Object.values(taskLists).reduce((sum, list) => sum + list.length, 0);
+    const none = epics.length === 0 && tree.stories.length === 0 && rows === 0;
+    return none ? t('filterResultNone') : t('filterResultCount', { count: rows });
+  });
   const canWrite = $derived(workspace !== null && workspace.closedAt === null);
   // 完成の定義の畳みを開いたか。開くまで本文を描かない
   let dodOpen = $state(false);
@@ -146,21 +185,39 @@
   }
   // タスクの親に選べるストーリー（完了していないもの）。選択欄は親のエピック（親なしは null）でまとめる。
   // ストーリーの親に選べるエピック（完了も中止もしていないもの）
-  const openStories = $derived(
-    allStories
-      .filter((story) => story.completed_at === null)
-      .map((story) => {
-        const epic = parentEpicOf(story.id);
-        return {
-          id: story.id,
-          title: story.title,
-          group: epic === undefined ? null : { id: epic.id, title: epic.title },
-          // 起票のダイアログで、この親を選んだときに引き継ぐ区分
-          category: story.category,
-        };
-      }),
+  // 絞っているときは、木から消えたものも選べるよう、API の choices（全部のエピックと、完了していないストーリー）から作る
+  // （画面で親を移したストーリーは、移す先のエピックの下にまとめる）
+  const choiceEpics = $derived(tree?.choices.epics ?? []);
+  const openStories = $derived.by(() => {
+    const choices = tree?.choices.stories;
+    if (choices == null) {
+      return allStories
+        .filter((story) => story.completed_at === null)
+        .map((story) => {
+          const epic = parentEpicOf(story.id);
+          return {
+            id: story.id,
+            title: story.title,
+            group: epic === undefined ? null : { id: epic.id, title: epic.title },
+            // 起票のダイアログで、この親を選んだときに引き継ぐ区分
+            category: story.category,
+          };
+        });
+    }
+    return choices.map((story) => {
+      const epicId = Object.hasOwn(movedStoryParents, story.id) ? movedStoryParents[story.id] : story.epic_id;
+      const epic = epicId == null ? undefined : choiceEpics.find((candidate) => candidate.id === epicId);
+      return {
+        id: story.id,
+        title: story.title,
+        group: epic === undefined ? null : { id: epic.id, title: epic.title },
+        category: story.category,
+      };
+    });
+  });
+  const openEpics = $derived(
+    choiceEpics.filter((epic) => !epic.finished).map((epic) => ({ id: epic.id, title: epic.title })),
   );
-  const openEpics = $derived(epics.filter((epic) => epic.completed_at === null && epic.canceled_at === null));
 
   const taskLists = $derived(
     grouped(
@@ -196,8 +253,8 @@
     onDrop: (drop) => (drop.move.kind === 'task' ? dropTask(drop.move) : dropStory(drop.move)),
     onStale: () => showToast(t('moveReloaded'), 'alert'),
   });
-  // 木の行へ渡す。書き込めないときは渡さず、つまみも落とし先も出さない
-  const rowDnd = $derived(canWrite ? dnd : undefined);
+  // 木の行へ渡す。書き込めないときと、絞っている間（並べ替えは隣を使うため）は渡さず、つまみも落とし先も出さない
+  const rowDnd = $derived(canWrite && !filtering ? dnd : undefined);
   $effect(() => dnd.monitor());
   // 読み直したら、つかんでいるドラッグは取りやめる（離しても何も送らない）。印と光らせる行も捨てる
   $effect.pre(() => {
@@ -214,9 +271,11 @@
     return taskLists[story.id] ?? [];
   }
 
-  // 配下の未完了のタスクの件数。画面で完了にした行は数えない（読み直すまで行は残るが、完了している）
+  // 配下の未完了のタスクの件数。画面で完了にした行は数えない（読み直すまで行は残るが、完了している）。
+  // 絞り込みで出していない未完了の行（open_task_count のうち木に載らなかった分）も数える
   function remainingOf(story: BacklogStory): number {
-    return storyRows(story).filter((task) => !completedIds.includes(task.id)).length;
+    const hidden = Math.max(0, story.open_task_count - story.tasks.length);
+    return hidden + storyRows(story).filter((task) => !completedIds.includes(task.id)).length;
   }
 
   // 親の「全体」のポイント。足した行と、画面で移してきた行の分を足し、画面で外へ移した行の分を引く
@@ -237,15 +296,18 @@
     return story.points_done + done.reduce((sum, task) => sum + (task.points ?? 0), 0);
   }
 
-  // エピックの合計は、今その下に並ぶストーリーの合計（画面で移したストーリーと、足した行、完了にした行の分を含む）
+  // エピックの合計は、今その下に並ぶストーリーの合計（画面で移したストーリーと、足した行、完了にした行の分を含む）に、
+  // 絞り込みで出していないストーリーの分（API の合計から、読み直した木のストーリーの分を引いた残り。絞っていなければ 0）を足す
   function epicStories(epic: BacklogEpic): BacklogStory[] {
     return storyLists[epic.id] ?? [];
   }
   function epicPoints(epic: BacklogEpic): { done: number; all: number } {
     const stories = epicStories(epic);
+    const hiddenDone = epic.points_done - epic.stories.reduce((sum, story) => sum + story.points_done, 0);
+    const hiddenAll = epic.points_all - epic.stories.reduce((sum, story) => sum + story.points_all, 0);
     return {
-      done: stories.reduce((sum, story) => sum + pointsDoneOf(story), 0),
-      all: stories.reduce((sum, story) => sum + pointsAllOf(story), 0),
+      done: hiddenDone + stories.reduce((sum, story) => sum + pointsDoneOf(story), 0),
+      all: hiddenAll + stories.reduce((sum, story) => sum + pointsAllOf(story), 0),
     };
   }
 
@@ -387,10 +449,70 @@
     }
   }
 
-  function created(task: BacklogTask, storyId: string | null): void {
+  // 絞り込みの帯の値を URL の問い合わせに書き、木を読み直す（load が問い合わせを読んで backlog-tree に渡す）。
+  // 履歴は積まない。フォーカスとスクロールの位置は動かさない。読み直している間は前の木を残し、続けて変えたら古い読み直しは捨てる（SvelteKit の移動）
+  // 前の移動がまだ終わっていない間に値を元に戻すこともあるので、今の URL と同じでも省かず、最後の操作の行き先へ必ず移る
+  function applyFilter(next: BacklogFilter): Promise<void> {
+    const search = filterSearch(page.url.search, next);
+    // eslint-disable-next-line svelte/no-navigation-without-resolve -- 今の画面の経路（page.url.pathname）に、絞り込みの問い合わせだけを替えている
+    return goto(page.url.pathname + search, { replace: true, reset: false });
+  }
+
+  // 当たるものが無いときの「絞り込みを外す」。押したボタンは消えるので、外した後は検索の欄へフォーカスを移す
+  async function clearFilter(): Promise<void> {
+    await applyFilter(emptyFilter);
+    await tick();
+    document.querySelector<HTMLElement>('.toolbar input[type="search"]')?.focus();
+  }
+
+  // 読み直した木に、その行があるか
+  function treeHas(kind: 'task' | 'story' | 'epic', id: string): boolean {
+    const loaded = data.tree;
+    if (loaded === null) return true;
+    const stories = [...loaded.epics.flatMap((epic) => epic.stories), ...loaded.stories];
+    if (kind === 'epic') return loaded.epics.some((epic) => epic.id === id);
+    if (kind === 'story') return stories.some((story) => story.id === id);
+    return (
+      loaded.tasks.some((task) => task.id === id) || stories.some((story) => story.tasks.some((row) => row.id === id))
+    );
+  }
+
+  // 絞っているときに作ったものを、読み直した木で探す。あれば作ったことを知らせ（ダイアログは、絞っている間は作った知らせを出さない）、
+  // 無ければ（絞り込みに当たらなければ）、作った知らせの代わりに「表示していません」を、絞り込みを外す操作と一緒に知らせる
+  async function revealOrNotice(kind: 'task' | 'story' | 'epic', id: string, createdMessage: string): Promise<boolean> {
+    await tick();
+    if (data.tree === null || treeHas(kind, id)) {
+      showToast(createdMessage, 'check');
+      return true;
+    }
+    showToast(t('filterHiddenCreated'), 'check', { label: t('filterClear'), run: () => void clearFilter() });
+    return false;
+  }
+
+  async function created(task: BacklogTask, storyId: string | null): Promise<void> {
+    // 絞っているときは、足した行が絞り込みに当たるかを画面では決めないので、木を読み直す
+    if (filtering) {
+      const parent = storyId === null ? undefined : openStories.find((story) => story.id === storyId);
+      const message =
+        parent === undefined
+          ? t('taskCreated', { backlog: t('backlog') })
+          : t('taskCreatedUnder', { story: t('story'), title: parent.title });
+      await invalidate('app:backlog-tree');
+      if ((await revealOrNotice('task', task.id, message)) && storyId !== null) expandStory(storyId);
+      return;
+    }
     added = [...added, { task, storyId }];
     // 畳まれている親の行は開いて、足した行が見えるようにする
     if (storyId !== null) expandStory(storyId);
+  }
+
+  // エピックかストーリーを作った、直した。木を読み直し、絞っているときに作ったものを知らせる
+  async function saved(kind: 'story' | 'epic', createdId: string | null): Promise<void> {
+    const wasFiltering = filtering;
+    await invalidateAll();
+    if (createdId === null || !wasFiltering) return;
+    const message = kind === 'story' ? t('storyCreated', { story: t('story') }) : t('epicCreated', { epic: t('epic') });
+    await revealOrNotice(kind, createdId, message);
   }
 
   // 直す対象のストーリーかエピックが消えていた。木を読み直し、フォーカスを見出しへ移す（ダイアログが閉じて、戻る先が無いため）
@@ -491,11 +613,20 @@
   }
 
   // 動かす操作を、押した順に送る。失敗したら理由を知らせて読み直し、フォーカスを同じ操作（無ければ見出し）へ戻す
-  function send(call: () => Promise<ApiResult<unknown>>, kind: 'task' | 'story'): void {
+  // reloadOnSuccess は、通った後にも木を読み直す（絞っているときの親の移動。移す先の親が木に無いことがあり、どの行を出すかはサーバーが決める）
+  function send(call: () => Promise<ApiResult<unknown>>, kind: 'task' | 'story', reloadOnSuccess = false): void {
     const workspaceId = workspace?.id;
     void moves.send(call, async (result) => {
       // 送っている間に別のワークスペースへ移っていたら、古い応答で状態を触らない
-      if (result.ok || workspaceId !== page.params.id) return;
+      if (workspaceId !== page.params.id) return;
+      if (result.ok) {
+        if (reloadOnSuccess) {
+          const saved = focusedControl();
+          await reloadTree();
+          await restoreFocus(saved, false);
+        }
+        return;
+      }
       // 401 は、枠の読み直しがログインの画面へ移す
       if (result.status !== 401) showToast(moveFailureMessage(result, kind), 'alert');
       const saved = focusedControl();
@@ -568,14 +699,15 @@
     void tick().then(() => entries[task.id]?.focusMoveParent());
     void announce(taskParentAnnouncement(task, storyId));
     const input = { workspace_id: workspace.id, task_id: task.id, story_id: storyId };
-    send(() => callOperation(taskMove, input, { slug: page.params.slug ?? '' }), 'task');
+    send(() => callOperation(taskMove, input, { slug: page.params.slug ?? '' }), 'task', filtering);
   }
 
   // 親を移したときの読み上げ。index（0 始まり）を渡すと「N 番目」まで伝え、渡さなければ「末尾へ」と伝える
   function taskParentAnnouncement(task: BacklogTask, storyId: string | null, index?: number): string {
-    const parent = storyId === null ? undefined : allStories.find((story) => story.id === storyId);
+    // 移す先は候補（絞っているときは木に無いストーリーもある）から引く
+    const parent = storyId === null ? undefined : openStories.find((story) => story.id === storyId);
     // 親のストーリーがエピックの下なら、エピックの題も添える（同じ題のストーリーが、別のエピックの下にありうるため）
-    const parentEpic = storyId === null ? undefined : parentEpicOf(storyId);
+    const parentEpic = parent?.group ?? undefined;
     const at = index === undefined ? undefined : index + 1;
     if (parent === undefined) {
       return at === undefined
@@ -599,7 +731,7 @@
   }
 
   function storyParentAnnouncement(story: BacklogStory, epicId: string | null, index?: number): string {
-    const parent = epicId === null ? undefined : epics.find((epic) => epic.id === epicId);
+    const parent = epicId === null ? undefined : choiceEpics.find((epic) => epic.id === epicId);
     const at = index === undefined ? undefined : index + 1;
     if (parent === undefined) {
       return at === undefined
@@ -677,7 +809,7 @@
     void tick().then(() => treeRows[story.id]?.focusMoveParent());
     void announce(storyParentAnnouncement(story, epicId));
     const input = { workspace_id: workspace.id, story_id: story.id, epic_id: epicId };
-    send(() => callOperation(storyMove, input, { slug: page.params.slug ?? '' }), 'story');
+    send(() => callOperation(storyMove, input, { slug: page.params.slug ?? '' }), 'story', filtering);
   }
 </script>
 
@@ -715,10 +847,11 @@
     onComplete={complete}
     canMoveUp={place !== undefined && place.index > 0}
     canMoveDown={place !== undefined && place.index < place.count - 1}
-    onMove={canWrite ? reorderTask : undefined}
+    onMove={canWrite && !filtering ? reorderTask : undefined}
     onMoveParent={canWrite && (place?.parentId != null || openStories.length > 0) ? openMoveDialog : undefined}
     showCategory={place?.parentId == null}
     dnd={rowDnd}
+    taskQuery={taskQueryBase}
   />
 {/snippet}
 
@@ -747,14 +880,20 @@
     row={taskRow}
     canMoveUp={place !== undefined && place.index > 0}
     canMoveDown={place !== undefined && place.index < place.count - 1}
-    onMove={canWrite ? reorderStory : undefined}
+    onMove={canWrite && !filtering ? reorderStory : undefined}
     onMoveParent={canWrite && (place?.parentId != null || openEpics.length > 0) ? openStoryMoveDialog : undefined}
     dnd={rowDnd}
   />
 {/snippet}
 
 {#if workspace && tree === null}
-  <LoadFailed inShell />
+  <!-- 絞っている間に読めなかったときは、絞り込みを外す操作も添える（絞り込みが原因でも抜け出せるように） -->
+  {#snippet clearOnFailure()}
+    <button class="btn is-sm is-quiet" type="button" onclick={() => void applyFilter(emptyFilter)}
+      ><Icon name="x" />{t('filterClear')}</button
+    >
+  {/snippet}
+  <LoadFailed inShell extra={filtering ? clearOnFailure : undefined} />
 {:else if workspace && tree}
   <!-- チーム全体の経験値は、読めたときだけ見出しの中に出す（読めなくても画面は開く） -->
   {#snippet teamExperience()}
@@ -793,8 +932,11 @@
   <!-- 完了の操作を送っている最中の読み上げと、動かした結果の読み上げ。領域は常に置き、中の文字だけを替える -->
   <span class="visually-hidden" role="status">{completingStatus}</span>
   <span class="visually-hidden" role="status">{moveStatus}</span>
+  <!-- 絞り込みの結果の読み上げ。木を読み直すたびに中の文字を替える（同じ文なら読み上げない） -->
+  <span class="visually-hidden" role="status">{filterResult}</span>
 
-  {#if epics.length === 0 && tree.stories.length === 0 && rootRows.length === 0 && tree.completed_count === 0}
+  <!-- 何も無いときの最初の一歩は、見本どおり絞り込みの帯も出さない。絞っているときは、当たるものが無くても帯を出す -->
+  {#if !filtering && epics.length === 0 && tree.stories.length === 0 && rootRows.length === 0 && rootDone === 0}
     <EmptyState
       icon="board"
       title={t('backlogEmptyTitle', { task: t('task') })}
@@ -804,62 +946,95 @@
     />
   {:else}
     <section class="section" aria-label={t('backlogTasksLabel', { backlog: t('backlog'), task: t('task') })}>
-      {#if canWrite}
-        <p class="action-note">
-          {t('backlogOrderNote', { story: t('story'), task: t('task') })}
-          <span class="drag-note">{t('backlogDragNote')}</span>
-        </p>
+      <BacklogFilterBar
+        {filter}
+        choices={tree.choices}
+        categories={data.definitions?.categories ?? []}
+        repositories={data.definitions?.repositories ?? []}
+        definitionsFailed={data.definitions === null}
+        onchange={(next) => void applyFilter(next)}
+      />
+      {#if filtering && epics.length === 0 && tree.stories.length === 0 && rootRows.length === 0}
+        <!-- 絞り込みに当たるものが無い。木の代わりに、無いことと、絞り込みを外す操作を出す -->
+        <EmptyState icon="search" title={t('backlogNoMatchTitle')} text={t('backlogNoMatchText')}>
+          {#snippet actions()}
+            <button class="btn is-sm" type="button" onclick={() => void clearFilter()}
+              ><Icon name="x" />{t('filterClear')}</button
+            >
+          {/snippet}
+        </EmptyState>
+      {:else}
+        {#if canWrite}
+          <!-- 絞っている間は並べ替えを出さないので、外すと並べ替えられることを案内する -->
+          <p class="action-note">
+            {#if filtering}
+              {t('backlogFilterOrderNote')}
+            {:else}
+              {t('backlogOrderNote', { story: t('story'), task: t('task') })}
+              <span class="drag-note">{t('backlogDragNote')}</span>
+            {/if}
+          </p>
+        {/if}
+        {#if filtering}
+          <!-- 絞っても、ポイントの合計と完了の件数は絞る前の全体の値を出すので、そのことを添える -->
+          <p class="action-note">{t('filterTotalsNote', { points: t('points') })}</p>
+        {/if}
+        {@render treeView()}
       {/if}
-      <div class="tree">
-        {#each epics as epic (epic.id)}
-          {@const points = epicPoints(epic)}
-          <TreeEpic
-            bind:this={epicRows[epic.id]}
-            {epic}
-            pointsDone={points.done}
-            pointsAll={points.all}
-            {clock}
-            empty={epicStories(epic).length === 0}
-            dnd={rowDnd}
-            onEdit={(target, trigger) => epicDialog?.show(trigger, target.id)}
-          >
-            {#each epicStories(epic) as story (story.id)}
-              {@render storyRow(story)}
-            {/each}
-          </TreeEpic>
-        {/each}
-        {#each rootStoryList as story (story.id)}
-          {@render storyRow(story)}
-        {/each}
-        {#if rootStoryList.length === 0 && rowDnd?.item?.kind === 'story'}
-          {@render dropSlot(storySlot, t('dropSlotStory', { story: t('story') }))}
-        {/if}
-        {#if rootRows.length > 0 || tree.completed_count > 0}
-          <div>
-            {#if rootRows.length === 0 && epics.length === 0 && tree.stories.length === 0}
-              <EmptyState
-                icon="board"
-                title={t('backlogNoOpenTitle', { task: t('task') })}
-                text={canWrite
-                  ? t('backlogNoOpenText', { task: t('task'), create: t('create') })
-                  : t('backlogEmptyClosedText', { task: t('task'), workspace: t('workspace') })}
-              />
-            {/if}
-            {#each rootRows as task (task.id)}
-              {@render taskRow(task)}
-            {/each}
-            {#if tree.completed_count > 0}
-              <p class="tree-folded is-root" data-drop={rowDnd?.markOf(rootTail)} {@attach rowDnd?.target(rootTail)}>
-                {t('backlogFolded', { done: t('done'), count: tree.completed_count })}
-              </p>
-            {/if}
-          </div>
-        {:else if rowDnd?.item?.kind === 'task'}
-          {@render dropSlot(taskSlot, t('dropSlotTask', { task: t('task') }))}
-        {/if}
-      </div>
     </section>
   {/if}
+
+  {#snippet treeView()}
+    <div class="tree" aria-busy={reloading}>
+      {#each epics as epic (epic.id)}
+        {@const points = epicPoints(epic)}
+        <TreeEpic
+          bind:this={epicRows[epic.id]}
+          {epic}
+          pointsDone={points.done}
+          pointsAll={points.all}
+          {clock}
+          empty={epicStories(epic).length === 0}
+          dnd={rowDnd}
+          onEdit={(target, trigger) => epicDialog?.show(trigger, target.id)}
+        >
+          {#each epicStories(epic) as story (story.id)}
+            {@render storyRow(story)}
+          {/each}
+        </TreeEpic>
+      {/each}
+      {#each rootStoryList as story (story.id)}
+        {@render storyRow(story)}
+      {/each}
+      {#if rootStoryList.length === 0 && rowDnd?.item?.kind === 'story'}
+        {@render dropSlot(storySlot, t('dropSlotStory', { story: t('story') }))}
+      {/if}
+      <!-- 絞っているときは、親のない完了の件数が返らない（null）ので、折りたたみの1行を出さない -->
+      {#if rootRows.length > 0 || rootDone > 0}
+        <div>
+          {#if rootRows.length === 0 && epics.length === 0 && tree.stories.length === 0}
+            <EmptyState
+              icon="board"
+              title={t('backlogNoOpenTitle', { task: t('task') })}
+              text={canWrite
+                ? t('backlogNoOpenText', { task: t('task'), create: t('create') })
+                : t('backlogEmptyClosedText', { task: t('task'), workspace: t('workspace') })}
+            />
+          {/if}
+          {#each rootRows as task (task.id)}
+            {@render taskRow(task)}
+          {/each}
+          {#if rootDone > 0}
+            <p class="tree-folded is-root" data-drop={rowDnd?.markOf(rootTail)} {@attach rowDnd?.target(rootTail)}>
+              {t('backlogFolded', { done: t('done'), count: rootDone })}
+            </p>
+          {/if}
+        </div>
+      {:else if rowDnd?.item?.kind === 'task'}
+        {@render dropSlot(taskSlot, t('dropSlotTask', { task: t('task') }))}
+      {/if}
+    </div>
+  {/snippet}
 
   <!-- エピックとストーリーのダイアログは、閉じたワークスペースでも読み取り専用で開く -->
   <EpicDialog
@@ -869,7 +1044,8 @@
     {canWrite}
     categories={data.definitions?.categories ?? []}
     categoriesFailed={data.definitions === null}
-    onsaved={() => void invalidateAll()}
+    onsaved={(createdId) => void saved('epic', createdId)}
+    announceCreated={!filtering}
     ongone={() => void rowGone()}
   />
   <StoryDialog
@@ -879,7 +1055,8 @@
     {canWrite}
     categories={data.definitions?.categories ?? []}
     categoriesFailed={data.definitions === null}
-    onsaved={() => void invalidateAll()}
+    onsaved={(createdId) => void saved('story', createdId)}
+    announceCreated={!filtering}
     ongone={() => void rowGone()}
   />
   {#if canWrite}
@@ -891,7 +1068,8 @@
       categories={data.definitions?.categories ?? []}
       repositories={data.definitions?.repositories ?? []}
       definitionsFailed={data.definitions === null}
-      oncreated={created}
+      oncreated={(task, storyId) => void created(task, storyId)}
+      announceCreated={!filtering}
     />
     <MoveParentDialog bind:this={moveDialog} parents={openStories} onmove={moveParent} />
     <MoveParentDialog bind:this={storyMoveDialog} parents={openEpics} onmove={moveStoryParent} />

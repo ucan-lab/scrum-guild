@@ -39,6 +39,7 @@
     repositories,
     definitionsFailed,
     oncreated,
+    announceCreated = true,
   }: {
     slug: string;
     workspaceId: string;
@@ -49,6 +50,8 @@
     // 区分とリポジトリの一覧を読めなかった（選択肢は「なし」だけ）
     definitionsFailed: boolean;
     oncreated: (task: BacklogTask, storyId: string | null) => void;
+    // 偽なら作った知らせ（トースト）を出さない。絞り込み中の画面が、作ったものが当たるかを確かめてから自分で知らせる
+    announceCreated?: boolean;
   } = $props();
 
   // 親の選択欄は、親のエピックごとに optgroup でまとめる（同じ題のストーリーが、別のエピックの下にありうるため）
@@ -291,13 +294,16 @@
       }
       const parent = stories.find((candidate) => candidate.id === story) ?? null;
       open = false;
+      const announce = announceCreated;
       oncreated(result.data.task, parent?.id ?? null);
-      showToast(
-        parent === null
-          ? t('taskCreated', { backlog: t('backlog') })
-          : t('taskCreatedUnder', { story: t('story'), title: parent.title }),
-        'check',
-      );
+      if (announce) {
+        showToast(
+          parent === null
+            ? t('taskCreated', { backlog: t('backlog') })
+            : t('taskCreatedUnder', { story: t('story'), title: parent.title }),
+          'check',
+        );
+      }
     } finally {
       if (mine === generation) {
         submitting = false;

@@ -73,6 +73,16 @@
     markdownPlainNote: ["整形せずに表示しています", "整形せずに表示しています"], markdownNewTab: ["新しいタブで開きます", "新しいタブで開きます"],
     markdownCodeRegion: ["コード", "コード"], markdownTableRegion: ["表", "表"],
     teamXpLabel: ["パーティ全体の経験値", "チーム全体の経験値"],
+    filterLabel: ["{backlog}の絞り込み", "{backlog}の絞り込み"], backlogSearch: ["タイトルで探す", "タイトルで探す"],
+    filterAll: ["{label}: すべて", "{label}: すべて"], filterMe: ["自分", "自分"],
+    unassigned: ["担い手なし", "担当なし"], leftMember: ["（離脱済み）", "（離脱済み）"], categoryNone: ["{category}なし", "{category}なし"],
+    filterNoRepository: ["リポジトリなし", "リポジトリなし"], filterNoEpic: ["{epic}なし", "{epic}なし"],
+    filterClear: ["絞り込みを外す", "絞り込みを外す"],
+    backlogFilterOrderNote: ["上にあるものほど優先します。絞り込みを外すと並べ替えられます。", "上にあるものほど優先します。絞り込みを外すと並べ替えられます。"],
+    backlogNoMatchTitle: ["絞り込みに当たるものはありません", "絞り込みに当たるものはありません"],
+    backlogNoMatchText: ["条件を変えるか、絞り込みを外してください。", "条件を変えるか、絞り込みを外してください。"],
+    filterTotalsNote: ["{points}と件数は、絞る前の全体の値です", "{points}と件数は、絞る前の全体の値です"],
+    filterHiddenCreated: ["作りました。絞り込みに当たらないので表示していません", "作りました。絞り込みに当たらないので表示していません"],
   };
   let vocab = 0;
   const listeners = [];
@@ -1018,14 +1028,24 @@ const looooooooooooooooooooooooooooooooooongLine = "コードの長い1行は、
     if (dialogOpener && dialogOpener.focus) dialogOpener.focus();
     return true;
   }
-  // 短い知らせ。数秒で消える
-  function toast(html) {
+  // 短い知らせ。数秒で消える。操作の付いたものは、押す間があるよう長く出す（lifetime）
+  // html は先頭のアイコンと文。本番（ToastRegion.svelte）と同じく、文は <span> で包む。
+  // action（ボタンの文字）を渡すと文の後ろに操作のボタンを付け、10 秒出す。ポインターかフォーカスがある間は数えるのを止め、外れてから数え直す
+  function toast(html, action) {
     const el = document.getElementById("toasts");
     if (!el) return;
+    const [, mark = "", text = ""] = /^(<svg[\s\S]*?<\/svg>)?([\s\S]*)$/.exec(html) || [];
     const item = document.createElement("div");
-    item.className = "toast"; item.setAttribute("role", "status"); item.innerHTML = html;
+    item.className = "toast"; item.setAttribute("role", "status");
+    item.innerHTML = `${mark}<span>${text}</span>${action ? `<button class="toast-action" type="button" data-toast-dismiss>${esc(action)}</button>` : ""}`;
     el.append(item);
-    setTimeout(() => item.remove(), 4000);
+    const lifetime = action ? 10000 : 4000;
+    let timer = setTimeout(() => item.remove(), lifetime);
+    if (!action) return;
+    const pause = () => clearTimeout(timer);
+    const resume = () => { clearTimeout(timer); timer = setTimeout(() => item.remove(), lifetime); };
+    item.addEventListener("mouseenter", pause); item.addEventListener("focusin", pause);
+    item.addEventListener("mouseleave", resume); item.addEventListener("focusout", resume);
   }
   // レイドのクリアの演出。判子が押されて、報酬を知らせる。動きを減らす設定では動かさない
   function celebrate(title, reward) {
@@ -1999,7 +2019,12 @@ const looooooooooooooooooooooooooooooooooongLine = "コードの長い1行は、
     if ((el = hit("data-close-dialog")) || ev.target.id === "dialog") {
       const msg = el && el.dataset.toast; closeDialog(); if (msg) toast(`${icon("check")}${esc(msg)}`); return;
     }
-    if ((el = hit("data-toast"))) { toast(`${icon("check")}${esc(el.dataset.toast)}`); return; }
+    if ((el = hit("data-toast"))) {
+      // data-toast-action があれば、文の後ろに操作のボタンを付ける（押すとそのトーストを消す）
+      toast(`${icon("check")}${esc(el.dataset.toast)}`, el.dataset.toastAction);
+      return;
+    }
+    if ((el = hit("data-toast-dismiss"))) { el.closest(".toast")?.remove(); return; }
     if (hit("data-close-celebrate") || ev.target.id === "celebrate") { closeCelebrate(); return; }
     if (hit("data-assist-open") && assistAllowed()) { openAssist(assist.open === "panel" ? "panel" : "palette"); return; }
     if ((el = hit("data-assist-ask"))) { askAssist(el.dataset.assistAsk); return; }
