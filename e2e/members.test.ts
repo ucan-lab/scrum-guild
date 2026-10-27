@@ -362,13 +362,16 @@ test.describe('リーダー（あおば開発のミナト）', () => {
     await expect(role).toHaveValue('leader');
 
     reply = { status: 409, json: { error: { code: 'conflict', message: 'x' } } };
-    // 断られた後の一覧の読み直しを待ってから終える（読み直しが壊れても通らないように）
+    // 断られた後の一覧の読み直しを待ってから終える（読み直しが壊れても通らないように）。
+    // 付け替えた後の読み直しは、上の tally が変わった時点で終わっているので、待つのは 409 の後の読み直し
     const reloaded = page.waitForResponse('**/api/aoba/member-list');
     await role.selectOption('member');
-    await expect(page.locator('.toasts:visible .toast').last()).toHaveText(
-      '冒険者のロールが先に変わっていました。一覧を読み直しました。',
-    );
-    await reloaded;
+    await Promise.all([
+      expect(page.locator('.toasts:visible .toast').last()).toHaveText(
+        '冒険者のロールが先に変わっていました。一覧を読み直しました。',
+      ),
+      reloaded,
+    ]);
     await expect(role).toHaveValue('leader');
   });
 

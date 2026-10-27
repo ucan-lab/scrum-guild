@@ -280,6 +280,7 @@ GitHub は無料のプランのまま使う（2026-10-23 に決めた）。無�
 
 - `test` と `expect` は `e2e/fixtures.ts` から import する。`@playwright/test` から `test` を直に import すると `pnpm lint` が止める（`eslint.config.js` の `e2e/**/*.test.ts` の `no-restricted-imports`）。型は `@playwright/test` から import してよい
 - `fixtures.ts` の `page` は、テストの後で `page.unrouteAll({ behavior: 'ignoreErrors' })` を待つ。`page.route()` の処理の中で `route.fetch()` を待つテストは、画面が終わりに飛ばした読み直しがテストの後に届くと「route.fetch: Test ended」で落ち、その失敗が同じワーカーで次に走るテストに付く。2026-10-27 に、`e2e/members.test.ts` の route の処理に遅れを入れると必ずこの形で落ち、fixture を入れると落ちないことを確かめた（#318）
+- fixture が外すのは、テストの引数の `page` に張った route だけ。`browser.newContext()` で作った context と page、`context.route()` には効かない。そこで `route.fetch()` を使うなら、テストの終わりで自分で `unrouteAll({ behavior: 'ignoreErrors' })` を待つ
 - `ignoreErrors` は、テストの後に届いた要求の失敗を黙って捨てる。テストの終わりの読み直しそのものを確かめたいときは、`page.waitForResponse()` で応答を待ってから終える
 
 ### 依存を入れたばかりの作業コピー
