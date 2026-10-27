@@ -61,7 +61,13 @@ jobs:
       - run: pnpm lint
       - run: pnpm format:check
       # Claude のフックの判定が壊れたら落とす
-      - run: node --test .claude/hooks/*.test.mjs
+      - name: フックのテスト
+        run: node --test .claude/hooks/*.test.mjs
+      # クラウドのセッションの環境でも、フックのテストの結果が変わらないことを確かめる
+      - name: フックのテスト（CLAUDE_CODE_REMOTE=true）
+        run: node --test .claude/hooks/*.test.mjs
+        env:
+          CLAUDE_CODE_REMOTE: 'true'
 
   test:
     needs: changes

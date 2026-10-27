@@ -2490,7 +2490,10 @@ describe('入口', () => {
   });
 
   describe('ワークツリーの中のフックの書き換え', () => {
-    const cleanEnv = Object.fromEntries(Object.entries(process.env).filter(([key]) => !key.startsWith('GIT_')));
+    // CLAUDE_CODE_REMOTE はクラウドのセッションで true になり、guard-files.mjs が本体の detached を通すので、要るテストだけが明示して渡す
+    const cleanEnv = Object.fromEntries(
+      Object.entries(process.env).filter(([key]) => !key.startsWith('GIT_') && key !== 'CLAUDE_CODE_REMOTE'),
+    );
     const main = path.join(tmp, 'repo');
     const worktree = path.join(main, 'worktrees/1-x');
     const sh = (args, cwd) => {
@@ -2508,12 +2511,12 @@ describe('入口', () => {
     symlinkSync(path.join(main, '.claude/hooks/bash-rules.mjs'), path.join(worktree, '.claude/hooks/link.mjs'));
 
     // project は $CLAUDE_PROJECT_DIR（セッションを起動した場所）
-    const decide = (file, project) => {
+    const decide = (file, project, env = {}) => {
       const input = JSON.stringify({ tool_name: 'Write', cwd: project, tool_input: { file_path: file, content: 'x' } });
       const result = spawnSync(process.execPath, [path.join(hooks, 'guard-files.mjs')], {
         input,
         encoding: 'utf8',
-        env: { ...cleanEnv, CLAUDE_PROJECT_DIR: project },
+        env: { ...cleanEnv, CLAUDE_PROJECT_DIR: project, ...env },
       });
       assert.equal(result.status, 0, result.stderr);
       return result.stdout ? JSON.parse(result.stdout).hookSpecificOutput.permissionDecision : 'allow';
@@ -2587,6 +2590,8 @@ describe('入口', () => {
         assert.equal(decide(path.join(worktree, 'docs/x.md'), main), 'allow');
         assert.equal(decide(path.join(other, 'x.md'), main), 'allow');
         assert.equal(decide(path.join(main, 'newdir/deep/b.md'), main), 'deny');
+        // クラウドのセッションでも、main のブランチにいる本体は止める
+        assert.equal(decide(path.join(main, 'docs/x.md'), main, { CLAUDE_CODE_REMOTE: 'true' }), 'deny');
         // プロジェクトを引けなければ、止める側に倒す
         assert.equal(decide(path.join(main, 'docs/x.md'), ''), 'deny');
         assert.equal(decide(path.join(main, 'docs/x.md'), path.join(tmp, 'gone')), 'deny');
@@ -2594,9 +2599,13 @@ describe('入口', () => {
         sh(['tag', 'main'], main);
         assert.equal(decide(path.join(main, 'docs/x.md'), main), 'deny');
         sh(['tag', '-d', 'main'], main);
-        // 本体の detached は止め、ワークツリーの detached（rebase の途中）は通す
+        // 本体の detached は止め、クラウドのセッション（本体で rebase する）とワークツリーの detached（rebase の途中）は通す
         sh(['checkout', '-q', '--detach'], main);
         assert.equal(decide(path.join(main, 'docs/x.md'), main), 'deny');
+        assert.equal(decide(path.join(main, 'docs/x.md'), main, { CLAUDE_CODE_REMOTE: 'true' }), 'allow');
+        for (const value of ['1', 'false', '', 'TRUE']) {
+          assert.equal(decide(path.join(main, 'docs/x.md'), main, { CLAUDE_CODE_REMOTE: value }), 'deny');
+        }
         sh(['checkout', '-q', '--detach'], worktree);
         assert.equal(decide(path.join(worktree, 'docs/x.md'), main), 'allow');
         sh(['checkout', '-q', '1-x'], worktree);
