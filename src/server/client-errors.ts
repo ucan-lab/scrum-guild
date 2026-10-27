@@ -126,10 +126,50 @@ function maskUnquotedInputs(text: string): string {
     .replace(URL_TO_END, '…');
 }
 
-// URL と正規表現の元の文字列、引用符で囲まれうる範囲、UUID らしい値を … に置き換えてから、先頭 200 字にする。
-// 切ってから伏せると、200字をまたぐ引用符の中身が漏れる
+// 値を引用符で囲まずに後ろへ置く区切り（`Invalid time zone specified: <値>`、`Cannot use '…' in <値>`）。
+// 最初に現れた区切りの後ろを、末尾まで伏せる
+const VALUE_DELIMITERS = [': ', ' in '] as const;
+
+function maskAfterDelimiter(text: string): string {
+  const positions = VALUE_DELIMITERS.map((delimiter) => {
+    const index = text.indexOf(delimiter);
+    return index === -1 ? undefined : index + delimiter.length;
+  }).filter((index): index is number => index !== undefined);
+  if (positions.length === 0) return text;
+  const start = Math.min(...positions);
+  return start === text.length ? text : `${text.slice(0, start)}…`;
+}
+
+// 語（空白で区切った並び）の前後に付く記号。記号だけの並び（伏せた '…' や括弧）は語として扱わず残す
+const WORD_PREFIX = /^['"`([{<…]+/;
+const WORD_SUFFIX = /['"`)\]}>…,;:!?.]+$/;
+
+// 英字だけでない語（数字、@、/、.、-、_、英字でない文字を含む語）を … にする。値を区切りも引用符も無しに入れる文言
+// （`Iterator value <値> is not an entry object`、`Cannot convert <値> to a BigInt`、スキームの無い URL）の値は、
+// 多くが英字でない文字を含むため。英字だけの値は漏れうる（docs/operations.md の「画面のエラー」）
+function maskNonAlphabeticWords(text: string): string {
+  return text
+    .split(/(\s+)/)
+    .map((part) => {
+      if (part === '' || /^\s+$/.test(part)) return part;
+      const prefix = WORD_PREFIX.exec(part)?.[0] ?? '';
+      const rest = part.slice(prefix.length);
+      const suffix = WORD_SUFFIX.exec(rest)?.[0] ?? '';
+      const core = rest.slice(0, rest.length - suffix.length);
+      if (core === '' || /^[A-Za-z]+$/.test(core)) return part;
+      return `${prefix}…${suffix}`;
+    })
+    .join('')
+    .replace(/…{2,}/g, '…');
+}
+
+// 次の順に伏せてから、先頭 200 字にする（切ってから伏せると、200字をまたぐ引用符の中身が漏れる）。伏せすぎは許す
+//   1. `スキーム://` から末尾まで、V8 の `Invalid regular expression: /入力/` の入力
+//   2. 引用符の種類ごとに、最初から最後まで（1つだけなら末尾まで）
+//   3. 「: 」の後ろと「 in 」の後ろを末尾まで
+//   4. 英字だけでない語と UUID
 export function maskClientErrorMessage(text: string): string {
-  const masked = maskQuoted(maskUnquotedInputs(text)).replace(UUID, '…');
+  const masked = maskNonAlphabeticWords(maskAfterDelimiter(maskQuoted(maskUnquotedInputs(text))).replace(UUID, '…'));
   if (masked.length <= CLIENT_ERROR_LOGGED_MESSAGE_LENGTH) return masked;
   // サロゲートペアの片方だけを残さない
   const end = CLIENT_ERROR_LOGGED_MESSAGE_LENGTH;

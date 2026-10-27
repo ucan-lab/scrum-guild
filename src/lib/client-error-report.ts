@@ -1,9 +1,30 @@
 // 画面で捕まえていない例外と Promise の拒否を、POST /api/client-errors へ送る（Issue #376）。
 // 送るのは、種類、名前、メッセージの先頭、場所（先頭の1か所。同じオリジンの /_app/ の下のパスと行・列だけ）、route.id、
-// 画面の版だけ。スタックの残り、関数名、URL のクエリ、入力の値、Cookie は送らない。
+// 画面の版だけ。スタックの残り、関数名、URL、Cookie は送らない。メッセージは画面が切って送り、サーバーが伏せる。
 // 同じエラーはページを読み直すまで1回だけ、全体でも5件まで送る（数はメモリだけに持つ）。送る処理の失敗はやり直さず、
 // 例外も外へ出さない（送る処理のエラーを、また送らないため）
-import { CLIENT_ERROR_SENT_MESSAGE_LENGTH, type ClientErrorReport } from '../shared/client-error.ts';
+import {
+  CLIENT_ERROR_MAX_BODY_BYTES,
+  CLIENT_ERROR_SENT_MESSAGE_LENGTH,
+  type ClientErrorReport,
+} from '../shared/client-error.ts';
+
+const encoder = new TextEncoder();
+const bodyBytes = (body: ClientErrorReport) => encoder.encode(JSON.stringify(body)).byteLength;
+
+// 送る本文（JSON）がサーバーの上限（4KiB）に収まるよう、メッセージを切る。JSON は制御文字を \u0000 の6バイトに書くので、
+// 1,000字に切っても上限を超えうる。超えた本文は 413 で断られ、どこにも残らないため。収まる最長の長さを二分探索で求める
+function fitToBodyLimit(body: ClientErrorReport): ClientErrorReport {
+  if (bodyBytes(body) <= CLIENT_ERROR_MAX_BODY_BYTES) return body;
+  let low = 0;
+  let high = body.message.length;
+  while (low < high) {
+    const middle = Math.ceil((low + high) / 2);
+    if (bodyBytes({ ...body, message: body.message.slice(0, middle) }) <= CLIENT_ERROR_MAX_BODY_BYTES) low = middle;
+    else high = middle - 1;
+  }
+  return { ...body, message: body.message.slice(0, low) };
+}
 
 export type ClientErrorReporterOptions = {
   send: (report: ClientErrorReport) => void | Promise<void>;
@@ -67,14 +88,14 @@ export function createClientErrorReporter(options: ClientErrorReporterOptions): 
     message: string,
     location: ClientErrorLocation | null,
   ): void {
-    const body: ClientErrorReport = {
+    const body = fitToBodyLimit({
       kind,
       name,
       message: message.slice(0, CLIENT_ERROR_SENT_MESSAGE_LENGTH),
       location,
       route: options.routeId(),
       clientVersion: options.version,
-    };
+    });
     const key = JSON.stringify([body.kind, body.name, body.message, body.location]);
     if (sentKeys.has(key) || sentKeys.size >= MAX_REPORTS) return;
     sentKeys.add(key);
