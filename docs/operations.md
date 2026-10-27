@@ -2,7 +2,7 @@
 
 本番を用意し、出し、戻す手順。決めた理由は `docs/development.md` の「CD」と「Cloudflare のアカウントとドメイン」にある。
 
-自動のデプロイは Workers Builds だけが行う。この文書の手で行う操作（用意、手での rollback、DB の復元）は人が手元で行い、Claude のセッションは実行しない（フックが止める）。
+自動のデプロイは Workers Builds だけが行う。この文書の手で行う操作（用意、手での rollback、DB の復元、解約した組織のデータを消すこと）は人が手元で行い、Claude のセッションは実行しない（フックが止める）。
 
 ## 用意
 
@@ -331,7 +331,44 @@ rollback で戻るのは、版が持つものすべて。コードと設定の�
 - 履歴の書き込みに失敗しても、操作は成功する。このとき `organizations` の状態を正とし、Workers Logs の `reason: "組織の状態は書けたが、変更の履歴を書けなかった"` の行（`operation`、`action`、`organizationId`、`changes`（`changes_json` と同じ前後の値）、`at`（操作の日時）、`error`（例外の名前）が付く）を見て、欠けた履歴の行を手で補う
 - 一覧が「状態が変わっていました」と出したときは、別の画面で先に操作が済んでいる。読み直した一覧を見て、必要なら操作し直す
 
-データを消す手順は、解約した組織が出る前に、ここに書く。
+### 解約した組織のデータを消す
+
+解約で停止し、消す予定日を過ぎた組織の D1 の行を、すべて消す。消すのは、組織の中のすべての表の、その組織の行と、最後に `organizations` の行。アカウント（`accounts`、`account_logins`）は、ほかの組織でも使うので消さない。セッションは停止したときに消えている。手順は人が手元（上の「手元の準備」）で実行する。Claude のセッションと自動のデプロイは `--remote` の `wrangler d1` を実行しない。
+
+消した行は戻せない。Time Travel（上の「DB を戻す」。直近30日まで）は DB の全体を戻し、その後に書かれたほかの組織のデータも失うので、この組織だけを戻す手段にはならない。
+
+1. 運用の画面（`/operator`）の組織の一覧で、その組織の名前の横に「停止 <日>」と「<日> に消す」が出ていて、消す日が今日（UTC）より前であることを確かめる。「<日> に消す」が無い組織（一時的な停止）と、消す日が今日か先の組織は消さない。名前の列の slug を控える
+2. 組織の ID を確かめる。運用の画面には ID が出ないので、控えた slug で引く。`suspended_at` と `purge_on` が空でなく、`purge_on` が今日（UTC）より前であることも見る
+
+   ```bash
+   pnpm exec wrangler d1 execute scrum-guild --remote --command "SELECT id, slug, name, suspended_at, purge_on FROM organizations WHERE slug = '<slug>'"
+   ```
+
+3. 消す SQL を書き出す。スクリプトは DB に触らず、組織の ID を埋めた `DELETE` を標準出力に書くだけ。ID は小文字の UUID の形だけを受ける
+
+   ```bash
+   node scripts/purge-organization.ts <組織の ID> > purge.sql
+   ```
+
+   書き出した SQL は、外部キーの子から順に表ごとの `DELETE` を並べ、最後に `organizations` の行を消す。どの文にも「その組織が解約で停止していて、`purge_on` が今日（UTC）より前」の条件が付く。ID を取り違えても、一時的な停止の組織、停止していない組織、消す日が今日か先の組織、無い ID では1行も消えない。
+4. 流す
+
+   ```bash
+   pnpm exec wrangler d1 execute scrum-guild --remote --file purge.sql
+   ```
+
+5. 残っていないことを数える。どれも 0 なら消えている。ワークスペースの中の表（タスクなど）は外部キーで `workspaces` を指すので、`workspaces` が 0 なら残っていない
+
+   ```bash
+   pnpm exec wrangler d1 execute scrum-guild --remote --command "SELECT (SELECT count(*) FROM organizations WHERE id = '<組織の ID>') AS organizations, (SELECT count(*) FROM users WHERE organization_id = '<組織の ID>') AS users, (SELECT count(*) FROM workspaces WHERE organization_id = '<組織の ID>') AS workspaces, (SELECT count(*) FROM organization_holidays WHERE organization_id = '<組織の ID>') AS organization_holidays, (SELECT count(*) FROM change_logs WHERE organization_id = '<組織の ID>') AS change_logs"
+   ```
+
+   0 でない数が残ったら、手順の 2 の値を見直す。一時的な停止、消す日が今日か先、ID の誤りなら、条件に当たって何も消えていない。予定日を過ぎた解約の組織なのに残るなら、途中で止まっているので、下の箇条書きのとおり流し直す
+6. R2 の `<組織の ID>/` で始まるファイルを消す。添付ファイル（#68）がまだ無いので、今は R2 に組織のファイルは無く、この段は飛ばす。手順（一覧と削除のコマンド、残っていないことの確かめ方）は、添付ファイルを足す #68 で書く（#68 に申し送り済み）
+7. `purge.sql` を手元から消す
+
+- 途中で失敗したら（通信が切れた、D1 が誤りを返した）、同じ `purge.sql` をもう一度流す。`organizations` の行を最後に消すので、条件は最後の文まで当たり続け、残った行から消える。2回流しても誤りにならない
+- 組織の中の表を足したときは、消す文も足す（`docs/development.md` の「入口を守る規則」の、表を足すときの箇条書き。足し忘れると `test/purge-organization.test.ts` が落ちる）
 
 ## 鍵の入れ替え
 

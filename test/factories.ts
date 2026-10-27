@@ -477,6 +477,94 @@ export async function createSprint(
   return row;
 }
 
+// かんばんの列。既定は完了でない列
+export async function createBoardColumn(
+  organization: OrganizationFixture,
+  workspaceId: string,
+  overrides: Partial<Row<OrganizationTables, 'board_columns'>> = {},
+) {
+  const row: Row<OrganizationTables, 'board_columns'> = {
+    id: uuidv7(),
+    workspace_id: workspaceId,
+    name: '出発前',
+    is_done: 0,
+    position: 'a0',
+    deleted_at: null,
+    created_at: AT,
+    updated_at: AT,
+    ...overrides,
+  };
+  const db = orgDb(env, organization.verified);
+  await db.run(db.statement((q) => q.insertInto('board_columns').values(row)));
+  return row;
+}
+
+export async function createDetailField(
+  organization: OrganizationFixture,
+  workspaceId: string,
+  overrides: Partial<Row<OrganizationTables, 'detail_fields'>> = {},
+) {
+  const row: Row<OrganizationTables, 'detail_fields'> = {
+    id: uuidv7(),
+    workspace_id: workspaceId,
+    name: '影響範囲',
+    position: 'a0',
+    deleted_at: null,
+    created_at: AT,
+    updated_at: AT,
+    ...overrides,
+  };
+  const db = orgDb(env, organization.verified);
+  await db.run(db.statement((q) => q.insertInto('detail_fields').values(row)));
+  return row;
+}
+
+// ポイントあたりの時間。主キー（ワークスペースと月）にぶつかるなら月を渡す
+export async function createWorkspacePointRate(
+  organization: OrganizationFixture,
+  workspaceId: string,
+  overrides: Partial<Row<OrganizationTables, 'workspace_point_rates'>> = {},
+) {
+  const row: Row<OrganizationTables, 'workspace_point_rates'> = {
+    workspace_id: workspaceId,
+    effective_month: '2026-10',
+    hours_per_point: 2,
+    created_at: AT,
+    ...overrides,
+  };
+  const db = orgDb(env, organization.verified);
+  await db.run(db.statement((q) => q.insertInto('workspace_point_rates').values(row)));
+  return row;
+}
+
+// タスクの完了の記録。完了した人が要る
+export async function createCompletion(
+  organization: OrganizationFixture,
+  workspaceId: string,
+  taskId: string,
+  completedBy: string,
+  overrides: Partial<Row<OrganizationTables, 'completions'>> = {},
+) {
+  const row: Row<OrganizationTables, 'completions'> = {
+    id: uuidv7(),
+    workspace_id: workspaceId,
+    task_id: taskId,
+    completed_at: AT,
+    completed_by: completedBy,
+    points: null,
+    assignee_user_id: null,
+    sprint_id: null,
+    category_id: null,
+    billing_month: null,
+    created_at: AT,
+    updated_at: AT,
+    ...overrides,
+  };
+  const db = orgDb(env, organization.verified);
+  await db.run(db.statement((q) => q.insertInto('completions').values(row)));
+  return row;
+}
+
 // 経験値の明細の1行。既定は起票の 10 で、dedupe_key は呼ぶたびに別の値にする。打ち消しは amount を負にして reverses_grant_id で元を指す
 export async function createXpGrant(
   organization: OrganizationFixture,

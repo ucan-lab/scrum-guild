@@ -258,6 +258,31 @@ export async function listAppTables(env: Env): Promise<string[]> {
   return rows.map((row) => row.name).filter((name) => !/^(d1_migrations|sqlite_.*|_cf_.*)$/.test(name));
 }
 
+// 運用の手順で人が `wrangler d1 execute --file` に渡す SQL のファイルを、文に分ける。`--` で始まる行は捨てる。
+// 文は行の末尾の `;` で終わる形だけを受ける（scripts/purge-organization-sql.ts が書き出す形）
+export function sqlFileStatements(text: string): string[] {
+  return text
+    .split('\n')
+    .filter((line) => !line.startsWith('--'))
+    .join('\n')
+    .split(/;\s*(?:\n|$)/)
+    .map((statement) => statement.trim())
+    .filter((statement) => statement !== '');
+}
+
+// SQL のファイルの文を、1文ずつ順に流す。途中の文が失敗すると、前の文は書いたまま投げる（--file で流したときの最悪の形）
+export async function runSqlFileForTest(env: Env, statements: readonly string[]): Promise<void> {
+  const database = commonDatabase(env);
+  for (const statement of statements) await database.prepare(statement).run();
+}
+
+// 表のすべての行（rowid の順）。消したあとに、残るべき行がそのまま残ったかを比べるのに使う。表の名前は listAppTables が返したものを渡す
+export async function tableRowsForTest(env: Env, table: string): Promise<unknown[]> {
+  if (!/^[a-z_]+$/.test(table)) throw new Error(`表の名前ではない: ${table}`);
+  const { results } = await commonDatabase(env).prepare(`SELECT * FROM ${table} ORDER BY rowid`).all();
+  return results;
+}
+
 export async function tableInfo(env: Env, table: string): Promise<TableInfoRow[]> {
   const db = commonDb(env);
   return db.rows(
