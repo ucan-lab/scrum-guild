@@ -233,15 +233,27 @@
     return `<span class="order-actions">${btn("up", "上へ", Boolean(order.first))}${btn("down", "下へ", Boolean(order.last))}${order.parent ? btn("swap", "親を移す") : ""}</span>`;
   }
 
-  // 台帳の1行。opts: showWs, showParent（既定 true）, showAssignee, order（並べ替えの操作。orderActions の order）
+  // 行の先頭のつまみ（飾りで、aria-hidden）。order を渡した行（書き込めるとき）だけに付く。
+  // off が真なら、つかめない行（完了にした直後の行、エピックの行）の列だけを空ける。狭い幅と指の画面では CSS が隠す
+  function gripCell(off) {
+    return `<span class="grip${off ? " is-off" : ""}" aria-hidden="true">${off ? "" : icon("grip")}</span>`;
+  }
+  // 落とす位置の印とつかんだ行の状態を、行の属性に写す。mark: { drop: "before" | "after" | "into", state: "is-dragging" | "is-dropped" }
+  function dropAttr(mark) {
+    return mark && mark.drop ? ` data-drop="${mark.drop}"` : "";
+  }
+
+  // 台帳の1行。opts: showWs, showParent（既定 true）, showAssignee, order（並べ替えの操作。orderActions の order）,
+  // mark（ドラッグの状態。dropAttr）
   function entry(x, opts = {}) {
     const showParent = opts.showParent !== false;
     const parent = x.story ? D.stories[x.story].title : null;
     const lead = opts.lead !== undefined ? opts.lead
       : `<button class="sun" type="button" data-sun="${x.id}" aria-pressed="${x.todayOn === D.today}" aria-label="今日やる" title="今日やる">${icon("sun")}</button>`;
     const title = opts.noLink ? `<span class="entry-title">${titleOf(x)}</span>` : `<a class="entry-title" href="#" data-task="${x.id}">${titleOf(x)}</a>`;
-    return `<div class="entry ${x.doneAt ? "is-done" : ""}">
-      ${lead}
+    const mark = opts.mark || {};
+    return `<div class="entry ${x.doneAt ? "is-done" : ""}${opts.order ? " has-grip" : ""}${mark.state ? ` ${mark.state}` : ""}"${dropAttr(mark)}>
+      ${opts.order ? gripCell(Boolean(x.doneAt)) : ""}${lead}
       <div class="entry-main">
         ${title}
         <span class="entry-meta">
@@ -398,9 +410,13 @@
     const done = list.length - open.length;
     const pts = storyPts(sid);
     const p = opts.doneAt ? { done: pts.all, all: pts.all } : pts;
-    return `<div class="tree-group">
-      <div class="tree-row is-story ${solo ? "is-root" : ""}">
-        ${treeCaret(`tree-${key}`, st.title)}
+    const mark = opts.mark || {};
+    const tail = opts.tailMark || {};
+    // 前後の線は配下を含めた塊（.tree-group）に、囲みは行に付ける
+    const into = mark.drop === "into";
+    return `<div class="tree-group${mark.state === "is-dragging" ? " is-dragging" : ""}"${into ? "" : dropAttr(mark)}>
+      <div class="tree-row is-story ${solo ? "is-root" : ""}${opts.order ? " has-grip" : ""}${mark.state === "is-dropped" ? " is-dropped" : ""}"${into ? dropAttr(mark) : ""}>
+        ${opts.order ? gripCell(false) : ""}${treeCaret(`tree-${key}`, st.title)}
         <span class="kind is-story" title="${t("story")}">${icon("check")}</span>
         <span class="tree-title"><button class="tree-link" type="button" data-dialog="editStory">${esc(st.title)}</button>${solo && st.cat ? ` ${categoryTag(st.cat)}` : ""} ${dueChip(st.due)}</span>
         <span class="tree-end">
@@ -411,8 +427,9 @@
         </span>
       </div>
       <div class="tree-children" id="tree-${key}">${open.map((x, i) => entry(x, { showParent: false, showAssignee: true,
+        mark: opts.entryMarks ? opts.entryMarks(x, i) : undefined,
         order: opts.order ? { first: i === 0, last: i === open.length - 1, parent: true } : undefined })).join("")}
-        ${done ? `<p class="tree-folded">完了 ${done} 件を折りたたんでいます</p>` : ""}${!list.length ? `<p class="tree-folded">${t("task")}はまだありません</p>` : ""}</div>
+        ${done ? `<p class="tree-folded"${dropAttr(tail)}>完了 ${done} 件を折りたたんでいます</p>` : ""}${!list.length ? `<p class="tree-folded"${dropAttr(tail)}>${t("task")}はまだありません</p>` : ""}</div>
     </div>`;
   }
   // 木の行の開閉。行（div）の中の caret のボタンだけが開閉を受け持ち、題や「＋タスク」のボタンとはぶつからない
@@ -434,9 +451,10 @@
     const finished = Boolean(opts.cleared || opts.canceled);
     const state = opts.cleared ? `<span class="chip is-done">${icon("check")}${vocab ? t("done") : "クリア済み"}</span>`
       : opts.canceled ? `<span class="chip">中止</span>` : "";
+    const mark = opts.mark || {};
     return `<div class="tree-group">
-      <div class="tree-row is-epic">
-        ${treeCaret(`tree-${key}`, e.title)}
+      <div class="tree-row is-epic${opts.order ? " has-grip" : ""}"${dropAttr(mark)}>
+        ${opts.order ? gripCell(true) : ""}${treeCaret(`tree-${key}`, e.title)}
         <span class="kind is-epic" title="${t("epic")}">${icon("flag")}</span>
         <span class="tree-title"><button class="tree-link" type="button" data-dialog="editEpic">${esc(e.title)}</button> ${categoryTag(e.cat)} ${state} ${dueChip(e.due, { done: finished })}</span>
         <span class="tree-end"><span class="tree-ratio" title="完了 / 全体">${t("done")} ${p.done} / ${p.all} pt</span></span>
@@ -445,8 +463,9 @@
         key: `${key}-${s}`,
         ...(opts.cleared ? { doneAt: "2026-10-22" } : {}),
         blocked: finished,
+        ...(opts.storyOpts ? opts.storyOpts(s, i) : {}),
         ...(opts.order ? { order: { first: i === 0, last: i === stories.length - 1, parent: true } } : {}) })).join("")}
-        ${stories.length ? "" : `<p class="tree-folded">${t("story")}はまだありません</p>`}</div>
+        ${stories.length ? "" : `<p class="tree-folded"${dropAttr(opts.tailMark || {})}>${t("story")}はまだありません</p>`}</div>
     </div>`;
   }
 

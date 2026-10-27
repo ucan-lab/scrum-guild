@@ -1,6 +1,8 @@
 <script lang="ts">
   import type { Snippet } from 'svelte';
   import type { BacklogStory, BacklogTask } from '../../shared/operations/task/backlog-tree.ts';
+  import type { DropRow } from '../backlog-drop.ts';
+  import type { BacklogDnd } from '../backlog-dnd.svelte.ts';
   import { t } from '../vocabulary.svelte.ts';
   import DefinitionChip from './DefinitionChip.svelte';
   import DueChip from './DueChip.svelte';
@@ -21,7 +23,11 @@
   // （parentFinished）、完了と取り消しは必ず断られるので aria-disabled にし、理由を横に出す。送っている間（pending）は、どちらも aria-disabled。
   // onMove を渡すと（書き込めるとき）、行の右端に「上へ」「下へ」を出し、ストーリーの行の中で Alt と ↑ ↓ を押しても同じことをする。
   // キーは配下のタスクの行には掛けない（タスクの行は自分で受け持つ）。端の向きは aria-disabled にする。
-  // onMoveParent を渡すと「親を移す」（親のエピックを選ぶダイアログ）も出す
+  // onMoveParent を渡すと「親を移す」（親のエピックを選ぶダイアログ）も出す。
+  // onMove と dnd を渡すと（書き込めるとき）、行の先頭にドラッグのつまみ（.grip。飾りで aria-hidden）を置く。つかむのはここだけ。
+  // 行は、タスクを運ぶときの落とし先（囲み。離すと配下の末尾に入り、畳まれていれば開く）と、ストーリーを運ぶときの前後の線の落とし先を兼ねる。
+  // 前後の線は、開いた配下の途中に入らないよう、配下を含めた塊（.tree-group）に引く。
+  // 折りたたみの行と空の案内の行の前後は、配下の末尾の落とし先
   let {
     story,
     tasks,
@@ -42,6 +48,7 @@
     canMoveDown = false,
     onMove,
     onMoveParent,
+    dnd,
   }: {
     story: BacklogStory;
     tasks: readonly BacklogTask[];
@@ -62,7 +69,13 @@
     canMoveDown?: boolean;
     onMove?: (story: BacklogStory, delta: -1 | 1) => void;
     onMoveParent?: (story: BacklogStory, trigger: HTMLElement) => void;
+    dnd?: BacklogDnd;
   } = $props();
+
+  const dropRow = $derived<DropRow>({ kind: 'story', id: story.id });
+  const tailRow = $derived<DropRow>({ kind: 'tail', parent: 'story', id: story.id });
+  const hasGrip = $derived(onMove !== undefined && dnd !== undefined);
+  const dropMark = $derived(dnd?.markOf(dropRow));
 
   function move(delta: -1 | 1): void {
     if (delta < 0 ? !canMoveUp : !canMoveDown) return;
@@ -102,10 +115,28 @@
   }
 </script>
 
-<div class="tree-group">
+<div
+  class="tree-group"
+  class:is-dragging={dnd?.isDragging('story', story.id)}
+  data-drop={dropMark === 'into' ? undefined : dropMark}
+>
   <!-- キーは中のボタンから届く。行そのものはフォーカスを受けない -->
   <!-- svelte-ignore a11y_no_static_element_interactions -->
-  <div class="tree-row is-story" class:is-root={!nested} onkeydown={keydown} data-row-id={story.id}>
+  <div
+    class="tree-row is-story"
+    class:is-root={!nested}
+    class:has-grip={hasGrip}
+    class:is-dropped={dnd?.isFlashing('story', story.id)}
+    onkeydown={keydown}
+    data-row-id={story.id}
+    data-drop={dropMark === 'into' ? 'into' : undefined}
+    {@attach dnd?.target(dropRow)}
+  >
+    {#if hasGrip}
+      <span class="grip" aria-hidden="true" {@attach dnd?.handle({ kind: 'story', id: story.id })}
+        ><Icon name="grip" /></span
+      >
+    {/if}
     <button
       class="tree-caret"
       type="button"
@@ -230,9 +261,13 @@
       {@render row(task)}
     {/each}
     {#if story.completed_task_count > 0}
-      <p class="tree-folded">{t('storyFolded', { done: t('done'), count: story.completed_task_count })}</p>
+      <p class="tree-folded" data-drop={dnd?.markOf(tailRow)} {@attach dnd?.target(tailRow)}>
+        {t('storyFolded', { done: t('done'), count: story.completed_task_count })}
+      </p>
     {:else if tasks.length === 0}
-      <p class="tree-folded">{t('storyNoTasks', { task: t('task') })}</p>
+      <p class="tree-folded" data-drop={dnd?.markOf(tailRow)} {@attach dnd?.target(tailRow)}>
+        {t('storyNoTasks', { task: t('task') })}
+      </p>
     {/if}
   </div>
 </div>

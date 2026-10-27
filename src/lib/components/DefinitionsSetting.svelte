@@ -19,6 +19,7 @@
   } from '../../shared/operations/definition/index.ts';
   import { moveConflictReasonOf } from '../../shared/operations/task/task-move.ts';
   import { callOperation, type ApiResult } from '../api.ts';
+  import { ListDnd, type ListMove } from '../list-dnd.svelte.ts';
   import { isUnauthenticated, loginUrl } from '../login-redirect.ts';
   import { showToast } from '../toast.svelte.ts';
   import { t } from '../vocabulary.svelte.ts';
@@ -33,7 +34,8 @@
   // 上へ／下へ（.order-actions。端の向きは aria-disabled）、削除（確かめのダイアログを挟む）。書いた後は画面が一覧を読み直す（onchanged）。
   // 足す、切り替え、並べ替え、削除は1本ずつ送り、送っている間はほかの操作を押しても無視する（aria-disabled）。名前の確定は InlineEdit が
   // 二重に送らないので、ほかの操作と重なっても送る。閉じたワークスペース（canWrite が偽）では名前だけを読み取り専用で出す。
-  // 取り込み元の入る先との結び付けは #67、行のドラッグは #166 で足す
+  // 行の先頭のつまみのドラッグ（ListDnd）でも並べ替えられる。落としたら、上へ／下へと同じ送り方で、行き先の直前の行を渡す。
+  // 送っている間（busy）はつかめない。取り込み元の入る先との結び付けは #67 で足す
   type Item = { id: string; name: string; is_billed_monthly?: boolean };
 
   let {
@@ -212,13 +214,8 @@
     if (!started) input.checked = !next;
   }
 
-  // 1つ上か下へ動かす。動かした後は、同じ行の同じボタンへフォーカスを戻す（行の要素は並び替えで動く）
-  async function move(index: number, delta: -1 | 1): Promise<void> {
-    const item = items[index];
-    const target = index + delta;
-    if (busy || item === undefined || target < 0 || target >= items.length) return;
-    // 上へは2つ上の行の直後（先頭なら直前の行なし）、下へは次の行の直後
-    const afterId = delta < 0 ? (items[index - 2]?.id ?? null) : items[index + 1]!.id;
+  // afterId の行の直後（null は先頭）へ動かして、読み直す。動かせたら true
+  async function sendMove(item: Item, afterId: string | null): Promise<boolean> {
     let moved = false;
     await exclusive('', async () => {
       const result =
@@ -240,7 +237,17 @@
       }
       await onchanged();
     });
-    if (moved) await announce(t('definitionMoved', { name: item.name, position: target + 1 }));
+    return moved;
+  }
+
+  // 1つ上か下へ動かす。動かした後は、同じ行の同じボタンへフォーカスを戻す（行の要素は並び替えで動く）
+  async function move(index: number, delta: -1 | 1): Promise<void> {
+    const item = items[index];
+    const target = index + delta;
+    if (busy || item === undefined || target < 0 || target >= items.length) return;
+    // 上へは2つ上の行の直後（先頭なら直前の行なし）、下へは次の行の直後
+    const afterId = delta < 0 ? (items[index - 2]?.id ?? null) : items[index + 1]!.id;
+    if (await sendMove(item, afterId)) await announce(t('definitionMoved', { name: item.name, position: target + 1 }));
     await tick();
     list
       ?.querySelector<HTMLButtonElement>(
@@ -248,6 +255,25 @@
       )
       ?.focus();
   }
+
+  // 行の先頭のつまみで落とした。「上へ」「下へ」と同じ送り方（category-move、repository-move）で、行き先の直前の行を渡す。
+  // 動かせたら、読み直して動いた行を光らせて読み上げる。マウスの操作なので、フォーカスは動かさない
+  async function dropTo(drop: ListMove): Promise<void> {
+    const item = items.find((row) => row.id === drop.id);
+    if (busy || item === undefined) return;
+    if (!(await sendMove(item, drop.afterId ?? null))) return;
+    dnd.flash(item.id);
+    await announce(t('definitionMoved', { name: item.name, position: drop.index + 1 }));
+  }
+
+  // 一覧の行のドラッグ。scope は、この一覧だけの行を受け付けるための名前（区分の一覧とリポジトリの一覧は別）
+  const dnd = new ListDnd({
+    scope: ids,
+    ids: () => items.map((item) => item.id),
+    enabled: () => canWrite && !busy,
+    onDrop: (drop) => void dropTo(drop),
+  });
+  $effect(() => dnd.monitor());
 
   async function remove(item: Item, index: number, trigger: HTMLElement): Promise<void> {
     if (busy) return;
@@ -289,10 +315,20 @@
       text={canWrite ? t('definitionEmptyText') : undefined}
     />
   {:else}
-    <!-- 行のドラッグ（.grip）は #166 で足す。それまでは先頭の列を持たない形（.is-plain） -->
-    <ol class="order-list is-plain" aria-label={t('definitionListLabel', { kind: kindWord })} bind:this={list}>
+    <ol class="order-list" aria-label={t('definitionListLabel', { kind: kindWord })} bind:this={list}>
       {#each items as item, index (item.id)}
-        <li data-definition-id={item.id}>
+        <li
+          class:is-dragging={dnd.dragging === item.id}
+          class:is-dropped={dnd.isFlashing(item.id)}
+          data-definition-id={item.id}
+          data-drop={dnd.markOf(item.id)}
+          {@attach canWrite ? dnd.target(item.id) : undefined}
+        >
+          <!-- つかむのは先頭のつまみだけ（飾りで aria-hidden。キーボードと読み上げの人は「上へ」「下へ」）。
+               書き込めない一覧には出さない。送っている間は出したまま、つかめない（enabled が偽） -->
+          {#if canWrite}
+            <span class="grip" aria-hidden="true" {@attach dnd.handle(item.id)}><Icon name="grip" /></span>
+          {/if}
           <div class="order-main">
             {#if canWrite}
               <div class="order-name">

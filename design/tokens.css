@@ -39,6 +39,7 @@
   /* ---- 動き ---- */
   --duration-fast: 120ms;
   --duration-stamp: 260ms;
+  --duration-flash: 800ms;   /* 落とした行の背景を戻す。変えたら src/lib/drop-flash.svelte.ts の FLASH_MS（印を外すまで）も、これより少し長くそろえる */
   --ease-out: cubic-bezier(0.2, 0.8, 0.2, 1);
 
   /* ---- 書体の候補 ---- */

@@ -298,10 +298,15 @@ h1, h2, h3 { text-wrap: balance; }
 
 /* ===== 台帳（タスクの一覧） ===== */
 .book { background: var(--color-surface); border: 1px solid var(--color-line); border-left: var(--rule-double); border-radius: var(--radius-1); }
+/* --row-indent は行の中身が始まる左の位置。落とす位置の線（[data-drop]）もここから始める。
+   --grip-col は先頭のつまみ（.grip）の列で、つまみを持つ行（.has-grip）だけが幅を持つ */
 .entry {
-  display: grid; grid-template-columns: 32px minmax(0, 1fr) auto; gap: var(--space-3); align-items: center;
-  padding: var(--space-3) var(--space-4) var(--space-3) var(--space-2); min-height: 60px;
+  --row-indent: var(--space-2);
+  display: grid; grid-template-columns: var(--grip-col, ) 32px minmax(0, 1fr) auto; gap: var(--space-3); align-items: center;
+  padding: var(--space-3) var(--space-4) var(--space-3) var(--row-indent); min-height: 60px;
+  position: relative;
 }
+.entry.has-grip, .tree-row.has-grip { --grip-col: 20px; }
 .entry + .entry { border-top: 1px solid var(--color-rule); }
 .entry:hover { background: color-mix(in srgb, var(--color-accent-soft) 45%, transparent); }
 .entry-main { display: grid; gap: 4px; min-width: 0; }
@@ -487,8 +492,8 @@ h1, h2, h3 { text-wrap: balance; }
     top: 100%; min-width: 0; max-width: none;
     left: max(var(--space-4), env(safe-area-inset-left, 0px)); right: max(var(--space-4), env(safe-area-inset-right, 0px));
   }
-  .entry { grid-template-columns: 32px minmax(0, 1fr); }
-  .entry-end { grid-column: 2; flex-wrap: wrap; }
+  .entry { grid-template-columns: var(--grip-col, ) 32px minmax(0, 1fr); }
+  .entry-end { grid-column: -2; flex-wrap: wrap; }
   .notice-facts { grid-template-columns: minmax(0, 1fr); }
 }
 
@@ -548,14 +553,21 @@ a.brand { color: inherit; text-decoration: none; }
 .tree > * + * { border-top: 1px solid var(--color-line); }
 /* 右端が横に並ぶ幅では、題の列に 12rem を先に取り、右端は残りの幅に収まらなければ中で折り返す（指で押す画面の 44px のボタンでも、
    題の列を押しのけない） */
-.tree-row { display: grid; grid-template-columns: 20px 24px minmax(12rem, 1fr) minmax(0, max-content); gap: var(--space-2); align-items: center; padding: var(--space-3) var(--space-4) var(--space-3) var(--space-2); }
+.tree-row {
+  --row-indent: var(--space-2);
+  display: grid; grid-template-columns: var(--grip-col, ) 20px 24px minmax(12rem, 1fr) minmax(0, max-content); gap: var(--space-2); align-items: center;
+  padding: var(--space-3) var(--space-4) var(--space-3) var(--row-indent); position: relative;
+}
 .tree-row:hover { background: color-mix(in srgb, var(--color-accent-soft) 45%, transparent); }
 .tree-row.is-epic { background: var(--color-sunken); }
 .tree-row.is-epic .tree-title { font-family: var(--font-display); font-weight: var(--weight-display); font-size: var(--text-lg); letter-spacing: 0.03em; }
 .tree-row.is-story .tree-title { font-weight: 700; }
-.tree-children .tree-row.is-story { padding-left: var(--space-8); border-top: 1px solid var(--color-rule); }
-.tree-children .entry { padding-left: var(--space-10); border-top: 1px solid var(--color-rule); }
-.tree-children .tree-children .entry { padding-left: calc(var(--space-10) + var(--space-6)); }
+.tree-children .tree-row.is-story { --row-indent: var(--space-8); border-top: 1px solid var(--color-rule); }
+.tree-children .entry { --row-indent: var(--space-10); border-top: 1px solid var(--color-rule); }
+.tree-children .tree-children .entry { --row-indent: calc(var(--space-10) + var(--space-6)); }
+/* ストーリーの行の前後の線は、配下を含めた塊（.tree-group）の上端と下端に引く（開いた配下の途中に線が入らないように） */
+.tree-group { --row-indent: var(--space-2); position: relative; }
+.tree-children .tree-group { --row-indent: var(--space-8); }
 /* 開閉は caret のボタン（aria-expanded と aria-controls）だけが受け持つ。行の中の題と「＋タスク」は、独立したボタン */
 .tree-caret { color: var(--color-muted); display: inline-grid; place-items: center; border: 0; background: none; padding: 0; cursor: pointer; transition: transform var(--duration-fast); }
 .tree-caret[aria-expanded="true"] { transform: rotate(90deg); }
@@ -570,9 +582,9 @@ button.tree-link { border: 0; background: none; padding: 0; font: inherit; text-
 .tree-ratio { font-family: var(--font-mono); font-size: var(--text-xs); color: var(--color-muted); white-space: nowrap; }
 /* 行の操作に添える短い説明（ストーリーの「完了にする」が押せない理由の「残り N 件」など） */
 .tree-note { font-size: var(--text-xs); color: var(--color-muted); min-width: 0; overflow-wrap: anywhere; }
-.tree-folded { font-size: var(--text-xs); color: var(--color-muted); padding: var(--space-2) var(--space-4) var(--space-2) var(--space-10); border-top: 1px solid var(--color-rule); }
-.tree-children .tree-children .tree-folded { padding-left: calc(var(--space-10) + var(--space-6)); }
-.tree-folded.is-root { padding-left: var(--space-4); }
+.tree-folded { --row-indent: var(--space-10); font-size: var(--text-xs); color: var(--color-muted); padding: var(--space-2) var(--space-4) var(--space-2) var(--row-indent); border-top: 1px solid var(--color-rule); position: relative; }
+.tree-children .tree-children .tree-folded { --row-indent: calc(var(--space-10) + var(--space-6)); }
+.tree-folded.is-root { --row-indent: var(--space-4); }
 .kind { display: inline-grid; place-items: center; width: 22px; height: 22px; border-radius: var(--radius-1); border: 1px solid currentColor; }
 .kind .ico { width: 13px; height: 13px; }
 .kind.is-epic { color: var(--color-xp); background: var(--color-xp-soft); }
@@ -581,14 +593,14 @@ button.tree-link { border: 0; background: none; padding: 0; font: inherit; text-
    並べ替え、完了の操作）を題の下へ折り返す。右端が横に並んだままだと、題の列が数文字の幅に縮むため */
 .tree, .book { container-type: inline-size; }
 @container (max-width: 640px) {
-  .entry { grid-template-columns: 32px minmax(0, 1fr); }
-  .entry-end { grid-column: 2; flex-wrap: wrap; }
+  .entry { grid-template-columns: var(--grip-col, ) 32px minmax(0, 1fr); }
+  .entry-end { grid-column: -2; flex-wrap: wrap; }
 }
 /* ストーリーの行の右端（「完了 / 全体」、＋タスク、残りの件数、完了にする、並べ替えと親を移す）は、タスクの行より長い（450px 前後）。
    一覧の幅が 800px 以下なら、題の下へ折り返す */
 @container (max-width: 800px) {
-  .tree-row { grid-template-columns: 20px 24px minmax(0, 1fr); }
-  .tree-ratio, .tree-end { grid-column: 3; }
+  .tree-row { grid-template-columns: var(--grip-col, ) 20px 24px minmax(0, 1fr); }
+  .tree-ratio, .tree-end { grid-column: -2; }
 }
 
 /* ===== 計画: 横に並ぶスプリント（レーン） ===== */
@@ -830,11 +842,11 @@ a.notice-title.notice-link:hover { text-decoration: underline; text-underline-of
   .drawer.is-full { width: 100%; }
   .props > div { grid-template-columns: minmax(0, 1fr); gap: 2px; }
   .velocity { grid-template-columns: minmax(0, 1fr); }
-  .tree-children .entry, .tree-children .tree-children .entry { padding-left: var(--space-4); }
-  .tree-children .tree-row.is-story { padding-left: var(--space-4); }
-  .tree-folded, .tree-children .tree-children .tree-folded { padding-left: var(--space-4); }
-  .tree-row { grid-template-columns: 20px 24px minmax(0, 1fr); }
-  .tree-ratio, .tree-end { grid-column: 3; }
+  .tree-children .entry, .tree-children .tree-children .entry { --row-indent: var(--space-4); }
+  .tree-children .tree-row.is-story, .tree-children .tree-group { --row-indent: var(--space-4); }
+  .tree-folded, .tree-children .tree-children .tree-folded { --row-indent: var(--space-4); }
+  .tree-row { grid-template-columns: var(--grip-col, ) 20px 24px minmax(0, 1fr); }
+  .tree-ratio, .tree-end { grid-column: -2; }
   .story-head .progress { margin-left: 0; max-width: none; }
 }
 
@@ -922,17 +934,21 @@ a.choice > div > span, .choice.is-static > div > span { display: block; }
 
 /* ===== 並べ替えられる一覧（列、決まった欄、区分） ===== */
 .order-list { list-style: none; margin: 0; padding: 0; border: 1px solid var(--color-line); border-left: var(--rule-double); border-radius: var(--radius-1); background: var(--color-surface); }
-.order-list li { display: grid; grid-template-columns: 24px minmax(0, 1fr) auto; gap: var(--space-2); align-items: center; padding: var(--space-2) var(--space-3); }
+.order-list li { --row-indent: var(--space-3); display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: var(--space-2); align-items: center; padding: var(--space-2) var(--space-3); position: relative; }
+.order-list li:has(> .grip) { grid-template-columns: 24px minmax(0, 1fr) auto; }
 .order-list li + li { border-top: 1px solid var(--color-rule); }
-.order-list .grip { color: var(--color-faint); cursor: grab; display: inline-grid; }
+/* 行の先頭のつまみ（飾りで、aria-hidden）。つかむ場所はここだけで、題や入力欄の文字は選べる。
+   ドラッグの代わりは「上へ」「下へ」。つかめない行（完了にした直後の行、エピックの行）は .is-off にして、列だけ空ける */
+.grip { color: var(--color-faint); cursor: grab; display: inline-grid; place-items: center; align-self: center; justify-self: center; }
+.grip:hover { color: var(--color-muted); }
+.grip:active { cursor: grabbing; }
+.grip.is-off { cursor: default; pointer-events: none; }
 .order-list .input { padding-block: 5px; }
 .order-list .fixed { font-weight: 700; padding-inline: 10px; display: flex; gap: var(--space-2); align-items: center; }
 /* 行の中身に名前と切り替え（か選択欄）を並べる（区分の「月ごとに計上する」、リポジトリの入る先）。狭い幅では名前の下へ折り返す */
 .order-list .order-main { display: flex; flex-wrap: wrap; gap: var(--space-2) var(--space-3); align-items: center; min-width: 0; }
 .order-list .order-main > .input, .order-list .order-main > .order-name { flex: 1 1 140px; min-width: 0; }
 .order-list .order-name { overflow-wrap: anywhere; }
-/* ドラッグの印（.grip）を持たない一覧。先頭の列を持たず、中身と操作の2列にする */
-.order-list.is-plain li { grid-template-columns: minmax(0, 1fr) auto; }
 .order-list .order-main > .select { flex: 1 1 180px; min-width: 0; }
 .order-actions { display: flex; gap: 2px; align-items: center; }
 .icon-btn { display: inline-grid; place-items: center; width: 30px; height: 30px; border: 1px solid transparent; background: none; border-radius: var(--radius-1); color: var(--color-muted); }
@@ -957,11 +973,49 @@ a.choice > div > span, .choice.is-static > div > span { display: block; }
    題の列に 12rem を先に取り、右端は残りの幅に収まらなければ中で折り返す（右端の列は max-content まで、題の列を押しのけない） */
 @media (pointer: coarse) and (min-width: 761px) {
   @container (min-width: 641px) {
-    .entry { grid-template-columns: 32px minmax(12rem, 1fr) minmax(0, max-content); }
+    .entry { grid-template-columns: var(--grip-col, ) 32px minmax(12rem, 1fr) minmax(0, max-content); }
     .entry-end { flex-wrap: wrap; justify-content: flex-end; }
   }
 }
 .icon-btn.is-danger:hover { color: var(--color-danger); border-color: currentColor; }
+
+/* ===== ドラッグで並べ替える（バックログの木の行と、設定の並べ替えられる一覧の行） =====
+   行の先頭のつまみ（.grip）をつかみ、落とす位置を [data-drop] で示す。色は既存のトークンだけを使う。
+   before / after は行と行の間の線（行き先の階層の字下げ --row-indent から始め、左端に小さな丸を置く）。
+   into は親の行を囲む（.dropzone.is-over と同じ枠と地）。離すと、その配下の末尾に入る。
+   つかんだ行は元の位置で薄くし（.is-dragging）、落とした行は背景を戻しながら光らせる（.is-dropped）。
+   狭い幅と指の画面ではつまみを出さず、列も空けない（並べ替えは「上へ」「下へ」で行う） */
+[data-drop="before"]::before, [data-drop="after"]::before {
+  content: ""; position: absolute; z-index: 2; pointer-events: none;
+  left: calc(var(--row-indent) + 4px); right: var(--space-4); height: 2px; background: var(--color-accent);
+}
+[data-drop="before"]::after, [data-drop="after"]::after {
+  content: ""; position: absolute; z-index: 2; pointer-events: none;
+  left: var(--row-indent); width: 8px; height: 8px; border-radius: 50%; background: var(--color-accent);
+}
+[data-drop="before"]::before { top: -1px; }
+[data-drop="before"]::after { top: -4px; }
+[data-drop="after"]::before { bottom: -1px; }
+[data-drop="after"]::after { bottom: -4px; }
+.tree-row[data-drop="into"] { background: var(--color-accent-soft); outline: 1px solid var(--color-accent); outline-offset: -1px; }
+.is-dragging { opacity: 0.4; transition: opacity var(--duration-fast); }
+/* 地の色と accent-soft の差が小さいテーマ（シンプルの暗など）でも見えるよう、光る間は accent の細い枠も同じ長さで出す */
+@keyframes drop-flash {
+  from { background-color: var(--color-accent-soft); outline-color: var(--color-accent); }
+  to { background-color: transparent; outline-color: transparent; }
+}
+.entry.is-dropped, .tree-row.is-dropped, .order-list li.is-dropped {
+  outline: 1px solid transparent; outline-offset: -1px; animation: drop-flash var(--duration-flash) ease-out;
+}
+/* 親なしの段が空のとき、行をつかんでいる間だけ出す落とし先。中身は .dropzone で、重ねると .is-over にする */
+.tree-slot { padding: var(--space-3) var(--space-4); }
+/* つまみのドラッグに触れる案内の文。つまみを出さない条件（下）では、この文も隠す */
+@media (max-width: 760px), (pointer: coarse) {
+  .drag-note { display: none; }
+  .grip { display: none; }
+  .entry.has-grip, .tree-row.has-grip { --grip-col: initial; }
+  .order-list li:has(> .grip) { grid-template-columns: minmax(0, 1fr) auto; }
+}
 
 /* ===== 設定の節（左に説明、右に入力） ===== */
 .settings { display: grid; gap: 0; }

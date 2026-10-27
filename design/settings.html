@@ -25,14 +25,14 @@ const WEEK = ["日", "月", "火", "水", "木", "金", "土"];
 function orderList(items, opts = {}) {
   const n = items.length;
   return `<ol class="order-list">${items.map((it, i) => `<li>
-      <span class="grip" title="ドラッグで並べ替え">${icon("grip")}</span>
+      <span class="grip" aria-hidden="true">${icon("grip")}</span>
       ${typeof it === "string" ? `<input class="input" value="${esc(it)}" aria-label="名前">` : it.html}
       <span class="order-actions">
         <button class="icon-btn" type="button" aria-label="上へ" ${i === 0 ? "disabled" : ""}>${icon("up")}</button>
         <button class="icon-btn" type="button" aria-label="下へ" ${i === n - 1 ? "disabled" : ""}>${icon("down")}</button>
         <button class="icon-btn is-danger" type="button" aria-label="削除" ${opts.lockLast && n === 1 ? "disabled" : ""}>${icon("trash")}</button>
       </span></li>`).join("")}
-    ${opts.fixed ? `<li><span></span><span class="fixed">${opts.fixed}</span><span class="props-note">常に末尾</span></li>` : ""}
+    ${opts.fixed ? `<li><span class="grip is-off" aria-hidden="true"></span><span class="fixed">${opts.fixed}</span><span class="props-note">常に末尾</span></li>` : ""}
   </ol>`;
 }
 function setting(title, desc, body) {

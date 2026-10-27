@@ -1,4 +1,4 @@
-import { expect, type BrowserContext, type Page } from '@playwright/test';
+import { expect, type BrowserContext, type Locator, type Page } from '@playwright/test';
 import { SEED_SESSIONS } from '../seed/sessions.ts';
 import { sessionCookieName } from '../src/shared/session-cookie.ts';
 
@@ -50,4 +50,34 @@ export async function createWorkspace(page: Page, name: string, vocabulary: 'gam
   await expect(page.getByRole('heading', { level: 1, name: backlog })).toBeVisible();
   await expect(page.locator('.page-eyebrow')).toHaveText(name);
   await expect(page).toHaveTitle(`${backlog}・${name} - Scrum Guild`);
+}
+
+// 行の先頭のつまみ（handle）をマウスで押し、row の上端寄り（top）、下端寄り（bottom）、真ん中（middle）まで動かして離す。
+// 離す直前に beforeRelease を呼ぶので、落とす位置の印（線か囲み）を確かめられる。
+// Playwright の mouse は Chromium のネイティブのドラッグ（dragstart、dragover、drop）を起こす
+export async function dragTo(
+  page: Page,
+  handle: Locator,
+  row: Locator,
+  where: 'top' | 'bottom' | 'middle',
+  beforeRelease?: () => Promise<void>,
+): Promise<void> {
+  const from = await handle.boundingBox();
+  if (from === null) throw new Error('つまみが見えていない');
+  const startX = from.x + from.width / 2;
+  const startY = from.y + from.height / 2;
+  await page.mouse.move(startX, startY);
+  await page.mouse.down();
+  await page.mouse.move(startX + 4, startY + 4, { steps: 3 });
+  // 行き先の行は、つかんだ後に出るもの（親なしの段が空のときの落とし先）もあるので、つかんでから位置を測る
+  await row.waitFor({ state: 'visible' });
+  const to = await row.boundingBox();
+  if (to === null) throw new Error('行が見えていない');
+  const endX = to.x + to.width / 2;
+  const endY = where === 'top' ? to.y + 3 : where === 'bottom' ? to.y + to.height - 3 : to.y + to.height / 2;
+  await page.mouse.move(endX, endY, { steps: 12 });
+  // 同じ場所でもう一度動かし、重ねた行の更新を確かにする
+  await page.mouse.move(endX + 1, endY);
+  await beforeRelease?.();
+  await page.mouse.up();
 }

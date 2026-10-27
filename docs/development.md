@@ -20,6 +20,7 @@
 | 操作の定義 | 自前の定義から形を推論する。コードの生成はしない | 下の「操作の定義」 |
 | 言葉の切り替え | 型付きの辞書を自前で持つ | 下の「言葉の辞書」 |
 | 並べ替えの並び（`position`） | `fractional-indexing`（分数の並びの文字列を作る定番のパッケージ） | 間に入れても他の行を書き換えない並びを自前で書かずに済む。ワークスペースを作るときの最初の列と、並べ替えの操作が同じものを使う |
+| 行のドラッグ | `@atlaskit/pragmatic-drag-and-drop`（本体）、`-hitbox`、`-auto-scroll`（`src/lib/backlog-dnd.svelte.ts`、`src/lib/list-dnd.svelte.ts`。落とせる場所の判定は部品に依らない純粋な関数 `src/lib/backlog-drop.ts`、`src/lib/list-drop.ts`）。画面は SPA で Svelte に直す | 行の上半分か下半分か、木の間か子にするかの判定と、端での自動スクロールを自前で保たずに済む。React に依存しない。配列を部品が入れ替える `svelte-dnd-action` は、先に画面を動かして押した順に送る並べ替え（`src/lib/move-queue.ts`）と二重になるので使わない |
 | Markdown の描画 | `mdast-util-from-markdown` と GFM の拡張4つ（自動リンク、打ち消し線、表、チェックリスト。脚注は入れない）で構文木にし、自前の安全な節に直して Svelte の再帰の部品で描く（`src/lib/markdown.ts`、`src/lib/components/MarkdownBlocks.svelte`）。変換は Web Worker で行い、1秒で終わらない本文は Worker を止めて文字のまま出す（`docs/design.md` の「Markdown の本文」） | HTML の文字列を作らないので無害化器が要らず、リンクと画像の規則を型の上で守れる。悪意のある本文は変換に数秒から分かかるので、画面の本体では走らせない |
 | 架空のデータ | seed とファクトリーの両方 | 下の「架空のデータ」 |
 

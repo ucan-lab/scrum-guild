@@ -1,6 +1,8 @@
 <script lang="ts">
   import type { Snippet } from 'svelte';
   import type { BacklogEpic } from '../../shared/operations/task/backlog-tree.ts';
+  import type { DropRow } from '../backlog-drop.ts';
+  import type { BacklogDnd } from '../backlog-dnd.svelte.ts';
   import { t } from '../vocabulary.svelte.ts';
   import DefinitionChip from './DefinitionChip.svelte';
   import DueChip from './DueChip.svelte';
@@ -11,7 +13,9 @@
   // 右端は配下のポイントの「完了 / 全体」（pointsDone と pointsAll は、画面が足した行と完了にした行の分を含む合計）。
   // 完了（クリア）か中止したエピックには、その状態の印を添え、期日には色を付けない。
   // 配下のストーリーの行は children の snippet で描く（ストーリーの操作は画面の側が持つ）。empty が真なら「<ストーリー>はまだありません」を出す。
-  // 並べ替え、クリア、中止、依頼主と討伐隊は、エピックの画面の Issue（#65）で足す
+  // クリア、中止、依頼主と討伐隊は、エピックの画面の Issue（#65）で足し、エピックの行の並べ替えは #308 で足す。
+  // dnd を渡すと（書き込めるとき）、行は、ストーリーを運ぶときの落とし先（囲み。離すと配下の末尾に入り、畳まれていれば開く）になる。
+  // 行そのものはつかめないので、先頭のつまみの列は空けるだけ（.grip.is-off）。空の案内の行の前後も、配下の末尾の落とし先
   let {
     epic,
     pointsDone,
@@ -19,6 +23,7 @@
     clock,
     onEdit,
     empty,
+    dnd,
     children,
   }: {
     epic: BacklogEpic;
@@ -27,8 +32,12 @@
     clock: { today: string; weekStart: number };
     onEdit: (epic: BacklogEpic, trigger: HTMLElement) => void;
     empty: boolean;
+    dnd?: BacklogDnd;
     children: Snippet;
   } = $props();
+
+  const dropRow = $derived<DropRow>({ kind: 'epic', id: epic.id });
+  const tailRow = $derived<DropRow>({ kind: 'tail', parent: 'epic', id: epic.id });
 
   const bodyId = $props.id();
   let expanded = $state(true);
@@ -40,7 +49,16 @@
 </script>
 
 <div class="tree-group">
-  <div class="tree-row is-epic" data-row-id={epic.id}>
+  <div
+    class="tree-row is-epic"
+    class:has-grip={dnd !== undefined}
+    data-row-id={epic.id}
+    data-drop={dnd?.markOf(dropRow)}
+    {@attach dnd?.target(dropRow)}
+  >
+    {#if dnd !== undefined}
+      <span class="grip is-off" aria-hidden="true"></span>
+    {/if}
     <button
       class="tree-caret"
       type="button"
@@ -78,7 +96,9 @@
   <div class="tree-children" id={bodyId} hidden={!expanded}>
     {@render children()}
     {#if empty}
-      <p class="tree-folded">{t('epicNoStories', { story: t('story') })}</p>
+      <p class="tree-folded" data-drop={dnd?.markOf(tailRow)} {@attach dnd?.target(tailRow)}>
+        {t('epicNoStories', { story: t('story') })}
+      </p>
     {/if}
   </div>
 </div>

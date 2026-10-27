@@ -1,7 +1,7 @@
 // ワークスペースの設定の画面（区分とリポジトリ）と、起票と木と引き出しでの使い方。
 // seed のセッション（seed/sessions.ts）の Cookie で開く。行を足すテストは、自分で作ったワークスペースで行う（seed の行は他の e2e も読むため）
 import { expect, test, type Page } from '@playwright/test';
-import { createWorkspace, signIn, watchViolations } from './helpers.ts';
+import { createWorkspace, dragTo, signIn, watchViolations } from './helpers.ts';
 
 const SEED_GAME_WORKSPACE = '/aoba/w/019a0000-0000-7000-8000-000000000401';
 
@@ -99,6 +99,44 @@ test.describe('リーダー（あおば開発のミナト）', () => {
     await expect(page.getByRole('list', { name: '系統の一覧' }).locator('li')).toHaveText([/改修/]);
     await page.locator('.nav-item', { hasText: '掲示板' }).click();
     await expect(row.locator('.entry-meta .chip')).toHaveText(['リポジトリ：admin-web']);
+    expect(await collect()).toEqual([]);
+  });
+
+  test('区分の一覧の行を、先頭のつまみのドラッグで並べ替えられ、読み直しても同じ順になる。狭い幅ではつまみを出さない', async ({
+    page,
+  }) => {
+    const collect = await watchViolations(page);
+    await createWorkspace(page, 'つまみの設定パーティ', 'game');
+    await openSettings(page);
+    for (const name of ['保守', '追加案件', '改修']) await addDefinition(page, '系統', name);
+    const categories = page.getByRole('list', { name: '系統の一覧' });
+    const row = (name: string) => categories.locator('li', { hasText: name });
+
+    // 3番目を先頭の行の上半分へ。離す前に、その行の上に線が出る
+    await expect(row('改修').locator('.grip')).toHaveAttribute('aria-hidden', 'true');
+    await dragTo(page, row('改修').locator('.grip'), row('保守'), 'top', async () => {
+      await expect(row('保守')).toHaveAttribute('data-drop', 'before');
+      await expect(row('改修')).toHaveClass(/is-dragging/);
+    });
+    await expect(categories.locator('li')).toHaveText([/改修/, /保守/, /追加案件/]);
+    await expect(row('改修')).toHaveClass(/is-dropped/);
+    await expect(page.getByRole('status').filter({ hasText: '「改修」を 1 番目に移しました' })).toBeAttached();
+
+    // 先頭の行を、最後の行の下半分へ
+    await dragTo(page, row('改修').locator('.grip'), row('追加案件'), 'bottom', async () => {
+      await expect(row('追加案件')).toHaveAttribute('data-drop', 'after');
+    });
+    await expect(categories.locator('li')).toHaveText([/保守/, /追加案件/, /改修/]);
+
+    await page.waitForLoadState('networkidle');
+    await page.reload();
+    await expect(categories.locator('li')).toHaveText([/保守/, /追加案件/, /改修/]);
+
+    // 狭い幅では、つまみを出さず、「上へ」「下へ」で並べ替える
+    await page.setViewportSize({ width: 390, height: 900 });
+    await expect(row('保守').locator('.grip')).toBeHidden();
+    await categories.getByRole('button', { name: '下へ: 保守' }).click();
+    await expect(categories.locator('li')).toHaveText([/追加案件/, /保守/, /改修/]);
     expect(await collect()).toEqual([]);
   });
 

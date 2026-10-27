@@ -355,11 +355,19 @@ export const dictionary = defineDictionary({
   treeClose: workspace('{title}を閉じる', '{title}を閉じる'),
 
   // バックログの並べ替えと親の移動。{title} は動かす行の題
-  // {story} {task} は、その言葉づかいの言葉を画面が渡す。エピックの並べ替えは、エピックの画面の Issue（#65）で足す
+  // {story} {task} は、その言葉づかいの言葉を画面が渡す。エピックの並べ替えは #308 で足す
   backlogOrderNote: workspace(
     '上にあるものほど優先します。{story}と{task}は、行の「上へ」「下へ」か、行の中にフォーカスを置いて Alt と ↑ ↓ で並べ替えます。',
     '上にあるものほど優先します。{story}と{task}は、行の「上へ」「下へ」か、行の中にフォーカスを置いて Alt と ↑ ↓ で並べ替えます。',
   ),
+  // つまみのドラッグに触れる文。つまみを出さない狭い幅と指の画面では、この文も隠す（.drag-note）
+  backlogDragNote: workspace(
+    '行の先頭のつまみをドラッグしても並べ替えられます。',
+    '行の先頭のつまみをドラッグしても並べ替えられます。',
+  ),
+  // 親なしの段が空のとき、行をつかんでいる間だけ出す落とし先
+  dropSlotTask: workspace('親なしの{task}へ移す', '親なしの{task}へ移す'),
+  dropSlotStory: workspace('親なしの{story}へ移す', '親なしの{story}へ移す'),
   moveUp: organization('上へ', '上へ'),
   moveDown: organization('下へ', '下へ'),
   // 同じ名前のボタンが並ぶので、どの行かを添える
@@ -375,6 +383,19 @@ export const dictionary = defineDictionary({
     '「{title}」を{story}「{parent}」の末尾へ移しました',
   ),
   moveAnnouncedRoot: workspace('「{title}」を親なしの末尾へ移しました', '「{title}」を親なしの末尾へ移しました'),
+  // ドラッグで、親を変えて途中に入れたときの知らせ。移した先の親と、{index} 番目を伝える
+  moveAnnouncedAtUnder: workspace(
+    '「{title}」を{story}「{parent}」の {index} 番目に移しました',
+    '「{title}」を{story}「{parent}」の {index} 番目に移しました',
+  ),
+  moveAnnouncedAtUnderEpic: workspace(
+    '「{title}」を{epic}「{epicTitle}」の{story}「{parent}」の {index} 番目に移しました',
+    '「{title}」を{epic}「{epicTitle}」の{story}「{parent}」の {index} 番目に移しました',
+  ),
+  moveAnnouncedAtRoot: workspace(
+    '「{title}」を親なしの {index} 番目に移しました',
+    '「{title}」を親なしの {index} 番目に移しました',
+  ),
   moveFailed: organization('移せませんでした。一覧を読み直します', '移せませんでした。一覧を読み直します'),
   moveConflict: organization(
     'ほかの画面で変わったため、移せませんでした。一覧を読み直します',
