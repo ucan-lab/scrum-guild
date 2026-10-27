@@ -654,6 +654,48 @@ describe('organization_holidays', () => {
   });
 });
 
+describe('comments', () => {
+  async function comment(columns: { body: string; deletedAt?: string | null; deletedBy?: 'self' | null }) {
+    const { userId, workspaceId } = await workspace();
+    const taskId = id();
+    await run(
+      `INSERT INTO tasks (id, workspace_id, is_imported, tray, title, position, created_by, created_at, updated_at) VALUES (?, ?, 0, 'backlog', 'タスク', 'a0', ?, ?, ?)`,
+      taskId,
+      workspaceId,
+      userId,
+      AT,
+      AT,
+    );
+    return run(
+      `INSERT INTO comments (id, workspace_id, task_id, author_user_id, body_md, deleted_at, deleted_by, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      id(),
+      workspaceId,
+      taskId,
+      userId,
+      columns.body,
+      columns.deletedAt ?? null,
+      columns.deletedBy === 'self' ? userId : null,
+      AT,
+    );
+  }
+
+  test('本文は 10 万字まで。字数はコードポイントで数える', async () => {
+    await expect(comment({ body: '😀'.repeat(100_000) })).resolves.toBeTruthy();
+    await expect(comment({ body: 'あ'.repeat(100_001) })).rejects.toThrow(/CHECK/);
+  });
+
+  test('消していないコメントの本文は空にできず、消したコメントの本文は空', async () => {
+    await expect(comment({ body: '' })).rejects.toThrow(/CHECK/);
+    await expect(comment({ body: '残った本文', deletedAt: AT, deletedBy: 'self' })).rejects.toThrow(/CHECK/);
+    await expect(comment({ body: '', deletedAt: AT, deletedBy: 'self' })).resolves.toBeTruthy();
+  });
+
+  test('消した日時と消した人は、両方入るか両方空', async () => {
+    await expect(comment({ body: '', deletedAt: AT, deletedBy: null })).rejects.toThrow(/CHECK/);
+    await expect(comment({ body: '本文', deletedAt: null, deletedBy: 'self' })).rejects.toThrow(/CHECK/);
+  });
+});
+
 describe('xp_grants.dedupe_key', () => {
   test('同じキーの付与は2つ作れない', async () => {
     const { userId, workspaceId } = await workspace();

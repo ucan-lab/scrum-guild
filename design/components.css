@@ -812,10 +812,16 @@ button.tree-link { border: 0; background: none; padding: 0; font: inherit; text-
 .btn .avatar { width: 20px; height: 20px; font-size: 10px; }
 .thread { display: grid; gap: var(--space-4); padding-top: var(--space-4); }
 .comment { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: var(--space-3); }
-.comment-head { display: flex; gap: var(--space-2); font-size: var(--text-xs); color: var(--color-muted); }
-.comment-head b { color: var(--color-fg); }
+.comment-head { display: flex; gap: var(--space-2); align-items: center; flex-wrap: wrap; font-size: var(--text-xs); color: var(--color-muted); }
+.comment-head b { color: var(--color-fg); overflow-wrap: anywhere; }
+/* 見出しの右の、許された操作（「編集」「削除」の .btn.is-sm.is-quiet）。狭い幅では見出しの下へ折り返す */
+.comment-actions { margin-left: auto; display: flex; gap: var(--space-1); }
 .comment-body { font-size: var(--text-sm); overflow-wrap: anywhere; }
 .comment.is-deleted .comment-body { color: var(--color-muted); font-style: italic; }
+/* コメントの本文の Markdown（Markdown.svelte の .doc-box）は、話の流れの中なので枠と余白を外し、コメントの文字の大きさのまま描く */
+.comment-body .doc-box { border: 0; border-radius: 0; padding: 0; font-size: inherit; }
+/* 直している途中のコメントの欄は、見出しの下に本文の幅で置く */
+.comment .edit-form { margin-top: var(--space-1); }
 .history { list-style: none; margin: 0; padding: var(--space-4) 0 0; display: grid; gap: var(--space-2); font-size: var(--text-sm); }
 .history li { display: flex; gap: var(--space-2); align-items: center; flex-wrap: wrap; }
 .history .mono { font-size: var(--text-xs); color: var(--color-muted); }

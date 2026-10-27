@@ -1675,6 +1675,66 @@ export const dictionary = defineDictionary({
     '最新の変更の履歴を読み込めませんでした。',
   ),
 
+  // コメント（引き出しの「コメント N」のタブ。src/lib/components/TaskComments.svelte）。N は消していないコメントの数
+  drawerTabs: workspace('コメントと変更の履歴', 'コメントと変更の履歴'),
+  commentsTab: workspace('コメント {count}', 'コメント {count}'),
+  commentEmpty: workspace('まだコメントはありません。', 'まだコメントはありません。'),
+  commentLoadFailed: workspace('コメントを読み込めませんでした。', 'コメントを読み込めませんでした。'),
+  commentReloadFailed: workspace('最新のコメントを読み込めませんでした。', '最新のコメントを読み込めませんでした。'),
+  commentOlder: workspace('前のコメントを読む', '前のコメントを読む'),
+  commentOlderFailed: workspace(
+    '前のコメントを読み込めませんでした。もう一度試してください。',
+    '前のコメントを読み込めませんでした。もう一度試してください。',
+  ),
+  // 「前のコメントを読む」で足したことを、読み上げに伝える
+  commentOlderAdded: workspace('前のコメントを {count} 件足しました', '前のコメントを {count} 件足しました'),
+  commentEdited: workspace('編集済み', '編集済み'),
+  commentEdit: workspace('編集', '編集'),
+  commentDelete: workspace('削除', '削除'),
+  commentEditLabel: workspace('コメントを直す', 'コメントを直す'),
+  // 消したコメント。本人が消したら「削除されました」だけ、本人以外（{leader}）が消したら消した人の名前を添える
+  commentDeleted: workspace('削除されました', '削除されました'),
+  commentDeletedBy: workspace('{name}が削除しました', '{name}が削除しました'),
+  commentNewLabel: workspace('コメントを書く', 'コメントを書く'),
+  commentPlaceholder: workspace('Markdown で書けます', 'Markdown で書けます'),
+  commentSend: workspace('送る', '送る'),
+  commentSending: workspace('コメントを送っています', 'コメントを送っています'),
+  commentSaving: workspace('コメントを保存しています', 'コメントを保存しています'),
+  commentDeleting: workspace('コメントを削除しています', 'コメントを削除しています'),
+  commentField: workspace('コメント', 'コメント'),
+  commentRequired: workspace('コメントを書いてから送ってください', 'コメントを書いてから送ってください'),
+  commentSent: workspace('コメントを送りました', 'コメントを送りました'),
+  commentSaved: workspace('コメントを直しました', 'コメントを直しました'),
+  commentRemoved: workspace('コメントを削除しました', 'コメントを削除しました'),
+  commentSendFailed: workspace(
+    'コメントを送れませんでした。書いた文は残しています。もう一度試してください。',
+    'コメントを送れませんでした。書いた文は残しています。もう一度試してください。',
+  ),
+  commentSaveFailed: workspace(
+    'コメントを保存できませんでした。書いた文は残しています。もう一度試してください。',
+    'コメントを保存できませんでした。書いた文は残しています。もう一度試してください。',
+  ),
+  commentDeleteFailed: workspace(
+    'コメントを削除できませんでした。もう一度試してください。',
+    'コメントを削除できませんでした。もう一度試してください。',
+  ),
+  // 直している間に、ほかの人（{leader}）がそのコメントを消した。書きかけは欄に残し、一覧を読み直す
+  commentGoneWhileEditing: workspace(
+    'このコメントは削除されました。書きかけの文は欄に残しています。',
+    'このコメントは削除されました。書きかけの文は欄に残しています。',
+  ),
+  commentAlreadyDeleted: workspace('このコメントはすでに削除されています', 'このコメントはすでに削除されています'),
+  // 権限が無かった（ロールが替わったなど）。一覧を読み直して、出せる操作を出し直す
+  commentForbidden: workspace(
+    'このコメントは操作できません。一覧を読み直しました。',
+    'このコメントは操作できません。一覧を読み直しました。',
+  ),
+  commentDeleteTitle: workspace('コメントを削除する', 'コメントを削除する'),
+  commentDeleteText: workspace(
+    'このコメントを削除します。本文は戻せません。一覧には「削除されました」と残ります。',
+    'このコメントを削除します。本文は戻せません。一覧には「削除されました」と残ります。',
+  ),
+
   // 計画の画面（design/plan.html）と、スプリントの作成と変更のダイアログ（kit.js の sprintCreate）
   planPageName: workspace('{plan}・{name}', '{plan}・{name}'),
   sprintCreate: workspace('{sprint}を作る', '{sprint}を作る'),

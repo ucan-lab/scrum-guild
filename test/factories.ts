@@ -420,6 +420,33 @@ export async function createTask(
   return row;
 }
 
+// タスクのコメント。既定は消していないコメントで、時刻は呼ぶたびに後ろへずらす（書いた順に並ぶ）
+let commentClock = Date.UTC(2026, 9, 20);
+export async function createComment(
+  organization: OrganizationFixture,
+  workspaceId: string,
+  taskId: string,
+  authorUserId: string,
+  overrides: Partial<Row<OrganizationTables, 'comments'>> = {},
+) {
+  const at = commentClock++;
+  const row: Row<OrganizationTables, 'comments'> = {
+    id: uuidv7(at),
+    workspace_id: workspaceId,
+    task_id: taskId,
+    author_user_id: authorUserId,
+    body_md: '確認しました。手順の 2 番目から進めます。',
+    edited_at: null,
+    deleted_at: null,
+    deleted_by: null,
+    created_at: new Date(at).toISOString(),
+    ...overrides,
+  };
+  const db = orgDb(env, organization.verified);
+  await db.run(db.statement((q) => q.insertInto('comments').values(row)));
+  return row;
+}
+
 // 先のスプリント（planned）。期間の重なりは操作が断るもので、ここでは確かめない（重ねたいテストは期間を渡す）
 export async function createSprint(
   organization: OrganizationFixture,

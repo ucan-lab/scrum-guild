@@ -120,17 +120,21 @@ function colorBlock() {
 // 引き出しの見本。id は見せるタスク、editing は直している途中の欄。tag は同じページに並べる見本の id が重ならないようにする印。
 // 操作は外す（本物の引き出しの状態を動かさない）。入力欄は動かせる
 // opts.view は読み込み中（loading）、読めない（failed）、閉じたワークスペース（readonly）。opts.errors と opts.drafts は欄の下の理由と、入力中の値
+// opts.tab は開いておくタブ（comments、history）、opts.commentEditing は直している途中のコメントの番号
 function drawerDemo(tag = "a", id = "t1", editing = [], opts = {}) {
   const st = SQ.drawerState;
-  const keep = [st.id, st.editing, st.view, st.errors, st.drafts];
+  const keep = [st.id, st.editing, st.view, st.errors, st.drafts, st.tab, st.commentEditing];
   st.id = id; st.editing = new Set(editing); st.view = opts.view || null; st.errors = opts.errors || {}; st.drafts = opts.drafts || {};
+  st.tab = opts.tab || "comments"; st.commentEditing = opts.commentEditing ?? null;
   const html = SQ.drawerHtml()
     .replace('id="drawer-title"', `id="demo-${tag}-title"`)
     .replace(/drawer-edit-/g, `demo-${tag}-edit-`)
     .replace(/drawer-pts/g, `demo-${tag}-pts`)
+    .replace(/drawer-(tab|panel)-/g, `demo-${tag}-$1-`)
+    .replace(/(id|for)="(new-comment|comment-edit-\d+)/g, `$1="demo-${tag}-$2`)
     .replace(/data-close-drawer|data-drawer-size/g, "disabled")
-    .replace(/ data-drawer-(?:edit|save|cancel|pts|due-clear|due)(?![\w-])(?:="[^"]*")?| data-dialog="deleteTask"/g, "");
-  [st.id, st.editing, st.view, st.errors, st.drafts] = keep;
+    .replace(/ data-drawer-(?:edit|save|cancel|pts|due-clear|due)(?![\w-])(?:="[^"]*")?| data-comment-(?:edit|save|cancel|delete|send)(?:="[^"]*")?| data-tab="[^"]*"| data-dialog="deleteTask"/g, "");
+  [st.id, st.editing, st.view, st.errors, st.drafts, st.tab, st.commentEditing] = keep;
   return `<div class="drawer cat-drawer">${html}</div>`;
 }
 
@@ -390,6 +394,7 @@ const SECTIONS = [
       <button class="btn" type="button" data-dialog="editStoryNotOwner">${t("story")}を直す（削除できない人）</button>
       <button class="btn" type="button" data-dialog="discardDraft">書きかけを捨てるか確かめる（引き出し）</button>
       <button class="btn is-danger" type="button" data-dialog="deleteTask">${t("task")}を削除する（引き出し）</button>
+      <button class="btn is-danger" type="button" data-dialog="deleteComment">コメントを削除する（引き出し）</button>
     </div>
     <div class="cat-row">
       <button class="btn is-primary" type="button" data-celebrate="e2">${icon("check")}クリアの演出を見る</button>
@@ -482,6 +487,9 @@ const SECTIONS = [
     `<div class="grid-2">
       <div class="field"><span class="field-label">ふだんの形</span>${drawerDemo("a", "t1")}</div>
       <div class="field"><span class="field-label">タイトル、リンク、本文を直している途中</span>${drawerDemo("b", "t1", ["title", "link", "body"])}</div>
+      <div class="field"><span class="field-label">自分のコメントを直している途中（見出しの右の操作は隠れ、本文が書く欄に替わる）</span>${drawerDemo("j", "t1", [], { commentEditing: 1 })}</div>
+      <div class="field"><span class="field-label">新しいコメントを空のまま送った（欄の下に理由）</span>${drawerDemo("k", "t1", [], { errors: { comment: "コメントを書いてから送ってください" } })}</div>
+      <div class="field"><span class="field-label">変更の履歴のタブ（コメントの書きかけは、タブの中身を外さずに隠して保つ）</span>${drawerDemo("l", "t1", [], { tab: "history" })}</div>
       <div class="field"><span class="field-label">完了した${t("task")}（${t("points")}は直せない）</span>${drawerDemo("c", "t7")}</div>
       <div class="field"><span class="field-label">リンクを直していて、断られた（欄の下に理由。入力は残る）</span>${drawerDemo("d", "t1", ["link"], { errors: { link: "http か https で始まる URL を入れてください" }, drafts: { link: "ftp://example.com/spec" } })}</div>
       <div class="field"><span class="field-label">終了した${t("workspace")}（読み取り専用。直す口と削除を出さない）</span>${drawerDemo("e", "t1", [], { view: "readonly" })}</div>
@@ -493,8 +501,9 @@ const SECTIONS = [
       "欄ごとにその場で直す。タイトルとリンクは、値そのもの（<code>.edit-trigger</code>）を押すと入力欄に替わり、Enter か「保存」で確定、Esc か「取り消し」で戻す。本文は「編集」で書く欄に替わり、保存か取り消しで描いた本文に戻る（Enter は改行）。" + `${t("points")}と${t("due")}は選んだら保存する。保存した欄は、その場で一覧の行に反映する。`,
       `完了した${t("task")}の${t("points")}は直せない。欄は読み取り専用にし、薄めずに選んだ値の色を保って、鍵のアイコンと「${t("done")}した${t("task")}の${t("points")}は直せません」を添える（理由の文は欄の <code>aria-describedby</code> に結ぶ。経験値と${t("sprint")}の集計が完了の記録の値を使うため）。ほかの属性は完了の後も直せる。`,
       "書きかけ（直している途中で、値が元と違う欄）があるまま閉じる（か別の" + t("task") + "へ移る）ときは、アプリの中のダイアログで捨てるかを確かめる。安全な側（書き続ける）を主ボタンにし、ブラウザの <code>confirm</code> は使わない。削除も確認を挟み、消したら引き出しを閉じる。",
-      "広げた形は <code>aria-modal=\"false\"</code>（左のメニューを押せるため）、横に出した形は <code>aria-modal=\"true\"</code> で外側を操作できなくする。終了したワークスペースでは直す口と削除を出さず、読み取り専用で開く。"],
-    ".drawer .is-full .scrim .drawer-top .drawer-tools .drawer-size .drawer-close .drawer-title / .edit-trigger .is-empty .edit-form .edit-actions .field-head / .props .props-note / .doc-box .is-empty / .done-bar .done-bar-done .done-bar-dod .done-bar-dod-title .done-bar-dod-body /.thanks / .tabs .tab / .thread .comment .is-deleted / .history .history-changes")],
+      "広げた形は <code>aria-modal=\"false\"</code>（左のメニューを押せるため）、横に出した形は <code>aria-modal=\"true\"</code> で外側を操作できなくする。終了したワークスペースでは直す口と削除を出さず、読み取り専用で開く。",
+      "下の「コメント N」と「変更の履歴」はタブ（<code>role=\"tablist\"</code>、左右の矢印キーで移る）。N は消していないコメントの数。コメントは書いた順に並べ、50 件より前は上の「前のコメントを読む」で足す。本文は Markdown の <code>.doc-box</code> を枠なしで描く。見出し（名前、日時、編集済み）の右（<code>.comment-actions</code>）には、許された操作だけを <code>.btn.is-sm.is-quiet</code> の「編集」「削除」で出す（自分のコメントは両方、" + t("leader") + "は人のコメントの「削除」）。「編集」は本文がその場で書く欄に替わり、「削除」は確かめのダイアログを挟む。消したものは「削除されました」、本人以外が消したら「〇〇が削除しました」と残る。新しいコメントの欄と、直している途中のコメントは書きかけに数え、タブを切り替えても残す。終了した" + t("workspace") + "では、書く欄と操作を出さない。"],
+    ".drawer .is-full .scrim .drawer-top .drawer-tools .drawer-size .drawer-close .drawer-title / .edit-trigger .is-empty .edit-form .edit-actions .field-head / .props .props-note / .doc-box .is-empty / .done-bar .done-bar-done .done-bar-dod .done-bar-dod-title .done-bar-dod-body /.thanks / .tabs .tab / .thread .comment .comment-head .comment-actions .comment-body .is-deleted .composer-foot / .history .history-changes")],
   ["files", "添付ファイル", () => block("files", "添付ファイル", "タスク、ストーリー、エピック、コメントに付ける。画像と動画は縮小した絵、それ以外は1行。押すとプレビューが開く。「ファイルを選ぶ」で上げる動きを試せる（3回目は大きすぎて失敗する）。",
     `<div class="field"><span class="field-label">一覧と上げる場所</span>${SQ.attachments("t1")}</div>
      <div class="field"><span class="field-label">上げている途中と失敗</span>

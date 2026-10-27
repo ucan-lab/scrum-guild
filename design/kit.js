@@ -712,7 +712,8 @@ const looooooooooooooooooooooooooooooooooongLine = "コードの長い1行は、
   // full は開き直しても残し、次に開くタスクも同じ広さで出す
   // editing は直している途中の欄（title、link、body）。欄ごとに別々に開け、保存か取り消しで閉じる
   // view は見本の状態の切り替え（読み込み中、読めない、閉じたワークスペースの読み取り専用）。errors は欄の下に出す理由
-  const drawer = { id: null, tab: "comments", thanked: new Set(), opener: null, full: false, editing: new Set(), view: null, errors: {}, drafts: {} };
+  // commentEditing は直している途中のコメントの番号、commentDeleting は消すかを確かめているコメントの番号
+  const drawer = { id: null, tab: "comments", thanked: new Set(), opener: null, full: false, editing: new Set(), view: null, errors: {}, drafts: {}, commentEditing: null, commentDeleting: null };
   const drawerReadOnly = () => drawer.view === "readonly";
   function drawerSizeBtn() {
     const label = drawer.full ? "横に戻す" : "広げる";
@@ -783,6 +784,32 @@ const looooooooooooooooooooooooooooooooooongLine = "コードの長い1行は、
     return `<div class="field"><div class="field-head"><span class="field-label">本文</span><button class="btn is-sm" type="button" data-drawer-edit="body">${icon("pen")}編集</button></div>
       <div class="doc-box${x.body ? "" : " is-empty"}">${x.body ? mdBody(x.body) : "まだ書かれていません。"}</div></div>`;
   }
+  // コメントの1件。見出し（名前、日時、編集済み）の右に、許された操作だけを出す（自分のコメントは「編集」と「削除」、
+  // リーダーは人のコメントの「削除」）。「編集」は本文がその場で書く欄に替わり、「削除」は確かめてから消す。
+  // 消したものは「削除されました」、本人以外（リーダー）が消したら「〇〇が削除しました」と残す。終了したワークスペースでは操作を出さない
+  function commentHtml(x, c, i) {
+    const mine = c.who === D.me;
+    const leader = user(D.me).role === "leader";
+    const editing = drawer.commentEditing === i && !c.deleted && !drawerReadOnly();
+    const actions = drawerReadOnly() || c.deleted || editing ? "" : [
+      mine ? `<button class="btn is-sm is-quiet" type="button" data-comment-edit="${i}">編集</button>` : "",
+      mine || leader ? `<button class="btn is-sm is-quiet" type="button" data-comment-delete="${i}">削除</button>` : "",
+    ].join("");
+    const deletedText = c.deletedBy && c.deletedBy !== c.who ? `${esc(user(c.deletedBy).name)}が削除しました` : "削除されました";
+    const body = c.deleted
+      ? `<p class="comment-body">${deletedText}</p>`
+      : editing
+        ? `<div class="edit-form"><div class="field"><label class="field-label visually-hidden" for="comment-edit-${i}">コメントを直す</label>
+            <textarea class="textarea" id="comment-edit-${i}" data-comment-input>${esc(drawer.drafts.commentEdit ?? c.body)}</textarea></div>
+            <div class="edit-actions"><button class="btn is-primary is-sm" type="button" data-comment-save="${i}">保存</button><button class="btn is-sm is-quiet" type="button" data-comment-cancel="${i}">取り消し</button></div></div>`
+        : `<div class="comment-body"><div class="doc-box">${mdBody([c.body])}</div></div>`;
+    const files = !c.deleted && filesOf(`comment:${x.id}:${i}`).length
+      ? `<div class="comment-files">${filesOf(`comment:${x.id}:${i}`).map((f) => (f.type === "file" ? fileRow(f) : fileThumb(f))).join("")}</div>` : "";
+    return `<div class="comment${c.deleted ? " is-deleted" : ""}">${avatarOf(c.who)}<div>
+      <div class="comment-head"><b>${esc(user(c.who).name)}</b><span class="mono">${c.at}</span>${c.edited ? "<span>編集済み</span>" : ""}${actions ? `<span class="comment-actions">${actions}</span>` : ""}</div>
+      ${body}${files}</div></div>`;
+  }
+  // 2つのタブの中身は描いたまま隠す（本番は書きかけのコメントを、タブを切り替えても保つ）。左右の矢印キーでタブを移る
   function drawerHtml() {
     const x = task(drawer.id);
     const parent = x.story ? D.stories[x.story] : null;
@@ -847,23 +874,24 @@ const looooooooooooooooooooooooooooooooooongLine = "コードの長い1行は、
         <span class="field-hint">送れるのは${t("assignee")}だけ（${t("assignee")}がいなければ作った人）。${t("task")}が完了すると相手に経験値が付きます。完了までは取り消せます。</span>
       </div>
       <div>
-        <div class="tabs" role="tablist">
-          <button class="tab" type="button" role="tab" data-tab="comments" aria-selected="${drawer.tab === "comments"}">コメント ${comments.filter((c) => !c.deleted).length}</button>
-          <button class="tab" type="button" role="tab" data-tab="history" aria-selected="${drawer.tab === "history"}">変更の履歴</button>
+        <div class="tabs" role="tablist" aria-label="コメントと変更の履歴">
+          <button class="tab" type="button" role="tab" id="drawer-tab-comments" aria-controls="drawer-panel-comments" data-tab="comments" aria-selected="${drawer.tab === "comments"}" tabindex="${drawer.tab === "comments" ? 0 : -1}">コメント ${comments.filter((c) => !c.deleted).length}</button>
+          <button class="tab" type="button" role="tab" id="drawer-tab-history" aria-controls="drawer-panel-history" data-tab="history" aria-selected="${drawer.tab === "history"}" tabindex="${drawer.tab === "history" ? 0 : -1}">変更の履歴</button>
         </div>
-        ${drawer.tab === "comments" ? `
-        <div class="thread">
-          ${comments.map((c, i) => `<div class="comment ${c.deleted ? "is-deleted" : ""}">${avatarOf(c.who)}<div>
-            <div class="comment-head"><b>${esc(user(c.who).name)}</b><span class="mono">${c.at}</span>${c.edited ? "<span>編集済み</span>" : ""}</div>
-            <p class="comment-body">${c.deleted ? "削除されました" : esc(c.body)}</p>
-            ${!c.deleted && filesOf(`comment:${x.id}:${i}`).length ? `<div class="comment-files">${filesOf(`comment:${x.id}:${i}`).map((f) => (f.type === "file" ? fileRow(f) : fileThumb(f))).join("")}</div>` : ""}</div></div>`).join("") || `<p class="props-note">まだコメントはありません。</p>`}
-          <label class="field" for="new-comment"><span class="field-label">コメントを書く</span><textarea class="textarea" id="new-comment" placeholder="Markdown で書けます"></textarea></label>
+        <div class="thread" role="tabpanel" id="drawer-panel-comments" aria-labelledby="drawer-tab-comments" tabindex="-1"${drawer.tab === "comments" ? "" : " hidden"}>
+          ${(D.olderComments || []).includes(x.id) ? `<div class="form-actions"><button class="btn is-sm" type="button" data-toast="前のコメントを足しました">前のコメントを読む</button></div>` : ""}
+          ${comments.map((c, i) => commentHtml(x, c, i)).join("") || `<p class="props-note">まだコメントはありません。</p>`}
+          ${drawerReadOnly() ? "" : `<div class="field${drawer.errors.comment ? " is-invalid" : ""}"><label class="field-label" for="new-comment">コメントを書く</label><textarea class="textarea" id="new-comment" data-comment-new placeholder="Markdown で書けます" aria-describedby="new-comment-hint">${esc(drawer.drafts.comment ?? "")}</textarea>
+            <span class="field-hint" id="new-comment-hint">Markdown で書けます。見出しは <code>#</code> が小見出しの大きさから始まります。</span>
+            ${drawer.errors.comment ? `<span class="field-error" role="alert">${icon("alert")}${drawer.errors.comment}</span>` : ""}</div>
           ${attachments(`comment-new:${x.id}`, { noDrop: true })}
           <div class="composer-foot"><button class="btn is-sm is-quiet" type="button" data-pick-file="comment-new:${x.id}">${icon("clip")}ファイルを添付</button>
-            <span class="field-hint">画像は貼り付けても添付できます。</span><button class="btn" type="button">送る</button></div>
-        </div>` : `
+            <span class="field-hint">画像は貼り付けても添付できます。</span><button class="btn" type="button" data-comment-send>送る</button></div>`}
+        </div>
+        <div role="tabpanel" id="drawer-panel-history" aria-labelledby="drawer-tab-history" tabindex="-1"${drawer.tab === "history" ? "" : " hidden"}>
         <ul class="history">${history.map((h) => `<li><span class="mono">${h[0]}</span>${avatarOf(h[1])}<span>${esc(user(h[1]).name)}</span><span class="props-note">${h[2] === "create" ? t("historyCreated") : t("historyUpdated")}</span>
-          ${h[3].length ? `<ul class="history-changes">${h[3].map(([field, text]) => `<li><span class="props-note">${HIST[field]}</span><span>${esc(text)}</span></li>`).join("")}</ul>` : ""}</li>`).join("") || `<li class="props-note">まだ変更はありません。</li>`}</ul>`}
+          ${h[3].length ? `<ul class="history-changes">${h[3].map(([field, text]) => `<li><span class="props-note">${HIST[field]}</span><span>${esc(text)}</span></li>`).join("")}</ul>` : ""}</li>`).join("") || `<li class="props-note">まだ変更はありません。</li>`}</ul>
+        </div>
       </div>
       ${drawerReadOnly() ? "" : `<div class="form-actions">${x.src
         ? `<button class="btn is-sm is-quiet" type="button" data-toast="${t("archive")}へ移しました">${icon("archive")}${t("archive")}へ移す</button><span class="field-hint">取り込んだ${t("task")}は削除せず、${t("archive")}へ移して外します。</span>`
@@ -880,13 +908,16 @@ const looooooooooooooooooooooooooooooooooongLine = "コードの長い1行は、
       <div class="form-actions"><button class="btn" type="button">もう一度試す</button></div>`;
   }
   function openDrawer(id, opener) {
-    drawer.id = id; drawer.tab = "comments"; drawer.thanked = new Set(); drawer.opener = opener || null; drawer.editing = new Set(); drawer.errors = {}; drawer.drafts = {};
+    drawer.id = id; drawer.tab = "comments"; drawer.thanked = new Set(); drawer.opener = opener || null; drawer.editing = new Set(); drawer.errors = {}; drawer.drafts = {}; drawer.commentEditing = null;
     renderDrawer();
     document.querySelector("[data-close-drawer]")?.focus();
   }
   // 直している欄の今の入力。再描画しても書きかけを残すため、描き直す前に写す
   function captureDrafts() {
     document.querySelectorAll("#drawer [data-drawer-input]").forEach((input) => { drawer.drafts[input.dataset.drawerInput] = input.value; });
+    const fresh = document.querySelector("#drawer [data-comment-new]"), edit = document.querySelector("#drawer [data-comment-input]");
+    if (fresh) drawer.drafts.comment = fresh.value;
+    if (edit) drawer.drafts.commentEdit = edit.value;
   }
   // 書きかけ: 直している途中で、入力が保存した値と違う欄（保存と同じく前後の空白は除いて比べる）
   function drawerHasDraft() {
@@ -894,12 +925,16 @@ const looooooooooooooooooooooooooooooooooongLine = "コードの長い1行は、
     if (!x) return false;
     captureDrafts();
     const saved = { title: x.title, link: x.link || "", body: (x.body || []).join("\n") };
+    // コメントは、新しいコメントの欄に文字があるときと、直している途中で直す前の本文と違うとき
+    const editingComment = drawer.commentEditing !== null ? (D.comments[x.id] || [])[drawer.commentEditing] : null;
+    if ((drawer.drafts.comment ?? "").trim() !== "") return true;
+    if (editingComment && (drawer.drafts.commentEdit ?? editingComment.body).trim() !== editingComment.body.trim()) return true;
     return [...drawer.editing].some((name) => (drawer.drafts[name] ?? saved[name]).trim() !== saved[name].trim());
   }
   // 書きかけがあるときは、捨てるかをダイアログで確かめる。force は捨てると決めた後
   function closeDrawer(force = false) {
     if (!force && drawerHasDraft()) { DIALOGS.discardDraft(); return; }
-    drawer.id = null; drawer.editing = new Set(); drawer.errors = {}; drawer.drafts = {};
+    drawer.id = null; drawer.editing = new Set(); drawer.errors = {}; drawer.drafts = {}; drawer.commentEditing = null;
     renderDrawer();
     const back = drawer.opener && document.querySelector(`[data-task="${drawer.opener}"]`);
     if (back) back.focus();
@@ -1193,6 +1228,13 @@ const looooooooooooooooooooooooooooooooooongLine = "コードの長い1行は、
       openDialog("書きかけを捨てますか",
         `<p>保存していない変更があります。捨てると元に戻せません。</p>`,
         `<button class="btn is-primary" type="button" data-close-dialog>書き続ける</button><button class="btn is-danger" type="button" data-discard-draft>捨てる</button>`);
+      document.querySelector(".dialog-sheet").classList.add("is-danger");
+    },
+    // コメントを消すかを確かめる。消したものは「削除されました」と残る。引き出しの外（カタログ）から開いたときは、消さない
+    deleteComment: () => {
+      openDialog("コメントを削除する",
+        `<p>このコメントを削除します。本文は戻せません。一覧には「削除されました」と残ります。</p>`,
+        `<button class="btn is-primary" type="button" data-close-dialog>やめる</button><button class="btn is-danger" type="button" ${drawer.id ? "data-delete-comment" : `data-close-dialog data-toast="削除しました"`}>削除する</button>`);
       document.querySelector(".dialog-sheet").classList.add("is-danger");
     },
     // 引き出しの外（カタログ）から開いたときは、見本のタスクを指し、削除は実行しない。長いタイトルは折り返す
@@ -1842,7 +1884,38 @@ const looooooooooooooooooooooooooooooooooongLine = "コードの長い1行は、
       drawer.thanked.has(u) ? drawer.thanked.delete(u) : drawer.thanked.add(u);
       renderDrawer(); return;
     }
-    if ((el = hit("data-tab"))) { drawer.tab = el.dataset.tab; renderDrawer(); return; }
+    if ((el = hit("data-tab"))) { drawer.tab = el.dataset.tab; renderDrawer(); document.querySelector(`#drawer [data-tab="${drawer.tab}"]`)?.focus(); return; }
+    // コメントの「編集」「取り消し」「保存」「削除」と、新しいコメントの「送る」（見本の中だけで書き換える）
+    if ((el = hit("data-comment-edit"))) {
+      drawer.commentEditing = Number(el.dataset.commentEdit); delete drawer.drafts.commentEdit; renderDrawer();
+      document.querySelector("#drawer [data-comment-input]")?.focus(); return;
+    }
+    if ((el = hit("data-comment-cancel")) || (el = hit("data-comment-save"))) {
+      const i = Number(el.dataset.commentCancel ?? el.dataset.commentSave);
+      const c = (D.comments[drawer.id] || [])[i];
+      if (el.dataset.commentSave !== undefined && c) {
+        const value = document.querySelector("#drawer [data-comment-input]")?.value.trim();
+        if (!value) return;
+        if (value !== c.body) { c.body = value; c.edited = true; toast(`${icon("check")}コメントを直しました`); }
+      }
+      drawer.commentEditing = null; delete drawer.drafts.commentEdit; renderDrawer();
+      document.querySelector(`#drawer [data-comment-edit="${i}"]`)?.focus(); return;
+    }
+    if ((el = hit("data-comment-delete"))) { drawer.commentDeleting = Number(el.dataset.commentDelete); DIALOGS.deleteComment(); return; }
+    if (hit("data-delete-comment")) {
+      const c = (D.comments[drawer.id] || [])[drawer.commentDeleting];
+      closeDialog();
+      if (c) { c.deleted = true; c.deletedBy = D.me; delete c.body; }
+      drawer.commentDeleting = null; renderDrawer(); toast(`${icon("check")}コメントを削除しました`); return;
+    }
+    if (hit("data-comment-send")) {
+      const input = document.querySelector("#drawer [data-comment-new]");
+      const value = input ? input.value.trim() : "";
+      if (!value) { drawer.errors.comment = "コメントを書いてから送ってください"; drawer.drafts.comment = input ? input.value : ""; renderDrawer(); document.querySelector("#drawer [data-comment-new]")?.focus(); return; }
+      (D.comments[drawer.id] = D.comments[drawer.id] || []).push({ who: D.me, at: "10/20 10:15", body: value });
+      delete drawer.errors.comment; drawer.drafts.comment = ""; renderDrawer();
+      document.querySelector("#drawer #drawer-panel-comments .comment:last-of-type")?.scrollIntoView({ block: "nearest" }); return;
+    }
     if (hit("data-close-drawer")) { closeDrawer(); return; }
     if ((el = hit("data-drawer-edit"))) { drawer.editing.add(el.dataset.drawerEdit); renderDrawer(); focusDrawerInput(el.dataset.drawerEdit); return; }
     if ((el = hit("data-drawer-cancel"))) { cancelDrawerEdit(el.dataset.drawerCancel); return; }
@@ -1951,6 +2024,14 @@ const looooooooooooooooooooooooooooooooooongLine = "コードの長い1行は、
     const overlay = !document.getElementById("dialog")?.hidden || !document.getElementById("celebrate")?.hidden;
     if ((ev.ctrlKey || ev.metaKey) && ev.key.toLowerCase() === "k" && assistAllowed() && !overlay) {
       ev.preventDefault(); openAssist(assist.open === "panel" ? "panel" : "palette"); return;
+    }
+    // タブは左右の矢印キーと Home、End で移り、移った先を選ぶ
+    if (ev.target.matches && ev.target.matches('#drawer [role="tab"]') && ["ArrowLeft", "ArrowRight", "Home", "End"].includes(ev.key)) {
+      const tabs = [...ev.target.closest('[role="tablist"]').querySelectorAll('[role="tab"]')];
+      const at = tabs.indexOf(ev.target);
+      const next = ev.key === "Home" ? 0 : ev.key === "End" ? tabs.length - 1 : (at + (ev.key === "ArrowRight" ? 1 : -1) + tabs.length) % tabs.length;
+      ev.preventDefault(); drawer.tab = tabs[next].dataset.tab; renderDrawer();
+      document.querySelector(`#drawer [data-tab="${drawer.tab}"]`)?.focus(); return;
     }
     if (ev.key === "Enter" && !ev.isComposing && ev.target.matches && ev.target.matches("input[data-drawer-input]")) {
       ev.preventDefault(); saveDrawerEdit(ev.target.dataset.drawerInput); return;
