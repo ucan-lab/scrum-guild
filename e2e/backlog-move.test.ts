@@ -3,7 +3,7 @@
 // seed のセッション（seed/sessions.ts）の Cookie で開く。あおば開発の管理者はミナト。CSP の違反も確かめる
 import type { Page } from '@playwright/test';
 import { expect, steadyScreenshots, test } from './fixtures.ts';
-import { createWorkspace, dragTo, signIn, watchViolations } from './helpers.ts';
+import { createWorkspace, dragTo, signIn, waitForResponses, watchViolations } from './helpers.ts';
 
 test.use({ timezoneId: 'Asia/Tokyo' });
 
@@ -50,6 +50,9 @@ test('「上へ」「下へ」と Alt と ↑ ↓ で並べ替え、フォーカ
   await expect(firstUp).toHaveAttribute('aria-disabled', 'true');
   await expect(page.getByRole('button', { name: '下へ: 議事録をまとめる' })).toHaveAttribute('aria-disabled', 'true');
 
+  // 読み直す前に待つ。このテストで動かすのは、下のボタンの1回と Alt と ↑ ↓ の4回
+  const moved = waitForResponses(page, '/task-move', 5);
+
   // ボタンで1つ下へ。押したボタンにフォーカスが残る
   const down = page.getByRole('button', { name: '下へ: 見積もりを送る' });
   await down.click();
@@ -76,7 +79,7 @@ test('「上へ」「下へ」と Alt と ↑ ↓ で並べ替え、フォーカ
   ).toBeAttached();
 
   // 送り終えてから読み直す。並びは API に残っている
-  await page.waitForLoadState('networkidle');
+  await moved;
   await page.reload();
   await expect(page.getByRole('heading', { level: 1, name: '掲示板' })).toBeVisible();
   await expect(rootTitles(page)).toHaveText(['議事録をまとめる', '請求書を出す', '見積もりを送る']);
@@ -115,14 +118,15 @@ test('「親を移す」でストーリーの下の末尾へ移し、親なし�
   // ダイアログを閉じたら、開いたボタンへフォーカスが戻る
   await expect(page.getByRole('button', { name: '親を移す: 残高の画面を作る' })).toBeFocused();
 
-  // ストーリーを並べ替える
+  // ストーリーを並べ替える。前の親の移動の後に送られるので、この応答を待てば両方が書き終わっている
+  const storyMoved = waitForResponses(page, '/story-move');
   await page.getByRole('button', { name: '下へ: ポイント制度を公開する' }).click();
   await expect(page.locator('.tree-group button.tree-link')).toHaveText([
     '決済の障害を減らす',
     'ポイント制度を公開する',
   ]);
 
-  await page.waitForLoadState('networkidle');
+  await storyMoved;
   await page.reload();
   await expect(page.locator('.tree-group button.tree-link')).toHaveText([
     '決済の障害を減らす',
@@ -138,9 +142,10 @@ test('「親を移す」でストーリーの下の末尾へ移し、親なし�
   const back = page.getByRole('dialog', { name: '「付与のバッチを書く」の親を移す' });
   await expect(back.getByLabel('移す先').locator('option')).toHaveText(['親なし', '決済の障害を減らす']);
   await back.getByLabel('移す先').selectOption({ label: '親なし' });
+  const taskMoved = waitForResponses(page, '/task-move');
   await back.getByRole('button', { name: '移す' }).click();
   await expect(rootTitles(page)).toHaveText(['付与のバッチを書く']);
-  await page.waitForLoadState('networkidle');
+  await taskMoved;
   await page.reload();
   await expect(rootTitles(page)).toHaveText(['付与のバッチを書く']);
   expect(await collect()).toEqual([]);
@@ -251,6 +256,8 @@ test('つまみのドラッグで、同じ親の中のタスクを並べ替え�
   });
   // つまみは飾り（読み上げに出さない）
   await expect(taskGrip(page, '見積もりを送る')).toHaveAttribute('aria-hidden', 'true');
+  // 下の2回のドラッグの応答。2件目は1件目の応答の後に送られる
+  const moved = waitForResponses(page, '/task-move', 2);
 
   // 3番目を先頭の行の上半分へ。離す前に、その行の上に線が出る
   await dragTo(page, taskGrip(page, '議事録をまとめる'), taskRow(page, '見積もりを送る'), 'top', async () => {
@@ -273,7 +280,7 @@ test('つまみのドラッグで、同じ親の中のタスクを並べ替え�
   await expect(rootTitles(page)).toHaveText(['見積もりを送る', '議事録をまとめる', '請求書を出す']);
 
   // 元と同じ位置（自分の行、すぐ上の行の下）には、線を出さず、何も送らない
-  await page.waitForLoadState('networkidle');
+  await moved;
   const before = sent.length;
   expect(before).toBe(2);
   await dragTo(page, taskGrip(page, '議事録をまとめる'), taskRow(page, '議事録をまとめる'), 'bottom', async () => {
@@ -282,11 +289,11 @@ test('つまみのドラッグで、同じ親の中のタスクを並べ替え�
   await dragTo(page, taskGrip(page, '議事録をまとめる'), taskRow(page, '見積もりを送る'), 'bottom', async () => {
     await expect(page.locator('[data-drop]')).toHaveCount(0);
   });
-  await page.waitForLoadState('networkidle');
-  expect(sent.length).toBe(before);
   await expect(rootTitles(page)).toHaveText(['見積もりを送る', '議事録をまとめる', '請求書を出す']);
 
+  // 落とした時点で送るなら、その要求は読み直しより前に出る。読み直した後で、送った数が増えていないことを確かめる
   await page.reload();
+  expect(sent.length).toBe(before);
   await expect(rootTitles(page)).toHaveText(['見積もりを送る', '議事録をまとめる', '請求書を出す']);
   expect(await collect()).toEqual([]);
 });
@@ -342,7 +349,9 @@ test('畳んだストーリーの行やタスクの無いストーリーの行�
   await expect(payments.locator('.entry-title')).toHaveText(['付与のバッチを書く', '請求書を出す']);
   await expect(points.locator('.entry-title')).toHaveText(['残高の画面を作る']);
 
-  // ストーリーを並べ替える。ストーリーの行の上半分に落とすと、配下を含めた塊の上に線が出る
+  // ストーリーを並べ替える。ストーリーの行の上半分に落とすと、配下を含めた塊の上に線が出る。
+  // 前のタスクの移動の後に送られるので、この応答を待てば、読み直す前にすべて書き終わっている
+  const storyMoved = waitForResponses(page, '/story-move');
   await dragTo(
     page,
     storyRow(page, '決済の障害を減らす').locator('.grip'),
@@ -354,7 +363,7 @@ test('畳んだストーリーの行やタスクの無いストーリーの行�
   );
   await expect(storyTitles(page)).toHaveText(['決済の障害を減らす', 'ポイント制度を公開する']);
 
-  await page.waitForLoadState('networkidle');
+  await storyMoved;
   await page.reload();
   await expect(storyTitles(page)).toHaveText(['決済の障害を減らす', 'ポイント制度を公開する']);
   await expect(payments.locator('.entry-title')).toHaveText(['付与のバッチを書く', '請求書を出す']);
@@ -376,6 +385,7 @@ test('親なしの段が空でも、つかんでいる間だけ出る落とし�
   await expect(page.locator('.tree-slot')).toHaveCount(0);
 
   const slot = page.locator('.tree-slot .dropzone');
+  const moved = waitForResponses(page, '/task-move');
   await dragTo(page, taskGrip(page, '付与のバッチを書く'), slot, 'middle', async () => {
     // つかんでいる間は出て、重ねると囲む
     await expect(slot).toHaveClass(/is-over/);
@@ -388,14 +398,15 @@ test('親なしの段が空でも、つかんでいる間だけ出る落とし�
     page.getByRole('status').filter({ hasText: '「付与のバッチを書く」を親なしの末尾へ移しました' }),
   ).toBeAttached();
 
-  await page.waitForLoadState('networkidle');
+  await moved;
   await page.reload();
   await expect(rootTitles(page)).toHaveText(['付与のバッチを書く']);
   expect(await collect()).toEqual([]);
 });
 
 test('終了したワークスペースでは、つまみを出さない', async ({ page }) => {
-  const name = '終了したつまみパーティ';
+  // 管理の画面の行を名前で探すので、繰り返しと再試行で作った同じ名前の行に当てない
+  const name = `終了したつまみパーティ ${test.info().repeatEachIndex}-${test.info().retry}`;
   await createWorkspace(page, name, 'game');
   await addTask(page, '見積もりを送る');
   await expect(page.locator('.entry .grip')).toBeVisible();
