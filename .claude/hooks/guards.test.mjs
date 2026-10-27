@@ -2603,7 +2603,7 @@ describe('入口', () => {
         sh(['checkout', '-q', '--detach'], main);
         assert.equal(decide(path.join(main, 'docs/x.md'), main), 'deny');
         assert.equal(decide(path.join(main, 'docs/x.md'), main, { CLAUDE_CODE_REMOTE: 'true' }), 'allow');
-        for (const value of ['1', 'false', '']) {
+        for (const value of ['1', 'false', '', 'TRUE']) {
           assert.equal(decide(path.join(main, 'docs/x.md'), main, { CLAUDE_CODE_REMOTE: value }), 'deny');
         }
         sh(['checkout', '-q', '--detach'], worktree);
