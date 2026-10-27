@@ -41,14 +41,14 @@ gh api "repos/{owner}/{repo}/pulls?state=open&per_page=100" --jq '.[] | {number,
 
 次の決まりで直す。
 
-- `s` は推測せず GitHub から読む（`docs/development.md` の「Issue の状態」）。閉じていれば `done`、開いた PR（ブランチ名の `<番号>-` の先頭か、本文の `Closes` と `Refs` で引く）があれば `review`、`status:in-progress` なら `wip`（`status:refining` と両方あっても `wip`）、`status:refining` なら `refining`、どれでもなければ `todo`。開いた PR はブランチ名の先頭の番号で引く
+- `s` は推測せず GitHub から読む（`docs/development.md` の「Issue の状態」）。閉じていれば `done`、開いていて `status:accepting` が付いていれば `accept`（マージ済みで人の受け入れを待つ。開いた PR があっても `accept`。`done` とは別の印で出す）、開いた PR（ブランチ名の `<番号>-` の先頭か、本文の `Refs` で引く。決まりの前に立てた PR のために `Closes` も拾う）があれば `review`、`status:in-progress` なら `wip`（`status:refining` と両方あっても `wip`）、`status:refining` なら `refining`、どれでもなければ `todo`。開いた PR はブランチ名の先頭の番号で引く
 - 閉じた Issue を `done` にする前に、`state_reason` が `not_planned`（重複や対応しない）でないかを確かめる。そうなら図から外す
 - PR を出した Issue は、`note` を「PR #nn」で始める。ページが番号を取って列のブロックに出す
-- 開いている Issue の `deps` は、GitHub の依存関係（`gh api repos/{owner}/{repo}/issues/<番号>/dependencies/blocked_by --jq '[.[].number]'`）に合わせる。閉じた Issue の `deps` は残す。「待ち」と待っている番号はページが `deps` から出すので、手で書かない
+- 開いている Issue の `deps` は、GitHub の依存関係（`gh api repos/{owner}/{repo}/issues/<番号>/dependencies/blocked_by --jq '[.[].number]'`）に合わせる。閉じた Issue の `deps` は残す。`status:accepting` の前提も外さずに `deps` へ残す（何を待っていたかの記録を消さないため）。「待ち」と待っている番号はページが `deps` から出し、`s` が `accept` の前提は待ちに数えない。手で書かない
 - `lanes` は `area:` のラベルとは別に、Issue の中身から作る場所（見本、画面、運用者、API、DB、定期処理、基盤、文書）を割り当てる
 - 新しいストーリー（`story` のラベル）は、`n` を付けて `SECTIONS` に足す。エピックをストーリーに分けたら、`FEATURE_EPICS` から抜き、ストーリーを作る順（並べる回の順）に足す
-- ストーリーの Issue が閉じたら `closed: true` を付ける。付いていないと、タスクが済んだストーリーは「受け入れ待ち」として一番上の「あなたの番」に出る
-- `SECTIONS` の並びは作る順のまま、手で動かさない。タスクがすべて済んだストーリーは、ページが畳んで一番下にまとめる
+- ストーリーの Issue が閉じたら `closed: true` を付ける。付いていないと、子のタスクがすべて `done` か `accept` のストーリーは「受け入れ待ち」として一番上の「あなたの番」に出る（ストーリーには `accept` を付けない。子から決まる）
+- `SECTIONS` の並びは作る順のまま、手で動かさない。タスクがすべて `done` か `accept` のストーリーは、ページが畳んで一番下にまとめる
 - 図に載せない閉じた chore は `doneIssues` に足す
 - 人が確かめること、行うこと（`human`、#92〜#96 など）は、「次に着手するもの」に混ぜない
 - 導入文に済んだ経緯を書き足さない。依存の矢印は、見づらいので描かない

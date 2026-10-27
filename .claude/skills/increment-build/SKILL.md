@@ -24,14 +24,15 @@ gh api repos/{owner}/{repo}/issues/<番号> --jq '{state, title, pr: (.pull_requ
 gh api "repos/{owner}/{repo}/pulls?state=open&per_page=100" --jq '.[] | {number, head: .head.ref, refs: ([.body // "" | scan("(?i)(?:closes|fixes|refs) #([0-9]+)") | .[0]])}'
 ```
 
-`gh` が無いか認証で失敗するときは、`pr-create/github-mcp.md` に従い、GitHub の MCP ツールで代える。Issue は `issue_read` の `get`、`get_labels`、`get_parent`、開いた PR は `list_pull_requests`（`fields` に `number`、`head`、`body` を入れる）で読む。`issue_read` は `blocked` を返さないので、本文と親の Issue の「前に要るもの」を読んで確かめる。
+`gh` が無いか認証で失敗するときは、`pr-create/github-mcp.md` に従い、GitHub の MCP ツールで代える。Issue は `issue_read` の `get`、`get_labels`、`get_parent`、開いた PR は `list_pull_requests`（`fields` に `number`、`head`、`body` を入れる）で読む。`issue_read` は `blocked` を返さないので、本文と親の Issue の「前に要るもの」を読んで確かめる。前に要るものが開いていても、`get_labels` で `status:accepting` が付いていれば待ちに数えない。
 
 次のどれかなら止まり、理由を伝える。
 
 - 閉じている、PR の番号だった、`epic` か子を持つ（子のタスクを進める）
-- その Issue を指す開いた PR がある（ブランチ名の `<番号>-` の先頭か、本文の `Closes` と `Refs`）
+- `status:accepting` が付いている（マージ済みで、人の受け入れを待っている）
+- その Issue を指す開いた PR がある（ブランチ名の `<番号>-` の先頭か、本文の `Refs`。決まりの前に立てた PR のために `Closes` も拾う）
 - `status:in-progress` か `status:refining` が付いている（ほかのセッションか人が受け持っている）。前のセッションが落ちて残ったもの、人がこのセッションで続けるよう言ったものだけ続ける。手元のワークツリーが残っていれば、それを使う
-- `blocked` が 0 でない、または親のストーリーの `blocked` が 0 でない（前に要るものが開いている）
+- 待ちがある。`blocked` が 0 でない Issue（または親のストーリー）だけ、`gh api repos/{owner}/{repo}/issues/<番号>/dependencies/blocked_by --jq '[.[] | select(.state == "open" and (([.labels[].name] | index("status:accepting")) == null)) | .number]'` で前に要るものを引き、開いていて `status:accepting` の無いものが1つでもあれば止まる。`status:accepting` の前に要るものだけなら止まらない（受け入れ待ちは実装が済んでいる。`docs/development.md` の「Issue の運用」）
 - 人が行う Issue（題が「確認:」で始まる、要件を決める、本番やアカウントやドメインの操作）
 - `migration` が付いていて、ほかに `migration` の付いた作業中の Issue か開いた PR がある
 - このセッションが既に2つの Issue を受け持った（次は新しいセッションで始める）

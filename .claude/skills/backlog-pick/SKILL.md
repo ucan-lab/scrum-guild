@@ -26,9 +26,15 @@ gh api "repos/{owner}/{repo}/issues?state=open&per_page=100" --paginate --jq '.[
 gh api "repos/{owner}/{repo}/pulls?state=open&per_page=100" --jq '.[] | {number, head: .head.ref, refs: ([.body // "" | scan("(?i)(?:closes|fixes|refs) #([0-9]+)") | .[0]])}'
 ```
 
-`blocked` は、開いている前に要るもの（blocked by）の数で、閉じたものは数えない。前に要るものは GitHub の依存関係だけを正とし、本文の表から読まない（`backlog-add` が登録のときにつなぐ）。
+`blocked` は、開いている前に要るもの（blocked by）の数で、閉じたものは数えない。受け入れ待ち（`status:accepting`）の前に要るものは、開いているので数に入る。前に要るものは GitHub の依存関係だけを正とし、本文の表から読まない（`backlog-add` が登録のときにつなぐ）。
 
-Issue を指す開いた PR は、ブランチ名の `<番号>-` の先頭か、本文の `Closes #<番号>` と `Refs #<番号>` で引く。クラウドのセッションのブランチ（`claude/*`）は番号を持たないため。
+待ちに数えるのは、開いていて `status:accepting` の無い前に要るものだけ（動作の確認を受け入れでまとめて行い、実装を止めないため。`docs/development.md` の「Issue の運用」）。`blocked > 0` の Issue だけ、次で前に要るものを引き、そのようなものが1つでもあれば待ちとする。
+
+```bash
+gh api repos/{owner}/{repo}/issues/<番号>/dependencies/blocked_by --jq '[.[] | select(.state == "open" and (([.labels[].name] | index("status:accepting")) == null)) | .number]'
+```
+
+Issue を指す開いた PR は、ブランチ名の `<番号>-` の先頭か、本文の `Refs #<番号>` で引く。クラウドのセッションのブランチ（`claude/*`）は番号を持たないため。決まりの前に立てた PR は `Closes` で指しているので、`Closes #<番号>` も拾い続ける。
 
 ### 2. 分ける
 
@@ -36,19 +42,15 @@ Issue を指す開いた PR は、ブランチ名の `<番号>-` の先頭か、
 
 | 組 | 当てはまるもの |
 | --- | --- |
-| 人の番 | 開いた PR がある。子がすべて閉じた `story` と `epic`（`subs.total > 0` かつ `completed == total`）は受け入れ待ち。人が行う Issue（題が「確認:」で始まる、要件を決める、本番やアカウントやドメインの操作） |
+| 人の番 | 受け入れ待ち（`status:accepting` が付いた Issue。開いた PR があっても受け入れ待ち。子を持つ `story` と `epic` は、`subs.total > 0` で、開いている子がすべて受け入れ待ち。子を持つ子（エピックの下のストーリー）は、ラベルではなく同じ判定をその子に当てて決める）。開いた PR がある。人が行う Issue（題が「確認:」で始まる、要件を決める、本番やアカウントやドメインの操作） |
 | 作業中 | `status:in-progress` |
 | 要件整理中 | `status:refining` |
-| 待ち | `blocked > 0`、または親（`parent` をたどった先のどれか）が待ち |
+| 待ち | 上の手順で待ちが見つかった（`blocked > 0` で、開いていて `status:accepting` の無い前に要るものがある）、または親（`parent` をたどった先のどれか）が待ち |
 | 子を進める | 子を持つ `story` と `epic`。中身は子の Issue が入る組で見る |
 | 分ける前 | 子の無い `epic`。`backlog-add` で分けるレーンの候補 |
 | 着手できる | 残り。タスクと、子の無い `story` |
 
-待ちの Issue が待っている番号は、次で引く。
-
-```bash
-gh api repos/{owner}/{repo}/issues/<番号>/dependencies/blocked_by --jq '[.[] | select(.state == "open") | .number]'
-```
+待ちの Issue が待っている番号は、上の手順で引いた一覧をそのまま使う。
 
 マイルストーンが「初版」のものを先に並べ、ほかは後ろにまとめる。
 
@@ -86,7 +88,7 @@ DEV_PORT_OFFSET=<値>。並行: #<相手の番号>（<相手が変えるもの>�
 
 ## 出力
 
-- 人の番、作業中とレビュー中、着手できるもの、待ち（待っている番号）の短い一覧
+- 人の番（受け入れ待ちを含む）、作業中とレビュー中、着手できるもの、待ち（待っている番号）の短い一覧
 - レーンの案と、選ばれたレーンのプロンプト
 - 着手できるものが無ければ、そう書き、人の番か分けるレーンを推す
 - 手元のセッションなら、進捗の図を直すかを添える（直すのは `progress-chart`）
