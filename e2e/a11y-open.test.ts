@@ -3,7 +3,7 @@
 // seed のセッション（seed/sessions.ts）の Cookie で開く。あおば開発の管理者はミナト。受託開発チームはゲームの言葉。
 // 開くだけで、作る、外すは押さない。seed の行もテーマの設定も書き換えない（ほかのファイルと並べて走るため）
 import { expect, test } from './fixtures.ts';
-import { expectNoA11yViolationsInThemes, signIn } from './helpers.ts';
+import { expectNoA11yViolationsInThemes, signIn, waitForSettled } from './helpers.ts';
 
 const WORKSPACE = '/aoba/w/019a0000-0000-7000-8000-000000000401';
 const TASK_ID = '019a0000-0000-7000-8000-000000000801';
@@ -33,6 +33,8 @@ test('タスクを作るダイアログ（Dialog）を開いた状態に axe の
 
 test('メンバーを外す確かめ（ConfirmDialog）を開いた状態に axe の違反が無い', async ({ page }) => {
   await page.goto(`${WORKSPACE}/members`);
+  await expect(page.getByRole('table', { name: '所属している人の一覧' })).toBeVisible();
+  await waitForSettled(page);
   await page.getByRole('button', { name: 'ハルカを外す' }).click();
   const dialog = page.getByRole('dialog', { name: 'ハルカを外しますか' });
   await expect(dialog.getByRole('button', { name: 'やめる' })).toBeVisible();

@@ -80,6 +80,24 @@ export const EXCLUDED_SCREENS: readonly Exclusion[] = [
     '-登録できる行が無ければ送らず、理由を出す-',
     '-送って-c36c4-ly-にし、送れた後に残す行は押した時点の内容から作る-',
   ].map((part) => ({ pattern: exactTest('holiday-管理者（あおば開発のミナト）', part), reason: CROWDED_ADMIN })),
+  { pattern: exactTest('a11y-screens', '-admin（-aoba-admin）に-axe-の違反が無い-'), reason: CROWDED_ADMIN },
+  {
+    pattern: exactTest(
+      'history-管理者（あおば開発のミナト）',
+      '-「古い-6b3a2-ろに足し、最後まで読んだら終わりの文へフォーカスを移す-',
+    ),
+    reason:
+      '組織の管理の画面の上の節に、並べて走るほかのテストが作ったワークスペースが並び、終わりの文へフォーカスを移したときのスクロールの位置が変わる',
+  },
+  {
+    // seed を入れ直して単独で12回撮ると同じ画像になった（#354）
+    pattern: exactTest(
+      'comments',
+      '-リーダーは人のコメントを消せるが直せず、直している途中に消されたら書きかけを残して知らせる-',
+    ),
+    reason:
+      '並べて走るほかのテストと同じシャードのときだけ、引き出しの「系統なし」の選択欄の文字が 1px 上下する。単独では揺れず、テストの側でそろえる手がかりが無い',
+  },
   {
     pattern: exactTest(
       'members-リーダー（あおば開発のミナト）',
