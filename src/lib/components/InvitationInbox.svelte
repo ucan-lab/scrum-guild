@@ -108,7 +108,7 @@
       if (result.ok) {
         if (action === 'accept' && 'workspace_id' in result.data) {
           showToast(t('invitationAccepted'), 'check');
-          await goto(resolve('/[slug]/w/[id]', { slug, id: result.data.workspace_id }), { invalidateAll: true });
+          await goto(resolve('/[slug]/w/[id]', { slug, id: result.data.workspace_id }), { refreshAll: true });
           return;
         }
         showToast(t('invitationDeclined'), 'check');
@@ -116,7 +116,7 @@
         if (remaining.length === 0) {
           // 招待だけの人は組織の選択へ移る。入れる組織も招待も残っていなければ、そこでセッションが消えてログインの画面へ戻るが、
           // トーストは移った後も残るので、辞退したことは伝わる
-          await goto(member ? resolve('/[slug]', { slug }) : resolve('/'), { invalidateAll: true });
+          await goto(member ? resolve('/[slug]', { slug }) : resolve('/'), { refreshAll: true });
           return;
         }
         await invalidateAll();
@@ -126,7 +126,7 @@
       const reason = errorText(result);
       if (!member && (await noInvitationLeft())) {
         showToast(reason, 'alert');
-        await goto(resolve('/'), { invalidateAll: true });
+        await goto(resolve('/'), { refreshAll: true });
         return;
       }
       // 理由は読み直しが済んでから出す（出した理由と並ぶ一覧が、読み直した後のものになるように）
