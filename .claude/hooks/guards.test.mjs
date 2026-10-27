@@ -3627,6 +3627,292 @@ describe('bash-rules: 展開の大きい glob', () => {
   });
 });
 
+describe('bash-rules: パッケージマネージャーの読み取り（#341）', () => {
+  // ディレクトリごとに別の package.json を持つ架空の作業コピー。
+  // packageDirOf は dir から上へ一番近い package.json のディレクトリを返し、どこにも無ければ undefined（/elsewhere など）
+  const packages = {
+    '/repo': {
+      test: 'node --test',
+      check: 'svelte-check',
+      dev: 'vite dev',
+      build: 'vite build',
+      hello: 'echo hello',
+      // 名前はデプロイに見えないが、本体は本番に出す
+      ship: 'wrangler deploy',
+      start: 'echo start',
+      stop: 'echo stop',
+      restart: 'echo restart',
+    },
+    '/repo/safe': { test: 'node --test', hello: 'echo hello' },
+    '/repo/sub': { test: 'wrangler deploy', start: 'wrangler deploy', hello: 'echo hello' },
+    '/repo/prepare': { prepare: 'wrangler deploy', test: 'echo ok' },
+    '/repo/postinstall': { postinstall: 'git push origin main', test: 'echo ok' },
+    '/repo/preprepare': { preprepare: 'bash -c "wrangler deploy"', test: 'echo ok' },
+    '/repo/stop': { stop: 'wrangler deploy', start: 'echo start' },
+    '/repo/shadow': { audit: 'wrangler deploy', outdated: 'wrangler deploy' },
+  };
+  const packageDirOf = (dir) => {
+    if (!dir) return undefined;
+    return Object.keys(packages)
+      .filter((p) => dir === p || dir.startsWith(`${p}/`))
+      .sort((a, b) => b.length - a.length)[0];
+  };
+  const scriptOf = (dir, name) => {
+    const at = packageDirOf(dir);
+    return at ? packages[at][name] : undefined;
+  };
+  const pm = (command, cwd = '/repo') => judgeBash(command, { cwd, branchOf: () => '341-package-manager', scriptOf, packageDirOf })?.[0] ?? 'allow';
+
+  // [区分, コマンド, 期待, 作業場所]
+  const cases = [
+    // 完了条件: Issue の表の例
+    ['完了条件', `pnpm bash -c 'wrangler deploy'`, 'deny'],
+    ['完了条件', `bun run sh -c 'wrangler deploy'`, 'deny'],
+    ['完了条件', 'pnpm git push origin main', 'deny'],
+    ['完了条件', 'pnpm t scripts/deploy-production.ts', 'deny'],
+    ['完了条件', 'pnpm tst scripts/deploy-production.ts', 'deny'],
+    ['完了条件', 'npm rum ship', 'deny'],
+    ['完了条件', 'npm urn ship', 'deny'],
+    ['完了条件', 'npm run-scr ship', 'deny'],
+    ['完了条件', 'npm runScript ship', 'deny'],
+    ['完了条件', 'npm tes scripts/deploy-production.ts', 'deny'],
+    ['完了条件', 'pnpm --loglevel error test scripts/deploy-production.ts', 'deny'],
+    ['完了条件', 'npm --registry https://registry.example.test test scripts/deploy-production.ts', 'deny'],
+    ['完了条件', 'npm run -w api deploy', 'deny'],
+    ['完了条件', 'pnpm -C sub test', 'deny'],
+    ['完了条件', 'pnpm --dir sub test', 'deny'],
+    ['完了条件', 'npm --prefix sub test', 'deny'],
+    ['完了条件', 'npm test --prefix sub', 'deny'],
+    ['完了条件', 'yarn --cwd sub test', 'deny'],
+    ['完了条件', 'npm_config_prefix=sub npm test', 'deny'],
+    ['完了条件', 'cd ~/x && pnpm test scripts/deploy-production.ts', 'ask'],
+    ['完了条件', 'corepack pnpm test scripts/deploy-production.ts', 'deny'],
+    ['完了条件', 'corepack pnpm deploy', 'deny'],
+    ['完了条件', 'cd prepare && pnpm install', 'deny'],
+    ['完了条件', 'cd prepare && npm install', 'deny'],
+    ['完了条件', 'cd stop && npm restart', 'deny'],
+    ['完了条件', 'cd prepare && npm install-test', 'deny'],
+    ['完了条件', 'cd prepare && npm it', 'deny'],
+    ['完了条件', 'cd prepare && npm cit', 'deny'],
+
+    // 断る場合: 決めたこと 1（道具ごとの名前の解決）
+    ['断る場合', 'npm --silent hello', 'ask'],
+    ['断る場合', 'npm hello', 'ask'],
+    ['断る場合', 'npm --registry https://registry.example.test test', 'ask'],
+    ['断る場合', 'cd sub && npm t', 'deny'],
+    ['断る場合', 'cd sub && npm tst', 'deny'],
+    ['断る場合', 'cd sub && pnpm t', 'deny'],
+    ['断る場合', 'cd sub && pnpm it', 'deny'],
+    ['断る場合', 'cd sub && bun test', 'deny'],
+    ['断る場合', 'pnpm run-script ship', 'deny'],
+    // 決めたこと 2（スクリプトにある名前は組み込みより先）
+    ['断る場合', 'cd shadow && npm audit', 'deny'],
+    ['断る場合', 'cd shadow && pnpm audit', 'deny'],
+    ['断る場合', 'cd shadow && bun outdated', 'deny'],
+    ['断る場合', 'cd shadow && npm outdated', 'deny'],
+    // 決めたこと 3（pnpm と bun の無い名前は経由先として見る。bun exec の文字列）
+    ['断る場合', `pnpm run bash -c 'wrangler deploy'`, 'deny'],
+    ['断る場合', `bun bash -c 'wrangler deploy'`, 'deny'],
+    ['断る場合', `pnpm sh -c 'git push origin main'`, 'deny'],
+    ['断る場合', 'bun git push origin main', 'deny'],
+    ['断る場合', 'bun run git push origin main', 'deny'],
+    ['断る場合', `bun exec 'wrangler deploy'`, 'deny'],
+    ['断る場合', `bun exec "git push origin main"`, 'deny'],
+    // 決めたこと 4（表に無いフラグの次の語）
+    ['断る場合', 'pnpm --loglevel error ship', 'deny'],
+    ['断る場合', 'pnpm --reporter dot ship', 'deny'],
+    ['断る場合', 'pnpm --a 1 --b 2 ship', 'deny'],
+    ['断る場合', 'npm --foo bar run ship', 'deny'],
+    ['断る場合', 'npm --loglevel error test', 'ask'],
+    ['断る場合', `pnpm ${Array.from({ length: 9 }, (_, i) => `--f${i} v${i}`).join(' ')} test`, 'ask'],
+    // 決めたこと 5（場所のフラグ、場所が分からないとき、package.json を引けないとき）
+    ['断る場合', 'pnpm -Csub test', 'deny'],
+    ['断る場合', 'pnpm --dir=sub test', 'deny'],
+    ['断る場合', 'npm -C sub test', 'deny'],
+    ['断る場合', 'npm --prefix=sub test', 'deny'],
+    ['断る場合', 'npm run test --prefix sub', 'deny'],
+    ['断る場合', 'yarn --cwd=sub test', 'deny'],
+    ['断る場合', 'bun --cwd sub test', 'deny'],
+    ['断る場合', 'bun --cwd=sub test', 'deny'],
+    ['断る場合', 'bun run --cwd sub test', 'deny'],
+    ['断る場合', 'NPM_CONFIG_PREFIX=sub npm test', 'deny'],
+    ['断る場合', 'cd ~/x && pnpm test', 'ask'],
+    ['断る場合', 'pnpm -C ~/x test', 'ask'],
+    ['断る場合', 'pnpm --dir $D test', 'ask'],
+    ['断る場合', 'pnpm -C sr? test', 'ask'],
+    ['断る場合', 'npm --prefix "$P" test', 'ask'],
+    ['断る場合', 'yarn --cwd ~ test', 'ask'],
+    ['断る場合', 'bun --cwd=$D test', 'ask'],
+    ['断る場合', 'pnpm test', 'ask', '/elsewhere'],
+    ['断る場合', 'npm t', 'ask', '/elsewhere'],
+    ['断る場合', 'pnpm -C /elsewhere test', 'ask'],
+    ['断る場合', 'pnpm install', 'ask', '/elsewhere'],
+    ['断る場合', 'cd ~/x && npm install', 'ask'],
+    ['断る場合', 'cd ~/x && pnpm nosuch-tool --help', 'ask'],
+    ['断る場合', 'npm_config_prefix=~/x npm test', 'ask'],
+    // 決めたこと 6（ライフサイクル）
+    ['断る場合', 'pnpm -C prepare install', 'deny'],
+    ['断る場合', 'pnpm -C prepare i', 'deny'],
+    ['断る場合', 'cd prepare && pnpm install --frozen-lockfile', 'deny'],
+    ['断る場合', 'cd prepare && pnpm ci', 'deny'],
+    ['断る場合', 'cd prepare && pnpm it', 'deny'],
+    ['断る場合', 'cd prepare && pnpm install-test', 'deny'],
+    ['断る場合', 'cd prepare && npm i', 'deny'],
+    ['断る場合', 'cd prepare && npm ci', 'deny'],
+    ['断る場合', 'cd prepare && npm clean-install', 'deny'],
+    ['断る場合', 'cd prepare && npm sit', 'deny'],
+    ['断る場合', 'cd prepare && npm install-ci-test', 'deny'],
+    ['断る場合', 'cd prepare && bun install', 'deny'],
+    ['断る場合', 'cd prepare && bun i', 'deny'],
+    ['断る場合', 'cd postinstall && npm install', 'deny'],
+    ['断る場合', 'cd postinstall && pnpm i', 'deny'],
+    ['断る場合', 'cd preprepare && pnpm install', 'deny'],
+    ['断る場合', 'cd sub && npm it', 'deny'],
+    ['断る場合', 'cd sub && npm cit', 'deny'],
+    ['断る場合', 'cd sub && npm restart', 'deny'],
+    ['断る場合', 'cd stop && pnpm restart', 'deny'],
+    // 決めたこと 7（corepack と pnpm with）
+    ['断る場合', 'corepack pnpm ship', 'deny'],
+    ['断る場合', 'corepack pnpm@12.12.0 ship', 'deny'],
+    ['断る場合', 'corepack pnpm@12.12.0 exec wrangler deploy', 'deny'],
+    ['断る場合', 'corepack npm run ship', 'deny'],
+    ['断る場合', 'corepack yarn ship', 'deny'],
+    ['断る場合', 'corepack pnpm -C sub test', 'deny'],
+    ['断る場合', 'cd prepare && corepack pnpm install', 'deny'],
+    ['断る場合', 'pnpm with 12.12.0 ship', 'deny'],
+    ['断る場合', 'pnpm with current test scripts/deploy-production.ts', 'deny'],
+
+    // すり抜け: 別名、前置き、フラグ、場所、経由、引用符、入れ子、区切り
+    ['すり抜け', 'npm rum -w api ship', 'deny'],
+    ['すり抜け', 'npm run-scr -w api ship', 'deny'],
+    ['すり抜け', 'npm --prefix sub tst', 'deny'],
+    ['すり抜け', 'npm --prefix sub tes', 'deny'],
+    ['すり抜け', 'npm exe -- node scripts/deploy-production.ts', 'deny'],
+    ['すり抜け', 'npm exe -- wrangler deploy', 'deny'],
+    ['すり抜け', 'pnpm -C sub t', 'deny'],
+    ['すり抜け', 'pnpm -Csub tst', 'deny'],
+    ['すり抜け', 'pnpm --loglevel error -C sub test', 'deny'],
+    ['すり抜け', 'pnpm run-script --loglevel error ship', 'deny'],
+    ['すり抜け', 'pnpm --reporter dot test scripts/deploy-production.ts', 'deny'],
+    ['すり抜け', 'pnpm --dir=sub it', 'deny'],
+    ['すり抜け', 'npm --prefix=sub restart', 'deny'],
+    ['すり抜け', 'npm restart --prefix stop', 'deny'],
+    ['すり抜け', 'npm_config_prefix=sub npm t', 'deny'],
+    ['すり抜け', 'npm_config_prefix=prepare npm ci', 'deny'],
+    ['すり抜け', 'corepack pnpm with 12.12.0 -C sub test', 'deny'],
+    ['すり抜け', 'pnpm with current -Csub test', 'deny'],
+    ['すり抜け', `corepack pnpm bash -c 'wrangler deploy'`, 'deny'],
+    ['すり抜け', `pnpm with current bash -c 'wrangler deploy'`, 'deny'],
+    ['すり抜け', `pnpm "bash" -c 'wrangler deploy'`, 'deny'],
+    ['すり抜け', `pnpm 'b'ash -c 'wrangler deploy'`, 'deny'],
+    ['すり抜け', `pnpm timeout 5 bash -c 'wrangler deploy'`, 'deny'],
+    ['すり抜け', 'pnpm run env WORKERS_CI=1 ls', 'deny'],
+    ['すり抜け', 'bun run env WORKERS_CI=1 ls', 'deny'],
+    ['すり抜け', 'pnpm node scripts/deploy-production.ts', 'deny'],
+    ['すり抜け', 'bun run node scripts/deploy-production.ts', 'deny'],
+    ['すり抜け', `bun exec 'cd sub && pnpm test'`, 'deny'],
+    ['すり抜け', 'pnpm $X', 'ask'],
+    ['すり抜け', 'pnpm run $X', 'ask'],
+    ['すり抜け', 'npm $X', 'ask'],
+    ['すり抜け', 'npm run "$X"', 'ask'],
+    ['すり抜け', `bash -c 'pnpm -C sub test'`, 'deny'],
+    ['すり抜け', `sh -c "npm rum ship"`, 'deny'],
+    ['すり抜け', `bash -c "corepack pnpm -Csub test"`, 'deny'],
+    ['すり抜け', `bash -c 'cd prepare && npm it'`, 'deny'],
+    ['すり抜け', 'true && cd sub && npm t', 'deny'],
+    ['すり抜け', 'echo x | pnpm -C sub test', 'deny'],
+    ['すり抜け', 'pnpm test; pnpm --dir sub test', 'deny'],
+    ['すり抜け', 'false || yarn --cwd sub test', 'deny'],
+    ['すり抜け', 'cd sub && pnpm --silent test', 'deny'],
+
+    // 通す
+    ['通す', 'pnpm test', 'allow'],
+    ['通す', 'pnpm check', 'allow'],
+    ['通す', 'pnpm dev', 'allow'],
+    ['通す', 'pnpm build', 'allow'],
+    ['通す', 'pnpm install', 'allow'],
+    ['通す', 'pnpm install --frozen-lockfile', 'allow'],
+    ['通す', 'npm install', 'allow'],
+    ['通す', 'npm ci', 'allow'],
+    ['通す', 'pnpm --silent test', 'allow'],
+    ['通す', 'pnpm --reporter dot test', 'allow'],
+    ['通す', 'pnpm -C safe test', 'allow'],
+    ['通す', 'pnpm -Csafe test', 'allow'],
+    ['通す', 'pnpm --dir=safe test', 'allow'],
+    ['通す', 'pnpm -C sub hello', 'allow'],
+    ['通す', 'npm --prefix safe test', 'allow'],
+    ['通す', 'yarn --cwd safe test', 'allow'],
+    ['通す', 'bun --cwd safe test', 'allow'],
+    ['通す', 'npm_config_prefix=safe npm test', 'allow'],
+    ['通す', 'cd safe && npm install', 'allow'],
+    ['通す', 'npm restart', 'allow'],
+    ['通す', 'pnpm restart', 'allow'],
+    ['通す', 'npm rum hello', 'allow'],
+    ['通す', 'npm run-scr hello', 'allow'],
+    ['通す', 'npm runScript hello', 'allow'],
+    ['通す', 'npm tes', 'allow'],
+    ['通す', 'npm it', 'allow'],
+    ['通す', 'npm cit', 'allow'],
+    ['通す', 'pnpm t', 'allow'],
+    ['通す', 'pnpm tst', 'allow'],
+    ['通す', 'pnpm it', 'allow'],
+    ['通す', 'npm exe -- vitest run', 'allow'],
+    ['通す', 'npm audit', 'allow'],
+    ['通す', 'corepack pnpm test', 'allow'],
+    ['通す', 'corepack pnpm@12.12.0 test', 'allow'],
+    ['通す', 'pnpm with 12.12.0 test', 'allow'],
+    ['通す', 'pnpm nosuch-tool --help', 'allow'],
+    ['通す', 'bun nosuch-tool --help', 'allow'],
+    ['通す', 'pnpm run nosuch-tool --help', 'allow'],
+    ['通す', 'pnpm rum hello', 'allow'],
+    ['通す', `pnpm "bash" -c 'echo hi'`, 'allow'],
+    ['通す', `pnpm bash -c 'pnpm test'`, 'allow'],
+    ['通す', `bun exec 'echo hi'`, 'allow'],
+    ['通す', 'pnpm exec vitest run', 'allow'],
+    ['通す', 'pnpm exec vitest run', 'allow', '/elsewhere'],
+    ['通す', 'pnpm --version', 'allow', '/elsewhere'],
+    // pnpm、yarn、bun は名前より後ろの場所のフラグをスクリプトに渡すので、今の場所の test として見る
+    ['通す', 'pnpm test -C sub', 'allow'],
+    ['通す', 'yarn test --cwd sub', 'allow'],
+    ['通す', 'bun test --cwd sub', 'allow'],
+  ];
+
+  for (const [kind, command, expected, cwd] of cases) {
+    test(`[${kind}] ${command}${cwd ? `（${cwd} で）` : ''} は ${expected}`, () => assert.equal(pm(command, cwd), expected));
+  }
+});
+
+describe('bash-rules: パッケージマネージャーの読み取りの実装で置いた前提（#341）', () => {
+  const packages = { '/repo': { test: 'node --test' }, '/repo/sub': { test: 'wrangler deploy' } };
+  const packageDirOf = (dir) => (dir === '/repo' || dir?.startsWith('/repo/') ? (dir.startsWith('/repo/sub') ? '/repo/sub' : '/repo') : undefined);
+  const scriptOf = (dir, name) => packages[packageDirOf(dir)]?.[name];
+  const pm = (command, cwd = '/repo') => judgeBash(command, { cwd, branchOf: () => '341-package-manager', scriptOf, packageDirOf })?.[0] ?? 'allow';
+
+  for (const [command, expected, cwd] of [
+    // pnpm 12.12 は --prefix でも package.json を探す場所を変える（--prefix sub run hello で確かめた）
+    ['pnpm --prefix sub test', 'deny'],
+    ['pnpm --prefix=sub test', 'deny'],
+    // npm_config_prefix は道具を問わず、元の場所と両方で見る
+    ['NPM_CONFIG_PREFIX=sub pnpm test', 'deny'],
+    // 場所が分からなくても、pnpm と bun の無い名前は経由先としても見る
+    [`cd ~/x && pnpm bash -c 'wrangler deploy'`, 'deny'],
+    // npm の知らない名前でも、デプロイのスクリプトらしい名前は止める
+    ['npm deploy', 'deny'],
+    // bun exec は最初の位置引数だけを文字列として動かす
+    [`bun exec echo 'wrangler deploy'`, 'allow'],
+    ['bun x node scripts/deploy-production.ts', 'deny'],
+    // yarn の Berry の dlx は今の判定のまま経由として読む
+    ['yarn dlx node scripts/deploy-production.ts', 'deny'],
+    // bun の本文を取るフラグの値は名前と読まない（場所の分からないところでも確認を挟まない）
+    ['bun -e "console.log(1)"', 'allow', '/elsewhere'],
+    // 組み込みのコマンドは、場所が分からなくても確認を挟まない
+    ['pnpm view wrangler', 'allow', '/elsewhere'],
+    ['npm view wrangler versions', 'allow', '/elsewhere'],
+  ]) {
+    test(`${command}${cwd ? `（${cwd} で）` : ''} は ${expected}`, () => assert.equal(pm(command, cwd), expected));
+  }
+});
+
 describe('file-rules', () => {
   const judge = (rel, contents = '', shippedOnMain = false) => judgeFile({ rel, contents, shippedOnMain })?.[0] ?? 'allow';
 
@@ -3939,5 +4225,183 @@ describe('入口', () => {
         sh(['checkout', '-q', 'trunk'], main);
       }
     });
+  });
+});
+
+describe('bash-rules: #341 のレビューの指摘', () => {
+  // 振る舞いは pnpm 12.12、npm 11.20、yarn 1.22、bun 1.4 に、中身を echo にした package.json を並べて確かめた（2026-10-27）
+  const packages = {
+    '/repo': { test: 'node --test', hello: 'echo hello', start: 'echo start', stop: 'echo stop', restart: 'echo restart' },
+    // 名前はデプロイに見えないが、本体は本番に出す
+    '/repo/sub': { test: 'wrangler deploy', prepare: 'wrangler deploy', restart: 'wrangler deploy', start: 'wrangler deploy', hello: 'wrangler deploy' },
+    '/repo/ls': { test: 'wrangler deploy' },
+    '/repo/node_modules/zod': { test: 'echo zod' },
+    '/repo/prepublish': { prepublish: 'wrangler deploy' },
+    '/repo/dev-preinstall': { 'pnpm:devPreinstall': 'wrangler deploy' },
+    '/repo/publish': { prepublishOnly: 'wrangler deploy' },
+  };
+  const packageDirOf = (dir) => {
+    if (!dir) return undefined;
+    return Object.keys(packages)
+      .filter((p) => dir === p || dir.startsWith(`${p}/`))
+      .sort((a, b) => b.length - a.length)[0];
+  };
+  const scriptOf = (dir, name) => {
+    const at = packageDirOf(dir);
+    return at ? packages[at][name] : undefined;
+  };
+  const pm = (command, cwd = '/repo') => judgeBash(command, { cwd, branchOf: () => '341-package-manager', scriptOf, packageDirOf })?.[0] ?? 'allow';
+
+  // [指摘の番号, コマンド, 期待, 作業場所]
+  const cases = [
+    // 1. exec の shell-mode。pnpm は exec の前の -c も受け付け、-c は値を取らない。npm の --call は値で、一意な前置き（--cal）も効く
+    [1, `pnpm -c exec 'wrangler deploy'`, 'deny'],
+    [1, `pnpm --shell-mode exec 'wrangler deploy'`, 'deny'],
+    [1, `pnpm -c dlx 'wrangler deploy'`, 'deny'],
+    [1, `pnpm -rc exec 'wrangler deploy'`, 'deny'],
+    [1, `pnpm exec -c -- 'wrangler deploy'`, 'deny'],
+    [1, `pnpm exec -c -C . 'wrangler deploy'`, 'deny'],
+    [1, `pnpm exec --shell-mode=true 'wrangler deploy'`, 'deny'],
+    // pnpm の shell-mode は位置引数を空白でつないで動かす
+    [1, 'pnpm exec -c git push origin main', 'deny'],
+    [1, `npm --call='wrangler deploy' exec`, 'deny'],
+    [1, `npm --cal='wrangler deploy' x`, 'deny'],
+    [1, `npm exec --cal='wrangler deploy'`, 'deny'],
+    [1, `npm -c 'wrangler deploy' exec`, 'deny'],
+    [1, `npm -sc 'wrangler deploy' exec`, 'deny'],
+    [1, `pnpm exec -c 'echo hi'`, 'allow'],
+    // --ca は call の前置きではなく、ca の設定そのもの
+    [1, 'npm --ca=x.pem exec vitest run', 'allow'],
+    // 2. 値を取るフラグの表は道具ごと。bun の --dir、--prefix、--workspace と、npm の --dir、--filter、-F は値を取らない
+    [2, `bun run --dir bash -c 'wrangler deploy'`, 'deny'],
+    [2, `bun run --prefix bash -c 'wrangler deploy'`, 'deny'],
+    [2, `bun --workspace bash -c 'wrangler deploy'`, 'deny'],
+    [2, 'npm --dir test ls -- scripts/deploy-production.ts', 'deny'],
+    [2, 'npm --filter test ls -- scripts/deploy-production.ts', 'deny'],
+    [2, 'npm -F test ls -- scripts/deploy-production.ts', 'deny'],
+    [2, 'npm exec --dir node scripts/deploy-production.ts', 'deny'],
+    [2, 'bun --filter web test', 'allow'],
+    // 3. npm は -C<dir> の連結の形を場所として読まない（今の場所で判定する。版の違いを避けて連結の先でも判定する）
+    [3, 'npm -Cnode_modules/zod test -- scripts/deploy-production.ts', 'deny'],
+    [3, 'npm -C.. test', 'deny', '/repo/sub'],
+    // 4. 道具の前の npm_config_call=（大文字小文字を問わない）で npm exec、npm x、npx が文字列を動かす
+    [4, `npm_config_call='wrangler deploy' npm exec`, 'deny'],
+    [4, `npm_config_call='wrangler deploy' npm x`, 'deny'],
+    [4, `NPM_CONFIG_CALL='wrangler deploy' npx`, 'deny'],
+    [4, `Npm_Config_Call='wrangler deploy' npm exec`, 'deny'],
+    [4, `env npm_config_call='git push origin main' npm exec`, 'deny'],
+    [4, `npm_config_call='echo hi' npm exec`, 'allow'],
+    // 5. 組み込みのコマンドでは、pnpm と bun も名前の後ろの場所のフラグを読む。スクリプトの名前の後ろはスクリプトに渡る
+    [5, 'pnpm install -C sub', 'deny'],
+    [5, 'pnpm ci -C sub', 'deny'],
+    [5, 'pnpm install-test -C sub', 'deny'],
+    [5, 'pnpm restart -C sub', 'deny'],
+    [5, 'pnpm pack --dir sub', 'deny'],
+    [5, 'bun install --cwd sub', 'deny'],
+    [5, 'pnpm start -C sub', 'allow'],
+    [5, 'pnpm hello -C sub', 'allow'],
+    [5, 'pnpm run hello -C sub', 'allow'],
+    // 6. pnpm の短いフラグのまとめ（clap）。値を取らないフラグの後ろの C は場所
+    [6, 'pnpm -yC sub test', 'deny'],
+    [6, 'pnpm -yCsub test', 'deny'],
+    [6, 'pnpm -wC sub test', 'deny'],
+    [6, 'pnpm -y test', 'allow'],
+    // 7. npm の長いフラグの一意な前置き（nopt）
+    [7, 'npm --prefi=sub test', 'deny'],
+    [7, 'npm test --prefi=sub', 'deny'],
+    [7, 'npm test --prefi sub', 'deny'],
+    // --pre は prefer-online などとも当たり、一意でないので prefix ではない
+    [7, 'npm --pre=sub test', 'allow'],
+    // 8. npm の短いフラグのまとめの最後の C は、次の語を場所に取る
+    [8, 'npm -sC ls test', 'deny'],
+    [8, 'npm -dC ls test', 'deny'],
+    // 9. ライフサイクルの漏れ
+    [9, 'cd prepublish && npm install', 'deny'],
+    [9, 'cd prepublish && npm ci', 'deny'],
+    [9, 'cd prepublish && npm it', 'deny'],
+    [9, 'cd prepublish && yarn', 'deny'],
+    [9, 'cd prepublish && yarn install --frozen-lockfile', 'deny'],
+    [9, 'cd dev-preinstall && pnpm install', 'deny'],
+    [9, 'cd sub && npm pack', 'deny'],
+    [9, 'cd sub && pnpm pack', 'deny'],
+    [9, 'cd publish && npm publish', 'deny'],
+    [9, 'cd sub && npm link', 'deny'],
+    [9, 'cd sub && yarn', 'deny'],
+    [9, 'yarn', 'allow'],
+    [9, 'yarn', 'ask', '/elsewhere'],
+    // 10. yarnpkg は yarn の別の bin 名。corepack の後ろの npx、pnpx は直に打つ形と同じに見る
+    [10, 'yarnpkg node scripts/deploy-production.ts', 'deny'],
+    [10, 'yarnpkg --cwd sub test', 'deny'],
+    [10, 'corepack yarnpkg node scripts/deploy-production.ts', 'deny'],
+    [10, 'corepack npx node scripts/deploy-production.ts', 'deny'],
+    [10, 'corepack pnpx tsx scripts/deploy.ts', 'deny'],
+    [10, 'corepack npx vitest run', 'allow'],
+    // 11. 依存の情報を見るだけのサブコマンドは、corepack の後ろでも wrangler の実行とみなさない
+    [11, 'corepack npm view wrangler versions', 'allow'],
+    [11, 'corepack pnpm why wrangler', 'allow'],
+  ];
+
+  for (const [item, command, expected, cwd] of cases) {
+    test(`[${item}] ${command}${cwd ? `（${cwd} で）` : ''} は ${expected}`, () => assert.equal(pm(command, cwd), expected));
+  }
+
+  // 12. package.json に無い名前を、Object.prototype のキー（constructor、toString）としてスクリプトの中身に取らない
+  test('[12] guard-bash.mjs は Object.prototype のキーをスクリプトとして引かない', () => {
+    const hooks = path.dirname(fileURLToPath(import.meta.url));
+    const dir = mkdtempSync(path.join(os.tmpdir(), 'guard-proto-'));
+    try {
+      writeFileSync(path.join(dir, 'package.json'), JSON.stringify({ scripts: { test: 'echo ok' } }));
+      for (const command of ['pnpm constructor', 'pnpm run toString', 'yarn hasOwnProperty', 'npm run valueOf']) {
+        const input = JSON.stringify({ tool_name: 'Bash', cwd: dir, tool_input: { command } });
+        const result = spawnSync(process.execPath, [path.join(hooks, 'guard-bash.mjs')], { input, encoding: 'utf8' });
+        assert.equal(result.status, 0, command);
+        assert.equal(result.stdout, '', command);
+      }
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe('bash-rules: #341 と #346 の取り込み（place）', () => {
+  // パッケージマネージャーの場所のフラグと経由の先でも、書かれた行き先（place）を守る先の判定に渡す。
+  // 期待は #346 の pnpm -C .claude exec rm -rf hooks と同じく、作業場所なし（null）と /repo の両方で確認を挟む
+  for (const command of [
+    // 前の場所が分からなくても、絶対パスの -C は行き先にする（env -C と同じ）
+    'popd; pnpm -C /repo/.claude exec rm -rf hooks',
+    // npm の場所は名前の前でも後ろでも読む（dirAnywhere）
+    'npm --prefix .claude exec -- rm -rf hooks',
+    'npm exec --prefix .claude -- rm -rf hooks',
+    // npm の --call（-c）の文字列も、場所のフラグの先で見る
+    'npm --prefix .claude exec -c "rm -rf hooks"',
+    'yarn --cwd .claude exec rm -rf hooks',
+    'bun --cwd=.claude x rm -rf hooks',
+    // bun exec の文字列も、場所のフラグの先で見る
+    'bun --cwd=.claude exec "rm -rf hooks"',
+    'corepack pnpm -C .claude exec rm -rf hooks',
+    'pnpm exec -C .claude rm -rf hooks',
+  ]) {
+    test(`${command} は確認を挟む`, () => assert.deepEqual(literally(command), ['ask', 'ask'], command));
+  }
+
+  // 重ねた場所のフラグは後ろが勝ち、前の値につながない（pnpm 12.12 は重ねるとエラーにし、npm 11.20、yarn 1.22、bun 1.4 は後ろの値を
+  // 打った場所から読む。2026-10-27 に確かめた）
+  test('重ねた -C は後ろが勝つ', () => {
+    assert.deepEqual(literally('pnpm -C x -C .claude exec rm -rf hooks'), ['ask', 'ask']);
+    assert.deepEqual(literally('pnpm -C .claude -C x exec rm -rf hooks'), ['allow', 'allow']);
+    // つなぐと .claude/hooks になる形（-C . は打った場所）
+    assert.deepEqual(literally('pnpm -C .claude -C . exec rm -rf hooks'), ['allow', 'allow']);
+    assert.deepEqual(literally('bun --cwd .claude --cwd . x rm -rf hooks'), ['allow', 'allow']);
+    assert.deepEqual(literally('npm --prefix .claude --prefix x exec -- rm -rf hooks'), ['allow', 'allow']);
+  });
+
+  // 絶対パスの -C は、前の作業場所が分からなくても解決する（env -C に揃えた）。package.json もその場所から引く
+  test('絶対パスの -C は前の作業場所が分からなくても解決する', () => {
+    const scriptOf = (dir, name) => (dir === '/repo' ? { test: 'wrangler deploy' }[name] : undefined);
+    const run = (command) => judgeBash(command, { cwd: '/repo/src', branchOf: () => 'x', scriptOf })?.[0] ?? 'allow';
+    assert.equal(run('cd ~ && pnpm -C /repo test'), 'deny');
+    assert.equal(run('cd ~ && npm --prefix=/repo test'), 'deny');
+    assert.equal(run('cd ~ && bun --cwd /repo test'), 'deny');
+    assert.deepEqual(literally('cd ~ && pnpm -C /repo/.claude exec rm -rf hooks'), ['ask', 'ask']);
   });
 });

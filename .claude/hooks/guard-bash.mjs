@@ -29,9 +29,11 @@ function packageDirOf(dir) {
   }
 }
 
+// 名前のスクリプトの中身。無ければ undefined。Object.prototype のキー（constructor、toString）をスクリプトとして返さない
 function scriptOf(dir, name) {
   const d = packageDirOf(dir);
-  return d && JSON.parse(readFileSync(path.join(d, 'package.json'), 'utf8')).scripts?.[name];
+  const scripts = d && JSON.parse(readFileSync(path.join(d, 'package.json'), 'utf8')).scripts;
+  return scripts && Object.hasOwn(scripts, name) && typeof scripts[name] === 'string' ? scripts[name] : undefined;
 }
 
 try {
