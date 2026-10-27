@@ -3155,6 +3155,207 @@ describe('bash-rules: #313 を崩す（1周目）', () => {
   test('根の下の src から mv -t /tmp -- <根> は確認を挟む', () => assert.equal(from(src, `mv -t /tmp -- ${main}`), 'ask'));
 });
 
+describe('bash-rules: #313 を崩す（2周目）', () => {
+  // 本体の根と、その中の worktrees/x（ワークツリーの根）を実在させる
+  const main = realpathSync(mkdtempSync(path.join(os.tmpdir(), 'guard-break2-')));
+  const wt = path.join(main, 'worktrees', 'x');
+  for (const root of [main, wt]) {
+    for (const dir of ['scripts', 'src/a', 'build', '.claude/hooks', '.githooks', 'migrations']) mkdirSync(path.join(root, dir), { recursive: true });
+    writeFileSync(path.join(root, 'scripts', 'deploy-production.ts'), '');
+  }
+  after(() => rmSync(main, { recursive: true, force: true }));
+  const name = path.basename(main);
+  const parent = path.dirname(main);
+  const from = (cwd, command) => judgeBash(command, { cwd, branchOf: () => 'x' })?.[0] ?? 'allow';
+  const shown = (command) => command.replaceAll(main, '<根>').replaceAll(parent, '<根の親>').replaceAll(name, '<根の名前>');
+
+  // --- 落ちる（実装の欠陥） ---
+
+  // find の -execdir と -okdir は、見つけたファイルのあるディレクトリでコマンドを動かす（findutils 4.9.0 の find .claude/hooks -execdir pwd \; は .claude を出し、
+  // find .claude/hooks -execdir rm -rf hooks \; は .claude/hooks を消す。find .githooks/pre-commit -execdir rm pre-push \; は .githooks/pre-push を消す）。
+  // 実装は掛け直すコマンドを find の作業場所のまま見るので、そのディレクトリから見た名前で守る先を消す形が通る
+  for (const command of ['find .claude/hooks -execdir rm -rf hooks \\;', 'find .claude/hooks -okdir rm -rf hooks \\;', 'find .githooks -execdir rm pre-commit \\;']) {
+    test(`${command} は確認を挟む（-execdir の作業場所）`, () => assert.deepEqual(literally(command), ['ask', 'ask'], command));
+    test(`本体の根から ${command} は確認を挟む（-execdir の作業場所）`, () => assert.equal(from(main, command), 'ask', command));
+  }
+  // find src/a -execdir は src で動く（find src/a -execdir pwd \; は src を出す）。src から ../../<根の名前> は根そのもの
+  test('本体の根から find src/a -execdir rm -rf ../../<根の名前> \\; は確認を挟む（-execdir の作業場所）', () =>
+    assert.equal(from(main, `find src/a -execdir rm -rf ../../${name} \\;`), 'ask'));
+
+  // 作業場所が分からないときの字面の判定は、/ と . と .. を正規化せずに見る。/. は /、~/. は ~、src/.. は . と同じ道で、
+  // find はその下を全部消す（findutils 4.9.0 の find f/g/. -delete は f/g の中身を消し、k の中の find l/.. -delete は k の中身を消す）。
+  // 作業場所が分かるときは解決して確認になり（find /. -delete、find src/.. -delete）、守る先の判定も path.posix.normalize で正規化する。
+  // 字面の判定だけが、Issue の「. と .. だけからなる語、/、~」と同じ道を取りこぼす
+  for (const command of ['find /. -delete', 'find /.. -delete', 'find ~/. -delete', 'find src/.. -delete', 'find ./src/.. -delete']) {
+    test(`${command} は確認を挟む（字面の判定の正規化）`, () => assert.deepEqual(literally(command), ['ask', 'ask'], command));
+  }
+
+  // GNU の env -C（--chdir）は後ろのコマンドの作業場所を変える（coreutils 9.4 の env -C /tmp pwd は /tmp を出す）。
+  // 作業場所が分からないとき、cd .claude && rm -rf hooks は書かれた行き先をつないで確認になるのに、env -C .claude rm -rf hooks は
+  // 前と後の作業場所がどちらも null で「変わっていない」と読み、行き先をつながないので通す
+  for (const command of ['env -C .claude rm -rf hooks', 'env --chdir=.claude find hooks -delete', 'env -C .claude/hooks rmdir ../hooks']) {
+    test(`${command} は確認を挟む（作業場所が分からないときの env -C）`, () => assert.deepEqual(literally(command), ['ask', 'ask'], command));
+  }
+
+  // MAX_FIND_COMMANDS は掛け直すコマンドの数だけを数え、1 つずつの重さを数えない。cp x{1..256}* … . は 1 つなら十数 ms で決まるのに、
+  // 起点を 256 並べると 600 文字に満たないコマンドで 3 秒を超える（1周目の入れ子の find と同じく、1 秒以内に決める）
+  test('起点の多い find の -exec の後ろが重いコマンドでも、1 秒以内に決める', () => {
+    const command = `find ${'a '.repeat(256)}-exec cp ${'x{1..256}* '.repeat(5)}. \\;`;
+    const started = Date.now();
+    judgeBash(command, { cwd: null, branchOf: () => 'x' });
+    assert.ok(Date.now() - started < 1000, `${Date.now() - started}ms かかった`);
+  });
+
+  // 止めすぎ: mv -t の位置引数を、値を取る -S（--suffix）の値ごと元として見る（-t の無い mv -b -S '~' build /tmp/x は通る）。
+  // '~' は GNU の既定のバックアップの接尾辞で、引用符の中なのでホームにもならない
+  test("mv -S '~' -t /tmp/x build は通す（-t のときの -S の値）", () => assert.deepEqual(literally("mv -S '~' -t /tmp/x build"), ['allow', 'allow']));
+
+  // --- 通る（既存のテストと重ならない手口） ---
+
+  for (const command of [
+    // 字面の cd の後と、cd の書き方
+    'cd .claude && find . -delete',
+    'cd .claude && rmdir hooks',
+    'cd .claude && mv hooks /tmp/x',
+    'cd .claude && find hooks -exec rm {} \\;',
+    'cd .claude/hooks && find .. -delete',
+    'cd .githooks && rm pre-commit',
+    'pushd .claude && rm -rf hooks',
+    'cd -- .claude && rm -rf hooks',
+    'cd .claude/ && rm -rf hooks',
+    'cd .claude && cd hooks && rm -rf ../hooks',
+    'cd src && cd ../.claude && rm -rf hooks',
+    'cd .claude || rm -rf hooks',
+    // {a,b} の展開
+    'rm -rf {src,..}',
+    'mv {.,x} /tmp',
+    'find .{,} -delete',
+    'rm -rf .{,/}',
+    'rm -rf {,.}',
+    'rm -rf {~,x}',
+    'find {..,x} -exec rm {} \\;',
+    // find の式と -exec の後ろの道具
+    'find . -ok rm -r {} \\;',
+    'find . -okdir rm {} +',
+    'find .. -maxdepth 0 -exec mv {} /tmp \\;',
+    'find .claude/hooks -exec unlink {} \\;',
+    'find .githooks -exec truncate -s 0 {} +',
+    'find .githooks -exec tee {} \\;',
+    'find .githooks -exec dd of={} \\;',
+    'find .githooks -exec install /tmp/x {} \\;',
+    'find .githooks -exec ln -sf /tmp/x {} \\;',
+    'find .githooks -exec perl -pi -e s/a/b/ {} +',
+    'find .githooks -exec env rm {} \\;',
+    'find .githooks -exec sudo rm {} \\;',
+    'find .githooks -exec timeout 5 rm {} \\;',
+    'find .githooks -exec grm {} \\;',
+    'find .githooks -exec \\rm {} \\;',
+    'find .githooks -exec rm {} \\; -quit',
+    'find .githooks -name x -o -exec rm {} \\;',
+    'find .githooks -exec rm "{}" +',
+    'find -H -- .githooks -exec rm {} +',
+    'find -P -O2 .githooks -exec rm {} +',
+    'find -D exec .githooks -exec rm {} +',
+    'find .githooks -depth -exec rmdir {} \\;',
+    'find .githooks -exec mv {} {}.bak \\;',
+    'find . -name .githooks -exec rm -rf {} +',
+    // mv、rm、rmdir のオプションと前置き
+    'mv -Tf . /tmp/x',
+    'mv -n .. /tmp/x',
+    'mv --exchange . /tmp/x',
+    'mv -- . /tmp/x',
+    'mv --backup=numbered . /tmp/x',
+    'mv -t/tmp .',
+    'mv --target /tmp .',
+    'mv --t=/tmp ..',
+    'mv -vt/tmp ..',
+    'rm --interactive=never -r .',
+    'rm -I -r .',
+    'rm --one-file-system -rf .',
+    'rm --no-preserve-root -rf /',
+    'rm -d .',
+    'rmdir --ignore-fail-on-non-empty .',
+    'rmdir -p .githooks',
+    'rmdir -- .',
+    'env -i rm -rf .',
+    'timeout -s KILL 5 rm -rf .',
+    'pnpm exec rm -rf .',
+    'pnpm exec find .claude -delete',
+    // git clean の長いオプションの省略形
+    'git clean --no-d -fx',
+    'git clean --exc x -fx',
+    'git clean --e x -fx',
+    'git clean --interactive -x',
+  ]) {
+    test(`${command} は確認を挟む（崩す 2 周目）`, () => assert.deepEqual(literally(command), ['ask', 'ask'], command));
+  }
+
+  for (const command of ['find .dev.vars -delete', 'find .env.local -delete', 'rmdir .env', 'find .dev.vars -exec rm {} \\;']) {
+    test(`${command} は止める（シークレットの起点）`, () => assert.deepEqual(literally(command), ['deny', 'deny'], command));
+  }
+
+  for (const command of [
+    'git clean --dry-r -fx',
+    'git clean --no-force -nx',
+    'git clean -x -f --no-dry-run --dry-run',
+    'git clean -fd src',
+    'git clean -ffd',
+    // 守る先を読むだけの -exec
+    'find migrations -exec head -1 {} \\;',
+    'find .claude -exec ls -la {} +',
+    'find .githooks -exec diff {} /tmp/x \\;',
+    'find migrations -exec sha256sum {} +',
+    'find .claude/hooks -exec stat {} +',
+    'find migrations -exec git log --oneline -- {} \\;',
+    'find .claude/hooks -exec pnpm exec prettier --check {} +',
+    "find .claude/hooks -name '*.test.mjs' -exec node --test {} +",
+    // 普段の作業で打つ形
+    'rm -rf node_modules/.vite .svelte-kit build',
+    'rm -rf ~/.cache/ms-playwright',
+    'rm -rf worktrees/x/node_modules',
+    'rm -rf .wrangler/state',
+    'mv -f .wrangler /tmp/x',
+    'mv src/a src/b',
+    "find src -name '*.orig' -delete",
+    "find . -type f -name '*.ts' -exec grep -l foo {} +",
+    "find . -path ./node_modules -prune -o -name '*.svelte' -exec grep -n x {} +",
+    'find src -exec rm -f {}.bak \\;',
+    'find /tmp/x -exec rm -rf {} +',
+    'cd src && rm -rf a',
+    // 値を取るオプションの値は元ではない
+    'mv --backup numbered build /tmp/x',
+    "mv -b -S '~' build /tmp/x",
+    'mv -S x -t /tmp build',
+    // 引数の欠けた形で例外を投げない
+    'mv -t /tmp/x --',
+    'mv -t',
+    'mv --target-directory',
+    'find -D',
+    'find -f',
+  ]) {
+    test(`${command} は通す（崩す 2 周目）`, () => assert.deepEqual(literally(command), ['allow', 'allow'], command));
+  }
+
+  for (const command of [`cd .. && find ${name} -delete`, `cd ${parent} && rm -rf ${name}`, `rm -rf ${parent}/./${name}`, 'env --chdir=.claude rm -rf hooks']) {
+    test(`本体の根から ${shown(command)} は確認を挟む（崩す 2 周目）`, () => assert.equal(from(main, command), 'ask', command));
+  }
+  for (const command of ['rm -rf ../x', 'mv ../x .', 'find ../x -delete', 'rm -rf ../../worktrees/x']) {
+    test(`ワークツリーから ${command} は確認を挟む（ワークツリーの根そのもの）`, () => assert.equal(from(wt, command), 'ask', command));
+  }
+  for (const command of [`rm -rf ../${name}-old`, `rm -rf ${parent}/${name}-old`, 'rm -rf ../x/build']) {
+    test(`本体の根から ${shown(command)} は通す（崩す 2 周目）`, () => assert.equal(from(main, command), 'allow', command));
+  }
+
+  test('find の -exec 系で掛け直す数は、-exec の数と起点の数の積で数える', () => {
+    const starts = (n) => Array.from({ length: n }, (_, i) => `s${i}`).join(' ');
+    const decide = (command) => judgeBash(command, { cwd: null, branchOf: () => 'x' })?.[0] ?? 'allow';
+    assert.equal(decide(`find ${starts(128)} -exec rm {} \\; -exec rm {} \\;`), 'allow');
+    assert.equal(decide(`find ${starts(129)} -exec rm {} \\; -exec rm {} \\;`), 'ask');
+    assert.equal(decide(`find ${starts(256)} -exec grep x {} +`), 'allow');
+    assert.equal(decide(`find ${starts(257)} -exec grep x {} +`), 'ask');
+  });
+});
+
 describe('bash-rules: 展開の大きい glob', () => {
   const timed = (command) => {
     const started = Date.now();
