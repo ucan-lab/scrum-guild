@@ -112,7 +112,7 @@ gh api repos/{owner}/{repo}/issues/<issue> --jq '{number, title, body, state, la
 ```
 
 本文の未チェックの項目（`- [ ]`）を完了条件として控える。
-PR の本文では、タスクもストーリーもエピックも `Refs #<番号>` で指す。複数の Issue を指すときは、`Refs #1 #2` とまとめず、Issue ごとに `Refs #<番号>` を繰り返す（理由: 番号の無いブランチでは `accepting.yml` が `Refs #<番号>` の形だけを拾う）。GitHub が閉じる合図に読む語（`close`、`closes`、`closed`、`fix`、`fixes`、`fixed`、`resolve`、`resolves`、`resolved` に `#<番号>` が続く形）は、タイトルにも本文にもコミットメッセージにも書かない（理由: マージでは Issue を閉じない。マージで `status:accepting` が付き、人が受け入れ条件を確かめて閉じる。`docs/development.md` の「Issue の運用」）。
+PR の本文では、タスクもストーリーもエピックも `Refs #<番号>` で指す。`Refs #<番号>` は行頭に1行ずつ書き、複数の Issue を指すときも `Refs #1 #2` とまとめずに行を分ける（理由: 番号の無いブランチでは `accepting.yml` が行頭の `Refs #<番号>` だけを拾う）。指す Issue でない番号を、行頭の `Refs` で書かない。GitHub が閉じる合図に読む語（`close`、`closes`、`closed`、`fix`、`fixes`、`fixed`、`resolve`、`resolves`、`resolved` に `#<番号>` が続く形）は、タイトルにも本文にもコミットメッセージにも書かない（理由: マージでは Issue を閉じない。マージで `status:accepting` が付き、人が受け入れ条件を確かめて閉じる。`docs/development.md` の「Issue の運用」）。
 
 ## Step 3: 草案を作る
 
