@@ -9,6 +9,8 @@ export const reassignAdminProblems = [
   'github_not_a_user',
   'github_user_changed',
   'email_invalid',
+  // 指名する GitHub の人が、操作する運用者自身（運用者のアカウントに結んだログインのどれか）。Google は突き合わせられないので見ない
+  'nominee_is_operator',
 ] as const;
 export type ReassignAdminProblem = (typeof reassignAdminProblems)[number];
 

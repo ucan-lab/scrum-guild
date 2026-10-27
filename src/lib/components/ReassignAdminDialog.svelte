@@ -133,6 +133,8 @@
     github_not_a_user: 'operatorErrorNotUser',
     github_user_changed: 'operatorErrorUserChanged',
     email_invalid: 'operatorErrorEmailInvalid',
+    // 指名し直しだけの理由。GitHub で解決した人が、操作する運用者自身だった
+    nominee_is_operator: 'operatorErrorNomineeIsOperator',
   };
 
   function problemCodesOf(result: FailedResult): string[] {
@@ -145,11 +147,17 @@
 
   type Failure = { field: Field; key: DictionaryKey; code?: string };
 
-  // 失敗を、どの欄にどの文言を出すかに写す。ログインが切れた、運用者でなくなった人は、画面ごと移す。
-  // context は、ユーザー名を確かめる（verify）か、指名する（send）か
-  function failureOf(result: FailedResult, context: 'verify' | 'send'): Failure {
-    if (isUnauthenticated(result)) window.location.assign(loginUrl(page.url));
-    else if (result.status === 403) window.location.assign('/');
+  // 失敗を、どの欄にどの文言を出すかに写す。ログインが切れた、運用者でなくなった人は、画面ごと移し、undefined を返す
+  // （欄の誤りもフォーカスの移動もしない）。context は、ユーザー名を確かめる（verify）か、指名する（send）か
+  function failureOf(result: FailedResult, context: 'verify' | 'send'): Failure | undefined {
+    if (isUnauthenticated(result)) {
+      window.location.assign(loginUrl(page.url));
+      return undefined;
+    }
+    if (result.status === 403) {
+      window.location.assign('/');
+      return undefined;
+    }
     const code = problemCodesOf(result).find((item) => Object.hasOwn(problemKeys, item));
     if (code !== undefined) {
       return { field: code === 'email_invalid' ? 'email' : 'username', key: problemKeys[code]!, code };
@@ -221,6 +229,7 @@
       return;
     }
     const failure = failureOf(result, 'verify');
+    if (failure === undefined) return;
     errors = { ...errors, [failure.field]: failure.key };
     await focusFailure(failure.field);
   }
@@ -282,10 +291,13 @@
       return;
     }
     const failure = failureOf(result, 'send');
+    if (failure === undefined) return;
     if (failure.code !== undefined && failure.field === 'username') resolved = null;
     errors = { [failure.field]: failure.key };
     await focusFailure(failure.field);
     if (mayHaveChanged(result)) await invalidateAll();
+    // 見つからない組織は、閉じるときに一覧を読み直す（消えた組織を一覧に残さない）
+    else if (result.status === 404) reloadOnClose = true;
   }
 
   async function copy(text: string, copiedKey: DictionaryKey): Promise<void> {

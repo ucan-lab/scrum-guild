@@ -1409,6 +1409,40 @@ test.describe('運用者', () => {
       expect(requests).toBe(1);
     });
 
+    test('自分を指名したという応答はユーザー名の欄の下で知らせ、見つからない（404）の後は閉じると一覧を読み直す', async ({
+      page,
+    }) => {
+      let lists = 0;
+      await page.route('**/api/list-organizations', (route) => {
+        lists++;
+        return route.fulfill({ json: { organizations: [organization({ admin_status: 'none' })] } });
+      });
+      await mockGithubUser(page, TOKYO_USER);
+      let reply: Parameters<Route['fulfill']>[0] = invalidInput('admin.username', 'nominee_is_operator');
+      await page.route('**/api/organization-admin-reassign', (route) => route.fulfill(reply));
+      await page.goto('/operator');
+      const dialog = await openReassign(page, 'あおば開発');
+      await dialog.getByLabel('GitHub のユーザー名').fill('alice');
+      await dialog.getByRole('button', { name: '確かめる' }).click();
+      const submit = dialog.getByRole('button', { name: '指名する', exact: true });
+      await submit.click();
+      await expect(dialog.getByRole('alert')).toContainText('あなた自身はギルドマスターに指名し直せません');
+      await expect(dialog.getByLabel('GitHub のユーザー名')).toBeFocused();
+      // 確かめ直すまで指名できない
+      await expect(submit).toBeDisabled();
+
+      reply = { status: 404, json: { error: { code: 'not_found', message: 'x' } } };
+      await dialog.getByRole('button', { name: '確かめる' }).click();
+      await submit.click();
+      await expect(dialog.locator('.callout.is-danger[role="alert"]')).toContainText(
+        'この冒険者ギルドが見つかりません',
+      );
+      const before = lists;
+      await dialog.getByRole('button', { name: 'やめる' }).click();
+      await expect(dialog).toBeHidden();
+      await expect.poll(() => lists).toBeGreaterThan(before);
+    });
+
     test('ログインが切れていたら、ログインの画面に移る', async ({ page }) => {
       await mockList(page, [organization({ admin_status: 'none' })]);
       await page.route('**/api/organization-admin-reassign', (route) =>

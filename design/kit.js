@@ -1375,12 +1375,26 @@ const looooooooooooooooooooooooooooooooooongLine = "コードの長い1行は、
            <button class="btn" type="button" data-toast="URL をコピーしました">${icon("link")}コピー</button></div></div>
        <div class="callout is-info">${icon("check")}<span>GitHub の kotone-dev でログインするよう伝えてください。</span></div>`,
       `<button class="btn is-primary" type="button" data-close-dialog>閉じる</button>`),
+    // 管理者の指名し直し。指し方は組織の作成と同じで、GitHub は確かめるまで指名できない。
+    // 最初の文は一覧の管理者の状態で変わる（本番の ReassignAdminDialog）。見本は「管理者がいない」の1つを例にする
     reassignAdmin: () => openDialog(`${t("admin")}を指名し直す`,
-      `<p>くもラボには今${t("admin")}がいません。新しい${t("admin")}を、GitHub のユーザー名か Google のメールアドレスで指名します。</p>
-       ${loginTarget("d-ra", { hints: adminHints() })}
+      `<p class="wrap-anywhere">「くもラボ」には今${t("admin")}がいません。新しい${t("admin")}を、GitHub のユーザー名か Google のメールアドレスで指名します。</p>
+       ${loginTarget("d-ra", { title: `${t("admin")}のログインの手段`, hints: reassignHints(), action: `<button class="btn" id="d-rz" type="button" data-verify-admin="d-ra" data-verify-panel="d-rv" data-verify-submit="d-rb">確かめる</button>` })}
+       <div id="d-rv" hidden>
+         <div class="callout is-info">${icon("shield")}<span>この人を${t("admin")}にします。アバター、ユーザー名、表示名が、伝えたい人のものか確かめてください。ユーザー名は 1 字違いでも別の人に当たります。</span></div>
+         <div class="choice is-static">${avatar("星野 琴音", 3, { lg: true, image: SAMPLE_PHOTO })}<div><b class="mono">kotone-dev</b><span>星野 琴音</span><span>GitHub のユーザー ID 5550001</span></div></div>
+       </div>
        <p class="field-hint">この${t("organization")}のユーザーでなくてもかまいません。指名しても、運用者はこの${t("organization")}の中を見られるようにはなりません。まだログインしていない前の指名は消えます。</p>
        <p class="field-hint">指名は${t("organization")}の変更の履歴に、運用者の操作として残ります。</p>`,
-      `<button class="btn is-quiet" type="button" data-close-dialog>やめる</button><button class="btn is-primary" type="button" data-invite-link="d-ra" data-invite-done="${t("admin")}を指名しました">指名する</button>`),
+      `<button class="btn is-quiet" type="button" data-close-dialog>やめる</button><button class="btn is-primary" id="d-rb" type="button" data-reassign-admin="d-ra" disabled>指名する</button>`),
+    // 指名し直した後（GitHub）。組織の URL とコピー、管理者になる人に伝えること
+    adminReassigned: () => openDialog(`${t("admin")}を指名しました`,
+      `<p>Scrum Guild はメールを送りません。${t("admin")}になる人に、次の URL とログインの手段を伝えてください。</p>
+       <div class="field"><label class="field-label" for="d-ru">${t("organization")}の URL</label>
+         <div class="input-row"><input class="input mono" id="d-ru" value="https://scrum-guild.dev/kumo-lab/" readonly>
+           <button class="btn" type="button" data-toast="URL をコピーしました">${icon("link")}コピー</button></div></div>
+       <div class="callout is-info">${icon("check")}<span>GitHub の kotone-dev でログインするよう伝えてください。</span></div>`,
+      `<button class="btn is-primary" type="button" data-close-dialog>閉じる</button>`),
     // 添付ファイルのプレビュー。画像と動画は画面で見られ、それ以外はダウンロードして開く
     previewFile: (id) => {
       const hit = findFile(id);
@@ -1866,9 +1880,15 @@ const looooooooooooooooooooooooooooooooooongLine = "コードの長い1行は、
     github: `GitHub のユーザー ID に解決します。その人が GitHub でログインすると、この${t("organization")}の${t("admin")}として入れます。`,
     google: `その人が招待の URL を開き、このメールアドレスの Google アカウントでログインすると、${t("admin")}として入れます。招待の URL は14日で切れます。`,
   });
+  // 運用者が管理者を指名し直すときの、手段ごとの説明（GitHub は確かめてから指名する）
+  const reassignHints = () => ({
+    github: "GitHub のユーザー ID に解決します。「確かめる」を押して、指名する人を見て確かめてから指名します。",
+    google: adminHints().google,
+  });
   // 招待と指名を決めたあと。Google なら、このときだけ出る招待の URL をダイアログで見せる。
+  // reissue を付けると、URL を失ったときと期限が切れたときの直し方（指名し直し）を添える（運用者の指名）。
   // 見本の URL は固定の架空の値
-  function inviteLink(id, done) {
+  function inviteLink(id, done, reissue = false) {
     const via = document.querySelector(`[data-login-via="${id}"]:checked`)?.value;
     if (via !== "google") { closeDialog(); toast(`${icon("check")}${esc(done)}`); return; }
     openDialog("招待の URL",
@@ -1877,7 +1897,8 @@ const looooooooooooooooooooooooooooooooooongLine = "コードの長い1行は、
          <div class="input-row"><input class="input mono" id="d-iu" value="https://scrum-guild.dev/invite#Qm7tX2vLr9aKpE4wZc8hN3bYd6fGs1uJ0oTiRl5eWxA" readonly>
            <button class="btn" type="button" data-toast="招待の URL をコピーしました">${icon("link")}コピー</button></div></div>
        <div class="callout is-info">${icon("check")}<span>次のメールアドレスの Google アカウントでログインするよう伝えてください。<b class="mono wrap-anywhere">mio.hoshino@example.com</b></span></div>
-       <div class="callout is-warn">${icon("alert")}<span>この URL はこの画面を閉じると二度と出せません。期限は14日（2026/11/09 09:00 まで）です。期限までに本人へ伝えてください。</span></div>`,
+       <div class="callout is-warn">${icon("alert")}<span>この URL はこの画面を閉じると二度と出せません。期限は14日（2026/11/09 09:00 まで）です。期限までに本人へ伝えてください。</span></div>
+       ${reissue ? `<p class="field-hint">URL を失ったときや期限が切れたときは、一覧の「${t("admin")}を指名」から指名し直すと、新しい招待の URL が出ます。</p>` : ""}`,
       `<button class="btn is-primary" type="button" data-close-dialog>閉じる</button>`);
   }
   document.addEventListener("change", (ev) => {
@@ -1890,11 +1911,13 @@ const looooooooooooooooooooooooooooooooooongLine = "コードの長い1行は、
     input.placeholder = via.example;
     field.querySelectorAll("[data-login-hint]").forEach((h) => (h.hidden = h.dataset.loginHint !== el.value));
     // 組織の作成のダイアログ: GitHub は確かめるまで作れない。Google はメールアドレスで指し、確かめる手順が無く、すぐ作れる
-    if (el.dataset.loginVia === "d-ka" && document.getElementById("d-kb")) {
+    // 管理者の指名し直しのダイアログも同じ（確かめるボタン d-rz、確かめた人 d-rv、指名する d-rb）
+    const ids = { "d-ka": ["d-kz", "d-kv", "d-kb"], "d-ra": ["d-rz", "d-rv", "d-rb"] }[el.dataset.loginVia];
+    if (ids && document.getElementById(ids[2])) {
       const google = el.value === "google";
-      document.getElementById("d-kz").hidden = google;
-      document.getElementById("d-kv").hidden = true;
-      document.getElementById("d-kb").disabled = !google;
+      document.getElementById(ids[0]).hidden = google;
+      document.getElementById(ids[1]).hidden = true;
+      document.getElementById(ids[2]).disabled = !google;
     }
   });
 
@@ -1998,9 +2021,15 @@ const looooooooooooooooooooooooooooooooooongLine = "コードの長い1行は、
     }
     if ((el = hit("data-invite-link"))) { inviteLink(el.dataset.inviteLink, el.dataset.inviteDone); return; }
     // 組織の作成: GitHub は解決した人を見せ、確かめてから作れる。作った後は組織の URL を出す
+    // 管理者の指名し直しも同じ（確かめた人の表示と指名するボタンを、data-verify-panel と data-verify-submit で渡す）
     if ((el = hit("data-verify-admin"))) {
-      document.getElementById("d-kv").hidden = false;
-      document.getElementById("d-kb").disabled = false;
+      document.getElementById(el.dataset.verifyPanel ?? "d-kv").hidden = false;
+      document.getElementById(el.dataset.verifySubmit ?? "d-kb").disabled = false;
+      return;
+    }
+    if ((el = hit("data-reassign-admin"))) {
+      if (document.querySelector(`[data-login-via="${el.dataset.reassignAdmin}"]:checked`)?.value === "google") inviteLink(el.dataset.reassignAdmin, `${t("admin")}を指名しました`, true);
+      else DIALOGS.adminReassigned();
       return;
     }
     // Google の指名は、組織の URL の代わりに招待の URL を出す

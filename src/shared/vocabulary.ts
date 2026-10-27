@@ -1011,6 +1011,11 @@ export const dictionary = defineDictionary({
     '指名している間に、この{organization}の人の状態が変わりました。一覧を確かめてから、もう一度試してください。',
     '指名している間に、この{organization}の人の状態が変わりました。一覧を確かめてから、もう一度試してください。',
   ),
+  // GitHub で解決した人が、操作している運用者自身（運用者のアカウントに結んだログイン）だった
+  operatorErrorNomineeIsOperator: organization(
+    'あなた自身は{admin}に指名し直せません。運用者は{organization}の中を見ないので、{organization}の人か、{admin}になる人を指名してください。',
+    'あなた自身は{admin}に指名し直せません。運用者は{organization}の中を見ないので、{organization}の人か、{admin}になる人を指名してください。',
+  ),
   operatorReassignNotFound: organization(
     'この{organization}が見つかりません。一覧を確かめてください。',
     'この{organization}が見つかりません。一覧を確かめてください。',

@@ -128,6 +128,18 @@ function removableWhere(db: OrganizationDb, nomineeUserId: string, state: Nomine
       eb('users.organization_id', '=', db.organizationId),
       eb('users.account_id', 'is', null),
       eb('users.id', '!=', nomineeUserId),
+      // ワークスペースの所属を持つ行は消さず残す（memberships.user_id が行を指す。組織の管理者が、まだログインしていない
+      // 指名の行をワークスペースの最初のリーダーに選べる）。記録も作らず、消した数にも数えない
+      eb.not(
+        eb.exists(
+          eb
+            .selectFrom('memberships')
+            .innerJoin('workspaces', 'workspaces.id', 'memberships.workspace_id')
+            .select('memberships.id')
+            .whereRef('memberships.user_id', '=', 'users.id')
+            .where('workspaces.organization_id', '=', db.organizationId),
+        ),
+      ),
       eb.exists(
         eb
           .selectFrom('users as nominee')
@@ -301,6 +313,9 @@ export async function reassignOrganizationAdmin(
   try {
     results = await db.batch(statements);
   } catch (err) {
+    // 一意に当たりうるのは新しい行を入れるときだけ。ほかの経路（既にいる人の UPDATE、既に有効な管理者）の失敗は、
+    // D1 の一時的な失敗や外部キーの失敗なので、409 にせずそのまま投げる（500 としてログに残る）
+    if (outcome !== 'created') throw err;
     // 一意に当たったかは例外の文面でなく、指名する人の行を読み直して見分ける
     let raced: boolean;
     try {

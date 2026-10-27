@@ -15,7 +15,8 @@
 //     使えるのは運用者の道具 src/server/operations/operator-tools.ts だけ。
 //     組織の中の表に運用者が書く口と、組織で絞らずに数える口を、処理から直に呼ばせない
 // Reflect と Object のプロパティを読むメソッドは、直に呼ぶ形だけを見る。.call、.apply、取り出した get、カンマ式で呼ぶ形は
-// 止めない（D1 の binding も運用者の道具だけの関数も同じ。差分を読む人が見る。docs/development.md の「入口を守る規則」）。
+// 止めない。名前空間を Object.values や Object.entries で列挙して取り出す形も止めない
+// （D1 の binding も運用者の道具だけの関数も同じ。差分を読む人が見る。docs/development.md の「入口を守る規則」）。
 // 例外は、入口を通さない次の 2 つのテストだけ（規則を丸ごと外す）。
 //   test/apply-migrations.ts: 全マイグレーションを D1 の binding に直に当てる。入口より前に要る
 //   test/schema.test.ts: CHECK や一意を確かめるため、型を外れた生の INSERT を送る。入口の型を通すと、壊れた値を書けない
