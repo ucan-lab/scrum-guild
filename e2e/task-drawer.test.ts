@@ -323,7 +323,7 @@ test('スクロールした先の行のリンクで開いても、木のスク�
   const link = page.locator('a.entry-title').last();
   await link.scrollIntoViewIfNeeded();
   const scrollBefore = await page.evaluate(() => window.scrollY);
-  expect(scrollBefore).toBeGreaterThan(0);
+  expect(scrollBefore, '前提: seed の行が窓の高さ 480px を超え、バックログが縦にスクロールする').toBeGreaterThan(0);
   // 行のリンクは data-sveltekit-reset="false" で、移っても先頭へ戻さない
   await link.click();
   const drawer = page.getByRole('dialog');
