@@ -1145,7 +1145,13 @@ function removedPaths(tool, args) {
   if (tool === 'rm' || tool === 'rmdir') return positionals(args);
   if (tool === 'mv') {
     const target = targetDirectoryOf(args, MV_LONG_FLAGS_WITH_VALUE);
-    return target ? positionals(args.filter((_, j) => j !== target.valueAt)) : copyOperands(args, MV_LONG_FLAGS_WITH_VALUE).slice(0, -1);
+    if (!target) return copyOperands(args, MV_LONG_FLAGS_WITH_VALUE).slice(0, -1);
+    // -t のときは位置引数の全部が元。-t の値の語（連結の形は -t を含む語ごと）を外し、-S などの値も除く（mv -S '~' -t /tmp/x build の ~）
+    const flagWord = target.valueAt === -1 ? target.at : -1;
+    return copyOperands(
+      args.filter((_, j) => j !== target.valueAt && j !== flagWord),
+      MV_LONG_FLAGS_WITH_VALUE,
+    );
   }
   if (tool === 'find' && args.includes('-delete')) return findStartingPoints(args);
   return [];
@@ -1163,7 +1169,8 @@ function removesRoot(word, dir, roots) {
       return inside !== '..' && !inside.startsWith(`..${path.sep}`) && !path.isAbsolute(inside);
     });
   }
-  const bare = word.replace(/\/+$/, '') || '/';
+  // /. は /、~/. は ~、src/.. は . と同じ道なので、正規化してから見る
+  const bare = path.posix.normalize(word).replace(/\/+$/, '') || '/';
   return bare === '/' || bare === '~' || /^\.\.?(\/+\.\.?)*$/.test(bare);
 }
 
@@ -1188,27 +1195,47 @@ function findStartingPoints(args) {
 }
 
 const FIND_EXECS = new Set(['-exec', '-execdir', '-ok', '-okdir']);
-// find の -exec 系で、{} を起点に置き換えて掛け直すコマンドの数の上限（コマンドぜんたいで数える）
+// find の -exec 系で、{} を起点に置き換えて掛け直すコマンドの数と重さ（findCommands の weight）の上限（コマンドぜんたいで数える）。
+// 重さは、起点 256 の grep x {} + を通し、重い glob を並べた cp を 1 秒以内に止める大きさにする
 const MAX_FIND_COMMANDS = 256;
+const MAX_FIND_WEIGHT = 8192;
 const FIND_COMMANDS_REASON = [ASK, 'find の起点と -exec の入れ子が多く、{} を起点に置き換えて掛け直すコマンドが多すぎるので判定しない。何を実行するかを人が確かめる'];
 // find の -exec、-execdir、-ok、-okdir の後ろのコマンド（; か、{} の後ろの + まで）。語の中の {} も含めて、{} を起点のそれぞれに置き換えた語の並び。
 // 書き込み（rm、sed -i）か読み取り（grep、cat）かを、置き換えた後のコマンドで今の規則に判定させる
+// -execdir と -okdir は、見つけたファイルのあるディレクトリで動かす。起点そのものは起点の親で {} が ./<basename> になり、
+// 起点の中のファイルは起点で動くので、起点の親と起点の両方を作業場所として見る（find .githooks -execdir rm pre-commit \; は .githooks/pre-commit を消す）。
+// { words, to } の to は、find の作業場所から見た掛け直すときの作業場所（-exec は null）。
+// 判定の前に { count, weight } で重さを返す。count は -exec 系の数と起点の数の積、weight は掛け直すコマンドの語の数と、語の {a,b} の展開の数の和
 function findCommands(args) {
   const starts = findStartingPoints(args);
-  const commands = [];
+  const execs = [];
   for (let i = 0; i < args.length; i++) {
     if (!FIND_EXECS.has(args[i])) continue;
     let end = i + 1;
     while (end < args.length && args[end] !== ';' && !(args[end] === '+' && args[end - 1] === '{}')) end++;
     const at = [...Array(end - i - 1).keys()].map((k) => i + 1 + k);
-    if (at.length > 0) {
-      for (const start of starts) {
-        commands.push(concatWords(...at.map((k) => (args[k].includes('{}') ? [args[k].replaceAll('{}', start)] : sliceWords(args, k, k + 1)))));
-      }
-    }
+    if (at.length > 0) execs.push({ at, inDir: args[i].endsWith('dir') });
     i = end;
   }
-  return commands;
+  const places = (inDir) => (inDir ? 2 : 1);
+  const count = execs.length * starts.length;
+  const weight = execs.reduce((sum, e) => sum + places(e.inDir) * starts.length * e.at.reduce((w, k) => w + 1 + Math.min(expansionSize(args[k]), MAX_BRACE_EXPANSION + 1), 0), 0);
+  const build = () =>
+    execs.flatMap(({ at, inDir }) =>
+      starts.flatMap((start) => {
+        const placed = inDir ? `./${path.posix.basename(start)}` : start;
+        const words = concatWords(...at.map((k) => (args[k].includes('{}') ? [args[k].replaceAll('{}', placed)] : sliceWords(args, k, k + 1))));
+        return inDir ? [{ words, to: path.posix.dirname(start) }, { words, to: start }] : [{ words, to: null }];
+      }),
+    );
+  return { count, weight, build };
+}
+
+// 作業場所を to（書かれた行き先）へ移した ctx。作業場所が分からないときは、書かれた行き先（place）につなぐ。~ と展開で決まる行き先は判定できない
+function movedTo(ctx, to, unresolved = false) {
+  if (unresolved || /^[~$]/.test(to)) return { ...ctx, dir: null, place: null };
+  if (path.posix.isAbsolute(to)) return { ...ctx, dir: to, place: to };
+  return { ...ctx, dir: ctx.dir && path.resolve(ctx.dir, to), place: ctx.place == null ? null : path.posix.join(ctx.place, to) };
 }
 
 // WORKERS_CI=1 は deploy() が本番に触る唯一の条件で、付けるのは Workers Builds だけ。値は問わず、名前がちょうど WORKERS_CI のものだけを見る
@@ -1491,8 +1518,9 @@ function judgeDeployScript(words, ci, dir) {
 
 // env -C <dir> と env --chdir=<dir> は、その後ろのコマンドの作業場所を変える。GNU の env は長いオプションを一意な省略形でも
 // 受け付けるので、--c、--ch、--c=<dir> も --chdir と読む。
-// ~ か $ で始まる値と、展開の印のある値は判定できない（null）とする
-function dirAfterEnv(words, ci, dir, from) {
+// ~ か $ で始まる値と、展開の印のある値は判定できない（null）とする。
+// { dir, place } を返し、place（書かれた行き先）は cd と同じく作業場所が分からなくても値をつなぐ（env -C .claude rm -rf hooks）
+function dirAfterEnv(words, ci, dir, from, place) {
   for (let i = from; i < ci; i++) {
     if (prefixName(words[i]) !== 'env') continue;
     for (let j = i + 1; j < ci; j++) {
@@ -1509,10 +1537,12 @@ function dirAfterEnv(words, ci, dir, from) {
       else if (chdir) value = long[3];
       else if (/^-C./.test(w)) value = w.slice(2);
       else continue;
-      dir = !dir || !value || /^[~$]/.test(value) || isUnresolved(words, valueAt) ? null : path.resolve(dir, value);
+      const unknown = !value || /^[~$]/.test(value) || isUnresolved(words, valueAt);
+      dir = !dir || unknown ? null : path.resolve(dir, value);
+      place = place == null || unknown ? null : path.posix.isAbsolute(value) ? value : path.posix.join(place, value);
     }
   }
-  return dir;
+  return { dir, place };
 }
 
 // env の -S、--split-string、--split-string=…、-S"…"、-iS のようにまとめた短いフラグ。env -S は文字列をシェルと違う規則で分けて
@@ -1556,10 +1586,9 @@ function judgeSegment(words, ctx) {
   const tool = ci === -1 ? '' : baseName(words[ci]);
   const args = ci === -1 ? [] : sliceWords(words, ci + 1);
   // env -C は後ろのコマンドの作業場所を変える。経由先に掛け直すとき（envFrom）は、前置きの env の分を解決済みなので重ねない
-  // 字面の行き先（place）は、env -C で作業場所を変えたら追えない
+  // 字面の行き先（place）も、env -C の値をつないで追う
   if (ci !== -1) {
-    const dir = dirAfterEnv(words, ci, ctx.dir, ctx.envFrom ?? 0);
-    ctx = { ...ctx, dir, place: dir === ctx.dir ? ctx.place : null };
+    ctx = { ...ctx, ...dirAfterEnv(words, ci, ctx.dir, ctx.envFrom ?? 0, ctx.place) };
   }
   results.push(...judgeFileWrites(tool, args, words, ctx.dir));
   const removal = judgeRemoval(tool, args, ctx);
@@ -1593,15 +1622,21 @@ function judgeSegment(words, ctx) {
   // find の -exec 系は、{} を起点に置き換えたコマンドを同じ規則で見る（find .claude/hooks -exec rm {} \; は rm .claude/hooks）
   // 入れ子の find は起点の数の深さ乗に増えるので、コマンドぜんたいで掛け直す数を MAX_FIND_COMMANDS までにする
   if (tool === 'find' || tool === 'gfind') {
-    const commands = findCommands(args);
-    if (commands.length > ctx.findBudget.left) {
-      ctx.findBudget.left = 0;
+    const { count, weight, build } = findCommands(args);
+    const budget = ctx.findBudget;
+    if (count > budget.left || weight > budget.weight) {
+      budget.left = 0;
+      budget.weight = 0;
       results.push(FIND_COMMANDS_REASON);
-    } else if (commands.length > 0 && ctx.depth + 1 > MAX_DEPTH) {
+    } else if (count > 0 && ctx.depth + 1 > MAX_DEPTH) {
       results.push([ASK, 'コマンドの入れ子が深く、判定しきれない']);
-    } else {
-      ctx.findBudget.left -= commands.length;
-      for (const command of commands) results.push(...judgeSegment(command, { ...ctx, envFrom: 0, depth: ctx.depth + 1 }));
+    } else if (count > 0) {
+      budget.left -= count;
+      budget.weight -= weight;
+      for (const { words: command, to } of build()) {
+        const inner = to === null ? ctx : movedTo(ctx, to);
+        results.push(...judgeSegment(command, { ...inner, envFrom: 0, depth: ctx.depth + 1 }));
+      }
     }
   }
 
@@ -1751,7 +1786,7 @@ export function judgeBash(
     env = {},
     root = cwd ? repoRootOf(cwd) : null,
     place = '',
-    findBudget = { left: MAX_FIND_COMMANDS },
+    findBudget = { left: MAX_FIND_COMMANDS, weight: MAX_FIND_WEIGHT },
   },
 ) {
   if (depth > MAX_DEPTH) return [ASK, 'コマンドの入れ子が深く、判定しきれない'];
