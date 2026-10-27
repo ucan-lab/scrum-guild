@@ -370,9 +370,11 @@ rollback で戻るのは、版が持つものすべて。コードと設定の�
    ```bash
    while IFS= read -r statement <&3; do
      echo "$statement"
-     pnpm exec wrangler d1 execute scrum-guild --remote --command "$statement" || break
+     pnpm exec wrangler d1 execute scrum-guild --remote --command "$statement" || { echo "ここで止まった: $statement" >&2; break; }
    done 3< "/tmp/purge-$id.sql"
    ```
+
+   止まっても、ループ全体の終了コードは 0 になる。「ここで止まった」が出ていないことを見てから手順 6 へ進む（出ていても、手順 6 の表で見分けられる）。
 
    ファイルは標準入力でなく3番で読む。標準入力で渡すと、ループの中のコマンドが標準入力を読んだときに残りの行を読んでしまい、その後の文が流れない。
 6. 残りを数え、手順 4 の数と比べる
