@@ -359,7 +359,7 @@ rollback で戻るのは、版が持つものすべて。コードと設定の�
    ```
 
    書き出した SQL は、外部キーの子から順に表ごとの `DELETE` を並べ、最後に `organizations` の行を消す。どの文にも「その組織が解約で停止していて、`purge_on` が今日（UTC）より前」の条件が付く。ID を取り違えても、一時的な停止の組織、停止していない組織、消す日が今日か先の組織、無い ID では1行も消えない。
-4. 流す前の数を控える。`--count` は、組織の停止の状態（`suspended_at`、`purge_on`）と、`organizations` と消す表ごとの、その組織の行の数を返す1行の `SELECT` を書き出す。出力を手元に残し、手順 6 で比べる
+4. 流す前の数を控える。`--count` は、組織の slug と停止の状態（`suspended_at`、`purge_on`）と、`organizations` と消す表ごとの、その組織の行の数を返す1行の `SELECT` を書き出す。出力の `slug` が手順 1 で控えた slug と同じであることを確かめる（違えば ID を取り違えているので、ここで止まる）。出力を手元に残し、手順 6 で比べる
 
    ```bash
    pnpm exec wrangler d1 execute scrum-guild --remote --json --command "$(node scripts/purge-organization.ts --count "$id")" | tee "/tmp/purge-$id.before.json"

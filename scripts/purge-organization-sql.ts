@@ -70,11 +70,13 @@ export function purgeOrganizationSql(organizationId: string): string {
   return `${purgeOrganizationStatements(organizationId).join('\n')}\n`;
 }
 
-// 残りを数える1行の SELECT。組織の停止の状態（suspended_at、purge_on）と、organizations と消す表ごとの、その組織の行の数を返す。
-// 流す前と流した後に同じ文で数え、比べて判定する（docs/operations.md の「解約した組織のデータを消す」）
+// 残りを数える1行の SELECT。組織の slug と停止の状態（suspended_at、purge_on）と、organizations と消す表ごとの、その組織の行の数を返す。
+// 流す前と流した後に同じ文で数え、比べて判定する。slug は、一覧から控えた slug と見比べて ID の取り違えに気づくため
+// （docs/operations.md の「解約した組織のデータを消す」）
 export function purgeOrganizationCountSql(organizationId: string): string {
   const id = quotedId(organizationId);
   const columns = [
+    `(SELECT slug FROM organizations WHERE id = ${id}) AS slug`,
     `(SELECT suspended_at FROM organizations WHERE id = ${id}) AS suspended_at`,
     `(SELECT purge_on FROM organizations WHERE id = ${id}) AS purge_on`,
     `(SELECT count(*) FROM organizations WHERE id = ${id}) AS organizations`,

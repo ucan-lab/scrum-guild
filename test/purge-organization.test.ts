@@ -207,8 +207,9 @@ describe('purge-organization（解約した組織のデータを消す SQL）', 
     await fillOrganization(target, account.id);
 
     const before = await counts(target.id);
-    const { suspended_at, purge_on, ...beforeCounts } = before;
-    expect({ suspended_at, purge_on }).toEqual({ suspended_at: AT, purge_on: dateOf(-1) });
+    const { slug, suspended_at, purge_on, ...beforeCounts } = before;
+    // 手順書は slug を、手順 1 で一覧から控えた slug と見比べ、ID の取り違えに気づく
+    expect({ slug, suspended_at, purge_on }).toEqual({ slug: target.slug, suspended_at: AT, purge_on: dateOf(-1) });
     expect(beforeCounts.organizations).toBe(1);
     for (const [column, count] of Object.entries(beforeCounts)) expect(count, column).toBeGreaterThan(0);
 
@@ -223,6 +224,7 @@ describe('purge-organization（解約した組織のデータを消す SQL）', 
     const after = await counts(target.id);
     expect(after).toEqual({
       ...Object.fromEntries(Object.keys(beforeCounts).map((column) => [column, 0])),
+      slug: null,
       suspended_at: null,
       purge_on: null,
     });
@@ -242,6 +244,6 @@ describe('purge-organization（解約した組織のデータを消す SQL）', 
     expect(deleted.at(-1)).toBe('organizations');
 
     const counted = Object.keys((await counts(id))!);
-    expect(counted.sort()).toEqual([...organizationTables, 'organizations', 'suspended_at', 'purge_on'].sort());
+    expect(counted.sort()).toEqual([...organizationTables, 'organizations', 'slug', 'suspended_at', 'purge_on'].sort());
   });
 });
