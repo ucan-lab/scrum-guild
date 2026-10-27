@@ -3141,7 +3141,6 @@ describe('bash-rules: #313 を崩す（1周目）', () => {
     'find . -exec',
     'find -exec',
     'find . -exec \\;',
-    'find . -exec {} \\;',
     'rm',
     'rmdir',
     'mv',
@@ -3455,7 +3454,6 @@ describe('bash-rules: #313 を崩す（3周目）', () => {
 
   for (const command of [
     'git clean -fx --no-dry-run -n',
-    "git clean -fd -e '!.dev.vars'",
     // ~ を含むがホームではない語
     'rm -rf ./~x',
     'rm -rf src/~',
@@ -3535,6 +3533,64 @@ describe('bash-rules: #313 のレビューで直した穴', () => {
     assert.equal(decided, 'ask');
     assert.ok(Date.now() - started < 1000, `${Date.now() - started}ms かかった`);
   });
+});
+
+describe('bash-rules: #313 のセキュリティのレビューで直した穴', () => {
+  const main = realpathSync(mkdtempSync(path.join(os.tmpdir(), 'guard-security-')));
+  for (const dir of ['scripts', 'src', 'build']) mkdirSync(path.join(main, dir), { recursive: true });
+  writeFileSync(path.join(main, 'scripts', 'deploy-production.ts'), '');
+  after(() => rmSync(main, { recursive: true, force: true }));
+  const name = path.basename(main);
+  const parentName = path.basename(path.dirname(main));
+  const from = (cwd, command) => judgeBash(command, { cwd, branchOf: () => 'x' })?.[0] ?? 'allow';
+  const shown = (command) => command.replaceAll(name.toUpperCase(), '<根の名前の大文字>').replaceAll(name, '<根の名前>');
+
+  // git clean の -e と --exclude の値が ! で始まると、ignore したファイルを除外の規則から外して消せる（-x と同じ）
+  for (const command of ["git clean -fd -e '!*'", "git clean -fd --exclude='!*'", "git clean -f -e '!.dev.vars'", "git clean -f -e'!x'", "git clean -f --exclude '!x'", "git clean -f --exc '!x'"]) {
+    test(`${command} は確認を挟む（-e の ! で始まる値）`, () => assert.deepEqual(literally(command), ['ask', 'ask'], command));
+  }
+  for (const command of ["git clean -n -e '!*'", "git clean --dry-run -f --exclude='!*'", "git clean -f -e 'x!'"]) {
+    test(`${command} は通す（試し実行か、! で始まらない値）`, () => assert.deepEqual(literally(command), ['allow', 'allow'], command));
+  }
+
+  // 作業場所が深いと、-execdir の起点の展開ごとの判定（根を探す道のり）が重くなる。根を探した結果を覚え、1 秒以内に決める
+  test('作業場所が深くても、-execdir の起点の展開が多い find を 1 秒以内に決める', () => {
+    const outside = realpathSync(mkdtempSync(path.join(os.tmpdir(), 'guard-deep-')));
+    try {
+      const command = `cd ${Array(2000).fill('d').join('/')} && find {1..256} -execdir grep x {} +`;
+      const started = Date.now();
+      assert.doesNotThrow(() => from(outside, command));
+      assert.ok(Date.now() - started < 1000, `${Date.now() - started}ms かかった`);
+    } finally {
+      rmSync(outside, { recursive: true, force: true });
+    }
+  });
+
+  // ~+ は作業場所（$PWD）、~- は前の作業場所（$OLDPWD）。~+ は作業場所が分かれば解決し、分からなければ . と同じに見る。~- は判定できない
+  for (const command of ['rm -rf ~+', 'rm -rf ~+/', 'rm -rf ~-', 'rm -rf ~-/x', 'mv ~+ /tmp/x', 'find ~+ -delete']) {
+    test(`${command} は確認を挟む（~+ と ~-）`, () => assert.deepEqual(literally(command), ['ask', 'ask'], command));
+    test(`本体の根から ${command} は確認を挟む（~+ と ~-）`, () => assert.equal(from(main, command), 'ask', command));
+  }
+  test('rm -rf ~+/build は通す', () => assert.deepEqual(literally('rm -rf ~+/build'), ['allow', 'allow']));
+  test('根の下の src から rm -rf ~+ は通す', () => assert.equal(from(path.join(main, 'src'), 'rm -rf ~+'), 'allow'));
+
+  // 作業場所が分からなくなった後（cd -P ..、popd、cd ~）は、始めの根の名前と根の祖先の名前で消す形を止める（大文字小文字を区別しない）
+  for (const command of [`popd; rm -rf ${name}`, `cd -P .. && rm -rf ${name}`, `cd ~ && rm -rf ${name}/`, `popd; rm -rf ${name.toUpperCase()}`, `popd; rm -rf ${parentName}`, `popd; mv x/${name} /tmp/y`, `popd; find ${name} -delete`]) {
+    test(`本体の根から ${shown(command)} は確認を挟む（作業場所が分からなくなった後の根の名前）`, () => assert.equal(from(main, command), 'ask', command));
+  }
+  for (const command of ['popd; rm -rf build', 'popd; rm -rf src', `popd; rm -rf ${name}-old`]) {
+    test(`本体の根から ${shown(command)} は通す（作業場所が分からなくなった後）`, () => assert.equal(from(main, command), 'allow', command));
+  }
+
+  // -exec の後ろの道具の位置に {} があると、見つけたファイルを実行する（find node_modules/.bin -inum N -exec {} deploy \; は wrangler を動かしうる）
+  for (const command of ['find node_modules/.bin -inum 1 -exec {} deploy \\;', 'find . -name x -exec ./{} deploy \\;', 'find . -exec env {} x \\;', 'find . -execdir {} \\;', 'find . -exec {} \\;']) {
+    test(`${command} は確認を挟む（-exec の道具の位置の {}）`, () => assert.deepEqual(literally(command), ['ask', 'ask'], command));
+  }
+
+  // GNU の rmdir は Homebrew で grmdir の名前で入る
+  for (const command of ['grmdir .githooks', 'grmdir .']) {
+    test(`${command} は確認を挟む（grmdir）`, () => assert.deepEqual(literally(command), ['ask', 'ask'], command));
+  }
 });
 
 describe('bash-rules: 展開の大きい glob', () => {
