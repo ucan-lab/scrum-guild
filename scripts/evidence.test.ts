@@ -514,6 +514,20 @@ describe('目印', () => {
 const png = (rest: string) =>
   Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), Buffer.from(rest)]);
 
+describe('上げる先の名前の形', () => {
+  test('ci.yml と evidence-main.yml の送る前の検査は、UPLOAD_KEY と同じ形を求める', () => {
+    for (const [path, bucket, pattern] of [
+      ['.github/workflows/ci.yml', 'pr', String.raw`^img/[0-9a-f]{64}\.png$`],
+      ['.github/workflows/evidence-main.yml', 'main', String.raw`^main/img/[0-9a-f]{64}\.png$`],
+    ] as const) {
+      assert.ok(readFileSync(new URL(`../${path}`, import.meta.url), 'utf8').includes(pattern), path);
+      const key = imageObjectKey(bucket, 'a'.repeat(64));
+      assert.match(key, new RegExp(pattern));
+      assert.match(key, UPLOAD_KEY);
+    }
+  });
+});
+
 describe('readScreenFiles', () => {
   test('PNG でないファイルと、上限より大きいファイルは読まない（公開のバケットに任意のファイルを上げさせない）', () => {
     const root = mkdtempSync(join(tmpdir(), 'evidence-'));
