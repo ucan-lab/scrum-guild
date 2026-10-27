@@ -941,10 +941,13 @@ function writesTo(matches, tool, args, words, { anyOperand = false, intoDirector
   }
   if (tool === 'dd') return args.some((a) => a.startsWith('of=') && matches(a.slice('of='.length)));
   if (tool === 'tar') {
-    // -C の先に書くのは展開（x）だけ。動作を判定できないときも書き込み先とみなす
+    // -f のアーカイブに書くのは作る、足す、更新する、つなぐ、消す（c、r、u、A、--delete）とき、-C の先に書くのは展開（x）だけ。
+    // 一覧（t）と比べる（d）は読むだけ。動作を判定できないときは両方を書き込み先とみなす
     const { archives, directories, modes } = tarOperands(args);
-    const extracts = modes.has('x') || modes.size === 0;
-    return [...archives, ...(extracts ? directories : [])].some(matches);
+    const unknown = modes.size === 0;
+    const writesArchive = unknown || [...'cruAD'].some((m) => modes.has(m));
+    const extracts = unknown || modes.has('x');
+    return [...(writesArchive ? archives : []), ...(extracts ? directories : [])].some(matches);
   }
   if (tool === 'find') {
     if (args.some((a, j) => FIND_OUTPUTS.has(a) && matches(args[j + 1] ?? ''))) return true;

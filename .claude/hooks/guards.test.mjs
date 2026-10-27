@@ -1316,6 +1316,13 @@ describe('bash-rules: 確認を挟む', () => {
     'tar xfC /tmp/x.tar .githooks',
     'tar --extract -f /tmp/x.tar -C migrations',
     'tar -f /tmp/x.tar -C .claude/hooks',
+    // -f のアーカイブに書くのは、作る、足す、更新する、つなぐ、消すとき（動作を判定できないときも）
+    'tar -rf .claude/hooks/x y',
+    'tar -uf .claude/hooks/x y',
+    'tar -Af .claude/hooks/x /tmp/y.tar',
+    'tar --delete -f .claude/hooks/x y',
+    'tar --append --file=.githooks/x y',
+    'tar -f .claude/hooks/x y',
     // g を外して引く道具
     'gtar -cf .claude/hooks/x /dev/null',
     'gfind . -fprint .claude/hooks/x',
@@ -2144,6 +2151,12 @@ describe('bash-rules: 通す', () => {
     // 作るときの -C は読む元
     'tar -cf /tmp/x.tar -C .claude/hooks .',
     'tar --create --file=/tmp/x.tar --directory=.githooks .',
+    // 一覧と展開では、-f のアーカイブは読む元
+    'tar -tf .claude/hooks/x.tar',
+    'tar -xf .claude/hooks/x.tar -C /tmp',
+    'tar --list --file=.claude/hooks/x.tar',
+    'tar xf .githooks/x.tar -C /tmp',
+    'tar -df migrations/x.tar',
     // 本文に守る名前も wrangler も無い、連結した値と足したフラグ
     `perl -e'print 1'`,
     `php -r'echo 1;'`,
