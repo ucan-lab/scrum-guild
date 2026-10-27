@@ -333,9 +333,16 @@ rollback で戻るのは、版が持つものすべて。コードと設定の�
 
 ### 解約した組織のデータを消す
 
-解約で停止し、消す予定日を過ぎた組織の D1 の行を、すべて消す。消すのは、組織の中のすべての表の、その組織の行と、最後に `organizations` の行。アカウント（`accounts`、`account_logins`）は、ほかの組織でも使うので消さない。セッションは停止したときに消えている。手順は人が手元（上の「手元の準備」）で実行する。Claude のセッションと自動のデプロイは `--remote` の `wrangler d1` を実行しない。
+解約で停止し、消す予定日を過ぎた組織の D1 の行を、すべて消す。消すのは、組織の中のすべての表の、その組織の行と、最後に `organizations` の行。手順は人が手元（上の「手元の準備」）で実行する。Claude のセッションと自動のデプロイは `--remote` の `wrangler d1` を実行しない。
 
-消した行は戻せない。Time Travel（上の「DB を戻す」。直近30日まで）は DB の全体を戻し、その後に書かれたほかの組織のデータも失うので、この組織だけを戻す手段にはならない。
+消さないもの。
+
+- アカウント（`accounts`、`account_logins`）。ほかの組織でも使うので残る。どの組織にも入れなくなったアカウントをどうするかは #407 で決める
+- セッション（`sessions`）。セッションはアカウントに結ぶので、組織を消しても消さない。入れる組織を失った人のセッションは、その人の次のリクエストか期限切れで消える
+
+消した行は戻せない。Time Travel（上の「DB を戻す」。直近30日まで）は DB の全体を戻し、その後に書かれたほかの組織のデータも失うので、この組織だけを戻す手段にはならない。一方で、消した後も最大30日は、Time Travel に消す前の状態が残る。この組織のデータが D1 から跡形もなく無くなるのは、消してから30日後。
+
+消し始めたら、終えるまでその組織を再開しない。運用者が複数いるなら、消し始める前に声を掛ける。消している間に再開されると、一部の行が消えた組織が動き出す（再開を仕組みで断るのは #408）。
 
 1. 運用の画面（`/operator`）の組織の一覧で、その組織の名前の横に「停止 <日>」と「<日> に消す」が出ていて、消す日が今日（UTC）より前であることを確かめる。「<日> に消す」が無い組織（一時的な停止）と、消す日が今日か先の組織は消さない。名前の列の slug を控える
 2. 組織の ID を確かめる。運用の画面には ID が出ないので、控えた slug で引く。`suspended_at` と `purge_on` が空でなく、`purge_on` が今日（UTC）より前であることも見る
@@ -344,30 +351,51 @@ rollback で戻るのは、版が持つものすべて。コードと設定の�
    pnpm exec wrangler d1 execute scrum-guild --remote --command "SELECT id, slug, name, suspended_at, purge_on FROM organizations WHERE slug = '<slug>'"
    ```
 
-3. 消す SQL を書き出す。スクリプトは DB に触らず、組織の ID を埋めた `DELETE` を標準出力に書くだけ。ID は小文字の UUID の形だけを受ける
+3. 消す SQL を、リポジトリの外（`/tmp`）へ書き出す。スクリプトは DB に触らず、組織の ID を埋めた `DELETE` を1行に1文で書くだけ（コメントの行は無い）。ID は小文字の UUID の形だけを受ける。以降の段は、同じシェルで `id` を使う
 
    ```bash
-   node scripts/purge-organization.ts <組織の ID> > purge.sql
+   id=<組織の ID>
+   node scripts/purge-organization.ts "$id" > "/tmp/purge-$id.sql"
    ```
 
    書き出した SQL は、外部キーの子から順に表ごとの `DELETE` を並べ、最後に `organizations` の行を消す。どの文にも「その組織が解約で停止していて、`purge_on` が今日（UTC）より前」の条件が付く。ID を取り違えても、一時的な停止の組織、停止していない組織、消す日が今日か先の組織、無い ID では1行も消えない。
-4. 流す
+4. 流す前の数を控える。`--count` は、組織の停止の状態（`suspended_at`、`purge_on`）と、`organizations` と消す表ごとの、その組織の行の数を返す1行の `SELECT` を書き出す。出力を手元に残し、手順 6 で比べる
 
    ```bash
-   pnpm exec wrangler d1 execute scrum-guild --remote --file purge.sql
+   pnpm exec wrangler d1 execute scrum-guild --remote --json --command "$(node scripts/purge-organization.ts --count "$id")" | tee "/tmp/purge-$id.before.json"
    ```
 
-5. 残っていないことを数える。どれも 0 なら消えている。ワークスペースの中の表（タスクなど）は外部キーで `workspaces` を指すので、`workspaces` が 0 なら残っていない
+5. 1文ずつ流す。`--file` は使わない。`--file` は取り込みの API を使い、流している間は D1 全体がクエリに答えなくなる（wrangler が「your D1 database will be unavailable to serve queries」と出す）。`--command` の1文は、ほかのクエリと並んで動く。文が誤りを返したら、そこで止まる
 
    ```bash
-   pnpm exec wrangler d1 execute scrum-guild --remote --command "SELECT (SELECT count(*) FROM organizations WHERE id = '<組織の ID>') AS organizations, (SELECT count(*) FROM users WHERE organization_id = '<組織の ID>') AS users, (SELECT count(*) FROM workspaces WHERE organization_id = '<組織の ID>') AS workspaces, (SELECT count(*) FROM organization_holidays WHERE organization_id = '<組織の ID>') AS organization_holidays, (SELECT count(*) FROM change_logs WHERE organization_id = '<組織の ID>') AS change_logs"
+   while IFS= read -r statement <&3; do
+     echo "$statement"
+     pnpm exec wrangler d1 execute scrum-guild --remote --command "$statement" || break
+   done 3< "/tmp/purge-$id.sql"
    ```
 
-   0 でない数が残ったら、手順の 2 の値を見直す。一時的な停止、消す日が今日か先、ID の誤りなら、条件に当たって何も消えていない。予定日を過ぎた解約の組織なのに残るなら、途中で止まっているので、下の箇条書きのとおり流し直す
-6. R2 の `<組織の ID>/` で始まるファイルを消す。添付ファイル（#68）がまだ無いので、今は R2 に組織のファイルは無く、この段は飛ばす。手順（一覧と削除のコマンド、残っていないことの確かめ方）は、添付ファイルを足す #68 で書く（#68 に申し送り済み）
-7. `purge.sql` を手元から消す
+   ファイルは標準入力でなく3番で読む。標準入力で渡すと、ループの中のコマンドが標準入力を読んだときに残りの行を読んでしまい、その後の文が流れない。
+6. 残りを数え、手順 4 の数と比べる
 
-- 途中で失敗したら（通信が切れた、D1 が誤りを返した）、同じ `purge.sql` をもう一度流す。`organizations` の行を最後に消すので、条件は最後の文まで当たり続け、残った行から消える。2回流しても誤りにならない
+   ```bash
+   pnpm exec wrangler d1 execute scrum-guild --remote --json --command "$(node scripts/purge-organization.ts --count "$id")"
+   ```
+
+   表の上の行から順に当てはめる。
+
+   | 流した後 | 起きたこと | すること |
+   | --- | --- | --- |
+   | `organizations` が 1 で、`suspended_at` か `purge_on` が空 | 消している間に再開された。一部の行が消えた組織が動いている | 流し直さない（条件に当たって何も消えない）。どうするか（もう一度解約で停止し、予定日の後に消し直すなど）は、その組織の管理者と話して人が決める |
+   | 全部 0（`suspended_at` と `purge_on` は空） | 消し終えた | 手順 7 へ進む |
+   | `organizations` が 1 で、ほかのどれかが手順 4 の数より減っている | 途中で止まった | 手順 5 を同じ順でもう一度流す |
+   | 全部が手順 4 の数のまま | 条件に当たって、何も消えていない | 手順 2 の値を見直す（一時的な停止、消す日が今日か先、ID の誤り）。手順 5 が最初の文で誤りを返して止まったときもこの形になるので、そのときは誤りを見て流し直す |
+
+7. R2 の `<組織の ID>/` で始まるファイルを消す。添付ファイル（#68）がまだ無いので、今は R2 に組織のファイルは無く、この段は飛ばす。手順（一覧と削除のコマンド、残っていないことの確かめ方）は、添付ファイルを足す #68 で書く（#68 に申し送り済み）
+8. 消したことを #220 にコメントで残す。書くのは、消した日（UTC）と組織の ID。このリポジトリは公開なので、slug と組織の名前（顧客を表しうる）と、実在の個人名は書かない
+9. 書き出したファイル（`/tmp/purge-$id.sql`、`/tmp/purge-$id.before.json`）を消す
+
+- 途中で止まったら（通信が切れた、D1 が誤りを返した）、手順 5 を同じファイルでもう一度流す。どの文にも条件が付き、`organizations` の行を最後に消すので、条件は最後の文まで当たり続け、残った行から消える。消し終えた後にもう一度流しても誤りにならない
+- 1文は D1 の1クエリとして動き、1クエリの時間の上限（30秒）を超えると、その文は何も消さずに誤りを返す。組織の中の表の索引（#406 で足す）が揃うまでは、大きな組織では1文に時間がかかり、上限に当たりうる。同じ文で繰り返し止まるなら、流し直しを続けず、#406 を待つ
 - 組織の中の表を足したときは、消す文も足す（`docs/development.md` の「入口を守る規則」の、表を足すときの箇条書き。足し忘れると `test/purge-organization.test.ts` が落ちる）
 
 ## 鍵の入れ替え
