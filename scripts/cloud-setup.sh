@@ -155,10 +155,11 @@ if [ -n "$repo" ] && cd "$repo"; then
   rm -rf node_modules
 fi
 
-# セッションの Bash と同じく、初期化ファイルを読んだシェルで選ばれる版を確かめる
-got=$(bash -ic 'node --version' 2>/dev/null | tail -n 1)
+# セッションの Bash は初期化ファイルを読まず、session-start.sh が CLAUDE_ENV_FILE で /opt/node<主版>/bin を選ばせる。
+# そこに置いた node の版を確かめる
+got=$("${node_dir}/bin/node" --version 2>/dev/null)
 if [[ "$got" != "v${node_major}."* ]]; then
-  warn "初期化ファイルを読んだシェルの node が ${got:-不明} で、${node_major} と合わない"
+  warn "${node_dir}/bin/node が ${got:-動かない} で、${node_major} と合わない"
 fi
 
 info "完了"

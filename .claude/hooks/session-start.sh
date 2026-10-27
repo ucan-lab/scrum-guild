@@ -12,7 +12,14 @@ cd "${CLAUDE_PROJECT_DIR:-.}" || exit 0
 # セッションの Bash は初期化ファイルを読まないので、Claude Code が各コマンドの前に読む CLAUDE_ENV_FILE に書く。
 # このフック自身は VM の既定の Node で動かす（docs/development.md の「クラウド環境」）
 node_major=$(sed -nE '1s/^v?([0-9]+)(\..*)?[[:space:]]*$/\1/p' .node-version 2>/dev/null)
-if [ -n "$node_major" ] && [ -x "/opt/node${node_major}/bin/node" ] && [ -n "${CLAUDE_ENV_FILE:-}" ]; then
+if [ -z "$node_major" ]; then
+  echo "Node を選ばせていません: .node-version から主版を読めませんでした"
+elif [ ! -x "/opt/node${node_major}/bin/node" ]; then
+  # .node-version を上げた後に、環境のセットアップスクリプトが走り直していないとき
+  echo "Node ${node_major} を選ばせていません: /opt/node${node_major} がありません。環境のセットアップスクリプトを貼り直してください"
+elif [ -z "${CLAUDE_ENV_FILE:-}" ]; then
+  echo "Node ${node_major} を選ばせていません: CLAUDE_ENV_FILE が渡されていません"
+else
   line="export PATH=\"/opt/node${node_major}/bin:\$PATH\""
   # 再開でも走るので、同じ行を重ねない
   if ! grep -qxF "$line" "$CLAUDE_ENV_FILE" 2>/dev/null && ! echo "$line" 2>/dev/null >>"$CLAUDE_ENV_FILE"; then
