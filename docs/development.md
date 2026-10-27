@@ -11,7 +11,7 @@
 | 項目 | 決定 | 理由 |
 | --- | --- | --- |
 | パッケージマネージャー | pnpm。`package.json` の `packageManager` で版を固定する | 速く、依存が厳密 |
-| Node | 26。`.node-version` で固定する。`package.json` の `engines` は、`scripts/` の `.ts` を型の除去で直に動かせる下限の 22.18 にし、`engine-strict` は使わない（クラウドのセッションの Node は `.node-version` を読まず、セットアップスクリプトが 26 を入れられなかったときは VM の既定の 22 で動くため。「クラウド環境」）。Node 25 からは corepack が同梱されないので、pnpm は `packageManager` の版を corepack に頼らずに入れる | 長く使える LTS |
+| Node | 26。`.node-version` で固定する。`package.json` の `engines` は、`scripts/` の `.ts` を型の除去で直に動かせる下限の 22.18 にし、`engine-strict` は使わない（クラウドのセッションの Node は `.node-version` を読まず、フックと、セットアップスクリプトが 26 を入れられなかったときのセッションは、VM の既定の 22 で動くため。下の「クラウド環境」）。Node 25 からは corepack が同梱されないので、pnpm は `packageManager` の版を corepack に頼らずに入れる | 長く使える LTS |
 | リポジトリの形 | 1つのパッケージ。`src/server`（Hono の API と定期処理）、`src/shared`（操作の定義、スキーマ、言葉の辞書）、SvelteKit の既定の場所（`src/routes`、`src/lib`、`src/app.html`）に分ける。SvelteKit の設定は `vite.config.ts` の `sveltekit()` に書く（SvelteKit 3 は `svelte.config.js` を読まない） | Worker が1つなので、ワークスペースに分ける設定の手間に見合わない。画面を別の場所に移す `kit.files` は非推奨 |
 | lint と整形 | ESLint と Prettier（`eslint-plugin-svelte`、`prettier-plugin-svelte`） | Svelte のテンプレートの中まで見られる。下の「入口を守る規則」を自前で書ける |
 | 画面 | SvelteKit の SPA モード。SSR を切り、静的に書き出す。API は Hono のまま | 組織、ワークスペース、画面の入れ子をレイアウトで表せる。画面と API の版のずれを `version.pollInterval` と `updated` で検知できる。AI が書き慣れている |
@@ -325,18 +325,24 @@ Bash の判定を `permissions.deny` に置かないのは、規則が前方一�
 
 ### クラウド環境
 
-クラウドのセッションは、claude.ai/code のクラウド環境 `scrum-guild` で動く。VM は Ubuntu 24.04 で、Node は 22 が既定。環境のセットアップスクリプトは、初めてのセッションで Claude Code の起動より前に root で走り、約5分以内に終わればファイルシステムのスナップショットとして約7日使い回される。そこで、VM の用意はセットアップスクリプトに、依存の導入は毎回走る `session-start.sh` に分ける。
+クラウドのセッションの場は、claude.ai/code のクラウド環境 `scrum-guild`（Ubuntu 24.04 の VM、既定の Node は 22）。環境のセットアップスクリプトは、初めてのセッションで Claude Code の起動より前に root で走り、約5分以内に終われば、クラウドがファイルシステムのスナップショットを約7日使い回す。そのため、VM の用意はセットアップスクリプト、依存の導入は毎回走る `session-start.sh` の受け持ちとする。
 
 | 仕組み | 中身 |
 | --- | --- |
-| セットアップスクリプト（`scripts/cloud-setup.sh`） | `.node-version` の版の Node を nodejs.org から入れ（チェックサムを確かめ、`/usr/local/bin` に置く）、`packageManager` の版の pnpm を `npm install -g` で入れ、`pnpm install --frozen-lockfile` で pnpm のストアを温め、`playwright install --with-deps chromium` で chromium と動かすのに要るライブラリを入れる。終了コードが 0 以外だとセッションが始まらないので、どの段の失敗も警告にとどめる。記録は `/tmp/cloud-setup-pnpm.log` と `/tmp/cloud-setup-playwright.log` |
-| `session-start.sh` | 上の表のとおり。ストアが温まっているので、取得は差分だけになる |
+| セットアップスクリプト（`scripts/cloud-setup.sh`） | Node を nodejs.org から `/opt/node<主版>` に入れる（`.node-version` が主版だけならその最新、`x.y.z` ならその版。足りなければ `libatomic1` を apt で足す）。`/etc/profile.d` と `/root/.bashrc` の先頭で PATH の前に置き、初期化ファイルを読むシェル（セッションの Bash）で選ばれるようにする。`packageManager` の版の pnpm を `npm install -g` で入れ、`pnpm install --frozen-lockfile --ignore-scripts` で pnpm のストアを温め、`playwright install chromium` と `playwright install-deps chromium` で chromium と動かすのに要るライブラリを入れる。リポジトリが見つからなければ Node と pnpm だけを入れる |
+| `session-start.sh` | 「Claude の設定とフック」の表のとおり。ストアが温まっているので、取得は差分だけになる。フックは初期化ファイルを読まないので、VM の既定の Node 22 で動く（`engines` の下限より新しい） |
+
+スクリプトは、終了コードが 0 以外だとセッションが始まらないので、どの段の失敗も警告にとどめて 0 で終える。約5分を超えるとスナップショットが作られないので、通信と各段に上限を付ける。スナップショットを作るときの clone のブランチの中身を root で動かして後のセッションに残さないよう、依存のスクリプトは動かさない。
+
+受け入れている危険: Node は同じ配布元の `SHASUMS256.txt` と照らすだけで、署名は確かめない（防げるのは取得の破損まで）。pnpm と chromium も、npm のレジストリと Playwright の配布元の HTTPS だけを信じて入れる。クラウドのセッションには本番の資格情報を置かないので、差し替えられても本番には届かない。
 
 クラウド環境の設定:
 
-- セットアップスクリプト: `scripts/cloud-setup.sh` の中身を貼る。走る時点の clone の置き場所が決まっていないので、リポジトリのファイルを呼ばずに中身を持たせる。スクリプトを直したら貼り直す（貼り直すとスナップショットが作り直される）
-- ネットワークアクセス: 「カスタム」にし、既定のパッケージマネージャーのドメイン（npm、nodejs.org を含む）に、Playwright のブラウザの配布元 `cdn.playwright.dev` と `playwright.download.prss.microsoft.com` を足す
+- セットアップスクリプト: `scripts/cloud-setup.sh` の中身を貼る。走る時点の clone の置き場所が決まっていないので、リポジトリのファイルを呼ばずに中身を持たせる。スクリプトを直したら貼り直す。貼り直すとスナップショットが作り直されるので、取得の一時的な失敗を残したスナップショットも、貼り直して作り直す
+- ネットワークアクセス: 「カスタム」にし、既定のパッケージマネージャーのドメイン（npm、nodejs.org、Ubuntu の apt を含む）に、Playwright のブラウザの配布元 `cdn.playwright.dev` と `playwright.download.prss.microsoft.com` を足す
 - 環境変数とネットワークシークレット: 置かない（上の「Cloudflare の API トークンを置かない」）
+
+設定を変えたら、新しいセッションで `node --version`（`.node-version` の主版）、`pnpm --version`（`packageManager` の版）、`ls ~/.cache/ms-playwright` を確かめる。合わなければ、セットアップの出力の `[cloud-setup] 警告:` の行に理由が出ている。
 
 ## リポジトリのスキル
 
