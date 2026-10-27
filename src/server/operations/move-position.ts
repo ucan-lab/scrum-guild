@@ -1,4 +1,4 @@
-// 手で並べ替える並び（position）で、移す行の新しい位置を決める。タスクの移動とストーリーの移動が使う。
+// 手で並べ替える並び（position）で、移す行の新しい位置を決める。タスク、ストーリー、エピックの移動が使う。
 // 並びは position、id の順（同じ値の行は id の順）。読み取りは各操作が、移す先の中から移す行を除いて行う
 import { generateKeyBetween, generateNKeysBetween } from 'fractional-indexing';
 import type { MoveConflictReason } from '../../shared/operations/task/task-move.ts';

@@ -390,10 +390,10 @@ export const dictionary = defineDictionary({
   treeClose: workspace('{title}を閉じる', '{title}を閉じる'),
 
   // バックログの並べ替えと親の移動。{title} は動かす行の題
-  // {story} {task} は、その言葉づかいの言葉を画面が渡す。エピックの並べ替えは #308 で足す
+  // {epic} {story} {task} は、その言葉づかいの言葉を画面が渡す
   backlogOrderNote: workspace(
-    '上にあるものほど優先します。{story}と{task}は、行の「上へ」「下へ」か、行の中にフォーカスを置いて Alt と ↑ ↓ で並べ替えます。',
-    '上にあるものほど優先します。{story}と{task}は、行の「上へ」「下へ」か、行の中にフォーカスを置いて Alt と ↑ ↓ で並べ替えます。',
+    '上にあるものほど優先します。{epic}、{story}、{task}は、行の「上へ」「下へ」か、行の中にフォーカスを置いて Alt と ↑ ↓ で並べ替えます。',
+    '上にあるものほど優先します。{epic}、{story}、{task}は、行の「上へ」「下へ」か、行の中にフォーカスを置いて Alt と ↑ ↓ で並べ替えます。',
   ),
   // つまみのドラッグに触れる文。つまみを出さない狭い幅と指の画面では、この文も隠す（.drag-note）
   backlogDragNote: workspace(

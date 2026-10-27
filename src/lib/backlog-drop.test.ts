@@ -9,9 +9,11 @@ import {
   type DropRow,
 } from './backlog-drop.ts';
 
-// e1 は開いたエピック、e2 は完了か中止したエピック。s5 は完了したストーリー。t8 は画面で完了にして、行が残っているタスク
+// e1 は開いたエピック、e2 は完了か中止したエピック、e3 は開いたエピック（配下なし）。s5 は完了したストーリー。
+// t8 は画面で完了にして、行が残っているタスク
 const index = indexTree({
-  openEpics: ['e1'],
+  epics: ['e1', 'e2', 'e3'],
+  openEpics: ['e1', 'e3'],
   storyLists: {
     e1: [
       { id: 's1', open: true },
@@ -37,6 +39,7 @@ const index = indexTree({
 
 const task = (id: string): DragItem => ({ kind: 'task', id });
 const story = (id: string): DragItem => ({ kind: 'story', id });
+const epic = (id: string): DragItem => ({ kind: 'epic', id });
 const taskRow = (id: string): DropRow => ({ kind: 'task', id });
 const storyRow = (id: string): DropRow => ({ kind: 'story', id });
 const epicRow = (id: string): DropRow => ({ kind: 'epic', id });
@@ -291,9 +294,76 @@ describe('resolveDrop（ストーリー）', () => {
   });
 });
 
+describe('availableOperations（エピックを運ぶとき）', () => {
+  test('エピックの行の前後にだけ落とせる。完了か中止したエピックの前後にも落とせ、囲みは出さない', () => {
+    expect(availableOperations(index, epic('e1'), epicRow('e3'))).toEqual(only('before', 'after'));
+    expect(availableOperations(index, epic('e1'), epicRow('e2'))).toEqual(only('before', 'after'));
+    // 完了か中止したエピックも運べる
+    expect(availableOperations(index, epic('e2'), epicRow('e1'))).toEqual(only('before', 'after'));
+  });
+
+  test('ストーリー、タスク、折りたたみと空の案内の行、親なしの段の落とし先には何も示さない', () => {
+    expect(availableOperations(index, epic('e1'), storyRow('s4'))).toEqual(only());
+    expect(availableOperations(index, epic('e1'), storyRow('s3'))).toEqual(only());
+    expect(availableOperations(index, epic('e1'), taskRow('t7'))).toEqual(only());
+    expect(availableOperations(index, epic('e1'), tail('epic', 'e3'))).toEqual(only());
+    expect(availableOperations(index, epic('e1'), tail('story', 's2'))).toEqual(only());
+    expect(availableOperations(index, epic('e1'), tail('root'))).toEqual(only());
+    expect(availableOperations(index, epic('e1'), { kind: 'slot', parent: 'story-root' })).toEqual(only());
+    expect(availableOperations(index, epic('e1'), { kind: 'slot', parent: 'task-root' })).toEqual(only());
+  });
+
+  test('エピックの行の囲み（into）は、ストーリーを運ぶときだけ', () => {
+    expect(availableOperations(index, story('s4'), epicRow('e1')).into).toBe(true);
+    expect(availableOperations(index, epic('e3'), epicRow('e1')).into).toBe(false);
+  });
+});
+
+describe('resolveDrop（エピック）', () => {
+  test('エピックの行の後ろに落とすと、その行を直前にする。親は無い（null）', () => {
+    const drop = resolveDrop(index, epic('e1'), epicRow('e2'), 'after');
+    expect(drop?.move).toEqual({
+      kind: 'epic',
+      id: 'e1',
+      parentId: null,
+      afterId: 'e2',
+      index: 1,
+      atEnd: false,
+      reparent: false,
+    });
+    expect(drop?.mark).toEqual({ row: epicRow('e2'), operation: 'after' });
+  });
+
+  test('先頭の行の前は直前の行が null（先頭）。完了か中止したエピックを動かせる', () => {
+    expect(resolveDrop(index, epic('e2'), epicRow('e1'), 'before')?.move).toMatchObject({
+      kind: 'epic',
+      afterId: null,
+      index: 0,
+    });
+  });
+
+  test('末尾の行の後ろは、その行を直前に渡す（after_epic_id を省かない）', () => {
+    expect(resolveDrop(index, epic('e1'), epicRow('e3'), 'after')?.move).toMatchObject({
+      afterId: 'e3',
+      index: 2,
+      atEnd: false,
+    });
+  });
+
+  test('元と同じ位置と、囲み（into）と、エピック以外の行は null', () => {
+    expect(resolveDrop(index, epic('e1'), epicRow('e1'), 'after')).toBeNull();
+    expect(resolveDrop(index, epic('e1'), epicRow('e2'), 'before')).toBeNull();
+    expect(resolveDrop(index, epic('e2'), epicRow('e1'), 'after')).toBeNull();
+    expect(resolveDrop(index, epic('e1'), epicRow('e3'), 'into')).toBeNull();
+    expect(resolveDrop(index, epic('e1'), storyRow('s4'), 'before')).toBeNull();
+    expect(resolveDrop(index, epic('e1'), tail('epic', 'e3'), 'after')).toBeNull();
+  });
+});
+
 describe('resolveDrop（親なしの段が空のときの落とし先）', () => {
   // ストーリーの下にだけタスクがあり、親なしのタスクも親のないストーリーも無い木
   const sparse = indexTree({
+    epics: ['e1'],
     openEpics: ['e1'],
     storyLists: { e1: [{ id: 's1', open: true }] },
     taskLists: { s1: ['t1', 't2'] },

@@ -46,9 +46,12 @@ document.addEventListener("input", (ev) => {
   const filtering = [...bar.querySelectorAll("select")].some((s) => s.value !== "") || bar.querySelector("#q").value.trim() !== "";
   bar.querySelector("#f-clear").hidden = !filtering;
   document.getElementById("order-note").innerHTML = filtering ? SQ.esc(t("backlogFilterOrderNote"))
-    : `上にあるものほど優先します。${t("story")}と${t("task")}は、行の「上へ」「下へ」か、行の中にフォーカスを置いて Alt と ↑ ↓ で並べ替えます。<span class="drag-note">行の先頭のつまみをドラッグしても並べ替えられます。</span>`;
+    : `上にあるものほど優先します。${t("epic")}、${t("story")}、${t("task")}は、行の「上へ」「下へ」か、行の中にフォーカスを置いて Alt と ↑ ↓ で並べ替えます。<span class="drag-note">行の先頭のつまみをドラッグしても並べ替えられます。</span>`;
   document.getElementById("totals-note").hidden = !filtering;
-  document.querySelectorAll(".order-actions .icon-btn:not(:last-child)").forEach((b) => (b.hidden = filtering));
+  // 「上へ」「下へ」を隠す（エピックの行は「親を移す」を持たないので、どちらも隠れる）
+  document.querySelectorAll('.order-actions .icon-btn:not([data-order="swap"])').forEach((b) => (b.hidden = filtering));
+  // 中身が全部隠れた .order-actions は、本番と同じく枠ごと隠す（.tree-end の gap を余計に空けない）
+  document.querySelectorAll(".order-actions").forEach((s) => (s.hidden = filtering && [...s.children].every((b) => b.hidden)));
   // つまみも隠す（ドラッグも隣を使う並べ替えなので、絞っている間は止める）
   document.querySelectorAll(".grip").forEach((g) => {
     g.hidden = filtering;
@@ -91,11 +94,11 @@ SQ.mount("backlog", () => {
     ${D.definitionOfDone.length ? `<details class="dod"><summary>${t("dod")}</summary><div class="doc-box"><ul>${D.definitionOfDone.map((d) => `<li>${SQ.esc(d)}</li>`).join("")}</ul></div></details>` : ""}
     <section class="section" aria-label="${t("backlog")}の${t("task")}">
     ${filterBar(open)}
-    <p class="action-note" id="order-note">上にあるものほど優先します。${t("story")}と${t("task")}は、行の「上へ」「下へ」か、行の中にフォーカスを置いて Alt と ↑ ↓ で並べ替えます。<span class="drag-note">行の先頭のつまみをドラッグしても並べ替えられます。</span></p>
+    <p class="action-note" id="order-note">上にあるものほど優先します。${t("epic")}、${t("story")}、${t("task")}は、行の「上へ」「下へ」か、行の中にフォーカスを置いて Alt と ↑ ↓ で並べ替えます。<span class="drag-note">行の先頭のつまみをドラッグしても並べ替えられます。</span></p>
     <p class="action-note" id="totals-note" hidden>${t("filterTotalsNote").replace("{points}", t("points"))}</p>
     <div class="tree">
-      ${treeEpic("e1", { order: true })}
-      ${treeEpic("e2", { order: true })}
+      ${treeEpic("e1", { order: { first: true } })}
+      ${treeEpic("e2", { order: { last: true } })}
       ${treeStory("s4", true, { order: { first: true, last: true, parent: true } })}
       <div>${rootTasks.map((x, i) => entry(x, { showAssignee: true, order: { first: i === 0, last: i === rootTasks.length - 1, parent: true } })).join("")}
         ${rootDone ? `<p class="tree-folded is-root">親のない完了 ${rootDone} 件を折りたたんでいます</p>` : ""}</div>

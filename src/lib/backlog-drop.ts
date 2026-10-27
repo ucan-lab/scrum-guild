@@ -1,7 +1,10 @@
-// バックログの木のドラッグの判定。つかんだ行（タスクかストーリー）と、重ねた行から、落とせる操作と、落とした結果
-// （示す印と、task-move / story-move の入力）を決める。DOM と描画には触れない。
+// バックログの木のドラッグの判定。つかんだ行（タスク、ストーリー、エピック）と、重ねた行から、落とせる操作と、落とした結果
+// （示す印と、task-move / story-move / epic-move の入力）を決める。DOM と描画には触れない。
 //
 // 決まり:
+// - エピックは親を持たず、エピックの段（画面に出ているエピックの全部。完了と中止したエピックも含む）の中で並べ替える。
+//   エピックを運ぶときは、エピックの行の前後（before / after）にだけ落とせ、ストーリー、タスク、tail、slot の行には何も示さない。
+//   エピックの行の真ん中（into）は、ストーリーを運ぶときだけの囲み
 // - タスクの親は、完了していないストーリーか親なし。ストーリーの親は、完了も中止もしていないエピックか親なし。
 //   タスクをエピックの直下へ、ストーリーをストーリーの下へは落とせない（何も示さない）。
 //   サーバーが断るのは親が変わるときだけなので、今の親の中での並べ替えは、親が完了か中止していても落とせる（ボタンと同じ）
@@ -16,7 +19,7 @@ import { insertAround, insertAtEnd, type Insertion } from './list-drop.ts';
 // 親なしのタスクと、親のないストーリーの並びのキー。ストーリーとエピックの ID とぶつからない
 export const ROOT = '';
 
-export type DragItem = { kind: 'task' | 'story'; id: string };
+export type DragItem = { kind: 'task' | 'story' | 'epic'; id: string };
 
 // 重ねる行。tail は折りたたみの行と空の案内の行で、parent はそれが並ぶ先の親の種類（root は親なしのタスクの折りたたみの行）。
 // slot は、親なしの段が空のときだけ出す落とし先（task-root は親なしのタスク、story-root は親のないストーリー）
@@ -29,6 +32,8 @@ export type Operation = 'before' | 'after' | 'into';
 
 // 木の今の並び（画面で動かした並びを含む）。キーは親の ID か ROOT
 export type TreeModel = {
+  // 画面に出ているエピックの全部の ID（完了と中止したものも含む）。並びの順
+  epics: readonly string[];
   // 完了も中止もしていないエピックの ID
   openEpics: readonly string[];
   // 親ごとのストーリー。open は完了していないこと
@@ -90,6 +95,7 @@ const INTO: OperationSet = { before: false, after: false, into: true };
 // 重ねた行に落とせる操作（位置が今と同じになるかは見ない。それは resolveDrop が決める）。
 // 行き先の親が今の親と同じなら、親の状態（完了、中止）は見ない
 export function availableOperations(index: TreeIndex, item: DragItem, row: DropRow): OperationSet {
+  if (item.kind === 'epic') return row.kind === 'epic' ? AROUND : NONE;
   if (item.kind === 'task') {
     if (index.completedTask.has(item.id)) return NONE;
     const current = index.taskParent.get(item.id);
@@ -131,11 +137,11 @@ export function availableOperations(index: TreeIndex, item: DragItem, row: DropR
 
 export type DropMark = { row: DropRow; operation: Operation };
 
-// task-move / story-move の入力のうち、行き先に当たるもの。afterId が undefined のときは after_*_id を省く（末尾）
+// task-move / story-move / epic-move の入力のうち、行き先に当たるもの。afterId が undefined のときは after_*_id を省く（末尾）
 export type DropMove = {
-  kind: 'task' | 'story';
+  kind: DragItem['kind'];
   id: string;
-  // 移す先の親のストーリー（タスク）かエピック（ストーリー）。null は親なし
+  // 移す先の親のストーリー（タスク）かエピック（ストーリー）。null は親なし（エピックは常に null）
   parentId: string | null;
   afterId: string | null | undefined;
   // 動かした後の、移す先の中での位置（0 始まり）
@@ -152,7 +158,8 @@ export function resolveDrop(index: TreeIndex, item: DragItem, row: DropRow, oper
   if (!availableOperations(index, item, row)[operation]) return null;
   const target = destination(index, item, row, operation);
   if (target === null) return null;
-  const current = (item.kind === 'task' ? index.taskParent : index.storyParent).get(item.id);
+  const current =
+    item.kind === 'epic' ? ROOT : (item.kind === 'task' ? index.taskParent : index.storyParent).get(item.id);
   const { parent, insertion } = target;
   return {
     mark: { row, operation },
@@ -174,6 +181,12 @@ function destination(
   row: DropRow,
   operation: Operation,
 ): { parent: string; insertion: Insertion } | null {
+  // エピックは、エピックの段の行の前後だけ（availableOperations が決めている）
+  if (item.kind === 'epic') {
+    if (row.kind !== 'epic' || operation === 'into') return null;
+    const insertion = insertAround(index.model.epics, item.id, row.id, operation);
+    return insertion === null ? null : { parent: ROOT, insertion };
+  }
   const lists = item.kind === 'task' ? index.model.taskLists : index.storyIds;
   const parentOf = item.kind === 'task' ? index.taskParent : index.storyParent;
   // 行の前後（operation が before / after で、行が同じ種類の行）

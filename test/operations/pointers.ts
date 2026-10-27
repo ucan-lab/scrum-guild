@@ -377,6 +377,11 @@ export const pointers: Pointers = {
   'experience-summary': { noReference: {} },
   'experience-grants': { noReference: {} },
   'experience-team-total': async (target) => ({ workspace_id: target.workspace.id }),
+  'epic-move': async (target) => ({
+    workspace_id: target.workspace.id,
+    epic_id: (await createEpic(target.organization, target.workspace.id, target.admin.userId!)).id,
+    after_epic_id: null,
+  }),
 };
 
 // 区分とリポジトリの名前を、呼ぶたびに変える
