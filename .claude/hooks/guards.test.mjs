@@ -1917,6 +1917,8 @@ describe('bash-rules: 通す', () => {
     'pnpm test scripts/db-seed.ts',
     'pnpm test --reporter dot',
     'npm test -- scripts/dev.test.ts',
+    // 消すのは最初の -- だけ。2つ目の -- の後ろは、本体でも位置引数として渡る
+    'npm run r2:get -- --local -- --no-local',
     // package.json に無い名前は、展開があっても確認を挟まない
     'pnpm nosuch $X',
     // 足す語は引用符で包むので、引数の中の区切りは別のコマンドにならない
