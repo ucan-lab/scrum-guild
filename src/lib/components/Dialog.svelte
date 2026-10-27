@@ -1,5 +1,6 @@
 <script lang="ts">
   import { untrack, type Snippet } from 'svelte';
+  import { focusPageHeading } from '../focus-heading.ts';
   import { modalState } from '../toast.svelte.ts';
   import { t } from '../vocabulary.svelte.ts';
   import Icon from './Icon.svelte';
@@ -7,6 +8,7 @@
 
   // kit.js の openDialog / closeDialog。ブラウザの <dialog> の showModal() で開くので、
   // フォーカスの閉じ込めと Esc での閉じは任せる。閉じたら、開いたときにフォーカスのあった要素へ戻す。
+  // その要素へ戻せなければ（開いている間に行が作り直された、消えた、押せなくなった）、画面の見出しへ移す。
   // 開閉は open で持つ。footer の snippet には閉じる関数が渡る。
   // Safari と Firefox はクリックしたボタンにフォーカスを移さない（activeElement が body になる）ので、
   // 開く操作を起こした要素は show(trigger) で渡すと確実に戻せる
@@ -91,8 +93,21 @@
       return;
     }
     open = false;
-    opener?.focus();
+    const target = opener;
     opener = null;
+    // 開いた要素が無い（開いた時点でフォーカスが body にあった）、文書から外れた、
+    // 文書にあっても押せなくなった（disabled、隠れた）ときは戻せない
+    target?.focus();
+    if (target === null || document.activeElement !== target) {
+      if (focusLost()) focusPageHeading();
+    }
+  }
+
+  // フォーカスの行き先が無い（body に落ちた、閉じたダイアログの中に残っている）か。
+  // 呼び出し側が先に別の要素（作り直した行のボタンなど）へ移していれば、それを保つ
+  function focusLost(): boolean {
+    const active = document.activeElement;
+    return active === null || active === document.body || dialog.contains(active);
   }
 </script>
 

@@ -9,6 +9,7 @@
   import LoadFailed from '../../../../../lib/components/LoadFailed.svelte';
   import PageHead from '../../../../../lib/components/PageHead.svelte';
   import SprintDialog from '../../../../../lib/components/SprintDialog.svelte';
+  import { focusPageHeading } from '../../../../../lib/focus-heading.ts';
   import { formatMonthDay } from '../../../../../lib/format.ts';
   import { isUnauthenticated, loginUrl } from '../../../../../lib/login-redirect.ts';
   import { showToast } from '../../../../../lib/toast.svelte.ts';
@@ -75,10 +76,6 @@
     await invalidate('app:sprints');
   }
 
-  function focusHeading(): void {
-    document.querySelector<HTMLElement>('h1.page-title')?.focus();
-  }
-
   function openCreate(event: MouseEvent): void {
     if (plan === null) return;
     sprintDialog?.show(event.currentTarget as HTMLElement, null, plan.defaults);
@@ -119,7 +116,7 @@
       deleting = false;
     }
     await tick();
-    focusHeading();
+    focusPageHeading();
   }
 </script>
 

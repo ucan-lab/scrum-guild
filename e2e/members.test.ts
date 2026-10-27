@@ -1,7 +1,7 @@
 // メンバーの画面。seed のセッション（seed/sessions.ts）の Cookie で開く。
 // あおば開発の受託開発チームは、ミナト（管理者でリーダー）とハルカ（一般）が所属し、承諾待ちの招待が1件ある（seed/data.sql）
 import { expect, test } from './fixtures.ts';
-import { createWorkspace, signIn, watchViolations } from './helpers.ts';
+import { createWorkspace, expectModalFocus, signIn, watchViolations } from './helpers.ts';
 
 const AOBA_WORKSPACE_ID = '019a0000-0000-7000-8000-000000000401';
 const HARUKA_USER_ID = '019a0000-0000-7000-8000-000000000302';
@@ -233,10 +233,14 @@ test.describe('リーダー（あおば開発のミナト）', () => {
     const rows = page.getByRole('table', { name: '所属している人の一覧' }).locator('tbody tr');
     await expect(rows).toHaveCount(2);
 
-    // やめると送らない
+    // 確かめのダイアログ（ConfirmDialog）も、開くと中にフォーカスが入り、Esc で閉じると押したボタンへ戻る。送らない
     const remove = page.getByRole('button', { name: 'ハルカを外す' });
-    await remove.click();
     const dialog = page.getByRole('dialog', { name: 'ハルカを外しますか' });
+    await expectModalFocus(page, { opener: remove, modal: dialog });
+    expect(sent).toBeNull();
+
+    // やめると送らない
+    await remove.click();
     await expect(dialog).toContainText(
       'ハルカはパーティから外れます。担当していた未完了のクエストは担当なしに戻ります。完了の記録と経験値は残ります。戻すには、もう一度招待します。',
     );
