@@ -410,13 +410,14 @@ Bash の判定を `permissions.deny` に置かないのは、規則が前方一�
 | `ui-reviewer` | 足した。画面の差分のコードを `docs/design.md` とチェックリストの `ui.md` に突き合わせ、色の役割、テーマ、言葉の切り替え、状態、アクセシビリティ、狭い幅での崩れを見る。観点を当てた後に、PR の確認を疑って画面を壊す筋書きを組み立てる。撮った画像での採点は `screen-review` が受け持つ |
 | `backlog-pick` | 足した（2026-10-26）。開いている Issue と PR から着手できるものを選び、変えるファイルが重ならないレーンに組み、セッションに貼るプロンプトを出す。前に要るものは GitHub の依存関係（blocked by）だけから読む。本文に人と決める分岐が残る Issue は `backlog-refine` で、ほかは `increment-build` で始めるプロンプトにし、選んだ理由を添える（2026-10-28、#383） |
 | `increment-build` | 足した（2026-10-26）。1つの Issue を、着手前の確かめ、`backlog-refine`、Issue への記録、ワークツリー、`ucan:implementer` への委譲を経て `done-check` に渡す。守る仕組み、認証と認可、Workers のランタイムに触れる Issue では、テストの書き手、実装の書き手、崩す書き手を分ける（2026-10-27） |
+| `sprint-review` | 足した（2026-10-28、#373）。受け入れ待ちを一覧にして確かめる場所を決め、条件を1つずつ宣言して止まり、人の「OK」でチェックボックスに印を付け（`check-criterion.py`）、すべて埋まったら閉じるかを聞く。見つけたことは最後にまとめて起票の候補にし、本番と手元に残したものと片付けを報告する |
 | `progress-chart` | 足した（2026-10-26）。人の手元の進捗の図（claude.ai の Artifact）を GitHub の状態に合わせて直す。Artifact のツールのある手元のセッションでだけ使う |
 | `add-operation` | 足した（2026-10-25）。操作の定義を1つ足す型紙。定義、処理、一覧への登録、組織の分離のテスト用の関数、権限のテスト、画面から呼ぶ口までを一続きで作る |
 | `.claude/checklists/` | `cloudflare-workers.md` と `multi-tenant.md` を足した。`database.md` を D1 向けに書き直し、`languages/typescript.md` から使わないフレームワーク（Vue、Nuxt、Express、Sequelize）の節を外し、SvelteKit の節を SPA モード向けに直した |
 
 ### 名前の付け方
 
-工程のスキルは、扱うスクラムの成果物で名前を付ける（2026-10-26 に決めた。#306）。名前から工程の順が `backlog-` → `increment-` → `done-` → `pr-` と読めるようにするため。開発の流れにスプリントは無いので、スプリントを前提にするイベントの名前（`sprint-plan`、`sprint-review` など）は使わない。振り返りはスプリントが無くても行えるので `retro` とする。スクラムが決めていない技術の作業（PR）は `pr-` のまま置く。道具や型紙のスキル（`sync-base`、`d1-migration`、`add-operation`、`ui-polish` など）は工程ではないので、この付け方に合わせない。
+工程のスキルは、扱うスクラムの成果物で名前を付ける（2026-10-26 に決めた。#306）。名前から工程の順が `backlog-` → `increment-` → `done-` → `pr-` と読めるようにするため。開発の流れにスプリントは無いので、スプリントを前提にするイベントの名前（`sprint-plan` など）は使わない。ただし、受け入れはスプリントレビューと同じく、できたインクリメントをプロダクトオーナーが確かめる場なので、人が決めて `sprint-review` とした（2026-10-28。#373）。振り返りはスプリントが無くても行えるので `retro` とする。スクラムが決めていない技術の作業（PR）は `pr-` のまま置く。道具や型紙のスキル（`sync-base`、`d1-migration`、`add-operation`、`ui-polish` など）は工程ではないので、この付け方に合わせない。
 
 | 工程 | スキル | 成果物 | 前の名前 |
 | --- | --- | --- | --- |
@@ -426,6 +427,7 @@ Bash の判定を `permissions.deny` に置かないのは、規則が前方一�
 | 実装 | `increment-build` | 項目をインクリメントにする | `issue-run` |
 | 点検 | `done-check` | 完成の定義を満たすかを確かめる | `self-review` |
 | PR 作成、指摘への対応 | `pr-create`、`pr-feedback` | スクラムの外の技術の作業 | 変えていない |
+| 受け入れ | `sprint-review` | マージしたインクリメントを、受け入れ条件で確かめて閉じる | 無し（新しく足した） |
 | 振り返り | `retro` | スキルと決まりに学びを取り入れる | 各スキルの改善の提案 |
 
 ### 新しく作るもの
@@ -449,7 +451,7 @@ Bash の判定を `permissions.deny` に置かないのは、規則が前方一�
 6. `done-check` で点検し、`pr-create` で PR を出す。点検とレビューの指摘のうちテストで拾えたはずのものは、先にその指摘で落ちるテストを足してから直す（`done-check` の手順 7、`pr-feedback` の手順 3）
 7. CI と AI レビューを待ち、指摘には `pr-feedback` で応える
 8. セッションが、Issue と PR でしたことをその場限りの Artifact の説明資料で見せ、人が判断すべきことと、マージするかを `AskUserQuestion` で聞く
-9. 下の「マージの判定」に従って、人がマージする。人の指示があれば、セッションがマージする。マージで Issue は閉じず、`accepting.yml` が `status:accepting` を付ける。人が受け入れで閉じる（上の「Issue の運用」）
+9. 下の「マージの判定」に従って、人がマージする。人の指示があれば、セッションがマージする。マージで Issue は閉じず、`accepting.yml` が `status:accepting` を付ける。人が受け入れで閉じる（上の「Issue の運用」）。受け入れは、人がまとまった時間を取り、`sprint-review` で受け入れ条件を1つずつ確かめて行う
 10. `main` から Workers Builds で自動でデプロイされる（下の「CD」）
 
 仕様を変える実装は、同じ PR で `docs/` も直す。
@@ -797,7 +799,7 @@ Issue はエピック、ストーリー、タスクの3階層にし、親子は�
 | 作業中 | `status:in-progress` | 番号付きのブランチ（`<番号>-<名前>`）のワークツリーを新しく切ったとき。`.githooks/post-checkout` が付け、`status:refining` を外す。クラウドのセッションはワークツリーを切らないので、着手したときに `gh api -X POST repos/{owner}/{repo}/issues/<番号>/labels -f 'labels[]=status:in-progress'` で付け、`status:refining` を外す |
 | レビュー中 | その Issue を指す開いた PR があること。ラベルは使わない | PR の作成 |
 | 受け入れ待ち | `status:accepting`。子を持つストーリーとエピックは、子がすべて閉じているか受け入れ待ちのとき（ラベルは付けない。子を持つ子は同じ判定を当てる） | main への PR のマージ。`.github/workflows/accepting.yml` が付け、`status:in-progress` と `status:refining`（付いていれば）を外す（2026-10-28 に決めた。#370） |
-| 済み | Issue が閉じたこと | 人が受け入れで閉じる。セッションは閉じない。マージでは閉じない |
+| 済み | Issue が閉じたこと | 人が受け入れで閉じる。マージでは閉じない。セッションは閉じない。ただし `sprint-review` で、すべての条件に印が付き、人が閉じると答えた Issue は、セッションが閉じる |
 
 - 表の上の行より下の行が勝つ。開いた PR があれば、`status:in-progress` が付いたままでもレビュー中とみなす（PR を出してもラベルは外さない）。`status:accepting` が付いていれば、開いた PR があっても受け入れ待ちとみなす（直しの PR が同じ Issue を指していても、元の Issue は受け入れを待っている）
 - 両方のラベルが付いていれば作業中とみなす。セッションが `status:refining` を付けるのは、`status:in-progress` の無い Issue だけ
