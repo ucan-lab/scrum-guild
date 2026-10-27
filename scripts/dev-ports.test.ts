@@ -1,5 +1,9 @@
 import assert from 'node:assert/strict';
-import { describe, test } from 'node:test';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { after, describe, test } from 'node:test';
 import { devPorts, devPublicOrigin } from './dev-ports.ts';
 
 const MAIN_ROOT = '/work/scrum-guild';
@@ -155,6 +159,30 @@ describe('オフセットの範囲', () => {
         }),
       /EACCES/,
     );
+  });
+});
+
+// ほかのテストは根と読み込みを差し替えるので、既定の根とディスクからの読み込みはここでだけ通す
+describe('devPorts の既定の根と読み込み', () => {
+  const base = mkdtempSync(join(tmpdir(), 'dev-ports-'));
+  after(() => rmSync(base, { recursive: true, force: true }));
+
+  test('既定の根は scripts/ の親（package.json のあるディレクトリ）', () => {
+    const repoRoot = fileURLToPath(new URL('..', import.meta.url));
+    const paths: string[] = [];
+    devPorts({}, undefined, (path) => {
+      paths.push(path);
+      return '0';
+    });
+    assert.deepEqual(paths, [join(repoRoot, '.dev-port-offset')]);
+  });
+
+  test('ディスクの .dev-port-offset を読み、無ければ名前から導く', () => {
+    const root = join(base, 'worktrees', '7-x');
+    mkdirSync(root, { recursive: true });
+    assert.equal(offsetOf(devPorts({}, root)), 7);
+    writeFileSync(join(root, '.dev-port-offset'), '0\n');
+    assert.equal(offsetOf(devPorts({}, root)), 0);
   });
 });
 
