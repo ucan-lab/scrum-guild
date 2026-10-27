@@ -69,7 +69,8 @@ async function waitQuiet(requests: Set<Request> | undefined): Promise<void> {
 // context の開いている画面を、開いた順に evidence-<n>.png に撮る。通ったテストだけを撮る（失敗の画像は Playwright が撮る）
 async function captureEvidence(context: BrowserContext, info: TestInfo): Promise<void> {
   // 落ちた、時間切れ、飛ばした（test.skip）テストでは撮らない。test.fail の印を付けて期待どおり落ちたテストも撮らない
-  if (info.status !== 'passed') return;
+  // テストの中の finally で閉じる context では、落ちた後でも status はまだ passed なので、errors も見る
+  if (info.status !== 'passed' || info.errors.length > 0) return;
   for (const page of context.pages()) {
     if (captured.has(page) || page.isClosed()) continue;
     captured.add(page);
