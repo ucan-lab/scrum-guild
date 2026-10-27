@@ -2926,6 +2926,37 @@ describe('bash-rules: パッケージマネージャーの読み取り（#341）
   }
 });
 
+describe('bash-rules: パッケージマネージャーの読み取りの実装で置いた前提（#341）', () => {
+  const packages = { '/repo': { test: 'node --test' }, '/repo/sub': { test: 'wrangler deploy' } };
+  const packageDirOf = (dir) => (dir === '/repo' || dir?.startsWith('/repo/') ? (dir.startsWith('/repo/sub') ? '/repo/sub' : '/repo') : undefined);
+  const scriptOf = (dir, name) => packages[packageDirOf(dir)]?.[name];
+  const pm = (command, cwd = '/repo') => judgeBash(command, { cwd, branchOf: () => '341-package-manager', scriptOf, packageDirOf })?.[0] ?? 'allow';
+
+  for (const [command, expected, cwd] of [
+    // pnpm 12.12 は --prefix でも package.json を探す場所を変える（--prefix sub run hello で確かめた）
+    ['pnpm --prefix sub test', 'deny'],
+    ['pnpm --prefix=sub test', 'deny'],
+    // npm_config_prefix は道具を問わず、元の場所と両方で見る
+    ['NPM_CONFIG_PREFIX=sub pnpm test', 'deny'],
+    // 場所が分からなくても、pnpm と bun の無い名前は経由先としても見る
+    [`cd ~/x && pnpm bash -c 'wrangler deploy'`, 'deny'],
+    // npm の知らない名前でも、デプロイのスクリプトらしい名前は止める
+    ['npm deploy', 'deny'],
+    // bun exec は最初の位置引数だけを文字列として動かす
+    [`bun exec echo 'wrangler deploy'`, 'allow'],
+    ['bun x node scripts/deploy-production.ts', 'deny'],
+    // yarn の Berry の dlx は今の判定のまま経由として読む
+    ['yarn dlx node scripts/deploy-production.ts', 'deny'],
+    // bun の本文を取るフラグの値は名前と読まない（場所の分からないところでも確認を挟まない）
+    ['bun -e "console.log(1)"', 'allow', '/elsewhere'],
+    // 組み込みのコマンドは、場所が分からなくても確認を挟まない
+    ['pnpm view wrangler', 'allow', '/elsewhere'],
+    ['npm view wrangler versions', 'allow', '/elsewhere'],
+  ]) {
+    test(`${command}${cwd ? `（${cwd} で）` : ''} は ${expected}`, () => assert.equal(pm(command, cwd), expected));
+  }
+});
+
 describe('file-rules', () => {
   const judge = (rel, contents = '', shippedOnMain = false) => judgeFile({ rel, contents, shippedOnMain })?.[0] ?? 'allow';
 
