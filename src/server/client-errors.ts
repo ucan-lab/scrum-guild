@@ -112,9 +112,24 @@ function maskQuoted(text: string): string {
   return result + text.slice(cursor);
 }
 
-// 引用符の中身と UUID らしい値を … に置き換えてから、先頭 200 字にする。切ってから伏せると、200字をまたぐ引用符の中身が漏れる
+// URL（`スキーム://` から）。ブラウザは解釈できなかった URL や資格情報の入った URL を、引用符で囲まずに message へ入れる。
+// 解釈できなかった URL は空白を含みうる（Firefox の `URL constructor: https://exa mple.test/?token=… is not a valid URL.`）ので、
+// 空白で区切らず、文字列の末尾までを伏せる。後ろの文言も消えるが、伏せすぎは許す（クエリ、資格情報、トークンを漏らさないことを先にする）
+const URL_TO_END = /[a-z][a-z0-9+.-]*:\/\/[\s\S]*$/i;
+// V8 の RegExp の失敗（`Invalid regular expression: /<元の文字列>/<フラグ>: <理由>`）。元の文字列は入力から来うるので、
+// 最後の `/<フラグ>: ` までを伏せる（元の文字列が / を含んでも漏らさない）。理由の無い形（切れた message）は末尾までを伏せる
+const V8_INVALID_REGEXP = /(Invalid regular expression: \/)(?:[\s\S]*(\/[dgimsuvy]*: )|[\s\S]*$)/;
+
+function maskUnquotedInputs(text: string): string {
+  return text
+    .replace(V8_INVALID_REGEXP, (_all, head: string, tail: string | undefined) => `${head}…${tail ?? ''}`)
+    .replace(URL_TO_END, '…');
+}
+
+// URL と正規表現の元の文字列、引用符で囲まれうる範囲、UUID らしい値を … に置き換えてから、先頭 200 字にする。
+// 切ってから伏せると、200字をまたぐ引用符の中身が漏れる
 export function maskClientErrorMessage(text: string): string {
-  const masked = maskQuoted(text).replace(UUID, '…');
+  const masked = maskQuoted(maskUnquotedInputs(text)).replace(UUID, '…');
   if (masked.length <= CLIENT_ERROR_LOGGED_MESSAGE_LENGTH) return masked;
   // サロゲートペアの片方だけを残さない
   const end = CLIENT_ERROR_LOGGED_MESSAGE_LENGTH;
