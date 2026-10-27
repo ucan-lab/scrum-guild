@@ -195,6 +195,34 @@ test.describe('自分のコメント', () => {
     await expect(drawer.getByRole('button', { name: '送る' })).toHaveCount(0);
   });
 
+  test('スクラムの言葉: 同じ流れで、文言がスクラムの言葉になる', async ({ page }) => {
+    await createWorkspace(page, 'コメントのチーム', 'scrum');
+    await page.getByRole('button', { name: '起票' }).click();
+    const dialog = page.getByRole('dialog', { name: '起票' });
+    await dialog.getByLabel('タイトル').fill('スクラムの言葉で話す');
+    await dialog.getByRole('button', { name: '起票' }).click();
+    await expect(dialog).toBeHidden();
+    const drawer = await openDrawer(page, 'スクラムの言葉で話す');
+    await expect(drawer.getByRole('tab', { name: /^コメント/ })).toHaveText('コメント 0');
+    await sendComment(drawer, 'スクラムの言葉で書いた文');
+    await expect(drawer.getByRole('tab', { name: /^コメント/ })).toHaveText('コメント 1');
+
+    // 送ると閉じていた。理由の文の<ワークスペース>が、スクラムの言葉で出る
+    await page.route('**/api/aoba/comment-create', (route) =>
+      route.fulfill({ status: 409, json: { error: { code: 'workspace_closed', message: 'x' } } }),
+    );
+    await page.route('**/api/aoba/workspace', async (route) => {
+      const response = await route.fetch();
+      const body = (await response.json()) as Record<string, unknown>;
+      await route.fulfill({ response, json: { ...body, closed_at: '2026-10-20T00:00:00.000Z' } });
+    });
+    await drawer.getByRole('textbox', { name: 'コメントを書く' }).fill('閉じた後の文');
+    await drawer.getByRole('button', { name: '送る' }).click();
+    await expect(
+      drawer.getByText('終了したワークスペースには送れません。書きかけの文は写して残せます。'),
+    ).toBeVisible();
+  });
+
   test('送るのに失敗したら、文を欄に残して理由を出す', async ({ page }) => {
     await createWorkspace(page, '送れないパーティ', 'game');
     await addTask(page, '送れない依頼');
@@ -213,6 +241,50 @@ test.describe('自分のコメント', () => {
     await drawer.getByRole('button', { name: '送る' }).click();
     await expect(drawer.locator('.comment', { hasText: '届かない文' })).toBeVisible();
     await expect(input).toHaveValue('');
+  });
+
+  test('新しい 50 件より前は、「前のコメントを読む」で一覧の上に足し、読み終えるとボタンを消す', async ({ page }) => {
+    await createWorkspace(page, '前を足すパーティ', 'game');
+    await addTask(page, '前を足す依頼');
+    // 51 件を書くと回数の上限（10 分に 30 回）に当たるので、一覧の応答を作って返す。先頭は 50 件と続きの位置、続きは古い 1 件
+    const at = (n: number) => new Date(Date.UTC(2026, 9, 1, 0, n)).toISOString();
+    const id = (n: number) => `019a0000-0000-7000-8000-${String(n).padStart(12, '0')}`;
+    const comment = (n: number) => ({
+      id: id(n),
+      author: { id: id(900), name: 'ミナト' },
+      body_md: `${n} 件目のコメント`,
+      created_at: at(n),
+      edited_at: null,
+      deleted_at: null,
+      deleted_by: null,
+      can_edit: false,
+      can_delete: false,
+    });
+    await page.route('**/api/aoba/comment-list', async (route) => {
+      const body = route.request().postDataJSON() as { before?: unknown };
+      const json =
+        body.before === undefined
+          ? {
+              comments: Array.from({ length: 50 }, (_, i) => comment(i + 2)),
+              next: { created_at: at(2), id: id(2) },
+              count: 51,
+              timezone: 'Asia/Tokyo',
+            }
+          : { comments: [comment(1)], next: null, count: 51, timezone: 'Asia/Tokyo' };
+      await route.fulfill({ json });
+    });
+    const drawer = await openDrawer(page, '前を足す依頼');
+    await expect(drawer.getByRole('tab', { name: /^コメント/ })).toHaveText('コメント 51');
+    const thread = drawer.getByRole('region', { name: 'コメントの一覧' });
+    await expect(thread.locator('.comment')).toHaveCount(50);
+    await expect(thread.locator('.comment').first()).toContainText('2 件目のコメント');
+
+    await drawer.getByRole('button', { name: '前のコメントを読む' }).click();
+    await expect(thread.locator('.comment')).toHaveCount(51);
+    await expect(thread.locator('.comment').first()).toContainText('1 件目のコメント');
+    await expect(drawer.getByRole('button', { name: '前のコメントを読む' })).toHaveCount(0);
+    // 読み終えてボタンが消えたら、一覧へフォーカスを移す
+    await expect(thread).toBeFocused();
   });
 
   test('「前のコメントを読む」で、タスクが消えていたら（404）、引き出しを閉じる', async ({ page }) => {
