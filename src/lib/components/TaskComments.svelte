@@ -358,6 +358,8 @@
         edit.error = t('commentSaveFailed');
         void load();
       } else {
+        // 閉じたら、新しいコメントの欄と同じく、書きかけを残したまま「保存」を出さない（押しても同じ 409 になるため）
+        if (result.status === 409 && code === 'workspace_closed') edit.blocked = true;
         edit.error =
           commonFailure(result.status, code) ??
           (result.status === 400 ? (problemMessage(edit.draft) ?? t('taskBadRequest')) : t('commentSaveFailed'));

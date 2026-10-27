@@ -237,6 +237,29 @@ test.describe('自分のコメント', () => {
     await expect(drawer).toBeHidden();
   });
 
+  test('直している途中にワークスペースが終了したら、「保存」を出さず、書きかけを残す', async ({ page }) => {
+    await createWorkspace(page, '直す途中で閉じるパーティ', 'game');
+    await addTask(page, '直す途中で閉じる依頼');
+    const drawer = await openDrawer(page, '直す途中で閉じる依頼');
+    const comment = await sendComment(drawer, '閉じる前に書いた文');
+    await comment.getByRole('button', { name: '編集', exact: true }).click();
+    const edit = comment.getByRole('textbox', { name: 'コメントを直す' });
+    await edit.fill('閉じた後に直そうとした文');
+    // 保存すると 409 の workspace_closed で断られ、枠を読み直すと閉じている
+    await page.route('**/api/aoba/comment-update', (route) =>
+      route.fulfill({ status: 409, json: { error: { code: 'workspace_closed', message: 'x' } } }),
+    );
+    await page.route('**/api/aoba/workspace', async (route) => {
+      const response = await route.fetch();
+      const body = (await response.json()) as Record<string, unknown>;
+      await route.fulfill({ response, json: { ...body, closed_at: '2026-10-20T00:00:00.000Z' } });
+    });
+    await comment.getByRole('button', { name: '保存', exact: true }).click();
+    await expect(comment.getByText('終了したパーティには書き込めません', { exact: false })).toBeVisible();
+    await expect(comment.getByRole('button', { name: '保存', exact: true })).toHaveCount(0);
+    await expect(edit).toHaveValue('閉じた後に直そうとした文');
+  });
+
   test('終了したワークスペースでは、コメントを読めるが、書く欄と操作を出さない', async ({ page }) => {
     await createWorkspace(page, 'コメントを閉じるパーティ', 'game');
     await addTask(page, '閉じた後に読む');
