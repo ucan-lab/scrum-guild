@@ -28,7 +28,7 @@ Node は `.node-version`（26）、pnpm は `package.json` の `packageManager` 
 - lint と整形: `pnpm lint`、`pnpm format:check`、直すときは `pnpm format`
 - build: `pnpm build`（`build/` に書き出し、`build/_headers` を作る）
 - フックのテスト: `node --test .claude/hooks/*.test.mjs`
-- e2e: `pnpm e2e`（`pnpm preview` と同じく build し直してサーバーを立て、手元の D1 を seed で入れ直してから Playwright で確かめる。API のポートに答えるサーバーが既にあれば止まり、立てたままの preview を使い回すのは `E2E_REUSE_SERVER=1` のときだけ（`docs/development.md` の「e2e のサーバー」）。手元の D1 の行は消える。初めは `pnpm exec playwright install chromium`）。`pnpm e2e e2e/members.test.ts` のようにファイルを渡せる。CI は `E2E_EVIDENCE=1` を付け、PR に並べる画像を撮る（手元では付けない。`docs/development.md` の「e2e の書き方」）。手元は関わるファイルだけにし、全件は CI に任せる。ただし、共通の枠や認証のようにどの画面にも効くものを変えたときと、迷ったときは全件を走らせる（どれが当たるかは `docs/development.md` の「開発の流れ」）
+- e2e: `pnpm e2e`（`pnpm preview` と同じく build し直してサーバーを立て、手元の D1 を seed で入れ直してから Playwright で確かめる。API のポートに答えるサーバーが既にあれば止まり、立てたままの preview を使い回すのは `E2E_REUSE_SERVER=1` のときだけ（`docs/development.md` の「e2e のサーバー」）。手元の D1 の行は消える。初めは `pnpm exec playwright install chromium`）。`pnpm e2e e2e/members.test.ts` のようにファイルを渡せる。CI は `E2E_EVIDENCE=1` を付け、PR に並べる画像を撮る（手元では付けない。`docs/development.md` の「e2e の書き方」）。`E2E_DEV_BUILD=1` を付けると開発モードで build し、Svelte と SvelteKit の開発時の警告が出たテストを落とす（CI の `e2e-dev`。画面のコードを変えたら手元でも関わるファイルで走らせる）。手元は関わるファイルだけにし、全件は CI に任せる。ただし、共通の枠や認証のようにどの画面にも効くものを変えたときと、迷ったときは全件を走らせる（どれが当たるかは `docs/development.md` の「開発の流れ」）
 - 空の D1 に全マイグレーションを当て、seed を2回流して確かめる: `pnpm db:migrate:fresh`
 - バックログの木を 5 万件で測る: `pnpm bench:backlog`（使い捨ての D1 で `wrangler dev --local` を立てて測る。`docs/development.md` の「バックログの木を 5 万件で測る」）
 - 手元の D1 にマイグレーションを当て、全部の行を消して seed を入れ直す: `pnpm db:seed`（ログインに使うトークンは `seed/sessions.ts`）
