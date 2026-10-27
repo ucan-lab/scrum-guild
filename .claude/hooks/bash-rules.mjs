@@ -479,7 +479,8 @@ const PACKAGE_FLAGS_WITH_VALUE = new Set(['-C', '--dir', '--filter', '-F', '--pr
 const DEPLOY_SCRIPT = /(^|[:_-])deploy([:_-]|$)/;
 
 function judgePackageManager(tool, args, ctx) {
-  const pos = positionals(args, PACKAGE_FLAGS_WITH_VALUE);
+  const indexes = positionalIndexes(args, PACKAGE_FLAGS_WITH_VALUE);
+  const pos = indexes.map((i) => args[i]);
   // install <pkg> は依存を足す。引数なしの install はロックファイルどおりに入れるだけ
   const installsPackage = ['install', 'i', 'add'].includes(pos[0]) && pos.length > 1;
   if ((PACKAGE_CHANGES[tool] ?? []).includes(pos[0]) || installsPackage) {
@@ -489,13 +490,25 @@ function judgePackageManager(tool, args, ctx) {
   const name = scriptName(tool, pos);
   if (!name) return null;
   if (DEPLOY_SCRIPT.test(name)) return [DENY, 'デプロイは Workers Builds だけが行う'];
-  // package.json のスクリプトの中身も同じ規則で見る。pre と post のスクリプトも一緒に走る
+  // package.json のスクリプトの中身も同じ規則で見る。pre と post のスクリプトも一緒に走る。
+  // 名前より後ろの語は、道具が引用符で包んで本体の末尾に足す（pnpm test x は node --test scripts/*.test.ts 'x'）。
+  // 道具ごとの違い（npm が -- の前のフラグを取る、npm、yarn、bun が -- を消す）はまねず、全部の語を足す。足しすぎても判定は緩まない
+  const extra = sliceWords(args, indexes[['run', 'run-script'].includes(pos[0]) ? 1 : 0] + 1);
   const results = [`pre${name}`, name, `post${name}`]
-    .map((n) => ctx.scriptOf(ctx.dir, n))
-    .filter(Boolean)
-    .map((body) => judgeBash(body, { ...ctx, cwd: ctx.dir, depth: ctx.depth + 1 }))
+    .map((n) => [n, ctx.scriptOf(ctx.dir, n)])
+    .filter(([, body]) => body)
+    .map(([n, body]) => judgeBash(n === name ? appendWords(body, extra) : body, { ...ctx, cwd: ctx.dir, depth: ctx.depth + 1 }))
     .filter(Boolean);
-  return results.find(([d]) => d === DENY) ?? results[0] ?? null;
+  // 足した語は引用符で包むので、展開（$X、$(…)、glob）の印が消え、直に打つより緩く読みうる
+  if (ctx.scriptOf(ctx.dir, name) && extra.some((_, i) => isUnresolved(extra, i))) results.push([ASK, SCRIPT_ARGS_EXPAND_REASON]);
+  return results.find(([d]) => d === DENY) ?? results.find(([d]) => d === ASK) ?? null;
+}
+
+const SCRIPT_ARGS_EXPAND_REASON = 'スクリプトの後ろの引数に変数、$(...)、glob があると、本体の末尾に足して実行される中身を判定できない';
+
+// 語をシェルの1語として単引用符で包み、本体の末尾に足す
+function appendWords(body, words) {
+  return [body, ...words.map((w) => `'${w.replaceAll("'", "'\\''")}'`)].join(' ');
 }
 
 // npm は run 無しでは test、start、stop、restart だけがスクリプトを動かす。pnpm、yarn、bun は名前だけで動かす
