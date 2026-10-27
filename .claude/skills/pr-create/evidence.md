@@ -57,7 +57,10 @@ UI 変更と判定した画面ごとに、変えた画面と状態を開く e2e 
    gh api "repos/{owner}/{repo}/pulls/<n>" --jq .head.sha
    ```
 
-2. [embed-evidence.py](embed-evidence.py) を走らせる。`evidence` のチェックが成功していなければ、最後に付かなかった理由（例 `evidence のジョブが失敗した`）を渡す。理由はジョブの注記とログから取る
+2. [embed-evidence.py](embed-evidence.py) を走らせる。`evidence` のチェックが成功していなければ、最後に付かなかった理由を渡す
+   - チェックが失敗した: ジョブの注記とログから理由を取る（例 `evidence のジョブが失敗した`）
+   - チェックが無いか `skipped`: `evidence` が動かない PR（文書だけ、fork、Bot の PR）。例 `evidence が動かない PR（文書だけの差分）`
+   - 成功したが上げる先の用意が無い（ジョブの注記「e2e の画像を上げない」）: コメントが付かないので、注記の文を理由に渡す
 
    ```bash
    python3 -I <このディレクトリの絶対パス>/embed-evidence.py <本文> <コメント> <出力> <head の SHA> [<付かなかった理由>]
