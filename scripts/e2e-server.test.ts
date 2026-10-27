@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import { describe, test } from 'node:test';
 import {
   applyE2eServerVersion,
+  DEV_WARNING_CODE,
   E2E_SERVER_COMMAND,
   e2eGlobalSetup,
   type E2eGlobalSetupDeps,
@@ -99,15 +100,22 @@ describe('applyE2eServerVersion', () => {
 describe('e2eGlobalSetup', () => {
   const env = { DEV_PORT_OFFSET: '60', APP_VERSION: 'e2e-1' };
 
-  function setup(fetchHealth: E2eGlobalSetupDeps['fetchHealth']) {
+  function setup(
+    fetchHealth: E2eGlobalSetupDeps['fetchHealth'],
+    options: { devBuild?: boolean; hasDevWarningCode?: boolean } = {},
+  ) {
     const calls: string[] = [];
-    const run = e2eGlobalSetup(env, {
+    const run = e2eGlobalSetup(options.devBuild ? { ...env, E2E_DEV_BUILD: '1' } : env, {
       fetchHealth: async (url, signal) => {
         calls.push(`fetch ${url}`);
         return fetchHealth(url, signal);
       },
       seed: () => {
         calls.push('seed');
+      },
+      hasDevWarningCode: () => {
+        calls.push('dev-code');
+        return options.hasDevWarningCode ?? false;
       },
     });
     return { run, calls };
@@ -123,6 +131,37 @@ describe('e2eGlobalSetup', () => {
     const { run, calls } = setup(async () => answer(200, { status: 'ok', version: 'e2e-1' }));
     await run;
     assert.deepEqual(calls, ['fetch http://localhost:8847/api/health', 'seed']);
+  });
+
+  test('E2E_DEV_BUILD=1 で、build に開発時の警告のコードがあれば seed を入れる', async () => {
+    const ok = async () => answer(200, { status: 'ok', version: 'e2e-1' });
+    const { run, calls } = setup(ok, { devBuild: true, hasDevWarningCode: true });
+    await run;
+    assert.deepEqual(calls, ['fetch http://localhost:8847/api/health', 'dev-code', 'seed']);
+  });
+
+  test('E2E_DEV_BUILD=1 なのに開発時の警告のコードが無ければ、seed の前に止める', async () => {
+    const ok = async () => answer(200, { status: 'ok', version: 'e2e-1' });
+    const { run, calls } = setup(ok, { devBuild: true, hasDevWarningCode: false });
+    await assert.rejects(run, /開発モードの build になっていない/);
+    assert.deepEqual(calls, ['fetch http://localhost:8847/api/health', 'dev-code']);
+  });
+
+  test('E2E_DEV_BUILD を付けないときは、開発時のコードを確かめない', async () => {
+    const { run, calls } = setup(async () => answer(200, { status: 'ok', version: 'e2e-1' }));
+    await run;
+    assert.ok(!calls.includes('dev-code'));
+  });
+
+  describe('DEV_WARNING_CODE', () => {
+    test('開発モードの build の警告の書き方に当たる', () => {
+      assert.match('console.warn(`%c[svelte] ${"binding_property_non_reactive"}\\n%c', DEV_WARNING_CODE);
+      assert.match('console.warn(`%c[sveltekit] ${"link_option_replaced"}', DEV_WARNING_CODE);
+    });
+
+    test('本番の build の短い形には当たらない', () => {
+      assert.doesNotMatch('console.warn("https://svelte.dev/e/binding_property_non_reactive")', DEV_WARNING_CODE);
+    });
   });
 
   test('版が違えば seed の前に止める', async () => {

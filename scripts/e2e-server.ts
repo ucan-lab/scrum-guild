@@ -71,13 +71,25 @@ export type HealthResponse = { ok: boolean; status: number; json(): Promise<unkn
 export type E2eGlobalSetupDeps = {
   fetchHealth: (url: string, signal: AbortSignal) => Promise<HealthResponse>;
   seed: () => void;
+  // build した画面の JS に、開発時の警告を出すコード（DEV_WARNING_CODE）があるか
+  hasDevWarningCode: () => boolean;
 };
 
+// 開発時の警告を出すコードの印。開発モードの build の JS にだけある（本番の build の警告は https://svelte.dev/e/<名前> だけを出す）
+export const DEV_WARNING_CODE = /%c\[(?:svelte|sveltekit)\] /;
+
 // e2e/global-setup.ts の中身。答えたサーバーがこの実行で build したものかを確かめてから seed を入れる。
-// 違えば seed を入れずに止める（前のサーバーの D1 に入れても、そのサーバーで走らせないため）
+// 違えば seed を入れずに止める（前のサーバーの D1 に入れても、そのサーバーで走らせないため）。
+// E2E_DEV_BUILD=1 のときは、build が本当に開発モードかも確かめる。開発時のコードが入らない build（Vite や Svelte の
+// 更新で NODE_ENV の効き方が変わる、本番の build のサーバーを使い回す）では、警告が出ないまま全件が通ってしまうため
 export async function e2eGlobalSetup(env: Env, deps: E2eGlobalSetupDeps): Promise<void> {
   const reason = await e2eServerProblem(env, deps.fetchHealth);
   if (reason) throw new Error(reason);
+  if (isDevBuild(env) && !deps.hasDevWarningCode()) {
+    throw new Error(
+      'E2E_DEV_BUILD=1 なのに、build した画面の JS に開発時の警告のコードが無い。開発モードの build になっていない（NODE_ENV=development で build したか、本番の build のサーバーを使い回していないかを確かめる）',
+    );
+  }
   deps.seed();
 }
 
