@@ -142,13 +142,16 @@
   const tooMany = $derived(chosen.length > SPRINT_TASK_ADD_MAX);
   const ready = $derived(!loading && !loadFailed && sprint !== null);
 
-  function groupState(group: Group): 'all' | 'some' | 'none' {
-    const count = group.tasks.filter((task) => picked.has(task.id)).length;
-    return count === 0 ? 'none' : count === group.tasks.length ? 'all' : 'some';
+  // 見出しのチェックが見るのは、見えている配下（shown）だけ。絞っている間に、見えないタスクまで選ばないため
+  type VisibleGroup = Group & { shown: BacklogTask[] };
+
+  function groupState(group: VisibleGroup): 'all' | 'some' | 'none' {
+    const count = group.shown.filter((task) => picked.has(task.id)).length;
+    return count === 0 ? 'none' : count === group.shown.length ? 'all' : 'some';
   }
 
-  function toggleGroup(group: Group, checked: boolean): void {
-    for (const task of group.tasks) {
+  function toggleGroup(group: VisibleGroup, checked: boolean): void {
+    for (const task of group.shown) {
       if (checked) picked.add(task.id);
       else picked.delete(task.id);
     }
@@ -162,7 +165,7 @@
   }
 
   // 見出しのチェックボックスの、一部だけ選んだ印（indeterminate は属性ではなく DOM の値なので、ここで入れる）
-  function partial(group: Group) {
+  function partial(group: VisibleGroup) {
     return (node: HTMLInputElement) => {
       node.indeterminate = groupState(group) === 'some';
     };
@@ -301,7 +304,7 @@
                   />
                   <span
                     >{group.title}<span class="pick-meta"
-                      >{t('sprintTaskAddStoryMeta', { task: t('task'), count: group.tasks.length })}</span
+                      >{t('sprintTaskAddStoryMeta', { task: t('task'), count: group.shown.length })}</span
                     ></span
                   >
                 </label>

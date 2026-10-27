@@ -158,6 +158,16 @@ test('スクラムの言葉: ストーリーごとと1件ずつ入れ、外し�
   const story = list.getByRole('checkbox', { name: /^ログインを作り直す/ });
   const form = list.getByRole('checkbox', { name: /^フォームを置く/ });
   const send = list.getByRole('checkbox', { name: /^送信を確かめる/ });
+  const search = picker.getByRole('searchbox', { name: 'タスクとストーリーのタイトルで絞る' });
+  // 絞っている間の見出しは、見えている配下だけを選ぶ
+  await search.fill('送信');
+  await expect(list.getByRole('checkbox')).toHaveCount(2);
+  await story.check();
+  await expect(picker.locator('.pick-count')).toHaveText('1 件を選んでいます');
+  await search.fill('');
+  await expect(send).toBeChecked();
+  await expect(form).not.toBeChecked();
+  await send.uncheck();
   // 見出しを選ぶと配下がまとめて選ばれ、1件外すと見出しは一部だけの印（indeterminate）になる
   await story.check();
   await expect(form).toBeChecked();
