@@ -4764,6 +4764,13 @@ describe('bash-rules: #356 npx-cli.js の前読みと nopt の String のフラ�
     [`npx foo -n bar -c 'echo hi'`, 'allow'],
     ['npx -n foo vitest run', 'allow'],
     ['npx -m vitest run', 'allow'],
+    // nopt は - を重ねた名前の全部の文字が1文字のフラグならまとめとして読む（--sc は -s -c）
+    [`npm exec --sc 'wrangler deploy'`, 'deny'],
+    // 値を取らないフラグの = の値も、nopt は別の語として読み直す（-y=-c は --yes と -c）
+    [`npm exec -y=-c 'wrangler deploy'`, 'deny'],
+    [`npx -y=-c 'wrangler deploy'`, 'deny'],
+    // - だけの語（---）も -- と同じく読み終える。後ろの -c は名前
+    [`npm exec --- -c 'wrangler deploy'`, 'allow'],
   ]) {
     test(`${command} は ${expected}`, () => assert.deepEqual(literally(command), [expected, expected], command));
   }

@@ -869,6 +869,81 @@ function configuredCalls(words, ci) {
 // 判定の並びを返す
 function judgePackageManager(manager, args, prefix, ctx) {
   const spec = PACKAGE_MANAGERS[manager];
+  if (spec.shortStyle === 'nopt') {
+    const argvs = noptArgvs(spec, args);
+    if (argvs.length > MAX_READINGS) return [[ASK, MANY_READINGS_REASON]];
+    if (argvs[0] !== args) return argvs.flatMap((argv) => judgeArgs(spec, argv, prefix, ctx));
+  }
+  return judgeArgs(spec, args, prefix, ctx);
+}
+
+// nopt（npm 11.20 の node_modules/nopt/lib/nopt-lib.js の parse と resolveShort）の読み方に合わせ、npm の語の並びを直したものを返す。
+// 直すところが無ければ [args]。-- の前の語について次を直す（--- のような - だけの語も -- として読み終える）。
+// - nopt は先頭の - を全部外して名前を引くので、- を2つ以上重ねた名前は、1文字なら短いフラグ（--c、---c は -c）、長い名前（all、ca、call）
+//   でなく全部の文字が1文字のフラグなら短いフラグのまとめ（--sc は -sc）、ほかは長いフラグ（---call は --call）として読む。
+//   まとめに読める名前が表のフラグの前置きにも当たれば（--cal）、nopt はまとめとして読むが、長いフラグとしての読み方も残す
+// - nopt は = の形を2語に分けてから読むので、値が - で始まる語（--message=-c、-m=--call=…）は、値を取らないフラグか
+//   String の型のフラグ（spec.strings）なら値をフラグとして読み直す。表の String でない値のフラグ（--prefix、-w、-L、-C）は値のまま、
+//   表に無いフラグ（--tag、--mess）は型が分からないので両方で読む
+function noptArgvs(spec, args) {
+  let argvs = [[]];
+  let changed = false;
+  for (let i = 0; i < args.length; i++) {
+    const w = args[i];
+    const piece = sliceWords(args, i, i + 1);
+    if (/^-{2,}$/.test(w)) {
+      changed ||= w !== '--';
+      argvs = argvs.map((argv) => [...argv, ['--'], sliceWords(args, i + 1)]);
+      break;
+    }
+    if (!/^-./.test(w)) {
+      argvs = argvs.map((argv) => [...argv, piece]);
+      continue;
+    }
+    const eq = w.indexOf('=');
+    const flag = eq === -1 ? w : w.slice(0, eq);
+    const value = eq === -1 ? undefined : w.slice(eq + 1);
+    const options = noptNames(spec, flag).flatMap((name) => {
+      const same = name === flag ? [piece] : [[eq === -1 ? name : `${name}=${value}`]];
+      if (value === undefined || !/^-{1,2}[^-]/.test(value)) return [same];
+      const type = noptType(spec, name);
+      const split = [[name], [value]];
+      return type === 'value' ? [same] : type === 'unknown' ? [same, split] : [split];
+    });
+    changed ||= options.length > 1 || options[0][0] !== piece;
+    argvs = argvs.flatMap((argv) => options.map((o) => [...argv, ...o]));
+    if (argvs.length > MAX_READINGS) return argvs;
+  }
+  return changed ? argvs.map((argv) => concatWords(...argv)) : [args];
+}
+
+// nopt の resolveShort で、すべての文字が1文字の shorthands でもまとめにしない長い名前（npm 11.20 の設定の名前）
+const NOPT_LONG_NAMES = new Set(['all', 'ca', 'call']);
+// - を2つ以上重ねたフラグ（= の前）を、nopt の読み方で直した名前の候補。- が1つのものはそのまま（readFlag と shortFlags が読む）
+function noptNames(spec, flag) {
+  const key = flag.replace(/^-+/, '');
+  if (flag.length - key.length < 2 || key === '') return [flag];
+  const long = `--${key}`;
+  const bundle = [...key].every((c) => Object.hasOwn(spec.short, c)) && !NOPT_LONG_NAMES.has(key);
+  if (!bundle) return [long];
+  return spec.longName(long) !== long ? [`-${key}`, long] : [`-${key}`];
+}
+
+// = の値を持つフラグの型。string は String の型、reread は値を取らない短いフラグ（nopt は = の値を別の語として読み直す）、
+// value は表の String でない値のフラグ、unknown は表に無いフラグ
+function noptType(spec, name) {
+  if (name.startsWith('--')) {
+    const long = spec.longName(name);
+    if (spec.strings.has(long)) return 'string';
+    return spec.flags[long] ? 'value' : 'unknown';
+  }
+  const kinds = [...name.slice(1)].map((c) => spec.short[c]);
+  if (kinds.some((k) => !k)) return 'unknown';
+  return spec.strings.has(`-${name.at(-1)}`) || ['flag', 'shell'].includes(kinds.at(-1)) ? 'reread' : 'value';
+}
+
+// args を道具の表で読み、名前ごとに判定する（judgePackageManager の本体）
+function judgeArgs(spec, args, prefix, ctx) {
   const base = { dir: ctx.dir, place: ctx.place };
   const anywhere = spec.dirAnywhere ? dirAnywhere(spec, args, 0, base) : undefined;
   const locs = anywhere ?? [base, ...configuredDirs(prefix, base)];
@@ -982,53 +1057,70 @@ function judgeExec(spec, args, prefix, ctx, { at, dir, place, shell }) {
   return results.filter(Boolean);
 }
 
-// npx-cli.js（npm 11.20）が npm exec に渡す前に読むフラグの名前（先頭の - を外し、= の前まで）。1文字の名前は npm の shorthands で
-// 引き直してから読む（d、q、s は --loglevel とその値に広がるので、元の次の語を取らない）。
+// npx-cli.js（npm 11.20）が npm exec に渡す前に読むフラグの名前（先頭の - を全部外し、= の前まで）。
+// NPX_SHORTHANDS は npm の1文字の shorthands で、npx は = の有無を問わず広げてから読み直す（-m=-c は --message と -c の2語、
+// -d は --loglevel info。p は npx が先に --package に直し、n は取り除くので広げない）。
 // NPX_REMOVED は取り除いたフラグで、= の無い形は次の語も一緒に消す。NPX_OPTS は次の語をいつも値に取る。
-// NPX_SWITCHES は値を取らない（npx の switches と、1文字の名前の先の npm の真偽の設定）。NPX_VALUES は - で始まらない次の語を値に取る。
-// どれでもない名前は、npm の真偽の設定かどうかを引かないので、次の語を値と読む形と読まない形の両方で見る
+// NPX_SWITCHES は値を取らない（npx の switches のうちよく使うものと、1文字の名前の先の npm の真偽の設定）。
+// NPX_VALUES は - で始まらない次の語を値に取る。どれでもない名前は、npm の真偽の設定かどうかを引かないので、
+// 次の語を値と読む形と読まない形の両方で見る
 const NPX_REMOVED = new Set(['n', 'npm', 'node-arg']);
 const NPX_OPTS = new Set(['package', 'p', 'cache', 'userconfig', 'call', 'c', 'shell']);
-const NPX_SHORTHANDS = { c: 'call', C: 'prefix', w: 'workspace', L: 'location', m: 'message' };
-// 1文字の名前のうち値を取らないもの（d、q、s は --loglevel とその値に広がり、ほかは npm の真偽の設定。p は npx が先に --package に直す）
-const NPX_SHORT_SWITCHES = new Set([...'dqsafglSBDEOP?Hhvy']);
-// 長い名前の真偽の設定は、npx の switches のうちよく使うものだけを持つ。ほかは表に無い名前として両方で読む
-const NPX_SWITCHES = new Set(['no-install', 'quiet', 'version', 'help', 'yes']);
+const NPX_SHORTHANDS = {
+  c: ['--call'], C: ['--prefix'], w: ['--workspace'], L: ['--location'], m: ['--message'],
+  d: ['--loglevel', 'info'], q: ['--loglevel', 'warn'], s: ['--loglevel', 'silent'],
+  a: ['--all'], f: ['--force'], g: ['--global'], l: ['--long'], S: ['--save'], B: ['--save-bundle'], D: ['--save-dev'],
+  E: ['--save-exact'], O: ['--save-optional'], P: ['--save-prod'], '?': ['--usage'], H: ['--usage'], h: ['--usage'],
+  v: ['--version'], y: ['--yes'],
+};
+const NPX_SWITCHES = new Set([
+  'no-install', 'quiet', 'version', 'help', 'yes', 'all', 'force', 'global', 'long', 'usage',
+  'save', 'save-bundle', 'save-dev', 'save-exact', 'save-optional', 'save-prod',
+]);
 const NPX_VALUES = new Set(['message', 'workspace', 'location', 'prefix', 'loglevel']);
-function npxFlagKind(word) {
-  const key = word.replace(/^-+/, '').split('=')[0];
+function npxFlagKind(key) {
   if (NPX_REMOVED.has(key)) return 'removed';
-  if (NPX_SHORT_SWITCHES.has(key) || NPX_SWITCHES.has(key)) return 'switch';
-  const name = NPX_SHORTHANDS[key] ?? key;
-  if (NPX_OPTS.has(name)) return 'opt';
-  return NPX_VALUES.has(name) ? 'value' : 'unknown';
+  if (NPX_SWITCHES.has(key)) return 'switch';
+  if (NPX_OPTS.has(key)) return 'opt';
+  return NPX_VALUES.has(key) ? 'value' : 'unknown';
 }
 
 // npx の後ろの語を、npx-cli.js と同じく npm exec に渡す語の並びに直す。最初の位置引数の前に -- を差し込み、-- か位置引数でフラグを読み終える。
-// 取り除いたフラグ（-n foo）は値ごと消す。表に無いフラグで読み方が分かれれば、並びを複数返す。並びは args の位置（-1 は -- を差し込む所）
+// 取り除いたフラグ（-n foo）は値ごと消し、1文字の名前は NPX_SHORTHANDS で広げる。表に無いフラグで読み方が分かれれば、並びを複数返す。
+// 並びは語の切れ端（sliceWords で切った1語か、広げた語と差し込んだ -- の印の無い1語）の並び
 function npxArgvs(args) {
   const argvs = [];
-  const from = (i) => args.map((_, k) => k).slice(i);
-  const walk = (start, kept) => {
-    for (let i = start; i < args.length && argvs.length <= MAX_READINGS; i++) {
-      const a = args[i];
-      if (a === '--') return void argvs.push([...kept, ...from(i)]);
-      if (!a.startsWith('-')) return void argvs.push([...kept, -1, ...from(i)]);
-      const kind = npxFlagKind(a);
-      const hasValue = a.includes('=');
-      const next = args[i + 1];
-      if (kind === 'removed') {
-        if (!hasValue) i++;
+  const walk = (items, start, kept) => {
+    for (let i = start; i < items.length && argvs.length <= MAX_READINGS; i++) {
+      const a = items[i][0];
+      if (a === '--') return void argvs.push([...kept, ...items.slice(i)]);
+      if (!a.startsWith('-')) return void argvs.push([...kept, ['--'], ...items.slice(i)]);
+      const eq = a.indexOf('=');
+      const key = (eq === -1 ? a : a.slice(0, eq)).replace(/^-+/, '');
+      if (key !== 'p' && Object.hasOwn(NPX_SHORTHANDS, key)) {
+        const expanded = [...NPX_SHORTHANDS[key], ...(eq === -1 ? [] : [a.slice(eq + 1)])].map((w) => [w]);
+        items = [...items.slice(0, i), ...expanded, ...items.slice(i + 1)];
+        i--;
         continue;
       }
-      kept = [...kept, i];
-      if (hasValue || kind === 'switch' || next === undefined) continue;
-      if (kind === 'opt' || (kind === 'value' && !next.startsWith('-'))) kept = [...kept, ++i];
-      else if (kind === 'unknown' && !next.startsWith('-')) walk(i + 2, [...kept, i + 1]);
+      const kind = npxFlagKind(key);
+      const next = items[i + 1]?.[0];
+      if (kind === 'removed') {
+        if (eq === -1) i++;
+        continue;
+      }
+      kept = [...kept, items[i]];
+      if (eq !== -1 || kind === 'switch' || next === undefined) continue;
+      if (kind === 'opt' || (kind === 'value' && !next.startsWith('-'))) kept = [...kept, items[++i]];
+      else if (kind === 'unknown' && !next.startsWith('-')) walk(items, i + 2, [...kept, items[i + 1]]);
     }
     argvs.push(kept);
   };
-  walk(0, []);
+  walk(
+    args.map((_, i) => sliceWords(args, i, i + 1)),
+    0,
+    [],
+  );
   return argvs;
 }
 
@@ -1042,10 +1134,10 @@ function judgeNpx(tool, args, prefix, ctx) {
   if (argvs.length > MAX_READINGS) return [[ASK, MANY_READINGS_REASON]];
   const seen = new Set();
   return argvs.flatMap((argv) => {
-    const key = argv.join(' ');
+    const exec = concatWords(['exec'], ...argv);
+    const key = exec.join('\0');
     if (seen.has(key)) return [];
     seen.add(key);
-    const exec = concatWords(['exec'], ...argv.map((at) => (at === -1 ? ['--'] : sliceWords(args, at, at + 1))));
     return judgePackageManager('npm', exec, prefix, ctx);
   });
 }
