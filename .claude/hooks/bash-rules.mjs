@@ -973,14 +973,13 @@ const NPM_BOOLEAN_FLAGS = new Set(
   ].map((name) => `--${name}`),
 );
 
-// = の値を持つフラグの型。string は String の型、reread は値を取らない短いフラグ（nopt は = の値を別の語として読み直す）、
-// flag は値を取らない長いフラグ（npm の Boolean の設定と、--no- で始まるもの。nopt は --no- を外して真偽として読む）、
-// value は表の String でない値のフラグ、unknown は表に無いフラグ。noptArgvs は、string、reread、flag の次の - で始まる語を値に取らない
+// nopt がフラグの次の語と = の値をどう読むかの型。reread は - で始まる語を値に取らず、= の値が - で始まればフラグとして読み直すもの
+// （String の型のフラグ、値を取らない短いフラグ、npm の Boolean の設定、--no- で始まるフラグ。nopt は --no- を外して真偽として読む）、
+// value は表の String でない値のフラグ（- で始まる語も値に取る）、unknown は表に無いフラグ（両方で読む）
 function noptType(spec, name) {
   if (name.startsWith('--')) {
     const long = spec.longName(name);
-    if (spec.strings.has(long)) return 'string';
-    if (/^--no-/i.test(long) || NPM_BOOLEAN_FLAGS.has(long)) return 'flag';
+    if (spec.strings.has(long) || /^--no-/i.test(long) || NPM_BOOLEAN_FLAGS.has(long)) return 'reread';
     return spec.flags[long] ? 'value' : 'unknown';
   }
   const kinds = [...name.slice(1)].map((c) => spec.short[c]);
