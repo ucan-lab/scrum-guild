@@ -240,6 +240,14 @@ describe('epic-move で断るもの', () => {
     const res = await moveEpic(target, { epic_id: epic, after_epic_id: null }, target.admin);
     expect(res.status).toBe(409);
     expect(await errorCodeOf(res)).toBe('workspace_closed');
+    // 直前の行が無いときも、移すエピックが無いときと同じく、閉じていることを先に知らせる
+    const missingAfter = await moveEpic(
+      target,
+      { epic_id: epic, after_epic_id: '01900000-0000-7000-8000-000000000000' },
+      target.admin,
+    );
+    expect(missingAfter.status).toBe(409);
+    expect(await errorCodeOf(missingAfter)).toBe('workspace_closed');
   });
 
   test('同じ値の続きが上限を超えたら、振り直さず 409（ties）', async () => {
