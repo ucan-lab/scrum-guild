@@ -146,8 +146,8 @@ describe('healthUnreachable', () => {
 });
 
 describe('e2eHealthURL', () => {
-  test('DEV_PORT_OFFSET でずらした API のポートを見る', () => {
-    assert.equal(e2eHealthURL({}), 'http://localhost:8787/api/health');
+  test('オフセットでずらした API のポートを見る', () => {
+    assert.equal(e2eHealthURL({ DEV_PORT_OFFSET: '0' }), 'http://localhost:8787/api/health');
     assert.equal(e2eHealthURL({ DEV_PORT_OFFSET: '60' }), 'http://localhost:8847/api/health');
   });
 });

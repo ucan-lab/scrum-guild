@@ -21,7 +21,7 @@
 Node は `.node-version`（26）、pnpm は `package.json` の `packageManager` の版を使う。
 
 - 依存の導入: `pnpm install`（`prepare` が `core.hooksPath` を `.githooks` にし、`main` を守る git のフックを有効にする）
-- 開発用のサーバー: `pnpm dev`（画面 `http://localhost:5173`、`/api` は `wrangler dev` へ転送）。ワークツリーを並べるときは `DEV_PORT_OFFSET=10 pnpm dev` のようにずらす
+- 開発用のサーバー: `pnpm dev`（画面 `http://localhost:5173`、`/api` は `wrangler dev` へ転送）。ワークツリーではポートが名前から自動で決まり、並べても重ならない（`docs/development.md` の「ポート」）
 - 本番と同じ配り方での確認: `pnpm preview`（build して `http://localhost:8787`）
 - テスト: `pnpm test`（API は Workers の実行環境、画面のコード（`src/` の `*.test.ts`）は vitest の node の環境、runes を使うコード（`src/` の `*.svelte.test.ts`）はブラウザ向けの Svelte で動かす node の環境、`scripts/` は `node --test`）
 - 型の検査: `pnpm check`（`svelte-check`、Worker の `tsc`）。Worker の型（`worker-configuration.d.ts`）は、`pnpm install`、`dev`、`test`、`check` の前に `wrangler types` で作り直す
@@ -32,7 +32,7 @@ Node は `.node-version`（26）、pnpm は `package.json` の `packageManager` 
 - 空の D1 に全マイグレーションを当て、seed を2回流して確かめる: `pnpm db:migrate:fresh`
 - バックログの木を 5 万件で測る: `pnpm bench:backlog`（使い捨ての D1 で `wrangler dev --local` を立てて測る。`docs/development.md` の「バックログの木を 5 万件で測る」）
 - 手元の D1 にマイグレーションを当て、全部の行を消して seed を入れ直す: `pnpm db:seed`（ログインに使うトークンは `seed/sessions.ts`）
-- seed のセッションでログインした手元の画面を、見えるブラウザで開く: `pnpm dev:open [--preview] [who] [path]`（例 `pnpm dev:open admin /aoba`。先に `pnpm db:seed` と `pnpm dev` を済ませる。`DEV_PORT_OFFSET` は立てたときと同じ値を付ける）
+- seed のセッションでログインした手元の画面を、見えるブラウザで開く: `pnpm dev:open [--preview] [who] [path]`（例 `pnpm dev:open admin /aoba`。先に `pnpm db:seed` と `pnpm dev` を済ませる。ポートは `pnpm dev` と同じ決め方。環境変数 `DEV_PORT_OFFSET` で立てたときだけ同じ値を付ける）
 
 開発用のサーバーとポート、版の渡し方は `docs/development.md` の「手元で動かす」。
 

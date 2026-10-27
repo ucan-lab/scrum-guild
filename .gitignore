@@ -1,5 +1,8 @@
 /worktrees/
 
+# ワークツリーごとのポートのオフセット（scripts/dev-ports.ts）
+.dev-port-offset
+
 # 開発用のシークレット。例のファイルだけを git に入れる
 .dev.vars
 .dev.vars.*

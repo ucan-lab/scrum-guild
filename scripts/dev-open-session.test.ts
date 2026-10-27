@@ -5,7 +5,8 @@ import { checkDevOpenSession } from './dev-open-session.ts';
 import { resolveDevOpenTarget, type DevOpenTarget } from './dev-open-target.ts';
 
 function target(argv: string[]): DevOpenTarget {
-  const resolved = resolveDevOpenTarget(argv, {});
+  // ワークツリーの名前から導いたオフセットに依らず、既定のポート（5173、8787）を見る
+  const resolved = resolveDevOpenTarget(argv, { DEV_PORT_OFFSET: '0' });
   assert.ok(resolved.ok);
   return resolved;
 }
@@ -85,5 +86,15 @@ describe('checkDevOpenSession', () => {
       reasonOf(await checkDevOpenSession(target(['--preview']), { DEV_PORT_OFFSET: '10' }, refused)),
       /DEV_PORT_OFFSET=10 pnpm preview/,
     );
+  });
+
+  test('環境変数で渡されていなければ、ファイルや名前でずれたポートでも DEV_PORT_OFFSET を付けない', async () => {
+    const refused = fail(new TypeError('fetch failed'));
+    const shifted: DevOpenTarget = { ...target([]), origin: 'http://localhost:5558' };
+    const reason = reasonOf(await checkDevOpenSession(shifted, {}, refused));
+    assert.match(reason, /別の端末で pnpm dev を立てて/);
+    assert.doesNotMatch(reason, /DEV_PORT_OFFSET/);
+    const preview = { ...target(['--preview']), origin: 'http://localhost:9172' };
+    assert.doesNotMatch(reasonOf(await checkDevOpenSession(preview, {}, refused)), /DEV_PORT_OFFSET/);
   });
 });
