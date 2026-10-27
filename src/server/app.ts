@@ -7,6 +7,7 @@ import { isAllowedPublicOrigin } from '../shared/session-cookie.ts';
 import type { AppEnv } from './app-env.ts';
 import { loginRoutes } from './auth/login-routes.ts';
 import { operatorLoginIds } from './auth/operators.ts';
+import { clientErrorRoutes } from './client-errors.ts';
 import { DatabaseUnavailableError, pingDatabase } from './db/index.ts';
 import { applyDevClock } from './dev-clock.ts';
 import { errorBody, knownError } from './errors.ts';
@@ -125,7 +126,11 @@ export function createApp(
   const fetcher = options.fetcher ?? ((input, init) => fetch(input, init));
   app.route('/auth', loginRoutes({ fetcher }));
 
-  // 操作の定義から登録するルート。ルートを直に書かない（/api/health と /api/auth/ の下の GET、POST /api/auth/google/start だけが例外）
+  // 画面で起きた JavaScript のエラーの送信。ログイン前の画面（ログイン、招待）のエラーも受けるので、操作の定義の外に直に書く
+  app.route('/client-errors', clientErrorRoutes());
+
+  // 操作の定義から登録するルート。ルートを直に書かない（/api/health、/api/auth/ の下の GET、POST /api/auth/google/start、
+  // POST /api/client-errors だけが例外）
   app.route('/', operationsApp(operations, { fetcher }));
 
   app.notFound((c) => c.json(errorBody('not_found', 'not found'), 404));

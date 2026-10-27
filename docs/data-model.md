@@ -167,13 +167,13 @@
 
 ### rate_limits
 
-ログイン、手動の同期、招待（GitHub に問い合わせる `invitee-resolve` と `invitation-create`）、完成の定義の変更（`workspace-dod-update`。10 万字の本文を書く）、コメントの作成と編集（`comment-create`、`comment-update`。10 万字の本文を何件でも足せる。どれも 10 分に 30 回）のレート制限。
+ログイン、画面のエラーの送信（`POST /api/client-errors`）、手動の同期、招待（GitHub に問い合わせる `invitee-resolve` と `invitation-create`）、完成の定義の変更（`workspace-dod-update`。10 万字の本文を書く）、コメントの作成と編集（`comment-create`、`comment-update`。10 万字の本文を何件でも足せる。どれも 10 分に 30 回）のレート制限。
 
 | 列 | 型 | 制約 | 説明 |
 | --- | --- | --- | --- |
-| key | TEXT | PK | `login:<IP>`（ログインの開始と戻り先。`CF-Connecting-IP`。IPv6 は上位 64 ビットに丸めた `login:2001:db8:1:2::/64` と、上位 48 ビットの `login48:2001:db8:1::/48` の2つ。IPv4 を写した IPv6 は IPv4 に直す。解釈できない値と IP の無いリクエストは `login:unknown`）、`login:global`（ログインの開始の全体の枠）、`operation:<操作の名前>:<アカウントの ID>`（操作の定義の `rateLimit`） |
+| key | TEXT | PK | `login:<IP>`（ログインの開始と戻り先。`CF-Connecting-IP`。IPv6 は上位 64 ビットに丸めた `login:2001:db8:1:2::/64` と、上位 48 ビットの `login48:2001:db8:1::/48` の2つ。IPv4 を写した IPv6 は IPv4 に直す。解釈できない値と IP の無いリクエストは `login:unknown`）、`login:global`（ログインの開始の全体の枠）、`client-error:<IP>`（画面のエラーの送信。IP の丸め方はログインと同じで、IPv6 は `client-error:<…>::/64` と `client-error48:<…>::/48`、解釈できない値は `client-error:unknown`）、`client-error:global`（画面のエラーの送信の全体の枠）、`operation:<操作の名前>:<アカウントの ID>`（操作の定義の `rateLimit`） |
 | window_start_at | TEXT | NOT NULL | 窓の最初の呼び出しの日時 |
-| count | INTEGER | NOT NULL | 窓の中の呼び出しの数。操作の定義の枠は、上限を超えた呼び出しも数える。ログインの枠は、覗いた時点で上限に届いていれば数えない（覗いた後に並行した呼び出しは、上限を少し超えて数えることがある） |
+| count | INTEGER | NOT NULL | 窓の中の呼び出しの数。操作の定義の枠は、上限を超えた呼び出しも数える。ログインと画面のエラーの送信の枠は、覗いた時点で上限に届いていれば数えない（覗いた後に並行した呼び出しは、上限を少し超えて数えることがある） |
 
 - 1文の upsert（`INSERT ... ON CONFLICT DO UPDATE ... RETURNING count`）で数える。`window_start_at` から窓の長さがたっていれば、`window_start_at` を今に、`count` を 1 に戻す。返った `count` が上限以下なら通す。
 - ログインの枠は、数える前に行を読むだけで覗き、上限に届いた枠が1つでもあれば、どの行も書かずに断る。未ログインの人が、叩く速さに比例して行を書き換えさせられないようにするため。窓は固定で、断った呼び出しは `window_start_at` を動かさないので、上限の後を数えなくても断る効き目は同じ。覗いた後に並行して来た呼び出しはそれぞれ数えてから断るので、`count` が上限を超えるのは、そのとき飛んでいた呼び出しの分だけ。
@@ -185,10 +185,11 @@
   - 居座る `oauth_states` は、窓の境目をまたいでも約1,200行まで。叩かれ続けたときの書き込みは、索引と掃除の削除を含めて開始1回で約10〜15行、月に約2,500万〜4,000万行で、Workers Paid の込みの5,000万行に収まる。
   - 戻り先は全体の枠で数えない。戻り先が数えるのは `state` の行を使い切れたものだけで、行は開始が書いたものしか無いので、開始の全体の枠で間接的に絞られる。GitHub から戻った人を、全体の枠で断らないため。
   - 断ったときの画面は IP の枠と同じ `too_many`。ログの `outcome` は `too_many_global` で、IP の枠の `too_many` と見分ける。
+- 画面のエラーの送信（`POST /api/client-errors`。ログイン前も受ける）は、ログインの開始と同じ順と覗き方で、キーを分けて数える。10分に、同じ IP（IPv6 は /64）から20回、IPv6 の /48 は40回、全体の枠 `client-error:global` は300回まで。どれも Workers Logs に1行を出す数の上限で、全体の枠で1日の行を最悪で約4万行に抑える。全体の枠を埋められると、その10分は他の人の画面のエラーが残らない（ログインの枠とは別なので、ログインは止まらない）。
 - 数えるのは、利用者が始めた画面の移動の開始と、`state` の行を使い切れた戻りだけ。開始は、`Sec-Fetch-Mode` が `navigate`、`Sec-Fetch-Dest` が `document`、`Sec-Fetch-Site` が `same-origin` か `none` で、`Sec-Purpose` に prefetch と prerender を含まないもの。どのヘッダーも、送らない古いブラウザは通す。ほかのサイトが `<img>`、`fetch()`、`<iframe>`、リンクの移動、先読みで読ませても、被害者の枠は減らず、`oauth_states` の行もできない。
 - 残る限界: `Sec-Fetch` を送らない古いブラウザには、`<img>` で読ませる攻撃が通る。同じ IP を共有する人（同じオフィス）が、意図して枠を使い切ることは止められない。IP を多く持つ人は、IPv4 なら約10個（窓の境目をまたげば約5個）、IPv6 なら約5個（窓の境目をまたげば約3個）の /48 で全体の枠を使い切り、新しいログインを止められる。止まるのは新しいログインだけで、ログイン済みの人はセッションの期限まで使い続ける。覗いて断った呼び出しにも、Workers のリクエストと D1 の読み出しの料金はかかる。行の無い `state` を Cookie と合わせて送る戻り先も、枠では止まらず `oauth_states` の `DELETE` まで届く（消す行が無いので書き込みは0行）。リクエストの量そのものを止めるのは、ドメインを取った後の WAF の役目。
 - 手動の同期の「接続ごとに5分に1回」は、この表ではなく `connections.last_manual_sync_at` で判定する。
-- `window_start_at <= 定期処理の基準の時刻 - 最長の窓` の行を、毎分の定期処理で消す（「期限切れの行の掃除」）。最長の窓は、ログインの枠（`src/server/auth/rate-limit.ts`）と操作の定義の `rateLimit` の窓のうち最も長いもの。短い窓の枠を過ぎていても、最長の窓の内にある行は残す。最長の窓に入らない窓の枠は、`consumeRateLimit` が例外にする。
+- `window_start_at <= 定期処理の基準の時刻 - 最長の窓` の行を、毎分の定期処理で消す（「期限切れの行の掃除」）。最長の窓は、ログインと画面のエラーの送信の枠（`src/server/auth/rate-limit.ts`）と操作の定義の `rateLimit` の窓のうち最も長いもの。短い窓の枠を過ぎていても、最長の窓の内にある行は残す。最長の窓に入らない窓の枠は、`consumeRateLimit` が例外にする。
 
 ### 期限切れの行の掃除
 

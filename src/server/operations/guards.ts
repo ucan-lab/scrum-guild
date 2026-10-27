@@ -14,10 +14,11 @@ export function requireOrigin(c: Context<AppEnv>): void {
   if (c.req.header('Origin') !== allowed) throw new ApiError(403, 'forbidden');
 }
 
-// 本文を上限まで読む。Content-Length が無い（chunked の）本文も、読んだ分を数えて上限で止める
-async function readBodyText(c: Context<AppEnv>): Promise<string> {
+// 本文を上限（バイト）まで読む。Content-Length が無い（chunked の）本文も、読んだ分を数えて上限で止める。
+// 超えたら 413 の invalid_input。操作の定義のほか、画面のエラーの送信（src/server/client-errors.ts）が小さい上限で使う
+export async function readBodyText(c: Context<AppEnv>, maxBytes: number = MAX_BODY_BYTES): Promise<string> {
   const declared = c.req.header('Content-Length');
-  if (declared !== undefined && Number(declared) > MAX_BODY_BYTES) throw new ApiError(413, 'invalid_input');
+  if (declared !== undefined && Number(declared) > maxBytes) throw new ApiError(413, 'invalid_input');
   const body = c.req.raw.body;
   if (body === null) return '';
   const reader = body.getReader();
@@ -27,7 +28,7 @@ async function readBodyText(c: Context<AppEnv>): Promise<string> {
     const { done, value } = await reader.read();
     if (done) break;
     received += value.byteLength;
-    if (received > MAX_BODY_BYTES) {
+    if (received > maxBytes) {
       await reader.cancel();
       throw new ApiError(413, 'invalid_input');
     }

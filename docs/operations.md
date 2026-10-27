@@ -340,3 +340,44 @@ rollback で戻るのは、版が持つものすべて。コードと設定の�
 ## 本番で壊れたとき
 
 まだ書いていない。気づく手段は `docs/development.md` の「本番で壊れたことに気づく」、戻す手順は上の「戻し方」。
+
+### 画面のエラー
+
+画面で捕まえていない例外と Promise の拒否は、Workers Logs に `level: "error"`、`source: "client"` の1行で残る（送り方と受け方は `docs/development.md` の「本番で壊れたことに気づく」）。届いたことを知らせる通知は無いので、出した後や「画面が動かない」と言われたときに見る。
+
+探し方: Cloudflare のダッシュボードの Workers & Pages で `scrum-guild` の Observability を開き、Events（Workers Logs）で `source` が `client` のものに絞る。版ごとに見るなら `version`（Worker の版）か `clientVersion`（画面の版）、画面ごとなら `route` で絞り、`name` と `message` でまとめる。
+
+項目の意味:
+
+| 項目 | 意味 |
+| --- | --- |
+| `requestId` | 送信を受けた呼び出しの `cf-ray` |
+| `kind` | `error`（捕まえていない例外）か `unhandledrejection`（捕まえていない Promise の拒否） |
+| `name` | 例外の名前（`TypeError` など）。英字40字までに合わなければ `Error` |
+| `message` | メッセージ。引用符の中身と UUID を `…` に伏せた先頭200字。Error でない拒否は文字列ならそのまま、ほかは `Non-Error rejection (<型>)` |
+| `location` | 起きた場所の1か所（`file`、`line`、`column`）。`file` は `/_app/` の下のファイルで、ほかのオリジンや拡張機能なら `external`。場所が取れなければ `null` |
+| `route` | 画面の `route.id`（`/[slug]/w/[id]/plan` など）。当たらない経路は `null` |
+| `clientVersion` | 画面の版（build のコミットの SHA）。開いたままの古い画面からは、前の版の SHA が来る |
+| `version` | 受けた Worker の版 |
+| `browser` | `family`（`chrome`、`firefox`、`safari`、`edge`、`other`）、`major`（主な版）、`mobile` |
+
+誰のエラーか、IP、URL のクエリは残らない。送信は IP ごとに10分に20回（全体で300回）までで、超えた分と、同じページで同じエラーの2回目からは残らない。数が少ないから影響が小さいとは限らない。Origin の検査はブラウザの外（`curl` など）からは偽れるので、行は誰でも作れる。画面の外から来た行を見分ける手段は無く、手元で再現できるかで確かめる。
+
+元の位置へ戻す: `file` は build で圧縮したファイルなので、`clientVersion` の SHA を手元で同じに build し、ソースマップで元のファイルと行に戻す。
+
+1. その SHA のワークツリーを切る: `git fetch origin && git worktree add worktrees/client-error-<SHA の先頭7字> <SHA>`。切ったワークツリーで `pnpm install`
+2. 本番と同じ版で、ソースマップを出して build する: `APP_VERSION=<SHA> pnpm exec vite build --sourcemap hidden`。`hidden` は JS に参照を足さないので、出る JS は本番と同じ（2026-10-27 に確かめた）。`build<file>` があることを確かめる。無ければ SHA か依存が違う
+3. 行と列を戻す（`column` は1から数え、ソースマップは0から数えるので1を引く）
+
+```sh
+node --input-type=module -e "
+import { readFileSync } from 'node:fs';
+import { createRequire } from 'node:module';
+const require = createRequire(process.cwd() + '/node_modules/.pnpm/node_modules/');
+const { TraceMap, originalPositionFor } = require('@jridgewell/trace-mapping');
+const [file, line, column] = process.argv.slice(1);
+console.log(originalPositionFor(new TraceMap(readFileSync('build' + file + '.map', 'utf8')), { line: Number(line), column: Number(column) - 1 }));
+" <file> <line> <column>
+```
+
+4. 終わったら `git worktree remove worktrees/client-error-<SHA の先頭7字>` で消す
