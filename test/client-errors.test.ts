@@ -476,3 +476,22 @@ describe('回数の上限', () => {
     expect(await rateLimitRow(`login:${ip}`)).toBeUndefined();
   });
 });
+
+describe('画面の版（clientVersion）', () => {
+  // 画面の版は build のコミットの SHA（e2e は `<SHA>-e2e-<時刻>`、手元は dev）。形の合わない値は、誰でも送れる文字列なので出さない
+  test.each(['client-sha-376', 'dev', '0123456789abcdef0123456789abcdef01234567-e2e-mvr3jlgh', 'v'.repeat(64)])(
+    '英数字と . _ - の64字まで（%s）はそのまま出す',
+    async (clientVersion) => {
+      expect((await send(report({ clientVersion }))).status).toBe(204);
+      expect(onlyLine().clientVersion).toBe(clientVersion);
+    },
+  );
+
+  test.each(['secret token-376', 'a/b', '<script>', 'バージョン', 'user@example.test'])(
+    '形の合わない値（%s）は invalid にする',
+    async (clientVersion) => {
+      expect((await send(report({ clientVersion }))).status).toBe(204);
+      expect(onlyLine().clientVersion).toBe('invalid');
+    },
+  );
+});

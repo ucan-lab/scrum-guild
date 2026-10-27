@@ -111,3 +111,35 @@ describe('browserOf', () => {
     expect(browserOf(userAgent)).toEqual({ family: 'other', major: null, mobile: false });
   });
 });
+
+describe('browserOf が、それぞれの種類にまとめると決めた UA', () => {
+  test.each([
+    [
+      'Chrome の iOS 版（CriOS）',
+      'Mozilla/5.0 (iPhone; CPU iPhone OS 18_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) CriOS/141.0.7390.96 Mobile/15E148 Safari/604.1',
+      { family: 'chrome', major: 141, mobile: true },
+    ],
+    [
+      'Firefox の iOS 版（FxiOS）',
+      'Mozilla/5.0 (iPhone; CPU iPhone OS 18_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) FxiOS/144.0 Mobile/15E148 Safari/605.1.15',
+      { family: 'firefox', major: 144, mobile: true },
+    ],
+    [
+      'Edge の iOS 版（EdgiOS。Version/ と Safari/ を含み、Safari にも当たりうる）',
+      'Mozilla/5.0 (iPhone; CPU iPhone OS 18_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 EdgiOS/141.3537.57 Mobile/15E148 Safari/605.1.15',
+      { family: 'edge', major: 141, mobile: true },
+    ],
+    [
+      'Edge の Android 版（EdgA。Chrome/ を含み、Chrome にも当たりうる）',
+      'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Mobile Safari/537.36 EdgA/141.0.3537.57',
+      { family: 'edge', major: 141, mobile: true },
+    ],
+    [
+      '旧 Edge（Edge/）',
+      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/70.0.3538.102 Safari/537.36 Edge/18.19045',
+      { family: 'edge', major: 18, mobile: false },
+    ],
+  ])('%s', (_label, userAgent, expected) => {
+    expect(browserOf(userAgent)).toEqual(expected);
+  });
+});

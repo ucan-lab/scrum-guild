@@ -2,8 +2,8 @@ import type { Page, Request } from '@playwright/test';
 import { expect, test } from './fixtures.ts';
 import { signIn } from './helpers.ts';
 
-// 画面のエラーの送り手（Issue #376）を、実際のブラウザで崩しにいく3周目。e2e/client-errors.test.ts は /login で、
-// 読み込んだ直後の画面だけを確かめた。ここでは、画面の中の移動（SvelteKit のルーター）の後と、招待の秘密を持つ /invite を確かめる
+// 画面のエラーの送り手（Issue #376）が送る経路（route.id）。e2e/client-errors.test.ts は /login で、読み込んだ直後の画面だけを
+// 確かめる。ここでは、画面の中の移動（SvelteKit のルーター）の後と、招待の秘密を持つ /invite を確かめる
 
 const isReport = (request: Request) =>
   request.method() === 'POST' && new URL(request.url()).pathname === '/api/client-errors';
