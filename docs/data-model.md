@@ -1,6 +1,6 @@
 # Scrum Guild データモデル
 
-状態: 確定。要件定義（`requirements.md`）を D1（SQLite）のテーブルに落としたもの。最初のマイグレーション（`migrations/0001_create_initial_tables.sql`）で、共通の6表と、一本道に要る組織の中の16表を作った。`organization_holidays` は `migrations/0004_add_organization_holidays.sql` で足した。残りの表は、使う機能の Issue でマイグレーションを足して作る
+状態: 確定。要件定義（`requirements.md`）を D1（SQLite）のテーブルに落としたもの。最初のマイグレーション（`migrations/0001_create_initial_tables.sql`）で、共通の6表と、一本道に要る組織の中の16表を作った。`organization_holidays` は `migrations/0004_add_organization_holidays.sql` で、`comments` は `migrations/0006_add_comments.sql` で足した。残りの表は、使う機能の Issue でマイグレーションを足して作る
 
 ## 決まりごと
 
@@ -156,7 +156,7 @@
 
 ### rate_limits
 
-ログイン、手動の同期、招待（GitHub に問い合わせる `invitee-resolve` と `invitation-create`）、完成の定義の変更（`workspace-dod-update`。10 万字の本文を書く）のレート制限。
+ログイン、手動の同期、招待（GitHub に問い合わせる `invitee-resolve` と `invitation-create`）、完成の定義の変更（`workspace-dod-update`。10 万字の本文を書く）、コメントの作成と編集（`comment-create`、`comment-update`。10 万字の本文を何件でも足せる。どれも 10 分に 30 回）のレート制限。
 
 | 列 | 型 | 制約 | 説明 |
 | --- | --- | --- | --- |
@@ -815,14 +815,20 @@ Google の人は、ログインするまで `sub` が分からない。そのた
 | workspace_id | TEXT | NOT NULL、FK workspaces | |
 | task_id | TEXT | NOT NULL、FK tasks | |
 | author_user_id | TEXT | NOT NULL、FK users | |
-| body_md | TEXT | NOT NULL | 削除したら空文字にする |
-| edited_at | TEXT | | 入っていれば「編集済み」 |
+| body_md | TEXT | NOT NULL、`CHECK (length(body_md) <= 100000)` | Markdown。削除したら空文字にする |
+| edited_at | TEXT | | 最後に直した日時。入っていれば「編集済み」 |
 | deleted_at | TEXT | | 入っていれば「削除されました」 |
-| deleted_by | TEXT | FK users | |
+| deleted_by | TEXT | FK users | 消した人。本人でなければ画面は「〇〇が削除しました」 |
 | created_at | TEXT | NOT NULL | |
 
-- 索引: `(task_id, created_at)`。
+- 消したら中身がどこにも残らないようにする: `CHECK ((deleted_at IS NULL) = (body_md <> ''))`（消していない行の本文は空でなく、消した行の本文は空）、`CHECK ((deleted_at IS NULL) = (deleted_by IS NULL))`。編集の前の本文も残さない（`edited_at` と、`change_logs` の「誰がいつ直したか」だけを書く。前の本文を履歴に残すと、消した後も履歴に残るため）。
+- 索引: `(task_id, created_at, id)`（`comments_task`）。一覧の並びとカーソルに `id` まで使う。
 - 索引（外部キーの検査）: `(author_user_id)`、`(deleted_by) WHERE deleted_by IS NOT NULL`。
+- 操作は `comment-list`、`comment-create`、`comment-update`、`comment-delete`（どれも `member`。閉じたワークスペースでは読むだけで、書く3つは 409 の `workspace_closed`）。対象のタスクは `task-detail` と同じ（そのワークスペースの削除していないタスク。受信箱、アーカイブ、完了済みも含む）で、それ以外（無いタスク、削除したタスク、別のワークスペースと別の組織のタスクとコメント）は 404。存在（404）を権限（403）より先に決める。
+- 一覧（`comment-list`）は、そのタスクのコメントを `workspace_id` で絞り、新しい順（`created_at` の降順、同じなら `id` の降順）に 51 件読んで、50 件を古い順（書いた順）にして返す。51 件目があれば、返した中で最も古いコメントの `{ created_at, id }` を `next` にし、次は `before` に渡して `created_at < :c OR (created_at = :c AND id < :id)` で読む。消したコメントも本文を空にして返し、50 件に数える。添えるのは、消していないコメントの数（`count`。タブの「コメント N」）、時刻を出すワークスペースの `timezone`、書いた人と消した人の今の名前（組織で絞った `users`。抜けた人、無効にされた人も名前を出す）、呼んだ人が直せるか（`can_edit`。書いた本人）と消せるか（`can_delete`。書いた本人とリーダー、管理者。`mayDeleteOwned` と同じ判定）。どちらも消したコメントと閉じたワークスペースでは偽。
+- 一覧は、1件 10 万字までの本文を 50 件まで全文で返すので、応答が大きくなりうる。最悪は、4 バイトの文字（絵文字など）だけの 10 万字が 50 件並ぶときで、本文だけで約 20MB（JSON の逃がしで増えればそれ以上）。作成と編集はアカウントごとに 10 分に 30 回までなので、1人がこの状態を作るには数十分かかる。タスクの本文と同じ上限で、今はそのまま許す。困ったら、長い本文は先頭だけを返し、全文は1件ずつ読む形にする。
+- 本文は、タスクの本文と同じ整え方（改行を `\n` にそろえ、前後の空行と末尾の空白を落とす）をし、空か空白だけなら 400。10 万字（コードポイント）を超えるか見えない文字を含めば 400。
+- 直せるのは書いた本人だけ（リーダーと管理者も、人のコメントは直せない）で、それ以外は 403 の `forbidden`。版の番号は持たず、後から保存したほうを生かす。整えた本文が今と同じなら何も書かない。消せるのは書いた本人とリーダー（管理者を含む）で、それ以外は 403。消えたコメントへの編集と削除は、404 でなく 409 の `conflict`（`details.reason: 'deleted'`）で断る（消したコメントは「削除されました」として一覧に残り、見えているのに無いことになるため）。書き方は「書き込みの単位」の「コメントの作成」「コメントの編集」「コメントの削除」。
 
 ### attachments
 
@@ -1025,7 +1031,7 @@ Google の人は、ログインするまで `sub` が分からない。そのた
 | workspace_id | TEXT | FK workspaces | 組織の変更（組織の作成、停止、再開、管理者の指名、ユーザーの無効化、組織の設定の変更）では空 |
 | actor_user_id | TEXT | FK users | 空なら同期などの定期処理か運用者の操作 |
 | operator | TEXT | | 運用者の操作（組織の作成、停止、再開、管理者の指名し直し）のときの運用者のログインの ID（`github:12345`、`google:<sub>` の形） |
-| entity_type | TEXT | NOT NULL | `task`、`story`、`epic`、`sprint`、`membership`、`invitation`、`allocation`、`connection`、`completion`、`user`、`workspace`、`organization`、`category`、`repository` など |
+| entity_type | TEXT | NOT NULL | `task`、`story`、`epic`、`comment`、`sprint`、`membership`、`invitation`、`allocation`、`connection`、`completion`、`user`、`workspace`、`organization`、`category`、`repository` など |
 | entity_id | TEXT | NOT NULL | |
 | action | TEXT | NOT NULL | `create`、`update`、`delete`、`complete`、`reopen`、`archive`、`close` など |
 | changes_json | TEXT | NOT NULL、既定 `'{}'` | `{"列名": [前, 後]}`。人や列は ID と、そのときの表示名を並べて残す |
@@ -1044,6 +1050,8 @@ Google の人は、ログインするまで `sub` が分からない。そのた
   - 内容は `entity_type` と `action`（と `changes_json` の列）の組ごとに決めた種類で返し、`changes_json` はそのまま返さない。種類と返す値: 組織の作成（そのときの名前）、停止（消す予定日。一時的な停止は空）、再開、停止の理由の切り替え（切り替えた後の消す予定日）、組織の設定の変更（`organization` の `update` で `vocabulary` か `theme` の列）、管理者の指名（`user` の `create` で `is_admin` が 1 になったもの、と `update` で `is_admin` が 0 から 1 になったもの。名前は記録のそのときの名前で、ログインを待つ行の仮の名前と、メールアドレスに見える名前（`@` を含む）は使わず `users` の今の名前にし、ログインを待つ行ならまだ分からないので空）、Google の招待で指名した人のログイン（本人（`actor_user_id` が `entity_id` と同じ）が空の `login_subject` を埋めた記録）、既にいる人へのまとめ（本人の記録で、列が `is_admin`（1 へ）と `disabled_at`（空へ）の2つだけのもの。別の管理者が有効に戻して管理者にした記録は「その他」）、管理者の解除（`is_admin` が 1 から 0）、ユーザーの無効化と有効化（`disabled_at` が空から日時、日時から空）、ワークスペースの作成（そのときの名前）、終了と再開（`workspaces` の今の名前）。どれにも当たらない組は「その他」で、値を持たない。人とワークスペースの名前は、同じ文で `users` と `workspaces` を組織で絞って結んで引く（別の組織の行を指せば空）。ログインの ID、`account_id`、メールアドレスは返さない。
   - 組織の設定の変更は、`organization-settings-update` が `organization` の `update`（`{"vocabulary": [前, 後], "theme": [前, 後]}` のうち変えた列）で書く。
   - 管理者の指名（`is_admin` が 0 から 1）と解除、ユーザーの無効化と有効化は、まだ書く処理が無い。書く処理は #59 のストーリーで足し、上の形（`{"列名": [前, 後]}`。`user` の `update` で `is_admin` か `disabled_at` の列）で書くか、違う形にするなら `src/server/operations/organization-history.ts` の対応を同じ PR で直す。形が合わない記録は「その他」として出る。
+- コメントは、編集（`action = 'update'`）と削除（`action = 'delete'`）だけを `entity_type = 'comment'`、`entity_id` はコメントの ID で書く。作成は `comments` の行そのものが記録なので書かない。`actor_user_id` は直した人か消した人で、`changes_json` は `{"task_id": [<タスクの ID>, <同じ値>], "author": [{"id", "name"}, <同じ値>]}`（どのタスクの、誰が書いたコメントかだけ。コメントの行のこの2つは変わらないので、`{"列名": [前, 後]}` の形のまま前と後に同じ値を入れる。名前は書いた人のそのときの名前）。本文（前の本文も後の本文も）は入れない。消した後に中身がどこにも残らないようにするため。タスクの履歴（`task-history`）は `entity_type = 'task'` だけを読むので、コメントの行は出さない。
+- コメントの変更の履歴（`entity_type = 'comment'`）は、今はどの画面も読まない。リーダーと管理者が見る変更の履歴の画面を作るときに拾う。
 - 同期による取り込み元の属性の書き換えは残さない。量が多く、取り込み元で見られるため。
 - 期間で消さず、残し続ける。容量が気になったら、手順書のエクスポート（`wrangler d1 export`）で退避する。
 
@@ -1095,11 +1103,13 @@ D1 は対話的なトランザクションを持たない。まとめて書く�
 | 初めてのログイン | 共通の DB の `accounts` と `account_logins`、続けて組織の DB の `users.account_id`（指名で待っていた行に結ぶ）、続けて共通の DB の `sessions`。2回目以降は `account_logins` と `accounts.last_login_at` の書き直し、`users.account_id` を結び直す書き込み、`sessions` の順 |
 | 添付ファイルを上げる | R2 にファイルを書き、続けて `attachments` |
 | 添付ファイルを消す | `attachments` の削除と `change_logs`、続けて R2 のファイルの削除 |
-| コメントの削除 | `comments`、そのコメントの `attachments` の削除、`change_logs`、続けて R2 のファイルの削除 |
+| コメントの作成 | `comments`。`comment-create` が `INSERT ... SELECT ... WHERE EXISTS (そのワークスペースの削除していないタスク) AND EXISTS (閉じていないワークスペース)` の1文で入れ、`change_logs` は書かない（行そのものが記録）。何も入らなければ、閉じていれば 409（`workspace_closed`）、そうでなければ 404 |
+| コメントの編集 | `comments`（`body_md`、`edited_at`）、`change_logs`（`entity_type = 'comment'`、`action = 'update'`。形は `change_logs` の節）。先にコメントを読み（ワークスペースで絞り、削除していないタスクのコメントだけ。無ければ 404）、書いた本人でなければ 403（`forbidden`）、消えていれば 409（`conflict`、`deleted`）、整えた本文が今と同じなら何も書かない。`comments` の文の条件は `id`、`workspace_id`、`author_user_id = :呼んだ人`、`deleted_at IS NULL`、`EXISTS (削除していないタスク)`、閉じていないワークスペースで、`change_logs` は直前の `UPDATE` が行を変えたときだけ入れる（下の「直前の文に結ぶ」）。何も変わらなければ、存在を先に決め、読み直してコメントかタスクが無ければ（読んでから書くまでにタスクが削除された）404、閉じていれば 409（`workspace_closed`）、消されていれば 409（`conflict`、`deleted`。読んでから書くまでにリーダーが消した）。先に読んだ時点でも、無いコメントは閉じたワークスペースでも 404 で、あるコメントへの書き込みだけが `workspace_closed` になる（同じ本文の更新も、閉じていれば `workspace_closed`） |
+| コメントの削除 | `comments`（`body_md` を空文字、`deleted_at`、`deleted_by`）、`change_logs`（`entity_type = 'comment'`、`action = 'delete'`。形は `change_logs` の節）。編集と同じく、先に読んで、無ければ 404、書いた本人でもリーダー（管理者を含む）でもなければ 403、消えていれば 409（`conflict`、`deleted`）。`comments` の文の条件は `id`、`workspace_id`、`deleted_at IS NULL`、`EXISTS (削除していないタスク)`、閉じていないワークスペースで、`change_logs` は直前の `UPDATE` が行を変えたときだけ入れる。何も変わらなければ、編集と同じ順で理由を返す（先に別の要求が消していれば 409 の `deleted` で、履歴は1行だけ）。コメントの添付ファイル（#68）が入ったら、そのコメントの `attachments` の削除をこの `batch()` に足し、続けて R2 のファイルを消す |
 
 先に読んだ値で判定してから書く操作（最後の管理者、完了の可否など）は、書く文の `WHERE` に同じ条件を入れ、影響した行の数で競合を見つける。
 
-直前の文に結ぶ: 履歴の `INSERT ... SELECT` は、直前の `UPDATE` が行を変えたことを `WHERE changes() > 0` で条件にする（`src/server/db/previous-statement.ts` の `previousStatementChanged`）。D1 の `batch()` は全部の文を1つの接続の1つのトランザクションで順に流すので、`changes()` は直前の文の件数になる（テストで確かめている）。履歴の行や時刻の一致で「自分の更新か」を見分けると、止めた時計（`DEV_NOW`）や同じ値を書く要求では、負けた要求も一致して履歴を二重に書く。この条件は直前の文だけを見るので、変える文の直後に置く。タスクの変更と削除、招待と取り消し、ロールの付け替えと離脱、エピックの変更、エピックとストーリーの削除（根の履歴）、ストーリーの完了と取り消し、スプリントの作成と変更と削除、完成の定義の変更が使う（ストーリーの変更は、まだ時刻と値の一致で見ている）。ストーリーの完了と取り消しでは、さらに後ろの文（経験値の付与と打ち消し）が、その履歴の行（この要求だけの `id`）があることを自分の条件にする。
+直前の文に結ぶ: 履歴の `INSERT ... SELECT` は、直前の `UPDATE` が行を変えたことを `WHERE changes() > 0` で条件にする（`src/server/db/previous-statement.ts` の `previousStatementChanged`）。D1 の `batch()` は全部の文を1つの接続の1つのトランザクションで順に流すので、`changes()` は直前の文の件数になる（テストで確かめている）。履歴の行や時刻の一致で「自分の更新か」を見分けると、止めた時計（`DEV_NOW`）や同じ値を書く要求では、負けた要求も一致して履歴を二重に書く。この条件は直前の文だけを見るので、変える文の直後に置く。タスクの変更と削除、コメントの編集と削除、招待と取り消し、ロールの付け替えと離脱、エピックの変更、エピックとストーリーの削除（根の履歴）、ストーリーの完了と取り消し、スプリントの作成と変更と削除、完成の定義の変更が使う（ストーリーの変更は、まだ時刻と値の一致で見ている）。ストーリーの完了と取り消しでは、さらに後ろの文（経験値の付与と打ち消し）が、その履歴の行（この要求だけの `id`）があることを自分の条件にする。
 
 タスクの完了（`task-complete`）の文と条件。ポイント、担当、区分、作った人は先に読まず、`INSERT ... SELECT` で `tasks` の行から取る。読むのは、計上月を決めるワークスペースのタイムゾーンと、変更の履歴に残す完了にした人の名前だけ。`batch()` は件数 0 の文があっても後ろの文を書くので、後ろの文は先の文が通ったことを自分の条件に持つ。この版の完了は、スプリントに入っていないバックログのタスク（親のないタスクと、ストーリーの下のタスク）を対象にし、1 の条件（`tray = 'backlog' AND sprint_id IS NULL`）で守る。対象でないタスク（受信箱やアーカイブのタスク、スプリントに入っているタスク）は、何も書かず 404 にする。`sprint_entries` を足すときに、スプリントに入っているタスクへ対象を広げる。
 

@@ -323,9 +323,10 @@ export function defineOperationChecks(
           });
           expect(res.status).toBe(403);
           expect(await errorCodeOf(res)).toBe('forbidden');
+          // 入力は呼ぶ人ごとに作る（自分のコメントを直すように、呼んだ人の行を指す操作のため）
           for (const person of [own.member, own.leader, own.admin]) {
             await expectOk(
-              await post(app, definition, { slug: own.slug, token: person.token, body: await input(own) }),
+              await post(app, definition, { slug: own.slug, token: person.token, body: await input(own, person) }),
             );
           }
         });

@@ -1,7 +1,7 @@
 // 一本道: タスクを作る → 行のリンクで引き出しを開く → 属性を直す → 本文に <script> を含む Markdown を書く（描かれた本文に CSP の違反が無い）
 // → 書きかけのまま閉じると確かめる → 削除すると木から消える。
 // seed のセッション（seed/sessions.ts）の Cookie で開く。あおば開発の管理者はミナト
-import type { Page } from '@playwright/test';
+import type { Locator, Page } from '@playwright/test';
 import { expect, test } from './fixtures.ts';
 import { createWorkspace, signIn, watchViolations } from './helpers.ts';
 
@@ -355,6 +355,14 @@ async function openDrawer(page: Page, title: string) {
   return drawer;
 }
 
+// 「変更の履歴」のタブを選び、その中身（tabpanel）を返す。初めはコメントのタブが選ばれている
+async function openHistory(drawer: Locator) {
+  await drawer.getByRole('tab', { name: '変更の履歴' }).click();
+  const history = drawer.getByRole('tabpanel', { name: '変更の履歴' });
+  await expect(history).toBeVisible();
+  return history;
+}
+
 test('変更の履歴: 読めなければ「もう一度試す」で読み直し、保存の後の読み直しに失敗しても行を残し、「さらに読む」で続きを足す', async ({
   page,
 }) => {
@@ -366,13 +374,13 @@ test('変更の履歴: 読めなければ「もう一度試す」で読み直し
     route.fulfill({ status: 500, json: { error: { code: 'internal', message: 'x' } } }),
   );
   const drawer = await openDrawer(page, '履歴を読み直す');
-  const history = drawer.getByRole('region', { name: '変更の履歴' });
+  const history = await openHistory(drawer);
   const items = history.locator('.history > li');
   await expect(history.getByText('変更の履歴を読み込めませんでした。')).toBeVisible();
   await page.unroute('**/api/aoba/task-history');
   await history.getByRole('button', { name: 'もう一度試す' }).click();
   await expect(items).toHaveCount(1);
-  await expect(history.getByRole('heading', { name: '変更の履歴' })).toBeFocused();
+  await expect(history).toBeFocused();
 
   // 保存した後の読み直しに失敗しても、前の行を残し、上に失敗を添える
   await page.route('**/api/aoba/task-history', (route) =>
@@ -411,7 +419,7 @@ test('変更の履歴: 読めなければ「もう一度試す」で読み直し
   await expect(items.nth(1).locator('.history-changes li span')).toHaveText(['難易度', '未見積もり → 5']);
   await expect(items.nth(2)).toContainText('依頼を出した');
   await expect(history.getByRole('button', { name: 'さらに読む' })).toHaveCount(0);
-  await expect(history.getByRole('heading', { name: '変更の履歴' })).toBeFocused();
+  await expect(history).toBeFocused();
   expect(befores).toHaveLength(1);
 });
 
@@ -422,7 +430,7 @@ test('変更の履歴が無ければ「まだ変更はありません。」', as
     route.fulfill({ status: 200, json: { entries: [], next: null, timezone: 'Asia/Tokyo' } }),
   );
   const drawer = await openDrawer(page, '履歴の無い依頼');
-  await expect(drawer.getByRole('region', { name: '変更の履歴' }).getByText('まだ変更はありません。')).toBeVisible();
+  await expect((await openHistory(drawer)).getByText('まだ変更はありません。')).toBeVisible();
 });
 
 test('変更の履歴が 404（タスクが消えた）なら、「もう一度試す」を出さず、トーストで知らせて閉じる', async ({ page }) => {
@@ -475,7 +483,7 @@ for (const [vocabulary, words] of [
     await expect(dialog).toBeHidden();
 
     const drawer = await openDrawer(page, title);
-    const history = drawer.getByRole('region', { name: '変更の履歴' });
+    const history = await openHistory(drawer);
     const items = history.locator('.history > li');
     // 開いたときに読む。作成の行だけ
     await expect(items).toHaveCount(1);

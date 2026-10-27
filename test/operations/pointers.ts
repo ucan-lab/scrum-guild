@@ -8,6 +8,7 @@ import { createFakeGithub } from '../auth/fake-github.ts';
 import { githubUser } from '../auth/helpers.ts';
 import {
   createCategory,
+  createComment,
   createEpic,
   createInvitation,
   createMembership,
@@ -21,7 +22,7 @@ import {
   createWorkspace,
 } from '../factories.ts';
 import type { Pointers } from './harness.ts';
-import { SUSPENDED_AT, type Target } from './world.ts';
+import { SUSPENDED_AT, type Person, type Target } from './world.ts';
 
 // 運用者の操作が問い合わせる GitHub。operation-registry.test.ts が fetcher を createApp に渡す
 export const operatorGithub = createFakeGithub();
@@ -40,6 +41,15 @@ async function ensureMembership(target: Target, workspaceId: string, userId: str
     ),
   );
   if (current === undefined) await createMembership(target.organization, workspaceId, userId, { role: 'member' });
+}
+
+// 対象のワークスペースのタスクに、呼ぶ人が書いたコメントを作る。呼ぶ人が対象の組織の人でなければ（別の組織の対象を指すとき）、
+// 対象の組織の管理者が書いたコメントにする
+async function commentFor(target: Target, caller: Person) {
+  const people = [target.admin, target.leader, target.member, target.bystander];
+  const author = people.find((person) => person.userId !== null && person.userId === caller.userId) ?? target.admin;
+  const task = await createTask(target.organization, target.workspace.id, target.admin.userId!);
+  return createComment(target.organization, target.workspace.id, task.id, author.userId!);
 }
 
 // 個人のアカウントの GitHub のユーザーを足して返す。呼ぶたびに別の人
@@ -268,6 +278,27 @@ export const pointers: Pointers = {
   'task-delete': async (target) => ({
     workspace_id: target.workspace.id,
     task_id: (await createTask(target.organization, target.workspace.id, target.member.userId!)).id,
+  }),
+  'comment-list': async (target) => ({
+    workspace_id: target.workspace.id,
+    task_id: (await createTask(target.organization, target.workspace.id, target.admin.userId!)).id,
+  }),
+  'comment-create': async (target) => ({
+    workspace_id: target.workspace.id,
+    task_id: (await createTask(target.organization, target.workspace.id, target.admin.userId!)).id,
+    body_md: '手順を確かめました。',
+  }),
+  // 呼ぶたびに、呼ぶ人が書いたコメントを作る（直せるのは書いた本人だけ。呼ぶ人が対象の組織にいなければ管理者のコメント）。
+  // 本文を毎回変える（同じ本文だと何も書かないため）
+  'comment-update': async (target, caller) => ({
+    workspace_id: target.workspace.id,
+    comment_id: (await commentFor(target, caller)).id,
+    body_md: `手順を直しました ${crypto.randomUUID().slice(0, 8)}`,
+  }),
+  // 呼ぶたびに、呼ぶ人が書いたコメントを作る（消したコメントは続けて消せない）
+  'comment-delete': async (target, caller) => ({
+    workspace_id: target.workspace.id,
+    comment_id: (await commentFor(target, caller)).id,
   }),
   'sprint-list': async (target) => ({ workspace_id: target.workspace.id }),
   // 呼ぶたびに、前の呼び出しと重ならない期間を指す（同じワークスペースに続けて作ると、2回目は 409 の overlap になるため）

@@ -37,6 +37,7 @@
   import InlineEdit from './InlineEdit.svelte';
   import Markdown from './Markdown.svelte';
   import RepositoryPicker from './RepositoryPicker.svelte';
+  import TaskComments from './TaskComments.svelte';
 
   // タスクの詳細の引き出しの中身（kit.js の drawerHtml）。`?task=<ID>` が付いている間、画面の枠（/[slug]/w/[id] のレイアウト）が置く。
   // 開いたら task-detail で1件を読む（本文は長いので、木には載せない）。読んでいる間は読み込み中を出し、読めなければ
@@ -59,9 +60,11 @@
   // 閉じた後に返った保存の応答も、通ったら木を読み直してトーストで知らせ、失敗はトーストで知らせる（saveFields）。
   // 引き出しが読み直すのは木（onchanged）かワークスペースの枠（onstale）だけで、組織の枠は読み直さない。
   // 削除は確認のダイアログを挟む。消したら閉じ、トーストで知らせ、画面が木を読み直す（onremoved）。
-  // 本文の下に「変更の履歴」の節を置く（task-history。新しい順に 50 件ずつで、続きは「さらに読む」で足す）。
+  // 完了の帯の下に「コメント N」と「変更の履歴」のタブを置く（kit.js の drawerHtml）。初めはコメントのタブを選び、
+  // タブの中身は外さずに隠す（書きかけのコメントを、タブを切り替えても保つ）。コメントは TaskComments が読み書きし、
+  // 書きかけ（新しいコメントの欄の文字と、直している途中のコメント）を hasDraft に足す。
+  // 「変更の履歴」は task-history で読む（新しい順に 50 件ずつで、続きは「さらに読む」で足す）。
   // 読み込めたときと、引き出しで保存した後に読み直す。列の名前と値の文は src/lib/task-history.ts が辞書の言葉で作る。
-  // コメント（#171）が入ったら、見本（kit.js の drawerHtml）どおりのタブにする。
   // 本文の下に完了の帯（.done-bar）を置く。完了していなくて書けるときは「完了にする」（task-complete。確かめのダイアログは挟まない）、
   // 完了していれば完了の印と完了した日時を出し、横にワークスペースの完成の定義（空なら出さない）を Markdown で出す。
   // 完了にしたら、応答の日時を入れ、履歴を読み直し、画面が木を読み直す（onchanged）。押したボタンは消えるので、印へフォーカスを移す。
@@ -109,7 +112,10 @@
   const definitionsNoteId = `${ids}-definitions-note`;
   const categoryId = `${ids}-category`;
   const categoryErrorId = `${ids}-category-error`;
-  const historyHeadingId = `${ids}-history`;
+  const commentsTabId = `${ids}-comments-tab`;
+  const commentsPanelId = `${ids}-comments`;
+  const historyTabId = `${ids}-history-tab`;
+  const historyPanelId = `${ids}-history`;
   const dodHeadingId = `${ids}-dod`;
 
   type PointsChoice = (typeof TASK_POINT_VALUES)[number] | null;
@@ -132,9 +138,49 @@
 
   // 直している途中の欄ごとの書きかけ（保存の要求を送っている間も数える）
   const dirty = $state({ title: false, link: false, body: false });
-  // 書きかけ。タイトル、リンク、本文の書きかけと、まだ送っていない期日の入力（待っている間と、打ちかけ）と担当の選択（待っている間）
+  // 書きかけ。タイトル、リンク、本文の書きかけと、まだ送っていない期日の入力（待っている間と、打ちかけ）と担当の選択（待っている間）と、
+  // コメントの書きかけ（新しいコメントの欄の文字と、直している途中のコメント。TaskComments の hasDraft）
   function hasDraft(): boolean {
-    return dirty.title || dirty.link || dirty.body || dueUnsent() || assigneeChoice !== null || categoryChoice !== null;
+    return (
+      dirty.title ||
+      dirty.link ||
+      dirty.body ||
+      dueUnsent() ||
+      assigneeChoice !== null ||
+      categoryChoice !== null ||
+      (commentsPanel?.hasDraft() ?? false)
+    );
+  }
+
+  // ---- コメントと変更の履歴のタブ ----
+  let tab = $state<'comments' | 'history'>('comments');
+  // 消していないコメントの数（タブの「コメント N」）。読む前は null で、数を出さない
+  let commentCount = $state<number | null>(null);
+  let commentsPanel = $state<ReturnType<typeof TaskComments>>();
+  const tabOrder = ['comments', 'history'] as const;
+
+  function selectTab(next: (typeof tabOrder)[number]): void {
+    tab = next;
+  }
+
+  // 左右の矢印キーと Home、End で、隣のタブを選んでフォーカスを移す（WAI-ARIA のタブの決まり）
+  async function onTabKeydown(event: KeyboardEvent): Promise<void> {
+    const at = tabOrder.indexOf(tab);
+    const target =
+      event.key === 'ArrowRight'
+        ? tabOrder[(at + 1) % tabOrder.length]
+        : event.key === 'ArrowLeft'
+          ? tabOrder[(at - 1 + tabOrder.length) % tabOrder.length]
+          : event.key === 'Home'
+            ? tabOrder[0]
+            : event.key === 'End'
+              ? tabOrder[tabOrder.length - 1]
+              : undefined;
+    if (target === undefined) return;
+    event.preventDefault();
+    tab = target;
+    await tick();
+    document.getElementById(target === 'comments' ? commentsTabId : historyTabId)?.focus();
   }
 
   // 選んだポイント。送っている間（と、続けて選んだ分を送り終えるまで）は、最後に選んだ値を見せる
@@ -267,7 +313,8 @@
   // 行を出した後の読み直し（保存した後）に失敗した。行は残し、節の上に失敗と「もう一度試す」を添える
   let historyReloadFailed = $state(false);
   let historyVersion = 0;
-  let historyHeading = $state<HTMLElement>();
+  // 「変更の履歴」のタブの中身（tabpanel）。読み直せたときと読み終えたときに、フォーカスを置く
+  let historyPanel = $state<HTMLElement>();
   // 「さらに読む」で足したことの知らせ。節の中に常に置いた role="status" の領域に入れる
   let historyAdded = $state('');
   // 履歴の読み込みの進み具合を読み上げに伝える（見える「読み込んでいます」は aria-hidden にする）
@@ -277,7 +324,7 @@
 
   // 先頭の 50 件を読み直す。読み直している間は、前に読めた行を残す（保存のたびに消えてちらつかない）。
   // 失敗したら、行がまだ無ければ節を失敗の表示に、行があれば行を残して失敗を添える。
-  // focusAfter は「もう一度試す」から読んだとき。読めたらボタンが消えるので、節の見出しへフォーカスを移す
+  // focusAfter は「もう一度試す」から読んだとき。読めたらボタンが消えるので、タブの中身へフォーカスを移す
   async function loadHistory(focusAfter = false): Promise<void> {
     const mine = ++historyVersion;
     historyReloading = true;
@@ -293,7 +340,7 @@
       historyReloadFailed = false;
       if (focusAfter) {
         await tick();
-        if (alive) historyHeading?.focus();
+        if (alive) historyPanel?.focus();
       }
       return;
     }
@@ -331,12 +378,12 @@
     return 'failed';
   }
 
-  // 「さらに読む」。読み足して続きが無くなると押したボタンが消えるので、フォーカスを節の見出しへ移す
+  // 「さらに読む」。読み足して続きが無くなると押したボタンが消えるので、フォーカスをタブの中身へ移す
   async function showMoreHistory(): Promise<void> {
     const outcome = await loadMoreHistory();
     if (!alive || outcome !== 'added' || historyNext !== null) return;
     await tick();
-    historyHeading?.focus();
+    historyPanel?.focus();
   }
 
   async function load(): Promise<void> {
@@ -901,7 +948,8 @@
   $effect(() => {
     const saved = task?.due_on ?? '';
     const input = dueInput;
-    if (input === undefined) return;
+    // 書き込めなくなって（終了が分かって）欄が外れると、bind:this は null になるので、null も外す
+    if (input == null) return;
     if (input !== dueBoundTo) {
       dueBoundTo = input;
       dueBase = input.value;
@@ -914,13 +962,13 @@
 
   // まだ送っていない期日の入力がある（待っている間、打ちかけ、送っている間に選んだ次の値）
   function dueUnsent(): boolean {
-    return dueInput !== undefined && dueInput.value !== dueBase;
+    return dueInput != null && dueInput.value !== dueBase;
   }
 
   // final は、欄を離れたか Enter。書けない値のときだけ、ここで知らせる
   async function commitDue(final: boolean): Promise<void> {
     const input = dueInput;
-    if (task === null || input === undefined || taskGone) return;
+    if (task === null || input == null || taskGone) return;
     if (dueSending) {
       dueAgain = true;
       return;
@@ -960,7 +1008,7 @@
   }
 
   function clearDue(): void {
-    if (dueInput === undefined) return;
+    if (dueInput == null) return;
     clearTimeout(dueTimer);
     dueInput.value = '';
     // 「クリア」は空にすると消えるので、フォーカスを期日の入力欄へ移す
@@ -1504,76 +1552,123 @@
       </div>
     {/if}
 
-    <!-- 変更の履歴（kit.js の drawerHtml の .history）。コメント（#171）が入ったら、見本どおりのタブにする -->
-    <section
-      class="field"
-      aria-labelledby={historyHeadingId}
-      aria-busy={historyState === 'loading' || historyReloading}
-    >
-      <h3 class="field-label" id={historyHeadingId} tabindex="-1" bind:this={historyHeading}>{t('historyTitle')}</h3>
-      <!-- 読み込みの進み具合と、足した件数の読み上げの領域。常に置き、中の文字だけを替える -->
-      <span class="visually-hidden" role="status">{historyStatus}</span>
-      {#if historyState === 'loading'}
-        <p class="field-hint" aria-hidden="true">{t('loading')}</p>
-      {:else if historyState === 'failed'}
-        <!-- 読み直している間も、失敗の表示とボタンを残す（ボタンは押せなくし、読み直していることを示す） -->
-        <div class="callout is-danger" role="alert"><Icon name="alert" /><span>{t('historyLoadFailed')}</span></div>
-        <div class="form-actions">
-          <button class="btn is-sm" type="button" aria-disabled={historyReloading} onclick={retryHistory}>
-            {historyReloading ? t('retrying') : t('retry')}
-          </button>
-        </div>
-      {:else}
-        {#if historyReloadFailed}
-          <!-- 保存した後の読み直しに失敗した。前に読めた行は残し、上に失敗と「もう一度試す」を添える -->
+    <!-- コメントと変更の履歴のタブ（kit.js の drawerHtml の .tabs）。中身は外さずに隠す（書きかけのコメントを、タブを切り替えても保つ）。
+         左右の矢印キーと Home、End でタブを移り、移った先を選ぶ -->
+    <div>
+      <div class="tabs" role="tablist" aria-label={t('drawerTabs')}>
+        <button
+          class="tab"
+          type="button"
+          role="tab"
+          id={commentsTabId}
+          aria-controls={commentsPanelId}
+          aria-selected={tab === 'comments'}
+          tabindex={tab === 'comments' ? 0 : -1}
+          onclick={() => selectTab('comments')}
+          onkeydown={(event) => void onTabKeydown(event)}
+          >{commentCount === null ? t('commentField') : t('commentsTab', { count: commentCount })}</button
+        >
+        <button
+          class="tab"
+          type="button"
+          role="tab"
+          id={historyTabId}
+          aria-controls={historyPanelId}
+          aria-selected={tab === 'history'}
+          tabindex={tab === 'history' ? 0 : -1}
+          onclick={() => selectTab('history')}
+          onkeydown={(event) => void onTabKeydown(event)}>{t('historyTitle')}</button
+        >
+      </div>
+      <div role="tabpanel" id={commentsPanelId} aria-labelledby={commentsTabId} hidden={tab !== 'comments'}>
+        <TaskComments
+          bind:this={commentsPanel}
+          {slug}
+          {workspaceId}
+          {taskId}
+          {canWrite}
+          oncount={(count) => (commentCount = count)}
+          ongone={() => {
+            if (!taskGone) gone();
+          }}
+          {onstale}
+        />
+      </div>
+      <!-- 変更の履歴（kit.js の drawerHtml の .history）。tabindex="-1" は、読み直せたときと読み終えたときにフォーカスを置くため -->
+      <div
+        class="tab-panel"
+        role="tabpanel"
+        id={historyPanelId}
+        aria-labelledby={historyTabId}
+        hidden={tab !== 'history'}
+        tabindex="-1"
+        bind:this={historyPanel}
+        aria-busy={historyState === 'loading' || historyReloading}
+      >
+        <!-- 読み込みの進み具合と、足した件数の読み上げの領域。常に置き、中の文字だけを替える -->
+        <span class="visually-hidden" role="status">{historyStatus}</span>
+        {#if historyState === 'loading'}
+          <p class="field-hint" aria-hidden="true">{t('loading')}</p>
+        {:else if historyState === 'failed'}
+          <!-- 読み直している間も、失敗の表示とボタンを残す（ボタンは押せなくし、読み直していることを示す） -->
+          <div class="callout is-danger" role="alert"><Icon name="alert" /><span>{t('historyLoadFailed')}</span></div>
           <div class="form-actions">
-            <span class="field-error" role="alert"><Icon name="alert" />{t('historyReloadFailed')}</span>
-            <button class="btn is-sm is-quiet" type="button" aria-disabled={historyReloading} onclick={retryHistory}>
+            <button class="btn is-sm" type="button" aria-disabled={historyReloading} onclick={retryHistory}>
               {historyReloading ? t('retrying') : t('retry')}
             </button>
           </div>
+        {:else}
+          {#if historyReloadFailed}
+            <!-- 保存した後の読み直しに失敗した。前に読めた行は残し、上に失敗と「もう一度試す」を添える -->
+            <div class="form-actions">
+              <span class="field-error" role="alert"><Icon name="alert" />{t('historyReloadFailed')}</span>
+              <button class="btn is-sm is-quiet" type="button" aria-disabled={historyReloading} onclick={retryHistory}>
+                {historyReloading ? t('retrying') : t('retry')}
+              </button>
+            </div>
+          {/if}
+          <ul class="history">
+            {#each historyViews as view (view.id)}
+              <li>
+                <time class="mono" datetime={view.createdAt}>{view.at}</time>
+                {#if view.actor !== null}
+                  <Avatar userId={view.actor.id} name={view.actorName} decorative />
+                {/if}
+                <span>{view.actorName}</span>
+                <span class="props-note">{view.summary}</span>
+                {#if view.lines.length > 0}
+                  <ul class="history-changes">
+                    {#each view.lines as line, index (index)}
+                      <li>
+                        {#if line.label !== null}<span class="props-note">{line.label}</span>{/if}
+                        <span>{line.text}</span>
+                      </li>
+                    {/each}
+                  </ul>
+                {/if}
+              </li>
+            {:else}
+              <li class="props-note">{t('historyEmpty')}</li>
+            {/each}
+          </ul>
+          {#if historyNext !== null}
+            <div class="form-actions">
+              <button
+                class="btn is-sm"
+                type="button"
+                aria-disabled={historyMore === 'loading' || historyReloading}
+                onclick={() => void showMoreHistory()}
+              >
+                {historyMore === 'loading' ? t('loading') : t('historyMore')}
+              </button>
+            </div>
+          {/if}
+          {#if historyMore === 'failed'}
+            <span class="field-error" role="alert"><Icon name="alert" />{t('historyMoreFailed')}</span>
+          {/if}
         {/if}
-        <ul class="history">
-          {#each historyViews as view (view.id)}
-            <li>
-              <time class="mono" datetime={view.createdAt}>{view.at}</time>
-              {#if view.actor !== null}
-                <Avatar userId={view.actor.id} name={view.actorName} decorative />
-              {/if}
-              <span>{view.actorName}</span>
-              <span class="props-note">{view.summary}</span>
-              {#if view.lines.length > 0}
-                <ul class="history-changes">
-                  {#each view.lines as line, index (index)}
-                    <li>
-                      {#if line.label !== null}<span class="props-note">{line.label}</span>{/if}
-                      <span>{line.text}</span>
-                    </li>
-                  {/each}
-                </ul>
-              {/if}
-            </li>
-          {:else}
-            <li class="props-note">{t('historyEmpty')}</li>
-          {/each}
-        </ul>
-        {#if historyNext !== null}
-          <div class="form-actions">
-            <button
-              class="btn is-sm"
-              type="button"
-              aria-disabled={historyMore === 'loading' || historyReloading}
-              onclick={() => void showMoreHistory()}
-            >
-              {historyMore === 'loading' ? t('loading') : t('historyMore')}
-            </button>
-          </div>
-        {/if}
-        {#if historyMore === 'failed'}
-          <span class="field-error" role="alert"><Icon name="alert" />{t('historyMoreFailed')}</span>
-        {/if}
-      {/if}
-    </section>
+      </div>
+    </div>
 
     {#if canWrite}
       <div class="form-actions">
