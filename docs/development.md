@@ -353,7 +353,9 @@ Bash の判定を `permissions.deny` に置かないのは、規則が前方一�
 
 | スキル、エージェント | 扱い |
 | --- | --- |
-| `backlog-add`、`pr-create`、`pr-feedback`、`done-check`、`backlog-refine`、`ui-polish`、`japanese-tech-writing` | 残す |
+| `pr-create`、`pr-feedback`、`done-check`、`backlog-refine`、`ui-polish`、`japanese-tech-writing` | 残す。`pr-create` と `pr-feedback` の改善の提案の手順は `retro` に移した（2026-10-27、#315）。`pr-create` の、`gh` が使えないときの MCP の表とスタック PR は、同じディレクトリの `github-mcp.md` と `stack.md` に分けた |
+| `backlog-add` | 残す。人が書いた計画を見るレビューモードと、Backlog を読む手順、文体の癖を覚える手順は外した（2026-10-27、#315）。計画の点検は `backlog-refine` で詰める |
+| `retro` | 足した（2026-10-27、#315）。セッションの訂正、下書きと実物の差、つまずきから次も効く学びを拾い、スキル、チェックリスト、`CLAUDE.md` への取り入れを2件まで提案する。頼まれたときだけ動き、ほかのスキルからは呼ばない。PR ごとに提案で止まらないようにするため |
 | `sync-base` | `rebase-base` をこのリポジトリ向けに書き換えた。rebase で取り込み、lease の SHA を明示した `--force-with-lease` で push まで行う |
 | `d1-migration` | 足した（2026-10-25）。戻せないマイグレーションを書く手順。変更を広げると縮めるに分け、縮める変更は先に使わなくする版を出してから別の PR で行う。マイグレーションを当てた後に `wrangler rollback` しても、古いコードが新しいスキーマで動くようにするため。並行の確かめ、`data-model.md` を同じ PR で直すこと、表の作り直し、空の D1 と行の入った D1 での確かめも扱う |
 | `requirements` | 外した。Backlog の要望を要件に落とす受託向けのスキルで、このリポジトリでは使い道が薄い |
@@ -369,7 +371,7 @@ Bash の判定を `permissions.deny` に置かないのは、規則が前方一�
 
 ### 名前の付け方
 
-工程のスキルは、扱うスクラムの成果物で名前を付ける（2026-10-26 に決めた。#306）。名前から工程の順が `backlog-` → `increment-` → `done-` → `pr-` と読めるようにするため。開発の流れにスプリントは無いので、スクラムのイベント名（`sprint-plan` など）は使わない。スクラムが決めていない技術の作業（PR）は `pr-` のまま置く。道具や型紙のスキル（`sync-base`、`d1-migration`、`add-operation`、`ui-polish` など）は工程ではないので、この付け方に合わせない。
+工程のスキルは、扱うスクラムの成果物で名前を付ける（2026-10-26 に決めた。#306）。名前から工程の順が `backlog-` → `increment-` → `done-` → `pr-` と読めるようにするため。開発の流れにスプリントは無いので、スプリントを前提にするイベントの名前（`sprint-plan`、`sprint-review` など）は使わない。振り返りはスプリントが無くても行えるので `retro` とする。スクラムが決めていない技術の作業（PR）は `pr-` のまま置く。道具や型紙のスキル（`sync-base`、`d1-migration`、`add-operation`、`ui-polish` など）は工程ではないので、この付け方に合わせない。
 
 | 工程 | スキル | 成果物 | 前の名前 |
 | --- | --- | --- | --- |
@@ -379,6 +381,7 @@ Bash の判定を `permissions.deny` に置かないのは、規則が前方一�
 | 実装 | `increment-build` | 項目をインクリメントにする | `issue-run` |
 | 点検 | `done-check` | 完成の定義を満たすかを確かめる | `self-review` |
 | PR 作成、指摘への対応 | `pr-create`、`pr-feedback` | スクラムの外の技術の作業 | 変えていない |
+| 振り返り | `retro` | スキルと決まりに学びを取り入れる | 各スキルの改善の提案 |
 
 ### 新しく作るもの
 
@@ -689,7 +692,7 @@ Issue はエピック、ストーリー、タスクの3階層にし、親子は�
 
 | 状態 | 表し方 | 付け替えるきっかけ |
 | --- | --- | --- |
-| 要件整理中 | `status:refining` | `backlog-refine` で Issue を詰め始めたとき、`backlog-add` の書くモードで既にある Issue の計画を書き始めたとき。セッションが付ける |
+| 要件整理中 | `status:refining` | `backlog-refine` で Issue を詰め始めたとき、`backlog-add` で既にある Issue の計画を書き始めたとき。セッションが付ける |
 | 作業中 | `status:in-progress` | 番号付きのブランチ（`<番号>-<名前>`）のワークツリーを新しく切ったとき。`.githooks/post-checkout` が付け、`status:refining` を外す。クラウドのセッションはワークツリーを切らないので、着手したときに `gh api -X POST repos/{owner}/{repo}/issues/<番号>/labels -f 'labels[]=status:in-progress'` で付け、`status:refining` を外す |
 | レビュー中 | その Issue を指す開いた PR があること。ラベルは使わない | PR の作成 |
 | 済み | Issue が閉じたこと | タスクは PR のマージ、ストーリーとエピックは人が閉じる |

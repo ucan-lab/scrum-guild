@@ -21,7 +21,7 @@ PR 作成前と作成後の両方で使う。作成後は、PR が最新の状�
 
 PR の状態は `gh api` の REST で取る。クラウドのセッションでは、GraphQL を使う `gh pr` が 403 で止まるため。
 `{owner}` `{repo}` `{branch}` は `gh` がカレントのリポジトリとブランチに置き換える。置き換わらずに 404 になるときは、`git remote get-url origin` と `git branch --show-current` から読んで直に書く。
-`gh` が無いか認証で失敗するときは、`pr-create` の「GitHub の操作」の「`gh` が使えないとき」に従い、GitHub の MCP ツールで代える。
+`gh` が無いか認証で失敗するときは、`pr-create/github-mcp.md` に従い、GitHub の MCP ツールで代える。
 
 ## 入力
 
