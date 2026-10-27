@@ -3,7 +3,20 @@
 // seed のセッション（seed/sessions.ts）の Cookie で開く。あおば開発の管理者はミナト
 import type { Locator, Page } from '@playwright/test';
 import { expect, test } from './fixtures.ts';
+import type { ErrorCode } from '../src/shared/errors.ts';
+import type { InputOf } from '../src/shared/operations/define.ts';
+import { organizationInfo } from '../src/shared/operations/organization/organization.ts';
+import { taskAssign } from '../src/shared/operations/task/task-assign.ts';
+import { taskDetail } from '../src/shared/operations/task/task-detail.ts';
+import { taskHistory } from '../src/shared/operations/task/task-history.ts';
+import { taskUpdate } from '../src/shared/operations/task/task-update.ts';
+import { memberList } from '../src/shared/operations/workspace/member-list.ts';
+import { workspaceInfo } from '../src/shared/operations/workspace/workspace.ts';
 import { createWorkspace, signIn, watchViolations } from './helpers.ts';
+import { failOperation, mockOperation, rewriteOperation, routeOperation } from './operations.ts';
+
+// 組織の中の操作の slug。このファイルはあおば開発だけを使う
+const AOBA = { slug: 'aoba' };
 
 test.use({ timezoneId: 'Asia/Tokyo' });
 
@@ -219,14 +232,12 @@ test('担い手は選んで少し待ってから最後の値だけを送り、�
   await createWorkspace(page, '担い手の断られるパーティ', 'game');
   await addTask(page, '担い手が断られる');
   // 候補を読めないときは知らせ、「もう一度試す」で読み直せる
-  await page.route('**/api/aoba/member-list', (route) =>
-    route.fulfill({ status: 500, json: { error: { code: 'internal', message: 'x' } } }),
-  );
+  const unrouteMembers = await failOperation(page, memberList, AOBA, 500, 'internal');
   const drawer = await openDrawer(page, '担い手が断られる');
   const select = drawer.getByRole('combobox', { name: '担い手' });
   await expect(drawer.getByText('担い手の候補を読み込めませんでした')).toBeVisible();
   await expect(select.getByRole('option')).toHaveText(['担い手なし']);
-  await page.unroute('**/api/aoba/member-list');
+  await unrouteMembers();
   await drawer.getByRole('button', { name: 'もう一度試す' }).click();
   await expect(select.getByRole('option', { name: 'ミナト' })).toBeAttached();
   await expect(drawer.getByText('担い手の候補を読み込めませんでした')).toHaveCount(0);
@@ -251,9 +262,7 @@ test('担い手は選んで少し待ってから最後の値だけを送り、�
 
   // 同時に替えられた（409 の conflict）
   const raced = 'ほかの人が同時に直したため、保存できませんでした';
-  await page.route('**/api/aoba/task-assign', (route) =>
-    route.fulfill({ status: 409, json: { error: { code: 'conflict', message: 'conflict' } } }),
-  );
+  let unrouteAssign = await failOperation(page, taskAssign, AOBA, 409, 'conflict');
   let request = page.waitForRequest('**/api/aoba/task-assign');
   await select.selectOption({ label: 'ミナト' });
   await request;
@@ -261,10 +270,8 @@ test('担い手は選んで少し待ってから最後の値だけを送り、�
   await expect(select).toHaveValue('');
 
   // 閉じた（409 の workspace_closed）
-  await page.unroute('**/api/aoba/task-assign');
-  await page.route('**/api/aoba/task-assign', (route) =>
-    route.fulfill({ status: 409, json: { error: { code: 'workspace_closed', message: 'closed' } } }),
-  );
+  await unrouteAssign();
+  unrouteAssign = await failOperation(page, taskAssign, AOBA, 409, 'workspace_closed');
   request = page.waitForRequest('**/api/aoba/task-assign');
   await select.selectOption({ label: 'ミナト' });
   await request;
@@ -272,15 +279,9 @@ test('担い手は選んで少し待ってから最後の値だけを送り、�
   await expect(select).toHaveValue('');
 
   // 選んだ人が所属を外れていた（404 で、タスクはある）。理由を出し、候補を読み直す（読み直した候補にはもういない）
-  await page.unroute('**/api/aoba/task-assign');
-  await page.route('**/api/aoba/task-assign', (route) =>
-    route.fulfill({ status: 404, json: { error: { code: 'not_found', message: 'not_found' } } }),
-  );
-  await page.route('**/api/aoba/member-list', async (route) => {
-    const response = await route.fetch();
-    const body = (await response.json()) as Record<string, unknown>;
-    await route.fulfill({ response, json: { ...body, members: [] } });
-  });
+  await unrouteAssign();
+  await failOperation(page, taskAssign, AOBA, 404, 'not_found');
+  await rewriteOperation(page, memberList, AOBA, (output) => ({ ...output, members: [] }));
   request = page.waitForRequest('**/api/aoba/task-assign');
   const reload = page.waitForRequest('**/api/aoba/member-list');
   await select.selectOption({ label: 'ミナト' });
@@ -329,11 +330,10 @@ test('終了したワークスペースは読み取り専用で開く（seed の
   await addTask(page, '読むだけ');
   const row = page.locator('.entry', { hasText: '読むだけ' });
   // ワークスペースの情報だけを閉じた状態に差し替える
-  await page.route('**/api/aoba/workspace', async (route) => {
-    const response = await route.fetch();
-    const body = (await response.json()) as Record<string, unknown>;
-    await route.fulfill({ response, json: { ...body, closed_at: '2026-10-20T00:00:00.000Z' } });
-  });
+  await rewriteOperation(page, workspaceInfo, AOBA, (output) => ({
+    ...output,
+    closed_at: '2026-10-20T00:00:00.000Z',
+  }));
   await page.reload();
   await page.locator('.entry', { hasText: '読むだけ' }).getByRole('link', { name: '読むだけ' }).click();
   const drawer = page.getByRole('dialog', { name: '読むだけ' });
@@ -370,46 +370,37 @@ test('変更の履歴: 読めなければ「もう一度試す」で読み直し
   await addTask(page, '履歴を読み直す');
 
   // 初めに読めない。失敗の文と「もう一度試す」を出す
-  await page.route('**/api/aoba/task-history', (route) =>
-    route.fulfill({ status: 500, json: { error: { code: 'internal', message: 'x' } } }),
-  );
+  let unrouteHistory = await failOperation(page, taskHistory, AOBA, 500, 'internal');
   const drawer = await openDrawer(page, '履歴を読み直す');
   const history = await openHistory(drawer);
   const items = history.locator('.history > li');
   await expect(history.getByText('変更の履歴を読み込めませんでした。')).toBeVisible();
-  await page.unroute('**/api/aoba/task-history');
+  await unrouteHistory();
   await history.getByRole('button', { name: 'もう一度試す' }).click();
   await expect(items).toHaveCount(1);
   await expect(history).toBeFocused();
 
   // 保存した後の読み直しに失敗しても、前の行を残し、上に失敗を添える
-  await page.route('**/api/aoba/task-history', (route) =>
-    route.fulfill({ status: 500, json: { error: { code: 'internal', message: 'x' } } }),
-  );
+  unrouteHistory = await failOperation(page, taskHistory, AOBA, 500, 'internal');
   await drawer.getByRole('radio', { name: '5', exact: true }).check();
   await expect(history.getByText('最新の変更の履歴を読み込めませんでした。')).toBeVisible();
   await expect(items).toHaveCount(1);
-  await page.unroute('**/api/aoba/task-history');
+  await unrouteHistory();
   await history.getByRole('button', { name: 'もう一度試す' }).click();
   await expect(items).toHaveCount(2);
   await expect(history.getByText('最新の変更の履歴を読み込めませんでした。')).toHaveCount(0);
 
   // 先頭の応答を1件と続き（next）に差し替える。「さらに読む」で、続きを本物の API から足す
   const befores: unknown[] = [];
-  await page.route('**/api/aoba/task-history', async (route) => {
-    const body = route.request().postDataJSON() as { before?: unknown };
-    if (body.before !== undefined) {
-      befores.push(body.before);
-      await route.continue();
+  await routeOperation(page, taskHistory, AOBA, async (call) => {
+    if (call.input.before !== undefined) {
+      befores.push(call.input.before);
+      await call.passThrough();
       return;
     }
-    const response = await route.fetch();
-    const json = (await response.json()) as { entries: { id: string; created_at: string }[]; next: unknown };
-    const first = json.entries[0]!;
-    await route.fulfill({
-      response,
-      json: { ...json, entries: [first], next: { created_at: first.created_at, id: first.id } },
-    });
+    const output = await call.fetch();
+    const first = output.entries[0]!;
+    await call.fulfill({ ...output, entries: [first], next: { created_at: first.created_at, id: first.id } });
   });
   await drawer.getByRole('radio', { name: '8', exact: true }).check();
   await expect(items).toHaveCount(1);
@@ -426,9 +417,7 @@ test('変更の履歴: 読めなければ「もう一度試す」で読み直し
 test('変更の履歴が無ければ「まだ変更はありません。」', async ({ page }) => {
   await createWorkspace(page, '履歴の無いパーティ', 'game');
   await addTask(page, '履歴の無い依頼');
-  await page.route('**/api/aoba/task-history', (route) =>
-    route.fulfill({ status: 200, json: { entries: [], next: null, timezone: 'Asia/Tokyo' } }),
-  );
+  await mockOperation(page, taskHistory, AOBA, { entries: [], next: null, timezone: 'Asia/Tokyo' });
   const drawer = await openDrawer(page, '履歴の無い依頼');
   await expect((await openHistory(drawer)).getByText('まだ変更はありません。')).toBeVisible();
 });
@@ -436,9 +425,7 @@ test('変更の履歴が無ければ「まだ変更はありません。」', as
 test('変更の履歴が 404（タスクが消えた）なら、「もう一度試す」を出さず、トーストで知らせて閉じる', async ({ page }) => {
   await createWorkspace(page, '履歴が消えるパーティ', 'game');
   await addTask(page, '履歴が消える依頼');
-  await page.route('**/api/aoba/task-history', (route) =>
-    route.fulfill({ status: 404, json: { error: { code: 'not_found', message: 'not_found' } } }),
-  );
+  await failOperation(page, taskHistory, AOBA, 404, 'not_found');
   await page.locator('.entry').getByRole('link', { name: '履歴が消える依頼' }).click();
   await expect(page.getByRole('status').filter({ hasText: 'このクエストは見つかりません' })).toBeVisible();
   await expect(page).not.toHaveURL(/\?task=/);
@@ -618,12 +605,12 @@ test('矢印キーで難易度を続けて動かしても、保存は1本ずつ�
   let inFlight = 0;
   let maxInFlight = 0;
   const sent: unknown[] = [];
-  await page.route('**/api/aoba/task-update', async (route) => {
+  await routeOperation(page, taskUpdate, AOBA, async (call) => {
     inFlight++;
     maxInFlight = Math.max(maxInFlight, inFlight);
-    sent.push(route.request().postDataJSON().points);
+    sent.push(call.input.points);
     await new Promise((resolve) => setTimeout(resolve, 200));
-    await route.continue();
+    await call.passThrough();
     inFlight--;
   });
   await drawer.getByRole('radio', { name: '未見積もり' }).focus();
@@ -676,9 +663,7 @@ test('保存を409で断られたとき、送った欄に合う文を出す。�
   await createWorkspace(page, '断られるパーティ', 'game');
   await addTask(page, '断られる');
   const drawer = await openDrawer(page, '断られる');
-  await page.route('**/api/aoba/task-update', (route) =>
-    route.fulfill({ status: 409, json: { error: { code: 'conflict', message: 'conflict' } } }),
-  );
+  const unrouteUpdate = await failOperation(page, taskUpdate, AOBA, 409, 'conflict');
   // 断られると選択が前の値に戻るので、check（押した後に選ばれたかを確かめる）でなく click で押す
   await drawer.getByRole('radio', { name: '5', exact: true }).click();
   // 完了していないタスクの 409 は、「完了している」でなく、同時に直された競合の文（読み直した今の値で決める）
@@ -690,15 +675,11 @@ test('保存を409で断られたとき、送った欄に合う文を出す。�
   await drawer.getByRole('button', { name: '保存', exact: true }).click();
   await expect(drawer.locator('.edit-form').getByText(raced, { exact: false })).toBeVisible();
   // 書きかけが残ったまま、枠の読み直しが 500 になっても、引き出しは消えない
-  await page.unroute('**/api/aoba/task-update');
+  await unrouteUpdate();
   await drawer.getByRole('textbox', { name: 'タイトル' }).fill('書きかけが残る');
-  await page.route('**/api/aoba/workspace', (route) =>
-    route.fulfill({ status: 500, json: { error: { code: 'internal', message: 'x' } } }),
-  );
+  await failOperation(page, workspaceInfo, AOBA, 500, 'internal');
   // 組織の枠の 500 は、最後まで外さない。引き出しは組織の枠を読み直さない（要求も出ない）
-  await page.route('**/api/aoba/organization', (route) =>
-    route.fulfill({ status: 500, json: { error: { code: 'internal', message: 'x' } } }),
-  );
+  await failOperation(page, organizationInfo, AOBA, 500, 'internal');
   const workspaceRequests: string[] = [];
   const organizationRequests: string[] = [];
   page.on('request', (request) => {
@@ -713,9 +694,7 @@ test('保存を409で断られたとき、送った欄に合う文を出す。�
   expect(workspaceRequests).toEqual([]);
   expect(organizationRequests).toEqual([]);
   // 閉じたと分かったときは、ワークスペースの枠だけを読み直す。それが 500 でも、前の値を保って引き出しと書きかけを残す
-  await page.route('**/api/aoba/task-update', (route) =>
-    route.fulfill({ status: 409, json: { error: { code: 'workspace_closed', message: 'closed' } } }),
-  );
+  await failOperation(page, taskUpdate, AOBA, 409, 'workspace_closed');
   await drawer.getByRole('radio', { name: '8', exact: true }).click();
   await expect(drawer.getByText('終了したパーティには書き込めません')).toBeVisible();
   await expect.poll(() => workspaceRequests.length).toBeGreaterThan(0);
@@ -731,17 +710,17 @@ async function taskIdOf(page: Page, title: string): Promise<string> {
 }
 
 const SLOW_MS = 700;
-// 要求を SLOW_MS だけ遅らせて通す。status を渡すと、遅らせた後にその失敗を返す
-async function slowTaskUpdate(page: Page, failure?: { status: number; code: string }) {
-  const bodies: Record<string, unknown>[] = [];
-  await page.route('**/api/aoba/task-update', async (route) => {
-    bodies.push(route.request().postDataJSON());
+// 要求を SLOW_MS だけ遅らせて通す。status を渡すと、遅らせた後にその失敗を返す。
+// 届いた入力と、張った route を外す関数を返す
+async function slowTaskUpdate(page: Page, failure?: { status: number; code: ErrorCode }) {
+  const bodies: InputOf<typeof taskUpdate>[] = [];
+  const unroute = await routeOperation(page, taskUpdate, AOBA, async (call) => {
+    bodies.push(call.input);
     await new Promise((resolve) => setTimeout(resolve, SLOW_MS));
-    if (failure === undefined) await route.continue();
-    else
-      await route.fulfill({ status: failure.status, json: { error: { code: failure.code, message: failure.code } } });
+    if (failure === undefined) await call.passThrough();
+    else await call.fail(failure.status, failure.code);
   });
-  return bodies;
+  return { bodies, unroute };
 }
 
 test('メンバーの画面で開いて閉じても、メンバーの画面に残り、ほかのクエリも残る', async ({ page }) => {
@@ -792,7 +771,7 @@ test('期日で欄を離れた直後と、ポイントを選んだ直後に閉�
   await addTask(page, '閉じた後に返る');
   const row = page.locator('.entry', { hasText: '閉じた後に返る' });
   const drawer = await openDrawer(page, '閉じた後に返る');
-  await slowTaskUpdate(page);
+  let slow = await slowTaskUpdate(page);
   await drawer.getByLabel('期限').fill('2099-12-31');
   // 閉じるボタンを押すと、期日の入力が外れて（blur）送られる。送った値は書きかけではないので、確認なしで閉じる
   await drawer.getByRole('button', { name: '閉じる' }).click();
@@ -800,15 +779,15 @@ test('期日で欄を離れた直後と、ポイントを選んだ直後に閉�
   await expect(page.getByRole('status').filter({ hasText: '保存しました' })).toBeVisible();
   await expect(row.locator('.chip')).toBeVisible();
   // ポイントも、選んだ直後に閉じて、結果が木に出る
-  await page.unroute('**/api/aoba/task-update');
-  await slowTaskUpdate(page);
+  await slow.unroute();
+  slow = await slowTaskUpdate(page);
   await row.getByRole('link', { name: '閉じた後に返る' }).click();
   await drawer.getByRole('radio', { name: '8', exact: true }).check();
   await drawer.getByRole('button', { name: '閉じる' }).click();
   await expect(drawer).toBeHidden();
   await expect(row.locator('.pts')).toHaveText('8');
   // 失敗はトーストで知らせる
-  await page.unroute('**/api/aoba/task-update');
+  await slow.unroute();
   await slowTaskUpdate(page, { status: 500, code: 'internal' });
   await row.getByRole('link', { name: '閉じた後に返る' }).click();
   await drawer.getByRole('radio', { name: '5', exact: true }).check();
@@ -821,7 +800,7 @@ test('期日の 600ms の待ちの間に Esc で閉じようとすると確か�
   await createWorkspace(page, '期日の待ちパーティ', 'game');
   await addTask(page, '期日を待つ');
   const drawer = await openDrawer(page, '期日を待つ');
-  const bodies = await slowTaskUpdate(page);
+  const { bodies } = await slowTaskUpdate(page);
   await drawer.getByLabel('期限').fill('2099-12-31');
   await page.keyboard.press('Escape');
   const confirm = page.getByRole('dialog', { name: '書きかけを捨てますか' });
@@ -836,7 +815,7 @@ test('期日の保存中に次の値を選んでも、先の応答で入力欄�
   await createWorkspace(page, '期日の連続パーティ', 'game');
   await addTask(page, '期日を続ける');
   const drawer = await openDrawer(page, '期日を続ける');
-  const bodies = await slowTaskUpdate(page);
+  const { bodies } = await slowTaskUpdate(page);
   const due = drawer.getByLabel('期限');
   await due.fill('2099-12-30');
   await due.press('Enter');
@@ -903,14 +882,10 @@ test('取り込んだタスクは、タイトルを直せず、リンクの欄�
   await addTask(page, '取り込んだ体');
   const taskId = await taskIdOf(page, '取り込んだ体');
   // 取り込みはまだ無いので、1件の読み取りの応答を、取り込んだタスクに差し替える
-  await page.route('**/api/aoba/task-detail', async (route) => {
-    const response = await route.fetch();
-    const body = (await response.json()) as { task: Record<string, unknown> };
-    await route.fulfill({
-      response,
-      json: { task: { ...body.task, is_imported: true, can_delete: false, link_url: null } },
-    });
-  });
+  await rewriteOperation(page, taskDetail, AOBA, (output) => ({
+    ...output,
+    task: { ...output.task, is_imported: true, can_delete: false, link_url: null },
+  }));
   const drawer = await openDrawer(page, '取り込んだ体');
   await expect(drawer.getByText('取り込んだクエストのタイトルは、ここでは直せません')).toBeVisible();
   await expect(drawer.getByRole('button', { name: /取り込んだ体/ })).toHaveCount(0);

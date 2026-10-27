@@ -282,6 +282,14 @@ GitHub は無料のプランのまま使う（2026-10-23 に決めた）。無�
 - `fixtures.ts` の `page` は、テストの後で `page.unrouteAll({ behavior: 'ignoreErrors' })` を待つ。`page.route()` の処理の中で `route.fetch()` を待つテストは、画面が終わりに飛ばした読み直しがテストの後に届くと「route.fetch: Test ended」で落ち、その失敗が同じワーカーで次に走るテストに付く。2026-10-27 に、`e2e/members.test.ts` の route の処理に遅れを入れると必ずこの形で落ち、fixture を入れると落ちないことを確かめた（#318）
 - fixture が外すのは、テストの引数の `page` に張った route だけ。`browser.newContext()` で作った context と page、`context.route()` には効かない。そこで `route.fetch()` を使うなら、テストの終わりで自分で `unrouteAll({ behavior: 'ignoreErrors' })` を待つ
 - `ignoreErrors` は、テストの後に届いた要求の失敗を黙って捨てる。テストの終わりの読み直しそのものを確かめたいときは、`page.waitForResponse()` で応答を待ってから終える
+- 操作の応答を差し替えるときは、`e2e/operations.ts` のヘルパーを使い、`page.route()` を直に書かない。URL（`operationPath`）、入力の型、出力の型を操作の定義から導くので、操作の名前や出力の形を変えると、ずれたモックで `pnpm check` が落ちる（#319）
+  - `mockOperation` は出力を返し、`rewriteOperation` は本物の出力を書き換えて返し、`failOperation` は `status` と `code`（`ErrorCode`）でエラーを返す
+  - 数える、止める、n 回目だけ失敗させるなどの形は、土台の `routeOperation` で書く。処理が受け取る `call` は、`input`、`passThrough()`、`fetch()`、`fulfill()`、`fail()`、`abort()` と、Playwright の `route` を持つ。`route` は、スキーマに合わない本文をわざと返すときの抜け道
+  - 組織の中の操作は `{ slug }` を必ず渡し、組織の外の操作には渡さない。どちらも型で止める
+  - どれも、張った route だけを外す関数を返す。`page.unroute()` の代わりにそれを呼ぶ。テストの後の後始末は fixture がする。自分で `newPage()` した page では、上のとおりテストの終わりに自分で `unrouteAll({ behavior: 'ignoreErrors' })` を待つ
+  - 届いた入力と返す出力は、実行時にも定義のスキーマで確かめる。合わなければ、操作の名前と合わない項目の path を添えてそのテストを落とし、画面には 500 を返す。出力に定義に無い項目があっても落とす（`z.object` が黙って落とし、書き換えで名前を間違えた項目は型の検査を抜けることがあるため）。処理が途中で throw したときと、応答を返さずに終わったときも、操作の名前を添えて落とす。定義に無い項目の判定（`droppedPaths`）は `e2e/operations.test.ts` が確かめる。入力の不一致、throw、応答を返さないときの落ち方は、#319 で一時のテストを走らせて確かめた（テストが落ちることを確かめる形なので、残していない）
+- 操作の定義の無い直書きのルート（`/api/auth/google/start` などの GET の例外、`/api/health`）は、例外として `page.route()` で書く
+- 操作を呼ぶ `page.route()` は、まだ多くのファイルに残っている。順にヘルパーへ置き換え、すべて終えた後に lint で止める（#332）。それまでは書き手と点検で守る
 
 ### バックログの木を 5 万件で測る
 

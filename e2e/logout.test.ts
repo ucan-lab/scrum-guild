@@ -4,8 +4,11 @@
 import type { Page } from '@playwright/test';
 import { expect, test } from './fixtures.ts';
 import { SEED_SESSIONS } from '../seed/sessions.ts';
+import { listOrganizations } from '../src/shared/operations/operator/list-organizations.ts';
+import { logout } from '../src/shared/operations/session/index.ts';
 import { sessionCookieName } from '../src/shared/session-cookie.ts';
 import { signIn } from './helpers.ts';
+import { failOperation, mockOperation, routeOperation } from './operations.ts';
 
 const accountButton = (page: Page) => page.getByRole('button', { name: /アカウントのメニュー$/ });
 const logoutItem = (page: Page) => page.locator('.account-menu-list button');
@@ -157,9 +160,9 @@ test.describe('組織の中（アカウントのメニュー）', () => {
     }) => {
       let release!: () => void;
       const gate = new Promise<void>((resolve) => (release = resolve));
-      await page.route('**/api/logout', async (route) => {
+      await routeOperation(page, logout, async (call) => {
         await gate;
-        await route.fulfill({ status: 503, json: { error: { code: 'unavailable', message: 'x' } } });
+        await call.fail(503, 'unavailable');
       });
       await page.goto('/aoba');
       await expect(accountButton(page)).toHaveAttribute('aria-label', 'ミナト（ギルドマスター）。アカウントのメニュー');
@@ -178,10 +181,10 @@ test.describe('組織の中（アカウントのメニュー）', () => {
       let release!: () => void;
       const gate = new Promise<void>((resolve) => (release = resolve));
       let calls = 0;
-      await page.route('**/api/logout', async (route) => {
+      await routeOperation(page, logout, async (call) => {
         calls += 1;
         await gate;
-        await route.fulfill({ status: 503, json: { error: { code: 'unavailable', message: 'x' } } });
+        await call.fail(503, 'unavailable');
       });
       await page.goto('/aoba');
       await accountButton(page).click();
@@ -203,7 +206,7 @@ test.describe('組織の中（アカウントのメニュー）', () => {
     });
 
     test('通信の失敗でも、今の画面に留まる', async ({ page }) => {
-      await page.route('**/api/logout', (route) => route.abort());
+      await routeOperation(page, logout, (call) => call.abort());
       await page.goto('/aoba');
       await accountButton(page).click();
       await logoutItem(page).click();
@@ -212,9 +215,7 @@ test.describe('組織の中（アカウントのメニュー）', () => {
     });
 
     test('401 の unauthenticated は、成功と同じくログインの画面へ移る', async ({ page }) => {
-      await page.route('**/api/logout', (route) =>
-        route.fulfill({ status: 401, json: { error: { code: 'unauthenticated', message: 'x' } } }),
-      );
+      await failOperation(page, logout, 401, 'unauthenticated');
       await page.goto('/aoba');
       await accountButton(page).click();
       await logoutItem(page).click();
@@ -232,7 +233,7 @@ test.describe('組織の外（紙の下のボタン）', () => {
   }) => {
     if (baseURL === undefined) throw new Error('baseURL が無い');
     // e2e の Worker には運用者の一覧が無いので、組織の一覧は差し替える（運用者の画面は operator.test.ts と同じ）
-    await page.route('**/api/list-organizations', (route) => route.fulfill({ json: { organizations: [] } }));
+    await mockOperation(page, listOrganizations, { organizations: [] });
     await signIn(context, baseURL, 'operatorLogout');
     await page.goto('/operator');
     await expect(page.getByRole('heading', { level: 1, name: '運用' })).toBeVisible();

@@ -2,7 +2,12 @@
 // seed のセッション（seed/sessions.ts）の Cookie で開く。あおば開発の管理者はミナト。CSP の違反も確かめる
 import type { Locator, Page } from '@playwright/test';
 import { expect, test } from './fixtures.ts';
+import { storyGet } from '../src/shared/operations/story/story-get.ts';
+import { backlogTree } from '../src/shared/operations/task/backlog-tree.ts';
+import { taskCreate } from '../src/shared/operations/task/task-create.ts';
+import { workspaceInfo } from '../src/shared/operations/workspace/workspace.ts';
 import { createWorkspace, signIn, watchViolations } from './helpers.ts';
+import { failOperation, rewriteOperation, routeOperation } from './operations.ts';
 
 test.use({ timezoneId: 'Asia/Tokyo' });
 
@@ -17,18 +22,6 @@ const SEED_SCRUM_WORKSPACE = '/hibari/w/019a0000-0000-7000-8000-000000000402';
 // 木のストーリー1件
 function storyGroup(page: Page, title: string) {
   return page.locator('.tree-group', { has: page.getByRole('button', { name: title, exact: true }) });
-}
-
-// 木の読み取り（backlog-tree）の応答を書き換える
-async function rewriteTree(
-  page: Page,
-  change: (body: Record<string, unknown>) => Record<string, unknown>,
-): Promise<void> {
-  await page.route('**/api/aoba/backlog-tree', async (route) => {
-    const response = await route.fetch();
-    const body = (await response.json()) as Record<string, unknown>;
-    await route.fulfill({ response, json: change(body) });
-  });
 }
 
 test('ゲームの言葉: 達成目標を作り、＋クエストでその下にクエストを作って完遂にすると、「完遂 / 全体」がその場で変わる', async ({
@@ -228,9 +221,9 @@ test('ストーリーのダイアログは、読んでいる間は読み込み�
   // 読んでいる間
   let release!: () => void;
   const gate = new Promise<void>((resolve) => (release = resolve));
-  await page.route('**/api/aoba/story-get', async (route) => {
+  const unrouteGate = await routeOperation(page, storyGet, { slug: 'aoba' }, async (call) => {
     await gate;
-    await route.continue();
+    await call.passThrough();
   });
   await title.click();
   await expect(dialog.getByRole('status')).toHaveText('読み込んでいます');
@@ -242,15 +235,15 @@ test('ストーリーのダイアログは、読んでいる間は読み込み�
   await expect(dialog.getByLabel('達成条件')).toHaveValue('- よくある問い合わせ10件にテンプレートがある');
   await page.keyboard.press('Escape');
   await expect(page.locator('dialog[open]')).toHaveCount(0);
-  await page.unroute('**/api/aoba/story-get');
+  await unrouteGate();
 
   // 読めなかった（5xx）。もう一度試すで読み直す
   let failures = 1;
-  await page.route('**/api/aoba/story-get', async (route) => {
+  const unrouteOnce = await routeOperation(page, storyGet, { slug: 'aoba' }, async (call) => {
     if (failures-- > 0) {
-      await route.fulfill({ status: 503, json: { error: { code: 'unavailable', message: 'unavailable' } } });
+      await call.fail(503, 'unavailable');
     } else {
-      await route.continue();
+      await call.passThrough();
     }
   });
   await title.click();
@@ -260,12 +253,10 @@ test('ストーリーのダイアログは、読んでいる間は読み込み�
   await expect(dialog.getByLabel('タイトル')).toHaveValue('問い合わせの一次回答を早くする');
   await page.keyboard.press('Escape');
   await expect(page.locator('dialog[open]')).toHaveCount(0);
-  await page.unroute('**/api/aoba/story-get');
+  await unrouteOnce();
 
   // 消えていた（404）。閉じて、知らせ、木を読み直し、見出しにフォーカスを移す
-  await page.route('**/api/aoba/story-get', (route) =>
-    route.fulfill({ status: 404, json: { error: { code: 'not_found', message: 'not_found' } } }),
-  );
+  await failOperation(page, storyGet, { slug: 'aoba' }, 404, 'not_found');
   await title.click();
   await expect(page.locator('dialog[open]')).toHaveCount(0);
   await expect(page.getByRole('status').filter({ hasText: 'この達成目標は見つかりません' })).toBeVisible();
@@ -294,7 +285,11 @@ test('日付の入力が途中までしか打たれていなければ、期日�
 
 test('期日の印: 過ぎた（赤）、今日と今週（橙）、それ以外（色なし）。今日と週の始まりは API の値', async ({ page }) => {
   // 今日と週の始まりは API が返す値で決まる。seed の日付（2026-10-20 前後）に合わせて差し替える
-  await rewriteTree(page, (body) => ({ ...body, today: '2026-10-20', week_start: 1 }));
+  await rewriteOperation(page, backlogTree, { slug: 'aoba' }, (output) => ({
+    ...output,
+    today: '2026-10-20',
+    week_start: 1,
+  }));
   await page.goto(SEED_GAME_WORKSPACE);
   await expect(page.getByRole('heading', { level: 1, name: '掲示板' })).toBeVisible();
 
@@ -320,7 +315,11 @@ test('期日の印: 過ぎた（赤）、今日と今週（橙）、それ以外
   );
 
   // 今日を 10/12 に替えると、期日（10/19 以降）は来週以降で色なし
-  await rewriteTree(page, (body) => ({ ...body, today: '2026-10-12', week_start: 1 }));
+  await rewriteOperation(page, backlogTree, { slug: 'aoba' }, (output) => ({
+    ...output,
+    today: '2026-10-12',
+    week_start: 1,
+  }));
   await page.reload();
   await expect(first.locator('.tree-row .chip')).toHaveText('10/23');
   await expect(first.locator('.tree-row .chip.is-warn')).toHaveCount(0);
@@ -330,11 +329,11 @@ test('期日の印: 過ぎた（赤）、今日と今週（橙）、それ以外
 test('完了したストーリーには「＋タスク」を出さず、期日の印の色も付けない。タスクの親の候補にも出ない', async ({
   page,
 }) => {
-  await rewriteTree(page, (body) => ({
-    ...body,
+  await rewriteOperation(page, backlogTree, { slug: 'aoba' }, (output) => ({
+    ...output,
     today: '2026-10-20',
     week_start: 1,
-    stories: (body.stories as Record<string, unknown>[]).map((story, index) =>
+    stories: output.stories.map((story, index) =>
       index === 0 ? { ...story, completed_at: '2026-10-19T00:00:00.000Z' } : story,
     ),
   }));
@@ -366,15 +365,13 @@ test('親のストーリーが消えていたら、理由を出し、その場�
   await expect(page.getByRole('heading', { level: 1, name: '掲示板' })).toBeVisible();
   // 送ったときだけ 404 にして、読み直した木では候補から消えているようにする
   let gone = false;
-  await page.route('**/api/aoba/task-create', async (route) => {
+  await routeOperation(page, taskCreate, { slug: 'aoba' }, async (call) => {
     gone = true;
-    await route.fulfill({ status: 404, json: { error: { code: 'not_found', message: 'not_found' } } });
+    await call.fail(404, 'not_found');
   });
-  await rewriteTree(page, (body) => ({
-    ...body,
-    stories: (body.stories as { title: string }[]).filter(
-      (story) => !(gone && story.title === '問い合わせの一次回答を早くする'),
-    ),
+  await rewriteOperation(page, backlogTree, { slug: 'aoba' }, (output) => ({
+    ...output,
+    stories: output.stories.filter((story) => !(gone && story.title === '問い合わせの一次回答を早くする')),
   }));
   await page.reload();
   await storyGroup(page, '問い合わせの一次回答を早くする')
@@ -415,11 +412,10 @@ test('スクラムの言葉の seed: 言葉が替わり、ストーリーの行�
 test('閉じたワークスペースでは、作る操作と「＋タスク」を出さず、ストーリーのダイアログは readonly で開く', async ({
   page,
 }) => {
-  await page.route('**/api/aoba/workspace', async (route) => {
-    const response = await route.fetch();
-    const body = (await response.json()) as Record<string, unknown>;
-    await route.fulfill({ response, json: { ...body, closed_at: '2026-10-21T00:00:00.000Z' } });
-  });
+  await rewriteOperation(page, workspaceInfo, { slug: 'aoba' }, (output) => ({
+    ...output,
+    closed_at: '2026-10-21T00:00:00.000Z',
+  }));
   await page.goto(SEED_GAME_WORKSPACE);
   await expect(page.getByRole('heading', { level: 1, name: '掲示板' })).toBeVisible();
   await expect(page.getByRole('button', { name: '達成目標を作る' })).toHaveCount(0);
