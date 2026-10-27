@@ -1,7 +1,8 @@
 // タスクのコメント（詳細の引き出しの「コメント N」のタブ）: 書く → 直す → 消す、書きかけの確認、リーダーが人のコメントを消す、
 // 直している途中に消されたら書きかけを残して知らせる、終了したワークスペースでは書く欄と操作を出さない。
 // seed のセッション（seed/sessions.ts）の Cookie で開く。あおば開発の管理者（リーダー）はミナト、一般はハルカ
-import { expect, test, type Browser, type Locator, type Page } from '@playwright/test';
+import type { Browser, Locator, Page } from '@playwright/test';
+import { expect, test } from './fixtures.ts';
 import { createWorkspace, signIn, watchViolations } from './helpers.ts';
 
 test.use({ timezoneId: 'Asia/Tokyo' });
