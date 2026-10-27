@@ -42,15 +42,17 @@ def bad_urls(screens):
     return [u for u in urls if not isinstance(u, str) or not IMAGE_URL.fullmatch(u)]
 
 
-IMAGES = re.compile(r'(<!-- evidence-images: ([^\n]+?) -->)[ \t]*\n.*?(<!-- /evidence-images -->)', re.S)
+IMAGES = re.compile(r'(<!-- evidence-images: ([^\n]+?) -->)[ \t]*\n(.*?)(<!-- /evidence-images -->)', re.S)
 
 
 def fill(section, inner_of):
+    """inner_of(キー, 今の中身) が返す文字列で印の中を置き換える。None なら今の中身を残す"""
     marked = []
 
     def repl(m):
         marked.append(m.group(2))
-        return f'{m.group(1)}\n{inner_of(m.group(2))}\n\n{m.group(3)}'
+        inner = inner_of(m.group(2), m.group(3))
+        return m.group(0) if inner is None else f'{m.group(1)}\n{inner}\n\n{m.group(4)}'
 
     return IMAGES.sub(repl, section), marked
 
@@ -85,12 +87,26 @@ def embed(section, comment_path, head_sha, reason):
         elif bad_urls(data['screens']):
             reason = 'コメントの画像の URL が R2 の画像の形でない（PR の差分の scripts/ を確かめる）'
     if reason is not None:
-        section, marked = fill(section, lambda key: f'CI の画像は付かなかった: {reason}。')
-        return section, [f'埋め込めない: {reason}', f'理由を書いた印: {marked}']
+        # 前の push で入れた画像は、今回の失敗の文で消さずに残す（節の evidence: の SHA が、その画像の head を示す）
+        kept = []
+
+        def reason_of(key, inner):
+            if '<img ' in inner:
+                kept.append(key)
+                return None
+            return f'CI の画像は付かなかった: {reason}。'
+
+        section, marked = fill(section, reason_of)
+        return section, [
+            f'埋め込めない: {reason}',
+            f'理由を書いた印: {[k for k in marked if k not in kept]}',
+            f'前の画像を残した印: {kept}',
+        ]
 
     screens = {s['key']: s for s in data['screens']}
     section, marked = fill(
-        section, lambda key: table(screens[key]) if key in screens else 'CI のコメントに、この画面の画像は出ていない。'
+        section,
+        lambda key, inner: table(screens[key]) if key in screens else 'CI のコメントに、この画面の画像は出ていない。',
     )
     section = re.sub(r'<!-- evidence: \S+ -->', f'<!-- evidence: {data["headSha"]} -->', section, count=1)
     section = re.sub(

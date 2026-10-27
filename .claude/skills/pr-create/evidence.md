@@ -63,7 +63,7 @@ UI 変更と判定した画面ごとに、変えた画面と状態を開く e2e 
    python3 -I <このディレクトリの絶対パス>/embed-evidence.py <本文> <コメント> <出力> <head の SHA> [<付かなかった理由>]
    ```
 
-   スクリプトは、コメントの目印 `<!-- e2e-evidence -->` の次の行の JSON（`<!-- e2e-evidence-data {...} -->`。`scripts/evidence.ts` の `evidenceData`）を読み、`## エビデンス` 節の中だけを書き換える。印ごとに画像の表を入れ、`<!-- evidence: ... -->` を head の SHA にし、コメントへのリンクを入れる。次のときは画像を入れず、印の中に「CI の画像は付かなかった: <理由>」と書く
+   スクリプトは、コメントの目印 `<!-- e2e-evidence -->` の次の行の JSON（`<!-- e2e-evidence-data {...} -->`。`scripts/evidence.ts` の `evidenceData`）を読み、`## エビデンス` 節の中だけを書き換える。印ごとに画像の表を入れ、`<!-- evidence: ... -->` を head の SHA にし、コメントへのリンクを入れる。次のときは画像を入れず、印の中に「CI の画像は付かなかった: <理由>」と書く。前の push で画像を入れた印は消さずに残す（節の `<!-- evidence: <SHA> -->` がその画像の head を示す）
    - コメントが無い、またはコメントに JSON の行が無い
    - コメントの `headSha` が今の head と違う（前の push のコメントが残っている）
    - CI が比べられなかった（`comparedSha` が `null`）

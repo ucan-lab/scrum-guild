@@ -775,6 +775,22 @@ describe('embed-evidence.py', () => {
     assert.match(stdout, /本文を書き換える\n$/);
   });
 
+  test('埋め込めないときも、前の push で入れた画像は失敗の文で消さずに残す', () => {
+    const embedded = run(prBody, comments(comment()), sha('b')).out;
+    const { out, stdout } = run(embedded, comments(comment(sha('b'))), sha('c'));
+    assert.equal(out.match(/<img /g)?.length, 3);
+    assert.ok(out.includes(`<!-- evidence: ${sha('b')} -->`));
+    assert.ok(
+      out.includes(
+        block(
+          k('missing'),
+          'CI の画像は付かなかった: コメントが前の push（bbbbbbb）のまま（evidence がコメントを書き換えていない）。\n',
+        ),
+      ),
+    );
+    assert.ok(stdout.includes(`前の画像を残した印: ['${k('changed')}', '${k('new')}']`), stdout);
+  });
+
   test('付かなかった理由を渡すと、コメントを読まずに印の中をその理由にする', () => {
     const { out } = run(prBody, '[]', sha('b'), 'evidence のジョブが失敗した');
     assert.ok(out.includes(block(k('new'), 'CI の画像は付かなかった: evidence のジョブが失敗した。\n')));
