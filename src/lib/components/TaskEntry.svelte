@@ -4,6 +4,7 @@
   import type { BacklogTask } from '../../shared/operations/task/backlog-tree.ts';
   import type { DropRow } from '../backlog-drop.ts';
   import type { BacklogDnd } from '../backlog-dnd.svelte.ts';
+  import { sprintShortName } from '../sprint-label.ts';
   import { t } from '../vocabulary.svelte.ts';
   import Avatar from './Avatar.svelte';
   import DefinitionChip from './DefinitionChip.svelte';
@@ -21,7 +22,8 @@
   // 端で動かせない向き（canMoveUp、canMoveDown が偽）は、フォーカスを失わないよう disabled でなく aria-disabled にする。
   // onMoveParent を渡すと「親を移す」も出す。完了にした行には出さない。絞り込み中は、画面が onMove を渡さず（並べ替えは隣を使うため）、
   // 「親を移す」だけを出す。
-  // タイトルの下（.entry-meta）に、振ったリポジトリ（kit.js の repoTag。git のアイコン）と、showCategory のとき（親のないタスク）だけ区分を出す。
+  // タイトルの下（.entry-meta）に、入っているスプリント（kit.js の sprintTag。暦のアイコンと名前、名前が無ければ期間）、
+  // 振ったリポジトリ（kit.js の repoTag。git のアイコン）と、showCategory のとき（親のないタスク）だけ区分を出す。
   // 親のあるタスクの区分は親の行に出ているので、繰り返さない。
   // onMove と dnd を渡すと（書き込めるとき）、行の先頭にドラッグのつまみ（.grip。飾りで aria-hidden）を置く。つかむのはここだけで、
   // 完了にした行はつかめない（列だけ空ける）。ほかの行をつかんだときの落とす位置は、行の data-drop（線）で示す。狭い幅と指の画面では CSS がつまみを隠す。
@@ -124,8 +126,11 @@
       data-task-id={task.id}
       data-sveltekit-reset="false">{task.title}</a
     >
-    {#if task.repository !== null || category !== null}
+    {#if task.repository !== null || category !== null || task.sprint !== null}
       <span class="entry-meta">
+        {#if task.sprint !== null}
+          <DefinitionChip kind="sprint" name={sprintShortName(task.sprint, t)} />
+        {/if}
         {#if task.repository !== null}
           <DefinitionChip kind="repository" name={task.repository.name} />
         {/if}

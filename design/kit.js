@@ -210,6 +210,12 @@
   function categoryTag(id) {
     return id ? nameChip("tag", t("category"), D.categories[id].name) : "";
   }
+  // 入っているスプリント（本番の DefinitionChip の sprint）。名前が無ければ期間。バックログの木の行にだけ出す
+  function sprintTag(x) {
+    if (!x.sprint || !D.sprints[x.sprint]) return "";
+    const s = D.sprints[x.sprint];
+    return nameChip("calendar", t("sprint"), s.name || `${md(s.start)}〜${md(s.end)}`);
+  }
   // 区分の選択欄（本番のエピック、ストーリー、起票のダイアログと、引き出し）。先頭が「区分なし」
   function categorySelect(id, current, readOnly) {
     if (readOnly) return `<span>${current ? esc(D.categories[current].name) : `${t("category")}なし`}</span>`;
@@ -253,7 +259,8 @@
     return mark && mark.drop ? ` data-drop="${mark.drop}"` : "";
   }
 
-  // 台帳の1行。opts: showWs, showParent（既定 true）, showAssignee, order（並べ替えの操作。orderActions の order）,
+  // 台帳の1行。opts: showWs, showParent（既定 true）, showAssignee, showSprint（入っているスプリントの印。バックログの木）,
+  // order（並べ替えの操作。orderActions の order）,
   // mark（ドラッグの状態。dropAttr）
   function entry(x, opts = {}) {
     const showParent = opts.showParent !== false;
@@ -268,7 +275,7 @@
         ${title}
         <span class="entry-meta">
           ${opts.showWs ? `<span class="tag">${esc(D.workspaces[x.ws].name)}</span>` : ""}
-          ${repoTag(x)}${x.story ? "" : categoryTag(x.cat)}${sourceKey(x)}
+          ${opts.showSprint ? sprintTag(x) : ""}${repoTag(x)}${x.story ? "" : categoryTag(x.cat)}${sourceKey(x)}
           ${showParent && parent ? `<span>${icon("flag")} ${esc(parent)}</span>` : ""}
           ${x.doneAt ? `<span>${t("done")} ${esc(x.doneAt)}</span>` : colName(x) ? `<span class="status-dot">${esc(colName(x))}</span>` : ""}
           ${taskFlags(x)}${opts.meta ? opts.meta(x) : ""}
@@ -436,7 +443,7 @@
           ${opts.order ? orderActions(st.title, opts.order) : ""}
         </span>
       </div>
-      <div class="tree-children" id="tree-${key}">${open.map((x, i) => entry(x, { showParent: false, showAssignee: true,
+      <div class="tree-children" id="tree-${key}">${open.map((x, i) => entry(x, { showParent: false, showAssignee: true, showSprint: true,
         mark: opts.entryMarks ? opts.entryMarks(x, i) : undefined,
         order: opts.order ? { first: i === 0, last: i === open.length - 1, parent: true } : undefined })).join("")}
         ${done ? `<p class="tree-folded"${dropAttr(tail)}>完了 ${done} 件を折りたたんでいます</p>` : ""}${!list.length ? `<p class="tree-folded"${dropAttr(tail)}>${t("task")}はまだありません</p>` : ""}</div>
@@ -2195,7 +2202,7 @@ const looooooooooooooooooooooooooooooooooongLine = "コードの長い1行は、
     first, firstHref, firstSteps, emptyState,
     D, t, brandMark, googleMark, THEMES, THEME_LABEL, THEME_NOTE, setVocab, toggleVocab, onChange, esc, icon, md, sumPts, cycleTheme, setTheme, applyTheme, mount,
     onRedraw: (fn) => extraRedraws.push(fn), openDrawer, drawerHtml, drawerState: drawer,
-    user, task, tasksWhere, repoTag, categoryTag, repoPicker, sprintLabel, colName, categoryOf, storyPts, epicPts, dueOf,
+    user, task, tasksWhere, repoTag, categoryTag, sprintTag, repoPicker, sprintLabel, colName, categoryOf, storyPts, epicPts, dueOf,
     avatar, avatarOf, SAMPLE_PHOTO, BROKEN_PHOTO, emblem, pts, dueChip, taskDue, tier, sourceKey, entry, orderActions, book, section, pageHead,
     card, board, treeStory, treeEpic, sprintNotice, raidNotice, progress, levelPanel, teamXp, xpDelta, load, capacityRows,
     openDialog, closeDialog, toast, celebrate, miniCap, redraw: () => redrawAll(), DIALOGS, loginTarget, orgMenuHtml, accountMenuHtml,

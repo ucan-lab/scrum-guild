@@ -137,6 +137,7 @@ describe('task-detail', () => {
       story_id: null,
       category: null,
       repository: null,
+      sprint: null,
     });
     for (const person of [target.leader, target.admin]) {
       expect(((await (await detail(target, task.id, person)).json()) as { task: Detail }).task.can_delete).toBe(true);

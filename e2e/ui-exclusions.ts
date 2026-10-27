@@ -9,6 +9,7 @@ export const uiScreens = [
   'task-drawer',
   'task-dialog',
   'plan',
+  'sprint-task-picker',
   'members',
   'member-remove-confirm',
   'workspace-settings',

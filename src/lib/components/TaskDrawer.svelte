@@ -26,6 +26,7 @@
   import { callOperation } from '../api.ts';
   import { withCurrent } from '../definition-options.ts';
   import { formatDateTime } from '../format-datetime.ts';
+  import { sprintLabel } from '../sprint-label.ts';
   import { historyEntryView } from '../task-history.ts';
   import { showToast } from '../toast.svelte.ts';
   import { t } from '../vocabulary.svelte.ts';
@@ -1036,9 +1037,12 @@
         return;
       }
       if (result.ok) {
+        const inSprint = task !== null && task.sprint !== null;
         if (task !== null) task = { ...task, completed_at: result.data.completed_at };
         showToast(t('taskCompleted', { task: t('task'), done: t('done') }), 'check');
-        void loadHistory();
+        // 始まっていないスプリントの中で完了すると、スプリントから外れる。入っていたなら詳細ごと読み直す（履歴も読み直す）
+        if (inSprint) void refresh();
+        else void loadHistory();
         onchanged();
       } else if (result.status === 401) {
         onstale();
@@ -1354,6 +1358,13 @@
           {#if dueError !== null}
             <span class="field-error" id={dueErrorId} role="alert"><Icon name="alert" />{dueError}</span>
           {/if}
+        </dd>
+      </div>
+      <div>
+        <!-- 入っているスプリント（kit.js の drawer）。入っていなければ「<バックログ>」。出し入れは計画の画面で行う -->
+        <dt>{t('sprint')}</dt>
+        <dd>
+          <span>{task.sprint === null ? t('sprintNone', { backlog: t('backlog') }) : sprintLabel(task.sprint, t)}</span>
         </dd>
       </div>
       <div>

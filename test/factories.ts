@@ -477,7 +477,7 @@ export async function createSprint(
   return row;
 }
 
-// かんばんの列。既定は完了でない列
+// ワークスペースの列。既定は完了でない列（名前あり）。完了の列は is_done: 1 と name: null を渡す（ワークスペースに1つ）
 export async function createBoardColumn(
   organization: OrganizationFixture,
   workspaceId: string,
@@ -554,6 +554,7 @@ export async function createCompletion(
     points: null,
     assignee_user_id: null,
     sprint_id: null,
+    previous_column_id: null,
     category_id: null,
     billing_month: null,
     created_at: AT,
@@ -562,6 +563,29 @@ export async function createCompletion(
   };
   const db = orgDb(env, organization.verified);
   await db.run(db.statement((q) => q.insertInto('completions').values(row)));
+  return row;
+}
+
+// タスクがスプリントに入った行。既定は入っている間の行（ended_at と outcome が空）。タスクの sprint_id と column_id は呼ぶ側がそろえる
+export async function createSprintEntry(
+  organization: OrganizationFixture,
+  sprintId: string,
+  taskId: string,
+  addedBy: string,
+  overrides: Partial<Row<OrganizationTables, 'sprint_entries'>> = {},
+) {
+  const row: Row<OrganizationTables, 'sprint_entries'> = {
+    id: uuidv7(),
+    sprint_id: sprintId,
+    task_id: taskId,
+    added_at: AT,
+    added_by: addedBy,
+    ended_at: null,
+    outcome: null,
+    ...overrides,
+  };
+  const db = orgDb(env, organization.verified);
+  await db.run(db.statement((q) => q.insertInto('sprint_entries').values(row)));
   return row;
 }
 

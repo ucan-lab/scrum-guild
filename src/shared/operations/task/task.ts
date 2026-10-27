@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { taskPointsSchema } from '../../task.ts';
 import { definitionRefSchema, resolvedCategorySchema } from '../definition/definition.ts';
+import { sprintRefSchema } from '../sprint/sprint.ts';
 
 // タスクの詳細の引き出しが出す項目。読む操作と、変える操作が、書いた後の値として返す。
 // 本文は長い（1 万字まで）ので、バックログの木（backlog-tree）には載せない
@@ -26,6 +27,8 @@ export const taskDetailSchema = z.object({
   category: resolvedCategorySchema.nullable(),
   // 振ったリポジトリ。親から引き継がない
   repository: definitionRefSchema.nullable(),
+  // 入っているスプリント（削除していないもの）。入っていなければ null
+  sprint: sprintRefSchema.nullable(),
 });
 
 export type TaskDetail = z.output<typeof taskDetailSchema>;

@@ -12,6 +12,7 @@ import {
   repositoryRow,
 } from './definition-refs.ts';
 import { implement } from './implement.ts';
+import { sprintRefColumns, sprintRefOf } from './sprint-refs.ts';
 import {
   activeMemberName,
   actorUserIdOf,
@@ -69,7 +70,15 @@ async function readTask(db: OrganizationDb, workspaceId: string, taskId: string)
         .leftJoin('repositories', (join) =>
           join.onRef('repositories.id', '=', 'tasks.repository_id').on('repositories.workspace_id', '=', workspaceId),
         )
+        // 入っているスプリント。同じワークスペースの削除していないものだけを結ぶ
+        .leftJoin('sprints', (join) =>
+          join
+            .onRef('sprints.id', '=', 'tasks.sprint_id')
+            .on('sprints.workspace_id', '=', workspaceId)
+            .on('sprints.deleted_at', 'is', null),
+        )
         .select([
+          ...sprintRefColumns,
           'tasks.id',
           'tasks.title',
           'tasks.body_md',
@@ -164,6 +173,7 @@ function detailOf(
     story_id: row.story_id,
     category: categoryOf(row),
     repository: repositoryOf(row),
+    sprint: sprintRefOf(row),
   };
 }
 
@@ -477,10 +487,17 @@ export const taskDeleteOperation = implement(taskDelete, async ({ db, actor, wor
   const at = now();
   const deletedAt = at.toISOString();
   const results = await db.batch([
+    // スプリントに入っていれば、スプリント、列、列の中の位置も空にする（tasks.sprint_id と入っている行を一致させる。行は 3 で閉じる）
     db.statement((q) =>
       q
         .updateTable('tasks')
-        .set({ deleted_at: deletedAt, updated_at: deletedAt })
+        .set({
+          deleted_at: deletedAt,
+          updated_at: deletedAt,
+          sprint_id: null,
+          column_id: null,
+          column_position: null,
+        })
         .where((eb) =>
           eb.and([
             eb('id', '=', taskId),
@@ -509,6 +526,24 @@ export const taskDeleteOperation = implement(taskDelete, async ({ db, actor, wor
               eb.val(deletedAt).as('created_at'),
             ])
             .where(previousStatementChanged),
+        ),
+    ),
+    // 3. スプリントに入っていれば、入っていた行を removed で閉じる。1 でこの要求が削除した（deleted_at が自分の時刻）ことが条件
+    db.statement((q) =>
+      q
+        .updateTable('sprint_entries')
+        .set({ ended_at: deletedAt, outcome: 'removed' })
+        .where('task_id', '=', taskId)
+        .where('ended_at', 'is', null)
+        .where((eb) =>
+          eb.exists(
+            eb
+              .selectFrom('tasks as gone')
+              .select('gone.id')
+              .where('gone.id', '=', taskId)
+              .where('gone.workspace_id', '=', workspaceId)
+              .where('gone.deleted_at', '=', deletedAt),
+          ),
         ),
     ),
   ]);

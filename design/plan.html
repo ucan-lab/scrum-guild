@@ -52,8 +52,8 @@ function lane(id, avg) {
       <div class="lane-fill-bar ${total > avg * 1.125 ? "is-over" : ""}" role="img" aria-label="入れた ${total} pt、ベロシティ ${avg.toFixed(1)} pt"><span style="width:${(total / max) * 100}%"></span><i style="left:${(avg / max) * 100}%"></i></div>
       <div class="lane-fill-text"><span>入れた ${total} pt</span><span>ベロシティ ${avg.toFixed(1)}</span></div>
     </div>
-    ${list.map((x) => `<div class="lane-row ${x.doneAt ? "is-done" : ""}">${pts(x.pts)}<a href="#" data-task="${x.id}">${esc(x.title)}</a>${avatarOf(x.who)}</div>`).join("") || `<p class="action-note">まだ何も入っていません</p>`}
-    <button class="btn is-sm" type="button">${icon("plus")}${t("backlog")}から入れる</button>
+    ${list.map((x) => `<div class="lane-row ${x.doneAt ? "is-done" : ""}">${pts(x.pts)}<a href="#" data-task="${x.id}">${esc(x.title)}</a><span class="lane-row-end">${avatarOf(x.who)}${x.doneAt ? "" : `<button class="icon-btn" type="button" aria-label="外す: ${esc(x.title)}" title="外す">${icon("x")}</button>`}</span></div>`).join("") || `<p class="action-note">まだ何も入っていません</p>`}
+    <button class="btn is-sm" type="button" aria-label="${t("backlog")}から入れる: ${esc(SQ.sprintLabel(id))}">${icon("plus")}${t("backlog")}から入れる</button>
     ${s.status === "planned" && SQ.user(D.me).role === "leader" ? `<div class="form-actions">
       <button class="btn is-sm" type="button" data-dialog="sprintEdit" aria-label="直す: ${esc(SQ.sprintLabel(id))}">${icon("pen")}直す</button>
       <button class="btn is-sm is-quiet is-danger" type="button" data-dialog="deleteSprint" aria-label="削除する: ${esc(SQ.sprintLabel(id))}">${icon("trash")}削除する</button>

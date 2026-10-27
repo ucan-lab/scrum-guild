@@ -65,10 +65,10 @@ export function taskHistoryStatement(db: OrganizationDb, workspaceId: string, ta
   );
 }
 
-// 欄ごとの値の形。人、親、区分、リポジトリは { id, name }（親のストーリーは { id, title } で残っている）
+// 欄ごとの値の形。人、親、区分、リポジトリ、スプリントは { id, name }（親のストーリーは { id, title } で残っている）
 const TEXT_FIELDS = new Set(['title', 'link_url', 'due_on', 'today_on', 'completed_at', 'deleted_at']);
 const NUMBER_FIELDS = new Set(['points']);
-const NAMED_FIELDS = new Set(['assignee', 'completed_by', 'story', 'category', 'repository']);
+const NAMED_FIELDS = new Set(['assignee', 'completed_by', 'story', 'category', 'repository', 'sprint']);
 
 // ID があれば、名前が読めなくても（空、ストーリーのタイトルが null）値を落とさず、名前を空で返す（画面は「不明」と出す）
 function namedValue(value: unknown): TaskHistoryValue {

@@ -34,6 +34,18 @@ test('タスクを作るダイアログ（Dialog）を開いた状態に axe の
   await expectNoA11yViolationsInThemes(page, 'task-dialog');
 });
 
+test('遠征に入れるダイアログ（SprintTaskPicker）を開いた状態に axe の違反が無い', async ({ page }) => {
+  await page.goto(`${WORKSPACE}/plan`);
+  const open = page.getByRole('button', { name: '掲示板から入れる: 遠征 年末の仕上げ' });
+  await expect(open).toBeVisible();
+  await waitForSettled(page);
+  await open.click();
+  const dialog = page.getByRole('dialog', { name: '遠征 年末の仕上げ に入れる' });
+  await expect(dialog.getByRole('group', { name: 'クエストを1件ずつ入れる' })).toBeVisible();
+  await expect(page.locator('[aria-busy="true"]:visible')).toHaveCount(0);
+  await expectNoA11yViolationsInThemes(page, 'sprint-task-picker');
+});
+
 test('メンバーを外す確かめ（ConfirmDialog）を開いた状態に axe の違反が無い', async ({ page }) => {
   await page.goto(`${WORKSPACE}/members`);
   const remove = page.getByRole('button', { name: 'ハルカを外す' });

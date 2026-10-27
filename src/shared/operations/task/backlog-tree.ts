@@ -4,6 +4,7 @@ import { idSchema } from '../../id.ts';
 import { taskPointsSchema } from '../../task.ts';
 import { defineOperation } from '../define.ts';
 import { definitionRefSchema } from '../definition/definition.ts';
+import { sprintRefSchema } from '../sprint/sprint.ts';
 import { storyDetailSchema } from '../story/story.ts';
 
 // バックログの木のタスクの1行。画面が行に出す項目だけ
@@ -19,6 +20,8 @@ export const backlogTaskSchema = z.object({
   category: definitionRefSchema.nullable(),
   // 振ったリポジトリ。無ければ null
   repository: definitionRefSchema.nullable(),
+  // 入っているスプリント（削除していないもの）。入っていなければ null
+  sprint: sprintRefSchema.nullable(),
 });
 
 export type BacklogTask = z.output<typeof backlogTaskSchema>;

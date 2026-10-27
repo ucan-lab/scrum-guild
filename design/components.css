@@ -628,6 +628,16 @@ button.tree-link { border: 0; background: none; padding: 0; font: inherit; text-
 .lane-row a { color: var(--color-fg); text-decoration: none; overflow-wrap: anywhere; }
 .lane-row a:hover { text-decoration: underline; text-underline-offset: 3px; }
 .lane-row.is-done a { color: var(--color-muted); }
+/* 行の右端（担当と、外す操作）。外す操作の無い行（完了したタスク）でも、担当の位置をそろえる */
+.lane-row-end { display: flex; align-items: center; gap: var(--space-1); }
+/* 狭い幅と指で押す画面では、外すボタンを 44px 四方に、タイトルのリンクと「<バックログ>から入れる」を見た目ごと 44px の高さにする
+   （バックログの並べ替えのボタンと同じ範囲）。「<バックログ>から入れる」は、下の「直す」「削除する」の広げた範囲（上へ約 8px）と
+   重ならないよう、下を空ける */
+@media (max-width: 760px), (pointer: coarse) {
+  .lane-row .icon-btn { min-width: 44px; min-height: 44px; }
+  .lane-row a { display: flex; align-items: center; min-height: 44px; }
+  .lane > .btn.is-sm { min-height: 44px; margin-bottom: var(--space-2); }
+}
 .lane-fill { display: grid; gap: 4px; padding-block: var(--space-1); }
 .lane-fill-bar { position: relative; height: 8px; background: var(--color-gauge); }
 .lane-fill-bar span { position: absolute; inset: 0 auto 0 0; background: var(--color-accent); }
