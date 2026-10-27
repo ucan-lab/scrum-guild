@@ -1,4 +1,5 @@
 <script lang="ts">
+  import type { Snippet } from 'svelte';
   import { invalidateAll } from '$app/navigation';
   import { t } from '../vocabulary.svelte.ts';
   import EmptyState from './EmptyState.svelte';
@@ -10,8 +11,9 @@
   // 「もう一度試す」は、読み直している間は aria-disabled にして、押しても無視する（フォーカスを残す）。
   // 状態は、常に置いた role="status" の領域の文字だけを替えて伝える。
   // 読み直しが終わっても、この画面が残っていれば、また失敗したということ（成功すれば画面ごと入れ替わる）。
-  // inShell は組織の枠の中（左のメニューを残す）で出すとき。既定は枠の外の画面
-  let { inShell = false }: { inShell?: boolean } = $props();
+  // inShell は組織の枠の中（左のメニューを残す）で出すとき。既定は枠の外の画面。
+  // extra は「もう一度試す」の横に添える操作（バックログの、絞っているときの「絞り込みを外す」）
+  let { inShell = false, extra }: { inShell?: boolean; extra?: Snippet } = $props();
 
   let state = $state<'idle' | 'retrying' | 'failedAgain'>('idle');
 
@@ -36,6 +38,7 @@
   <button class="btn is-sm" type="button" aria-disabled={state === 'retrying'} onclick={retry}>
     {t('retry')}
   </button>
+  {@render extra?.()}
   <span class="field-hint" role="status">{status}</span>
 {/snippet}
 

@@ -20,6 +20,51 @@
 // バックログ: エピック、ストーリー、タスクの木。並びが優先順位
 const { D, t, icon, pageHead, treeEpic, treeStory, entry } = SQ;
 
+// 絞り込みの帯。選択欄は1つだけ選ぶ select で、先頭が「すべて」、末尾が「なし」。担当は先頭に「自分」を置き、
+// 今所属している人の後に、離脱した人のうち未完了のタスクの担当に残っている人を「（離脱済み）」を添えて並べる。
+// 接続と取り込み元のプロジェクトやリポジトリの選択欄は、取り込み（#67）で同じ形に足す。
+// 見本は絞り込まず、値を選ぶと「絞り込みを外す」と、並べ替えを止める案内に替わるところだけを見せる
+function filterBar(open) {
+  const all = (label) => opt("", t("filterAll").replace("{label}", label));
+  const opt = (value, label) => `<option value="${SQ.esc(value)}">${SQ.esc(label)}</option>`;
+  const current = D.members.filter((m) => !m.left).map((m) => m.who);
+  const leftWithTasks = [...new Set(open.map((x) => x.who).filter((who) => who && !current.includes(who)))];
+  return `<div class="toolbar" role="search" aria-label="${SQ.esc(t("filterLabel").replace("{backlog}", t("backlog")))}" id="backlog-filter">
+      <label class="search" for="q">${icon("search")}<input id="q" type="search" placeholder="${t("backlogSearch")}" aria-label="${t("backlogSearch")}"></label>
+      <select class="select" id="f-who" aria-label="${t("assignee")}">${all(t("assignee"))}${opt("me", t("filterMe"))}${current.map((who) => opt(who, D.users[who].name)).join("")}${leftWithTasks.map((who) => opt(who, `${D.users[who].name}${t("leftMember")}`)).join("")}${opt("none", t("unassigned"))}</select>
+      <select class="select" id="f-cat" aria-label="${t("category")}">${all(t("category"))}${Object.entries(D.categories).map(([id, c]) => opt(id, c.name)).join("")}${opt("none", t("categoryNone").replace("{category}", t("category")))}</select>
+      <select class="select" id="f-repo" aria-label="リポジトリ">${all("リポジトリ")}${Object.entries(D.repositories).map(([id, r]) => opt(id, r.name)).join("")}${opt("none", t("filterNoRepository"))}</select>
+      <select class="select" id="f-epic" aria-label="${t("epic")}">${all(t("epic"))}${Object.entries(D.epics).map(([id, e]) => opt(id, e.title)).join("")}${opt("none", t("filterNoEpic").replace("{epic}", t("epic")))}</select>
+      <span class="toolbar-end" id="f-clear" hidden><button class="btn is-sm is-quiet" type="button">${icon("x")}${t("filterClear")}</button></span>
+    </div>`;
+}
+
+// 値を選ぶか探すと、帯の端に「絞り込みを外す」を出し、並べ替えの案内を替えて、行の「上へ」「下へ」とつまみを隠す（親を移すは残す）
+document.addEventListener("input", (ev) => {
+  const bar = ev.target.closest && ev.target.closest("#backlog-filter");
+  if (!bar) return;
+  const filtering = [...bar.querySelectorAll("select")].some((s) => s.value !== "") || bar.querySelector("#q").value.trim() !== "";
+  bar.querySelector("#f-clear").hidden = !filtering;
+  document.getElementById("order-note").innerHTML = filtering ? SQ.esc(t("backlogFilterOrderNote"))
+    : `上にあるものほど優先します。${t("story")}と${t("task")}は、行の「上へ」「下へ」か、行の中にフォーカスを置いて Alt と ↑ ↓ で並べ替えます。<span class="drag-note">行の先頭のつまみをドラッグしても並べ替えられます。</span>`;
+  document.getElementById("totals-note").hidden = !filtering;
+  document.querySelectorAll(".order-actions .icon-btn:not(:last-child)").forEach((b) => (b.hidden = filtering));
+  // つまみも隠す（ドラッグも隣を使う並べ替えなので、絞っている間は止める）
+  document.querySelectorAll(".grip").forEach((g) => {
+    g.hidden = filtering;
+    // つまみの列も空けない（本番は行の has-grip を外す）
+    g.parentElement.classList.toggle("has-grip", !filtering);
+  });
+});
+document.addEventListener("click", (ev) => {
+  if (!ev.target.closest || !ev.target.closest("#f-clear")) return;
+  const bar = document.getElementById("backlog-filter");
+  bar.querySelectorAll("select").forEach((s) => (s.value = ""));
+  bar.querySelector("#q").value = "";
+  bar.querySelector("#q").dispatchEvent(new Event("input", { bubbles: true }));
+  bar.querySelector("#q").focus();
+});
+
 SQ.mount("backlog", () => {
   const open = SQ.tasksWhere((x) => x.ws === "wa" && !x.doneAt);
   const rootTasks = SQ.tasksWhere((x) => x.ws === "wa" && !x.story && !x.doneAt);
@@ -45,16 +90,9 @@ SQ.mount("backlog", () => {
     ], actions, SQ.teamXp())}
     ${D.definitionOfDone.length ? `<details class="dod"><summary>${t("dod")}</summary><div class="doc-box"><ul>${D.definitionOfDone.map((d) => `<li>${SQ.esc(d)}</li>`).join("")}</ul></div></details>` : ""}
     <section class="section" aria-label="${t("backlog")}の${t("task")}">
-    <div class="toolbar" role="search">
-      <label class="search" for="q">${icon("search")}<input id="q" type="search" placeholder="タイトルや SHOP-128 で探す"></label>
-      <select class="select" id="f-who" aria-label="${t("assignee")}"><option>${t("assignee")}: すべて</option><option>ミナト</option><option>担当なし</option></select>
-      <select class="select" id="f-cat" aria-label="${t("category")}"><option>${t("category")}: すべて</option><option>追加案件</option><option>保守</option><option>${t("category")}なし</option></select>
-      <select class="select" id="f-repo" aria-label="リポジトリ"><option>リポジトリ: すべて</option>${Object.values(D.repositories).map((r) => `<option>${SQ.esc(r.name)}</option>`).join("")}<option>リポジトリなし</option></select>
-      <select class="select" id="f-epic" aria-label="${t("epic")}"><option>${t("epic")}: すべて</option><option>会員ポイント制度を公開する</option><option>決済まわりの障害を減らす</option></select>
-      <select class="select" id="f-conn" aria-label="${t("connection")}"><option>${t("connection")}: すべて</option><option>ミナトの Backlog</option><option>ミナトの GitHub</option></select>
-      <select class="select" id="f-src" aria-label="取り込み元のプロジェクトとリポジトリ"><option>プロジェクト・リポジトリ: すべて</option><option>SHOP（Backlog）</option><option>acme/shop（GitHub）</option></select>
-    </div>
-    <p class="action-note">上にあるものほど優先します。${t("story")}と${t("task")}は、行の「上へ」「下へ」か、行の中にフォーカスを置いて Alt と ↑ ↓ で並べ替えます。<span class="drag-note">行の先頭のつまみをドラッグしても並べ替えられます。</span></p>
+    ${filterBar(open)}
+    <p class="action-note" id="order-note">上にあるものほど優先します。${t("story")}と${t("task")}は、行の「上へ」「下へ」か、行の中にフォーカスを置いて Alt と ↑ ↓ で並べ替えます。<span class="drag-note">行の先頭のつまみをドラッグしても並べ替えられます。</span></p>
+    <p class="action-note" id="totals-note" hidden>${t("filterTotalsNote").replace("{points}", t("points"))}</p>
     <div class="tree">
       ${treeEpic("e1", { order: true })}
       ${treeEpic("e2", { order: true })}

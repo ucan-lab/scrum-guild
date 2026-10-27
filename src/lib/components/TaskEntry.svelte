@@ -19,7 +19,8 @@
   // canComplete が偽（閉じたワークスペース）の行は、完了の操作を出さない。pending の間は押しても無視する（aria-disabled）
   // onMove を渡すと、「上へ」「下へ」（同じ親の中で1つ動かす）を出し、行の中で Alt と ↑ ↓ を押しても同じことをする。
   // 端で動かせない向き（canMoveUp、canMoveDown が偽）は、フォーカスを失わないよう disabled でなく aria-disabled にする。
-  // onMoveParent を渡すと「親を移す」も出す。完了にした行には出さない。
+  // onMoveParent を渡すと「親を移す」も出す。完了にした行には出さない。絞り込み中は、画面が onMove を渡さず（並べ替えは隣を使うため）、
+  // 「親を移す」だけを出す。
   // タイトルの下（.entry-meta）に、振ったリポジトリ（kit.js の repoTag。git のアイコン）と、showCategory のとき（親のないタスク）だけ区分を出す。
   // 親のあるタスクの区分は親の行に出ているので、繰り返さない。
   // onMove と dnd を渡すと（書き込めるとき）、行の先頭にドラッグのつまみ（.grip。飾りで aria-hidden）を置く。つかむのはここだけで、
@@ -38,6 +39,7 @@
     onMoveParent,
     showCategory = false,
     dnd,
+    taskQuery = '?task=',
   }: {
     task: BacklogTask;
     clock: { today: string; weekStart: number };
@@ -51,6 +53,7 @@
     onMoveParent?: (task: BacklogTask, trigger: HTMLElement) => void;
     showCategory?: boolean;
     dnd?: BacklogDnd;
+    taskQuery?: string;
   } = $props();
 
   const category = $derived(showCategory ? task.category : null);
@@ -58,6 +61,7 @@
   const movable = $derived(onMove !== undefined && !done);
   const dropRow = $derived<DropRow>({ kind: 'task', id: task.id });
   const hasGrip = $derived(onMove !== undefined && dnd !== undefined);
+  const parentMovable = $derived(onMoveParent !== undefined && !done);
 
   function move(delta: -1 | 1): void {
     if (!movable || (delta < 0 ? !canMoveUp : !canMoveDown)) return;
@@ -73,7 +77,8 @@
   }
 
   let mark = $state<HTMLElement>();
-  // タイトルのリンクは、今のワークスペースの画面に `?task=<ID>` を付ける
+  // タイトルのリンクは、今のワークスペースの画面に `?task=<ID>` を付ける。絞り込みの問い合わせ（assignee、q など）は残す。
+  // 問い合わせの前半（taskQuery。`?...&task=` か `?task=`）は画面が1回だけ組んで渡し、行は ID だけを足す
   const taskHref = $derived(resolve('/[slug]/w/[id]', { slug: page.params.slug ?? '', id: page.params.id ?? '' }));
 
   export function focusMark(): void {
@@ -115,7 +120,7 @@
     <!-- 押しても、フォーカスとスクロールの位置は動かさない（引き出しが閉じたとき、data-task-id で探してフォーカスを戻す） -->
     <a
       class="entry-title"
-      href="{taskHref}?task={encodeURIComponent(task.id)}"
+      href="{taskHref}{taskQuery}{encodeURIComponent(task.id)}"
       data-task-id={task.id}
       data-sveltekit-keepfocus
       data-sveltekit-noscroll>{task.title}</a
@@ -152,24 +157,26 @@
     {:else}
       <Avatar userId={task.assignee.id} name={task.assignee.name} />
     {/if}
-    {#if movable}
+    {#if movable || parentMovable}
       <span class="order-actions">
-        <button
-          class="icon-btn"
-          type="button"
-          aria-label={t('moveUpLabel', { title: task.title })}
-          title={t('moveUp')}
-          aria-disabled={!canMoveUp}
-          onclick={() => move(-1)}><Icon name="up" /></button
-        >
-        <button
-          class="icon-btn"
-          type="button"
-          aria-label={t('moveDownLabel', { title: task.title })}
-          title={t('moveDown')}
-          aria-disabled={!canMoveDown}
-          onclick={() => move(1)}><Icon name="down" /></button
-        >
+        {#if movable}
+          <button
+            class="icon-btn"
+            type="button"
+            aria-label={t('moveUpLabel', { title: task.title })}
+            title={t('moveUp')}
+            aria-disabled={!canMoveUp}
+            onclick={() => move(-1)}><Icon name="up" /></button
+          >
+          <button
+            class="icon-btn"
+            type="button"
+            aria-label={t('moveDownLabel', { title: task.title })}
+            title={t('moveDown')}
+            aria-disabled={!canMoveDown}
+            onclick={() => move(1)}><Icon name="down" /></button
+          >
+        {/if}
         {#if onMoveParent !== undefined}
           <button
             class="icon-btn"

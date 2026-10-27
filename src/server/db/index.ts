@@ -2,9 +2,9 @@
 // src/server/db/ の外からは、このモジュール以外を import しない（ESLint が落とす）。
 // 生の SQL（kysely の sql）は db/ の中だけで使うので出さない（固定の条件 previousStatementChanged と、一覧を1つの値で渡す jsonList と、
 // 行ごとの ID を SQL の中で作る uuidv7Sql と、部分索引に合わせた組織の変更の履歴の条件 organizationHistoryRowFilter と、
-// 複数の行を1つの文で並びの末尾に振る tailPosition だけを出す）。
+// 複数の行を1つの文で並びの末尾に振る tailPosition と、タイトルの検索の条件 titleContainsAll と、列に索引を使わせない unindexed だけを出す）。
 // 照合用の値はテストの口（testing.ts）から出す
-export type { Insertable, QueryCreator, Selectable } from 'kysely';
+export type { ExpressionBuilder, Insertable, QueryCreator, Selectable } from 'kysely';
 export type { Statement } from './entry.ts';
 export { commonDb, orgDb, type CommonDb, type OrganizationDb } from './entries.ts';
 export { DatabaseUnavailableError, pingDatabase } from './ping.ts';
@@ -13,6 +13,8 @@ export { previousStatementChanged } from './previous-statement.ts';
 export { organizationHistoryRowFilter } from './organization-history-filter.ts';
 export { uuidv7Sql } from './uuid-sql.ts';
 export { tailPosition } from './tail-position.ts';
+export { titleContainsAll } from './title-search.ts';
+export { unindexed } from './unindexed.ts';
 export type { CommonTables, OrganizationTables } from './tables.ts';
 export type { VerifiedOrganization } from './verify-organization.ts';
 export { assertVerifiedWorkspace, type VerifiedWorkspace } from './verify-workspace.ts';

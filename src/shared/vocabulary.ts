@@ -226,6 +226,41 @@ export const dictionary = defineDictionary({
     '次の{task}は、上の「{create}」から作ります。',
     '次の{task}は、上の「{create}」から作ります。',
   ),
+  // 絞り込みの帯（見本の design/backlog.html の .toolbar）。{label} は選択欄の名前（{assignee}、{category}、リポジトリ、{epic}）
+  filterLabel: workspace('{backlog}の絞り込み', '{backlog}の絞り込み'),
+  backlogSearch: workspace('タイトルで探す', 'タイトルで探す'),
+  filterAll: workspace('{label}: すべて', '{label}: すべて'),
+  filterMe: workspace('自分', '自分'),
+  filterNoRepository: workspace('リポジトリなし', 'リポジトリなし'),
+  filterNoEpic: workspace('{epic}なし', '{epic}なし'),
+  // URL の値が選択肢に無い（消えた、別のワークスペースの値）とき、選択欄にその値を残す選択肢
+  filterUnknown: workspace('一覧に無い値', '一覧に無い値'),
+  // 区分とリポジトリの一覧を読めなかったとき、URL の値を残す選択肢（消えたかどうかは分からない）
+  filterSelectedUnloaded: workspace('選んでいる値', '選んでいる値'),
+  // 絞り込みの結果の読み上げ（常に置いた role="status" の領域）。{count} は出したタスクの行の数
+  filterResultCount: workspace('{count} 件に絞りました', '{count} 件に絞りました'),
+  filterResultNone: workspace('当たるものはありません', '当たるものはありません'),
+  // 絞っている間、帯の下に出す。ポイントの合計と完了の件数は絞る前の値のため
+  filterTotalsNote: workspace('{points}と件数は、絞る前の全体の値です', '{points}と件数は、絞る前の全体の値です'),
+  filterClear: workspace('絞り込みを外す', '絞り込みを外す'),
+  // 検索の文字が上限を超えたとき（帯の下に出し、読み直さない）
+  searchTooLong: workspace('検索の文字は {max} 字までです', '検索の文字は {max} 字までです'),
+  searchTooManyWords: workspace('検索の語は {max} つまでです', '検索の語は {max} つまでです'),
+  // 絞っている間は並べ替えを出さない（backlogOrderNote の代わりに出す）
+  backlogFilterOrderNote: workspace(
+    '上にあるものほど優先します。絞り込みを外すと並べ替えられます。',
+    '上にあるものほど優先します。絞り込みを外すと並べ替えられます。',
+  ),
+  backlogNoMatchTitle: workspace('絞り込みに当たるものはありません', '絞り込みに当たるものはありません'),
+  backlogNoMatchText: workspace(
+    '条件を変えるか、絞り込みを外してください。',
+    '条件を変えるか、絞り込みを外してください。',
+  ),
+  // 絞っているときに作った{task}、{story}、{epic}が、読み直した木に無いとき
+  filterHiddenCreated: workspace(
+    '作りました。絞り込みに当たらないので表示していません',
+    '作りました。絞り込みに当たらないので表示していません',
+  ),
   // タスクの行と、完了の操作
   pointsLabel: workspace('{points} {value}', '{points} {value}'),
   doneMarkLabel: workspace('{title}: {done}', '{title}: {done}'),

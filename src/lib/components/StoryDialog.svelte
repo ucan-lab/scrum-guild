@@ -41,6 +41,7 @@
     categoriesFailed,
     onsaved,
     ongone,
+    announceCreated = true,
   }: {
     slug: string;
     workspaceId: string;
@@ -48,9 +49,12 @@
     categories: readonly DefinitionRef[];
     // 区分の一覧を読めなかった（選択肢は区分なしと今の区分だけ）
     categoriesFailed: boolean;
-    onsaved: () => void;
+    // 作ったときは作ったストーリーの ID、直したときは null（画面が、作ったものが絞り込みに当たるかを確かめる）
+    onsaved: (createdId: string | null) => void;
     // 直す対象が消えていた（404）か、削除した。画面が木を読み直し、見出しへフォーカスを移す
     ongone: () => void;
+    // 偽なら作った知らせ（トースト）を出さない。絞り込み中の画面が、作ったものが当たるかを確かめてから自分で知らせる
+    announceCreated?: boolean;
   } = $props();
 
   const ids = $props.id();
@@ -313,8 +317,10 @@
       }
       const created = editing === null;
       open = false;
-      showToast(t(created ? 'storyCreated' : 'storySaved', { story: t('story') }), 'check');
-      onsaved();
+      if (!created || announceCreated) {
+        showToast(t(created ? 'storyCreated' : 'storySaved', { story: t('story') }), 'check');
+      }
+      onsaved(created ? result.data.story.id : null);
     } finally {
       if (mine === generation) submitting = false;
     }

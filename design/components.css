@@ -511,8 +511,16 @@ a.brand { color: inherit; text-decoration: none; }
 /* ===== 道具の帯（絞り込みと検索） ===== */
 .toolbar { display: flex; flex-wrap: wrap; gap: var(--space-2); align-items: center; }
 .toolbar .search { flex: 1 1 240px; max-width: 380px; }
-.toolbar .select { width: auto; padding-block: 6px; font-size: var(--text-sm); }
+.toolbar .select { width: auto; max-width: min(100%, 18rem); padding-block: 6px; font-size: var(--text-sm); }
 .toolbar-end { margin-left: auto; }
+/* 帯の下の知らせ（検索の文字が長すぎる など）。帯と同じ幅で折り返す */
+.toolbar-note { flex-basis: 100%; }
+@media (max-width: 760px), (pointer: coarse) {
+  .toolbar .select, .toolbar .search { min-height: 44px; }
+}
+@media (max-width: 760px) {
+  .toolbar .search { flex-basis: 100%; max-width: none; }
+}
 
 /* ===== 囲みの知らせ ===== */
 .callout { display: flex; gap: var(--space-2); align-items: flex-start; padding: var(--space-3) var(--space-4); border-radius: var(--radius-1); font-size: var(--text-sm); border: 1px solid currentColor; }
@@ -554,6 +562,8 @@ a.brand { color: inherit; text-decoration: none; }
 /* ===== バックログの木 ===== */
 .tree { background: var(--color-surface); border: 1px solid var(--color-line); border-left: var(--rule-double); border-radius: var(--radius-1); }
 .tree > * + * { border-top: 1px solid var(--color-line); }
+/* 絞り込みを変えて読み直している間は、前の木を残したまま少し薄くする（操作はできる） */
+.tree[aria-busy="true"] { opacity: 0.6; transition: opacity var(--duration-fast) ease-out; }
 /* 右端が横に並ぶ幅では、題の列に 12rem を先に取り、右端は残りの幅に収まらなければ中で折り返す（指で押す画面の 44px のボタンでも、
    題の列を押しのけない） */
 .tree-row {
@@ -899,8 +909,10 @@ dialog.dialog::backdrop { background: none; }
   .done-btn::after { content: ""; position: absolute; left: 50%; top: 50%; width: 44px; height: 44px; transform: translate(-50%, -50%); }
   /* 木の行のボタン（開閉の caret、題、＋タスク）と、操作の並びの小さいボタンも、見た目は変えず、押せる範囲だけを 44px 四方以上に広げる。
      操作の並びで高さを変えると、横に並ぶヒントの文字が上にずれるため */
-  .tree-caret, button.tree-link, .tree-row .btn.is-sm, .form-actions .btn.is-sm, .callout-actions .btn.is-sm { position: relative; }
-  .tree-caret::after, button.tree-link::after, .tree-row .btn.is-sm::after, .form-actions .btn.is-sm::after, .callout-actions .btn.is-sm::after {
+  /* 絞り込みの帯の端の「絞り込みを外す」も同じ */
+  .tree-caret, button.tree-link, .tree-row .btn.is-sm, .form-actions .btn.is-sm, .callout-actions .btn.is-sm, .toolbar-end .btn.is-sm { position: relative; }
+  .tree-caret::after, button.tree-link::after, .tree-row .btn.is-sm::after, .form-actions .btn.is-sm::after, .callout-actions .btn.is-sm::after,
+  .toolbar-end .btn.is-sm::after {
     content: ""; position: absolute; left: 50%; top: 50%; width: max(100%, 44px); height: max(100%, 44px); transform: translate(-50%, -50%);
   }
   /* 引き出しの中の小さなボタン（保存、取り消し、編集、削除、クリア）と、押すと直せる値と、タブ（コメントと変更の履歴）も同じ。
@@ -1118,6 +1130,14 @@ a.choice > div > span, .choice.is-static > div > span { display: block; }
 .toasts { position: fixed; z-index: 40; right: max(var(--space-4), env(safe-area-inset-right, 0px)); bottom: calc(var(--space-4) + env(safe-area-inset-bottom, 0px)); display: grid; gap: var(--space-2); }
 .toast { display: flex; gap: var(--space-2); align-items: center; padding: var(--space-3) var(--space-4); background: var(--color-fg); color: var(--color-bg); border-radius: var(--radius-1); box-shadow: var(--shadow-float); font-size: var(--text-sm); overflow-wrap: anywhere; max-width: min(420px, calc(100vw - 2 * var(--space-4))); animation: toast-in var(--duration-stamp) var(--ease-out) 1; }
 @keyframes toast-in { from { transform: translateY(8px); opacity: 0; } to { transform: none; opacity: 1; } }
+/* 文の後ろに置く操作（絞り込みを外す など）。地の色が反転しているので、枠と文字は地の上の色（currentColor）にする */
+.toast > span { flex: 1 1 auto; min-width: 0; }
+.toast-action { flex: none; padding: var(--space-1) var(--space-2); border: 1px solid currentColor; border-radius: var(--radius-1); background: none; color: inherit; font: inherit; font-weight: 700; cursor: pointer; white-space: nowrap; }
+.toast-action:hover { background: color-mix(in srgb, currentColor 20%, transparent); }
+.toast-action:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
+@media (max-width: 760px), (pointer: coarse) {
+  .toast-action { min-height: 44px; padding-inline: var(--space-3); }
+}
 
 /* ===== クリアの演出 ===== */
 .celebrate { position: fixed; inset: 0; z-index: 35; display: grid; place-items: center; background: rgb(10 15 20 / 0.5); padding: var(--space-4); }
