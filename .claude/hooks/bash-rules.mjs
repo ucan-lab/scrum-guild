@@ -635,7 +635,9 @@ const EXEC_FLAGS_WITH_VALUE = new Set(['-p', '--package']);
 // changes は依存を変えるコマンド、runsMissing は組み込みにもスクリプトにも無い名前を PATH のコマンドとして動かすか、
 // unknownAsks は組み込みに無い名前を確認に回すか（npm は無い名前を実行せずにエラーにする）、installScripts はパッケージを渡さない install と
 // ci が走らせるライフサイクルのスクリプト、bareInstall は名前の無い形を install として動かすか（yarn）、linkInstalls は引数の無い link が
-// install と同じライフサイクルを走らせるか（npm）。pnpm の --prefix は 12.12 で効くことを確かめた
+// install と同じライフサイクルを走らせるか（npm）。
+// 場所のフラグ（flags と short の dir）は、pnpm 12.12.0 の -C、--dir、--prefix、npm 11.20.0 の -C、--prefix（-C<dir> の連結の形は効かない）、
+// yarn 1.22.22 と bun 1.4.4 の --cwd が package.json を探す場所を変えることを、中身を echo にした package.json で確かめた（2026-10-27）
 const PACKAGE_MANAGERS = {
   pnpm: {
     commandOf: (word) => PNPM_COMMANDS.get(word),
@@ -819,6 +821,7 @@ function nameReadings(spec, args, from, loc, base, { exec = false, shell = false
       const flag = readFlag(spec, args, i, exec);
       unreadable ||= Boolean(flag.unreadable);
       // npm の場所は dirAnywhere が名前の後ろまで読んで決める
+      // 重ねた場所のフラグは後ろが勝ち、前の値につながない（pnpm 12.12 は重ねるとエラー、npm、yarn、bun は後ろを打った場所から読む）
       if (flag.dir && !spec.dirAnywhere) loc = moved(base, args, flag.dir);
       shell ||= flag.shell;
       if (flag.unknown && i + 1 < args.length && !args[i + 1].startsWith('-')) walk(i + 2, loc, shell);

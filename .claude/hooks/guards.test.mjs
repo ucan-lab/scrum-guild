@@ -4362,3 +4362,46 @@ describe('bash-rules: #341 のレビューの指摘', () => {
     }
   });
 });
+
+describe('bash-rules: #341 と #346 の取り込み（place）', () => {
+  // パッケージマネージャーの場所のフラグと経由の先でも、書かれた行き先（place）を守る先の判定に渡す。
+  // 期待は #346 の pnpm -C .claude exec rm -rf hooks と同じく、作業場所なし（null）と /repo の両方で確認を挟む
+  for (const command of [
+    // 前の場所が分からなくても、絶対パスの -C は行き先にする（env -C と同じ）
+    'popd; pnpm -C /repo/.claude exec rm -rf hooks',
+    // npm の場所は名前の前でも後ろでも読む（dirAnywhere）
+    'npm --prefix .claude exec -- rm -rf hooks',
+    'npm exec --prefix .claude -- rm -rf hooks',
+    // npm の --call（-c）の文字列も、場所のフラグの先で見る
+    'npm --prefix .claude exec -c "rm -rf hooks"',
+    'yarn --cwd .claude exec rm -rf hooks',
+    'bun --cwd=.claude x rm -rf hooks',
+    // bun exec の文字列も、場所のフラグの先で見る
+    'bun --cwd=.claude exec "rm -rf hooks"',
+    'corepack pnpm -C .claude exec rm -rf hooks',
+    'pnpm exec -C .claude rm -rf hooks',
+  ]) {
+    test(`${command} は確認を挟む`, () => assert.deepEqual(literally(command), ['ask', 'ask'], command));
+  }
+
+  // 重ねた場所のフラグは後ろが勝ち、前の値につながない（pnpm 12.12 は重ねるとエラーにし、npm 11.20、yarn 1.22、bun 1.4 は後ろの値を
+  // 打った場所から読む。2026-10-27 に確かめた）
+  test('重ねた -C は後ろが勝つ', () => {
+    assert.deepEqual(literally('pnpm -C x -C .claude exec rm -rf hooks'), ['ask', 'ask']);
+    assert.deepEqual(literally('pnpm -C .claude -C x exec rm -rf hooks'), ['allow', 'allow']);
+    // つなぐと .claude/hooks になる形（-C . は打った場所）
+    assert.deepEqual(literally('pnpm -C .claude -C . exec rm -rf hooks'), ['allow', 'allow']);
+    assert.deepEqual(literally('bun --cwd .claude --cwd . x rm -rf hooks'), ['allow', 'allow']);
+    assert.deepEqual(literally('npm --prefix .claude --prefix x exec -- rm -rf hooks'), ['allow', 'allow']);
+  });
+
+  // 絶対パスの -C は、前の作業場所が分からなくても解決する（env -C に揃えた）。package.json もその場所から引く
+  test('絶対パスの -C は前の作業場所が分からなくても解決する', () => {
+    const scriptOf = (dir, name) => (dir === '/repo' ? { test: 'wrangler deploy' }[name] : undefined);
+    const run = (command) => judgeBash(command, { cwd: '/repo/src', branchOf: () => 'x', scriptOf })?.[0] ?? 'allow';
+    assert.equal(run('cd ~ && pnpm -C /repo test'), 'deny');
+    assert.equal(run('cd ~ && npm --prefix=/repo test'), 'deny');
+    assert.equal(run('cd ~ && bun --cwd /repo test'), 'deny');
+    assert.deepEqual(literally('cd ~ && pnpm -C /repo/.claude exec rm -rf hooks'), ['ask', 'ask']);
+  });
+});
