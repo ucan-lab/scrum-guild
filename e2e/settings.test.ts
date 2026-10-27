@@ -123,7 +123,8 @@ test.describe('リーダー（あおば開発のミナト）', () => {
     await expect(row('改修')).toHaveClass(/is-dropped/);
     await expect(page.getByRole('status').filter({ hasText: '「改修」を 1 番目に移しました' })).toBeAttached();
 
-    // 先頭の行を、最後の行の下半分へ
+    // 先頭の行を、最後の行の下半分へ。この一覧は応答を受けて読み直してから並びを変えるので、下の toHaveText の時点で
+    // 書き終わっている。画面を先に変える作りに変わっても読み直しの前に書き終わるよう、決まりにそろえて応答を待つ
     const moved = waitForResponses(page, '/category-move');
     await dragTo(page, row('改修').locator('.grip'), row('追加案件'), 'bottom', async () => {
       await expect(row('追加案件')).toHaveAttribute('data-drop', 'after');
