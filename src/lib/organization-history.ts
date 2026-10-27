@@ -71,6 +71,8 @@ export function historyEventText(event: HistoryEntry['event'], translate: Transl
       return event.workspace_name === null
         ? translate('orgHistoryWorkspaceReopenedNoName', words)
         : translate('orgHistoryWorkspaceReopened', { ...words, name: event.workspace_name });
+    // 仮: 前の指名を消した記録の文言は、指名し直しの実装（#217）で辞書に足す。それまでは知らない組と同じ文
+    case 'admin_designation_removed':
     case 'other':
       return translate('orgHistoryOther', words);
   }

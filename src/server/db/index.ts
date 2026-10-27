@@ -34,6 +34,12 @@ export { insertOrganization, type CreatedOrganization, type NewOrganization } fr
 export { personKey, seatHoldersOf } from './seats.ts';
 // 運用者の道具（operations/operator-tools.ts）だけが import できる（eslint.config.db-entry.js）
 export { appendOperatorChangeLog, type OperatorChangeLog } from './operator-change-log.ts';
+// 運用者の道具（operations/operator-tools.ts）だけが import できる（eslint.config.db-entry.js）
+export {
+  reassignOrganizationAdmin,
+  type AdminReassignment,
+  type AdminReassignmentResult,
+} from './operator-reassign-admin.ts';
 export {
   readOrganizationRow,
   userAvatarsOf,

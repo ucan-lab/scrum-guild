@@ -10,6 +10,7 @@ import {
 } from './invitation-response.ts';
 import { membershipLeaveOperation, membershipRoleUpdateOperation } from './membership.ts';
 import { createOrganizationOperation, listOrganizationsOperation, resolveGithubUserOperation } from './operator.ts';
+import { organizationAdminReassignOperation } from './operator-admin.ts';
 import {
   organizationResumeOperation,
   organizationSuspendOperation,
@@ -74,6 +75,7 @@ export const implementedOperations: readonly ImplementedOperation[] = [
   organizationSuspendOperation,
   organizationSuspensionUpdateOperation,
   organizationResumeOperation,
+  organizationAdminReassignOperation,
   myOrganizationsOperation,
   organizationInfoOperation,
   organizationHolidayListOperation,

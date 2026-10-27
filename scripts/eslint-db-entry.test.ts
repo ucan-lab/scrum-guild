@@ -181,6 +181,43 @@ describe('運用者の履歴の関数（appendOperatorChangeLog）', () => {
   });
 });
 
+describe('運用者の管理者の指名し直しの関数（reassignOrganizationAdmin）', () => {
+  const imported = `import { reassignOrganizationAdmin } from './db/index.ts'; export const a = reassignOrganizationAdmin;`;
+  const forms: Record<string, string> = {
+    import: imported,
+    '別名の import': `import { reassignOrganizationAdmin as reassign } from './db/index.ts'; export const a = reassign;`,
+    'export from': `export { reassignOrganizationAdmin } from './db/index.ts';`,
+    '別名の export from': `export { reassignOrganizationAdmin as reassign } from './db/index.ts';`,
+    名前空間からの参照: `import * as db from './db/index.ts'; export const a = db.reassignOrganizationAdmin;`,
+    '名前空間からの参照（文字列のキー）': `import * as db from './db/index.ts'; export const a = db['reassignOrganizationAdmin'];`,
+    '動的な import の取り出し': `const { reassignOrganizationAdmin } = await import('./db/index.ts'); export const a = reassignOrganizationAdmin;`,
+  };
+
+  test('運用者の道具のファイルだけが使える', async () => {
+    for (const [name, code] of Object.entries(forms)) {
+      assert.equal(await violations('src/server/operations/operator-tools.ts', code), 0, name);
+    }
+  });
+
+  for (const file of [
+    ...outside,
+    'src/server/operations/operator.ts',
+    'src/server/operations/operator-admin.ts',
+    'src/server/operations/operator-suspension.ts',
+    'src/server/organizations/designate-admin.ts',
+  ]) {
+    test(`${file}: 落ちる`, async () => {
+      for (const [name, code] of Object.entries(forms)) {
+        assert.ok((await violations(file, code)) >= 1, `落ちなかった: ${name}`);
+      }
+    });
+  }
+
+  test('db/ の中（入口のモジュールの再 export を含む）は通る', async () => {
+    assert.equal(await violations('src/server/db/index.ts', forms['export from']!), 0);
+  });
+});
+
 describe('組織をまたいで数える関数（adminStatusesOf、organizationUsageOf）', () => {
   for (const name of ['adminStatusesOf', 'organizationUsageOf']) {
     const imported = `import { ${name} } from './db/index.ts'; export const a = ${name};`;

@@ -508,6 +508,48 @@ describe('organization-history', () => {
     ]);
   });
 
+  // 管理者の指名し直し（#217）で、まだログインしていない前の指名を消した記録。行は消えているので、名前は記録の前の値から取る
+  test('運用者が前の指名を消した記録（user の delete）は admin_designation_removed で、名前は記録の GitHub のユーザー名。Google の待つ行は null', async () => {
+    const target = await createTarget();
+    const removed = (changes: unknown, minutes: number) =>
+      log(target.organization, {
+        operator: OPERATOR_LOGIN_ID,
+        entity_type: 'user',
+        // 消した行。users にはもう無い
+        entity_id: uuidv7(),
+        action: 'delete',
+        changes_json: JSON.stringify(changes),
+        created_at: minutesLater(minutes),
+      });
+    await removed(
+      {
+        is_admin: [1, null],
+        name: ['sora-dev', null],
+        login_provider: ['github', null],
+        login_subject: ['9000000000088001', null],
+      },
+      4,
+    );
+    await removed({ is_admin: [1, null], name: [WAITING_USER_NAME_IN_LOG, null], login_provider: ['google', null] }, 3);
+    // 記録の名前がメールアドレスに見えるなら使わない
+    await removed({ is_admin: [1, null], name: ['sora.wait@example.com', null], login_provider: ['google', null] }, 2);
+    // 名前の無い記録
+    await removed({ is_admin: [1, null] }, 1);
+
+    const res = await call(target);
+    const text = await res.text();
+    expect(text).not.toContain('9000000000088001');
+    expect(text).not.toContain('@example.com');
+    expect(text).not.toContain(WAITING_USER_NAME_IN_LOG);
+    expect(text).not.toContain(OPERATOR_LOGIN_ID);
+    expect((JSON.parse(text) as History).entries.map((entry) => [entry.actor, entry.event])).toEqual([
+      [{ kind: 'operator' }, { kind: 'admin_designation_removed', name: 'sora-dev' }],
+      [{ kind: 'operator' }, { kind: 'admin_designation_removed', name: null }],
+      [{ kind: 'operator' }, { kind: 'admin_designation_removed', name: null }],
+      [{ kind: 'operator' }, { kind: 'admin_designation_removed', name: null }],
+    ]);
+  });
+
   test('部分索引 change_logs_organization_history で引き、組織の行を全部は読まず、並べ替えも索引で済ませる', async () => {
     const target = await createTarget();
     const db = orgDb(env, target.organization.verified);

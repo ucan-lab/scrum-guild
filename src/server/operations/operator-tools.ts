@@ -12,6 +12,8 @@ import {
   insertOrganization,
   linkLoginToAccount,
   organizationUsageOf,
+  reassignOrganizationAdmin,
+  type AdminReassignmentResult,
   type OrganizationUsage,
   type CreatedOrganization,
   type LoginId,
@@ -19,6 +21,7 @@ import {
   type OperatorChangeLog,
 } from '../db/index.ts';
 import type { AdminStatus } from '../../shared/operations/operator/list-organizations.ts';
+import type { AdminNominee } from '../organizations/designate-admin.ts';
 
 export type OperatorTools = {
   // この運用者のログインの ID（`github:12345` の形）。organizations.created_by_operator と change_logs.operator に残す
@@ -40,6 +43,12 @@ export type OperatorTools = {
   // 既にある組織の変更の履歴に、運用者の操作を1行足す。operator はこの運用者のログインの ID が入る。停止中の組織にも足せる。
   // 組織の ID は共通の表の organizations から読んだ値を渡す（行が無い ID は外部キーが断る）
   appendChangeLog(organizationId: string, entry: Omit<OperatorChangeLog, 'operator'>): Promise<void>;
+  // 既にある組織に管理者を指名し直す（前の指名を消し、続けて指名する）。change_logs.operator にはこの運用者のログインの ID が入る。
+  // 組織の ID は共通の表の organizations から読んだ値を渡す
+  reassignAdmin(
+    organizationId: string,
+    input: { nominee: AdminNominee; now: Date },
+  ): Promise<AdminReassignmentResult | 'conflict'>;
 };
 
 export function operatorTools(
@@ -58,5 +67,7 @@ export function operatorTools(
     linkLogin: (accountId, login, now) => linkLoginToAccount(env, accountId, login, now),
     appendChangeLog: (organizationId, entry) =>
       appendOperatorChangeLog(env, organizationId, { ...entry, operator: context.loginId }),
+    reassignAdmin: (organizationId, input) =>
+      reassignOrganizationAdmin(env, organizationId, { ...input, operator: context.loginId }),
   };
 }
