@@ -8,6 +8,18 @@ set -u
 cd "${CLAUDE_PROJECT_DIR:-.}" || exit 0
 [ -f package.json ] || exit 0
 
+# セットアップスクリプトが /opt/node<主版> に入れた Node を、セッションの Bash で選ばせる。
+# セッションの Bash は初期化ファイルを読まないので、Claude Code が各コマンドの前に読む CLAUDE_ENV_FILE に書く。
+# このフック自身は VM の既定の Node で動かす（docs/development.md の「クラウド環境」）
+node_major=$(sed -nE '1s/^v?([0-9]+)(\..*)?[[:space:]]*$/\1/p' .node-version 2>/dev/null)
+if [ -n "$node_major" ] && [ -x "/opt/node${node_major}/bin/node" ] && [ -n "${CLAUDE_ENV_FILE:-}" ]; then
+  line="export PATH=\"/opt/node${node_major}/bin:\$PATH\""
+  # 再開でも走るので、同じ行を重ねない
+  if ! grep -qxF "$line" "$CLAUDE_ENV_FILE" 2>/dev/null && ! echo "$line" 2>/dev/null >>"$CLAUDE_ENV_FILE"; then
+    echo "Node ${node_major} を選ばせていません: CLAUDE_ENV_FILE に書けませんでした"
+  fi
+fi
+
 if ! command -v pnpm >/dev/null 2>&1; then
   if ! { command -v corepack >/dev/null 2>&1 && corepack enable >/dev/null 2>&1; }; then
     # Node 25 からは corepack が同梱されない。package.json の packageManager の版を npm で入れる

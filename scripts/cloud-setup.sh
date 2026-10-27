@@ -106,7 +106,8 @@ install_node_in() {
   mv "$tmp/node" "$node_dir"
 }
 if install_node; then
-  # VM の PATH には /opt/node22/bin があるので、シェルの初期化で先頭に足す（Claude の Bash は初期化ファイルから環境を作る）。
+  # VM の PATH には /opt/node22/bin があるので、シェルの初期化で先頭に足す。Claude の Bash は初期化ファイルを読まないので、
+  # そちらは session-start.sh が CLAUDE_ENV_FILE で先頭に足す。
   # Ubuntu の .bashrc は対話でないと冒頭で return するので、末尾ではなく先頭に置く
   line="export PATH=\"${node_dir}/bin:\$PATH\""
   echo "$line" >/etc/profile.d/scrum-guild-node.sh
