@@ -237,8 +237,7 @@
               <a
                 href="{planHref}?task={encodeURIComponent(task.id)}"
                 data-task-id={task.id}
-                data-sveltekit-keepfocus
-                data-sveltekit-noscroll>{task.title}</a
+                data-sveltekit-reset="false">{task.title}</a
               >
               <span class="lane-row-end">
                 {#if task.completed_at !== null}
