@@ -540,6 +540,36 @@ describe('comment-delete', () => {
   });
 });
 
+describe('回数の上限', () => {
+  test('作成はアカウントと操作ごとに 10 分に 30 回まで。31 回目は 429 の rate_limited', async () => {
+    const target = await createTarget();
+    const task = await createTask(target.organization, target.workspace.id, target.admin.userId!);
+    for (let i = 0; i < 30; i++) {
+      expect(
+        (await call(target, commentCreate, { task_id: task.id, body_md: `${i} 回目` }, target.member)).status,
+      ).toBe(200);
+    }
+    const res = await call(target, commentCreate, { task_id: task.id, body_md: '31 回目' }, target.member);
+    expect(res.status).toBe(429);
+    expect(await errorCodeOf(res)).toBe('rate_limited');
+  });
+
+  test('編集もアカウントと操作ごとに 10 分に 30 回まで。31 回目は 429 の rate_limited', async () => {
+    const target = await createTarget();
+    const task = await createTask(target.organization, target.workspace.id, target.admin.userId!);
+    const comment = await createComment(target.organization, target.workspace.id, task.id, target.member.userId!);
+    for (let i = 0; i < 30; i++) {
+      expect(
+        (await call(target, commentUpdate, { comment_id: comment.id, body_md: `${i} 回目に直した` }, target.member))
+          .status,
+      ).toBe(200);
+    }
+    const res = await call(target, commentUpdate, { comment_id: comment.id, body_md: '31 回目' }, target.member);
+    expect(res.status).toBe(429);
+    expect(await errorCodeOf(res)).toBe('rate_limited');
+  });
+});
+
 describe('閉じたワークスペース', () => {
   test('書く、直す、消すは 409 の workspace_closed で、行は変わらない', async () => {
     const target = await createTarget({ closed: true });
