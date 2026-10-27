@@ -15,7 +15,7 @@ GitHub の今の状態から着手できる Issue を選び、変えるファイ
 
 `gh api` の REST で読む。クラウドのセッションでは、GraphQL を使う `gh issue` と `gh pr` が 403 で止まるため。
 `{owner}` と `{repo}` は `gh` がカレントのリポジトリに置き換える。`gh` は1行に1つで打ち、パイプやリダイレクトでつながない（加工は `--jq` で行う）。
-`gh` が無いか認証で失敗するときは、`pr-create/github-mcp.md` に従い、GitHub の MCP ツールで代える（Issue は `list_issues`、親は `issue_read` の `get_parent`、`blocked` は `issue_dependency_read` で引く）。
+`gh` が無いか認証で失敗するときは、`pr-create/github-mcp.md` に従い、GitHub の MCP ツールで代える（Issue は `list_issues`、親は `issue_read` の `get_parent`、`subs` は `get` の `sub_issues_summary`、`blocked` は `issue_dependency_read` で引く。どれも1件ずつ引くので、時間がかかる）。
 
 ## 手順
 
@@ -93,4 +93,4 @@ DEV_PORT_OFFSET=<値>。並行: #<相手の番号>（<相手が変えるもの>�
 
 ## 止まる条件
 
-- `gh api` が失敗する。失敗したコマンドと応答を出す
+- `gh api` が失敗し、MCP ツールでも代えられない（`issue_dependency_read` が出ないときを含む）。失敗したコマンドと応答を出す

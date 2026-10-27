@@ -20,7 +20,7 @@ description: 戻せない D1 のマイグレーションを書く手順。広げ
 マイグレーションのまとめ直し（既にあるファイルを1つにまとめ、本番の D1 を作り直す）は、このスキルの範囲の外。人が決めた Issue の中でだけ行い、そのときは Issue の指示に従う（`docs/development.md` の「DB を作り直してよい期間」）。
 
 GitHub の操作は `gh api` の REST で行う（理由: クラウドのセッションでは、GraphQL を使う `gh pr` と `gh issue` が 403 で止まる）。
-`gh` が無いか認証で失敗するときは、`pr-create/github-mcp.md` に従い、GitHub の MCP ツールで代える（PR の変更ファイルは `pull_request_read` の `get_files`、マージの状態は `get`）。
+`gh` が無いか認証で失敗するときは、`pr-create/github-mcp.md` に従い、GitHub の MCP ツールで代える（PR の変更ファイルは `pull_request_read` の `get_files`、マージした日時とコミットは `get` の `merged_at` と `merge_commit_sha`）。
 フックが確認を挟んだまま人の答えが得られないときは、止まって伝える。
 
 ## 広げる変更と縮める変更
