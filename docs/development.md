@@ -291,6 +291,8 @@ GitHub は無料のプランのまま使う（2026-10-23 に決めた）。無�
 - 操作の定義の無い直書きのルート（`/api/auth/google/start` などの GET の例外、`/api/health`）は、例外として `page.route()` で書く
 - 操作を呼ぶ `page.route()` は、まだ多くのファイルに残っている。順にヘルパーへ置き換え、すべて終えた後に lint で止める（#332）。それまでは書き手と点検で守る
 - 画面のアクセシビリティは、`e2e/a11y-screens.test.ts`（主な画面）と `e2e/a11y-open.test.ts`（開いた状態）が axe で確かめる。シャードに散るようファイルを分けた。関数は `e2e/helpers.ts` の `expectNoA11yViolationsInThemes`。検査が空振りしないことは `e2e/a11y-check.test.ts` が壊した HTML で確かめる。直せない違反の除外は `e2e/ui-exclusions.ts` に置く（`docs/design.md` の「アクセシビリティを機械で確かめる」）
+- 通ったテストの画面は、`fixtures.ts` の `page` が route を外す前に `evidence-<n>.png` に撮る（CI の `evidence` が比べる。下の「e2e の画像のコメント」）。通信が 300ms 止まるのを待ち（上限 2 秒）、書体と描画を待って、アニメーションとトランジションを終わりまで進めてから撮る。Playwright のテストの終わりのスクリーンショット（`screenshot: 'on'`）は、読み込みやトーストの出入りの途中を撮り、同じコミットで2回撮ると 316 枚のうち 145 枚が違った（#337）ので、落ちたテストの画像（`only-on-failure`）だけにした。`playwright.config.ts` は Chromium の描画を1本のスレッドで丸ごと行う引数（`--disable-partial-raster`、`--num-raster-threads=1`、`--disable-gpu-rasterization`）で立てる。無いと、影や罫線の数画素が色の値 1〜2 だけ揺れた。待つ分と1本のスレッドで描く分だけ e2e は延び、2026-10-27 の手元の全件で約 5 分 10 秒から約 6 分 20 秒になった。CI の `e2e` のシャードも延びるので、`ci-ok` の待ちは伸びる（`evidence` のジョブそのものは待ちを伸ばさない）
+- `fixtures.ts` の `context` は、撮るたびに変わる文字（サーバーが付ける時刻の `<time>`、組織の画面の API の版、入力欄のカーソル）を透明にする。場所と大きさは残るので、並びの変化は写り、`toBeVisible` と `toHaveText` も変わらない。画面の CSP は style 要素を止めるので、構築可能なスタイルシートを init script で当てる。`browser.newContext()` で作った context には、テストの中で `steadyScreenshots(context)` を呼ぶ。呼んだ context は、閉じる前とテストの終わりに撮る
 
 ### バックログの木を 5 万件で測る
 
@@ -469,13 +471,13 @@ Bash の判定を `permissions.deny` に置かないのは、規則が前方一�
 
 ラベルは付けるだけで、機械は外さない。人が外したときは、パスに当たっていれば付け直す。新しい領域を足すときや置き場所を変えるときは、`.github/labeler.yml` と上の表を同じ PR で直す。運用者の権限を確かめるコードは、判定が `src/server/auth/operators.ts`、検査が操作の定義を登録する関数（`src/server/operations/register.ts`）にあり、どちらもこの表の領域に入る。登録の関数と同じ `src/server/operations/` に置く各操作の処理は、この表の領域に入れない。
 
-`needs-human` の PR は、AI レビューが通っていても人が差分を読んでからマージする。マイグレーションを含む PR では、このマージが本番に当てる承認になる（下の「CD」）。`label` のチェックが成功していない PR も、`needs-human` と同じに扱う（ジョブが落ちるとラベルが付かず、付いていない PR と見分けが付かないため）。付いていない PR は、`label` の成功を確かめたうえで、`ci-ok`、AI レビューの指摘、e2e のスクリーンショットを見て決めてよい。
+`needs-human` の PR は、AI レビューが通っていても人が差分を読んでからマージする。マイグレーションを含む PR では、このマージが本番に当てる承認になる（下の「CD」）。`label` のチェックが成功していない PR も、`needs-human` と同じに扱う（ジョブが落ちるとラベルが付かず、付いていない PR と見分けが付かないため）。付いていない PR は、`label` の成功を確かめたうえで、`ci-ok`、AI レビューの指摘、CI の `evidence` が PR に付ける e2e の変更前と変更後の画像のコメント（下の「e2e の画像のコメント」）を見て決めてよい。コメントが無いのは、変わった画面が無いか、`evidence` が動かなかった（文書だけ、fork か Bot の PR、上げる先の用意が無い、ジョブが落ちた）とき。`evidence` は `ci-ok` に入らないので、落ちていてもマージの判定は止めないが、UI が変わる PR では画像を見ずに決めないよう、ジョブの注記と結果を確かめる。
 
 この仕組みが守るのは PR を通る変更だけで、GitHub の側では `main` への直接の push を止められない。手元の git のフックで止める（上の「`main` を守る仕組み」）。
 
 ## CI
 
-PR ごとに GitHub Actions で回す。`.github/workflows/ci.yml` の各ジョブは `package.json` のスクリプトを呼ぶだけにし、手順をワークフローに持たない。下の表の cache だけは、PR ではなく main で動く別のワークフローで、setup と playwright は各ジョブが使う composite action。
+PR ごとに GitHub Actions で回す。`.github/workflows/ci.yml` の各ジョブは `package.json` のスクリプトを呼ぶだけにし、手順をワークフローに持たない（`evidence` は `scripts/evidence*.ts` を `node` で直に呼ぶ）。下の表の cache と evidence-main は、PR ではなく main で動く別のワークフローで、setup と playwright は各ジョブが使う composite action。
 
 | ジョブ | 中身 |
 | --- | --- |
@@ -486,10 +488,12 @@ PR ごとに GitHub Actions で回す。`.github/workflows/ci.yml` の各ジョ�
 | check | 型の検査（`tsc`、`svelte-check`）、lint、整形、Claude のフックのテスト（`node --test .claude/hooks/*.test.mjs`。`CLAUDE_CODE_REMOTE=true` を付けてもう一度走らせ、テストがクラウドのセッションの環境を受け継いで結果の変わる形に戻ったら落とす） |
 | test | vitest の3つのプロジェクトで動かす（`vitest.config.ts`）。`workers` は API のテストを Workers の実行環境で動かす（`test/`。`@cloudflare/vitest-plugin`。`@cloudflare/vitest-pool-workers` から名前が変わった）。`web` は画面のコードのテストを node の環境で動かす（`src/` の `*.test.ts`。Workers の実行環境では `.svelte` を描けないので、`svelte/server` の `render` で部品を HTML にして確かめる。テストは確かめる対象の隣に置く）。`web-client` は部品の配線（`*.svelte.ts` の `$effect`）を、DOM なしのブラウザ向けの実行で確かめる（`src/` の `*.svelte.test.ts`。環境は `scripts/vitest-client-environment.ts`。`$effect.root` と `flushSync` で動かし、部品そのものは mount しない）。テストの D1 には `test/apply-migrations.ts` が全マイグレーションを当てる。1つのテストファイルの中では、前のテストが入れた行が残るので、一意の列にはテストごとに新しい値を使う。組織の分離のテストを含む。`scripts/` の `node --test` は、seed を一時の D1 に2回流して中身を数える |
 | migration | 空の D1 に全マイグレーションを順に当てて通るか確かめ、続けて同じ D1 に seed を2回流す（`pnpm db:migrate:fresh`）。マイグレーションと seed のずれと、seed を流し直せることを PR ごとに確かめるため。0件なら当てずに成功で終える。ベータが始まったら、既にあるマイグレーションのファイルの書き換えも落とす（上の「DB を作り直してよい期間」） |
-| e2e | `pnpm e2e --shard=<i>/3`。CI の長さを決めるジョブなので、マトリクスで3つのシャードに分けて並べる（ファイル単位で割り振られ、シャードごとにランナーと手元の D1 が別になる。`fail-fast` は切り、1つが落ちても残りを走らせる。`ci-ok` の `needs` ではマトリクスが1つの結果にまとまり、1つでも落ちれば失敗になるので、`ciOkVerdict` は変えない。チェックの名前は `e2e (1)`〜`e2e (3)` になる）。シャードごとに `pnpm preview` と同じ中身で build して `wrangler dev` を立て（上の「e2e のサーバー」）、サーバーが立ってから `e2e/global-setup.ts` が `/api/health` の版を確かめて `pnpm db:seed` で手元の D1 に seed を入れ直し（行は消える。手元で `E2E_REUSE_SERVER=1` で使い回すときも流れる。CI のジョブに seed の段は足さない）、Playwright で、seed の Cookie でログインした組織の選択と組織の枠（組織が1つの人、2つの人、入れない組織を開いた人。`e2e/organizations.test.ts`）、ログインの画面（枠の外、`return_to` の整え方、`?error=` の文言）と seed の Cookie での `me`（`e2e/login.test.ts`）、運用の画面の一覧と組織の作成のダイアログ（`e2e/operator.test.ts`。e2e の Worker には運用者の一覧のシークレットも GitHub への通信も無いので、運用者の操作の応答は差し替える。運用者でない人の 403 と `/` への戻しは本物のサーバーで見る）、シェルの表示、`/api/health` の版と D1 への疎通、CSP の違反が無いこと（`securitypolicyviolation` とコンソールのエラー）を確かめる。版には PR の head の SHA を渡し、`/api/health` と画面の build に埋めた版（SvelteKit が書き出す `/_app/version.json`）がどちらもその値になることも見る。主な画面と開いた状態は、4つのテーマで axe にかける（`e2e/a11y-*.test.ts`。`docs/design.md` の「アクセシビリティを機械で確かめる」）。スクリーンショットと、失敗したときの trace を、シャードごとの成果物 `e2e-1`〜`e2e-3` に上げる。4つのテーマと2つの言葉の組み合わせのスクリーンショットは、画面ができてから足す。trace は要求と応答と Cookie を丸ごと残し、成果物はリポジトリを読める人が誰でも取れるので、e2e には本物の認証情報を渡さない（ログインは seed のセッションで通す） |
+| e2e | `pnpm e2e --shard=<i>/3`。CI の長さを決めるジョブなので、マトリクスで3つのシャードに分けて並べる（ファイル単位で割り振られ、シャードごとにランナーと手元の D1 が別になる。`fail-fast` は切り、1つが落ちても残りを走らせる。`ci-ok` の `needs` ではマトリクスが1つの結果にまとまり、1つでも落ちれば失敗になるので、`ciOkVerdict` は変えない。チェックの名前は `e2e (1)`〜`e2e (3)` になる）。シャードごとに `pnpm preview` と同じ中身で build して `wrangler dev` を立て（上の「e2e のサーバー」）、サーバーが立ってから `e2e/global-setup.ts` が `/api/health` の版を確かめて `pnpm db:seed` で手元の D1 に seed を入れ直し（行は消える。手元で `E2E_REUSE_SERVER=1` で使い回すときも流れる。CI のジョブに seed の段は足さない）、Playwright で、seed の Cookie でログインした組織の選択と組織の枠（組織が1つの人、2つの人、入れない組織を開いた人。`e2e/organizations.test.ts`）、ログインの画面（枠の外、`return_to` の整え方、`?error=` の文言）と seed の Cookie での `me`（`e2e/login.test.ts`）、運用の画面の一覧と組織の作成のダイアログ（`e2e/operator.test.ts`。e2e の Worker には運用者の一覧のシークレットも GitHub への通信も無いので、運用者の操作の応答は差し替える。運用者でない人の 403 と `/` への戻しは本物のサーバーで見る）、シェルの表示、`/api/health` の版と D1 への疎通、CSP の違反が無いこと（`securitypolicyviolation` とコンソールのエラー）を確かめる。版には PR の head の SHA を渡し、`/api/health` と画面の build に埋めた版（SvelteKit が書き出す `/_app/version.json`）がどちらもその値になることも見る。主な画面と開いた状態は、4つのテーマで axe にかける（`e2e/a11y-*.test.ts`。`docs/design.md` の「アクセシビリティを機械で確かめる」）。スクリーンショット（通ったテストは `e2e/fixtures.ts` が撮る `evidence-<n>.png`、落ちたテストは Playwright の `test-failed-<n>.png`）と、失敗したときの trace を、シャードごとの成果物 `e2e-1`〜`e2e-3` に上げる。4つのテーマと2つの言葉の組み合わせのスクリーンショットは、画面ができてから足す。trace は要求と応答と Cookie を丸ごと残し、成果物はリポジトリを読める人が誰でも取れるので、e2e には本物の認証情報を渡さない（ログインは seed のセッションで通す） |
+| evidence | e2e の後に動き、スクリーンショットのうちベースの `main` と違う画面だけを画像用の R2 のバケットに上げ、変更前と変更後を並べたコメントを PR に1つ付けて push のたびに書き換える（下の「e2e の画像のコメント」）。`ci-ok` に含めない |
+| evidence-main | `main` への push で e2e を回し、PR が比べる変更前の画像と一覧を同じバケットに上げる（`.github/workflows/evidence-main.yml`。下の「e2e の画像のコメント」）。`ci-ok` にも PR のチェックにも入らない |
 | ai-review | `anthropics/claude-code-action` で、スキル `ai-review` が差分に応じて `.claude/agents/` のレビューのエージェントを呼び分け、CRITICAL と HIGH を `finding-verifier` の反証にかけてから、指摘を PR に書く。`.github/workflows/ai-review.yml` に分けて置く |
 | label | パスを見て `needs-human` のラベルを付ける（上の「マージの判定」）。`.github/workflows/label.yml` に分けて置き、`pull_request_target` で動かす。ワークフローも規則も PR のベース（`main`）の版が使われるので、PR の側で書き換えてもラベルは付く。別のブランチをベースに開いてから `main` へ付け替えたときも、判定し直す。PR のコードはチェックアウトしない（書き込みのトークンで PR のコードを動かさないため）。ジョブはどのイベントでも飛ばさず、ラベルもどのイベントでも付け直す。ベースを付け替えた後にその head で CI が動き直していなければ、失敗で終わる（下の「文書だけの PR」）。判定はイベントの中身でなく、そのときの PR の状態から行い、`concurrency` も置かない |
-| ci-ok | `ci.yml` の changes、check、test、migration、e2e をまとめる1つのジョブ。マージの前に確かめるのは、これと label |
+| ci-ok | `ci.yml` の changes、check、test、migration、e2e をまとめる1つのジョブ（evidence は含めない）。マージの前に確かめるのは、これと label |
 
 ai-review は Claude のサブスクリプションで動かす。手元で `claude setup-token` を実行して作った OAuth トークンを、リポジトリのシークレット `CLAUDE_CODE_OAUTH_TOKEN` に置く。従量の費用はかからないが、使用量の上限は手元の対話の利用と共有になる。
 
@@ -528,7 +532,36 @@ ai-review は Claude のサブスクリプションで動かす。手元で `cla
 
 GitHub Actions の無料枠は、private のリポジトリで月 2,000 分。e2e と AI レビューで足りなくなりそうなら、上と同じく対象の PR を絞る。e2e のシャードは、それぞれが準備、Playwright の導入、build を繰り返す（1つあたり約1分）ので、分ける前より1回あたり約2分多く数える。
 
-PR ごとのプレビュー環境は持たず、Workers Builds の preview builds も有効にしない。`wrangler versions upload` のプレビュー URL は本番と同じ D1 につながり、マージ前のコードが本番のデータに触れるため。見た目の確認は e2e のスクリーンショットで行う。
+PR ごとのプレビュー環境は持たず、Workers Builds の preview builds も有効にしない。`wrangler versions upload` のプレビュー URL は本番と同じ D1 につながり、マージ前のコードが本番のデータに触れるため。見た目の確認は e2e のスクリーンショットで行い、PR の画面では `evidence` のコメントで見る。`evidence` が上げるのは手元の D1 と seed で撮った静止画だけで、マージ前のコードを動かす環境は立てないので、この方針と食い違わない。
+
+### e2e の画像のコメント
+
+クラウドのセッションは撮影と画像の添付ができない（`pr-create` の `evidence.md`）ので、CI が e2e のスクリーンショットから PR のエビデンスを作る（#337）。
+
+- 置き方: 画像は中身の SHA-256 を名前にして置く。`main` の画像は `main/img/<ハッシュ>.png`、PR にしか無い画像は `pr/img/<ハッシュ>.png`。どの画面がどの画像かの一覧は `main/<SHA>.json` と、最新を指す `main/latest.json`。同じ画像は一度しか上げないので、`main` へのマージごとに上がるのは変わった画像だけになる
+- 画面の見分け方: Playwright の `test-results/` の、テストごとのディレクトリの名前（再試行の `-retry<n>` を除く）と、`e2e/fixtures.ts` がテストの終わりに撮る画像の名前（`evidence-<n>.png`。開いている画面ごとに n が増える）。テストの名前を変えると、別の画面として新しい画面と無くなった画面に出る
+- `evidence-main`（`main` への push と手動の実行）: `ci.yml` の e2e と同じ手順で3つのシャードに分けて撮り、`scripts/evidence-main.ts` が `main/latest.json` に無い画像だけを上げる一覧と、このコミットの一覧を作る。画像を上げてから `main/<SHA>.json` を置き、そのコミットがまだ `main` の先頭のときだけ `main/latest.json` を書き換える。順に1つずつ動かし（`concurrency`）、e2e が落ちたら何も上げない。ランナーの時間は、マージ1回あたり約3分半増える
+- `evidence`（PR）: `needs: [changes, e2e]`。e2e がすべて成功したときだけ動き、文書だけの PR、fork と Bot の PR では動かない。比べる処理を使うので PR の head をチェックアウトする（`ci.yml` も PR の head の版が動くので、守りは弱くならない）。成果物 `e2e-*` を落とし、`scripts/evidence-pr.ts` がベース（`pull_request.base.sha`）の一覧と比べる。ベースの一覧がまだ無ければ `main/latest.json` と比べ、そのことをコメントに書く（ベースより後に `main` に入った変更も差分に出る）。どちらも無ければ比べられないことだけを書く
+- コメント: 目印の HTML コメント（`<!-- e2e-evidence -->`）を含む `github-actions[bot]` のコメントを探して書き換え、無ければ付ける。変わった画面が無く、まだコメントも無ければ付けない。変わった画面は変更前と変更後の2列、新しい画面は変更後だけで、テストのディレクトリの名前を見出しにする。画像で並べるのは 20 画面までで、残りと無くなった画面は名前だけを並べる。PR に上げるのは、コメントに画像で出す変更後の画像のうち `main` の一覧に無いものだけ。画像に枠や注記は付かないので、何が変わったかは PR の本文に文章で書く
+- 権限: `evidence` の `permissions` は `contents: read` と `pull-requests: write` だけ。コメントはワークフローのトークン（`GITHUB_TOKEN`）で `gh api` から書く。R2 の鍵は R2 に送る段の `env` にだけ渡し、ほかの段にはシークレットの有無だけを渡す。セッションの環境には Cloudflare の資格情報を置かない（上の「クラウド環境」）
+- 送り方: ランナーの AWS CLI で R2 の S3 互換の API に送る。R2 は AWS CLI の既定のチェックサムの付け方を受け付けないので、`AWS_REQUEST_CHECKSUM_CALCULATION` と `AWS_RESPONSE_CHECKSUM_VALIDATION` を `when_required` にする。一覧は公開の URL から読む
+- `ci-ok` との関係: `evidence` は `ci-ok` の `needs` に入れない。見た目を確かめる助けで、落ちても `ci-ok` は落ちず、e2e の後に動くので、このジョブがマージの判定の待ちを伸ばすことはない（揺れない画像を撮るために e2e そのものは延びた。上の「e2e の書き方」）
+- 画像の揺れ: 同じコミットで撮り直しても画像が変わる画面は、テストの土台（`e2e/fixtures.ts`）でそろえる（上の「e2e の書き方」）。そろえられない画面は、理由を添えて `scripts/evidence.ts` の `EXCLUDED_SCREENS` に入れ、比べる対象から外す（コメントには名前と理由だけを出す）。画面を変えない PR に変わった画面が出たら、その画面をそろえるか、この一覧に足す。2026-10-27 の時点で、316 画面のうち 56 画面を外している（多くは、並べて走るほかのテストが作ったワークスペースを並べる組織の管理の画面）。確かめるときは、同じコミットで `pnpm e2e` を2回走らせ（`test-results/` を退避してから2回目）、`evidence-<n>.png` のハッシュを比べる
+- 日付で変わる画面: サーバーの今日（期日の印の色、終了の日付など）で変わる画面は、同じ日の2回撮りでは見つからない。`main` の画像と日をまたいで比べると、変えていない画面が出ることがある。見つけたら、テストの応答を決まった日付に差し替えるか、上の一覧に足す
+
+人が用意するもの（セッションは本番の Cloudflare のアカウントに触らないので行えない）。どれかが無いと、`evidence` と `evidence-main` は上げずに、足りない名前をジョブの注記に出して成功で終える。人の用意の前にマージしても CI は赤くならない。
+
+| 種類 | 名前 | 中身 |
+| --- | --- | --- |
+| シークレット | `EVIDENCE_R2_ACCESS_KEY_ID` | 画像用のバケットだけの Object Read & Write に絞った R2 の API トークンのアクセスキー |
+| シークレット | `EVIDENCE_R2_SECRET_ACCESS_KEY` | 同じトークンのシークレットキー |
+| シークレット | `EVIDENCE_R2_ENDPOINT` | R2 の S3 互換のエンドポイント（`https://<アカウント ID>.r2.cloudflarestorage.com`。末尾の `/` は付けない。付いていても外して使う） |
+| 変数 | `EVIDENCE_R2_BUCKET` | 画像用のバケットの名前だけ（例 `scrum-guild-evidence`。`s3://` や URL にしない） |
+| 変数 | `EVIDENCE_PUBLIC_URL` | バケットの公開の URL（`https://pub-xxxx.r2.dev` か独自のドメインの URL。末尾の `/` は付けない。付いていても外して使う） |
+
+- バケットは本番の添付ファイルのバケットとは別に作り、公開の URL を有効にする。画像は公開になるが、中身は seed の架空のデータだけ（e2e に本物の認証情報を渡さない）
+- 古い画像を消す期限（ライフサイクルの規則）は、人が `pr/` の前置きにだけ 90 日で付ける。`main/` は変更前の画像として指され続けるので期限を付けない。画像は1枚 50〜100KB ほどで、変わった画像だけを上げるので、R2 の無料の枠（保存 10GB/月、書き込み 100 万回/月）に収まる見込み
+- 用意した後は、`evidence-main` を手で動かして `main/latest.json` を作る。作るまでの PR のコメントは、比べられないことだけを書く
 
 ## CD
 

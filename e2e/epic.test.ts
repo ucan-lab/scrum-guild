@@ -2,7 +2,7 @@
 // 未完了のタスクが残るあいだは「完了にする」が押せず、残りの件数が出る。完了と取り消しを断られたら、理由を知らせて読み直す。
 // seed のセッション（seed/sessions.ts）の Cookie で開く。あおば開発の管理者はミナト。CSP の違反も確かめる
 import type { Page } from '@playwright/test';
-import { expect, test } from './fixtures.ts';
+import { expect, steadyScreenshots, test } from './fixtures.ts';
 import { createWorkspace, signIn, watchViolations } from './helpers.ts';
 
 test.use({ timezoneId: 'Asia/Tokyo' });
@@ -265,6 +265,7 @@ test('ストーリーの行は、メニューの横の幅と指で押す画面�
     { viewport: { width: 1280, height: 900 }, hasTouch: true, isMobile: true },
   ]) {
     const context = await browser.newContext(options);
+    await steadyScreenshots(context);
     await signIn(context, baseURL, 'admin');
     const page = await context.newPage();
     await page.goto(SEED_GAME_WORKSPACE);

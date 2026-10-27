@@ -2,7 +2,7 @@
 // 「親を移す」のダイアログでストーリーの下へ移し、親なしへ戻す。ストーリーも並べ替える。
 // seed のセッション（seed/sessions.ts）の Cookie で開く。あおば開発の管理者はミナト。CSP の違反も確かめる
 import type { Page } from '@playwright/test';
-import { expect, test } from './fixtures.ts';
+import { expect, steadyScreenshots, test } from './fixtures.ts';
 import { createWorkspace, dragTo, signIn, watchViolations } from './helpers.ts';
 
 test.use({ timezoneId: 'Asia/Tokyo' });
@@ -465,6 +465,7 @@ test('一覧が広いまま指で押す画面（タブレットの横置き）�
 }) => {
   // 一覧の幅が 640px を少し超える幅。右端は題の下へ折り返さないので、44px のボタンが題の列を押しのけうる
   const context = await browser.newContext({ hasTouch: true, isMobile: true, viewport: { width: 960, height: 768 } });
+  await steadyScreenshots(context);
   await signIn(context, baseURL, 'admin');
   const page = await context.newPage();
   await page.goto(SEED_GAME_WORKSPACE);

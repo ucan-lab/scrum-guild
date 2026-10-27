@@ -17,11 +17,22 @@ export default defineConfig({
   reporter: [['list'], ['html', { open: 'never', outputFolder: 'playwright-report' }]],
   use: {
     baseURL,
-    // CI の成果物に上げる（docs/development.md の「CI」）
-    screenshot: 'on',
+    // 通ったテストの画面は e2e/fixtures.ts が通信とアニメーションの止まるのを待って evidence-<n>.png に撮る。
+    // ここでは落ちたテストの画面だけを撮る。どちらも CI の成果物に上げる（docs/development.md の「CI」）
+    screenshot: 'only-on-failure',
     trace: 'retain-on-failure',
   },
-  projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
+  projects: [
+    {
+      name: 'chromium',
+      use: {
+        ...devices['Desktop Chrome'],
+        // 描画を1本のスレッドで丸ごと行い、同じ画面なら撮り直しても同じ画像にする（CI の evidence がハッシュで比べるため）。
+        // 無いと、影や罫線の数画素が色の値 1〜2 だけ揺れ、同じコミットの2回撮りで約 20 画面が違った（#337）
+        launchOptions: { args: ['--disable-partial-raster', '--num-raster-threads=1', '--disable-gpu-rasterization'] },
+      },
+    },
+  ],
   webServer: {
     // package.json の preview と同じ中身（scripts/e2e-server.test.ts が一致を確かめる）
     command: E2E_SERVER_COMMAND,

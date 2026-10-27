@@ -127,6 +127,109 @@ jobs:
             playwright-report/
           retention-days: 14
 
+  # e2e のスクリーンショットのうち、ベースの main と違う画面だけを画像用の R2 のバケットに上げ、変更前と変更後を並べた
+  # コメントを PR に1つ付けて、push のたびに書き換える（docs/development.md の「CI」）。
+  # 見た目を確かめる助けで、マージの判定には入れない（ci-ok の needs に入れない。落ちても ci-ok は落ちず、待ちも伸びない）。
+  # fork と Bot（Dependabot など）の PR にはシークレットと書き込みのトークンが渡らないので動かさない
+  evidence:
+    needs: [changes, e2e]
+    if: >-
+      needs.changes.outputs.docs_only != 'true' &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.user.type != 'Bot'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      # 比べる処理（scripts/evidence*.ts）は PR の head の版を使う。ci.yml も PR の head の版が動くので、
+      # head を動かしても守りは弱くならない（同じリポジトリに push できる人は、このワークフローも書き換えられる）
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+
+      # scripts/evidence*.ts は Node の標準の部品だけを使うので、依存は入れない
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .node-version
+
+      # 人がバケットとシークレットを用意する前でも CI を赤くしないよう、どれかが無ければ注記を出して後の段を飛ばす。
+      # シークレットは値でなく有無だけを渡す（鍵は R2 に送る段の env にだけ渡す）
+      - id: config
+        name: 上げる先の設定を確かめる
+        env:
+          EVIDENCE_R2_ACCESS_KEY_ID: ${{ secrets.EVIDENCE_R2_ACCESS_KEY_ID != '' }}
+          EVIDENCE_R2_SECRET_ACCESS_KEY: ${{ secrets.EVIDENCE_R2_SECRET_ACCESS_KEY != '' }}
+          EVIDENCE_R2_ENDPOINT: ${{ secrets.EVIDENCE_R2_ENDPOINT != '' }}
+          EVIDENCE_R2_BUCKET: ${{ vars.EVIDENCE_R2_BUCKET }}
+          EVIDENCE_PUBLIC_URL: ${{ vars.EVIDENCE_PUBLIC_URL }}
+        run: node scripts/evidence-config.ts
+
+      - if: steps.config.outputs.ready == 'true'
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: e2e-*
+          path: ${{ runner.temp }}/e2e
+
+      # ベースの一覧（main/<ベースの SHA>.json）は公開の URL から読む。無ければ main/latest.json と比べ、そのことをコメントに書く
+      - id: compare
+        if: steps.config.outputs.ready == 'true'
+        name: ベースの画像と比べる
+        env:
+          RESULTS_DIR: ${{ runner.temp }}/e2e
+          OUT_DIR: ${{ runner.temp }}/evidence
+          EVIDENCE_PUBLIC_URL: ${{ vars.EVIDENCE_PUBLIC_URL }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: node scripts/evidence-pr.ts
+
+      # ランナーの AWS CLI で R2 の S3 互換の API に送る。R2 は AWS CLI の既定のチェックサムの付け方を受け付けないので、
+      # 要るときだけにする。画像は中身のハッシュを名前にするので、同じ名前は同じ中身で、長くキャッシュしてよい
+      - if: steps.config.outputs.ready == 'true'
+        name: 画像を R2 に上げる
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.EVIDENCE_R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.EVIDENCE_R2_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto
+          AWS_REQUEST_CHECKSUM_CALCULATION: when_required
+          AWS_RESPONSE_CHECKSUM_VALIDATION: when_required
+          ENDPOINT: ${{ secrets.EVIDENCE_R2_ENDPOINT }}
+          BUCKET: ${{ vars.EVIDENCE_R2_BUCKET }}
+          UPLOADS: ${{ runner.temp }}/evidence/uploads.tsv
+        # エンドポイントは https://<アカウント ID>.r2.cloudflarestorage.com。末尾に / があっても動くよう外す
+        run: |
+          ENDPOINT=${ENDPOINT%/}
+          while IFS=$'\t' read -r file key; do
+            aws s3 cp "$file" "s3://$BUCKET/$key" --endpoint-url "$ENDPOINT" \
+              --content-type image/png --cache-control 'public, max-age=31536000, immutable' --only-show-errors
+          done < "$UPLOADS"
+
+      # 目印（scripts/evidence.ts の COMMENT_MARKER と同じ文字列）を含む github-actions[bot] のコメントを探して書き換える。
+      # 無ければ、変わった画面があるか比べられなかったときだけ付ける（画面を変えない PR にはコメントを付けない）
+      - if: steps.config.outputs.ready == 'true'
+        name: PR のコメントを書き換える
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number }}
+          POST: ${{ steps.compare.outputs.post }}
+          BODY: ${{ runner.temp }}/evidence/comment.md
+        run: |
+          ids=$(gh api --paginate "repos/$REPO/issues/$PR/comments" \
+            --jq '.[] | select(.user.login == "github-actions[bot]" and (.body | contains("<!-- e2e-evidence -->"))) | .id')
+          id=${ids%%$'\n'*}
+          if [ -n "$id" ]; then
+            gh api -X PATCH "repos/$REPO/issues/comments/$id" -F body=@"$BODY" > /dev/null
+            echo "コメント $id を書き換えた"
+          elif [ "$POST" = 'true' ]; then
+            gh api "repos/$REPO/issues/$PR/comments" -F body=@"$BODY" > /dev/null
+            echo "コメントを付けた"
+          else
+            echo "変わった画面が無いので、コメントを付けない"
+          fi
+
   # マージの前に確かめるのはこれと label（ai-review は助言なので含めない）。
   # 文書だけなら重いジョブは飛んでいてよく、そうでなければすべて成功していなければならない。
   # 取り消された実行でも always() で動かして failure を残す。!cancelled() にすると ci-ok が skipped になり、
