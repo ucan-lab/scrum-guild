@@ -508,6 +508,30 @@ describe('user-disable', () => {
     expect((await userRow(target, target.admin.userId!))!.disabled_at).toBeNull();
   });
 
+  test('離脱日はワークスペースのタイムゾーンの今日で、参加日より前にはしない', async () => {
+    const target = await createTarget();
+    const { organization } = target;
+    const userId = target.member.userId!;
+    const ahead = await createWorkspace(organization, target.admin.userId!, { timezone: 'Pacific/Kiritimati' });
+    const behind = await createWorkspace(organization, target.admin.userId!, { timezone: 'Pacific/Pago_Pago' });
+    const future = await createWorkspace(organization, target.admin.userId!);
+    await createMembership(organization, ahead.id, userId);
+    await createMembership(organization, behind.id, userId);
+    // 参加日が離脱日より後（タイムゾーンのずれや、手で直した行）でも、CHECK (left_on >= joined_on) に当たらず無効にできる
+    await createMembership(organization, future.id, userId, { joined_on: '2099-01-01' });
+
+    const res = await disable(target, target.admin, userId);
+    expect(res.status).toBe(200);
+    const { disabled_at: stamp } = (await res.json()) as { disabled_at: string };
+    const leftOn = new Map((await membershipsOf(target, userId)).map((row) => [row.workspace_id, row.left_on]));
+    const dayIn = (timeZone: string) => new Date(stamp).toLocaleDateString('sv-SE', { timeZone });
+    expect(leftOn.get(ahead.id)).toBe(dayIn('Pacific/Kiritimati'));
+    expect(leftOn.get(behind.id)).toBe(dayIn('Pacific/Pago_Pago'));
+    // UTC+14 と UTC-11 は、いつでも日付が1日以上ずれる
+    expect(leftOn.get(ahead.id)).not.toBe(leftOn.get(behind.id));
+    expect(leftOn.get(future.id)).toBe('2099-01-01');
+  });
+
   test('無効にすると、閉じたものを含むすべてのワークスペースから外れ、担当が外れ、招待が取り消され、履歴が残る', async () => {
     const target = await createTarget();
     const { organization } = target;
