@@ -3,11 +3,15 @@
 // webServer が立ってから動くので、立てたままのサーバー（E2E_REUSE_SERVER=1）を使い回すときも流れる。
 // seed は --local だけを付ける（本番の D1 には入れない。scripts/db-seed.ts）
 import { spawnSync } from 'node:child_process';
-import { readdirSync, readFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { DEV_WARNING_CODE, e2eGlobalSetup } from '../scripts/e2e-server.ts';
 
-// build した画面の JS（build/_app の下の .js）のどれかに、開発時の警告を出すコードがあるか（E2E_DEV_BUILD=1 のときだけ呼ぶ）
+// build した画面の JS（build/_app の下の .js）のどれかに、開発時の警告を出すコードがあるか（E2E_DEV_BUILD=1 のときだけ呼ぶ）。
+// build/_app が無ければ（build の外で立てたサーバーを使い回した）、ENOENT でなく理由の分かる文で止める
 function hasDevWarningCode(): boolean {
+  if (!existsSync('build/_app')) {
+    throw new Error('E2E_DEV_BUILD=1 なのに build/_app が無い。NODE_ENV=development で build したサーバーで走らせる');
+  }
   const files = readdirSync('build/_app', { recursive: true, encoding: 'utf8' }).filter((file) => file.endsWith('.js'));
   return files.some((file) => DEV_WARNING_CODE.test(readFileSync(`build/_app/${file}`, 'utf8')));
 }
