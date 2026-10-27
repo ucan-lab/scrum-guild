@@ -1,5 +1,5 @@
 import AxeBuilder from '@axe-core/playwright';
-import { expect, test, type BrowserContext, type Locator, type Page } from '@playwright/test';
+import { expect, test, type BrowserContext, type Locator, type Page, type Response } from '@playwright/test';
 import { SEED_SESSIONS } from '../seed/sessions.ts';
 import { organizationInfo } from '../src/shared/operations/organization/organization.ts';
 import { workspaceInfo } from '../src/shared/operations/workspace/workspace.ts';
@@ -681,4 +681,19 @@ export async function dragTo(
   await page.mouse.move(endX + 1, endY);
   await beforeRelease?.();
   await page.mouse.up();
+}
+
+// path（'/task-move' など）で終わる要求の応答が、仕掛けてから count 件目に返るまで待つ。書き込む操作の前に呼んで（ここで await しない）、
+// 返った promise を読み直す前に await する。
+// waitForLoadState('networkidle') は、画面の読み込みの後に飛んだ要求を待たずに返るので、書き込みの後の読み直しには使わない。
+// 並べ替えと親の移動は前の応答の後に次を送る（src/lib/move-queue.ts）ので、続けて動かしたときは件数で最後の応答を待つ
+export function waitForResponses(page: Page, path: string, count = 1): Promise<Response> {
+  let seen = 0;
+  const pending = page.waitForResponse(
+    (response) => new URL(response.url()).pathname.endsWith(path) && ++seen === count,
+  );
+  // await より前でテストが落ちると、画面を閉じたときにこの待ちが reject し、元の失敗に別のエラーが重なる。
+  // await したときは、この catch と関わりなく失敗が伝わる
+  void pending.catch(() => {});
+  return pending;
 }

@@ -2,7 +2,7 @@
 // seed のセッション（seed/sessions.ts）の Cookie で開く。行を足すテストは、自分で作ったワークスペースで行う（seed の行は他の e2e も読むため）
 import type { Page } from '@playwright/test';
 import { expect, test } from './fixtures.ts';
-import { createWorkspace, dragTo, signIn, watchViolations } from './helpers.ts';
+import { createWorkspace, dragTo, signIn, waitForResponses, watchViolations } from './helpers.ts';
 
 const SEED_GAME_WORKSPACE = '/aoba/w/019a0000-0000-7000-8000-000000000401';
 
@@ -123,13 +123,15 @@ test.describe('リーダー（あおば開発のミナト）', () => {
     await expect(row('改修')).toHaveClass(/is-dropped/);
     await expect(page.getByRole('status').filter({ hasText: '「改修」を 1 番目に移しました' })).toBeAttached();
 
-    // 先頭の行を、最後の行の下半分へ
+    // 先頭の行を、最後の行の下半分へ。この一覧は応答を受けて読み直してから並びを変えるので、下の toHaveText の時点で
+    // 書き終わっている。画面を先に変える作りに変わっても読み直しの前に書き終わるよう、決まりにそろえて応答を待つ
+    const moved = waitForResponses(page, '/category-move');
     await dragTo(page, row('改修').locator('.grip'), row('追加案件'), 'bottom', async () => {
       await expect(row('追加案件')).toHaveAttribute('data-drop', 'after');
     });
     await expect(categories.locator('li')).toHaveText([/保守/, /追加案件/, /改修/]);
 
-    await page.waitForLoadState('networkidle');
+    await moved;
     await page.reload();
     await expect(categories.locator('li')).toHaveText([/保守/, /追加案件/, /改修/]);
 

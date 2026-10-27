@@ -3,7 +3,7 @@
 // seed のセッション（seed/sessions.ts）の Cookie で開く。あおば開発の管理者はミナト。CSP の違反も確かめる
 import type { Page } from '@playwright/test';
 import { expect, steadyScreenshots, test } from './fixtures.ts';
-import { createWorkspace, signIn, watchViolations } from './helpers.ts';
+import { createWorkspace, signIn, waitForResponses, watchViolations } from './helpers.ts';
 
 test.use({ timezoneId: 'Asia/Tokyo' });
 
@@ -66,6 +66,8 @@ test('ゲームの言葉: レイドを作り、達成目標を下へ移し、配
   await page.getByRole('button', { name: '親を移す: 残高が見える' }).click();
   const moveDialog = page.getByRole('dialog', { name: '「残高が見える」の親を移す' });
   await expect(moveDialog.getByLabel('移す先').locator('option')).toHaveText(['ポイント制度を公開する']);
+  // 読み上げは送る前に出るので、読み直す前に応答を待つ
+  const moved = waitForResponses(page, '/story-move');
   await moveDialog.getByRole('button', { name: '移す' }).click();
   await expect(moveDialog).toBeHidden();
   await expect(epic.locator('.tree-children .tree-row.is-story button.tree-link')).toHaveText(['残高が見える']);
@@ -74,7 +76,7 @@ test('ゲームの言葉: レイドを作り、達成目標を下へ移し、配
       .getByRole('status')
       .filter({ hasText: '「残高が見える」をレイド「ポイント制度を公開する」の末尾へ移しました' }),
   ).toBeAttached();
-  await page.waitForLoadState('networkidle');
+  await moved;
   await page.reload();
   await expect(epic.locator('.tree-children .tree-row.is-story button.tree-link')).toHaveText(['残高が見える']);
 
@@ -150,10 +152,12 @@ test('スクラムの言葉: 配下の無いストーリーは完了にでき、
   await createStory(page, 'ストーリーを作る', '検知を早くする');
   await page.getByRole('button', { name: '親を移す: 検知を早くする' }).click();
   const moveDialog = page.getByRole('dialog', { name: '「検知を早くする」の親を移す' });
+  const moved = waitForResponses(page, '/story-move');
   await moveDialog.getByRole('button', { name: '移す' }).click();
   const story = rowGroup(page, '検知を早くする');
   await expect(rowGroup(page, '決済の障害を減らす').locator('.tree-children .tree-row.is-story')).toHaveCount(1);
-  await page.waitForLoadState('networkidle');
+  // 下で断られると木を読み直すので、親の移動が書き終わってから進む（書き終わる前に読み直すと、エピックの下から消える）
+  await moved;
 
   // 断られたら（別の画面で先にタスクが足された）、理由を知らせて読み直す
   let reloaded = 0;

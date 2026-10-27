@@ -282,6 +282,7 @@ GitHub は無料のプランのまま使う（2026-10-23 に決めた）。無�
 - `fixtures.ts` の `page` は、テストの後で `page.unrouteAll({ behavior: 'ignoreErrors' })` を待つ。`page.route()` の処理の中で `route.fetch()` を待つテストは、画面が終わりに飛ばした読み直しがテストの後に届くと「route.fetch: Test ended」で落ち、その失敗が同じワーカーで次に走るテストに付く。2026-10-27 に、`e2e/members.test.ts` の route の処理に遅れを入れると必ずこの形で落ち、fixture を入れると落ちないことを確かめた（#318）
 - fixture が外すのは、テストの引数の `page` に張った route だけ。`browser.newContext()` で作った context と page、`context.route()` には効かない。そこで `route.fetch()` を使うなら、テストの終わりで自分で `unrouteAll({ behavior: 'ignoreErrors' })` を待つ
 - `ignoreErrors` は、テストの後に届いた要求の失敗を黙って捨てる。テストの終わりの読み直しそのものを確かめたいときは、`page.waitForResponse()` で応答を待ってから終える
+- 書き込みの後で読み直す（`page.reload()`、別の画面へ移る）ときと、送った要求の数を比べるときは、`waitForLoadState('networkidle')` でなく、その書き込みの応答を待つ。`networkidle` は画面の読み込みの後に飛んだ要求を待たずに返り、画面を先に変えてから送る操作（バックログの並べ替え、親の移動）は、書き終わる前に読み直して元の並びに戻る（#325）。`e2e/helpers.ts` の `waitForResponses(page, path, count)` を操作の前に仕掛け、読み直す前に待つ。並べ替えは前の応答の後に次を送るので、続けて動かしたときは件数で最後の応答を待つ。バックログの読み上げと並びの表示は応答より前に出るので、待つ印にしない。送っていないことを確かめるときは、待つ応答が無いので、読み直した後で数を比べる（その時点で送る作りなら、要求は読み直しより前に出る）
 - 操作の応答を差し替えるときは、`e2e/operations.ts` のヘルパーを使い、`page.route()` を直に書かない。URL（`operationPath`）、入力の型、出力の型を操作の定義から導くので、操作の名前や出力の形を変えると、ずれたモックで `pnpm check` が落ちる（#319）
   - `mockOperation` は出力を返し、`rewriteOperation` は本物の出力を書き換えて返し、`failOperation` は `status` と `code`（`ErrorCode`）でエラーを返す
   - 数える、止める、n 回目だけ失敗させるなどの形は、土台の `routeOperation` で書く。処理が受け取る `call` は、`input`、`passThrough()`、`fetch()`、`fulfill()`、`fail()`、`abort()` と、Playwright の `route` を持つ。`route` は、スキーマに合わない本文をわざと返すときの抜け道
