@@ -303,8 +303,10 @@ test('作った人でもリーダーでもないメンバーには、削除の�
 }) => {
   await signIn(context, baseURL, 'member');
   await page.goto(SEED_GAME_WORKSPACE);
+  const epic = page.getByRole('button', { name: 'ポイントの交換先を増やす', exact: true });
+  await expect(epic).toBeVisible();
   await waitForSettled(page);
-  await page.getByRole('button', { name: 'ポイントの交換先を増やす', exact: true }).click();
+  await epic.click();
   const epicDialog = page.getByRole('dialog', { name: 'レイド', exact: true });
   await expect(epicDialog.getByLabel('タイトル')).toHaveValue('ポイントの交換先を増やす');
   await expect(epicDialog.getByRole('button', { name: /を削除する/ })).toHaveCount(0);

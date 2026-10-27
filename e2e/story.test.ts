@@ -374,10 +374,10 @@ test('親のストーリーが消えていたら、理由を出し、その場�
     stories: output.stories.filter((story) => !(gone && story.title === '問い合わせの一次回答を早くする')),
   }));
   await page.reload();
+  const addTask = storyGroup(page, '問い合わせの一次回答を早くする').getByRole('button', { name: /クエストを足す/ });
+  await expect(addTask).toBeVisible();
   await waitForSettled(page);
-  await storyGroup(page, '問い合わせの一次回答を早くする')
-    .getByRole('button', { name: /クエストを足す/ })
-    .click();
+  await addTask.click();
   const dialog = page.getByRole('dialog', { name: '依頼を出す' });
   await dialog.getByLabel('タイトル').fill('消えた親に足す');
   await dialog.getByRole('button', { name: '依頼を出す' }).click();
