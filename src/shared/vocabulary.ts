@@ -2012,9 +2012,10 @@ export const dictionary = defineDictionary({
   sprintTaskRemove: workspace('外す', '外す'),
   sprintTaskRemoving: workspace('外しています', '外しています'),
   sprintTaskRemoved: workspace('「{title}」を外しました', '「{title}」を外しました'),
+  // 完了を戻す操作（#240）が入ったら、「先に{done}を戻してください」の案内を足す
   sprintTaskRemoveCompleted: workspace(
-    '{done}済みの{task}は外せません。先に{done}を戻してください',
-    '{done}済みの{task}は外せません。先に{done}を戻してください',
+    '{done}済みの{task}は外せません。一覧を読み直します',
+    '{done}済みの{task}は外せません。一覧を読み直します',
   ),
   sprintTaskRemoveGone: workspace(
     'この{task}はもう入っていません。一覧を読み直します',
