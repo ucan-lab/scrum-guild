@@ -18,7 +18,14 @@ const screens: { screen: UiScreen; path: string; ready: (page: Page) => Locator[
   {
     screen: 'today',
     path: '/aoba',
-    ready: (page) => [page.getByRole('heading', { level: 1, name: '自分の今日' })],
+    ready: (page) => [
+      page.getByRole('heading', { level: 1, name: '自分の今日' }),
+      // /api/health を読み終えた後にだけ出る文
+      page
+        .getByRole('region', { name: 'API の疎通' })
+        .getByRole('status')
+        .filter({ hasText: /^API: / }),
+    ],
   },
   {
     screen: 'backlog',
@@ -49,7 +56,11 @@ const screens: { screen: UiScreen; path: string; ready: (page: Page) => Locator[
   {
     screen: 'admin',
     path: '/aoba/admin',
-    ready: (page) => [page.getByRole('heading', { level: 1 })],
+    ready: (page) => [
+      page.getByRole('heading', { level: 1 }),
+      // 節ごとに読む一覧のうち、seed の行がほかのファイルに消されないもの（ワークスペースの一覧）
+      page.getByRole('table', { name: 'パーティの一覧' }),
+    ],
   },
 ];
 
@@ -57,6 +68,9 @@ for (const { screen, path, ready } of screens) {
   test(`${screen}（${path}）に axe の違反が無い`, async ({ page }) => {
     await page.goto(path);
     for (const locator of ready(page)) await expect(locator.first()).toBeVisible();
+    // 節ごとに読む部品（休日、言葉づかい、決まった欄など）は aria-busy を付けないものもあるので、
+    // 要求が止むまで待ってから測る（画面は読み込みの後に要求を出し続けない）
+    await page.waitForLoadState('networkidle');
     // 見えている所の読み込みが終わるまで待つ（閉じたダイアログの中の欄は、開くまで読み込み中のまま残る）
     await expect(page.locator('[aria-busy="true"]:visible')).toHaveCount(0);
     await expectNoA11yViolationsInThemes(page, screen);
