@@ -553,8 +553,10 @@ PR ごとのプレビュー環境は持たず、Workers Builds の preview build
 
 ### e2e の画像のコメント
 
-クラウドのセッションは撮影と画像の添付ができない（`pr-create` の `evidence.md`）ので、CI が e2e のスクリーンショットから PR のエビデンスを作る（#337）。
+PR のエビデンスの画像は CI が e2e のスクリーンショットから作る（#337）。セッションは撮らず、手元でもクラウドでも、このコメントの画像の URL を PR の本文の `## エビデンス` 節に埋め込む（`pr-create` の `evidence.md`。CI の完了の後に `pr-feedback` が行い、push で画像が変われば差し替える）。
 
+- 本文への埋め込み: 載せるのは PR が変えたと判定した画面だけで、説明の文章はセッションが書く。画像に枠や注記は無い。セッションが読むのは、コメントの目印の次の行の JSON（`<!-- e2e-evidence-data {...} -->`。`scripts/evidence.ts` の `evidenceData`）。中身は、撮った PR の head の SHA（`headSha`）、比べた main の一覧のコミット（`comparedSha`。比べられなければ `null`）、画像で並べる画面ごとの名前（`key`）と変更前（`before`。新しい画面には無い）と変更後（`after`）の公開の URL。`>` は JSON の Unicode の逃がし（`u003e` の形）にし、HTML コメントを途中で閉じさせない。埋め込みは `.claude/skills/pr-create/embed-evidence.py` が行い、`scripts/evidence.test.ts` が `commentBody` の出力で確かめる
+- 本文の画像の期限: PR 用のバケットの画像は 90 日で消え、古い PR の本文の変更後の画像は切れる。画像の名前は中身のハッシュなので、マージの後の `main` で同じ画面が同じ描画なら、main 用のバケットの `main/img/<同じハッシュ>.png` が同じ画像
 - 置き方: バケットを2つに分ける。main 用のバケットには、どの画面がどの画像かの一覧（`main/<SHA>.json` と、最新を指す `main/latest.json`）と `main` の画像（`main/img/<ハッシュ>.png`）を置く。PR 用のバケットには、PR にしか無い画像（`img/<ハッシュ>.png`）だけを置く。画像は中身の SHA-256 を名前にし、同じ画像は一度しか上げないので、`main` へのマージごとに上がるのは変わった画像だけになる。コメントは、変更前の画像を main 用の公開の URL から、PR にしか無い変更後の画像を PR 用の公開の URL から指す
 - 画面の見分け方: Playwright の `test-results/` の、テストごとのディレクトリの名前（再試行の `-retry<n>` を除く）と、`e2e/fixtures.ts` がテストの終わりに撮る画像の名前（`evidence-<n>.png`。開いている画面ごとに n が増える）。テストの名前を変えると、別の画面として新しい画面と無くなった画面に出る
 - `evidence-main`（`main` への push と手動の実行）: `ci.yml` の e2e と同じ手順で3つのシャードに分けて撮り、`scripts/evidence-main.ts` が `main/latest.json` に無い画像だけを上げる一覧と、このコミットの一覧を作る。比べる対象から外す画面（下の「画像の揺れ」）は、一覧にも上げる画像にも入れない。前の一覧を読めなければ、注記を出してすべての画像を上げる（同じ名前は同じ中身なので壊れない）。画像を上げてから `main/<SHA>.json` を置き、そのコミットがまだ `main` の先頭のときだけ `main/latest.json` を書き換える。順に1つずつ動かし（`concurrency`）、e2e が落ちたら何も上げない。マージ1回あたり、終わるまでの待ちは約4分で、ランナーの時間の合計は約 11 分（3つのシャードの e2e が合わせて約 9 分半と、設定の確かめと上げるジョブ。2026-10-27 の PR の CI の e2e の時間から見積もった）増える。PR の側も、`E2E_EVIDENCE=1` の待ちと描画で e2e のシャードがそれぞれ延び、`evidence` のジョブが数十秒足される（2026-10-27 の比べる一覧が無い実行で 17 秒）
@@ -574,7 +576,7 @@ PR ごとのプレビュー環境は持たず、Workers Builds の preview build
 - main 用の鍵は Environment の `evidence-main` のシークレットに置き、deployment branches を `main` だけに絞る。PR の実行（`refs/pull/<番号>/merge`）はこの Environment に入れないので、PR から main の変更前の画像と一覧はすり替えられない。`evidence-main.yml` で鍵を読むジョブ（`config` と `upload`）にだけ `environment: evidence-main` を付ける。Environment のシークレットは、その Environment を付けたジョブでないと有無も読めない
 - Environment と deployment branches の絞りは、このリポジトリが public だから無料のプランで使える（上の「`main` を守る仕組み」の、Environment が使えないという前提は private のときの話）。private に戻すと Environment が使えなくなり、main 用の鍵を PR から読める形でしか置けなくなる。そのときは main 用の鍵を失効させて Environment ごと消し、`evidence-main` を止める（一覧を PR からすり替えられる形で置かない）
 - 鍵はそれぞれのバケットだけの Object Read & Write に絞る。PR 用の鍵が漏れても、書けるのは PR 用のバケットだけ
-- `evidence` のコメントは PR の head のコードが作る。`.github/` や `scripts/` を変える PR（`needs-human` が付く）では、コメントの画像と文章を信用せず、人が差分を読んで決める
+- `evidence` のコメントは PR の head のコードが作る。`.github/` や `scripts/` を変える PR（`needs-human` が付く）では、コメントの画像と文章を信用せず、人が差分を読んで決める。PR の本文への埋め込み（`embed-evidence.py`）も同じコメントを読むので、URL が R2 の画像の形（`https://<ホスト>/img/<ハッシュ>.png` か `.../main/img/<ハッシュ>.png`）でなければ本文に入れない
 - 鍵が漏れた疑いがあれば、Cloudflare のダッシュボードの R2 の API トークンの画面で、その鍵のトークンを失効させ、同じ権限（そのバケットだけの Object Read & Write）で作り直す。新しいアクセスキーとシークレットキーを、PR 用はリポジトリのシークレットに、main 用は Environment の `evidence-main` のシークレットに入れ直す。main 用の鍵が漏れたときは、main 用のバケットの一覧と画像がすり替えられていないかも見て、疑わしければ `evidence-main` を手で動かして撮り直す
 
 人が用意するもの（セッションは本番の Cloudflare のアカウントに触らないので行えない）。どれかが無いと、`evidence` と `evidence-main` は上げずに、足りない名前をジョブの注記に出して成功で終える。人の用意の前にマージしても CI は赤くならない。

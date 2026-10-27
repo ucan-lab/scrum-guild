@@ -12,6 +12,7 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
+import { fileURLToPath } from 'node:url';
 import { join, relative } from 'node:path';
 import { describe, test } from 'node:test';
 import {
@@ -19,6 +20,8 @@ import {
   COMMENT_MARKER,
   commentBody,
   compareScreens,
+  DATA_MARKER,
+  evidenceData,
   EXCLUDED_SCREENS,
   fetchManifest,
   imageObjectKey,
@@ -42,6 +45,7 @@ import {
   UPLOAD_KEY,
   withoutExcluded,
   type Comparison,
+  type EvidenceData,
   type Fetcher,
 } from './evidence.ts';
 
@@ -582,11 +586,304 @@ describe('commentBody', () => {
   });
 });
 
+describe('コメントの JSON の行', () => {
+  const mainUrl = 'https://main.example.test';
+  const prUrl = 'https://pr.example.test';
+  const base = { [k('changed')]: h('1'), [k('gone')]: h('3') };
+  const comparison = compareScreens(base, { [k('changed')]: h('2'), [k('new')]: h('1') }, []);
+  const input = { base, mainUrl, prUrl, headSha: sha('b'), baseSha: sha('a'), comparedSha: sha('a') };
+
+  // セッションと同じく、目印の次の行から JSON を読む
+  const readData = (body: string) => {
+    const line = body.split('\n')[1];
+    assert.ok(line.startsWith(DATA_MARKER) && line.endsWith(' -->'), line);
+    return JSON.parse(line.slice(DATA_MARKER.length, -' -->'.length)) as unknown;
+  };
+
+  test('目印の次の行に、画像で並べる画面と表と同じ URL を置く。新しい画面は変更後だけ', () => {
+    const body = commentBody({ ...input, comparison, mainUrl: `${mainUrl}/`, prUrl: `${prUrl}//` });
+    const data = readData(body);
+    assert.deepEqual(data, {
+      headSha: sha('b'),
+      comparedSha: sha('a'),
+      screens: [
+        { key: k('changed'), before: `${mainUrl}/main/img/${h('1')}.png`, after: `${prUrl}/img/${h('2')}.png` },
+        { key: k('new'), after: `${mainUrl}/main/img/${h('1')}.png` },
+      ],
+    });
+    assert.deepEqual(data, evidenceData({ ...input, comparison }));
+    for (const screen of (data as EvidenceData).screens) {
+      for (const url of [screen.before, screen.after].filter((u) => u !== undefined)) {
+        assert.ok(body.includes(`<img src="${url}" width="400">`), url);
+      }
+    }
+  });
+
+  test('上限を超えて画像を出さない画面は入れない', () => {
+    const many = Object.fromEntries(
+      Array.from({ length: 3 }, (_, i) => [k(`s${i}`), createHash('sha256').update(`${i}`).digest('hex')]),
+    );
+    const data = readData(commentBody({ ...input, comparison: compareScreens({}, many, []), base: {}, limit: 2 }));
+    assert.deepEqual(
+      (data as EvidenceData).screens.map(({ key }) => key),
+      [k('s0'), k('s1')],
+    );
+  });
+
+  test('比べられなかったときは screens を空にし、comparedSha を null にする', () => {
+    const data = readData(commentBody({ ...input, comparison, base: {}, comparedSha: undefined }));
+    assert.deepEqual(data, { headSha: sha('b'), comparedSha: null, screens: [] });
+  });
+
+  test('画面の名前の > と改行を逃がし、HTML コメントを途中で閉じない', () => {
+    const odd = 'a-->b\n<!--c>';
+    const body = commentBody({ ...input, comparison: compareScreens({}, { [k(odd)]: h('9') }, []), base: {} });
+    const line = body.split('\n')[1];
+    assert.equal(line.indexOf('-->'), line.length - '-->'.length);
+    assert.equal((readData(body) as EvidenceData).screens[0].key, k(odd));
+  });
+});
+
+// pr-create の evidence.md の 3 で、セッションが PR の本文に画像を埋め込むスクリプト
+describe('embed-evidence.py', () => {
+  const script = fileURLToPath(new URL('../.claude/skills/pr-create/embed-evidence.py', import.meta.url));
+  const mainUrl = 'https://main.example.test';
+  const prUrl = 'https://pr.example.test';
+  const base = { [k('changed')]: h('1'), [k('gone')]: h('3') };
+  const head = { [k('changed')]: h('2'), [k('new')]: h('4'), [k('gone')]: h('5') };
+  const comment = (headSha = sha('b')) =>
+    commentBody({
+      comparison: compareScreens(base, head, []),
+      base,
+      mainUrl,
+      prUrl,
+      headSha,
+      baseSha: sha('a'),
+      comparedSha: sha('a'),
+    });
+  const block = (key: string, inner = '画像は CI の完了の後に入る。') =>
+    `<!-- evidence-images: ${key} -->\n${inner}\n<!-- /evidence-images -->`;
+  const prBody = [
+    '## 概要',
+    '',
+    '概要の文章',
+    '',
+    '## エビデンス',
+    '',
+    '<!-- evidence: pending -->',
+    '',
+    '### 変えた画面',
+    '',
+    '変えた画面の説明',
+    '',
+    block(k('changed')),
+    '',
+    '### 新しい画面',
+    '',
+    '新しい画面の説明',
+    '',
+    block(k('new')),
+    '',
+    '### 出ない画面',
+    '',
+    block(k('missing')),
+    '',
+    '全画面の差分は <!-- evidence-comment -->CI の `evidence` のコメント（e2e の画面の差分）<!-- /evidence-comment --> にある。',
+    '',
+    '## 補足',
+    '',
+    block(k('changed'), '節の外の印は書き換えない'),
+    '<!-- evidence: pending -->',
+  ].join('\n');
+
+  const run = (body: string, comments: string, headSha: string, reason?: string) => {
+    const dir = mkdtempSync(join(tmpdir(), 'embed-evidence-'));
+    try {
+      writeFileSync(join(dir, 'body.md'), body);
+      writeFileSync(join(dir, 'comments.json'), comments);
+      const result = spawnSync(
+        'python3',
+        ['-I', script, join(dir, 'body.md'), join(dir, 'comments.json'), join(dir, 'out.md'), headSha].concat(
+          reason === undefined ? [] : [reason],
+        ),
+        { encoding: 'utf8' },
+      );
+      // python3 が無い環境では spawnSync が error を返す。終了コードの食い違いより先に原因を出す
+      assert.ifError(result.error);
+      assert.equal(result.status, 0, result.stderr);
+      return { out: readFileSync(join(dir, 'out.md'), 'utf8'), stdout: result.stdout };
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  };
+  // gh api --paginate --slurp の形（ページの配列の配列）。ほかの人のコメントと、目印の無い bot のコメントも混ぜる
+  const comments = (body: string) =>
+    JSON.stringify([
+      [
+        { user: { login: 'someone' }, body: `${COMMENT_MARKER}\n偽物`, html_url: 'https://github.test/fake' },
+        {
+          user: { login: 'github-actions[bot]' },
+          body: 'ほかの bot のコメント',
+          html_url: 'https://github.test/other',
+        },
+      ],
+      [{ user: { login: 'github-actions[bot]' }, body, html_url: 'https://github.test/c/1' }],
+    ]);
+
+  test('節の中の印に表を入れ、説明と節の外を残し、SHA とリンクを入れる。2回目は書き換えない', () => {
+    const { out, stdout } = run(prBody, comments(comment()), sha('b'));
+    assert.ok(
+      out.includes(
+        `${block(k('changed'), `| 変更前 | 変更後 |\n| ---- | ---- |\n| <img src="${mainUrl}/main/img/${h('1')}.png" width="400"> | <img src="${prUrl}/img/${h('2')}.png" width="400"> |\n`)}`,
+      ),
+    );
+    assert.ok(
+      out.includes(block(k('new'), `| 変更後 |\n| ---- |\n| <img src="${prUrl}/img/${h('4')}.png" width="400"> |\n`)),
+    );
+    assert.ok(out.includes(block(k('missing'), 'CI のコメントに、この画面の画像は出ていない。\n')));
+    for (const kept of ['概要の文章', '変えた画面の説明', '新しい画面の説明', '節の外の印は書き換えない']) {
+      assert.ok(out.includes(kept), kept);
+    }
+    assert.ok(out.includes(`<!-- evidence: ${sha('b')} -->`));
+    assert.ok(out.endsWith('<!-- evidence: pending -->'));
+    assert.ok(out.includes('[CI の `evidence` のコメント（e2e の画面の差分）](https://github.test/c/1)'));
+    assert.ok(stdout.includes(`印があるのにコメントに無い画面: ['${k('missing')}']`), stdout);
+    assert.ok(stdout.includes(`コメントに出たのに印の無い画面: ['${k('gone')}']`), stdout);
+    assert.match(stdout, /本文を書き換える\n$/);
+
+    const again = run(`${out.replace(/\n/g, '\r\n')}\n`, comments(comment()), sha('b'));
+    assert.equal(again.out, out);
+    assert.match(again.stdout, /本文は変わらない\n$/);
+  });
+
+  test('開始の印の行末に空白があっても、次の画面の説明と印を消さない', () => {
+    const body = prBody.replace(`${block(k('changed')).split('\n')[0]}\n`, `${block(k('changed')).split('\n')[0]}  \n`);
+    const { out } = run(body, comments(comment()), sha('b'));
+    assert.ok(out.includes('新しい画面の説明'));
+    assert.equal(out.match(/<img /g)?.length, 3);
+  });
+
+  test('コメントが前の push のままなら、画像を入れずに理由を書く', () => {
+    const { out, stdout } = run(prBody, comments(comment(sha('c'))), sha('b'));
+    assert.doesNotMatch(out, /<img /);
+    assert.ok(
+      out.includes(
+        block(
+          k('changed'),
+          'CI の画像は付かなかった: コメントが前の push（ccccccc）のまま（evidence がコメントを書き換えていない）。\n',
+        ),
+      ),
+    );
+    assert.ok(out.includes('<!-- evidence: pending -->\n\n### 変えた画面'));
+    assert.match(stdout, /本文を書き換える\n$/);
+  });
+
+  test('埋め込めないときも、前の push で入れた画像は失敗の文で消さずに残す', () => {
+    const embedded = run(prBody, comments(comment()), sha('b')).out;
+    const { out, stdout } = run(embedded, comments(comment(sha('b'))), sha('c'));
+    assert.equal(out.match(/<img /g)?.length, 3);
+    assert.ok(out.includes(`<!-- evidence: ${sha('b')} -->`));
+    assert.ok(
+      out.includes(
+        block(
+          k('missing'),
+          'CI の画像は付かなかった: コメントが前の push（bbbbbbb）のまま（evidence がコメントを書き換えていない）。\n',
+        ),
+      ),
+    );
+    assert.ok(stdout.includes(`前の画像を残した印: ['${k('changed')}', '${k('new')}']`), stdout);
+  });
+
+  test('JSON の行が壊れているか項目が欠けていれば、落ちずに理由を書く', () => {
+    for (const json of [
+      '{"headSha":',
+      '{"headSha":"x"}',
+      '[]',
+      `{"headSha":"${sha('b')}","comparedSha":"a","screens":[{}]}`,
+    ]) {
+      const body = `${COMMENT_MARKER}\n${DATA_MARKER}${json} -->\n`;
+      const { out } = run(prBody, comments(body), sha('b'));
+      assert.ok(out.includes('CI の画像は付かなかった: コメントの JSON の行を読めない'), json);
+    }
+  });
+
+  test('閉じの印が欠けた印は書き換えず、次の画面の説明と印を消さずに報告する', () => {
+    const broken = prBody.replace(
+      `${block(k('changed'))}`,
+      block(k('changed')).replace('<!-- /evidence-images -->', ''),
+    );
+    const { out, stdout } = run(broken, comments(comment()), sha('b'));
+    assert.ok(
+      out.includes(
+        '変えた画面の説明\n\n<!-- evidence-images: changed/evidence-1.png -->\n画像は CI の完了の後に入る。\n',
+      ),
+    );
+    assert.ok(out.includes('新しい画面の説明'));
+    assert.ok(
+      out.includes(block(k('new'), `| 変更後 |\n| ---- |\n| <img src="${prUrl}/img/${h('4')}.png" width="400"> |\n`)),
+    );
+    assert.ok(stdout.includes(`閉じの印が無い印: ['${k('changed')}']`), stdout);
+  });
+
+  test('CI が比べられなかったときと、JSON の行の無い古いコメントでは、画像を入れずに理由を書く', () => {
+    const notCompared = commentBody({
+      comparison: compareScreens(base, head, []),
+      base: {},
+      mainUrl,
+      prUrl,
+      headSha: sha('b'),
+      baseSha: sha('a'),
+      comparedSha: undefined,
+    });
+    assert.ok(
+      run(prBody, comments(notCompared), sha('b')).out.includes('CI の画像は付かなかった: CI が比べられなかった'),
+    );
+    const old = comment()
+      .split('\n')
+      .filter((line) => !line.startsWith(DATA_MARKER))
+      .join('\n');
+    assert.ok(run(prBody, comments(old), sha('b')).out.includes('CI の画像は付かなかった: コメントに JSON の行が無い'));
+  });
+
+  test('同じキーの印が2つあれば、どちらにも同じ画像を入れる', () => {
+    const twice = prBody.replace('### 出ない画面', `${block(k('changed'))}\n\n### 出ない画面`);
+    assert.equal(run(twice, comments(comment()), sha('b')).out.match(/<img /g)?.length, 5);
+  });
+
+  test('付かなかった理由を渡すと、コメントを読まずに印の中をその理由にする', () => {
+    const { out } = run(prBody, '[]', sha('b'), 'evidence のジョブが失敗した');
+    assert.ok(out.includes(block(k('new'), 'CI の画像は付かなかった: evidence のジョブが失敗した。\n')));
+  });
+
+  test('画像の URL が R2 の画像の形でなければ、本文の <img> に入れずに理由を書く', () => {
+    // JSON としては正しい形のまま、引用符を含む URL にする
+    const bad = comment().replaceAll(
+      `${prUrl}/img/${h('2')}.png`,
+      JSON.stringify('https://x.test/a.png" onerror="x').slice(1, -1),
+    );
+    const { out } = run(prBody, comments(bad), sha('b'));
+    assert.doesNotMatch(out, /<img /);
+    assert.ok(out.includes('CI の画像は付かなかった: コメントの画像の URL が R2 の画像の形でない'));
+  });
+
+  test('コメントが無ければ理由を書き、エビデンス節が無ければ本文を変えない', () => {
+    assert.ok(run(prBody, '[[]]', sha('b')).out.includes('CI の画像は付かなかった: CI の evidence のコメントが無い'));
+    const { out, stdout } = run('## 概要\n\n文章\n', '[[]]', sha('b'));
+    assert.equal(out, '## 概要\n\n文章');
+    assert.match(stdout, /本文は変わらない\n$/);
+  });
+});
+
 describe('目印', () => {
   test('ci.yml と pr-create の evidence.md は scripts/evidence.ts と同じ目印で探す', () => {
     for (const path of ['.github/workflows/ci.yml', '.claude/skills/pr-create/evidence.md']) {
       assert.ok(readFileSync(new URL(`../${path}`, import.meta.url), 'utf8').includes(COMMENT_MARKER), path);
     }
+  });
+
+  test('pr-create の evidence.md は scripts/evidence.ts と同じ JSON の前置きで読む', () => {
+    const text = readFileSync(new URL('../.claude/skills/pr-create/evidence.md', import.meta.url), 'utf8');
+    assert.ok(text.includes(DATA_MARKER.trim()));
   });
 });
 
