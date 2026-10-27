@@ -974,7 +974,7 @@ a.choice > div > span, .choice.is-static > div > span { display: block; }
 .order-list li:has(> .grip) { grid-template-columns: 24px minmax(0, 1fr) auto; }
 .order-list li + li { border-top: 1px solid var(--color-rule); }
 /* 行の先頭のつまみ（飾りで、aria-hidden）。つかむ場所はここだけで、題や入力欄の文字は選べる。
-   ドラッグの代わりは「上へ」「下へ」。つかめない行（完了にした直後の行、エピックの行）は .is-off にして、列だけ空ける */
+   ドラッグの代わりは「上へ」「下へ」。つかめない行（完了にした直後の行）は .is-off にして、列だけ空ける */
 .grip { color: var(--color-faint); cursor: grab; display: inline-grid; place-items: center; align-self: center; justify-self: center; }
 .grip:hover { color: var(--color-muted); }
 .grip:active { cursor: grabbing; }
@@ -1042,7 +1042,7 @@ a.choice > div > span, .choice.is-static > div > span { display: block; }
 /* 地の色と accent-soft の差が小さいテーマ（シンプルの暗など）でも見えるよう、光る間は accent の細い枠も同じ長さで出す */
 @keyframes drop-flash {
   from { background-color: var(--color-accent-soft); outline-color: var(--color-accent); }
-  to { background-color: transparent; outline-color: transparent; }
+  to { outline-color: transparent; }
 }
 .entry.is-dropped, .tree-row.is-dropped, .order-list li.is-dropped {
   outline: 1px solid transparent; outline-offset: -1px; animation: drop-flash var(--duration-flash) ease-out;

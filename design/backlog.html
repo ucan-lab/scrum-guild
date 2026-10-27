@@ -50,6 +50,8 @@ document.addEventListener("input", (ev) => {
   document.getElementById("totals-note").hidden = !filtering;
   // 「上へ」「下へ」を隠す（エピックの行は「親を移す」を持たないので、どちらも隠れる）
   document.querySelectorAll('.order-actions .icon-btn:not([title="親を移す"])').forEach((b) => (b.hidden = filtering));
+  // 中身が全部隠れた .order-actions は、本番と同じく枠ごと隠す（.tree-end の gap を余計に空けない）
+  document.querySelectorAll(".order-actions").forEach((s) => (s.hidden = filtering && [...s.children].every((b) => b.hidden)));
   // つまみも隠す（ドラッグも隣を使う並べ替えなので、絞っている間は止める）
   document.querySelectorAll(".grip").forEach((g) => {
     g.hidden = filtering;
