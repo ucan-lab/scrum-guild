@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict';
+import { join } from 'node:path';
 import { describe, test } from 'node:test';
+import { fileURLToPath } from 'node:url';
 import { devWatchIgnored } from './dev-watch.ts';
 
 describe('devWatchIgnored', () => {
@@ -39,5 +41,23 @@ describe('devWatchIgnored', () => {
     const ignored = devWatchIgnored('/work/scrum-guild');
     assert.equal(ignored('/work/scrum-guild/build/index.html'), true);
     assert.equal(ignored('/work/scrum-guild/src/app.html'), false);
+  });
+});
+
+describe('vite.config.ts の server.watch.ignored', () => {
+  // 述語が設定に渡り、根が vite の根（pnpm dev を打つリポジトリの根）と合っていることを見る
+  test('リポジトリの根の worktrees/、playwright-report/、build/ を外し、src/ は監視する', async () => {
+    const { default: config } = await import('../vite.config.ts');
+    const root = fileURLToPath(new URL('..', import.meta.url));
+    const ignored = [config.server?.watch?.ignored ?? []].flat();
+    const matches = (file: string) => ignored.some((item) => typeof item === 'function' && item(join(root, file)));
+    for (const file of [
+      'worktrees/325-x/playwright-report/index.html',
+      'playwright-report/index.html',
+      'build/index.html',
+    ]) {
+      assert.equal(matches(file), true, file);
+    }
+    assert.equal(matches('src/app.html'), false);
   });
 });
