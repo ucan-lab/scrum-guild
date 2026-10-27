@@ -73,6 +73,20 @@ describe('needsDevBuild', () => {
     'scripts/e2e-server.ts',
     'scripts/dev-warnings.ts',
     '.github/workflows/ci.yml',
+    // build と e2e のサーバー、CI の用意、e2e が開くデータ
+    'scripts/dev.ts',
+    'scripts/dev-ports.ts',
+    'scripts/write-headers.ts',
+    'scripts/headers.ts',
+    '.github/actions/setup/action.yml',
+    '.github/actions/playwright/action.yml',
+    'pnpm-workspace.yaml',
+    '.node-version',
+    'wrangler.jsonc',
+    'tsconfig.json',
+    'static/favicon.svg',
+    'seed/sessions.ts',
+    'seed/data.sql',
   ];
   for (const path of runs) {
     test(`${path} が変われば走らせる`, () => {
@@ -88,7 +102,7 @@ describe('needsDevBuild', () => {
     'scripts/ci.ts',
     '.github/workflows/ai-review.yml',
     '.claude/hooks/guard-bash.mjs',
-    'seed/sessions.ts',
+    'scripts/dev-open.ts',
     'xsrc/lib/a.svelte',
     'package.json.bak',
   ];
@@ -169,7 +183,9 @@ describe('ciOkVerdict', () => {
         withDev('false', 'false', 'success'),
         false,
       ],
-      ['dev_build が無ければ偽として見る', withDev('false', undefined, 'skipped'), true],
+      ['dev_build が無ければ、判定を誤ったとみて落とす', withDev('false', undefined, 'skipped'), false],
+      ['dev_build が真でも偽でもなければ落とす', withDev('false', '', 'skipped'), false],
+      ['文書だけなら dev_build が無くても skipped で通す', withDev('true', undefined, 'skipped', 'skipped'), true],
       ['文書だけなら dev_build が真でも skipped', withDev('true', 'true', 'skipped', 'skipped'), true],
       ['文書だけで e2e-dev が success', withDev('true', 'false', 'success', 'skipped'), false],
       ['dev_build が偽でも、ほかの重いジョブは success が要る', withDev('false', 'false', 'skipped', 'skipped'), false],
@@ -179,6 +195,14 @@ describe('ciOkVerdict', () => {
         assert.equal(ciOkVerdict(input).ok, ok);
       });
     }
+
+    test('Object.prototype の名前（toString など）のジョブを、条件付きのジョブと取り違えない', () => {
+      for (const name of ['toString', 'constructor', 'hasOwnProperty', 'valueOf', '__proto__']) {
+        const input: Needs = { changes: { result: 'success', outputs: { docs_only: 'false', dev_build: 'false' } } };
+        Object.defineProperty(input, name, { value: { result: 'skipped' }, enumerable: true });
+        assert.equal(ciOkVerdict(input).ok, false, name);
+      }
+    });
 
     test('dev_build はほかのジョブの期待を変えない', () => {
       const input: Needs = {
