@@ -2959,6 +2959,202 @@ describe('bash-rules: 根と根の祖先の削除と移動（作業場所が分�
   });
 });
 
+describe('bash-rules: find の起点の省略と git clean の値を取るフラグ', () => {
+  for (const command of [
+    // 起点を省いた find は . から始める
+    'find -delete',
+    'find -name x -delete',
+    'gfind . -delete',
+    'gfind .githooks -exec rm {} +',
+    'git clean --exclude=x -fx',
+    'git clean --exclude x -fx',
+    'git clean -fx --exclude x',
+  ]) {
+    test(`${command} は確認を挟む`, () => assert.deepEqual(literally(command), ['ask', 'ask'], command));
+  }
+
+  for (const command of [
+    'find -name x -print',
+    'find . -exec echo {} \\;',
+    // -e の値の -x は -x に数えない
+    'git clean -f -e -x',
+    'git clean -fe -x',
+    'git clean --exclude -x -f',
+    'git clean --d -fx',
+  ]) {
+    test(`${command} は通す`, () => assert.deepEqual(literally(command), ['allow', 'allow'], command));
+  }
+});
+
+describe('bash-rules: #313 を崩す（1周目）', () => {
+  // 本体の根と、その中の worktrees/x（ワークツリーの根）を実在させる
+  const main = realpathSync(mkdtempSync(path.join(os.tmpdir(), 'guard-break-')));
+  const wt = path.join(main, 'worktrees', 'x');
+  for (const root of [main, wt]) {
+    for (const dir of ['scripts', 'src', 'build', '.claude/hooks', '.githooks', 'migrations']) mkdirSync(path.join(root, dir), { recursive: true });
+    writeFileSync(path.join(root, 'scripts', 'deploy-production.ts'), '');
+  }
+  after(() => rmSync(main, { recursive: true, force: true }));
+  const name = path.basename(main);
+  const src = path.join(main, 'src');
+  const from = (cwd, command) => judgeBash(command, { cwd, branchOf: () => 'x' })?.[0] ?? 'allow';
+  const shown = (command) => command.replaceAll(main, '<根>').replaceAll(name, '<根の名前>');
+
+  // --- 落ちる（実装の欠陥） ---
+
+  // BSD の find（macOS の /usr/bin/find）は起点の前に -E、-X、-d、-s、-x を取る（find [-H | -L | -P] [-EXdsx] [-f path] path ...）。
+  // 実装はこれらで起点の読み取りを止めて起点を . とみなすので、根の下から根の守る先と根を消す形が通る
+  for (const command of ['find -E ../migrations -delete', 'find -x .. -delete', 'find -s ../.githooks -exec rm {} +']) {
+    test(`根の下の src から ${command} は確認を挟む（BSD の find の起点の前のオプション）`, () => assert.equal(from(src, command), 'ask', command));
+  }
+  // 同じ読み違いで、守る先でも根でもない起点を . とみなして止めすぎる（find build -delete は通すと決めた形）
+  test('find -x build -delete は通す（BSD の find の起点の前のオプション）', () => assert.deepEqual(literally('find -x build -delete'), ['allow', 'allow']));
+
+  // GNU の find は起点の前の -- をオプションの終わりとして受け付ける（find -- a -name b -print は a/b を出す。findutils 4.9.0 で確かめた）。
+  // 実装は -- で起点の読み取りを止めて起点を . とみなすので、根の下から守る先を消す形が通り、守る先でない起点で止めすぎる
+  test('根の下の src から find -- ../.githooks -delete は確認を挟む', () => assert.equal(from(src, 'find -- ../.githooks -delete'), 'ask'));
+  test('find -- build -delete は通す', () => assert.deepEqual(literally('find -- build -delete'), ['allow', 'allow']));
+
+  // git の parse-options は真偽のオプションの --no- の形を受け、後に書いたものが勝つ。git clean -n --no-dry-run -f は実際に消す
+  // （git 2.43.0 で確かめた）。Issue の「-n と --dry-run があれば通す」は試し実行を通すためのもので、打ち消した後は試し実行ではない
+  for (const command of ['git clean -n --no-dry-run -fx', 'git clean --dry-run --no-dry-run -fdx', 'git clean -n --no-dry -fx']) {
+    test(`${command} は確認を挟む（-n を --no-dry-run で打ち消す）`, () => assert.deepEqual(literally(command), ['ask', 'ask'], command));
+  }
+  // git の --end-of-options は -- と同じくオプションの終わりで、後ろの -n はパス（git clean -f --end-of-options -n . は実際に消す。git 2.43.0）。
+  // Issue の「-- の後ろはパス」と同じ扱いになるべきところを、実装は -n を試し実行と読んで通す
+  test('git clean -fx --end-of-options -n . は確認を挟む', () => assert.deepEqual(literally('git clean -fx --end-of-options -n .'), ['ask', 'ask']));
+
+  // GNU の mv には --strip-program が無く、--strip と --st は --strip-trailing-slashes の一意な省略形（coreutils 9.4 の mv --strip d e は d を動かす）。
+  // 実装は cp と install の --strip-program の値として次の語を飛ばすので、動かす元の根を見落とす（--strip-trailing-slashes と書けば確認になる）
+  for (const command of [`mv --strip ${main} /tmp/x`, `mv --st ${main} /tmp/x`]) {
+    test(`根の下の src から ${shown(command)} は確認を挟む（mv の --strip の省略形）`, () => assert.equal(from(src, command), 'ask', command));
+  }
+
+  // {a,b} はシェルが展開してから渡す（glob ではなく、#293 の範囲でもない）。守る先の判定は {a,b} を展開する（mv .claude{,.bak} は確認になる）のに、
+  // 根と根の祖先の判定は展開しないので、rm -rf {.,build} が rm -rf . build と同じものとして見られない
+  test('rm -rf {.,build} は確認を挟む（{a,b} の展開の後の .）', () => assert.deepEqual(literally('rm -rf {.,build}'), ['ask', 'ask']));
+  test('本体の根から rm -rf {<根>,x} は確認を挟む', () => assert.equal(from(main, `rm -rf {${main},x}`), 'ask'));
+  test('根の下の src から find {..,build} -delete は確認を挟む', () => assert.equal(from(src, 'find {..,build} -delete'), 'ask'));
+
+  // find の -exec の後ろの find は、起点のそれぞれに置き換えて掛け直すので、起点の数の入れ子の深さ乗だけ判定が増える。
+  // 300 文字に満たないコマンドで、9 秒かかった後に RangeError（Maximum call stack size exceeded）を投げる。judgeBash が例外を投げると
+  // フックはそのコマンドを判定できずに止まる。展開の大きい glob（上の describe）と同じく、1 秒以内に例外を投げずに決める
+  test('起点の多い find の -exec を入れ子にしても、1 秒以内に例外を投げずに確認を挟む', () => {
+    const starts = Array.from({ length: 11 }, (_, i) => `s${i}`).join(' ');
+    const braces = Array(11).fill('{}').join(' ');
+    const command = `find ${starts} ${Array(5).fill(`-exec find ${braces}`).join(' ')} -exec true \\;`;
+    const started = Date.now();
+    let decided;
+    assert.doesNotThrow(() => {
+      decided = judgeBash(command, { cwd: null, branchOf: () => 'x' })?.[0] ?? 'allow';
+    });
+    assert.equal(decided, 'ask');
+    assert.ok(Date.now() - started < 1000, `${Date.now() - started}ms かかった`);
+  });
+
+  // --- 通る（既存のテストと重ならない手口） ---
+
+  for (const command of [
+    // 前置きと道具の名前の書き方
+    'timeout 5 rm -rf .',
+    'nohup rm -rf ..',
+    'time rm -rf .',
+    'exec rm -rf .',
+    'FOO=1 rm -rf .',
+    '/bin/rm -rf .',
+    '\\rm -rf .',
+    '"rm" -rf .',
+    // まとまりと置換の中
+    '(rm -rf .)',
+    '{ rm -rf .; }',
+    'if true; then rm -rf .; fi',
+    'echo $(rm -rf ..)',
+    'rm -rf . | cat',
+    "zsh -c 'rm -rf .'",
+    // 字面の cd の後
+    '(cd .claude && rm -rf hooks)',
+    'cd .claude; rm -rf hooks',
+    "cd .claude && bash -c 'rm -rf hooks'",
+    // 守る先の {a,b} と正規化
+    'mv .claude{,.bak}',
+    'rmdir {.githooks,x}',
+    'find {.claude,x} -delete',
+    'rm -rf .claude/hooks/..',
+    'rm -rf //',
+    'rm -rf -- -x .',
+    'mv -T .claude /tmp/x',
+    'mv -S .bak .claude /tmp/x',
+    'mv -t /tmp -- .claude',
+    // find の式の書き方と -exec の後ろの道具
+    'find .claude \\( -name x \\) -delete',
+    'find .claude ! -name x -delete',
+    'find .claude -depth -delete',
+    'find .claude -prune -o -delete',
+    'find .. -exec rm {} \\+',
+    "find .claude -exec rm '{}' \\;",
+    'find .claude -exec /bin/rm {} \\;',
+    'find .claude -exec command rm {} \\;',
+    'find .claude -exec rm -- {} +',
+    'find .claude -exec mv -t /tmp {} +',
+    'find .claude -exec rmdir {} \\;',
+    "find .claude -exec bash -c 'rm -rf {}' \\;",
+    'find .claude -exec find {} -delete \\;',
+    'find .claude -exec tee {} \\;',
+    // git clean の前のオプションと値を取るフラグ
+    'git --no-pager clean -fdx',
+    'git --git-dir=.git clean -fdx',
+    'git --work-tree .. clean -fdx',
+    'command git clean -fdx',
+    'git clean --force -x',
+    'git clean -e -n -fx',
+    'git clean --exclude -n -fx',
+    'git clean -xfen',
+    'git clean -fd -x -e -n',
+    'git clean -fx -- --dry-run',
+    'git clean --no-dry-run -fx',
+  ]) {
+    test(`${command} は確認を挟む（崩す 1 周目）`, () => assert.deepEqual(literally(command), ['ask', 'ask'], command));
+  }
+
+  for (const command of [
+    'git clean -fdx --dr',
+    'git clean -fdn',
+    'git clean -n -X',
+    'git clean -nfX',
+    'git clean -fd -e .dev.vars',
+    // 普段の作業で打つ形
+    'rm -rf .wrangler',
+    'rm -rf test-results playwright-report',
+    'rmdir worktrees/x',
+    'rm -rf ../build',
+    'mv src/a.ts .',
+    'mv x.ts src/',
+    'find ./build -delete',
+    'find build/ -delete',
+    'find build -mindepth 1 -delete',
+    'find src -name x -exec rm {} \\;',
+    'find src -exec sed -i s/a/b/ {} +',
+    'find .. -name x -print',
+    'find . -name node_modules -prune -o -name x -print',
+    'cd build && rm -rf assets',
+    // 引数の欠けた形で例外を投げない
+    'find . -exec',
+    'find -exec',
+    'find . -exec \\;',
+    'find . -exec {} \\;',
+    'rm',
+    'rmdir',
+    'mv',
+    'git clean -e',
+  ]) {
+    test(`${command} は通す（崩す 1 周目）`, () => assert.deepEqual(literally(command), ['allow', 'allow'], command));
+  }
+
+  test('本体の根から cd / && rm -rf <根の / を除いた道> は確認を挟む', () => assert.equal(from(main, `cd / && rm -rf ${main.slice(1)}`), 'ask'));
+  test('ワークツリーから rm -rf ../../worktrees は確認を挟む', () => assert.equal(from(wt, 'rm -rf ../../worktrees'), 'ask'));
+  test('根の下の src から mv -t /tmp -- <根> は確認を挟む', () => assert.equal(from(src, `mv -t /tmp -- ${main}`), 'ask'));
+});
+
 describe('bash-rules: 展開の大きい glob', () => {
   const timed = (command) => {
     const started = Date.now();
