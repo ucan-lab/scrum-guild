@@ -3,7 +3,7 @@
 // seed のセッション（seed/sessions.ts）の Cookie で開く。あおば開発の管理者はミナト、一般のユーザーはハルカ。CSP の違反も確かめる
 import type { Page } from '@playwright/test';
 import { expect, test } from './fixtures.ts';
-import { createWorkspace, signIn, waitForSettled, watchViolations } from './helpers.ts';
+import { createWorkspace, signIn, waitForResponses, waitForSettled, watchViolations } from './helpers.ts';
 
 test.use({ timezoneId: 'Asia/Tokyo' });
 
@@ -14,12 +14,15 @@ function rowGroup(page: Page, title: string) {
   );
 }
 
+// 作った後は、木の読み直しが返るまで待つ。読み直しの load の最中に次の操作を送ると、開発時に window_fetch_in_load の警告が出る（#393）
 async function create(page: Page, label: string, title: string): Promise<void> {
   await page.getByRole('button', { name: label }).click();
   const dialog = page.getByRole('dialog', { name: label });
   await dialog.getByLabel('タイトル').fill(title);
+  const reloaded = waitForResponses(page, '/backlog-tree');
   await dialog.getByRole('button', { name: '作る' }).click();
   await expect(dialog).toBeHidden();
+  await reloaded;
 }
 
 async function addTask(page: Page, storyTitle: string, title: string, createLabel: string): Promise<void> {
