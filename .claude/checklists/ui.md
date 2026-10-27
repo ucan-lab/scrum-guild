@@ -29,6 +29,10 @@
 - `data-theme` の値が DB の列挙（`simple`、`simple_light`、`simple_dark`、`medieval`、`modern`）と違う
 - 本番の Svelte のコンポーネントが、対応する `design/kit.js` の関数と違う HTML の構造やクラスを出している
 
+## Svelte の書き方
+
+- 開発時だけ出る Svelte と SvelteKit の警告が出る書き方をしている。`$state` でない入れ物への `bind:this`（`binding_property_non_reactive`）、SvelteKit 3 で置き換わったリンクの属性 `data-sveltekit-keepfocus` と `data-sveltekit-noscroll`（`link_option_replaced`）など（e2e が確かめる。CI の `e2e-dev` が開発モードの build で流し、e2e が開く画面と操作だけ）。コンパイル時の警告は `pnpm check`（`svelte-check --fail-on-warnings`）が落とす
+
 ## 色の役割
 
 - 操作の色（`--color-accent`）、完了の色（`--color-done`）、印の色（`--color-stamp`）、経験値の色（`--color-xp`）を、決まった用途の外で使っている

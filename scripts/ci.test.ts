@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
-import { ciOkVerdict, isDocsOnly, migrationFiles, parseNulSeparated, type Needs } from './ci.ts';
+import { ciOkVerdict, isDocsOnly, needsDevBuild, migrationFiles, parseNulSeparated, type Needs } from './ci.ts';
 
 describe('isDocsOnly', () => {
   test('文書の範囲の .md だけなら真', () => {
@@ -58,6 +58,70 @@ describe('isDocsOnly', () => {
   });
 });
 
+describe('needsDevBuild', () => {
+  const runs: string[] = [
+    'src/lib/components/TaskEntry.svelte',
+    'src/routes/[slug]/w/[id]/+page.svelte',
+    'src/lib/focus.svelte.ts',
+    'src/shared/vocabulary.ts',
+    'src/app.html',
+    'e2e/fixtures.ts',
+    'package.json',
+    'pnpm-lock.yaml',
+    'vite.config.ts',
+    'playwright.config.ts',
+    'scripts/e2e-server.ts',
+    'scripts/dev-warnings.ts',
+    '.github/workflows/ci.yml',
+    // build と e2e のサーバー、CI の用意、e2e が開くデータ
+    'scripts/dev.ts',
+    'scripts/dev-ports.ts',
+    'scripts/write-headers.ts',
+    'scripts/db-seed.ts',
+    'scripts/headers.ts',
+    '.github/actions/setup/action.yml',
+    '.github/actions/playwright/action.yml',
+    'pnpm-workspace.yaml',
+    '.node-version',
+    'wrangler.jsonc',
+    'tsconfig.json',
+    'static/favicon.svg',
+    'seed/sessions.ts',
+    'seed/data.sql',
+  ];
+  for (const path of runs) {
+    test(`${path} が変われば走らせる`, () => {
+      assert.equal(needsDevBuild([path]), true);
+    });
+  }
+
+  const skips: string[] = [
+    'src/server/operations/register.ts',
+    'migrations/0001_init.sql',
+    'test/operations.test.ts',
+    'docs/development.md',
+    'scripts/ci.ts',
+    '.github/workflows/ai-review.yml',
+    '.claude/hooks/guard-bash.mjs',
+    'scripts/dev-open.ts',
+    'xsrc/lib/a.svelte',
+    'package.json.bak',
+  ];
+  for (const path of skips) {
+    test(`${path} だけなら走らせない`, () => {
+      assert.equal(needsDevBuild([path]), false);
+    });
+  }
+
+  test('走らせるファイルが1つでも混ざれば走らせる', () => {
+    assert.equal(needsDevBuild(['src/server/index.ts', 'src/lib/a.ts']), true);
+  });
+
+  test('一覧が空なら、判定を誤ったとみて走らせる', () => {
+    assert.equal(needsDevBuild([]), true);
+  });
+});
+
 describe('parseNulSeparated', () => {
   test('NUL で区切り、末尾の区切りの後の空を除く', () => {
     assert.deepEqual(parseNulSeparated('docs/開発.md\0 CLAUDE.md\0a\nb.md\0'), [
@@ -102,6 +166,53 @@ describe('ciOkVerdict', () => {
       assert.equal(ciOkVerdict(input).ok, ok);
     });
   }
+
+  describe('開発モードの e2e（e2e-dev）は dev_build で期待が変わる', () => {
+    function withDev(docsOnly: string, devBuild: string | undefined, dev: string, other = 'success'): Needs {
+      const outputs: Record<string, string> = { docs_only: docsOnly };
+      if (devBuild !== undefined) outputs.dev_build = devBuild;
+      return { changes: { result: 'success', outputs }, check: { result: other }, 'e2e-dev': { result: dev } };
+    }
+
+    const devCases: [string, Needs, boolean][] = [
+      ['dev_build が真で success', withDev('false', 'true', 'success'), true],
+      ['dev_build が真で skipped', withDev('false', 'true', 'skipped'), false],
+      ['dev_build が真で failure', withDev('false', 'true', 'failure'), false],
+      ['dev_build が偽で skipped', withDev('false', 'false', 'skipped'), true],
+      [
+        'dev_build が偽で success（走ったなら通っていればよいが、期待と違う）',
+        withDev('false', 'false', 'success'),
+        false,
+      ],
+      ['dev_build が無ければ、判定を誤ったとみて落とす', withDev('false', undefined, 'skipped'), false],
+      ['dev_build が真でも偽でもなければ落とす', withDev('false', '', 'skipped'), false],
+      ['文書だけなら dev_build が無くても skipped で通す', withDev('true', undefined, 'skipped', 'skipped'), true],
+      ['文書だけなら dev_build が真でも skipped', withDev('true', 'true', 'skipped', 'skipped'), true],
+      ['文書だけで e2e-dev が success', withDev('true', 'false', 'success', 'skipped'), false],
+      ['dev_build が偽でも、ほかの重いジョブは success が要る', withDev('false', 'false', 'skipped', 'skipped'), false],
+    ];
+    for (const [name, input, ok] of devCases) {
+      test(name, () => {
+        assert.equal(ciOkVerdict(input).ok, ok);
+      });
+    }
+
+    test('Object.prototype の名前（toString など）のジョブを、条件付きのジョブと取り違えない', () => {
+      for (const name of ['toString', 'constructor', 'hasOwnProperty', 'valueOf', '__proto__']) {
+        const input: Needs = { changes: { result: 'success', outputs: { docs_only: 'false', dev_build: 'false' } } };
+        Object.defineProperty(input, name, { value: { result: 'skipped' }, enumerable: true });
+        assert.equal(ciOkVerdict(input).ok, false, name);
+      }
+    });
+
+    test('dev_build はほかのジョブの期待を変えない', () => {
+      const input: Needs = {
+        changes: { result: 'success', outputs: { docs_only: 'false', dev_build: 'false' } },
+        e2e: { result: 'skipped' },
+      };
+      assert.equal(ciOkVerdict(input).ok, false);
+    });
+  });
 
   test('通さないときは、期待と違うジョブを理由に挙げる', () => {
     const verdict = ciOkVerdict(needs('success', 'false', 'success', 'failure'));

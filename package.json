@@ -12,7 +12,7 @@
     "dev:open": "node scripts/dev-open.ts",
     "build": "vite build && node scripts/write-headers.ts",
     "preview": "pnpm build && node scripts/dev.ts --preview",
-    "check": "node scripts/prepare.ts && svelte-check --tsconfig ./tsconfig.json && tsc -p src/server/tsconfig.json",
+    "check": "node scripts/prepare.ts && svelte-check --tsconfig ./tsconfig.json --fail-on-warnings && tsc -p src/server/tsconfig.json",
     "lint": "eslint .",
     "format": "prettier --write .",
     "format:check": "prettier --check .",

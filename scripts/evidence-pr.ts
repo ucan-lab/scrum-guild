@@ -1,4 +1,4 @@
-// CI の evidence のジョブ: 成果物 e2e-* の画像をベースの main の画像と比べ、上げる画像の一覧とコメントの本文を書く。
+// CI の evidence のジョブ: 成果物 e2e-<n>（e2e-dev-<n> は含めない）の画像をベースの main の画像と比べ、上げる画像の一覧とコメントの本文を書く。
 // 環境変数: RESULTS_DIR（成果物を落とした所）、OUT_DIR（書き出す所）、EVIDENCE_MAIN_PUBLIC_URL（変更前の画像と一覧）、
 // EVIDENCE_PR_PUBLIC_URL（PR にしか無い画像）、BASE_SHA、HEAD_SHA。
 // 書き出すもの: OUT_DIR/upload/（上げる画像を PR 用のバケットの中の名前どおりに並べたもの）、OUT_DIR/comment.md。

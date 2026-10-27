@@ -2,7 +2,7 @@
 import { defineConfig, devices } from '@playwright/test';
 import { EVIDENCE } from './e2e/evidence-mode.ts';
 import { devPorts } from './scripts/dev-ports.ts';
-import { applyE2eServerVersion, E2E_SERVER_COMMAND, reuseExistingServer } from './scripts/e2e-server.ts';
+import { applyE2eServerVersion, e2eServerCommand, reuseExistingServer } from './scripts/e2e-server.ts';
 
 const baseURL = `http://localhost:${devPorts(process.env).api}`;
 
@@ -41,8 +41,8 @@ export default defineConfig({
     },
   ],
   webServer: {
-    // package.json の preview と同じ中身（scripts/e2e-server.test.ts が一致を確かめる）
-    command: E2E_SERVER_COMMAND,
+    // package.json の preview と同じ中身（scripts/e2e-server.test.ts が一致を確かめる）。E2E_DEV_BUILD=1 では開発モードの build にする
+    command: e2eServerCommand(process.env),
     url: `${baseURL}/api/health`,
     // 既定では、答えるサーバーが既にあれば止まる。使い回すのは E2E_REUSE_SERVER=1 のときだけ（CI では使い回さない）
     reuseExistingServer: reuseExistingServer(process.env),
