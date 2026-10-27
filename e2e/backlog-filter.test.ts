@@ -229,8 +229,21 @@ test('絞っているときに、木に出ていない達成目標へ親を移�
   await page.getByRole('button', { name: '親を移す: 自分のクエスト' }).click();
   const dialog = page.getByRole('dialog', { name: '「自分のクエスト」の親を移す' });
   await dialog.getByLabel('移す先').selectOption({ label: '配下の無い目標' });
+  // 移す要求を止めておき、通った後の読み直し（フォーカスを失っていれば見出しへ移す）より前の状態を確かめる
+  let release: () => void = () => {};
+  const held = new Promise<void>((resolve) => (release = resolve));
+  await page.route('**/api/aoba/task-move', async (route) => {
+    await held;
+    await route.continue();
+  });
+  const opener = page.getByRole('button', { name: '親を移す: 自分のクエスト' });
   await dialog.getByRole('button', { name: '移す' }).click();
   await expect(dialog).toBeHidden();
+  // 移した行は、木に出ていない達成目標の下へ移るので、読み直すまで画面から消え、ダイアログを開いた「親を移す」も無くなる。
+  // 閉じたときに戻る先が無いので、Dialog が画面の見出しへフォーカスを移す
+  await expect(opener).toHaveCount(0);
+  await expect(page.getByRole('heading', { level: 1, name: '掲示板' })).toBeFocused();
+  release();
   // 通った後に読み直すので、移した先の達成目標が当たるようになり、その下に出る。もう1つは親なしのまま
   await expect(page.getByRole('button', { name: '配下の無い目標', exact: true })).toBeVisible();
   await expect(taskTitles(page)).toHaveText(['自分のクエスト', '自分の2つ目']);

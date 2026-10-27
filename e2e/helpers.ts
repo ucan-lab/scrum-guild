@@ -199,6 +199,49 @@ export async function createWorkspace(page: Page, name: string, vocabulary: 'gam
   await expect(page).toHaveTitle(`${backlog}・${name} - Scrum Guild`);
 }
 
+// ダイアログと引き出しのフォーカスの決まりを確かめる。opener を押すと modal が開いて中にフォーカスが入り、Esc で閉じ、
+// 閉じたらフォーカスが returnTo（無ければ opener）にある。空振りしないよう、開く前に modal が見えていないことから確かめ、
+// どの段も待ってから確かめる（e2e/modal-focus.test.ts が、壊れたダイアログでそれぞれの段が落ちることを確かめる）。
+// press を渡すと、opener にフォーカスを置いてそのキーで開く（キーボードだけで開く確かめ）。
+// whileOpen は、開いている間に足して確かめるもの。timeout は各段の待ち（既定は expect の既定）
+export async function expectModalFocus(
+  page: Page,
+  {
+    opener,
+    modal,
+    returnTo,
+    press,
+    whileOpen,
+    timeout,
+  }: {
+    opener: Locator;
+    modal: Locator;
+    returnTo?: Locator;
+    press?: string;
+    whileOpen?: () => Promise<void>;
+    timeout?: number;
+  },
+): Promise<void> {
+  await expect(modal, '開く前からモーダルが見えている').toBeHidden({ timeout });
+  if (press === undefined) {
+    await opener.click({ timeout });
+  } else {
+    await opener.focus({ timeout });
+    await page.keyboard.press(press);
+  }
+  await expect(modal, 'モーダルが開かない').toBeVisible({ timeout });
+  await expect
+    .poll(() => modal.evaluate((element) => element.contains(document.activeElement)), {
+      message: 'モーダルの中にフォーカスが入らない',
+      timeout,
+    })
+    .toBe(true);
+  await whileOpen?.();
+  await page.keyboard.press('Escape');
+  await expect(modal, 'Esc で閉じない').toBeHidden({ timeout });
+  await expect(returnTo ?? opener, '閉じたらフォーカスが戻らない').toBeFocused({ timeout });
+}
+
 // 行の先頭のつまみ（handle）をマウスで押し、row の上端寄り（top）、下端寄り（bottom）、真ん中（middle）まで動かして離す。
 // 離す直前に beforeRelease を呼ぶので、落とす位置の印（線か囲み）を確かめられる。
 // Playwright の mouse は Chromium のネイティブのドラッグ（dragstart、dragover、drop）を起こす

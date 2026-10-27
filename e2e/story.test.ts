@@ -6,7 +6,7 @@ import { storyGet } from '../src/shared/operations/story/story-get.ts';
 import { backlogTree } from '../src/shared/operations/task/backlog-tree.ts';
 import { taskCreate } from '../src/shared/operations/task/task-create.ts';
 import { workspaceInfo } from '../src/shared/operations/workspace/workspace.ts';
-import { createWorkspace, signIn, watchViolations } from './helpers.ts';
+import { createWorkspace, expectModalFocus, signIn, watchViolations } from './helpers.ts';
 import { failOperation, rewriteOperation, routeOperation } from './operations.ts';
 
 test.use({ timezoneId: 'Asia/Tokyo' });
@@ -105,32 +105,32 @@ test('スクラムの言葉: 開閉は caret のボタンだけが受け持ち�
   await expect(caret).toHaveAccessibleName('請求の流れを整えるを閉じる');
   await expect(caret).toHaveAttribute('aria-controls', (await body.getAttribute('id')) ?? '');
 
-  // 閉じたら、開いたボタンへフォーカスが戻る（close の event は遅れて届くので、戻るのを待ってから次の操作をする）
-  async function closeBackTo(opener: Locator): Promise<void> {
-    await page.keyboard.press('Escape');
-    await expect(page.locator('dialog[open]')).toHaveCount(0);
-    await expect(opener).toBeFocused();
-  }
+  // 開くと中にフォーカスが入り、Esc で閉じたら、開いたボタンへフォーカスが戻る（close の event は遅れて届くので、
+  // 戻るのを待ってから次の操作をする）
+  const storyDialog = page.getByRole('dialog', { name: 'ストーリー' });
+  const taskDialog = page.getByRole('dialog', { name: '起票' });
 
   // 題を押すとダイアログが開く。行は開閉しない
-  await title.click();
-  await expect(page.getByRole('dialog', { name: 'ストーリー' })).toBeVisible();
-  await expect(body).toBeVisible();
-  await closeBackTo(title);
+  await expectModalFocus(page, {
+    opener: title,
+    modal: storyDialog,
+    whileOpen: () => expect(body).toBeVisible(),
+  });
 
   // キーボード（Enter と Space）。行は開閉しない
   for (const key of ['Enter', ' ']) {
-    await addTask.focus();
-    await page.keyboard.press(key);
-    await expect(page.getByRole('dialog', { name: '起票' })).toBeVisible();
-    await expect(caret).toHaveAttribute('aria-expanded', 'true');
-    await closeBackTo(addTask);
-
-    await title.focus();
-    await page.keyboard.press(key);
-    await expect(page.getByRole('dialog', { name: 'ストーリー' })).toBeVisible();
-    await expect(caret).toHaveAttribute('aria-expanded', 'true');
-    await closeBackTo(title);
+    await expectModalFocus(page, {
+      opener: addTask,
+      modal: taskDialog,
+      press: key,
+      whileOpen: () => expect(caret).toHaveAttribute('aria-expanded', 'true'),
+    });
+    await expectModalFocus(page, {
+      opener: title,
+      modal: storyDialog,
+      press: key,
+      whileOpen: () => expect(caret).toHaveAttribute('aria-expanded', 'true'),
+    });
   }
 
   // caret のボタンで開閉する（クリックも Enter も Space も）。読み上げの名前は開閉で替わる

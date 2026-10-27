@@ -12,7 +12,7 @@ import { taskHistory } from '../src/shared/operations/task/task-history.ts';
 import { taskUpdate } from '../src/shared/operations/task/task-update.ts';
 import { memberList } from '../src/shared/operations/workspace/member-list.ts';
 import { workspaceInfo } from '../src/shared/operations/workspace/workspace.ts';
-import { createWorkspace, signIn, watchViolations } from './helpers.ts';
+import { createWorkspace, expectModalFocus, signIn, watchViolations } from './helpers.ts';
 import { failOperation, mockOperation, rewriteOperation, routeOperation } from './operations.ts';
 
 // 組織の中の操作の slug。このファイルはあおば開発だけを使う
@@ -122,12 +122,12 @@ test('開く → 属性を直す → 本文に script を含む Markdown を書�
   await expect(page).not.toHaveURL(/\?task=/);
   await expect(row.getByRole('link', { name: '見積もりを送って確かめる' })).toBeFocused();
 
-  // 開き直すと保存した値が出る。Esc で閉じる（書きかけが無いので確かめない）
-  await row.getByRole('link', { name: '見積もりを送って確かめる' }).click();
-  await expect(drawer.locator('.doc-box').getByRole('heading', { name: '手順' })).toBeVisible();
-  await page.keyboard.press('Escape');
-  await expect(drawer).toBeHidden();
-  await expect(row.getByRole('link', { name: '見積もりを送って確かめる' })).toBeFocused();
+  // 開き直すと保存した値が出る。中にフォーカスが入り、Esc で閉じる（書きかけが無いので確かめない）。開いた行のリンクへ戻る
+  await expectModalFocus(page, {
+    opener: row.getByRole('link', { name: '見積もりを送って確かめる' }),
+    modal: drawer,
+    whileOpen: () => expect(drawer.locator('.doc-box').getByRole('heading', { name: '手順' })).toBeVisible(),
+  });
 
   // 削除は確認を挟む。やめると残り、削除すると引き出しが閉じて、木から消える
   await row.getByRole('link', { name: '見積もりを送って確かめる' }).click();
