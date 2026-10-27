@@ -267,7 +267,7 @@ Artifact ツールが無い環境（クラウドのセッション）では、�
 問いごとに推奨を先頭に置き、説明資料のどの節を見ればよいかを問いに書く。1 回に 4 問まで。
 答えで直すことが出たら、手順 3 に戻って 1 件 1 コミットで直し、手順 6 で説明資料を出し直す。
 
-マージの扱いを聞く前に、PR のタイトルと本文に、GitHub が閉じる合図に読む語（`close`、`closes`、`closed`、`fix`、`fixes`、`fixed`、`resolve`、`resolves`、`resolved` に `#<番号>` が続く形）が無いかを確かめる（`gh api "repos/{owner}/{repo}/pulls/<number>" --jq '{title, body}'`）。あれば `Refs #<番号>` に書き換えてから聞く（`gh api -X PATCH "repos/{owner}/{repo}/pulls/<number>" --input <JSON のファイル>`）。理由: 決まりの前のスキルで作った PR や人の書いた PR は `Closes` を持ち、そのままマージすると受け入れの前に Issue が閉じ、`accepting.yml` も閉じた Issue には付けない（`docs/development.md` の「Issue の運用」）。
+マージの扱いを聞く前に、PR のタイトルと本文に、GitHub が閉じる合図に読む語（`close`、`closes`、`closed`、`fix`、`fixes`、`fixed`、`resolve`、`resolves`、`resolved` に `#<番号>` が続く形。`Closes: #<番号>` のようにコロンを挟む形も）が無いかを確かめる（`gh api "repos/{owner}/{repo}/pulls/<number>" --jq '{title, body}'`）。あれば `Refs #<番号>` に書き換えてから聞く（`gh api -X PATCH "repos/{owner}/{repo}/pulls/<number>" --input <JSON のファイル>`）。理由: 決まりの前のスキルで作った PR や人の書いた PR は `Closes` を持ち、そのままマージすると受け入れの前に Issue が閉じ、`accepting.yml` も閉じた Issue には付けない（`docs/development.md` の「Issue の運用」）。
 
 判断事項に答えが出たら（無ければすぐに）、マージの扱いを `AskUserQuestion` で聞く。選択肢は手順 10 の確かめの結果で変える。
 
