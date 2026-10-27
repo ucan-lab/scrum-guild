@@ -314,6 +314,29 @@ test('広げると aria-modal が外れ、左のメニューを押せる。広�
   await expect(drawer).toHaveAttribute('aria-modal', 'true');
 });
 
+test('スクロールした先の行のリンクで開いても、木のスクロールの位置は動かず、Esc で閉じると開いた行のリンクへ戻る', async ({
+  page,
+}) => {
+  // 低い窓にして、seed のバックログ（あおば開発の受託開発チーム）を縦にスクロールさせる
+  await page.setViewportSize({ width: 1280, height: 480 });
+  await page.goto('/aoba/w/019a0000-0000-7000-8000-000000000401');
+  const link = page.locator('a.entry-title').last();
+  await link.scrollIntoViewIfNeeded();
+  const scrollBefore = await page.evaluate(() => window.scrollY);
+  expect(scrollBefore).toBeGreaterThan(0);
+  // 行のリンクは data-sveltekit-reset="false" で、移っても先頭へ戻さない
+  await link.click();
+  const drawer = page.getByRole('dialog');
+  await expect(drawer).toBeVisible();
+  await expect(page).toHaveURL(/\?task=[0-9a-f-]{36}$/);
+  await expect(drawer.getByRole('heading', { level: 2 })).toBeFocused();
+  expect(await page.evaluate(() => window.scrollY)).toBe(scrollBefore);
+  await page.keyboard.press('Escape');
+  await expect(drawer).toBeHidden();
+  await expect(link).toBeFocused();
+  expect(await page.evaluate(() => window.scrollY)).toBe(scrollBefore);
+});
+
 test('存在しないタスクの ID で開くと、トーストで知らせて閉じる', async ({ page }) => {
   await createWorkspace(page, '見つからないパーティ', 'game');
   const url = new URL(page.url());
