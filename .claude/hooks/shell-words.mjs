@@ -656,17 +656,20 @@ function takesValueInEnv(word) {
 // arch だけが値を取るフラグ（-arch arm64、-e NAME=値）。-d は PREFIX_FLAGS_WITH_VALUE にある
 const ARCH_FLAGS_WITH_VALUE = new Set(['-arch', '-e']);
 
-// script の値を取るフラグ（-F、-t、-T と、util-linux の -c）。-qc "cmd" のようにまとめた形では、これ以降は値の一部。
+// script の値を取るフラグ（BSD の -F、-t、-T と、util-linux の -c、-I、-O、-B、-E、-m、-o）。-qc "cmd" のようにまとめた形では、これ以降は値の一部。
+// util-linux の -t は値を連結の形（-t2）でだけ取るので、次の語が - で始まれば値にしない（script -t -c "cmd"）。
 // { next, value, command } の next は値が次の語か、value は連結した値、command は -c（--command）の値か。値を取らなければ null
-const SCRIPT_SHORT_FLAGS_WITH_VALUE = 'FtTc';
-function scriptFlag(word) {
+const SCRIPT_SHORT_FLAGS_WITH_VALUE = 'FtTcIOBEmo';
+function scriptFlag(word, following) {
   if (word === '--command') return { next: true, command: true };
   if (word.startsWith('--command=')) return { next: false, value: word.slice('--command='.length), command: true };
   if (!/^-[^-]/.test(word)) return null;
   for (let k = 1; k < word.length; k++) {
     if (!SCRIPT_SHORT_FLAGS_WITH_VALUE.includes(word[k])) continue;
     const command = word[k] === 'c';
-    return k + 1 === word.length ? { next: true, command } : { next: false, value: word.slice(k + 1), command };
+    if (k + 1 < word.length) return { next: false, value: word.slice(k + 1), command };
+    if (word[k] === 't' && (following === undefined || following.startsWith('-'))) return null;
+    return { next: true, command };
   }
   return null;
 }
@@ -684,7 +687,7 @@ function scanCommand(words) {
     if (w === '' || isAssignment(w)) continue;
     if (w.startsWith('-')) {
       if (previous === 'script') {
-        const flag = scriptFlag(w);
+        const flag = scriptFlag(w, words[i + 1]);
         const value = flag?.next ? words[i + 1] : flag?.value;
         if (flag?.command && value !== undefined) commands.push(value);
         if (flag?.next) i++;

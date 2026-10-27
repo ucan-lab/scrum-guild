@@ -786,6 +786,9 @@ function braceOptions(inner) {
 const GNU_PREFIXED = new Set([
   'gcp', 'gmv', 'gln', 'ginstall', 'grm', 'gsed', 'gdd', 'gtee', 'gtruncate', 'gshred', 'gtouch',
   'gcat', 'ghead', 'gtail', 'ggrep', 'gegrep', 'gfgrep', 'gawk', 'gsort', 'guniq', 'gwc', 'gcut', 'gtr', 'god', 'gbase64',
+  'gtar', 'gfind', 'gpatch', 'gunlink',
+  // 引数を実行しない道具（NON_EXECUTING）も g を外して引く
+  'greadlink', 'grealpath', 'gbasename', 'gdirname', 'gls', 'gstat',
 ]);
 const MULTI_ARG_WRITERS = new Set(['tee', 'rm', 'truncate', 'unlink', 'shred', 'srm', 'sponge', 'ed', 'ex', 'patch', 'touch']);
 // コピーの道具。宛先は writesTo が、元は judgeSecretAccess が見る
@@ -797,6 +800,7 @@ const SHORT_FLAGS_WITH_VALUE = 'Smgo';
 // 値を取る長いオプション。GNU は一意な省略形（--suf）も受け付ける
 const LONG_FLAGS_WITH_VALUE = ['suffix', 'mode', 'owner', 'group', 'strip-program', 'sparse', 'no-preserve'];
 const FIND_ACTIONS = new Set(['-delete', '-exec', '-execdir', '-ok', '-okdir']);
+const TOUCH_FLAGS_WITH_VALUE = new Set(['-r', '-d', '-t', '--reference', '--date']);
 // find の書き込み先を値に取るアクション（-fprintf は値の次に書式を取る）
 const FIND_OUTPUTS = new Set(['-fprint', '-fprint0', '-fprintf', '-fls']);
 
@@ -830,7 +834,10 @@ function tarArchives(args) {
     if (a === '--') break;
     if (a === '--file') result.push(args[++i] ?? '');
     else if (a.startsWith('--file=')) result.push(a.slice('--file='.length));
-    else if (/^-[^-]/.test(a) || (i === 0 && /^[a-zA-Z]+$/.test(a))) {
+    else if (i === 0 && /^[a-zA-Z]+$/.test(a)) {
+      // 古い形は、f の位置を問わず次の語がアーカイブ（tar cfz x.tgz y、tar cvfz x.tgz y）
+      if (a.includes('f')) result.push(args[++i] ?? '');
+    } else if (/^-[^-]/.test(a)) {
       const at = a.indexOf('f');
       if (at === -1) continue;
       result.push(at === a.length - 1 ? (args[++i] ?? '') : a.slice(at + 1));
@@ -890,6 +897,8 @@ function writesTo(matches, tool, args, words, { anyOperand = false, intoDirector
   if (['sed', 'perl'].includes(tool) && args.some((a) => /^-[a-zA-Z]*i|^--in-place/.test(a))) {
     return pos.some(matches);
   }
+  // touch の -r、-d、-t の値は、時刻を読むファイルか時刻で、書き込み先ではない（touch -r .claude/hooks/x docs/new.md）
+  if (tool === 'touch') return positionals(args, TOUCH_FLAGS_WITH_VALUE).some(matches);
   if (MULTI_ARG_WRITERS.has(tool)) return pos.some(matches);
   if (COPY_TOOLS.has(tool)) {
     const target = TARGET_DIRECTORY_TOOLS.has(tool) ? targetDirectoryOf(args) : null;
@@ -921,7 +930,15 @@ function writesTo(matches, tool, args, words, { anyOperand = false, intoDirector
     return anyOperand && args.some((a) => FIND_ACTIONS.has(a)) && args.some(matches);
   }
   if (tool === 'git') {
-    return args.some((a, j) => (a.startsWith('--output=') && matches(a.slice('--output='.length))) || (a === '--output' && matches(args[j + 1] ?? '')));
+    // git archive の -o と git format-patch の -o（出力のディレクトリ）も、値を書き込み先として見る
+    const sub = positionals(args, GIT_FLAGS_WITH_VALUE)[0];
+    const short = sub === 'archive' || sub === 'format-patch';
+    return args.some(
+      (a, j) =>
+        (/^--output(-directory)?=/.test(a) && matches(a.slice(a.indexOf('=') + 1))) ||
+        ((a === '--output' || a === '--output-directory' || (short && a === '-o')) && matches(args[j + 1] ?? '')) ||
+        (short && /^-o./.test(a) && matches(a.slice(2))),
+    );
   }
   return false;
 }
@@ -944,19 +961,45 @@ function interpreterWords(tool, args) {
 
 // インタープリタの本文（-e、-c、-r、-p、--eval の値と、-pe のようにまとめた形の値、ヒアドキュメントとヒアストリングの本文）を、
 // 空白、引用符、括弧で区切った語。位置引数のファイル（node --test .claude/hooks/guards.test.mjs）は本文ではないので入れない
-function interpreterBodyWords(args) {
+// 連結した値（perl -e'…'、python3 -c'…'）も本文とする。perl の -E と、php の -R と -B（行ごとと最初に動かすコード）は、その道具でだけ本文を取る
+// （python3 -B は値を取らない）。node の --print も -p と同じ
+const BODY_FLAGS = { perl: 'ecrpE', php: 'ecrpRB' };
+function interpreterBodyWords(tool, args) {
   const bodies = heredocBodies(args);
+  const flags = BODY_FLAGS[tool] ?? 'ecrp';
   for (let i = 0; i < args.length; i++) {
-    if (/^-[a-zA-Z]*[ecrp]$|^--eval$/.test(args[i]) && args[i + 1] !== undefined) bodies.push(args[i + 1]);
-    else if (args[i].startsWith('--eval=')) bodies.push(args[i].slice('--eval='.length));
+    const a = args[i];
+    const long = /^--(eval|print)(=([\s\S]*))?$/.exec(a);
+    if (long) {
+      if (long[2] !== undefined) bodies.push(long[3]);
+      else if (args[i + 1] !== undefined) bodies.push(args[i + 1]);
+      continue;
+    }
+    if (!/^-[a-zA-Z]/.test(a)) continue;
+    const at = [...a].findIndex((c, k) => k > 0 && flags.includes(c));
+    if (at === -1) continue;
+    // 最初の本文のフラグより後ろが連結した値。-pe 'code' のように文字だけの語が本文のフラグで終われば、次の語も本文とする
+    if (at + 1 < a.length) bodies.push(a.slice(at + 1));
+    if (new RegExp(`^-[a-zA-Z]*[${flags}]$`).test(a) && args[i + 1] !== undefined) bodies.push(args[i + 1]);
   }
   return bodies.flatMap((b) => b.split(CODE_SEPARATORS).filter(Boolean));
 }
 
+// fish の -c のほかに中身を Bash のコマンドとして読む値（--command、--command=、-C、--init-command、--init-command=）
+function fishCommands(args) {
+  const found = [];
+  for (let i = 0; i < args.length; i++) {
+    const long = /^--(command|init-command)(=([\s\S]*))?$/.exec(args[i]);
+    if (long) found.push(long[2] === undefined ? (args[++i] ?? '') : long[3]);
+    else if (args[i] === '-C') found.push(args[++i] ?? '');
+  }
+  return found;
+}
+
 // 本文の中の wrangler（python3 -c 'os.system("wrangler deploy")'）と守る先（writeFileSync(".claude/settings.json", …)）には確認を挟む。
 // 本文の中のコマンドの引数（--remote など）は読めないので、止めずに人が確かめる
-function judgeInterpreterBody(args) {
-  const words = interpreterBodyWords(args);
+function judgeInterpreterBody(tool, args) {
+  const words = interpreterBodyWords(tool, args);
   if (words.some((w) => isWrangler(w) || isCfWrangler(w))) {
     return [ASK, 'インタープリタの本文から wrangler を動かすと、本番に触るかを判定できない。人が確かめる'];
   }
@@ -1382,7 +1425,7 @@ function judgeSegment(words, ctx) {
     else if (!isReader || xargsReadsFile(words.slice(xargs + 1, ci))) results.push([ASK, XARGS_REASON]);
   }
 
-  if (INTERPRETERS.has(tool)) results.push(judgeInterpreterBody(args));
+  if (INTERPRETERS.has(tool)) results.push(judgeInterpreterBody(tool, args));
   if (tool === 'git') {
     // 道具の前の代入と、前の区切りの export などで GIT_DIR か GIT_WORK_TREE を設定した後（ctx.env、judgeBash が積む）は、git が別の作業コピーを見る。
     // 道具の前の代入は、経由先に掛け直したとき（pnpm exec env GIT_DIR=x git）にも見えるよう語で見る
@@ -1397,6 +1440,7 @@ function judgeSegment(words, ctx) {
     // bash -c "..."、bash -lc "..."、bash <<< "..."、bash <<EOF の中身も同じ規則で見る
     const c = args.findIndex((a) => /^-[a-zA-Z]*c[a-zA-Z]*$/.test(a));
     if (c !== -1 && args[c + 1]) results.push(judgeBash(args[c + 1], nextCtx));
+    if (tool === 'fish') for (const body of fishCommands(args)) results.push(judgeBash(body, nextCtx));
     for (const body of heredocScripts(args)) results.push(judgeBash(body, nextCtx));
   }
   return results.filter(Boolean);

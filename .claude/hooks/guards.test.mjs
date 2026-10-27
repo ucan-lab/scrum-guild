@@ -214,6 +214,9 @@ describe('shell-words', () => {
     assert.equal(toolOf('script -q /dev/null cp x y'), 'cp');
     assert.equal(toolOf('script -F pipe -t 0 -T fmt log cp x y'), 'cp');
     assert.equal(toolOf('script -qc "git commit -m y"'), undefined);
+    assert.equal(toolOf('script -t -q /dev/null cp x y'), 'cp');
+    assert.equal(toolOf('script -I in.log -O out.log -B io.log -E never -m classic -o 100 log cp x y'), 'cp');
+    assert.deepEqual(prefixCommands(splitSegments('script -t -c "git commit -m y" /dev/null')[0]), ['git commit -m y']);
     assert.deepEqual(prefixCommands(splitSegments('script -qc "git commit -m y" /dev/null')[0]), ['git commit -m y']);
     assert.deepEqual(prefixCommands(splitSegments('script --command=ls')[0]), ['ls']);
     assert.deepEqual(prefixCommands(splitSegments('script -q /dev/null ls')[0]), []);
@@ -825,6 +828,13 @@ describe('bash-rules: 止める', () => {
     "script -qc 'wrangler deploy'",
     'script -q /dev/null wrangler deploy',
     'arch -arm64 npx wrangler deploy',
+    "fish --command 'wrangler deploy'",
+    "fish -C 'wrangler deploy'",
+    // git archive の -o の値と、g を外して引く道具
+    'git archive -o .dev.vars HEAD',
+    'git archive --output=.env HEAD',
+    'gtar -cf .dev.vars /dev/null',
+    'gfind . -fprint .dev.vars',
   ]) {
     test(command, () => assert.equal(decision(command), 'deny'));
   }
@@ -835,7 +845,21 @@ describe('bash-rules: 止める', () => {
     assert.equal(decision('script --command="git commit -m y" /dev/null', 'main'), 'deny');
     assert.equal(decision('script -q /dev/null git commit -m y', 'main'), 'deny');
     assert.equal(decision("ksh -c 'git commit -m y'", 'main'), 'deny');
+    // util-linux の -t は連結の形でだけ値を取り、-I、-O などは値を取る
+    assert.equal(decision('script -t -c "git commit -m y" /dev/null', 'main'), 'deny');
+    assert.equal(decision('script -t2 -c "git commit -m y"', 'main'), 'deny');
+    assert.equal(decision('script -I in.log -O out.log -c "git commit -m y"', 'main'), 'deny');
+    assert.equal(decision('script -B io.log -E never -m classic -o 100 -c "git commit -m y"', 'main'), 'deny');
+    // fish の --command、-C、--init-command
+    assert.equal(decision("fish --command 'git commit -m y'", 'main'), 'deny');
+    assert.equal(decision("fish --command='git commit -m y'", 'main'), 'deny');
+    assert.equal(decision("fish -C 'git commit -m y'", 'main'), 'deny');
+    assert.equal(decision("fish --init-command 'git commit -m y'", 'main'), 'deny');
+    assert.equal(decision("fish --init-command='git commit -m y'", 'main'), 'deny');
     assert.equal(decision('script -qc "git commit -m y"'), 'allow');
+    assert.equal(decision('script -t -c "git commit -m y" /dev/null'), 'allow');
+    assert.equal(decision("fish --command 'git commit -m y'"), 'allow');
+    assert.equal(decision("fish --command 'git status'", 'main'), 'allow');
   });
 
   test('main にいるときの引数なしの push', () => {
@@ -1279,6 +1303,32 @@ describe('bash-rules: 確認を挟む', () => {
     'patch .claude/hooks/guard-bash.mjs fix.patch',
     'scp host:x .claude/hooks/x.mjs',
     'ditto /tmp/x .claude/hooks/x.mjs',
+    // 古い形の tar は、f の位置を問わず次の語がアーカイブ
+    'tar cfz .claude/hooks/x.tgz y',
+    'tar cvfz .claude/hooks/x.tgz y',
+    // g を外して引く道具
+    'gtar -cf .claude/hooks/x /dev/null',
+    'gfind . -fprint .claude/hooks/x',
+    'gpatch .claude/hooks/x.mjs fix.patch',
+    'gunlink .githooks/pre-commit',
+    // 連結した値の本文と、perl の -E、php の -R と -B、node の --print
+    `perl -e'system("wrangler deploy")'`,
+    `python3 -c'import os; os.system("wrangler deploy")'`,
+    `php -r'system("wrangler deploy");'`,
+    `ruby -e'system("wrangler deploy")'`,
+    `node -e'require("fs").writeFileSync(".claude/settings.json","x")'`,
+    `perl -E 'system("wrangler deploy")'`,
+    `php -R 'system("wrangler deploy");'`,
+    `php -B 'file_put_contents(".claude/hooks/x", "x");'`,
+    `node --print 'require("child_process").execSync("wrangler deploy")'`,
+    `node --print='require("fs").rmSync(".githooks/pre-commit")'`,
+    // 守る名前を読むだけの本文も確認を挟む（止めすぎとして受け入れる）
+    `node -e "import('./.claude/hooks/x.mjs')"`,
+    // git archive の -o、git format-patch の -o
+    'git archive -o .claude/hooks/x HEAD',
+    'git archive -o.claude/hooks/x HEAD',
+    'git format-patch -o .claude/hooks HEAD~1',
+    'git format-patch --output-directory=.githooks HEAD~1',
   ]) {
     test(command, () => assert.equal(decision(command), 'ask'));
   }
@@ -2067,6 +2117,28 @@ describe('bash-rules: 通す', () => {
     'find . -fprint /tmp/list',
     'git diff --output /tmp/x.diff',
     'touch docs/x.md',
+    // touch の -r、-d、-t の値は書き込み先ではない
+    'touch -r .claude/hooks/x docs/new.md',
+    'touch --reference .claude/hooks/x docs/new.md',
+    'touch --reference=.claude/hooks/x docs/new.md',
+    'touch -d 2026-01-01 docs/new.md',
+    // g を外して引く引数を実行しない道具と、書き込み先が守る先でない g 付きの道具
+    'greadlink .dev.vars',
+    'grealpath .env',
+    'gls -la .dev.vars',
+    'gstat .dev.vars',
+    'gtar -cf /tmp/x.tar docs',
+    'gfind . -name .dev.vars',
+    // 古い形の tar の、守る先でないアーカイブ
+    'tar cfz /tmp/x.tgz docs',
+    // 本文に守る名前も wrangler も無い、連結した値と足したフラグ
+    `perl -e'print 1'`,
+    `php -r'echo 1;'`,
+    `node --print '1 + 1'`,
+    'python3 -B scripts/x.py',
+    // git archive と format-patch の、守る先でない出力
+    'git archive -o /tmp/x.tar HEAD',
+    'git format-patch -o /tmp/patches HEAD~1',
   ]) {
     test(command, () => assert.equal(decision(command), 'allow'));
   }
