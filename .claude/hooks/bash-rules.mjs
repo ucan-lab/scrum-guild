@@ -630,6 +630,7 @@ const EXEC_FLAGS_WITH_VALUE = new Set(['-p', '--package']);
 
 // 道具ごとの読み方。commandOf は組み込みのコマンドの正規の名前（無ければ undefined）、flags は長いフラグと短いフラグ1つの表、
 // short と shortStyle は短いフラグのまとめの読み方（clap か nopt）、longName は長いフラグの前置きを正規の名前に直す関数、
+// strings は - で始まる次の語を値に取らないフラグ（skipsFlagValue）、
 // dirAnywhere は名前の後ろの場所のフラグもいつも読むか（npm だけ。pnpm、yarn、bun はスクリプトの名前の後ろのフラグをスクリプトに渡すが、
 // 組み込みのコマンドの後ろのものは読む）、exec は後ろを経由先のコマンドとして動かすコマンド、shell は後ろの文字列をシェルで動かすコマンド、
 // changes は依存を変えるコマンド、runsMissing は組み込みにもスクリプトにも無い名前を PATH のコマンドとして動かすか、
@@ -658,6 +659,7 @@ const PACKAGE_MANAGERS = {
     short: NPM_SHORT,
     shortStyle: 'nopt',
     longName: npmLongName,
+    strings: new Set(['--call', '-c', '--message', '-m']),
     calls: true,
     dirAnywhere: true,
     exec: ['exec'],
@@ -714,6 +716,13 @@ const MAX_READINGS = 8;
 // dir、attachedDir、call は { value, valueAt }。attachedDir は npm の -C<dir> の連結の形（npm 11.20 は今の場所で動かすが、版の違いを避けて
 // 連結の先でも判定する）、unknown は表に無いフラグ、unreadable はまとめの途中の場所か call のフラグ（npm -Cls）。
 // exec が true のとき（経由先のコマンドの前）は --package と -p も値を取るものとして読む
+// spec.strings は nopt の型が String だけの npm のフラグ（--call、--message と短い形）。nopt はその次の語が -x、--x か -- なら値に取らず、
+// 値を空にして次の語をフラグとして読む（nopt-lib.js の isTypeDef(argType, StringType) の枝。npm exec -m -c '…' の -c は --call）。
+// --prefix（path）、--workspace（String と Array）、--location（列挙）は - で始まる次の語も値に取るので当たらない
+function skipsFlagValue(spec, name, next) {
+  return Boolean(spec.strings?.has(name)) && next !== undefined && /^(-{1,2}[^-]|-{2,}$)/.test(next);
+}
+
 function readFlag(spec, args, i, exec = false) {
   const a = args[i];
   const eq = a.indexOf('=');
@@ -723,6 +732,7 @@ function readFlag(spec, args, i, exec = false) {
   const kind = exec && EXEC_FLAGS_WITH_VALUE.has(raw) ? 'value' : (spec.flags[name] ?? (raw.length === 2 && !long ? spec.short?.[raw[1]] : undefined));
   if (kind === 'shell' || kind === 'flag') return { end: i, shell: kind === 'shell' };
   if (kind) {
+    if (eq === -1 && skipsFlagValue(spec, name, args[i + 1])) return { end: i, ...(kind === 'value' ? {} : { [kind]: { value: '', valueAt: i } }) };
     const value = eq === -1 ? { value: args[i + 1], valueAt: i + 1 } : { value: a.slice(eq + 1), valueAt: i };
     return { end: eq === -1 ? i + 1 : i, [kind]: value };
   }
@@ -759,6 +769,7 @@ function shortFlags(spec, args, i) {
   const last = chars.at(-1);
   if ([...chars.slice(0, -1)].some(isTarget)) return { end: i, unreadable: true };
   if (spec.short[last] === 'flag') return { end: i };
+  if (skipsFlagValue(spec, `-${last}`, args[i + 1])) return { end: i, ...(spec.short[last] === 'call' ? { call: { value: '', valueAt: i } } : {}) };
   const { end, value } = valueOf('');
   return { end, ...(spec.short[last] === 'dir' ? { dir: value } : spec.short[last] === 'call' ? { call: value } : {}) };
 }
@@ -858,6 +869,126 @@ function configuredCalls(words, ci) {
 // 判定の並びを返す
 function judgePackageManager(manager, args, prefix, ctx) {
   const spec = PACKAGE_MANAGERS[manager];
+  if (spec.shortStyle === 'nopt') {
+    const argvs = noptArgvs(spec, args);
+    if (argvs.length > MAX_READINGS) return [[ASK, MANY_READINGS_REASON]];
+    if (argvs[0] !== args) return argvs.flatMap((argv) => judgeArgs(spec, argv, prefix, ctx));
+  }
+  return judgeArgs(spec, args, prefix, ctx);
+}
+
+// nopt（npm 11.20 の node_modules/nopt/lib/nopt-lib.js の parse と resolveShort）の読み方に合わせ、npm の語の並びを直したものを返す。
+// 直すところが無ければ [args]。-- の前の語について次を直す（--- のような - だけの語も -- として読み終える）。
+// - nopt は先頭の - を全部外して名前を引くので、- を2つ以上重ねた名前は、1文字なら短いフラグ（--c、---c は -c）、長い名前（all、ca、call）
+//   でなく全部の文字が1文字のフラグなら短いフラグのまとめ（--sc は -sc）、ほかは長いフラグ（---call は --call）として読む。
+//   まとめに読める名前が表のフラグの前置きにも当たれば（--cal）、nopt はまとめとして読むが、長いフラグとしての読み方も残す
+// - nopt は = の形を2語に分けてから読むので、値が - で始まる語（--message=-c、-m=--call=…）は、値を取らないフラグか
+//   String の型のフラグ（spec.strings）なら値をフラグとして読み直す。表の String でない値のフラグ（--prefix、-w、-L、-C）は値のまま、
+//   表に無いフラグ（--tag、--mess）は型が分からないので両方で読む
+// - nopt は String でも Boolean でもない型のフラグ（--prefix、-w、-L、-C、表に無い --otp、--userconfig）の次の語を、- で始まっても
+//   値に取る（- だけの語を除く）。表の値のフラグの次の語は、= を含んでも分けずに値のまま残す（npm -L -y=-C test の -y=-C は -L の値）。
+//   表に無いフラグの次の - で始まる語は、値に取る形（--otp=-C の1語につなぎ、後ろの読み方がフラグと取り違えないようにする）と
+//   取らない形の両方で読む
+// 読み方が MAX_READINGS を超えれば、そこで打ち切った並び（MAX_READINGS より多い）を返す
+function noptArgvs(spec, args) {
+  const done = [];
+  let changed = false;
+  // 読みかけの並び { argv, i }。分かれた並びも同じ語から1つずつ読むので、語の数に比例する手間で済む
+  const queue = [{ argv: [], i: 0 }];
+  const pieces = args.map((_, i) => sliceWords(args, i, i + 1));
+  while (queue.length > 0) {
+    if (done.length + queue.length > MAX_READINGS) return [...done, ...queue.map(({ argv }) => argv)];
+    const { argv, i } = queue.shift();
+    if (i >= args.length) {
+      done.push(argv);
+      continue;
+    }
+    const w = args[i];
+    const piece = pieces[i];
+    const next = args[i + 1];
+    if (/^-{2,}$/.test(w)) {
+      changed ||= w !== '--';
+      done.push([...argv, ['--'], sliceWords(args, i + 1)]);
+      continue;
+    }
+    if (!/^-./.test(w)) {
+      queue.push({ argv: [...argv, piece], i: i + 1 });
+      continue;
+    }
+    const eq = w.indexOf('=');
+    const flag = eq === -1 ? w : w.slice(0, eq);
+    const value = eq === -1 ? undefined : w.slice(eq + 1);
+    for (const name of noptNames(spec, flag)) {
+      const same = name === flag ? piece : [eq === -1 ? name : `${name}=${value}`];
+      changed ||= same !== piece;
+      const type = noptType(spec, name);
+      if (value !== undefined) {
+        // = の値が - で始まれば、値を取らないフラグと String の型のフラグは値をフラグとして読み直す
+        const reread = /^-{1,2}[^-]/.test(value) && type !== 'value';
+        if (reread) changed = true;
+        if (reread) queue.push({ argv: [...argv, [name], [value]], i: i + 1 });
+        if (!reread || type === 'unknown') queue.push({ argv: [...argv, same], i: i + 1 });
+        continue;
+      }
+      const dashed = next !== undefined && next.startsWith('-') && !/^-{2,}$/.test(next);
+      if (dashed && type === 'value') queue.push({ argv: [...argv, same, pieces[i + 1]], i: i + 2 });
+      else queue.push({ argv: [...argv, same], i: i + 1 });
+      if (dashed && type === 'unknown') {
+        changed = true;
+        queue.push({ argv: [...argv, [`${name}=${next}`]], i: i + 2 });
+      }
+    }
+  }
+  return changed ? done.map((argv) => concatWords(...argv)) : [args];
+}
+
+// nopt の resolveShort で、すべての文字が1文字の shorthands でもまとめにしない長い名前（npm 11.20 の設定の名前）
+const NOPT_LONG_NAMES = new Set(['all', 'ca', 'call']);
+// - を2つ以上重ねたフラグ（= の前）を、nopt の読み方で直した名前の候補。- が1つのものはそのまま（readFlag と shortFlags が読む）
+function noptNames(spec, flag) {
+  const key = flag.replace(/^-+/, '');
+  if (flag.length - key.length < 2 || key === '') return [flag];
+  const long = `--${key}`;
+  const bundle = [...key].every((c) => Object.hasOwn(spec.short, c)) && !NOPT_LONG_NAMES.has(key);
+  if (!bundle) return [long];
+  return spec.longName(long) !== long ? [`-${key}`, long] : [`-${key}`];
+}
+
+// npm 11.20 の @npmcli/config の definitions で型が Boolean の設定と、値を取らない形に広がる長い shorthands（silent は --loglevel silent、
+// local は --no-global）。nopt はこれらの次の語を値に取らない（true か false だけは値に取るが、- で始まる語ではない）
+const NPM_BOOLEAN_FLAGS = new Set(
+  [
+    'all', 'allow-same-version', 'audit', 'bin-links', 'browser', 'bypass-2fa', 'color', 'commit-hooks', 'dangerously-allow-all-scripts',
+    'description', 'dev', 'diff-ignore-all-space', 'diff-name-only', 'diff-no-prefix', 'diff-text', 'dry-run', 'engine-strict',
+    'expect-results', 'force', 'foreground-scripts', 'format-package-lock', 'fund', 'git-tag-version', 'global', 'global-style',
+    'if-present', 'ignore-scripts', 'include-staged', 'include-workspace-root', 'include-attestations', 'init-private', 'install-links',
+    'json', 'legacy-bundling', 'legacy-peer-deps', 'link', 'long', 'offline', 'omit-lockfile-registry-resolved', 'optional',
+    'package-lock', 'package-lock-only', 'parseable', 'allow-scripts-pending', 'allow-scripts-pin', 'prefer-dedupe', 'prefer-offline',
+    'prefer-online', 'production', 'progress', 'provenance', 'read-only', 'rebuild-bundle', 'save', 'save-bundle', 'save-dev',
+    'save-exact', 'save-optional', 'save-peer', 'save-prod', 'packages-all', 'shrinkwrap', 'sign-git-commit', 'sign-git-tag',
+    'strict-peer-deps', 'strict-allow-scripts', 'strict-ssl', 'timing', 'unicode', 'update-notifier', 'usage', 'version', 'versions',
+    'workspaces', 'workspaces-update', 'yes',
+    // shorthands
+    'dd', 'ddd', 'quiet', 'silent', 'verbose', 'desc', 'help', 'local', 'no', 'porcelain', 'readonly', 'iwr', 'ws',
+  ].map((name) => `--${name}`),
+);
+
+// nopt がフラグの次の語と = の値をどう読むかの型。reread は - で始まる語を値に取らず、= の値が - で始まればフラグとして読み直すもの
+// （String の型のフラグ、値を取らない短いフラグ、npm の Boolean の設定、--no- で始まるフラグ。nopt は --no- を外して真偽として読む）、
+// value は表の String でない値のフラグ（- で始まる語も値に取る）、unknown は表に無いフラグ（両方で読む）
+function noptType(spec, name) {
+  if (name.startsWith('--')) {
+    const long = spec.longName(name);
+    if (spec.strings.has(long) || /^--no-/i.test(long) || NPM_BOOLEAN_FLAGS.has(long)) return 'reread';
+    return spec.flags[long] ? 'value' : 'unknown';
+  }
+  const kinds = [...name.slice(1)].map((c) => spec.short[c]);
+  if (kinds.some((k) => !k)) return 'unknown';
+  return spec.strings.has(`-${name.at(-1)}`) || ['flag', 'shell'].includes(kinds.at(-1)) ? 'reread' : 'value';
+}
+
+// args を道具の表で読み、名前ごとに判定する（judgePackageManager の本体）
+function judgeArgs(spec, args, prefix, ctx) {
   const base = { dir: ctx.dir, place: ctx.place };
   const anywhere = spec.dirAnywhere ? dirAnywhere(spec, args, 0, base) : undefined;
   const locs = anywhere ?? [base, ...configuredDirs(prefix, base)];
@@ -914,6 +1045,16 @@ function judgeBuiltin(spec, command, args, prefix, ctx, reading) {
     return readings.flatMap((r) => judgeName(spec, args, prefix, ctx, r, command === 'with'));
   }
   if (spec.exec.includes(command)) return judgeExec(spec, args, prefix, ctx, reading);
+  // npm init <初期化子>（create、innit も）は、npm exec と同じく libnpmexec に --call と -c の文字列を渡して動かす
+  // （npm 11.20 の lib/commands/init.js の execCreate）。初期化子の無い npm init は動かさない。
+  // 前の区切りで npm_config_call を設定した後は、npm exec と同じく確認を挟む
+  const called = [];
+  if (spec.calls && command === 'init' && commandPositionals(spec, args, at + 1).length > 0) {
+    if (ctx.env?.[NPM_CALL_VARIABLE]) called.push([ASK, NPM_CALL_SET_REASON]);
+    const calls = npmCalls(spec, args);
+    if (!calls) return [[ASK, UNREADABLE_FLAG_REASON]];
+    called.push(...calls.map((script) => judgeBash(script, { ...ctx, cwd: loc.dir, place: loc.place, depth: ctx.depth + 1 })).filter(Boolean));
+  }
   const rest = sliceWords(args, at + 1);
   // bun exec "<文字列>" は、最初の位置引数をシェルの文字列として動かす（2つ目からは使わない）
   if (spec.shell?.includes(command)) {
@@ -927,13 +1068,16 @@ function judgeBuiltin(spec, command, args, prefix, ctx, reading) {
   // test、start、stop の後ろはスクリプトに渡るので読まない（pnpm test -C sub は今の場所の test）
   const locs = spec.dirAnywhere || PASSES_FLAGS.has(command) ? [loc] : (dirAnywhere(spec, args, at + 1, base) ?? [loc]);
   const name = args[at];
-  return locs.flatMap((l) => {
-    if (SCRIPT_COMMANDS[command]) return judgeScripts(SCRIPT_COMMANDS[command], rest, l, ctx);
-    const lifecycle = lifecycleOf(spec, command, args, at);
-    if (lifecycle) return judgeScripts(lifecycle, [], l, ctx);
-    // ほかの組み込みも、同じ名前の pre と post のスクリプトがあれば見る（止めすぎの側。場所が分からなくても確認は挟まない）
-    return l.dir && ctx.packageDirOf(l.dir) ? judgeScripts([name], rest, l, ctx) : [];
-  });
+  return [
+    ...called,
+    ...locs.flatMap((l) => {
+      if (SCRIPT_COMMANDS[command]) return judgeScripts(SCRIPT_COMMANDS[command], rest, l, ctx);
+      const lifecycle = lifecycleOf(spec, command, args, at);
+      if (lifecycle) return judgeScripts(lifecycle, [], l, ctx);
+      // ほかの組み込みも、同じ名前の pre と post のスクリプトがあれば見る（止めすぎの側。場所が分からなくても確認は挟まない）
+      return l.dir && ctx.packageDirOf(l.dir) ? judgeScripts([name], rest, l, ctx) : [];
+    }),
+  ];
 }
 
 // 組み込みのコマンドが走らせるライフサイクルのスクリプトの名前。走らせなければ undefined
@@ -949,10 +1093,12 @@ function lifecycleOf(spec, command, args, at) {
 
 // exec（pnpm exec、pnpm dlx、npm exec、npm x、yarn exec、bun x）の後ろの経由先を判定する。
 // pnpm の shell-mode（-c、--shell-mode。exec の前でも後ろでも効き、値を取らない）では、位置引数を空白でつないだ文字列をシェルで動かす。
-// npm の --call（-c、一意な前置きの --cal も）の値と、道具の前の npm_config_call= の値もシェルの文字列として動かす（後者は judgeSegment が見る）
+// npm の --call（-c、一意な前置きの --cal も）の値と、道具の前の npm_config_call= の値もシェルの文字列として動かす（後者は judgeSegment が見る）。
+// 同じコマンドの前の区切りで npm_config_call を設定した後（ctx.env、judgeBash が積む）は、値を読まずに確認を挟む
 function judgeExec(spec, args, prefix, ctx, { at, dir, place, shell }) {
   const results = [];
   if (spec.calls) {
+    if (ctx.env?.[NPM_CALL_VARIABLE]) results.push([ASK, NPM_CALL_SET_REASON]);
     const calls = npmCalls(spec, args);
     if (!calls) return [[ASK, UNREADABLE_FLAG_REASON]];
     for (const script of calls) results.push(judgeBash(script, { ...ctx, cwd: dir, place, depth: ctx.depth + 1 }));
@@ -967,6 +1113,91 @@ function judgeExec(spec, args, prefix, ctx, { at, dir, place, shell }) {
     else results.push(...judgeVia(prefix, args, target.at, target, ctx));
   }
   return results.filter(Boolean);
+}
+
+// npx-cli.js（npm 11.20）が npm exec に渡す前に読むフラグの名前（先頭の - を全部外し、= の前まで）。
+// NPX_SHORTHANDS は npm の1文字の shorthands で、npx は = の有無を問わず広げてから読み直す（-m=-c は --message と -c の2語、
+// -d は --loglevel info。p は npx が先に --package に直し、n は取り除くので広げない）。
+// NPX_REMOVED は取り除いたフラグで、= の無い形は次の語も一緒に消す。NPX_OPTS は次の語をいつも値に取る。
+// NPX_SWITCHES は値を取らない（npx の switches のうちよく使うものと、1文字の名前の先の npm の真偽の設定）。
+// NPX_VALUES は - で始まらない次の語を値に取る。どれでもない名前は、npm の真偽の設定かどうかを引かないので、
+// 次の語を値と読む形と読まない形の両方で見る
+const NPX_REMOVED = new Set(['n', 'npm', 'node-arg']);
+const NPX_OPTS = new Set(['package', 'p', 'cache', 'userconfig', 'call', 'c', 'shell']);
+const NPX_SHORTHANDS = {
+  c: ['--call'], C: ['--prefix'], w: ['--workspace'], L: ['--location'], m: ['--message'],
+  d: ['--loglevel', 'info'], q: ['--loglevel', 'warn'], s: ['--loglevel', 'silent'],
+  a: ['--all'], f: ['--force'], g: ['--global'], l: ['--long'], S: ['--save'], B: ['--save-bundle'], D: ['--save-dev'],
+  E: ['--save-exact'], O: ['--save-optional'], P: ['--save-prod'], '?': ['--usage'], H: ['--usage'], h: ['--usage'],
+  v: ['--version'], y: ['--yes'],
+};
+const NPX_SWITCHES = new Set([
+  'no-install', 'quiet', 'version', 'help', 'yes', 'all', 'force', 'global', 'long', 'usage',
+  'save', 'save-bundle', 'save-dev', 'save-exact', 'save-optional', 'save-prod',
+]);
+const NPX_VALUES = new Set(['message', 'workspace', 'location', 'prefix', 'loglevel']);
+function npxFlagKind(key) {
+  if (NPX_REMOVED.has(key)) return 'removed';
+  if (NPX_SWITCHES.has(key)) return 'switch';
+  if (NPX_OPTS.has(key)) return 'opt';
+  return NPX_VALUES.has(key) ? 'value' : 'unknown';
+}
+
+// npx の後ろの語を、npx-cli.js と同じく npm exec に渡す語の並びに直す。最初の位置引数の前に -- を差し込み、-- か位置引数でフラグを読み終える。
+// 取り除いたフラグ（-n foo）は値ごと消し、1文字の名前は NPX_SHORTHANDS で広げる。表に無いフラグで読み方が分かれれば、並びを複数返す。
+// 並びは語の切れ端（sliceWords で切った1語か、広げた語と差し込んだ -- の印の無い1語）の並び
+function npxArgvs(args) {
+  const argvs = [];
+  const walk = (items, start, kept) => {
+    for (let i = start; i < items.length && argvs.length <= MAX_READINGS; i++) {
+      const a = items[i][0];
+      if (a === '--') return void argvs.push([...kept, ...items.slice(i)]);
+      if (!a.startsWith('-')) return void argvs.push([...kept, ['--'], ...items.slice(i)]);
+      const eq = a.indexOf('=');
+      const key = (eq === -1 ? a : a.slice(0, eq)).replace(/^-+/, '');
+      if (key !== 'p' && Object.hasOwn(NPX_SHORTHANDS, key)) {
+        const expanded = [...NPX_SHORTHANDS[key], ...(eq === -1 ? [] : [a.slice(eq + 1)])].map((w) => [w]);
+        items = [...items.slice(0, i), ...expanded, ...items.slice(i + 1)];
+        i--;
+        continue;
+      }
+      const kind = npxFlagKind(key);
+      const next = items[i + 1]?.[0];
+      if (kind === 'removed') {
+        if (eq === -1) i++;
+        continue;
+      }
+      kept = [...kept, items[i]];
+      if (eq !== -1 || kind === 'switch' || next === undefined) continue;
+      if (kind === 'opt' || (kind === 'value' && !next.startsWith('-'))) kept = [...kept, items[++i]];
+      else if (kind === 'unknown' && !next.startsWith('-')) walk(items, i + 2, [...kept, items[i + 1]]);
+    }
+    argvs.push(kept);
+  };
+  walk(
+    args.map((_, i) => sliceWords(args, i, i + 1)),
+    0,
+    [],
+  );
+  return argvs;
+}
+
+// npx と pnpx を、npm exec と pnpm dlx として判定する。args は npx か pnpx の後ろの語、prefix はその前の語。
+// npx は引数を npm exec に渡し、最初の位置引数の前に -- を差し込む（npm 11.20 の bin/npx-cli.js）ので、npx vitest -c x の -c x は
+// vitest の引数で、npm の --call ではない。npxArgvs の並びごとに npm exec <並び> を npm の表で判定する。
+// pnpx は pnpm dlx と同じに動く（pnpm 12.12）ので、pnpm dlx <後ろ> として読む
+function judgeNpx(tool, args, prefix, ctx) {
+  if (tool === 'pnpx') return judgePackageManager('pnpm', concatWords(['dlx'], args), prefix, ctx);
+  const argvs = npxArgvs(args);
+  if (argvs.length > MAX_READINGS) return [[ASK, MANY_READINGS_REASON]];
+  const seen = new Set();
+  return argvs.flatMap((argv) => {
+    const exec = concatWords(['exec'], ...argv);
+    const key = exec.join('\0');
+    if (seen.has(key)) return [];
+    seen.add(key);
+    return judgePackageManager('npm', exec, prefix, ctx);
+  });
 }
 
 // from から後ろの位置引数（フラグとその値を飛ばす。-- の後ろは全部）
@@ -2056,6 +2287,7 @@ function xargsReadsFile(flags) {
 function judgeSegment(words, ctx) {
   const ci = commandIndex(words);
   const results = [];
+  const outer = ctx;
   if (setsWorkersCi(words, ci)) results.push([DENY, WORKERS_CI_REASON]);
   const tool = ci === -1 ? '' : baseName(words[ci]);
   const args = ci === -1 ? [] : sliceWords(words, ci + 1);
@@ -2075,6 +2307,13 @@ function judgeSegment(words, ctx) {
   results.push(...prefixCommands(words).map((script) => judgeBash(script, nextCtx)).filter(Boolean));
   // npm_config_call='…' npx のように、道具の前の代入で npm exec にシェルの文字列を渡す。npx だけなら ci は -1 なので先に見る
   results.push(...configuredCalls(words, ci).map((script) => judgeBash(script, nextCtx)).filter(Boolean));
+  // 前置きとして飛ばした npx と pnpx は、npm exec と pnpm dlx として読む（npx --call='…' だけなら ci は -1 なので先に見る）。
+  // 場所は npx より前の env -C までで決める。npx の後ろの入れ子の npx は、経由先に掛け直したときに見る
+  const npx = prefixes.find((j) => ['npx', 'pnpx'].includes(prefixName(words[j])));
+  if (npx !== undefined) {
+    const npxCtx = { ...outer, ...dirAfterEnv(words, npx, outer.dir, outer.envFrom ?? 0, outer.place) };
+    results.push(...judgeNpx(prefixName(words[npx]), sliceWords(words, npx + 1), sliceWords(words, 0, npx), npxCtx));
+  }
   if (ci === -1) return results;
   // 道具の名前が変数や $(...)、glob で決まると、何を実行するかが分からない（"$(which wrangler)" deploy）
   if (shapeAt(words, ci).includes(DYNAMIC) || expandsAt(words, ci)) results.push([ASK, TOOL_EXPANDS_REASON]);
@@ -2172,6 +2411,11 @@ function switchedBranch(args) {
 // 作業場所の判定を変える環境変数。CDPATH は相対の cd と pushd の行き先を、GIT_DIR と GIT_WORK_TREE は git の作業コピーを変える
 const GIT_LOCATION_VARIABLES = ['GIT_DIR', 'GIT_WORK_TREE'];
 const LOCATION_VARIABLES = ['CDPATH', ...GIT_LOCATION_VARIABLES];
+// npm exec、npm x、npx がシェルの文字列として動かす設定の変数（npm は大文字小文字を区別しない）。前の区切りで設定したものは値を読まない
+const NPM_CALL_VARIABLE = 'npm_config_call';
+const NPM_CALL_MENTION = /(^|[^\w])npm_config_call([^\w]|$)/i;
+const NPM_CALL_SET_REASON =
+  '前の区切りで npm_config_call を設定した（か名前に触れた）後の npm exec、npm x、npx、初期化子を渡した npm init と npm create は、設定したシェルの文字列を動かしうるが、値を判定しない。人が確かめる';
 // 同じコマンドの中で設定した変数の値。値は読まないので、設定されたことだけを表す空でない文字列
 const SET_IN_COMMAND = '(このコマンドの中で設定)';
 
@@ -2188,19 +2432,22 @@ const IN_SHELL_RUNNERS = new Set(['eval', 'source', '.']);
 // once は道具の前の一回限りの代入（GIT_DIR=x git status、CDPATH=x cd src）で、その区切りだけに効く。
 // after はその区切りから後ろに効くもの。設定の書き方は read CDPATH、printf -v CDPATH、for CDPATH in、: ${CDPATH:=x}、cdpath=(x) と多いので、
 // 道具の前の代入を除くどこかの語に名前があれば設定とみなす（単独の代入と export、declare などの引数もこれに当たる）。
-// export、declare などの引数に展開の語（export $(echo GIT_DIR=x)、export $X）があるときと、eval、source、. の後は、全部の名前を設定とみなす
+// export、declare などの引数に展開の語（export $(echo GIT_DIR=x)、export $X）があるときと、eval、source、. の後は、全部の名前を設定とみなす。
+// NPM_CALL_VARIABLE も同じ規則で after に入れる。道具の前の一回限りの代入（npm_config_call='…' npx）は configuredCalls が値を読むので once に入れない
 function variablesSetBy(words, ci) {
   const once = new Set();
   const after = new Set();
   const isPrefix = (i) => ci !== -1 && i < ci && isAssignment(words[i]);
+  const mentionedAfter = (pattern) => words.some((w, i) => !isPrefix(i) && pattern.test(w)) || redirectTargets(words).some((t) => pattern.test(t));
   for (const [name, pattern] of Object.entries(VARIABLE_MENTIONS)) {
     if (words.some((w, i) => isPrefix(i) && w.startsWith(`${name}=`))) once.add(name);
-    if (words.some((w, i) => !isPrefix(i) && pattern.test(w)) || redirectTargets(words).some((t) => pattern.test(t))) after.add(name);
+    if (mentionedAfter(pattern)) after.add(name);
   }
+  if (mentionedAfter(NPM_CALL_MENTION)) after.add(NPM_CALL_VARIABLE);
   if (ci !== -1) {
     const tool = baseName(words[ci]);
     const declaresUnknown = ENV_DECLARERS.has(tool) && words.some((_, i) => i > ci && isUnresolved(words, i));
-    if (declaresUnknown || IN_SHELL_RUNNERS.has(tool)) for (const name of LOCATION_VARIABLES) after.add(name);
+    if (declaresUnknown || IN_SHELL_RUNNERS.has(tool)) for (const name of [...LOCATION_VARIABLES, NPM_CALL_VARIABLE]) after.add(name);
   }
   return { once, after };
 }
