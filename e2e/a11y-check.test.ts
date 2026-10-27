@@ -1,0 +1,95 @@
+// axe の検査の関数（e2e/helpers.ts）と除外の一覧（e2e/ui-exclusions.ts）が空振りしないことを確かめる（#334）。
+// 壊した小さな HTML を page.setContent で置き、違反を拾って落ちることを見る。サーバーには触らない
+import { expect, test } from './fixtures.ts';
+import { excludeKnownViolations, expectNoA11yViolations, findA11yViolations } from './helpers.ts';
+import {
+  isAxeCheck,
+  nonAxeChecks,
+  staleExclusions,
+  uiExclusions,
+  uiScreens,
+  type UiExclusion,
+} from './ui-exclusions.ts';
+
+// aria-label の無いアイコンだけのボタンと、背景との差が足りない文字（#999 と #aaa）
+const BROKEN = `<!doctype html>
+<html lang="ja">
+  <head><title>壊した画面</title></head>
+  <body>
+    <main>
+      <h1>壊した画面</h1>
+      <button type="button" class="icon-only"><svg width="16" height="16" aria-hidden="true"><circle cx="8" cy="8" r="6" /></svg></button>
+      <p class="faint" style="color: #999; background: #aaa">薄い文字</p>
+    </main>
+  </body>
+</html>`;
+
+test('アイコンだけのボタンとコントラストの足りない文字を、違反として拾い、落ちる', async ({ page }) => {
+  await page.setContent(BROKEN);
+  const violations = await findA11yViolations(page);
+  // 要素のセレクタは、axe がその画面で一意に決まる短いものを選ぶ
+  expect(violations.map((violation) => `${violation.rule} ${violation.target}`).sort()).toEqual([
+    'button-name button',
+    'color-contrast p',
+  ]);
+  // 落ちたときの文は、規則、要素、要約を出す
+  await expect(expectNoA11yViolations(page, 'today')).rejects.toThrow(/- button-name: button\n {2}Buttons must/);
+  await expect(expectNoA11yViolations(page, 'today')).rejects.toThrow(/- color-contrast: p\n {2}Elements must/);
+});
+
+test('除外は、その規則の当たった要素だけを外し、当たらなかった除外を拾う', async ({ page }) => {
+  await page.setContent(BROKEN);
+  const violations = await findA11yViolations(page);
+  const hit: UiExclusion = {
+    check: 'button-name',
+    selector: '.icon-only',
+    screen: 'today',
+    reason: '確かめ',
+    issue: 1,
+  };
+  // 同じ要素でも規則が違う除外は外さない
+  const otherRule: UiExclusion = {
+    check: 'image-alt',
+    selector: '.icon-only',
+    screen: 'today',
+    reason: '確かめ',
+    issue: 1,
+  };
+  // どの要素にも当たらない除外
+  const missing: UiExclusion = {
+    check: 'color-contrast',
+    selector: '.gone',
+    screen: 'today',
+    reason: '確かめ',
+    issue: 1,
+  };
+  const list = [hit, otherRule, missing];
+  const { remaining, used } = await excludeKnownViolations(page, violations, list);
+  expect(remaining.map((violation) => violation.rule)).toEqual(['color-contrast']);
+  expect([...used]).toEqual([hit]);
+  expect(staleExclusions('today', isAxeCheck, used, list)).toEqual([otherRule, missing]);
+});
+
+test('除外の一覧の検査の種類は、axe の規則の ID か target-44 か overflow で、理由と Issue の番号がある', async ({
+  page,
+}) => {
+  // axe を差し込んだ後で、axe の規則の一覧を読む
+  await page.setContent(BROKEN);
+  await findA11yViolations(page);
+  const ruleIds = await page.evaluate(() =>
+    (window as unknown as { axe: { getRules: () => { ruleId: string }[] } }).axe.getRules().map((rule) => rule.ruleId),
+  );
+  for (const exclusion of uiExclusions) {
+    expect([...ruleIds, ...nonAxeChecks], `${exclusion.screen} ${exclusion.selector}`).toContain(exclusion.check);
+    expect(uiScreens).toContain(exclusion.screen);
+    expect(exclusion.reason.trim()).not.toBe('');
+    expect(exclusion.issue).toBeGreaterThan(0);
+  }
+});
+
+// 理由か Issue の番号の無い除外は、型の検査（pnpm check）で落ちる
+// @ts-expect-error reason が無い
+const withoutReason: UiExclusion = { check: 'button-name', selector: '.x', screen: 'today', issue: 1 };
+// @ts-expect-error issue が無い
+const withoutIssue: UiExclusion = { check: 'button-name', selector: '.x', screen: 'today', reason: '確かめ' };
+void [withoutReason, withoutIssue];
