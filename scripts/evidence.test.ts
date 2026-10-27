@@ -780,6 +780,17 @@ describe('embed-evidence.py', () => {
     assert.ok(out.includes(block(k('new'), 'CI の画像は付かなかった: evidence のジョブが失敗した。\n')));
   });
 
+  test('画像の URL が R2 の画像の形でなければ、本文の <img> に入れずに理由を書く', () => {
+    // JSON としては正しい形のまま、引用符を含む URL にする
+    const bad = comment().replaceAll(
+      `${prUrl}/img/${h('2')}.png`,
+      JSON.stringify('https://x.test/a.png" onerror="x').slice(1, -1),
+    );
+    const { out } = run(prBody, comments(bad), sha('b'));
+    assert.doesNotMatch(out, /<img /);
+    assert.ok(out.includes('CI の画像は付かなかった: コメントの画像の URL が R2 の画像の形でない'));
+  });
+
   test('コメントが無ければ理由を書き、エビデンス節が無ければ本文を変えない', () => {
     assert.ok(run(prBody, '[[]]', sha('b')).out.includes('CI の画像は付かなかった: CI の evidence のコメントが無い'));
     const { out, stdout } = run('## 概要\n\n文章\n', '[[]]', sha('b'));

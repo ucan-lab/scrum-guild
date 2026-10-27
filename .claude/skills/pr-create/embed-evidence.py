@@ -28,6 +28,20 @@ def table(screen):
     return f'| 変更後 |\n| ---- |\n| {img(screen["after"])} |'
 
 
+# コメントは PR の head のコードが作るので、URL は R2 の画像の形（scripts/evidence.ts の imageObjectKey）だけを通す。
+# 引用符、山括弧、空白を含む値や別の形の URL を、本文の <img> に入れない
+IMAGE_URL = re.compile(r'https://[A-Za-z0-9.-]+(?:/[A-Za-z0-9._-]+)*/(?:main/)?img/[0-9a-f]{64}\.png')
+
+
+def bad_urls(screens):
+    urls = []
+    for screen in screens:
+        urls.append(screen.get('after'))  # after は必ずある
+        if 'before' in screen:  # before は新しい画面に無い
+            urls.append(screen['before'])
+    return [u for u in urls if not isinstance(u, str) or not IMAGE_URL.fullmatch(u)]
+
+
 IMAGES = re.compile(r'(<!-- evidence-images: ([^\n]+?) -->)[ \t]*\n.*?(<!-- /evidence-images -->)', re.S)
 
 
@@ -68,6 +82,8 @@ def embed(section, comment_path, head_sha, reason):
             reason = f'コメントが前の push（{data["headSha"][:7]}）のまま（evidence がコメントを書き換えていない）'
         elif data['comparedSha'] is None:
             reason = 'CI が比べられなかった（変更前の画像の一覧が無いか読めない）'
+        elif bad_urls(data['screens']):
+            reason = 'コメントの画像の URL が R2 の画像の形でない（PR の差分の scripts/ を確かめる）'
     if reason is not None:
         section, marked = fill(section, lambda key: f'CI の画像は付かなかった: {reason}。')
         return section, [f'埋め込めない: {reason}', f'理由を書いた印: {marked}']
