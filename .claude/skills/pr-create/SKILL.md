@@ -11,9 +11,8 @@ description: PRのタイトル・本文・アサイン・レビュワー・ラ�
 
 ## 前提条件
 
-- `gh` CLI が認証済みで使えること（`GH_TOKEN` があればそれを使う。トークンの内容は表示・記録しない）。使えなければ「GitHub の操作」の「`gh` が使えないとき」に従う
+- `gh` CLI が認証済みで使えること（`GH_TOKEN` があればそれを使う。トークンの内容は表示・記録しない）。使えなければ [github-mcp.md](github-mcp.md) に従う
 - カレントブランチがリモートにpush済みであること。未pushなら `git push -u origin <branch>` を提案してから進む
-- 対象はGitHubのPR。Backlogのプルリクエストはこのスキルの対象外
 
 ## GitHub の操作
 
@@ -25,24 +24,7 @@ GraphQL でしかできない操作（既存の PENDING review への追記、�
 
 ### `gh` が使えないとき
 
-クラウドのセッションでは、`gh` が無いか、`GH_TOKEN` が無効で認証に失敗する（`gh auth status` が「The token in GH_TOKEN is invalid」）ことがある。`gh auth status` が失敗するか `gh` が無いときは、GitHub の MCP ツール（`mcp__github__*`。名前だけ見えていれば ToolSearch で読み込む）で同じ操作を行う。`gh` が動き、GraphQL だけが 403 になるときは、上のとおり REST で行う。
-
-| 操作 | MCP ツール |
-| --- | --- |
-| 開いた PR の一覧 | `list_pull_requests`（`head` は `<owner>:<branch>`。`fields` で絞るときは `number`、`head`、`base` と、要るなら `body` を入れる） |
-| PR の作成 | `create_pull_request` |
-| PR の読み取り（本文、レビュー、レビューのスレッド、check-runs） | `pull_request_read` の `get`、`get_reviews`、`get_review_comments`、`get_check_runs` |
-| PR のタイトルと本文の更新、レビュワーの依頼 | `update_pull_request`（`reviewers`） |
-| アサイン、ラベル、マイルストーン | `issue_write` の `update`（PR の番号を渡す） |
-| 自分のログイン | `get_me` |
-| インラインコメント | `pull_request_review_write` の `create`（`event` 無しで PENDING）→ `add_comment_to_pending_review`（`subjectType` は `LINE`。`line` が通らなければ `FILE` で足すので、Step 6 の GraphQL は要らない）→ `pull_request_review_write` の `submit_pending`（`COMMENT`） |
-| Issue の本文の読み書き、コメント | `issue_read`、`issue_write`、`add_issue_comment` |
-
-- `milestone` は番号で渡す。`issue_read` と `list_pull_requests` はマイルストーンのタイトルしか返さないので、番号は Step 1 の実績を `search_pull_requests`（`repo:<owner>/<repo> is:merged`、`fields` に `milestone`）で引き、結果の `milestone.number` で知る（`search_issues` は自然文の検索で、絞り込みの書式が効かないことがある）。付けた後に読み直し、意図したマイルストーンになったかを確かめる
-- `issue_write` の `labels` と `assignees` は足すのでなく丸ごと置き換える。書く直前に取り直した今の一覧に足した形で渡し、外す変更はしない（Step 5-B が置き換えの `PUT` を禁じるのと同じく、人が設定したものを消さないため）
-- `issue_write` の `body` は行ごとに置き換えられず、本文を丸ごと渡す。書く直前に `issue_read` で取り直した本文を元にする（前に取った本文を元にすると、その後に人が書き足した分を消す）。書いた後に取り直し、意図した箇所だけが変わったことを確かめる
-- マージは MCP ツールで代えない（`gh pr merge --match-head-commit` とフックの確認を通らないため）。人に任せる
-- 表に無い操作は、ToolSearch で `mcp__github__` を引いて近いツールを探す。MCP ツールも無ければ push までで止め、PR の作成を人に頼む
+`gh` が無いか認証に失敗するときは、[github-mcp.md](github-mcp.md) の表のとおり GitHub の MCP ツールで代える。
 
 ## Step 0: モード判定
 
@@ -55,7 +37,7 @@ gh api "repos/{owner}/{repo}/pulls?head={owner}:{branch}&state=open" --jq '.[0]'
 
 どちらのモードでも Step 1〜4 は共通。Step 5 で分岐する。
 
-`gh stack` が入っている環境（手元）で、カレントブランチがスタックに属していれば（`gh stack view --json` が exit 0）、[スタック PR](#スタック-prgh-stack) の手順で進める。
+`gh stack` が入っている環境（手元）で、カレントブランチがスタックに属していれば（`gh stack view --json` が exit 0）、[stack.md](stack.md) の手順で進める。
 
 ### 作成モードは done-check を先に済ませる
 
@@ -66,17 +48,6 @@ gh api "repos/{owner}/{repo}/pulls?head={owner}:{branch}&state=open" --jq '.[0]'
 差分がドキュメントと設定の Markdown だけ（テスト、lint、レビューエージェントの対象になるコードを含まない）なら、done-check を省いてよい。省いたときは、代わりに行った検証（参照の grep、リンク先の実在の確認など）を本文の確認結果の節に書き、省いたことを Step 4 の提示で一言添える。
 
 done-check でコミットが増えたら、push してから Step 1 に進む。
-
-## スタック PR（gh-stack）
-
-`gh stack` が入っている手元の環境だけで使う。クラウドには無い。
-
-依存し合う層に分けた PR 群は、公式の `gh-stack` スキルでブランチを作り、PR もこのスキルの手順で出す。
-ブランチ名、マージ、push の扱いはグローバルの `CLAUDE.md` に従う。
-
-- PR は `gh stack submit --auto` で下書きとして一括作成する。そのあと下から順に1層ずつ、Step 1〜4 と Step 5-B（更新モード）で整える。差分の基点はその PR の `base.ref`（1つ下の層）
-- Step 4 の承認は作成モードと同じ扱いにする（done-check が通っていれば取らない）。`gh stack submit` が作った直後の PR を整えるのは作成の続きのため
-- 本文の `## 概要` の冒頭に、スタック全体での位置（何層目か、下の層に何を依存しているか）を1行書く
 
 ## Step 1: リポジトリの慣習を収集
 
@@ -219,7 +190,7 @@ Step 2 で控えた未チェックの項目ごとに、この PR で満たした
 
 エビデンスを撮った場合は、装飾済みの画像のパスも一緒に示す。
 
-更新モードでは、Step 0 で取得した現状と草案を突き合わせ、ズレている項目だけを提案する。一致している項目は提案に並べない。全項目が一致していれば「更新不要」と1行報告し、Issue のチェック案があれば Step 5-C だけ行ってから Step 9 に進む。
+更新モードでは、Step 0 で取得した現状と草案を突き合わせ、ズレている項目だけを提案する。一致している項目は提案に並べない。全項目が一致していれば「更新不要」と1行報告し、Issue のチェック案があれば Step 5-C だけ行ってから Step 8 に進む。
 
 更新モードで既にレビュワーのコメントが付いている場合（Step 0 で取ったレビューが空でない）は、タイトル・本文の変更が会話の文脈を壊す旨を添えて承認を取る。
 
@@ -397,45 +368,9 @@ gh api -X POST "repos/{owner}/{repo}/pulls/<n>/reviews/<review_id>/events" -f ev
 - インラインコメントを何件投稿したか（本文に移したものがあればその件数も）
 - ブランチがベースの最新に乗っているか（Step 4 で承認を取らなかったとき）
 
-## Step 8: スキルの改善提案
+## Step 8: pr-feedback に引き継ぐ
 
-報告まで終えたら、このセッションのやりとりを振り返り、次回このスキルを良くする改善があれば提案する。無ければ「今回反映すべき点は無し」と述べて終える。無理に作らない。
-
-### 1. 材料を集める
-
-草案どおりに作られたとは限らない。実物を取り直して突き合わせる。
-
-```bash
-gh api repos/{owner}/{repo}/pulls/<n> --jq '{title, body, labels: [.labels[].name], assignees: [.assignees[].login], requested_reviewers: [.requested_reviewers[].login], milestone: .milestone.title}'
-```
-
-- Step 3 の草案と実物の差 — ユーザーが Step 4 の承認時に直した箇所（承認を取った場合）、PR作成後にGitHub上で直した箇所
-- 手順でつまずいた箇所 — 失敗したコマンド、返ってきたAPIエラー、判断に迷ってユーザーに聞き返した点
-
-### 2. 改善候補を分類する
-
-| 型 | 例 | 行き先 |
-|---|---|---|
-| タイトル・本文の書式 | 草案の構成を毎回同じ形に直される | SKILL.md |
-| メタデータの決め方 | 実績から選んだラベル・レビュワーが外れる | SKILL.md |
-| 手順の不備 | APIの叩き方が違った、フォールバックが必要になった | SKILL.md |
-| リポジトリ固有の事実 | このリポジトリのレビュワーは誰、ラベルの運用ルール | `AGENTS.md` か `CLAUDE.md` |
-| 環境やツールの落とし穴 | sandbox で失敗したコマンド、`gh` の TLS エラー、SSH の遮断 | グローバルの `CLAUDE.md` の落とし穴の節。既に書いてあれば候補にしない |
-
-単発の事情による変更と、次も再現しそうな癖を区別する。再現しそうなものだけを候補にする。
-
-### 3. 提案のルール
-
-1. 汎用的な改善だけをスキルに入れる。リポジトリ固有の事実はスキルに書かず、`AGENTS.md` か `CLAUDE.md` への追記を提案する
-2. 勝手に編集しない。対象ファイル・修正内容・根拠（どのやりとりから導いたか）を示し、承認を得てから `SKILL.md` を編集する
-   - 採否は Step 7 の報告とは分けて `AskUserQuestion` で聞く（反映する、見送る）。報告の末尾に文章で置くと、ユーザーの次の依頼に押し流されて回答されないまま終わる
-   - このスキルの原本は `ucan-lab/claude-skills` にある。反映したら、原本にも同じ変更が要るかをユーザーに伝える
-3. 提案は多くて2件に絞る。並べられると選別のコストがかかる
-4. Step 6 でPENDING reviewのAPIが失敗した場合は、実際に通った手順を必ず提案に含める。同じ失敗を次回も繰り返さないため
-
-## Step 9: pr-feedback に引き継ぐ
-
-Step 8 の採否が決まったら、Skill ツールで `pr-feedback` を起動する。CI の結果待ちと、付いたレビュー指摘への対応はそちらで行う。
+報告を終えたら、Skill ツールで `pr-feedback` を起動する。CI の結果待ちと、付いたレビュー指摘への対応はそちらで行う。
 
 ## 注意事項
 
