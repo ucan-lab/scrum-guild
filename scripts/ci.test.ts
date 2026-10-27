@@ -77,6 +77,7 @@ describe('needsDevBuild', () => {
     'scripts/dev.ts',
     'scripts/dev-ports.ts',
     'scripts/write-headers.ts',
+    'scripts/db-seed.ts',
     'scripts/headers.ts',
     '.github/actions/setup/action.yml',
     '.github/actions/playwright/action.yml',
