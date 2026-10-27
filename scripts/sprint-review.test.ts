@@ -135,6 +135,30 @@ describe('check-criterion.py', () => {
     assert.equal(extra.out, undefined);
   });
 
+  test('本文と出力のファイルを読み書きできなければ、該当なしの 1 と分けて終了コード 2', () => {
+    const missing = spawn(body, (dir) => [join(dir, 'none.md'), '一覧', join(dir, 'out.md')]);
+    assert.equal(missing.status, 2);
+    assert.doesNotMatch(missing.stderr, /Traceback/);
+    assert.equal(missing.out, undefined);
+
+    const dir = mkdtempSync(join(tmpdir(), 'check-criterion-'));
+    try {
+      writeFileSync(join(dir, 'body.md'), Buffer.from([0x2d, 0x20, 0x5b, 0x20, 0x5d, 0x20, 0xff, 0xfe]));
+      const binary = spawnSync('python3', ['-I', script, join(dir, 'body.md'), '一覧', join(dir, 'out.md')], {
+        encoding: 'utf8',
+      });
+      assert.ifError(binary.error);
+      assert.equal(binary.status, 2);
+      assert.doesNotMatch(binary.stderr, /Traceback/);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+
+    const unwritable = spawn(body, (dir) => [join(dir, 'body.md'), '起票の候補', join(dir, 'no-dir', 'out.md')]);
+    assert.equal(unwritable.status, 2);
+    assert.doesNotMatch(unwritable.stderr, /Traceback/);
+  });
+
   test('条件の文字列が空か空白だけなら、終了コード 2 で出力を書かない', () => {
     for (const criterion of ['', ' ', ' \t ']) {
       const result = run(body, criterion);
