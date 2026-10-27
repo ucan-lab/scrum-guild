@@ -604,6 +604,8 @@ const PREFIXES = new Set([
   'npx', 'pnpx', 'bunx', 'dlx',
   // cross-env FOO=1 cmd は env と同じく、代入を付けて cmd を動かす
   'cross-env',
+  // macOS の arch -arm64 cmd と、script -q /dev/null cmd（BSD）、script -c "cmd"（util-linux）
+  'arch', 'script',
 ]);
 // 前置きの道具が値を取るフラグ（sudo -u root、nice -n 10、xargs -I {}）
 const PREFIX_FLAGS_WITH_VALUE = new Set([
@@ -651,19 +653,52 @@ function takesValueInEnv(word) {
   return Boolean(long) && abbreviates(long[1], 'chdir');
 }
 
-// index は実行する道具の位置（見つからなければ -1）、prefixes は道具の前で飛ばした前置きの語（env、xargs など）の位置
+// arch だけが値を取るフラグ（-arch arm64、-e NAME=値）。-d は PREFIX_FLAGS_WITH_VALUE にある
+const ARCH_FLAGS_WITH_VALUE = new Set(['-arch', '-e']);
+
+// script の値を取るフラグ（-F、-t、-T と、util-linux の -c）。-qc "cmd" のようにまとめた形では、これ以降は値の一部。
+// { next, value, command } の next は値が次の語か、value は連結した値、command は -c（--command）の値か。値を取らなければ null
+const SCRIPT_SHORT_FLAGS_WITH_VALUE = 'FtTc';
+function scriptFlag(word) {
+  if (word === '--command') return { next: true, command: true };
+  if (word.startsWith('--command=')) return { next: false, value: word.slice('--command='.length), command: true };
+  if (!/^-[^-]/.test(word)) return null;
+  for (let k = 1; k < word.length; k++) {
+    if (!SCRIPT_SHORT_FLAGS_WITH_VALUE.includes(word[k])) continue;
+    const command = word[k] === 'c';
+    return k + 1 === word.length ? { next: true, command } : { next: false, value: word.slice(k + 1), command };
+  }
+  return null;
+}
+
+// index は実行する道具の位置（見つからなければ -1）、prefixes は道具の前で飛ばした前置きの語（env、xargs など）の位置、
+// commands は script の -c に渡したシェルの文字列（判定の側が Bash のコマンドとして読む）
 function scanCommand(words) {
   const prefixes = [];
+  const commands = [];
   let previous = '';
+  // script の最初の位置引数は、記録するファイル（script -q /dev/null cmd）
+  let scriptFile = false;
   for (let i = 0; i < words.length; i++) {
     const w = words[i];
     if (w === '' || isAssignment(w)) continue;
     if (w.startsWith('-')) {
+      if (previous === 'script') {
+        const flag = scriptFlag(w);
+        const value = flag?.next ? words[i + 1] : flag?.value;
+        if (flag?.command && value !== undefined) commands.push(value);
+        if (flag?.next) i++;
+        continue;
+      }
       const takesValue =
         previous === 'xargs'
           ? takesValueInXargs(w) || (w !== '-p' && PREFIX_FLAGS_WITH_VALUE.has(w))
-          : PREFIX_FLAGS_WITH_VALUE.has(w) || (previous === 'env' && takesValueInEnv(w));
+          : PREFIX_FLAGS_WITH_VALUE.has(w) || (previous === 'env' && takesValueInEnv(w)) || (previous === 'arch' && ARCH_FLAGS_WITH_VALUE.has(w));
       if (takesValue) i++;
+      continue;
+    }
+    if (scriptFile) {
+      scriptFile = false;
       continue;
     }
     // timeout 300 や watch -n 2 の数
@@ -671,11 +706,12 @@ function scanCommand(words) {
     if (PREFIXES.has(baseName(w))) {
       prefixes.push(i);
       previous = prefixName(w);
+      scriptFile = previous === 'script';
       continue;
     }
-    return { index: i, prefixes };
+    return { index: i, prefixes, commands };
   }
-  return { index: -1, prefixes };
+  return { index: -1, prefixes, commands };
 }
 
 // 語の並びから、実行する道具の位置を返す。見つからなければ -1
@@ -686,6 +722,11 @@ export function commandIndex(words) {
 // 道具の前に飛ばした前置きの語の位置。道具の後ろで効く前置き（xargs の後ろのコマンド、env -S）を判定の側が探すために使う
 export function prefixIndexes(words) {
   return scanCommand(words).prefixes;
+}
+
+// 前置きの script の -c に渡したシェルの文字列（script -qc "git commit -m y"）
+export function prefixCommands(words) {
+  return scanCommand(words).commands;
 }
 
 // 値を取るフラグを飛ばして、位置の引数の位置を返す。展開の印を引くとき（git push の refspec）に使う

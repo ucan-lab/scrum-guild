@@ -96,7 +96,8 @@ function isProjectOnMain(root, dir) {
   }
 }
 
-// origin/main か main にあれば true、どちらの ref も引けなければ undefined
+// origin/main か main にあれば true、どちらの ref も引けなければ undefined。
+// 大文字小文字を崩した名前（Migrations/0001_x.sql）は、macOS では main にあるファイルを指すので、同じ名前を小文字で比べても探す
 function existsOnMain(root, rel) {
   const refs = ['origin/main', 'main'].filter((ref) => {
     try {
@@ -112,10 +113,18 @@ function existsOnMain(root, rel) {
       git(root, ['cat-file', '-e', `${ref}:${rel}`]);
       return true;
     } catch {
-      return false;
+      try {
+        const folded = rel.toLowerCase();
+        return git(root, ['ls-tree', '-r', '--name-only', ref]).split('\n').some((name) => name.toLowerCase() === folded);
+      } catch {
+        return false;
+      }
     }
   });
 }
+
+// 守る先は大文字小文字を区別せずに見る（file-rules.mjs と同じ）
+const startsWithFolded = (rel, prefix) => rel.toLowerCase().startsWith(prefix);
 
 try {
   const { judgeFile } = await import('./file-rules.mjs');
@@ -127,9 +136,9 @@ try {
     const verdict = judgeFile({
       rel,
       onMain: isProjectOnMain(root, dir),
-      inWorktree: (rel.startsWith('.claude/hooks/') || rel.startsWith('.githooks/')) && isOtherWorktree(root, dir),
+      inWorktree: (startsWithFolded(rel, '.claude/hooks/') || startsWithFolded(rel, '.githooks/')) && isOtherWorktree(root, dir),
       contents: writtenContents(input.tool_name, input.tool_input),
-      shippedOnMain: rel.startsWith('migrations/') ? existsOnMain(root, rel) : false,
+      shippedOnMain: startsWithFolded(rel, 'migrations/') ? existsOnMain(root, rel) : false,
     });
     if (verdict) {
       const [decision, reason] = verdict;
