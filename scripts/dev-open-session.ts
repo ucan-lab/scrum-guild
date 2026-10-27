@@ -15,6 +15,7 @@ export async function checkDevOpenSession(
   fetcher: typeof fetch = fetch,
 ): Promise<SessionCheck> {
   const serve = target.preview ? 'pnpm preview' : 'pnpm dev';
+  // 付けるのは環境変数で渡されたときだけ。.dev-port-offset とワークツリーの名前から決まった値は、立てる側でも同じに決まる
   const offset = env.DEV_PORT_OFFSET;
   const serveCommand = offset ? `DEV_PORT_OFFSET=${offset} ${serve}` : serve;
 

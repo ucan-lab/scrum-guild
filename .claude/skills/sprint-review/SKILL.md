@@ -77,7 +77,7 @@ git worktree add --detach worktrees/review-<日付> origin/main
 
 同じ名前のワークツリーが既にあれば（同じ日の2回目）、切らずに `git -C worktrees/review-<日付> checkout --detach origin/main` で新しい `main` へ移して使う。
 
-ワークツリーで `pnpm install`、`pnpm db:seed`、`pnpm dev` を走らせる（`pnpm dev` はバックグラウンドで立てる）。並べて立てているサーバーがあれば `DEV_PORT_OFFSET` をずらし、以降のコマンドに同じ値を付ける。
+ワークツリーで `pnpm install`、`pnpm db:seed`、`pnpm dev` を走らせる（`pnpm dev` はバックグラウンドで立てる）。ポートはワークツリーの名前から決まる。名前に番号が無いので、ほかのワークツリーと重なることがあり、ぶつかって落ちたらワークツリーの `.dev-port-offset` に空いている値を書く（`docs/development.md` の「ポート」）。本物の OAuth のログインを確かめるときだけ、ワークツリーの `.dev-port-offset` に 0 を書く。本体の作業コピーかほかのワークツリーがオフセット 0 で立っていればぶつかるので、人に断って止めてもらってから立てる。
 画面は `pnpm dev:open <who> <path>` で開く（`docs/development.md` の「開発とテストでのログイン」）。ブラウザを閉じるまで戻らないので、バックグラウンドで走らせる。毎回新しい context に seed の Cookie を置くので、人の普段のブラウザに残った HttpOnly の Cookie と混ざらない。ロールを替えるときは、前のブラウザのバックグラウンドのタスクを止めてから開き直す。画面を出せない環境（クラウドのセッション）では、手元を場所の案から外し、人の手元のセッションに回すか、PR の記録で示す。
 
 D1（`.wrangler/state`）はワークツリーごとに分かれるので、seed もこのワークツリーで当てる。確かめるために D1 を書き換える（上限、ログインの ID など）のは、このワークツリーの D1 だけにし、書く前に人に断り、何を書き換えたかを控える（手順 7 で報告する）。

@@ -3,6 +3,9 @@ import { describe, test } from 'node:test';
 import { SEED_SESSIONS } from '../seed/sessions.ts';
 import { parseDevOpenArgs, resolveDevOpenTarget } from './dev-open-target.ts';
 
+// ワークツリーの名前から導いたオフセットに依らず、既定のポート（5173、8787）を見る
+const DEFAULT_ENV = { DEV_PORT_OFFSET: '0' };
+
 function failureReason(result: { ok: boolean; reason?: string }): string {
   assert.equal(result.ok, false);
   return result.reason ?? '';
@@ -47,7 +50,7 @@ describe('parseDevOpenArgs', () => {
 
 describe('resolveDevOpenTarget', () => {
   test('pnpm dev の画面の origin、Cookie の名前、seed のトークンで URL を組む', () => {
-    assert.deepEqual(resolveDevOpenTarget(['admin', '/aoba'], {}), {
+    assert.deepEqual(resolveDevOpenTarget(['admin', '/aoba'], DEFAULT_ENV), {
       ok: true,
       preview: false,
       who: 'admin',
@@ -60,7 +63,7 @@ describe('resolveDevOpenTarget', () => {
   });
 
   test('--preview は wrangler dev の origin', () => {
-    const target = resolveDevOpenTarget(['--preview', 'operator'], {});
+    const target = resolveDevOpenTarget(['--preview', 'operator'], DEFAULT_ENV);
     assert.ok(target.ok);
     assert.equal(target.origin, 'http://localhost:8787');
     assert.equal(target.url, 'http://localhost:8787/');
@@ -82,21 +85,21 @@ describe('resolveDevOpenTarget', () => {
 
   test('受け付けない path は、/ に直さず理由を出して止める', () => {
     for (const path of ['//evil.example', '/\\evil.example', '/.//evil.example', '/api/me', '/login']) {
-      assert.match(failureReason(resolveDevOpenTarget(['admin', path], {})), /開けない/, path);
+      assert.match(failureReason(resolveDevOpenTarget(['admin', path], DEFAULT_ENV)), /開けない/, path);
     }
     // `/` で始まらない値（相対パス、完全な URL）は path でなく who と読まれ、知らない who で止まる
     for (const value of ['aoba', 'http://localhost:5173/x']) {
-      assert.match(failureReason(resolveDevOpenTarget([value], {})), /知らない who/, value);
+      assert.match(failureReason(resolveDevOpenTarget([value], DEFAULT_ENV)), /知らない who/, value);
     }
   });
 
   test('URL の解決で別の形になる path は止める', () => {
     // 空白は safeReturnTo を通るが、URL の解決で %20 になる
-    assert.match(failureReason(resolveDevOpenTarget(['/a b'], {})), /別のパスになる/);
+    assert.match(failureReason(resolveDevOpenTarget(['/a b'], DEFAULT_ENV)), /別のパスになる/);
   });
 
   test('path は、クエリとフラグメントを含めてそのまま使う', () => {
-    const target = resolveDevOpenTarget(['/aoba/board?tab=1#top'], {});
+    const target = resolveDevOpenTarget(['/aoba/board?tab=1#top'], DEFAULT_ENV);
     assert.ok(target.ok);
     assert.equal(target.url, 'http://localhost:5173/aoba/board?tab=1#top');
   });
