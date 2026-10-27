@@ -76,11 +76,16 @@ function userEvent(action: string, changes: Changes, row: HistoryRow): HistoryEv
       : { kind: 'other' };
   }
   // Google の招待で指名した人が、同じ組織に既にいた（本人の行を管理者にして無効を解いた、統合の記録。
-  // 列は is_admin と disabled_at だけ）。別の管理者が有効に戻して管理者にした記録とは、した人で分ける
+  // 列は is_admin と disabled_at だけ）。別の管理者が有効に戻して管理者にした記録とは、した人で分ける。
+  // 管理者の無効化（user-disable）は、同じ文で解除するので is_admin（1 から 0）と disabled_at（空から日時）の両方を持ち、無効化と読む
   if (isAdmin !== undefined && disabledAt !== undefined) {
-    return isAdmin[1] === 1 && disabledAt[1] === null && bySelf(row) && Object.keys(changes).length === 2
-      ? { kind: 'admin_designation_merged', name: row.entity_user_name }
-      : { kind: 'other' };
+    if (isAdmin[1] === 1 && disabledAt[1] === null && bySelf(row) && Object.keys(changes).length === 2) {
+      return { kind: 'admin_designation_merged', name: row.entity_user_name };
+    }
+    if (isAdmin[0] === 1 && isAdmin[1] === 0 && disabledAt[0] === null && disabledAt[1] !== null) {
+      return { kind: 'user_disabled', name: row.entity_user_name };
+    }
+    return { kind: 'other' };
   }
   if (isAdmin !== undefined) {
     if (isAdmin[1] === 1) return { kind: 'admin_designated', name: row.entity_user_name };

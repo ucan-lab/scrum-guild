@@ -1362,6 +1362,84 @@ export const dictionary = defineDictionary({
     '{workspace}の一覧を読み込めませんでした',
   ),
 
+  // 組織のユーザー（組織の管理の画面の「ユーザー」の節。API の操作は user-list、user-admin-update、user-disable、user-enable）。
+  // {admin}、{organization}、{workspace}、{task} は、その言葉づかいの言葉を画面が渡す。{name} はユーザーの名前
+  userSectionTitle: organization('ユーザー', 'ユーザー'),
+  userSectionDesc: organization(
+    '{admin}は他のユーザーを{admin}に指名でき、解除もできます。最後の{admin}は解除できません。無効にした人は{organization}に入れず、すべての{workspace}から外れます。名前、完了の記録、経験値は残ります。',
+    '{admin}は他のユーザーを{admin}に指名でき、解除もできます。最後の{admin}は解除できません。無効にした人は{organization}に入れず、すべての{workspace}から外れます。名前、完了の記録、経験値は残ります。',
+  ),
+  userTally: organization('ユーザー', 'ユーザー'),
+  userListLabel: organization('{organization}のユーザーの一覧', '{organization}のユーザーの一覧'),
+  userWorkspaceCountHeader: organization('所属', '所属'),
+  userLastSeenHeader: organization('最後に入った日', '最後に入った日'),
+  userActionsHeader: organization('操作', '操作'),
+  userNeverSeen: organization('—', '—'),
+  userDisabledChip: organization('無効', '無効'),
+  userAdminToggleLabel: organization('{name}を{admin}にする', '{name}を{admin}にする'),
+  userDisableAction: organization('無効にする', '無効にする'),
+  userEnableAction: organization('有効に戻す', '有効に戻す'),
+  userDisableLabel: organization('{name}を無効にする', '{name}を無効にする'),
+  userEnableLabel: organization('{name}を有効に戻す', '{name}を有効に戻す'),
+  userDisableTitle: organization('{name}を無効にしますか？', '{name}を無効にしますか？'),
+  userDisableText: organization(
+    '{name}はこの{organization}に入れなくなります。すべての{workspace}から外れ、担当していた未完了の{task}は担当なしに戻り、承諾待ちの招待は取り消します。完了の記録と経験値は残ります。',
+    '{name}はこの{organization}に入れなくなります。すべての{workspace}から外れ、担当していた未完了の{task}は担当なしに戻り、承諾待ちの招待は取り消します。完了の記録と経験値は残ります。',
+  ),
+  userDisableAdminNote: organization('{admin}の指名も解除します。', '{admin}の指名も解除します。'),
+  userDisableEnableNote: organization(
+    '有効に戻しても所属と{admin}の指名は戻りません。もう一度使ってもらうには、{workspace}に招待し直してください。',
+    '有効に戻しても所属と{admin}の指名は戻りません。もう一度使ってもらうには、{workspace}に招待し直してください。',
+  ),
+  // 自分の管理者を解除する前の確認。解除すると、この画面（組織の管理）を開けなくなる
+  userRevokeSelfTitle: organization('自分の{admin}を解除しますか？', '自分の{admin}を解除しますか？'),
+  userRevokeSelfText: organization(
+    '解除すると、この画面を開けなくなります。{admin}に戻るには、ほかの{admin}に指名し直してもらいます。',
+    '解除すると、この画面を開けなくなります。{admin}に戻るには、ほかの{admin}に指名し直してもらいます。',
+  ),
+  userRevokeSelfConfirm: organization('解除する', '解除する'),
+  userDesignated: organization('{name}を{admin}に指名しました', '{name}を{admin}に指名しました'),
+  userRevoked: organization('{name}の{admin}を解除しました', '{name}の{admin}を解除しました'),
+  userDisabled: organization('{name}を無効にしました', '{name}を無効にしました'),
+  userEnabled: organization(
+    '{name}を有効に戻しました。入るには{workspace}への招待が要ります',
+    '{name}を有効に戻しました。入るには{workspace}への招待が要ります',
+  ),
+  userWorking: organization('ユーザーを変更しています', 'ユーザーを変更しています'),
+  // 409 の conflict の理由ごと（details.reason）と、そのほかの失敗。どれも一覧を読み直す
+  userErrorLastAdmin: organization(
+    '最後の{admin}は解除も無効にもできません。先にほかの人を{admin}に指名してください',
+    '最後の{admin}は解除も無効にもできません。先にほかの人を{admin}に指名してください',
+  ),
+  userErrorSelf: organization('自分は無効にできません', '自分は無効にできません'),
+  userErrorDisabled: organization(
+    '無効の人は{admin}に指名できません。先に有効に戻してください',
+    '無効の人は{admin}に指名できません。先に有効に戻してください',
+  ),
+  userErrorMemberLimit: organization(
+    '{organization}の人数が上限に達しているため、{name}を{admin}に指名できません。上限を上げるには運用者に相談してください',
+    '{organization}の人数が上限に達しているため、{name}を{admin}に指名できません。上限を上げるには運用者に相談してください',
+  ),
+  userErrorChanged: organization(
+    '{name}の状態が先に変わっていました。一覧を読み直しました',
+    '{name}の状態が先に変わっていました。一覧を読み直しました',
+  ),
+  userErrorNotFound: organization(
+    '{name}が見つかりませんでした。一覧を読み直しました',
+    '{name}が見つかりませんでした。一覧を読み直しました',
+  ),
+  userErrorForbidden: organization(
+    'この操作ができるのは{admin}だけです。画面を読み直しました',
+    'この操作ができるのは{admin}だけです。画面を読み直しました',
+  ),
+  userErrorUnreachable: organization('サーバーに届きませんでした', 'サーバーに届きませんでした'),
+  userUpdateFailed: organization(
+    '{name}を変更できませんでした。もう一度試してください',
+    '{name}を変更できませんでした。もう一度試してください',
+  ),
+  userListRefreshFailed: organization('ユーザーの一覧を更新できませんでした', 'ユーザーの一覧を更新できませんでした'),
+  userListLoadFailed: organization('ユーザーの一覧を読み込めませんでした', 'ユーザーの一覧を読み込めませんでした'),
+
   // 組織の休日（組織の管理の画面）。{workspace} と {capacity} は、その言葉づかいの言葉を画面が渡す。
   // {date} は休日の日付（YYYY-MM-DD）、{line} は貼り付けた行の番号、{text} はその行、{max} は上限
   holidaysTitle: organization('組織の休日', '組織の休日'),

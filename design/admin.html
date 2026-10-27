@@ -37,13 +37,13 @@ SQ.mount("admin", () => `
     ["", "", t("workspace"), A.workspaces.filter((w) => !w.closed).length],
   ], `<button class="btn is-primary" type="button" data-dialog="createWorkspace">${icon("plus")}${t("workspace")}を作る</button>`)}
   <div class="settings">
-    ${setting("ユーザー", `管理者は他のユーザーを管理者にでき、解除もできます。最後の管理者は解除できません。退会はユーザーを無効にして行い、その人の${t("connection")}の認証情報を消します。名前、完了の記録、経験値は残ります。`, `
-      <div class="table-wrap"><table class="table"><thead><tr><th>名前</th><th>管理者</th><th class="is-num">所属</th><th>最後のログイン</th><th></th></tr></thead>
+    ${setting("ユーザー", `${t("admin")}は他のユーザーを${t("admin")}に指名でき、解除もできます。最後の${t("admin")}は解除できません。無効にした人は${t("organization")}に入れず、すべての${t("workspace")}から外れます。名前、完了の記録、経験値は残ります。`, `
+      <div class="table-wrap"><table class="table is-stacked"><thead><tr><th>名前</th><th>${t("admin")}</th><th class="is-num">所属</th><th>最後に入った日</th><th class="is-actions"><span class="visually-hidden">操作</span></th></tr></thead>
         <tbody>${A.users.map((r) => `<tr>
           <td><span class="person">${avatarOf(r.who)}${esc(user(r.who).name)}</span>${r.disabled ? ` <span class="chip">無効</span>` : ""}</td>
-          <td><label class="toggle"><input type="checkbox" ${r.admin ? "checked" : ""} ${r.disabled ? "disabled" : ""} aria-label="${esc(user(r.who).name)}を管理者にする"></label></td>
-          <td class="is-num">${r.wss}</td><td class="mono">${r.lastLogin}</td>
-          <td>${r.disabled ? `<button class="btn is-sm is-quiet" type="button">有効に戻す</button>` : r.who === D.me ? "" : `<button class="btn is-sm is-quiet is-danger" type="button">無効にする</button>`}</td></tr>`).join("")}</tbody></table></div>`)}
+          <td data-label="${t("admin")}"><label class="toggle"><input type="checkbox" ${r.admin ? "checked" : ""} ${r.disabled ? "disabled" : ""} aria-label="${esc(user(r.who).name)}を${t("admin")}にする"></label></td>
+          <td class="is-num" data-label="所属">${r.wss}</td><td class="mono" data-label="最後に入った日">${r.lastLogin}</td>
+          <td class="is-actions">${r.disabled ? `<button class="btn is-sm is-quiet" type="button">有効に戻す</button>` : r.who === D.me ? "" : `<button class="btn is-sm is-quiet is-danger" type="button">無効にする</button>`}</td></tr>`).join("")}</tbody></table></div>`)}
     ${setting(t("workspace"), `終了した${t("workspace")}は読み取り専用になり、${t("connection")}はすべて止まります。再開できます。${t("member")}の数は${t("leader")}を含みます。`, !A.workspaces.length
       ? SQ.emptyState("users", `まだ${t("workspace")}がありません`,
           `チームや用途ごとに作ります。${t("member")}の招待は、作った${t("workspace")}の${t("leader")}が行います。`,
