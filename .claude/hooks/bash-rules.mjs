@@ -954,12 +954,33 @@ function noptNames(spec, flag) {
   return spec.longName(long) !== long ? [`-${key}`, long] : [`-${key}`];
 }
 
+// npm 11.20 の @npmcli/config の definitions で型が Boolean の設定と、値を取らない形に広がる長い shorthands（silent は --loglevel silent、
+// local は --no-global）。nopt はこれらの次の語を値に取らない（true か false だけは値に取るが、- で始まる語ではない）
+const NPM_BOOLEAN_FLAGS = new Set(
+  [
+    'all', 'allow-same-version', 'audit', 'bin-links', 'browser', 'bypass-2fa', 'color', 'commit-hooks', 'dangerously-allow-all-scripts',
+    'description', 'dev', 'diff-ignore-all-space', 'diff-name-only', 'diff-no-prefix', 'diff-text', 'dry-run', 'engine-strict',
+    'expect-results', 'force', 'foreground-scripts', 'format-package-lock', 'fund', 'git-tag-version', 'global', 'global-style',
+    'if-present', 'ignore-scripts', 'include-staged', 'include-workspace-root', 'include-attestations', 'init-private', 'install-links',
+    'json', 'legacy-bundling', 'legacy-peer-deps', 'link', 'long', 'offline', 'omit-lockfile-registry-resolved', 'optional',
+    'package-lock', 'package-lock-only', 'parseable', 'allow-scripts-pending', 'allow-scripts-pin', 'prefer-dedupe', 'prefer-offline',
+    'prefer-online', 'production', 'progress', 'provenance', 'read-only', 'rebuild-bundle', 'save', 'save-bundle', 'save-dev',
+    'save-exact', 'save-optional', 'save-peer', 'save-prod', 'packages-all', 'shrinkwrap', 'sign-git-commit', 'sign-git-tag',
+    'strict-peer-deps', 'strict-allow-scripts', 'strict-ssl', 'timing', 'unicode', 'update-notifier', 'usage', 'version', 'versions',
+    'workspaces', 'workspaces-update', 'yes',
+    // shorthands
+    'dd', 'ddd', 'quiet', 'silent', 'verbose', 'desc', 'help', 'local', 'no', 'porcelain', 'readonly', 'iwr', 'ws',
+  ].map((name) => `--${name}`),
+);
+
 // = の値を持つフラグの型。string は String の型、reread は値を取らない短いフラグ（nopt は = の値を別の語として読み直す）、
-// value は表の String でない値のフラグ、unknown は表に無いフラグ
+// flag は値を取らない長いフラグ（npm の Boolean の設定と、--no- で始まるもの。nopt は --no- を外して真偽として読む）、
+// value は表の String でない値のフラグ、unknown は表に無いフラグ。noptArgvs は、string、reread、flag の次の - で始まる語を値に取らない
 function noptType(spec, name) {
   if (name.startsWith('--')) {
     const long = spec.longName(name);
     if (spec.strings.has(long)) return 'string';
+    if (/^--no-/i.test(long) || NPM_BOOLEAN_FLAGS.has(long)) return 'flag';
     return spec.flags[long] ? 'value' : 'unknown';
   }
   const kinds = [...name.slice(1)].map((c) => spec.short[c]);

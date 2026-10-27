@@ -4775,6 +4775,15 @@ describe('bash-rules: #356 npx-cli.js の前読みと nopt の String のフラ�
     [`npm init foo --call 'echo hi'`, 'allow'],
     // 表に無いフラグが - で始まる語を値に取っても、ふつうの形は通す
     ['npm exec --otp -x vitest run', 'allow'],
+    // npm の Boolean の設定、--no- で始まるフラグ、--loglevel に広がる shorthands（--silent）は値を取らないので、
+    // 次の - で始まる語で読み方を分けない（並べても読み方の上限で確認に回さない）
+    ['npm exec --ignore-scripts --no-audit --no-fund --prefer-offline --silent --foo vitest run', 'allow'],
+    ['npx --no-audit --no-fund --silent --foo --bar --baz vitest run', 'allow'],
+    // 値を取らないので、次の -c は npm の --call（npm 11.20 で echo の文字列が動いた）
+    [`npm exec --ignore-scripts -c 'wrangler deploy'`, 'deny'],
+    [`npm exec --no-otp -c 'wrangler deploy'`, 'deny'],
+    [`npm exec --silent -c 'wrangler deploy'`, 'deny'],
+    [`npx --ignore-scripts -c 'wrangler deploy'`, 'deny'],
   ]) {
     test(`${command} は ${expected}`, () => assert.deepEqual(literally(command), [expected, expected], command));
   }
