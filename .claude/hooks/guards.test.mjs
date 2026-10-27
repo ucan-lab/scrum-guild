@@ -4860,3 +4860,125 @@ describe('bash-rules: #356 崩す（2周目）', () => {
     test(`[欠陥] ${command} は止まる（-- と --- の前置きの c と call も --call）`, () => check(command, 'deny'));
   }
 });
+
+describe('bash-rules: #356 崩す（3周目）', () => {
+  const packages = {
+    '/repo': { test: 'node --test', build: 'vite build', hello: 'echo hello' },
+    // 名前はデプロイに見えないが、本体は本番に出す
+    '/repo/sub': { test: 'wrangler deploy', build: 'wrangler deploy' },
+  };
+  const packageDirOf = (dir) => {
+    if (!dir) return undefined;
+    return Object.keys(packages)
+      .filter((p) => dir === p || dir.startsWith(`${p}/`))
+      .sort((a, b) => b.length - a.length)[0];
+  };
+  const scriptOf = (dir, name) => {
+    const at = packageDirOf(dir);
+    return at ? packages[at][name] : undefined;
+  };
+  const pm = (command, cwd = '/repo') => judgeBash(command, { cwd, branchOf: () => '356-npx-pnpx-exec', scriptOf, packageDirOf })?.[0] ?? 'allow';
+  const check = (command, expected) => {
+    assert.equal(pm(command), expected, command);
+    assert.deepEqual(literally(command), [expected, expected], command);
+  };
+
+  // 今の判定を保つもの（2周目までに無い読み方）
+  for (const [command, expected] of [
+    // --no- の付いた形は nopt で真偽になり次の語を取らないので、後ろの -c は --call（実機: npm --no-call exec -c 'echo T6' は T6）
+    [`npm --no-call exec -c 'wrangler deploy'`, 'deny'],
+    // 3文字以上の - だけの語も -- として読み終える（npx は ---- をフラグとして素通しし、npm の nopt が /^-{2,}$/ で読み終える）
+    [`npx ---- -c 'wrangler deploy'`, 'allow'],
+    // 場所を変えた後の npx の --prefix と -C（後ろの場所のフラグが勝つ）
+    [`cd .claude && npx --prefix .. -c 'rm -rf .claude/hooks'`, 'ask'],
+    [`env -C .claude npx -C .. -c 'rm -rf .claude/hooks'`, 'ask'],
+    [`npx --prefix . --prefix .claude -c 'rm -rf hooks'`, 'ask'],
+    // npm の名前の一意でない前置き（ex は exec、explain、explore に当たる）は確認を挟む
+    [`npm ex -c 'wrangler deploy'`, 'ask'],
+  ]) {
+    test(`[保つ] ${command} は ${expected}`, () => check(command, expected));
+  }
+
+  // npm run と npm test は --call を使わない（実機: npm run build -c 'echo RC1' は B1 だけ、npm --call 'echo RC2' test は T1 だけを出す）。
+  // nopt の読み方を足しても、スクリプトを走らせる形と、よく使う形の判定は変えない
+  for (const [command, expected, cwd] of [
+    [`npm run build -c 'wrangler deploy'`, 'allow'],
+    [`npm --call 'wrangler deploy' run hello`, 'allow'],
+    ['npm run build -- -c vite.config.ts', 'allow'],
+    ['npm --loglevel=error run build', 'allow'],
+    ['npm run -ws build', 'allow'],
+    ['npm init -y', 'allow'],
+    ['npm --prefix sub run build', 'deny'],
+  ]) {
+    test(`[保つ] ${command}（${cwd ?? '/repo'}）は ${expected}`, () => assert.equal(pm(command, cwd), expected, command));
+  }
+
+  // npm（npx ではない）の nopt の読み直しも、長いフラグの並びで止まらずに返す
+  test('[保つ] 2000 個のフラグの npm も 5 秒以内に判定を返す', () => {
+    const started = Date.now();
+    for (const command of [
+      `npm ${'--cal '.repeat(2000)}exec -c 'wrangler deploy'`,
+      `npm exec ${'--sc x '.repeat(2000)}-c 'wrangler deploy'`,
+      `npm ${'-y=-s '.repeat(2000)}exec -c 'wrangler deploy'`,
+    ]) {
+      assert.notEqual(pm(command), 'allow', command.slice(0, 40));
+    }
+    assert.ok(Date.now() - started < 5000);
+  });
+
+  // 以下は実装の欠陥（失敗する）。
+  // nopt（npm 11.20 の node_modules/nopt/lib/nopt-lib.js の parse）は、型が String だけでも Boolean でもないフラグ
+  // （--otp、--userconfig、--cache、--package、--prefix、-L、-w）の次の語を、- で始まっても値に取る（-- だけの語を除く）。
+  // フックの表に無いフラグ（--otp、--userconfig）は、docs/development.md の「フラグ」の行が「次の語を値と読む形と名前と読む形の両方で判定し」と書くが、
+  // 実装（nameReadings、npmCalls、npxArgvs の後の npm の読み方）は次の語が - で始まると値と読む形を作らない。
+  // そのため、値として消える -C、-L、-w、--prefix、-c、-m をフラグとして読み、その次の -c や exec を値として飛ばして通す。
+  // 実機（npm 11.20、--offline）: `npm exec --otp -C -c 'echo R1'` は R1、`npx --otp -C -c 'echo R2'` は R2、
+  // `npx --userconfig -C -c 'echo R3'` は R3、`npm --call 'echo R4' --otp --call exec` は R4、`npm exec --otp -L -c 'echo R5'` は R5、
+  // `npm exec --otp --prefix -c 'echo R7'` は R7、`npm exec --otp -w -c 'echo R9'` は R9、`npm --otp -c exec -c 'echo PWN1'` は PWN1、
+  // `npm --otp -m exec -c 'echo PWN3'` は PWN3 を出し、scripts.test が echo T1 の場所で `npm --otp -C test` は T1 を出す。フックはどれも allow
+  for (const [command, expected] of [
+    [`npx --otp -C -c 'wrangler deploy'`, 'deny'],
+    [`npx --userconfig -C -c 'git push origin main'`, 'deny'],
+    [`npx --otp -C -c "rm -rf .claude/hooks"`, 'ask'],
+    [`npm exec --otp -C -c 'wrangler deploy'`, 'deny'],
+    [`npm exec --otp -L -c 'wrangler deploy'`, 'deny'],
+    [`npm exec --otp -w -c 'wrangler deploy'`, 'deny'],
+    [`npm exec --otp --prefix -c 'wrangler deploy'`, 'deny'],
+    [`npm --otp -c exec -c 'wrangler deploy'`, 'deny'],
+    [`npm --otp -m exec -c 'wrangler deploy'`, 'deny'],
+    [`npm --call 'wrangler deploy' --otp --call exec`, 'deny'],
+  ]) {
+    test(`[欠陥] ${command} は ${expected}（表に無いフラグは - で始まる次の語も値に取りうる）`, () => check(command, expected));
+  }
+  test('[欠陥] /repo/sub の npm --otp -C test は止まる（--otp が -C を値に取り、sub の test を走らせる）', () => {
+    assert.equal(pm('npm --otp -C test', '/repo/sub'), 'deny');
+  });
+
+  // nopt は = の形を、フラグとして読む語のときだけ2語に分ける。String でない値のフラグ（-L、表に無い --otp）の次の語は、= を含んでも
+  // 1語のまま値に取る。実装（noptArgvs）は前の語が値を取るかを見ずに -y=-C を -y と -C に分けるので、-C が次の語を値として飛ばす。
+  // af38185（この Issue の前）のフックはどれも deny だったので、この Issue の変更で緩んだ。
+  // 実機（npm 11.20、--offline、scripts.test が echo T1）: `npm -L -y=-C test` と `npm --otp -y=-C test` は T1、
+  // `npm exec -L -y=-C -c 'echo E1'` は E1、`npm exec -L -s=-C -c 'echo E3'` は E3 を出す。フックはどれも allow
+  for (const command of [`npm exec -L -y=-C -c 'wrangler deploy'`, `npm exec -L -s=-C -c 'git push origin main'`]) {
+    test(`[欠陥] ${command} は止まる（値に取られる = の語を分けない）`, () => check(command, 'deny'));
+  }
+  for (const command of ['npm -L -y=-C test', 'npm --otp -y=-C test']) {
+    test(`[欠陥] /repo/sub の ${command} は止まる（値に取られる = の語を分けない）`, () => assert.equal(pm(command, '/repo/sub'), 'deny'));
+  }
+
+  // npm init <initializer>（npm create）は、npm exec と同じ libnpmexec に flatOptions ごと渡すので、--call と -c の文字列をシェルで動かす
+  // （npm 11.20 の lib/commands/init.js の execCreate）。docs/development.md の「シェルの文字列」は npm の --call と -c の値を
+  // Bash のコマンドとして見ると書き、道具の前の npm_config_call='…' npm init foo は今も deny になる。
+  // 実機（npm 11.20、--offline、node_modules に create-foo を置いた場所）: `npm init foo -c 'echo INIT1'` は INIT1、
+  // `npm create foo -c 'echo INIT2'` は INIT2、`npm init foo --call='echo INIT4'` は INIT4、`npm -c 'echo INIT5' init foo` は INIT5 を出す。
+  // フックはどれも allow
+  for (const [command, expected] of [
+    [`npm init foo -c 'wrangler deploy'`, 'deny'],
+    [`npm create foo -c 'git push origin main'`, 'deny'],
+    [`npm init foo --call='wrangler deploy'`, 'deny'],
+    [`npm -c 'wrangler deploy' init foo`, 'deny'],
+    [`npm init foo -c "rm -rf .claude/hooks"`, 'ask'],
+  ]) {
+    test(`[欠陥] ${command} は ${expected}（npm init の初期化子も --call を動かす）`, () => check(command, expected));
+  }
+});
