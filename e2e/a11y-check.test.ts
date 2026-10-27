@@ -1,11 +1,14 @@
 // axe の検査の関数（e2e/helpers.ts）と除外の一覧（e2e/ui-exclusions.ts）が空振りしないことを確かめる（#334）。
-// 壊した小さな HTML を page.setContent で置き、違反を拾って落ちることを見る。サーバーには触らない
+// 壊した小さな HTML を page.setContent で置き、違反を拾って落ちることを見る。
+// 日本語の文字を測れる環境かは、本物の画面（seed のセッションで読むだけ）で確かめる
+import AxeBuilder from '@axe-core/playwright';
 import { expect, test } from './fixtures.ts';
 import {
   excludeKnownViolations,
   expectNoA11yViolations,
   expectNoA11yViolationsInThemes,
   findA11yViolations,
+  signIn,
 } from './helpers.ts';
 import {
   isAxeCheck,
@@ -16,15 +19,17 @@ import {
   type UiExclusion,
 } from './ui-exclusions.ts';
 
-// aria-label の無いアイコンだけのボタンと、背景との差が足りない文字（#999 と #aaa）
+// aria-label の無いアイコンだけのボタンと、背景との差が足りない文字（#999 と #aaa）。
+// 文字は英字にする。この HTML は画面の書体を持たないので、日本語の書体の無い環境（CI のランナー）では日本語が描けず、
+// axe がコントラストを測らない（日本語を測れることは、下の本物の画面のテストが確かめる）
 const BROKEN = `<!doctype html>
-<html lang="ja">
-  <head><title>壊した画面</title></head>
+<html lang="en">
+  <head><title>Broken</title></head>
   <body>
     <main>
-      <h1>壊した画面</h1>
+      <h1>Broken</h1>
       <button type="button" class="icon-only"><svg width="16" height="16" aria-hidden="true"><circle cx="8" cy="8" r="6" /></svg></button>
-      <p class="faint" style="color: #999; background: #aaa">薄い文字</p>
+      <p class="faint" style="color: #999; background: #aaa">Faint text</p>
     </main>
   </body>
 </html>`;
@@ -40,6 +45,22 @@ test('アイコンだけのボタンとコントラストの足りない文字�
   // 落ちたときの文は、規則、要素、要約を出す
   await expect(expectNoA11yViolations(page, 'today')).rejects.toThrow(/- button-name: button\n {2}Buttons must/);
   await expect(expectNoA11yViolations(page, 'today')).rejects.toThrow(/- color-contrast: p\n {2}Elements must/);
+});
+
+// 日本語の書体が無い環境では、axe は日本語の文字のコントラストを測らずに通す。本物の画面の日本語の見出しが
+// color-contrast の判定（合格、違反、保留のどれか）に入ることを確かめ、測れていない環境で走らせたことに気づく
+test('本物の画面の日本語の見出しを、axe が文字のコントラストの判定にかける', async ({ page, context, baseURL }) => {
+  await signIn(context, baseURL, 'admin');
+  await page.goto('/aoba');
+  await expect(page.getByRole('heading', { level: 1, name: '自分の今日' })).toBeVisible();
+  const results = await new AxeBuilder({ page }).withRules(['color-contrast']).analyze();
+  const judged = [...results.passes, ...results.violations, ...results.incomplete]
+    .filter((result) => result.id === 'color-contrast')
+    .flatMap((result) => result.nodes.map((node) => node.html));
+  expect(
+    judged.some((html) => html.startsWith('<h1') && html.includes('自分の今日')),
+    judged.join('\n'),
+  ).toBe(true);
 });
 
 test('除外は、その規則の当たった要素だけを外し、当たらなかった除外を拾う', async ({ page }) => {
