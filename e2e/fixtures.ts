@@ -1,6 +1,6 @@
 import { test as base, type BrowserContext, type Page, type Request, type TestInfo } from '@playwright/test';
 
-import { type DevWarningAt, formatDevWarnings, parseDevWarning } from '../scripts/dev-warnings.ts';
+import { type DevWarningAt, formatDevWarnings, isKnownDevWarning, parseDevWarning } from '../scripts/dev-warnings.ts';
 import { isDevBuild } from '../scripts/e2e-server.ts';
 import { EVIDENCE } from './evidence-mode.ts';
 
@@ -45,8 +45,11 @@ function watchDevWarnings(context: BrowserContext, info: TestInfo): void {
   context.on('console', (message) => {
     if (message.type() !== 'warning') return;
     const warning = parseDevWarning(message.text());
+    if (!warning) return;
     const page = message.page();
-    if (warning) warnings.push({ ...warning, path: page ? new URL(page.url()).pathname : '（画面の外）' });
+    const at = { ...warning, path: page ? new URL(page.url()).pathname : '（画面の外）' };
+    // 直す Issue のある既知の警告は数えない（scripts/dev-warnings.ts の KNOWN_DEV_WARNINGS）
+    if (!isKnownDevWarning(at)) warnings.push(at);
   });
 }
 

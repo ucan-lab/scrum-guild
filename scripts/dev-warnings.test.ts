@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
-import { formatDevWarnings, parseDevWarning } from './dev-warnings.ts';
+import { formatDevWarnings, isKnownDevWarning, KNOWN_DEV_WARNINGS, parseDevWarning } from './dev-warnings.ts';
 
 // 開発モードの build で Playwright が受け取った本文（#368 の修正前のバックログ）
 const SVELTE =
@@ -41,6 +41,51 @@ describe('parseDevWarning', () => {
 
   test('本番の build の短い形（https://svelte.dev/e/<名前> だけ）は数えない', () => {
     assert.equal(parseDevWarning('https://svelte.dev/e/binding_property_non_reactive'), undefined);
+  });
+});
+
+describe('isKnownDevWarning', () => {
+  const at = (name: string, detail: string, path: string) => ({ name, detail, path });
+
+  test('#368 の警告は既知に数えない', () => {
+    assert.equal(isKnownDevWarning({ ...parseDevWarning(SVELTE)!, path: '/aoba/w/1' }), false);
+    assert.equal(isKnownDevWarning({ ...parseDevWarning(KIT)!, path: '/aoba/w/1' }), false);
+  });
+
+  test('goto の invalidateAll は、どの画面でも既知（#388）', () => {
+    const detail = 'The `goto(..., { invalidateAll: true })` option has been deprecated in favour of `refreshAll`';
+    assert.equal(isKnownDevWarning(at('[sveltekit] goto_invalidate_all_deprecated', detail, '/aoba/admin')), true);
+    assert.equal(
+      isKnownDevWarning(at('[sveltekit] goto_invalidate_all_deprecated', detail, '/hibari/invitations')),
+      true,
+    );
+  });
+
+  test('window_fetch_in_load は member-list のときだけ既知（#393）', () => {
+    const name = '[sveltekit] window_fetch_in_load';
+    const tail = ' using `window.fetch`. For best results, use the `fetch` that is passed to your `load` function';
+    assert.equal(isKnownDevWarning(at(name, 'Loading `/api/aoba/member-list`' + tail, '/aoba/w/1')), true);
+    assert.equal(isKnownDevWarning(at(name, 'Loading `/api/aoba/task-detail`' + tail, '/aoba/w/1')), false);
+    assert.equal(isKnownDevWarning(at(name, 'Loading `/api/aoba/member-list-x`' + tail, '/aoba/w/1')), false);
+  });
+
+  test('history_api_conflict は招待の画面だけ既知（#394）', () => {
+    const name = '[sveltekit] history_api_conflict';
+    assert.equal(isKnownDevWarning(at(name, 'Avoid using', '/invite')), true);
+    assert.equal(isKnownDevWarning(at(name, 'Avoid using', '/aoba/w/1')), false);
+    assert.equal(isKnownDevWarning(at(name, 'Avoid using', '/invite/x')), false);
+  });
+
+  test('hmr_reload_after_error は build した画面に関わらないので既知', () => {
+    assert.equal(isKnownDevWarning(at('[sveltekit] hmr_reload_after_error', 'The next HMR update', '/foo')), true);
+  });
+
+  test('名前が近いだけのものは既知に数えない', () => {
+    assert.equal(isKnownDevWarning(at('[svelte] goto_invalidate_all_deprecated', '', '/aoba/admin')), false);
+  });
+
+  test('直す Issue の無いものは、理由に Issue の番号か build に関わらないことを書く', () => {
+    for (const known of KNOWN_DEV_WARNINGS) assert.match(known.reason, /#\d+|build/);
   });
 });
 
