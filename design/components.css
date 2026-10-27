@@ -239,6 +239,9 @@ h1, h2, h3 { text-wrap: balance; }
   border: 0; background: none; padding: 7px 12px; font-size: var(--text-sm); color: var(--color-muted);
   border-bottom: 2px solid transparent; margin-bottom: -1px;
 }
+/* タブの中身（role="tabpanel"）。タブの線との間を、コメントの .thread と同じだけ空ける（読み込み中と失敗の表示が線に付かないように） */
+.tab-panel { padding-top: var(--space-4); }
+.tab-panel > .history { padding-top: 0; }
 .tab[aria-selected="true"] { color: var(--color-fg); font-weight: 700; border-bottom-color: var(--color-accent); }
 
 /* ===== 印（チップ） ===== */
@@ -900,9 +903,10 @@ dialog.dialog::backdrop { background: none; }
   .tree-caret::after, button.tree-link::after, .tree-row .btn.is-sm::after, .form-actions .btn.is-sm::after, .callout-actions .btn.is-sm::after {
     content: ""; position: absolute; left: 50%; top: 50%; width: max(100%, 44px); height: max(100%, 44px); transform: translate(-50%, -50%);
   }
-  /* 引き出しの中の小さなボタン（保存、取り消し、編集、削除、クリア）と、押すと直せる値も同じ。重なる行の押せる範囲は、下の余白で分ける */
-  .drawer .btn.is-sm, .drawer .link-btn, .drawer .edit-trigger { position: relative; }
-  .drawer .btn.is-sm::after, .drawer .link-btn::after, .drawer .edit-trigger::after {
+  /* 引き出しの中の小さなボタン（保存、取り消し、編集、削除、クリア）と、押すと直せる値と、タブ（コメントと変更の履歴）も同じ。
+     重なる行の押せる範囲は、下の余白で分ける */
+  .drawer .btn.is-sm, .drawer .link-btn, .drawer .edit-trigger, .drawer .tab { position: relative; }
+  .drawer .btn.is-sm::after, .drawer .link-btn::after, .drawer .edit-trigger::after, .drawer .tab::after {
     content: ""; position: absolute; left: 50%; top: 50%; width: max(100%, 44px); height: max(100%, 44px); transform: translate(-50%, -50%);
   }
 }

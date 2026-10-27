@@ -119,12 +119,12 @@ function commentChanges(row: CommentRow): string {
   return JSON.stringify({ task_id: [row.task_id, row.task_id], author: [author, author] });
 }
 
-// 条件で落ちた書き込み（直す、消す）の理由を、読み直して決める。閉じていれば workspace_closed、
-// コメント（かタスク）が無ければ 404、消されていれば deleted、どれでもなければ conflict
+// 条件で落ちた書き込み（直す、消す）の理由を、読み直して決める。存在を先に決め、コメント（かタスク）が無ければ 404、
+// 閉じていれば workspace_closed、消されていれば deleted、どれでもなければ conflict
 async function throwWriteMiss(db: OrganizationDb, workspaceId: string, commentId: string): Promise<never> {
-  await throwIfClosed(db, workspaceId);
   const current = await readComment(db, workspaceId, commentId);
   if (current === undefined) throw new ApiError(404, 'not_found');
+  await throwIfClosed(db, workspaceId);
   if (current.deleted_at !== null) throw new ApiError(409, 'conflict', { reason: 'deleted' });
   throw new ApiError(409, 'conflict');
 }
@@ -225,11 +225,9 @@ export const commentUpdateOperation = implement(commentUpdate, async ({ db, acto
   const workspaceId = workspace.workspaceId;
   const commentId = input.comment_id;
 
+  // 存在（404）を、閉じたか（409）と権限（403）より先に決める
   const current = await readComment(db, workspaceId, commentId);
-  if (current === undefined) {
-    await throwIfClosed(db, workspaceId);
-    throw new ApiError(404, 'not_found');
-  }
+  if (current === undefined) throw new ApiError(404, 'not_found');
   // 直せるのは書いた本人だけ
   if (current.author_user_id !== actorUserId) throw new ApiError(403, 'forbidden');
   if (current.deleted_at !== null) throw new ApiError(409, 'conflict', { reason: 'deleted' });
@@ -292,11 +290,9 @@ export const commentDeleteOperation = implement(commentDelete, async ({ db, acto
   const workspaceId = workspace.workspaceId;
   const commentId = input.comment_id;
 
+  // 存在（404）を、閉じたか（409）と権限（403）より先に決める
   const current = await readComment(db, workspaceId, commentId);
-  if (current === undefined) {
-    await throwIfClosed(db, workspaceId);
-    throw new ApiError(404, 'not_found');
-  }
+  if (current === undefined) throw new ApiError(404, 'not_found');
   // 消せるのは書いた本人とリーダー（管理者を含む）
   if (!mayDeleteOwned(current.author_user_id, actor, workspace)) throw new ApiError(403, 'forbidden');
   if (current.deleted_at !== null) throw new ApiError(409, 'conflict', { reason: 'deleted' });

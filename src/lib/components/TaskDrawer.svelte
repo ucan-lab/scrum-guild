@@ -313,7 +313,8 @@
   // 行を出した後の読み直し（保存した後）に失敗した。行は残し、節の上に失敗と「もう一度試す」を添える
   let historyReloadFailed = $state(false);
   let historyVersion = 0;
-  let historyHeading = $state<HTMLElement>();
+  // 「変更の履歴」のタブの中身（tabpanel）。読み直せたときと読み終えたときに、フォーカスを置く
+  let historyPanel = $state<HTMLElement>();
   // 「さらに読む」で足したことの知らせ。節の中に常に置いた role="status" の領域に入れる
   let historyAdded = $state('');
   // 履歴の読み込みの進み具合を読み上げに伝える（見える「読み込んでいます」は aria-hidden にする）
@@ -323,7 +324,7 @@
 
   // 先頭の 50 件を読み直す。読み直している間は、前に読めた行を残す（保存のたびに消えてちらつかない）。
   // 失敗したら、行がまだ無ければ節を失敗の表示に、行があれば行を残して失敗を添える。
-  // focusAfter は「もう一度試す」から読んだとき。読めたらボタンが消えるので、節の見出しへフォーカスを移す
+  // focusAfter は「もう一度試す」から読んだとき。読めたらボタンが消えるので、タブの中身へフォーカスを移す
   async function loadHistory(focusAfter = false): Promise<void> {
     const mine = ++historyVersion;
     historyReloading = true;
@@ -339,7 +340,7 @@
       historyReloadFailed = false;
       if (focusAfter) {
         await tick();
-        if (alive) historyHeading?.focus();
+        if (alive) historyPanel?.focus();
       }
       return;
     }
@@ -377,12 +378,12 @@
     return 'failed';
   }
 
-  // 「さらに読む」。読み足して続きが無くなると押したボタンが消えるので、フォーカスを節の見出しへ移す
+  // 「さらに読む」。読み足して続きが無くなると押したボタンが消えるので、フォーカスをタブの中身へ移す
   async function showMoreHistory(): Promise<void> {
     const outcome = await loadMoreHistory();
     if (!alive || outcome !== 'added' || historyNext !== null) return;
     await tick();
-    historyHeading?.focus();
+    historyPanel?.focus();
   }
 
   async function load(): Promise<void> {
@@ -947,7 +948,8 @@
   $effect(() => {
     const saved = task?.due_on ?? '';
     const input = dueInput;
-    if (input === undefined) return;
+    // 書き込めなくなって（終了が分かって）欄が外れると、bind:this は null になるので、null も外す
+    if (input == null) return;
     if (input !== dueBoundTo) {
       dueBoundTo = input;
       dueBase = input.value;
@@ -960,13 +962,13 @@
 
   // まだ送っていない期日の入力がある（待っている間、打ちかけ、送っている間に選んだ次の値）
   function dueUnsent(): boolean {
-    return dueInput !== undefined && dueInput.value !== dueBase;
+    return dueInput != null && dueInput.value !== dueBase;
   }
 
   // final は、欄を離れたか Enter。書けない値のときだけ、ここで知らせる
   async function commitDue(final: boolean): Promise<void> {
     const input = dueInput;
-    if (task === null || input === undefined || taskGone) return;
+    if (task === null || input == null || taskGone) return;
     if (dueSending) {
       dueAgain = true;
       return;
@@ -1006,7 +1008,7 @@
   }
 
   function clearDue(): void {
-    if (dueInput === undefined) return;
+    if (dueInput == null) return;
     clearTimeout(dueTimer);
     dueInput.value = '';
     // 「クリア」は空にすると消えるので、フォーカスを期日の入力欄へ移す
@@ -1594,12 +1596,13 @@
       </div>
       <!-- 変更の履歴（kit.js の drawerHtml の .history）。tabindex="-1" は、読み直せたときと読み終えたときにフォーカスを置くため -->
       <div
+        class="tab-panel"
         role="tabpanel"
         id={historyPanelId}
         aria-labelledby={historyTabId}
         hidden={tab !== 'history'}
         tabindex="-1"
-        bind:this={historyHeading}
+        bind:this={historyPanel}
         aria-busy={historyState === 'loading' || historyReloading}
       >
         <!-- 読み込みの進み具合と、足した件数の読み上げの領域。常に置き、中の文字だけを替える -->

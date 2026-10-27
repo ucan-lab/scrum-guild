@@ -13,6 +13,7 @@
   } from '../../shared/operations/task/index.ts';
   import { normalizeLongText } from '../../shared/story.ts';
   import { callOperation } from '../api.ts';
+  import { reloadView } from '../comment-thread.ts';
   import { formatHistoryTime } from '../task-history.ts';
   import { showToast } from '../toast.svelte.ts';
   import { t } from '../vocabulary.svelte.ts';
@@ -73,8 +74,12 @@
   let reloadFailed = $state(false);
   let older = $state<'idle' | 'loading' | 'failed'>('idle');
   let version = 0;
-  // 消していないコメントの数。読んだ値から、書いたら足し、消したら引く（読み込んでいない前のコメントも数えるので、一覧からは数えない）
+  // 消していないコメントの数。一覧を読めた値から始め、書いたら足し、消したら引く（読み込んでいない前のコメントも数えるので、
+  // 一覧からは数えない）。一覧を読めるまでは書く欄を出さないので、読めた値より前には動かない
   let count = 0;
+  // 書いた行と、その順番。読み直しは、始めた後に書いた行だけを応答に重ねる
+  let writes: { seq: number; comment: Comment }[] = [];
+  let writeSeq = 0;
   function setCount(value: number): void {
     count = Math.max(0, value);
     oncount(count);
@@ -87,7 +92,10 @@
   let sending = $state(false);
   let newInput = $state<HTMLTextAreaElement>();
   const edits: Record<string, EditState> = $state({});
+  // 削除を送っているコメント。送っている間は、どの行の「削除」も押せなくする
   let deleting = $state<string | null>(null);
+  // 消すかを確かめているコメント（確かめの文に、書いた人と日時を添える）
+  let deleteTarget = $state<Comment | null>(null);
   let deleteDialog = $state<ReturnType<typeof ConfirmDialog>>();
   let container = $state<HTMLElement>();
 
@@ -117,30 +125,27 @@
   // 新しい 50 件を読み直す。読み直している間は前に読めた行を残す。直している途中のコメントが消されていたら、書きかけを残して知らせる
   async function load(focusAfter = false): Promise<void> {
     const mine = ++version;
+    const startSeq = writeSeq;
     reloading = true;
     older = 'idle';
     const result = await callOperation(commentList, { workspace_id: workspaceId, task_id: taskId }, { slug });
     if (!alive || mine !== version) return;
     reloading = false;
     if (result.ok) {
-      // 「前のコメントを読む」で足した、新しい 50 件より前の行は残す（直している途中の前のコメントが、読み直しで消えないように）。
-      // 残した行より前の続きは、前に読んだ next のまま
-      const fresh = result.data.comments;
-      const first = fresh[0];
-      const kept =
-        first === undefined
-          ? []
-          : comments.filter(
-              (comment) =>
-                comment.created_at < first.created_at ||
-                (comment.created_at === first.created_at && comment.id < first.id),
-            );
-      comments = [...kept, ...fresh];
-      next = kept.length > 0 ? next : result.data.next;
+      // 前に足した古い行は地続きのときだけ残し、読み直しを始めた後に書いた行を重ねる（src/lib/comment-thread.ts）
+      const view = reloadView(
+        { comments, next, count },
+        result.data,
+        writes.filter((write) => write.seq > startSeq).map((write) => write.comment),
+      );
+      // 次の読み直しは、これより後に始まるので、この読み直しより前の書き込みは要らない
+      writes = writes.filter((write) => write.seq > startSeq);
+      comments = view.comments;
+      next = view.next;
       timezone = result.data.timezone;
       loadState = 'ready';
       reloadFailed = false;
-      setCount(result.data.count);
+      setCount(view.count);
       for (const comment of comments) {
         const edit = edits[comment.id];
         if (edit !== undefined && comment.deleted_at !== null && !edit.blocked) {
@@ -194,11 +199,17 @@
     }
   }
 
-  // 一覧の中の1件を入れ替える（無ければ末尾に足す）
-  function put(comment: Comment): void {
-    comments = comments.some((current) => current.id === comment.id)
-      ? comments.map((current) => (current.id === comment.id ? comment : current))
-      : [...comments, comment];
+  // 書いた（作った、直した、消した）行を一覧に入れ、件数を動かす。書いた行は、それより前に始めた読み直しの古い応答で
+  // 消えないよう、読み直しの結果にも重ねる（reloadView の writes）
+  function record(comment: Comment): void {
+    writes = [...writes, { seq: ++writeSeq, comment }];
+    const before = comments.find((current) => current.id === comment.id);
+    comments =
+      before === undefined
+        ? [...comments, comment]
+        : comments.map((current) => (current.id === comment.id ? comment : current));
+    if (before === undefined && comment.deleted_at === null) setCount(count + 1);
+    else if (before !== undefined && before.deleted_at === null && comment.deleted_at !== null) setCount(count - 1);
   }
 
   // 書けなかった理由のうち、どの操作にも共通のもの。閉じた、未ログインは引き出しに伝える
@@ -237,8 +248,7 @@
         return;
       }
       if (result.ok) {
-        put(result.data.comment);
-        setCount(count + 1);
+        record(result.data.comment);
         newDraft = '';
         announce = t('commentSent');
         await tick();
@@ -321,7 +331,7 @@
       }
       announce = '';
       if (result.ok) {
-        put(result.data.comment);
+        record(result.data.comment);
         showToast(t('commentSaved'), 'check');
         edit.saving = false;
         await finishEdit(id);
@@ -357,6 +367,7 @@
   async function remove(event: MouseEvent, comment: Comment): Promise<void> {
     if (deleting !== null) return;
     const trigger = event.currentTarget instanceof HTMLElement ? event.currentTarget : null;
+    deleteTarget = comment;
     const confirmed = (await deleteDialog?.ask(trigger)) ?? false;
     if (!confirmed || !alive) return;
     deleting = comment.id;
@@ -374,9 +385,8 @@
       }
       announce = '';
       if (result.ok) {
-        put(result.data.comment);
+        record(result.data.comment);
         delete edits[comment.id];
-        setCount(count - 1);
         showToast(t('commentRemoved'), 'check');
         // 押したボタンは消えるので、一覧へフォーカスを移す
         await tick();
@@ -410,8 +420,16 @@
   const status = $derived(loadState === 'loading' || older === 'loading' ? t('loading') : announce);
 </script>
 
-<!-- tabindex="-1" は、前のコメントを読み終えたとき、もう一度試して読めたとき、コメントを消したときにフォーカスを置くため -->
-<div class="thread" tabindex="-1" bind:this={container} aria-busy={loadState === 'loading' || reloading}>
+<!-- tabindex="-1" は、前のコメントを読み終えたとき、もう一度試して読めたとき、コメントを消したときにフォーカスを置くため。
+     フォーカスを置いたときに何の領域かが読まれるよう、名前を付ける -->
+<div
+  class="thread"
+  role="region"
+  aria-label={t('commentThread')}
+  tabindex="-1"
+  bind:this={container}
+  aria-busy={loadState === 'loading' || reloading}
+>
   <!-- 読み込みの進み具合と、足した件数、送った、直した、削除したことの読み上げの領域。常に置き、中の文字だけを替える -->
   <span class="visually-hidden" role="status">{status}</span>
   {#if loadState === 'loading'}
@@ -481,7 +499,7 @@
                     class="btn is-sm is-quiet"
                     type="button"
                     aria-describedby="{headId}-name {headId}-at"
-                    aria-disabled={deleting === comment.id}
+                    aria-disabled={deleting !== null}
                     onclick={(event) => void remove(event, comment)}>{t('commentDelete')}</button
                   >
                 {/if}
@@ -534,7 +552,9 @@
     {/each}
   {/if}
 
-  {#if canWrite}
+  <!-- 新しいコメントの欄は、一覧を読めてから出す（読めるまでは件数も無く、送った行を並べる先も無い）。
+       書き込めなくなった（閉じた）ときに書きかけがあれば、欄を読み取り専用で残して理由を添え、「送る」を出さない -->
+  {#if loadState === 'ready' && (canWrite || normalized(newDraft) !== '')}
     <form class="edit-form" onsubmit={(event) => void send(event)} novalidate>
       <div class="field" class:is-invalid={newError !== null}>
         <label class="field-label" for={newId}>{t('commentNewLabel')}</label>
@@ -544,19 +564,23 @@
           bind:this={newInput}
           bind:value={newDraft}
           oninput={() => (newError = null)}
-          readonly={sending}
+          readonly={sending || !canWrite}
           placeholder={t('commentPlaceholder')}
           aria-invalid={newError !== null}
           aria-describedby={[newHintId, newError !== null ? newErrorId : null].filter((id) => id !== null).join(' ')}
         ></textarea>
-        <span class="field-hint" id={newHintId}>{t('bodyEditHint')}</span>
+        <span class="field-hint" id={newHintId}
+          >{canWrite ? t('bodyEditHint') : t('commentDraftReadOnly', { workspace: t('workspace') })}</span
+        >
         {#if newError !== null}
           <span class="field-error" id={newErrorId} role="alert"><Icon name="alert" />{newError}</span>
         {/if}
       </div>
-      <div class="composer-foot">
-        <button class="btn" type="submit" aria-disabled={sending}>{t('commentSend')}</button>
-      </div>
+      {#if canWrite}
+        <div class="composer-foot">
+          <button class="btn" type="submit" aria-disabled={sending}>{t('commentSend')}</button>
+        </div>
+      {/if}
     </form>
   {/if}
 </div>
@@ -568,5 +592,11 @@
   cancelLabel={t('taskDeleteCancel')}
   danger
 >
-  <p>{t('commentDeleteText')}</p>
+  <p>
+    {t('commentDeleteText', {
+      name:
+        deleteTarget === null || deleteTarget.author.name === '' ? t('historyUnknownName') : deleteTarget.author.name,
+      at: deleteTarget === null ? '' : formatHistoryTime(deleteTarget.created_at, timezone),
+    })}
+  </p>
 </ConfirmDialog>

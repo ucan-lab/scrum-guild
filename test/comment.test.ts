@@ -557,6 +557,79 @@ describe('閉じたワークスペース', () => {
     expect(await commentRow(target, original.id)).toEqual(original);
     expect((await list(target, task.id)).comments).toHaveLength(1);
   });
+
+  // 登録の関数は閉じたワークスペースへの書き込みを入口で止める。処理を直に呼び、入口を通った後に閉じた（読んだ時点で閉じている）ときを見る
+  test('処理の中では、無いコメントは閉じていても 404（存在を先に決める）', async () => {
+    const target = await createTarget({ closed: true });
+    const deletedTask = await createTask(target.organization, target.workspace.id, target.admin.userId!, {
+      deleted_at: AT,
+    });
+    const onDeletedTask = await createComment(
+      target.organization,
+      target.workspace.id,
+      deletedTask.id,
+      target.member.userId!,
+    );
+    const elsewhereTask = await createTask(target.organization, target.otherWorkspace.id, target.admin.userId!);
+    const elsewhere = await createComment(
+      target.organization,
+      target.otherWorkspace.id,
+      elsewhereTask.id,
+      target.member.userId!,
+    );
+    for (const commentId of [onDeletedTask.id, elsewhere.id, '019a0000-0000-7000-8000-000000000001']) {
+      for (const [operation, extra] of [
+        [commentUpdateOperation, { body_md: '直す' }],
+        [commentDeleteOperation, {}],
+      ] as const) {
+        await expect(
+          runWithRace(target, target.member, operation, { comment_id: commentId, ...extra }, async () => {}),
+        ).rejects.toMatchObject({ status: 404, code: 'not_found' });
+      }
+    }
+  });
+
+  test('処理の中では、あるコメントへの同じ本文の更新も、閉じていれば 409 の workspace_closed', async () => {
+    const target = await createTarget({ closed: true });
+    const task = await createTask(target.organization, target.workspace.id, target.admin.userId!);
+    const original = await createComment(target.organization, target.workspace.id, task.id, target.member.userId!);
+    await expect(
+      runWithRace(
+        target,
+        target.member,
+        commentUpdateOperation,
+        { comment_id: original.id, body_md: original.body_md },
+        async () => {},
+      ),
+    ).rejects.toMatchObject({ status: 409, code: 'workspace_closed' });
+    expect(await commentRow(target, original.id)).toEqual(original);
+  });
+
+  test('読んでから書くまでにタスクが削除されたら、直す、消すは 404 で、履歴を書かない', async () => {
+    const target = await createTarget();
+    for (const [operation, extra] of [
+      [commentUpdateOperation, { body_md: '直した本文' }],
+      [commentDeleteOperation, {}],
+    ] as const) {
+      const task = await createTask(target.organization, target.workspace.id, target.admin.userId!);
+      const original = await createComment(target.organization, target.workspace.id, task.id, target.member.userId!);
+      await expect(
+        runWithRace(target, target.member, operation, { comment_id: original.id, ...extra }, async (db) => {
+          await db.run(
+            db.statement((q) =>
+              q
+                .updateTable('tasks')
+                .set({ deleted_at: AT })
+                .where('id', '=', task.id)
+                .where('workspace_id', '=', target.workspace.id),
+            ),
+          );
+        }),
+      ).rejects.toMatchObject({ status: 404, code: 'not_found' });
+      expect(await commentRow(target, original.id)).toEqual(original);
+      expect(await commentLogs(target, original.id)).toEqual([]);
+    }
+  });
 });
 
 describe('別のワークスペースの人', () => {

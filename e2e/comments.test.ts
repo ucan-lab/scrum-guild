@@ -98,6 +98,8 @@ test.describe('自分のコメント', () => {
     await comment.getByRole('button', { name: '削除', exact: true }).click();
     const confirm = page.getByRole('dialog', { name: 'コメントを削除する' });
     await expect(confirm).toBeVisible();
+    // 確かめの文に、書いた人と日時を添える
+    await expect(confirm).toContainText(/ミナトが \d{4}-\d{2}-\d{2} \d{2}:\d{2} に書いたコメントを削除します/);
     await confirm.getByRole('button', { name: '削除する' }).click();
     await expect(comment.locator('.comment-body')).toHaveText('削除されました');
     await expect(comment.getByRole('button')).toHaveCount(0);
@@ -146,6 +148,50 @@ test.describe('自分のコメント', () => {
     await discard.getByRole('button', { name: '捨てる' }).click();
     await expect(page.getByRole('dialog', { name: '書きかけを残す' })).toHaveCount(0);
     await expect(page).not.toHaveURL(/\?task=/);
+  });
+
+  test('一覧を読めるまでは、書く欄と件数を出さない。読めなければ「もう一度試す」で読み直す', async ({ page }) => {
+    await createWorkspace(page, '読めないコメントのパーティ', 'game');
+    await addTask(page, '読めないコメント');
+    await page.route('**/api/aoba/comment-list', (route) =>
+      route.fulfill({ status: 500, json: { error: { code: 'internal', message: 'x' } } }),
+    );
+    const drawer = await openDrawer(page, '読めないコメント');
+    const panel = drawer.getByRole('tabpanel', { name: /^コメント/ });
+    await expect(panel.getByText('コメントを読み込めませんでした。')).toBeVisible();
+    await expect(drawer.getByRole('tab', { name: /^コメント/ })).toHaveText('コメント');
+    await expect(panel.getByRole('textbox', { name: 'コメントを書く' })).toHaveCount(0);
+    await expect(panel.getByRole('button', { name: '送る' })).toHaveCount(0);
+    await page.unroute('**/api/aoba/comment-list');
+    await panel.getByRole('button', { name: 'もう一度試す' }).click();
+    await expect(panel.getByRole('textbox', { name: 'コメントを書く' })).toBeVisible();
+    await expect(drawer.getByRole('tab', { name: /^コメント/ })).toHaveText('コメント 0');
+    // 読み直したら、名前のある一覧の領域へフォーカスを移す
+    await expect(panel.getByRole('region', { name: 'コメントの一覧' })).toBeFocused();
+  });
+
+  test('書いている間にワークスペースが終了したら、書きかけを読み取り専用で残し、理由を添えて「送る」を出さない', async ({
+    page,
+  }) => {
+    await createWorkspace(page, '途中で閉じるパーティ', 'game');
+    await addTask(page, '途中で閉じる依頼');
+    const drawer = await openDrawer(page, '途中で閉じる依頼');
+    // 送ると 409 の workspace_closed で断られ、枠を読み直すと閉じている
+    await page.route('**/api/aoba/comment-create', (route) =>
+      route.fulfill({ status: 409, json: { error: { code: 'workspace_closed', message: 'x' } } }),
+    );
+    await page.route('**/api/aoba/workspace', async (route) => {
+      const response = await route.fetch();
+      const body = (await response.json()) as Record<string, unknown>;
+      await route.fulfill({ response, json: { ...body, closed_at: '2026-10-20T00:00:00.000Z' } });
+    });
+    const input = drawer.getByRole('textbox', { name: 'コメントを書く' });
+    await input.fill('閉じる前に書きかけた文');
+    await drawer.getByRole('button', { name: '送る' }).click();
+    await expect(drawer.getByText('終了したパーティには送れません。書きかけの文は写して残せます。')).toBeVisible();
+    await expect(input).toHaveValue('閉じる前に書きかけた文');
+    await expect(input).toHaveAttribute('readonly', '');
+    await expect(drawer.getByRole('button', { name: '送る' })).toHaveCount(0);
   });
 
   test('送るのに失敗したら、文を欄に残して理由を出す', async ({ page }) => {

@@ -713,7 +713,9 @@ const looooooooooooooooooooooooooooooooooongLine = "コードの長い1行は、
   // editing は直している途中の欄（title、link、body）。欄ごとに別々に開け、保存か取り消しで閉じる
   // view は見本の状態の切り替え（読み込み中、読めない、閉じたワークスペースの読み取り専用）。errors は欄の下に出す理由
   // commentEditing は直している途中のコメントの番号、commentDeleting は消すかを確かめているコメントの番号
-  const drawer = { id: null, tab: "comments", thanked: new Set(), opener: null, full: false, editing: new Set(), view: null, errors: {}, drafts: {}, commentEditing: null, commentDeleting: null };
+  const drawer = { id: null, tab: "comments", thanked: new Set(), opener: null, full: false, editing: new Set(), view: null, errors: {}, drafts: {}, commentEditing: null, commentDeleting: null,
+    // 見本の状態の切り替え（カタログの drawerDemo が使う）。commentsView はコメントの読み込み（loading、failed、reloadFailed）
+    commentsView: null, commentViewer: null, commentBlocked: null };
   const drawerReadOnly = () => drawer.view === "readonly";
   function drawerSizeBtn() {
     const label = drawer.full ? "横に戻す" : "広げる";
@@ -787,21 +789,26 @@ const looooooooooooooooooooooooooooooooooongLine = "コードの長い1行は、
   // コメントの1件。見出し（名前、日時、編集済み）の右に、許された操作だけを出す（自分のコメントは「編集」と「削除」、
   // リーダーは人のコメントの「削除」）。「編集」は本文がその場で書く欄に替わり、「削除」は確かめてから消す。
   // 消したものは「削除されました」、本人以外（リーダー）が消したら「〇〇が削除しました」と残す。終了したワークスペースでは操作を出さない
+  // drawer.commentViewer は見る人（見本で一般のメンバーの見え方を出すとき。既定は自分）。
+  // drawer.commentBlocked は、直している途中に消されたコメントの番号（書きかけを欄に残し、「保存」を出さずに知らせる）
   function commentHtml(x, c, i) {
-    const mine = c.who === D.me;
-    const leader = user(D.me).role === "leader";
-    const editing = drawer.commentEditing === i && !c.deleted && !drawerReadOnly();
+    const viewer = drawer.commentViewer || D.me;
+    const mine = c.who === viewer;
+    const leader = user(viewer).role === "leader";
+    const blocked = drawer.commentBlocked === i;
+    const editing = (drawer.commentEditing === i && !c.deleted && !drawerReadOnly()) || blocked;
     const actions = drawerReadOnly() || c.deleted || editing ? "" : [
       mine ? `<button class="btn is-sm is-quiet" type="button" data-comment-edit="${i}">編集</button>` : "",
       mine || leader ? `<button class="btn is-sm is-quiet" type="button" data-comment-delete="${i}">削除</button>` : "",
     ].join("");
     const deletedText = c.deletedBy && c.deletedBy !== c.who ? `${esc(user(c.deletedBy).name)}が削除しました` : "削除されました";
-    const body = c.deleted
-      ? `<p class="comment-body">${deletedText}</p>`
-      : editing
-        ? `<div class="edit-form"><div class="field"><label class="field-label visually-hidden" for="comment-edit-${i}">コメントを直す</label>
-            <textarea class="textarea" id="comment-edit-${i}" data-comment-input>${esc(drawer.drafts.commentEdit ?? c.body)}</textarea></div>
-            <div class="edit-actions"><button class="btn is-primary is-sm" type="button" data-comment-save="${i}">保存</button><button class="btn is-sm is-quiet" type="button" data-comment-cancel="${i}">取り消し</button></div></div>`
+    const body = editing
+        ? `<div class="edit-form"><div class="field${blocked ? " is-invalid" : ""}"><label class="field-label visually-hidden" for="comment-edit-${i}">コメントを直す</label>
+            <textarea class="textarea" id="comment-edit-${i}" data-comment-input${blocked ? ` aria-describedby="comment-edit-${i}-error"` : ""}>${esc(drawer.drafts.commentEdit ?? c.body ?? "テンプレートの文面を、敬語にそろえて直しました。")}</textarea>
+            ${blocked ? `<span class="field-error" id="comment-edit-${i}-error" role="alert">${icon("alert")}このコメントは削除されました。書きかけの文は欄に残しています。</span>` : ""}</div>
+            <div class="edit-actions">${blocked ? "" : `<button class="btn is-primary is-sm" type="button" data-comment-save="${i}">保存</button>`}<button class="btn is-sm is-quiet" type="button" data-comment-cancel="${i}">取り消し</button></div></div>`
+      : c.deleted
+        ? `<p class="comment-body">${deletedText}</p>`
         : `<div class="comment-body"><div class="doc-box">${mdBody([c.body])}</div></div>`;
     const files = !c.deleted && filesOf(`comment:${x.id}:${i}`).length
       ? `<div class="comment-files">${filesOf(`comment:${x.id}:${i}`).map((f) => (f.type === "file" ? fileRow(f) : fileThumb(f))).join("")}</div>` : "";
@@ -817,6 +824,9 @@ const looooooooooooooooooooooooooooooooooongLine = "コードの長い1行は、
     const d = dueOf(x);
     const cat = categoryOf(x);
     const comments = D.comments[x.id] || [];
+    // 読み込んでいない前のコメントの数（「前のコメントを読む」で足す分。タブの件数にも数える）と、見本の読み込みの状態
+    const older = (D.olderComments || {})[x.id] || 0;
+    const commentsView = drawer.commentsView;
     const history = D.history[x.id] || [];
     const others = Object.keys(D.users).filter((u) => u !== D.me && !user(u).left);
     const fieldBody = x.unfilled
@@ -875,20 +885,25 @@ const looooooooooooooooooooooooooooooooooongLine = "コードの長い1行は、
       </div>
       <div>
         <div class="tabs" role="tablist" aria-label="コメントと変更の履歴">
-          <button class="tab" type="button" role="tab" id="drawer-tab-comments" aria-controls="drawer-panel-comments" data-tab="comments" aria-selected="${drawer.tab === "comments"}" tabindex="${drawer.tab === "comments" ? 0 : -1}">コメント ${comments.filter((c) => !c.deleted).length}</button>
+          <button class="tab" type="button" role="tab" id="drawer-tab-comments" aria-controls="drawer-panel-comments" data-tab="comments" aria-selected="${drawer.tab === "comments"}" tabindex="${drawer.tab === "comments" ? 0 : -1}">${commentsView === "loading" || commentsView === "failed" ? "コメント" : `コメント ${comments.filter((c) => !c.deleted).length + older}`}</button>
           <button class="tab" type="button" role="tab" id="drawer-tab-history" aria-controls="drawer-panel-history" data-tab="history" aria-selected="${drawer.tab === "history"}" tabindex="${drawer.tab === "history" ? 0 : -1}">変更の履歴</button>
         </div>
-        <div class="thread" role="tabpanel" id="drawer-panel-comments" aria-labelledby="drawer-tab-comments" tabindex="-1"${drawer.tab === "comments" ? "" : " hidden"}>
-          ${(D.olderComments || []).includes(x.id) ? `<div class="form-actions"><button class="btn is-sm" type="button" data-toast="前のコメントを足しました">前のコメントを読む</button></div>` : ""}
+        <div role="tabpanel" id="drawer-panel-comments" aria-labelledby="drawer-tab-comments"${drawer.tab === "comments" ? "" : " hidden"}>
+        <div class="thread" role="region" aria-label="コメントの一覧" tabindex="-1">
+          ${commentsView === "loading" ? `<p class="field-hint">読み込んでいます</p>`
+            : commentsView === "failed" ? `<div class="callout is-danger" role="alert">${icon("alert")}<span>コメントを読み込めませんでした。</span></div><div class="form-actions"><button class="btn is-sm" type="button">もう一度試す</button></div>`
+            : `${commentsView === "reloadFailed" ? `<div class="form-actions"><span class="field-error" role="alert">${icon("alert")}最新のコメントを読み込めませんでした。</span><button class="btn is-sm is-quiet" type="button">もう一度試す</button></div>` : ""}
+          ${older ? `<div class="form-actions"><button class="btn is-sm" type="button" data-toast="前のコメントを足しました">前のコメントを読む</button></div>` : ""}
           ${comments.map((c, i) => commentHtml(x, c, i)).join("") || `<p class="props-note">まだコメントはありません。</p>`}
           ${drawerReadOnly() ? "" : `<div class="field${drawer.errors.comment ? " is-invalid" : ""}"><label class="field-label" for="new-comment">コメントを書く</label><textarea class="textarea" id="new-comment" data-comment-new placeholder="Markdown で書けます" aria-describedby="new-comment-hint">${esc(drawer.drafts.comment ?? "")}</textarea>
             <span class="field-hint" id="new-comment-hint">Markdown で書けます。見出しは <code>#</code> が小見出しの大きさから始まります。</span>
             ${drawer.errors.comment ? `<span class="field-error" role="alert">${icon("alert")}${drawer.errors.comment}</span>` : ""}</div>
           ${attachments(`comment-new:${x.id}`, { noDrop: true })}
           <div class="composer-foot"><button class="btn is-sm is-quiet" type="button" data-pick-file="comment-new:${x.id}">${icon("clip")}ファイルを添付</button>
-            <span class="field-hint">画像は貼り付けても添付できます。</span><button class="btn" type="button" data-comment-send>送る</button></div>`}
+            <span class="field-hint">画像は貼り付けても添付できます。</span><button class="btn" type="button" data-comment-send>送る</button></div>`}`}
         </div>
-        <div role="tabpanel" id="drawer-panel-history" aria-labelledby="drawer-tab-history" tabindex="-1"${drawer.tab === "history" ? "" : " hidden"}>
+        </div>
+        <div class="tab-panel" role="tabpanel" id="drawer-panel-history" aria-labelledby="drawer-tab-history" tabindex="-1"${drawer.tab === "history" ? "" : " hidden"}>
         <ul class="history">${history.map((h) => `<li><span class="mono">${h[0]}</span>${avatarOf(h[1])}<span>${esc(user(h[1]).name)}</span><span class="props-note">${h[2] === "create" ? t("historyCreated") : t("historyUpdated")}</span>
           ${h[3].length ? `<ul class="history-changes">${h[3].map(([field, text]) => `<li><span class="props-note">${HIST[field]}</span><span>${esc(text)}</span></li>`).join("")}</ul>` : ""}</li>`).join("") || `<li class="props-note">まだ変更はありません。</li>`}</ul>
         </div>
@@ -1231,9 +1246,11 @@ const looooooooooooooooooooooooooooooooooongLine = "コードの長い1行は、
       document.querySelector(".dialog-sheet").classList.add("is-danger");
     },
     // コメントを消すかを確かめる。消したものは「削除されました」と残る。引き出しの外（カタログ）から開いたときは、消さない
+    // 確かめの文に、書いた人と日時を添える（長い名前は .dialog-body が折り返す）
     deleteComment: () => {
+      const c = drawer.id ? (D.comments[drawer.id] || [])[drawer.commentDeleting] : (D.comments.t1 || [])[1];
       openDialog("コメントを削除する",
-        `<p>このコメントを削除します。本文は戻せません。一覧には「削除されました」と残ります。</p>`,
+        `<p>${esc(user(c ? c.who : D.me).name)}が ${c ? c.at : ""} に書いたコメントを削除します。本文は戻せません。一覧には「削除されました」と残ります。</p>`,
         `<button class="btn is-primary" type="button" data-close-dialog>やめる</button><button class="btn is-danger" type="button" ${drawer.id ? "data-delete-comment" : `data-close-dialog data-toast="削除しました"`}>削除する</button>`);
       document.querySelector(".dialog-sheet").classList.add("is-danger");
     },
@@ -1898,7 +1915,7 @@ const looooooooooooooooooooooooooooooooooongLine = "コードの長い1行は、
         if (!value) return;
         if (value !== c.body) { c.body = value; c.edited = true; toast(`${icon("check")}コメントを直しました`); }
       }
-      drawer.commentEditing = null; delete drawer.drafts.commentEdit; renderDrawer();
+      drawer.commentEditing = null; drawer.commentBlocked = null; delete drawer.drafts.commentEdit; renderDrawer();
       document.querySelector(`#drawer [data-comment-edit="${i}"]`)?.focus(); return;
     }
     if ((el = hit("data-comment-delete"))) { drawer.commentDeleting = Number(el.dataset.commentDelete); DIALOGS.deleteComment(); return; }
@@ -1914,7 +1931,8 @@ const looooooooooooooooooooooooooooooooooongLine = "コードの長い1行は、
       if (!value) { drawer.errors.comment = "コメントを書いてから送ってください"; drawer.drafts.comment = input ? input.value : ""; renderDrawer(); document.querySelector("#drawer [data-comment-new]")?.focus(); return; }
       (D.comments[drawer.id] = D.comments[drawer.id] || []).push({ who: D.me, at: "10/20 10:15", body: value });
       delete drawer.errors.comment; drawer.drafts.comment = ""; renderDrawer();
-      document.querySelector("#drawer #drawer-panel-comments .comment:last-of-type")?.scrollIntoView({ block: "nearest" }); return;
+      // .comment は「前のコメントを読む」や欄と同じ div の兄弟なので、:last-of-type では引けない。最後の .comment を取る
+      [...document.querySelectorAll("#drawer #drawer-panel-comments .comment")].at(-1)?.scrollIntoView({ block: "nearest" }); return;
     }
     if (hit("data-close-drawer")) { closeDrawer(); return; }
     if ((el = hit("data-drawer-edit"))) { drawer.editing.add(el.dataset.drawerEdit); renderDrawer(); focusDrawerInput(el.dataset.drawerEdit); return; }
