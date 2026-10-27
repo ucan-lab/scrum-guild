@@ -75,6 +75,8 @@ git fetch origin main
 git worktree add --detach worktrees/review-<日付> origin/main
 ```
 
+同じ名前のワークツリーが既にあれば（同じ日の2回目）、切らずに `git -C worktrees/review-<日付> checkout --detach origin/main` で新しい `main` へ移して使う。
+
 ワークツリーで `pnpm install`、`pnpm db:seed`、`pnpm dev` を走らせる（`pnpm dev` はバックグラウンドで立てる）。並べて立てているサーバーがあれば `DEV_PORT_OFFSET` をずらし、以降のコマンドに同じ値を付ける。
 画面は `pnpm dev:open <who> <path>` で開く（`docs/development.md` の「開発とテストでのログイン」）。ブラウザを閉じるまで戻らないので、バックグラウンドで走らせる。毎回新しい context に seed の Cookie を置くので、人の普段のブラウザに残った HttpOnly の Cookie と混ざらない。ロールを替えるときは、前のブラウザのバックグラウンドのタスクを止めてから開き直す。画面を出せない環境（クラウドのセッション）では、手元を場所の案から外し、人の手元のセッションに回すか、PR の記録で示す。
 
@@ -141,7 +143,7 @@ gh api -X PATCH repos/{owner}/{repo}/issues/<番号> -f state=closed -f state_re
 ```
 
 子を持つストーリーとエピックは、子をすべて閉じてから親の条件に移る（`docs/development.md` の「Issue の運用」の、閉じる人と条件）。
-受け入れで不合格だった Issue の直し（`bug`）を受け入れたときは、元の Issue と一緒に閉じるかを聞く（同じ節の、合格したら元と直しを一緒に閉じる決まり）。
+受け入れで不合格だった Issue の直し（`bug`）を受け入れたら、続けて元の Issue の印の無い条件を手順 3 のとおり宣言し直し、人の「OK」で印を付ける。元の条件がすべて埋まったら、元と直しを一緒に閉じるかを聞く（同じ節の、合格したら元と直しを一緒に閉じる決まり）。
 
 ### 6. 見つけたことを起票の候補にする
 
