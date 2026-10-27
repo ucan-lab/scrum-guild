@@ -258,6 +258,30 @@ export async function listAppTables(env: Env): Promise<string[]> {
   return rows.map((row) => row.name).filter((name) => !/^(d1_migrations|sqlite_.*|_cf_.*)$/.test(name));
 }
 
+// 運用の手順で人が書き出す、1行に1文の SQL（scripts/purge-organization-sql.ts）を、文に分ける。空の行は捨てる
+export function sqlLines(text: string): string[] {
+  return text.split('\n').filter((line) => line.trim() !== '');
+}
+
+// 文を1文ずつ順に流す。手順書が1文ずつ `wrangler d1 execute --command` で流すのと同じく、文ごとに別のトランザクションになる。
+// 途中の文が失敗すると、前の文は書いたまま投げる（流している途中で止まったときの形）
+export async function runStatementsForTest(env: Env, statements: readonly string[]): Promise<void> {
+  const database = commonDatabase(env);
+  for (const statement of statements) await database.prepare(statement).run();
+}
+
+// 1行の SELECT の最初の行。運用の手順で人が流す、残りを数える文の結果を見るのに使う
+export async function firstRowForTest(env: Env, query: string): Promise<Record<string, unknown> | null> {
+  return commonDatabase(env).prepare(query).first();
+}
+
+// 表のすべての行（rowid の順）。消したあとに、残るべき行がそのまま残ったかを比べるのに使う。表の名前は listAppTables が返したものを渡す
+export async function tableRowsForTest(env: Env, table: string): Promise<unknown[]> {
+  if (!/^[a-z_]+$/.test(table)) throw new Error(`表の名前ではない: ${table}`);
+  const { results } = await commonDatabase(env).prepare(`SELECT * FROM ${table} ORDER BY rowid`).all();
+  return results;
+}
+
 export async function tableInfo(env: Env, table: string): Promise<TableInfoRow[]> {
   const db = commonDb(env);
   return db.rows(
