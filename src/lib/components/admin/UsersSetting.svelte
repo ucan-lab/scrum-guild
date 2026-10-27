@@ -102,11 +102,12 @@
     return (await confirmDialog?.ask(trigger)) ?? false;
   }
 
-  // 失敗を知らせる。403 は管理者でなくなったので、組織の枠を読み直す（この画面は「見つからない」になる）
-  async function reportFailure(result: Exclude<ApiResult<unknown>, { ok: true }>, user: User): Promise<void> {
+  // 失敗を知らせる。401 はログインへ移し、403 は管理者でなくなったので、組織の枠を読み直す（この画面は「見つからない」になる）。
+  // どちらも画面を離れるので真を返し、呼び出し側は一覧を読み直さない
+  async function reportFailure(result: Exclude<ApiResult<unknown>, { ok: true }>, user: User): Promise<boolean> {
     if (isUnauthenticated(result)) {
       window.location.assign(loginUrl(page.url));
-      return;
+      return true;
     }
     const name = user.name;
     if (result.status === 409 && result.error?.code === 'conflict') {
@@ -119,10 +120,11 @@
     } else if (result.status === 403) {
       showToast(t('userErrorForbidden', words), 'alert');
       await invalidateAll();
-      return;
+      return true;
     } else if (result.status === 404) showToast(t('userErrorNotFound', { name }), 'alert');
     else if (result.status === 0) showToast(t('userErrorUnreachable'), 'alert');
     else showToast(t('userUpdateFailed', { name }), 'alert');
+    return false;
   }
 
   // 切り替えを押したとき（変わる前）。送っている間は変えない（aria-disabled は押すことを止めない）。
@@ -176,9 +178,8 @@
         }
       } else {
         input.checked = user.is_admin;
-        await reportFailure(result, user);
-        // 403 は組織の枠を読み直している（この画面は「見つからない」になる）ので、一覧は読み直さない
-        if (result.status === 403) return;
+        // 401 と 403 は画面を離れるので、一覧は読み直さない
+        if (await reportFailure(result, user)) return;
       }
       await section.load();
     } finally {
@@ -206,8 +207,7 @@
           'check',
         );
       } else {
-        await reportFailure(result, user);
-        if (result.status === 403) return;
+        if (await reportFailure(result, user)) return;
       }
       await section.load();
     } finally {

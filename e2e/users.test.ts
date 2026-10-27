@@ -194,6 +194,23 @@ test.describe('管理者（あおば開発のミナト）', () => {
     ).not.toBeChecked();
   });
 
+  test('切り替えが 401 で断られたら、ログインへ移り、一覧は読み直さない', async ({ page }) => {
+    let lists = 0;
+    await page.route('**/api/aoba/user-list', async (route) => {
+      lists++;
+      await route.continue();
+    });
+    await page.route('**/api/aoba/user-admin-update', (route) =>
+      route.fulfill({ status: 401, json: { error: { code: 'unauthenticated', message: 'unauthenticated' } } }),
+    );
+    await page.goto('/aoba/admin');
+    await expect(rowOf(page, 'ハルカ')).toBeVisible();
+    const before = lists;
+    await rowOf(page, 'ハルカ').getByRole('checkbox', { name: 'ハルカをギルドマスターにする' }).click();
+    await page.waitForURL(/\/login/);
+    expect(lists).toBe(before);
+  });
+
   test('指名が通った後の読み直しが失敗しても、行と見出しの数は応答の値のまま', async ({ page }) => {
     await page.goto('/aoba/admin');
     const toggle = rowOf(page, 'ソラ').getByRole('checkbox', { name: 'ソラをギルドマスターにする' });
