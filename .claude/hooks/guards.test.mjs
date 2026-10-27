@@ -2157,6 +2157,10 @@ describe('bash-rules: 通す', () => {
     'tar --list --file=.claude/hooks/x.tar',
     'tar xf .githooks/x.tar -C /tmp',
     'tar -df migrations/x.tar',
+    // 条件式は引数を実行しない
+    '[[ -L .dev.vars ]]',
+    '[[ -f .env ]] && echo ok',
+    '[ -L .dev.vars ]',
     // 本文に守る名前も wrangler も無い、連結した値と足したフラグ
     `perl -e'print 1'`,
     `php -r'echo 1;'`,
