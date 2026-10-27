@@ -7,6 +7,7 @@ import { orgDb } from '../../src/server/db/index.ts';
 import { createFakeGithub } from '../auth/fake-github.ts';
 import { githubUser } from '../auth/helpers.ts';
 import {
+  createBoardColumn,
   createCategory,
   createComment,
   createEpic,
@@ -16,6 +17,7 @@ import {
   createOrganizationHoliday,
   createRepository,
   createSprint,
+  createSprintEntry,
   createStory,
   createTask,
   createUser,
@@ -345,6 +347,25 @@ export const pointers: Pointers = {
     workspace_id: target.workspace.id,
     sprint_id: (await createSprint(target.organization, target.workspace.id)).id,
   }),
+  // 呼ぶたびに、先頭の列、先のスプリント、入れるタスクを作る（入れたタスクは同じスプリントへ2回目は入らないため）
+  'sprint-task-add': async (target) => {
+    await createBoardColumn(target.organization, target.workspace.id);
+    const sprint = await createSprint(target.organization, target.workspace.id);
+    const task = await createTask(target.organization, target.workspace.id, target.admin.userId!);
+    return { workspace_id: target.workspace.id, sprint_id: sprint.id, task_ids: [task.id] };
+  },
+  // 呼ぶたびに、先のスプリントと、そこに入ったタスクを作る（外したタスクは続けて外せない）
+  'sprint-task-remove': async (target) => {
+    const column = await createBoardColumn(target.organization, target.workspace.id);
+    const sprint = await createSprint(target.organization, target.workspace.id);
+    const task = await createTask(target.organization, target.workspace.id, target.admin.userId!, {
+      sprint_id: sprint.id,
+      column_id: column.id,
+      column_position: 'a0',
+    });
+    await createSprintEntry(target.organization, target.workspace.id, sprint.id, task.id, target.admin.userId!);
+    return { workspace_id: target.workspace.id, sprint_id: sprint.id, task_id: task.id };
+  },
   'category-repository-list': async (target) => ({ workspace_id: target.workspace.id }),
   // 名前は呼ぶたびに変える（同じ名前は 409 になるため）
   'category-create': async (target) => ({ workspace_id: target.workspace.id, name: `保守 ${uniqueSuffix()}` }),

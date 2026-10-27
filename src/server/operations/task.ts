@@ -5,6 +5,7 @@ import { backlogTree, taskComplete, taskCreate, taskMove } from '../../shared/op
 import { searchWordsOf } from '../../shared/backlog-filter.ts';
 import { MIN_POINTS_FOR_EXPERIENCE } from '../../shared/task.ts';
 import {
+  sprintLeftLogSql,
   titleContainsAll,
   unindexed,
   type ExpressionBuilder,
@@ -23,6 +24,7 @@ import {
   repositoryRow,
 } from './definition-refs.ts';
 import { implement } from './implement.ts';
+import { sprintRefColumns, sprintRefOf, type SprintRefRow } from './sprint-refs.ts';
 import {
   MAX_TIES,
   moveConflict,
@@ -216,7 +218,16 @@ export const taskCreateOperation = implement(taskCreate, async ({ db, actor, wor
     throw new ApiError(404, 'not_found');
   }
   return {
-    task: { id: taskId, title: input.title, points: input.points, due_on: null, assignee, category, repository },
+    task: {
+      id: taskId,
+      title: input.title,
+      points: input.points,
+      due_on: null,
+      assignee,
+      category,
+      repository,
+      sprint: null,
+    },
   };
 });
 
@@ -285,6 +296,13 @@ export function openStoryTasksStatement(db: OrganizationDb, workspaceId: string,
           .on('repositories.workspace_id', '=', workspaceId)
           .on('repositories.deleted_at', 'is', null),
       )
+      // 入っているスプリント。同じワークスペースの削除していないものだけを結ぶ（下の親のないタスクも同じ）
+      .leftJoin('sprints', (join) =>
+        join
+          .onRef('sprints.id', '=', 'tasks.sprint_id')
+          .on('sprints.workspace_id', '=', workspaceId)
+          .on('sprints.deleted_at', 'is', null),
+      )
       .select([
         'tasks.story_id',
         'tasks.id',
@@ -296,6 +314,7 @@ export function openStoryTasksStatement(db: OrganizationDb, workspaceId: string,
         'users.name as assignee_name',
         'repositories.id as repository_ref_id',
         'repositories.name as repository_name',
+        ...sprintRefColumns,
       ])
       .where('tasks.completed_at', 'is', null)
       .$if(assignee !== undefined, (qb) =>
@@ -477,6 +496,12 @@ export const backlogTreeOperation = implement(backlogTree, async ({ db, actor, w
             .on('repositories.workspace_id', '=', workspaceId)
             .on('repositories.deleted_at', 'is', null),
         )
+        .leftJoin('sprints', (join) =>
+          join
+            .onRef('sprints.id', '=', 'tasks.sprint_id')
+            .on('sprints.workspace_id', '=', workspaceId)
+            .on('sprints.deleted_at', 'is', null),
+        )
         .select([
           'tasks.id',
           'tasks.title',
@@ -488,6 +513,7 @@ export const backlogTreeOperation = implement(backlogTree, async ({ db, actor, w
           'categories.name as category_name',
           'repositories.id as repository_ref_id',
           'repositories.name as repository_name',
+          ...sprintRefColumns,
         ])
         .where('tasks.completed_at', 'is', null)
         .$if(assignee !== undefined, (qb) =>
@@ -546,7 +572,7 @@ export const backlogTreeOperation = implement(backlogTree, async ({ db, actor, w
     assignee_name: string | null;
     repository_ref_id: string | null;
     repository_name: string | null;
-  };
+  } & SprintRefRow;
   type Ref = { id: string; name: string } | null;
   // category は引き継ぎを解いた区分（親のないタスクは自身の区分、ストーリーの下のタスクは親の区分）
   const taskOf = (row: Row, category: Ref) => ({
@@ -557,6 +583,7 @@ export const backlogTreeOperation = implement(backlogTree, async ({ db, actor, w
     assignee: row.assignee_user_id === null ? null : { id: row.assignee_user_id, name: row.assignee_name ?? '' },
     category,
     repository: refOf(row.repository_ref_id, row.repository_name),
+    sprint: sprintRefOf(row),
   });
 
   // 区分は、エピック、ストーリー、タスクの順に引き継ぐ。エピックの区分を先に引いておく
@@ -700,7 +727,11 @@ const completionColumns = [
   'billing_month',
   'created_at',
   'updated_at',
+  'previous_column_id',
 ] as const;
+
+// 読んでから書くまでに、スプリントか列が変わって書けなかったときにやり直す回数の上限。超えたら 409 の conflict
+const MAX_COMPLETE_ATTEMPTS = 3;
 
 const grantColumns = [
   'id',
@@ -811,26 +842,257 @@ export const taskCompleteOperation = implement(taskComplete, async ({ db, actor,
   const userName = userResult.rows[0]?.name;
   if (timezone === undefined || userName === undefined) throw new ApiError(404, 'not_found');
 
-  const at = now();
+  for (let attempt = 0; attempt < MAX_COMPLETE_ATTEMPTS; attempt++) {
+    const target = await readCompleteTarget(db, workspaceId, taskId);
+    if (target === undefined) {
+      await throwIfClosed(db, workspaceId);
+      throw new ApiError(404, 'not_found');
+    }
+    if (target.completed_at !== null) {
+      await throwIfClosed(db, workspaceId);
+      throw new ApiError(409, 'conflict');
+    }
+    const placement = await placementOf(db, workspaceId, target);
+    const at = now();
+    const { statements, taskIndex } = completeStatements(db, {
+      organizationId,
+      workspaceId,
+      taskId,
+      userId,
+      userName,
+      at,
+      billingMonth: monthIn(timezone, at),
+      placement,
+    });
+    const results = await db.batch(statements);
+    if ((results[taskIndex]?.changes ?? 0) > 0) {
+      return { task_id: taskId, completed_at: at.toISOString(), left_sprint: placement.kind === 'planned' };
+    }
+    // 先に読んだ値ではなく、書いた結果で決める。読んでから書くまでに閉じたなら 409 の workspace_closed、
+    // タスクが無い（別の組織のタスクと、バックログに無いタスクを含む）なら 404、完了していれば 409 の conflict。
+    // どれでもなければ、読んでから書くまでにスプリントか列が変わったので、読み直してやり直す
+    await throwIfClosed(db, workspaceId);
+    const reread = await readCompleteTarget(db, workspaceId, taskId);
+    if (reread === undefined) throw new ApiError(404, 'not_found');
+    if (reread.completed_at !== null) throw new ApiError(409, 'conflict');
+  }
+  throw new ApiError(409, 'conflict');
+});
+
+// 完了にするタスクの、今のスプリント（とその状態）と列。バックログの削除していないタスクだけ。ワークスペースで必ず絞る
+async function readCompleteTarget(db: OrganizationDb, workspaceId: string, taskId: string) {
+  return db.first(
+    db.statement((q) =>
+      q
+        .selectFrom('tasks')
+        .leftJoin('sprints', (join) =>
+          join.onRef('sprints.id', '=', 'tasks.sprint_id').on('sprints.workspace_id', '=', workspaceId),
+        )
+        .select([
+          'tasks.id',
+          'tasks.sprint_id',
+          'tasks.column_id',
+          'tasks.completed_at',
+          'sprints.name as sprint_name',
+          'sprints.start_on as sprint_start_on',
+          'sprints.end_on as sprint_end_on',
+          'sprints.status as sprint_status',
+          'sprints.deleted_at as sprint_deleted_at',
+        ])
+        .where('tasks.id', '=', taskId)
+        .where('tasks.workspace_id', '=', workspaceId)
+        .where('tasks.tray', '=', 'backlog')
+        .where('tasks.deleted_at', 'is', null),
+    ),
+  );
+}
+
+type CompleteTarget = NonNullable<Awaited<ReturnType<typeof readCompleteTarget>>>;
+
+// 完了にするタスクの置き場所と、完了で書くもの（docs/data-model.md の「書き込みの単位」の「タスクの完了」）。
+// - outside: スプリントの外。今のまま
+// - active: 進行中のスプリントの中。完了の列の末尾へ移し、完了の記録にスプリントと完了の前の列を入れる。sprint_entries は書かない
+// - planned: 始まっていないスプリントの中。スプリントから外し（sprint_entries を removed で閉じる）、スプリントの外の完了にする。
+//   削除したスプリントを指すタスク（前の版に戻して作られうる）も同じに扱う（sprintDeleted が真）
+type Placement =
+  | { kind: 'outside' }
+  | {
+      kind: 'active';
+      sprintId: string;
+      columnId: string | null;
+      doneColumnId: string | null;
+      doneColumnPosition: string | null;
+    }
+  | { kind: 'planned'; sprintId: string; columnId: string | null; sprintDeleted: boolean };
+
+async function placementOf(db: OrganizationDb, workspaceId: string, target: CompleteTarget): Promise<Placement> {
+  const sprintId = target.sprint_id;
+  if (sprintId === null) return { kind: 'outside' };
+  if (target.sprint_deleted_at !== null || target.sprint_status === 'planned') {
+    return { kind: 'planned', sprintId, columnId: target.column_id, sprintDeleted: target.sprint_deleted_at !== null };
+  }
+  if (target.sprint_status !== 'active') {
+    // 終了したスプリントに残った未完了のタスク（終了で持ち越すので、ふつうは無い）は完了にしない
+    await throwIfClosed(db, workspaceId);
+    throw new ApiError(409, 'conflict');
+  }
+  // 完了の列（ワークスペースに1つ）と、このスプリントでのその列の末尾
+  const [doneResult, lastResult] = await db.batch([
+    db.statement((q) =>
+      q
+        .selectFrom('board_columns')
+        .select('board_columns.id')
+        .where('board_columns.workspace_id', '=', workspaceId)
+        .where('board_columns.is_done', '=', 1)
+        .where('board_columns.deleted_at', 'is', null)
+        .limit(1),
+    ),
+    db.statement((q) =>
+      q
+        .selectFrom('tasks')
+        .select('tasks.column_position')
+        .where('tasks.workspace_id', '=', workspaceId)
+        .where('tasks.sprint_id', '=', sprintId)
+        .where('tasks.column_id', '=', (eb) =>
+          eb
+            .selectFrom('board_columns')
+            .select('board_columns.id')
+            .where('board_columns.workspace_id', '=', workspaceId)
+            .where('board_columns.is_done', '=', 1)
+            .where('board_columns.deleted_at', 'is', null)
+            .limit(1),
+        )
+        .where('tasks.deleted_at', 'is', null)
+        .orderBy('tasks.column_position', 'desc')
+        .limit(1),
+    ),
+  ] as const);
+  const doneColumnId = doneResult.rows[0]?.id ?? null;
+  // 完了の列に既にいる（まだ完了にしていない）なら、位置は変えない
+  const moving = doneColumnId !== null && doneColumnId !== target.column_id;
+  return {
+    kind: 'active',
+    sprintId,
+    columnId: target.column_id,
+    doneColumnId: moving ? doneColumnId : null,
+    doneColumnPosition: moving ? generateKeyBetween(lastResult.rows[0]?.column_position ?? null, null) : null,
+  };
+}
+
+type CompleteContext = {
+  organizationId: string;
+  workspaceId: string;
+  taskId: string;
+  userId: string;
+  userName: string;
+  at: Date;
+  billingMonth: string;
+  placement: Placement;
+};
+
+// 完了の batch() に並べる文と、tasks の UPDATE の位置（taskIndex）。後ろの文は自分の完了の記録が入ったことを条件にする。
+// 始まっていないスプリントの中の完了だけは、先頭に入っている行を閉じる文を置き、tasks の UPDATE はこの要求がその行を閉じたこと
+// （ended_at が自分の時刻）を条件にする。行を閉じる文が負けたら（入っている行が無い、読んでから書くまでに閉じられた）、何も書かない
+function completeStatements(db: OrganizationDb, context: CompleteContext) {
+  const { organizationId, workspaceId, taskId, userId, userName, at, billingMonth, placement } = context;
   const completedAt = at.toISOString();
   const params: CompletionParams = { workspaceId, taskId, completionId: uuidv7(at), userId, at: completedAt };
   const { completionId } = params;
-  const billingMonth = monthIn(timezone, at);
+  // 完了の前にいた列。進行中のスプリントの中の完了だけ（#240 の完了を戻す操作が、この列へ戻す）
+  const previousColumnId = placement.kind === 'active' ? placement.columnId : null;
+  const inSprint = placement.kind === 'outside' ? null : placement;
 
-  const results = await db.batch([
-    // 1. tasks。変わった行が0なら、タスクが無い（この版の完了の前提に当たらないタスクを含む）か、すでに完了。
-    // 前提は、スプリントに入っていないバックログのタスク（親のないタスクと、ストーリーの下のタスク）
+  // 読んだスプリントが、読んだ状態のまま。始まっていないスプリントの中なら planned（削除していない）、削除したスプリントなら削除したまま
+  const sprintAsRead = (from: Pick<QueryCreator<Tables>, 'selectFrom'>) => {
+    const sprint = from
+      .selectFrom('sprints as read_sprint')
+      .select('read_sprint.id')
+      .where('read_sprint.id', '=', inSprint!.sprintId)
+      .where('read_sprint.workspace_id', '=', workspaceId);
+    if (inSprint!.kind === 'planned' && inSprint!.sprintDeleted)
+      return sprint.where('read_sprint.deleted_at', 'is not', null);
+    return sprint.where('read_sprint.deleted_at', 'is', null).where('read_sprint.status', '=', inSprint!.kind);
+  };
+
+  // 0.（始まっていないスプリントの中だけ）入っている行を removed で閉じる。条件は 1 と同じ前提（読んだスプリントと列のままの、
+  // 未完了のバックログのタスク、閉じていないワークスペース）
+  const closeEntry =
+    placement.kind === 'planned'
+      ? [
+          db.statement((q) =>
+            q
+              .updateTable('sprint_entries')
+              .set({ ended_at: completedAt, outcome: 'removed' })
+              .where('workspace_id', '=', workspaceId)
+              .where('task_id', '=', taskId)
+              .where('sprint_id', '=', placement.sprintId)
+              .where('ended_at', 'is', null)
+              .where((eb) =>
+                eb.and([
+                  eb.exists(openWorkspace(q, organizationId, workspaceId)),
+                  eb.exists(sprintAsRead(q)),
+                  eb.exists(
+                    q
+                      .selectFrom('tasks as closing')
+                      .select('closing.id')
+                      .where('closing.id', '=', taskId)
+                      .where('closing.workspace_id', '=', workspaceId)
+                      .where('closing.tray', '=', 'backlog')
+                      .where('closing.completed_at', 'is', null)
+                      .where('closing.deleted_at', 'is', null)
+                      .where('closing.sprint_id', '=', placement.sprintId)
+                      .where('closing.column_id', 'is', placement.columnId),
+                  ),
+                ]),
+              ),
+          ),
+        ]
+      : [];
+
+  const statements = [
+    ...closeEntry,
+    // 1. tasks。変わった行が0なら、タスクが無い（バックログに無いタスクを含む）か、すでに完了か、読んでから書くまでにスプリントか列が変わった。
+    // 置き場所ごとに、読んだスプリント（と列）のままで、スプリントの状態も読んだままであることを条件にする
     db.statement((q) =>
       q
         .updateTable('tasks')
-        .set({ completed_at: completedAt, completed_by: userId, updated_at: completedAt })
+        .set({
+          completed_at: completedAt,
+          completed_by: userId,
+          updated_at: completedAt,
+          ...(placement.kind === 'planned' ? { sprint_id: null, column_id: null, column_position: null } : {}),
+          ...(placement.kind === 'active' && placement.doneColumnId !== null
+            ? { column_id: placement.doneColumnId, column_position: placement.doneColumnPosition }
+            : {}),
+        })
         .where('id', '=', taskId)
         .where('workspace_id', '=', workspaceId)
         .where('tray', '=', 'backlog')
-        .where('sprint_id', 'is', null)
         .where('completed_at', 'is', null)
         .where('deleted_at', 'is', null)
-        .where((eb) => eb.exists(openWorkspace(q, organizationId, workspaceId))),
+        .where((eb) => eb.exists(openWorkspace(q, organizationId, workspaceId)))
+        .$if(placement.kind === 'outside', (qb) => qb.where('sprint_id', 'is', null))
+        .$if(inSprint !== null, (qb) =>
+          qb
+            .where('sprint_id', '=', inSprint!.sprintId)
+            .where('column_id', 'is', inSprint!.columnId)
+            .where((eb) => eb.exists(sprintAsRead(q))),
+        )
+        // 始まっていないスプリントの中なら、0 でこの要求が入っている行を閉じた
+        .$if(placement.kind === 'planned', (qb) =>
+          qb.where((eb) =>
+            eb.exists(
+              q
+                .selectFrom('sprint_entries as closed_entry')
+                .select('closed_entry.id')
+                .where('closed_entry.workspace_id', '=', workspaceId)
+                .where('closed_entry.task_id', '=', taskId)
+                .where('closed_entry.sprint_id', '=', inSprint!.sprintId)
+                .where('closed_entry.ended_at', '=', completedAt)
+                .where('closed_entry.outcome', '=', 'removed'),
+            ),
+          ),
+        ),
     ),
     // 2. completions。止めた時計で同じ人が2回完了にしても、先に入った記録があれば何も入らない
     db.statement((q) =>
@@ -888,6 +1150,7 @@ export const taskCompleteOperation = implement(taskComplete, async ({ db, actor,
                 .as('billing_month'),
               eb.val(completedAt).as('created_at'),
               eb.val(completedAt).as('updated_at'),
+              eb.val(previousColumnId).as('previous_column_id'),
             ])
             .where((eb) =>
               eb.and([
@@ -950,29 +1213,38 @@ export const taskCompleteOperation = implement(taskComplete, async ({ db, actor,
             .where((eb) => eb.exists(completionExists(q, workspaceId, completionId))),
         ),
     ),
-  ]);
-
-  if ((results[0]?.changes ?? 0) === 0) {
-    // 先に読んだ値ではなく、書いた結果で決める。読んでから書くまでに閉じたなら 409 の workspace_closed、
-    // タスクが無い（別の組織のタスクと、この版の完了の前提に当たらないタスクを含む）なら 404、
-    // あるのに変わらなければ完了済みの 409 の conflict
-    await throwIfClosed(db, workspaceId);
-    const existing = await db.first(
-      db.statement((q) =>
-        q
-          .selectFrom('tasks')
-          .select('tasks.id')
-          .where('tasks.id', '=', taskId)
-          .where('tasks.workspace_id', '=', workspaceId)
-          .where('tasks.tray', '=', 'backlog')
-          .where('tasks.sprint_id', 'is', null)
-          .where('tasks.deleted_at', 'is', null),
-      ),
-    );
-    throw existing === undefined ? new ApiError(404, 'not_found') : new ApiError(409, 'conflict');
-  }
-  return { task_id: taskId, completed_at: completedAt };
-});
+    // 5. 始まっていないスプリントの中の完了だけ。スプリントから外した変更の履歴（名前は書くときの今の名前）。
+    // 3 と同じく、自分の完了の記録が入ったときだけ
+    ...(placement.kind === 'planned'
+      ? [
+          db.statement((q) =>
+            q
+              .insertInto('change_logs')
+              .columns(changeLogColumns)
+              .expression(
+                q
+                  .selectFrom('sprints as cur')
+                  .select((eb) => [
+                    eb.val(uuidv7(at)).as('id'),
+                    eb.val(organizationId).as('organization_id'),
+                    eb.val(workspaceId).as('workspace_id'),
+                    eb.val(userId).as('actor_user_id'),
+                    eb.val('task').as('entity_type'),
+                    eb.val(taskId).as('entity_id'),
+                    eb.val('update').as('action'),
+                    sprintLeftLogSql('cur').as('changes_json'),
+                    eb.val(completedAt).as('created_at'),
+                  ])
+                  .where('cur.id', '=', placement.sprintId)
+                  .where('cur.workspace_id', '=', workspaceId)
+                  .where((eb) => eb.exists(completionExists(q, workspaceId, completionId))),
+              ),
+          ),
+        ]
+      : []),
+  ];
+  return { statements, taskIndex: closeEntry.length };
+}
 
 // 移す先の並び（親の配下か、親のないタスク）から、移すタスクを除いたもの。完了したタスクも並びに残っているので含める
 function siblingTasks(

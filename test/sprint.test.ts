@@ -135,8 +135,24 @@ describe('sprint-list', () => {
     expect(res.status).toBe(200);
     const body = (await res.json()) as ListBody;
     expect(body.sprints).toEqual([
-      { id: active.id, name: null, start_on: '2026-10-26', end_on: '2026-11-08', length: 14, status: 'active' },
-      { id: later.id, name: '年末', start_on: '2026-11-09', end_on: '2026-11-22', length: 14, status: 'planned' },
+      {
+        id: active.id,
+        name: null,
+        start_on: '2026-10-26',
+        end_on: '2026-11-08',
+        length: 14,
+        status: 'active',
+        tasks: [],
+      },
+      {
+        id: later.id,
+        name: '年末',
+        start_on: '2026-11-09',
+        end_on: '2026-11-22',
+        length: 14,
+        status: 'planned',
+        tasks: [],
+      },
     ]);
   });
 

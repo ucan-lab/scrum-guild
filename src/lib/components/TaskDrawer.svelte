@@ -26,6 +26,7 @@
   import { callOperation } from '../api.ts';
   import { withCurrent } from '../definition-options.ts';
   import { formatDateTime } from '../format-datetime.ts';
+  import { completedMessage, sprintLabel, sprintPeriod } from '../sprint-label.ts';
   import { historyEntryView } from '../task-history.ts';
   import { showToast } from '../toast.svelte.ts';
   import { t } from '../vocabulary.svelte.ts';
@@ -1028,7 +1029,7 @@
       if (!alive) {
         // 送っている間に閉じられた。通ったら木を読み直して知らせ、失敗は知らせる
         if (result.ok) {
-          showToast(t('taskCompleted', { task: t('task'), done: t('done') }), 'check');
+          showToast(completedMessage(result.data.left_sprint, t), 'check');
           onchanged();
         } else if (result.status !== 409 || result.error?.code !== 'conflict') {
           showToast(t('taskCompleteFailed', { done: t('done') }), 'alert');
@@ -1037,8 +1038,11 @@
       }
       if (result.ok) {
         if (task !== null) task = { ...task, completed_at: result.data.completed_at };
-        showToast(t('taskCompleted', { task: t('task'), done: t('done') }), 'check');
-        void loadHistory();
+        showToast(completedMessage(result.data.left_sprint, t), 'check');
+        // 始まっていないスプリントの中で完了すると、スプリントから外れる。外れたなら詳細ごと読み直す（履歴も読み直す）。
+        // 履歴を読み始めてから木を読み直す（load の最中に読み始めると、開発時に window_fetch_in_load の警告が出る）
+        if (result.data.left_sprint) await refresh();
+        else void loadHistory();
         onchanged();
       } else if (result.status === 401) {
         onstale();
@@ -1354,6 +1358,21 @@
           {#if dueError !== null}
             <span class="field-error" id={dueErrorId} role="alert"><Icon name="alert" />{dueError}</span>
           {/if}
+        </dd>
+      </div>
+      <div>
+        <!-- 入っているスプリント（kit.js の drawer）。入っていなければ「<バックログ>」。出し入れは計画の画面で行う -->
+        <dt>{t('sprint')}</dt>
+        <dd>
+          {#if task.sprint === null}
+            <span>{t('sprintNone', { backlog: t('backlog') })}</span>
+          {:else if task.sprint.name === null}
+            <!-- 名前の無いスプリントは、期間を等幅で出す -->
+            <span>{t('sprint')} <span class="mono">{sprintPeriod(task.sprint, t)}</span></span>
+          {:else}
+            <span>{sprintLabel(task.sprint, t)}</span>
+          {/if}
+          <span class="props-note">{t('sprintPlanNote', { plan: t('plan') })}</span>
         </dd>
       </div>
       <div>

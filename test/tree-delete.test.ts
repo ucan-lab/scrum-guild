@@ -872,9 +872,9 @@ describe('文の数', () => {
 
   test.each([
     ['epic', 'keep', 4],
-    ['epic', 'delete', 8],
+    ['epic', 'delete', 9],
     ['story', 'keep', 4],
-    ['story', 'delete', 6],
+    ['story', 'delete', 7],
   ] as const)('%s を %s で削除する文は %i 個で、子が 1 件でも 30 件でも同じ', async (kind, mode, expected) => {
     expect(await statementCount(1, kind, mode)).toBe(expected);
     expect(await statementCount(30, kind, mode)).toBe(expected);

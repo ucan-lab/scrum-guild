@@ -25,7 +25,14 @@ import {
 import { organizationSettingsUpdateOperation } from './organization-settings.ts';
 import { logoutOperation, meOperation } from './session.ts';
 import { userAdminUpdateOperation, userDisableOperation, userEnableOperation, userListOperation } from './user.ts';
-import { sprintCreateOperation, sprintDeleteOperation, sprintListOperation, sprintUpdateOperation } from './sprint.ts';
+import {
+  sprintCreateOperation,
+  sprintDeleteOperation,
+  sprintListOperation,
+  sprintTaskAddOperation,
+  sprintTaskRemoveOperation,
+  sprintUpdateOperation,
+} from './sprint.ts';
 import { epicCreateOperation, epicGetOperation, epicMoveOperation, epicUpdateOperation } from './epic.ts';
 import {
   categoryCreateOperation,
@@ -106,6 +113,8 @@ export const implementedOperations: readonly ImplementedOperation[] = [
   sprintCreateOperation,
   sprintUpdateOperation,
   sprintDeleteOperation,
+  sprintTaskAddOperation,
+  sprintTaskRemoveOperation,
   taskCreateOperation,
   backlogTreeOperation,
   taskCompleteOperation,

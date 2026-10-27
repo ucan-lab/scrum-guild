@@ -28,6 +28,7 @@ import {
   createRepository,
   createSession,
   createSprint,
+  createSprintEntry,
   createStory,
   createTask,
   createUser,
@@ -75,8 +76,10 @@ async function fillOrganization(organization: Awaited<ReturnType<typeof createOr
     column_position: 'a0',
     assignee_user_id: member.id,
   });
+  await createSprintEntry(organization, ws, sprint.id, task.id, admin.id);
   const completion = await createCompletion(organization, ws, task.id, member.id, {
     sprint_id: sprint.id,
+    previous_column_id: column.id,
     category_id: category.id,
     assignee_user_id: member.id,
   });

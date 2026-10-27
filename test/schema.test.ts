@@ -696,6 +696,59 @@ describe('comments', () => {
   });
 });
 
+describe('sprint_entries', () => {
+  async function taskAndSprint() {
+    const { userId, workspaceId } = await workspace();
+    const taskId = id();
+    const sprintId = id();
+    await run(
+      `INSERT INTO tasks (id, workspace_id, is_imported, tray, title, position, created_by, created_at, updated_at) VALUES (?, ?, 0, 'backlog', 'タスク', 'a0', ?, ?, ?)`,
+      taskId,
+      workspaceId,
+      userId,
+      AT,
+      AT,
+    );
+    await run(
+      `INSERT INTO sprints (id, workspace_id, start_on, end_on, status, created_at, updated_at) VALUES (?, ?, '2026-11-02', '2026-11-15', 'planned', ?, ?)`,
+      sprintId,
+      workspaceId,
+      AT,
+      AT,
+    );
+    const entry = (endedAt: string | null, outcome: string | null) =>
+      run(
+        `INSERT INTO sprint_entries (id, workspace_id, sprint_id, task_id, added_at, added_by, ended_at, outcome) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        id(),
+        workspaceId,
+        sprintId,
+        taskId,
+        AT,
+        userId,
+        endedAt,
+        outcome,
+      );
+    return { entry };
+  }
+
+  test('1つのタスクが入っている行（ended_at が空）は1つ。出た行はいくつでも持てる', async () => {
+    const { entry } = await taskAndSprint();
+    await expect(entry(AT, 'removed')).resolves.toBeTruthy();
+    await expect(entry(AT, 'removed')).resolves.toBeTruthy();
+    await expect(entry(null, null)).resolves.toBeTruthy();
+    await expect(entry(null, null)).rejects.toThrow(/UNIQUE/);
+  });
+
+  test('出た日時と出方は、両方入るか両方空。出方は completed、carried_over、removed のどれか', async () => {
+    const { entry } = await taskAndSprint();
+    await expect(entry(AT, null)).rejects.toThrow(/CHECK/);
+    await expect(entry(null, 'removed')).rejects.toThrow(/CHECK/);
+    await expect(entry(AT, 'deleted')).rejects.toThrow(/CHECK/);
+    await expect(entry(AT, 'completed')).resolves.toBeTruthy();
+    await expect(entry(AT, 'carried_over')).resolves.toBeTruthy();
+  });
+});
+
 describe('xp_grants.dedupe_key', () => {
   test('同じキーの付与は2つ作れない', async () => {
     const { userId, workspaceId } = await workspace();

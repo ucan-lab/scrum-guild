@@ -27,6 +27,7 @@ const TABLES: readonly (readonly [table: string, scope: Scope])[] = [
   ['completions', 'workspace'],
   ['change_logs', 'organization'],
   ['organization_holidays', 'organization'],
+  ['sprint_entries', 'workspace'],
   ['tasks', 'workspace'],
   ['stories', 'workspace'],
   ['epics', 'workspace'],

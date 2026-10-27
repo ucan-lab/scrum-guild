@@ -123,7 +123,8 @@ function guardRow(from: From, context: DeleteContext, root: Root) {
 // どちらも story_id で tasks_story の索引に乗せる。エピックは配下のストーリーを stories_workspace_epic で引いてからタスクを引くよう、
 // FROM stories CROSS JOIN tasks で順序を固定する（INNER JOIN や story_id IN (...) では、SQLite が tasks_workspace_tray で
 // ワークスペースの全タスクを走査する計画を選ぶ。backlog-tree と同じ）
-function tasksUnderRoot(from: From, workspaceId: string, root: Root, imported: 0 | 1) {
+// imported が null なら、どちらも
+function tasksUnderRoot(from: From, workspaceId: string, root: Root, imported: 0 | 1 | null) {
   if (root.kind === 'story') {
     return from
       .selectFrom('tasks as ut')
@@ -131,9 +132,11 @@ function tasksUnderRoot(from: From, workspaceId: string, root: Root, imported: 0
       .where('ut.story_id', '=', root.id)
       .where('ut.workspace_id', '=', workspaceId)
       .where('ut.deleted_at', 'is', null)
-      .where('ut.is_imported', '=', imported);
+      .$if(imported !== null, (qb) => qb.where('ut.is_imported', '=', imported!));
   }
-  return epicTasks(from, workspaceId, root.id).select('ut.id').where('ut.is_imported', '=', imported);
+  return epicTasks(from, workspaceId, root.id)
+    .select('ut.id')
+    .$if(imported !== null, (qb) => qb.where('ut.is_imported', '=', imported!));
 }
 
 // エピックの配下の削除していないストーリーの下の、削除していないタスク（ストーリーは us、タスクは ut）
@@ -208,12 +211,22 @@ function rootStatements(db: OrganizationDb, context: DeleteContext, root: Root):
   ];
 }
 
-// delete: 配下のタスクを片付ける4文。履歴を先に置く（片付けた後は、配下の条件に当たらなくなるため）。
-// 1. 手で作ったタスクの削除の履歴、2. 取り込んだタスクのアーカイブの履歴（親と置き場所）、
-// 3. 取り込んだタスクをアーカイブの末尾へ移す（親、スプリント、列を空にする）、4. 手で作ったタスクを論理削除する
+// delete: 配下のタスクを片付ける5文。履歴を先に置く（片付けた後は、配下の条件に当たらなくなるため）。
+// 1. スプリントに入っている配下のタスクの行を removed で閉じる、2. 手で作ったタスクの削除の履歴、
+// 3. 取り込んだタスクのアーカイブの履歴（親と置き場所）、4. 取り込んだタスクをアーカイブの末尾へ移す（親、スプリント、列を空にする）、
+// 5. 手で作ったタスクを論理削除する（スプリント、列を空にする）
 function deleteTaskStatements(db: OrganizationDb, context: DeleteContext, root: Root): Statement<'organization'>[] {
   const { organizationId, workspaceId, actorUserId, at, deletedAt } = context;
   return [
+    db.statement((q) =>
+      q
+        .updateTable('sprint_entries')
+        .set({ ended_at: deletedAt, outcome: 'removed' })
+        .where('workspace_id', '=', workspaceId)
+        .where('ended_at', 'is', null)
+        .where('task_id', 'in', tasksUnderRoot(q, workspaceId, root, null))
+        .where((eb) => eb.exists(guardRow(q, context, root))),
+    ),
     db.statement((q) =>
       q
         .insertInto('change_logs')
@@ -313,7 +326,7 @@ function deleteTaskStatements(db: OrganizationDb, context: DeleteContext, root: 
     db.statement((q) =>
       q
         .updateTable('tasks')
-        .set({ deleted_at: deletedAt, updated_at: deletedAt })
+        .set({ deleted_at: deletedAt, updated_at: deletedAt, sprint_id: null, column_id: null, column_position: null })
         .where('tasks.workspace_id', '=', workspaceId)
         .where((eb) => eb('tasks.id', 'in', tasksUnderRoot(q, workspaceId, root, 0)))
         .where((eb) => eb.exists(guardRow(q, context, root))),

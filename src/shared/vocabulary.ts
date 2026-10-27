@@ -1954,6 +1954,89 @@ export const dictionary = defineDictionary({
     '削除できませんでした。もう一度試してください',
     '削除できませんでした。もう一度試してください',
   ),
+  // 計画の画面のスプリントの行に入っているタスク、外す操作、「バックログから入れる」のダイアログ（design/plan.html）
+  sprintTasksEmpty: workspace('まだ何も入っていません', 'まだ何も入っていません'),
+  sprintTasksSummary: workspace('{count} 件・{points} pt', '{count} 件・{points} pt'),
+  sprintTaskAddOpen: workspace('{backlog}から入れる', '{backlog}から入れる'),
+  sprintTaskAddOpenLabel: workspace('{backlog}から入れる: {label}', '{backlog}から入れる: {label}'),
+  sprintTaskAddTitle: workspace('{label} に入れる', '{label} に入れる'),
+  sprintTaskAddHint: workspace(
+    '{story}を選ぶと、配下の未完了の{task}をまとめて入れます。ほかの{sprint}に入っている{task}は、こちらへ移します。',
+    '{story}を選ぶと、配下の未完了の{task}をまとめて入れます。ほかの{sprint}に入っている{task}は、こちらへ移します。',
+  ),
+  sprintTaskAddStoryMeta: workspace('未完了の{task} {count} 件', '未完了の{task} {count} 件'),
+  sprintTaskAddRootTasks: workspace('親のない{task}', '親のない{task}'),
+  sprintTaskAddInSprint: workspace('{label} から移します', '{label} から移します'),
+  sprintTaskAddNothing: workspace(
+    '入れられる未完了の{task}がありません。{backlog}で起票してください。',
+    '入れられる未完了の{task}がありません。{backlog}で起票してください。',
+  ),
+  sprintTaskAddSubmit: workspace('{count} 件入れる', '{count} 件入れる'),
+  sprintTaskAddNoneSelected: workspace(
+    '入れる{task}か{story}を選んでください',
+    '入れる{task}か{story}を選んでください',
+  ),
+  sprintTaskAddTooMany: workspace(
+    '1回に入れられる{task}は {max} 件までです。選ぶ数を減らしてください',
+    '1回に入れられる{task}は {max} 件までです。選ぶ数を減らしてください',
+  ),
+  sprintTaskAdding: workspace('入れています', '入れています'),
+  sprintTaskAdded: workspace('{count} 件入れました', '{count} 件入れました'),
+  sprintTaskSkippedCompleted: workspace(
+    '{count} 件は{done}済みのため入れませんでした',
+    '{count} 件は{done}済みのため入れませんでした',
+  ),
+  sprintTaskSkippedUnavailable: workspace(
+    '{count} 件は見つからないため入れませんでした',
+    '{count} 件は見つからないため入れませんでした',
+  ),
+  sprintTaskSkippedAlready: workspace('{count} 件は既に入っていました', '{count} 件は既に入っていました'),
+  sprintTaskClosed: workspace(
+    'この{sprint}は終了しているので、中身を変えられません。一覧を読み直します',
+    'この{sprint}は終了しているので、中身を変えられません。一覧を読み直します',
+  ),
+  sprintTaskAddCompleted: workspace(
+    '{done}済みの{task}は入れられません。一覧を読み直します',
+    '{done}済みの{task}は入れられません。一覧を読み直します',
+  ),
+  sprintTaskAddGone: workspace(
+    '{task}か{sprint}が見つかりません。一覧を読み直します',
+    '{task}か{sprint}が見つかりません。一覧を読み直します',
+  ),
+  sprintTaskAddFailed: workspace(
+    '入れられませんでした。もう一度試してください',
+    '入れられませんでした。もう一度試してください',
+  ),
+  sprintTaskTreeFailed: workspace('{backlog}を読み込めませんでした', '{backlog}を読み込めませんでした'),
+  sprintTaskRemoveLabel: workspace('外す: {title}', '外す: {title}'),
+  sprintTaskRemove: workspace('外す', '外す'),
+  sprintTaskRemoving: workspace('外しています', '外しています'),
+  sprintTaskRemoved: workspace('「{title}」を外しました', '「{title}」を外しました'),
+  // 完了を戻す操作（#240）が入ったら、「先に{done}を戻してください」の案内を足す
+  sprintTaskRemoveCompleted: workspace(
+    '{done}済みの{task}は外せません。一覧を読み直します',
+    '{done}済みの{task}は外せません。一覧を読み直します',
+  ),
+  sprintTaskRemoveGone: workspace(
+    'この{task}はもう入っていません。一覧を読み直します',
+    'この{task}はもう入っていません。一覧を読み直します',
+  ),
+  sprintTaskRemoveFailed: workspace(
+    '外せませんでした。もう一度試してください',
+    '外せませんでした。もう一度試してください',
+  ),
+  // バックログの木の行と、タスクの詳細の、入っているスプリント
+  sprintNone: workspace('{backlog}', '{backlog}'),
+  sprintPlanNote: workspace('{plan}の画面で出し入れします', '{plan}の画面で出し入れします'),
+  // 始まっていないスプリントの中で完了にして、スプリントから外れた（task-complete の left_sprint）
+  taskLeftPlannedSprint: workspace('始まっていない{sprint}から外れました', '始まっていない{sprint}から外れました'),
+  // スプリントに入れるダイアログ（SprintTaskPicker）の一覧、検索、足元の件数
+  sprintTaskPickCount: workspace('{count} 件を選んでいます', '{count} 件を選んでいます'),
+  sprintTaskAddSubmitEmpty: workspace('入れる', '入れる'),
+  sprintTaskPickListLabel: workspace('入れる{task}', '入れる{task}'),
+  sprintTaskPickSearch: workspace('{task}と{story}のタイトルで絞る', '{task}と{story}のタイトルで絞る'),
+  sprintTaskPickSearchPlaceholder: workspace('タイトルで絞る', 'タイトルで絞る'),
+  sprintTaskPickNoMatch: workspace('当てはまる{task}がありません', '当てはまる{task}がありません'),
   // 経験値とレベル（kit.js の levelPanel と emblem、me.html の「経験値の明細」）。経験値の数値と明細は本人にだけ出す
   levelLabel: organization('レベル {level}', 'レベル {level}'),
   levelShort: organization('LV', 'LV'),
