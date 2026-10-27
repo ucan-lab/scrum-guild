@@ -185,6 +185,12 @@
     const result = await callOperation(commentList, { workspace_id: workspaceId, task_id: taskId, before }, { slug });
     if (!alive || mine !== version) return;
     if (!result.ok) {
+      // 先頭の読み直しと同じく、タスクが消えた（404）なら引き出しに伝えて閉じ、未ログインは引き出しに伝える
+      if (result.status === 404) {
+        ongone();
+        return;
+      }
+      if (result.status === 401) onstale();
       older = 'failed';
       return;
     }

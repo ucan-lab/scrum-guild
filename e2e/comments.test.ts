@@ -215,6 +215,28 @@ test.describe('自分のコメント', () => {
     await expect(input).toHaveValue('');
   });
 
+  test('「前のコメントを読む」で、タスクが消えていたら（404）、引き出しを閉じる', async ({ page }) => {
+    await createWorkspace(page, '前を読むパーティ', 'game');
+    await addTask(page, '前を読む依頼');
+    // 先頭の読みには続きがあるように見せ、続きの読みはタスクが消えたときの 404 にする
+    await page.route('**/api/aoba/comment-list', async (route) => {
+      const body = route.request().postDataJSON() as { before?: unknown };
+      if (body.before !== undefined) {
+        await route.fulfill({ status: 404, json: { error: { code: 'not_found', message: 'x' } } });
+        return;
+      }
+      const response = await route.fetch();
+      const data = (await response.json()) as Record<string, unknown>;
+      await route.fulfill({
+        response,
+        json: { ...data, next: { created_at: '2026-10-01T00:00:00.000Z', id: '019a0000-0000-7000-8000-000000000001' } },
+      });
+    });
+    const drawer = await openDrawer(page, '前を読む依頼');
+    await drawer.getByRole('button', { name: '前のコメントを読む' }).click();
+    await expect(drawer).toBeHidden();
+  });
+
   test('終了したワークスペースでは、コメントを読めるが、書く欄と操作を出さない', async ({ page }) => {
     await createWorkspace(page, 'コメントを閉じるパーティ', 'game');
     await addTask(page, '閉じた後に読む');
