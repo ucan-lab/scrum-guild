@@ -31,6 +31,18 @@ describe('parseDevWarning', () => {
     );
   });
 
+  test('名前に数字を含むものも読む', () => {
+    assert.equal(parseDevWarning('%c[svelte] a11y2_some_warning\n%c中身')?.name, '[svelte] a11y2_some_warning');
+  });
+
+  test('[svelte] か [sveltekit] で始まるのに名前の形が違うものも、握りつぶさずに警告として読む', () => {
+    assert.deepEqual(parseDevWarning('%c[svelte] Some-New Warning\n%c中身'), {
+      name: '[svelte] Some-New Warning',
+      detail: '中身',
+    });
+    assert.equal(parseDevWarning('%c[sveltekit]\n%c中身')?.name, '[sveltekit]');
+  });
+
   test('Svelte と SvelteKit でない警告は数えない', () => {
     assert.equal(parseDevWarning('Download the React DevTools'), undefined);
     assert.equal(parseDevWarning('[vite] connected.'), undefined);
@@ -52,13 +64,15 @@ describe('isKnownDevWarning', () => {
     assert.equal(isKnownDevWarning({ ...parseDevWarning(KIT)!, path: '/aoba/w/1' }), false);
   });
 
-  test('goto の invalidateAll は、どの画面でも既知（#388）', () => {
+  test('goto の invalidateAll は、今使っている画面（組織の管理、招待、メンバー）だけ既知（#388）', () => {
+    const name = '[sveltekit] goto_invalidate_all_deprecated';
     const detail = 'The `goto(..., { invalidateAll: true })` option has been deprecated in favour of `refreshAll`';
-    assert.equal(isKnownDevWarning(at('[sveltekit] goto_invalidate_all_deprecated', detail, '/aoba/admin')), true);
-    assert.equal(
-      isKnownDevWarning(at('[sveltekit] goto_invalidate_all_deprecated', detail, '/hibari/invitations')),
-      true,
-    );
+    assert.equal(isKnownDevWarning(at(name, detail, '/aoba/admin')), true);
+    assert.equal(isKnownDevWarning(at(name, detail, '/hibari/invitations')), true);
+    assert.equal(isKnownDevWarning(at(name, detail, '/aoba/w/019a0000-0000-7000-8000-000000000401/members')), true);
+    assert.equal(isKnownDevWarning(at(name, detail, '/aoba/w/019a0000-0000-7000-8000-000000000401')), false);
+    assert.equal(isKnownDevWarning(at(name, detail, '/aoba/admin/x')), false);
+    assert.equal(isKnownDevWarning(at(name, detail, '/aoba/w/1/members/x')), false);
   });
 
   test('window_fetch_in_load は member-list のときだけ既知（#393）', () => {
@@ -76,16 +90,26 @@ describe('isKnownDevWarning', () => {
     assert.equal(isKnownDevWarning(at(name, 'Avoid using', '/invite/x')), false);
   });
 
-  test('hmr_reload_after_error は build した画面に関わらないので既知', () => {
-    assert.equal(isKnownDevWarning(at('[sveltekit] hmr_reload_after_error', 'The next HMR update', '/foo')), true);
+  test('hmr_reload_after_error は、存在しないパスを開くテストの画面だけ既知（ほかは予期しない例外の印なので数える）', () => {
+    const name = '[sveltekit] hmr_reload_after_error';
+    assert.equal(
+      isKnownDevWarning(at(name, 'The next HMR update will cause the page to reload', '/foo/bar/baz')),
+      true,
+    );
+    assert.equal(isKnownDevWarning(at(name, 'The next HMR update will cause the page to reload', '/aoba/w/1')), false);
+    assert.equal(isKnownDevWarning(at(name, 'The next HMR update will cause the page to reload', '/foo')), false);
   });
 
   test('名前が近いだけのものは既知に数えない', () => {
     assert.equal(isKnownDevWarning(at('[svelte] goto_invalidate_all_deprecated', '', '/aoba/admin')), false);
   });
 
-  test('直す Issue の無いものは、理由に Issue の番号か build に関わらないことを書く', () => {
-    for (const known of KNOWN_DEV_WARNINGS) assert.match(known.reason, /#\d+|build/);
+  test('理由には、直す Issue の番号か、わざと出すテストのことを書く', () => {
+    for (const known of KNOWN_DEV_WARNINGS) assert.match(known.reason, /#\d+|テスト/);
+  });
+
+  test('どの既知の警告も、名前だけでなく中身か画面のパスで絞る', () => {
+    for (const known of KNOWN_DEV_WARNINGS) assert.ok(known.detail ?? known.path, known.name);
   });
 });
 
