@@ -4771,6 +4771,11 @@ describe('bash-rules: #356 npx-cli.js の前読みと nopt の String のフラ�
     [`npx -y=-c 'wrangler deploy'`, 'deny'],
     // - だけの語（---）も -- と同じく読み終える。後ろの -c は名前
     [`npm exec --- -c 'wrangler deploy'`, 'allow'],
+    // npm init と npm create の初期化子は、--call の文字列を判定したうえで通す
+    ['npm create vite@latest my-app', 'allow'],
+    [`npm init foo --call 'echo hi'`, 'allow'],
+    // 表に無いフラグが - で始まる語を値に取っても、ふつうの形は通す
+    ['npm exec --otp -x vitest run', 'allow'],
   ]) {
     test(`${command} は ${expected}`, () => assert.deepEqual(literally(command), [expected, expected], command));
   }

@@ -885,36 +885,61 @@ function judgePackageManager(manager, args, prefix, ctx) {
 // - nopt は = の形を2語に分けてから読むので、値が - で始まる語（--message=-c、-m=--call=…）は、値を取らないフラグか
 //   String の型のフラグ（spec.strings）なら値をフラグとして読み直す。表の String でない値のフラグ（--prefix、-w、-L、-C）は値のまま、
 //   表に無いフラグ（--tag、--mess）は型が分からないので両方で読む
+// - nopt は String でも Boolean でもない型のフラグ（--prefix、-w、-L、-C、表に無い --otp、--userconfig）の次の語を、- で始まっても
+//   値に取る（- だけの語を除く）。表の値のフラグの次の語は、= を含んでも分けずに値のまま残す（npm -L -y=-C test の -y=-C は -L の値）。
+//   表に無いフラグの次の - で始まる語は、値に取る形（--otp=-C の1語につなぎ、後ろの読み方がフラグと取り違えないようにする）と
+//   取らない形の両方で読む
+// 読み方が MAX_READINGS を超えれば、そこで打ち切った並び（MAX_READINGS より多い）を返す
 function noptArgvs(spec, args) {
-  let argvs = [[]];
+  const done = [];
   let changed = false;
-  for (let i = 0; i < args.length; i++) {
+  // 読みかけの並び { argv, i }。分かれた並びも同じ語から1つずつ読むので、語の数に比例する手間で済む
+  const queue = [{ argv: [], i: 0 }];
+  const pieces = args.map((_, i) => sliceWords(args, i, i + 1));
+  while (queue.length > 0) {
+    if (done.length + queue.length > MAX_READINGS) return [...done, ...queue.map(({ argv }) => argv)];
+    const { argv, i } = queue.shift();
+    if (i >= args.length) {
+      done.push(argv);
+      continue;
+    }
     const w = args[i];
-    const piece = sliceWords(args, i, i + 1);
+    const piece = pieces[i];
+    const next = args[i + 1];
     if (/^-{2,}$/.test(w)) {
       changed ||= w !== '--';
-      argvs = argvs.map((argv) => [...argv, ['--'], sliceWords(args, i + 1)]);
-      break;
+      done.push([...argv, ['--'], sliceWords(args, i + 1)]);
+      continue;
     }
     if (!/^-./.test(w)) {
-      argvs = argvs.map((argv) => [...argv, piece]);
+      queue.push({ argv: [...argv, piece], i: i + 1 });
       continue;
     }
     const eq = w.indexOf('=');
     const flag = eq === -1 ? w : w.slice(0, eq);
     const value = eq === -1 ? undefined : w.slice(eq + 1);
-    const options = noptNames(spec, flag).flatMap((name) => {
-      const same = name === flag ? [piece] : [[eq === -1 ? name : `${name}=${value}`]];
-      if (value === undefined || !/^-{1,2}[^-]/.test(value)) return [same];
+    for (const name of noptNames(spec, flag)) {
+      const same = name === flag ? piece : [eq === -1 ? name : `${name}=${value}`];
+      changed ||= same !== piece;
       const type = noptType(spec, name);
-      const split = [[name], [value]];
-      return type === 'value' ? [same] : type === 'unknown' ? [same, split] : [split];
-    });
-    changed ||= options.length > 1 || options[0][0] !== piece;
-    argvs = argvs.flatMap((argv) => options.map((o) => [...argv, ...o]));
-    if (argvs.length > MAX_READINGS) return argvs;
+      if (value !== undefined) {
+        // = の値が - で始まれば、値を取らないフラグと String の型のフラグは値をフラグとして読み直す
+        const reread = /^-{1,2}[^-]/.test(value) && type !== 'value';
+        if (reread) changed = true;
+        if (reread) queue.push({ argv: [...argv, [name], [value]], i: i + 1 });
+        if (!reread || type === 'unknown') queue.push({ argv: [...argv, same], i: i + 1 });
+        continue;
+      }
+      const dashed = next !== undefined && next.startsWith('-') && !/^-{2,}$/.test(next);
+      if (dashed && type === 'value') queue.push({ argv: [...argv, same, pieces[i + 1]], i: i + 2 });
+      else queue.push({ argv: [...argv, same], i: i + 1 });
+      if (dashed && type === 'unknown') {
+        changed = true;
+        queue.push({ argv: [...argv, [`${name}=${next}`]], i: i + 2 });
+      }
+    }
   }
-  return changed ? argvs.map((argv) => concatWords(...argv)) : [args];
+  return changed ? done.map((argv) => concatWords(...argv)) : [args];
 }
 
 // nopt の resolveShort で、すべての文字が1文字の shorthands でもまとめにしない長い名前（npm 11.20 の設定の名前）
@@ -1000,6 +1025,14 @@ function judgeBuiltin(spec, command, args, prefix, ctx, reading) {
     return readings.flatMap((r) => judgeName(spec, args, prefix, ctx, r, command === 'with'));
   }
   if (spec.exec.includes(command)) return judgeExec(spec, args, prefix, ctx, reading);
+  // npm init <初期化子>（create、innit も）は、npm exec と同じく libnpmexec に --call と -c の文字列を渡して動かす
+  // （npm 11.20 の lib/commands/init.js の execCreate）。初期化子の無い npm init は動かさない
+  const called = [];
+  if (spec.calls && command === 'init' && commandPositionals(spec, args, at + 1).length > 0) {
+    const calls = npmCalls(spec, args);
+    if (!calls) return [[ASK, UNREADABLE_FLAG_REASON]];
+    called.push(...calls.map((script) => judgeBash(script, { ...ctx, cwd: loc.dir, place: loc.place, depth: ctx.depth + 1 })).filter(Boolean));
+  }
   const rest = sliceWords(args, at + 1);
   // bun exec "<文字列>" は、最初の位置引数をシェルの文字列として動かす（2つ目からは使わない）
   if (spec.shell?.includes(command)) {
@@ -1013,13 +1046,16 @@ function judgeBuiltin(spec, command, args, prefix, ctx, reading) {
   // test、start、stop の後ろはスクリプトに渡るので読まない（pnpm test -C sub は今の場所の test）
   const locs = spec.dirAnywhere || PASSES_FLAGS.has(command) ? [loc] : (dirAnywhere(spec, args, at + 1, base) ?? [loc]);
   const name = args[at];
-  return locs.flatMap((l) => {
-    if (SCRIPT_COMMANDS[command]) return judgeScripts(SCRIPT_COMMANDS[command], rest, l, ctx);
+  return [
+    ...called,
+    ...locs.flatMap((l) => {
+      if (SCRIPT_COMMANDS[command]) return judgeScripts(SCRIPT_COMMANDS[command], rest, l, ctx);
     const lifecycle = lifecycleOf(spec, command, args, at);
     if (lifecycle) return judgeScripts(lifecycle, [], l, ctx);
     // ほかの組み込みも、同じ名前の pre と post のスクリプトがあれば見る（止めすぎの側。場所が分からなくても確認は挟まない）
     return l.dir && ctx.packageDirOf(l.dir) ? judgeScripts([name], rest, l, ctx) : [];
-  });
+    }),
+  ];
 }
 
 // 組み込みのコマンドが走らせるライフサイクルのスクリプトの名前。走らせなければ undefined
