@@ -3,7 +3,7 @@
 // seed のセッション（seed/sessions.ts）の Cookie で開く。あおば開発の管理者はミナト、一般のユーザーはハルカ。CSP の違反も確かめる
 import type { Page } from '@playwright/test';
 import { expect, test } from './fixtures.ts';
-import { createWorkspace, signIn, watchViolations } from './helpers.ts';
+import { createWorkspace, signIn, waitForSettled, watchViolations } from './helpers.ts';
 
 test.use({ timezoneId: 'Asia/Tokyo' });
 
@@ -303,7 +303,10 @@ test('作った人でもリーダーでもないメンバーには、削除の�
 }) => {
   await signIn(context, baseURL, 'member');
   await page.goto(SEED_GAME_WORKSPACE);
-  await page.getByRole('button', { name: 'ポイントの交換先を増やす', exact: true }).click();
+  const epic = page.getByRole('button', { name: 'ポイントの交換先を増やす', exact: true });
+  await expect(epic).toBeVisible();
+  await waitForSettled(page);
+  await epic.click();
   const epicDialog = page.getByRole('dialog', { name: 'レイド', exact: true });
   await expect(epicDialog.getByLabel('タイトル')).toHaveValue('ポイントの交換先を増やす');
   await expect(epicDialog.getByRole('button', { name: /を削除する/ })).toHaveCount(0);

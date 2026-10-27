@@ -580,6 +580,13 @@ export async function watchViolations(page: Page): Promise<() => Promise<string[
   };
 }
 
+// 開いた画面の読み込みが終わるまで待つ。読み込みで行が動いている間に押すと、Playwright は押し直す前に画面をスクロールするので、
+// 撮る画像のスクロールの位置が実行ごとに変わる（#354）。テストの終わりに背景の画面が写るとき（ダイアログを開くなど）は、押す前に呼ぶ
+export async function waitForSettled(page: Page): Promise<void> {
+  await page.waitForLoadState('networkidle');
+  await expect(page.locator('[aria-busy="true"]:visible')).toHaveCount(0);
+}
+
 // seed のセッション（seed/sessions.ts）の Cookie を置いて、ログインした状態にする。
 // 名前は画面を開く URL で決まる（e2e は pnpm preview の http の localhost なので sg_session）
 export async function signIn(

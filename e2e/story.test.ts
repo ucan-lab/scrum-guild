@@ -6,7 +6,7 @@ import { storyGet } from '../src/shared/operations/story/story-get.ts';
 import { backlogTree } from '../src/shared/operations/task/backlog-tree.ts';
 import { taskCreate } from '../src/shared/operations/task/task-create.ts';
 import { workspaceInfo } from '../src/shared/operations/workspace/workspace.ts';
-import { createWorkspace, expectModalFocus, signIn, watchViolations } from './helpers.ts';
+import { createWorkspace, expectModalFocus, signIn, waitForSettled, watchViolations } from './helpers.ts';
 import { failOperation, rewriteOperation, routeOperation } from './operations.ts';
 
 test.use({ timezoneId: 'Asia/Tokyo' });
@@ -374,9 +374,10 @@ test('親のストーリーが消えていたら、理由を出し、その場�
     stories: output.stories.filter((story) => !(gone && story.title === '問い合わせの一次回答を早くする')),
   }));
   await page.reload();
-  await storyGroup(page, '問い合わせの一次回答を早くする')
-    .getByRole('button', { name: /クエストを足す/ })
-    .click();
+  const addTask = storyGroup(page, '問い合わせの一次回答を早くする').getByRole('button', { name: /クエストを足す/ });
+  await expect(addTask).toBeVisible();
+  await waitForSettled(page);
+  await addTask.click();
   const dialog = page.getByRole('dialog', { name: '依頼を出す' });
   await dialog.getByLabel('タイトル').fill('消えた親に足す');
   await dialog.getByRole('button', { name: '依頼を出す' }).click();
