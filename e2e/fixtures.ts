@@ -1,5 +1,7 @@
 import { test as base, type BrowserContext, type Page, type Request, type TestInfo } from '@playwright/test';
 
+import { EVIDENCE } from './evidence-mode.ts';
+
 export { expect } from '@playwright/test';
 
 // 画面のスクリーンショット（evidence-<n>.png）。CI の evidence が main の画像と中身のハッシュで比べ、違う画面だけを PR に並べる
@@ -11,6 +13,7 @@ export { expect } from '@playwright/test';
 // - テストの終わりに、通信が止まるのを待ち、アニメーションとトランジションを終わりまで進めてから撮る。
 //   Playwright のテストの終わりのスクリーンショット（screenshot: 'on'）は、読み込みやトーストの出入りの途中を撮ることがあり、
 //   同じコミットで撮り直すと3割ほどの画面が違った（#337）
+// 撮るのは E2E_EVIDENCE=1 のとき（CI の e2e）だけ（e2e/evidence-mode.ts）
 export const STEADY_SCREENSHOT_CSS = [
   'time, section[aria-labelledby="s-api"] p[role="status"] { color: transparent !important; text-shadow: none !important; }',
   '* { caret-color: transparent !important; }',
@@ -33,6 +36,7 @@ const contextsOf = new WeakMap<TestInfo, BrowserContext[]>();
 // 文書ができるたびに当たるよう、context の init script にする。
 // browser.newContext() で作った context には、テストの中で自分で呼ぶ（閉じる前と、テストの終わりに開いている画面を撮る）
 export async function steadyScreenshots(context: BrowserContext, info: TestInfo = test.info()): Promise<void> {
+  if (!EVIDENCE) return;
   contextsOf.set(info, [...(contextsOf.get(info) ?? []), context]);
   await context.addInitScript((css: string) => {
     const sheet = new CSSStyleSheet();

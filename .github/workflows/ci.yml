@@ -109,6 +109,8 @@ jobs:
     env:
       # 画面と /api/health に同じ版が出ることも確かめる
       APP_VERSION: ${{ github.event.pull_request.head.sha }}
+      # evidence が比べる画像を撮る（e2e/fixtures.ts。手元では撮らない）
+      E2E_EVIDENCE: '1'
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

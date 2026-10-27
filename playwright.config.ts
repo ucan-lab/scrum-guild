@@ -1,5 +1,6 @@
 // e2e（pnpm e2e）: pnpm preview と同じく build して wrangler dev を立て、本番と同じ配り方の画面と API を確かめる。
 import { defineConfig, devices } from '@playwright/test';
+import { EVIDENCE } from './e2e/evidence-mode.ts';
 import { devPorts } from './scripts/dev-ports.ts';
 import { applyE2eServerVersion, E2E_SERVER_COMMAND, reuseExistingServer } from './scripts/e2e-server.ts';
 
@@ -17,9 +18,10 @@ export default defineConfig({
   reporter: [['list'], ['html', { open: 'never', outputFolder: 'playwright-report' }]],
   use: {
     baseURL,
-    // 通ったテストの画面は e2e/fixtures.ts が通信とアニメーションの止まるのを待って evidence-<n>.png に撮る。
-    // ここでは落ちたテストの画面だけを撮る。どちらも CI の成果物に上げる（docs/development.md の「CI」）
-    screenshot: 'only-on-failure',
+    // E2E_EVIDENCE=1（CI）では、通ったテストの画面は e2e/fixtures.ts が通信とアニメーションの止まるのを待って evidence-<n>.png に撮り、
+    // ここでは落ちたテストの画面だけを撮る。どちらも CI の成果物に上げる（docs/development.md の「CI」）。
+    // 手元では待たずに、テストの終わりの画面を Playwright が撮る
+    screenshot: EVIDENCE ? 'only-on-failure' : 'on',
     trace: 'retain-on-failure',
   },
   projects: [
@@ -28,8 +30,13 @@ export default defineConfig({
       use: {
         ...devices['Desktop Chrome'],
         // 描画を1本のスレッドで丸ごと行い、同じ画面なら撮り直しても同じ画像にする（CI の evidence がハッシュで比べるため）。
-        // 無いと、影や罫線の数画素が色の値 1〜2 だけ揺れ、同じコミットの2回撮りで約 20 画面が違った（#337）
-        launchOptions: { args: ['--disable-partial-raster', '--num-raster-threads=1', '--disable-gpu-rasterization'] },
+        // 無いと、影や罫線の数画素が色の値 1〜2 だけ揺れ、同じコミットの2回撮りで約 20 画面が違った（#337）。
+        // 描画が遅くなるので、撮る E2E_EVIDENCE=1 のときだけ付ける
+        ...(EVIDENCE && {
+          launchOptions: {
+            args: ['--disable-partial-raster', '--num-raster-threads=1', '--disable-gpu-rasterization'],
+          },
+        }),
       },
     },
   ],
