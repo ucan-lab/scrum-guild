@@ -14,6 +14,7 @@ export const uiScreens = [
   'member-remove-confirm',
   'workspace-settings',
   'admin',
+  'operator-reassign',
 ] as const;
 export type UiScreen = (typeof uiScreens)[number];
 

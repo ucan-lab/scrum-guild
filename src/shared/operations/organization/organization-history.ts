@@ -36,6 +36,9 @@ const event = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('admin_login_linked'), name: z.string().nullable() }),
   // Google の招待で指名した人が、同じ組織に既にいる人だったので、その人を管理者にした
   z.object({ kind: z.literal('admin_designation_merged'), name: z.string().nullable() }),
+  // 運用者が管理者を指名し直したときに、まだログインしていない前の指名を消した。name は記録の GitHub のユーザー名。
+  // Google の招待で待つ行は null
+  z.object({ kind: z.literal('admin_designation_removed'), name: z.string().nullable() }),
   z.object({ kind: z.literal('admin_revoked'), name: z.string().nullable() }),
   z.object({ kind: z.literal('user_disabled'), name: z.string().nullable() }),
   z.object({ kind: z.literal('user_enabled'), name: z.string().nullable() }),

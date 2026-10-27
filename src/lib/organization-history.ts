@@ -71,6 +71,11 @@ export function historyEventText(event: HistoryEntry['event'], translate: Transl
       return event.workspace_name === null
         ? translate('orgHistoryWorkspaceReopenedNoName', words)
         : translate('orgHistoryWorkspaceReopened', { ...words, name: event.workspace_name });
+    // 運用者が指名し直したときに消した、まだログインしていない前の指名。Google で待っていた行は名前が無い
+    case 'admin_designation_removed':
+      return event.name === null
+        ? translate('orgHistoryAdminDesignationRemovedNoName', words)
+        : translate('orgHistoryAdminDesignationRemoved', { ...words, name: event.name });
     case 'other':
       return translate('orgHistoryOther', words);
   }

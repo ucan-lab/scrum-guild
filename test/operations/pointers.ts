@@ -201,6 +201,14 @@ export const pointers: Pointers = {
   'organization-resume': async () => ({
     slug: (await createOrganization({ suspended_at: SUSPENDED_AT, purge_on: '2026-11-19' })).slug,
   }),
+  // 管理者の指名し直しは、呼ぶたびに別の組織を作り、別の人を指名する（対象の組織の users を消すと、同じ describe の検査が崩れるため）
+  'organization-admin-reassign': async () => {
+    const user = newGithubUser();
+    return {
+      slug: (await createOrganization()).slug,
+      admin: { provider: 'github', username: user.login, login_subject: String(user.id) },
+    };
+  },
   'task-create': async (target) => ({ workspace_id: target.workspace.id, title: '見積もりを送る', points: 3 }),
   // 絞り込みの値も、対象の組織の行を指す（別の組織を指したときの当たり方は test/backlog-filter.test.ts）
   'backlog-tree': async (target) => {

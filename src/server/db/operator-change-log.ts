@@ -1,5 +1,5 @@
-// 運用者の操作を、既にある組織の変更の履歴（組織の中の change_logs）に1行足す（組織の停止と再開、停止の理由の切り替え、
-// 管理者の指名し直し）。組織の中の入口（OrganizationDb）は渡さず、履歴を1行足すだけの関数にする。
+// 運用者の操作を、既にある組織の変更の履歴（組織の中の change_logs）に1行足す（組織の停止と再開、停止の理由の切り替え）。
+// 管理者の指名し直しは users と同じ batch() で書くので、ここではなく operator-reassign-admin.ts が書く。組織の中の入口（OrganizationDb）は渡さず、履歴を1行足すだけの関数にする。
 // 組織を確かめた結果（VerifiedOrganization）はこの関数の中で作り、外へ出さない。組織の ID は、呼び出し側が共通の表の organizations から
 // 読んだ値を渡す。行が無い ID を渡したら、change_logs.organization_id の外部キーが INSERT を断る（停止中の組織にも書ける）。
 // この関数を import できるのは運用者の道具（src/server/operations/operator-tools.ts）だけで、eslint.config.db-entry.js が守る。
@@ -11,7 +11,8 @@ import { issueVerifiedOrganization } from './verify-organization.ts';
 export type OperatorChangeLog = {
   // 運用者のログインの ID（`github:12345` の形）。change_logs.operator に書く
   operator: string;
-  // 運用者が履歴に残すのは組織そのものへの操作だけ。管理者の指名し直し（#217）を足すときに、ここへ種類を足す
+  // ここで足すのは組織そのものへの操作だけ。管理者の指名し直しの users の記録は、users の書き込みと同じ batch() で
+  // operator-reassign-admin.ts が書く（履歴だけを別に足すと、users の変更と記録がずれうる）
   entityType: 'organization';
   entityId: string;
   action: 'suspend' | 'resume' | 'update';

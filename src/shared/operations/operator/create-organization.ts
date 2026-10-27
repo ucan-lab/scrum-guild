@@ -33,6 +33,9 @@ const githubAdmin = z.object({
 });
 const googleAdmin = z.object({ provider: z.literal('google'), email: z.string().trim().min(1).max(EMAIL_MAX_LENGTH) });
 
+// 管理者に指名する人の入力。組織の作成の最初の管理者と、管理者の指名し直し（organization-admin-reassign）が同じ形を使う
+export const adminNomineeInput = z.discriminatedUnion('provider', [githubAdmin, googleAdmin]);
+
 // 組織の作り方は docs/data-model.md の「書き込みの単位」。共通の DB の organizations、続けて組織の DB の
 // 最初の管理者の users の2回に分けて書く。users が入らなかったときは、管理者のいない組織が残る（一覧の admin_status が none）。
 // 人数と添付ファイルの上限は既定の値で作る。重なる slug は 409 の conflict、GitHub に届かないときは 503 の unavailable。
@@ -53,7 +56,7 @@ export const createOrganization = defineOperation({
       .refine((value) => !hasHiddenCharacter(value), {
         message: '制御文字、区切り、向きを変える文字、見えない空白や演算子は使えない',
       }),
-    admin: z.discriminatedUnion('provider', [githubAdmin, googleAdmin]),
+    admin: adminNomineeInput,
   }),
   output: z.object({
     slug: z.string(),

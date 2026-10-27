@@ -10,6 +10,7 @@
   import LoadFailed from '../../lib/components/LoadFailed.svelte';
   import LogoutButton from '../../lib/components/LogoutButton.svelte';
   import OrganizationSuspendDialog from '../../lib/components/OrganizationSuspendDialog.svelte';
+  import ReassignAdminDialog from '../../lib/components/ReassignAdminDialog.svelte';
   import { formatCount, formatUtcDate, quotaSize } from '../../lib/format.ts';
   import { formatDateTime } from '../../lib/format-datetime.ts';
   import { isUnauthenticated, loginUrl } from '../../lib/login-redirect.ts';
@@ -21,7 +22,9 @@
   // 運用の画面（design/operator.html）。組織の一覧と、組織の作成、停止と再開。組織の中のデータは出さない。
   // 入れる組織が無い運用者が、ログインの直後にここへ来る。組織ごとの集計（人数と上限、ワークスペースの数、タスクの数、
   // 添付ファイルの上限、最後に使われた日時）は数と日時だけで、人の名前や ID は出さない。人数が上限以上なら「上限に達した」の印を出す。
-  // 添付ファイルの使った量は出さない（#68）。管理者の指名し直しは後の Issue で足す。
+  // 添付ファイルの使った量は出さない（#68）。
+  // 各行の「管理者を指名」は、管理者の状態に関わらず（停止中の組織にも）置き、指名し直しのダイアログを開く。
+  // ダイアログは指名した後に閉じると一覧を読み直す（管理者の状態の印が変わる）。
   // 作った日時は列にせず、名前の列の slug の行に並べる（1280px の画面で表が横スクロールせずに収まる列の数にするため）。
   // 表は table.is-stacked。狭い幅では、固定した操作の列が名前の列を覆うので、1行を縦に積む（名前、集計、日時、操作）。
   // 積んだ行では、見出しの代わりに data-label を値の前に出す
@@ -33,6 +36,7 @@
   let dialog = $state<ReturnType<typeof CreateOrganizationDialog>>();
   let dialogOpen = $state(false);
   let suspendDialog = $state<ReturnType<typeof OrganizationSuspendDialog>>();
+  let reassignDialog = $state<ReturnType<typeof ReassignAdminDialog>>();
   // 停止の確認の対象。ダイアログの結果を受けるとき、どの行だったかを名前で知らせるのに使う
   let suspending = $state<{ slug: string; name: string; currentKind?: SuspensionKind } | null>(null);
   // 再開を送っている行
@@ -194,7 +198,18 @@
                     <!-- 停止中の行は「停止の理由を変える」と「再開する」、それ以外は「停止する」。右端のボタンは同じ要素のまま
                          文字だけを替え、読み直しでフォーカスを失わない。読み上げの名前に、どの組織かを添える。
                          再開を送っている行は、見える文字も「再開しています」にする（名前は据え置く） -->
-                    <span class="table-actions">
+                    <span class="table-actions is-wrap">
+                      <button
+                        class="btn is-sm is-quiet"
+                        type="button"
+                        aria-disabled={resumingSlug !== null}
+                        aria-label={t('operatorReassignLabel', { ...words, name: organization.name })}
+                        onclick={(event) => {
+                          if (resumingSlug === null) reassignDialog?.show(organization, event.currentTarget);
+                        }}
+                      >
+                        {t('operatorReassignAction', words)}
+                      </button>
                       {#if organization.suspended_at !== null}
                         <button
                           class="btn is-sm is-quiet"
@@ -246,3 +261,4 @@
   organizations={data.failed ? [] : data.organizations}
 />
 <OrganizationSuspendDialog bind:this={suspendDialog} onfinish={suspendFinished} />
+<ReassignAdminDialog bind:this={reassignDialog} />

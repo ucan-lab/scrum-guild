@@ -1,7 +1,8 @@
 // 招待の URL から Google の人を結ぶ流れの結合テスト（docs/data-model.md の「メールアドレスで待つ指名と招待」）。
 // Google への通信は差し替えた fetch（test/auth/fake-google.ts）に向け、アプリ（開始、戻り先、セッション）と D1 は本物を使う。
-// 運用者による指名の API は test/operator-organizations.test.ts。指名し直し（#60）はまだ無いので、「指名し直した後の古い URL」は
-// ファクトリーで秘密を差し替えた行で、招待（invitations）は招待を作る画面がまだ無いのでファクトリーの行で確かめる
+// 運用者による指名の API は test/operator-organizations.test.ts、指名し直しの API は test/operator-admin-reassign.test.ts。
+// ここでの「指名し直した後の古い URL」は、結ぶ流れだけを見るためにファクトリーで秘密を差し替えた行で、
+// 招待（invitations）は招待を作る画面がまだ無いのでファクトリーの行で確かめる
 import { env } from 'cloudflare:workers';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { randomToken, sha256Hex } from '../src/server/auth/tokens.ts';

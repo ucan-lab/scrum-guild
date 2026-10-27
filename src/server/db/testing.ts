@@ -21,6 +21,7 @@ import {
   type ClaimInput,
 } from './cross-organization.ts';
 import { commonDb, crossOrganizationEntries, entriesOf } from './entries.ts';
+import { reassignOrganizationAdmin, type AdminReassignment } from './operator-reassign-admin.ts';
 import { seatInvitationsStatement, seatUsersStatement } from './seats.ts';
 import type { LoginId } from './enter-organization.ts';
 import { compiledQueryOf, type Scope, type Statement } from './entry.ts';
@@ -150,6 +151,11 @@ export function linkLoginToAccountForTest(
   extraDatabases: readonly FakeDatabase[],
 ) {
   return linkLoginToAccountIn(env, accountId, login, now, entriesWith(env, extraDatabases));
+}
+
+// 運用者の管理者の指名し直し（運用者の道具だけが import できる関数）を、競合の割り込みと返す値の確認のために直に呼ぶ
+export function reassignOrganizationAdminForTest(env: Env, organizationId: string, input: AdminReassignment) {
+  return reassignOrganizationAdmin(env, organizationId, input);
 }
 
 // 運用者の一覧の管理者の状態を、組織の中の DB が複数あるときに確かめる
