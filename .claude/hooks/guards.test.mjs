@@ -3356,6 +3356,133 @@ describe('bash-rules: #313 を崩す（2周目）', () => {
   });
 });
 
+describe('bash-rules: #313 を崩す（3周目）', () => {
+  // 本体の根と、その中の worktrees/x（ワークツリーの根）を実在させる
+  const main = realpathSync(mkdtempSync(path.join(os.tmpdir(), 'guard-break3-')));
+  const wt = path.join(main, 'worktrees', 'x');
+  for (const root of [main, wt]) {
+    for (const dir of ['scripts', 'src/a', 'build', '.claude/hooks', '.githooks', 'migrations']) mkdirSync(path.join(root, dir), { recursive: true });
+    writeFileSync(path.join(root, 'scripts', 'deploy-production.ts'), '');
+  }
+  after(() => rmSync(main, { recursive: true, force: true }));
+  const name = path.basename(main);
+  const from = (cwd, command) => judgeBash(command, { cwd, branchOf: () => 'x' })?.[0] ?? 'allow';
+  const shown = (command) => command.replaceAll(main, '<根>').replaceAll(name, '<根の名前>').replaceAll(name.toUpperCase(), '<根の名前の大文字>');
+
+  // --- 落ちる（実装の欠陥） ---
+
+  // -execdir は、見つけたファイルのそれぞれについて、そのファイルのあるディレクトリでコマンドを動かす。起点の下の深いファイルは起点ではなく
+  // そのファイルの親で動く（findutils 4.9.0 の find . -execdir pwd \; は ./.claude、./.claude/hooks、./.githooks も出し、
+  // find . -execdir rm -f pre-commit \; は .githooks/pre-commit を消した）。実装は「起点の中のファイルは起点で動く」として起点の親と起点しか見ないので、
+  // 起点が守る先の祖先（. や根）のとき、守る先の中の名前で消す形が通る
+  for (const command of ['find . -execdir rm pre-commit \\;', 'find . -execdir rm -rf hooks \\;', 'find -execdir rmdir hooks \\;']) {
+    test(`${command} は確認を挟む（-execdir は起点の下のディレクトリでも動く）`, () => assert.deepEqual(literally(command), ['ask', 'ask'], command));
+    test(`本体の根から ${command} は確認を挟む（-execdir は起点の下のディレクトリでも動く）`, () => assert.equal(from(main, command), 'ask', command));
+  }
+
+  // {a,b} はシェルが展開してから find に渡す（bash の find {x,.claude/settings.json} -maxdepth 0 -execdir pwd \; は . と .claude を出し、
+  // -execdir rmdir hooks \; は .claude/hooks を消した）。実装は展開する前の語に path.posix.dirname を掛けるので、作業場所が {x,.claude になり、
+  // .claude の中で動くことを見落とす（{} の無い find .claude/settings.json -execdir rmdir hooks \; は確認になる）
+  for (const command of ['find {x,.claude/settings.json} -execdir rmdir hooks \\;', 'find {.claude/settings.json,x} -execdir rm -rf hooks \\;']) {
+    test(`${command} は確認を挟む（-execdir の起点の {a,b}）`, () => assert.deepEqual(literally(command), ['ask', 'ask'], command));
+    test(`本体の根から ${command} は確認を挟む（-execdir の起点の {a,b}）`, () => assert.equal(from(main, command), 'ask', command));
+  }
+
+  // pnpm の -C と --dir は、pnpm exec の作業場所を変える（pnpm 12.12.0 の pnpm -C .claude exec pwd と pnpm -C .claude exec -c pwd は .claude を出す）。
+  // 作業場所が分からないとき、2周目で直した env -C と同じく、前と後の作業場所がどちらも null で「変わっていない」と読み、書かれた行き先をつながないので通す
+  for (const command of ['pnpm -C .claude exec rm -rf hooks', 'pnpm --dir .claude exec find hooks -delete', "pnpm -C .claude exec -c 'rm -rf hooks'"]) {
+    test(`${command} は確認を挟む（作業場所が分からないときの pnpm -C）`, () => assert.deepEqual(literally(command), ['ask', 'ask'], command));
+  }
+
+  // env -C の値が絶対パスなら、前の作業場所が分からなくても行き先は決まる（coreutils 9.4 の env -C /tmp pwd は /tmp を出す）。
+  // cd は「絶対パスの行き先は、前の作業場所が判定できなくても解決し直せる」（nextDir）とし、-execdir の movedTo も絶対パスをそのまま行き先にするのに、
+  // dirAfterEnv は前の作業場所（dir）と書かれた行き先（place）が null なら絶対パスの値でも null のままにするので、popd や eval の後の env -C で守る先を消す形が通る
+  // （popd; cd /repo/.claude && rm -rf hooks は確認になる）
+  for (const command of ['popd; env -C /repo/.claude rm -rf hooks', 'eval true; env --chdir=/repo/.claude find hooks -delete']) {
+    test(`${command} は確認を挟む（作業場所が分からない後の env -C の絶対パス）`, () => assert.deepEqual(literally(command), ['ask', 'ask'], command));
+  }
+  test('本体の根から popd; env -C <根>/.claude rm -rf hooks は確認を挟む', () => assert.equal(from(main, `popd; env -C ${main}/.claude rm -rf hooks`), 'ask'));
+
+  // 掛け直すコマンドの重さ（MAX_FIND_WEIGHT）は、-exec の後ろの語の {a,b} の展開を数えるのに、{} に入る起点の語の展開を数えない。
+  // x{1..256}* を起点に 32 並べ、-exec cp の後ろに {} を 30 並べると、重さは 32 × 32 で上限の 8192 に収まり、500 文字に満たないコマンドで 1 秒を超える
+  // （起点を 1 つにすれば十数 ms、-exec の後ろに x{1..256}* を書けば重さで止まる）
+  test('find の起点が重い glob でも、-exec で {} に入れて掛け直すのを 1 秒以内に決める', () => {
+    const command = `find ${'x{1..256}* '.repeat(32)}-exec cp ${'{} '.repeat(30)}. \\;`;
+    const started = Date.now();
+    assert.doesNotThrow(() => judgeBash(command, { cwd: null, branchOf: () => 'x' }));
+    assert.ok(Date.now() - started < 1000, `${Date.now() - started}ms かかった`);
+  });
+
+  // 止めすぎ: 字面の判定は path.posix.normalize の後で ~ に当てるので、./~ を ~ と読む。シェルのチルダの展開は語の先頭の ~ だけで、
+  // ./~ は作業場所の ~ という名前のファイル（誤って作った ~ を消す定番の書き方）。作業場所が分かるときは解決して通すのに、字面だけが止める
+  for (const command of ['rm -rf ./~', 'mv ./~ /tmp/x']) {
+    test(`${command} は通す（./~ はホームではない）`, () => assert.deepEqual(literally(command), ['allow', 'allow'], command));
+  }
+
+  // APFS は大文字小文字を区別しない（守る先とシークレットと wrangler の設定の判定は、この理由で i を付けて照合する）。macOS の手元では
+  // cd .. && rm -rf <根の名前の大文字> は根を消すのに、根と根の祖先の判定は大文字小文字を区別して比べるので通す
+  test('本体の根から cd .. && rm -rf <根の名前の大文字> は確認を挟む（APFS）', () =>
+    assert.equal(from(main, `cd .. && rm -rf ${name.toUpperCase()}`), 'ask', shown(`cd .. && rm -rf ${name.toUpperCase()}`)));
+
+  // --- 通る（既存のテストと重ならない手口） ---
+
+  for (const command of [
+    // -execdir の作業場所と起点の書き方
+    'find src/.. -execdir rm -rf {} \\;',
+    'find .claude/. -execdir rm -rf {} +',
+    'find .claude/hooks/a.mjs -execdir rm -rf ../hooks \\;',
+    'find src -execdir rm -rf .. \\;',
+    'find src/a -execdir rm -rf ../.. \\;',
+    'cd src && find ../.claude -execdir rm -rf hooks \\;',
+    // -execdir の後ろの道具
+    "find .claude/hooks -execdir sh -c 'rm -rf hooks' \\;",
+    'find .claude/hooks -execdir env rm -rf hooks \\;',
+    'find .claude/hooks -execdir find hooks -delete \\;',
+    'find .claude/hooks -execdir mv hooks /tmp/x \\;',
+    'find .claude/hooks -execdir rmdir hooks \\;',
+    // env -C を重ねる、cd の後の env -C
+    'env -C .claude -C hooks rm -rf ../hooks',
+    'env -C src env -C ../.claude rm -rf hooks',
+    'cd .claude && env -C hooks rm -rf ../settings.json',
+    // 字面の正規化
+    'rm -rf .///..',
+    // git clean
+    'git clean -xfe .dev.vars',
+    'git clean -dfx -e .dev.vars',
+    'git clean -nfx --no-dry-run',
+  ]) {
+    test(`${command} は確認を挟む（崩す 3 周目）`, () => assert.deepEqual(literally(command), ['ask', 'ask'], command));
+  }
+
+  for (const command of [
+    'git clean -fx --no-dry-run -n',
+    "git clean -fd -e '!.dev.vars'",
+    // ~ を含むがホームではない語
+    'rm -rf ./~x',
+    'rm -rf src/~',
+    // 普段の作業で打つ形
+    'rm -rf build/.',
+    'mv build/ /tmp/x',
+    'mv -t /tmp build dist',
+    'find .wrangler -delete',
+    'find build -execdir rm -rf {} +',
+    'find src -name x -execdir rm {} \\;',
+    "find node_modules -name '*.map' -execdir rm {} +",
+    'find /tmp/x -execdir rm -rf {} +',
+    'find build -execdir rm -rf ../src \\;',
+    'env -C build rm -rf ../src',
+  ]) {
+    test(`${command} は通す（崩す 3 周目）`, () => assert.deepEqual(literally(command), ['allow', 'allow'], command));
+  }
+
+  for (const command of [`find src -execdir rm -rf ../${name} \\;`, `env -C src rm -rf ../../${name}`]) {
+    test(`本体の根から ${shown(command)} は確認を挟む（崩す 3 周目）`, () => assert.equal(from(main, command), 'ask', command));
+  }
+  for (const command of ['find worktrees/x -execdir rm -rf {} +', "find . -name x -execdir cat {} \\;"]) {
+    test(`本体の根から ${command} は通す（崩す 3 周目）`, () => assert.equal(from(main, command), 'allow', command));
+  }
+});
+
 describe('bash-rules: 展開の大きい glob', () => {
   const timed = (command) => {
     const started = Date.now();
