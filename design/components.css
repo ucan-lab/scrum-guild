@@ -961,6 +961,9 @@ a.choice > div > span, .choice.is-static > div > span { display: block; }
 .toggle input:checked::after { left: 18px; }
 /* 送っている間のように、押してもフォーカスを失わせたくない押せない切り替えは aria-disabled にする（押した結果は画面が止める） */
 .toggle input[aria-disabled="true"] { opacity: 0.5; cursor: not-allowed; }
+/* 状態として押せない切り替え（無効のユーザーの管理者の印など）は disabled にする。見た目は aria-disabled と同じ */
+.toggle:has(input:disabled), .toggle input:disabled { cursor: not-allowed; }
+.toggle input:disabled { opacity: 0.5; }
 .weekdays { display: flex; gap: var(--space-1); flex-wrap: wrap; }
 .weekdays label { position: relative; }
 .weekdays input { position: absolute; opacity: 0; inset: 0; cursor: pointer; }
@@ -1004,6 +1007,8 @@ a.choice > div > span, .choice.is-static > div > span { display: block; }
   .order-list .order-actions { gap: 14px; }
   .order-list .order-main { row-gap: var(--space-3); }
   .order-list .toggle { min-height: 44px; }
+  /* 表のセルの切り替え（組織の管理のユーザーの管理者の印）は、包む label を 44px 四方にする */
+  .table .toggle { min-width: 44px; min-height: 44px; }
   .order-list .icon-btn, .order-list .edit-trigger { position: relative; }
   .order-list .icon-btn::after, .order-list .edit-trigger::after {
     content: ""; position: absolute; left: 50%; top: 50%; width: max(100%, 44px); height: max(100%, 44px); transform: translate(-50%, -50%);

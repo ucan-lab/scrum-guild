@@ -83,6 +83,20 @@ export const pointers: Pointers = {
   },
   // カーソルを渡さなければ最新から読む。組織は URL の slug で決まる
   'organization-history': { noReference: {} },
+  // 組織のユーザーの管理。呼ぶたびに対象の組織に別の人を作る（別の組織の対象を渡すと、その組織の人を指して 404）
+  'user-list': { noReference: {} },
+  'user-admin-update': async (target) => ({
+    user_id: (await createUser(target.organization)).id,
+    is_admin: true,
+  }),
+  'user-disable': async (target) => {
+    const user = await createUser(target.organization);
+    await createMembership(target.organization, target.workspace.id, user.id);
+    return { user_id: user.id };
+  },
+  'user-enable': async (target) => ({
+    user_id: (await createUser(target.organization, { disabled_at: '2026-10-21T00:00:00.000Z' })).id,
+  }),
   'workspace-list': { noReference: {} },
   'workspace-leader-candidates': { noReference: {} },
   workspace: async (target) => ({ workspace_id: target.workspace.id }),

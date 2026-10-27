@@ -26,10 +26,11 @@ test.describe('管理者（あおば開発のミナト）', () => {
     await expect(page.getByRole('heading', { level: 1, name: '組織の管理' })).toBeVisible();
     // 見出しにフォーカスを置くのはワークスペースの画面だけ。ほかの画面の見出しは、フォーカスを受けない
     await expect(page.getByRole('heading', { level: 1 })).not.toHaveAttribute('tabindex', /.*/);
-    // 表の見出しは数だと分かる短い形。名前の列には最小幅を持たせる
-    await expect(page.locator('thead th').nth(1)).toHaveText('冒険者数');
-    await expect(page.locator('thead th').nth(2)).toHaveText('パーティリーダー数');
-    expect(await page.locator('th.is-name').evaluate((th) => getComputedStyle(th).minWidth)).not.toBe('auto');
+    // 表の見出しは数だと分かる短い形。名前の列には最小幅を持たせる（ユーザーの節の表が先に並ぶので、ワークスペースの表で絞る）
+    const table = page.getByRole('table', { name: 'パーティの一覧' });
+    await expect(table.locator('thead th').nth(1)).toHaveText('冒険者数');
+    await expect(table.locator('thead th').nth(2)).toHaveText('パーティリーダー数');
+    expect(await table.locator('th.is-name').evaluate((th) => getComputedStyle(th).minWidth)).not.toBe('auto');
 
     const row = workspaceRow(page, '受託開発チーム');
     await expect(row.getByRole('link', { name: '受託開発チーム' })).toHaveAttribute('href', /\/aoba\/w\/019a0000-/);

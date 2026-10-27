@@ -1339,6 +1339,24 @@ const looooooooooooooooooooooooooooooooooongLine = "コードの長い1行は、
         `<p>終了すると読み取り専用になり、中の書き込みはすべてできなくなります。この画面からいつでも再開できます。</p>`,
         `<button class="btn is-quiet" type="button" data-close-dialog>やめる</button><button class="btn is-primary" type="button" data-close-dialog data-toast="${t("workspace")}を終了しました">終了する</button>`);
     },
+    // ユーザーを無効にする前の確認（本番の UsersSetting の ConfirmDialog）。押した行の data-name と data-admin で文を作る。
+    // 管理者なら指名も解除することを添える。本文は本番の辞書（userDisableText、userDisableAdminNote、userDisableEnableNote）と同じ文
+    disableUser: (el) => {
+      const name = esc(el?.dataset.name ?? user("u3").name);
+      openDialog(`${name}を無効にしますか？`,
+        `<p>${name}はこの${t("organization")}に入れなくなります。すべての${t("workspace")}から外れ、担当していた未完了の${t("task")}は担当なしに戻り、承諾待ちの招待は取り消します。完了の記録と経験値は残ります。</p>
+         ${el?.dataset.admin === "true" ? `<p>${t("admin")}の指名も解除します。</p>` : ""}
+         <p>有効に戻しても所属と${t("admin")}の指名は戻りません。もう一度使ってもらうには、${t("workspace")}に招待し直してください。</p>`,
+        `<button class="btn is-primary" type="button" data-close-dialog>やめる</button><button class="btn is-danger" type="button" data-close-dialog data-toast="${name}を無効にしました">無効にする</button>`);
+      document.querySelector(".dialog-sheet").classList.add("is-danger");
+    },
+    // 自分の管理者を解除する前の確認（本番の UsersSetting）。ほかに管理者がいるときだけ開く（自分だけなら、開かずにトーストで断る）
+    revokeSelfAdmin: () => {
+      openDialog(`自分の${t("admin")}を解除しますか？`,
+        `<p>解除すると、この画面を開けなくなります。${t("admin")}に戻るには、ほかの${t("admin")}に指名し直してもらいます。</p>`,
+        `<button class="btn is-primary" type="button" data-close-dialog>やめる</button><button class="btn is-danger" type="button" data-close-dialog data-toast="${esc(user(D.me).name)}の${t("admin")}を解除しました">解除する</button>`);
+      document.querySelector(".dialog-sheet").classList.add("is-danger");
+    },
     createOrganization: () => openDialog(`${t("organization")}を作る`,
       `<label class="field" for="d-ks"><span class="field-label">URL の名前（slug）</span><input class="input mono" id="d-ks" placeholder="例: sakura-dev"><span class="field-hint">英小文字、数字、ハイフンで 2〜40 字。あとから変えられません。</span></label>
          <label class="field" for="d-kn"><span class="field-label">表示名</span><input class="input" id="d-kn" placeholder="例: さくら開発"></label>
@@ -2001,7 +2019,9 @@ const looooooooooooooooooooooooooooooooooongLine = "コードの長い1行は、
     }
     if ((el = hit("data-dialog"))) {
       if (el.dataset.dialog === "createTask") delete D.files.new;
-      DIALOGS[el.dataset.dialog]();
+      // 切り替え（自分の管理者の解除）から開くときは、確認を待つ間、切り替えを今の値のまま保つ（本番の UsersSetting と同じ）
+      if (el.matches("input[type=checkbox]")) ev.preventDefault();
+      DIALOGS[el.dataset.dialog](el);
       return;
     }
     if ((el = hit("data-file"))) { DIALOGS.previewFile(el.dataset.file); return; }

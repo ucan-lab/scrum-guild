@@ -390,6 +390,11 @@ describe('organization-history', () => {
       [userLog({ is_admin: [1, 0] }), { kind: 'admin_revoked', name: '汐見 アオイ' }],
       [userLog({ disabled_at: [null, minutesLater(0)] }), { kind: 'user_disabled', name: '汐見 アオイ' }],
       [userLog({ disabled_at: [minutesLater(0), null] }), { kind: 'user_enabled', name: '汐見 アオイ' }],
+      // 管理者の無効化（user-disable）は、同じ文で解除するので両方の列を持つ
+      [
+        userLog({ disabled_at: [null, minutesLater(0)], is_admin: [1, 0] }),
+        { kind: 'user_disabled', name: '汐見 アオイ' },
+      ],
       // Google の招待で指名した人が、同じ組織に既にいた（cross-organization.ts の統合の記録。した人は本人）
       [
         { ...userLog({ is_admin: [0, 1], disabled_at: [minutesLater(0), null] }), actor_user_id: person.id },
