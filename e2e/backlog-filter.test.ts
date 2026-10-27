@@ -4,7 +4,7 @@
 import type { Page } from '@playwright/test';
 import { expect, test } from './fixtures.ts';
 import { taskMove } from '../src/shared/operations/task/task-move.ts';
-import { createWorkspace, signIn, watchViolations } from './helpers.ts';
+import { createWorkspace, signIn, waitForResponses, watchViolations } from './helpers.ts';
 import { routeOperation } from './operations.ts';
 
 test.use({ timezoneId: 'Asia/Tokyo' });
@@ -29,12 +29,15 @@ async function addTask(page: Page, title: string, options: { assignee?: string; 
   await expect(dialog).toBeHidden();
 }
 
+// 作った後は、木の読み直しが返るまで待つ。読み直しの load の最中に次の操作を送ると、開発時に window_fetch_in_load の警告が出る（#393）
 async function create(page: Page, label: string, title: string): Promise<void> {
   await page.getByRole('button', { name: label }).click();
   const dialog = page.getByRole('dialog', { name: label });
   await dialog.getByLabel('タイトル').fill(title);
+  const reloaded = waitForResponses(page, '/backlog-tree');
   await dialog.getByRole('button', { name: '作る' }).click();
   await expect(dialog).toBeHidden();
+  await reloaded;
 }
 
 // 木に出ているタスクの題（木の順）
