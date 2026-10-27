@@ -137,6 +137,7 @@ PR の本文では、`epic` も `story` も付いていない Issue（タスク�
 ```
 
 差分で画面の見た目か挙動が変わるなら、[evidence.md](evidence.md) の手順で変更前と変更後のスクリーンショットを撮り、`## エビデンス` 節に貼る。動きが変わる画面は GIF で撮る。UI が変わる PR ではこの節を省かない。
+クラウドのセッションでは撮らずに、変えた画面を e2e が開いているかを確かめ、節には何が変わったかの文章と、CI の `evidence` のジョブが付けるコメントへの案内を書く（[evidence.md](evidence.md) の「クラウドのセッション」）。
 
 done-check で直さなかった CRITICAL と HIGH の指摘があれば、理由と一緒に本文の `## 補足` に書く（テンプレートに補足の節が無ければ末尾に足す）。
 会話に done-check の出力が無ければ、直さなかった指摘があるかをユーザーに聞く。
@@ -218,7 +219,7 @@ gh api -X PATCH repos/{owner}/{repo}/issues/<n> -F milestone=<マイルストー
 gh api repos/{owner}/{repo}/pulls/<n>/requested_reviewers -f "reviewers[]=<user1>" -f "reviewers[]=<user2>"
 ```
 
-エビデンスがあれば、作成後に [evidence.md](evidence.md) の 6 で画像を付ける。
+エビデンスを撮っていれば、作成後に [evidence.md](evidence.md) の 6 で画像を付ける。クラウドのセッションでは画像を付けず、CI が終わってから節の案内をコメントへのリンクに直す（[evidence.md](evidence.md) の「クラウドのセッション」の 3）。
 
 レビュワーを指定したら、付いたかを確かめる。
 
@@ -367,6 +368,7 @@ gh api -X POST "repos/{owner}/{repo}/pulls/<n>/reviews/<review_id>/events" -f ev
 - Issue の完了条件でチェックを付けた項目と、残した項目
 - インラインコメントを何件投稿したか（本文に移したものがあればその件数も）
 - ブランチがベースの最新に乗っているか（Step 4 で承認を取らなかったとき）
+- クラウドのセッションで UI が変わる PR なら、エビデンスの画像は CI の `evidence` のコメントに付くことと、リンクに直したか（まだなら CI の後に直すこと）
 
 ## Step 8: pr-feedback に引き継ぐ
 
@@ -379,5 +381,5 @@ gh api -X POST "repos/{owner}/{repo}/pulls/<n>/reviews/<review_id>/events" -f ev
 - レビュワーを推測で決めない。`CODEOWNERS` か直近PRの実績のどちらかを根拠にする
 - PRの言語は直近PRに合わせる。日本語のリポジトリなら日本語で書く
 - 承認を取る条件（Step 4）に当たるときは、承認前にPRを作らない
-- UI が変わる PR では `## エビデンス` 節を必ず埋める。撮影時の SHA 以降に UI の変更が無ければ撮り直さない
+- UI が変わる PR では `## エビデンス` 節を必ず埋める。撮影時の SHA 以降に UI の変更が無ければ撮り直さない。クラウドのセッションでは「手元で撮って貼る」と書かずに、CI のコメントを指す形で埋める
 - 既にPRがある場合の本文修正だけが目的なら、手元では `pr-description-review` を使う。こちらの方が保守的に直す
