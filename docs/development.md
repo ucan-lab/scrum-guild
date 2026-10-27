@@ -449,7 +449,7 @@ Bash の判定を `permissions.deny` に置かないのは、規則が前方一�
 6. `done-check` で点検し、`pr-create` で PR を出す。点検とレビューの指摘のうちテストで拾えたはずのものは、先にその指摘で落ちるテストを足してから直す（`done-check` の手順 7、`pr-feedback` の手順 3）
 7. CI と AI レビューを待ち、指摘には `pr-feedback` で応える
 8. セッションが、Issue と PR でしたことをその場限りの Artifact の説明資料で見せ、人が判断すべきことと、マージするかを `AskUserQuestion` で聞く
-9. 下の「マージの判定」に従って、人がマージする。人の指示があれば、セッションがマージする
+9. 下の「マージの判定」に従って、人がマージする。人の指示があれば、セッションがマージする。マージで Issue は閉じず、`accepting.yml` が `status:accepting` を付ける。人が受け入れで閉じる（上の「Issue の運用」）
 10. `main` から Workers Builds で自動でデプロイされる（下の「CD」）
 
 仕様を変える実装は、同じ PR で `docs/` も直す。
@@ -493,7 +493,7 @@ Bash の判定を `permissions.deny` に置かないのは、規則が前方一�
 
 ## CI
 
-PR ごとに GitHub Actions で回す。`.github/workflows/ci.yml` の各ジョブは `package.json` のスクリプトを呼ぶだけにし、手順をワークフローに持たない（`evidence` は `scripts/evidence*.ts` を `node` で直に呼ぶ）。下の表の cache と evidence-main は、PR ではなく main で動く別のワークフローで、setup と playwright は各ジョブが使う composite action。
+PR ごとに GitHub Actions で回す。`.github/workflows/ci.yml` の各ジョブは `package.json` のスクリプトを呼ぶだけにし、手順をワークフローに持たない（`evidence` は `scripts/evidence*.ts` を `node` で直に呼ぶ）。下の表の cache、evidence-main、accepting は、PR の更新ではなく main への push やマージで動く別のワークフローで、setup と playwright は各ジョブが使う composite action。
 
 | ジョブ | 中身 |
 | --- | --- |
@@ -509,6 +509,7 @@ PR ごとに GitHub Actions で回す。`.github/workflows/ci.yml` の各ジョ�
 | evidence-main | `main` への push で e2e を回し、PR が比べる変更前の画像と一覧を同じバケットに上げる（`.github/workflows/evidence-main.yml`。下の「e2e の画像のコメント」）。`ci-ok` にも PR のチェックにも入らない |
 | ai-review | `anthropics/claude-code-action` で、スキル `ai-review` が差分に応じて `.claude/agents/` のレビューのエージェントを呼び分け、CRITICAL と HIGH を `finding-verifier` の反証にかけてから、指摘を PR に書く。`.github/workflows/ai-review.yml` に分けて置く |
 | label | パスを見て `needs-human` のラベルを付ける（上の「マージの判定」）。`.github/workflows/label.yml` に分けて置き、`pull_request_target` で動かす。ワークフローも規則も PR のベース（`main`）の版が使われるので、PR の側で書き換えてもラベルは付く。別のブランチをベースに開いてから `main` へ付け替えたときも、判定し直す。PR のコードはチェックアウトしない（書き込みのトークンで PR のコードを動かさないため）。ジョブはどのイベントでも飛ばさず、ラベルもどのイベントでも付け直す。ベースを付け替えた後にその head で CI が動き直していなければ、失敗で終わる（下の「文書だけの PR」）。判定はイベントの中身でなく、そのときの PR の状態から行い、`concurrency` も置かない |
+| accepting | `main` へ PR がマージされたとき、その PR が指す Issue に `status:accepting` を付ける（上の「Issue の状態」）。`.github/workflows/accepting.yml` に分けて置き、`pull_request_target` の `closed` で、マージされ、ベースが `main` のときだけ動く。PR のコードはチェックアウトせず、ブランチ名と本文は環境変数で渡す。`permissions` は `issues: write` だけ。`ci-ok` にも PR のチェックにも入らない |
 | ci-ok | `ci.yml` の changes、check、test、migration、e2e をまとめる1つのジョブ（evidence は含めない）。マージの前に確かめるのは、これと label |
 
 ai-review は Claude のサブスクリプションで動かす。手元で `claude setup-token` を実行して作った OAuth トークンを、リポジトリのシークレット `CLAUDE_CODE_OAUTH_TOKEN` に置く。従量の費用はかからないが、使用量の上限は手元の対話の利用と共有になる。
@@ -544,7 +545,7 @@ ai-review は Claude のサブスクリプションで動かす。手元で `cla
 - 何もしない実行（ジョブがすべて skipped で終わる実行）を、マージの判定に使う `ci.yml` と `label.yml` では作らない。助言の `ai-review.yml`（`review`）は、ほかのラベルを付けたときに skipped の実行を作るが、判定に使わないので対象にしない。同じワークフローの実行が同じ head に後からできると、マージの欄はその新しい方の結果だけを出す。タイトルや本文の編集で skipped の実行ができ、本来の CI の失敗が「All checks have passed」の下に隠れたことがある（#252）。そのため `ci.yml` は `edited` で動かさず、`label.yml` はどのイベントでもジョブを飛ばさずに、そのときの状態で成功か失敗かを出す
 - ワークフローの `paths-ignore` は使わない。飛ばすとワークフローごと動かず、`ci-ok` そのものが出なくなるため
 
-同じ PR の古い実行は `concurrency` で止める。`ci.yml` の `permissions` は `contents: read` だけにし、action はすべてコミットの SHA で固定する。`label.yml` は、ラベルを付ける `pull-requests: write` と、付け替えの判定で PR の履歴と `ci.yml` の実行を読む `issues: read`、`actions: read` を持つ（PR のコードはチェックアウトしない）。
+同じ PR の古い実行は `concurrency` で止める。`ci.yml` の `permissions` は `contents: read` だけにし、action はすべてコミットの SHA で固定する。`label.yml` は、ラベルを付ける `pull-requests: write` と、付け替えの判定で PR の履歴と `ci.yml` の実行を読む `issues: read`、`actions: read` を持つ（PR のコードはチェックアウトしない）。`accepting.yml` は、ラベルを付け外しする `issues: write` だけを持つ（PR のコードはチェックアウトしない）。
 
 GitHub Actions の無料枠は、private のリポジトリで月 2,000 分（public のあいだは、標準のランナーに上限が無い）。private に戻したときは、`evidence-main` のマージごとの約 11 分と、上の PR の e2e の延びと `evidence` のジョブの分も枠に数える。e2e と AI レビューで足りなくなりそうなら、上と同じく対象の PR を絞る。e2e のシャードは、それぞれが準備、Playwright の導入、build を繰り返す（1つあたり約1分）ので、分ける前より1回あたり約2分多く数える。
 
@@ -764,20 +765,23 @@ Issue はエピック、ストーリー、タスクの3階層にし、親子は�
 
 | 階層 | GitHub での表し方 | 中身 | 閉じる人と条件 |
 | --- | --- | --- | --- |
-| リリース | マイルストーン | 「初版」（自分のチームで使い始めるまで）。次のリリースのマイルストーンは、初版を閉じるときに人が作る | 入れた Issue がすべて閉じたとき |
-| エピック | `epic` のラベル | 成果のまとまり。ストーリーをサブ Issue に持つ | 人が、サブ Issue がすべて閉じ、エピックの完了条件を満たしたことを確かめて閉じる |
-| ストーリー | `story` のラベル。エピックのサブ Issue | 確かめられる1つのふるまい。タスクをサブ Issue に持つ | 人が、受け入れ条件を本番か e2e で確かめて閉じる |
-| タスク | `epic` も `story` も付けない（`area:` などほかのラベルは付ける）。ストーリーのサブ Issue | 1つの PR で入れる変更（1 Issue に 1 ブランチ、1 PR） | PR のマージで閉じる |
+| リリース | マイルストーン | 「初版」（自分のチームで使い始めるまで）。次のリリースのマイルストーンは、初版を閉じるときに人が作る | 入れた Issue が人の受け入れですべて閉じたとき |
+| エピック | `epic` のラベル | 成果のまとまり。ストーリーをサブ Issue に持つ | 人が、サブ Issue がすべて閉じるか受け入れ待ちで、エピックの完了条件を満たしたことを確かめて閉じる |
+| ストーリー | `story` のラベル。エピックのサブ Issue | 確かめられる1つのふるまい。タスクをサブ Issue に持つ | 人が、受け入れ条件を本番か e2e で確かめて、子のタスクと一緒に閉じる |
+| タスク | `epic` も `story` も付けない（`area:` などほかのラベルは付ける）。ストーリーのサブ Issue | 1つの PR で入れる変更（1 Issue に 1 ブランチ、1 PR） | PR のマージでは閉じない。マージで `status:accepting`（受け入れ待ち）が付き、人が受け入れで閉じる |
 
 - マイルストーンはリリースの区切りにだけ使い、エピックの分類には使わない。1つの Issue に1つしか付かず、エピックに使うとリリースを表す場所が無くなるため。エピック、ストーリー、タスクのそれぞれに、入るリリースのマイルストーンを付ける。配下が2つのリリースにまたがるエピックは、リリースごとに分ける
 - ストーリーの受け入れ条件は、利用者（土台のストーリーは運用者か開発者）から見えるふるまいで書く（「管理者として、招待の URL から Google でログインして組織に入れる」）。テーブルや関数の名前で書かない
 - 利用者から見えるふるまいにならない土台の作業（マイグレーション、入口、CI）は、土台のストーリーにまとめる。受け入れ条件は、運用者か開発者が確かめられるふるまいで書く（「運用者として、本番の `/api/health` で DB に届くことを確かめられる」）
-- 1つの PR で収まるストーリーは、タスクに分けずにストーリーのまま実装してよい。そのときはタスクの節（やること、確認方法、マイグレーション）もストーリーに書き、PR では閉じず、人が確かめて閉じる
-- 前に要るものは、待つ側の Issue に GitHub の依存関係（blocked by）でつなぐ（2026-10-26 に決めた）。本文の「前に要るもの」の表は人が読むためのもので、着手できるかは依存関係で判定する（`backlog-pick`）。Issue の一覧の `issue_dependencies_summary.blocked_by` は開いている依存だけを数えるので、0 なら前に要るものはすべて閉じている。つなぐのは `backlog-add` の登録の手順
-- 親の無いタスクも置いてよい（不具合、定期の確認で立つ Issue、`d1-migration` の縮める Issue）。PR のマージで閉じる。この運用を決める前に立てた Issue は、着手するときに親を決めてつなぐ
-- PR の本文は、タスクを `Closes #<番号>` で指す。ストーリーとエピックは `Refs #<番号>` で指し、`Closes` を使わない。マージで閉じると、人が受け入れ条件を確かめる前に閉じるため
-- ストーリーの最後のタスクの PR では、`pr-feedback` の説明資料で親のストーリーの受け入れ条件を示し、人に確かめて閉じてもらう
-- ラベル: 階層の `epic`、`story`、状態の `status:refining`、`status:in-progress`（下の「Issue の状態」）、人が差分を読む `needs-human`、マイグレーションの `migration`、領域の `area:auth`、`area:organization`、`area:workspace`、`area:task`、`area:import`、`area:attachment`、`area:ui`、`area:infra`、`area:docs`、不具合の `bug`、AI レビューをもう一度回す `ai-review`。GitHub に作り、`bug` 以外の既定のラベルは消した（2026-10-22）。重複や対応しないものは、ラベルではなく Issue を閉じるときの理由で表す
+- 1つの PR で収まるストーリーは、タスクに分けずにストーリーのまま実装してよい。そのときはタスクの節（やること、確認方法、マイグレーション）もストーリーに書き、PR では閉じず、マージで `status:accepting` を付け、人が確かめて閉じる
+- 前に要るものは、待つ側の Issue に GitHub の依存関係（blocked by）でつなぐ（2026-10-26 に決めた）。本文の「前に要るもの」の表は人が読むためのもので、着手できるかは依存関係で判定する（`backlog-pick`）。つなぐのは `backlog-add` の登録の手順
+- 前に要るものが受け入れ待ちの間は、待つ側に着手してよい（2026-10-28 に決めた。#370）。動作の確認を受け入れでまとめて行い、実装を止めないため。依存関係はつないだまま残す（何を待っていたかの記録を消さないため）。待ちに数えるのは、開いていて `status:accepting` の無い前に要るものだけ。Issue の一覧の `issue_dependencies_summary.blocked_by` は受け入れ待ちも数えるので、0 なら前に要るものはすべて閉じている。0 でないときは、`issues/<番号>/dependencies/blocked_by` を引いて数え直す
+- 親の無いタスクも置いてよい（不具合、定期の確認で立つ Issue、`d1-migration` の縮める Issue）。ほかのタスクと同じく、PR のマージでは閉じず、受け入れ待ちを経て人が閉じる。この運用を決める前に立てた Issue は、着手するときに親を決めてつなぐ
+- PR の本文は、タスクもストーリーもエピックも `Refs #<番号>` で指し、GitHub が閉じる合図に読む語（`close`、`closes`、`closed`、`fix`、`fixes`、`fixed`、`resolve`、`resolves`、`resolved` に `#<番号>` が続く形）を使わない（2026-10-28 に決めた。#370）。マージで閉じると、人が動作を確かめる前に閉じるため。開いた PR を Issue から引くときは、この決まりの前に立てた PR のために、本文の `Closes #<番号>` も拾う
+- タスクの PR をマージすると、`.github/workflows/accepting.yml` が `status:accepting` を付け、`status:in-progress` と `status:refining`（付いていれば）を外す。マージは人が画面で行うこともあり、セッションが居ないため、付けるのはワークフローが受け持つ。付ける先は、ブランチ名の先頭に `<番号>-` があればその Issue だけ、無ければ（`claude/*` など）本文の `Refs #<番号>` のすべて。閉じている Issue、PR、サブ Issue を持つ Issue（エピックと、子を持つストーリー）には付けない
+- 子を持つストーリーとエピックは、子がすべて閉じているか `status:accepting` のとき、受け入れ待ちとみなす（ラベルは付けない）。ストーリーの最後のタスクの PR では、`pr-feedback` の説明資料で親のストーリーの受け入れ条件を示し、人に確かめて、子とストーリーを一緒に閉じてもらう
+- 受け入れで不合格のときは、元の Issue を `status:accepting` のまま開いておき、直しを新しい Issue にする。直しは `bug` を付け、元と同じストーリーの子にし、本文で元の Issue を指す。待っていた側は既定で止めず、不具合が波及するときだけ人が直しの Issue へ blocked by をつなぐ。合格したら、元と直しを一緒に閉じる
+- ラベル: 階層の `epic`、`story`、状態の `status:refining`、`status:in-progress`、`status:accepting`（下の「Issue の状態」）、人が差分を読む `needs-human`、マイグレーションの `migration`、領域の `area:auth`、`area:organization`、`area:workspace`、`area:task`、`area:import`、`area:attachment`、`area:ui`、`area:infra`、`area:docs`、不具合の `bug`、AI レビューをもう一度回す `ai-review`。GitHub に作り、`bug` 以外の既定のラベルは消した（2026-10-22）。重複や対応しないものは、ラベルではなく Issue を閉じるときの理由で表す
 - テンプレート: タスクは `.github/ISSUE_TEMPLATE/plan.md`、ストーリーは `.github/ISSUE_TEMPLATE/story.md`。`backlog-add` が書く形と同じにする
 - 領域のラベルは、並行して作業するときのぶつかりを見分けるのにも使う。同じ領域の PR を同時に何本も開かない。ラベルが違っても重なる共通の層は、「並行して作業するときの決まり」で変えるファイルを比べて見る
 
@@ -790,11 +794,13 @@ Issue はエピック、ストーリー、タスクの3階層にし、親子は�
 | 要件整理中 | `status:refining` | `backlog-refine` で Issue を詰め始めたとき、`backlog-add` で既にある Issue の計画を書き始めたとき。セッションが付ける |
 | 作業中 | `status:in-progress` | 番号付きのブランチ（`<番号>-<名前>`）のワークツリーを新しく切ったとき。`.githooks/post-checkout` が付け、`status:refining` を外す。クラウドのセッションはワークツリーを切らないので、着手したときに `gh api -X POST repos/{owner}/{repo}/issues/<番号>/labels -f 'labels[]=status:in-progress'` で付け、`status:refining` を外す |
 | レビュー中 | その Issue を指す開いた PR があること。ラベルは使わない | PR の作成 |
-| 済み | Issue が閉じたこと | タスクは PR のマージ、ストーリーとエピックは人が閉じる |
+| 受け入れ待ち | `status:accepting`。子を持つストーリーとエピックは、子がすべて閉じているか `status:accepting` のとき（ラベルは付けない） | main への PR のマージ。`.github/workflows/accepting.yml` が付け、`status:in-progress` と `status:refining`（付いていれば）を外す（2026-10-28 に決めた。#370） |
+| 済み | Issue が閉じたこと | 人が受け入れで閉じる。セッションは閉じない。マージでは閉じない |
 
-- 表の上の行より下の行が勝つ。開いた PR があれば、`status:in-progress` が付いたままでもレビュー中とみなす（PR を出してもラベルは外さない）
+- 表の上の行より下の行が勝つ。開いた PR があれば、`status:in-progress` が付いたままでもレビュー中とみなす（PR を出してもラベルは外さない）。`status:accepting` が付いていれば、開いた PR があっても受け入れ待ちとみなす（直しの PR が同じ Issue を指していても、元の Issue は受け入れを待っている）
 - 両方のラベルが付いていれば作業中とみなす。セッションが `status:refining` を付けるのは、`status:in-progress` の無い Issue だけ
 - 閉じた Issue は、ラベルにかかわらず済みとして扱う。閉じた後にラベルを外す手間はかけない
+- 受け入れ待ちの Issue は、人が受け入れで閉じるまで開いたままにする。前に要るものが受け入れ待ちなだけの Issue は、着手できる（上の「Issue の運用」）
 - ラベルは `gh api` の REST で付け外しする（付ける `POST repos/{owner}/{repo}/issues/<番号>/labels`、外す `DELETE …/labels/<名前>`）。GraphQL の `gh issue edit` はクラウドのセッションで 403 になるため
 - `post-checkout` は、前の HEAD が null の SHA になる checkout のうち、追加のワークツリーでだけ動く。clone、本体の作業コピー、既にある作業コピーでの `git switch -c`、detached のワークツリーでは付かないので、着手を表すなら手で付ける。既にあるブランチでワークツリーを切り直したときも付く。付けるのは、その番号が開いた Issue（PR ではない）だと確かめられたときだけ。`gh` が無い、認証が無い、通信が落ちたときは理由を知らせるだけで、checkout は続ける。`timeout` のある環境（Linux、coreutils を入れた macOS）では `gh` の1回の呼び出しを10秒で切り、無い環境では上限なしで待つ。書き込み先は `ucan-lab/scrum-guild` に固定してある。同じフックが、Issue の判定より前に、ワークツリーの `.dev.vars` を本体の `.dev.vars` へのリンクにする（番号の無いブランチ、`gh` が無い環境でも動く。上の「ワークツリーで作業する」）
 - 詰めるのをやめて着手しない Issue は、`status:refining` を手で外す。ワークツリーを捨てて着手をやめたとき、PR をマージせずに閉じて Issue を開いたまま残すときは、`status:in-progress` を手で外す。外し忘れると、並行するセッションから着手済みに見え続ける

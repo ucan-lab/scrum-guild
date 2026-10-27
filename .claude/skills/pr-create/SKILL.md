@@ -105,14 +105,14 @@ git log <base>..HEAD --oneline
 
 ### 紐づく Issue を読む
 
-ブランチ名、コミットメッセージ、更新モードなら既存の本文（`Closes #n` 等）、ユーザーの指示から Issue 番号を拾う。見つからなければこの節と Step 5-C を飛ばす。
+ブランチ名、コミットメッセージ、更新モードなら既存の本文（`Refs #n`。決まりの前に立てた PR は `Closes #n`）、ユーザーの指示から Issue 番号を拾う。見つからなければこの節と Step 5-C を飛ばす。
 
 ```bash
 gh api repos/{owner}/{repo}/issues/<issue> --jq '{number, title, body, state, labels: [.labels[].name], url: .html_url}' > "<スクラッチパッドの絶対パス>/issue.json"
 ```
 
 本文の未チェックの項目（`- [ ]`）を完了条件として控える。
-PR の本文では、`epic` も `story` も付いていない Issue（タスク。`area:` などほかのラベルの有無は問わない）を `Closes #<番号>` で指す。`story` か `epic` のラベルが付いた Issue は `Refs #<番号>` で指し、`Closes` を使わない（理由: ストーリーとエピックは人が受け入れ条件を確かめて閉じる。`docs/development.md` の「Issue の運用」）。
+PR の本文では、タスクもストーリーもエピックも `Refs #<番号>` で指す。GitHub が閉じる合図に読む語（`close`、`closes`、`closed`、`fix`、`fixes`、`fixed`、`resolve`、`resolves`、`resolved` に `#<番号>` が続く形）は、本文にもコミットメッセージにも書かない（理由: マージでは Issue を閉じない。マージで `status:accepting` が付き、人が受け入れ条件を確かめて閉じる。`docs/development.md` の「Issue の運用」）。
 
 ## Step 3: 草案を作る
 

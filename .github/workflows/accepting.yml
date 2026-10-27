@@ -1,0 +1,72 @@
+name: accepting
+
+# main へマージされた PR が指す Issue に status:accepting を付ける（docs/development.md の「Issue の状態」）。
+# マージは人が画面で行うこともありセッションが居ないので、付けるのはこのワークフローが受け持つ。
+# pull_request_target なので、このワークフローも PR のベース（main）の版で動き、PR の側で書き換えても逃れられない
+on:
+  pull_request_target:
+    types: [closed]
+
+jobs:
+  accepting:
+    # マージされずに閉じた PR と、main 以外（重ねた PR の下）へのマージでは動かさない
+    if: github.event.pull_request.merged == true && github.event.pull_request.base.ref == 'main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      issues: write
+    steps:
+      # actions/checkout を置かない。pull_request_target のトークンは書き込めるので、PR のコードを取り込むと
+      # そのコードが書き込みの権限で動く。ブランチ名と PR の本文は PR の作者が決める文字列なので、
+      # run に ${{ }} で埋めず env で渡す（スクリプトに化けさせない）
+      - name: 指している Issue に status:accepting を付ける
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          BRANCH: ${{ github.event.pull_request.head.ref }}
+          BODY: ${{ github.event.pull_request.body }}
+        run: |
+          set -euo pipefail
+          # ブランチ名の先頭に <番号>- があれば、その Issue だけを指す（本文の Refs は見ない）。
+          # 無ければ（claude/* など）本文の Refs #<番号> をすべて指す。閉じる語は pr-create が書かないので拾わない
+          if [[ "$BRANCH" =~ ^([0-9]+)- ]]; then
+            numbers="${BASH_REMATCH[1]}"
+          else
+            numbers=$(printf '%s\n' "$BODY" | grep -oiE '(^|[^[:alnum:]_])refs #[0-9]+' | grep -oE '[0-9]+$' | sort -un || true)
+          fi
+          if [ -z "$numbers" ]; then
+            echo "指している Issue は無い"
+            exit 0
+          fi
+
+          for n in $numbers; do
+            # PR でなく、開いていて、サブ Issue を持たないものだけに付ける。
+            # 子を持つストーリーとエピックの受け入れ待ちは子から決まるので、自分には付けない
+            # 本文の書き間違いで無い番号を指しても、ほかの番号には付けたいので、無い番号（404）だけを飛ばす
+            if ! issue=$(gh api "repos/$REPO/issues/$n" --jq '[(.pull_request != null), .state, (.sub_issues_summary.total // 0)] | @tsv' 2>&1); then
+              if [[ "$issue" == *"HTTP 404"* ]]; then
+                echo "#$n は無い"
+                continue
+              fi
+              echo "$issue" >&2
+              exit 1
+            fi
+            read -r is_pr state children <<< "$issue"
+            if [ "$is_pr" = "true" ] || [ "$state" != "open" ] || [ "$children" -gt 0 ]; then
+              echo "#$n は対象外（pr=$is_pr state=$state children=$children）"
+              continue
+            fi
+            gh api "repos/$REPO/issues/$n/labels" -f 'labels[]=status:accepting' --silent
+            echo "#$n に status:accepting を付けた"
+            for label in status%3Ain-progress status%3Arefining; do
+              # 付いていないラベルを外すと 404 が返る。それは成功と同じに扱い、ほかの失敗は落とす
+              if ! out=$(gh api -X DELETE "repos/$REPO/issues/$n/labels/$label" --silent 2>&1); then
+                if [[ "$out" == *"HTTP 404"* ]]; then
+                  continue
+                fi
+                echo "$out" >&2
+                exit 1
+              fi
+              echo "#$n から $label を外した"
+            done
+          done
