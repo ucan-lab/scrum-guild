@@ -718,8 +718,9 @@ describe('sprint_entries', () => {
     );
     const entry = (endedAt: string | null, outcome: string | null) =>
       run(
-        `INSERT INTO sprint_entries (id, sprint_id, task_id, added_at, added_by, ended_at, outcome) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO sprint_entries (id, workspace_id, sprint_id, task_id, added_at, added_by, ended_at, outcome) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
         id(),
+        workspaceId,
         sprintId,
         taskId,
         AT,

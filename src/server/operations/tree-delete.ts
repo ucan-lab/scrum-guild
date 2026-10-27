@@ -222,6 +222,7 @@ function deleteTaskStatements(db: OrganizationDb, context: DeleteContext, root: 
       q
         .updateTable('sprint_entries')
         .set({ ended_at: deletedAt, outcome: 'removed' })
+        .where('workspace_id', '=', workspaceId)
         .where('ended_at', 'is', null)
         .where('task_id', 'in', tasksUnderRoot(q, workspaceId, root, null))
         .where((eb) => eb.exists(guardRow(q, context, root))),

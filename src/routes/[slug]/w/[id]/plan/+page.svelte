@@ -241,6 +241,12 @@
                 data-sveltekit-noscroll>{task.title}</a
               >
               <span class="lane-row-end">
+                {#if task.completed_at !== null}
+                  <!-- 完了の印（バックログの木の行と同じ .hanko）。担当の左に置き、担当の位置をそろえる -->
+                  <span class="hanko" role="img" aria-label={t('doneMarkLabel', { title: task.title, done: t('done') })}
+                    ><Icon name="check" /><b>{t('doneStamp')}</b></span
+                  >
+                {/if}
                 {#if task.assignee === null}
                   <Avatar userId={null} />
                 {:else}
@@ -255,6 +261,9 @@
                     aria-disabled={removingId !== null}
                     onclick={() => void removeTask(sprint, task)}><Icon name="x" /></button
                   >
+                {:else if canWrite}
+                  <!-- 外す口の無い行（完了したタスク）も、同じ幅を空けて担当の位置をそろえる -->
+                  <span class="lane-row-slot" aria-hidden="true"></span>
                 {/if}
               </span>
             </div>

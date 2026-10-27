@@ -16,8 +16,14 @@ export function jsonPairLookup(
   return sql<string>`(select json_extract(value, '$[1]') from json_each(${JSON.stringify(pairs)}) where json_extract(value, '$[0]') = ${key})`;
 }
 
+// スプリントから外れた変更の履歴（{"sprint": [前, null]}、JSON）。前は alias の表の今の名前（sprintLogRefSql）
+export function sprintLeftLogSql(alias: string): RawBuilder<string> {
+  return sql<string>`json_object('sprint', json_array(${sprintLogRefSql(alias)}, null))`;
+}
+
 // 変更の履歴に残すスプリントの値（{"id", "name"}、JSON）。alias の表（sprints の別名）の行が無ければ NULL。
-// 名前が空のスプリントは、期間（YYYY-MM-DD〜YYYY-MM-DD）を名前にする（src/server/operations/sprint-refs.ts の sprintLogRef と同じ）。
+// 名前が空のスプリントは、期間（YYYY-MM-DD〜YYYY-MM-DD）を名前にする。書くときの今の名前を引くので、読んでから書くまでに
+// 名前が変わっても、履歴は書いた時点の名前になる。
 // json() で包み、CASE を通しても JSON として json_array に入れる
 export function sprintLogRefSql(alias: string): RawBuilder<string | null> {
   const ref = (column: string) => sql.ref(`${alias}.${column}`);

@@ -7,8 +7,10 @@ import { sprintDelete, sprintList, sprintTaskAdd, sprintTaskRemove } from '../sr
 import { storyDelete } from '../src/shared/operations/story/index.ts';
 import { backlogTree, taskComplete, taskDelete, taskDetail, taskHistory } from '../src/shared/operations/task/index.ts';
 import { createApp } from '../src/server/app.ts';
-import { orgDb } from '../src/server/db/index.ts';
+import { orgDb, verifyWorkspace } from '../src/server/db/index.ts';
 import { implementedOperations } from '../src/server/operations/index.ts';
+import { sprintTaskAddOperation, sprintTaskRemoveOperation } from '../src/server/operations/sprint.ts';
+import { taskCompleteOperation } from '../src/server/operations/task.ts';
 import {
   createBoardColumn,
   createOrganization,
@@ -116,8 +118,67 @@ async function taskInSprint(target: Target, sprintId: string, columnId: string, 
     column_position: 'a0',
     ...overrides,
   });
-  await createSprintEntry(target.organization, sprintId, task.id, target.member.userId!);
+  await createSprintEntry(target.organization, target.workspace.id, sprintId, task.id, target.member.userId!);
   return task;
+}
+
+// 処理を直に呼び、db の method の nth 回目の呼び出しが返った直後に、1回だけ race を走らせる（読んでから書くまでの割り込み）
+async function handleWithRace(
+  target: Target,
+  operation: { handler: (context: never) => Promise<unknown> },
+  input: Record<string, unknown>,
+  race: { method: 'batch' | 'first'; nth: number; run: (db: ReturnType<typeof orgDb>) => Promise<void> },
+  person: Person = target.member,
+) {
+  const db = orgDb(env, target.organization.verified);
+  const actor = { accountId: person.accountId, userId: person.userId, isAdmin: false, invitedOnly: false };
+  const workspace = await verifyWorkspace(db, actor, target.workspace.id);
+  let calls = 0;
+  const racing = new Proxy(db, {
+    get(base, key) {
+      const value = Reflect.get(base, key, base);
+      if (typeof value !== 'function') return value;
+      if (key !== race.method) return value.bind(base);
+      return async (...args: unknown[]) => {
+        const result = await (value as (...a: unknown[]) => Promise<unknown>).apply(base, args);
+        if (++calls === race.nth) await race.run(base);
+        return result;
+      };
+    },
+  });
+  const context = {
+    db: racing,
+    actor,
+    workspace,
+    input: { workspace_id: target.workspace.id, ...input },
+    defer: () => {},
+  } as never;
+  return operation.handler(context);
+}
+
+function updateRow(
+  db: ReturnType<typeof orgDb>,
+  table: 'tasks' | 'sprints' | 'board_columns' | 'sprint_entries',
+  id: string,
+  values: Record<string, unknown>,
+) {
+  return db.run(
+    db.statement((q) =>
+      q
+        .updateTable(table as 'tasks')
+        .set(values as never)
+        .where('id', '=', id),
+    ),
+  );
+}
+
+async function entryOf(target: Target, taskId: string) {
+  const db = orgDb(env, target.organization.verified);
+  return db.first(
+    db.statement((q) =>
+      q.selectFrom('sprint_entries').selectAll().where('task_id', '=', taskId).where('ended_at', 'is', null),
+    ),
+  );
 }
 
 describe('sprint-task-add', () => {
@@ -413,7 +474,12 @@ describe('スプリントの中の完了（task-complete）', () => {
 
     const res = await call(target, taskComplete, { task_id: task.id });
     expect(res.status).toBe(200);
-    const { completed_at: completedAt } = (await res.json()) as { completed_at: string };
+    const { completed_at: completedAt, left_sprint: leftSprint } = (await res.json()) as {
+      completed_at: string;
+      left_sprint: boolean;
+    };
+    // 画面が「始まっていない<スプリント>から外れました」を添える
+    expect(leftSprint).toBe(true);
     const state = await stateOf(target, task.id);
     expect(state.task).toMatchObject({ sprint_id: null, column_id: null, column_position: null });
     expect(state.completions[0]).toMatchObject({ sprint_id: null, previous_column_id: null });
@@ -428,7 +494,9 @@ describe('スプリントの中の完了（task-complete）', () => {
   test('スプリントの外の完了は、完了の記録のスプリントと前の列が空', async () => {
     const { target } = await setup();
     const task = await createTask(target.organization, target.workspace.id, target.member.userId!);
-    expect((await call(target, taskComplete, { task_id: task.id })).status).toBe(200);
+    const res = await call(target, taskComplete, { task_id: task.id });
+    expect(res.status).toBe(200);
+    expect(((await res.json()) as { left_sprint: boolean }).left_sprint).toBe(false);
     const state = await stateOf(target, task.id);
     expect(state.completions[0]).toMatchObject({ sprint_id: null, previous_column_id: null });
     expect(state.entries).toEqual([]);
@@ -524,5 +592,261 @@ describe('入っているスプリントを読む', () => {
         [{ field: 'sprint', before: ref, after: null }],
       ]),
     );
+  });
+});
+
+describe('ワークスペースと終了したスプリントの境界', () => {
+  test('スプリントを削除しても、別の組織の入った行（同じスプリントの ID を指していても）には触らない', async () => {
+    const { target, board, sprint } = await setup();
+    await taskInSprint(target, sprint.id, board.first);
+    const other = await createTarget();
+    const otherTask = await createTask(other.organization, other.workspace.id, other.member.userId!);
+    await createSprintEntry(other.organization, other.workspace.id, sprint.id, otherTask.id, other.member.userId!);
+
+    expect((await call(target, sprintDelete, { sprint_id: sprint.id }, target.leader)).status).toBe(200);
+    expect(await entryOf(other, otherTask.id)).toMatchObject({ sprint_id: sprint.id, ended_at: null });
+  });
+
+  test('終了したスプリントに入っているタスクは移さず、入れられないものに数える', async () => {
+    const { target, board, sprint } = await setup();
+    const closed = await createSprint(target.organization, target.workspace.id, {
+      start_on: '2026-10-05',
+      end_on: '2026-10-18',
+      status: 'closed',
+    });
+    const left = await taskInSprint(target, closed.id, board.first);
+    const open = await createTask(target.organization, target.workspace.id, target.member.userId!);
+
+    const res = await add(target, sprint.id, [left.id, open.id]);
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ added: 1, skipped: { completed: 0, unavailable: 1, already: 0 } });
+    const state = await stateOf(target, left.id);
+    expect(state.task.sprint_id).toBe(closed.id);
+    expect(state.entries).toHaveLength(1);
+    expect(state.entries[0]).toMatchObject({ sprint_id: closed.id, ended_at: null });
+    expect(state.logs).toEqual([]);
+
+    // 終了したスプリントのタスクだけなら 404
+    expect((await add(target, sprint.id, [left.id])).status).toBe(404);
+  });
+
+  test('削除したスプリントを指すタスクを完了にすると、始まっていないスプリントと同じく外れ、スプリントの外の完了になる', async () => {
+    const { target, board, sprint } = await setup();
+    const task = await taskInSprint(target, sprint.id, board.first);
+    const db = orgDb(env, target.organization.verified);
+    await updateRow(db, 'sprints', sprint.id, { deleted_at: '2026-10-21T00:00:00.000Z' });
+
+    expect((await call(target, taskComplete, { task_id: task.id })).status).toBe(200);
+    const state = await stateOf(target, task.id);
+    expect(state.task).toMatchObject({ sprint_id: null, column_id: null, column_position: null });
+    expect(state.task.completed_at).not.toBeNull();
+    expect(state.completions[0]).toMatchObject({ sprint_id: null, previous_column_id: null });
+    expect(state.entries[0]).toMatchObject({ outcome: 'removed' });
+    expect(sprintChanges(state.logs.find((log) => log.action === 'update'))).toEqual([
+      { id: sprint.id, name: '第15回' },
+      null,
+    ]);
+  });
+});
+
+describe('読んだ後に別の要求が割り込む', () => {
+  test('sprint-task-add: 読んだ後に1件が完了にされ、1件が同じスプリントに入れられたら、残りだけを入れて数え直す', async () => {
+    const { target, board, sprint } = await setup();
+    const [done, taken, rest] = [
+      await createTask(target.organization, target.workspace.id, target.member.userId!),
+      await createTask(target.organization, target.workspace.id, target.member.userId!),
+      await createTask(target.organization, target.workspace.id, target.member.userId!),
+    ];
+    const result = await handleWithRace(
+      target,
+      sprintTaskAddOperation,
+      { sprint_id: sprint.id, task_ids: [done.id, taken.id, rest.id] },
+      {
+        method: 'batch',
+        nth: 1,
+        run: async (db) => {
+          await updateRow(db, 'tasks', done.id, {
+            completed_at: '2026-10-21T00:00:00.000Z',
+            completed_by: target.member.userId,
+          });
+          await updateRow(db, 'tasks', taken.id, {
+            sprint_id: sprint.id,
+            column_id: board.first,
+            column_position: 'a0',
+          });
+          await createSprintEntry(target.organization, target.workspace.id, sprint.id, taken.id, target.leader.userId!);
+        },
+      },
+    );
+    expect(result).toEqual({ added: 1, skipped: { completed: 1, unavailable: 0, already: 1 } });
+    expect((await stateOf(target, rest.id)).task.sprint_id).toBe(sprint.id);
+    const doneState = await stateOf(target, done.id);
+    expect(doneState.task.sprint_id).toBeNull();
+    expect(doneState.entries).toEqual([]);
+    // 先に入れた要求の行だけが残り、二重に入らない
+    expect((await stateOf(target, taken.id)).entries).toHaveLength(1);
+    expect((await stateOf(target, taken.id)).logs).toEqual([]);
+  });
+
+  test('sprint-task-add: 読んだ先頭の列が書く前に消えたら、404 にせず読み直して次の先頭の列に入れる', async () => {
+    const { target, board, sprint } = await setup();
+    const task = await createTask(target.organization, target.workspace.id, target.member.userId!);
+    const result = await handleWithRace(
+      target,
+      sprintTaskAddOperation,
+      { sprint_id: sprint.id, task_ids: [task.id] },
+      {
+        method: 'batch',
+        nth: 1,
+        run: (db) => updateRow(db, 'board_columns', board.first, { deleted_at: '2026-10-21T00:00:00.000Z' }).then(),
+      },
+    );
+    expect(result).toEqual({ added: 1, skipped: { completed: 0, unavailable: 0, already: 0 } });
+    expect((await stateOf(target, task.id)).task).toMatchObject({ sprint_id: sprint.id, column_id: board.second });
+  });
+
+  test('sprint-task-remove: 読んだ後に外されたら 404、完了にされたら 409 の completed で、何も書かない', async () => {
+    const { target, board, sprint } = await setup();
+    const removed = await taskInSprint(target, sprint.id, board.first);
+    await expect(
+      handleWithRace(
+        target,
+        sprintTaskRemoveOperation,
+        { sprint_id: sprint.id, task_id: removed.id },
+        {
+          method: 'first',
+          nth: 2,
+          run: async (db) => {
+            await updateRow(db, 'tasks', removed.id, { sprint_id: null, column_id: null, column_position: null });
+            const entry = await entryOf(target, removed.id);
+            await updateRow(db, 'sprint_entries', entry!.id, {
+              ended_at: '2026-10-21T00:00:00.000Z',
+              outcome: 'removed',
+            });
+          },
+        },
+      ),
+    ).rejects.toMatchObject({ status: 404 });
+    expect((await stateOf(target, removed.id)).logs).toEqual([]);
+
+    const completed = await taskInSprint(target, sprint.id, board.first);
+    await expect(
+      handleWithRace(
+        target,
+        sprintTaskRemoveOperation,
+        { sprint_id: sprint.id, task_id: completed.id },
+        {
+          method: 'first',
+          nth: 2,
+          run: (db) =>
+            updateRow(db, 'tasks', completed.id, {
+              completed_at: '2026-10-21T00:00:00.000Z',
+              completed_by: target.member.userId,
+            }).then(),
+        },
+      ),
+    ).rejects.toMatchObject({ status: 409, code: 'conflict', details: { reason: 'completed' } });
+    const state = await stateOf(target, completed.id);
+    expect(state.task.sprint_id).toBe(sprint.id);
+    expect(state.entries[0]!.ended_at).toBeNull();
+    expect(state.logs).toEqual([]);
+  });
+
+  test('sprint-task-remove: 変更の履歴のスプリントの名前は、書いたときの今の名前', async () => {
+    const { target, board, sprint } = await setup();
+    const task = await taskInSprint(target, sprint.id, board.first);
+    await handleWithRace(
+      target,
+      sprintTaskRemoveOperation,
+      { sprint_id: sprint.id, task_id: task.id },
+      { method: 'first', nth: 2, run: (db) => updateRow(db, 'sprints', sprint.id, { name: '第15回（改）' }).then() },
+    );
+    expect(sprintChanges((await stateOf(target, task.id)).logs[0])).toEqual([
+      { id: sprint.id, name: '第15回（改）' },
+      null,
+    ]);
+  });
+
+  test('task-complete: 読んだ後に始まっていないスプリントが始まったら、読み直して進行中の完了にする', async () => {
+    const { target, board, sprint } = await setup();
+    const task = await taskInSprint(target, sprint.id, board.second);
+    await handleWithRace(
+      target,
+      taskCompleteOperation,
+      { task_id: task.id },
+      { method: 'first', nth: 1, run: (db) => updateRow(db, 'sprints', sprint.id, { status: 'active' }).then() },
+    );
+    const state = await stateOf(target, task.id);
+    expect(state.task).toMatchObject({ sprint_id: sprint.id, column_id: board.done });
+    expect(state.completions).toHaveLength(1);
+    expect(state.completions[0]).toMatchObject({ sprint_id: sprint.id, previous_column_id: board.second });
+    expect(state.entries[0]).toMatchObject({ ended_at: null, outcome: null });
+    expect(state.logs.map((log) => log.action)).toEqual(['complete']);
+  });
+
+  test('task-complete: 読んだ後に別のスプリントへ移されたら、読み直して移った先から外す', async () => {
+    const { target, board, sprint } = await setup();
+    const later = await createSprint(target.organization, target.workspace.id, {
+      start_on: '2026-11-16',
+      end_on: '2026-11-29',
+      name: '第16回',
+    });
+    const task = await taskInSprint(target, sprint.id, board.first);
+    await handleWithRace(
+      target,
+      taskCompleteOperation,
+      { task_id: task.id },
+      {
+        method: 'first',
+        nth: 1,
+        run: async (db) => {
+          const entry = await entryOf(target, task.id);
+          await updateRow(db, 'sprint_entries', entry!.id, {
+            ended_at: '2026-10-21T00:00:00.000Z',
+            outcome: 'removed',
+          });
+          await updateRow(db, 'tasks', task.id, { sprint_id: later.id });
+          await createSprintEntry(target.organization, target.workspace.id, later.id, task.id, target.leader.userId!);
+        },
+      },
+    );
+    const state = await stateOf(target, task.id);
+    expect(state.task.sprint_id).toBeNull();
+    expect(state.entries.map((entry) => [entry.sprint_id, entry.outcome])).toEqual([
+      [sprint.id, 'removed'],
+      [later.id, 'removed'],
+    ]);
+    expect(sprintChanges(state.logs.find((log) => log.action === 'update'))).toEqual([
+      { id: later.id, name: '第16回' },
+      null,
+    ]);
+  });
+
+  test('task-complete: 始まっていないスプリントの中の完了で、入っている行を閉じる文が負けたら何も書かず 409', async () => {
+    const { target, board, sprint } = await setup();
+    const task = await taskInSprint(target, sprint.id, board.first, { points: 3 });
+    // 読んだ後に、入っている行だけが閉じられた（タスクはスプリントを指したまま）
+    await expect(
+      handleWithRace(
+        target,
+        taskCompleteOperation,
+        { task_id: task.id },
+        {
+          method: 'first',
+          nth: 1,
+          run: async (db) => {
+            const entry = await entryOf(target, task.id);
+            await updateRow(db, 'sprint_entries', entry!.id, {
+              ended_at: '2026-10-21T00:00:00.000Z',
+              outcome: 'removed',
+            });
+          },
+        },
+      ),
+    ).rejects.toMatchObject({ status: 409, code: 'conflict' });
+    const state = await stateOf(target, task.id);
+    expect(state.task).toMatchObject({ sprint_id: sprint.id, completed_at: null });
+    expect(state.completions).toEqual([]);
+    expect(state.logs).toEqual([]);
   });
 });

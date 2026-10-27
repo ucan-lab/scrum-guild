@@ -1964,8 +1964,6 @@ export const dictionary = defineDictionary({
     '{story}を選ぶと、配下の未完了の{task}をまとめて入れます。ほかの{sprint}に入っている{task}は、こちらへ移します。',
     '{story}を選ぶと、配下の未完了の{task}をまとめて入れます。ほかの{sprint}に入っている{task}は、こちらへ移します。',
   ),
-  sprintTaskAddStories: workspace('{story}ごと入れる', '{story}ごと入れる'),
-  sprintTaskAddTasks: workspace('{task}を1件ずつ入れる', '{task}を1件ずつ入れる'),
   sprintTaskAddStoryMeta: workspace('未完了の{task} {count} 件', '未完了の{task} {count} 件'),
   sprintTaskAddRootTasks: workspace('親のない{task}', '親のない{task}'),
   sprintTaskAddInSprint: workspace('{label} から移します', '{label} から移します'),
@@ -2028,6 +2026,16 @@ export const dictionary = defineDictionary({
   ),
   // バックログの木の行と、タスクの詳細の、入っているスプリント
   sprintNone: workspace('{backlog}', '{backlog}'),
+  sprintPlanNote: workspace('{plan}の画面で出し入れします', '{plan}の画面で出し入れします'),
+  // 始まっていないスプリントの中で完了にして、スプリントから外れた（task-complete の left_sprint）
+  taskLeftPlannedSprint: workspace('始まっていない{sprint}から外れました', '始まっていない{sprint}から外れました'),
+  // スプリントに入れるダイアログ（SprintTaskPicker）の一覧、検索、足元の件数
+  sprintTaskPickCount: workspace('{count} 件を選んでいます', '{count} 件を選んでいます'),
+  sprintTaskAddSubmitEmpty: workspace('入れる', '入れる'),
+  sprintTaskPickListLabel: workspace('入れる{task}', '入れる{task}'),
+  sprintTaskPickSearch: workspace('{task}と{story}のタイトルで絞る', '{task}と{story}のタイトルで絞る'),
+  sprintTaskPickSearchPlaceholder: workspace('タイトルで絞る', 'タイトルで絞る'),
+  sprintTaskPickNoMatch: workspace('当てはまる{task}がありません', '当てはまる{task}がありません'),
   // 経験値とレベル（kit.js の levelPanel と emblem、me.html の「経験値の明細」）。経験値の数値と明細は本人にだけ出す
   levelLabel: organization('レベル {level}', 'レベル {level}'),
   levelShort: organization('LV', 'LV'),

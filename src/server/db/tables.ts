@@ -245,6 +245,7 @@ export const organizationTableColumns = {
   },
   sprint_entries: {
     id: text,
+    workspace_id: text,
     sprint_id: text,
     task_id: text,
     added_at: text,

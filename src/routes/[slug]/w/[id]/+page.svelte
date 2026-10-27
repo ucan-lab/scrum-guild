@@ -29,6 +29,7 @@
     type BacklogFilter,
   } from '../../../../lib/backlog-filter.ts';
   import { MoveQueue } from '../../../../lib/move-queue.ts';
+  import { completedMessage } from '../../../../lib/sprint-label.ts';
   import { showToast } from '../../../../lib/toast.svelte.ts';
   import { t } from '../../../../lib/vocabulary.svelte.ts';
   import { epicMove } from '../../../../shared/operations/epic/index.ts';
@@ -373,7 +374,7 @@
         // 別の画面で先に完了にされていたときは、同じ完了の印で示し、知らせる
         showToast(
           result.ok
-            ? t('taskCompleted', { task: t('task'), done: t('done') })
+            ? completedMessage(result.data.left_sprint, t)
             : t('taskAlreadyDone', { task: t('task'), done: t('done') }),
           'check',
         );

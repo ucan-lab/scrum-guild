@@ -628,13 +628,34 @@ button.tree-link { border: 0; background: none; padding: 0; font: inherit; text-
 .lane-row a { color: var(--color-fg); text-decoration: none; overflow-wrap: anywhere; }
 .lane-row a:hover { text-decoration: underline; text-underline-offset: 3px; }
 .lane-row.is-done a { color: var(--color-muted); }
-/* 行の右端（担当と、外す操作）。外す操作の無い行（完了したタスク）でも、担当の位置をそろえる */
-.lane-row-end { display: flex; align-items: center; gap: var(--space-1); }
+/* 行の右端（完了の印、担当、外す操作）。外す操作の無い行（完了したタスク）は同じ幅の空き（.lane-row-slot）を置き、担当の位置をそろえる。
+   完了の印は担当の左に置く */
+.lane-row-end { display: flex; align-items: center; justify-content: flex-end; gap: var(--space-1); }
+.lane-row-slot { flex: none; width: 30px; height: 30px; }
+
+/* 選んで入れる一覧（スプリントに入れるダイアログ）。見出しの行（.pick-row.is-head。ストーリーはチェックボックスで配下をまとめて選ぶ）と、
+   その下に字下げした行（.pick-row.is-child）。高さに上限を付けて中でスクロールし、ダイアログの主ボタンと選んだ件数を見える所に保つ */
+.pick-list { max-height: min(46vh, 420px); overflow-y: auto; border: 1px solid var(--color-line); border-radius: var(--radius-1); background: var(--color-surface); }
+.pick-group + .pick-group { border-top: 1px solid var(--color-rule); }
+.pick-row { display: flex; align-items: flex-start; gap: var(--space-2); padding: 6px var(--space-3); font-size: var(--text-sm); overflow-wrap: anywhere; }
+label.pick-row { cursor: pointer; }
+label.pick-row:hover { background: var(--color-accent-soft); }
+.pick-row input { flex: none; margin-top: 3px; accent-color: var(--color-accent); }
+.pick-row.is-head { position: sticky; top: 0; z-index: 1; background: var(--color-sunken); font-weight: 700; }
+.pick-row.is-child { padding-left: calc(var(--space-3) + 1.6em); }
+.pick-row > span { min-width: 0; }
+.pick-meta { display: block; font-size: var(--text-xs); font-weight: 400; color: var(--color-muted); }
+.pick-empty { padding: var(--space-3); font-size: var(--text-sm); color: var(--color-muted); }
+/* ダイアログの足元の、選んだ件数。主ボタンの左に寄せる */
+.pick-count { margin-right: auto; align-self: center; font-size: var(--text-sm); color: var(--color-muted); }
 /* 狭い幅と指で押す画面では、外すボタンを 44px 四方に、タイトルのリンクと「<バックログ>から入れる」を見た目ごと 44px の高さにする
    （バックログの並べ替えのボタンと同じ範囲）。「<バックログ>から入れる」は、下の「直す」「削除する」の広げた範囲（上へ約 8px）と
    重ならないよう、下を空ける */
 @media (max-width: 760px), (pointer: coarse) {
   .lane-row .icon-btn { min-width: 44px; min-height: 44px; }
+  .lane-row-slot { width: 44px; height: 44px; }
+  .pick-row { min-height: 44px; align-items: center; }
+  .pick-row input { margin-top: 0; width: 20px; height: 20px; }
   .lane-row a { display: flex; align-items: center; min-height: 44px; }
   .lane > .btn.is-sm { min-height: 44px; margin-bottom: var(--space-2); }
 }

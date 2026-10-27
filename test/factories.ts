@@ -569,6 +569,7 @@ export async function createCompletion(
 // タスクがスプリントに入った行。既定は入っている間の行（ended_at と outcome が空）。タスクの sprint_id と column_id は呼ぶ側がそろえる
 export async function createSprintEntry(
   organization: OrganizationFixture,
+  workspaceId: string,
   sprintId: string,
   taskId: string,
   addedBy: string,
@@ -576,6 +577,7 @@ export async function createSprintEntry(
 ) {
   const row: Row<OrganizationTables, 'sprint_entries'> = {
     id: uuidv7(),
+    workspace_id: workspaceId,
     sprint_id: sprintId,
     task_id: taskId,
     added_at: AT,

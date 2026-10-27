@@ -533,6 +533,7 @@ export const taskDeleteOperation = implement(taskDelete, async ({ db, actor, wor
       q
         .updateTable('sprint_entries')
         .set({ ended_at: deletedAt, outcome: 'removed' })
+        .where('workspace_id', '=', workspaceId)
         .where('task_id', '=', taskId)
         .where('ended_at', 'is', null)
         .where((eb) =>

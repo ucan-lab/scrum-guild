@@ -13,5 +13,6 @@ export const taskComplete = defineOperation({
   permission: 'member',
   workspace: true,
   input: z.object({ workspace_id: idSchema, task_id: idSchema }),
-  output: z.object({ task_id: z.string(), completed_at: z.string() }),
+  // left_sprint は、始まっていないスプリント（か削除したスプリント）に入っていて、完了でそこから外れたか。画面が一言添える
+  output: z.object({ task_id: z.string(), completed_at: z.string(), left_sprint: z.boolean() }),
 });

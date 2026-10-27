@@ -214,7 +214,9 @@
   function sprintTag(x) {
     if (!x.sprint || !D.sprints[x.sprint]) return "";
     const s = D.sprints[x.sprint];
-    return nameChip("calendar", t("sprint"), s.name || `${md(s.start)}〜${md(s.end)}`);
+    if (s.name) return nameChip("calendar", t("sprint"), s.name);
+    // 名前の無いスプリントは期間を等幅（.mono）で出す
+    return `<span class="chip is-name">${icon("calendar")}<span><span class="visually-hidden">${t("sprint")}：</span><span class="mono">${md(s.start)}〜${md(s.end)}</span></span></span>`;
   }
   // 区分の選択欄（本番のエピック、ストーリー、起票のダイアログと、引き出し）。先頭が「区分なし」
   function categorySelect(id, current, readOnly) {
@@ -1211,6 +1213,27 @@ const looooooooooooooooooooooooooooooooooongLine = "コードの長い1行は、
         : `<button class="btn is-quiet" type="button" data-close-dialog>やめる</button><button class="btn is-primary" type="button" data-close-dialog data-toast="${e ? `${t("epic")}を保存しました` : `${t("epic")}を作りました`}">${e ? "保存する" : "作る"}</button>`);
   }
   const DIALOGS = {
+    // 先のスプリントに入れる（本番の SprintTaskPicker）。計画の画面の「<バックログ>から入れる」から開く。
+    // ストーリーを見出しにして配下の未完了のタスクを並べ、見出しのチェックで配下をまとめて選び、1件ずつ外せる（一部だけなら indeterminate）。
+    // 親のないタスクは別の見出し。タイトルで絞る検索欄、高さに上限のある一覧、足元に選んだ件数と主ボタン
+    sprintTaskAdd: () => {
+      const open = (x) => !x.doneAt && x.ws === "wa" && x.sprint !== "sp16";
+      const groups = Object.keys(D.stories).map((sid) => ({ sid, title: D.stories[sid].title, list: tasksWhere((x) => open(x) && x.story === sid) }))
+        .filter((g) => g.list.length);
+      const roots = tasksWhere((x) => open(x) && !x.story);
+      const picked = (groups[0]?.list.length ?? 0) + (groups[1] ? 1 : 0);
+      const row = (x, checked) => `<label class="pick-row is-child"><input type="checkbox" ${checked ? "checked" : ""}><span>${esc(x.title)}<span class="pick-meta">${x.pts == null ? "未見積もり" : `${x.pts} pt`}${x.sprint ? `・${esc(sprintLabel(x.sprint))} から移します` : ""}</span></span></label>`;
+      openDialog(`${esc(sprintLabel("sp16"))} に入れる`,
+        `<p class="field-hint" id="d-pick-hint">${t("story")}を選ぶと、配下の未完了の${t("task")}をまとめて入れます。ほかの${t("sprint")}に入っている${t("task")}は、こちらへ移します。</p>
+         <label class="search">${icon("search")}<input type="search" aria-label="${t("task")}と${t("story")}のタイトルで絞る" placeholder="タイトルで絞る"></label>
+         <div class="pick-list" role="group" aria-label="入れる${t("task")}" aria-describedby="d-pick-hint">
+           ${groups.map((g, gi) => `<div class="pick-group"><label class="pick-row is-head"><input type="checkbox" ${gi === 0 ? "checked" : ""} data-indeterminate="${gi === 1}"><span>${esc(g.title)}<span class="pick-meta">未完了の${t("task")} ${g.list.length} 件</span></span></label>
+             ${g.list.map((x, i) => row(x, gi === 0 || (gi === 1 && i === 0))).join("")}</div>`).join("")}
+           ${roots.length ? `<div class="pick-group"><div class="pick-row is-head"><span>親のない${t("task")}</span></div>${roots.map((x) => row(x, false)).join("")}</div>` : ""}
+         </div>`,
+        `<span class="pick-count">${picked} 件を選んでいます</span><button class="btn is-quiet" type="button" data-close-dialog>やめる</button><button class="btn is-primary" type="button" data-close-dialog data-toast="${picked} 件入れました">${picked} 件入れる</button>`);
+      document.querySelectorAll("#dialog [data-indeterminate='true']").forEach((el) => { el.indeterminate = true; });
+    },
     sprintCreate: () => sprintDialog(null),
     // 始まる前のスプリントを直す（本番の SprintDialog）。計画の画面の先のスプリントの「直す」から開く。欄は作るときと同じ
     sprintEdit: () => sprintDialog("sp16"),

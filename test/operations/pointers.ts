@@ -363,7 +363,7 @@ export const pointers: Pointers = {
       column_id: column.id,
       column_position: 'a0',
     });
-    await createSprintEntry(target.organization, sprint.id, task.id, target.admin.userId!);
+    await createSprintEntry(target.organization, target.workspace.id, sprint.id, task.id, target.admin.userId!);
     return { workspace_id: target.workspace.id, sprint_id: sprint.id, task_id: task.id };
   },
   'category-repository-list': async (target) => ({ workspace_id: target.workspace.id }),

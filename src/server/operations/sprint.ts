@@ -17,6 +17,7 @@ import {
   jsonList,
   jsonPairLookup,
   previousStatementChanged,
+  sprintLeftLogSql,
   sprintLogRefSql,
   uuidv7Sql,
   type OrganizationDb,
@@ -26,7 +27,6 @@ import {
 import { ApiError } from '../errors.ts';
 import { uuidv7 } from '../uuid.ts';
 import { implement } from './implement.ts';
-import { sprintLogRef } from './sprint-refs.ts';
 import { actorUserIdOf, changeLogColumns, openWorkspace, throwIfClosed } from './write-guards.ts';
 
 // 同時の更新に負けたときにやり直す回数の上限。超えたら 409 の conflict（story-update と同じ）
@@ -126,8 +126,8 @@ export const sprintListOperation = implement(sprintList, async ({ db, workspace 
         .orderBy('sprints.end_on', 'desc')
         .limit(1),
     ),
-    // 一覧のスプリントに入っている、削除していないタスク。スプリントから引いてタスクを結ぶ（tasks_sprint の索引で引く）。
-    // 並びは列の順（ORDER BY is_done, position）、その中の column_position、id の順
+    // 一覧のスプリントに入っている、削除していないタスク。スプリントから引いてタスクを結ぶ（tasks_sprint_column の索引で引く）。
+    // 並びは列の順（ORDER BY is_done, position, id）、その中の column_position、id の順（同じ列の同じ位置は id の順）
     db.statement((q) =>
       q
         .selectFrom('sprints')
@@ -155,6 +155,7 @@ export const sprintListOperation = implement(sprintList, async ({ db, workspace 
         .where('tasks.deleted_at', 'is', null)
         .orderBy('board_columns.is_done')
         .orderBy('board_columns.position')
+        .orderBy('board_columns.id')
         .orderBy('tasks.column_position')
         .orderBy('tasks.id'),
     ),
@@ -436,6 +437,10 @@ export const sprintDeleteOperation = implement(sprintDelete, async ({ db, actor,
         .expression(
           q
             .selectFrom('tasks as t')
+            // スプリントの名前は、書くときの今の名前を引く（読んでから書くまでに名前が変わっても、履歴は書いた時点の名前）
+            .innerJoin('sprints as cur', (join) =>
+              join.onRef('cur.id', '=', 't.sprint_id').on('cur.workspace_id', '=', workspaceId),
+            )
             .select((eb) => [
               uuidv7Sql(at).as('id'),
               eb.val(organizationId).as('organization_id'),
@@ -444,7 +449,7 @@ export const sprintDeleteOperation = implement(sprintDelete, async ({ db, actor,
               eb.val('task').as('entity_type'),
               eb.ref('t.id').as('entity_id'),
               eb.val('update').as('action'),
-              eb.val(JSON.stringify({ sprint: [sprintLogRef(current), null] })).as('changes_json'),
+              sprintLeftLogSql('cur').as('changes_json'),
               eb.val(deletedAt).as('created_at'),
             ])
             .where('t.sprint_id', '=', sprintId)
@@ -458,6 +463,7 @@ export const sprintDeleteOperation = implement(sprintDelete, async ({ db, actor,
       q
         .updateTable('sprint_entries')
         .set({ ended_at: deletedAt, outcome: 'removed' })
+        .where('workspace_id', '=', workspaceId)
         .where('sprint_id', '=', sprintId)
         .where('ended_at', 'is', null)
         .where((eb) => eb.exists(deletedNow(q, workspaceId, sprintId, deletedAt))),
@@ -524,18 +530,30 @@ function firstColumn(from: From, workspaceId: string) {
     .limit(1);
 }
 
+// 読み直して再試行する回数の上限（読んだ先頭の列が書く前に消えたなど）。超えたら 409 の conflict
+const MAX_ADD_ATTEMPTS = 3;
+
 type AddRow = {
   id: string;
   tray: string;
   completed_at: string | null;
   deleted_at: string | null;
   sprint_id: string | null;
+  // 今入っているスプリントの状態と削除した日時（入っていなければ空）
+  sprint_status: string | null;
+  sprint_deleted_at: string | null;
 };
+
+// 今入っているスプリントが終了していて（削除していない）、中身を変えられない
+function inClosedSprint(row: AddRow): boolean {
+  return row.sprint_id !== null && row.sprint_status === 'closed' && row.sprint_deleted_at === null;
+}
 
 type AddCounts = { completed: number; unavailable: number; already: number };
 
 // 送られたタスクを、入れられるもの（送られた順）と、飛ばす理由ごとの件数に分ける。
-// 無い、削除した、別のワークスペースや別の組織、バックログにないものは、あるかどうかを漏らさないよう同じ unavailable に数える
+// 無い、削除した、別のワークスペースや別の組織、バックログにないもの、終了したスプリントに入っているもの（移さない）は、
+// あるかどうかを漏らさないよう同じ unavailable に数える
 function classifyForAdd(taskIds: readonly string[], rows: readonly AddRow[], sprintId: string) {
   const byId = new Map(rows.map((row) => [row.id, row]));
   const addable: string[] = [];
@@ -545,17 +563,33 @@ function classifyForAdd(taskIds: readonly string[], rows: readonly AddRow[], spr
     if (row === undefined || row.deleted_at !== null || row.tray !== 'backlog') skipped.unavailable++;
     else if (row.completed_at !== null) skipped.completed++;
     else if (row.sprint_id === sprintId) skipped.already++;
+    else if (inClosedSprint(row)) skipped.unavailable++;
     else addable.push(id);
   }
   return { addable, skipped };
 }
 
-// 送られたタスクの今の状態（ワークスペースで絞る。別のワークスペースや別の組織の ID は行が無い）
+// 送られたタスクの今の状態と、今入っているスプリントの状態（ワークスペースで絞る。別のワークスペースや別の組織の ID は行が無い）
+async function readAddRows(db: OrganizationDb, workspaceId: string, taskIds: readonly string[]): Promise<AddRow[]> {
+  return db.rows(addRowsStatement(db, workspaceId, taskIds));
+}
+
 function addRowsStatement(db: OrganizationDb, workspaceId: string, taskIds: readonly string[]) {
   return db.statement((q) =>
     q
       .selectFrom('tasks')
-      .select(['tasks.id', 'tasks.tray', 'tasks.completed_at', 'tasks.deleted_at', 'tasks.sprint_id'])
+      .leftJoin('sprints as cur', (join) =>
+        join.onRef('cur.id', '=', 'tasks.sprint_id').on('cur.workspace_id', '=', workspaceId),
+      )
+      .select([
+        'tasks.id',
+        'tasks.tray',
+        'tasks.completed_at',
+        'tasks.deleted_at',
+        'tasks.sprint_id',
+        'cur.status as sprint_status',
+        'cur.deleted_at as sprint_deleted_at',
+      ])
       .where('tasks.workspace_id', '=', workspaceId)
       .where('tasks.id', 'in', jsonList(taskIds)),
   );
@@ -578,6 +612,26 @@ export const sprintTaskAddOperation = implement(sprintTaskAdd, async ({ db, acto
   const sprintId = input.sprint_id;
   const taskIds = [...new Set(input.task_ids)];
 
+  for (let attempt = 0; attempt < MAX_ADD_ATTEMPTS; attempt++) {
+    const outcome = await addOnce(db, { organizationId, workspaceId, actorUserId, sprintId, taskIds });
+    if (outcome !== 'retry') return outcome;
+  }
+  throw new ApiError(409, 'conflict');
+});
+
+type AddContext = {
+  organizationId: string;
+  workspaceId: string;
+  actorUserId: string;
+  sprintId: string;
+  taskIds: readonly string[];
+};
+
+// 1回分の読みと書き。読んでから書くまでに、スプリントもタスクも入れられるまま0件になった（読んだ先頭の列が消えたなど）ときは 'retry'
+async function addOnce(
+  db: OrganizationDb,
+  { organizationId, workspaceId, actorUserId, sprintId, taskIds }: AddContext,
+): Promise<{ added: number; skipped: AddCounts } | 'retry'> {
   const [sprintResult, rowsResult, columnResult, lastResult] = await db.batch([
     db.statement((q) =>
       q
@@ -611,7 +665,7 @@ export const sprintTaskAddOperation = implement(sprintTaskAdd, async ({ db, acto
     await throwIfClosed(db, workspaceId);
     throw taskConflict('closed');
   }
-  const { addable, skipped } = classifyForAdd(taskIds, rowsResult.rows, sprintId);
+  const { addable, skipped } = classifyForAdd(taskIds, rowsResult.rows as AddRow[], sprintId);
   const columnId = columnResult.rows[0]?.id;
   if (addable.length === 0 || columnId === undefined) {
     // 書くものが無くても、閉じたワークスペースは断る
@@ -626,9 +680,9 @@ export const sprintTaskAddOperation = implement(sprintTaskAdd, async ({ db, acto
   const addedAt = at.toISOString();
   const keys = generateNKeysBetween(lastResult.rows[0]?.column_position ?? null, null, addable.length);
   const positions = addable.map((id, index) => [id, keys[index]!] as const);
-  const after = sprintLogRef(sprint);
 
-  // 入れられるタスクの ID（そのワークスペースの、バックログの、未完了の、削除していない、このスプリントに入っていないもの）
+  // 入れられるタスクの ID（そのワークスペースの、バックログの、未完了の、削除していない、このスプリントに入っていない、
+  // 終了した（削除していない）スプリントに入っていないもの）
   const eligibleIds = (from: From) =>
     from
       .selectFrom('tasks as e')
@@ -638,7 +692,20 @@ export const sprintTaskAddOperation = implement(sprintTaskAdd, async ({ db, acto
       .where('e.tray', '=', 'backlog')
       .where('e.completed_at', 'is', null)
       .where('e.deleted_at', 'is', null)
-      .where((eb) => eb.or([eb('e.sprint_id', 'is', null), eb('e.sprint_id', '!=', sprintId)]));
+      .where((eb) => eb.or([eb('e.sprint_id', 'is', null), eb('e.sprint_id', '!=', sprintId)]))
+      .where((eb) =>
+        eb.not(
+          eb.exists(
+            eb
+              .selectFrom('sprints as closed')
+              .select('closed.id')
+              .whereRef('closed.id', '=', 'e.sprint_id')
+              .where('closed.workspace_id', '=', workspaceId)
+              .where('closed.status', '=', 'closed')
+              .where('closed.deleted_at', 'is', null),
+          ),
+        ),
+      );
   // どの文も持つ前提。閉じていないワークスペースで、入れる先が planned か active のまま、読んだ先頭の列が今もある。1行を返す副問い合わせ
   const guardRow = (from: From) =>
     from
@@ -670,6 +737,10 @@ export const sprintTaskAddOperation = implement(sprintTaskAdd, async ({ db, acto
             .leftJoin('sprints as prev', (join) =>
               join.onRef('prev.id', '=', 't.sprint_id').on('prev.workspace_id', '=', workspaceId),
             )
+            // 前と後のスプリントの名前は、書くときの今の名前を引く
+            .innerJoin('sprints as next', (join) =>
+              join.on('next.id', '=', sprintId).on('next.workspace_id', '=', workspaceId),
+            )
             .select((eb) => [
               uuidv7Sql(at).as('id'),
               eb.val(organizationId).as('organization_id'),
@@ -681,7 +752,7 @@ export const sprintTaskAddOperation = implement(sprintTaskAdd, async ({ db, acto
               eb
                 .fn<string>('json_object', [
                   eb.val('sprint'),
-                  eb.fn('json_array', [sprintLogRefSql('prev'), eb.fn('json', [eb.val(JSON.stringify(after))])]),
+                  eb.fn('json_array', [sprintLogRefSql('prev'), sprintLogRefSql('next')]),
                 ])
                 .as('changes_json'),
               eb.val(addedAt).as('created_at'),
@@ -691,24 +762,39 @@ export const sprintTaskAddOperation = implement(sprintTaskAdd, async ({ db, acto
             .where((eb) => eb.exists(guardRow(q))),
         ),
     ),
-    // 別のスプリントに入っている行（と、念のため入っている行のすべて）を removed で閉じる
+    // 別のスプリントに入っている行（と、念のため入っている行のすべて）を removed で閉じる。終了したスプリントの行は閉じない
     db.statement((q) =>
       q
         .updateTable('sprint_entries')
         .set({ ended_at: addedAt, outcome: 'removed' })
+        .where('workspace_id', '=', workspaceId)
         .where('ended_at', 'is', null)
         .where('task_id', 'in', eligibleIds(q))
+        .where((eb) =>
+          eb.not(
+            eb.exists(
+              eb
+                .selectFrom('sprints as closed')
+                .select('closed.id')
+                .whereRef('closed.id', '=', 'sprint_entries.sprint_id')
+                .where('closed.workspace_id', '=', workspaceId)
+                .where('closed.status', '=', 'closed')
+                .where('closed.deleted_at', 'is', null),
+            ),
+          ),
+        )
         .where((eb) => eb.exists(guardRow(q))),
     ),
     db.statement((q) =>
       q
         .insertInto('sprint_entries')
-        .columns(['id', 'sprint_id', 'task_id', 'added_at', 'added_by', 'ended_at', 'outcome'])
+        .columns(['id', 'workspace_id', 'sprint_id', 'task_id', 'added_at', 'added_by', 'ended_at', 'outcome'])
         .expression(
           q
             .selectFrom('tasks as t')
             .select((eb) => [
               uuidv7Sql(at).as('id'),
+              eb.val(workspaceId).as('workspace_id'),
               eb.val(sprintId).as('sprint_id'),
               eb.ref('t.id').as('task_id'),
               eb.val(addedAt).as('added_at'),
@@ -747,11 +833,9 @@ export const sprintTaskAddOperation = implement(sprintTaskAdd, async ({ db, acto
     if (reread === undefined) throw new ApiError(404, 'not_found');
     if (reread.status === 'closed') throw taskConflict('closed');
   }
-  const recount = classifyForAdd(
-    addable,
-    (await db.rows(addRowsStatement(db, workspaceId, addable))) as AddRow[],
-    sprintId,
-  );
+  const recount = classifyForAdd(addable, await readAddRows(db, workspaceId, addable), sprintId);
+  // スプリントもタスクも入れられるまま1件も書けなかった（読んだ先頭の列が消えたなど）。読み直してやり直す
+  if (added === 0 && recount.addable.length > 0) return 'retry';
   // 今このスプリントに入っているもの（recount.skipped.already）のうち、この要求が入れた分（added）を除いた残りは、別の要求が先に入れた
   const result = {
     added,
@@ -763,7 +847,7 @@ export const sprintTaskAddOperation = implement(sprintTaskAdd, async ({ db, acto
   };
   if (added === 0 && result.skipped.already === 0) throw nothingAdded(result.skipped);
   return result;
-});
+}
 
 // スプリントからタスクを外す。1. タスクのスプリント、列、列の中の位置を空にする（読んだスプリントのままで、未完了、
 // スプリントが削除していない planned か active、閉じていないワークスペース）、2. 直前の UPDATE に結んだ変更の履歴、
@@ -827,7 +911,9 @@ export const sprintTaskRemoveOperation = implement(sprintTaskRemove, async ({ db
         .columns(changeLogColumns)
         .expression(
           q
-            .selectNoFrom((eb) => [
+            // スプリントの名前は、書くときの今の名前を引く
+            .selectFrom('sprints as cur')
+            .select((eb) => [
               eb.val(uuidv7(at)).as('id'),
               eb.val(organizationId).as('organization_id'),
               eb.val(workspaceId).as('workspace_id'),
@@ -835,9 +921,11 @@ export const sprintTaskRemoveOperation = implement(sprintTaskRemove, async ({ db
               eb.val('task').as('entity_type'),
               eb.val(taskId).as('entity_id'),
               eb.val('update').as('action'),
-              eb.val(JSON.stringify({ sprint: [sprintLogRef(checked.sprint), null] })).as('changes_json'),
+              sprintLeftLogSql('cur').as('changes_json'),
               eb.val(removedAt).as('created_at'),
             ])
+            .where('cur.id', '=', sprintId)
+            .where('cur.workspace_id', '=', workspaceId)
             .where(previousStatementChanged),
         ),
     ),
@@ -845,6 +933,7 @@ export const sprintTaskRemoveOperation = implement(sprintTaskRemove, async ({ db
       q
         .updateTable('sprint_entries')
         .set({ ended_at: removedAt, outcome: 'removed' })
+        .where('workspace_id', '=', workspaceId)
         .where('task_id', '=', taskId)
         .where('sprint_id', '=', sprintId)
         .where('ended_at', 'is', null)

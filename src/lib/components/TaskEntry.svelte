@@ -129,7 +129,7 @@
     {#if task.repository !== null || category !== null || task.sprint !== null}
       <span class="entry-meta">
         {#if task.sprint !== null}
-          <DefinitionChip kind="sprint" name={sprintShortName(task.sprint, t)} />
+          <DefinitionChip kind="sprint" name={sprintShortName(task.sprint, t)} mono={task.sprint.name === null} />
         {/if}
         {#if task.repository !== null}
           <DefinitionChip kind="repository" name={task.repository.name} />

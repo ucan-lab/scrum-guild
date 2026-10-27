@@ -1,8 +1,11 @@
 // 計画の画面: リーダーが先のスプリントを作り、直し（重なりは断られてダイアログに理由が出る）、削除する。
 // 一般のメンバーには作成、変更、削除のボタンが出ない。スプリントが無いワークスペースでは空の状態が出る。
 // seed のセッション（seed/sessions.ts）の Cookie で開く。あおば開発の管理者はミナト（ひばり工房では一般のユーザー）、一般のユーザーはハルカ
+import { sprintTaskAdd } from '../src/shared/operations/sprint/index.ts';
+import { backlogTree } from '../src/shared/operations/task/index.ts';
 import { expect, test } from './fixtures.ts';
 import { createWorkspace, signIn, watchViolations } from './helpers.ts';
+import { failOperation, rewriteOperation } from './operations.ts';
 
 test.use({ timezoneId: 'Asia/Tokyo' });
 
@@ -148,12 +151,28 @@ test('スクラムの言葉: ストーリーごとと1件ずつ入れ、外し�
   const addButton = page.getByRole('button', { name: 'バックログから入れる: スプリント 第1回' });
   await addButton.click();
   const picker = page.getByRole('dialog', { name: 'スプリント 第1回 に入れる' });
-  const stories = picker.getByRole('group', { name: 'ストーリーごと入れる' });
-  const tasks = picker.getByRole('group', { name: 'タスクを1件ずつ入れる' });
-  await expect(stories.getByRole('checkbox')).toHaveCount(1);
-  await expect(tasks.getByRole('checkbox')).toHaveCount(3);
-  await stories.getByRole('checkbox', { name: /ログインを作り直す/ }).check();
-  await tasks.getByRole('checkbox', { name: /ヘルプを書く/ }).check();
+  const list = picker.getByRole('group', { name: '入れるタスク' });
+  // ストーリーの見出しと、その下の2件、親のないタスクの1件。同じタスクを二度描かない
+  await expect(list.getByRole('checkbox')).toHaveCount(4);
+  await expect(picker.getByRole('button', { name: '入れる', exact: true })).toBeVisible();
+  const story = list.getByRole('checkbox', { name: /^ログインを作り直す/ });
+  const form = list.getByRole('checkbox', { name: /^フォームを置く/ });
+  const send = list.getByRole('checkbox', { name: /^送信を確かめる/ });
+  // 見出しを選ぶと配下がまとめて選ばれ、1件外すと見出しは一部だけの印（indeterminate）になる
+  await story.check();
+  await expect(form).toBeChecked();
+  await expect(send).toBeChecked();
+  await form.uncheck();
+  expect(await story.evaluate((node) => (node as HTMLInputElement).indeterminate)).toBe(true);
+  await form.check();
+  expect(await story.evaluate((node) => (node as HTMLInputElement).indeterminate)).toBe(false);
+  await expect(story).toBeChecked();
+  // タイトルで絞る。絞っても選んだものは残る
+  await picker.getByRole('searchbox', { name: 'タスクとストーリーのタイトルで絞る' }).fill('ヘルプ');
+  await expect(list.getByRole('checkbox')).toHaveCount(1);
+  await list.getByRole('checkbox', { name: /^ヘルプを書く/ }).check();
+  await expect(picker.locator('.pick-count')).toHaveText('3 件を選んでいます');
+  await picker.getByRole('searchbox', { name: 'タスクとストーリーのタイトルで絞る' }).fill('');
   await picker.getByRole('button', { name: '3 件入れる' }).click();
   await expect(picker).toBeHidden();
   await expect(page.getByRole('status').filter({ hasText: '3 件入れました' })).toBeVisible();
@@ -176,8 +195,11 @@ test('スクラムの言葉: ストーリーごとと1件ずつ入れ、外し�
   await page.locator('.lane-row').getByRole('link', { name: 'フォームを置く' }).click();
   const drawer = page.getByRole('dialog', { name: 'フォームを置く' });
   await expect(drawer.locator('.props')).toContainText('スプリント 第1回');
+  await expect(drawer.locator('.props')).toContainText('計画の画面で出し入れします');
   await drawer.getByRole('button', { name: '完了にする' }).click();
-  await expect(page.getByRole('status').filter({ hasText: /完了にしました/ })).toBeVisible();
+  await expect(
+    page.getByRole('status').filter({ hasText: 'タスクを完了にしました。始まっていないスプリントから外れました' }),
+  ).toBeVisible();
   await expect(drawer.locator('.props')).not.toContainText('スプリント 第1回');
   await expect(page.locator('.lane-row a')).toHaveText(['送信を確かめる']);
   await page.keyboard.press('Escape');
@@ -190,6 +212,57 @@ test('スクラムの言葉: ストーリーごとと1件ずつ入れ、外し�
   );
   await expect(page.locator('.entry', { hasText: 'ヘルプを書く' }).locator('.entry-meta')).toHaveCount(0);
   expect(await collect()).toEqual([]);
+});
+
+test('入れるダイアログ: 読めなければ枠と「もう一度試す」を出し、飛ばしたものがあれば結果をダイアログの中に残す', async ({
+  page,
+  context,
+  baseURL,
+}) => {
+  await signIn(context, baseURL, 'admin');
+  await createWorkspace(page, '入れ直しの遠征隊', 'game');
+  for (const title of ['地図を描く', '水を汲む']) {
+    await page.getByRole('button', { name: '依頼を出す' }).click();
+    const dialog = page.getByRole('dialog', { name: '依頼を出す' });
+    await dialog.getByLabel('タイトル').fill(title);
+    await dialog.getByRole('button', { name: '依頼を出す' }).click();
+    await expect(dialog).toBeHidden();
+  }
+  await page.getByRole('link', { name: '遠征の計画' }).click();
+  await page.getByRole('button', { name: '遠征を作る' }).click();
+  const createDialog = page.getByRole('dialog', { name: '遠征を作る' });
+  await createDialog.getByLabel('開始日').fill('2027-03-01');
+  await createDialog.getByRole('button', { name: '作る' }).click();
+  await expect(createDialog).toBeHidden();
+
+  // 木を読めない。枠（role="alert"）と「もう一度試す」を出し、送っても「選んでください」は出さない
+  const unroute = await failOperation(page, backlogTree, { slug: 'aoba' }, 500, 'internal');
+  await page.getByRole('button', { name: /^掲示板から入れる/ }).click();
+  const picker = page.getByRole('dialog', { name: /に入れる$/ });
+  await expect(picker.getByRole('alert')).toHaveText('掲示板を読み込めませんでした');
+  // aria-disabled のボタンも押せる（Playwright は押せない形と見るので force で押す）
+  await picker.getByRole('button', { name: '入れる', exact: true }).click({ force: true });
+  await expect(picker.locator('.callout.is-danger')).toHaveCount(0);
+  await unroute();
+  await picker.getByRole('button', { name: 'もう一度試す' }).click();
+  const search = picker.getByRole('searchbox', { name: 'クエストと達成目標のタイトルで絞る' });
+  await expect(search).toBeFocused();
+  await expect(picker.getByRole('group', { name: '入れるクエスト' }).getByRole('checkbox')).toHaveCount(2);
+
+  // 飛ばしたものがあれば、閉じずに結果を残す（読む前に消えない）
+  await rewriteOperation(page, sprintTaskAdd, { slug: 'aoba' }, (output) => ({
+    ...output,
+    skipped: { ...output.skipped, completed: 1 },
+  }));
+  await picker.getByRole('checkbox', { name: /^地図を描く/ }).check();
+  await picker.getByRole('button', { name: '1 件入れる' }).click();
+  await expect(picker.getByRole('status').filter({ hasText: '1 件入れました' })).toHaveText(
+    '1 件入れました。1 件は完遂済みのため入れませんでした',
+  );
+  await expect(picker).toBeVisible();
+  await expect(picker.getByRole('group', { name: '入れるクエスト' }).getByRole('checkbox')).toHaveCount(1);
+  await picker.getByRole('button', { name: 'やめる' }).click();
+  await expect(page.locator('.lane-row a')).toHaveText(['地図を描く']);
 });
 
 test('スクラムの言葉: スプリントが無いときは空の状態を出し、一般のメンバーには作るのはリーダーだと伝える', async ({

@@ -41,7 +41,7 @@ test('遠征に入れるダイアログ（SprintTaskPicker）を開いた状態�
   await waitForSettled(page);
   await open.click();
   const dialog = page.getByRole('dialog', { name: '遠征 年末の仕上げ に入れる' });
-  await expect(dialog.getByRole('group', { name: 'クエストを1件ずつ入れる' })).toBeVisible();
+  await expect(dialog.getByRole('group', { name: '入れるクエスト' })).toBeVisible();
   await expect(page.locator('[aria-busy="true"]:visible')).toHaveCount(0);
   await expectNoA11yViolationsInThemes(page, 'sprint-task-picker');
 });

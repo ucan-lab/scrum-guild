@@ -23,6 +23,13 @@ export function sprintPeriod(sprint: SprintNaming, t: Translate): string {
   return t('sprintPeriod', { start: formatMonthDay(sprint.start_on), end: formatMonthDay(sprint.end_on) });
 }
 
+// タスクを完了にしたときの知らせ。始まっていないスプリントの中で完了してスプリントから外れたら（task-complete の left_sprint）、
+// 「始まっていない<スプリント>から外れました」を添える
+export function completedMessage(leftSprint: boolean, t: Translate): string {
+  const done = t('taskCompleted', { task: t('task'), done: t('done') });
+  return leftSprint ? `${done}。${t('taskLeftPlannedSprint', { sprint: t('sprint') })}` : done;
+}
+
 // 名前だけ（行の印に出す。「<スプリント>」の語は印の種類として読み上げに添える）。名前が無ければ期間
 export function sprintShortName(sprint: SprintNaming, t: Translate): string {
   return sprint.name ?? sprintPeriod(sprint, t);
