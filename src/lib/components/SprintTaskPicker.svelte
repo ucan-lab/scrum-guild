@@ -252,7 +252,16 @@
     }
   }
 
-  const status = $derived(submitting ? t('sprintTaskAdding') : loading && !loadFailed ? t('loading') : '');
+  // 読み上げる文は、常に置いた status の領域に入れる（文と一緒に差し込んだ status の領域は、読み上げられないことがある）
+  const status = $derived(
+    submitting
+      ? t('sprintTaskAdding')
+      : loading && !loadFailed
+        ? t('loading')
+        : outcome !== null
+          ? outcomeText(outcome)
+          : '',
+  );
   const title = $derived(sprint === null ? '' : t('sprintTaskAddTitle', { label: sprintLabel(sprint, t) }));
 </script>
 
@@ -262,7 +271,7 @@
       {t('sprintTaskAddHint', { story: t('story'), task: t('task'), sprint: t('sprint') })}
     </p>
     {#if outcome !== null}
-      <div class="callout" class:is-ok={outcome.added > 0} class:is-warn={outcome.added === 0} role="status">
+      <div class="callout" class:is-ok={outcome.added > 0} class:is-warn={outcome.added === 0}>
         <Icon name={outcome.added > 0 ? 'check' : 'alert'} /><span>{outcomeText(outcome)}</span>
       </div>
     {/if}
