@@ -555,6 +555,7 @@ PR ごとのプレビュー環境は持たず、Workers Builds の preview build
 
 - PR の `evidence` は、PR の head のコードを PR 用の鍵（リポジトリのシークレット）を持つジョブで動かす。同じリポジトリに push できる人は、PR のワークフローや `scripts/` を書き換えて、この鍵を取れる前提で考える。鍵を段ごとの `env` に分けて渡すのは、ログなどに見せない工夫で、境界ではない
 - main 用の鍵は Environment の `evidence-main` のシークレットに置き、deployment branches を `main` だけに絞る。PR の実行（`refs/pull/<番号>/merge`）はこの Environment に入れないので、PR から main の変更前の画像と一覧はすり替えられない。`evidence-main.yml` で鍵を読むジョブ（`config` と `upload`）にだけ `environment: evidence-main` を付ける。Environment のシークレットは、その Environment を付けたジョブでないと有無も読めない
+- Environment と deployment branches の絞りは、このリポジトリが public だから無料のプランで使える（上の「`main` を守る仕組み」の、Environment が使えないという前提は private のときの話）。private に戻すと Environment が使えなくなり、main 用の鍵を PR から読める形でしか置けなくなる。そのときは main 用の鍵を失効させて Environment ごと消し、`evidence-main` を止める（一覧を PR からすり替えられる形で置かない）
 - 鍵はそれぞれのバケットだけの Object Read & Write に絞る。PR 用の鍵が漏れても、書けるのは PR 用のバケットだけ
 - `evidence` のコメントは PR の head のコードが作る。`.github/` や `scripts/` を変える PR（`needs-human` が付く）では、コメントの画像と文章を信用せず、人が差分を読んで決める
 - 鍵が漏れた疑いがあれば、Cloudflare のダッシュボードの R2 の API トークンの画面で、その鍵のトークンを失効させ、同じ権限（そのバケットだけの Object Read & Write）で作り直す。新しいアクセスキーとシークレットキーを、PR 用はリポジトリのシークレットに、main 用は Environment の `evidence-main` のシークレットに入れ直す。main 用の鍵が漏れたときは、main 用のバケットの一覧と画像がすり替えられていないかも見て、疑わしければ `evidence-main` を手で動かして撮り直す
