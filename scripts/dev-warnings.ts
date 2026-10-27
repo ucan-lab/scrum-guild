@@ -41,6 +41,13 @@ export const KNOWN_DEV_WARNINGS: readonly KnownDevWarning[] = [
     path: /^\/foo\/bar\/baz$/,
     reason: '存在しないパスを開いて 404 の画面を確かめるテストで、わざと出す',
   },
+  // 画面のエラーの送り手が、最初の描画と load の例外も送ることを確かめるテスト（e2e/client-errors-hooks.test.ts）が、
+  // わざと予期しない例外を起こす。ほかの e2e が開かない、そのテストの経路だけを外す（#376）
+  {
+    name: '[sveltekit] hmr_reload_after_error',
+    path: /^\/(kumo\/me|e2e-client-error)$/,
+    reason: '画面のエラーを送るテストで、わざと予期しない例外を起こす',
+  },
 ];
 
 export function isKnownDevWarning(warning: DevWarningAt): boolean {
