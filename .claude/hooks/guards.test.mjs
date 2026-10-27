@@ -4405,3 +4405,223 @@ describe('bash-rules: #341 と #346 の取り込み（place）', () => {
     assert.deepEqual(literally('cd ~ && pnpm -C /repo/.claude exec rm -rf hooks'), ['ask', 'ask']);
   });
 });
+
+describe('bash-rules: #356 npx と pnpx を npm exec と pnpm dlx として読む', () => {
+  // npx は npm exec、pnpx は pnpm dlx と同じに動く（npm 11.20、pnpm 12.12）。直に打つ形の判定に揃える
+  const packages = {
+    '/repo': { test: 'node --test', hello: 'echo hello' },
+    // 名前はデプロイに見えないが、本体は本番に出す
+    '/repo/sub': { test: 'wrangler deploy' },
+  };
+  const packageDirOf = (dir) => {
+    if (!dir) return undefined;
+    return Object.keys(packages)
+      .filter((p) => dir === p || dir.startsWith(`${p}/`))
+      .sort((a, b) => b.length - a.length)[0];
+  };
+  const scriptOf = (dir, name) => {
+    const at = packageDirOf(dir);
+    return at ? packages[at][name] : undefined;
+  };
+  const pm = (command, cwd = '/repo') => judgeBash(command, { cwd, branchOf: () => '356-npx-pnpx-exec', scriptOf, packageDirOf })?.[0] ?? 'allow';
+  // package.json のある /repo、作業場所なし、根の見つからない /repo の3つで見る
+  const everywhere = (command) => [pm(command), ...literally(command)];
+
+  // [区分, npx か pnpx の形, 直に打つ npm exec か pnpm dlx の形, /repo での期待]
+  const pairs = [
+    // 完了条件: Issue の背景の例。直に打つ形と同じに止める
+    ['完了条件', `npx -c 'wrangler deploy'`, `npm exec -c 'wrangler deploy'`, 'deny'],
+    ['完了条件', `npx --call='wrangler deploy'`, `npm exec --call='wrangler deploy'`, 'deny'],
+    ['完了条件', `npx --cal='wrangler deploy'`, `npm exec --cal='wrangler deploy'`, 'deny'],
+    ['完了条件', `npx --call 'wrangler deploy'`, `npm exec --call 'wrangler deploy'`, 'deny'],
+    ['完了条件', `pnpx -c 'wrangler deploy'`, `pnpm dlx -c 'wrangler deploy'`, 'deny'],
+    ['完了条件', `pnpx --shell-mode 'wrangler deploy'`, `pnpm dlx --shell-mode 'wrangler deploy'`, 'deny'],
+    ['完了条件', 'npx -c "node scripts/deploy-production.ts"', 'npm exec -c "node scripts/deploy-production.ts"', 'deny'],
+    ['完了条件', `npx -c 'git push origin main'`, `npm exec -c 'git push origin main'`, 'deny'],
+    ['完了条件', `pnpx -c 'git push origin main'`, `pnpm dlx -c 'git push origin main'`, 'deny'],
+    // #346 の守る先の削除と移動
+    ['完了条件', 'npx -c "rm -rf .claude/hooks"', 'npm exec -c "rm -rf .claude/hooks"', 'ask'],
+    ['完了条件', 'npx -c "mv .claude/hooks /tmp/x"', 'npm exec -c "mv .claude/hooks /tmp/x"', 'ask'],
+    ['完了条件', 'pnpx -c "mv .claude/hooks /tmp/x"', 'pnpm dlx -c "mv .claude/hooks /tmp/x"', 'ask'],
+    ['完了条件', 'npx --prefix .claude -c "rm -rf hooks"', 'npm exec --prefix .claude -c "rm -rf hooks"', 'ask'],
+    ['完了条件', 'pnpx -C .claude -c "rm -rf hooks"', 'pnpm dlx -C .claude -c "rm -rf hooks"', 'ask'],
+    // 場所のフラグの先（place）は、シェルの文字列でないコマンドにも効かせる
+    ['完了条件', 'npx --prefix .claude rm -rf hooks', 'npm exec --prefix .claude rm -rf hooks', 'ask'],
+    ['完了条件', 'pnpx -C .claude rm -rf hooks', 'pnpm dlx -C .claude rm -rf hooks', 'ask'],
+    // 場所のフラグの先の package.json のスクリプトも見る
+    ['完了条件', `npx --prefix sub -c 'npm test'`, `npm exec --prefix sub -c 'npm test'`, 'deny'],
+
+    // 断る場合: 今の通る形と止まる形は変えない
+    ['断る場合', 'npx vitest run', 'npm exec vitest run', 'allow'],
+    ['断る場合', 'npx prettier --check .', 'npm exec prettier --check .', 'allow'],
+    ['断る場合', 'pnpx tsx scripts/x.ts', 'pnpm dlx tsx scripts/x.ts', 'allow'],
+    ['断る場合', 'npx -y some-tool --help', 'npm exec -y some-tool --help', 'allow'],
+    ['断る場合', 'npx playwright install chromium', 'npm exec playwright install chromium', 'allow'],
+    ['断る場合', `npx -c 'echo hi'`, `npm exec -c 'echo hi'`, 'allow'],
+    ['断る場合', `pnpx -c 'echo hi'`, `pnpm dlx -c 'echo hi'`, 'allow'],
+    ['断る場合', 'npx vitest -c vitest.config.ts run', 'npm exec vitest -c vitest.config.ts run', 'allow'],
+    ['断る場合', 'npx --prefix sub vitest', 'npm exec --prefix sub vitest', 'allow'],
+    // --ca は call の前置きではなく、ca の設定そのもの
+    ['断る場合', 'npx --ca=x.pem vitest run', 'npm exec --ca=x.pem vitest run', 'allow'],
+    ['断る場合', 'npx wrangler deploy', 'npm exec wrangler deploy', 'deny'],
+    ['断る場合', 'pnpx wrangler deploy', 'pnpm dlx wrangler deploy', 'deny'],
+    ['断る場合', 'npx -c "$X"', 'npm exec -c "$X"', 'ask'],
+
+    // すり抜け: フラグの並べ方と書き方
+    ['すり抜け', `npx -y -c 'wrangler deploy'`, `npm exec -y -c 'wrangler deploy'`, 'deny'],
+    ['すり抜け', `npx --yes --call='wrangler deploy'`, `npm exec --yes --call='wrangler deploy'`, 'deny'],
+    ['すり抜け', `npx -sc 'wrangler deploy'`, `npm exec -sc 'wrangler deploy'`, 'deny'],
+    ['すり抜け', `npx -p foo -c 'wrangler deploy'`, `npm exec -p foo -c 'wrangler deploy'`, 'deny'],
+    ['すり抜け', `npx --package=foo -c 'wrangler deploy'`, `npm exec --package=foo -c 'wrangler deploy'`, 'deny'],
+    ['すり抜け', `npx -c 'x' -c 'wrangler deploy'`, `npm exec -c 'x' -c 'wrangler deploy'`, 'deny'],
+    ['すり抜け', `npx -c 'wrangler deploy' -- foo`, `npm exec -c 'wrangler deploy' -- foo`, 'deny'],
+    ['すり抜け', 'npx -C .claude -c "rm -rf hooks"', 'npm exec -C .claude -c "rm -rf hooks"', 'ask'],
+    ['すり抜け', 'npx --prefix=.claude -c "rm -rf hooks"', 'npm exec --prefix=.claude -c "rm -rf hooks"', 'ask'],
+    ['すり抜け', 'npx -c "rm -rf hooks" --prefix .claude', 'npm exec -c "rm -rf hooks" --prefix .claude', 'ask'],
+    ['すり抜け', 'pnpx --dir .claude -c "rm -rf hooks"', 'pnpm dlx --dir .claude -c "rm -rf hooks"', 'ask'],
+    ['すり抜け', 'pnpx -C .claude --shell-mode "rm -rf hooks"', 'pnpm dlx -C .claude --shell-mode "rm -rf hooks"', 'ask'],
+    ['すり抜け', `pnpx --shell-mode=true 'wrangler deploy'`, `pnpm dlx --shell-mode=true 'wrangler deploy'`, 'deny'],
+    ['すり抜け', `pnpx -rc 'wrangler deploy'`, `pnpm dlx -rc 'wrangler deploy'`, 'deny'],
+    ['すり抜け', 'pnpx -c wrangler deploy', 'pnpm dlx -c wrangler deploy', 'deny'],
+    // -- の後ろの -c は npm と pnpm のフラグではない（-c という名前のコマンド）
+    ['すり抜け', `npx -- -c 'wrangler deploy'`, `npm exec -- -c 'wrangler deploy'`, 'allow'],
+    ['すり抜け', `pnpx -- -c 'wrangler deploy'`, `pnpm dlx -- -c 'wrangler deploy'`, 'allow'],
+    // 引用符と行の書き方
+    ['すり抜け', `npx -c 'wrangler'\\ deploy`, `npm exec -c 'wrangler'\\ deploy`, 'deny'],
+    ['すり抜け', `"npx" -c 'wrangler deploy'`, `"npm" exec -c 'wrangler deploy'`, 'deny'],
+    ['すり抜け', `n\\px -c 'wrangler deploy'`, `n\\pm exec -c 'wrangler deploy'`, 'deny'],
+    ['すり抜け', `npx -c 'bash -c "wrangler deploy"'`, `npm exec -c 'bash -c "wrangler deploy"'`, 'deny'],
+    ['すり抜け', `npx -c "npx -c 'wrangler deploy'"`, `npm exec -c 'npm exec -c "wrangler deploy"'`, 'deny'],
+    // 前置きと経由
+    ['すり抜け', `env FOO=1 npx -c 'wrangler deploy'`, `env FOO=1 npm exec -c 'wrangler deploy'`, 'deny'],
+    ['すり抜け', `timeout 5 npx -c 'wrangler deploy'`, `timeout 5 npm exec -c 'wrangler deploy'`, 'deny'],
+    ['すり抜け', `sudo npx -c 'wrangler deploy'`, `sudo npm exec -c 'wrangler deploy'`, 'deny'],
+    ['すり抜け', `nice npx -c 'wrangler deploy'`, `nice npm exec -c 'wrangler deploy'`, 'deny'],
+    ['すり抜け', `command npx -c 'wrangler deploy'`, `command npm exec -c 'wrangler deploy'`, 'deny'],
+    ['すり抜け', `exec npx -c 'wrangler deploy'`, `exec npm exec -c 'wrangler deploy'`, 'deny'],
+    ['すり抜け', `bash -c "npx -c 'wrangler deploy'"`, `bash -c "npm exec -c 'wrangler deploy'"`, 'deny'],
+    ['すり抜け', `corepack npx -c 'wrangler deploy'`, `corepack npm exec -c 'wrangler deploy'`, 'deny'],
+    ['すり抜け', `corepack pnpx -c 'wrangler deploy'`, `corepack pnpm dlx -c 'wrangler deploy'`, 'deny'],
+    ['すり抜け', `./node_modules/.bin/npx -c 'wrangler deploy'`, `./node_modules/.bin/npm exec -c 'wrangler deploy'`, 'deny'],
+    ['すり抜け', `/usr/bin/npx -c 'wrangler deploy'`, `/usr/bin/npm exec -c 'wrangler deploy'`, 'deny'],
+    // 区切りとまとまり
+    ['すり抜け', `ls; npx -c 'wrangler deploy'`, `ls; npm exec -c 'wrangler deploy'`, 'deny'],
+    ['すり抜け', `ls && pnpx -c 'wrangler deploy'`, `ls && pnpm dlx -c 'wrangler deploy'`, 'deny'],
+    ['すり抜け', `echo a | npx -c 'wrangler deploy'`, `echo a | npm exec -c 'wrangler deploy'`, 'deny'],
+    ['すり抜け', `npx -c 'wrangler deploy' | cat`, `npm exec -c 'wrangler deploy' | cat`, 'deny'],
+    ['すり抜け', `npx -c 'echo hi' && npx -c 'git push origin main'`, `npm exec -c 'echo hi' && npm exec -c 'git push origin main'`, 'deny'],
+    ['すり抜け', `npx -c 'wrangler deploy' &`, `npm exec -c 'wrangler deploy' &`, 'deny'],
+    ['すり抜け', `npx -c 'wrangler deploy' > /dev/null`, `npm exec -c 'wrangler deploy' > /dev/null`, 'deny'],
+    ['すり抜け', `(npx -c 'wrangler deploy')`, `(npm exec -c 'wrangler deploy')`, 'deny'],
+    ['すり抜け', `{ npx -c 'wrangler deploy'; }`, `{ npm exec -c 'wrangler deploy'; }`, 'deny'],
+    ['すり抜け', `if true; then npx -c 'wrangler deploy'; fi`, `if true; then npm exec -c 'wrangler deploy'; fi`, 'deny'],
+    ['すり抜け', "bash <<'EOF'\nnpx -c 'wrangler deploy'\nEOF", "bash <<'EOF'\nnpm exec -c 'wrangler deploy'\nEOF", 'deny'],
+    ['すり抜け', "bash <<'EOF'\npnpx -c 'git push origin main'\nEOF", "bash <<'EOF'\npnpm dlx -c 'git push origin main'\nEOF", 'deny'],
+  ];
+
+  for (const [group, command, direct, expected] of pairs) {
+    test(`[${group}] ${command} は ${direct} と同じ ${expected}`, () => {
+      assert.equal(pm(command), expected, command);
+      assert.equal(pm(direct), expected, direct);
+      assert.deepEqual(everywhere(command), everywhere(direct), command);
+    });
+  }
+
+  // 前の区切りで npm_config_call を設定した後の npm exec、npm x、npx は、文字列を判定できないので確認を挟む。
+  // 値は読まない。名前は大文字小文字を問わない。export $X、eval、source、. の後も設定したものとみなす（CDPATH と同じ）
+  for (const command of [
+    `export npm_config_call='echo hi'; npx`,
+    `export npm_config_call='echo hi'; npx foo`,
+    `export npm_config_call='echo hi'; npm exec`,
+    `export npm_config_call='wrangler deploy'; npx`,
+    'export NPM_CONFIG_CALL=x && npm exec foo',
+    'export Npm_Config_Call=x; npm exec foo',
+    'declare -x npm_config_call=x; npm x foo',
+    'typeset -x npm_config_call=x; npx foo',
+    'npm_config_call=x; export npm_config_call; npx foo',
+    // 道具の無い区切りの代入も後ろへ伝える（GIT_DIR と同じ）
+    'npm_config_call=x; npx foo',
+    'export $X; npx foo',
+    'source ./env.sh; npm exec foo',
+    '. ./env.sh; npx foo',
+    'eval "export npm_config_call=x"; npx foo',
+    // 後ろの npx がどれほど普通でも挟む
+    'export npm_config_call=x; npx vitest run',
+    'export npm_config_call=x; env FOO=1 npx foo',
+    'export npm_config_call=x; ls | npx foo',
+    'export npm_config_call=x; corepack npx foo',
+    'export npm_config_call=x; npm --prefix sub exec foo',
+    // npm の名前の一意な前置き
+    'export npm_config_call=x; npm exe foo',
+    // 改行の区切り、bash -c の中、heredoc の中
+    'export npm_config_call=x\nnpx foo',
+    'export npm_config_call=x; bash -c "npx foo"',
+    'bash -c "export npm_config_call=x; npx foo"',
+    `bash -c 'export npm_config_call=x; npm exec foo'`,
+    "bash <<'EOF'\nexport npm_config_call=x\nnpx foo\nEOF",
+  ]) {
+    test(`[完了条件] ${JSON.stringify(command)} は確認を挟む`, () => {
+      assert.equal(pm(command), 'ask', command);
+      assert.deepEqual(literally(command), ['ask', 'ask'], command);
+    });
+  }
+
+  // npm exec、npm x、npx の無いコマンドと、一回限りの代入は、今の判定のまま
+  for (const [command, expected] of [
+    ['export npm_config_call=x; ls', 'allow'],
+    ['export npm_config_call=x; pnpm test', 'allow'],
+    ['export npm_config_call=x; npm test', 'allow'],
+    ['export npm_config_call=x; npm run hello', 'allow'],
+    ['export npm_config_call=x; pnpm dlx foo', 'allow'],
+    ['export npm_config_call=x; pnpx foo', 'allow'],
+    // 設定より前の区切りには効かせない
+    ['npx foo; export npm_config_call=x', 'allow'],
+    // 一回限りの代入は後ろの区切りへ伝えない
+    ['npm_config_call=x npm test; npx foo', 'allow'],
+    // 道具の前の一回限りの代入は、今までどおり値を読む
+    [`npm_config_call='echo hi' npx`, 'allow'],
+    [`npm_config_call='echo hi' npx -c 'echo hi'`, 'allow'],
+    [`npm_config_call='wrangler deploy' npx`, 'deny'],
+    [`NPM_CONFIG_CALL='wrangler deploy' npx`, 'deny'],
+    // 別の名前
+    ['export NPM_CONFIG_PREFIX=x; npx foo', 'allow'],
+    ['export npm_config_callx=x; npx foo', 'allow'],
+  ]) {
+    test(`[断る場合] ${command} は ${expected} のまま`, () => assert.equal(pm(command), expected, command));
+  }
+
+  // フックに JSON を流しても同じに判定する
+  test('[ランタイム] guard-bash.mjs も npx と pnpx を直に打つ形と同じに判定する', () => {
+    const hooks = path.dirname(fileURLToPath(import.meta.url));
+    const dir = mkdtempSync(path.join(os.tmpdir(), 'guard-npx-'));
+    try {
+      writeFileSync(path.join(dir, 'package.json'), JSON.stringify({ scripts: { test: 'echo ok' } }));
+      const decide = (command) => {
+        const input = JSON.stringify({ tool_name: 'Bash', cwd: dir, tool_input: { command } });
+        const result = spawnSync(process.execPath, [path.join(hooks, 'guard-bash.mjs')], {
+          input,
+          encoding: 'utf8',
+          env: { ...process.env, CLAUDE_PROJECT_DIR: '' },
+        });
+        assert.equal(result.status, 0, command);
+        return result.stdout ? JSON.parse(result.stdout).hookSpecificOutput.permissionDecision : 'allow';
+      };
+      for (const [command, direct] of [
+        [`npx -c 'wrangler deploy'`, `npm exec -c 'wrangler deploy'`],
+        [`npx --call='git push origin main'`, `npm exec --call='git push origin main'`],
+        [`pnpx -c 'wrangler deploy'`, `pnpm dlx -c 'wrangler deploy'`],
+        ['npx -c "rm -rf .claude/hooks"', 'npm exec -c "rm -rf .claude/hooks"'],
+        ['pnpx -C .claude -c "rm -rf hooks"', 'pnpm dlx -C .claude -c "rm -rf hooks"'],
+      ]) {
+        const expected = decide(direct);
+        assert.notEqual(expected, 'allow', direct);
+        assert.equal(decide(command), expected, command);
+      }
+      assert.equal(decide('export npm_config_call=x; npx foo'), 'ask');
+      assert.equal(decide('npx vitest run'), 'allow');
+      assert.equal(decide(`pnpx -c 'echo hi'`), 'allow');
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
