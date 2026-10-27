@@ -1,8 +1,19 @@
 import AxeBuilder from '@axe-core/playwright';
 import { expect, test, type BrowserContext, type Locator, type Page } from '@playwright/test';
 import { SEED_SESSIONS } from '../seed/sessions.ts';
+import { organizationInfo } from '../src/shared/operations/organization/organization.ts';
+import { workspaceInfo } from '../src/shared/operations/workspace/workspace.ts';
 import { sessionCookieName } from '../src/shared/session-cookie.ts';
-import { exclusionsFor, formatStaleExclusions, isAxeCheck, type UiExclusion, type UiScreen } from './ui-exclusions.ts';
+import { word, type DictionaryKey, type TemplateParams, type Vocabulary } from '../src/shared/vocabulary.ts';
+import { rewriteOperation } from './operations.ts';
+import {
+  exclusionsFor,
+  formatStaleExclusions,
+  isAxeCheck,
+  isLayoutCheck,
+  type UiExclusion,
+  type UiScreen,
+} from './ui-exclusions.ts';
 
 // axe で確かめる規則。WCAG 2.2 の A と AA（文字のコントラストを含む）。best-practice は入れない（#320）
 export const A11Y_TAGS = ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa'];
@@ -41,14 +52,15 @@ async function runA11y(page: Page): Promise<{ violations: A11yViolation[]; undec
   return { violations, undecided };
 }
 
-// 違反のうち、除外の一覧の要素に当たるものを外す。used は、実際に要素を外した除外
-export async function excludeKnownViolations(
+// 違反のうち、除外の一覧の要素に当たるものを外す。used は、実際に要素を外した除外。
+// axe の違反と、狭い幅の検査（44px の押せる範囲、はみ出し）の違反の両方に使う
+export async function excludeKnownViolations<V extends { rule: string; target: string }>(
   page: Page,
-  violations: readonly A11yViolation[],
+  violations: readonly V[],
   exclusions: readonly UiExclusion[],
-): Promise<{ remaining: A11yViolation[]; used: Set<UiExclusion> }> {
+): Promise<{ remaining: V[]; used: Set<UiExclusion> }> {
   const used = new Set<UiExclusion>();
-  const remaining: A11yViolation[] = [];
+  const remaining: V[] = [];
   for (const violation of violations) {
     const candidates = exclusions.filter((exclusion) => exclusion.check === violation.rule);
     const matched = await page.evaluate(
@@ -133,6 +145,405 @@ export async function expectNoA11yViolationsInThemes(
   const stale = exclusions.filter((exclusion) => !used.has(exclusion));
   if (stale.length > 0) failures.push(formatStaleExclusions(stale));
   if (failures.length > 0) throw new Error(failures.join('\n\n'));
+}
+
+// ---- 狭い幅の検査（#336）。44px の押せる範囲と、横のはみ出し ----
+
+// 狭い幅の検査の違反。rule は検査の種類（除外の一覧の check と同じ）、target は要素の短く一意なセレクタ、
+// detail は何が起きたか（当たった別の要素、右端の位置など）
+export interface LayoutViolation {
+  rule: 'target-44' | 'overflow';
+  target: string;
+  detail: string;
+}
+
+// 押せる範囲の一辺。docs/design.md の「押せる範囲」。760px 以下か pointer: coarse で効く
+export const TARGET_SIZE = 44;
+
+// 幅 390px の画面。高さは、よくあるスマホの縦置きの値にする
+export const NARROW_VIEWPORT = { width: 390, height: 844 };
+
+// 見えている押せる要素について、中心と、中心から上下左右と斜めに 21px の点を document.elementFromPoint で調べ、
+// 要素自身か子孫（入力欄は結び付いた label も）に当たることを確かめる。見た目を小さく保ち ::before と ::after で
+// 押せる範囲を広げた部品は、疑似要素に当たると要素自身が返るので通る。
+// 数えないもの: inert の中（引き出しの後ろの画面）、見えないもの（checkVisibility が偽、幅か高さが 0）、文中のリンク
+// （下の inSentence）。disabled と aria-disabled は数える。折り返した inline の要素は、行の箱のうち一番大きいものの中心から調べる。
+// 点が画面の外に出るときは画面の内側に寄せる（画面の端より外は押せない）。画面の外の要素は scrollIntoView で中央へ入れ、
+// 調べた後は、動かした window と祖先の入れ物の位置を元に戻す
+export async function findTargetSizeViolations(page: Page): Promise<LayoutViolation[]> {
+  return (await measureLayout(page, 'target-44')).violations;
+}
+
+// ページ全体が横に動かない（scrollWidth が画面の幅以下）ことと、文字を持つ要素（文字のノードを直に持つ要素と入力欄）の
+// 右端が画面の右端を越えないことを確かめる。横に送る設計の入れ物（LAYOUT_SCROLL_CONTAINERS）の中は、中で横に送れるので許す。
+// ほかの入れ物（overflow-x が hidden、clip、auto、scroll）の中は、入れ物の右端で切った位置で見る。そのうちスクロールする入れ物
+// （auto、scroll）は、入れ物そのものが横にはみ出している（scrollWidth が clientWidth を越える）ことも違反にする。
+// overflow-y を auto にした箱は overflow-x の計算値も auto になるので、縦にだけスクロールさせる引き出しや dialog もここに入る。
+// inert の中と見えないものは数えない
+export async function findOverflowViolations(page: Page): Promise<LayoutViolation[]> {
+  return (await measureLayout(page, 'overflow')).violations;
+}
+
+// 横に送る設計の入れ物。design/components.css で overflow-x: auto を明示しているもの。中の要素が画面の右端を越えても、
+// 入れ物の中で横に送れるので許す（組織の管理のワークスペースの表、狭い幅の上の帯のメニュー、Markdown の本文の表とコードなど）。
+// 部品を足して横に送る入れ物を作ったら、ここにも足す
+export const LAYOUT_SCROLL_CONTAINERS = [
+  '.table-wrap',
+  '.board-wrap',
+  '.nav',
+  '.doc-box',
+  '.doc-box pre',
+  '.doc-table',
+];
+
+// 2つの検査は、要素のセレクタの作り方を共有するので、1つの evaluate にまとめる。counted は調べた要素の数
+// （押せる要素か、文字を持つ要素）。0 件なら画面が描けていないまま測ったことになる（createLayoutCheck が落とす）
+async function measureLayout(
+  page: Page,
+  rule: LayoutViolation['rule'],
+): Promise<{ violations: LayoutViolation[]; counted: number }> {
+  return page.evaluate(
+    ({ rule, size, scrollContainers }) => {
+      const root = document.documentElement;
+      // 短く一意なセレクタ。id、なければ class（Svelte の svelte- は除く）と、要るときだけ :nth-of-type を、一意になるまで上へ足す
+      // $props.id() の作る id（c12、c12-due など）は、描く順で変わるので使わない
+      const generatedId = /^c\d+(-|$)/;
+      const selectorOf = (element: Element): string => {
+        const parts: string[] = [];
+        for (let node: Element | null = element; node !== null && node !== root; node = node.parentElement) {
+          if (
+            node.id !== '' &&
+            !generatedId.test(node.id) &&
+            document.querySelectorAll(`#${CSS.escape(node.id)}`).length === 1
+          ) {
+            parts.unshift(`#${CSS.escape(node.id)}`);
+            return parts.join(' > ');
+          }
+          let part =
+            node.localName +
+            [...node.classList]
+              .filter((name) => !name.startsWith('svelte-'))
+              .map((name) => `.${CSS.escape(name)}`)
+              .join('');
+          const parent = node.parentElement;
+          if (parent !== null) {
+            const current = part;
+            const siblings = [...parent.children].filter((child) => child.matches(current));
+            if (siblings.length > 1) {
+              const sameTag = [...parent.children].filter((child) => child.localName === node!.localName);
+              part += `:nth-of-type(${sameTag.indexOf(node) + 1})`;
+            }
+          }
+          parts.unshift(part);
+          const candidate = parts.join(' > ');
+          if (document.querySelectorAll(candidate).length === 1) return candidate;
+        }
+        // html そのもの（body の外の余白に当たったときなど）は、上の繰り返しに入らない
+        return parts.length === 0 ? 'html' : parts.join(' > ');
+      };
+      const visible = (element: Element): boolean => {
+        if (element.closest('[inert]') !== null) return false;
+        if (!element.checkVisibility({ visibilityProperty: true })) return false;
+        const rect = element.getBoundingClientRect();
+        return rect.width > 0 && rect.height > 0;
+      };
+      const viewportWidth = root.clientWidth;
+      const viewportHeight = root.clientHeight;
+      const round = (value: number): number => Math.round(value * 10) / 10;
+      const violations: { rule: typeof rule; target: string; detail: string }[] = [];
+
+      if (rule === 'overflow') {
+        if (root.scrollWidth > viewportWidth) {
+          violations.push({
+            rule,
+            target: 'html',
+            detail: `ページの幅 ${root.scrollWidth}px が画面の幅 ${viewportWidth}px を越え、横に動く`,
+          });
+        }
+        // 祖先の overflow-x を一度だけ読む
+        const overflowOf = new Map<Element, string>();
+        const overflowX = (element: Element): string => {
+          let value = overflowOf.get(element);
+          if (value === undefined) {
+            value = getComputedStyle(element).overflowX;
+            overflowOf.set(element, value);
+          }
+          return value;
+        };
+        const allowed = scrollContainers.join(', ');
+        let counted = 0;
+        for (const element of document.body.querySelectorAll('*')) {
+          if (!visible(element)) continue;
+          // 横に送る設計に無いスクロールする入れ物は、入れ物そのものが横にはみ出していれば違反にする（小数の丸めの差は見ない）
+          const own = overflowX(element);
+          if ((own === 'auto' || own === 'scroll') && !element.matches(allowed)) {
+            if (element.scrollWidth > element.clientWidth + 0.5) {
+              violations.push({
+                rule,
+                target: selectorOf(element),
+                detail: `中身の幅 ${element.scrollWidth}px が入れ物の幅 ${element.clientWidth}px を越え、中で横に送れる（横に送る設計なら LAYOUT_SCROLL_CONTAINERS に足す）`,
+              });
+            }
+          }
+          const textual =
+            element.matches('input:not([type="hidden"]), select, textarea') ||
+            [...element.childNodes].some((node) => node.nodeType === Node.TEXT_NODE && node.textContent!.trim() !== '');
+          if (!textual) continue;
+          counted++;
+          let right = element.getBoundingClientRect().right;
+          let scrolls = false;
+          for (
+            let ancestor = element.parentElement;
+            ancestor !== null && ancestor !== root;
+            ancestor = ancestor.parentElement
+          ) {
+            const value = overflowX(ancestor);
+            if (value === 'visible') continue;
+            if ((value === 'auto' || value === 'scroll') && ancestor.matches(allowed)) {
+              scrolls = true;
+              break;
+            }
+            right = Math.min(right, ancestor.getBoundingClientRect().right);
+          }
+          // 小数の丸めの差は見ない
+          if (!scrolls && right > viewportWidth + 0.5) {
+            violations.push({
+              rule,
+              target: selectorOf(element),
+              detail: `右端 ${round(right)}px が画面の右端 ${viewportWidth}px を越える（「${(element.textContent ?? '').trim().slice(0, 20)}」）`,
+            });
+          }
+        }
+        return { violations, counted };
+      }
+
+      const scrollX = window.scrollX;
+      const scrollY = window.scrollY;
+      const candidates = document.querySelectorAll(
+        [
+          'button',
+          'a[href]',
+          'input:not([type="hidden"])',
+          'select',
+          'textarea',
+          'summary',
+          '[role="button"]',
+          '[role="link"]',
+          '[role="checkbox"]',
+          '[role="radio"]',
+          '[role="switch"]',
+          '[role="tab"]',
+          '[role="menuitem"]',
+        ].join(', '),
+      );
+      // 文中のリンク（WCAG 2.5.8 の例外）。Markdown の本文（.doc-box）の中のリンクと、inline のリンクのうち、文の入れ物
+      // （p、li、dd、td、label）の中にあって、入れ物の自分以外の文字が 5 文字以上あるもの。「キー: x」のように前後に数文字しか
+      // 無い単独のリンクや、文の入れ物の外（div の直下など）のリンクは、文中と見ずに数える。
+      // 数える文字は、自分を含めて入れ物の中のリンクとボタンの文字を除いたもの（リンクだけが並ぶ li を文と見ないため）
+      const sentenceMinimum = 5;
+      const inSentence = (element: Element): boolean => {
+        if (!element.matches('a, [role="link"]')) return false;
+        if (element.closest('.doc-box') !== null) return true;
+        if (getComputedStyle(element).display !== 'inline') return false;
+        const container = element.parentElement?.closest('p, li, dd, td, label');
+        if (container === null || container === undefined) return false;
+        const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT);
+        let others = '';
+        for (let node = walker.nextNode(); node !== null; node = walker.nextNode()) {
+          if (node.parentElement?.closest('a, button, [role="link"], [role="button"]') === null)
+            others += node.textContent ?? '';
+        }
+        return [...others.replace(/\s/g, '')].length >= sentenceMinimum;
+      };
+      // 調べる箱。入力欄を包む label は、全体が押せる範囲なので label の箱にする（区切りのボタン .segmented の選択肢は、
+      // 見えない input が既定の余白の分だけ label より小さく、中心もずれる）。折り返した inline の要素は、外接の箱の中心が
+      // 行の間に落ちるので、行の箱（getClientRects）のうち一番大きいものにする
+      const boxOf = (element: Element, labels: readonly HTMLLabelElement[]): DOMRect => {
+        const target = labels.find((label) => label.contains(element)) ?? element;
+        const rects = [...target.getClientRects()];
+        if (rects.length < 2) return target.getBoundingClientRect();
+        return rects.reduce((largest, rect) =>
+          rect.width * rect.height > largest.width * largest.height ? rect : largest,
+        );
+      };
+      // scrollIntoView で動いた入れ物を、調べた後に元へ戻すため、祖先の入れ物の位置を初めて見たときに控える
+      const scrolled = new Map<Element, [number, number]>();
+      const remember = (element: Element): void => {
+        for (let ancestor = element.parentElement; ancestor !== null; ancestor = ancestor.parentElement) {
+          if (ancestor === root || ancestor === document.body || scrolled.has(ancestor)) continue;
+          scrolled.set(ancestor, [ancestor.scrollLeft, ancestor.scrollTop]);
+        }
+      };
+      // 四隅は、44px の円の上（中心から斜めに reach）の点にする。角を丸めた 44px のボタンは、箱の角の点では丸みの外に出て
+      // 外れるため。縦と横の大きさは、上下左右の点で確かめる（reach が 21px なので、43px 前後の箱は通る）
+      const d = Math.SQRT1_2;
+      const offsets: [string, number, number][] = [
+        ['中心', 0, 0],
+        ['左上', -d, -d],
+        ['上', 0, -1],
+        ['右上', d, -d],
+        ['左', -1, 0],
+        ['右', 1, 0],
+        ['左下', -d, d],
+        ['下', 0, 1],
+        ['右下', d, d],
+      ];
+      const clamp = (value: number, max: number): number => Math.min(Math.max(value, 0), max - 1);
+      let counted = 0;
+      for (const element of candidates) {
+        if (!visible(element) || inSentence(element)) continue;
+        counted++;
+        const labels = [...((element as HTMLInputElement).labels ?? [])];
+        remember(element);
+        (labels.find((label) => label.contains(element)) ?? element).scrollIntoView({
+          block: 'center',
+          inline: 'nearest',
+          behavior: 'instant',
+        });
+        const rect = boxOf(element, labels);
+        const centerX = rect.left + rect.width / 2;
+        const centerY = rect.top + rect.height / 2;
+        const misses: string[] = [];
+        // 44px 四方の端の線の上の点は、ちょうど 44px の箱の外になるので、内側へ 1px 入れた点を調べる
+        const reach = size / 2 - 1;
+        for (const [name, dx, dy] of offsets) {
+          const x = clamp(centerX + dx * reach, viewportWidth);
+          const y = clamp(centerY + dy * reach, viewportHeight);
+          const hit = document.elementFromPoint(x, y);
+          if (hit !== null && (element.contains(hit) || labels.some((label) => label.contains(hit)))) continue;
+          misses.push(`${name}（${round(x)}, ${round(y)}）は ${hit === null ? '何もない' : selectorOf(hit)}`);
+        }
+        if (misses.length > 0) {
+          violations.push({
+            rule,
+            target: selectorOf(element),
+            detail: `見た目の箱は ${round(rect.width)}×${round(rect.height)}px。${size}px 四方のうち ${misses.join('、')}`,
+          });
+        }
+      }
+      for (const [element, [left, top]] of scrolled) element.scrollTo({ left, top, behavior: 'instant' });
+      window.scrollTo({ left: scrollX, top: scrollY, behavior: 'instant' });
+      return { violations, counted };
+    },
+    { rule, size: TARGET_SIZE, scrollContainers: LAYOUT_SCROLL_CONTAINERS },
+  );
+}
+
+// 狭い幅の検査で回すテーマ。崩れ方は書体（字幅と行の高さ）で変わり、色では変わらないので、書体の違う3つにする。
+// シンプルのダークはライトと書体が同じなので回さない（docs/design.md の「狭い幅と押せる範囲を機械で確かめる」）
+export const LAYOUT_THEMES = ['simple_light', 'medieval', 'modern'] as const;
+
+// 言葉づかい。文言の長さで折り返しとはみ出しが変わるので、両方を回す
+export const LAYOUT_VOCABULARIES = ['game', 'scrum'] as const satisfies readonly Vocabulary[];
+const VOCABULARY_LABEL: Record<Vocabulary, string> = { game: 'ゲーム', scrum: 'スクラム' };
+
+type LayoutFound = LayoutViolation & { combinations: string[] };
+
+// 1つの画面の狭い幅の検査。テーマと言葉の組み合わせを重ねて測り、最後に finish で、残った違反と当たらなくなった除外で落とす。
+// 同じ要素の同じ違反は、出た組み合わせをまとめて1件にする。exclusions は、壊した HTML で確かめるときだけ差し替える
+export function createLayoutCheck(
+  screen: UiScreen,
+  exclusions: readonly UiExclusion[] = exclusionsFor(screen, isLayoutCheck),
+): { inThemes: (page: Page, label: string) => Promise<void>; finish: () => void } {
+  const used = new Set<UiExclusion>();
+  const found = new Map<string, LayoutFound>();
+  // 押せる要素か文字を持つ要素を1つも数えなかった組み合わせ。画面が描けていないまま測ると、違反が0件で通ってしまう
+  const noTargets: string[] = [];
+  const noText: string[] = [];
+  return {
+    // 落ち着いた画面に3つのテーマを順に当て、はみ出しと 44px を測る。label は言葉づかいの名前（落ちたときの文に出す）
+    async inThemes(page, label) {
+      for (const theme of LAYOUT_THEMES) {
+        await applyTheme(page, theme);
+        const overflow = await measureLayout(page, 'overflow');
+        const targets = await measureLayout(page, 'target-44');
+        const violations = [...overflow.violations, ...targets.violations];
+        if (overflow.counted === 0) noText.push(`${theme}・${label}`);
+        if (targets.counted === 0) noTargets.push(`${theme}・${label}`);
+        // 画面の読み直し（組織の枠の applyOrganization）で DB のテーマに戻っていたら、別のテーマを測ったことになる
+        const applied = await page.evaluate(() => document.documentElement.dataset.theme);
+        if (applied !== theme)
+          throw new Error(`[${screen}] テーマ ${theme} を当てたが、狭い幅の検査の後に ${applied} になっていた`);
+        const result = await excludeKnownViolations(page, violations, exclusions);
+        for (const exclusion of result.used) used.add(exclusion);
+        for (const violation of result.remaining) {
+          const key = `${violation.rule} ${violation.target}`;
+          const combination = `${theme}・${label}`;
+          const known = found.get(key);
+          if (known) known.combinations.push(combination);
+          else found.set(key, { ...violation, combinations: [combination] });
+        }
+      }
+    },
+    finish() {
+      const failures: string[] = [];
+      if (noTargets.length > 0)
+        failures.push(`[${screen}] 押せる要素を 1 つも数えなかった組み合わせがある: ${noTargets.join('、')}`);
+      if (noText.length > 0)
+        failures.push(`[${screen}] 文字を持つ要素を 1 つも数えなかった組み合わせがある: ${noText.join('、')}`);
+      if (found.size > 0) failures.push(`[${screen}] ${formatLayoutViolations([...found.values()])}`);
+      const stale = exclusions.filter((exclusion) => !used.has(exclusion));
+      if (stale.length > 0) failures.push(formatStaleExclusions(stale));
+      if (failures.length > 0) throw new Error(failures.join('\n\n'));
+    },
+  };
+}
+
+// 落ちたときに出す文。検査の種類、要素、どの組み合わせで出たか、何が起きたか（最初に出た組み合わせのもの）を並べる
+export function formatLayoutViolations(violations: readonly (LayoutViolation & { combinations?: string[] })[]): string {
+  return [
+    `狭い幅（${NARROW_VIEWPORT.width}px）の違反が ${violations.length} 件ある（直せないものは e2e/ui-exclusions.ts に理由と Issue の番号つきで置く）:`,
+    ...violations.map((violation) =>
+      [
+        `- ${violation.rule}: ${violation.target}${violation.combinations ? `（${violation.combinations.join('、')}）` : ''}`,
+        `  ${violation.detail}`,
+      ].join('\n'),
+    ),
+  ].join('\n');
+}
+
+// 組織とワークスペースの言葉づかいを、organization と workspace の操作の応答の書き換えで当てる（DB は書き換えない。
+// ほかのファイルと並べて走るため）。張った route を外す関数を返す。画面を開く前に呼ぶ
+export async function useVocabulary(page: Page, slug: string, vocabulary: Vocabulary): Promise<() => Promise<void>> {
+  const unrouteOrganization = await rewriteOperation(page, organizationInfo, { slug }, (output) => ({
+    ...output,
+    organization: { ...output.organization, vocabulary },
+  }));
+  const unrouteWorkspace = await rewriteOperation(page, workspaceInfo, { slug }, (output) => ({
+    ...output,
+    vocabulary,
+  }));
+  return async () => {
+    await unrouteOrganization();
+    await unrouteWorkspace();
+  };
+}
+
+// 狭い幅の検査で開く組織（seed のあおば開発）。主な画面はどれもこの組織の中にある
+const NARROW_LAYOUT_SLUG = 'aoba';
+
+// 主な画面を幅 390px で、言葉2つ × テーマ3つの組み合わせで開き、横のはみ出しと 44px の押せる範囲を確かめる。
+// open は画面を開き、落ち着いたとみなす要素を待つ。w はその言葉づかいの辞書の文言（見出しの名前などに使う）。
+// 開いた後、要求が止み、見えている所の読み込みが終わり、上の帯の組織の言葉が当てた言葉づかいになってから測る
+export async function expectNarrowLayout(
+  page: Page,
+  screen: UiScreen,
+  open: (w: (key: DictionaryKey, params?: TemplateParams) => string) => Promise<void>,
+): Promise<void> {
+  await page.setViewportSize(NARROW_VIEWPORT);
+  const check = createLayoutCheck(screen);
+  for (const vocabulary of LAYOUT_VOCABULARIES) {
+    const unroute = await useVocabulary(page, NARROW_LAYOUT_SLUG, vocabulary);
+    const vocabularies = { workspace: vocabulary, organization: vocabulary };
+    await open((key, params) => word(key, vocabularies, params));
+    await page.waitForLoadState('networkidle');
+    await expect(page.locator('[aria-busy="true"]:visible')).toHaveCount(0);
+    // 書き換えが効かずにゲームの言葉のまま測ると、スクラムの言葉を測ったことにならない
+    await expect(page.locator('.org-menu-label')).toHaveText(word('organization', vocabularies));
+    await check.inThemes(page, VOCABULARY_LABEL[vocabulary]);
+    await unroute();
+  }
+  check.finish();
 }
 
 // テーマを html の data-theme で当てる（DB は書き換えない。ほかのファイルと並べて走るため）。
