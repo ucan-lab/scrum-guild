@@ -99,9 +99,10 @@ h1, h2, h3 { text-wrap: balance; }
 .org-menu-name { min-width: 0; overflow-wrap: anywhere; }
 .org-menu-note { flex-basis: 100%; font-size: var(--text-xs); color: var(--color-muted); }
 .org-menu-list li:last-child:not(:only-child) a { color: var(--color-muted); }
-/* 狭い幅と、指で押す画面では、押す所を 44px 以上にする */
+/* 狭い幅と、指で押す画面では、押す所を 44px 以上にする。左のメニューのロゴと項目（狭い幅では上の帯に並ぶ）も同じ */
 @media (max-width: 760px), (pointer: coarse) {
   .org-menu-list a, .account-menu-list button, .account-menu-button { min-height: 44px; }
+  .brand, .nav-item { min-height: 44px; }
 }
 /* アカウントのメニュー。上の帯の自分の名前を押すと開く。リストの見た目は組織の切り替えと同じ（上の .org-menu-list と並べて書く）で、
    帯の下に重ねて出す（帯の高さを変えない）。広い幅ではボタンの右端に合わせて開く。760px 以下は、帯が左に寄って
@@ -902,6 +903,8 @@ dialog.dialog::backdrop { background: none; }
 .segmented.is-readonly input:disabled + span { opacity: 1; }
 /* 狭い幅と、指で押す画面では、押す所を 44px 四方以上にする。完了の操作の丸は見た目の大きさのまま、押せる範囲だけを広げる */
 @media (max-width: 760px), (pointer: coarse) {
+  /* 小さくない .btn と、入力欄と選択欄は、見た目ごと 44px の高さにする */
+  .btn:not(.is-sm), .input, .select { min-height: 44px; }
   .segmented span { display: flex; align-items: center; justify-content: center; min-width: 44px; min-height: 44px; }
   .table .btn.is-sm { min-width: 44px; min-height: 44px; }
   .table .select { min-height: 44px; }
@@ -910,9 +913,11 @@ dialog.dialog::backdrop { background: none; }
   /* 木の行のボタン（開閉の caret、題、＋タスク）と、操作の並びの小さいボタンも、見た目は変えず、押せる範囲だけを 44px 四方以上に広げる。
      操作の並びで高さを変えると、横に並ぶヒントの文字が上にずれるため */
   /* 絞り込みの帯の端の「絞り込みを外す」も同じ */
-  .tree-caret, button.tree-link, .tree-row .btn.is-sm, .form-actions .btn.is-sm, .callout-actions .btn.is-sm, .toolbar-end .btn.is-sm { position: relative; }
+  /* バックログの行の題（.entry-title）と、上の帯の小さな切り替え（.pill。引き出しの閉じるも）も同じ。.pill は元から position: relative */
+  .tree-caret, button.tree-link, .tree-row .btn.is-sm, .form-actions .btn.is-sm, .callout-actions .btn.is-sm, .toolbar-end .btn.is-sm,
+  .entry-title { position: relative; }
   .tree-caret::after, button.tree-link::after, .tree-row .btn.is-sm::after, .form-actions .btn.is-sm::after, .callout-actions .btn.is-sm::after,
-  .toolbar-end .btn.is-sm::after {
+  .toolbar-end .btn.is-sm::after, .entry-title::after, .pill::after {
     content: ""; position: absolute; left: 50%; top: 50%; width: max(100%, 44px); height: max(100%, 44px); transform: translate(-50%, -50%);
   }
   /* 引き出しの中の小さなボタン（保存、取り消し、編集、削除、クリア）と、押すと直せる値と、タブ（コメントと変更の履歴）も同じ。
@@ -921,6 +926,12 @@ dialog.dialog::backdrop { background: none; }
   .drawer .btn.is-sm::after, .drawer .link-btn::after, .drawer .edit-trigger::after, .drawer .tab::after {
     content: ""; position: absolute; left: 50%; top: 50%; width: max(100%, 44px); height: max(100%, 44px); transform: translate(-50%, -50%);
   }
+  /* 引き出しのタブは、広げた分が下のタブの中身（.thread）に覆われるので、見た目ごと 44px の高さにする */
+  .drawer .tab { min-height: 44px; }
+  /* 木の行の右端が折り返したとき、上の段の「＋タスク」の広げた分が、下の段の 44px のボタンに重ならないよう段の間を空ける */
+  .tree-end { row-gap: var(--space-5); }
+  /* 表の名前の列のリンク（組織の管理のワークスペースの名前）は、2行に折り返しても 44px の高さの1つの箱にする */
+  .table .is-name a { display: inline-flex; align-items: center; min-height: 44px; }
   /* コメントの見出しの「編集」「削除」は、広げた分（上下に約 9px）が本文の1行目のリンクに重ならないよう、見出しの下を空ける */
   .comment-head:has(.comment-actions) { margin-bottom: var(--space-3); }
 }
@@ -989,6 +1000,9 @@ a.choice > div > span, .choice.is-static > div > span { display: block; }
   .entry-end .order-actions .icon-btn, .tree-end .order-actions .icon-btn { width: 44px; height: 44px; }
   .order-list .order-actions { gap: 14px; }
   .order-list .icon-btn, .order-list .edit-trigger, .order-list .toggle { position: relative; }
+  /* 狭い幅で名前の下へ折り返す切り替えは、行を 44px の高さにし、名前との間を空ける（名前の広げた分と重ならないように） */
+  .order-list .order-main { row-gap: var(--space-3); }
+  .order-list .toggle { min-height: 44px; }
   .order-list .icon-btn::after, .order-list .edit-trigger::after, .order-list .toggle::before {
     content: ""; position: absolute; left: 50%; top: 50%; width: max(100%, 44px); height: max(100%, 44px); transform: translate(-50%, -50%);
   }

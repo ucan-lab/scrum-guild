@@ -451,12 +451,7 @@ test('メニューの横で一覧が狭い幅でも、題の列は縮みすぎ�
     );
     expect(overflow, `${width}px`).toBeLessThanOrEqual(0);
   }
-  // 狭い幅では、並べ替えのボタンは 44px 四方
-  await page.setViewportSize({ width: 390, height: 900 });
-  const up = page.locator('.tree-children .entry .order-actions .icon-btn').first();
-  const box = await up.boundingBox();
-  expect(box!.width).toBeGreaterThanOrEqual(44);
-  expect(box!.height).toBeGreaterThanOrEqual(44);
+  // 390px の並べ替えのボタンの 44px は、e2e/layout-narrow-workspace.test.ts が確かめる
 });
 
 test('一覧が広いまま指で押す画面（タブレットの横置き）でも、44px のボタンで題の列を縮めすぎない', async ({

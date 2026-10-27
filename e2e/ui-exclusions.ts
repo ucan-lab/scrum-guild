@@ -21,6 +21,8 @@ export type UiScreen = (typeof uiScreens)[number];
 export type UiCheck = 'target-44' | 'overflow' | (string & {});
 export const nonAxeChecks: readonly UiCheck[] = ['target-44', 'overflow'];
 export const isAxeCheck = (check: UiCheck): boolean => !nonAxeChecks.includes(check);
+// 狭い幅の検査（e2e/layout-narrow*.test.ts）が引く種類
+export const isLayoutCheck = (check: UiCheck): boolean => nonAxeChecks.includes(check);
 
 export interface UiExclusion {
   check: UiCheck;
