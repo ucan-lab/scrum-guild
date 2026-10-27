@@ -228,6 +228,171 @@ test('端の行で Alt と ↑ ↓ を押すと、動かせないことを読み
   await expect(rootTitles(page)).toHaveText(['見積もりを送る', '請求書を出す']);
 });
 
+async function addEpic(page: Page, title: string): Promise<void> {
+  await page.getByRole('button', { name: 'レイドを作る' }).click();
+  const dialog = page.getByRole('dialog', { name: 'レイドを作る' });
+  await dialog.getByLabel('タイトル').fill(title);
+  await dialog.getByRole('button', { name: '作る' }).click();
+  await expect(dialog).toBeHidden();
+}
+
+function epicRow(page: Page, title: string) {
+  return page.locator('.tree-row.is-epic', { has: page.getByRole('button', { name: title, exact: true }) });
+}
+
+// エピックの題（並びの順）
+function epicTitles(page: Page) {
+  return page.locator('.tree-row.is-epic button.tree-link');
+}
+
+test('エピックを「上へ」「下へ」と Alt と ↑ ↓ で並べ替え、読み直しても同じ順になる。端では動かせないことを読み上げる', async ({
+  page,
+}) => {
+  const collect = await watchViolations(page);
+  await createWorkspace(page, 'レイドの並べ替えパーティ', 'game');
+  for (const title of ['ポイント制度を公開する', '決済の障害を減らす', '会員ランクを見直す'])
+    await addEpic(page, title);
+  await expect(page.getByText(/上にあるものほど優先します。レイド、達成目標、クエストは/)).toBeVisible();
+  await expect(epicTitles(page)).toHaveText(['ポイント制度を公開する', '決済の障害を減らす', '会員ランクを見直す']);
+
+  // 端の向きは押せない（フォーカスは残せるよう aria-disabled）
+  await expect(page.getByRole('button', { name: '上へ: ポイント制度を公開する' })).toHaveAttribute(
+    'aria-disabled',
+    'true',
+  );
+  await expect(page.getByRole('button', { name: '下へ: 会員ランクを見直す' })).toHaveAttribute('aria-disabled', 'true');
+
+  // 下の1回のボタンと、2回の Alt と ↑
+  const moved = waitForResponses(page, '/epic-move', 3);
+  const down = page.getByRole('button', { name: '下へ: ポイント制度を公開する' });
+  await down.click();
+  await expect(epicTitles(page)).toHaveText(['決済の障害を減らす', 'ポイント制度を公開する', '会員ランクを見直す']);
+  await expect(down).toBeFocused();
+  await expect(
+    page.getByRole('status').filter({ hasText: '「ポイント制度を公開する」を 2 番目に移しました' }),
+  ).toBeAttached();
+
+  // 行の中の題のボタンにフォーカスを置いて、Alt と ↑ を2回で先頭へ。フォーカスは題に残る
+  const title = page.getByRole('button', { name: '会員ランクを見直す', exact: true });
+  await title.focus();
+  await page.keyboard.press('Alt+ArrowUp');
+  await page.keyboard.press('Alt+ArrowUp');
+  await expect(epicTitles(page)).toHaveText(['会員ランクを見直す', '決済の障害を減らす', 'ポイント制度を公開する']);
+  await expect(title).toBeFocused();
+  await expect(
+    page.getByRole('status').filter({ hasText: '「会員ランクを見直す」を 1 番目に移しました' }),
+  ).toBeAttached();
+  // 端でもう一度押すと、動かせないことを読み上げる
+  await page.keyboard.press('Alt+ArrowUp');
+  await expect(page.getByRole('status').filter({ hasText: 'いちばん上です' })).toBeAttached();
+  await page.getByRole('button', { name: 'ポイント制度を公開する', exact: true }).focus();
+  await page.keyboard.press('Alt+ArrowDown');
+  await expect(page.getByRole('status').filter({ hasText: 'いちばん下です' })).toBeAttached();
+
+  await moved;
+  await page.reload();
+  await expect(epicTitles(page)).toHaveText(['会員ランクを見直す', '決済の障害を減らす', 'ポイント制度を公開する']);
+  expect(await collect()).toEqual([]);
+});
+
+test('エピックをつまみのドラッグで並べ替え、線はエピックの塊に出て、読み直しても同じ順になる', async ({ page }) => {
+  const collect = await watchViolations(page);
+  await createWorkspace(page, 'レイドのドラッグパーティ', 'game');
+  for (const title of ['ポイント制度を公開する', '決済の障害を減らす']) await addEpic(page, title);
+  // 配下のストーリーを足す（エピックの線が、開いた配下の途中に入らないことを確かめる）
+  await addStory(page, '残高が見える');
+  await page.getByRole('button', { name: '親を移す: 残高が見える' }).click();
+  const moveDialog = page.getByRole('dialog', { name: '「残高が見える」の親を移す' });
+  await moveDialog.getByLabel('移す先').selectOption({ label: 'ポイント制度を公開する' });
+  await moveDialog.getByRole('button', { name: '移す' }).click();
+  await expect(moveDialog).toBeHidden();
+  const points = storyGroup(page, 'ポイント制度を公開する');
+  await expect(points.locator('.tree-row.is-story')).toHaveCount(1);
+  // つまみは飾り（読み上げに出さない）
+  await expect(epicRow(page, '決済の障害を減らす').locator('.grip')).toHaveAttribute('aria-hidden', 'true');
+
+  const moved = waitForResponses(page, '/epic-move');
+  await dragTo(
+    page,
+    epicRow(page, '決済の障害を減らす').locator('.grip'),
+    epicRow(page, 'ポイント制度を公開する'),
+    'top',
+    async () => {
+      // 線は配下を含めた塊に出る。エピックを運ぶときは、エピックの行を囲まない
+      await expect(points).toHaveAttribute('data-drop', 'before');
+      await expect(page.locator('.tree-row[data-drop="into"]')).toHaveCount(0);
+      await expect(storyGroup(page, '決済の障害を減らす')).toHaveClass(/is-dragging/);
+    },
+  );
+  await expect(epicTitles(page)).toHaveText(['決済の障害を減らす', 'ポイント制度を公開する']);
+  await expect(page.locator('[data-drop]')).toHaveCount(0);
+  await expect(epicRow(page, '決済の障害を減らす')).toHaveClass(/is-dropped/);
+  await expect(
+    page.getByRole('status').filter({ hasText: '「決済の障害を減らす」を 1 番目に移しました' }),
+  ).toBeAttached();
+  // 配下のストーリーは、元のエピックの下のまま
+  await expect(points.locator('.tree-row.is-story')).toHaveCount(1);
+
+  // ストーリーやタスクの行に重ねても、エピックは落とせない（何も示さない）
+  await dragTo(
+    page,
+    epicRow(page, '決済の障害を減らす').locator('.grip'),
+    storyRow(page, '残高が見える'),
+    'bottom',
+    async () => {
+      await expect(page.locator('[data-drop]')).toHaveCount(0);
+    },
+  );
+  await expect(epicTitles(page)).toHaveText(['決済の障害を減らす', 'ポイント制度を公開する']);
+
+  await moved;
+  await page.reload();
+  await expect(epicTitles(page)).toHaveText(['決済の障害を減らす', 'ポイント制度を公開する']);
+  expect(await collect()).toEqual([]);
+});
+
+test('完了か中止したエピックも並べ替えられる。断られたら、理由を知らせて読み直す', async ({ page }) => {
+  await createWorkspace(page, 'レイドの中止パーティ', 'game');
+  for (const title of ['ポイント制度を公開する', '決済の障害を減らす']) await addEpic(page, title);
+  // 2番目のエピックを、木の上だけ中止したことにする（中止の操作は #65 で足す）
+  await page.route('**/api/aoba/backlog-tree', async (route) => {
+    const response = await route.fetch();
+    const body = (await response.json()) as { epics: { title: string; canceled_at: string | null }[] };
+    const epics = body.epics.map((epic) =>
+      epic.title === '決済の障害を減らす' ? { ...epic, canceled_at: '2026-10-22T00:00:00.000Z' } : epic,
+    );
+    await route.fulfill({ response, json: { ...body, epics } });
+  });
+  await page.reload();
+  await expect(epicRow(page, '決済の障害を減らす').locator('.chip', { hasText: '中止' })).toBeVisible();
+  await expect(epicRow(page, '決済の障害を減らす').locator('.grip')).toBeVisible();
+  const up = page.getByRole('button', { name: '上へ: 決済の障害を減らす' });
+  await expect(up).toHaveAttribute('aria-disabled', 'false');
+
+  // 断られたら、ストーリーとタスクと同じ文で知らせて読み直し、フォーカスを同じ操作へ戻す
+  await page.route('**/api/aoba/epic-move', (route) =>
+    route.fulfill({
+      status: 409,
+      json: { error: { code: 'conflict', message: 'conflict', details: { reason: 'changed' } } },
+    }),
+  );
+  await up.click();
+  await expect(
+    page.getByRole('status').filter({ hasText: 'ほかの画面で変わったため、移せませんでした。一覧を読み直します' }),
+  ).toBeVisible();
+  await expect(epicTitles(page)).toHaveText(['ポイント制度を公開する', '決済の障害を減らす']);
+  await expect(up).toBeFocused();
+
+  // 通るときは、中止したエピックも先頭へ動く
+  await page.unroute('**/api/aoba/epic-move');
+  const moved = waitForResponses(page, '/epic-move');
+  await up.click();
+  await expect(epicTitles(page)).toHaveText(['決済の障害を減らす', 'ポイント制度を公開する']);
+  await moved;
+  await page.reload();
+  await expect(epicTitles(page)).toHaveText(['決済の障害を減らす', 'ポイント制度を公開する']);
+});
+
 function taskRow(page: Page, title: string) {
   return page.locator('.entry', { hasText: title });
 }
@@ -409,7 +574,9 @@ test('終了したワークスペースでは、つまみを出さない', async
   const name = `終了したつまみパーティ ${test.info().repeatEachIndex}-${test.info().retry}`;
   await createWorkspace(page, name, 'game');
   await addTask(page, '見積もりを送る');
+  await addEpic(page, 'ポイント制度を公開する');
   await expect(page.locator('.entry .grip')).toBeVisible();
+  await expect(page.locator('.tree-row.is-epic .grip')).toBeVisible();
   const workspaceUrl = page.url();
   // 管理の画面から終了する
   await page.goto('/aoba/admin');
@@ -425,6 +592,9 @@ test('終了したワークスペースでは、つまみを出さない', async
   await expect(rootTitles(page)).toHaveText(['見積もりを送る']);
   await expect(page.locator('.grip')).toHaveCount(0);
   await expect(page.locator('.action-note')).toHaveCount(0);
+  // エピックの行にも、つまみと「上へ」「下へ」を出さない
+  await expect(epicTitles(page)).toHaveText(['ポイント制度を公開する']);
+  await expect(page.locator('.order-actions')).toHaveCount(0);
 });
 
 test('狭い幅ではつまみを出さず、題の列も空けない', async ({ page }) => {

@@ -31,6 +31,7 @@
   import { MoveQueue } from '../../../../lib/move-queue.ts';
   import { showToast } from '../../../../lib/toast.svelte.ts';
   import { t } from '../../../../lib/vocabulary.svelte.ts';
+  import { epicMove } from '../../../../shared/operations/epic/index.ts';
   import { storyComplete, storyMove, storyReopen } from '../../../../shared/operations/story/index.ts';
   import { storyCompletionConflictReasonOf } from '../../../../shared/operations/story/story-complete.ts';
   import type { BacklogEpic, BacklogStory, BacklogTask } from '../../../../shared/operations/task/backlog-tree.ts';
@@ -43,8 +44,9 @@
   // 木の上に絞り込みの帯（BacklogFilterBar）を置く。絞り込みは URL の問い合わせに持ち（replace で履歴を積まない）、load がサーバーで絞った木を読む。
   // 絞っている間は「上へ」「下へ」と Alt と ↑ ↓ を出さず（親を移すは残す）、案内を替える。当たるものが無ければ、木の代わりに無いことと外す操作を出す。
   // 絞っているときに作ったタスク、ストーリー、エピックは、読み直した木に無ければ、絞り込みを外す操作つきのトーストで知らせる。
-  // 絞っている間は、つまみのドラッグも出さない（並べ替えは隣を使うため）。折りたたみを開ける操作、エピックの並べ替え（#308）は、それぞれの機能の Issue で足す。
+  // 絞っている間は、つまみのドラッグも出さない（並べ替えは隣を使うため）。折りたたみを開ける操作は、その機能の Issue で足す。
   // 並べ替えは、行の「上へ」「下へ」と Alt と ↑ ↓ で、同じ親（親なしのタスク、親のないストーリー、エピックの下のストーリーはそれぞれの並び）の中で1つ動かす。
+  // エピックは親を持たず、画面に出ているエピックの全部（完了と中止したものも含む）の中で動かす（epic-move）。
   // タスクとストーリーの行の「親を移す」は、ダイアログで選んだ親の末尾へ移す。
   // 行の先頭のつまみのドラッグ（BacklogDnd。判定は backlog-drop.ts）は、離れた位置や別の親へ、行の間の線か親の行の囲みに落として動かす。
   // ドラッグの間に木が読み直されたら、そのドラッグは取りやめる。落とした行は、少しのあいだ光らせる。
@@ -110,6 +112,8 @@
   let taskOrders = $state<Record<string, string[]>>({});
   let movedStoryParents = $state<Record<string, string | null>>({});
   let storyOrders = $state<Record<string, string[]>>({});
+  // 画面で並べ替えたエピックの id の並び（並べ替えていなければ null）
+  let epicOrder = $state<string[] | null>(null);
   // 動かす操作は、押した順に1つずつ送る（src/lib/move-queue.ts）。読み直したら、まだ送っていない古い操作は捨てる
   const moves = new MoveQueue<ApiResult<unknown>>({
     // 列が空になった後の読み直し。親を移した行が木から消えてフォーカスを失っていれば、見出しへ移す
@@ -129,6 +133,7 @@
     taskOrders = {};
     movedStoryParents = {};
     storyOrders = {};
+    epicOrder = null;
     moves.reloaded();
   });
 
@@ -175,7 +180,9 @@
     return places;
   }
 
-  const epics = $derived(tree?.epics ?? []);
+  // エピックは、画面で並べ替えた並びがあればそれに従う
+  const epics = $derived(epicOrder === null ? (tree?.epics ?? []) : sortedBy(tree?.epics ?? [], epicOrder));
+  const epicIds = $derived(epics.map((epic) => epic.id));
   // 読み直した木のストーリー（エピックの下のものと親のないもの）と、その親
   const loadedStories = $derived([
     ...epics.flatMap((epic) => epic.stories.map((story) => ({ row: story, parentId: epic.id as string | null }))),
@@ -244,6 +251,7 @@
   // ドラッグの判定に渡す、今の木の並び（画面で動かした並びを含む）
   const dropIndex = $derived(
     indexTree({
+      epics: epicIds,
       openEpics: openEpics.map((epic) => epic.id),
       storyLists: Object.fromEntries(
         Object.entries(storyLists).map(([key, list]) => [
@@ -258,7 +266,11 @@
   const dnd = new BacklogDnd({
     index: () => dropIndex,
     enabled: () => canWrite && !filtering,
-    onDrop: (drop) => (drop.move.kind === 'task' ? dropTask(drop.move) : dropStory(drop.move)),
+    onDrop: (drop) => {
+      if (drop.move.kind === 'task') dropTask(drop.move);
+      else if (drop.move.kind === 'story') dropStory(drop.move);
+      else dropEpic(drop.move);
+    },
     onStale: () => showToast(t('moveReloaded'), 'alert'),
   });
   // 木の行へ渡す。書き込めないときと、絞っている間（並べ替えは隣を使うため）は渡さず、つまみも落とし先も出さない
@@ -566,6 +578,7 @@
     taskOrders = {};
     movedStoryParents = {};
     storyOrders = {};
+    epicOrder = null;
     moves.discard();
   }
 
@@ -582,7 +595,7 @@
   // 親が完了していたときの文は、動かした行がタスク（親はストーリー）かストーリー（親はエピック）かで変える
   function moveFailureMessage(
     result: { status: number; error: { code: string; details?: unknown } | null },
-    kind: 'task' | 'story',
+    kind: 'task' | 'story' | 'epic',
   ): string {
     if (result.status === 404) return t('moveGone');
     if (result.status !== 409) return t('moveFailed');
@@ -624,7 +637,11 @@
   // 動かす操作を、押した順に送る。失敗したら理由を知らせて読み直し、フォーカスを同じ操作（無ければ見出し）へ戻す
   // reloadOnSuccess は、通った後にも、列が空になってから木を読み直す（絞っているときの親の移動。移す先の親が木に無いことがあり、
   // どの行を出すかはサーバーが決める。読み直すのは MoveQueue で、onFailed は断られたときだけ呼ばれる）
-  function send(call: () => Promise<ApiResult<unknown>>, kind: 'task' | 'story', reloadOnSuccess = false): void {
+  function send(
+    call: () => Promise<ApiResult<unknown>>,
+    kind: 'task' | 'story' | 'epic',
+    reloadOnSuccess = false,
+  ): void {
     const workspaceId = workspace?.id;
     void moves.send(
       call,
@@ -683,6 +700,22 @@
     void announce(t('moveAnnounced', { title: story.title, index: next.index + 1 }));
     const input = { workspace_id: workspace.id, story_id: story.id, epic_id: parentId, after_story_id: next.after };
     send(() => callOperation(storyMove, input, { slug: page.params.slug ?? '' }), 'story');
+  }
+
+  // エピックを並べ替える。並べる範囲は画面に出ているエピックの全部（完了と中止したものも含む）
+  function reorderEpic(epic: BacklogEpic, delta: -1 | 1): void {
+    if (workspace === null) return;
+    const next = shifted(epicIds, epic.id, delta);
+    if (next === null) {
+      void announce(delta < 0 ? t('moveAtTop') : t('moveAtBottom'));
+      return;
+    }
+    const restore = holdFocus();
+    epicOrder = next.ids;
+    void restore();
+    void announce(t('moveAnnounced', { title: epic.title, index: next.index + 1 }));
+    const input = { workspace_id: workspace.id, epic_id: epic.id, after_epic_id: next.after };
+    send(() => callOperation(epicMove, input, { slug: page.params.slug ?? '' }), 'epic');
   }
 
   function openMoveDialog(task: BacklogTask, trigger: HTMLElement): void {
@@ -807,6 +840,24 @@
       ...(move.afterId === undefined ? {} : { after_story_id: move.afterId }),
     };
     send(() => callOperation(storyMove, input, { slug: page.params.slug ?? '' }), 'story');
+  }
+
+  // エピックを落とした。親は無いので、エピックの段の中の位置だけを変える
+  function dropEpic(move: DropMove): void {
+    if (workspace === null) return;
+    const epic = epics.find((row) => row.id === move.id);
+    if (epic === undefined) return;
+    const next = epicIds.filter((id) => id !== epic.id);
+    next.splice(move.index, 0, epic.id);
+    epicOrder = next;
+    dnd.flash({ kind: 'epic', id: epic.id });
+    void announce(t('moveAnnounced', { title: epic.title, index: move.index + 1 }));
+    const input = {
+      workspace_id: workspace.id,
+      epic_id: epic.id,
+      ...(move.afterId === undefined ? {} : { after_epic_id: move.afterId }),
+    };
+    send(() => callOperation(epicMove, input, { slug: page.params.slug ?? '' }), 'epic');
   }
 
   // ストーリーの親（エピック）を移す。タスクの親を移すのと同じ形
@@ -981,7 +1032,7 @@
             {#if filtering}
               {t('backlogFilterOrderNote')}
             {:else}
-              {t('backlogOrderNote', { story: t('story'), task: t('task') })}
+              {t('backlogOrderNote', { epic: t('epic'), story: t('story'), task: t('task') })}
               <span class="drag-note">{t('backlogDragNote')}</span>
             {/if}
           </p>
@@ -997,7 +1048,7 @@
 
   {#snippet treeView()}
     <div class="tree" aria-busy={reloading}>
-      {#each epics as epic (epic.id)}
+      {#each epics as epic, epicIndex (epic.id)}
         {@const points = epicPoints(epic)}
         <TreeEpic
           bind:this={epicRows[epic.id]}
@@ -1006,6 +1057,9 @@
           pointsAll={points.all}
           {clock}
           empty={epicStories(epic).length === 0}
+          canMoveUp={epicIndex > 0}
+          canMoveDown={epicIndex < epics.length - 1}
+          onMove={canWrite && !filtering ? reorderEpic : undefined}
           dnd={rowDnd}
           onEdit={(target, trigger) => epicDialog?.show(trigger, target.id)}
         >

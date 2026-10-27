@@ -3,6 +3,7 @@ import { BacklogDnd } from './backlog-dnd.svelte.ts';
 import { indexTree, resolveDrop, ROOT, type Drop } from './backlog-drop.ts';
 
 const index = indexTree({
+  epics: [],
   openEpics: [],
   storyLists: { [ROOT]: [{ id: 's1', open: true }] },
   taskLists: { s1: ['t1', 't2'], [ROOT]: ['t3'] },

@@ -244,7 +244,7 @@
   }
 
   // 行の先頭のつまみ（飾りで、aria-hidden）。order を渡した行（書き込めるとき）だけに付く。
-  // off が真なら、つかめない行（完了にした直後の行、エピックの行）の列だけを空ける。狭い幅と指の画面では CSS が隠す
+  // off が真なら、つかめない行（完了にした直後の行）の列だけを空ける。狭い幅と指の画面では CSS が隠す
   function gripCell(off) {
     return `<span class="grip${off ? " is-off" : ""}" aria-hidden="true">${off ? "" : icon("grip")}</span>`;
   }
@@ -446,8 +446,11 @@
   function treeCaret(bodyId, title) {
     return `<button class="tree-caret" type="button" aria-expanded="true" aria-controls="${bodyId}" aria-label="${esc(title)}を閉じる" data-tree-toggle="${bodyId}" data-tree-title="${esc(title)}">${icon("chevron")}</button>`;
   }
-  // エピックの行（本番の TreeEpic）。題はエピックのダイアログを開くボタン。opts.order を渡すと、配下のストーリーの行に
-  // 並べ替えと「親を移す」を出す。エピックの画面へのリンクと並べ替えは、エピックの画面の Issue（#65）で足す。
+  // エピックの行（本番の TreeEpic）。題はエピックのダイアログを開くボタン。opts.order を渡すと、エピックの行の先頭につまみを、
+  // 配下のストーリーの行に並べ替えと「親を移す」を出す。opts.order が { first, last } なら、エピックの行の右端にも「上へ」「下へ」を出す
+  // （エピックは親を持たないので「親を移す」は無い）。opts.mark はドラッグの印で、前後の線（before / after）は配下を含めた塊
+  // （.tree-group。エピックの段の字下げ）に、囲み（into。ストーリーを運ぶとき）は行に付ける。
+  // エピックの画面へのリンクは、エピックの画面の Issue（#65）で足す。
   // 区分の印はエピックに振ったものを出す（配下の行では繰り返さない。本番と同じ）。
   // カタログの見本用に、opts.cleared（クリア済み。配下は完了したストーリー）、opts.canceled（中止）、opts.empty（配下なし）、
   // opts.key（同じエピックを2回描くときの id の区別）を受ける。完了か中止したエピックは、期日に色を付けず、配下の取り消しを押せなくする
@@ -462,12 +465,14 @@
     const state = opts.cleared ? `<span class="chip is-done">${icon("check")}${vocab ? t("done") : "クリア済み"}</span>`
       : opts.canceled ? `<span class="chip">中止</span>` : "";
     const mark = opts.mark || {};
-    return `<div class="tree-group">
-      <div class="tree-row is-epic${opts.order ? " has-grip" : ""}"${dropAttr(mark)}>
-        ${opts.order ? gripCell(true) : ""}${treeCaret(`tree-${key}`, e.title)}
+    const into = mark.drop === "into";
+    const epicOrder = opts.order && typeof opts.order === "object" ? opts.order : null;
+    return `<div class="tree-group${mark.state === "is-dragging" ? " is-dragging" : ""}"${into ? "" : dropAttr(mark)}>
+      <div class="tree-row is-epic${opts.order ? " has-grip" : ""}${mark.state === "is-dropped" ? " is-dropped" : ""}"${into ? dropAttr(mark) : ""}>
+        ${opts.order ? gripCell(false) : ""}${treeCaret(`tree-${key}`, e.title)}
         <span class="kind is-epic" title="${t("epic")}">${icon("flag")}</span>
         <span class="tree-title"><button class="tree-link" type="button" data-dialog="editEpic">${esc(e.title)}</button> ${categoryTag(e.cat)} ${state} ${dueChip(e.due, { done: finished })}</span>
-        <span class="tree-end"><span class="tree-ratio" title="完了 / 全体">${t("done")} ${p.done} / ${p.all} pt</span></span>
+        <span class="tree-end"><span class="tree-ratio" title="完了 / 全体">${t("done")} ${p.done} / ${p.all} pt</span>${epicOrder ? orderActions(e.title, { first: epicOrder.first, last: epicOrder.last }) : ""}</span>
       </div>
       <div class="tree-children" id="tree-${key}">${stories.map((s, i) => treeStory(s, false, {
         key: `${key}-${s}`,

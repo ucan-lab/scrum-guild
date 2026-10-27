@@ -1,12 +1,26 @@
 import { generateKeyBetween } from 'fractional-indexing';
 import { now } from '../../shared/clock.ts';
 import { EPIC_DEFAULT_REWARD_TIER } from '../../shared/epic.ts';
-import { epicCreate, epicGet, epicUpdate, type EpicDetail } from '../../shared/operations/epic/index.ts';
-import { previousStatementChanged, type OrganizationDb } from '../db/index.ts';
+import { epicCreate, epicGet, epicMove, epicUpdate, type EpicDetail } from '../../shared/operations/epic/index.ts';
+import {
+  previousStatementChanged,
+  type OrganizationDb,
+  type OrganizationTables,
+  type QueryCreator,
+} from '../db/index.ts';
 import { ApiError } from '../errors.ts';
 import { uuidv7 } from '../uuid.ts';
 import { categoryRow, readCategoryRef, refOf } from './definition-refs.ts';
 import { implement } from './implement.ts';
+import {
+  MAX_TIES,
+  moveConflict,
+  placeAfter,
+  placeFirst,
+  placeLast,
+  type MovePlan,
+  type Positioned,
+} from './move-position.ts';
 import { epicDeletion } from './tree-delete.ts';
 import { actorUserIdOf, changeLogColumns, openWorkspace, throwIfClosed } from './write-guards.ts';
 
@@ -303,4 +317,153 @@ export const epicUpdateOperation = implement(epicUpdate, async ({ db, actor, wor
     if ((await readEpic(db, workspaceId, epicId)) === undefined) throw new ApiError(404, 'not_found');
   }
   throw new ApiError(409, 'conflict');
+});
+
+type From = Pick<QueryCreator<OrganizationTables>, 'selectFrom'>;
+
+// 並べる範囲（ワークスペースの削除していないエピック。完了と中止したエピックも含む）から、移すエピックを除いたもの
+function siblingEpics(from: From, workspaceId: string, epicId: string) {
+  return from
+    .selectFrom('epics')
+    .where('epics.workspace_id', '=', workspaceId)
+    .where('epics.deleted_at', 'is', null)
+    .where('epics.id', '!=', epicId);
+}
+
+// 移すエピック。削除していないもの（完了と中止を含む）
+function movingEpic(db: OrganizationDb, workspaceId: string, epicId: string) {
+  return db.first(
+    db.statement((q) =>
+      q
+        .selectFrom('epics')
+        .select('epics.id')
+        .where('epics.id', '=', epicId)
+        .where('epics.workspace_id', '=', workspaceId)
+        .where('epics.deleted_at', 'is', null),
+    ),
+  );
+}
+
+// 移すエピックの新しい位置と、読んだ直前の行を決める。考え方はストーリーの移動（story.ts の planStoryMove）と同じ
+async function planEpicMove(
+  db: OrganizationDb,
+  workspaceId: string,
+  epicId: string,
+  afterId: string | null | undefined,
+): Promise<{ plan: MovePlan; after: Positioned | null }> {
+  const columns = ['epics.id', 'epics.position'] as const;
+  if (afterId === undefined) {
+    const last = await db.first(
+      db.statement((q) =>
+        siblingEpics(q, workspaceId, epicId)
+          .select(columns)
+          .orderBy('epics.position', 'desc')
+          .orderBy('epics.id', 'desc')
+          .limit(1),
+      ),
+    );
+    return { plan: placeLast(last), after: null };
+  }
+  if (afterId === null) {
+    const first = await db.first(
+      db.statement((q) =>
+        siblingEpics(q, workspaceId, epicId).select(columns).orderBy('epics.position').orderBy('epics.id').limit(1),
+      ),
+    );
+    return { plan: placeFirst(first), after: null };
+  }
+  const after = await db.first(
+    db.statement((q) => siblingEpics(q, workspaceId, epicId).select(columns).where('epics.id', '=', afterId)),
+  );
+  if (after === undefined) throw new ApiError(404, 'not_found');
+  const [ties, next] = await db.batch([
+    db.statement((q) =>
+      siblingEpics(q, workspaceId, epicId)
+        .select(columns)
+        .where('epics.position', '=', after.position)
+        .where('epics.id', '>', after.id)
+        .orderBy('epics.id')
+        .limit(MAX_TIES + 1),
+    ),
+    db.statement((q) =>
+      siblingEpics(q, workspaceId, epicId)
+        .select(columns)
+        .where('epics.position', '>', after.position)
+        .orderBy('epics.position')
+        .orderBy('epics.id')
+        .limit(1),
+    ),
+  ] as const);
+  return { plan: placeAfter(after, ties.rows, next.rows[0]), after };
+}
+
+// エピックを並べ替える。書き方はストーリーの移動（story.ts の storyMoveOperation）と同じで、直前の行が読んだ値の位置にあることを
+// 書く文の条件にし、通らなければ 409 の conflict（changed）にする。親が無いので履歴は残さない
+export const epicMoveOperation = implement(epicMove, async ({ db, workspace, input }) => {
+  const organizationId = db.organizationId;
+  const workspaceId = workspace.workspaceId;
+  const epicId = input.epic_id;
+  const afterId = input.after_epic_id;
+  if (afterId === epicId) throw new ApiError(400, 'invalid_input');
+
+  if ((await movingEpic(db, workspaceId, epicId)) === undefined) {
+    await throwIfClosed(db, workspaceId);
+    throw new ApiError(404, 'not_found');
+  }
+  const { plan, after } = await planEpicMove(db, workspaceId, epicId, afterId);
+
+  const updatedAt = now().toISOString();
+  // 自分の更新が通った、という条件。振り直しはこれを自分の条件に持つ
+  const moved = (from: From) =>
+    from
+      .selectFrom('epics')
+      .select('epics.id')
+      .where('epics.id', '=', epicId)
+      .where('epics.workspace_id', '=', workspaceId)
+      .where('epics.position', '=', plan.position)
+      .where('epics.updated_at', '=', updatedAt);
+
+  const results = await db.batch([
+    db.statement((q) =>
+      q
+        .updateTable('epics')
+        .set({ position: plan.position, updated_at: updatedAt })
+        .where('id', '=', epicId)
+        .where('workspace_id', '=', workspaceId)
+        .where('deleted_at', 'is', null)
+        .where((eb) => eb.exists(openWorkspace(q, organizationId, workspaceId)))
+        // 直前の行が、今も読んだ値の位置にある
+        .$if(after !== null, (qb) =>
+          qb.where((eb) =>
+            eb.exists(
+              siblingEpics(q, workspaceId, epicId)
+                .select('epics.id')
+                .where('epics.id', '=', after!.id)
+                .where('epics.position', '=', after!.position),
+            ),
+          ),
+        ),
+    ),
+    ...plan.renumber.map((row) =>
+      db.statement((q) =>
+        q
+          .updateTable('epics')
+          .set({ position: row.to, updated_at: updatedAt })
+          .where('id', '=', row.id)
+          .where('workspace_id', '=', workspaceId)
+          .where('position', '=', row.from)
+          .where('deleted_at', 'is', null)
+          .where((eb) => eb.exists(moved(q))),
+      ),
+    ),
+  ]);
+
+  if ((results[0]?.changes ?? 0) === 0) {
+    // 読んでから書くまでに、閉じたか、エピックか直前の行が消えたか、別の要求が先に直前の行を動かした
+    await throwIfClosed(db, workspaceId);
+    if ((await movingEpic(db, workspaceId, epicId)) === undefined) throw new ApiError(404, 'not_found');
+    if (afterId != null) await planEpicMove(db, workspaceId, epicId, afterId);
+    throw moveConflict('changed');
+  }
+  return { epic_id: epicId };
 });
