@@ -2,12 +2,30 @@
 # クラウド環境のセットアップスクリプト。中身をクラウド環境の設定に貼って使う（docs/development.md の「クラウド環境」）。
 # VM の用意だけを受け持つ（Node、pnpm、pnpm のストア、Playwright の chromium）。依存の導入は毎回 session-start.sh が行い、
 # ここで温めたストアから組む。終了コードが 0 以外だとセッションが始まらないので、どの段の失敗も警告にとどめて先へ進む。
-# 約5分を超えるとスナップショットが作られないので、外への通信と各段に上限を付ける。
+# 約5分を超えるとスナップショットが作られないので、全体を 270 秒の予算に収め、各段の上限を残りの時間で切り詰める。
 set -u
 
 warn() { echo "[cloud-setup] 警告: $*" >&2; }
 info() { echo "[cloud-setup] $*"; }
-fetch() { curl --proto '=https' --tlsv1.2 -fsSL --connect-timeout 10 --max-time 120 --retry 2 "$@"; }
+
+deadline=270
+# 段の上限（秒）を、予算の残りで切り詰めて出す。残りが 20 秒を切れば失敗する
+cap() {
+  local left=$((deadline - SECONDS))
+  [ "$left" -ge 20 ] || return 1
+  echo $(($1 < left ? $1 : left))
+}
+# 上限付きで動かす。予算が尽きていれば動かさず失敗する
+within() {
+  local limit
+  limit=$(cap "$1") || { warn "時間の予算が尽きたので飛ばす: ${*:2}"; return 124; }
+  timeout "$limit" "${@:2}"
+}
+fetch() {
+  local limit
+  limit=$(cap 90) || { warn "時間の予算が尽きたので取らない: ${*: -1}"; return 1; }
+  curl --proto '=https' --tlsv1.2 -fsSL --connect-timeout 10 --max-time "$limit" "$@"
+}
 
 is_repo() { [ -f "$1/package.json" ] && grep -q '"name": "scrum-guild"' "$1/package.json"; }
 
@@ -79,7 +97,7 @@ install_node_in() {
   tar --no-same-owner -xJf "$tmp/$file" -C "$tmp/node" --strip-components=1 || { warn "$file を展開できない"; return 1; }
   # Node 26 の Linux の配布は libatomic.so.1 を要る。素の Ubuntu には無い
   if ! ldconfig -p | grep -q 'libatomic\.so\.1'; then
-    { timeout 60 apt-get update -qq && timeout 60 apt-get install -y -qq libatomic1; } >/dev/null 2>&1 \
+    { within 60 apt-get update -qq && within 60 apt-get install -y -qq libatomic1; } >/dev/null 2>&1 \
       || warn "libatomic1 を apt で入れられなかった"
   fi
   "$tmp/node/bin/node" --version >/dev/null 2>&1 || { warn "展開した node が動かない"; return 1; }
@@ -103,7 +121,7 @@ fi
 info "node: $(command -v node) $(node --version 2>/dev/null)"
 
 # Node 25 からは corepack が同梱されないので、packageManager の版を npm で入れる
-if timeout 120 npm install -g --ignore-scripts "pnpm@${pnpm_version}" >/dev/null 2>&1; then
+if within 60 npm install -g --ignore-scripts "pnpm@${pnpm_version}" >/dev/null 2>&1; then
   hash -r
 else
   warn "pnpm@${pnpm_version} を入れられなかった"
@@ -114,7 +132,7 @@ if [ -n "$repo" ] && cd "$repo"; then
   # ストアはリポジトリの外にあり、スナップショットに残る。スナップショットを作るときのブランチのスクリプトを
   # root で動かして後のセッションに残さないよう、--ignore-scripts にする（毎回の session-start.sh はスクリプトも動かす）
   log=$(mktemp)
-  if timeout 150 pnpm install --frozen-lockfile --ignore-scripts >"$log" 2>&1; then
+  if within 120 pnpm install --frozen-lockfile --ignore-scripts >"$log" 2>&1; then
     # 記録は伏せる処理を通していないので、スナップショットに残さない
     rm -f "$log"
   else
@@ -126,9 +144,9 @@ if [ -n "$repo" ] && cd "$repo"; then
   # 配布元（cdn.playwright.dev、playwright.download.prss.microsoft.com）を許可ドメインに足していないと失敗する。
   # 動かすのに要るライブラリは apt で入れる。apt の失敗でブラウザの取得を止めないよう、別の段にする
   if [ -x node_modules/.bin/playwright ]; then
-    timeout 120 node_modules/.bin/playwright install chromium >/dev/null 2>&1 \
+    within 90 node_modules/.bin/playwright install chromium >/dev/null 2>&1 \
       || warn "chromium を入れられなかった。許可ドメインを確かめる"
-    timeout 120 node_modules/.bin/playwright install-deps chromium >/dev/null 2>&1 \
+    within 90 node_modules/.bin/playwright install-deps chromium >/dev/null 2>&1 \
       || warn "chromium の動くライブラリを apt で入れられなかった"
   fi
 fi
