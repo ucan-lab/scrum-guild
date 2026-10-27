@@ -12,6 +12,7 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
+import { fileURLToPath } from 'node:url';
 import { join, relative } from 'node:path';
 import { describe, test } from 'node:test';
 import {
@@ -645,7 +646,7 @@ describe('コメントの JSON の行', () => {
 
 // pr-create の evidence.md の 3 で、セッションが PR の本文に画像を埋め込むスクリプト
 describe('embed-evidence.py', () => {
-  const script = new URL('../.claude/skills/pr-create/embed-evidence.py', import.meta.url).pathname;
+  const script = fileURLToPath(new URL('../.claude/skills/pr-create/embed-evidence.py', import.meta.url));
   const mainUrl = 'https://main.example.test';
   const prUrl = 'https://pr.example.test';
   const base = { [k('changed')]: h('1'), [k('gone')]: h('3') };
@@ -707,6 +708,8 @@ describe('embed-evidence.py', () => {
         ),
         { encoding: 'utf8' },
       );
+      // python3 が無い環境では spawnSync が error を返す。終了コードの食い違いより先に原因を出す
+      assert.ifError(result.error);
       assert.equal(result.status, 0, result.stderr);
       return { out: readFileSync(join(dir, 'out.md'), 'utf8'), stdout: result.stdout };
     } finally {
@@ -820,6 +823,31 @@ describe('embed-evidence.py', () => {
       out.includes(block(k('new'), `| 変更後 |\n| ---- |\n| <img src="${prUrl}/img/${h('4')}.png" width="400"> |\n`)),
     );
     assert.ok(stdout.includes(`閉じの印が無い印: ['${k('changed')}']`), stdout);
+  });
+
+  test('CI が比べられなかったときと、JSON の行の無い古いコメントでは、画像を入れずに理由を書く', () => {
+    const notCompared = commentBody({
+      comparison: compareScreens(base, head, []),
+      base: {},
+      mainUrl,
+      prUrl,
+      headSha: sha('b'),
+      baseSha: sha('a'),
+      comparedSha: undefined,
+    });
+    assert.ok(
+      run(prBody, comments(notCompared), sha('b')).out.includes('CI の画像は付かなかった: CI が比べられなかった'),
+    );
+    const old = comment()
+      .split('\n')
+      .filter((line) => !line.startsWith(DATA_MARKER))
+      .join('\n');
+    assert.ok(run(prBody, comments(old), sha('b')).out.includes('CI の画像は付かなかった: コメントに JSON の行が無い'));
+  });
+
+  test('同じキーの印が2つあれば、どちらにも同じ画像を入れる', () => {
+    const twice = prBody.replace('### 出ない画面', `${block(k('changed'))}\n\n### 出ない画面`);
+    assert.equal(run(twice, comments(comment()), sha('b')).out.match(/<img /g)?.length, 5);
   });
 
   test('付かなかった理由を渡すと、コメントを読まずに印の中をその理由にする', () => {
