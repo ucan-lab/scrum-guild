@@ -64,7 +64,9 @@ test.describe('管理者（あおば開発のミナト）', () => {
     await expect(haruka.getByRole('button', { name: 'ハルカを無効にする' })).toHaveText('無効にする');
     // 最後に入った日は、ブラウザのタイムゾーン（東京）の日付。入ったことの無い人は「—」
     await expect(rowOf(page, 'ソラ').locator('td.mono')).toHaveText('2026-10-12');
-    await expect(rowOf(page, 'ユイ').locator('td.mono')).toHaveText('—');
+    // 「—」は読み上げに渡さず、見えない文字で「まだ入っていません」を添える
+    await expect(rowOf(page, 'ユイ').locator('td.mono [aria-hidden="true"]')).toHaveText('—');
+    await expect(rowOf(page, 'ユイ').locator('td.mono .visually-hidden')).toHaveText('まだ入っていません');
 
     const tallies = page.locator('.tally > div');
     await expect(tallies.nth(0)).toHaveText('ユーザー 4');
@@ -97,24 +99,121 @@ test.describe('管理者（あおば開発のミナト）', () => {
     expect(await collect()).toEqual([]);
   });
 
-  test('自分の解除は確認を経て、最後の管理者なら断られ、切り替えは元に戻る', async ({ page }) => {
+  test('管理者が自分だけなら、自分の切り替えは確認を出さずにその場で断り、何も送らない', async ({ page }) => {
+    let requests = 0;
+    await page.route('**/api/aoba/user-admin-update', async (route) => {
+      requests++;
+      await route.continue();
+    });
     await page.goto('/aoba/admin');
     const toggle = rowOf(page, 'ミナト').getByRole('checkbox', { name: 'ミナトをギルドマスターにする' });
     await toggle.click();
-    const dialog = page.getByRole('dialog', { name: '自分のギルドマスターを解除しますか？' });
-    await expect(dialog).toContainText('この画面を開けなくなります');
-    // やめれば何も送らず、切り替えは元のまま
-    await dialog.getByRole('button', { name: 'やめる' }).click();
-    await expect(dialog).toBeHidden();
-    await expect(toggle).toBeChecked();
-
-    await toggle.click();
-    await dialog.getByRole('button', { name: '解除する' }).click();
     await expect(
       toast(page, '最後のギルドマスターは解除も無効にもできません。先にほかの人をギルドマスターに指名してください'),
     ).toBeVisible();
+    await expect(page.getByRole('dialog')).toHaveCount(0);
     await expect(toggle).toBeChecked();
-    await expect(page.getByRole('heading', { level: 1, name: '組織の管理' })).toBeVisible();
+    expect(requests).toBe(0);
+  });
+
+  test('ほかに管理者がいれば、自分の解除は確認を経る。確認を待つ間、切り替えは今の値のまま', async ({ page }) => {
+    await page.goto('/aoba/admin');
+    const sora = rowOf(page, 'ソラ').getByRole('checkbox', { name: 'ソラをギルドマスターにする' });
+    await sora.click();
+    await expect(page.locator('.tally > div').nth(1)).toHaveText('ギルドマスター 2');
+    try {
+      const toggle = rowOf(page, 'ミナト').getByRole('checkbox', { name: 'ミナトをギルドマスターにする' });
+      await toggle.click();
+      const dialog = page.getByRole('dialog', { name: '自分のギルドマスターを解除しますか？' });
+      await expect(dialog).toContainText('この画面を開けなくなります');
+      await expect(toggle).toBeChecked();
+      // やめれば何も送らず、切り替えは元のまま
+      await dialog.getByRole('button', { name: 'やめる' }).click();
+      await expect(dialog).toBeHidden();
+      await expect(toggle).toBeChecked();
+    } finally {
+      await sora.click();
+      await expect(page.locator('.tally > div').nth(1)).toHaveText('ギルドマスター 1');
+    }
+  });
+
+  test('自分の解除が通ったら、組織の枠を読み直して「見つからない」の見出しへフォーカスを移す', async ({ page }) => {
+    // ほかの管理者がいる応答と、解除が通った応答に差し替える（seed のミナトは解除しない。ほかのファイルが管理者として使うため）
+    await page.route('**/api/aoba/user-list', async (route) => {
+      const response = await route.fetch();
+      const json = (await response.json()) as { users: { name: string; is_admin: boolean }[] };
+      for (const user of json.users) if (user.name === 'ソラ') user.is_admin = true;
+      await route.fulfill({ response, json });
+    });
+    let revoked = false;
+    await page.route('**/api/aoba/user-admin-update', async (route) => {
+      const body = route.request().postDataJSON() as { user_id: string };
+      revoked = true;
+      await route.fulfill({ json: { user_id: body.user_id, is_admin: false, disabled_at: null } });
+    });
+    await page.route('**/api/aoba/organization', async (route) => {
+      const response = await route.fetch();
+      const json = (await response.json()) as { me: { is_admin: boolean } };
+      if (revoked) json.me.is_admin = false;
+      await route.fulfill({ response, json });
+    });
+    await page.goto('/aoba/admin');
+    await rowOf(page, 'ミナト').getByRole('checkbox', { name: 'ミナトをギルドマスターにする' }).click();
+    await page
+      .getByRole('dialog', { name: '自分のギルドマスターを解除しますか？' })
+      .getByRole('button', { name: '解除する' })
+      .click();
+    await expect(toast(page, 'ミナトのギルドマスターを解除しました')).toBeVisible();
+    const heading = page.getByRole('heading', { level: 1, name: '画面が見つかりません' });
+    await expect(heading).toBeVisible();
+    await expect(heading).toBeFocused();
+  });
+
+  test('切り替えが 403 で断られたら、組織の枠を読み直し、一覧は読み直さない', async ({ page }) => {
+    let lists = 0;
+    await page.route('**/api/aoba/user-list', async (route) => {
+      lists++;
+      await route.continue();
+    });
+    await page.route('**/api/aoba/user-admin-update', (route) =>
+      route.fulfill({ status: 403, json: { error: { code: 'forbidden', message: 'forbidden' } } }),
+    );
+    await page.goto('/aoba/admin');
+    await expect(rowOf(page, 'ハルカ')).toBeVisible();
+    const before = lists;
+    // 組織の枠の読み直し（invalidateAll）が返るのを待ち、その後に一覧の読み直しが走らないことを見る
+    const reloaded = page.waitForResponse('**/api/aoba/organization');
+    await rowOf(page, 'ハルカ').getByRole('checkbox', { name: 'ハルカをギルドマスターにする' }).click();
+    await expect(toast(page, 'この操作ができるのはギルドマスターだけです。画面を読み直しました')).toBeVisible();
+    await reloaded;
+    // 読み直しを送るなら、枠の読み直しの直後に送る。少し待って、送られていないことを確かめる
+    await page.waitForTimeout(1000);
+    expect(lists).toBe(before);
+    await expect(
+      rowOf(page, 'ハルカ').getByRole('checkbox', { name: 'ハルカをギルドマスターにする' }),
+    ).not.toBeChecked();
+  });
+
+  test('指名が通った後の読み直しが失敗しても、行と見出しの数は応答の値のまま', async ({ page }) => {
+    await page.goto('/aoba/admin');
+    const toggle = rowOf(page, 'ソラ').getByRole('checkbox', { name: 'ソラをギルドマスターにする' });
+    const admins = page.locator('.tally > div').nth(1);
+    await expect(admins).toHaveText('ギルドマスター 1');
+    await page.route('**/api/aoba/user-list', (route) =>
+      route.fulfill({ status: 500, json: { error: { code: 'internal', message: 'internal' } } }),
+    );
+    try {
+      await toggle.click();
+      await expect(toast(page, 'ソラをギルドマスターに指名しました')).toBeVisible();
+      await expect(page.getByText('ユーザーの一覧を更新できませんでした')).toBeVisible();
+      await expect(admins).toHaveText('ギルドマスター 2');
+      await expect(toggle).toBeChecked();
+    } finally {
+      await page.unroute('**/api/aoba/user-list');
+      await toggle.click();
+      await expect(toast(page, 'ソラのギルドマスターを解除しました')).toBeVisible();
+      await expect(admins).toHaveText('ギルドマスター 1');
+    }
   });
 
   test('確認のダイアログを経て無効にすると、無効の印が付いて切り替えが押せなくなり、有効に戻せる', async ({ page }) => {
@@ -141,7 +240,10 @@ test.describe('管理者（あおば開発のミナト）', () => {
     await expect(dialog).toBeHidden();
     await expect(toast(page, 'ユイを無効にしました')).toBeVisible();
     await expect(row.locator('.chip')).toHaveText('無効');
-    await expect(row.getByRole('checkbox', { name: 'ユイをギルドマスターにする' })).toBeDisabled();
+    const disabledToggle = row.getByRole('checkbox', { name: 'ユイをギルドマスターにする' });
+    await expect(disabledToggle).toBeDisabled();
+    // 押せない理由を、読み上げの説明で結ぶ
+    await expect(disabledToggle).toHaveAccessibleDescription('無効の人はギルドマスターに指名できません');
     const enableButton = row.getByRole('button', { name: 'ユイを有効に戻す' });
     await expect(enableButton).toHaveText('有効に戻す');
     await expect(enableButton).toBeFocused();

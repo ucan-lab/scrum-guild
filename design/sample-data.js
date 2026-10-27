@@ -26,6 +26,9 @@ window.SQ_DATA = (function () {
       u3: { name: "ソウタ", hue: 220, level: 5, role: "member" },
       u4: { name: "リン", hue: 320, level: 6, role: "member" },
       u5: { name: "カイ", hue: 90, level: 4, role: "member", left: true },
+      // 組織の管理のユーザーの表だけに出る人（どのワークスペースにも所属しない）。長い名前の折り返しと、一度も入っていない人の行を見る
+      u6: { name: "長谷川・アレクサンドラ・美咲・ロドリゲス", hue: 250, level: 1, role: "member", left: true },
+      u7: { name: "ツムギ", hue: 140, level: 1, role: "member", left: true },
     },
     workspaces: {
       wa: { name: "受託開発チーム" },
@@ -288,11 +291,15 @@ Object.assign(window.SQ_DATA, {
 
   admin: {
     users: [
-      { who: "u1", admin: true, wss: 2, lastLogin: "10/20" },
-      { who: "u2", admin: true, wss: 1, lastLogin: "10/20" },
-      { who: "u3", admin: false, wss: 1, lastLogin: "10/19" },
-      { who: "u4", admin: false, wss: 2, lastLogin: "10/17" },
-      { who: "u5", admin: false, wss: 0, lastLogin: "08/31", disabled: true },
+      // 本番（user-list）と同じく、有効な人を先に、無効の人を後ろに並べる。lastLogin はブラウザのタイムゾーンの YYYY-MM-DD、
+      // 一度も入っていなければ null
+      { who: "u1", admin: true, wss: 2, lastLogin: "2026-10-20" },
+      { who: "u2", admin: true, wss: 1, lastLogin: "2026-10-20" },
+      { who: "u3", admin: false, wss: 1, lastLogin: "2026-10-19" },
+      { who: "u4", admin: false, wss: 2, lastLogin: "2026-10-17" },
+      { who: "u6", admin: false, wss: 0, lastLogin: "2026-09-02" },
+      { who: "u7", admin: false, wss: 0, lastLogin: null },
+      { who: "u5", admin: false, wss: 0, lastLogin: "2026-08-31", disabled: true },
     ],
     workspaces: [
       { name: "受託開発チーム", members: 4, leaders: 2, created: "2025-04-01" },

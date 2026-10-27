@@ -1375,6 +1375,10 @@ export const dictionary = defineDictionary({
   userLastSeenHeader: organization('最後に入った日', '最後に入った日'),
   userActionsHeader: organization('操作', '操作'),
   userNeverSeen: organization('—', '—'),
+  // 「—」に添える、読み上げだけの文
+  userNeverSeenText: organization('まだ入っていません', 'まだ入っていません'),
+  // 無効の人の押せない管理者の切り替えの理由（読み上げだけ）
+  userAdminToggleDisabledNote: organization('無効の人は{admin}に指名できません', '無効の人は{admin}に指名できません'),
   userDisabledChip: organization('無効', '無効'),
   userAdminToggleLabel: organization('{name}を{admin}にする', '{name}を{admin}にする'),
   userDisableAction: organization('無効にする', '無効にする'),

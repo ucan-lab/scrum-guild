@@ -3,7 +3,8 @@
 // 書く文には、呼んだ人が今も無効でない管理者であること（EXISTS）を入れる。登録の関数が確かめた権限は読み取りの時点の値なので、
 // 読んでから書くまでに解除か無効にされた人の要求を、書く文で止める（外れたら 403）。
 // 最後の管理者の条件は「同じ組織に、ほかに無効でなく login_subject のある管理者がいる」で、解除と無効化の文の EXISTS に入れる。
-// D1 は書き込みを1つずつ流すので、2人が同時にお互いを解除しても、後の文はこの条件で止まり、管理者は0人にならない
+// D1 は書き込みを1つずつ流すので、同時の解除でも管理者は0人にならない。2人が同時にお互いを解除したときは、後の文を
+// 呼んだ人の EXISTS が止め、2人が同時にそれぞれ自分を解除したときは、後の文をほかの管理者の EXISTS が止める
 import { now, todayIn } from '../../shared/clock.ts';
 import { userAdminUpdate, userDisable, userEnable, userList } from '../../shared/operations/organization/index.ts';
 import type { UserConflictReason } from '../../shared/operations/organization/user.ts';
@@ -115,7 +116,86 @@ function userChangeLog(
   );
 }
 
-// 名前、ID の順に全部。所属の数は閉じていないワークスペースの今の所属。アバターは共通の表なので、組織の道具で別に引く
+// その人のログイン（手段と ID）への、組織のすべてのワークスペースの承諾待ちの招待を取り消す2文（記録が先、invitations が後）。
+// 記録は招待の取り消し（invitation-revoke）と同じ {"status": ["pending", "revoked"]}。2文とも「この要求でその人の users を書いた
+// （updated_at がこの要求の時刻で、無効化なら disabled_at も同じ時刻、有効化なら disabled_at が空）」を条件にする。
+// createdBefore を渡すと、その日時より前に作った招待だけを取り消す
+function revokeInvitationStatements(
+  db: OrganizationDb,
+  options: {
+    userId: string;
+    login: { login_provider: string; login_subject: string };
+    actorUserId: string;
+    at: Date;
+    disabling: boolean;
+    createdBefore?: string;
+  },
+) {
+  const organizationId = db.organizationId;
+  const { userId, login, actorUserId, at, disabling, createdBefore } = options;
+  const stamp = at.toISOString();
+  const writtenHere = (from: From) =>
+    from
+      .selectFrom('users as wu')
+      .select('wu.id')
+      .where('wu.id', '=', userId)
+      .where('wu.organization_id', '=', organizationId)
+      .where('wu.updated_at', '=', stamp)
+      .where('wu.disabled_at', disabling ? '=' : 'is', disabling ? stamp : null);
+  return [
+    db.statement((q) =>
+      q
+        .insertInto('change_logs')
+        .columns(changeLogColumns)
+        .expression(
+          q
+            .selectFrom('invitations as i')
+            .innerJoin('workspaces as iw', 'iw.id', 'i.workspace_id')
+            .select((eb) => [
+              uuidv7Sql(at).as('id'),
+              eb.val(organizationId).as('organization_id'),
+              eb.ref('i.workspace_id').as('workspace_id'),
+              eb.val(actorUserId).as('actor_user_id'),
+              eb.val('invitation').as('entity_type'),
+              eb.ref('i.id').as('entity_id'),
+              eb.val('update').as('action'),
+              eb.val(JSON.stringify({ status: ['pending', 'revoked'] })).as('changes_json'),
+              eb.val(stamp).as('created_at'),
+            ])
+            .where('iw.organization_id', '=', organizationId)
+            .where('i.status', '=', 'pending')
+            .where('i.login_provider', '=', login.login_provider)
+            .where('i.login_subject', '=', login.login_subject)
+            .$if(createdBefore !== undefined, (query) => query.where('i.created_at', '<', createdBefore!))
+            .where((eb) => eb.exists(writtenHere(q))),
+        ),
+    ),
+    db.statement((q) =>
+      q
+        .updateTable('invitations')
+        .set({ status: 'revoked', responded_at: stamp })
+        .where((eb) =>
+          eb.and([
+            eb('status', '=', 'pending'),
+            eb('login_provider', '=', login.login_provider),
+            eb('login_subject', '=', login.login_subject),
+            eb(
+              'workspace_id',
+              'in',
+              q.selectFrom('workspaces as ow').select('ow.id').where('ow.organization_id', '=', organizationId),
+            ),
+            ...(createdBefore === undefined ? [] : [eb('created_at', '<', createdBefore)]),
+            eb.exists(writtenHere(q)),
+          ]),
+        ),
+    ),
+  ];
+}
+
+// 有効な人を先に、無効の人を後ろに、それぞれ名前、ID の順に全部。件数で区切らない: 読むのはその組織の users の行
+// （抜けた人と無効の人も消さずに残るので、member_limit では抑えられない。想定は数十〜数百）で、索引（users_organization_login の先頭の
+// organization_id）の上で1組織の行だけを読み、画面は全員を1つの表で見て指名と無効化を選ぶため。所属の数は閉じていないワークスペースの今の所属。
+// アバターは共通の表なので、組織の道具で別に引く
 export const userListOperation = implement(userList, async ({ db, tools }) => {
   const organizationId = db.organizationId;
   const rows = await db.rows(
@@ -140,6 +220,8 @@ export const userListOperation = implement(userList, async ({ db, tools }) => {
         ])
         .where('u.organization_id', '=', organizationId)
         .where('u.login_subject', 'is not', null)
+        // 有効な人（disabled_at が空。0）を先に、無効の人（1）を後ろに
+        .orderBy((eb) => eb('u.disabled_at', 'is not', null))
         .orderBy('u.name')
         .orderBy('u.id'),
     ),
@@ -293,48 +375,8 @@ export const userDisableOperation = implement(userDisable, async ({ db, actor, t
     ),
     // 2
     userChangeLog(db, { actorUserId, userId, changes, at }),
-    // 3. 招待の取り消しの記録（invitation-revoke と同じ {"status": ["pending", "revoked"]}）
-    db.statement((q) =>
-      q
-        .insertInto('change_logs')
-        .columns(changeLogColumns)
-        .expression(
-          q
-            .selectFrom('invitations as i')
-            .innerJoin('workspaces as iw', 'iw.id', 'i.workspace_id')
-            .select((eb) => [
-              uuidv7Sql(at).as('id'),
-              eb.val(organizationId).as('organization_id'),
-              eb.ref('i.workspace_id').as('workspace_id'),
-              eb.val(actorUserId).as('actor_user_id'),
-              eb.val('invitation').as('entity_type'),
-              eb.ref('i.id').as('entity_id'),
-              eb.val('update').as('action'),
-              eb.val(JSON.stringify({ status: ['pending', 'revoked'] })).as('changes_json'),
-              eb.val(stamp).as('created_at'),
-            ])
-            .where('iw.organization_id', '=', organizationId)
-            .where('i.status', '=', 'pending')
-            .where('i.login_provider', '=', current.login_provider)
-            .where('i.login_subject', '=', current.login_subject)
-            .where((eb) => eb.exists(disabledHere(q))),
-        ),
-    ),
-    // 4
-    db.statement((q) =>
-      q
-        .updateTable('invitations')
-        .set({ status: 'revoked', responded_at: stamp })
-        .where((eb) =>
-          eb.and([
-            eb('status', '=', 'pending'),
-            eb('login_provider', '=', current.login_provider),
-            eb('login_subject', '=', current.login_subject),
-            eb('workspace_id', 'in', organizationWorkspaces(q)),
-            eb.exists(disabledHere(q)),
-          ]),
-        ),
-    ),
+    // 3, 4. 招待の取り消しの記録と invitations
+    ...revokeInvitationStatements(db, { userId, login: current, actorUserId, at, disabling: true }),
     // 5. 所属の終わり。離脱（membership-leave）と同じ {"user": [{"id", "name"}, null], "role": [前のロール, null]}
     db.statement((q) =>
       q
@@ -477,7 +519,10 @@ export const userDisableOperation = implement(userDisable, async ({ db, actor, t
   return { user_id: userId, is_admin: false, disabled_at: stamp };
 });
 
-// 有効に戻す。disabled_at だけを空にし、所属と管理者は戻さない。記録は {"disabled_at": [前の日時, null]}
+// 有効に戻す。disabled_at を空にし、所属と管理者は戻さない。記録は {"disabled_at": [前の日時, null]}。
+// 同じ batch で、無効にする前に作ったその人のログインへの承諾待ちの招待を取り消す（下のコメント）。
+// 限界: 結ばれないまま残った Google のメールアドレスの招待は、users にメールアドレスが残らないので、その人への招待と見分けられず
+// 取り消せない。有効に戻した後に本人がその URL から結べば、招待し直さずに承諾できる（docs/data-model.md の users）
 export const userEnableOperation = implement(userEnable, async ({ db, actor, input }) => {
   const actorUserId = actorUserIdOf(actor);
   const organizationId = db.organizationId;
@@ -506,6 +551,17 @@ export const userEnableOperation = implement(userEnable, async ({ db, actor, inp
         ),
     ),
     userChangeLog(db, { actorUserId, userId, changes: { disabled_at: [disabledAt, null] }, at }),
+    // 無効にする前に作った、その人のログインへの承諾待ちの招待を取り消す。無効化はその時点でログインの ID の招待を取り消すが、
+    // Google のメールアドレスで待つ招待（login_subject が空）は当たらず、無効の間に本人が招待の URL から結ぶとその人のログインになる。
+    // 残すと、有効に戻した後に招待し直さずに承諾できるため。無効の間に作った招待（管理者が招待し直したもの）は残す
+    ...revokeInvitationStatements(db, {
+      userId,
+      login: current,
+      actorUserId,
+      at,
+      disabling: false,
+      createdBefore: disabledAt,
+    }),
   ]);
   if ((results[0]?.changes ?? 0) > 0) return { user_id: userId, is_admin: current.is_admin === 1, disabled_at: null };
 

@@ -20,7 +20,8 @@ export function userConflictReasonOf(details: unknown): UserConflictReason | und
 // 書いた後（何も書かなかったときは今）の相手の状態
 const userState = z.object({ user_id: z.string(), is_admin: z.boolean(), disabled_at: z.string().nullable() });
 
-// 組織のユーザーの一覧。同じ組織の login_subject のある行を、名前、ID の順に全部返す（組織の人数は member_limit で抑えられる）。
+// 組織のユーザーの一覧。同じ組織の login_subject のある行を、有効な人を先に、無効の人を後ろに、それぞれ名前、ID の順に全部返す
+// （件数は組織の users の行数。抜けた人と無効の人も残るので member_limit では抑えられない。想定は数十〜数百）。
 // workspace_count は閉じていないワークスペースの今の所属の数、last_seen_at はこの組織に最後に入った日時（入ったことが無ければ null）
 export const userList = defineOperation({
   name: 'user-list',

@@ -193,6 +193,25 @@ describe('user-list', () => {
     });
   });
 
+  test('有効な人を先に、無効の人を後ろに並べ、それぞれ名前、ID の順', async () => {
+    const target = await createTarget();
+    // 名前の順では有効な人より前に来る、無効の人
+    const disabledFirst = await createUser(target.organization, {
+      name: '安達 ハル',
+      disabled_at: '2026-10-21T00:00:00.000Z',
+    });
+    const disabledSecond = await createUser(target.organization, {
+      name: '安達 ミオ',
+      disabled_at: '2026-10-22T00:00:00.000Z',
+    });
+    const enabledFirst = await createUser(target.organization, { name: '一ノ瀬 カナ' });
+    const users = await usersOf(target);
+    const ids = users.map((user) => user.id);
+    expect(ids.indexOf(enabledFirst.id)).toBe(0);
+    expect(ids.slice(-2)).toEqual([disabledFirst.id, disabledSecond.id]);
+    expect(users.slice(0, -2).every((user) => user.disabled_at === null)).toBe(true);
+  });
+
   test('一般のメンバーとリーダーは 403', async () => {
     const target = await createTarget();
     for (const person of [target.member, target.leader]) {
@@ -350,6 +369,20 @@ describe('user-admin-update', () => {
     expect(statuses.filter((status) => status === 409 || status === 403)).toHaveLength(1);
     expect(await adminCount(target)).toBe(1);
   });
+
+  test('2人の管理者が同時にそれぞれ自分を解除しても、片方だけが通り、管理者が1人残る', async () => {
+    const target = await createTarget();
+    const another = await secondAdmin(target);
+    const [first, second] = await Promise.all([
+      setAdmin(target, target.admin, target.admin.userId!, false),
+      setAdmin(target, another, another.userId!, false),
+    ]);
+    // 自分の解除は呼んだ人の権限では止まらない（後の要求も、入るときと書くときはまだ管理者）。止めるのは、ほかの管理者の EXISTS
+    expect([first.status, second.status].toSorted()).toEqual([200, 409]);
+    const refused = first.status === 409 ? first : second;
+    expect((await errorOf(refused)).reason).toBe('last_admin');
+    expect(await adminCount(target)).toBe(1);
+  });
 });
 
 // 読んでから書くまでに別の要求が割り込む。処理を直に呼び、相手の行（is_admin を持つ行）を読んだ直後に race を走らせる
@@ -407,6 +440,24 @@ describe('読んでから書くまでの競合', () => {
     expect(await adminCount(target)).toBe(1);
     expect((await userRow(target, another.userId!))!.is_admin).toBe(1);
     expect(await logsOf(target, 'user', another.userId!)).toHaveLength(0);
+  });
+
+  test('自分を読んだ後に、もう1人の管理者が自分を解除したら、自分の解除は 409 の last_admin で、管理者が1人残る', async () => {
+    const target = await createTarget();
+    const another = await secondAdmin(target);
+    await expect(
+      runWithRace(
+        userAdminUpdateOperation,
+        target,
+        target.admin,
+        { user_id: target.admin.userId, is_admin: false },
+        async () => {
+          expect((await setAdmin(target, another, another.userId!, false)).status).toBe(200);
+        },
+      ),
+    ).rejects.toMatchObject({ status: 409, code: 'conflict', details: { reason: 'last_admin' } });
+    expect(await adminCount(target)).toBe(1);
+    expect((await userRow(target, target.admin.userId!))!.is_admin).toBe(1);
   });
 
   test('相手を読んだ後に自分が解除されたら、指名も無効化も 403 の forbidden で書かない', async () => {
@@ -640,6 +691,69 @@ describe('user-disable', () => {
 });
 
 describe('user-enable', () => {
+  test('無効の間にその人のログインに結ばれた、無効にする前の招待（Google のメールで待っていた招待）は、有効に戻すときに取り消す。無効の間に作った招待は残す', async () => {
+    const target = await createTarget();
+    const { organization } = target;
+    const person = target.member;
+    const userId = person.userId!;
+    // 無効にする前に作った Google の招待。メールアドレスで待っているので、無効化では取り消されない
+    const waiting = await createInvitation(
+      organization,
+      target.otherWorkspace.id,
+      target.admin.userId!,
+      { provider: 'google', subject: '' },
+      {
+        login_provider: 'google',
+        login_subject: null,
+        login_email: 'nagi@example.test',
+        claim_token_hash: hash64(),
+        claim_expires_at: '2999-01-01T00:00:00.000Z',
+        login_name: 'nagi@example.test',
+        created_at: '2026-10-20T00:00:00.000Z',
+      },
+    );
+    const res = await disable(target, target.admin, userId);
+    expect(res.status).toBe(200);
+    const db = dbOf(target);
+    expect(
+      (await db.first(db.statement((q) => q.selectFrom('invitations').select('status').where('id', '=', waiting.id))))!
+        .status,
+    ).toBe('pending');
+
+    // 無効の間に、本人が招待の URL から結んだ（その人のログインの手段と ID が入る）
+    await db.run(
+      db.statement((q) =>
+        q
+          .updateTable('invitations')
+          .set({
+            login_provider: person.login.provider,
+            login_subject: person.login.subject,
+            login_email: null,
+            claim_token_hash: null,
+            claim_expires_at: null,
+          })
+          .where('id', '=', waiting.id),
+      ),
+    );
+    // 無効の間に作った招待（無効にした日時より後）は、管理者が招待し直したものなので残す
+    const reinvited = await createInvitation(organization, target.workspace.id, target.admin.userId!, person.login, {
+      created_at: '2999-01-01T00:00:00.000Z',
+    });
+
+    const enabled = await enable(target, target.admin, userId);
+    expect(enabled.status).toBe(200);
+    const statusOf = async (invitationId: string) =>
+      (await db.first(db.statement((q) => q.selectFrom('invitations').selectAll().where('id', '=', invitationId))))!;
+    const revoked = await statusOf(waiting.id);
+    expect(revoked.status).toBe('revoked');
+    expect(revoked.responded_at).not.toBeNull();
+    expect((await logsOf(target, 'invitation', waiting.id)).map((log) => [log.workspace_id, log.changes])).toEqual([
+      [target.otherWorkspace.id, { status: ['pending', 'revoked'] }],
+    ]);
+    expect((await statusOf(reinvited.id)).status).toBe('pending');
+    expect(await logsOf(target, 'invitation', reinvited.id)).toHaveLength(0);
+  });
+
   test('有効に戻してもログインはできるが、所属は戻らず、招待し直すまで組織に入れない', async () => {
     const target = await createTarget();
     await admitElsewhere(target.member);

@@ -6,6 +6,7 @@
   import { userConflictReasonOf } from '../../../shared/operations/organization/user.ts';
   import type { OutputOf } from '../../../shared/operations/define.ts';
   import { callOperation, type ApiResult } from '../../api.ts';
+  import { focusPageHeading } from '../../focus-heading.ts';
   import { formatLocalDate } from '../../format.ts';
   import { isUnauthenticated, loginUrl } from '../../login-redirect.ts';
   import { showToast } from '../../toast.svelte.ts';
@@ -21,7 +22,10 @@
   // 行: 名前（アバター付き）と無効の印、管理者の切り替え、所属の数、最後に入った日、無効にする／有効に戻す。
   // - 自分の行には「無効にする」を出さない（API も 409 の self で断る）。無効の人の切り替えは押せない（disabled）
   // - 「無効にする」は確認のダイアログを経る。所属と担当が外れ、有効に戻しても招待し直しが要ることを伝える
-  // - 自分の管理者の解除も確認を経る。解除できたら、組織の枠（管理者の判定）を読み直す（この画面は「見つからない」になる）
+  // - 自分の管理者の解除も確認を経る（待つ間、切り替えは今の値のまま）。無効でない管理者が自分だけなら、確認を出さずにその場で断る。
+  //   解除できたら、組織の枠（管理者の判定）を読み直し（この画面は「見つからない」になる）、見出しへフォーカスを移す
+  // - 通ったら、応答の値で行を先に書き換えてから読み直す（読み直しが失敗しても、見た目が書いた後の値とずれない）
+  // - 無効の人の押せない切り替えには、理由を読み上げの説明（aria-describedby）で結ぶ。入ったことの無い人の「—」には見えない文字を添える
   // - 409 は理由（details.reason）ごとに、そのほかの失敗は種類ごとにトーストで知らせ、一覧を読み直す
   // 操作は1件ずつ送り、送っている間はどの行の操作も aria-disabled にして押しても無視する。
   // 画面の見出しの集計（無効でないユーザーの数、管理者の数）は oncounts で渡す（読めるまでは null）
@@ -47,15 +51,33 @@
   // 確かめのダイアログで聞いている操作。disable は無効にする、revokeSelf は自分の管理者の解除
   let pending = $state<{ kind: 'disable' | 'revokeSelf'; user: User } | null>(null);
 
+  // 読み上げの説明（aria-describedby）の id の前置き
+  const uid = $props.id();
+
+  // 一覧を入れ替え、見出しの集計を渡す。読み込みのほか、操作が通ったときに応答の値で先に行を書き換えるのにも使う
+  // （読み直しが失敗しても、見た目が書いた後の値とずれないように）
+  function applyUsers(next: User[]): void {
+    users = next;
+    oncounts({
+      users: next.filter((user) => user.disabled_at === null).length,
+      admins: next.filter((user) => user.is_admin && user.disabled_at === null).length,
+    });
+  }
+
+  function applyState(state: { user_id: string; is_admin: boolean; disabled_at: string | null }): void {
+    applyUsers(
+      users.map((user) =>
+        user.id === state.user_id ? { ...user, is_admin: state.is_admin, disabled_at: state.disabled_at } : user,
+      ),
+    );
+  }
+
+  // 無効でない管理者の数。自分しかいなければ、自分の解除は送らずに断る
+  const activeAdminCount = $derived(users.filter((user) => user.is_admin && user.disabled_at === null).length);
+
   const section = new SectionLoad(
     () => callOperation(userList, {}, { slug: currentSlug }),
-    (data) => {
-      users = data.users;
-      oncounts({
-        users: data.users.filter((user) => user.disabled_at === null).length,
-        admins: data.users.filter((user) => user.is_admin && user.disabled_at === null).length,
-      });
-    },
+    (data) => applyUsers(data.users),
   );
 
   // slug が替わったら、前の組織の一覧を捨てて読み直す
@@ -103,38 +125,60 @@
     else showToast(t('userUpdateFailed', { name }), 'alert');
   }
 
-  // 送っている間に押された切り替えは、変わらないよう止める（aria-disabled は押すことを止めない）
-  function guardToggle(event: MouseEvent): void {
-    if (busyId !== null) event.preventDefault();
+  // 切り替えを押したとき（変わる前）。送っている間は変えない（aria-disabled は押すことを止めない）。
+  // 自分の解除は、切り替えを外れた見た目にせず（既定の動きを止める）、確認のダイアログを経てから送る。
+  // 無効でない管理者が自分だけなら、確認も出さずにその場で断る（API も 409 の last_admin で断る）
+  function clickToggle(event: MouseEvent, user: User): void {
+    if (busyId !== null) {
+      event.preventDefault();
+      return;
+    }
+    if (user.id !== meId || !user.is_admin) return;
+    event.preventDefault();
+    const input = event.currentTarget as HTMLInputElement;
+    if (activeAdminCount <= 1) {
+      showToast(t('userErrorLastAdmin', words), 'alert');
+      return;
+    }
+    void (async () => {
+      if (await confirmAction({ kind: 'revokeSelf', user }, input)) await sendAdmin(user, false, input);
+    })();
   }
 
-  async function toggleAdmin(user: User, event: Event & { currentTarget: HTMLInputElement }): Promise<void> {
+  // 切り替えが変わったとき（自分の解除のほか）
+  function changeToggle(event: Event & { currentTarget: HTMLInputElement }, user: User): void {
     const input = event.currentTarget;
-    const next = input.checked;
     if (busyId !== null || user.disabled_at !== null) {
       input.checked = user.is_admin;
       return;
     }
+    void sendAdmin(user, input.checked, input);
+  }
+
+  async function sendAdmin(user: User, next: boolean, input: HTMLInputElement): Promise<void> {
+    if (busyId !== null) return;
     const self = user.id === meId;
-    if (self && !next && !(await confirmAction({ kind: 'revokeSelf', user }, input))) {
-      input.checked = user.is_admin;
-      return;
-    }
     const token = section.token();
     busyId = user.id;
     try {
       const result = await callOperation(userAdminUpdate, { user_id: user.id, is_admin: next }, { slug: currentSlug });
       if (!section.isCurrent(token)) return;
       if (result.ok) {
+        applyState(result.data);
         showToast(t(next ? 'userDesignated' : 'userRevoked', { name: user.name, admin: t('admin') }), 'check');
-        // 自分を解除したら、管理者の判定を読み直す（この画面は「見つからない」になる）
+        // 自分を解除したら、管理者の判定を読み直す（この画面は「見つからない」になる）。押した切り替えが消えるので、
+        // 見出しへフォーカスを移す
         if (self && !next) {
           await invalidateAll();
+          await tick();
+          focusPageHeading();
           return;
         }
       } else {
         input.checked = user.is_admin;
         await reportFailure(result, user);
+        // 403 は組織の枠を読み直している（この画面は「見つからない」になる）ので、一覧は読み直さない
+        if (result.status === 403) return;
       }
       await section.load();
     } finally {
@@ -154,6 +198,7 @@
         : await callOperation(userEnable, { user_id: user.id }, { slug: currentSlug });
       if (!section.isCurrent(token)) return;
       if (result.ok) {
+        applyState(result.data);
         showToast(
           disabling
             ? t('userDisabled', { name: user.name })
@@ -210,14 +255,28 @@
                     disabled={user.disabled_at !== null}
                     aria-disabled={busyId !== null}
                     aria-label={t('userAdminToggleLabel', { name: user.name, admin: t('admin') })}
-                    onclick={guardToggle}
-                    onchange={(event) => void toggleAdmin(user, event)}
+                    aria-describedby={user.disabled_at !== null ? `${uid}-disabled-${user.id}` : undefined}
+                    onclick={(event) => clickToggle(event, user)}
+                    onchange={(event) => changeToggle(event, user)}
                   />
                 </label>
+                {#if user.disabled_at !== null}
+                  <!-- 押せない理由。読み上げだけに出す（無効の印は名前の列にある） -->
+                  <span class="visually-hidden" id={`${uid}-disabled-${user.id}`}
+                    >{t('userAdminToggleDisabledNote', words)}</span
+                  >
+                {/if}
               </td>
               <td class="is-num" data-label={t('userWorkspaceCountHeader')}>{user.workspace_count}</td>
               <td class="mono" data-label={t('userLastSeenHeader')}>
-                {user.last_seen_at === null ? t('userNeverSeen') : formatLocalDate(user.last_seen_at)}
+                {#if user.last_seen_at === null}
+                  <!-- 「—」は読み上げで意味を持たないので、見えない文字で添える -->
+                  <span aria-hidden="true">{t('userNeverSeen')}</span><span class="visually-hidden"
+                    >{t('userNeverSeenText')}</span
+                  >
+                {:else}
+                  {formatLocalDate(user.last_seen_at)}
+                {/if}
               </td>
               <td class="is-actions">
                 {#if user.disabled_at !== null}
