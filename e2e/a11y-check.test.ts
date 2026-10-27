@@ -1,7 +1,12 @@
 // axe の検査の関数（e2e/helpers.ts）と除外の一覧（e2e/ui-exclusions.ts）が空振りしないことを確かめる（#334）。
 // 壊した小さな HTML を page.setContent で置き、違反を拾って落ちることを見る。サーバーには触らない
 import { expect, test } from './fixtures.ts';
-import { excludeKnownViolations, expectNoA11yViolations, findA11yViolations } from './helpers.ts';
+import {
+  excludeKnownViolations,
+  expectNoA11yViolations,
+  expectNoA11yViolationsInThemes,
+  findA11yViolations,
+} from './helpers.ts';
 import {
   isAxeCheck,
   nonAxeChecks,
@@ -68,6 +73,33 @@ test('除外は、その規則の当たった要素だけを外し、当たら�
   expect(remaining.map((violation) => violation.rule)).toEqual(['color-contrast']);
   expect([...used]).toEqual([hit]);
   expect(staleExclusions('today', isAxeCheck, used, list)).toEqual([otherRule, missing]);
+});
+
+test('画面のテストの入口は、4つのテーマで出た違反をまとめて落ち、当たらなくなった除外だけでも落ちる', async ({
+  page,
+}) => {
+  await page.setContent(BROKEN);
+  // 除外が無ければ、2つの違反を出たテーマとともに並べて落ちる
+  await expect(expectNoA11yViolationsInThemes(page, 'today', [])).rejects.toThrow(
+    /- button-name: button（simple_light、simple_dark、medieval、modern）/,
+  );
+  await expect(expectNoA11yViolationsInThemes(page, 'today', [])).rejects.toThrow(/- color-contrast: p（/);
+  // 違反をすべて除外で外しても、どれにも当たらない除外が残れば落ちる
+  const covering: UiExclusion[] = [
+    { check: 'button-name', selector: '.icon-only', screen: 'today', reason: '確かめ', issue: 1 },
+    { check: 'color-contrast', selector: '.faint', screen: 'today', reason: '確かめ', issue: 1 },
+  ];
+  await expectNoA11yViolationsInThemes(page, 'today', covering);
+  const missing: UiExclusion = {
+    check: 'color-contrast',
+    selector: '.gone',
+    screen: 'today',
+    reason: '確かめ',
+    issue: 1,
+  };
+  await expect(expectNoA11yViolationsInThemes(page, 'today', [...covering, missing])).rejects.toThrow(
+    /当たらなくなった除外が 1 件ある。[\s\S]*- today color-contrast \.gone/,
+  );
 });
 
 test('除外の一覧の検査の種類は、axe の規則の ID か target-44 か overflow で、理由と Issue の番号がある', async ({

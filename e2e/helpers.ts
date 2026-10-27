@@ -1,15 +1,8 @@
 import AxeBuilder from '@axe-core/playwright';
-import { expect, type BrowserContext, type Locator, type Page } from '@playwright/test';
+import { expect, test, type BrowserContext, type Locator, type Page } from '@playwright/test';
 import { SEED_SESSIONS } from '../seed/sessions.ts';
 import { sessionCookieName } from '../src/shared/session-cookie.ts';
-import {
-  exclusionsFor,
-  formatStaleExclusions,
-  isAxeCheck,
-  staleExclusions,
-  type UiExclusion,
-  type UiScreen,
-} from './ui-exclusions.ts';
+import { exclusionsFor, formatStaleExclusions, isAxeCheck, type UiExclusion, type UiScreen } from './ui-exclusions.ts';
 
 // axe で確かめる規則。WCAG 2.2 の A と AA（文字のコントラストを含む）。best-practice は入れない（#320）
 export const A11Y_TAGS = ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa'];
@@ -26,8 +19,17 @@ export interface A11yViolation {
 
 // 今の画面に axe を走らせ、違反を要素ごとに並べて返す
 export async function findA11yViolations(page: Page): Promise<A11yViolation[]> {
+  return (await runA11y(page)).violations;
+}
+
+// undecided は、axe が判定を保留した（incomplete の）文字のコントラストの要素の数。
+// 地のグラデーションの上の文字などで、違反に数えないので別に返す
+async function runA11y(page: Page): Promise<{ violations: A11yViolation[]; undecided: number }> {
   const results = await new AxeBuilder({ page }).withTags(A11Y_TAGS).analyze();
-  return results.violations.flatMap((violation) =>
+  const undecided = results.incomplete
+    .filter((result) => result.id === 'color-contrast')
+    .reduce((sum, result) => sum + result.nodes.length, 0);
+  const violations = results.violations.flatMap((violation) =>
     violation.nodes.map((node) => ({
       rule: violation.id,
       target: node.target.map((part) => (Array.isArray(part) ? part.join(' >>> ') : part)).join(' '),
@@ -36,6 +38,7 @@ export async function findA11yViolations(page: Page): Promise<A11yViolation[]> {
       helpUrl: violation.helpUrl,
     })),
   );
+  return { violations, undecided };
 }
 
 // 違反のうち、除外の一覧の要素に当たるものを外す。used は、実際に要素を外した除外
@@ -95,13 +98,25 @@ export async function expectNoA11yViolations(page: Page, screen: UiScreen): Prom
 export const A11Y_THEMES = ['simple_light', 'simple_dark', 'medieval', 'modern'] as const;
 
 // 落ち着いた画面に4つのテーマを順に当てて axe を走らせ、違反の無いことと、その画面の除外がどれかのテーマで当たったことを確かめる。
-// 同じ要素の同じ違反は、出たテーマをまとめて1件にする
-export async function expectNoA11yViolationsInThemes(page: Page, screen: UiScreen): Promise<void> {
+// 同じ要素の同じ違反は、出たテーマをまとめて1件にする。exclusions は、壊した HTML で確かめるときだけ差し替える。
+// axe が判定を保留した文字のコントラストの数は、テーマごとにテストの annotation に出す（保留が増えても違反にならないため、見えるようにする）
+export async function expectNoA11yViolationsInThemes(
+  page: Page,
+  screen: UiScreen,
+  exclusions: readonly UiExclusion[] = exclusionsFor(screen, isAxeCheck),
+): Promise<void> {
   const used = new Set<UiExclusion>();
   const found = new Map<string, A11yViolation & { themes: string[] }>();
+  const undecided: string[] = [];
   for (const theme of A11Y_THEMES) {
     await applyTheme(page, theme);
-    const result = await checkA11y(page, screen);
+    const run = await runA11y(page);
+    // 画面の読み直し（組織の枠の applyOrganization）で DB のテーマに戻っていたら、別のテーマを測ったことになる
+    const applied = await page.evaluate(() => document.documentElement.dataset.theme);
+    if (applied !== theme)
+      throw new Error(`[${screen}] テーマ ${theme} を当てたが、axe の後に ${applied} になっていた`);
+    undecided.push(`${theme} ${run.undecided}`);
+    const result = await excludeKnownViolations(page, run.violations, exclusions);
     for (const exclusion of result.used) used.add(exclusion);
     for (const violation of result.remaining) {
       const key = `${violation.rule} ${violation.target}`;
@@ -110,9 +125,12 @@ export async function expectNoA11yViolationsInThemes(page: Page, screen: UiScree
       else found.set(key, { ...violation, themes: [theme] });
     }
   }
+  test
+    .info()
+    .annotations.push({ type: 'axe の保留（color-contrast）', description: `${screen}: ${undecided.join('、')}` });
   const failures: string[] = [];
   if (found.size > 0) failures.push(`[${screen}] ${formatA11yViolations([...found.values()])}`);
-  const stale = staleExclusions(screen, isAxeCheck, used);
+  const stale = exclusions.filter((exclusion) => !used.has(exclusion));
   if (stale.length > 0) failures.push(formatStaleExclusions(stale));
   if (failures.length > 0) throw new Error(failures.join('\n\n'));
 }
