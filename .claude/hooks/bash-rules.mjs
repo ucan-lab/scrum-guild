@@ -949,10 +949,12 @@ function lifecycleOf(spec, command, args, at) {
 
 // exec（pnpm exec、pnpm dlx、npm exec、npm x、yarn exec、bun x）の後ろの経由先を判定する。
 // pnpm の shell-mode（-c、--shell-mode。exec の前でも後ろでも効き、値を取らない）では、位置引数を空白でつないだ文字列をシェルで動かす。
-// npm の --call（-c、一意な前置きの --cal も）の値と、道具の前の npm_config_call= の値もシェルの文字列として動かす（後者は judgeSegment が見る）
+// npm の --call（-c、一意な前置きの --cal も）の値と、道具の前の npm_config_call= の値もシェルの文字列として動かす（後者は judgeSegment が見る）。
+// 同じコマンドの前の区切りで npm_config_call を設定した後（ctx.env、judgeBash が積む）は、値を読まずに確認を挟む
 function judgeExec(spec, args, prefix, ctx, { at, dir, place, shell }) {
   const results = [];
   if (spec.calls) {
+    if (ctx.env?.[NPM_CALL_VARIABLE]) results.push([ASK, NPM_CALL_SET_REASON]);
     const calls = npmCalls(spec, args);
     if (!calls) return [[ASK, UNREADABLE_FLAG_REASON]];
     for (const script of calls) results.push(judgeBash(script, { ...ctx, cwd: dir, place, depth: ctx.depth + 1 }));
@@ -967,6 +969,23 @@ function judgeExec(spec, args, prefix, ctx, { at, dir, place, shell }) {
     else results.push(...judgeVia(prefix, args, target.at, target, ctx));
   }
   return results.filter(Boolean);
+}
+
+// npx と pnpx を、npm exec と pnpm dlx として判定する。args は npx か pnpx の後ろの語、prefix はその前の語。
+// npx は引数を npm exec に渡し、最初の位置引数の前に -- を差し込む（npm 11.20 の bin/npx-cli.js）ので、npx vitest -c x の -c x は
+// vitest の引数で、npm の --call ではない。名前の位置を npm の表で読み（表に無いフラグは値とも名前とも読む）、読み方ごとに
+// npm exec <名前の前> -- <名前から後ろ> を判定する。位置引数が無いか、名前が -- の次の語なら差し込まない。
+// pnpx は pnpm dlx と同じに動く（pnpm 12.12）ので、pnpm dlx <後ろ> として読む
+function judgeNpx(tool, args, prefix, ctx) {
+  if (tool === 'pnpx') return judgePackageManager('pnpm', concatWords(['dlx'], args), prefix, ctx);
+  const base = { dir: ctx.dir, place: ctx.place };
+  const { readings, reason } = nameReadings(PACKAGE_MANAGERS.npm, args, 0, base, base, { exec: true });
+  if (reason) return [[ASK, reason]];
+  const ats = new Set(readings.map(({ at }) => (at > 0 && args[at - 1] === '--' ? -1 : at)));
+  return [...ats].flatMap((at) => {
+    const exec = at === -1 ? concatWords(['exec'], args) : concatWords(['exec'], sliceWords(args, 0, at), ['--'], sliceWords(args, at));
+    return judgePackageManager('npm', exec, prefix, ctx);
+  });
 }
 
 // from から後ろの位置引数（フラグとその値を飛ばす。-- の後ろは全部）
@@ -2056,6 +2075,7 @@ function xargsReadsFile(flags) {
 function judgeSegment(words, ctx) {
   const ci = commandIndex(words);
   const results = [];
+  const outer = ctx;
   if (setsWorkersCi(words, ci)) results.push([DENY, WORKERS_CI_REASON]);
   const tool = ci === -1 ? '' : baseName(words[ci]);
   const args = ci === -1 ? [] : sliceWords(words, ci + 1);
@@ -2075,6 +2095,13 @@ function judgeSegment(words, ctx) {
   results.push(...prefixCommands(words).map((script) => judgeBash(script, nextCtx)).filter(Boolean));
   // npm_config_call='…' npx のように、道具の前の代入で npm exec にシェルの文字列を渡す。npx だけなら ci は -1 なので先に見る
   results.push(...configuredCalls(words, ci).map((script) => judgeBash(script, nextCtx)).filter(Boolean));
+  // 前置きとして飛ばした npx と pnpx は、npm exec と pnpm dlx として読む（npx --call='…' だけなら ci は -1 なので先に見る）。
+  // 場所は npx より前の env -C までで決める。npx の後ろの入れ子の npx は、経由先に掛け直したときに見る
+  const npx = prefixes.find((j) => ['npx', 'pnpx'].includes(prefixName(words[j])));
+  if (npx !== undefined) {
+    const npxCtx = { ...outer, ...dirAfterEnv(words, npx, outer.dir, outer.envFrom ?? 0, outer.place) };
+    results.push(...judgeNpx(prefixName(words[npx]), sliceWords(words, npx + 1), sliceWords(words, 0, npx), npxCtx));
+  }
   if (ci === -1) return results;
   // 道具の名前が変数や $(...)、glob で決まると、何を実行するかが分からない（"$(which wrangler)" deploy）
   if (shapeAt(words, ci).includes(DYNAMIC) || expandsAt(words, ci)) results.push([ASK, TOOL_EXPANDS_REASON]);
@@ -2172,6 +2199,11 @@ function switchedBranch(args) {
 // 作業場所の判定を変える環境変数。CDPATH は相対の cd と pushd の行き先を、GIT_DIR と GIT_WORK_TREE は git の作業コピーを変える
 const GIT_LOCATION_VARIABLES = ['GIT_DIR', 'GIT_WORK_TREE'];
 const LOCATION_VARIABLES = ['CDPATH', ...GIT_LOCATION_VARIABLES];
+// npm exec、npm x、npx がシェルの文字列として動かす設定の変数（npm は大文字小文字を区別しない）。前の区切りで設定したものは値を読まない
+const NPM_CALL_VARIABLE = 'npm_config_call';
+const NPM_CALL_MENTION = /(^|[^\w])npm_config_call([^\w]|$)/i;
+const NPM_CALL_SET_REASON =
+  '前の区切りで npm_config_call を設定した後の npm exec、npm x、npx は、設定したシェルの文字列を動かしうるが、値を判定しない。人が確かめる';
 // 同じコマンドの中で設定した変数の値。値は読まないので、設定されたことだけを表す空でない文字列
 const SET_IN_COMMAND = '(このコマンドの中で設定)';
 
@@ -2188,19 +2220,22 @@ const IN_SHELL_RUNNERS = new Set(['eval', 'source', '.']);
 // once は道具の前の一回限りの代入（GIT_DIR=x git status、CDPATH=x cd src）で、その区切りだけに効く。
 // after はその区切りから後ろに効くもの。設定の書き方は read CDPATH、printf -v CDPATH、for CDPATH in、: ${CDPATH:=x}、cdpath=(x) と多いので、
 // 道具の前の代入を除くどこかの語に名前があれば設定とみなす（単独の代入と export、declare などの引数もこれに当たる）。
-// export、declare などの引数に展開の語（export $(echo GIT_DIR=x)、export $X）があるときと、eval、source、. の後は、全部の名前を設定とみなす
+// export、declare などの引数に展開の語（export $(echo GIT_DIR=x)、export $X）があるときと、eval、source、. の後は、全部の名前を設定とみなす。
+// NPM_CALL_VARIABLE も同じ規則で after に入れる。道具の前の一回限りの代入（npm_config_call='…' npx）は configuredCalls が値を読むので once に入れない
 function variablesSetBy(words, ci) {
   const once = new Set();
   const after = new Set();
   const isPrefix = (i) => ci !== -1 && i < ci && isAssignment(words[i]);
+  const mentionedAfter = (pattern) => words.some((w, i) => !isPrefix(i) && pattern.test(w)) || redirectTargets(words).some((t) => pattern.test(t));
   for (const [name, pattern] of Object.entries(VARIABLE_MENTIONS)) {
     if (words.some((w, i) => isPrefix(i) && w.startsWith(`${name}=`))) once.add(name);
-    if (words.some((w, i) => !isPrefix(i) && pattern.test(w)) || redirectTargets(words).some((t) => pattern.test(t))) after.add(name);
+    if (mentionedAfter(pattern)) after.add(name);
   }
+  if (mentionedAfter(NPM_CALL_MENTION)) after.add(NPM_CALL_VARIABLE);
   if (ci !== -1) {
     const tool = baseName(words[ci]);
     const declaresUnknown = ENV_DECLARERS.has(tool) && words.some((_, i) => i > ci && isUnresolved(words, i));
-    if (declaresUnknown || IN_SHELL_RUNNERS.has(tool)) for (const name of LOCATION_VARIABLES) after.add(name);
+    if (declaresUnknown || IN_SHELL_RUNNERS.has(tool)) for (const name of [...LOCATION_VARIABLES, NPM_CALL_VARIABLE]) after.add(name);
   }
   return { once, after };
 }
