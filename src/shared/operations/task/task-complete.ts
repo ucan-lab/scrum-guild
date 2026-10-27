@@ -3,7 +3,9 @@ import { idSchema } from '../../id.ts';
 import { defineOperation } from '../define.ts';
 
 // タスクを完了にする。tasks、completions、xp_grants（起票と完了。ポイントが 1 以上のとき）、change_logs を1回の batch で書く。
-// 対象は、親のないタスクと、ストーリーの下のタスク。completions の区分は、親のストーリーの親のエピック、ストーリー、タスクの順に、
+// 対象は、バックログの親のないタスクと、ストーリーの下のタスク（スプリントに入っているものを含む）。進行中のスプリントの中なら
+// 完了の列へ移し、始まっていないスプリントの中なら外してスプリントの外の完了にする。sprint_entries は書かない（外すときを除く）。
+// completions の区分は、親のストーリーの親のエピック、ストーリー、タスクの順に、
 // 最初に入っているものを写す。無いタスク（別の組織のタスクを含む）は 404、すでに完了なら 409 の conflict
 export const taskComplete = defineOperation({
   name: 'task-complete',
