@@ -1026,9 +1026,11 @@ function judgeBuiltin(spec, command, args, prefix, ctx, reading) {
   }
   if (spec.exec.includes(command)) return judgeExec(spec, args, prefix, ctx, reading);
   // npm init <初期化子>（create、innit も）は、npm exec と同じく libnpmexec に --call と -c の文字列を渡して動かす
-  // （npm 11.20 の lib/commands/init.js の execCreate）。初期化子の無い npm init は動かさない
+  // （npm 11.20 の lib/commands/init.js の execCreate）。初期化子の無い npm init は動かさない。
+  // 前の区切りで npm_config_call を設定した後は、npm exec と同じく確認を挟む
   const called = [];
   if (spec.calls && command === 'init' && commandPositionals(spec, args, at + 1).length > 0) {
+    if (ctx.env?.[NPM_CALL_VARIABLE]) called.push([ASK, NPM_CALL_SET_REASON]);
     const calls = npmCalls(spec, args);
     if (!calls) return [[ASK, UNREADABLE_FLAG_REASON]];
     called.push(...calls.map((script) => judgeBash(script, { ...ctx, cwd: loc.dir, place: loc.place, depth: ctx.depth + 1 })).filter(Boolean));
@@ -1050,10 +1052,10 @@ function judgeBuiltin(spec, command, args, prefix, ctx, reading) {
     ...called,
     ...locs.flatMap((l) => {
       if (SCRIPT_COMMANDS[command]) return judgeScripts(SCRIPT_COMMANDS[command], rest, l, ctx);
-    const lifecycle = lifecycleOf(spec, command, args, at);
-    if (lifecycle) return judgeScripts(lifecycle, [], l, ctx);
-    // ほかの組み込みも、同じ名前の pre と post のスクリプトがあれば見る（止めすぎの側。場所が分からなくても確認は挟まない）
-    return l.dir && ctx.packageDirOf(l.dir) ? judgeScripts([name], rest, l, ctx) : [];
+      const lifecycle = lifecycleOf(spec, command, args, at);
+      if (lifecycle) return judgeScripts(lifecycle, [], l, ctx);
+      // ほかの組み込みも、同じ名前の pre と post のスクリプトがあれば見る（止めすぎの側。場所が分からなくても確認は挟まない）
+      return l.dir && ctx.packageDirOf(l.dir) ? judgeScripts([name], rest, l, ctx) : [];
     }),
   ];
 }
@@ -2393,7 +2395,7 @@ const LOCATION_VARIABLES = ['CDPATH', ...GIT_LOCATION_VARIABLES];
 const NPM_CALL_VARIABLE = 'npm_config_call';
 const NPM_CALL_MENTION = /(^|[^\w])npm_config_call([^\w]|$)/i;
 const NPM_CALL_SET_REASON =
-  '前の区切りで npm_config_call を設定した後の npm exec、npm x、npx は、設定したシェルの文字列を動かしうるが、値を判定しない。人が確かめる';
+  '前の区切りで npm_config_call を設定した（か名前に触れた）後の npm exec、npm x、npx、初期化子を渡した npm init と npm create は、設定したシェルの文字列を動かしうるが、値を判定しない。人が確かめる';
 // 同じコマンドの中で設定した変数の値。値は読まないので、設定されたことだけを表す空でない文字列
 const SET_IN_COMMAND = '(このコマンドの中で設定)';
 

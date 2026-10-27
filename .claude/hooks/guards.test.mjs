@@ -4626,7 +4626,7 @@ describe('bash-rules: #356 npx と pnpx を npm exec と pnpm dlx として読�
   });
 });
 
-describe('bash-rules: #356 崩す（1周目）', () => {
+describe('bash-rules: #356 npx-cli.js の前読みと前の区切りの npm_config_call', () => {
   const packages = {
     '/repo': {
       test: 'node --test',
@@ -4724,30 +4724,29 @@ describe('bash-rules: #356 崩す（1周目）', () => {
     test(`[完了条件] ${JSON.stringify(command)} は確認を挟む`, () => check(command, 'ask'));
   }
 
-  // 以下は実装の欠陥（失敗する）。
   // npx-cli.js（npm 11.20）は取り除いた短いフラグ -n を removedOpts に入れ、opts にもあるので次の語を値ごと消す。
   // その後の -c は npm の --call として動く。実機: `npx -n foo -c 'echo HI2'` は
-  // 「npx: the --n argument has been removed.」の後に HI2 を出す。フックは -n を値を取らないフラグ（NPM_SHORT の n）と読み、
-  // foo を名前として -- を差し込むので、-c を foo の引数とみなして通す
+  // 「npx: the --n argument has been removed.」の後に HI2 を出す。-n を値を取らないフラグと読むと、foo を名前として -- を差し込み、
+  // -c を foo の引数とみなして通してしまう
   for (const [command, expected] of [
     [`npx -n foo -c 'wrangler deploy'`, 'deny'],
     [`npx -n foo -c 'git push origin main'`, 'deny'],
     [`npx -n foo -c "rm -rf .claude/hooks"`, 'ask'],
   ]) {
-    test(`[欠陥] ${command} は ${expected}（npx は -n を値ごと消す）`, () => check(command, expected));
+    test(`[npx-cli.js の前読み] ${command} は ${expected}（npx は -n を値ごと消す）`, () => check(command, expected));
   }
 
   // npm の -m は --message（nopt の型は String だけ）。nopt は String の型のフラグの次の語が -x か --x で始まれば値に取らない
   // （node_modules/nopt/lib/nopt-lib.js の isTypeDef(argType, StringType) の枝）。npx-cli.js も message を opts に持たないので、
   // 次の -c を値に取らない。実機: `npx -m -c 'echo HI8'`、`npm exec -m -c 'echo HI13'`、`npx -s -m -c 'echo HI44'` はどれも HI を出す。
-  // フックは NPM_SHORT で m を値を取るフラグと読み、-c を --message の値として飛ばすので通す（npm exec にもある #355 からの欠陥）
+  // m を値を取るフラグとだけ読むと、-c を --message の値として飛ばして通してしまう（npm exec にも #355 からあった）
   for (const [command, expected] of [
     [`npx -m -c 'wrangler deploy'`, 'deny'],
     [`npm exec -m -c 'wrangler deploy'`, 'deny'],
     [`npx -s -m -c 'git push origin main'`, 'deny'],
     [`npx -m -c "rm -rf .claude/hooks"`, 'ask'],
   ]) {
-    test(`[欠陥] ${command} は ${expected}（-m は -c を値に取らない）`, () => check(command, expected));
+    test(`[nopt の String の型] ${command} は ${expected}（-m は -c を値に取らない）`, () => check(command, expected));
   }
 });
 
@@ -4779,16 +4778,27 @@ describe('bash-rules: #356 npx-cli.js の前読みと nopt の String のフラ�
   ]) {
     test(`${command} は ${expected}`, () => assert.deepEqual(literally(command), [expected, expected], command));
   }
+
+  // 前の区切りで npm_config_call を設定した後の npm init <x> と npm create <x> も、npm exec と同じく確認を挟む。
+  // 初期化子の無い npm init は libnpmexec を通らないので挟まない
+  for (const [command, expected] of [
+    ['export npm_config_call=x; npm init foo', 'ask'],
+    ['export npm_config_call=x; npm create foo', 'ask'],
+    ['export npm_config_call=x; npm innit foo', 'ask'],
+    ['export npm_config_call=x; npm init -y', 'allow'],
+  ]) {
+    test(`${JSON.stringify(command)} は ${expected}`, () => assert.deepEqual(literally(command), [expected, expected], command));
+  }
 });
 
-describe('bash-rules: #356 崩す（2周目）', () => {
+describe('bash-rules: #356 = の形の - で始まる値と - を重ねた名前', () => {
   const pm = (command, cwd = '/repo') => judgeBash(command, { cwd, branchOf: () => '356-npx-pnpx-exec', scriptOf: () => undefined, packageDirOf: () => cwd ?? undefined })?.[0] ?? 'allow';
   const check = (command, expected) => {
     assert.equal(pm(command), expected, command);
     assert.deepEqual(literally(command), [expected, expected], command);
   };
 
-  // 今の判定を保つもの（1周目までに無い読み方）
+  // npx の前読みと npm の前置きの読み方
   for (const [command, expected] of [
     // npx は表に無い --cal の次の語を値として飛ばし、npm は --cal を --call の前置きと読む（= の無い形）
     [`npx --cal 'wrangler deploy'`, 'deny'],
@@ -4814,11 +4824,11 @@ describe('bash-rules: #356 崩す（2周目）', () => {
     [`npm exec --call 'echo hi'`, 'allow'],
     [`npm exec -c '' foo`, 'allow'],
   ]) {
-    test(`[保つ] ${command} は ${expected}`, () => check(command, expected));
+    test(`[npx-cli.js の前読み] ${command} は ${expected}`, () => check(command, expected));
   }
 
   // 長いフラグの並びでも止まらずに判定を返す（読み方の数の上限で枝を切る）
-  test('[保つ] 2000 個のフラグの npx も 5 秒以内に allow 以外を返す', () => {
+  test('[読み方の上限] 2000 個のフラグの npx も 5 秒以内に allow 以外を返す', () => {
     const started = Date.now();
     for (const command of [`npx ${'--zz x '.repeat(2000)}-c 'wrangler deploy'`, `npx ${'-m '.repeat(2000)}-c 'wrangler deploy'`]) {
       assert.notEqual(pm(command), 'allow', command.slice(0, 40));
@@ -4826,15 +4836,13 @@ describe('bash-rules: #356 崩す（2周目）', () => {
     assert.ok(Date.now() - started < 5000);
   });
 
-  // 以下は実装の欠陥（失敗する）。
   // nopt（npm 11.20 の node_modules/nopt/lib/nopt-lib.js の parse）は、= の形（--message=-c）も = で2語に分けてから同じ String の枝を通す。
-  // 値の語が /^-{1,2}[^-]+/ に当たれば値を空にして i-- し、値だった語をフラグとして読み直す。docs/development.md は
-  // 「npm の型が String だけのフラグ（--call、-c、--message、-m）は、nopt と同じく - で始まる次の語を値に取らない」と書くが、
-  // 実装（readFlag の skipsFlagValue）は eq === -1 のときだけ当てるので、= の後ろの -c と --call= を値として飛ばし、続く文字列を通す。
+  // 値の語が /^-{1,2}[^-]+/ に当たれば値を空にして i-- し、値だった語をフラグとして読み直す。
+  // = の無い形だけに String の規則を当てると、= の後ろの -c と --call= を値として飛ばし、続く文字列を通してしまう。
   // 実機（npm 11.20、--offline）: `npm exec --message=-c 'echo A1'` は A1、`npm x -m=-c 'echo A2'` は A2、
   // `npx -m=-c 'echo A3'` は A3（npx-cli.js が -m=-c を --message と -c の2語に広げ、-c を --call にして次の語を値に飛ばすので -- を差し込まない）、
   // `npm exec --call=-c 'echo A5'` は A5、`npm exec --mess=-c 'echo B1'` は B1、`npm exec -m=--call='echo B4'` は B4、
-  // `npx -m=--call='echo B6'` は B6、`npm exec --tag=-c 'echo B2'` は B2（--tag も型が String だけ）を出す。フックはどれも allow
+  // `npx -m=--call='echo B6'` は B6、`npm exec --tag=-c 'echo B2'` は B2（--tag も型が String だけ）を出す
   for (const command of [
     `npm exec --message=-c 'wrangler deploy'`,
     `npm x -m=-c 'wrangler deploy'`,
@@ -4845,14 +4853,13 @@ describe('bash-rules: #356 崩す（2周目）', () => {
     `npx -m=--call='wrangler deploy'`,
     `npm exec --tag=-c 'wrangler deploy'`,
   ]) {
-    test(`[欠陥] ${command} は止まる（nopt は = の後ろの - で始まる値もフラグとして読み直す）`, () => check(command, 'deny'));
+    test(`[= の形の - で始まる値] ${command} は止まる（nopt は = の後ろの - で始まる値もフラグとして読み直す）`, () => check(command, 'deny'));
   }
 
   // nopt の resolveShort は先頭の - を全部外してから shorthands を引くので、--c と ---c は -c（--call）、---call= は --call= になる。
-  // npx-cli.js も arg.replace(/^-+/, '') で同じく c と call に直す。docs/development.md の「シェルの文字列」は npm の --call と -c の値を
-  // Bash のコマンドとして見ると書き、Issue の背景は npx --call='…' が allow になることを欠陥として挙げる。
+  // npx-cli.js も arg.replace(/^-+/, '') で同じく c と call に直す。
   // 実機（npm 11.20、--offline）: `npx --c 'echo D1'` は D1、`npm exec --c 'echo D2'` は D2、`npx ---c 'echo D3'` は D3、
-  // `npm exec ---c 'echo D4'` は D4、`npx ---call='echo D5'` は D5、`npm exec ---call='echo D6'` は D6 を出す。フックはどれも allow
+  // `npm exec ---c 'echo D4'` は D4、`npx ---call='echo D5'` は D5、`npm exec ---call='echo D6'` は D6 を出す
   for (const command of [
     `npx --c 'wrangler deploy'`,
     `npm exec --c 'wrangler deploy'`,
@@ -4862,11 +4869,11 @@ describe('bash-rules: #356 崩す（2周目）', () => {
     `npm exec ---call='wrangler deploy'`,
     `npx --c 'git push origin main'`,
   ]) {
-    test(`[欠陥] ${command} は止まる（-- と --- の前置きの c と call も --call）`, () => check(command, 'deny'));
+    test(`[- を重ねた名前] ${command} は止まる（-- と --- の前置きの c と call も --call）`, () => check(command, 'deny'));
   }
 });
 
-describe('bash-rules: #356 崩す（3周目）', () => {
+describe('bash-rules: #356 nopt の値の取り方と npm init と create の --call', () => {
   const packages = {
     '/repo': { test: 'node --test', build: 'vite build', hello: 'echo hello' },
     // 名前はデプロイに見えないが、本体は本番に出す
@@ -4888,7 +4895,7 @@ describe('bash-rules: #356 崩す（3周目）', () => {
     assert.deepEqual(literally(command), [expected, expected], command);
   };
 
-  // 今の判定を保つもの（2周目までに無い読み方）
+  // 真偽の打ち消し、- だけの語、場所のフラグ、npm の名前の前置き
   for (const [command, expected] of [
     // --no- の付いた形は nopt で真偽になり次の語を取らないので、後ろの -c は --call（実機: npm --no-call exec -c 'echo T6' は T6）
     [`npm --no-call exec -c 'wrangler deploy'`, 'deny'],
@@ -4901,7 +4908,7 @@ describe('bash-rules: #356 崩す（3周目）', () => {
     // npm の名前の一意でない前置き（ex は exec、explain、explore に当たる）は確認を挟む
     [`npm ex -c 'wrangler deploy'`, 'ask'],
   ]) {
-    test(`[保つ] ${command} は ${expected}`, () => check(command, expected));
+    test(`[nopt の読み方] ${command} は ${expected}`, () => check(command, expected));
   }
 
   // npm run と npm test は --call を使わない（実機: npm run build -c 'echo RC1' は B1 だけ、npm --call 'echo RC2' test は T1 だけを出す）。
@@ -4915,11 +4922,11 @@ describe('bash-rules: #356 崩す（3周目）', () => {
     ['npm init -y', 'allow'],
     ['npm --prefix sub run build', 'deny'],
   ]) {
-    test(`[保つ] ${command}（${cwd ?? '/repo'}）は ${expected}`, () => assert.equal(pm(command, cwd), expected, command));
+    test(`[スクリプトを走らせる形] ${command}（${cwd ?? '/repo'}）は ${expected}`, () => assert.equal(pm(command, cwd), expected, command));
   }
 
   // npm（npx ではない）の nopt の読み直しも、長いフラグの並びで止まらずに返す
-  test('[保つ] 2000 個のフラグの npm も 5 秒以内に判定を返す', () => {
+  test('[読み方の上限] 2000 個のフラグの npm も 5 秒以内に判定を返す', () => {
     const started = Date.now();
     for (const command of [
       `npm ${'--cal '.repeat(2000)}exec -c 'wrangler deploy'`,
@@ -4931,16 +4938,14 @@ describe('bash-rules: #356 崩す（3周目）', () => {
     assert.ok(Date.now() - started < 5000);
   });
 
-  // 以下は実装の欠陥（失敗する）。
   // nopt（npm 11.20 の node_modules/nopt/lib/nopt-lib.js の parse）は、型が String だけでも Boolean でもないフラグ
   // （--otp、--userconfig、--cache、--package、--prefix、-L、-w）の次の語を、- で始まっても値に取る（-- だけの語を除く）。
-  // フックの表に無いフラグ（--otp、--userconfig）は、docs/development.md の「フラグ」の行が「次の語を値と読む形と名前と読む形の両方で判定し」と書くが、
-  // 実装（nameReadings、npmCalls、npxArgvs の後の npm の読み方）は次の語が - で始まると値と読む形を作らない。
-  // そのため、値として消える -C、-L、-w、--prefix、-c、-m をフラグとして読み、その次の -c や exec を値として飛ばして通す。
+  // 表に無いフラグ（--otp、--userconfig）の次の - で始まる語を値と読む形を作らないと、値として消える -C、-L、-w、--prefix、-c、-m を
+  // フラグとして読み、その次の -c や exec を値として飛ばして通してしまう。
   // 実機（npm 11.20、--offline）: `npm exec --otp -C -c 'echo R1'` は R1、`npx --otp -C -c 'echo R2'` は R2、
   // `npx --userconfig -C -c 'echo R3'` は R3、`npm --call 'echo R4' --otp --call exec` は R4、`npm exec --otp -L -c 'echo R5'` は R5、
   // `npm exec --otp --prefix -c 'echo R7'` は R7、`npm exec --otp -w -c 'echo R9'` は R9、`npm --otp -c exec -c 'echo PWN1'` は PWN1、
-  // `npm --otp -m exec -c 'echo PWN3'` は PWN3 を出し、scripts.test が echo T1 の場所で `npm --otp -C test` は T1 を出す。フックはどれも allow
+  // `npm --otp -m exec -c 'echo PWN3'` は PWN3 を出し、scripts.test が echo T1 の場所で `npm --otp -C test` は T1 を出す
   for (const [command, expected] of [
     [`npx --otp -C -c 'wrangler deploy'`, 'deny'],
     [`npx --userconfig -C -c 'git push origin main'`, 'deny'],
@@ -4953,30 +4958,27 @@ describe('bash-rules: #356 崩す（3周目）', () => {
     [`npm --otp -m exec -c 'wrangler deploy'`, 'deny'],
     [`npm --call 'wrangler deploy' --otp --call exec`, 'deny'],
   ]) {
-    test(`[欠陥] ${command} は ${expected}（表に無いフラグは - で始まる次の語も値に取りうる）`, () => check(command, expected));
+    test(`[表に無いフラグの値] ${command} は ${expected}（表に無いフラグは - で始まる次の語も値に取りうる）`, () => check(command, expected));
   }
-  test('[欠陥] /repo/sub の npm --otp -C test は止まる（--otp が -C を値に取り、sub の test を走らせる）', () => {
+  test('[表に無いフラグの値] /repo/sub の npm --otp -C test は止まる（--otp が -C を値に取り、sub の test を走らせる）', () => {
     assert.equal(pm('npm --otp -C test', '/repo/sub'), 'deny');
   });
 
   // nopt は = の形を、フラグとして読む語のときだけ2語に分ける。String でない値のフラグ（-L、表に無い --otp）の次の語は、= を含んでも
-  // 1語のまま値に取る。実装（noptArgvs）は前の語が値を取るかを見ずに -y=-C を -y と -C に分けるので、-C が次の語を値として飛ばす。
-  // af38185（この Issue の前）のフックはどれも deny だったので、この Issue の変更で緩んだ。
+  // 1語のまま値に取る。前の語が値を取るかを見ずに -y=-C を -y と -C に分けると、-C が次の語を値として飛ばしてしまう。
   // 実機（npm 11.20、--offline、scripts.test が echo T1）: `npm -L -y=-C test` と `npm --otp -y=-C test` は T1、
-  // `npm exec -L -y=-C -c 'echo E1'` は E1、`npm exec -L -s=-C -c 'echo E3'` は E3 を出す。フックはどれも allow
+  // `npm exec -L -y=-C -c 'echo E1'` は E1、`npm exec -L -s=-C -c 'echo E3'` は E3 を出す
   for (const command of [`npm exec -L -y=-C -c 'wrangler deploy'`, `npm exec -L -s=-C -c 'git push origin main'`]) {
-    test(`[欠陥] ${command} は止まる（値に取られる = の語を分けない）`, () => check(command, 'deny'));
+    test(`[値に取られる = の語] ${command} は止まる（値に取られる = の語を分けない）`, () => check(command, 'deny'));
   }
   for (const command of ['npm -L -y=-C test', 'npm --otp -y=-C test']) {
-    test(`[欠陥] /repo/sub の ${command} は止まる（値に取られる = の語を分けない）`, () => assert.equal(pm(command, '/repo/sub'), 'deny'));
+    test(`[値に取られる = の語] /repo/sub の ${command} は止まる（値に取られる = の語を分けない）`, () => assert.equal(pm(command, '/repo/sub'), 'deny'));
   }
 
   // npm init <initializer>（npm create）は、npm exec と同じ libnpmexec に flatOptions ごと渡すので、--call と -c の文字列をシェルで動かす
-  // （npm 11.20 の lib/commands/init.js の execCreate）。docs/development.md の「シェルの文字列」は npm の --call と -c の値を
-  // Bash のコマンドとして見ると書き、道具の前の npm_config_call='…' npm init foo は今も deny になる。
+  // （npm 11.20 の lib/commands/init.js の execCreate）。道具の前の npm_config_call='…' npm init foo と同じく、文字列を判定する。
   // 実機（npm 11.20、--offline、node_modules に create-foo を置いた場所）: `npm init foo -c 'echo INIT1'` は INIT1、
-  // `npm create foo -c 'echo INIT2'` は INIT2、`npm init foo --call='echo INIT4'` は INIT4、`npm -c 'echo INIT5' init foo` は INIT5 を出す。
-  // フックはどれも allow
+  // `npm create foo -c 'echo INIT2'` は INIT2、`npm init foo --call='echo INIT4'` は INIT4、`npm -c 'echo INIT5' init foo` は INIT5 を出す
   for (const [command, expected] of [
     [`npm init foo -c 'wrangler deploy'`, 'deny'],
     [`npm create foo -c 'git push origin main'`, 'deny'],
@@ -4984,6 +4986,6 @@ describe('bash-rules: #356 崩す（3周目）', () => {
     [`npm -c 'wrangler deploy' init foo`, 'deny'],
     [`npm init foo -c "rm -rf .claude/hooks"`, 'ask'],
   ]) {
-    test(`[欠陥] ${command} は ${expected}（npm init の初期化子も --call を動かす）`, () => check(command, expected));
+    test(`[npm init と create の --call] ${command} は ${expected}（npm init の初期化子も --call を動かす）`, () => check(command, expected));
   }
 });
