@@ -332,10 +332,10 @@
   let epicDialog = $state<ReturnType<typeof EpicDialog>>();
   // 完了にした行の完了の印へフォーカスを移すために持つ。読むのは操作の後の処理の中だけ。
   // bind:this で行ごとに書き込むので $state にする（ただの入れ物だと開発時に binding_property_non_reactive が出る）
-  const entries = $state<Record<string, ReturnType<typeof TaskEntry> | undefined>>({});
+  const entries = $state<Record<string, ReturnType<typeof TaskEntry> | null | undefined>>({});
   // ストーリーとエピックの行。起票した親の行を開く、完了の後にフォーカスを戻すために持つ
-  const treeRows = $state<Record<string, ReturnType<typeof TreeStory> | undefined>>({});
-  const epicRows = $state<Record<string, ReturnType<typeof TreeEpic> | undefined>>({});
+  const treeRows = $state<Record<string, ReturnType<typeof TreeStory> | null | undefined>>({});
+  const epicRows = $state<Record<string, ReturnType<typeof TreeEpic> | null | undefined>>({});
 
   // ストーリーの行と、その親のエピックの行を開く
   function expandStory(storyId: string): void {
