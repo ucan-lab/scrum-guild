@@ -2,6 +2,8 @@
   import { resolve } from '$app/paths';
   import { page } from '$app/state';
   import type { BacklogTask } from '../../shared/operations/task/backlog-tree.ts';
+  import type { DropRow } from '../backlog-drop.ts';
+  import type { BacklogDnd } from '../backlog-dnd.svelte.ts';
   import { t } from '../vocabulary.svelte.ts';
   import Avatar from './Avatar.svelte';
   import DefinitionChip from './DefinitionChip.svelte';
@@ -19,7 +21,10 @@
   // 端で動かせない向き（canMoveUp、canMoveDown が偽）は、フォーカスを失わないよう disabled でなく aria-disabled にする。
   // onMoveParent を渡すと「親を移す」も出す。完了にした行には出さない。
   // タイトルの下（.entry-meta）に、振ったリポジトリ（kit.js の repoTag。git のアイコン）と、showCategory のとき（親のないタスク）だけ区分を出す。
-  // 親のあるタスクの区分は親の行に出ているので、繰り返さない
+  // 親のあるタスクの区分は親の行に出ているので、繰り返さない。
+  // onMove と dnd を渡すと（書き込めるとき）、行の先頭にドラッグのつまみ（.grip。飾りで aria-hidden）を置く。つかむのはここだけで、
+  // 完了にした行はつかめない（列だけ空ける）。ほかの行をつかんだときの落とす位置は、行の data-drop（線）で示す。狭い幅と指の画面では CSS がつまみを隠す。
+  // ドラッグの代わりは「上へ」「下へ」と Alt と ↑ ↓
   let {
     task,
     clock,
@@ -32,6 +37,7 @@
     onMove,
     onMoveParent,
     showCategory = false,
+    dnd,
   }: {
     task: BacklogTask;
     clock: { today: string; weekStart: number };
@@ -44,11 +50,14 @@
     onMove?: (task: BacklogTask, delta: -1 | 1) => void;
     onMoveParent?: (task: BacklogTask, trigger: HTMLElement) => void;
     showCategory?: boolean;
+    dnd?: BacklogDnd;
   } = $props();
 
   const category = $derived(showCategory ? task.category : null);
 
   const movable = $derived(onMove !== undefined && !done);
+  const dropRow = $derived<DropRow>({ kind: 'task', id: task.id });
+  const hasGrip = $derived(onMove !== undefined && dnd !== undefined);
 
   function move(delta: -1 | 1): void {
     if (!movable || (delta < 0 ? !canMoveUp : !canMoveDown)) return;
@@ -81,7 +90,26 @@
 <!-- キーは中のリンクとボタンから届く。行そのものはフォーカスを受けない -->
 <!-- svelte-ignore a11y_no_static_element_interactions -->
 <!-- data-row-id は、画面が読み直した後に同じ行の操作へフォーカスを戻すのに使う -->
-<div class="entry" class:is-done={done} onkeydown={keydown} data-row-id={task.id}>
+<div
+  class="entry"
+  class:is-done={done}
+  class:has-grip={hasGrip}
+  class:is-dragging={dnd?.isDragging('task', task.id)}
+  class:is-dropped={dnd?.isFlashing('task', task.id)}
+  onkeydown={keydown}
+  data-row-id={task.id}
+  data-drop={dnd?.markOf(dropRow)}
+  {@attach dnd?.target(dropRow)}
+>
+  {#if hasGrip}
+    {#if movable}
+      <span class="grip" aria-hidden="true" {@attach dnd?.handle({ kind: 'task', id: task.id })}
+        ><Icon name="grip" /></span
+      >
+    {:else}
+      <span class="grip is-off" aria-hidden="true"></span>
+    {/if}
+  {/if}
   <span aria-hidden="true"></span>
   <div class="entry-main">
     <!-- 押しても、フォーカスとスクロールの位置は動かさない（引き出しが閉じたとき、data-task-id で探してフォーカスを戻す） -->

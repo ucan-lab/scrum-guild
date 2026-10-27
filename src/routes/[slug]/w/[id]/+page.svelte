@@ -16,6 +16,8 @@
   import TreeEpic from '../../../../lib/components/TreeEpic.svelte';
   import TreeStory from '../../../../lib/components/TreeStory.svelte';
   import { callOperation, type ApiResult } from '../../../../lib/api.ts';
+  import { BacklogDnd } from '../../../../lib/backlog-dnd.svelte.ts';
+  import { indexTree, ROOT, type DropMove, type DropRow } from '../../../../lib/backlog-drop.ts';
   import { MoveQueue } from '../../../../lib/move-queue.ts';
   import { showToast } from '../../../../lib/toast.svelte.ts';
   import { t } from '../../../../lib/vocabulary.svelte.ts';
@@ -28,9 +30,12 @@
 
   // ワークスペースの画面（backlog.html の木と起票）。最上段は見本どおり「エピック → 親のないストーリー → 親のないタスク」の3段で、
   // それぞれ position の順。エピックの下にはストーリーを、ストーリーの下には未完了のタスクを並べ、完了したタスクは件数の1行にする。
-  // 絞り込み、折りたたみを開ける操作、ドラッグでの並べ替え、エピックの並べ替えは、それぞれの機能の Issue で足す。
+  // 絞り込み、折りたたみを開ける操作、エピックの並べ替え（#308）は、それぞれの機能の Issue で足す。
   // 並べ替えは、行の「上へ」「下へ」と Alt と ↑ ↓ で、同じ親（親なしのタスク、親のないストーリー、エピックの下のストーリーはそれぞれの並び）の中で1つ動かす。
-  // タスクとストーリーの行の「親を移す」は、ダイアログで選んだ親の末尾へ移す。どちらも先に画面を動かしてから送り、送る順は守る（MoveQueue）。
+  // タスクとストーリーの行の「親を移す」は、ダイアログで選んだ親の末尾へ移す。
+  // 行の先頭のつまみのドラッグ（BacklogDnd。判定は backlog-drop.ts）は、離れた位置や別の親へ、行の間の線か親の行の囲みに落として動かす。
+  // ドラッグの間に木が読み直されたら、そのドラッグは取りやめる。落とした行は、少しのあいだ光らせる。
+  // どれも先に画面を動かしてから送り、送る順は守る（MoveQueue）。
   // 失敗したら理由を知らせて読み直す。動かした並びは読み直すまで画面に持ち、読み直したら捨てる（読み直した値が送った後の並び）。
   // 送り終える前に木が読み直されたら、送り終えた後にもう一度読み直す（捨てた移動があれば知らせる）。
   // 見出しは見本どおり画面の名前（掲示板／バックログ）で、小見出しがワークスペースの名前。見出しの右に、エピックを作るボタン、
@@ -51,9 +56,6 @@
   let dodOpen = $state(false);
   // 期日の印を決める、ワークスペースの今日の日付と週の始まり（API の値）
   const clock = $derived({ today: tree?.today ?? '', weekStart: tree?.week_start ?? 1 });
-
-  // 親なしのタスクと親のないストーリーの並びのキー。ストーリーとエピックの ID とぶつからない
-  const ROOT = '';
 
   // 読み直したら（枠の読み直し、ワークスペースの切り替え）、足した行と完了の印と、画面で動かした並びを捨てる
   let added = $state<{ task: BacklogTask; storyId: string | null }[]>([]);
@@ -173,6 +175,35 @@
   );
   const taskPlaces = $derived(placesOf(taskLists));
   const rootRows = $derived(taskLists[ROOT] ?? []);
+
+  // ドラッグの判定に渡す、今の木の並び（画面で動かした並びを含む）
+  const dropIndex = $derived(
+    indexTree({
+      openEpics: epics.filter((epic) => epic.completed_at === null && epic.canceled_at === null).map((epic) => epic.id),
+      storyLists: Object.fromEntries(
+        Object.entries(storyLists).map(([key, list]) => [
+          key,
+          list.map((story) => ({ id: story.id, open: story.completed_at === null })),
+        ]),
+      ),
+      taskLists: Object.fromEntries(Object.entries(taskLists).map(([key, list]) => [key, list.map((task) => task.id)])),
+    }),
+  );
+  const dnd = new BacklogDnd({
+    index: () => dropIndex,
+    enabled: () => canWrite,
+    onDrop: (drop) => (drop.move.kind === 'task' ? dropTask(drop.move) : dropStory(drop.move)),
+  });
+  // 木の行へ渡す。書き込めないときは渡さず、つまみも落とし先も出さない
+  const rowDnd = $derived(canWrite ? dnd : undefined);
+  $effect(() => dnd.monitor());
+  // 読み直したら、つかんでいるドラッグは取りやめる（離しても何も送らない）。印と光らせる行も捨てる
+  $effect.pre(() => {
+    void tree;
+    dnd.reset();
+  });
+  // 親なしのタスクの折りたたみの行は、親なしの末尾の落とし先
+  const rootTail: DropRow = { kind: 'tail', parent: 'root', id: ROOT };
 
   function storyRows(story: BacklogStory): BacklogTask[] {
     return taskLists[story.id] ?? [];
@@ -529,25 +560,90 @@
     movedParents = { ...movedParents, [task.id]: storyId };
     taskOrders = { ...taskOrders, [key]: [...ids, task.id] };
     if (storyId !== null) expandStory(storyId);
+    void tick().then(() => entries[task.id]?.focusMoveParent());
+    void announce(taskParentAnnouncement(task, storyId));
+    const input = { workspace_id: workspace.id, task_id: task.id, story_id: storyId };
+    send(() => callOperation(taskMove, input, { slug: page.params.slug ?? '' }), 'task');
+  }
+
+  // 親を移して末尾に置いたときの読み上げ
+  function taskParentAnnouncement(task: BacklogTask, storyId: string | null): string {
     const parent = storyId === null ? undefined : allStories.find((story) => story.id === storyId);
     // 親のストーリーがエピックの下なら、エピックの題も添える（同じ題のストーリーが、別のエピックの下にありうるため）
     const parentEpic = storyId === null ? undefined : parentEpicOf(storyId);
-    void tick().then(() => entries[task.id]?.focusMoveParent());
+    if (parent === undefined) return t('moveAnnouncedRoot', { title: task.title });
+    if (parentEpic === undefined) {
+      return t('moveAnnouncedUnder', { title: task.title, story: t('story'), parent: parent.title });
+    }
+    return t('moveAnnouncedUnderEpic', {
+      title: task.title,
+      epic: t('epic'),
+      epicTitle: parentEpic.title,
+      story: t('story'),
+      parent: parent.title,
+    });
+  }
+
+  function storyParentAnnouncement(story: BacklogStory, epicId: string | null): string {
+    const parent = epicId === null ? undefined : epics.find((epic) => epic.id === epicId);
+    return parent === undefined
+      ? t('moveAnnouncedRoot', { title: story.title })
+      : t('moveAnnouncedUnder', { title: story.title, story: t('epic'), parent: parent.title });
+  }
+
+  // つまみのドラッグで落とした。ボタンの並べ替えと同じく、先に画面を動かしてから送る。
+  // 親を移して末尾に置いたときは移した先を、それ以外は何番目かを読み上げる。行は動くが、フォーカスは動かさない（マウスの操作）。
+  // 落とした行は光らせる。畳まれた親は開く。直前の行は、末尾に置くときだけ省く
+  function dropTask(move: DropMove): void {
+    if (workspace === null) return;
+    const task = Object.values(taskLists)
+      .flat()
+      .find((row) => row.id === move.id);
+    if (task === undefined) return;
+    const key = move.parentId ?? ROOT;
+    const next = (taskLists[key] ?? []).map((row) => row.id).filter((id) => id !== task.id);
+    next.splice(move.index, 0, task.id);
+    movedParents = { ...movedParents, [task.id]: move.parentId };
+    taskOrders = { ...taskOrders, [key]: next };
+    if (move.parentId !== null) expandStory(move.parentId);
+    dnd.flash({ kind: 'task', id: task.id });
     void announce(
-      parent === undefined
-        ? t('moveAnnouncedRoot', { title: task.title })
-        : parentEpic === undefined
-          ? t('moveAnnouncedUnder', { title: task.title, story: t('story'), parent: parent.title })
-          : t('moveAnnouncedUnderEpic', {
-              title: task.title,
-              epic: t('epic'),
-              epicTitle: parentEpic.title,
-              story: t('story'),
-              parent: parent.title,
-            }),
+      move.atEnd && move.reparent
+        ? taskParentAnnouncement(task, move.parentId)
+        : t('moveAnnounced', { title: task.title, index: move.index + 1 }),
     );
-    const input = { workspace_id: workspace.id, task_id: task.id, story_id: storyId };
+    const input = {
+      workspace_id: workspace.id,
+      task_id: task.id,
+      story_id: move.parentId,
+      ...(move.afterId === undefined ? {} : { after_task_id: move.afterId }),
+    };
     send(() => callOperation(taskMove, input, { slug: page.params.slug ?? '' }), 'task');
+  }
+
+  function dropStory(move: DropMove): void {
+    if (workspace === null) return;
+    const story = allStories.find((row) => row.id === move.id);
+    if (story === undefined) return;
+    const key = move.parentId ?? ROOT;
+    const next = (storyLists[key] ?? []).map((row) => row.id).filter((id) => id !== story.id);
+    next.splice(move.index, 0, story.id);
+    movedStoryParents = { ...movedStoryParents, [story.id]: move.parentId };
+    storyOrders = { ...storyOrders, [key]: next };
+    if (move.parentId !== null) epicRows[move.parentId]?.expand();
+    dnd.flash({ kind: 'story', id: story.id });
+    void announce(
+      move.atEnd && move.reparent
+        ? storyParentAnnouncement(story, move.parentId)
+        : t('moveAnnounced', { title: story.title, index: move.index + 1 }),
+    );
+    const input = {
+      workspace_id: workspace.id,
+      story_id: story.id,
+      epic_id: move.parentId,
+      ...(move.afterId === undefined ? {} : { after_story_id: move.afterId }),
+    };
+    send(() => callOperation(storyMove, input, { slug: page.params.slug ?? '' }), 'story');
   }
 
   // ストーリーの親（エピック）を移す。タスクの親を移すのと同じ形
@@ -558,13 +654,8 @@
     movedStoryParents = { ...movedStoryParents, [story.id]: epicId };
     storyOrders = { ...storyOrders, [key]: [...ids, story.id] };
     if (epicId !== null) epicRows[epicId]?.expand();
-    const parent = epicId === null ? undefined : epics.find((epic) => epic.id === epicId);
     void tick().then(() => treeRows[story.id]?.focusMoveParent());
-    void announce(
-      parent === undefined
-        ? t('moveAnnouncedRoot', { title: story.title })
-        : t('moveAnnouncedUnder', { title: story.title, story: t('epic'), parent: parent.title }),
-    );
+    void announce(storyParentAnnouncement(story, epicId));
     const input = { workspace_id: workspace.id, story_id: story.id, epic_id: epicId };
     send(() => callOperation(storyMove, input, { slug: page.params.slug ?? '' }), 'story');
   }
@@ -597,6 +688,7 @@
     onMove={canWrite ? reorderTask : undefined}
     onMoveParent={canWrite && (place?.parentId != null || openStories.length > 0) ? openMoveDialog : undefined}
     showCategory={place?.parentId == null}
+    dnd={rowDnd}
   />
 {/snippet}
 
@@ -627,6 +719,7 @@
     canMoveDown={place !== undefined && place.index < place.count - 1}
     onMove={canWrite ? reorderStory : undefined}
     onMoveParent={canWrite && (place?.parentId != null || openEpics.length > 0) ? openStoryMoveDialog : undefined}
+    dnd={rowDnd}
   />
 {/snippet}
 
@@ -694,6 +787,7 @@
             pointsAll={points.all}
             {clock}
             empty={epicStories(epic).length === 0}
+            dnd={rowDnd}
             onEdit={(target, trigger) => epicDialog?.show(trigger, target.id)}
           >
             {#each epicStories(epic) as story (story.id)}
@@ -719,7 +813,7 @@
               {@render taskRow(task)}
             {/each}
             {#if tree.completed_count > 0}
-              <p class="tree-folded is-root">
+              <p class="tree-folded is-root" data-drop={rowDnd?.markOf(rootTail)} {@attach rowDnd?.target(rootTail)}>
                 {t('backlogFolded', { done: t('done'), count: tree.completed_count })}
               </p>
             {/if}

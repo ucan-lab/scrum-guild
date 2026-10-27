@@ -355,10 +355,10 @@ export const dictionary = defineDictionary({
   treeClose: workspace('{title}を閉じる', '{title}を閉じる'),
 
   // バックログの並べ替えと親の移動。{title} は動かす行の題
-  // {story} {task} は、その言葉づかいの言葉を画面が渡す。エピックの並べ替えは、エピックの画面の Issue（#65）で足す
+  // {story} {task} は、その言葉づかいの言葉を画面が渡す。エピックの並べ替えは #308 で足す
   backlogOrderNote: workspace(
-    '上にあるものほど優先します。{story}と{task}は、行の「上へ」「下へ」か、行の中にフォーカスを置いて Alt と ↑ ↓ で並べ替えます。',
-    '上にあるものほど優先します。{story}と{task}は、行の「上へ」「下へ」か、行の中にフォーカスを置いて Alt と ↑ ↓ で並べ替えます。',
+    '上にあるものほど優先します。{story}と{task}は、行の先頭のつまみをドラッグするか、行の「上へ」「下へ」か、行の中にフォーカスを置いて Alt と ↑ ↓ で並べ替えます。',
+    '上にあるものほど優先します。{story}と{task}は、行の先頭のつまみをドラッグするか、行の「上へ」「下へ」か、行の中にフォーカスを置いて Alt と ↑ ↓ で並べ替えます。',
   ),
   moveUp: organization('上へ', '上へ'),
   moveDown: organization('下へ', '下へ'),
