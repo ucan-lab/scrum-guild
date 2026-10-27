@@ -1,8 +1,18 @@
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  chmodSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, relative } from 'node:path';
 import { describe, test } from 'node:test';
 import {
   collectScreens,
@@ -27,9 +37,9 @@ import {
   screenTitle,
   shouldPost,
   shownScreens,
+  stageUploads,
   unusedExclusions,
   UPLOAD_KEY,
-  uploadLines,
   withoutExcluded,
   type Comparison,
   type Fetcher,
@@ -333,19 +343,89 @@ describe('上げる画像', () => {
     assert.deepEqual(mainUploads(head, { x: h('1') }), [h('2')]);
     assert.deepEqual(mainUploads(head, undefined), [h('1'), h('2')]);
   });
+});
 
-  test('上げる一覧を、手元のパスと上げる先の名前のタブ区切りの行にする', () => {
-    const locals = localFiles([
-      { local: '/r/a/evidence-1.png', hash: h('1') },
-      { local: '/r/b/evidence-1.png', hash: h('1') },
-    ]);
-    assert.equal(uploadLines([h('1')], 'pr', locals), `/r/a/evidence-1.png\timg/${h('1')}.png\n`);
-    assert.equal(uploadLines([h('1')], 'main', locals), `/r/a/evidence-1.png\tmain/img/${h('1')}.png\n`);
-    assert.throws(() => uploadLines([h('9')], 'pr', locals));
+describe('stageUploads', () => {
+  // 一時ディレクトリに手元の画像を置き、写す先の dir と一緒に渡す
+  const withTemp = (run: (root: string, locals: Map<string, string>) => void) => {
+    const root = mkdtempSync(join(tmpdir(), 'evidence-'));
+    try {
+      mkdirSync(join(root, 'a'));
+      writeFileSync(join(root, 'a', 'evidence-1.png'), png('1'));
+      writeFileSync(join(root, 'a', 'evidence-2.png'), png('2'));
+      run(
+        root,
+        localFiles([
+          { local: join(root, 'a', 'evidence-1.png'), hash: h('1') },
+          { local: join(root, 'a', 'evidence-2.png'), hash: h('2') },
+        ]),
+      );
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  };
+  const listFiles = (dir: string) =>
+    readdirSync(dir, { recursive: true, withFileTypes: true })
+      .filter((entry) => entry.isFile())
+      .map((entry) => relative(dir, join(entry.parentPath, entry.name)))
+      .sort();
+
+  test('上げる画像を、上げる先の名前どおりに写す（PR 用と main 用）', () => {
+    withTemp((root, locals) => {
+      const pr = join(root, 'pr');
+      assert.equal(stageUploads([h('1'), h('2')], 'pr', locals, pr), 2);
+      assert.deepEqual(listFiles(pr), [`img/${h('1')}.png`, `img/${h('2')}.png`]);
+      assert.deepEqual(readFileSync(join(pr, 'img', `${h('2')}.png`)), png('2'));
+      const main = join(root, 'main');
+      assert.equal(stageUploads([h('1')], 'main', locals, main), 1);
+      assert.deepEqual(listFiles(main), [`main/img/${h('1')}.png`]);
+    });
   });
 
-  test('手元のパスに制御文字があれば、行が崩れるので投げる', () => {
-    assert.throws(() => uploadLines([h('1')], 'pr', new Map([[h('1'), '/r/a\tb/evidence-1.png']])));
+  test('同じハッシュは1つだけ写す', () => {
+    withTemp((root, locals) => {
+      const dir = join(root, 'up');
+      assert.equal(stageUploads([h('1'), h('1')], 'pr', locals, dir), 1);
+      assert.deepEqual(listFiles(dir), [`img/${h('1')}.png`]);
+    });
+  });
+
+  test('上げる画像が無くても、写す先のディレクトリは作る', () => {
+    withTemp((root, locals) => {
+      const dir = join(root, 'up');
+      assert.equal(stageUploads([], 'pr', locals, dir), 0);
+      assert.deepEqual(readdirSync(dir), []);
+    });
+  });
+
+  test('写す先に前からあったものは消してから写す（上げる画像でないものを送らない）', () => {
+    withTemp((root, locals) => {
+      const dir = join(root, 'up');
+      mkdirSync(join(dir, 'img'), { recursive: true });
+      writeFileSync(join(dir, 'img', `${h('8')}.png`), 'old');
+      writeFileSync(join(dir, 'stray.txt'), 'old');
+      assert.equal(stageUploads([h('1')], 'pr', locals, dir), 1);
+      assert.deepEqual(readdirSync(dir), ['img']);
+      assert.deepEqual(readdirSync(join(dir, 'img')), [`${h('1')}.png`]);
+    });
+  });
+
+  test('手元に無いハッシュと、形の外れたハッシュは投げる', () => {
+    withTemp((root, locals) => {
+      const dir = join(root, 'up');
+      assert.throws(() => stageUploads([h('9')], 'pr', locals, dir));
+      const local = join(root, 'a', 'evidence-1.png');
+      assert.throws(() => stageUploads(['../main/latest'], 'pr', new Map([['../main/latest', local]]), dir));
+      assert.throws(() => stageUploads([h('A')], 'pr', new Map([[h('A'), local]]), dir));
+    });
+  });
+
+  test('手元のパスに制御文字があれば投げる', () => {
+    withTemp((root) => {
+      const dir = join(root, 'up');
+      assert.throws(() => stageUploads([h('1')], 'pr', new Map([[h('1'), '/r/a\tb/evidence-1.png']]), dir));
+      assert.throws(() => stageUploads([h('1')], 'pr', new Map([[h('1'), '/r/a\nb/evidence-1.png']]), dir));
+    });
   });
 });
 
@@ -515,17 +595,150 @@ const png = (rest: string) =>
   Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), Buffer.from(rest)]);
 
 describe('上げる先の名前の形', () => {
-  test('ci.yml と evidence-main.yml の送る前の検査は、UPLOAD_KEY と同じ形を求める', () => {
+  test('ci.yml と evidence-main.yml の送る前の検査は、UPLOAD_KEY と同じ形を求め、ディレクトリを1回で送る', () => {
     for (const [path, bucket, pattern] of [
       ['.github/workflows/ci.yml', 'pr', String.raw`^img/[0-9a-f]{64}\.png$`],
       ['.github/workflows/evidence-main.yml', 'main', String.raw`^main/img/[0-9a-f]{64}\.png$`],
     ] as const) {
-      assert.ok(readFileSync(new URL(`../${path}`, import.meta.url), 'utf8').includes(pattern), path);
+      const workflow = readFileSync(new URL(`../${path}`, import.meta.url), 'utf8');
+      assert.ok(workflow.includes(pattern), path);
+      assert.ok(workflow.includes('/evidence/upload'), path);
+      assert.ok(workflow.includes('! -type f ! -type d'), path);
+      assert.ok(workflow.includes('set -euo pipefail'), path);
+      // 送る段は下の「送る段のシェル」が手元でも走らせるので、macOS の find に無い GNU の拡張を使わない
+      assert.ok(!workflow.includes('-printf'), path);
+      // 送るのは UPLOAD_DIR を丸ごとの1回だけで、1枚ずつ送るループは残さない
+      assert.equal(workflow.match(/aws s3 cp "\$UPLOAD_DIR" "s3:\/\/\$BUCKET\/" --recursive/g)?.length, 1, path);
+      assert.ok(!workflow.includes("while IFS=$'\\t'"), path);
+      assert.ok(!workflow.includes('aws s3 cp "$file"'), path);
+      assert.ok(!workflow.includes('uploads.tsv'), path);
       const key = imageObjectKey(bucket, 'a'.repeat(64));
       assert.match(key, new RegExp(pattern));
       assert.match(key, UPLOAD_KEY);
     }
   });
+});
+
+// ワークフローの段の run: | の中身を取り出す（依存を入れないので YAML のパーサーは使わない）
+function stepScript(path: string, name: string): string {
+  const lines = readFileSync(new URL(`../${path}`, import.meta.url), 'utf8').split('\n');
+  const start = lines.findIndex((line) => line.trim().replace(/^- /, '') === `name: ${name}`);
+  assert.ok(start >= 0, `${path} に段「${name}」が無い`);
+  const run = lines.findIndex((line, i) => i > start && /^\s+run: \|$/.test(line));
+  assert.ok(run > start, `${path} の段「${name}」に run: | が無い`);
+  const indent = lines[run].search(/\S/);
+  const body: string[] = [];
+  for (const line of lines.slice(run + 1)) {
+    if (line.trim() !== '' && line.search(/\S/) <= indent) break;
+    body.push(line.slice(indent + 2));
+  }
+  return body.join('\n');
+}
+
+describe('送る段のシェル', () => {
+  // 引数を1行ずつ記録するだけの aws と gh を PATH の先頭に置いて動かす
+  const run = (script: string, root: string, upload: string) => {
+    const bin = join(root, 'bin');
+    mkdirSync(bin, { recursive: true });
+    for (const tool of ['aws', 'gh']) {
+      writeFileSync(join(bin, tool), `#!/bin/sh\necho "${tool} $*" >> "${join(root, 'calls')}"\n`);
+      chmodSync(join(bin, tool), 0o755);
+    }
+    writeFileSync(join(root, 'calls'), '');
+    const result = spawnSync('bash', ['-e', '-o', 'pipefail', '-c', script], {
+      env: {
+        PATH: `${bin}:${process.env.PATH}`,
+        ENDPOINT: 'https://r2.example/',
+        BUCKET: 'bucket',
+        UPLOAD_DIR: upload,
+        OUT_DIR: root,
+        SHA: 'f'.repeat(40),
+        REPO: 'o/r',
+      },
+      encoding: 'utf8',
+    });
+    const calls = readFileSync(join(root, 'calls'), 'utf8').split('\n').filter(Boolean);
+    return {
+      status: result.status,
+      stderr: result.stderr,
+      images: calls.filter((call) => call.includes('--content-type image/png')),
+    };
+  };
+
+  for (const [path, name, prefix] of [
+    ['.github/workflows/ci.yml', '画像を R2 に上げる', 'img'],
+    ['.github/workflows/evidence-main.yml', 'R2 に上げる', 'main/img'],
+  ] as const) {
+    const script = stepScript(path, name);
+    const withUpload = (fill: (upload: string) => void) => {
+      const root = mkdtempSync(join(tmpdir(), 'evidence-step-'));
+      try {
+        const upload = join(root, 'upload');
+        mkdirSync(join(upload, prefix), { recursive: true });
+        writeFileSync(join(root, 'manifest.json'), '{}');
+        fill(upload);
+        return run(script, root, upload);
+      } finally {
+        rmSync(root, { recursive: true, force: true });
+      }
+    };
+
+    test(`${path}: 何枚でも、画像は aws s3 cp --recursive の1回で送る`, () => {
+      const { status, images } = withUpload((upload) => {
+        for (const c of ['a', 'b', 'c']) writeFileSync(join(upload, prefix, `${c.repeat(64)}.png`), 'x');
+      });
+      assert.equal(status, 0);
+      assert.equal(images.length, 1);
+      assert.match(images[0], /--recursive/);
+      // 送る前の検査に加え、AWS CLI もシンボリックリンクの先を読まない
+      assert.match(images[0], /--no-follow-symlinks/);
+      assert.match(images[0], /--cache-control public, max-age=31536000, immutable/);
+    });
+
+    test(`${path}: 上げる画像が無ければ、画像を送らずに成功で終わる`, () => {
+      const { status, images } = withUpload(() => {});
+      assert.equal(status, 0);
+      assert.deepEqual(images, []);
+    });
+
+    for (const [label, fill] of [
+      ['形の外れた名前', (upload: string) => writeFileSync(join(upload, prefix, 'evil.png'), 'x')],
+      ['別のバケットの接頭辞', (upload: string) => writeFileSync(join(upload, `${'a'.repeat(64)}.png`), 'x')],
+      ['改行のある名前', (upload: string) => writeFileSync(join(upload, prefix, `${'a'.repeat(64)}.png\n`), 'x')],
+      [
+        // 1行ずつ読むと img/<h>.png と img/<h>.png の2行に割れ、どちらも形に合ってしまう
+        '改行で2つの名前に見えるディレクトリ',
+        (upload: string) => {
+          const dir = join(upload, prefix, `${'a'.repeat(64)}.png\n${prefix}`);
+          mkdirSync(dir, { recursive: true });
+          writeFileSync(join(dir, `${'c'.repeat(64)}.png`), 'x');
+        },
+      ],
+      [
+        'シンボリックリンク',
+        (upload: string) => symlinkSync('/etc/hostname', join(upload, prefix, `${'a'.repeat(64)}.png`)),
+      ],
+      ['送るディレクトリが無い', (upload: string) => rmSync(upload, { recursive: true })],
+    ] as const) {
+      test(`${path}: ${label}があれば、何も送らずに止まる`, () => {
+        const { status, images } = withUpload((upload) => {
+          writeFileSync(join(upload, prefix, `${'b'.repeat(64)}.png`), 'x');
+          fill(upload);
+        });
+        assert.notEqual(status, 0);
+        assert.deepEqual(images, []);
+      });
+    }
+
+    test(`${path}: 弾いた名前は、ワークフローのコマンドに読まれない形で出す`, () => {
+      const { status, stderr } = withUpload((upload) => {
+        writeFileSync(join(upload, prefix, `x\n::error::forged.png`), 'x');
+      });
+      assert.notEqual(status, 0);
+      assert.match(stderr, /送る先の名前の形が違う/);
+      assert.doesNotMatch(stderr, /^::/m);
+    });
+  }
 });
 
 describe('readScreenFiles', () => {

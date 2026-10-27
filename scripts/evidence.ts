@@ -2,8 +2,8 @@
 // 比べる、上げる先の名前を決める、コメントの本文を組むところをここに置き、node --test にかける。
 // R2 への送信とコメントの書き換えはワークフローの段が行う
 import { createHash } from 'node:crypto';
-import { appendFileSync, readdirSync, readFileSync, statSync } from 'node:fs';
-import { join } from 'node:path';
+import { appendFileSync, copyFileSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync } from 'node:fs';
+import { dirname, join } from 'node:path';
 
 // 画面の名前（test-results/ のテストごとのディレクトリと画像のファイル名）から、画像の中身の SHA-256 への対応
 export type Screens = Record<string, string>;
@@ -30,7 +30,8 @@ export const LATEST_MANIFEST = 'main/latest.json';
 // 公開の URL から一覧を読むときの上限
 export const FETCH_TIMEOUT_MS = 10_000;
 
-// R2 に送る先の名前の形。ワークフローの送る段も同じ形で確かめ、外れたら送らずに止める
+// R2 に送る先の名前の形。stageUploads はこの名前どおりにディレクトリへ写し、
+// ワークフローの送る段はディレクトリの中の名前を同じ形で確かめ、外れたら送らずに止める
 export const UPLOAD_KEY = /^(main\/)?img\/[0-9a-f]{64}\.png$/;
 
 const HASH = /^[0-9a-f]{64}$/;
@@ -476,16 +477,30 @@ export function localFiles(files: readonly { local: string; hash: string }[]): M
   return byHash;
 }
 
-// 上げる一覧を、ワークフローの段が読む「手元のパス<TAB>上げる先の名前」の行にする
-export function uploadLines(hashes: readonly string[], bucket: Bucket, locals: Map<string, string>): string {
-  return hashes
-    .map((hash) => {
-      const local = locals.get(hash);
-      if (local === undefined) throw new Error(`上げる画像が手元に無い: ${hash}`);
-      if (/\p{Cc}/u.test(local)) throw new Error(`上げる画像のパスに制御文字がある: ${JSON.stringify(local)}`);
-      return `${local}\t${imageObjectKey(bucket, hash)}\n`;
-    })
-    .join('');
+// 上げる画像を、dir の下に上げる先の名前どおりに写す。ワークフローの段は dir を aws s3 cp --recursive の1回で送る。
+// dir に前からあったものは消してから写す（--recursive は dir の中をすべて送るため）。
+// 画像が無くても dir は作る。写した枚数を返す
+export function stageUploads(
+  hashes: readonly string[],
+  bucket: Bucket,
+  locals: Map<string, string>,
+  dir: string,
+): number {
+  rmSync(dir, { recursive: true, force: true });
+  mkdirSync(dir, { recursive: true });
+  let count = 0;
+  for (const hash of new Set(hashes)) {
+    const local = locals.get(hash);
+    if (local === undefined) throw new Error(`上げる画像が手元に無い: ${hash}`);
+    // readScreenFiles が制御文字のあるテストのディレクトリを読まないので、ここに来るのはその守りが崩れたときだけ。
+    // 公開のバケットに送るものの出どころなので、深い守りとして止める
+    if (/\p{Cc}/u.test(local)) throw new Error(`上げる画像のパスに制御文字がある: ${JSON.stringify(local)}`);
+    const dest = join(dir, imageObjectKey(bucket, hash));
+    mkdirSync(dirname(dest), { recursive: true });
+    copyFileSync(local, dest);
+    count += 1;
+  }
+  return count;
 }
 
 export type Fetcher = (

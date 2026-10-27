@@ -1,7 +1,7 @@
 // CI の evidence のジョブ: 成果物 e2e-* の画像をベースの main の画像と比べ、上げる画像の一覧とコメントの本文を書く。
 // 環境変数: RESULTS_DIR（成果物を落とした所）、OUT_DIR（書き出す所）、EVIDENCE_MAIN_PUBLIC_URL（変更前の画像と一覧）、
 // EVIDENCE_PR_PUBLIC_URL（PR にしか無い画像）、BASE_SHA、HEAD_SHA。
-// 書き出すもの: OUT_DIR/uploads.tsv（手元のパス<TAB>PR 用のバケットの中の名前）、OUT_DIR/comment.md。
+// 書き出すもの: OUT_DIR/upload/（上げる画像を PR 用のバケットの中の名前どおりに並べたもの）、OUT_DIR/comment.md。
 // ジョブの出力 post=（コメントが無ければ新しく付けるか。scripts/evidence.ts の shouldPost）を書く
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -17,8 +17,8 @@ import {
   requiredEnv,
   shouldPost,
   shownScreens,
+  stageUploads,
   unusedExclusions,
-  uploadLines,
   writeOutput,
 } from './evidence.ts';
 
@@ -45,7 +45,7 @@ if (unused.length > 0) {
 }
 
 mkdirSync(outDir, { recursive: true });
-writeFileSync(join(outDir, 'uploads.tsv'), uploadLines(uploads, 'pr', localFiles(files)));
+stageUploads(uploads, 'pr', localFiles(files), join(outDir, 'upload'));
 writeFileSync(
   join(outDir, 'comment.md'),
   commentBody({
