@@ -587,6 +587,23 @@ export async function waitForSettled(page: Page): Promise<void> {
   await expect(page.locator('[aria-busy="true"]:visible')).toHaveCount(0);
 }
 
+// 書体の読み込みが終わり、続けて2回の描画で縦のスクロールの位置が変わらなくなってから、その位置を返す。
+// 書体は font-display: swap で、読み込み中は代わりの書体で組む。IBM Plex Mono の latin が届く前は、バックログのページが 1px 高く、
+// 一番下まで送った位置が書体の差し替えだけで 1px 動く（#428）。開く前と後の位置を比べるときは、どちらもこれで読む
+export async function settledScrollY(page: Page): Promise<number> {
+  return page.evaluate(async () => {
+    await document.fonts.ready;
+    const frame = () => new Promise((resolve) => requestAnimationFrame(resolve));
+    let previous = window.scrollY;
+    for (;;) {
+      await frame();
+      await frame();
+      if (window.scrollY === previous) return previous;
+      previous = window.scrollY;
+    }
+  });
+}
+
 // seed のセッション（seed/sessions.ts）の Cookie を置いて、ログインした状態にする。
 // 名前は画面を開く URL で決まる（e2e は pnpm preview の http の localhost なので sg_session）
 export async function signIn(
