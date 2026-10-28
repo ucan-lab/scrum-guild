@@ -1342,6 +1342,8 @@ test.describe('運用者', () => {
         // 書く前に断られた 4xx（回数の上限など）は、何も書かれていないと伝え、読み直さない
         [{ status: 429, json: { error: { code: 'rate_limited', message: 'x' } } }, '何も書かれていません', false],
         [{ status: 500, json: { error: { code: 'internal', message: 'x' } } }, '指名し直せたか分かりません', true],
+        // 2xx でも本文が読めない応答は、書かれたか分からない
+        [{ status: 200, body: '{"slug":' }, '指名し直せたか分かりません', true],
         ['abort', '指名し直せたか分かりません', true],
       ];
       for (const [next, text, reloads] of cases) {

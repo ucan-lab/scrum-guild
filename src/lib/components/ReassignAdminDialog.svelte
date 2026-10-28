@@ -257,10 +257,11 @@
     return { provider: 'github', username: resolved.username, login_subject: resolved.loginSubject };
   }
 
-  // 書かれたか分からない失敗: 409（同じ人の行が変わった）、5xx（GitHub に届かない 503 は書く前なので除く）、通信の切れ
+  // 書かれたか分からない失敗。書く前に断られたと分かるのは、409 を除く 4xx と、GitHub に届かない 503 だけで、
+  // ほか（409、5xx、通信の切れ、2xx でも本文が読めない応答など）は書かれたかもしれない側に倒す
   function mayHaveChanged(result: FailedResult): boolean {
     if (result.status === 503 && result.error?.code === 'unavailable') return false;
-    return result.status === 0 || result.status === 409 || result.status >= 500;
+    return !(result.status >= 400 && result.status < 500 && result.status !== 409);
   }
 
   async function submit(): Promise<void> {
