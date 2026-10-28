@@ -67,7 +67,7 @@ window.SQ_DATA = (function () {
     epics: {
       e1: {
         title: "会員ポイント制度を公開する", cat: "k1", due: "2026-11-20", tier: "large",
-        requester: "u2", creator: "u2", party: ["u2", "u1", "u3"],
+        requester: "u2", creator: "u2", party: ["u2", "u1", "u3", "u5"],
         body: [
           "購入額に応じてポイントを付け、次の購入で使えるようにする。年内の公開が先方との約束。",
           "失効は付与から1年。管理画面で付与と失効の履歴を追えることを先方が重視している。",

@@ -528,10 +528,27 @@ export const dictionary = defineDictionary({
     '{reward}は、完了にした時点の{party}全員に同じ額が入ります。',
   ),
   epicPagePartyCount: workspace('{count} 人', '{count} 人'),
-  epicPagePartyEmpty: workspace('{party}にはまだ誰もいません。', '{party}はまだいません。'),
+  // クリア済みと中止したエピックの報酬の注記（進行中は epicPageRewardNote）
+  epicPageRewardNoteCleared: workspace(
+    '{reward}は、クリアした時点の{party}全員に同じ額が入りました。',
+    '{reward}は、完了にした時点の{party}全員に同じ額が入りました。',
+  ),
+  epicPageRewardNoteCanceled: workspace(
+    '中止したので、{reward}は{party}に入りません。',
+    '中止したので、{reward}は{party}に入りません。',
+  ),
+  // 見える文字のない見出し（概要の節の名前）
+  epicPageOverview: workspace('{epic}の本文', '{epic}の本文'),
+  // 直した後の読み直しに失敗したとき。画面は前に読んだ値のまま
+  epicPageStale: workspace(
+    '最新の内容を読み込めませんでした。表示は前に読んだ内容です。',
+    '最新の内容を読み込めませんでした。表示は前に読んだ内容です。',
+  ),
+  epicPagePartyEmpty: workspace('討伐隊にはまだ誰もいません。', '参加者はまだいません。'),
   epicPageStories: workspace('配下の{story}', '配下の{story}'),
-  // 進み具合の棒の読み上げ（kit.js の progress の aria-label）
+  // 進み具合の棒の読み上げ（kit.js の progress の aria-label）と、棒の横の数
   progressLabel: workspace('{done} {value} / {all} {points}', '{done} {value} / {all} {points}'),
+  progressValue: workspace('{value} / {all} pt', '{value} / {all} pt'),
   epicPageNotFoundTitle: workspace('{epic}が見つかりません', '{epic}が見つかりません'),
   epicPageNotFoundText: workspace(
     '削除されたか、この{workspace}にない{epic}です。',

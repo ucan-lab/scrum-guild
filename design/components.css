@@ -272,6 +272,8 @@ h1, h2, h3 { text-wrap: balance; }
 .status-dot { font-size: var(--text-xs); color: var(--color-muted); white-space: nowrap; }
 .status-dot::before { content: "● "; color: var(--color-accent); font-size: 8px; vertical-align: 2px; }
 .source-key { font-family: var(--font-mono); font-size: var(--text-xs); color: var(--color-muted); white-space: nowrap; }
+/* 長い URL を載せる所（引き出しの外のエピックの画面など）。空白の無い URL でも折り返す。引き出しの中は .drawer .source-key が同じ指定を持つ */
+.source-key.is-wrap { white-space: normal; overflow-wrap: anywhere; }
 .pts {
   display: inline-grid; place-items: center; min-width: 28px; height: 24px; padding: 0 6px;
   border: 1px solid var(--color-accent); color: var(--color-accent); border-radius: var(--radius-1);
@@ -392,6 +394,8 @@ h1, h2, h3 { text-wrap: balance; }
 
 /* ===== 記録の面（レベル、積載量） ===== */
 .panel { background: var(--surface-panel); box-shadow: var(--shadow-panel); border: 1px solid var(--color-line); border-radius: var(--radius-1); padding: var(--space-4); display: grid; gap: var(--space-3); min-width: 0; }
+/* 隣の面に高さをそろえられても、中の行を縦に引き伸ばさない */
+.panel { align-content: start; }
 .panel-title { font-size: var(--text-xs); color: var(--color-muted); letter-spacing: var(--tracking-label); display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
 /* 題は b か、節の見出しにするときは h2（レベルの面。読み上げの見出しで辿れるようにする） */
 .panel-title b, .panel-title h2 { margin: 0; color: var(--color-fg); font-weight: 700; letter-spacing: 0.04em; font-size: var(--text-sm); }
@@ -751,6 +755,8 @@ label.pick-row:hover { background: var(--color-accent-soft); }
 .story-block { display: grid; gap: var(--space-3); }
 .story-head { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
 .story-title { font-weight: 700; font-size: var(--text-lg); }
+/* 空白の無い長い題でも折り返し、列からはみ出さない */
+.story-title { min-width: 0; overflow-wrap: anywhere; }
 .story-head .progress { max-width: 220px; margin-left: auto; }
 .actions-col { display: grid; gap: var(--space-2); }
 .actions-col .btn { justify-content: flex-start; }
@@ -787,6 +793,8 @@ label.pick-row:hover { background: var(--color-accent-soft); }
 .props > div { display: grid; grid-template-columns: 7em minmax(0, 1fr); gap: var(--space-3); align-items: center; padding-bottom: var(--space-2); border-bottom: 1px solid var(--color-rule); font-size: var(--text-sm); }
 .props dt { color: var(--color-muted); }
 .props dd { margin: 0; display: flex; gap: var(--space-2); align-items: center; flex-wrap: wrap; }
+/* 空白の無い長い名前でも折り返し、列からはみ出さない */
+.props dd { min-width: 0; overflow-wrap: anywhere; }
 .props-note { font-size: var(--text-xs); color: var(--color-muted); }
 .doc-box { border: 1px solid var(--color-line); border-radius: var(--radius-1); padding: var(--space-3) var(--space-4); font-size: var(--text-sm); display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--space-2); overflow-wrap: anywhere; overflow-x: auto; }
 .doc-box ul, .doc-box ol { margin: 0; padding-left: 1.2em; }
@@ -959,6 +967,11 @@ dialog.dialog::backdrop { background: none; }
   /* エピックの行の題はエピックの画面へのリンク（a.tree-link）。ボタンの題と同じ範囲に広げる */
   a.tree-link { position: relative; }
   a.tree-link::after {
+    content: ""; position: absolute; left: 50%; top: 50%; width: max(100%, 44px); height: max(100%, 44px); transform: translate(-50%, -50%);
+  }
+  /* 見出しの右の小さなボタン（閉じたワークスペースのエピックの画面では「戻る」だけが残る）も同じ */
+  .page-actions .btn.is-sm { position: relative; }
+  .page-actions .btn.is-sm::after {
     content: ""; position: absolute; left: 50%; top: 50%; width: max(100%, 44px); height: max(100%, 44px); transform: translate(-50%, -50%);
   }
   /* 引き出しの中の小さなボタン（保存、取り消し、編集、削除、クリア）と、押すと直せる値も同じ。重なる行の押せる範囲は、下の余白で分ける */

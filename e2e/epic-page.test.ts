@@ -1,13 +1,13 @@
 // エピックの画面（/[slug]/w/[id]/epics/[epicId]）。木のエピックの題から開き、依頼主、クリア報酬の段階と額、討伐隊、配下のストーリーを読む。
 // seed のセッション（seed/sessions.ts）の Cookie で開く。あおば開発の管理者はミナト。
-// seed の受託開発チーム（ゲームの言葉）のエピック「ポイントの交換先を増やす」は、依頼主がミナトで、報酬は中、討伐隊は3人
-// （ミナト、ハルカ、所属の無いユイ）、配下のストーリーは完了したタスク1件（2 ポイント）の「送料の割引にポイントを使える」。
+// seed の受託開発チーム（ゲームの言葉）のエピック「ポイントの交換先を増やす」は、依頼主がミナトで、報酬は中、討伐隊は2人
+// （ミナト、ハルカ）、配下のストーリーは完了したタスク1件（2 ポイント）の「送料の割引にポイントを使える」。
 // 読むだけで、seed の行は書き換えない（ほかのファイルと並べて走るため）。書き込みはテストで作ったワークスペースの中で行う
-import { epicDetail } from '../src/shared/operations/epic/index.ts';
+import { epicDetail, epicUpdate } from '../src/shared/operations/epic/index.ts';
 import { workspaceInfo } from '../src/shared/operations/workspace/workspace.ts';
 import { expect, test } from './fixtures.ts';
 import { createWorkspace, signIn, waitForResponses, watchViolations } from './helpers.ts';
-import { failOperation, rewriteOperation } from './operations.ts';
+import { failOperation, mockOperation, rewriteOperation } from './operations.ts';
 
 const AOBA = { slug: 'aoba' };
 const WORKSPACE = '/aoba/w/019a0000-0000-7000-8000-000000000401';
@@ -45,16 +45,16 @@ test('ゲームの言葉: 木のエピックの題から画面が開き、依頼
   await expect(request.locator('dd').nth(3)).toContainText('追加案件');
   await expect(request.locator('dd').nth(2)).toContainText('11/27');
 
-  // 討伐隊。入った順で、依頼主に印、所属の無いユイは「（離脱済み）」、全員にレベルの紋章。経験値の数値は出さない
+  // 討伐隊。入った順で、依頼主に印、全員にレベルの紋章。経験値の数値は出さない
   const party = page.getByRole('region', { name: '討伐隊' });
-  await expect(party.locator('.panel-title')).toContainText('3 人');
+  await expect(party.locator('.panel-title')).toContainText('2 人');
   const members = party.locator('.party-list > li');
-  await expect(members).toHaveCount(3);
+  await expect(members).toHaveCount(2);
   await expect(members.nth(0)).toContainText('ミナト');
   await expect(members.nth(0).locator('.role')).toHaveText('依頼主');
   await expect(members.nth(1)).toContainText('ハルカ');
   await expect(members.nth(1).locator('.role')).toHaveCount(0);
-  await expect(members.nth(2)).toContainText('ユイ（離脱済み）');
+  await expect(members.nth(1)).not.toContainText('離脱済み');
   for (const member of await members.all()) {
     await expect(member.locator('.emblem')).toHaveAttribute('aria-label', /^レベル \d+$/);
   }
@@ -66,7 +66,7 @@ test('ゲームの言葉: 木のエピックの題から画面が開き、依頼
   await expect(stories.locator('.progress-num')).toHaveText('2 / 2 pt');
   await expect(stories.getByRole('img', { name: '完遂 2 / 2 難易度' })).toBeVisible();
   // 頭の集計
-  await expect(page.locator('.tally > div')).toHaveText(['完遂の難易度 2', '残りの難易度 0', '討伐隊 3']);
+  await expect(page.locator('.tally > div')).toHaveText(['完遂の難易度 2', '残りの難易度 0', '討伐隊 2']);
 
   // 読むだけの版。受注、割り振り、報酬の変更、クリア、中止は出さない。直す口は見出しの横のボタンだけ
   await expect(page.getByRole('button', { name: '受注する' })).toHaveCount(0);
@@ -111,14 +111,73 @@ test('スクラムの言葉: 討伐隊が空で配下も無いエピックは、
   await expect(page.locator('.tally > div')).toHaveText(['完了のポイント 0', '残りのポイント 0', '参加者 0']);
 });
 
-test('依頼主がワークスペースを離れていると、依頼主の名前に「（離脱済み）」と出る', async ({ page }) => {
+// 離脱済みの本物の行は、DB の seed に置けない（所属の無いユーザーは運用者の指名し直しが物理削除する）。API の確かめは test/epic-detail.test.ts
+test('依頼主と討伐隊の人がワークスペースを離れていると、名前に「（離脱済み）」と出る（応答を差し替えて確かめる）', async ({
+  page,
+}) => {
   await rewriteOperation(page, epicDetail, AOBA, (output) => ({
     ...output,
     requester: { ...output.requester, left: true },
+    party: output.party.map((member, index) => (index === 1 ? { ...member, left: true } : member)),
   }));
   await page.goto(`${WORKSPACE}/epics/${EPIC_ID}`);
   const request = page.getByRole('region', { name: '依頼書' });
   await expect(request.locator('dd').nth(0)).toContainText('ミナト（離脱済み）');
+  const members = page.getByRole('region', { name: '討伐隊' }).locator('.party-list > li');
+  await expect(members.nth(0)).not.toContainText('離脱済み');
+  await expect(members.nth(1)).toContainText('ハルカ（離脱済み）');
+});
+
+test('進行中のエピックは報酬が入る注記、クリア済みは過去形、中止したエピックは入らない注記を出す', async ({ page }) => {
+  const request = page.getByRole('region', { name: '依頼書' });
+  await page.goto(`${WORKSPACE}/epics/${EPIC_ID}`);
+  await expect(request.locator('.panel-note')).toHaveText(
+    'クリア報酬は、クリアした時点の討伐隊全員に同じ額が入ります。',
+  );
+
+  await rewriteOperation(page, epicDetail, AOBA, (output) => ({
+    ...output,
+    epic: { ...output.epic, completed_at: '2026-10-22T00:00:00.000Z' },
+  }));
+  await page.goto(`${WORKSPACE}/epics/${EPIC_ID}`);
+  await expect(request.locator('.panel-note')).toHaveText(
+    'クリア報酬は、クリアした時点の討伐隊全員に同じ額が入りました。',
+  );
+
+  await page.unrouteAll();
+  await rewriteOperation(page, epicDetail, AOBA, (output) => ({
+    ...output,
+    epic: { ...output.epic, canceled_at: '2026-10-22T00:00:00.000Z' },
+  }));
+  await page.goto(`${WORKSPACE}/epics/${EPIC_ID}`);
+  await expect(request.locator('.panel-note')).toHaveText('中止したので、クリア報酬は討伐隊に入りません。');
+});
+
+test('直した後の読み直しが失敗したら、前の値を残して知らせだけを出す', async ({ page }) => {
+  await page.goto(`${WORKSPACE}/epics/${EPIC_ID}`);
+  await expect(page.getByRole('heading', { level: 1, name: EPIC_TITLE })).toBeVisible();
+  await page.getByRole('button', { name: 'レイドを直す' }).click();
+  const dialog = page.getByRole('dialog', { name: 'レイド' });
+  await expect(dialog.getByLabel('タイトル')).toHaveValue(EPIC_TITLE);
+  // 保存は通さず（seed を書き換えない）、読み直しだけが失敗する形にする
+  await mockOperation(page, epicUpdate, AOBA, {
+    epic: {
+      id: EPIC_ID,
+      title: EPIC_TITLE,
+      body_md: '読み直しに失敗する本文',
+      due_on: null,
+      link_url: null,
+      category_id: null,
+    },
+  });
+  await failOperation(page, epicDetail, AOBA, 500, 'internal');
+  await dialog.getByLabel('本文').fill('読み直しに失敗する本文');
+  await dialog.getByRole('button', { name: '保存する' }).click();
+  await expect(dialog).toBeHidden();
+  await expect(page.getByRole('alert').filter({ hasText: '最新の内容を読み込めませんでした' })).toBeVisible();
+  // 画面は読み込みの失敗に替わらず、前の値のまま
+  await expect(page.getByRole('heading', { level: 1, name: EPIC_TITLE })).toBeVisible();
+  await expect(page.getByRole('region', { name: '討伐隊' }).locator('.party-list > li')).toHaveCount(2);
 });
 
 test('終了したワークスペースでも読めて、直す口は出さない', async ({ page }) => {
@@ -128,7 +187,7 @@ test('終了したワークスペースでも読めて、直す口は出さな�
   }));
   await page.goto(`${WORKSPACE}/epics/${EPIC_ID}`);
   await expect(page.getByRole('heading', { level: 1, name: EPIC_TITLE })).toBeVisible();
-  await expect(page.getByRole('region', { name: '討伐隊' }).locator('.party-list > li')).toHaveCount(3);
+  await expect(page.getByRole('region', { name: '討伐隊' }).locator('.party-list > li')).toHaveCount(2);
   await expect(page.getByRole('region', { name: '配下の達成目標' }).locator('.story-block')).toHaveCount(1);
   await expect(page.getByRole('button', { name: 'レイドを直す' })).toHaveCount(0);
 });

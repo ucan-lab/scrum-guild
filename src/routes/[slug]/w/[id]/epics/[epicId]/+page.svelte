@@ -31,10 +31,25 @@
   let { data }: PageProps = $props();
 
   const workspace = $derived(data.workspace);
-  const detail = $derived(data.detail);
+  // 直した後の読み直しに失敗しても（data.detail が null）、同じエピックの前に読めた値を残して知らせだけを出す。
+  // 別のエピックへ移ったときは持ち越さない
+  let kept: { id: string; detail: NonNullable<typeof data.detail> } | null = null;
+  const detail = $derived.by(() => {
+    const id = page.params.epicId ?? '';
+    if (data.detail !== null) {
+      kept = { id, detail: data.detail };
+      return data.detail;
+    }
+    return kept?.id === id ? kept.detail : null;
+  });
+  const stale = $derived(data.detail === null && detail !== null && !data.notFound);
   const slug = $derived(page.params.slug ?? '');
   const canWrite = $derived(workspace !== null && workspace.closedAt === null);
-  const reloading = $derived(navigating.to !== null && navigating.to.url.pathname === page.url.pathname);
+  // ダイアログで直した後に、この画面の値を読み直している間（invalidate は navigating を立てない）
+  let refreshing = $state(false);
+  const reloading = $derived(
+    refreshing || (navigating.to !== null && navigating.to.url.pathname === page.url.pathname),
+  );
   const backlogHref = $derived(resolve('/[slug]/w/[id]', { slug, id: page.params.id ?? '' }));
   const finished = $derived(detail !== null && (detail.epic.completed_at !== null || detail.epic.canceled_at !== null));
 
@@ -58,7 +73,12 @@
 
   // ダイアログで直した。この画面の値だけを読み直す（枠は読み直さない）
   async function saved(): Promise<void> {
-    await invalidate('app:epic-detail');
+    refreshing = true;
+    try {
+      await invalidate('app:epic-detail');
+    } finally {
+      refreshing = false;
+    }
   }
 
   // ダイアログで削除した、または直そうとしたら無かった。バックログへ戻り、見出しへフォーカスを移す
@@ -70,13 +90,11 @@
 </script>
 
 <svelte:head>
-  {#if workspace}
-    <title>
-      {t('pageTitle', {
-        page: detail !== null ? detail.epic.title : t('epicPageNotFoundTitle', { epic: t('epic') }),
-        app: t('appName'),
-      })}
-    </title>
+  <!-- 読み込みに失敗した画面の題は LoadFailed が持つ -->
+  {#if workspace && data.notFound}
+    <title>{t('pageTitle', { page: t('epicPageNotFoundTitle', { epic: t('epic') }), app: t('appName') })}</title>
+  {:else if workspace && detail !== null}
+    <title>{t('pageTitle', { page: detail.epic.title, app: t('appName') })}</title>
   {/if}
 </svelte:head>
 
@@ -121,20 +139,30 @@
     focusable
   />
 
+  {#if stale}
+    <div class="callout is-warn">
+      <Icon name="alert" /><span role="alert">{t('epicPageStale')}</span>
+    </div>
+  {/if}
+
   <div class="layout-aside" aria-busy={reloading}>
     <div class="layout-main">
       {#if epic.body_md !== null || epic.link_url !== null}
-        <section class="section">
+        <!-- 見える見出しは無いので、本文の見出し（h3 から）の前に h2 を置いて段を飛ばさない -->
+        <section class="section" aria-labelledby="epic-overview">
+          <h2 class="visually-hidden" id="epic-overview">{t('epicPageOverview', { epic: t('epic') })}</h2>
           {#if epic.body_md !== null}<Markdown source={epic.body_md} headingStart={3} />{/if}
           {#if epic.link_url !== null}
-            <div>
-              <!-- 外のサイトは新しいタブで開く。読み上げにも、新しいタブで開くことを含める -->
+            <!-- URL は折り返して全文を出し、外のサイトは新しいタブで開く「開く」を横に置く（引き出しのリンクと同じ組み方）。
+                 読み上げにも、新しいタブで開くことを含める -->
+            <div class="form-actions">
+              <span class="source-key is-wrap"><Icon name="link" /> {epic.link_url}</span>
               <a
-                class="source-key"
+                class="btn is-sm"
                 href={epic.link_url}
                 target="_blank"
                 rel="external noopener noreferrer"
-                aria-label={t('epicLinkOpenLabel')}><Icon name="link" /> {epic.link_url}</a
+                aria-label={t('epicLinkOpenLabel')}>{t('epicLinkOpen')}</a
               >
             </div>
           {/if}
@@ -146,16 +174,16 @@
           <EmptyState icon="flag" title={t('epicNoStories', { story: t('story') })} />
         {:else}
           {#each detail.stories as story (story.id)}
-            <section class="story-block" aria-labelledby="epic-story-{story.id}">
+            <div class="story-block">
               <div class="story-head">
                 <span class="kind is-story"><Icon name="check" /></span>
-                <h3 class="story-title" id="epic-story-{story.id}">{story.title}</h3>
+                <h3 class="story-title">{story.title}</h3>
                 {#if story.completed_at !== null}
                   <span class="chip is-done"><Icon name="check" />{t('done')}</span>
                 {/if}
                 <Progress done={story.points_done} all={story.points_all} />
               </div>
-            </section>
+            </div>
           {/each}
         {/if}
       </Section>
@@ -174,6 +202,8 @@
                 left={detail.requester.left}
                 decorative
               />{detail.requester.name}{#if detail.requester.left}<span class="props-note">{t('leftMember')}</span>{/if}
+              <!-- 朱の印は飾り。中世風のテーマだけに出る（components.css の .seal） -->
+              <span class="seal" aria-hidden="true">印</span>
             </dd>
           </div>
           <div>
@@ -201,7 +231,16 @@
             </dd>
           </div>
         </dl>
-        <p class="panel-note">{t('epicPageRewardNote', { reward: t('reward'), party: t('party') })}</p>
+        <p class="panel-note">
+          {t(
+            epic.canceled_at !== null
+              ? 'epicPageRewardNoteCanceled'
+              : epic.completed_at !== null
+                ? 'epicPageRewardNoteCleared'
+                : 'epicPageRewardNote',
+            { reward: t('reward'), party: t('party') },
+          )}
+        </p>
       </section>
 
       <section class="panel" aria-labelledby="epic-party">
@@ -210,7 +249,7 @@
           {t('epicPagePartyCount', { count: detail.party.length })}
         </div>
         {#if detail.party.length === 0}
-          <p class="panel-note">{t('epicPagePartyEmpty', { party: t('party') })}</p>
+          <p class="panel-note">{t('epicPagePartyEmpty')}</p>
         {:else}
           <ul class="party-list">
             {#each detail.party as member (member.id)}

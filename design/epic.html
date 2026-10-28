@@ -31,7 +31,7 @@ SQ.mount("epic", () => {
   const allDone = stories.length > 0 && openStories === 0;
   const party = e.party.map((u) => {
     const x = SQ.user(u);
-    return `<li>${avatarOf(u)}<span>${esc(x.name)}</span>${u === e.requester ? `<span class="role">${t("requester")}</span>` : ""}${emblem(x.level, true)}</li>`;
+    return `<li>${avatarOf(u)}<span class="party-list-text">${esc(x.name)}${x.left ? `<span class="props-note">${t("leftMember")}</span>` : ""}</span>${u === e.requester ? `<span class="role">${t("requester")}</span>` : ""}${emblem(x.level, true)}</li>`;
   }).join("");
   return `
     ${pageHead(`${t("epic")}・${esc(D.categories[e.cat].name)}`, esc(e.title), [
@@ -43,7 +43,7 @@ SQ.mount("epic", () => {
       <div class="layout-main">
         <section class="section">
           <div class="raid-body">${e.body.map((b) => `<p>${esc(b)}</p>`).join("")}
-            ${e.link ? `<span class="source-key">${icon("link")} ${esc(e.link)}</span>` : ""}</div>
+            ${e.link ? `<div><span class="source-key is-wrap">${icon("link")} ${esc(e.link)}</span> <a class="btn is-sm" href="#" aria-label="リンクを新しいタブで開く">開く</a></div>` : ""}</div>
           <div class="field"><span class="field-label">${icon("clip")} 添付ファイル ${filesOf(ID).length || ""}</span>${attachments(ID)}</div>
         </section>
         ${stories.map((s) => {
@@ -76,7 +76,7 @@ SQ.mount("epic", () => {
         </section>
         <section class="panel">
           <div class="panel-title"><b>${t("party")}</b>${e.party.length} 人</div>
-          ${e.party.length ? `<ul class="party-list">${party}</ul>` : `<p class="panel-note">${t("party")}にはまだ誰もいません。</p>`}
+          ${e.party.length ? `<ul class="party-list">${party}</ul>` : `<p class="panel-note">${t("epicPagePartyEmpty")}</p>`}
           <div class="actions-col">
             <button class="btn ${joined ? "" : "is-primary"}" type="button" data-join="${ID}">${icon("users")}${joined ? t("leave") : t("accept")}</button>
             <button class="btn" type="button">${t("party")}に割り振る</button>

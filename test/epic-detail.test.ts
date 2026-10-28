@@ -244,6 +244,9 @@ describe('epic-detail', () => {
     await task(first.id, { points: null });
     // 削除したタスクは数えない
     await task(first.id, { points: 8, deleted_at: '2026-10-22T00:00:00.000Z' });
+    // アーカイブへ移したタスク（取り込んだタスクだけが移る）も数えない。アーカイブのタスクは tasks の CHECK で story_id を持てないので、
+    // ストーリーを指す形は作れず、ここでは親なしのアーカイブのタスクが紛れ込まないことだけを確かめる
+    await task(first.id, { points: 13, tray: 'archive', is_imported: 1, created_by: null, story_id: null });
     await task(second.id, { points: 2, completed_at: '2026-10-22T00:00:00.000Z', completed_by: adminId });
     await task(second.id, { points: 1, completed_at: '2026-10-22T00:00:00.000Z', completed_by: adminId });
 

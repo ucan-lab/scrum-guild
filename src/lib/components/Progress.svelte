@@ -16,5 +16,5 @@
   >
     <span style:width={`${percent}%`}></span>
   </span>
-  <span class="progress-num">{done} / {all} pt</span>
+  <span class="progress-num">{t('progressValue', { value: done, all })}</span>
 </span>
