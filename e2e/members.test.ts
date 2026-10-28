@@ -278,7 +278,8 @@ test.describe('リーダー（あおば開発のミナト）', () => {
     await expect(page.locator('.toasts:visible .toast')).toHaveText(
       'メンバーを外せませんでした。もう一度試してください。',
     );
-    await expect(remove).toBeFocused();
+    await expect(page.getByRole('dialog', { name: 'ハルカを外しますか' })).toBeHidden();
+    await expectFocusReturned(page, remove);
 
     // ミナトは受託開発チームの唯一のリーダーなので、リーダーがいなくなることを添える
     await page.getByRole('button', { name: '受託開発チームから抜ける' }).click();
