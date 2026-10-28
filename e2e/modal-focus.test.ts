@@ -1,5 +1,6 @@
 // expectModalFocus（e2e/helpers.ts）が空振りしないことの確かめ。サーバーを使わず、page.setContent で小さなダイアログを置く。
-// 決まりどおりのダイアログでは通り、入らない、Esc で閉じない、閉じても戻らない、一瞬戻ってすぐ外れるダイアログでは、それぞれの段で落ちる
+// 決まりどおりのダイアログでは通り、入らない、Esc で閉じない、閉じても戻らない、一瞬戻ってすぐ外れるダイアログでは、それぞれの段で落ちる。
+// close イベントで別の場所へ移すダイアログは、どの段で落ちるかが描画の速さで変わるので、落ちることだけを確かめる
 import type { Page } from '@playwright/test';
 import { expect, test } from './fixtures.ts';
 import { expectModalFocus } from './helpers.ts';
@@ -7,7 +8,7 @@ import { expectModalFocus } from './helpers.ts';
 // 落ちるはずの確かめで待ちすぎない。通るはずの確かめは既定の待ちにする（混んだ CI で誤って落ちないため）
 const timeout = 500;
 
-type Broken = 'none' | 'no-focus-in' | 'no-escape' | 'no-return' | 'blink-return';
+type Broken = 'none' | 'no-focus-in' | 'no-escape' | 'no-return' | 'blink-return' | 'close-event-move';
 
 // <dialog> の showModal() は中へフォーカスを移し、Esc で閉じ、閉じたら開いたボタンへ戻す（Chromium）。
 // 壊すときは、開いた後に外へ、閉じた後に別のボタンへフォーカスを動かすか、Esc を止める。
@@ -16,7 +17,8 @@ type Broken = 'none' | 'no-focus-in' | 'no-escape' | 'no-return' | 'blink-return
 // （close イベントで移すと、その前の一瞬に戻っていて、確かめがそこをつかむことがある）。
 // blink-return は、一瞬戻ってすぐ外れる形を、閉じた後の描画で外して作る。外す時機を描画の速さに任せると、
 // 1段目の toBeFocused が戻った瞬間に間に合うかが揺れるので、ページの requestAnimationFrame を差し替え、
-// 道具が描画を待ち始めてから外す（1段目は必ず通り、2段目だけで落ちる）
+// 道具が描画を待ち始めてから外す（1段目は必ず通り、2段目だけで落ちる）。
+// close-event-move は close イベントの中で別のボタンへ移す。close() から close イベントまでの一瞬は開いたボタンにある
 async function setDialog(page: Page, broken: Broken): Promise<void> {
   await page.setContent(`
     <button id="open" type="button">開く</button>
@@ -59,7 +61,8 @@ async function setDialog(page: Page, broken: Broken): Promise<void> {
           });
       }
       dialog.addEventListener('close', () => {
-        if (broken !== 'no-return') opener.focus();
+        if (broken === 'close-event-move') other.focus();
+        else if (broken !== 'no-return') opener.focus();
       });
     </script>
   `);
@@ -99,6 +102,11 @@ test('閉じてもフォーカスが開いたボタンへ戻らなければ落�
 test('閉じて一瞬だけ開いたボタンへ戻り、すぐ外れれば落ちる', async ({ page }) => {
   await setDialog(page, 'blink-return');
   await expect(expectModalFocus(page, targets(page))).rejects.toThrow('一瞬戻ってすぐ外れる');
+});
+
+test('close イベントの中で別の場所へ移せば、戻った一瞬をつかまずに落ちる', async ({ page }) => {
+  await setDialog(page, 'close-event-move');
+  await expect(expectModalFocus(page, targets(page))).rejects.toThrow('閉じたらフォーカスが戻らない');
 });
 
 test('戻る先を returnTo で渡したときは、開いたボタンへ戻っても落ちる', async ({ page }) => {
