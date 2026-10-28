@@ -1142,6 +1142,38 @@ test.describe('運用者', () => {
     expect(await note.evaluate((el) => getComputedStyle(el).whiteSpace)).toBe('normal');
   });
 
+  // 1024px は表の最小の幅に届かず、元から .table-wrap の横スクロールで受ける（docs/design.md の Gate の wide）。
+  // 横スクロールが無いことは、収まる 1280px でだけ確かめる
+  for (const { width, fits } of [
+    { width: 1024, fits: false },
+    { width: 1280, fits: true },
+  ]) {
+    test(`${width}px の幅では、消す予定日を過ぎた行の理由の注記は縦長に潰れない`, async ({ page }) => {
+      await mockList(page, [
+        organization({}),
+        organization({
+          slug: 'kiri',
+          name: 'きり製作所',
+          suspended_at: '2026-09-10T00:00:00.000Z',
+          purge_on: '2026-10-10',
+          purge_due: true,
+          admin_status: 'expired',
+        }),
+      ]);
+      await page.setViewportSize({ width, height: 800 });
+      await page.goto('/operator');
+      const wrap = page.locator('.table-wrap');
+      const note = page.locator('.table tbody tr', { hasText: 'きり製作所' }).locator('td.is-actions .props-note');
+      await expect(note).toBeVisible();
+      if (fits) expect(await wrap.evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
+      // 1行に数文字ずつの縦長にならない（3行まで）
+      const lines = await note.evaluate(
+        (el) => el.getBoundingClientRect().height / parseFloat(getComputedStyle(el).lineHeight),
+      );
+      expect(lines).toBeLessThanOrEqual(3.2);
+    });
+  }
+
   test('purge_due で断られた後、読み直した行がまだ予定日を過ぎていなければ、画面の見出しへフォーカスを移す', async ({
     page,
   }) => {
