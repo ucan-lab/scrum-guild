@@ -690,6 +690,8 @@ label.pick-row:hover { background: var(--color-accent-soft); }
 .table th, .table td { padding: var(--space-3) var(--space-4); text-align: left; border-top: 1px solid var(--color-rule); vertical-align: middle; }
 .table thead th { border-top: 0; border-bottom: var(--rule-double); font-size: var(--text-xs); font-weight: 400; color: var(--color-muted); letter-spacing: 0.06em; white-space: nowrap; }
 .table .is-num { text-align: right; font-family: var(--font-mono); font-variant-numeric: tabular-nums; white-space: nowrap; }
+/* 数の列の中の文字のボタン（運用の画面の「人数と容量の上限を変える」）は、数の等幅の書体と折り返さない指定を引き継がない */
+.table .is-num .link-btn { font-family: var(--font-body); white-space: normal; }
 .table a { color: var(--color-fg); }
 .table .mono, .table .btn { white-space: nowrap; }
 /* 表の行の中の選択欄（メンバーのロールなど）。列が縮んでも選んだ値が読めるよう、中身の幅を保ち、行の高さに合わせて小さくする。
