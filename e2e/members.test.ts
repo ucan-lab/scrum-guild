@@ -1,10 +1,11 @@
 // メンバーの画面。seed のセッション（seed/sessions.ts）の Cookie で開く。
 // あおば開発の受託開発チームは、ミナト（管理者でリーダー）とハルカ（一般）が所属し、承諾待ちの招待が1件ある（seed/data.sql）
 import type { Page } from '@playwright/test';
-import { expect, test } from './fixtures.ts';
 import type { OutputOf } from '../src/shared/operations/define.ts';
-import type { organizationInfo } from '../src/shared/operations/organization/index.ts';
+import { organizationInfo } from '../src/shared/operations/organization/index.ts';
+import { expect, test } from './fixtures.ts';
 import { createWorkspace, expectModalFocus, signIn, watchViolations } from './helpers.ts';
+import { rewriteOperation } from './operations.ts';
 
 const AOBA_WORKSPACE_ID = '019a0000-0000-7000-8000-000000000401';
 const HARUKA_USER_ID = '019a0000-0000-7000-8000-000000000302';
@@ -514,12 +515,10 @@ test.describe('一般のユーザー（あおば開発のハルカ）', () => {
   // 組織の枠の応答のうち、ハルカの所属するワークスペースを、受託開発チームと others だけにする。
   // ほかのファイルの e2e（e2e/workspace.test.ts の作成）がハルカをリーダーにしたワークスペースを足すので、seed の所属の数に頼らない
   async function setOwnWorkspaces(page: Page, others: OutputOf<typeof organizationInfo>['workspaces']): Promise<void> {
-    await page.route('**/api/aoba/organization', async (route) => {
-      const response = await route.fetch();
-      const body = (await response.json()) as OutputOf<typeof organizationInfo>;
-      body.workspaces = [...body.workspaces.filter((item) => item.id === AOBA_WORKSPACE_ID), ...others];
-      await route.fulfill({ response, json: body });
-    });
+    await rewriteOperation(page, organizationInfo, { slug: 'aoba' }, (output) => ({
+      ...output,
+      workspaces: [...output.workspaces.filter((item) => item.id === AOBA_WORKSPACE_ID), ...others],
+    }));
   }
 
   test('所属している人は見えて、承諾待ちの招待の欄と「招待中」の数は出ず、API も招待を返さない', async ({ page }) => {
@@ -581,7 +580,7 @@ test.describe('一般のユーザー（あおば開発のハルカ）', () => {
     await page.getByRole('button', { name: '受託開発チームから抜ける' }).click();
     const dialog = page.getByRole('dialog', { name: '受託開発チームから抜けますか' });
     await expect(dialog).toContainText('担当していた未完了のクエストは担当なしに戻ります。');
-    await expect(dialog).not.toContainText('ほかに所属しているパーティが無い');
+    await expect(dialog).not.toContainText('入れなくなります');
     await dialog.getByRole('button', { name: 'やめる' }).click();
     await expect(dialog).toBeHidden();
   });
