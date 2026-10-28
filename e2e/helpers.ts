@@ -617,7 +617,7 @@ export async function createWorkspace(page: Page, name: string, vocabulary: 'gam
   await expect(page).toHaveTitle(`${backlog}・${name} - Scrum Guild`);
 }
 
-type ModalFocusStage = 'hidden' | 'open' | 'focusIn' | 'close' | 'return' | 'stay';
+type ModalFocusStage = 'hidden' | 'open' | 'focusIn' | 'close' | 'return';
 
 // ダイアログと引き出しのフォーカスの決まりを確かめる。opener を押すと modal が開いて中にフォーカスが入り、Esc で閉じ、
 // 閉じたらフォーカスが returnTo（無ければ opener）にあり、2回描画した後も留まる。空振りしないよう、開く前に modal が見えていないことから確かめ、
@@ -626,7 +626,7 @@ type ModalFocusStage = 'hidden' | 'open' | 'focusIn' | 'close' | 'return' | 'sta
 // press を渡すと、opener にフォーカスを置いてそのキーで開く（キーボードだけで開く確かめ）。
 // whileOpen は、開いている間に足して確かめるもの。timeouts は段ごとの待ちで、渡さない段は expect の既定。
 // 落ちるはずの確かめで、落とすつもりの段だけを短くする（前の段まで短くすると、混んだマシンで別の段が時間切れになる）。
-// stay は描画の待ちの上限で、留まる確かめそのものは待たないので、短くしても速くならず、描画より先に待ちが切れると空振りする
+// 最後の留まる段は待たずに確かめるので、渡せない（描画の待ちの上限を短くしても速くならず、描画より先に切れると空振りする）
 export async function expectModalFocus(
   page: Page,
   {
@@ -667,17 +667,17 @@ export async function expectModalFocus(
   // Chromium の <dialog> は close() の中で開いたボタンへフォーカスを戻し、close イベントは後のタスクで出す。
   // close イベントで別の場所へ移すダイアログでも、その前の一瞬は戻る先にフォーカスがあり、上の確かめが通ってしまう。
   // 2回描画を待った後に、まだ戻る先にあることを待たずに確かめる。描画が止まったページで待ち続けないよう、
-  // timeouts.stay（無ければ expect の既定と同じ 5 秒）で待ちを切る
+  // expect の既定と同じ 5 秒で待ちを切る
   await page.evaluate(
     (limit) =>
       new Promise((resolve) => {
         requestAnimationFrame(() => requestAnimationFrame(resolve));
         setTimeout(resolve, limit);
       }),
-    timeouts.stay ?? 5000,
+    5000,
   );
   expect(
-    await target.evaluate((element) => element === document.activeElement, undefined, { timeout: timeouts.stay }),
+    await target.evaluate((element) => element === document.activeElement),
     '閉じたらフォーカスが戻らない（一瞬戻ってすぐ外れる）',
   ).toBe(true);
 }

@@ -112,7 +112,7 @@ test('閉じてもフォーカスが開いたボタンへ戻らなければ落�
 
 test('閉じて一瞬だけ開いたボタンへ戻り、すぐ外れれば落ちる', async ({ page }) => {
   await setDialog(page, 'blink-return');
-  // 留まる段は待たずに確かめるので短くしない。短くすると、混んだマシンで描画より先に待ちが切れ、外れる前に確かめてしまう
+  // 落とす留まる段は待たずに確かめるので、短くする段が無い
   await expect(expectModalFocus(page, targets(page))).rejects.toThrow('一瞬戻ってすぐ外れる');
 });
 
