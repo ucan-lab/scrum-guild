@@ -9,6 +9,7 @@
   import Icon from '../../lib/components/Icon.svelte';
   import LoadFailed from '../../lib/components/LoadFailed.svelte';
   import LogoutButton from '../../lib/components/LogoutButton.svelte';
+  import OrganizationQuotaDialog from '../../lib/components/OrganizationQuotaDialog.svelte';
   import OrganizationSuspendDialog from '../../lib/components/OrganizationSuspendDialog.svelte';
   import ReassignAdminDialog from '../../lib/components/ReassignAdminDialog.svelte';
   import { formatCount, formatUtcDate, quotaSize } from '../../lib/format.ts';
@@ -30,13 +31,17 @@
   // 積んだ行では、見出しの代わりに data-label を値の前に出す
   // 作成のダイアログは一覧の読み込みの成否に関わらず置く。作った後に一覧の読み直しが失敗しても、完了の表示（組織の URL）を消さない。
   // 「停止する」は確認のダイアログ（停止の理由を選ぶ）を経て、「再開する」は確認なしで送る。
-  // 再開を送っている間は、どの行のボタンも aria-disabled にして押しても無視する
+  // 再開を送っている間は、どの行のボタンも aria-disabled にして押しても無視する。
+  // 添付ファイルの上限の列の「人数と容量の上限を変える」（link-btn）は、上限の変更のダイアログを開く。変えた後は一覧を読み直す
   let { data }: PageProps = $props();
 
   let dialog = $state<ReturnType<typeof CreateOrganizationDialog>>();
   let dialogOpen = $state(false);
   let suspendDialog = $state<ReturnType<typeof OrganizationSuspendDialog>>();
   let reassignDialog = $state<ReturnType<typeof ReassignAdminDialog>>();
+  let quotaDialog = $state<ReturnType<typeof OrganizationQuotaDialog>>();
+  // 上限の変更の対象の組織の名前。ダイアログの結果のトーストに使う
+  let quotaName = $state('');
   // 停止の確認の対象。ダイアログの結果を受けるとき、どの行だったかを名前で知らせるのに使う
   let suspending = $state<{ slug: string; name: string; currentKind?: SuspensionKind } | null>(null);
   // 再開を送っている行
@@ -94,6 +99,28 @@
     } else if (outcome === 'state_changed') showToast(t('operatorStateChanged', { name }), 'alert');
     else showToast(t('operatorUnavailable', { name }), 'alert');
     void invalidateAll();
+  }
+
+  // 上限の変更のダイアログの結果。扱いは停止のダイアログと同じ
+  function quotaFinished(outcome: 'done' | 'state_changed' | 'unavailable' | 'unauthenticated'): void {
+    if (outcome === 'unauthenticated') {
+      window.location.assign(loginUrl(page.url));
+      return;
+    }
+    const name = quotaName;
+    if (outcome === 'done') showToast(t('operatorQuotaDone', { name }), 'check');
+    else if (outcome === 'state_changed') showToast(t('operatorStateChanged', { name }), 'alert');
+    else showToast(t('operatorUnavailable', { name }), 'alert');
+    void invalidateAll();
+  }
+
+  function changeQuota(
+    row: { slug: string; name: string; seats: { used: number; limit: number }; attachment_quota_bytes: number },
+    trigger: HTMLElement,
+  ): void {
+    if (resumingSlug !== null) return;
+    quotaName = row.name;
+    quotaDialog?.show(row, trigger);
   }
 
   // 停止している組織の今の停止の理由。消す予定日があれば解約
@@ -184,9 +211,18 @@
                   <td class="is-num" data-label={t('operatorColumnTasks', words)}
                     >{formatCount(organization.task_count)}</td
                   >
-                  <td class="is-num" data-label={t('operatorColumnQuota')}
-                    >{quotaText(organization.attachment_quota_bytes)}</td
-                  >
+                  <td class="is-num" data-label={t('operatorColumnQuota')}>
+                    {quotaText(organization.attachment_quota_bytes)}
+                    <!-- 人数と添付ファイルの上限をまとめて変える。読み上げの名前に、どの組織かを添える -->
+                    <br /><button
+                      class="link-btn"
+                      type="button"
+                      aria-disabled={resumingSlug !== null}
+                      aria-label={t('operatorQuotaLabel', { name: organization.name })}
+                      onclick={(event) => changeQuota(organization, event.currentTarget)}
+                      >{t('operatorQuotaAction')}</button
+                    >
+                  </td>
                   {#if organization.last_used_at === null}
                     <td class="props-note" data-label={t('operatorColumnLastUsed')}>{t('operatorNeverUsed')}</td>
                   {:else}
@@ -262,3 +298,4 @@
 />
 <OrganizationSuspendDialog bind:this={suspendDialog} onfinish={suspendFinished} />
 <ReassignAdminDialog bind:this={reassignDialog} />
+<OrganizationQuotaDialog bind:this={quotaDialog} onfinish={quotaFinished} />

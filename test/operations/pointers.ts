@@ -201,6 +201,13 @@ export const pointers: Pointers = {
   'organization-resume': async () => ({
     slug: (await createOrganization({ suspended_at: SUSPENDED_AT, purge_on: '2026-11-19' })).slug,
   }),
+  // 上限の変更は、呼ぶたびに別の組織を作る（同じ値への変更は何も書かないので、既定の小さい組織から標準へ変える）
+  'organization-quota-update': async () => ({
+    slug: (await createOrganization()).slug,
+    member_limit: 50,
+    attachment_quota_bytes: 100 * 1024 ** 3,
+    expected: { member_limit: 15, attachment_quota_bytes: 30 * 1024 ** 3 },
+  }),
   // 管理者の指名し直しは、呼ぶたびに別の組織を作り、別の人を指名する（対象の組織の users を消すと、同じ describe の検査が崩れるため）
   'organization-admin-reassign': async () => {
     const user = newGithubUser();

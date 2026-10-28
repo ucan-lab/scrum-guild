@@ -13,7 +13,7 @@ import {
 import { commonDb } from '../db/index.ts';
 import { ApiError } from '../errors.ts';
 import { implement } from './implement.ts';
-import type { OperatorTools } from './operator-tools.ts';
+import { logOperatorChange } from './operator-change-log.ts';
 
 type CommonDb = ReturnType<typeof commonDb>;
 
@@ -33,46 +33,6 @@ type Suspension = { suspended_at: string | null; purge_on: string | null };
 // 解約で停止した組織は消す予定日を持ち、一時的な停止は持たない
 const kindOf = (suspension: Suspension): SuspensionKind =>
   suspension.purge_on === null ? 'temporary' : 'cancellation';
-
-// 組織の変更の履歴に運用者の操作として残す。書けなくても投げず、組織の ID、変更の前後の値、日時、例外の名前だけをログに残す
-// （例外の message に SQL や接続の詳細が混ざりうる）。organizations は書けているので、欠けた行は運用者がログから手で補える
-async function logChange(
-  operator: OperatorTools,
-  log: {
-    operation: string;
-    organizationId: string;
-    action: 'suspend' | 'resume' | 'update';
-    changes: Record<string, readonly [unknown, unknown]>;
-    at: Date;
-  },
-): Promise<void> {
-  try {
-    await operator.appendChangeLog(log.organizationId, {
-      entityType: 'organization',
-      entityId: log.organizationId,
-      action: log.action,
-      changes: log.changes,
-      at: log.at,
-    });
-  } catch (err) {
-    console.error(
-      JSON.stringify({
-        level: 'error',
-        code: 'internal',
-        requestId: operator.requestId,
-        operation: log.operation,
-        route: 'operator',
-        reason: '組織の状態は書けたが、変更の履歴を書けなかった',
-        action: log.action,
-        organizationId: log.organizationId,
-        // 再開と切り替えは organizations の前の値を消すので、欠けた行を補えるよう前後の値と日時を残す（日時と日付だけ）
-        changes: log.changes,
-        at: log.at.toISOString(),
-        error: err instanceof Error ? err.name : typeof err,
-      }),
-    );
-  }
-}
 
 // 順: 1. 組織を slug で引く（無ければ 404、停止済みなら 409）  2. organizations を、停止していないことを条件に書く
 // （同時に停止されて条件に外れたら 409）  3. 組織の DB の change_logs に残す（失敗しても成功として返す）
@@ -97,7 +57,7 @@ export const organizationSuspendOperation = implement(organizationSuspend, async
   ]);
   if (result.changes === 0) throw new ApiError(409, 'conflict');
 
-  await logChange(operator, {
+  await logOperatorChange(operator, {
     operation: organizationSuspend.name,
     organizationId: current.id,
     action: 'suspend',
@@ -132,7 +92,7 @@ export const organizationSuspensionUpdateOperation = implement(
     ]);
     if (result.changes === 0) throw new ApiError(409, 'conflict');
 
-    await logChange(operator, {
+    await logOperatorChange(operator, {
       operation: organizationSuspensionUpdate.name,
       organizationId: current.id,
       action: 'update',
@@ -161,7 +121,7 @@ export const organizationResumeOperation = implement(organizationResume, async (
   ]);
   if (result.changes === 0) throw new ApiError(409, 'conflict');
 
-  await logChange(operator, {
+  await logOperatorChange(operator, {
     operation: organizationResume.name,
     organizationId: current.id,
     action: 'resume',

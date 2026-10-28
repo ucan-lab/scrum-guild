@@ -197,7 +197,9 @@ h1, h2, h3 { text-wrap: balance; }
 /* aria-disabled は、押しても何も起きないが、フォーカスは残したいボタン（読み直している最中の「もう一度試す」など） */
 .btn:disabled, .btn[aria-disabled="true"] { opacity: 0.45; cursor: not-allowed; filter: none; }
 .link-btn { border: 0; background: none; padding: 0; font-size: var(--text-xs); color: var(--color-muted); text-decoration: underline; text-underline-offset: 2px; }
-.link-btn:hover { color: var(--color-fg); }
+.link-btn:hover:not([aria-disabled="true"]) { color: var(--color-fg); }
+/* 押しても何も起きないが、フォーカスは残す文字のボタン（.btn の aria-disabled と同じ見た目） */
+.link-btn[aria-disabled="true"] { opacity: 0.45; cursor: not-allowed; }
 
 /* 上の帯の小さな切り替え */
 .pill {
@@ -688,6 +690,8 @@ label.pick-row:hover { background: var(--color-accent-soft); }
 .table th, .table td { padding: var(--space-3) var(--space-4); text-align: left; border-top: 1px solid var(--color-rule); vertical-align: middle; }
 .table thead th { border-top: 0; border-bottom: var(--rule-double); font-size: var(--text-xs); font-weight: 400; color: var(--color-muted); letter-spacing: 0.06em; white-space: nowrap; }
 .table .is-num { text-align: right; font-family: var(--font-mono); font-variant-numeric: tabular-nums; white-space: nowrap; }
+/* 数の列の中の文字のボタン（運用の画面の「人数と容量の上限を変える」）は、数の等幅の書体と折り返さない指定を引き継がない */
+.table .is-num .link-btn { font-family: var(--font-body); white-space: normal; }
 .table a { color: var(--color-fg); }
 .table .mono, .table .btn { white-space: nowrap; }
 /* 表の行の中の選択欄（メンバーのロールなど）。列が縮んでも選んだ値が読めるよう、中身の幅を保ち、行の高さに合わせて小さくする。
@@ -955,6 +959,11 @@ dialog.dialog::backdrop { background: none; }
   /* 引き出しの中の小さなボタン（保存、取り消し、編集、削除、クリア）と、押すと直せる値も同じ。重なる行の押せる範囲は、下の余白で分ける */
   .drawer .btn.is-sm, .drawer .link-btn, .drawer .edit-trigger { position: relative; }
   .drawer .btn.is-sm::after, .drawer .link-btn::after, .drawer .edit-trigger::after {
+    content: ""; position: absolute; left: 50%; top: 50%; width: max(100%, 44px); height: max(100%, 44px); transform: translate(-50%, -50%);
+  }
+  /* 表のセルの中の文字のボタン（運用の組織の一覧の「人数と容量の上限を変える」）も同じ。上下は押せない値の文字なので重ならない */
+  .table .link-btn { position: relative; }
+  .table .link-btn::after {
     content: ""; position: absolute; left: 50%; top: 50%; width: max(100%, 44px); height: max(100%, 44px); transform: translate(-50%, -50%);
   }
   /* 引き出しのタブ（コメントと変更の履歴）は、広げた分が下のタブの中身（.thread）に覆われるので、見た目ごと 44px の高さにする */
