@@ -1461,7 +1461,7 @@ const looooooooooooooooooooooooooooooooooongLine = "コードの長い1行は、
          <div class="field"><label class="field-label" for="d-qg">添付ファイルの上限（GB）</label><input class="input" id="d-qg" type="number" min="1" step="1" value="30"></div>
        </div>
        <p class="field-hint" id="d-qu">今の上限です。別の値を選ぶと変えられます。</p>
-       <p class="field-hint">人数を今より小さくしても、今いる人はそのまま残り、上限を下回るまで招待だけを止めます。</p>
+       <p class="field-hint">人数を今より小さくしても、今いる人はそのまま残り、上限を下回るまで新しい人の招待と管理者への指名だけを止めます。</p>
        <p class="field-hint">上限の変更は${t("organization")}の変更の履歴に、運用者の操作として残ります。</p>`,
       `<button class="btn is-quiet" type="button" data-close-dialog>やめる</button><button class="btn is-primary" type="button" id="d-qs" aria-disabled="true" aria-describedby="d-qu">変える</button>`),
     suspendOrganization: () => {
