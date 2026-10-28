@@ -588,19 +588,27 @@ export async function waitForSettled(page: Page): Promise<void> {
 }
 
 // 書体の読み込みが終わり、続けて2回の描画で縦のスクロールの位置が変わらなくなってから、その位置を返す。
-// 書体は font-display: swap で、読み込み中は代わりの書体で組む。IBM Plex Mono の latin が届く前は、バックログのページが 1px 高く、
-// 一番下まで送った位置が書体の差し替えだけで 1px 動く（#428）。開く前と後の位置を比べるときは、どちらもこれで読む
+// 書体は font-display: swap で、読み込み中は代わりの書体で組む。IBM Plex Mono の latin が届く前と後で、バックログのページの高さが
+// 1px 違い、一番下まで送った位置が書体の差し替えだけで 1px 動く（#428。向きは実行する環境の代わりの書体による）。
+// 開く前と後の位置を比べるときは、どちらもこれで読む。新しい文字で後から始まる読み込みも待つよう、回るたびに fonts.ready を待ち直す。
+// 描画が止まったページで待ち続けないよう、1回の描画の待ちと全体を時間で切り、落ち着かなければ最後の値を添えて落とす
 export async function settledScrollY(page: Page): Promise<number> {
   return page.evaluate(async () => {
-    await document.fonts.ready;
-    const frame = () => new Promise((resolve) => requestAnimationFrame(resolve));
+    const deadline = performance.now() + 5000;
+    const frame = () =>
+      new Promise((resolve) => {
+        requestAnimationFrame(resolve);
+        setTimeout(resolve, 100);
+      });
     let previous = window.scrollY;
-    for (;;) {
+    while (performance.now() < deadline) {
+      await document.fonts.ready;
       await frame();
       await frame();
-      if (window.scrollY === previous) return previous;
+      if (window.scrollY === previous && document.fonts.status === 'loaded') return previous;
       previous = window.scrollY;
     }
+    throw new Error(`スクロールの位置が 5 秒で落ち着かない（最後の値は ${window.scrollY}）`);
   });
 }
 
