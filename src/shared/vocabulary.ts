@@ -1141,6 +1141,11 @@ export const dictionary = defineDictionary({
     'この招待の URL は使えません。招待の URL を開いた直後の画面だけが使えます。戻る・再読み込みをしたときや、URL が欠けているときは、届いた招待の URL をもう一度開いてください。',
   ),
   inviteMoving: organization('Google へ移っています', 'Google へ移っています'),
+  // URL を読み終えてボタンを出したときに、読み上げの領域へ入れる（ボタンは URL を置き換えた後に出るため）
+  inviteReady: organization(
+    '招待の URL を読みました。「Google でログイン」を押すとログインを始めます。',
+    '招待の URL を読みました。「Google でログイン」を押すとログインを始めます。',
+  ),
   loginErrorRetry: organization(
     'ログインを完了できませんでした。もう一度ログインしてください。',
     'ログインを完了できませんでした。もう一度ログインしてください。',

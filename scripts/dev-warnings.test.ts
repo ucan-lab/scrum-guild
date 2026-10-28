@@ -83,11 +83,10 @@ describe('isKnownDevWarning', () => {
     assert.equal(isKnownDevWarning(at(name, 'Loading `/api/aoba/member-list-x`' + tail, '/aoba/w/1')), false);
   });
 
-  test('history_api_conflict は招待の画面だけ既知（#394）', () => {
+  test('history_api_conflict は招待の画面でも既知に数えない（#394 で直した）', () => {
     const name = '[sveltekit] history_api_conflict';
-    assert.equal(isKnownDevWarning(at(name, 'Avoid using', '/invite')), true);
+    assert.equal(isKnownDevWarning(at(name, 'Avoid using', '/invite')), false);
     assert.equal(isKnownDevWarning(at(name, 'Avoid using', '/aoba/w/1')), false);
-    assert.equal(isKnownDevWarning(at(name, 'Avoid using', '/invite/x')), false);
   });
 
   test('hmr_reload_after_error は、存在しないパスを開くテストの画面だけ既知（ほかは予期しない例外の印なので数える）', () => {
