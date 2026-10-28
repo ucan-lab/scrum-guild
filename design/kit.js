@@ -1460,9 +1460,10 @@ const looooooooooooooooooooooooooooooooooongLine = "コードの長い1行は、
          <div class="field"><label class="field-label" for="d-qm">人数の上限（人）</label><input class="input" id="d-qm" type="number" min="1" step="1" value="15"></div>
          <div class="field"><label class="field-label" for="d-qg">添付ファイルの上限（GB）</label><input class="input" id="d-qg" type="number" min="1" step="1" value="30"></div>
        </div>
+       <p class="field-hint" id="d-qu">今の上限です。別の値を選ぶと変えられます。</p>
        <p class="field-hint">人数を今より小さくしても、今いる人はそのまま残り、上限を下回るまで招待だけを止めます。</p>
        <p class="field-hint">上限の変更は${t("organization")}の変更の履歴に、運用者の操作として残ります。</p>`,
-      `<button class="btn is-quiet" type="button" data-close-dialog>やめる</button><button class="btn is-primary" type="button" data-close-dialog data-toast="「あおば開発」の上限を変えました">変える</button>`),
+      `<button class="btn is-quiet" type="button" data-close-dialog>やめる</button><button class="btn is-primary" type="button" id="d-qs" aria-disabled="true" aria-describedby="d-qu">変える</button>`),
     suspendOrganization: () => {
       openDialog(`${t("organization")}を停止する`,
       `<p>ひばり工房を停止します。停止すると誰も入れなくなり、取り込みと日をまたぐ処理も止まります。データは残り、再開すれば元どおりに使えます。</p>
@@ -1959,12 +1960,27 @@ const looooooooooooooooooooooooooooooooooongLine = "コードの長い1行は、
     }
   });
 
-  // 上限の変更のダイアログ: 「ほかの値」を選んでいる間だけ、人数と容量の欄（d-qo）を出す（本番の OrganizationQuotaDialog と同じ）
-  document.addEventListener("change", (ev) => {
-    const el = ev.target.closest("[data-quota-choice]");
-    if (!el) return;
-    document.getElementById("d-qo").hidden = el.value !== "other";
-  });
+  // 上限の変更のダイアログ: 「ほかの値」を選んでいる間だけ、人数と容量の欄（d-qo）を出す（本番の OrganizationQuotaDialog と同じ）。
+  // 見本の今の上限（15 人・30 GB）と同じ値を選んでいる間は「変える」を aria-disabled にし、理由（d-qu）を添える。押せるときだけ閉じてトーストを出す
+  const syncQuotaDialog = () => {
+    const chosen = document.querySelector("[data-quota-choice]:checked");
+    const submit = document.getElementById("d-qs");
+    if (!chosen || !submit) return;
+    document.getElementById("d-qo").hidden = chosen.value !== "other";
+    const same = chosen.value === "small" ||
+      (chosen.value === "other" && document.getElementById("d-qm").value === "15" && document.getElementById("d-qg").value === "30");
+    submit.setAttribute("aria-disabled", String(same));
+    document.getElementById("d-qu").hidden = !same;
+    if (same) {
+      submit.removeAttribute("data-close-dialog");
+      submit.removeAttribute("data-toast");
+    } else {
+      submit.setAttribute("data-close-dialog", "");
+      submit.setAttribute("data-toast", "「あおば開発」の上限を変えました");
+    }
+  };
+  document.addEventListener("change", (ev) => { if (ev.target.closest("[data-quota-choice]")) syncQuotaDialog(); });
+  document.addEventListener("input", (ev) => { if (ev.target.closest("#d-qm, #d-qg")) syncQuotaDialog(); });
 
   // ---- 操作（見本の中だけで動き、保存はしない） ----
   document.addEventListener("change", (ev) => {
