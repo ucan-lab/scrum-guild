@@ -116,7 +116,7 @@ describe('運用者が自分を指名する', () => {
 });
 
 describe('ワークスペースの所属を持つ前の指名', () => {
-  test('まだログインしていない指名の行がワークスペースの所属を持っていても、指名し直せ、所属のある行は消さず、取り消しの記録も残さない', async () => {
+  test('まだログインしていない指名の行がワークスペースの所属を持っていても、指名し直せ、所属のある行は消さず、削除の記録は残さない（管理者の印は外す）', async () => {
     const organization = await createOrganization();
     const admin = await createPerson({ organization, admin: true });
     const workspace = await createWorkspace(organization, admin.userId!);
@@ -134,6 +134,7 @@ describe('ワークスペースの所属を持つ前の指名', () => {
     const ids = (await usersOf(organization.id)).map((row) => row.id);
     expect(ids).toContain(leader.id);
     expect(ids).not.toContain(other.id);
+    expect((await usersOf(organization.id)).find((row) => row.id === leader.id)).toMatchObject({ is_admin: 0 });
     expect((await deleteLogsOf(organization.id)).map((log) => log.entity_id)).toEqual([other.id]);
   });
 });
