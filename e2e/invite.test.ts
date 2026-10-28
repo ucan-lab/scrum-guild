@@ -112,6 +112,36 @@ test('URL を置き換える移動が遅く、読み込み中の表示で画面�
   await expect(page).toHaveURL(/\/invite$/);
 });
 
+test('同じ文書のまま画面を移ってから、秘密の無い /invite へ戻ると、前の秘密を使わず使えない旨を出す', async ({
+  page,
+}) => {
+  // 画面の中の移動（SvelteKit がリンクの押下を受けて文書を読み込み直さない移動）で離れて戻る
+  async function navigateInApp(href: string): Promise<void> {
+    await page.evaluate((target) => {
+      const link = document.createElement('a');
+      link.href = target;
+      link.textContent = 'e2e の移動';
+      document.querySelector('main')!.append(link);
+      link.click();
+    }, href);
+  }
+  await page.goto(`/invite#${CLAIM_TOKEN}`);
+  await expect(page.getByRole('button', { name: 'Google でログイン' })).toBeVisible();
+  const documentId = await page.evaluate(() => {
+    const id = Math.random().toString(36);
+    Object.assign(window, { e2eDocumentId: id });
+    return id;
+  });
+  await navigateInApp('/login');
+  await expect(page).toHaveURL(/\/login$/);
+  await navigateInApp('/invite');
+  await expect(page).toHaveURL(/\/invite$/);
+  await expect(page.getByRole('alert')).toContainText('この招待の URL は使えません');
+  await expect(page.getByRole('button', { name: 'Google でログイン' })).toHaveCount(0);
+  // 読み込み直さずに戻ったこと（文書が同じ）
+  expect(await page.evaluate(() => (window as unknown as { e2eDocumentId?: string }).e2eDocumentId)).toBe(documentId);
+});
+
 test('/login?error=invite は、使えない旨を出す', async ({ page }) => {
   await page.goto('/login?error=invite');
   await expect(page.getByRole('alert')).toContainText(

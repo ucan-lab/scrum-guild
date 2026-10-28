@@ -5,7 +5,7 @@
 
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { goto } from '$app/navigation';
+  import { beforeNavigate, goto } from '$app/navigation';
   import { resolve } from '$app/paths';
   import Gate from '../../lib/components/Gate.svelte';
   import GateSheet from '../../lib/components/GateSheet.svelte';
@@ -46,6 +46,12 @@
       usable = !hasFragment() && CLAIM_TOKEN_PATTERN.test(token);
       claimToken = usable ? token : '';
     }
+  });
+
+  // 同じ文書のままほかの画面へ移るときは、秘密を消す（戻った /invite で前の秘密を使わない）。URL を置き換える移動は
+  // この画面への移動なので消さない（読み込み中の表示で作り直された画面が読む）
+  beforeNavigate(({ to }) => {
+    if (to?.route.id !== '/invite') pendingToken = '';
   });
 
   // 押した後は、Google へ移るまでの間の2回目以降の押下を無視する（2回送ると、state の行とレート制限の枠を2つ使う）
