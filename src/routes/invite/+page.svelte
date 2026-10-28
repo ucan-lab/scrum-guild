@@ -42,7 +42,8 @@
       // 履歴の項目を置き換える。クエリは引き継がない（招待の URL はクエリを持たない）
       if (hasFragment()) await goto(resolve('/invite'), { replace: true });
     } finally {
-      // ボタンは URL から秘密が消えてから出す。移動が失敗したか、ほかの移動に取って代わられて消えなければ、使えない旨を出す
+      // ボタンは URL から秘密が消えてから出す。移動が失敗したか、ほかの移動に取って代わられて消えなければ、使えない旨を出す。
+      // 移動の例外は catch しない（予期しない例外なので、画面のエラーの送り手 hooks.client.ts に未処理の reject として送る）
       usable = !hasFragment() && CLAIM_TOKEN_PATTERN.test(token);
       claimToken = usable ? token : '';
     }

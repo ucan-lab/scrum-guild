@@ -112,6 +112,21 @@ test('URL を置き換える移動が遅く、読み込み中の表示で画面�
   await expect(page).toHaveURL(/\/invite$/);
 });
 
+test('URL から秘密を消せなかったときは、ボタンを出さず使えない旨を出す', async ({ page }) => {
+  // SvelteKit の移動が URL を置き換えないまま終わった場面（移動の失敗、ほかの移動に取って代わられた）を、置き換えを
+  // 今の URL のままにして再現する
+  await page.addInitScript(() => {
+    const original = History.prototype.replaceState;
+    History.prototype.replaceState = function (this: History, data: unknown) {
+      original.call(this, data, '', location.href);
+    };
+  });
+  await page.goto(`/invite#${CLAIM_TOKEN}`);
+  await expect(page.getByRole('alert')).toContainText('この招待の URL は使えません');
+  await expect(page.getByRole('button', { name: 'Google でログイン' })).toHaveCount(0);
+  expect(page.url()).toContain(CLAIM_TOKEN);
+});
+
 test('同じ文書のまま画面を移ってから、秘密の無い /invite へ戻ると、前の秘密を使わず使えない旨を出す', async ({
   page,
 }) => {
