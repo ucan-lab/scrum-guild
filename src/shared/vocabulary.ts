@@ -1013,8 +1013,8 @@ export const dictionary = defineDictionary({
   ),
   // GitHub で解決した人が、操作している運用者自身（運用者のアカウントに結んだログイン）だった
   operatorErrorNomineeIsOperator: organization(
-    'あなた自身は{admin}に指名し直せません。運用者は{organization}の中を見ないので、{organization}の人か、{admin}になる人を指名してください。',
-    'あなた自身は{admin}に指名し直せません。運用者は{organization}の中を見ないので、{organization}の人か、{admin}になる人を指名してください。',
+    'この GitHub のユーザーは、あなた（運用者）のログインです。運用者は{organization}の中を見ないので、{organization}の人か、{admin}になる人を指名してください。',
+    'この GitHub のユーザーは、あなた（運用者）のログインです。運用者は{organization}の中を見ないので、{organization}の人か、{admin}になる人を指名してください。',
   ),
   operatorReassignNotFound: organization(
     'この{organization}が見つかりません。一覧を確かめてください。',

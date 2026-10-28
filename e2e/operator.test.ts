@@ -1428,7 +1428,7 @@ test.describe('運用者', () => {
       await dialog.getByRole('button', { name: '確かめる' }).click();
       const submit = dialog.getByRole('button', { name: '指名する', exact: true });
       await submit.click();
-      await expect(dialog.getByRole('alert')).toContainText('あなた自身はギルドマスターに指名し直せません');
+      await expect(dialog.getByRole('alert')).toContainText('この GitHub のユーザーは、あなた（運用者）のログインです');
       await expect(dialog.getByLabel('GitHub のユーザー名')).toBeFocused();
       // 確かめ直すまで指名できない
       await expect(submit).toBeDisabled();
