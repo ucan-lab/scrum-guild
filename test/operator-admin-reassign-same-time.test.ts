@@ -1,14 +1,7 @@
-// 運用者による管理者の指名し直し（organization-admin-reassign、Issue #217）を崩すテスト（3周目）。
-// 前の周で、前の指名の削除と記録を「指名した人の行の updated_at が、この batch() の UPDATE の書いた値であること」に結ばせた。
-// ここでは、その条件が時刻の一致で「自分の更新か」を見分けている点を狙う。UPDATE が条件に外れたのに、別の書き込みが
-// 同じ時刻（同じミリ秒、止めた時計）の updated_at を書いていた場合に、409 を返しながら前の指名を消さないかを確かめる。
-// 根拠:
-// - docs/data-model.md の「書き込みの単位」の管理者の指名し直し: 「既にいる人を UPDATE するときは、指名した人の行の updated_at が
-//   その UPDATE の書いた値であることも条件にし、UPDATE が条件に外れたら（その人が別の経路で有効な管理者になっていても）
-//   前の指名も記録も書かない」「既にいる人の UPDATE が条件に外れたとき（前の指名も消えない）... は 409」。例外を置いていない
-// - src/server/db/previous-statement.ts の決まり: 「行の内容や時刻の一致で『自分の更新か』を見分けると、止めた時計や
-//   同じ値を書く要求では、負けた要求も一致して二重に書く」
-// - workerd の Date は、I/O の間は進まない（同じ時刻を別の要求が読みうる）
+// 運用者による管理者の指名し直し（organization-admin-reassign、Issue #217）で、同じ時刻（同じミリ秒、止めた時計）の
+// 別の書き込みがあっても、409 を返す要求が前の指名を消さないことを確かめる。自分の書き込みかを時刻や書いた値の一致で
+// 見分けない決まり（src/server/db/previous-statement.ts）を守っているかの回帰。workerd の Date は I/O の間は進まないので、
+// 別の要求が同じ時刻を読みうる（docs/data-model.md の「書き込みの単位」の管理者の指名し直し）
 import { env } from 'cloudflare:workers';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { organizationAdminReassign as reassign } from '../src/shared/operations/operator/index.ts';

@@ -1,4 +1,4 @@
-// 運用者による管理者の指名し直し（organization-admin-reassign、Issue #217）の、done-check のレビューで出た指摘を確かめる。
+// 運用者による管理者の指名し直し（organization-admin-reassign、Issue #217）の、断る場合と守りを確かめる。
 // - 運用者が自分（自分のアカウントに結んだ GitHub のログイン）を指名するのを断る（nominee_is_operator）
 // - ワークスペースの所属を持つ前の指名は消さず残す（memberships.user_id が行を指すため）
 // - batch() の失敗を 409 にするのは、新しい行を入れるときだけ（ほかは 500 として残す）
