@@ -206,6 +206,7 @@ export const pointers: Pointers = {
     slug: (await createOrganization()).slug,
     member_limit: 50,
     attachment_quota_bytes: 100 * 1024 ** 3,
+    expected: { member_limit: 15, attachment_quota_bytes: 30 * 1024 ** 3 },
   }),
   // 管理者の指名し直しは、呼ぶたびに別の組織を作り、別の人を指名する（対象の組織の users を消すと、同じ describe の検査が崩れるため）
   'organization-admin-reassign': async () => {

@@ -7,7 +7,8 @@
     quotaTiers,
   } from '../../shared/operations/operator/index.ts';
   import { callOperation } from '../api.ts';
-  import { quotaSize } from '../format.ts';
+  import { invalidateAll } from '$app/navigation';
+  import { formatCount, quotaSize } from '../format.ts';
   import { isUnauthenticated } from '../login-redirect.ts';
   import { t } from '../vocabulary.svelte.ts';
   import Dialog from './Dialog.svelte';
@@ -15,8 +16,13 @@
 
   // 組織の人数と添付ファイルの上限を変えるダイアログ（design/kit.js の changeQuota）。運用の画面だけが使う。
   // 値段の段階（quotaTiers）か「ほかの値」から選ぶ。今の上限に合う段階を選んだ状態で開き、どれにも合わなければ「ほかの値」を
-  // 今の値（容量は GB の整数に丸め、1 GB 未満は 1）で埋めて開く。ほかの値は 1 以上、上限以下の整数だけを送り、外れたら送る前に欄の下で断る。
+  // 今の値（容量は GB の整数に丸め、1 GB 未満は 1）で埋めて開く。容量の欄は表示のための丸めなので、触っていなければ
+  // 今のバイト数をそのまま送る（512 MB の組織の人数だけを変えても、容量は 512 MB のまま）。
+  // ほかの値は 1 以上、上限以下の整数だけを送り、外れたら送る前に欄の下で断る。
   // 今と同じ値のままでは「変える」を押しても無視する（サーバーは何も書かずに今の値を返す）。
+  // 開いたときの上限を expected に添えて送り、開いた後に別の運用者が変えていればサーバーが 409 で断る。
+  // 選択肢を選び直したら、欄の誤りと送信の失敗の文を消す。
+  // 書かれたか分からない失敗（5xx、通信の切れ）は、変わっていることもあると伝え、閉じたときに一覧を読み直す。
   // 添付ファイルの今の合計と、合計に関わる注意（合計が下がるまで添付できない、80% の通知）は #68 まで出さない。
   // 送っている間の扱いと、結果の渡し方（onfinish、generation）は OrganizationSuspendDialog と同じ
   type Outcome = 'done' | 'state_changed' | 'unavailable' | 'unauthenticated';
@@ -30,9 +36,13 @@
   let choice = $state<Choice>('small');
   let members = $state<number | null>(null);
   let sizeGb = $state<number | null>(null);
+  // 容量の欄を触ったか。触っていなければ、丸めた欄の値でなく今のバイト数を使う
+  let sizeTouched = $state(false);
   let errors = $state<{ members?: string; size?: string }>({});
   let submitting = $state(false);
   let submitError = $state<string | null>(null);
+  // 書かれたか分からない失敗の後は、閉じたときに一覧を読み直す
+  let reloadOnClose = false;
   let generation = 0;
 
   const ids = $props.id();
@@ -49,6 +59,18 @@
       open = false;
     };
   });
+
+  $effect(() => {
+    if (open || !reloadOnClose) return;
+    reloadOnClose = false;
+    void invalidateAll();
+  });
+
+  // 選択肢を選び直したら、前の誤りと失敗の文は今の選択に当たらないので消す
+  function choose(): void {
+    errors = {};
+    submitError = null;
+  }
 
   function sizeText(bytes: number): string {
     const quota = quotaSize(bytes);
@@ -81,6 +103,8 @@
     choice = tier?.id ?? 'other';
     members = current.member_limit;
     sizeGb = Math.max(1, Math.round(current.attachment_quota_bytes / QUOTA_GIB));
+    sizeTouched = false;
+    reloadOnClose = false;
     errors = {};
     submitting = false;
     submitError = null;
@@ -92,7 +116,10 @@
     const tier = quotaTiers.find((entry) => entry.id === choice);
     if (tier !== undefined)
       return { member_limit: tier.member_limit, attachment_quota_bytes: tier.attachment_quota_bytes };
-    if (!isWhole(members, MEMBER_LIMIT_MAX) || !isWhole(sizeGb, SIZE_MAX_GB)) return null;
+    if (!isWhole(members, MEMBER_LIMIT_MAX)) return null;
+    if (!sizeTouched && target !== null)
+      return { member_limit: members, attachment_quota_bytes: target.current.attachment_quota_bytes };
+    if (!isWhole(sizeGb, SIZE_MAX_GB)) return null;
     return { member_limit: members, attachment_quota_bytes: sizeGb * QUOTA_GIB };
   });
   const unchanged = $derived(
@@ -106,8 +133,9 @@
     if (choice !== 'other') return {};
     const found: { members?: string; size?: string } = {};
     if (!isWhole(members, MEMBER_LIMIT_MAX))
-      found.members = t('operatorQuotaMembersInvalid', { max: MEMBER_LIMIT_MAX });
-    if (!isWhole(sizeGb, SIZE_MAX_GB)) found.size = t('operatorQuotaSizeInvalid', { max: SIZE_MAX_GB });
+      found.members = t('operatorQuotaMembersInvalid', { max: formatCount(MEMBER_LIMIT_MAX) });
+    if (sizeTouched && !isWhole(sizeGb, SIZE_MAX_GB))
+      found.size = t('operatorQuotaSizeInvalid', { max: formatCount(SIZE_MAX_GB) });
     return found;
   }
 
@@ -125,7 +153,12 @@
     submitting = true;
     submitError = null;
     try {
-      const result = await callOperation(organizationQuotaUpdate, { slug: target.slug, ...chosen });
+      const { current } = target;
+      const result = await callOperation(organizationQuotaUpdate, {
+        slug: target.slug,
+        ...chosen,
+        expected: { member_limit: current.member_limit, attachment_quota_bytes: current.attachment_quota_bytes },
+      });
       if (mine !== generation) return;
       if (result.ok) {
         open = false;
@@ -139,6 +172,10 @@
       } else if (result.status === 404 || result.status === 403) {
         open = false;
         onfinish('unavailable');
+      } else if (result.status === 0 || result.status >= 500) {
+        // 書けた後に応答だけが失われたこともある。閉じたら一覧を読み直す
+        submitError = t('operatorQuotaFailedUnknown');
+        reloadOnClose = true;
       } else {
         submitError = t('operatorQuotaFailed');
       }
@@ -180,7 +217,7 @@
         <div class="choice-list" role="radiogroup" aria-labelledby={choicesLabelId}>
           {#each quotaTiers as tier (tier.id)}
             <label class="choice">
-              <input type="radio" name="{ids}-tier" value={tier.id} bind:group={choice} />
+              <input type="radio" name="{ids}-tier" value={tier.id} bind:group={choice} onchange={choose} />
               <div>
                 <b>{tierNames[tier.id]}</b><span
                   >{t('operatorQuotaTierValue', {
@@ -192,7 +229,7 @@
             </label>
           {/each}
           <label class="choice">
-            <input type="radio" name="{ids}-tier" value="other" bind:group={choice} />
+            <input type="radio" name="{ids}-tier" value="other" bind:group={choice} onchange={choose} />
             <div>
               <b>{t('operatorQuotaTierOther')}</b><span
                 >{t('operatorQuotaTierOtherHint', { organization: t('organization') })}</span
@@ -231,7 +268,10 @@
               max={SIZE_MAX_GB}
               step="1"
               bind:value={sizeGb}
-              oninput={() => (errors.size = undefined)}
+              oninput={() => {
+                sizeTouched = true;
+                errors.size = undefined;
+              }}
               aria-invalid={errors.size !== undefined}
               aria-describedby={errors.size !== undefined ? `${fieldIds.size}-error` : undefined}
             />

@@ -25,10 +25,12 @@ async function readQuota(db: CommonDb, slug: string) {
   return row;
 }
 
-// 順: 1. 組織を slug で引く（無ければ 404）。今と同じ値なら何も書かずに今の値を返す
-// 2. organizations を、読んだ上限のままであることを条件に書く（別の運用者が先に変えて外れたら 409）。
-//    添付ファイルの上限を上げたときだけ attachment_quota_warned_at を空に戻す（80% の通知をやり直す）。停止中の組織も変えられる
-// 3. 組織の DB の change_logs に、変わった列だけの前後の値で残す（失敗しても成功として返す）
+// 順: 1. 組織を slug で引く（無ければ 404）。今の値が送った値と同じなら何も書かずに今の値を返す
+// 2. 今の値が画面の見ていた前の値（expected）と違えば 409（ダイアログを開いた後に別の運用者が変えた）
+// 3. organizations を、expected のままであることを条件に書く（読んだ後に別の運用者が先に変えて外れたら 409）。
+//    添付ファイルの上限を上げたときだけ attachment_quota_warned_at を空に戻す（80% の通知をやり直す）。そのときは
+//    通知の日時が読んだ値のままであることも条件にし、履歴の前の値と実際に消した値をそろえる。停止中の組織も変えられる
+// 4. 組織の DB の change_logs に、変わった列だけの前後の値で残す（失敗しても成功として返す）
 export const organizationQuotaUpdateOperation = implement(organizationQuotaUpdate, async ({ db, operator, input }) => {
   const current = await readQuota(db, input.slug);
   const memberLimitChanged = current.member_limit !== input.member_limit;
@@ -40,13 +42,20 @@ export const organizationQuotaUpdateOperation = implement(organizationQuotaUpdat
       attachment_quota_bytes: current.attachment_quota_bytes,
     };
   }
+  const { expected } = input;
+  if (
+    current.member_limit !== expected.member_limit ||
+    current.attachment_quota_bytes !== expected.attachment_quota_bytes
+  ) {
+    throw new ApiError(409, 'conflict');
+  }
 
   const raised = input.attachment_quota_bytes > current.attachment_quota_bytes;
   const clearsWarning = raised && current.attachment_quota_warned_at !== null;
   const at = now();
   const [result] = await db.batch([
-    db.statement((q) =>
-      q
+    db.statement((q) => {
+      const update = q
         .updateTable('organizations')
         .set({
           member_limit: input.member_limit,
@@ -55,9 +64,13 @@ export const organizationQuotaUpdateOperation = implement(organizationQuotaUpdat
           updated_at: at.toISOString(),
         })
         .where('id', '=', current.id)
-        .where('member_limit', '=', current.member_limit)
-        .where('attachment_quota_bytes', '=', current.attachment_quota_bytes),
-    ),
+        .where('member_limit', '=', expected.member_limit)
+        .where('attachment_quota_bytes', '=', expected.attachment_quota_bytes);
+      if (!raised) return update;
+      return current.attachment_quota_warned_at === null
+        ? update.where('attachment_quota_warned_at', 'is', null)
+        : update.where('attachment_quota_warned_at', '=', current.attachment_quota_warned_at);
+    }),
   ]);
   if (result.changes === 0) throw new ApiError(409, 'conflict');
 

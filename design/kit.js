@@ -1446,17 +1446,17 @@ const looooooooooooooooooooooooooooooooooongLine = "コードの長い1行は、
       document.querySelector(".dialog-sheet").classList.add("is-danger");
     },
     // 人数と添付ファイルの上限の変更（本番の OrganizationQuotaDialog）。今の上限に合う段階を選んだ状態で開く。
-    // 「ほかの値」の欄は、本番では「ほかの値」を選んでいる間だけ出す（見本は欄の形を見せるため出したまま）。
+    // 「ほかの値」の欄は、「ほかの値」を選んでいる間だけ出す（data-quota-choice の change）。
     // 添付ファイルの今の合計と、合計に関わる注意（合計が下がるまで添付できない、80% の通知）は #68 まで出さない
     changeQuota: () => openDialog("人数と添付ファイルの上限を変える",
-      `<p class="wrap-anywhere">「あおば開発」の上限を変えます。今は人数 5 人（上限 15 人）、添付ファイルの上限 30 GB です。</p>
+      `<p class="wrap-anywhere">「あおば開発」の上限を変えます。今は人数 5&nbsp;人（上限 15&nbsp;人）、添付ファイルの上限 30&nbsp;GB です。</p>
        <div class="field"><span class="field-label" id="d-ql">新しい上限</span>
          <div class="choice-list" role="radiogroup" aria-labelledby="d-ql">
-           <label class="choice"><input type="radio" name="d-q" checked><div><b>小さい${t("organization")}</b><span>15 人・30 GB</span></div></label>
-           <label class="choice"><input type="radio" name="d-q"><div><b>標準</b><span>50 人・100 GB</span></div></label>
-           <label class="choice"><input type="radio" name="d-q"><div><b>ほかの値</b><span>51 人以上の${t("organization")}のために値を入れます。</span></div></label>
+           <label class="choice"><input type="radio" name="d-q" value="small" data-quota-choice checked><div><b>小さい${t("organization")}</b><span>15&nbsp;人・30&nbsp;GB</span></div></label>
+           <label class="choice"><input type="radio" name="d-q" value="standard" data-quota-choice><div><b>標準</b><span>50&nbsp;人・100&nbsp;GB</span></div></label>
+           <label class="choice"><input type="radio" name="d-q" value="other" data-quota-choice><div><b>ほかの値</b><span>51&nbsp;人以上の${t("organization")}のために値を入れます。</span></div></label>
          </div></div>
-       <div class="form-row is-start">
+       <div class="form-row is-start" id="d-qo" hidden>
          <div class="field"><label class="field-label" for="d-qm">人数の上限（人）</label><input class="input" id="d-qm" type="number" min="1" step="1" value="15"></div>
          <div class="field"><label class="field-label" for="d-qg">添付ファイルの上限（GB）</label><input class="input" id="d-qg" type="number" min="1" step="1" value="30"></div>
        </div>
@@ -1957,6 +1957,13 @@ const looooooooooooooooooooooooooooooooooongLine = "コードの長い1行は、
       document.getElementById(ids[1]).hidden = true;
       document.getElementById(ids[2]).disabled = !google;
     }
+  });
+
+  // 上限の変更のダイアログ: 「ほかの値」を選んでいる間だけ、人数と容量の欄（d-qo）を出す（本番の OrganizationQuotaDialog と同じ）
+  document.addEventListener("change", (ev) => {
+    const el = ev.target.closest("[data-quota-choice]");
+    if (!el) return;
+    document.getElementById("d-qo").hidden = el.value !== "other";
   });
 
   // ---- 操作（見本の中だけで動き、保存はしない） ----

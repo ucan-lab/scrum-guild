@@ -5,7 +5,7 @@
 import { env } from 'cloudflare:workers';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { createApp } from '../src/server/app.ts';
-import { commonDb, orgDb } from '../src/server/db/index.ts';
+import { commonDb, insertOrganization, orgDb } from '../src/server/db/index.ts';
 import { envWithD1Hooks, verifiedOrganizationForTest } from '../src/server/db/testing.ts';
 import { implementedOperations } from '../src/server/operations/index.ts';
 import {
@@ -15,6 +15,7 @@ import {
   organizationQuotaUpdate,
   quotaTiers,
 } from '../src/shared/operations/operator/index.ts';
+import { organizationHistory } from '../src/shared/operations/organization/organization-history.ts';
 import { createOrganization } from './factories.ts';
 import { errorCodeOf, post } from './operations/harness.ts';
 import {
@@ -59,13 +60,23 @@ async function changeLogsOf(organizationId: string) {
   );
 }
 
-async function changeQuotaBy(
-  token: string,
-  slug: string,
-  quota: { member_limit: number; attachment_quota_bytes: number },
-  useEnv?: Env,
-) {
-  return post(app, organizationQuotaUpdate, { token, body: { slug, ...quota }, env: useEnv });
+type Quota = { member_limit: number; attachment_quota_bytes: number };
+
+// slug の組織の今の上限。無い slug は小さい組織の値
+async function currentQuotaOf(slug: string): Promise<Quota> {
+  const db = commonDb(env);
+  const row = await db.first(
+    db.statement((q) =>
+      q.selectFrom('organizations').select(['member_limit', 'attachment_quota_bytes']).where('slug', '=', slug),
+    ),
+  );
+  return row ?? SMALL;
+}
+
+// expected（画面が見ていた前の値）を渡さなければ、呼ぶ前の今の値を渡す（画面が最新の一覧から開いたときと同じ）
+async function changeQuotaBy(token: string, slug: string, quota: Quota, options: { expected?: Quota; env?: Env } = {}) {
+  const expected = options.expected ?? (await currentQuotaOf(slug));
+  return post(app, organizationQuotaUpdate, { token, body: { slug, ...quota, expected }, env: options.env });
 }
 
 describe('値段の段階', () => {
@@ -148,6 +159,20 @@ describe('上限の変更', () => {
       expect(res.status, JSON.stringify(quota)).toBe(400);
       expect(await errorCodeOf(res)).toBe('invalid_input');
     }
+    // 画面が見ていた前の値（expected）も同じ範囲で検証する。無ければ断る
+    for (const expected of [
+      { member_limit: 0, attachment_quota_bytes: 30 * GIB },
+      { member_limit: 15, attachment_quota_bytes: 0 },
+    ]) {
+      const res = await changeQuotaBy(token, organization.slug, STANDARD, { expected });
+      expect(res.status, JSON.stringify(expected)).toBe(400);
+      expect(await errorCodeOf(res)).toBe('invalid_input');
+    }
+    const missing = await post(app, organizationQuotaUpdate, {
+      token,
+      body: { slug: organization.slug, ...STANDARD },
+    });
+    expect(missing.status).toBe(400);
     expect(await organizationRow(organization.id)).toMatchObject(SMALL);
     expect(await changeLogsOf(organization.id)).toEqual([]);
   });
@@ -197,7 +222,7 @@ describe('上限の変更', () => {
         ]);
       },
     });
-    const res = await changeQuotaBy(await operatorToken(), organization.slug, STANDARD, racing);
+    const res = await changeQuotaBy(await operatorToken(), organization.slug, STANDARD, { env: racing });
     expect(armed).toBe(false);
     expect(res.status).toBe(409);
     expect(await errorCodeOf(res)).toBe('conflict');
@@ -206,6 +231,85 @@ describe('上限の変更', () => {
       attachment_quota_bytes: 30 * GIB,
     });
     expect(await changeLogsOf(organization.id)).toEqual([]);
+  });
+
+  test('画面が見ていた前の値（expected）と今の値が違えば 409 で、先の変更を書き換えない', async () => {
+    // ダイアログを開いた後に、別の運用者が 30 人へ変えていた
+    const organization = await createOrganization({ member_limit: 30 });
+    const res = await changeQuotaBy(await operatorToken(), organization.slug, STANDARD, { expected: SMALL });
+    expect(res.status).toBe(409);
+    expect(await errorCodeOf(res)).toBe('conflict');
+    expect(await organizationRow(organization.id)).toMatchObject({
+      member_limit: 30,
+      attachment_quota_bytes: 30 * GIB,
+      updated_at: organization.updated_at,
+    });
+    expect(await changeLogsOf(organization.id)).toEqual([]);
+  });
+
+  test('前の値が違っても、今の値が送った値と同じなら何も書かずに今の値を返す', async () => {
+    const organization = await createOrganization(STANDARD);
+    const res = await changeQuotaBy(await operatorToken(), organization.slug, STANDARD, { expected: SMALL });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ slug: organization.slug, ...STANDARD });
+    expect((await organizationRow(organization.id))?.updated_at).toBe(organization.updated_at);
+    expect(await changeLogsOf(organization.id)).toEqual([]);
+  });
+
+  test('上げるときに、読んだ後で 80% の通知の日時が変わっていれば 409 で、履歴を残さない', async () => {
+    const organization = await createOrganization();
+    let armed = true;
+    const racing = envWithD1Hooks(testEnv, {
+      // 上限を読んだ直後に、合計が 80% を超えて通知の日時が入る
+      afterQuery: async (sql) => {
+        if (!armed || !sql.includes('from "organizations"') || !sql.includes('"attachment_quota_warned_at"')) return;
+        armed = false;
+        const db = commonDb(env);
+        await db.batch([
+          db.statement((q) =>
+            q
+              .updateTable('organizations')
+              .set({ attachment_quota_warned_at: WARNED_AT })
+              .where('id', '=', organization.id),
+          ),
+        ]);
+      },
+    });
+    const res = await changeQuotaBy(await operatorToken(), organization.slug, STANDARD, { env: racing });
+    expect(armed).toBe(false);
+    expect(res.status).toBe(409);
+    expect(await errorCodeOf(res)).toBe('conflict');
+    expect(await organizationRow(organization.id)).toMatchObject({ ...SMALL, attachment_quota_warned_at: WARNED_AT });
+    expect(await changeLogsOf(organization.id)).toEqual([]);
+  });
+
+  test('片方の組織の上限を変えても、もう片方の組織の列と履歴は変わらない', async () => {
+    const changed = await createOrganization();
+    const other = await createOrganization({ attachment_quota_warned_at: WARNED_AT });
+    const otherBefore = await organizationRow(other.id);
+    expect((await changeQuotaBy(await operatorToken(), changed.slug, STANDARD)).status).toBe(200);
+    expect(await organizationRow(changed.id)).toMatchObject(STANDARD);
+    expect(await organizationRow(other.id)).toEqual(otherBefore);
+    expect(await changeLogsOf(other.id)).toEqual([]);
+    expect(await changeLogsOf(changed.id)).toHaveLength(1);
+  });
+});
+
+describe('作成の既定', () => {
+  test('実際の組織の作成で入る上限は、段階の小さい組織の値と同じ', async () => {
+    const slug = `quota-${crypto.randomUUID().slice(0, 8)}`;
+    const created = await insertOrganization(testEnv, {
+      slug,
+      name: '既定の上限の組織',
+      createdByOperator: OPERATOR_LOGIN_ID,
+      now: new Date(),
+    });
+    expect(created).not.toBe('slug_taken');
+    const small = quotaTiers.find((tier) => tier.id === 'small')!;
+    expect(await currentQuotaOf(slug)).toEqual({
+      member_limit: small.member_limit,
+      attachment_quota_bytes: small.attachment_quota_bytes,
+    });
   });
 });
 
@@ -265,6 +369,22 @@ describe('変更の履歴', () => {
     expect(JSON.parse(quotaOnly!.changes_json)).toEqual({ attachment_quota_bytes: [100 * GIB, 200 * GIB] });
   });
 
+  test('組織の変更の履歴（organization-history）に、運用者の操作として1件出る', async () => {
+    const target = await createTarget();
+    const read = async () =>
+      (
+        (await (await post(app, organizationHistory, { slug: target.slug, token: target.admin.token })).json()) as {
+          entries: { actor: { kind: string }; event: { kind: string } }[];
+        }
+      ).entries;
+    const before = await read();
+    expect((await changeQuotaBy(await operatorToken(), target.slug, STANDARD)).status).toBe(200);
+    const after = await read();
+    expect(after).toHaveLength(before.length + 1);
+    // 新しい順なので先頭。上限の変更は専用の種類を持たず、知らない組と同じ other で出す
+    expect(after[0]).toMatchObject({ actor: { kind: 'operator' }, event: { kind: 'other' } });
+  });
+
   test('履歴を書けなくても変更は成功し、ログに組織の ID、前後の値、日時、例外の名前だけを残す', async () => {
     const errorLog = vi.spyOn(console, 'error').mockImplementation(() => {});
     const organization = await createOrganization();
@@ -273,7 +393,7 @@ describe('変更の履歴', () => {
         if (sqls.some((sql) => sql.startsWith('insert into "change_logs"'))) throw new Error('secret SQL detail');
       },
     });
-    const res = await changeQuotaBy(await operatorToken(), organization.slug, STANDARD, failing);
+    const res = await changeQuotaBy(await operatorToken(), organization.slug, STANDARD, { env: failing });
     expect(res.status).toBe(200);
     expect(await organizationRow(organization.id)).toMatchObject(STANDARD);
     expect(await changeLogsOf(organization.id)).toEqual([]);

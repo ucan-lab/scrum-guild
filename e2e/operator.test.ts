@@ -1005,6 +1005,11 @@ test.describe('運用者', () => {
     await expect(resume).toHaveAccessibleName('「ひばり工房」を再開する');
     await resume.click({ force: true });
     await row.getByRole('button', { name: '「ひばり工房」の停止の理由を変える' }).click({ force: true });
+    // 上限を変える文字のボタンも押せない見た目にし、押してもダイアログを開かない
+    const quota = row.getByRole('button', { name: '「ひばり工房」の人数と容量の上限を変える' });
+    await expect(quota).toHaveAttribute('aria-disabled', 'true');
+    expect(await quota.evaluate((el) => getComputedStyle(el).cursor)).toBe('not-allowed');
+    await quota.click({ force: true });
     await expect(page.getByRole('dialog')).toHaveCount(0);
 
     await settleAfterResponse(page, 'organization-resume', () => gate.release());
@@ -1196,6 +1201,9 @@ test.describe('運用者', () => {
         '「あおば開発」の上限を変えます。今は人数 5 人（上限 15 人）、添付ファイルの上限 30',
       );
       await expect(dialog).not.toContainText('{');
+      // 数と「人」の間は不可分の空白で、折り返しで割れない
+      expect(await dialog.locator('p.wrap-anywhere').textContent()).toContain('5 人（上限 15 人）');
+      expect(await dialog.locator('.choice span').first().textContent()).toContain('15 人・30 GB');
       // 添付ファイルの今の合計と、合計に関わる注意は #68 まで出さない
       await expect(dialog).not.toContainText('合計');
       await expect(dialog).not.toContainText('80%');
@@ -1226,7 +1234,13 @@ test.describe('運用者', () => {
       await expect(change).not.toHaveAttribute('aria-describedby');
       await change.click();
       await expect(dialog).toBeHidden();
-      expect(sent).toEqual({ slug: 'aoba', member_limit: 50, attachment_quota_bytes: 100 * GIB });
+      // 開いたときに見ていた上限を expected に添え、ダイアログを開いた後に別の運用者が変えていればサーバーが 409 で断る
+      expect(sent).toEqual({
+        slug: 'aoba',
+        member_limit: 50,
+        attachment_quota_bytes: 100 * GIB,
+        expected: { member_limit: 15, attachment_quota_bytes: 30 * GIB },
+      });
 
       await expect(page.getByRole('status').filter({ hasText: '「あおば開発」の上限を変えました' })).toBeVisible();
       const row = page.locator('.table tbody tr', { hasText: 'あおば開発' });
@@ -1278,12 +1292,20 @@ test.describe('運用者', () => {
       await size.fill('');
       await change.click();
       await expect(dialog.locator('.field-error')).toHaveText([
-        '人数の上限は 1〜10000 の整数で入れてください。',
-        '添付ファイルの上限は 1〜102400 の整数（GB）で入れてください。',
+        '人数の上限は 1〜10,000 の整数で入れてください。',
+        '添付ファイルの上限は 1〜102,400 の整数（GB）で入れてください。',
       ]);
       await expect(members).toBeFocused();
       await expect(members).toHaveAttribute('aria-invalid', 'true');
-      await expect(members).toHaveAccessibleDescription('人数の上限は 1〜10000 の整数で入れてください。');
+      await expect(members).toHaveAccessibleDescription('人数の上限は 1〜10,000 の整数で入れてください。');
+      // 選択肢を選び直すと、欄の誤りは消える（ほかの値へ戻しても残らない）
+      await dialog.getByRole('radio', { name: /標準/ }).check();
+      await dialog.getByRole('radio', { name: /ほかの値/ }).check();
+      await expect(dialog.locator('.field-error')).toHaveCount(0);
+      await members.fill('0');
+      await size.fill('');
+      await change.click();
+      await expect(dialog.locator('.field-error')).toHaveCount(2);
       // 小数と負の値も断る
       await members.fill('-3');
       await size.fill('1.5');
@@ -1298,20 +1320,82 @@ test.describe('運用者', () => {
       await expect(dialog.locator('.field-error')).toHaveCount(0);
       await size.press('Enter');
       await expect(dialog).toBeHidden();
-      expect(sent).toEqual([{ slug: 'aoba', member_limit: 200, attachment_quota_bytes: 300 * GIB }]);
+      expect(sent).toEqual([
+        {
+          slug: 'aoba',
+          member_limit: 200,
+          attachment_quota_bytes: 300 * GIB,
+          expected: { member_limit: 120, attachment_quota_bytes: 250 * GIB },
+        },
+      ]);
       const row = page.locator('.table tbody tr', { hasText: 'あおば開発' });
       await expect(row.locator('td[data-label="人数 / 上限"]')).toHaveText('60 / 200');
       expect(await collect()).toEqual([]);
     });
 
-    test('先に変えられていた（409）、見つからない（404）はトーストで知らせて閉じ、5xx はダイアログの中に理由を出す', async ({
+    test('容量が GB の整数でない組織は、容量の欄を触らなければ今のバイト数のまま送る', async ({ page }) => {
+      const MIB_512 = 512 * 1024 ** 2;
+      const listed = [organization({ slug: 'hibari', name: 'ひばり工房', attachment_quota_bytes: MIB_512 })];
+      await page.route('**/api/list-organizations', (route) => route.fulfill({ json: { organizations: listed } }));
+      const sent: { member_limit: number; attachment_quota_bytes: number }[] = [];
+      await page.route('**/api/organization-quota-update', async (route) => {
+        const body = route.request().postDataJSON() as { member_limit: number; attachment_quota_bytes: number };
+        sent.push(body);
+        listed[0] = organization({
+          slug: 'hibari',
+          name: 'ひばり工房',
+          seats: { used: 5, limit: body.member_limit },
+          attachment_quota_bytes: body.attachment_quota_bytes,
+        });
+        await route.fulfill({ json: { slug: 'hibari', ...body } });
+      });
+      await page.goto('/operator');
+      const open = page.getByRole('button', { name: '「ひばり工房」の人数と容量の上限を変える' });
+      const dialog = page.getByRole('dialog', { name: '人数と添付ファイルの上限を変える' });
+      await open.click();
+      await expect(dialog.getByRole('radio', { name: /ほかの値/ })).toBeChecked();
+      // 開いたままなら今の上限と同じなので、「変える」は押せない（欄の 1 GB は表示のための丸め）
+      const change = dialog.getByRole('button', { name: '変える' });
+      await expect(change).toHaveAttribute('aria-disabled', 'true');
+
+      // 人数だけを変えると、容量は 512 MB のまま送る
+      await dialog.getByRole('spinbutton', { name: '人数の上限（人）' }).fill('20');
+      await expect(change).toHaveAttribute('aria-disabled', 'false');
+      await change.click();
+      await expect(dialog).toBeHidden();
+      expect(sent).toEqual([
+        {
+          slug: 'hibari',
+          member_limit: 20,
+          attachment_quota_bytes: MIB_512,
+          expected: { member_limit: 15, attachment_quota_bytes: MIB_512 },
+        },
+      ]);
+      const row = page.locator('.table tbody tr', { hasText: 'ひばり工房' });
+      await expect(row.locator('td[data-label="添付ファイルの上限"]')).toContainText('512 MB');
+
+      // 容量の欄を触れば、入れた GB を送る
+      await open.click();
+      await dialog.getByRole('spinbutton', { name: '添付ファイルの上限（GB）' }).fill('2');
+      await change.click();
+      await expect(dialog).toBeHidden();
+      expect(sent[1]).toMatchObject({ member_limit: 20, attachment_quota_bytes: 2 * GIB });
+    });
+
+    test('先に変えられていた（409）、見つからない（404）はトーストで知らせて閉じ、5xx と通信の切れはダイアログの中に理由を出して閉じると読み直す', async ({
       page,
     }) => {
       const listed = [organization({})];
       await page.route('**/api/list-organizations', (route) => route.fulfill({ json: { organizations: listed } }));
       let status = 409;
+      const failedText =
+        '上限を変えられませんでした。変わっていることもあるので、閉じた後の一覧で確かめてからもう一度試してください。';
       await page.route('**/api/organization-quota-update', (route) => {
         if (status === 409) listed[0] = organization({ seats: { used: 5, limit: 30 } });
+        // 書かれたか分からない失敗。サーバーでは書けていた
+        if (status === 500)
+          listed[0] = organization({ seats: { used: 5, limit: 50 }, attachment_quota_bytes: 100 * GIB });
+        if (status === 0) return route.abort('connectionreset');
         const code = status === 409 ? 'conflict' : status === 404 ? 'not_found' : 'internal';
         return route.fulfill({ status, json: { error: { code, message: 'x' } } });
       });
@@ -1334,8 +1418,22 @@ test.describe('運用者', () => {
       await expect(dialog.getByRole('radio', { name: /ほかの値/ })).toBeChecked();
       await dialog.getByRole('radio', { name: /標準/ }).check();
       await dialog.getByRole('button', { name: '変える' }).click();
-      await expect(dialog.getByRole('alert')).toHaveText('上限を変えられませんでした。もう一度試してください。');
+      await expect(dialog.getByRole('alert')).toHaveText(failedText);
       await expect(dialog).toBeVisible();
+      // 選択肢を選び直すと、失敗の文は消える
+      await dialog.getByRole('radio', { name: /ほかの値/ }).check();
+      await expect(dialog.getByRole('alert')).toHaveCount(0);
+      // 書かれたか分からない失敗の後は、閉じると一覧を読み直す
+      await dialog.getByRole('button', { name: 'やめる' }).click();
+      await expect(dialog).toBeHidden();
+      await expect(page.locator('td[data-label="人数 / 上限"]')).toHaveText('5 / 50');
+
+      // 通信の切れも同じ文
+      status = 0;
+      await open.click();
+      await dialog.getByRole('radio', { name: /小さい冒険者ギルド/ }).check();
+      await dialog.getByRole('button', { name: '変える' }).click();
+      await expect(dialog.getByRole('alert')).toHaveText(failedText);
 
       status = 404;
       await dialog.getByRole('button', { name: '変える' }).click();

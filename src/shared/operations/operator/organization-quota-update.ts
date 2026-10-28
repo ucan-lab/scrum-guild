@@ -16,20 +16,26 @@ export const quotaTiers = [
 ] as const;
 export type QuotaTier = (typeof quotaTiers)[number];
 
+const memberLimit = z.number().int().min(1).max(MEMBER_LIMIT_MAX);
+const attachmentQuotaBytes = z.number().int().min(1).max(ATTACHMENT_QUOTA_MAX_BYTES);
+
 // 組織の人数の上限と添付ファイルの合計の上限を変える。停止中の組織も変えられる。人数を今の人数より小さくしてもよい
-// （今いる人は残り、招待だけが止まる）。今と同じ値なら何も書かず、今の値を返す。
-// 読んだ値のままであることを条件に書き、外れたら 409 の conflict、無い slug は 404。添付ファイルの上限を上げたら
-// attachment_quota_warned_at を空に戻す。履歴は action が update で、changes_json は変わった列だけの前後の値。
-// 履歴を書けなくても変更は成功として返す
+// （今いる人は残り、招待だけが止まる）。今の値が送った値と同じなら何も書かず、今の値を返す。
+// expected は画面が見ていた前の値。今の値がそれと違えば（ダイアログを開いた後に別の運用者が変えた）409 の conflict で、
+// 書く文も expected のままであることを条件にする。無い slug は 404。添付ファイルの上限を上げたら
+// attachment_quota_warned_at を空に戻す（読んだ値のままであることも条件にする）。履歴は action が update で、
+// changes_json は変わった列だけの前後の値。履歴を書けなくても変更は成功として返す
 export const organizationQuotaUpdate = defineOperation({
   name: 'organization-quota-update',
-  description: '組織の人数の上限と添付ファイルの合計の上限（バイト）を変える',
+  description:
+    '組織の人数の上限と添付ファイルの合計の上限（バイト）を変える。expected は画面が見ていた前の値で、今の値と違えば 409',
   mode: 'write',
   permission: 'operator',
   input: z.object({
     slug: z.string().max(SLUG_MAX_LENGTH * 2),
-    member_limit: z.number().int().min(1).max(MEMBER_LIMIT_MAX),
-    attachment_quota_bytes: z.number().int().min(1).max(ATTACHMENT_QUOTA_MAX_BYTES),
+    member_limit: memberLimit,
+    attachment_quota_bytes: attachmentQuotaBytes,
+    expected: z.object({ member_limit: memberLimit, attachment_quota_bytes: attachmentQuotaBytes }),
   }),
   output: z.object({
     slug: z.string(),

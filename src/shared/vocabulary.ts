@@ -793,24 +793,25 @@ export const dictionary = defineDictionary({
   operatorQuotaAction: organization('人数と容量の上限を変える', '人数と容量の上限を変える'),
   operatorQuotaLabel: organization('「{name}」の人数と容量の上限を変える', '「{name}」の人数と容量の上限を変える'),
   operatorQuotaTitle: organization('人数と添付ファイルの上限を変える', '人数と添付ファイルの上限を変える'),
-  // {used} は人数、{limit} は人数の上限、{quota} は添付ファイルの上限（operatorQuotaSize か operatorQuotaSizeMb）
+  // {used} は人数、{limit} は人数の上限、{quota} は添付ファイルの上限（operatorQuotaSize か operatorQuotaSizeMb）。
+  // 数と「人」の間は不可分の空白（U+00A0）で、折り返しで割れない
   operatorQuotaText: organization(
-    '「{name}」の上限を変えます。今は人数 {used} 人（上限 {limit} 人）、添付ファイルの上限 {quota} です。',
-    '「{name}」の上限を変えます。今は人数 {used} 人（上限 {limit} 人）、添付ファイルの上限 {quota} です。',
+    '「{name}」の上限を変えます。今は人数 {used} 人（上限 {limit} 人）、添付ファイルの上限 {quota} です。',
+    '「{name}」の上限を変えます。今は人数 {used} 人（上限 {limit} 人）、添付ファイルの上限 {quota} です。',
   ),
   operatorQuotaChoices: organization('新しい上限', '新しい上限'),
   operatorQuotaTierSmall: organization('小さい{organization}', '小さい{organization}'),
   operatorQuotaTierStandard: organization('標準', '標準'),
   // 段階の値。{members} は人数の上限、{quota} は添付ファイルの上限（operatorQuotaSize）
-  operatorQuotaTierValue: organization('{members} 人・{quota}', '{members} 人・{quota}'),
+  operatorQuotaTierValue: organization('{members} 人・{quota}', '{members} 人・{quota}'),
   operatorQuotaTierOther: organization('ほかの値', 'ほかの値'),
   operatorQuotaTierOtherHint: organization(
-    '51 人以上の{organization}のために値を入れます。',
-    '51 人以上の{organization}のために値を入れます。',
+    '51 人以上の{organization}のために値を入れます。',
+    '51 人以上の{organization}のために値を入れます。',
   ),
   operatorQuotaMembersLabel: organization('人数の上限（人）', '人数の上限（人）'),
   operatorQuotaSizeLabel: organization('添付ファイルの上限（GB）', '添付ファイルの上限（GB）'),
-  // {max} は入れられる値の上限（MEMBER_LIMIT_MAX、ATTACHMENT_QUOTA_MAX_BYTES を GB にした値）
+  // {max} は入れられる値の上限（MEMBER_LIMIT_MAX、ATTACHMENT_QUOTA_MAX_BYTES を GB にした値）を formatCount で3桁ごとに区切った文字
   operatorQuotaMembersInvalid: organization(
     '人数の上限は 1〜{max} の整数で入れてください。',
     '人数の上限は 1〜{max} の整数で入れてください。',
@@ -836,6 +837,11 @@ export const dictionary = defineDictionary({
   operatorQuotaFailed: organization(
     '上限を変えられませんでした。もう一度試してください。',
     '上限を変えられませんでした。もう一度試してください。',
+  ),
+  // 書かれたか分からない失敗（5xx、通信の切れ）。閉じると一覧を読み直す
+  operatorQuotaFailedUnknown: organization(
+    '上限を変えられませんでした。変わっていることもあるので、閉じた後の一覧で確かめてからもう一度試してください。',
+    '上限を変えられませんでした。変わっていることもあるので、閉じた後の一覧で確かめてからもう一度試してください。',
   ),
 
   // 組織の作成のダイアログ

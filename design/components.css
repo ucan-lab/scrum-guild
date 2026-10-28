@@ -197,7 +197,9 @@ h1, h2, h3 { text-wrap: balance; }
 /* aria-disabled は、押しても何も起きないが、フォーカスは残したいボタン（読み直している最中の「もう一度試す」など） */
 .btn:disabled, .btn[aria-disabled="true"] { opacity: 0.45; cursor: not-allowed; filter: none; }
 .link-btn { border: 0; background: none; padding: 0; font-size: var(--text-xs); color: var(--color-muted); text-decoration: underline; text-underline-offset: 2px; }
-.link-btn:hover { color: var(--color-fg); }
+.link-btn:hover:not([aria-disabled="true"]) { color: var(--color-fg); }
+/* 押しても何も起きないが、フォーカスは残す文字のボタン（.btn の aria-disabled と同じ見た目） */
+.link-btn[aria-disabled="true"] { opacity: 0.45; cursor: not-allowed; }
 
 /* 上の帯の小さな切り替え */
 .pill {
