@@ -4,7 +4,7 @@ import type { Page } from '@playwright/test';
 import type { OutputOf } from '../src/shared/operations/define.ts';
 import { organizationInfo } from '../src/shared/operations/organization/index.ts';
 import { expect, test } from './fixtures.ts';
-import { createWorkspace, expectModalFocus, signIn, watchViolations } from './helpers.ts';
+import { createWorkspace, expectFocusReturned, expectModalFocus, signIn, watchViolations } from './helpers.ts';
 import { rewriteOperation } from './operations.ts';
 
 const AOBA_WORKSPACE_ID = '019a0000-0000-7000-8000-000000000401';
@@ -250,7 +250,7 @@ test.describe('リーダー（あおば開発のミナト）', () => {
     );
     await dialog.getByRole('button', { name: 'やめる' }).click();
     await expect(dialog).toBeHidden();
-    await expect(remove).toBeFocused();
+    await expectFocusReturned(page, remove);
     expect(sent).toBeNull();
 
     await remove.click();
@@ -568,7 +568,7 @@ test.describe('一般のユーザー（あおば開発のハルカ）', () => {
     );
     await dialog.getByRole('button', { name: 'やめる' }).click();
     await expect(dialog).toBeHidden();
-    await expect(leave).toBeFocused();
+    await expectFocusReturned(page, leave);
     expect(called).toBe(false);
   });
 

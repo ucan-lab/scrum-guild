@@ -3,7 +3,7 @@
 // 終了して確かめるワークスペースは、管理の画面から作った専用のもの（seed のワークスペースを終了したままにしない）
 import type { Page } from '@playwright/test';
 import { expect, test } from './fixtures.ts';
-import { signIn, watchViolations } from './helpers.ts';
+import { expectFocusReturned, signIn, watchViolations } from './helpers.ts';
 
 test.use({ timezoneId: 'Asia/Tokyo' });
 
@@ -60,7 +60,7 @@ test.describe('管理者（あおば開発のミナト）', () => {
     // やめれば何も起きない
     await dialog.getByRole('button', { name: 'やめる' }).click();
     await expect(dialog).toBeHidden();
-    await expect(closeButton).toBeFocused();
+    await expectFocusReturned(page, closeButton);
     await expect(row.locator('.chip')).toHaveCount(0);
 
     await closeButton.click();
