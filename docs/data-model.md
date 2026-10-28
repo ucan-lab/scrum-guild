@@ -444,7 +444,7 @@ Google の人は、ログインするまで `sub` が分からない。そのた
 
 本人が招待の URL を開いたとき。
 
-1. 画面は `location.hash` から秘密を読み、すぐ `history.replaceState` で URL を `/invite` に置き換える。`/invite` の画面のヘッダーは `Referrer-Policy: no-referrer`。
+1. 画面は `location.hash` から秘密を読み、すぐ SvelteKit の `goto` の `replace` で URL を `/invite` に置き換える（履歴の項目を増やさない）。浅いルーティング（`shallow`）は元の URL を履歴の項目の state に残すので使わない。ボタンは URL から秘密が消えてから出し、消えなければ使えない旨を出す。`/invite` の画面のヘッダーは `Referrer-Policy: no-referrer`。
 2. 画面に「Google でログイン」のボタンを出し（組織の名前は、秘密を API に送る前なので出さない）、押してからログインを始める。リンクを先読みする仕組み（メールの安全確認、チャットのプレビュー）でログインが始まらないようにするのが狙い。ボタンは、隠し欄に秘密を入れたフォームを `POST /api/auth/google/start` に送る（`form.submit()`）。すでにログインしていても、Google のログインを通す。秘密の形が合わない URL（無い、短い、長い）は、ボタンを出さずに使えない旨を出す。
 3. ログインを始める API は、秘密を POST の本文（`application/x-www-form-urlencoded` の `claim_token` 欄）でだけ受ける。URL のクエリでは受けない。ほかのサイトからのフォームの POST（`Sec-Fetch-Site: cross-site`）は、本文を読まず、数えず、行も書かず、ログインの画面へ戻す。決まった形（base64url の43文字）でなければ、ハッシュも DB の問い合わせもせずに断り、`/login?error=invite` へ移す。サーバーがハッシュにして `oauth_states.claim_token_hash` に入れ、戻り先は `/` にする。この API と戻り先も、ログインのレート制限（`login:<IP>`）で数える。
 4. 戻ってきたら ID トークンを確かめ（`development.md` の「Google のログイン」）、`email_verified` が真偽値の `true` のときだけ先に進む。

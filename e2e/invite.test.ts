@@ -41,7 +41,8 @@ test('秘密を読んだらすぐ URL から消し、ボタンを押すまでロ
   // 秘密は URL から消える（履歴にも残らない）。組織の名前は出さない
   await expect(page).toHaveURL(/\/invite$/);
   expect(await page.evaluate(() => location.hash)).toBe('');
-  // 履歴の項目の state にも残さない（浅いルーティングは元の URL を state に残す）。戻るは前の画面へ行く（項目を増やさない）
+  // 履歴の項目の state にも残さない（浅いルーティングは元の URL を state に残す）。項目も増やさない（新しい page は
+  // about:blank の1項目から始まるので、/invite を開いた後は2項目）
   expect(JSON.stringify(await page.evaluate(() => history.state))).not.toContain(CLAIM_TOKEN);
   expect(await page.evaluate(() => history.length)).toBe(2);
   await expect(page.locator('body')).not.toContainText(CLAIM_TOKEN);
@@ -85,6 +86,21 @@ test('秘密が無い、形の合わない URL は、使えない旨を出して
     await expect(page).toHaveURL(/\/invite$/);
   }
   expect(posts).toEqual([]);
+});
+
+test('URL を置き換える移動が遅く、読み込み中の表示で画面が作り直されても、秘密を失わずにボタンを出す', async ({
+  page,
+}) => {
+  // root のレイアウトは、移動が 300ms を超えると画面を読み込み中の表示に替える。その待ちをすぐに切らせ、遅い端末を再現する
+  await page.addInitScript(() => {
+    const original = window.setTimeout;
+    window.setTimeout = ((handler: TimerHandler, timeout?: number, ...rest: unknown[]) =>
+      original(handler, timeout === 300 ? 0 : timeout, ...rest)) as typeof window.setTimeout;
+  });
+  await page.goto(`/invite#${CLAIM_TOKEN}`);
+  await expect(page.getByRole('button', { name: 'Google でログイン' })).toBeVisible();
+  await expect(page.getByRole('alert')).toHaveCount(0);
+  await expect(page).toHaveURL(/\/invite$/);
 });
 
 test('/login?error=invite は、使えない旨を出す', async ({ page }) => {

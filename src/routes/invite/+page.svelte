@@ -1,3 +1,8 @@
+<script module lang="ts">
+  // URL から読んだ秘密。この画面が作り直されても読めるよう、文書の間だけ持つ（onMount の説明）。ページを離れるときに消す
+  let pendingToken = '';
+</script>
+
 <script lang="ts">
   import { onMount } from 'svelte';
   import { goto } from '$app/navigation';
@@ -26,12 +31,21 @@
   let field = $state<HTMLInputElement>();
 
   onMount(async () => {
-    const token = location.hash.slice(1);
-    // 浅いルーティング（shallow）は、元の URL（秘密を含む）を履歴の項目の state に残すので使わない。同じ画面への移動で
-    // 履歴の項目を置き換える。ボタンは URL から秘密が消えてから出す
-    await goto(resolve('/invite'), { replace: true });
-    usable = CLAIM_TOKEN_PATTERN.test(token);
-    claimToken = usable ? token : '';
+    // 移動が SLOW_MS を超えると、root のレイアウトが読み込み中の表示に替えてこの画面を作り直す。作り直した画面は URL から
+    // 秘密を読めないので、読んだ秘密は文書の間だけ module の変数に残す
+    // 空のフラグメント（/invite#）は location.hash が '' になるので、# の有無は href で見る
+    const hasFragment = (): boolean => location.href.includes('#');
+    if (hasFragment()) pendingToken = location.hash.slice(1);
+    const token = pendingToken;
+    try {
+      // 浅いルーティング（shallow）は、元の URL（秘密を含む）を履歴の項目の state に残すので使わない。同じ画面への移動で
+      // 履歴の項目を置き換える。クエリは引き継がない（招待の URL はクエリを持たない）
+      if (hasFragment()) await goto(resolve('/invite'), { replace: true });
+    } finally {
+      // ボタンは URL から秘密が消えてから出す。移動が失敗したか、ほかの移動に取って代わられて消えなければ、使えない旨を出す
+      usable = !hasFragment() && CLAIM_TOKEN_PATTERN.test(token);
+      claimToken = usable ? token : '';
+    }
   });
 
   // 押した後は、Google へ移るまでの間の2回目以降の押下を無視する（2回送ると、state の行とレート制限の枠を2つ使う）
@@ -52,6 +66,7 @@
   // フォームの本文は送る時点で組まれているので、離れるときに隠し欄を空にしても送信には響かない
   function clearField(): void {
     if (field !== undefined) field.value = '';
+    pendingToken = '';
   }
 </script>
 
