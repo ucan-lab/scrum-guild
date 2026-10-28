@@ -26,7 +26,8 @@ export type AdminReassignmentResult = {
   userId: string;
   // created: 新しい行を入れた。updated: 既にいる人を管理者にした（か、有効に戻した）。unchanged: 既に有効な管理者だった
   outcome: 'created' | 'updated' | 'unchanged';
-  // 消した前の指名の数（消せずに管理者の印だけを外した、ワークスペースの所属を持つ行は数えない）
+  // 消した前の指名の数（消せずに管理者の印だけを外した、ワークスペースの所属を持つ行は数えない）。新しい行の書き込みの後に
+  // 応答だけ失われて成功として返すときは、分からないので 0
   removed: number;
 };
 
