@@ -32,7 +32,8 @@ async function organizationIdOf(db: CommonDb, slug: string): Promise<string> {
 //   2. GitHub はユーザー名を解決し直して確かめたユーザー ID と一致するか確かめ、アカウントを共通の DB で引く。
 //      Google はメールアドレスをそろえ、待つ行と招待の URL の秘密を作る（組織の作成と同じ。operator-nominee.ts）。
 //      GitHub で解決した人が運用者自身なら、GitHub に問い合わせた後、書く前に 400（nominee_is_operator）で断る
-//   3. 組織の DB に、前の指名の DELETE と指名を1回の batch() で書く（運用者の道具の reassignAdmin。共通の表は混ぜない）。
+//   3. 組織の DB に、前の指名の取り消し（所属の無い行は消し、所属を持つ行は管理者の印を外す）と指名を1回の batch() で書く
+//      （運用者の道具の reassignAdmin。共通の表は混ぜない）。
 //      競合は 409
 //   4. GitHub でアカウントが無いと読んだ人は、書いた後に account_logins を引き直して結ぶ（組織の作成と同じ）
 export const organizationAdminReassignOperation = implement(
