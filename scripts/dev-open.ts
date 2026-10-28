@@ -35,7 +35,8 @@ async function open(target: DevOpenTarget): Promise<void> {
       .finally(() => process.exit(0));
   });
 
-  const context = await browser.newContext();
+  // Playwright の既定のビューポートは 1280×720 の固定で、窓を広げても画面が追わない。null で窓の大きさに合わせる
+  const context = await browser.newContext({ viewport: null });
   await context.addCookies([{ name: target.cookieName, value: target.token, url: target.origin, httpOnly: true }]);
   // 開いたページがすべて閉じたら終える（macOS では最後のウィンドウを閉じてもブラウザのプロセスが残ることがある）
   context.on('page', (page) => {
