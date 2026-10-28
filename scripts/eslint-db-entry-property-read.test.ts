@@ -1,6 +1,6 @@
-// 入口を守る ESLint の規則（eslint.config.db-entry.js）の、運用者の道具だけの関数（reassignOrganizationAdmin）を崩すテスト。
-// scripts/eslint-db-entry.test.ts の手口（import、別名、export from、名前空間の . と ['...']、動的な import の取り出し）に無い、
-// 文字列のリテラルでキーを渡してプロパティを読む関数（D1 の binding では Reflect.get と Object.getOwnPropertyDescriptor を止めている）を確かめる
+// 入口を守る ESLint の規則（eslint.config.db-entry.js）が、運用者の道具だけの関数（reassignOrganizationAdmin）を、
+// 文字列のリテラルでキーを渡してプロパティを読む関数（Reflect.get、Object.getOwnPropertyDescriptor）で取り出す形も止めることを確かめる。
+// import、別名、export from、名前空間の . と ['...']、動的な import の取り出しは scripts/eslint-db-entry.test.ts
 import assert from 'node:assert/strict';
 import { before, describe, test } from 'node:test';
 import { ESLint } from 'eslint';

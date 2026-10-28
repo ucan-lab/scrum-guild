@@ -1,6 +1,6 @@
-// 運用者による管理者の指名し直し（organization-admin-reassign、Issue #217）を崩すテスト。
-// test/operator-admin-reassign.test.ts に無い手口（並行した2回の指名し直し、招待の URL からの結びとログインの結びとの並行、
-// 結ばれていない自分の行を持つアカウントのある人、Google で指名した既にいる無効の人）を確かめる
+// 運用者による管理者の指名し直し（organization-admin-reassign、Issue #217）の、並行と結び直しを確かめる。
+// 並行した2回の指名し直し、招待の URL からの結びとログインの結びとの並行、結ばれていない自分の行を持つアカウントのある人、
+// Google で指名した既にいる無効の人（基本の振る舞いは test/operator-admin-reassign.test.ts）
 import { env } from 'cloudflare:workers';
 import { describe, expect, test } from 'vitest';
 import { organizationAdminReassign as reassign } from '../src/shared/operations/operator/index.ts';

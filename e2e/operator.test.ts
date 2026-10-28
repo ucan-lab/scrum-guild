@@ -1188,7 +1188,7 @@ test.describe('運用者', () => {
       const dialog = await openReassign(page, 'ひばり工房');
       // 文は開いたときの管理者の状態で変える
       await expect(dialog).toContainText('「ひばり工房」には今ギルドマスターがいません');
-      await expect(dialog).toContainText('まだログインしていない前の指名は消えます');
+      await expect(dialog).toContainText('まだログインしていない前の指名は取り消されます');
       await expect(dialog).toContainText('運用者の操作として残ります');
       await expect(dialog).not.toContainText('{');
       // 確かめるまで指名できない
@@ -1339,7 +1339,11 @@ test.describe('運用者', () => {
           false,
         ],
         [{ status: 503, json: { error: { code: 'unavailable', message: 'x' } } }, 'GitHub に届きませんでした', false],
+        // 書く前に断られた 4xx（回数の上限など）は、何も書かれていないと伝え、読み直さない
+        [{ status: 429, json: { error: { code: 'rate_limited', message: 'x' } } }, '何も書かれていません', false],
         [{ status: 500, json: { error: { code: 'internal', message: 'x' } } }, '指名し直せたか分かりません', true],
+        // 2xx でも本文が読めない応答は、書かれたか分からない
+        [{ status: 200, body: '{"slug":' }, '指名し直せたか分かりません', true],
         ['abort', '指名し直せたか分かりません', true],
       ];
       for (const [next, text, reloads] of cases) {
@@ -1426,7 +1430,7 @@ test.describe('運用者', () => {
       await dialog.getByRole('button', { name: '確かめる' }).click();
       const submit = dialog.getByRole('button', { name: '指名する', exact: true });
       await submit.click();
-      await expect(dialog.getByRole('alert')).toContainText('あなた自身はギルドマスターに指名し直せません');
+      await expect(dialog.getByRole('alert')).toContainText('この GitHub のユーザーは、あなた（運用者）のログインです');
       await expect(dialog.getByLabel('GitHub のユーザー名')).toBeFocused();
       // 確かめ直すまで指名できない
       await expect(submit).toBeDisabled();

@@ -1,8 +1,7 @@
-// 運用者による管理者の指名し直し（organization-admin-reassign、Issue #217）を崩すテスト（2周目）。
-// test/operator-admin-reassign.test.ts と test/operator-admin-reassign-break.test.ts に無い手口として、
-// 既にいる人の UPDATE が条件に外れたのに、その人が別の経路で有効な管理者になっていた場合（DELETE の EXISTS が成り立つ）を確かめる。
-// docs/data-model.md の「書き込みの単位」の管理者の指名し直しは「既にいる人の UPDATE が条件に外れたとき（前の指名も消えない）」は 409、
-// 辞書の operatorReassignConflict も「409 は ... 何も書かれていない」とする
+// 運用者による管理者の指名し直し（organization-admin-reassign、Issue #217）で、既にいる人の UPDATE が条件に外れたのに、
+// その人が別の経路で有効な管理者になっていた場合（組織の管理者が管理者にした、ログインで結ばれた）を確かめる。
+// 前の指名の記録と DELETE は UPDATE と同じ述語を前に置くので外れ、409 のときは何も書かれていない
+// （docs/data-model.md の「書き込みの単位」の管理者の指名し直し、辞書の operatorReassignConflict）
 import { env } from 'cloudflare:workers';
 import { describe, expect, test } from 'vitest';
 import { organizationAdminReassign as reassign } from '../src/shared/operations/operator/index.ts';

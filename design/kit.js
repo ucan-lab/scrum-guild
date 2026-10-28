@@ -1414,7 +1414,7 @@ const looooooooooooooooooooooooooooooooooongLine = "コードの長い1行は、
          <div class="callout is-info">${icon("shield")}<span>この人を${t("admin")}にします。アバター、ユーザー名、表示名が、伝えたい人のものか確かめてください。ユーザー名は 1 字違いでも別の人に当たります。</span></div>
          <div class="choice is-static">${avatar("星野 琴音", 3, { lg: true, image: SAMPLE_PHOTO })}<div><b class="mono">kotone-dev</b><span>星野 琴音</span><span>GitHub のユーザー ID 5550001</span></div></div>
        </div>
-       <p class="field-hint">この${t("organization")}のユーザーでなくてもかまいません。指名しても、運用者はこの${t("organization")}の中を見られるようにはなりません。まだログインしていない前の指名は消えます。</p>
+       <p class="field-hint">この${t("organization")}のユーザーでなくてもかまいません。指名しても、運用者はこの${t("organization")}の中を見られるようにはなりません。まだログインしていない前の指名は取り消されます。</p>
        <p class="field-hint">指名は${t("organization")}の変更の履歴に、運用者の操作として残ります。</p>`,
       `<button class="btn is-quiet" type="button" data-close-dialog>やめる</button><button class="btn is-primary" id="d-rb" type="button" data-reassign-admin="d-ra" disabled>指名する</button>`),
     // 指名し直した後（GitHub）。組織の URL とコピー、管理者になる人に伝えること

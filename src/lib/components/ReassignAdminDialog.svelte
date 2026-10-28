@@ -173,7 +173,8 @@
     }
     if (result.status === 404 && result.error?.code === 'not_found') return { field, key: 'operatorReassignNotFound' };
     if (result.status === 409 && result.error?.code === 'conflict') return { field, key: 'operatorReassignConflict' };
-    return { field, key: 'operatorReassignFailed' };
+    // 書かれたか分からない失敗（5xx、通信の切れ）と、書く前に断られた失敗（回数の上限などの 4xx）で文言を分ける
+    return { field, key: mayHaveChanged(result) ? 'operatorReassignFailed' : 'operatorReassignRejected' };
   }
 
   // 失敗した欄へフォーカスを移す。欄に紐づかない失敗は、誤りを出した枠（callout）へ移す
@@ -256,10 +257,11 @@
     return { provider: 'github', username: resolved.username, login_subject: resolved.loginSubject };
   }
 
-  // 書かれたか分からない失敗: 409（同じ人の行が変わった）、5xx（GitHub に届かない 503 は書く前なので除く）、通信の切れ
+  // 書かれたか分からない失敗。書く前に断られたと分かるのは、409 を除く 4xx と、GitHub に届かない 503 だけで、
+  // ほか（409、5xx、通信の切れ、2xx でも本文が読めない応答など）は書かれたかもしれない側に倒す
   function mayHaveChanged(result: FailedResult): boolean {
     if (result.status === 503 && result.error?.code === 'unavailable') return false;
-    return result.status === 0 || result.status === 409 || result.status >= 500;
+    return !(result.status >= 400 && result.status < 500 && result.status !== 409);
   }
 
   async function submit(): Promise<void> {

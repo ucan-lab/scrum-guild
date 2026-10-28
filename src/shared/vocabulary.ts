@@ -994,8 +994,8 @@ export const dictionary = defineDictionary({
     'この人を{admin}にします。アバター、ユーザー名、表示名が、伝えたい人のものか確かめてください。ユーザー名は 1 字違いでも別の人に当たります。',
   ),
   operatorReassignNote: organization(
-    'この{organization}のユーザーでなくてもかまいません。指名しても、運用者はこの{organization}の中を見られるようにはなりません。まだログインしていない前の指名は消えます。',
-    'この{organization}のユーザーでなくてもかまいません。指名しても、運用者はこの{organization}の中を見られるようにはなりません。まだログインしていない前の指名は消えます。',
+    'この{organization}のユーザーでなくてもかまいません。指名しても、運用者はこの{organization}の中を見られるようにはなりません。まだログインしていない前の指名は取り消されます。',
+    'この{organization}のユーザーでなくてもかまいません。指名しても、運用者はこの{organization}の中を見られるようにはなりません。まだログインしていない前の指名は取り消されます。',
   ),
   operatorReassignHistoryNote: organization(
     '指名は{organization}の変更の履歴に、運用者の操作として残ります。',
@@ -1013,8 +1013,8 @@ export const dictionary = defineDictionary({
   ),
   // GitHub で解決した人が、操作している運用者自身（運用者のアカウントに結んだログイン）だった
   operatorErrorNomineeIsOperator: organization(
-    'あなた自身は{admin}に指名し直せません。運用者は{organization}の中を見ないので、{organization}の人か、{admin}になる人を指名してください。',
-    'あなた自身は{admin}に指名し直せません。運用者は{organization}の中を見ないので、{organization}の人か、{admin}になる人を指名してください。',
+    'この GitHub のユーザーは、あなた（運用者）のログインです。運用者は{organization}の中を見ないので、{organization}の人か、{admin}になる人を指名してください。',
+    'この GitHub のユーザーは、あなた（運用者）のログインです。運用者は{organization}の中を見ないので、{organization}の人か、{admin}になる人を指名してください。',
   ),
   operatorReassignNotFound: organization(
     'この{organization}が見つかりません。一覧を確かめてください。',
@@ -1023,6 +1023,11 @@ export const dictionary = defineDictionary({
   operatorReassignFailed: organization(
     '指名し直せたか分かりません。一覧で{admin}の状態を確かめてから、もう一度試してください。',
     '指名し直せたか分かりません。一覧で{admin}の状態を確かめてから、もう一度試してください。',
+  ),
+  // 書く前に断られた失敗（回数の上限などの 4xx）。何も書かれていない
+  operatorReassignRejected: organization(
+    '指名し直せませんでした。何も書かれていません。入力を確かめるか、少し待ってから、もう一度試してください。',
+    '指名し直せませんでした。何も書かれていません。入力を確かめるか、少し待ってから、もう一度試してください。',
   ),
 
   // API の疎通の表示（仮の画面）

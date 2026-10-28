@@ -26,7 +26,8 @@ export type AdminReassignmentResult = {
   userId: string;
   // created: 新しい行を入れた。updated: 既にいる人を管理者にした（か、有効に戻した）。unchanged: 既に有効な管理者だった
   outcome: 'created' | 'updated' | 'unchanged';
-  // 消した前の指名の数
+  // 消した前の指名の数（消せずに管理者の印だけを外した、ワークスペースの所属を持つ行は数えない）。新しい行の書き込みの後に
+  // 応答だけ失われて成功として返すときは、分からないので 0
   removed: number;
 };
 
@@ -119,27 +120,33 @@ function promoteStatements(
 // 時刻や書いた値の一致で「自分の書き込みか」は見分けない（src/server/db/previous-statement.ts）
 type NomineeState = { kind: 'active' } | { kind: 'read'; row: CandidateRow };
 
-// 消す前の指名の条件（書く時点の行に当てる）。その組織の account_id が空の行で、指名する人自身の行ではなく、
+// 取り消す前の指名の条件（書く時点の行に当てる）。その組織の account_id が空の行で、指名する人自身の行ではなく、
 // 指名する人の行が NomineeState の状態であること。読んだ ID には絞らない。読んでから書くまでに別の指名し直しが入れた、
-// まだログインしていない指名も消す。読んだ後に結ばれた行（account_id が埋まった行）は当たらない
-function removableWhere(db: OrganizationDb, nomineeUserId: string, state: NomineeState) {
-  return (eb: ExpressionBuilder<OrganizationTables, 'users'>) =>
-    eb.and([
+// まだログインしていない指名も取り消す。読んだ後に結ばれた行（account_id が埋まった行）は当たらない。
+// membership は、ワークスペースの所属を持つ行か（with）、持たない行か（without）。持たない行は消し、持つ行は消せない
+// （memberships.user_id が行を指す。組織の管理者が、まだログインしていない指名の行をワークスペースの最初のリーダーに選べる）
+// ので、残して管理者の印を外す（is_admin = 1 の行だけ）。所属を持つ行はリーダーの候補（login_subject のある行）なので、
+// Google で待つ行（login_subject が空で、招待の秘密を持つ）は含まれない
+function removableWhere(
+  db: OrganizationDb,
+  nomineeUserId: string,
+  state: NomineeState,
+  membership: 'with' | 'without',
+) {
+  return (eb: ExpressionBuilder<OrganizationTables, 'users'>) => {
+    const hasMembership = eb.exists(
+      eb
+        .selectFrom('memberships')
+        .innerJoin('workspaces', 'workspaces.id', 'memberships.workspace_id')
+        .select('memberships.id')
+        .whereRef('memberships.user_id', '=', 'users.id')
+        .where('workspaces.organization_id', '=', db.organizationId),
+    );
+    return eb.and([
       eb('users.organization_id', '=', db.organizationId),
       eb('users.account_id', 'is', null),
       eb('users.id', '!=', nomineeUserId),
-      // ワークスペースの所属を持つ行は消さず残す（memberships.user_id が行を指す。組織の管理者が、まだログインしていない
-      // 指名の行をワークスペースの最初のリーダーに選べる）。記録も作らず、消した数にも数えない
-      eb.not(
-        eb.exists(
-          eb
-            .selectFrom('memberships')
-            .innerJoin('workspaces', 'workspaces.id', 'memberships.workspace_id')
-            .select('memberships.id')
-            .whereRef('memberships.user_id', '=', 'users.id')
-            .where('workspaces.organization_id', '=', db.organizationId),
-        ),
-      ),
+      ...(membership === 'with' ? [hasMembership, eb('users.is_admin', '=', 1)] : [eb.not(hasMembership)]),
       eb.exists(
         eb
           .selectFrom('users as nominee')
@@ -157,18 +164,24 @@ function removableWhere(db: OrganizationDb, nomineeUserId: string, state: Nomine
           ),
       ),
     ]);
+  };
 }
 
-// 前の指名を消す。先に、消す行ごとの change_logs（user の delete）を同じ条件の INSERT ... SELECT で作り、続けて DELETE する。
-// 同じ batch() の中なので、2つの文は同じ行に当たる。記録は行の前の値を残す。Google で待つ行（login_subject が空）は、
+// 前の指名を取り消す4つの文。
+//   0. 消す行ごとの change_logs（user の delete）を、同じ条件の INSERT ... SELECT で作る
+//   1. 所属を持たない前の指名を DELETE する
+//   2. 所属を持つ前の指名ごとの change_logs（user の update、{"is_admin":[1,0]}。履歴の「管理者の解除」）を作る
+//   3. 所属を持つ前の指名の管理者の印を外す（UPDATE で is_admin = 0）
+// 同じ batch() の中なので、記録の文と書く文は同じ行に当たる。消す記録は行の前の値を残す。Google で待つ行（login_subject が空）は、
 // メールアドレス、秘密のハッシュ、期限を入れず、名前は仮の名前にし、login_subject の列を持たない
 function removeStatements(
   db: OrganizationDb,
   nomineeUserId: string,
   input: AdminReassignment,
   state: NomineeState,
-): [Statement<'organization'>, Statement<'organization'>] {
-  const where = removableWhere(db, nomineeUserId, state);
+): [Statement<'organization'>, Statement<'organization'>, Statement<'organization'>, Statement<'organization'>] {
+  const where = removableWhere(db, nomineeUserId, state, 'without');
+  const demotable = removableWhere(db, nomineeUserId, state, 'with');
   return [
     db.statement((q) =>
       q
@@ -196,6 +209,31 @@ function removeStatements(
         ),
     ),
     db.statement((q) => q.deleteFrom('users').where(where)),
+    db.statement((q) =>
+      q
+        .insertInto('change_logs')
+        .columns(changeLogColumns)
+        .expression(
+          q
+            .selectFrom('users')
+            .select((eb) => [
+              uuidv7Sql(input.now).as('id'),
+              eb.val(db.organizationId).as('organization_id'),
+              eb.val(null).as('workspace_id'),
+              eb.val(null).as('actor_user_id'),
+              eb.val(input.operator).as('operator'),
+              eb.val('user').as('entity_type'),
+              eb.ref('users.id').as('entity_id'),
+              eb.val('update').as('action'),
+              eb.val(JSON.stringify({ is_admin: [1, 0] })).as('changes_json'),
+              eb.val(input.now.toISOString()).as('created_at'),
+            ])
+            .where(demotable),
+        ),
+    ),
+    db.statement((q) =>
+      q.updateTable('users').set({ is_admin: 0, updated_at: input.now.toISOString() }).where(demotable),
+    ),
   ];
 }
 
@@ -254,17 +292,31 @@ function activeAdminStatement(db: OrganizationDb, userId: string) {
   );
 }
 
-// 書き込みが例外で失敗したとき、指名する人の行が今あるか。あれば、読んでから書くまでに同じ人の行が入って一意に当たった
-async function nomineeRowExists(db: OrganizationDb, nominee: AdminNominee): Promise<boolean> {
-  if ('waiting' in nominee) return false;
+// 新しい行を入れる書き込みが例外で終わったときに、何が起きたかを読み直して見分ける。
+//   written: 自分が採番した行がある（書き込みは済み、応答だけが失われた）
+//   raced: 自分の行は無いが、指名する人の行がある（読んでから書くまでに同じ人の行が入って一意に当たった）
+//   unknown: どちらでもない（元の例外を投げる）
+async function afterFailedInsert(
+  db: OrganizationDb,
+  nominee: AdminNominee,
+  userId: string,
+): Promise<'written' | 'raced' | 'unknown'> {
+  const own = await db.first(
+    db.statement((q) =>
+      q.selectFrom('users').select('id').where('id', '=', userId).where('organization_id', '=', db.organizationId),
+    ),
+  );
+  if (own !== undefined) return 'written';
+  if ('waiting' in nominee) return 'unknown';
   const rows = await db.rows(candidatesStatement(db, nominee));
-  return rows.some((row) => isNomineeRow(nominee, row));
+  return rows.some((row) => isNomineeRow(nominee, row)) ? 'raced' : 'unknown';
 }
 
-// 前の指名（その組織の account_id が空の users の行。指名する人自身の行は除く）を消し、続けて指名する。1回の batch() で書く。
-// 文の順は、新しい行を入れるときと既に有効な管理者のときは、指名（INSERT。既に有効な管理者なら無し）、前の指名の記録の
-// INSERT ... SELECT と DELETE（指名する人が有効な管理者であることが条件）。既にいる人を UPDATE するときは、前の指名の記録と
-// DELETE（指名する人の行が読んだ値のままであることが条件。UPDATE と同じ述語）、UPDATE、指名する人の記録の順。
+// 前の指名（その組織の account_id が空の users の行。指名する人自身の行は除く）を取り消し、続けて指名する。1回の batch() で書く。
+// 前の指名を取り消す文は4つ（消す記録の INSERT ... SELECT、DELETE、所属を持つ行の解除の記録の INSERT ... SELECT、印を外す UPDATE）。
+// 文の順は、新しい行を入れるときと既に有効な管理者のときは、指名（INSERT。既に有効な管理者なら無し）、4つの文
+// （指名する人が有効な管理者であることが条件）。既にいる人を UPDATE するときは、4つの文（指名する人の行が読んだ値のままで
+// あることが条件。UPDATE と同じ述語）、指名の UPDATE、指名する人の記録の順。
 // 前の指名は読んだ ID でなく書く時点の条件（account_id が空、指名する人の行でない）で当てるので、読んでから書くまでに
 // 別の指名し直しが入れた行も消す。UPDATE が条件に外れたら、前の指名も記録も書かない。
 // 既にいる人の UPDATE が条件に外れたときと、新しい行が一意に当たったときは 'conflict'
@@ -305,8 +357,9 @@ export async function reassignOrganizationAdmin(
   const removal = removeStatements(db, userId, input, updating ? { kind: 'read', row: existing } : { kind: 'active' });
   const check = outcome === 'unchanged' ? [activeAdminStatement(db, userId)] : [];
   const statements = updating ? [...removal, ...designation] : [...designation, ...removal, ...check];
-  // 結果の位置。前の指名の DELETE と、既にいる人の UPDATE
-  const deleteIndex = updating ? 1 : designation.length + 1;
+  // 結果の位置。前の指名の DELETE（removeStatements の 1）と、既にいる人の UPDATE（removeStatements の4つの文の後ろ）。
+  // 管理者の印を外した行の数は返さない（removed は消した行の数のまま）
+  const deleteIndex = (updating ? 0 : designation.length) + 1;
   const updateIndex = updating ? removal.length : -1;
 
   let results: readonly { changes: number; rows: readonly unknown[] }[];
@@ -316,14 +369,16 @@ export async function reassignOrganizationAdmin(
     // 一意に当たりうるのは新しい行を入れるときだけ。ほかの経路（既にいる人の UPDATE、既に有効な管理者）の失敗は、
     // D1 の一時的な失敗や外部キーの失敗なので、409 にせずそのまま投げる（500 としてログに残る）
     if (outcome !== 'created') throw err;
-    // 一意に当たったかは例外の文面でなく、指名する人の行を読み直して見分ける
-    let raced: boolean;
+    // 一意に当たったかは例外の文面でなく、行を読み直して見分ける。自分が採番した行があれば、書き込みは済んで応答だけが
+    // 失われたので成功として返す（消した前の指名の数は分からないので removed は 0）
+    let found: Awaited<ReturnType<typeof afterFailedInsert>>;
     try {
-      raced = await nomineeRowExists(db, nominee);
+      found = await afterFailedInsert(db, nominee, userId);
     } catch {
       throw new Error('指名する人の行を読み直せなかったので、指名し直せたか分からない', { cause: err });
     }
-    if (raced) return 'conflict';
+    if (found === 'written') return { userId, outcome, removed: 0 };
+    if (found === 'raced') return 'conflict';
     throw err;
   }
 
