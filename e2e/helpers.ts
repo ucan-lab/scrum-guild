@@ -645,12 +645,17 @@ export async function createWorkspace(page: Page, name: string, vocabulary: 'gam
   await expect(page).toHaveTitle(`${backlog}・${name} - Scrum Guild`);
 }
 
+type ModalFocusStage = 'hidden' | 'open' | 'focusIn' | 'close' | 'return';
+
 // ダイアログと引き出しのフォーカスの決まりを確かめる。opener を押すと modal が開いて中にフォーカスが入り、Esc で閉じ、
 // 閉じたらフォーカスが returnTo（無ければ opener）にあり、2回描画した後も留まる。空振りしないよう、開く前に modal が見えていないことから確かめ、
-// 最後の留まる確かめを除き、どの段も待ってから確かめる（e2e/modal-focus.test.ts が、壊れたダイアログでそれぞれの段が落ちることを確かめる）。
+// 最後の留まる確かめを除き、どの段も待ってから確かめる（e2e/modal-focus.test.ts が、壊れたダイアログでそれぞれの段が落ちることを確かめる。
+// 開かない段（モーダルが開かない）だけは、壊れたダイアログを置いておらず確かめていない）。
 // 2回の描画より長く留まってから外れるフォーカスは捕まえない。
 // press を渡すと、opener にフォーカスを置いてそのキーで開く（キーボードだけで開く確かめ）。
-// whileOpen は、開いている間に足して確かめるもの。timeout は各段の待ち（既定は expect の既定）
+// whileOpen は、開いている間に足して確かめるもの。timeouts は段ごとの待ちで、渡さない段は expect の既定。
+// 落ちるはずの確かめで、落とすつもりの段だけを短くする（前の段まで短くすると、混んだマシンで別の段が時間切れになる）。
+// 最後の留まる段は待たずに確かめるので、渡せない（描画の待ちの上限を短くしても速くならず、描画より先に切れると空振りする）
 export async function expectModalFocus(
   page: Page,
   {
@@ -659,49 +664,49 @@ export async function expectModalFocus(
     returnTo,
     press,
     whileOpen,
-    timeout,
+    timeouts = {},
   }: {
     opener: Locator;
     modal: Locator;
     returnTo?: Locator;
     press?: string;
     whileOpen?: () => Promise<void>;
-    timeout?: number;
+    timeouts?: Partial<Record<ModalFocusStage, number>>;
   },
 ): Promise<void> {
-  await expect(modal, '開く前からモーダルが見えている').toBeHidden({ timeout });
+  await expect(modal, '開く前からモーダルが見えている').toBeHidden({ timeout: timeouts.hidden });
   if (press === undefined) {
-    await opener.click({ timeout });
+    await opener.click({ timeout: timeouts.open });
   } else {
-    await opener.focus({ timeout });
+    await opener.focus({ timeout: timeouts.open });
     await page.keyboard.press(press);
   }
-  await expect(modal, 'モーダルが開かない').toBeVisible({ timeout });
+  await expect(modal, 'モーダルが開かない').toBeVisible({ timeout: timeouts.open });
   await expect
     .poll(() => modal.evaluate((element) => element.contains(document.activeElement)), {
       message: 'モーダルの中にフォーカスが入らない',
-      timeout,
+      timeout: timeouts.focusIn,
     })
     .toBe(true);
   await whileOpen?.();
   await page.keyboard.press('Escape');
-  await expect(modal, 'Esc で閉じない').toBeHidden({ timeout });
+  await expect(modal, 'Esc で閉じない').toBeHidden({ timeout: timeouts.close });
   const target = returnTo ?? opener;
-  await expect(target, '閉じたらフォーカスが戻らない').toBeFocused({ timeout });
+  await expect(target, '閉じたらフォーカスが戻らない').toBeFocused({ timeout: timeouts.return });
   // Chromium の <dialog> は close() の中で開いたボタンへフォーカスを戻し、close イベントは後のタスクで出す。
   // close イベントで別の場所へ移すダイアログでも、その前の一瞬は戻る先にフォーカスがあり、上の確かめが通ってしまう。
   // 2回描画を待った後に、まだ戻る先にあることを待たずに確かめる。描画が止まったページで待ち続けないよう、
-  // timeout（無ければ expect の既定と同じ 5 秒）で待ちを切る
+  // expect の既定と同じ 5 秒で待ちを切る
   await page.evaluate(
     (limit) =>
       new Promise((resolve) => {
         requestAnimationFrame(() => requestAnimationFrame(resolve));
         setTimeout(resolve, limit);
       }),
-    timeout ?? 5000,
+    5000,
   );
   expect(
-    await target.evaluate((element) => element === document.activeElement, undefined, { timeout }),
+    await target.evaluate((element) => element === document.activeElement),
     '閉じたらフォーカスが戻らない（一瞬戻ってすぐ外れる）',
   ).toBe(true);
 }

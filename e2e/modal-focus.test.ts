@@ -5,8 +5,9 @@ import type { Page } from '@playwright/test';
 import { expect, test } from './fixtures.ts';
 import { expectModalFocus } from './helpers.ts';
 
-// 落ちるはずの確かめで待ちすぎない。通るはずの確かめは既定の待ちにする（混んだ CI で誤って落ちないため）
-const timeout = 500;
+// 落ちるはずの確かめで、落とすつもりの段だけを短くし、待ちすぎない。前の段と通るはずの確かめは既定の待ちにする
+// （混んだマシンで、落とすつもりでない段が時間切れになり、別の文言で落ちないため）
+const short = 500;
 
 type Broken = 'none' | 'no-focus-in' | 'no-escape' | 'no-return' | 'blink-return' | 'close-event-move';
 
@@ -72,8 +73,14 @@ function targets(page: Page) {
   return {
     opener: page.getByRole('button', { name: '開く' }),
     modal: page.getByRole('dialog', { name: '見本のダイアログ' }),
-    timeout,
   };
+}
+
+// 戻る段で落ちたことを確かめる。留まる段の文言（閉じたらフォーカスが戻らない（一瞬戻ってすぐ外れる））も前半が同じなので、
+// 戻る段が誤って通って留まる段で落ちたときに通らないよう、後半が無いことも見る
+async function expectRejectsAtReturn(result: Promise<void>): Promise<void> {
+  await expect(result).rejects.toThrow('閉じたらフォーカスが戻らない');
+  await expect(result).rejects.not.toThrow('一瞬戻って');
 }
 
 test('決まりどおりのダイアログでは通る', async ({ page }) => {
@@ -86,37 +93,47 @@ test('決まりどおりのダイアログでは通る', async ({ page }) => {
 
 test('開いても中にフォーカスが入らなければ落ちる', async ({ page }) => {
   await setDialog(page, 'no-focus-in');
-  await expect(expectModalFocus(page, targets(page))).rejects.toThrow('モーダルの中にフォーカスが入らない');
+  await expect(expectModalFocus(page, { ...targets(page), timeouts: { focusIn: short } })).rejects.toThrow(
+    'モーダルの中にフォーカスが入らない',
+  );
 });
 
 test('Esc で閉じなければ落ちる', async ({ page }) => {
   await setDialog(page, 'no-escape');
-  await expect(expectModalFocus(page, targets(page))).rejects.toThrow('Esc で閉じない');
+  await expect(expectModalFocus(page, { ...targets(page), timeouts: { close: short } })).rejects.toThrow(
+    'Esc で閉じない',
+  );
 });
 
 test('閉じてもフォーカスが開いたボタンへ戻らなければ落ちる', async ({ page }) => {
   await setDialog(page, 'no-return');
-  await expect(expectModalFocus(page, targets(page))).rejects.toThrow('閉じたらフォーカスが戻らない');
+  await expectRejectsAtReturn(expectModalFocus(page, { ...targets(page), timeouts: { return: short } }));
 });
 
 test('閉じて一瞬だけ開いたボタンへ戻り、すぐ外れれば落ちる', async ({ page }) => {
   await setDialog(page, 'blink-return');
+  // 落とす留まる段は待たずに確かめるので、短くする段が無い
   await expect(expectModalFocus(page, targets(page))).rejects.toThrow('一瞬戻ってすぐ外れる');
 });
 
 test('close イベントの中で別の場所へ移せば、戻った一瞬をつかまずに落ちる', async ({ page }) => {
   await setDialog(page, 'close-event-move');
-  await expect(expectModalFocus(page, targets(page))).rejects.toThrow('閉じたらフォーカスが戻らない');
+  // 戻る段と留まる段のどちらで落ちるかは描画の速さで変わる。待つのは戻る段だけなので、そこだけを短くする
+  await expect(expectModalFocus(page, { ...targets(page), timeouts: { return: short } })).rejects.toThrow(
+    '閉じたらフォーカスが戻らない',
+  );
 });
 
 test('戻る先を returnTo で渡したときは、開いたボタンへ戻っても落ちる', async ({ page }) => {
   await setDialog(page, 'none');
   const returnTo = page.getByRole('button', { name: 'ほかのボタン' });
-  await expect(expectModalFocus(page, { ...targets(page), returnTo })).rejects.toThrow('閉じたらフォーカスが戻らない');
+  await expectRejectsAtReturn(expectModalFocus(page, { ...targets(page), returnTo, timeouts: { return: short } }));
 });
 
 test('開く前からダイアログが見えていれば落ちる', async ({ page }) => {
   await setDialog(page, 'none');
   await page.getByRole('button', { name: '開く' }).click();
-  await expect(expectModalFocus(page, targets(page))).rejects.toThrow('開く前からモーダルが見えている');
+  await expect(expectModalFocus(page, { ...targets(page), timeouts: { hidden: short } })).rejects.toThrow(
+    '開く前からモーダルが見えている',
+  );
 });
