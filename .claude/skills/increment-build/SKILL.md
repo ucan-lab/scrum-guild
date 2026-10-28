@@ -24,7 +24,7 @@ gh api repos/{owner}/{repo}/issues/<番号> --jq '{state, title, pr: (.pull_requ
 gh api "repos/{owner}/{repo}/pulls?state=open&per_page=100" --jq '.[] | {number, head: .head.ref, refs: ([.body // "" | scan("(?i)(?:closes|fixes|refs) #([0-9]+)") | .[0]])}'
 ```
 
-`gh` が無いか認証で失敗するときは、`pr-create/github-mcp.md` に従い、GitHub の MCP ツールで代える。Issue は `issue_read` の `get`、`get_labels`、`get_parent`、開いた PR は `list_pull_requests`（`fields` に `number`、`head`、`body` を入れる）で読む。`issue_read` は `blocked` を返さないので、本文と親の Issue の「前に要るもの」を読んで確かめる。前に要るものが開いていても、`get_labels` で `status:accepting` が付いていれば待ちに数えない。
+`gh` が無いか認証で失敗するときは、`pr-create/github-mcp.md` に従い、GitHub の MCP ツールで代える。Issue は `issue_read` の `get`、`get_labels`、`get_parent`、開いた PR は `list_pull_requests`（`fields` に `number`、`head`、`body` を入れる）で読む。`issue_read` は `blocked` を返さないので、前に要るもの（自分と親のストーリーの blocked by）は `issue_dependency_read` で読み、開いているものだけを数える。前に要るものが開いていても、`get_labels` で `status:accepting` が付いていれば待ちに数えない。`issue_dependency_read` は `.claude/settings.json` の許可に無いので、呼ぶと確認が挟まる。出ないときは、本文の「前に要るもの」の表から読んで代えずに止まり、依存の確認を人に頼む（`pr-create/github-mcp.md` の注記。本文の表は人が読むためのもので、着手できるかは依存関係で判定する）。
 
 次のどれかなら止まり、理由を伝える。
 
