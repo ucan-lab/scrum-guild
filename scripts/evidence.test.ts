@@ -903,6 +903,14 @@ describe('embed-evidence.py', () => {
     assert.equal(check('## 概要\n\n文章').status, 0);
   });
 
+  test('--check は引数が足りないときと本文を読めないときに、逃がされていた（1）と分けて 2 で終わる', () => {
+    for (const args of [['--check'], ['--check', '/nonexistent/body.md']]) {
+      const result = spawnSync('python3', ['-I', script, ...args], { encoding: 'utf8' });
+      assert.ifError(result.error);
+      assert.equal(result.status, 2, result.stderr);
+    }
+  });
+
   test('--check はエビデンス節の外の &lt;img を数えない（本文の説明で書いた文字）', () => {
     assert.equal(check('## 概要\n\n`&lt;img` に逃がされる\n\n## エビデンス\n\n<img src="a">').status, 0);
     assert.equal(check('## 概要\n\n`&lt;img` に逃がされる').status, 0);
@@ -918,12 +926,15 @@ describe('embed-evidence.py', () => {
       '#!/bin/sh',
       'root=$FAKE_ROOT',
       'case "$*" in',
-      '  *"-X PATCH"*)',
+      // 本文はファイルの中身で送る（-F body=@<path>）。-f だと path の文字列そのものが本文になる
+      '  *"-X PATCH "*" -F body=@"*)',
       '    for a in "$@"; do case "$a" in body=@*) cp "${a#body=@}" "$root/patched" ;; esac; done',
       '    echo patch >> "$root/calls"',
       '    if [ -n "$ESCAPE" ]; then sed "s/<img/\\&lt;img/g" "$root/patched" > "$root/served"; else cp "$root/patched" "$root/served"; fi',
       '    ;;',
-      '  *"/comments "*) cat "$root/comments.json" ;;',
+      // コメントはページの配列の配列（--paginate --slurp）で渡す
+      '  *"/comments --paginate --slurp"*) cat "$root/comments.json" ;;',
+      '  *"/comments"*|*"-X PATCH"*) echo "想定しない引数: $*" >&2; exit 9 ;;',
       '  *) cat "$root/served" ;;',
       'esac',
       '',

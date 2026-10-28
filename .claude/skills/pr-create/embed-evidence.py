@@ -172,7 +172,15 @@ def check(body_path):
 
 def main(argv):
     if len(argv) > 1 and argv[1] == '--check':
-        sys.exit(check(argv[2]))
+        # 引数の誤りと読めない本文は 2 にし、逃がされていた（1）と分ける
+        if len(argv) != 3:
+            print('使い方: embed-evidence.py --check <本文>', file=sys.stderr)
+            sys.exit(2)
+        try:
+            sys.exit(check(argv[2]))
+        except OSError as error:
+            print(f'本文を読めない: {error.strerror}', file=sys.stderr)
+            sys.exit(2)
     body_path, comment_path, out_path, head_sha = argv[1:5]
     reason = argv[5] if len(argv) > 5 else None
     # Web で編集した本文は CRLF。gh の --jq は末尾に改行を足す。比べる前にそろえる

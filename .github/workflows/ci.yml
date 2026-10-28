@@ -307,7 +307,7 @@ jobs:
       # 成功で終える。付かなかった理由の文はセッションが書き、前の push の画像を理由の文で消させない。
       # 書き換えた後に本文を取り直し、--check で <img> が逃がされていないかを確かめ、崩れていればジョブを落とす。
       # GITHUB_TOKEN の書き込みは新しいワークフローを起こさないので、本文の edited で label は動かない。
-      # 本文を読んでから書くまでの間に人が編集すると、その編集を上書きしうる（間は数秒）
+      # 書く直前に本文を取り直し、読んだ後に人が編集していれば書かない（その後の数秒の間の編集は上書きしうる）
       - if: steps.config.outputs.ready == 'true'
         name: PR の本文に画像を埋め込む
         env:
@@ -328,6 +328,11 @@ jobs:
           fi
           if [ "$(tail -n 1 "$dir/report.txt")" != '本文を書き換える' ]; then
             echo "本文を書き換えない"
+            exit 0
+          fi
+          gh api "repos/$REPO/pulls/$PR" --jq '.body // ""' > "$dir/latest.md"
+          if ! cmp -s "$dir/body.md" "$dir/latest.md"; then
+            echo "読んだ後に本文が変わったので、書き換えない（次の push か、セッションの確かめで埋め直す）"
             exit 0
           fi
           gh api -X PATCH "repos/$REPO/pulls/$PR" -F body=@"$dir/out.md" > /dev/null
