@@ -1,6 +1,13 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
-import { formatDevWarnings, isKnownDevWarning, KNOWN_DEV_WARNINGS, parseDevWarning } from './dev-warnings.ts';
+import {
+  formatDevWarnings,
+  isKnownDevWarning,
+  isUnjudgeableDevWarning,
+  KNOWN_DEV_WARNINGS,
+  parseDevWarning,
+  UNJUDGEABLE_DEV_WARNINGS,
+} from './dev-warnings.ts';
 
 // 開発モードの build で Playwright が受け取った本文（#368 の修正前のバックログ）
 const SVELTE =
@@ -75,14 +82,6 @@ describe('isKnownDevWarning', () => {
     assert.equal(isKnownDevWarning(at(name, detail, '/aoba/w/1/members/x')), false);
   });
 
-  test('window_fetch_in_load は member-list のときだけ既知（#393）', () => {
-    const name = '[sveltekit] window_fetch_in_load';
-    const tail = ' using `window.fetch`. For best results, use the `fetch` that is passed to your `load` function';
-    assert.equal(isKnownDevWarning(at(name, 'Loading `/api/aoba/member-list`' + tail, '/aoba/w/1')), true);
-    assert.equal(isKnownDevWarning(at(name, 'Loading `/api/aoba/task-detail`' + tail, '/aoba/w/1')), false);
-    assert.equal(isKnownDevWarning(at(name, 'Loading `/api/aoba/member-list-x`' + tail, '/aoba/w/1')), false);
-  });
-
   test('history_api_conflict は招待の画面でも既知に数えない（#394 で直した）', () => {
     const name = '[sveltekit] history_api_conflict';
     assert.equal(isKnownDevWarning(at(name, 'Avoid using', '/invite')), false);
@@ -109,6 +108,37 @@ describe('isKnownDevWarning', () => {
 
   test('どの既知の警告も、名前だけでなく中身か画面のパスで絞る', () => {
     for (const known of KNOWN_DEV_WARNINGS) assert.ok(known.detail ?? known.path, known.name);
+  });
+
+  test('判定の働かない警告は、既知の一覧に重ねない', () => {
+    for (const unjudgeable of UNJUDGEABLE_DEV_WARNINGS) {
+      assert.ok(!KNOWN_DEV_WARNINGS.some((known) => known.name === unjudgeable.name), unjudgeable.name);
+    }
+  });
+});
+
+describe('isUnjudgeableDevWarning', () => {
+  const tail = ' using `window.fetch`. For best results, use the `fetch` that is passed to your `load` function';
+
+  test('window_fetch_in_load は、どの操作でも数えない（#429）', () => {
+    const name = '[sveltekit] window_fetch_in_load';
+    for (const operation of ['task-update', 'member-list', 'story-create', 'task-history']) {
+      assert.equal(isUnjudgeableDevWarning({ name, detail: `Loading \`/api/aoba/${operation}\`` + tail }), true);
+    }
+  });
+
+  test('名前が近いだけのものと、ほかの警告は数える', () => {
+    assert.equal(isUnjudgeableDevWarning({ name: '[svelte] window_fetch_in_load', detail: '' }), false);
+    assert.equal(isUnjudgeableDevWarning({ name: '[sveltekit] window_fetch_in_load_x', detail: '' }), false);
+    assert.equal(isUnjudgeableDevWarning(parseDevWarning(KIT)!), false);
+    assert.equal(isUnjudgeableDevWarning(parseDevWarning(SVELTE)!), false);
+  });
+
+  test('理由に Issue の番号を、代わりに確かめる場所にファイルを書く', () => {
+    for (const unjudgeable of UNJUDGEABLE_DEV_WARNINGS) {
+      assert.match(unjudgeable.reason, /#\d+/);
+      assert.match(unjudgeable.instead, /\.test\.ts/);
+    }
   });
 });
 

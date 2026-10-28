@@ -28,11 +28,6 @@ export const KNOWN_DEV_WARNINGS: readonly KnownDevWarning[] = [
     path: /^\/[^/]+\/(admin|invitations|w\/[^/]+\/members)$/,
     reason: '#388 で refreshAll に置き換える',
   },
-  {
-    name: '[sveltekit] window_fetch_in_load',
-    detail: /^Loading `\/api\/[^/]+\/member-list` using `window\.fetch`/,
-    reason: '#393 で出どころを確かめる',
-  },
   // SvelteKit が、app の error() でないエラー（SvelteKit の 404 か、予期しない例外）で開発時に出す。
   // 存在しないパスを開いて 404 の画面を確かめるテスト（e2e/shell.test.ts）の分だけを外す。ほかの画面では予期しない例外の印なので数える
   {
@@ -48,6 +43,26 @@ export const KNOWN_DEV_WARNINGS: readonly KnownDevWarning[] = [
     reason: '画面のエラーを送るテストで、わざと予期しない例外を起こす',
   },
 ];
+
+// 開発モードの build では SvelteKit の判定が働かず、出るかが時機で決まるので、名前ごと数えない警告（#429）。
+// 直す見込みが無いので KNOWN_DEV_WARNINGS に入れず、代わりに確かめる場所を instead に書く。
+// window_fetch_in_load: SvelteKit（runtime/client/fetcher.js）は、async のスタックが読めるかを check_stack_trace という名前の
+// 関数がスタックに出るかで決める。build（Rolldown）がその関数を名前の無い即時の関数に畳むので、build した画面では常に読めないとみなし、
+// load の中かでなく、load が1つでも走っている間の window.fetch をすべて警告にする。保存の後の invalidate の load と、
+// 次の操作のイベントが送る callOperation が重なるだけで出て、どの操作でも出うるので、中身や画面のパスでは絞れない
+type UnjudgeableDevWarning = { name: string; reason: string; instead: string };
+
+export const UNJUDGEABLE_DEV_WARNINGS: readonly UnjudgeableDevWarning[] = [
+  {
+    name: '[sveltekit] window_fetch_in_load',
+    reason: 'build した画面では、load の中かでなく、load が走っている間かで決まる（#429）',
+    instead: 'src/lib/load-fetch.test.ts が、load から呼ぶ操作に load の fetch を渡しているかを確かめる',
+  },
+];
+
+export function isUnjudgeableDevWarning(warning: DevWarning): boolean {
+  return UNJUDGEABLE_DEV_WARNINGS.some((unjudgeable) => unjudgeable.name === warning.name);
+}
 
 export function isKnownDevWarning(warning: DevWarningAt): boolean {
   return KNOWN_DEV_WARNINGS.some(
