@@ -44,6 +44,10 @@
   type Field = 'username' | 'email' | 'form';
   type FailedResult = Extract<ApiResult<unknown>, { ok: false }>;
 
+  // 解約で消す予定日を過ぎた組織は、サーバーが 409 の purge_due で断る（開いた後に日付が変わったときに起こる）。
+  // 何も書かれていないので、ダイアログを閉じて親に組織を渡す（親は理由をトーストで出し、一覧を読み直してフォーカスを移す）
+  let { onpurgedue }: { onpurgedue?: (organization: { slug: string; name: string }) => void } = $props();
+
   let open = $state(false);
   let dialog = $state<ReturnType<typeof Dialog>>();
   let target = $state<Target | null>(null);
@@ -290,6 +294,12 @@
             expiresAt: result.data.invite.expires_at,
           }
         : { kind: 'named', slug: result.data.slug, loginName: result.data.admin_login_name };
+      return;
+    }
+    if (result.status === 409 && result.error?.code === 'purge_due') {
+      const organization = { slug: target.slug, name: target.name };
+      open = false;
+      onpurgedue?.(organization);
       return;
     }
     const failure = failureOf(result, 'send');

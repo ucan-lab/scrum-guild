@@ -786,9 +786,14 @@ export const dictionary = defineDictionary({
   ),
   // 解約で消す予定日を過ぎた組織（一覧の purge_due、操作の 409 の purge_due）。消している途中で戻さないよう、再開と
   // 一時的な停止への切り替えはサーバーが断る。一覧の行では「停止の理由を変える」と「再開する」の代わりに出す
+  // {admin} は辞書の同じ名前の項目。管理者の指名し直しも、消している途中で組織の中に行を足さないよう断る
   operatorPurgeDue: organization(
-    '消す予定日を過ぎたので、再開も停止の理由の切り替えもできません',
-    '消す予定日を過ぎたので、再開も停止の理由の切り替えもできません',
+    '消す予定日を過ぎたので、再開も停止の理由の切り替えも{admin}の指名もできません',
+    '消す予定日を過ぎたので、再開も停止の理由の切り替えも{admin}の指名もできません',
+  ),
+  operatorReassignPurgeDue: organization(
+    '「{name}」は消す予定日を過ぎたので、{admin}を指名できません',
+    '「{name}」は消す予定日を過ぎたので、{admin}を指名できません',
   ),
   // 一覧を開いた後に日付が変わり、操作が purge_due で断られたときのトースト。{name} は組織の名前
   operatorResumePurgeDue: organization(

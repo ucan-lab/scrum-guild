@@ -1080,7 +1080,7 @@ test.describe('運用者', () => {
     await expect(row.locator('.chip.is-danger')).toHaveText('2026-11-25 に消す');
   });
 
-  test('消す予定日を過ぎた解約の組織の行は、「停止の理由を変える」と「再開する」を出さず、再開できない理由を出す', async ({
+  test('消す予定日を過ぎた解約の組織の行は、管理者の指名、停止の理由の切り替え、再開を出さず、できない理由を出す', async ({
     page,
   }) => {
     await mockList(page, [
@@ -1103,10 +1103,10 @@ test.describe('運用者', () => {
     const due = page.locator('.table tbody tr', { hasText: 'きり製作所' });
     await expect(due.locator('.chip.is-danger')).toHaveText('2026-10-10 に消す');
     const actions = due.locator('td.is-actions');
-    // 管理者の指名し直しは残す
-    await expect(actions.getByRole('button')).toHaveText(['ギルドマスターを指名']);
+    // 管理者の指名し直しも出さない（サーバーが purge_due で断る）
+    await expect(actions.getByRole('button')).toHaveCount(0);
     await expect(actions.locator('.props-note')).toHaveText(
-      '消す予定日を過ぎたので、再開も停止の理由の切り替えもできません',
+      '消す予定日を過ぎたので、再開も停止の理由の切り替えもギルドマスターの指名もできません',
     );
     // 予定日を過ぎていない解約の組織は、今どおり両方を出す
     await expect(
@@ -1232,7 +1232,7 @@ test.describe('運用者', () => {
       page.getByRole('status').filter({ hasText: '「きり製作所」は消す予定日を過ぎたので再開できません' }),
     ).toBeVisible();
     const kiri = page.locator('.table tbody tr', { hasText: 'きり製作所' }).locator('td.is-actions');
-    await expect(kiri.getByRole('button')).toHaveText(['ギルドマスターを指名']);
+    await expect(kiri.getByRole('button')).toHaveCount(0);
     await expect(kiri.locator('.props-note')).toBeFocused();
 
     await page.getByRole('button', { name: '「なぎ設計」の停止の理由を変える' }).click();
@@ -1245,11 +1245,48 @@ test.describe('運用者', () => {
       page.getByRole('status').filter({ hasText: '「なぎ設計」は消す予定日を過ぎたので、停止の理由を変えられません' }),
     ).toBeVisible();
     const nagi = page.locator('.table tbody tr', { hasText: 'なぎ設計' }).locator('td.is-actions');
-    await expect(nagi.getByRole('button')).toHaveText(['ギルドマスターを指名']);
+    await expect(nagi.getByRole('button')).toHaveCount(0);
     await expect(nagi.locator('.props-note')).toHaveText(
-      '消す予定日を過ぎたので、再開も停止の理由の切り替えもできません',
+      '消す予定日を過ぎたので、再開も停止の理由の切り替えもギルドマスターの指名もできません',
     );
     await expect(nagi.locator('.props-note')).toBeFocused();
+  });
+
+  test('開いた後に予定日を過ぎ、管理者の指名し直しが purge_due で断られたら、閉じて理由を知らせ、読み直して理由へフォーカスを移す', async ({
+    page,
+  }) => {
+    const listed = [
+      organization({
+        slug: 'kiri',
+        name: 'きり製作所',
+        suspended_at: '2026-09-10T00:00:00.000Z',
+        purge_on: '2026-10-10',
+      }),
+    ];
+    await page.route('**/api/list-organizations', (route) => route.fulfill({ json: { organizations: listed } }));
+    let sent: unknown;
+    await page.route('**/api/organization-admin-reassign', (route) => {
+      sent = route.request().postDataJSON();
+      listed[0] = { ...listed[0]!, purge_due: true };
+      return route.fulfill({ status: 409, json: { error: { code: 'purge_due', message: 'x' } } });
+    });
+    await page.goto('/operator');
+    await page.getByRole('button', { name: '「きり製作所」のギルドマスターを指名' }).click();
+    const dialog = page.getByRole('dialog', { name: 'ギルドマスターを指名し直す' });
+    await dialog.getByRole('radio', { name: 'Google' }).check();
+    await dialog.getByLabel('Google のメールアドレス').fill('kai.tsukishiro@example.com');
+    await dialog.getByRole('button', { name: '指名する', exact: true }).click();
+
+    await expect(dialog).toBeHidden();
+    expect(sent).toEqual({ slug: 'kiri', admin: { provider: 'google', email: 'kai.tsukishiro@example.com' } });
+    await expect(
+      page
+        .getByRole('status')
+        .filter({ hasText: '「きり製作所」は消す予定日を過ぎたので、ギルドマスターを指名できません' }),
+    ).toBeVisible();
+    const kiri = page.locator('.table tbody tr', { hasText: 'きり製作所' }).locator('td.is-actions');
+    await expect(kiri.getByRole('button')).toHaveCount(0);
+    await expect(kiri.locator('.props-note')).toBeFocused();
   });
 
   test('長い組織の名前は、停止のダイアログの本文で折り返し、横にはみ出さない', async ({ page }) => {
