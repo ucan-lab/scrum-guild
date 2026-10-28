@@ -51,6 +51,28 @@ export function memberExperienceTotalsStatement(db: OrganizationDb, workspaceId:
   );
 }
 
+// エピックの討伐隊の人ごとの、組織の中の経験値の合計。討伐隊は抜けた人も含みうるので、今の所属でなく討伐隊の行で絞る。
+// 明細の無い人は行を返さない（合計 0 として扱う）。エピックはワークスペースで絞って引く（別のワークスペースの討伐隊を読まない）
+export function epicPartyExperienceTotalsStatement(db: OrganizationDb, workspaceId: string, epicId: string) {
+  const organizationId = db.organizationId;
+  return db.statement((q) =>
+    q
+      .selectFrom('xp_grants as g')
+      .innerJoin('workspaces as w', 'w.id', 'g.workspace_id')
+      .select((eb) => ['g.user_id', eb.fn.sum<number>('g.amount').as('total')])
+      .where('w.organization_id', '=', organizationId)
+      .where('g.user_id', 'in', (eb) =>
+        eb
+          .selectFrom('epic_party_members as p')
+          .innerJoin('epics as e', 'e.id', 'p.epic_id')
+          .select('p.user_id')
+          .where('p.epic_id', '=', epicId)
+          .where('e.workspace_id', '=', workspaceId),
+      )
+      .groupBy('g.user_id'),
+  );
+}
+
 // SUM と COUNT の結果を数にする（D1 は整数で返す。null と数でない値は 0 として扱う）。合計を読むどの処理もこれを使う
 export function amountOf(value: unknown): number {
   const number = Number(value ?? 0);

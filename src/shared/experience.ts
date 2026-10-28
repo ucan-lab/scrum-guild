@@ -11,6 +11,13 @@ export const XP_TASK_COMPLETED = 30;
 // ストーリーの完了。配下のタスクで完了の経験値を受け取った人全員に、1人1回ずつ付く（取り消すと打ち消す）
 export const XP_STORY_COMPLETED = 20;
 
+// エピックのクリア報酬の段階（epics.reward_tier の CHECK と同じ並び）と、段階ごとの経験値。
+// 1人1スプリントで約 400 の尺度に対し、大は 1.5 スプリント分。画面に額を出すために持つ。払うのはクリアの処理
+export const epicRewardTiers = ['small', 'medium', 'large'] as const;
+export type EpicRewardTier = (typeof epicRewardTiers)[number];
+
+export const XP_EPIC_REWARD: Readonly<Record<EpicRewardTier, number>> = { small: 100, medium: 300, large: 600 };
+
 // 経験値の明細の行動（xp_grants.action の CHECK と同じ並び）
 export const experienceActions = [
   'task_created',

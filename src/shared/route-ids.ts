@@ -7,6 +7,7 @@ export const ROUTE_IDS: readonly string[] = [
   '/[slug]/invitations',
   '/[slug]/me',
   '/[slug]/w/[id]',
+  '/[slug]/w/[id]/epics/[epicId]',
   '/[slug]/w/[id]/members',
   '/[slug]/w/[id]/plan',
   '/[slug]/w/[id]/settings',

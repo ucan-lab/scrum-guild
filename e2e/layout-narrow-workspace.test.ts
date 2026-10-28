@@ -10,6 +10,7 @@ import { expectNarrowLayout, signIn } from './helpers.ts';
 
 const WORKSPACE = '/aoba/w/019a0000-0000-7000-8000-000000000401';
 const TASK_ID = '019a0000-0000-7000-8000-000000000801';
+const EPIC_ID = '019a0000-0000-7000-8000-000000000b01';
 
 type W = (key: DictionaryKey, params?: TemplateParams) => string;
 
@@ -27,6 +28,15 @@ test('バックログが 390px で横にはみ出さず、押せる要素が 44p
     await page.goto(WORKSPACE);
     await expect(page.getByRole('heading', { level: 1, name: w('backlog') })).toBeVisible();
     await expect(page.getByRole('link', { name: 'ポイント付与のバッチを作る' })).toBeVisible();
+    await expectWorkspaceWords(page, w);
+  });
+});
+
+test('エピックの画面が 390px で横にはみ出さず、押せる要素が 44px 四方で押せる', async ({ page }) => {
+  await expectNarrowLayout(page, 'epic', async (w) => {
+    await page.goto(`${WORKSPACE}/epics/${EPIC_ID}`);
+    await expect(page.getByRole('heading', { level: 1, name: 'ポイントの交換先を増やす' })).toBeVisible();
+    await expect(page.getByRole('heading', { level: 2, name: w('party') })).toBeVisible();
     await expectWorkspaceWords(page, w);
   });
 });

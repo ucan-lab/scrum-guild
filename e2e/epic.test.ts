@@ -14,7 +14,7 @@ test.beforeEach(async ({ context, baseURL }) => {
 // 題の行を自分の直下に持つ木の1件（エピックの中のストーリーで、エピックの方を拾わない）
 function rowGroup(page: Page, title: string) {
   return page.locator(
-    `xpath=//div[contains(@class, "tree-group")][./div[contains(@class, "tree-row")]//button[contains(@class, "tree-link") and normalize-space() = "${title}"]]`,
+    `xpath=//div[contains(@class, "tree-group")][./div[contains(@class, "tree-row")]//*[contains(@class, "tree-link") and normalize-space() = "${title}"]]`,
   );
 }
 
@@ -52,19 +52,29 @@ test('ゲームの言葉: レイドを作り、達成目標を下へ移し、配
   await expect(epic.locator('.tree-row.is-epic .tree-ratio')).toHaveText('完遂 0 / 0 pt');
   await expect(epic.getByText('達成目標はまだありません')).toBeVisible();
 
-  // 題からダイアログを開いて直す。開いたら1件を読む
-  await page.getByRole('button', { name: 'ポイント制度を公開する', exact: true }).click();
+  // 題からエピックの画面を開き、見出しの横の「直す」で開くダイアログで直す。開いたら1件を読む
+  await page.getByRole('link', { name: 'ポイント制度を公開する', exact: true }).click();
+  await expect(page.getByRole('heading', { level: 1, name: 'ポイント制度を公開する' })).toBeVisible();
+  const editEpic = page.getByRole('button', { name: 'レイドを直す' });
+  await editEpic.click();
   const epicDialog = page.getByRole('dialog', { name: 'レイド' });
   await expect(epicDialog.getByLabel('タイトル')).toHaveValue('ポイント制度を公開する');
   await epicDialog.getByLabel('本文').fill('年内に公開する');
   await epicDialog.getByLabel('期限').fill('2026-12-25');
+  const detailReloaded = waitForResponses(page, '/epic-detail');
   await epicDialog.getByRole('button', { name: '保存する' }).click();
   await expect(epicDialog).toBeHidden();
   await expect(page.getByRole('status').filter({ hasText: 'レイドを保存しました' })).toBeVisible();
-  await expect(epic.locator('.tree-row.is-epic .chip')).toHaveText('12/25');
-  await page.getByRole('button', { name: 'ポイント制度を公開する', exact: true }).click();
+  // 直したら画面を読み直す。本文は概要に、期日は依頼書に出る
+  await detailReloaded;
+  await expect(page.getByText('年内に公開する')).toBeVisible();
+  await expect(page.locator('.props').getByText('12/25')).toBeVisible();
+  await editEpic.click();
   await expect(epicDialog.getByLabel('本文')).toHaveValue('年内に公開する');
   await epicDialog.getByRole('button', { name: 'やめる' }).click();
+  // 掲示板へ戻ると、木のエピックの行に期日が出る
+  await page.getByRole('link', { name: '掲示板へ戻る' }).click();
+  await expect(epic.locator('.tree-row.is-epic .chip')).toHaveText('12/25');
 
   // 親のないストーリーを作り、「親を移す」でエピックの下へ移す。今が親なしなので、親なしは候補に出さない
   await createStory(page, '達成目標を作る', '残高が見える');

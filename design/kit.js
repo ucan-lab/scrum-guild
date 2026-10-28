@@ -66,7 +66,7 @@
     reward: ["クリア報酬", "クリア報酬"], clear: ["レイドをクリアする", "エピックを完了にする"], create: ["依頼を出す", "起票"],
     leader: ["パーティリーダー", "リーダー"], member: ["冒険者", "メンバー"], dod: ["パーティの掟", "完成の定義"],
     vocab: ["ゲームの言葉", "スクラムの言葉"], organization: ["冒険者ギルド", "組織"], admin: ["ギルドマスター", "管理者"],
-    assistant: ["ギルドの書記", "アシスタント"],
+    assistant: ["ギルドの書記", "アシスタント"], epicPageRequest: ["依頼書", "概要"],
     accountMenuLabel: ["{name}。アカウントのメニュー", "{name}。アカウントのメニュー"], logout: ["ログアウト", "ログアウト"],
     logoutMoving: ["ログアウトしています", "ログアウトしています"], loggedOut: ["ログアウトしました。", "ログアウトしました。"],
     logoutFailed: ["ログアウトできませんでした。時間をおいてもう一度試してください。", "ログアウトできませんでした。時間をおいてもう一度試してください。"],
@@ -480,7 +480,7 @@
       <div class="tree-row is-epic${opts.order ? " has-grip" : ""}${mark.state === "is-dropped" ? " is-dropped" : ""}"${into ? dropAttr(mark) : ""}>
         ${opts.order ? gripCell(false) : ""}${treeCaret(`tree-${key}`, e.title)}
         <span class="kind is-epic" title="${t("epic")}">${icon("flag")}</span>
-        <span class="tree-title"><button class="tree-link" type="button" data-dialog="editEpic">${esc(e.title)}</button> ${categoryTag(e.cat)} ${state} ${dueChip(e.due, { done: finished })}</span>
+        <span class="tree-title"><a class="tree-link" href="epic.html">${esc(e.title)}</a> ${categoryTag(e.cat)} ${state} ${dueChip(e.due, { done: finished })}</span>
         <span class="tree-end"><span class="tree-ratio" title="完了 / 全体">${t("done")} ${p.done} / ${p.all} pt</span>${epicOrder ? orderActions(e.title, { first: epicOrder.first, last: epicOrder.last }) : ""}</span>
       </div>
       <div class="tree-children" id="tree-${key}">${stories.map((s, i) => treeStory(s, false, {

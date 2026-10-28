@@ -749,6 +749,85 @@ describe('sprint_entries', () => {
   });
 });
 
+describe('epic_party_members', () => {
+  async function epicAndUsers() {
+    const { orgId, userId, workspaceId } = await workspace();
+    const otherUserId = await user(orgId);
+    const epicId = id();
+    await run(
+      `INSERT INTO epics (id, workspace_id, title, reward_tier, requester_user_id, created_by, position, created_at, updated_at) VALUES (?, ?, 'エピック', 'medium', ?, ?, 'a0', ?, ?)`,
+      epicId,
+      workspaceId,
+      userId,
+      userId,
+      AT,
+      AT,
+    );
+    const join = (user: string, joinedVia: string) =>
+      run(
+        `INSERT INTO epic_party_members (epic_id, user_id, joined_via, added_by, joined_at) VALUES (?, ?, ?, ?, ?)`,
+        epicId,
+        user,
+        joinedVia,
+        userId,
+        AT,
+      );
+    return { userId, otherUserId, join };
+  }
+
+  test('同じエピックに同じ人は1回だけ入れる', async () => {
+    const { userId, otherUserId, join } = await epicAndUsers();
+    await expect(join(userId, 'self')).resolves.toBeTruthy();
+    await expect(join(otherUserId, 'assigned')).resolves.toBeTruthy();
+    await expect(join(userId, 'self')).rejects.toThrow(/UNIQUE|PRIMARY KEY/);
+  });
+
+  test('入り方は self、assigned、task_assignee のどれか', async () => {
+    const { userId, otherUserId, join } = await epicAndUsers();
+    await expect(join(userId, 'task_assignee')).resolves.toBeTruthy();
+    await expect(join(otherUserId, 'invited')).rejects.toThrow(/CHECK/);
+  });
+});
+
+describe('thanks', () => {
+  async function taskAndUsers() {
+    const { orgId, userId, workspaceId } = await workspace();
+    const recipientId = await user(orgId);
+    const taskId = id();
+    await run(
+      `INSERT INTO tasks (id, workspace_id, is_imported, tray, title, position, created_by, created_at, updated_at) VALUES (?, ?, 0, 'backlog', 'タスク', 'a0', ?, ?, ?)`,
+      taskId,
+      workspaceId,
+      userId,
+      AT,
+      AT,
+    );
+    const thank = (sender: string, recipient: string) =>
+      run(
+        `INSERT INTO thanks (id, workspace_id, task_id, sender_user_id, recipient_user_id, created_at) VALUES (?, ?, ?, ?, ?, ?)`,
+        id(),
+        workspaceId,
+        taskId,
+        sender,
+        recipient,
+        AT,
+      );
+    return { userId, recipientId, thank };
+  }
+
+  test('自分には送れない', async () => {
+    const { userId, thank } = await taskAndUsers();
+    await expect(thank(userId, userId)).rejects.toThrow(/CHECK/);
+  });
+
+  test('同じタスクで同じ相手への感謝は1回。相手が違えば別に送れる', async () => {
+    const { userId, recipientId, thank } = await taskAndUsers();
+    await expect(thank(userId, recipientId)).resolves.toBeTruthy();
+    await expect(thank(userId, recipientId)).rejects.toThrow(/UNIQUE/);
+    await expect(thank(recipientId, userId)).resolves.toBeTruthy();
+  });
+});
+
 describe('xp_grants.dedupe_key', () => {
   test('同じキーの付与は2つ作れない', async () => {
     const { userId, workspaceId } = await workspace();

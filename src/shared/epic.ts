@@ -2,6 +2,7 @@
 // 本文、期日、リンクはストーリーと同じ決まり（story.ts の longTextSchema、dueOnSchema、linkUrlSchema）を使う。
 // 画面の束にも入るので、Worker のコードを引かない
 import { z } from 'zod';
+import type { EpicRewardTier } from './experience.ts';
 import './zod-config.ts';
 import { shortTextProblem, type ShortTextProblem } from './text-rules.ts';
 
@@ -23,5 +24,5 @@ export const epicTitleSchema = z
     if (problem !== null) ctx.addIssue({ code: 'custom', message: `エピックのタイトルが使えない（${problem}）` });
   });
 
-// 作るときの既定。依頼主は作った人、クリア報酬の段階は中。変える操作は #65 で足す
-export const EPIC_DEFAULT_REWARD_TIER = 'medium';
+// 作るときの既定。依頼主は作った人、クリア報酬の段階は中。段階の並びと額は experience.ts
+export const EPIC_DEFAULT_REWARD_TIER = 'medium' satisfies EpicRewardTier;

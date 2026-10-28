@@ -10,7 +10,7 @@ test.use({ timezoneId: 'Asia/Tokyo' });
 // 題の行を自分の直下に持つ木の1件（エピックの中のストーリーで、エピックの方を拾わない）
 function rowGroup(page: Page, title: string) {
   return page.locator(
-    `xpath=//div[contains(@class, "tree-group")][./div[contains(@class, "tree-row")]//button[contains(@class, "tree-link") and normalize-space() = "${title}"]]`,
+    `xpath=//div[contains(@class, "tree-group")][./div[contains(@class, "tree-row")]//*[contains(@class, "tree-link") and normalize-space() = "${title}"]]`,
   );
 }
 
@@ -63,8 +63,9 @@ test('スクラムの言葉: エピックを配下を残して削除し、残っ
   await createDialog.getByRole('button', { name: 'やめる' }).click();
   await expect(createDialog).toBeHidden();
 
-  // エピックのダイアログの下の削除から、確認を開く。配下の件数と、既定の「残す」が出る
-  await page.getByRole('button', { name: '会員証を作り直す', exact: true }).click();
+  // 題からエピックの画面を開き、見出しの横の「直す」で開くダイアログの下の削除から、確認を開く。配下の件数と、既定の「残す」が出る
+  await page.getByRole('link', { name: '会員証を作り直す', exact: true }).click();
+  await page.getByRole('button', { name: 'エピックを直す' }).click();
   const epicDialog = page.getByRole('dialog', { name: 'エピック', exact: true });
   await expect(epicDialog.getByLabel('タイトル')).toHaveValue('会員証を作り直す');
   const deleteEpic = epicDialog.getByRole('button', { name: 'このエピックを削除する' });
@@ -92,7 +93,9 @@ test('スクラムの言葉: エピックを配下を残して削除し、残っ
   await expect(confirm).toBeHidden();
   await expect(epicDialog).toBeHidden();
   await expect(page.getByRole('status').filter({ hasText: 'エピックを削除しました' })).toBeVisible();
-  await expect(page.getByRole('button', { name: '会員証を作り直す', exact: true })).toHaveCount(0);
+  // 削除したら、バックログへ戻る
+  await expect(page).toHaveURL(/\/w\/[^/]+$/);
+  await expect(page.getByRole('link', { name: '会員証を作り直す', exact: true })).toHaveCount(0);
   await expect(page.getByRole('heading', { level: 1, name: 'バックログ' })).toBeFocused();
   // ストーリーは親なしになり、その下のタスクはストーリーの下のまま
   const story = rowGroup(page, 'カードの画面');
@@ -131,7 +134,8 @@ test('ゲームの言葉: 配下の無いレイドは選ばせずに削除する
   await create(page, 'レイドを作る', '倉庫の棚卸し');
   await page.waitForLoadState('networkidle');
 
-  await page.getByRole('button', { name: '倉庫の棚卸し', exact: true }).click();
+  await page.getByRole('link', { name: '倉庫の棚卸し', exact: true }).click();
+  await page.getByRole('button', { name: 'レイドを直す' }).click();
   const epicDialog = page.getByRole('dialog', { name: 'レイド', exact: true });
   await epicDialog.getByRole('button', { name: 'このレイドを削除する' }).click();
   const confirm = page.getByRole('dialog', { name: 'レイドを削除する' });
@@ -149,7 +153,8 @@ test('ゲームの言葉: 配下の無いレイドは選ばせずに削除する
   await confirm.getByRole('button', { name: '削除する' }).click();
   await expect(epicDialog).toBeHidden();
   await expect(page.getByRole('status').filter({ hasText: 'レイドを削除しました' })).toBeVisible();
-  await expect(page.getByRole('button', { name: '倉庫の棚卸し', exact: true })).toHaveCount(0);
+  await expect(page).toHaveURL(/\/w\/[^/]+$/);
+  await expect(page.getByRole('link', { name: '倉庫の棚卸し', exact: true })).toHaveCount(0);
 });
 
 test('確認は開いたときに件数とまとめて削除できるかを読み直し、読んでいる間は削除を押せない。まとめて削除できなければ選択肢を押せなくし、理由を出す', async ({
@@ -308,15 +313,17 @@ test('作った人でもリーダーでもないメンバーには、削除の�
 }) => {
   await signIn(context, baseURL, 'member');
   await page.goto(SEED_GAME_WORKSPACE);
-  const epic = page.getByRole('button', { name: 'ポイントの交換先を増やす', exact: true });
+  const epic = page.getByRole('link', { name: 'ポイントの交換先を増やす', exact: true });
   await expect(epic).toBeVisible();
   await waitForSettled(page);
   await epic.click();
+  await page.getByRole('button', { name: 'レイドを直す' }).click();
   const epicDialog = page.getByRole('dialog', { name: 'レイド', exact: true });
   await expect(epicDialog.getByLabel('タイトル')).toHaveValue('ポイントの交換先を増やす');
   await expect(epicDialog.getByRole('button', { name: /を削除する/ })).toHaveCount(0);
   await expect(epicDialog.getByText('削除できるのは作った人とパーティリーダーです。')).toBeVisible();
   await epicDialog.getByRole('button', { name: 'やめる' }).click();
+  await page.getByRole('link', { name: '掲示板へ戻る' }).click();
 
   await page.getByRole('button', { name: '送料の割引にポイントを使える', exact: true }).click();
   const storyDialog = page.getByRole('dialog', { name: '達成目標', exact: true });

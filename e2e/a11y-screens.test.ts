@@ -8,6 +8,7 @@ import { expectNoA11yViolationsInThemes, signIn } from './helpers.ts';
 import type { UiScreen } from './ui-exclusions.ts';
 
 const WORKSPACE = '/aoba/w/019a0000-0000-7000-8000-000000000401';
+const EPIC_ID = '019a0000-0000-7000-8000-000000000b01';
 
 test.beforeEach(async ({ context, baseURL }) => {
   await signIn(context, baseURL, 'admin');
@@ -33,6 +34,14 @@ const screens: { screen: UiScreen; path: string; ready: (page: Page) => Locator[
     ready: (page) => [
       page.getByRole('heading', { level: 1, name: '掲示板' }),
       page.getByRole('link', { name: 'ポイント付与のバッチを作る' }),
+    ],
+  },
+  {
+    screen: 'epic',
+    path: `${WORKSPACE}/epics/${EPIC_ID}`,
+    ready: (page) => [
+      page.getByRole('heading', { level: 1, name: 'ポイントの交換先を増やす' }),
+      page.getByRole('heading', { level: 2, name: '討伐隊' }),
     ],
   },
   {

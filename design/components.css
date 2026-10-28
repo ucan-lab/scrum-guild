@@ -591,7 +591,7 @@ a.brand { color: inherit; text-decoration: none; }
 .tree-title { min-width: 0; overflow-wrap: anywhere; display: flex; flex-wrap: wrap; gap: 4px var(--space-2); align-items: center; }
 .tree-link { color: inherit; text-decoration: none; }
 .tree-link:hover { text-decoration: underline; text-underline-offset: 3px; }
-/* 行の中でダイアログを開く題は、リンクではなくボタンにする */
+/* 行の中でダイアログを開く題（ストーリー）は、リンクではなくボタンにする。エピックの題は、エピックの画面へのリンク（a.tree-link） */
 button.tree-link { border: 0; background: none; padding: 0; font: inherit; text-align: left; cursor: pointer; }
 /* 行の右端。「完了 / 全体」と、行の中の操作（＋タスク）を並べる。狭い幅では折り返す */
 .tree-end { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: var(--space-1) var(--space-3); }
@@ -954,6 +954,11 @@ dialog.dialog::backdrop { background: none; }
   a.entry-title, button.entry-title { position: relative; }
   .tree-caret::after, button.tree-link::after, .tree-row .btn.is-sm::after, .form-actions .btn.is-sm::after, .callout-actions .btn.is-sm::after,
   .toolbar-end .btn.is-sm::after, a.entry-title::after, button.entry-title::after, .pill::after {
+    content: ""; position: absolute; left: 50%; top: 50%; width: max(100%, 44px); height: max(100%, 44px); transform: translate(-50%, -50%);
+  }
+  /* エピックの行の題はエピックの画面へのリンク（a.tree-link）。ボタンの題と同じ範囲に広げる */
+  a.tree-link { position: relative; }
+  a.tree-link::after {
     content: ""; position: absolute; left: 50%; top: 50%; width: max(100%, 44px); height: max(100%, 44px); transform: translate(-50%, -50%);
   }
   /* 引き出しの中の小さなボタン（保存、取り消し、編集、削除、クリア）と、押すと直せる値も同じ。重なる行の押せる範囲は、下の余白で分ける */
