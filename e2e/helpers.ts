@@ -602,7 +602,10 @@ export async function settledScrollY(page: Page): Promise<number> {
       });
     let previous = window.scrollY;
     while (performance.now() < deadline) {
-      await document.fonts.ready;
+      await Promise.race([
+        document.fonts.ready,
+        new Promise((resolve) => setTimeout(resolve, Math.max(0, deadline - performance.now()))),
+      ]);
       await frame();
       await frame();
       if (window.scrollY === previous && document.fonts.status === 'loaded') return previous;
