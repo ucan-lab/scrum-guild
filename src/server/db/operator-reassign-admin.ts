@@ -291,11 +291,24 @@ function activeAdminStatement(db: OrganizationDb, userId: string) {
   );
 }
 
-// 書き込みが例外で失敗したとき、指名する人の行が今あるか。あれば、読んでから書くまでに同じ人の行が入って一意に当たった
-async function nomineeRowExists(db: OrganizationDb, nominee: AdminNominee): Promise<boolean> {
-  if ('waiting' in nominee) return false;
+// 新しい行を入れる書き込みが例外で終わったときに、何が起きたかを読み直して見分ける。
+//   written: 自分が採番した行がある（書き込みは済み、応答だけが失われた）
+//   raced: 自分の行は無いが、指名する人の行がある（読んでから書くまでに同じ人の行が入って一意に当たった）
+//   unknown: どちらでもない（元の例外を投げる）
+async function afterFailedInsert(
+  db: OrganizationDb,
+  nominee: AdminNominee,
+  userId: string,
+): Promise<'written' | 'raced' | 'unknown'> {
+  const own = await db.first(
+    db.statement((q) =>
+      q.selectFrom('users').select('id').where('id', '=', userId).where('organization_id', '=', db.organizationId),
+    ),
+  );
+  if (own !== undefined) return 'written';
+  if ('waiting' in nominee) return 'unknown';
   const rows = await db.rows(candidatesStatement(db, nominee));
-  return rows.some((row) => isNomineeRow(nominee, row));
+  return rows.some((row) => isNomineeRow(nominee, row)) ? 'raced' : 'unknown';
 }
 
 // 前の指名（その組織の account_id が空の users の行。指名する人自身の行は除く）を消し、続けて指名する。1回の batch() で書く。
@@ -354,14 +367,16 @@ export async function reassignOrganizationAdmin(
     // 一意に当たりうるのは新しい行を入れるときだけ。ほかの経路（既にいる人の UPDATE、既に有効な管理者）の失敗は、
     // D1 の一時的な失敗や外部キーの失敗なので、409 にせずそのまま投げる（500 としてログに残る）
     if (outcome !== 'created') throw err;
-    // 一意に当たったかは例外の文面でなく、指名する人の行を読み直して見分ける
-    let raced: boolean;
+    // 一意に当たったかは例外の文面でなく、行を読み直して見分ける。自分が採番した行があれば、書き込みは済んで応答だけが
+    // 失われたので成功として返す（消した前の指名の数は分からないので removed は 0）
+    let found: Awaited<ReturnType<typeof afterFailedInsert>>;
     try {
-      raced = await nomineeRowExists(db, nominee);
+      found = await afterFailedInsert(db, nominee, userId);
     } catch {
       throw new Error('指名する人の行を読み直せなかったので、指名し直せたか分からない', { cause: err });
     }
-    if (raced) return 'conflict';
+    if (found === 'written') return { userId, outcome, removed: 0 };
+    if (found === 'raced') return 'conflict';
     throw err;
   }
 
