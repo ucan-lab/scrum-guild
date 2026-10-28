@@ -46,13 +46,15 @@ test('スクラムの言葉: エピックを配下を残して削除し、残っ
   await create(page, 'ストーリーを作る', 'カードの画面');
   await page.getByRole('button', { name: '親を移す: カードの画面' }).click();
   const moveDialog = page.getByRole('dialog', { name: '「カードの画面」の親を移す' });
+  // 親の移動は画面を先に変えてから送る。削除の確認が配下を数える前に、移動の応答を待つ（#363）
+  const moved = waitForResponses(page, '/story-move');
   await moveDialog.getByRole('button', { name: '移す' }).click();
   await expect(moveDialog).toBeHidden();
   await expect(
     rowGroup(page, '会員証を作り直す').locator('.tree-children .tree-row.is-story button.tree-link'),
   ).toHaveText(['カードの画面']);
   await addTask(page, 'カードの画面', 'バーコードを出す', '起票');
-  await page.waitForLoadState('networkidle');
+  await moved;
 
   // 作るときのダイアログには削除のボタンを出さない
   await page.getByRole('button', { name: 'エピックを作る' }).click();
