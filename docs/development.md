@@ -507,6 +507,7 @@ Bash の判定を `permissions.deny` に置かないのは、規則が前方一�
 | wrangler の設定（見本の Worker の `wrangler.design.jsonc` も含む）、デプロイのスクリプト、依存 | `wrangler*.jsonc` など、`scripts/`、`package.json`、`pnpm-lock.yaml`、`pnpm-workspace.yaml`、`patches/`、`.npmrc`、Node の版の指定 |
 | lint の設定（組織で絞る層を守る規則を含む） | `eslint.config.*` |
 | GitHub と Claude の設定、git のフック | `.github/`、`.claude/settings.json`、`.claude/hooks/`、`.mcp.json`、`.githooks/` |
+| CI が書き込みのトークンを持って走らせる、`.claude/` の下のスクリプト | `.claude/skills/pr-create/embed-evidence.py`（`evidence` のジョブが PR の本文を書き換える） |
 
 ファイルのリネームを含む PR と、変更したファイルが 3000 を超える PR にも付ける。パスの規則は移動先の名前しか見ず、変更したファイルの一覧も 3000 件までしか取れないため。
 
@@ -603,7 +604,7 @@ PR のエビデンスの画像は CI が e2e のスクリーンショットか�
 - main 用の鍵は Environment の `evidence-main` のシークレットに置き、deployment branches を `main` だけに絞る。PR の実行（`refs/pull/<番号>/merge`）はこの Environment に入れないので、PR から main の変更前の画像と一覧はすり替えられない。`evidence-main.yml` で鍵を読むジョブ（`config` と `upload`）にだけ `environment: evidence-main` を付ける。Environment のシークレットは、その Environment を付けたジョブでないと有無も読めない
 - Environment と deployment branches の絞りは、このリポジトリが public だから無料のプランで使える（上の「`main` を守る仕組み」の、Environment が使えないという前提は private のときの話）。private に戻すと Environment が使えなくなり、main 用の鍵を PR から読める形でしか置けなくなる。そのときは main 用の鍵を失効させて Environment ごと消し、`evidence-main` を止める（一覧を PR からすり替えられる形で置かない）
 - 鍵はそれぞれのバケットだけの Object Read & Write に絞る。PR 用の鍵が漏れても、書けるのは PR 用のバケットだけ
-- `evidence` のコメントは PR の head のコードが作る。`.github/` や `scripts/` を変える PR（`needs-human` が付く）では、コメントの画像と文章を信用せず、人が差分を読んで決める。PR の本文への埋め込み（`embed-evidence.py`。CI も PR の head の版を走らせる）も同じコメントを読むので、URL が R2 の画像の形（`https://<ホスト>/img/<ハッシュ>.png` か `.../main/img/<ハッシュ>.png`）でなければ本文に入れない
+- `evidence` のコメントは PR の head のコードが作る。`.github/` や `scripts/` を変える PR（`needs-human` が付く）では、コメントの画像と文章を信用せず、人が差分を読んで決める。PR の本文への埋め込み（`embed-evidence.py`。CI も PR の head の版を `pull-requests: write` のトークンを持って走らせるので、このファイルにも `needs-human` が付く）も同じコメントを読むので、URL が R2 の画像の形（`https://<ホスト>/img/<ハッシュ>.png` か `.../main/img/<ハッシュ>.png`）でなければ本文に入れない
 - 鍵が漏れた疑いがあれば、Cloudflare のダッシュボードの R2 の API トークンの画面で、その鍵のトークンを失効させ、同じ権限（そのバケットだけの Object Read & Write）で作り直す。新しいアクセスキーとシークレットキーを、PR 用はリポジトリのシークレットに、main 用は Environment の `evidence-main` のシークレットに入れ直す。main 用の鍵が漏れたときは、main 用のバケットの一覧と画像がすり替えられていないかも見て、疑わしければ `evidence-main` を手で動かして撮り直す
 
 人が用意するもの（セッションは本番の Cloudflare のアカウントに触らないので行えない）。どれかが無いと、`evidence` と `evidence-main` は上げずに、足りない名前をジョブの注記に出して成功で終える。人の用意の前にマージしても CI は赤くならない。
