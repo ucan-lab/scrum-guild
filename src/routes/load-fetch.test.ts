@@ -149,9 +149,20 @@ function checkLoadFetch(code: string, fileName = 'load.ts'): LoadFetchResult {
     ) {
       report(node, 'グローバルの fetch でなく、load の引数の fetch を使う');
     }
+    if (
+      ts.isElementAccessExpression(node) &&
+      ts.isStringLiteralLike(node.argumentExpression) &&
+      node.argumentExpression.text === 'fetch'
+    ) {
+      report(node, 'グローバルの fetch でなく、load の引数の fetch を使う');
+    }
     if (ts.isIdentifier(node) && node.text === 'fetch' && !isDeclarationName(node)) {
       if (!isLoadFetch(node)) {
-        if (isCallee(node)) report(node, 'グローバルの fetch でなく、load の引数の fetch を使う');
+        // 呼び出しでなくても（変数に入れる、then に渡す）、load の間に呼ばれればグローバルの fetch になる。
+        // fetcher と getHealth に渡したものは、下の callOperation と getHealth の検査が挙げる
+        if (!isFetcherValue(node) && !isGetHealthArgument(node)) {
+          report(node, 'グローバルの fetch でなく、load の引数の fetch を使う');
+        }
       } else if (!isCallee(node) && !isFetcherValue(node) && !isGetHealthArgument(node)) {
         // 包んだ関数に渡すと、その中で使われるかを確かめられない
         report(node, 'load の引数の fetch は、fetcher と getHealth と直接の呼び出しのほかへ渡さない');
@@ -250,6 +261,18 @@ export const load = async ({ fetch }) => api.callOperation(x, {});`;
     for (const target of ['window.fetch', 'globalThis.fetch', 'self.fetch']) {
       const code = `${head}export const load = async ({ fetch }) => ${target}('/api/aoba/x');`;
       expect(checkLoadFetch(code).problems).toEqual([expect.stringMatching(/load の引数の fetch を使う/)]);
+    }
+  });
+
+  test('引数で受けていないグローバルの fetch は、呼び出しでなくても、要素アクセスでも落とす', () => {
+    const cases = [
+      `export const load = async ({ params }) => { const f = fetch; return f('/api/aoba/x'); };`,
+      `export const load = async ({ params }) => Promise.resolve('/api/aoba/x').then(fetch);`,
+      `export const load = async ({ fetch }) => window['fetch']('/api/aoba/x');`,
+      `export const load = async ({ params }) => { const { fetch } = globalThis; return run(fetch); };`,
+    ];
+    for (const code of cases) {
+      expect(checkLoadFetch(code).problems, code).toEqual([expect.stringMatching(/load の引数の fetch を使う/)]);
     }
   });
 
