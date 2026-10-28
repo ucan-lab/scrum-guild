@@ -935,7 +935,8 @@ describe('embed-evidence.py', () => {
       // コメントはページの配列の配列（--paginate --slurp）で渡す
       '  *"/comments --paginate --slurp"*) cat "$root/comments.json" ;;',
       '  *"/comments"*|*"-X PATCH"*) echo "想定しない引数: $*" >&2; exit 9 ;;',
-      '  *) cat "$root/served" ;;',
+      // EDITED のときは、本文を返すたびに人の編集を書き足す（読んでから書くまでの間に本文が変わる）
+      '  *) cat "$root/served"; if [ -n "$EDITED" ]; then echo "人の編集" >> "$root/served"; fi ;;',
       'esac',
       '',
     ].join('\n');
@@ -1015,6 +1016,15 @@ describe('embed-evidence.py', () => {
         assert.match(output, /MCP の書き込みが <img> を逃がした恐れ/);
       });
       assert.equal(patches, 1);
+    });
+
+    test('読んだ後に本文が変わっていれば、書き換えずに成功で終わる', () => {
+      const { patches } = withStep(prBody, comments(comment()), (runStep) => {
+        const { status, output } = runStep({ EDITED: '1' });
+        assert.equal(status, 0, output);
+        assert.match(output, /読んだ後に本文が変わったので、書き換えない/);
+      });
+      assert.equal(patches, 0);
     });
   });
 });
