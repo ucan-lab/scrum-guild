@@ -1105,12 +1105,63 @@ test.describe('運用者', () => {
     const actions = due.locator('td.is-actions');
     // 管理者の指名し直しは残す
     await expect(actions.getByRole('button')).toHaveText(['ギルドマスターを指名']);
-    await expect(actions.locator('.props-note')).toHaveText('消す予定日を過ぎたので再開できません');
+    await expect(actions.locator('.props-note')).toHaveText(
+      '消す予定日を過ぎたので、再開も停止の理由の切り替えもできません',
+    );
     // 予定日を過ぎていない解約の組織は、今どおり両方を出す
     await expect(
       page.locator('.table tbody tr', { hasText: 'なぎ設計' }).locator('td.is-actions').getByRole('button'),
     ).toHaveText(['ギルドマスターを指名', '停止の理由を変える', '再開する']);
     expect(await collect()).toEqual([]);
+  });
+
+  test('390px の幅でも、消す予定日を過ぎた行の理由の注記は行の中で折り返し、横にはみ出さない', async ({ page }) => {
+    await mockList(page, [
+      organization({}),
+      organization({
+        slug: 'kiri',
+        name: 'きり製作所',
+        suspended_at: '2026-09-10T00:00:00.000Z',
+        purge_on: '2026-10-10',
+        purge_due: true,
+        admin_status: 'expired',
+      }),
+    ]);
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto('/operator');
+    const wrap = page.locator('.table-wrap');
+    const note = page.locator('.table tbody tr', { hasText: 'きり製作所' }).locator('td.is-actions .props-note');
+    await expect(note).toBeVisible();
+    expect(await wrap.evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    const wrapBox = (await wrap.boundingBox())!;
+    const noteBox = (await note.boundingBox())!;
+    expect(noteBox.x).toBeGreaterThanOrEqual(wrapBox.x);
+    expect(noteBox.x + noteBox.width).toBeLessThanOrEqual(wrapBox.x + wrapBox.width);
+    // 操作の列の nowrap を継がない
+    expect(await note.evaluate((el) => getComputedStyle(el).whiteSpace)).toBe('normal');
+  });
+
+  test('purge_due で断られた後、読み直した行がまだ予定日を過ぎていなければ、画面の見出しへフォーカスを移す', async ({
+    page,
+  }) => {
+    await mockList(page, [
+      organization({
+        slug: 'kiri',
+        name: 'きり製作所',
+        suspended_at: '2026-09-10T00:00:00.000Z',
+        purge_on: '2026-10-10',
+      }),
+    ]);
+    await page.route('**/api/organization-resume', (route) =>
+      route.fulfill({ status: 409, json: { error: { code: 'purge_due', message: 'x' } } }),
+    );
+    await page.goto('/operator');
+    await page.getByRole('button', { name: '「きり製作所」を再開する' }).click();
+    await expect(
+      page.getByRole('status').filter({ hasText: '「きり製作所」は消す予定日を過ぎたので再開できません' }),
+    ).toBeVisible();
+    await expect(page.getByRole('heading', { level: 1, name: '運用' })).toBeFocused();
   });
 
   test('開いた後に予定日を過ぎ、再開や理由の切り替えが purge_due で断られたら、理由を知らせて読み直し、理由へフォーカスを移す', async ({
@@ -1163,7 +1214,9 @@ test.describe('運用者', () => {
     ).toBeVisible();
     const nagi = page.locator('.table tbody tr', { hasText: 'なぎ設計' }).locator('td.is-actions');
     await expect(nagi.getByRole('button')).toHaveText(['ギルドマスターを指名']);
-    await expect(nagi.locator('.props-note')).toHaveText('消す予定日を過ぎたので再開できません');
+    await expect(nagi.locator('.props-note')).toHaveText(
+      '消す予定日を過ぎたので、再開も停止の理由の切り替えもできません',
+    );
     await expect(nagi.locator('.props-note')).toBeFocused();
   });
 

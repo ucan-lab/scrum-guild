@@ -12,7 +12,7 @@ import {
   utcDateOf,
   type SuspensionKind,
 } from '../../shared/operations/operator/index.ts';
-import { commonDb, type CommonTables, type ExpressionBuilder } from '../db/index.ts';
+import { commonDb, purgeDueInDatabase, purgeNotDue } from '../db/index.ts';
 import { ApiError } from '../errors.ts';
 import { implement } from './implement.ts';
 import { logOperatorChange } from './operator-change-log.ts';
@@ -40,16 +40,25 @@ const kindOf = (suspension: Suspension): SuspensionKind =>
 const purgeDue = (suspension: Suspension, at: Date): boolean =>
   suspension.suspended_at !== null && isPurgeDue(suspension.purge_on, at);
 
-// 再開と停止の理由の切り替えの UPDATE に足す条件。消す予定日が無いか、今日（UTC）以降。
-// 読んだ後に日付が変わって予定日を過ぎても、ここで外れる（境目は消す SQL のガード purge_on < date('now') の裏）
-const notPurgeDue = (at: Date) => (eb: ExpressionBuilder<CommonTables, 'organizations'>) =>
-  eb.or([eb('purge_on', 'is', null), eb('purge_on', '>=', utcDateOf(at))]);
+// 再開と停止の理由の切り替えの UPDATE に足す条件。消す予定日が無いか、Worker の now() の UTC の日付と D1 の date('now') の
+// 両方で今日以降（src/server/db/purge-due.ts）。読んだ後に日付が変わって予定日を過ぎても、Worker と D1 の時計が UTC の 0 時を
+// またいでずれても、ここで外れる。消す SQL のガード（purge_on < date('now')）が真の組織は、必ずこの条件で外れる
+const notPurgeDue = (at: Date) => purgeNotDue(utcDateOf(at));
 
-// UPDATE が条件に外れたときの 409。読み直して、消す予定日を過ぎていれば purge_due、そうでなければ別の運用者が
-// 先に操作していたので conflict
+// UPDATE が条件に外れたときの 409。読み直して、消す予定日を Worker の日付か D1 の date('now') で過ぎていれば purge_due、
+// そうでなければ別の運用者が先に操作していたので conflict
 async function missed(db: CommonDb, slug: string, at: Date): Promise<ApiError> {
-  const latest = await readSuspension(db, slug);
-  return new ApiError(409, purgeDue(latest, at) ? 'purge_due' : 'conflict');
+  const latest = await db.first(
+    db.statement((q) =>
+      q
+        .selectFrom('organizations')
+        .select(['suspended_at', 'purge_on', purgeDueInDatabase().as('due_in_database')])
+        .where('slug', '=', slug),
+    ),
+  );
+  if (latest === undefined) throw new ApiError(404, 'not_found');
+  const due = latest.suspended_at !== null && (purgeDue(latest, at) || Number(latest.due_in_database) === 1);
+  return new ApiError(409, due ? 'purge_due' : 'conflict');
 }
 
 // 順: 1. 組織を slug で引く（無ければ 404、停止済みなら 409）  2. organizations を、停止していないことを条件に書く
@@ -98,6 +107,7 @@ export const organizationSuspensionUpdateOperation = implement(
     if (current.suspended_at === null || kindOf(current) === input.kind) throw new ApiError(409, 'conflict');
 
     const at = now();
+    // 読んだ時点で過ぎていると分かれば、書き込みを送らずに断る（UPDATE の条件は、読んだ後に過ぎたときの守り）
     if (purgeDue(current, at)) throw new ApiError(409, 'purge_due');
     const purgeOn = input.kind === 'cancellation' ? purgeDateOf(at) : null;
     const [result] = await db.batch([
@@ -108,6 +118,8 @@ export const organizationSuspensionUpdateOperation = implement(
           .where('id', '=', current.id)
           .where('suspended_at', 'is not', null)
           .where('purge_on', 'is', current.purge_on)
+          // 予定日の条件は、上の「読んだ purge_on のまま」と重なる（読んだ後に予定日を書き換えると両方で外れる）ので、
+          // テストではこの条件だけを切り離して確かめられない。日付だけが変わったとき（purge_on はそのまま）に効く
           .where(notPurgeDue(at)),
       ),
     ]);
@@ -131,6 +143,7 @@ export const organizationResumeOperation = implement(organizationResume, async (
   if (current.suspended_at === null) throw new ApiError(409, 'conflict');
 
   const at = now();
+  // 読んだ時点で過ぎていると分かれば、書き込みを送らずに断る（UPDATE の条件は、読んだ後に過ぎたときの守り）
   if (purgeDue(current, at)) throw new ApiError(409, 'purge_due');
   const after: Suspension = { suspended_at: null, purge_on: null };
   const [result] = await db.batch([

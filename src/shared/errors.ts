@@ -22,7 +22,7 @@ export const errorCodes = [
   'organization_suspended',
   // 解約で停止した組織の、データを消す予定日（purge_on）を過ぎた。409。運用者の再開（organization-resume）と、
   // 一時的な停止への切り替え（organization-suspension-update の kind: temporary）を断る。消している途中で戻さないため。
-  // 境目は消す SQL のガードと同じで、予定日の当日まではできる。画面は「消す予定日を過ぎたので再開できない」を出す
+  // 境目は消す SQL のガードと同じで、予定日の当日まではできる。画面は「消す予定日を過ぎたので、再開も停止の理由の切り替えもできない」を出す
   'purge_due',
   // 操作の回数の上限（定義の rateLimit）を超えた。429
   'rate_limited',

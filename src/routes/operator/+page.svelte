@@ -13,6 +13,7 @@
   import OrganizationQuotaDialog from '../../lib/components/OrganizationQuotaDialog.svelte';
   import OrganizationSuspendDialog from '../../lib/components/OrganizationSuspendDialog.svelte';
   import ReassignAdminDialog from '../../lib/components/ReassignAdminDialog.svelte';
+  import { focusPageHeading } from '../../lib/focus-heading.ts';
   import { formatCount, formatUtcDate, quotaSize } from '../../lib/format.ts';
   import { formatDateTime } from '../../lib/format-datetime.ts';
   import { isUnauthenticated, loginUrl } from '../../lib/login-redirect.ts';
@@ -121,9 +122,12 @@
   // 消す予定日を過ぎた組織の行の、できない理由の注記。押したボタンが読み直しで消えたときのフォーカスの移し先
   const purgeDueId = (slug: string) => `${ids}-purge-due-${slug}`;
 
+  // 注記が見つからない（読み直しが失敗した、読み直した行がまだ purge_due でない）ときは、画面の見出しへ移す
   async function focusPurgeDue(slug: string): Promise<void> {
     await tick();
-    document.getElementById(purgeDueId(slug))?.focus();
+    const note = document.getElementById(purgeDueId(slug));
+    if (note) note.focus();
+    else focusPageHeading();
   }
 
   // 上限の変更のダイアログの結果。扱いは停止のダイアログと同じ

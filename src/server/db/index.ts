@@ -15,6 +15,7 @@ export { organizationHistoryRowFilter } from './organization-history-filter.ts';
 export { uuidv7Sql } from './uuid-sql.ts';
 export { tailPosition } from './tail-position.ts';
 export { titleContainsAll } from './title-search.ts';
+export { purgeDueInDatabase, purgeNotDue } from './purge-due.ts';
 export { unindexed } from './unindexed.ts';
 export type { CommonTables, OrganizationTables } from './tables.ts';
 export type { VerifiedOrganization } from './verify-organization.ts';

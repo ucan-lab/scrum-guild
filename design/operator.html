@@ -38,7 +38,7 @@ SQ.mount("operator", () => `
       <td class="is-num" data-label="添付ファイルの上限">${k.quota}&nbsp;GB<br><button class="link-btn" type="button" data-dialog="changeQuota" aria-label="「${esc(k.name)}」の人数と容量の上限を変える">人数と容量の上限を変える</button></td>
       ${k.lastUsed ? `<td class="mono" data-label="最後に使われた日時">${esc(k.lastUsed)}</td>` : `<td class="props-note" data-label="最後に使われた日時">まだ使われていない</td>`}      <td class="is-actions"><span class="table-actions is-wrap">
         <button class="btn is-sm is-quiet" type="button" data-dialog="reassignAdmin">${t("admin")}を指名</button>
-        ${k.purgeDue ? `<span class="props-note">消す予定日を過ぎたので再開できません</span>` : k.suspended ? `<button class="btn is-sm is-quiet" type="button" data-dialog="changeSuspension">停止の理由を変える</button><button class="btn is-sm is-quiet" type="button" data-toast="再開しました">再開する</button>` :`<button class="btn is-sm is-quiet is-danger" type="button" data-dialog="suspendOrganization">停止する</button>`}
+        ${k.purgeDue ? `<span class="props-note">消す予定日を過ぎたので、再開も停止の理由の切り替えもできません</span>` : k.suspended ? `<button class="btn is-sm is-quiet" type="button" data-dialog="changeSuspension">停止の理由を変える</button><button class="btn is-sm is-quiet" type="button" data-toast="再開しました">再開する</button>` :`<button class="btn is-sm is-quiet is-danger" type="button" data-dialog="suspendOrganization">停止する</button>`}
       </span></td></tr>`).join("")}</tbody></table></div>
   <p class="props-note">${t("organization")}を消す作業はこの画面では行わず、運用の手順書に沿って行います。</p>`, { operator: true });
 </script>

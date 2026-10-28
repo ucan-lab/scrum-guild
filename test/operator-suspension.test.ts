@@ -464,6 +464,27 @@ describe('消す予定日を過ぎた解約の組織', () => {
     expect(await changeLogsOf(organization.id)).toEqual([]);
   });
 
+  test("Worker の時計では過ぎていなくても、D1 の date('now') で過ぎていれば、UPDATE の条件で外れて 409 の purge_due", async () => {
+    // Worker の時計（DEV_NOW）を実際の今日より前に止め、予定日をその日より後で実際の今日より前にする。
+    // 事前の判定（Worker の日付）は通るが、消す SQL のガード（D1 の date('now')）では過ぎている。UTC の 0 時をまたいだときの隙間と同じ形
+    const pastNow = '2020-01-01T00:00:00Z';
+    const purgeOn = '2020-06-01';
+    const token = await operatorToken();
+    const resumed = await createOrganization({ suspended_at: SUSPENDED_AT, purge_on: purgeOn });
+    const resume = await resumeBy(token, resumed.slug, devEnv(pastNow));
+    expect(resume.status).toBe(409);
+    expect(await errorCodeOf(resume)).toBe('purge_due');
+    expect(await organizationRow(resumed.id)).toMatchObject({ suspended_at: SUSPENDED_AT, purge_on: purgeOn });
+    expect(await changeLogsOf(resumed.id)).toEqual([]);
+
+    const changed = await createOrganization({ suspended_at: SUSPENDED_AT, purge_on: purgeOn });
+    const change = await changeKindBy(token, changed.slug, 'temporary', devEnv(pastNow));
+    expect(change.status).toBe(409);
+    expect(await errorCodeOf(change)).toBe('purge_due');
+    expect(await organizationRow(changed.id)).toMatchObject({ suspended_at: SUSPENDED_AT, purge_on: purgeOn });
+    expect(await changeLogsOf(changed.id)).toEqual([]);
+  });
+
   test('一覧の purge_due は、予定日を過ぎた解約の組織だけが真', async () => {
     const token = await operatorToken();
     const due = await createOrganization({ suspended_at: SUSPENDED_AT, purge_on: YESTERDAY });
