@@ -11,6 +11,7 @@ import {
 import { membershipLeaveOperation, membershipRoleUpdateOperation } from './membership.ts';
 import { createOrganizationOperation, listOrganizationsOperation, resolveGithubUserOperation } from './operator.ts';
 import { organizationAdminReassignOperation } from './operator-admin.ts';
+import { organizationQuotaUpdateOperation } from './operator-quota.ts';
 import {
   organizationResumeOperation,
   organizationSuspendOperation,
@@ -83,6 +84,7 @@ export const implementedOperations: readonly ImplementedOperation[] = [
   organizationSuspensionUpdateOperation,
   organizationResumeOperation,
   organizationAdminReassignOperation,
+  organizationQuotaUpdateOperation,
   myOrganizationsOperation,
   organizationInfoOperation,
   organizationHolidayListOperation,

@@ -957,6 +957,11 @@ dialog.dialog::backdrop { background: none; }
   .drawer .btn.is-sm::after, .drawer .link-btn::after, .drawer .edit-trigger::after {
     content: ""; position: absolute; left: 50%; top: 50%; width: max(100%, 44px); height: max(100%, 44px); transform: translate(-50%, -50%);
   }
+  /* 表のセルの中の文字のボタン（運用の組織の一覧の「人数と容量の上限を変える」）も同じ。上下は押せない値の文字なので重ならない */
+  .table .link-btn { position: relative; }
+  .table .link-btn::after {
+    content: ""; position: absolute; left: 50%; top: 50%; width: max(100%, 44px); height: max(100%, 44px); transform: translate(-50%, -50%);
+  }
   /* 引き出しのタブ（コメントと変更の履歴）は、広げた分が下のタブの中身（.thread）に覆われるので、見た目ごと 44px の高さにする */
   .drawer .tab { min-height: 44px; }
   /* 木の行の右端が折り返したとき、上の段の「＋タスク」の広げた分が、下の段の 44px のボタンに重ならないよう段の間を空ける */

@@ -1445,16 +1445,24 @@ const looooooooooooooooooooooooooooooooooongLine = "コードの長い1行は、
         `<button class="btn is-quiet" type="button" data-close-dialog>やめる</button><button class="btn is-danger" type="button" data-confirm-delete-file="${id}">${icon("trash")}消す</button>`);
       document.querySelector(".dialog-sheet").classList.add("is-danger");
     },
+    // 人数と添付ファイルの上限の変更（本番の OrganizationQuotaDialog）。今の上限に合う段階を選んだ状態で開く。
+    // 「ほかの値」の欄は、本番では「ほかの値」を選んでいる間だけ出す（見本は欄の形を見せるため出したまま）。
+    // 添付ファイルの今の合計と、合計に関わる注意（合計が下がるまで添付できない、80% の通知）は #68 まで出さない
     changeQuota: () => openDialog("人数と添付ファイルの上限を変える",
-      `<p>あおば開発の上限を変えます。今は人数 5 人（上限 15 人）、添付ファイルの合計 25.1 GB（上限 30 GB）です。</p>
-       <div class="choice-list">
-         <label class="choice"><input type="radio" name="d-q" checked><div><b>小さい${t("organization")}</b><span>15 人・30 GB</span></div></label>
-         <label class="choice"><input type="radio" name="d-q"><div><b>標準</b><span>50 人・100 GB</span></div></label>
-         <label class="choice"><input type="radio" name="d-q"><div><b>ほかの値</b><span>51 人以上の${t("organization")}のために値を入れます
-           <span class="form-row"><input class="input" type="number" min="1" aria-label="人数の上限" placeholder="人数" style="max-width:8em"><input class="input" type="number" min="1" aria-label="添付ファイルの上限（GB）" placeholder="GB" style="max-width:8em"></span></span></div></label>
+      `<p class="wrap-anywhere">「あおば開発」の上限を変えます。今は人数 5 人（上限 15 人）、添付ファイルの上限 30 GB です。</p>
+       <div class="field"><span class="field-label" id="d-ql">新しい上限</span>
+         <div class="choice-list" role="radiogroup" aria-labelledby="d-ql">
+           <label class="choice"><input type="radio" name="d-q" checked><div><b>小さい${t("organization")}</b><span>15 人・30 GB</span></div></label>
+           <label class="choice"><input type="radio" name="d-q"><div><b>標準</b><span>50 人・100 GB</span></div></label>
+           <label class="choice"><input type="radio" name="d-q"><div><b>ほかの値</b><span>51 人以上の${t("organization")}のために値を入れます。</span></div></label>
+         </div></div>
+       <div class="form-row is-start">
+         <div class="field"><label class="field-label" for="d-qm">人数の上限（人）</label><input class="input" id="d-qm" type="number" min="1" step="1" value="15"></div>
+         <div class="field"><label class="field-label" for="d-qg">添付ファイルの上限（GB）</label><input class="input" id="d-qg" type="number" min="1" step="1" value="30"></div>
        </div>
-       <p class="field-hint">人数を今より小さくしても、今いる人はそのまま残り、上限を下回るまで招待だけを止めます。添付ファイルを今の合計より小さくすると、合計が下がるまで新しく添付できなくなります。上限を上げて 80% を下回ると、次に超えたときにまた${t("admin")}に通知します。</p>`,
-      `<button class="btn is-quiet" type="button" data-close-dialog>やめる</button><button class="btn is-primary" type="button" data-close-dialog data-toast="上限を変えました">変える</button>`),
+       <p class="field-hint">人数を今より小さくしても、今いる人はそのまま残り、上限を下回るまで招待だけを止めます。</p>
+       <p class="field-hint">上限の変更は${t("organization")}の変更の履歴に、運用者の操作として残ります。</p>`,
+      `<button class="btn is-quiet" type="button" data-close-dialog>やめる</button><button class="btn is-primary" type="button" data-close-dialog data-toast="「あおば開発」の上限を変えました">変える</button>`),
     suspendOrganization: () => {
       openDialog(`${t("organization")}を停止する`,
       `<p>ひばり工房を停止します。停止すると誰も入れなくなり、取り込みと日をまたぐ処理も止まります。データは残り、再開すれば元どおりに使えます。</p>

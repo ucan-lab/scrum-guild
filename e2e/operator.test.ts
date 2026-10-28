@@ -125,18 +125,18 @@ test.describe('運用者', () => {
     await expect(rows.filter({ hasText: 'とき運送' }).locator('.chip.is-warn')).toHaveText('停止 2026-10-11');
     await expect(rows.filter({ hasText: 'とき運送' }).locator('.chip.is-danger')).toHaveText('2026-11-10 に消す');
     // 操作のボタンは、どの行にも「管理者を指名」。続けて、停止していない組織は「停止する」（is-danger）、停止中の組織は「再開する」
-    const activeButtons = rows.filter({ hasText: 'あおば開発' }).getByRole('button');
+    const activeButtons = rows.filter({ hasText: 'あおば開発' }).locator('td.is-actions').getByRole('button');
     await expect(activeButtons).toHaveText(['ギルドマスターを指名', '停止する']);
     await expect(activeButtons.first()).not.toHaveClass(/is-danger/);
     await expect(activeButtons.last()).toHaveClass(/is-danger/);
     // 停止中の行は「管理者を指名」「停止の理由を変える」「再開する」。どれも危険の色にしない
-    const suspendedButtons = rows.filter({ hasText: 'かもめ社' }).getByRole('button');
+    const suspendedButtons = rows.filter({ hasText: 'かもめ社' }).locator('td.is-actions').getByRole('button');
     await expect(suspendedButtons).toHaveText(['ギルドマスターを指名', '停止の理由を変える', '再開する']);
     for (const button of await suspendedButtons.all()) await expect(button).not.toHaveClass(/is-danger/);
     // 読み上げの名前に、どの組織かを添える
-    await expect(rows.filter({ hasText: 'ひばり工房' }).getByRole('button').first()).toHaveAccessibleName(
-      '「ひばり工房」のギルドマスターを指名',
-    );
+    await expect(
+      rows.filter({ hasText: 'ひばり工房' }).locator('td.is-actions').getByRole('button').first(),
+    ).toHaveAccessibleName('「ひばり工房」のギルドマスターを指名');
     // 2026-10-01T09:30Z は、東京のブラウザでは 18:30
     // 作った日時は列にせず、名前の列の slug の行に並べる
     await expect(rows.filter({ hasText: 'あおば開発' }).locator('td.is-name .props-note')).toHaveText(
@@ -190,7 +190,10 @@ test.describe('運用者', () => {
     await expect(aoba.locator('td[data-label="人数 / 上限"]')).toHaveText('5 / 15');
     await expect(aoba.locator('td[data-label="パーティの数"]')).toHaveText('3');
     await expect(aoba.locator('td[data-label="クエストの数"]')).toHaveText('1,284');
-    await expect(aoba.locator('td[data-label="添付ファイルの上限"]')).toHaveText('30 GB');
+    // 上限の下に、人数と容量の上限を変える文字のボタンを置く。読み上げの名前に、どの組織かを添える
+    const aobaQuota = aoba.locator('td[data-label="添付ファイルの上限"]');
+    await expect(aobaQuota).toHaveText(/^\s*30\sGB\s*人数と容量の上限を変える\s*$/);
+    await expect(aobaQuota.locator('button.link-btn')).toHaveAccessibleName('「あおば開発」の人数と容量の上限を変える');
     // 2026-10-20T00:12Z は、東京のブラウザでは 09:12
     await expect(aoba.locator('td[data-label="最後に使われた日時"]')).toHaveText('2026/10/20 09:12');
     await expect(aoba.locator('.chip')).toHaveCount(0);
@@ -198,13 +201,14 @@ test.describe('運用者', () => {
     const hibari = rows.filter({ hasText: 'ひばり工房' });
     await expect(hibari.locator('td[data-label="人数 / 上限"]')).toContainText('15 / 15');
     await expect(hibari.locator('td[data-label="人数 / 上限"] .chip.is-warn')).toHaveText('上限に達した');
-    await expect(hibari.locator('td[data-label="添付ファイルの上限"]')).toHaveText('100 GB');
+    await expect(hibari.locator('td[data-label="添付ファイルの上限"]')).toContainText('100 GB');
     // だれも使っていない組織は、日時の代わりに文で示す
     const tsubame = rows.filter({ hasText: 'つばめ商会' });
     await expect(tsubame.locator('td[data-label="最後に使われた日時"]')).toHaveText('まだ使われていない');
     await expect(tsubame.locator('td[data-label="人数 / 上限"]')).toHaveText('0 / 15');
     // 1 GB 未満の上限は「0 GB」にせず MB で出す
-    await expect(tsubame.locator('td[data-label="添付ファイルの上限"]')).toHaveText('512 MB');
+    await expect(tsubame.locator('td[data-label="添付ファイルの上限"]')).toContainText('512 MB');
+    await expect(tsubame.locator('td[data-label="添付ファイルの上限"]')).not.toContainText('0 GB');
     // 数と単位の間は不可分の空白で、積んだ行でも割れない
     expect(await aoba.locator('td[data-label="人数 / 上限"]').textContent()).toContain('5 / 15');
     expect(await aoba.locator('td[data-label="添付ファイルの上限"]').textContent()).toContain('30 GB');
@@ -939,7 +943,11 @@ test.describe('運用者', () => {
     await expect(page.getByRole('status').filter({ hasText: '「ひばり工房」を停止しました' })).toBeVisible();
     await expect(row.locator('.chip.is-warn')).toHaveText('停止 2026-10-26');
     await expect(row.locator('.chip.is-danger')).toHaveText('2026-11-25 に消す');
-    await expect(row.getByRole('button')).toHaveText(['ギルドマスターを指名', '停止の理由を変える', '再開する']);
+    await expect(row.locator('td.is-actions').getByRole('button')).toHaveText([
+      'ギルドマスターを指名',
+      '停止の理由を変える',
+      '再開する',
+    ]);
     // もう一方の組織は変わらない
     await expect(page.locator('.table tbody tr', { hasText: 'あおば開発' }).locator('.chip')).toHaveCount(0);
     expect(await collect()).toEqual([]);
@@ -970,7 +978,7 @@ test.describe('運用者', () => {
     expect(sent).toEqual({ slug: 'hibari' });
     await expect(page.getByRole('status').filter({ hasText: '「ひばり工房」を再開しました' })).toBeVisible();
     await expect(row.locator('.chip')).toHaveCount(0);
-    await expect(row.getByRole('button')).toHaveText(['ギルドマスターを指名', '停止する']);
+    await expect(row.locator('td.is-actions').getByRole('button')).toHaveText(['ギルドマスターを指名', '停止する']);
   });
 
   test('再開を送っている間は、送っている行のボタンの文字が「再開しています」になり、押しても二重に送らない', async ({
@@ -1000,7 +1008,7 @@ test.describe('運用者', () => {
     await expect(page.getByRole('dialog')).toHaveCount(0);
 
     await settleAfterResponse(page, 'organization-resume', () => gate.release());
-    await expect(row.getByRole('button')).toHaveText(['ギルドマスターを指名', '停止する']);
+    await expect(row.locator('td.is-actions').getByRole('button')).toHaveText(['ギルドマスターを指名', '停止する']);
     expect(requests).toBe(1);
   });
 
@@ -1130,10 +1138,9 @@ test.describe('運用者', () => {
 
     await page.getByRole('button', { name: '「ひばり工房」を再開する' }).click();
     await expect(page.getByRole('status').filter({ hasText: '「ひばり工房」の状態が変わっていました' })).toBeVisible();
-    await expect(page.locator('.table tbody tr', { hasText: 'ひばり工房' }).getByRole('button')).toHaveText([
-      'ギルドマスターを指名',
-      '停止する',
-    ]);
+    await expect(
+      page.locator('.table tbody tr', { hasText: 'ひばり工房' }).locator('td.is-actions').getByRole('button'),
+    ).toHaveText(['ギルドマスターを指名', '停止する']);
   });
 
   test('停止の通信や 5xx の失敗は、ダイアログを開いたまま中に理由を出し、見つからない（404）はトーストで知らせて閉じる', async ({
@@ -1158,6 +1165,213 @@ test.describe('運用者', () => {
     await dialog.getByRole('button', { name: '「あおば開発」を停止する' }).click();
     await expect(dialog).toBeHidden();
     await expect(page.getByRole('status').filter({ hasText: '「あおば開発」を操作できませんでした' })).toBeVisible();
+  });
+
+  // 人数と添付ファイルの上限の変更（organization-quota-update）。サーバーの処理は test/operator-quota.test.ts
+  test.describe('上限の変更', () => {
+    const GIB = 1024 ** 3;
+
+    test('今の上限に合う段階を選んで開き、同じ値では変えられず、標準を選んで送ると一覧が読み直される', async ({
+      page,
+    }) => {
+      const listed = [organization({}), organization({ slug: 'hibari', name: 'ひばり工房' })];
+      await page.route('**/api/list-organizations', (route) => route.fulfill({ json: { organizations: listed } }));
+      let sent: unknown;
+      await page.route('**/api/organization-quota-update', async (route) => {
+        sent = route.request().postDataJSON();
+        listed[0] = organization({ seats: { used: 5, limit: 50 }, attachment_quota_bytes: 100 * GIB });
+        await route.fulfill({ json: { slug: 'aoba', member_limit: 50, attachment_quota_bytes: 100 * GIB } });
+      });
+      const collect = await watchViolations(page);
+      await page.goto('/operator');
+      const button = page.getByRole('button', { name: '「あおば開発」の人数と容量の上限を変える' });
+      await expect(button).toHaveText('人数と容量の上限を変える');
+      await button.click();
+
+      const dialog = page.getByRole('dialog', { name: '人数と添付ファイルの上限を変える' });
+      // 取り消せる変更なので危険の色にしない（閉じている停止のダイアログの枠は数えない）
+      await expect(dialog).toBeVisible();
+      await expect(page.locator('.dialog-sheet.is-danger:visible')).toHaveCount(0);
+      await expect(dialog).toContainText(
+        '「あおば開発」の上限を変えます。今は人数 5 人（上限 15 人）、添付ファイルの上限 30',
+      );
+      await expect(dialog).not.toContainText('{');
+      // 添付ファイルの今の合計と、合計に関わる注意は #68 まで出さない
+      await expect(dialog).not.toContainText('合計');
+      await expect(dialog).not.toContainText('80%');
+      await expect(dialog.getByRole('radio')).toHaveCount(3);
+      const small = dialog.getByRole('radio', { name: /小さい冒険者ギルド/ });
+      await expect(small).toBeChecked();
+      await expect(small).toBeFocused();
+      await expect(dialog.getByText('15 人・30')).toBeVisible();
+      await expect(dialog.getByText('50 人・100')).toBeVisible();
+      // ほかの値の欄は、ほかの値を選ぶまで出さない
+      await expect(dialog.getByRole('spinbutton')).toHaveCount(0);
+
+      // 今と同じ値では、「変える」を押しても何も送らない。押せない理由を見える文字と読み上げで伝える
+      const change = dialog.getByRole('button', { name: '変える' });
+      await expect(change).toHaveAttribute('aria-disabled', 'true');
+      await expect(change).toHaveAccessibleDescription('今の上限です。別の値を選ぶと変えられます。');
+      await change.click({ force: true });
+      expect(sent).toBeUndefined();
+
+      // やめれば何も送らず、開いたボタンにフォーカスを戻す
+      await dialog.getByRole('button', { name: 'やめる' }).click();
+      await expect(dialog).toBeHidden();
+      await expect(button).toBeFocused();
+
+      await button.click();
+      await dialog.getByRole('radio', { name: /標準/ }).check();
+      await expect(change).toHaveAttribute('aria-disabled', 'false');
+      await expect(change).not.toHaveAttribute('aria-describedby');
+      await change.click();
+      await expect(dialog).toBeHidden();
+      expect(sent).toEqual({ slug: 'aoba', member_limit: 50, attachment_quota_bytes: 100 * GIB });
+
+      await expect(page.getByRole('status').filter({ hasText: '「あおば開発」の上限を変えました' })).toBeVisible();
+      const row = page.locator('.table tbody tr', { hasText: 'あおば開発' });
+      await expect(row.locator('td[data-label="人数 / 上限"]')).toHaveText('5 / 50');
+      await expect(row.locator('td[data-label="添付ファイルの上限"]')).toContainText('100 GB');
+      // 標準の組織は、開き直すと標準を選んだ状態で開く
+      await button.click();
+      await expect(dialog.getByRole('radio', { name: /標準/ })).toBeChecked();
+      expect(await collect()).toEqual([]);
+    });
+
+    test('段階に合わない上限は「ほかの値」を今の値で埋めて開き、範囲の外の値は送る前に欄の下で断る', async ({
+      page,
+    }) => {
+      const listed = [
+        organization({ seats: { used: 60, limit: 120 }, attachment_quota_bytes: 250 * GIB }),
+        organization({ slug: 'hibari', name: 'ひばり工房', attachment_quota_bytes: 512 * 1024 ** 2 }),
+      ];
+      await page.route('**/api/list-organizations', (route) => route.fulfill({ json: { organizations: listed } }));
+      const sent: unknown[] = [];
+      await page.route('**/api/organization-quota-update', async (route) => {
+        sent.push(route.request().postDataJSON());
+        listed[0] = organization({ seats: { used: 60, limit: 200 }, attachment_quota_bytes: 300 * GIB });
+        await route.fulfill({ json: { slug: 'aoba', member_limit: 200, attachment_quota_bytes: 300 * GIB } });
+      });
+      const collect = await watchViolations(page);
+      await page.goto('/operator');
+
+      // 1 GB 未満の上限は、GB の整数の 1 で埋める
+      await page.getByRole('button', { name: '「ひばり工房」の人数と容量の上限を変える' }).click();
+      const dialog = page.getByRole('dialog', { name: '人数と添付ファイルの上限を変える' });
+      await expect(dialog).toContainText('添付ファイルの上限 512 MB です');
+      await expect(dialog.getByRole('spinbutton', { name: '添付ファイルの上限（GB）' })).toHaveValue('1');
+      await dialog.getByRole('button', { name: 'やめる' }).click();
+
+      await page.getByRole('button', { name: '「あおば開発」の人数と容量の上限を変える' }).click();
+      await expect(dialog.getByRole('radio', { name: /ほかの値/ })).toBeChecked();
+      const members = dialog.getByRole('spinbutton', { name: '人数の上限（人）' });
+      const size = dialog.getByRole('spinbutton', { name: '添付ファイルの上限（GB）' });
+      await expect(members).toHaveValue('120');
+      await expect(size).toHaveValue('250');
+      // ほかの値のときは、最初のフォーカスを選ばれた選択肢に置く
+      await expect(dialog.getByRole('radio', { name: /ほかの値/ })).toBeFocused();
+      const change = dialog.getByRole('button', { name: '変える' });
+      await expect(change).toHaveAttribute('aria-disabled', 'true');
+
+      // 0 以下と空は断り、最初の誤りの欄へフォーカスを移す
+      await members.fill('0');
+      await size.fill('');
+      await change.click();
+      await expect(dialog.locator('.field-error')).toHaveText([
+        '人数の上限は 1〜10000 の整数で入れてください。',
+        '添付ファイルの上限は 1〜102400 の整数（GB）で入れてください。',
+      ]);
+      await expect(members).toBeFocused();
+      await expect(members).toHaveAttribute('aria-invalid', 'true');
+      await expect(members).toHaveAccessibleDescription('人数の上限は 1〜10000 の整数で入れてください。');
+      // 小数と負の値も断る
+      await members.fill('-3');
+      await size.fill('1.5');
+      await change.click();
+      await expect(dialog.locator('.field-error')).toHaveCount(2);
+      expect(sent).toEqual([]);
+
+      // 直すと誤りが消え、GB をバイトにして送る
+      await members.fill('200');
+      await expect(members).toHaveAttribute('aria-invalid', 'false');
+      await size.fill('300');
+      await expect(dialog.locator('.field-error')).toHaveCount(0);
+      await size.press('Enter');
+      await expect(dialog).toBeHidden();
+      expect(sent).toEqual([{ slug: 'aoba', member_limit: 200, attachment_quota_bytes: 300 * GIB }]);
+      const row = page.locator('.table tbody tr', { hasText: 'あおば開発' });
+      await expect(row.locator('td[data-label="人数 / 上限"]')).toHaveText('60 / 200');
+      expect(await collect()).toEqual([]);
+    });
+
+    test('先に変えられていた（409）、見つからない（404）はトーストで知らせて閉じ、5xx はダイアログの中に理由を出す', async ({
+      page,
+    }) => {
+      const listed = [organization({})];
+      await page.route('**/api/list-organizations', (route) => route.fulfill({ json: { organizations: listed } }));
+      let status = 409;
+      await page.route('**/api/organization-quota-update', (route) => {
+        if (status === 409) listed[0] = organization({ seats: { used: 5, limit: 30 } });
+        const code = status === 409 ? 'conflict' : status === 404 ? 'not_found' : 'internal';
+        return route.fulfill({ status, json: { error: { code, message: 'x' } } });
+      });
+      await page.goto('/operator');
+      const open = page.getByRole('button', { name: '「あおば開発」の人数と容量の上限を変える' });
+      const dialog = page.getByRole('dialog', { name: '人数と添付ファイルの上限を変える' });
+
+      await open.click();
+      await dialog.getByRole('radio', { name: /標準/ }).check();
+      await dialog.getByRole('button', { name: '変える' }).click();
+      await expect(dialog).toBeHidden();
+      await expect(
+        page.getByRole('status').filter({ hasText: '「あおば開発」の状態が変わっていました' }),
+      ).toBeVisible();
+      await expect(page.locator('td[data-label="人数 / 上限"]')).toHaveText('5 / 30');
+
+      status = 500;
+      await open.click();
+      // 読み直した上限（30 人）はどの段階にも合わないので、ほかの値で開く
+      await expect(dialog.getByRole('radio', { name: /ほかの値/ })).toBeChecked();
+      await dialog.getByRole('radio', { name: /標準/ }).check();
+      await dialog.getByRole('button', { name: '変える' }).click();
+      await expect(dialog.getByRole('alert')).toHaveText('上限を変えられませんでした。もう一度試してください。');
+      await expect(dialog).toBeVisible();
+
+      status = 404;
+      await dialog.getByRole('button', { name: '変える' }).click();
+      await expect(dialog).toBeHidden();
+      await expect(page.getByRole('status').filter({ hasText: '「あおば開発」を操作できませんでした' })).toBeVisible();
+    });
+
+    test('送っている間は「変える」を押しても無視し、ダイアログも閉じられず、1回しか送らない', async ({ page }) => {
+      const listed = [organization({})];
+      await page.route('**/api/list-organizations', (route) => route.fulfill({ json: { organizations: listed } }));
+      let requests = 0;
+      const gate = deferred<void>();
+      await page.route('**/api/organization-quota-update', async (route) => {
+        requests++;
+        await gate.promise;
+        listed[0] = organization({ seats: { used: 5, limit: 50 }, attachment_quota_bytes: 100 * GIB });
+        await route.fulfill({ json: { slug: 'aoba', member_limit: 50, attachment_quota_bytes: 100 * GIB } });
+      });
+      await page.goto('/operator');
+      await page.getByRole('button', { name: '「あおば開発」の人数と容量の上限を変える' }).click();
+      const dialog = page.getByRole('dialog', { name: '人数と添付ファイルの上限を変える' });
+      await dialog.getByRole('radio', { name: /標準/ }).check();
+      await dialog.getByRole('button', { name: '変える' }).click();
+
+      const submitting = dialog.getByRole('button', { name: '変えています' });
+      await expect(submitting).toHaveAttribute('aria-disabled', 'true');
+      await expect(dialog.getByRole('status')).toHaveText('変えています');
+      await submitting.click({ force: true });
+      await dialog.getByRole('button', { name: 'やめる' }).click({ force: true });
+      await page.keyboard.press('Escape');
+      await expect(dialog).toBeVisible();
+
+      await settleAfterResponse(page, 'organization-quota-update', () => gate.release());
+      await expect(dialog).toBeHidden();
+      expect(requests).toBe(1);
+    });
   });
 
   // 管理者の指名し直し（organization-admin-reassign）。サーバーの処理は test/operator-admin-reassign.test.ts
@@ -1503,6 +1717,7 @@ test('運用者でない人は、運用者の操作を呼ぶと 403', async ({ p
     'organization-suspend',
     'organization-suspension-update',
     'organization-resume',
+    'organization-quota-update',
   ]) {
     const res = await page.request.post(`/api/${name}`, {
       headers: { Origin: baseURL ?? '', 'Content-Type': 'application/json' },

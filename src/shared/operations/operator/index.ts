@@ -4,6 +4,7 @@ import type { AnyOperationDefinition } from '../define.ts';
 import { createOrganization } from './create-organization.ts';
 import { listOrganizations } from './list-organizations.ts';
 import { organizationAdminReassign } from './organization-admin-reassign.ts';
+import { organizationQuotaUpdate } from './organization-quota-update.ts';
 import { organizationResume } from './organization-resume.ts';
 import { organizationSuspend } from './organization-suspend.ts';
 import { organizationSuspensionUpdate } from './organization-suspension-update.ts';
@@ -13,12 +14,20 @@ export {
   createOrganization,
   listOrganizations,
   organizationAdminReassign,
+  organizationQuotaUpdate,
   organizationResume,
   organizationSuspend,
   organizationSuspensionUpdate,
   resolveGithubUser,
 };
 export { reassignAdminProblems, type ReassignAdminProblem } from './organization-admin-reassign.ts';
+export {
+  ATTACHMENT_QUOTA_MAX_BYTES,
+  MEMBER_LIMIT_MAX,
+  QUOTA_GIB,
+  quotaTiers,
+  type QuotaTier,
+} from './organization-quota-update.ts';
 export { PURGE_AFTER_DAYS, purgeDateOf, suspensionKinds, type SuspensionKind } from './organization-suspend.ts';
 export {
   adminNomineeInput,
@@ -38,4 +47,5 @@ export const operatorOperations: readonly AnyOperationDefinition[] = [
   organizationSuspensionUpdate,
   organizationResume,
   organizationAdminReassign,
+  organizationQuotaUpdate,
 ];
