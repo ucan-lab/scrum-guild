@@ -14,7 +14,9 @@ type Broken = 'none' | 'no-focus-in' | 'no-escape' | 'no-return' | 'blink-return
 // no-focus-in は showModal() を使わず、open 属性だけで開く（フォーカスは開いたボタンに残る）。
 // no-return は Esc を先に受けて閉じ、同期で別のボタンへ移す。close() の中で開いたボタンへ戻った瞬間を残さないため
 // （close イベントで移すと、その前の一瞬に戻っていて、確かめがそこをつかむことがある）。
-// blink-return は、その一瞬戻ってすぐ外れる形を、close イベントの後の描画で外して作る
+// blink-return は、一瞬戻ってすぐ外れる形を、閉じた後の描画で外して作る。外す時機を描画の速さに任せると、
+// 1段目の toBeFocused が戻った瞬間に間に合うかが揺れるので、ページの requestAnimationFrame を差し替え、
+// 道具が描画を待ち始めてから外す（1段目は必ず通り、2段目だけで落ちる）
 async function setDialog(page: Page, broken: Broken): Promise<void> {
   await page.setContent(`
     <button id="open" type="button">開く</button>
@@ -48,10 +50,16 @@ async function setDialog(page: Page, broken: Broken): Promise<void> {
           other.focus();
         }, true);
       }
+      if (broken === 'blink-return') {
+        const raf = window.requestAnimationFrame.bind(window);
+        window.requestAnimationFrame = (callback) =>
+          raf((time) => {
+            if (!dialog.open) other.focus();
+            callback(time);
+          });
+      }
       dialog.addEventListener('close', () => {
-        if (broken === 'no-return') return;
-        opener.focus();
-        if (broken === 'blink-return') requestAnimationFrame(() => other.focus());
+        if (broken !== 'no-return') opener.focus();
       });
     </script>
   `);
@@ -90,9 +98,7 @@ test('閉じてもフォーカスが開いたボタンへ戻らなければ落�
 
 test('閉じて一瞬だけ開いたボタンへ戻り、すぐ外れれば落ちる', async ({ page }) => {
   await setDialog(page, 'blink-return');
-  // 外れる前に1段目の toBeFocused が間に合えば2段目（一瞬戻ってすぐ外れる）で、間に合わなければ1段目で落ちる。
-  // どちらの段かは描画の速さで変わるので、両方の文言に共通する頭で受ける
-  await expect(expectModalFocus(page, targets(page))).rejects.toThrow('閉じたらフォーカスが戻らない');
+  await expect(expectModalFocus(page, targets(page))).rejects.toThrow('一瞬戻ってすぐ外れる');
 });
 
 test('戻る先を returnTo で渡したときは、開いたボタンへ戻っても落ちる', async ({ page }) => {
