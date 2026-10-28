@@ -24,7 +24,11 @@ gh api repos/{owner}/{repo}/issues/<番号> --jq '{state, title, pr: (.pull_requ
 gh api "repos/{owner}/{repo}/pulls?state=open&per_page=100" --jq '.[] | {number, head: .head.ref, refs: ([.body // "" | scan("(?i)(?:closes|fixes|refs) #([0-9]+)") | .[0]])}'
 ```
 
-`gh` が無いか認証で失敗するときは、`pr-create/github-mcp.md` に従い、GitHub の MCP ツールで代える。Issue は `issue_read` の `get`、`get_labels`、`get_parent`、開いた PR は `list_pull_requests`（`fields` に `number`、`head`、`body` を入れる）で読む。`issue_read` は `blocked` を返さないので、本文と親の Issue の「前に要るもの」を読んで確かめる。前に要るものが開いていても、`get_labels` で `status:accepting` が付いていれば待ちに数えない。
+`gh` が無いか認証で失敗するときは、`pr-create/github-mcp.md` に従い、GitHub の MCP ツールで代える。Issue は `issue_read` の `get`、`get_labels`、`get_parent`、開いた PR は `list_pull_requests`（`fields` に `number`、`head`、`body` を入れる）で読む。`issue_read` は `blocked` を返さないので、前に要るものは次のとおり確かめる。
+
+- 自分と親のストーリーの前に要るもの（blocked by）を `issue_dependency_read` で読む。`.claude/settings.json` の許可に無いので、呼ぶと確認が挟まる
+- 待ちに数えるのは、開いていて、`get_labels` で `status:accepting` の付いていないものだけ
+- `issue_dependency_read` が使えない（ツールが出ない、確認が断られた、確認に答える人がいない）ときは、本文の「前に要るもの」の表から読んで代えずに止まり、依存の確認を人に頼む（`pr-create/github-mcp.md` の注記。本文の表は人が読むためのもので、着手できるかは依存関係で判定する）
 
 次のどれかなら止まり、理由を伝える。
 
@@ -33,6 +37,7 @@ gh api "repos/{owner}/{repo}/pulls?state=open&per_page=100" --jq '.[] | {number,
 - その Issue を指す開いた PR がある（ブランチ名の `<番号>-` の先頭か、本文の `Refs`。決まりの前に立てた PR のために `Closes` も拾う）
 - `status:in-progress` か `status:refining` が付いている（ほかのセッションか人が受け持っている）。前のセッションが落ちて残ったもの、人がこのセッションで続けるよう言ったもの、同じセッションの `backlog-refine` が付けた `status:refining`（`backlog-pick` の「詰め終えたら同じセッションで」の流れ）だけ続ける。手元のワークツリーが残っていれば、それを使う
 - 待ちがある。`blocked` が 0 でない Issue（または親のストーリー）だけ、`gh api repos/{owner}/{repo}/issues/<番号>/dependencies/blocked_by --jq '[.[] | select(.state == "open" and (([.labels[].name] | index("status:accepting")) == null)) | .number]'` で前に要るものを引き、開いていて `status:accepting` の無いものが1つでもあれば止まる。`status:accepting` の前に要るものだけなら止まらない（受け入れ待ちは実装が済んでいる。`docs/development.md` の「Issue の運用」）
+- `gh` が使えず、`issue_dependency_read` も使えない（上の段落）。前に要るものを確かめられない
 - 人が行う Issue（題が「確認:」で始まる、要件を決める、本番やアカウントやドメインの操作）
 - `migration` が付いていて、ほかに `migration` の付いた作業中の Issue か開いた PR がある
 - このセッションが既に2つの Issue を受け持った（次は新しいセッションで始める）
