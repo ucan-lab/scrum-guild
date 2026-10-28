@@ -21,9 +21,13 @@ function importedLibModules(source: string, path: string): string[] {
     if (!ts.isImportDeclaration(statement) || !ts.isStringLiteral(statement.moduleSpecifier)) continue;
     if (statement.importClause?.isTypeOnly) continue;
     const specifier = statement.moduleSpecifier.text;
-    if (!specifier.startsWith('.')) continue;
-    const module = resolve(dirname(path), specifier);
-    if (module.startsWith(libDir) && module !== API_MODULE) modules.push(module);
+    // 相対の指定と、SvelteKit の別名の $lib（src/lib）を追う
+    const module = specifier.startsWith('.')
+      ? resolve(dirname(path), specifier)
+      : specifier.startsWith('$lib/')
+        ? join(libDir, specifier.slice('$lib/'.length))
+        : undefined;
+    if (module !== undefined && module.startsWith(libDir) && module !== API_MODULE) modules.push(module);
   }
   return modules;
 }
@@ -89,7 +93,8 @@ function loadFetchViolations(source: string, fileName = '+page.ts'): string[] {
   const namespaces = new Set<string>();
   for (const statement of file.statements) {
     if (!ts.isImportDeclaration(statement) || !ts.isStringLiteral(statement.moduleSpecifier)) continue;
-    if (!/(^|\/)lib\/api\.ts$/.test(statement.moduleSpecifier.text)) continue;
+    // 相対の指定（../lib/api.ts）と $lib/api.ts
+    if (!/(^|\/|\$)lib\/api\.ts$/.test(statement.moduleSpecifier.text)) continue;
     const bindings = statement.importClause?.namedBindings;
     if (bindings && ts.isNamespaceImport(bindings)) namespaces.add(bindings.name.text);
     if (bindings && ts.isNamedImports(bindings)) {
@@ -247,6 +252,21 @@ describe('loadFetchViolations', () => {
         };`),
     ).toEqual(['3: load の fetch でない fetch を使っている', '4: load の fetch でない fetch を使っている']);
   });
+
+  test('$lib/api.ts から別名と名前空間で import したものも見る', () => {
+    expect(
+      loadFetchViolations(`
+        import { callOperation as call } from '$lib/api.ts';
+        import * as api from '$lib/api.ts';
+        export const load = async ({ fetch }) => {
+          await call(a, {}, {});
+          await api.getHealth();
+        };`),
+    ).toEqual([
+      '5: callOperation の fetcher に load の fetch を渡していない',
+      '6: getHealth に load の fetch を渡していない',
+    ]);
+  });
 });
 
 describe('importedLibModules', () => {
@@ -263,6 +283,18 @@ describe('importedLibModules', () => {
         from,
       ),
     ).toEqual([join(libDir, 'login-redirect.ts')]);
+  });
+
+  test('$lib の指定で import したモジュールも返し、$lib/api.ts は除く', () => {
+    const from = join(routesDir, '[slug]', '+layout.ts');
+    expect(
+      importedLibModules(
+        `
+        import { callOperation } from '$lib/api.ts';
+        import { loadFoo } from '$lib/foo.ts';`,
+        from,
+      ),
+    ).toEqual([join(libDir, 'foo.ts')]);
   });
 });
 
