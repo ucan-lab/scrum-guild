@@ -617,15 +617,16 @@ export async function createWorkspace(page: Page, name: string, vocabulary: 'gam
   await expect(page).toHaveTitle(`${backlog}・${name} - Scrum Guild`);
 }
 
+type ModalFocusStage = 'hidden' | 'open' | 'focusIn' | 'close' | 'return' | 'stay';
+
 // ダイアログと引き出しのフォーカスの決まりを確かめる。opener を押すと modal が開いて中にフォーカスが入り、Esc で閉じ、
 // 閉じたらフォーカスが returnTo（無ければ opener）にあり、2回描画した後も留まる。空振りしないよう、開く前に modal が見えていないことから確かめ、
 // 最後の留まる確かめを除き、どの段も待ってから確かめる（e2e/modal-focus.test.ts が、壊れたダイアログでそれぞれの段が落ちることを確かめる）。
 // 2回の描画より長く留まってから外れるフォーカスは捕まえない。
 // press を渡すと、opener にフォーカスを置いてそのキーで開く（キーボードだけで開く確かめ）。
 // whileOpen は、開いている間に足して確かめるもの。timeouts は段ごとの待ちで、渡さない段は expect の既定。
-// 落ちるはずの確かめで、落とすつもりの段だけを短くする（前の段まで短くすると、混んだマシンで別の段が時間切れになる）
-type ModalFocusStage = 'hidden' | 'open' | 'focusIn' | 'close' | 'return' | 'stay';
-
+// 落ちるはずの確かめで、落とすつもりの段だけを短くする（前の段まで短くすると、混んだマシンで別の段が時間切れになる）。
+// stay は描画の待ちの上限で、留まる確かめそのものは待たないので、短くしても速くならず、描画より先に待ちが切れると空振りする
 export async function expectModalFocus(
   page: Page,
   {
