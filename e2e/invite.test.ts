@@ -112,6 +112,13 @@ test('URL を置き換える移動が遅く、読み込み中の表示で画面�
   await expect(page).toHaveURL(/\/invite$/);
 });
 
+test('URL を読み終えてボタンを出したことを、読み上げの領域で伝える', async ({ page }) => {
+  await page.goto(`/invite#${CLAIM_TOKEN}`);
+  await expect(page.getByRole('button', { name: 'Google でログイン' })).toBeVisible();
+  // ボタンは URL を置き換えた後に足すので、後から出たことを読み上げに伝える（常にある領域の文字を替える）
+  await expect(page.getByRole('status').filter({ hasText: '招待の URL を読みました' })).toHaveCount(1);
+});
+
 test('URL から秘密を消せなかったときは、ボタンを出さず使えない旨を出す', async ({ page }) => {
   // SvelteKit の移動が URL を置き換えないまま終わった場面（移動の失敗、ほかの移動に取って代わられた）を、置き換えを
   // 今の URL のままにして再現する

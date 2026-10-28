@@ -83,8 +83,9 @@
   <title>{t('pageTitle', { page: t('inviteTitle', { app: t('appName') }), app: t('appName') })}</title>
 </svelte:head>
 
-<!-- 読み上げの領域。常に置き、文字だけを替える（後から挿入した領域は読み上げられないことがある） -->
-<div class="visually-hidden" role="status">{moving ? t('inviteMoving') : ''}</div>
+<!-- 読み上げの領域。常に置き、文字だけを替える（後から挿入した領域は読み上げられないことがある）。ボタンは URL を置き換えた
+     後に出るので、出たことも伝える。使えないときは警告（role="alert"）が伝える -->
+<div class="visually-hidden" role="status">{moving ? t('inviteMoving') : usable ? t('inviteReady') : ''}</div>
 <!-- URL を読み終える前は、本文が空の紙を出さない -->
 {#if usable !== undefined}
   <Gate>
