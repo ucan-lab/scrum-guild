@@ -177,8 +177,18 @@ test('完了したタスクの難易度は直せず、理由を添える。ほ�
   await expect(
     drawer.getByRole('radiogroup', { name: 'リポジトリ' }).getByRole('radio', { name: 'なし' }),
   ).toBeEnabled();
+  // 前のトースト（足した、難易度を保存した、完遂にした）が消えてから入れる。難易度の「保存しました」と取り違えずに
+  // 期限の保存を確かめ、終わりの画面（evidence-<n>.png）に写るトーストを、出したばかりの「保存しました」の1つにそろえる（#413）
+  const toasts = page.locator('.toasts:visible .toast');
+  await expect(toasts).toHaveCount(0, { timeout: 10_000 });
+  const saved = waitForResponses(page, '/task-update');
   await drawer.getByLabel('期限').fill('2099-01-02');
-  await expect(page.getByRole('status').filter({ hasText: '保存しました' })).toBeVisible();
+  await saved;
+  await expect(toasts).toHaveText(['保存しました']);
+  await expect(drawer.getByRole('button', { name: 'クリア' })).toBeVisible();
+  // 後ろの掲示板も読み直し終えている（完遂の経験値が入り、完遂の行は畳まれる）
+  await expect(page.locator('.page-head .team-xp')).toHaveText('パーティ全体の経験値40XP');
+  await expect(page.locator('.tree-folded.is-root')).toHaveText('親のない完遂 1 件を折りたたんでいます');
 });
 
 test('担い手を引き出しで選ぶと、木の行にアバターが出る。外すと担い手なしに戻る。起票のダイアログでも選べる', async ({
