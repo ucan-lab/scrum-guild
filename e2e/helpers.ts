@@ -657,7 +657,15 @@ export async function expectModalFocus(
   await whileOpen?.();
   await page.keyboard.press('Escape');
   await expect(modal, 'Esc で閉じない').toBeHidden({ timeout });
-  await expect(returnTo ?? opener, '閉じたらフォーカスが戻らない').toBeFocused({ timeout });
+  const target = returnTo ?? opener;
+  await expect(target, '閉じたらフォーカスが戻らない').toBeFocused({ timeout });
+  // Chromium の <dialog> は close() の中で開いたボタンへフォーカスを戻し、close イベントは後のタスクで出す。
+  // その間だけ戻っている瞬間をつかんで通らないよう、2回描画を待ってもまだ留まっていることを、待たずに確かめる
+  await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+  expect(
+    await target.evaluate((element) => element === document.activeElement),
+    '閉じたらフォーカスが戻らない（一瞬戻ってすぐ外れる）',
+  ).toBe(true);
 }
 
 // 行の先頭のつまみ（handle）をマウスで押し、row の上端寄り（top）、下端寄り（bottom）、真ん中（middle）まで動かして離す。
