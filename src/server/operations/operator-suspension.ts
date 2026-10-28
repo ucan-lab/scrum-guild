@@ -13,7 +13,7 @@ import {
 import { commonDb } from '../db/index.ts';
 import { ApiError } from '../errors.ts';
 import { implement } from './implement.ts';
-import { logOperatorChange as logChange } from './operator-change-log.ts';
+import { logOperatorChange } from './operator-change-log.ts';
 
 type CommonDb = ReturnType<typeof commonDb>;
 
@@ -57,7 +57,7 @@ export const organizationSuspendOperation = implement(organizationSuspend, async
   ]);
   if (result.changes === 0) throw new ApiError(409, 'conflict');
 
-  await logChange(operator, {
+  await logOperatorChange(operator, {
     operation: organizationSuspend.name,
     organizationId: current.id,
     action: 'suspend',
@@ -92,7 +92,7 @@ export const organizationSuspensionUpdateOperation = implement(
     ]);
     if (result.changes === 0) throw new ApiError(409, 'conflict');
 
-    await logChange(operator, {
+    await logOperatorChange(operator, {
       operation: organizationSuspensionUpdate.name,
       organizationId: current.id,
       action: 'update',
@@ -121,7 +121,7 @@ export const organizationResumeOperation = implement(organizationResume, async (
   ]);
   if (result.changes === 0) throw new ApiError(409, 'conflict');
 
-  await logChange(operator, {
+  await logOperatorChange(operator, {
     operation: organizationResume.name,
     organizationId: current.id,
     action: 'resume',

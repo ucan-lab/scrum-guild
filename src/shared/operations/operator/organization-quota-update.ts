@@ -14,7 +14,6 @@ export const quotaTiers = [
   { id: 'small', member_limit: 15, attachment_quota_bytes: 30 * QUOTA_GIB },
   { id: 'standard', member_limit: 50, attachment_quota_bytes: 100 * QUOTA_GIB },
 ] as const;
-export type QuotaTier = (typeof quotaTiers)[number];
 
 const memberLimit = z.number().int().min(1).max(MEMBER_LIMIT_MAX);
 const attachmentQuotaBytes = z.number().int().min(1).max(ATTACHMENT_QUOTA_MAX_BYTES);
