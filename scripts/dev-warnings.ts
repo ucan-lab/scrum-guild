@@ -16,7 +16,8 @@ export function parseDevWarning(text: string): DevWarning | undefined {
   return { name, detail: detail.replace(/^%c/, '').trim() };
 }
 
-// 今ある警告のうち、直すまで数えないもの（#375 で入れたときに main に残っていた分）。名前と、中身か画面のパスで絞る。
+// 今ある警告のうち、直すまで数えないもの（#375 で入れたときに main に残っていた分）。名前と、中身か画面のパスで絞る
+// （window_fetch_in_load だけは絞れないので名前だけで並べ、代わりのテストで確かめる）。
 // 直す Issue があるものは、その Issue が直したときにここから外す。新しく足さない（新しい警告は直してからマージする）。
 // 数えずに通した警告は、e2e/fixtures.ts がテストの annotation（known-dev-warning）に残す
 type KnownDevWarning = { name: string; detail?: RegExp; path?: RegExp; reason: string };
@@ -28,10 +29,13 @@ export const KNOWN_DEV_WARNINGS: readonly KnownDevWarning[] = [
     path: /^\/[^/]+\/(admin|invitations|w\/[^/]+\/members)$/,
     reason: '#388 で refreshAll に置き換える',
   },
+  // 開発の build では関数名が縮められ、SvelteKit がスタックで load の中かを判定できない。そのため load が走っている間に
+  // 画面の部品（引き出しなど）が送った window.fetch も、この警告に数える（#393）。どの画面とどの URL でも数えない。
+  // load が SvelteKit の渡す fetch で API を呼ぶことは、src/routes/load-fetch.test.ts がソースの AST で確かめる
   {
     name: '[sveltekit] window_fetch_in_load',
-    detail: /^Loading `\/api\/[^/]+\/member-list` using `window\.fetch`/,
-    reason: '#393 で出どころを確かめる',
+    reason:
+      '開発の build ではスタックで load の中かを判定できず、load の間の画面の操作も数える（#393）。load の fetch は src/routes/load-fetch.test.ts が確かめる',
   },
   // SvelteKit が、app の error() でないエラー（SvelteKit の 404 か、予期しない例外）で開発時に出す。
   // 存在しないパスを開いて 404 の画面を確かめるテスト（e2e/shell.test.ts）の分だけを外す。ほかの画面では予期しない例外の印なので数える

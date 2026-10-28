@@ -75,12 +75,13 @@ describe('isKnownDevWarning', () => {
     assert.equal(isKnownDevWarning(at(name, detail, '/aoba/w/1/members/x')), false);
   });
 
-  test('window_fetch_in_load は member-list のときだけ既知（#393）', () => {
+  test('window_fetch_in_load は、どの URL とどの画面でも既知（#393。load の fetch は src/routes/load-fetch.test.ts が確かめる）', () => {
     const name = '[sveltekit] window_fetch_in_load';
     const tail = ' using `window.fetch`. For best results, use the `fetch` that is passed to your `load` function';
     assert.equal(isKnownDevWarning(at(name, 'Loading `/api/aoba/member-list`' + tail, '/aoba/w/1')), true);
-    assert.equal(isKnownDevWarning(at(name, 'Loading `/api/aoba/task-detail`' + tail, '/aoba/w/1')), false);
-    assert.equal(isKnownDevWarning(at(name, 'Loading `/api/aoba/member-list-x`' + tail, '/aoba/w/1')), false);
+    assert.equal(isKnownDevWarning(at(name, 'Loading `/api/aoba/task-detail`' + tail, '/aoba/w/1')), true);
+    assert.equal(isKnownDevWarning(at(name, 'Loading `/api/hibari/backlog-tree`' + tail, '/hibari/w/2/plan')), true);
+    assert.equal(isKnownDevWarning(at('[svelte] window_fetch_in_load', 'Loading', '/aoba/w/1')), false);
   });
 
   test('history_api_conflict は招待の画面でも既知に数えない（#394 で直した）', () => {
@@ -107,8 +108,11 @@ describe('isKnownDevWarning', () => {
     for (const known of KNOWN_DEV_WARNINGS) assert.match(known.reason, /#\d+|テスト/);
   });
 
-  test('どの既知の警告も、名前だけでなく中身か画面のパスで絞る', () => {
-    for (const known of KNOWN_DEV_WARNINGS) assert.ok(known.detail ?? known.path, known.name);
+  test('window_fetch_in_load のほかの既知の警告は、名前だけでなく中身か画面のパスで絞る', () => {
+    for (const known of KNOWN_DEV_WARNINGS) {
+      if (known.name === '[sveltekit] window_fetch_in_load') continue;
+      assert.ok(known.detail ?? known.path, known.name);
+    }
   });
 });
 
