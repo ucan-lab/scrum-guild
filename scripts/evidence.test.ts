@@ -3,6 +3,7 @@ import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import {
   chmodSync,
+  existsSync,
   mkdirSync,
   mkdtempSync,
   readdirSync,
@@ -644,7 +645,7 @@ describe('コメントの JSON の行', () => {
   });
 });
 
-// pr-create の evidence.md の 3 で、セッションが PR の本文に画像を埋め込むスクリプト
+// PR の本文に画像を埋め込むスクリプト。CI の evidence のジョブが走らせ、セッションは確かめに走らせる（pr-create の evidence.md の 3）
 describe('embed-evidence.py', () => {
   const script = fileURLToPath(new URL('../.claude/skills/pr-create/embed-evidence.py', import.meta.url));
   const mainUrl = 'https://main.example.test';
@@ -871,6 +872,139 @@ describe('embed-evidence.py', () => {
     const { out, stdout } = run('## 概要\n\n文章\n', '[[]]', sha('b'));
     assert.equal(out, '## 概要\n\n文章');
     assert.match(stdout, /本文は変わらない\n$/);
+  });
+
+  // 書き戻した本文を確かめるモード。GitHub の MCP の書き込みは <img> を &lt;img に逃がす
+  const check = (body: string) => {
+    const dir = mkdtempSync(join(tmpdir(), 'embed-evidence-'));
+    try {
+      writeFileSync(join(dir, 'body.md'), body);
+      const result = spawnSync('python3', ['-I', script, '--check', join(dir, 'body.md')], { encoding: 'utf8' });
+      assert.ifError(result.error);
+      return { status: result.status, stdout: result.stdout };
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  };
+
+  const inSection = (text: string) => `## 概要\n\n文章\n\n## エビデンス\n\n${text}\n\n## 補足\n\n文章`;
+
+  test('--check はエビデンス節の逃がされた <img> を数えて 1 で終わり、大文字も拾う', () => {
+    const escaped = check(inSection('| ``&lt;img src="a" width="400"&gt;`` | &lt;img src="b"&gt; |'));
+    assert.equal(escaped.status, 1);
+    assert.match(escaped.stdout, /2 件/);
+    assert.match(escaped.stdout, /MCP の書き込みが <img> を逃がした恐れ/);
+    assert.equal(check(inSection('&LT;IMG src="a"&GT;')).status, 1);
+  });
+
+  test('--check は素の <img> だけの本文と、画像の無い本文で 0 で終わる', () => {
+    const embedded = run(prBody, comments(comment()), sha('b')).out;
+    assert.equal(check(embedded).status, 0);
+    assert.equal(check('## 概要\n\n文章').status, 0);
+  });
+
+  test('--check はエビデンス節の外の &lt;img を数えない（本文の説明で書いた文字）', () => {
+    assert.equal(check('## 概要\n\n`&lt;img` に逃がされる\n\n## エビデンス\n\n<img src="a">').status, 0);
+    assert.equal(check('## 概要\n\n`&lt;img` に逃がされる').status, 0);
+  });
+
+  // ci.yml の evidence のジョブの段。本文とコメントを返し、PATCH を記録する偽の gh を PATH の先頭に置いて動かす
+  describe('本文に埋め込む段のシェル', () => {
+    const step = stepScript('.github/workflows/ci.yml', 'PR の本文に画像を埋め込む');
+    // スクリプトのパスはリポジトリの根からの相対なので、根で走らせる
+    const repoRoot = fileURLToPath(new URL('..', import.meta.url));
+    // served は本文の取得に返す中身。PATCH の後は書いた中身にする（ESCAPE のときは MCP のように <img> を逃がす）
+    const fakeGh = [
+      '#!/bin/sh',
+      'root=$FAKE_ROOT',
+      'case "$*" in',
+      '  *"-X PATCH"*)',
+      '    for a in "$@"; do case "$a" in body=@*) cp "${a#body=@}" "$root/patched" ;; esac; done',
+      '    echo patch >> "$root/calls"',
+      '    if [ -n "$ESCAPE" ]; then sed "s/<img/\\&lt;img/g" "$root/patched" > "$root/served"; else cp "$root/patched" "$root/served"; fi',
+      '    ;;',
+      '  *"/comments "*) cat "$root/comments.json" ;;',
+      '  *) cat "$root/served" ;;',
+      'esac',
+      '',
+    ].join('\n');
+
+    const withStep = (
+      body: string,
+      commentPages: string,
+      fn: (runStep: (env?: Record<string, string>) => { status: number | null; output: string }) => void,
+    ) => {
+      const root = mkdtempSync(join(tmpdir(), 'evidence-embed-step-'));
+      try {
+        const bin = join(root, 'bin');
+        mkdirSync(bin);
+        writeFileSync(join(bin, 'gh'), fakeGh);
+        chmodSync(join(bin, 'gh'), 0o755);
+        writeFileSync(join(root, 'served'), body);
+        writeFileSync(join(root, 'comments.json'), commentPages);
+        writeFileSync(join(root, 'calls'), '');
+        fn((env = {}) => {
+          const result = spawnSync('bash', ['-c', step], {
+            cwd: repoRoot,
+            env: {
+              PATH: `${bin}:${process.env.PATH}`,
+              FAKE_ROOT: root,
+              REPO: 'o/r',
+              PR: '7',
+              HEAD_SHA: sha('b'),
+              ...env,
+            },
+            encoding: 'utf8',
+          });
+          assert.ifError(result.error);
+          return { status: result.status, output: result.stdout + result.stderr };
+        });
+        return {
+          patches: readFileSync(join(root, 'calls'), 'utf8').split('\n').filter(Boolean).length,
+          patched: existsSync(join(root, 'patched')) ? readFileSync(join(root, 'patched'), 'utf8') : undefined,
+        };
+      } finally {
+        rmSync(root, { recursive: true, force: true });
+      }
+    };
+
+    test('コメントが今の head のものなら本文を1回書き換え、2回目は書き換えない', () => {
+      const { patches, patched } = withStep(prBody, comments(comment()), (runStep) => {
+        const first = runStep();
+        assert.equal(first.status, 0, first.output);
+        assert.match(first.output, /本文に逃がされた <img> は無い/);
+        const second = runStep();
+        assert.equal(second.status, 0, second.output);
+        assert.match(second.output, /本文は変わらない/);
+      });
+      assert.equal(patches, 1);
+      assert.ok(patched !== undefined);
+      assert.ok(patched.includes(`<img src="${prUrl}/img/${h('2')}.png"`), patched);
+      assert.ok(!patched.includes('&lt;'), patched);
+    });
+
+    for (const [label, body, pages] of [
+      ['コメントが前の push のまま', prBody, comments(comment(sha('c')))],
+      ['コメントが無い', prBody, '[[]]'],
+      ['本文にエビデンス節が無い', '## 概要\n\n文章\n', comments(comment())],
+    ] as const) {
+      test(`${label}なら、本文を書き換えずに成功で終わる`, () => {
+        const { patches } = withStep(body, pages, (runStep) => {
+          const { status, output } = runStep();
+          assert.equal(status, 0, output);
+        });
+        assert.equal(patches, 0);
+      });
+    }
+
+    test('書き換えた後に取り直した本文の <img> が逃がされていれば、0 でない終了コードで終わる', () => {
+      const { patches } = withStep(prBody, comments(comment()), (runStep) => {
+        const { status, output } = runStep({ ESCAPE: '1' });
+        assert.notEqual(status, 0);
+        assert.match(output, /MCP の書き込みが <img> を逃がした恐れ/);
+      });
+      assert.equal(patches, 1);
+    });
   });
 });
 

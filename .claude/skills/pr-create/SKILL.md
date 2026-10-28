@@ -136,7 +136,7 @@ PR の本文では、タスクもストーリーもエピックも `Refs #<番�
 <レビュワーが手元で確認する手順。不要なら節ごと省く>
 ```
 
-差分で画面の見た目か挙動が変わるなら、[evidence.md](evidence.md) の 1 と 2 で `## エビデンス` 節を書く。画像は撮らない。変えた画面を開く e2e のテストを決め、画面ごとの説明と、CI の `evidence` が R2 に上げた画像を後で埋め込む印を書く。UI が変わる PR ではこの節を省かない。
+差分で画面の見た目か挙動が変わるなら、[evidence.md](evidence.md) の 1 と 2 で `## エビデンス` 節を書く。画像は撮らない。変えた画面を開く e2e のテストを決め、画面ごとの説明と、CI の `evidence` が R2 に上げた画像を後で CI が埋め込む印を書く。UI が変わる PR ではこの節を省かない。
 
 done-check で直さなかった CRITICAL と HIGH の指摘があれば、理由と一緒に本文の `## 補足` に書く（テンプレートに補足の節が無ければ末尾に足す）。
 会話に done-check の出力が無ければ、直さなかった指摘があるかをユーザーに聞く。
@@ -216,7 +216,7 @@ gh api -X PATCH repos/{owner}/{repo}/issues/<n> -F milestone=<マイルストー
 gh api repos/{owner}/{repo}/pulls/<n>/requested_reviewers -f "reviewers[]=<user1>" -f "reviewers[]=<user2>"
 ```
 
-エビデンス節の画像は、作成の時点では入れない。CI が終わってから `pr-feedback` の手順 5 で埋め込む（[evidence.md](evidence.md) の 3）。
+エビデンス節の画像は、作成の時点では入れない。CI の `evidence` のジョブが本文に埋め込み、CI が終わってから `pr-feedback` の手順 5 で確かめる（[evidence.md](evidence.md) の 3）。
 
 レビュワーを指定したら、付いたかを確かめる。
 
@@ -365,7 +365,7 @@ gh api -X POST "repos/{owner}/{repo}/pulls/<n>/reviews/<review_id>/events" -f ev
 - Issue の完了条件でチェックを付けた項目と、残した項目
 - インラインコメントを何件投稿したか（本文に移したものがあればその件数も）
 - ブランチがベースの最新に乗っているか（Step 4 で承認を取らなかったとき）
-- UI が変わる PR なら、エビデンス節に印を書いた画面と、画像は CI の後に `pr-feedback` が埋め込むこと
+- UI が変わる PR なら、エビデンス節に印を書いた画面と、画像は CI の `evidence` が埋め込み、CI の後に `pr-feedback` が確かめること
 
 ## Step 8: pr-feedback に引き継ぐ
 
@@ -378,5 +378,5 @@ gh api -X POST "repos/{owner}/{repo}/pulls/<n>/reviews/<review_id>/events" -f ev
 - レビュワーを推測で決めない。`CODEOWNERS` か直近PRの実績のどちらかを根拠にする
 - PRの言語は直近PRに合わせる。日本語のリポジトリなら日本語で書く
 - 承認を取る条件（Step 4）に当たるときは、承認前にPRを作らない
-- UI が変わる PR では `## エビデンス` 節を必ず埋める。画像は撮らず、CI の `evidence` が R2 に上げた画像を埋め込む（[evidence.md](evidence.md)）。更新モードでは、UI の変わる画面が増えたか減ったときだけ、説明と印を足すか消す
+- UI が変わる PR では `## エビデンス` 節を必ず埋める。画像は撮らず、CI の `evidence` が R2 に上げた画像を CI が埋め込む（[evidence.md](evidence.md)）。更新モードでは、UI の変わる画面が増えたか減ったときだけ、説明と印を足すか消す
 - 既にPRがある場合の本文修正だけが目的なら、手元では `pr-description-review` を使う。こちらの方が保守的に直す

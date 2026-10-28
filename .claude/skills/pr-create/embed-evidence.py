@@ -1,9 +1,12 @@
 # PR の本文のエビデンス節に、CI の evidence のコメントが指す R2 の画像を埋め込む（evidence.md の 3）。
+# CI の evidence のジョブの段「PR の本文に画像を埋め込む」が走らせ、セッションは確かめに走らせる。
 # 使い方: python3 -I embed-evidence.py <本文> <コメント> <出力> <PR の head の SHA> [<付かなかった理由>]
 #   <コメント> は `gh api "repos/{owner}/{repo}/issues/<n>/comments" --paginate --slurp` の出力（ページの配列の配列）
 #   <付かなかった理由> を渡すと、コメントを読まずに、印の中をその理由にする（evidence のジョブが落ちたときなど）
 # 書き換えるのは `## エビデンス` 節の中だけ。印の外の説明の文章は残す。
 # 出力の最後の行は「本文を書き換える」か「本文は変わらない」。想定内の理由で埋め込めないときも終了コードは 0
+# 確かめ: python3 -I embed-evidence.py --check <本文>
+#   書き戻した本文のエビデンス節に `&lt;img` があれば件数を出して終了コード 1、無ければ 0（GitHub の MCP の書き込みは <img> を逃がす）
 import json
 import re
 import sys
@@ -154,7 +157,22 @@ def embed(section, comment_path, head_sha, reason):
     ]
 
 
+def check(body_path):
+    """書き戻した本文のエビデンス節の <img> が逃がされていないかを見る。逃がされていれば 1。
+    節の外は見ない（本文の説明に `&lt;img` と書いた PR を落とさないため）"""
+    body = open(body_path, encoding='utf-8').read().replace('\r\n', '\n')
+    span = section_span(body)
+    count = len(re.findall(r'&lt;img', body[span[0] : span[1]], re.I)) if span else 0
+    if count:
+        print(f'本文に逃がされた <img>（&lt;img）が {count} 件ある: MCP の書き込みが <img> を逃がした恐れ')
+        return 1
+    print('本文に逃がされた <img> は無い')
+    return 0
+
+
 def main(argv):
+    if len(argv) > 1 and argv[1] == '--check':
+        sys.exit(check(argv[2]))
     body_path, comment_path, out_path, head_sha = argv[1:5]
     reason = argv[5] if len(argv) > 5 else None
     # Web で編集した本文は CRLF。gh の --jq は末尾に改行を足す。比べる前にそろえる
