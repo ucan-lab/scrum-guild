@@ -11,13 +11,14 @@ export { expect } from '@playwright/test';
 // - 撮るたびに変わる文字を透明にする。場所と大きさは残るので、並びの変化は写り、toBeVisible と toHaveText も変わらない
 //   - <time>: サーバーが付ける時刻（コメント、変更の履歴、組織の履歴）。テストの中で作った行は実行の時刻になる
 //   - 組織の画面の API の節の状態: 版（APP_VERSION）を出し、PR の head と main のコミットで必ず違う
+//   - ヘッダーのレベルの印の数字: 組織の中の経験値の合計で決まり、並べて走るほかのテストの完了で、撮る時機ごとに変わる（#377）
 //   - 入力欄のカーソル: 点滅する
 // - テストの終わりに、通信が止まるのを待ち、アニメーションとトランジションを終わりまで進めてから撮る。
 //   Playwright のテストの終わりのスクリーンショット（screenshot: 'on'）は、読み込みやトーストの出入りの途中を撮ることがあり、
 //   同じコミットで撮り直すと3割ほどの画面が違った（#337）
 // 撮るのは E2E_EVIDENCE=1 のとき（CI の e2e）だけ（e2e/evidence-mode.ts）
 export const STEADY_SCREENSHOT_CSS = [
-  'time, section[aria-labelledby="s-api"] p[role="status"] { color: transparent !important; text-shadow: none !important; }',
+  'time, section[aria-labelledby="s-api"] p[role="status"], .account-menu .emblem { color: transparent !important; text-shadow: none !important; }',
   '* { caret-color: transparent !important; }',
 ].join('\n');
 
