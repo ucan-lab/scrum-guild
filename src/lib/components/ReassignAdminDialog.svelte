@@ -173,7 +173,8 @@
     }
     if (result.status === 404 && result.error?.code === 'not_found') return { field, key: 'operatorReassignNotFound' };
     if (result.status === 409 && result.error?.code === 'conflict') return { field, key: 'operatorReassignConflict' };
-    return { field, key: 'operatorReassignFailed' };
+    // 書かれたか分からない失敗（5xx、通信の切れ）と、書く前に断られた失敗（回数の上限などの 4xx）で文言を分ける
+    return { field, key: mayHaveChanged(result) ? 'operatorReassignFailed' : 'operatorReassignRejected' };
   }
 
   // 失敗した欄へフォーカスを移す。欄に紐づかない失敗は、誤りを出した枠（callout）へ移す
