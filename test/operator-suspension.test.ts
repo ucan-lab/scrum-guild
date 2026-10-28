@@ -386,11 +386,12 @@ describe('停止の理由の切り替え', () => {
 });
 
 describe('消す予定日を過ぎた解約の組織', () => {
-  // 日本時間では 11/20 の 08:00 で、UTC の日付は 11/19。境目は UTC の日付で数える（消す SQL のガード purge_on < date('now') と同じ）
-  const NOW = '2026-11-20T08:00:00+09:00';
-  const TODAY = '2026-11-19';
-  const YESTERDAY = '2026-11-18';
-  const TOMORROW = '2026-11-20';
+  // 日本時間では 11/20 の 08:00 で、UTC の日付は 11/19。境目は UTC の日付で数える（消す SQL のガード purge_on < date('now') と同じ）。
+  // UPDATE は D1 の date('now')（実際の時計）とも比べるので、どの日付も実際の今日より十分先に置く
+  const NOW = '2999-11-20T08:00:00+09:00';
+  const TODAY = '2999-11-19';
+  const YESTERDAY = '2999-11-18';
+  const TOMORROW = '2999-11-20';
 
   test('予定日が今日の UTC の日付より前なら、再開は 409 の purge_due で、書き換えず履歴も残さない', async () => {
     const organization = await createOrganization({ suspended_at: SUSPENDED_AT, purge_on: YESTERDAY });
@@ -436,7 +437,7 @@ describe('消す予定日を過ぎた解約の組織', () => {
     const changed = await createOrganization({ suspended_at: SUSPENDED_AT });
     const change = await changeKindBy(token, changed.slug, 'cancellation', devEnv(NOW));
     expect(change.status).toBe(200);
-    expect(await change.json()).toEqual({ slug: changed.slug, purge_on: '2026-12-19' });
+    expect(await change.json()).toEqual({ slug: changed.slug, purge_on: '2999-12-19' });
   });
 
   test('読んだ後に予定日を過ぎても、UPDATE の条件で外れて 409 の purge_due', async () => {
