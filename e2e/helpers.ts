@@ -618,8 +618,9 @@ export async function createWorkspace(page: Page, name: string, vocabulary: 'gam
 }
 
 // ダイアログと引き出しのフォーカスの決まりを確かめる。opener を押すと modal が開いて中にフォーカスが入り、Esc で閉じ、
-// 閉じたらフォーカスが returnTo（無ければ opener）にある。空振りしないよう、開く前に modal が見えていないことから確かめ、
-// どの段も待ってから確かめる（e2e/modal-focus.test.ts が、壊れたダイアログでそれぞれの段が落ちることを確かめる）。
+// 閉じたらフォーカスが returnTo（無ければ opener）にあり、2回描画した後も留まる。空振りしないよう、開く前に modal が見えていないことから確かめ、
+// 最後の留まる確かめを除き、どの段も待ってから確かめる（e2e/modal-focus.test.ts が、壊れたダイアログでそれぞれの段が落ちることを確かめる）。
+// 2回の描画より長く留まってから外れるフォーカスは捕まえない。
 // press を渡すと、opener にフォーカスを置いてそのキーで開く（キーボードだけで開く確かめ）。
 // whileOpen は、開いている間に足して確かめるもの。timeout は各段の待ち（既定は expect の既定）
 export async function expectModalFocus(
@@ -660,10 +661,11 @@ export async function expectModalFocus(
   const target = returnTo ?? opener;
   await expect(target, '閉じたらフォーカスが戻らない').toBeFocused({ timeout });
   // Chromium の <dialog> は close() の中で開いたボタンへフォーカスを戻し、close イベントは後のタスクで出す。
-  // その間だけ戻っている瞬間をつかんで通らないよう、2回描画を待ってもまだ留まっていることを、待たずに確かめる
+  // close イベントで別の場所へ移すダイアログでも、その前の一瞬は戻る先にフォーカスがあり、上の確かめが通ってしまう。
+  // 2回描画を待った後に、まだ戻る先にあることを待たずに確かめる
   await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
   expect(
-    await target.evaluate((element) => element === document.activeElement),
+    await target.evaluate((element) => element === document.activeElement, undefined, { timeout }),
     '閉じたらフォーカスが戻らない（一瞬戻ってすぐ外れる）',
   ).toBe(true);
 }
