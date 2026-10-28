@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { existsSync } from 'node:fs';
 import { describe, test } from 'node:test';
 import {
   formatDevWarnings,
@@ -134,10 +135,11 @@ describe('isUnjudgeableDevWarning', () => {
     assert.equal(isUnjudgeableDevWarning(parseDevWarning(SVELTE)!), false);
   });
 
-  test('理由に Issue の番号を、代わりに確かめる場所にファイルを書く', () => {
+  test('理由に Issue の番号を、代わりに確かめる場所に今あるテストのファイルを書く', () => {
     for (const unjudgeable of UNJUDGEABLE_DEV_WARNINGS) {
       assert.match(unjudgeable.reason, /#\d+/);
-      assert.match(unjudgeable.instead, /\.test\.ts/);
+      const file = /\S+\.test\.ts/.exec(unjudgeable.instead)?.[0];
+      assert.ok(file !== undefined && existsSync(new URL(`../${file}`, import.meta.url)), unjudgeable.instead);
     }
   });
 });

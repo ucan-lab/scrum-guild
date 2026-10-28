@@ -1,13 +1,32 @@
 // 画面の load（src/routes の +page.ts と +layout.ts）が、API を load に渡された fetch で読むことを、書いたコードから確かめる（#429）。
 // SvelteKit は開発時に、load の中の window.fetch を window_fetch_in_load の警告で知らせるが、build した画面ではその判定が働かず、
-// 開発モードの build の e2e はこの警告を数えない（scripts/dev-warnings.ts の UNJUDGEABLE_DEV_WARNINGS）。その代わりの確かめ
+// 開発モードの build の e2e はこの警告を数えない（scripts/dev-warnings.ts の UNJUDGEABLE_DEV_WARNINGS）。このテストがその代わりになる。
+// 通す書き方は、load の1つ目の引数の分割で受けた fetch を、callOperation の3つ目の引数の `fetcher: fetch`（その場の入れ物か、
+// 名前を付けた入れ物）と getHealth の引数に渡すものだけ。`{ fetch: f }` や `event.fetch` のような書き方は、正しくても断る
 import { readdirSync, readFileSync } from 'node:fs';
-import { join, relative } from 'node:path';
+import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import ts from 'typescript';
 import { describe, expect, test } from 'vitest';
 
 const routesDir = fileURLToPath(new URL('../routes', import.meta.url));
+const libDir = fileURLToPath(new URL('.', import.meta.url));
+const API_MODULE = join(libDir, 'api.ts');
+
+// load のファイルが値を import する src/lib のモジュール（api.ts を除く）の絶対パス
+function importedLibModules(source: string, path: string): string[] {
+  const file = ts.createSourceFile(path, source, ts.ScriptTarget.Latest, true);
+  const modules: string[] = [];
+  for (const statement of file.statements) {
+    if (!ts.isImportDeclaration(statement) || !ts.isStringLiteral(statement.moduleSpecifier)) continue;
+    if (statement.importClause?.isTypeOnly) continue;
+    const specifier = statement.moduleSpecifier.text;
+    if (!specifier.startsWith('.')) continue;
+    const module = resolve(dirname(path), specifier);
+    if (module.startsWith(libDir) && module !== API_MODULE) modules.push(module);
+  }
+  return modules;
+}
 const LOAD_FILE = /^\+(page|layout)\.ts$/;
 
 function loadFiles(dir: string): string[] {
@@ -65,6 +84,37 @@ function loadFetchViolations(source: string, fileName = '+page.ts'): string[] {
   };
   collect(file);
 
+  // api.ts から import した名前（別名を含む）と、名前空間の import の名前
+  const aliases = new Map<string, string>();
+  const namespaces = new Set<string>();
+  for (const statement of file.statements) {
+    if (!ts.isImportDeclaration(statement) || !ts.isStringLiteral(statement.moduleSpecifier)) continue;
+    if (!/(^|\/)lib\/api\.ts$/.test(statement.moduleSpecifier.text)) continue;
+    const bindings = statement.importClause?.namedBindings;
+    if (bindings && ts.isNamespaceImport(bindings)) namespaces.add(bindings.name.text);
+    if (bindings && ts.isNamedImports(bindings)) {
+      for (const element of bindings.elements) {
+        aliases.set(element.name.text, (element.propertyName ?? element.name).text);
+      }
+    }
+  }
+  const calleeOf = (expression: ts.Expression): string | undefined => {
+    if (ts.isIdentifier(expression)) return aliases.get(expression.text) ?? expression.text;
+    if (ts.isPropertyAccessExpression(expression) && ts.isIdentifier(expression.expression)) {
+      return namespaces.has(expression.expression.text) ? expression.name.text : undefined;
+    }
+    return undefined;
+  };
+  // 値として読む fetch か（プロパティの名前、分割の名前、import の名前、`window.fetch` の右は除く）
+  const isFetchValue = (node: ts.Identifier): boolean => {
+    const parent = node.parent;
+    if (ts.isPropertyAccessExpression(parent) && parent.name === node) return false;
+    if (ts.isPropertyAssignment(parent) && parent.name === node) return false;
+    if (ts.isBindingElement(parent)) return false;
+    if (ts.isImportSpecifier(parent)) return false;
+    return true;
+  };
+
   const fetcherOf = (options: ts.Expression | undefined): ts.Expression | undefined => {
     const object =
       options === undefined
@@ -81,8 +131,8 @@ function loadFetchViolations(source: string, fileName = '+page.ts'): string[] {
   };
 
   const visit = (node: ts.Node): void => {
-    if (ts.isCallExpression(node) && ts.isIdentifier(node.expression)) {
-      const callee = node.expression.text;
+    if (ts.isCallExpression(node)) {
+      const callee = calleeOf(node.expression);
       if (callee === 'callOperation') {
         const fetcher = fetcherOf(node.arguments[2]);
         if (fetcher === undefined || !isLoadFetch(fetcher))
@@ -90,9 +140,10 @@ function loadFetchViolations(source: string, fileName = '+page.ts'): string[] {
       } else if (callee === 'getHealth') {
         const fetcher = node.arguments[0];
         if (fetcher === undefined || !isLoadFetch(fetcher)) report(node, 'getHealth に load の fetch を渡していない');
-      } else if (callee === 'fetch' && !isLoadFetch(node.expression)) {
-        report(node, 'load の fetch でない fetch を呼んでいる');
       }
+    }
+    if (ts.isIdentifier(node) && node.text === 'fetch' && isFetchValue(node) && !isLoadFetch(node)) {
+      report(node, 'load の fetch でない fetch を使っている');
     }
     if (
       ts.isPropertyAccessExpression(node) &&
@@ -152,8 +203,10 @@ describe('loadFetchViolations', () => {
         export const other = async ({ fetch: f }) => getHealth(fetch);`),
     ).toEqual([
       '3: callOperation の fetcher に load の fetch を渡していない',
-      '4: load の fetch でない fetch を呼んでいる',
+      '3: load の fetch でない fetch を使っている',
+      '4: load の fetch でない fetch を使っている',
       '6: getHealth に load の fetch を渡していない',
+      '6: load の fetch でない fetch を使っている',
     ]);
   });
 
@@ -165,6 +218,51 @@ describe('loadFetchViolations', () => {
           await self.fetch('/api/health');
         };`),
     ).toEqual(['3: globalThis.fetch を使っている', '4: self.fetch を使っている']);
+  });
+
+  test('別名と名前空間で import した callOperation と getHealth も見る', () => {
+    expect(
+      loadFetchViolations(`
+        import { callOperation as call, getHealth as health } from '../lib/api.ts';
+        import * as api from '../lib/api.ts';
+        export const load = async ({ fetch }) => {
+          await call(a, {}, {});
+          await health();
+          await api.callOperation(b, {}, {});
+          await api.callOperation(c, {}, { fetcher: fetch });
+        };`),
+    ).toEqual([
+      '5: callOperation の fetcher に load の fetch を渡していない',
+      '6: getHealth に load の fetch を渡していない',
+      '7: callOperation の fetcher に load の fetch を渡していない',
+    ]);
+  });
+
+  test('load の fetch でない fetch は、呼ばずに値として渡しても断る', () => {
+    expect(
+      loadFetchViolations(`
+        export const load = async ({ params }) => {
+          const f = fetch;
+          await Promise.all(urls.map(fetch));
+        };`),
+    ).toEqual(['3: load の fetch でない fetch を使っている', '4: load の fetch でない fetch を使っている']);
+  });
+});
+
+describe('importedLibModules', () => {
+  test('src/lib の下を相対の指定で import したモジュールを返し、api.ts と型だけの import は除く', () => {
+    const from = join(routesDir, '[slug]', '+layout.ts');
+    expect(
+      importedLibModules(
+        `
+        import { callOperation } from '../../lib/api.ts';
+        import { loginUrl } from '../../lib/login-redirect.ts';
+        import type { WorkspaceView } from '../../lib/workspace.ts';
+        import { redirect } from '@sveltejs/kit';
+        import { x } from '../../shared/x.ts';`,
+        from,
+      ),
+    ).toEqual([join(libDir, 'login-redirect.ts')]);
   });
 });
 
@@ -179,6 +277,19 @@ describe('src/routes の load', () => {
     '%s は API を load の fetch で読む',
     (name, path) => {
       expect(loadFetchViolations(readFileSync(path, 'utf8'), name)).toEqual([]);
+    },
+  );
+
+  // load から呼ぶ src/lib の関数の中は追わない。代わりに、load が import する src/lib のモジュール（api.ts を除く）は API を読まない、とする。
+  // load の中で API を読むのは、load のファイルに直に書いた callOperation と getHealth だけにする
+  test.each(files.map((path) => [relative(routesDir, path), path]))(
+    '%s が import する src/lib のモジュールは API を読まない',
+    (_, path) => {
+      for (const module of importedLibModules(readFileSync(path, 'utf8'), path)) {
+        expect(readFileSync(module, 'utf8'), relative(libDir, module)).not.toMatch(
+          /\b(callOperation|getHealth|fetch)\b/,
+        );
+      }
     },
   );
 });
