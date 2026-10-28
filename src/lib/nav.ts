@@ -8,6 +8,7 @@ const workspaceRoutes = [
   '/[slug]/w/[id]/members',
   '/[slug]/w/[id]/plan',
   '/[slug]/w/[id]/settings',
+  '/[slug]/w/[id]/sprint',
 ] as const;
 export type WorkspaceNavRoute = (typeof workspaceRoutes)[number];
 export type NavRoute = '/[slug]' | '/[slug]/me' | '/[slug]/admin' | WorkspaceNavRoute;
@@ -101,7 +102,7 @@ export const navSections: NavSection[] = [
     items: [
       { icon: 'inbox', label: 'inbox', href: null },
       { icon: 'board', label: 'backlog', href: '/[slug]/w/[id]' },
-      { icon: 'columns', label: 'sprint', href: null },
+      { icon: 'columns', label: 'sprint', href: '/[slug]/w/[id]/sprint' },
       { icon: 'calendar', label: 'plan', href: '/[slug]/w/[id]/plan' },
       { icon: 'flag', label: 'epic', href: null },
     ],

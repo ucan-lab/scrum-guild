@@ -36,6 +36,7 @@ const FIELD_LABELS: ReadonlyMap<string, (t: Translate) => string> = new Map([
   ['category', (t: Translate) => t('category')],
   ['repository', (t: Translate) => t('repository')],
   ['sprint', (t: Translate) => t('sprint')],
+  ['column', (t: Translate) => t('column')],
   ['today_on', (t: Translate) => t('sectionToday')],
 ]);
 

@@ -10,6 +10,8 @@ export const uiScreens = [
   'task-drawer',
   'task-dialog',
   'plan',
+  'sprint',
+  'sprint-start',
   'sprint-task-picker',
   'members',
   'member-remove-confirm',
@@ -45,7 +47,7 @@ export interface UiExclusion {
 const HEADER_MENU_LABEL_ISSUE = 343;
 
 export const uiExclusions: readonly UiExclusion[] = [
-  ...(['today', 'backlog', 'epic', 'plan', 'members', 'workspace-settings', 'admin'] as const).flatMap(
+  ...(['today', 'backlog', 'epic', 'plan', 'sprint', 'members', 'workspace-settings', 'admin'] as const).flatMap(
     (screen): UiExclusion[] => [
       {
         check: 'label-content-name-mismatch',

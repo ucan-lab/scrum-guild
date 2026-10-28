@@ -245,11 +245,14 @@
   }
 
   // 並べ替えの「上へ」「下へ」と「親を移す」（本番の TaskEntry、TreeStory と同じ組み方）。
-  // order: { first, last, parent }。端の向きは aria-disabled（フォーカスを失わない）。parent が真なら「親を移す」も出す
+  // order: { first, last, parent, across }。端の向きは aria-disabled（フォーカスを失わない）。parent が真なら「親を移す」も出す。
+  // across: { first, last } を渡すと、スプリントの画面のカードのように、隣の列へ移す「前の列へ」「次の列へ」を両端に足す
   function orderActions(title, order) {
     const btn = (name, label, disabled) =>
       `<button class="icon-btn" type="button" data-order="${name}" aria-label="${label}: ${esc(title)}" title="${label}"${disabled === undefined ? "" : ` aria-disabled="${disabled}"`}>${icon(name)}</button>`;
-    return `<span class="order-actions">${btn("up", "上へ", Boolean(order.first))}${btn("down", "下へ", Boolean(order.last))}${order.parent ? btn("swap", "親を移す") : ""}</span>`;
+    const left = order.across ? btn("left", `前の${t("column")}へ`, Boolean(order.across.first)) : "";
+    const right = order.across ? btn("right", `次の${t("column")}へ`, Boolean(order.across.last)) : "";
+    return `<span class="order-actions">${left}${btn("up", "上へ", Boolean(order.first))}${btn("down", "下へ", Boolean(order.last))}${right}${order.parent ? btn("swap", "親を移す") : ""}</span>`;
   }
 
   // 行の先頭のつまみ（飾りで、aria-hidden）。order を渡した行（書き込めるとき）だけに付く。
@@ -379,23 +382,30 @@
   }
 
   // スプリントのカード（列の中）
-  function card(x) {
+  // order を渡したカード（完了していないカード）は tabindex="0" で選べ、下に移す操作（.order-actions）を持つ。
+  // キーボードでは、選んで Alt と ← → で隣の列、Alt と ↑ ↓ で列の中を動かす（本番の SprintBoard）。完了の列のカードは動かさない
+  function card(x, order) {
     const parent = x.story ? D.stories[x.story].title : null;
-    return `<article class="card ${x.doneAt ? "is-done" : ""}">
+    return `<article class="card ${x.doneAt ? "is-done" : ""}"${order ? ` tabindex="0" aria-label="${esc(x.title)}"` : ""}>
       ${parent ? `<span class="card-parent">${icon("flag")} ${esc(parent)}</span>` : ""}
       <a class="card-title" href="#" data-task="${x.id}">${titleOf(x)}</a>
       <div class="card-meta">${repoTag(x)}${sourceKey(x)}${taskFlags(x)}${taskDue(x)}</div>
       <div class="card-foot">${pts(x.pts)}${avatarOf(x.who)}<span class="card-end">${doneControl(x)}</span></div>
+      ${order ? `<div class="card-moves">${orderActions(x.title, order)}</div>` : ""}
     </article>`;
   }
   function board(sprintId) {
     const list = tasksWhere((x) => x.sprint === sprintId);
-    return `<div class="board-wrap"><div class="board">${D.columns.map((c) => {
+    const open = D.columns.filter((c) => !c.done);
+    return `<div class="board-wrap"><div class="board" style="--board-cols:${D.columns.length}">${D.columns.map((c) => {
       const items = list.filter((x) => (c.done ? x.doneAt : !x.doneAt && x.col === c.id));
+      const at = open.indexOf(c);
+      // 完了の列へはここから移さない（完了にするのは各カードの完了の操作）ので、最後の完了でない列の「次の列へ」は押せない
+      const orderOf = (i) => ({ first: i === 0, last: i === items.length - 1, across: { first: at === 0, last: at === open.length - 1 } });
       return `<section class="board-col ${c.done ? "is-done" : ""}" aria-label="${c.done ? t("done") : esc(c.name)}">
         <div class="board-col-head">${c.done ? icon("check") : ""}<span class="board-col-name">${c.done ? t("done") : esc(c.name)}</span><span class="board-col-n">${items.length}</span><span class="board-col-pts">${sumPts(items)} pt</span></div>
         ${c.done && D.definitionOfDone.length ? `<details class="dod"><summary>${t("dod")}</summary>${dodDoc()}</details>` : ""}
-        ${items.map(card).join("") || `<p class="board-empty">なし</p>`}
+        ${items.map((x, i) => card(x, c.done ? undefined : orderOf(i))).join("") || `<p class="board-empty">なし</p>`}
       </section>`;
     }).join("")}</div></div>`;
   }
@@ -500,7 +510,7 @@
     const ticks = Array.from({ length: s.days }, (_, i) => `<i class="${i < s.dayIndex ? "is-past" : i === s.dayIndex ? "is-today" : ""}"></i>`).join("");
     return `<article class="notice">
       <span class="notice-label">${t("sprintGoal")}</span>
-      <p class="notice-title">${esc(s.goal)}</p>
+      <p class="notice-title is-goal">${esc(s.goal)}</p>
       <div class="notice-meta">${opts.showWs !== false ? `<span>${esc(D.workspaces[s.ws].name)}</span>` : ""}<span>${sprintLabel(id)}</span>${s.name ? `<span class="mono">${md(s.start)}〜${md(s.end)}</span>` : ""}<span>残り ${s.days - s.dayIndex} 日</span></div>
       <div class="day-ticks" role="img" aria-label="${s.days} 日のうち ${s.dayIndex + 1} 日目">${ticks}</div>
     </article>`;

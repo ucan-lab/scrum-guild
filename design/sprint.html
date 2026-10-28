@@ -48,7 +48,7 @@ SQ.mount("sprint", () => {
     ], actions)}
     ${sprintNotice("sp14", { showWs: false })}
     ${board("sp14")}
-    <p class="action-note">カードはドラッグで列を移せます。キーボードでは、カードを選んで Alt と ← → で移せます。</p>
+    <p class="action-note">カードはドラッグで列を移せます。キーボードでは、カードを選んで Alt と ← → で隣の${t("column")}、Alt と ↑ ↓ で${t("column")}の中を動かせます。カードの下のボタンでも同じです。</p>
     <section class="section" aria-labelledby="cap">
       <div class="section-head"><h2 class="section-title" id="cap">この${t("sprint")}の${t("capacity")}</h2><span class="section-hint">1 ${t("points")} = ${D.hoursPerPoint} 時間・許容幅 ±12.5%</span></div>
       <div class="panel"><div class="grid-2">${capacityRows()}</div></div>

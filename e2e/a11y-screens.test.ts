@@ -3,8 +3,11 @@
 // seed のセッション（seed/sessions.ts）の Cookie で開く。あおば開発の管理者はミナト。受託開発チームはゲームの言葉。
 // 読むだけにし、seed の行もテーマの設定も書き換えない（ほかのファイルと並べて走るため）
 import type { Locator, Page } from '@playwright/test';
+import { sprintBoard } from '../src/shared/operations/sprint/index.ts';
 import { expect, test } from './fixtures.ts';
 import { expectNoA11yViolationsInThemes, signIn } from './helpers.ts';
+import { mockOperation } from './operations.ts';
+import { SAMPLE_BOARD } from './sprint-fixture.ts';
 import type { UiScreen } from './ui-exclusions.ts';
 
 const WORKSPACE = '/aoba/w/019a0000-0000-7000-8000-000000000401';
@@ -15,7 +18,13 @@ test.beforeEach(async ({ context, baseURL }) => {
 });
 
 // 画面ごとの URL と、落ち着いたとみなす要素（見出しと、読み込んで描く主な要素）
-const screens: { screen: UiScreen; path: string; ready: (page: Page) => Locator[] }[] = [
+const screens: {
+  screen: UiScreen;
+  path: string;
+  // 画面を開く前に、応答の差し替えなどを済ませる
+  prepare?: (page: Page) => Promise<unknown>;
+  ready: (page: Page) => Locator[];
+}[] = [
   {
     screen: 'today',
     path: '/aoba',
@@ -50,6 +59,16 @@ const screens: { screen: UiScreen; path: string; ready: (page: Page) => Locator[
     ready: (page) => [page.getByRole('heading', { level: 1, name: '遠征の計画' })],
   },
   {
+    screen: 'sprint',
+    path: `${WORKSPACE}/sprint`,
+    // seed には進行中のスプリントを置かない（ほかのファイルが始める）ので、架空のスプリントと列とカードに差し替える
+    prepare: (page) => mockOperation(page, sprintBoard, { slug: 'aoba' }, SAMPLE_BOARD),
+    ready: (page) => [
+      page.getByRole('heading', { level: 1, name: '遠征 第14回' }),
+      page.getByRole('article', { name: 'ポイント付与のバッチを作る' }),
+    ],
+  },
+  {
     screen: 'members',
     path: `${WORKSPACE}/members`,
     ready: (page) => [
@@ -73,8 +92,9 @@ const screens: { screen: UiScreen; path: string; ready: (page: Page) => Locator[
   },
 ];
 
-for (const { screen, path, ready } of screens) {
+for (const { screen, path, prepare, ready } of screens) {
   test(`${screen}（${path}）に axe の違反が無い`, async ({ page }) => {
+    await prepare?.(page);
     await page.goto(path);
     for (const locator of ready(page)) await expect(locator.first()).toBeVisible();
     // 節ごとに読む部品（休日、言葉づかい、決まった欄など）は aria-busy を付けないものもあるので、

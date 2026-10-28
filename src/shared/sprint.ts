@@ -4,6 +4,7 @@
 import { z } from 'zod';
 import './zod-config.ts';
 import { isCalendarDate } from './due.ts';
+import { hasHiddenCharacter } from './hidden-characters.ts';
 import { BLANK_CHARACTERS, shortTextProblem } from './text-rules.ts';
 
 // 長さは 1〜28 日（DB の CHECK と同じ）。前のスプリントが無いときの初期値は 14 日
@@ -36,6 +37,39 @@ export const sprintNameSchema = z
     const problem = sprintNameProblem(value);
     if (problem !== null) {
       ctx.addIssue({ code: 'custom', message: `スプリントの名前が使えない（${problem}）` });
+      return z.NEVER;
+    }
+    return value;
+  })
+  .nullable();
+
+// ゴール（始めるときに書く、任意の文）。前後の空白を除いて 0〜200 字（コードポイントで数える）。改行は入れられる（LF にそろえる）。
+// 断る文字は名前と同じ（hidden-characters.ts）が、改行（LF）と字下げのタブは通す
+export const SPRINT_GOAL_MAX_LENGTH = 200;
+
+export type SprintGoalProblem = 'too_long' | 'invalid_character';
+
+// 前後の空白を除き、改行を LF にそろえる。空白（と見えない空白）だけのゴールは空と同じで、null にそろえる
+export function normalizeSprintGoal(raw: string): string | null {
+  const value = raw.replace(/\r\n?/g, '\n').trim();
+  return value.replace(BLANK_CHARACTERS, '') === '' ? null : value;
+}
+
+// value は normalizeSprintGoal を通した後の値。空（null）はゴールなしで、誤りではない
+export function sprintGoalProblem(value: string | null): SprintGoalProblem | null {
+  if (value === null) return null;
+  if (hasHiddenCharacter(value.replace(/[\n\t]/g, ' '))) return 'invalid_character';
+  if ([...value].length > SPRINT_GOAL_MAX_LENGTH) return 'too_long';
+  return null;
+}
+
+export const sprintGoalSchema = z
+  .string()
+  .transform((raw, ctx) => {
+    const value = normalizeSprintGoal(raw);
+    const problem = sprintGoalProblem(value);
+    if (problem !== null) {
+      ctx.addIssue({ code: 'custom', message: `スプリントのゴールが使えない（${problem}）` });
       return z.NEVER;
     }
     return value;
@@ -109,4 +143,16 @@ export function sprintDefaults(
   }
   const ahead = (weekStart - weekdayOf(today) + 7) % 7 || 7;
   return { start_on: addDays(today, ahead) ?? today, length: SPRINT_DEFAULT_LENGTH };
+}
+
+export type SprintProgress = { day: number; length: number; remaining: number };
+
+// 進行中のスプリントの「N 日のうち M 日目」と残りの日数。today はワークスペースのタイムゾーンでの今日。
+// 開始日の前に始めたときは 1 日目、最終日を過ぎたときは最終日の日（残り 0）に丸める
+export function sprintProgress(sprint: { start_on: string; end_on: string }, today: string): SprintProgress {
+  const length = sprintLengthOf(sprint.start_on, sprint.end_on);
+  const start = dayNumberOf(sprint.start_on)!;
+  const now = dayNumberOf(today);
+  const day = now === null ? 1 : Math.min(Math.max(now - start + 1, 1), length);
+  return { day, length, remaining: length - day };
 }
