@@ -662,8 +662,16 @@ export async function expectModalFocus(
   await expect(target, '閉じたらフォーカスが戻らない').toBeFocused({ timeout });
   // Chromium の <dialog> は close() の中で開いたボタンへフォーカスを戻し、close イベントは後のタスクで出す。
   // close イベントで別の場所へ移すダイアログでも、その前の一瞬は戻る先にフォーカスがあり、上の確かめが通ってしまう。
-  // 2回描画を待った後に、まだ戻る先にあることを待たずに確かめる
-  await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+  // 2回描画を待った後に、まだ戻る先にあることを待たずに確かめる。描画が止まったページで待ち続けないよう、
+  // timeout（無ければ expect の既定と同じ 5 秒）で待ちを切る
+  await page.evaluate(
+    (limit) =>
+      new Promise((resolve) => {
+        requestAnimationFrame(() => requestAnimationFrame(resolve));
+        setTimeout(resolve, limit);
+      }),
+    timeout ?? 5000,
+  );
   expect(
     await target.evaluate((element) => element === document.activeElement, undefined, { timeout }),
     '閉じたらフォーカスが戻らない（一瞬戻ってすぐ外れる）',
