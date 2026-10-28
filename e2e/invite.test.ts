@@ -91,14 +91,23 @@ test('秘密が無い、形の合わない URL は、使えない旨を出して
 test('URL を置き換える移動が遅く、読み込み中の表示で画面が作り直されても、秘密を失わずにボタンを出す', async ({
   page,
 }) => {
-  // root のレイアウトは、移動が 300ms を超えると画面を読み込み中の表示に替える。その待ちをすぐに切らせ、遅い端末を再現する
+  // root のレイアウトは、移動が 300ms を超えると画面を読み込み中の表示に替える。その待ちをすぐに切らせ、遅い端末を再現する。
+  // 作り直しが起きたことは、読み込み中の表示が一度出たことで確かめる（起きないまま通ると、秘密を失う退行を見逃す）
   await page.addInitScript(() => {
     const original = window.setTimeout;
     window.setTimeout = ((handler: TimerHandler, timeout?: number, ...rest: unknown[]) =>
       original(handler, timeout === 300 ? 0 : timeout, ...rest)) as typeof window.setTimeout;
+    const seen = { loading: false };
+    Object.assign(window, { e2eLoadingSeen: seen });
+    new MutationObserver(() => {
+      if (document.body?.textContent?.includes('読み込んでいます')) seen.loading = true;
+    }).observe(document, { childList: true, subtree: true, characterData: true });
   });
   await page.goto(`/invite#${CLAIM_TOKEN}`);
   await expect(page.getByRole('button', { name: 'Google でログイン' })).toBeVisible();
+  expect(
+    await page.evaluate(() => (window as unknown as { e2eLoadingSeen: { loading: boolean } }).e2eLoadingSeen.loading),
+  ).toBe(true);
   await expect(page.getByRole('alert')).toHaveCount(0);
   await expect(page).toHaveURL(/\/invite$/);
 });
