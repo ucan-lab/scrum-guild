@@ -15,13 +15,14 @@ export const reassignAdminProblems = [
 export type ReassignAdminProblem = (typeof reassignAdminProblems)[number];
 
 // 既にある組織に、管理者を指名し直す（Issue #217）。どの組織にも（管理者の状態が active の組織にも、停止中の組織にも）指名できる。
-// その組織の、まだログインしていない前の指名（account_id が空の users の行）を消し、続けて指名する。前の管理者の印は外さない。
+// その組織の、まだログインしていない前の指名（account_id が空の users の行）を取り消し（ワークスペースの所属を持つ行は消さずに
+// 管理者の印を外し、ほかは消す）、続けて指名する。ログインした前の管理者の印は外さない。
 // 指し方と応答は組織の作成と同じ。GitHub は同じ組織に既にいる人なら、その人を管理者にする（無効にされていれば戻す）。
 // 無い slug は 404 の not_found、GitHub に届かないときは 503 の unavailable、競合は 409 の conflict。
 // 応答に組織の中のデータ（人の名前や ID）を入れない
 export const organizationAdminReassign = defineOperation({
   name: 'organization-admin-reassign',
-  description: '既にある組織に管理者を指名し直す。まだログインしていない前の指名は消す',
+  description: '既にある組織に管理者を指名し直す。まだログインしていない前の指名は取り消す',
   mode: 'write',
   permission: 'operator',
   input: z.object({
