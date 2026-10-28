@@ -4,7 +4,12 @@
 // 落とすもの:
 //   - callOperation(...) の3番目の引数が無いか、その object の fetcher が load の引数の fetch でない。
 //     3番目の引数が識別子なら、同じファイルの変数宣言の object literal を辿る。辿れない形は落とす
-//   - getHealth(...) の1番目の引数が load の引数の fetch でない
+//   - getHealth(...) の1番目の引数が load の引数の fetch でない（今は load から呼ぶものは無い。+page.svelte だけが呼ぶ）
+//   - callOperation と getHealth を、別名や名前空間で取り込む（上の検査に当たらなくなる）
+//   - window.fetch、globalThis.fetch、self.fetch と、load の引数で受けていない fetch の呼び出し
+//   - load の引数の fetch を、fetcher と getHealth と直接の呼び出しのほかへ渡す（包んだ関数の中で使われるかを確かめられない）
+// 確かめられないもの: load が $lib の関数を呼び、その関数の中で fetcher 無しの callOperation を使う書き方。load から API を
+// 呼ぶときは、callOperation か getHealth か fetch を load の中で直に呼ぶ
 import { readdirSync, readFileSync } from 'node:fs';
 import { join, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -12,14 +17,15 @@ import ts from 'typescript';
 import { describe, expect, test } from 'vitest';
 
 const routesDir = fileURLToPath(new URL('.', import.meta.url));
-const LOAD_FILES = new Set(['+page.ts', '+layout.ts']);
+// +page.ts と +layout.ts のほか、レイアウトを飛ばす名前（+page@.ts など）と .js も拾う
+const LOAD_FILE = /^\+(page|layout)(@[^.]*)?\.(ts|js)$/;
 
 function loadFiles(dir: string): string[] {
   const files: string[] = [];
   for (const entry of readdirSync(dir, { withFileTypes: true })) {
     const path = join(dir, entry.name);
     if (entry.isDirectory()) files.push(...loadFiles(path));
-    else if (LOAD_FILES.has(entry.name)) files.push(path);
+    else if (LOAD_FILE.test(entry.name)) files.push(path);
   }
   return files;
 }
@@ -71,6 +77,40 @@ function fetcherOf(object: ts.ObjectLiteralExpression): ts.Expression | undefine
   return undefined;
 }
 
+// 識別子 fetch が、宣言の名前（`{ fetch }` の分割代入）か、プロパティの名前（`window.fetch` の fetch、`{ fetch: … }` の fetch）か
+function isDeclarationName(node: ts.Identifier): boolean {
+  const parent = node.parent;
+  return (
+    (ts.isBindingElement(parent) && (parent.name === node || parent.propertyName === node)) ||
+    (ts.isPropertyAccessExpression(parent) && parent.name === node) ||
+    (ts.isPropertyAssignment(parent) && parent.name === node)
+  );
+}
+
+function isCallee(node: ts.Identifier): boolean {
+  return ts.isCallExpression(node.parent) && node.parent.expression === node;
+}
+
+function isFetcherValue(node: ts.Expression): boolean {
+  const parent = node.parent;
+  return (
+    ts.isPropertyAssignment(parent) &&
+    parent.initializer === node &&
+    ts.isIdentifier(parent.name) &&
+    parent.name.text === 'fetcher'
+  );
+}
+
+function isGetHealthArgument(node: ts.Expression): boolean {
+  const parent = node.parent;
+  return (
+    ts.isCallExpression(parent) &&
+    ts.isIdentifier(parent.expression) &&
+    parent.expression.text === 'getHealth' &&
+    parent.arguments[0] === node
+  );
+}
+
 function checkLoadFetch(code: string, fileName = 'load.ts'): LoadFetchResult {
   const source = ts.createSourceFile(fileName, code, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
   const problems: string[] = [];
@@ -80,6 +120,43 @@ function checkLoadFetch(code: string, fileName = 'load.ts'): LoadFetchResult {
     problems.push(`${fileName}:${line + 1}: ${message}`);
   };
   const visit = (node: ts.Node) => {
+    // callOperation と getHealth を別名や名前空間で取り込むと、下の名前の検査に当たらない
+    if (ts.isImportDeclaration(node) && ts.isStringLiteral(node.moduleSpecifier)) {
+      const fromApi = /lib\/api(\.ts)?$/.test(node.moduleSpecifier.text);
+      const bindings = node.importClause?.namedBindings;
+      const aliased =
+        bindings !== undefined &&
+        ts.isNamedImports(bindings) &&
+        bindings.elements.some(
+          (element) =>
+            element.propertyName !== undefined &&
+            ['callOperation', 'getHealth'].includes(element.propertyName.text) &&
+            element.name.text !== element.propertyName.text,
+        );
+      if (fromApi && ((bindings !== undefined && ts.isNamespaceImport(bindings)) || aliased)) {
+        report(node, 'callOperation と getHealth は lib/api.ts からそのままの名前で取り込む');
+      }
+    }
+    // window.fetch などのグローバルの fetch は、load の間に呼ぶと SvelteKit の fetch を通らない
+    if (
+      ts.isPropertyAccessExpression(node) &&
+      node.name.text === 'fetch' &&
+      ts.isIdentifier(node.expression) &&
+      ['window', 'globalThis', 'self'].includes(node.expression.text) &&
+      // fetcher と getHealth に渡したものは、下の callOperation と getHealth の検査が挙げる
+      !isFetcherValue(node) &&
+      !isGetHealthArgument(node)
+    ) {
+      report(node, 'グローバルの fetch でなく、load の引数の fetch を使う');
+    }
+    if (ts.isIdentifier(node) && node.text === 'fetch' && !isDeclarationName(node)) {
+      if (!isLoadFetch(node)) {
+        if (isCallee(node)) report(node, 'グローバルの fetch でなく、load の引数の fetch を使う');
+      } else if (!isCallee(node) && !isFetcherValue(node) && !isGetHealthArgument(node)) {
+        // 包んだ関数に渡すと、その中で使われるかを確かめられない
+        report(node, 'load の引数の fetch は、fetcher と getHealth と直接の呼び出しのほかへ渡さない');
+      }
+    }
     if (ts.isCallExpression(node) && ts.isIdentifier(node.expression)) {
       const name = node.expression.text;
       if (name === 'callOperation') {
@@ -151,12 +228,40 @@ describe('checkLoadFetch', () => {
     const imported = `${head}import { options } from './options.ts';
 export const load = async ({ fetch }) => callOperation(x, {}, options);`;
     const notObject = `${head}export const load = async ({ fetch }) => {
-  const options = makeOptions(fetch);
+  const options = makeOptions(params);
   return callOperation(x, {}, options);
 };`;
     for (const code of [imported, notObject]) {
       expect(checkLoadFetch(code).problems).toEqual([expect.stringMatching(/辿れない/)]);
     }
+  });
+
+  test('callOperation と getHealth を別名や名前空間で取り込むものを落とす（検査に当たらなくなるため）', () => {
+    const aliased = `import { callOperation as call } from '$lib/api.ts';
+export const load = async ({ fetch }) => call(x, {});`;
+    const namespaced = `import * as api from '../../lib/api.ts';
+export const load = async ({ fetch }) => api.callOperation(x, {});`;
+    for (const code of [aliased, namespaced]) {
+      expect(checkLoadFetch(code).problems).toEqual([expect.stringMatching(/そのままの名前で取り込む/)]);
+    }
+  });
+
+  test('window.fetch と globalThis.fetch を落とす', () => {
+    for (const target of ['window.fetch', 'globalThis.fetch', 'self.fetch']) {
+      const code = `${head}export const load = async ({ fetch }) => ${target}('/api/aoba/x');`;
+      expect(checkLoadFetch(code).problems).toEqual([expect.stringMatching(/load の引数の fetch を使う/)]);
+    }
+  });
+
+  test('load の引数の fetch を、fetcher と getHealth のほかへ渡すものを落とす（包んだ関数の中で使われるか分からないため）', () => {
+    const code = `${head}import { readAll } from '$lib/read-all.ts';
+export const load = async ({ fetch }) => readAll(fetch);`;
+    expect(checkLoadFetch(code).problems).toEqual([expect.stringMatching(/ほかへ渡さない/)]);
+  });
+
+  test('load の引数の fetch をそのまま呼ぶのは通す', () => {
+    const code = `export const load = async ({ fetch }) => fetch('/api/health');`;
+    expect(checkLoadFetch(code)).toEqual({ calls: 0, problems: [] });
   });
 
   test('getHealth() の引数が無いものと、fetch でないものを落とす', () => {

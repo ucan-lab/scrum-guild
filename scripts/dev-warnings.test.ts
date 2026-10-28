@@ -108,11 +108,15 @@ describe('isKnownDevWarning', () => {
     for (const known of KNOWN_DEV_WARNINGS) assert.match(known.reason, /#\d+|テスト/);
   });
 
-  test('window_fetch_in_load のほかの既知の警告は、名前だけでなく中身か画面のパスで絞る', () => {
+  test('既知の警告は、中身か画面のパスで絞る。絞らない行は nameOnly を付ける（今は window_fetch_in_load だけ）', () => {
     for (const known of KNOWN_DEV_WARNINGS) {
-      if (known.name === '[sveltekit] window_fetch_in_load') continue;
-      assert.ok(known.detail ?? known.path, known.name);
+      const narrowed = known.detail !== undefined || known.path !== undefined;
+      assert.notEqual(narrowed, known.nameOnly === true, known.name);
     }
+    assert.deepEqual(
+      KNOWN_DEV_WARNINGS.filter((known) => known.nameOnly === true).map((known) => known.name),
+      ['[sveltekit] window_fetch_in_load'],
+    );
   });
 });
 
