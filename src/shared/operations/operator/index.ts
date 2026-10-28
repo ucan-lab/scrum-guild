@@ -22,7 +22,14 @@ export {
 };
 export { reassignAdminProblems, type ReassignAdminProblem } from './organization-admin-reassign.ts';
 export { ATTACHMENT_QUOTA_MAX_BYTES, MEMBER_LIMIT_MAX, QUOTA_GIB, quotaTiers } from './organization-quota-update.ts';
-export { PURGE_AFTER_DAYS, purgeDateOf, suspensionKinds, type SuspensionKind } from './organization-suspend.ts';
+export {
+  isPurgeDue,
+  PURGE_AFTER_DAYS,
+  purgeDateOf,
+  suspensionKinds,
+  utcDateOf,
+  type SuspensionKind,
+} from './organization-suspend.ts';
 export {
   adminNomineeInput,
   createOrganizationProblems,

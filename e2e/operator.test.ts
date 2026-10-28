@@ -17,6 +17,7 @@ type ListedOrganization = {
   name: string;
   suspended_at: string | null;
   purge_on: string | null;
+  purge_due: boolean;
   created_at: string;
   admin_status: 'none' | 'pending' | 'expired' | 'active';
   seats: { used: number; limit: number };
@@ -31,6 +32,7 @@ const organization = (overrides: Partial<ListedOrganization>): ListedOrganizatio
   name: 'あおば開発',
   suspended_at: null,
   purge_on: null,
+  purge_due: false,
   created_at: '2026-10-01T09:30:00.000Z',
   admin_status: 'active',
   seats: { used: 5, limit: 15 },
@@ -1076,6 +1078,93 @@ test.describe('運用者', () => {
     const row = page.locator('.table tbody tr', { hasText: 'ひばり工房' });
     await expect(row.locator('.chip.is-warn')).toHaveText('停止 2026-10-10');
     await expect(row.locator('.chip.is-danger')).toHaveText('2026-11-25 に消す');
+  });
+
+  test('消す予定日を過ぎた解約の組織の行は、「停止の理由を変える」と「再開する」を出さず、再開できない理由を出す', async ({
+    page,
+  }) => {
+    await mockList(page, [
+      organization({
+        slug: 'kiri',
+        name: 'きり製作所',
+        suspended_at: '2026-09-10T00:00:00.000Z',
+        purge_on: '2026-10-10',
+        purge_due: true,
+      }),
+      organization({
+        slug: 'nagi',
+        name: 'なぎ設計',
+        suspended_at: '2026-10-11T00:00:00.000Z',
+        purge_on: '2026-11-10',
+      }),
+    ]);
+    const collect = await watchViolations(page);
+    await page.goto('/operator');
+    const due = page.locator('.table tbody tr', { hasText: 'きり製作所' });
+    await expect(due.locator('.chip.is-danger')).toHaveText('2026-10-10 に消す');
+    const actions = due.locator('td.is-actions');
+    // 管理者の指名し直しは残す
+    await expect(actions.getByRole('button')).toHaveText(['ギルドマスターを指名']);
+    await expect(actions.locator('.props-note')).toHaveText('消す予定日を過ぎたので再開できません');
+    // 予定日を過ぎていない解約の組織は、今どおり両方を出す
+    await expect(
+      page.locator('.table tbody tr', { hasText: 'なぎ設計' }).locator('td.is-actions').getByRole('button'),
+    ).toHaveText(['ギルドマスターを指名', '停止の理由を変える', '再開する']);
+    expect(await collect()).toEqual([]);
+  });
+
+  test('開いた後に予定日を過ぎ、再開や理由の切り替えが purge_due で断られたら、理由を知らせて読み直し、理由へフォーカスを移す', async ({
+    page,
+  }) => {
+    const listed = [
+      organization({
+        slug: 'kiri',
+        name: 'きり製作所',
+        suspended_at: '2026-09-10T00:00:00.000Z',
+        purge_on: '2026-10-10',
+      }),
+      organization({
+        slug: 'nagi',
+        name: 'なぎ設計',
+        suspended_at: '2026-10-11T00:00:00.000Z',
+        purge_on: '2026-10-10',
+      }),
+    ];
+    await page.route('**/api/list-organizations', (route) => route.fulfill({ json: { organizations: listed } }));
+    const purgeDue = { status: 409, json: { error: { code: 'purge_due', message: 'x' } } };
+    await page.route('**/api/organization-resume', (route) => {
+      listed[0] = { ...listed[0]!, purge_due: true };
+      return route.fulfill(purgeDue);
+    });
+    let sent: unknown;
+    await page.route('**/api/organization-suspension-update', (route) => {
+      sent = route.request().postDataJSON();
+      listed[1] = { ...listed[1]!, purge_due: true };
+      return route.fulfill(purgeDue);
+    });
+    await page.goto('/operator');
+
+    await page.getByRole('button', { name: '「きり製作所」を再開する' }).click();
+    await expect(
+      page.getByRole('status').filter({ hasText: '「きり製作所」は消す予定日を過ぎたので再開できません' }),
+    ).toBeVisible();
+    const kiri = page.locator('.table tbody tr', { hasText: 'きり製作所' }).locator('td.is-actions');
+    await expect(kiri.getByRole('button')).toHaveText(['ギルドマスターを指名']);
+    await expect(kiri.locator('.props-note')).toBeFocused();
+
+    await page.getByRole('button', { name: '「なぎ設計」の停止の理由を変える' }).click();
+    const dialog = page.getByRole('dialog', { name: '停止の理由を変える' });
+    await dialog.getByRole('radio', { name: /一時的に止める/ }).check();
+    await dialog.getByRole('button', { name: '変える' }).click();
+    await expect(dialog).toBeHidden();
+    expect(sent).toEqual({ slug: 'nagi', kind: 'temporary' });
+    await expect(
+      page.getByRole('status').filter({ hasText: '「なぎ設計」は消す予定日を過ぎたので、停止の理由を変えられません' }),
+    ).toBeVisible();
+    const nagi = page.locator('.table tbody tr', { hasText: 'なぎ設計' }).locator('td.is-actions');
+    await expect(nagi.getByRole('button')).toHaveText(['ギルドマスターを指名']);
+    await expect(nagi.locator('.props-note')).toHaveText('消す予定日を過ぎたので再開できません');
+    await expect(nagi.locator('.props-note')).toBeFocused();
   });
 
   test('長い組織の名前は、停止のダイアログの本文で折り返し、横にはみ出さない', async ({ page }) => {

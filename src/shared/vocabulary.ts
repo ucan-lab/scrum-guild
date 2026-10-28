@@ -784,6 +784,18 @@ export const dictionary = defineDictionary({
     '「{name}」を操作できませんでした。見つからないか、操作できない状態です。一覧で状態を確かめてください',
     '「{name}」を操作できませんでした。見つからないか、操作できない状態です。一覧で状態を確かめてください',
   ),
+  // 解約で消す予定日を過ぎた組織（一覧の purge_due、操作の 409 の purge_due）。消している途中で戻さないよう、再開と
+  // 一時的な停止への切り替えはサーバーが断る。一覧の行では「停止の理由を変える」と「再開する」の代わりに出す
+  operatorPurgeDue: organization('消す予定日を過ぎたので再開できません', '消す予定日を過ぎたので再開できません'),
+  // 一覧を開いた後に日付が変わり、操作が purge_due で断られたときのトースト。{name} は組織の名前
+  operatorResumePurgeDue: organization(
+    '「{name}」は消す予定日を過ぎたので再開できません',
+    '「{name}」は消す予定日を過ぎたので再開できません',
+  ),
+  operatorChangePurgeDue: organization(
+    '「{name}」は消す予定日を過ぎたので、停止の理由を変えられません',
+    '「{name}」は消す予定日を過ぎたので、停止の理由を変えられません',
+  ),
   operatorAdminNone: organization('{admin}がいない', '{admin}がいない'),
   operatorAdminPending: organization('{admin}は指名済み、ログイン待ち', '{admin}は指名済み、ログイン待ち'),
   operatorAdminExpired: organization('{admin}の招待の URL は期限切れ', '{admin}の招待の URL は期限切れ'),

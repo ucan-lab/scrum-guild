@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { tick } from 'svelte';
   import { invalidateAll } from '$app/navigation';
   import { page } from '$app/state';
   import { callOperation } from '../../lib/api.ts';
@@ -32,8 +33,12 @@
   // 作成のダイアログは一覧の読み込みの成否に関わらず置く。作った後に一覧の読み直しが失敗しても、完了の表示（組織の URL）を消さない。
   // 「停止する」は確認のダイアログ（停止の理由を選ぶ）を経て、「再開する」は確認なしで送る。
   // 再開を送っている間は、どの行のボタンも aria-disabled にして押しても無視する。
+  // 解約で消す予定日を過ぎた組織（一覧の purge_due）の行は、「停止の理由を変える」と「再開する」を出さず、できない理由を出す
+  // （サーバーは再開と一時的な停止への切り替えを 409 の purge_due で断る）。画面を開いた後に日付が変わって purge_due で断られたときは、
+  // 理由をトーストで出して一覧を読み直し、押したボタンが消えるので、その行の理由へフォーカスを移す。
   // 添付ファイルの上限の列の「人数と容量の上限を変える」（link-btn）は、上限の変更のダイアログを開く。変えた後は一覧を読み直す
   let { data }: PageProps = $props();
+  const ids = $props.id();
 
   let dialog = $state<ReturnType<typeof CreateOrganizationDialog>>();
   let dialogOpen = $state(false);
@@ -75,6 +80,11 @@
       } else if (result.status === 409 && result.error?.code === 'conflict') {
         // 別の画面で先に操作されていた。再開されたのか、停止し直されたのかは言い切らず、読み直した一覧を見てもらう
         showToast(t('operatorStateChanged', { name: row.name }), 'alert');
+      } else if (result.status === 409 && result.error?.code === 'purge_due') {
+        showToast(t('operatorResumePurgeDue', { name: row.name }), 'alert');
+        await invalidateAll();
+        await focusPurgeDue(row.slug);
+        return;
       } else if (result.status === 404 || result.status === 403) {
         showToast(t('operatorUnavailable', { name: row.name }), 'alert');
       } else {
@@ -87,7 +97,7 @@
   }
 
   // 停止の確認と、停止の理由を変えるダイアログの結果。どちらのダイアログだったかは、開いたときの対象（currentKind）で分かる
-  function suspendFinished(outcome: 'done' | 'state_changed' | 'unavailable' | 'unauthenticated'): void {
+  function suspendFinished(outcome: 'done' | 'state_changed' | 'purge_due' | 'unavailable' | 'unauthenticated'): void {
     if (outcome === 'unauthenticated') {
       window.location.assign(loginUrl(page.url));
       return;
@@ -97,8 +107,23 @@
       const key = suspending?.currentKind === undefined ? 'operatorSuspendDone' : 'operatorChangeDone';
       showToast(t(key, { name }), 'check');
     } else if (outcome === 'state_changed') showToast(t('operatorStateChanged', { name }), 'alert');
-    else showToast(t('operatorUnavailable', { name }), 'alert');
+    else if (outcome === 'purge_due') {
+      showToast(t('operatorChangePurgeDue', { name }), 'alert');
+      const slug = suspending?.slug;
+      void invalidateAll().then(() => {
+        if (slug !== undefined) void focusPurgeDue(slug);
+      });
+      return;
+    } else showToast(t('operatorUnavailable', { name }), 'alert');
     void invalidateAll();
+  }
+
+  // 消す予定日を過ぎた組織の行の、できない理由の注記。押したボタンが読み直しで消えたときのフォーカスの移し先
+  const purgeDueId = (slug: string) => `${ids}-purge-due-${slug}`;
+
+  async function focusPurgeDue(slug: string): Promise<void> {
+    await tick();
+    document.getElementById(purgeDueId(slug))?.focus();
   }
 
   // 上限の変更のダイアログの結果。扱いは停止のダイアログと同じ
@@ -233,7 +258,8 @@
                   <td class="is-actions">
                     <!-- 停止中の行は「停止の理由を変える」と「再開する」、それ以外は「停止する」。右端のボタンは同じ要素のまま
                          文字だけを替え、読み直しでフォーカスを失わない。読み上げの名前に、どの組織かを添える。
-                         再開を送っている行は、見える文字も「再開しています」にする（名前は据え置く） -->
+                         再開を送っている行は、見える文字も「再開しています」にする（名前は据え置く）。
+                         消す予定日を過ぎた行は「管理者を指名」と、できない理由だけ -->
                     <span class="table-actions is-wrap">
                       <button
                         class="btn is-sm is-quiet"
@@ -246,7 +272,13 @@
                       >
                         {t('operatorReassignAction', words)}
                       </button>
-                      {#if organization.suspended_at !== null}
+                      {#if organization.purge_due}
+                        <!-- 消す予定日を過ぎた組織は、再開と停止の理由の切り替えを出さず、できない理由を出す。
+                             purge_due で断られた後のフォーカスの移し先にするので、tabindex="-1" -->
+                        <span class="props-note" id={purgeDueId(organization.slug)} tabindex="-1"
+                          >{t('operatorPurgeDue')}</span
+                        >
+                      {:else if organization.suspended_at !== null}
                         <button
                           class="btn is-sm is-quiet"
                           type="button"
@@ -257,27 +289,29 @@
                           {t('operatorChangeAction')}
                         </button>
                       {/if}
-                      <button
-                        class="btn is-sm is-quiet"
-                        class:is-danger={organization.suspended_at === null}
-                        type="button"
-                        aria-disabled={resumingSlug !== null}
-                        aria-label={organization.suspended_at !== null
-                          ? t('operatorResumeLabel', { name: organization.name })
-                          : t('operatorSuspendLabel', { name: organization.name })}
-                        onclick={(event) =>
-                          organization.suspended_at !== null
-                            ? void resume(organization)
-                            : suspend(organization, event.currentTarget)}
-                      >
-                        {#if resumingSlug === organization.slug}
-                          {t('operatorResuming')}
-                        {:else if organization.suspended_at !== null}
-                          {t('operatorResumeAction')}
-                        {:else}
-                          {t('operatorSuspendAction')}
-                        {/if}
-                      </button>
+                      {#if !organization.purge_due}
+                        <button
+                          class="btn is-sm is-quiet"
+                          class:is-danger={organization.suspended_at === null}
+                          type="button"
+                          aria-disabled={resumingSlug !== null}
+                          aria-label={organization.suspended_at !== null
+                            ? t('operatorResumeLabel', { name: organization.name })
+                            : t('operatorSuspendLabel', { name: organization.name })}
+                          onclick={(event) =>
+                            organization.suspended_at !== null
+                              ? void resume(organization)
+                              : suspend(organization, event.currentTarget)}
+                        >
+                          {#if resumingSlug === organization.slug}
+                            {t('operatorResuming')}
+                          {:else if organization.suspended_at !== null}
+                            {t('operatorResumeAction')}
+                          {:else}
+                            {t('operatorSuspendAction')}
+                          {/if}
+                        </button>
+                      {/if}
                     </span>
                   </td>
                 </tr>

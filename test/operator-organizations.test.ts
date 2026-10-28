@@ -578,6 +578,7 @@ describe('組織の一覧', () => {
       name: '一覧の工房',
       suspended_at: '2026-10-20T00:00:00.000Z',
       purge_on: null,
+      purge_due: false,
       created_at: organization.created_at,
       admin_status: 'pending',
       // 指名した管理者は、ログインする前から人数に数える
@@ -835,6 +836,7 @@ describe('組織ごとの集計', () => {
       'created_at',
       'last_used_at',
       'name',
+      'purge_due',
       'purge_on',
       'seats',
       'slug',
