@@ -33,15 +33,11 @@
   const workspace = $derived(data.workspace);
   // 直した後の読み直しに失敗しても（data.detail が null）、同じエピックの前に読めた値を残して知らせだけを出す。
   // 別のエピックへ移ったときは持ち越さない
-  let kept: { id: string; detail: NonNullable<typeof data.detail> } | null = null;
-  const detail = $derived.by(() => {
-    const id = page.params.epicId ?? '';
-    if (data.detail !== null) {
-      kept = { id, detail: data.detail };
-      return data.detail;
-    }
-    return kept?.id === id ? kept.detail : null;
+  let kept = $state<{ id: string; detail: NonNullable<typeof data.detail> } | null>(null);
+  $effect.pre(() => {
+    if (data.detail !== null) kept = { id: page.params.epicId ?? '', detail: data.detail };
   });
+  const detail = $derived(data.detail ?? (kept?.id === (page.params.epicId ?? '') ? kept.detail : null));
   const stale = $derived(data.detail === null && detail !== null && !data.notFound);
   const slug = $derived(page.params.slug ?? '');
   const canWrite = $derived(workspace !== null && workspace.closedAt === null);
