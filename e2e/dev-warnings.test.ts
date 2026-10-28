@@ -39,8 +39,8 @@ test('browser.newPage() で作った画面の警告で落ちる', async ({ brows
 
 // annotation（known-dev-warning）はテストの終わりに fixture が足すので、テストの中では確かめない
 test('既知の警告では落ちない', async ({ page }) => {
-  await page.goto('/invite');
-  await page.evaluate(() => console.warn('%c[sveltekit] history_api_conflict\n%c確かめのための警告', '', ''));
+  await page.goto('/foo/bar/baz');
+  await page.evaluate(() => console.warn('%c[sveltekit] hmr_reload_after_error\n%c確かめのための警告', '', ''));
 });
 
 test('ほかの console.warn では落ちない', async ({ page }) => {

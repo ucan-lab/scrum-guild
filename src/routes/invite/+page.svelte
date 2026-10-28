@@ -1,5 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
+  import { goto } from '$app/navigation';
+  import { resolve } from '$app/paths';
   import Gate from '../../lib/components/Gate.svelte';
   import GateSheet from '../../lib/components/GateSheet.svelte';
   import GoogleMark from '../../lib/components/GoogleMark.svelte';
@@ -9,7 +11,7 @@
 
   // 招待の URL（/invite#<秘密>）を開く画面（design/login.html の「Scrum Guild への招待」）。docs/data-model.md の
   // 「メールアドレスで待つ指名と招待」の 1 と 2。
-  //   - 秘密は location.hash から読み、すぐ history.replaceState で URL を /invite に置き換える（履歴、共有、Referer に残さない。
+  //   - 秘密は location.hash から読み、すぐ goto の replace で URL を /invite に置き換える（履歴、共有、Referer に残さない。
   //     フラグメントはサーバーに届かないので、読めるのはこの画面だけ）。このページのヘッダーは Referrer-Policy: no-referrer
   //   - 組織の名前は出さない（秘密を API に送る前なので、秘密を持つだけの人に組織の名前を見せない）
   //   - ボタンを押すまでログインを始めない。リンクを先読みする仕組み（メールの安全確認、チャットのプレビュー）で
@@ -23,11 +25,11 @@
   let form = $state<HTMLFormElement>();
   let field = $state<HTMLInputElement>();
 
-  onMount(() => {
+  onMount(async () => {
     const token = location.hash.slice(1);
-    // history.state は SvelteKit のルーターが持つ値を残す。SvelteKit は開発のときに native の呼び出しに警告を出すが、
-    // 履歴の位置は変えず URL だけを置き換えるので衝突しない
-    history.replaceState(history.state, '', `${location.pathname}${location.search}`);
+    // 浅いルーティング（shallow）は、元の URL（秘密を含む）を履歴の項目の state に残すので使わない。同じ画面への移動で
+    // 履歴の項目を置き換える。ボタンは URL から秘密が消えてから出す
+    await goto(resolve('/invite'), { replace: true });
     usable = CLAIM_TOKEN_PATTERN.test(token);
     claimToken = usable ? token : '';
   });

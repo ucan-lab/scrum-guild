@@ -33,7 +33,6 @@ export const KNOWN_DEV_WARNINGS: readonly KnownDevWarning[] = [
     detail: /^Loading `\/api\/[^/]+\/member-list` using `window\.fetch`/,
     reason: '#393 で出どころを確かめる',
   },
-  { name: '[sveltekit] history_api_conflict', path: /^\/invite$/, reason: '#394 で $app/navigation に置き換える' },
   // SvelteKit が、app の error() でないエラー（SvelteKit の 404 か、予期しない例外）で開発時に出す。
   // 存在しないパスを開いて 404 の画面を確かめるテスト（e2e/shell.test.ts）の分だけを外す。ほかの画面では予期しない例外の印なので数える
   {

@@ -41,6 +41,9 @@ test('秘密を読んだらすぐ URL から消し、ボタンを押すまでロ
   // 秘密は URL から消える（履歴にも残らない）。組織の名前は出さない
   await expect(page).toHaveURL(/\/invite$/);
   expect(await page.evaluate(() => location.hash)).toBe('');
+  // 履歴の項目の state にも残さない（浅いルーティングは元の URL を state に残す）。戻るは前の画面へ行く（項目を増やさない）
+  expect(JSON.stringify(await page.evaluate(() => history.state))).not.toContain(CLAIM_TOKEN);
+  expect(await page.evaluate(() => history.length)).toBe(2);
   await expect(page.locator('body')).not.toContainText(CLAIM_TOKEN);
   expect(await page.locator('input[type="hidden"]').evaluate((input: HTMLInputElement) => input.value)).toBe('');
   // 左のメニューも上の帯も出ない
