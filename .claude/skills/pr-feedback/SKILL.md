@@ -52,10 +52,11 @@ gh api "repos/{owner}/{repo}/commits/<head_sha>/check-runs" --jq '.check_runs[] 
 
 #### ドラフトで先に作った PR のドラフトを外す
 
-この会話で `pr-create` が Step 2-B でドラフトで作った PR（スタック PR の `gh stack submit` の下書きを含む）は、AI レビューを待つ前に次を行う。人が意図してドラフトにしている PR（この会話で作っていないドラフト）は外さない。
+`pr-create` が先にドラフトで作った PR は、AI レビューを待つ前に次を行う。見分けるのは、PR が `draft` で、本文に目印の `<!-- pr-create:draft-first -->` があること（`pr-create` の Step 5-A が入れる。スタック PR の `gh stack submit` の下書きを含む）。目印の無いドラフトは人が意図してドラフトにしているので外さない（理由: 会話の記憶で決めると、別のセッションで再開したときに外れず、AI レビューが一度も走らない）。
 
-1. `ci-ok` が `completed` になるまで、間を空けて check-runs を取り直す（Monitor が使えればそれで待つ）。待つ間に手番を終えるときは、手順 7 の「待つ間に手番を終えるとき」に従って伝える
-2. `ci-ok` が `success` でなければ、手順 3 から 5 で CI を直して push し、1 に戻る（理由: 外すと `ready_for_review` で AI レビューが走る。直す前に走らせると、直した後に回し直すことになり、サブスクの使用量を余分に使う）
+1. head を取り直してから（`gh api "repos/{owner}/{repo}/pulls/{number}" --jq '{head_sha: .head.sha, mergeable}'`）、その head の `ci-ok` が `completed` になるまで、間を空けて check-runs を取り直す（Monitor が使えればそれで待つ）。push か `sync-base` の後は、必ず head を取り直す（理由: 古い head の結果を見続けない）。待つ間に手番を終えるときは、手順 7 の「待つ間に手番を終えるとき」に従って伝える
+   - 45 分待っても `ci-ok` が出なければ、待ちをやめて人に渡す。`mergeable` が `false` ならコンフリクトで CI が走っていないので、先に `sync-base` で取り込む
+2. `ci-ok` が `success` でなければ、手順 3 の書き方（直しごとに 1 コミット）で CI を直し、まとめて push してから 1 に戻る（理由: 外すと `ready_for_review` で AI レビューが走る。直す前に走らせると、直した後に回し直すことになり、サブスクの使用量を余分に使う）。直した内容は、手順 6 の説明資料の「確かめたこと」に書く
 3. `success` なら、ドラフトを外す。文書だけの PR と base が `main` でない PR も外す（AI レビューは走らないが、人がマージを判断できる状態にする）
 
 ```graphql
@@ -67,6 +68,9 @@ gh api graphql -F id=<PR の node_id> -F query=@<ファイル>
 ```
 
 `<PR の node_id>` は `gh api "repos/{owner}/{repo}/pulls/{number}" --jq .node_id` で取る。`isDraft` が `false` で返ったことを確かめる。外した時刻が、下の `ready_for_review` のイベントになる。
+GraphQL が 403 か、ほかのエラーで外せなければ、エラーをそのまま人に伝え、GitHub の画面で「Ready for review」を押してもらう。押された後は下の待ち方で AI レビューを待つ。
+
+#### AI レビューを待つ
 
 CI の AI レビュー（`.github/workflows/ai-review.yml`、チェックの名前は `review`）が終わるまで、手順 2 に進まない（理由: 途中で集めると、後から付いた指摘を拾い損ねる）。
 
