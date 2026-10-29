@@ -377,7 +377,7 @@ describe('countListedTests と repeatVerdict', () => {
 });
 
 describe('changes.ts --repeat と e2e-repeat-count.ts の出力', () => {
-  test('changes.ts --repeat は、#459 で直した e2e のテストのファイルも外さずに繰り返す', () => {
+  test('changes.ts --repeat は、選んだ e2e のテストのファイルをすべて repeat_files に入れ、注記を出さない', () => {
     const result = spawnSync(process.execPath, ['scripts/changes.ts', '--repeat'], {
       input: 'e2e/logout.test.ts\0e2e/login.test.ts\0',
       encoding: 'utf8',
