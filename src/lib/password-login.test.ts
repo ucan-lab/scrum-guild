@@ -49,7 +49,7 @@ describe('成功', () => {
 describe('失敗の文言', () => {
   test.each([
     [401, { code: 'invalid_credentials', message: 'x' }, 'loginErrorInvalidCredentials'],
-    [403, { code: 'forbidden', message: 'x', details: { reason: 'denied' } }, 'loginErrorDenied'],
+    [403, { code: 'forbidden', message: 'x', details: { reason: 'denied' } }, 'loginErrorDeniedPassword'],
     [403, { code: 'forbidden', message: 'x', details: { reason: 'suspended' } }, 'loginErrorSuspended'],
     [403, { code: 'forbidden', message: 'x' }, 'loginErrorUnavailable'],
     [429, { code: 'rate_limited', message: 'x' }, 'loginErrorTooMany'],

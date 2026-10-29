@@ -137,7 +137,7 @@ test('送っている間はボタンを押せなくし、文言を変える。�
   await expect(submitButton(page)).toBeVisible();
 });
 
-test('入れる組織が無い（403 の denied）と、ほかの手段と同じ文言を出す', async ({ page }) => {
+test('入れる組織が無い（403 の denied）と、招待された手段を問わない文言を出す', async ({ page }) => {
   await page.route('**/api/auth/password/login', (route) =>
     route.fulfill({
       status: 403,
@@ -151,5 +151,20 @@ test('入れる組織が無い（403 の denied）と、ほかの手段と同じ
   await expect(page.getByRole('alert')).toContainText(
     'ログインできませんでした。どの冒険者ギルドのパーティにも所属しておらず',
   );
+  await expect(page.getByRole('alert')).not.toContainText('GitHub');
   await expect(emailField(page)).toHaveValue(SEED_PASSWORD_LOGINS.single.email);
+});
+
+test('欄が空なら送らずに理由を出し、理由は欄に結ばれる', async ({ page }) => {
+  let sent = 0;
+  await page.route('**/api/auth/password/login', (route) => {
+    sent += 1;
+    return route.continue();
+  });
+  await page.goto('/login');
+  await emailField(page).fill(SEED_PASSWORD_LOGINS.single.email);
+  await submitButton(page).click();
+  await expect(page.getByRole('alert')).toHaveText('メールアドレスとパスワードを入れてください。');
+  await expect(passwordField(page)).toHaveAccessibleDescription('メールアドレスとパスワードを入れてください。');
+  expect(sent).toBe(0);
 });
