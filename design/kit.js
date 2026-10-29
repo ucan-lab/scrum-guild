@@ -2289,7 +2289,7 @@ const looooooooooooooooooooooooooooooooooongLine = "コードの長い1行は、
     simple_light: "業務の道具として落ち着いた見た目。いつも明るい地",
     simple_dark: "業務の道具として落ち着いた見た目。いつも暗い地",
     medieval: "冒険者ギルドの帳簿。紙と墨、完了に朱の判子",
-    modern: "ハンターに届くシステムのウィンドウ。暗い地に光る枠",
+    modern: "近未来の端末のウィンドウ。暗い地に光る枠",
   };
   let theme = null;
   try { theme = localStorage.getItem("sq-design-theme"); } catch (e) { /* なくても動く */ }

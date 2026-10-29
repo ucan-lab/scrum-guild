@@ -1474,10 +1474,7 @@ export const dictionary = defineDictionary({
     '冒険者ギルドの帳簿。紙と墨、完了に朱の判子',
     '冒険者ギルドの帳簿。紙と墨、完了に朱の判子',
   ),
-  themeNoteModern: organization(
-    'ハンターに届くシステムのウィンドウ。暗い地に光る枠',
-    'ハンターに届くシステムのウィンドウ。暗い地に光る枠',
-  ),
+  themeNoteModern: organization('近未来の端末のウィンドウ。暗い地に光る枠', '近未来の端末のウィンドウ。暗い地に光る枠'),
 
   // 組織の言葉づかいと既定のテーマ（組織の管理の画面）。{workspace} と {leader} は、その言葉づかいの言葉を画面が渡す。
   // 言葉づかいの選択肢の例（orgVocabularyNote）は、その言葉づかいの {organization} と {admin} を画面が渡す
