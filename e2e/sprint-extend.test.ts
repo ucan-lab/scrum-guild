@@ -3,7 +3,7 @@ import { sprintBoard, sprintExtend, sprintList } from '../src/shared/operations/
 import { expect, test } from './fixtures.ts';
 import { createWorkspace, signIn, waitForResponses, waitForSettled, watchViolations } from './helpers.ts';
 import { mockOperation, routeOperation } from './operations.ts';
-import { OVERDUE_PLAN, SAMPLE_BOARD } from './sprint-fixture.ts';
+import { NEXT_SPRINT, OVERDUE_PLAN, SAMPLE_BOARD } from './sprint-fixture.ts';
 
 test.use({ timezoneId: 'Asia/Tokyo' });
 
@@ -108,6 +108,71 @@ for (const width of [320, 390, 1024, 1280]) {
     await page.mouse.move(0, 0);
   });
 }
+
+// 進行中（10/13〜10/26）の後ろに、14 日のスプリントを隙間なく count 本並べる。shiftDays は別の人の延長で既にずれた日数
+function chainedPlan(count: number, shiftDays: number) {
+  const day = 86_400_000;
+  const iso = (date: number) => new Date(date).toISOString().slice(0, 10);
+  const active = OVERDUE_PLAN.sprints[0]!;
+  const followers = Array.from({ length: count }, (_, index) => {
+    const start = Date.parse(NEXT_SPRINT.start_on) + (index * 14 + shiftDays) * day;
+    return {
+      ...NEXT_SPRINT,
+      id: `019a0000-0000-7000-8000-00000000f3${String(index).padStart(2, '0')}`,
+      name: `第${15 + index}回`,
+      start_on: iso(start),
+      end_on: iso(start + 13 * day),
+      tasks: [],
+    };
+  });
+  return {
+    ...OVERDUE_PLAN,
+    sprints: [
+      {
+        ...active,
+        end_on: iso(Date.parse(active.end_on) + shiftDays * day),
+        length: active.length + shiftDays,
+        extended_days: shiftDays,
+      },
+      ...followers,
+    ],
+  };
+}
+
+test('押し出しは5本まで並べて残りを本数で示し、別の人が先に延ばしたら読み直して予告を出し直す', async ({
+  page,
+  context,
+  baseURL,
+}) => {
+  await signIn(context, baseURL, 'admin');
+  await mockOperation(page, sprintBoard, { slug: 'aoba' }, SAMPLE_BOARD);
+  const unroute = await mockOperation(page, sprintList, { slug: 'aoba' }, chainedPlan(7, 0));
+  const sentEndOn: string[] = [];
+  await routeOperation(page, sprintExtend, { slug: 'aoba' }, async (call) => {
+    sentEndOn.push(call.input.end_on);
+    // 送った後に別の人が1日延ばした状態へ一覧を差し替えてから、読んだ最終日が古いとして断る
+    await unroute();
+    await mockOperation(page, sprintList, { slug: 'aoba' }, chainedPlan(7, 1));
+    await call.fail(409, 'conflict', { details: { reason: 'changed' } });
+  });
+  await page.goto('/aoba/w/019a0000-0000-7000-8000-000000000401/sprint');
+  await waitForSettled(page);
+  await page.getByRole('button', { name: '延長する', exact: true }).click();
+  const dialog = page.getByRole('dialog', { name: '遠征を延ばす' });
+  await dialog.getByLabel('延ばす日数').fill('2');
+  await expect(dialog.locator('[data-sprint-shift]')).toHaveCount(5);
+  await expect(dialog.locator('[data-sprint-shift]').first()).toHaveText('10/27〜11/9 → 10/29〜11/11');
+  await expect(dialog.locator('[data-sprint-shift-more]')).toHaveText(
+    'ほか 2 本の遠征も、重なる分だけ後ろへずらします',
+  );
+  await dialog.getByRole('button', { name: '2 日延長する', exact: true }).click();
+  await expect(dialog.getByRole('alert')).toContainText('期間が変わりました。');
+  expect(sentEndOn).toEqual(['2026-10-26']);
+  await expect(dialog.getByText('1〜13 日', { exact: true })).toBeVisible();
+  await expect(dialog.locator('[data-sprint-extend-end]')).toHaveText('2026-10-29');
+  await expect(dialog.locator('[data-sprint-shift]').first()).toHaveText('10/28〜11/10 → 10/30〜11/12');
+  await page.mouse.move(0, 0);
+});
 
 test('後ろと重ならなければ動かない予告を出し、28日では入力と送信を止める', async ({ page, context, baseURL }) => {
   await signIn(context, baseURL, 'admin');
