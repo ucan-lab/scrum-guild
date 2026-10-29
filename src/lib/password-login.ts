@@ -30,22 +30,31 @@ export function passwordLoginErrorMessage(status: number, error: ErrorBody['erro
   return 'loginErrorUnavailable';
 }
 
+// 応答を待つ上限。返らないと送っている間の状態（ボタンの「ログインしています」）から戻れないので、中断して unavailable にする
+export const PASSWORD_LOGIN_TIMEOUT_MS = 15_000;
+
 export async function submitPasswordLogin(
   input: PasswordLoginInput,
   fetcher: typeof fetch = fetch,
 ): Promise<PasswordLoginOutcome> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), PASSWORD_LOGIN_TIMEOUT_MS);
   let res: Response;
+  let body: unknown;
   try {
     res = await fetcher(PASSWORD_LOGIN_PATH, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'same-origin',
       body: JSON.stringify({ email: input.email, password: input.password, return_to: input.returnTo }),
+      signal: controller.signal,
     });
+    body = await res.json().catch(() => null);
   } catch {
     return { ok: false, message: 'loginErrorUnavailable' };
+  } finally {
+    clearTimeout(timer);
   }
-  const body: unknown = await res.json().catch(() => null);
   if (res.ok) {
     const returnTo =
       typeof body === 'object' && body !== null && 'return_to' in body ? safeReturnTo(body.return_to) : undefined;

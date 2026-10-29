@@ -1,6 +1,11 @@
 // ログインの画面のパスワードの送信（src/lib/password-login.ts）。応答から、移る先か出す文言を決める
 import { describe, expect, test, vi } from 'vitest';
-import { PASSWORD_LOGIN_PATH, passwordLoginErrorMessage, submitPasswordLogin } from './password-login.ts';
+import {
+  PASSWORD_LOGIN_PATH,
+  PASSWORD_LOGIN_TIMEOUT_MS,
+  passwordLoginErrorMessage,
+  submitPasswordLogin,
+} from './password-login.ts';
 
 function jsonResponse(status: number, body: unknown): Response {
   return new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
@@ -22,6 +27,24 @@ describe('送り方', () => {
       password: INPUT.password,
       return_to: '/aoba',
     });
+  });
+});
+
+describe('応答が返らない', () => {
+  test('決まった時間で中断し、unavailable にする（ボタンが「ログインしています」のまま残らない）', async () => {
+    vi.useFakeTimers();
+    try {
+      // signal が中断されるまで返らない fetch
+      const fetcher = (_path: string | URL | Request, init?: RequestInit) =>
+        new Promise<Response>((_resolve, reject) => {
+          init?.signal?.addEventListener('abort', () => reject(init.signal?.reason));
+        });
+      const outcome = submitPasswordLogin(INPUT, fetcher as typeof fetch);
+      await vi.advanceTimersByTimeAsync(PASSWORD_LOGIN_TIMEOUT_MS);
+      expect(await outcome).toEqual({ ok: false, message: 'loginErrorUnavailable' });
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 
