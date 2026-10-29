@@ -44,7 +44,7 @@ PR があれば、ベースは `origin/<base>` とし、次の前提をすべて
 | 最新のベースを取り込み済み | `git fetch origin && git merge-base --is-ancestor origin/<base> HEAD` | 終了コード 0 |
 | 最新のコミットを push 済み | `git rev-parse HEAD` と `head_sha` を比べる。`git status --short` も見る | 一致し、未コミットの変更が無い |
 | CI が成功 | 下の check-runs | `review` と `evidence` を除き、全て `status` が `completed` で、`conclusion` が `success`、`skipped`、`neutral` のどれか |
-| レビューコメントを解決済み | 下の GraphQL | `isResolved: false` のスレッドが 0 件 |
+| レビューコメントを解決済み | 下の GraphQL | 先頭コメントを PR の作成者が書いたスレッドを除き、`isResolved: false` のスレッドが 0 件 |
 
 ```bash
 gh api "repos/{owner}/{repo}/commits/<head_sha>/check-runs" --jq '.check_runs[] | {name, status, conclusion, url: .html_url}'
@@ -56,10 +56,12 @@ gh api "repos/{owner}/{repo}/commits/<head_sha>/check-runs" --jq '.check_runs[] 
 `evidence` は e2e の画像を PR にコメントで並べるジョブ（`.github/workflows/ci.yml`）で、同じく助言なので `ci-ok` に含めない。`review` と同じく、何で終わっても満たすものとして扱う。UI が変わる PR で落ちていたら、画像が付かないことを出力に書く。
 
 ```bash
-gh api graphql -f query='{ repository(owner:"<owner>", name:"<repo>") { pullRequest(number:<number>) { reviewThreads(first:100) { nodes { isResolved path comments(first:1) { nodes { body author { login } } } } } } } }'
+gh api graphql -f query='{ repository(owner:"<owner>", name:"<repo>") { pullRequest(number:<number>) { author { login } reviewThreads(first:100) { nodes { isResolved path comments(first:1) { nodes { body author { login } } } } } } } }'
 ```
 
-スレッドの解決状態は GraphQL でしか取れない。403（クラウド）が返ったら、`gh api "repos/{owner}/{repo}/pulls/<number>/comments" --paginate` でレビューコメントを読み、自分の返信が付いていないスレッドの先頭を数える。この前提は「解決状態は確かめられなかった」と出力に書いて先へ進む。
+先頭コメントの `author.login` が PR の `author.login` と同じスレッドは数えない（理由: `pr-create` がレビュワーへの案内として付けるインラインコメントも未解決のスレッドになり、数えると PR を作った後の done-check が止まる）。
+
+スレッドの解決状態は GraphQL でしか取れない。403（クラウド）が返ったら、`gh api "repos/{owner}/{repo}/pulls/<number>/comments" --paginate` でレビューコメントを読み、PR の作成者が始めたスレッドを除いて、自分の返信が付いていないスレッドの先頭を数える。この前提は「解決状態は確かめられなかった」と出力に書いて先へ進む。
 
 満たさない前提が 1 つでもあれば、レビューに進まず止まり、満たさない前提と次の経路を出力する。
 

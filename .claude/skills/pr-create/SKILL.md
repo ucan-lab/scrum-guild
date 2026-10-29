@@ -8,6 +8,7 @@ description: PRのタイトル・本文・アサイン・レビュワー・ラ�
 差分とリポジトリの慣習からPRの全項目を決め、作成する。
 レビュワーに読んでほしい箇所は、インラインレビューコメントとして残し、Submit まで行う。このリポジトリでは、PR を作るときのインラインコメントを下書きで止めない（2026-10-25 に決めた）。
 作成モードで done-check が通っていれば、ユーザーの承認を取らずに PR を作り、作った後に内容を報告する（Step 4。作業ブランチの PR は後から直せるため）。
+GraphQL が使える手元のセッションでは、本文を書く前にドラフトで PR を作って CI を先に走らせ、本文とインラインコメントは CI の間に入れる（Step 2-B）。ドラフトは、`ci-ok` の成功の後に `pr-feedback` が外す。
 
 ## 前提条件
 
@@ -114,6 +115,28 @@ gh api repos/{owner}/{repo}/issues/<issue> --jq '{number, title, body, state, la
 本文の未チェックの項目（`- [ ]`）を完了条件として控える。
 PR の本文では、タスクもストーリーもエピックも `Refs #<番号>` で指す。`Refs #<番号>` は行頭に1行ずつ書き、複数の Issue を指すときも `Refs #1 #2` とまとめずに行を分ける（理由: 番号の無いブランチでは `accepting.yml` が行頭の `Refs #<番号>` だけを拾う）。指す Issue でない番号を、行頭の `Refs` で書かない。GitHub が閉じる合図に読む語（`close`、`closes`、`closed`、`fix`、`fixes`、`fixed`、`resolve`、`resolves`、`resolved` に `#<番号>` が続く形）は、タイトルにも本文にもコミットメッセージにも書かない（理由: マージでは Issue を閉じない。マージで `status:accepting` が付き、人が受け入れ条件を確かめて閉じる。`docs/development.md` の「Issue の運用」）。
 
+## Step 2-B: 手元ではドラフトで先に作る
+
+作成モードで次をすべて満たすときは、Step 3 の前に、本文の無い PR をドラフトで作る（理由: CI が走る間に本文とインラインコメントを書き、待ちを縮める。`ci.yml` はドラフトでも走り、AI レビュー（`ai-review.yml`）はドラフトでは走らないので、本文の無いままレビューされない）。
+
+- done-check が通っていて、Step 4 の承認が要らない。承認が要るときは、承認の前に PR を作らない
+- GraphQL が使える（`gh api graphql -f query='{ viewer { login } }'` が 403 で落ちない）。ドラフトを外す `markPullRequestReadyForReview` が GraphQL にしか無いため。使えない（クラウド）ときは飛ばし、Step 5-A で本文の入ったドラフトでない PR を作る
+- スタック PR でない（`gh stack submit` が先に作っている。[stack.md](stack.md)）
+
+タイトルは Step 3 の「タイトル」の決め方で先に決める。作る直前に、Step 4 と同じくベースの最新に乗っているかを `git fetch origin` で確かめ、遅れていれば `sync-base` で取り込む。
+
+```bash
+gh api repos/{owner}/{repo}/pulls \
+  -f base=<base> \
+  -f head=<branch> \
+  -f title="<title>" \
+  -F draft=true \
+  --jq '{number, url: .html_url, draft}' > "<スクラッチパッドの絶対パス>/pr.json"
+```
+
+本文は渡さない。`draft` が `true` で返ったことを確かめる。
+以降の Step 5-A は、作らずに本文を書き込む形で行う（Step 5-A の「ドラフトで先に作ったとき」）。本文とタイトルの編集（`edited`）では `ci.yml` は走り直さない。
+
 ## Step 3: 草案を作る
 
 ### タイトル
@@ -175,6 +198,7 @@ Step 2 で控えた未チェックの項目ごとに、この PR で満たした
 ## Step 4: ユーザー承認
 
 作成モードで done-check が通っていれば、承認を取らずに Step 5-A に進む。下の提示内容は Step 7 の報告に回す。
+Step 2-B でドラフトを作った後も、作成モードのまま扱う（このセッションが今作った PR で、人が設定した項目が無いため）。
 通ったとみなすのは、このセッションで done-check を実行し、直さなかった CRITICAL と HIGH の指摘が残っていないとき。`finding-verifier` が `反証` を返した指摘は、残った指摘に数えない（判定と直さない理由は本文の `## 補足` に書く）。次のときは承認を取る。
 
 - done-check を省いた（Markdown だけの差分）
@@ -207,6 +231,18 @@ gh api repos/{owner}/{repo}/pulls \
 ```
 
 本文は必ずファイルに書き出して `-F body=@<ファイル>` で渡す。シェルに直接埋めると改行とエスケープが壊れる。
+
+### ドラフトで先に作ったとき
+
+Step 2-B で作った PR には、作らずに本文を書き込む。Step 3 でタイトルを変えたときだけ `title` も渡す。
+
+```bash
+gh api -X PATCH repos/{owner}/{repo}/pulls/<n> \
+  -F body=@"<スクラッチパッドの絶対パス>/pr-body.md" \
+  --jq '{number, draft, body_length: (.body | length)}'
+```
+
+ドラフトは外さない。外すのは `pr-feedback` で、`ci-ok` の成功を待ってから行う（理由: 外すと `ready_for_review` で AI レビューが走る。CI が落ちて直す前に走らせると、直した後に回し直すことになり、サブスクの使用量を余分に使う）。
 
 メタデータは作成後に付ける。決めなかった項目は呼ばない。空文字を渡さない。
 
@@ -374,10 +410,11 @@ gh api -X POST "repos/{owner}/{repo}/pulls/<n>/reviews/<review_id>/events" -f ev
 - ブランチがベースの最新に乗っているか（Step 4 で承認を取らなかったとき）
 - UI が変わる PR なら、`## 確認方法` に書いた画面と e2e のファイル。画像は本文に載せず、CI の `evidence` のコメントで見ること
 - 付けたセッション名（Step 5-D。付けられなかったときはその理由）
+- Step 2-B でドラフトで作ったなら、そのことと、`ci-ok` の成功の後に `pr-feedback` がドラフトを外して AI レビューを走らせること
 
 ## Step 8: pr-feedback に引き継ぐ
 
-報告を終えたら、Skill ツールで `pr-feedback` を起動する。CI の結果待ちと、付いたレビュー指摘への対応はそちらで行う。
+報告を終えたら、Skill ツールで `pr-feedback` を起動する。CI の結果待ち、ドラフトを外すこと（Step 2-B で作ったとき）、付いたレビュー指摘への対応はそちらで行う。
 
 ## 注意事項
 
