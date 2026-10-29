@@ -1,0 +1,621 @@
+// node --test .claude/hooks/*.test.mjs
+import assert from 'node:assert/strict';
+import { spawn, spawnSync } from 'node:child_process';
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, statSync } from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { after, describe, test } from 'node:test';
+import { fileURLToPath } from 'node:url';
+import * as rules from './review-budget-rules.mjs';
+
+const hooks = path.dirname(fileURLToPath(import.meta.url));
+const script = path.join(hooks, 'review-budget.mjs');
+const { REVIEW_AGENTS, WINDOW_MS, BASE_LIMIT } = rules;
+const T0 = 1_700_000_000_000;
+
+describe('review-budget-rules（純関数）', () => {
+  // 入れ物の throw を判定の失敗として見せ、テスト単位で落とす
+  const emptyState = () => rules.emptyState();
+  const judge = (state, agent, now) => rules.judgeReview(state, agent, now);
+
+  // 起動を順に流し、拒否は記録しない。各起動の判定を返す
+  const run = (events, state = emptyState()) => {
+    const decisions = [];
+    for (const [agent, at] of events) {
+      const r = judge(state, agent, at);
+      decisions.push(r.decision);
+      state = r.state;
+    }
+    return { decisions, state };
+  };
+
+  describe('完了条件', () => {
+    test('定数は仕様どおり（対象4種、窓 120 秒、既定の上限 2 巡）', () => {
+      assert.deepEqual([...REVIEW_AGENTS].sort(), ['code-reviewer', 'database-reviewer', 'security-reviewer', 'ui-reviewer']);
+      assert.equal(WINDOW_MS, 120000);
+      assert.equal(BASE_LIMIT, 2);
+    });
+    test('空の状態は starts が空で extra が 0', () => {
+      assert.deepEqual(emptyState(), { starts: [], extra: 0 });
+    });
+    test('最初の起動は許可し、巡の最初の時刻を starts に記録する', () => {
+      const r = judge(emptyState(), 'code-reviewer', T0);
+      assert.equal(r.decision, 'allow');
+      assert.deepEqual(r.state.starts, [T0]);
+    });
+    test('1 巡目と 2 巡目は許可し、2 巡を数える', () => {
+      const { decisions, state } = run([
+        ['code-reviewer', T0],
+        ['code-reviewer', T0 + 10 * 60_000],
+      ]);
+      assert.deepEqual(decisions, ['allow', 'allow']);
+      assert.deepEqual(state.starts, [T0, T0 + 10 * 60_000]);
+    });
+    test('延長は extra に加算し、extensions に巡数と理由と時刻を追記する', () => {
+      let s = rules.extendState(emptyState(), 1, '設計が変わった', T0);
+      s = rules.extendState(s, 2, 'もう一度', T0 + 1);
+      assert.equal(s.extra, 3);
+      assert.deepEqual(s.extensions, [
+        { rounds: 1, reason: '設計が変わった', at: T0 },
+        { rounds: 2, reason: 'もう一度', at: T0 + 1 },
+      ]);
+    });
+    test('延長は元の state を書き換えない', () => {
+      const before = emptyState();
+      const copy = structuredClone(before);
+      rules.extendState(before, 1, 'r', T0);
+      assert.deepEqual(before, copy);
+    });
+    test('延長した分だけ起動できる（上限 2 + 1 で 3 巡目が通り、4 巡目は拒否）', () => {
+      const s = rules.extendState(emptyState(), 1, 'r', T0);
+      const { decisions } = run(
+        [
+          ['code-reviewer', T0],
+          ['code-reviewer', T0 + 10 * 60_000],
+          ['code-reviewer', T0 + 20 * 60_000],
+          ['code-reviewer', T0 + 30 * 60_000],
+        ],
+        s,
+      );
+      assert.deepEqual(decisions, ['allow', 'allow', 'allow', 'deny']);
+    });
+    test('branchFileName はファイル名として安全で、同じ入力に同じ名前を返す', () => {
+      for (const b of ['main', 'claude/increment-build-487-review-budget', '487-a b', 'x\\y', '日本語/ブランチ', '..', 'a:b*c?']) {
+        const f = rules.branchFileName(b);
+        assert.match(f, /^[^/\\\0]+$/, b);
+        assert.notEqual(f, '.', b);
+        assert.notEqual(f, '..', b);
+        assert.equal(rules.branchFileName(b), f);
+      }
+    });
+  });
+
+  describe('拒否', () => {
+    const two = () =>
+      run([
+        ['code-reviewer', T0],
+        ['security-reviewer', T0 + 10 * 60_000],
+      ]).state;
+
+    test('3 巡目の最初の起動を拒否し、理由に上限・AskUserQuestion・extend・回避の禁止を含める', () => {
+      const r = judge(two(), 'database-reviewer', T0 + 20 * 60_000);
+      assert.equal(r.decision, 'deny');
+      assert.equal(typeof r.reason, 'string');
+      assert.match(r.reason, /2/);
+      assert.match(r.reason, /AskUserQuestion/);
+      assert.match(r.reason, /node \.claude\/hooks\/review-budget\.mjs extend <巡数> --reason <理由>/);
+      assert.match(r.reason, /回避|名前を変え|呼び直/);
+    });
+    test('拒否では state を変えない', () => {
+      const s = two();
+      const copy = structuredClone(s);
+      const r = judge(s, 'ui-reviewer', T0 + 20 * 60_000);
+      assert.equal(r.decision, 'deny');
+      assert.deepEqual(r.state, copy);
+      assert.deepEqual(s, copy);
+    });
+    test('拒否した起動は記録せず、延長した分だけ後で起動できる', () => {
+      let { state } = run([
+        ['code-reviewer', T0],
+        ['code-reviewer', T0 + 10 * 60_000],
+        ['code-reviewer', T0 + 20 * 60_000], // 拒否
+        ['code-reviewer', T0 + 21 * 60_000], // 拒否
+      ]);
+      assert.equal(state.starts.length, 2);
+      state = rules.extendState(state, 1, 'r', T0 + 22 * 60_000);
+      const { decisions } = run(
+        [
+          ['code-reviewer', T0 + 23 * 60_000],
+          ['code-reviewer', T0 + 40 * 60_000],
+        ],
+        state,
+      );
+      assert.deepEqual(decisions, ['allow', 'deny']);
+    });
+    test('どの対象の agentType でも 3 巡目は拒否する', () => {
+      for (const agent of ['code-reviewer', 'security-reviewer', 'database-reviewer', 'ui-reviewer']) {
+        assert.equal(judge(two(), agent, T0 + 20 * 60_000).decision, agent ? 'deny' : 'allow', agent);
+      }
+    });
+  });
+
+  describe('すり抜け/境界', () => {
+    test('120000ms ちょうどは同じ巡、超えたら新しい巡', () => {
+      const same = judge(judge(emptyState(), 'code-reviewer', T0).state, 'code-reviewer', T0 + WINDOW_MS);
+      assert.equal(same.decision, 'allow');
+      assert.deepEqual(same.state.starts, [T0]);
+      const next = judge(judge(emptyState(), 'code-reviewer', T0).state, 'code-reviewer', T0 + WINDOW_MS + 1);
+      assert.equal(next.decision, 'allow');
+      assert.deepEqual(next.state.starts, [T0, T0 + WINDOW_MS + 1]);
+    });
+    test('窓は巡の最初の起動から測る（起動のたびに延びない）', () => {
+      // T0 の巡。+100s は同じ巡、+200s は最初から 120s を超えるので新しい巡
+      const { state } = run([
+        ['code-reviewer', T0],
+        ['code-reviewer', T0 + 100_000],
+        ['code-reviewer', T0 + 200_000],
+      ]);
+      assert.deepEqual(state.starts, [T0, T0 + 200_000]);
+    });
+    test('同じ巡の複数エージェントは何人でも拒否されない（上限に達した後の巡の中でも）', () => {
+      const events = [
+        ['code-reviewer', T0],
+        ['security-reviewer', T0 + 1000],
+        ['database-reviewer', T0 + 2000],
+        ['ui-reviewer', T0 + 3000],
+        ['code-reviewer', T0 + 10 * 60_000],
+        ['security-reviewer', T0 + 10 * 60_000 + 500],
+        ['ui-reviewer', T0 + 10 * 60_000 + WINDOW_MS],
+      ];
+      const { decisions, state } = run(events);
+      assert.deepEqual(decisions, Array(7).fill('allow'));
+      assert.deepEqual(state.starts, [T0, T0 + 10 * 60_000]);
+    });
+    test('上限に達した後、新しい巡の窓は拒否で始まらない（拒否は窓を開かない）', () => {
+      // 3 巡目の拒否の直後 100s の起動も、拒否された巡の続きとして通ることはない
+      const { decisions } = run([
+        ['code-reviewer', T0],
+        ['code-reviewer', T0 + 10 * 60_000],
+        ['code-reviewer', T0 + 20 * 60_000],
+        ['code-reviewer', T0 + 20 * 60_000 + 50_000],
+      ]);
+      assert.deepEqual(decisions, ['allow', 'allow', 'deny', 'deny']);
+    });
+    test('対象外の agentType は数えず、拒否もしない（上限に達していても）', () => {
+      const full = run([
+        ['code-reviewer', T0],
+        ['code-reviewer', T0 + 10 * 60_000],
+      ]).state;
+      for (const agent of ['finding-verifier', 'Explore', 'general-purpose', '', undefined, null, 'Code-Reviewer', 'code-reviewer ']) {
+        const r = judge(full, agent, T0 + 20 * 60_000);
+        assert.equal(r.decision, 'allow', String(agent));
+        assert.deepEqual(r.state, full, String(agent));
+      }
+      const fresh = judge(emptyState(), 'Explore', T0);
+      assert.deepEqual(fresh.state, emptyState());
+    });
+    test('対象外の起動は窓を開かない（その後の最初の対象は新しい巡として数える）', () => {
+      const { state } = run([
+        ['Explore', T0],
+        ['code-reviewer', T0 + 1000],
+      ]);
+      assert.deepEqual(state.starts, [T0 + 1000]);
+    });
+    test('時刻が巻き戻っても（負の差）同じ巡として扱い、壊れない', () => {
+      const r = judge(judge(emptyState(), 'code-reviewer', T0).state, 'code-reviewer', T0 - 5000);
+      assert.equal(r.decision, 'allow');
+      assert.equal(r.state.starts.length, 1);
+    });
+    test('branchFileName は / を含む名前でも衝突しない', () => {
+      const names = ['feature/a', 'feature%2Fa', 'feature-a', 'feature_a', 'feature//a', 'feature/a/', '/feature/a', 'Feature/a', 'a/b/c', 'a%2Fb/c', 'a/b%2Fc'];
+      const files = names.map((n) => rules.branchFileName(n));
+      assert.equal(new Set(files).size, names.length, files.join(','));
+      for (const f of files) assert.ok(!f.includes('/'), f);
+    });
+  });
+
+  describe('延長の検証', () => {
+    test('extendState は延長を足しても starts を保つ', () => {
+      const s = run([['code-reviewer', T0]]).state;
+      const e = rules.extendState(s, 2, 'r', T0 + 1);
+      assert.deepEqual(e.starts, [T0]);
+      assert.equal(e.extra, 2);
+    });
+  });
+});
+
+describe('review-budget.mjs（入口を実際に起動する）', () => {
+  const tmp = realpathSync(mkdtempSync(path.join(os.tmpdir(), 'review-budget-')));
+  after(() => rmSync(tmp, { recursive: true, force: true }));
+
+  const cleanEnv = Object.fromEntries(
+    Object.entries(process.env).filter(([key]) => !key.startsWith('GIT_') && key !== 'REVIEW_BUDGET_NOW' && key !== 'CLAUDE_CODE_REMOTE'),
+  );
+  const git = (args, cwd) => {
+    const result = spawnSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@example.com', '-c', 'commit.gpgsign=false', ...args], {
+      cwd,
+      encoding: 'utf8',
+      env: cleanEnv,
+    });
+    assert.equal(result.status, 0, `git ${args.join(' ')}: ${result.stderr}`);
+    return result.stdout.trim();
+  };
+  let seq = 0;
+  // 一時リポジトリ。初期ブランチは trunk
+  const makeRepo = () => {
+    const dir = path.join(tmp, `repo${++seq}`);
+    mkdirSync(dir);
+    git(['init', '-q', '-b', 'trunk'], dir);
+    git(['commit', '-q', '--allow-empty', '-m', 'init'], dir);
+    return dir;
+  };
+  const inputOf = (cwd, subagent_type, extra = {}) =>
+    JSON.stringify({ tool_name: 'Agent', cwd, tool_input: { subagent_type, prompt: 'レビューして', ...extra } });
+  const envAt = (now) => ({ ...cleanEnv, REVIEW_BUDGET_NOW: String(now) });
+  const call = (cwd, agent, now, input = inputOf(cwd, agent)) =>
+    spawnSync(process.execPath, [script], { input, cwd, encoding: 'utf8', env: envAt(now) });
+  const extend = (cwd, args, now = T0) =>
+    spawnSync(process.execPath, [script, 'extend', ...args], { cwd, encoding: 'utf8', env: envAt(now) });
+  const denied = (r) => {
+    assert.equal(r.status, 0, r.stderr);
+    const out = JSON.parse(r.stdout);
+    assert.equal(out.hookSpecificOutput.hookEventName, 'PreToolUse');
+    assert.equal(out.hookSpecificOutput.permissionDecision, 'deny');
+    return out.hookSpecificOutput.permissionDecisionReason;
+  };
+  const allowed = (r) => {
+    assert.equal(r.status, 0, r.stderr);
+    assert.equal(r.stdout.trim(), '', '許可は出力なし');
+  };
+  const budgetDir = (repo) => path.join(git(['rev-parse', '--path-format=absolute', '--git-common-dir'], repo), 'review-budget');
+  const stateFiles = (repo) => (existsSync(budgetDir(repo)) ? readdirSync(budgetDir(repo)) : []);
+  const MIN = 60_000;
+
+  describe('完了条件', () => {
+    test('入口は存在し、起動で import の失敗でなく判定に進む（許可は出力なしで exit 0）', () => {
+      const repo = makeRepo();
+      allowed(call(repo, 'code-reviewer', T0));
+    });
+    test('2 巡は通り、3 巡目の最初の起動が拒否される。理由に手順が入る', () => {
+      const repo = makeRepo();
+      allowed(call(repo, 'code-reviewer', T0));
+      allowed(call(repo, 'security-reviewer', T0 + 10 * MIN));
+      const reason = denied(call(repo, 'database-reviewer', T0 + 20 * MIN));
+      assert.match(reason, /2/);
+      assert.match(reason, /AskUserQuestion/);
+      assert.match(reason, /node \.claude\/hooks\/review-budget\.mjs extend <巡数> --reason <理由>/);
+      assert.match(reason, /回避|名前を変え|呼び直/);
+    });
+    test('状態は git の common-dir の review-budget/ に、ブランチごとの 1 ファイルで JSON として置く', () => {
+      const repo = makeRepo();
+      allowed(call(repo, 'code-reviewer', T0));
+      const files = stateFiles(repo);
+      assert.equal(files.length, 1, files.join(','));
+      assert.equal(files[0], `${rules.branchFileName('trunk')}.json`);
+      const state = JSON.parse(readFileSync(path.join(budgetDir(repo), files[0]), 'utf8'));
+      assert.deepEqual(state.starts, [T0]);
+    });
+    test('プロセスを終えて再実行しても巡の数が保たれる（拒否は記録されない）', () => {
+      const repo = makeRepo();
+      allowed(call(repo, 'code-reviewer', T0));
+      allowed(call(repo, 'code-reviewer', T0 + 10 * MIN));
+      denied(call(repo, 'code-reviewer', T0 + 20 * MIN));
+      denied(call(repo, 'code-reviewer', T0 + 21 * MIN));
+      const state = JSON.parse(readFileSync(path.join(budgetDir(repo), stateFiles(repo)[0]), 'utf8'));
+      assert.equal(state.starts.length, 2);
+    });
+    test('extend で上限が増え、延長した分だけ通り、その次は拒否される', () => {
+      const repo = makeRepo();
+      allowed(call(repo, 'code-reviewer', T0));
+      allowed(call(repo, 'code-reviewer', T0 + 10 * MIN));
+      denied(call(repo, 'code-reviewer', T0 + 20 * MIN));
+      const e = extend(repo, ['1', '--reason', '設計を変えた'], T0 + 21 * MIN);
+      assert.equal(e.status, 0, e.stderr);
+      allowed(call(repo, 'code-reviewer', T0 + 22 * MIN));
+      denied(call(repo, 'code-reviewer', T0 + 40 * MIN));
+      const state = JSON.parse(readFileSync(path.join(budgetDir(repo), stateFiles(repo)[0]), 'utf8'));
+      assert.equal(state.extra, 1);
+      assert.equal(state.extensions[0].rounds, 1);
+      assert.equal(state.extensions[0].reason, '設計を変えた');
+    });
+    test('extend を 2 回行うと合計だけ増える', () => {
+      const repo = makeRepo();
+      assert.equal(extend(repo, ['1', '--reason', 'a']).status, 0);
+      assert.equal(extend(repo, ['2', '--reason', 'b']).status, 0);
+      const state = JSON.parse(readFileSync(path.join(budgetDir(repo), stateFiles(repo)[0]), 'utf8'));
+      assert.equal(state.extra, 3);
+      assert.equal(state.extensions.length, 2);
+    });
+    test('cwd がサブディレクトリでも同じブランチとして数える', () => {
+      const repo = makeRepo();
+      const sub = path.join(repo, 'a/b');
+      mkdirSync(sub, { recursive: true });
+      allowed(call(repo, 'code-reviewer', T0));
+      allowed(call(sub, 'code-reviewer', T0 + 10 * MIN));
+      denied(call(repo, 'code-reviewer', T0 + 20 * MIN));
+    });
+    test('入力の cwd を使う（プロセスの cwd が別のリポジトリでも、入力の cwd のブランチを数える）', () => {
+      const repo = makeRepo();
+      const other = makeRepo();
+      const run1 = (at) => spawnSync(process.execPath, [script], { input: inputOf(repo, 'code-reviewer'), cwd: other, encoding: 'utf8', env: envAt(at) });
+      allowed(run1(T0));
+      allowed(run1(T0 + 10 * MIN));
+      denied(run1(T0 + 20 * MIN));
+      assert.deepEqual(stateFiles(other), []);
+    });
+  });
+
+  describe('拒否', () => {
+    test('拒否は exit 0 で stdout に PreToolUse の deny JSON だけを出す', () => {
+      const repo = makeRepo();
+      allowed(call(repo, 'code-reviewer', T0));
+      allowed(call(repo, 'code-reviewer', T0 + 10 * MIN));
+      const r = call(repo, 'ui-reviewer', T0 + 20 * MIN);
+      denied(r);
+      assert.deepEqual(Object.keys(JSON.parse(r.stdout)), ['hookSpecificOutput']);
+    });
+    test('ブランチが違えば別に数える（一方が上限でも他方は通る）', () => {
+      const repo = makeRepo();
+      allowed(call(repo, 'code-reviewer', T0));
+      allowed(call(repo, 'code-reviewer', T0 + 10 * MIN));
+      denied(call(repo, 'code-reviewer', T0 + 20 * MIN));
+      git(['switch', '-q', '-c', '488-other'], repo);
+      allowed(call(repo, 'code-reviewer', T0 + 21 * MIN));
+      allowed(call(repo, 'code-reviewer', T0 + 40 * MIN));
+      denied(call(repo, 'code-reviewer', T0 + 60 * MIN));
+      git(['switch', '-q', 'trunk'], repo);
+      denied(call(repo, 'code-reviewer', T0 + 61 * MIN));
+    });
+    test('別ワークツリーでも同じブランチは common-dir を共有して数える', () => {
+      const repo = makeRepo();
+      git(['switch', '-q', '-c', '487-x'], repo);
+      git(['switch', '-q', 'trunk'], repo);
+      const wt = path.join(tmp, `wt${++seq}`);
+      git(['worktree', 'add', '-q', wt, '487-x'], repo);
+      allowed(call(repo === wt ? repo : wt, 'code-reviewer', T0));
+      // 同じブランチ名を別のワークツリーから数えるため、元のリポジトリを同じブランチへ切り替えられない。
+      // 代わりにワークツリーのサブディレクトリと、common-dir の状態の位置で共有を確かめる
+      allowed(call(wt, 'code-reviewer', T0 + 10 * MIN));
+      denied(call(wt, 'code-reviewer', T0 + 20 * MIN));
+      assert.deepEqual(stateFiles(repo), stateFiles(wt));
+      assert.equal(stateFiles(repo).length, 1);
+      // ワークツリーの中に状態を作らない
+      assert.ok(!existsSync(path.join(wt, 'review-budget')));
+    });
+    test('ワークツリーをまたいで数える（ブランチを移して別のワークツリーから続ける）', () => {
+      const repo = makeRepo();
+      const wtA = path.join(tmp, `wt${++seq}`);
+      const wtB = path.join(tmp, `wt${++seq}`);
+      git(['worktree', 'add', '-q', wtA, '-b', '487-y'], repo);
+      allowed(call(wtA, 'code-reviewer', T0));
+      allowed(call(wtA, 'code-reviewer', T0 + 10 * MIN));
+      // ワークツリー A を外して B に同じブランチを出す
+      git(['worktree', 'remove', '--force', wtA], repo);
+      git(['worktree', 'add', '-q', wtB, '487-y'], repo);
+      denied(call(wtB, 'code-reviewer', T0 + 20 * MIN));
+    });
+    test('ブランチ名に / があっても、別ブランチと衝突せず、ファイルが入れ子にならない', () => {
+      const repo = makeRepo();
+      git(['switch', '-q', '-c', 'claude/increment-build-487'], repo);
+      allowed(call(repo, 'code-reviewer', T0));
+      allowed(call(repo, 'code-reviewer', T0 + 10 * MIN));
+      denied(call(repo, 'code-reviewer', T0 + 20 * MIN));
+      const dir = budgetDir(repo);
+      for (const name of readdirSync(dir)) assert.ok(statSync(path.join(dir, name)).isFile(), `${name} は入れ子のディレクトリ`);
+      assert.equal(stateFiles(repo).length, 1);
+      // 同じ接頭辞の別ブランチや、% で /  を装う名前とは数えが別
+      for (const other of ['claude', 'claude-increment-build-487', 'claude%2Fincrement-build-487']) {
+        git(['switch', '-q', '-c', other, 'trunk'], repo);
+        allowed(call(repo, 'code-reviewer', T0 + 30 * MIN));
+        git(['switch', '-q', 'claude/increment-build-487'], repo);
+      }
+    });
+    test('ブランチ名が / の有無だけ違う 2 つ（a/b と a-b 系の代表）を別に数える', () => {
+      const repo = makeRepo();
+      git(['switch', '-q', '-c', 'feature/a'], repo);
+      allowed(call(repo, 'code-reviewer', T0));
+      allowed(call(repo, 'code-reviewer', T0 + 10 * MIN));
+      git(['switch', '-q', '-c', 'feature%2Fa', 'trunk'], repo);
+      allowed(call(repo, 'code-reviewer', T0 + 20 * MIN));
+      allowed(call(repo, 'code-reviewer', T0 + 30 * MIN));
+      assert.equal(stateFiles(repo).length, 2);
+    });
+    test('REVIEW_BUDGET_NOW で時刻を進めると新しい巡になる（120 秒ちょうどは同じ巡）', () => {
+      const repo = makeRepo();
+      allowed(call(repo, 'code-reviewer', T0));
+      allowed(call(repo, 'code-reviewer', T0 + WINDOW_MS)); // 同じ巡
+      allowed(call(repo, 'code-reviewer', T0 + WINDOW_MS + 1)); // 2 巡目
+      denied(call(repo, 'code-reviewer', T0 + 2 * WINDOW_MS + 2)); // 3 巡目
+    });
+  });
+
+  describe('すり抜け/境界', () => {
+    test('対象外の subagent_type は出力なしで exit 0、状態ファイルも作らない', () => {
+      const repo = makeRepo();
+      for (const agent of ['finding-verifier', 'Explore', 'general-purpose', '']) {
+        allowed(call(repo, agent, T0));
+      }
+      allowed(call(repo, undefined, T0, JSON.stringify({ tool_name: 'Agent', cwd: repo, tool_input: { prompt: 'x' } })));
+      assert.deepEqual(stateFiles(repo), []);
+    });
+    test('上限に達していても対象外は拒否されない', () => {
+      const repo = makeRepo();
+      allowed(call(repo, 'code-reviewer', T0));
+      allowed(call(repo, 'code-reviewer', T0 + 10 * MIN));
+      allowed(call(repo, 'finding-verifier', T0 + 20 * MIN));
+      allowed(call(repo, 'Explore', T0 + 20 * MIN));
+    });
+    test('同じ巡の複数エージェントは拒否されない（上限に達した後の巡の中でも）', () => {
+      const repo = makeRepo();
+      allowed(call(repo, 'code-reviewer', T0));
+      allowed(call(repo, 'code-reviewer', T0 + 10 * MIN));
+      allowed(call(repo, 'security-reviewer', T0 + 10 * MIN + 1000));
+      allowed(call(repo, 'database-reviewer', T0 + 10 * MIN + 2000));
+      allowed(call(repo, 'ui-reviewer', T0 + 10 * MIN + WINDOW_MS));
+      denied(call(repo, 'ui-reviewer', T0 + 10 * MIN + WINDOW_MS + 1));
+    });
+    test('detached HEAD では拒否せず数えない。状態ファイルも作らない', () => {
+      const repo = makeRepo();
+      git(['switch', '-q', '--detach'], repo);
+      for (let i = 0; i < 4; i += 1) allowed(call(repo, 'code-reviewer', T0 + i * 10 * MIN));
+      assert.deepEqual(stateFiles(repo), []);
+    });
+    test('git のリポジトリでない cwd でも拒否せず数えない', () => {
+      const dir = path.join(tmp, `plain${++seq}`);
+      mkdirSync(dir);
+      for (let i = 0; i < 4; i += 1) allowed(call(dir, 'code-reviewer', T0 + i * 10 * MIN));
+      assert.deepEqual(readdirSync(dir), []);
+    });
+    test('stdin が不正な JSON なら exit 2 で、stderr に理由を出す', () => {
+      const repo = makeRepo();
+      for (const input of ['', 'not json', '{', '[1,2']) {
+        const r = call(repo, undefined, T0, input);
+        assert.equal(r.status, 2, `${JSON.stringify(input)}: ${r.stderr}`);
+        assert.notEqual(r.stderr.trim(), '');
+        assert.equal(r.stdout.trim(), '');
+      }
+      assert.deepEqual(stateFiles(repo), []);
+    });
+    test('JSON でも object でない入力は exit 2', () => {
+      const repo = makeRepo();
+      for (const input of ['null', '42', '"x"']) {
+        const r = call(repo, undefined, T0, input);
+        assert.equal(r.status, 2, `${input}: ${r.stderr}`);
+        assert.notEqual(r.stderr.trim(), '');
+      }
+    });
+    test('extend は巡数が正の整数でないと非0で終わり、状態を変えない', () => {
+      const repo = makeRepo();
+      allowed(call(repo, 'code-reviewer', T0));
+      const file = path.join(budgetDir(repo), stateFiles(repo)[0]);
+      const before = readFileSync(file, 'utf8');
+      for (const n of ['0', '-1', '1.5', 'abc', '', '1e2', ' ']) {
+        const r = extend(repo, [n, '--reason', 'r']);
+        assert.notEqual(r.status, 0, `巡数 ${JSON.stringify(n)}`);
+        assert.notEqual(r.stderr.trim(), '');
+      }
+      assert.equal(readFileSync(file, 'utf8'), before);
+    });
+    test('extend は巡数の無い呼び出しも失敗する', () => {
+      const repo = makeRepo();
+      const r = spawnSync(process.execPath, [script, 'extend'], { cwd: repo, encoding: 'utf8', env: envAt(T0) });
+      assert.notEqual(r.status, 0);
+      assert.deepEqual(stateFiles(repo), []);
+      assert.equal(extend(repo, ['1', '--reason', 'r']).status, 0, '正しい引数なら通る');
+    });
+    test('extend は理由が無い、または空だと非0で終わり、状態ファイルを作らない', () => {
+      const repo = makeRepo();
+      for (const args of [['1'], ['1', '--reason'], ['1', '--reason', ''], ['1', '--reason', '   '], ['1', '--other', 'x']]) {
+        const r = extend(repo, args);
+        assert.notEqual(r.status, 0, JSON.stringify(args));
+        assert.notEqual(r.stderr.trim(), '');
+      }
+      assert.deepEqual(stateFiles(repo), []);
+      assert.equal(extend(repo, ['1', '--reason', 'r']).status, 0, '正しい引数なら通る');
+    });
+    test('detached HEAD での extend は失敗する（ブランチが引けない）', () => {
+      const repo = makeRepo();
+      git(['switch', '-q', '--detach'], repo);
+      const r = extend(repo, ['1', '--reason', 'r']);
+      assert.notEqual(r.status, 0);
+      assert.deepEqual(stateFiles(repo), []);
+      git(['switch', '-q', 'trunk'], repo);
+      assert.equal(extend(repo, ['1', '--reason', 'r']).status, 0, 'ブランチがあれば通る');
+    });
+    test('状態ファイルが壊れていても、黙って許可に倒さず exit 2 で止める', () => {
+      const repo = makeRepo();
+      allowed(call(repo, 'code-reviewer', T0));
+      const file = path.join(budgetDir(repo), stateFiles(repo)[0]);
+      spawnSync('node', ['-e', `require('fs').writeFileSync(${JSON.stringify(file)}, '{broken')`]);
+      const r = call(repo, 'code-reviewer', T0 + 10 * MIN);
+      assert.equal(r.status, 2, r.stderr);
+      assert.notEqual(r.stderr.trim(), '');
+    });
+    test('入力の tool_input に subagent_type が無くても落ちない（出力なしで exit 0）', () => {
+      const repo = makeRepo();
+      allowed(call(repo, undefined, T0, JSON.stringify({ tool_name: 'Agent', cwd: repo, tool_input: {} })));
+    });
+  });
+
+  describe('並行', () => {
+    const callAsync = (cwd, agent, now) =>
+      new Promise((resolve) => {
+        const child = spawn(process.execPath, [script], { cwd, env: envAt(now) });
+        let stdout = '';
+        let stderr = '';
+        child.stdout.on('data', (d) => (stdout += d));
+        child.stderr.on('data', (d) => (stderr += d));
+        child.on('close', (status) => resolve({ status, stdout, stderr }));
+        child.stdin.end(inputOf(cwd, agent));
+      });
+
+    test('同時に 3 プロセスを起動しても 1 巡として数え、状態は壊れない', async () => {
+      const repo = makeRepo();
+      const results = await Promise.all([
+        callAsync(repo, 'code-reviewer', T0),
+        callAsync(repo, 'security-reviewer', T0 + 5),
+        callAsync(repo, 'database-reviewer', T0 + 10),
+      ]);
+      for (const r of results) allowed(r);
+      const files = stateFiles(repo);
+      assert.equal(files.length, 1, files.join(','));
+      const state = JSON.parse(readFileSync(path.join(budgetDir(repo), files[0]), 'utf8'));
+      assert.equal(state.starts.length, 1);
+      // 1 巡しか使っていないので、後の 2 巡目も通り、3 巡目だけが拒否される
+      allowed(call(repo, 'code-reviewer', T0 + 10 * MIN));
+      denied(call(repo, 'code-reviewer', T0 + 20 * MIN));
+    });
+    test('同じ時刻の同時 3 起動でも 1 巡', async () => {
+      const repo = makeRepo();
+      const results = await Promise.all(['code-reviewer', 'ui-reviewer', 'security-reviewer'].map((a) => callAsync(repo, a, T0)));
+      for (const r of results) allowed(r);
+      const state = JSON.parse(readFileSync(path.join(budgetDir(repo), stateFiles(repo)[0]), 'utf8'));
+      assert.deepEqual(state.starts, [T0]);
+    });
+    test('上限に達した後の同時 3 起動は、すべて拒否され、状態は変わらない', async () => {
+      const repo = makeRepo();
+      allowed(call(repo, 'code-reviewer', T0));
+      allowed(call(repo, 'code-reviewer', T0 + 10 * MIN));
+      const file = path.join(budgetDir(repo), stateFiles(repo)[0]);
+      const before = readFileSync(file, 'utf8');
+      const results = await Promise.all(['code-reviewer', 'ui-reviewer', 'security-reviewer'].map((a) => callAsync(repo, a, T0 + 20 * MIN)));
+      for (const r of results) denied(r);
+      assert.equal(readFileSync(file, 'utf8'), before);
+    });
+    test('同時の別の巡 3 つ（時刻が離れた）は、上限の 2 巡だけが通る', async () => {
+      const repo = makeRepo();
+      const results = await Promise.all([
+        callAsync(repo, 'code-reviewer', T0),
+        callAsync(repo, 'code-reviewer', T0 + 10 * MIN),
+        callAsync(repo, 'code-reviewer', T0 + 20 * MIN),
+      ]);
+      assert.equal(results.filter((r) => r.stdout.trim() === '').length, 2);
+      assert.equal(results.filter((r) => r.stdout.includes('"deny"')).length, 1);
+      const state = JSON.parse(readFileSync(path.join(budgetDir(repo), stateFiles(repo)[0]), 'utf8'));
+      assert.equal(state.starts.length, 2);
+    });
+    test('同時の extend 3 つは、すべて足される', async () => {
+      const repo = makeRepo();
+      allowed(call(repo, 'code-reviewer', T0));
+      const ext = () =>
+        new Promise((resolve) => {
+          const child = spawn(process.execPath, [script, 'extend', '1', '--reason', 'r'], { cwd: repo, env: envAt(T0) });
+          child.on('close', resolve);
+        });
+      const codes = await Promise.all([ext(), ext(), ext()]);
+      assert.deepEqual(codes, [0, 0, 0]);
+      const state = JSON.parse(readFileSync(path.join(budgetDir(repo), stateFiles(repo)[0]), 'utf8'));
+      assert.equal(state.extra, 3);
+      assert.equal(state.extensions.length, 3);
+    });
+    test('ロックのファイルが状態の置き場に残らない（実行後は状態ファイルだけ）', async () => {
+      const repo = makeRepo();
+      await Promise.all([callAsync(repo, 'code-reviewer', T0), callAsync(repo, 'code-reviewer', T0 + 1)]);
+      assert.deepEqual(
+        stateFiles(repo).filter((f) => !f.endsWith('.json')),
+        [],
+      );
+      assert.equal(stateFiles(repo).length, 1);
+    });
+  });
+});
