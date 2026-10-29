@@ -1,6 +1,7 @@
 // ワークスペースを終了する、再開する。管理者が終了する（確認のダイアログを経る）→ 帯を確かめる → 再開する。
 // seed のセッション（seed/sessions.ts）の Cookie で開く。あおば開発の管理者はミナト、一般のユーザーはハルカ。
-// 終了して確かめるワークスペースは、管理の画面から作った専用のもの（seed のワークスペースを終了したままにしない）
+// 終了して確かめるワークスペースは、管理の画面から作った専用のもの（seed のワークスペースを終了したままにしない）。
+// 作ったワークスペースは消せずに残るので、名前に繰り返し（--repeat-each）とやり直しの回を混ぜ、前の回の行に当たらないようにする
 import type { Page } from '@playwright/test';
 import { expect, test } from './fixtures.ts';
 import { expectFocusReturned, signIn, watchViolations } from './helpers.ts';
@@ -17,6 +18,11 @@ function bannerOf(page: Page) {
 // 管理の画面のワークスペースの節。変更の履歴の節も表を持ち、ワークスペースの名前の行が出るので、節で絞る
 function workspacesOf(page: Page) {
   return page.getByRole('region', { name: 'パーティ', exact: true });
+}
+
+// この回の印。作る行の名前に混ぜる
+function runMark(): string {
+  return `${test.info().repeatEachIndex}-${test.info().retry}`;
 }
 
 // 管理の画面から、自分をリーダーにワークスペースを作る。作ると、そのワークスペースの画面へ移る
@@ -38,7 +44,7 @@ test.describe('管理者（あおば開発のミナト）', () => {
 
   test('確認のダイアログを経て終了し、帯と読み取り専用を確かめ、再開すると元に戻る', async ({ page }) => {
     const collect = await watchViolations(page);
-    const name = '終了確認パーティ';
+    const name = `終了確認パーティ ${runMark()}`;
     const workspaceUrl = await createWorkspace(page, name);
     // 進行中のうちは帯が無く、起票できる
     await expect(bannerOf(page)).toHaveCount(0);
@@ -109,7 +115,7 @@ test.describe('管理者（あおば開発のミナト）', () => {
   });
 
   test('送っている間は、「終了する」を押しても無視し、ダイアログも閉じられず、1回しか送らない', async ({ page }) => {
-    const name = '二重送信の確認パーティ';
+    const name = `二重送信の確認パーティ ${runMark()}`;
     await createWorkspace(page, name);
     let requests = 0;
     await page.route('**/api/aoba/workspace-close', async (route) => {
@@ -145,7 +151,7 @@ test.describe('管理者（あおば開発のミナト）', () => {
   test('終了できなかったときは、ダイアログの中に理由を出して開いたままにする。別の画面で先に終了されていたら、読み直して知らせる', async ({
     page,
   }) => {
-    const name = '失敗の確認パーティ';
+    const name = `失敗の確認パーティ ${runMark()}`;
     await createWorkspace(page, name);
     await page.goto('/aoba/admin');
     const row = workspacesOf(page).locator('tbody tr', { hasText: name });
@@ -222,7 +228,9 @@ test.describe('管理者（あおば開発のミナト）', () => {
   });
 
   test('空白の無い長い名前でも、確認の見出しとトーストは折り返してはみ出さない', async ({ page }) => {
-    const name = 'W'.repeat(50);
+    // 名前の上限（50字）いっぱいに、空白を入れずに回の印を末尾に付ける
+    const mark = runMark().replace('-', '');
+    const name = `${'W'.repeat(50 - mark.length)}${mark}`;
     await createWorkspace(page, name);
     await page.setViewportSize({ width: 390, height: 800 });
     await page.route('**/api/aoba/workspace-close', (route) =>

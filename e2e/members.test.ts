@@ -5,6 +5,7 @@ import type { OutputOf } from '../src/shared/operations/define.ts';
 import { organizationInfo } from '../src/shared/operations/organization/index.ts';
 import { expect, test } from './fixtures.ts';
 import { createWorkspace, expectFocusReturned, expectModalFocus, signIn, watchViolations } from './helpers.ts';
+import { restoreKaedeInvitation } from './local-d1.ts';
 import { rewriteOperation } from './operations.ts';
 
 const AOBA_WORKSPACE_ID = '019a0000-0000-7000-8000-000000000401';
@@ -594,13 +595,18 @@ test.describe('一般のユーザー（あおば開発のハルカ）', () => {
 
 // 招待して取り消す一続き。ひばり工房の社内ツール（スクラムの言葉）で、リーダーで管理者のリンが操作する。
 // e2e の Worker は本物の GitHub へ行かないので、GitHub に問い合わせる応答（invitee-resolve、invitation-create）と、
-// 招待した後の member-list の読み直しは差し替える。取り消しは、seed の承諾待ちの招待（kaede--seed）に本物の API で行う。
+// 招待した後の member-list の読み直しは差し替える。取り消しは、seed の承諾待ちの招待（kaede--seed）に本物の API で行い、
+// テストの後で承諾待ちに戻す（取り消しを戻す操作は無いので、手元の D1 に直に書く。e2e/local-d1.ts）。
 // サーバーの処理は test/invitation.test.ts が確かめる
 test.describe('リーダー（ひばり工房のリン）', () => {
   const HIBARI_MEMBERS_PATH = '/hibari/w/019a0000-0000-7000-8000-000000000402/members';
 
   test.beforeEach(async ({ context, baseURL }) => {
     await signIn(context, baseURL, 'otherOrg');
+  });
+
+  test.afterEach(async () => {
+    await restoreKaedeInvitation();
   });
 
   test('GitHub のユーザー名を確かめて招待すると承諾待ちに出て、取り消すと消える', async ({ page }) => {

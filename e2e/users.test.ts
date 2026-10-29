@@ -4,8 +4,11 @@
 // （seed/data.sql。ソラは承諾待ちの招待と同じログインなので、管理者にしても組織の人数は変わらない）。
 // ファイルの中のテストは順に走る（集計の数を見るため）
 import type { Page } from '@playwright/test';
+import type { OutputOf } from '../src/shared/operations/define.ts';
+import { userList } from '../src/shared/operations/organization/user.ts';
 import { expect, test } from './fixtures.ts';
 import { expectFocusReturned, signIn, watchViolations } from './helpers.ts';
+import { rewriteOperation } from './operations.ts';
 
 test.use({ timezoneId: 'Asia/Tokyo' });
 
@@ -32,6 +35,9 @@ test.describe('管理者（あおば開発のミナト）', () => {
     page,
   }) => {
     const collect = await watchViolations(page);
+    // 一覧の API が返した値を手元に取る（応答は変えない）
+    let listed: OutputOf<typeof userList> | undefined;
+    await rewriteOperation(page, userList, { slug: 'aoba' }, (output) => (listed = output));
     await page.goto('/aoba/admin');
     const table = sectionOf(page).getByRole('table', { name: '冒険者ギルドのユーザーの一覧' });
     await expect(table.getByRole('columnheader')).toHaveText([
@@ -60,7 +66,12 @@ test.describe('管理者（あおば開発のミナト）', () => {
     await expect(me.getByRole('button')).toHaveCount(0);
     const haruka = rowOf(page, 'ハルカ');
     await expect(haruka.getByRole('checkbox', { name: 'ハルカをギルドマスターにする' })).not.toBeChecked();
-    await expect(haruka.locator('td.is-num')).toHaveText('1');
+    // 所属の数は API の値。ハルカは seed では 1 だが、ほかのファイル（e2e/workspace.test.ts）がハルカをリーダーにワークスペースを作り、
+    // 消せずに残るので、並べて走る順と繰り返し（--repeat-each）で増える。所属の無いソラは、このファイルしか触らないので 0 のまま
+    const harukaCount = listed?.users.find((user) => user.name === 'ハルカ')?.workspace_count;
+    expect(harukaCount).toBeGreaterThanOrEqual(1);
+    await expect(haruka.locator('td.is-num')).toHaveText(String(harukaCount));
+    await expect(rowOf(page, 'ソラ').locator('td.is-num')).toHaveText('0');
     await expect(haruka.getByRole('button', { name: 'ハルカを無効にする' })).toHaveText('無効にする');
     // 最後に入った日は、ブラウザのタイムゾーン（東京）の日付。入ったことの無い人は「—」
     await expect(rowOf(page, 'ソラ').locator('td.mono')).toHaveText('2026-10-12');
