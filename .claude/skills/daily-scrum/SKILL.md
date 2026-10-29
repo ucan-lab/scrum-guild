@@ -30,6 +30,7 @@ description: スプリントのゴールに向けて今の状態を点検し（�
 
 ```bash
 git fetch origin
+mkdir -p <作業場所>
 git archive origin/main .claude/skills/daily-scrum/page scripts/progress-data.ts | tar -x -C <作業場所>
 node <作業場所>/scripts/progress-data.ts <作業場所>/.claude/skills/daily-scrum/page/data.json
 ```
