@@ -1959,17 +1959,22 @@ const looooooooooooooooooooooooooooooooooongLine = "コードの長い1行は、
   // 招待と指名を決めたあと。Google なら、このときだけ出る招待の URL をダイアログで見せる。
   // reissue を付けると、URL を失ったときと期限が切れたときの直し方（指名し直し）を添える（運用者の指名）。
   // 見本の URL は固定の架空の値
-  function inviteLink(id, done, reissue = false) {
+  // workspace を付けると、ワークスペースへの招待（メンバーの画面）の文にする（本番の MemberInvite.svelte と辞書の inviteUrl* と同じ文）
+  function inviteLink(id, done, reissue = false, workspace = false) {
     const via = document.querySelector(`[data-login-via="${id}"]:checked`)?.value;
     if (via !== "google") { closeDialog(); toast(`${icon("check")}${esc(done)}`); return; }
+    const lead = workspace
+      ? `招待しました。Scrum Guild はメールを送りません。この招待の URL を本人に伝えてください。本人がこの URL を開き、招待したメールアドレスの Google アカウントでログインすると、招待を承諾して${t("workspace")}に入れます。`
+      : `${esc(done)}。この URL を本人に伝えてください。本人がこの URL を開き、招待したメールアドレスの Google アカウントでログインすると入れます。`;
     openDialog("招待の URL",
-      `<p>${esc(done)}。この URL を本人に伝えてください。本人がこの URL を開き、招待したメールアドレスの Google アカウントでログインすると入れます。</p>
+      `<p>${lead}</p>
        <div class="field"><label class="field-label" for="d-iu">招待の URL</label>
          <div class="input-row"><input class="input mono" id="d-iu" value="https://scrum-guild.dev/invite#Qm7tX2vLr9aKpE4wZc8hN3bYd6fGs1uJ0oTiRl5eWxA" readonly>
            <button class="btn" type="button" data-toast="招待の URL をコピーしました">${icon("link")}コピー</button></div></div>
        <div class="callout is-info">${icon("check")}<span>次のメールアドレスの Google アカウントでログインするよう伝えてください。<b class="mono wrap-anywhere">mio.hoshino@example.com</b></span></div>
        <div class="callout is-warn">${icon("alert")}<span>この URL はこの画面を閉じると二度と出せません。期限は14日（2026/11/09 09:00 まで）です。期限までに本人へ伝えてください。</span></div>
-       ${reissue ? `<p class="field-hint">URL を失ったときや期限が切れたときは、一覧の「${t("admin")}を指名」から指名し直すと、新しい招待の URL が出ます。</p>` : ""}`,
+       ${reissue ? `<p class="field-hint">URL を失ったときや期限が切れたときは、一覧の「${t("admin")}を指名」から指名し直すと、新しい招待の URL が出ます。</p>` : ""}
+       ${workspace ? `<p class="field-hint">URL を失ったときや期限が切れたときは、同じメールアドレスで招待し直すと、新しい招待の URL が出ます（期限が切れた後は、${t("organization")}の人数が上限なら招待し直せません）。招待し直すと（ほかの${t("leader")}が招待し直したときも）、前の招待の URL は使えなくなります。</p>` : ""}`,
       `<button class="btn is-primary" type="button" data-close-dialog>閉じる</button>`);
   }
   document.addEventListener("change", (ev) => {
@@ -2112,7 +2117,7 @@ const looooooooooooooooooooooooooooooooooongLine = "コードの長い1行は、
       el.outerHTML = drawerSizeBtn();
       document.querySelector("#drawer [data-drawer-size]")?.focus({ preventScroll: true }); return;
     }
-    if ((el = hit("data-invite-link"))) { inviteLink(el.dataset.inviteLink, el.dataset.inviteDone); return; }
+    if ((el = hit("data-invite-link"))) { inviteLink(el.dataset.inviteLink, el.dataset.inviteDone, false, el.dataset.inviteKind === "workspace"); return; }
     // 組織の作成: GitHub は解決した人を見せ、確かめてから作れる。作った後は組織の URL を出す
     // 管理者の指名し直しも同じ（確かめた人の表示と指名するボタンを、data-verify-panel と data-verify-submit で渡す）
     if ((el = hit("data-verify-admin"))) {

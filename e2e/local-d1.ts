@@ -11,16 +11,28 @@ const run = promisify(execFile);
 
 // 文を1回の wrangler d1 execute で流す。値は呼ぶ側が固定の seed の値だけを埋める（外から来た文字は埋めない）。
 // SQL は --command= に続けて1つの引数で渡す（別の引数にすると、- で始まる文を wrangler がフラグと読みうる）。
-// 固まったときにテストの上限まで待たないよう、20 秒で打ち切る（1回は手元で約 2 秒）
+// 固まったときにテストの上限まで待たないよう、20 秒で打ち切る（1回は手元で約 2 秒）。
+// 並べて走るほかのテストの片付けと e2e の Worker が同じ手元の D1 のファイルに書くので、SQLITE_BUSY（database is locked）で
+// 断られることがある。ここで流す文はどれも何度流しても同じ結果（DELETE、seed の値へ戻す UPDATE、INSERT OR IGNORE）なので、
+// 途中まで書かれていても、間を空けて3回まで流し直す
+const BUSY_ATTEMPTS = 3;
+
 async function executeLocalD1(sql: string): Promise<void> {
-  try {
-    await run('wrangler', ['d1', 'execute', 'DB', '--local', `--command=${sql}`], {
-      encoding: 'utf8',
-      timeout: 20_000,
-    });
-  } catch (err) {
-    const stderr = (err as { stderr?: string }).stderr ?? '';
-    throw new Error(`手元の D1 に SQL を流せなかった: ${stderr.trim()}`, { cause: err });
+  for (let attempt = 1; ; attempt++) {
+    try {
+      await run('wrangler', ['d1', 'execute', 'DB', '--local', `--command=${sql}`], {
+        encoding: 'utf8',
+        timeout: 20_000,
+      });
+      return;
+    } catch (err) {
+      const stderr = (err as { stderr?: string }).stderr ?? '';
+      if (attempt < BUSY_ATTEMPTS && stderr.includes('SQLITE_BUSY')) {
+        await new Promise((resolve) => setTimeout(resolve, 500 * attempt));
+        continue;
+      }
+      throw new Error(`手元の D1 に SQL を流せなかった: ${stderr.trim()}`, { cause: err });
+    }
   }
 }
 
@@ -38,6 +50,25 @@ export async function restoreKaedeInvitation(): Promise<void> {
   await executeLocalD1(
     `UPDATE invitations SET status = 'pending', responded_at = NULL ` +
       `WHERE id = '${KAEDE_INVITATION_ID}' AND workspace_id = '${HIBARI_TOOLS_WORKSPACE_ID}';`,
+  );
+}
+
+// e2e/members.test.ts が社内ツールに Google で招待するメールアドレス（架空）
+export const E2E_GOOGLE_INVITE_EMAIL = 'nagisa.e2e@example.com';
+
+// 社内ツールへの、E2E_GOOGLE_INVITE_EMAIL への Google の招待（承諾待ちも取り消し済みも）と、その変更の履歴を消す。
+// 招待は人数と承諾待ちの一覧に出るので、繰り返しとほかのテストのために seed の状態（この招待が無い）へ戻す。
+// 外部キーの向きに合わせ、変更の履歴を先に消す
+export async function removeE2eGoogleInvitations(): Promise<void> {
+  const invitations =
+    `SELECT id FROM invitations WHERE workspace_id = '${HIBARI_TOOLS_WORKSPACE_ID}' ` +
+    `AND login_provider = 'google' AND login_email = '${E2E_GOOGLE_INVITE_EMAIL}'`;
+  await executeLocalD1(
+    [
+      `DELETE FROM change_logs WHERE organization_id = '${HIBARI_ORGANIZATION_ID}' ` +
+        `AND entity_type = 'invitation' AND entity_id IN (${invitations});`,
+      `DELETE FROM invitations WHERE id IN (${invitations});`,
+    ].join('\n'),
   );
 }
 

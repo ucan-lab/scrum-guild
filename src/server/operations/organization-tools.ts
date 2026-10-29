@@ -5,6 +5,7 @@
 // 道具は権限ごとに分けず、組織の中のすべての操作に渡す。道具の中で入った人（actor）を確かめ、承諾待ちの招待だけの人の操作からは
 // 自分のログインの読み取り（myLogins）のほかの道具を使えず、組織の設定の書き込みは管理者の操作からだけ使える。
 // 当たらない呼び出しは処理の誤りなので、投げて 500 にする
+import { INVITE_PATH } from '../../shared/claim-token.ts';
 import { accountLogins } from '../auth/account-logins.ts';
 import type { InviteeResolver } from '../auth/login-method.ts';
 import { isOperatorLogin } from '../auth/operators.ts';
@@ -25,6 +26,9 @@ import {
 export type OrganizationTools = {
   // 招待する人の解決器。持つ手段（GitHub）だけ。資格情報が未設定の手段と、解決器を持たない手段は undefined
   inviteeResolver(provider: string): InviteeResolver | undefined;
+  // 招待の URL（<公開 URL のオリジン>/invite#<秘密>）。Google の招待（invitation-create）が作る。秘密は応答の本文にだけ入れる
+  // （運用者の道具の inviteUrl と同じ式）
+  inviteUrl(claimToken: string): string;
   // 自分の組織の行のうち、入るときに引かない値（人数の上限）
   readOrganization(): Promise<OrganizationRow>;
   // 自分の組織の言葉づかいと既定のテーマを、停止しておらず、先に読んだ値（from）のままなら書く（渡した項目と updated_at だけ）。
@@ -63,6 +67,7 @@ export function organizationTools(
   let logins: Promise<readonly MyLogin[]> | undefined;
   return {
     inviteeResolver: (provider) => member(() => inviteeResolver(provider)),
+    inviteUrl: (claimToken) => member(() => `${new URL(env.PUBLIC_ORIGIN).origin}${INVITE_PATH}#${claimToken}`),
     readOrganization: () => member(() => readOrganizationRow(env, db)),
     writeOrganizationSettings: (change, now) =>
       member(() => {

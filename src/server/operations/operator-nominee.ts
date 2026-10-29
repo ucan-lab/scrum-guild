@@ -1,14 +1,13 @@
 // 運用者が管理者に指名する人の指し方（組織の作成の最初の管理者と、管理者の指名し直し）。両方の処理が同じ手順を使う。
 // GitHub はユーザー名を解決し直し、運用者が確かめたユーザー ID と一致するかを確かめ、既にアカウントがあるかを共通の DB で引く。
 // Google はメールアドレスをそろえ、待つ行の招待の URL の秘密を作る（docs/data-model.md の「メールアドレスで待つ指名と招待」）
-import { CLAIM_LIFETIME_DAYS } from '../../shared/claim-token.ts';
 import { normalizeEmail } from '../../shared/email.ts';
 import type { CreateOrganizationProblem, ReassignAdminProblem } from '../../shared/operations/operator/index.ts';
 import type { ResolvedInvitee } from '../auth/login-method.ts';
-import { randomToken, sha256Hex } from '../auth/tokens.ts';
 import type { commonDb } from '../db/index.ts';
 import { ApiError } from '../errors.ts';
 import type { AdminNominee } from '../organizations/designate-admin.ts';
+import { newClaimSecret } from './claim-secret.ts';
 import { resolveGithubUsername } from './github-invitee.ts';
 import type { OperatorTools } from './operator-tools.ts';
 
@@ -75,12 +74,11 @@ export async function googleNominee(
 ): Promise<{ nominee: AdminNominee; email: string; claimToken: string; claimExpiresAt: string }> {
   const email = normalizeEmail(rawEmail);
   if (email === undefined) throw invalid('admin.email', 'email_invalid', 'メールアドレスの形に合わない');
-  const claimToken = randomToken();
-  const claimExpiresAt = new Date(now.getTime() + CLAIM_LIFETIME_DAYS * 24 * 60 * 60 * 1000).toISOString();
+  const { claimToken, claimTokenHash, claimExpiresAt } = await newClaimSecret(now);
   return {
     nominee: {
       provider: 'google',
-      waiting: { email, claimTokenHash: await sha256Hex(claimToken), claimExpiresAt },
+      waiting: { email, claimTokenHash, claimExpiresAt },
       // 待つ間の users.name はメールアドレス（結ぶときに Google のプロフィールの名前に書き直す）
       name: email,
       accountId: null,

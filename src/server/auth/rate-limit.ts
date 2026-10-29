@@ -1,5 +1,5 @@
 // アプリ側のレート制限（docs/data-model.md の `rate_limits`）。設けるのは、ログイン、画面のエラーの送信（POST /api/client-errors）、
-// 手動の同期、招待（GitHub に問い合わせる invitee-resolve と invitation-create）、長い本文を書く操作（workspace-dod-update、
+// 手動の同期、招待（GitHub に問い合わせる invitee-resolve と invitation-create。invitation-create は GitHub に問い合わせない Google の招待も同じ枠で数える）、長い本文を書く操作（workspace-dod-update、
 // comment-create、comment-update）だけ。
 // 窓の最初の呼び出しから windowMs の間に max 回まで。1文の upsert で数えるので、並行した呼び出しも取りこぼさず、
 // 窓を過ぎた最初の呼び出しが数え直す。断った呼び出しも数える。ログインと画面のエラーの送信だけは、数える前に覗いて、

@@ -5,7 +5,7 @@ import type { OutputOf } from '../src/shared/operations/define.ts';
 import { organizationInfo } from '../src/shared/operations/organization/index.ts';
 import { expect, test } from './fixtures.ts';
 import { createWorkspace, expectFocusReturned, expectModalFocus, signIn, watchViolations } from './helpers.ts';
-import { restoreKaedeInvitation } from './local-d1.ts';
+import { E2E_GOOGLE_INVITE_EMAIL, removeE2eGoogleInvitations, restoreKaedeInvitation } from './local-d1.ts';
 import { rewriteOperation } from './operations.ts';
 
 const AOBA_WORKSPACE_ID = '019a0000-0000-7000-8000-000000000401';
@@ -74,12 +74,15 @@ test.describe('リーダー（あおば開発のミナト）', () => {
     const invitation = invitations.locator('tbody tr').first().locator('td');
     await expect(invitation).toHaveText(['sora--seed', 'GitHub', '一般', '2026-10-19', '取り消す']);
 
-    // 招待する。組織の人数は、管理者のミナト、一般のハルカ、承諾待ちのそら の3人。ログインの手段は GitHub だけ
+    // 招待する。組織の人数は、管理者のミナト、一般のハルカ、承諾待ちのそら の3人。ログインの手段は GitHub（既定）と Google
     await expect(page.getByRole('heading', { level: 2, name: '招待する' })).toBeVisible();
     await expect(page.locator('#members-invite').locator('..').locator('.section-hint')).toHaveText(
       '冒険者ギルドの人数 3 / 15 人',
     );
-    await expect(page.getByRole('radiogroup', { name: 'ログインの手段' }).getByRole('radio')).toHaveCount(1);
+    const vias = page.getByRole('radiogroup', { name: 'ログインの手段' }).getByRole('radio');
+    await expect(vias).toHaveCount(2);
+    await expect(page.getByRole('radio', { name: 'GitHub' })).toBeChecked();
+    await expect(page.getByRole('radio', { name: 'Google' })).not.toBeChecked();
     // 確かめるまで招待できない
     await expect(page.getByRole('button', { name: '招待する' })).toBeDisabled();
     expect(await collect()).toEqual([]);
@@ -185,6 +188,82 @@ test.describe('リーダー（あおば開発のミナト）', () => {
     await expect(page.getByLabel('GitHub のユーザー名')).toBeFocused();
     await expect(page.locator('.choice')).toHaveCount(0);
     await expect(page.getByRole('button', { name: '招待する' })).toBeDisabled();
+  });
+
+  test('Google の招待の失敗は、メールアドレスの欄か送信の下に出し、書かれたか分からないときは新しい URL の出し方を添える', async ({
+    page,
+  }) => {
+    const responses = [
+      { status: 409, json: { error: { code: 'already_invited', message: 'x' } } },
+      // 到達しない応答（Google の招待で invite が null）も、失敗として出す
+      { status: 200, json: { invitation_id: '019a0000-0000-7000-8000-00000000fffe', login_name: 'x', invite: null } },
+      { status: 500, json: { error: { code: 'internal', message: 'x' } } },
+    ];
+    await page.route('**/api/aoba/invitation-create', (route) => route.fulfill(responses.shift()!));
+    await page.goto(MEMBERS_PATH);
+    await page.getByRole('radio', { name: 'Google' }).check();
+    const email = page.getByLabel('Google のメールアドレス');
+    const invite = page.getByRole('button', { name: '招待する' });
+
+    await email.fill(E2E_GOOGLE_INVITE_EMAIL);
+    await invite.click();
+    await expect(page.locator('#invite-email-error')).toHaveText(
+      'この人には、このパーティへの承諾待ちの招待があります。',
+    );
+    await expect(email).toBeFocused();
+
+    await email.fill(E2E_GOOGLE_INVITE_EMAIL);
+    await invite.click();
+    const callout = page.locator('.panel .callout.is-danger');
+    await expect(callout).toHaveText('招待できませんでした。もう一度試してください。');
+    await expect(callout).toBeFocused();
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+
+    await invite.click();
+    await expect(callout).toHaveText(
+      '招待できたか分かりません。承諾待ちに出ていても、招待の URL はもう出せません。もう一度招待すると新しい招待の URL が出て、前の URL は使えなくなります。',
+    );
+  });
+
+  test('Google の招待が上限で断られても、GitHub で確かめた数えられている人は招待できるまま', async ({ page }) => {
+    await page.route('**/api/aoba/member-list', async (route) => {
+      const response = await route.fetch();
+      const json = (await response.json()) as Record<string, unknown>;
+      await route.fulfill({ response, json: { ...json, seats: { used: 15, limit: 15 } } });
+    });
+    await page.route('**/api/aoba/invitee-resolve', (route) =>
+      route.fulfill({
+        json: {
+          login_subject: '9000000000000102',
+          login_name: 'haruka--seed',
+          display_name: null,
+          avatar_url: null,
+          already_counted: true,
+        },
+      }),
+    );
+    await page.route('**/api/aoba/invitation-create', (route) =>
+      route.fulfill({ status: 409, json: { error: { code: 'member_limit_reached', message: 'x' } } }),
+    );
+    await page.goto(MEMBERS_PATH);
+    await page.getByLabel('GitHub のユーザー名').fill('haruka--seed');
+    await page.getByRole('button', { name: '確かめる' }).click();
+    await expect(page.locator('.choice')).toContainText('haruka--seed');
+    const invite = page.getByRole('button', { name: '招待する' });
+    await expect(invite).toBeEnabled();
+
+    // Google では、同じアドレスの承諾待ちがある人だけを数えられている人として扱うことを、上限の枠に添える
+    await page.getByRole('radio', { name: 'Google' }).check();
+    await expect(page.locator('.panel .callout.is-warn')).toContainText(
+      'Google の招待では、同じメールアドレスへの承諾待ちの招待がある人だけを、すでに数えられている人として扱います。',
+    );
+    await page.getByLabel('Google のメールアドレス').fill(E2E_GOOGLE_INVITE_EMAIL);
+    await invite.click();
+    await expect(page.getByRole('alert').filter({ hasText: '上限' })).toBeFocused();
+
+    await page.getByRole('radio', { name: 'GitHub' }).check();
+    await expect(page.locator('.choice')).toContainText('haruka--seed');
+    await expect(invite).toBeEnabled();
   });
 
   test('アバターのある人は画像、無い人は頭文字の円で出る', async ({ page }) => {
@@ -597,6 +676,7 @@ test.describe('一般のユーザー（あおば開発のハルカ）', () => {
 // e2e の Worker は本物の GitHub へ行かないので、GitHub に問い合わせる応答（invitee-resolve、invitation-create）と、
 // 招待した後の member-list の読み直しは差し替える。取り消しは、seed の承諾待ちの招待（kaede--seed）に本物の API で行い、
 // テストの後で承諾待ちに戻す（取り消しを戻す操作は無いので、手元の D1 に直に書く。e2e/local-d1.ts）。
+// Google の招待は GitHub に問い合わせないので本物の API で作り、テストの後で消す（招待を消す操作は無いので、同じく手元の D1 に直に書く）。
 // サーバーの処理は test/invitation.test.ts が確かめる
 test.describe('リーダー（ひばり工房のリン）', () => {
   const HIBARI_MEMBERS_PATH = '/hibari/w/019a0000-0000-7000-8000-000000000402/members';
@@ -607,6 +687,96 @@ test.describe('リーダー（ひばり工房のリン）', () => {
 
   test.afterEach(async () => {
     await restoreKaedeInvitation();
+    await removeE2eGoogleInvitations();
+  });
+
+  test('Google のメールアドレスで招待すると招待の URL をダイアログで出し、閉じると承諾待ちに Google と期限が出る。招待し直すと新しい URL が出て、前の招待は消える', async ({
+    page,
+    context,
+  }) => {
+    await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+    const collect = await watchViolations(page);
+    await page.goto(HIBARI_MEMBERS_PATH);
+    const invitations = page.getByRole('table', { name: '承諾待ちの招待の一覧' });
+    await expect(invitations.locator('tbody tr')).toHaveCount(1);
+
+    // Google を選ぶと、メールアドレスの欄にし、確かめる手順は出さない
+    await page.getByRole('radio', { name: 'Google' }).check();
+    const email = page.getByLabel('Google のメールアドレス');
+    await expect(email).toBeVisible();
+    await expect(page.getByLabel('GitHub のユーザー名')).toHaveCount(0);
+    await expect(page.getByRole('button', { name: '確かめる' })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: '招待する' })).toBeDisabled();
+    await expect(
+      page.locator('.panel .field-hint', { hasText: 'Scrum Guild は招待をメールで送りません。' }),
+    ).toHaveText(
+      /^Scrum Guild は招待をメールで送りません。Google の招待は、招待したときに出る招待の URL（14日で切れます）を本人に伝えてください。GitHub の招待は、次の冒険者ギルドの URL を伝えてください。\s*http:\/\/localhost:\d+\/hibari\/$/,
+    );
+
+    // 形の合わないアドレスは欄の下に出す
+    await email.fill('nagisa.e2e');
+    await email.press('Enter');
+    await expect(page.locator('#invite-email-error')).toHaveText(
+      'メールアドレスの形に合いません。英数字などの ASCII の文字だけで、本人が Google に登録した綴りのまま入れてください。',
+    );
+    await expect(email).toBeFocused();
+    await expect(email).toHaveAttribute('aria-invalid', 'true');
+    // 手段を切り替えると、入力の誤りを消す
+    await page.getByRole('radio', { name: 'GitHub' }).check();
+    await page.getByRole('radio', { name: 'Google' }).check();
+    await expect(page.locator('#invite-email-error')).toHaveCount(0);
+
+    // 大文字を混ぜても、そろえたアドレスで招待する。Enter でも招待する
+    await email.fill('Nagisa.E2E@example.com');
+    await page.getByRole('radiogroup', { name: 'ロール' }).getByRole('radio', { name: 'リーダー' }).check();
+    await email.press('Enter');
+    const dialog = page.getByRole('dialog', { name: '招待の URL' });
+    await expect(dialog).toBeVisible();
+    // 開いた直後は本文にフォーカスを置く（読み上げが URL の値より先に、二度と出せないことの注意まで続けて読める）
+    await expect(dialog.locator('p', { hasText: '招待しました。' })).toBeFocused();
+    const url = dialog.getByLabel('招待の URL');
+    await expect(url).toHaveValue(/\/invite#[A-Za-z0-9_-]{43}$/);
+    const firstUrl = await url.inputValue();
+    await expect(dialog.locator('.callout.is-info')).toHaveText(
+      `次のメールアドレスの Google アカウントでログインするよう伝えてください。 ${E2E_GOOGLE_INVITE_EMAIL}`,
+    );
+    await expect(dialog.locator('.callout.is-warn')).toHaveText(
+      /^この URL はこの画面を閉じると二度と出せません。期限は14日（\d{4}\/\d{2}\/\d{2}\s\d{2}:\d{2} まで）です。期限までに本人へ伝えてください。$/,
+    );
+    await expect(dialog).toContainText(
+      '同じメールアドレスで招待し直すと、新しい招待の URL が出ます（期限が切れた後は、冒険者ギルドの人数が上限なら招待し直せません）。招待し直すと（ほかのリーダーが招待し直したときも）、前の招待の URL は使えなくなります。',
+    );
+    await dialog.getByRole('button', { name: 'コピー' }).click();
+    await expect(page.locator('.toasts:visible .toast').last()).toHaveText('招待の URL をコピーしました');
+    expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(firstUrl);
+
+    // 閉じるとメールアドレスの欄へ戻り、読み直した承諾待ちに、手段と期限が出る
+    // 下の「閉じる」（右上の × も同じ名前）
+    const close = dialog.getByText('閉じる', { exact: true });
+    await close.click();
+    await expect(dialog).toBeHidden();
+    await expectFocusReturned(page, email);
+    await expect(email).toHaveValue('');
+    await expect(invitations.locator('tbody tr')).toHaveCount(2);
+    const row = invitations.locator('tbody tr', { hasText: E2E_GOOGLE_INVITE_EMAIL });
+    await expect(row.locator('td').nth(1)).toHaveText(/^Google\s*\d{4}-\d{2}-\d{2} まで$/);
+    await expect(row.locator('td').nth(2)).toHaveText('リーダー');
+
+    // 同じアドレスで招待し直すと、新しい URL が出て、前の招待は取り消されて一覧から消える（ロールは一般に戻っている）
+    await email.fill(E2E_GOOGLE_INVITE_EMAIL);
+    await page.getByRole('button', { name: '招待する' }).click();
+    await expect(dialog).toBeVisible();
+    await expect(url).toHaveValue(/\/invite#[A-Za-z0-9_-]{43}$/);
+    expect(await url.inputValue()).not.toBe(firstUrl);
+    await close.click();
+    await expectFocusReturned(page, email);
+    await expect(invitations.locator('tbody tr')).toHaveCount(2);
+    await expect(row).toHaveCount(1);
+    await expect(row.locator('td').nth(2)).toHaveText('一般');
+    // ブラウザが出すのは、形の合わないアドレスを送った 400 の1件だけ
+    expect(await collect()).toEqual([
+      'Failed to load resource: the server responded with a status of 400 (Bad Request)',
+    ]);
   });
 
   test('GitHub のユーザー名を確かめて招待すると承諾待ちに出て、取り消すと消える', async ({ page }) => {
@@ -640,7 +810,7 @@ test.describe('リーダー（ひばり工房のリン）', () => {
     await page.route('**/api/hibari/invitation-create', (route) => {
       sent = route.request().postDataJSON();
       return route.fulfill({
-        json: { invitation_id: '019a0000-0000-7000-8000-00000000ffff', login_name: 'nagi--seed' },
+        json: { invitation_id: '019a0000-0000-7000-8000-00000000ffff', login_name: 'nagi--seed', invite: null },
       });
     });
     await page.route('**/api/hibari/member-list', async (route) => {

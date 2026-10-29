@@ -1,7 +1,11 @@
 // スキーマの CHECK と一意のうち、壊れると事故になるもの（docs/data-model.md）。
 // 確かめたいのは SQL の制約そのものなので、Kysely の入口を通さず D1 の binding に直に書く
+// （索引の実行計画のうち、処理が組み立てる文そのものを見るものは、その文を queryPlanForTest に渡す）
 import { env } from 'cloudflare:workers';
 import { describe, expect, test } from 'vitest';
+import { orgDb } from '../src/server/db/index.ts';
+import { compiledQueryForTest, queryPlanForTest, verifiedOrganizationForTest } from '../src/server/db/testing.ts';
+import { revokeSameEmailStatements } from '../src/server/operations/invitation.ts';
 
 const AT = '2026-10-20T00:00:00.000Z';
 const CLAIM_EXPIRES_AT = '2026-11-03T00:00:00.000Z';
@@ -155,6 +159,34 @@ describe('外部キー', () => {
         `SELECT act.id FROM sprints AS act WHERE act.workspace_id = ? AND act.status = 'active' AND act.deleted_at IS NULL`,
       ),
     ).toContain('USING INDEX sprints_active');
+  });
+
+  // Google で招待し直すときの取り消しの2文（記録と UPDATE）は、'pending' を束縛せず文字のまま書くので、
+  // 部分索引 invitations_pending_email（WHERE status = 'pending' AND login_subject IS NULL）を使い、invitations を SCAN しない
+  test('Google の招待し直しの取り消しの文は、部分索引 invitations_pending_email を使う', async () => {
+    const db = orgDb(env, verifiedOrganizationForTest(id()));
+    const statements = revokeSameEmailStatements(db, {
+      workspaceId: id(),
+      email: 'mio.hoshino@example.com',
+      actorUserId: id(),
+      at: new Date(AT),
+    });
+    expect(statements).toHaveLength(2);
+    for (const statement of statements) {
+      const details = await queryPlanForTest(env, statement);
+      // 索引の条件は、束縛でなく文字のまま書く（値を見て計画し直す SQLite の働きに頼らない）
+      expect(compiledQueryForTest(statement).sql).toContain(`"status" = 'pending' AND`);
+      const invitations = details.filter((detail) => /^(SEARCH|SCAN) (invitations|i)\b/.test(detail));
+      expect(invitations.length, details.join('\n')).toBeGreaterThan(0);
+      expect(
+        invitations.every((detail) => detail.includes('USING INDEX invitations_pending_email')),
+        details.join('\n'),
+      ).toBe(true);
+      expect(
+        details.filter((detail) => detail.startsWith('SCAN ')),
+        details.join('\n'),
+      ).toEqual([]);
+    }
   });
 
   // 使わない索引も書くたびに更新され、D1 の書いた行数に数えられる。統計の無い空の表では計画が変わらないので、残っていないことを直に見る

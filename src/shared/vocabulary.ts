@@ -1402,7 +1402,7 @@ export const dictionary = defineDictionary({
     '{workspace}から抜けられませんでした。もう一度試してください。',
     '{workspace}から抜けられませんでした。もう一度試してください。',
   ),
-  // 「招待する」の節（リーダーと管理者）。ログインの手段は GitHub だけ（Google は #190 で足す）。
+  // 「招待する」の節（リーダーと管理者）。ログインの手段は GitHub と Google。
   // {organization} {admin} {workspace} は、その言葉づかいの言葉を画面が渡す
   inviteSectionTitle: workspace('招待する', '招待する'),
   inviteSeats: workspace('{organization}の人数 {used} / {limit} 人', '{organization}の人数 {used} / {limit} 人'),
@@ -1425,8 +1425,57 @@ export const dictionary = defineDictionary({
   inviteSubmitting: workspace('招待しています', '招待しています'),
   // 続けて組織の URL を出す（長い URL を折り返せるよう、URL は別の要素にする）
   inviteSendNote: workspace(
-    'Scrum Guild は招待をメールで送りません。次の{organization}の URL を本人に伝えてください。',
-    'Scrum Guild は招待をメールで送りません。次の{organization}の URL を本人に伝えてください。',
+    'Scrum Guild は招待をメールで送りません。Google の招待は、招待したときに出る招待の URL（14日で切れます）を本人に伝えてください。GitHub の招待は、次の{organization}の URL を伝えてください。',
+    'Scrum Guild は招待をメールで送りません。Google の招待は、招待したときに出る招待の URL（14日で切れます）を本人に伝えてください。GitHub の招待は、次の{organization}の URL を伝えてください。',
+  ),
+  // Google の招待。メールアドレスで指し、確かめる手順は無い
+  inviteGoogleEmailLabel: workspace('Google のメールアドレス', 'Google のメールアドレス'),
+  inviteGoogleEmailExample: workspace('例: mio.hoshino@example.com', '例: mio.hoshino@example.com'),
+  inviteGoogleEmailHint: workspace(
+    '招待の URL を作ります。本人がその URL を開き、このメールアドレスの Google アカウントでログインすると、招待を承諾できます。招待の URL は14日で切れます。',
+    '招待の URL を作ります。本人がその URL を開き、このメールアドレスの Google アカウントでログインすると、招待を承諾できます。招待の URL は14日で切れます。',
+  ),
+  inviteErrorEmailRequired: workspace('メールアドレスを入れてください。', 'メールアドレスを入れてください。'),
+  inviteErrorEmailInvalid: workspace(
+    'メールアドレスの形に合いません。英数字などの ASCII の文字だけで、本人が Google に登録した綴りのまま入れてください。',
+    'メールアドレスの形に合いません。英数字などの ASCII の文字だけで、本人が Google に登録した綴りのまま入れてください。',
+  ),
+  // Google で招待した後のダイアログ。招待の URL はこの画面にだけ出る
+  inviteUrlTitle: workspace('招待の URL', '招待の URL'),
+  inviteUrlLead: workspace(
+    '招待しました。Scrum Guild はメールを送りません。この招待の URL を本人に伝えてください。本人がこの URL を開き、招待したメールアドレスの Google アカウントでログインすると、招待を承諾して{workspace}に入れます。',
+    '招待しました。Scrum Guild はメールを送りません。この招待の URL を本人に伝えてください。本人がこの URL を開き、招待したメールアドレスの Google アカウントでログインすると、招待を承諾して{workspace}に入れます。',
+  ),
+  inviteUrlLabel: workspace('招待の URL', '招待の URL'),
+  inviteCopy: workspace('コピー', 'コピー'),
+  inviteUrlCopied: workspace('招待の URL をコピーしました', '招待の URL をコピーしました'),
+  inviteCopyFailed: workspace(
+    'コピーできませんでした。URL を選んでコピーしてください。',
+    'コピーできませんでした。URL を選んでコピーしてください。',
+  ),
+  // 続けて、メールアドレスを別の要素（等幅で、狭い幅では折り返す）で出す
+  inviteUrlTell: workspace(
+    '次のメールアドレスの Google アカウントでログインするよう伝えてください。',
+    '次のメールアドレスの Google アカウントでログインするよう伝えてください。',
+  ),
+  inviteUrlOnce: workspace(
+    'この URL はこの画面を閉じると二度と出せません。期限は14日（{expires} まで）です。期限までに本人へ伝えてください。',
+    'この URL はこの画面を閉じると二度と出せません。期限は14日（{expires} まで）です。期限までに本人へ伝えてください。',
+  ),
+  inviteUrlReissue: workspace(
+    'URL を失ったときや期限が切れたときは、同じメールアドレスで招待し直すと、新しい招待の URL が出ます（期限が切れた後は、{organization}の人数が上限なら招待し直せません）。招待し直すと（ほかの{leader}が招待し直したときも）、前の招待の URL は使えなくなります。',
+    'URL を失ったときや期限が切れたときは、同じメールアドレスで招待し直すと、新しい招待の URL が出ます（期限が切れた後は、{organization}の人数が上限なら招待し直せません）。招待し直すと（ほかの{leader}が招待し直したときも）、前の招待の URL は使えなくなります。',
+  ),
+  // 人数の上限の枠に、Google を選んでいるときだけ続けて出す。Google の招待の人数の判定はメールアドレスで見るので、
+  // 招待の URL からログインを済ませた人（sub で数えられている）も、同じアドレスでは新しい人として断られる
+  inviteLimitReachedGoogle: workspace(
+    'Google の招待では、同じメールアドレスへの承諾待ちの招待がある人だけを、すでに数えられている人として扱います。招待の URL からログインを済ませた人を同じアドレスで招待するときも、上限の間は招待できません。',
+    'Google の招待では、同じメールアドレスへの承諾待ちの招待がある人だけを、すでに数えられている人として扱います。招待の URL からログインを済ませた人を同じアドレスで招待するときも、上限の間は招待できません。',
+  ),
+  // Google の招待が書かれたか分からない失敗（通信の切れ、5xx）。書かれていても招待の URL は応答の本文にしか無いので、もう出せない
+  inviteErrorUnknownGoogle: workspace(
+    '招待できたか分かりません。承諾待ちに出ていても、招待の URL はもう出せません。もう一度招待すると新しい招待の URL が出て、前の URL は使えなくなります。',
+    '招待できたか分かりません。承諾待ちに出ていても、招待の URL はもう出せません。もう一度招待すると新しい招待の URL が出て、前の URL は使えなくなります。',
   ),
   inviteDone: workspace('{name} を招待しました', '{name} を招待しました'),
   inviteLiveVerified: workspace('確かめました: {name}', '確かめました: {name}'),
