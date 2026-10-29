@@ -70,10 +70,15 @@ export async function hashPassword(password: string, iterations: number = PASSWO
   return `${SCHEME}$${iterations}$${base64url(salt)}$${base64url(key)}`;
 }
 
-// 保存値の回数で1回回し、鍵を timingSafeEqual で比べる。形の壊れた保存値は回さずに false
+// 保存値の回数で1回回し、鍵を timingSafeEqual で比べる。形の壊れた保存値は回さずに false。
+// 保存値の回数が今の回数より少ない（成功時に書き直す前の）人は、足りない分を捨てる値で回し、合計を今の回数にそろえる。
+// 違うパスワードの応答が、無いメールアドレス（verifyDummyPassword）より速く返って、有無が分からないようにするため
 export async function verifyPassword(password: string, stored: string): Promise<boolean> {
   const parsed = parseHash(stored);
   if (parsed === undefined) return false;
+  if (parsed.iterations < PASSWORD_HASH_ITERATIONS) {
+    await deriveKey(password, DUMMY_SALT, PASSWORD_HASH_ITERATIONS - parsed.iterations);
+  }
   const derived = await deriveKey(password, parsed.salt, parsed.iterations);
   // 長さが違えば timingSafeEqual は投げる。鍵の長さは秘密ではないので、比べずに false
   if (derived.byteLength !== parsed.key.byteLength) return false;
