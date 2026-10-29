@@ -3,15 +3,16 @@
 // 登録して消すのは 2027 年の日付で、seed の休日（2026 年）とは重ねない
 import type { Page } from '@playwright/test';
 import { expect, test } from './fixtures.ts';
-import { signIn, watchViolations } from './helpers.ts';
+import { mockSeedAdminLists, signIn, watchViolations } from './helpers.ts';
 
 function sectionOf(page: Page) {
   return page.getByRole('region', { name: '組織の休日' });
 }
 
 test.describe('管理者（あおば開発のミナト）', () => {
-  test.beforeEach(async ({ context, baseURL }) => {
+  test.beforeEach(async ({ context, baseURL, page }) => {
     await signIn(context, baseURL, 'admin');
+    await mockSeedAdminLists(page);
   });
 
   test('貼り付けて登録すると、正しい行だけが入り、形の合わない行は理由とともに残る。消すと一覧から外れる', async ({

@@ -2,10 +2,12 @@ import AxeBuilder from '@axe-core/playwright';
 import { expect, test, type BrowserContext, type Locator, type Page, type Response } from '@playwright/test';
 import { SEED_SESSIONS } from '../seed/sessions.ts';
 import { organizationInfo } from '../src/shared/operations/organization/organization.ts';
+import { userList } from '../src/shared/operations/organization/user.ts';
 import { workspaceInfo } from '../src/shared/operations/workspace/workspace.ts';
+import { workspaceList } from '../src/shared/operations/workspace/workspace-list.ts';
 import { sessionCookieName } from '../src/shared/session-cookie.ts';
 import { word, type DictionaryKey, type TemplateParams, type Vocabulary } from '../src/shared/vocabulary.ts';
-import { rewriteOperation } from './operations.ts';
+import { mockOperation, rewriteOperation } from './operations.ts';
 import {
   exclusionsFor,
   formatStaleExclusions,
@@ -626,6 +628,75 @@ export async function signIn(
   await context.addCookies([
     { name: sessionCookieName(baseURL), value: SEED_SESSIONS[who].token, url: baseURL, httpOnly: true },
   ]);
+}
+
+// 組織の管理の画面の上の2つの節（ユーザーとワークスペースの一覧）を、あおば開発の seed（seed/data.sql）の行に固定する。
+// 並べて走るほかのテストが作ったワークスペースと所属で、ワークスペースの行の数とミナトの所属の数が実行ごとに変わり、
+// 下の節を写す画像の中身と位置がずれるため（#509）。最後に入った日時だけは seed に無い値を置く。ログインで入り、
+// サーバーの今日で変わるので、ミナトは決まった日（2026-10-20 の UTC の正午。UTC±11 時間のどのタイムゾーンでも同じ日）にする。seed のユーザーとワークスペースを変えたら、ここも直す
+export async function mockSeedAdminLists(page: Page): Promise<void> {
+  await mockOperation(
+    page,
+    userList,
+    { slug: 'aoba' },
+    {
+      users: [
+        {
+          id: '019a0000-0000-7000-8000-000000000308',
+          name: 'ソラ',
+          avatar_url: null,
+          is_admin: false,
+          disabled_at: null,
+          workspace_count: 0,
+          last_seen_at: '2026-10-12T01:00:00.000Z',
+        },
+        {
+          id: '019a0000-0000-7000-8000-000000000302',
+          name: 'ハルカ',
+          avatar_url: null,
+          is_admin: false,
+          disabled_at: null,
+          workspace_count: 1,
+          last_seen_at: null,
+        },
+        {
+          id: '019a0000-0000-7000-8000-000000000301',
+          name: 'ミナト',
+          avatar_url: null,
+          is_admin: true,
+          disabled_at: null,
+          workspace_count: 1,
+          last_seen_at: '2026-10-20T12:00:00.000Z',
+        },
+        {
+          id: '019a0000-0000-7000-8000-000000000309',
+          name: 'ユイ',
+          avatar_url: null,
+          is_admin: false,
+          disabled_at: null,
+          workspace_count: 0,
+          last_seen_at: null,
+        },
+      ],
+    },
+  );
+  await mockOperation(
+    page,
+    workspaceList,
+    { slug: 'aoba' },
+    {
+      workspaces: [
+        {
+          id: '019a0000-0000-7000-8000-000000000401',
+          name: '受託開発チーム',
+          member_count: 2,
+          leader_count: 1,
+          created_on: '2026-10-01',
+          closed_at: null,
+        },
+      ],
+    },
+  );
 }
 
 // 管理の画面から、自分をリーダーにワークスペースを作り、その画面へ移る（admin でログインしている前提）
