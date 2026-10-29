@@ -225,7 +225,8 @@ export const dictionary = defineDictionary({
   // 完了した行の日付の前に付ける語。日付そのもの（formatLocalDate）は画面が等幅で続ける
   completedDate: workspace('{done}した日', '{done}した日'),
   completedEmpty: workspace('{done}した{task}はありません', '{done}した{task}はありません'),
-  // 完了にした親のないタスクの件数。行は返さず、件数の1行にする。完了にした行は、読み直すまでこの件数に入らない
+  // 完了にした親のないタスクの折りたたみを閉じているときの文言。木は行を返さず件数だけ返し、開くと backlog-completed-tasks で行を読む。
+  // 完了にした行は、読み直すまでこの件数に入らない
   backlogFolded: workspace(
     '親のない{done} {count} 件を折りたたんでいます',
     '親のない{done} {count} 件を折りたたんでいます',
