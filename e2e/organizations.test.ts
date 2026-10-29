@@ -1,4 +1,3 @@
-// 一時: #451 の確認方法の 3（確かめた後に消す）
 // 組織の選択と組織の枠。seed のセッション（seed/sessions.ts）の Cookie で、組織が1つの人、2つの人、入れない組織を開いた人を確かめる
 import type { Page } from '@playwright/test';
 import { expect, test } from './fixtures.ts';
