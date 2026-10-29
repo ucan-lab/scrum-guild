@@ -206,7 +206,7 @@ jobs:
         name: 繰り返すテストの件数を上限と比べる
         run: |
           set -o pipefail
-          pnpm exec playwright test --list --reporter=json $REPEAT_FILES | node scripts/e2e-repeat-count.ts | tee -a "$GITHUB_OUTPUT"
+          pnpm exec playwright test --list --reporter=json $REPEAT_FILES | node scripts/e2e-repeat-count.ts $REPEAT_FILES | tee -a "$GITHUB_OUTPUT"
 
       - if: steps.count.outputs.run == 'true'
         uses: ./.github/actions/playwright

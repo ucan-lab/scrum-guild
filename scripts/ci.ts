@@ -84,12 +84,18 @@ export function countListedTests(report: ListReport): number {
 }
 
 // e2e-repeat が繰り返すか。上限ちょうどまでは回す。テストのファイルが読めない（構文の誤りなど）ときは、
-// 回さずに通すのでなく例外にしてジョブを落とす
-export function repeatVerdict(report: ListReport): { run: boolean; count: number } {
+// 回さずに通すのでなく例外にしてジョブを落とす。ファイルを渡したのに 0 件なら、Playwright の更新で出力の形が変わり
+// 数えられなくなったとみて落とす（黙って 0 件と数えると上限が効かない。テストの無いファイルだけなら --list が先に落ちる）
+export function repeatVerdict(report: ListReport, fileCount: number): { run: boolean; count: number } {
   if ((report.errors ?? []).length > 0) {
     throw new Error(`playwright test --list がエラーを返した: ${JSON.stringify(report.errors)}`);
   }
   const count = countListedTests(report);
+  if (fileCount > 0 && count === 0) {
+    throw new Error(
+      `${fileCount} 個のファイルを渡したのに 0 件と数えた。--list の出力の形が変わっていないかを確かめる`,
+    );
+  }
   return { run: count <= REPEAT_TEST_LIMIT, count };
 }
 

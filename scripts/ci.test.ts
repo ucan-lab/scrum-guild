@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
 import { describe, test } from 'node:test';
 import {
   ciOkVerdict,
@@ -343,18 +344,83 @@ describe('countListedTests と repeatVerdict', () => {
   });
 
   test(`上限の ${REPEAT_TEST_LIMIT} 件ちょうどなら回す`, () => {
-    assert.deepEqual(repeatVerdict(report([REPEAT_TEST_LIMIT])), { run: true, count: REPEAT_TEST_LIMIT });
+    assert.deepEqual(repeatVerdict(report([REPEAT_TEST_LIMIT]), 1), { run: true, count: REPEAT_TEST_LIMIT });
   });
 
   test('上限を1件でも超えたら回さない', () => {
-    assert.deepEqual(repeatVerdict(report([REPEAT_TEST_LIMIT, 1])), { run: false, count: REPEAT_TEST_LIMIT + 1 });
+    assert.deepEqual(repeatVerdict(report([REPEAT_TEST_LIMIT, 1]), 2), { run: false, count: REPEAT_TEST_LIMIT + 1 });
   });
 
-  test('0 件なら回す（--pass-with-no-tests で通る）', () => {
-    assert.deepEqual(repeatVerdict(report()), { run: true, count: 0 });
+  test('ファイルを渡さず 0 件なら回す（--pass-with-no-tests で通る）', () => {
+    assert.deepEqual(repeatVerdict(report(), 0), { run: true, count: 0 });
   });
 
   test('--list がエラーを返したら、回さずに通すのでなく落とす', () => {
-    assert.throws(() => repeatVerdict({ suites: [], errors: [{ message: 'SyntaxError' }] }), /エラー/);
+    assert.throws(() => repeatVerdict({ suites: [], errors: [{ message: 'SyntaxError' }] }, 1), /エラー/);
+  });
+
+  test('ファイルを渡したのに 0 件なら、出力の形が変わったとみて落とす（上限が効かなくなるため）', () => {
+    assert.throws(() => repeatVerdict({ suites: [{ specs: [], suites: [] }], errors: [] }, 1), /0 件/);
+  });
+
+  test('本物の playwright test --list の出力を、Playwright の数える件数と同じに数える', () => {
+    const run = (...args: string[]) =>
+      spawnSync('node_modules/.bin/playwright', ['test', '--list', ...args, 'e2e/logout.test.ts'], {
+        encoding: 'utf8',
+      });
+    const json = run('--reporter=json');
+    assert.equal(json.status, 0, json.stderr);
+    const total = /Total: (\d+) tests?/.exec(run().stdout)?.[1];
+    assert.ok(total !== undefined && Number(total) > 0);
+    assert.equal(countListedTests(JSON.parse(json.stdout) as ListReport), Number(total));
+  });
+});
+
+describe('changes.ts --repeat と e2e-repeat-count.ts の出力', () => {
+  const node = (script: string, input: string, ...args: string[]) =>
+    spawnSync(process.execPath, [script, ...args], { input, encoding: 'utf8' });
+
+  test('changes.ts --repeat は repeat と repeat_files の2行だけを出す', () => {
+    const result = node(
+      'scripts/changes.ts',
+      'e2e/login.test.ts\0e2e/fixtures.ts\0e2e/a11y-check.test.ts\0',
+      '--repeat',
+    );
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(result.stdout, 'repeat=true\nrepeat_files=e2e/a11y-check.test.ts e2e/login.test.ts\n');
+  });
+
+  test('changes.ts --repeat は選ぶものが無ければ repeat=false', () => {
+    const result = node('scripts/changes.ts', 'src/a.ts\0', '--repeat');
+    assert.equal(result.stdout, 'repeat=false\nrepeat_files=\n');
+  });
+
+  test('changes.ts --repeat は形に合わない名前で落ち、GITHUB_OUTPUT に何も出さない', () => {
+    const result = node('scripts/changes.ts', 'e2e/a b.test.ts\0', '--repeat');
+    assert.notEqual(result.status, 0);
+    assert.equal(result.stdout, '');
+  });
+
+  const listed = (n: number) =>
+    JSON.stringify({ suites: [{ specs: Array.from({ length: n }, () => ({ tests: [{}] })) }], errors: [] });
+
+  test(`e2e-repeat-count.ts は上限の ${REPEAT_TEST_LIMIT} 件まで run=true を出し、注記を出さない`, () => {
+    const result = node('scripts/e2e-repeat-count.ts', listed(REPEAT_TEST_LIMIT), 'e2e/a.test.ts');
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(result.stdout, 'run=true\n');
+    assert.equal(result.stderr, '');
+  });
+
+  test('e2e-repeat-count.ts は上限を超えたら run=false を出し、件数を注記に出す', () => {
+    const result = node('scripts/e2e-repeat-count.ts', listed(REPEAT_TEST_LIMIT + 1), 'e2e/a.test.ts');
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(result.stdout, 'run=false\n');
+    assert.match(result.stderr, new RegExp(`^::notice title=e2e-repeat::.*${REPEAT_TEST_LIMIT + 1} 件`));
+  });
+
+  test('e2e-repeat-count.ts はファイルを渡したのに 0 件なら落とす', () => {
+    const result = node('scripts/e2e-repeat-count.ts', listed(0), 'e2e/a.test.ts');
+    assert.notEqual(result.status, 0);
+    assert.equal(result.stdout, '');
   });
 });

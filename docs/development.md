@@ -320,8 +320,8 @@ vite の転送先も同じ値から作るので、画面は自分のワークツ
 - ダイアログと引き出しの「開くと中にフォーカスが入り、Esc で閉じ、閉じると開いた要素へ戻る」は、`e2e/helpers.ts` の `expectModalFocus` で確かめ、`toBeFocused` を並べて書かない。Esc 以外（ボタン、外側のクリック、戻る）で閉じた後に戻るのは、同じファイルの `expectFocusReturned` で確かめる。閉じた後は、戻ったうえで2回描画した後も留まることまで確かめる（`<dialog>` は `close()` で開いた要素へ戻し、`close` イベントは後で出すので、その中で別の場所へ移すと一瞬だけ戻って見える）。ヘルパーが空振りしないことは `e2e/modal-focus.test.ts` が壊したダイアログ（`page.setContent`）で確かめる（#335）。そこで落ちるはずの確かめは、落とすつもりの段だけを `timeouts` で短くし、前の段は既定の待ちにする（混んだマシンで前の段が時間切れになり、別の文言で落ちないため。#418）
 - 狭い幅（390px）の横のはみ出しと 44px の押せる範囲は、`e2e/layout-narrow.test.ts`（ワークスペースの外の画面）と `e2e/layout-narrow-workspace.test.ts`（ワークスペースの中の画面）が確かめる。関数は `e2e/helpers.ts` の `expectNarrowLayout`（中で `findOverflowViolations` と `findTargetSizeViolations` を呼ぶ）。スクラムの言葉は `useVocabulary` が操作の応答の書き換えで当てる。検査が空振りしないことは `e2e/layout-narrow-check.test.ts` が壊した HTML で確かめる。除外は axe と同じ `e2e/ui-exclusions.ts`（`docs/design.md` の「狭い幅と押せる範囲を機械で確かめる」）
 - テストは繰り返しに耐えるように書く。seed は e2e の初めに1回だけ入れ直し、テストの後にも、`--repeat-each` の繰り返しの間にも入れ直さない。CI の `e2e-repeat` は、PR で足したか変えたテストのファイルを同じ D1 の上で5回続けて回す（下の「CI」）
-  - テストが変えるか消すのは、そのテストが作った行だけにする。作る行の名前（題、本文、メールアドレスなど一意の制約や探す手がかりになるもの）には `test.info().repeatEachIndex` と `test.info().retry` を混ぜる（`e2e/backlog-move.test.ts` と `e2e/comments.test.ts` が既にそうしている）
-  - seed の行を変えるテストは、テストの終わりに元へ戻す。戻せない変更（消す、閉じるなど）は、seed の行でなく自分で作った行に対して行う
+  - テストが変えるか消すのは、原則としてそのテストが作った行だけにする。作る行の名前（題、本文、メールアドレスなど一意の制約や探す手がかりになるもの）には `test.info().repeatEachIndex` と `test.info().retry` を混ぜる（`e2e/backlog-move.test.ts` と `e2e/comments.test.ts` が既にそうしている）
+  - seed の行を変えるしかないテストは、途中で落ちても戻るよう `try`/`finally` か `afterEach` で元へ戻す。戻せない変更（消す、閉じるなど）は、seed の行でなく自分で作った行に対して行う
   - 2回目から必ず落ちるなら、揺れでなくこの決まりに反している。1回目と同じ落ち方が毎回出るかを見て見分ける
   - 足したか変えたテストは、手元でも `pnpm e2e --workers=1 --repeat-each=5 --retries=0 e2e/<名前>.test.ts` で回してから PR を出す。CI の `e2e-repeat` と同じ確かめ方で、ワーカーを絞らずに繰り返すと負荷だけで落ちる（#364）
 
