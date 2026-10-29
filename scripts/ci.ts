@@ -65,6 +65,33 @@ export function repeatFiles(paths: readonly string[]): string[] {
   return [...new Set(files)].sort();
 }
 
+// 繰り返しに耐えず、選ばれても e2e-repeat が繰り返さないファイルと、直す Issue の番号。2026-10-29 に全件を
+// --workers=1 --repeat-each=2 で回し、2回目で落ちたファイル（seed の行を変えたまま終えるか、同じ名前の行を毎回作る）。
+// 直したファイルから外す。足さない（新しいテストは繰り返しに耐えるように書く。docs/development.md の「e2e の書き方」）
+export const REPEAT_EXCLUDED: ReadonlyMap<string, number> = new Map([
+  ['e2e/history.test.ts', 459],
+  ['e2e/invitations.test.ts', 459],
+  ['e2e/layout-narrow.test.ts', 459],
+  ['e2e/logout.test.ts', 459],
+  ['e2e/members.test.ts', 459],
+  ['e2e/users.test.ts', 459],
+  ['e2e/workspace-close.test.ts', 459],
+]);
+
+// 選んだファイルを、繰り返すものと外す一覧に当たるもの（Issue の番号つき）に分ける
+export function splitRepeatExcluded(
+  files: readonly string[],
+  excluded: ReadonlyMap<string, number> = REPEAT_EXCLUDED,
+): { files: string[]; excluded: [string, number][] } {
+  return {
+    files: files.filter((path) => !excluded.has(path)),
+    excluded: files.flatMap((path): [string, number][] => {
+      const issue = excluded.get(path);
+      return issue === undefined ? [] : [[path, issue]];
+    }),
+  };
+}
+
 // e2e-repeat が回すテストの件数の上限。1件を5回で約10秒、3つのシャードで上限いっぱいでも1つ約5分（#451）
 export const REPEAT_TEST_LIMIT = 60;
 
