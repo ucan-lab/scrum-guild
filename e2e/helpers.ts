@@ -691,8 +691,18 @@ export async function expectModalFocus(
   await whileOpen?.();
   await page.keyboard.press('Escape');
   await expect(modal, 'Esc で閉じない').toBeHidden({ timeout: timeouts.close });
-  const target = returnTo ?? opener;
-  await expect(target, '閉じたらフォーカスが戻らない').toBeFocused({ timeout: timeouts.return });
+  await expectFocusReturned(page, returnTo ?? opener, { timeout: timeouts.return });
+}
+
+// ダイアログや引き出しを閉じた後、フォーカスが target へ戻り、そこに留まることを確かめる。
+// Esc 以外（ボタン、外側のクリック、戻る）で閉じたときに使う。Esc で開閉するなら expectModalFocus を使う。
+// timeout は戻るのを待つ段の待ち。留まる段は待たずに確かめるので効かない（expectModalFocus の timeouts.return と同じ）
+export async function expectFocusReturned(
+  page: Page,
+  target: Locator,
+  { timeout }: { timeout?: number } = {},
+): Promise<void> {
+  await expect(target, '閉じたらフォーカスが戻らない').toBeFocused({ timeout });
   // Chromium の <dialog> は close() の中で開いたボタンへフォーカスを戻し、close イベントは後のタスクで出す。
   // close イベントで別の場所へ移すダイアログでも、その前の一瞬は戻る先にフォーカスがあり、上の確かめが通ってしまう。
   // 2回描画を待った後に、まだ戻る先にあることを待たずに確かめる。描画が止まったページで待ち続けないよう、

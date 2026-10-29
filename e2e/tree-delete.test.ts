@@ -3,7 +3,14 @@
 // seed のセッション（seed/sessions.ts）の Cookie で開く。あおば開発の管理者はミナト、一般のユーザーはハルカ。CSP の違反も確かめる
 import type { Page } from '@playwright/test';
 import { expect, test } from './fixtures.ts';
-import { createWorkspace, signIn, waitForResponses, waitForSettled, watchViolations } from './helpers.ts';
+import {
+  createWorkspace,
+  expectFocusReturned,
+  signIn,
+  waitForResponses,
+  waitForSettled,
+  watchViolations,
+} from './helpers.ts';
 
 test.use({ timezoneId: 'Asia/Tokyo' });
 
@@ -85,7 +92,7 @@ test('スクラムの言葉: エピックを配下を残して削除し、残っ
   // やめると、削除のボタンへ戻る
   await confirm.getByRole('button', { name: 'やめる' }).click();
   await expect(confirm).toBeHidden();
-  await expect(deleteEpic).toBeFocused();
+  await expectFocusReturned(page, deleteEpic);
 
   await deleteEpic.click();
   await confirm.getByRole('button', { name: '削除する' }).click();
@@ -293,7 +300,7 @@ test('読み直しで削除できなくなったら主ボタンを押せなく�
   await done;
   await page.waitForLoadState('networkidle');
   await expect(storyDialog).toBeVisible();
-  await expect(deleteStory).toBeFocused();
+  await expectFocusReturned(page, deleteStory);
   await page.unroute('**/story-get');
   await page.unroute('**/story-delete');
 });

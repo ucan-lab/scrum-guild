@@ -1,6 +1,7 @@
 // expectModalFocus（e2e/helpers.ts）が空振りしないことの確かめ。サーバーを使わず、page.setContent で小さなダイアログを置く。
 // 決まりどおりのダイアログでは通り、入らない、Esc で閉じない、閉じても戻らない、一瞬戻ってすぐ外れるダイアログでは、それぞれの段で落ちる。
-// close イベントで別の場所へ移すダイアログは、どの段で落ちるかが描画の速さで変わるので、落ちることだけを確かめる
+// close イベントで別の場所へ移すダイアログは、どの段で落ちるかが描画の速さで変わるので、落ちることだけを確かめる。
+// 閉じた後の段は expectFocusReturned そのものなので、Esc 以外で閉じる箇所が使うそのヘルパーもここで確かめたことになる
 import type { Page } from '@playwright/test';
 import { expect, test } from './fixtures.ts';
 import { expectModalFocus } from './helpers.ts';

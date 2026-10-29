@@ -14,6 +14,7 @@ import { memberList } from '../src/shared/operations/workspace/member-list.ts';
 import { workspaceInfo } from '../src/shared/operations/workspace/workspace.ts';
 import {
   createWorkspace,
+  expectFocusReturned,
   expectModalFocus,
   settledScrollY,
   signIn,
@@ -127,7 +128,7 @@ test('開く → 属性を直す → 本文に script を含む Markdown を書�
   await page.getByRole('dialog', { name: '書きかけを捨てますか' }).getByRole('button', { name: '捨てる' }).click();
   await expect(drawer).toBeHidden();
   await expect(page).not.toHaveURL(/\?task=/);
-  await expect(row.getByRole('link', { name: '見積もりを送って確かめる' })).toBeFocused();
+  await expectFocusReturned(page, row.getByRole('link', { name: '見積もりを送って確かめる' }));
 
   // 開き直すと保存した値が出る。中にフォーカスが入り、Esc で閉じる（書きかけが無いので確かめない）。開いた行のリンクへ戻る
   await expectModalFocus(page, {
@@ -343,15 +344,16 @@ test('スクロールした先の行のリンクで開いても、木のスク�
   const scrollBefore = await settledScrollY(page);
   expect(scrollBefore, '前提: seed の行が窓の高さ 480px を超え、バックログが縦にスクロールする').toBeGreaterThan(0);
   // 行のリンクは data-sveltekit-reset="false" で、移っても先頭へ戻さない
-  await link.click();
   const drawer = page.getByRole('dialog');
-  await expect(drawer).toBeVisible();
-  await expect(page).toHaveURL(/\?task=[0-9a-f-]{36}$/);
-  await expect(drawer.getByRole('heading', { level: 2 })).toBeFocused();
-  expect(await settledScrollY(page)).toBe(scrollBefore);
-  await page.keyboard.press('Escape');
-  await expect(drawer).toBeHidden();
-  await expect(link).toBeFocused();
+  await expectModalFocus(page, {
+    opener: link,
+    modal: drawer,
+    whileOpen: async () => {
+      await expect(page).toHaveURL(/\?task=[0-9a-f-]{36}$/);
+      await expect(drawer.getByRole('heading', { level: 2 })).toBeFocused();
+      expect(await settledScrollY(page)).toBe(scrollBefore);
+    },
+  });
   expect(await settledScrollY(page)).toBe(scrollBefore);
 });
 
@@ -611,7 +613,7 @@ test('書きかけのまま戻るで別の画面へ移ろうとすると確か�
   await expect(drawer).toBeHidden();
   await expect(page).toHaveURL(listUrl);
   // 戻る／進むで閉じたときも、開いた行のリンクへフォーカスが戻る
-  await expect(page.locator('.entry').getByRole('link', { name: '戻る前の確認' })).toBeFocused();
+  await expectFocusReturned(page, page.locator('.entry').getByRole('link', { name: '戻る前の確認' }));
 });
 
 test('前後の空白だけの違いは、書きかけに数えず、確認せずに閉じる', async ({ page }) => {

@@ -4,7 +4,7 @@
 // 運用者でない人の扱い（403、/ への戻し）は本物のサーバーで確かめる
 import type { Page, Route } from '@playwright/test';
 import { expect, test } from './fixtures.ts';
-import { signIn, watchViolations } from './helpers.ts';
+import { expectFocusReturned, signIn, watchViolations } from './helpers.ts';
 
 // 1x1 の PNG
 const PIXEL = Buffer.from(
@@ -933,7 +933,7 @@ test.describe('運用者', () => {
     await expect(dialog.getByRole('radio', { name: /一時的に止める/ })).toBeChecked();
     await dialog.getByRole('button', { name: 'やめる' }).click();
     await expect(dialog).toBeHidden();
-    await expect(button).toBeFocused();
+    await expectFocusReturned(page, button);
     expect(sent).toBeUndefined();
 
     await button.click();
@@ -1437,7 +1437,7 @@ test.describe('運用者', () => {
       // やめれば何も送らず、開いたボタンにフォーカスを戻す
       await dialog.getByRole('button', { name: 'やめる' }).click();
       await expect(dialog).toBeHidden();
-      await expect(button).toBeFocused();
+      await expectFocusReturned(page, button);
 
       await button.click();
       await dialog.getByRole('radio', { name: /標準/ }).check();
@@ -1738,7 +1738,7 @@ test.describe('運用者', () => {
       await expect(dialog).toBeHidden();
       await expect(row.locator('.chip.is-warn')).toHaveText('ギルドマスターは指名済み、ログイン待ち');
       await expect(row.locator('.chip.is-danger')).toHaveCount(0);
-      await expect(trigger).toBeFocused();
+      await expectFocusReturned(page, trigger);
     });
 
     test('Google のメールアドレスで指名すると、招待の URL と期限が出てコピーでき、閉じると二度と出ず、一覧の状態が変わる', async ({

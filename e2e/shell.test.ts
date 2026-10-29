@@ -1,5 +1,5 @@
 import { expect, test } from './fixtures.ts';
-import { expectModalFocus, signIn, watchViolations } from './helpers.ts';
+import { expectFocusReturned, expectModalFocus, signIn, watchViolations } from './helpers.ts';
 
 // build と wrangler dev に渡した版。playwright.config.ts が決めて process.env に置く（docs/development.md の「e2e のサーバー」）
 const version = process.env.APP_VERSION || 'dev';
@@ -84,7 +84,7 @@ test('ダイアログをキーボードだけで開閉でき、閉じたら開�
   await expect(page.getByRole('button', { name: '閉じる' }).last()).toBeFocused();
   await page.keyboard.press('Enter');
   await expect(dialog).toBeHidden();
-  await expect(opener).toBeFocused();
+  await expectFocusReturned(page, opener);
   expect(await collect()).toEqual([]);
 });
 
@@ -121,7 +121,7 @@ test('ダイアログの外側を押すと閉じ、中と外をまたいでド�
 
   await page.mouse.click(4, 4);
   await expect(dialog).toBeHidden();
-  await expect(open).toBeFocused();
+  await expectFocusReturned(page, open);
 });
 
 // モーダルのダイアログが開くと、その外は inert になる。トーストはダイアログの中の領域に出る
