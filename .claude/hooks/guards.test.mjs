@@ -5447,3 +5447,108 @@ describe('bash-rules: force の ref 更新を別の入口と道具の引数の�
     assert.notEqual(decision(command), 'deny', command);
   });
 });
+
+describe('bash-rules: ref の更新の force を字面で読めるかで分ける', () => {
+  for (const command of [
+    `gh api -X PATCH repos/o/r/git/refs/heads/x -f sha=abc -F force=false`,
+    `gh api -X PATCH repos/o/r/git/refs/heads/x --input - <<'EOF'\n{"sha":"$SHA"}\nEOF`,
+    `curl -sX PATCH https://api.github.com/repos/o/r/git/refs/heads/x -d "{\\"sha\\":\\"$SHA\\"}"`,
+    `curl -sX PATCH https://api.github.com/repos/o/r/git/refs/heads/x -H 'Authorization: token t' -d '{"force":false}'`,
+    `gh api -X GET repos/o/r/git/refs/heads/x -X GET`,
+    `gh pr update-branch --rebase=false`,
+    `gh api graphql -f query='mutation { updatePullRequestBranch(input: {pullRequestId: "PR_x", updateMethod: MERGE}) { clientMutationId } }'`,
+    `gh repo sync o/r --force=false`,
+  ]) {
+    test(`[通す] ${command} は allow`, () => assert.equal(decision(command), 'allow', command));
+  }
+  for (const command of [
+    `gh repo sync o/r --force`,
+    `gh api graphql -f query='mutation { updatePullRequestBranch(input: {pullRequestId: "PR_x", updateMethod: REBASE}) { clientMutationId } }'`,
+    `gh api graphql -f query='mutation($m: PullRequestBranchUpdateMethod) { updatePullRequestBranch(input: {pullRequestId: "PR_x", updateMethod: $m}) { clientMutationId } }' -f m=REBASE`,
+    `curl -sX PATCH https://api.github.com/repos/o/r/git/refs/heads/x -sd '{"force":true}'`,
+    `printf '{"force":true}' | gh api -X PATCH repos/o/r/git/refs/heads/x --input -`,
+  ]) {
+    test(`[止める] ${command} は deny`, () => assert.equal(decision(command), 'deny', command));
+  }
+  for (const command of [
+    `printf '{"sha":"a"}\\n' | gh api -X PATCH repos/o/r/git/refs/heads/x --input -`,
+  ]) {
+    test(`[通す] ${command} は字面が本文なので allow`, () => assert.equal(decision(command), 'allow', command));
+  }
+  for (const command of [
+    `gh api -X PATCH repos/o/r/git/refs/heads/x --input body.json`,
+    `echo '{"force":true}' | sed s/a/b/ | gh api -X PATCH repos/o/r/git/refs/heads/x --input -`,
+  ]) {
+    test(`[確認] ${command} は allow にしない`, () => assert.notEqual(decision(command), 'allow', command));
+  }
+});
+
+describe('bash-rules: メソッドを最後の値で読む作り直しと、本文の字面の読み方を崩す', () => {
+  // 前は止めていた main の ref、マージ、contents の書き込み。別のフラグの値に置いた -XGET を、メソッドとして最後の値に読んで通す。
+  // gh 2.103.3 は --preview と --jq の次の語を値に取り、GH_DEBUG=api で PATCH を送ると確かめた（閉じた localhost 宛て）。
+  // curl は --user-agent の次の語を値に取り、手元のサーバーに PATCH が届いた
+  for (const command of [
+    'gh api -X PATCH repos/o/r/git/refs/heads/main -f sha=abc --preview -XGET',
+    'gh api -X PUT repos/o/r/pulls/1/merge --jq -XGET',
+    'gh api -X PUT repos/o/r/contents/a.txt -f message=m -f content=YQ== --preview -XGET',
+    `curl -X PATCH https://api.github.com/repos/o/r/git/refs/heads/main -d '{"sha":"a"}' --user-agent -XGET`,
+    'curl -X PUT https://api.github.com/repos/o/r/pulls/1/merge --user-agent -XGET',
+    `curl -X PATCH https://api.github.com/repos/o/r/git/refs/heads/x -d '{"sha":"a","force":true}' --user-agent -XGET`,
+    // curl の --next（-:）の後ろのオプションは次の URL にだけ効く。前の URL には PUT が届いた（手元のサーバーで確かめた）
+    'curl -X PUT https://api.github.com/repos/o/r/pulls/1/merge --next -X GET https://api.github.com/zen',
+    `curl -X PATCH https://api.github.com/repos/o/r/git/refs/heads/main -d '{"sha":"a"}' -: -X GET https://api.github.com/zen`,
+  ]) {
+    test(`[後退] ${command} は deny`, () => assert.equal(decision(command), 'deny', command));
+  }
+  // 短い値のフラグ（-A）の値は、メソッドとして読まない
+  test('[止める] curl の -A の値の -XGET はメソッドにしない', () => {
+    const command = `curl -X PATCH https://api.github.com/repos/o/r/git/refs/heads/x -d '{"force":true}' -A -XGET`;
+    assert.equal(decision(command), 'deny', command);
+  });
+
+  // pflag は真偽の短いフラグ（-i）と値を取る短いフラグをまとめて読む。gh 2.103.3 で -iXPATCH -iFlocked=true が
+  // PATCH と {"locked": true} になると確かめた
+  for (const command of [
+    'gh api -iXPATCH repos/o/r/git/refs/heads/x -iFforce=true',
+    'gh api -X PATCH repos/o/r/git/refs/heads/x -iFforce=true',
+    'gh api -iX PATCH repos/o/r/git/refs/heads/x -iF force=true',
+  ]) {
+    test(`[すり抜け] ${command} は deny`, () => assert.equal(decision(command), 'deny', command));
+  }
+
+  // printf はいつも、zsh の echo は既定で \n を改行にする。JSON では改行は空白なので force: true になる（手元のサーバーで確かめた）
+  for (const command of [
+    `printf '{"sha":"a","force":\\ntrue}' | gh api -X PATCH repos/o/r/git/refs/heads/x --input -`,
+    `echo '{"sha":"a","force":\\ntrue}' | gh api -X PATCH repos/o/r/git/refs/heads/x --input -`,
+    `printf '{"sha":"a","force":\\ntrue}' | curl -X PATCH https://api.github.com/repos/o/r/git/refs/heads/x -d @-`,
+    // printf の -- は書式の前の区切りで、本文は次の語（bash、zsh、/usr/bin/printf で確かめた）
+    `printf -- '{"sha":"a","force":true}' | gh api -X PATCH repos/o/r/git/refs/heads/x --input -`,
+  ]) {
+    test(`[すり抜け] ${command} は deny`, () => assert.equal(decision(command), 'deny', command));
+  }
+
+  // 標準入力のリダイレクトは後ろのものが効く。ヒアストリングやヒアドキュメントの後ろの < ファイル が本文になる（bash と curl で確かめた）
+  for (const command of [
+    `gh api -X PATCH repos/o/r/git/refs/heads/x --input - <<<'{"sha":"a"}' < body.json`,
+    `gh api -X PATCH repos/o/r/git/refs/heads/x --input - <<'EOF' < body.json\n{"sha":"a"}\nEOF`,
+    `curl -X PATCH https://api.github.com/repos/o/r/git/refs/heads/x --data-binary @- <<<'{"sha":"a"}' < body.json`,
+    // 番号付きで標準入力をファイルから読む
+    'gh api -X PATCH repos/o/r/git/refs/heads/x --input - 0< body.json',
+  ]) {
+    test(`[確認] ${command} は本文を読めないので allow にしない`, () => assert.notEqual(decision(command), 'allow', command));
+  }
+
+  // GraphQL の本文を標準入力で渡すと、mutation の名前と REBASE を字面で見ない。REST の ref の更新は同じ道の本文を読んでいる
+  for (const command of [
+    `gh api graphql --input - <<'EOF'\n{"query":"mutation{updatePullRequestBranch(input:{pullRequestId:\\"x\\",updateMethod:REBASE}){clientMutationId}}"}\nEOF`,
+    `gh api graphql --input - <<'EOF'\n{"query":"mutation{updateRefs(input:{repositoryId:\\"x\\",refUpdates:[{name:\\"refs/heads/x\\",afterOid:\\"a\\",force:true}]}){clientMutationId}}"}\nEOF`,
+  ]) {
+    test(`[すり抜け] ${command} は deny`, () => assert.equal(decision(command), 'deny', command));
+  }
+
+  // エンドポイントを URL の語だけで見るようになり、Host ヘッダーの語を URL とみなす。IP 宛ての URL の merge を見ない
+  test('[後退] curl -k で IP 宛てに Host: api.github.com を付けた merge は deny', () => {
+    const command = `curl -k -X PUT -H 'Host: api.github.com' https://140.82.112.6/repos/o/r/pulls/1/merge`;
+    assert.equal(decision(command), 'deny', command);
+  });
+});
