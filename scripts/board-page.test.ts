@@ -9,10 +9,13 @@ import {
   featureState,
   incrementView,
   issueUrl,
+  normalizeFeatures,
   periodDays,
   planBar,
   pullUrl,
   sprintColumns,
+  sprintPhase,
+  validateData,
   viewFromHash,
 } from '../.claude/skills/daily-scrum/page/board.js';
 import type { BoardIssue, HistoryEntry, SprintView } from './progress-data.ts';
@@ -98,6 +101,41 @@ describe('daysLeft', () => {
     assert.equal(daysLeft(sprint, '2026-11-12T00:00:00+09:00'), 0);
     assert.equal(daysLeft(sprint, '2027-01-01T00:00:00+09:00'), 0);
   });
+
+  test('月またぎと年またぎ', () => {
+    const across = { from: '2026-10-30', to: '2026-11-02' };
+    assert.equal(periodDays(across), 4);
+    assert.equal(daysLeft(across, '2026-10-31T10:00:00+09:00'), 3);
+    assert.equal(daysLeft(across, '2026-11-02T10:00:00+09:00'), 1);
+    const newYear = { from: '2026-12-29', to: '2027-01-04' };
+    assert.equal(periodDays(newYear), 7);
+    assert.equal(daysLeft(newYear, '2027-01-01T00:00:00+09:00'), 4);
+  });
+
+  test('閏日を数える（2028 は閏年、2027 は違う）', () => {
+    assert.equal(periodDays({ from: '2028-02-27', to: '2028-03-02' }), 5);
+    assert.equal(periodDays({ from: '2027-02-27', to: '2027-03-02' }), 4);
+    assert.equal(daysLeft({ from: '2028-02-27', to: '2028-03-02' }, '2028-02-29T09:00:00+09:00'), 3);
+  });
+
+  test('壊れた日付は NaN にせず 0 日として扱う', () => {
+    const broken = [
+      { from: 'bad', to: '2026-11-11' },
+      { from: '2026-11-05', to: '' },
+      // 存在しない日付は繰り上がらず壊れた日付とみなす
+      { from: '2026-02-30', to: '2026-03-05' },
+    ];
+    for (const sprint of broken) {
+      assert.equal(periodDays(sprint), 0);
+      assert.equal(daysLeft(sprint, '2026-03-01T00:00:00+09:00'), 0);
+    }
+    assert.equal(daysLeft(sprint, 'not a date'), 0);
+    assert.equal(daysLeft(sprint, ''), 0);
+  });
+
+  test('終わりが始まりより前の期間は 0 日', () => {
+    assert.equal(periodDays({ from: '2026-11-11', to: '2026-11-05' }), 0);
+  });
 });
 
 describe('sprintColumns', () => {
@@ -134,6 +172,28 @@ describe('sprintColumns', () => {
     assert.deepEqual(numbers('review'), [5]);
     assert.deepEqual(numbers('accept'), [6]);
     assert.deepEqual(numbers('done'), [7]);
+  });
+
+  test('逆順で渡しても、どの列も番号の昇順（待ちは下）', () => {
+    const reversed = sprintColumns(issues.toReversed(), 2);
+    const reversedNumbers = (key: string) => reversed.find((c) => c.key === key)?.issues.map((i) => i.number);
+    assert.deepEqual(reversedNumbers('todo'), [2, 1]);
+    assert.deepEqual(reversedNumbers('wip'), [3, 4]);
+    const many = [10, 3, 7, 1].map((n) => card(n, { sprint: 2, s: n % 2 === 0 ? 'wip' : 'refining' }));
+    const wip = sprintColumns(many, 2).find((c) => c.key === 'wip');
+    assert.deepEqual(
+      wip?.issues.map((i) => i.number),
+      [1, 3, 7, 10],
+    );
+  });
+
+  test('待ちの中も番号の昇順', () => {
+    const waits = [9, 4, 6].map((n) => card(n, { sprint: 2, s: 'todo', waitingOn: [1] }));
+    const todo = sprintColumns([...waits, card(5, { sprint: 2 })], 2).find((c) => c.key === 'todo');
+    assert.deepEqual(
+      todo?.issues.map((i) => i.number),
+      [5, 4, 6, 9],
+    );
   });
 
   test('ほかのスプリントと、スプリントの無い Issue は載せない', () => {
@@ -272,6 +332,24 @@ describe('backlogTree', () => {
     assert.deepEqual(tree.totals, { remaining: 2, all: 2, ready: 1, leaves: 1 });
   });
 
+  test('children が輪になっていても止まる', () => {
+    // 1 → 2 → 1（親の無い 1 が根）と、親を互いに指す 3 ⇄ 4（根が無い）
+    const cyclic = [
+      card(1, { level: 'story', children: [2], pt: null }),
+      card(2, { parent: 1, children: [1], pt: 2 }),
+      card(3, { parent: 4, children: [4], pt: null }),
+      card(4, { parent: 3, children: [3], pt: null }),
+      // 自分を子に持つ
+      card(5, { level: 'story', children: [5], pt: null }),
+    ];
+    const tree = backlogTree(cyclic, { showDone: true });
+    assert.deepEqual(
+      tree.orphans.map((n) => n.issue.number),
+      [1, 5],
+    );
+    assert.deepEqual(tree.orphans[0]?.totals, { remaining: 2, all: 2, ready: 1, leaves: 1 });
+  });
+
   test('作る場所の一覧は重ならず昇順', () => {
     assert.deepEqual(areasOf(issues), ['api', 'db', 'web']);
   });
@@ -382,10 +460,172 @@ describe('リンク', () => {
   });
 });
 
-describe('スプリントが無い JSON', () => {
-  test('sprint が null でも、木と履歴は組める', () => {
-    const progress = { asOf: '2026-10-29T19:32:11+09:00', sprint: null, issues: [card(1)], history: [] };
-    assert.equal(backlogTree(progress.issues).totals.leaves, 1);
-    assert.deepEqual(incrementView(progress.history).entries, []);
+describe('sprintPhase', () => {
+  const sprint = { from: '2026-11-05', to: '2026-11-11' };
+
+  test('始まる前、期間中、過ぎた後', () => {
+    assert.equal(sprintPhase(sprint, '2026-11-04T23:59:59+09:00'), 'before');
+    assert.equal(sprintPhase(sprint, '2026-11-05T00:00:00+09:00'), 'during');
+    assert.equal(sprintPhase(sprint, '2026-11-11T23:59:59+09:00'), 'during');
+    assert.equal(sprintPhase(sprint, '2026-11-12T00:00:00+09:00'), 'after');
+  });
+
+  test('壊れた日付は期間中として扱い、「開始前」を出さない', () => {
+    assert.equal(sprintPhase(sprint, 'bad'), 'during');
+    assert.equal(sprintPhase({ from: 'bad', to: '2026-11-11' }, '2026-11-01T00:00:00+09:00'), 'during');
+  });
+});
+
+function validProgress(): Record<string, unknown> {
+  return {
+    asOf: '2026-10-29T19:32:11+09:00',
+    sprint: {
+      n: 1,
+      log: 481,
+      from: '2026-10-29',
+      to: '2026-11-04',
+      goal: null,
+      wipLimit: null,
+      plan: [{ number: 1, title: 'a', pt: 3 }],
+      planned: count(3, 1),
+      plannedDone: count(0),
+      added: count(0),
+      addedDone: count(0),
+      withdrawn: count(0),
+      accepting: count(0),
+      wip: count(0),
+    },
+    issues: [card(1)],
+    history: [{ n: 1, log: 400, planned: count(3, 1), velocity: 3, accepted: [{ number: 1, prs: [2] }] }],
+  };
+}
+
+// キーごと取り除く（値が undefined のキーとは区別したい）
+const without = (value: Record<string, unknown>, key: string) =>
+  Object.fromEntries(Object.entries(value).filter(([name]) => name !== key));
+
+describe('validateData', () => {
+  const withSprint = (patch: Record<string, unknown>) => ({
+    ...validProgress(),
+    sprint: { ...(validProgress().sprint as object), ...patch },
+  });
+
+  test('scripts/progress-data.ts の形なら null', () => {
+    assert.equal(validateData(validProgress()), null);
+  });
+
+  test('スプリントが無い JSON（sprint が null、history が空）も通る', () => {
+    assert.equal(
+      validateData({ asOf: '2026-10-29T19:32:11+09:00', sprint: null, issues: [card(1)], history: [] }),
+      null,
+    );
+    assert.equal(validateData({ asOf: '2026-10-29T19:32:11+09:00', sprint: null, issues: [], history: [] }), null);
+  });
+
+  test('object でないものは理由を返す', () => {
+    for (const value of [null, undefined, 'x', 1, []]) assert.equal(typeof validateData(value), 'string');
+  });
+
+  test('asOf が無いか、日付として読めなければ理由を返す', () => {
+    assert.match(validateData(without(validProgress(), 'asOf')) ?? '', /asOf/);
+    assert.match(validateData({ ...validProgress(), asOf: 'bad' }) ?? '', /asOf/);
+    assert.match(validateData({ ...validProgress(), asOf: 5 }) ?? '', /asOf/);
+  });
+
+  test('issues と history が配列でなければ理由を返す', () => {
+    assert.match(validateData({ ...validProgress(), issues: {} }) ?? '', /issues/);
+    assert.match(validateData({ ...validProgress(), history: undefined }) ?? '', /history/);
+  });
+
+  test('sprint が無い（undefined）のは、null と違って通さない', () => {
+    assert.match(validateData(without(validProgress(), 'sprint')) ?? '', /sprint/);
+  });
+
+  test('sprint の主要なキーが欠けたら、そのキーの名前を理由に出す', () => {
+    for (const key of ['planned', 'plannedDone', 'added', 'addedDone', 'withdrawn', 'accepting', 'wip']) {
+      assert.match(validateData(withSprint({ [key]: undefined })) ?? '', new RegExp(key));
+      assert.match(validateData(withSprint({ [key]: { pt: 'x', count: 1 } })) ?? '', new RegExp(key));
+    }
+    assert.match(validateData(withSprint({ plan: null })) ?? '', /plan/);
+    assert.match(validateData(withSprint({ n: '1' })) ?? '', /n/);
+    assert.match(validateData(withSprint({ wipLimit: 'x' })) ?? '', /wipLimit/);
+  });
+
+  test('sprint の期間が日付として読めなければ理由を返す', () => {
+    assert.match(validateData(withSprint({ from: 'bad' })) ?? '', /from/);
+    assert.match(validateData(withSprint({ to: '2026-02-30' })) ?? '', /to/);
+  });
+
+  test('Issue の配列のキーが欠けたら、その番号を理由に出す', () => {
+    const broken = { ...validProgress(), issues: [card(1), { ...card(7), children: undefined }] };
+    assert.match(validateData(broken) ?? '', /#7/);
+    assert.match(validateData({ ...validProgress(), issues: [null] }) ?? '', /issues/);
+  });
+
+  test('history の項目が欠けたら理由を返す', () => {
+    const entry = { n: 1, log: 400, planned: count(3, 1), velocity: 3, accepted: [] };
+    assert.match(validateData({ ...validProgress(), history: [{ ...entry, accepted: undefined }] }) ?? '', /history/);
+    assert.match(validateData({ ...validProgress(), history: [{ ...entry, velocity: 'x' }] }) ?? '', /history/);
+    assert.match(
+      validateData({ ...validProgress(), history: [{ ...entry, accepted: [{ number: 1 }] }] }) ?? '',
+      /history/,
+    );
+  });
+});
+
+describe('normalizeFeatures', () => {
+  test('areas が配列でなければ null', () => {
+    assert.equal(normalizeFeatures(null), null);
+    assert.equal(normalizeFeatures('x'), null);
+    assert.equal(normalizeFeatures({}), null);
+    assert.equal(normalizeFeatures({ areas: {}, notGoals: [] }), null);
+  });
+
+  test('area.features、feature.issues、notGoals が配列でなければ空にする', () => {
+    const result = normalizeFeatures({
+      areas: [{ id: 'a', name: 'a', screens: 's', features: {} }],
+      notGoals: 'none',
+    });
+    assert.deepEqual(result, { areas: [{ id: 'a', name: 'a', screens: 's', features: [] }], notGoals: [] });
+    const withIssues = normalizeFeatures({
+      areas: [{ id: 'a', name: 'a', screens: 's', features: [{ name: 'f', desc: 'd', issues: 3 }] }],
+    });
+    assert.deepEqual(withIssues?.areas[0]?.features[0]?.issues, []);
+  });
+
+  test('正しい形はそのまま通し、番号でないものと文字でないものは落とす', () => {
+    const result = normalizeFeatures({
+      areas: [
+        {
+          id: 'a',
+          name: 'a',
+          screens: 's',
+          note: 'n',
+          features: [{ name: 'f', desc: 'd', issues: [1, 'x', 2.5, 3], phase: 'later' }, null, 'junk'],
+        },
+        'junk',
+      ],
+      notGoals: ['一', 2, '三'],
+    });
+    assert.deepEqual(result, {
+      areas: [
+        {
+          id: 'a',
+          name: 'a',
+          screens: 's',
+          note: 'n',
+          features: [{ name: 'f', desc: 'd', issues: [1, 3], phase: 'later' }],
+        },
+      ],
+      notGoals: ['一', '三'],
+    });
+  });
+
+  test('整えた結果は機能の状態の判定にそのまま使える', () => {
+    const result = normalizeFeatures({ areas: [{ name: 'a', screens: 's', features: [{ name: 'f', desc: 'd' }] }] });
+    const feature = result?.areas[0]?.features[0];
+    assert.ok(feature);
+    assert.equal(featureState(feature, []).key, 'none');
+    assert.equal(featurePhase(feature), 'first');
   });
 });

@@ -30,26 +30,61 @@ export function viewFromHash(hash) {
 }
 
 const DAY_MS = 24 * 60 * 60 * 1000;
-// 日付は UTC の 0 時として扱い、タイムゾーンや夏時間で日数がずれないようにする
-const dayNumber = (/** @type {string} */ date) => Math.floor(Date.parse(`${date.slice(0, 10)}T00:00:00Z`) / DAY_MS);
-
 /**
- * 期間の日数（from と to の両方を含む）
- * @param {{ from: string, to: string }} sprint
+ * 先頭の YYYY-MM-DD を、UTC の 0 時から数えた日の通し番号にする（タイムゾーンや夏時間で日数がずれない）。
+ * 読めない日付と、存在しない日付（2026-02-30 など。Date は 3 月に繰り上げてしまう）は NaN
+ * @param {unknown} date
  */
-export function periodDays(sprint) {
-  return dayNumber(sprint.to) - dayNumber(sprint.from) + 1;
+function dayNumber(date) {
+  const match = typeof date === 'string' ? /^(\d{4})-(\d{2})-(\d{2})/.exec(date) : null;
+  if (!match) return NaN;
+  const [year, month, day] = [Number(match[1]), Number(match[2]), Number(match[3])];
+  const at = new Date(Date.UTC(year, month - 1, day));
+  const exists = at.getUTCFullYear() === year && at.getUTCMonth() === month - 1 && at.getUTCDate() === day;
+  return exists ? Math.floor(at.getTime() / DAY_MS) : NaN;
 }
 
 /**
- * 残りの日数。asOf の日付を含めて数え、最終日は 1、過ぎたら 0、始まる前は期間の日数
+ * YYYY-MM-DD（先頭）として読める日付か
+ * @param {unknown} date
+ */
+export const isDay = (date) => !Number.isNaN(dayNumber(date));
+
+/**
+ * 期間の日数（from と to の両方を含む）。日付が読めないか、to が from より前なら 0
+ * @param {{ from: string, to: string }} sprint
+ */
+export function periodDays(sprint) {
+  const days = dayNumber(sprint.to) - dayNumber(sprint.from) + 1;
+  return Number.isNaN(days) ? 0 : Math.max(0, days);
+}
+
+/**
+ * 残りの日数。asOf の日付を含めて数え、最終日は 1、過ぎたら 0、始まる前は期間の日数。
+ * 日付が読めないときは 0（画面に NaN を出さない。読めない JSON は validateData が先に断る）
  * @param {{ from: string, to: string }} sprint
  * @param {string} asOf 日本時間の ISO 8601（日付の部分だけを使う）
  */
 export function daysLeft(sprint, asOf) {
   const today = dayNumber(asOf);
+  if (Number.isNaN(today) || periodDays(sprint) === 0) return 0;
   if (today < dayNumber(sprint.from)) return periodDays(sprint);
   return Math.max(0, dayNumber(sprint.to) - today + 1);
+}
+
+/**
+ * asOf が期間の前か中か後か。日付が読めないときは during（「開始前」などの印を出さない）
+ * @param {{ from: string, to: string }} sprint
+ * @param {string} asOf
+ * @returns {'before' | 'during' | 'after'}
+ */
+export function sprintPhase(sprint, asOf) {
+  const today = dayNumber(asOf);
+  const from = dayNumber(sprint.from);
+  const to = dayNumber(sprint.to);
+  if (Number.isNaN(today) || Number.isNaN(from) || Number.isNaN(to)) return 'during';
+  if (today < from) return 'before';
+  return today > to ? 'after' : 'during';
 }
 
 const byNumber = (/** @type {BoardIssue} */ a, /** @type {BoardIssue} */ b) => a.number - b.number;
@@ -231,4 +266,121 @@ export function incrementView(history) {
     plannedRatio: ratio(h.planned.pt),
   }));
   return { entries, bars, max };
+}
+
+/* 読み込んだ JSON の検査と整形。描く前に形を確かめ、崩れた JSON で画面が固まらないようにする */
+
+/** @typedef {Record<string, any>} Loose */
+
+/** @param {unknown} value @returns {value is Loose} */
+const isObject = (value) => typeof value === 'object' && value !== null && !Array.isArray(value);
+/** @param {unknown} value @returns {value is number} */
+const isNumber = (value) => typeof value === 'number' && Number.isFinite(value);
+/** @param {unknown} value */
+const isNumberOrNull = (value) => value === null || isNumber(value);
+/** @param {unknown} value */
+const isCount = (value) => isObject(value) && isNumber(value.pt) && isNumber(value.count);
+
+const SPRINT_COUNTS = ['planned', 'plannedDone', 'added', 'addedDone', 'withdrawn', 'accepting', 'wip'];
+const ISSUE_LISTS = ['children', 'areas', 'deps', 'waitingOn', 'prs'];
+
+/** @param {unknown} sprint @returns {string | null} */
+function sprintProblem(sprint) {
+  if (!isObject(sprint)) return 'sprint は null か object が要る';
+  if (!isNumber(sprint.n)) return 'sprint.n は数が要る';
+  if (!isNumber(sprint.log)) return 'sprint.log は数が要る';
+  if (!isDay(sprint.from)) return 'sprint.from は YYYY-MM-DD が要る';
+  if (!isDay(sprint.to)) return 'sprint.to は YYYY-MM-DD が要る';
+  if (sprint.goal !== null && typeof sprint.goal !== 'string') return 'sprint.goal は文字列か null が要る';
+  if (!isNumberOrNull(sprint.wipLimit)) return 'sprint.wipLimit は数か null が要る';
+  if (!Array.isArray(sprint.plan)) return 'sprint.plan は配列が要る';
+  const row = sprint.plan.find((r) => !isObject(r) || !isNumber(r.number) || !isNumber(r.pt));
+  if (row !== undefined) return 'sprint.plan の行は number と pt が要る';
+  const count = SPRINT_COUNTS.find((key) => !isCount(sprint[key]));
+  return count === undefined ? null : `sprint.${count} は { pt, count } が要る`;
+}
+
+/** @param {unknown} issue @returns {string | null} */
+function issueProblem(issue) {
+  if (!isObject(issue) || !isNumber(issue.number)) return 'issues の項目は number を持つ object が要る';
+  const at = `issues #${issue.number}`;
+  if (typeof issue.title !== 'string') return `${at} の title は文字列が要る`;
+  if (!['epic', 'story', 'task'].includes(/** @type {string} */ (issue.level))) return `${at} の level が不正`;
+  if (!Object.keys(STATE_NAMES).includes(/** @type {string} */ (issue.s))) return `${at} の s が不正`;
+  if (!isNumberOrNull(issue.pt)) return `${at} の pt は数か null が要る`;
+  if (!isNumberOrNull(issue.parent)) return `${at} の parent は数か null が要る`;
+  if (!isNumberOrNull(issue.sprint)) return `${at} の sprint は数か null が要る`;
+  const list = ISSUE_LISTS.find((key) => !Array.isArray(issue[key]));
+  return list === undefined ? null : `${at} の ${list} は配列が要る`;
+}
+
+const STATE_NAMES = { done: 1, accept: 1, review: 1, wip: 1, refining: 1, todo: 1 };
+
+/** @param {unknown} entry @returns {string | null} */
+function historyProblem(entry) {
+  if (!isObject(entry) || !isNumber(entry.n)) return 'history の項目は n を持つ object が要る';
+  const at = `history のスプリント ${entry.n}`;
+  if (!isNumber(entry.log)) return `${at} の log は数が要る`;
+  if (!isCount(entry.planned)) return `${at} の planned は { pt, count } が要る`;
+  if (!isNumber(entry.velocity)) return `${at} の velocity は数が要る`;
+  if (!Array.isArray(entry.accepted)) return `${at} の accepted は配列が要る`;
+  const bad = entry.accepted.some((a) => !isObject(a) || !isNumber(a.number) || !Array.isArray(a.prs));
+  return bad ? `${at} の accepted は { number, prs } の配列が要る` : null;
+}
+
+/**
+ * data.json（scripts/progress-data.ts の出力）の形を確かめる。正しければ null、不正なら理由の文字列
+ * @param {unknown} data
+ * @returns {string | null}
+ */
+export function validateData(data) {
+  if (!isObject(data)) return 'JSON の最上位は object が要る';
+  if (typeof data.asOf !== 'string' || !isDay(data.asOf)) return 'asOf は日付で始まる文字列が要る';
+  if (!Array.isArray(data.issues)) return 'issues は配列が要る';
+  if (!Array.isArray(data.history)) return 'history は配列が要る';
+  if (data.sprint === undefined) return 'sprint は null か object が要る（キーが無い）';
+  if (data.sprint !== null) {
+    const problem = sprintProblem(data.sprint);
+    if (problem) return problem;
+  }
+  for (const issue of data.issues) {
+    const problem = issueProblem(issue);
+    if (problem) return problem;
+  }
+  for (const entry of data.history) {
+    const problem = historyProblem(entry);
+    if (problem) return problem;
+  }
+  return null;
+}
+
+const asList = (/** @type {unknown} */ value) => (Array.isArray(value) ? value : []);
+const asText = (/** @type {unknown} */ value) => (typeof value === 'string' ? value : '');
+
+/**
+ * features.json を描ける形に整える。areas が配列でなければ null。
+ * area.features、feature.issues、notGoals は配列でなければ空にし、object でない項目、番号でない Issue、文字列でない項目は捨てる
+ * @param {unknown} raw
+ * @returns {Features | null}
+ */
+export function normalizeFeatures(raw) {
+  if (!isObject(raw) || !Array.isArray(raw.areas)) return null;
+  const areas = raw.areas.filter(isObject).map((area) => {
+    const features = asList(area.features)
+      .filter(isObject)
+      .map((feature) => ({
+        name: asText(feature.name),
+        desc: asText(feature.desc),
+        issues: asList(feature.issues).filter(Number.isInteger),
+        phase: /** @type {Feature['phase']} */ (feature.phase),
+      }));
+    return {
+      id: asText(area.id),
+      name: asText(area.name),
+      screens: asText(area.screens),
+      ...(typeof area.note === 'string' ? { note: area.note } : {}),
+      features,
+    };
+  });
+  return { areas, notGoals: asList(raw.notGoals).filter((text) => typeof text === 'string') };
 }
