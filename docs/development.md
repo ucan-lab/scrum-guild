@@ -305,7 +305,7 @@ vite の転送先も同じ値から作るので、画面は自分のワークツ
 
 ### e2e の書き方
 
-- `expect` の既定の待ちは、手元（`CI` の環境変数が無いとき）は 15 秒、CI は Playwright の既定の 5 秒（`playwright.config.ts`）。手元はワークツリーを並べて走らせることがあり、混んだマシンでは手を入れていない待ちの5秒が切れて、自分の変更で落ちたのかを見分けにくくなるため（#364）。テストの上限（既定の 30 秒）は変えない。`timeout` を明示した待ちはどちらでも同じ値で待つ。手元では壊れたテストが落ちるまで1つの待ちで最大 15 秒かかり、下の繰り返しの確かめも CI の `e2e-repeat` より甘くなるが、`main` に入る前に止めるのは CI の 5 秒の側にする
+- `expect` の既定の待ちは、手元（`CI` の環境変数が無いとき）は 15 秒、CI は Playwright の既定の 5 秒（`playwright.config.ts`）。手元はワークツリーを並べて走らせることがあり、混んだマシンでは手を入れていない待ちの5秒が切れて、自分の変更で落ちたのかを見分けにくくなるため（#364）。テストの上限（既定の 30 秒）は変えない。`timeout` を明示した待ちと、`page.evaluate` の中で時間を切る待ち（`e2e/helpers.ts` の `settledScrollY` の5秒など）は、どちらでも同じ値で待つ。手元では壊れたテストが落ちるまで1つの待ちで最大 15 秒かかり、下の繰り返しの確かめも CI の `e2e-repeat` より甘くなるが、`main` に入る前に止めるのは CI の 5 秒の側にする
 - `test` と `expect` は `e2e/fixtures.ts` から import する。`@playwright/test` から `test` を直に import すると `pnpm lint` が止める（`eslint.config.js` の `e2e/**/*.test.ts` の `no-restricted-imports`）。型は `@playwright/test` から import してよい
 - `fixtures.ts` の `page` は、テストの後で `page.unrouteAll({ behavior: 'ignoreErrors' })` を待つ。`page.route()` の処理の中で `route.fetch()` を待つテストは、画面が終わりに飛ばした読み直しがテストの後に届くと「route.fetch: Test ended」で落ち、その失敗が同じワーカーで次に走るテストに付く。2026-10-27 に、`e2e/members.test.ts` の route の処理に遅れを入れると必ずこの形で落ち、fixture を入れると落ちないことを確かめた（#318）
 - fixture が外すのは、テストの引数の `page` に張った route だけ。`browser.newContext()` で作った context と page、`context.route()` には効かない。そこで `route.fetch()` を使うなら、テストの終わりで自分で `unrouteAll({ behavior: 'ignoreErrors' })` を待つ
@@ -330,7 +330,7 @@ vite の転送先も同じ値から作るので、画面は自分のワークツ
   - seed の行を変えるしかないテストは、途中で落ちても戻るよう `try`/`finally` か `afterEach` で元へ戻す。戻せない変更（消す、閉じるなど）は、seed の行でなく自分で作った行に対して行う
   - 自分で作れない行（ログアウトで消すセッションは OAuth、承諾か取り消しで閉じる招待は GitHub の解決を通る）は、seed の行に対して行い、テストの前か後で `e2e/local-d1.ts` の関数で seed の状態へ戻す（#459）。関数は `wrangler d1 execute DB --local` で手元の D1 に直に SQL を流す（`--local` だけを付け、値は seed の固定の値だけを埋める。組織の中の表の文は組織かワークスペースで絞り、共通の表の `sessions` には seed の `sessionInserts` の文で seed のセッションの行だけを `INSERT OR IGNORE` で入れる。`pnpm db:seed` と同じ道）。画面と API の振る舞いは本物の操作で確かめ、直に書くのは戻すときだけにする。同じファイルの複製が並べて走ると、戻す前の行に別の複製が当たるので、`--repeat-each` は `--workers=1` で回す
   - 2回目から必ず落ちるなら、揺れでなくこの決まりに反している。1回目と同じ落ち方が毎回出るかを見て見分ける
-  - 足したか変えたテストは、手元でも `pnpm e2e --workers=1 --repeat-each=5 --retries=0 e2e/<名前>.test.ts` で回してから PR を出す。CI の `e2e-repeat` と同じ確かめ方で、ワーカーを絞らずに繰り返すと負荷だけで落ちる（#364）
+  - 足したか変えたテストは、手元でも `pnpm e2e --workers=1 --repeat-each=5 --retries=0 e2e/<名前>.test.ts` で回してから PR を出す。CI の `e2e-repeat` と同じ確かめ方で（`expect` の既定の待ちだけは手元が 15 秒）、ワーカーを絞らずに繰り返すと負荷だけで落ちる（#364）
 
 ### バックログの木を 5 万件で測る
 
