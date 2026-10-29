@@ -633,6 +633,41 @@ describe('invitation-create（Google）', () => {
     ).toMatchObject({ status: 'revoked' });
   });
 
+  test('同じアドレスへ同時に招待すると、どちらも 200 で、承諾待ちは1件、取り消しは1件、取り消しの記録も1行', async () => {
+    const target = await createTarget();
+    const [first, second] = await Promise.all([
+      inviteGoogle(target, target.leader, EMAIL),
+      inviteGoogle(target, target.admin, EMAIL),
+    ]);
+    expect([first.status, second.status]).toEqual([200, 200]);
+    const ids = [
+      ((await first.json()) as GoogleInvited).invitation_id,
+      ((await second.json()) as GoogleInvited).invitation_id,
+    ];
+    const rows = (await invitationRows(target.organization, target.workspace.id)).filter(
+      (row) => row.login_email === EMAIL,
+    );
+    expect(rows.map((row) => row.id).sort()).toEqual([...ids].sort());
+    expect(rows.map((row) => row.status).sort()).toEqual(['pending', 'revoked']);
+    const revoked = rows.find((row) => row.status === 'revoked')!;
+    const logs = await invitationLogs(target.organization, revoked.id);
+    expect(logs.filter((log) => log.action === 'update')).toHaveLength(1);
+    const pending = rows.find((row) => row.status === 'pending')!;
+    expect((await invitationLogs(target.organization, pending.id)).map((log) => log.action)).toEqual(['create']);
+  });
+
+  test('アカウントと操作ごとに 10 分に 30 回まで（GitHub の招待と同じ枠）。31 回目は 429 の rate_limited で、何も入らない', async () => {
+    const target = await createTarget();
+    for (let i = 0; i < 30; i++) {
+      expect((await inviteGoogle(target, target.leader, EMAIL)).status).toBe(200);
+    }
+    const before = await invitationRows(target.organization, target.workspace.id);
+    const res = await inviteGoogle(target, target.leader, newEmail());
+    expect(res.status).toBe(429);
+    expect(await errorCodeOf(res)).toBe('rate_limited');
+    expect(await invitationRows(target.organization, target.workspace.id)).toHaveLength(before.length);
+  });
+
   test('sub を埋めた後の招待（同じアドレスで結んだもの）は取り消さず、新しい招待を入れる', async () => {
     const target = await createTarget();
     const claimed = await createInvitation(

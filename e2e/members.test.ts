@@ -190,6 +190,82 @@ test.describe('リーダー（あおば開発のミナト）', () => {
     await expect(page.getByRole('button', { name: '招待する' })).toBeDisabled();
   });
 
+  test('Google の招待の失敗は、メールアドレスの欄か送信の下に出し、書かれたか分からないときは新しい URL の出し方を添える', async ({
+    page,
+  }) => {
+    const responses = [
+      { status: 409, json: { error: { code: 'already_invited', message: 'x' } } },
+      // 到達しない応答（Google の招待で invite が null）も、失敗として出す
+      { status: 200, json: { invitation_id: '019a0000-0000-7000-8000-00000000fffe', login_name: 'x', invite: null } },
+      { status: 500, json: { error: { code: 'internal', message: 'x' } } },
+    ];
+    await page.route('**/api/aoba/invitation-create', (route) => route.fulfill(responses.shift()!));
+    await page.goto(MEMBERS_PATH);
+    await page.getByRole('radio', { name: 'Google' }).check();
+    const email = page.getByLabel('Google のメールアドレス');
+    const invite = page.getByRole('button', { name: '招待する' });
+
+    await email.fill(E2E_GOOGLE_INVITE_EMAIL);
+    await invite.click();
+    await expect(page.locator('#invite-email-error')).toHaveText(
+      'この人には、このパーティへの承諾待ちの招待があります。',
+    );
+    await expect(email).toBeFocused();
+
+    await email.fill(E2E_GOOGLE_INVITE_EMAIL);
+    await invite.click();
+    const callout = page.locator('.panel .callout.is-danger');
+    await expect(callout).toHaveText('招待できませんでした。もう一度試してください。');
+    await expect(callout).toBeFocused();
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+
+    await invite.click();
+    await expect(callout).toHaveText(
+      '招待できたか分かりません。承諾待ちに出ていても、招待の URL はもう出せません。もう一度招待すると新しい招待の URL が出て、前の URL は使えなくなります。',
+    );
+  });
+
+  test('Google の招待が上限で断られても、GitHub で確かめた数えられている人は招待できるまま', async ({ page }) => {
+    await page.route('**/api/aoba/member-list', async (route) => {
+      const response = await route.fetch();
+      const json = (await response.json()) as Record<string, unknown>;
+      await route.fulfill({ response, json: { ...json, seats: { used: 15, limit: 15 } } });
+    });
+    await page.route('**/api/aoba/invitee-resolve', (route) =>
+      route.fulfill({
+        json: {
+          login_subject: '9000000000000102',
+          login_name: 'haruka--seed',
+          display_name: null,
+          avatar_url: null,
+          already_counted: true,
+        },
+      }),
+    );
+    await page.route('**/api/aoba/invitation-create', (route) =>
+      route.fulfill({ status: 409, json: { error: { code: 'member_limit_reached', message: 'x' } } }),
+    );
+    await page.goto(MEMBERS_PATH);
+    await page.getByLabel('GitHub のユーザー名').fill('haruka--seed');
+    await page.getByRole('button', { name: '確かめる' }).click();
+    await expect(page.locator('.choice')).toContainText('haruka--seed');
+    const invite = page.getByRole('button', { name: '招待する' });
+    await expect(invite).toBeEnabled();
+
+    // Google では、同じアドレスの承諾待ちがある人だけを数えられている人として扱うことを、上限の枠に添える
+    await page.getByRole('radio', { name: 'Google' }).check();
+    await expect(page.locator('.panel .callout.is-warn')).toContainText(
+      'Google の招待では、同じメールアドレスへの承諾待ちの招待がある人だけを、すでに数えられている人として扱います。',
+    );
+    await page.getByLabel('Google のメールアドレス').fill(E2E_GOOGLE_INVITE_EMAIL);
+    await invite.click();
+    await expect(page.getByRole('alert').filter({ hasText: '上限' })).toBeFocused();
+
+    await page.getByRole('radio', { name: 'GitHub' }).check();
+    await expect(page.locator('.choice')).toContainText('haruka--seed');
+    await expect(invite).toBeEnabled();
+  });
+
   test('アバターのある人は画像、無い人は頭文字の円で出る', async ({ page }) => {
     const collect = await watchViolations(page);
     // seed のログインはアバターを持たないので、member-list の応答にアバターを足し、アバターのホストへは出ずに画像を差し替える
@@ -666,7 +742,7 @@ test.describe('リーダー（ひばり工房のリン）', () => {
       /^この URL はこの画面を閉じると二度と出せません。期限は14日（\d{4}\/\d{2}\/\d{2}\s\d{2}:\d{2} まで）です。期限までに本人へ伝えてください。$/,
     );
     await expect(dialog).toContainText(
-      '同じメールアドレスで招待し直すと、新しい招待の URL が出ます。前の招待の URL は使えなくなります。',
+      '同じメールアドレスで招待し直すと、新しい招待の URL が出ます。同じメールアドレスで招待し直すと（ほかのリーダーが招待し直したときも）、前の招待の URL は使えなくなります。',
     );
     await dialog.getByRole('button', { name: 'コピー' }).click();
     await expect(page.locator('.toasts:visible .toast').last()).toHaveText('招待の URL をコピーしました');

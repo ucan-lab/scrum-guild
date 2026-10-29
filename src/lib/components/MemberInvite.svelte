@@ -79,7 +79,12 @@
   const inviting = $derived(busy === 'inviting');
   // 「招待する」を押せるか。GitHub は確かめた後、Google はメールアドレスを入れた後
   const ready = $derived(github ? resolved !== null && !blockedByLimit : email.trim() !== '');
-  const words = $derived({ organization: t('organization'), admin: t('admin'), workspace: t('workspace') });
+  const words = $derived({
+    organization: t('organization'),
+    admin: t('admin'),
+    workspace: t('workspace'),
+    leader: t('leader'),
+  });
   const organizationUrl = $derived(`${page.url.origin}/${slug}/`);
   const usernameDescribedBy = $derived(
     error?.field === 'username' ? 'invite-username-error invite-username-hint' : 'invite-username-hint',
@@ -144,20 +149,23 @@
     // 人数が上限に達していて、この人はまだ数えられていない: 上限の枠を alert で出し、人数を読み直す
     if (code === 'member_limit_reached') {
       limitAlert = true;
-      if (resolved !== null) resolved = { ...resolved, alreadyCounted: false };
+      // GitHub で確かめた人の結果だけを直す（Google で断られても、GitHub で確かめた人が数えられていることは変わらない）
+      if (github && resolved !== null) resolved = { ...resolved, alreadyCounted: false };
       await onchanged();
       await tick();
       limitCallout?.focus();
       return null;
     }
+    // 人を指す欄の誤り。Google ではユーザー名の欄が無いので、メールアドレスの欄に出す（出す場所が無いまま消さない）
+    const inputField: Field = github ? 'username' : 'email';
     const problem = problemCodeOf(result);
     if (problem !== undefined) {
-      return { field: problem === 'email_invalid' ? 'email' : 'username', key: problemKeys[problem]! };
+      return { field: problem === 'email_invalid' ? 'email' : inputField, key: problemKeys[problem]! };
     }
     if (code !== undefined && Object.hasOwn(conflictKeys, code)) {
       // 別のリーダーが先に招待したか、承諾されたときは、一覧を読み直して今の所属と招待を出す
       if (code === 'already_member' || code === 'already_invited') await onchanged();
-      return { field: 'username', key: conflictKeys[code]! };
+      return { field: inputField, key: conflictKeys[code]! };
     }
     // 回数の上限。招待の送信では、確かめた結果を残したまま、しばらく後に押し直せるようにする
     if (code === 'rate_limited') {
@@ -172,8 +180,10 @@
     if (context === 'verify') {
       return { field: 'username', key: result.status === 0 ? 'inviteErrorUnreachable' : 'inviteErrorVerifyFailed' };
     }
-    // 招待できたか分からない失敗（通信の切れ、5xx）。一覧を読み直して、入っていれば見えるようにする
+    // 招待できたか分からない失敗（通信の切れ、5xx）。一覧を読み直して、入っていれば見えるようにする。
+    // Google では、書かれていても招待の URL はもう出せないので、招待し直すと新しい URL が出ることを添える
     await onchanged();
+    if (!github) return { field: 'form', key: 'inviteErrorUnknownGoogle' };
     return { field: 'form', key: result.status === 0 ? 'inviteErrorUnreachable' : 'inviteErrorFailed' };
   }
 
@@ -322,8 +332,13 @@
       dialog?.show(emailInput);
       return;
     }
-    // 招待の URL の無い成功は、Google の招待では返らない
-    if (result.ok) return;
+    // 招待の URL の無い成功は、Google の招待では返らない。返ったら URL を出せないので失敗として出し、一覧を読み直す
+    if (result.ok) {
+      await onchanged();
+      error = { field: 'form', key: 'inviteErrorFailed' };
+      await focusFailure('form');
+      return;
+    }
     const failure = await failureOf(result, 'invite');
     if (failure === null) return;
     error = failure;
@@ -354,7 +369,11 @@
   <div class="visually-hidden" role="status">{live}</div>
   {#if full || limitAlert}
     <div class="callout is-warn" role={limitAlert ? 'alert' : undefined} tabindex="-1" bind:this={limitCallout}>
-      <Icon name="alert" /><span>{t('inviteLimitReached', { ...words, limit: String(seats.limit) })}</span>
+      <Icon name="alert" /><span
+        >{t('inviteLimitReached', { ...words, limit: String(seats.limit) })}{#if !github}{t(
+            'inviteLimitReachedGoogle',
+          )}{/if}</span
+      >
     </div>
   {/if}
   <div class="form-row is-start">
@@ -524,7 +543,7 @@
     <div class="callout is-warn">
       <Icon name="alert" /><span>{t('inviteUrlOnce', { expires: formatDateTime(issued.expiresAt) })}</span>
     </div>
-    <p class="field-hint">{t('inviteUrlReissue')}</p>
+    <p class="field-hint">{t('inviteUrlReissue', words)}</p>
   {/if}
   {#snippet footer(close)}
     <button class="btn is-primary" type="button" onclick={close}>{t('close')}</button>

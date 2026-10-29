@@ -8,6 +8,7 @@ import { normalizeEmail } from '../../shared/email.ts';
 import type { InvitationCreateProblem } from '../../shared/operations/workspace/invitation-create.ts';
 import { invitationCreate, invitationRevoke, inviteeResolve } from '../../shared/operations/workspace/index.ts';
 import {
+  pendingEmailInvitationRowFilter,
   personKey,
   previousStatementChanged,
   seatHoldersOf,
@@ -237,6 +238,59 @@ async function createGithubInvitation({
 
 // Google の招待（docs/data-model.md の「メールアドレスで待つ指名と招待」）。sub が分からないので所属と承諾待ちの招待は読まない
 // （所属の検査は招待の URL から結ぶときに行う）。
+// Google で招待し直すときの、1. 取り消しの記録（招待の取り消し invitation-revoke と同じ形）と 2. 取り消し。当てるのは、
+// 同じワークスペースの、同じメールアドレスで待つ承諾待ちの招待（sub を埋めたものは含めない）で、どちらも閉じていないワークスペースを条件にする。
+// 実行計画のテスト（test/schema.test.ts）が、部分索引 invitations_pending_email を使うことを確かめる
+export function revokeSameEmailStatements(
+  db: OrganizationDb,
+  options: { workspaceId: string; email: string; actorUserId: string; at: Date },
+) {
+  const organizationId = db.organizationId;
+  const { workspaceId, email, actorUserId, at } = options;
+  const stamp = at.toISOString();
+  return [
+    db.statement((q) =>
+      q
+        .insertInto('change_logs')
+        .columns(changeLogColumns)
+        .expression(
+          q
+            .selectFrom('invitations as i')
+            .select((eb) => [
+              uuidv7Sql(at).as('id'),
+              eb.val(organizationId).as('organization_id'),
+              eb.ref('i.workspace_id').as('workspace_id'),
+              eb.val(actorUserId).as('actor_user_id'),
+              eb.val('invitation').as('entity_type'),
+              eb.ref('i.id').as('entity_id'),
+              eb.val('update').as('action'),
+              eb.val(JSON.stringify({ status: ['pending', 'revoked'] })).as('changes_json'),
+              eb.val(stamp).as('created_at'),
+            ])
+            .where('i.workspace_id', '=', workspaceId)
+            .where(pendingEmailInvitationRowFilter('i'))
+            .where('i.login_provider', '=', 'google')
+            .where('i.login_email', '=', email)
+            .where((eb) => eb.exists(openWorkspace(q, organizationId, workspaceId))),
+        ),
+    ),
+    db.statement((q) =>
+      q
+        .updateTable('invitations')
+        .set({ status: 'revoked', responded_at: stamp })
+        .where((eb) =>
+          eb.and([
+            eb('workspace_id', '=', workspaceId),
+            pendingEmailInvitationRowFilter('invitations'),
+            eb('login_provider', '=', 'google'),
+            eb('login_email', '=', email),
+            eb.exists(openWorkspace(q, organizationId, workspaceId)),
+          ]),
+        ),
+    ),
+  ] as const;
+}
+
 // 作る順: メールアドレスをそろえる（そろえられなければ 400）→ 人数を数え、上限以上で、その人（(google, そろえたメールアドレス)）が
 // まだ数えられていなければ断る（招待し直しは前の招待で数えられているので通る。前の招待が期限切れなら数えられていないので断る）→
 // 招待の URL の秘密を作る → 1回の batch で、1. 同じワークスペースの同じメールアドレスの承諾待ちの招待（sub を埋める前のもの）ごとの
@@ -273,50 +327,8 @@ async function createGoogleInvitation({
   const inviteUrl = tools.inviteUrl(secret.claimToken);
 
   const results = await db.batch([
-    // 1. 取り消しの記録。招待の取り消し（invitation-revoke）と同じ形。当てるのは、同じワークスペースの、同じメールアドレスで待つ
-    // 承諾待ちの招待（sub を埋めたものは含めない）
-    db.statement((q) =>
-      q
-        .insertInto('change_logs')
-        .columns(changeLogColumns)
-        .expression(
-          q
-            .selectFrom('invitations as i')
-            .select((eb) => [
-              uuidv7Sql(at).as('id'),
-              eb.val(organizationId).as('organization_id'),
-              eb.ref('i.workspace_id').as('workspace_id'),
-              eb.val(actorUserId).as('actor_user_id'),
-              eb.val('invitation').as('entity_type'),
-              eb.ref('i.id').as('entity_id'),
-              eb.val('update').as('action'),
-              eb.val(JSON.stringify({ status: ['pending', 'revoked'] })).as('changes_json'),
-              eb.val(createdAt).as('created_at'),
-            ])
-            .where('i.workspace_id', '=', workspaceId)
-            .where('i.status', '=', 'pending')
-            .where('i.login_provider', '=', 'google')
-            .where('i.login_subject', 'is', null)
-            .where('i.login_email', '=', email)
-            .where((eb) => eb.exists(openWorkspace(q, organizationId, workspaceId))),
-        ),
-    ),
-    // 2. 取り消し。条件は 1 と同じ
-    db.statement((q) =>
-      q
-        .updateTable('invitations')
-        .set({ status: 'revoked', responded_at: createdAt })
-        .where((eb) =>
-          eb.and([
-            eb('workspace_id', '=', workspaceId),
-            eb('status', '=', 'pending'),
-            eb('login_provider', '=', 'google'),
-            eb('login_subject', 'is', null),
-            eb('login_email', '=', email),
-            eb.exists(openWorkspace(q, organizationId, workspaceId)),
-          ]),
-        ),
-    ),
+    // 1, 2. 同じアドレスの承諾待ちの取り消しの記録と取り消し
+    ...revokeSameEmailStatements(db, { workspaceId, email, actorUserId, at }),
     // 3. 新しい招待
     db.statement((q) =>
       q
