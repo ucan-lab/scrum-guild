@@ -97,6 +97,8 @@ test('リーダーはゴールを書いて遠征を始め、2つ目は始めら�
   await expect(firstLane.locator('.chip.is-ok')).toHaveText('進行中');
   await expect(firstLane.locator('.lane-goal')).toContainText(GOAL);
   await expect(other.getByRole('button', { name: '始める: 遠征 第1回' })).toHaveCount(0);
+  // 押した「始める」は消えるので、フォーカスは始めた遠征の見出しへ移る
+  await expect(firstLane.locator('.lane-title')).toBeFocused();
   await other.close();
 
   // 開いておいたダイアログから始めようとすると、サーバーが進行中が既にあることを断り、理由がダイアログの中に出る

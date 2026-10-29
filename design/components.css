@@ -1086,7 +1086,8 @@ a.choice > div > span, .choice.is-static > div > span { display: block; }
    切り替えとの間は --space-3 空ける（名前の広げた範囲が切り替えに重ならないように） */
 @media (max-width: 760px), (pointer: coarse) {
   .entry-end .order-actions .icon-btn, .tree-end .order-actions .icon-btn, .card-moves .order-actions .icon-btn { width: 44px; height: 44px; }
-  .card-moves .order-actions { gap: 4px; }
+  /* 44px のボタン4つ（176px）がカードの内側（約 184px）に収まるよう、隙間を空けず、収まらない幅では折り返す */
+  .card-moves .order-actions { gap: 0; flex-wrap: wrap; justify-content: flex-end; }
   .order-list .order-actions { gap: 14px; }
   .order-list .order-main { row-gap: var(--space-3); }
   .order-list .toggle { min-height: 44px; }

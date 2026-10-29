@@ -13,6 +13,8 @@ const card = (id: string, title: string, overrides: Partial<Board['columns'][num
   assignee: null,
   completed_at: null,
   story: null,
+  due_on: null,
+  repository: null,
   ...overrides,
 });
 
@@ -27,6 +29,7 @@ export const SAMPLE_BOARD: Board = {
     status: 'active',
   },
   today: '2026-10-20',
+  week_start: 1,
   columns: [
     {
       id: '019a0000-0000-7000-8000-00000000f101',
@@ -38,7 +41,10 @@ export const SAMPLE_BOARD: Board = {
           assignee: { id: '019a0000-0000-7000-8000-000000000302', name: 'ハルカ' },
           story: { id: '019a0000-0000-7000-8000-00000000f301', title: 'ポイントの付与と失効を管理画面で確かめられる' },
         }),
-        card('019a0000-0000-7000-8000-00000000f202', '障害時の連絡手順を書く'),
+        card('019a0000-0000-7000-8000-00000000f202', '障害時の連絡手順を書く', {
+          due_on: '2026-10-17',
+          repository: { id: '019a0000-0000-7000-8000-00000000f401', name: 'point-api' },
+        }),
       ],
     },
     {

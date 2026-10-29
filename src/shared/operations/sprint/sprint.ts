@@ -39,7 +39,8 @@ export const sprintTaskSchema = z.object({
 export type SprintTask = z.output<typeof sprintTaskSchema>;
 
 // スプリントの画面（sprint-board）のカード。完了したタスクは completed_at を持つ。
-// story は親のストーリー（カードの上に題を添える）。親のないタスクは null
+// story は親のストーリー（カードの上に題を添える）。親のないタスクは null。
+// due_on（期日）と repository（振ったリポジトリ。削除したものは null）は、カードの .card-meta に出す
 export const sprintBoardTaskSchema = z.object({
   id: z.string(),
   title: z.string(),
@@ -47,6 +48,8 @@ export const sprintBoardTaskSchema = z.object({
   assignee: z.object({ id: z.string(), name: z.string() }).nullable(),
   completed_at: z.string().nullable(),
   story: z.object({ id: z.string(), title: z.string() }).nullable(),
+  due_on: z.string().nullable(),
+  repository: z.object({ id: z.string(), name: z.string() }).nullable(),
 });
 
 export type SprintBoardTask = z.output<typeof sprintBoardTaskSchema>;

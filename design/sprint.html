@@ -40,11 +40,10 @@ SQ.mount("sprint", () => {
   const actions = `<button class="btn" type="button" data-dialog="sprintExtend">延長する</button>
     <button class="btn" type="button" data-dialog="sprintEnd">終える</button>`;
   return `
-    ${pageHead(`${s.start} 〜 ${s.end}・14 日のうち 8 日目`, SQ.sprintLabel("sp14"), [
-      ["", "check", "完了", `${done} / ${all} pt`],
-      ["", "clock", "残り", `${s.days - s.dayIndex} 日`],
-      ["is-warn", "pen", `${t("detail")} 未記入`, list.filter((x) => x.unfilled && !x.doneAt).length],
-      ["is-ok", "check", "取り込み元で完了", list.filter((x) => x.srcDone && !x.doneAt).length],
+    ${pageHead(`${SQ.md(s.start)}〜${SQ.md(s.end)}・${s.days} 日のうち ${s.dayIndex + 1} 日目`, SQ.sprintLabel("sp14"), [
+      ["", "check", `${t("done")}（pt）`, done],
+      ["", "", "合計（pt）", all],
+      ["", "clock", "残り（日）", s.days - s.dayIndex],
     ], actions)}
     ${sprintNotice("sp14", { showWs: false })}
     ${board("sp14")}

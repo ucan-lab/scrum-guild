@@ -320,6 +320,7 @@
                 href="{sprintHref}?task={encodeURIComponent(task.id)}"
                 edges={canWrite ? edgesOf(columns, task.id) : null}
                 canComplete={canWrite}
+                clock={{ today: board.today, weekStart: board.week_start }}
                 pending={completingId !== null}
                 onmove={moveCard}
                 oncomplete={(target) => void complete(target)}

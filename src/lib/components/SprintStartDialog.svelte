@@ -23,7 +23,8 @@
   }: {
     slug: string;
     workspaceId: string;
-    onstarted: () => void;
+    // 始めたスプリントの ID を渡す（押した「始める」は一覧から消えるので、画面がフォーカスの行き先を決める）
+    onstarted: (sprintId: string) => void;
     ongone: () => void;
   } = $props();
 
@@ -147,7 +148,7 @@
       }
       open = false;
       showToast(t('sprintStartDone', { sprint: t('sprint') }), 'check');
-      onstarted();
+      onstarted(target.id);
     } finally {
       if (mine === generation) submitting = false;
     }
@@ -192,7 +193,7 @@
             <span class="field-error" id="{goalId}-error" role="alert"><Icon name="alert" />{goalError}</span>
           {/if}
           <span class="field-hint" id="{goalId}-hint">
-            {t('sprintStartGoalHint', { plan: t('plan'), sprint: t('sprint') })}
+            {t('sprintStartGoalHint', { plan: t('plan'), sprint: t('sprint'), max: SPRINT_GOAL_MAX_LENGTH })}
           </span>
         </div>
       </fieldset>

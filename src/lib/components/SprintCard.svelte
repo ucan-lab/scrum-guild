@@ -3,6 +3,8 @@
   import type { MoveDirection } from '../sprint-board.ts';
   import { t } from '../vocabulary.svelte.ts';
   import Avatar from './Avatar.svelte';
+  import DefinitionChip from './DefinitionChip.svelte';
+  import DueChip from './DueChip.svelte';
   import Icon from './Icon.svelte';
 
   // スプリントの画面のカード（kit.js の card）。題は `?task=<ID>` で詳細の引き出しを開くリンク、ポイント、担当、完了の印か完了の操作。
@@ -14,12 +16,15 @@
     href,
     edges,
     canComplete,
+    clock,
     pending = false,
     onmove,
     oncomplete,
   }: {
     task: SprintBoardTask;
     href: string;
+    // 期日の印を決める今日（ワークスペースのタイムゾーン）と週の始まり。API の値を渡す
+    clock: { today: string; weekStart: number };
     // 動かせないカード（完了の列、書き込めない）は null
     edges: { top: boolean; bottom: boolean; prev: boolean; next: boolean } | null;
     canComplete: boolean;
@@ -65,6 +70,14 @@
   <!-- 押しても、フォーカスとスクロールの位置は動かさない（引き出しが閉じたとき、data-task-id で探してフォーカスを戻す） -->
   <!-- eslint-disable-next-line svelte/no-navigation-without-resolve -- href は画面が resolve した経路に ?task=<ID> を足したもの -->
   <a class="card-title" {href} data-task-id={task.id} data-sveltekit-reset="false">{task.title}</a>
+  {#if task.repository !== null || task.due_on !== null}
+    <div class="card-meta">
+      {#if task.repository !== null}<DefinitionChip kind="repository" name={task.repository.name} />{/if}
+      {#if task.due_on !== null}
+        <DueChip dueOn={task.due_on} today={clock.today} weekStart={clock.weekStart} {done} />
+      {/if}
+    </div>
+  {/if}
   <div class="card-foot">
     {#if task.points === null}
       <span class="pts is-none" role="img" aria-label={t('pointsUnsetTitle')} title={t('pointsUnsetTitle')}

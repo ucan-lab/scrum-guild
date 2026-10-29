@@ -6,9 +6,17 @@ import { setFixedNow } from '../src/shared/clock.ts';
 import { sprintBoard, sprintStart, taskColumnMove } from '../src/shared/operations/sprint/index.ts';
 import { taskComplete } from '../src/shared/operations/task/index.ts';
 import { createApp } from '../src/server/app.ts';
-import { orgDb } from '../src/server/db/index.ts';
+import { orgDb, verifyWorkspace } from '../src/server/db/index.ts';
 import { implementedOperations } from '../src/server/operations/index.ts';
-import { createBoardColumn, createSprint, createSprintEntry, createStory, createTask } from './factories.ts';
+import { taskColumnMoveOperation } from '../src/server/operations/sprint-board.ts';
+import {
+  createBoardColumn,
+  createRepository,
+  createSprint,
+  createSprintEntry,
+  createStory,
+  createTask,
+} from './factories.ts';
 import { errorCodeOf, post } from './operations/harness.ts';
 import { createTarget, testEnv, type Person, type Target } from './operations/world.ts';
 
@@ -51,6 +59,40 @@ async function setTimezone(target: Target, timezone: string) {
         .where('organization_id', '=', target.organization.id),
     ),
   );
+}
+
+// 処理を直に呼び、db の method の nth 回目の呼び出しが返った直後に、1回だけ race を走らせる（読んでから書くまでの割り込み）
+async function handleWithRace(
+  target: Target,
+  operation: { handler: (context: never) => Promise<unknown> },
+  input: Record<string, unknown>,
+  race: { method: 'batch' | 'first'; nth: number; run: () => Promise<void> },
+  person: Person,
+) {
+  const db = orgDb(env, target.organization.verified);
+  const actor = { accountId: person.accountId, userId: person.userId, isAdmin: false, invitedOnly: false };
+  const workspace = await verifyWorkspace(db, actor, target.workspace.id);
+  let calls = 0;
+  const racing = new Proxy(db, {
+    get(base, key) {
+      const value = Reflect.get(base, key, base);
+      if (typeof value !== 'function') return value;
+      if (key !== race.method) return value.bind(base);
+      return async (...args: unknown[]) => {
+        const result = await (value as (...a: unknown[]) => Promise<unknown>).apply(base, args);
+        if (++calls === race.nth) await race.run();
+        return result;
+      };
+    },
+  });
+  const context = {
+    db: racing,
+    actor,
+    workspace,
+    input: { workspace_id: target.workspace.id, ...input },
+    defer: () => {},
+  } as never;
+  return operation.handler(context);
 }
 
 async function reasonOf(res: Response): Promise<unknown> {
@@ -170,7 +212,7 @@ describe('sprint-start', () => {
     });
   });
 
-  test('ゴールは空でも始められ、空白だけのゴールも空と同じ', async () => {
+  test('ゴールを書かずに始められ、変更の履歴にゴールを入れない', async () => {
     const { target } = await setup();
     const withoutGoal = await createSprint(target.organization, target.workspace.id);
     const res = await call(target, sprintStart, { sprint_id: withoutGoal.id }, target.leader);
@@ -326,6 +368,22 @@ describe('sprint-start', () => {
     expect(started.status).toBe(200);
   });
 
+  test('別の組織のスプリントを、自分のワークスペースの ID と組み合わせても 404 で、何も書かない', async () => {
+    const { target } = await setup();
+    const stranger = await setup();
+    const foreign = await createSprint(stranger.target.organization, stranger.target.workspace.id);
+    const res = await call(target, sprintStart, { sprint_id: foreign.id, goal: 'ゴール' }, target.leader);
+    expect(res.status).toBe(404);
+    expect(await sprintRow(stranger.target, foreign.id)).toMatchObject({ status: 'planned', goal: null });
+    expect(await logsOf(stranger.target, foreign.id)).toHaveLength(0);
+    expect(await activeCount(target)).toBe(0);
+
+    // 同じ組織の別のワークスペースのスプリントも同じ
+    const sibling = await createSprint(target.organization, target.otherWorkspace.id);
+    expect((await call(target, sprintStart, { sprint_id: sibling.id }, target.leader)).status).toBe(404);
+    expect((await sprintRow(target, sibling.id))?.status).toBe('planned');
+  });
+
   test('削除したスプリントと無い ID は 404、メンバーは 403、閉じたワークスペースは 409', async () => {
     const { target } = await setup();
     const deleted = await createSprint(target.organization, target.workspace.id, {
@@ -407,6 +465,33 @@ describe('sprint-board', () => {
     ]);
     expect(body.columns[0]!.tasks[1]!.story).toEqual({ id: story.id, title: '見積もりの整理' });
     expect(body.columns[1]!.tasks[0]!.assignee).toMatchObject({ id: target.member.userId });
+  });
+
+  test('カードに期日とリポジトリの名前を添え、削除したリポジトリは添えない。週の始まりも返す', async () => {
+    const { target, board } = await setup();
+    const sprint = await activeSprintWith(target);
+    const repository = await createRepository(target.organization, target.workspace.id, { name: 'point-api' });
+    const deleted = await createRepository(target.organization, target.workspace.id, {
+      name: '消したリポジトリ',
+      position: 'a1',
+      deleted_at: '2026-10-21T00:00:00.000Z',
+    });
+    await card(target, sprint.id, board.first.id, 'a0', {
+      title: '期日つき',
+      due_on: '2026-10-30',
+      repository_id: repository.id,
+    });
+    await card(target, sprint.id, board.first.id, 'a1', { title: '消したリポジトリ', repository_id: deleted.id });
+
+    const body = (await (await call(target, sprintBoard, {})).json()) as {
+      week_start: number;
+      columns: { tasks: { title: string; due_on: string | null; repository: { name: string } | null }[] }[];
+    };
+    expect(body.week_start).toBe(1);
+    expect(body.columns[0]!.tasks).toMatchObject([
+      { title: '期日つき', due_on: '2026-10-30', repository: { name: 'point-api' } },
+      { title: '消したリポジトリ', due_on: null, repository: null },
+    ]);
   });
 
   test('task-complete で完了にしたカードは完了の列に出る', async () => {
@@ -575,12 +660,159 @@ describe('task-column-move', () => {
     expect(await positionsIn(target, sprint.id, board.first.id)).toHaveLength(2);
   });
 
-  test('別のワークスペースの列とタスクは動かせない（404）', async () => {
+  test('同じ組織の別のワークスペースの列、タスク、直前のカードは指せない（404）', async () => {
     const { target, board } = await setup();
     const sprint = await activeSprintWith(target);
     const task = await card(target, sprint.id, board.first.id, 'a0');
-    const foreignColumn = await createBoardColumn(target.organization, target.otherWorkspace.id, { name: '別の列' });
+    const other = target.otherWorkspace.id;
+    const foreignColumn = await createBoardColumn(target.organization, other, { name: '別の列' });
+    const foreignSprint = await createSprint(target.organization, other, { status: 'active' });
+    const foreignTask = await createTask(target.organization, other, target.admin.userId!, {
+      sprint_id: foreignSprint.id,
+      column_id: foreignColumn.id,
+      column_position: 'a0',
+    });
+    // 別のワークスペースの列
     expect((await call(target, taskColumnMove, { task_id: task.id, column_id: foreignColumn.id })).status).toBe(404);
+    // 別のワークスペースのタスク（自分のワークスペースの列を指しても動かせない）
+    expect((await call(target, taskColumnMove, { task_id: foreignTask.id, column_id: board.second.id })).status).toBe(
+      404,
+    );
+    // 別のワークスペースのタスクを直前のカードに指す
+    expect(
+      (
+        await call(target, taskColumnMove, {
+          task_id: task.id,
+          column_id: board.second.id,
+          after_task_id: foreignTask.id,
+        })
+      ).status,
+    ).toBe(404);
+    expect(await positionsIn(target, sprint.id, board.first.id)).toHaveLength(1);
+  });
+
+  test('別の組織のタスク、列、直前のカードを、自分のワークスペースの ID と組み合わせても 404 で、何も書かない', async () => {
+    const { target, board } = await setup();
+    const sprint = await activeSprintWith(target);
+    const task = await card(target, sprint.id, board.first.id, 'a0');
+    const stranger = await setup();
+    const strangerSprint = await activeSprintWith(stranger.target);
+    const strangerTask = await card(stranger.target, strangerSprint.id, stranger.board.first.id, 'a0');
+
+    const mine = { task_id: task.id, column_id: board.second.id };
+    expect((await call(target, taskColumnMove, { ...mine, task_id: strangerTask.id })).status).toBe(404);
+    expect((await call(target, taskColumnMove, { ...mine, column_id: stranger.board.second.id })).status).toBe(404);
+    expect((await call(target, taskColumnMove, { ...mine, after_task_id: strangerTask.id })).status).toBe(404);
+    expect(await positionsIn(target, sprint.id, board.first.id)).toEqual([task.title]);
+    expect(await logsOf(target, task.id)).toHaveLength(0);
+    expect(await logsOf(stranger.target, strangerTask.id)).toHaveLength(0);
+    expect(await positionsIn(stranger.target, strangerSprint.id, stranger.board.first.id)).toHaveLength(1);
+  });
+
+  test('削除した列を指すカードは先頭の列に出ていて、その直後へ移せる', async () => {
+    const { target, board } = await setup();
+    const sprint = await activeSprintWith(target);
+    const gone = await createBoardColumn(target.organization, target.workspace.id, {
+      name: '消えた列',
+      position: 'a5',
+      deleted_at: '2026-10-21T00:00:00.000Z',
+    });
+    const orphan = await card(target, sprint.id, gone.id, 'a0', { title: '取り残し' });
+    const first = await card(target, sprint.id, board.first.id, 'a1', { title: '先頭の列の札' });
+    const moving = await card(target, sprint.id, board.second.id, 'a0', { title: '動かす' });
+
+    // 画面は取り残されたカードを先頭の列に出す
+    const shown = (await (await call(target, sprintBoard, {})).json()) as {
+      columns: { id: string; tasks: { title: string }[] }[];
+    };
+    expect(shown.columns[0]!.tasks.map((task) => task.title)).toEqual(['取り残し', '先頭の列の札']);
+
+    // 取り残されたカードの直後へ動かせる（先頭の列の並びに、取り残されたカードも数える）
+    const res = await call(target, taskColumnMove, {
+      task_id: moving.id,
+      column_id: board.first.id,
+      after_task_id: orphan.id,
+    });
+    expect(res.status).toBe(200);
+    const after = (await (await call(target, sprintBoard, {})).json()) as {
+      columns: { id: string; tasks: { title: string }[] }[];
+    };
+    expect(after.columns[0]!.tasks.map((task) => task.title)).toEqual(['取り残し', '動かす', first.title]);
+  });
+
+  // 要求 A が読み終えた直後に、要求 B が先に通る。2つの要求の時刻はそろえる（updated_at が同じ値になる）。
+  // 処理を直に呼ぶ A の db の first は、移すカード、移す先の列、位置を決める隣のカードの順に3回読む
+  async function raceMove(
+    target: Target,
+    cardId: string,
+    mine: { column_id: string; after_task_id?: string | null },
+    winnerBody: { column_id: string; after_task_id?: string | null },
+  ) {
+    setFixedNow(new Date('2026-10-26T01:00:00.000Z'));
+    return handleWithRace(
+      target,
+      taskColumnMoveOperation,
+      { task_id: cardId, ...mine },
+      {
+        method: 'first',
+        nth: 3,
+        run: async () => {
+          const winner = await call(target, taskColumnMove, { task_id: cardId, ...winnerBody }, target.leader);
+          expect(winner.status).toBe(200);
+        },
+      },
+      target.member,
+    );
+  }
+
+  test('同じ移動の要求が同時に2回届くと（二重送信）、2つ目は書かずに成功を返し、履歴は1行だけ', async () => {
+    const { target, board } = await setup();
+    const sprint = await activeSprintWith(target);
+    const moving = await card(target, sprint.id, board.first.id, 'a0', { title: '二重に送る札' });
+    await card(target, sprint.id, board.second.id, 'a0', { title: '先にいる札' });
+
+    const second = await raceMove(target, moving.id, { column_id: board.second.id }, { column_id: board.second.id });
+    expect(second).toEqual({ task_id: moving.id, column_id: board.second.id });
+    expect(await positionsIn(target, sprint.id, board.second.id)).toEqual(['先にいる札', '二重に送る札']);
+    const logs = await logsOf(target, moving.id);
+    expect(logs).toHaveLength(1);
+    expect(logs[0]).toMatchObject({ actor_user_id: target.leader.userId });
+  });
+
+  test('先の要求が違う先へ移していたら、書く文が負けて 409 の changed で、履歴も振り直しも書かない', async () => {
+    const { target, board } = await setup();
+    const third = await createBoardColumn(target.organization, target.workspace.id, { name: '査定中', position: 'a2' });
+    const sprint = await activeSprintWith(target);
+    const moving = await card(target, sprint.id, board.first.id, 'a0', { title: '取り合う札' });
+    await card(target, sprint.id, third.id, 'a0', { title: '三列目の札' });
+
+    const loser = raceMove(target, moving.id, { column_id: third.id }, { column_id: board.second.id });
+    await expect(loser).rejects.toMatchObject({ status: 409, details: { reason: 'changed' } });
+    // カードは先に通った要求の列にいて、三列目の札の位置は変わらず、履歴は先に通った要求の1行だけ
+    expect(await positionsIn(target, sprint.id, board.second.id)).toEqual(['取り合う札']);
+    expect(await positionsIn(target, sprint.id, third.id)).toEqual(['三列目の札']);
+    const logs = await logsOf(target, moving.id);
+    expect(logs).toHaveLength(1);
+    expect(JSON.parse(logs[0]!.changes_json).column[1]).toMatchObject({ id: board.second.id });
+  });
+
+  test('同じ位置のカードが 40 枚を超えると、振り直さず 409 の ties で何も書かない', async () => {
+    const { target, board } = await setup();
+    const sprint = await activeSprintWith(target);
+    const moving = await card(target, sprint.id, board.first.id, 'a0', { title: '動かす札' });
+    const ties = [];
+    for (let i = 0; i < 42; i++) ties.push(await card(target, sprint.id, board.second.id, 'a0', { title: `同時${i}` }));
+    const earliest = ties.map((row) => row.id).sort()[0]!;
+
+    const res = await call(target, taskColumnMove, {
+      task_id: moving.id,
+      column_id: board.second.id,
+      after_task_id: earliest,
+    });
+    expect(res.status).toBe(409);
+    expect(await reasonOf(res)).toBe('ties');
+    expect(await positionsIn(target, sprint.id, board.first.id)).toEqual(['動かす札']);
+    expect(await logsOf(target, moving.id)).toHaveLength(0);
   });
 
   test('閉じたワークスペースは 409 の workspace_closed', async () => {

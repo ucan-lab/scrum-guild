@@ -1256,11 +1256,26 @@ const looooooooooooooooooooooooooooooooooongLine = "コードの長い1行は、
         `<button class="btn is-primary" type="button" data-close-dialog>やめる</button><button class="btn is-danger" type="button" data-close-dialog data-toast="${t("sprint")}を削除しました">削除する</button>`);
       document.querySelector(".dialog-sheet").classList.add("is-danger");
     },
-    sprintStart: () => openDialog(`${t("sprint")}を始める`,
-      `<p>${sprintLabel("sp15")}（${md(D.sprints.sp15.start)}〜${md(D.sprints.sp15.end)}）を始めます。入っている${t("task")}は 3 件、11 pt です。</p>
-       <div class="callout is-warn">${icon("alert")}<span>未見積もりが 1 件、${t("detail")}が未記入のものが 2 件あります。始めることはできます。</span></div>
-       <label class="field" for="d-goal"><span class="field-label">${t("sprintGoal")}</span><textarea class="textarea" id="d-goal" placeholder="この${t("sprint")}で何ができるようになるか"></textarea><span class="field-hint">空でも始められます。計画、${t("sprint")}、自分の今日の画面に出ます。</span></label>`,
-      `<button class="btn is-quiet" type="button" data-close-dialog>やめる</button><button class="btn is-primary" type="button" data-close-dialog data-toast="${t("sprint")}を始めました">始める</button>`),
+    // スプリントを始めるダイアログ（本番は SprintStartDialog）。押したボタンの data-state で状態を替える。
+    // active: 進行中のスプリントが既にある（開いた時点から理由を出し、「始める」を押せなくする）、
+    // ended: 最終日が今日より前（押した後に理由を出して開いたまま）、toolong: ゴールが 200 字を超えた（欄の下に理由）
+    sprintStart: (el) => {
+      const state = (el && el.dataset && el.dataset.state) || "";
+      const sprint = `${t("sprint")}`;
+      const lead = state === "active"
+        ? `<div class="callout is-danger" role="alert">${icon("alert")}<span>進行中の${sprint}があるので、始められません。終えてから始めてください</span></div>`
+        : `<div class="callout is-warn">${icon("alert")}<span>未見積もりが 1 件あります。始めることはできます。</span></div>`;
+      const goalError = state === "toolong"
+        ? `<span class="field-error" id="d-goal-error" role="alert">${icon("alert")}${t("sprintGoal")}は 200 字までです</span>` : "";
+      const submitError = state === "ended"
+        ? `<div class="callout is-danger" role="alert">${icon("alert")}<span>この${sprint}は最終日を過ぎているので、始められません。期間を直すか、削除して作り直してください</span></div>` : "";
+      openDialog(`${sprint}を始める`,
+        `<p>${sprintLabel("sp15")}（${md(D.sprints.sp15.start)}〜${md(D.sprints.sp15.end)}）を始めます。入っている${t("task")}は 3 件、11 pt です。</p>
+         ${lead}
+         <label class="field${state === "toolong" ? " is-invalid" : ""}" for="d-goal"><span class="field-label">${t("sprintGoal")}</span><textarea class="textarea" id="d-goal" placeholder="この${sprint}で何ができるようになるか" aria-describedby="d-goal-hint${goalError ? " d-goal-error" : ""}"${state === "toolong" ? ` aria-invalid="true"` : ""}></textarea>${goalError}<span class="field-hint" id="d-goal-hint">空でも始められます。200 字まで書け、${t("plan")}と${sprint}の画面に出ます。</span></label>
+         ${submitError}`,
+        `<button class="btn is-quiet" type="button" data-close-dialog>やめる</button><button class="btn is-primary" type="button"${state === "active" ? ` aria-disabled="true"` : ` data-close-dialog data-toast="${sprint}を始めました"`}>始める</button>`);
+    },
     sprintExtend: () => openDialog(`${t("sprint")}を延ばす`,
       `<div class="form-row"><label class="field" for="d-days"><span class="field-label">延ばす日数</span><input class="input" id="d-days" type="number" min="1" value="2"></label>
          <div class="field"><span class="field-label">新しい最終日</span><span class="mono">2026-10-28（水）</span></div></div>

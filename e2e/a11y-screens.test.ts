@@ -61,7 +61,7 @@ const screens: {
   {
     screen: 'sprint',
     path: `${WORKSPACE}/sprint`,
-    // seed には進行中のスプリントを置かない（ほかのファイルが始める）ので、架空のスプリントと列とカードに差し替える
+    // aoba のワークスペースには進行中のスプリントを置かない（seed の進行中は別の組織のワークスペース）ので、架空のスプリントと列とカードに差し替える
     prepare: (page) => mockOperation(page, sprintBoard, { slug: 'aoba' }, SAMPLE_BOARD),
     ready: (page) => [
       page.getByRole('heading', { level: 1, name: '遠征 第14回' }),

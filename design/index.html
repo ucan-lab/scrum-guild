@@ -315,10 +315,11 @@ const SECTIONS = [
     ["行の左端の太陽は「今日やる」。押すと金色になる。", "完了は判子で示し、すぐ横に「戻す」を置く。", "完了の操作を送っている最中は、丸を薄くして押しても何も起きないようにする（aria-disabled。フォーカスは残す）。", "狭い幅（760px 以下）と指で押す画面では、完了の操作の押せる範囲を 44px 四方に広げる（丸の見た目は変えず、::after で広げる）。ポイントなどの .segmented の選択肢も 44px の高さにする。", "取り込んだタスクは、キーと取り込み元のアイコンを必ず添える。"],
     ".book .entry .is-done .entry-main .entry-title .entry-meta .entry-end / .sun[aria-pressed] / .done-btn .done-btn[aria-disabled] / .hanko .is-new")],
   ["board", "列とカード", () => block("board", "列とカード", "スプリントの列。列の名前は明朝。完了の列にだけ完成の定義を添える。狭いときは横に送る。",
-    board("sp14"),
-    ["列の名前はリーダーが付けたもので、言葉づかいを切り替えても訳さない。完了の列だけは「完遂」か「完了」と出す。", "カードの操作（列の移動）は、ドラッグの他にキーボードでもできるようにする。",
+    board("sp14") +
+    `<div class="cat-row"><span class="order-actions"><button class="icon-btn" type="button" aria-label="前の${t("column")}へ" title="前の${t("column")}へ" aria-disabled="true">${icon("left")}</button><button class="icon-btn" type="button" aria-label="上へ" title="上へ" aria-disabled="true">${icon("up")}</button><button class="icon-btn" type="button" aria-label="下へ" title="下へ">${icon("down")}</button><button class="icon-btn" type="button" aria-label="次の${t("column")}へ" title="次の${t("column")}へ">${icon("right")}</button></span><span class="field-hint">order-actions に隣の列へ移す left と right を両端に足した形（across）。先頭の列の「前の列へ」は aria-disabled</span></div>`,
+    ["列の名前はリーダーが付けたもので、言葉づかいを切り替えても訳さない。完了の列だけは「完遂」か「完了」と出す。列の数は .board の --board-cols で渡す（既定は 4）。列は 232px を下限にし、足りない幅では .board-wrap の中で横にスクロールする。", "カードの操作（列の移動）は、ドラッグの他にキーボードでもできるようにする。完了でないカードは tabindex=\"0\" で選べ、中のどこにフォーカスがあっても Alt と ← → で隣の列の末尾へ、Alt と ↑ ↓ で列の中を1つ動かす。同じ操作を、カードの下の .card-moves の .order-actions（前の列へ、上へ、下へ、次の列へ）のボタンでもできる。動かした後の位置は読み上げる（「<題>を<列>の N 番目に移しました（M 件中）」）。", "完了の列へはここから移せない（完了にするのはカードの完了の操作）。最後の完了でない列の「次の列へ」は端として aria-disabled にし、押しても Alt と → を押しても、動かせないことと完了の操作の案内を読み上げる。上と下の端も aria-disabled で、「いちばん上です」「いちばん下です」を読み上げる。完了の列のカードは選べず、動かすボタンも持たない。", "選んでいるカード（中にフォーカスがある間）は .card:focus-within で枠の色を変え、左に太い線を入れる（色だけに頼らない）。", "狭い幅（760px 以下）と指で押す画面では、.card-title と .done-btn と .card-moves のボタンを 44px 四方にする。.card-moves のボタン4つ（176px）は隙間を空けずにカードの内側へ収め、収まらない幅では折り返す。",
       `完成の定義（<code>.dod</code>）は畳んで置き、中身はワークスペースの Markdown を <code>.doc-box</code> で描く（<code>.dod</code> の中では枠と余白を外し、見出しも小さい文字のままにする）。開くまで本文を描かない。空なら出さない。${t("backlog")}の木の上にも同じ部品を1つだけ置き、行ごとには繰り返さない。`],
-    ".board-wrap .board .board-col .is-done .board-col-head .board-col-name / .dod / .card .card-parent .card-title .card-meta .card-foot .card-end")],
+    ".board-wrap .board[--board-cols] .board-col .is-done .board-col-head .board-col-name / .dod / .card .card-parent .card-title .card-meta .card-foot .card-end .card-moves .card:focus-within / .order-actions（left right の across）")],
   ["tree", "木", () => block("tree", "木（バックログ）", "エピック、ストーリー、タスクの階層。エピックの行は一段下の地と明朝で区切る。",
     `<div class="tree">${treeEpic("e2")}${treeStory("s4", true)}${treeStory("s1", true, { doneAt: "2026-10-22" })}</div>` +
     `<div class="tree">${treeEpic("e1", { cleared: true, key: "e1-cleared" })}${treeEpic("e2", { canceled: true, empty: true, key: "e2-canceled" })}${treeEpic("e1", { empty: true, key: "e1-empty" })}</div>` +
@@ -346,7 +347,7 @@ const SECTIONS = [
     ".grip .grip.is-off / .entry.has-grip .tree-row.has-grip / [data-drop=before] [data-drop=after] [data-drop=into] / .tree-slot .dropzone.is-over / .is-dragging .is-dropped / .action-note .drag-note")],
   ["notices", "貼り紙", () => block("notices", "貼り紙", "掲示する物（スプリントゴール、レイド）は、上辺に太い線を引いた紙として見せる。レイドは金、クリア済みは朱。",
     `<div class="notice-grid">${sprintNotice("sp14")}${raidNotice("e1")}${raidNotice("e2", { cleared: true })}</div>`,
-    ["依頼主の名前の横に朱の「印」を添える。", "クリアしたレイドには「済」の判子を押す。"], ".notice .is-raid .is-cleared / .notice-label .notice-title .notice-meta .notice-facts .notice-foot / .day-ticks / .progress / .seal")],
+    ["依頼主の名前の横に朱の「印」を添える。", "クリアしたレイドには「済」の判子を押す。", "スプリントゴールの文（.notice-title.is-goal）は、書いた改行を残し（white-space: pre-line）、長い語は折り返す。ゴールを書かずに始めたスプリントは、貼り紙を出さない。"], ".notice .is-raid .is-cleared / .notice-label .notice-title .notice-title.is-goal .notice-meta .notice-facts .notice-foot / .day-ticks / .progress / .seal")],
   ["records", "記録", () => block("records", "記録（レベルと積載量）", "計器の見た目。経験値のゲージは10の目盛り、積載量は5%の目盛りで、許容幅の両端を縦線で示す。",
     `<div class="two">${levelPanel()}<section class="panel"><div class="panel-title"><b>${t("capacity")}</b>判定の5つ</div>${capacityRows()}${load("社内ツール", "配分 40%", 30.4, 30.0, { lead: avatarOf("u1") })}</section></div>` +
     `<div class="cat-row">${SQ.teamXp()}<span class="field-hint">チーム全体の経験値（バックログの画面の見出しの中）</span></div>` +
@@ -358,13 +359,14 @@ const SECTIONS = [
       <div><div class="bars"><span class="bars-avg" style="bottom:63px"><span>平均 31.7</span></span><div class="bar-col"><b>32</b><i style="height:64px"></i></div><div class="bar-col is-excluded"><b>41</b><i style="height:82px"></i></div><div class="bar-col"><b>29</b><i style="height:58px"></i></div></div>
       <div class="bars-labels"><span>第11回</span><span>第12回<br>延長・除外</span><span>第13回</span></div></div></div></div>
      <div class="lanes" style="grid-template-columns:repeat(auto-fit,minmax(260px,1fr))"><section class="lane is-active"><div class="lane-head"><h3 class="lane-title">${SQ.sprintLabel("sp14")}</h3><span class="chip is-ok">進行中</span></div>
+      <p class="lane-goal"><span class="lane-goal-label">${t("sprintGoal")}</span>${esc(D.sprints.sp14.goal)}</p>
       <div class="lane-fill"><div class="lane-fill-bar"><span style="width:62%"></span><i style="left:80%"></i></div><div class="lane-fill-text"><span>入れた 25 pt</span><span>ベロシティ 31.7</span></div></div>
       <div class="lane-row">${pts(5)}<a href="#" data-task="t1">ポイント付与のバッチを作る</a><span class="lane-row-end">${avatarOf("u1")}<button class="icon-btn" type="button" aria-label="外す: ポイント付与のバッチを作る" title="外す">${icon("x")}</button></span></div>
       <div class="lane-row">${pts(null)}<a href="#" data-task="t13">ポイント失効の通知メールを作る</a><span class="lane-row-end">${avatarOf(null)}<button class="icon-btn" type="button" aria-label="外す: ポイント失効の通知メールを作る" title="外す">${icon("x")}</button></span></div>
       <div class="lane-row is-done">${pts(2)}<a href="#" data-task="t7">タイムアウトの閾値を見直す</a><span class="lane-row-end"><span class="hanko" role="img" aria-label="タイムアウトの閾値を見直す: ${t("done")}">${icon("check")}<b>完</b></span>${avatarOf("u4")}<span class="lane-row-slot" aria-hidden="true"></span></span></div>
       <button class="btn is-sm" type="button" data-dialog="sprintTaskAdd">${icon("plus")}${t("backlog")}から入れる</button></section></div>`,
     ["入っているタスクは .lane-row（ポイント、タイトル、右端の .lane-row-end）。右端は担当と「外す」（.icon-btn。狭い幅と指で押す画面では 44px 四方）。完了したタスクは .lane-row.is-done で薄くし、担当の左に完了の印（.hanko。読み上げは「<題>: 完了」）を置き、「外す」の代わりに同じ幅の空き（.lane-row-slot）を置いて担当の位置をそろえる。", "「<バックログ>から入れる」はスプリントに入れるダイアログを開く。ストーリーを見出し（.pick-row.is-head）にして配下を字下げした行（.pick-row.is-child）で並べ、一覧（.pick-list）は高さに上限を付けて中でスクロールする。足元に選んだ件数（.pick-count）と主ボタン。"],
-    ".velocity .stat .stat-label .stat-num / .bars .bars-avg .bar-col .is-excluded .bars-labels / .lanes .lane .is-active .lane-head .lane-title .lane-sub .lane-fill .lane-fill-bar .is-over .lane-row .lane-row-end .lane-row-slot / .pick-list .pick-group .pick-row .is-head .is-child .pick-meta .pick-empty .pick-count")],
+    ".velocity .stat .stat-label .stat-num / .bars .bars-avg .bar-col .is-excluded .bars-labels / .lanes .lane .is-active .lane-head .lane-title .lane-sub .lane-goal .lane-goal-label .lane-fill .lane-fill-bar .is-over .lane-row .lane-row-end .lane-row-slot / .pick-list .pick-group .pick-row .is-head .is-child .pick-meta .pick-empty .pick-count")],
   ["table", "表", () => block("table", "表", "数が並ぶ一覧は表にする。数の列は右に揃える。",
     `<div class="table-wrap"><table class="table"><thead><tr><th>${t("epic")}</th><th class="is-num">残り（pt）</th><th>進み</th><th>${t("due")}</th><th class="is-actions"><span class="visually-hidden">操作</span></th></tr></thead>
       <tbody>${Object.keys(D.epics).map((id) => { const p = SQ.epicPts(id); return `<tr><td><a href="epic.html">${SQ.esc(D.epics[id].title)}</a></td><td class="is-num">${p.all - p.done}</td><td>${progress(p.done, p.all)}</td><td>${dueChip(D.epics[id].due)}</td><td class="is-actions"><button class="btn is-sm is-quiet" type="button">開く</button></td></tr>`; }).join("")}</tbody></table></div>
@@ -391,6 +393,9 @@ const SECTIONS = [
     `<div class="cat-row">
       <button class="btn" type="button" data-dialog="sprintCreate">${t("sprint")}を作る</button>
       <button class="btn" type="button" data-dialog="sprintStart">${t("sprint")}を始める</button>
+      <button class="btn" type="button" data-dialog="sprintStart" data-state="active">${t("sprint")}を始める（進行中が既にある）</button>
+      <button class="btn" type="button" data-dialog="sprintStart" data-state="ended">${t("sprint")}を始める（最終日を過ぎている）</button>
+      <button class="btn" type="button" data-dialog="sprintStart" data-state="toolong">${t("sprint")}を始める（ゴールが長すぎる）</button>
       <button class="btn" type="button" data-dialog="sprintExtend">${t("sprint")}を延ばす</button>
       <button class="btn" type="button" data-dialog="sprintEnd">${t("sprint")}を終える</button>
       <button class="btn" type="button" data-dialog="createTask">${t("create")}</button>

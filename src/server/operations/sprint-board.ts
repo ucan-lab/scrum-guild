@@ -6,12 +6,19 @@ import {
   type SprintBoardColumn,
   type SprintBoardTask,
 } from '../../shared/operations/sprint/index.ts';
-import { type OrganizationDb, type OrganizationTables, type QueryCreator } from '../db/index.ts';
+import {
+  activeSprintRowFilter,
+  previousStatementChanged,
+  type ExpressionBuilder,
+  type OrganizationDb,
+  type OrganizationTables,
+  type QueryCreator,
+} from '../db/index.ts';
 import { ApiError } from '../errors.ts';
 import { uuidv7 } from '../uuid.ts';
 import { implement } from './implement.ts';
 import { MAX_TIES, placeAfter, placeFirst, placeLast, type MovePlan, type Positioned } from './move-position.ts';
-import { activeSprint, summaryOf } from './sprint.ts';
+import { activeSprint, firstColumn, summaryOf } from './sprint.ts';
 import { actorUserIdOf, changeLogColumns, openWorkspace, throwIfClosed } from './write-guards.ts';
 
 type From = Pick<QueryCreator<OrganizationTables>, 'selectFrom'>;
@@ -31,7 +38,7 @@ export const sprintBoardOperation = implement(sprintBoard, async ({ db, workspac
     db.statement((q) =>
       q
         .selectFrom('workspaces')
-        .select('workspaces.timezone')
+        .select(['workspaces.timezone', 'workspaces.week_start'])
         .where('workspaces.id', '=', workspaceId)
         .where('workspaces.organization_id', '=', organizationId),
     ),
@@ -40,8 +47,7 @@ export const sprintBoardOperation = implement(sprintBoard, async ({ db, workspac
         .selectFrom('sprints')
         .select(['sprints.id', 'sprints.name', 'sprints.goal', 'sprints.start_on', 'sprints.end_on', 'sprints.status'])
         .where('sprints.workspace_id', '=', workspaceId)
-        .where('sprints.status', '=', 'active')
-        .where('sprints.deleted_at', 'is', null),
+        .where(activeSprintRowFilter('sprints')),
     ),
     db.statement((q) =>
       q
@@ -62,10 +68,19 @@ export const sprintBoardOperation = implement(sprintBoard, async ({ db, workspac
         .leftJoin('users', (join) =>
           join.onRef('users.id', '=', 'tasks.assignee_user_id').on('users.organization_id', '=', organizationId),
         )
+        .leftJoin('repositories', (join) =>
+          join
+            .onRef('repositories.id', '=', 'tasks.repository_id')
+            .on('repositories.workspace_id', '=', workspaceId)
+            .on('repositories.deleted_at', 'is', null),
+        )
         .select([
           'tasks.id',
           'tasks.title',
           'tasks.points',
+          'tasks.due_on',
+          'repositories.id as repository_id',
+          'repositories.name as repository_name',
           'tasks.column_id',
           'tasks.completed_at',
           'tasks.story_id',
@@ -85,7 +100,8 @@ export const sprintBoardOperation = implement(sprintBoard, async ({ db, workspac
   if (settings === undefined) throw new ApiError(404, 'not_found');
   const today = todayIn(settings.timezone);
   const sprintRow = sprintResult.rows[0];
-  if (sprintRow === undefined) return { sprint: null, columns: [], today };
+  const weekStart = settings.week_start;
+  if (sprintRow === undefined) return { sprint: null, columns: [], today, week_start: weekStart };
 
   const firstOpenId = columnsResult.rows.find((column) => column.is_done === 0)?.id;
   const knownIds = new Set(columnsResult.rows.map((column) => column.id));
@@ -99,6 +115,11 @@ export const sprintBoardOperation = implement(sprintBoard, async ({ db, workspac
       assignee: row.assignee_user_id === null ? null : { id: row.assignee_user_id, name: row.assignee_name ?? '' },
       completed_at: row.completed_at,
       story: row.story_id === null || row.story_title === null ? null : { id: row.story_id, title: row.story_title },
+      due_on: row.due_on,
+      repository:
+        row.repository_id === null || row.repository_name === null
+          ? null
+          : { id: row.repository_id, name: row.repository_name },
     };
     const columnId =
       row.completed_at !== null
@@ -117,8 +138,34 @@ export const sprintBoardOperation = implement(sprintBoard, async ({ db, workspac
     is_done: column.is_done === 1,
     tasks: cardsByColumn.get(column.id) ?? [],
   }));
-  return { sprint: summaryOf(sprintRow), columns, today };
+  return { sprint: summaryOf(sprintRow), columns, today, week_start: weekStart };
 });
+
+// カードがこの列にいる、という条件。column_id がその列を指すか、削除した列を指していて（列の削除で移し損ねたカード）、
+// この列が先頭の列であること。画面は後者のカードを先頭の列に出すので、並びの計算も同じ列に数える
+function inColumn(
+  eb: ExpressionBuilder<OrganizationTables, 'tasks'>,
+  from: From,
+  workspaceId: string,
+  columnId: string,
+) {
+  return eb.or([
+    eb('tasks.column_id', '=', columnId),
+    eb.and([
+      eb.not(
+        eb.exists(
+          from
+            .selectFrom('board_columns as live')
+            .select('live.id')
+            .where('live.id', '=', eb.ref('tasks.column_id'))
+            .where('live.workspace_id', '=', workspaceId)
+            .where('live.deleted_at', 'is', null),
+        ),
+      ),
+      eb(eb.val(columnId), '=', firstColumn(from, workspaceId)),
+    ]),
+  ]);
+}
 
 // 移す先の列の並び（スプリントの中の、その列の削除していないカード）から、移すカードを除いたもの
 function cardsIn(from: From, workspaceId: string, sprintId: string, columnId: string, taskId: string) {
@@ -126,7 +173,7 @@ function cardsIn(from: From, workspaceId: string, sprintId: string, columnId: st
     .selectFrom('tasks')
     .where('tasks.workspace_id', '=', workspaceId)
     .where('tasks.sprint_id', '=', sprintId)
-    .where('tasks.column_id', '=', columnId)
+    .where((eb) => inColumn(eb, from, workspaceId, columnId))
     .where('tasks.column_position', 'is not', null)
     .where('tasks.deleted_at', 'is', null)
     .where('tasks.id', '!=', taskId);
@@ -202,6 +249,49 @@ async function planCardMove(
   return { plan: placeAfter(after, ties.rows.map(asPositioned), next.rows[0] && asPositioned(next.rows[0])), after };
 }
 
+// カードが移す先の列の求められた位置にいるか。afterId は task-column-move の after_task_id と同じ（null は先頭、省くと末尾、
+// カードの ID ならその直後）。列の並びは column_position、id の順。position は読み直したカードの今の位置
+async function isPlaced(
+  db: OrganizationDb,
+  place: {
+    workspaceId: string;
+    sprintId: string;
+    columnId: string;
+    taskId: string;
+    afterId: string | null | undefined;
+    position: string;
+  },
+): Promise<boolean> {
+  const { workspaceId, sprintId, columnId, taskId, afterId, position } = place;
+  const precedes = (eb: ExpressionBuilder<OrganizationTables, 'tasks'>) =>
+    eb.or([
+      eb('tasks.column_position', '<', position),
+      eb.and([eb('tasks.column_position', '=', position), eb('tasks.id', '<', taskId)]),
+    ]);
+  if (afterId === undefined) {
+    const follower = await db.first(
+      db.statement((q) =>
+        cardsIn(q, workspaceId, sprintId, columnId, taskId)
+          .select('tasks.id')
+          .where((eb) => eb.not(precedes(eb)))
+          .limit(1),
+      ),
+    );
+    return follower === undefined;
+  }
+  const predecessor = await db.first(
+    db.statement((q) =>
+      cardsIn(q, workspaceId, sprintId, columnId, taskId)
+        .select('tasks.id')
+        .where(precedes)
+        .orderBy('tasks.column_position', 'desc')
+        .orderBy('tasks.id', 'desc')
+        .limit(1),
+    ),
+  );
+  return (predecessor?.id ?? null) === afterId;
+}
+
 // 移すカード。削除していないバックログのタスクで、入っているスプリントの状態と、今の列の名前（履歴に残す）も読む。
 // スプリントに入っていなければ行が無い
 function movingCard(db: OrganizationDb, workspaceId: string, taskId: string) {
@@ -219,6 +309,7 @@ function movingCard(db: OrganizationDb, workspaceId: string, taskId: string) {
           'tasks.id',
           'tasks.sprint_id',
           'tasks.column_id',
+          'tasks.column_position',
           'tasks.completed_at',
           'sprints.status as sprint_status',
           'sprints.deleted_at as sprint_deleted_at',
@@ -276,58 +367,50 @@ export const taskColumnMoveOperation = implement(taskColumnMove, async ({ db, ac
 
   const at = now();
   const updatedAt = at.toISOString();
-  // 自分の更新が通った、という条件。振り直しと履歴は、これを自分の条件に持つ（batch() は件数 0 の文があっても後ろの文を書く）
-  const moved = (from: From) =>
+  // 移せる状態のカード。読んだときのスプリントと列のままで、未完了、スプリントが進行中のまま、閉じていないワークスペース、
+  // 移す先の列が今もある（完了の列でない）こと、直前のカードが今も読んだ値の位置にあること。
+  // 時刻や位置の一致では自分の更新かどうかを決められない（同じミリ秒に同じ先へ移す別の要求と区別できない）ので、
+  // 振り直しと本体の更新が同じ条件を使い、履歴は本体の更新の件数（previousStatementChanged）に結ぶ
+  const movable = (from: From) =>
     from
-      .selectFrom('tasks')
-      .select('tasks.id')
-      .where('tasks.id', '=', taskId)
-      .where('tasks.workspace_id', '=', workspaceId)
-      .where('tasks.column_id', '=', columnId)
-      .where('tasks.column_position', '=', plan.position)
-      .where('tasks.updated_at', '=', updatedAt);
-
-  const results = await db.batch([
-    // 条件は、読んだときのスプリントと列のままで、スプリントが進行中のまま、閉じていないワークスペース、移す先の列が今もある
-    // （完了の列でない）こと、直前のカードが今も読んだ値の位置にあること
-    db.statement((q) =>
-      q
-        .updateTable('tasks')
-        .set({ column_id: columnId, column_position: plan.position, updated_at: updatedAt })
-        .where('id', '=', taskId)
-        .where('workspace_id', '=', workspaceId)
-        .where('tray', '=', 'backlog')
-        .where('sprint_id', '=', sprintId)
-        .where('column_id', card.column_id === null ? 'is' : '=', card.column_id)
-        .where('completed_at', 'is', null)
-        .where('deleted_at', 'is', null)
-        .where((eb) =>
-          eb.and([
-            eb.exists(openWorkspace(q, organizationId, workspaceId)),
-            eb.exists(activeSprint(q, workspaceId).where('act.id', '=', sprintId)),
-            eb.exists(
-              q
-                .selectFrom('board_columns as target')
-                .select('target.id')
-                .where('target.id', '=', columnId)
-                .where('target.workspace_id', '=', workspaceId)
-                .where('target.deleted_at', 'is', null)
-                .where('target.is_done', '=', 0),
-            ),
-          ]),
-        )
-        .$if(after !== null, (qb) =>
-          qb.where((eb) =>
-            eb.exists(
-              cardsIn(q, workspaceId, sprintId, columnId, taskId)
-                .select('tasks.id')
-                .where('tasks.id', '=', after!.id)
-                .where('tasks.column_position', '=', after!.position),
-            ),
+      .selectFrom('tasks as mv')
+      .select('mv.id')
+      .where('mv.id', '=', taskId)
+      .where('mv.workspace_id', '=', workspaceId)
+      .where('mv.tray', '=', 'backlog')
+      .where('mv.sprint_id', '=', sprintId)
+      .where('mv.column_id', card.column_id === null ? 'is' : '=', card.column_id)
+      .where('mv.completed_at', 'is', null)
+      .where('mv.deleted_at', 'is', null)
+      .where((eb) =>
+        eb.and([
+          eb.exists(openWorkspace(from, organizationId, workspaceId)),
+          eb.exists(activeSprint(from, workspaceId).where('act.id', '=', sprintId)),
+          eb.exists(
+            from
+              .selectFrom('board_columns as target')
+              .select('target.id')
+              .where('target.id', '=', columnId)
+              .where('target.workspace_id', '=', workspaceId)
+              .where('target.deleted_at', 'is', null)
+              .where('target.is_done', '=', 0),
+          ),
+        ]),
+      )
+      .$if(after !== null, (qb) =>
+        qb.where((eb) =>
+          eb.exists(
+            cardsIn(from, workspaceId, sprintId, columnId, taskId)
+              .select('tasks.id')
+              .where('tasks.id', '=', after!.id)
+              .where('tasks.column_position', '=', after!.position),
           ),
         ),
-    ),
-    // 同じ値のカードの振り直し。読んだときの値のままのカードだけを書く
+      );
+
+  const results = await db.batch([
+    // 同じ値のカードの振り直し。移せる状態のときだけ、読んだときの値のままのカードを書く。
+    // 本体の更新より前に置くので、断られた要求は振り直しも書かない（間に他の要求は入らず、振り直しは移せる状態を変えない）
     ...plan.renumber.map((row) =>
       db.statement((q) =>
         q
@@ -336,13 +419,20 @@ export const taskColumnMoveOperation = implement(taskColumnMove, async ({ db, ac
           .where('id', '=', row.id)
           .where('workspace_id', '=', workspaceId)
           .where('sprint_id', '=', sprintId)
-          .where('column_id', '=', columnId)
+          .where((eb) => inColumn(eb, q, workspaceId, columnId))
           .where('column_position', '=', row.from)
           .where('deleted_at', 'is', null)
-          .where((eb) => eb.exists(moved(q))),
+          .where((eb) => eb.exists(movable(q))),
       ),
     ),
-    // 列が変わったときだけ履歴を書く。列の中の並べ替えだけなら残さない
+    db.statement((q) =>
+      q
+        .updateTable('tasks')
+        .set({ column_id: columnId, column_position: plan.position, updated_at: updatedAt })
+        .where('id', '=', taskId)
+        .where((eb) => eb.exists(movable(q))),
+    ),
+    // 列が変わったときだけ履歴を書く（直前の更新が行を変えたときだけ）。列の中の並べ替えだけなら残さない
     ...(columnChanged
       ? [
           db.statement((q) =>
@@ -371,19 +461,28 @@ export const taskColumnMoveOperation = implement(taskColumnMove, async ({ db, ac
                       .as('changes_json'),
                     eb.val(updatedAt).as('created_at'),
                   ])
-                  .where((eb) => eb.exists(moved(q))),
+                  .where(previousStatementChanged),
               ),
           ),
         ]
       : []),
   ]);
 
-  if ((results[0]?.changes ?? 0) === 0) {
+  if ((results[plan.renumber.length]?.changes ?? 0) === 0) {
     // 読んでから書くまでに、閉じたか、スプリントが終わったか、タスクが消えたか完了したか、列か直前のカードが消えたか、
     // 別の要求が先に列か直前のカードを動かした
     await throwIfClosed(db, workspaceId);
     const latest = await movingCard(db, workspaceId, taskId);
     assertMovable(latest, await targetColumn(db, workspaceId, columnId));
+    // 同じ移動の要求が2回届いた（二重送信、再送）。先の要求が通った後なら、カードは既に移す先の列の求められた位置にいるので、
+    // 書かずに成功として返す（履歴も書かない）
+    if (
+      latest.column_id === columnId &&
+      latest.column_position !== null &&
+      (await isPlaced(db, { workspaceId, sprintId, columnId, taskId, afterId, position: latest.column_position }))
+    ) {
+      return { task_id: taskId, column_id: columnId };
+    }
     if (afterId != null) await planCardMove(db, workspaceId, sprintId, columnId, taskId, afterId);
     throw columnConflict('changed');
   }

@@ -2254,8 +2254,8 @@ export const dictionary = defineDictionary({
   ),
   sprintStartGoalPlaceholder: workspace('この{sprint}で何ができるようになるか', 'この{sprint}で何ができるようになるか'),
   sprintStartGoalHint: workspace(
-    '空でも始められます。{plan}と{sprint}の画面に出ます。',
-    '空でも始められます。{plan}と{sprint}の画面に出ます。',
+    '空でも始められます。{max} 字まで書け、{plan}と{sprint}の画面に出ます。',
+    '空でも始められます。{max} 字まで書け、{plan}と{sprint}の画面に出ます。',
   ),
   sprintStartGoalTooLong: workspace('{sprintGoal}は {max} 字までです', '{sprintGoal}は {max} 字までです'),
   sprintStartGoalInvalidCharacter: workspace(
@@ -2340,7 +2340,6 @@ export const dictionary = defineDictionary({
     'この{task}か{column}が見つかりません。一覧を読み直します',
   ),
   sprintCardMoveFailed: workspace('動かせませんでした。一覧を読み直します', '動かせませんでした。一覧を読み直します'),
-  sprintCardMoving: workspace('動かしています', '動かしています'),
   sprintCardCompleting: workspace('{done}にしています', '{done}にしています'),
   // 経験値とレベル（kit.js の levelPanel と emblem、me.html の「経験値の明細」）。経験値の数値と明細は本人にだけ出す
   levelLabel: organization('レベル {level}', 'レベル {level}'),

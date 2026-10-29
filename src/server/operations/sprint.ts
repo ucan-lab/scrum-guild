@@ -17,6 +17,7 @@ import { sprintDefaults, sprintEndOn, sprintLengthOf } from '../../shared/sprint
 import {
   jsonList,
   jsonPairLookup,
+  activeSprintRowFilter,
   previousStatementChanged,
   sprintLeftLogSql,
   sprintLogRefSql,
@@ -396,8 +397,7 @@ export function activeSprint(from: From, workspaceId: string) {
     .selectFrom('sprints as act')
     .select('act.id')
     .where('act.workspace_id', '=', workspaceId)
-    .where('act.status', '=', 'active')
-    .where('act.deleted_at', 'is', null);
+    .where(activeSprintRowFilter('act'));
 }
 
 // 始める。書く文は、読んだスプリントが始まっておらず（planned）、最終日がワークスペースの今日以降で、閉じていないワークスペースで、
@@ -646,7 +646,7 @@ function openSprint(from: From, workspaceId: string, sprintId: string) {
 }
 
 // 入れる先の列。削除していない列のうち、先頭（ORDER BY is_done, position）のもの
-function firstColumn(from: From, workspaceId: string) {
+export function firstColumn(from: From, workspaceId: string) {
   return from
     .selectFrom('board_columns as first')
     .select('first.id')

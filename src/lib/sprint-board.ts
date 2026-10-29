@@ -18,7 +18,6 @@ export type CardMovePlan =
       column: SprintBoardColumn;
       index: number;
       total: number;
-      columnChanged: boolean;
       // task-column-move に送る直前のカード。null は先頭、undefined は末尾（送る側が省く）
       afterTaskId: string | null | undefined;
     };
@@ -75,7 +74,6 @@ export function planCardMove(
       column,
       index: to,
       total: tasks.length,
-      columnChanged: false,
       afterTaskId: to === 0 ? null : tasks[to - 1]!.id,
     };
   }
@@ -92,7 +90,6 @@ export function planCardMove(
     column: moved,
     index: moved.tasks.length - 1,
     total: moved.tasks.length,
-    columnChanged: true,
     afterTaskId: undefined,
   };
 }

@@ -1,7 +1,7 @@
 // D1 への入口。D1 には、ここの commonDb と orgDb からだけ問い合わせる（docs/development.md の「入口を守る規則」）。
 // src/server/db/ の外からは、このモジュール以外を import しない（ESLint が落とす）。
 // 生の SQL（kysely の sql）は db/ の中だけで使うので出さない（固定の条件 previousStatementChanged と、一覧を1つの値で渡す jsonList と、キーごとの値を1つの値で渡して列で引く jsonLookup と、
-// 鍵と値の組を1つの値で渡して式で引く jsonPairLookup と、変更の履歴に残すスプリントの値 sprintLogRefSql と sprintLeftLogSql と、行ごとの ID を SQL の中で作る uuidv7Sql と、部分索引に合わせた組織の変更の履歴の条件 organizationHistoryRowFilter と、
+// 鍵と値の組を1つの値で渡して式で引く jsonPairLookup と、変更の履歴に残すスプリントの値 sprintLogRefSql と sprintLeftLogSql と、行ごとの ID を SQL の中で作る uuidv7Sql と、部分索引に合わせた組織の変更の履歴の条件 organizationHistoryRowFilter と進行中のスプリントの条件 activeSprintRowFilter と、
 // 複数の行を1つの文で並びの末尾に振る tailPosition と、タイトルの検索の条件 titleContainsAll と、列に索引を使わせない unindexed だけを出す）。
 // 照合用の値はテストの口（testing.ts）から出す
 export type { ExpressionBuilder, Insertable, QueryCreator, Selectable } from 'kysely';
@@ -12,6 +12,7 @@ export { jsonList, jsonPairLookup, sprintLeftLogSql, sprintLogRefSql } from './j
 export { jsonLookup } from './json-lookup.ts';
 export { previousStatementChanged } from './previous-statement.ts';
 export { organizationHistoryRowFilter } from './organization-history-filter.ts';
+export { activeSprintRowFilter } from './active-sprint-filter.ts';
 export { uuidv7Sql } from './uuid-sql.ts';
 export { tailPosition } from './tail-position.ts';
 export { titleContainsAll } from './title-search.ts';

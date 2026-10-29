@@ -71,7 +71,7 @@ test('計画が 390px で横にはみ出さず、押せる要素が 44px 四方�
 });
 
 test('スプリントが 390px で横にはみ出さず、押せる要素が 44px 四方で押せる', async ({ page }) => {
-  // seed には進行中のスプリントを置かない（ほかのファイルが始める）ので、架空のスプリントと列とカードに差し替える
+  // aoba のワークスペースには進行中のスプリントを置かない（seed の進行中は別の組織のワークスペース）ので、架空のスプリントと列とカードに差し替える
   await mockOperation(page, sprintBoard, { slug: 'aoba' }, SAMPLE_BOARD);
   await expectNarrowLayout(page, 'sprint', async (w) => {
     await page.goto(`${WORKSPACE}/sprint`);

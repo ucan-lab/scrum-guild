@@ -3,7 +3,16 @@ import type { SprintBoardColumn } from '../shared/operations/sprint/index.ts';
 import { edgesOf, placeOf, planCardMove } from './sprint-board.ts';
 
 function card(id: string) {
-  return { id, title: id, points: null, assignee: null, completed_at: null, story: null };
+  return {
+    id,
+    title: id,
+    points: null,
+    assignee: null,
+    completed_at: null,
+    story: null,
+    due_on: null,
+    repository: null,
+  };
 }
 
 const columns: SprintBoardColumn[] = [
@@ -38,7 +47,7 @@ describe('edgesOf', () => {
 describe('planCardMove', () => {
   test('下へ動かすと次のカードの直後に入り、直前のカードを返す', () => {
     const plan = planCardMove(columns, 'a', 'down');
-    expect(plan).toMatchObject({ kind: 'moved', index: 1, total: 3, columnChanged: false, afterTaskId: 'b' });
+    expect(plan).toMatchObject({ kind: 'moved', index: 1, total: 3, afterTaskId: 'b' });
     expect(plan?.kind === 'moved' && ids(plan.columns)).toEqual([['b', 'a', 'c'], ['d'], ['z']]);
   });
 
@@ -56,7 +65,7 @@ describe('planCardMove', () => {
 
   test('隣の列へは末尾に移し、直前のカードを送らない', () => {
     const plan = planCardMove(columns, 'a', 'right');
-    expect(plan).toMatchObject({ kind: 'moved', index: 1, total: 2, columnChanged: true, afterTaskId: undefined });
+    expect(plan).toMatchObject({ kind: 'moved', index: 1, total: 2, afterTaskId: undefined });
     expect(plan?.kind === 'moved' && plan.column.id).toBe('c2');
     expect(plan?.kind === 'moved' && ids(plan.columns)).toEqual([['b', 'c'], ['d', 'a'], ['z']]);
   });

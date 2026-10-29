@@ -97,6 +97,15 @@
     await invalidate('app:sprints');
   }
 
+  // 始めたら、押した「始める」が一覧から消えるので、始めたスプリントの見出しへフォーカスを移す（無ければ画面の見出し）
+  async function started(sprintId: string): Promise<void> {
+    await reload();
+    await tick();
+    const title = document.querySelector<HTMLElement>(`[data-lane-title="${CSS.escape(sprintId)}"]`);
+    if (title) title.focus();
+    else focusPageHeading();
+  }
+
   function openCreate(event: MouseEvent): void {
     if (plan === null) return;
     sprintDialog?.show(event.currentTarget as HTMLElement, null, plan.defaults);
@@ -225,7 +234,8 @@
       {#each plan.sprints as sprint (sprint.id)}
         <section class="lane" class:is-active={sprint.status === 'active'}>
           <div class="lane-head">
-            <h2 class="lane-title">{labelOf(sprint)}</h2>
+            <!-- tabindex="-1" は、始めた後にプログラムからフォーカスを置くため（キーボードの Tab 順には入らない） -->
+            <h2 class="lane-title" tabindex="-1" data-lane-title={sprint.id}>{labelOf(sprint)}</h2>
             {#if sprint.status === 'active'}<span class="chip is-ok">{t('sprintActive')}</span>{/if}
           </div>
           <div class="lane-sub">
@@ -330,7 +340,7 @@
 
   {#key workspace.id}
     <SprintDialog bind:this={sprintDialog} {slug} workspaceId={workspace.id} onsaved={reload} ongone={reload} />
-    <SprintStartDialog bind:this={startDialog} {slug} workspaceId={workspace.id} onstarted={reload} ongone={reload} />
+    <SprintStartDialog bind:this={startDialog} {slug} workspaceId={workspace.id} onstarted={started} ongone={reload} />
     <SprintTaskPicker bind:this={taskPicker} {slug} workspaceId={workspace.id} onadded={reload} />
   {/key}
   <ConfirmDialog
