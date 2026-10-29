@@ -27,7 +27,7 @@ description: スプリントのゴールに向けて今の状態を点検し（�
 ### 1. 状態を引く
 
 ```bash
-gh api "repos/{owner}/{repo}/issues?state=all&per_page=100" --paginate --jq '.[] | select(.pull_request | not) | {number, title, state, state_reason, labels: [.labels[].name], parent: (.parent_issue_url // "" | split("/") | last), blocked_total: .issue_dependencies_summary.total_blocked_by}'
+gh api "repos/{owner}/{repo}/issues?state=all&per_page=100" --paginate --jq '.[] | select(.pull_request | not) | {number, title, state, state_reason, labels: [.labels[].name], parent: (.parent_issue_url // "" | split("/") | last), blocked: .issue_dependencies_summary.blocked_by}'
 gh api "repos/{owner}/{repo}/pulls?state=open&per_page=100" --jq '.[] | {number, head: .head.ref, refs: ([.body // "" | scan("(?i)(?:closes|fixes|refs) #([0-9]+)") | .[0]])}'
 gh api "repos/{owner}/{repo}/issues?labels=sprint-log&state=all&per_page=100" --jq '.[] | {number, title, state, body}'
 ```
@@ -36,7 +36,7 @@ gh api "repos/{owner}/{repo}/issues?labels=sprint-log&state=all&per_page=100" --
 今のスプリントは、開いている記録の Issue（`sprint-log`）。2つ開いていれば、番号の大きいほうを今のスプリントとし、`sprint-plan` が途中で止まっていることを点検の結果に書く。
 記録の Issue ごとに、締めのコメントを `gh api "repos/{owner}/{repo}/issues/<記録の番号>/comments" --paginate --jq '.[] | select(.body | startswith("## 締め")) | .body'` で引く（直近のベロシティと `SPRINT.history` に使う）。
 今のスプリントの Issue は、閉じたものも含めて `gh api "repos/{owner}/{repo}/issues?labels=sprint:<番号>&state=all&per_page=100" --paginate --jq '.[] | select(.pull_request | not) | {number, state, state_reason, labels: [.labels[].name]}'` で引く。
-`blocked_total` が 0 でない開いた Issue だけ、`gh api repos/{owner}/{repo}/issues/<番号>/dependencies/blocked_by --jq '[.[] | {number, state, labels: [.labels[].name]}]'` で前に要るものを引く。
+`blocked` が 0 でない開いた Issue だけ、`gh api repos/{owner}/{repo}/issues/<番号>/dependencies/blocked_by --jq '[.[] | {number, state, labels: [.labels[].name]}]'` で前に要るものを引く。
 `gh` を1回ずつ打つのが多くなるときは、Python のスクリプトをスクラッチパッドに書き、`subprocess` で `gh` を呼んで JSON に落とす。
 
 ### 2. 点検する

@@ -540,7 +540,7 @@ Bash の判定を `permissions.deny` に置かないのは、規則が前方一�
 
 ## CI
 
-PR ごとに GitHub Actions で回す。`.github/workflows/ci.yml` の各ジョブは `package.json` のスクリプトを呼ぶだけにし、手順をワークフローに持たない（`evidence` は `scripts/evidence*.ts` を `node` で直に呼ぶ）。下の表の cache、evidence-main、accepting は、PR の更新ではなく main への push やマージで動く別のワークフローで、setup と playwright は各ジョブが使う composite action。
+PR ごとに GitHub Actions で回す。`.github/workflows/ci.yml` の各ジョブは `package.json` のスクリプトを呼ぶだけにし、手順をワークフローに持たない（`evidence` は `scripts/evidence*.ts` を `node` で直に呼ぶ）。下の表の cache、evidence-main、accepting、ready は、PR の更新ではなく main への push、マージ、Issue の変更、定期で動く別のワークフローで、setup と playwright は各ジョブが使う composite action。
 
 | ジョブ | 中身 |
 | --- | --- |
@@ -559,6 +559,7 @@ PR ごとに GitHub Actions で回す。`.github/workflows/ci.yml` の各ジョ�
 | ai-review | `anthropics/claude-code-action` で、スキル `ai-review` が差分に応じて `.claude/agents/` のレビューのエージェントを呼び分け、CRITICAL と HIGH を `finding-verifier` の反証にかけてから、指摘を PR に書く。`.github/workflows/ai-review.yml` に分けて置く |
 | label | パスを見て `needs-human` のラベルを付ける（上の「マージの判定」）。`.github/workflows/label.yml` に分けて置き、`pull_request_target` で動かす。ワークフローも規則も PR のベース（`main`）の版が使われるので、PR の側で書き換えてもラベルは付く。別のブランチをベースに開いてから `main` へ付け替えたときも、判定し直す。PR のコードはチェックアウトしない（書き込みのトークンで PR のコードを動かさないため）。ジョブはどのイベントでも飛ばさず、ラベルもどのイベントでも付け直す。ベースを付け替えた後にその head で CI が動き直していなければ、失敗で終わる（下の「文書だけの PR」）。判定はイベントの中身でなく、そのときの PR の状態から行い、`concurrency` も置かない |
 | accepting | `main` へ PR がマージされたとき、その PR が指す Issue に `status:accepting` を付ける（上の「Issue の状態」）。`.github/workflows/accepting.yml` に分けて置き、`pull_request_target` の `closed` で、マージされ、ベースが `main` で、このリポジトリのブランチの PR のときだけ動く（fork の PR はブランチ名も本文も外の人が決めるので、人が付け替える）。PR のコードはチェックアウトせず、ブランチ名と本文は環境変数で渡す。`permissions` は `issues: write` だけ。`ci-ok` にも PR のチェックにも入らないので、落ちても気づきにくい。落ちたら Actions からその実行を走らせ直す（付け外しは何度走っても同じ） |
+| ready | 着手できる Issue に `status:ready` を付け、当てはまらなくなったら外す（上の「Issue の状態」）。`.github/workflows/ready.yml` に分けて置き、`issues`（`opened`、`reopened`、`closed`、`labeled`、`unlabeled`）、`accepting` の完了（`workflow_run`。`GITHUB_TOKEN` が付けた `status:accepting` では `issues` のイベントが来ないため）、1時間ごとの `schedule`（依存関係とサブ Issue の付け外しでは Actions のイベントが来ないため。公開リポジトリでは60日動きが無いと止まるので、止まったら手動で動かし直す）、手動の実行で動く。どのきっかけでも、開いている Issue をすべて数え直し（`scripts/ready.ts`）、変わる Issue だけ付け外しする。イベントの中身は読まず、既定のブランチの版で動くので、チェックアウトしてよい（依存は入れない）。`concurrency` で並べ、待ちの実行を置き換えても失うものが無い。`permissions` は `contents: read` と `issues: write`。`ci-ok` にも PR のチェックにも入らない。落ちたら Actions からその実行を走らせ直す |
 | ci-ok | `ci.yml` の changes、check、test、migration、e2e、e2e-dev、e2e-repeat をまとめる1つのジョブ（evidence は含めない）。マージの前に確かめるのは、これと label |
 
 ai-review は Claude のサブスクリプションで動かす。手元で `claude setup-token` を実行して作った OAuth トークンを、リポジトリのシークレット `CLAUDE_CODE_OAUTH_TOKEN` に置く。従量の費用はかからないが、使用量の上限は手元の対話の利用と共有になる。
@@ -595,7 +596,7 @@ ai-review は Claude のサブスクリプションで動かす。手元で `cla
 - 何もしない実行（ジョブがすべて skipped で終わる実行）を、マージの判定に使う `ci.yml` と `label.yml` では作らない。助言の `ai-review.yml`（`review`）は、ほかのラベルを付けたときに skipped の実行を作るが、判定に使わないので対象にしない。同じワークフローの実行が同じ head に後からできると、マージの欄はその新しい方の結果だけを出す。タイトルや本文の編集で skipped の実行ができ、本来の CI の失敗が「All checks have passed」の下に隠れたことがある（#252）。そのため `ci.yml` は `edited` で動かさず、`label.yml` はどのイベントでもジョブを飛ばさずに、そのときの状態で成功か失敗かを出す
 - ワークフローの `paths-ignore` は使わない。飛ばすとワークフローごと動かず、`ci-ok` そのものが出なくなるため
 
-同じ PR の古い実行は `concurrency` で止める。`ci.yml` の `permissions` は `contents: read` だけにし、action はすべてコミットの SHA で固定する。`label.yml` は、ラベルを付ける `pull-requests: write` と、付け替えの判定で PR の履歴と `ci.yml` の実行を読む `issues: read`、`actions: read` を持つ（PR のコードはチェックアウトしない）。`accepting.yml` は、ラベルを付け外しする `issues: write` だけを持つ（PR のコードはチェックアウトしない）。
+同じ PR の古い実行は `concurrency` で止める。`ci.yml` の `permissions` は `contents: read` だけにし、action はすべてコミットの SHA で固定する。`label.yml` は、ラベルを付ける `pull-requests: write` と、付け替えの判定で PR の履歴と `ci.yml` の実行を読む `issues: read`、`actions: read` を持つ（PR のコードはチェックアウトしない）。`accepting.yml` は、ラベルを付け外しする `issues: write` だけを持つ（PR のコードはチェックアウトしない）。`ready.yml` は、ラベルを付け外しする `issues: write` と、既定のブランチのスクリプトをチェックアウトする `contents: read` を持つ。
 
 GitHub Actions の無料枠は、private のリポジトリで月 2,000 分（public のあいだは、標準のランナーに上限が無い）。private に戻したときは、`evidence-main` のマージごとの約 11 分と、上の PR の e2e の延びと `evidence` のジョブの分も枠に数える。e2e と AI レビューで足りなくなりそうなら、上と同じく対象の PR を絞る。e2e のシャードは、それぞれが準備、Playwright の導入、build を繰り返す（1つあたり約1分）ので、分ける前より1回あたり約2分多く数える。
 
@@ -855,7 +856,7 @@ Issue はエピック、ストーリー、タスクの3階層にし、親子は�
 - 子を持つストーリーとエピックは、子がすべて閉じているか受け入れ待ちのとき、受け入れ待ちとみなす（ラベルは付けない）。子を持つ子（エピックの下のストーリー）が受け入れ待ちかは、同じ判定をその子に当てて決める。ストーリーの最後のタスクの PR では、`pr-feedback` の説明資料で親のストーリーの受け入れ条件を示し、人に確かめて、子とストーリーを一緒に閉じてもらう
 - 受け入れで不合格のときは、元の Issue を `status:accepting` のまま開いておき、直しを新しい Issue にする。直しは `bug` を付け、元と同じストーリーの子にし、本文で元の Issue を指す。待っていた側は既定で止めず、不具合が波及するときだけ人が直しの Issue へ blocked by をつなぐ。合格したら、元と直しを一緒に閉じる
 - 受け入れは `sprint-review` で行う。表の「閉じる人と条件」で人が閉じるとした Issue も、`sprint-review` で人が閉じると答えたものは、セッションが閉じる（下の「Issue の状態」）
-- ラベル: 階層の `epic`、`story`、状態の `status:refining`、`status:in-progress`、`status:accepting`（下の「Issue の状態」）、人が差分を読む `needs-human`、マイグレーションの `migration`、領域の `area:auth`、`area:organization`、`area:workspace`、`area:task`、`area:import`、`area:attachment`、`area:ui`、`area:infra`、`area:docs`、不具合の `bug`、AI レビューをもう一度回す `ai-review`、ポイントの `pt:1`、`pt:2`、`pt:3`、`pt:5`、`pt:8`、スプリントの `sprint:<番号>`、スプリントの記録の `sprint-log`（下の「スプリントとポイント」）。GitHub に作り、`bug` 以外の既定のラベルは消した（2026-10-22）。重複や対応しないものは、ラベルではなく Issue を閉じるときの理由で表す
+- ラベル: 階層の `epic`、`story`、状態の `status:ready`、`status:refining`、`status:in-progress`、`status:accepting`（下の「Issue の状態」）、人が差分を読む `needs-human`、マイグレーションの `migration`、領域の `area:auth`、`area:organization`、`area:workspace`、`area:task`、`area:import`、`area:attachment`、`area:ui`、`area:infra`、`area:docs`、不具合の `bug`、AI レビューをもう一度回す `ai-review`、ポイントの `pt:1`、`pt:2`、`pt:3`、`pt:5`、`pt:8`、スプリントの `sprint:<番号>`、スプリントの記録の `sprint-log`（下の「スプリントとポイント」）。GitHub に作り、`bug` 以外の既定のラベルは消した（2026-10-22）。重複や対応しないものは、ラベルではなく Issue を閉じるときの理由で表す
 - テンプレート: タスクは `.github/ISSUE_TEMPLATE/plan.md`、ストーリーは `.github/ISSUE_TEMPLATE/story.md`。`backlog-add` が書く形と同じにする
 - 領域のラベルは、並行して作業するときのぶつかりを見分けるのにも使う。同じ領域の PR を同時に何本も開かない。ラベルが違っても重なる共通の層は、「並行して作業するときの決まり」で変えるファイルを比べて見る
 
@@ -918,13 +919,15 @@ Issue はエピック、ストーリー、タスクの3階層にし、親子は�
 
 | 状態 | 表し方 | 付け替えるきっかけ |
 | --- | --- | --- |
+| 着手できる | `status:ready`。開いた末端の Issue（`epic` でなく、サブ Issue を持たず、`sprint-log` でない）で、`pt:` が1つ付き、`status:refining`、`status:in-progress`、`status:accepting` が無く、前に要るもののうち開いていて `status:accepting` の無いものが無いとき | `.github/workflows/ready.yml` が付け外しする。Issue の開閉とラベルの付け外し、`accepting.yml` の完了、1時間ごとの定期、手動の実行で動き、開いている Issue をすべて数え直して、変わる Issue だけ直す。当てはまらなくなれば（作業中のラベルが付いた、前に要るものが開いた、など）外れる（2026-10-29 に決めた。#476） |
 | 要件整理中 | `status:refining` | `backlog-refine` で Issue を詰め始めたとき、`backlog-add` で既にある Issue の計画を書き始めたとき。セッションが付ける |
 | 作業中 | `status:in-progress` | 番号付きのブランチ（`<番号>-<名前>`）のワークツリーを新しく切ったとき。`.githooks/post-checkout` が付け、`status:refining` を外す。クラウドのセッションはワークツリーを切らないので、着手したときに `gh api -X POST repos/{owner}/{repo}/issues/<番号>/labels -f 'labels[]=status:in-progress'` で付け、`status:refining` を外す |
 | レビュー中 | その Issue を指す開いた PR があること。ラベルは使わない | PR の作成 |
 | 受け入れ待ち | `status:accepting`。子を持つストーリーとエピックは、子がすべて閉じているか受け入れ待ちのとき（ラベルは付けない。子を持つ子は同じ判定を当てる） | main への PR のマージ。`.github/workflows/accepting.yml` が付け、`status:in-progress` と `status:refining`（付いていれば）を外す（2026-10-28 に決めた。#370） |
 | 済み | Issue が閉じたこと | 人が受け入れで閉じる。マージでは閉じない。セッションは閉じない。ただし `sprint-review` で、すべての条件に印が付き、人が閉じると答えた Issue は、セッションが閉じる。スプリントの記録の Issue（`sprint-log`）は作業ではなく、`sprint-plan` が締めで閉じる |
 
-- 表の上の行より下の行が勝つ。開いた PR があれば、`status:in-progress` が付いたままでもレビュー中とみなす（PR を出してもラベルは外さない）。`status:accepting` が付いていれば、開いた PR があっても受け入れ待ちとみなす（直しの PR が同じ Issue を指していても、元の Issue は受け入れを待っている）
+- `status:ready` は人が GitHub の一覧（`is:open label:status:ready`）で着手できる Issue を見るための写しで、着手できるかの判定には使わない。`backlog-pick` と `increment-build` は、今までどおり依存関係の API（`issue_dependencies_summary.blocked_by` と `dependencies/blocked_by`）で毎回判定する。ラベルは次の実行まで古いことがあり、依存関係とサブ Issue の付け外しは `schedule` の間隔まで届かないので、ラベルを頼ると、並行するセッションが待ちのある Issue を取ってしまう。`ready.yml` は、判定に使えない Issue（前に要るものを引けなかったとき）は付けも外しもせず、次の実行に任せる。ラベルは `POST` と `DELETE` だけで付け外しし、同時に人が付けたほかのラベルを消さない
+- 表の上の行より下の行が勝つ。`status:ready` は、下の行（要件整理中、作業中、受け入れ待ち）のラベルが付けば外れる。開いた PR があれば、`status:in-progress` が付いたままでもレビュー中とみなす（PR を出してもラベルは外さない）。`status:accepting` が付いていれば、開いた PR があっても受け入れ待ちとみなす（直しの PR が同じ Issue を指していても、元の Issue は受け入れを待っている）
 - 両方のラベルが付いていれば作業中とみなす。セッションが `status:refining` を付けるのは、`status:in-progress` の無い Issue だけ
 - 閉じた Issue は、ラベルにかかわらず済みとして扱う。閉じた後にラベルを外す手間はかけない
 - 受け入れ待ちの Issue は、人が受け入れで閉じるまで開いたままにする。前に要るものが受け入れ待ちなだけの Issue は、着手できる（上の「Issue の運用」）

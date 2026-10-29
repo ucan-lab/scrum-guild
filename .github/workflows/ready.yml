@@ -1,0 +1,53 @@
+name: ready
+
+# 着手できる Issue に status:ready を付け、当てはまらなくなったら外す（docs/development.md の「Issue の状態」）。
+# ラベルは人が画面の一覧で見るための写しで、着手できるかの判定には使わない。
+# backlog-pick と increment-build は依存関係の API で毎回判定する（ラベルは次の実行まで古いことがあるため）
+on:
+  # 開いている Issue の数え直しの種。どのきっかけでも、イベントの Issue ではなく開いている Issue をすべて数え直す。
+  # 前に要るものが閉じたり受け入れ待ちになったりすると、待つ側の状態も変わり、イベントの Issue だけでは直せないため
+  issues:
+    types: [opened, reopened, closed, labeled, unlabeled]
+  # GITHUB_TOKEN が付けた status:accepting では issues のイベントが来ない。accepting.yml の完了で拾う
+  workflow_run:
+    workflows: [accepting]
+    types: [completed]
+  # 依存関係（blocked by）とサブ Issue の付け外しでは Actions のイベントが来ないので、定期に拾う。
+  # 分は 0 以外の半端な値にする（毎時 0 分は混み合い、定期の実行が遅れたり落ちたりするため）。
+  # 公開リポジトリでは、60日動きが無いと止まる。止まったら workflow_dispatch で動かし直す
+  schedule:
+    - cron: "17 * * * *"
+  workflow_dispatch:
+
+# 同時の実行は並べる。毎回すべてを数え直すので、待ちの実行が新しいものに置き換わっても失うものが無い
+concurrency:
+  group: ready
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  ready:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      # checkout してよい。どのきっかけも既定のブランチの版で動き、PR のコードを取り込まない
+      # （accepting.yml が checkout を置かないのは pull_request_target のためで、PR のコードが書き込みの権限で動いてしまう）。
+      # 公開リポジトリで誰でも Issue を書けるので、イベントの中身（題、本文、番号）は読まず、run にも渡さない。
+      # 依存のパッケージは使わないので、pnpm install は置かない
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .node-version
+
+      # github.token で付け外しするので、この実行が起こす issues のイベントは新しい実行にならない
+      - name: status:ready を付け外しする
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: node scripts/ready.ts
