@@ -4,7 +4,7 @@
 // 運用者でない人の扱い（403、/ への戻し）は本物のサーバーで確かめる
 import type { Page, Route } from '@playwright/test';
 import { expect, test } from './fixtures.ts';
-import { expectFocusReturned, signIn, watchViolations } from './helpers.ts';
+import { expectFocusReturned, signIn, waitForSettled, watchViolations } from './helpers.ts';
 
 // 1x1 の PNG
 const PIXEL = Buffer.from(
@@ -1293,7 +1293,13 @@ test.describe('運用者', () => {
     const longName = 'とても長い名前の組織'.repeat(8) + 'x'.repeat(60);
     await mockList(page, [organization({ name: longName })]);
     await page.goto('/operator');
-    await page.getByRole('button', { name: `「${longName}」を停止する` }).click();
+    // 長い名前で表が横にはみ出す。押すと表の横のスクロールが動き、ダイアログの後ろの画像に残るので、
+    // 書体の差し替えと読み込みが終わり、表の幅が決まってから押す（#465）
+    const stop = page.getByRole('button', { name: `「${longName}」を停止する` });
+    await expect(stop).toBeVisible();
+    await waitForSettled(page);
+    await page.evaluate(() => document.fonts.ready);
+    await stop.click();
     const text = page.getByRole('dialog').locator('p.wrap-anywhere');
     await expect(text).toContainText(longName);
     expect(await text.evaluate((el) => el.scrollWidth - el.clientWidth)).toBeLessThanOrEqual(0);
