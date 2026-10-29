@@ -46,7 +46,7 @@ node <作業場所>/scripts/progress-data.ts <作業場所>/.claude/skills/daily
 | 進み具合 | `plannedDone.pt` ÷ `planned.pt`、`addedDone.pt`、残りの日数（今日を含めて数え、最終日は 1、過ぎたら 0） | 残りの計画のポイント（`planned.pt` − `plannedDone.pt` − `withdrawn.pt`）が「直近のベロシティの平均（`history` の新しい3つまでの `velocity`）× 残りの日数 ÷ 7」を超えるなら、外す候補（作業中でないもの。`s` が `todo` か `refining`）を挙げる。`history` が空なら判定しない |
 | 受け入れ待ち | `accepting.count` と `accepting.pt` | `accepting.count` が1以上で、残りの日数が2日以下なら、`sprint-review` を先に行う（済みに数えるのは受け入れで閉じた Issue だけなので、締めの前に受け入れる） |
 | 待ち | `sprint` が今のスプリントで、`waitingOn` が空でない Issue | 前に要るものがスプリントの外なら、先に入れるか、待つ側を外すかを人が決める |
-| 作業中 | `wip.count` と `wip.pt`（スプリントの外も含む） | 数を出すだけにし、上限で着手を止めない |
+| 作業中 | `wip.count` と `wip.pt`（スプリントの外も含む） | 数を出すだけにする |
 | スプリントの外の作業 | `sprint` が今のスプリントでなく、`s` が `wip` か `review` の Issue | 途中で足すかを人が決める |
 
 勧めることは出すだけにし、ラベルは付け外ししない。
