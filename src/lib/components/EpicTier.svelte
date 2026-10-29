@@ -1,8 +1,9 @@
 <script lang="ts">
   import type { EpicRewardTier } from '../../shared/experience.ts';
   import { t } from '../vocabulary.svelte.ts';
+  import Icon from './Icon.svelte';
 
-  // kit.js の tier。クリア報酬の段階と額の印（components.css の .tier）。額は API が返した値（epic-detail の reward_xp）を出す。
+  // kit.js の tier。クリア報酬の段階と額の印（components.css の .tier）。先頭の宝箱のアイコン（chest）は段階の色を受ける。額は API が返した値（epic-detail の reward_xp）を出す。
   // 色だけに頼らず、段階の呼び名（小、中、大）と額を文字で添える
   let { tier, xp }: { tier: EpicRewardTier; xp: number } = $props();
 
@@ -11,4 +12,4 @@
   );
 </script>
 
-<span class="tier is-{tier}">{label} · <b>{xp}</b> {t('xpUnit')}</span>
+<span class="tier is-{tier}"><Icon name="chest" />{label} · <b>{xp}</b> {t('xpUnit')}</span>

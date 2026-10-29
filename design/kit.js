@@ -97,7 +97,8 @@
   // 完成の定義。本番はワークスペースの Markdown を Markdown の部品（.doc-box）で描く。見本は箇条書きの Markdown を描いた形。
   // 空なら、完了の列（.dod）にも、バックログの木の上（.dod）にも、完了の操作の横（.done-bar-dod）にも出さない
   const dodDoc = () => `<div class="doc-box"><ul>${D.definitionOfDone.map((d) => `<li>${esc(d)}</li>`).join("")}</ul></div>`;
-  const icon = (id) => `<svg class="ico" aria-hidden="true"><use href="#i-${id}"/></svg>`;
+  // tone は "xp" で経験値の色（.ico.is-xp）。ゲームの物の経験値（crystal）とレベル（crest）に使う。本番の Icon と同じく "xp" だけを受ける
+  const icon = (id, tone) => `<svg class="${tone === "xp" ? "ico is-xp" : "ico"}" aria-hidden="true"><use href="#i-${id}"/></svg>`;
   const md = (d) => `${+d.slice(5, 7)}/${+d.slice(8, 10)}`;
   const sumPts = (list) => list.reduce((a, x) => a + (x.pts || 0), 0);
 
@@ -195,7 +196,7 @@
   function tier(size) {
     const map = { small: ["小", 100], medium: ["中", 300], large: ["大", 600] };
     const [label, xp] = map[size];
-    return `<span class="tier is-${size}">${label} · <b>${xp}</b> XP</span>`;
+    return `<span class="tier is-${size}">${icon("chest")}${label} · <b>${xp}</b> XP</span>`;
   }
   function sourceKey(x) {
     return x.src ? `<span class="source-key">${icon(SRC[x.src.kind].icon)} ${esc(x.src.key)}</span>` : "";
@@ -297,8 +298,9 @@
   }
   // 空の状態。何が出る場所かと、次に何をすればよいかを書く。actions は押す操作の HTML。
   // title と text も HTML として埋め込むので、利用者のデータは esc してから渡す
-  function emptyState(ic, title, text, actions = "") {
-    return `<div class="empty">${icon(ic)}<b>${title}</b>${text ? `<span>${text}</span>` : ""}${actions ? `<div class="form-actions">${actions}</div>` : ""}</div>`;
+  // tone はアイコンの色（icon の tone。本番の EmptyState の iconTone）。ゲームの物のアイコンを置くときに使う
+  function emptyState(ic, title, text, actions = "", tone) {
+    return `<div class="empty">${icon(ic, tone)}<b>${title}</b>${text ? `<span>${text}</span>` : ""}${actions ? `<div class="form-actions">${actions}</div>` : ""}</div>`;
   }
 
   // 最初にやること。済んだかは今のデータから決まるので、閉じた印を持たない。
@@ -551,7 +553,7 @@
     return `<section class="panel" aria-labelledby="level-panel-title">
       <div class="panel-title"><h2 id="level-panel-title">レベル</h2>経験値は本人だけに見えます</div>
       <div class="level">${emblem(l.level)}
-        <div><div class="xp-num">${l.xp.toLocaleString()}<small>XP</small></div>
+        <div><div class="xp-num">${icon("crystal", "xp")}${l.xp.toLocaleString()}<small>XP</small></div>
         <div class="xp-sub">次のレベルまで <b>${l.toNext}</b>・見込み <b>+${l.soon}</b></div></div>
       </div>
       <div class="gauge" role="img" aria-label="次のレベルまでの ${l.gotPct}% を確定、${l.soonPct}% が見込み"><span class="gauge-got" style="width:${l.gotPct}%"></span><span class="gauge-soon" style="width:${l.soonPct}%"></span></div>
@@ -563,7 +565,7 @@
 
   // チーム全体の経験値。ワークスペースの全員の合計の1つの数で、人ごとの値は出さない。バックログの画面の見出しの中に置く
   function teamXp(total = D.teamXp) {
-    return `<p class="team-xp">${t("teamXpLabel")}<b>${total.toLocaleString()}</b><small>XP</small></p>`;
+    return `<p class="team-xp">${icon("crystal", "xp")}${t("teamXpLabel")}<b>${total.toLocaleString()}</b><small>XP</small></p>`;
   }
   // 経験値の明細の値。付与は経験値の色、打ち消し（負の値）は赤
   function xpDelta(v) {

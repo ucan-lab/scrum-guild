@@ -239,7 +239,8 @@
     <EmptyState icon="alert" title={t('xpLedgerFailedTitle')} text={t('loadFailedText')} actions={grantsRetryActions} />
   {:else if rows.length === 0}
     <EmptyState
-      icon="trend"
+      icon="crystal"
+      iconTone="xp"
       title={t('xpEmptyTitle')}
       text={t('xpEmptyText', { task: t('task'), complete: t('complete'), done: t('done') })}
     />
@@ -253,7 +254,7 @@
             <th>{t('workspace')}</th>
             <th>{t('xpHeaderAction')}</th>
             <th class="is-name">{t('xpHeaderContent')}</th>
-            <th class="is-num">{t('xpUnit')}</th>
+            <th class="is-num"><Icon name="crystal" tone="xp" /> {t('xpUnit')}</th>
           </tr>
         </thead>
         <tbody>
