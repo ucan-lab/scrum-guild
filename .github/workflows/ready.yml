@@ -30,12 +30,26 @@ permissions:
 
 jobs:
   ready:
+    # 1回の実行で API を数十回呼び、GITHUB_TOKEN の上限（1時間 1,000 回）はリポジトリのワークフローで共有する。
+    # 誰でも自分の Issue を開閉できるので、開閉で動かすのは作者が身内の Issue だけにし、上限を使い切らせない。
+    # 外の人の Issue の変化は schedule が拾う。ラベルの付け外しは triage 以上の権限が要るので絞らない。
+    # accepting の完了は、マージで付け替えた実行（成功）だけを拾う。fork の PR を閉じただけの skipped の完了では動かさない
+    if: >-
+      (github.event_name != 'issues'
+        || github.event.action == 'labeled'
+        || github.event.action == 'unlabeled'
+        || contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.issue.author_association))
+      && (github.event_name != 'workflow_run'
+        || (github.event.workflow_run.conclusion == 'success'
+          && github.event.workflow_run.event == 'pull_request_target'
+          && github.event.workflow_run.path == '.github/workflows/accepting.yml'))
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      # checkout してよい。どのきっかけも既定のブランチの版で動き、PR のコードを取り込まない
+      # checkout してよい。workflow_dispatch 以外のきっかけは既定のブランチの版で動き、PR のコードを取り込まない
       # （accepting.yml が checkout を置かないのは pull_request_target のためで、PR のコードが書き込みの権限で動いてしまう）。
-      # 公開リポジトリで誰でも Issue を書けるので、イベントの中身（題、本文、番号）は読まず、run にも渡さない。
+      # workflow_dispatch は選んだブランチの版で動くが、動かせるのは書き込みの権限を持つ人だけ。
+      # 公開リポジトリで誰でも Issue を書けるので、イベントの中身（題、本文、番号）は読まず、run にも渡さない（job の if で作者の区分を見るだけ）。
       # 依存のパッケージは使わないので、pnpm install は置かない
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
