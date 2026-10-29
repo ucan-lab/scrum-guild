@@ -300,10 +300,13 @@
         <p class="notice-title is-goal">{sprint.goal}</p>
       </article>
     {/if}
+    <!-- 列が並ぶと狭い幅で横に溢れる。カードが無いと中に止まる先が無く、キーボードで横へ送れないので、その間だけ領域に止まる -->
+    <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
     <div
       class="board-wrap"
       role="region"
       aria-label={t('sprintBoardRegion', { sprint: t('sprint'), column: t('column') })}
+      tabindex={allTasks.length === 0 ? 0 : undefined}
     >
       <div class="board" style:--board-cols={columns.length}>
         {#each columns as column (column.id)}

@@ -5,10 +5,11 @@
 // 自分のワークスペースを作って動かす（ほかのファイルと並べて走るため、seed の行は書き換えない）。
 // 空の状態は seed のあおば開発（進行中のスプリントが無い）を開くだけ
 import type { Page } from '@playwright/test';
-import { taskColumnMove } from '../src/shared/operations/sprint/index.ts';
+import { sprintBoard, taskColumnMove } from '../src/shared/operations/sprint/index.ts';
 import { expect, test } from './fixtures.ts';
 import { createWorkspace, signIn, waitForResponses, watchViolations } from './helpers.ts';
-import { failOperation } from './operations.ts';
+import { failOperation, mockOperation } from './operations.ts';
+import { SAMPLE_BOARD } from './sprint-fixture.ts';
 
 test.use({ timezoneId: 'Asia/Tokyo' });
 
@@ -325,4 +326,23 @@ test('スクラムの言葉でも、スプリントを始めて、列とカー�
     page.getByRole('status').filter({ hasText: '「E札」を作業中の 1 番目に移しました（1 件中）' }),
   ).toBeVisible();
   await expect(page.getByRole('button', { name: '前の列へ: E札' })).toBeVisible();
+});
+
+test('カードが1枚も無いあいだだけ、列とカードの領域そのものに Tab で止まれる', async ({ page, context, baseURL }) => {
+  await signIn(context, baseURL, 'member');
+  const region = page.getByRole('region', { name: '遠征の行程とカード' });
+  const emptyBoard = {
+    ...SAMPLE_BOARD,
+    columns: SAMPLE_BOARD.columns.map((column) => ({ ...column, tasks: [] })),
+  };
+  const unroute = await mockOperation(page, sprintBoard, { slug: 'aoba' }, emptyBoard);
+  await page.goto(`${AOBA_TEAM}/sprint`);
+  await expect(region).toHaveAttribute('tabindex', '0');
+
+  // カードがあれば、カードが止まる先になるので、領域には止まらない
+  await unroute();
+  await mockOperation(page, sprintBoard, { slug: 'aoba' }, SAMPLE_BOARD);
+  await page.reload();
+  await expect(page.getByRole('article', { name: 'ポイント付与のバッチを作る' })).toBeVisible();
+  await expect(region).not.toHaveAttribute('tabindex');
 });
