@@ -74,7 +74,7 @@ Artifact のツールがある手元のセッションでだけ行う。無け�
 - 新しく立った機能の Issue は、当たる領域の機能の `issues` に足すか、機能を足す。親 Issue に子ができても、機能には親の番号を載せる。開発の仕組みだけの Issue（フックの直しなど）は載せない
 - 受け持つ Issue が `not_planned` か `duplicate` で閉じたら、`issues` から外し、引き継いだ Issue があればその番号に替える。`data.json` はそうして閉じた Issue を含まないので、残すと機能がいつまでも未着手と出る
 
-`phase` は `later` か `open` か無し、`issues` は整数の番号だけにする。ページは知らない値を黙って初版や無しに読み替えるので、形は `scripts/board-page.test.ts` が実のファイルで確かめる。点検の中で `features.json` と要件の食い違いに気づいたら、点検の結果に書いて人に伝える。
+`phase` は `later` か `open` か無し（初版。`first` と書いてもよい）、`issues` は整数の番号だけにする。ページは知らない値を黙って初版や無しに読み替えるので、形は `scripts/board-page.test.ts` が実のファイルで確かめる。点検の中で `features.json` と要件の食い違いに気づいたら、点検の結果に書いて人に伝える。
 
 ## 出力
 

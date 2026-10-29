@@ -24,12 +24,12 @@ test('features.json はページが読み替えずに読める形をしている
   assert.deepEqual(normalizeFeatures(raw), expected);
 });
 
-test('features.json の phase は later、open、無しのどれか', () => {
+test('features.json の phase は first、later、open、無しのどれか', () => {
   const features = normalizeFeatures(raw)?.areas.flatMap((area) => area.features) ?? [];
   assert.ok(features.length > 0);
   for (const feature of features) {
     assert.ok(
-      feature.phase === undefined || feature.phase === 'later' || feature.phase === 'open',
+      feature.phase === undefined || ['first', 'later', 'open'].includes(feature.phase),
       `${feature.name} の phase が ${String(feature.phase)}`,
     );
   }
