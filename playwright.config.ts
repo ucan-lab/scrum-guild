@@ -16,6 +16,9 @@ export default defineConfig({
   globalSetup: './e2e/global-setup.ts',
   forbidOnly: Boolean(process.env.CI),
   reporter: [['list'], ['html', { open: 'never', outputFolder: 'playwright-report' }]],
+  // 手元はワークツリーを並べて走らせることがあり、混んだマシンでは既定の5秒が切れて、自分の変更で落ちたのかを見分けにくくなる（#364）。
+  // CI は既定の5秒のままにし、遅くなった待ちは CI で落とす（docs/development.md の「e2e の書き方」）
+  expect: { timeout: process.env.CI ? 5_000 : 15_000 },
   use: {
     baseURL,
     // E2E_EVIDENCE=1（CI）では、通ったテストの画面は e2e/fixtures.ts が通信とアニメーションの止まるのを待って evidence-<n>.png に撮り、
