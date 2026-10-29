@@ -919,7 +919,7 @@ Issue はエピック、ストーリー、タスクの3階層にし、親子は�
 
 | 状態 | 表し方 | 付け替えるきっかけ |
 | --- | --- | --- |
-| 着手できる | `status:ready`。開いた末端の Issue（`epic` でなく、サブ Issue を持たず、`sprint-log` でない）で、`pt:` が1つ付き、`status:refining`、`status:in-progress`、`status:accepting` が無く、このリポジトリのブランチの開いた PR に指されておらず、自分と祖先（親のストーリー、エピック）の前に要るもののうち開いていて `status:accepting` の無いものが無いとき | `.github/workflows/ready.yml` が付け外しする。Issue の開閉（作者がオーナーかメンバーかコラボレーターの Issue だけ）と判定に効くラベルの付け外し、`accepting.yml` の成功、1時間ごとの定期、手動の実行で動き、開いている Issue をすべて数え直して、変わる Issue だけ直す。当てはまらなくなれば（作業中のラベルが付いた、前に要るものが開いた、など）外れる（2026-10-29 に決めた。#476） |
+| 着手できる | `status:ready`。開いた末端の Issue（`epic` でなく、サブ Issue を持たず、`sprint-log` でない）で、`pt:` が1つ付き、`status:refining`、`status:in-progress`、`status:accepting` が無く、このリポジトリのブランチの開いた PR に指されておらず、自分と祖先（親のストーリー、エピック。閉じた祖先から上は見ない）の前に要るもののうち開いていて `status:accepting` の無いものが無いとき | `.github/workflows/ready.yml` が付け外しする。Issue の開閉（作者がオーナーかメンバーかコラボレーターの Issue だけ）と判定に効くラベルの付け外し、`accepting.yml` の成功、1時間ごとの定期、手動の実行で動き、開いている Issue をすべて数え直して、変わる Issue だけ直す。当てはまらなくなれば（作業中のラベルが付いた、前に要るものが開いた、など）外れる（2026-10-29 に決めた。#476） |
 | 要件整理中 | `status:refining` | `backlog-refine` で Issue を詰め始めたとき、`backlog-add` で既にある Issue の計画を書き始めたとき。セッションが付ける |
 | 作業中 | `status:in-progress` | 番号付きのブランチ（`<番号>-<名前>`）のワークツリーを新しく切ったとき。`.githooks/post-checkout` が付け、`status:refining` を外す。クラウドのセッションはワークツリーを切らないので、着手したときに `gh api -X POST repos/{owner}/{repo}/issues/<番号>/labels -f 'labels[]=status:in-progress'` で付け、`status:refining` を外す |
 | レビュー中 | その Issue を指す開いた PR があること。ラベルは使わない | PR の作成 |
