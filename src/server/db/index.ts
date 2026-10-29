@@ -8,7 +8,7 @@ export type { ExpressionBuilder, Insertable, QueryCreator, Selectable } from 'ky
 export type { Statement } from './entry.ts';
 export { commonDb, orgDb, type CommonDb, type OrganizationDb } from './entries.ts';
 export { DatabaseUnavailableError, pingDatabase } from './ping.ts';
-export { jsonList, jsonPairLookup, sprintLeftLogSql, sprintLogRefSql } from './json-list.ts';
+export { jsonList, jsonPairLookup, jsonPairRows, sprintLeftLogSql, sprintLogRefSql } from './json-list.ts';
 export { jsonLookup } from './json-lookup.ts';
 export { previousStatementChanged } from './previous-statement.ts';
 export { organizationHistoryRowFilter } from './organization-history-filter.ts';
