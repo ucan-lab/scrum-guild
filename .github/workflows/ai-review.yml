@@ -101,7 +101,8 @@ jobs:
           set -euo pipefail
           mkdir -p "$CONTEXT_DIR" "$OUT_DIR"
           git diff "$BASE_SHA...$HEAD_SHA" > "$CONTEXT_DIR/diff.patch"
-          git diff --name-status "$BASE_SHA...$HEAD_SHA" > "$CONTEXT_DIR/files.txt"
+          # Claude はパスをそのまま Read に渡すので、日本語のパスをクォートさせない
+          git -c core.quotePath=false diff --name-status "$BASE_SHA...$HEAD_SHA" > "$CONTEXT_DIR/files.txt"
           echo "変わったファイル: $(wc -l < "$CONTEXT_DIR/files.txt") 件"
 
       - uses: anthropics/claude-code-action@ae68417a745a5df4b2124873632bd73a2255e6f6 # v1.0.259
@@ -116,6 +117,8 @@ jobs:
           # prompt を渡す agent モードでは、action は許可するツールを足さない。許可はサブエージェントにも効く。
           # Bash は一切許さない。前方一致の許可は後ろの引数を縛らず、gh pr comment -R で外へ送る、git diff --output= でランナーの
           # ファイルに書く、といった抜け道が1つずつ残るため。差分は前の段が、PR へのまとめは後の段が受け持つ。
+          # --tools で組み込みの道具そのものを絞る。RemoteTrigger、EnterWorktree、CronCreate などは --allowedTools に無くても
+          # 確認なしに走り、RemoteTrigger はトークンの持ち主のアカウントで routine を作れるため。MCP の道具は --tools に左右されない。
           # 書けるのは summary.md の1ファイルだけ（Edit の許可は Write にも効く）。// で始まる綴りは絶対パス。
           # チェックアウトの .git/config には action がトークン入りの origin の URL を書くので、Read、Grep、Glob から読ませない。
           # base の .claude/settings.json は mcp__github__ の道具を許すので、github の MCP が入っても使えないよう断る
@@ -124,6 +127,7 @@ jobs:
             --model sonnet
             --add-dir "${{ runner.temp }}/pr-context"
             --add-dir "${{ runner.temp }}/pr-out"
+            --tools "Read,Grep,Glob,Edit,Write,Agent"
             --allowedTools "Task,Agent,mcp__github_inline_comment__create_inline_comment,Edit(/${{ runner.temp }}/pr-out/summary.md)"
             --disallowedTools "Bash,mcp__github__*,Read(/${{ github.workspace }}/.git/**)"
 
