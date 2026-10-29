@@ -732,6 +732,8 @@ test.describe('リーダー（ひばり工房のリン）', () => {
     await email.press('Enter');
     const dialog = page.getByRole('dialog', { name: '招待の URL' });
     await expect(dialog).toBeVisible();
+    // 開いた直後は本文にフォーカスを置く（読み上げが URL の値より先に、二度と出せないことの注意まで続けて読める）
+    await expect(dialog.locator('p', { hasText: '招待しました。' })).toBeFocused();
     const url = dialog.getByLabel('招待の URL');
     await expect(url).toHaveValue(/\/invite#[A-Za-z0-9_-]{43}$/);
     const firstUrl = await url.inputValue();

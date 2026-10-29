@@ -67,6 +67,7 @@
   let limitCallout = $state<HTMLElement>();
   let emailInput = $state<HTMLInputElement>();
   let urlInput = $state<HTMLInputElement>();
+  let urlLead = $state<HTMLElement>();
   let dialog = $state<ReturnType<typeof Dialog>>();
   let dialogOpen = $state(false);
   let issued = $state<Issued | null>(null);
@@ -330,6 +331,10 @@
       };
       // 閉じたらメールアドレスの欄へ戻す（続けて別の人を招待できる）
       dialog?.show(emailInput);
+      // 開いた直後は読み取り専用の URL 欄でなく本文へフォーカスを移す。「閉じると二度と出せない」の注意まで続けて読めるように
+      // （運用者の指名し直しの完了の表示と同じ）
+      await tick();
+      urlLead?.focus();
       return;
     }
     // 招待の URL の無い成功は、Google の招待では返らない。返ったら URL を出せないので失敗として出し、一覧を読み直す
@@ -523,7 +528,7 @@
 <Dialog bind:this={dialog} bind:open={dialogOpen} title={t('inviteUrlTitle')}>
   {#if issued}
     <!-- 招待の URL は応答の本文にだけあり、この表示を閉じると二度と出ない -->
-    <p>{t('inviteUrlLead', words)}</p>
+    <p tabindex="-1" bind:this={urlLead}>{t('inviteUrlLead', words)}</p>
     <div class="field">
       <label class="field-label" for="invite-url">{t('inviteUrlLabel')}</label>
       <div class="input-row">
