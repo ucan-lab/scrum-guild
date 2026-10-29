@@ -7,6 +7,8 @@
     taskDelete,
     taskDetail,
     taskHistory,
+    taskReopen,
+    taskReopenConflictReasonOf,
     taskUpdate,
     type TaskDetail,
     type TaskHistoryEntry,
@@ -68,8 +70,9 @@
   // 読み込めたときと、引き出しで保存した後に読み直す。列の名前と値の文は src/lib/task-history.ts が辞書の言葉で作る。
   // 本文の下に完了の帯（.done-bar）を置く。完了していなくて書けるときは「完了にする」（task-complete。確かめのダイアログは挟まない）、
   // 完了していれば完了の印と完了した日時を出し、横にワークスペースの完成の定義（空なら出さない）を Markdown で出す。
-  // 完了にしたら、応答の日時を入れ、履歴を読み直し、画面が木を読み直す（onchanged）。押したボタンは消えるので、印へフォーカスを移す。
-  // 完了を戻す操作は #240 で足す
+  // 完了にしたら、応答の日時を入れ、詳細と履歴を読み直し、画面が木を読み直す（onchanged）。押したボタンは消えるので、印へフォーカスを移す。
+  // 完了していて戻せる（task-detail の reopenable）ときは、日時の横に「戻す」（.link-btn。task-reopen。確かめのダイアログは挟まない）。
+  // 戻したら、詳細と履歴を読み直し、画面が木を読み直す。押したボタンは消えるので、「完了にする」へフォーカスを移す
   let {
     slug,
     workspaceId,
@@ -1022,7 +1025,8 @@
   let doneMark = $state<HTMLElement>();
 
   async function complete(): Promise<void> {
-    if (task === null || completing || task.completed_at !== null) return;
+    // 戻している間は完了にしない
+    if (task === null || completing || reopening || task.completed_at !== null) return;
     completing = true;
     try {
       const result = await callOperation(taskComplete, { workspace_id: workspaceId, task_id: taskId }, { slug });
@@ -1039,9 +1043,8 @@
       if (result.ok) {
         if (task !== null) task = { ...task, completed_at: result.data.completed_at };
         showToast(completedMessage(result.data.left_sprint, t), 'check');
-        // 始まっていないスプリントの中で完了すると、スプリントから外れる。外れたなら詳細ごと読み直す（履歴も読み直す）
-        if (result.data.left_sprint) await refresh();
-        else void loadHistory();
+        // 戻せるか（reopenable）と、始まっていないスプリントから外れたことを出すため、詳細ごと読み直す（履歴も読み直す）
+        await refresh();
         onchanged();
       } else if (result.status === 401) {
         onstale();
@@ -1068,6 +1071,71 @@
     // 押したボタンは完了の印に替わって消えるので、フォーカスを印へ移す
     await tick();
     if (alive) doneMark?.focus();
+  }
+
+  // ---- 完了を戻す（確かめのダイアログは挟まない。1本だけ送る） ----
+  let reopening = $state(false);
+  let completeButton = $state<HTMLElement>();
+
+  function reopenFailureMessage(details: unknown): string {
+    const words = { task: t('task'), done: t('done'), sprint: t('sprint'), story: t('story') };
+    switch (taskReopenConflictReasonOf(details)) {
+      case 'not_completed':
+        return t('taskReopenNotDone', words);
+      case 'sprint_closed':
+        return t('taskReopenSprintClosed', words);
+      case 'parent_completed':
+        return t('taskReopenParentDone', words);
+      default:
+        return t('taskReopenChanged');
+    }
+  }
+
+  async function reopen(): Promise<void> {
+    if (task === null || reopening || completing || task.completed_at === null) return;
+    reopening = true;
+    try {
+      const result = await callOperation(taskReopen, { workspace_id: workspaceId, task_id: taskId }, { slug });
+      if (!alive) {
+        // 送っている間に閉じられた。通ったら木を読み直して知らせ、失敗は知らせる
+        if (result.ok) {
+          showToast(t('taskReopened', { task: t('task'), done: t('done') }), 'check');
+          onchanged();
+        } else if (result.status !== 401) {
+          showToast(t('taskReopenFailed', { done: t('done') }), 'alert');
+        }
+        return;
+      }
+      if (result.ok) {
+        if (task !== null) task = { ...task, completed_at: null, reopenable: false };
+        showToast(t('taskReopened', { task: t('task'), done: t('done') }), 'check');
+        await refresh();
+        onchanged();
+      } else if (result.status === 401) {
+        onstale();
+        return;
+      } else if (result.status === 404) {
+        gone();
+        return;
+      } else if (result.status === 409 && result.error?.code === 'workspace_closed') {
+        showToast(t('workspaceClosedReadOnly', { workspace: t('workspace') }), 'alert');
+        onstale();
+        return;
+      } else if (result.status === 409) {
+        // 別の画面で先に戻されたか、戻せない状態になっていた。読み直して、今の状態で示す
+        showToast(reopenFailureMessage(result.error?.details), 'alert');
+        await refresh();
+        onchanged();
+      } else {
+        showToast(t('taskReopenFailed', { done: t('done') }), 'alert');
+        return;
+      }
+    } finally {
+      if (alive) reopening = false;
+    }
+    // 押した「戻す」は消えるので、「完了にする」か（戻せないまま完了していれば）印へフォーカスを移す
+    await tick();
+    if (alive) (task?.completed_at == null ? completeButton : doneMark)?.focus();
   }
 
   // ---- 削除 ----
@@ -1131,7 +1199,9 @@
         ? t('taskDeleting')
         : completing
           ? t('taskCompleting', { done: t('done') })
-          : '',
+          : reopening
+            ? t('taskReopening', { done: t('done') })
+            : '',
   );
 </script>
 
@@ -1537,7 +1607,7 @@
       {/if}
     </div>
 
-    <!-- 完了の帯（kit.js の drawerHtml の .done-bar）。完了を戻す操作は #240 で足す -->
+    <!-- 完了の帯（kit.js の drawerHtml の .done-bar）。完了していて戻せるときは、日時の横に「戻す」 -->
     {#if task.completed_at !== null || canWrite || definitionOfDone !== null}
       <div class="done-bar">
         {#if task.completed_at !== null}
@@ -1550,9 +1620,24 @@
             <time datetime={task.completed_at}
               >{t('taskCompletedAt', { done: t('done'), at: formatDateTime(task.completed_at) })}</time
             >
+            {#if canWrite && task.reopenable}
+              <button
+                class="link-btn"
+                type="button"
+                aria-label={t('taskReopenLabel', { done: t('done'), title: task.title })}
+                aria-disabled={reopening}
+                onclick={() => void reopen()}>{t('taskReopen')}</button
+              >
+            {/if}
           </span>
         {:else if canWrite}
-          <button class="btn is-primary" type="button" aria-disabled={completing} onclick={() => void complete()}>
+          <button
+            class="btn is-primary"
+            type="button"
+            aria-disabled={completing}
+            bind:this={completeButton}
+            onclick={() => void complete()}
+          >
             <Icon name="check" />{t('complete')}
           </button>
         {/if}

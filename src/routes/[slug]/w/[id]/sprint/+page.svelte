@@ -7,6 +7,7 @@
   import EmptyState from '../../../../../lib/components/EmptyState.svelte';
   import Icon from '../../../../../lib/components/Icon.svelte';
   import LoadFailed from '../../../../../lib/components/LoadFailed.svelte';
+  import Markdown from '../../../../../lib/components/Markdown.svelte';
   import PageHead from '../../../../../lib/components/PageHead.svelte';
   import SprintCard from '../../../../../lib/components/SprintCard.svelte';
   import { MoveQueue } from '../../../../../lib/move-queue.ts';
@@ -20,7 +21,7 @@
     type SprintBoardColumn,
     type SprintBoardTask,
   } from '../../../../../shared/operations/sprint/index.ts';
-  import { taskComplete } from '../../../../../shared/operations/task/index.ts';
+  import { taskComplete, taskReopen, taskReopenConflictReasonOf } from '../../../../../shared/operations/task/index.ts';
   import { sprintProgress } from '../../../../../shared/sprint.ts';
   import type { PageProps } from './$types';
 
@@ -30,6 +31,9 @@
   // 完了の操作は task-complete を呼ぶだけで、完了の列への移動は task-complete が行う（完了の列へ task-column-move で移すことはしない）。
   // 動かせるカード（完了していない、終了していないワークスペース）は、選んで Alt と ← → で隣の列、Alt と ↑ ↓ で列の中を動かし、
   // カードの下のボタンでも同じことができる。動かしたら先に画面の並びを替えて位置を読み上げ、押した順に1つずつ送る（MoveQueue）。
+  // 最後の完了でない列の「次の列へ」と Alt と → は、完了の操作と同じく task-complete を呼ぶ。
+  // 完了の列のカードは、戻せる（完了したストーリーの下でない）ときに完了の印の横に「戻す」を出し、task-reopen を呼ぶ。
+  // 戻したら読み直して、戻した列のカードへフォーカスを移す。完了の列には、ワークスペースの完成の定義（空なら出さない）を畳んで置く。
   // 断られたら理由をトーストで知らせて読み直す。ドラッグは #245 で足す。
   // 進行中のスプリントが無いときは、見本の空の状態をロールで文を分けて出す
   let { data }: PageProps = $props();
@@ -71,7 +75,21 @@
     status = message;
   }
 
+  // 完了か戻しを送っている間に、もう1つの完了か戻しが来たら送らずに捨て、送っている最中であることを読み上げる。捨てたら真
+  function refusedWhileBusy(): boolean {
+    if (completingId === null && reopeningId === null) return false;
+    void announce(
+      completingId !== null
+        ? t('sprintCardBusyCompleting', { done: t('done') })
+        : t('sprintCardBusyReopening', { done: t('done') }),
+    );
+    return true;
+  }
+
   let completingId = $state<string | null>(null);
+  let reopeningId = $state<string | null>(null);
+  // 完了の列の完成の定義を開いているか。本文は開くまで描かない（バックログの画面と同じ）
+  let dodOpen = $state(false);
 
   function columnName(column: SprintBoardColumn): string {
     return column.is_done ? t('done') : (column.name ?? '');
@@ -126,7 +144,7 @@
     if (edge === 'top') return t('moveAtTop');
     if (edge === 'bottom') return t('moveAtBottom');
     if (edge === 'prev') return t('sprintCardNoPrevColumn', { column: t('column') });
-    return t('sprintCardNoNextColumn', { done: t('done'), column: t('column'), complete: t('complete') });
+    return t('sprintCardNoNextColumn', { column: t('column') });
   }
 
   // 断られた移動の理由。409 の conflict は、サーバーが details.reason に載せた理由で分ける
@@ -156,6 +174,17 @@
     if (workspace === null || !canWrite) return;
     const plan = planCardMove(columns, task.id, direction);
     if (plan === null) return;
+    // 次の列が完了の列なら、完了にする。先に押した移動を送り終えてから送るよう、同じ列に並べる
+    if (plan.kind === 'complete') {
+      void moves.send(
+        async () => {
+          await complete(task);
+          return { ok: true, data: null } as const;
+        },
+        async () => {},
+      );
+      return;
+    }
     // 端で押したときは、動かせないことを読み上げる
     if (plan.kind === 'edge') {
       void announce(edgeMessage(plan.edge));
@@ -197,7 +226,7 @@
   }
 
   async function complete(task: SprintBoardTask): Promise<void> {
-    if (workspace === null || completingId !== null) return;
+    if (workspace === null || refusedWhileBusy()) return;
     completingId = task.id;
     const workspaceId = workspace.id;
     try {
@@ -228,6 +257,61 @@
       }
     } finally {
       completingId = null;
+    }
+  }
+
+  // 断られた戻しの理由。409 の conflict は、サーバーが details.reason に載せた理由で分ける
+  function reopenFailureMessage(details: unknown): string {
+    const words = { task: t('task'), done: t('done'), sprint: t('sprint'), story: t('story') };
+    switch (taskReopenConflictReasonOf(details)) {
+      case 'not_completed':
+        return t('taskReopenNotDone', words);
+      case 'sprint_closed':
+        return t('taskReopenSprintClosed', words);
+      case 'parent_completed':
+        return t('taskReopenParentDone', words);
+      default:
+        return t('taskReopenChanged');
+    }
+  }
+
+  async function reopen(task: SprintBoardTask): Promise<void> {
+    if (workspace === null || refusedWhileBusy()) return;
+    reopeningId = task.id;
+    const workspaceId = workspace.id;
+    try {
+      const result = await callOperation(taskReopen, { workspace_id: workspaceId, task_id: task.id }, { slug });
+      // 送っている間に別のワークスペースへ移っていたら、古い応答で状態を触らない
+      if (workspaceId !== page.params.id) return;
+      if (result.ok) {
+        const column = columns.find((candidate) => candidate.id === result.data.column_id);
+        // トーストが読み上げる
+        showToast(
+          column === undefined
+            ? t('taskReopened', { task: t('task'), done: t('done') })
+            : t('sprintCardReopened', { title: task.title, done: t('done'), column: columnName(column) }),
+          'check',
+        );
+        await invalidate('app:sprint-board');
+        // 押した「戻す」は消えるので、戻した列に出たカードへフォーカスを移す（動かせるカードは選べる）
+        await tick();
+        document.querySelector<HTMLElement>(`[data-card-id="${CSS.escape(task.id)}"]`)?.focus();
+      } else if (result.status === 401) {
+        await invalidateAll();
+      } else if (result.status === 404) {
+        showToast(t('taskGone', { task: t('task') }), 'alert');
+        await invalidate('app:sprint-board');
+      } else if (result.status === 409 && result.error?.code === 'workspace_closed') {
+        showToast(t('workspaceClosedReadOnly', { workspace: t('workspace') }), 'alert');
+        await invalidate('app:workspace');
+      } else if (result.status === 409) {
+        showToast(reopenFailureMessage(result.error?.details), 'alert');
+        await invalidate('app:sprint-board');
+      } else {
+        showToast(t('taskReopenFailed', { done: t('done') }), 'alert');
+      }
+    } finally {
+      reopeningId = null;
     }
   }
 
@@ -271,7 +355,9 @@
 {:else if workspace && board !== null}
   <!-- 読み上げの領域。常に置き、文字だけを替える -->
   <div class="visually-hidden" role="status">
-    {status}{completingId !== null ? t('sprintCardCompleting', { done: t('done') }) : ''}
+    {status}{completingId !== null ? t('sprintCardCompleting', { done: t('done') }) : ''}{reopeningId !== null
+      ? t('sprintCardReopening', { done: t('done') })
+      : ''}
   </div>
 
   {#if sprint === null || progress === null}
@@ -319,17 +405,26 @@
               <span class="board-col-n">{column.tasks.length}</span>
               <span class="board-col-pts">{t('sprintBoardColumnPoints', { points: pointsOf(column.tasks) })}</span>
             </div>
+            <!-- 完成の定義（components.css の .dod。kit.js の board）。完了の列にだけ畳んで置き、空なら出さない。本文は開くまで描かない -->
+            {#if column.is_done && workspace.definitionOfDone !== null}
+              <details class="dod" bind:open={dodOpen}>
+                <summary>{t('dod')}</summary>
+                {#if dodOpen}<Markdown source={workspace.definitionOfDone} headingStart={2} />{/if}
+              </details>
+            {/if}
             {#each column.tasks as task (task.id)}
               <SprintCard
                 {task}
                 href="{sprintHref}?task={encodeURIComponent(task.id)}"
                 edges={canWrite ? edgesOf(columns, task.id) : null}
                 canComplete={canWrite}
+                canReopen={canWrite && task.reopenable}
                 clock={{ today: board.today, weekStart: board.week_start }}
-                pending={completingId !== null}
+                pending={completingId !== null || reopeningId !== null}
                 hintId={KEY_HINT_ID}
                 onmove={moveCard}
                 oncomplete={(target) => void complete(target)}
+                onreopen={(target) => void reopen(target)}
               />
             {:else}
               <p class="board-empty">{t('sprintBoardColumnEmpty')}</p>
@@ -339,7 +434,7 @@
       </div>
     </div>
     {#if canWrite}
-      <p class="action-note" id={KEY_HINT_ID}>{t('sprintBoardKeyHint', { column: t('column') })}</p>
+      <p class="action-note" id={KEY_HINT_ID}>{t('sprintBoardKeyHint', { column: t('column'), done: t('done') })}</p>
     {/if}
   {/if}
 {/if}

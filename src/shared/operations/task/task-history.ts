@@ -16,7 +16,7 @@ export const taskHistoryValueSchema = z.union([
 
 export const taskHistoryEntrySchema = z.object({
   id: z.string(),
-  // create、update、complete、delete。ほかの値（後で足す reopen など）もそのまま返し、画面は変えた行として出す
+  // create、update、complete、reopen（完了を戻した）、delete。ほかの値もそのまま返し、画面は変えた行として出す
   action: z.string(),
   created_at: z.string(),
   // 変えた人（今の名前）。null は同期などの定期処理か運用者の操作

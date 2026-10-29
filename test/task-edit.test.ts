@@ -133,6 +133,7 @@ describe('task-detail', () => {
       assignee: null,
       is_imported: false,
       completed_at: null,
+      reopenable: false,
       can_delete: true,
       story_id: null,
       category: null,

@@ -19,6 +19,9 @@ export const taskDetailSchema = z.object({
   is_imported: z.boolean(),
   // 完了した日時。完了したタスクのポイントは直せない
   completed_at: z.string().nullable(),
+  // 完了を戻せるか（task-reopen）。完了していて、書き込めて（閉じていないワークスペース）、断る理由（終了したか削除したスプリントの中で
+  // 完了した、完了したストーリーの下にある）に当たらないとき。画面が完了の帯に「戻す」を出すかを決める
+  reopenable: z.boolean(),
   // 呼んだ人が削除できるか（作った人とリーダー、管理者）。画面が削除の操作を出すかを決める
   can_delete: z.boolean(),
   // 親のストーリー。親のあるタスクは区分を振れない（親から引き継ぐ）

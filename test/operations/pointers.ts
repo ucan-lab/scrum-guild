@@ -355,6 +355,16 @@ export const pointers: Pointers = {
     workspace_id: target.workspace.id,
     task_id: (await createTask(target.organization, target.workspace.id, target.admin.userId!, { points: 2 })).id,
   }),
+  // 呼ぶたびにスプリントの外で完了したタスクを作る（同じタスクを続けて戻すと 409 になるため）
+  'task-reopen': async (target) => ({
+    workspace_id: target.workspace.id,
+    task_id: (
+      await createTask(target.organization, target.workspace.id, target.admin.userId!, {
+        completed_at: '2026-10-22T00:00:00.000Z',
+        completed_by: target.admin.userId!,
+      })
+    ).id,
+  }),
   'task-detail': async (target) => ({
     workspace_id: target.workspace.id,
     task_id: (await createTask(target.organization, target.workspace.id, target.admin.userId!)).id,

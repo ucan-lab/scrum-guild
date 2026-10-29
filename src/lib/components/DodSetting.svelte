@@ -176,7 +176,16 @@
   }
 </script>
 
-<Setting title={dod} description={t('dodDesc', { task: t('task'), backlog: t('backlog') })}>
+<Setting
+  title={dod}
+  description={t('dodDesc', {
+    task: t('task'),
+    backlog: t('backlog'),
+    sprint: t('sprint'),
+    done: t('done'),
+    column: t('column'),
+  })}
+>
   {#if canWrite}
     <form class="field" class:is-invalid={error?.invalid === true} onsubmit={save} novalidate>
       <label class="field-label" for={fieldId}>{t('dodFieldLabel')}</label>

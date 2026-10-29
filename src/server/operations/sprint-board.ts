@@ -19,6 +19,7 @@ import { uuidv7 } from '../uuid.ts';
 import { implement } from './implement.ts';
 import { MAX_TIES, placeAfter, placeFirst, placeLast, type MovePlan, type Positioned } from './move-position.ts';
 import { activeSprint, firstColumn, summaryOf } from './sprint.ts';
+import { reopenBlockOf } from './task-reopen.ts';
 import { actorUserIdOf, changeLogColumns, openWorkspace, throwIfClosed } from './write-guards.ts';
 
 type From = Pick<QueryCreator<OrganizationTables>, 'selectFrom'>;
@@ -83,8 +84,10 @@ export const sprintBoardOperation = implement(sprintBoard, async ({ db, workspac
           'repositories.name as repository_name',
           'tasks.column_id',
           'tasks.completed_at',
+          'tasks.tray',
           'tasks.story_id',
           'stories.title as story_title',
+          'stories.completed_at as story_completed_at',
           'tasks.assignee_user_id',
           'users.name as assignee_name',
         ])
@@ -114,6 +117,15 @@ export const sprintBoardOperation = implement(sprintBoard, async ({ db, workspac
       points: row.points,
       assignee: row.assignee_user_id === null ? null : { id: row.assignee_user_id, name: row.assignee_name ?? '' },
       completed_at: row.completed_at,
+      // task-reopen と同じ判定。読んでいるのは進行中のスプリントのカードだけ
+      reopenable:
+        reopenBlockOf({
+          tray: row.tray,
+          completedAt: row.completed_at,
+          sprintId: sprintRow.id,
+          sprintActive: true,
+          parentCompleted: row.story_completed_at !== null,
+        }) === null,
       story: row.story_id === null || row.story_title === null ? null : { id: row.story_id, title: row.story_title },
       due_on: row.due_on,
       repository:

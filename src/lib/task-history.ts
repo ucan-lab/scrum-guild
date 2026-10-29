@@ -124,6 +124,22 @@ export function historyEntryView(entry: TaskHistoryEntry, timeZone: string, t: T
   // 完了と削除は、何をしたかだけを出す（日時と人は行の頭にある）
   if (entry.action === 'complete') return { ...base, summary: t('historyCompleted', { done: t('done') }), lines: [] };
   if (entry.action === 'delete') return { ...base, summary: t('historyDeleted'), lines: [] };
+  // 完了を戻した（task-reopen）。スプリントの中なら、戻した列だけを出す。前の列は完了の列で、名前を持たない（画面は辞書の「完了」を出す）
+  if (entry.action === 'reopen') {
+    const lines = entry.changes
+      .filter((change) => change.field === 'column')
+      .map((change) => {
+        const before =
+          change.before !== null && typeof change.before === 'object' && change.before.name === ''
+            ? t('done')
+            : valueText(change.field, change.before, t);
+        return {
+          label: historyFieldLabel(change.field, t),
+          text: t('historyChange', { before, after: valueText(change.field, change.after, t) }),
+        };
+      });
+    return { ...base, summary: t('historyReopened', { done: t('done') }), lines };
+  }
   if (entry.action === 'create') {
     // 作成は、空でない初めの値だけを出す（本文と知らない列は、直したことだけ）
     const changes = entry.changes.filter(

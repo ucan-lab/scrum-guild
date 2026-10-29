@@ -40,13 +40,16 @@ export type SprintTask = z.output<typeof sprintTaskSchema>;
 
 // スプリントの画面（sprint-board）のカード。完了したタスクは completed_at を持つ。
 // story は親のストーリー（カードの上に題を添える）。親のないタスクは null。
-// due_on（期日）と repository（振ったリポジトリ。削除したものは null）は、カードの .card-meta に出す
+// due_on（期日）と repository（振ったリポジトリ。削除したものは null）は、カードの .card-meta に出す。
+// reopenable は、完了を戻せる（task-reopen）完了したカード。完了したストーリーの下のカードと、完了していないカードは偽
+// （書き込めるか、閉じたワークスペースかは画面が見る）
 export const sprintBoardTaskSchema = z.object({
   id: z.string(),
   title: z.string(),
   points: z.number().int().nullable(),
   assignee: z.object({ id: z.string(), name: z.string() }).nullable(),
   completed_at: z.string().nullable(),
+  reopenable: z.boolean(),
   story: z.object({ id: z.string(), title: z.string() }).nullable(),
   due_on: z.string().nullable(),
   repository: z.object({ id: z.string(), name: z.string() }).nullable(),

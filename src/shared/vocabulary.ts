@@ -281,6 +281,32 @@ export const dictionary = defineDictionary({
     '{done}にできませんでした。もう一度試してください。',
   ),
   taskAlreadyDone: workspace('この{task}は、すでに{done}です', 'この{task}は、すでに{done}です'),
+  // 完了を戻す（task-reopen。スプリントの画面の完了のカードと、詳細の引き出しの完了の帯）。読み上げの名前は題を添える
+  taskReopen: organization('戻す', '戻す'),
+  taskReopenLabel: workspace('{done}を戻す: {title}', '{done}を戻す: {title}'),
+  taskReopening: workspace('{done}を戻しています', '{done}を戻しています'),
+  taskReopened: workspace('{task}の{done}を戻しました', '{task}の{done}を戻しました'),
+  // 断られた理由（taskReopenConflictReasons）
+  taskReopenNotDone: workspace(
+    'この{task}は{done}していません。一覧を読み直します',
+    'この{task}は{done}していません。一覧を読み直します',
+  ),
+  taskReopenSprintClosed: workspace(
+    '終了した{sprint}の中で{done}した{task}は戻せません。一覧を読み直します',
+    '終了した{sprint}の中で{done}した{task}は戻せません。一覧を読み直します',
+  ),
+  taskReopenParentDone: workspace(
+    '{done}した{story}の下の{task}は戻せません。先に{story}の{done}を取り消してください。一覧を読み直します',
+    '{done}した{story}の下の{task}は戻せません。先に{story}の{done}を取り消してください。一覧を読み直します',
+  ),
+  taskReopenChanged: organization(
+    'ほかの画面で変わったため、戻せませんでした。一覧を読み直します',
+    'ほかの画面で変わったため、戻せませんでした。一覧を読み直します',
+  ),
+  taskReopenFailed: workspace(
+    '{done}を戻せませんでした。もう一度試してください。',
+    '{done}を戻せませんでした。もう一度試してください。',
+  ),
   workspaceClosedReadOnly: workspace('終了した{workspace}には書き込めません', '終了した{workspace}には書き込めません'),
 
   // 起票のダイアログ
@@ -2079,6 +2105,7 @@ export const dictionary = defineDictionary({
   historyUpdated: workspace('書き換えた', '変更した'),
   historyCompleted: workspace('{done}にした', '{done}にした'),
   historyDeleted: workspace('削除した', '削除した'),
+  historyReopened: workspace('{done}を戻した', '{done}を戻した'),
   historyChange: workspace('{before} → {after}', '{before} → {after}'),
   historyFieldEdited: workspace('{field}を直した', '{field}を直した'),
   historyNone: workspace('なし', 'なし'),
@@ -2314,10 +2341,9 @@ export const dictionary = defineDictionary({
   sprintTaskRemove: workspace('外す', '外す'),
   sprintTaskRemoving: workspace('外しています', '外しています'),
   sprintTaskRemoved: workspace('「{title}」を外しました', '「{title}」を外しました'),
-  // 完了を戻す操作（#240）が入ったら、「先に{done}を戻してください」の案内を足す
   sprintTaskRemoveCompleted: workspace(
-    '{done}済みの{task}は外せません。一覧を読み直します',
-    '{done}済みの{task}は外せません。一覧を読み直します',
+    '{done}済みの{task}は外せません。外すには、先に{done}を戻してください。一覧を読み直します',
+    '{done}済みの{task}は外せません。外すには、先に{done}を戻してください。一覧を読み直します',
   ),
   sprintTaskRemoveGone: workspace(
     'この{task}はもう入っていません。一覧を読み直します',
@@ -2393,8 +2419,8 @@ export const dictionary = defineDictionary({
   sprintBoardColumnEmpty: workspace('なし', 'なし'),
   sprintBoardColumnPoints: workspace('{points} pt', '{points} pt'),
   sprintBoardKeyHint: workspace(
-    'カードを選んで Alt と ← → で隣の{column}、Alt と ↑ ↓ で{column}の中を動かせます。カードの下のボタンでも同じです。',
-    'カードを選んで Alt と ← → で隣の{column}、Alt と ↑ ↓ で{column}の中を動かせます。カードの下のボタンでも同じです。',
+    'カードを選んで Alt と ← → で隣の{column}、Alt と ↑ ↓ で{column}の中を動かせます。カードの下のボタンでも同じです。{done}の{column}の手前の{column}から次へ送ると、{done}になります。',
+    'カードを選んで Alt と ← → で隣の{column}、Alt と ↑ ↓ で{column}の中を動かせます。カードの下のボタンでも同じです。{done}の{column}の手前の{column}から次へ送ると、{done}になります。',
   ),
   sprintBoardEmptyTitle: workspace('進行中の{sprint}はありません', '進行中の{sprint}はありません'),
   sprintBoardEmptyLeaderText: workspace(
@@ -2416,6 +2442,12 @@ export const dictionary = defineDictionary({
   moveColumnNext: workspace('次の{column}へ', '次の{column}へ'),
   moveColumnPrevLabel: workspace('前の{column}へ: {title}', '前の{column}へ: {title}'),
   moveColumnNextLabel: workspace('次の{column}へ: {title}', '次の{column}へ: {title}'),
+  // 最後の完了でない列のカードの「次の列へ」。完了の列へ移す代わりに完了にする
+  moveColumnComplete: workspace('{done}の{column}へ（{complete}）', '{done}の{column}へ（{complete}）'),
+  moveColumnCompleteLabel: workspace(
+    '{done}の{column}へ（{complete}）: {title}',
+    '{done}の{column}へ（{complete}）: {title}',
+  ),
   // 選んだカードの説明（aria-describedby）。{points} はポイントか未見積もりの文
   sprintCardSummary: workspace('{points}、{assignee}は{name}', '{points}、{assignee}は{name}'),
   sprintCardSummaryUnassigned: workspace('{points}、{unassigned}', '{points}、{unassigned}'),
@@ -2425,10 +2457,8 @@ export const dictionary = defineDictionary({
     '「{title}」を{column}の {index} 番目に移しました（{total} 件中）',
   ),
   sprintCardNoPrevColumn: workspace('これより前の{column}はありません', 'これより前の{column}はありません'),
-  sprintCardNoNextColumn: workspace(
-    '{done}の{column}へは、ここから移せません。{done}にするには、カードの「{complete}」を押してください',
-    '{done}の{column}へは、ここから移せません。{done}にするには、カードの「{complete}」を押してください',
-  ),
+  // 次の{column}が無い（完了の列が無い）ときだけ。最後の完了でない列の「次の列へ」は完了にする
+  sprintCardNoNextColumn: workspace('これより後の{column}はありません', 'これより後の{column}はありません'),
   sprintCardMoveDoneColumn: workspace(
     '{done}の{column}へは、ここから移せません。一覧を読み直します',
     '{done}の{column}へは、ここから移せません。一覧を読み直します',
@@ -2443,6 +2473,21 @@ export const dictionary = defineDictionary({
   ),
   sprintCardMoveFailed: workspace('動かせませんでした。一覧を読み直します', '動かせませんでした。一覧を読み直します'),
   sprintCardCompleting: workspace('{done}にしています', '{done}にしています'),
+  sprintCardReopening: workspace('{done}を戻しています', '{done}を戻しています'),
+  // 完了か戻しを送っている間に押された、もう1つの完了か戻し。送らずに捨てたことを読み上げる
+  sprintCardBusyCompleting: workspace(
+    '{done}にしています。終わってからもう一度試してください。',
+    '{done}にしています。終わってからもう一度試してください。',
+  ),
+  sprintCardBusyReopening: workspace(
+    '{done}を戻しています。終わってからもう一度試してください。',
+    '{done}を戻しています。終わってからもう一度試してください。',
+  ),
+  // 完了を戻して、{column}へ移した（task-reopen）
+  sprintCardReopened: workspace(
+    '「{title}」の{done}を戻し、{column}へ移しました',
+    '「{title}」の{done}を戻し、{column}へ移しました',
+  ),
   // 経験値とレベル（kit.js の levelPanel と emblem、me.html の「経験値の明細」）。経験値の数値と明細は本人にだけ出す
   levelLabel: organization('レベル {level}', 'レベル {level}'),
   levelShort: organization('LV', 'LV'),
@@ -2520,11 +2565,11 @@ export const dictionary = defineDictionary({
   markdownCodeRegion: workspace('コード', 'コード'),
   markdownTableRegion: workspace('表', '表'),
 
-  // 完成の定義（設定の画面の節、詳細の引き出しの完了の操作の横、バックログの画面の上）。{dod} はその言葉づかいの言葉を画面が渡す。
-  // スプリントの画面の完了の列に出すようになったら、説明の文にも足す
+  // 完成の定義（設定の画面の節、詳細の引き出しの完了の操作の横、バックログの画面の上、スプリントの画面の完了の列）。
+  // {dod} はその言葉づかいの言葉を画面が渡す
   dodDesc: workspace(
-    'すべての{task}に共通する完了の基準。{backlog}の上と、完了の操作の横に出します。',
-    'すべての{task}に共通する完了の基準。{backlog}の上と、完了の操作の横に出します。',
+    'すべての{task}に共通する完了の基準。{backlog}の上と、{sprint}の{done}の{column}と、完了の操作の横に出します。',
+    'すべての{task}に共通する完了の基準。{backlog}の上と、{sprint}の{done}の{column}と、完了の操作の横に出します。',
   ),
   dodFieldLabel: workspace('Markdown', 'Markdown'),
   dodHint: workspace(
