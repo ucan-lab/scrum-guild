@@ -2479,10 +2479,6 @@ export const dictionary = defineDictionary({
     'この{sprint}は進行中ではありません（もう終わっています）。読み直します',
     'この{sprint}は進行中ではありません（もう終わっています）。読み直します',
   ),
-  sprintCloseGone: workspace(
-    'この{sprint}か持ち越し先が見つかりません。読み直します',
-    'この{sprint}か持ち越し先が見つかりません。読み直します',
-  ),
   sprintCloseCarryTarget: workspace(
     '持ち越し先が使えなくなりました。選び直してください',
     '持ち越し先が使えなくなりました。選び直してください',
