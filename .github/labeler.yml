@@ -52,8 +52,9 @@ needs-human:
           - ".claude/agents/**"
           - ".mcp.json"
   # .claude/ の下のファイル（CI が書き込みのトークンを持って走らせるスクリプトを含む。入れ子の .claude/ も）。
-  # 文書だけの PR の範囲（scripts/ci.ts の isDocsOnly）のスキルとチェックリストの .md だけを外す（理由は docs/development.md の「マージの判定」）
+  # スキルとチェックリストの .md だけを外す（ai-review のスキルは上の規則が守る。理由は docs/development.md の「マージの判定」）。
+  # 評価は scripts/labeler.test.ts で確かめる
   - changed-files:
       - all-globs-to-any-file:
           - "**/.claude/**"
-          - "!.claude/{skills,agents,checklists}/**/*.md"
+          - "!.claude/{skills,checklists}/**/*.md"
