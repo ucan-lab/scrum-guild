@@ -1,8 +1,9 @@
-// スプリントの一覧、作成、変更、削除、開始、終了と、タスクの出し入れ、スプリントの画面（列とカード）の操作の定義。延長は、その Issue で足す
+// スプリントの一覧、作成、変更、削除、開始、終了、延長と、タスクの出し入れ、スプリントの画面（列とカード）の操作の定義
 import type { AnyOperationDefinition } from '../define.ts';
 import { sprintBoard } from './sprint-board.ts';
 import { sprintClose } from './sprint-close.ts';
 import { sprintCreate } from './sprint-create.ts';
+import { sprintExtend } from './sprint-extend.ts';
 import { sprintDelete } from './sprint-delete.ts';
 import { sprintList } from './sprint-list.ts';
 import { sprintStart } from './sprint-start.ts';
@@ -14,6 +15,7 @@ import { taskColumnMove } from './task-column-move.ts';
 export {
   sprintBoard,
   sprintClose,
+  sprintExtend,
   sprintCreate,
   sprintDelete,
   sprintList,
@@ -66,6 +68,7 @@ export const sprintOperations: readonly AnyOperationDefinition[] = [
   sprintTaskRemove,
   sprintStart,
   sprintClose,
+  sprintExtend,
   sprintBoard,
   taskColumnMove,
 ];

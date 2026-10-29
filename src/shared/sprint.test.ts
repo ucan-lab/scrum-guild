@@ -1,3 +1,4 @@
+import { sprintExtension } from './sprint.ts';
 import { describe, expect, test } from 'vitest';
 import { SPRINT_GOAL_MAX_LENGTH, sprintGoalProblem, sprintGoalSchema } from './sprint.ts';
 
@@ -45,5 +46,48 @@ describe('スプリントのゴールのスキーマ（正規化の後で数え�
   test('CRLF は LF にそろえて 1 字と数える', () => {
     expect(parse('あ\r\n'.repeat(99) + 'あ').success).toBe(true); // 199 字
     expect(parse('あ\r\n'.repeat(100) + 'あ').success).toBe(false); // 201 字
+  });
+});
+
+describe('sprintExtension', () => {
+  const active = { end_on: '2026-11-01' };
+  const planned = (id: string, start_on: string, end_on: string) => ({
+    id,
+    name: id,
+    start_on,
+    end_on,
+    status: 'planned',
+  });
+  test('重ならなければ動かさない', () => {
+    expect(sprintExtension(active, 3, [planned('a', '2026-11-05', '2026-11-10')])).toEqual({
+      end_on: '2026-11-04',
+      shifted: [],
+    });
+  });
+  test('間の空きで一部を吸収する', () => {
+    expect(sprintExtension(active, 3, [planned('a', '2026-11-03', '2026-11-08')])?.shifted).toEqual([
+      { id: 'a', name: 'a', start_on: '2026-11-05', end_on: '2026-11-10', days: 2 },
+    ]);
+  });
+  test('開始日順に押し出しが続く', () => {
+    expect(
+      sprintExtension(active, 3, [
+        planned('b', '2026-11-09', '2026-11-15'),
+        planned('a', '2026-11-02', '2026-11-08'),
+      ])?.shifted.map((s) => [s.id, s.start_on, s.end_on, s.days]),
+    ).toEqual([
+      ['a', '2026-11-05', '2026-11-11', 3],
+      ['b', '2026-11-12', '2026-11-18', 3],
+    ]);
+  });
+  test('途中の空きで止まり、削除済みと planned 以外を動かさない', () => {
+    const rows = [
+      planned('a', '2026-11-02', '2026-11-08'),
+      planned('b', '2026-11-12', '2026-11-18'),
+      { ...planned('deleted', '2026-11-02', '2026-11-08'), deleted_at: '2026-10-01' },
+      { ...planned('closed', '2026-11-02', '2026-11-08'), status: 'closed' },
+    ];
+    expect(sprintExtension(active, 3, rows)?.shifted.map((s) => s.id)).toEqual(['a']);
+    expect(rows[0]?.start_on).toBe('2026-11-02');
   });
 });

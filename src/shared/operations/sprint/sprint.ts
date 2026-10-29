@@ -11,6 +11,7 @@ export const sprintSummarySchema = z.object({
   start_on: z.string(),
   end_on: z.string(),
   length: z.number().int(),
+  extended_days: z.number().int(),
   status: z.enum(['planned', 'active']),
 });
 
@@ -77,7 +78,7 @@ export type SprintPlan = z.output<typeof sprintPlanSchema>;
 // started は始まった（進行中か終了した）スプリントを変えようとした、削除しようとした、または始めようとした、
 // active_exists は進行中のスプリントが既にあるのに始めようとした（2つの画面から同時に始めた後の方を含む）、
 // ended は最終日がワークスペースの今日より前のスプリントを始めようとした
-export const sprintConflictReasons = ['overlap', 'started', 'active_exists', 'ended'] as const;
+export const sprintConflictReasons = ['overlap', 'started', 'active_exists', 'ended', 'not_active', 'changed'] as const;
 export type SprintConflictReason = (typeof sprintConflictReasons)[number];
 
 export function sprintConflictReasonOf(details: unknown): SprintConflictReason | undefined {

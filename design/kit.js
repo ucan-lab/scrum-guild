@@ -1283,9 +1283,10 @@ const looooooooooooooooooooooooooooooooooongLine = "コードの長い1行は、
         `<button class="btn is-quiet" type="button" data-close-dialog>やめる</button><button class="btn is-primary" type="button"${state === "active" ? ` aria-disabled="true"` : ` data-close-dialog data-toast="${sprint}を始めました"`}>始める</button>`);
     },
     sprintExtend: () => openDialog(`${t("sprint")}を延ばす`,
-      `<div class="form-row"><label class="field" for="d-days"><span class="field-label">延ばす日数</span><input class="input" id="d-days" type="number" min="1" value="2"></label>
+      `<div class="form-row"><label class="field" for="d-days"><span class="field-label">延ばす日数</span><input class="input" id="d-days" type="number" min="1" max="14" value="2"></label>
          <div class="field"><span class="field-label">新しい最終日</span><span class="mono">2026-10-28（水）</span></div></div>
-       <div class="callout is-info">${icon("calendar")}<span>次の ${sprintLabel("sp15")} と重なるので、${sprintLabel("sp15")} と ${sprintLabel("sp16")} を同じく 2 日ずつ後ろへずらします。</span></div>
+       <div class="field"><span class="field-label">${sprintLabel("sp15")}</span><span>10/27〜11/9 → 10/29〜11/11（2 日）</span></div>
+       <div class="field"><span class="field-label">${sprintLabel("sp16")}</span><span>11/10〜11/23 → 11/12〜11/25（2 日）</span></div>
        <p class="field-hint">延ばした${t("sprint")}は、計画の画面のベロシティから除きます。</p>`,
       `<button class="btn is-quiet" type="button" data-close-dialog>やめる</button><button class="btn is-primary" type="button" data-close-dialog data-toast="2 日延ばしました">2 日延ばす</button>`),
     sprintEnd: () => openDialog(`${t("sprint")}を終える`,

@@ -458,6 +458,19 @@ export const pointers: Pointers = {
     const sprint = await createSprint(target.organization, target.workspace.id, { start_on: startOn, end_on: endOn });
     return { workspace_id: target.workspace.id, sprint_id: sprint.id, goal: '新しい依頼を3件受ける' };
   },
+  // 呼ぶたびに、前の呼び出しの進行中のスプリントを閉じ、重ならない先の期間で進行中のスプリントを作る
+  // （進行中は1つで、延ばした最終日が前に閉じたスプリントと重なると断られるため）
+  'sprint-extend': async (target) => {
+    await closeActiveSprints(target);
+    const startOn = nextSprintStart();
+    const endOn = new Date(Date.parse(startOn) + 13 * 86_400_000).toISOString().slice(0, 10);
+    const sprint = await createSprint(target.organization, target.workspace.id, {
+      status: 'active',
+      start_on: startOn,
+      end_on: endOn,
+    });
+    return { workspace_id: target.workspace.id, sprint_id: sprint.id, days: 1 };
+  },
   // 呼ぶたびに、前の呼び出しの進行中のスプリントを閉じ、ゴールのない進行中のスプリントを作る（終えたスプリントは続けて終えられないため）
   'sprint-close': async (target) => {
     await closeActiveSprints(target);

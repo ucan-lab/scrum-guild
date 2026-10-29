@@ -10,6 +10,8 @@
   import Markdown from '../../../../../lib/components/Markdown.svelte';
   import PageHead from '../../../../../lib/components/PageHead.svelte';
   import SprintCard from '../../../../../lib/components/SprintCard.svelte';
+  import SprintDialog from '../../../../../lib/components/SprintDialog.svelte';
+  import SprintExtendDialog from '../../../../../lib/components/SprintExtendDialog.svelte';
   import SprintCloseDialog from '../../../../../lib/components/SprintCloseDialog.svelte';
   import SprintOverdueNotice from '../../../../../lib/components/SprintOverdueNotice.svelte';
   import { focusPageHeading } from '../../../../../lib/focus-heading.ts';
@@ -55,6 +57,8 @@
   const sprint = $derived(board?.sprint ?? null);
   // 日付は YYYY-MM-DD なので、文字列の比較が日付の前後と一致する。終了したワークスペースでは、誰も終えられないので促さない
   const overdue = $derived(!isClosed && sprint !== null && board !== null && board.today > sprint.end_on);
+  let editDialog = $state<ReturnType<typeof SprintDialog>>();
+  let extendDialog = $state<ReturnType<typeof SprintExtendDialog>>();
   let closeDialog = $state<ReturnType<typeof SprintCloseDialog>>();
   const sprintHref = $derived(
     resolve('/[slug]/w/[id]/sprint', { slug: page.params.slug ?? '', id: page.params.id ?? '' }),
@@ -405,6 +409,12 @@
     >
       {#snippet actions()}
         {#if canLead}
+          <button class="btn" type="button" onclick={(event) => editDialog?.show(event.currentTarget, sprint, sprint)}
+            >{t('sprintEditActive', { sprintGoal: t('sprintGoal') })}</button
+          >
+          <button class="btn" type="button" onclick={(event) => extendDialog?.show(event.currentTarget, sprint)}
+            >{t('sprintExtendAction')}</button
+          >
           <button
             class="btn"
             type="button"
@@ -414,6 +424,7 @@
         {/if}
       {/snippet}
     </PageHead>
+    {#if sprint.extended_days > 0}<p class="action-note">{t('sprintExtended', { days: sprint.extended_days })}</p>{/if}
     {#if overdue}
       <SprintOverdueNotice {sprint} canClose={canLead} onclose={openClose} />
     {/if}
@@ -473,6 +484,20 @@
     {/if}
   {/if}
   {#key workspace.id}
+    <SprintExtendDialog
+      bind:this={extendDialog}
+      {slug}
+      workspaceId={workspace.id}
+      onextended={() => void invalidate('app:sprint-board')}
+      ongone={() => void invalidate('app:sprint-board')}
+    />
+    <SprintDialog
+      bind:this={editDialog}
+      {slug}
+      workspaceId={workspace.id}
+      onsaved={() => void invalidate('app:sprint-board')}
+      ongone={() => void invalidate('app:sprint-board')}
+    />
     <SprintCloseDialog
       bind:this={closeDialog}
       {slug}

@@ -142,6 +142,7 @@ describe('sprint-list', () => {
         start_on: '2026-10-26',
         end_on: '2026-11-08',
         length: 14,
+        extended_days: 0,
         status: 'active',
         tasks: [],
       },
@@ -152,6 +153,7 @@ describe('sprint-list', () => {
         start_on: '2026-11-09',
         end_on: '2026-11-22',
         length: 14,
+        extended_days: 0,
         status: 'planned',
         tasks: [],
       },
@@ -375,7 +377,7 @@ describe('sprint-update', () => {
     expect((await update(target, first.id, { name: '名前だけ' })).status).toBe(200);
   });
 
-  test('始まった（進行中、終了した）スプリントは 409 の started で、何も書かない', async () => {
+  test('始まった（進行中、終了した）スプリントの期間変更は 409 の started で、何も書かない', async () => {
     const target = await createTarget();
     for (const status of ['active', 'closed'] as const) {
       const sprint = await createSprint(target.organization, target.workspace.id, {
@@ -383,7 +385,7 @@ describe('sprint-update', () => {
         start_on: status === 'active' ? '2026-10-26' : '2026-10-01',
         end_on: status === 'active' ? '2026-11-01' : '2026-10-07',
       });
-      const res = await update(target, sprint.id, { name: '直す' });
+      const res = await update(target, sprint.id, { length: 7 });
       expect(res.status, status).toBe(409);
       expect(((await res.json()) as { error: { details: unknown } }).error.details).toEqual({ reason: 'started' });
       expect(await rowOf(target, sprint.id)).toEqual(sprint);
