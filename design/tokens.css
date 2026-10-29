@@ -84,9 +84,9 @@
   /* ---- 色: ゲージとクリア報酬の段階 ---- */
   --color-gauge: #e1e5ea;
   --color-gauge-tick: var(--color-bg);
-  --color-tier-small: #66717d;
-  --color-tier-medium: #1f5bd8;
-  --color-tier-large: #8a5a00;
+  --color-tier-small: #843312;  /* 銅。段階の印は地を持たないので、地になりうる色（bg、surface、sunken、rule、accent-soft）すべてに 4.5:1 を取る。赤緑の色覚でも金と分かれるよう、金より暗くする */
+  --color-tier-medium: #5b646d; /* 銀。操作の色の青と分けるため青みを抑える */
+  --color-tier-large: #6e6400;  /* 金。経験値の色と見分けるため黄みに振る */
 
   /* ---- 文字 ---- */
   --font-display: var(--family-gothic);   /* 画面と節の見出し */
@@ -130,9 +130,9 @@
     --color-ok: #6fcf8a;
     --color-ok-soft: #1b3324;
     --color-gauge: #2b3139;
-    --color-tier-small: #9da5ae;
-    --color-tier-medium: #7ea6ff;
-    --color-tier-large: #e3b341;
+    --color-tier-small: #e0916a;
+    --color-tier-medium: #aab3bd;
+    --color-tier-large: #f2dc6a;
     --shadow-sheet: 0 1px 2px rgb(0 0 0 / 0.4);
     --shadow-float: 0 12px 32px -12px rgb(0 0 0 / 0.7);
     color-scheme: dark;
@@ -160,9 +160,9 @@
   --color-ok: #6fcf8a;
   --color-ok-soft: #1b3324;
   --color-gauge: #2b3139;
-  --color-tier-small: #9da5ae;
-  --color-tier-medium: #7ea6ff;
-  --color-tier-large: #e3b341;
+  --color-tier-small: #e0916a;
+  --color-tier-medium: #aab3bd;
+  --color-tier-large: #f2dc6a;
   --shadow-sheet: 0 1px 2px rgb(0 0 0 / 0.4);
   --shadow-float: 0 12px 32px -12px rgb(0 0 0 / 0.7);
   color-scheme: dark;
@@ -192,9 +192,9 @@
   --color-ok: #2d6a3a;
   --color-ok-soft: #e1efe3;
   --color-gauge: #dde2e4;
-  --color-tier-small: #626e7b;
-  --color-tier-medium: #2f5f9e;
-  --color-tier-large: #8a6418;
+  --color-tier-small: #843210;
+  --color-tier-medium: #59626b;
+  --color-tier-large: #6b6500;
 
   --font-display: var(--family-mincho);
   --font-stat: var(--family-tech);
@@ -231,9 +231,9 @@
   --color-ok: #5ee6a8;
   --color-ok-soft: #0f2e25;
   --color-gauge: #12233a;
-  --color-tier-small: #8ea6c0;
-  --color-tier-medium: #4cc8ff;
-  --color-tier-large: #b69cff;
+  --color-tier-small: #f0915f;
+  --color-tier-medium: #a3afbd;
+  --color-tier-large: #ecc9b0;  /* 紫に寄せた淡い金。色相が銅に近づくので、銅より淡く、銀より明るくして明るさで分ける */
 
   --font-display: var(--family-tech-gothic);
   --font-stat: var(--family-tech);
