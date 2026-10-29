@@ -1010,3 +1010,103 @@ describe('review-budget.mjs（崩す手口の追加）', () => {
     assert.ok(isAllow(call(repo, 'code-reviewer', T0)), '状態が読めるまま');
   });
 });
+
+// ---- 崩す手口の追加（Issue #488: falsification-qa を巡に数える）----
+describe('falsification-qa を数える（崩す手口、Issue #488）', () => {
+  const repoRoot = path.resolve(hooks, '../..');
+  const tmp = realpathSync(mkdtempSync(path.join(os.tmpdir(), 'review-budget-fqa-')));
+  after(() => rmSync(tmp, { recursive: true, force: true }));
+  const cleanEnv = Object.fromEntries(
+    Object.entries(process.env).filter(([key]) => !key.startsWith('GIT_') && key !== 'REVIEW_BUDGET_NOW' && key !== 'CLAUDE_CODE_REMOTE'),
+  );
+  const git = (args, cwd) => {
+    const r = spawnSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@example.com', '-c', 'commit.gpgsign=false', ...args], {
+      cwd,
+      encoding: 'utf8',
+      env: cleanEnv,
+    });
+    assert.equal(r.status, 0, `git ${args.join(' ')}: ${r.stderr}`);
+    return r.stdout.trim();
+  };
+  let n = 0;
+  const makeRepo = () => {
+    const dir = path.join(tmp, `r${++n}`);
+    mkdirSync(dir);
+    git(['init', '-q', '-b', 'trunk'], dir);
+    git(['commit', '-q', '--allow-empty', '-m', 'init'], dir);
+    return dir;
+  };
+  const MIN = 60_000;
+  const envAt = (now) => ({ ...cleanEnv, REVIEW_BUDGET_NOW: String(now) });
+  const inputOf = (cwd, agent) => JSON.stringify({ tool_name: 'Agent', cwd, tool_input: { subagent_type: agent, description: 'd', prompt: 'p' } });
+  const call = (cwd, agent, now) => spawnSync(process.execPath, [script], { input: inputOf(cwd, agent), cwd, encoding: 'utf8', env: envAt(now) });
+  const callAsync = (cwd, agent, now) =>
+    new Promise((resolve) => {
+      const child = spawn(process.execPath, [script], { cwd, env: envAt(now) });
+      let stdout = '';
+      let stderr = '';
+      child.stdout.on('data', (d) => (stdout += d));
+      child.stderr.on('data', (d) => (stderr += d));
+      child.on('close', (status) => resolve({ agent, status, stdout, stderr }));
+      child.stdin.end(inputOf(cwd, agent));
+    });
+  const stateFile = (repo) =>
+    path.join(git(['rev-parse', '--path-format=absolute', '--git-common-dir'], repo), 'review-budget', `${rules.branchFileName('trunk')}.json`);
+  const isDeny = (r) => r.status === 0 && r.stdout.includes('"deny"');
+  const isAllow = (r) => r.status === 0 && r.stdout.trim() === '';
+  // done-check と docs の「レビューのエージェント（`a`、`b`…）」の列挙を取り出す
+  const listedAgents = (text, label) => {
+    const m = text.match(new RegExp(`${label}（([^）]*)）`));
+    assert.ok(m, `${label} の列挙が見つからない`);
+    return [...m[1].matchAll(/`([^`]+)`/g)].map((x) => x[1]).sort();
+  };
+  const agentName = (file) => readFileSync(file, 'utf8').match(/^name:\s*(.+?)\s*$/m)?.[1];
+
+  test('.claude/agents/ の定義のうち finding-verifier 以外はすべて数え、数える名前はすべて定義がある', () => {
+    // フックは subagent_type の完全一致で数え、subagent_type は定義の name で決まる。ずれると素通りする
+    const dir = path.join(repoRoot, '.claude/agents');
+    const names = readdirSync(dir)
+      .filter((f) => f.endsWith('.md'))
+      .map((f) => agentName(path.join(dir, f)));
+    assert.deepEqual(names.filter((x) => x !== 'finding-verifier').sort(), [...REVIEW_AGENTS].sort());
+  });
+  test('done-check と docs/development.md の対象の列挙が REVIEW_AGENTS と一致する', () => {
+    const skill = readFileSync(path.join(repoRoot, '.claude/skills/done-check/SKILL.md'), 'utf8');
+    const docs = readFileSync(path.join(repoRoot, 'docs/development.md'), 'utf8');
+    assert.deepEqual(listedAgents(skill, 'レビューのエージェント'), [...REVIEW_AGENTS].sort());
+    assert.deepEqual(listedAgents(docs, '`done-check` のレビューのエージェント'), [...REVIEW_AGENTS].sort());
+  });
+  test('既存の状態（延長の記録あり）に falsification-qa の新しい巡を足しても、extra と extensions を保つ', () => {
+    const repo = makeRepo();
+    const file = stateFile(repo);
+    mkdirSync(path.dirname(file), { recursive: true });
+    const ext = [{ rounds: 1, reason: '前の延長', at: T0 - MIN }];
+    writeFileSync(file, JSON.stringify({ starts: [T0, T0 + 10 * MIN], extra: 1, extensions: ext }));
+    assert.ok(isAllow(call(repo, 'falsification-qa', T0 + 20 * MIN)));
+    const s = JSON.parse(readFileSync(file, 'utf8'));
+    assert.deepEqual(s.starts, [T0, T0 + 10 * MIN, T0 + 20 * MIN]);
+    assert.equal(s.extra, 1);
+    assert.deepEqual(s.extensions, ext);
+    assert.ok(isDeny(call(repo, 'falsification-qa', T0 + 30 * MIN)), '延長の分を使い切った後は拒否');
+  });
+  test('done-check の同時起動（4 体 + falsification-qa + finding-verifier + Explore）は 1 巡に数える', async () => {
+    const repo = makeRepo();
+    const agents = ['code-reviewer', 'security-reviewer', 'database-reviewer', 'ui-reviewer', 'falsification-qa', 'finding-verifier', 'Explore'];
+    const results = await Promise.all(agents.map((a, i) => callAsync(repo, a, T0 + i)));
+    for (const r of results) assert.ok(isAllow(r), `${r.agent}: ${r.status} ${r.stdout} ${r.stderr}`);
+    assert.equal(JSON.parse(readFileSync(stateFile(repo), 'utf8')).starts.length, 1);
+  });
+  test('上限に達した後の同時起動では、falsification-qa とレビューは拒否し、finding-verifier と Explore は通す', async () => {
+    const repo = makeRepo();
+    assert.ok(isAllow(call(repo, 'falsification-qa', T0)));
+    assert.ok(isAllow(call(repo, 'code-reviewer', T0 + 10 * MIN)));
+    const before = readFileSync(stateFile(repo), 'utf8');
+    const results = await Promise.all(['falsification-qa', 'code-reviewer', 'finding-verifier', 'Explore'].map((a) => callAsync(repo, a, T0 + 20 * MIN)));
+    const by = Object.fromEntries(results.map((r) => [r.agent, r]));
+    assert.ok(isDeny(by['falsification-qa']), by['falsification-qa'].stdout);
+    assert.ok(isDeny(by['code-reviewer']));
+    assert.ok(isAllow(by['finding-verifier']));
+    assert.ok(isAllow(by.Explore));
+    assert.equal(readFileSync(stateFile(repo), 'utf8'), before);
+  });
+});
