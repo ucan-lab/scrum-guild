@@ -58,3 +58,6 @@ export const icons = {
 } as const;
 
 export type IconName = keyof typeof icons;
+
+// アイコンの色。xp は経験値の色（.ico.is-xp）で、ゲームの物の経験値（crystal）とレベル（crest）に使う。kit.js の icon の tone と同じ
+export type IconTone = 'xp';

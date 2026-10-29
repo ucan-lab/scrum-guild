@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { Snippet } from 'svelte';
-  import type { IconName } from '../icons.ts';
+  import type { IconName, IconTone } from '../icons.ts';
   import Icon from './Icon.svelte';
 
   // kit.js の emptyState。何が出る場所かと、次に何をすればよいかを書く。actions は押す操作。
@@ -11,7 +11,7 @@
     title,
     text,
     actions,
-  }: { icon: IconName; iconTone?: 'xp'; title: string; text?: string; actions?: Snippet } = $props();
+  }: { icon: IconName; iconTone?: IconTone; title: string; text?: string; actions?: Snippet } = $props();
 </script>
 
 <div class="empty">
