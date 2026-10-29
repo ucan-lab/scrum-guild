@@ -150,6 +150,8 @@
       );
       if (mine !== generation) return;
       if (result.ok) {
+        // 前の 404 で閉じたときの読み直しを残していれば外す（onassigned を二重に呼ばない）
+        reloadOnClose = null;
         open = false;
         showToast(t(result.data.changed ? 'epicAssigned' : 'epicAssignAlready', words), 'check');
         onassigned();
@@ -189,7 +191,21 @@
     }
   }
 
-  const status = $derived(submitting ? t('epicAssignSubmitting') : '');
+  // 欄の説明。読み直している間（もう一度試すを押した後も）は読み込み中の文を出す
+  const hint = $derived(
+    loading
+      ? t('loading')
+      : loadFailed
+        ? t('epicAssignCandidatesFailed')
+        : candidates.length === 0
+          ? t('epicAssignNoCandidates', { workspace: t('workspace'), party: t('party') })
+          : t('epicAssignHint', { workspace: t('workspace'), party: t('party') }),
+  );
+  // 常に置いた読み上げの領域の文字。送っている間、読んでいる間、読めなかったとき、候補が無いときだけ入れる
+  // （docs/design.md の「読み上げの領域は常に置き、文字だけを替える」）
+  const status = $derived(
+    submitting ? t('epicAssignSubmitting') : loading || loadFailed || candidates.length === 0 ? hint : '',
+  );
 </script>
 
 <Dialog bind:this={dialog} bind:open dismissible={!submitting} title={t('epicPageAssign', { party: t('party') })}>
@@ -210,20 +226,8 @@
             <option value={candidate.id}>{candidate.name}</option>
           {/each}
         </select>
-        <!-- 欄の説明。読んでいる間と候補が無いときは role="status"、読めなかったときは role="alert" で読み上げる -->
-        {#if loading && !loadFailed}
-          <span class="field-hint" id={hintId} role="status">{t('loading')}</span>
-        {:else if loadFailed}
-          <span class="field-hint" id={hintId} role="alert">{t('epicAssignCandidatesFailed')}</span>
-        {:else if candidates.length === 0}
-          <span class="field-hint" id={hintId} role="status"
-            >{t('epicAssignNoCandidates', { workspace: t('workspace'), party: t('party') })}</span
-          >
-        {:else}
-          <span class="field-hint" id={hintId}
-            >{t('epicAssignHint', { workspace: t('workspace'), party: t('party') })}</span
-          >
-        {/if}
+        <!-- 欄の説明。読み上げには、下の常に置いた role="status" の領域で同じ文を伝える -->
+        <span class="field-hint" id={hintId}>{hint}</span>
         {#if loadFailed}
           <div class="form-actions">
             <button class="btn is-sm is-quiet" type="button" aria-disabled={loading} onclick={() => void retry()}>

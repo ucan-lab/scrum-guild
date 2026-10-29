@@ -168,9 +168,11 @@ test('ゲームの言葉: 受注して討伐隊に加わり、抜けられる。
   await expect(party.locator('.party-list > li')).toHaveCount(1);
   await expect(party.getByRole('button', { name: '討伐隊を抜ける' })).toBeVisible();
 
-  // 全員が討伐隊にいれば、候補が無いことを出し、「割り振る」は押せない
+  // 全員が討伐隊にいれば、候補が無いことを欄の説明に出し、常に置いた読み上げの領域にも同じ文を入れる。「割り振る」は押せない
   await opener.click();
-  await expect(dialog.getByText('割り振れる人がいません。パーティの全員が討伐隊にいます。')).toBeVisible();
+  const noCandidates = '割り振れる人がいません。パーティの全員が討伐隊にいます。';
+  await expect(dialog.locator('.field-hint')).toHaveText(noCandidates);
+  await expect(dialog.getByRole('status')).toHaveText(noCandidates);
   await expect(dialog.getByRole('button', { name: '割り振る' })).toHaveAttribute('aria-disabled', 'true');
   await dialog.getByRole('button', { name: 'やめる' }).click();
   await expect(dialog).toBeHidden();
