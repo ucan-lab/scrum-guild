@@ -123,6 +123,7 @@ PR の本文では、タスクもストーリーもエピックも `Refs #<番�
 - done-check が通っていて、Step 4 の承認が要らない。承認が要るときは、承認の前に PR を作らない
 - GraphQL が使える（`gh api graphql -f query='{ viewer { login } }'` が 403 で落ちない）。ドラフトを外す `markPullRequestReadyForReview` が GraphQL にしか無いため。使えない（クラウド）ときは飛ばし、Step 5-A で本文の入ったドラフトでない PR を作る
 - スタック PR でない（`gh stack submit` が先に作っている。[stack.md](stack.md)）
+- 差分で画面の見た目か挙動が変わるなら、変えた画面と状態を開く e2e のテストが差分にある（Step 3 の「本文」の確かめを、ここで先に行う）。無ければ、作る前に `done-check` の手順 5 に戻って足す（理由: 作った後に足して push すると、先に走らせた CI が取り消されて走り直す）
 
 タイトルは Step 3 の「タイトル」の決め方で先に決める。作る直前に、Step 4 と同じくベースの最新に乗っているかを `git fetch origin` で確かめ、遅れていれば `sync-base` で取り込む。
 
