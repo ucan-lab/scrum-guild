@@ -29,7 +29,8 @@ async function addTask(page: Page, title: string, options: { assignee?: string; 
   await expect(dialog).toBeHidden();
 }
 
-// 作った後は、木の読み直しが返るまで待つ。読み直しの load の最中に次の操作を送ると、開発時に window_fetch_in_load の警告が出る（#393）
+// 作った後は、木の読み直しが返るまで待つ。読み直しで木が替わると、画面は画面だけで足したタスクと並べ替えを捨てる（+page.svelte）。
+// 返る前に次のタスクを足すか並べ替えると、それが遅れて届いた読み直しで消えうる
 async function create(page: Page, label: string, title: string): Promise<void> {
   await page.getByRole('button', { name: label }).click();
   const dialog = page.getByRole('dialog', { name: label });
