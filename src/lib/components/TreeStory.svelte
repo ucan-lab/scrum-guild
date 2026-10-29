@@ -266,8 +266,22 @@
     {#each tasks as task (task.id)}
       {@render row(task)}
     {/each}
-    {#if story.completed_task_count > 0 && completedContext !== undefined}
-      <CompletedTasks {...completedContext} storyId={story.id} count={story.completed_task_count} {dnd} {tailRow} />
+    {#if story.completed_task_count > 0}
+      {#if completedContext !== undefined}
+        <CompletedTasks
+          {...completedContext}
+          storyId={story.id}
+          storyTitle={story.title}
+          count={story.completed_task_count}
+          {dnd}
+          {tailRow}
+        />
+      {:else}
+        <!-- 絞り込み中は開く操作を出さず、件数の1行だけにする -->
+        <p class="tree-folded" data-drop={dnd?.markOf(tailRow)} {@attach dnd?.target(tailRow)}>
+          {t('storyFolded', { done: t('done'), count: story.completed_task_count })}
+        </p>
+      {/if}
     {:else if tasks.length === 0}
       <p class="tree-folded" data-drop={dnd?.markOf(tailRow)} {@attach dnd?.target(tailRow)}>
         {t('storyNoTasks', { task: t('task') })}

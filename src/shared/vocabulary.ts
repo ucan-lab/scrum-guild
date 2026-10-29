@@ -213,12 +213,19 @@ export const dictionary = defineDictionary({
     '終了した{workspace}には、{task}を作れません。',
     '終了した{workspace}には、{task}を作れません。',
   ),
-  // 完了にした親のないタスクの件数。行は返さず、件数の1行にする。完了にした行は、読み直すまでこの件数に入らない
+  // 完了の折りたたみを開いた状態の文言。閉じた状態の文言は、親のないタスクが backlogFolded、ストーリーの配下が storyFolded
   completedCollapse: workspace('{done} {count} 件を閉じる', '{done} {count} 件を閉じる'),
   completedRootCollapse: workspace('親のない{done} {count} 件を閉じる', '親のない{done} {count} 件を閉じる'),
+  // ストーリーの配下の開閉のボタンの読み上げの名前。見える文言（{label}）を含め、どのストーリーのものかを添える
+  completedToggleLabel: workspace('{label}（{title}）', '{label}（{title}）'),
+  // 開いた一覧（role="group"）の名前
+  completedRootListLabel: workspace('親のない{done}した{task}', '親のない{done}した{task}'),
+  completedListLabel: workspace('{title}の{done}した{task}', '{title}の{done}した{task}'),
   completedMore: workspace('さらに見る', 'さらに見る'),
-  completedDate: workspace('完了した日: {date}', '完了した日: {date}'),
-  completedEmpty: workspace('完了したクエストはありません', '完了したタスクはありません'),
+  // 完了した行の日付の前に付ける語。日付そのもの（formatLocalDate）は画面が等幅で続ける
+  completedDate: workspace('{done}した日', '{done}した日'),
+  completedEmpty: workspace('{done}した{task}はありません', '{done}した{task}はありません'),
+  // 完了にした親のないタスクの件数。行は返さず、件数の1行にする。完了にした行は、読み直すまでこの件数に入らない
   backlogFolded: workspace(
     '親のない{done} {count} 件を折りたたんでいます',
     '親のない{done} {count} 件を折りたたんでいます',

@@ -101,7 +101,7 @@ SQ.mount("backlog", () => {
       ${treeEpic("e2", { order: { last: true } })}
       ${treeStory("s4", true, { order: { first: true, last: true, parent: true } })}
       <div>${rootTasks.map((x, i) => entry(x, { showAssignee: true, showSprint: true, order: { first: i === 0, last: i === rootTasks.length - 1, parent: true } })).join("")}
-        ${rootDone ? SQ.completedTasks("root", SQ.tasksWhere(x => x.ws === "wa" && !x.story && x.doneAt), true) : ""}</div>
+        ${rootDone ? SQ.completedTasks("root", SQ.tasksWhere(x => x.ws === "wa" && !x.story && x.doneAt), { root: true }) : ""}</div>
     </div>
     </section>`;
 });

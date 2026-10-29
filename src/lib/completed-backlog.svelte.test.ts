@@ -124,3 +124,16 @@ test('閉じて開き直すと先頭20件から読む', async () => {
   await list.refresh();
   expect(read).toHaveBeenLastCalledWith({ limit: 20 });
 });
+
+test('retryAppends は、直近の読み取りが続きの追加かを示す（再試行の後のフォーカスの先を決める）', async () => {
+  const read = vi
+    .fn()
+    .mockResolvedValueOnce(ok(rows(20), cursor))
+    .mockResolvedValueOnce({ ok: false, status: 0, error: null });
+  const list = new CompletedBacklog(read);
+  await list.refresh();
+  expect(list.retryAppends).toBe(false);
+  await list.more();
+  expect(list.failed).toBe(true);
+  expect(list.retryAppends).toBe(true);
+});

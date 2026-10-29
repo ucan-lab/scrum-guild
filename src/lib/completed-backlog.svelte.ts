@@ -11,6 +11,8 @@ export class CompletedBacklog {
   next = $state<Output['next']>(null);
   loading = $state(false);
   failed = $state(false);
+  // 直近の読み取りが続きの追加か（真なら、読めた行は今の一覧の後ろに並ぶ。偽なら先頭から置き換わる）。再試行の後のフォーカスの先に使う
+  retryAppends = false;
   private generation = 0;
   private retryRead: () => Promise<void> = async () => {};
 
@@ -46,6 +48,7 @@ export class CompletedBacklog {
     this.loading = true;
     this.failed = false;
     this.retryRead = () => this.load(count, append);
+    this.retryAppends = append;
     let tasks: Output['tasks'] = [];
     let next = append ? this.next : null;
     do {

@@ -1,8 +1,12 @@
+import { env } from 'cloudflare:workers';
 import { describe, expect, test } from 'vitest';
 import { backlogCompletedTasks } from '../src/shared/operations/task/index.ts';
 import type { OutputOf } from '../src/shared/operations/define.ts';
 import { createApp } from '../src/server/app.ts';
+import { orgDb } from '../src/server/db/index.ts';
+import { queryPlanForTest, runStatementsForTest } from '../src/server/db/testing.ts';
 import { implementedOperations } from '../src/server/operations/index.ts';
+import { completedTasksStatement } from '../src/server/operations/backlog-completed-tasks.ts';
 import { AT, createStory, createTask, createUser, createMembership, uuidv7 } from './factories.ts';
 import { post } from './operations/harness.ts';
 import { createTarget, type Target } from './operations/world.ts';
@@ -71,7 +75,7 @@ describe('backlog-completed-tasks', () => {
         title: root.title,
         points: 3,
         completed_at: AT,
-        assignee: { id: former.id, name: expect.any(String) },
+        assignee: { id: former.id, name: '離脱した担い手' },
       },
     ]);
     expect((await body(target, { story_id: story.id })).tasks).toEqual([
@@ -89,6 +93,50 @@ describe('backlog-completed-tasks', () => {
     });
     for (const story_id of [uuidv7(), foreign.id, elsewhere.id, deleted.id])
       expect((await read(target, { story_id })).status).toBe(404);
+  });
+
+  test.each([
+    ['ちょうど limit 件', 20, {}, null],
+    ['limit + 1 件', 21, {}, 'cursor'],
+    ['limit 1 で該当が1件', 1, { limit: 1 }, null],
+    ['limit 1 で該当が2件', 2, { limit: 1 }, 'cursor'],
+  ] as const)('%s のとき next は期待どおり', async (_name, count, input, next) => {
+    const target = await createTarget();
+    for (let i = 0; i < count; i++)
+      await createTask(target.organization, target.workspace.id, target.admin.userId!, {
+        completed_at: AT,
+        completed_by: target.admin.userId,
+      });
+    const output = await body(target, input);
+    if (next === null) expect(output.next).toBeNull();
+    else expect(output.next).toEqual({ completed_at: output.tasks.at(-1)!.completed_at, id: output.tasks.at(-1)!.id });
+  });
+
+  test('ANALYZE の後も、親なしは tasks_workspace_tray、ストーリーの配下は tasks_story で引く', async () => {
+    const target = await createTarget();
+    const owner = target.admin.userId!;
+    // ストーリーごとの行が少なく、親なしの行が多い形。ANALYZE の後、tasks_story の統計は story_id の NULL を別々の値と数える
+    const stories = [];
+    for (let i = 0; i < 30; i++) stories.push(await createStory(target.organization, target.workspace.id, owner));
+    const story = stories[0]!;
+    const done = { completed_at: AT, completed_by: owner };
+    for (let i = 0; i < 30; i++) await createTask(target.organization, target.workspace.id, owner, done);
+    for (const parent of stories) {
+      await createTask(target.organization, target.workspace.id, owner, { ...done, story_id: parent.id });
+      await createTask(target.organization, target.workspace.id, owner, { story_id: parent.id });
+    }
+    await runStatementsForTest(env, ['ANALYZE']);
+    const db = orgDb(env, target.organization.verified);
+    const rootPlan = (
+      await queryPlanForTest(env, completedTasksStatement(db, target.workspace.id, null, undefined, 20))
+    ).join('\n');
+    expect(rootPlan).toMatch(/USING INDEX tasks_workspace_tray/);
+    expect(rootPlan).not.toContain('tasks_story');
+    const storyPlan = (
+      await queryPlanForTest(env, completedTasksStatement(db, target.workspace.id, story.id, undefined, 20))
+    ).join('\n');
+    expect(storyPlan).toMatch(/USING INDEX tasks_story \(story_id=\?\)/);
+    expect(storyPlan).not.toContain('tasks_workspace_tray');
   });
 
   test('閉じたワークスペースでも読める。空ならnextはnull', async () => {
