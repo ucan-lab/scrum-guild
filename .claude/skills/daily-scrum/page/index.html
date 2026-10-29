@@ -206,6 +206,7 @@ import {
   areasOf,
   backlogTree,
   daysLeft,
+  displayState,
   featurePhase,
   featureState,
   incrementView,
@@ -232,7 +233,9 @@ const STATE_LABELS = {
   wip: '作業中',
   refining: '整理中',
   todo: '着手できる',
+  blocked: '待ち',
 };
+const stateChip = (issue) => chip(displayState(issue), STATE_LABELS[displayState(issue)]);
 const LEVEL_LABELS = { epic: 'エピック', story: 'ストーリー', task: 'タスク' };
 const FEATURE_CHIP = { done: 'done', active: 'wip', idle: 'todo', none: 'plan' };
 
@@ -444,7 +447,7 @@ function nodeSummary(node) {
   return [
     issueLink(issue.number),
     el('span', { class: 'tag level' }, LEVEL_LABELS[issue.level]),
-    chip(issue.s, STATE_LABELS[issue.s]),
+    stateChip(issue),
     el('span', { class: 'title' }, issue.title),
     el('span', { class: 'sum' }, totalsText(node.totals)),
   ];
@@ -456,7 +459,7 @@ function leafRow(node) {
     'div',
     { class: 'leaf' },
     issueLink(issue.number),
-    chip(issue.s, STATE_LABELS[issue.s]),
+    stateChip(issue),
     el('span', { class: 'title' }, issue.title),
     areaTags(issue.areas),
     issue.waitingOn.length > 0 ? waitMark(issue.waitingOn) : null,

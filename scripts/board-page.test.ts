@@ -5,6 +5,7 @@ import {
   areasOf,
   backlogTree,
   daysLeft,
+  displayState,
   featurePhase,
   featureState,
   incrementView,
@@ -200,6 +201,18 @@ describe('sprintColumns', () => {
     const all = columns.flatMap((c) => c.issues.map((i) => i.number));
     assert.equal(all.includes(8), false);
     assert.equal(all.includes(9), false);
+  });
+});
+
+describe('displayState', () => {
+  test('待ちのある todo は blocked にし、「着手できる」の印を出さない', () => {
+    assert.equal(displayState(card(1, { waitingOn: [2] })), 'blocked');
+  });
+
+  test('待ちの無い todo と、todo 以外はそのまま', () => {
+    assert.equal(displayState(card(1)), 'todo');
+    assert.equal(displayState(card(1, { s: 'wip', waitingOn: [2] })), 'wip');
+    assert.equal(displayState(card(1, { s: 'done' })), 'done');
   });
 });
 

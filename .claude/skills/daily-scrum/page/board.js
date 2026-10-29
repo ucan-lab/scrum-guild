@@ -89,6 +89,13 @@ export function sprintPhase(sprint, asOf) {
 
 const byNumber = (/** @type {BoardIssue} */ a, /** @type {BoardIssue} */ b) => a.number - b.number;
 
+/**
+ * 印に出す状態。前に要るものを待つ todo は、着手できないので blocked（待ち）にする
+ * @param {BoardIssue} issue
+ * @returns {State | 'blocked'}
+ */
+export const displayState = (issue) => (issue.s === 'todo' && issue.waitingOn.length > 0 ? 'blocked' : issue.s);
+
 /** @type {{ key: string, label: string, states: State[] }[]} */
 const COLUMNS = [
   { key: 'todo', label: '着手できる', states: ['todo'] },
