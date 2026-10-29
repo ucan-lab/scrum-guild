@@ -89,6 +89,7 @@ test('ログインの画面の戻る先（return_to）があれば、パスワ�
   await expect(page.getByRole('heading', { level: 1, name: '自分の今日' })).toBeVisible();
   await expect(page.locator('.me')).toContainText(person.name);
   await waitForSettled(page);
+  await page.mouse.move(0, 0);
 });
 
 test('違うパスワードでは、画面を移らずに理由を出し、メールアドレスを残してパスワードを空にする', async ({ page }) => {
