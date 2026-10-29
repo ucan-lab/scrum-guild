@@ -84,9 +84,9 @@
   /* ---- 色: ゲージとクリア報酬の段階 ---- */
   --color-gauge: #e1e5ea;
   --color-gauge-tick: var(--color-bg);
-  --color-tier-small: #66717d;
-  --color-tier-medium: #1f5bd8;
-  --color-tier-large: #8a5a00;
+  --color-tier-small: #9a4a24;  /* 銅。段階の印は地を持たないので、bg と surface の両方に 4.5:1 を取る */
+  --color-tier-medium: #626b74; /* 銀。操作の色の青と分けるため青みを抑える */
+  --color-tier-large: #806000;  /* 金 */
 
   /* ---- 文字 ---- */
   --font-display: var(--family-gothic);   /* 画面と節の見出し */
@@ -130,9 +130,9 @@
     --color-ok: #6fcf8a;
     --color-ok-soft: #1b3324;
     --color-gauge: #2b3139;
-    --color-tier-small: #9da5ae;
-    --color-tier-medium: #7ea6ff;
-    --color-tier-large: #e3b341;
+    --color-tier-small: #e0916a;
+    --color-tier-medium: #c3cbd3;
+    --color-tier-large: #e8c25a;
     --shadow-sheet: 0 1px 2px rgb(0 0 0 / 0.4);
     --shadow-float: 0 12px 32px -12px rgb(0 0 0 / 0.7);
     color-scheme: dark;
@@ -160,9 +160,9 @@
   --color-ok: #6fcf8a;
   --color-ok-soft: #1b3324;
   --color-gauge: #2b3139;
-  --color-tier-small: #9da5ae;
-  --color-tier-medium: #7ea6ff;
-  --color-tier-large: #e3b341;
+  --color-tier-small: #e0916a;
+  --color-tier-medium: #c3cbd3;
+  --color-tier-large: #e8c25a;
   --shadow-sheet: 0 1px 2px rgb(0 0 0 / 0.4);
   --shadow-float: 0 12px 32px -12px rgb(0 0 0 / 0.7);
   color-scheme: dark;
@@ -192,9 +192,9 @@
   --color-ok: #2d6a3a;
   --color-ok-soft: #e1efe3;
   --color-gauge: #dde2e4;
-  --color-tier-small: #626e7b;
-  --color-tier-medium: #2f5f9e;
-  --color-tier-large: #8a6418;
+  --color-tier-small: #a04c20;
+  --color-tier-medium: #626b74;
+  --color-tier-large: #7f6110;
 
   --font-display: var(--family-mincho);
   --font-stat: var(--family-tech);
@@ -231,9 +231,9 @@
   --color-ok: #5ee6a8;
   --color-ok-soft: #0f2e25;
   --color-gauge: #12233a;
-  --color-tier-small: #8ea6c0;
-  --color-tier-medium: #4cc8ff;
-  --color-tier-large: #b69cff;
+  --color-tier-small: #f0915f;
+  --color-tier-medium: #c3ccd6;
+  --color-tier-large: #e9c2b6;  /* 紫に寄せた金。色相が銅に近づくので、淡くして明るさで銅と分ける */
 
   --font-display: var(--family-tech-gothic);
   --font-stat: var(--family-tech);
