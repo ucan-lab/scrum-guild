@@ -172,7 +172,8 @@ test('ゲームの言葉: 受注して討伐隊に加わり、抜けられる。
   await opener.click();
   const noCandidates = '割り振れる人がいません。パーティの全員が討伐隊にいます。';
   await expect(dialog.locator('.field-hint')).toHaveText(noCandidates);
-  await expect(dialog.getByRole('status')).toHaveText(noCandidates);
+  // 前の割り振りのトースト（role="status"）がまだ残っていることがあるので、文で絞る
+  await expect(dialog.getByRole('status').filter({ hasText: noCandidates })).toHaveCount(1);
   await expect(dialog.getByRole('button', { name: '割り振る' })).toHaveAttribute('aria-disabled', 'true');
   await dialog.getByRole('button', { name: 'やめる' }).click();
   await expect(dialog).toBeHidden();
