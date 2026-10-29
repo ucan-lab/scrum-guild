@@ -12,8 +12,9 @@ const SCHEME = 'pbkdf2-sha256';
 const SALT_BYTES = 16;
 const KEY_BYTES = 32;
 const BASE64URL = /^[A-Za-z0-9_-]+$/;
-// 保存値に書かれた回数の上限。壊れた値や細工した値で、照合に際限なく時間を掛けさせない
-const MAX_STORED_ITERATIONS = 10_000_000;
+// 保存値に書かれた回数の上限。今の回数を超える値は書かないので、壊れた値として扱う（本番の Workers は 100,000 を
+// 超える回数を断り、照合が例外の 500 になると、無いメールアドレスの 401 と見分けられるため）
+const MAX_STORED_ITERATIONS = PASSWORD_HASH_ITERATIONS;
 
 function base64url(bytes: Uint8Array): string {
   return btoa(String.fromCharCode(...bytes))
@@ -70,12 +71,12 @@ export async function hashPassword(password: string, iterations: number = PASSWO
   return `${SCHEME}$${iterations}$${base64url(salt)}$${base64url(key)}`;
 }
 
-// 保存値の回数で1回回し、鍵を timingSafeEqual で比べる。形の壊れた保存値は回さずに false。
+// 保存値の回数で1回回し、鍵を timingSafeEqual で比べる。形の壊れた保存値は、無いメールアドレスと同じだけ回して false。
 // 保存値の回数が今の回数より少ない（成功時に書き直す前の）人は、足りない分を捨てる値で回し、合計を今の回数にそろえる。
 // 違うパスワードの応答が、無いメールアドレス（verifyDummyPassword）より速く返って、有無が分からないようにするため
 export async function verifyPassword(password: string, stored: string): Promise<boolean> {
   const parsed = parseHash(stored);
-  if (parsed === undefined) return false;
+  if (parsed === undefined) return verifyDummyPassword(password);
   if (parsed.iterations < PASSWORD_HASH_ITERATIONS) {
     await deriveKey(password, DUMMY_SALT, PASSWORD_HASH_ITERATIONS - parsed.iterations);
   }
