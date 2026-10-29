@@ -44,6 +44,11 @@ test('ゲームの言葉: 木のエピックの題から画面が開き、依頼
   await expect(request.locator('dd').nth(0)).not.toContainText('離脱済み');
   await expect(request.locator('.tier')).toHaveText('中 · 300 XP');
   await expect(request.locator('.tier')).toHaveClass(/is-medium/);
+  // 先頭にクリア報酬のアイコン（chest）。段階の色を受けるので is-xp は付けず、読み上げから外す
+  const rewardIcon = request.locator('.tier > svg.ico');
+  await expect(rewardIcon.locator('use')).toHaveAttribute('href', '#i-chest');
+  await expect(rewardIcon).toHaveAttribute('aria-hidden', 'true');
+  await expect(rewardIcon).not.toHaveClass(/\bis-xp\b/);
   await expect(request.locator('dd').nth(3)).toContainText('追加案件');
   await expect(request.locator('dd').nth(2)).toContainText('11/27');
 
