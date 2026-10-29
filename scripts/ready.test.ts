@@ -220,6 +220,10 @@ describe('issuesWithOpenPr', () => {
     );
   });
 
+  test('語の途中に現れた閉じる語（prefixes、hrefs）は拾わない', () => {
+    assert.deepEqual([...issuesWithOpenPr([{ head: 'x', body: 'prefixes #12 と hrefs #13', sameRepo: true }])], []);
+  });
+
   test('番号の無いブランチ名と、閉じる語の無い番号は拾わない', () => {
     assert.deepEqual([...issuesWithOpenPr([{ head: 'feature-476', body: '#15 を見た', sameRepo: true }])], []);
   });

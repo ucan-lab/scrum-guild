@@ -28,7 +28,7 @@ export type ReadyChanges = { add: number[]; remove: number[] };
 // 状態を表すラベル。付いていれば、人かセッションが詰めている・作業している・受け入れを待っているので着手の対象にしない
 const BLOCKING_STATUS_LABELS = ['status:refining', 'status:in-progress', 'status:accepting'];
 
-const PR_REFERENCE = /(?:closes|fixes|refs) #([0-9]+)/gi;
+const PR_REFERENCE = /\b(?:closes|fixes|refs) #([0-9]+)/gi;
 
 // 開いた PR が指す Issue の番号。backlog-pick と同じく、ブランチ名の先頭の <番号>- と、本文の Closes、Fixes、Refs を拾う。
 // fork の PR はブランチ名も本文も外の人が決めるので拾わない（関係の無い Issue のラベルを外させない）
