@@ -7,7 +7,7 @@ import { createHash } from 'node:crypto';
 const MAX_NAME = 150;
 const HEAD_LEN = 100;
 
-export const REVIEW_AGENTS = ['code-reviewer', 'security-reviewer', 'database-reviewer', 'ui-reviewer'];
+export const REVIEW_AGENTS = ['code-reviewer', 'security-reviewer', 'database-reviewer', 'ui-reviewer', 'falsification-qa'];
 export const WINDOW_MS = 120000;
 export const BASE_LIMIT = 2;
 

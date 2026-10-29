@@ -117,8 +117,9 @@ Issue の「確認方法」を自分で実行し、完了条件を満たすか�
 | --- | --- |
 | すべて | `code-reviewer` |
 | 認証、認可、API エンドポイントの追加や変更、外部入力を SQL、シェル、ファイル、HTML、外部 URL に渡す処理、秘密情報を含む | `security-reviewer` |
-| マイグレーション、クエリ、スキーマの変更を含む | `database-reviewer` |
+| マイグレーション、クエリ、スキーマの変更、D1 に読み書きするコード（Kysely の入口を通る呼び出しを足すか変える）を含む | `database-reviewer` |
 | 画面（`.svelte`、CSS、`design/`、言葉の辞書）の変更を含む | `ui-reviewer` |
+| コード（Markdown 以外のファイル）の変更を含む。Markdown だけの差分では呼ばない | `falsification-qa` |
 
 該当するエージェントは、1つのメッセージで同時に呼ぶ。
 
@@ -126,7 +127,7 @@ Issue の「確認方法」を自分で実行し、完了条件を満たすか�
 範囲を渡さないと、エージェントは未コミットの差分しか見ない。
 2点の `git diff <base>` と `git diff <base>..HEAD` は使わない（理由: どちらもベースの先端と比べるので、作業中にベースが進むと、ベース側の新しいコミットが逆向きの差分として混ざり、触っていない処理を消したという指摘が出る）。
 
-レビューのエージェント（`code-reviewer`、`security-reviewer`、`database-reviewer`、`ui-reviewer`）は、ブランチごとに2巡まで起動できる（フック `.claude/hooks/review-budget.mjs`。最初の起動から120秒以内の起動は同じ巡）。`finding-verifier` は数えない（理由: 指摘を反証にかけるだけで、新しい指摘を出す巡ではないため）。
+レビューのエージェント（`code-reviewer`、`security-reviewer`、`database-reviewer`、`ui-reviewer`、`falsification-qa`）は、ブランチごとに2巡まで起動できる（フック `.claude/hooks/review-budget.mjs`。最初の起動から120秒以内の起動は同じ巡）。`finding-verifier` は数えない（理由: 指摘を反証にかけるだけで、新しい指摘を出す巡ではないため）。
 起動が拒否されたら、エージェントの名前を変えて呼び直す、Skill や別の経路で同じ点検をするなどで回避しない。`AskUserQuestion` でユーザーに延長を聞き、承認されたら `node .claude/hooks/review-budget.mjs extend <巡数> --reason <理由>` を実行してから呼び直す。承認されなければ、レビューを省いた旨を出力に書いて続ける。
 
 差分が依存のバージョン指定とロックファイル（`package.json` と `package-lock.json` など）だけなら、エージェントを省いてよい。
