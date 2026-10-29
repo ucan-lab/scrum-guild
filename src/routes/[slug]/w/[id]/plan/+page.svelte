@@ -10,7 +10,9 @@
   import Icon from '../../../../../lib/components/Icon.svelte';
   import LoadFailed from '../../../../../lib/components/LoadFailed.svelte';
   import PageHead from '../../../../../lib/components/PageHead.svelte';
+  import SprintCloseDialog from '../../../../../lib/components/SprintCloseDialog.svelte';
   import SprintDialog from '../../../../../lib/components/SprintDialog.svelte';
+  import SprintOverdueNotice from '../../../../../lib/components/SprintOverdueNotice.svelte';
   import SprintStartDialog from '../../../../../lib/components/SprintStartDialog.svelte';
   import SprintTaskPicker from '../../../../../lib/components/SprintTaskPicker.svelte';
   import { focusPageHeading } from '../../../../../lib/focus-heading.ts';
@@ -40,7 +42,10 @@
   // 見出しの右の「<スプリント>を作る」と、始まる前のスプリントの「始める」「直す」「削除する」は、リーダー（管理者を含む）にだけ、
   // 終了していないワークスペースでだけ出す。作ると直すは SprintDialog、削除は確かめのダイアログ（ConfirmDialog）を通す。
   // 終わったら一覧だけを読み直す（`app:sprints`）。削除した後は、押した行が消えるので見出しへフォーカスを移す。
-  // 外した後は、行が消えるので同じスプリントの「<バックログ>から入れる」へフォーカスを移す
+  // 外した後は、行が消えるので同じスプリントの「<バックログ>から入れる」へフォーカスを移す。
+  // 最終日がワークスペースの今日より前の進行中のスプリントには、終えるのを促す警告（SprintOverdueNotice）を出す。
+  // リーダー（管理者を含む）には「終える」を添え、スプリントの画面と同じ終了のダイアログ（SprintCloseDialog）を開く。
+  // 終えたら一覧を読み直し、押した「終える」が消えるので見出しへフォーカスを移す
   let { data }: PageProps = $props();
 
   const workspace = $derived(data.workspace);
@@ -73,6 +78,7 @@
 
   let sprintDialog = $state<ReturnType<typeof SprintDialog>>();
   let startDialog = $state<ReturnType<typeof SprintStartDialog>>();
+  let closeDialog = $state<ReturnType<typeof SprintCloseDialog>>();
   let taskPicker = $state<ReturnType<typeof SprintTaskPicker>>();
   let confirmDelete = $state<ReturnType<typeof ConfirmDialog>>();
   // 削除の確かめに出すスプリントと、削除を送っている最中か
@@ -124,6 +130,18 @@
       sprint,
       plan.sprints.some((other) => other.status === 'active'),
     );
+  }
+
+  // 日付は YYYY-MM-DD なので、文字列の比較が日付の前後と一致する
+  function isOverdue(sprint: SprintSummary): boolean {
+    return plan !== null && sprint.status === 'active' && plan.today > sprint.end_on;
+  }
+
+  // 終えたら、押した「終える」が消えるので、一覧を読み直して見出しへフォーカスを移す
+  async function closed(): Promise<void> {
+    await reload();
+    await tick();
+    focusPageHeading();
   }
 
   function openPicker(event: MouseEvent, sprint: SprintSummary): void {
@@ -243,6 +261,13 @@
             <span>{t('sprintLengthDays', { length: sprint.length })}</span>
             <span>{t('sprintTasksSummary', { count: sprint.tasks.length, points: pointsOf(sprint) })}</span>
           </div>
+          {#if isOverdue(sprint)}
+            <SprintOverdueNotice
+              {sprint}
+              canClose={canLead}
+              onclose={(trigger) => closeDialog?.show(trigger, sprint)}
+            />
+          {/if}
           {#if sprint.status === 'active' && sprint.goal !== null}
             <p class="lane-goal"><span class="lane-goal-label">{t('sprintGoal')}</span>{sprint.goal}</p>
           {/if}
@@ -341,6 +366,13 @@
   {#key workspace.id}
     <SprintDialog bind:this={sprintDialog} {slug} workspaceId={workspace.id} onsaved={reload} ongone={reload} />
     <SprintStartDialog bind:this={startDialog} {slug} workspaceId={workspace.id} onstarted={started} ongone={reload} />
+    <SprintCloseDialog
+      bind:this={closeDialog}
+      {slug}
+      workspaceId={workspace.id}
+      onclosed={() => void closed()}
+      ongone={reload}
+    />
     <SprintTaskPicker bind:this={taskPicker} {slug} workspaceId={workspace.id} onadded={reload} />
   {/key}
   <ConfirmDialog

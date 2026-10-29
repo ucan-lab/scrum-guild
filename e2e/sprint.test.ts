@@ -4,14 +4,16 @@
 // 動かした位置は読み上げられ、読み直しても、別の画面でも同じで、列の移動は変更の履歴に残る。
 // 最後の完了でない列から次の列へ送ると完了になり、完了の列のカードは「戻す」で完了の前の列へ戻る。完了の列には完成の定義が出る。
 // 自分のワークスペースを作って動かす（ほかのファイルと並べて走るため、seed の行は書き換えない）。
-// 空の状態は seed のあおば開発（進行中のスプリントが無い）を開くだけ
+// 空の状態は seed のあおば開発（進行中のスプリントが無い）を開くだけ。
+// 終える流れは、リーダーが終了のダイアログで持ち越し先（次の遠征かバックログ）とゴールの達成を選んで終え、計画の画面とバックログで移ったのを見る。
+// 最終日を過ぎた知らせは、sprint-board と sprint-list の応答を差し替えて確かめる（開始は最終日が今日以降の遠征にしか出来ないため）
 import type { Page } from '@playwright/test';
-import { sprintBoard, taskColumnMove } from '../src/shared/operations/sprint/index.ts';
+import { sprintBoard, sprintClose, sprintList, taskColumnMove } from '../src/shared/operations/sprint/index.ts';
 import { taskReopen } from '../src/shared/operations/task/index.ts';
 import { expect, test } from './fixtures.ts';
 import { createWorkspace, signIn, waitForResponses, waitForSettled, watchViolations } from './helpers.ts';
 import { failOperation, mockOperation } from './operations.ts';
-import { SAMPLE_BOARD } from './sprint-fixture.ts';
+import { OVERDUE_BOARD, OVERDUE_PLAN, SAMPLE_BOARD } from './sprint-fixture.ts';
 
 test.use({ timezoneId: 'Asia/Tokyo' });
 
@@ -446,4 +448,167 @@ test('選んだカードは題を名前に、ポイントと担い手と動か�
   await expect(assigned).toHaveAccessibleDescription(/3.*担い手はミナト.*Alt と ← → で隣の行程/);
   const unassigned = page.getByRole('article', { name: '障害時の連絡手順を書く', exact: true });
   await expect(unassigned).toHaveAccessibleDescription(/未見積もり.*担い手なし/);
+});
+
+test('リーダーは遠征を終え、終わらなかったクエストを次の遠征へ、次はバックログへ持ち越し、移ったのを見る', async ({
+  page,
+  context,
+  baseURL,
+}) => {
+  // 起票から2回終えるまでを1本で確かめる長い流れ
+  test.setTimeout(120_000);
+  await signIn(context, baseURL, 'admin');
+  await createWorkspace(page, '帰還の見張り番', 'game');
+  for (const title of ['A札', 'B札', 'C札']) await addTask(page, title);
+
+  await page.getByRole('link', { name: '遠征の計画' }).click();
+  await expect(page.getByRole('heading', { level: 1, name: '遠征の計画' })).toBeVisible();
+  // 最終日が今日より前のスプリントは始められないので、遠い先の期間にする
+  await createSprint(page, '2099-03-01', '第1回');
+  await createSprint(page, '2099-03-15', '第2回');
+  await page.getByRole('button', { name: '掲示板から入れる: 遠征 第1回' }).click();
+  const picker = page.getByRole('dialog', { name: '遠征 第1回 に入れる' });
+  const list = picker.getByRole('group', { name: '入れるクエスト' });
+  for (const title of ['A札', 'B札', 'C札'])
+    await list.getByRole('checkbox', { name: new RegExp(`^${title}`) }).check();
+  await picker.getByRole('button', { name: '3 件入れる' }).click();
+  await expect(picker).toBeHidden();
+
+  // 第1回をゴールを書いて始め、スプリントの画面で A札 を完遂にする
+  await page.getByRole('button', { name: '始める: 遠征 第1回' }).click();
+  const startDialog = page.getByRole('dialog', { name: '遠征を始める' });
+  await startDialog.getByLabel('遠征の目的').fill(GOAL);
+  await startDialog.getByRole('button', { name: '始める' }).click();
+  await expect(startDialog).toBeHidden();
+  await page.getByRole('link', { name: '遠征', exact: true }).click();
+  await expect(page.getByRole('heading', { level: 1, name: '遠征 第1回' })).toBeVisible();
+  // 最終日の前なので、最終日を過ぎた知らせは出ない。見出しの右の「終える」だけがある
+  await expect(page.locator('.callout.is-warn')).toHaveCount(0);
+  await page.getByRole('button', { name: '完遂にする: A札' }).click();
+  await expect(page.getByRole('status').filter({ hasText: 'クエストを完遂にしました' })).toBeVisible();
+  await expect(titlesIn(page, '完遂')).toHaveText(['A札']);
+
+  // 終える。未完了の2件の行き先は、既定が次の遠征（第2回）で、バックログへ戻すことも選べる。ゴールがあるので達成を聞く（既定は達成した）
+  await page.getByRole('button', { name: '終える: 遠征 第1回' }).click();
+  const closeDialog = page.getByRole('dialog', { name: '遠征を終える' });
+  await expect(closeDialog).toContainText(
+    '遠征 第1回（3/1〜3/14）を終えます。終えた遠征の期間と中身は、あとから変えられません。',
+  );
+  const carry = closeDialog.getByRole('radiogroup', { name: '終わらなかったクエスト 2 件の行き先' });
+  await expect(carry.getByRole('radio')).toHaveCount(2);
+  await expect(carry.getByRole('radio', { name: /^遠征 第2回（3\/15〜3\/28）へ持ち越す/ })).toBeChecked();
+  await expect(carry.getByRole('radio', { name: /^掲示板へ戻す/ })).not.toBeChecked();
+  const goal = closeDialog.getByRole('radiogroup', { name: '遠征の目的は達成できましたか' });
+  await expect(closeDialog.locator('.props-note')).toHaveText(GOAL);
+  await expect(goal.getByRole('radio', { name: '達成した' })).toBeChecked();
+  await closeDialog.getByRole('button', { name: '終える', exact: true }).click();
+  await expect(closeDialog).toBeHidden();
+  await expect(
+    page.getByRole('status').filter({ hasText: '遠征 第1回を終えました。クエスト 2 件を遠征 第2回へ持ち越しました' }),
+  ).toBeVisible();
+  // 進行中の遠征が無い表示に戻り、フォーカスは見出しへ移る
+  await expect(page.getByRole('heading', { level: 1, name: '遠征', exact: true })).toBeFocused();
+  await expect(page.getByText('進行中の遠征はありません')).toBeVisible();
+
+  // 計画の画面では、終えた第1回は並ばず、持ち越した2件は第2回に元の順で入っている。完遂した A札 は入らない
+  await page.getByRole('link', { name: '遠征の計画', exact: true }).click();
+  await expect(page.locator('.lane-title', { hasText: '第2回' })).toBeVisible();
+  await expect(page.locator('.lane')).toHaveCount(1);
+  await expect(page.locator('.lane', { hasText: '第2回' }).locator('.lane-row a')).toHaveText(['B札', 'C札']);
+
+  // 第2回をゴールなしで始め、スプリントの画面で終える。持ち越し先の遠征が無いので、バックログへ戻すだけを出し、達成は聞かない
+  await page.getByRole('button', { name: '始める: 遠征 第2回' }).click();
+  await startDialog.getByRole('button', { name: '始める' }).click();
+  await expect(startDialog).toBeHidden();
+  await page.getByRole('link', { name: '遠征', exact: true }).click();
+  await expect(page.getByRole('heading', { level: 1, name: '遠征 第2回' })).toBeVisible();
+  await expect(titlesIn(page, '出発前')).toHaveText(['B札', 'C札']);
+  await page.getByRole('button', { name: '終える: 遠征 第2回' }).click();
+  await expect(closeDialog).toBeVisible();
+  const backlogOnly = closeDialog.getByRole('radiogroup', { name: '終わらなかったクエスト 2 件の行き先' });
+  await expect(backlogOnly.getByRole('radio')).toHaveCount(1);
+  await expect(backlogOnly.getByRole('radio', { name: /^掲示板へ戻す/ })).toBeChecked();
+  await expect(closeDialog).toContainText('持ち越せる遠征がありません。掲示板へ戻します。');
+  await expect(closeDialog.getByRole('radiogroup', { name: '遠征の目的は達成できましたか' })).toHaveCount(0);
+  await closeDialog.getByRole('button', { name: '終える', exact: true }).click();
+  await expect(closeDialog).toBeHidden();
+  await expect(
+    page.getByRole('status').filter({ hasText: '遠征 第2回を終えました。クエスト 2 件を掲示板へ戻しました' }),
+  ).toBeVisible();
+
+  // 計画の画面は空になり、掲示板では2件がどの遠征にも入っていない
+  await page.getByRole('link', { name: '遠征の計画', exact: true }).click();
+  await expect(page.getByText('まだ遠征がありません')).toBeVisible();
+  await page.getByRole('link', { name: '掲示板', exact: true }).click();
+  for (const title of ['B札', 'C札']) {
+    const entry = page.locator('.entry', { hasText: title });
+    await expect(entry).toBeVisible();
+    await expect(entry).not.toContainText('第2回');
+  }
+});
+
+test('最終日を過ぎた進行中の遠征には終えるのを促す知らせが出て、終えられるのはリーダーだけ', async ({
+  page,
+  context,
+  baseURL,
+}) => {
+  await signIn(context, baseURL, 'admin');
+  await mockOperation(page, sprintBoard, { slug: 'aoba' }, OVERDUE_BOARD);
+  await mockOperation(page, sprintList, { slug: 'aoba' }, OVERDUE_PLAN);
+  const notice = page.locator('.callout.is-warn');
+  const text = '遠征 第14回は最終日（10/26）を過ぎています。';
+
+  // スプリントの画面。見出しの下に知らせ、リーダーには「終える」を添える
+  await page.goto(`${AOBA_TEAM}/sprint`);
+  await expect(notice).toContainText(`${text}終わらなかったクエストの行き先を決めて、終えてください。`);
+  // 知らせの「終える」から、見出しの右と同じダイアログを開く。持ち越し先は最終日より後に始まる第15回
+  await notice.getByRole('button', { name: '終える: 遠征 第14回' }).click();
+  const dialog = page.getByRole('dialog', { name: '遠征を終える' });
+  const carry = dialog.getByRole('radiogroup', { name: '終わらなかったクエスト 2 件の行き先' });
+  await expect(carry.getByRole('radio', { name: /^遠征 第15回（10\/27〜11\/9）へ持ち越す/ })).toBeChecked();
+  // 別の画面で先に終えられていたら、理由を知らせてダイアログを閉じ、読み直す
+  const unroute = await failOperation(page, sprintClose, { slug: 'aoba' }, 409, 'conflict', {
+    details: { reason: 'not_active' },
+  });
+  await dialog.getByRole('button', { name: '終える', exact: true }).click();
+  await expect(dialog).toBeHidden();
+  await expect(
+    page.getByRole('status').filter({ hasText: 'この遠征は進行中ではありません（もう終わっています）。読み直します' }),
+  ).toBeVisible();
+  await unroute();
+
+  // 計画の画面。進行中の遠征のレーンに同じ知らせが出る。先の遠征には出ない
+  await page.goto(`${AOBA_TEAM}/plan`);
+  const lane = page.locator('.lane.is-active');
+  await expect(lane.locator('.callout.is-warn')).toContainText(text);
+  await expect(page.locator('.callout.is-warn')).toHaveCount(1);
+  await lane.getByRole('button', { name: '終える: 遠征 第14回' }).click();
+  await expect(dialog).toBeVisible();
+  await expect(carry).toBeVisible();
+  await dialog.getByRole('button', { name: 'やめる' }).click();
+  await expect(dialog).toBeHidden();
+});
+
+test('最終日を過ぎた知らせは、リーダーでない人には終える人を伝えるだけで、最終日の前には出ない', async ({
+  page,
+  context,
+  baseURL,
+}) => {
+  await signIn(context, baseURL, 'member');
+  await mockOperation(page, sprintBoard, { slug: 'aoba' }, OVERDUE_BOARD);
+  await mockOperation(page, sprintList, { slug: 'aoba' }, OVERDUE_PLAN);
+  await page.goto(`${AOBA_TEAM}/sprint`);
+  await expect(page.locator('.callout.is-warn')).toContainText(
+    '遠征 第14回は最終日（10/26）を過ぎています。終えるのはパーティリーダーです。',
+  );
+  await expect(page.getByRole('button', { name: /^終える/ })).toHaveCount(0);
+  await page.goto(`${AOBA_TEAM}/plan`);
+  await expect(page.locator('.lane.is-active .callout.is-warn')).toHaveCount(1);
+  await expect(page.getByRole('button', { name: /^終える/ })).toHaveCount(0);
+
+  // 最終日の前（today が最終日と同じ日）には出ない
+  await mockOperation(page, sprintBoard, { slug: 'aoba' }, { ...OVERDUE_BOARD, today: SAMPLE_BOARD.sprint!.end_on });
+  await page.goto(`${AOBA_TEAM}/sprint`);
+  await expect(page.getByRole('heading', { level: 1, name: '遠征 第14回' })).toBeVisible();
+  await expect(page.locator('.callout.is-warn')).toHaveCount(0);
 });

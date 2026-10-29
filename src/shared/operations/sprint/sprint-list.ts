@@ -7,7 +7,8 @@ import { sprintPlanSchema } from './sprint.ts';
 // 各スプリントには、入っている削除していないタスク（tasks。件数はその長さ）を、列の順（ORDER BY is_done, position）、
 // その中の column_position、id の順で添える。
 // あわせて、作るときの初期値（前のスプリントの最終日の翌日と同じ長さ。前が無ければ、今日より後で最初の週の始まりと 14 日）と、
-// ワークスペースのタイムゾーンでの今日の日付を返す。閉じたワークスペースでも読める
+// ワークスペースのタイムゾーンでの今日の日付（today）を返す。画面は、進行中のスプリントの最終日が today より前なら終えるのを促す。
+// 閉じたワークスペースでも読める
 export const sprintList = defineOperation({
   name: 'sprint-list',
   description:
@@ -19,5 +20,6 @@ export const sprintList = defineOperation({
   output: z.object({
     sprints: z.array(sprintPlanSchema),
     defaults: z.object({ start_on: z.string(), length: z.number().int() }),
+    today: z.string(),
   }),
 });
