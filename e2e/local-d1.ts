@@ -28,12 +28,14 @@ async function callExplorer(url: string, init: RequestInit, what: string): Promi
     });
   }
   const body = (await response.json().catch(() => undefined)) as ExplorerBody | undefined;
+  // SQL のエラーは HTTP 500 と success: false で返る（miniflare 5.20261019.2-beta）ので、どちらでも message を添える
+  const messages = (body?.errors ?? []).map((e) => e.message ?? '(message なし)').join(' / ');
+  const detail = messages === '' ? '' : `: ${messages}`;
   if (!response.ok) {
-    throw new Error(`${what}: HTTP ${response.status}。${EXPLORER_HINT}`);
+    throw new Error(`${what}: HTTP ${response.status}${detail}。${response.status === 404 ? EXPLORER_HINT : ''}`);
   }
   if (body?.success !== true) {
-    const messages = (body?.errors ?? []).map((e) => e.message ?? '(message なし)').join(' / ');
-    throw new Error(`${what}: success が true でない${messages === '' ? '' : `: ${messages}`}`);
+    throw new Error(`${what}: success が true でない${detail}`);
   }
   return body.result;
 }
@@ -70,7 +72,7 @@ async function executeLocalD1(statements: string[]): Promise<void> {
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ batch: statements.map((sql) => ({ sql })) }),
     },
-    `手元の D1 に SQL を流せなかった（${statements.join(' ')}）`,
+    `手元の D1 に SQL を流せなかった（${statements.join(' ').slice(0, 80)}…）`,
   );
 }
 
