@@ -1015,4 +1015,7 @@ test('長い本文（順序付きリスト、チェックリスト、表）を�
   });
   expect(duplicates).toEqual([]);
   expect(await collect()).toEqual([]);
+  // 作る、足す、保存のトースト（4 秒）のどれが終わりの画面（evidence-<n>.png）に残るかが、長い本文を描く時間で変わるので、
+  // すべて消えるのを待つ（#491）
+  await expect(page.locator('.toasts:visible .toast')).toHaveCount(0, { timeout: 10_000 });
 });

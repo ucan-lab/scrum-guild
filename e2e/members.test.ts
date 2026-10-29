@@ -777,6 +777,8 @@ test.describe('リーダー（ひばり工房のリン）', () => {
     expect(await collect()).toEqual([
       'Failed to load resource: the server responded with a status of 400 (Bad Request)',
     ]);
+    // コピーのトースト（4 秒）が終わりの画面（evidence-<n>.png）に写るかが、実行の速さで変わるので、消えるのを待つ（#491）
+    await expect(page.locator('.toasts:visible .toast')).toHaveCount(0, { timeout: 10_000 });
   });
 
   test('GitHub のユーザー名を確かめて招待すると承諾待ちに出て、取り消すと消える', async ({ page }) => {
@@ -858,5 +860,7 @@ test.describe('リーダー（ひばり工房のリン）', () => {
     // 押したボタンが消えたので、行が残っていない節の見出しへフォーカスを移す
     await expect(page.getByRole('heading', { level: 2, name: '承諾待ちの招待' })).toBeFocused();
     expect(await collect()).toEqual([]);
+    // 取り消しのトースト（4 秒）が終わりの画面（evidence-<n>.png）に写るかが、実行の速さで変わるので、消えるのを待つ（#491）
+    await expect(page.locator('.toasts:visible .toast')).toHaveCount(0, { timeout: 10_000 });
   });
 });
