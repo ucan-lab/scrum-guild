@@ -22,3 +22,5 @@ test-results/
 playwright-report/
 # wrangler types が作る（scripts/prepare.ts）
 worker-configuration.d.ts
+# daily-scrum が毎回作る開発ボードのデータ（scripts/progress-data.ts）
+.claude/skills/daily-scrum/page/data.json

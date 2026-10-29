@@ -1,0 +1,716 @@
+<title>Scrum Guild 開発ボード</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=BIZ+UDPGothic:wght@400;700&family=IBM+Plex+Mono:wght@400;600&display=swap">
+<style>
+/* 色は Scrum Guild のシンプルのテーマのトークンに合わせる。暗い値は2か所（OS の設定と data-theme="dark"）に同じものを置く */
+:root {
+  --bg: #f5f6f8;
+  --surface: #ffffff;
+  --sunken: #eceef2;
+  --line: #d3d8df;
+  --rule: #e6e9ee;
+  --fg: #1f2328;
+  --muted: #57606a;
+  --faint: #8b949e;
+  --accent: #1f5bd8;
+  --accent-soft: #e6edfc;
+  --ok: #1f7a3d;
+  --ok-soft: #e2f2e6;
+  --warn: #9a5208;
+  --warn-soft: #f9ecd9;
+  --edge: #9aa3ae;
+  --hover: #f0f3f7;
+  --font-body: "BIZ UDPGothic", "Hiragino Sans", "Yu Gothic", "Noto Sans JP", sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+  --radius: 6px;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #15181c; --surface: #1c2026; --sunken: #111317; --line: #353c45; --rule: #262b32;
+    --fg: #e6e9ed; --muted: #9da5ae; --faint: #6e7781; --accent: #7ea6ff; --accent-soft: #1f2b45;
+    --ok: #6fcf8a; --ok-soft: #1b3324; --warn: #f0a85a; --warn-soft: #3a2a17; --edge: #5d6672; --hover: #22272e;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #15181c; --surface: #1c2026; --sunken: #111317; --line: #353c45; --rule: #262b32;
+  --fg: #e6e9ed; --muted: #9da5ae; --faint: #6e7781; --accent: #7ea6ff; --accent-soft: #1f2b45;
+  --ok: #6fcf8a; --ok-soft: #1b3324; --warn: #f0a85a; --warn-soft: #3a2a17; --edge: #5d6672; --hover: #22272e;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+body {
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font-body);
+  font-size: 14px;
+  line-height: 1.6;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 28px 56px;
+}
+.wrap { max-width: 1240px; margin: 0 auto; display: flex; flex-direction: column; gap: 24px; min-width: 0; }
+a { color: var(--accent); }
+a:focus-visible, button:focus-visible, summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 3px; }
+.num, .asof, .pt { font-variant-numeric: tabular-nums; }
+
+header { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 12px 24px; }
+h1 { font-size: 24px; margin: 0; text-wrap: balance; letter-spacing: 0.02em; }
+.asof { font-family: var(--font-mono); color: var(--muted); font-size: 12px; }
+
+/* 3つの見せ方の切り替え */
+.tabs { display: flex; flex-wrap: wrap; gap: 6px; }
+.tabs a { text-decoration: none; font-weight: 700; font-size: 13px; padding: 5px 14px; border-radius: 999px; border: 1px solid var(--line); background: var(--surface); color: var(--fg); }
+.tabs a:hover { background: var(--hover); }
+.tabs a[aria-current="page"] { background: var(--fg); color: var(--surface); border-color: var(--fg); }
+
+h2 { font-size: 16px; margin: 0; }
+h3 { font-size: 13px; margin: 0; color: var(--muted); letter-spacing: 0.04em; }
+.muted { color: var(--muted); }
+.view { display: flex; flex-direction: column; gap: 20px; min-width: 0; }
+.block { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.notice { background: var(--warn-soft); color: var(--warn); border-radius: var(--radius); padding: 12px 16px; }
+.notice code, code { font-family: var(--font-mono); font-size: 12px; }
+.empty { color: var(--muted); background: var(--surface); border: 1px dashed var(--line); border-radius: var(--radius); padding: 14px 16px; }
+
+.panel { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 16px 18px; display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.panels { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; }
+.panel.wide { grid-column: 1 / -1; }
+.goal { font-size: 16px; font-weight: 700; text-wrap: balance; overflow-wrap: anywhere; }
+.big { font-family: var(--font-mono); font-size: 26px; line-height: 1.1; font-variant-numeric: tabular-nums; }
+.big small { font-size: 13px; color: var(--muted); }
+.label-row { display: flex; justify-content: space-between; flex-wrap: wrap; font-size: 12px; color: var(--muted); gap: 4px 8px; }
+.label-row b { font-family: var(--font-mono); color: var(--fg); font-variant-numeric: tabular-nums; }
+.over { color: var(--warn); }
+
+/* 棒。済みを塗り、受け入れ待ちは斜線で続ける */
+.bar { display: flex; height: 10px; border-radius: 999px; overflow: hidden; background: var(--sunken); }
+.bar i { display: block; height: 100%; }
+.bar .done { background: var(--ok); }
+.bar .accept { background: repeating-linear-gradient(135deg, var(--ok) 0 4px, var(--ok-soft) 4px 8px); }
+.bar .planned { background: var(--edge); }
+
+/* 状態の印。色だけに頼らず文字を添える */
+.chip { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; line-height: 1; padding: 4px 7px; border-radius: 999px; white-space: nowrap; border: 1px solid transparent; font-weight: 700; }
+.chip::before { font-family: var(--font-mono); font-weight: 600; }
+.chip.done { background: var(--ok-soft); color: var(--ok); }
+.chip.done::before { content: "✓"; }
+.chip.wip { background: var(--accent-soft); color: var(--accent); }
+.chip.wip::before { content: "▶"; font-size: 9px; }
+.chip.review { background: var(--surface); color: var(--accent); border-color: var(--accent); }
+.chip.review::before { content: "◎"; }
+.chip.refining { background: var(--warn-soft); color: var(--warn); }
+.chip.refining::before { content: "?"; }
+.chip.todo { background: var(--surface); color: var(--fg); border-color: var(--line); }
+.chip.todo::before { content: "○"; }
+.chip.accept { background: var(--warn-soft); color: var(--warn); }
+.chip.accept::before { content: "!"; }
+.chip.plan { background: transparent; color: var(--muted); border: 1px dashed var(--faint); }
+.chip.plan::before { content: "…"; }
+.chip.blocked { background: var(--sunken); color: var(--faint); border: 1px dashed var(--faint); }
+.chip.blocked::before { content: "‖"; }
+
+.tag { font-family: var(--font-mono); font-size: 10px; color: var(--muted); border: 1px solid var(--rule); border-radius: 3px; padding: 0 4px; white-space: nowrap; }
+.tag.level { font-family: var(--font-body); font-weight: 700; }
+.tag.phase-first { background: var(--ok-soft); color: var(--ok); border-color: transparent; font-family: var(--font-body); font-weight: 700; }
+.tag.phase-later { background: var(--sunken); color: var(--muted); border-color: transparent; font-family: var(--font-body); font-weight: 700; }
+.tag.phase-open { background: var(--warn-soft); color: var(--warn); border-color: transparent; font-family: var(--font-body); font-weight: 700; }
+.key { font-family: var(--font-mono); font-size: 12px; color: var(--muted); text-decoration: none; }
+a.key:hover { text-decoration: underline; }
+.wait { font-size: 11px; line-height: 1; padding: 4px 7px; border-radius: 3px; background: var(--warn-soft); color: var(--warn); font-weight: 700; white-space: nowrap; }
+.wait a { color: inherit; font-family: var(--font-mono); text-decoration: none; }
+.wait a:hover { text-decoration: underline; }
+
+/* スプリントのカンバン。狭い幅では列が1列に積まれる */
+.board { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; align-items: start; }
+.col { background: var(--sunken); border-radius: var(--radius); padding: 10px; display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.col > h3 { display: flex; justify-content: space-between; align-items: center; color: var(--fg); }
+.col > h3 .num { font-family: var(--font-mono); color: var(--muted); }
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 8px 10px; display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.card.blocked { border-style: dashed; }
+.card.blocked .title { color: var(--muted); }
+.card .top, .card .meta { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; }
+.card .pt { margin-left: auto; font-family: var(--font-mono); font-size: 12px; color: var(--muted); }
+.title { overflow-wrap: anywhere; }
+.col .none { color: var(--faint); font-size: 12px; }
+
+/* プロダクトバックログ */
+.filters { display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: center; font-size: 12px; color: var(--muted); }
+.filters .group { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.pill { cursor: pointer; font: inherit; font-weight: 700; font-size: 12px; padding: 3px 10px; border-radius: 999px; border: 1px solid var(--line); background: var(--surface); color: var(--fg); }
+.pill:hover { background: var(--hover); }
+.pill[aria-pressed="true"] { background: var(--fg); color: var(--surface); border-color: var(--fg); }
+.tree { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+details.node { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 8px 12px; min-width: 0; }
+details.node details.node { border-color: var(--rule); }
+details.node > summary { cursor: pointer; list-style: none; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; }
+details.node > summary::-webkit-details-marker { display: none; }
+details.node > summary::before { content: "▸"; font-family: var(--font-mono); color: var(--muted); }
+details.node[open] > summary::before { content: "▾"; }
+details.node > summary .title { font-weight: 700; flex: 1 1 12em; min-width: 0; }
+.sum { font-family: var(--font-mono); font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.children { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; padding-left: 14px; border-left: 1px solid var(--rule); min-width: 0; }
+.leaf { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; padding: 2px 0; }
+.leaf .title { flex: 1 1 12em; min-width: 0; }
+.leaf .pt { font-family: var(--font-mono); font-size: 12px; color: var(--muted); }
+.areas { display: inline-flex; flex-wrap: wrap; gap: 4px; }
+
+.features { display: flex; flex-direction: column; gap: 10px; }
+.feature { display: grid; grid-template-columns: minmax(0, 12em) minmax(0, 1fr); gap: 4px 14px; padding: 8px 0; border-top: 1px solid var(--rule); }
+.feature:first-of-type { border-top: 0; }
+.feature .name { font-weight: 700; overflow-wrap: anywhere; }
+.feature .desc { color: var(--muted); overflow-wrap: anywhere; }
+.feature .meta { grid-column: 2; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; }
+.note { color: var(--muted); font-size: 12px; margin: 0; }
+ul.plain { margin: 0; padding-left: 1.2em; color: var(--muted); }
+
+/* インクリメント */
+.velocity { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 8px 12px; align-items: center; }
+.velocity .name { font-family: var(--font-mono); font-size: 12px; color: var(--muted); }
+.velocity .pair { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.velocity .line { display: flex; align-items: center; gap: 8px; }
+.velocity .line .bar { flex: 1 1 auto; min-width: 0; }
+.velocity .line b { font-family: var(--font-mono); font-size: 12px; min-width: 4.5em; text-align: right; font-variant-numeric: tabular-nums; }
+.velocity .line span { font-size: 11px; color: var(--muted); min-width: 5.5em; }
+.accepted { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.accepted li { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px; }
+
+@media (max-width: 520px) {
+  h1 { font-size: 20px; }
+  .feature { grid-template-columns: minmax(0, 1fr); }
+  .feature .meta { grid-column: 1; }
+}
+</style>
+
+<div class="wrap">
+  <header>
+    <div>
+      <h1>Scrum Guild 開発ボード</h1>
+      <div class="asof" id="asof"></div>
+    </div>
+    <nav class="tabs" aria-label="見せ方">
+      <a href="#sprint" data-view="sprint">スプリントバックログ</a>
+      <a href="#backlog" data-view="backlog">プロダクトバックログ</a>
+      <a href="#increment" data-view="increment">インクリメント</a>
+    </nav>
+  </header>
+  <main id="app" class="view"><p class="muted">読み込み中…</p></main>
+</div>
+
+<script type="module">
+import {
+  areasOf,
+  backlogTree,
+  daysLeft,
+  featurePhase,
+  featureState,
+  incrementView,
+  issueUrl,
+  periodDays,
+  planBar,
+  pullUrl,
+  PHASE_LABELS,
+  sprintColumns,
+  sumTotals,
+  viewFromHash,
+} from './board.js';
+
+const GENERATE = 'node scripts/progress-data.ts .claude/skills/daily-scrum/page/data.json';
+const STATE_LABELS = {
+  done: '済み',
+  accept: '受け入れ待ち',
+  review: 'レビュー中',
+  wip: '作業中',
+  refining: '整理中',
+  todo: '着手できる',
+};
+const LEVEL_LABELS = { epic: 'エピック', story: 'ストーリー', task: 'タスク' };
+const FEATURE_CHIP = { done: 'done', active: 'wip', idle: 'todo', none: 'plan' };
+
+const app = document.getElementById('app');
+const model = {
+  data: null,
+  features: null,
+  area: null,
+  showDone: false,
+  // 開閉を覚えて、絞り込みで描き直しても畳み直さない
+  opened: new Map(),
+};
+
+// JSON の文字列は textContent と createElement だけで組む（題に < などが入っても崩れない）
+function el(tag, attrs = {}, ...kids) {
+  const node = document.createElement(tag);
+  for (const [name, value] of Object.entries(attrs)) {
+    if (value === null || value === undefined || value === false) continue;
+    if (name === 'class') node.className = value;
+    else if (name.startsWith('on')) node.addEventListener(name.slice(2), value);
+    else node.setAttribute(name, value === true ? '' : String(value));
+  }
+  for (const kid of kids.flat()) {
+    if (kid !== null && kid !== undefined && kid !== false) node.append(kid);
+  }
+  return node;
+}
+
+const extLink = (href, text, className) =>
+  el('a', { href, class: className, target: '_blank', rel: 'noopener' }, text);
+const issueLink = (n, className = 'key') => extLink(issueUrl(n), `#${n}`, className);
+const pullLink = (n) => extLink(pullUrl(n), `PR #${n}`, 'key');
+const chip = (kind, text) => el('span', { class: `chip ${kind}` }, text);
+const pts = (n) => (n === null ? '— pt' : `${n} pt`);
+
+function waitMark(numbers) {
+  const span = el('span', { class: 'wait' }, '待ち ');
+  numbers.forEach((n, i) => {
+    if (i > 0) span.append(' ');
+    span.append(issueLink(n, ''));
+  });
+  return span;
+}
+
+function areaTags(areas) {
+  return areas.length === 0 ? null : el('span', { class: 'areas' }, areas.map((a) => el('span', { class: 'tag' }, a)));
+}
+
+async function fetchJson(url) {
+  const response = await fetch(url);
+  if (!response.ok) throw new Error(`${url} を読めない（${response.status}）`);
+  return response.json();
+}
+
+function showError(message) {
+  app.replaceChildren(
+    el(
+      'div',
+      { class: 'notice', role: 'alert' },
+      el('p', {}, message),
+      el('p', {}, '次のコマンドで作る: ', el('code', {}, GENERATE)),
+    ),
+  );
+}
+
+/* スプリントバックログ */
+
+function planBarBlock(sprint, issues) {
+  const bar = planBar(sprint, issues);
+  const share = (pt) => (bar.total === 0 ? 0 : Math.min(100, (pt / bar.total) * 100));
+  const doneShare = share(bar.done);
+  const acceptShare = Math.min(share(bar.accept), 100 - doneShare);
+  const track = el('div', { class: 'bar', role: 'img', 'aria-label': `計画 ${bar.total} pt のうち済み ${bar.done} pt、受け入れ待ち ${bar.accept} pt` });
+  const doneSeg = el('i', { class: 'done' });
+  doneSeg.style.width = `${doneShare}%`;
+  const acceptSeg = el('i', { class: 'accept' });
+  acceptSeg.style.width = `${acceptShare}%`;
+  track.append(doneSeg, acceptSeg);
+  return el(
+    'div',
+    { class: 'panel' },
+    el('h3', {}, '計画の済み ÷ 計画'),
+    el('div', { class: 'big' }, `${bar.done} `, el('small', {}, `/ ${bar.total} pt`)),
+    track,
+    el('div', { class: 'label-row' }, el('span', {}, '済み'), el('span', {}, '斜線は受け入れ待ち ', el('b', {}, `${bar.accept} pt`))),
+  );
+}
+
+function sprintHeader(sprint, asOf) {
+  const left = daysLeft(sprint, asOf);
+  const notStarted = asOf.slice(0, 10) < sprint.from;
+  return el(
+    'div',
+    { class: 'panel wide' },
+    el('h3', {}, `スプリント ${sprint.n}`),
+    el('div', { class: 'goal' }, sprint.goal ?? 'ゴールは書かれていない'),
+    el(
+      'div',
+      { class: 'label-row' },
+      el('span', {}, `期間 ${sprint.from} 〜 ${sprint.to}（${periodDays(sprint)} 日）`),
+      el('span', {}, notStarted ? '開始前 ' : '', '残り ', el('b', {}, `${left} 日`)),
+    ),
+  );
+}
+
+function sprintStats(sprint) {
+  const limit = sprint.wipLimit;
+  const over = limit !== null && sprint.wip.count > limit;
+  const panels = [
+    el(
+      'div',
+      { class: 'panel' },
+      el('h3', {}, '作業中 / 上限'),
+      el(
+        'div',
+        { class: over ? 'big over' : 'big' },
+        `${sprint.wip.count} `,
+        el('small', {}, limit === null ? '/ 上限なし' : `/ ${limit}`),
+      ),
+      el('div', { class: 'label-row' }, el('span', {}, 'スプリントの外も含む'), el('b', {}, `${sprint.wip.pt} pt`)),
+    ),
+    el(
+      'div',
+      { class: 'panel' },
+      el('h3', {}, '途中で足した分'),
+      el('div', { class: 'big' }, `${sprint.added.pt} `, el('small', {}, `pt / ${sprint.added.count} 件`)),
+      el('div', { class: 'label-row' }, el('span', {}, '済み'), el('b', {}, `${sprint.addedDone.pt} pt / ${sprint.addedDone.count} 件`)),
+    ),
+  ];
+  if (sprint.withdrawn.count > 0 || sprint.withdrawn.pt > 0) {
+    panels.push(
+      el(
+        'div',
+        { class: 'panel' },
+        el('h3', {}, '取り下げ'),
+        el('div', { class: 'big' }, `${sprint.withdrawn.pt} `, el('small', {}, `pt / ${sprint.withdrawn.count} 件`)),
+        el('div', { class: 'label-row' }, el('span', {}, '計画から外れた分')),
+      ),
+    );
+  }
+  return panels;
+}
+
+function card(issue, columnKey) {
+  const waiting = issue.waitingOn.length > 0;
+  const top = el('div', { class: 'top' }, issueLink(issue.number));
+  if (columnKey === 'wip') top.append(chip(issue.s, STATE_LABELS[issue.s]));
+  if (waiting) top.append(chip('blocked', '待ち'));
+  top.append(el('span', { class: 'pt' }, pts(issue.pt)));
+  const meta = el('div', { class: 'meta' }, areaTags(issue.areas));
+  if (columnKey === 'review') issue.prs.forEach((n) => meta.append(pullLink(n)));
+  if (waiting) meta.append(waitMark(issue.waitingOn));
+  return el(
+    'article',
+    { class: waiting ? 'card blocked' : 'card' },
+    top,
+    el('div', { class: 'title' }, issue.title),
+    meta.childNodes.length > 0 ? meta : null,
+  );
+}
+
+function kanban(sprint, issues) {
+  return el(
+    'div',
+    { class: 'board' },
+    sprintColumns(issues, sprint.n).map((column) =>
+      el(
+        'section',
+        { class: 'col', 'aria-label': column.label },
+        el('h3', {}, column.label, el('span', { class: 'num' }, String(column.issues.length))),
+        column.issues.length === 0
+          ? el('div', { class: 'none' }, 'なし')
+          : column.issues.map((issue) => card(issue, column.key)),
+      ),
+    ),
+  );
+}
+
+function renderSprint({ sprint, issues, asOf }) {
+  if (!sprint) {
+    return el(
+      'div',
+      { class: 'empty' },
+      el('p', {}, 'スプリントは計画されていない。'),
+      el('p', {}, el('code', {}, 'sprint-plan'), ' のスキルで計画する。'),
+    );
+  }
+  return el(
+    'div',
+    { class: 'view' },
+    el('div', { class: 'panels' }, sprintHeader(sprint, asOf), planBarBlock(sprint, issues), sprintStats(sprint)),
+    el('div', { class: 'block' }, el('h2', {}, 'かんばん'), kanban(sprint, issues)),
+  );
+}
+
+/* プロダクトバックログ */
+
+function totalsText(totals) {
+  return `残り ${totals.remaining} / ${totals.all} pt`;
+}
+
+function nodeSummary(node) {
+  const { issue } = node;
+  return [
+    issueLink(issue.number),
+    el('span', { class: 'tag level' }, LEVEL_LABELS[issue.level]),
+    chip(issue.s, STATE_LABELS[issue.s]),
+    el('span', { class: 'title' }, issue.title),
+    el('span', { class: 'sum' }, totalsText(node.totals)),
+  ];
+}
+
+function leafRow(node) {
+  const { issue } = node;
+  return el(
+    'div',
+    { class: 'leaf' },
+    issueLink(issue.number),
+    chip(issue.s, STATE_LABELS[issue.s]),
+    el('span', { class: 'title' }, issue.title),
+    areaTags(issue.areas),
+    issue.waitingOn.length > 0 ? waitMark(issue.waitingOn) : null,
+    el('span', { class: 'pt' }, pts(issue.pt)),
+  );
+}
+
+function treeNode(node, depth) {
+  if (node.children.length === 0) return leafRow(node);
+  const id = node.issue.number;
+  const details = el(
+    'details',
+    {
+      class: 'node',
+      open: model.opened.get(id) ?? depth === 0,
+      ontoggle: (event) => model.opened.set(id, event.currentTarget.open),
+    },
+    el('summary', {}, nodeSummary(node)),
+    el('div', { class: 'children' }, node.children.map((child) => treeNode(child, depth + 1))),
+  );
+  return details;
+}
+
+function orphanGroup(orphans) {
+  const key = 'orphans';
+  return el(
+    'details',
+    {
+      class: 'node',
+      open: model.opened.get(key) ?? true,
+      ontoggle: (event) => model.opened.set(key, event.currentTarget.open),
+    },
+    el(
+      'summary',
+      {},
+      el('span', { class: 'title' }, 'エピックの無いもの'),
+      el('span', { class: 'sum' }, totalsText(sumTotals(orphans))),
+    ),
+    el('div', { class: 'children' }, orphans.map((node) => treeNode(node, 1))),
+  );
+}
+
+function pill(label, pressed, onclick) {
+  return el('button', { type: 'button', class: 'pill', 'aria-pressed': String(pressed), onclick }, label);
+}
+
+function filterBar(issues, rerender) {
+  const areaButtons = [
+    pill('すべて', model.area === null, () => {
+      model.area = null;
+      rerender();
+    }),
+    ...areasOf(issues).map((area) =>
+      pill(area, model.area === area, () => {
+        model.area = area;
+        rerender();
+      }),
+    ),
+  ];
+  return el(
+    'div',
+    { class: 'filters' },
+    el('div', { class: 'group' }, '作る場所', areaButtons),
+    el(
+      'div',
+      { class: 'group' },
+      pill('済みを出す', model.showDone, () => {
+        model.showDone = !model.showDone;
+        rerender();
+      }),
+    ),
+  );
+}
+
+function featureRow(feature, issues) {
+  const state = featureState(feature, issues);
+  const phase = featurePhase(feature);
+  const meta = el(
+    'div',
+    { class: 'meta' },
+    el('span', { class: `tag phase-${phase}` }, PHASE_LABELS[phase]),
+    chip(FEATURE_CHIP[state.key], state.label),
+  );
+  (feature.issues ?? []).forEach((n) => meta.append(issueLink(n)));
+  return el(
+    'div',
+    { class: 'feature' },
+    el('div', { class: 'name' }, feature.name),
+    el('div', { class: 'desc' }, feature.desc),
+    meta,
+  );
+}
+
+function renderFeatures(features, issues) {
+  const heading = el('h2', {}, '機能の一覧');
+  if (!features) {
+    return el('div', { class: 'block' }, heading, el('div', { class: 'empty' }, '機能の一覧（features.json）はまだ無い。'));
+  }
+  const areas = features.areas.map((area) =>
+    el(
+      'div',
+      { class: 'panel' },
+      el('h3', {}, area.name),
+      el('p', { class: 'note' }, `画面: ${area.screens}`, area.note ? ` ／ ${area.note}` : ''),
+      el('div', { class: 'features' }, area.features.map((feature) => featureRow(feature, issues))),
+    ),
+  );
+  const notGoals =
+    features.notGoals.length === 0
+      ? null
+      : el(
+          'details',
+          { class: 'node' },
+          el('summary', {}, el('span', { class: 'title' }, 'やらないこと')),
+          el('ul', { class: 'plain' }, features.notGoals.map((text) => el('li', {}, text))),
+        );
+  return el('div', { class: 'block' }, heading, areas, notGoals);
+}
+
+function renderBacklog({ issues }) {
+  const overall = backlogTree(issues, { showDone: true }).totals;
+  const holder = el('div', { class: 'block' });
+  const draw = () => {
+    const tree = backlogTree(issues, { area: model.area, showDone: model.showDone });
+    const filtered = model.area !== null || !model.showDone;
+    const nodes = [...tree.epics.map((n) => treeNode(n, 0)), tree.orphans.length > 0 ? orphanGroup(tree.orphans) : null];
+    holder.replaceChildren(
+      filterBar(issues, draw),
+      filtered
+        ? el('div', { class: 'label-row' }, el('span', {}, '絞った結果'), el('b', {}, `${totalsText(tree.totals)}・着手できる ${tree.totals.ready} 件`))
+        : null,
+      tree.epics.length + tree.orphans.length === 0
+        ? el('div', { class: 'empty' }, '条件に合う Issue は無い。')
+        : el('div', { class: 'tree' }, nodes),
+    );
+  };
+  draw();
+  return el(
+    'div',
+    { class: 'view' },
+    el(
+      'div',
+      { class: 'panels' },
+      el(
+        'div',
+        { class: 'panel' },
+        el('h3', {}, '残り pt / 全体 pt'),
+        el('div', { class: 'big' }, `${overall.remaining} `, el('small', {}, `/ ${overall.all} pt`)),
+        el('div', { class: 'label-row' }, el('span', {}, '済みでないタスクのポイントの合計')),
+      ),
+      el(
+        'div',
+        { class: 'panel' },
+        el('h3', {}, '着手できる'),
+        el('div', { class: 'big' }, `${overall.ready} `, el('small', {}, '件')),
+        el('div', { class: 'label-row' }, el('span', {}, '前に要るものが済んだ、未着手のタスク')),
+      ),
+    ),
+    el('div', { class: 'block' }, el('h2', {}, 'バックログ'), holder),
+    renderFeatures(model.features, issues),
+  );
+}
+
+/* インクリメント */
+
+function velocityChart(bars) {
+  const rows = bars.flatMap((bar) => {
+    const planned = el('i', { class: 'planned' });
+    planned.style.width = `${bar.plannedRatio * 100}%`;
+    const velocity = el('i', { class: 'done' });
+    velocity.style.width = `${bar.velocityRatio * 100}%`;
+    return [
+      el('div', { class: 'name' }, `スプリント ${bar.n}`),
+      el(
+        'div',
+        { class: 'pair' },
+        el('div', { class: 'line' }, el('span', {}, '計画'), el('div', { class: 'bar' }, planned), el('b', {}, `${bar.planned} pt`)),
+        el('div', { class: 'line' }, el('span', {}, 'ベロシティ'), el('div', { class: 'bar' }, velocity), el('b', {}, `${bar.velocity} pt`)),
+      ),
+    ];
+  });
+  return el('div', { class: 'panel' }, el('h3', {}, 'ベロシティの推移（古い順）'), el('div', { class: 'velocity' }, rows));
+}
+
+function renderIncrement({ history, issues }) {
+  if (history.length === 0) return el('div', { class: 'empty' }, '締めたスプリントはまだ無い。');
+  const titles = new Map(issues.map((issue) => [issue.number, issue.title]));
+  const view = incrementView(history);
+  const sprints = view.entries.map((entry) =>
+    el(
+      'div',
+      { class: 'panel' },
+      el('h3', {}, `スプリント ${entry.n}`),
+      el(
+        'div',
+        { class: 'label-row' },
+        el('span', {}, '計画 ', el('b', {}, `${entry.planned.pt} pt / ${entry.planned.count} 件`)),
+        el('span', {}, 'ベロシティ ', el('b', {}, `${entry.velocity} pt`)),
+        extLink(issueUrl(entry.log), `記録 #${entry.log}`, 'key'),
+      ),
+      entry.accepted.length === 0
+        ? el('div', { class: 'muted' }, '受け入れで閉じた Issue は無い。')
+        : el(
+            'ul',
+            { class: 'accepted' },
+            entry.accepted.map((item) =>
+              el(
+                'li',
+                {},
+                chip('done', '受け入れ済み'),
+                issueLink(item.number),
+                el('span', { class: 'title' }, titles.get(item.number) ?? ''),
+                item.prs.map((n) => pullLink(n)),
+              ),
+            ),
+          ),
+    ),
+  );
+  return el('div', { class: 'view' }, velocityChart(view.bars), el('div', { class: 'block' }, el('h2', {}, '受け入れで閉じたもの'), sprints));
+}
+
+/* 切り替え */
+
+const RENDERERS = { sprint: renderSprint, backlog: renderBacklog, increment: renderIncrement };
+
+function render() {
+  const view = viewFromHash(location.hash);
+  for (const tab of document.querySelectorAll('.tabs a')) {
+    if (tab.dataset.view === view) tab.setAttribute('aria-current', 'page');
+    else tab.removeAttribute('aria-current');
+  }
+  if (!model.data) return;
+  app.replaceChildren(RENDERERS[view](model.data));
+}
+
+async function load() {
+  render();
+  let data;
+  try {
+    data = await fetchJson('./data.json');
+  } catch (error) {
+    showError(`開発ボードのデータ（data.json）を読めない。${error.message}`);
+    return;
+  }
+  if (!data || !Array.isArray(data.issues) || !Array.isArray(data.history)) {
+    showError('data.json の形が違う（issues と history の配列が要る）。');
+    return;
+  }
+  try {
+    const features = await fetchJson('./features.json');
+    model.features = Array.isArray(features?.areas)
+      ? {
+          areas: features.areas.map((area) => ({ ...area, features: area.features ?? [] })),
+          notGoals: features.notGoals ?? [],
+        }
+      : null;
+  } catch {
+    // 任意のファイル。無ければプロダクトバックログに「まだ無い」と出し、ほかは描く
+    model.features = null;
+  }
+  model.data = data;
+  document.getElementById('asof').textContent = `${data.asOf.replace('T', ' ').slice(0, 16)} 時点`;
+  render();
+}
+
+addEventListener('hashchange', render);
+load();
+</script>
