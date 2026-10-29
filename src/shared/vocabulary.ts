@@ -1276,6 +1276,17 @@ export const dictionary = defineDictionary({
     'ログインできませんでした。どの{organization}の{workspace}にも所属しておらず、招待も届いていません。招待された手段（GitHub か Google）と、招待されたアカウントでログインしているか確かめてください。招待がまだなら、{leader}に GitHub のユーザー名か Google のメールアドレスで招待してもらってください。',
     'ログインできませんでした。どの{organization}の{workspace}にも所属しておらず、招待も届いていません。招待された手段（GitHub か Google）と、招待されたアカウントでログインしているか確かめてください。招待がまだなら、{leader}に GitHub のユーザー名か Google のメールアドレスで招待してもらってください。',
   ),
+  // パスワードが合った後に、入れる{organization}も招待も無いとき（POST /api/auth/password/login の 403 denied）。
+  // 招待された手段を確かめる案内は GitHub と Google の人向けなので、パスワードの人には出さない
+  loginErrorDeniedPassword: organization(
+    'ログインできませんでした。どの{organization}の{workspace}にも所属しておらず、招待も届いていません。ほかの手段で招待されていないか確かめてください。招待がまだなら、{leader}に招待してもらってください。',
+    'ログインできませんでした。どの{organization}の{workspace}にも所属しておらず、招待も届いていません。ほかの手段で招待されていないか確かめてください。招待がまだなら、{leader}に招待してもらってください。',
+  ),
+  // メールアドレスかパスワードの欄が空のまま送ろうとしたとき。送らずに出す（回数の上限を使わない）
+  loginErrorEmptyFields: organization(
+    'メールアドレスとパスワードを入れてください。',
+    'メールアドレスとパスワードを入れてください。',
+  ),
   // 入れる{organization}（や届いた招待）が、停止した{organization}にだけあるとき（?error=suspended）
   loginErrorSuspended: organization(
     'ログインできませんでした。所属しているか招待されている{organization}は停止しています。運用者に問い合わせてください。',

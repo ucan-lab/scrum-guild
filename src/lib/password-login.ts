@@ -22,7 +22,8 @@ export function passwordLoginErrorMessage(status: number, error: ErrorBody['erro
   if (status === 401) return 'loginErrorInvalidCredentials';
   if (status === 403) {
     const reason = reasonOf(error);
-    if (reason === 'denied') return 'loginErrorDenied';
+    // 文言は OAuth の denied と同じ事情を伝えるが、招待された手段（GitHub か Google）を確かめる案内は外す
+    if (reason === 'denied') return 'loginErrorDeniedPassword';
     if (reason === 'suspended') return 'loginErrorSuspended';
   }
   if (status === 429) return 'loginErrorTooMany';
