@@ -244,7 +244,7 @@ bot へのリプライを投稿し、CI が全て `completed` になったら、
 扱いはその場限りにする。
 
 - スクラッチパッドの `pr-<number>-summary.html` に書いて publish する。同じ PR で手順 6 に戻ったら、同じパスで出し直す（同じ URL のまま更新される）
-- URL を PR、Issue、メモリ、`docs/` に残さない。進捗の図のように後から更新し続けない
+- URL を PR、Issue、メモリ、`docs/` に残さない。開発ボードのように後から更新し続けない
 - 書く前に Artifact ツールの決まり（`artifact-design` の読み込みなど）に従う
 - `.dev.vars` の値、トークン、取り込んだ内容の本文を載せない
 
@@ -346,7 +346,7 @@ gh api "repos/{owner}/{repo}/pulls/<number>" --jq '{merged, base: .base.ref, hea
    - レビューの途中か人のマージ待ちの PR は、取り込んだことを PR にコメントで残す（`docs/development.md` の「並行して作業するときの決まり」）。新しい head では CI が走り直すので、人がマージする PR ならそのことも伝える
    - コンフリクトの意図が読めずに止まったら、その PR の番号と理由を報告する
 4. PR が指す Issue（ブランチ名の `<番号>-` の先頭か、本文の `Refs`。子を持つストーリーとエピックは除く）に `status:accepting` が付き、開いたままであることを確かめる（`gh api "repos/{owner}/{repo}/issues/<番号>" --jq '{state, labels: [.labels[].name]}'`）。付けるのはマージで動く `accepting.yml` で、数十秒かかるので、付いていなければ30秒おきに5回まで取り直す。それでも付かなければ、ワークフローの実行（`gh api "repos/{owner}/{repo}/actions/workflows/accepting.yml/runs?per_page=5"`）を見て報告する。マージでは Issue は閉じず、人が受け入れで閉じる。セッションは閉じない（`docs/development.md` の「Issue の運用」）
-5. Artifact のツールがある手元のセッションなら、Skill ツールで `daily-scrum` を引数「図だけ」で起動して進捗の図を直す。無ければ飛ばし、飛ばしたことを報告する
+5. Artifact のツールがある手元のセッションなら、Skill ツールで `daily-scrum` を引数「ボードだけ」で起動して開発ボードを出し直す。無ければ飛ばし、飛ばしたことを報告する
 
 ## 出力
 
@@ -354,7 +354,7 @@ gh api "repos/{owner}/{repo}/pulls/<number>" --jq '{merged, base: .base.ref, hea
 - 指摘 1 件につき 1 リプライ（bot は投稿済み、人は PENDING review か下書きの承認を経て投稿）
 - その場限りの説明資料の Artifact（無い環境では返答の Markdown）
 - 人の判断を聞いた `AskUserQuestion`（セッションがマージできるときは、マージの扱いも）
-- マージの後の後片付け、ほかの PR の追従、進捗の図の更新の報告
+- マージの後の後片付け、ほかの PR の追従、開発ボードの出し直しの報告
 
 ## 完了条件
 
@@ -367,7 +367,7 @@ gh api "repos/{owner}/{repo}/pulls/<number>" --jq '{merged, base: .base.ref, hea
 - 人の指摘のうちチェックリストに無かったものが、追記されたか、追記しない判断がユーザーから出ている
 - 人がマージするとき（「自分でマージする」が選ばれたか、セッションがマージできないとき）、手元のセッションは止まらずに PR が閉じるのを待ち、クラウドのセッションは聞かずに、知らせてほしいと伝えて止まっている
 - 待つ間に手番を終えるときは、何を待っているかと、入力が要るかを伝えている
-- 自分でマージしたとき、待ちが終わったとき、またはマージの知らせを受けたときは、マージ済みを確かめている。`merged` が `true` なら後片付けし、Issue に `status:accepting` が付いて開いたままであることを確かめ、受け持つほかの PR を追従させ、進捗の図を更新したか飛ばしたかを報告している
+- 自分でマージしたとき、待ちが終わったとき、またはマージの知らせを受けたときは、マージ済みを確かめている。`merged` が `true` なら後片付けし、Issue に `status:accepting` が付いて開いたままであることを確かめ、受け持つほかの PR を追従させ、開発ボードを出し直したか飛ばしたかを報告している
 - 自分でマージしたなら、マージの前に `needs-human`、`label`、`ci-ok` を確かめ、`--match-head-commit` で確かめた head をマージしている
 
 ## 止まる条件

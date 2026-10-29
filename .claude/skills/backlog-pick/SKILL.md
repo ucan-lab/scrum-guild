@@ -1,6 +1,6 @@
 ---
 name: backlog-pick
-description: 進捗を確かめ、今着手できる Issue を選んで、並べて進めるレーンとセッションに貼るプロンプトを出す。「進捗を確認して」「次は何をやる」「今着手できるもの」「並べて進めたい」と言われたときに使う。1つの Issue を進めるのは increment-build、スプリントのゴールに向けた点検と進捗の図は daily-scrum。
+description: 進捗を確かめ、今着手できる Issue を選んで、並べて進めるレーンとセッションに貼るプロンプトを出す。「進捗を確認して」「次は何をやる」「今着手できるもの」「並べて進めたい」と言われたときに使う。1つの Issue を進めるのは increment-build、スプリントのゴールに向けた点検と開発ボードは daily-scrum。
 ---
 
 # backlog-pick
@@ -64,7 +64,7 @@ Issue を指す開いた PR は、ブランチ名の `<番号>-` の先頭か、
 
 今のスプリントの進み具合を出す。数え方は `docs/development.md` の「スプリントとポイント」の表に従い、計画の済み ÷ 計画、受け入れ待ち、途中で足した分（とその済み）、作業中 / 上限を出す。計画のポイントは記録の Issue の本文の値を使う。
 
-閉じた Issue は手順 1 の一覧に出ないので、今のスプリントの分だけ引く。計画の一覧にあってここに出ない Issue（スプリントから外したもの）は取り下げとして数える。
+閉じた Issue は手順 1 の一覧に出ないので、今のスプリントの分だけ引く。計画の一覧にあってここに出ない Issue（スプリントから外したもの）は、`gh api repos/{owner}/{repo}/issues/<番号> --jq '{state, state_reason}'` で1件ずつ引き、`completed` で閉じていれば計画の済み、ほかは取り下げに数える。ここに出た Issue も、`not_planned` か `duplicate` で閉じていれば取り下げに数える。
 
 ```bash
 gh api "repos/{owner}/{repo}/issues?labels=sprint:<番号>&state=all&per_page=100" --paginate --jq '.[] | select(.pull_request | not) | {number, state, state_reason, labels: [.labels[].name]}'
@@ -140,7 +140,7 @@ gh api "repos/{owner}/{repo}/issues?labels=sprint:<番号>&state=all&per_page=10
 - 人の番（受け入れ待ちを含む）、作業中とレビュー中、着手できるもの、待ち（待っている番号）の短い一覧
 - レーンの案と、選ばれたレーンのプロンプト（1つのレーンに1つの Issue）。プロンプトごとに、`increment-build` か `backlog-refine` を選んだ理由を1行
 - 着手できるものが無ければ、そう書き、人の番か分けるレーンを推す
-- 手元のセッションなら、進捗の図を直すかを添える（直すのは `daily-scrum` で、このセッションでは直さない）
+- 手元のセッションなら、開発ボードを出し直すかを添える（直すのは `daily-scrum` で、このセッションでは直さない）
 
 ## 止まる条件
 
