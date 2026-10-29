@@ -86,12 +86,13 @@ Issue に、ブランチ名とセッションの識別をコメントで残す�
 
 1. クラウドのセッションは常に Claude の `implementer`（`.claude/agents/implementer.md`、Sonnet）。クラウドの環境に OpenAI の資格情報を置かないため
 2. 手元では、`command -v codex` と `codex login status` がどちらも成功すれば Codex の `implementer`（`.codex/agents/implementer.toml`）。どちらかが失敗すれば Claude の `implementer`
-3. Codex は次のように呼ぶ。プロンプトに「`implementer` エージェントで実装する」と明示し（Codex は親が明示したときだけエージェントを起こす）、続けて5つを書く。ネットワークは無しのまま（`--sandbox workspace-write` の既定）
+3. Codex は次のように呼ぶ。プロンプトに「`implementer` エージェントで実装する」と明示し（Codex は親が明示したときだけエージェントを起こす）、続けて5つを書く。プロンプトはスクラッチのファイルに Write で書き、標準入力から渡す（Issue の本文の `` ` `` や `$(...)` をシェルに展開させないため。引数に直接入れない）。ネットワークは呼び出しで無しに固定する（`-c sandbox_workspace_write.network_access=false`。人の `~/.codex/config.toml` が有効にしていても効かせないため）
    ```bash
-   codex exec -C <ワークツリーの絶対パス> --sandbox workspace-write --output-last-message <スクラッチの path> "<プロンプト>"
+   codex exec -C <ワークツリーの絶対パス> --sandbox workspace-write -c sandbox_workspace_write.network_access=false --output-last-message <スクラッチの path> - < <プロンプトのファイル>
    ```
-4. Codex が 0 でない終了コードで終わり、出力に利用上限の印（`usage limit`、`rate limit`、`429`）があれば、Claude の `implementer` に切り替える。ワークツリーの差分は戻さず、`git diff` と Codex の最後の出力（`--output-last-message` のファイル）を添えて、続きから実装させる。上限以外の失敗（テストが通らないなど）では切り替えず、止まる条件で止まる（担い手を替えて失敗を隠さないため）
-5. どちらで実装したか（Codex、Claude の `implementer`、Codex が上限に当たって Claude に引き継いだ）を控え、`pr-create` に渡す。PR の本文の `## 確認方法` に書かせる（この節を省かせない）
+4. Codex が 0 でない終了コードで終わり、Codex 自身のエラー（標準エラーの終わりの、Codex が出したエラー行。実装が走らせたテストの出力ではない）に利用上限の印（`usage limit`、`rate limit`、`429`）があれば、Claude の `implementer` に切り替える。ワークツリーの差分は戻さず、`git diff` と Codex の最後の出力（`--output-last-message` のファイル）を添えて、続きから実装させる。上限以外の失敗（テストが通らないなど）では切り替えず、止まる条件で止まる（担い手を替えて失敗を隠さないため）
+5. どちらで実装したか（Codex、Claude の `implementer`、Codex が上限に当たって Claude に引き継いだ）を控え、`pr-create` に渡す。PR の本文の `## 確認方法` に書かせる（この節を省かせない）。Codex の後に Claude が直したなら、その旨も添える
+
 やることが次のどれかに触れるなら、渡す前に下の「テストを先に書く」を行う。テストの書き手と実装の書き手を分け、実装の思い込みをテストに持ち込ませないため（すり抜けとランタイムの癖は、同じ書き手だとテストからも実装からも同じように抜け、レビューまで見つからない）。
 
 - 守る仕組みのファイルを変える（`.claude/hooks/`、`.githooks/`）
@@ -134,7 +135,7 @@ Issue に、ブランチ名とセッションの識別をコメントで残す�
 
 ### 6. 受け取る
 
-戻ったら、受け入れ条件の検査を自分で走らせ直す。エージェントの報告を検査の結果として扱わない。Codex で実装したときは、先に `pnpm format` を走らせてから検査を走らせ直す（Codex の書いたファイルは `format.mjs` を通っていないため）。
+戻ったら、受け入れ条件の検査を自分で走らせ直す。エージェントの報告を検査の結果として扱わない。Codex が書いた差分を含むとき（Codex 単独と、上限で Claude に引き継いだ場合）は、先に `pnpm format` を走らせてから検査を走らせ直す（Codex の書いたファイルは `format.mjs` を通っていないため）。
 `git status --short` に身に覚えのない変更があれば止まり、人に確かめる。
 「テストを先に書く」を行ったときは、`git diff <(2) の SHA> -- <(2) でコミットしたテストのファイル>` に、消えた行と変わった行が無いことを確かめる（足した行は崩す書き手のテストなのでよい）。あれば受け入れ条件に反するので元に戻し、実装の書き手が誤りと見たものとして止まる条件の最後の行へ回す。
 通ったらコミットし、Skill ツールで `done-check` を起動する。レビューと直し方の基準は `done-check` に従う。直す量が多ければ、実装したエージェントに SendMessage でまとめて直させ、戻らなければ自分で直す（Codex で実装したときは、Codex に SendMessage は届かないので、自分で直すか、Claude の `implementer` に差分を添えて渡す）。

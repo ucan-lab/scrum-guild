@@ -379,7 +379,7 @@ vite の転送先も同じ値から作るので、画面は自分のワークツ
 
 Codex は `.claude/` のフックを通らない（`codex exec` が起こす実装専用のエージェント。`.codex/agents/implementer.toml`）。代わりに次で守る。
 
-- Codex の sandbox は `workspace-write` で、ネットワークは無し。本番に触る `wrangler` の操作は、資格情報も通信の道も無いので届かない
+- Codex の sandbox は `workspace-write` で、ネットワークは無し（`increment-build` が `codex exec` の呼び出しで固定する）。`wrangler` の資格情報は読めるが、通信の道が無いので、本番に触る `wrangler` の操作は届かない。`increment-build` の `codex exec` の呼び出しの変更も、人が差分を読む
 - `AGENTS.md` が `CLAUDE.md` の「守ること」と「コマンド」に従わせ、フックが止めていたこと（本番の操作、`.dev.vars` と `.env`、コミット）を Codex に固有の注意として並べる
 - Codex が戻った後に、呼び出し元のセッションが `pnpm format` と受け入れ条件の検査を走らせ直す（`format.mjs` を通らないため）。コミットは呼び出し元だけが行う
 
