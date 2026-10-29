@@ -236,7 +236,7 @@ gh api repos/{owner}/{repo}/pulls/<n>/requested_reviewers -f "reviewers[]=<user>
 gh api repos/{owner}/{repo}/issues/<n>/assignees -f "assignees[]=<user>"
 ```
 
-更新モードでも本文に画像と `## エビデンス` 節を足さない。前に立てた PR に節があれば、消さずに残す（CI の `evidence` が埋め込んだ画像があるため）。
+更新モードでも本文に画像と `## エビデンス` 節を足さない。
 
 ラベル、レビュワー、アサインの `DELETE` と、ラベルを丸ごと置き換える `PUT` は使わない。人が意図して設定したものを消さないため。外す必要があると判断した場合は、実行せずユーザーに提案だけする。
 

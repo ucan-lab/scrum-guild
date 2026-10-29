@@ -227,7 +227,7 @@ jobs:
           retention-days: 14
 
   # e2e のスクリーンショットのうち、ベースの main と違う画面だけを画像用の R2 のバケットに上げ、変更前と変更後を並べた
-  # コメントを PR に1つ付けて、push のたびに書き換える。その画像を PR の本文のエビデンス節にも埋め込む（docs/development.md の「CI」）。
+  # コメントを PR に1つ付けて、push のたびに書き換える（docs/development.md の「CI」）。
   # 見た目を確かめる助けで、マージの判定には入れない（ci-ok の needs に入れない。落ちても ci-ok は落ちず、このジョブの分の待ちも伸びない）。
   # fork と Bot（Dependabot など）の PR にはシークレットと書き込みのトークンが渡らないので動かさない
   evidence:
@@ -238,6 +238,7 @@ jobs:
       github.event.pull_request.user.type != 'Bot'
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    # PR の head のチェックアウトと、PR のコメントを付けて書き換えるのに要る分だけ。PR の本文は書かない
     permissions:
       contents: read
       pull-requests: write
@@ -363,45 +364,6 @@ jobs:
           else
             echo "変わった画面が無いので、コメントを付けない"
           fi
-
-      # 書いたコメントの画像を、PR の本文の `## エビデンス` 節の印に埋め込む（.claude/skills/pr-create/evidence.md の 3）。
-      # セッションでなく CI が書くのは、クラウドのセッションが本文を書ける GitHub の MCP の書き込みが <img> を逃がすためと、
-      # 手元とクラウドを同じ経路にするため。埋め込めないとき（コメントが無い、前の push のままなど）は本文を書き換えずに
-      # 成功で終える。付かなかった理由の文はセッションが書き、前の push の画像を理由の文で消させない。
-      # 書き換えた後に本文を取り直し、--check で <img> が逃がされていないかを確かめ、崩れていればジョブを落とす。
-      # GITHUB_TOKEN の書き込みは新しいワークフローを起こさないので、本文の edited で label は動かない。
-      # 書く直前に本文を取り直し、読んだ後に人が編集していれば書かない（その後の数秒の間の編集は上書きしうる）
-      - if: steps.config.outputs.ready == 'true'
-        name: PR の本文に画像を埋め込む
-        env:
-          GH_TOKEN: ${{ github.token }}
-          REPO: ${{ github.repository }}
-          PR: ${{ github.event.pull_request.number }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-        run: |
-          set -euo pipefail
-          dir=$(mktemp -d)
-          gh api "repos/$REPO/pulls/$PR" --jq '.body // ""' > "$dir/body.md"
-          gh api "repos/$REPO/issues/$PR/comments" --paginate --slurp > "$dir/comments.json"
-          python3 -I .claude/skills/pr-create/embed-evidence.py "$dir/body.md" "$dir/comments.json" "$dir/out.md" "$HEAD_SHA" \
-            | tee "$dir/report.txt"
-          if grep -q '^埋め込めない: ' "$dir/report.txt"; then
-            echo "埋め込めないので、本文を書き換えない（理由の文はセッションが書く）"
-            exit 0
-          fi
-          if [ "$(tail -n 1 "$dir/report.txt")" != '本文を書き換える' ]; then
-            echo "本文を書き換えない"
-            exit 0
-          fi
-          gh api "repos/$REPO/pulls/$PR" --jq '.body // ""' > "$dir/latest.md"
-          if ! cmp -s "$dir/body.md" "$dir/latest.md"; then
-            echo "読んだ後に本文が変わったので、書き換えない（次の push か、セッションの確かめで埋め直す）"
-            exit 0
-          fi
-          gh api -X PATCH "repos/$REPO/pulls/$PR" -F body=@"$dir/out.md" > /dev/null
-          gh api "repos/$REPO/pulls/$PR" --jq '.body // ""' > "$dir/written.md"
-          python3 -I .claude/skills/pr-create/embed-evidence.py --check "$dir/written.md"
-          echo "本文に画像を埋め込んだ"
 
   # マージの前に確かめるのはこれと label（ai-review は助言なので含めない）。
   # 文書だけなら重いジョブは飛んでいてよく、そうでなければすべて成功していなければならない。

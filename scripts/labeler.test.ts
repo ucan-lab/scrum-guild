@@ -38,7 +38,7 @@ describe('needs-human の .claude/ の規則', () => {
     for (const path of [
       '.claude/settings.json',
       '.claude/hooks/guard-bash.mjs',
-      '.claude/skills/pr-create/embed-evidence.py',
+      '.claude/skills/pr-create/run.py',
       '.claude/skills/sprint-review/check-criterion.py',
       '.claude/checklists/run.sh',
       '.claude/skills/x/SKILL.MD',
@@ -71,7 +71,7 @@ describe('needs-human の .claude/ の規則', () => {
   test('ai-review 以外のスキルとチェックリストの .md は守らない', () => {
     for (const path of [
       '.claude/skills/retro/SKILL.md',
-      '.claude/skills/pr-create/evidence.md',
+      '.claude/skills/pr-create/github-mcp.md',
       '.claude/checklists/multi-tenant.md',
       '.claude/checklists/languages/typescript.md',
     ]) {
