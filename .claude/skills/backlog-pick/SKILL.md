@@ -1,6 +1,6 @@
 ---
 name: backlog-pick
-description: 進捗を確かめ、今着手できる Issue を選んで、並べて進めるレーンとセッションに貼るプロンプトを出す。「進捗を確認して」「次は何をやる」「今着手できるもの」「並べて進めたい」と言われたときに使う。1つの Issue を進めるのは increment-build、進捗の図を直すのは progress-chart。
+description: 進捗を確かめ、今着手できる Issue を選んで、並べて進めるレーンとセッションに貼るプロンプトを出す。「進捗を確認して」「次は何をやる」「今着手できるもの」「並べて進めたい」と言われたときに使う。1つの Issue を進めるのは increment-build、スプリントのゴールに向けた点検と進捗の図は daily-scrum。
 ---
 
 # backlog-pick
@@ -36,7 +36,7 @@ gh api "repos/{owner}/{repo}/pulls?state=open&per_page=100" --jq '.[] | {number,
 gh api repos/{owner}/{repo}/issues/<番号>/dependencies/blocked_by --jq '[.[] | select(.state == "open" and (([.labels[].name] | index("status:accepting")) == null)) | .number]'
 ```
 
-今のスプリントは、開いている記録の Issue（`sprint-log`）で読む。題から番号と期間を、本文から計画の一覧と作業中の上限を取る（`docs/development.md` の「スプリントとポイント」）。無ければスプリントの無い並べ方で進め、出力に `sprint-plan` を推す1行を添える。
+今のスプリントは、開いている記録の Issue（`sprint-log`）で読む。題から番号と期間を、本文から計画の一覧と作業中の上限を取る（`docs/development.md` の「スプリントとポイント」）。無ければスプリントの無い並べ方で進め、出力に `sprint-plan` を推す1行を添える。2つ開いていれば、番号の大きいほうを今のスプリントとし、`sprint-plan` が途中で止まっていることを出力に添える。
 
 ```bash
 gh api "repos/{owner}/{repo}/issues?labels=sprint-log&state=open" --jq '.[] | {number, title, body}'
@@ -62,13 +62,9 @@ Issue を指す開いた PR は、ブランチ名の `<番号>-` の先頭か、
 
 今のスプリントの `sprint:<番号>` が付いたものを先に、次にマイルストーンが「初版」のものを並べ、ほかは後ろにまとめる。
 
-今のスプリントの進み具合を出す。ポイントは `pt:` のラベルの数で、数え方は `sprint-plan` の手順 3 と同じにする。
+今のスプリントの進み具合を出す。数え方は `docs/development.md` の「スプリントとポイント」の表に従い、計画の済み ÷ 計画、受け入れ待ち、途中で足した分（とその済み）、作業中 / 上限を出す。計画のポイントは記録の Issue の本文の値を使う。
 
-- 済み ÷ 計画（閉じていて `state_reason` が `completed` のポイント ÷ 計画の一覧のポイント）
-- 受け入れ待ち（開いていて `status:accepting`）のポイント
-- 途中で足した分（`sprint:<番号>` が付いていて計画の一覧に無いもの）のポイント
-
-閉じた Issue は手順 1 の一覧に出ないので、今のスプリントの分だけ引く。
+閉じた Issue は手順 1 の一覧に出ないので、今のスプリントの分だけ引く。計画の一覧にあってここに出ない Issue（スプリントから外したもの）は取り下げとして数える。
 
 ```bash
 gh api "repos/{owner}/{repo}/issues?labels=sprint:<番号>&state=all&per_page=100" --paginate --jq '.[] | select(.pull_request | not) | {number, state, state_reason, labels: [.labels[].name]}'
@@ -85,7 +81,7 @@ gh api "repos/{owner}/{repo}/issues?labels=sprint:<番号>&state=all&per_page=10
 - 1つのレーン（1つのセッション）が受け持つ Issue は1つ。続けて進めたい Issue は別のレーンにするか、先のレーンの PR が閉じた後の次の `backlog-pick` に回す
 - `needs-human` の Issue は、人が差分を読む量を添える
 
-- 作業中とレビュー中の Issue に、新しく始める Issue を足した数が、記録の Issue の作業中の上限を超えないようにする。上限に達していれば、レーンを足さず、人の番を先に片付ける案を推す
+- 作業中の数（`docs/development.md` の「スプリントとポイント」の数え方。作業中とレビュー中で、受け入れ待ちを除く）に、新しく始める Issue を足した数が、記録の Issue の作業中の上限を超えないようにする。上限に達していれば、レーンを足さず、人の番を先に片付ける案を推す。プロンプトを出してから貼るまでの間に、ほかのセッションが着手することがあるので、`increment-build` が着手の前にもう一度確かめる
 
 人の番が多いときは、着手を足すより人の番を先に片付ける案を推す。並べるほど、人が読む PR が増えるため。
 スプリントの外の Issue を着手できるものに選ぶときは、レーンの案に「スプリントの外」と添える。足すと途中で足した分に数えるため、人がスプリントに入れると答えたときだけ、`sprint:<番号>` を付けるよう人に頼む（このスキルは Issue を書き換えない）。
@@ -141,11 +137,11 @@ gh api "repos/{owner}/{repo}/issues?labels=sprint:<番号>&state=all&per_page=10
 
 ## 出力
 
-- 今のスプリントの進み具合の1行（例 `スプリント 3（2026-11-05〜2026-11-11）: 済み 8/21 pt、受け入れ待ち 5 pt、途中で足した分 2 pt、作業中 3/4`）。スプリントが無ければ `sprint-plan` を推す1行
+- 今のスプリントの進み具合の1行（例 `スプリント 3（2026-11-05〜2026-11-11）: 計画の済み 8/21 pt、受け入れ待ち 5 pt、途中で足した分 2 pt（済み 1 pt）、作業中 3/4`）。スプリントが無ければ `sprint-plan` を推す1行
 - 人の番（受け入れ待ちを含む）、作業中とレビュー中、着手できるもの、待ち（待っている番号）の短い一覧
 - レーンの案と、選ばれたレーンのプロンプト（1つのレーンに1つの Issue）。プロンプトごとに、`increment-build` か `backlog-refine` を選んだ理由を1行
 - 着手できるものが無ければ、そう書き、人の番か分けるレーンを推す
-- 手元のセッションなら、進捗の図を直すかを添える（直すのは `progress-chart` で、このセッションでは直さない）
+- 手元のセッションなら、進捗の図を直すかを添える（直すのは `daily-scrum` で、このセッションでは直さない）
 
 ## 止まる条件
 

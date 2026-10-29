@@ -7,7 +7,7 @@ description: このセッションのやりとりを振り返り、次も効く�
 
 ## 仕事
 
-このセッションで分かったことのうち、次の Issue や PR でも効くものを拾い、どこに取り入れるかを提案する。
+このセッションで分かったことのうち、次の Issue や PR でも効くものを拾い、どこに取り入れるかを提案する。`sprint-plan` でスプリントを締めた後に頼まれたときは、そのスプリントの結果も材料にする（スクラムのスプリントレトロスペクティブ。`docs/development.md` の「スクラムのイベントと成果物」）。
 書き換えるのはユーザーが選んだものだけ。
 頼まれたときだけ動く（理由: PR ごとに提案で止まると、人が判断以外のことに時間を取られる）。
 
@@ -28,6 +28,7 @@ description: このセッションのやりとりを振り返り、次も効く�
 | ユーザーの訂正 | 方針、直し方、文面、手順について、ユーザーが Claude の案を変えさせた指示 |
 | 下書きと実物の差 | `pr-create` の草案と作られた PR（`gh api repos/{owner}/{repo}/pulls/<n> --jq '{title, body, labels: [.labels[].name]}'`）、`pr-feedback` のスクラッチパッドの `pr-feedback-<number>-drafts.json` と投稿済みのリプライ（`gh api "repos/{owner}/{repo}/pulls/<n>/comments" --paginate` の、自分が書いて `in_reply_to_id` が下書きのコメント ID と一致するもの） |
 | つまずき | 失敗したコマンド、返ってきた API のエラー、やり直した手順、スキルに書かれていない判断を迫られた場面 |
+| スプリントの結果 | `sprint-plan` で締めた後に頼まれたときだけ。締めた記録の Issue（`sprint-log`）の締めのコメント（`gh api "repos/{owner}/{repo}/issues/<記録の番号>/comments" --jq '.[] \| select(.body \| startswith("## 締め")) \| .body'`）から、計画と済みの差、持ち越し、取り下げ、途中で足した分、受け入れを見送ったか。持ち越しと取り下げの Issue は、コメントと PR の指摘から理由を読む |
 
 bot へのリプライはユーザーが見ないまま投稿されるので、下書きと実物の差の材料は人へのリプライと PR の本文だけになる。
 `gh` が無いか認証で失敗するときは、`pr-create/github-mcp.md` に従い、GitHub の MCP ツールで代える。
