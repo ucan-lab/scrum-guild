@@ -800,7 +800,7 @@ GitHub のアカウントも Google のアカウントも使わない人のた�
   1. Origin が公開する URL と一致し、`Sec-Fetch-Site` があれば `same-origin` だけ。違えば 403 の `forbidden`（数えず、本文も読まず、ハッシュも回さない）
   2. Content-Type が `application/json`、本文が 4KiB まで、形が合う。違えば 400 の `invalid_input`（`details` なし。4KiB を超えた本文も 413 でなく 400 にする。数えない）
   3. レート制限（`docs/data-model.md` の `rate_limits`）。上限なら 429 の `rate_limited`（ハッシュを回さない）
-  4. 照合。メールアドレスは `normalizeEmail`、パスワードは `normalizePassword`（NFC、12〜128文字）でそろえる。そろえられない入力、無いメールアドレス、違うパスワードは、どれも 401 の `invalid_credentials` の同じ本文で、どれも PBKDF2 を今の回数で1回回す（相手が無いときは `verifyDummyPassword`）
+  4. 照合。メールアドレスは `normalizeEmail`、パスワードは `normalizePassword`（NFC、12〜128文字）でそろえる。そろえられない入力、無いメールアドレス、違うパスワードは、どれも 401 の `invalid_credentials` の同じ本文で、どれも PBKDF2 を今の回数の分だけ回す（相手が無いときは `verifyDummyPassword`。保存した回数が今より少ない人は、足りない分を捨てる値で回して合計をそろえる）
   5. `completeLogin` に provider `password` で合流する。`account_logins` の `login_name` と `display_name` は `password_credentials.display_name`、アバターは空。入れる組織が無ければ 403 の `forbidden` で `details.reason` が `denied`（停止した組織にだけ入れるなら `suspended`）。結ぶ書き込みの失敗は 503 の `unavailable`。成功したら、保存した回数が今の回数より少ないハッシュを書き直す
 - 画面の文言: 401 は「メールアドレスかパスワードが違います」の1つ、403 の `denied` と `suspended` は OAuth の `?error=denied`、`suspended` と同じ、429 は `too_many` と同じ、そのほかは `unavailable` と同じ。断られても画面を移らず、メールアドレスの欄は残してパスワードの欄だけを空にする。送っている間はボタンを `aria-disabled` にし、文言を「ログインしています」にする
 - ハッシュ: `src/server/auth/password-hash.ts`。PBKDF2-HMAC-SHA256、16 バイトの塩、32 バイトの鍵、反復回数 100,000。文字列は `pbkdf2-sha256$<回数>$<塩 base64url>$<鍵 base64url>`。本番の Workers の WebCrypto は 100,000 を超える回数を断る（手元の workerd は 600,000 も通すので、手元で上限を確かめられない）。手元の workerd で1回約 12ms。照合は `crypto.subtle.timingSafeEqual` で比べ、形の壊れた保存値は例外を投げずに偽にする
