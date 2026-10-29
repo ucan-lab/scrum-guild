@@ -5281,3 +5281,74 @@ describe('bash-rules: force push は作業ブランチ宛てでも止める', ()
     assert.equal(result?.[0], 'deny');
   });
 });
+
+
+describe('bash-rules: force の拒否は行き先の確認より先に効く', () => {
+  for (const command of [
+    'git push --force-with-lease origin x(N)',
+    'git push --force-if-includes origin x(N)',
+    'git push --force-w origin "$FLAGS"',
+    'git push --force-i origin x',
+    'git push --force-with-lease --no-verify origin x',
+    'git push --force-with-lease origin --"$FLAGS"',
+    'git push origin +x y(N)',
+    'echo x | xargs git push --force-if-includes origin',
+    'gh api -X PATCH repos/o/r/git/refs/heads/feature/x --raw-field=force=true',
+    'gh api -X PATCH repos/o/r/git/refs/heads/x -F=force=true',
+    'gh api -X PATCH repos/o/r/git/refs/heads/x -f=force=true',
+    'gh api -X PATCH repos/o/r/git/refs/heads/x -Fforce=true',
+    'gh api -X PATCH repos/o/r/git/refs/heads/x -fforce=true',
+  ]) {
+    test(command, () => assert.equal(decision(command), 'deny'));
+  }
+  for (const command of [
+    'gh api -X GET repos/o/r/git/refs/heads/x -F force=true',
+    'gh api -X PATCH repos/o/r/git/refs/heads/x --raw-field=force=false',
+    'gh api -X PATCH repos/o/r/git/refs/heads/x -F sha=abc -f note=force=true',
+  ]) {
+    test(command, () => assert.equal(decision(command), 'allow'));
+  }
+});
+
+describe('bash-rules: force push の判定を git と gh の実際の引数の読み方で崩す', () => {
+  // git 2.56.0 の git push --dry-run で forced update になると確かめた形
+  for (const command of [
+    // -4（--ipv4）と -6（--ipv6）は数字の短いフラグで、-f とまとめられる
+    'git push -4f origin x',
+    'git push -f4 origin x',
+    'git push -u6f origin x',
+    // --m は push の長いオプションで --mirror だけに当たる一意な省略形
+    'git push --m',
+    // 値を取る git の大域のオプション
+    'git --config-env foo.bar=HOME push --force-with-lease origin x',
+    'git --attr-source HEAD push --force-with-lease origin x',
+  ]) {
+    test(`[すり抜け] ${command} は deny`, () => assert.equal(decision(command), 'deny', command));
+  }
+
+  // GitHub の側で作業ブランチを rebase し、head を書き換える（既定の merge の更新は通常の更新）
+  for (const command of ['gh pr update-branch --rebase', 'gh pr update-branch 12 --rebase']) {
+    test(`[すり抜け] ${command} は deny`, () => assert.equal(decision(command), 'deny', command));
+  }
+  test('[通す] gh pr update-branch は merge で更新するので通す', () => assert.equal(decision('gh pr update-branch'), 'allow'));
+
+  // ref の更新の API に force: true を送る形
+  for (const command of [
+    'gh api -X PATCH "repos/o/r/git/refs/$REF" -F force=true',
+    "gh api -X PATCH repos/o/r/git/refs/heads/x --input - <<'EOF'\n{\"sha\":\"a\",\"force\":true}\nEOF",
+    "echo '{\"sha\":\"a\",\"force\":true}' | gh api -X PATCH repos/o/r/git/refs/heads/x --input -",
+    "curl -X PATCH -H 'Authorization: token t' https://api.github.com/repos/o/r/git/refs/heads/x -d '{\"sha\":\"a\",\"force\":true}'",
+    "curl -X PATCH https://api.github.com/repos/o/r/git/refs/heads/x --json '{\"sha\":\"a\",\"force\":true}'",
+  ]) {
+    test(`[すり抜け] ${command} は deny`, () => assert.equal(decision(command), 'deny', command));
+  }
+  // 本文をファイルから読むと force を読めない。黙って通さない
+  test('[すり抜け] gh api の ref の PATCH を --input のファイルで送ると通さない', () =>
+    assert.notEqual(decision('gh api -X PATCH repos/o/r/git/refs/heads/x --input body.json'), 'allow'));
+
+  // -o と --push-option は次の語を値に取る。値の -f や --force は push option の文字列で、force にならない
+  // （receive.advertisePushOptions を有効にしたリモートへの --dry-run で non-fast-forward として弾かれると確かめた）
+  for (const command of ['git push -o -f origin x', 'git push --push-option --force origin x', 'git push -oforce origin x']) {
+    test(`[誤って止める] ${command} は deny にしない`, () => assert.notEqual(decision(command), 'deny', command));
+  }
+});
