@@ -157,7 +157,7 @@ describe('.tier の色の対応', () => {
   test('.tier.is-* を含む別の規則（テーマごとの上書きなど）は、段階の色を変えない', () => {
     const overrides = rules.filter(
       (rule) =>
-        /\.tier\b/.test(rule.selector) &&
+        /\.tier(?![\w-])/.test(rule.selector) &&
         !/^\.tier\.is-(small|medium|large)$/.test(rule.selector) &&
         rule.colors.length > 0,
     );
