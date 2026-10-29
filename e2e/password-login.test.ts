@@ -106,7 +106,8 @@ test('違うパスワードでは、画面を移らずに理由を出し、メ�
 
 test('登録の無いメールアドレスも、違うパスワードと同じ文言で断る', async ({ page }) => {
   await page.goto('/login');
-  await emailField(page).fill(`nobody-${crypto.randomUUID().slice(0, 8)}@example.test`);
+  // 欄の文字が画面に写るので、乱数を混ぜずに決まったアドレスにする（#491）。メールアドレスの枠は beforeEach で消すので、毎回同じでも使い切らない
+  await emailField(page).fill('nobody@example.test');
   await passwordField(page).fill(SEED_PASSWORD_LOGINS.single.password);
   await submitButton(page).click();
   await expect(page.getByRole('alert')).toHaveText(

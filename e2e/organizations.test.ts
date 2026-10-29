@@ -581,6 +581,8 @@ test.describe('組織が2つの人（あおば開発の管理者でひばり工�
     await menuButton(page).click();
     const shell = await overflowOf(page);
     expect(shell.scroll).toBeLessThanOrEqual(shell.inner);
+    // 押した位置に残るマウスで、組織の切り替えのボタンの枠がホバーの色になるかが実行ごとに変わるので、隅へ動かす（#491）
+    await page.mouse.move(0, 0);
   });
 });
 

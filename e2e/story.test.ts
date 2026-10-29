@@ -261,6 +261,10 @@ test('ストーリーのダイアログは、読んでいる間は読み込み�
   await expect(page.locator('dialog[open]')).toHaveCount(0);
   await expect(page.getByRole('status').filter({ hasText: 'この達成目標は見つかりません' })).toBeVisible();
   await expect(page.getByRole('heading', { level: 1, name: '掲示板' })).toBeFocused();
+  // 下の方の行を押すたびに Playwright がスクロールし、404 の後の木の読み直しで位置が上に戻るかが実行の速さで変わる。
+  // 読み直しを待ってから、フォーカスした見出しのある一番上へ戻し、終わりの画面（evidence-<n>.png）をそろえる（#491）
+  await waitForSettled(page);
+  await page.evaluate(() => window.scrollTo({ top: 0, behavior: 'instant' }));
 });
 
 test('日付の入力が途中までしか打たれていなければ、期日の欄に知らせて送らない', async ({ page }) => {

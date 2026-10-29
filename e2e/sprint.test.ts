@@ -9,7 +9,7 @@ import type { Page } from '@playwright/test';
 import { sprintBoard, taskColumnMove } from '../src/shared/operations/sprint/index.ts';
 import { taskReopen } from '../src/shared/operations/task/index.ts';
 import { expect, test } from './fixtures.ts';
-import { createWorkspace, signIn, waitForResponses, watchViolations } from './helpers.ts';
+import { createWorkspace, signIn, waitForResponses, waitForSettled, watchViolations } from './helpers.ts';
 import { failOperation, mockOperation } from './operations.ts';
 import { SAMPLE_BOARD } from './sprint-fixture.ts';
 
@@ -406,7 +406,11 @@ test('戻すのが断られたら理由を知らせて読み直す', async ({ pa
   const unroute = await failOperation(page, taskReopen, { slug: 'aoba' }, 409, 'conflict', {
     details: { reason: 'sprint_closed' },
   });
-  await page.getByRole('button', { name: '完遂を戻す: 付与の履歴を返す API を作る' }).click();
+  // 読み込みで行が動いている間に押すと、Playwright が押し直す前にスクロールし、その位置が画像に残る（#354、#491）
+  const reopen = page.getByRole('button', { name: '完遂を戻す: 付与の履歴を返す API を作る' });
+  await expect(reopen).toBeVisible();
+  await waitForSettled(page);
+  await reopen.click();
   await expect(
     page.getByRole('status').filter({ hasText: '終了した遠征の中で完遂したクエストは戻せません。一覧を読み直します' }),
   ).toBeVisible();
