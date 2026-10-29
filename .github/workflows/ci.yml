@@ -179,7 +179,6 @@ jobs:
   # PR で足したか変えた e2e のテストのファイルだけを、1つのワーカーで5回ずつ繰り返し、揺れるテストを main に入る前に落とす（#451）。
   # 並べたまま繰り返すと負荷だけで落ち（#364）、同じテストの複製が共有の D1 で自分とぶつかるので --workers=1 にする。
   # 繰り返しの間に seed は入れ直さない（docs/development.md の「e2e の書き方」の、繰り返しに耐える決まり）。
-  # 繰り返しに耐えないまま残るファイル（scripts/ci.ts の REPEAT_EXCLUDED）は、changes が外して注記を出す。
   # 件数の合計が上限（scripts/ci.ts の REPEAT_TEST_LIMIT）を超えたら、回さずに成功で終えて注記を出す。
   # 手元の pnpm e2e と同じ条件にするため、画像は撮らない（E2E_EVIDENCE を付けない）。走らないときは ci-ok が skipped を期待する
   e2e-repeat:

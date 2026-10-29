@@ -1,6 +1,7 @@
 // ログアウト。組織の中は上の帯のアカウントのメニュー、組織の外（/operator）は紙の下のボタンから押す。
 // e2e は seed のセッションを全ファイルで共有して並列に走るので、本物のログアウトは専用の行（adminLogout、operatorLogout。
-// seed/sessions.ts）だけで行い、共有の admin、member、operator は消さない。失敗と待ちの見せ方は、logout の応答を差し替えて確かめる
+// seed/sessions.ts）だけで行い、共有の admin、member、operator は消さない。専用の行は、繰り返し（--repeat-each）で前の回が消しているので、
+// テストの初めに手元の D1 へ入れ直す（e2e/local-d1.ts）。失敗と待ちの見せ方は、logout の応答を差し替えて確かめる
 import type { Page } from '@playwright/test';
 import { expect, test } from './fixtures.ts';
 import { SEED_SESSIONS } from '../seed/sessions.ts';
@@ -8,6 +9,7 @@ import { listOrganizations } from '../src/shared/operations/operator/list-organi
 import { logout } from '../src/shared/operations/session/index.ts';
 import { sessionCookieName } from '../src/shared/session-cookie.ts';
 import { signIn } from './helpers.ts';
+import { restoreSeedSession } from './local-d1.ts';
 import { failOperation, mockOperation, routeOperation } from './operations.ts';
 
 const accountButton = (page: Page) => page.getByRole('button', { name: /アカウントのメニュー$/ });
@@ -29,6 +31,7 @@ test.describe('組織の中（アカウントのメニュー）', () => {
       });
       return res.status();
     };
+    await restoreSeedSession('adminLogout');
     expect(await meWith('adminLogout')).toBe(200);
 
     await signIn(context, baseURL, 'adminLogout');
@@ -234,6 +237,7 @@ test.describe('組織の外（紙の下のボタン）', () => {
     if (baseURL === undefined) throw new Error('baseURL が無い');
     // e2e の Worker には運用者の一覧が無いので、組織の一覧は差し替える（運用者の画面は operator.test.ts と同じ）
     await mockOperation(page, listOrganizations, { organizations: [] });
+    await restoreSeedSession('operatorLogout');
     await signIn(context, baseURL, 'operatorLogout');
     await page.goto('/operator');
     await expect(page.getByRole('heading', { level: 1, name: '運用' })).toBeVisible();

@@ -1,7 +1,9 @@
 // 組織の変更の履歴。管理者が組織の管理の画面の最後の節で、seed の履歴（seed/data.sql の change_logs）を新しい順に見る。
 // seed のセッション（seed/sessions.ts）の Cookie で開く。あおば開発の管理者はミナト、一般のユーザーはハルカ。
 // ほかのファイルが並列にワークスペースを作って終了するので、行の数は数えず、seed の行どうしの順だけを見る。
-// 「古い履歴を読む」は、応答を差し替えて確かめる（seed の行は 50 件に満たない）
+// 足された行（新しい日時で先頭に来る）が多いと、seed の行は最初の 50 件の外へ押し出される（並べて繰り返す --repeat-each で起きる）。
+// そこで seed の行を見るテストは、一番古い seed の行が出るまで「古い履歴を読む」で読み足す。
+// 「古い履歴を読む」の振る舞いは、応答を差し替えて確かめる（seed の行は 50 件に満たない）
 import type { Page, Route } from '@playwright/test';
 import { expect, test } from './fixtures.ts';
 import { signIn, watchViolations } from './helpers.ts';
@@ -14,6 +16,25 @@ function sectionOf(page: Page) {
 
 function tableOf(page: Page) {
   return sectionOf(page).getByRole('table', { name: '冒険者ギルドの変更の履歴' });
+}
+
+// seed の一番古い行。これより古い履歴は無い
+const OLDEST_SEED_EVENT = '冒険者ギルド「あおば開発」を作りました';
+
+// 一番古い seed の行が出るまで「古い履歴を読む」で読み足す。読み足すたびに、行が増えるのを待ってから次を押す
+async function readToOldestSeedRow(page: Page): Promise<void> {
+  const rows = tableOf(page).locator('tbody tr');
+  const oldest = rows.filter({ hasText: OLDEST_SEED_EVENT });
+  const more = sectionOf(page).getByRole('button', { name: '古い履歴を読む' });
+  // 最初のページを読み終えてから数える
+  await expect(rows.first()).toBeVisible();
+  while ((await oldest.count()) === 0) {
+    const count = await rows.count();
+    // 読み足せないのに一番古い seed の行が無ければ、seed の履歴が変わった。ボタンの時間切れで落とさず、そう言って落とす
+    if (!(await more.isVisible())) throw new Error(`履歴の最後まで読んだが「${OLDEST_SEED_EVENT}」が無い`);
+    await more.click();
+    await expect(rows).not.toHaveCount(count);
+  }
 }
 
 type Entry = { id: string; created_at: string; actor: unknown; event: unknown };
@@ -52,8 +73,9 @@ test.describe('管理者（あおば開発のミナト）', () => {
       ['2026/10/01 09:00', '運用者', '冒険者ギルド「あおば開発」を作りました'],
     ];
     // 並列のテストが足した行（新しい日時）は先頭に来るので、seed の行だけを抜き出して順を見る
+    await readToOldestSeedRow(page);
     const rows = table.locator('tbody tr');
-    await expect(rows.filter({ hasText: '冒険者ギルド「あおば開発」を作りました' })).toHaveCount(1);
+    await expect(rows.filter({ hasText: OLDEST_SEED_EVENT })).toHaveCount(1);
     // アバターの頭文字は除き、日付と時刻の間の折り返さない空白は普通の空白にして読む
     const texts = await rows.evaluateAll((trs) =>
       trs.map((tr) =>
@@ -74,7 +96,7 @@ test.describe('管理者（あおば開発のミナト）', () => {
     // した人がユーザーなら名前とアバター、運用者は文字だけ
     await expect(rows.filter({ hasText: '受託開発チーム' }).getByRole('img')).toHaveCount(0);
     await expect(rows.filter({ hasText: '受託開発チーム' }).locator('.avatar')).toHaveCount(1);
-    // seed の履歴は 50 件に満たないので、「古い履歴を読む」は出ない
+    // seed の一番古い行より前の履歴は無いので、そこまで読めば「古い履歴を読む」は出ない
     await expect(sectionOf(page).getByRole('button', { name: '古い履歴を読む' })).toHaveCount(0);
     expect(await collect()).toEqual([]);
   });
@@ -163,7 +185,8 @@ test.describe('管理者（あおば開発のミナト）', () => {
   test('320px の幅でも、節は横にはみ出さず、行を縦に積む', async ({ page }) => {
     await page.setViewportSize({ width: 320, height: 800 });
     await page.goto('/aoba/admin');
-    const row = tableOf(page).locator('tbody tr').filter({ hasText: '冒険者ギルド「あおば開発」を作りました' });
+    await readToOldestSeedRow(page);
+    const row = tableOf(page).locator('tbody tr').filter({ hasText: OLDEST_SEED_EVENT });
     await row.scrollIntoViewIfNeeded();
     await expect(row).toBeInViewport({ ratio: 1 });
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(320);
