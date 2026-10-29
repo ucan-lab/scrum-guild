@@ -875,4 +875,20 @@ describe('review-budget.mjs（崩す手口の追加）', () => {
     assert.ok(isAllow(call(repo, 'code-reviewer', T0 + 40 * MIN)));
     assert.ok(isDeny(call(repo, 'code-reviewer', T0 + 60 * MIN)));
   });
+  test('GIT_DIR が環境にあっても、cwd のブランチで数える（上限を素通りさせない）', () => {
+    const repo = makeRepo();
+    git(['switch', '-q', '-c', 'feat'], repo);
+    const env = (now) => ({ ...envAt(now), GIT_DIR: path.join(tmp, 'nonexistent') });
+    const run = (now) =>
+      spawnSync(process.execPath, [script], { input: JSON.stringify({ tool_name: 'Agent', cwd: repo, tool_input: { subagent_type: 'code-reviewer', prompt: 'x' } }), cwd: repo, encoding: 'utf8', env: env(now) });
+    assert.ok(isAllow(run(T0)));
+    assert.ok(isAllow(run(T0 + 10 * MIN)));
+    assert.ok(isDeny(run(T0 + 20 * MIN)));
+  });
+  test('extend は合計が安全な整数を超えるなら失敗し、状態を変えない', () => {
+    const repo = makeRepo();
+    assert.equal(extend(repo, ['9007199254740991', '--reason', 'a']).status, 0);
+    assert.notEqual(extend(repo, ['9007199254740991', '--reason', 'b']).status, 0);
+    assert.ok(isAllow(call(repo, 'code-reviewer', T0)), '状態が読めるまま');
+  });
 });

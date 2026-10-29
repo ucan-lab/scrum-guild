@@ -7,8 +7,11 @@ import { mkdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } 
 import path from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
 
+// GIT_DIR などを受け継ぐと、-C で指した先と別のリポジトリを引いて、数えずに素通りする
+const gitEnv = Object.fromEntries(Object.entries(process.env).filter(([key]) => !key.startsWith('GIT_')));
+
 const git = (dir, args) =>
-  execFileSync('git', ['-C', dir, ...args], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+  execFileSync('git', ['-C', dir, ...args], { encoding: 'utf8', env: gitEnv, stdio: ['ignore', 'pipe', 'ignore'] }).trim();
 
 // ブランチ名。detached HEAD、git の外、ブランチを引けないときは undefined
 function branchOf(dir) {
@@ -95,9 +98,11 @@ async function extend(args, rules) {
   const branch = branchOf(cwd);
   if (!branch) throw new Error('ブランチを引けません（detached HEAD か git の外）');
   const now = nowMs();
-  await updateState(path.join(commonDirOf(cwd), 'review-budget'), branch, rules, (state) => ({
-    state: rules.extendState(state, Number(rounds), reason.trim(), now),
-  }));
+  await updateState(path.join(commonDirOf(cwd), 'review-budget'), branch, rules, (state) => {
+    // 書いた値を次の読み込みで不正と見て、全部の起動が止まるのを防ぐ
+    if (!Number.isSafeInteger(state.extra + Number(rounds))) throw new Error('延長の合計が大きすぎます');
+    return { state: rules.extendState(state, Number(rounds), reason.trim(), now) };
+  });
 }
 
 async function hook(rules) {
