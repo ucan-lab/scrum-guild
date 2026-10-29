@@ -619,3 +619,260 @@ describe('review-budget.mjs（入口を実際に起動する）', () => {
     });
   });
 });
+
+// ---- 追加の攻撃（Issue #487 の仕様に反する実装の欠陥を探す）----
+import { utimesSync, writeFileSync } from 'node:fs';
+
+describe('review-budget.mjs（崩す手口の追加）', () => {
+  const tmp = realpathSync(mkdtempSync(path.join(os.tmpdir(), 'review-budget-atk-')));
+  after(() => rmSync(tmp, { recursive: true, force: true }));
+  const cleanEnv = Object.fromEntries(
+    Object.entries(process.env).filter(([key]) => !key.startsWith('GIT_') && key !== 'REVIEW_BUDGET_NOW' && key !== 'CLAUDE_CODE_REMOTE'),
+  );
+  const git = (args, cwd) => {
+    const r = spawnSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@example.com', '-c', 'commit.gpgsign=false', ...args], {
+      cwd,
+      encoding: 'utf8',
+      env: cleanEnv,
+    });
+    assert.equal(r.status, 0, `git ${args.join(' ')}: ${r.stderr}`);
+    return r.stdout.trim();
+  };
+  let n = 0;
+  const makeRepo = () => {
+    const dir = path.join(tmp, `r${++n}`);
+    mkdirSync(dir);
+    git(['init', '-q', '-b', 'trunk'], dir);
+    git(['commit', '-q', '--allow-empty', '-m', 'init'], dir);
+    return dir;
+  };
+  const MIN = 60_000;
+  const envAt = (now) => ({ ...cleanEnv, REVIEW_BUDGET_NOW: String(now) });
+  const call = (cwd, agent, now, input) =>
+    spawnSync(process.execPath, [script], {
+      input: input ?? JSON.stringify({ tool_name: 'Agent', cwd, tool_input: { subagent_type: agent } }),
+      cwd,
+      encoding: 'utf8',
+      env: envAt(now),
+    });
+  const extend = (cwd, args, now = T0) => spawnSync(process.execPath, [script, 'extend', ...args], { cwd, encoding: 'utf8', env: envAt(now) });
+  const bdir = (repo) => path.join(git(['rev-parse', '--path-format=absolute', '--git-common-dir'], repo), 'review-budget');
+  const isDeny = (r) => r.status === 0 && r.stdout.includes('"deny"');
+  const isAllow = (r) => r.status === 0 && r.stdout.trim() === '';
+  const stateFile = (repo, branch = 'trunk') => path.join(bdir(repo), `${rules.branchFileName(branch)}.json`);
+  const seed = (repo, body, branch = 'trunk') => {
+    mkdirSync(bdir(repo), { recursive: true });
+    writeFileSync(stateFile(repo, branch), typeof body === 'string' ? body : JSON.stringify(body));
+  };
+
+  test('状態ファイルが空だと exit 2（許可に倒さない）', () => {
+    const repo = makeRepo();
+    seed(repo, '');
+    const r = call(repo, 'code-reviewer', T0);
+    assert.equal(r.status, 2, r.stderr);
+  });
+  test('状態ファイルが JSON の配列・null・文字列でも exit 2', () => {
+    for (const body of ['[]', 'null', '"x"', '{}', '{"starts":{},"extra":0}']) {
+      const repo = makeRepo();
+      seed(repo, body);
+      assert.equal(call(repo, 'code-reviewer', T0).status, 2, body);
+    }
+  });
+  test('extra が文字列・null・真偽値の状態は exit 2', () => {
+    for (const extra of ['1', null, true, [1]]) {
+      const repo = makeRepo();
+      seed(repo, { starts: [], extra });
+      assert.equal(call(repo, 'code-reviewer', T0).status, 2, JSON.stringify(extra));
+    }
+  });
+  test('巨大な状態ファイル（空白 5MB 入りの正しい JSON）でも正しく判定する', () => {
+    const repo = makeRepo();
+    seed(repo, `${' '.repeat(5_000_000)}{"starts":[${T0},${T0 + 10 * MIN}],"extra":0}`);
+    assert.ok(isDeny(call(repo, 'code-reviewer', T0 + 20 * MIN)));
+    assert.ok(isAllow(call(repo, 'code-reviewer', T0 + 10 * MIN + 1000)));
+  });
+  test('starts が数値でない要素を含む状態は、巡として数えず exit 2 で止める', () => {
+    // 仕様「判定できないときは exit 2」。starts に文字列があると Math.abs(NaN) で窓判定が常に偽になり、
+    // 壊れた要素が 1 巡として数えられて正当な起動を拒否する（または黙って数える）
+    for (const starts of [['a', 'b'], [null, null], [{}, []], [true, false]]) {
+      const repo = makeRepo();
+      seed(repo, { starts, extra: 0 });
+      const r = call(repo, 'code-reviewer', T0);
+      assert.equal(r.status, 2, `${JSON.stringify(starts)}: 出力 ${r.stdout}`);
+    }
+  });
+  test('extra が負の状態は exit 2 で止める（上限が 2 未満に縮んで 1 巡目から拒否されない）', () => {
+    // 仕様: 上限は 2 巡 + 延長。延長は正の整数だけなので負の extra は壊れた状態であり、判定できない
+    const repo = makeRepo();
+    seed(repo, { starts: [], extra: -5 });
+    const r = call(repo, 'code-reviewer', T0);
+    assert.equal(r.status, 2, `status ${r.status} stdout ${r.stdout}`);
+  });
+  test('extra が小数の状態は exit 2 で止める', () => {
+    // 仕様: 延長は巡数（整数）。1.5 のような extra は判定できない状態
+    const repo = makeRepo();
+    seed(repo, { starts: [T0, T0 + 10 * MIN], extra: 0.5 });
+    const r = call(repo, 'code-reviewer', T0 + 20 * MIN);
+    assert.ok(r.status === 2 || isDeny(r), `status ${r.status} stdout ${r.stdout}`);
+  });
+  test('桁の多すぎる巡数の extend で状態を壊さない（以後のフックが exit 2 で固まらない）', () => {
+    // 仕様: 延長した分だけ起動できる。400 桁の巡数は Number() で Infinity になり JSON では null になって、
+    // 以後すべてのレビュー起動が exit 2 になる。extend を拒否するか、状態を使える形に保つこと
+    const repo = makeRepo();
+    const e = extend(repo, ['9'.repeat(400), '--reason', 'r']);
+    const r = call(repo, 'code-reviewer', T0);
+    assert.ok(e.status !== 0 || r.status === 0, `extend ${e.status}、その後のフック ${r.status}: ${r.stderr}`);
+  });
+  test('extend は --reason の後ろに余分な引数があると失敗し、状態を作らない', () => {
+    const repo = makeRepo();
+    for (const args of [['1', '--reason', 'a', 'b'], ['1', '--reason', 'a', '--reason', 'b'], ['--reason', 'a', '1']]) {
+      assert.notEqual(extend(repo, args).status, 0, JSON.stringify(args));
+    }
+    assert.equal(existsSync(stateFile(repo)), false);
+  });
+  test('extend は壊れた状態ファイルを上書きせず失敗する', () => {
+    const repo = makeRepo();
+    seed(repo, '{broken');
+    assert.notEqual(extend(repo, ['1', '--reason', 'r']).status, 0);
+    assert.equal(readFileSync(stateFile(repo), 'utf8'), '{broken');
+  });
+  test('extend は拒否を記録せず starts を保ち、延長の at に渡した時刻を残す', () => {
+    const repo = makeRepo();
+    assert.ok(isAllow(call(repo, 'code-reviewer', T0)));
+    assert.equal(extend(repo, ['1', '--reason', 'x'], T0 + 5 * MIN).status, 0);
+    const s = JSON.parse(readFileSync(stateFile(repo), 'utf8'));
+    assert.deepEqual(s.starts, [T0]);
+    assert.equal(s.extensions[0].at, T0 + 5 * MIN);
+  });
+  test('入力の subagent_type が配列・数・null・オブジェクトでも数えず許可する（上限到達後も）', () => {
+    const repo = makeRepo();
+    seed(repo, { starts: [T0, T0 + 10 * MIN], extra: 0 });
+    const before = readFileSync(stateFile(repo), 'utf8');
+    for (const t of [['code-reviewer'], 1, null, { a: 1 }, true]) {
+      assert.ok(isAllow(call(repo, undefined, T0 + 20 * MIN, JSON.stringify({ cwd: repo, tool_input: { subagent_type: t } }))), JSON.stringify(t));
+    }
+    for (const t of ['CODE-REVIEWER', ' code-reviewer', 'code-reviewer\n', 'code_reviewer', 'code-reviewer2']) {
+      assert.ok(isAllow(call(repo, t, T0 + 20 * MIN)), JSON.stringify(t));
+    }
+    assert.equal(readFileSync(stateFile(repo), 'utf8'), before);
+  });
+  test('tool_input が無い・配列・文字列の入力でも落ちない（対象外として許可）', () => {
+    const repo = makeRepo();
+    for (const input of ['{}', '{"tool_input":null}', '{"tool_input":[]}', '{"tool_input":"code-reviewer"}']) {
+      assert.ok(isAllow(call(repo, undefined, T0, input)), input);
+    }
+    assert.equal(existsSync(bdir(repo)), false);
+  });
+  test('入力に cwd が無いときはプロセスの cwd のブランチで数える', () => {
+    const repo = makeRepo();
+    const noCwd = (at) => call(repo, undefined, at, JSON.stringify({ tool_input: { subagent_type: 'code-reviewer' } }));
+    assert.ok(isAllow(noCwd(T0)));
+    assert.ok(isAllow(noCwd(T0 + 10 * MIN)));
+    assert.ok(isDeny(noCwd(T0 + 20 * MIN)));
+  });
+  test('入力の cwd が存在しないパスでも拒否せず、状態も作らない', () => {
+    const repo = makeRepo();
+    const ghost = path.join(tmp, 'no-such-dir');
+    for (let i = 0; i < 4; i += 1) {
+      assert.ok(isAllow(call(repo, 'code-reviewer', T0 + i * 10 * MIN, JSON.stringify({ cwd: ghost, tool_input: { subagent_type: 'code-reviewer' } }))));
+    }
+    assert.equal(existsSync(bdir(repo)), false);
+  });
+  test('古いロックが残っていても（30 秒より前）取り直して判定し、ロックを消す', () => {
+    const repo = makeRepo();
+    mkdirSync(bdir(repo), { recursive: true });
+    const lock = path.join(bdir(repo), `${rules.branchFileName('trunk')}.lock`);
+    mkdirSync(lock);
+    const old = new Date(Date.now() - 5 * MIN);
+    utimesSync(lock, old, old);
+    assert.ok(isAllow(call(repo, 'code-reviewer', T0)));
+    assert.equal(existsSync(lock), false);
+    assert.deepEqual(JSON.parse(readFileSync(stateFile(repo), 'utf8')).starts, [T0]);
+  });
+  test('新しいロックが残っていると待った末に exit 2 で止め、他人のロックは消さない', () => {
+    const repo = makeRepo();
+    mkdirSync(bdir(repo), { recursive: true });
+    const lock = path.join(bdir(repo), `${rules.branchFileName('trunk')}.lock`);
+    mkdirSync(lock);
+    const r = call(repo, 'code-reviewer', T0);
+    assert.equal(r.status, 2, r.stderr);
+    assert.equal(existsSync(lock), true);
+    assert.equal(existsSync(stateFile(repo)), false);
+  });
+  test('壊れた状態で止めた後もロックを残さない', () => {
+    const repo = makeRepo();
+    seed(repo, '{broken');
+    assert.equal(call(repo, 'code-reviewer', T0).status, 2);
+    assert.deepEqual(readdirSync(bdir(repo)).filter((f) => f.endsWith('.lock') || f.endsWith('.tmp')), []);
+  });
+  test('状態の置き場を作れない（同名のファイルがある）ときは exit 2', () => {
+    const repo = makeRepo();
+    const dir = bdir(repo);
+    writeFileSync(dir, 'x');
+    const r = call(repo, 'code-reviewer', T0);
+    assert.equal(r.status, 2, r.stderr);
+    assert.notEqual(r.stderr.trim(), '');
+    assert.equal(extend(repo, ['1', '--reason', 'r']).status !== 0, true);
+  });
+  test('非 ASCII のブランチ名でもブランチごとに別の状態になる', () => {
+    const repo = makeRepo();
+    git(['switch', '-q', '-c', '487-日本語'], repo);
+    assert.ok(isAllow(call(repo, 'code-reviewer', T0)));
+    assert.ok(isAllow(call(repo, 'code-reviewer', T0 + 10 * MIN)));
+    assert.ok(isDeny(call(repo, 'code-reviewer', T0 + 20 * MIN)));
+    git(['switch', '-q', 'trunk'], repo);
+    assert.ok(isAllow(call(repo, 'code-reviewer', T0 + 20 * MIN)), '別のブランチは数え直し');
+  });
+  test('git が受け付ける長めの日本語のブランチ名でも判定できる（状態のファイル名が長すぎて exit 2 にならない）', () => {
+    // 仕様: ブランチごとに状態を持つ。日本語 30 字（90 バイトで git は作れる）が、バイトごとの %XX
+    // 符号化で 270 文字を超え、ファイル名の上限 255 を越えて、そのブランチの全レビューが exit 2 で止まる
+    const repo = makeRepo();
+    const branch = `487-${'日'.repeat(30)}`;
+    git(['switch', '-q', '-c', branch], repo);
+    const r = call(repo, 'code-reviewer', T0);
+    assert.equal(r.status, 0, r.stderr);
+  });
+  test('git が受け付ける長い ASCII のブランチ名（200 字）でも判定できる', () => {
+    const repo = makeRepo();
+    git(['switch', '-q', '-c', `487-${'a'.repeat(196)}`], repo);
+    const r = call(repo, 'code-reviewer', T0);
+    assert.equal(r.status, 0, r.stderr);
+  });
+  test('ブランチ名が ".json" や ".lock" で終わっても状態とロックが衝突しない', () => {
+    const repo = makeRepo();
+    git(['switch', '-q', '-c', 'x.json'], repo);
+    assert.ok(isAllow(call(repo, 'code-reviewer', T0)));
+    assert.ok(isAllow(call(repo, 'code-reviewer', T0 + 10 * MIN)));
+    git(['switch', '-q', '-c', 'x', 'trunk'], repo);
+    assert.ok(isAllow(call(repo, 'code-reviewer', T0)));
+    assert.ok(isAllow(call(repo, 'code-reviewer', T0 + 10 * MIN)));
+    assert.ok(isDeny(call(repo, 'code-reviewer', T0 + 20 * MIN)));
+  });
+  test('窓の境界を入口で確かめる（+120000 は同じ巡、+120001 は新しい巡で上限を超えると拒否）', () => {
+    const repo = makeRepo();
+    seed(repo, { starts: [T0, T0 + 10 * MIN], extra: 0 });
+    assert.ok(isAllow(call(repo, 'code-reviewer', T0 + 10 * MIN + WINDOW_MS)));
+    assert.ok(isDeny(call(repo, 'code-reviewer', T0 + 10 * MIN + WINDOW_MS + 1)));
+  });
+  test('REVIEW_BUDGET_NOW が数でないと exit 2（判定できない）', () => {
+    const repo = makeRepo();
+    const r = spawnSync(process.execPath, [script], {
+      input: JSON.stringify({ cwd: repo, tool_input: { subagent_type: 'code-reviewer' } }),
+      cwd: repo,
+      encoding: 'utf8',
+      env: { ...cleanEnv, REVIEW_BUDGET_NOW: 'abc' },
+    });
+    assert.equal(r.status, 2);
+  });
+  test('延長後に新しい巡の窓の中の起動は、上限ちょうどでも拒否されない', () => {
+    const repo = makeRepo();
+    assert.ok(isAllow(call(repo, 'code-reviewer', T0)));
+    assert.ok(isAllow(call(repo, 'code-reviewer', T0 + 10 * MIN)));
+    assert.ok(isDeny(call(repo, 'code-reviewer', T0 + 20 * MIN)));
+    assert.equal(extend(repo, ['2', '--reason', 'r'], T0 + 21 * MIN).status, 0);
+    assert.ok(isAllow(call(repo, 'code-reviewer', T0 + 22 * MIN)));
+    assert.ok(isAllow(call(repo, 'security-reviewer', T0 + 22 * MIN + 1000)));
+    assert.ok(isAllow(call(repo, 'code-reviewer', T0 + 40 * MIN)));
+    assert.ok(isDeny(call(repo, 'code-reviewer', T0 + 60 * MIN)));
+  });
+});
