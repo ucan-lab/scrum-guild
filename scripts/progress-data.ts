@@ -5,9 +5,9 @@
 // 出力: { asOf, sprint, issues, history }
 //   asOf     作った日時（日本時間の ISO 8601、+09:00 付き）
 //   sprint   今のスプリント。開いている記録（sprint-log）が無ければ null、2つ開いていれば番号の大きいほう
-//            { n, log, from, to, goal, wipLimit, plan: [{ number, title, pt }],
+//            { n, log, from, to, goal, plan: [{ number, title, pt }],
 //              planned, plannedDone, added, addedDone, withdrawn, accepting, wip }
-//            数はどれも { pt, count }。wip は作業中の数で、wipLimit が上限
+//            数はどれも { pt, count }。wip は作業中の数
 //   issues   sprint-log を除く Issue（番号の昇順）。not_planned と duplicate で閉じたものは入れない
 //            { number, title, level: epic | story | task, s: done | accept | review | wip | refining | todo,
 //              parent, children, pt, sprint, areas, deps, waitingOn, prs, closeReason, milestone }
@@ -50,7 +50,6 @@ export type SprintView = {
   from: string;
   to: string;
   goal: string | null;
-  wipLimit: number | null;
   plan: PlanRow[];
   planned: Count;
   plannedDone: Count;
@@ -241,16 +240,14 @@ export type SprintLog = {
   from: string;
   to: string;
   goal: string | null;
-  wipLimit: number | null;
   plan: PlanRow[];
 };
 
-// 記録の Issue の題（番号と期間）と本文（ゴール、期間、作業中の上限、計画の表）を読む。計画の表は番号とポイントの列を読む
+// 記録の Issue の題（番号と期間）と本文（ゴール、期間、計画の表）を読む。計画の表は番号とポイントの列を読む
 export function parseSprintLog(title: string, body: string): SprintLog {
   const head = parseSprintTitle(title);
   const parts = sections(body);
   const period = /(\d{4}-\d{2}-\d{2})\s*〜\s*(\d{4}-\d{2}-\d{2})/.exec(parts.get('期間') ?? '');
-  const limit = /\d+/.exec(parts.get('作業中の上限') ?? '');
   const plan: PlanRow[] = [];
   for (const line of (parts.get('計画') ?? '').split('\n')) {
     // 題に `|` があれば `\|` で書かれるので、題は番号と最後の列に挟まれた全体を取る
@@ -266,7 +263,6 @@ export function parseSprintLog(title: string, body: string): SprintLog {
     from: period?.[1] ?? head.from,
     to: period?.[2] ?? head.to,
     goal: parts.get('ゴール') || null,
-    wipLimit: limit ? Number(limit[0]) : null,
     plan,
   };
 }
@@ -312,7 +308,6 @@ function buildSprint({ log, work, pointsOfIssue, openPrs }: SprintInput): Sprint
     from: parsed.from,
     to: parsed.to,
     goal: parsed.goal,
-    wipLimit: parsed.wipLimit,
     plan: parsed.plan,
     planned: tally(parsed.plan.map((row) => row.pt)),
     plannedDone: tally(rows.filter(({ issue }) => issue && isAccepted(issue)).map(({ row }) => row.pt)),
@@ -436,7 +431,6 @@ export function buildProgress(raw: RawData, now: Date): Built {
   const sprint = current ? buildSprint({ log: current.log, work, pointsOfIssue, openPrs }) : null;
   // 表の形が崩れると、計画が空になってスプリントの Issue がすべて途中で足した分に見えるため、黙らずに知らせる
   if (sprint && sprint.plan.length === 0) warnings.push(`記録 #${sprint.log} の計画の表を1行も読めない`);
-  if (sprint && sprint.wipLimit === null) warnings.push(`記録 #${sprint.log} の作業中の上限を読めない`);
   return { asOf: jstIso(now), sprint, issues, history, warnings };
 }
 

@@ -326,7 +326,6 @@ function sprintProblem(sprint) {
   if (!isDay(sprint.from)) return 'sprint.from は YYYY-MM-DD が要る';
   if (!isDay(sprint.to)) return 'sprint.to は YYYY-MM-DD が要る';
   if (sprint.goal !== null && typeof sprint.goal !== 'string') return 'sprint.goal は文字列か null が要る';
-  if (!isNumberOrNull(sprint.wipLimit)) return 'sprint.wipLimit は数か null が要る';
   if (!Array.isArray(sprint.plan)) return 'sprint.plan は配列が要る';
   const row = sprint.plan.find((r) => !isObject(r) || !isNumber(r.number) || !isNumber(r.pt));
   if (row !== undefined) return 'sprint.plan の行は number と pt が要る';

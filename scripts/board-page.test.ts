@@ -50,7 +50,6 @@ function sprintOf(patch: Partial<SprintView> = {}): SprintView {
     from: '2026-11-05',
     to: '2026-11-11',
     goal: 'ゴール',
-    wipLimit: 3,
     plan: [],
     planned: count(0),
     plannedDone: count(0),
@@ -505,7 +504,6 @@ function validProgress(): Record<string, unknown> {
       from: '2026-10-29',
       to: '2026-11-04',
       goal: null,
-      wipLimit: null,
       plan: [{ number: 1, title: 'a', pt: 3 }],
       planned: count(3, 1),
       plannedDone: count(0),
@@ -568,7 +566,6 @@ describe('validateData', () => {
     }
     assert.match(validateData(withSprint({ plan: null })) ?? '', /plan/);
     assert.match(validateData(withSprint({ n: '1' })) ?? '', /n/);
-    assert.match(validateData(withSprint({ wipLimit: 'x' })) ?? '', /wipLimit/);
   });
 
   test('sprint の期間が日付として読めなければ理由を返す', () => {

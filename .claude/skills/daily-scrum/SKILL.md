@@ -1,6 +1,6 @@
 ---
 name: daily-scrum
-description: スプリントのゴールに向けて今の状態を点検し（済み ÷ 計画、残りの日数、待ち、受け入れ待ちの滞り、作業中と上限）、人の手元の開発ボード（claude.ai の Artifact「Scrum Guild 開発ボード」）を GitHub から作り直したデータで出し直し、着手を選ぶなら backlog-pick へ続ける。「デイリースクラム」「今日の状況」「開発ボードを更新して」（前の呼び方の「進捗の図を更新して」「機能マップを更新して」も）と言われたとき、Issue を分けた後、PR がマージされた後に使う。スプリントの計画と締めは sprint-plan、受け入れは sprint-review。
+description: スプリントのゴールに向けて今の状態を点検し（済み ÷ 計画、残りの日数、待ち、受け入れ待ちの滞り、作業中）、人の手元の開発ボード（claude.ai の Artifact「Scrum Guild 開発ボード」）を GitHub から作り直したデータで出し直し、着手を選ぶなら backlog-pick へ続ける。「デイリースクラム」「今日の状況」「開発ボードを更新して」（前の呼び方の「進捗の図を更新して」「機能マップを更新して」も）と言われたとき、Issue を分けた後、PR がマージされた後に使う。スプリントの計画と締めは sprint-plan、受け入れは sprint-review。
 ---
 
 # daily-scrum
@@ -39,14 +39,14 @@ node <作業場所>/scripts/progress-data.ts <作業場所>/.claude/skills/daily
 
 ### 2. 点検する
 
-`data.json` の `sprint`、`issues`、`history` から、今のスプリントについて次を出す。数え方は `docs/development.md` の「スプリントとポイント」に従い、スクリプトが出した数をそのまま使う。`sprint` の数はどれも `{ pt, count }` で、進み具合と残りはポイント（`.pt`）、受け入れ待ちは両方、作業中と上限は件数（`.count`）で見る。`history` の `planned` も `{ pt, count }` で、`velocity` はポイントの数。`sprint` が `null` なら、「スプリントは計画されていない」と書き、`sprint-plan` を推して手順 3 へ進む。開いている記録の Issue が2つあれば、スクリプトは番号の大きいほうを選ぶので、`sprint-plan` が途中で止まっていることを点検の結果に書く（`gh api "repos/{owner}/{repo}/issues?labels=sprint-log&state=open" --jq 'length'` で確かめる）。
+`data.json` の `sprint`、`issues`、`history` から、今のスプリントについて次を出す。数え方は `docs/development.md` の「スプリントとポイント」に従い、スクリプトが出した数をそのまま使う。`sprint` の数はどれも `{ pt, count }` で、進み具合と残りはポイント（`.pt`）、受け入れ待ちと作業中は両方で見る。`history` の `planned` も `{ pt, count }` で、`velocity` はポイントの数。`sprint` が `null` なら、「スプリントは計画されていない」と書き、`sprint-plan` を推して手順 3 へ進む。開いている記録の Issue が2つあれば、スクリプトは番号の大きいほうを選ぶので、`sprint-plan` が途中で止まっていることを点検の結果に書く（`gh api "repos/{owner}/{repo}/issues?labels=sprint-log&state=open" --jq 'length'` で確かめる）。
 
 | 見るもの | 出し方 | 人に勧めること |
 | --- | --- | --- |
 | 進み具合 | `plannedDone.pt` ÷ `planned.pt`、`addedDone.pt`、残りの日数（今日を含めて数え、最終日は 1、過ぎたら 0） | 残りの計画のポイント（`planned.pt` − `plannedDone.pt` − `withdrawn.pt`）が「直近のベロシティの平均（`history` の新しい3つまでの `velocity`）× 残りの日数 ÷ 7」を超えるなら、外す候補（作業中でないもの。`s` が `todo` か `refining`）を挙げる。`history` が空なら判定しない |
 | 受け入れ待ち | `accepting.count` と `accepting.pt` | `accepting.count` が1以上で、残りの日数が2日以下なら、`sprint-review` を先に行う（済みに数えるのは受け入れで閉じた Issue だけなので、締めの前に受け入れる） |
 | 待ち | `sprint` が今のスプリントで、`waitingOn` が空でない Issue | 前に要るものがスプリントの外なら、先に入れるか、待つ側を外すかを人が決める |
-| 作業中と上限 | `wip.count` / `wipLimit`（`wipLimit` が `null` なら、記録の Issue に上限が無いと書く） | 上限に達していれば、着手を足さず、レビュー中と受け入れ待ちを先に片付ける |
+| 作業中 | `wip.count` と `wip.pt`（スプリントの外も含む） | 数を出すだけにする |
 | スプリントの外の作業 | `sprint` が今のスプリントでなく、`s` が `wip` か `review` の Issue | 途中で足すかを人が決める |
 
 勧めることは出すだけにし、ラベルは付け外ししない。
@@ -63,7 +63,7 @@ Artifact のツールがある手元のセッションでだけ行う。無け�
 
 ### 4. 着手を選ぶかを聞く
 
-`AskUserQuestion` で、続けて `backlog-pick` で着手を選ぶかを聞く。作業中が上限に達しているか、受け入れ待ちが多いときは、推す案を「人の番を先に片付ける」にする。選ぶと答えたら、Skill ツールで `backlog-pick` を起動する。
+`AskUserQuestion` で、続けて `backlog-pick` で着手を選ぶかを聞く。受け入れ待ちが多いときは、推す案を「人の番を先に片付ける」にする。選ぶと答えたら、Skill ツールで `backlog-pick` を起動する。
 人に聞けない実行では、聞かずに終える。
 
 ## 機能の一覧を直す
