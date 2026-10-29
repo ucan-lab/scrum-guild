@@ -35,6 +35,14 @@ export const commonTableColumns = {
     expires_at: text,
   },
   rate_limits: { key: text, window_start_at: text, count: integer },
+  password_credentials: {
+    login_subject: text,
+    email: text,
+    password_hash: text,
+    password_changed_at: text,
+    created_at: text,
+    updated_at: text,
+  },
   organizations: {
     id: text,
     slug: text,
