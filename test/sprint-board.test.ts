@@ -231,6 +231,16 @@ describe('sprint-start', () => {
     expect((await sprintRow(target, blank.id))?.goal).toBeNull();
   });
 
+  test('ちょうど 200 字のゴールで始められ、200 字のまま保存される', async () => {
+    const { target } = await setup();
+    const sprint = await createSprint(target.organization, target.workspace.id);
+    const goal = 'あ'.repeat(200);
+    const res = await call(target, sprintStart, { sprint_id: sprint.id, goal }, target.leader);
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ sprint: { status: 'active', goal } });
+    expect([...((await sprintRow(target, sprint.id))?.goal ?? '')]).toHaveLength(200);
+  });
+
   test('長すぎるゴールと見えない文字を含むゴールは 400', async () => {
     const { target } = await setup();
     const sprint = await createSprint(target.organization, target.workspace.id);
