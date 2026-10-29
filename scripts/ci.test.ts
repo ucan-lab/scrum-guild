@@ -1,6 +1,5 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { existsSync } from 'node:fs';
 import { describe, test } from 'node:test';
 import {
   ciOkVerdict,
@@ -10,9 +9,7 @@ import {
   migrationFiles,
   parseNulSeparated,
   REPEAT_TEST_LIMIT,
-  REPEAT_EXCLUDED,
   repeatFiles,
-  splitRepeatExcluded,
   repeatVerdict,
   type ListReport,
   type Needs,
@@ -379,53 +376,15 @@ describe('countListedTests と repeatVerdict', () => {
   });
 });
 
-describe('splitRepeatExcluded', () => {
-  test('外す一覧のファイルを分け、Issue の番号を添える。残りの順は変えない', () => {
-    assert.deepEqual(
-      splitRepeatExcluded(
-        ['e2e/a11y-check.test.ts', 'e2e/logout.test.ts', 'e2e/login.test.ts'],
-        new Map([['e2e/logout.test.ts', 459]]),
-      ),
-      { files: ['e2e/a11y-check.test.ts', 'e2e/login.test.ts'], excluded: [['e2e/logout.test.ts', 459]] },
-    );
-  });
-
-  test('一覧に無ければ何も外さない', () => {
-    assert.deepEqual(splitRepeatExcluded(['e2e/login.test.ts'], new Map()), {
-      files: ['e2e/login.test.ts'],
-      excluded: [],
-    });
-  });
-
-  test('一覧のファイルは、すべて今ある e2e のテストのファイルを指す（直して消したのに一覧に残さない）', () => {
-    for (const path of REPEAT_EXCLUDED.keys()) {
-      assert.equal(repeatFiles([path]).length, 1, path);
-      assert.ok(existsSync(path), path);
-    }
-  });
-});
-
 describe('changes.ts --repeat と e2e-repeat-count.ts の出力', () => {
-  test('changes.ts --repeat は外す一覧のファイルを repeat_files に入れず、注記に Issue の番号と出す', () => {
-    const [path, issue] = [...REPEAT_EXCLUDED][0] ?? [];
-    if (path === undefined) return;
+  test('changes.ts --repeat は、#459 で直した e2e のテストのファイルも外さずに繰り返す', () => {
     const result = spawnSync(process.execPath, ['scripts/changes.ts', '--repeat'], {
-      input: `${path}\0e2e/login.test.ts\0`,
+      input: 'e2e/logout.test.ts\0e2e/login.test.ts\0',
       encoding: 'utf8',
     });
     assert.equal(result.status, 0, result.stderr);
-    assert.equal(result.stdout, 'repeat=true\nrepeat_files=e2e/login.test.ts\n');
-    assert.match(result.stderr, new RegExp(`^::notice title=e2e-repeat::.*${path}.*#${issue}`, 'm'));
-  });
-
-  test('changes.ts --repeat は外す一覧のファイルだけなら repeat=false', () => {
-    const [path] = [...REPEAT_EXCLUDED][0] ?? [];
-    if (path === undefined) return;
-    const result = spawnSync(process.execPath, ['scripts/changes.ts', '--repeat'], {
-      input: `${path}\0`,
-      encoding: 'utf8',
-    });
-    assert.equal(result.stdout, 'repeat=false\nrepeat_files=\n');
+    assert.equal(result.stdout, 'repeat=true\nrepeat_files=e2e/login.test.ts e2e/logout.test.ts\n');
+    assert.equal(result.stderr, '');
   });
 
   const node = (script: string, input: string, ...args: string[]) =>
