@@ -381,7 +381,7 @@ Codex は `.claude/` のフックを通らない（`codex exec` が起こす実�
 
 - Codex の sandbox は `workspace-write` で、ネットワークは無し（`increment-build` が `codex exec` の呼び出しで固定する）。`wrangler` の資格情報は読めるが、通信の道が無いので、本番に触る `wrangler` の操作は届かない。`increment-build` の `codex exec` の呼び出しの変更も、人が差分を読む
 - `AGENTS.md` が `CLAUDE.md` の「守ること」と「コマンド」に従わせ、フックが止めていたこと（本番の操作、`.dev.vars` と `.env`、コミット）を Codex に固有の注意として並べる
-- Codex が戻った後に、呼び出し元のセッションが `pnpm format` と受け入れ条件の検査を走らせ直す（`format.mjs` を通らないため）。コミットは呼び出し元だけが行う
+- Codex が戻った後に、呼び出し元のセッションはまず `git status --short` と `git diff --name-only` を見る。変えてよい範囲の外の守るファイル（`.githooks/`、`.claude/`、`.codex/`、`AGENTS.md`、`package.json`、`scripts/` など）が変わっていれば、何も走らせずに止まる（呼び出し元は sandbox の外で動くため、Codex が書き換えたフックやスクリプトを動かさない）。範囲の中だけなら、`pnpm format` と受け入れ条件の検査を走らせ直す（`format.mjs` を通らないため）。コミットは呼び出し元だけが行う
 
 `.codex/` と `AGENTS.md` は sandbox とネットワークの設定、Codex が読む決まりを変えられるので、変えた PR には `needs-human` が付く（下の「マージの判定」）。
 
