@@ -30,8 +30,8 @@ describe('review-budget-rules（純関数）', () => {
   };
 
   describe('完了条件', () => {
-    test('定数は仕様どおり（対象4種、窓 120 秒、既定の上限 2 巡）', () => {
-      assert.deepEqual([...REVIEW_AGENTS].sort(), ['code-reviewer', 'database-reviewer', 'security-reviewer', 'ui-reviewer']);
+    test('定数は仕様どおり（対象5種、窓 120 秒、既定の上限 2 巡）', () => {
+      assert.deepEqual([...REVIEW_AGENTS].sort(), ['code-reviewer', 'database-reviewer', 'falsification-qa', 'security-reviewer', 'ui-reviewer']);
       assert.equal(WINDOW_MS, 120000);
       assert.equal(BASE_LIMIT, 2);
     });
@@ -220,6 +220,74 @@ describe('review-budget-rules（純関数）', () => {
       const e = rules.extendState(s, 2, 'r', T0 + 1);
       assert.deepEqual(e.starts, [T0]);
       assert.equal(e.extra, 2);
+    });
+  });
+
+  describe('falsification-qa（Issue #488）', () => {
+    test('falsification-qa の最初の起動は許可し、巡として starts に記録する', () => {
+      const r = judge(emptyState(), 'falsification-qa', T0);
+      assert.equal(r.decision, 'allow');
+      assert.deepEqual(r.state.starts, [T0]);
+    });
+    test('ほかのレビューのエージェントと 120 秒以内に呼ばれたら同じ 1 巡に数える', () => {
+      for (const first of ['code-reviewer', 'security-reviewer', 'database-reviewer', 'ui-reviewer']) {
+        const { decisions, state } = run([
+          [first, T0],
+          ['falsification-qa', T0 + WINDOW_MS],
+        ]);
+        assert.deepEqual(decisions, ['allow', 'allow'], first);
+        assert.deepEqual(state.starts, [T0], first);
+      }
+      // falsification-qa が先でも、後のレビューのエージェントは同じ巡
+      const { state } = run([
+        ['falsification-qa', T0],
+        ['code-reviewer', T0 + 1000],
+      ]);
+      assert.deepEqual(state.starts, [T0]);
+    });
+    test('falsification-qa だけで 2 巡を数え、上限に達した後の新しい巡は拒否する', () => {
+      const { decisions, state } = run([
+        ['falsification-qa', T0],
+        ['falsification-qa', T0 + 10 * 60_000],
+        ['falsification-qa', T0 + 20 * 60_000],
+      ]);
+      assert.deepEqual(decisions, ['allow', 'allow', 'deny']);
+      assert.deepEqual(state.starts, [T0, T0 + 10 * 60_000]);
+    });
+    test('ほかのレビューのエージェントで上限に達した後の falsification-qa の新しい巡は拒否し、理由に手順を入れる', () => {
+      const full = run([
+        ['code-reviewer', T0],
+        ['security-reviewer', T0 + 10 * 60_000],
+      ]).state;
+      const copy = structuredClone(full);
+      const r = judge(full, 'falsification-qa', T0 + 20 * 60_000);
+      assert.equal(r.decision, 'deny');
+      assert.match(r.reason, /AskUserQuestion/);
+      assert.match(r.reason, /node \.claude\/hooks\/review-budget\.mjs extend <巡数> --reason <理由>/);
+      assert.deepEqual(r.state, copy);
+    });
+    test('finding-verifier は falsification-qa と並んでも数えない（上限に達していても拒否しない）', () => {
+      const full = run([
+        ['falsification-qa', T0],
+        ['falsification-qa', T0 + 10 * 60_000],
+      ]).state;
+      const r = judge(full, 'finding-verifier', T0 + 20 * 60_000);
+      assert.equal(r.decision, 'allow');
+      assert.deepEqual(r.state, full);
+      assert.deepEqual(judge(emptyState(), 'finding-verifier', T0).state, emptyState());
+    });
+    test('似た名前（前後の空白、大文字、接尾辞、プラグインの接頭辞）は数えない', () => {
+      // このリポジトリのエージェントは .claude/agents/ の素の名前で呼ばれるので、完全一致だけを数える
+      const full = run([
+        ['code-reviewer', T0],
+        ['code-reviewer', T0 + 10 * 60_000],
+      ]).state;
+      for (const agent of ['falsification-qa ', ' falsification-qa', 'Falsification-QA', 'FALSIFICATION-QA', 'falsification-qa-v2', 'ucan:falsification-qa', 'falsification_qa']) {
+        const r = judge(full, agent, T0 + 20 * 60_000);
+        assert.equal(r.decision, 'allow', JSON.stringify(agent));
+        assert.deepEqual(r.state, full, JSON.stringify(agent));
+        assert.deepEqual(judge(emptyState(), agent, T0).state, emptyState(), JSON.stringify(agent));
+      }
     });
   });
 });
@@ -616,6 +684,56 @@ describe('review-budget.mjs（入口を実際に起動する）', () => {
         [],
       );
       assert.equal(stateFiles(repo).length, 1);
+    });
+  });
+
+  describe('falsification-qa（Issue #488）', () => {
+    const readState = (repo) => JSON.parse(readFileSync(path.join(budgetDir(repo), stateFiles(repo)[0]), 'utf8'));
+
+    test('falsification-qa の起動を状態ファイルに巡として数える', () => {
+      const repo = makeRepo();
+      allowed(call(repo, 'falsification-qa', T0));
+      assert.equal(stateFiles(repo).length, 1, '状態ファイルを作る');
+      assert.deepEqual(readState(repo).starts, [T0]);
+    });
+    test('ほかのレビューのエージェントと 120 秒以内なら同じ 1 巡', () => {
+      const repo = makeRepo();
+      // falsification-qa が巡を開き、30 秒後の code-reviewer は同じ巡に入る
+      allowed(call(repo, 'falsification-qa', T0));
+      allowed(call(repo, 'code-reviewer', T0 + 30_000));
+      assert.deepEqual(readState(repo).starts, [T0]);
+    });
+    test('falsification-qa で上限を超えると deny を返し、状態を変えない', () => {
+      const repo = makeRepo();
+      allowed(call(repo, 'falsification-qa', T0));
+      allowed(call(repo, 'falsification-qa', T0 + 10 * MIN));
+      assert.equal(stateFiles(repo).length, 1, '2 巡を状態ファイルに数える');
+      assert.equal(readState(repo).starts.length, 2);
+      const before = readFileSync(path.join(budgetDir(repo), stateFiles(repo)[0]), 'utf8');
+      const reason = denied(call(repo, 'falsification-qa', T0 + 20 * MIN));
+      assert.match(reason, /AskUserQuestion/);
+      assert.equal(readFileSync(path.join(budgetDir(repo), stateFiles(repo)[0]), 'utf8'), before);
+    });
+    test('ほかのレビューのエージェントで上限に達した後の falsification-qa は deny', () => {
+      const repo = makeRepo();
+      allowed(call(repo, 'code-reviewer', T0));
+      allowed(call(repo, 'security-reviewer', T0 + 10 * MIN));
+      const r = call(repo, 'falsification-qa', T0 + 20 * MIN);
+      assert.notEqual(r.stdout.trim(), '', '拒否の JSON を出す（出力なしは許可）');
+      denied(r);
+    });
+    test('finding-verifier と似た名前は数えず、上限に達していても拒否しない', () => {
+      const repo = makeRepo();
+      for (const agent of ['finding-verifier', 'falsification-qa ', 'Falsification-QA', 'falsification-qa-v2', 'ucan:falsification-qa']) {
+        allowed(call(repo, agent, T0));
+      }
+      assert.deepEqual(stateFiles(repo), [], '対象外だけなら状態ファイルを作らない');
+      allowed(call(repo, 'code-reviewer', T0));
+      allowed(call(repo, 'code-reviewer', T0 + 10 * MIN));
+      for (const agent of ['finding-verifier', 'falsification-qa ', 'Falsification-QA', 'falsification-qa-v2', 'ucan:falsification-qa']) {
+        allowed(call(repo, agent, T0 + 20 * MIN));
+      }
+      assert.equal(readState(repo).starts.length, 2);
     });
   });
 });
