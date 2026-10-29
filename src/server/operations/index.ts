@@ -69,6 +69,7 @@ import {
 } from './comment.ts';
 import { epicDeleteOperation, storyDeleteOperation } from './tree-delete.ts';
 import { backlogTreeOperation, taskCompleteOperation, taskCreateOperation, taskMoveOperation } from './task.ts';
+import { taskReopenOperation } from './task-reopen.ts';
 import {
   memberListOperation,
   workspaceCloseOperation,
@@ -133,6 +134,7 @@ export const implementedOperations: readonly ImplementedOperation[] = [
   taskCreateOperation,
   backlogTreeOperation,
   taskCompleteOperation,
+  taskReopenOperation,
   taskDetailOperation,
   taskUpdateOperation,
   taskAssignOperation,

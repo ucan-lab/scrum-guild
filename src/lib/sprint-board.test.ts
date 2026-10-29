@@ -9,6 +9,7 @@ function card(id: string) {
     points: null,
     assignee: null,
     completed_at: null,
+    reopenable: false,
     story: null,
     due_on: null,
     repository: null,
@@ -18,7 +19,12 @@ function card(id: string) {
 const columns: SprintBoardColumn[] = [
   { id: 'c1', name: '出発前', is_done: false, tasks: [card('a'), card('b'), card('c')] },
   { id: 'c2', name: '遂行中', is_done: false, tasks: [card('d')] },
-  { id: 'done', name: null, is_done: true, tasks: [{ ...card('z'), completed_at: '2026-10-20T00:00:00.000Z' }] },
+  {
+    id: 'done',
+    name: null,
+    is_done: true,
+    tasks: [{ ...card('z'), completed_at: '2026-10-20T00:00:00.000Z', reopenable: true }],
+  },
 ];
 
 const ids = (list: SprintBoardColumn[]) => list.map((column) => column.tasks.map((task) => task.id));
@@ -32,10 +38,16 @@ describe('placeOf', () => {
 });
 
 describe('edgesOf', () => {
-  test('列の端と、最後の完了でない列の先（完了の列）を端にする', () => {
+  test('列の端を返し、最後の完了でない列の先（完了の列）は端にしない（完了にする）', () => {
     expect(edgesOf(columns, 'a')).toEqual({ top: true, bottom: false, prev: true, next: false });
     expect(edgesOf(columns, 'c')).toEqual({ top: false, bottom: true, prev: true, next: false });
-    expect(edgesOf(columns, 'd')).toEqual({ top: true, bottom: true, prev: false, next: true });
+    expect(edgesOf(columns, 'd')).toEqual({ top: true, bottom: true, prev: false, next: false });
+  });
+
+  test('完了の列が無ければ、最後の列の先を端にする', () => {
+    const open = columns.filter((column) => !column.is_done);
+    expect(edgesOf(open, 'd')).toEqual({ top: true, bottom: true, prev: false, next: true });
+    expect(planCardMove(open, 'd', 'right')).toEqual({ kind: 'edge', edge: 'next' });
   });
 
   test('完了の列のカードは動かさない', () => {
@@ -70,8 +82,10 @@ describe('planCardMove', () => {
     expect(plan?.kind === 'moved' && ids(plan.columns)).toEqual([['b', 'c'], ['d', 'a'], ['z']]);
   });
 
-  test('完了の列へは移さない', () => {
-    expect(planCardMove(columns, 'd', 'right')).toEqual({ kind: 'edge', edge: 'next' });
+  test('最後の完了でない列から次の列へは、移さずに完了にする', () => {
+    expect(planCardMove(columns, 'd', 'right')).toEqual({ kind: 'complete' });
+    // 左へは今までどおり移す
+    expect(planCardMove(columns, 'd', 'left')).toMatchObject({ kind: 'moved', afterTaskId: undefined });
   });
 
   test('元の列を書き換えない', () => {

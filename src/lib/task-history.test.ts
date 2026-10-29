@@ -124,6 +124,23 @@ describe('historyEntryView', () => {
     expect(historyEntryView(entry({ action: 'complete' }), 'UTC', scrum).lines).toEqual([]);
   });
 
+  test('完了を戻したら、戻したことと、スプリントの中なら完了の列から戻した列を出す', () => {
+    const changes = [
+      { field: 'completed_at', before: '2026-10-25T15:05:00.000Z', after: null },
+      { field: 'completed_by', before: member, after: null },
+      { field: 'column', before: { id: 'c9', name: '' }, after: { id: 'c2', name: '遂行中' } },
+    ];
+    expect(historyEntryView(entry({ action: 'reopen', changes }), 'UTC', game)).toMatchObject({
+      summary: '完遂を戻した',
+      lines: [{ label: '行程', text: '完遂 → 遂行中' }],
+    });
+    // スプリントの外の完了を戻したときは、戻したことだけ
+    expect(historyEntryView(entry({ action: 'reopen', changes: changes.slice(0, 2) }), 'UTC', scrum)).toMatchObject({
+      summary: '完了を戻した',
+      lines: [],
+    });
+  });
+
   test('本文は値を出さずに直したことだけを、知らない列は「そのほかの欄」を出す', () => {
     const view = historyEntryView(
       entry({
@@ -145,7 +162,7 @@ describe('historyEntryView', () => {
   test('知らない操作は変更として出し、表に無い列（完了の日時など）は「そのほかの欄」。変えた人がいなければ定期処理か運用者', () => {
     const view = historyEntryView(
       entry({
-        action: 'reopen',
+        action: 'archive',
         actor: null,
         changes: [{ field: 'completed_at', before: '2026-10-25T15:05:00.000Z', after: null }],
       }),

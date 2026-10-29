@@ -2,10 +2,12 @@
 // リーダーは計画の画面から、ゴールの欄のあるダイアログでスプリントを始める。進行中は同時に1つで、2つ目は理由が出て始められない。
 // スプリントの画面には列とカードが並び、カードは題から詳細の引き出しを開け、ボタンと Alt と矢印のキーで隣の列へ移し、列の中で並べ替えられる。
 // 動かした位置は読み上げられ、読み直しても、別の画面でも同じで、列の移動は変更の履歴に残る。
+// 最後の完了でない列から次の列へ送ると完了になり、完了の列のカードは「戻す」で完了の前の列へ戻る。完了の列には完成の定義が出る。
 // 自分のワークスペースを作って動かす（ほかのファイルと並べて走るため、seed の行は書き換えない）。
 // 空の状態は seed のあおば開発（進行中のスプリントが無い）を開くだけ
 import type { Page } from '@playwright/test';
 import { sprintBoard, taskColumnMove } from '../src/shared/operations/sprint/index.ts';
+import { taskReopen } from '../src/shared/operations/task/index.ts';
 import { expect, test } from './fixtures.ts';
 import { createWorkspace, signIn, waitForResponses, watchViolations } from './helpers.ts';
 import { failOperation, mockOperation } from './operations.ts';
@@ -160,18 +162,25 @@ test('リーダーはゴールを書いて遠征を始め、2つ目は始めら�
   await page.getByRole('button', { name: '上へ: B札' }).click();
   await expect(titlesIn(page, '遂行中')).toHaveText(['B札', 'A札']);
 
-  // 最後の完了でない列から先（完遂の列）へは、ここから移せない。完遂にするのはカードの「完遂にする」
+  // 最後の完了でない列から先（完遂の列）へ Alt と → で送ると、完遂にする（task-column-move では移さない）
   await card('C札').press('Alt+ArrowRight');
   await card('C札').press('Alt+ArrowRight');
   await expect(titlesIn(page, '査定中')).toHaveText(['C札']);
-  await card('C札').press('Alt+ArrowRight');
-  await expect(
-    status('完遂の行程へは、ここから移せません。完遂にするには、カードの「完遂にする」を押してください'),
-  ).toBeVisible();
-  await expect(page.getByRole('button', { name: '次の行程へ: C札' })).toHaveAttribute('aria-disabled', 'true');
+  await expect(page.getByRole('button', { name: '次の行程へ: C札' })).toHaveAttribute('aria-disabled', 'false');
   await expect(page.getByRole('button', { name: '前の行程へ: B札' })).toHaveAttribute('aria-disabled', 'false');
   await expect(page.getByRole('button', { name: '前の行程へ: A札' })).toHaveAttribute('aria-disabled', 'false');
   await moved;
+  await card('C札').press('Alt+ArrowRight');
+  await expect(status('クエストを完遂にしました')).toBeVisible();
+  await expect(titlesIn(page, '完遂')).toHaveText(['C札']);
+  await expect(titlesIn(page, '査定中')).toHaveText([]);
+  // 完遂の列のカードは、完了の印の横に「戻す」を持つ。戻すと完遂の前の列（査定中）へ戻り、フォーカスはそのカードへ移る
+  await page.getByRole('button', { name: '完遂を戻す: C札' }).click();
+  await expect(status('「C札」の完遂を戻し、査定中へ移しました')).toBeVisible();
+  await expect(titlesIn(page, '査定中')).toHaveText(['C札']);
+  await expect(titlesIn(page, '完遂')).toHaveText([]);
+  await expect(card('C札')).toBeFocused();
+  await expect(page.getByRole('button', { name: '完遂を戻す: C札' })).toHaveCount(0);
 
   // 読み直しても、別の画面でも、同じ列と順
   await page.reload();
@@ -199,7 +208,7 @@ test('リーダーはゴールを書いて遠征を始め、2つ目は始めら�
   await expect(drawer).toBeHidden();
   await expect(titlesIn(page, '遂行中').filter({ hasText: 'A札' })).toBeFocused();
 
-  // カードの完了の操作は task-complete を呼ぶだけ。完遂の列のカードは完了の印を持ち、動かすボタンを持たない
+  // カードの完了の操作は task-complete を呼ぶだけ。完遂の列のカードは完了の印と「戻す」を持ち、動かすボタンを持たない
   await page.getByRole('button', { name: '完遂にする: C札' }).click();
   await expect(status('クエストを完遂にしました')).toBeVisible();
   await expect(titlesIn(page, '完遂')).toHaveText(['C札']);
@@ -207,8 +216,17 @@ test('リーダーはゴールを書いて遠征を始め、2つ目は始めら�
   await expect(
     page.getByRole('region', { name: '完遂', exact: true }).getByRole('img', { name: 'C札: 完遂' }),
   ).toBeVisible();
-  await expect(page.getByRole('button', { name: /: C札$/ })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: /: C札$/ })).toHaveText(['戻す']);
   await expect(page.getByRole('article', { name: 'C札' })).toHaveCount(0);
+  // 完了と戻しは、詳細の引き出しの変更の履歴に残る
+  await titlesIn(page, '完遂').filter({ hasText: 'C札' }).click();
+  const doneDrawer = page.getByRole('dialog', { name: 'C札' });
+  await doneDrawer.getByRole('tab', { name: '変更の履歴' }).click();
+  const doneHistory = doneDrawer.getByRole('tabpanel', { name: '変更の履歴' });
+  await expect(doneHistory.getByText('完遂を戻した')).toHaveCount(1);
+  await expect(doneHistory.getByText('完遂 → 査定中')).toHaveCount(1);
+  await page.keyboard.press('Escape');
+  await expect(doneDrawer).toBeHidden();
 
   const problems = await collect();
   // 進行中が既にある開始の断り（409）は、ブラウザがコンソールに出す。それ以外の違反とエラーは無い
@@ -292,9 +310,19 @@ test('進行中の遠征が無いときの空の状態は、リーダーと一�
   await expect(page.getByRole('heading', { level: 1, name: '遠征の計画' })).toBeVisible();
 });
 
-test('スクラムの言葉でも、スプリントを始めて、列とカードを動かせる', async ({ page, context, baseURL }) => {
+test('スクラムの言葉でも、スプリントを始めて、列とカードを動かし、次の列へで完了にして戻せる。完了の列に完成の定義が出る', async ({
+  page,
+  context,
+  baseURL,
+}) => {
   await signIn(context, baseURL, 'admin');
   await createWorkspace(page, 'スクラムの見張り番', 'scrum');
+  // 完成の定義を書いておく
+  await page.getByRole('link', { name: '設定', exact: true }).click();
+  await page.getByRole('textbox', { name: 'Markdown' }).fill('- レビューを1人以上が通した');
+  await page.getByRole('button', { name: '保存する' }).click();
+  await expect(page.getByRole('status').filter({ hasText: '完成の定義を保存しました' })).toBeVisible();
+  await page.getByRole('link', { name: 'バックログ', exact: true }).click();
   await page.getByRole('button', { name: '起票' }).click();
   const create = page.getByRole('dialog', { name: '起票' });
   await create.getByLabel('タイトル').fill('E札');
@@ -326,6 +354,45 @@ test('スクラムの言葉でも、スプリントを始めて、列とカー�
     page.getByRole('status').filter({ hasText: '「E札」を作業中の 1 番目に移しました（1 件中）' }),
   ).toBeVisible();
   await expect(page.getByRole('button', { name: '前の列へ: E札' })).toBeVisible();
+
+  // 完了の列には、完成の定義を畳んで出す。開くまで本文を描かない
+  const doneColumn = page.getByRole('region', { name: '完了', exact: true });
+  const dod = doneColumn.locator('details.dod');
+  await expect(dod.locator('summary')).toHaveText('完成の定義');
+  await expect(dod.locator('.doc-box')).toHaveCount(0);
+  await dod.locator('summary').click();
+  await expect(dod.getByRole('listitem')).toHaveText(['レビューを1人以上が通した']);
+  // ほかの列には出さない
+  await expect(page.locator('details.dod')).toHaveCount(1);
+
+  // 最後の完了でない列の「次の列へ」は、完了にする
+  await page.getByRole('button', { name: '次の列へ: E札' }).click();
+  await expect(titlesIn(page, 'レビュー')).toHaveText(['E札']);
+  await page.getByRole('button', { name: '次の列へ: E札' }).click();
+  await expect(page.getByRole('status').filter({ hasText: 'タスクを完了にしました' })).toBeVisible();
+  await expect(titlesIn(page, '完了')).toHaveText(['E札']);
+  // 戻すと、完了の前の列へ戻る
+  await page.getByRole('button', { name: '完了を戻す: E札' }).click();
+  await expect(page.getByRole('status').filter({ hasText: '「E札」の完了を戻し、レビューへ移しました' })).toBeVisible();
+  await expect(titlesIn(page, 'レビュー')).toHaveText(['E札']);
+  await expect(titlesIn(page, '完了')).toHaveText([]);
+  await expect(page.getByRole('article', { name: 'E札', exact: true })).toBeFocused();
+});
+
+test('戻すのが断られたら理由を知らせて読み直す', async ({ page, context, baseURL }) => {
+  await signIn(context, baseURL, 'member');
+  await mockOperation(page, sprintBoard, { slug: 'aoba' }, SAMPLE_BOARD);
+  await page.goto(`${AOBA_TEAM}/sprint`);
+  const unroute = await failOperation(page, taskReopen, { slug: 'aoba' }, 409, 'conflict', {
+    details: { reason: 'sprint_closed' },
+  });
+  await page.getByRole('button', { name: '完遂を戻す: 付与の履歴を返す API を作る' }).click();
+  await expect(
+    page.getByRole('status').filter({ hasText: '終了した遠征の中で完遂したクエストは戻せません。一覧を読み直します' }),
+  ).toBeVisible();
+  // 読み直した画面（差し替えた応答）では、カードは完遂の列に残る
+  await expect(titlesIn(page, '完遂')).toHaveText(['付与の履歴を返す API を作る']);
+  await unroute();
 });
 
 test('カードが1枚も無いあいだだけ、列とカードの領域そのものに Tab で止まれる', async ({ page, context, baseURL }) => {

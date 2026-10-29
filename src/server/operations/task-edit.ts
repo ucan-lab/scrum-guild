@@ -14,6 +14,7 @@ import {
 import { taskAssigneePartyStatements } from './epic-party.ts';
 import { implement } from './implement.ts';
 import { sprintRefColumns, sprintRefOf } from './sprint-refs.ts';
+import { reopenBlockOf } from './task-reopen.ts';
 import {
   activeMemberName,
   actorUserIdOf,
@@ -80,6 +81,10 @@ async function readTask(db: OrganizationDb, workspaceId: string, taskId: string)
         )
         .select([
           ...sprintRefColumns,
+          // 完了を戻せるか（reopenable）。削除したスプリントは結ばないので、sprint_id があって状態が無ければ削除したスプリント
+          'tasks.sprint_id',
+          'sprints.status as sprint_status',
+          'stories.completed_at as story_completed_at',
           'tasks.id',
           'tasks.title',
           'tasks.body_md',
@@ -170,6 +175,15 @@ function detailOf(
     assignee: assigneeOf(row),
     is_imported: row.is_imported === 1,
     completed_at: row.completed_at,
+    reopenable:
+      row.completed_at !== null &&
+      !workspace.closed &&
+      reopenBlockOf({
+        completedAt: row.completed_at,
+        sprintId: row.sprint_id,
+        sprintActive: row.sprint_status === 'active',
+        parentCompleted: row.story_completed_at !== null,
+      }) === null,
     can_delete: canDelete(row, actor, workspace),
     story_id: row.story_id,
     category: categoryOf(row),

@@ -1,6 +1,6 @@
 // スプリントの画面のカードの移動を、画面の状態（列とカード）の上で計画する。画面は先に並びを替えて読み上げ、
-// 同じ移動をサーバー（task-column-move）へ送る。完了の列へは移さない（完了にするのは task-complete）ので、
-// 完了でない列のいちばん後ろの列は「次の列へ」が端になる。完了の列のカードは動かさない
+// 同じ移動をサーバー（task-column-move）へ送る。完了の列へは task-column-move で移さず、完了でない列のいちばん後ろの列の
+// 「次の列へ」は完了にする（complete。画面が task-complete を呼ぶ）。完了の列のカードは動かさない（完了を戻すのは task-reopen）
 import type { SprintBoardColumn } from '../shared/operations/sprint/index.ts';
 
 export type MoveDirection = 'left' | 'right' | 'up' | 'down';
@@ -10,6 +10,8 @@ export type MoveEdge = 'top' | 'bottom' | 'prev' | 'next';
 
 export type CardMovePlan =
   | { kind: 'edge'; edge: MoveEdge }
+  // 次の列が完了の列。画面の並びは替えず、task-complete を呼ぶ
+  | { kind: 'complete' }
   | {
       kind: 'moved';
       // 動かした後の列とカード
@@ -32,7 +34,8 @@ export function placeOf(columns: readonly SprintBoardColumn[], taskId: string): 
   return null;
 }
 
-// 端のボタンを押せないものにするための印。完了の列のカードは動かさないので null
+// 端のボタンを押せないものにするための印。完了の列のカードは動かさないので null。
+// 次の列が完了の列なら「次の列へ」は完了にするので端にしない（完了の列が無いときだけ端）
 export function edgesOf(
   columns: readonly SprintBoardColumn[],
   taskId: string,
@@ -46,7 +49,7 @@ export function edgesOf(
     top: place.index === 0,
     bottom: place.index === column.tasks.length - 1,
     prev: place.columnIndex === 0,
-    next: next === undefined || next.is_done,
+    next: next === undefined,
   };
 }
 
@@ -80,6 +83,7 @@ export function planCardMove(
 
   const targetIndex = place.columnIndex + (direction === 'left' ? -1 : 1);
   const target = columns[targetIndex];
+  if (target?.is_done === true && direction === 'right') return { kind: 'complete' };
   if (target === undefined || target.is_done) return { kind: 'edge', edge: direction === 'left' ? 'prev' : 'next' };
   // 隣の列へは末尾に置く
   const moved = { ...target, tasks: [...target.tasks, card] };

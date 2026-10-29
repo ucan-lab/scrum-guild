@@ -1,4 +1,5 @@
 // 一本道: 管理者がワークスペースを作る → タスクを作る → 完了にする → その行に完了の印 → 読み直すと折りたたみの件数が 1。
+// 詳細の引き出しで完了にしたタスクは、完了の帯の「戻す」で戻せる。
 // seed のセッション（seed/sessions.ts）の Cookie で開く。あおば開発の管理者はミナト。CSP の違反も確かめる
 import type { Page } from '@playwright/test';
 import { expect, test } from './fixtures.ts';
@@ -116,6 +117,36 @@ test('完了の操作を送っている間は、押せない印と読み上げ�
   await expect(row.getByRole('img', { name: '遅い応答を待つ: 完遂' })).toBeVisible();
   expect(requests).toBe(1);
   await expect(page.getByRole('status').filter({ hasText: '完遂にしています' })).toHaveCount(0);
+});
+
+test('詳細の引き出しで完了にしたタスクは、完了の帯の「戻す」で戻せ、変更の履歴に残る', async ({ page }) => {
+  const collect = await watchViolations(page);
+  await createWorkspace(page, '戻すパーティ', 'game');
+  await addTask(page, '議事録をまとめる');
+  await page.locator('.entry', { hasText: '議事録をまとめる' }).getByRole('link', { name: '議事録をまとめる' }).click();
+  const drawer = page.getByRole('dialog', { name: '議事録をまとめる' });
+  const bar = drawer.locator('.done-bar');
+  // 完了していないうちは「戻す」を出さない
+  await expect(bar.getByRole('button', { name: /を戻す/ })).toHaveCount(0);
+  await bar.getByRole('button', { name: '完遂にする', exact: true }).click();
+  await expect(page.getByRole('status').filter({ hasText: 'クエストを完遂にしました' })).toBeVisible();
+  await expect(bar.getByRole('img', { name: '完遂' })).toBeFocused();
+
+  // 戻すと、確かめずに送り、「完遂にする」に替わって、そこへフォーカスが移る
+  await bar.getByRole('button', { name: '完遂を戻す: 議事録をまとめる' }).click();
+  await expect(page.getByRole('status').filter({ hasText: 'クエストの完遂を戻しました' })).toBeVisible();
+  const completeButton = bar.getByRole('button', { name: '完遂にする', exact: true });
+  await expect(completeButton).toBeFocused();
+  await expect(bar.getByRole('button', { name: /を戻す/ })).toHaveCount(0);
+  await drawer.getByRole('tab', { name: '変更の履歴' }).click();
+  await expect(drawer.getByRole('tabpanel', { name: '変更の履歴' }).getByText('完遂を戻した')).toHaveCount(1);
+  await drawer.getByRole('button', { name: '閉じる' }).click();
+  await expect(drawer).toBeHidden();
+
+  // 木の行も、完了していない行に戻る
+  const row = page.locator('.entry', { hasText: '議事録をまとめる' });
+  await expect(row.getByRole('button', { name: /完遂にする/ })).toBeVisible();
+  expect(await collect()).toEqual([]);
 });
 
 test('完了の操作が 404 か workspace_closed を受けたら、一覧を読み直す', async ({ page }) => {

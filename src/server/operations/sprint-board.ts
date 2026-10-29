@@ -85,6 +85,7 @@ export const sprintBoardOperation = implement(sprintBoard, async ({ db, workspac
           'tasks.completed_at',
           'tasks.story_id',
           'stories.title as story_title',
+          'stories.completed_at as story_completed_at',
           'tasks.assignee_user_id',
           'users.name as assignee_name',
         ])
@@ -114,6 +115,8 @@ export const sprintBoardOperation = implement(sprintBoard, async ({ db, workspac
       points: row.points,
       assignee: row.assignee_user_id === null ? null : { id: row.assignee_user_id, name: row.assignee_name ?? '' },
       completed_at: row.completed_at,
+      // 進行中のスプリントの中なので、断る理由は完了したストーリーの下にあることだけ（task-reopen の parent_completed）
+      reopenable: row.completed_at !== null && row.story_completed_at === null,
       story: row.story_id === null || row.story_title === null ? null : { id: row.story_id, title: row.story_title },
       due_on: row.due_on,
       repository:

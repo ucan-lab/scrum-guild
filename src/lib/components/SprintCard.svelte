@@ -10,17 +10,21 @@
   // スプリントの画面のカード（kit.js の card）。題は `?task=<ID>` で詳細の引き出しを開くリンク、ポイント、担当、完了の印か完了の操作。
   // 動かせるカード（完了していない、書き込める）は tabindex="0" で選べ、中のどこにフォーカスがあっても Alt と ← → で隣の列、
   // Alt と ↑ ↓ で列の中を動かす。同じ操作を、カードの下の .order-actions のボタンでもできる。
-  // 端のボタンは aria-disabled（フォーカスを失わない）で、押したり、端で Alt と矢印を押したりしても画面に渡し、動かせないことを読み上げさせる
+  // 端のボタンは aria-disabled（フォーカスを失わない）で、押したり、端で Alt と矢印を押したりしても画面に渡し、動かせないことを読み上げさせる。
+  // 最後の完了でない列の「次の列へ」と Alt と → は、画面が完了にする（task-complete）。
+  // 完了したカードは、完了の印の横に「戻す」（kit.js の doneControl の .link-btn。task-reopen）を、戻せるとき（canReopen）だけ出す
   let {
     task,
     href,
     edges,
     canComplete,
+    canReopen = false,
     clock,
     pending = false,
     hintId,
     onmove,
     oncomplete,
+    onreopen,
   }: {
     task: SprintBoardTask;
     href: string;
@@ -31,9 +35,12 @@
     // 動かせないカード（完了の列、書き込めない）は null
     edges: { top: boolean; bottom: boolean; prev: boolean; next: boolean } | null;
     canComplete: boolean;
+    // 完了したカードの「戻す」を出すか（書き込めて、task.reopenable が真）
+    canReopen?: boolean;
     pending?: boolean;
     onmove: (task: SprintBoardTask, direction: MoveDirection) => void;
     oncomplete: (task: SprintBoardTask) => void;
+    onreopen?: (task: SprintBoardTask) => void;
   } = $props();
 
   const done = $derived(task.completed_at !== null);
@@ -117,6 +124,17 @@
         <span class="hanko" role="img" aria-label={t('doneMarkLabel', { title: task.title, done: t('done') })}
           ><Icon name="check" /><b>{t('doneStamp')}</b></span
         >
+        {#if canReopen}
+          <button
+            class="link-btn"
+            type="button"
+            aria-label={t('taskReopenLabel', { done: t('done'), title: task.title })}
+            aria-disabled={pending}
+            onclick={() => {
+              if (!pending) onreopen?.(task);
+            }}>{t('taskReopen')}</button
+          >
+        {/if}
       {:else if canComplete}
         <button
           class="done-btn"

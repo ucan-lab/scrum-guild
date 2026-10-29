@@ -959,7 +959,7 @@ Google の人は、ログインするまで `sub` が分からない。そのた
 - 一意: `(task_id) WHERE ended_at IS NULL`。1つのタスクが入っている行は1つ。
 - 索引: `(workspace_id, sprint_id)`（スプリントの行を引く。スプリントの削除と終了）、`(task_id)`、`(added_by)`（外部キーの検査）。
 - タスクの `sprint_id` があることと、そのタスクの入っている行（`ended_at` が空）が1つあることを常に一致させる（行の `sprint_id` はタスクの `sprint_id` と同じ）。入れる、外す、移す、スプリントの削除、タスクの削除、始まっていないスプリントの中の完了は、タスクと行を同じ `batch()` で書く。
-- 完了では書かない。進行中のスプリントの中で完了したタスクは、`sprint_id` を持ったまま完了の列の末尾へ移り、行は開いたまま残る。このスプリントで何がいつ完了したかは `completions`（`sprint_id`、`completed_at`）から読む。完了を戻す（#240）ときは列を戻すだけで、行を足さない。
+- 完了では書かない。進行中のスプリントの中で完了したタスクは、`sprint_id` を持ったまま完了の列の末尾へ移り、行は開いたまま残る。このスプリントで何がいつ完了したかは `completions`（`sprint_id`、`completed_at`）から読む。完了を戻す（`task-reopen`）ときは列を戻すだけで、行を足さない。
 - 始まっていない（`planned`）スプリントの中で完了したタスクは、同じ `batch()` でスプリントから外れ（行を `removed` で閉じ、`sprint_id`、`column_id`、`column_position` を空にする）、スプリントの外の完了になる（「書き込みの単位」の「タスクの完了」）。先のスプリントには完了したタスクが入らない。削除したスプリントを指す未完了のタスク（前の版に戻したときのスプリントの削除で残りうる）も、完了にすると同じく外れる。
 - スプリントの終了（#241）で、完了の列にあるものを `completed`、残りを `carried_over` で閉じ、どちらの `ended_at` も終了の日時にする。
 - 積載量では `outcome = 'carried_over'` の行を数えない。持ち越したタスクは最後に入ったスプリントでだけ数える。
@@ -989,13 +989,13 @@ Google の人は、ログインするまで `sub` が分からない。そのた
 | category_id | TEXT | FK categories | 完了した時点の区分（引き継いだもの） |
 | billing_month | TEXT | | 計上月。月ごとに計上する区分のときだけ入る。リーダーが直せる |
 | created_at、updated_at | TEXT | NOT NULL | |
-| previous_column_id | TEXT | FK board_columns | 進行中のスプリントの中で完了したときに、完了の前にいた列。スプリントの外の完了では空。完了を戻す（#240 の `task-reopen`）ときにこの列へ戻す（削除されていれば先頭の列） |
+| previous_column_id | TEXT | FK board_columns | 進行中のスプリントの中で完了したときに、完了の前にいた列。スプリントの外の完了では空。完了を戻す（`task-reopen`）ときにこの列の末尾へ戻す（空か、削除されているか、完了の列なら先頭の完了でない列） |
 
 - 索引: `(workspace_id, completed_at)`、`(workspace_id, billing_month)`、`(sprint_id)`、`(task_id)`。
 - 索引（外部キーの検査）: `(completed_by)`、`(assignee_user_id) WHERE assignee_user_id IS NOT NULL`、`(previous_column_id) WHERE previous_column_id IS NOT NULL`。
 - `previous_column_id` は `migrations/0008_add_sprint_entries.sql`（#238）で足した。足す前の行は空。
 - スプリントの集計（ベロシティ、ボス戦）は `sprint_id` で数える。始まる前に終えた仕事で、ベロシティが膨らまない。
-- 未完了に戻したら行を消す。ただし、レビュー依頼が再依頼されて未完了に戻るときは消さない。このため1つのタスクに複数の行がありうる。
+- 未完了に戻したら行を消す。完了を戻す（`task-reopen`）は、そのタスクの行のうち `completed_at` が `tasks.completed_at` と同じ行を消す（「書き込みの単位」の「完了を戻す（`task-reopen`）の文と条件」）。ただし、レビュー依頼が再依頼されて未完了に戻るときは消さない。このため1つのタスクに複数の行がありうる。
 
 ### thanks
 
@@ -1156,7 +1156,7 @@ D1 は対話的なトランザクションを持たない。まとめて書く�
 | スプリントから外す | `tasks`（`sprint_id`、`column_id`、`column_position` を空にし、`updated_at`）、`change_logs`（`{"sprint": [前, null]}`）、`sprint_entries`（入っている行を `removed` で閉じる）。操作は `sprint-task-remove`（メンバー）。先にスプリントとタスク（そのスプリントに入っている削除していないもの）を読み、無ければ 404、スプリントが終了していれば 409（`closed`）、完了していれば 409（`completed`）。`tasks` の文の条件は `id`、`workspace_id`、`sprint_id = :スプリント`、`completed_at IS NULL`、`deleted_at IS NULL`、閉じていないワークスペース、スプリントが削除していない `planned` か `active`。`change_logs`（スプリントの名前は書くときの今の名前を `sprints` から引く）は直前の `UPDATE` が行を変えたときだけ入れ、`sprint_entries`（`workspace_id` で絞る）はこの要求がタスクを書いた（`updated_at` が自分の時刻で `sprint_id` が空）ことを条件にする。何も変わらなければ、読み直して同じ順で理由を返し、どれでもなければ 409（`conflict`） |
 | 区分とリポジトリの作成と変更 | `categories` か `repositories`、`change_logs`。作成は `INSERT ... SELECT ... WHERE`（閉じていない、同じ名前が無い、数が 50 未満）、変更は読んだ値のままで同じ名前が無いことを条件にした `UPDATE`。`change_logs` は直前の文が行を変えたときだけ入れる。並べ替えは `tasks` の移動と同じ文で、`change_logs` を書かない |
 | 区分とリポジトリの削除 | `categories` か `repositories`（`deleted_at`、`updated_at`）、`change_logs`（定義の `delete` と、振っていた行ごとの `update`）、振っていた `epics`、`stories`、`tasks` の `category_id` か `tasks` の `repository_id` を空にする `UPDATE`。振っていた行の履歴と戻す文は、表ごとに1文（`INSERT ... SELECT` と `UPDATE`）で、どちらも自分の削除が通った（`deleted_at` が自分の時刻）ことと、今振っている削除していない行であることを条件にし、履歴を先に置く。削除の文の条件は、閉じていないことと削除していないこと。`completions` は変えない |
-| 完了を戻す | `tasks`、`completions` の削除、`xp_grants`（打ち消し）、`change_logs` |
+| 完了を戻す | `tasks`（`completed_at`、`completed_by` を空にし、進行中のスプリントの中で完了したタスクは `column_id`、`column_position` も戻す）、`change_logs`（`action = 'reopen'`）、`xp_grants`（その完了の記録で付いた付与の打ち消し）、`completions` の削除。`sprint_entries` は書かない。操作は `task-reopen`（メンバー）。文と条件は下の「完了を戻す（`task-reopen`）の文と条件」 |
 | スプリントの開始 | `sprints`（`status = 'active'`、`goal`、`started_at`、`started_by`、`updated_at`）、`change_logs`（`entity_type = 'sprint'`、`action = 'update'`、`{"status": ["planned", "active"], "goal": [null, …]}`。ゴールを書かなければ `goal` を入れない）。操作は `sprint-start`（リーダー。管理者を含む）で、入力は `workspace_id`、`sprint_id`、`goal`（任意）。先に `planned` のスプリントを読み、無ければ 404、`active` か `closed` なら 409（`conflict`、理由は `started`）。先にワークスペースのタイムゾーンでの今日を求め（`sprint-list` の初期値と同じ求め方）、最終日が今日より前なら 409（`ended`）で断る。`sprints` の文の条件は `id`、`workspace_id`、`deleted_at IS NULL`、`status = 'planned'`、`end_on >= :今日`（読んだ今日の値を渡すので、判定と書き込みで今日がずれない）、閉じていないワークスペース、そのワークスペースに進行中（`status = 'active' AND deleted_at IS NULL`）のスプリントが無いこと（`NOT EXISTS`）。D1 は書き込みを1つずつ流すので、2つの画面から別のスプリントを同時に始めても、後の文は先に始まった行を見て何も書かず、一意の索引 `sprints_active` が最後の砦になる。`change_logs` は直前の `UPDATE` が行を変えたときだけ入れる。何も変わらなければ、閉じていれば 409（`workspace_closed`）、読み直して無ければ 404、`planned` でなければ 409（`started`）、最終日が今日より前なら 409（`ended`）、進行中が既にあれば 409（`active_exists`）、どれでもなければ 409（`conflict`）。入っているタスクの列と位置は変えない（入れたときの先頭の列のまま） |
 | カードの列の移動 | `tasks`（`column_id`、`column_position`、`updated_at`。移す行と、同じ値の続きの振り直し）、`change_logs`（列が変わったときだけ）。操作は `task-column-move`（メンバー）で、入力は `workspace_id`、`task_id`、`column_id`（移す先。今の列でもよい）、`after_task_id`（移す先の列の中で直前に置くカード。`null` は先頭、省くと末尾）。位置はサーバーが移す先の列の隣のカード（同じスプリントの、その列の削除していないタスクから移す行を除いたもの）から決める（`tasks` の「並べ替えと親の移動」と同じ決まりで、`column_position` に当てる。同じ値の行は 40 行まで振り直し、超えれば 409 の `ties`）。断るもの。タスクが無い、スプリントに入っていない、移す先の列が無い、直前のカードが移す先の列に無い（別の組織、別のワークスペースを含む）ときは 404、直前が自分自身なら 400（`invalid_input`）、完了の列へは 409（`conflict`、理由は `done_column`。完了にするのは `task-complete`）、完了したタスクは 409（`task_completed`）、スプリントが進行中でなければ 409（`not_active`）、閉じたワークスペースは 409（`workspace_closed`）。移す行の文は条件つきの `UPDATE`（読んだときのスプリントと列のまま、未完了、スプリントが進行中のまま、閉じていないワークスペース、移す先の列が今も完了でない列として在る、直前のカードが読んだ値の位置にある）。書く文は、振り直し、移す行の更新、履歴の順に並べる。振り直しと移す行の更新は同じ「移せる状態」の条件（上の `UPDATE` の条件を `EXISTS` にしたもの）を持つので、断られた要求は振り直しも書かない。時刻や位置の一致では、同じミリ秒に同じ先へ移す別の要求と区別できないため、自分の更新かどうかを時刻で決めない。履歴は列が変わったときだけ `{"column": [{id, name}, {id, name}]}` を残し、直前の `UPDATE` が行を変えたときだけ入れる（`previousStatementChanged`）。列の中の並べ替えは残さない（`task-move` と同じ）。何も変わらなければ、閉じていれば 409（`workspace_closed`）、読み直して上の順で理由を返す。同じ移動の要求が2回届いた（二重送信、再送）ときは、先の要求が通った後に2つ目の更新が列の条件で何も書かない。読み直したカードが既に移す先の列にいて、求められた位置（`after_task_id` が指すカードの直後、`null` なら先頭、省けば末尾）に収まっていれば、何も書かず履歴も足さずに成功として返す。どれでもなければ 409（`changed`）。先頭（`null`）と末尾（省略）へ移すときは、読んだ端のカードがまだ端にいることを条件にしない。2人が同じ列の同じ端へ同時に移すと2枚が同じ値になり、並びは移した順でなく `id` の順になるが、行は壊れず、次に間へ入れるときに振り直す。端に隣が無いので確かめる相手が無く、その数ミリ秒の競合で並びが1つ入れ替わるだけのため、断らずに受け入れる。位置を決める隣のカードと直前の確かめでは、削除した列を指す未完了のカード（列の削除で移し損ねたもの）は先頭の完了でない列に数える（スプリントの画面の読み取りと同じ。列の削除は #243 で、カードを移してから消す前提だが、移し損ねても見失わない） |
 | スプリントの終了 | `sprints`、`sprint_entries`、持ち越すタスクの `tasks` と新しい `sprint_entries`、`change_logs` |
@@ -1212,6 +1212,24 @@ D1 は対話的なトランザクションを持たない。まとめて書く�
 5. （0 を書いたときだけ）`change_logs`: `action = 'update'`、`{"sprint": [前, null]}`（前の名前は書くときの今の名前を `sprints` から引く）。3 と同じ `EXISTS` が条件
 
 自分の `completion_id` の記録が入ったことを後ろの文の条件にするので、遅れた要求は `completions`、`xp_grants`、`change_logs` を1行も書かない（`sprint_entries` は 0 と 1 の条件で守る）。
+
+完了を戻す（`task-reopen`）の文と条件。入力は `workspace_id`、`task_id`。出力は `task_id` と、戻した後の `sprint_id` と `column_id`（スプリントの外なら空）。完了の列へ落としたカードを受ける入力（`column_id`）は、ドラッグを足す #245 で足す。
+
+先に1回の `batch()` で、タスク（削除していないバックログのタスク。今のスプリントとその状態、今の列の名前、親のストーリーの完了、完了にした人の名前）、戻す完了の記録（そのタスクの `completions` のうち `completed_at` が `tasks.completed_at` と同じ行。レビューの再依頼で複数ありうるため、日時で選ぶ）と完了の前の列（削除していない完了でない列のときだけ）、先頭の完了でない列を読む。読んだ状態で断る（どれも 409 の `conflict` で、`details.reason` は `src/shared/operations/task/task-reopen.ts` の `taskReopenConflictReasons`）。
+
+- タスクが無い（別の組織のタスクと、バックログに無いタスクを含む）: 404
+- 完了していない: `not_completed`
+- スプリントに入ったまま完了していて、そのスプリントが進行中でない（終了したか削除した）: `sprint_closed`。終了したスプリントの中身は変えない。完了で始まっていないスプリントからは外れるので、始まっていないスプリントの中の完了したタスクはふつう無いが、あれば同じに断る
+- 親のストーリーが完了している: `parent_completed`（先にストーリーの完了を取り消す）
+
+戻す列は、タスクが進行中のスプリントにいるときだけ決める。完了の前の列（`previous_column_id`）が削除していない完了でない列ならその列、そうでなければ（空、削除した、完了の列）先頭の完了でない列で、その列のそのスプリントでの末尾（`column_position` の最大の後ろ）に置く。スプリントの外で完了したタスクは列なしのまま。打ち消す付与は、その記録の `completion_id` を持つ、打ち消されていない付与（今は起票と完了。後から足す詳細と手助けもそのまま乗る）で、受け取った人が所属を外れていても取り消す。書く文は次の順に並べる。
+
+1. `tasks`: `completed_at` と `completed_by` を空にし、`updated_at` と、スプリントの中なら `column_id`、`column_position` を書く。条件は `id`、`workspace_id`、`tray = 'backlog'`、`deleted_at IS NULL`、`completed_at = :読んだ完了日時`、`sprint_id IS :読んだスプリント`、閉じていないワークスペース、親のストーリーが完了していない（`NOT EXISTS`）、スプリントの中なら読んだスプリントが進行中のまま、戻す列が削除していない完了でない列のまま
+2. `change_logs`: `entity_type = 'task'`、`action = 'reopen'`、`{"completed_at": [日時, null], "completed_by": [{id, name}, null], "column": [{id, name}, {id, name}]}`。`column` はスプリントの中だけで、前は今の列（完了の列は名前が空）、後は戻した列。直前の `UPDATE` が行を変えたときだけ入れる（`previousStatementChanged`）
+3. `xp_grants`: 打ち消す付与ごとに、`user_id`、`action`、`task_id`、`completion_id` を写し、`amount` を負に、`reverses_grant_id` に元の行、`dedupe_key` は `reversal:<元の id>`（`story-reopen` と同じ形）。条件は 2 の自分の履歴が入ったこと（`EXISTS`。履歴の ID はこの要求だけの値なので、止めた時計でも負けた要求と一致しない）と、元の行を打ち消す行がまだ無いこと
+4. `completions`: 戻す記録を消す。3 と同じ `EXISTS` が条件
+
+1 が行を変えなければ、閉じていれば 409（`workspace_closed`）、読み直して上の順で理由を返し、どれでもなければ（読んでから書くまでに、戻してからもう一度完了にされた、戻す列が削除された、など）409（`changed`）。2つの画面から同時に戻すと、後の要求の 1 は完了日時が変わって通らず、記録の削除と打ち消しは1回だけになる（後の要求は `not_completed`）。記録を消すので、止めた時計（`DEV_NOW`）で完了、戻す、同じ時刻にもう一度完了にしても、`task-complete` の 2 の完了の記録は同じ日時の行に当たらずに入り、付与のキー（新しい `completion_id`）も重ならない。もう一度戻すと、新しい記録の付与だけを打ち消す。
 
 共通の DB と組織の DB に分けて書く操作は、途中で失敗したときの扱いを決めておく。
 

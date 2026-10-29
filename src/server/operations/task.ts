@@ -1011,7 +1011,7 @@ function completeStatements(db: OrganizationDb, context: CompleteContext) {
   const completedAt = at.toISOString();
   const params: CompletionParams = { workspaceId, taskId, completionId: uuidv7(at), userId, at: completedAt };
   const { completionId } = params;
-  // 完了の前にいた列。進行中のスプリントの中の完了だけ（#240 の完了を戻す操作が、この列へ戻す）
+  // 完了の前にいた列。進行中のスプリントの中の完了だけ（完了を戻す操作 task-reopen が、この列へ戻す）
   const previousColumnId = placement.kind === 'active' ? placement.columnId : null;
   const inSprint = placement.kind === 'outside' ? null : placement;
 

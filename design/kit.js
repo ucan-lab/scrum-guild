@@ -406,8 +406,8 @@
     return `<div class="board-wrap"><div class="board" style="--board-cols:${D.columns.length}">${D.columns.map((c) => {
       const items = list.filter((x) => (c.done ? x.doneAt : !x.doneAt && x.col === c.id));
       const at = open.indexOf(c);
-      // 完了の列へはここから移さない（完了にするのは各カードの完了の操作）ので、最後の完了でない列の「次の列へ」は押せない
-      const orderOf = (i) => ({ first: i === 0, last: i === items.length - 1, across: { first: at === 0, last: at === open.length - 1 } });
+      // 最後の完了でない列の「次の列へ」は、完了の列へ移す代わりに完了にする（本番は task-complete を呼ぶ）ので、押せる
+      const orderOf = (i) => ({ first: i === 0, last: i === items.length - 1, across: { first: at === 0, last: false } });
       return `<section class="board-col ${c.done ? "is-done" : ""}" aria-label="${c.done ? t("done") : esc(c.name)}">
         <div class="board-col-head">${c.done ? icon("check") : ""}<span class="board-col-name">${c.done ? t("done") : esc(c.name)}</span><span class="board-col-n">${items.length}</span><span class="board-col-pts">${sumPts(items)} pt</span></div>
         ${c.done && D.definitionOfDone.length ? `<details class="dod"><summary>${t("dod")}</summary>${dodDoc()}</details>` : ""}
