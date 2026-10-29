@@ -213,7 +213,7 @@ describe('renderComments', () => {
     assert.match(result.text, /^# PR 全体のコメント\n/);
     assert.match(result.text, /- 残した件数: 2\n/);
     assert.match(result.text, /- 区分で落とした件数: 3\n/);
-    assert.match(result.text, /- 上限（64KB）で落とした件数: 0\n/);
+    assert.match(result.text, /- 上限（64KB）で古い側から落とした件数: 0\n/);
     assert.ok(result.text.indexOf('id=1 ') < result.text.indexOf('id=2 '));
     assert.doesNotMatch(result.text, /stranger|newbie|orgmate/);
   });
@@ -224,7 +224,7 @@ describe('renderComments', () => {
     assert.match(result.text, /- 残した件数: 0\n/);
   });
 
-  test('上限を超えたら後ろ（新しい側）のコメントを落とし、件数を書く', () => {
+  test('上限を超えたら古い側のコメントを落とし、新しい側を残して件数を書く', () => {
     const body = 'x'.repeat(500);
     const comments = Array.from({ length: 10 }, (_, i) =>
       comment({ id: i + 1, body, created_at: `2026-10-29T00:00:${String(i).padStart(2, '0')}Z` }),
@@ -236,11 +236,13 @@ describe('renderComments', () => {
     assert.equal(result.kept, 3);
     assert.equal(result.droppedByLimit, 7);
     assert.match(result.text, /- 残した件数: 3\n/);
-    assert.match(result.text, new RegExp(`- 上限（${limit}バイト）で落とした件数: 7\\n`));
+    assert.match(result.text, new RegExp(`- 上限（${limit}バイト）で古い側から落とした件数: 7\\n`));
     assert.doesNotMatch(result.text, /本文を切り詰めた/);
-    assert.match(result.text, /id=1 /);
-    assert.match(result.text, /id=3 /);
-    assert.doesNotMatch(result.text, /id=4 /);
+    assert.match(result.text, /id=8 /);
+    assert.match(result.text, /id=10 /);
+    assert.doesNotMatch(result.text, /id=7 /);
+    assert.doesNotMatch(result.text, /id=1 /);
+    assert.ok(result.text.indexOf('id=8 ') < result.text.indexOf('id=10 '), '残した分は古い順のまま');
   });
 
   test('上限に収まる最大の件数を残す（1件増やすと超える）', () => {
@@ -250,7 +252,7 @@ describe('renderComments', () => {
     const limit = 2500;
     const result = renderComments('t', comments, limit);
     assert.ok(bytes(result.text) <= limit);
-    const more = renderComments('t', comments.slice(0, result.kept + 1), 1e9);
+    const more = renderComments('t', comments.slice(-(result.kept + 1)), 1e9);
     assert.ok(bytes(more.text) > limit);
   });
 
@@ -269,8 +271,8 @@ describe('renderComments', () => {
   });
 
   test('冒頭の上限の表示は limit 引数から作る', () => {
-    assert.match(renderComments('t', [], 2048).text, /- 上限（2KB）で落とした件数: 0\n/);
-    assert.match(renderComments('t', [], 3000).text, /- 上限（3000バイト）で落とした件数: 0\n/);
+    assert.match(renderComments('t', [], 2048).text, /- 上限（2KB）で古い側から落とした件数: 0\n/);
+    assert.match(renderComments('t', [], 3000).text, /- 上限（3000バイト）で古い側から落とした件数: 0\n/);
   });
 
   test('1件が大きくても、ほかのコメントを巻き込んで落とさない', () => {

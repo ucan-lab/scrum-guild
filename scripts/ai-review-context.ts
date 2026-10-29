@@ -146,13 +146,13 @@ function commentHeader(
     ...(unavailable ? [`- ${UNAVAILABLE}: 取得に失敗したので、コメントがあるかどうかは分からない`] : []),
     `- 残した件数: ${kept}`,
     `- 区分で落とした件数: ${droppedByAssociation}`,
-    `- 上限（${limitLabel(limit)}）で落とした件数: ${droppedByLimit}`,
+    `- 上限（${limitLabel(limit)}）で古い側から落とした件数: ${droppedByLimit}`,
     '',
   ].join('\n');
 }
 
-// 区分で絞り、古い順に並べ、冒頭の表示を含めた出力が上限に収まる先頭の分だけを残す。
-// 後ろ（新しい側）を落とすのは、pr-create が最初に付ける意図の説明を残すため
+// 区分で絞り、古い順に並べ、冒頭の表示を含めた出力が上限に収まる末尾（新しい側）の分だけを残す。
+// 古い側を落とすのは、最新のレビューと「直した」という返事を残すため（作者の意図は body.md に別にある）
 export function renderComments(
   title: string,
   comments: readonly ContextComment[],
@@ -166,18 +166,19 @@ export function renderComments(
   const header = (kept: number) =>
     commentHeader(title, kept, droppedByAssociation, entries.length - kept, limit, unavailable);
 
-  const prefixBytes = [0];
-  for (const entry of entries) {
-    prefixBytes.push(prefixBytes[prefixBytes.length - 1]! + byteLength(entry));
+  // suffixBytes[k] は末尾の k 件の合計
+  const suffixBytes = [0];
+  for (let i = entries.length - 1; i >= 0; i--) {
+    suffixBytes.push(suffixBytes[suffixBytes.length - 1]! + byteLength(entries[i]!));
   }
 
   let kept = entries.length;
-  while (kept > 0 && byteLength(header(kept)) + prefixBytes[kept]! > limit) {
+  while (kept > 0 && byteLength(header(kept)) + suffixBytes[kept]! > limit) {
     kept--;
   }
 
   return {
-    text: header(kept) + entries.slice(0, kept).join(''),
+    text: header(kept) + entries.slice(entries.length - kept).join(''),
     kept,
     droppedByAssociation,
     droppedByLimit: entries.length - kept,
