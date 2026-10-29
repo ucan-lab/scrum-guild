@@ -14,7 +14,7 @@ description: スプリントのゴールに向けて今の状態を点検し（�
 - 図の URL: https://claude.ai/artifact/AVrhMgarMzbpHFwAKYtM4Z （作った人だけの非公開）
 - 人が図を開いて一番知りたいのは、ページの一番上の「次に着手するもの」
 
-`pr-feedback` のマージの後片付けから「図だけ」と渡されたときは、手順 2 と 4 を飛ばし、手順 3 だけを行う。
+`pr-feedback` のマージの後片付けから「図だけ」と渡されたときは、手順 1 と 3 を行い、手順 4 を飛ばす。手順 2 は、図のスプリントの節に要る数だけを出し、表と勧めることは出さない。
 
 ## GitHub の操作
 
@@ -34,6 +34,8 @@ gh api "repos/{owner}/{repo}/issues?labels=sprint-log&state=all&per_page=100" --
 
 ラベルの絞り込み（`labels=a,b`）は AND になるので、全件を引いて手元で分ける。
 今のスプリントは、開いている記録の Issue（`sprint-log`）。2つ開いていれば、番号の大きいほうを今のスプリントとし、`sprint-plan` が途中で止まっていることを点検の結果に書く。
+記録の Issue ごとに、締めのコメントを `gh api "repos/{owner}/{repo}/issues/<記録の番号>/comments" --paginate --jq '.[] | select(.body | startswith("## 締め")) | .body'` で引く（直近のベロシティと `SPRINT.history` に使う）。
+今のスプリントの Issue は、閉じたものも含めて `gh api "repos/{owner}/{repo}/issues?labels=sprint:<番号>&state=all&per_page=100" --paginate --jq '.[] | select(.pull_request | not) | {number, state, state_reason, labels: [.labels[].name]}'` で引く。
 `blocked_total` が 0 でない開いた Issue だけ、`gh api repos/{owner}/{repo}/issues/<番号>/dependencies/blocked_by --jq '[.[] | {number, state, labels: [.labels[].name]}]'` で前に要るものを引く。
 `gh` を1回ずつ打つのが多くなるときは、Python のスクリプトをスクラッチパッドに書き、`subprocess` で `gh` を呼んで JSON に落とす。
 
@@ -43,8 +45,8 @@ gh api "repos/{owner}/{repo}/issues?labels=sprint-log&state=all&per_page=100" --
 
 | 見るもの | 出し方 | 人に勧めること |
 | --- | --- | --- |
-| 進み具合 | 計画の済み ÷ 計画、途中で足した分の済み、残りの日数 | 残りの計画のポイントが、残りの日数で直近のベロシティの割合を超えるなら、外す候補（作業中でないもの）を挙げる |
-| 受け入れ待ち | 件数とポイント | 計画の 3 割を超えたら、`sprint-review` を先に行う |
+| 進み具合 | 計画の済み ÷ 計画、途中で足した分の済み、残りの日数 | 残りの計画のポイント（計画 − 計画の済み − 取り下げ）が「直近のベロシティの平均 × 残りの日数 ÷ 7」を超えるなら、外す候補（作業中でないもの）を挙げる。締めたスプリントが無ければ判定しない |
+| 受け入れ待ち | 件数とポイント | 1件以上あり、残りの日数が2日以下なら、`sprint-review` を先に行う（済みに数えるのは受け入れで閉じた Issue だけなので、締めの前に受け入れる） |
 | 待ち | スプリントの Issue のうち、開いていて `status:accepting` の無い前に要るものを持つもの | 前に要るものがスプリントの外なら、先に入れるか、待つ側を外すかを人が決める |
 | 作業中と上限 | 作業中の数 / 記録の Issue の作業中の上限 | 上限に達していれば、着手を足さず、レビュー中と受け入れ待ちを先に片付ける |
 | スプリントの外の作業 | `sprint:<番号>` の無い作業中かレビュー中の Issue | 途中で足すかを人が決める |
