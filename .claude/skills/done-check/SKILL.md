@@ -54,6 +54,7 @@ gh api "repos/{owner}/{repo}/commits/<head_sha>/check-runs" --jq '.check_runs[] 
 `review` の `status` と `conclusion` が何でも、この前提は満たすものとして扱う（理由: 回した先の pr-feedback も `review` の失敗は直さないので、数に入れると done-check が先へ進めない）。
 実行中の `review` が後から付ける指摘は、pr-feedback の手順 1 が完了を待って拾う。
 `evidence` は e2e の画像を PR にコメントで並べるジョブ（`.github/workflows/ci.yml`）で、同じく助言なので `ci-ok` に含めない。`review` と同じく、何で終わっても満たすものとして扱う。UI が変わる PR で落ちていたら、画像が付かないことを出力に書く。
+PR 作成後の段では、`e2e`、`e2e-dev`、`e2e-repeat` の結果も確かめる。e2e はセッションが手元で走らせないので、これが e2e の確かめになる。この 3 つは `ci-ok` に含まれ、上の表の「CI が成功」で見る。落ちていたら手元で再現せず、回した先の pr-feedback の手順 5 が、ログと trace で直す（`docs/development.md` の「CI の e2e が落ちたとき」）。
 
 ```bash
 gh api graphql -f query='{ repository(owner:"<owner>", name:"<repo>") { pullRequest(number:<number>) { author { login } reviewThreads(first:100) { nodes { isResolved path comments(first:1) { nodes { body author { login } } } } } } } }'
@@ -113,7 +114,7 @@ Issue の「確認方法」を自分で実行し、完了条件を満たすか�
 | 変更の及ぶ先 | 確かめ方 |
 | --- | --- |
 | API | `wrangler dev` を立て、Cookie を付けてリクエストを送り、レスポンスと D1 の中身を見る。組織をまたぐ操作は、別の組織の ID で呼んで 404 になることも見る |
-| 画面 | 手元は `terminal-browser` で Cookie を置いて開き、操作して表示と状態を見る。ブラウザの無いクラウドのセッションは、変えた画面の e2e のファイルを走らせてスクリーンショットを見る（絞り方は `increment-build` の受け入れ条件と同じ）。画像は `test-results/<テスト>/` にあり、手元では通ったテストが `test-finished-<n>.png`、落ちたテストが `test-failed-<n>.png` になる（CI と同じ `evidence-<n>.png` で見たいときは `E2E_EVIDENCE=1 pnpm e2e <ファイル>`）。変えた画面と状態を開く e2e のテストが無ければ足す。変更前と変更後の画像は、e2e が開く画面にだけ CI の `evidence` が R2 に上げ、PR のコメントに並べるため。PR の本文には画像を載せない（`pr-create` の Step 3）。この手順では PR の本文に触らない |
+| 画面 | 手元は `terminal-browser` で Cookie を置いて開き、操作して表示と状態を見る。ブラウザの無いクラウドのセッションは、PR の後の CI の `evidence` のコメントと、ジョブの成果物の画像（`test-results/` の `evidence-<n>.png`、落ちたテストは `test-failed-<n>.png`）で見る。e2e はセッションが手元で走らせない（`docs/development.md` の「開発の流れ」）。変えた画面と状態を開く e2e のテストが無ければ足す。変更前と変更後の画像は、e2e が開く画面にだけ CI の `evidence` が R2 に上げ、PR のコメントに並べるため。PR の本文には画像を載せない（`pr-create` の Step 3）。この手順では PR の本文に触らない |
 | 挙動の変わらない変更（リファクタ、型、ドキュメント、設定） | 手順 4 で足りる。省いた旨を出力に書く |
 
 動かせなかった項目は、確かめられなかった項目として出力に書く（理由: 確認済みと書くと、マージの判定で人が動作確認を省く）。

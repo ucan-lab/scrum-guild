@@ -109,7 +109,7 @@ Issue に、ブランチ名とセッションの識別をコメントで残す�
 - Issue と `docs/` に無い判断を置いたら、報告に根拠付きで並べる
 - `pnpm check`、`pnpm lint`、`pnpm format:check`、`pnpm test`、`pnpm build` が通る
 - マイグレーションを足したら `pnpm db:migrate:fresh` が通る（書き方は `d1-migration`）
-- 画面か API の流れを変えたら、変えた画面と流れに関わる e2e のファイルが通る（`pnpm e2e e2e/members.test.ts` のようにファイルを渡す）。どの画面にも効くものを変えたときと、迷ったときは全件が通る。ファイルの選び方と、全件を走らせる変更の一覧は `docs/development.md` の「開発の流れ」に従う
+- 画面か API の流れを変えたら、変えた画面と流れを開く e2e のテストを差分に足し、手元では走らせない。通るかは PR の CI（`e2e`、`e2e-dev`、`e2e-repeat`）で確かめる。落ちたときの直し方は `docs/development.md` の「CI の e2e が落ちたとき」に従う
 - `.claude/hooks/` を変えたら `node --test .claude/hooks/*.test.mjs` が通る
 - コミットしない。ファイルは Edit と Write で書く（Bash で書いたファイルはフックがコミットを止める）。`pkill` を使わない。Codex に渡すときは「Edit と Write で書く」を外す（Codex はファイルを自分の道具で書き、Claude のフックを通らない）。代わりに手順 6 で `pnpm format` を走らせる
 

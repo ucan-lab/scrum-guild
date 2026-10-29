@@ -24,6 +24,8 @@ const scripts = {
   pretest: 'echo pre',
   commit: 'git commit -m x',
   'r2:get': 'wrangler r2 object get b/k --local',
+  // package.json の e2e と同じ中身（#521）
+  e2e: 'playwright test',
 };
 const ctx = (branch) => ({ cwd: '/repo', branchOf: () => branch, scriptOf: (dir, name) => (dir ? scripts[name] : undefined) });
 const verdict = (command, branch = '21-claude-settings') => judgeBash(command, ctx(branch));
@@ -4824,8 +4826,9 @@ describe('bash-rules: #356 = の形の - で始まる値と - を重ねた名前
     // 前の区切りの npm_config_call は、pnpx の経由先の npx と、exec の前の npm のフラグの後ろにも効く
     ['export npm_config_call=x; pnpx npx foo', 'ask'],
     [`export npm_config_call=x; npm --call 'echo hi' exec`, 'ask'],
-    // 今の通る形（完了条件の「今の通る形の判定は変わらない」）
-    ['npx playwright test', 'allow'],
+    // 今の通る形（完了条件の「今の通る形の判定は変わらない」）。e2e を走らせる npx playwright test は #521 で止める
+    ['npx playwright test', 'deny'],
+    ['npx playwright show-trace t.zip', 'allow'],
     ['npx tsc --noEmit', 'allow'],
     ['npx eslint .', 'allow'],
     ['npx -y create-x', 'allow'],
@@ -5001,4 +5004,117 @@ describe('bash-rules: #356 nopt の値の取り方と npm init と create の --
   ]) {
     test(`[npm init と create の --call] ${command} は ${expected}（npm init の初期化子も --call を動かす）`, () => check(command, expected));
   }
+});
+
+describe('bash-rules: #521 e2e は手元で走らせず CI で確かめる', () => {
+  // Claude のセッションの Bash では e2e（Playwright のテストの実行）を deny にする。確認を挟むとクラウドのセッションが承認の待ちで止まるので ask にしない。
+  // 人の端末にはフックが効かないので、E2E_LOCAL=1 のような前置きの抜け道も、1ファイルだけの例外も作らない。
+  // 止めるのは e2e を走らせる書き方だけで、show-trace、install、--version などの Playwright の道具と、pnpm test などは今の判定のまま。
+  // pnpm e2e は scripts の e2e（package.json と同じ playwright test）の中身として判定する
+
+  // [区分, コマンド, 期待]
+  const cases = [
+    // 完了条件: 止める
+    ['完了条件', 'pnpm e2e', 'deny'],
+    ['完了条件', 'pnpm run e2e', 'deny'],
+    ['完了条件', 'pnpm e2e e2e/members.test.ts', 'deny'],
+    ['完了条件', 'pnpm exec playwright test', 'deny'],
+    ['完了条件', 'npx playwright test', 'deny'],
+    // 完了条件: 止めない（今の判定のまま）
+    ['完了条件', 'pnpm exec playwright show-trace test-results/x/trace.zip', 'allow'],
+    ['完了条件', 'pnpm exec playwright install chromium', 'allow'],
+    ['完了条件', 'pnpm dev:open', 'allow'],
+    ['完了条件', 'pnpm test', 'allow'],
+    ['完了条件', 'pnpm build', 'allow'],
+
+    // 前提: 抜け道を作らない（前置きの環境変数、1ファイルだけ、CLAUDE.md の書き方）
+    ['抜け道', 'E2E_LOCAL=1 pnpm e2e', 'deny'],
+    ['抜け道', 'CI=1 pnpm e2e', 'deny'],
+    ['抜け道', 'E2E_REUSE_SERVER=1 pnpm e2e', 'deny'],
+    ['抜け道', 'E2E_DEV_BUILD=1 pnpm e2e e2e/members.test.ts', 'deny'],
+    ['抜け道', 'env X=1 pnpm e2e', 'deny'],
+    ['抜け道', 'pnpm e2e --workers=1 --repeat-each=5 --retries=0 e2e/members.test.ts', 'deny'],
+    ['抜け道', 'pnpm exec playwright test e2e/members.test.ts --workers=1', 'deny'],
+
+    // すり抜け: スクリプトの呼び方と作業場所
+    ['すり抜け', 'cd sub && pnpm e2e', 'deny'],
+    ['すり抜け', 'pnpm -C . e2e', 'deny'],
+    ['すり抜け', 'npm run e2e', 'deny'],
+    ['すり抜け', 'yarn e2e', 'deny'],
+    ['すり抜け', 'corepack pnpm e2e', 'deny'],
+    // すり抜け: playwright を直に呼ぶ形
+    ['すり抜け', 'bunx playwright test', 'deny'],
+    ['すり抜け', 'bun x playwright test', 'deny'],
+    ['すり抜け', 'pnpm dlx playwright test', 'deny'],
+    ['すり抜け', 'pnpx playwright test', 'deny'],
+    ['すり抜け', 'npm exec -- playwright test', 'deny'],
+    ['すり抜け', './node_modules/.bin/playwright test', 'deny'],
+    ['すり抜け', 'node_modules/.bin/playwright test --repeat-each=5', 'deny'],
+    ['すり抜け', 'playwright test', 'deny'],
+    ['すり抜け', 'node node_modules/@playwright/test/cli.js test', 'deny'],
+    ['すり抜け', 'node node_modules/playwright/cli.js test', 'deny'],
+    // すり抜け: シェル、前置き、区切り、置換、ヒアドキュメント
+    ['すり抜け', `bash -c 'pnpm e2e'`, 'deny'],
+    ['すり抜け', 'sh -c "npx playwright test"', 'deny'],
+    ['すり抜け', 'eval "pnpm e2e"', 'deny'],
+    ['すり抜け', 'bash <<< "pnpm e2e"', 'deny'],
+    ['すり抜け', "bash <<'EOF'\npnpm e2e\nEOF", 'deny'],
+    ['すり抜け', 'sh <<EOF\nnpx playwright test\nEOF', 'deny'],
+    ['すり抜け', 'echo e2e/members.test.ts | xargs pnpm e2e', 'deny'],
+    ['すり抜け', 'xargs npx playwright test', 'deny'],
+    ['すり抜け', 'timeout 600 pnpm e2e', 'deny'],
+    ['すり抜け', 'nohup pnpm e2e &', 'deny'],
+    ['すり抜け', 'pnpm e2e; echo done', 'deny'],
+    ['すり抜け', 'echo x && pnpm e2e', 'deny'],
+    ['すり抜け', 'echo $(pnpm e2e)', 'deny'],
+    ['すり抜け', 'out="$(npx playwright test 2>&1)"; echo "$out"', 'deny'],
+
+    // 止めない: Playwright の e2e 以外の道具、文字としての e2e、ほかのスクリプト
+    ['止めない', 'npx playwright show-trace t.zip', 'allow'],
+    ['止めない', 'playwright show-trace t.zip', 'allow'],
+    ['止めない', 'playwright install chromium', 'allow'],
+    ['止めない', 'playwright --version', 'allow'],
+    ['止めない', 'pnpm exec playwright --version', 'allow'],
+    ['止めない', 'grep -rn "pnpm e2e" docs', 'allow'],
+    ['止めない', `rg 'playwright test' .`, 'allow'],
+    ['止めない', 'echo pnpm e2e', 'allow'],
+    ['止めない', 'git commit -m "pnpm e2e を止める"', 'allow'],
+    ['止めない', 'cat package.json', 'allow'],
+    // pnpm lint はこの表の postlint（wrangler deploy）で止まるので、表に無い check で見る
+    ['止めない', 'pnpm check', 'allow'],
+    ['止めない', 'node --test .claude/hooks/*.test.mjs', 'allow'],
+
+    // パッケージ名で呼ぶ形（@playwright/test の bin は playwright）。@版 付きも
+    ['パッケージ名', 'npx @playwright/test test', 'deny'],
+    ['パッケージ名', 'npx @playwright/test@latest test', 'deny'],
+    ['パッケージ名', 'npx -y @playwright/test@1.64.1 test', 'deny'],
+    ['パッケージ名', 'pnpm dlx @playwright/test test', 'deny'],
+    ['パッケージ名', 'bunx @playwright/test test', 'deny'],
+    ['パッケージ名', 'npx @playwright/test show-trace t.zip', 'allow'],
+    // cli.js の別の書き方
+    ['cli.js', 'node node_modules/playwright-core/cli.js test', 'deny'],
+    ['cli.js', 'node node_modules/@playwright/test/cli.cjs test', 'deny'],
+    // サブコマンドを展開で渡す形は、test になりうるので止める（wrangler の引用符の外の展開と同じ）
+    ['展開', 'playwright $X', 'deny'],
+    ['展開', 'playwright "$X"', 'deny'],
+    ['展開', 'playwright $(echo test)', 'deny'],
+    ['展開', 'npx playwright $T', 'deny'],
+    // 最初の位置引数だけを見る。後ろの語の test では止めない
+    ['止めない', 'pnpm exec playwright show-trace test', 'allow'],
+    // 引数を実行しない道具の後ろの playwright の語、依存の情報を見るだけの道具の後ろは実行でない
+    ['止めない', 'grep -r playwright test .', 'allow'],
+    ['止めない', 'npm view playwright test', 'allow'],
+    ['止めない', 'pnpm why playwright test', 'allow'],
+  ];
+  for (const [kind, command, expected] of cases) {
+    test(`[${kind}] ${command} は ${expected}`, () => assert.equal(decision(command), expected, command));
+  }
+
+  test('止めた理由に CI で確かめることが出る', () => {
+    for (const command of ['pnpm e2e', 'pnpm run e2e', 'pnpm e2e e2e/members.test.ts', 'pnpm exec playwright test', 'npx playwright test']) {
+      const result = verdict(command);
+      assert.equal(result?.[0], 'deny', command);
+      assert.match(result[1], /CI/, command);
+    }
+  });
 });

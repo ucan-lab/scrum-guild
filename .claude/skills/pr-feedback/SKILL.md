@@ -291,6 +291,8 @@ resolve もできないので、人の画面で解決してもらうスレッド
 
 手順 1 の check-runs を取り直す。`status` が `completed` でないものがあれば、間を空けて取り直し、全て `completed` になるまで待つ。待つ間に手番を終えるときは、手順 7 の「待つ間に手番を終えるとき」に従って伝える。
 
+e2e（`e2e`、`e2e-dev`、`e2e-repeat`）の失敗は、手元で再現させず（フックが `pnpm e2e` を止める）、ジョブのログ（`get_job_logs`）と成果物の `playwright-report/`、trace（`pnpm exec playwright show-trace`）で直す。2回続けて直せなければ、人に手元での再現を頼む（`docs/development.md` の「CI の e2e が落ちたとき」）。
+
 落ちたテストが PR で変えていない領域のもので、前の head では同じコードで通っていたら、失敗したジョブを1回だけ走らせ直す（理由: e2e の待ちの時間切れのような揺らぎのたびに人に聞くと、待ちが増える）。
 
 ```bash
