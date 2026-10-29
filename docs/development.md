@@ -618,7 +618,7 @@ PR ごとのプレビュー環境は持たず、Workers Builds の preview build
 セッションは手元で再現させず、CI の記録で直す（#521）。
 
 1. 落ちたジョブのログを読む。GitHub の MCP の `get_job_logs`（`gh run view <run_id> --log-failed` でもよい）で、落ちたテストの名前、`expect` の失敗の文言、スタックを見る
-2. 足りなければ、ジョブの成果物（`e2e-<i>`、`e2e-dev-<i>`、`e2e-repeat-<i>`。14 日残る）の `playwright-report/` と `test-results/` を `gh run download <run_id> -n e2e-<i>` で取り、trace を `pnpm exec playwright show-trace <trace.zip>` で読む（`show-trace` は止めない）。落ちたテストの画面は `test-failed-<n>.png` にある
+2. 足りなければ、ジョブの成果物（`e2e-<i>`、`e2e-dev-<i>`、`e2e-repeat-<i>`。14 日残る）の `playwright-report/` と `test-results/` を `gh run download <run_id> -n e2e-<i>` で取り、trace を `pnpm exec playwright show-trace <trace.zip>` で読む（`show-trace` は止めない）。落ちたテストの画面は `test-failed-<n>.png` にある。成果物が取れない環境（プロキシで止まるクラウドのセッションなど）では、ログだけで直し、足りなければ手順 4 で人に頼む
 3. 直して、すべてコミットしてから1回にまとめて push する。CI が走り直す
 4. 2回続けて直せなかったら、人に手元での再現を頼む。落ちたテストの名前、ログと trace で分かったこと、試した直しを添える
 

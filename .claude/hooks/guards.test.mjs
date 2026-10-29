@@ -5083,6 +5083,28 @@ describe('bash-rules: #521 e2e は手元で走らせず CI で確かめる', () 
     // pnpm lint はこの表の postlint（wrangler deploy）で止まるので、表に無い check で見る
     ['止めない', 'pnpm check', 'allow'],
     ['止めない', 'node --test .claude/hooks/*.test.mjs', 'allow'],
+
+    // パッケージ名で呼ぶ形（@playwright/test の bin は playwright）。@版 付きも
+    ['パッケージ名', 'npx @playwright/test test', 'deny'],
+    ['パッケージ名', 'npx @playwright/test@latest test', 'deny'],
+    ['パッケージ名', 'npx -y @playwright/test@1.64.1 test', 'deny'],
+    ['パッケージ名', 'pnpm dlx @playwright/test test', 'deny'],
+    ['パッケージ名', 'bunx @playwright/test test', 'deny'],
+    ['パッケージ名', 'npx @playwright/test show-trace t.zip', 'allow'],
+    // cli.js の別の書き方
+    ['cli.js', 'node node_modules/playwright-core/cli.js test', 'deny'],
+    ['cli.js', 'node node_modules/@playwright/test/cli.cjs test', 'deny'],
+    // サブコマンドを展開で渡す形は、test になりうるので止める（wrangler の引用符の外の展開と同じ）
+    ['展開', 'playwright $X', 'deny'],
+    ['展開', 'playwright "$X"', 'deny'],
+    ['展開', 'playwright $(echo test)', 'deny'],
+    ['展開', 'npx playwright $T', 'deny'],
+    // 最初の位置引数だけを見る。後ろの語の test では止めない
+    ['止めない', 'pnpm exec playwright show-trace test', 'allow'],
+    // 引数を実行しない道具の後ろの playwright の語、依存の情報を見るだけの道具の後ろは実行でない
+    ['止めない', 'grep -r playwright test .', 'allow'],
+    ['止めない', 'npm view playwright test', 'allow'],
+    ['止めない', 'pnpm why playwright test', 'allow'],
   ];
   for (const [kind, command, expected] of cases) {
     test(`[${kind}] ${command} は ${expected}`, () => assert.equal(decision(command), expected, command));

@@ -91,7 +91,12 @@ function findWrangler(words, ci) {
 // pnpm e2e のようなスクリプトの名前は、package.json の中身（playwright test）を judgeScripts が掛け直して見る
 function isPlaywright(word) {
   const name = baseName(word);
-  return /^playwright(\.[cm]?js)?$/.test(name) || /(^|\/)(@playwright\/test|playwright(-core)?)\/cli\.[cm]?js$/.test(word);
+  // @playwright/test は bin が playwright のパッケージ。npx や dlx には、版を付けた名前（@playwright/test@latest）でも渡る
+  return (
+    /^playwright(\.[cm]?js)?$/.test(name) ||
+    /^@playwright\/test(@.+)?$/.test(word) ||
+    /(^|\/)(@playwright\/test|playwright(-core)?)\/cli\.[cm]?js$/.test(word)
+  );
 }
 
 // playwright の語の位置。findWrangler と同じく、道具そのもの、または引数を実行しない道具以外の後ろ
@@ -105,8 +110,13 @@ function findPlaywright(words, ci) {
 }
 
 const E2E_REASON = 'e2e は手元で走らせず、CI（ci-ok）で確かめる。docs/development.md の「開発の流れ」';
-// playwright の最初の位置引数が test なら e2e の実行。show-trace、install、--version などは通す
-const judgePlaywright = (args) => (args.find((a) => !a.startsWith('-')) === 'test' ? [DENY, E2E_REASON] : null);
+// playwright の最初の位置引数が test なら e2e の実行。show-trace、install、--version などは通す。
+// その語が展開で決まる（playwright $X、"$X"、$(echo test)）と test になりうるので、wrangler の引用符の外の展開と同じく止める
+function judgePlaywright(args) {
+  const at = args.findIndex((a) => !a.startsWith('-'));
+  if (at === -1) return null;
+  return args[at] === 'test' || expandsAt(args, at) || shapeAt(args, at).includes(DYNAMIC) ? [DENY, E2E_REASON] : null;
+}
 
 const WRANGLER_FLAGS_WITH_VALUE = new Set([
   '-c', '--config', '-e', '--env', '--cwd', '--env-file', '--name', '--port', '--ip', '--command', '--file', '--binding',
