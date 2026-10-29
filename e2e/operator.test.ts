@@ -1,3 +1,4 @@
+// 一時: #451 の確認方法の 3（確かめた後に消す）
 // 運用の画面（組織の一覧と、組織の作成、停止と再開、管理者の指名し直しのダイアログ）。seed のセッション（seed/sessions.ts）の Cookie で開く。
 // e2e の Worker には運用者の一覧（シークレット OPERATOR_LOGIN_IDS）が無く、本物の GitHub へも行かないので、運用者の操作
 // （組織の一覧、ユーザー名の解決、組織の作成）の応答は差し替える。サーバーの処理は test/operator-organizations.test.ts、
