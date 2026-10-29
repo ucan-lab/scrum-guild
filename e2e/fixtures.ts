@@ -1,3 +1,5 @@
+import { writeFile } from 'node:fs/promises';
+
 import { test as base, type BrowserContext, type Page, type Request, type TestInfo } from '@playwright/test';
 
 import {
@@ -22,7 +24,8 @@ export { expect } from '@playwright/test';
 // - テストの終わりに、通信が止まるのを待ち、アニメーションとトランジションを終わりまで進めてから撮る。
 //   Playwright のテストの終わりのスクリーンショット（screenshot: 'on'）は、読み込みやトーストの出入りの途中を撮ることがあり、
 //   同じコミットで撮り直すと3割ほどの画面が違った（#337）
-// 撮るのは E2E_EVIDENCE=1 のとき（CI の e2e）だけ（e2e/evidence-mode.ts）
+// 撮るのは E2E_EVIDENCE=1 のとき（CI の e2e）だけ（e2e/evidence-mode.ts）。撮った画像はメモリに持ち、
+// テストの後に、通ったテストの分だけファイルに書く（テストの中で閉じる context は、テストが落ちる前に撮ることがあるため。#378）
 export const STEADY_SCREENSHOT_CSS = [
   'time, section[aria-labelledby="s-api"] p[role="status"], .account-menu .emblem { color: transparent !important; text-shadow: none !important; }',
   '* { caret-color: transparent !important; }',
@@ -38,6 +41,8 @@ const CAPTURE_BUDGET_MS = QUIET_TIMEOUT_MS + 1_000 + SCREENSHOT_TIMEOUT_MS;
 const pending = new WeakMap<BrowserContext, Set<Request>>();
 const captured = new WeakSet<Page>();
 const counters = new WeakMap<TestInfo, number>();
+// テストごとの、撮った画像（撮った順）。テストの後に evidence-<n>.png に書く
+const shotsOf = new WeakMap<TestInfo, { index: number; image: Buffer }[]>();
 // テストごとの、撮る context（作った順）。ほかのテストで開いたまま残った context は撮らない
 const contextsOf = new WeakMap<TestInfo, BrowserContext[]>();
 
@@ -86,7 +91,7 @@ export async function steadyScreenshots(context: BrowserContext, info: TestInfo 
   context.on('request', (request) => requests.add(request));
   context.on('requestfinished', (request) => requests.delete(request));
   context.on('requestfailed', (request) => requests.delete(request));
-  // テストの中で閉じる context（組織の見た目のテストなど）は、閉じる前に撮る
+  // テストの中で閉じる context（組織の見た目のテストなど）は、閉じる前に撮る（書くのはテストの後で、テストが落ちれば捨てる）
   const close = context.close.bind(context);
   context.close = async (options) => {
     await captureEvidence(context, info);
@@ -104,12 +109,18 @@ async function waitQuiet(requests: Set<Request> | undefined): Promise<void> {
   }
 }
 
-// context の開いている画面を、開いた順に evidence-<n>.png に撮る。通ったテストだけを撮る（失敗の画像は Playwright が撮る）
+// 落ちた、時間切れ、飛ばした（test.skip）テストか。test.fail の印を付けて期待どおり落ちたテストも含める
+// テストの中の finally で閉じる context では、落ちた後でも status はまだ passed なので、errors も見る
+// 開発時の警告で落ちるテスト（開発モードの build）も含める
+function hasFailed(info: TestInfo): boolean {
+  return info.status !== 'passed' || info.errors.length > 0 || (devWarningsOf.get(info)?.length ?? 0) > 0;
+}
+
+// context の開いている画面を、開いた順に撮り、evidence-<n>.png の番号を付けてメモリに持つ。落ちたと分かっているテストでは撮らない
+// （失敗の画像は Playwright が撮る）。テストの中の finally で閉じる context は、この後でテストが落ちることがあるので、
+// ファイルに書くのはテストの後（writeEvidence）にする
 async function captureEvidence(context: BrowserContext, info: TestInfo): Promise<void> {
-  // 落ちた、時間切れ、飛ばした（test.skip）テストでは撮らない。test.fail の印を付けて期待どおり落ちたテストも撮らない
-  // テストの中の finally で閉じる context では、落ちた後でも status はまだ passed なので、errors も見る
-  // 開発時の警告で落ちるテスト（開発モードの build）も撮らない
-  if (info.status !== 'passed' || info.errors.length > 0 || (devWarningsOf.get(info)?.length ?? 0) > 0) return;
+  if (hasFailed(info)) return;
   for (const page of context.pages()) {
     if (captured.has(page) || page.isClosed()) continue;
     captured.add(page);
@@ -125,13 +136,24 @@ async function captureEvidence(context: BrowserContext, info: TestInfo): Promise
           () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))),
         ),
       );
-      await page.screenshot({
-        path: info.outputPath(`evidence-${index}.png`),
-        animations: 'disabled',
-        timeout: SCREENSHOT_TIMEOUT_MS,
-      });
+      const image = await page.screenshot({ animations: 'disabled', timeout: SCREENSHOT_TIMEOUT_MS });
+      shotsOf.set(info, [...(shotsOf.get(info) ?? []), { index, image }]);
     } catch {
       // 撮れなくてもテストは落とさない（画像が無い画面は、evidence で新しい画面か無くなった画面に出る）
+    }
+  }
+}
+
+// 撮った画像を evidence-<n>.png に書く。テストの本体と fixture の片付けが終わった後に呼び、通ったテストの分だけ書く
+async function writeEvidence(info: TestInfo): Promise<void> {
+  const shots = shotsOf.get(info) ?? [];
+  shotsOf.delete(info);
+  if (hasFailed(info)) return;
+  for (const { index, image } of shots) {
+    try {
+      await writeFile(info.outputPath(`evidence-${index}.png`), image);
+    } catch {
+      // 書けなくてもテストは落とさない（撮れなかったときと同じく、evidence で新しい画面か無くなった画面に出る）
     }
   }
 }
@@ -142,9 +164,11 @@ async function captureEvidence(context: BrowserContext, info: TestInfo): Promise
 // 開発モードの build では、テストの間に開発時の警告が出ていれば、テストを落とす。page を使わないテストでも確かめるよう auto にする
 // （auto の fixture は最初に立ち、最後に片付くので、page と context の片付けの後に確かめる）。
 // テストの中で browser.newContext()（と、中で newContext を呼ぶ browser.newPage()）で作る context も、
-// steadyScreenshots を呼び忘れても集めるよう、テストの間だけ newContext を包む
-export const test = base.extend<{ devWarnings: void }>({
-  devWarnings: [
+// steadyScreenshots を呼び忘れても集めるよう、テストの間だけ newContext を包む。
+// 撮った画像も、同じく最後の片付けで書く。Playwright はテストの本体の失敗を status と errors に入れてから fixture を片付けるので、
+// ここなら落ちたかが分かる。警告で落とすときは書かずに落とす
+export const test = base.extend<{ afterTest: void }>({
+  afterTest: [
     async ({ browser }, use, info) => {
       const newContext = browser.newContext;
       if (DEV_BUILD) {
@@ -165,6 +189,7 @@ export const test = base.extend<{ devWarnings: void }>({
       }
       const warnings = devWarningsOf.get(info) ?? [];
       if (warnings.length > 0) throw new Error(formatDevWarnings(warnings));
+      await writeEvidence(info);
     },
     { auto: true },
   ],

@@ -1,4 +1,4 @@
-// 開発時の警告を集める仕組み（e2e/fixtures.ts の devWarnings）が空振りしないことの確かめ（#375）。開発モードの build（E2E_DEV_BUILD=1）でだけ動く。
+// 開発時の警告を集める仕組み（e2e/fixtures.ts の afterTest）が空振りしないことの確かめ（#375）。開発モードの build（E2E_DEV_BUILD=1）でだけ動く。
 // 警告を出すテストは test.fail() を付ける。fixture がテストの終わりに落とせば期待どおりで通り、
 // Playwright の console の形が変わるなどして集められなくなると、落ちなかったテストとして落ちる
 import type { Page } from '@playwright/test';
