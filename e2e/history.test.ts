@@ -6,7 +6,7 @@
 // 「古い履歴を読む」の振る舞いは、応答を差し替えて確かめる（seed の行は 50 件に満たない）
 import type { Page, Route } from '@playwright/test';
 import { expect, test } from './fixtures.ts';
-import { signIn, watchViolations } from './helpers.ts';
+import { mockSeedAdminLists, signIn, watchViolations } from './helpers.ts';
 
 test.use({ timezoneId: 'Asia/Tokyo' });
 
@@ -54,8 +54,9 @@ function cursorOf(item: Entry) {
 }
 
 test.describe('管理者（あおば開発のミナト）', () => {
-  test.beforeEach(async ({ context, baseURL }) => {
+  test.beforeEach(async ({ context, baseURL, page }) => {
     await signIn(context, baseURL, 'admin');
+    await mockSeedAdminLists(page);
   });
 
   test('seed の履歴が新しい順に、日時、した人、内容で出る。運用者は「運用者」とだけ出て、所属の行は出ない', async ({
