@@ -546,6 +546,49 @@ export const dictionary = defineDictionary({
   ),
   epicPagePartyEmpty: workspace('討伐隊にはまだ誰もいません。', '参加者はまだいません。'),
   epicPageStories: workspace('配下の{story}', '配下の{story}'),
+  // 討伐隊の面の操作。受注と抜けるは accept と leave（見本と同じキー）。割り振りは依頼主とリーダーだけに出す
+  epicPageAssign: workspace('{party}に割り振る', '{party}に割り振る'),
+  epicPartyJoined: workspace('{epic}を受注しました', '{epic}に参加しました'),
+  epicPartyLeft: workspace('{party}を抜けました', '{party}から抜けました'),
+  epicPartyUpdating: workspace('{party}を更新しています', '{party}を更新しています'),
+  // 終わった（クリアか中止した）エピックの討伐隊は変えられない（409 の conflict）
+  epicPartyFinished: workspace(
+    'この{epic}は終わっているので、{party}を変えられません',
+    'この{epic}は終わっているので、{party}を変えられません',
+  ),
+  // 受注と抜けるが 404。エピックが消えたか、呼んだ人がもう所属していない
+  epicPartyGone: workspace(
+    '{epic}が見つからないか、{workspace}に所属していないため、{party}を変えられません',
+    '{epic}が見つからないか、{workspace}に所属していないため、{party}を変えられません',
+  ),
+  epicPartyFailed: workspace(
+    '{party}を更新できませんでした。もう一度試してください',
+    '{party}を更新できませんでした。もう一度試してください',
+  ),
+  // 割り振りのダイアログ。候補は member-list の今所属している人のうち、討伐隊にいない人
+  epicAssignField: workspace('割り振る人', '割り振る人'),
+  epicAssignHint: workspace(
+    '{workspace}に今所属していて、まだ{party}にいない人から選びます。',
+    '{workspace}に今所属していて、まだ{party}にいない人から選びます。',
+  ),
+  epicAssignNoCandidates: workspace(
+    '割り振れる人がいません。{workspace}の全員が{party}にいます。',
+    '割り振れる人がいません。{workspace}の全員が{party}にいます。',
+  ),
+  epicAssignCandidatesFailed: workspace('割り振れる人を読み込めませんでした。', '割り振れる人を読み込めませんでした。'),
+  epicAssignSubmit: workspace('割り振る', '割り振る'),
+  epicAssignSubmitting: workspace('割り振っています', '割り振っています'),
+  epicAssigned: workspace('{name} を{party}に割り振りました', '{name} を{party}に割り振りました'),
+  epicAssignAlready: workspace('{name} はもう{party}にいます', '{name} はもう{party}にいます'),
+  // 割り振りが 404。選んだ人がもう所属していないか、エピックが消えた
+  epicAssignGone: workspace(
+    '選んだ人は{workspace}に所属していないか、{epic}が見つかりません。選び直してください。',
+    '選んだ人は{workspace}に所属していないか、{epic}が見つかりません。選び直してください。',
+  ),
+  epicAssignForbidden: workspace(
+    '{party}に割り振れるのは、{requester}と{leader}だけです',
+    '{party}に割り振れるのは、{requester}と{leader}だけです',
+  ),
   // 進み具合の棒の読み上げ（kit.js の progress の aria-label）と、棒の横の数
   progressLabel: workspace('{done} {value} / {all} {points}', '{done} {value} / {all} {points}'),
   progressValue: workspace('{value} / {all} pt', '{value} / {all} pt'),
