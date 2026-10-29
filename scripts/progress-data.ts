@@ -425,13 +425,11 @@ export function buildProgress(raw: RawData, now: Date): Built {
     .toSorted((a, b) => b.n - a.n)[0];
 
   const { history, warnings } = buildHistory(logs, work, mergedPrs, raw.comments);
-  return {
-    asOf: jstIso(now),
-    sprint: current ? buildSprint({ log: current.log, work, pointsOfIssue, openPrs }) : null,
-    issues,
-    history,
-    warnings,
-  };
+  const sprint = current ? buildSprint({ log: current.log, work, pointsOfIssue, openPrs }) : null;
+  // 表の形が崩れると、計画が空になってスプリントの Issue がすべて途中で足した分に見えるため、黙らずに知らせる
+  if (sprint && sprint.plan.length === 0) warnings.push(`記録 #${sprint.log} の計画の表を1行も読めない`);
+  if (sprint && sprint.wipLimit === null) warnings.push(`記録 #${sprint.log} の作業中の上限を読めない`);
+  return { asOf: jstIso(now), sprint, issues, history, warnings };
 }
 
 export type ApiIssue = {

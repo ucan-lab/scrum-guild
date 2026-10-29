@@ -523,6 +523,14 @@ describe('履歴', () => {
     assert.deepEqual(buildProgress(raw(), NOW).warnings, []);
   });
 
+  test('今のスプリントの計画の表を1行も読めなければ、作業中の上限を読めなければ、記録の番号付きで警告する', () => {
+    const body = logBody(['| 1 | 列の形が違う | 3pt |']).replace('## 作業中の上限\n\n3', '## 作業中の上限\n\n未定');
+    const built = buildProgress(raw({ issues: [sprintLog(30, 1, [], { body })] }), NOW);
+    assert.deepEqual(built.sprint?.plan, []);
+    assert.equal(built.warnings.length, 2);
+    for (const warning of built.warnings) assert.match(warning, /#30/);
+  });
+
   test('受け入れで閉じた Issue と、そのマージ済みの PR を当てる', () => {
     const issues = [
       closed(10, { labels: ['sprint-log'], title: 'スプリント 1（2026-10-22〜2026-10-28）' }),
