@@ -221,9 +221,7 @@
       />
     {:else}
       <section class="panel" aria-labelledby="me-level-failed">
-        <div class="panel-title">
-          <h2 id="me-level-failed"><Icon name="crest" tone="xp" /> {t('levelPanelTitle')}</h2>
-        </div>
+        <div class="panel-title"><h2 id="me-level-failed">{t('levelPanelTitle')}</h2></div>
         <EmptyState
           icon="alert"
           title={t('levelLoadFailed')}
