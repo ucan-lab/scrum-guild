@@ -208,7 +208,7 @@
   color-scheme: light;
 }
 
-/* ===== 現代風。システムのウィンドウ ===== */
+/* ===== 現代風。近未来の端末のウィンドウ ===== */
 :root[data-theme="modern"] {
   --color-bg: #060a12;
   --color-surface: #0b1322;

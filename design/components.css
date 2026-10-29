@@ -1469,7 +1469,7 @@ body.has-assist .toasts { right: calc(400px + var(--space-4)); }
 :root[data-theme="medieval"] .seal { display: inline-grid; }
 :root[data-theme="medieval"] .celebrate-stamp { width: 120px; height: 120px; border: 4px double var(--color-stamp); background: none; font-size: 26px; rotate: -14deg; }
 
-/* 現代風: システムのウィンドウの光 */
+/* 現代風: 端末のウィンドウの光 */
 :root[data-theme="modern"] body { background: radial-gradient(1200px 600px at 75% -10%, rgb(76 200 255 / 0.09), transparent 70%) fixed, var(--color-bg); }
 :root[data-theme="modern"] .hanko { background: none; box-shadow: 0 0 10px -3px var(--color-done); }
 :root[data-theme="modern"] .emblem { filter: drop-shadow(0 0 6px var(--color-xp)); }
