@@ -19,12 +19,16 @@ async function addTask(page: Page, title: string): Promise<void> {
   await expect(dialog).toBeHidden();
 }
 
+// 作った後は、木の読み直しが返るまで待つ。読み直しで木が替わると、画面だけで足したタスクと並べ替えを捨てる（+page.svelte）ので、
+// 返る前に次の操作を送ると、その結果が後から届いた読み直しで消えうる
 async function addStory(page: Page, title: string): Promise<void> {
   await page.getByRole('button', { name: '達成目標を作る' }).click();
   const dialog = page.getByRole('dialog', { name: '達成目標を作る' });
   await dialog.getByLabel('タイトル').fill(title);
+  const reloaded = waitForResponses(page, '/backlog-tree');
   await dialog.getByRole('button', { name: '作る' }).click();
   await expect(dialog).toBeHidden();
+  await reloaded;
 }
 
 // 親のないタスクの題（並びの順）
@@ -233,12 +237,15 @@ test('端の行で Alt と ↑ ↓ を押すと、動かせないことを読み
   await expect(rootTitles(page)).toHaveText(['見積もりを送る', '請求書を出す']);
 });
 
+// 作った後は、木の読み直しが返るまで待つ（上の addStory と同じ）
 async function addEpic(page: Page, title: string): Promise<void> {
   await page.getByRole('button', { name: 'レイドを作る' }).click();
   const dialog = page.getByRole('dialog', { name: 'レイドを作る' });
   await dialog.getByLabel('タイトル').fill(title);
+  const reloaded = waitForResponses(page, '/backlog-tree');
   await dialog.getByRole('button', { name: '作る' }).click();
   await expect(dialog).toBeHidden();
+  await reloaded;
 }
 
 function epicRow(page: Page, title: string) {

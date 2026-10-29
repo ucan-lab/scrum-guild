@@ -18,20 +18,26 @@ function rowGroup(page: Page, title: string) {
   );
 }
 
+// 作った後は、木の読み直しが返るまで待つ。読み直しで木が替わると、画面だけで足したタスクと並べ替えを捨てる（+page.svelte）ので、
+// 返る前に次の操作を送ると、その結果が後から届いた読み直しで消えうる
 async function createEpic(page: Page, label: string, title: string): Promise<void> {
   await page.getByRole('button', { name: label }).click();
   const dialog = page.getByRole('dialog', { name: label });
   await dialog.getByLabel('タイトル').fill(title);
+  const reloaded = waitForResponses(page, '/backlog-tree');
   await dialog.getByRole('button', { name: '作る' }).click();
   await expect(dialog).toBeHidden();
+  await reloaded;
 }
 
 async function createStory(page: Page, label: string, title: string): Promise<void> {
   await page.getByRole('button', { name: label }).click();
   const dialog = page.getByRole('dialog', { name: label });
   await dialog.getByLabel('タイトル').fill(title);
+  const reloaded = waitForResponses(page, '/backlog-tree');
   await dialog.getByRole('button', { name: '作る' }).click();
   await expect(dialog).toBeHidden();
+  await reloaded;
 }
 
 test('ゲームの言葉: レイドを作り、達成目標を下へ移し、配下のクエストを完遂にしてから達成目標を完遂にし、取り消す', async ({
