@@ -1062,13 +1062,13 @@ describe('falsification-qa を数える（崩す手口、Issue #488）', () => {
   };
   const agentName = (file) => readFileSync(file, 'utf8').match(/^name:\s*(.+?)\s*$/m)?.[1];
 
-  test('.claude/agents/ の定義のうち finding-verifier 以外はすべて数え、数える名前はすべて定義がある', () => {
+  test('.claude/agents/ の定義のうち finding-verifier と implementer（レビューではない）以外はすべて数え、数える名前はすべて定義がある', () => {
     // フックは subagent_type の完全一致で数え、subagent_type は定義の name で決まる。ずれると素通りする
     const dir = path.join(repoRoot, '.claude/agents');
     const names = readdirSync(dir)
       .filter((f) => f.endsWith('.md'))
       .map((f) => agentName(path.join(dir, f)));
-    assert.deepEqual(names.filter((x) => x !== 'finding-verifier').sort(), [...REVIEW_AGENTS].sort());
+    assert.deepEqual(names.filter((x) => x !== 'finding-verifier' && x !== 'implementer').sort(), [...REVIEW_AGENTS].sort());
   });
   test('done-check と docs/development.md の対象の列挙が REVIEW_AGENTS と一致する', () => {
     const skill = readFileSync(path.join(repoRoot, '.claude/skills/done-check/SKILL.md'), 'utf8');
