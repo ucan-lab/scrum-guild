@@ -310,6 +310,8 @@ test('担い手は選んで少し待ってから最後の値だけを送り、�
   await expect(select.getByRole('option', { name: 'ミナト' })).toHaveCount(0);
   await expect(select).toHaveValue('');
   await expect(drawer).toBeVisible();
+  // 「もう一度試す」を押した位置に残るマウスの下に、エラーの文で動いた要素が来てホバーの色になるかを、実行ごとに変えない（#460）
+  await page.mouse.move(0, 0);
   // 途中の「保存しました」のトースト（4 秒）が、終わりの画面（evidence-<n>.png）に写るかは、ここまでの速さで変わる（#511）
   await expect(page.locator('.toasts:visible .toast')).toHaveCount(0, { timeout: 10_000 });
 });
@@ -343,8 +345,9 @@ test('スクロールした先の行のリンクで開いても、木のスク�
   await page.goto('/aoba/w/019a0000-0000-7000-8000-000000000401');
   const link = page.locator('a.entry-title').last();
   await expect(link).toBeVisible();
-  // 読み込みと書体の差し替えが終わってから、一番下まで送る。送った位置はその時のページの高さで頭打ちになるので、
-  // 高さが後から変わると、終わりの画面（evidence-<n>.png）の後ろの木のスクロールの位置が実行ごとに変わる（#511）
+  // 読み込みと書体の差し替えが終わってから送る。送る位置は、その時の最後の行の位置とページの高さで決まり、後から変わっても
+  // 送り直さない。#506 の終わりの画面（evidence-<n>.png）では、後ろの木のスクロールの位置が 40px 違った（#511）。
+  // settledScrollY は、ここでは値を使わず、書体の読み込みを待つために呼ぶ
   await waitForSettled(page);
   await settledScrollY(page);
   await link.scrollIntoViewIfNeeded();
@@ -363,6 +366,8 @@ test('スクロールした先の行のリンクで開いても、木のスク�
     },
   });
   expect(await settledScrollY(page)).toBe(scrollBefore);
+  // 押した行のリンクに残るマウスで、ホバーの色になるかを実行ごとに変えない（#460）
+  await page.mouse.move(0, 0);
 });
 
 test('存在しないタスクの ID で開くと、トーストで知らせて閉じる', async ({ page }) => {
