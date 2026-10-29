@@ -9,7 +9,9 @@ import {
   inviteeResolve,
   memberList,
 } from '../src/shared/operations/workspace/index.ts';
+import { WAITING_USER_NAME_IN_LOG } from '../src/shared/claim-token.ts';
 import { createApp } from '../src/server/app.ts';
+import { sha256Hex } from '../src/server/auth/tokens.ts';
 import { commonDb, orgDb } from '../src/server/db/index.ts';
 import { envWithD1Hooks } from '../src/server/db/testing.ts';
 import { implementedOperations } from '../src/server/operations/index.ts';
@@ -69,6 +71,28 @@ function invite(
       provider: 'github',
       username: user.login,
       login_subject: options.loginSubject ?? String(user.id),
+      role: options.role ?? 'member',
+    },
+  });
+}
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+type GoogleInvited = { invitation_id: string; login_name: string; invite: { url: string; expires_at: string } };
+
+function inviteGoogle(
+  target: Target,
+  person: Person,
+  email: string,
+  options: { workspaceId?: string; role?: 'leader' | 'member' } = {},
+) {
+  return post(app, invitationCreate, {
+    slug: target.slug,
+    token: person.token,
+    body: {
+      workspace_id: options.workspaceId ?? target.workspace.id,
+      provider: 'google',
+      email,
       role: options.role ?? 'member',
     },
   });
@@ -223,8 +247,10 @@ describe('invitation-create', () => {
     const user = newUser();
     const res = await invite(target, target.leader, user, { role: 'leader' });
     expect(res.status).toBe(200);
-    const body = (await res.json()) as { invitation_id: string; login_name: string };
+    const body = (await res.json()) as { invitation_id: string; login_name: string; invite: unknown };
     expect(body.login_name).toBe(user.login);
+    // 招待の URL は Google の招待だけ
+    expect(body.invite).toBeNull();
 
     const rows = await invitationRows(target.organization, target.workspace.id);
     const row = rows.find((item) => item.id === body.invitation_id);
@@ -431,6 +457,334 @@ describe('invitation-create', () => {
     const res = await invite(target, target.admin, newUser(), { workspaceId: other.workspace.id });
     expect(res.status).toBe(404);
     expect(await errorCodeOf(res)).toBe('not_found');
+  });
+});
+
+describe('invitation-create（Google）', () => {
+  const EMAIL = 'mio.hoshino@example.com';
+  // 呼ぶたびに別のメールアドレス（同じテストの中で人を分ける）
+  const newEmail = () => `guild-${crypto.randomUUID().slice(0, 8)}@example.com`;
+
+  test('リーダーがメールアドレスで招待すると、そろえたアドレスで待つ招待と記録が入り、応答の本文にだけ招待の URL と14日の期限が入る', async () => {
+    const target = await createTarget();
+    const res = await inviteGoogle(target, target.leader, `  ${EMAIL.toUpperCase()} `, { role: 'leader' });
+    expect(res.status).toBe(200);
+    expect(res.headers.get('Cache-Control')).toBe('no-store');
+    const body = (await res.json()) as GoogleInvited;
+    expect(body.login_name).toBe(EMAIL);
+    const url = new URL(body.invite.url);
+    expect(url.origin + url.pathname).toBe(`${new URL(env.PUBLIC_ORIGIN).origin}/invite`);
+    const claimToken = url.hash.slice(1);
+    expect(claimToken).toMatch(/^[A-Za-z0-9_-]{43}$/);
+    for (const [name, value] of res.headers) {
+      expect(value, name).not.toContain(claimToken);
+    }
+    const lifetime = Date.parse(body.invite.expires_at) - Date.now();
+    expect(lifetime).toBeGreaterThan(14 * DAY_MS - 60_000);
+    expect(lifetime).toBeLessThanOrEqual(14 * DAY_MS);
+
+    const rows = await invitationRows(target.organization, target.workspace.id);
+    const row = rows.find((item) => item.id === body.invitation_id);
+    expect(row).toEqual({
+      id: body.invitation_id,
+      workspace_id: target.workspace.id,
+      login_provider: 'google',
+      login_subject: null,
+      login_email: EMAIL,
+      claim_token_hash: await sha256Hex(claimToken),
+      claim_expires_at: body.invite.expires_at,
+      login_name: EMAIL,
+      role: 'leader',
+      invited_by: target.leader.userId,
+      status: 'pending',
+      responded_at: null,
+      created_at: expect.any(String),
+    });
+
+    // 作成の記録には、メールアドレス、login_subject、秘密を入れない
+    const logs = await invitationLogs(target.organization, body.invitation_id);
+    expect(logs).toHaveLength(1);
+    expect(logs[0]).toMatchObject({
+      workspace_id: target.workspace.id,
+      actor_user_id: target.leader.userId,
+      action: 'create',
+      operator: null,
+    });
+    expect(JSON.parse(logs[0]!.changes_json)).toEqual({
+      login_provider: [null, 'google'],
+      login_name: [null, WAITING_USER_NAME_IN_LOG],
+      role: [null, 'leader'],
+    });
+
+    // 秘密は、どの表にも入らない（ハッシュだけ）。メールアドレスは change_logs に入らない
+    const db = orgDb(env, target.organization.verified);
+    const stored = JSON.stringify(
+      await Promise.all(
+        (['invitations', 'change_logs', 'users'] as const).map((table) =>
+          db.rows(db.statement((q) => q.selectFrom(table).selectAll())),
+        ),
+      ),
+    );
+    expect(stored).not.toContain(claimToken);
+    const changeLogs = await db.rows(
+      db.statement((q) =>
+        q.selectFrom('change_logs').selectAll().where('organization_id', '=', target.organization.id),
+      ),
+    );
+    expect(JSON.stringify(changeLogs)).not.toContain(EMAIL);
+
+    // 承諾待ちの一覧に、手段と期限が出る
+    const listed = await post(app, memberList, {
+      slug: target.slug,
+      token: target.leader.token,
+      body: { workspace_id: target.workspace.id },
+    });
+    const invitations = (
+      (await listed.json()) as { invitations: { id: string; login_provider: string; expired: boolean }[] }
+    ).invitations;
+    expect(invitations.find((item) => item.id === body.invitation_id)).toMatchObject({
+      login_provider: 'google',
+      expired: false,
+    });
+  });
+
+  test('形の合わないメールアドレスは 400 の invalid_input（email_invalid）で、何も入らない', async () => {
+    const target = await createTarget();
+    const before = await invitationRows(target.organization, target.workspace.id);
+    for (const email of [
+      'mio.hoshino',
+      '@example.com',
+      'mio@@example.com',
+      'mio hoshino@example.com',
+      '星野@example.com',
+    ]) {
+      const res = await inviteGoogle(target, target.leader, email);
+      expect(res.status, email).toBe(400);
+      expect(await problemCodes(res), email).toEqual(['email_invalid']);
+    }
+    // 空と長すぎるものは入力の検証で断る
+    expect((await inviteGoogle(target, target.leader, '   ')).status).toBe(400);
+    expect((await inviteGoogle(target, target.leader, `${'a'.repeat(250)}@example.com`)).status).toBe(400);
+    expect(await invitationRows(target.organization, target.workspace.id)).toHaveLength(before.length);
+  });
+
+  test('同じメールアドレスで招待し直すと、前の承諾待ちの招待（期限切れも）を取り消して記録を残し、新しい招待だけが待つ。別のアドレスと別のワークスペースの招待は残る', async () => {
+    const target = await createTarget();
+    const first = (await (await inviteGoogle(target, target.leader, EMAIL)).json()) as GoogleInvited;
+    // 期限の過ぎた、同じアドレスの承諾待ち（一意の索引があるので、別のワークスペースに置いてから確かめる）
+    const expiredElsewhere = await createInvitation(
+      target.organization,
+      target.otherWorkspace.id,
+      target.admin.userId!,
+      { provider: 'google', subject: '' },
+      {
+        login_subject: null,
+        login_email: EMAIL,
+        claim_token_hash: hash64(),
+        claim_expires_at: '2026-10-01T00:00:00.000Z',
+        login_name: EMAIL,
+      },
+    );
+    const other = (await (await inviteGoogle(target, target.leader, newEmail())).json()) as GoogleInvited;
+
+    const again = await inviteGoogle(target, target.admin, EMAIL.toUpperCase(), { role: 'leader' });
+    expect(again.status).toBe(200);
+    const second = (await again.json()) as GoogleInvited;
+    expect(second.invite.url).not.toBe(first.invite.url);
+
+    const rows = await invitationRows(target.organization, target.workspace.id);
+    expect(rows.find((row) => row.id === first.invitation_id)).toMatchObject({
+      status: 'revoked',
+      responded_at: expect.any(String),
+    });
+    expect(rows.find((row) => row.id === second.invitation_id)).toMatchObject({ status: 'pending', role: 'leader' });
+    expect(rows.find((row) => row.id === other.invitation_id)).toMatchObject({ status: 'pending' });
+    expect(rows.filter((row) => row.login_email === EMAIL && row.status === 'pending').map((row) => row.id)).toEqual([
+      second.invitation_id,
+    ]);
+    const elsewhere = await invitationRows(target.organization, target.otherWorkspace.id);
+    expect(elsewhere.find((row) => row.id === expiredElsewhere.id)).toMatchObject({ status: 'pending' });
+
+    const revokedLogs = await invitationLogs(target.organization, first.invitation_id);
+    expect(revokedLogs.map((log) => log.action).sort()).toEqual(['create', 'update']);
+    const revokedLog = revokedLogs.find((log) => log.action === 'update');
+    expect(revokedLog).toMatchObject({ workspace_id: target.workspace.id, actor_user_id: target.admin.userId });
+    expect(JSON.parse(revokedLog!.changes_json)).toEqual({ status: ['pending', 'revoked'] });
+    expect(await invitationLogs(target.organization, other.invitation_id)).toHaveLength(1);
+
+    // 期限の過ぎた承諾待ちも、同じワークスペースなら取り消す
+    expect((await revoke(target, target.leader, second.invitation_id)).status).toBe(200);
+    const expired = await createInvitation(
+      target.organization,
+      target.workspace.id,
+      target.admin.userId!,
+      { provider: 'google', subject: '' },
+      {
+        login_subject: null,
+        login_email: EMAIL,
+        claim_token_hash: hash64(),
+        claim_expires_at: '2026-10-01T00:00:00.000Z',
+        login_name: EMAIL,
+      },
+    );
+    expect((await inviteGoogle(target, target.leader, EMAIL)).status).toBe(200);
+    expect(
+      (await invitationRows(target.organization, target.workspace.id)).find((row) => row.id === expired.id),
+    ).toMatchObject({ status: 'revoked' });
+  });
+
+  test('sub を埋めた後の招待（同じアドレスで結んだもの）は取り消さず、新しい招待を入れる', async () => {
+    const target = await createTarget();
+    const claimed = await createInvitation(
+      target.organization,
+      target.workspace.id,
+      target.admin.userId!,
+      { provider: 'google', subject: `google-sub-${crypto.randomUUID()}` },
+      { login_name: EMAIL },
+    );
+    const res = await inviteGoogle(target, target.leader, EMAIL);
+    expect(res.status).toBe(200);
+    const rows = await invitationRows(target.organization, target.workspace.id);
+    expect(rows.find((row) => row.id === claimed.id)).toMatchObject({ status: 'pending' });
+  });
+
+  test('人数が上限以上なら、まだ数えられていないアドレスは 409 の member_limit_reached。同じアドレスの招待し直しは通り、前の招待が期限切れなら断る', async () => {
+    const target = await createTarget();
+    expect(await seatsOf(target)).toEqual({ used: 5, limit: 15 });
+    await setMemberLimit(target.organization, 6);
+    const counted = newEmail();
+    expect((await inviteGoogle(target, target.leader, counted)).status).toBe(200);
+    expect(await seatsOf(target)).toEqual({ used: 6, limit: 6 });
+
+    const before = await invitationRows(target.organization, target.workspace.id);
+    const full = await inviteGoogle(target, target.leader, newEmail());
+    expect(full.status).toBe(409);
+    expect(await errorCodeOf(full)).toBe('member_limit_reached');
+    expect(await invitationRows(target.organization, target.workspace.id)).toHaveLength(before.length);
+
+    // 前の招待で数えられているので、上限でも招待し直せる（大文字小文字の違いは同じアドレス）。人数は増えない
+    expect((await inviteGoogle(target, target.admin, counted.toUpperCase())).status).toBe(200);
+    // 別のワークスペースへの同じアドレスの招待も、同じ人として通る
+    expect((await inviteGoogle(target, target.admin, counted, { workspaceId: target.otherWorkspace.id })).status).toBe(
+      200,
+    );
+    expect(await seatsOf(target)).toEqual({ used: 6, limit: 6 });
+
+    // 期限の過ぎた招待しかないアドレスは数えられていないので断る
+    const stale = newEmail();
+    await createInvitation(
+      target.organization,
+      target.workspace.id,
+      target.admin.userId!,
+      { provider: 'google', subject: '' },
+      {
+        login_subject: null,
+        login_email: stale,
+        claim_token_hash: hash64(),
+        claim_expires_at: '2026-10-01T00:00:00.000Z',
+        login_name: stale,
+      },
+    );
+    expect(await errorCodeOf(await inviteGoogle(target, target.leader, stale))).toBe('member_limit_reached');
+  });
+
+  test('閉じたワークスペースへの招待は 409 の workspace_closed で、前の招待も取り消さない', async () => {
+    const target = await createTarget({ closed: true });
+    const waiting = await createInvitation(
+      target.organization,
+      target.workspace.id,
+      target.admin.userId!,
+      { provider: 'google', subject: '' },
+      {
+        login_subject: null,
+        login_email: EMAIL,
+        claim_token_hash: hash64(),
+        claim_expires_at: '2999-01-01T00:00:00.000Z',
+        login_name: EMAIL,
+      },
+    );
+    const res = await inviteGoogle(target, target.admin, EMAIL);
+    expect(res.status).toBe(409);
+    expect(await errorCodeOf(res)).toBe('workspace_closed');
+    const rows = await invitationRows(target.organization, target.workspace.id);
+    expect(rows.filter((row) => row.login_provider === 'google')).toEqual([
+      expect.objectContaining({ id: waiting.id, status: 'pending' }),
+    ]);
+  });
+
+  test('読んでから書くまでに閉じられたら、何も書かずに 409 の workspace_closed', async () => {
+    const target = await createTarget();
+    const first = (await (await inviteGoogle(target, target.leader, EMAIL)).json()) as GoogleInvited;
+    let closed = false;
+    const closing = envWithD1Hooks(testEnv, {
+      // 人数を数えた直後（書く前）に閉じる
+      afterBatch: async (sqls) => {
+        if (closed || !sqls.some((sql) => sql.includes('"i"."claim_expires_at"'))) return;
+        closed = true;
+        const db = orgDb(env, target.organization.verified);
+        await db.run(
+          db.statement((q) =>
+            q
+              .updateTable('workspaces')
+              .set({ closed_at: '2026-10-29T00:00:00.000Z' })
+              .where('id', '=', target.workspace.id),
+          ),
+        );
+      },
+    });
+    const res = await post(app, invitationCreate, {
+      slug: target.slug,
+      token: target.leader.token,
+      env: closing,
+      body: { workspace_id: target.workspace.id, provider: 'google', email: EMAIL, role: 'member' },
+    });
+    expect(closed).toBe(true);
+    expect(res.status).toBe(409);
+    expect(await errorCodeOf(res)).toBe('workspace_closed');
+    const rows = (await invitationRows(target.organization, target.workspace.id)).filter(
+      (row) => row.login_provider === 'google',
+    );
+    expect(rows).toEqual([expect.objectContaining({ id: first.invitation_id, status: 'pending' })]);
+    expect(await invitationLogs(target.organization, first.invitation_id)).toHaveLength(1);
+  });
+
+  test('所属していない管理者も招待でき、一般のメンバーは 403 で何も入らない', async () => {
+    const target = await createTarget();
+    expect((await inviteGoogle(target, target.admin, newEmail())).status).toBe(200);
+    const before = await invitationRows(target.organization, target.workspace.id);
+    const res = await inviteGoogle(target, target.member, newEmail());
+    expect(res.status).toBe(403);
+    expect(await errorCodeOf(res)).toBe('forbidden');
+    expect(await invitationRows(target.organization, target.workspace.id)).toHaveLength(before.length);
+  });
+
+  test('別の組織のワークスペースは、存在しないときと同じ 404 で、その組織の招待も取り消さない', async () => {
+    const [target, other] = await Promise.all([createTarget(), createTarget()]);
+    const waiting = (await (await inviteGoogle(other, other.leader, EMAIL)).json()) as GoogleInvited;
+    const res = await inviteGoogle(target, target.admin, EMAIL, { workspaceId: other.workspace.id });
+    expect(res.status).toBe(404);
+    expect(await errorCodeOf(res)).toBe('not_found');
+    expect(
+      (await invitationRows(other.organization, other.workspace.id)).find((row) => row.id === waiting.invitation_id),
+    ).toMatchObject({ status: 'pending' });
+  });
+
+  test('ログインに、メールアドレス、秘密、ハッシュを出さない', async () => {
+    const lines: string[] = [];
+    for (const method of ['log', 'info', 'warn', 'error'] as const) {
+      vi.spyOn(console, method).mockImplementation((...args: unknown[]) => {
+        lines.push(args.map(String).join(' '));
+      });
+    }
+    const target = await createTarget();
+    const body = (await (await inviteGoogle(target, target.leader, EMAIL)).json()) as GoogleInvited;
+    await inviteGoogle(target, target.leader, 'not-an-email');
+    const claimToken = new URL(body.invite.url).hash.slice(1);
+    const logged = lines.join('\n');
+    expect(logged).not.toContain(EMAIL);
+    expect(logged).not.toContain(claimToken);
+    expect(logged).not.toContain(await sha256Hex(claimToken));
+    expect(logged).not.toContain('not-an-email');
   });
 });
 

@@ -1,8 +1,10 @@
 // 招待の URL から Google の人を結ぶ流れの結合テスト（docs/data-model.md の「メールアドレスで待つ指名と招待」）。
 // Google への通信は差し替えた fetch（test/auth/fake-google.ts）に向け、アプリ（開始、戻り先、セッション）と D1 は本物を使う。
-// 運用者による指名の API は test/operator-organizations.test.ts、指名し直しの API は test/operator-admin-reassign.test.ts。
+// 運用者による指名の API は test/operator-organizations.test.ts、指名し直しの API は test/operator-admin-reassign.test.ts、
+// リーダーの Google の招待の API（invitation-create）は test/invitation.test.ts。
 // ここでの「指名し直した後の古い URL」は、結ぶ流れだけを見るためにファクトリーで秘密を差し替えた行で、
-// 招待（invitations）は招待を作る画面がまだ無いのでファクトリーの行で確かめる
+// 招待（invitations）の結びの細かい場合もファクトリーの行で確かめる。invitation-create が作った招待の URL から承諾して所属するまでと、
+// 招待し直した後の古い URL は、末尾の「リーダーの Google の招待から所属まで」で確かめる
 import { env } from 'cloudflare:workers';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { randomToken, sha256Hex } from '../src/server/auth/tokens.ts';
@@ -15,6 +17,7 @@ import {
   verifiedOrganizationForTest,
 } from '../src/server/db/testing.ts';
 import { createOrganization as create } from '../src/shared/operations/operator/index.ts';
+import { invitationAccept, invitationCreate, memberList } from '../src/shared/operations/workspace/index.ts';
 import { organizationInfo, myOrganizations } from '../src/shared/operations/organization/index.ts';
 import { me } from '../src/shared/operations/session/index.ts';
 import { createFakeGithub } from './auth/fake-github.ts';
@@ -39,7 +42,7 @@ import {
   type OrganizationFixture,
 } from './factories.ts';
 import { post } from './operations/harness.ts';
-import { getOperator, withNewSession } from './operations/world.ts';
+import { createTarget, getOperator, withNewSession, type Target } from './operations/world.ts';
 
 const github = createFakeGithub();
 const google = createFakeGoogle();
@@ -99,7 +102,7 @@ async function waitingAdmin(
   return { organization, row, token, hash, email };
 }
 
-// Google の招待で待つ行（招待を作る画面ができるまでは、ファクトリーの行）
+// Google の招待で待つ行（invitation-create が作る行と同じ形のファクトリーの行）
 async function waitingInvitation(options: { email?: string; expiresAt?: string } = {}) {
   const { organization, admin, workspace } = await organizationWithAdmin();
   const { token, hash } = await secret();
@@ -1051,5 +1054,76 @@ describe('結んだ後のアカウント', () => {
     const before = await countAccounts();
     await newBrowser().loginWithInvite(googleUser('星野 澪', { email: EMAIL }), waiting.token);
     expect(await countAccounts()).toBe(before);
+  });
+});
+
+describe('リーダーの Google の招待から所属まで', () => {
+  // リーダーが invitation-create で Google の招待を作り、応答の招待の URL の秘密を返す
+  async function inviteByLeader(target: Target, email: string, role: 'leader' | 'member' = 'member') {
+    const res = await post(app, invitationCreate, {
+      slug: target.slug,
+      token: target.leader.token,
+      body: { workspace_id: target.workspace.id, provider: 'google', email, role },
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { invitation_id: string; invite: { url: string } };
+    return { invitationId: body.invitation_id, token: new URL(body.invite.url).hash.slice(1) };
+  }
+
+  test('リーダーが作った招待の URL を本人が開き、確認済みの同じアドレスの Google でログインして承諾すると、そのワークスペースに所属する', async () => {
+    const target = await createTarget();
+    const invited = await inviteByLeader(target, ` ${EMAIL.toUpperCase()}`, 'leader');
+
+    const user = googleUser('星野 澪', { email: EMAIL });
+    const browser = newBrowser();
+    expect((await browser.loginWithInvite(user, invited.token)).location).toBe('/');
+    expect(await invitationRow(target.organization, invited.invitationId)).toMatchObject({
+      status: 'pending',
+      login_subject: user.sub,
+      login_email: null,
+      claim_token_hash: null,
+    });
+
+    const accepted = await post(app, invitationAccept, {
+      slug: target.slug,
+      token: browser.sessionToken,
+      body: { invitation_id: invited.invitationId },
+    });
+    expect(accepted.status).toBe(200);
+    expect(await accepted.json()).toEqual({ workspace_id: target.workspace.id });
+    expect(await invitationRow(target.organization, invited.invitationId)).toMatchObject({ status: 'accepted' });
+
+    const user2 = (await usersOf(target.organization.id)).find((row) => row.login_subject === user.sub);
+    expect(user2).toMatchObject({ login_provider: 'google', name: '星野 澪', account_id: expect.any(String) });
+    const listed = await post(app, memberList, {
+      slug: target.slug,
+      token: browser.sessionToken,
+      body: { workspace_id: target.workspace.id },
+    });
+    expect(listed.status).toBe(200);
+    const members = ((await listed.json()) as { members: { id: string; role: string }[] }).members;
+    expect(members).toContainEqual(expect.objectContaining({ id: user2!.id, name: '星野 澪', role: 'leader' }));
+  });
+
+  test('同じアドレスで招待し直した後は、古い URL では結ばれずセッションもできない。新しい URL では結ばれる', async () => {
+    const target = await createTarget();
+    const first = await inviteByLeader(target, EMAIL);
+    const second = await inviteByLeader(target, EMAIL);
+    expect(await invitationRow(target.organization, first.invitationId)).toMatchObject({ status: 'revoked' });
+
+    const user = googleUser('星野 澪', { email: EMAIL });
+    const stale = newBrowser();
+    expect((await stale.loginWithInvite(user, first.token)).location).toBe(INVITE_FAILED);
+    expect(stale.cookies.has(SESSION_COOKIE)).toBe(false);
+    expect(await invitationRow(target.organization, second.invitationId)).toMatchObject({
+      status: 'pending',
+      login_subject: null,
+    });
+
+    expect((await newBrowser().loginWithInvite(user, second.token)).location).toBe('/');
+    expect(await invitationRow(target.organization, second.invitationId)).toMatchObject({
+      status: 'pending',
+      login_subject: user.sub,
+    });
   });
 });

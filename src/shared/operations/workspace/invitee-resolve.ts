@@ -3,7 +3,7 @@ import { idSchema } from '../../id.ts';
 import { defineOperation } from '../define.ts';
 import { GITHUB_USERNAME_MAX_LENGTH } from '../operator/resolve-github-user.ts';
 
-// 招待に使えるログインの手段。Google のメールアドレスでの招待は #190 で足す
+// 招待する人を確かめる手段。GitHub だけ（Google のメールアドレスでの招待は確かめる手順を通らない。invitation-create）
 export const inviteProviderSchema = z.enum(['github']);
 
 // メンバーの画面の「招待する」の節が、招待する前にリーダーへ相手を見せるために使う。返す形は運用者の resolve-github-user に、

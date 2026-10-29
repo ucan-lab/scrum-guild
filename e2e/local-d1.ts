@@ -41,6 +41,25 @@ export async function restoreKaedeInvitation(): Promise<void> {
   );
 }
 
+// e2e/members.test.ts が社内ツールに Google で招待するメールアドレス（架空）
+export const E2E_GOOGLE_INVITE_EMAIL = 'nagisa.e2e@example.com';
+
+// 社内ツールへの、E2E_GOOGLE_INVITE_EMAIL への Google の招待（承諾待ちも取り消し済みも）と、その変更の履歴を消す。
+// 招待は人数と承諾待ちの一覧に出るので、繰り返しとほかのテストのために seed の状態（この招待が無い）へ戻す。
+// 外部キーの向きに合わせ、変更の履歴を先に消す
+export async function removeE2eGoogleInvitations(): Promise<void> {
+  const invitations =
+    `SELECT id FROM invitations WHERE workspace_id = '${HIBARI_TOOLS_WORKSPACE_ID}' ` +
+    `AND login_provider = 'google' AND login_email = '${E2E_GOOGLE_INVITE_EMAIL}'`;
+  await executeLocalD1(
+    [
+      `DELETE FROM change_logs WHERE organization_id = '${HIBARI_ORGANIZATION_ID}' ` +
+        `AND entity_type = 'invitation' AND entity_id IN (${invitations});`,
+      `DELETE FROM invitations WHERE id IN (${invitations});`,
+    ].join('\n'),
+  );
+}
+
 // ヒナタ（seed/sessions.ts の invitee）の承諾を無かったことにし、seed の状態（ひばり工房に users の行を持たず、
 // デザイン相談室への承諾待ちの招待だけがある）へ戻す。承諾が書いた行（users、memberships、change_logs の2行）を消し、招待を承諾待ちに戻す。
 // どの文もひばり工房で絞る。外部キーの向きに合わせ、変更の履歴と所属を先に消す
