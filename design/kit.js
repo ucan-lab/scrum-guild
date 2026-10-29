@@ -97,8 +97,8 @@
   // 完成の定義。本番はワークスペースの Markdown を Markdown の部品（.doc-box）で描く。見本は箇条書きの Markdown を描いた形。
   // 空なら、完了の列（.dod）にも、バックログの木の上（.dod）にも、完了の操作の横（.done-bar-dod）にも出さない
   const dodDoc = () => `<div class="doc-box"><ul>${D.definitionOfDone.map((d) => `<li>${esc(d)}</li>`).join("")}</ul></div>`;
-  // tone は "xp" で経験値の色（.ico.is-xp）。ゲームの物の経験値（crystal）とレベル（crest）に使う
-  const icon = (id, tone) => `<svg class="${tone ? `ico is-${tone}` : "ico"}" aria-hidden="true"><use href="#i-${id}"/></svg>`;
+  // tone は "xp" で経験値の色（.ico.is-xp）。ゲームの物の経験値（crystal）とレベル（crest）に使う。本番の Icon と同じく "xp" だけを受ける
+  const icon = (id, tone) => `<svg class="${tone === "xp" ? "ico is-xp" : "ico"}" aria-hidden="true"><use href="#i-${id}"/></svg>`;
   const md = (d) => `${+d.slice(5, 7)}/${+d.slice(8, 10)}`;
   const sumPts = (list) => list.reduce((a, x) => a + (x.pts || 0), 0);
 
@@ -298,8 +298,9 @@
   }
   // 空の状態。何が出る場所かと、次に何をすればよいかを書く。actions は押す操作の HTML。
   // title と text も HTML として埋め込むので、利用者のデータは esc してから渡す
-  function emptyState(ic, title, text, actions = "") {
-    return `<div class="empty">${icon(ic)}<b>${title}</b>${text ? `<span>${text}</span>` : ""}${actions ? `<div class="form-actions">${actions}</div>` : ""}</div>`;
+  // tone はアイコンの色（icon の tone。本番の EmptyState の iconTone）。ゲームの物のアイコンを置くときに使う
+  function emptyState(ic, title, text, actions = "", tone) {
+    return `<div class="empty">${icon(ic, tone)}<b>${title}</b>${text ? `<span>${text}</span>` : ""}${actions ? `<div class="form-actions">${actions}</div>` : ""}</div>`;
   }
 
   // 最初にやること。済んだかは今のデータから決まるので、閉じた印を持たない。
@@ -550,7 +551,7 @@
   // レベルの面
   function levelPanel(l = D.level) {
     return `<section class="panel" aria-labelledby="level-panel-title">
-      <div class="panel-title"><h2 id="level-panel-title">${icon("crest", "xp")} レベル</h2>経験値は本人だけに見えます</div>
+      <div class="panel-title"><h2 id="level-panel-title">レベル</h2>経験値は本人だけに見えます</div>
       <div class="level">${emblem(l.level)}
         <div><div class="xp-num">${icon("crystal", "xp")}${l.xp.toLocaleString()}<small>XP</small></div>
         <div class="xp-sub">次のレベルまで <b>${l.toNext}</b>・見込み <b>+${l.soon}</b></div></div>

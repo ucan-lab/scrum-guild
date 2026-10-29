@@ -34,7 +34,7 @@
 <section class="panel" aria-labelledby={titleId}>
   <!-- 題は見出し（h2）。tabindex="-1" は、読み直した後にプログラムからフォーカスを置くため（focusTitle） -->
   <div class="panel-title">
-    <h2 id={titleId} tabindex="-1" bind:this={title}><Icon name="crest" tone="xp" /> {t('levelPanelTitle')}</h2>
+    <h2 id={titleId} tabindex="-1" bind:this={title}>{t('levelPanelTitle')}</h2>
     {t('levelPanelNote')}
   </div>
   <div class="level">

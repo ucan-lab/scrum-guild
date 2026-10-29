@@ -513,7 +513,8 @@ const SECTIONS = [
   ["feed", "知らせの一覧と空の状態", () => block("feed", "知らせの一覧と空の状態", "",
     `<ul class="feed">${D.notifications.slice(0, 3).map((n) => `<li class="${n.read ? "" : "is-unread"}"><span class="feed-icon">${icon("bell")}</span><span class="feed-main"><span class="feed-text">${SQ.esc(n.text)}</span><span class="feed-at">${n.at}</span></span><button class="btn is-sm is-quiet" type="button">既読にする</button></li>`).join("")}</ul>
      ${SQ.emptyState("inbox", "届いたものはありません", `次の同期で新しく取り込んだ${t("task")}がここに届きます。`)}
-     ${SQ.emptyState("board", `まだ${t("task")}がありません`, `${t("task")}を優先する順に並べる場所です。上の「${t("create")}」から最初の${t("task")}を作ります。`, `<button class="btn is-sm" type="button" data-toast="見本なので画面は移りません">${t("connection")}を登録する</button>`)}`,
+     ${SQ.emptyState("board", `まだ${t("task")}がありません`, `${t("task")}を優先する順に並べる場所です。上の「${t("create")}」から最初の${t("task")}を作ります。`, `<button class="btn is-sm" type="button" data-toast="見本なので画面は移りません">${t("connection")}を登録する</button>`)}
+     ${SQ.emptyState("crystal", "経験値の明細はまだありません", `${t("task")}を${t("complete")}と、起票や${t("done")}の経験値がここに並びます。`, "", "xp")}`,
     ["未読は太字と淡い藍の地。", "空の状態は、何が出る場所かと、次に何をすればよいかを書く。自分で起こせることがあれば、その画面へのボタンを1つ添える。", "空の状態のボタンは主ボタンにしない。画面の主な操作は見出しの右に置く。"], ".feed .is-unread .feed-icon .feed-main .feed-text .feed-at / SQ.emptyState() .empty")],
   ["monthly", "月の積載量", () => block("monthly", "月の積載量", "メンバー × 月の表のセル。",
     `<div class="cat-row" style="align-items:flex-start">${[[103.2, 118, 0], [172, 168, 0], [86, 60, 1], [80, 60, 0], "unset", null].map((c) => `<div class="panel" style="padding:var(--space-3)">${SQ.miniCap(c)}</div>`).join("")}</div>`,
