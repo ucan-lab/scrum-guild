@@ -35,11 +35,12 @@ export function placeOf(columns: readonly SprintBoardColumn[], taskId: string): 
 }
 
 // 端のボタンを押せないものにするための印。完了の列のカードは動かさないので null。
-// 次の列が完了の列なら「次の列へ」は完了にするので端にしない（完了の列が無いときだけ端）
+// 次の列が完了の列なら「次の列へ」は完了にするので端にしない（完了の列が無いときだけ端）。そのときは completes が真で、
+// 画面は「次の列へ」の読み上げの名前を完了の操作の名前にする
 export function edgesOf(
   columns: readonly SprintBoardColumn[],
   taskId: string,
-): { top: boolean; bottom: boolean; prev: boolean; next: boolean } | null {
+): { top: boolean; bottom: boolean; prev: boolean; next: boolean; completes: boolean } | null {
   const place = placeOf(columns, taskId);
   if (place === null) return null;
   const column = columns[place.columnIndex]!;
@@ -50,6 +51,7 @@ export function edgesOf(
     bottom: place.index === column.tasks.length - 1,
     prev: place.columnIndex === 0,
     next: next === undefined,
+    completes: next?.is_done === true,
   };
 }
 

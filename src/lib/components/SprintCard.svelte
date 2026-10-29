@@ -33,7 +33,8 @@
     // 期日の印を決める今日（ワークスペースのタイムゾーン）と週の始まり。API の値を渡す
     clock: { today: string; weekStart: number };
     // 動かせないカード（完了の列、書き込めない）は null
-    edges: { top: boolean; bottom: boolean; prev: boolean; next: boolean } | null;
+    // completes は、次の列が完了の列で「次の列へ」が完了にすること（読み上げの名前と title を完了の操作の名前にする）
+    edges: { top: boolean; bottom: boolean; prev: boolean; next: boolean; completes: boolean } | null;
     canComplete: boolean;
     // 完了したカードの「戻す」を出すか（書き込めて、task.reopenable が真）
     canReopen?: boolean;
@@ -181,8 +182,12 @@
         <button
           class="icon-btn"
           type="button"
-          aria-label={t('moveColumnNextLabel', { column, title: task.title })}
-          title={t('moveColumnNext', { column })}
+          aria-label={edges.completes
+            ? t('moveColumnCompleteLabel', { done: t('done'), column, complete: t('complete'), title: task.title })
+            : t('moveColumnNextLabel', { column, title: task.title })}
+          title={edges.completes
+            ? t('moveColumnComplete', { done: t('done'), column, complete: t('complete') })
+            : t('moveColumnNext', { column })}
           aria-disabled={edges.next}
           onclick={() => onmove(task, 'right')}><Icon name="right" /></button
         >

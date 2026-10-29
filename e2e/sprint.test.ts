@@ -166,7 +166,12 @@ test('リーダーはゴールを書いて遠征を始め、2つ目は始めら�
   await card('C札').press('Alt+ArrowRight');
   await card('C札').press('Alt+ArrowRight');
   await expect(titlesIn(page, '査定中')).toHaveText(['C札']);
-  await expect(page.getByRole('button', { name: '次の行程へ: C札' })).toHaveAttribute('aria-disabled', 'false');
+  // その列の「次の行程へ」は完遂にするので、読み上げの名前と title もそう言う。動かし方の案内にも添える
+  const completeNext = page.getByRole('button', { name: '完遂の行程へ（完遂にする）: C札' });
+  await expect(completeNext).toHaveAttribute('aria-disabled', 'false');
+  await expect(completeNext).toHaveAttribute('title', '完遂の行程へ（完遂にする）');
+  await expect(page.getByRole('button', { name: '次の行程へ: C札' })).toHaveCount(0);
+  await expect(page.locator('.action-note')).toContainText('完遂の行程の手前の行程から次へ送ると、完遂になります。');
   await expect(page.getByRole('button', { name: '前の行程へ: B札' })).toHaveAttribute('aria-disabled', 'false');
   await expect(page.getByRole('button', { name: '前の行程へ: A札' })).toHaveAttribute('aria-disabled', 'false');
   await moved;
@@ -368,7 +373,7 @@ test('スクラムの言葉でも、スプリントを始めて、列とカー�
   // 最後の完了でない列の「次の列へ」は、完了にする
   await page.getByRole('button', { name: '次の列へ: E札' }).click();
   await expect(titlesIn(page, 'レビュー')).toHaveText(['E札']);
-  await page.getByRole('button', { name: '次の列へ: E札' }).click();
+  await page.getByRole('button', { name: '完了の列へ（完了にする）: E札' }).click();
   await expect(page.getByRole('status').filter({ hasText: 'タスクを完了にしました' })).toBeVisible();
   await expect(titlesIn(page, '完了')).toHaveText(['E札']);
   // 戻すと、完了の前の列へ戻る

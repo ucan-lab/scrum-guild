@@ -39,14 +39,15 @@ describe('placeOf', () => {
 
 describe('edgesOf', () => {
   test('列の端を返し、最後の完了でない列の先（完了の列）は端にしない（完了にする）', () => {
-    expect(edgesOf(columns, 'a')).toEqual({ top: true, bottom: false, prev: true, next: false });
-    expect(edgesOf(columns, 'c')).toEqual({ top: false, bottom: true, prev: true, next: false });
-    expect(edgesOf(columns, 'd')).toEqual({ top: true, bottom: true, prev: false, next: false });
+    expect(edgesOf(columns, 'a')).toEqual({ top: true, bottom: false, prev: true, next: false, completes: false });
+    expect(edgesOf(columns, 'c')).toEqual({ top: false, bottom: true, prev: true, next: false, completes: false });
+    // 最後の完了でない列の「次の列へ」は完了にする
+    expect(edgesOf(columns, 'd')).toEqual({ top: true, bottom: true, prev: false, next: false, completes: true });
   });
 
   test('完了の列が無ければ、最後の列の先を端にする', () => {
     const open = columns.filter((column) => !column.is_done);
-    expect(edgesOf(open, 'd')).toEqual({ top: true, bottom: true, prev: false, next: true });
+    expect(edgesOf(open, 'd')).toEqual({ top: true, bottom: true, prev: false, next: true, completes: false });
     expect(planCardMove(open, 'd', 'right')).toEqual({ kind: 'edge', edge: 'next' });
   });
 

@@ -578,6 +578,8 @@ a.brand { color: inherit; text-decoration: none; }
 .card-foot { display: flex; align-items: center; gap: var(--space-2); }
 .card-end { margin-left: auto; display: flex; align-items: center; gap: var(--space-2); }
 .card .done-btn { width: 30px; height: 30px; }
+/* 完了の印の横の「戻す」。狭いカードと帯でも折り返さず、縮めない */
+.card .link-btn, .done-bar-done .link-btn { white-space: nowrap; flex: none; }
 /* 狭い幅と指の画面では、題のリンクと完了のボタンと完了を戻す「戻す」（.link-btn）を 44px の高さと幅にする
    （見た目ごと広げる。列の端のボタンは ::after では範囲が切れる） */
 @media (max-width: 760px), (pointer: coarse) {

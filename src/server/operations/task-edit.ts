@@ -82,6 +82,7 @@ async function readTask(db: OrganizationDb, workspaceId: string, taskId: string)
         .select([
           ...sprintRefColumns,
           // 完了を戻せるか（reopenable）。削除したスプリントは結ばないので、sprint_id があって状態が無ければ削除したスプリント
+          'tasks.tray',
           'tasks.sprint_id',
           'sprints.status as sprint_status',
           'stories.completed_at as story_completed_at',
@@ -179,6 +180,7 @@ function detailOf(
       row.completed_at !== null &&
       !workspace.closed &&
       reopenBlockOf({
+        tray: row.tray,
         completedAt: row.completed_at,
         sprintId: row.sprint_id,
         sprintActive: row.sprint_status === 'active',

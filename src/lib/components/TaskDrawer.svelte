@@ -1025,7 +1025,8 @@
   let doneMark = $state<HTMLElement>();
 
   async function complete(): Promise<void> {
-    if (task === null || completing || task.completed_at !== null) return;
+    // 戻している間は完了にしない
+    if (task === null || completing || reopening || task.completed_at !== null) return;
     completing = true;
     try {
       const result = await callOperation(taskComplete, { workspace_id: workspaceId, task_id: taskId }, { slug });

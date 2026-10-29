@@ -75,6 +75,17 @@
     status = message;
   }
 
+  // 完了か戻しを送っている間に、もう1つの完了か戻しが来たら送らずに捨て、送っている最中であることを読み上げる。捨てたら真
+  function refusedWhileBusy(): boolean {
+    if (completingId === null && reopeningId === null) return false;
+    void announce(
+      completingId !== null
+        ? t('sprintCardBusyCompleting', { done: t('done') })
+        : t('sprintCardBusyReopening', { done: t('done') }),
+    );
+    return true;
+  }
+
   let completingId = $state<string | null>(null);
   let reopeningId = $state<string | null>(null);
   // 完了の列の完成の定義を開いているか。本文は開くまで描かない（バックログの画面と同じ）
@@ -215,7 +226,7 @@
   }
 
   async function complete(task: SprintBoardTask): Promise<void> {
-    if (workspace === null || completingId !== null || reopeningId !== null) return;
+    if (workspace === null || refusedWhileBusy()) return;
     completingId = task.id;
     const workspaceId = workspace.id;
     try {
@@ -265,7 +276,7 @@
   }
 
   async function reopen(task: SprintBoardTask): Promise<void> {
-    if (workspace === null || completingId !== null || reopeningId !== null) return;
+    if (workspace === null || refusedWhileBusy()) return;
     reopeningId = task.id;
     const workspaceId = workspace.id;
     try {
@@ -423,7 +434,7 @@
       </div>
     </div>
     {#if canWrite}
-      <p class="action-note" id={KEY_HINT_ID}>{t('sprintBoardKeyHint', { column: t('column') })}</p>
+      <p class="action-note" id={KEY_HINT_ID}>{t('sprintBoardKeyHint', { column: t('column'), done: t('done') })}</p>
     {/if}
   {/if}
 {/if}

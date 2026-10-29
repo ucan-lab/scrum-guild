@@ -8,6 +8,7 @@ import { sprintBoard } from '../src/shared/operations/sprint/index.ts';
 import { taskComplete, taskDetail, taskReopen } from '../src/shared/operations/task/index.ts';
 import { createApp } from '../src/server/app.ts';
 import { orgDb } from '../src/server/db/index.ts';
+import { envWithD1Hooks } from '../src/server/db/testing.ts';
 import { implementedOperations } from '../src/server/operations/index.ts';
 import {
   createBoardColumn,
@@ -497,6 +498,102 @@ describe('task-reopen', () => {
       'reopen',
       'reopen',
     ]);
+  });
+
+  test('アーカイブした完了済みのタスクは、詳細で戻せないと返し、戻すのは 404', async () => {
+    const { target } = await setup();
+    // 取り込んだタスクを完了にした後、親を配下ごと削除するとアーカイブへ移る（tree-delete.ts）
+    const task = await createTask(target.organization, target.workspace.id, target.member.userId!, {
+      tray: 'archive',
+      is_imported: 1,
+      completed_at: COMPLETED_AT,
+      completed_by: target.member.userId,
+    });
+    expect(await reopenableOf(target, task.id)).toBe(false);
+    expect((await reopen(target, task.id)).status).toBe(404);
+  });
+
+  test('読んでから書くまでに、戻してから同じ時刻にもう一度完了にされたら（記録が替わった）、409 の changed で何も書かない', async () => {
+    const { target } = await setup();
+    const task = await createTask(target.organization, target.workspace.id, target.member.userId!, {
+      completed_at: COMPLETED_AT,
+      completed_by: target.member.userId,
+    });
+    const read = await createCompletion(target.organization, target.workspace.id, task.id, target.member.userId!, {
+      completed_at: COMPLETED_AT,
+    });
+    let replaced: string | null = null;
+    // 戻すタスクを読む batch() の直後に、別の要求が戻して、止めた時計の同じ時刻にもう一度完了にした状態へ替える
+    const requestEnv = envWithD1Hooks(testEnv, {
+      afterBatch: async (sqls) => {
+        if (replaced !== null || sqls.length !== 3 || !sqls[1]!.includes('from "completions"')) return;
+        const db = orgDb(env, target.organization.verified);
+        await db.run(
+          db.statement((q) =>
+            q.deleteFrom('completions').where('id', '=', read.id).where('workspace_id', '=', target.workspace.id),
+          ),
+        );
+        replaced = (
+          await createCompletion(target.organization, target.workspace.id, task.id, target.member.userId!, {
+            completed_at: COMPLETED_AT,
+          })
+        ).id;
+      },
+    });
+    const res = await reopen(target, task.id, { env: requestEnv });
+    expect(replaced).not.toBeNull();
+    expect(res.status).toBe(409);
+    expect(await reasonOf(res)).toBe('changed');
+    expect(await taskRow(target, task.id)).toMatchObject({ completed_at: COMPLETED_AT });
+    expect((await completionsOf(target, task.id)).map((row) => row.id)).toEqual([replaced]);
+    expect(await logsOf(target, task.id)).toHaveLength(0);
+  });
+
+  test('記録の無い完了を読んだ後に、同じ時刻の記録が入っていたら、409 の changed で何も書かない', async () => {
+    const { target } = await setup();
+    const task = await createTask(target.organization, target.workspace.id, target.member.userId!, {
+      completed_at: COMPLETED_AT,
+      completed_by: target.member.userId,
+    });
+    let added = false;
+    const requestEnv = envWithD1Hooks(testEnv, {
+      afterBatch: async (sqls) => {
+        if (added || sqls.length !== 3 || !sqls[1]!.includes('from "completions"')) return;
+        added = true;
+        await createCompletion(target.organization, target.workspace.id, task.id, target.member.userId!, {
+          completed_at: COMPLETED_AT,
+        });
+      },
+    });
+    const res = await reopen(target, task.id, { env: requestEnv });
+    expect(added).toBe(true);
+    expect(res.status).toBe(409);
+    expect(await reasonOf(res)).toBe('changed');
+    expect(await taskRow(target, task.id)).toMatchObject({ completed_at: COMPLETED_AT });
+    expect(await completionsOf(target, task.id)).toHaveLength(1);
+  });
+
+  test('完了でない列が1つも無ければ、409 の changed で何も書かない', async () => {
+    const target = await createTarget();
+    const done = await createBoardColumn(target.organization, target.workspace.id, {
+      name: null,
+      is_done: 1,
+      position: 'Zz',
+    });
+    const sprint = await createSprint(target.organization, target.workspace.id, { status: 'active' });
+    const task = await card(target, sprint.id, done.id, 'a0', {
+      completed_at: COMPLETED_AT,
+      completed_by: target.member.userId,
+    });
+    await createCompletion(target.organization, target.workspace.id, task.id, target.member.userId!, {
+      completed_at: COMPLETED_AT,
+      sprint_id: sprint.id,
+    });
+    const res = await reopen(target, task.id);
+    expect(res.status).toBe(409);
+    expect(await reasonOf(res)).toBe('changed');
+    expect(await taskRow(target, task.id)).toMatchObject({ completed_at: COMPLETED_AT, column_id: done.id });
+    expect(await completionsOf(target, task.id)).toHaveLength(1);
   });
 
   test('戻したカードは、スプリントの画面で戻した列に出る', async () => {

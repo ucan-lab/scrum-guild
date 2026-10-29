@@ -20,17 +20,21 @@ function reopenConflict(reason: TaskReopenConflictReason): ApiError {
   return new ApiError(409, 'conflict', { reason });
 }
 
-// 完了を戻せない理由。戻せるなら null。task-reopen の断りと、task-detail の reopenable が同じ判定を使う。
+// 完了を戻せない理由。戻せるなら null。task-reopen の断りと、task-detail と sprint-board の reopenable が同じ判定を使う。
+// - not_found: バックログのタスクでない（受信箱やアーカイブ。取り込んだタスクを完了にした後、親を配下ごと削除するとアーカイブへ移る）。
+//   task-reopen はバックログのタスクだけを読むので、404 になる
 // - not_completed: 完了していない
 // - sprint_closed: スプリントに入ったまま完了していて、そのスプリントが進行中でない（終了したか削除した）。
 //   完了で始まっていないスプリントからは外れる（task-complete）ので、始まっていないスプリントの中の完了したタスクはふつう無い。あれば同じに断る
 // - parent_completed: 親のストーリーが完了している
 export function reopenBlockOf(state: {
+  tray: string;
   completedAt: string | null;
   sprintId: string | null;
   sprintActive: boolean;
   parentCompleted: boolean;
-}): TaskReopenConflictReason | null {
+}): TaskReopenConflictReason | 'not_found' | null {
+  if (state.tray !== 'backlog') return 'not_found';
   if (state.completedAt === null) return 'not_completed';
   if (state.sprintId !== null && !state.sprintActive) return 'sprint_closed';
   if (state.parentCompleted) return 'parent_completed';
@@ -59,6 +63,7 @@ async function readReopenTarget(db: OrganizationDb, workspaceId: string, taskId:
         )
         .select([
           'tasks.id',
+          'tasks.tray',
           'tasks.sprint_id',
           'tasks.column_id',
           'tasks.completed_at',
@@ -120,11 +125,13 @@ function throwIfNotReopenable(target: Awaited<ReturnType<typeof readReopenTarget
   if (target === undefined) throw new ApiError(404, 'not_found');
   const { task } = target;
   const reason = reopenBlockOf({
+    tray: task.tray,
     completedAt: task.completed_at,
     sprintId: task.sprint_id,
     sprintActive: task.sprint_status === 'active' && task.sprint_deleted_at === null,
     parentCompleted: task.story_completed_at !== null,
   });
+  if (reason === 'not_found') throw new ApiError(404, 'not_found');
   if (reason !== null) throw reopenConflict(reason);
 }
 
@@ -152,7 +159,8 @@ function ownLog(from: From, workspaceId: string, logId: string) {
 }
 
 // 戻す列と位置。進行中のスプリントの中で完了したタスクだけ。完了の前の列（削除していない完了でない列）か、無ければ先頭の完了でない列の、
-// そのスプリントでの末尾。完了でない列が1つも無ければ列なし（画面は先頭の列に出す。ふつうは無い）
+// そのスプリントでの末尾。完了でない列が1つも無ければ、戻す先が無いので 409 の changed で断る（スプリントの中のタスクは列を空にできない。
+// 列の削除は完了でない列を最後の1つまで残すので、ふつうは無い）
 async function destinationOf(db: OrganizationDb, workspaceId: string, target: ReopenTarget) {
   const sprintId = target.task.sprint_id;
   if (sprintId === null) return null;
@@ -160,7 +168,7 @@ async function destinationOf(db: OrganizationDb, workspaceId: string, target: Re
     target.completion?.previous_column_id != null
       ? { id: target.completion.previous_column_id, name: target.completion.previous_column_name }
       : target.firstColumn;
-  if (column === null) return { sprintId, column: null, position: null };
+  if (column === null) throw reopenConflict('changed');
   const last = await db.first(
     db.statement((q) =>
       q
@@ -235,12 +243,13 @@ export const taskReopenOperation = implement(taskReopen, async ({ db, actor, wor
   if (destination !== null) {
     changes.column = [
       task.column_id === null ? null : { id: task.column_id, name: task.column_name },
-      destination.column === null ? null : { id: destination.column.id, name: destination.column.name },
+      { id: destination.column.id, name: destination.column.name },
     ];
   }
 
   const results = await db.batch([
-    // 1. tasks。読んだ完了した日時のまま、読んだスプリントのまま（進行中）、親のストーリーが未完了、閉じていないワークスペース
+    // 1. tasks。読んだ完了した日時のまま、読んだ完了の記録のまま、読んだスプリントのまま（進行中）、親のストーリーが未完了、
+    // 閉じていないワークスペース
     db.statement((q) =>
       q
         .updateTable('tasks')
@@ -248,9 +257,7 @@ export const taskReopenOperation = implement(taskReopen, async ({ db, actor, wor
           completed_at: null,
           completed_by: null,
           updated_at: reopenedAt,
-          ...(destination === null
-            ? {}
-            : { column_id: destination.column?.id ?? null, column_position: destination.position }),
+          ...(destination === null ? {} : { column_id: destination.column.id, column_position: destination.position }),
         })
         .where('id', '=', taskId)
         .where('workspace_id', '=', workspaceId)
@@ -261,6 +268,26 @@ export const taskReopenOperation = implement(taskReopen, async ({ db, actor, wor
         .where((eb) =>
           eb.and([
             eb.exists(openWorkspace(q, organizationId, workspaceId)),
+            // 読んだ完了の記録が今も在る（記録が無かったなら、同じ完了日時の記録が今も無い）。止めた時計（DEV_NOW）では、読んでから
+            // 書くまでに別の要求が戻して同じ時刻にもう一度完了にすると、完了日時は同じまま記録だけが替わるため
+            completion === null
+              ? eb.not(
+                  eb.exists(
+                    eb
+                      .selectFrom('completions')
+                      .select('completions.id')
+                      .where('completions.workspace_id', '=', workspaceId)
+                      .where('completions.task_id', '=', taskId)
+                      .where('completions.completed_at', '=', completedAt),
+                  ),
+                )
+              : eb.exists(
+                  eb
+                    .selectFrom('completions')
+                    .select('completions.id')
+                    .where('completions.id', '=', completion.id)
+                    .where('completions.workspace_id', '=', workspaceId),
+                ),
             eb.not(
               eb.exists(
                 eb
@@ -273,7 +300,7 @@ export const taskReopenOperation = implement(taskReopen, async ({ db, actor, wor
             ),
             ...(sprintId === null ? [] : [eb.exists(activeSprint(q, workspaceId).where('act.id', '=', sprintId))]),
             // 戻す列が今も削除されていない
-            ...(destination?.column == null
+            ...(destination === null
               ? []
               : [
                   eb.exists(
@@ -347,7 +374,7 @@ export const taskReopenOperation = implement(taskReopen, async ({ db, actor, wor
           ),
       ),
     ),
-    // 4. completions。戻した完了の記録を消す（完了の記録は今完了しているタスクだけが持つ）
+    // 4. completions。戻した完了の記録を消す（前の完了の記録は残る）
     ...(completion === null
       ? []
       : [
@@ -363,7 +390,7 @@ export const taskReopenOperation = implement(taskReopen, async ({ db, actor, wor
 
   if ((results[0]?.changes ?? 0) === 0) {
     // 読んでから書くまでに、閉じたか、消えたか、別の要求が先に戻したか、スプリントが終わったか、親のストーリーが完了したか、
-    // 戻してからもう一度完了にされた（完了した日時が変わった）か、戻す列が削除された
+    // 戻してからもう一度完了にされた（完了した日時か、完了の記録が変わった）か、戻す列が削除された
     await throwIfClosed(db, workspaceId);
     throwIfNotReopenable(await readReopenTarget(db, workspaceId, taskId));
     throw reopenConflict('changed');
@@ -371,6 +398,6 @@ export const taskReopenOperation = implement(taskReopen, async ({ db, actor, wor
   return {
     task_id: taskId,
     sprint_id: sprintId,
-    column_id: destination === null ? null : (destination.column?.id ?? null),
+    column_id: destination === null ? null : destination.column.id,
   };
 });

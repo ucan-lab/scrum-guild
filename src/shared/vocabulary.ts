@@ -2370,8 +2370,8 @@ export const dictionary = defineDictionary({
   sprintBoardColumnEmpty: workspace('なし', 'なし'),
   sprintBoardColumnPoints: workspace('{points} pt', '{points} pt'),
   sprintBoardKeyHint: workspace(
-    'カードを選んで Alt と ← → で隣の{column}、Alt と ↑ ↓ で{column}の中を動かせます。カードの下のボタンでも同じです。',
-    'カードを選んで Alt と ← → で隣の{column}、Alt と ↑ ↓ で{column}の中を動かせます。カードの下のボタンでも同じです。',
+    'カードを選んで Alt と ← → で隣の{column}、Alt と ↑ ↓ で{column}の中を動かせます。カードの下のボタンでも同じです。{done}の{column}の手前の{column}から次へ送ると、{done}になります。',
+    'カードを選んで Alt と ← → で隣の{column}、Alt と ↑ ↓ で{column}の中を動かせます。カードの下のボタンでも同じです。{done}の{column}の手前の{column}から次へ送ると、{done}になります。',
   ),
   sprintBoardEmptyTitle: workspace('進行中の{sprint}はありません', '進行中の{sprint}はありません'),
   sprintBoardEmptyLeaderText: workspace(
@@ -2393,6 +2393,12 @@ export const dictionary = defineDictionary({
   moveColumnNext: workspace('次の{column}へ', '次の{column}へ'),
   moveColumnPrevLabel: workspace('前の{column}へ: {title}', '前の{column}へ: {title}'),
   moveColumnNextLabel: workspace('次の{column}へ: {title}', '次の{column}へ: {title}'),
+  // 最後の完了でない列のカードの「次の列へ」。完了の列へ移す代わりに完了にする
+  moveColumnComplete: workspace('{done}の{column}へ（{complete}）', '{done}の{column}へ（{complete}）'),
+  moveColumnCompleteLabel: workspace(
+    '{done}の{column}へ（{complete}）: {title}',
+    '{done}の{column}へ（{complete}）: {title}',
+  ),
   // 選んだカードの説明（aria-describedby）。{points} はポイントか未見積もりの文
   sprintCardSummary: workspace('{points}、{assignee}は{name}', '{points}、{assignee}は{name}'),
   sprintCardSummaryUnassigned: workspace('{points}、{unassigned}', '{points}、{unassigned}'),
@@ -2419,6 +2425,15 @@ export const dictionary = defineDictionary({
   sprintCardMoveFailed: workspace('動かせませんでした。一覧を読み直します', '動かせませんでした。一覧を読み直します'),
   sprintCardCompleting: workspace('{done}にしています', '{done}にしています'),
   sprintCardReopening: workspace('{done}を戻しています', '{done}を戻しています'),
+  // 完了か戻しを送っている間に押された、もう1つの完了か戻し。送らずに捨てたことを読み上げる
+  sprintCardBusyCompleting: workspace(
+    '{done}にしています。終わってからもう一度試してください。',
+    '{done}にしています。終わってからもう一度試してください。',
+  ),
+  sprintCardBusyReopening: workspace(
+    '{done}を戻しています。終わってからもう一度試してください。',
+    '{done}を戻しています。終わってからもう一度試してください。',
+  ),
   // 完了を戻して、{column}へ移した（task-reopen）
   sprintCardReopened: workspace(
     '「{title}」の{done}を戻し、{column}へ移しました',
