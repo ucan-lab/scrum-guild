@@ -117,7 +117,7 @@ Issue の「確認方法」を自分で実行し、完了条件を満たすか�
 | --- | --- |
 | すべて | `code-reviewer` |
 | 認証、認可、API エンドポイントの追加や変更、外部入力を SQL、シェル、ファイル、HTML、外部 URL に渡す処理、秘密情報を含む | `security-reviewer` |
-| マイグレーション、クエリ、スキーマの変更を含む | `database-reviewer` |
+| マイグレーション、クエリ、スキーマの変更、D1 に読み書きするコード（Kysely の入口を通る呼び出しを足すか変える）を含む | `database-reviewer` |
 | 画面（`.svelte`、CSS、`design/`、言葉の辞書）の変更を含む | `ui-reviewer` |
 | コード（Markdown 以外のファイル）の変更を含む。Markdown だけの差分では呼ばない | `falsification-qa` |
 
