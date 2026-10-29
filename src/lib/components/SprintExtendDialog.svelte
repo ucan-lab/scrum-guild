@@ -115,6 +115,17 @@
   const preview = $derived(
     current !== null && validDays !== null ? sprintExtension(current, validDays, sprints) : null,
   );
+  // 押し出す行を全部並べると、主ボタンと送信の誤りがダイアログの外へ押し出されるので、先頭の数本だけ並べて残りは本数で示す
+  const SHIFT_PREVIEW_LIMIT = 5;
+  const shownShifts = $derived(preview === null ? [] : preview.shifted.slice(0, SHIFT_PREVIEW_LIMIT));
+  const hiddenShiftCount = $derived(preview === null ? 0 : preview.shifted.length - shownShifts.length);
+  const previewSummary = $derived(
+    preview === null
+      ? ''
+      : preview.shifted.length === 0
+        ? t('sprintExtendNoShift', { sprint: t('sprint') })
+        : t('sprintExtendPreviewSummary', { end: preview.end_on, sprint: t('sprint'), count: preview.shifted.length }),
+  );
   const invalidMessage = $derived(t('sprintExtendInvalid', { max: maxDays, limit: SPRINT_MAX_LENGTH }));
   const status = $derived(submitting ? t('sprintExtending') : '');
   const submitLabel = $derived(
@@ -198,6 +209,10 @@
       {:else}
         <p>{sprintLabel(current, t)}（<span class="mono">{sprintPeriod(current, t)}</span>）</p>
       {/if}
+      <!-- 予告の一覧より上に置き、押し出す行が多くても見える位置に出す -->
+      {#if submitError !== null}<div class="callout is-danger" role="alert">
+          <Icon name="alert" /><span>{submitError}</span>
+        </div>{/if}
       {#if maxDays < 1}
         <p class="callout" role="status">{t('sprintExtendLimit', { limit: SPRINT_MAX_LENGTH })}</p>
       {:else}
@@ -222,14 +237,15 @@
                 ><Icon name="alert" />{fieldError}</span
               >{/if}
           </div>
-          <div class="form-fields" aria-live="polite">
+          <span class="visually-hidden" aria-live="polite">{preview === null ? invalidMessage : previewSummary}</span>
+          <div class="form-fields">
             {#if preview !== null}
               <div class="field">
                 <span class="field-label">{t('sprintExtendEnd')}</span><span class="mono" data-sprint-extend-end
                   >{preview.end_on}</span
                 >
               </div>
-              {#each preview.shifted as shifted (shifted.id)}
+              {#each shownShifts as shifted (shifted.id)}
                 {@const original = sprints.find((sprint) => sprint.id === shifted.id)!}
                 <div class="field">
                   <span class="field-label">{sprintLabel(original, t)}</span>
@@ -244,6 +260,9 @@
                   >
                 </div>
               {:else}<p class="props-note">{t('sprintExtendNoShift', { sprint: t('sprint') })}</p>{/each}
+              {#if hiddenShiftCount > 0}<p class="props-note" data-sprint-shift-more>
+                  {t('sprintExtendShiftMore', { count: hiddenShiftCount, sprint: t('sprint') })}
+                </p>{/if}
             {:else}
               <p class="props-note">{invalidMessage}</p>
             {/if}
@@ -252,9 +271,6 @@
       {/if}
       <p class="field-hint">{t('sprintExtendVelocity', { sprint: t('sprint') })}</p>
     {/if}
-    {#if submitError !== null}<div class="callout is-danger" role="alert">
-        <Icon name="alert" /><span>{submitError}</span>
-      </div>{/if}
   </form>
   <span class="visually-hidden" role="status">{status}</span>
   {#snippet footer(close)}

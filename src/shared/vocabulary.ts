@@ -2442,6 +2442,15 @@ export const dictionary = defineDictionary({
   sprintExtendShift: workspace('{before} → {after}', '{before} → {after}'),
   sprintExtendShiftDays: workspace('（{days} 日）', '（{days} 日）'),
   sprintExtendNoShift: workspace('後ろの{sprint}は動きません', '後ろの{sprint}は動きません'),
+  sprintExtendShiftMore: workspace(
+    'ほか {count} 本の{sprint}も、重なる分だけ後ろへずらします',
+    'ほか {count} 本の{sprint}も、重なる分だけ後ろへずらします',
+  ),
+  // 予告の読み上げ。押し出す行を全部読むと長いので、新しい最終日とずらす本数だけを伝える
+  sprintExtendPreviewSummary: workspace(
+    '新しい最終日は {end}。後ろの{sprint}を {count} 本ずらします',
+    '新しい最終日は {end}。後ろの{sprint}を {count} 本ずらします',
+  ),
   sprintExtendVelocity: workspace(
     '延ばした{sprint}はベロシティの計算から除きます。',
     '延ばした{sprint}はベロシティの計算から除きます。',
