@@ -35,7 +35,8 @@ Issue の読み書きは `gh api` の REST で行う。クラウドのセッシ�
 gh api "repos/{owner}/{repo}/issues?state=open&per_page=100" --paginate --jq '.[] | select(.pull_request | not) | {number, title, labels: [.labels[].name], milestone: .milestone.title, parent: (.parent_issue_url // "" | split("/") | last), subs: .sub_issues_summary}'
 ```
 
-受け入れ待ちの読み方は `docs/development.md` の「Issue の状態」と同じにする。
+受け入れ待ちの読み方は `docs/development.md` の「Issue の状態」と同じにする。スプリントの記録の Issue（`sprint-log`）は作業ではないので、一覧から外す。閉じるのは `sprint-plan` が締めで行う。
+スプリントの終わりに行うときは、今のスプリント（`sprint:<番号>`）の Issue を先に並べる。
 
 - `status:accepting` の付いた Issue
 - 子を持つストーリーとエピック（`subs.total > 0`）で、開いている子がすべて受け入れ待ちのもの。`sub_issues_summary` は子のラベルを持たないので、親ごとに子を引いて確かめる。子を持つ子には同じ判定を当てる。子を閉じ終えてから親を確かめるので、親は子の後ろに並べる

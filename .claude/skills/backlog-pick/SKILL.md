@@ -36,11 +36,17 @@ gh api "repos/{owner}/{repo}/pulls?state=open&per_page=100" --jq '.[] | {number,
 gh api repos/{owner}/{repo}/issues/<番号>/dependencies/blocked_by --jq '[.[] | select(.state == "open" and (([.labels[].name] | index("status:accepting")) == null)) | .number]'
 ```
 
+今のスプリントは、開いている記録の Issue（`sprint-log`）で読む。題から番号と期間を、本文から計画の一覧と作業中の上限を取る（`docs/development.md` の「スプリントとポイント」）。無ければスプリントの無い並べ方で進め、出力に `sprint-plan` を推す1行を添える。
+
+```bash
+gh api "repos/{owner}/{repo}/issues?labels=sprint-log&state=open" --jq '.[] | {number, title, body}'
+```
+
 Issue を指す開いた PR は、ブランチ名の `<番号>-` の先頭か、本文の `Refs #<番号>` で引く。クラウドのセッションのブランチ（`claude/*`）は番号を持たないため。決まりの前に立てた PR は `Closes` で指しているので、`Closes #<番号>` も拾い続ける。
 
 ### 2. 分ける
 
-開いている Issue を、上の行から順に当てて1つの組に入れる。状態の読み方は `docs/development.md` の「Issue の状態」。
+開いている Issue を、上の行から順に当てて1つの組に入れる。状態の読み方は `docs/development.md` の「Issue の状態」。記録の Issue（`sprint-log`）は作業ではないので、どの組にも入れない。
 
 | 組 | 当てはまるもの |
 | --- | --- |
@@ -54,7 +60,19 @@ Issue を指す開いた PR は、ブランチ名の `<番号>-` の先頭か、
 
 待ちの Issue が待っている番号は、上の手順で引いた一覧をそのまま使う。
 
-マイルストーンが「初版」のものを先に並べ、ほかは後ろにまとめる。
+今のスプリントの `sprint:<番号>` が付いたものを先に、次にマイルストーンが「初版」のものを並べ、ほかは後ろにまとめる。
+
+今のスプリントの進み具合を出す。ポイントは `pt:` のラベルの数で、数え方は `sprint-plan` の手順 3 と同じにする。
+
+- 済み ÷ 計画（閉じていて `state_reason` が `completed` のポイント ÷ 計画の一覧のポイント）
+- 受け入れ待ち（開いていて `status:accepting`）のポイント
+- 途中で足した分（`sprint:<番号>` が付いていて計画の一覧に無いもの）のポイント
+
+閉じた Issue は手順 1 の一覧に出ないので、今のスプリントの分だけ引く。
+
+```bash
+gh api "repos/{owner}/{repo}/issues?labels=sprint:<番号>&state=all&per_page=100" --paginate --jq '.[] | select(.pull_request | not) | {number, state, state_reason, labels: [.labels[].name]}'
+```
 
 ### 3. レーンを組む
 
@@ -67,7 +85,10 @@ Issue を指す開いた PR は、ブランチ名の `<番号>-` の先頭か、
 - 1つのレーン（1つのセッション）が受け持つ Issue は1つ。続けて進めたい Issue は別のレーンにするか、先のレーンの PR が閉じた後の次の `backlog-pick` に回す
 - `needs-human` の Issue は、人が差分を読む量を添える
 
+- 作業中とレビュー中の Issue に、新しく始める Issue を足した数が、記録の Issue の作業中の上限を超えないようにする。上限に達していれば、レーンを足さず、人の番を先に片付ける案を推す
+
 人の番が多いときは、着手を足すより人の番を先に片付ける案を推す。並べるほど、人が読む PR が増えるため。
+スプリントの外の Issue を着手できるものに選ぶときは、レーンの案に「スプリントの外」と添える。足すと途中で足した分に数えるため、人がスプリントに入れると答えたときだけ、`sprint:<番号>` を付けるよう人に頼む（このスキルは Issue を書き換えない）。
 次に来るのが分ける前のエピックなら、`backlog-add` で分けるレーンを1本入れる。
 
 同じ本文から、各 Issue を何で始めるかを決める。本文のどの節にあるかは問わず、中身で見る。次のどれかがあれば `backlog-refine` で始め、無ければ `increment-build` で始める。
@@ -120,6 +141,7 @@ Issue を指す開いた PR は、ブランチ名の `<番号>-` の先頭か、
 
 ## 出力
 
+- 今のスプリントの進み具合の1行（例 `スプリント 3（2026-11-05〜2026-11-11）: 済み 8/21 pt、受け入れ待ち 5 pt、途中で足した分 2 pt、作業中 3/4`）。スプリントが無ければ `sprint-plan` を推す1行
 - 人の番（受け入れ待ちを含む）、作業中とレビュー中、着手できるもの、待ち（待っている番号）の短い一覧
 - レーンの案と、選ばれたレーンのプロンプト（1つのレーンに1つの Issue）。プロンプトごとに、`increment-build` か `backlog-refine` を選んだ理由を1行
 - 着手できるものが無ければ、そう書き、人の番か分けるレーンを推す

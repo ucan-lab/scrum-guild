@@ -29,6 +29,7 @@ gh api "repos/{owner}/{repo}/pulls?state=open&per_page=100" --jq '.[] | {number,
 ```
 
 ラベルの絞り込み（`labels=a,b`）は AND になるので、全件を引いて手元で分ける。
+スプリントの記録の Issue（`sprint-log`）は作業ではないので、`ROWS` にも `doneIssues` にも入れず、下の `SPRINT` にだけ使う。
 `blocked_total` が 0 でない開いた Issue だけ、`gh api repos/{owner}/{repo}/issues/<番号>/dependencies/blocked_by --jq '[.[].number]'` で前に要るものを引く。
 `gh` を1回ずつ打つのが多くなるときは、Python のスクリプトをスクラッチパッドに書き、`subprocess` で `gh` を呼んで JSON に落とす。
 
@@ -51,6 +52,8 @@ gh api "repos/{owner}/{repo}/pulls?state=open&per_page=100" --jq '.[] | {number,
 - `SECTIONS` の並びは作る順のまま、手で動かさない。タスクがすべて `done` か `accept` のストーリーは、ページが畳んで一番下にまとめる
 - 図に載せない閉じた chore は `doneIssues` に足す
 - 人が確かめること、行うこと（`human`、#92〜#96 など）は、「次に着手するもの」に混ぜない
+- スプリントの節は `SPRINT` に置く。無ければ「次に着手するもの」の下に足す。`current`（今のスプリントの番号、期間、ゴール、作業中の上限、計画、済み、受け入れ待ち、途中で足した分のポイント）と `history`（閉じた記録の Issue ごとの番号とベロシティ、古い順）を持つ。数は `sprint-plan` の手順 3 と同じ数え方で、開いている記録の Issue の本文の計画の一覧と `sprint:<番号>` の Issue から出し、`history` は閉じた記録の Issue の締めのコメントの `ベロシティ:` の行から読む。ページは済み ÷ 計画を棒で、受け入れ待ちを `accept` と同じ色で並べ、ベロシティの推移を出す。開いている記録の Issue が無ければ `current` を `null` にし、ページは「スプリントは計画されていない」と出す
+- `ROWS` の行に、`pt:` の数を `pt` として、`sprint:<番号>` が今のスプリントなら `sprint: true` を持たせる。ページは今のスプリントの行に印を付ける
 - 導入文に済んだ経緯を書き足さない。依存の矢印は、見づらいので描かない
 
 ### 4. 出し直す
