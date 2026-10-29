@@ -37,20 +37,20 @@ jobs:
         with:
           node-version-file: .node-version
 
-      # workflow_run に PR が無い場合だけ、同じ head の開いた PR を後の Node の段で選ぶ
+      # workflow_run の pull_requests にこのリポジトリの PR が無いときに、同じ head の開いた PR を後の Node の段で選ぶ。
+      # どちらを使うかは Node が決めるので、workflow_run では常に候補を取る
       - name: PR の候補を取る
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
           EVENT_NAME: ${{ github.event_name }}
-          EVENT_PR: ${{ github.event.workflow_run.pull_requests[0].number }}
           HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
           RAW_DIR: ${{ runner.temp }}/evidence-raw
         run: |
           set -euo pipefail
           mkdir -p "$RAW_DIR"
           echo '[]' > "$RAW_DIR/candidates.json"
-          if [ "$EVENT_NAME" = workflow_run ] && [ -z "$EVENT_PR" ]; then
+          if [ "$EVENT_NAME" = workflow_run ]; then
             gh api --paginate --slurp "repos/$REPO/commits/$HEAD_SHA/pulls" > "$RAW_DIR/candidates.json"
           fi
       - id: pr

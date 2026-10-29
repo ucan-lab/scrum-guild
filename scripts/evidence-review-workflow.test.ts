@@ -133,6 +133,10 @@ describe('evidence-review の材料', () => {
   test('API の取得と通信しない Node の判定を分け、全ページを保存する', () => {
     const candidate = named('PR の候補を取る');
     assert.ok(candidate.run?.includes('gh api --paginate --slurp "repos/$REPO/commits/$HEAD_SHA/pulls"'));
+    // Node は pull_requests のうちこのリポジトリのものだけを使い、無ければ候補に倒す。
+    // シェルが pull_requests[0] の有無で候補を取るかを決めると、[0] が別のリポジトリの PR のときに候補が空になる
+    assert.equal(candidate.env?.EVENT_PR, undefined);
+    assert.ok(candidate.run?.includes('if [ "$EVENT_NAME" = workflow_run ]; then'), candidate.run ?? '');
     assert.ok(
       named('PR と ci の実行を取る').run?.includes(
         'actions/workflows/ci.yml/runs?head_sha=$HEAD_SHA&event=pull_request',
