@@ -1091,10 +1091,12 @@ describe('falsification-qa を数える（崩す手口、Issue #488）', () => {
   });
   test('done-check の同時起動（4 体 + falsification-qa + finding-verifier + Explore）は 1 巡に数える', async () => {
     const repo = makeRepo();
-    const agents = ['code-reviewer', 'security-reviewer', 'database-reviewer', 'ui-reviewer', 'falsification-qa', 'finding-verifier', 'Explore'];
-    const results = await Promise.all(agents.map((a, i) => callAsync(repo, a, T0 + i)));
+    // falsification-qa に巡を開かせる。ほかの4体が先だと、falsification-qa を数えなくても starts は1件になる
+    assert.ok(isAllow(call(repo, 'falsification-qa', T0)));
+    const agents = ['code-reviewer', 'security-reviewer', 'database-reviewer', 'ui-reviewer', 'finding-verifier', 'Explore'];
+    const results = await Promise.all(agents.map((a, i) => callAsync(repo, a, T0 + 1 + i)));
     for (const r of results) assert.ok(isAllow(r), `${r.agent}: ${r.status} ${r.stdout} ${r.stderr}`);
-    assert.equal(JSON.parse(readFileSync(stateFile(repo), 'utf8')).starts.length, 1);
+    assert.deepEqual(JSON.parse(readFileSync(stateFile(repo), 'utf8')).starts, [T0]);
   });
   test('上限に達した後の同時起動では、falsification-qa とレビューは拒否し、finding-verifier と Explore は通す', async () => {
     const repo = makeRepo();
