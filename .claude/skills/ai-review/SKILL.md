@@ -10,7 +10,7 @@ GitHub Actions の中で、1つの PR をレビューして指摘を書き込む
 
 引数で `REPO`、`PR_NUMBER`、`BASE_SHA`、`HEAD_SHA`、`CONTEXT_DIR` を受け取る。作業ディレクトリは PR をチェックアウトしたリポジトリだが、`.claude/` と `CLAUDE.md` は base のブランチの版に戻されている。PR がそれらを変えていれば、PR の版は `git diff` で読む。
 
-許可するツールは `.github/workflows/ai-review.yml` の `--allowedTools` で決める。`gh api` は許可していない（PR の内容に仕込まれた指示で、任意の API や外部の URL を叩かれないようにするため）。GitHub の操作は `gh pr` の3つだけで行い、`gh pr comment` はこの PR の番号にだけ書ける。
+許可するツールは `.github/workflows/ai-review.yml` の `--allowedTools` で決める。`gh api` は許可していない（PR の内容に仕込まれた指示で、任意の API や外部の URL を叩かれないようにするため）。GitHub の操作は `gh pr comment` だけで行う。許可は PR の番号と `--body` までを固定するが、その後ろの引数は縛らないので、`-R` や `--edit-last` などを足さないこと。`gh pr view` と `gh pr diff` は許可していないので、PR の本文とコメントは `CONTEXT_DIR` のファイルから、差分は `git diff` で読む（`gh pr view --comments` はワークフローが落とした権限の無い人のコメントを、`gh pr diff` は別の PR や外のホストの差分を読めてしまうため）。
 
 ## 1. 変更を把握する
 
