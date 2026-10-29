@@ -14,6 +14,7 @@ import {
 import { taskComplete, taskReopen } from '../src/shared/operations/task/index.ts';
 import { createApp } from '../src/server/app.ts';
 import { orgDb, verifyWorkspace } from '../src/server/db/index.ts';
+import { envWithD1Hooks } from '../src/server/db/testing.ts';
 import { implementedOperations } from '../src/server/operations/index.ts';
 import { sprintCloseOperation } from '../src/server/operations/sprint-close.ts';
 import { createBoardColumn, createSprint, createSprintEntry, createTask } from './factories.ts';
@@ -730,7 +731,7 @@ describe('sprint-close: 読んだ後に別の要求が割り込む', () => {
   });
 });
 
-// 1文の bind の上限（100）と batch() の大きさに当たらないこと、持ち越す位置の書き込みが件数に比例することを、100 件を超える件数で確かめる
+// 1文の bind の上限（100）と batch() の大きさに当たらないことを 100 件を超える件数で、持ち越す位置の書き込みが件数に比例することを文の形で確かめる
 describe('sprint-close: 未完了のタスクが多いとき', () => {
   const BIG = 250;
 
@@ -773,12 +774,16 @@ describe('sprint-close: 未完了のタスクが多いとき', () => {
     const total = expected.length;
     expect(total).toBe(BIG + 3);
 
-    const startedAt = performance.now();
-    const res = await close(target, active.id, { carry_sprint_id: next.id });
-    const elapsed = Math.round(performance.now() - startedAt);
-    // 件数に比例して遅くなる（相関副問い合わせで行ごとに位置を引くと2乗になる）ことへの目安。手元の実測は 253 件で 0.5 秒ほど
-    expect(elapsed, `${total} 件の持ち越しに ${elapsed} ms`).toBeLessThan(10_000);
+    // 書き込みが件数に比例することは、時間でなく文の形で確かめる（253 件では2乗の書き方でも1秒かからず、時間では見分けられない）。
+    // 位置は JSON の行と UPDATE ... FROM で結び、行ごとに json_each を引き直す相関副問い合わせ（jsonPairLookup の形）を使わない
+    const batches: (readonly string[])[] = [];
+    const watched = envWithD1Hooks(frozenEnv, { beforeBatch: (sqls) => void batches.push(sqls) });
+    const res = await close(target, active.id, { carry_sprint_id: next.id }, target.leader, watched);
     expect(res.status).toBe(200);
+    const taskWrites = batches.flat().filter((text) => /^update "tasks"/i.test(text.trim()));
+    expect(taskWrites).toHaveLength(1);
+    expect(taskWrites[0]).toMatch(/from \(select json_extract\(value, '\$\[0\]'\) as id/i);
+    expect(taskWrites[0]).not.toMatch(/where json_extract\(value, '\$\[0\]'\) =/i);
     expect(await res.json()).toMatchObject({ sprint_id: active.id, carried_count: total });
 
     const db = orgDb(env, target.organization.verified);
@@ -823,10 +828,7 @@ describe('sprint-close: 未完了のタスクが多いとき', () => {
     const { target, active, expected } = await bigSetup();
     const total = expected.length;
 
-    const startedAt = performance.now();
     const res = await close(target, active.id, { carry_sprint_id: null });
-    const elapsed = Math.round(performance.now() - startedAt);
-    expect(elapsed, `${total} 件の戻しに ${elapsed} ms`).toBeLessThan(10_000);
     expect(res.status).toBe(200);
     expect(await res.json()).toMatchObject({ sprint_id: active.id, carried_count: total, carry_to: null });
 
