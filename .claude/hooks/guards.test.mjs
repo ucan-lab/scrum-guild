@@ -668,6 +668,15 @@ describe('bash-rules: 止める', () => {
     'git push --force-with-lease --repo=origin main',
     'git push --force-with-lease origin $BRANCH main',
     'cd ~ && git push --force-with-lease origin HEAD main',
+    // force push は作業ブランチ宛てでも止める（ベースは merge で取り込み、通常の push をする）
+    'cd ~ && git push --force-with-lease',
+    'git push --force-with-lease',
+    'git push --force-with-lease origin 21-claude-settings',
+    'git push --force-with-lease=x:abc origin x',
+    'git push --force-with-lease=41-x:abc --force-if-includes origin 41-x',
+    'git push -u --force-with-lease origin x',
+    'git push --force-w origin x',
+    'git push --force-with-lease=x:abc origin :feature',
     'git push origin +x',
     'git push --all',
     'git push --mirror',
@@ -972,7 +981,9 @@ describe('bash-rules: 止める', () => {
     assert.equal(judgeBash('cd /elsewhere && git -C /repo push', { cwd: '/x', branchOf })?.[0], 'deny');
     assert.equal(judgeBash('git -C/repo push --force-with-lease origin HEAD', { cwd: '/w', branchOf })?.[0], 'deny');
     assert.equal(judgeBash('cd /repo && git push --force-with-lease', { cwd: '/w', branchOf })?.[0], 'deny');
-    assert.equal(judgeBash('git -C worktrees/x push --force-with-lease', { cwd: '/repo', branchOf }), null);
+    // force push は行き先のブランチを問わず止める
+    assert.equal(judgeBash('git -C worktrees/x push --force-with-lease', { cwd: '/repo', branchOf })?.[0], 'deny');
+    assert.equal(judgeBash('git -C worktrees/x push', { cwd: '/repo', branchOf }), null);
     for (const command of [
       'git -C "$(git rev-parse --show-toplevel)" commit -m x',
       'git -C "$(pwd)" merge x',
@@ -1005,7 +1016,11 @@ describe('bash-rules: 止める', () => {
     assert.match(verdict('"$(which wrangler)" deploy')[1], /道具の名前を変数/);
     assert.match(verdict('wrangler kv key put k v --local --local.foo=bar')[1], /どのフラグと読むかを判定できない/);
     assert.match(verdict('wrangler secret put X --a.b')[1], /シークレットとログイン/);
-    assert.match(verdict('git push -f')[1], /--force-with-lease/);
+    // force push は全面で止め、ベースは merge で取り込んで通常の push をするよう促す
+    assert.match(verdict('git push -f')[1], /merge/);
+    assert.doesNotMatch(verdict('git push -f')[1], /--force-with-lease で push/);
+    assert.match(verdict('git push --force-with-lease')[1], /merge/);
+    assert.doesNotMatch(verdict('git push --force-with-lease')[1], /--force-with-lease で push/);
     assert.equal(decision('git push --force-with-lease', 'main'), 'deny');
     assert.match(verdict('gh api -X PUT repos/o/r/pulls/1/merge')[1], /gh pr merge/);
     assert.match(verdict('gh pr merge 1 --squash')[1], /--match-head-commit/);
@@ -1041,7 +1056,6 @@ describe('bash-rules: 確認を挟む', () => {
     '{wrangler,x} deploy',
     'gh stack push',
     'gh stack sync',
-    'cd ~ && git push --force-with-lease',
     'gh pr merge 21 --squash --match-head-commit abc123',
     'gh pr merge 21 --squash --match-head-commit=abc123',
     'gh -R ucan-lab/scrum-guild pr merge 21 --match-head-commit abc123',
@@ -1929,13 +1943,6 @@ describe('bash-rules: 通す', () => {
     `pnpm test "it's; wrangler deploy"`,
     'pnpm run build',
     'git push origin 21-claude-settings',
-    'git push --force-with-lease',
-    'git push --force-with-lease origin 21-claude-settings',
-    'git push --force-with-lease=x:abc origin x',
-    'git push --force-with-lease=41-x:abc --force-if-includes origin 41-x',
-    'git push -u --force-with-lease origin x',
-    'git push --force-w origin x',
-    'git push --force-with-lease=x:abc origin :feature',
     'git push -u origin 21-claude-settings',
     'git push --follow-tags origin x',
     'git push origin main:21-claude-settings',
@@ -5116,5 +5123,161 @@ describe('bash-rules: #521 e2e は手元で走らせず CI で確かめる', () 
       assert.equal(result?.[0], 'deny', command);
       assert.match(result[1], /CI/, command);
     }
+  });
+});
+
+describe('bash-rules: force push は作業ブランチ宛てでも止める', () => {
+  // ベースは merge で取り込み、通常の push をする。--force-with-lease を含む force push は、行き先のブランチを問わず deny にする。
+  // force になるかは refspec に依らずフラグで決まるので、行き先を判定できない形（変数の先、cd ~）でも ask ではなく deny にする。
+  // gh api で ref を force=true で動かすのも force push と同じに見る。gh stack の ask は今のまま
+
+  // [区分, コマンド, 期待]
+  const cases = [
+    // 完了条件: --force-with-lease を含む force push を作業ブランチへ打つと止める
+    ['完了条件', 'git push --force-with-lease', 'deny'],
+    ['完了条件', 'git push --force-with-lease origin 21-claude-settings', 'deny'],
+    ['完了条件', 'git push --force-with-lease origin HEAD', 'deny'],
+    ['完了条件', 'git push --force-with-lease --force-if-includes origin x', 'deny'],
+    // 完了条件: 通常の push は今どおり通す
+    ['完了条件', 'git push', 'allow'],
+    ['完了条件', 'git push origin x', 'allow'],
+    ['完了条件', 'git push -u origin x', 'allow'],
+    ['完了条件', 'git push origin HEAD', 'allow'],
+
+    // 断る場合: 前に塞いだ force push の手口は今も止める
+    ['断る', 'git push --force origin x', 'deny'],
+    ['断る', 'git push -f origin x', 'deny'],
+    ['断る', 'git push -uf origin x', 'deny'],
+    ['断る', 'git push --mirror', 'deny'],
+    ['断る', 'git push --all', 'deny'],
+    ['断る', 'git push origin +x', 'deny'],
+    ['断る', 'git push origin +HEAD:x', 'deny'],
+    ['断る', 'git push origin main', 'deny'],
+    ['断る', 'git push --force-with-lease origin main', 'deny'],
+    ['断る', 'gh api -X PATCH repos/o/r/git/refs/heads/main -F force=true', 'deny'],
+    // 断る場合: 行き先を判定できない形も、force なので確かめるまでもなく止める
+    ['断る', 'cd ~ && git push --force-with-lease', 'deny'],
+    ['断る', 'git push --force-with-lease origin $B', 'deny'],
+    ['断る', 'git push --force-with-lease origin "$B"', 'deny'],
+    ['断る', 'git push --force-with-lease origin $(git branch --show-current)', 'deny'],
+    ['断る', 'git push --force-with-lease {origin,x} x', 'deny'],
+
+    // すり抜け: 省略形と = 付きの値
+    ['すり抜け', 'git push --force-wi origin x', 'deny'],
+    ['すり抜け', 'git push --force-with origin x', 'deny'],
+    ['すり抜け', 'git push --force-w origin x', 'deny'],
+    ['すり抜け', 'git push --force-with-lease=x origin x', 'deny'],
+    ['すり抜け', 'git push --force-with-lease=x:abc origin x', 'deny'],
+    ['すり抜け', 'git push --force-with-lease=refs/heads/x:abc origin x', 'deny'],
+    ['すり抜け', 'git push --force-with-lease= origin x', 'deny'],
+    ['すり抜け', 'git push --force-with-lease=x:abc origin :feature', 'deny'],
+    // すり抜け: --force-if-includes の単独と組み合わせ
+    ['すり抜け', 'git push --force-if-includes origin x', 'deny'],
+    ['すり抜け', 'git push --force-if origin x', 'deny'],
+    ['すり抜け', 'git push --force-if-includes --force-with-lease origin x', 'deny'],
+    ['すり抜け', 'git push --force-with-lease=x:abc --force-if-includes origin x', 'deny'],
+    // すり抜け: 位置の前後
+    ['すり抜け', 'git push -u --force-with-lease origin x', 'deny'],
+    ['すり抜け', 'git push --force-with-lease -u origin x', 'deny'],
+    ['すり抜け', 'git push origin x --force-with-lease', 'deny'],
+    ['すり抜け', 'git push origin --force-with-lease x', 'deny'],
+    ['すり抜け', 'git push --force-with-lease -- origin x', 'deny'],
+    ['すり抜け', 'git push -q --follow-tags --force-with-lease origin x', 'deny'],
+    // すり抜け: 作業場所の切り替え
+    ['すり抜け', 'git -C /w push --force-with-lease', 'deny'],
+    ['すり抜け', 'git -C worktrees/x push --force-with-lease origin x', 'deny'],
+    ['すり抜け', 'cd /w && git push --force-with-lease', 'deny'],
+    ['すり抜け', 'cd worktrees/x && git push --force-with-lease origin x', 'deny'],
+    ['すり抜け', 'pushd /w && git push --force-with-lease', 'deny'],
+    ['すり抜け', 'pushd worktrees/x; git push --force-with-lease origin x; popd', 'deny'],
+    // すり抜け: 引用符
+    ['すり抜け', 'git push "--force-with-lease" origin x', 'deny'],
+    ['すり抜け', "git push '--force-with-lease' origin x", 'deny'],
+    ['すり抜け', 'git push --force-with-lease="x:abc" origin x', 'deny'],
+    ['すり抜け', 'git push --"force-with-lease" origin x', 'deny'],
+    ['すり抜け', 'git "push" --force-with-lease origin x', 'deny'],
+    // すり抜け: シェルの中
+    ['すり抜け', "bash -c 'git push --force-with-lease origin x'", 'deny'],
+    ['すり抜け', 'sh -c "git push --force-with-lease"', 'deny'],
+    ['すり抜け', "zsh -c 'git push --force-with-lease origin x'", 'deny'],
+    ['すり抜け', 'eval "git push --force-with-lease origin x"', 'deny'],
+    // すり抜け: 区切りで続けた形
+    ['すり抜け', 'git fetch origin; git push --force-with-lease origin x', 'deny'],
+    ['すり抜け', 'git rebase origin/main && git push --force-with-lease', 'deny'],
+    ['すり抜け', 'git status || git push --force-with-lease', 'deny'],
+    ['すり抜け', 'git push --force-with-lease origin x | tee log', 'deny'],
+    ['すり抜け', 'git push --force-with-lease origin x &', 'deny'],
+    // すり抜け: リダイレクト付き
+    ['すり抜け', 'git push --force-with-lease origin x > log', 'deny'],
+    ['すり抜け', 'git push --force-with-lease origin x 2>&1', 'deny'],
+    ['すり抜け', 'git push --force-with-lease origin x >/dev/null 2>&1', 'deny'],
+    // すり抜け: ヒアストリング、ヒアドキュメントで sh に渡す形
+    ['すり抜け', 'bash <<< "git push --force-with-lease origin x"', 'deny'],
+    ['すり抜け', "sh <<'EOF'\ngit push --force-with-lease origin x\nEOF", 'deny'],
+    ['すり抜け', 'bash <<EOF\ngit push --force-with-lease\nEOF', 'deny'],
+    // すり抜け: 前置き
+    ['すり抜け', 'env X=1 git push --force-with-lease origin x', 'deny'],
+    ['すり抜け', 'X=1 git push --force-with-lease origin x', 'deny'],
+    ['すり抜け', 'command git push --force-with-lease origin x', 'deny'],
+    ['すり抜け', 'timeout 60 git push --force-with-lease origin x', 'deny'],
+    ['すり抜け', 'echo x | xargs git push --force-with-lease origin', 'deny'],
+    ['すり抜け', 'git -c push.default=current push --force-with-lease', 'deny'],
+    ['すり抜け', 'echo $(git push --force-with-lease origin x)', 'deny'],
+    // すり抜け: gh api で作業ブランチの ref を force=true で動かす
+    ['すり抜け', 'gh api -X PATCH repos/o/r/git/refs/heads/x -F force=true', 'deny'],
+    ['すり抜け', 'gh api -X PATCH repos/o/r/git/refs/heads/x -f force=true', 'deny'],
+    ['すり抜け', 'gh api -X PATCH repos/o/r/git/refs/heads/x -f sha=abc -F force=true', 'deny'],
+    ['すり抜け', 'gh api -X PATCH repos/o/r/git/refs/heads/x --field force=true', 'deny'],
+    ['すり抜け', 'gh api -X PATCH repos/o/r/git/refs/heads/x --raw-field force=true', 'deny'],
+    ['すり抜け', 'gh api -X PATCH repos/o/r/git/refs/heads/x --field=force=true', 'deny'],
+    ['すり抜け', 'gh api -XPATCH repos/o/r/git/refs/heads/x -F force=true', 'deny'],
+    ['すり抜け', 'gh api --method PATCH repos/o/r/git/refs/heads/x -F force=true', 'deny'],
+    ['すり抜け', 'gh api --method=PATCH repos/o/r/git/refs/heads/x -F force=true', 'deny'],
+    ['すり抜け', 'gh api -F force=true -X PATCH repos/o/r/git/refs/heads/x', 'deny'],
+    ['すり抜け', 'gh api -X PATCH "repos/{owner}/{repo}/git/refs/heads/x" -F force=true', 'deny'],
+    ['すり抜け', 'gh api -X PATCH repos/o/r/git/refs/heads/41-x -F "force=true"', 'deny'],
+    ['すり抜け', "bash -c 'gh api -X PATCH repos/o/r/git/refs/heads/x -F force=true'", 'deny'],
+
+    // 通す: 通常の push、打ち消しだけの --no-force-with-lease、merge での取り込み、force でない ref の読み書き
+    ['通す', 'git push --follow-tags origin x', 'allow'],
+    ['通す', 'git push --no-force-with-lease origin x', 'allow'],
+    ['通す', 'git -C worktrees/x push origin x', 'allow'],
+    ['通す', 'git push origin x 2>&1', 'allow'],
+    ['通す', 'git fetch origin && git merge origin/main && git push', 'allow'],
+    ['通す', 'git merge origin/main', 'allow'],
+    ['通す', 'git merge --no-edit origin/main', 'allow'],
+    ['通す', 'git merge --ff-only origin/x', 'allow'],
+    ['通す', 'gh api -X PATCH repos/o/r/git/refs/heads/x -F force=false', 'allow'],
+    ['通す', 'gh api repos/o/r/git/refs/heads/x', 'allow'],
+    ['通す', 'gh api repos/o/r/git/refs/heads/x --jq .object.sha', 'allow'],
+    ['通す', 'grep -rn "git push --force-with-lease" docs', 'allow'],
+    ['通す', 'echo git push --force-with-lease', 'allow'],
+    ['通す', 'git commit -m "--force-with-lease をやめる"', 'allow'],
+    // gh stack の push と sync は今のまま確認を挟む
+    ['gh stack', 'gh stack push', 'ask'],
+    ['gh stack', 'gh stack sync', 'ask'],
+  ];
+  for (const [kind, command, expected] of cases) {
+    test(`[${kind}] ${command} は ${expected}`, () => assert.equal(decision(command), expected, command));
+  }
+
+  test('止めた理由が merge での取り込みを促す', () => {
+    for (const command of [
+      'git push --force-with-lease',
+      'git push --force-with-lease origin x',
+      'git push --force-if-includes origin x',
+      'git push -f',
+      'git push --force origin x',
+    ]) {
+      const result = verdict(command);
+      assert.equal(result?.[0], 'deny', command);
+      assert.match(result[1], /merge/, command);
+      assert.doesNotMatch(result[1], /--force-with-lease で push/, command);
+    }
+  });
+
+  test('gh api の force=true は作業ブランチの ref でも止める', () => {
+    const result = verdict('gh api -X PATCH repos/o/r/git/refs/heads/x -F force=true');
+    assert.equal(result?.[0], 'deny');
   });
 });
