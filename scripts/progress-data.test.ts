@@ -1,12 +1,18 @@
 // 開発ボードのデータを組む純粋な関数（scripts/progress-data.ts）。GitHub は読まず、架空の小さな生データで確かめる
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
 import { describe, test } from 'node:test';
+import { fileURLToPath } from 'node:url';
 import {
   buildProgress,
   jstIso,
+  lookupsFor,
   parseClosing,
   parseSprintLog,
   pullTargets,
+  toRawIssue,
+  withoutPulls,
+  type ApiIssue,
   type BoardIssue,
   type RawBlocker,
   type RawData,
@@ -158,6 +164,16 @@ describe('状態の読み方', () => {
     assert.equal(stateOf({ issues }, 1), 'accept');
     const pending = [...issues.slice(0, 2), issue(3, { parent: 2 })];
     assert.equal(stateOf({ issues: pending }, 1), 'todo');
+  });
+
+  test('子を持つタスクは、子がすべて done か accept でも accept にせず、通常の読み方にする', () => {
+    const issues = [issue(1), closed(2, { parent: 1 })];
+    assert.equal(stateOf({ issues }, 1), 'todo');
+    assert.equal(stateOf({ issues, openPulls: [pull(9, { head: '1-x' })] }, 1), 'review');
+    assert.equal(
+      stateOf({ issues: [issue(1, { labels: ['status:in-progress'] }), closed(2, { parent: 1 })] }, 1),
+      'wip',
+    );
   });
 
   test('親の子がすべて not_planned で閉じていても、子を持つとみなして accept にする', () => {
@@ -370,8 +386,33 @@ describe('スプリントの数', () => {
       closed(9, { labels: ['sprint:1', 'pt:5'], stateReason: 'not_planned' }),
       issue(10, { labels: ['sprint:2', 'pt:5'] }),
     ]);
-    assert.deepEqual(sprint.added, { pt: 5, count: 2 });
+    // not_planned で閉じた #9 も、計画に無い sprint のラベル付きなので数える（済みには入れない）
+    assert.deepEqual(sprint.added, { pt: 10, count: 3 });
     assert.deepEqual(sprint.addedDone, { pt: 3, count: 1 });
+  });
+
+  test('duplicate で閉じた途中で足した分も added に数え、addedDone には数えない', () => {
+    const sprint = sprintOf([closed(7, { labels: ['sprint:1', 'pt:2'], stateReason: 'duplicate' })]);
+    assert.deepEqual(sprint.added, { pt: 2, count: 1 });
+    assert.deepEqual(sprint.addedDone, { pt: 0, count: 0 });
+  });
+
+  test('計画の表に同じ番号が2行あっても、二重に数えない', () => {
+    const sprint = buildProgress(
+      raw({
+        issues: [
+          sprintLog(100, 1, ['| #1 | a | 3 |', '| #2 | b | 2 |', '| #1 | a | 3 |']),
+          closed(1, { labels: ['sprint:1'] }),
+        ],
+      }),
+      NOW,
+    ).sprint;
+    assert.deepEqual(sprint?.plan, [
+      { number: 1, title: 'a', pt: 3 },
+      { number: 2, title: 'b', pt: 2 },
+    ]);
+    assert.deepEqual(sprint?.planned, { pt: 5, count: 2 });
+    assert.deepEqual(sprint?.plannedDone, { pt: 3, count: 1 });
   });
 
   test('受け入れ待ちは、sprint のラベル付きで開いていて status:accepting のあるもの', () => {
@@ -450,9 +491,36 @@ describe('履歴', () => {
     );
   });
 
-  test('読めない締めのコメントは、記録の番号を添えて止まる', () => {
-    const issues = [closed(10, { labels: ['sprint-log'], title: 'スプリント 1（2026-10-22〜2026-10-28）' })];
-    assert.throws(() => buildProgress(raw({ issues, comments: { 10: ['## 締め\n\n数が無い'] } }), NOW), /#10/);
+  test('読めない締めのコメントの記録は、止まらずに履歴から飛ばし、記録の番号を添えた警告を返す', () => {
+    const issues = [
+      closed(10, { labels: ['sprint-log'], title: 'スプリント 1（2026-10-22〜2026-10-28）' }),
+      closed(20, { labels: ['sprint-log'], title: 'スプリント 2（2026-10-29〜2026-11-04）' }),
+    ];
+    const built = buildProgress(
+      raw({ issues, comments: { 10: ['## 締め\n\n数が無い'], 20: [closing('8 | 3', '6')] } }),
+      NOW,
+    );
+    assert.deepEqual(
+      built.history.map((entry) => entry.log),
+      [20],
+    );
+    assert.equal(built.warnings.length, 1);
+    assert.match(built.warnings[0] ?? '', /#10/);
+  });
+
+  test('題を読めない閉じた記録も、締めのコメントがあれば警告して飛ばし、無ければ黙って飛ばす', () => {
+    const issues = [
+      closed(10, { labels: ['sprint-log'], title: '記録' }),
+      closed(11, { labels: ['sprint-log'], title: '記録 2' }),
+    ];
+    const built = buildProgress(raw({ issues, comments: { 10: [closing('8 | 3', '6')] } }), NOW);
+    assert.deepEqual(built.history, []);
+    assert.equal(built.warnings.length, 1);
+    assert.match(built.warnings[0] ?? '', /#10/);
+  });
+
+  test('警告が無ければ warnings は空', () => {
+    assert.deepEqual(buildProgress(raw(), NOW).warnings, []);
   });
 
   test('受け入れで閉じた Issue と、そのマージ済みの PR を当てる', () => {
@@ -497,5 +565,119 @@ describe('作った日時', () => {
     assert.equal(jstIso(new Date('2026-10-30T01:02:03Z')), '2026-10-30T10:02:03+09:00');
     assert.equal(jstIso(new Date('2026-10-29T16:00:00Z')), '2026-10-30T01:00:00+09:00');
     assert.equal(buildProgress(raw(), NOW).asOf, '2026-10-30T10:02:03+09:00');
+  });
+});
+
+describe('本文を出力に入れない', () => {
+  test('Issue、記録、PR、コメントの本文の目印が JSON に出ない', () => {
+    const marker = 'MARKER-BODY-SHOULD-NOT-LEAK';
+    const data = raw({
+      issues: [
+        issue(1, { body: `${marker} issue` }),
+        closed(2, { body: `${marker} closed`, labels: ['sprint:1'] }),
+        // 記録の本文はゴールと計画の表だけを読み、ほかの行は出さない
+        sprintLog(100, 1, ['| #1 | a | 3 |'], { body: `${logBody(['| #1 | a | 3 |'])}\n\n## メモ\n\n${marker} log` }),
+        closed(200, { labels: ['sprint-log'], title: 'スプリント 0（2026-10-22〜2026-10-28）' }),
+      ],
+      openPulls: [pull(9, { head: '1-x', body: `${marker} open pull\nRefs #1` })],
+      mergedPulls: [pull(8, { head: '2-x', body: `${marker} merged pull\nRefs #2` })],
+      comments: { 200: [`## 締め（2026-10-28）\n\n| 計画 | 3 | 1 |\n\nベロシティ: 3\n${marker} comment`] },
+    });
+    const { warnings, ...progress } = buildProgress(data, NOW);
+    assert.deepEqual(warnings, []);
+    const json = JSON.stringify(progress);
+    assert.equal(json.includes(marker), false);
+    // 目印が消えただけで中身まで消えていないことも確かめる
+    assert.equal(progress.issues.find((item) => item.number === 1)?.prs[0], 9);
+    assert.deepEqual(progress.history[0]?.planned, { pt: 3, count: 1 });
+  });
+});
+
+describe('GitHub の値の変換', () => {
+  const api = (number: number, patch: Partial<ApiIssue> = {}): ApiIssue => ({
+    number,
+    title: `Issue ${number}`,
+    state: 'open',
+    state_reason: null,
+    labels: [],
+    milestone: null,
+    body: null,
+    ...patch,
+  });
+
+  test('toRawIssue は parent_issue_url の末尾から親の番号を取り、ラベル名、マイルストーンの題、本文の既定を変換する', () => {
+    const converted = toRawIssue(
+      api(5, {
+        state: 'closed',
+        state_reason: 'completed',
+        labels: [{ name: 'story' }, { name: 'area:ui' }],
+        milestone: { title: '初版' },
+        parent_issue_url: 'https://api.github.com/repos/example/guild/issues/42',
+        body: '本文',
+      }),
+    );
+    assert.deepEqual(converted, {
+      number: 5,
+      title: 'Issue 5',
+      state: 'closed',
+      stateReason: 'completed',
+      labels: ['story', 'area:ui'],
+      milestone: '初版',
+      parent: 42,
+      body: '本文',
+    });
+    assert.equal(toRawIssue(api(6)).parent, null);
+    assert.equal(toRawIssue(api(6, { parent_issue_url: null })).parent, null);
+    assert.equal(toRawIssue(api(6)).body, '');
+    assert.equal(toRawIssue(api(6)).milestone, null);
+  });
+
+  test('withoutPulls は pull_request を持つものを外す', () => {
+    const found = withoutPulls([api(1), api(2, { pull_request: { url: 'https://example.invalid/pulls/2' } }), api(3)]);
+    assert.deepEqual(
+      found.map((item) => item.number),
+      [1, 3],
+    );
+  });
+
+  test('前に要るものは、total_blocked_by が 0 でない開いた Issue で引く（前提がすべて閉じていても）', () => {
+    const summary = (blockedBy: number, total: number) => ({ blocked_by: blockedBy, total_blocked_by: total });
+    // blocked_by（開いた前提の数）は 0 でも、閉じた前提があれば引いて deps に残す
+    assert.equal(lookupsFor(api(1, { issue_dependencies_summary: summary(0, 2) })).blockers, true);
+    assert.equal(lookupsFor(api(1, { issue_dependencies_summary: summary(1, 1) })).blockers, true);
+    assert.equal(lookupsFor(api(1, { issue_dependencies_summary: summary(0, 0) })).blockers, false);
+    assert.equal(lookupsFor(api(1)).blockers, false);
+    // 閉じた Issue の deps は持たない
+    assert.equal(lookupsFor(api(1, { state: 'closed', issue_dependencies_summary: summary(0, 2) })).blockers, false);
+  });
+
+  test('sub_issues は sub_issues_summary.total が 0 でない Issue で引く', () => {
+    assert.equal(lookupsFor(api(1, { sub_issues_summary: { total: 3 } })).subIssues, true);
+    assert.equal(lookupsFor(api(1, { state: 'closed', sub_issues_summary: { total: 3 } })).subIssues, true);
+    assert.equal(lookupsFor(api(1, { sub_issues_summary: { total: 0 } })).subIssues, false);
+    assert.equal(lookupsFor(api(1)).subIssues, false);
+  });
+
+  test('記録の Issue は、閉じたものだけコメントを引き、前に要るものとサブ Issue は引かない', () => {
+    const log = (state: 'open' | 'closed') =>
+      api(9, {
+        state,
+        labels: [{ name: 'sprint-log' }],
+        issue_dependencies_summary: { blocked_by: 1, total_blocked_by: 1 },
+        sub_issues_summary: { total: 1 },
+      });
+    assert.deepEqual(lookupsFor(log('closed')), { comments: true, blockers: false, subIssues: false });
+    assert.deepEqual(lookupsFor(log('open')), { comments: false, blockers: false, subIssues: false });
+    assert.equal(lookupsFor(api(1)).comments, false);
+  });
+});
+
+describe('コマンドの引数', () => {
+  test('出力のパスが無ければ、使い方を stderr に出して終了コード 1 になる（gh は呼ばない）', () => {
+    const script = fileURLToPath(new URL('./progress-data.ts', import.meta.url));
+    const result = spawnSync(process.execPath, [script], { encoding: 'utf8' });
+    assert.equal(result.status, 1);
+    assert.match(result.stderr, /使い方: node scripts\/progress-data\.ts <出力のパス>/);
+    assert.equal(result.stdout, '');
   });
 });

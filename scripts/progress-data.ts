@@ -172,8 +172,8 @@ function childrenByParent(work: RawIssue[], subOrder: Record<number, number[]>):
   return out;
 }
 
-// 子を持つ Issue が開いていて、子がすべて done か accept なら accept（子を持つ子にも同じ判定を当てる）。
-// 閉じた子は、除外される not_planned のものも done に数える
+// 子を持つストーリーとエピックが開いていて、子がすべて done か accept なら accept（子を持つ子にも同じ判定を当てる）。
+// 子を持つタスクは通常の読み方にする。閉じた子は、除外される not_planned のものも done に数える
 function stateReader(
   byNumber: Map<number, RawIssue>,
   children: Map<number, number[]>,
@@ -192,7 +192,12 @@ function stateReader(
     let state: State;
     if (issue.state === 'closed') state = 'done';
     else if (issue.labels.includes(ACCEPTING)) state = 'accept';
-    else if (kids.length > 0 && kids.every((kid) => ['done', 'accept'].includes(read(kid)))) state = 'accept';
+    else if (
+      levelOf(issue.labels) !== 'task' &&
+      kids.length > 0 &&
+      kids.every((kid) => ['done', 'accept'].includes(read(kid)))
+    )
+      state = 'accept';
     else if (openPrs.has(number)) state = 'review';
     else if (issue.labels.includes(IN_PROGRESS)) state = 'wip';
     else if (issue.labels.includes(REFINING)) state = 'refining';
@@ -250,8 +255,11 @@ export function parseSprintLog(title: string, body: string): SprintLog {
   for (const line of (parts.get('計画') ?? '').split('\n')) {
     // 題に `|` があれば `\|` で書かれるので、題は番号と最後の列に挟まれた全体を取る
     const row = /^\|\s*#(\d+)\s*\|(.*)\|\s*(\d+)\s*\|\s*$/.exec(line.trim());
-    if (row)
-      plan.push({ number: Number(row[1]), title: (row[2] ?? '').trim().replace(/\\\|/g, '|'), pt: Number(row[3]) });
+    if (!row) continue;
+    const number = Number(row[1]);
+    // 同じ番号の行が2つあっても二重に数えないよう、最初の行だけ取る
+    if (plan.some((existing) => existing.number === number)) continue;
+    plan.push({ number, title: (row[2] ?? '').trim().replace(/\\\|/g, '|'), pt: Number(row[3]) });
   }
   return {
     n: head.n,
@@ -295,7 +303,8 @@ function buildSprint({ log, work, pointsOfIssue, openPrs }: SprintInput): Sprint
   const withdrawn = rows.filter(
     ({ issue }) => !issue || isDropped(issue) || (!isAccepted(issue) && !issue.labels.includes(label)),
   );
-  const added = labeled.filter((issue) => !planned.has(issue.number) && !isDropped(issue));
+  // 途中で足した分は、docs/development.md の定義どおり、計画に無い sprint:<番号> 付きすべて（not_planned で閉じたものも含む）
+  const added = labeled.filter((issue) => !planned.has(issue.number));
 
   return {
     n: parsed.n,
@@ -332,15 +341,26 @@ function buildHistory(
   work: RawIssue[],
   mergedPrs: Map<number, number[]>,
   comments: Record<number, string[]>,
-): HistoryEntry[] {
+): { history: HistoryEntry[]; warnings: string[] } {
   const out: HistoryEntry[] = [];
+  const warnings: string[] = [];
   for (const log of logs.filter((issue) => issue.state === 'closed')) {
     // 締めのコメントの無い記録は飛ばす
     const closing = (comments[log.number] ?? []).filter((body) => body.startsWith(CLOSING_HEADING)).at(-1);
     if (closing === undefined) continue;
-    const { n } = parseSprintTitle(log.title);
+    // 読めない記録1つで全体を止めないよう、飛ばして知らせる
+    let n: number;
+    try {
+      n = parseSprintTitle(log.title).n;
+    } catch {
+      warnings.push(`記録 #${log.number} の題を読めないので、履歴から飛ばした`);
+      continue;
+    }
     const parsed = parseClosing(closing);
-    if (!parsed) throw new Error(`記録 #${log.number} の締めのコメントの計画とベロシティを読めない`);
+    if (!parsed) {
+      warnings.push(`記録 #${log.number} の締めのコメントの「計画」の行かベロシティを読めないので、履歴から飛ばした`);
+      continue;
+    }
     const label = `sprint:${n}`;
     out.push({
       n,
@@ -352,10 +372,13 @@ function buildHistory(
         .map((issue) => ({ number: issue.number, prs: mergedPrs.get(issue.number) ?? [] })),
     });
   }
-  return out.toSorted((a, b) => a.n - b.n);
+  return { history: out.toSorted((a, b) => a.n - b.n), warnings };
 }
 
-export function buildProgress(raw: RawData, now: Date): Progress {
+// warnings は JSON に書かず、呼び出し側が stderr に出す（組む部分に I/O を持たせないため）
+export type Built = Progress & { warnings: string[] };
+
+export function buildProgress(raw: RawData, now: Date): Built {
   const logs = raw.issues.filter((issue) => issue.labels.includes(SPRINT_LOG));
   const work = raw.issues.filter((issue) => !issue.labels.includes(SPRINT_LOG));
   const byNumber = new Map(work.map((issue) => [issue.number, issue]));
@@ -401,15 +424,17 @@ export function buildProgress(raw: RawData, now: Date): Progress {
     .map((log) => ({ log, n: parseSprintTitle(log.title).n }))
     .toSorted((a, b) => b.n - a.n)[0];
 
+  const { history, warnings } = buildHistory(logs, work, mergedPrs, raw.comments);
   return {
     asOf: jstIso(now),
     sprint: current ? buildSprint({ log: current.log, work, pointsOfIssue, openPrs }) : null,
     issues,
-    history: buildHistory(logs, work, mergedPrs, raw.comments),
+    history,
+    warnings,
   };
 }
 
-type ApiIssue = {
+export type ApiIssue = {
   number: number;
   title: string;
   state: 'open' | 'closed';
@@ -419,7 +444,7 @@ type ApiIssue = {
   parent_issue_url?: string | null;
   body: string | null;
   pull_request?: unknown;
-  issue_dependencies_summary?: { blocked_by: number };
+  issue_dependencies_summary?: { blocked_by: number; total_blocked_by: number };
   sub_issues_summary?: { total: number };
 };
 type ApiPull = { number: number; head: { ref: string }; body: string | null; merged_at: string | null };
@@ -443,7 +468,23 @@ function ghPages<T>(path: string): T[] {
   return (JSON.parse(gh([path, '--paginate', '--slurp'])) as T[][]).flat();
 }
 
-function toRawIssue(issue: ApiIssue): RawIssue {
+// Issue の一覧には PR も混ざる
+export const withoutPulls = (issues: ApiIssue[]): ApiIssue[] => issues.filter((issue) => !issue.pull_request);
+
+// Issue ごとに追加で引くもの。前に要るものは、閉じたものも deps に残すため total_blocked_by（閉じたものも数える）で決める
+// （blocked_by は開いたものだけの数なので、前提がすべて閉じた Issue の deps が欠ける）
+export function lookupsFor(issue: ApiIssue): { comments: boolean; blockers: boolean; subIssues: boolean } {
+  if (issue.labels.some((label) => label.name === SPRINT_LOG)) {
+    return { comments: issue.state === 'closed', blockers: false, subIssues: false };
+  }
+  return {
+    comments: false,
+    blockers: issue.state === 'open' && (issue.issue_dependencies_summary?.total_blocked_by ?? 0) > 0,
+    subIssues: (issue.sub_issues_summary?.total ?? 0) > 0,
+  };
+}
+
+export function toRawIssue(issue: ApiIssue): RawIssue {
   return {
     number: issue.number,
     title: issue.title,
@@ -459,9 +500,7 @@ function toRawIssue(issue: ApiIssue): RawIssue {
 const toRawPull = (pull: ApiPull): RawPull => ({ number: pull.number, head: pull.head.ref, body: pull.body ?? '' });
 
 export function readGitHub(): RawData {
-  const apiIssues = ghPages<ApiIssue>('repos/{owner}/{repo}/issues?state=all&per_page=100').filter(
-    (issue) => !issue.pull_request,
-  );
+  const apiIssues = withoutPulls(ghPages<ApiIssue>('repos/{owner}/{repo}/issues?state=all&per_page=100'));
   const issues = apiIssues.map(toRawIssue);
   const openPulls = ghPages<ApiPull>('repos/{owner}/{repo}/pulls?state=open&per_page=100').map(toRawPull);
   const mergedPulls = ghPages<ApiPull>('repos/{owner}/{repo}/pulls?state=closed&per_page=100')
@@ -472,22 +511,18 @@ export function readGitHub(): RawData {
   const subOrder: RawData['subOrder'] = {};
   const comments: RawData['comments'] = {};
   for (const issue of apiIssues) {
-    const isLog = issue.labels.some((label) => label.name === SPRINT_LOG);
-    if (isLog) {
-      if (issue.state === 'closed') {
-        comments[issue.number] = ghPages<ApiComment>(
-          `repos/{owner}/{repo}/issues/${issue.number}/comments?per_page=100`,
-        ).map((comment) => comment.body);
-      }
-      continue;
+    const lookups = lookupsFor(issue);
+    if (lookups.comments) {
+      comments[issue.number] = ghPages<ApiComment>(
+        `repos/{owner}/{repo}/issues/${issue.number}/comments?per_page=100`,
+      ).map((comment) => comment.body);
     }
-    // blocked_by は受け入れ待ちも数えるので、0 でないものだけ中身を引く
-    if (issue.state === 'open' && issue.issue_dependencies_summary?.blocked_by) {
+    if (lookups.blockers) {
       blockers[issue.number] = ghPages<ApiBlocker>(
         `repos/{owner}/{repo}/issues/${issue.number}/dependencies/blocked_by?per_page=100`,
       ).map((b) => ({ number: b.number, state: b.state, labels: b.labels.map((label) => label.name) }));
     }
-    if (issue.sub_issues_summary?.total) {
+    if (lookups.subIssues) {
       subOrder[issue.number] = ghPages<{ number: number }>(
         `repos/{owner}/{repo}/issues/${issue.number}/sub_issues?per_page=100`,
       ).map((sub) => sub.number);
@@ -503,7 +538,8 @@ if (import.meta.main) {
     console.error('使い方: node scripts/progress-data.ts <出力のパス>');
     process.exit(1);
   }
-  const progress = buildProgress(readGitHub(), new Date());
+  const { warnings, ...progress } = buildProgress(readGitHub(), new Date());
+  for (const warning of warnings) console.error(`警告: ${warning}`);
   writeFileSync(out, `${JSON.stringify(progress, null, 2)}\n`);
   console.log(`${out} に書いた（Issue ${progress.issues.length} 件、スプリント ${progress.sprint?.n ?? 'なし'}）`);
 }
