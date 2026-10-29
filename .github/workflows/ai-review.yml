@@ -99,12 +99,13 @@ jobs:
           prompt: "/ai-review REPO: ${{ github.repository }} PR_NUMBER: ${{ github.event.pull_request.number }} BASE_SHA: ${{ github.event.pull_request.base.sha }} HEAD_SHA: ${{ github.event.pull_request.head.sha }} CONTEXT_DIR: ${{ runner.temp }}/pr-context"
           # prompt を渡す agent モードでは、action は許可するツールを足さない。サブエージェントが使う Bash もここに書く。
           # gh api は任意の API と外部の URL を叩けるので許可しない。gh pr comment はこの PR に --body でだけ書ける
-          # gh pr view は許可しない。--comments で、pr-context で落とした権限の無い人のコメントを読めてしまうため
+          # gh pr view と gh pr diff は許可しない。前者は --comments で pr-context で落とした権限の無い人のコメントを、
+          # 後者は別の PR の番号や外のホストの URL で信用しない差分を読めてしまうため。差分は git diff で読む
           # pr-context はチェックアウトの外（runner.temp）にあるので、読める場所として足す
           claude_args: |
             --model sonnet
             --add-dir "${{ runner.temp }}/pr-context"
-            --allowedTools "Task,Agent,mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment ${{ github.event.pull_request.number }} --body:*),Bash(gh pr diff:*),Bash(git diff:*),Bash(git log:*),Bash(git rev-parse:*),Bash(ls:*),Bash(echo:*)"
+            --allowedTools "Task,Agent,mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment ${{ github.event.pull_request.number }} --body:*),Bash(git diff:*),Bash(git log:*),Bash(git rev-parse:*),Bash(ls:*),Bash(echo:*)"
 
       - name: ai-review のラベルを外す
         if: always() && github.event.action == 'labeled'
