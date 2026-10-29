@@ -1974,7 +1974,7 @@ const looooooooooooooooooooooooooooooooooongLine = "コードの長い1行は、
        <div class="callout is-info">${icon("check")}<span>次のメールアドレスの Google アカウントでログインするよう伝えてください。<b class="mono wrap-anywhere">mio.hoshino@example.com</b></span></div>
        <div class="callout is-warn">${icon("alert")}<span>この URL はこの画面を閉じると二度と出せません。期限は14日（2026/11/09 09:00 まで）です。期限までに本人へ伝えてください。</span></div>
        ${reissue ? `<p class="field-hint">URL を失ったときや期限が切れたときは、一覧の「${t("admin")}を指名」から指名し直すと、新しい招待の URL が出ます。</p>` : ""}
-       ${workspace ? `<p class="field-hint">URL を失ったときや期限が切れたときは、同じメールアドレスで招待し直すと、新しい招待の URL が出ます。同じメールアドレスで招待し直すと（ほかの${t("leader")}が招待し直したときも）、前の招待の URL は使えなくなります。</p>` : ""}`,
+       ${workspace ? `<p class="field-hint">URL を失ったときや期限が切れたときは、同じメールアドレスで招待し直すと、新しい招待の URL が出ます（期限が切れた後は、${t("organization")}の人数が上限なら招待し直せません）。招待し直すと（ほかの${t("leader")}が招待し直したときも）、前の招待の URL は使えなくなります。</p>` : ""}`,
       `<button class="btn is-primary" type="button" data-close-dialog>閉じる</button>`);
   }
   document.addEventListener("change", (ev) => {
