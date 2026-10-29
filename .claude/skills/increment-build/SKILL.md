@@ -40,7 +40,6 @@ gh api "repos/{owner}/{repo}/pulls?state=open&per_page=100" --jq '.[] | {number,
 - `gh` が使えず、`issue_dependency_read` も使えない（上の段落）。前に要るものを確かめられない
 - 人が行う Issue（題が「確認:」で始まる、要件を決める、本番やアカウントやドメインの操作）
 - `migration` が付いていて、ほかに `migration` の付いた作業中の Issue か開いた PR がある
-- 今のスプリント（開いている `sprint-log` の Issue）の作業中の上限に、作業中の数（`docs/development.md` の「スプリントとポイント」の数え方。この Issue 自身は数えない）が達している。人がこのセッションで始めるよう言ったときだけ続ける（`backlog-pick` がプロンプトを出してから貼るまでの間に、ほかのセッションが着手していることがあるため）
 - このセッションが既に別の Issue を受け持った（次は新しいセッションで始める。同じ Issue の `backlog-refine` から続けるのは数えない）
 
 並べている相手がいれば、両方の「やること」から変えるファイルを比べ、`docs/development.md` の「並行して作業するときの決まり」で並べてよいかを確かめる。

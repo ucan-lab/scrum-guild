@@ -87,7 +87,6 @@ h3 { font-size: 13px; margin: 0; color: var(--muted); letter-spacing: 0.04em; }
 .big small { font-size: 13px; color: var(--muted); }
 .label-row { display: flex; justify-content: space-between; flex-wrap: wrap; font-size: 12px; color: var(--muted); gap: 4px 8px; }
 .label-row b { font-family: var(--font-mono); color: var(--fg); font-variant-numeric: tabular-nums; }
-.over { color: var(--warn); }
 
 /* 棒。済みを塗り、受け入れ待ちは斜線で続ける */
 .bar { display: flex; height: 10px; border-radius: 999px; overflow: hidden; background: var(--sunken); }
@@ -361,21 +360,12 @@ function sprintHeader(sprint, asOf) {
 }
 
 function sprintStats(sprint) {
-  const limit = sprint.wipLimit;
-  const over = limit !== null && sprint.wip.count > limit;
   const panels = [
     el(
       'div',
       { class: 'panel' },
-      el('h3', {}, '作業中 / 上限'),
-      el(
-        'div',
-        { class: over ? 'big over' : 'big' },
-        `${sprint.wip.count} `,
-        el('small', {}, limit === null ? '/ 上限なし' : `/ ${limit}`),
-        // 色だけに頼らず文字でも伝える
-        over ? [' ', chip('accept', '上限超え')] : null,
-      ),
+      el('h3', {}, '作業中'),
+      el('div', { class: 'big' }, `${sprint.wip.count} `, el('small', {}, '件')),
       el('div', { class: 'label-row' }, el('span', {}, 'スプリントの外も含む'), el('b', {}, `${sprint.wip.pt} pt`)),
     ),
     el(

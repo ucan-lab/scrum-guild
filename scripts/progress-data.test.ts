@@ -65,10 +65,6 @@ const logBody = (plan: string[], extra = '') =>
     '',
     '2026-10-29〜2026-11-04',
     '',
-    '## 作業中の上限',
-    '',
-    '3',
-    '',
     '## 計画',
     '',
     '| 番号 | 題 | ポイント |',
@@ -294,26 +290,24 @@ describe('前に要るもの', () => {
 });
 
 describe('記録の Issue の読み方', () => {
-  test('題から番号と期間、本文からゴール、期間、上限、計画の表を読む', () => {
+  test('題から番号と期間、本文からゴール、期間、計画の表を読む', () => {
     const body = logBody(['| #12 | 画面を足す | 3 |', '| #13 | 表の \\| を直す | 5 |']);
     const parsed = parseSprintLog('スプリント 2（2026-11-05〜2026-11-11）', body);
     assert.equal(parsed.n, 2);
     assert.equal(parsed.from, '2026-10-29');
     assert.equal(parsed.to, '2026-11-04');
     assert.equal(parsed.goal, '開発ボードを GitHub と合わせる');
-    assert.equal(parsed.wipLimit, 3);
     assert.deepEqual(parsed.plan, [
       { number: 12, title: '画面を足す', pt: 3 },
       { number: 13, title: '表の | を直す', pt: 5 },
     ]);
   });
 
-  test('改行が CRLF の本文も読み、本文に期間やゴールが無ければ題の期間を使い、上限と計画は無しになる', () => {
+  test('改行が CRLF の本文も読み、本文に期間やゴールが無ければ題の期間を使い、計画は無しになる', () => {
     const parsed = parseSprintLog('スプリント 3（2026-11-12〜2026-11-18）', '## 計画\r\n\r\n| #1 | a | 2 |\r\n');
     assert.deepEqual(parsed.plan, [{ number: 1, title: 'a', pt: 2 }]);
     assert.equal(parsed.from, '2026-11-12');
     assert.equal(parsed.goal, null);
-    assert.equal(parsed.wipLimit, null);
   });
 
   test('題を読めなければ止まる', () => {
@@ -435,7 +429,6 @@ describe('スプリントの数', () => {
     );
     // #3（計画の 5）、#7（2）、#8（3）、#11（途中で足した分の 1）
     assert.deepEqual(sprint.wip, { pt: 11, count: 4 });
-    assert.equal(sprint.wipLimit, 3);
   });
 
   test('番号、期間、ゴール、計画の一覧を持つ', () => {
@@ -523,12 +516,26 @@ describe('履歴', () => {
     assert.deepEqual(buildProgress(raw(), NOW).warnings, []);
   });
 
-  test('今のスプリントの計画の表を1行も読めなければ、作業中の上限を読めなければ、記録の番号付きで警告する', () => {
-    const body = logBody(['| 1 | 列の形が違う | 3pt |']).replace('## 作業中の上限\n\n3', '## 作業中の上限\n\n未定');
+  test('今のスプリントの計画の表を1行も読めなければ、記録の番号付きで警告する', () => {
+    const body = logBody(['| 1 | 列の形が違う | 3pt |']);
     const built = buildProgress(raw({ issues: [sprintLog(30, 1, [], { body })] }), NOW);
     assert.deepEqual(built.sprint?.plan, []);
-    assert.equal(built.warnings.length, 2);
-    for (const warning of built.warnings) assert.match(warning, /#30/);
+    assert.equal(built.warnings.length, 1);
+    assert.match(built.warnings[0] ?? '', /#30/);
+  });
+
+  test('記録に作業中の上限の節が無くても、前の記録のように節があっても、警告せず、sprint に上限を出さない', () => {
+    const without = logBody(['| #1 | 一 | 3 |']);
+    const withLimit = without.replace('## 計画', '## 作業中の上限\n\n3\n\n## 計画');
+    for (const body of [without, withLimit]) {
+      const built = buildProgress(
+        raw({ issues: [sprintLog(30, 1, [], { body }), issue(1, { labels: ['sprint:1', 'pt:3'] })] }),
+        NOW,
+      );
+      assert.deepEqual(built.warnings, []);
+      assert.deepEqual(built.sprint?.plan, [{ number: 1, title: '一', pt: 3 }]);
+      assert.equal(built.sprint && 'wipLimit' in built.sprint, false);
+    }
   });
 
   test('題を読めない開いた記録は警告して飛ばし、読める開いた記録を今のスプリントにする', () => {
