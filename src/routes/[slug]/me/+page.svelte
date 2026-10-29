@@ -221,7 +221,9 @@
       />
     {:else}
       <section class="panel" aria-labelledby="me-level-failed">
-        <div class="panel-title"><h2 id="me-level-failed">{t('levelPanelTitle')}</h2></div>
+        <div class="panel-title">
+          <h2 id="me-level-failed"><Icon name="crest" tone="xp" /> {t('levelPanelTitle')}</h2>
+        </div>
         <EmptyState
           icon="alert"
           title={t('levelLoadFailed')}
@@ -239,7 +241,8 @@
     <EmptyState icon="alert" title={t('xpLedgerFailedTitle')} text={t('loadFailedText')} actions={grantsRetryActions} />
   {:else if rows.length === 0}
     <EmptyState
-      icon="trend"
+      icon="crystal"
+      iconTone="xp"
       title={t('xpEmptyTitle')}
       text={t('xpEmptyText', { task: t('task'), complete: t('complete'), done: t('done') })}
     />
@@ -253,7 +256,7 @@
             <th>{t('workspace')}</th>
             <th>{t('xpHeaderAction')}</th>
             <th class="is-name">{t('xpHeaderContent')}</th>
-            <th class="is-num">{t('xpUnit')}</th>
+            <th class="is-num"><Icon name="crystal" tone="xp" /> {t('xpUnit')}</th>
           </tr>
         </thead>
         <tbody>

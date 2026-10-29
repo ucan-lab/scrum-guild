@@ -3,6 +3,7 @@
   import { formatCount } from '../format.ts';
   import { t } from '../vocabulary.svelte.ts';
   import Emblem from './Emblem.svelte';
+  import Icon from './Icon.svelte';
 
   // kit.js の levelPanel。自分の記録の面で、本人にだけ出す（経験値の数値を含む）。
   // 紋章（大）、合計、次のレベルまでの残りと見込み、10の目盛りのゲージ（確定は塗り、見込みは斜線）、凡例、
@@ -33,13 +34,13 @@
 <section class="panel" aria-labelledby={titleId}>
   <!-- 題は見出し（h2）。tabindex="-1" は、読み直した後にプログラムからフォーカスを置くため（focusTitle） -->
   <div class="panel-title">
-    <h2 id={titleId} tabindex="-1" bind:this={title}>{t('levelPanelTitle')}</h2>
+    <h2 id={titleId} tabindex="-1" bind:this={title}><Icon name="crest" tone="xp" /> {t('levelPanelTitle')}</h2>
     {t('levelPanelNote')}
   </div>
   <div class="level">
     <Emblem level={progress.level} />
     <div>
-      <div class="xp-num">{formatCount(total)}<small>{t('xpUnit')}</small></div>
+      <div class="xp-num"><Icon name="crystal" tone="xp" />{formatCount(total)}<small>{t('xpUnit')}</small></div>
       <div class="xp-sub">
         {t('levelToNext')} <b>{formatCount(progress.toNext)}</b>{t('levelSubSeparator')}{t('levelProspect')}
         <b>{t('xpPlus', { value: formatCount(prospective) })}</b>

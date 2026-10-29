@@ -51,6 +51,10 @@
     panel: '<path d="M4 4h16v16H4zM14 4v16"/>',
     expand: '<path d="M14 4h6v6M20 4l-7 7M10 20H4v-6M4 20l7-7"/>',
     shrink: '<path d="M14 4v6h6M20 4l-6 6M10 20v-6H4M4 20l6-6"/>',
+    // ゲームの物（経験値、クリア報酬、レベル）。感謝は heart。使う範囲は docs/design.md の「ゲームの物のアイコン」
+    crystal: '<path d="M8 4h8l4 5-8 11L4 9z"/><path d="M4 9h16M9 9l3 11 3-11M10 4L9 9M14 4l1 5"/>',
+    chest: '<path d="M4 11h16v9H4z"/><path d="M4 11V9a5 5 0 0 1 5-5h6a5 5 0 0 1 5 5v2"/><path d="M10 11v3h4v-3"/>',
+    crest: '<path d="M12 4l7 3.5v7.7L12 20l-7-4.8V7.5z"/><path d="M9 10.5l3 2.5 3-2.5"/>',
   };
   const svg = Object.entries(ICONS)
     .map(([id, body]) => `<symbol id="i-${id}" viewBox="0 0 24 24">${body}</symbol>`)

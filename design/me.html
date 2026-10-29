@@ -75,7 +75,7 @@ SQ.mount("me", () => `
        画面の幅いっぱいに出す。760px 以下は is-stacked で行を縦に積む。今所属していないワークスペースの行は内容を伏せる（最後の行） -->
   ${SQ.section("me-experience", "経験値の明細", null, `
     <p class="action-note">本人だけが見られます。打ち消しは負の値で残ります。手で足し引きする操作はありません。</p>
-    <div class="table-wrap"><table class="table is-stacked" aria-label="経験値の明細"><thead><tr><th>確定日時</th><th>${t("workspace")}</th><th>行動</th><th class="is-name">内容</th><th class="is-num">XP</th></tr></thead>
+    <div class="table-wrap"><table class="table is-stacked" aria-label="経験値の明細"><thead><tr><th>確定日時</th><th>${t("workspace")}</th><th>行動</th><th class="is-name">内容</th><th class="is-num">${icon("crystal", "xp")} XP</th></tr></thead>
       <tbody>${M.xp.map(([at, a, w, v, ws]) => `<tr><td class="mono" data-label="確定日時">${at}</td><td class="wrap-anywhere" data-label="${t("workspace")}">${esc(ws)}</td><td data-label="行動"><span class="tag">${a}</span></td><td class="is-name wrap-anywhere" data-label="内容">${w === null ? `<span class="props-note">（今所属していない${t("workspace")}の内容は表示しません）</span>` : esc(w)}</td><td class="is-num" data-label="XP">${SQ.xpDelta(v)}</td></tr>`).join("")}</tbody></table></div>
     <div class="form-actions"><button class="btn is-sm" type="button" data-toast="見本のため、続きはありません">続きを読む</button></div>`)}`);
 </script>
