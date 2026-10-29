@@ -5,7 +5,7 @@
 import type { Browser, Page } from '@playwright/test';
 import { expect, steadyScreenshots, test } from './fixtures.ts';
 import type { SEED_SESSIONS } from '../seed/sessions.ts';
-import { signIn, watchViolations } from './helpers.ts';
+import { signIn, waitForSettled, watchViolations } from './helpers.ts';
 
 const UPDATE_ROUTE = '**/api/kumo/organization-settings-update';
 
@@ -94,6 +94,13 @@ test.describe('管理者（くもラボのカイ）', () => {
     // 後片付け（seed の値に戻す）
     await saveTheme(page, 'シンプル（自動）');
     await expect(page.locator('html')).toHaveAttribute('data-theme', 'simple');
+    // 読み直しで戻るスクロールの位置と、中世風からテーマを戻したときの組み直しで、終わりの位置が CI で 60px ほど違った（#460）。
+    // 読み込みと書体を待ってから、テーマの節を上端に置き、撮る画面をそろえる。
+    // 押した位置に残るマウスで「保存する」がホバーの色になるかも揺れるので、押せる要素の無い左上の隅へ動かしておく
+    await waitForSettled(page);
+    await page.evaluate(() => document.fonts.ready);
+    await page.mouse.move(0, 0);
+    await themeSection(page).evaluate((section) => section.scrollIntoView({ block: 'start' }));
   });
 
   test('言葉づかいを保存すると、送っている間はボタンを止め、通るとワークスペースの外の画面の言葉が切り替わる', async ({
