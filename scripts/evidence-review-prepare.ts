@@ -9,6 +9,7 @@ import {
   fetchPng,
   loadBaseManifest,
   localFiles,
+  NAME_LIMIT,
   notice,
   readScreenFiles,
   requiredEnv,
@@ -92,8 +93,12 @@ export async function prepareReview(input: {
     staged.push({ id, before, after: locals.get(screen.after)! });
     counts.prepared += 1;
   }
-  for (const key of rest) {
+  // テストの数に比例して index.md と judge のコンテキストが膨らまないよう、名前は NAME_LIMIT までにする
+  for (const key of rest.slice(0, NAME_LIMIT)) {
     lines.push('', `> ${sanitize(screenTitle(key))}`, '', `未判定（上限 ${EVIDENCE_REVIEW_LIMIT} 画面）`);
+  }
+  if (rest.length > NAME_LIMIT) {
+    lines.push('', `ほか ${rest.length - NAME_LIMIT} 画面も未判定（上限 ${EVIDENCE_REVIEW_LIMIT} 画面）`);
   }
   counts.unjudged += rest.length;
   if (!counts.prepared) return { run: false, reason: '判定に渡せる画像が無い', ...counts };

@@ -10,6 +10,7 @@ import {
   FETCH_TIMEOUT_MS,
   fetchPng,
   MAX_IMAGE_BYTES,
+  NAME_LIMIT,
   type Fetcher,
   type Manifest,
   type PngFetcher,
@@ -220,6 +221,19 @@ describe('prepareReview', () => {
     assert.ok(!index.includes('s09-after.png'));
     assert.ok(index.includes(baseSha));
     assert.ok(index.includes(headSha));
+  });
+
+  test('上限を超えた画面の名前は NAME_LIMIT まで並べ、残りは数だけを書く', async (t) => {
+    const total = EVIDENCE_REVIEW_LIMIT + NAME_LIMIT + 5;
+    const names = Array.from({ length: total }, (_, i) => `screen-${String(i).padStart(3, '0')}`);
+    const value = fixture(t, names);
+    const result = await prepareReview(value);
+    assert.equal(result.unjudged, NAME_LIMIT + 5);
+    const index = readFileSync(join(value.outDir, 'index.md'), 'utf8');
+    assert.equal((index.match(/^未判定（上限 8 画面）$/gm) ?? []).length, NAME_LIMIT);
+    assert.ok(index.includes(`> \`${names[EVIDENCE_REVIEW_LIMIT + NAME_LIMIT - 1]}\``));
+    assert.ok(!index.includes(`> \`${names[EVIDENCE_REVIEW_LIMIT + NAME_LIMIT]}\``));
+    assert.ok(index.includes('ほか 5 画面も未判定（上限 8 画面）'));
   });
 
   test('画面ごとに画像の中身が違っても、連番と画面の名前と画像の組が合う', async (t) => {
