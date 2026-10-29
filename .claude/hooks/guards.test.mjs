@@ -5481,6 +5481,21 @@ describe('bash-rules: ref の更新の force を字面で読めるかで分け�
   ]) {
     test(`[確認] ${command} は allow にしない`, () => assert.notEqual(decision(command), 'allow', command));
   }
+  for (const command of [
+    // 短いフラグのまとめと -f だけのフィールドでも、メソッドの既定は POST（マージの API は PUT だけを受けるが、ここでは止める）
+    'gh api -iXPUT repos/o/r/pulls/1/merge',
+    'gh api -fbase=main repos/o/r/pulls/1/merge',
+    // --next の後ろの要求にだけ付いた PUT
+    'curl https://example.com --next -X PUT https://api.github.com/repos/o/r/pulls/1/merge',
+    // スキームの無い URL
+    'curl -X PUT api.github.com/repos/o/r/pulls/1/merge',
+    `gh api graphql --input - <<'EOF'\n{"query":"mutation{mergePullRequest(input:{pullRequestId:\\"x\\"}){clientMutationId}}"}\nEOF`,
+  ]) {
+    test(`[止める] ${command} は deny`, () => assert.equal(decision(command), 'deny', command));
+  }
+  // 標準入力のリダイレクトの後ろがヒアドキュメントなら、それが本文
+  test('[通す] gh api --input - < body.json <<<{"sha":"a"} は後ろのヒアストリングが本文なので allow', () =>
+    assert.equal(decision(`gh api -X PATCH repos/o/r/git/refs/heads/x --input - < body.json <<<'{"sha":"a"}'`), 'allow'));
 });
 
 describe('bash-rules: メソッドを最後の値で読む作り直しと、本文の字面の読み方を崩す', () => {
