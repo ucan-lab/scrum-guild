@@ -28,7 +28,7 @@ Node は `.node-version`（26）、pnpm は `package.json` の `packageManager` 
 - lint と整形: `pnpm lint`、`pnpm format:check`、直すときは `pnpm format`
 - build: `pnpm build`（`build/` に書き出し、`build/_headers` を作る）
 - フックのテスト: `node --test .claude/hooks/*.test.mjs`
-- e2e: `pnpm e2e`（`pnpm preview` と同じく build し直してサーバーを立て、手元の D1 を seed で入れ直してから Playwright で確かめる。API のポートに答えるサーバーが既にあれば止まり、立てたままの preview を使い回すのは `E2E_REUSE_SERVER=1` のときだけ（`docs/development.md` の「e2e のサーバー」）。手元の D1 の行は消える。初めは `pnpm exec playwright install chromium`）。`pnpm e2e e2e/members.test.ts` のようにファイルを渡せる。CI は `E2E_EVIDENCE=1` を付け、PR に並べる画像を撮る（手元では付けない。`docs/development.md` の「e2e の書き方」）。`E2E_DEV_BUILD=1` を付けると開発モードで build し、Svelte と SvelteKit の開発時の警告が出たテストを落とす（CI の `e2e-dev`。画面のコードを変えたら手元でも関わるファイルで走らせる）。手元は関わるファイルだけにし、全件は CI に任せる。ただし、共通の枠や認証のようにどの画面にも効くものを変えたときと、迷ったときは全件を走らせる（どれが当たるかは `docs/development.md` の「開発の流れ」）。ほかのワークツリーの e2e と並べるときは、`--workers` の合計をコアの数の半分までに割る（`docs/development.md` の「e2e のサーバー」）。手元は `expect` の既定の待ちが 15 秒、CI は 5 秒（同じ文書の「e2e の書き方」）。足したか変えたテストのファイルは `pnpm e2e --workers=1 --repeat-each=5 --retries=0 <ファイル>` でも回す（CI の `e2e-repeat`。`docs/development.md` の「e2e の書き方」）
+- e2e: Claude のセッション（手元でもクラウドでも）は手元で走らせない（`pnpm e2e`、`playwright test` はフックが止める）。PR の CI の `e2e`、`e2e-dev`、`e2e-repeat` が確かめ、落ちたらジョブのログと成果物の trace で直す（`docs/development.md` の「CI の e2e が落ちたとき」）。人が自分の端末で調べるときは `pnpm e2e`（build し直してサーバーを立て、手元の D1 を seed で入れ直してから Playwright で確かめる。手元の D1 の行は消える。初めは `pnpm exec playwright install chromium`）で、`pnpm e2e e2e/members.test.ts` のようにファイルを渡せる。サーバーの扱い、`--workers`、`expect` の待ち、`E2E_EVIDENCE=1` と `E2E_DEV_BUILD=1` は `docs/development.md` の「e2e のサーバー」「e2e の書き方」
 - 空の D1 に全マイグレーションを当て、seed を2回流して確かめる: `pnpm db:migrate:fresh`
 - バックログの木を 5 万件で測る: `pnpm bench:backlog`（使い捨ての D1 で `wrangler dev --local` を立てて測る。`docs/development.md` の「バックログの木を 5 万件で測る」）
 - 手元の D1 にマイグレーションを当て、全部の行を消して seed を入れ直す: `pnpm db:seed`（ログインに使うトークンは `seed/sessions.ts`）
@@ -40,6 +40,7 @@ Node は `.node-version`（26）、pnpm は `package.json` の `packageManager` 
 
 - `main` に直接コミットも push もしない。文書だけの変更も PR を通す。1 Issue に 1 ブランチ、1 PR。ブランチ名は `<Issue番号>-<短い名前>`（クラウドのセッションの `claude/*` はそのまま）。手元では同じ名前のワークツリー（`./worktrees/<ブランチ名>`）を切って作業する（`docs/development.md` の「ワークツリーで作業する」）。`main` の作業コピーのファイルは Write と Edit をフックが止めるので、書く前にワークツリーを切る。Bash で書いて迂回しない。マージは squash で行う。セッションがマージするのは、人がその PR のマージを指示したときだけで、`needs-human` の PR と、`label` か `ci-ok` のチェックが成功していない PR は指示されても人に任せる（`docs/development.md` の「マージの判定」）。GitHub のブランチ保護は無く、`.claude/` のフックと `.githooks/` は踏み線にすぎないので、この決まりは自分で守る
 - 実装を終えたら、確認を取らずにコミットし、`done-check` を通して PR を作る。`pr-create` も承認を取らずに作成まで進め、作った後に内容を報告する（作業ブランチのコミットと PR は後から直せるため）。承認を取るのは `pr-create` の Step 4 に挙げた場合（直さなかった CRITICAL か HIGH が残る、done-check を省いた、既存の PR を書き換える）だけ。マージは、この決まりに含めない
+- セッションは手元で e2e を走らせない。フックが止める（例外として1ファイルだけ走らせることも認めない）。画面と流れの確かめは、変えた画面を開く e2e のテストを差分に足し、PR の CI（`e2e`、`e2e-dev`、`e2e-repeat`、`evidence`、`ci-ok`）に任せる。落ちたらログと trace で直し、2回続けて直せなければ人に手元での再現を頼む
 - 本番に触らない。`wrangler deploy`、`wrangler versions deploy`、`wrangler rollback`、`--remote` を付けた `wrangler d1` は Cloudflare の Workers Builds だけが実行する
 - 組織の中の表を読み書きするときは、必ず組織で絞る。共通の表と組織の中の表を結合せず、1回の `batch()` に混ぜない（`docs/data-model.md` の「データベースの分け方」）
 - DB への書き込みは、文を並べて `batch()` で1つのトランザクションとして送る

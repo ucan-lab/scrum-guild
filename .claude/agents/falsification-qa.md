@@ -37,7 +37,7 @@ effort: high
 4. 差分のテストを読む。テストは、実装を壊したときに落ちるかを見るために読む（実装が正しい証拠としては読まない）
 5. 下の「壊しにいく」で筋書きを組み立て、実際に確かめられるものは確かめる。Bash で、テストのファイルを指して走らせる（`pnpm exec vitest run <ファイル>`、`node --test <ファイル>`）、入力を変えて関数を呼ぶなどはよい。ただし作業ツリーを書き換えない。試すファイルは、一時的にでも作業ツリーに置かず、スクラッチの場所に書き出すか、コマンドの標準入力で渡す。次のコマンドは走らせない（`done-check` は同じワークツリーでほかのエージェントを同時に動かしており、手元の D1 の行や生成物を変えると、ほかの作業を壊すため）
    - `pnpm test`、`pnpm check`、`pnpm build`（先頭の `scripts/prepare.ts` が `worker-configuration.d.ts` などを作り直す）
-   - `pnpm e2e`、`pnpm db:seed`、`pnpm dev` のように、手元の D1、サーバー、ポートを使うもの
+   - `pnpm e2e`、`pnpm db:seed`、`pnpm dev` のように、手元の D1、サーバー、ポートを使うもの（e2e はセッションが手元で走らせず、PR の CI が担保するので、ここで走らせる必要もない）
 
 GitHub の操作は `gh api` の REST で行う（クラウドのセッションでは、GraphQL を使う `gh pr` が 403 で止まる）。`{owner}` `{repo}` `{branch}` が置き換わらずに 404 になるときは、`git remote get-url origin` と `git branch --show-current` から読んで直に書く。
 
