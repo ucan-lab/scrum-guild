@@ -1,6 +1,22 @@
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
+import { existsSync } from 'node:fs';
 import { describe, test } from 'node:test';
-import { ciOkVerdict, isDocsOnly, needsDevBuild, migrationFiles, parseNulSeparated, type Needs } from './ci.ts';
+import {
+  ciOkVerdict,
+  countListedTests,
+  isDocsOnly,
+  needsDevBuild,
+  migrationFiles,
+  parseNulSeparated,
+  REPEAT_TEST_LIMIT,
+  REPEAT_EXCLUDED,
+  repeatFiles,
+  splitRepeatExcluded,
+  repeatVerdict,
+  type ListReport,
+  type Needs,
+} from './ci.ts';
 
 describe('isDocsOnly', () => {
   test('文書の範囲の .md だけなら真', () => {
@@ -214,6 +230,35 @@ describe('ciOkVerdict', () => {
     });
   });
 
+  describe('繰り返す e2e（e2e-repeat）は repeat で期待が変わる', () => {
+    function withRepeat(repeat: string | undefined, result: string, docsOnly = 'false'): Needs {
+      const outputs: Record<string, string> = { docs_only: docsOnly, dev_build: 'true' };
+      if (repeat !== undefined) outputs.repeat = repeat;
+      return {
+        changes: { result: 'success', outputs },
+        check: { result: docsOnly === 'true' ? 'skipped' : 'success' },
+        'e2e-dev': { result: docsOnly === 'true' ? 'skipped' : 'success' },
+        'e2e-repeat': { result },
+      };
+    }
+
+    const repeatCases: [string, Needs, boolean][] = [
+      ['repeat が真で success', withRepeat('true', 'success'), true],
+      ['repeat が真で failure（揺れた）', withRepeat('true', 'failure'), false],
+      ['repeat が真で skipped', withRepeat('true', 'skipped'), false],
+      ['repeat が偽で skipped', withRepeat('false', 'skipped'), true],
+      ['repeat が偽で success', withRepeat('false', 'success'), false],
+      ['repeat が無ければ、判定を誤ったとみて落とす', withRepeat(undefined, 'skipped'), false],
+      ['repeat が真でも偽でもなければ落とす', withRepeat('', 'skipped'), false],
+      ['文書だけなら repeat が無くても skipped で通す', withRepeat(undefined, 'skipped', 'true'), true],
+    ];
+    for (const [name, input, ok] of repeatCases) {
+      test(name, () => {
+        assert.equal(ciOkVerdict(input).ok, ok);
+      });
+    }
+  });
+
   test('通さないときは、期待と違うジョブを理由に挙げる', () => {
     const verdict = ciOkVerdict(needs('success', 'false', 'success', 'failure'));
     assert.equal(verdict.ok, false);
@@ -231,5 +276,202 @@ describe('migrationFiles', () => {
 
   test('0件なら空', () => {
     assert.deepEqual(migrationFiles([]), []);
+  });
+});
+
+describe('repeatFiles', () => {
+  test('足したか変えた e2e のテストのファイルだけを、重ねずに名前の順で選ぶ', () => {
+    assert.deepEqual(
+      repeatFiles([
+        'e2e/members.test.ts',
+        'src/lib/a.svelte',
+        'e2e/fixtures.ts',
+        'e2e/helpers.ts',
+        'e2e/a11y-check.test.ts',
+        'test/operations.test.ts',
+        'src/lib/a.test.ts',
+        'docs/development.md',
+        'e2e/members.test.ts',
+      ]),
+      ['e2e/a11y-check.test.ts', 'e2e/members.test.ts'],
+    );
+  });
+
+  test('共通のファイルと画面のコードだけなら空', () => {
+    assert.deepEqual(repeatFiles(['e2e/fixtures.ts', 'e2e/operations.ts', 'src/routes/+page.svelte']), []);
+  });
+
+  test('空の一覧は空', () => {
+    assert.deepEqual(repeatFiles([]), []);
+  });
+
+  const bad = [
+    'e2e/Members.test.ts',
+    'e2e/members test.test.ts',
+    'e2e/a\nb.test.ts',
+    'e2e/$(id).test.ts',
+    'e2e/*.test.ts',
+    'e2e/sub/members.test.ts',
+    'e2e/メンバー.test.ts',
+    'e2e/.test.ts',
+  ];
+  for (const path of bad) {
+    test(`形に合わない名前（${JSON.stringify(path)}）は黙って外さずに落とす`, () => {
+      assert.throws(() => repeatFiles(['e2e/members.test.ts', path]), /合わない/);
+    });
+  }
+});
+
+describe('countListedTests と repeatVerdict', () => {
+  function report(...files: number[][]): ListReport {
+    // ファイルごとに、直下の spec の数と、describe の中の spec の数を並べる
+    return {
+      suites: files.map(([top, nested = 0]) => ({
+        specs: Array.from({ length: top }, () => ({ tests: [{}] })),
+        suites: [{ specs: Array.from({ length: nested }, () => ({ tests: [{}] })), suites: [] }],
+      })),
+      errors: [],
+    };
+  }
+
+  test('describe の入れ子もたどって数える', () => {
+    assert.equal(countListedTests(report([3, 2], [0, 4])), 9);
+  });
+
+  test('プロジェクトが2つなら spec ごとに2件と数える', () => {
+    assert.equal(countListedTests({ suites: [{ specs: [{ tests: [{}, {}] }] }] }), 2);
+  });
+
+  test('suites が無ければ 0 件', () => {
+    assert.equal(countListedTests({}), 0);
+  });
+
+  test(`上限の ${REPEAT_TEST_LIMIT} 件ちょうどなら回す`, () => {
+    assert.deepEqual(repeatVerdict(report([REPEAT_TEST_LIMIT]), 1), { run: true, count: REPEAT_TEST_LIMIT });
+  });
+
+  test('上限を1件でも超えたら回さない', () => {
+    assert.deepEqual(repeatVerdict(report([REPEAT_TEST_LIMIT, 1]), 2), { run: false, count: REPEAT_TEST_LIMIT + 1 });
+  });
+
+  test('ファイルを渡さず 0 件なら回す（--pass-with-no-tests で通る）', () => {
+    assert.deepEqual(repeatVerdict(report(), 0), { run: true, count: 0 });
+  });
+
+  test('--list がエラーを返したら、回さずに通すのでなく落とす', () => {
+    assert.throws(() => repeatVerdict({ suites: [], errors: [{ message: 'SyntaxError' }] }, 1), /エラー/);
+  });
+
+  test('ファイルを渡したのに 0 件なら、出力の形が変わったとみて落とす（上限が効かなくなるため）', () => {
+    assert.throws(() => repeatVerdict({ suites: [{ specs: [], suites: [] }], errors: [] }, 1), /0 件/);
+  });
+
+  test('本物の playwright test --list の出力を、Playwright の数える件数と同じに数える', () => {
+    const run = (...args: string[]) =>
+      spawnSync('node_modules/.bin/playwright', ['test', '--list', ...args, 'e2e/logout.test.ts'], {
+        encoding: 'utf8',
+      });
+    const json = run('--reporter=json');
+    assert.equal(json.status, 0, json.stderr);
+    const total = /Total: (\d+) tests?/.exec(run().stdout)?.[1];
+    assert.ok(total !== undefined && Number(total) > 0);
+    assert.equal(countListedTests(JSON.parse(json.stdout) as ListReport), Number(total));
+  });
+});
+
+describe('splitRepeatExcluded', () => {
+  test('外す一覧のファイルを分け、Issue の番号を添える。残りの順は変えない', () => {
+    assert.deepEqual(
+      splitRepeatExcluded(
+        ['e2e/a11y-check.test.ts', 'e2e/logout.test.ts', 'e2e/login.test.ts'],
+        new Map([['e2e/logout.test.ts', 459]]),
+      ),
+      { files: ['e2e/a11y-check.test.ts', 'e2e/login.test.ts'], excluded: [['e2e/logout.test.ts', 459]] },
+    );
+  });
+
+  test('一覧に無ければ何も外さない', () => {
+    assert.deepEqual(splitRepeatExcluded(['e2e/login.test.ts'], new Map()), {
+      files: ['e2e/login.test.ts'],
+      excluded: [],
+    });
+  });
+
+  test('一覧のファイルは、すべて今ある e2e のテストのファイルを指す（直して消したのに一覧に残さない）', () => {
+    for (const path of REPEAT_EXCLUDED.keys()) {
+      assert.equal(repeatFiles([path]).length, 1, path);
+      assert.ok(existsSync(path), path);
+    }
+  });
+});
+
+describe('changes.ts --repeat と e2e-repeat-count.ts の出力', () => {
+  test('changes.ts --repeat は外す一覧のファイルを repeat_files に入れず、注記に Issue の番号と出す', () => {
+    const [path, issue] = [...REPEAT_EXCLUDED][0] ?? [];
+    if (path === undefined) return;
+    const result = spawnSync(process.execPath, ['scripts/changes.ts', '--repeat'], {
+      input: `${path}\0e2e/login.test.ts\0`,
+      encoding: 'utf8',
+    });
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(result.stdout, 'repeat=true\nrepeat_files=e2e/login.test.ts\n');
+    assert.match(result.stderr, new RegExp(`^::notice title=e2e-repeat::.*${path}.*#${issue}`, 'm'));
+  });
+
+  test('changes.ts --repeat は外す一覧のファイルだけなら repeat=false', () => {
+    const [path] = [...REPEAT_EXCLUDED][0] ?? [];
+    if (path === undefined) return;
+    const result = spawnSync(process.execPath, ['scripts/changes.ts', '--repeat'], {
+      input: `${path}\0`,
+      encoding: 'utf8',
+    });
+    assert.equal(result.stdout, 'repeat=false\nrepeat_files=\n');
+  });
+
+  const node = (script: string, input: string, ...args: string[]) =>
+    spawnSync(process.execPath, [script, ...args], { input, encoding: 'utf8' });
+
+  test('changes.ts --repeat は repeat と repeat_files の2行だけを出す', () => {
+    const result = node(
+      'scripts/changes.ts',
+      'e2e/login.test.ts\0e2e/fixtures.ts\0e2e/a11y-check.test.ts\0',
+      '--repeat',
+    );
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(result.stdout, 'repeat=true\nrepeat_files=e2e/a11y-check.test.ts e2e/login.test.ts\n');
+  });
+
+  test('changes.ts --repeat は選ぶものが無ければ repeat=false', () => {
+    const result = node('scripts/changes.ts', 'src/a.ts\0', '--repeat');
+    assert.equal(result.stdout, 'repeat=false\nrepeat_files=\n');
+  });
+
+  test('changes.ts --repeat は形に合わない名前で落ち、GITHUB_OUTPUT に何も出さない', () => {
+    const result = node('scripts/changes.ts', 'e2e/a b.test.ts\0', '--repeat');
+    assert.notEqual(result.status, 0);
+    assert.equal(result.stdout, '');
+  });
+
+  const listed = (n: number) =>
+    JSON.stringify({ suites: [{ specs: Array.from({ length: n }, () => ({ tests: [{}] })) }], errors: [] });
+
+  test(`e2e-repeat-count.ts は上限の ${REPEAT_TEST_LIMIT} 件まで run=true を出し、注記を出さない`, () => {
+    const result = node('scripts/e2e-repeat-count.ts', listed(REPEAT_TEST_LIMIT), 'e2e/a.test.ts');
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(result.stdout, 'run=true\n');
+    assert.equal(result.stderr, '');
+  });
+
+  test('e2e-repeat-count.ts は上限を超えたら run=false を出し、件数を注記に出す', () => {
+    const result = node('scripts/e2e-repeat-count.ts', listed(REPEAT_TEST_LIMIT + 1), 'e2e/a.test.ts');
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(result.stdout, 'run=false\n');
+    assert.match(result.stderr, new RegExp(`^::notice title=e2e-repeat::.*${REPEAT_TEST_LIMIT + 1} 件`));
+  });
+
+  test('e2e-repeat-count.ts はファイルを渡したのに 0 件なら落とす', () => {
+    const result = node('scripts/e2e-repeat-count.ts', listed(0), 'e2e/a.test.ts');
+    assert.notEqual(result.status, 0);
+    assert.equal(result.stdout, '');
   });
 });

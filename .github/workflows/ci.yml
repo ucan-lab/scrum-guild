@@ -27,6 +27,8 @@ jobs:
     outputs:
       docs_only: ${{ steps.docs.outputs.docs_only }}
       dev_build: ${{ steps.docs.outputs.dev_build }}
+      repeat: ${{ steps.repeat.outputs.repeat }}
+      repeat_files: ${{ steps.repeat.outputs.repeat_files }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -47,6 +49,17 @@ jobs:
         run: |
           set -o pipefail
           git diff --name-only --no-renames -z "$BASE_SHA...$HEAD_SHA" | node scripts/changes.ts | tee -a "$GITHUB_OUTPUT"
+
+      # --diff-filter=AM: 消したテストは回せないので、足したか変えたものだけを渡す。リネームは --no-renames で消すと足すに分かれ、
+      # 移動先が足したものとして選ばれる。名前が決まった形に合わなければ scripts/changes.ts が落ちる
+      - id: repeat
+        name: 繰り返す e2e のテストのファイルを選ぶ
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -o pipefail
+          git diff --name-only --no-renames --diff-filter=AM -z "$BASE_SHA...$HEAD_SHA" | node scripts/changes.ts --repeat | tee -a "$GITHUB_OUTPUT"
 
   check:
     needs: changes
@@ -157,6 +170,57 @@ jobs:
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: e2e-dev-${{ matrix.shard }}
+          overwrite: true
+          path: |
+            test-results/
+            playwright-report/
+          retention-days: 14
+
+  # PR で足したか変えた e2e のテストのファイルだけを、1つのワーカーで5回ずつ繰り返し、揺れるテストを main に入る前に落とす（#451）。
+  # 並べたまま繰り返すと負荷だけで落ち（#364）、同じテストの複製が共有の D1 で自分とぶつかるので --workers=1 にする。
+  # 繰り返しの間に seed は入れ直さない（docs/development.md の「e2e の書き方」の、繰り返しに耐える決まり）。
+  # 繰り返しに耐えないまま残るファイル（scripts/ci.ts の REPEAT_EXCLUDED）は、changes が外して注記を出す。
+  # 件数の合計が上限（scripts/ci.ts の REPEAT_TEST_LIMIT）を超えたら、回さずに成功で終えて注記を出す。
+  # 手元の pnpm e2e と同じ条件にするため、画像は撮らない（E2E_EVIDENCE を付けない）。走らないときは ci-ok が skipped を期待する
+  e2e-repeat:
+    needs: changes
+    if: needs.changes.outputs.docs_only != 'true' && needs.changes.outputs.repeat == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      # 数を変えるときは docs/development.md の「CI」の e2e-repeat の行も直す
+      matrix:
+        shard: [1, 2, 3]
+    env:
+      APP_VERSION: ${{ github.event.pull_request.head.sha }}
+      # changes が名前の形（空白もシェルの記号も含まない）を確かめた、空白区切りの一覧。引用せずに語に分けて渡す
+      REPEAT_FILES: ${{ needs.changes.outputs.repeat_files }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+
+      # --list はサーバーを立てず、global-setup も動かさない。件数はシャードと繰り返しを付けずに数え、どのシャードでも同じ答えにする
+      - id: count
+        name: 繰り返すテストの件数を上限と比べる
+        run: |
+          set -o pipefail
+          pnpm exec playwright test --list --reporter=json $REPEAT_FILES | node scripts/e2e-repeat-count.ts $REPEAT_FILES | tee -a "$GITHUB_OUTPUT"
+
+      - if: steps.count.outputs.run == 'true'
+        uses: ./.github/actions/playwright
+      # ファイルが少ないとテストの無いシャードができるので、--pass-with-no-tests を付ける
+      - if: steps.count.outputs.run == 'true'
+        run: >-
+          pnpm e2e --workers=1 --repeat-each=5 --retries=0 --pass-with-no-tests
+          --shard=${{ matrix.shard }}/${{ strategy.job-total }} $REPEAT_FILES
+      - if: ${{ !cancelled() && steps.count.outputs.run == 'true' }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          # evidence の pattern（e2e-[0-9]*）に当たらない名前にする
+          name: e2e-repeat-${{ matrix.shard }}
           overwrite: true
           path: |
             test-results/
@@ -345,7 +409,7 @@ jobs:
   # 取り消された実行でも always() で動かして failure を残す。!cancelled() にすると ci-ok が skipped になり、
   # 同じ head の結果がマージの欄で skipped しか出ず、成功していないことが読み取りにくくなるため
   ci-ok:
-    needs: [changes, check, test, migration, e2e, e2e-dev]
+    needs: [changes, check, test, migration, e2e, e2e-dev, e2e-repeat]
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 5
