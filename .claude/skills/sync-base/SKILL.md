@@ -49,6 +49,7 @@ git fetch origin
 git rev-parse HEAD                                   # 取り込み前のコミットとして控える
 git merge-base --is-ancestor origin/<base> HEAD      # 0 なら取り込み済み
 git rev-list --count HEAD..origin/<base>             # 遅れているコミット数
+git diff --name-only origin/<base>...HEAD            # 取り込み前の PR の差分のファイル。手順 5 で比べる
 ```
 
 リモートにブランチがあれば（`git rev-parse --verify --quiet origin/<branch>` が成功すれば）、手元がリモートのコミットをすべて含むことを確かめる。
@@ -87,10 +88,13 @@ merge の途中では、ours が自分のブランチの側、theirs がベー�
 ```bash
 git merge-base --is-ancestor origin/<base> HEAD      # 0 であること
 git merge-base --is-ancestor <手順 2 で控えた HEAD> HEAD  # 取り込み前のコミットが残ること
-git diff --stat origin/<base>...HEAD                 # PR の差分が取り込み前と同じファイルに収まること
+git diff --name-only origin/<base>...HEAD            # 手順 2 で控えた一覧と同じであること
 ```
 
+一覧が増えていたら、コンフリクトの解消でベースの変更を自分の側として残している。どのファイルかを示して止まる。
+
 コンフリクトを解消した場合は、触ったファイルに関係するテストか lint を回す。
+`package.json` か `pnpm-lock.yaml` がベースの側で変わっていたら、コンフリクトが無くても `pnpm install --frozen-lockfile` が通ることを確かめる（理由: 両側が別の依存を足すと、衝突せずに混ざって lockfile がマニフェストと合わなくなる）。
 
 `migrations/` の番号の重なりも見る（理由: `0006_a.sql` と `0006_b.sql` のように名前が違うと、git は衝突にせず merge が黙って通る）。
 
@@ -108,6 +112,8 @@ ls migrations | cut -c1-4 | sort | uniq -d             # 何も出ないこと
 ```bash
 git push origin <branch>    # リモートに無ければ git push -u origin <branch>
 ```
+
+`<branch>` は手順 1 の出力を直に書く（理由: `$(git branch --show-current)` や変数で渡すと、フックが push の先を判定できずに確認を挟む）。
 
 non-fast-forward で失敗したら、手順 2 の後に誰かが push している。force push に切り替えずに止まり、`git fetch origin` の後に手元と `origin/<branch>` の差を示して伝える。
 

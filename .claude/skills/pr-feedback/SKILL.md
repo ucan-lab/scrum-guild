@@ -77,7 +77,6 @@ CI の AI レビュー（`.github/workflows/ai-review.yml`、チェックの名�
 
 AI レビューは push では走らない。走る契機は、ドラフトでない PR の作成、開き直し（`reopened`）、ドラフトの解除（`ready_for_review`）、`ai-review` のラベルの付与の4つ。`pr-create` がドラフトで作った PR では、上でドラフトを外したときに走る。
 待つかどうかは今の head の check-runs でなく、PR のワークフローの実行の履歴と、契機のイベントの履歴で決める（理由: 指摘は head に関係なく PR 全体から集めるため）。
-`sync-base` は merge で取り込むので、前の head は `pulls/{number}/commits` でも辿れる。待つ実行は、次の実行履歴とイベントで確かめる。
 
 ```bash
 gh api --method GET "repos/{owner}/{repo}/actions/workflows/ai-review.yml/runs" -f branch=<head_ref> -f event=pull_request --paginate --jq '.workflow_runs[] | select(.created_at >= "<PR の created_at>" and .conclusion != "skipped") | {head_sha, status, conclusion, created_at, url: .html_url}'
