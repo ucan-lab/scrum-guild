@@ -171,8 +171,9 @@ function leafTotals(leaf) {
 /**
  * プロダクトバックログの木。
  * 親の無い（または親が data に無い）エピックは根、親の無いストーリーとタスクは orphans（エピックの無いもの）に入れる。
- * 絞り込みは葉に当てる。area が null ならすべて、showDone が false なら done の葉を隠す。
- * 残る葉の無い親は木から外し、合計は絞った結果の葉から出す
+ * 絞り込みは葉に当てる。area が null ならすべて、showDone が false なら done の葉を隠す。残る葉の無い親は木から外す。
+ * ノードの totals は、隠した葉も含めた子孫すべての葉から出す（済みを隠しても、進みが 0% に見えないように）。
+ * 返す totals は、絞った結果の葉から出す
  * @param {BoardIssue[]} issues
  * @param {{ area?: string | null, showDone?: boolean }} [filter]
  * @returns {{ epics: TreeNode[], orphans: TreeNode[], totals: Totals }}
@@ -185,34 +186,60 @@ export function backlogTree(issues, filter = {}) {
   const keepLeaf = (leaf) => (showDone || leaf.s !== 'done') && (area === null || leaf.areas.includes(area));
 
   /**
+   * data にある子。path（根からの道）にある番号は、輪で止まらないよう飛ばす
    * @param {BoardIssue} issue
    * @param {Set<number>} path
-   * @returns {TreeNode | null}
+   * @returns {BoardIssue[]}
    */
-  const build = (issue, path) => {
-    const kids = issue.children.flatMap((n) => {
+  const kidsOf = (issue, path) =>
+    issue.children.flatMap((n) => {
       const child = index.get(n);
       return child && !path.has(n) ? [child] : [];
     });
-    if (kids.length === 0) return keepLeaf(issue) ? { issue, children: [], totals: leafTotals(issue) } : null;
+
+  /**
+   * kept は絞った結果の葉の合計
+   * @param {BoardIssue} issue
+   * @param {Set<number>} path
+   * @returns {{ node: TreeNode | null, kept: Totals }}
+   */
+  const build = (issue, path) => {
+    const kids = kidsOf(issue, path);
+    if (kids.length === 0) {
+      const totals = leafTotals(issue);
+      return keepLeaf(issue)
+        ? { node: { issue, children: [], totals }, kept: totals }
+        : { node: null, kept: emptyTotals() };
+    }
     const nextPath = new Set(path).add(issue.number);
-    const children = kids.flatMap((kid) => {
-      const node = build(kid, nextPath);
-      return node ? [node] : [];
-    });
-    return children.length === 0 ? null : { issue, children, totals: sumTotals(children) };
+    const built = kids.map((kid) => build(kid, nextPath));
+    const children = built.flatMap(({ node }) => (node ? [node] : []));
+    const kept = built.reduce((sum, b) => addTotals(sum, b.kept), emptyTotals());
+    if (children.length === 0) return { node: null, kept };
+    return { node: { issue, children, totals: allLeafTotals(issue, path) }, kept };
   };
 
-  const roots = issues
+  /**
+   * 絞り込みに関わらない、子孫すべての葉の合計
+   * @param {BoardIssue} issue
+   * @param {Set<number>} path
+   * @returns {Totals}
+   */
+  const allLeafTotals = (issue, path) => {
+    const kids = kidsOf(issue, path);
+    if (kids.length === 0) return leafTotals(issue);
+    const nextPath = new Set(path).add(issue.number);
+    return kids.reduce((sum, kid) => addTotals(sum, allLeafTotals(kid, nextPath)), emptyTotals());
+  };
+
+  const built = issues
     .filter((issue) => issue.parent === null || !index.has(issue.parent))
     .toSorted(byNumber)
-    .flatMap((issue) => {
-      const node = build(issue, new Set());
-      return node ? [node] : [];
-    });
+    .map((issue) => build(issue, new Set()));
+  const roots = built.flatMap(({ node }) => (node ? [node] : []));
   const epics = roots.filter((node) => node.issue.level === 'epic');
   const orphans = roots.filter((node) => node.issue.level !== 'epic');
-  return { epics, orphans, totals: sumTotals(roots) };
+  return { epics, orphans, totals: built.reduce((sum, b) => addTotals(sum, b.kept), emptyTotals()) };
 }
 
 /** 作る場所の一覧（絞り込みのボタン用）。issues に現れる area を昇順で */

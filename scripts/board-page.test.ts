@@ -277,14 +277,21 @@ describe('backlogTree', () => {
     assert.deepEqual(tree.totals, { remaining: 7 + 4 + 1, all: 10 + 4 + 1, ready: 3, leaves: 6 });
   });
 
-  test('既定は済みを隠し、隠した分は合計にも入らない', () => {
+  test('既定は済みを隠す。ノードの合計は隠した葉も含めて進みを出し、絞った結果の合計には入れない', () => {
     const tree = backlogTree(issues);
     const story = tree.epics[0]?.children[0];
     assert.deepEqual(
       story?.children.map((n) => n.issue.number),
       [5, 6],
     );
-    assert.deepEqual(story?.totals, { remaining: 2, all: 2, ready: 1, leaves: 2 });
+    assert.deepEqual(story?.totals, { remaining: 2, all: 5, ready: 1, leaves: 3 });
+    assert.deepEqual(tree.totals, { remaining: 7 + 4 + 1, all: 7 + 4 + 1, ready: 3, leaves: 5 });
+  });
+
+  test('作る場所で絞っても、ノードの合計は子孫すべての葉から出す', () => {
+    const tree = backlogTree(issues, { area: 'api', showDone: true });
+    assert.deepEqual(tree.epics[0]?.totals, { remaining: 7, all: 10, ready: 2, leaves: 4 });
+    assert.deepEqual(tree.totals, { remaining: 2, all: 5, ready: 1, leaves: 2 });
   });
 
   test('済みの葉しか無い親は木から外れる', () => {
