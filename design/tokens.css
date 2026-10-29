@@ -84,7 +84,7 @@
   /* ---- 色: ゲージとクリア報酬の段階 ---- */
   --color-gauge: #e1e5ea;
   --color-gauge-tick: var(--color-bg);
-  --color-tier-small: #a3441c;  /* 銅。段階の印は地を持たないので、地になりうる色（bg、surface、sunken、rule、accent-soft）すべてに 4.5:1 を取る */
+  --color-tier-small: #843312;  /* 銅。段階の印は地を持たないので、地になりうる色（bg、surface、sunken、rule、accent-soft）すべてに 4.5:1 を取る。赤緑の色覚でも金と分かれるよう、金より暗くする */
   --color-tier-medium: #5b646d; /* 銀。操作の色の青と分けるため青みを抑える */
   --color-tier-large: #6e6400;  /* 金。経験値の色と見分けるため黄みに振る */
 
@@ -192,7 +192,7 @@
   --color-ok: #2d6a3a;
   --color-ok-soft: #e1efe3;
   --color-gauge: #dde2e4;
-  --color-tier-small: #a8401a;
+  --color-tier-small: #843210;
   --color-tier-medium: #59626b;
   --color-tier-large: #6b6500;
 
