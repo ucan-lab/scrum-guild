@@ -598,7 +598,7 @@ ai-review は Claude のサブスクリプションで動かす。手元で `cla
 
 同じ PR の古い実行は `concurrency` で止める。`ci.yml` の `permissions` は `contents: read` だけにし、action はすべてコミットの SHA で固定する。`label.yml` は、ラベルを付ける `pull-requests: write` と、付け替えの判定で PR の履歴と `ci.yml` の実行を読む `issues: read`、`actions: read` を持つ（PR のコードはチェックアウトしない）。`accepting.yml` は、ラベルを付け外しする `issues: write` だけを持つ（PR のコードはチェックアウトしない）。`ready.yml` は、ラベルを付け外しする `issues: write` と、既定のブランチのスクリプトをチェックアウトする `contents: read` を持つ。
 
-GitHub Actions の無料枠は、private のリポジトリで月 2,000 分（public のあいだは、標準のランナーに上限が無い）。private に戻したときは、`evidence-main` のマージごとの約 11 分と、上の PR の e2e の延びと `evidence` のジョブの分も枠に数える。e2e と AI レビューで足りなくなりそうなら、上と同じく対象の PR を絞る。e2e のシャードは、それぞれが準備、Playwright の導入、build を繰り返す（1つあたり約1分）ので、分ける前より1回あたり約2分多く数える。
+GitHub Actions の無料枠は、private のリポジトリで月 2,000 分（public のあいだは、標準のランナーに上限が無い）。private に戻したときは、`ready` の定期の実行（1時間ごとで、1回を1分に切り上げて数えるので月約 720 分）と、`evidence-main` のマージごとの約 11 分と、上の PR の e2e の延びと `evidence` のジョブの分も枠に数える。e2e と AI レビューで足りなくなりそうなら、上と同じく対象の PR を絞る。e2e のシャードは、それぞれが準備、Playwright の導入、build を繰り返す（1つあたり約1分）ので、分ける前より1回あたり約2分多く数える。
 
 PR ごとのプレビュー環境は持たず、Workers Builds の preview builds も有効にしない。`wrangler versions upload` のプレビュー URL は本番と同じ D1 につながり、マージ前のコードが本番のデータに触れるため。見た目の確認は e2e のスクリーンショットで行い、PR の画面では `evidence` のコメントで見る。`evidence` が上げるのは手元の D1 と seed で撮った静止画だけで、マージ前のコードを動かす環境は立てないので、この方針と食い違わない。
 
