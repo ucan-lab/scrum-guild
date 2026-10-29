@@ -69,7 +69,7 @@ for (const vocabulary of ['game', 'scrum'] as const) {
     await page.getByRole('button', { name: 'もう一度試す', exact: true }).click();
     const rootId = await rootOpen.getAttribute('aria-controls');
     const rootList = page.locator(`[id="${rootId}"]`);
-    await expect(rootList.getByText('ミナト', { exact: true })).toBeVisible();
+    await expect(rootList.getByRole('img', { name: 'ミナト', exact: true })).toBeVisible();
     await expect(rootList.locator('time')).toContainText(`${done}した日`);
     await expect(rootList.locator('time .mono')).toHaveText(/^\d{4}-\d{2}-\d{2}$/);
     await expect(rootList.locator('.pts')).toHaveText('3');
@@ -124,7 +124,10 @@ for (const vocabulary of ['game', 'scrum'] as const) {
       'aria-expanded',
       'false',
     );
-    expect(await collect()).toEqual([]);
+    // ブラウザが出すのは、最初の読み込みをわざと失敗させた 500 の1件だけ
+    expect(await collect()).toEqual([
+      'Failed to load resource: the server responded with a status of 500 (Internal Server Error)',
+    ]);
   });
 }
 
@@ -162,7 +165,11 @@ test('絞り込み中は、完了だけを持つ達成目標に「まだあり�
   const toggle = page.getByRole('button', { name: `完遂 1 件を折りたたんでいます（${story}）`, exact: true });
   await expect(toggle).toHaveAttribute('aria-expanded', 'false');
   await toggle.click();
-  await expect(toggle).toHaveAttribute('aria-expanded', 'true');
+  // 開くと、読み上げの名前は「閉じる」に替わる
+  await expect(page.getByRole('button', { name: `完遂 1 件を閉じる（${story}）`, exact: true })).toHaveAttribute(
+    'aria-expanded',
+    'true',
+  );
 
   const bar = page.getByRole('search', { name: '掲示板の絞り込み' });
   await bar.getByRole('searchbox', { name: 'タイトルで探す' }).fill(story);
@@ -230,5 +237,8 @@ test('開いた直後に空の案内を出さず、押したボタンが消え�
   await expect(list.locator('.entry')).toHaveCount(25);
   await expect(list.getByRole('button', { name: /^(さらに見る|もう一度試す)$/ })).toHaveCount(0);
   await expect(list.getByRole('button', { name: '仮の完了-20', exact: true })).toBeFocused();
-  expect(await collect()).toEqual([]);
+  // ブラウザが出すのは、続きの読み込みをわざと失敗させた 500 の1件だけ
+  expect(await collect()).toEqual([
+    'Failed to load resource: the server responded with a status of 500 (Internal Server Error)',
+  ]);
 });
