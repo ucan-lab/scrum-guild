@@ -2,10 +2,12 @@ import { z } from 'zod';
 import { conflictReasonOf } from '../conflict-reason.ts';
 
 // 計画の画面が出すスプリントの項目。作る操作と変える操作が、書いた後の値として返す。
-// name が null のスプリントは、画面が期間を名前として出す。length は開始日から最終日までの日数（両端を含む）
+// name が null のスプリントは、画面が期間を名前として出す。length は開始日から最終日までの日数（両端を含む）。
+// goal は始めるときに書くゴールで、始まっていないスプリントと、ゴールを書かずに始めたスプリントは null
 export const sprintSummarySchema = z.object({
   id: z.string(),
   name: z.string().nullable(),
+  goal: z.string().nullable(),
   start_on: z.string(),
   end_on: z.string(),
   length: z.number().int(),
@@ -36,15 +38,43 @@ export const sprintTaskSchema = z.object({
 
 export type SprintTask = z.output<typeof sprintTaskSchema>;
 
+// スプリントの画面（sprint-board）のカード。完了したタスクは completed_at を持つ。
+// story は親のストーリー（カードの上に題を添える）。親のないタスクは null。
+// due_on（期日）と repository（振ったリポジトリ。削除したものは null）は、カードの .card-meta に出す
+export const sprintBoardTaskSchema = z.object({
+  id: z.string(),
+  title: z.string(),
+  points: z.number().int().nullable(),
+  assignee: z.object({ id: z.string(), name: z.string() }).nullable(),
+  completed_at: z.string().nullable(),
+  story: z.object({ id: z.string(), title: z.string() }).nullable(),
+  due_on: z.string().nullable(),
+  repository: z.object({ id: z.string(), name: z.string() }).nullable(),
+});
+
+export type SprintBoardTask = z.output<typeof sprintBoardTaskSchema>;
+
+// 列（完了の列は name が null で is_done が真。画面は辞書の「完了」を出す）と、その列のカード（列の中の並びの順）
+export const sprintBoardColumnSchema = z.object({
+  id: z.string(),
+  name: z.string().nullable(),
+  is_done: z.boolean(),
+  tasks: z.array(sprintBoardTaskSchema),
+});
+
+export type SprintBoardColumn = z.output<typeof sprintBoardColumnSchema>;
+
 // 一覧（sprint-list）の行。スプリントの項目に、入っているタスクを足したもの
 export const sprintPlanSchema = sprintSummarySchema.extend({ tasks: z.array(sprintTaskSchema) });
 
 export type SprintPlan = z.output<typeof sprintPlanSchema>;
 
-// スプリントの作成、変更、削除を 409 の conflict で断った理由（details.reason）。
+// スプリントの作成、変更、削除、開始を 409 の conflict で断った理由（details.reason）。
 // overlap は同じワークスペースの削除していないスプリント（終了したものも含む）と期間が重なる（2つの画面から同時に作った後の方を含む）、
-// started は始まった（進行中か終了した）スプリントを変えようとした、または削除しようとした
-export const sprintConflictReasons = ['overlap', 'started'] as const;
+// started は始まった（進行中か終了した）スプリントを変えようとした、削除しようとした、または始めようとした、
+// active_exists は進行中のスプリントが既にあるのに始めようとした（2つの画面から同時に始めた後の方を含む）、
+// ended は最終日がワークスペースの今日より前のスプリントを始めようとした
+export const sprintConflictReasons = ['overlap', 'started', 'active_exists', 'ended'] as const;
 export type SprintConflictReason = (typeof sprintConflictReasons)[number];
 
 export function sprintConflictReasonOf(details: unknown): SprintConflictReason | undefined {

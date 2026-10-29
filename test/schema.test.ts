@@ -137,6 +137,26 @@ describe('外部キー', () => {
     expect(details).not.toMatch(/^SCAN tasks\b/m);
   });
 
+  // 進行中のスプリントを引く文（activeSprintRowFilter）は、'active' を束縛せず文字のまま書くので、部分索引 sprints_active を使う。
+  // 束縛の値（?）で書くと、SQLite は索引の条件を含むと示せず、使わない
+  test('進行中のスプリントを引く文は、部分索引 sprints_active を使う', async () => {
+    const plan = async (sql: string) => {
+      const { results } = await env.DB.prepare(`EXPLAIN QUERY PLAN ${sql}`).bind(id()).all<{ detail: string }>();
+      return results.map((row) => row.detail).join('\n');
+    };
+
+    expect(
+      await plan(
+        `SELECT act.id FROM sprints AS act WHERE act.workspace_id = ? AND (act.status = 'active' AND act.deleted_at IS NULL)`,
+      ),
+    ).toContain('USING INDEX sprints_active');
+    expect(
+      await plan(
+        `SELECT act.id FROM sprints AS act WHERE act.workspace_id = ? AND act.status = 'active' AND act.deleted_at IS NULL`,
+      ),
+    ).toContain('USING INDEX sprints_active');
+  });
+
   // 使わない索引も書くたびに更新され、D1 の書いた行数に数えられる。統計の無い空の表では計画が変わらないので、残っていないことを直に見る
   test('外部キーの検査の索引と重なる部分索引は残っていない', async () => {
     const { results } = await env.DB.prepare(

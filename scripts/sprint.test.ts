@@ -3,11 +3,14 @@ import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 import {
   addDays,
+  normalizeSprintGoal,
   normalizeSprintName,
   sprintDefaults,
   sprintEndOn,
+  sprintGoalProblem,
   sprintLengthOf,
   sprintNameProblem,
+  sprintProgress,
   weekdayOf,
 } from '../src/shared/sprint.ts';
 
@@ -63,5 +66,38 @@ describe('名前', () => {
     assert.equal(sprintNameProblem('😀'.repeat(100)), null);
     assert.equal(sprintNameProblem('あ'.repeat(101)), 'too_long');
     assert.equal(sprintNameProblem('a​b'), 'invalid_character');
+  });
+});
+
+describe('ゴール', () => {
+  test('前後の空白を除き、改行を LF にそろえ、空白だけなら null', () => {
+    assert.equal(normalizeSprintGoal('  依頼を3件\r\n受ける \n'), '依頼を3件\n受ける');
+    assert.equal(normalizeSprintGoal(' 　 '), null);
+    assert.equal(normalizeSprintGoal(''), null);
+  });
+
+  test('200 字まで（コードポイント）で、改行とタブは通し、見えない文字は断る', () => {
+    assert.equal(sprintGoalProblem(null), null);
+    assert.equal(sprintGoalProblem('😀'.repeat(200)), null);
+    assert.equal(sprintGoalProblem('あ'.repeat(201)), 'too_long');
+    assert.equal(sprintGoalProblem('一行目\n\t二行目'), null);
+    assert.equal(sprintGoalProblem('a​b'), 'invalid_character');
+    assert.equal(sprintGoalProblem('a\u0007b'), 'invalid_character');
+  });
+});
+
+describe('進行中の日数', () => {
+  const sprint = { start_on: '2026-10-26', end_on: '2026-11-08' };
+
+  test('今日が何日目かと、今日を含めた残りの日数を返す（見本の「残り」と同じ数え方で、最終日は残り 1 日）', () => {
+    assert.deepEqual(sprintProgress(sprint, '2026-10-26'), { day: 1, length: 14, remaining: 14 });
+    assert.deepEqual(sprintProgress(sprint, '2026-11-02'), { day: 8, length: 14, remaining: 7 });
+    assert.deepEqual(sprintProgress(sprint, '2026-11-08'), { day: 14, length: 14, remaining: 1 });
+  });
+
+  test('開始日の前は 1 日目で残りは長さのまま、最終日を過ぎたら最終日に丸めて残りは 0', () => {
+    assert.deepEqual(sprintProgress(sprint, '2026-10-20'), { day: 1, length: 14, remaining: 14 });
+    assert.deepEqual(sprintProgress(sprint, '2026-11-09'), { day: 14, length: 14, remaining: 0 });
+    assert.deepEqual(sprintProgress(sprint, '2026-12-01'), { day: 14, length: 14, remaining: 0 });
   });
 });

@@ -46,6 +46,18 @@ test('遠征に入れるダイアログ（SprintTaskPicker）を開いた状態�
   await expectNoA11yViolationsInThemes(page, 'sprint-task-picker');
 });
 
+test('遠征を始めるダイアログ（SprintStartDialog）を開いた状態に axe の違反が無い', async ({ page }) => {
+  await page.goto(`${WORKSPACE}/plan`);
+  const open = page.getByRole('button', { name: '始める: 遠征 11/2〜11/15' });
+  await expect(open).toBeVisible();
+  await waitForSettled(page);
+  await open.click();
+  const dialog = page.getByRole('dialog', { name: '遠征を始める' });
+  await expect(dialog.getByLabel('遠征の目的')).toBeVisible();
+  await expect(page.locator('[aria-busy="true"]:visible')).toHaveCount(0);
+  await expectNoA11yViolationsInThemes(page, 'sprint-start');
+});
+
 test('メンバーを外す確かめ（ConfirmDialog）を開いた状態に axe の違反が無い', async ({ page }) => {
   await page.goto(`${WORKSPACE}/members`);
   const remove = page.getByRole('button', { name: 'ハルカを外す' });

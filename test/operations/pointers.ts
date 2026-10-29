@@ -54,6 +54,20 @@ async function commentFor(target: Target, caller: Person) {
   return createComment(target.organization, target.workspace.id, task.id, author.userId!);
 }
 
+// 進行中のスプリントは1つなので、新しく始める入力を作る前に、前の呼び出しで始めたものを終了にして空ける
+async function closeActiveSprints(target: Target): Promise<void> {
+  const db = orgDb(env, target.organization.verified);
+  await db.run(
+    db.statement((q) =>
+      q
+        .updateTable('sprints')
+        .set({ status: 'closed' })
+        .where('workspace_id', '=', target.workspace.id)
+        .where('status', '=', 'active'),
+    ),
+  );
+}
+
 // 個人のアカウントの GitHub のユーザーを足して返す。呼ぶたびに別の人
 function newGithubUser() {
   const user = githubUser(`pointer-${crypto.randomUUID().slice(0, 8)}`);
@@ -385,6 +399,33 @@ export const pointers: Pointers = {
     });
     await createSprintEntry(target.organization, target.workspace.id, sprint.id, task.id, target.admin.userId!);
     return { workspace_id: target.workspace.id, sprint_id: sprint.id, task_id: task.id };
+  },
+  // 呼ぶたびに、進行中のスプリントを閉じ、先のスプリントを作る（進行中が既にあると始められず、始めたスプリントは続けて始められないため）
+  'sprint-start': async (target) => {
+    await closeActiveSprints(target);
+    // 最終日が今日より前のスプリントは始められないので、遠い先の期間を指す
+    const startOn = nextSprintStart();
+    const endOn = new Date(Date.parse(startOn) + 13 * 86_400_000).toISOString().slice(0, 10);
+    const sprint = await createSprint(target.organization, target.workspace.id, { start_on: startOn, end_on: endOn });
+    return { workspace_id: target.workspace.id, sprint_id: sprint.id, goal: '新しい依頼を3件受ける' };
+  },
+  'sprint-board': async (target) => ({ workspace_id: target.workspace.id }),
+  // 呼ぶたびに、進行中のスプリント、列を2つ、先頭の列のカードを作り、次の列へ移す（移したカードは同じ列への移動になるため）
+  'task-column-move': async (target) => {
+    await closeActiveSprints(target);
+    const sprint = await createSprint(target.organization, target.workspace.id, { status: 'active' });
+    const first = await createBoardColumn(target.organization, target.workspace.id, { position: 'a0' });
+    const second = await createBoardColumn(target.organization, target.workspace.id, {
+      name: '遂行中',
+      position: 'a1',
+    });
+    const task = await createTask(target.organization, target.workspace.id, target.admin.userId!, {
+      sprint_id: sprint.id,
+      column_id: first.id,
+      column_position: 'a0',
+    });
+    await createSprintEntry(target.organization, target.workspace.id, sprint.id, task.id, target.admin.userId!);
+    return { workspace_id: target.workspace.id, task_id: task.id, column_id: second.id, after_task_id: null };
   },
   'category-repository-list': async (target) => ({ workspace_id: target.workspace.id }),
   // 名前は呼ぶたびに変える（同じ名前は 409 になるため）

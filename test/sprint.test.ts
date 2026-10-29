@@ -138,6 +138,7 @@ describe('sprint-list', () => {
       {
         id: active.id,
         name: null,
+        goal: null,
         start_on: '2026-10-26',
         end_on: '2026-11-08',
         length: 14,
@@ -147,6 +148,7 @@ describe('sprint-list', () => {
       {
         id: later.id,
         name: '年末',
+        goal: null,
         start_on: '2026-11-09',
         end_on: '2026-11-22',
         length: 14,

@@ -5,6 +5,7 @@
 // スクラムの言葉は workspace の操作の応答の書き換えで当てる。開くだけで、seed の行もテーマも書き換えない（ほかのファイルと並べて走るため）
 import type { Page } from '@playwright/test';
 import type { DictionaryKey, TemplateParams } from '../src/shared/vocabulary.ts';
+import { sprintBoard } from '../src/shared/operations/sprint/index.ts';
 import { expect, test } from './fixtures.ts';
 import { workspaceInfo } from '../src/shared/operations/workspace/workspace.ts';
 import {
@@ -15,7 +16,8 @@ import {
   findTargetSizeViolations,
   signIn,
 } from './helpers.ts';
-import { rewriteOperation } from './operations.ts';
+import { mockOperation, rewriteOperation } from './operations.ts';
+import { SAMPLE_BOARD } from './sprint-fixture.ts';
 
 const WORKSPACE = '/aoba/w/019a0000-0000-7000-8000-000000000401';
 const TASK_ID = '019a0000-0000-7000-8000-000000000801';
@@ -64,6 +66,17 @@ test('計画が 390px で横にはみ出さず、押せる要素が 44px 四方�
   await expectNarrowLayout(page, 'plan', async (w) => {
     await page.goto(`${WORKSPACE}/plan`);
     await expect(page.getByRole('heading', { level: 1, name: w('plan') })).toBeVisible();
+    await expectWorkspaceWords(page, w);
+  });
+});
+
+test('スプリントが 390px で横にはみ出さず、押せる要素が 44px 四方で押せる', async ({ page }) => {
+  // aoba のワークスペースには進行中のスプリントを置かない（seed の進行中は別の組織のワークスペース）ので、架空のスプリントと列とカードに差し替える
+  await mockOperation(page, sprintBoard, { slug: 'aoba' }, SAMPLE_BOARD);
+  await expectNarrowLayout(page, 'sprint', async (w) => {
+    await page.goto(`${WORKSPACE}/sprint`);
+    await expect(page.getByRole('heading', { level: 1, name: `${w('sprint')} 第14回` })).toBeVisible();
+    await expect(page.getByRole('article', { name: 'ポイント付与のバッチを作る' })).toBeVisible();
     await expectWorkspaceWords(page, w);
   });
 });

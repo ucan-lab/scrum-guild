@@ -245,11 +245,14 @@
   }
 
   // 並べ替えの「上へ」「下へ」と「親を移す」（本番の TaskEntry、TreeStory と同じ組み方）。
-  // order: { first, last, parent }。端の向きは aria-disabled（フォーカスを失わない）。parent が真なら「親を移す」も出す
+  // order: { first, last, parent, across }。端の向きは aria-disabled（フォーカスを失わない）。parent が真なら「親を移す」も出す。
+  // across: { first, last } を渡すと、スプリントの画面のカードのように、隣の列へ移す「前の列へ」「次の列へ」を両端に足す
   function orderActions(title, order) {
     const btn = (name, label, disabled) =>
       `<button class="icon-btn" type="button" data-order="${name}" aria-label="${label}: ${esc(title)}" title="${label}"${disabled === undefined ? "" : ` aria-disabled="${disabled}"`}>${icon(name)}</button>`;
-    return `<span class="order-actions">${btn("up", "上へ", Boolean(order.first))}${btn("down", "下へ", Boolean(order.last))}${order.parent ? btn("swap", "親を移す") : ""}</span>`;
+    const left = order.across ? btn("left", `前の${t("column")}へ`, Boolean(order.across.first)) : "";
+    const right = order.across ? btn("right", `次の${t("column")}へ`, Boolean(order.across.last)) : "";
+    return `<span class="order-actions">${left}${btn("up", "上へ", Boolean(order.first))}${btn("down", "下へ", Boolean(order.last))}${right}${order.parent ? btn("swap", "親を移す") : ""}</span>`;
   }
 
   // 行の先頭のつまみ（飾りで、aria-hidden）。order を渡した行（書き込めるとき）だけに付く。
@@ -379,23 +382,34 @@
   }
 
   // スプリントのカード（列の中）
-  function card(x) {
+  // order を渡したカード（完了していないカード）は tabindex="0" で選べ、下に移す操作（.order-actions）を持つ。
+  // キーボードでは、選んで Alt と ← → で隣の列、Alt と ↑ ↓ で列の中を動かす（本番の SprintBoard）。完了の列のカードは動かさない
+  function card(x, order) {
     const parent = x.story ? D.stories[x.story].title : null;
-    return `<article class="card ${x.doneAt ? "is-done" : ""}">
+    // 選べるカードは、題を名前に、ポイントと担当の要約と画面の下の動かし方の案内（#board-key-hint）を説明に読む
+    const who = x.who ? user(x.who).name : null;
+    const summary = `${x.pts == null ? "未見積もり" : `${t("points")} ${x.pts}`}、${who ? `${t("assignee")}は${esc(who)}` : `${t("assignee")}なし`}`;
+    return `<article class="card ${x.doneAt ? "is-done" : ""}"${order ? ` tabindex="0" aria-labelledby="card-${x.id}-title" aria-describedby="card-${x.id}-summary board-key-hint"` : ""}>
+      ${order ? `<span class="visually-hidden" id="card-${x.id}-summary">${summary}</span>` : ""}
       ${parent ? `<span class="card-parent">${icon("flag")} ${esc(parent)}</span>` : ""}
-      <a class="card-title" href="#" data-task="${x.id}">${titleOf(x)}</a>
+      <a class="card-title" id="card-${x.id}-title" href="#" data-task="${x.id}">${titleOf(x)}</a>
       <div class="card-meta">${repoTag(x)}${sourceKey(x)}${taskFlags(x)}${taskDue(x)}</div>
       <div class="card-foot">${pts(x.pts)}${avatarOf(x.who)}<span class="card-end">${doneControl(x)}</span></div>
+      ${order ? `<div class="card-moves">${orderActions(x.title, order)}</div>` : ""}
     </article>`;
   }
   function board(sprintId) {
     const list = tasksWhere((x) => x.sprint === sprintId);
-    return `<div class="board-wrap"><div class="board">${D.columns.map((c) => {
+    const open = D.columns.filter((c) => !c.done);
+    return `<div class="board-wrap"><div class="board" style="--board-cols:${D.columns.length}">${D.columns.map((c) => {
       const items = list.filter((x) => (c.done ? x.doneAt : !x.doneAt && x.col === c.id));
+      const at = open.indexOf(c);
+      // 完了の列へはここから移さない（完了にするのは各カードの完了の操作）ので、最後の完了でない列の「次の列へ」は押せない
+      const orderOf = (i) => ({ first: i === 0, last: i === items.length - 1, across: { first: at === 0, last: at === open.length - 1 } });
       return `<section class="board-col ${c.done ? "is-done" : ""}" aria-label="${c.done ? t("done") : esc(c.name)}">
         <div class="board-col-head">${c.done ? icon("check") : ""}<span class="board-col-name">${c.done ? t("done") : esc(c.name)}</span><span class="board-col-n">${items.length}</span><span class="board-col-pts">${sumPts(items)} pt</span></div>
         ${c.done && D.definitionOfDone.length ? `<details class="dod"><summary>${t("dod")}</summary>${dodDoc()}</details>` : ""}
-        ${items.map(card).join("") || `<p class="board-empty">なし</p>`}
+        ${items.map((x, i) => card(x, c.done ? undefined : orderOf(i))).join("") || `<p class="board-empty">なし</p>`}
       </section>`;
     }).join("")}</div></div>`;
   }
@@ -500,7 +514,7 @@
     const ticks = Array.from({ length: s.days }, (_, i) => `<i class="${i < s.dayIndex ? "is-past" : i === s.dayIndex ? "is-today" : ""}"></i>`).join("");
     return `<article class="notice">
       <span class="notice-label">${t("sprintGoal")}</span>
-      <p class="notice-title">${esc(s.goal)}</p>
+      <p class="notice-title is-goal">${esc(s.goal)}</p>
       <div class="notice-meta">${opts.showWs !== false ? `<span>${esc(D.workspaces[s.ws].name)}</span>` : ""}<span>${sprintLabel(id)}</span>${s.name ? `<span class="mono">${md(s.start)}〜${md(s.end)}</span>` : ""}<span>残り ${s.days - s.dayIndex} 日</span></div>
       <div class="day-ticks" role="img" aria-label="${s.days} 日のうち ${s.dayIndex + 1} 日目">${ticks}</div>
     </article>`;
@@ -1246,11 +1260,26 @@ const looooooooooooooooooooooooooooooooooongLine = "コードの長い1行は、
         `<button class="btn is-primary" type="button" data-close-dialog>やめる</button><button class="btn is-danger" type="button" data-close-dialog data-toast="${t("sprint")}を削除しました">削除する</button>`);
       document.querySelector(".dialog-sheet").classList.add("is-danger");
     },
-    sprintStart: () => openDialog(`${t("sprint")}を始める`,
-      `<p>${sprintLabel("sp15")}（${md(D.sprints.sp15.start)}〜${md(D.sprints.sp15.end)}）を始めます。入っている${t("task")}は 3 件、11 pt です。</p>
-       <div class="callout is-warn">${icon("alert")}<span>未見積もりが 1 件、${t("detail")}が未記入のものが 2 件あります。始めることはできます。</span></div>
-       <label class="field" for="d-goal"><span class="field-label">${t("sprintGoal")}</span><textarea class="textarea" id="d-goal" placeholder="この${t("sprint")}で何ができるようになるか"></textarea><span class="field-hint">空でも始められます。計画、${t("sprint")}、自分の今日の画面に出ます。</span></label>`,
-      `<button class="btn is-quiet" type="button" data-close-dialog>やめる</button><button class="btn is-primary" type="button" data-close-dialog data-toast="${t("sprint")}を始めました">始める</button>`),
+    // スプリントを始めるダイアログ（本番は SprintStartDialog）。押したボタンの data-state で状態を替える。
+    // active: 進行中のスプリントが既にある（開いた時点から理由を出し、「始める」を押せなくする）、
+    // ended: 最終日が今日より前（押した後に理由を出して開いたまま）、toolong: ゴールが 200 字を超えた（欄の下に理由）
+    sprintStart: (el) => {
+      const state = (el && el.dataset && el.dataset.state) || "";
+      const sprint = `${t("sprint")}`;
+      const lead = state === "active"
+        ? `<div class="callout is-danger" role="alert">${icon("alert")}<span>進行中の${sprint}があるので、始められません。終えてから始めてください</span></div>`
+        : `<div class="callout is-warn">${icon("alert")}<span>未見積もりが 1 件あります。始めることはできます。</span></div>`;
+      const goalError = state === "toolong"
+        ? `<span class="field-error" id="d-goal-error" role="alert">${icon("alert")}${t("sprintGoal")}は 200 字までです</span>` : "";
+      const submitError = state === "ended"
+        ? `<div class="callout is-danger" role="alert">${icon("alert")}<span>この${sprint}は最終日を過ぎているので、始められません。期間を直すか、削除して作り直してください</span></div>` : "";
+      openDialog(`${sprint}を始める`,
+        `<p>${sprintLabel("sp15")}（${md(D.sprints.sp15.start)}〜${md(D.sprints.sp15.end)}）を始めます。入っている${t("task")}は 3 件、11 pt です。</p>
+         ${lead}
+         <label class="field${state === "toolong" ? " is-invalid" : ""}" for="d-goal"><span class="field-label">${t("sprintGoal")}</span><textarea class="textarea" id="d-goal" placeholder="この${sprint}で何ができるようになるか" aria-describedby="d-goal-hint${goalError ? " d-goal-error" : ""}"${state === "toolong" ? ` aria-invalid="true"` : ""}></textarea>${goalError}<span class="field-hint" id="d-goal-hint">空でも始められます。200 字まで書け、${t("plan")}と${sprint}の画面に出ます。</span></label>
+         ${submitError}`,
+        `<button class="btn is-quiet" type="button" data-close-dialog>やめる</button><button class="btn is-primary" type="button"${state === "active" ? ` aria-disabled="true"` : ` data-close-dialog data-toast="${sprint}を始めました"`}>始める</button>`);
+    },
     sprintExtend: () => openDialog(`${t("sprint")}を延ばす`,
       `<div class="form-row"><label class="field" for="d-days"><span class="field-label">延ばす日数</span><input class="input" id="d-days" type="number" min="1" value="2"></label>
          <div class="field"><span class="field-label">新しい最終日</span><span class="mono">2026-10-28（水）</span></div></div>

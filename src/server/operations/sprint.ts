@@ -4,6 +4,7 @@ import {
   sprintCreate,
   sprintDelete,
   sprintList,
+  sprintStart,
   sprintTaskAdd,
   sprintTaskRemove,
   sprintUpdate,
@@ -16,6 +17,7 @@ import { sprintDefaults, sprintEndOn, sprintLengthOf } from '../../shared/sprint
 import {
   jsonList,
   jsonPairLookup,
+  activeSprintRowFilter,
   previousStatementChanged,
   sprintLeftLogSql,
   sprintLogRefSql,
@@ -32,17 +34,25 @@ import { actorUserIdOf, changeLogColumns, openWorkspace, throwIfClosed } from '.
 // 同時の更新に負けたときにやり直す回数の上限。超えたら 409 の conflict（story-update と同じ）
 const MAX_UPDATE_ATTEMPTS = 3;
 
-type SprintRow = { id: string; name: string | null; start_on: string; end_on: string; status: string };
+export type SprintRow = {
+  id: string;
+  name: string | null;
+  goal: string | null;
+  start_on: string;
+  end_on: string;
+  status: string;
+};
 
 function conflict(reason: SprintConflictReason): ApiError {
   return new ApiError(409, 'conflict', { reason });
 }
 
 // 画面に返す形。一覧は planned と active だけを返し、変える操作は planned だけを書くので、status はこの2つになる
-function summaryOf(row: SprintRow): SprintSummary {
+export function summaryOf(row: SprintRow): SprintSummary {
   return {
     id: row.id,
     name: row.name,
+    goal: row.goal,
     start_on: row.start_on,
     end_on: row.end_on,
     length: sprintLengthOf(row.start_on, row.end_on),
@@ -86,7 +96,7 @@ async function readSprint(db: OrganizationDb, workspaceId: string, sprintId: str
     db.statement((q) =>
       q
         .selectFrom('sprints')
-        .select(['sprints.id', 'sprints.name', 'sprints.start_on', 'sprints.end_on', 'sprints.status'])
+        .select(['sprints.id', 'sprints.name', 'sprints.goal', 'sprints.start_on', 'sprints.end_on', 'sprints.status'])
         .where('sprints.id', '=', sprintId)
         .where('sprints.workspace_id', '=', workspaceId)
         .where('sprints.deleted_at', 'is', null),
@@ -110,7 +120,7 @@ export const sprintListOperation = implement(sprintList, async ({ db, workspace 
     db.statement((q) =>
       q
         .selectFrom('sprints')
-        .select(['sprints.id', 'sprints.name', 'sprints.start_on', 'sprints.end_on', 'sprints.status'])
+        .select(['sprints.id', 'sprints.name', 'sprints.goal', 'sprints.start_on', 'sprints.end_on', 'sprints.status'])
         .where('sprints.workspace_id', '=', workspaceId)
         .where('sprints.deleted_at', 'is', null)
         .where('sprints.status', 'in', ['planned', 'active'])
@@ -254,7 +264,14 @@ export const sprintCreateOperation = implement(sprintCreate, async ({ db, actor,
     throw new ApiError(404, 'not_found');
   }
   return {
-    sprint: summaryOf({ id: sprintId, name: input.name, start_on: input.start_on, end_on: endOn, status: 'planned' }),
+    sprint: summaryOf({
+      id: sprintId,
+      name: input.name,
+      goal: null,
+      start_on: input.start_on,
+      end_on: endOn,
+      status: 'planned',
+    }),
   };
 });
 
@@ -371,6 +388,117 @@ export const sprintUpdateOperation = implement(sprintUpdate, async ({ db, actor,
     if (rangeChanged && (await overlapExists(db, workspaceId, startOn, endOn, sprintId))) throw conflict('overlap');
   }
   throw new ApiError(409, 'conflict');
+});
+
+// 進行中のスプリント（削除していない）。1つのワークスペースに高々1つ（一意の索引 sprints_active）。
+// 始める文の条件（無いこと）と、条件で落ちた理由の判定、スプリントの画面の読み取りと列の移動の条件に使う
+export function activeSprint(from: From, workspaceId: string) {
+  return from
+    .selectFrom('sprints as act')
+    .select('act.id')
+    .where('act.workspace_id', '=', workspaceId)
+    .where(activeSprintRowFilter('act'));
+}
+
+// 始める。書く文は、読んだスプリントが始まっておらず（planned）、最終日がワークスペースの今日以降で、閉じていないワークスペースで、
+// 進行中のスプリントが無いときだけ書く。開始日は見ない（開始日より前に始めてよい）。
+// 今日はワークスペースのタイムゾーンで数え、書く文の条件には読んだ日付の値を渡す（判定と書き込みで今日がずれない）。
+// D1 の batch() は順に流れるので、2つの要求が同時に始めても、後の要求の文は先に始まった行を見て何も書かない（一意の索引 sprints_active も守る）。
+// 通らなかったら理由を読み直して分ける（閉じた、無い、始まった、終わっている、進行中が既にある）
+export const sprintStartOperation = implement(sprintStart, async ({ db, actor, workspace, input }) => {
+  const actorUserId = actorUserIdOf(actor);
+  const organizationId = db.organizationId;
+  const workspaceId = workspace.workspaceId;
+  const sprintId = input.sprint_id;
+  const goal = input.goal;
+
+  const at = now();
+  const settings = await db.first(
+    db.statement((q) =>
+      q
+        .selectFrom('workspaces')
+        .select('workspaces.timezone')
+        .where('workspaces.id', '=', workspaceId)
+        .where('workspaces.organization_id', '=', organizationId),
+    ),
+  );
+  if (settings === undefined) throw new ApiError(404, 'not_found');
+  const today = todayIn(settings.timezone, at);
+
+  const current = await readSprint(db, workspaceId, sprintId);
+  if (current === undefined) {
+    await throwIfClosed(db, workspaceId);
+    throw new ApiError(404, 'not_found');
+  }
+  if (current.status !== 'planned') {
+    await throwIfClosed(db, workspaceId);
+    throw conflict('started');
+  }
+  if (current.end_on < today) {
+    await throwIfClosed(db, workspaceId);
+    throw conflict('ended');
+  }
+
+  const startedAt = at.toISOString();
+  const results = await db.batch([
+    db.statement((q) =>
+      q
+        .updateTable('sprints')
+        .set({ status: 'active', goal, started_at: startedAt, started_by: actorUserId, updated_at: startedAt })
+        .where((eb) =>
+          eb.and([
+            eb('id', '=', sprintId),
+            eb('workspace_id', '=', workspaceId),
+            eb('deleted_at', 'is', null),
+            eb('status', '=', 'planned'),
+            eb('end_on', '>=', today),
+            eb.exists(openWorkspace(q, organizationId, workspaceId)),
+            eb.not(eb.exists(activeSprint(q, workspaceId))),
+          ]),
+        ),
+    ),
+    // 直前の UPDATE が行を変えたときだけ履歴を書く（docs/data-model.md の「直前の文に結ぶ」）
+    db.statement((q) =>
+      q
+        .insertInto('change_logs')
+        .columns(changeLogColumns)
+        .expression(
+          q
+            .selectNoFrom((eb) => [
+              eb.val(uuidv7(at)).as('id'),
+              eb.val(organizationId).as('organization_id'),
+              eb.val(workspaceId).as('workspace_id'),
+              eb.val(actorUserId).as('actor_user_id'),
+              eb.val('sprint').as('entity_type'),
+              eb.val(sprintId).as('entity_id'),
+              eb.val('update').as('action'),
+              eb
+                .val(
+                  JSON.stringify({
+                    status: ['planned', 'active'],
+                    ...(goal === null ? {} : { goal: [null, goal] }),
+                  }),
+                )
+                .as('changes_json'),
+              eb.val(startedAt).as('created_at'),
+            ])
+            .where(previousStatementChanged),
+        ),
+    ),
+  ]);
+
+  if ((results[0]?.changes ?? 0) === 0) {
+    await throwIfClosed(db, workspaceId);
+    const reread = await readSprint(db, workspaceId, sprintId);
+    if (reread === undefined) throw new ApiError(404, 'not_found');
+    if (reread.status !== 'planned') throw conflict('started');
+    if (reread.end_on < today) throw conflict('ended');
+    if ((await db.first(db.statement((q) => activeSprint(q, workspaceId).limit(1)))) !== undefined) {
+      throw conflict('active_exists');
+    }
+    throw new ApiError(409, 'conflict');
+  }
+  return { sprint: summaryOf({ ...current, goal, status: 'active' }) };
 });
 
 // 論理削除。書く文は、削除していない、始まっていない、閉じていないワークスペースのスプリントだけを書く
@@ -518,7 +646,7 @@ function openSprint(from: From, workspaceId: string, sprintId: string) {
 }
 
 // 入れる先の列。削除していない列のうち、先頭（ORDER BY is_done, position）のもの
-function firstColumn(from: From, workspaceId: string) {
+export function firstColumn(from: From, workspaceId: string) {
   return from
     .selectFrom('board_columns as first')
     .select('first.id')

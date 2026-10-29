@@ -2240,6 +2240,110 @@ export const dictionary = defineDictionary({
   sprintTaskPickSearch: workspace('{task}と{story}のタイトルで絞る', '{task}と{story}のタイトルで絞る'),
   sprintTaskPickSearchPlaceholder: workspace('タイトルで絞る', 'タイトルで絞る'),
   sprintTaskPickNoMatch: workspace('当てはまる{task}がありません', '当てはまる{task}がありません'),
+  // スプリントを始めるダイアログ（kit.js の DIALOGS.sprintStart）と、計画の画面の進行中のスプリントのゴール
+  sprintStartAction: workspace('始める', '始める'),
+  sprintStartLabel: workspace('始める: {label}', '始める: {label}'),
+  sprintStartTitle: workspace('{sprint}を始める', '{sprint}を始める'),
+  sprintStartText: workspace(
+    '{label}（{period}）を始めます。入っている{task}は {count} 件、{points} pt です。',
+    '{label}（{period}）を始めます。入っている{task}は {count} 件、{points} pt です。',
+  ),
+  sprintStartUnestimated: workspace(
+    '未見積もりが {count} 件あります。始めることはできます。',
+    '未見積もりが {count} 件あります。始めることはできます。',
+  ),
+  sprintStartGoalPlaceholder: workspace('この{sprint}で何ができるようになるか', 'この{sprint}で何ができるようになるか'),
+  sprintStartGoalHint: workspace(
+    '空でも始められます。{max} 字まで書け、{plan}と{sprint}の画面に出ます。',
+    '空でも始められます。{max} 字まで書け、{plan}と{sprint}の画面に出ます。',
+  ),
+  sprintStartGoalTooLong: workspace('{sprintGoal}は {max} 字までです', '{sprintGoal}は {max} 字までです'),
+  sprintStartGoalInvalidCharacter: workspace(
+    '{sprintGoal}に使えない文字が含まれています',
+    '{sprintGoal}に使えない文字が含まれています',
+  ),
+  sprintStartSubmit: workspace('始める', '始める'),
+  sprintStarting: workspace('始めています', '始めています'),
+  sprintStartDone: workspace('{sprint}を始めました', '{sprint}を始めました'),
+  sprintStartFailed: workspace(
+    '始められませんでした。もう一度試してください',
+    '始められませんでした。もう一度試してください',
+  ),
+  // 進行中の{sprint}が既にあるとき。ダイアログを開いた時点で分かれば、押す前から出す
+  sprintStartActiveExists: workspace(
+    '進行中の{sprint}があるので、始められません。終えてから始めてください',
+    '進行中の{sprint}があるので、始められません。終えてから始めてください',
+  ),
+  // 最終日がワークスペースの今日より前のスプリント。期間を直すか、削除して作り直す
+  sprintStartEnded: workspace(
+    'この{sprint}は最終日を過ぎているので、始められません。期間を直すか、削除して作り直してください',
+    'この{sprint}は最終日を過ぎているので、始められません。期間を直すか、削除して作り直してください',
+  ),
+  sprintStartAlreadyStarted: workspace(
+    'この{sprint}はもう始まっています。一覧を読み直します',
+    'この{sprint}はもう始まっています。一覧を読み直します',
+  ),
+  sprintStartForbidden: workspace('{sprint}を始めるのは{leader}です', '{sprint}を始めるのは{leader}です'),
+  // スプリントの画面（design/sprint.html）。見出しは進行中のスプリントの名前、小見出しは期間と何日目か
+  sprintBoardPageName: workspace('{name}・{workspace}', '{name}・{workspace}'),
+  sprintBoardEyebrow: workspace('{period}・{length} 日のうち {day} 日目', '{period}・{length} 日のうち {day} 日目'),
+  sprintBoardTallyDone: workspace('{done}（pt）', '{done}（pt）'),
+  sprintBoardTallyTotal: workspace('合計（pt）', '合計（pt）'),
+  sprintBoardTallyRemaining: workspace('残り（日）', '残り（日）'),
+  sprintBoardRegion: workspace('{sprint}の{column}とカード', '{sprint}の{column}とカード'),
+  sprintBoardColumnEmpty: workspace('なし', 'なし'),
+  sprintBoardColumnPoints: workspace('{points} pt', '{points} pt'),
+  sprintBoardKeyHint: workspace(
+    'カードを選んで Alt と ← → で隣の{column}、Alt と ↑ ↓ で{column}の中を動かせます。カードの下のボタンでも同じです。',
+    'カードを選んで Alt と ← → で隣の{column}、Alt と ↑ ↓ で{column}の中を動かせます。カードの下のボタンでも同じです。',
+  ),
+  sprintBoardEmptyTitle: workspace('進行中の{sprint}はありません', '進行中の{sprint}はありません'),
+  sprintBoardEmptyLeaderText: workspace(
+    '{plan}の画面で{sprint}を作り、{backlog}から{task}を入れてから始めます。始めると、ここに{column}とカードが並びます。',
+    '{plan}の画面で{sprint}を作り、{backlog}から{task}を入れてから始めます。始めると、ここに{column}とカードが並びます。',
+  ),
+  sprintBoardEmptyMemberText: workspace(
+    '{sprint}を作って始めるのは{leader}です。{sprint}に入っていない{task}も、{backlog}から進めて{done}にできます。',
+    '{sprint}を作って始めるのは{leader}です。{sprint}に入っていない{task}も、{backlog}から進めて{done}にできます。',
+  ),
+  sprintBoardEmptyClosedText: workspace(
+    '終了した{workspace}では、{sprint}を始められません。',
+    '終了した{workspace}では、{sprint}を始められません。',
+  ),
+  sprintBoardOpenPlan: workspace('{plan}を開く', '{plan}を開く'),
+  sprintBoardOpenBacklog: workspace('{backlog}を開く', '{backlog}を開く'),
+  // カードの移動。ボタンの読み上げの名前は、同じ名前が並ぶので題を添える
+  moveColumnPrev: workspace('前の{column}へ', '前の{column}へ'),
+  moveColumnNext: workspace('次の{column}へ', '次の{column}へ'),
+  moveColumnPrevLabel: workspace('前の{column}へ: {title}', '前の{column}へ: {title}'),
+  moveColumnNextLabel: workspace('次の{column}へ: {title}', '次の{column}へ: {title}'),
+  // 選んだカードの説明（aria-describedby）。{points} はポイントか未見積もりの文
+  sprintCardSummary: workspace('{points}、{assignee}は{name}', '{points}、{assignee}は{name}'),
+  sprintCardSummaryUnassigned: workspace('{points}、{unassigned}', '{points}、{unassigned}'),
+  // 動かした後の読み上げ。{index} は移した先の{column}の中で何番目か、{total} はその件数
+  sprintCardMoved: workspace(
+    '「{title}」を{column}の {index} 番目に移しました（{total} 件中）',
+    '「{title}」を{column}の {index} 番目に移しました（{total} 件中）',
+  ),
+  sprintCardNoPrevColumn: workspace('これより前の{column}はありません', 'これより前の{column}はありません'),
+  sprintCardNoNextColumn: workspace(
+    '{done}の{column}へは、ここから移せません。{done}にするには、カードの「{complete}」を押してください',
+    '{done}の{column}へは、ここから移せません。{done}にするには、カードの「{complete}」を押してください',
+  ),
+  sprintCardMoveDoneColumn: workspace(
+    '{done}の{column}へは、ここから移せません。一覧を読み直します',
+    '{done}の{column}へは、ここから移せません。一覧を読み直します',
+  ),
+  sprintCardMoveNotActive: workspace(
+    'この{sprint}はもう進行中ではありません。一覧を読み直します',
+    'この{sprint}はもう進行中ではありません。一覧を読み直します',
+  ),
+  sprintCardMoveGone: workspace(
+    'この{task}か{column}が見つかりません。一覧を読み直します',
+    'この{task}か{column}が見つかりません。一覧を読み直します',
+  ),
+  sprintCardMoveFailed: workspace('動かせませんでした。一覧を読み直します', '動かせませんでした。一覧を読み直します'),
+  sprintCardCompleting: workspace('{done}にしています', '{done}にしています'),
   // 経験値とレベル（kit.js の levelPanel と emblem、me.html の「経験値の明細」）。経験値の数値と明細は本人にだけ出す
   levelLabel: organization('レベル {level}', 'レベル {level}'),
   levelShort: organization('LV', 'LV'),

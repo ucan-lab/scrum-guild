@@ -48,6 +48,7 @@ function lane(id, avg) {
   return `<section class="lane ${s.status === "active" ? "is-active" : ""}">
     <div class="lane-head"><h2 class="lane-title">${SQ.sprintLabel(id)}</h2>${s.status === "active" ? `<span class="chip is-ok">進行中</span>` : ""}</div>
     <div class="lane-sub"><span class="mono">${md(s.start)}〜${md(s.end)}</span>${none ? `<span>未見積もり ${none} 件</span>` : ""}${unfilled ? `<span>${t("detail")} 未記入 ${unfilled} 件</span>` : ""}</div>
+    ${s.status === "active" && s.goal ? `<p class="lane-goal"><span class="lane-goal-label">${t("sprintGoal")}</span>${esc(s.goal)}</p>` : ""}
     <div class="lane-fill">
       <div class="lane-fill-bar ${total > avg * 1.125 ? "is-over" : ""}" role="img" aria-label="入れた ${total} pt、ベロシティ ${avg.toFixed(1)} pt"><span style="width:${(total / max) * 100}%"></span><i style="left:${(avg / max) * 100}%"></i></div>
       <div class="lane-fill-text"><span>入れた ${total} pt</span><span>ベロシティ ${avg.toFixed(1)}</span></div>
@@ -55,6 +56,7 @@ function lane(id, avg) {
     ${list.map((x) => `<div class="lane-row ${x.doneAt ? "is-done" : ""}">${pts(x.pts)}<a href="#" data-task="${x.id}">${esc(x.title)}</a><span class="lane-row-end">${x.doneAt ? `<span class="hanko" role="img" aria-label="${esc(x.title)}: ${t("done")}">${icon("check")}<b>完</b></span>` : ""}${avatarOf(x.who)}${x.doneAt ? `<span class="lane-row-slot" aria-hidden="true"></span>` : `<button class="icon-btn" type="button" aria-label="外す: ${esc(x.title)}" title="外す">${icon("x")}</button>`}</span></div>`).join("") || `<p class="action-note">まだ何も入っていません</p>`}
     <button class="btn is-sm" type="button" data-dialog="sprintTaskAdd" aria-label="${t("backlog")}から入れる: ${esc(SQ.sprintLabel(id))}">${icon("plus")}${t("backlog")}から入れる</button>
     ${s.status === "planned" && SQ.user(D.me).role === "leader" ? `<div class="form-actions">
+      <button class="btn is-sm is-primary" type="button" data-dialog="sprintStart" aria-label="始める: ${esc(SQ.sprintLabel(id))}">${icon("play")}始める</button>
       <button class="btn is-sm" type="button" data-dialog="sprintEdit" aria-label="直す: ${esc(SQ.sprintLabel(id))}">${icon("pen")}直す</button>
       <button class="btn is-sm is-quiet is-danger" type="button" data-dialog="deleteSprint" aria-label="削除する: ${esc(SQ.sprintLabel(id))}">${icon("trash")}削除する</button>
     </div>` : ""}

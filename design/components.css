@@ -372,6 +372,7 @@ h1, h2, h3 { text-wrap: balance; }
 }
 .notice-label { font-size: var(--text-xs); color: var(--color-accent); font-weight: 700; letter-spacing: 0.3em; }
 .notice-title { font-family: var(--font-display); font-weight: 700; font-size: var(--text-lg); line-height: 1.5; }
+.notice-title.is-goal { white-space: pre-line; overflow-wrap: anywhere; }
 .notice-meta { display: flex; flex-wrap: wrap; gap: var(--space-2) var(--space-4); font-size: var(--text-xs); color: var(--color-muted); align-items: center; }
 .notice-facts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-2) var(--space-4); margin: 0; }
 .notice-facts > div { display: grid; gap: 2px; min-width: 0; }
@@ -545,14 +546,15 @@ a.brand { color: inherit; text-decoration: none; }
 
 /* ===== スプリントの列とカード ===== */
 .board-wrap { overflow-x: auto; padding-bottom: var(--space-2); }
-.board { display: grid; grid-template-columns: repeat(4, minmax(232px, 1fr)); gap: var(--space-3); min-width: 960px; align-items: start; }
+/* 列の数は --board-cols で渡す（既定は 4）。列は 232px を下限にし、足りない幅では .board-wrap の中で横にスクロールする */
+.board { --board-cols: 4; display: grid; grid-template-columns: repeat(var(--board-cols), minmax(232px, 1fr)); gap: var(--space-3); min-width: calc(var(--board-cols) * 232px + (var(--board-cols) - 1) * var(--space-3)); align-items: start; }
 .board-col { background: var(--color-sunken); border: 1px solid var(--color-line); border-radius: var(--radius-1); padding: var(--space-3); display: grid; gap: var(--space-2); }
 .board-col-head { display: flex; align-items: baseline; gap: var(--space-2); padding: 0 var(--space-1) var(--space-2); border-bottom: var(--rule-double); }
 .board-col-name { font-family: var(--font-display); font-weight: var(--weight-display); font-size: var(--text-lg); letter-spacing: 0.06em; }
 .board-col-n { font-family: var(--font-mono); font-size: var(--text-xs); color: var(--color-muted); }
 .board-col-pts { margin-left: auto; font-family: var(--font-mono); font-size: var(--text-xs); color: var(--color-muted); }
 .board-col.is-done .board-col-head .ico { color: var(--color-done); align-self: center; }
-.board-empty { font-size: var(--text-xs); color: var(--color-faint); padding: var(--space-2); }
+.board-empty { font-size: var(--text-xs); color: var(--color-muted); padding: var(--space-2); }
 .dod { font-size: var(--text-xs); color: var(--color-muted); background: var(--color-surface); border: 1px dashed var(--color-line); border-radius: var(--radius-1); padding: 6px var(--space-3); }
 .dod summary { cursor: pointer; color: var(--color-fg); font-weight: 700; }
 .dod > .doc-box { margin-top: 6px; }
@@ -566,7 +568,17 @@ a.brand { color: inherit; text-decoration: none; }
 .card-foot { display: flex; align-items: center; gap: var(--space-2); }
 .card-end { margin-left: auto; display: flex; align-items: center; gap: var(--space-2); }
 .card .done-btn { width: 30px; height: 30px; }
+/* 狭い幅と指の画面では、題のリンクと完了のボタンを 44px の高さと幅にする（見た目ごと広げる。列の端のボタンは ::after では範囲が切れる） */
+@media (max-width: 760px), (pointer: coarse) {
+  .card .card-title { display: flex; align-items: center; min-height: 44px; }
+  .card .done-btn { width: 44px; height: 44px; }
+}
 .card.is-done .card-title { color: var(--color-muted); font-weight: 400; }
+/* キーボードで選んでいるカード。カードは tabindex="0" で、中のどこにフォーカスがあっても枠を太く出す（色だけに頼らない）。
+   Alt と ← → で隣の列、Alt と ↑ ↓ で列の中を動かす。同じ操作を、カードの下の .order-actions のボタンでもできる */
+.card:focus-within { border-color: var(--color-accent); box-shadow: inset 4px 0 0 var(--color-accent); }
+.card-moves { display: flex; justify-content: flex-end; border-top: 1px dashed var(--color-line); padding-top: var(--space-2); }
+.card-moves .order-actions { gap: var(--space-2); }
 
 /* ===== バックログの木 ===== */
 .tree { background: var(--color-surface); border: 1px solid var(--color-line); border-left: var(--rule-double); border-radius: var(--radius-1); }
@@ -632,6 +644,9 @@ button.tree-link { border: 0; background: none; padding: 0; font: inherit; text-
 .lane-head { display: flex; align-items: baseline; gap: var(--space-2); flex-wrap: wrap; }
 .lane-title { min-width: 0; overflow-wrap: anywhere; font-family: var(--font-display); font-weight: var(--weight-display); font-size: var(--text-lg); }
 .lane-sub { display: flex; flex-wrap: wrap; gap: 4px var(--space-3); font-size: var(--text-xs); color: var(--color-muted); }
+/* 進行中のスプリントのゴール（始めるときに書いた文。改行は残す） */
+.lane-goal { display: grid; gap: 2px; margin: 0; font-size: var(--text-sm); white-space: pre-line; overflow-wrap: anywhere; }
+.lane-goal-label { font-size: var(--text-xs); color: var(--color-muted); font-weight: 700; }
 .lane-row { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: var(--space-2); align-items: center; padding: 6px 0; border-top: 1px solid var(--color-rule); font-size: var(--text-sm); }
 .lane-row a { color: var(--color-fg); text-decoration: none; overflow-wrap: anywhere; }
 .lane-row a:hover { text-decoration: underline; text-underline-offset: 3px; }
@@ -1070,7 +1085,9 @@ a.choice > div > span, .choice.is-static > div > span { display: block; }
    だけを 44px 四方に広げる。並んだボタンの押せる範囲が重ならないよう、ボタンの間を 14px 空ける（30 + 14 = 44）。名前の下へ折り返す
    切り替えとの間は --space-3 空ける（名前の広げた範囲が切り替えに重ならないように） */
 @media (max-width: 760px), (pointer: coarse) {
-  .entry-end .order-actions .icon-btn, .tree-end .order-actions .icon-btn { width: 44px; height: 44px; }
+  .entry-end .order-actions .icon-btn, .tree-end .order-actions .icon-btn, .card-moves .order-actions .icon-btn { width: 44px; height: 44px; }
+  /* 44px のボタン4つ（176px）がカードの内側（約 184px）に収まるよう、隙間を空けず、収まらない幅では折り返す */
+  .card-moves .order-actions { gap: 0; flex-wrap: wrap; justify-content: flex-end; }
   .order-list .order-actions { gap: 14px; }
   .order-list .order-main { row-gap: var(--space-3); }
   .order-list .toggle { min-height: 44px; }
