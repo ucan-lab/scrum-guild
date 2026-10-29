@@ -229,7 +229,7 @@ test.describe('管理者（あおば開発のミナト）', () => {
 
   test('空白の無い長い名前でも、確認の見出しとトーストは折り返してはみ出さない', async ({ page }) => {
     // 名前の上限（50字）いっぱいに、空白を入れずに回の印を末尾に付ける
-    const mark = runMark().replace('-', '');
+    const mark = runMark().replace('-', 'x');
     const name = `${'W'.repeat(50 - mark.length)}${mark}`;
     await createWorkspace(page, name);
     await page.setViewportSize({ width: 390, height: 800 });

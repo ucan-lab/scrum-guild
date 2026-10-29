@@ -30,6 +30,8 @@ async function readToOldestSeedRow(page: Page): Promise<void> {
   await expect(rows.first()).toBeVisible();
   while ((await oldest.count()) === 0) {
     const count = await rows.count();
+    // 読み足せないのに一番古い seed の行が無ければ、seed の履歴が変わった。ボタンの時間切れで落とさず、そう言って落とす
+    if (!(await more.isVisible())) throw new Error(`履歴の最後まで読んだが「${OLDEST_SEED_EVENT}」が無い`);
     await more.click();
     await expect(rows).not.toHaveCount(count);
   }

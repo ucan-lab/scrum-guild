@@ -9,10 +9,15 @@ import { SEED_SESSIONS } from '../seed/sessions.ts';
 
 const run = promisify(execFile);
 
-// 文を1回の wrangler d1 execute で流す。値は呼ぶ側が固定の seed の値だけを埋める（外から来た文字は埋めない）
-export async function executeLocalD1(sql: string): Promise<void> {
+// 文を1回の wrangler d1 execute で流す。値は呼ぶ側が固定の seed の値だけを埋める（外から来た文字は埋めない）。
+// SQL は --command= に続けて1つの引数で渡す（別の引数にすると、- で始まる文を wrangler がフラグと読みうる）。
+// 固まったときにテストの上限まで待たないよう、20 秒で打ち切る（1回は手元で約 2 秒）
+async function executeLocalD1(sql: string): Promise<void> {
   try {
-    await run('wrangler', ['d1', 'execute', 'DB', '--local', '--command', sql], { encoding: 'utf8' });
+    await run('wrangler', ['d1', 'execute', 'DB', '--local', `--command=${sql}`], {
+      encoding: 'utf8',
+      timeout: 20_000,
+    });
   } catch (err) {
     const stderr = (err as { stderr?: string }).stderr ?? '';
     throw new Error(`手元の D1 に SQL を流せなかった: ${stderr.trim()}`, { cause: err });

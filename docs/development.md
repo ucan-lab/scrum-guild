@@ -301,6 +301,7 @@ vite の転送先も同じ値から作るので、画面は自分のワークツ
 ### e2e の書き方
 
 - `test` と `expect` は `e2e/fixtures.ts` から import する。`@playwright/test` から `test` を直に import すると `pnpm lint` が止める（`eslint.config.js` の `e2e/**/*.test.ts` の `no-restricted-imports`）。型は `@playwright/test` から import してよい
+- テストが変えた seed の行のうち、戻す操作の無いもの（ログアウトで消したセッション、承諾か取り消しで閉じた招待）は、テストの前か後で `e2e/local-d1.ts` の関数で seed の状態へ戻す。関数は `wrangler d1 execute DB --local` で手元の D1 に直に SQL を流す（`--local` だけを付け、値は seed の固定の ID だけを埋め、どの文も組織かワークスペースで絞る。`pnpm db:seed` と同じ道）。画面と API の振る舞いは本物の操作で確かめ、直に書くのは戻すときだけにする。同じファイルの複製が並べて走ると、戻す前の行に別の複製が当たるので、`--repeat-each` は `--workers=1` で回す（#459）
 - `fixtures.ts` の `page` は、テストの後で `page.unrouteAll({ behavior: 'ignoreErrors' })` を待つ。`page.route()` の処理の中で `route.fetch()` を待つテストは、画面が終わりに飛ばした読み直しがテストの後に届くと「route.fetch: Test ended」で落ち、その失敗が同じワーカーで次に走るテストに付く。2026-10-27 に、`e2e/members.test.ts` の route の処理に遅れを入れると必ずこの形で落ち、fixture を入れると落ちないことを確かめた（#318）
 - fixture が外すのは、テストの引数の `page` に張った route だけ。`browser.newContext()` で作った context と page、`context.route()` には効かない。そこで `route.fetch()` を使うなら、テストの終わりで自分で `unrouteAll({ behavior: 'ignoreErrors' })` を待つ
 - `ignoreErrors` は、テストの後に届いた要求の失敗を黙って捨てる。テストの終わりの読み直しそのものを確かめたいときは、`page.waitForResponse()` で応答を待ってから終える

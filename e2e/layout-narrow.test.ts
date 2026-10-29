@@ -31,7 +31,8 @@ test('自分の今日（/aoba）が 390px で横にはみ出さず、押せる�
 
 test('組織の管理（/aoba/admin）が 390px で横にはみ出さず、押せる要素が 44px 四方で押せる', async ({ page }) => {
   // ワークスペースの一覧は seed の行だけにする。ほかのファイルが作って消せずに残るワークスペース（空白の無い50字の名前など）で
-  // 並びと幅が変わり、測る画面がほかのテストの走った順で揺れるため
+  // 並びと幅が変わり、測る画面がほかのテストの走った順で揺れるため。長い名前の行で 44px の押せる範囲が重なることは、
+  // 走る順に頼らずに別に確かめる（#462）
   await rewriteOperation(page, workspaceList, { slug: 'aoba' }, (output) => ({
     workspaces: output.workspaces.filter((workspace) => SEED_WORKSPACE_IDS.has(workspace.id)),
   }));
