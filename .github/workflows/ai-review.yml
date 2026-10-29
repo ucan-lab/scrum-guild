@@ -13,11 +13,14 @@ jobs:
   review:
     # action は .claude/ を base のブランチから戻すので、レビュー済みの main を base にした PR だけで動かす
     # fork と Bot（Dependabot など）の PR にはシークレットが渡らないので回さない
+    # 書き込みの権限の無い人も、このリポジトリの既存のブランチから PR を開ける。シークレット付きで本文を読ませないよう、作成者の区分でも絞る。
+    # MEMBER は組織に入っていることしか表さず、書き込みの権限を保証しないので入れない
     if: >-
       github.event.pull_request.draft == false &&
       github.event.pull_request.base.ref == 'main' &&
       github.event.pull_request.head.repo.full_name == github.repository &&
       github.event.pull_request.user.type != 'Bot' &&
+      contains(fromJSON('["OWNER","COLLABORATOR"]'), github.event.pull_request.author_association) &&
       (github.event.action != 'labeled' || github.event.label.name == 'ai-review')
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -47,6 +50,44 @@ jobs:
             sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
           fi
 
+      # .ts を直に動かすには、ランナーの既定より新しい Node が要る
+      # 本文とコメントは補助の情報なので、次の2段が落ちても差分だけで AI レビューを続ける
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        continue-on-error: true
+        with:
+          node-version-file: .node-version
+
+      # Claude には gh api を許さないので、PR の本文とコメントはここで取り、ファイルで渡す。
+      # 絞る前の JSON は、Claude に渡す pr-context とは別の pr-raw に置く（誰でも書けるコメントを読ませない）。
+      # --slurp はページごとの配列を1つの配列にまとめる（整形の段が平らにならす）
+      - name: PR の本文とコメントを取る
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          RAW_DIR: ${{ runner.temp }}/pr-raw
+        run: |
+          set -euo pipefail
+          mkdir -p "$RAW_DIR"
+          gh api "repos/$REPO/pulls/$PR_NUMBER" > "$RAW_DIR/pr.json"
+          gh api --paginate --slurp "repos/$REPO/issues/$PR_NUMBER/comments" > "$RAW_DIR/issue-comments.json"
+          gh api --paginate --slurp "repos/$REPO/pulls/$PR_NUMBER/comments" > "$RAW_DIR/review-comments.json"
+
+      # 権限の無い人のコメントを落とし、大きさを抑える。ログには件数だけを出す。
+      # 整形が落ちても、絞る前の JSON は消す。
+      # pr-context は Claude の --add-dir に渡すので、整形が落ちても空で作っておく
+      - name: PR の本文とコメントを整える
+        continue-on-error: true
+        env:
+          RAW_DIR: ${{ runner.temp }}/pr-raw
+          CONTEXT_DIR: ${{ runner.temp }}/pr-context
+        run: |
+          set -euo pipefail
+          trap 'rm -rf "$RAW_DIR"' EXIT
+          mkdir -p "$CONTEXT_DIR"
+          node scripts/ai-review-context.ts "$RAW_DIR" "$CONTEXT_DIR"
+
       - uses: anthropics/claude-code-action@ae68417a745a5df4b2124873632bd73a2255e6f6 # v1.0.259
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
@@ -55,11 +96,13 @@ jobs:
           github_token: ${{ github.token }}
           # 分類は ANTHROPIC_API_KEY が無いと動かない。選別は ai-review のスキルで行う
           classify_inline_comments: "false"
-          prompt: "/ai-review REPO: ${{ github.repository }} PR_NUMBER: ${{ github.event.pull_request.number }} BASE_SHA: ${{ github.event.pull_request.base.sha }} HEAD_SHA: ${{ github.event.pull_request.head.sha }}"
+          prompt: "/ai-review REPO: ${{ github.repository }} PR_NUMBER: ${{ github.event.pull_request.number }} BASE_SHA: ${{ github.event.pull_request.base.sha }} HEAD_SHA: ${{ github.event.pull_request.head.sha }} CONTEXT_DIR: ${{ runner.temp }}/pr-context"
           # prompt を渡す agent モードでは、action は許可するツールを足さない。サブエージェントが使う Bash もここに書く。
           # gh api は任意の API と外部の URL を叩けるので許可しない。gh pr comment はこの PR に --body でだけ書ける
+          # pr-context はチェックアウトの外（runner.temp）にあるので、読める場所として足す
           claude_args: |
             --model sonnet
+            --add-dir "${{ runner.temp }}/pr-context"
             --allowedTools "Task,Agent,mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment ${{ github.event.pull_request.number }} --body:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(git diff:*),Bash(git log:*),Bash(git rev-parse:*),Bash(ls:*),Bash(echo:*)"
 
       - name: ai-review のラベルを外す

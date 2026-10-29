@@ -20,7 +20,7 @@ description: 自分の PR に付いたレビュー指摘と CI の失敗に対�
 - 納得できないまま直さない（理由: 直した結果が間違っていても気づけない。反論か確認をリプライで返す）
 - 指摘への対応を force push で入れない（理由: レビュワーが読んだ差分が消え、どこまで見たか分からなくなる）。force push はベースを取り込む `sync-base` の中だけ
 - 指摘されていない箇所をついでに直さない（理由: 差分が増えて再レビューの負荷が上がる。別 PR にする）
-- 人へのリプライはユーザーの承認を得てから投稿する。PENDING review に入れて止める（理由: 人とのやりとりは口調や温度感をユーザーが決める）
+- 人へのリプライはユーザーの承認を得てから投稿する。PENDING review に入れて止める（理由: 人とのやりとりは口調や温度感をユーザーが決める）。人のスレッドの resolve も、ユーザーの承認を得てから行う
 
 ## GitHub の操作
 
@@ -50,9 +50,31 @@ gh api "repos/{owner}/{repo}/commits/<head_sha>/check-runs" --jq '.check_runs[] 
 `review` は下の AI レビューで、助言なので `ci-ok` に含めず、落ちてもマージの判定を止めない。
 `evidence` は e2e の変更前と変更後の画像を PR にコメントで並べるジョブで、同じく助言なので `ci-ok` に含めず、落ちてもマージの判定を止めない（`docs/development.md` の「e2e の画像のコメント」）。UI が変わる PR で落ちていたら、ジョブの注記とログを見て、画像が付かない理由を人に伝える。
 
+#### ドラフトで先に作った PR のドラフトを外す
+
+`pr-create` が先にドラフトで作った PR は、AI レビューを待つ前に次を行う。見分けるのは、PR が `draft` で、本文に目印の `<!-- pr-create:draft-first -->` があること（`pr-create` の Step 5-A が入れる。スタック PR の `gh stack submit` の下書きを含む）。目印の無いドラフトは人が意図してドラフトにしているので外さない（理由: 会話の記憶で決めると、別のセッションで再開したときに外れず、AI レビューが一度も走らない）。
+
+1. head を取り直してから（`gh api "repos/{owner}/{repo}/pulls/{number}" --jq '{head_sha: .head.sha, mergeable}'`）、その head の `ci-ok` が `completed` になるまで、間を空けて check-runs を取り直す（Monitor が使えればそれで待つ）。push か `sync-base` の後は、必ず head を取り直す（理由: 古い head の結果を見続けない）。待つ間に手番を終えるときは、手順 7 の「待つ間に手番を終えるとき」に従って伝える
+   - 45 分待っても `ci-ok` が出なければ、待ちをやめて人に渡す。`mergeable` が `false` ならコンフリクトで CI が走っていないので、先に `sync-base` で取り込む
+2. `ci-ok` が `success` でなければ、手順 3 の書き方（直しごとに 1 コミット）で CI を直し、まとめて push してから 1 に戻る（理由: 外すと `ready_for_review` で AI レビューが走る。直す前に走らせると、直した後に回し直すことになり、サブスクの使用量を余分に使う）。直した内容は、手順 6 の説明資料の「確かめたこと」に書く
+3. `success` なら、ドラフトを外す。文書だけの PR と base が `main` でない PR も外す（AI レビューは走らないが、人がマージを判断できる状態にする）
+
+```graphql
+mutation($id: ID!) { markPullRequestReadyForReview(input: { pullRequestId: $id }) { pullRequest { isDraft } } }
+```
+
+```bash
+gh api graphql -F id=<PR の node_id> -F query=@<ファイル>
+```
+
+`<PR の node_id>` は `gh api "repos/{owner}/{repo}/pulls/{number}" --jq .node_id` で取る。`isDraft` が `false` で返ったことを確かめる。外した時刻が、下の `ready_for_review` のイベントになる。
+GraphQL が 403 か、ほかのエラーで外せなければ、エラーをそのまま人に伝え、GitHub の画面で「Ready for review」を押してもらう。押された後は下の待ち方で AI レビューを待つ。
+
+#### AI レビューを待つ
+
 CI の AI レビュー（`.github/workflows/ai-review.yml`、チェックの名前は `review`）が終わるまで、手順 2 に進まない（理由: 途中で集めると、後から付いた指摘を拾い損ねる）。
 
-AI レビューは push では走らない。走る契機は、PR の作成、開き直し（`reopened`）、ドラフトの解除（`ready_for_review`）、`ai-review` のラベルの付与の4つ。
+AI レビューは push では走らない。走る契機は、ドラフトでない PR の作成、開き直し（`reopened`）、ドラフトの解除（`ready_for_review`）、`ai-review` のラベルの付与の4つ。`pr-create` がドラフトで作った PR では、上でドラフトを外したときに走る。
 待つかどうかは今の head の check-runs でなく、PR のワークフローの実行の履歴と、契機のイベントの履歴で決める（理由: 指摘は head に関係なく PR 全体から集めるため）。
 `pulls/{number}/commits` で前の head を辿らない。`sync-base` で rebase すると前の head が一覧から消える。
 
@@ -67,7 +89,7 @@ gh api "repos/{owner}/{repo}/issues/{number}/events" --paginate --jq '.[] | sele
 
 上から順に当てはめ、最初に当たったもので決める。
 
-1. PR の差分が `docs/**` と `*.md` だけ、ドラフト、base が `main` でない、のどれかなら、AI レビューは走らない。待たずに進み、説明資料にその旨を書く
+1. PR の差分が `docs/**` と `*.md` だけ、ドラフト（上で外さなかったもの）、base が `main` でない、のどれかなら、AI レビューは走らない。待たずに進み、説明資料にその旨を書く
 2. `status` が `completed` でない実行があれば、全て `completed` になるまで間を空けて取り直す（Monitor が使えればそれで待つ）。待つ間に手番を終えるときは、手順 7 の「待つ間に手番を終えるとき」に従って伝える
    - 止まったかを実行の `updated_at` で決めない。実行が動いている間、ジョブのステップが進んでも `updated_at` は変わらないため。`gh api "repos/{owner}/{repo}/actions/runs/<id>/jobs"` でステップの状態を見て、始まってからの経過時間を `ai-review.yml` の `timeout-minutes` と比べる。時間切れより前は、動いているものとして待つ
 3. 最後の契機の時刻より後に作られた実行が無ければ、30 秒おきに 3 回まで、実行とイベントの両方を取り直す（理由: 契機から実行が履歴に出るまで間がある）。実行が出たら 2 に戻る。前のラウンドで同じ契機について取り直し済みなら、取り直さずに次へ進む
@@ -110,7 +132,7 @@ bot の PR 全体へのコメント（AI レビューのまとめ）に並んだ
 コミットは `git add <該当ファイル> && git commit -m "..."` のように 1 コマンドにまとめる。
 件名には何を直したかを書く。指摘の引用は書かない。
 
-全ての指摘を直したら push する（理由: リプライに書くコミットがレビュワーから見える状態にする）。
+全ての指摘を直してから、手順 4 のリプライの前に1回だけ push する（理由: リプライに書くコミットがレビュワーから見える状態にする。push のたびに CI が走り直すので、指摘ごとには push しない）。
 
 push の前に `git fetch origin` でベースの遅れを見る（`git rev-list --count HEAD..origin/<base>`）。遅れていれば、push の代わりに `sync-base` で取り込み、その中の `--force-with-lease` で push してから手順 4 に進む（理由: リプライに書くコミットの SHA は rebase で変わる。返事の後に取り込むと、返事の SHA が PR のどのコミットも指さなくなる）。指摘への対応を force push で入れない決まりの例外ではなく、ベースを取り込む push に直した分が乗るだけ。
 
@@ -134,7 +156,7 @@ git push
 
 #### bot の指摘
 
-承認を待たずにすぐ投稿する。
+bot のスレッドには、直したものにも直さなかったものにも、すべてリプライする。承認を待たずにすぐ投稿する。
 
 ```bash
 python3 -c "import json; json.dump({'body': open('reply.txt').read()}, open('reply.json','w'), ensure_ascii=False)"
@@ -143,7 +165,19 @@ gh api --method POST "repos/{owner}/{repo}/pulls/{number}/comments/{comment_id}/
 
 `comment_id` は手順 2 で取った `id`。
 
-bot の PR 全体へのコメント（AI レビューのまとめ）には、項目ごとに何をどう直したかとコミットの短い SHA（直していなければ理由）を並べた PR コメントを 1 つ返す。これも承認を待たずに投稿する。
+リプライを投稿したら、そのスレッドを resolve する。これも承認を待たない（理由: 対応の内容はリプライに残り、未解決のまま残すと `done-check` の「レビューコメントを解決済み」で止まる）。スレッドの `id` は、下の「人の指摘」の 1 のクエリで、先頭コメントの `databaseId` が `comment_id` と一致するものから取る。
+
+```graphql
+mutation($thread: ID!) { resolveReviewThread(input: { threadId: $thread }) { thread { isResolved } } }
+```
+
+```bash
+gh api graphql -F thread=<スレッドの id> -F query=@<ファイル>
+```
+
+`isResolved` が `true` で返ったことを確かめる。GraphQL が 403（クラウド）なら resolve を飛ばし、説明資料に「bot のスレッドの解決は付けていない」と書く。
+
+bot の PR 全体へのコメント（AI レビューのまとめ）には、まとめに並んだ項目のすべて（インラインにもあるものと、まとめにだけ書かれたもの）について、何をどう直したかとコミットの短い SHA、直していなければその理由を並べた PR コメントを 1 つ返す。これも承認を待たずに投稿する。
 
 ```bash
 gh api --method POST "repos/{owner}/{repo}/issues/{number}/comments" --input reply.json
@@ -202,10 +236,13 @@ PR 全体へのコメント（`issues/{number}/comments`）は PENDING にでき
 
 直しを頼まれたら、PENDING のコメントを直し、下書きのファイルは生成時の文面のまま残す（理由: `retro` で比べたいのは、最初の提案と最終的な投稿の差）。直しの指示そのものは振り返りの材料として覚えておく。
 
+Submit された後（ユーザーが画面で Submit したか、承認を受けて Submit した後）に、リプライしたスレッドのうちどれを resolve するかを `AskUserQuestion` で聞く（`multiSelect`。選択肢はスレッドごとに、ファイルと行、指摘の要旨、対応を1行）。承認されたスレッドだけ、bot の指摘と同じ `resolveReviewThread` で resolve する。人のスレッドは、承認なしに resolve しない（理由: 先に閉じると、レビュワーが返事を読む前に未解決の一覧から消える）。
+
 ##### GraphQL が 403 のとき（クラウド）
 
 PENDING review に入れられない。投稿の前に下書きを全件見せ、`AskUserQuestion` で承認を取る。
 承認されたものだけ、bot の指摘と同じ REST の `replies` で投稿する。直しを頼まれたら下書きを直してから投稿し、下書きのファイルは生成時の文面のまま残す。
+resolve もできないので、人の画面で解決してもらうスレッドを説明資料に並べる。
 
 ### 5. CI を確認する
 
@@ -359,8 +396,10 @@ gh api "repos/{owner}/{repo}/pulls/<number>" --jq '{merged, base: .base.ref, hea
 ## 完了条件
 
 - AI レビューが走る PR（手順 1 の 1 に当たらない PR）では、`ai-review` の実行が全て `completed` になり、最後の契機より後の実行が出たか、手順 1 の取り直しを終えてから指摘を集めている
+- `pr-create` がドラフトで作った PR は、`ci-ok` の成功の後にドラフトが外れている
 - 全ての指摘にリプライが付いている
-- 人へのリプライは、ユーザーの Submit か承認を経て投稿されている
+- bot のスレッドは resolve されている（GraphQL が 403 のときは、飛ばしたことを説明資料に書いている）
+- 人へのリプライは、ユーザーの Submit か承認を経て投稿されている。人のスレッドの resolve は、ユーザーが承認したものだけ
 - 手順 1 の check-runs に、`review` と `evidence` を除いて失敗が無い
 - 説明資料を見せ、人の判断が要ることに `AskUserQuestion` で答えが出ている。セッションがマージできるときだけ、マージの扱いも聞いて答えが出ている
 - 作成者以外の人のレビューが付いた PR では、そのレビュワーの最後の状態が `APPROVED` になっている
