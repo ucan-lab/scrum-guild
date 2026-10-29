@@ -5567,3 +5567,124 @@ describe('bash-rules: メソッドを最後の値で読む作り直しと、本�
     assert.equal(decision(command), 'deny', command);
   });
 });
+
+describe('bash-rules: done-check の指摘（URL を決めるオプション、本文の展開、標準入力の出どころ、GraphQL の判定の範囲）', () => {
+  const ref = 'https://api.github.com/repos/o/r/git/refs/heads/x';
+  const merge = 'https://api.github.com/repos/o/r/pulls/1/merge';
+
+  // curl の URL と path は、位置の語と --url のほか、--expand-url と --request-target でも決まる。
+  // 決められないときは、語のぜんたいを path として判定する
+  for (const command of [
+    `curl -X PUT --expand-url ${merge}`,
+    `curl -X PUT --variable u=${merge} --expand-url '{{u}}'`,
+    `curl -X PUT --request-target /repos/o/r/pulls/1/merge https://api.github.com`,
+    `curl -X PUT --expand-request-target /repos/o/r/pulls/1/merge https://api.github.com`,
+    `curl -X PUT --variable p=/repos/o/r/pulls/1/merge --expand-request-target '{{p}}' https://api.github.com`,
+    `curl -X PATCH --expand-url ${ref} -d '{"force":true}'`,
+  ]) {
+    test(`[止める] ${command} は deny`, () => assert.equal(decision(command), 'deny', command));
+  }
+
+  // 本文の途中の展開は、force を持ち込みうる。字面の本文（クォートしたヒアドキュメント、単一引用符）は除く
+  for (const command of [
+    `gh api -X PATCH repos/o/r/git/refs/heads/x --input - <<< "{\\"sha\\":\\"a\\",$F}"`,
+    `curl -X PATCH ${ref} -d "{\\"sha\\":\\"a\\",$F}"`,
+    `echo "{\\"sha\\":\\"a\\",$F}" | gh api -X PATCH repos/o/r/git/refs/heads/x --input -`,
+    `gh api -X PATCH repos/o/r/git/refs/heads/x --input - <<EOF\n{"sha":"a",$(cat f)}\nEOF`,
+    `gh api -X PATCH repos/o/r/git/refs/heads/x --input - <<EOF\n{"sha":"$(cat f)"}\nEOF`,
+  ]) {
+    test(`[確認] ${command} は force を持ち込みうるので allow にしない`, () => assert.notEqual(decision(command), 'allow', command));
+  }
+  for (const command of [
+    `gh api -X PATCH repos/o/r/git/refs/heads/x --input - <<'EOF'\n{"sha":"a",$(cat f)}\nEOF`,
+    `curl -X PATCH ${ref} -d '{"sha":"$SHA"}'`,
+    `echo '{"sha":"$SHA"}' | gh api -X PATCH repos/o/r/git/refs/heads/x --input -`,
+  ]) {
+    test(`[通す] ${command} は字面の本文なので allow`, () => assert.equal(decision(command), 'allow', command));
+  }
+
+  // curl は --json の値をつなぐ
+  test('[止める] curl の --json を重ねてつないだ {"force":true} は deny', () => {
+    const command = `curl -X PATCH ${ref} --json '{"sha":"a","for' --json 'ce":true}'`;
+    assert.equal(decision(command), 'deny', command);
+  });
+
+  // --expand-data 系は本文で、メソッドの既定は POST。値に {{ があれば読めない
+  for (const command of [
+    `curl --expand-data '{"force":true}' ${merge}`,
+    `curl -X PATCH ${ref} --expand-data-raw '{"sha":"a","force":true}'`,
+    `curl -X PATCH ${ref} --expand-json '{"force":true}'`,
+    `curl --expand-data-binary x ${merge}`,
+  ]) {
+    test(`[止める] ${command} は deny`, () => assert.equal(decision(command), 'deny', command));
+  }
+  for (const command of [
+    `curl -X PATCH ${ref} --variable f=true --expand-data '{"force":{{f}}}'`,
+    `curl -X PATCH ${ref} --expand-json '{{body}}'`,
+  ]) {
+    test(`[確認] ${command} は本文を読めないので allow にしない`, () => assert.notEqual(decision(command), 'allow', command));
+  }
+
+  // GraphQL の query か本文を読めないとき
+  for (const command of [
+    'gh api graphql --input body.json',
+    'gh api graphql -F query=@query.graphql',
+    'gh api graphql --input -',
+    'cat q.json | gh api graphql --input -',
+    'curl -X POST https://api.github.com/graphql -d @q.json',
+  ]) {
+    test(`[確認] ${command} は query を読めないので allow にしない`, () => assert.notEqual(decision(command), 'allow', command));
+  }
+  test('[通す] gh api graphql の query が引数にあれば allow', () =>
+    assert.equal(decision(`gh api graphql -f query='{ viewer { login } }'`), 'allow'));
+
+  // グループとサブシェルの中の echo は、gh の標準入力に流れるとは限らない
+  for (const command of [
+    `cat b.json | { echo '{"force":false}'; gh api -X PATCH repos/o/r/git/refs/heads/x --input -; }`,
+    `cat b.json | ( echo '{"force":false}'; gh api -X PATCH repos/o/r/git/refs/heads/x --input - )`,
+    `{ echo '{"force":false}'; gh api -X PATCH repos/o/r/git/refs/heads/x --input -; } < b.json`,
+    `cat b.json | { echo '{"force":false}'; curl -X PATCH ${ref} -d @-; }`,
+  ]) {
+    test(`[確認] ${command} は標準入力の出どころを読めないので allow にしない`, () => assert.notEqual(decision(command), 'allow', command));
+  }
+
+  // エンドポイントを変数で渡す書き込みは、force が真か読めないとき確認を挟む
+  for (const command of [
+    'gh api -X PATCH "$EP" -F force=true',
+    'gh api -X PATCH "$EP" -F force=$F',
+    'gh api -X PATCH "$EP" --input body.json',
+  ]) {
+    test(`[確認] ${command} は allow にしない`, () => assert.notEqual(decision(command), 'allow', command));
+  }
+  test('[通す] エンドポイントを変数で渡しても force が無ければ allow', () => assert.equal(decision('gh api -X PATCH "$EP" -f sha=abc'), 'allow'));
+
+  // wget は --method が無ければ GET
+  for (const command of [
+    'wget -qO- https://api.github.com/repos/o/r/contents/README.md',
+    'wget -qO- https://api.github.com/repos/o/r/pulls/5/merge',
+  ]) {
+    test(`[通す] ${command} は GET なので allow`, () => assert.equal(decision(command), 'allow', command));
+  }
+
+  // GraphQL の判定は query の中だけで見る。コメントの本文に書いた語は止めない
+  for (const command of [
+    `gh api -X POST repos/o/r/issues/1/comments -f body='updateRefs で ref を動かし、mergePullRequest でマージする'`,
+    `gh api -X POST repos/o/r/issues/1/comments --input - <<'EOF'\n{"body":"enablePullRequestAutoMerge と updatePullRequestBranch の REBASE"}\nEOF`,
+    `gh api -X POST repos/o/r/issues/1/comments -f body='mergePullRequest'`,
+  ]) {
+    test(`[通す] ${command} はコメントの本文なので allow`, () => assert.equal(decision(command), 'allow', command));
+  }
+  for (const command of [
+    `gh api graphql -f query='mutation{updateRefs(input:{repositoryId:"x",refUpdates:[]}){clientMutationId}}'`,
+    `gh api graphql -F query='mutation{mergePullRequest(input:{pullRequestId:"x"}){clientMutationId}}'`,
+    `gh api graphql -f query='mutation{enablePullRequestAutoMerge(input:{pullRequestId:"x"}){clientMutationId}}'`,
+  ]) {
+    test(`[止める] ${command} は deny`, () => assert.equal(decision(command), 'deny', command));
+  }
+
+  // 本文の "force":"true"（文字列）も force
+  test('[止める] 本文の "force":"true" も deny', () => {
+    const command = `curl -X PATCH ${ref} -d '{"sha":"a","force":"true"}'`;
+    assert.equal(decision(command), 'deny', command);
+  });
+});
