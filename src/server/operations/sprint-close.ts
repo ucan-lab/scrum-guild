@@ -1,10 +1,10 @@
 // スプリントを終える（sprint-close）。docs/data-model.md の「書き込みの単位」の「スプリントの終了」
 import { generateNKeysBetween } from 'fractional-indexing';
-import { now } from '../../shared/clock.ts';
+import { now, todayIn } from '../../shared/clock.ts';
 import { sprintClose, type SprintRef } from '../../shared/operations/sprint/index.ts';
 import {
   jsonList,
-  jsonPairLookup,
+  jsonPairRows,
   previousStatementChanged,
   sprintLogRefSql,
   uuidv7Sql,
@@ -36,10 +36,13 @@ type ClosingSprint = {
   status: string;
 };
 
-// 終えるスプリントと持ち越し先、入っている未完了のタスク（終えるスプリントでの並びの順）、先頭の列を1回の batch() で読む。
-// 持ち越し先を指さないとき（バックログ）は、持ち越し先の文は行を返さない（主キーは NULL にならない）
+// 終えるスプリントと持ち越し先、入っている未完了のタスク（終えるスプリントでの並びの順）、先頭の列、ワークスペースのタイムゾーン、
+// 持ち越し先の先頭の列の末尾の位置を1回の batch() で読む。
+// 持ち越し先を指さないとき（バックログ）は、持ち越し先の文は行を返さない（主キーは NULL にならない。末尾の位置は空の ID で引く）。
+// 末尾の位置は、読んでから書くまでに別の要求が同じ列の末尾へ入れると重なる。重なった行は id の順に並び、次に間へ入れるときに振り直す
+// （sprint-task-add と同じ）
 async function readClosing(db: OrganizationDb, workspaceId: string, sprintId: string, carryId: string | null) {
-  const [sprintResult, tasksResult, carryResult, columnResult] = await db.batch([
+  const [sprintResult, tasksResult, carryResult, columnResult, settingsResult, tailResult] = await db.batch([
     db.statement((q) =>
       q
         .selectFrom('sprints')
@@ -76,31 +79,33 @@ async function readClosing(db: OrganizationDb, workspaceId: string, sprintId: st
         .where('sprints.deleted_at', 'is', null),
     ),
     db.statement((q) => firstColumn(q, workspaceId)),
+    db.statement((q) =>
+      q
+        .selectFrom('workspaces')
+        .select('workspaces.timezone')
+        .where('workspaces.id', '=', workspaceId)
+        .where('workspaces.organization_id', '=', db.organizationId),
+    ),
+    db.statement((q) =>
+      q
+        .selectFrom('tasks')
+        .select('tasks.column_position')
+        .where('tasks.workspace_id', '=', workspaceId)
+        .where('tasks.sprint_id', '=', carryId ?? '')
+        .where('tasks.column_id', '=', firstColumn(q, workspaceId))
+        .where('tasks.deleted_at', 'is', null)
+        .orderBy('tasks.column_position', 'desc')
+        .limit(1),
+    ),
   ] as const);
   return {
     sprint: sprintResult.rows[0] as ClosingSprint | undefined,
     taskIds: tasksResult.rows.map((row) => row.id),
     carry: carryResult.rows[0] as ClosingSprint | undefined,
     columnId: columnResult.rows[0]?.id,
+    timezone: settingsResult.rows[0]?.timezone,
+    tail: tailResult.rows[0]?.column_position ?? null,
   };
-}
-
-// 持ち越し先のスプリントの、先頭の列の末尾の column_position
-async function tailPosition(db: OrganizationDb, workspaceId: string, carryId: string, columnId: string) {
-  const row = await db.first(
-    db.statement((q) =>
-      q
-        .selectFrom('tasks')
-        .select('tasks.column_position')
-        .where('tasks.workspace_id', '=', workspaceId)
-        .where('tasks.sprint_id', '=', carryId)
-        .where('tasks.column_id', '=', columnId)
-        .where('tasks.deleted_at', 'is', null)
-        .orderBy('tasks.column_position', 'desc')
-        .limit(1),
-    ),
-  );
-  return row?.column_position ?? null;
 }
 
 function refOf(sprint: ClosingSprint): SprintRef {
@@ -109,11 +114,13 @@ function refOf(sprint: ClosingSprint): SprintRef {
 
 // 終える。先に読んだものから、書く文を決める。書く文は持ち越すタスクの数によらない決まった数で、1回の batch() で送る。
 // 持ち越すタスクの ID と位置は JSON の配列1つで渡す（bind は1つなので、1文の bind の上限にも batch() の大きさにも当たらず、分けない）。
-// 1. sprints: 進行中のまま、読んだ未完了のタスクの集合のまま、持ち越し先が先のスプリントのまま、閉じていないワークスペースのときだけ closed にする。
+// 1. sprints: 進行中のまま、最終日とゴールが読んだ値のまま、読んだ未完了のタスクの集合のまま、持ち越し先が先のスプリントのまま
+//    （最終日が読んだ今日以降）、閉じていないワークスペースのときだけ closed にする。
 // 2. スプリントの change_logs: 直前の UPDATE が行を変えたときだけ入れる。以降の文は、この履歴の行（この要求だけの id）があることを条件にする。
 //    止めた時計（DEV_NOW）では、先に終えた要求と自分の終了を時刻で見分けられないため
 // 3. 持ち越すタスクごとの change_logs、4. 入っている行を completed か carried_over で閉じる、5. 持ち越し先がスプリントなら新しい行を足す、
-// 6. 持ち越すタスクを書く。3〜5 はタスクを書き換えないので、6 まで同じタスクに当たる。履歴を先に置く（書き換えた後は条件に当たらなくなるため）。
+// 6. 持ち越すタスクを書く（位置は jsonPairRows を UPDATE ... FROM で結ぶ）。3〜5 はタスクを書き換えないので、6 まで同じタスクに当たる。
+//    履歴を先に置く（書き換えた後は条件に当たらなくなるため）。
 // 通らなかったら理由を読み直して分ける（閉じた、無い、進行中でない、持ち越し先が合わない）。どれでもなければ読み直してやり直す
 export const sprintCloseOperation = implement(sprintClose, async ({ db, actor, workspace, input }) => {
   const actorUserId = actorUserIdOf(actor);
@@ -123,11 +130,14 @@ export const sprintCloseOperation = implement(sprintClose, async ({ db, actor, w
   const carryId = input.carry_sprint_id;
 
   for (let attempt = 0; attempt < MAX_CLOSE_ATTEMPTS; attempt++) {
-    const { sprint, taskIds, carry, columnId } = await readClosing(db, workspaceId, sprintId, carryId);
-    if (sprint === undefined) {
+    const { sprint, taskIds, carry, columnId, timezone, tail } = await readClosing(db, workspaceId, sprintId, carryId);
+    const at = now();
+    if (sprint === undefined || timezone === undefined) {
       await throwIfClosed(db, workspaceId);
       throw new ApiError(404, 'not_found');
     }
+    // ワークスペースのタイムゾーンの今日。読んだ値を書く文にも渡す（判定と書き込みで今日がずれない。sprint-start と同じ）
+    const today = todayIn(timezone, at);
     if (sprint.status !== 'active') {
       await throwIfClosed(db, workspaceId);
       throw conflict('not_active');
@@ -139,8 +149,9 @@ export const sprintCloseOperation = implement(sprintClose, async ({ db, actor, w
         await throwIfClosed(db, workspaceId);
         throw new ApiError(404, 'not_found');
       }
-      // 持ち越し先は、先のスプリントのうち終えるスプリントの最終日より後に始まるもの
-      if (carry.status !== 'planned' || carry.start_on <= sprint.end_on) {
+      // 持ち越し先は、先のスプリントのうち終えるスプリントの最終日より後に始まり、最終日がワークスペースの今日以降のもの
+      // （最終日を過ぎたスプリントは sprint-start が始められないので、入れても動かせない）
+      if (carry.status !== 'planned' || carry.start_on <= sprint.end_on || carry.end_on < today) {
         await throwIfClosed(db, workspaceId);
         throw conflict('carry_target');
       }
@@ -152,12 +163,11 @@ export const sprintCloseOperation = implement(sprintClose, async ({ db, actor, w
       throw new ApiError(404, 'not_found');
     }
 
-    const at = now();
     const closedAt = at.toISOString();
     const logId = uuidv7(at);
     const positions: (readonly [string, string])[] = [];
     if (carriesToSprint) {
-      const keys = generateNKeysBetween(await tailPosition(db, workspaceId, carryId, columnId!), null, taskIds.length);
+      const keys = generateNKeysBetween(tail, null, taskIds.length);
       taskIds.forEach((id, index) => positions.push([id, keys[index]!]));
     }
     const goalAchieved = input.is_goal_achieved === null ? null : input.is_goal_achieved ? 1 : 0;
@@ -188,6 +198,8 @@ export const sprintCloseOperation = implement(sprintClose, async ({ db, actor, w
               eb('deleted_at', 'is', null),
               eb('status', '=', 'active'),
               eb('goal', 'is', sprint.goal),
+              // 最終日が読んだ値のまま（延長で最終日が動いていたら、持ち越し先の判定を読み直す）
+              eb('end_on', '=', sprint.end_on),
               eb.exists(openWorkspace(q, organizationId, workspaceId)),
               // 未完了のタスクの集合が読んだものと同じ（読んだ以外が無く、読んだものが全部ある）
               eb.not(
@@ -225,7 +237,8 @@ export const sprintCloseOperation = implement(sprintClose, async ({ db, actor, w
                         .where('target.workspace_id', '=', workspaceId)
                         .where('target.deleted_at', 'is', null)
                         .where('target.status', '=', 'planned')
-                        .where('target.start_on', '>', sprint.end_on),
+                        .where('target.start_on', '>', sprint.end_on)
+                        .where('target.end_on', '>=', today),
                     ),
                   ]),
               ...(carriesToSprint
@@ -365,21 +378,34 @@ export const sprintCloseOperation = implement(sprintClose, async ({ db, actor, w
             ),
           ]),
       // 持ち越すタスクを書く。バックログへなら、スプリント、列、列の中の位置を空にする
-      db.statement((q) =>
-        q
-          .updateTable('tasks')
-          .set((eb) => ({
-            sprint_id: carryId,
-            column_id: carriesToSprint ? columnId! : null,
-            column_position: carriesToSprint ? jsonPairLookup(positions, eb.ref('tasks.id')) : null,
-            updated_at: closedAt,
-          }))
-          .where('sprint_id', '=', sprintId)
-          .where('workspace_id', '=', workspaceId)
-          .where('deleted_at', 'is', null)
-          .where('completed_at', 'is', null)
-          .where((eb) => eb.exists(ownLog(q))),
-      ),
+      carriesToSprint
+        ? db.statement((q) =>
+            q
+              .updateTable('tasks')
+              .from(jsonPairRows(positions).as('p'))
+              .set((eb) => ({
+                sprint_id: carryId,
+                column_id: columnId!,
+                column_position: eb.ref('p.pos'),
+                updated_at: closedAt,
+              }))
+              .whereRef('tasks.id', '=', 'p.id')
+              .where('tasks.sprint_id', '=', sprintId)
+              .where('tasks.workspace_id', '=', workspaceId)
+              .where('tasks.deleted_at', 'is', null)
+              .where('tasks.completed_at', 'is', null)
+              .where((eb) => eb.exists(ownLog(q))),
+          )
+        : db.statement((q) =>
+            q
+              .updateTable('tasks')
+              .set({ sprint_id: carryId, column_id: null, column_position: null, updated_at: closedAt })
+              .where('sprint_id', '=', sprintId)
+              .where('workspace_id', '=', workspaceId)
+              .where('deleted_at', 'is', null)
+              .where('completed_at', 'is', null)
+              .where((eb) => eb.exists(ownLog(q))),
+          ),
     ]);
 
     if ((results[0]?.changes ?? 0) > 0) {

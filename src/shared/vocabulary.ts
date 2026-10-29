@@ -2436,9 +2436,11 @@ export const dictionary = defineDictionary({
   sprintCloseLabel: workspace('終える: {label}', '終える: {label}'),
   sprintCloseTitle: workspace('{sprint}を終える', '{sprint}を終える'),
   sprintCloseText: workspace(
-    '{label}（{period}）を終えます。終えた{sprint}の期間と中身は、あとから変えられません。',
-    '{label}（{period}）を終えます。終えた{sprint}の期間と中身は、あとから変えられません。',
+    '{label}を終えます。終えた{sprint}の期間と中身は、あとから変えられません。',
+    '{label}を終えます。終えた{sprint}の期間と中身は、あとから変えられません。',
   ),
+  // 名前のあるスプリントの呼び名に期間を添える。名前の無いスプリントは期間が名前なので、期間を重ねない（sprintLabelWithPeriod）
+  sprintLabelWithPeriod: workspace('{label}（{period}）', '{label}（{period}）'),
   sprintCloseLoadFailed: workspace(
     '{sprint}の状態を読み込めませんでした。もう一度試してください',
     '{sprint}の状態を読み込めませんでした。もう一度試してください',
@@ -2447,7 +2449,7 @@ export const dictionary = defineDictionary({
     '終わらなかった{task} {count} 件の行き先',
     '終わらなかった{task} {count} 件の行き先',
   ),
-  sprintCloseCarryTo: workspace('{label}（{period}）へ持ち越す', '{label}（{period}）へ持ち越す'),
+  sprintCloseCarryTo: workspace('{label}へ持ち越す', '{label}へ持ち越す'),
   sprintCloseCarryToNote: workspace('同じ{task}をそのまま移します。', '同じ{task}をそのまま移します。'),
   sprintCloseCarryBacklog: workspace('{backlog}へ戻す', '{backlog}へ戻す'),
   sprintCloseCarryBacklogNote: workspace(

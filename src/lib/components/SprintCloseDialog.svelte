@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { tick } from 'svelte';
   import { invalidateAll } from '$app/navigation';
   import {
     sprintClose,
@@ -8,19 +9,24 @@
     type SprintSummary,
   } from '../../shared/operations/sprint/index.ts';
   import { callOperation } from '../api.ts';
-  import { sprintLabel, sprintPeriod } from '../sprint-label.ts';
+  import { sprintLabel, sprintLabelWithPeriod } from '../sprint-label.ts';
   import { showToast } from '../toast.svelte.ts';
   import { t } from '../vocabulary.svelte.ts';
   import Dialog from './Dialog.svelte';
   import Icon from './Icon.svelte';
 
   // スプリントを終えるダイアログ（kit.js の DIALOGS.sprintEnd）。開くたびに sprint-list を読み、終えるスプリントの未完了のタスクの件数と、
-  // 持ち越し先の候補（終えるスプリントの最終日より後に始まる、先のスプリント）を出す。未完了のタスクがあるときだけ行き先
-  // （候補ごとの「持ち越す」と「バックログへ戻す」）を聞き、既定は最も早い候補（無ければバックログだけ）。
+  // 持ち越し先の候補（終えるスプリントの最終日より後に始まり、最終日がワークスペースの今日以降の、先のスプリント）を出す。
+  // 未完了のタスクがあるときだけ行き先（候補ごとの「持ち越す」と「バックログへ戻す」）を聞き、既定は最も早い候補（無ければバックログだけ）。
   // ゴールを書いて始めたスプリントだけ、達成したかを聞く（既定は「達成した」）。
-  // 持ち越し先が使えなくなった（carry_target）、読んでから書くまでにタスクが変わった（changed）、入力が合わない（400）ときは、
-  // 理由をダイアログの中に出して開いたままにし、候補と件数を読み直す。もう進行中でない（not_active）、見つからない（404）ときは、
-  // トーストで知らせて閉じ、画面を読み直す（ongone）。閉じたワークスペース、権限が無い（403）ときは、ダイアログの中に出し、閉じたら画面を読み直す。
+  // 読み込みが終わったら、フォーカスを選ばれている行き先（無ければゴールの達成、どちらも無ければ見出し）へ移す。
+  // 読み込めなかったときは「終える」を押せない。
+  // 持ち越し先が使えなくなった（carry_target、持ち越し先が消えた 404）、読んでから書くまでにタスクが変わった（changed）、
+  // 入力が合わない（400）ときは、理由をダイアログの中に出して開いたままにし、候補と件数を読み直す。
+  // 読み直して終えるスプリントが進行中でなければ（not_active、終えるスプリントが消えた 404）、トーストで知らせて閉じ、画面を読み直す（ongone）。
+  // 閉じたワークスペース、権限が無い（403）ときは、ダイアログの中に出し、閉じたら画面を読み直す。
+  // 開いた後に入ったタスクも、サーバーが読み直して同じ行き先へ持ち越す。未完了が0件で行き先を聞かなかったときは、バックログへ戻る。
+  // 件数は終えたときのトーストで分かるので、ダイアログの中では知らせない。
   // 終えられたら閉じて、画面が読み直す（onclosed）
   let {
     slug,
@@ -124,15 +130,33 @@
       return;
     }
     current = found;
-    // sprint-list は開始日の順。最も早い候補が先頭に来る
+    // sprint-list は開始日の順。最も早い候補が先頭に来る。最終日がワークスペースの今日より前の先のスプリントは、
+    // 始められないので候補にしない（サーバーも 409 の carry_target で断る）
     candidates = result.data.sprints.filter(
-      (candidate) => candidate.status === 'planned' && candidate.start_on > found.end_on,
+      (candidate) =>
+        candidate.status === 'planned' && candidate.start_on > found.end_on && candidate.end_on >= result.data.today,
     );
     if (carry !== BACKLOG && !candidates.some((candidate) => candidate.id === carry)) {
       carry = BACKLOG;
       chosenByUser = false;
     }
     if (carry === BACKLOG && !chosenByUser) carry = candidates[0]?.id ?? BACKLOG;
+    await focusAnswer(mine);
+  }
+
+  // 読み込みが終わったら、フォーカスを答える欄へ移す（開いた直後は、読み込み前の主ボタンに落ちている）。
+  // 選ばれている行き先、行き先を聞かないときはゴールの達成、どちらも無ければダイアログの見出し
+  async function focusAnswer(mine: number): Promise<void> {
+    await tick();
+    if (mine !== generation) return;
+    const form = document.getElementById(formId);
+    const answer =
+      form?.querySelector<HTMLElement>(`input[name="${carryName}"]:checked`) ??
+      form?.querySelector<HTMLElement>(`input[name="${goalName}"]:checked`) ??
+      form?.closest('dialog')?.querySelector<HTMLElement>('.dialog-title');
+    if (answer === null || answer === undefined) return;
+    if (!answer.hasAttribute('tabindex') && answer.tagName === 'H2') answer.setAttribute('tabindex', '-1');
+    answer.focus();
   }
 
   const openCount = $derived((current?.tasks ?? []).filter((task) => task.completed_at === null).length);
@@ -147,7 +171,7 @@
 
   async function submit(event: SubmitEvent): Promise<void> {
     event.preventDefault();
-    if (submitting || loading || target === null || current === null) return;
+    if (submitting || loading || loadFailed || target === null || current === null) return;
     const mine = generation;
     submitting = true;
     submitError = null;
@@ -187,7 +211,12 @@
           submitError = t('workspaceClosedReadOnly', { workspace: t('workspace') });
           reloadOnClose = true;
         } else if (result.status === 404) {
-          gone(t('sprintCloseGone', { sprint: t('sprint') }));
+          // 終えるスプリントか持ち越し先が消えた。読み直して、終えるスプリントが進行中のままなら（持ち越し先が消えた）、
+          // 開いたまま選び直させる。終えるスプリントが無いか進行中でなければ、load が知らせて閉じる
+          submitError = t('sprintCloseCarryTarget');
+          chosenByUser = false;
+          submitting = false;
+          await load();
         } else if (result.status === 403) {
           submitError = t('sprintCloseForbidden', { sprint: t('sprint'), leader: t('leader') });
           reloadOnClose = true;
@@ -233,11 +262,7 @@
   {#if target !== null}
     <form id={formId} class="form" onsubmit={submit} novalidate>
       <p>
-        {t('sprintCloseText', {
-          label: sprintLabel(target, t),
-          period: sprintPeriod(target, t),
-          sprint: t('sprint'),
-        })}
+        {t('sprintCloseText', { label: sprintLabelWithPeriod(target, t), sprint: t('sprint') })}
       </p>
       {#if loadFailed}
         <div class="callout is-danger" role="alert">
@@ -268,12 +293,7 @@
                       onchange={() => (chosenByUser = true)}
                     />
                     <div>
-                      <b
-                        >{t('sprintCloseCarryTo', {
-                          label: sprintLabel(candidate, t),
-                          period: sprintPeriod(candidate, t),
-                        })}</b
-                      >
+                      <b>{t('sprintCloseCarryTo', { label: sprintLabelWithPeriod(candidate, t) })}</b>
                       <span>{t('sprintCloseCarryToNote', { task: t('task') })}</span>
                     </div>
                   </label>
@@ -333,7 +353,7 @@
       class="btn is-primary"
       type="submit"
       form={formId}
-      aria-disabled={submitting || loading || current === null}
+      aria-disabled={submitting || loading || loadFailed || current === null}
       bind:this={submitButton}
     >
       {submitting ? status : t('sprintCloseSubmit')}

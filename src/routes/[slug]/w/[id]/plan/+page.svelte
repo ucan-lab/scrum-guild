@@ -132,9 +132,9 @@
     );
   }
 
-  // 日付は YYYY-MM-DD なので、文字列の比較が日付の前後と一致する
+  // 日付は YYYY-MM-DD なので、文字列の比較が日付の前後と一致する。終了したワークスペースでは、誰も終えられないので促さない
   function isOverdue(sprint: SprintSummary): boolean {
-    return plan !== null && sprint.status === 'active' && plan.today > sprint.end_on;
+    return plan !== null && !isClosed && sprint.status === 'active' && plan.today > sprint.end_on;
   }
 
   // 終えたら、押した「終える」が消えるので、一覧を読み直して見出しへフォーカスを移す

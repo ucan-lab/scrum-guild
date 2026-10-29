@@ -1,6 +1,7 @@
 // スプリントの終了（sprint-close）の振る舞いと、終えた後に中身を変える操作の断り。
 // 組織の分離と権限の種類ごとの許可と拒否は、一覧を回す test/operation-registry.test.ts が確かめる。ここでは要の場面だけを重ねて見る
 import { env } from 'cloudflare:workers';
+import { generateNKeysBetween } from 'fractional-indexing';
 import { afterEach, describe, expect, test } from 'vitest';
 import { parseDevNow, setFixedNow } from '../src/shared/clock.ts';
 import {
@@ -25,6 +26,8 @@ afterEach(() => setFixedNow(undefined));
 
 const DEV_NOW = '2026-10-26T10:00:00+09:00';
 const frozenEnv: Env = Object.assign({}, testEnv, { PUBLIC_ORIGIN: 'http://localhost:8787', DEV_NOW });
+// 日本時間の午前 1 時。UTC ではまだ前の日（UTC で今日を数えると 2026-10-25 になる）
+const EARLY_NOW = '2026-10-26T01:00:00+09:00';
 
 const ACTIVE_RANGE = { start_on: '2026-10-19', end_on: '2026-11-01' };
 const ACTIVE_LABEL = '2026-10-19〜2026-11-01';
@@ -90,12 +93,25 @@ async function setup(options: { goal?: string | null } = {}) {
   return { target, board, active, next, a, b, c, d, e };
 }
 
-function close(target: Target, sprintId: string, body: Record<string, unknown> = {}, person: Person = target.leader) {
+// 時計を止めた環境で呼ぶ（持ち越し先の最終日は今日と比べるので、実際の日付に依らないようにする）
+function close(
+  target: Target,
+  sprintId: string,
+  body: Record<string, unknown> = {},
+  person: Person = target.leader,
+  callEnv: Env = frozenEnv,
+) {
   return post(app, sprintClose, {
     slug: target.slug,
     token: person.token,
     body: { workspace_id: target.workspace.id, sprint_id: sprintId, carry_sprint_id: null, ...body },
+    env: callEnv,
   });
+}
+
+// 開発用の時計（DEV_NOW）を止めた、ループバックの公開 URL の環境
+function envAt(devNow: string): Env {
+  return Object.assign({}, testEnv, { PUBLIC_ORIGIN: 'http://localhost:8787', DEV_NOW: devNow });
 }
 
 function call(
@@ -120,6 +136,15 @@ async function sprintRow(target: Target, sprintId: string) {
   return db.first(
     db.statement((q) =>
       q.selectFrom('sprints').selectAll().where('id', '=', sprintId).where('workspace_id', '=', target.workspace.id),
+    ),
+  );
+}
+
+async function updateSprint(target: Target, sprintId: string, values: { start_on: string; end_on: string }) {
+  const db = orgDb(env, target.organization.verified);
+  await db.run(
+    db.statement((q) =>
+      q.updateTable('sprints').set(values).where('id', '=', sprintId).where('workspace_id', '=', target.workspace.id),
     ),
   );
 }
@@ -361,6 +386,34 @@ describe('sprint-close: 断るもの', () => {
     expect(await countLogs(target)).toBe(0);
   });
 
+  test('持ち越し先の最終日がワークスペースの今日より前なら 409 の carry_target。今日以降なら持ち越せる', async () => {
+    const { target, active, next, a } = await setup();
+    const today = envAt('2026-11-20T10:00:00+09:00');
+    // next は 11-02〜11-15 で、今日（11-20）より前に終わっている。始められないスプリントには持ち越せない
+    const past = await close(target, active.id, { carry_sprint_id: next.id, is_goal_achieved: true }, undefined, today);
+    expect(past.status).toBe(409);
+    expect(await errorCodeOf(past.clone())).toBe('conflict');
+    expect(await reasonOf(past)).toBe('carry_target');
+    expect(await sprintRow(target, active.id)).toMatchObject({ status: 'active' });
+    expect(await taskRow(target, a.id)).toMatchObject({ sprint_id: active.id });
+    expect(await countLogs(target)).toBe(0);
+
+    // 最終日が今日の日（11-20）までは持ち越せる
+    const latest = await createSprint(target.organization, target.workspace.id, {
+      start_on: '2026-11-16',
+      end_on: '2026-11-20',
+    });
+    const res = await close(
+      target,
+      active.id,
+      { carry_sprint_id: latest.id, is_goal_achieved: true },
+      undefined,
+      today,
+    );
+    expect(res.status).toBe(200);
+    expect(await taskRow(target, a.id)).toMatchObject({ sprint_id: latest.id });
+  });
+
   test('別の組織、別のワークスペース、削除したスプリントは 404（終えるものも持ち越し先も）', async () => {
     const { target, active, next } = await setup();
     const other = await createTarget();
@@ -424,11 +477,28 @@ describe('sprint-close: 終えた後の中身', () => {
     expect(remove.status).toBe(409);
     expect(await reasonOf(remove)).toBe('closed');
 
-    const move = await call(target, taskColumnMove, { task_id: d.id, column_id: board.first });
-    expect(move.status).toBe(409);
+    // 完了したタスクの移動は断る
+    const moveDone = await call(target, taskColumnMove, { task_id: d.id, column_id: board.first });
+    expect(moveDone.status).toBe(409);
 
-    const complete = await call(target, taskComplete, { task_id: d.id });
+    // 終えたスプリントに未完了のタスクが残っていても（終了は持ち越すので、ふつうは無い。直に作る）、
+    // 動かす操作は進行中でないスプリントとして断り（not_active）、完了にする操作は終了したスプリントの分岐で断る
+    const left = await taskIn(target, active.id, board.first, 'a9', { title: '終えた後に残ったタスク' });
+    const move = await call(target, taskColumnMove, { task_id: left.id, column_id: board.second });
+    expect(move.status).toBe(409);
+    expect(await errorCodeOf(move.clone())).toBe('conflict');
+    expect(await reasonOf(move)).toBe('not_active');
+    const complete = await call(target, taskComplete, { task_id: left.id });
     expect(complete.status).toBe(409);
+    expect(await errorCodeOf(complete.clone())).toBe('conflict');
+    expect(await reasonOf(complete)).toBeUndefined();
+    expect(await taskRow(target, left.id)).toMatchObject({
+      sprint_id: active.id,
+      column_id: board.first,
+      completed_at: null,
+    });
+    const completeDone = await call(target, taskComplete, { task_id: d.id });
+    expect(completeDone.status).toBe(409);
 
     const reopen = await call(target, taskReopen, { task_id: d.id });
     expect(reopen.status).toBe(409);
@@ -457,6 +527,17 @@ describe('sprint-close: 終えた後の中身', () => {
     expect(body.sprints.map((sprint) => sprint.id)).toEqual([next.id]);
     expect(body.sprints[0]!.tasks).toHaveLength(4);
   });
+
+  test('today はワークスペースのタイムゾーンで数える（日本時間の午前 1 時は UTC ではまだ前の日）', async () => {
+    const { target } = await setup();
+    const res = await post(app, sprintList, {
+      slug: target.slug,
+      token: target.member.token,
+      body: { workspace_id: target.workspace.id },
+      env: envAt(EARLY_NOW),
+    });
+    expect(((await res.json()) as { today: string }).today).toBe('2026-10-26');
+  });
 });
 
 // 処理を直に呼び、db.batch() の n 回目の呼び出しが返った直後に race を走らせる（読んでから書くまでの割り込み）。
@@ -465,7 +546,11 @@ async function closeWithRace(
   target: Target,
   input: Record<string, unknown>,
   race: (readNumber: number, db: Db) => Promise<void>,
+  devNow: string = DEV_NOW,
 ) {
+  const parsed = parseDevNow(devNow);
+  if (!parsed.ok) throw new Error('解釈できるはず');
+  setFixedNow(parsed.at);
   const db = orgDb(env, target.organization.verified);
   const actor = {
     accountId: target.leader.accountId,
@@ -570,6 +655,49 @@ describe('sprint-close: 読んだ後に別の要求が割り込む', () => {
     expect(await taskRow(target, a.id)).toMatchObject({ sprint_id: active.id });
   });
 
+  test('読んだ後に持ち越し先の期間が終えるスプリントより前に直されたら、409 の carry_target で、スプリントは active のまま', async () => {
+    const { target, active, next, a } = await setup();
+    await expect(
+      closeWithRace(
+        target,
+        { sprint_id: active.id, carry_sprint_id: next.id, is_goal_achieved: true },
+        async (n, db) => {
+          if (n !== 1) return;
+          await db.run(
+            db.statement((q) =>
+              q.updateTable('sprints').set({ start_on: '2026-10-05', end_on: '2026-10-18' }).where('id', '=', next.id),
+            ),
+          );
+        },
+      ),
+    ).rejects.toMatchObject({ status: 409, code: 'conflict', details: { reason: 'carry_target' } });
+    expect(await sprintRow(target, active.id)).toMatchObject({ status: 'active' });
+    expect(await taskRow(target, a.id)).toMatchObject({ sprint_id: active.id });
+    expect(await countLogs(target)).toBe(0);
+  });
+
+  test('読んだ後に持ち越し先の最終日が今日より前に直されても、書く文が断り、409 の carry_target', async () => {
+    const { target, active, next, a } = await setup();
+    // 今日は 2026-11-20。読んだときの持ち越し先は 11-16〜11-29（最終日は今日以降）
+    await updateSprint(target, next.id, { start_on: '2026-11-16', end_on: '2026-11-29' });
+    await expect(
+      closeWithRace(
+        target,
+        { sprint_id: active.id, carry_sprint_id: next.id, is_goal_achieved: true },
+        async (n, db) => {
+          if (n !== 1) return;
+          await db.run(
+            db.statement((q) => q.updateTable('sprints').set({ end_on: '2026-11-19' }).where('id', '=', next.id)),
+          );
+        },
+        '2026-11-20T10:00:00+09:00',
+      ),
+    ).rejects.toMatchObject({ status: 409, code: 'conflict', details: { reason: 'carry_target' } });
+    expect(await sprintRow(target, active.id)).toMatchObject({ status: 'active' });
+    expect(await taskRow(target, a.id)).toMatchObject({ sprint_id: active.id });
+    expect(await countLogs(target)).toBe(0);
+  });
+
   test('読んだ後に別の要求が先に終えたら、時計を止めていても二重に書かず、後の要求は 409 の not_active', async () => {
     const { target, active, next, a, d } = await setup();
     const parsed = parseDevNow(DEV_NOW);
@@ -599,5 +727,140 @@ describe('sprint-close: 読んだ後に別の要求が割り込む', () => {
     expect(await logsOf(target, a.id)).toHaveLength(1);
     expect(await entriesOf(target, a.id)).toHaveLength(2);
     expect(await entriesOf(target, d.id)).toHaveLength(1);
+  });
+});
+
+// 1文の bind の上限（100）と batch() の大きさに当たらないこと、持ち越す位置の書き込みが件数に比例することを、100 件を超える件数で確かめる
+describe('sprint-close: 未完了のタスクが多いとき', () => {
+  const BIG = 250;
+
+  // 出発前と遂行中に半分ずつ、列の中の位置を振った未完了のタスクを BIG 件。期待する並び（列の順、列の中の位置の順）の ID を返す
+  async function bigSetup() {
+    const base = await setup({ goal: null });
+    const { target, board, active } = base;
+    const keys = generateNKeysBetween(null, null, BIG / 2);
+    const made: { id: string; column: string; position: string }[] = [];
+    for (let start = 0; start < BIG; start += 25) {
+      const chunk = await Promise.all(
+        Array.from({ length: 25 }, async (_, offset) => {
+          const index = start + offset;
+          const column = index % 2 === 0 ? board.first : board.second;
+          const position = keys[Math.floor(index / 2)]!;
+          const task = await taskIn(target, active.id, column, position, { title: `大量 ${index}` });
+          return { id: task.id, column, position };
+        }),
+      );
+      made.push(...chunk);
+    }
+    // setup が置く未完了の a、c（出発前）、b（遂行中）も含めた、終えるスプリントでの並び
+    const all = [
+      ...made.filter((task) => task.column === board.first),
+      { id: base.a.id, column: board.first, position: 'a0' },
+      { id: base.c.id, column: board.first, position: 'a1' },
+      ...made.filter((task) => task.column === board.second),
+      { id: base.b.id, column: board.second, position: 'a0' },
+    ];
+    const order = (column: string) =>
+      all
+        .filter((task) => task.column === column)
+        .sort((x, y) => (x.position === y.position ? (x.id < y.id ? -1 : 1) : x.position < y.position ? -1 : 1))
+        .map((task) => task.id);
+    return { ...base, expected: [...order(board.first), ...order(board.second)] };
+  }
+
+  test('先のスプリントへ持ち越す: 件数、列の中の並び、行、履歴が件数どおり', { timeout: 120_000 }, async () => {
+    const { target, board, active, next, e, expected } = await bigSetup();
+    const total = expected.length;
+    expect(total).toBe(BIG + 3);
+
+    const startedAt = performance.now();
+    const res = await close(target, active.id, { carry_sprint_id: next.id });
+    const elapsed = Math.round(performance.now() - startedAt);
+    // 件数に比例して遅くなる（相関副問い合わせで行ごとに位置を引くと2乗になる）ことへの目安。手元の実測は 253 件で 0.5 秒ほど
+    expect(elapsed, `${total} 件の持ち越しに ${elapsed} ms`).toBeLessThan(10_000);
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ sprint_id: active.id, carried_count: total });
+
+    const db = orgDb(env, target.organization.verified);
+    // 先のスプリントの先頭の列に、元の並びのまま末尾へ並ぶ（setup が置いた e の後ろ）。位置は重ならない
+    const moved = await db.rows(
+      db.statement((q) =>
+        q
+          .selectFrom('tasks')
+          .select(['tasks.id', 'tasks.column_id', 'tasks.column_position'])
+          .where('tasks.sprint_id', '=', next.id)
+          .where('tasks.workspace_id', '=', target.workspace.id)
+          .where('tasks.id', '!=', e.id)
+          .orderBy('tasks.column_position')
+          .orderBy('tasks.id'),
+      ),
+    );
+    expect(moved.map((row) => row.id)).toEqual(expected);
+    expect(new Set(moved.map((row) => row.column_position)).size).toBe(total);
+    expect(moved.every((row) => row.column_id === board.first)).toBe(true);
+    expect(moved[0]!.column_position! > 'a5').toBe(true);
+
+    const entries = await db.rows(
+      db.statement((q) =>
+        q
+          .selectFrom('sprint_entries')
+          .select(['sprint_id', 'outcome', 'ended_at', 'task_id'])
+          .where('workspace_id', '=', target.workspace.id),
+      ),
+    );
+    expect(entries.filter((row) => row.sprint_id === active.id && row.outcome === 'carried_over')).toHaveLength(total);
+    expect(entries.filter((row) => row.sprint_id === next.id && row.ended_at === null)).toHaveLength(total + 1);
+    const logs = await db.rows(
+      db.statement((q) =>
+        q.selectFrom('change_logs').select(['entity_type']).where('organization_id', '=', target.organization.id),
+      ),
+    );
+    expect(logs.filter((row) => row.entity_type === 'task')).toHaveLength(total);
+    expect(logs.filter((row) => row.entity_type === 'sprint')).toHaveLength(1);
+  });
+
+  test('バックログへ戻す: 件数、行、履歴が件数どおり', { timeout: 120_000 }, async () => {
+    const { target, active, expected } = await bigSetup();
+    const total = expected.length;
+
+    const startedAt = performance.now();
+    const res = await close(target, active.id, { carry_sprint_id: null });
+    const elapsed = Math.round(performance.now() - startedAt);
+    expect(elapsed, `${total} 件の戻しに ${elapsed} ms`).toBeLessThan(10_000);
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ sprint_id: active.id, carried_count: total, carry_to: null });
+
+    const db = orgDb(env, target.organization.verified);
+    const open = await db.rows(
+      db.statement((q) =>
+        q
+          .selectFrom('tasks')
+          .select('tasks.id')
+          .where('tasks.workspace_id', '=', target.workspace.id)
+          .where('tasks.sprint_id', 'is', null)
+          .where('tasks.column_id', 'is', null)
+          .where('tasks.column_position', 'is', null)
+          .where('tasks.completed_at', 'is', null)
+          .where('tasks.deleted_at', 'is', null)
+          .where('tasks.title', 'like', '大量 %'),
+      ),
+    );
+    expect(open).toHaveLength(BIG);
+    const entries = await db.rows(
+      db.statement((q) =>
+        q
+          .selectFrom('sprint_entries')
+          .select(['sprint_id', 'outcome', 'ended_at'])
+          .where('workspace_id', '=', target.workspace.id),
+      ),
+    );
+    expect(entries.filter((row) => row.sprint_id === active.id && row.outcome === 'carried_over')).toHaveLength(total);
+    expect(entries.filter((row) => row.ended_at === null && row.sprint_id !== active.id)).toHaveLength(1);
+    const logs = await db.rows(
+      db.statement((q) =>
+        q.selectFrom('change_logs').select(['entity_type']).where('organization_id', '=', target.organization.id),
+      ),
+    );
+    expect(logs.filter((row) => row.entity_type === 'task')).toHaveLength(total);
   });
 });

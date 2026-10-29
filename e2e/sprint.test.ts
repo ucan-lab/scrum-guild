@@ -498,6 +498,8 @@ test('リーダーは遠征を終え、終わらなかったクエストを次�
   await expect(carry.getByRole('radio')).toHaveCount(2);
   await expect(carry.getByRole('radio', { name: /^遠征 第2回（3\/15〜3\/28）へ持ち越す/ })).toBeChecked();
   await expect(carry.getByRole('radio', { name: /^掲示板へ戻す/ })).not.toBeChecked();
+  // 読み込みが終わったら、フォーカスは選ばれている行き先へ移る（開いた直後の主ボタンから）
+  await expect(carry.getByRole('radio', { name: /^遠征 第2回（3\/15〜3\/28）へ持ち越す/ })).toBeFocused();
   const goal = closeDialog.getByRole('radiogroup', { name: '遠征の目的は達成できましたか' });
   await expect(closeDialog.locator('.props-note')).toHaveText(GOAL);
   await expect(goal.getByRole('radio', { name: '達成した' })).toBeChecked();
@@ -528,6 +530,7 @@ test('リーダーは遠征を終え、終わらなかったクエストを次�
   const backlogOnly = closeDialog.getByRole('radiogroup', { name: '終わらなかったクエスト 2 件の行き先' });
   await expect(backlogOnly.getByRole('radio')).toHaveCount(1);
   await expect(backlogOnly.getByRole('radio', { name: /^掲示板へ戻す/ })).toBeChecked();
+  await expect(backlogOnly.getByRole('radio', { name: /^掲示板へ戻す/ })).toBeFocused();
   await expect(closeDialog).toContainText('持ち越せる遠征がありません。掲示板へ戻します。');
   await expect(closeDialog.getByRole('radiogroup', { name: '遠征の目的は達成できましたか' })).toHaveCount(0);
   await closeDialog.getByRole('button', { name: '終える', exact: true }).click();
@@ -587,6 +590,38 @@ test('最終日を過ぎた進行中の遠征には終えるのを促す知ら�
   await expect(carry).toBeVisible();
   await dialog.getByRole('button', { name: 'やめる' }).click();
   await expect(dialog).toBeHidden();
+});
+
+test('終了のダイアログは、読み込めなければ「終える」を押せず、もう一度試すで読み直せる', async ({
+  page,
+  context,
+  baseURL,
+}) => {
+  await signIn(context, baseURL, 'admin');
+  await mockOperation(page, sprintBoard, { slug: 'aoba' }, OVERDUE_BOARD);
+  const unroute = await failOperation(page, sprintList, { slug: 'aoba' }, 500, 'internal');
+  await page.goto(`${AOBA_TEAM}/sprint`);
+  await page.locator('.callout.is-warn').getByRole('button', { name: '終える: 遠征 第14回' }).click();
+  const dialog = page.getByRole('dialog', { name: '遠征を終える' });
+  await expect(dialog.getByRole('alert')).toContainText('遠征の状態を読み込めませんでした');
+  const submit = dialog.getByRole('button', { name: '終える', exact: true });
+  await expect(submit).toHaveAttribute('aria-disabled', 'true');
+  // 押しても送らない
+  let closes = 0;
+  page.on('request', (request) => {
+    if (request.url().includes('sprint-close')) closes++;
+  });
+  // aria-disabled の要素は、Playwright が押せない状態として待つので、force で押す
+  await submit.click({ force: true });
+  expect(closes).toBe(0);
+
+  await unroute();
+  await mockOperation(page, sprintList, { slug: 'aoba' }, OVERDUE_PLAN);
+  await dialog.getByRole('button', { name: 'もう一度試す' }).click();
+  const first = dialog.getByRole('radio', { name: /^遠征 第15回（10\/27〜11\/9）へ持ち越す/ });
+  await expect(first).toBeChecked();
+  await expect(first).toBeFocused();
+  await expect(submit).toHaveAttribute('aria-disabled', 'false');
 });
 
 test('最終日を過ぎた知らせは、リーダーでない人には終える人を伝えるだけで、最終日の前には出ない', async ({

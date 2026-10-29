@@ -53,8 +53,8 @@
   const canWrite = $derived(workspace !== null && !isClosed);
   const canLead = $derived(isLeader && !isClosed);
   const sprint = $derived(board?.sprint ?? null);
-  // 日付は YYYY-MM-DD なので、文字列の比較が日付の前後と一致する
-  const overdue = $derived(sprint !== null && board !== null && board.today > sprint.end_on);
+  // 日付は YYYY-MM-DD なので、文字列の比較が日付の前後と一致する。終了したワークスペースでは、誰も終えられないので促さない
+  const overdue = $derived(!isClosed && sprint !== null && board !== null && board.today > sprint.end_on);
   let closeDialog = $state<ReturnType<typeof SprintCloseDialog>>();
   const sprintHref = $derived(
     resolve('/[slug]/w/[id]/sprint', { slug: page.params.slug ?? '', id: page.params.id ?? '' }),
