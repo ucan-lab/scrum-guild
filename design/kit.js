@@ -912,7 +912,7 @@ const looooooooooooooooooooooooooooooooooongLine = "コードの長い1行は、
         ${attachments(x.id)}
       </div>
       <div class="done-bar">
-        ${x.doneAt ? `<span class="done-bar-done"><span class="hanko" role="img" aria-label="${t("done")}">${icon("check")}<b>完</b></span><span>${t("done")} ${esc(x.doneAt)}</span></span><button class="link-btn" type="button" data-undo="${x.id}">戻す</button>`
+        ${x.doneAt ? `<span class="done-bar-done"><span class="hanko" role="img" aria-label="${t("done")}">${icon("check")}<b>完</b></span><span>${t("done")} ${esc(x.doneAt)}</span><button class="link-btn" type="button" data-undo="${x.id}">戻す</button></span>`
           : `<button class="btn is-primary" type="button" data-done="${x.id}">${icon("check")}${t("complete")}</button>`}
         ${D.definitionOfDone.length ? `<div class="done-bar-dod"><h3 class="done-bar-dod-title" id="drawer-dod">${t("dod")}</h3><div class="done-bar-dod-body" tabindex="0" role="region" aria-labelledby="drawer-dod">${dodDoc()}</div></div>` : ""}
       </div>
