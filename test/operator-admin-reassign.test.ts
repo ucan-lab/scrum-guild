@@ -5,6 +5,7 @@
 import { env } from 'cloudflare:workers';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { WAITING_USER_NAME_IN_LOG } from '../src/shared/claim-token.ts';
+import { setFixedNow } from '../src/shared/clock.ts';
 import type { OutputOf } from '../src/shared/operations/define.ts';
 import {
   createOrganization as create,
@@ -42,7 +43,15 @@ const newBrowser = () => new FakeBrowser(app, github, loginEnv, undefined, googl
 
 afterEach(() => {
   vi.restoreAllMocks();
+  setFixedNow(undefined);
 });
+
+const SUSPENDED_AT = '2026-10-20T00:00:00.000Z';
+
+// 開発用の時計（DEV_NOW）が使える、ループバックの公開 URL の環境。消す予定日の境目を、時計を止めて確かめる
+function devEnv(devNow: string): Env {
+  return Object.assign({}, loginEnv, { PUBLIC_ORIGIN: 'http://localhost:8787', DEV_NOW: devNow });
+}
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const inDays = (days: number) => new Date(Date.now() + days * DAY_MS).toISOString();
@@ -688,7 +697,7 @@ describe('組織の変更の履歴', () => {
 
 describe('停止中と人数の上限', () => {
   test('停止中の組織にも指名し直せ、停止の状態は変えない', async () => {
-    const organization = await createOrganization({ suspended_at: '2026-10-20T00:00:00.000Z', purge_on: '2026-11-19' });
+    const organization = await createOrganization({ suspended_at: '2026-10-20T00:00:00.000Z', purge_on: '2999-12-31' });
     const pending = await pendingGithubAdmin(organization);
     const user = newGithubUser();
     const token = await operatorToken();
@@ -701,9 +710,65 @@ describe('停止中と人数の上限', () => {
     expect(users.map((row) => row.id)).not.toContain(pending.id);
     expect(await organizationRow(organization.id)).toMatchObject({
       suspended_at: '2026-10-20T00:00:00.000Z',
-      purge_on: '2026-11-19',
+      purge_on: '2999-12-31',
     });
     expect(await statusOf(token, organization.slug)).toBe('pending');
+  });
+
+  test('消す予定日を過ぎた解約の組織は 409 の purge_due で、GitHub に問い合わせず、users と change_logs を書かない', async () => {
+    // 予定日は Worker の時計（DEV_NOW）で過ぎた日にする。実際の今日に左右されないよう、時計も予定日も遠い先に置く
+    const organization = await createOrganization({ suspended_at: SUSPENDED_AT, purge_on: '2999-06-01' });
+    const pending = await pendingGithubAdmin(organization);
+    const token = await operatorToken();
+    const lookupsBefore = github.calls.length;
+    const res = await reassignBy(token, organization.slug, adminOf(newGithubUser()), devEnv('2999-06-02T00:00:00Z'));
+    expect(res.status).toBe(409);
+    expect(await errorCodeOf(res)).toBe('purge_due');
+    expect(github.calls.length).toBe(lookupsBefore);
+    expect((await usersOf(organization.id)).map((row) => row.id)).toEqual([pending.id]);
+    expect(await userChangeLogsOf(organization.id)).toEqual([]);
+
+    // Google も、招待の URL を作らずに断る
+    const viaGoogle = await reassignBy(
+      token,
+      organization.slug,
+      { provider: 'google', email: 'kai.tsukishiro@example.com' },
+      devEnv('2999-06-02T00:00:00Z'),
+    );
+    expect(viaGoogle.status).toBe(409);
+    expect(await errorCodeOf(viaGoogle)).toBe('purge_due');
+    expect((await usersOf(organization.id)).map((row) => row.id)).toEqual([pending.id]);
+    expect(await userChangeLogsOf(organization.id)).toEqual([]);
+  });
+
+  test("Worker の時計では過ぎていなくても、D1 の date('now') で過ぎていれば 409 の purge_due", async () => {
+    // Worker の時計を実際の今日より前に止め、予定日をその日より後で実際の今日より前にする（operator-suspension.test.ts と同じ形）
+    const organization = await createOrganization({ suspended_at: SUSPENDED_AT, purge_on: '2020-06-01' });
+    const lookupsBefore = github.calls.length;
+    const res = await reassignBy(
+      await operatorToken(),
+      organization.slug,
+      adminOf(newGithubUser()),
+      devEnv('2020-01-01T00:00:00Z'),
+    );
+    expect(res.status).toBe(409);
+    expect(await errorCodeOf(res)).toBe('purge_due');
+    expect(github.calls.length).toBe(lookupsBefore);
+    expect(await usersOf(organization.id)).toEqual([]);
+    expect(await userChangeLogsOf(organization.id)).toEqual([]);
+  });
+
+  test('予定日の当日は、今どおり指名し直せる', async () => {
+    const organization = await createOrganization({ suspended_at: SUSPENDED_AT, purge_on: '2999-06-01' });
+    const user = newGithubUser();
+    const res = await reassignBy(
+      await operatorToken(),
+      organization.slug,
+      adminOf(user),
+      devEnv('2999-06-01T12:00:00Z'),
+    );
+    expect(res.status).toBe(200);
+    expect((await usersOf(organization.id)).map((row) => row.login_subject)).toEqual([String(user.id)]);
   });
 
   test('停止中の組織にも Google で指名し直せ、招待の URL が出る', async () => {

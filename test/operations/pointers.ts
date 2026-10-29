@@ -199,7 +199,8 @@ export const pointers: Pointers = {
     kind: 'cancellation',
   }),
   'organization-resume': async () => ({
-    slug: (await createOrganization({ suspended_at: SUSPENDED_AT, purge_on: '2026-11-19' })).slug,
+    // 消す予定日は遠い先にする（過ぎると 409 の purge_due で再開できないため）
+    slug: (await createOrganization({ suspended_at: SUSPENDED_AT, purge_on: '2999-12-31' })).slug,
   }),
   // 上限の変更は、呼ぶたびに別の組織を作る（同じ値への変更は何も書かないので、既定の小さい組織から標準へ変える）
   'organization-quota-update': async () => ({

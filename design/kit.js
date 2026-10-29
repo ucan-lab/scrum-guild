@@ -1470,7 +1470,7 @@ const looooooooooooooooooooooooooooooooooongLine = "コードの長い1行は、
        <fieldset class="field" style="border:0;padding:0;margin:0"><legend class="field-label">停止の理由</legend>
          <div class="choice-list">
            <label class="choice"><input type="radio" name="d-why" checked><div><b>一時的に止める</b><span>支払いの遅れなど。消す予定は立てません。</span></div></label>
-           <label class="choice"><input type="radio" name="d-why"><div><b>解約</b><span>停止から 30 日後に、運用の手順でデータをすべて消します。それまでは再開できます。</span></div></label>
+           <label class="choice"><input type="radio" name="d-why"><div><b>解約</b><span>停止から 30 日後に、運用の手順でデータをすべて消します。消す予定日の当日までは再開できます。過ぎると、再開も停止の理由の切り替えもできません。</span></div></label>
          </div></fieldset>`,
       `<button class="btn is-quiet" type="button" data-close-dialog>やめる</button><button class="btn is-danger" type="button" data-close-dialog data-toast="${t("organization")}を停止しました">停止する</button>`);
       document.querySelector(".dialog-sheet").classList.add("is-danger");
@@ -1481,7 +1481,7 @@ const looooooooooooooooooooooooooooooooooongLine = "コードの長い1行は、
        <fieldset class="field" style="border:0;padding:0;margin:0"><legend class="field-label">停止の理由</legend>
          <div class="choice-list">
            <label class="choice"><input type="radio" name="d-why" checked><div><b>一時的に止める</b><span>消す予定を取り消します。</span></div></label>
-           <label class="choice"><input type="radio" name="d-why"><div><b>解約</b><span>切り替えた日から 30 日後に、運用の手順でデータをすべて消します。それまでは再開できます。</span></div></label>
+           <label class="choice"><input type="radio" name="d-why"><div><b>解約</b><span>切り替えた日から 30 日後に、運用の手順でデータをすべて消します。消す予定日の当日までは再開できます。過ぎると、再開も停止の理由の切り替えもできません。</span></div></label>
          </div></fieldset>`,
       `<button class="btn is-quiet" type="button" data-close-dialog>やめる</button><button class="btn is-primary" type="button" data-close-dialog data-toast="停止の理由を変えました">変える</button>`),
   };

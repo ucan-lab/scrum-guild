@@ -20,6 +20,11 @@ export const errorCodes = [
   // 組織が停止している。403。停止していなければ入れた人にだけ返す（入れない人は組織が無いときと同じ not_found）。
   // 画面の組織の枠は「この組織は停止しています」を出す
   'organization_suspended',
+  // 解約で停止した組織の、データを消す予定日（purge_on）を過ぎた。409。運用者の再開（organization-resume）と、
+  // 一時的な停止への切り替え（organization-suspension-update の kind: temporary）と、管理者の指名し直し
+  // （organization-admin-reassign）を断る。消している途中で戻さない、組織の中に行を足さないため。
+  // 境目は消す SQL のガードと同じで、予定日の当日まではできる。画面は「消す予定日を過ぎたので、どれもできない」を出す
+  'purge_due',
   // 操作の回数の上限（定義の rateLimit）を超えた。429
   'rate_limited',
   'internal',

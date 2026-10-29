@@ -734,8 +734,8 @@ export const dictionary = defineDictionary({
   operatorSuspendCancellation: organization('解約', '解約'),
   // {days} は PURGE_AFTER_DAYS（src/shared/operations/operator/organization-suspend.ts）
   operatorSuspendCancellationHint: organization(
-    '停止から {days} 日後に、運用の手順でデータをすべて消します。それまでは再開できます。',
-    '停止から {days} 日後に、運用の手順でデータをすべて消します。それまでは再開できます。',
+    '停止から {days} 日後に、運用の手順でデータをすべて消します。消す予定日の当日までは再開できます。過ぎると、再開も停止の理由の切り替えもできません。',
+    '停止から {days} 日後に、運用の手順でデータをすべて消します。消す予定日の当日までは再開できます。過ぎると、再開も停止の理由の切り替えもできません。',
   ),
   operatorSuspending: organization('停止しています', '停止しています'),
   operatorResuming: organization('再開しています', '再開しています'),
@@ -751,8 +751,8 @@ export const dictionary = defineDictionary({
   ),
   operatorChangeTemporaryHint: organization('消す予定を取り消します。', '消す予定を取り消します。'),
   operatorChangeCancellationHint: organization(
-    '切り替えた日から {days} 日後に、運用の手順でデータをすべて消します。それまでは再開できます。',
-    '切り替えた日から {days} 日後に、運用の手順でデータをすべて消します。それまでは再開できます。',
+    '切り替えた日から {days} 日後に、運用の手順でデータをすべて消します。消す予定日の当日までは再開できます。過ぎると、再開も停止の理由の切り替えもできません。',
+    '切り替えた日から {days} 日後に、運用の手順でデータをすべて消します。消す予定日の当日までは再開できます。過ぎると、再開も停止の理由の切り替えもできません。',
   ),
   // 開いた直後は今の理由が選ばれていて「変える」を押せないので、その理由と次にできることを伝える
   operatorChangeUnchangedHint: organization(
@@ -783,6 +783,26 @@ export const dictionary = defineDictionary({
   operatorUnavailable: organization(
     '「{name}」を操作できませんでした。見つからないか、操作できない状態です。一覧で状態を確かめてください',
     '「{name}」を操作できませんでした。見つからないか、操作できない状態です。一覧で状態を確かめてください',
+  ),
+  // 解約で消す予定日を過ぎた組織（一覧の purge_due、操作の 409 の purge_due）。消している途中で戻さないよう、再開と
+  // 一時的な停止への切り替えはサーバーが断る。一覧の行では「停止の理由を変える」と「再開する」の代わりに出す
+  // {admin} は辞書の同じ名前の項目。管理者の指名し直しも、消している途中で組織の中に行を足さないよう断る
+  operatorPurgeDue: organization(
+    '消す予定日を過ぎたので、再開も停止の理由の切り替えも{admin}の指名もできません',
+    '消す予定日を過ぎたので、再開も停止の理由の切り替えも{admin}の指名もできません',
+  ),
+  operatorReassignPurgeDue: organization(
+    '「{name}」は消す予定日を過ぎたので、{admin}を指名できません',
+    '「{name}」は消す予定日を過ぎたので、{admin}を指名できません',
+  ),
+  // 一覧を開いた後に日付が変わり、操作が purge_due で断られたときのトースト。{name} は組織の名前
+  operatorResumePurgeDue: organization(
+    '「{name}」は消す予定日を過ぎたので再開できません',
+    '「{name}」は消す予定日を過ぎたので再開できません',
+  ),
+  operatorChangePurgeDue: organization(
+    '「{name}」は消す予定日を過ぎたので、停止の理由を変えられません',
+    '「{name}」は消す予定日を過ぎたので、停止の理由を変えられません',
   ),
   operatorAdminNone: organization('{admin}がいない', '{admin}がいない'),
   operatorAdminPending: organization('{admin}は指名済み、ログイン待ち', '{admin}は指名済み、ログイン待ち'),

@@ -17,8 +17,10 @@
   // 今の理由を選んだ状態で開く。今と同じ理由では送れない（サーバーは 409）。再開は確認を挟まないので、このダイアログの外で行う。
   // 送っている間は、主ボタンを押しても無視し（aria-disabled）、ダイアログも閉じられない。二重送信はそれだけで防ぐ。
   // 結果は onfinish で親に渡し、トーストと一覧の読み直しは親が行う。送り始めた後に部品が外れたときは、
-  // 古い応答を親に渡さず、状態も更新しない（generation）
-  type Outcome = 'done' | 'state_changed' | 'unavailable' | 'unauthenticated';
+  // 古い応答を親に渡さず、状態も更新しない（generation）。
+  // 消す予定日を過ぎた解約の組織から一時的な停止への切り替えは、サーバーが 409 の purge_due で断る。開いた後に日付が変わったときに
+  // 起こるので、閉じて親に purge_due を渡す（親は理由をトーストで出し、一覧を読み直す）
+  type Outcome = 'done' | 'state_changed' | 'purge_due' | 'unavailable' | 'unauthenticated';
   let { onfinish }: { onfinish: (outcome: Outcome) => void } = $props();
 
   let open = $state(false);
@@ -80,6 +82,9 @@
         // 別の画面で先に操作されていた。読み直した一覧を見てもらう
         open = false;
         onfinish('state_changed');
+      } else if (result.status === 409 && result.error?.code === 'purge_due') {
+        open = false;
+        onfinish('purge_due');
       } else if (result.status === 404 || result.status === 403) {
         // 見つからない、または操作できない。もう一度試しても直らないので、理由を知らせて閉じ、一覧を読み直してもらう
         open = false;

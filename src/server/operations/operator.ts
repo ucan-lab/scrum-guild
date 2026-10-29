@@ -1,6 +1,12 @@
 // 運用者の操作の処理（docs/data-model.md の「書き込みの単位」の組織の作成）。
 // 運用者は組織の中に特権を持たない。応答に組織の中のデータ（人の名前など）を入れない
-import { createOrganization, listOrganizations, resolveGithubUser } from '../../shared/operations/operator/index.ts';
+import { now } from '../../shared/clock.ts';
+import {
+  createOrganization,
+  isPurgeDue,
+  listOrganizations,
+  resolveGithubUser,
+} from '../../shared/operations/operator/index.ts';
 import { slugProblem } from '../../shared/organization-slug.ts';
 import type { CreatedOrganization, Statement } from '../db/index.ts';
 import { ApiError } from '../errors.ts';
@@ -43,7 +49,7 @@ export const listOrganizationsOperation = implement(listOrganizations, async ({ 
   );
   // 共通の表（organizations）と組織の中の表は別々に読む。集計は組織の ID の束で、組織ごとに数える
   const ids = rows.map((row) => row.id);
-  const at = new Date();
+  const at = now();
   const [statuses, usage] = await Promise.all([operator.adminStatuses(ids, at), operator.organizationUsage(ids, at)]);
   return {
     organizations: rows.map((row) => ({
@@ -51,6 +57,7 @@ export const listOrganizationsOperation = implement(listOrganizations, async ({ 
       name: row.name,
       suspended_at: row.suspended_at,
       purge_on: row.purge_on,
+      purge_due: row.suspended_at !== null && isPurgeDue(row.purge_on, at),
       created_at: row.created_at,
       admin_status: statuses.get(row.id) ?? ('none' as const),
       seats: { used: usage.get(row.id)?.seatsUsed ?? 0, limit: row.member_limit },

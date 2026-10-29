@@ -706,6 +706,10 @@ label.pick-row:hover { background: var(--color-accent-soft); }
 /* 操作が3つ並ぶ行のある表（運用の組織の一覧）。表の幅が足りないときは、操作の列を広げずにボタンを折り返す
    （折り返さないと、操作の列の幅が表を横にはみ出させる）。足りていれば1行に並ぶ */
 .table-actions.is-wrap { flex-wrap: wrap; }
+/* 操作の代わりに、できない理由を並べる注記（運用の組織の一覧の、消す予定日を過ぎた組織）。ボタンの高さの中で縦に中央へ置く。
+   操作の列（td.is-actions）の nowrap を継がず、狭い幅では折り返す（折らないと、注記の長さが表を横にはみ出させる）。
+   注記だけの行は列の幅を決めるボタンが無く、表の幅が足りないと1行に数文字ずつの縦長に潰れるので、最小の幅を持つ */
+.table-actions .props-note { align-self: center; white-space: normal; min-width: 16em; }
 /* 操作の列（th と td に is-actions を付ける）。狭い幅で表が横にはみ出しても、操作を右端に固定して隠さない。
    重なる行の文字が透けないよう、表の地と同じ色で塗る */
 .table th.is-actions, .table td.is-actions { position: sticky; right: 0; background: var(--color-surface); white-space: nowrap; }

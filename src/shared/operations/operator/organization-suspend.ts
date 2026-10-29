@@ -12,6 +12,18 @@ export function purgeDateOf(suspendedAt: Date): string {
   return new Date(suspendedAt.getTime() + PURGE_AFTER_DAYS * DAY_MS).toISOString().slice(0, 10);
 }
 
+// 日時の UTC の日付（YYYY-MM-DD）。D1 の date('now') と同じ日付
+export function utcDateOf(at: Date): string {
+  return at.toISOString().slice(0, 10);
+}
+
+// 解約で消す予定日を過ぎた（予定日が今日の UTC の日付より前）。境目は消す SQL のガード
+// （scripts/purge-organization-sql.ts の purge_on < date('now')）と同じで、予定日の当日はまだ過ぎていない。
+// 過ぎた組織は、再開も一時的な停止への切り替えもできない（409 の purge_due）
+export function isPurgeDue(purgeOn: string | null, at: Date): boolean {
+  return purgeOn !== null && purgeOn < utcDateOf(at);
+}
+
 // 停止の種類。temporary は支払いの遅れなどの一時的な停止（消す予定日は持たない）、cancellation は解約（停止した日の UTC の日付の30日後が消す予定日）
 export const suspensionKinds = ['temporary', 'cancellation'] as const;
 export type SuspensionKind = (typeof suspensionKinds)[number];
