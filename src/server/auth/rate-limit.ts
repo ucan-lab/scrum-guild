@@ -48,6 +48,13 @@ export const CLIENT_ERROR_RATE_LIMITS = {
 
 const CLIENT_ERROR_GLOBAL_RATE_LIMIT_KEY = 'client-error:global';
 
+// パスワードでのログインの枠（Issue #256）。意味は consumePasswordLoginRateLimits の上
+export const PASSWORD_LOGIN_RATE_LIMITS = {
+  network: { max: 30, windowMs: 10 * 60 * 1000 },
+  ipv6Site: { max: 60, windowMs: 10 * 60 * 1000 },
+  email: { max: 10, windowMs: 10 * 60 * 1000 },
+} as const satisfies Record<string, RateLimitPolicy>;
+
 // 上限の内なら true。ログインの開始と同じく、全体の枠を覗き → IP の枠を覗いて広い枠から数え → 通った呼び出しだけ
 // 全体の枠を数える（consumeWithGlobalRateLimit）
 export async function consumeClientErrorRateLimits(env: Env, ip: string | undefined, now: Date): Promise<boolean> {
@@ -68,6 +75,7 @@ export function longestRateLimitWindowMs(definitions: readonly AnyOperationDefin
   const windows = [
     ...LOGIN_RATE_LIMIT_POLICIES.map((policy) => policy.windowMs),
     ...Object.values(CLIENT_ERROR_RATE_LIMITS).map((policy) => policy.windowMs),
+    ...Object.values(PASSWORD_LOGIN_RATE_LIMITS).map((policy) => policy.windowMs),
     ...definitions.flatMap((definition) =>
       definition.rateLimit === undefined ? [] : [definition.rateLimit.windowSeconds * 1000],
     ),
@@ -175,24 +183,28 @@ async function consumePeekedRateLimits(env: Env, limits: readonly LoginRateLimit
   return true;
 }
 
-// パスワードでのログインの枠（Issue #256）。OAuth のログインの枠とは分ける
-export const PASSWORD_LOGIN_RATE_LIMITS = {
-  network: { max: 30, windowMs: 10 * 60 * 1000 },
-  ipv6Site: { max: 60, windowMs: 10 * 60 * 1000 },
-  email: { max: 10, windowMs: 10 * 60 * 1000 },
-} as const satisfies Record<string, RateLimitPolicy>;
+// パスワードでのログイン（POST /api/auth/password/login、Issue #256）の枠。OAuth のログインの枠とは分ける。
+// キーは `password:<IPv4 か /64>`、`password48:<…/48>`、`password-email:<そろえたメールアドレスの SHA-256>`。
+//   network と ipv6Site: 1つの IP（/64、/48）から試せる回数。OAuth より小さくする（1回のログインで1回だけ数える）
+//   email: 1つのメールアドレスに向けて、IP を変えても試せる回数。アカウントは締め出さず、窓が過ぎれば通る
+// 全体の枠は置かない。書かせられる行は IP の枠で抑えられ、照合の CPU は1回 約 12ms。
+// 枠の値（PASSWORD_LOGIN_RATE_LIMITS）は、掃除の境目の最長の窓に含めるため、ファイルの上のほうに置く
 
-// 入れ物。中身は実装の書き手が書く
-/* eslint-disable @typescript-eslint/no-unused-vars -- 入れ物の間だけ。実装で外す */
-export function consumePasswordLoginRateLimits(
-  _env: Env,
-  _ip: string | undefined,
-  _emailHash: string | undefined,
-  _now: Date,
+// 上限の内なら true。先に全部の枠を覗き、上限に届いた枠があれば行を書かずに false。通ったら IP の枠（広い /48 から）、
+// メールアドレスの枠の順に数える。照合の前に呼び、成功も含めて試みをすべて数える。
+// emailHash はそろえたメールアドレスの SHA-256。そろえられないアドレスは undefined で、IP の枠だけを数える
+export async function consumePasswordLoginRateLimits(
+  env: Env,
+  ip: string | undefined,
+  emailHash: string | undefined,
+  now: Date,
 ): Promise<boolean> {
-  throw new Error('未実装');
+  const limits = ipRateLimits(ip, { network: 'password', ipv6Site: 'password48' }, PASSWORD_LOGIN_RATE_LIMITS);
+  if (emailHash !== undefined) {
+    limits.push({ key: `password-email:${emailHash}`, policy: PASSWORD_LOGIN_RATE_LIMITS.email });
+  }
+  return consumePeekedRateLimits(env, limits, now);
 }
-/* eslint-enable @typescript-eslint/no-unused-vars */
 
 export type LoginStartRateLimit = { allowed: true } | { allowed: false; limitedBy: 'ip' | 'global' };
 

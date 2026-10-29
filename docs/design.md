@@ -59,7 +59,7 @@ favicon と同じマーク（下の「favicon」）の横に、名前「Scrum Gu
 
 | 画面 | 主な中身 | 見る人 |
 | --- | --- | --- |
-| ログイン | 用意したログインの手段のボタン（初版は GitHub と Google を、同じ幅と重みで GitHub、Google の順に並べる。Google のボタンの見た目は下の「Google のボタン」）。ログインできないときの理由と、招待された手段でログインする案内 | 全員 |
+| ログイン | 用意したログインの手段のボタン（初版は GitHub と Google を、同じ幅と重みで GitHub、Google の順に並べる。Google のボタンの見た目は下の「Google のボタン」）。その下に区切り（`.gate-divider`、「または」）を挟んで、メールアドレスとパスワードの欄（`autocomplete` は `email` と `current-password`）と、同じ幅の「メールアドレスでログイン」のボタン（`.btn.is-primary.is-wide`）。パスワードで断られたときは画面を移らずに見出しの下へ理由を出し、メールアドレスの欄を残してパスワードの欄を空にする。送っている間はボタンを `aria-disabled` にして「ログインしています」にする。ログインできないときの理由と、招待された手段でログインする案内 | 全員 |
 | 届いた招待 | 組織ごとの招待の画面（`/<slug>/invitations`）。その組織に届いた招待の一覧、承諾と辞退。組織に入れず招待だけがある人には、その組織のどの経路でもこの画面を出す（下の「経路と組織の枠」） | 招待された人 |
 | 自分の今日 | 最初にやること（初めて使う人だけ）。全ワークスペースから、今日やる、今日と今週が期日、進行中のスプリントの自分のタスク。スプリントゴール。経験値と見込み、自分の積載量 | 本人 |
 | 通知 | 通知の一覧、既読 | 本人 |
@@ -498,7 +498,7 @@ favicon と同じマーク（下の「favicon」）の横に、名前「Scrum Gu
 | `DIALOGS.discardDraft`、`DIALOGS.deleteTask` | `ConfirmDialog.svelte` | 確認のダイアログ。`ask()` で開き、続けるなら `true`、やめるなら `false` を Promise で返す（答えは、ダイアログが閉じてフォーカスが戻った後に返す）。安全な側（書き続ける、やめる）を主ボタンにし、`danger` で上辺を赤にして、続ける側を `.btn.is-danger` にする。`Dialog.svelte` の `danger` が `.dialog-sheet.is-danger` を付ける |
 | `t`、`DICT` | `src/shared/vocabulary.ts`、`src/lib/vocabulary.svelte.ts` | 言葉の辞書（`docs/development.md` の「言葉の辞書」） |
 | `THEMES`、`setTheme`、`applyTheme` | `src/shared/theme.ts`、`src/lib/theme.svelte.ts` | テーマの先当ては `docs/development.md` の「テーマの先当て」 |
-| `.gate`、`.gate-sheet`（枠の外の画面） | `Gate.svelte`、`GateSheet.svelte`、`LoadFailed.svelte`、`LoadingSheet.svelte` | 組織の選択、見つからない、運用の外側（`main`。mount のときにテーマと言葉づかいを既定に戻す。組織の中で枠を持たない招待の画面は `keepsOrganization` で戻さない）と、紙1枚。先頭の紙に `brand` を付けると、ブランドと h1 の見出しが出る。表を載せる運用の画面は `Gate` の `wide`（`.gate.is-wide`。紙の幅を 1200px まで広げる。運用の一覧（名前、集計の5列、操作）が、1280px の画面で横スクロールせずに収まる幅にする。実測（2026-10-26）では、停止中の行（操作が2つ）と名前の列の長い印があるとき、表の最小の幅は 1056px で、紙の内側は紙の幅より 52px 狭いので、要るのは 1108px 以上。書体の差に余裕を持たせて 1200px にする。960px では収まらない（`e2e/operator.test.ts` が 1280px で `.table-wrap` の中の横スクロールが無いことを確かめる）。収まらない幅（1024px など）では `.table-wrap` の横スクロールで受け、操作の列は右端に固定したまま。表の最小の幅で並ぶので、名前の列は最小幅（8em）まで縮み、印は折り返す。見本はカタログの「枠の外の画面」）。紙を縦に並べる `.gate-stack` は components.css に持つ。`LoadFailed` は読み込みの失敗と「もう一度試す」、`LoadingSheet` は外の画面から移る間の読み込み中の表示 |
+| `.gate`、`.gate-sheet`（枠の外の画面） | `Gate.svelte`、`GateSheet.svelte`、`LoadFailed.svelte`、`LoadingSheet.svelte` | 組織の選択、見つからない、運用の外側（`main`。mount のときにテーマと言葉づかいを既定に戻す。組織の中で枠を持たない招待の画面は `keepsOrganization` で戻さない）と、紙1枚。先頭の紙に `brand` を付けると、ブランドと h1 の見出しが出る。表を載せる運用の画面は `Gate` の `wide`（`.gate.is-wide`。紙の幅を 1200px まで広げる。運用の一覧（名前、集計の5列、操作）が、1280px の画面で横スクロールせずに収まる幅にする。実測（2026-10-26）では、停止中の行（操作が2つ）と名前の列の長い印があるとき、表の最小の幅は 1056px で、紙の内側は紙の幅より 52px 狭いので、要るのは 1108px 以上。書体の差に余裕を持たせて 1200px にする。960px では収まらない（`e2e/operator.test.ts` が 1280px で `.table-wrap` の中の横スクロールが無いことを確かめる）。収まらない幅（1024px など）では `.table-wrap` の横スクロールで受け、操作の列は右端に固定したまま。表の最小の幅で並ぶので、名前の列は最小幅（8em）まで縮み、印は折り返す。見本はカタログの「枠の外の画面」）。紙を縦に並べる `.gate-stack` は components.css に持つ。ログインの手段の間の区切りは `.gate-divider`（両側に線を引き、間に「または」を置く）。`LoadFailed` は読み込みの失敗と「もう一度試す」、`LoadingSheet` は外の画面から移る間の読み込み中の表示 |
 
 - 画面は `.svelte` に `<style>` を書かない。足りない CSS は components.css とカタログに先に足す。フックと `pnpm lint` が止める。
 - インラインの `style` 属性は CSP に止められる。動く値は `style:--h` のように CSSOM で当てる（Svelte の `style:` ディレクティブ）。

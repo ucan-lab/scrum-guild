@@ -1,11 +1,15 @@
-// パスワードのそろえ方（Issue #256）。NFC にそろえ、そろえた後のコードポイントの数が12〜128なら返す。
-// 合わなければ undefined（照合せずに、違うパスワードと同じ応答にする）
-// 入れ物。中身は実装の書き手が書く
-/* eslint-disable @typescript-eslint/no-unused-vars -- 入れ物の間だけ。実装で外す */
+// パスワードのそろえ方（Issue #256、docs/requirements.md の「メンバーと権限」）。NFC にそろえ、そろえた後のコードポイントの数が
+// 12〜128なら返す。合わなければ undefined（照合せずに、違うパスワードと同じ応答にする）。
+// 長さは UTF-16 の単位ではなくコードポイントで数える（サロゲートペアの1文字を2文字と数えない）
 
 export const PASSWORD_MIN_LENGTH = 12;
 export const PASSWORD_MAX_LENGTH = 128;
 
-export function normalizePassword(_input: string): string | undefined {
-  throw new Error('未実装');
+export function normalizePassword(input: string): string | undefined {
+  // 極端に長い入力を NFC にそろえない（そろえても長さは数倍にしか縮まない）。本文は 4KiB までなので大きくはならない
+  if (input.length > PASSWORD_MAX_LENGTH * 4) return undefined;
+  const normalized = input.normalize('NFC');
+  // 文字列の反復はコードポイントごと
+  const length = [...normalized].length;
+  return length < PASSWORD_MIN_LENGTH || length > PASSWORD_MAX_LENGTH ? undefined : normalized;
 }

@@ -4,6 +4,7 @@
   import GateSheet from '../../lib/components/GateSheet.svelte';
   import GoogleMark from '../../lib/components/GoogleMark.svelte';
   import Icon from '../../lib/components/Icon.svelte';
+  import { submitPasswordLogin } from '../../lib/password-login.ts';
   import { t } from '../../lib/vocabulary.svelte.ts';
   import type { DictionaryKey } from '../../shared/vocabulary.ts';
   import { safeReturnTo } from '../../shared/return-to.ts';
@@ -35,6 +36,33 @@
 
   // ほかの文言に混ぜる言葉。organization と workspace と leader は辞書のそれぞれの項目
   const words = $derived({ organization: t('organization'), workspace: t('workspace'), leader: t('leader') });
+
+  // メールアドレスとパスワードでのログイン（src/lib/password-login.ts）。画面を移らずに送り、成功したら戻る先へ移る。
+  // 断られたら見出しの下に理由を出し（?error= の文言より先に出す）、メールアドレスは残してパスワードだけを空にする。
+  // 送っている間はボタンを押せなくする（フォーカスを残すため disabled ではなく aria-disabled にし、送信の側で止める）
+  let email = $state('');
+  let password = $state('');
+  let submitting = $state(false);
+  let formError = $state<DictionaryKey | undefined>(undefined);
+  // 送っている間は前の理由を消す。断られたら同じ理由でも出し直すので、読み上げられる
+  const shownErrorKey = $derived(submitting ? undefined : (formError ?? errorKey));
+
+  async function submitPassword(event: SubmitEvent) {
+    event.preventDefault();
+    if (submitting) return;
+    submitting = true;
+    formError = undefined;
+    const outcome = await submitPasswordLogin({ email, password, returnTo });
+    if (outcome.ok) {
+      // ページごと読み直す（ほかの手段のログインと同じく、ログイン後の画面を初めから読み込む）。
+      // replace にして、ログインの画面を履歴に残さない（戻るでログインの画面に戻らない）。移った先で submitting は戻さない
+      location.replace(outcome.returnTo);
+      return;
+    }
+    password = '';
+    formError = outcome.message;
+    submitting = false;
+  }
 </script>
 
 <svelte:head>
@@ -43,8 +71,8 @@
 
 <Gate>
   <GateSheet brand title={t('loginTitle')}>
-    {#if errorKey}
-      <div class="callout is-warn" role="alert"><Icon name="alert" /><span>{t(errorKey, words)}</span></div>
+    {#if shownErrorKey}
+      <div class="callout is-warn" role="alert"><Icon name="alert" /><span>{t(shownErrorKey, words)}</span></div>
     {:else if loggedOut}
       <div class="callout is-info"><Icon name="shield" /><span>{t('loggedOut')}</span></div>
     {/if}
@@ -56,6 +84,36 @@
     <a class="btn is-wide is-google" href={googleStartHref} data-sveltekit-reload
       ><GoogleMark />{t('loginWithGoogle')}</a
     >
+    <p class="gate-divider">{t('loginDivider')}</p>
+    <!-- method="post": 万一ブラウザの送信が走っても、パスワードを URL に載せない -->
+    <form class="form-fields" method="post" novalidate onsubmit={submitPassword}>
+      <div class="field">
+        <label class="field-label" for="login-email">{t('loginEmailLabel')}</label>
+        <input
+          class="input"
+          id="login-email"
+          name="email"
+          type="email"
+          autocomplete="email"
+          spellcheck="false"
+          bind:value={email}
+        />
+      </div>
+      <div class="field">
+        <label class="field-label" for="login-password">{t('loginPasswordLabel')}</label>
+        <input
+          class="input"
+          id="login-password"
+          name="password"
+          type="password"
+          autocomplete="current-password"
+          bind:value={password}
+        />
+      </div>
+      <button class="btn is-primary is-wide" type="submit" aria-disabled={submitting}>
+        {submitting ? t('loginWithPasswordMoving') : t('loginWithPassword')}
+      </button>
+    </form>
     <p class="gate-note">{t('loginNote', words)}</p>
   </GateSheet>
 </Gate>

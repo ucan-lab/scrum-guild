@@ -1238,6 +1238,9 @@ a.choice > div > span, .choice.is-static > div > span { display: block; }
 .gate-brand .brand-mark { width: 34px; height: 34px; }
 .gate-title { font-family: var(--font-display); font-weight: var(--weight-display); font-size: var(--text-2xl); line-height: var(--leading-tight); }
 .gate-note { font-size: var(--text-xs); color: var(--color-muted); }
+/* ログインの手段の間の区切り（外の手段のボタンと、メールアドレスとパスワードの欄の間）。両側に線を引き、間に短い語を置く */
+.gate-divider { display: flex; align-items: center; gap: var(--space-3); font-size: var(--text-xs); color: var(--color-muted); }
+.gate-divider::before, .gate-divider::after { content: ""; flex: 1 1 0; border-top: 1px solid var(--color-line); }
 /* 表を載せる枠の外の画面（運用）。紙の幅を広げる */
 /* 運用の組織の一覧（名前、集計の5列、操作）が、1280px の画面で横スクロールせずに収まる幅にする。
    実測（2026-10-26）: 停止中の行（操作が2つ）と、名前の列の長い印があるとき、表の最小の幅は 1056px。紙の内側は紙の幅より

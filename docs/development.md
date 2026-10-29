@@ -29,9 +29,9 @@
 `ai.md` の「操作の定義を1か所に持つ」の形。
 
 - 定義: 操作ごとに、名前、説明、入力と出力の zod のスキーマ、`read` か `write`、要る権限を1つのオブジェクトに書き、`src/shared/operations/` に置く（`defineOperation()`）。一覧は `src/shared/operations/index.ts`。運用者の操作は `src/shared/operations/operator/`（人が差分を読む領域）、ログインしている人自身の操作（`me`、`logout`）は `src/shared/operations/session/`。定義は処理を持たない。画面の束に Worker のコードを入れないため。定義は画面の束にも入るので、`define.ts` が `src/shared/zod-config.ts` を先に読み込み、zod の eval の試し（`new Function`）を止める（`jitless`）。画面の CSP に `'unsafe-eval'` が無く、試しが違反として報告されるため。
-- 回数の上限: 重い操作（手動の同期など）には、定義に `rateLimit: { max, windowSeconds }` を付ける。登録の関数が、権限の検査の後、入力を読む前に、アカウントと操作ごとに `rate_limits` の `operation:<操作の名前>:<アカウントの ID>` で数え、窓の中で `max` を超えた呼び出しは 429 の `rate_limited` で断る（処理は動かない）。窓の最初の呼び出しから `windowSeconds` たつと数え直す。数えるのは1文の upsert で、並行した呼び出しも取りこぼさない（`src/server/auth/rate-limit.ts`）。アプリ側のレート制限は、ログイン、画面のエラーの送信（`POST /api/client-errors`）、手動の同期、招待する人の解決（`invitee-resolve` と `invitation-create`。GitHub に問い合わせる）、完成の定義の変更（`workspace-dod-update`。10 万字の本文を書く）にだけ設ける（`docs/requirements.md` の「運用」）。ログインは GET の例外なので定義に付けず、`login:<IP>` で数える（「GitHub のログインと取り込み」）。画面のエラーの送信も直に書く例外なので定義に付けず、`client-error:<IP>` で数える（「本番で壊れたことに気づく」）。手動の同期の「接続ごとに5分に1回」は `connections.last_manual_sync_at` で判定し、この項目とは別。
+- 回数の上限: 重い操作（手動の同期など）には、定義に `rateLimit: { max, windowSeconds }` を付ける。登録の関数が、権限の検査の後、入力を読む前に、アカウントと操作ごとに `rate_limits` の `operation:<操作の名前>:<アカウントの ID>` で数え、窓の中で `max` を超えた呼び出しは 429 の `rate_limited` で断る（処理は動かない）。窓の最初の呼び出しから `windowSeconds` たつと数え直す。数えるのは1文の upsert で、並行した呼び出しも取りこぼさない（`src/server/auth/rate-limit.ts`）。アプリ側のレート制限は、ログイン、画面のエラーの送信（`POST /api/client-errors`）、手動の同期、招待する人の解決（`invitee-resolve` と `invitation-create`。GitHub に問い合わせる）、完成の定義の変更（`workspace-dod-update`。10 万字の本文を書く）にだけ設ける（`docs/requirements.md` の「運用」）。ログインは GET の例外なので定義に付けず、`login:<IP>` で数える（「GitHub のログインと取り込み」）。パスワードのログインも直に書く例外なので定義に付けず、`password:<IP>` と `password-email:<メールアドレスのハッシュ>` で数える（「パスワードのログイン」）。画面のエラーの送信も直に書く例外なので定義に付けず、`client-error:<IP>` で数える（「本番で壊れたことに気づく」）。手動の同期の「接続ごとに5分に1回」は `connections.last_manual_sync_at` で判定し、この項目とは別。
 - 処理: `src/server/operations/` で `implement(定義, 処理)` の形に書き、`src/server/operations/index.ts` の一覧に足す。Hono のルートは、この一覧を `createApp()` が1つの関数（`operationsApp()`）で登録する。ルートを直に書かない。仮の操作は本番の一覧に入れず、テストの中で定義する。
-- 直に書く例外（GET のルートと、招待の URL の画面のフォームの POST、画面のエラーの送信）: `/api/health` と、ログインの開始 `GET /api/auth/<手段>/start?return_to=<パス>` と戻り先 `GET /api/auth/<手段>/callback`、招待の URL から Google のログインを始める `POST /api/auth/google/start`（`src/server/auth/login-routes.ts`）。ログインの3つは手段（GitHub か Google）へ移し、手段から戻るブラウザの移動（リダイレクト）で、JSON の応答を返す操作の形に合わない。POST は `/invite` の画面のフォームから送る `application/x-www-form-urlencoded` の本文（欄 `claim_token`）に秘密を持ち、302 で Google へ移す。fetch で認可の URL を JSON で受ける形にしないのは、Google へ移す開始が2通りになり、ほかのサイトからの防ぎを Origin の検査で作り直すことになるため。Origin の検査は掛けず（ほかのサイトからの移動で呼ばれる）、ログインの CSRF は state の Cookie で止める（「GitHub のログインと取り込み」）。失敗は JSON のエラーではなく `/login?error=<理由>` へのリダイレクトで返す。画面で捕まえていない例外と Promise の拒否を送る `POST /api/client-errors`（`src/server/client-errors.ts`）も例外にする。今の操作の定義はどれもログインが前提で、ログインと招待の画面が壊れて誰も入れない故障を拾えないため。Origin の検査は操作と同じに掛け、セッションは読まない（「本番で壊れたことに気づく」）。ログアウトと「自分」を返す口（`logout`、`me`）は例外にせず、操作の定義で作る（`src/shared/operations/session/`）。
+- 直に書く例外（GET のルートと、招待の URL の画面のフォームの POST、画面のエラーの送信）: `/api/health` と、ログインの開始 `GET /api/auth/<手段>/start?return_to=<パス>` と戻り先 `GET /api/auth/<手段>/callback`、招待の URL から Google のログインを始める `POST /api/auth/google/start`（`src/server/auth/login-routes.ts`）。ログインの3つは手段（GitHub か Google）へ移し、手段から戻るブラウザの移動（リダイレクト）で、JSON の応答を返す操作の形に合わない。POST は `/invite` の画面のフォームから送る `application/x-www-form-urlencoded` の本文（欄 `claim_token`）に秘密を持ち、302 で Google へ移す。fetch で認可の URL を JSON で受ける形にしないのは、Google へ移す開始が2通りになり、ほかのサイトからの防ぎを Origin の検査で作り直すことになるため。Origin の検査は掛けず（ほかのサイトからの移動で呼ばれる）、ログインの CSRF は state の Cookie で止める（「GitHub のログインと取り込み」）。失敗は JSON のエラーではなく `/login?error=<理由>` へのリダイレクトで返す。画面で捕まえていない例外と Promise の拒否を送る `POST /api/client-errors`（`src/server/client-errors.ts`）も例外にする。今の操作の定義はどれもログインが前提で、ログインと招待の画面が壊れて誰も入れない故障を拾えないため。Origin の検査は操作と同じに掛け、セッションは読まない（「本番で壊れたことに気づく」）。メールアドレスとパスワードでログインする `POST /api/auth/password/login`（`src/server/auth/password-login.ts`）も、同じ理由（ログイン前の人が呼ぶ）で例外にする。OAuth の道（`login-routes.ts`）の外に置き、ログインの画面が fetch で JSON を送り、JSON で答える。Origin の検査は操作と同じに掛け、加えて `Sec-Fetch-Site` があれば `same-origin` だけを受ける（「パスワードのログイン」）。ログアウトと「自分」を返す口（`logout`、`me`）は例外にせず、操作の定義で作る（`src/shared/operations/session/`）。
 - URL: `POST /api/<slug>/<操作の名前>`。組織の外の操作（ログインだけ、運用者）は `POST /api/<操作の名前>`。読む操作も POST にする。API の応答はどれもキャッシュしないので、GET にしない損は小さく、Origin の検査をすべての操作に同じに掛けられる。入力は JSON の本文だけで、`Content-Type: application/json` を要る。URL は名前から作り、定義に持たせない。名前は英小文字と数字をハイフンでつないだ1語（`task-title` など）で、一覧で重ならない。URL の形は `operationPath()` に1つだけ持ち、画面と登録の関数が同じ値を使う。
 - 権限の種類（`permission`）:
 
@@ -89,7 +89,7 @@
 
 置き場所は `src/server/db/`（人が差分を読む領域。「マージの判定」）。外から import してよいのは入口のモジュール `db/index.ts` だけ。
 
-- 入口は2つ。`commonDb(env)` は共通の6表だけを型に持ち、`orgDb(env, organization)` は組織の中の17表だけを型に持つ。`organization` は `VerifiedOrganization`（組織を確かめた結果）で、private な印を持つクラスなので、同じ形のオブジェクトは型の検査を通らず、値は凍結されて `organizationId` も書き換えられない。`index.ts` が出すのは型だけである。作る関数 `issueVerifiedOrganization()` は `db/verify-organization.ts` のモジュールの関数で、クラスの static にはしていないため、手に入れた値から辿れない。コンストラクターは作る関数だけが持つ札を要求し、値の `constructor` からは作り直せない。`orgDb` は、作る関数が登録したものだけを実行時に受け取る。組織を確かめる処理は `db/enter-organization.ts`（「操作の定義」）
+- 入口は2つ。`commonDb(env)` は共通の7表だけを型に持ち、`orgDb(env, organization)` は組織の中の17表だけを型に持つ。`organization` は `VerifiedOrganization`（組織を確かめた結果）で、private な印を持つクラスなので、同じ形のオブジェクトは型の検査を通らず、値は凍結されて `organizationId` も書き換えられない。`index.ts` が出すのは型だけである。作る関数 `issueVerifiedOrganization()` は `db/verify-organization.ts` のモジュールの関数で、クラスの static にはしていないため、手に入れた値から辿れない。コンストラクターは作る関数だけが持つ札を要求し、値の `constructor` からは作り直せない。`orgDb` は、作る関数が登録したものだけを実行時に受け取る。組織を確かめる処理は `db/enter-organization.ts`（「操作の定義」）
 - `orgDb` は組織の絞り込みを付けない。呼び出し側が、自分の文を `organization_id` か、確かめたワークスペース（`VerifiedWorkspace`。作りは `VerifiedOrganization` と同じで、`db/verify-workspace.ts` の外では作れない）の `workspaceId` で絞る。絞り込みに使う組織の ID は、リクエストの入力ではなく、入口の `organizationId`（確かめた組織の ID。読み取り専用）から取る。絞り込みを入口に寄せない。ワークスペースの下の表は、ワークスペースの ID で絞るのが組織の分離の単位になるため。すべての組織の中の操作に、別の組織の ID で 404 になることを確かめるテストを、定義の一覧から回す
 - 表の型は `db/tables.ts` の定数（列名、型、NULL を許すか、DEFAULT があるか）から導く。DEFAULT のある列と NULL を許す列は INSERT で省ける。列名は DB と同じスネークケースのままで、`CamelCasePlugin` は使わない。表を足すときは、マイグレーションと同じ PR で定数に足す。組織の中の表を足すときは、解約した組織のデータを消す SQL（`scripts/purge-organization-sql.ts`）にも、外部キーの子から順になる位置に消す文を足す（足し忘れると `test/purge-organization.test.ts` が落ちる）
 - 表の型の照合: `test/table-columns.test.ts` が、全マイグレーションを当てた D1 の `sqlite_master` と `PRAGMA table_info` を定数と突き合わせる。表の一覧、列名、型、NOT NULL、DEFAULT の有無、主キーの NOT NULL がずれると落ちる
@@ -157,7 +157,7 @@
 - 停止した組織の中の操作は、停止していなければ入れた人（無効でない管理者、今の所属がある人、承諾待ちの招待がある人）に 403 の `organization_suspended` を返す。入れない人（無効にされた人を含む）は、組織が無いときと同じ 404 の `not_found`。判定は `enterOrganization` が行い、停止した組織では入口を渡さず、組織の ID だけを持つ `SuspendedOrganization` を返す（操作のログに組織の ID が付く）。登録の関数は、403 を返す前に `requireLoginAccess()` を通す。ほかに入れる組織も届いた招待も無い人（停止した組織にしか入れない人）は、403 を返し続けてセッションが延びないよう、セッションを消して 401 にする。組織の分離のテスト（`test/operations/harness.ts`）が、組織の中のすべての操作について回す。
 - 入れる組織を失った人の 401 の `unauthenticated` は、入れたはずの組織が停止しているだけのとき `details: { "reason": "suspended" }` を付ける（`src/shared/errors.ts` の `UNAUTHENTICATED_SUSPENDED`）。画面が `/login?error=suspended` へ移すのに使う。
 - 定義の `rateLimit` を超えた呼び出しは、429 の `rate_limited`。
-- 本文が 1MiB を超えたときは、413 で `code` は `invalid_input`。画面のエラーの送信（`POST /api/client-errors`）の上限は 4KiB。
+- 本文が 1MiB を超えたときは、413 で `code` は `invalid_input`。画面のエラーの送信（`POST /api/client-errors`）の上限は 4KiB。パスワードのログイン（`POST /api/auth/password/login`）の上限も 4KiB で、超えたときは 413 でなく 400 の `invalid_input` にする（形の誤りと同じ応答にする）。
 - D1 に届かないとき（`/api/health` の疎通）と、運用者の操作と招待の操作が問い合わせる GitHub に届かないとき（上限、障害、クライアントの ID と秘密が未設定）は 503 の `unavailable`。入力の誤りの 400 の `invalid_input` とは分け、人がしばらくしてからやり直せる失敗として扱う。
 - 運用者の操作（`src/server/operations/operator.ts`）は、入力の誤りの `details` の `code` で理由を分ける（`slug_format`、`slug_reserved`、`github_user_not_found`、`github_not_a_user`、`github_user_changed`、`email_invalid`（Google のメールアドレスの形が合わない）。定義は `src/shared/operations/operator/create-organization.ts`）。画面はこの `code` で文言を選ぶ。重なる slug は 409 の `conflict`。解約で消す予定日（`purge_on`）が今日（UTC）より前の組織の再開（`organization-resume`）と一時的な停止への切り替え（`organization-suspension-update` の `kind: temporary`）と管理者の指名し直し（`organization-admin-reassign`）は、409 の `purge_due` で断る（先に読んだ値の競合の `conflict` とは分ける）。
 - 想定していないエラーは `app.onError` で 500 の `internal` にし、中身は応答に出さずログにだけ出す。
@@ -317,7 +317,7 @@ vite の転送先も同じ値から作るので、画面は自分のワークツ
   - 組織の中の操作は `{ slug }` を必ず渡し、組織の外の操作には渡さない。どちらも型で止める
   - どれも、張った route だけを外す関数を返す。`page.unroute()` の代わりにそれを呼ぶ。テストの後の後始末は fixture がする。自分で `newPage()` した page では、上のとおりテストの終わりに自分で `unrouteAll({ behavior: 'ignoreErrors' })` を待つ
   - 届いた入力と返す出力は、実行時にも定義のスキーマで確かめる。合わなければ、操作の名前と合わない項目の path を添えてそのテストを落とし、画面には 500 を返す。出力に定義に無い項目があっても落とす（`z.object` が黙って落とし、書き換えで名前を間違えた項目は型の検査を抜けることがあるため）。処理が途中で throw したときと、応答を返さずに終わったときも、操作の名前を添えて落とす。定義に無い項目の判定（`droppedPaths`）は `e2e/operations.test.ts` が確かめる。入力の不一致、throw、応答を返さないときの落ち方は、#319 で一時のテストを走らせて確かめた（テストが落ちることを確かめる形なので、残していない）
-- 操作の定義の無い直書きのルート（`/api/auth/google/start` などの GET の例外、`/api/health`）は、例外として `page.route()` で書く
+- 操作の定義の無い直書きのルート（`/api/auth/google/start` などの GET の例外、`/api/health`、`POST /api/auth/password/login`）は、例外として `page.route()` で書く
 - 操作を呼ぶ `page.route()` は、まだ多くのファイルに残っている。順にヘルパーへ置き換え、すべて終えた後に lint で止める（#332）。それまでは書き手と点検で守る
 - 画面のアクセシビリティは、`e2e/a11y-screens.test.ts`（主な画面）と `e2e/a11y-open.test.ts`（開いた状態）が axe で確かめる。シャードに散るようファイルを分けた。関数は `e2e/helpers.ts` の `expectNoA11yViolationsInThemes`。検査が空振りしないことは `e2e/a11y-check.test.ts` が壊した HTML で確かめる。直せない違反の除外は `e2e/ui-exclusions.ts` に置く（`docs/design.md` の「アクセシビリティを機械で確かめる」）
 - `E2E_EVIDENCE=1` のとき（CI の `e2e` と `evidence-main` が付ける。読むのは `e2e/evidence-mode.ts`）、通ったテスト（`testInfo.status` が `passed`）の画面は、`fixtures.ts` の `page` が route を外す前に `evidence-<n>.png` に撮る（CI の `evidence` が比べる。下の「e2e の画像のコメント」）。落ちた、時間切れ、飛ばしたテストの画像は残さない。撮った画像はメモリに持ち、テストの後（いちばん外の `auto` の fixture の片付けの終わり）に、通ったテストの分だけファイルに書く。Playwright はテストの本体の失敗を `status` と `errors` に入れてから fixture を片付けるので、テストの中で閉じた context の画面のように、落ちる前に撮った画像も、テストが落ちれば捨てる（#378）。テストの後の撮影は後片付けの枠（テストと同じ長さの別の枠）で数えられる。テストの中で閉じる context を撮る分はテストの時間に入るので、1枚ごとに撮る分の最長（8 秒）をテストの上限に足す。2026-10-27 の手元の全件で、最長のテストは約 12 秒（`settings.test.ts` の区分とリポジトリを足すテスト）、テストの中で context を閉じて撮る最長は約 7 秒（`organization-look.test.ts`。撮影を入れる前は約 5.5 秒）で、上限の 30 秒には余裕がある。通信が 300ms 止まるのを待ち（上限 2 秒）、書体と描画を待って、アニメーションとトランジションを終わりまで進めてから撮る。Playwright のテストの終わりのスクリーンショット（`screenshot: 'on'`）は、読み込みやトーストの出入りの途中を撮り、同じコミットで2回撮ると 316 枚のうち 145 枚が違った（#337）ので、落ちたテストの画像（`only-on-failure`）だけにした。`playwright.config.ts` は Chromium の描画を1本のスレッドで丸ごと行う引数（`--disable-partial-raster`、`--num-raster-threads=1`、`--disable-gpu-rasterization`）で立てる。無いと、影や罫線の数画素が色の値 1〜2 だけ揺れた。待つ分と1本のスレッドで描く分だけ e2e は延び、2026-10-27 の手元の全件で約 5 分 10 秒から約 6 分 20 秒になった。そこで、撮る処理と描画の引数は `E2E_EVIDENCE=1` のときだけ効かせ、手元の e2e は撮らずに元の速さで走らせる（手元では Playwright がテストの終わりの画面を `screenshot: 'on'` で撮る）。CI の `e2e` のシャードは延びるので、`ci-ok` の待ちは伸びる（`evidence` のジョブそのものは待ちを伸ばさない）
@@ -329,6 +329,7 @@ vite の転送先も同じ値から作るので、画面は自分のワークツ
   - テストが変えるか消すのは、原則としてそのテストが作った行だけにする。作る行の名前（題、本文、メールアドレスなど一意の制約や探す手がかりになるもの）には `test.info().repeatEachIndex` と `test.info().retry` を混ぜる（`e2e/backlog-move.test.ts` と `e2e/comments.test.ts` が既にそうしている）
   - seed の行を変えるしかないテストは、途中で落ちても戻るよう `try`/`finally` か `afterEach` で元へ戻す。戻せない変更（消す、閉じるなど）は、seed の行でなく自分で作った行に対して行う
   - 自分で作れない行（ログアウトで消すセッションは OAuth、承諾か取り消しで閉じる招待は GitHub の解決を通る）は、seed の行に対して行い、テストの前か後で `e2e/local-d1.ts` の関数で seed の状態へ戻す（#459）。関数は `wrangler d1 execute DB --local` で手元の D1 に直に SQL を流す（`--local` だけを付け、値は seed の固定の値だけを埋める。組織の中の表の文は組織かワークスペースで絞り、共通の表の `sessions` には seed の `sessionInserts` の文で seed のセッションの行だけを `INSERT OR IGNORE` で入れる。`pnpm db:seed` と同じ道）。画面と API の振る舞いは本物の操作で確かめ、直に書くのは戻すときだけにする。同じファイルの複製が並べて走ると、戻す前の行に別の複製が当たるので、`--repeat-each` は `--workers=1` で回す
+  - パスワードのログイン（`e2e/password-login.test.ts`）は、seed のパスワードの人（`seed/passwords.ts`）でログインの画面から入る場面（組織が1つの人は組織の画面へ、2つの人は組織の選択へ）と、違うパスワードで理由が出て欄が残る場面を、本物の API に当てて確かめる。同じメールアドレスと IP の枠（10分に10回、30回）を繰り返しで使い切らないよう、場面ごとに `e2e/local-d1.ts` の `resetPasswordLoginRateLimits` で、手元の D1 のパスワードの枠の行（`password` で始まるキー）だけを消す。ログインの画面は主な画面の機械の検査（a11y と狭い幅）に入っていないので、同じファイルが 390px のはみ出し、44px、axe を確かめる
   - 2回目から必ず落ちるなら、揺れでなくこの決まりに反している。1回目と同じ落ち方が毎回出るかを見て見分ける
   - 足したか変えたテストは、手元でも `pnpm e2e --workers=1 --repeat-each=5 --retries=0 e2e/<名前>.test.ts` で回してから PR を出す。CI の `e2e-repeat` と同じ確かめ方で（`expect` の既定の待ちだけは手元が 15 秒）、ワーカーを絞らずに繰り返すと負荷だけで落ちる（#364）
 
@@ -514,7 +515,7 @@ Bash の判定を `permissions.deny` に置かないのは、規則が前方一�
 | --- | --- |
 | マイグレーション | `migrations/` |
 | seed（公開された開発用のトークンのセッションを入れる。本番に入ると誰でもログインできる） | `seed/` |
-| 認証とログインの手段（GitHub OAuth、Google）、セッションの読み取り、運用者の判定、暗号、シークレット | `src/server/auth/`、`src/server/crypto/`、`.dev.vars*` |
+| 認証とログインの手段（GitHub OAuth、Google、パスワード）、セッションの読み取り、運用者の判定、暗号、シークレット | `src/server/auth/`、`src/server/crypto/`、`.dev.vars*` |
 | 組織で絞る層（組織をまたぐデータの分離。Kysely の2つの入口と `batch()` の関数、組織とワークスペースを確かめる処理） | `src/server/db/` |
 | 運用者の権限（運用者だけの操作の定義） | `src/shared/operations/operator/` |
 | 権限の検査（操作の定義を登録する関数。Origin、セッション、権限、組織とワークスペースの確かめを順に行う）と、それが頼るもの | `src/server/operations/register.ts`、`guards.ts`、`implement.ts`、`operation-log.ts`（権限の検査と処理に渡すもの、ログの項目）、`src/server/app.ts`、`src/server/errors.ts`（応答の形、運用者の一覧が壊れたときの 500）、`src/shared/operations/define.ts`（権限の種類と実行時の検査）、`src/shared/session-cookie.ts`（Cookie の名前と属性） |
@@ -790,9 +791,27 @@ GitHub App も比べた。人が抜けても取り込みが止まらない、PAT
 - 運用者のログインの ID: シークレットの一覧の各項目は `github:<数字>` か `google:<数字>` の形だけを受け付け、合わない項目があれば起動を止める。比べるのは手段と ID の文字列の完全一致だけ。自分の Google の `sub` の調べ方は運用の手順書に書く
 - ログインのボタンの見た目は、Google のブランドの決まり（Sign in with Google のボタン）に合わせる。決まりの中身は `design.md` のログインの画面の行
 
+## パスワードのログイン
+
+GitHub のアカウントも Google のアカウントも使わない人のために、メールアドレスとパスワードを3つ目の手段（`password`）にする（#255、#256）。OAuth の往復を持たないので、ログインの手段の型（`login-method.ts`）には入れず、別の口で受けて `completeLogin`（`login.ts`）に合流する。
+
+- 口: `POST /api/auth/password/login`（`src/server/auth/password-login.ts`）。本文は JSON の `{ email, password, return_to? }`（zod の strict）で、4KiB まで。成功は 200 の `{ return_to }` とセッションの Cookie で、`return_to` は自分のサイトのパスだけ（`safeReturnTo` と、URL の解決の後の `resolvedReturnTo`）。画面（`src/routes/login/+page.svelte`、送るのは `src/lib/password-login.ts`）はその値へ `location.replace` で移り、ページごと読み直す。入れる組織が2つ以上の人は `/`（組織の選択）へ移る
+- 検査の順と応答
+  1. Origin が公開する URL と一致し、`Sec-Fetch-Site` があれば `same-origin` だけ。違えば 403 の `forbidden`（数えず、本文も読まず、ハッシュも回さない）
+  2. Content-Type が `application/json`、本文が 4KiB まで、形が合う。違えば 400 の `invalid_input`（`details` なし。4KiB を超えた本文も 413 でなく 400 にする。数えない）
+  3. レート制限（`docs/data-model.md` の `rate_limits`）。上限なら 429 の `rate_limited`（ハッシュを回さない）
+  4. 照合。メールアドレスは `normalizeEmail`、パスワードは `normalizePassword`（NFC、12〜128文字）でそろえる。そろえられない入力、無いメールアドレス、違うパスワードは、どれも 401 の `invalid_credentials` の同じ本文で、どれも PBKDF2 を今の回数で1回回す（相手が無いときは `verifyDummyPassword`）
+  5. `completeLogin` に provider `password` で合流する。`account_logins` の `login_name` と `display_name` は `password_credentials.display_name`、アバターは空。入れる組織が無ければ 403 の `forbidden` で `details.reason` が `denied`（停止した組織にだけ入れるなら `suspended`）。結ぶ書き込みの失敗は 503 の `unavailable`。成功したら、保存した回数が今の回数より少ないハッシュを書き直す
+- 画面の文言: 401 は「メールアドレスかパスワードが違います」の1つ、403 の `denied` と `suspended` は OAuth の `?error=denied`、`suspended` と同じ、429 は `too_many` と同じ、そのほかは `unavailable` と同じ。断られても画面を移らず、メールアドレスの欄は残してパスワードの欄だけを空にする。送っている間はボタンを `aria-disabled` にし、文言を「ログインしています」にする
+- ハッシュ: `src/server/auth/password-hash.ts`。PBKDF2-HMAC-SHA256、16 バイトの塩、32 バイトの鍵、反復回数 100,000。文字列は `pbkdf2-sha256$<回数>$<塩 base64url>$<鍵 base64url>`。本番の Workers の WebCrypto は 100,000 を超える回数を断る（手元の workerd は 600,000 も通すので、手元で上限を確かめられない）。手元の workerd で1回約 12ms。照合は `crypto.subtle.timingSafeEqual` で比べ、形の壊れた保存値は例外を投げずに偽にする
+- ログ: `route: "auth"`、`step: "login"`、`provider: "password"`、`outcome`（`ok`、`invalid_credentials`、`too_many`、`denied`、`suspended`、`retry`、`forbidden_origin`）、成功のときの `accountId` を1行出す。パスワード、ハッシュ、メールアドレスは出さない（`test/password-login.test.ts` が確かめる）。想定外の例外は `app.onError` が例外の名前だけを出す
+- 登録の入口（パスワードを決める画面）は、招待の URL からだけで、#257 以降で作る。今は seed の行だけ（下の「開発とテストでのログイン」）
+
 ## 開発とテストでのログイン
 
 ログインを飛ばす口は作らない（2026-10-22 に決めた）。本番に罠として残るコードを無くすため。
+
+- seed は、メールアドレスとパスワードでログインする2人（入れる組織が1つの人と2つの人）も入れる。メールアドレスとパスワードは `seed/passwords.ts`、ハッシュは `seed/data.sql` に固定の文字列で書く（`seed/README.md` の「パスワード」）。開発用の公開した値なので、本番の D1 には入れない
 
 - seed（`pnpm db:seed`）が、決まったトークンのセッションをローカルの D1 に入れる。e2e と画面の自己レビューは、その Cookie を置いてログインした画面を開く。トークンは開発用の値で、本番の D1 には入れない
   - セッションは9つ: あおば開発の管理者、あおば開発の一般のユーザー、ひばり工房だけに入れる管理者、どの組織にも属さない運用者（`OPERATOR_LOGIN_IDS` の開発用の値、`.dev.vars.example`）、と、e2e のログアウトが消すための2本（`adminLogout` は管理者と、`operatorLogout` は運用者と同じアカウントの2本目）、e2e の組織の言葉づかいと既定のテーマだけが使うくもラボの3人（`lookAdmin`、`lookMember`、`lookThemed`。その e2e が組織の値を書き換えるので、ほかのファイルが確かめる組織と分けた）。e2e は共有のセッションをログアウトしない（並列に走る別のテストが 401 で落ちるため）

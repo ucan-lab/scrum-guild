@@ -1258,8 +1258,19 @@ export const dictionary = defineDictionary({
   loginWithGithub: organization('GitHub でログイン', 'GitHub でログイン'),
   loginWithGoogle: organization('Google でログイン', 'Google でログイン'),
   loginNote: organization(
-    'どちらも本人確認だけに使います。入れる{organization}が2つ以上あれば、ログインのあとに選びます。',
-    'どちらも本人確認だけに使います。入れる{organization}が2つ以上あれば、ログインのあとに選びます。',
+    'GitHub と Google は本人確認だけに使います。入れる{organization}が2つ以上あれば、ログインのあとに選びます。',
+    'GitHub と Google は本人確認だけに使います。入れる{organization}が2つ以上あれば、ログインのあとに選びます。',
+  ),
+  // メールアドレスとパスワードでのログイン（POST /api/auth/password/login）。外の手段のボタンの下に、区切りを挟んで欄を置く
+  loginDivider: organization('または', 'または'),
+  loginEmailLabel: organization('メールアドレス', 'メールアドレス'),
+  loginPasswordLabel: organization('パスワード', 'パスワード'),
+  loginWithPassword: organization('メールアドレスでログイン', 'メールアドレスでログイン'),
+  loginWithPasswordMoving: organization('ログインしています', 'ログインしています'),
+  // 違うパスワード、登録の無いメールアドレス、形の合わない入力（401）。どれかは分けない（登録の有無を漏らさない）
+  loginErrorInvalidCredentials: organization(
+    'メールアドレスかパスワードが違います。確かめて、もう一度ログインしてください。',
+    'メールアドレスかパスワードが違います。確かめて、もう一度ログインしてください。',
   ),
   loginErrorDenied: organization(
     'ログインできませんでした。どの{organization}の{workspace}にも所属しておらず、招待も届いていません。招待された手段（GitHub か Google）と、招待されたアカウントでログインしているか確かめてください。招待がまだなら、{leader}に GitHub のユーザー名か Google のメールアドレスで招待してもらってください。',

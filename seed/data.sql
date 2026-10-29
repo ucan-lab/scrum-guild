@@ -280,3 +280,21 @@ INSERT INTO change_logs (id, organization_id, workspace_id, actor_user_id, opera
   ('019a0000-0000-7000-8000-000000000b06', '019a0000-0000-7000-8000-000000000201', NULL, NULL, 'github:9000000000000001', 'organization', '019a0000-0000-7000-8000-000000000201', 'resume', '{"suspended_at":["2026-10-10T03:00:00.000Z",null],"purge_on":[null,null]}', '2026-10-10T05:00:00.000Z'),
   ('019a0000-0000-7000-8000-000000000b11', '019a0000-0000-7000-8000-000000000202', NULL, NULL, 'github:9000000000000001', 'organization', '019a0000-0000-7000-8000-000000000202', 'create', '{"slug":[null,"hibari"],"name":[null,"ひばり工房"]}', '2026-10-01T00:00:00.000Z'),
   ('019a0000-0000-7000-8000-000000000b12', '019a0000-0000-7000-8000-000000000202', NULL, NULL, 'github:9000000000000001', 'user', '019a0000-0000-7000-8000-000000000303', 'create', '{"is_admin":[null,1],"name":[null,"リン"],"login_provider":[null,"github"],"login_subject":[null,"9000000000000103"],"account_id":[null,"019a0000-0000-7000-8000-000000000103"]}', '2026-10-01T00:00:00.000Z');
+
+-- メールアドレスとパスワードでログインする人（seed/passwords.ts）。e2e のパスワードのログイン（e2e/password-login.test.ts）だけが使う。
+-- ほかのファイルが確かめる組織の人数や一覧を変えないよう、専用の組織を2つ置く（ゆず書房、みなも舎。どちらもワークスペースを持たない）。
+-- ツムギはゆず書房だけ、アオイはゆず書房とみなも舎の管理者。どちらもアカウントと account_logins を持たず、初めてのログインで作る。
+-- password_hash は seed/passwords.ts のパスワードを hashPassword（src/server/auth/password-hash.ts、反復回数 100,000）で作った値。
+-- パスワードもハッシュも開発用の公開した値なので、本番の D1 には入れない
+INSERT INTO organizations (id, slug, name, created_by_operator, created_at, updated_at) VALUES
+  ('019a0000-0000-7000-8000-000000000204', 'yuzu', 'ゆず書房', 'github:9000000000000001', '2026-10-01T00:00:00.000Z', '2026-10-01T00:00:00.000Z'),
+  ('019a0000-0000-7000-8000-000000000205', 'minamo', 'みなも舎', 'github:9000000000000001', '2026-10-01T00:00:00.000Z', '2026-10-01T00:00:00.000Z');
+
+INSERT INTO password_credentials (login_subject, email, password_hash, display_name, password_changed_at, created_at, updated_at) VALUES
+  ('019a0000-0000-7000-8000-0000000f0001', 'tsumugi@example.test', 'pbkdf2-sha256$100000$fkmcTUXL_X2skpzAHbspOA$0F4k5qfHZqUcbdlAEyQU4xj2kPT02lpsHeZig65VvAc', 'ツムギ', '2026-10-01T00:00:00.000Z', '2026-10-01T00:00:00.000Z', '2026-10-01T00:00:00.000Z'),
+  ('019a0000-0000-7000-8000-0000000f0002', 'aoi@example.test', 'pbkdf2-sha256$100000$84IOQd79YvhUAdOxggoViQ$j9uu04IPXJjoLndRJ1IkLp1eHqW-g5XemQdpzTn8bo4', 'アオイ', '2026-10-01T00:00:00.000Z', '2026-10-01T00:00:00.000Z', '2026-10-01T00:00:00.000Z');
+
+INSERT INTO users (id, organization_id, account_id, login_provider, login_subject, name, is_admin, created_at, updated_at) VALUES
+  ('019a0000-0000-7000-8000-000000000310', '019a0000-0000-7000-8000-000000000204', NULL, 'password', '019a0000-0000-7000-8000-0000000f0001', 'ツムギ', 1, '2026-10-01T00:00:00.000Z', '2026-10-01T00:00:00.000Z'),
+  ('019a0000-0000-7000-8000-000000000311', '019a0000-0000-7000-8000-000000000204', NULL, 'password', '019a0000-0000-7000-8000-0000000f0002', 'アオイ', 1, '2026-10-01T00:00:00.000Z', '2026-10-01T00:00:00.000Z'),
+  ('019a0000-0000-7000-8000-000000000312', '019a0000-0000-7000-8000-000000000205', NULL, 'password', '019a0000-0000-7000-8000-0000000f0002', 'アオイ', 1, '2026-10-01T00:00:00.000Z', '2026-10-01T00:00:00.000Z');

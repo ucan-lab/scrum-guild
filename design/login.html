@@ -28,7 +28,22 @@ function render() {
       <p>いずれかの${t("organization")}に所属しているか、招待されている人がログインできます。招待されたときの手段でログインしてください。</p>
       <button class="btn is-wide" type="button">${icon("git")}GitHub でログイン</button>
       <button class="btn is-wide is-google" type="button">${SQ.googleMark}Google でログイン</button>
-      <p class="gate-note">どちらも本人確認だけに使います。入れる${t("organization")}が2つ以上あれば、ログインのあとに選びます。</p>
+      <p class="gate-divider">または</p>
+      <form class="form-fields" novalidate>
+        <div class="field"><label class="field-label" for="d-login-email">メールアドレス</label><input class="input" id="d-login-email" type="email" autocomplete="email" spellcheck="false"></div>
+        <div class="field"><label class="field-label" for="d-login-password">パスワード</label><input class="input" id="d-login-password" type="password" autocomplete="current-password"></div>
+        <button class="btn is-primary is-wide" type="submit">メールアドレスでログイン</button>
+      </form>
+      <p class="gate-note">GitHub と Google は本人確認だけに使います。入れる${t("organization")}が2つ以上あれば、ログインのあとに選びます。</p>
+    </section>
+    <section class="gate-sheet">
+      <div class="callout is-warn" role="alert">${icon("alert")}<span>メールアドレスかパスワードが違います。確かめて、もう一度ログインしてください。</span></div>
+      <form class="form-fields" novalidate>
+        <div class="field"><label class="field-label" for="d-login-email-2">メールアドレス</label><input class="input" id="d-login-email-2" type="email" autocomplete="email" spellcheck="false" value="tsumugi@example.test"></div>
+        <div class="field"><label class="field-label" for="d-login-password-2">パスワード</label><input class="input" id="d-login-password-2" type="password" autocomplete="current-password"></div>
+        <button class="btn is-primary is-wide" type="submit">メールアドレスでログイン</button>
+      </form>
+      <p class="gate-note">メールアドレスとパスワードで断られたときの見本です。画面を移らずに見出しの下へ理由を出し、メールアドレスの欄は残してパスワードの欄だけ空にします。違うパスワード、登録の無いメールアドレス、形の合わない入力は、どれも同じ文言にします。送っている間はボタンを押せなくし、文言を「ログインしています」にします。</p>
     </section>
     <section class="gate-sheet">
       <h2 class="dialog-title">Scrum Guild への招待</h2>

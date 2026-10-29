@@ -90,6 +90,13 @@ export async function restoreHinataInvitation(): Promise<void> {
   );
 }
 
+// パスワードでのログインのレート制限の行（`password:<IP>`、`password48:<…>`、`password-email:<ハッシュ>`）を消す。
+// パスワードのログインの e2e（e2e/password-login.test.ts）が、繰り返し（--repeat-each）で同じメールアドレスと IP の枠
+// （10分に10回、30回）を使い切らないよう、場面ごとに消す。ほかの e2e はパスワードのログインを使わない
+export async function resetPasswordLoginRateLimits(): Promise<void> {
+  await executeLocalD1(`DELETE FROM rate_limits WHERE key LIKE 'password%';`);
+}
+
 // seed のセッションの行を、無ければ入れ直す（あればそのまま）。ログアウトの e2e が消す専用の行を、消す前に戻すのに使う
 export async function restoreSeedSession(who: keyof typeof SEED_SESSIONS): Promise<void> {
   // 列と期限は seed（scripts/seed.ts の sessionInserts）と同じ文を使い、あれば残すよう INSERT OR IGNORE にだけ替える

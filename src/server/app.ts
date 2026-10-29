@@ -125,6 +125,8 @@ export function createApp(
   // ログインの開始と戻り先。ブラウザの GET の移動と、招待の URL の画面のフォームの POST（POST /api/auth/google/start）なので、
   // 操作の定義の外に直に書く（/api/health と同じ例外）
   const fetcher = options.fetcher ?? ((input, init) => fetch(input, init));
+  // メールアドレスとパスワードでのログイン（POST /api/auth/password/login）。ログイン前の人が呼ぶので、同じく直に書く例外。
+  // OAuth の手段の `/:provider/...` に当たらないよう、先に登録する
   app.route('/auth/password', passwordLoginRoutes());
   app.route('/auth', loginRoutes({ fetcher }));
 
@@ -132,7 +134,7 @@ export function createApp(
   app.route('/client-errors', clientErrorRoutes());
 
   // 操作の定義から登録するルート。ルートを直に書かない（/api/health、/api/auth/ の下の GET、POST /api/auth/google/start、
-  // POST /api/client-errors だけが例外）
+  // POST /api/auth/password/login、POST /api/client-errors だけが例外）
   app.route('/', operationsApp(operations, { fetcher }));
 
   app.notFound((c) => c.json(errorBody('not_found', 'not found'), 404));

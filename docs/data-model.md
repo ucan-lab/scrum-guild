@@ -1,6 +1,6 @@
 # Scrum Guild データモデル
 
-状態: 確定。要件定義（`requirements.md`）を D1（SQLite）のテーブルに落としたもの。最初のマイグレーション（`migrations/0001_create_initial_tables.sql`）で、共通の6表と、一本道に要る組織の中の16表を作った。`organization_holidays` は `migrations/0004_add_organization_holidays.sql` で、`comments` は `migrations/0006_add_comments.sql` で、`sprint_entries` と `completions.previous_column_id` は `migrations/0008_add_sprint_entries.sql` で、`epic_party_members` と `thanks` は `migrations/0009_add_epic_party_members_and_thanks.sql` で足した。残りの表は、使う機能の Issue でマイグレーションを足して作る
+状態: 確定。要件定義（`requirements.md`）を D1（SQLite）のテーブルに落としたもの。最初のマイグレーション（`migrations/0001_create_initial_tables.sql`）で、共通の6表と、一本道に要る組織の中の16表を作った。`organization_holidays` は `migrations/0004_add_organization_holidays.sql` で、`comments` は `migrations/0006_add_comments.sql` で、`sprint_entries` と `completions.previous_column_id` は `migrations/0008_add_sprint_entries.sql` で、`epic_party_members` と `thanks` は `migrations/0009_add_epic_party_members_and_thanks.sql` で、共通の表の `password_credentials` は `migrations/0010_add_password_credentials.sql` で足した（共通の表は7表になった）。残りの表は、使う機能の Issue でマイグレーションを足して作る
 
 ## 決まりごと
 
@@ -27,7 +27,7 @@
 
 | まとまり | テーブル |
 | --- | --- |
-| アカウント | `accounts`、`sessions`、`oauth_states`、`rate_limits` |
+| アカウント | `accounts`、`account_logins`、`password_credentials`、`sessions`、`oauth_states`、`rate_limits` |
 | 組織 | `organizations`、`users`、`organization_holidays` |
 | ユーザーの稼働 | `user_capacity_settings`、`user_monthly_overrides`、`user_time_off` |
 | ワークスペース | `workspaces`、`workspace_point_rates`、`workspace_holidays`、`memberships`、`invitations`、`allocations` |
@@ -38,8 +38,8 @@
 
 親子の向きの要点。
 
-- アカウントは人ごとに1行で、組織をまたぐ。ログインの手段（初版は GitHub と Google）とは `account_logins` で結び、特定の手段に依存させない。ログインとセッションはアカウントに付く。
-- 人は、ログインの手段（`login_provider`）と手段の中の不変の ID（`login_subject`）の組で見分ける。GitHub では `github` とユーザー ID、Google では `google` と `sub`。アカウントができる前の管理者の指名と招待も、この組で持つ。
+- アカウントは人ごとに1行で、組織をまたぐ。ログインの手段（初版は GitHub、Google、メールアドレスとパスワード）とは `account_logins` で結び、特定の手段に依存させない。ログインとセッションはアカウントに付く。
+- 人は、ログインの手段（`login_provider`）と手段の中の不変の ID（`login_subject`）の組で見分ける。GitHub では `github` とユーザー ID、Google では `google` と `sub`、パスワードでは `password` と発行した UUID（`password_credentials.login_subject`）。アカウントができる前の管理者の指名と招待も、この組で持つ。
 - Google の人への指名と招待は、`sub` が分からないうちはメールアドレス（`login_email`）と招待の URL の秘密のハッシュ（`claim_token_hash`）で持ち、`login_subject` を空にしておく。本人が招待の URL から Google でログインしたときに、その行へ `sub` を埋める（下の「メールアドレスで待つ指名と招待」）。
 - ユーザーは組織ごとの人で、アカウントと組織の組に1行。組織の中の表はすべてユーザーを指し、アカウントは指さない。
 - 組織の直下のもの（`users`、`workspaces`、`organization_holidays`、`change_logs`）は `organization_id` を持つ。
@@ -55,7 +55,7 @@
 
 | 区分 | テーブル | 置き場所 |
 | --- | --- | --- |
-| 共通 | `accounts`、`account_logins`、`sessions`、`oauth_states`、`rate_limits`、`organizations` | 共通の DB に1つだけ |
+| 共通 | `accounts`、`account_logins`、`password_credentials`、`sessions`、`oauth_states`、`rate_limits`、`organizations` | 共通の DB に1つだけ |
 | 組織の中 | それ以外のすべて | 組織が置かれた DB |
 
 添付ファイルの中身は D1 ではなく R2 に置く。R2 のキーの先頭は組織の ID なので、D1 を分けても R2 は分けずに済む。
@@ -119,19 +119,39 @@
 
 ### account_logins
 
-アカウントとログインの手段の結び付き。初版は1つのアカウントに1行だけ（GitHub か Google）で、結ぶ操作を足したら1つのアカウントに複数の行を結べる。
+アカウントとログインの手段の結び付き。初版は1つのアカウントに1行だけ（GitHub か Google かパスワード）で、結ぶ操作を足したら1つのアカウントに複数の行を結べる。
 
 | 列 | 型 | 制約 | 説明 |
 | --- | --- | --- | --- |
-| login_provider | TEXT | PK | ログインの手段（初版は `github` と `google`）。値はログインの手段の型の一覧でアプリが検証する |
-| login_subject | TEXT | PK | 手段の中の不変の ID。GitHub ではユーザー ID を10進の文字列で、Google では ID トークンの `sub` を受け取った文字列のまま持つ。数値に直さない（Google の `sub` は JavaScript の数値で正確に表せない桁数がある） |
+| login_provider | TEXT | PK | ログインの手段（初版は `github`、`google`、`password`）。値はログインの手段の型の一覧でアプリが検証する |
+| login_subject | TEXT | PK | 手段の中の不変の ID。GitHub ではユーザー ID を10進の文字列で、Google では ID トークンの `sub` を受け取った文字列のまま、パスワードでは `password_credentials.login_subject`（発行した UUID）を持つ。数値に直さない（Google の `sub` は JavaScript の数値で正確に表せない桁数がある） |
 | account_id | TEXT | NOT NULL、FK accounts | |
-| login_name | TEXT | NOT NULL | ログインのたびに書き直す表示用の名前。GitHub ではログイン名、Google ではプロフィールの名前（`name`。無ければ「Google ユーザー」）。Google のメールアドレスは持たない |
+| login_name | TEXT | NOT NULL | ログインのたびに書き直す表示用の名前。GitHub ではログイン名、Google ではプロフィールの名前（`name`。無ければ「Google ユーザー」）、パスワードでは `password_credentials.display_name`。Google とパスワードのメールアドレスは持たない |
 | display_name | TEXT | | 手段の側の名前。組織で初めてユーザーを作るときの表示名の既定 |
 | avatar_url | TEXT | | |
 | created_at、updated_at | TEXT | NOT NULL | |
 
 - 索引: `(account_id)`。
+
+### password_credentials
+
+メールアドレスとパスワードでログインする人の資格情報（手段 `password`。`migrations/0010_add_password_credentials.sql`）。共通の表。`accounts` と `account_logins` の行は、ほかの手段と同じく、初めてログインできたときに作る（入れる組織が無い人のアカウントは作らない）。
+
+| 列 | 型 | 制約 | 説明 |
+| --- | --- | --- | --- |
+| login_subject | TEXT | PK | 手段 `password` の中の ID。発行した UUID で、`account_logins` と `users`、`invitations` の `(password, login_subject)` に当たる。メールアドレスは ID にしない（後から変えられるようにするため） |
+| email | TEXT | NOT NULL、UNIQUE、`CHECK (email = lower(trim(email)) AND email GLOB '?*@?*')` | ログインに使うメールアドレス。そろえた形（`src/shared/email.ts`。「メールアドレスで待つ指名と招待」と同じそろえ方）で持ち、共通の DB で一意にする。ログにも応答にも出さない |
+| password_hash | TEXT | NOT NULL、`CHECK (password_hash GLOB 'pbkdf2-sha256$[1-9]*$?*$?*')` | `pbkdf2-sha256$<反復回数>$<塩の base64url>$<鍵の base64url>`（PBKDF2-HMAC-SHA256、16 バイトの塩、32 バイトの鍵。`src/server/auth/password-hash.ts`）。形を CHECK で縛り、平文のパスワードを入れる取り違えを DB で止める |
+| display_name | TEXT | NOT NULL、`CHECK (length(display_name) BETWEEN 1 AND 100)` | 手段の側の名前（Google のプロフィールの名前にあたる）。ログインのたびに `account_logins.login_name` と `display_name` に写す |
+| password_changed_at | TEXT | NOT NULL | パスワードを決めた（変えた）日時。ハッシュの回数を上げて書き直したときは変えない |
+| created_at、updated_at | TEXT | NOT NULL | |
+
+- 索引: `email` の UNIQUE の索引が、ログインのときにメールアドレスで引くのを兼ねる。
+- パスワードは NFC にそろえ、コードポイントで12〜128文字（`src/shared/password.ts`）。合わない入力は照合せずに、違うパスワードと同じ応答にする。
+- 反復回数は 100,000（本番の Workers の WebCrypto が受ける上限）。保存した回数が今の回数より少ない行は、ログインの成功時に今の回数で書き直す（`password_hash` と `updated_at`。読んだ値と同じ行だけに当てるので、並行したログインやパスワードの変更を上書きしない）。
+- 照合は保存した回数で1回回し、鍵を `crypto.subtle.timingSafeEqual` で比べる。無いメールアドレスと形の合わない入力でも、決まったダミーの値で今の回数を1回回し、所要時間でメールアドレスの有無を見分けさせない。
+- 行を作る（パスワードを決める）入口は、招待の URL からだけで、#257 以降で作る。今は seed の行だけ。
+- 解約した組織のデータを消す SQL は、この表を消さない（`organizations` の節）。
 
 ### sessions
 
@@ -167,11 +187,11 @@
 
 ### rate_limits
 
-ログイン、画面のエラーの送信（`POST /api/client-errors`）、手動の同期、招待（GitHub に問い合わせる `invitee-resolve` と `invitation-create`。`invitation-create` は GitHub に問い合わせない Google の招待も同じ枠で数える）、完成の定義の変更（`workspace-dod-update`。10 万字の本文を書く）、コメントの作成と編集（`comment-create`、`comment-update`。10 万字の本文を何件でも足せる。どれも 10 分に 30 回）のレート制限。
+ログイン（OAuth の手段とパスワード）、画面のエラーの送信（`POST /api/client-errors`）、手動の同期、招待（GitHub に問い合わせる `invitee-resolve` と `invitation-create`。`invitation-create` は GitHub に問い合わせない Google の招待も同じ枠で数える）、完成の定義の変更（`workspace-dod-update`。10 万字の本文を書く）、コメントの作成と編集（`comment-create`、`comment-update`。10 万字の本文を何件でも足せる。どれも 10 分に 30 回）のレート制限。
 
 | 列 | 型 | 制約 | 説明 |
 | --- | --- | --- | --- |
-| key | TEXT | PK | `login:<IP>`（ログインの開始と戻り先。`CF-Connecting-IP`。IPv6 は上位 64 ビットに丸めた `login:2001:db8:1:2::/64` と、上位 48 ビットの `login48:2001:db8:1::/48` の2つ。IPv4 を写した IPv6 は IPv4 に直す。解釈できない値と IP の無いリクエストは `login:unknown`）、`login:global`（ログインの開始の全体の枠）、`client-error:<IP>`（画面のエラーの送信。IP の丸め方はログインと同じで、IPv6 は `client-error:<…>::/64` と `client-error48:<…>::/48`、解釈できない値は `client-error:unknown`）、`client-error:global`（画面のエラーの送信の全体の枠）、`operation:<操作の名前>:<アカウントの ID>`（操作の定義の `rateLimit`） |
+| key | TEXT | PK | `login:<IP>`（ログインの開始と戻り先。`CF-Connecting-IP`。IPv6 は上位 64 ビットに丸めた `login:2001:db8:1:2::/64` と、上位 48 ビットの `login48:2001:db8:1::/48` の2つ。IPv4 を写した IPv6 は IPv4 に直す。解釈できない値と IP の無いリクエストは `login:unknown`）、`login:global`（ログインの開始の全体の枠）、`client-error:<IP>`（画面のエラーの送信。IP の丸め方はログインと同じで、IPv6 は `client-error:<…>::/64` と `client-error48:<…>::/48`、解釈できない値は `client-error:unknown`）、`client-error:global`（画面のエラーの送信の全体の枠）、`operation:<操作の名前>:<アカウントの ID>`（操作の定義の `rateLimit`）、`password:<IP>`（パスワードのログイン。IP の丸め方はログインと同じで、IPv6 は `password:<…>::/64` と `password48:<…>::/48`、解釈できない値は `password:unknown`）、`password-email:<そろえたメールアドレスの SHA-256 の16進>`（パスワードのログインの、メールアドレスごとの枠。メールアドレスそのものは持たない） |
 | window_start_at | TEXT | NOT NULL | 窓の最初の呼び出しの日時 |
 | count | INTEGER | NOT NULL | 窓の中の呼び出しの数。操作の定義の枠は、上限を超えた呼び出しも数える。ログインと画面のエラーの送信の枠は、覗いた時点で上限に届いていれば数えない（覗いた後に並行した呼び出しは、上限を少し超えて数えることがある） |
 
@@ -188,8 +208,9 @@
 - 画面のエラーの送信（`POST /api/client-errors`。ログイン前も受ける）は、ログインの開始と同じ順と覗き方で、キーを分けて数える。10分に、同じ IP（IPv6 は /64）から20回、IPv6 の /48 は40回、全体の枠 `client-error:global` は300回まで。どれも Workers Logs に1行を出す数の上限で、全体の枠で1日の行を最悪で約4万行に抑える。全体の枠を埋められると、その10分は他の人の画面のエラーが残らない（ログインの枠とは別なので、ログインは止まらない）。
 - 数えるのは、利用者が始めた画面の移動の開始と、`state` の行を使い切れた戻りだけ。開始は、`Sec-Fetch-Mode` が `navigate`、`Sec-Fetch-Dest` が `document`、`Sec-Fetch-Site` が `same-origin` か `none` で、`Sec-Purpose` に prefetch と prerender を含まないもの。どのヘッダーも、送らない古いブラウザは通す。ほかのサイトが `<img>`、`fetch()`、`<iframe>`、リンクの移動、先読みで読ませても、被害者の枠は減らず、`oauth_states` の行もできない。
 - 残る限界: `Sec-Fetch` を送らない古いブラウザには、`<img>` で読ませる攻撃が通る。同じ IP を共有する人（同じオフィス）が、意図して枠を使い切ることは止められない。IP を多く持つ人は、IPv4 なら約10個（窓の境目をまたげば約5個）、IPv6 なら約5個（窓の境目をまたげば約3個）の /48 で全体の枠を使い切り、新しいログインを止められる。止まるのは新しいログインだけで、ログイン済みの人はセッションの期限まで使い続ける。覗いて断った呼び出しにも、Workers のリクエストと D1 の読み出しの料金はかかる。行の無い `state` を Cookie と合わせて送る戻り先も、枠では止まらず `oauth_states` の `DELETE` まで届く（消す行が無いので書き込みは0行）。リクエストの量そのものを止めるのは、ドメインを取った後の WAF の役目。
+- パスワードのログイン（`POST /api/auth/password/login`）は、OAuth のログインと別のキーで数える。10分に、同じ IP（IPv6 は /64）から30回、IPv6 の /48 は60回、同じメールアドレス（そろえた形の SHA-256）に向けて10回まで。順はログインの IP の枠と同じく、全部の枠を覗いて上限に届いた枠があれば何も書かずに断り、通ったら /48、/64（か IPv4）、メールアドレスの順に数える。照合の前に、成功も含めて数え、メールアドレスの登録の有無に依らず数える。そろえられないメールアドレスは IP の枠だけを数える。全体の枠は置かない（未ログインの人が書かせられる行は IP の枠で抑えられ、1回の照合の CPU は約 12ms）。アカウントは締め出さず、窓が過ぎれば通る。値は `src/server/auth/rate-limit.ts` の `PASSWORD_LOGIN_RATE_LIMITS`。
 - 手動の同期の「接続ごとに5分に1回」は、この表ではなく `connections.last_manual_sync_at` で判定する。
-- `window_start_at <= 定期処理の基準の時刻 - 最長の窓` の行を、毎分の定期処理で消す（「期限切れの行の掃除」）。最長の窓は、ログインと画面のエラーの送信の枠（`src/server/auth/rate-limit.ts`）と操作の定義の `rateLimit` の窓のうち最も長いもの。短い窓の枠を過ぎていても、最長の窓の内にある行は残す。最長の窓に入らない窓の枠は、`consumeRateLimit` が例外にする。
+- `window_start_at <= 定期処理の基準の時刻 - 最長の窓` の行を、毎分の定期処理で消す（「期限切れの行の掃除」）。最長の窓は、ログイン（パスワードを含む）と画面のエラーの送信の枠（`src/server/auth/rate-limit.ts`）と操作の定義の `rateLimit` の窓のうち最も長いもの。短い窓の枠を過ぎていても、最長の窓の内にある行は残す。最長の窓に入らない窓の枠は、`consumeRateLimit` が例外にする。
 
 ### 期限切れの行の掃除
 
@@ -227,7 +248,7 @@
 - 人数は保存せず、招待のたびと、メンバーの画面と運用者の組織の一覧を開くたびに数える。対象は、無効にしていない管理者と、いずれかのワークスペースに今所属しているか承諾待ちの招待を持つ人（まだアカウントのない人への招待を含む）で、同じ人は1人とする。招待のうち、閉じたワークスペースへの招待と、同じ組織で無効にされた人（同じ `(login_provider, login_subject)`）への招待は数えない。人数が `member_limit` 以上なら、まだ数えられていない人の招待と、管理者への指名（`user-admin-update`。「書き込みの単位」の管理者の指名と解除）を断る。運用者の管理者の指名し直しは、組織の作成の最初の管理者と同じく上限を見ない。すでに数えられている人（同じ `(login_provider, login_subject)` の、無効でない管理者、いずれかのワークスペースに今所属している人、数えられる承諾待ちの招待を持つ人）は、上限でも招待できる。数えるのは GitHub に問い合わせた後で、数えてから書くまでの間に同時に招待されたときはそのまま認める（超えるのは同時に送った招待の数まで）。
 - 人数を数える関数は `src/server/db/seats.ts` の1つ（`seatHoldersIn`）に置く。組織の ID の束を受け、組織ごとの数える人（1人の見分け方 `personKey` の集合）を返す。どの文も `organization_id IN (...)` で組織に絞り、組織の ID は束縛の上限で区切る。招待の上限の検査と member-list の `seats` は、確かめた組織の入口だけを受ける `seatHoldersOf` から1つの組織で呼び、運用者の組織の一覧（`users` の節の、運用者の組織の一覧の集計の箇条書き）は組織をまたぐ入口ごとに組織の ID の束で呼ぶ。数え方は同じなので、同じ組織なら同じ数になる。
 - 解約した組織は、`purge_on` を過ぎたら運用の手順でこの組織の行をすべて消し、R2 の `<organization_id>/` で始まるファイルも消す。再開したら `suspended_at` と `purge_on` を空に戻す。`purge_on` は、解約で停止した日時の UTC の日付の30日後（`YYYY-MM-DD`）。停止中に解約へ切り替えたときは、切り替えた日時の UTC の日付の30日後。`purge_on` が今日（UTC の日付）より前の組織は、再開も一時的な停止への切り替えもできない（409 の `purge_due`。消す SQL のガードと同じ境目で、予定日の当日まではできる。「書き込みの単位」の組織の停止と再開）。運用者の組織の一覧は、この組織に `purge_due` を真で返す。
-- 消す手順は `docs/operations.md` の「解約した組織のデータを消す」。消す SQL は `scripts/purge-organization.ts` が1行に1文で書き出し（組み立ては `scripts/purge-organization-sql.ts`）、運用者が1文ずつ流して、組織の中のすべての表と最後に `organizations` の行を、外部キーの子から順に消す。どの文も、その組織が解約で停止していて `purge_on` を過ぎている（`purge_on < date('now')`、UTC の日付）ことを条件にするので、一時的な停止と予定日の当日までの組織では何も消えない。共通の表のうち `accounts`、`account_logins`、`sessions`、`oauth_states`、`rate_limits` は消さない（アカウントをどうするかは #407。セッションは、入れる組織を失った人の次のリクエストか期限切れで消える）。この SQL は条件の確かめに共通の表の `organizations` を組織の中の表の文から引く（「データベースの分け方」の例外で、DB が1つの今だけ使える）。組織ごとに DB を分けるときは、確かめを共通の DB で先に行う形に直す。
+- 消す手順は `docs/operations.md` の「解約した組織のデータを消す」。消す SQL は `scripts/purge-organization.ts` が1行に1文で書き出し（組み立ては `scripts/purge-organization-sql.ts`）、運用者が1文ずつ流して、組織の中のすべての表と最後に `organizations` の行を、外部キーの子から順に消す。どの文も、その組織が解約で停止していて `purge_on` を過ぎている（`purge_on < date('now')`、UTC の日付）ことを条件にするので、一時的な停止と予定日の当日までの組織では何も消えない。共通の表のうち `accounts`、`account_logins`、`password_credentials`、`sessions`、`oauth_states`、`rate_limits` は消さない（アカウントをどうするかは #407。セッションは、入れる組織を失った人の次のリクエストか期限切れで消える）。この SQL は条件の確かめに共通の表の `organizations` を組織の中の表の文から引く（「データベースの分け方」の例外で、DB が1つの今だけ使える）。組織ごとに DB を分けるときは、確かめを共通の DB で先に行う形に直す。
 
 ### users
 
@@ -240,7 +261,7 @@
 | account_id | TEXT | FK accounts | アカウントができる前（管理者の指名で待つ間）は空 |
 | login_provider | TEXT | NOT NULL | 突き合わせに使うログインの手段。`account_logins` と同じ値 |
 | login_subject | TEXT | | 突き合わせに使う手段の中の不変の ID。`account_logins` と同じ値。Google の指名で `sub` が分かる前は空 |
-| login_email | TEXT | | `sub` が分かる前に突き合わせるメールアドレス（そろえ方は下の「メールアドレスで待つ指名と招待」）。Google の指名で使い、`sub` を埋めたら空にする |
+| login_email | TEXT | | `sub` が分かる前に突き合わせるメールアドレス（そろえ方は下の「メールアドレスで待つ指名と招待」）。メールアドレスで待つ手段（`google` と `password`）の指名で使い、`sub` を埋めたら空にする。今作るのは `google` の行だけで、`password` の待つ行は #257 以降で作る |
 | claim_token_hash | TEXT | UNIQUE | 招待の URL の秘密の SHA-256。`sub` を埋めたら空にする |
 | claim_expires_at | TEXT | | 招待の URL の期限（作ってから14日）。`sub` を埋めたら空にする |
 | name | TEXT | NOT NULL | この組織での表示名。初回は手段の側の名前かログイン名。Google の指名で待つ間はメールアドレスで、`sub` を埋めるときに Google のプロフィールの名前に書き直す |
@@ -252,7 +273,7 @@
 | theme | TEXT | `organizations.theme` と同じ値か NULL | 自分で選んだテーマ。NULL なら組織の既定に従う |
 | created_at、updated_at | TEXT | NOT NULL | |
 
-- 表の制約: `CHECK ((login_subject IS NULL) = (login_email IS NOT NULL))`、`CHECK ((login_email IS NULL) = (claim_token_hash IS NULL) AND (login_email IS NULL) = (claim_expires_at IS NULL))`、`CHECK (login_email IS NULL OR (login_provider = 'google' AND login_email = lower(trim(login_email))))`。
+- 表の制約: `CHECK ((login_subject IS NULL) = (login_email IS NOT NULL))`、`CHECK ((login_email IS NULL) = (claim_token_hash IS NULL) AND (login_email IS NULL) = (claim_expires_at IS NULL))`、`CHECK (login_email IS NULL OR (login_provider IN ('google', 'password') AND login_email = lower(trim(login_email))))`。
 - 一意: `(organization_id, login_provider, login_subject)`。`login_subject` が空の行どうしは、SQLite では NULL が重ならないので当たらない。待っている指名は、運用者が指名し直すと消すので、メールアドレスの一意は持たない。
 - 一意: `(organization_id, account_id) WHERE account_id IS NOT NULL`。アカウントと組織の組に1行。1つのアカウントに複数のログインの手段を結んだ後も、同じ人が1つの組織に2行持たないようにする。
 - 索引: `(login_provider, login_subject)`。ログインのときに入れる組織を引く。
@@ -411,7 +432,7 @@
 | workspace_id | TEXT | NOT NULL、FK workspaces | |
 | login_provider | TEXT | NOT NULL | 招待した人のログインの手段 |
 | login_subject | TEXT | | 招待のときに解決した、手段の中の不変の ID。Google では `sub` が分かるまで空 |
-| login_email | TEXT | | `sub` が分かる前に突き合わせるメールアドレス（そろえ方は下の「メールアドレスで待つ指名と招待」）。Google の招待で使い、`sub` を埋めたら空にする |
+| login_email | TEXT | | `sub` が分かる前に突き合わせるメールアドレス（そろえ方は下の「メールアドレスで待つ指名と招待」）。メールアドレスで待つ手段（`google` と `password`）の招待で使い、`sub` を埋めたら空にする。今作るのは `google` の行だけで、`password` の待つ行は #257 以降で作る |
 | claim_token_hash | TEXT | UNIQUE | 招待の URL の秘密の SHA-256。`sub` を埋めたら空にする |
 | claim_expires_at | TEXT | | 招待の URL の期限（作ってから14日）。`sub` を埋めたら空にする |
 | login_name | TEXT | NOT NULL | 招待のときの名前（表示用）。GitHub ではユーザー名、Google ではメールアドレス。メンバーの画面の承諾待ちの招待（`member-list`）に、リーダーと管理者にだけ出す。Google の招待ではメールアドレスもそのまま出る |
@@ -421,7 +442,7 @@
 | responded_at | TEXT | | 承諾、辞退、取り消しの日時 |
 | created_at | TEXT | NOT NULL | |
 
-- 表の制約: `users` と同じ3つの CHECK（`login_subject` と `login_email` のどちらか一方、`login_email` と `claim_token_hash` と `claim_expires_at` はそろって入るか空、`login_email` は `google` の行だけで、そろえた形）。
+- 表の制約: `users` と同じ3つの CHECK（`login_subject` と `login_email` のどちらか一方、`login_email` と `claim_token_hash` と `claim_expires_at` はそろって入るか空、`login_email` は `google` と `password` の行だけで、そろえた形）。
 - 一意: `(workspace_id, login_provider, login_subject) WHERE status = 'pending'`、`(workspace_id, login_provider, login_email) WHERE status = 'pending' AND login_subject IS NULL`。
 - 索引: `(login_provider, login_subject) WHERE status = 'pending'`。ログインの可否と招待の一覧に使う。
 - 索引: `(invited_by)`。外部キーの検査。
@@ -434,7 +455,7 @@
 
 ### メールアドレスで待つ指名と招待
 
-Google の人は、ログインするまで `sub` が分からない。そのため、`users`（管理者の指名）と `invitations`（招待）を `login_subject` を空にした行で作り、招待の URL から本人がログインしたときに `sub` を埋める。
+メールアドレスで指す手段（`login_email` を持てる `google` と `password`）では、指名と招待のときに手段の中の ID が分からない。Google の人は、ログインするまで `sub` が分からない。パスワードの人は、招待の URL からパスワードを決めるまで資格情報（`password_credentials`）が無い。以下は今の Google の流れで、手段 `password` の待つ行（招待の URL からパスワードを決めて `login_subject` を埋める流れ）は #257 以降で作り、ここに書き足す。そのため、`users`（管理者の指名）と `invitations`（招待）を `login_subject` を空にした行で作り、招待の URL から本人がログインしたときに `sub` を埋める。
 
 招待の URL を作るとき。
 
