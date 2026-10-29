@@ -17,7 +17,14 @@ export type ReviewPr = {
   user: { type: string };
   author_association: string;
 };
-export type CiRun = { id: number; head_sha: string; event: string; status: string; path?: string };
+export type CiRun = {
+  id: number;
+  head_sha: string;
+  event: string;
+  status: string;
+  path?: string;
+  head_repository?: { full_name: string } | null;
+};
 export type ReviewEvent = {
   action?: string;
   label?: { name: string };
@@ -52,13 +59,19 @@ export function resolvePrNumber(event: ReviewEvent, candidates: readonly ReviewP
 }
 
 // API は新しい順で返すが、ページをまとめても順に依存しないよう実行 ID で選ぶ。
-// 同じ実行の再試行は同じ ID の status とジョブを使う
+// 同じ実行の再試行は同じ ID の status とジョブを使う。
+// fork の PR の ci も同じ head の SHA で走りうるので、PR の head と同じリポジトリの実行だけを選ぶ
 export function selectCiRun(event: ReviewEvent, runs: readonly CiRun[]): CiRun | undefined {
   if (event.workflow_run) return event.workflow_run;
+  const headRepository = event.pull_request?.head.repo?.full_name;
   return runs
     .filter(
       (run) =>
-        run.head_sha === event.pull_request?.head.sha && run.event === 'pull_request' && run.path === CI_WORKFLOW_PATH,
+        run.head_sha === event.pull_request?.head.sha &&
+        run.event === 'pull_request' &&
+        run.path === CI_WORKFLOW_PATH &&
+        headRepository !== undefined &&
+        run.head_repository?.full_name === headRepository,
     )
     .reduce<CiRun | undefined>((latest, run) => (!latest || run.id > latest.id ? run : latest), undefined);
 }

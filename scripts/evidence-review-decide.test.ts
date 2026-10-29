@@ -27,7 +27,14 @@ const pr: ReviewPr = {
   author_association: 'OWNER',
 };
 const ciPath = '.github/workflows/ci.yml';
-const ci = { id: 100, head_sha: head, status: 'completed', event: 'pull_request', path: ciPath };
+const ci = {
+  id: 100,
+  head_sha: head,
+  status: 'completed',
+  event: 'pull_request',
+  path: ciPath,
+  head_repository: { full_name: 'example/project' },
+};
 const event: ReviewEvent = { action: 'ready_for_review', pull_request: pr };
 const repositoryId = 4242;
 // workflow_run の PR は、base のリポジトリがこのリポジトリのものだけを使う
@@ -220,6 +227,14 @@ describe('PR と ci の選択', () => {
     const noPath = { ...ci, id: 201, path: undefined };
     assert.deepEqual(selectCiRun(event, [ci, other, noPath]), ci);
     assert.equal(selectCiRun(event, [other, noPath]), undefined);
+  });
+
+  // fork の PR の ci も同じ head の SHA で走りうる。別のリポジトリの head で撮った画像を材料にしない
+  test('pull_request で選ぶ ci の実行は、PR の head と同じリポジトリのものだけ', () => {
+    const fork = { ...ci, id: 300, head_repository: { full_name: 'someone/project' } };
+    const unknown = { ...ci, id: 301, head_repository: undefined };
+    assert.deepEqual(selectCiRun(event, [ci, fork, unknown]), ci);
+    assert.equal(selectCiRun(event, [fork, unknown]), undefined);
   });
 
   test('base は workflow_run の記録、無ければ API、pull_request ではイベントから取る', () => {
