@@ -354,7 +354,10 @@ export const sprintUpdateOperation = implement(sprintUpdate, async ({ db, actor,
       await throwIfClosed(db, workspaceId);
       throw conflict('started');
     }
-    if (current.status !== 'active' && input.goal !== undefined) throw conflict('not_active');
+    if (current.status !== 'active' && input.goal !== undefined) {
+      await throwIfClosed(db, workspaceId);
+      throw conflict('not_active');
+    }
     const { values, changes, startOn, endOn, rangeChanged, isEmpty } = diffOf(current, input);
     if (isEmpty) {
       // 書くものが無くても、閉じたワークスペースは断る

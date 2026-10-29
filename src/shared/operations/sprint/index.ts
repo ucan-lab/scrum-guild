@@ -3,8 +3,8 @@ import type { AnyOperationDefinition } from '../define.ts';
 import { sprintBoard } from './sprint-board.ts';
 import { sprintClose } from './sprint-close.ts';
 import { sprintCreate } from './sprint-create.ts';
-import { sprintExtend } from './sprint-extend.ts';
 import { sprintDelete } from './sprint-delete.ts';
+import { sprintExtend } from './sprint-extend.ts';
 import { sprintList } from './sprint-list.ts';
 import { sprintStart } from './sprint-start.ts';
 import { sprintTaskAdd } from './sprint-task-add.ts';
@@ -15,9 +15,9 @@ import { taskColumnMove } from './task-column-move.ts';
 export {
   sprintBoard,
   sprintClose,
-  sprintExtend,
   sprintCreate,
   sprintDelete,
+  sprintExtend,
   sprintList,
   sprintStart,
   sprintTaskAdd,

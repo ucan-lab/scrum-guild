@@ -29,7 +29,8 @@ export function sprintExtensionUnchanged(
 }
 
 // 動かす行は更新後の期間に置き換えて比較する。動かさない planned と closed も検査する。
-// 最初の文と後続の UPDATE で同じ式を使える（途中で書き換わった行も更新後の値で見る）。
+// 全対象の全組み合わせを見る重い式なので、最初の UPDATE にだけ置く。後続の UPDATE は previousStatementChanged で最初の文に結ばれ、
+// 同じ batch() の中は別の要求に割り込まれないため、最初の文が通っていれば更新後の期間の重なりは無い。
 export function sprintExtensionNoOverlap(
   workspaceId: string,
   writes: readonly SprintExtensionWrite[],

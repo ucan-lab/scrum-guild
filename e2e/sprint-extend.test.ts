@@ -41,12 +41,10 @@ test('延長の予告どおり空きを吸収して後ろを押し出し、進�
   const extend = page.getByRole('dialog', { name: '遠征を延ばす' });
   await extend.getByLabel('延ばす日数').fill('3');
   await expect(extend.locator('[data-sprint-extend-end]')).toHaveText('2099-03-17');
-  await expect(extend.locator('[data-sprint-shift]')).toHaveText([
-    '3/16〜3/29 → 3/18〜3/31（2 日）',
-    '3/30〜4/12 → 4/1〜4/14（2 日）',
-  ]);
+  await expect(extend.locator('[data-sprint-shift]')).toHaveText(['3/16〜3/29 → 3/18〜3/31', '3/30〜4/12 → 4/1〜4/14']);
+  await expect(extend.locator('[data-sprint-shift-days]')).toHaveText(['（2 日）', '（2 日）']);
   const extended = waitForResponses(page, '/sprint-extend');
-  await extend.getByRole('button', { name: '延長する', exact: true }).click();
+  await extend.getByRole('button', { name: '3 日延長する', exact: true }).click();
   await extended;
   await expect(extend).toBeHidden();
   await expect(page.getByText('延長 3 日', { exact: true })).toBeVisible();
@@ -95,7 +93,10 @@ for (const width of [320, 390, 1024, 1280]) {
     await dialog.getByRole('button', { name: '延長する', exact: true }).click();
     await expect(dialog.getByRole('alert')).toContainText('全体の長さは28日まで');
     await dialog.getByLabel('延ばす日数').fill('2');
-    await expect(dialog.locator('[data-sprint-shift]')).toHaveText('10/27〜11/9 → 10/29〜11/11（2 日）');
+    await expect(dialog.locator('[data-sprint-shift]')).toHaveText('10/27〜11/9 → 10/29〜11/11');
+    await expect(dialog.locator('[data-sprint-shift-days]')).toHaveText('（2 日）');
+    await expect(dialog.getByText('1〜14 日', { exact: true })).toBeVisible();
+    await expect(dialog.getByRole('button', { name: '2 日延長する', exact: true })).toBeVisible();
     expect(await dialog.evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
     await dialog.getByRole('button', { name: 'やめる' }).click();
     await page.reload();

@@ -47,7 +47,7 @@ function lane(id, avg) {
   const max = Math.max(total, avg) * 1.15;
   return `<section class="lane ${s.status === "active" ? "is-active" : ""}">
     <div class="lane-head"><h2 class="lane-title">${SQ.sprintLabel(id)}</h2>${s.status === "active" ? `<span class="chip is-ok">進行中</span>` : ""}</div>
-    <div class="lane-sub"><span class="mono">${md(s.start)}〜${md(s.end)}</span>${none ? `<span>未見積もり ${none} 件</span>` : ""}${unfilled ? `<span>${t("detail")} 未記入 ${unfilled} 件</span>` : ""}</div>
+    <div class="lane-sub"><span class="mono">${md(s.start)}〜${md(s.end)}</span>${s.extended ? `<span>延長 ${s.extended} 日</span>` : ""}${none ? `<span>未見積もり ${none} 件</span>` : ""}${unfilled ? `<span>${t("detail")} 未記入 ${unfilled} 件</span>` : ""}</div>
     ${s.status === "active" && s.goal ? `<p class="lane-goal"><span class="lane-goal-label">${t("sprintGoal")}</span>${esc(s.goal)}</p>` : ""}
     <div class="lane-fill">
       <div class="lane-fill-bar ${total > avg * 1.125 ? "is-over" : ""}" role="img" aria-label="入れた ${total} pt、ベロシティ ${avg.toFixed(1)} pt"><span style="width:${(total / max) * 100}%"></span><i style="left:${(avg / max) * 100}%"></i></div>

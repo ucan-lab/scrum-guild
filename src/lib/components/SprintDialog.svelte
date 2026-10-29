@@ -103,17 +103,23 @@
     };
   });
 
-  // 作るときは defaults、直すときは対象の今の値で開く
+  // 作るときは defaults、直すときは対象の今の値で開く（直すときは defaults を渡さない）
+  export function show(trigger: HTMLElement | null, target: SprintSummary): void;
   export function show(
     trigger: HTMLElement | null,
     target: SprintSummary | null,
     defaults: { start_on: string; length: number },
+  ): void;
+  export function show(
+    trigger: HTMLElement | null,
+    target: SprintSummary | null,
+    defaults?: { start_on: string; length: number },
   ): void {
     generation++;
     reloadOnClose = false;
     editing = target;
-    startOn = target?.start_on ?? defaults.start_on;
-    length = target?.length ?? defaults.length;
+    startOn = target?.start_on ?? defaults?.start_on ?? '';
+    length = target?.length ?? defaults?.length ?? null;
     name = target?.name ?? '';
     goal = target?.goal ?? '';
     errors = {};
@@ -325,7 +331,9 @@
             oninput={() => (errors.goal = undefined)}
             rows="3"
             aria-invalid={errors.goal !== undefined}
-            aria-describedby={errors.goal !== undefined ? `${fieldIds.goal}-error` : undefined}></textarea>
+            aria-describedby="{fieldIds.goal}-hint{errors.goal !== undefined ? ` ${fieldIds.goal}-error` : ''}"
+          ></textarea>
+          <p class="field-hint" id="{fieldIds.goal}-hint">{t('sprintEditGoalHint', { max: SPRINT_GOAL_MAX_LENGTH })}</p>
           {@render error('goal')}
         </div>
       {:else}

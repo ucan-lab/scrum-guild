@@ -11,8 +11,28 @@ import {
 import { ApiError } from '../errors.ts';
 import { uuidv7 } from '../uuid.ts';
 import { implement } from './implement.ts';
-import { summaryOf } from './sprint.ts';
+import { summaryOf, type SprintRow } from './sprint.ts';
 import { actorUserIdOf, changeLogColumns, openWorkspace, throwIfClosed } from './write-guards.ts';
+
+// 同時の更新に負けたときにやり直す回数の上限。超えたら 409 の changed
+const MAX_ATTEMPTS = 3;
+
+// 書く対象の1行。JSON で条件に渡す値は、この7項目だけにする（行をそのまま広げない）
+function writeOf(
+  row: Pick<SprintRow, 'id' | 'status' | 'start_on' | 'end_on' | 'extended_days'>,
+  nextStartOn: string,
+  nextEndOn: string,
+): SprintExtensionWrite {
+  return {
+    id: row.id,
+    status: row.status,
+    start_on: row.start_on,
+    end_on: row.end_on,
+    extended_days: row.extended_days,
+    next_start_on: nextStartOn,
+    next_end_on: nextEndOn,
+  };
+}
 
 export const sprintExtendOperation = implement(sprintExtend, async ({ db, actor, workspace, input }) => {
   const workspaceId = workspace.workspaceId;
@@ -24,32 +44,41 @@ export const sprintExtendOperation = implement(sprintExtend, async ({ db, actor,
       db.statement((q) =>
         q
           .selectFrom('sprints')
-          .selectAll()
+          .select(['id', 'name', 'goal', 'status', 'start_on', 'end_on', 'extended_days'])
           .where('workspace_id', '=', workspaceId)
           .where('deleted_at', 'is', null)
           .orderBy('start_on')
           .orderBy('id'),
       ),
     );
-
-  for (let attempt = 0; attempt < 3; attempt++) {
-    const rows = await read();
-    const current = rows.find((row) => row.id === input.sprint_id);
-    if (current === undefined) throw new ApiError(404, 'not_found');
-    if (current.status !== 'active') throw conflict('not_active');
+  // 読んだ行から、延長する進行中のスプリントを決める。閉じたワークスペースは、行の状態より先に断る。
+  // 進行中の最終日が画面の読んだ値と違えば、足さずに断る（やり直しの中でも同じ）
+  const target = async (rows: readonly SprintRow[]): Promise<SprintRow> => {
     await throwIfClosed(db, workspaceId);
-    if (sprintLengthOf(current.start_on, current.end_on) + input.days > SPRINT_MAX_LENGTH) {
+    const found = rows.find((row) => row.id === input.sprint_id);
+    if (found === undefined) throw new ApiError(404, 'not_found');
+    if (found.status !== 'active') throw conflict('not_active');
+    if (found.end_on !== input.end_on) throw conflict('changed');
+    if (sprintLengthOf(found.start_on, found.end_on) + input.days > SPRINT_MAX_LENGTH) {
       throw new ApiError(400, 'invalid_input');
     }
+    return found;
+  };
+
+  let rows = await read();
+  for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+    const current = await target(rows);
     const plan = sprintExtension(current, input.days, rows);
     if (plan === null) throw new ApiError(400, 'invalid_input');
     const writes: SprintExtensionWrite[] = [
-      { ...current, next_start_on: current.start_on, next_end_on: plan.end_on },
-      ...plan.shifted.map((shift) => ({
-        ...rows.find((row) => row.id === shift.id)!,
-        next_start_on: shift.start_on,
-        next_end_on: shift.end_on,
-      })),
+      writeOf(current, current.start_on, plan.end_on),
+      ...plan.shifted.map((shift) =>
+        writeOf(
+          rows.find((row) => row.id === shift.id)!,
+          shift.start_on,
+          shift.end_on,
+        ),
+      ),
     ];
     const at = now();
     const updatedAt = at.toISOString();
@@ -61,8 +90,8 @@ export const sprintExtendOperation = implement(sprintExtend, async ({ db, actor,
           ? { end_on: [write.end_on, write.next_end_on], extended_days: [write.extended_days, extended] }
           : { start_on: [write.start_on, write.next_start_on], end_on: [write.end_on, write.next_end_on] };
       statements.push(
-        db.statement((q) =>
-          q
+        db.statement((q) => {
+          const update = q
             .updateTable('sprints')
             .set({
               end_on: write.next_end_on,
@@ -76,10 +105,14 @@ export const sprintExtendOperation = implement(sprintExtend, async ({ db, actor,
             .where('start_on', 'is', write.start_on)
             .where('end_on', 'is', write.end_on)
             .where('extended_days', 'is', write.extended_days)
-            .where((eb) => eb.exists(openWorkspace(q, organizationId, workspaceId)))
-            .where(sprintExtensionNoOverlap(workspaceId, writes))
-            .where(index === 0 ? sprintExtensionUnchanged(workspaceId, writes) : previousStatementChanged),
-        ),
+            .where((eb) => eb.exists(openWorkspace(q, organizationId, workspaceId)));
+          // 全対象の前提と重なりの検査は最初の文だけに置く。後ろの文は直前の文に結ぶ
+          return index === 0
+            ? update
+                .where(sprintExtensionNoOverlap(workspaceId, writes))
+                .where(sprintExtensionUnchanged(workspaceId, writes))
+            : update.where(previousStatementChanged);
+        }),
       );
       statements.push(
         db.statement((q) =>
@@ -108,22 +141,19 @@ export const sprintExtendOperation = implement(sprintExtend, async ({ db, actor,
     if ((results[0]?.changes ?? 0) > 0) {
       return {
         sprint: summaryOf({ ...current, end_on: plan.end_on, extended_days: current.extended_days + input.days }),
-        shifted: plan.shifted,
+        shifted: plan.shifted.map(({ id, name, start_on, end_on }) => ({ id, name, start_on, end_on })),
       };
     }
-    const reread = await read();
-    const latest = reread.find((row) => row.id === input.sprint_id);
-    if (latest === undefined) throw new ApiError(404, 'not_found');
-    if (latest.status !== 'active') throw conflict('not_active');
-    await throwIfClosed(db, workspaceId);
-    // 古い予告との重なりで誤って断らず、今の行で押し出しを計算し直す。
-    const retryPlan = sprintExtension(latest, input.days, reread);
+    rows = await read();
+    const latest = await target(rows);
+    // 古い読み取りとの重なりで誤って断らず、今の行で押し出しを計算し直す。それでも動かさない行と重なるなら overlap
+    const retryPlan = sprintExtension(latest, input.days, rows);
     if (retryPlan !== null) {
       const next = [{ ...latest, end_on: retryPlan.end_on }, ...retryPlan.shifted];
       const ids = new Set(next.map((row) => row.id));
       if (
         next.some((row) =>
-          reread.some((other) => !ids.has(other.id) && other.start_on <= row.end_on && other.end_on >= row.start_on),
+          rows.some((other) => !ids.has(other.id) && other.start_on <= row.end_on && other.end_on >= row.start_on),
         )
       ) {
         throw conflict('overlap');

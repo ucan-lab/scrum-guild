@@ -77,7 +77,9 @@ export type SprintPlan = z.output<typeof sprintPlanSchema>;
 // overlap は同じワークスペースの削除していないスプリント（終了したものも含む）と期間が重なる（2つの画面から同時に作った後の方を含む）、
 // started は始まった（進行中か終了した）スプリントを変えようとした、削除しようとした、または始めようとした、
 // active_exists は進行中のスプリントが既にあるのに始めようとした（2つの画面から同時に始めた後の方を含む）、
-// ended は最終日がワークスペースの今日より前のスプリントを始めようとした
+// ended は最終日がワークスペースの今日より前のスプリントを始めようとした、
+// not_active は進行中でないスプリントを延長しようとした、または始まっていないスプリントにゴールを送った（2つの画面から同時に終えた後の要求を含む）、
+// changed は延長の前提が読んだ値から変わった（画面が読んだ最終日と違う、または書き直しが続いて3回で通らなかった）
 export const sprintConflictReasons = ['overlap', 'started', 'active_exists', 'ended', 'not_active', 'changed'] as const;
 export type SprintConflictReason = (typeof sprintConflictReasons)[number];
 

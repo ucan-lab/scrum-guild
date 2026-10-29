@@ -469,7 +469,7 @@ export const pointers: Pointers = {
       start_on: startOn,
       end_on: endOn,
     });
-    return { workspace_id: target.workspace.id, sprint_id: sprint.id, days: 1 };
+    return { workspace_id: target.workspace.id, sprint_id: sprint.id, days: 1, end_on: endOn };
   },
   // 呼ぶたびに、前の呼び出しの進行中のスプリントを閉じ、ゴールのない進行中のスプリントを作る（終えたスプリントは続けて終えられないため）
   'sprint-close': async (target) => {

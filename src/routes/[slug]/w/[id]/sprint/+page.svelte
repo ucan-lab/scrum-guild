@@ -409,7 +409,7 @@
     >
       {#snippet actions()}
         {#if canLead}
-          <button class="btn" type="button" onclick={(event) => editDialog?.show(event.currentTarget, sprint, sprint)}
+          <button class="btn" type="button" onclick={(event) => editDialog?.show(event.currentTarget, sprint)}
             >{t('sprintEditActive', { sprintGoal: t('sprintGoal') })}</button
           >
           <button class="btn" type="button" onclick={(event) => extendDialog?.show(event.currentTarget, sprint)}

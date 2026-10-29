@@ -83,6 +83,11 @@ export const sprintStartOnSchema = z
   .string()
   .refine(isCalendarDate, { message: '開始日が使えない（YYYY-MM-DD の暦の日付）' });
 
+// 延長の入力で、画面が読んだ今の最終日。YYYY-MM-DD の暦の日付
+export const sprintEndOnSchema = z
+  .string()
+  .refine(isCalendarDate, { message: '最終日が使えない（YYYY-MM-DD の暦の日付）' });
+
 const DAY_MS = 86_400_000;
 
 // 暦に存在する YYYY-MM-DD の通し番号（1970-01-01 が 0）。年は 4 桁だけ

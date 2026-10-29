@@ -115,13 +115,17 @@
   const preview = $derived(
     current !== null && validDays !== null ? sprintExtension(current, validDays, sprints) : null,
   );
+  const invalidMessage = $derived(t('sprintExtendInvalid', { max: maxDays, limit: SPRINT_MAX_LENGTH }));
   const status = $derived(submitting ? t('sprintExtending') : '');
+  const submitLabel = $derived(
+    submitting ? status : validDays === null ? t('sprintExtendAction') : t('sprintExtendSubmit', { days: validDays }),
+  );
 
   async function submit(event: SubmitEvent): Promise<void> {
     event.preventDefault();
     if (submitting || loading || loadFailed || current === null || maxDays < 1) return;
     if (validDays === null || preview === null) {
-      fieldError = t('sprintExtendInvalid', { max: maxDays });
+      fieldError = invalidMessage;
       document.getElementById(daysId)?.focus();
       return;
     }
@@ -134,7 +138,7 @@
     try {
       const result = await callOperation(
         sprintExtend,
-        { workspace_id: workspaceId, sprint_id: current.id, days: requestedDays },
+        { workspace_id: workspaceId, sprint_id: current.id, days: requestedDays, end_on: current.end_on },
         { slug },
       );
       if (mine !== generation) return;
@@ -159,7 +163,12 @@
       } else if (result.status === 403) {
         submitError = t('sprintForbidden', { sprint: t('sprint'), leader: t('leader') });
         reloadOnClose = true;
-      } else if (reason === 'overlap' || reason === 'changed' || result.status === 400) {
+      } else if (result.status === 400) {
+        // 読み直した後の上限で、日数の欄に誤りを出す。読み直しで進行中でなくなればダイアログごと閉じる
+        await load();
+        if (mine === generation && open && current !== null && maxDays >= 1) fieldError = invalidMessage;
+      } else if (reason === 'overlap' || reason === 'changed') {
+        // 読み直した値で、予告を出し直す
         submitError = reason === 'overlap' ? t('sprintOverlap', { sprint: t('sprint') }) : t('sprintExtendChanged');
         await load();
       } else submitError = t('sprintExtendFailed');
@@ -183,9 +192,14 @@
     {:else if current === null}
       <p class="props-note" role="status">{t('loading')}</p>
     {:else}
-      <p>{sprintLabel(current, t)}（{sprintPeriod(current, t)}）</p>
+      <!-- 名前の無いスプリントは期間が名前なので、期間を重ねて出さない -->
+      {#if current.name === null}
+        <p>{t('sprint')} <span class="mono">{sprintPeriod(current, t)}</span></p>
+      {:else}
+        <p>{sprintLabel(current, t)}（<span class="mono">{sprintPeriod(current, t)}</span>）</p>
+      {/if}
       {#if maxDays < 1}
-        <p class="callout" role="status">{t('sprintExtendLimit')}</p>
+        <p class="callout" role="status">{t('sprintExtendLimit', { limit: SPRINT_MAX_LENGTH })}</p>
       {:else}
         <fieldset class="form-fields" disabled={submitting || loading}>
           <div class="field" class:is-invalid={fieldError !== null}>
@@ -201,33 +215,39 @@
               bind:value={days}
               oninput={() => (fieldError = null)}
               aria-invalid={fieldError !== null}
-              aria-describedby={fieldError !== null ? `${daysId}-error` : undefined}
+              aria-describedby="{daysId}-hint{fieldError !== null ? ` ${daysId}-error` : ''}"
             />
+            <p class="field-hint" id="{daysId}-hint">{t('sprintExtendRange', { max: maxDays })}</p>
             {#if fieldError !== null}<span class="field-error" id="{daysId}-error" role="alert"
                 ><Icon name="alert" />{fieldError}</span
               >{/if}
           </div>
-          {#if preview !== null}
-            <div class="field">
-              <span class="field-label">{t('sprintExtendEnd')}</span><span class="mono" data-sprint-extend-end
-                >{preview.end_on}</span
-              >
-            </div>
-            <div class="form-fields" aria-live="polite">
+          <div class="form-fields" aria-live="polite">
+            {#if preview !== null}
+              <div class="field">
+                <span class="field-label">{t('sprintExtendEnd')}</span><span class="mono" data-sprint-extend-end
+                  >{preview.end_on}</span
+                >
+              </div>
               {#each preview.shifted as shifted (shifted.id)}
                 {@const original = sprints.find((sprint) => sprint.id === shifted.id)!}
                 <div class="field">
-                  <span class="field-label">{sprintLabel(original, t)}</span><span data-sprint-shift
-                    >{t('sprintExtendShift', {
-                      before: sprintPeriod(original, t),
-                      after: sprintPeriod(shifted, t),
-                      days: shifted.days,
-                    })}</span
+                  <span class="field-label">{sprintLabel(original, t)}</span>
+                  <span
+                    ><span class="mono" data-sprint-shift
+                      >{t('sprintExtendShift', {
+                        before: sprintPeriod(original, t),
+                        after: sprintPeriod(shifted, t),
+                      })}</span
+                    >
+                    <span data-sprint-shift-days>{t('sprintExtendShiftDays', { days: shifted.days })}</span></span
                   >
                 </div>
               {:else}<p class="props-note">{t('sprintExtendNoShift', { sprint: t('sprint') })}</p>{/each}
-            </div>
-          {/if}
+            {:else}
+              <p class="props-note">{invalidMessage}</p>
+            {/if}
+          </div>
         </fieldset>
       {/if}
       <p class="field-hint">{t('sprintExtendVelocity', { sprint: t('sprint') })}</p>
@@ -244,7 +264,7 @@
       type="submit"
       form={formId}
       aria-disabled={submitting || loading || loadFailed || current === null || maxDays < 1}
-      bind:this={submitButton}>{submitting ? status : t('sprintExtendAction')}</button
+      bind:this={submitButton}>{submitLabel}</button
     >
   {/snippet}
 </Dialog>

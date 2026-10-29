@@ -80,6 +80,26 @@ describe('sprintExtension', () => {
       ['b', '2026-11-12', '2026-11-18', 3],
     ]);
   });
+  test('新しい最終日と同じ日に始まる planned は1日押し出される', () => {
+    expect(sprintExtension(active, 3, [planned('a', '2026-11-04', '2026-11-10')])?.shifted).toEqual([
+      { id: 'a', name: 'a', start_on: '2026-11-05', end_on: '2026-11-11', days: 1 },
+    ]);
+  });
+  test('新しい最終日の翌日に始まる planned は動かさない', () => {
+    expect(sprintExtension(active, 3, [planned('a', '2026-11-05', '2026-11-10')])?.shifted).toEqual([]);
+  });
+  test('押し出しの連なりの途中で、直前の新しい最終日と同じ日に始まる行も押し出される', () => {
+    expect(
+      sprintExtension(active, 3, [
+        planned('a', '2026-11-04', '2026-11-10'),
+        planned('b', '2026-11-11', '2026-11-17'),
+        planned('c', '2026-11-19', '2026-11-25'),
+      ])?.shifted.map((s) => [s.id, s.start_on, s.end_on, s.days]),
+    ).toEqual([
+      ['a', '2026-11-05', '2026-11-11', 1],
+      ['b', '2026-11-12', '2026-11-18', 1],
+    ]);
+  });
   test('途中の空きで止まり、削除済みと planned 以外を動かさない', () => {
     const rows = [
       planned('a', '2026-11-02', '2026-11-08'),
