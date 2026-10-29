@@ -206,6 +206,9 @@ test.describe('招待だけが届いた人（ヒナタ）', () => {
     await expect(toast(page)).toHaveText(
       '招待が見つかりませんでした。取り消されたか、別のアカウントに宛てた招待です。',
     );
+    // 押した位置にマウスが残り、ログインの画面の「Google でログイン」がホバーの色になるかが実行ごとに違った（#460）。
+    // 押せる要素の無い左上の隅へマウスを動かし、撮る画面をそろえる
+    await page.mouse.move(0, 0);
     expect((await collect()).filter(expected401)).toEqual([]);
   });
 
