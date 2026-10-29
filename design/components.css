@@ -642,7 +642,11 @@ button.tree-folded:hover { color: var(--color-fg); }
 button.tree-folded .ico { flex: none; transition: transform var(--duration-fast); }
 button.tree-folded[aria-expanded="true"] .ico { transform: rotate(90deg); }
 /* 読み込み中の案内（常に置く領域。空の間は場所を取らない）、失敗、空、「さらに見る」 */
-.completed-status { padding: var(--space-3) var(--space-4) var(--space-3) var(--row-indent, var(--space-4)); font-size: var(--text-xs); color: var(--color-muted); }
+/* 開いた一覧の字下げは、開閉のボタン（.tree-folded）と同じ段に揃える。親なしは .is-root と同じ、ストーリーの配下は配下の行と同じ */
+.completed-list { --row-indent: var(--space-4); }
+.tree-children .completed-list { --row-indent: var(--space-10); }
+.tree-children .tree-children .completed-list { --row-indent: calc(var(--space-10) + var(--space-6)); }
+.completed-status { padding: var(--space-3) var(--space-4) var(--space-3) var(--row-indent); font-size: var(--text-xs); color: var(--color-muted); }
 .completed-status:empty { padding: 0; }
 .kind { display: inline-grid; place-items: center; width: 22px; height: 22px; border-radius: var(--radius-1); border: 1px solid currentColor; }
 .kind .ico { width: 13px; height: 13px; }
@@ -957,6 +961,7 @@ a.notice-title.notice-link:hover { text-decoration: underline; text-underline-of
   .tree-children .entry, .tree-children .tree-children .entry { --row-indent: var(--space-4); }
   .tree-children .tree-row.is-story, .tree-children .tree-group { --row-indent: var(--space-4); }
   .tree-folded, .tree-children .tree-children .tree-folded { --row-indent: var(--space-4); }
+  .tree-children .completed-list, .tree-children .tree-children .completed-list { --row-indent: var(--space-4); }
   .tree-row { grid-template-columns: var(--grip-col, ) 20px 24px minmax(0, 1fr); }
   .tree-ratio, .tree-end { grid-column: -2; }
   .story-head .progress { margin-left: 0; max-width: none; }
