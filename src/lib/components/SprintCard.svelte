@@ -58,6 +58,8 @@
     const direction = KEY_DIRECTIONS[event.key];
     if (direction === undefined) return;
     event.preventDefault();
+    // 押しっぱなしの自動の繰り返しでは、完了の列の手前から完了にしない（列を送るうちに気づかず完了にしないため）
+    if (event.repeat && direction === 'right' && edges?.completes === true) return;
     onmove(task, direction);
   }
 

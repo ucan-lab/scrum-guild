@@ -382,6 +382,21 @@ test('スクラムの言葉でも、スプリントを始めて、列とカー�
   await expect(titlesIn(page, 'レビュー')).toHaveText(['E札']);
   await expect(titlesIn(page, '完了')).toHaveText([]);
   await expect(page.getByRole('article', { name: 'E札', exact: true })).toBeFocused();
+
+  // Alt + → の押しっぱなしの自動の繰り返しでは、完了にしない。続けて押した移動は送られ、完了は送られていない
+  const completes: string[] = [];
+  page.on('request', (request) => {
+    if (request.url().includes('task-complete')) completes.push(request.url());
+  });
+  await page
+    .getByRole('article', { name: 'E札', exact: true })
+    .dispatchEvent('keydown', { key: 'ArrowRight', altKey: true, repeat: true, bubbles: true });
+  await page.getByRole('article', { name: 'E札', exact: true }).press('Alt+ArrowLeft');
+  await expect(
+    page.getByRole('status').filter({ hasText: '「E札」を作業中の 1 番目に移しました（1 件中）' }),
+  ).toBeVisible();
+  await expect(titlesIn(page, '作業中')).toHaveText(['E札']);
+  expect(completes).toEqual([]);
 });
 
 test('戻すのが断られたら理由を知らせて読み直す', async ({ page, context, baseURL }) => {
