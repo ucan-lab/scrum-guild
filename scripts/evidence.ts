@@ -629,3 +629,53 @@ export function notice(title: string, message: string): void {
   const clean = (text: string) => text.replace(/\p{Cc}+/gu, ' ');
   console.log(`::notice title=${clean(title)}::${clean(message)}`);
 }
+
+// 画像の判定に渡す画面の上限。残りは名前と、判定していない理由だけを渡す
+export const EVIDENCE_REVIEW_LIMIT = 8;
+
+export type PngFetcher = (
+  url: string,
+  init: { signal: AbortSignal; redirect: 'error' },
+) => Promise<Pick<Response, 'ok' | 'status' | 'body'>>;
+
+// 公開の main の画像だけを読む。Content-Length は信用せず、受け取った量と中身を確かめる。
+// リダイレクトは別の送り先を選ばせるので断り、一覧のハッシュと違う画像も材料に混ぜない
+export async function fetchPng(
+  publicUrl: string,
+  hash: string,
+  fetcher: PngFetcher = fetch,
+  timeoutMs = FETCH_TIMEOUT_MS,
+): Promise<Buffer> {
+  const url = `${trimUrl(publicUrl)}/${imageObjectKey('main', hash)}`;
+  const signal = AbortSignal.timeout(timeoutMs);
+  let reader: ReadableStreamDefaultReader<Uint8Array> | undefined;
+  let abort: () => void = () => {};
+  const timeout = new Promise<never>((_, reject) => {
+    abort = () => reject(signal.reason);
+    signal.addEventListener('abort', abort, { once: true });
+  });
+  try {
+    const res = await Promise.race([fetcher(url, { signal, redirect: 'error' }), timeout]);
+    if (!res.ok) throw new Error(`変更前の画像を読めない（${res.status}）`);
+    if (!res.body) throw new Error('変更前の画像の中身が無い');
+    reader = res.body.getReader();
+    const chunks: Uint8Array[] = [];
+    let size = 0;
+    while (true) {
+      const { done, value } = await Promise.race([reader.read(), timeout]);
+      if (done) break;
+      size += value.byteLength;
+      if (size > MAX_IMAGE_BYTES) throw new Error('変更前の画像が 5MB を超えた');
+      chunks.push(value);
+    }
+    const content = Buffer.concat(chunks);
+    if (!content.subarray(0, PNG_SIGNATURE.length).equals(PNG_SIGNATURE)) throw new Error('変更前の画像が PNG でない');
+    if (createHash('sha256').update(content).digest('hex') !== hash)
+      throw new Error('変更前の画像のハッシュが一致しない');
+    return content;
+  } finally {
+    signal.removeEventListener('abort', abort);
+    // 上限や時間切れでも接続を残さない。壊れたストリームの cancel の失敗は元の理由を隠さない
+    if (reader) void reader.cancel().catch(() => {});
+  }
+}
