@@ -26,26 +26,26 @@ description: スプリントのゴールに向けて今の状態を点検し（�
 
 ### 1. データを作る
 
-ページの元を `origin/main` から取り出し、その場所にデータを書く。作業コピーが `main` に遅れていても、マージ済みのページで出すため。`<作業場所>` はスクラッチパッドの中の新しいディレクトリにする。
+ページの元とスクリプトを `origin/main` から取り出し、その場所にデータを書く。作業コピーが `main` に遅れていても、マージ済みのページと、それに合う形のデータで出すため。`<作業場所>` はスクラッチパッドの中の新しいディレクトリにする。スクリプトの `gh` はカレントのリポジトリを読むので、リポジトリの中から走らせる。
 
 ```bash
 git fetch origin
-git archive origin/main .claude/skills/daily-scrum/page | tar -x -C <作業場所>
-node scripts/progress-data.ts <作業場所>/.claude/skills/daily-scrum/page/data.json
+git archive origin/main .claude/skills/daily-scrum/page scripts/progress-data.ts | tar -x -C <作業場所>
+node <作業場所>/scripts/progress-data.ts <作業場所>/.claude/skills/daily-scrum/page/data.json
 ```
 
-スクリプトは、Issue（閉じたものも）、開いた PR、記録の Issue と締めのコメント、開いた Issue の前に要るものを引き、`{ asOf, sprint, issues, history }` を書く。中身の形はスクリプトの冒頭のコメントにある。
+スクリプトは、Issue（閉じたものも）とサブ Issue の並び、開いた PR とマージ済みの PR、記録の Issue と締めのコメント、開いた Issue の前に要るものを引き、`{ asOf, sprint, issues, history }` を書く。中身の形はスクリプトの冒頭のコメントにある。
 
 ### 2. 点検する
 
-`data.json` の `sprint`、`issues`、`history` から、今のスプリントについて次を出す。数え方は `docs/development.md` の「スプリントとポイント」に従い、スクリプトが出した数をそのまま使う。`sprint` が `null` なら、「スプリントは計画されていない」と書き、`sprint-plan` を推して手順 3 へ進む。開いている記録の Issue が2つあれば、スクリプトは番号の大きいほうを選ぶので、`sprint-plan` が途中で止まっていることを点検の結果に書く（`gh api "repos/{owner}/{repo}/issues?labels=sprint-log&state=open" --jq 'length'` で確かめる）。
+`data.json` の `sprint`、`issues`、`history` から、今のスプリントについて次を出す。数え方は `docs/development.md` の「スプリントとポイント」に従い、スクリプトが出した数をそのまま使う。`sprint` の数はどれも `{ pt, count }` で、進み具合と残りはポイント（`.pt`）、受け入れ待ちは両方、作業中と上限は件数（`.count`）で見る。`history` の `planned` も `{ pt, count }` で、`velocity` はポイントの数。`sprint` が `null` なら、「スプリントは計画されていない」と書き、`sprint-plan` を推して手順 3 へ進む。開いている記録の Issue が2つあれば、スクリプトは番号の大きいほうを選ぶので、`sprint-plan` が途中で止まっていることを点検の結果に書く（`gh api "repos/{owner}/{repo}/issues?labels=sprint-log&state=open" --jq 'length'` で確かめる）。
 
 | 見るもの | 出し方 | 人に勧めること |
 | --- | --- | --- |
-| 進み具合 | `plannedDone` ÷ `planned`、`addedDone`、残りの日数（今日を含めて数え、最終日は 1、過ぎたら 0） | 残りの計画のポイント（`planned` − `plannedDone` − `withdrawn`）が「直近のベロシティの平均（`history` の新しい3つまで）× 残りの日数 ÷ 7」を超えるなら、外す候補（`s` が `todo` のもの）を挙げる。`history` が空なら判定しない |
-| 受け入れ待ち | `accepting` | 1件以上あり、残りの日数が2日以下なら、`sprint-review` を先に行う（済みに数えるのは受け入れで閉じた Issue だけなので、締めの前に受け入れる） |
+| 進み具合 | `plannedDone.pt` ÷ `planned.pt`、`addedDone.pt`、残りの日数（今日を含めて数え、最終日は 1、過ぎたら 0） | 残りの計画のポイント（`planned.pt` − `plannedDone.pt` − `withdrawn.pt`）が「直近のベロシティの平均（`history` の新しい3つまでの `velocity`）× 残りの日数 ÷ 7」を超えるなら、外す候補（作業中でないもの。`s` が `todo` か `refining`）を挙げる。`history` が空なら判定しない |
+| 受け入れ待ち | `accepting.count` と `accepting.pt` | `accepting.count` が1以上で、残りの日数が2日以下なら、`sprint-review` を先に行う（済みに数えるのは受け入れで閉じた Issue だけなので、締めの前に受け入れる） |
 | 待ち | `sprint` が今のスプリントで、`waitingOn` が空でない Issue | 前に要るものがスプリントの外なら、先に入れるか、待つ側を外すかを人が決める |
-| 作業中と上限 | `wip` / `wipLimit` | 上限に達していれば、着手を足さず、レビュー中と受け入れ待ちを先に片付ける |
+| 作業中と上限 | `wip.count` / `wipLimit`（`wipLimit` が `null` なら、記録の Issue に上限が無いと書く） | 上限に達していれば、着手を足さず、レビュー中と受け入れ待ちを先に片付ける |
 | スプリントの外の作業 | `sprint` が今のスプリントでなく、`s` が `wip` か `review` の Issue | 途中で足すかを人が決める |
 
 勧めることは出すだけにし、ラベルは付け外ししない。
@@ -60,20 +60,21 @@ Artifact のツールがある手元のセッションでだけ行う。無け�
 
 ページの見た目や組み立てを変えたいときは、ここで直さず、Issue を立てて `page/` を PR で直す（`board.js` のテストは `scripts/board-page.test.ts`）。
 
-### 機能の一覧を直す
-
-開発ボードのプロダクトバックログに出る要件の機能（領域、機能、段階、受け持つ Issue）は `page/features.json` だけが持つ。機能の状態は受け持つ Issue の状態からページが出すので、Issue が進んでも直さない。次のときに Issue を立て、PR で `features.json` を直す。
-
-- `docs/requirements.md` の「機能」で、後回しから初版に移った機能は `phase` を外し（既定が初版）、受け持つ Issue を `issues` に入れる
-- AI の機能は、`docs/ai.md` の「決めること」で初版に入れると決まったら `phase: "open"` を外す
-- 新しく立った機能の Issue は、当たる領域の機能の `issues` に足すか、機能を足す。親 Issue に子ができても、機能には親の番号を載せる。開発の仕組みだけの Issue（フックの直しなど）は載せない
-
-点検の中で `features.json` と要件の食い違いに気づいたら、点検の結果に書いて人に伝える。
-
 ### 4. 着手を選ぶかを聞く
 
 `AskUserQuestion` で、続けて `backlog-pick` で着手を選ぶかを聞く。作業中が上限に達しているか、受け入れ待ちが多いときは、推す案を「人の番を先に片付ける」にする。選ぶと答えたら、Skill ツールで `backlog-pick` を起動する。
 人に聞けない実行では、聞かずに終える。
+
+## 機能の一覧を直す
+
+手順の外で、要件が変わったときに行う。開発ボードのプロダクトバックログに出る要件の機能（領域、機能、段階、受け持つ Issue）は `page/features.json` だけが持つ。機能の状態は受け持つ Issue の状態からページが出すので、Issue が進んでも直さない。次のときに Issue を立て、PR で `features.json` を直す。
+
+- `docs/requirements.md` の「機能」で、後回しから初版に移った機能は `phase` を外し（既定が初版）、受け持つ Issue を `issues` に入れる
+- AI の機能は、`docs/ai.md` の「決めること」で初版に入れると決まったら `phase: "open"` を外す
+- 新しく立った機能の Issue は、当たる領域の機能の `issues` に足すか、機能を足す。親 Issue に子ができても、機能には親の番号を載せる。開発の仕組みだけの Issue（フックの直しなど）は載せない
+- 受け持つ Issue が `not_planned` か `duplicate` で閉じたら、`issues` から外し、引き継いだ Issue があればその番号に替える。`data.json` はそうして閉じた Issue を含まないので、残すと機能がいつまでも未着手と出る
+
+`phase` は `later` か `open` か無し、`issues` は整数の番号だけにする。ページは知らない値を黙って初版や無しに読み替えるので、形は `scripts/board-page.test.ts` が実のファイルで確かめる。点検の中で `features.json` と要件の食い違いに気づいたら、点検の結果に書いて人に伝える。
 
 ## 出力
 

@@ -64,7 +64,7 @@ Issue を指す開いた PR は、ブランチ名の `<番号>-` の先頭か、
 
 今のスプリントの進み具合を出す。数え方は `docs/development.md` の「スプリントとポイント」の表に従い、計画の済み ÷ 計画、受け入れ待ち、途中で足した分（とその済み）、作業中 / 上限を出す。計画のポイントは記録の Issue の本文の値を使う。
 
-閉じた Issue は手順 1 の一覧に出ないので、今のスプリントの分だけ引く。計画の一覧にあってここに出ない Issue（スプリントから外したもの）は取り下げとして数える。
+閉じた Issue は手順 1 の一覧に出ないので、今のスプリントの分だけ引く。計画の一覧にあってここに出ない Issue（スプリントから外したもの）は、`gh api repos/{owner}/{repo}/issues/<番号> --jq '{state, state_reason}'` で1件ずつ引き、`completed` で閉じていれば計画の済み、ほかは取り下げに数える。ここに出た Issue も、`not_planned` か `duplicate` で閉じていれば取り下げに数える。
 
 ```bash
 gh api "repos/{owner}/{repo}/issues?labels=sprint:<番号>&state=all&per_page=100" --paginate --jq '.[] | select(.pull_request | not) | {number, state, state_reason, labels: [.labels[].name]}'
