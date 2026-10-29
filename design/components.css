@@ -1504,3 +1504,14 @@ body.has-assist .toasts { right: calc(400px + var(--space-4)); }
   0% { opacity: 0; transform: scaleY(0.2); filter: brightness(2); }
   100% { opacity: 1; transform: none; filter: none; }
 }
+
+/* 完了の一覧。折りたたみだけが落とし先を持ち、完了した行は読み取り専用。 */
+button.tree-folded { display: flex; align-items: center; gap: var(--space-2); width: 100%; text-align: left; background: transparent; border-inline: 0; border-bottom: 0; cursor: pointer; font-family: inherit; }
+button.tree-folded:hover { color: var(--color-fg); }
+.completed-list .entry-title { text-align: left; background: transparent; border: 0; padding: 0; cursor: pointer; font: inherit; font-weight: 700; color: var(--color-fg); }
+.completed-list .entry-title:hover { text-decoration: underline; }
+.completed-list .entry-meta { overflow-wrap: anywhere; }
+.completed-status { padding: var(--space-3) var(--space-4); }
+@media (max-width: 760px), (pointer: coarse) {
+  button.tree-folded, .completed-list .entry-title { min-height: 44px; min-width: 44px; }
+}

@@ -438,6 +438,15 @@
   // バックログの木。opts.order を渡すと、ストーリーの行に「上へ」「下へ」（order.parent が真なら「親を移す」も）を、
   // 配下のタスクの行に並べ替えと「親を移す」を出す。opts.doneAt で、完了したストーリーとして描ける（カタログの見本）。
   // opts.blocked は親のエピックが完了か中止している、opts.key は同じストーリーを2回描くときの id の区別
+  // 完了の折りたたみと読み取り専用の行。実画面は開くと20件ずつAPIから読む。
+  function completedTasks(key, list, root = false) {
+    const id = `completed-${key}`;
+    const prefix = root ? "親のない" : "";
+    const closed = `${prefix}${t("done")} ${list.length} 件を折りたたんでいます`;
+    const opened = `${prefix}${t("done")} ${list.length} 件を閉じる`;
+    return `<button class="tree-folded${root ? " is-root" : ""}" type="button" aria-expanded="false" aria-controls="${id}" data-completed-toggle="${id}" data-closed="${esc(closed)}" data-opened="${esc(opened)}">${esc(closed)}</button>
+      <div id="${id}" class="completed-list" hidden>${list.slice().sort((a, b) => String(b.doneAt).localeCompare(String(a.doneAt)) || b.id.localeCompare(a.id)).map(x => `<div class="entry"><span></span><div class="entry-main"><button class="entry-title" type="button" data-task="${x.id}">${esc(x.title)}</button><span class="entry-meta"><time>${esc(x.doneAt)}</time></span></div><div class="entry-end">${pts(x.pts)}${avatarOf(x.who)}</div></div>`).join("")}</div>`;
+  }
   function treeStory(sid, solo, opts = {}) {
     const key = opts.key || sid;
     const st = opts.doneAt ? { ...D.stories[sid], doneAt: opts.doneAt } : D.stories[sid];
@@ -465,7 +474,7 @@
       <div class="tree-children" id="tree-${key}">${open.map((x, i) => entry(x, { showParent: false, showAssignee: true, showSprint: true,
         mark: opts.entryMarks ? opts.entryMarks(x, i) : undefined,
         order: opts.order ? { first: i === 0, last: i === open.length - 1, parent: true } : undefined })).join("")}
-        ${done ? `<p class="tree-folded"${dropAttr(tail)}>完了 ${done} 件を折りたたんでいます</p>` : ""}${!list.length ? `<p class="tree-folded"${dropAttr(tail)}>${t("task")}はまだありません</p>` : ""}</div>
+        ${done ? completedTasks(key, list.filter(x => x.doneAt)) : ""}${!list.length ? `<p class="tree-folded"${dropAttr(tail)}>${t("task")}はまだありません</p>` : ""}</div>
     </div>`;
   }
   // 木の行の開閉。行（div）の中の caret のボタンだけが開閉を受け持ち、題や「＋タスク」のボタンとはぶつからない
@@ -2136,6 +2145,14 @@ const looooooooooooooooooooooooooooooooooongLine = "コードの長い1行は、
       else DIALOGS.organizationCreated();
       return;
     }
+    if ((el = hit("data-completed-toggle"))) {
+      const body = document.getElementById(el.dataset.completedToggle);
+      const opened = el.getAttribute("aria-expanded") === "true";
+      el.setAttribute("aria-expanded", String(!opened));
+      el.textContent = opened ? el.dataset.closed : el.dataset.opened;
+      if (body) body.hidden = opened;
+      return;
+    }
     if ((el = hit("data-tree-toggle"))) {
       const body = document.getElementById(el.dataset.treeToggle);
       const opened = el.getAttribute("aria-expanded") === "true";
@@ -2324,7 +2341,7 @@ const looooooooooooooooooooooooooooooooooongLine = "コードの長い1行は、
     onRedraw: (fn) => extraRedraws.push(fn), openDrawer, drawerHtml, drawerState: drawer,
     user, task, tasksWhere, repoTag, categoryTag, sprintTag, repoPicker, sprintLabel, colName, categoryOf, storyPts, epicPts, dueOf,
     avatar, avatarOf, SAMPLE_PHOTO, BROKEN_PHOTO, emblem, pts, dueChip, taskDue, tier, sourceKey, entry, orderActions, book, section, pageHead,
-    card, board, treeStory, treeEpic, sprintNotice, raidNotice, progress, levelPanel, teamXp, xpDelta, load, capacityRows,
+    card, board, treeStory, treeEpic, completedTasks, sprintNotice, raidNotice, progress, levelPanel, teamXp, xpDelta, load, capacityRows,
     openDialog, closeDialog, toast, celebrate, miniCap, redraw: () => redrawAll(), DIALOGS, loginTarget, orgMenuHtml, accountMenuHtml,
     filesOf, fileThumb, fileRow, dropzone, attachments, mdBody, markdownSample, meter,
     PROVIDER, ASSIST_KEY, assistMsg, assistBlocked, assistSuggest, openAssist,

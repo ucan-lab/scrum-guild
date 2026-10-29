@@ -246,6 +246,7 @@ export const pointers: Pointers = {
   },
   'task-create': async (target) => ({ workspace_id: target.workspace.id, title: '見積もりを送る', points: 3 }),
   // 絞り込みの値も、対象の組織の行を指す（別の組織を指したときの当たり方は test/backlog-filter.test.ts）
+  'backlog-completed-tasks': async (target) => ({ workspace_id: target.workspace.id, story_id: null }),
   'backlog-tree': async (target) => {
     const category = await createCategory(target.organization, target.workspace.id);
     const repository = await createRepository(target.organization, target.workspace.id);

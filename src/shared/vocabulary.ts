@@ -214,6 +214,11 @@ export const dictionary = defineDictionary({
     '終了した{workspace}には、{task}を作れません。',
   ),
   // 完了にした親のないタスクの件数。行は返さず、件数の1行にする。完了にした行は、読み直すまでこの件数に入らない
+  completedCollapse: workspace('{done} {count} 件を閉じる', '{done} {count} 件を閉じる'),
+  completedRootCollapse: workspace('親のない{done} {count} 件を閉じる', '親のない{done} {count} 件を閉じる'),
+  completedMore: workspace('さらに見る', 'さらに見る'),
+  completedDate: workspace('完了した日: {date}', '完了した日: {date}'),
+  completedEmpty: workspace('完了したクエストはありません', '完了したタスクはありません'),
   backlogFolded: workspace(
     '親のない{done} {count} 件を折りたたんでいます',
     '親のない{done} {count} 件を折りたたんでいます',
