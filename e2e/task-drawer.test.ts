@@ -19,6 +19,7 @@ import {
   settledScrollY,
   signIn,
   waitForResponses,
+  waitForSettled,
   watchViolations,
 } from './helpers.ts';
 import { failOperation, mockOperation, rewriteOperation, routeOperation } from './operations.ts';
@@ -309,6 +310,8 @@ test('担い手は選んで少し待ってから最後の値だけを送り、�
   await expect(select.getByRole('option', { name: 'ミナト' })).toHaveCount(0);
   await expect(select).toHaveValue('');
   await expect(drawer).toBeVisible();
+  // 途中の「保存しました」のトースト（4 秒）が、終わりの画面（evidence-<n>.png）に写るかは、ここまでの速さで変わる（#511）
+  await expect(page.locator('.toasts:visible .toast')).toHaveCount(0, { timeout: 10_000 });
 });
 
 test('広げると aria-modal が外れ、左のメニューを押せる。広げた形は次に開くときも残る', async ({ page }) => {
@@ -339,6 +342,11 @@ test('スクロールした先の行のリンクで開いても、木のスク�
   await page.setViewportSize({ width: 1280, height: 480 });
   await page.goto('/aoba/w/019a0000-0000-7000-8000-000000000401');
   const link = page.locator('a.entry-title').last();
+  await expect(link).toBeVisible();
+  // 読み込みと書体の差し替えが終わってから、一番下まで送る。送った位置はその時のページの高さで頭打ちになるので、
+  // 高さが後から変わると、終わりの画面（evidence-<n>.png）の後ろの木のスクロールの位置が実行ごとに変わる（#511）
+  await waitForSettled(page);
+  await settledScrollY(page);
   await link.scrollIntoViewIfNeeded();
   // 書体の差し替えで動く間に読まない（#428）
   const scrollBefore = await settledScrollY(page);
