@@ -4,7 +4,7 @@
 // --local だけを付ける（本番の D1 には流さない。scripts/db-seed.ts と同じ）。e2e の Worker（wrangler dev）と同じ手元の D1 に当たる
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import { tokenHash } from '../scripts/seed.ts';
+import { sessionInserts } from '../scripts/seed.ts';
 import { SEED_SESSIONS } from '../seed/sessions.ts';
 
 const run = promisify(execFile);
@@ -59,17 +59,10 @@ export async function restoreHinataInvitation(): Promise<void> {
   );
 }
 
-// セッションの期限。seed（scripts/seed.ts）と同じく入れた時刻から30日
-const SESSION_LIFETIME_MS = 30 * 24 * 60 * 60 * 1000;
-
 // seed のセッションの行を、無ければ入れ直す（あればそのまま）。ログアウトの e2e が消す専用の行を、消す前に戻すのに使う
 export async function restoreSeedSession(who: keyof typeof SEED_SESSIONS): Promise<void> {
-  const session = SEED_SESSIONS[who];
-  const now = new Date();
-  const at = now.toISOString();
-  const expires = new Date(now.getTime() + SESSION_LIFETIME_MS).toISOString();
-  await executeLocalD1(
-    `INSERT OR IGNORE INTO sessions (token_hash, account_id, created_at, last_used_at, expires_at) VALUES ` +
-      `('${tokenHash(session.token)}', '${session.accountId}', '${at}', '${at}', '${expires}');`,
-  );
+  // 列と期限は seed（scripts/seed.ts の sessionInserts）と同じ文を使い、あれば残すよう INSERT OR IGNORE にだけ替える
+  const insert = sessionInserts([SEED_SESSIONS[who]], new Date());
+  if (!insert.startsWith('INSERT INTO sessions ')) throw new Error('sessionInserts の文の形が変わった');
+  await executeLocalD1(insert.replace(/^INSERT INTO /, 'INSERT OR IGNORE INTO '));
 }
