@@ -175,6 +175,25 @@ async function consumePeekedRateLimits(env: Env, limits: readonly LoginRateLimit
   return true;
 }
 
+// パスワードでのログインの枠（Issue #256）。OAuth のログインの枠とは分ける
+export const PASSWORD_LOGIN_RATE_LIMITS = {
+  network: { max: 30, windowMs: 10 * 60 * 1000 },
+  ipv6Site: { max: 60, windowMs: 10 * 60 * 1000 },
+  email: { max: 10, windowMs: 10 * 60 * 1000 },
+} as const satisfies Record<string, RateLimitPolicy>;
+
+// 入れ物。中身は実装の書き手が書く
+/* eslint-disable @typescript-eslint/no-unused-vars -- 入れ物の間だけ。実装で外す */
+export function consumePasswordLoginRateLimits(
+  _env: Env,
+  _ip: string | undefined,
+  _emailHash: string | undefined,
+  _now: Date,
+): Promise<boolean> {
+  throw new Error('未実装');
+}
+/* eslint-enable @typescript-eslint/no-unused-vars */
+
 export type LoginStartRateLimit = { allowed: true } | { allowed: false; limitedBy: 'ip' | 'global' };
 
 // ログインの開始の枠。全体の枠を読むだけで覗き → IP の枠を数え → 通った呼び出しだけ全体の枠を数える。

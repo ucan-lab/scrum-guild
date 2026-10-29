@@ -41,7 +41,14 @@ import {
 } from './factories.ts';
 
 // 消さない共通の表。organizations は組織の行を最後に消す
-const KEPT_COMMON_TABLES = ['accounts', 'account_logins', 'sessions', 'oauth_states', 'rate_limits'];
+const KEPT_COMMON_TABLES = [
+  'accounts',
+  'account_logins',
+  'sessions',
+  'oauth_states',
+  'rate_limits',
+  'password_credentials',
+];
 
 // purge_on に入れる UTC の日付。消す SQL の条件は SQL の date('now') と比べる。ここで日付を作ってから SQL を流すまでに
 // UTC の0時をまたぐと、SQL の今日は1日進む。前日（-1）と翌日（1）は、またいでも条件の当たり外れが変わらない
