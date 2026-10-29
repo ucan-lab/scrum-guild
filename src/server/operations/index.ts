@@ -36,6 +36,7 @@ import {
   sprintUpdateOperation,
 } from './sprint.ts';
 import { epicCreateOperation, epicGetOperation, epicMoveOperation, epicUpdateOperation } from './epic.ts';
+import { epicDetailOperation } from './epic-detail.ts';
 import {
   categoryCreateOperation,
   categoryDeleteOperation,
@@ -100,6 +101,7 @@ export const implementedOperations: readonly ImplementedOperation[] = [
   logoutOperation,
   epicCreateOperation,
   epicGetOperation,
+  epicDetailOperation,
   epicUpdateOperation,
   epicMoveOperation,
   experienceSummaryOperation,

@@ -517,6 +517,47 @@ export const dictionary = defineDictionary({
   epicLoading: organization('読み込んでいます', '読み込んでいます'),
   epicLinkOpen: organization('開く', '開く'),
   epicLinkOpenLabel: organization('リンクを新しいタブで開く', 'リンクを新しいタブで開く'),
+  // エピックの画面（/[slug]/w/[id]/epics/[epicId]）。見出しの横の「直す」は、エピックのダイアログを開く
+  epicPageBack: workspace('{backlog}へ戻る', '{backlog}へ戻る'),
+  epicPageEdit: workspace('{epic}を直す', '{epic}を直す'),
+  epicPageTallyDone: workspace('{done}の{points}', '{done}の{points}'),
+  epicPageTallyRemaining: workspace('残りの{points}', '残りの{points}'),
+  epicPageRequest: workspace('依頼書', '概要'),
+  epicPageRewardNote: workspace(
+    '{reward}は、クリアした時点の{party}全員に同じ額が入ります。',
+    '{reward}は、完了にした時点の{party}全員に同じ額が入ります。',
+  ),
+  epicPagePartyCount: workspace('{count} 人', '{count} 人'),
+  // クリア済みと中止したエピックの報酬の注記（進行中は epicPageRewardNote）
+  epicPageRewardNoteCleared: workspace(
+    '{reward}は、クリアした時点の{party}全員に同じ額が入りました。',
+    '{reward}は、完了にした時点の{party}全員に同じ額が入りました。',
+  ),
+  epicPageRewardNoteCanceled: workspace(
+    '中止したので、{reward}は{party}に入りません。',
+    '中止したので、{reward}は{party}に入りません。',
+  ),
+  // 見える文字のない見出し（概要の節の名前）
+  epicPageOverview: workspace('{epic}の本文', '{epic}の本文'),
+  // 直した後の読み直しに失敗したとき。画面は前に読んだ値のまま
+  epicPageStale: workspace(
+    '最新の内容を読み込めませんでした。表示は前に読んだ内容です。',
+    '最新の内容を読み込めませんでした。表示は前に読んだ内容です。',
+  ),
+  epicPagePartyEmpty: workspace('討伐隊にはまだ誰もいません。', '参加者はまだいません。'),
+  epicPageStories: workspace('配下の{story}', '配下の{story}'),
+  // 進み具合の棒の読み上げ（kit.js の progress の aria-label）と、棒の横の数
+  progressLabel: workspace('{done} {value} / {all} {points}', '{done} {value} / {all} {points}'),
+  progressValue: workspace('{value} / {all} pt', '{value} / {all} pt'),
+  epicPageNotFoundTitle: workspace('{epic}が見つかりません', '{epic}が見つかりません'),
+  epicPageNotFoundText: workspace(
+    '削除されたか、この{workspace}にない{epic}です。',
+    '削除されたか、この{workspace}にない{epic}です。',
+  ),
+  // クリア報酬の段階の呼び名。額は経験値の定数（XP_EPIC_REWARD）から出す
+  epicTierSmall: workspace('小', '小'),
+  epicTierMedium: workspace('中', '中'),
+  epicTierLarge: workspace('大', '大'),
   // 親の選択欄で、親のないストーリーをまとめる見出し
   parentRootGroup: workspace('親なしの{story}', '親なしの{story}'),
   // タスクを、エピックの下のストーリーへ移したときの知らせ。{epicTitle} は親のストーリーの親のエピックの題

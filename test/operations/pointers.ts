@@ -263,6 +263,10 @@ export const pointers: Pointers = {
     workspace_id: target.workspace.id,
     epic_id: (await createEpic(target.organization, target.workspace.id, target.admin.userId!)).id,
   }),
+  'epic-detail': async (target) => ({
+    workspace_id: target.workspace.id,
+    epic_id: (await createEpic(target.organization, target.workspace.id, target.admin.userId!)).id,
+  }),
   // 呼ぶたびにエピックを作る（変える欄が同じだと、2回目は何も書かないため）
   'epic-update': async (target) => ({
     workspace_id: target.workspace.id,

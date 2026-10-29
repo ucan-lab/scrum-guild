@@ -31,19 +31,19 @@ SQ.mount("epic", () => {
   const allDone = stories.length > 0 && openStories === 0;
   const party = e.party.map((u) => {
     const x = SQ.user(u);
-    return `<li>${avatarOf(u)}<span>${esc(x.name)}</span>${u === e.requester ? `<span class="role">${t("requester")}</span>` : ""}${emblem(x.level, true)}</li>`;
+    return `<li>${avatarOf(u)}<span class="party-list-text">${esc(x.name)}${x.left ? `<span class="props-note">${t("leftMember")}</span>` : ""}</span>${u === e.requester ? `<span class="role">${t("requester")}</span>` : ""}${emblem(x.level, true)}</li>`;
   }).join("");
   return `
     ${pageHead(`${t("epic")}・${esc(D.categories[e.cat].name)}`, esc(e.title), [
-      ["", "check", "完了", `${p.done} / ${p.all} pt`],
-      ["", "", "残り", `${p.all - p.done} pt`],
-      ["", "users", t("party"), `${e.party.length} 人`],
-    ])}
+      ["", "check", `${t("done")}の${t("points")}`, p.done],
+      ["", "", `残りの${t("points")}`, p.all - p.done],
+      ["", "users", t("party"), e.party.length],
+    ], `<a class="btn is-sm is-quiet" href="backlog.html">${t("backlog")}へ戻る</a><button class="btn" type="button" data-dialog="editEpic">${icon("pen")}${t("epic")}を直す</button>`)}
     <div class="layout-aside">
       <div class="layout-main">
         <section class="section">
           <div class="raid-body">${e.body.map((b) => `<p>${esc(b)}</p>`).join("")}
-            ${e.link ? `<span class="source-key">${icon("link")} ${esc(e.link)}</span>` : ""}</div>
+            ${e.link ? `<div><span class="source-key is-wrap">${icon("link")} ${esc(e.link)}</span> <a class="btn is-sm" href="#" aria-label="リンクを新しいタブで開く">開く</a></div>` : ""}</div>
           <div class="field"><span class="field-label">${icon("clip")} 添付ファイル ${filesOf(ID).length || ""}</span>${attachments(ID)}</div>
         </section>
         ${stories.map((s) => {
@@ -65,7 +65,7 @@ SQ.mount("epic", () => {
       </div>
       <aside class="layout-side">
         <section class="panel">
-          <div class="panel-title"><b>依頼書</b></div>
+          <div class="panel-title"><b>${t("epicPageRequest")}</b></div>
           <dl class="props">
             <div><dt>${t("requester")}</dt><dd>${avatarOf(e.requester)}${esc(SQ.user(e.requester).name)}<span class="seal" aria-hidden="true">印</span></dd></div>
             <div><dt>${t("reward")}</dt><dd>${tier(e.tier)}</dd></div>
@@ -76,7 +76,7 @@ SQ.mount("epic", () => {
         </section>
         <section class="panel">
           <div class="panel-title"><b>${t("party")}</b>${e.party.length} 人</div>
-          <ul class="party-list">${party}</ul>
+          ${e.party.length ? `<ul class="party-list">${party}</ul>` : `<p class="panel-note">${t("epicPagePartyEmpty")}</p>`}
           <div class="actions-col">
             <button class="btn ${joined ? "" : "is-primary"}" type="button" data-join="${ID}">${icon("users")}${joined ? t("leave") : t("accept")}</button>
             <button class="btn" type="button">${t("party")}に割り振る</button>

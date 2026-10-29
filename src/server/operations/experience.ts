@@ -12,7 +12,7 @@ import { actorUserIdOf } from './write-guards.ts';
 
 // 経験値の読み方（docs/data-model.md の「経験値の読み方」）。合計は xp_grants の SUM(amount) で、組織の中の表だけを読む。
 // xp_grants は organization_id を持たないので、結合した workspaces.organization_id を入口の組織で絞る。
-// ほかの人の数値と明細は返さない。人ごとの合計を読むのは、レベルを出す member-list と organization だけで、数値は応答に入れない
+// ほかの人の数値と明細は返さない。人ごとの合計を読むのは、レベルを出す member-list、organization、epic-detail（討伐隊）だけで、数値は応答に入れない
 
 // 1人の、組織の中の経験値の合計（抜けたワークスペースと閉じたワークスペースの分も含む）。行が無ければ 0。
 // 索引 xp_grants_user_workspace（user_id, workspace_id）に乗る
@@ -46,6 +46,28 @@ export function memberExperienceTotalsStatement(db: OrganizationDb, workspaceId:
           .where('m.workspace_id', '=', workspaceId)
           .where('m.left_at', 'is', null)
           .where('mw.organization_id', '=', organizationId),
+      )
+      .groupBy('g.user_id'),
+  );
+}
+
+// エピックの討伐隊の人ごとの、組織の中の経験値の合計。討伐隊は抜けた人も含みうるので、今の所属でなく討伐隊の行で絞る。
+// 明細の無い人は行を返さない（合計 0 として扱う）。エピックはワークスペースで絞って引く（別のワークスペースの討伐隊を読まない）
+export function epicPartyExperienceTotalsStatement(db: OrganizationDb, workspaceId: string, epicId: string) {
+  const organizationId = db.organizationId;
+  return db.statement((q) =>
+    q
+      .selectFrom('xp_grants as g')
+      .innerJoin('workspaces as w', 'w.id', 'g.workspace_id')
+      .select((eb) => ['g.user_id', eb.fn.sum<number>('g.amount').as('total')])
+      .where('w.organization_id', '=', organizationId)
+      .where('g.user_id', 'in', (eb) =>
+        eb
+          .selectFrom('epic_party_members as p')
+          .innerJoin('epics as e', 'e.id', 'p.epic_id')
+          .select('p.user_id')
+          .where('p.epic_id', '=', epicId)
+          .where('e.workspace_id', '=', workspaceId),
       )
       .groupBy('g.user_id'),
   );

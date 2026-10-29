@@ -21,6 +21,7 @@ import {
   createCompletion,
   createDetailField,
   createEpic,
+  createEpicPartyMember,
   createInvitation,
   createMembership,
   createOrganization,
@@ -31,6 +32,7 @@ import {
   createSprintEntry,
   createStory,
   createTask,
+  createThanks,
   createUser,
   createWorkspace,
   createWorkspacePointRate,
@@ -77,6 +79,9 @@ async function fillOrganization(organization: Awaited<ReturnType<typeof createOr
     assignee_user_id: member.id,
   });
   await createSprintEntry(organization, ws, sprint.id, task.id, admin.id);
+  // 討伐隊は workspace_id を持たず、エピックを通して組織に結ぶ
+  await createEpicPartyMember(organization, epic.id, member.id, { added_by: admin.id });
+  await createThanks(organization, ws, task.id, admin.id, member.id);
   const completion = await createCompletion(organization, ws, task.id, member.id, {
     sprint_id: sprint.id,
     previous_column_id: column.id,

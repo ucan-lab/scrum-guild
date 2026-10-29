@@ -35,8 +35,13 @@ function rootTitles(page: Page) {
   return page.locator('.tree > div:not(.tree-group) .entry-title');
 }
 
+// 題の行を持つ木の1件。ストーリーの題はボタン、エピックの題はリンク
 function storyGroup(page: Page, title: string) {
-  return page.locator('.tree-group', { has: page.getByRole('button', { name: title, exact: true }) });
+  return page.locator('.tree-group', {
+    has: page
+      .getByRole('button', { name: title, exact: true })
+      .or(page.getByRole('link', { name: title, exact: true })),
+  });
 }
 
 test('「上へ」「下へ」と Alt と ↑ ↓ で並べ替え、フォーカスは同じ要素に残り、読み直しても並びが残る', async ({
@@ -243,12 +248,12 @@ async function addEpic(page: Page, title: string): Promise<void> {
 }
 
 function epicRow(page: Page, title: string) {
-  return page.locator('.tree-row.is-epic', { has: page.getByRole('button', { name: title, exact: true }) });
+  return page.locator('.tree-row.is-epic', { has: page.getByRole('link', { name: title, exact: true }) });
 }
 
 // エピックの題（並びの順）
 function epicTitles(page: Page) {
-  return page.locator('.tree-row.is-epic button.tree-link');
+  return page.locator('.tree-row.is-epic a.tree-link');
 }
 
 test('エピックを「上へ」「下へ」と Alt と ↑ ↓ で並べ替え、読み直しても同じ順になる。端では動かせないことを読み上げる', async ({
@@ -279,7 +284,7 @@ test('エピックを「上へ」「下へ」と Alt と ↑ ↓ で並べ替え
   ).toBeAttached();
 
   // 行の中の題のボタンにフォーカスを置いて、Alt と ↑ を2回で先頭へ。フォーカスは題に残る
-  const title = page.getByRole('button', { name: '会員ランクを見直す', exact: true });
+  const title = page.getByRole('link', { name: '会員ランクを見直す', exact: true });
   await title.focus();
   await page.keyboard.press('Alt+ArrowUp');
   await page.keyboard.press('Alt+ArrowUp');
@@ -291,7 +296,7 @@ test('エピックを「上へ」「下へ」と Alt と ↑ ↓ で並べ替え
   // 端でもう一度押すと、動かせないことを読み上げる
   await page.keyboard.press('Alt+ArrowUp');
   await expect(page.getByRole('status').filter({ hasText: 'いちばん上です' })).toBeAttached();
-  await page.getByRole('button', { name: 'ポイント制度を公開する', exact: true }).focus();
+  await page.getByRole('link', { name: 'ポイント制度を公開する', exact: true }).focus();
   await page.keyboard.press('Alt+ArrowDown');
   await expect(page.getByRole('status').filter({ hasText: 'いちばん下です' })).toBeAttached();
 

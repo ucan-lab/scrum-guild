@@ -620,3 +620,46 @@ export async function createXpGrant(
   await db.run(db.statement((q) => q.insertInto('xp_grants').values(row)));
   return row;
 }
+
+// エピックの討伐隊の1人。既定は受注（joined_via が self、入れたのは本人）
+export async function createEpicPartyMember(
+  organization: OrganizationFixture,
+  epicId: string,
+  userId: string,
+  overrides: Partial<Row<OrganizationTables, 'epic_party_members'>> = {},
+) {
+  const row: Row<OrganizationTables, 'epic_party_members'> = {
+    epic_id: epicId,
+    user_id: userId,
+    joined_via: 'self',
+    added_by: userId,
+    joined_at: AT,
+    ...overrides,
+  };
+  const db = orgDb(env, organization.verified);
+  await db.run(db.statement((q) => q.insertInto('epic_party_members').values(row)));
+  return row;
+}
+
+// 感謝の1行。送る人と受け取る人は別の人にする
+export async function createThanks(
+  organization: OrganizationFixture,
+  workspaceId: string,
+  taskId: string,
+  senderUserId: string,
+  recipientUserId: string,
+  overrides: Partial<Row<OrganizationTables, 'thanks'>> = {},
+) {
+  const row: Row<OrganizationTables, 'thanks'> = {
+    id: uuidv7(),
+    workspace_id: workspaceId,
+    task_id: taskId,
+    sender_user_id: senderUserId,
+    recipient_user_id: recipientUserId,
+    created_at: AT,
+    ...overrides,
+  };
+  const db = orgDb(env, organization.verified);
+  await db.run(db.statement((q) => q.insertInto('thanks').values(row)));
+  return row;
+}

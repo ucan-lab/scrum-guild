@@ -85,7 +85,7 @@ test('担い手、レイド、検索で絞り、URL に残る。絞っている�
   await expect(page).toHaveURL(/\?assignee=me$/);
   await expect(taskTitles(page)).toHaveText(['ポイント表示の API を作る']);
   await expect(page.getByRole('button', { name: '見積もりを整える', exact: true })).toHaveCount(0);
-  await expect(page.getByRole('button', { name: '会員ポイント制度を公開する', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('link', { name: '会員ポイント制度を公開する', exact: true })).toHaveCount(0);
   // 親のない完了の折りたたみは出さない。並べ替えは出さず、外すと並べ替えられると案内する。親を移すは残す
   await expect(page.getByText('上にあるものほど優先します。絞り込みを外すと並べ替えられます。')).toBeVisible();
   await expect(page.getByRole('button', { name: '上へ: ポイント表示の API を作る' })).toHaveCount(0);
@@ -156,7 +156,7 @@ test('担い手、レイド、検索で絞り、URL に残る。絞っている�
 
   // レイドで絞ると、そのレイドだけを出す（配下が無くても出す）。親のないクエストは出さない
   await bar.getByRole('combobox', { name: 'レイド' }).selectOption({ label: '会員ポイント制度を公開する' });
-  await expect(page.getByRole('button', { name: '会員ポイント制度を公開する', exact: true })).toBeVisible();
+  await expect(page.getByRole('link', { name: '会員ポイント制度を公開する', exact: true })).toBeVisible();
   await expect(page.getByText('達成目標はまだありません')).toBeVisible();
   await expect(taskTitles(page)).toHaveCount(0);
 
