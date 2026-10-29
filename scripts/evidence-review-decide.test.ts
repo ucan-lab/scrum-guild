@@ -188,6 +188,17 @@ describe('PR と ci の選択', () => {
     assert.equal(resolvePrNumber(workflowRun([]), [child]), child.number);
   });
 
+  test('workflow_run の PR も、stacked PR の子が先に並んでいれば main 向けを選ぶ', () => {
+    const listed = workflowRun([
+      { number: 9, base: { ref: 'stack-parent', sha: head, repo: sameRepo } },
+      { number: pr.number, base: { ref: 'main', sha: base, repo: sameRepo } },
+    ]);
+    assert.equal(resolvePrNumber(listed, []), pr.number);
+    assert.equal(comparisonBaseSha(listed, pr), base);
+    const childOnly = workflowRun([{ number: 9, base: { ref: 'stack-parent', sha: head, repo: sameRepo } }]);
+    assert.equal(resolvePrNumber(childOnly, []), 9);
+  });
+
   test('workflow_run の PR は base のリポジトリがイベントのリポジトリと同じものだけを使う', () => {
     const fork = { id: 1 };
     const candidates = [pr];

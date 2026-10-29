@@ -32,7 +32,7 @@ export type ReviewEvent = {
   pull_request?: ReviewPr;
   workflow_run?: CiRun & {
     head_repository?: { full_name: string };
-    pull_requests: { number: number; base?: { sha?: string; repo?: { id: number } } }[];
+    pull_requests: { number: number; base?: { ref?: string; sha?: string; repo?: { id: number } } }[];
   };
 };
 export type ReviewJob = { name: string; conclusion: string | null };
@@ -40,11 +40,13 @@ export type ReviewComment = { body?: string | null; user?: { login?: string } | 
 export type Decision = { run: boolean; reason: string };
 
 // workflow_run の pull_requests は、同じ head のブランチ名の別のリポジトリの PR も含みうる。
-// base がこのリポジトリのものだけを使い、番号と比べる base の SHA を同じ要素から取る
+// base がこのリポジトリのものだけを使い、番号と比べる base の SHA を同じ要素から取る。
+// stacked PR では子の PR も同じ head を持つので、候補と同じく main 向けを優先する
 function workflowRunPr(event: ReviewEvent) {
   const repositoryId = event.repository?.id;
   if (repositoryId === undefined) return undefined;
-  return event.workflow_run?.pull_requests.find((pr) => pr.base?.repo?.id === repositoryId);
+  const own = event.workflow_run?.pull_requests.filter((pr) => pr.base?.repo?.id === repositoryId) ?? [];
+  return own.find((pr) => pr.base?.ref === 'main') ?? own[0];
 }
 
 export function resolvePrNumber(event: ReviewEvent, candidates: readonly ReviewPr[]): number | undefined {
