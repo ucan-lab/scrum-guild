@@ -14,8 +14,8 @@ export function parseNulSeparated(output: string): string[] {
   return output.split('\0').filter((path) => path !== '');
 }
 
-// 変わったファイルがすべて文書の範囲の .md のときだけ真。範囲の中でもスクリプトなどは、needs-human も付かないまま
-// 検査を飛ばすことになるので文書に数えない。一覧が空なら、判定を誤ったとみて偽にする（重いジョブを回す側に倒す）
+// 変わったファイルがすべて文書の範囲の .md のときだけ真。範囲の中でもスクリプトなどは、検査で確かめるものなので
+// 文書に数えない。一覧が空なら、判定を誤ったとみて偽にする（重いジョブを回す側に倒す）
 export function isDocsOnly(paths: readonly string[]): boolean {
   return (
     paths.length > 0 &&

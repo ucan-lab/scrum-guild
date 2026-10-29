@@ -47,10 +47,13 @@ needs-human:
           - ".githooks/**"
           - ".claude/settings.json"
           - ".claude/hooks/**"
+          # CI の ai-review が書き込みのトークンを持って読むスキルとエージェント（frontmatter で道具の許可を広げ、フックを走らせられる）
+          - ".claude/skills/ai-review/**"
+          - ".claude/agents/**"
           - ".mcp.json"
-  # .claude/ の下の .md 以外のファイル（CI が書き込みのトークンを持って走らせるスクリプトを含む）。
-  # スキル、エージェント、チェックリストの .md は守らない（理由は docs/development.md の「マージの判定」）
+  # .claude/ の下のファイル（CI が書き込みのトークンを持って走らせるスクリプトを含む。入れ子の .claude/ も）。
+  # 文書だけの PR の範囲（scripts/ci.ts の isDocsOnly）のスキルとチェックリストの .md だけを外す（理由は docs/development.md の「マージの判定」）
   - changed-files:
       - all-globs-to-any-file:
-          - ".claude/**"
-          - "!.claude/**/*.md"
+          - "**/.claude/**"
+          - "!.claude/{skills,agents,checklists}/**/*.md"
