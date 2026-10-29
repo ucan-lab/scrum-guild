@@ -7,15 +7,17 @@ on:
   pull_request:
     types: [ready_for_review, labeled]
 
+permissions: {}
+
 jobs:
   decide:
     if: github.event.action != 'labeled' || github.event.label.name == 'ai-review'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     # workflow_run の pull_requests は空のことがあり、PR の番号はジョブの前に決まらない。
-    # 同じリポジトリの head のブランチは PR と1対1なので、両方のイベントにあるブランチ名で PR ごとにそろえる
+    # head のリポジトリとブランチの組は PR と1対1なので、両方のイベントにある組で PR ごとにそろえる
     concurrency:
-      group: evidence-review-${{ github.event.pull_request.head.ref || github.event.workflow_run.head_branch }}
+      group: evidence-review-${{ github.event.pull_request.head.repo.full_name || github.event.workflow_run.head_repository.full_name }}-${{ github.event.pull_request.head.ref || github.event.workflow_run.head_branch }}
       cancel-in-progress: false
     permissions:
       contents: read
@@ -163,3 +165,5 @@ jobs:
           name: evidence-ctx
           path: ${{ runner.temp }}/evidence-ctx/
           retention-days: 1
+          # 同じ run の再実行で同じ名前を上げ直せるように、前の成果物を置き換える
+          overwrite: true

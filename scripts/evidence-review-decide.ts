@@ -4,6 +4,9 @@ import { join } from 'node:path';
 import { notice, requiredEnv, writeOutput, type Comparison } from './evidence.ts';
 
 export const EVIDENCE_REVIEW_MARKER = '<!-- e2e-evidence-review -->';
+export const MAIN_URL_EMPTY = 'EVIDENCE_MAIN_PUBLIC_URL が空';
+// 画像を作る ci はこのワークフローだけ。同じ名前の別のワークフローの実行を混ぜない
+const CI_WORKFLOW_PATH = '.github/workflows/ci.yml';
 
 export type ReviewPr = {
   number: number;
@@ -14,24 +17,38 @@ export type ReviewPr = {
   user: { type: string };
   author_association: string;
 };
-export type CiRun = { id: number; head_sha: string; event: string; status: string };
+export type CiRun = { id: number; head_sha: string; event: string; status: string; path?: string };
 export type ReviewEvent = {
   action?: string;
   label?: { name: string };
+  repository?: { id: number };
   pull_request?: ReviewPr;
-  workflow_run?: CiRun & { pull_requests: { number: number; base?: { sha: string } }[] };
+  workflow_run?: CiRun & {
+    head_repository?: { full_name: string };
+    pull_requests: { number: number; base?: { sha?: string; repo?: { id: number } } }[];
+  };
 };
 export type ReviewJob = { name: string; conclusion: string | null };
 export type ReviewComment = { body?: string | null; user?: { login?: string } | null };
 export type Decision = { run: boolean; reason: string };
 
+// workflow_run の pull_requests は、同じ head のブランチ名の別のリポジトリの PR も含みうる。
+// base がこのリポジトリのものだけを使い、番号と比べる base の SHA を同じ要素から取る
+function workflowRunPr(event: ReviewEvent) {
+  const repositoryId = event.repository?.id;
+  if (repositoryId === undefined) return undefined;
+  return event.workflow_run?.pull_requests.find((pr) => pr.base?.repo?.id === repositoryId);
+}
+
 export function resolvePrNumber(event: ReviewEvent, candidates: readonly ReviewPr[]): number | undefined {
   if (event.pull_request) return event.pull_request.number;
   const run = event.workflow_run;
   if (!run) return undefined;
-  return (
-    run.pull_requests[0]?.number ?? candidates.find((pr) => pr.state === 'open' && pr.head.sha === run.head_sha)?.number
-  );
+  const listed = workflowRunPr(event);
+  if (listed) return listed.number;
+  // stacked PR は子の PR も同じ head の SHA を持つ。main 向けを優先し、無ければ判定側で断る
+  const open = candidates.filter((pr) => pr.state === 'open' && pr.head.sha === run.head_sha);
+  return (open.find((pr) => pr.base.ref === 'main') ?? open[0])?.number;
 }
 
 // API は新しい順で返すが、ページをまとめても順に依存しないよう実行 ID で選ぶ。
@@ -39,12 +56,15 @@ export function resolvePrNumber(event: ReviewEvent, candidates: readonly ReviewP
 export function selectCiRun(event: ReviewEvent, runs: readonly CiRun[]): CiRun | undefined {
   if (event.workflow_run) return event.workflow_run;
   return runs
-    .filter((run) => run.head_sha === event.pull_request?.head.sha && run.event === 'pull_request')
+    .filter(
+      (run) =>
+        run.head_sha === event.pull_request?.head.sha && run.event === 'pull_request' && run.path === CI_WORKFLOW_PATH,
+    )
     .reduce<CiRun | undefined>((latest, run) => (!latest || run.id > latest.id ? run : latest), undefined);
 }
 
 export function comparisonBaseSha(event: ReviewEvent, pr: ReviewPr): string {
-  return event.workflow_run?.pull_requests[0]?.base?.sha ?? event.pull_request?.base.sha ?? pr.base.sha;
+  return workflowRunPr(event)?.base?.sha ?? event.pull_request?.base.sha ?? pr.base.sha;
 }
 
 export function decideReview(input: {
@@ -66,6 +86,12 @@ export function decideReview(input: {
   if (pr.head.repo?.full_name !== input.repository) return skip('head が同じリポジトリでない');
   if (pr.user.type === 'Bot') return skip('作成者が Bot');
   if (!['OWNER', 'COLLABORATOR'].includes(pr.author_association)) return skip('作成者に書き込み権限が無い');
+  // workflow_run の payload はそのまま信じず、main の ci.yml が同じリポジトリの head で動いた実行だけを使う
+  if (
+    event.workflow_run &&
+    (event.workflow_run.path !== CI_WORKFLOW_PATH || event.workflow_run.head_repository?.full_name !== input.repository)
+  )
+    return skip('ci が main の ci.yml の実行でない');
   if (!ci || ci.status !== 'completed') return skip('ci が無いか、まだ完了していない');
   // 完了を待つ間に push された古い実行の画像と、新しい head の差分を混ぜない
   if (ci.event !== 'pull_request' || ci.head_sha !== pr.head.sha) return skip('ci が今の PR の head でない');
@@ -80,7 +106,7 @@ export function decideReview(input: {
     )
   )
     return skip('自動の判定は既にコメントがある');
-  if (!input.mainUrl.trim()) return skip('EVIDENCE_MAIN_PUBLIC_URL が空');
+  if (!input.mainUrl.trim()) return skip(MAIN_URL_EMPTY);
   return { run: true, reason: '画像を比較する条件を満たす' };
 }
 
@@ -122,7 +148,8 @@ if (import.meta.main) {
     writeOutput('base_sha', comparisonBaseSha(event, pr));
     writeOutput('head_sha', pr.head.sha);
     console.log(`run=${result.run}: ${result.reason}。画面数: 未比較`);
-    if (!process.env.EVIDENCE_MAIN_PUBLIC_URL?.trim()) notice('画面の判定を飛ばす', result.reason);
+    // 他の理由で止まったときに「URL が空」と出すと、設定の誤りと取り違える
+    if (result.reason === MAIN_URL_EMPTY) notice('画面の判定を飛ばす', result.reason);
   } else {
     throw new Error('使い方: node scripts/evidence-review-decide.ts <resolve|ci|decide> <JSON のディレクトリ>');
   }

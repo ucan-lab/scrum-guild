@@ -25,6 +25,17 @@ const baseSha = 'a'.repeat(40);
 const headSha = 'b'.repeat(40);
 const response = (bytes: Buffer) => new Response(new Uint8Array(bytes));
 
+// LS、PS、NEL、双方向の制御（RLO）、ゼロ幅のスペース。直の文字で書くと編集の過程で壊れるので、コードから作る
+const LINE_SEPARATOR = String.fromCharCode(0x2028);
+const PARAGRAPH_SEPARATOR = String.fromCharCode(0x2029);
+const NEXT_LINE = String.fromCharCode(0x85);
+const RIGHT_TO_LEFT_OVERRIDE = String.fromCharCode(0x202e);
+const ZERO_WIDTH_SPACE = String.fromCharCode(0x200b);
+const HIDDEN = new RegExp(
+  `[${LINE_SEPARATOR}${PARAGRAPH_SEPARATOR}${NEXT_LINE}${RIGHT_TO_LEFT_OVERRIDE}${ZERO_WIDTH_SPACE}]`,
+);
+const LINE_BREAK = new RegExp(`\\r\\n|[\\n\\r${NEXT_LINE}${LINE_SEPARATOR}${PARAGRAPH_SEPARATOR}]`);
+
 async function serverUrl(t: TestContext, server: Server): Promise<string> {
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
   t.after(async () => {
@@ -209,6 +220,89 @@ describe('prepareReview', () => {
     assert.ok(!index.includes('s09-after.png'));
     assert.ok(index.includes(baseSha));
     assert.ok(index.includes(headSha));
+  });
+
+  test('画面ごとに画像の中身が違っても、連番と画面の名前と画像の組が合う', async (t) => {
+    const names = ['alpha', 'bravo', 'charlie'];
+    const value = fixture(t, names);
+    const beforeOf = (name: string) => png(`before-${name}`);
+    names.forEach((name, index) => {
+      const dir = join(value.resultsDir, `e2e-${(index % 3) + 1}`, 'test-results', name);
+      writeFileSync(join(dir, 'evidence-1.png'), png(`after-${name}`));
+      value.manifest.images[`${name}/evidence-1.png`] = hash(beforeOf(name));
+    });
+    const byHash = new Map(names.map((name) => [hash(beforeOf(name)), beforeOf(name)]));
+    value.pngFetcher = async (url) => response(byHash.get(/\/([0-9a-f]{64})\.png$/.exec(url)![1])!);
+    await prepareReview(value);
+    const index = readFileSync(join(value.outDir, 'index.md'), 'utf8');
+    for (const [position, name] of names.entries()) {
+      const id = `s${String(position + 1).padStart(2, '0')}`;
+      assert.deepEqual(readFileSync(join(value.outDir, `${id}-before.png`)), beforeOf(name));
+      assert.deepEqual(readFileSync(join(value.outDir, `${id}-after.png`)), png(`after-${name}`));
+      assert.ok(index.includes(`## ${id}\n\n> \`${name}\`\n`));
+    }
+  });
+
+  test('変更前が無い画面は新しい画面だと index.md に書く', async (t) => {
+    const value = fixture(t);
+    delete value.manifest.images['screen/evidence-1.png'];
+    await prepareReview(value);
+    const index = readFileSync(join(value.outDir, 'index.md'), 'utf8');
+    assert.ok(index.includes('変更前: 無し（新しい画面）'));
+    assert.ok(!index.includes('s01-before.png'));
+  });
+
+  test('改行の類と制御文字、双方向の制御は空白にし、偽の見出しを行頭に出さない', async (t) => {
+    const value = fixture(t, [
+      `x${LINE_SEPARATOR}## s09`,
+      `y${PARAGRAPH_SEPARATOR}## s10`,
+      `z${RIGHT_TO_LEFT_OVERRIDE}## s11`,
+      `w${ZERO_WIDTH_SPACE}## s12`,
+    ]);
+    await prepareReview(value);
+    const index = readFileSync(join(value.outDir, 'index.md'), 'utf8');
+    assert.ok(index.split(LINE_BREAK).every((line) => !/^## s(09|1[0-2])/.test(line)));
+    assert.ok(!HIDDEN.test(index));
+    assert.ok(index.includes('> `x ## s09`'));
+  });
+
+  test('取得失敗の理由の改行や双方向の制御も空白にする', async (t) => {
+    const value = fixture(t, ['a-bad', 'b-good']);
+    let calls = 0;
+    value.pngFetcher = async () => {
+      if (++calls === 1) throw new Error(`boom${LINE_SEPARATOR}## s09${RIGHT_TO_LEFT_OVERRIDE}end`);
+      return response(before);
+    };
+    await prepareReview(value);
+    const index = readFileSync(join(value.outDir, 'index.md'), 'utf8');
+    assert.ok(!HIDDEN.test(index));
+    assert.ok(index.split(LINE_BREAK).every((line) => !line.startsWith('## s09')));
+    assert.ok(index.includes('boom ## s09 end'));
+  });
+
+  test('変えた画面1つの変更前が取れず、渡せる画像が無ければ run=false で何も書かない', async (t) => {
+    const value = fixture(t);
+    value.pngFetcher = async () => new Response('', { status: 503 });
+    const result = await prepareReview(value);
+    assert.equal(result.run, false);
+    assert.equal(result.reason, '判定に渡せる画像が無い');
+    assert.equal(result.prepared, 0);
+    assert.equal(result.unjudged, 1);
+    assert.equal(existsSync(value.outDir), false);
+  });
+
+  test('成果物のディレクトリが無いか、画面が無ければ例外にせず run=false', async (t) => {
+    const missing = fixture(t);
+    rmSync(missing.resultsDir, { recursive: true });
+    const noScreens = fixture(t);
+    rmSync(join(noScreens.resultsDir, 'e2e-1'), { recursive: true });
+    for (const value of [missing, noScreens]) {
+      const result = await prepareReview(value);
+      assert.equal(result.run, false);
+      assert.equal(result.reason, 'e2e の成果物が無い');
+      assert.equal(result.screens, 0);
+      assert.equal(existsSync(value.outDir), false);
+    }
   });
 
   test('latest に戻ったときは実際の一覧の SHA と BASE_SHA を両方載せる', async (t) => {

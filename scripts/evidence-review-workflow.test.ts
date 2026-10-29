@@ -16,6 +16,7 @@ type Step = {
 const source = readFileSync(new URL('../.github/workflows/evidence-review.yml', import.meta.url), 'utf8');
 const workflow = load(source) as {
   on: Record<string, unknown>;
+  permissions: Record<string, string>;
   jobs: Record<
     string,
     {
@@ -51,15 +52,17 @@ describe('evidence-review の動く条件と境界', () => {
   });
 
   test('両イベントで同じ PR の group を使い、進行中の処理を取り消さない', () => {
+    // head のリポジトリとブランチの組は PR と1対1。fork の同名のブランチと同じ列に並べない
     assert.equal(
       job.concurrency.group,
-      'evidence-review-${{ github.event.pull_request.head.ref || github.event.workflow_run.head_branch }}',
+      'evidence-review-${{ github.event.pull_request.head.repo.full_name || github.event.workflow_run.head_repository.full_name }}-${{ github.event.pull_request.head.ref || github.event.workflow_run.head_branch }}',
     );
     assert.equal(job.concurrency['cancel-in-progress'], false);
   });
 
   // workflow_run は書き込みのトークンも持ちうるので、許可する一覧を丸ごと固定する
   test('権限は読み取りだけで、ファイルのどこにも秘密情報の参照を置かない', () => {
+    assert.deepEqual(workflow.permissions, {});
     assert.deepEqual(job.permissions, { contents: 'read', 'pull-requests': 'read', actions: 'read' });
     assert.ok(!source.includes('secrets.'));
     assert.ok(!source.includes('anthropics/'));
@@ -99,7 +102,30 @@ describe('evidence-review の動く条件と境界', () => {
       name: 'evidence-ctx',
       path: '${{ runner.temp }}/evidence-ctx/',
       'retention-days': 1,
+      overwrite: true,
     });
+  });
+
+  // 前の段が空なら後ろの段は動かさない。段の条件を1つずつ固定し、外れても失敗にする
+  test('各段は前の段の出力が揃ったときだけ動く', () => {
+    const hasPr = "steps.pr.outputs.pr_number != ''";
+    const hasCi = "steps.ci.outputs.ci_run_id != ''";
+    const gated = "steps.gate.outputs.run == 'true'";
+    const prepared = "steps.prepare.outputs.run == 'true'";
+    const conditions: Record<string, string | undefined> = {
+      'PR の番号を決める': undefined,
+      'PR と ci の実行を取る': hasPr,
+      '比べる ci の実行を決める': hasPr,
+      'ci のジョブと既存のコメントを取る': hasCi,
+      画像を比べる条件を確かめる: hasCi,
+      変更前後の画像を並べる: gated,
+      'PR の本文とコメントを取る': prepared,
+      'PR の本文とコメントを整える': prepared,
+      差分を書き出す: prepared,
+    };
+    for (const [name, expected] of Object.entries(conditions)) assert.equal(named(name).if, expected, name);
+    assert.equal(action('actions/download-artifact').if, gated);
+    assert.equal(action('actions/upload-artifact').if, prepared);
   });
 });
 
