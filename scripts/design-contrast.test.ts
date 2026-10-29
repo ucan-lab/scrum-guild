@@ -7,8 +7,10 @@ import { describe, test } from 'node:test';
 
 const read = (file: string) => readFileSync(new URL(`../design/${file}`, import.meta.url), 'utf8');
 
-const tokens = read('tokens.css');
-const components = read('components.css');
+// コメントに残した旧い値や旧いブロックを、読まないよう先に空にする
+const stripComments = (css: string) => css.replace(/\/\*[\s\S]*?\*\//g, '');
+const tokens = stripComments(read('tokens.css'));
+const components = stripComments(read('components.css'));
 
 const tierNames = ['small', 'medium', 'large'] as const;
 const groundNames = ['bg', 'surface', 'sunken', 'rule', 'accent-soft'] as const;
@@ -24,20 +26,21 @@ function bodyAfter(source: string, openIndex: number): string {
   throw new Error('design/tokens.css の波括弧が閉じていない');
 }
 
-// 見出しの後ろにある最初のセレクタのブロックの中身を返す。anchor は、同じセレクタが複数ある場合の目印
-function readBlock(selector: string, anchor = ''): string {
-  const from = anchor ? tokens.indexOf(anchor) : 0;
-  assert.ok(from >= 0, `design/tokens.css に ${anchor} が見つからない（見出しを変えたら、このテストの anchor も直す）`);
-  const at = tokens.indexOf(`${selector} {`, from);
-  assert.ok(
-    at >= 0,
-    `design/tokens.css に ${selector} のブロックが見つからない（書き方を変えたら、このテストの取り出し方も直す）`,
+// セレクタのブロックの中身を返す。:root は共通の値のブロックとシンプル（ライト）の2つがあるので、何番目かを index で選ぶ。
+// 数が想定と違えば落とす（CSS は後ろが効くので、重ねて書かれたまま読むと読み間違える）
+function readBlock(selector: string, index = 0, expected = 1): string {
+  const found: number[] = [];
+  for (let at = tokens.indexOf(`${selector} {`); at >= 0; at = tokens.indexOf(`${selector} {`, at + 1)) found.push(at);
+  assert.equal(
+    found.length,
+    expected,
+    `design/tokens.css の ${selector} のブロックが ${found.length} 個ある（想定は ${expected} 個。書き方を変えたら、このテストの取り出し方も直す）`,
   );
-  return bodyAfter(tokens, at + selector.length + 1);
+  return bodyAfter(tokens, found[index] + selector.length + 1);
 }
 
 const blocks = {
-  'シンプル（ライト）': readBlock(':root', '/* ===== シンプル（ライト）'),
+  'シンプル（ライト）': readBlock(':root', 1, 2),
   'シンプル（ダーク）': readBlock(':root[data-theme="simple_dark"]'),
   中世風: readBlock(':root[data-theme="medieval"]'),
   現代風: readBlock(':root[data-theme="modern"]'),
@@ -47,18 +50,29 @@ const blocks = {
 const autoDarkBlock = (() => {
   const media = tokens.indexOf('@media (prefers-color-scheme: dark)');
   assert.ok(media >= 0, 'design/tokens.css に prefers-color-scheme: dark の @media が見つからない');
+  assert.equal(
+    tokens.indexOf('@media (prefers-color-scheme: dark)', media + 1),
+    -1,
+    'design/tokens.css に prefers-color-scheme: dark の @media が2つある。1つにまとめる',
+  );
   const inner = bodyAfter(tokens, tokens.indexOf('{', media));
   const selector = ':root:not([data-theme]), :root[data-theme="simple"]';
   const at = inner.indexOf(`${selector} {`);
   assert.ok(at >= 0, `@media (prefers-color-scheme: dark) の中に ${selector} が見つからない`);
+  assert.equal(
+    inner.indexOf(`${selector} {`, at + 1),
+    -1,
+    `@media (prefers-color-scheme: dark) の中に ${selector} が2つある。1つにまとめる`,
+  );
   return bodyAfter(inner, at + selector.length + 1);
 })();
 
 const hex = /^#[0-9a-fA-F]{6}$/;
 
-// トークンの値を文字列のまま返す。無ければ落とす
+// トークンの値を文字列のまま返す。同じ変数が重ねて書かれていたら、CSS で効く後ろの値を返す。無ければ落とす
 function readValue(block: string, theme: string, name: string): string {
-  const value = new RegExp(`--color-${name}:\\s*([^;]+);`).exec(block)?.[1].trim();
+  const values = [...block.matchAll(new RegExp(`--color-${name}:\\s*([^;]+);`, 'g'))];
+  const value = values.at(-1)?.[1].trim();
   assert.ok(value, `${theme} に --color-${name} が見つからない`);
   return value;
 }
@@ -109,8 +123,8 @@ describe('クリア報酬の段階の色のコントラスト', () => {
     const dark = blocks['シンプル（ダーク）'];
     for (const name of [...tierNames.map((tier) => `tier-${tier}`), ...groundNames]) {
       assert.equal(
-        readValue(autoDarkBlock, 'シンプル（自動）のダークの側', name),
-        readValue(dark, 'シンプル（ダーク）', name),
+        readValue(autoDarkBlock, 'シンプル（自動）のダークの側', name).toLowerCase(),
+        readValue(dark, 'シンプル（ダーク）', name).toLowerCase(),
         `--color-${name} が simple_dark と食い違う`,
       );
     }
@@ -118,15 +132,39 @@ describe('クリア報酬の段階の色のコントラスト', () => {
 });
 
 describe('.tier の色の対応', () => {
+  // 波括弧を入れ子にしない規則だけを、セレクタと宣言の組にする
+  const rules = [...components.matchAll(/([^{}]+)\{([^{}]*)\}/g)].map(([, selector, body]) => ({
+    selector: selector.trim(),
+    colors: [...body.matchAll(/(?:^|[;\s])color:\s*([^;]+?)\s*(?:;|$)/g)].map(([, value]) => value),
+  }));
+
   for (const tier of tierNames) {
     test(`.tier.is-${tier} は --color-tier-${tier} を color に使う`, () => {
-      const rule = new RegExp(`\\.tier\\.is-${tier}\\s*\\{([^}]*)\\}`).exec(components)?.[1];
-      assert.ok(rule, `design/components.css に .tier.is-${tier} が見つからない`);
-      assert.match(
-        rule,
-        new RegExp(`(?:^|[;\\s])color:\\s*var\\(--color-tier-${tier}\\)\\s*;?\\s*$`),
-        `.tier.is-${tier} の color が var(--color-tier-${tier}) でない（${rule.trim()}）`,
+      const own = rules.filter((rule) => rule.selector === `.tier.is-${tier}`);
+      assert.equal(
+        own.length,
+        1,
+        `design/components.css の .tier.is-${tier} の規則が ${own.length} 個ある（1つにする）`,
+      );
+      assert.deepEqual(
+        own[0].colors,
+        [`var(--color-tier-${tier})`],
+        `.tier.is-${tier} の color が var(--color-tier-${tier}) でない`,
       );
     });
   }
+
+  test('.tier.is-* を含む別の規則（テーマごとの上書きなど）は、段階の色を変えない', () => {
+    const overrides = rules.filter(
+      (rule) =>
+        /\.tier\b/.test(rule.selector) &&
+        !/^\.tier\.is-(small|medium|large)$/.test(rule.selector) &&
+        rule.colors.length > 0,
+    );
+    assert.deepEqual(
+      overrides.map((rule) => `${rule.selector} { color: ${rule.colors.join(', ')} }`),
+      [],
+      '.tier の color を上書きする規則がある。段階の色は --color-tier-* だけで決める（コントラストを tokens.css で守っているため）',
+    );
+  });
 });
