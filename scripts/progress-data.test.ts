@@ -531,6 +531,19 @@ describe('履歴', () => {
     for (const warning of built.warnings) assert.match(warning, /#30/);
   });
 
+  test('題を読めない開いた記録は警告して飛ばし、読める開いた記録を今のスプリントにする', () => {
+    const issues = [sprintLog(30, 1, ['| #1 | 一 | 3 |']), issue(31, { labels: ['sprint-log'], title: '記録' })];
+    const built = buildProgress(raw({ issues }), NOW);
+    assert.equal(built.sprint?.log, 30);
+    assert.equal(built.warnings.length, 1);
+    assert.match(built.warnings[0] ?? '', /#31/);
+  });
+
+  test('開いた記録があるのに、どれも題を読めなければ止まる', () => {
+    const issues = [issue(31, { labels: ['sprint-log'], title: '記録' })];
+    assert.throws(() => buildProgress(raw({ issues }), NOW), /題を読めない/);
+  });
+
   test('受け入れで閉じた Issue と、そのマージ済みの PR を当てる', () => {
     const issues = [
       closed(10, { labels: ['sprint-log'], title: 'スプリント 1（2026-10-22〜2026-10-28）' }),

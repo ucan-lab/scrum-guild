@@ -418,13 +418,21 @@ export function buildProgress(raw: RawData, now: Date): Built {
       };
     });
 
-  // 今のスプリントは開いている記録。2つ開いていれば番号の大きいほう
-  const current = logs
-    .filter((issue) => issue.state === 'open')
-    .map((log) => ({ log, n: parseSprintTitle(log.title).n }))
-    .toSorted((a, b) => b.n - a.n)[0];
-
   const { history, warnings } = buildHistory(logs, work, mergedPrs, raw.comments);
+
+  // 今のスプリントは開いている記録。2つ開いていれば番号の大きいほう。題を読めない記録は飛ばし、どれも読めなければ止まる
+  const openLogs = logs.filter((issue) => issue.state === 'open');
+  const readable = openLogs.flatMap((log) => {
+    try {
+      return [{ log, n: parseSprintTitle(log.title).n }];
+    } catch (error) {
+      if (openLogs.length === 1) throw error;
+      warnings.push(`開いた記録 #${log.number} の題を読めないので飛ばした`);
+      return [];
+    }
+  });
+  if (openLogs.length > 0 && readable.length === 0) throw new Error('開いた記録の題をどれも読めない');
+  const current = readable.toSorted((a, b) => b.n - a.n)[0];
   const sprint = current ? buildSprint({ log: current.log, work, pointsOfIssue, openPrs }) : null;
   // 表の形が崩れると、計画が空になってスプリントの Issue がすべて途中で足した分に見えるため、黙らずに知らせる
   if (sprint && sprint.plan.length === 0) warnings.push(`記録 #${sprint.log} の計画の表を1行も読めない`);
