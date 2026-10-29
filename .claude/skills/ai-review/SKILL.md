@@ -31,7 +31,7 @@ GitHub Actions の中で、1つの PR をレビューして指摘を書き込む
 | `security-reviewer` | API、認証、セッション、R2、取り込み、定期処理、wrangler の設定、`package.json` とロックファイル、`.github/` に触れたとき |
 
 `security-reviewer` は使用量を多く食うので、表に当たらないときは呼ばない。
-`falsification-qa` は呼ばない（`done-check` で PR の前に回しており、CI で重ねると PR ごとの使用量が増えるため）。
+`falsification-qa` は呼ばない（`done-check` で PR の前に回しており、CI で重ねると PR ごとの使用量が増えるため）。`code-reviewer` は差分を壊す筋書きを組み立てないので、`done-check` を通らずに積んだコミットは、壊す筋書きを誰も探さないまま CI のレビューを終える。この穴は使用量と引き換えに受け入れている。
 
 ## 3. エージェントを呼ぶ
 
