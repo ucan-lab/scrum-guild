@@ -16,6 +16,16 @@ export function jsonPairLookup(
   return sql<string>`(select json_extract(value, '$[1]') from json_each(${JSON.stringify(pairs)}) where json_extract(value, '$[0]') = ${key})`;
 }
 
+// 鍵と値の組の一覧（[鍵, 値] の JSON の配列）を、列 id と pos を持つ行にした副問い合わせ。bind は1つ。
+// 行ごとに違う値を1つの UPDATE で書くとき、UPDATE ... FROM で結ぶ（jsonPairLookup の相関副問い合わせは行ごとに配列を引き直すので、
+// 件数の2乗に比例して遅くなる。スプリントの終了の持ち越しが使う）。呼び出し側が `.as('p')` で別名を付ける
+export function jsonPairRows(pairs: readonly (readonly [string, string])[]) {
+  return sql<{
+    id: string;
+    pos: string;
+  }>`(select json_extract(value, '$[0]') as id, json_extract(value, '$[1]') as pos from json_each(${JSON.stringify(pairs)}))`;
+}
+
 // スプリントから外れた変更の履歴（{"sprint": [前, null]}、JSON）。前は alias の表の今の名前（sprintLogRefSql）
 export function sprintLeftLogSql(alias: string): RawBuilder<string> {
   return sql<string>`json_object('sprint', json_array(${sprintLogRefSql(alias)}, null))`;

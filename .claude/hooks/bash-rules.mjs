@@ -6,6 +6,7 @@
 // 場所か package.json を判定できないパッケージマネージャーのスクリプトの実行、npm が知らないコマンド、展開で決まるスクリプトの名前、
 // 表に無いフラグの読み方が多すぎるコマンド、読めない短いフラグのまとめ、
 // 守る先とリポジトリの根とその祖先の削除と移動（rm、rmdir、mv、find -delete）、git clean の -x と -X では人の確認を挟む。
+// e2e を走らせるコマンド（playwright test。pnpm e2e もスクリプトの中身として）は deny にする。
 // find の -exec 系は {} を起点に置き換えて同じ規則に掛け直す（docs/development.md の「Claude の設定とフック」）。
 // permissions.deny の前方一致では npx wrangler や pnpm exec wrangler の言い換えを取りこぼすので、語に分けて判定する。
 // 踏み線であって守りの本体ではない。変数の中身と、パイプで sh に流す中身は見えない。
@@ -83,6 +84,38 @@ function findWrangler(words, ci) {
     if (isTool(words[i])) return i;
   }
   return -1;
+}
+
+// Playwright のテストの実行（e2e）。playwright の bin（playwright、node_modules/.bin/playwright）と、
+// パッケージの cli.js（node_modules/@playwright/test/cli.js、node_modules/playwright/cli.js）が道具の語になる。
+// pnpm e2e のようなスクリプトの名前は、package.json の中身（playwright test）を judgeScripts が掛け直して見る
+function isPlaywright(word) {
+  const name = baseName(word);
+  // @playwright/test は bin が playwright のパッケージ。npx や dlx には、版を付けた名前（@playwright/test@latest）でも渡る
+  return (
+    /^playwright(\.[cm]?js)?$/.test(name) ||
+    /^@playwright\/test(@.+)?$/.test(word) ||
+    /(^|\/)(@playwright\/test|playwright(-core)?)\/cli\.[cm]?js$/.test(word)
+  );
+}
+
+// playwright の語の位置。findWrangler と同じく、道具そのもの、または引数を実行しない道具以外の後ろ
+function findPlaywright(words, ci) {
+  if (isPlaywright(words[ci])) return ci;
+  if (isNonExecuting(baseName(words[ci]))) return -1;
+  const corepack = baseName(words[ci]) === 'corepack' ? 1 : 0;
+  const manager = managerOf(corepack ? (words[ci + 1] ?? '') : words[ci]);
+  if (manager && PACKAGE_INFO.has(positionals(words.slice(ci + 1 + corepack), PACKAGE_FLAGS_WITH_VALUE)[0])) return -1;
+  return words.findIndex((w, i) => i > ci && isPlaywright(w));
+}
+
+const E2E_REASON = 'e2e は手元で走らせず、CI（ci-ok）で確かめる。docs/development.md の「開発の流れ」';
+// playwright の最初の位置引数が test なら e2e の実行。show-trace、install、--version などは通す。
+// その語が展開で決まる（playwright $X、"$X"、$(echo test)）と test になりうるので、wrangler の引用符の外の展開と同じく止める
+function judgePlaywright(args) {
+  const at = args.findIndex((a) => !a.startsWith('-'));
+  if (at === -1) return null;
+  return args[at] === 'test' || expandsAt(args, at) || shapeAt(args, at).includes(DYNAMIC) ? [DENY, E2E_REASON] : null;
 }
 
 const WRANGLER_FLAGS_WITH_VALUE = new Set([
@@ -2361,6 +2394,9 @@ function judgeSegment(words, ctx) {
   const wrangler = findWrangler(words, ci);
   if (wrangler !== -1 && isCfWrangler(words[wrangler])) results.push([DENY, CF_WRANGLER_REASON]);
   else if (wrangler !== -1) results.push(expandsAt(words, wrangler) ? UNQUOTED_REASON : judgeWrangler(sliceWords(words, wrangler + 1)));
+
+  const playwright = findPlaywright(words, ci);
+  if (playwright !== -1) results.push(judgePlaywright(sliceWords(words, playwright + 1)));
 
   // xargs は標準入力かファイル（-a）から引数を足すので、wrangler の引数（--remote）も、node や git が何を実行するかも見えない。
   // 読むだけの道具以外では、findWrangler が引数を実行しない道具（echo、git など）で打ち切っても、後ろの語の wrangler を見る

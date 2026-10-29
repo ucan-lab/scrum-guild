@@ -2431,6 +2431,76 @@ export const dictionary = defineDictionary({
     'この{sprint}はもう始まっています。一覧を読み直します',
   ),
   sprintStartForbidden: workspace('{sprint}を始めるのは{leader}です', '{sprint}を始めるのは{leader}です'),
+  // スプリントを終えるダイアログ（kit.js の DIALOGS.sprintEnd）と、スプリントの画面の見出しの「終える」
+  sprintCloseAction: workspace('終える', '終える'),
+  sprintCloseLabel: workspace('終える: {label}', '終える: {label}'),
+  sprintCloseTitle: workspace('{sprint}を終える', '{sprint}を終える'),
+  sprintCloseText: workspace(
+    '{label}を終えます。終えた{sprint}の期間と中身は、あとから変えられません。',
+    '{label}を終えます。終えた{sprint}の期間と中身は、あとから変えられません。',
+  ),
+  // 名前のあるスプリントの呼び名に期間を添える。名前の無いスプリントは期間が名前なので、期間を重ねない（sprintLabelWithPeriod）
+  sprintLabelWithPeriod: workspace('{label}（{period}）', '{label}（{period}）'),
+  sprintCloseLoadFailed: workspace(
+    '{sprint}の状態を読み込めませんでした。もう一度試してください',
+    '{sprint}の状態を読み込めませんでした。もう一度試してください',
+  ),
+  sprintCloseCarryLegend: workspace(
+    '終わらなかった{task} {count} 件の行き先',
+    '終わらなかった{task} {count} 件の行き先',
+  ),
+  sprintCloseCarryTo: workspace('{label}へ持ち越す', '{label}へ持ち越す'),
+  sprintCloseCarryToNote: workspace('同じ{task}をそのまま移します。', '同じ{task}をそのまま移します。'),
+  sprintCloseCarryBacklog: workspace('{backlog}へ戻す', '{backlog}へ戻す'),
+  sprintCloseCarryBacklogNote: workspace(
+    'どの{sprint}にも入っていない状態にします。',
+    'どの{sprint}にも入っていない状態にします。',
+  ),
+  sprintCloseCarryNoTarget: workspace(
+    '持ち越せる{sprint}がありません。{backlog}へ戻します。',
+    '持ち越せる{sprint}がありません。{backlog}へ戻します。',
+  ),
+  sprintCloseNoOpen: workspace('終わらなかった{task}はありません。', '終わらなかった{task}はありません。'),
+  sprintCloseGoalLegend: workspace('{sprintGoal}は達成できましたか', '{sprintGoal}は達成できましたか'),
+  sprintCloseGoalAchieved: workspace('達成した', '達成した'),
+  sprintCloseGoalMissed: workspace('達成していない', '達成していない'),
+  sprintCloseSubmit: workspace('終える', '終える'),
+  sprintClosing: workspace('終えています', '終えています'),
+  sprintClosedNone: workspace('{label}を終えました', '{label}を終えました'),
+  sprintClosedToSprint: workspace(
+    '{label}を終えました。{task} {count} 件を{target}へ持ち越しました',
+    '{label}を終えました。{task} {count} 件を{target}へ持ち越しました',
+  ),
+  sprintClosedToBacklog: workspace(
+    '{label}を終えました。{task} {count} 件を{backlog}へ戻しました',
+    '{label}を終えました。{task} {count} 件を{backlog}へ戻しました',
+  ),
+  sprintCloseNotActive: workspace(
+    'この{sprint}は進行中ではありません（もう終わっています）。読み直します',
+    'この{sprint}は進行中ではありません（もう終わっています）。読み直します',
+  ),
+  sprintCloseCarryTarget: workspace(
+    '持ち越し先が使えなくなりました。選び直してください',
+    '持ち越し先が使えなくなりました。選び直してください',
+  ),
+  sprintCloseChanged: workspace(
+    '終える間に{task}が変わりました。読み直したので、行き先を確かめてもう一度押してください',
+    '終える間に{task}が変わりました。読み直したので、行き先を確かめてもう一度押してください',
+  ),
+  sprintCloseForbidden: workspace('{sprint}を終えるのは{leader}です', '{sprint}を終えるのは{leader}です'),
+  sprintCloseFailed: workspace(
+    '終えられませんでした。もう一度試してください',
+    '終えられませんでした。もう一度試してください',
+  ),
+  // 最終日を過ぎた進行中のスプリントの知らせ（スプリントの画面と計画の画面）。終えるのはリーダー
+  sprintOverdueLeader: workspace(
+    '{label}は最終日（{end}）を過ぎています。終わらなかった{task}の行き先を決めて、終えてください。',
+    '{label}は最終日（{end}）を過ぎています。終わらなかった{task}の行き先を決めて、終えてください。',
+  ),
+  sprintOverdueMember: workspace(
+    '{label}は最終日（{end}）を過ぎています。終えるのは{leader}です。',
+    '{label}は最終日（{end}）を過ぎています。終えるのは{leader}です。',
+  ),
   // スプリントの画面（design/sprint.html）。見出しは進行中のスプリントの名前、小見出しは期間と何日目か
   sprintBoardPageName: workspace('{name}・{workspace}', '{name}・{workspace}'),
   sprintBoardEyebrow: workspace('{period}・{length} 日のうち {day} 日目', '{period}・{length} 日のうち {day} 日目'),

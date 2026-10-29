@@ -23,6 +23,12 @@ export function sprintPeriod(sprint: SprintNaming, t: Translate): string {
   return t('sprintPeriod', { start: formatMonthDay(sprint.start_on), end: formatMonthDay(sprint.end_on) });
 }
 
+// 呼び名に期間を添える。名前のあるスプリントは「<スプリント> <名前>（<M/D>〜<M/D>）」、名前の無いスプリントは期間が名前なので重ねない
+export function sprintLabelWithPeriod(sprint: SprintNaming, t: Translate): string {
+  const label = sprintLabel(sprint, t);
+  return sprint.name === null ? label : t('sprintLabelWithPeriod', { label, period: sprintPeriod(sprint, t) });
+}
+
 // タスクを完了にしたときの知らせ。始まっていないスプリントの中で完了してスプリントから外れたら（task-complete の left_sprint）、
 // 「始まっていない<スプリント>から外れました」を添える
 export function completedMessage(leftSprint: boolean, t: Translate): string {

@@ -10,6 +10,9 @@
   import Markdown from '../../../../../lib/components/Markdown.svelte';
   import PageHead from '../../../../../lib/components/PageHead.svelte';
   import SprintCard from '../../../../../lib/components/SprintCard.svelte';
+  import SprintCloseDialog from '../../../../../lib/components/SprintCloseDialog.svelte';
+  import SprintOverdueNotice from '../../../../../lib/components/SprintOverdueNotice.svelte';
+  import { focusPageHeading } from '../../../../../lib/focus-heading.ts';
   import { MoveQueue } from '../../../../../lib/move-queue.ts';
   import { edgesOf, planCardMove, type MoveDirection, type MoveEdge } from '../../../../../lib/sprint-board.ts';
   import { completedMessage, sprintLabel, sprintPeriod } from '../../../../../lib/sprint-label.ts';
@@ -35,7 +38,10 @@
   // 完了の列のカードは、戻せる（完了したストーリーの下でない）ときに完了の印の横に「戻す」を出し、task-reopen を呼ぶ。
   // 戻したら読み直して、戻した列のカードへフォーカスを移す。完了の列には、ワークスペースの完成の定義（空なら出さない）を畳んで置く。
   // 断られたら理由をトーストで知らせて読み直す。ドラッグは #245 で足す。
-  // 進行中のスプリントが無いときは、見本の空の状態をロールで文を分けて出す
+  // 進行中のスプリントが無いときは、見本の空の状態をロールで文を分けて出す。
+  // 見出しの右の「終える」は、リーダー（管理者を含む）にだけ、終了していないワークスペースでだけ出し、終了のダイアログ（SprintCloseDialog）を開く。
+  // 最終日がワークスペースの今日より前なら、見出しの下に終えるのを促す警告（SprintOverdueNotice）を出す。
+  // 終えたら読み直して進行中の無い表示に戻り、見出しへフォーカスを移す
   let { data }: PageProps = $props();
 
   const workspace = $derived(data.workspace);
@@ -45,7 +51,11 @@
   const isLeader = $derived(workspace !== null && (workspace.role === 'leader' || isAdmin));
   const isClosed = $derived(workspace !== null && workspace.closedAt !== null);
   const canWrite = $derived(workspace !== null && !isClosed);
+  const canLead = $derived(isLeader && !isClosed);
   const sprint = $derived(board?.sprint ?? null);
+  // 日付は YYYY-MM-DD なので、文字列の比較が日付の前後と一致する。終了したワークスペースでは、誰も終えられないので促さない
+  const overdue = $derived(!isClosed && sprint !== null && board !== null && board.today > sprint.end_on);
+  let closeDialog = $state<ReturnType<typeof SprintCloseDialog>>();
   const sprintHref = $derived(
     resolve('/[slug]/w/[id]/sprint', { slug: page.params.slug ?? '', id: page.params.id ?? '' }),
   );
@@ -315,6 +325,17 @@
     }
   }
 
+  function openClose(trigger: HTMLElement): void {
+    if (sprint !== null) closeDialog?.show(trigger, sprint);
+  }
+
+  // 終えたら、押した「終える」が消えるので、読み直して見出しへフォーカスを移す
+  async function closed(): Promise<void> {
+    await invalidate('app:sprint-board');
+    await tick();
+    focusPageHeading();
+  }
+
   const emptyText = $derived(
     isClosed
       ? t('sprintBoardEmptyClosedText', { workspace: t('workspace'), sprint: t('sprint') })
@@ -381,7 +402,21 @@
       })}
       {tallies}
       focusable
-    />
+    >
+      {#snippet actions()}
+        {#if canLead}
+          <button
+            class="btn"
+            type="button"
+            aria-label={t('sprintCloseLabel', { label: sprintLabel(sprint, t) })}
+            onclick={(event) => openClose(event.currentTarget)}>{t('sprintCloseAction')}</button
+          >
+        {/if}
+      {/snippet}
+    </PageHead>
+    {#if overdue}
+      <SprintOverdueNotice {sprint} canClose={canLead} onclose={openClose} />
+    {/if}
     {#if sprint.goal !== null}
       <article class="notice">
         <span class="notice-label">{t('sprintGoal')}</span>
@@ -437,4 +472,13 @@
       <p class="action-note" id={KEY_HINT_ID}>{t('sprintBoardKeyHint', { column: t('column'), done: t('done') })}</p>
     {/if}
   {/if}
+  {#key workspace.id}
+    <SprintCloseDialog
+      bind:this={closeDialog}
+      {slug}
+      workspaceId={workspace.id}
+      onclosed={() => void closed()}
+      ongone={() => void invalidate('app:sprint-board')}
+    />
+  {/key}
 {/if}

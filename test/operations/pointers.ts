@@ -458,6 +458,12 @@ export const pointers: Pointers = {
     const sprint = await createSprint(target.organization, target.workspace.id, { start_on: startOn, end_on: endOn });
     return { workspace_id: target.workspace.id, sprint_id: sprint.id, goal: '新しい依頼を3件受ける' };
   },
+  // 呼ぶたびに、前の呼び出しの進行中のスプリントを閉じ、ゴールのない進行中のスプリントを作る（終えたスプリントは続けて終えられないため）
+  'sprint-close': async (target) => {
+    await closeActiveSprints(target);
+    const sprint = await createSprint(target.organization, target.workspace.id, { status: 'active' });
+    return { workspace_id: target.workspace.id, sprint_id: sprint.id, carry_sprint_id: null, is_goal_achieved: null };
+  },
   'sprint-board': async (target) => ({ workspace_id: target.workspace.id }),
   // 呼ぶたびに、進行中のスプリント、列を2つ、先頭の列のカードを作り、次の列へ移す（移したカードは同じ列への移動になるため）
   'task-column-move': async (target) => {

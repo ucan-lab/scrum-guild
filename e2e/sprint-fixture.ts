@@ -2,9 +2,10 @@
 // seed の行も DB も書き換えず（ほかのファイルと並べて走るため）、4つの列に長い題や親のストーリーを含むカードを置く。
 // ID は架空で、引き出しは開かない
 import type { OutputOf } from '../src/shared/operations/define.ts';
-import type { sprintBoard } from '../src/shared/operations/sprint/index.ts';
+import type { sprintBoard, sprintList } from '../src/shared/operations/sprint/index.ts';
 
 type Board = OutputOf<typeof sprintBoard>;
+type Plan = OutputOf<typeof sprintList>;
 
 const card = (id: string, title: string, overrides: Partial<Board['columns'][number]['tasks'][number]> = {}) => ({
   id,
@@ -74,4 +75,54 @@ export const SAMPLE_BOARD: Board = {
       ],
     },
   ],
+};
+
+// SAMPLE_BOARD の遠征が最終日を過ぎた日（today）の計画の画面。進行中の遠征の下に、終えるときの持ち越し先になる先の遠征が1つ。
+// 進行中の遠征の未完了のクエストは2件（出発前の1件と遂行中の1件）、完遂は1件
+export const OVERDUE_TODAY = '2026-11-02';
+
+export const OVERDUE_BOARD: Board = { ...SAMPLE_BOARD, today: OVERDUE_TODAY };
+
+export const NEXT_SPRINT = {
+  id: '019a0000-0000-7000-8000-00000000f002',
+  name: '第15回',
+  goal: null,
+  start_on: '2026-10-27',
+  end_on: '2026-11-09',
+  length: 14,
+  status: 'planned' as const,
+};
+
+export const OVERDUE_PLAN: Plan = {
+  sprints: [
+    {
+      ...SAMPLE_BOARD.sprint!,
+      tasks: [
+        {
+          id: '019a0000-0000-7000-8000-00000000f201',
+          title: '管理画面にポイント履歴の一覧を出す',
+          points: 5,
+          assignee: null,
+          completed_at: null,
+        },
+        {
+          id: '019a0000-0000-7000-8000-00000000f203',
+          title: 'ポイント付与のバッチを作る',
+          points: 3,
+          assignee: null,
+          completed_at: null,
+        },
+        {
+          id: '019a0000-0000-7000-8000-00000000f204',
+          title: '付与の履歴を返す API を作る',
+          points: 2,
+          assignee: null,
+          completed_at: '2026-10-19T08:00:00.000Z',
+        },
+      ],
+    },
+    { ...NEXT_SPRINT, tasks: [] },
+  ],
+  defaults: { start_on: '2026-11-10', length: 14 },
+  today: OVERDUE_TODAY,
 };
