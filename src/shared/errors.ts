@@ -6,6 +6,8 @@ export const errorCodes = [
   'unauthenticated',
   // ログインしていて、権限が無い。Origin が公開する URL と違うときも
   'forbidden',
+  // パスワードでのログインの、違うパスワード、無いメールアドレス、そろえ方に合わない入力。401。どれも同じ本文にする
+  'invalid_credentials',
   'not_found',
   'conflict',
   // 閉じたワークスペースへの書き込み。読み取り専用なので書けない。409

@@ -25,7 +25,7 @@ export class OrganizationDb extends DbEntry<OrganizationTables, 'organization'> 
   }
 }
 
-// 共通の6表（accounts、account_logins、sessions、oauth_states、rate_limits、organizations）
+// 共通の7表（accounts、account_logins、password_credentials、sessions、oauth_states、rate_limits、organizations）
 export function commonDb(env: Env): CommonDb {
   return new DbEntry<CommonTables, 'common'>(commonDatabase(env), commonQueries);
 }

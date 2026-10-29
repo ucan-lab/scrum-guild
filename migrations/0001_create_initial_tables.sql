@@ -103,7 +103,7 @@ CREATE TABLE users (
     AND (login_email IS NULL) = (claim_expires_at IS NULL)
   ),
   CHECK (
-    login_email IS NULL OR (login_provider = 'google' AND login_email = lower(trim(login_email)))
+    login_email IS NULL OR (login_provider IN ('google', 'password') AND login_email = lower(trim(login_email)))
   )
 );
 
@@ -171,7 +171,7 @@ CREATE TABLE invitations (
     AND (login_email IS NULL) = (claim_expires_at IS NULL)
   ),
   CHECK (
-    login_email IS NULL OR (login_provider = 'google' AND login_email = lower(trim(login_email)))
+    login_email IS NULL OR (login_provider IN ('google', 'password') AND login_email = lower(trim(login_email)))
   )
 );
 

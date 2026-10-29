@@ -1,12 +1,18 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
+import { pbkdf2Sync } from 'node:crypto';
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { describe, test } from 'node:test';
 import { fileURLToPath } from 'node:url';
+import { SEED_PASSWORD_LOGINS } from '../seed/passwords.ts';
 import { SEED_OPERATOR_LOGIN_ID, SEED_SESSIONS } from '../seed/sessions.ts';
 import { seedSql, seedTables, sessionInserts, tokenHash } from './seed.ts';
+
+// 今の反復回数（src/server/auth/password-hash.ts の PASSWORD_HASH_ITERATIONS）。そのファイルは Workers の型（crypto.subtle.timingSafeEqual）
+// を使い、scripts/ の型の検査に入れられないので、値を写す
+const PASSWORD_HASH_ITERATIONS = 100_000;
 
 const sessions = Object.values(SEED_SESSIONS);
 
@@ -23,6 +29,46 @@ describe('seed のトークン', () => {
   test('運用者の ID は .dev.vars.example の OPERATOR_LOGIN_IDS と同じ', () => {
     const example = readFileSync(new URL('../.dev.vars.example', import.meta.url), 'utf8');
     assert.match(example, new RegExp(`^OPERATOR_LOGIN_IDS=${SEED_OPERATOR_LOGIN_ID}$`, 'm'));
+  });
+});
+
+// data.sql の password_credentials の行（1行1人）から、ログインの ID とメールアドレスとハッシュを取る
+function seedPasswordRows(): { subject: string; email: string; hash: string }[] {
+  const data = readFileSync(new URL('../seed/data.sql', import.meta.url), 'utf8');
+  const row = /^\s*\('([^']+)', '([^']+)', '(pbkdf2-sha256\$[^']+)'/gm;
+  return [...data.matchAll(row)].map(([, subject, email, hash]) => ({ subject: subject!, email: email!, hash: hash! }));
+}
+
+describe('seed のパスワード', () => {
+  const logins = Object.values(SEED_PASSWORD_LOGINS);
+
+  test('パスワードは12文字以上で、メールアドレスは架空の example.test の、そろえた形', () => {
+    for (const login of logins) {
+      assert.ok([...login.password].length >= 12, login.email);
+      assert.match(login.email, /^[a-z0-9.-]+@example\.test$/);
+    }
+    assert.equal(new Set(logins.map((login) => login.email)).size, logins.length);
+  });
+
+  test('data.sql のハッシュは、今の反復回数で、seed/passwords.ts のパスワードから作った値', () => {
+    const rows = seedPasswordRows();
+    assert.equal(rows.length, logins.length);
+    for (const login of logins) {
+      const row = rows.find((candidate) => candidate.subject === login.loginSubject);
+      assert.ok(row, `${login.email} の行が無い`);
+      assert.equal(row.email, login.email);
+      const [scheme, iterations, salt, key] = row.hash.split('$') as [string, string, string, string];
+      assert.equal(scheme, 'pbkdf2-sha256');
+      assert.equal(Number(iterations), PASSWORD_HASH_ITERATIONS);
+      const derived = pbkdf2Sync(
+        login.password.normalize('NFC'),
+        Buffer.from(salt, 'base64url'),
+        Number(iterations),
+        32,
+        'sha256',
+      );
+      assert.equal(derived.toString('base64url'), key, `${login.email} のハッシュがパスワードに合わない`);
+    }
   });
 });
 
@@ -60,7 +106,7 @@ describe('seedSql', () => {
 
 // 空の D1 に流して中身を数える。wrangler の手元の D1 を使うので数秒かかる
 describe('pnpm db:seed', () => {
-  test('2回流しても通り、組織3つ（e2e の組織の設定だけが使うくもラボを含む）、セッション9つ（同じアカウントの2本目を含む）、組織の無い運用者が入る', () => {
+  test('2回流しても通り、組織5つ（e2e の組織の設定だけが使うくもラボと、パスワードのログインだけが使うゆず書房とみなも舎を含む）、セッション9つ（同じアカウントの2本目を含む）、組織の無い運用者が入る', () => {
     const persistTo = mkdtempSync(path.join(tmpdir(), 'scrum-guild-seed-test-'));
     const root = fileURLToPath(new URL('..', import.meta.url));
     const wrangler = path.join(root, 'node_modules', '.bin', 'wrangler');
@@ -91,7 +137,7 @@ describe('pnpm db:seed', () => {
       assert.equal(result.status, 0, result.stderr);
       const [row] = (JSON.parse(result.stdout) as { results: Record<string, number>[] }[])[0].results;
       assert.deepEqual(row, {
-        organizations: 3,
+        organizations: 5,
         sessions: sessions.length,
         operator_users: 0,
         operator_logins: 1,

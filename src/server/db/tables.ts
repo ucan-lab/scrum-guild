@@ -35,6 +35,16 @@ export const commonTableColumns = {
     expires_at: text,
   },
   rate_limits: { key: text, window_start_at: text, count: integer },
+  // migrations/0010_add_password_credentials.sql で足した
+  password_credentials: {
+    login_subject: text,
+    email: text,
+    password_hash: text,
+    display_name: text,
+    password_changed_at: text,
+    created_at: text,
+    updated_at: text,
+  },
   organizations: {
     id: text,
     slug: text,
