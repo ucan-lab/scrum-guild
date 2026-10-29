@@ -164,7 +164,7 @@ test('ゲームの言葉: 受注して討伐隊に加わり、抜けられる。
   await expect(dialog.getByText('パーティに今所属していて、まだ討伐隊にいない人から選びます。')).toBeVisible();
   await dialog.getByRole('button', { name: '割り振る' }).click();
   await expect(dialog).toBeHidden();
-  await expect(toast.last()).toHaveText('ミナト を討伐隊に割り振りました');
+  await expect(toast.last()).toHaveText('「ミナト」を討伐隊に割り振りました');
   await expect(party.locator('.party-list > li')).toHaveCount(1);
   await expect(party.getByRole('button', { name: '討伐隊を抜ける' })).toBeVisible();
 
@@ -191,6 +191,21 @@ test('受注と抜けるの失敗はトーストで知らせ、割り振りの�
     'このレイドは終わっているので、討伐隊を変えられません',
   );
   await expect(party.locator('.party-list > li')).toHaveCount(2);
+
+  // 何も書かなかった（別の画面で先に抜けていた）ときは、抜けたとは言わず、もう変わっていたことを知らせる
+  const unmockLeave = await mockOperation(page, epicPartyLeave, AOBA, { changed: false });
+  await party.getByRole('button', { name: '討伐隊を抜ける' }).click();
+  await expect(page.locator('.toasts:visible .toast').last()).toHaveText(
+    '討伐隊はもう変わっていました。最新の内容を表示しています',
+  );
+  await unmockLeave();
+
+  // 所属していない（403）ときは、もう一度試すようには書かない
+  await failOperation(page, epicPartyLeave, AOBA, 403, 'forbidden');
+  await party.getByRole('button', { name: '討伐隊を抜ける' }).click();
+  await expect(page.locator('.toasts:visible .toast').last()).toHaveText(
+    'このパーティに所属していないため、討伐隊を変えられません',
+  );
 
   // 割り振りの候補に、討伐隊にいない架空の人を足し、送ると所属を外れていた（404）
   await rewriteOperation(page, memberList, AOBA, (output) => ({
@@ -222,6 +237,23 @@ test('受注と抜けるの失敗はトーストで知らせ、割り振りの�
 });
 
 // 離脱済みの本物の行は、DB の seed に置けない（所属の無いユーザーは運用者の指名し直しが物理削除する）。API の確かめは test/epic-detail.test.ts
+test('討伐隊に入れる人でなくなっていても、討伐隊にいれば「討伐隊を抜ける」を出す（応答を差し替えて確かめる）', async ({
+  page,
+}) => {
+  await rewriteOperation(page, epicDetail, AOBA, (output) => ({ ...output, can_join: false, joined: true }));
+  await page.goto(`${WORKSPACE}/epics/${EPIC_ID}`);
+  const party = page.getByRole('region', { name: '討伐隊' });
+  await expect(party.getByRole('button', { name: '討伐隊を抜ける' })).toBeVisible();
+  await expect(party.getByRole('button', { name: '受注する' })).toHaveCount(0);
+
+  // 入れる人でなく、討伐隊にもいなければ、受注も抜けるも出さない
+  await page.unrouteAll();
+  await rewriteOperation(page, epicDetail, AOBA, (output) => ({ ...output, can_join: false, joined: false }));
+  await page.goto(`${WORKSPACE}/epics/${EPIC_ID}`);
+  await expect(party.locator('.party-list > li')).toHaveCount(2);
+  await expect(party.getByRole('button', { name: /討伐隊を抜ける|受注する/ })).toHaveCount(0);
+});
+
 test('依頼主と討伐隊の人がワークスペースを離れていると、名前に「（離脱済み）」と出る（応答を差し替えて確かめる）', async ({
   page,
 }) => {

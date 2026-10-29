@@ -141,8 +141,10 @@ h1, h2, h3 { text-wrap: balance; }
 /* 本文と脇（記録など）の2列。狭いと1列 */
 .layout-aside { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: var(--space-8); align-items: start; }
 .layout-main { display: grid; gap: var(--space-8); min-width: 0; }
-/* 広い幅では脇を貼り付ける。脇が画面より高くなっても（討伐隊が長いなど）下まで読めるよう、画面の高さまでにして中で縦にスクロールする */
-.layout-side { display: grid; gap: var(--space-5); position: sticky; top: var(--space-4); max-height: calc(100dvh - var(--space-4) * 2); overflow-y: auto; }
+.layout-side { display: grid; gap: var(--space-5); position: sticky; top: var(--space-4); }
+/* 画面より高くなりうる脇（エピックの画面の討伐隊は人数に上限が無い）は貼り付けず、本文と一緒にスクロールさせる。
+   中でスクロールさせると、面の影とフォーカスの輪が切れ、押せる要素の無い脇は読み上げとキーボードで動かせない */
+.layout-side.is-static { position: static; }
 /* 同じ画面の値を読み直している間は、木（.tree[aria-busy]）と同じく薄くして、古い値のまま止まっていないことを見せる */
 .layout-aside[aria-busy="true"] { opacity: 0.6; transition: opacity var(--duration-fast) ease-out; }
 
@@ -478,7 +480,7 @@ h1, h2, h3 { text-wrap: balance; }
 /* ===== 狭い画面 ===== */
 @media (max-width: 1080px) {
   .layout-aside { grid-template-columns: minmax(0, 1fr); }
-  .layout-side { position: static; max-height: none; overflow-y: visible; grid-template-columns: repeat(auto-fit, minmax(min(280px, 100%), 1fr)); }
+  .layout-side { position: static; grid-template-columns: repeat(auto-fit, minmax(min(280px, 100%), 1fr)); }
 }
 @media (max-width: 760px) {
   /* 本文が min-height に届かないとき、余りを本文の行にだけ回す（既定ではメニューの行も伸びて下に空きが出る） */

@@ -76,7 +76,8 @@
   let assignDialog = $state<ReturnType<typeof EpicPartyAssignDialog>>();
   // 受注か抜けるを送っている間。押しても無視する
   let partyBusy = $state(false);
-  const showJoin = $derived(canWrite && !finished && detail !== null && detail.can_join);
+  // 受注は討伐隊に入れる人（can_join）だけ。抜けるは、討伐隊にいれば（joined）入れる人でなくなっていても出す
+  const showJoin = $derived(canWrite && !finished && detail !== null && (detail.joined || detail.can_join));
   const showAssign = $derived(canWrite && !finished && detail !== null && detail.can_manage);
 
   // ダイアログで直した。この画面の値だけを読み直す（枠は読み直さない）
@@ -90,6 +91,7 @@
   }
 
   // 受注する、抜ける。失敗はどれも、もう一度押しても直らないことが多いので、トーストで知らせて読み直す。
+  // 何も書かなかった（changed が偽。別の画面で先に受注した、抜けた）ときは、済んだとは言わず、もう変わっていたことを知らせる。
   // 読み直した後は、同じボタン（文字が替わる）へ、無くなっていれば画面の見出しへフォーカスを移す
   async function toggleJoin(): Promise<void> {
     if (partyBusy || workspace === null || detail === null) return;
@@ -105,8 +107,13 @@
         return;
       }
       const words = { party: t('party'), epic: t('epic'), workspace: t('workspace') };
-      if (result.ok) showToast(t(joining ? 'epicPartyJoined' : 'epicPartyLeft', words), 'check');
-      else if (result.error?.code === 'workspace_closed') {
+      if (result.ok && result.data.changed) showToast(t(joining ? 'epicPartyJoined' : 'epicPartyLeft', words), 'check');
+      else if (result.ok) showToast(t('epicPartyAlreadyChanged', words), 'alert');
+      else if (result.status === 403) {
+        // 権限を失った（ワークスペースから外された）。もう一度押しても直らないので、枠も読み直す
+        showToast(t('epicPartyForbidden', words), 'alert');
+        await invalidate('app:workspace');
+      } else if (result.error?.code === 'workspace_closed') {
         showToast(t('workspaceClosedReadOnly', words), 'alert');
         await invalidate('app:workspace');
       } else if (result.status === 409) showToast(t('epicPartyFinished', words), 'alert');
@@ -230,7 +237,8 @@
       </Section>
     </div>
 
-    <aside class="layout-side">
+    <!-- 討伐隊は人数に上限が無いので、脇を貼り付けず本文と一緒にスクロールさせる（.layout-side.is-static） -->
+    <aside class="layout-side is-static">
       <section class="panel" aria-labelledby="epic-request">
         <div class="panel-title"><h2 id="epic-request">{t('epicPageRequest')}</h2></div>
         <dl class="props">

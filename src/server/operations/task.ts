@@ -209,9 +209,9 @@ export const taskCreateOperation = implement(taskCreate, async ({ db, actor, wor
             ),
         ),
     ),
-    // 担当つきで親の下に作ったら、親のストーリーの親の進行中のエピックの討伐隊に、担当を task_assignee で足す（既にいれば何もしない）。
-    // 直前のタスクの履歴が入った（= タスクを作れた）ときだけ
-    ...(assignee === null
+    // 担当つきで親のストーリーの下に作ったら、そのストーリーの親の進行中のエピックの討伐隊に、担当を task_assignee で足す
+    // （既にいれば何もしない）。直前のタスクの履歴が入った（= タスクを作れた）ときだけ。親のないタスクと担当なしでは文を足さない
+    ...(assignee === null || parent === null
       ? []
       : taskAssigneePartyStatements(db, {
           workspaceId,

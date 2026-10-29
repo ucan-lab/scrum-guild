@@ -210,17 +210,20 @@
             <option value={candidate.id}>{candidate.name}</option>
           {/each}
         </select>
-        <span class="field-hint" id={hintId}>
-          {#if loading && !loadFailed}
-            {t('loading')}
-          {:else if loadFailed}
-            {t('epicAssignCandidatesFailed')}
-          {:else if candidates.length === 0}
-            {t('epicAssignNoCandidates', { workspace: t('workspace'), party: t('party') })}
-          {:else}
-            {t('epicAssignHint', { workspace: t('workspace'), party: t('party') })}
-          {/if}
-        </span>
+        <!-- 欄の説明。読んでいる間と候補が無いときは role="status"、読めなかったときは role="alert" で読み上げる -->
+        {#if loading && !loadFailed}
+          <span class="field-hint" id={hintId} role="status">{t('loading')}</span>
+        {:else if loadFailed}
+          <span class="field-hint" id={hintId} role="alert">{t('epicAssignCandidatesFailed')}</span>
+        {:else if candidates.length === 0}
+          <span class="field-hint" id={hintId} role="status"
+            >{t('epicAssignNoCandidates', { workspace: t('workspace'), party: t('party') })}</span
+          >
+        {:else}
+          <span class="field-hint" id={hintId}
+            >{t('epicAssignHint', { workspace: t('workspace'), party: t('party') })}</span
+          >
+        {/if}
         {#if loadFailed}
           <div class="form-actions">
             <button class="btn is-sm is-quiet" type="button" aria-disabled={loading} onclick={() => void retry()}>

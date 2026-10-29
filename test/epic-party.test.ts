@@ -21,16 +21,28 @@ import {
   hash64,
 } from './factories.ts';
 import { errorCodeOf, post } from './operations/harness.ts';
-import { createPerson, createTarget, type Person, type Target } from './operations/world.ts';
+import { createPerson, createTarget, testEnv, type Person, type Target } from './operations/world.ts';
 
 const app = createApp(implementedOperations);
 
-function call(definition: AnyOperationDefinition, target: Target, person: Person, body: Record<string, unknown>) {
+function call(
+  definition: AnyOperationDefinition,
+  target: Target,
+  person: Person,
+  body: Record<string, unknown>,
+  requestEnv: Env = testEnv,
+) {
   return post(app, definition, {
     slug: target.slug,
     token: person.token,
     body: { workspace_id: target.workspace.id, ...body },
+    env: requestEnv,
   });
+}
+
+// 止めた時計（開発用の DEV_NOW）。同時の要求が同じ時刻で書いても、負けた要求が二重に書かないことを見る
+function frozenEnv(): Env {
+  return Object.assign({}, testEnv, { PUBLIC_ORIGIN: 'http://localhost:8787', DEV_NOW: '2026-10-26T01:00:00.000Z' });
 }
 
 const join = (target: Target, epicId: string, person: Person = target.member) =>
@@ -201,6 +213,24 @@ describe('epic-party-join と epic-party-leave', () => {
     expect(changed.filter(Boolean)).toHaveLength(1);
     expect(await partyOf(target, epic.id)).toHaveLength(1);
     expect(await epicLogsOf(target, epic.id)).toHaveLength(1);
+  });
+
+  test('止めた時計で2つの画面から同時に抜けても、行は消え、履歴は1つ', async () => {
+    const target = await namedTarget();
+    const epic = await epicOf(target);
+    await createEpicPartyMember(target.organization, epic.id, target.member.userId!);
+    const requestEnv = frozenEnv();
+    const results = await Promise.all([
+      call(epicPartyLeave, target, target.member, { epic_id: epic.id }, requestEnv),
+      call(epicPartyLeave, target, target.member, { epic_id: epic.id }, requestEnv),
+    ]);
+    for (const res of results) expect(res.status).toBe(200);
+    const changed = await Promise.all(results.map(async (res) => ((await res.json()) as { changed: boolean }).changed));
+    expect(changed.filter(Boolean)).toHaveLength(1);
+    expect(await partyOf(target, epic.id)).toEqual([]);
+    expect((await epicLogsOf(target, epic.id)).map((log) => log.changes)).toEqual([
+      { party_member: [{ id: target.member.userId, name: '若葉 湊', via: 'self' }, null] },
+    ]);
   });
 
   test('所属していない管理者の受注は 404', async () => {
@@ -461,6 +491,33 @@ describe('配下のタスクの担当で討伐隊に加わる', () => {
       [target.member.userId, target.leader.userId].sort(),
     );
     expect(await epicLogsOf(target, epic.id)).toHaveLength(2);
+  });
+
+  test('止めた時計で同じタスクに同時に同じ担当を割り当てても、討伐隊は1行で、エピックの履歴も1つ', async () => {
+    const target = await namedTarget();
+    const { epic, story } = await underEpic(target);
+    const task = await createTask(target.organization, target.workspace.id, target.admin.userId!, {
+      story_id: story.id,
+    });
+    const requestEnv = frozenEnv();
+    const body = { task_id: task.id, assignee_user_id: target.member.userId };
+    const results = await Promise.all([
+      call(taskAssign, target, target.leader, body, requestEnv),
+      call(taskAssign, target, target.member, body, requestEnv),
+      call(taskAssign, target, target.leader, body, requestEnv),
+    ]);
+    for (const res of results) expect(res.status).toBe(200);
+    expect(await partyOf(target, epic.id)).toEqual([
+      // 時計が止まっていることも確かめる（止まっていなければ、この試験は同じ時刻の競合を見ていない）
+      expect.objectContaining({
+        user_id: target.member.userId,
+        joined_via: 'task_assignee',
+        joined_at: '2026-10-26T01:00:00.000Z',
+      }),
+    ]);
+    expect((await epicLogsOf(target, epic.id)).map((log) => log.changes)).toEqual([
+      { party_member: [null, { id: target.member.userId, name: '若葉 湊', via: 'task_assignee' }] },
+    ]);
   });
 
   test('担当つきの task-create でエピックの配下に作ると、担当が加わる', async () => {

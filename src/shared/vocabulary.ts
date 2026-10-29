@@ -550,6 +550,16 @@ export const dictionary = defineDictionary({
   epicPageAssign: workspace('{party}に割り振る', '{party}に割り振る'),
   epicPartyJoined: workspace('{epic}を受注しました', '{epic}に参加しました'),
   epicPartyLeft: workspace('{party}を抜けました', '{party}から抜けました'),
+  // 受注と抜けるで何も書かなかった（別の画面などで先に変わっていた）。画面は読み直す
+  epicPartyAlreadyChanged: workspace(
+    '{party}はもう変わっていました。最新の内容を表示しています',
+    '{party}はもう変わっていました。最新の内容を表示しています',
+  ),
+  // 受注と抜けるが 403（ワークスペースに所属していない）
+  epicPartyForbidden: workspace(
+    'この{workspace}に所属していないため、{party}を変えられません',
+    'この{workspace}に所属していないため、{party}を変えられません',
+  ),
   epicPartyUpdating: workspace('{party}を更新しています', '{party}を更新しています'),
   // 終わった（クリアか中止した）エピックの討伐隊は変えられない（409 の conflict）
   epicPartyFinished: workspace(
@@ -578,8 +588,8 @@ export const dictionary = defineDictionary({
   epicAssignCandidatesFailed: workspace('割り振れる人を読み込めませんでした。', '割り振れる人を読み込めませんでした。'),
   epicAssignSubmit: workspace('割り振る', '割り振る'),
   epicAssignSubmitting: workspace('割り振っています', '割り振っています'),
-  epicAssigned: workspace('{name} を{party}に割り振りました', '{name} を{party}に割り振りました'),
-  epicAssignAlready: workspace('{name} はもう{party}にいます', '{name} はもう{party}にいます'),
+  epicAssigned: workspace('「{name}」を{party}に割り振りました', '「{name}」を{party}に割り振りました'),
+  epicAssignAlready: workspace('「{name}」はもう{party}にいます', '「{name}」はもう{party}にいます'),
   // 割り振りが 404。選んだ人がもう所属していないか、エピックが消えた
   epicAssignGone: workspace(
     '選んだ人は{workspace}に所属していないか、{epic}が見つかりません。選び直してください。',
