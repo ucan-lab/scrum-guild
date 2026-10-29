@@ -114,10 +114,11 @@ export function decideReview(input: {
   if (!e2e.length || e2e.some((job) => job.conclusion !== 'success')) return skip('e2e が成功していない');
   if (!jobs.some((job) => job.name === 'evidence' && job.conclusion === 'success'))
     return skip('evidence が成功していない');
+  // 判定のコメントは目印で始める。evidence のコメントはテスト名を並べるので、途中に目印の文字があっても数えない
   if (
     event.action !== 'labeled' &&
     comments.some(
-      (comment) => comment.user?.login === 'github-actions[bot]' && comment.body?.includes(EVIDENCE_REVIEW_MARKER),
+      (comment) => comment.user?.login === 'github-actions[bot]' && comment.body?.startsWith(EVIDENCE_REVIEW_MARKER),
     )
   )
     return skip('自動の判定は既にコメントがある');

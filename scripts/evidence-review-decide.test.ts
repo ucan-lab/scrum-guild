@@ -117,8 +117,8 @@ describe('decideReview', () => {
     );
   });
 
-  test('自動は目印を含む github-actions[bot] のコメントがあれば止まり、ラベルなら再判定する', () => {
-    const comments = [{ body: `本文\n${EVIDENCE_REVIEW_MARKER}`, user: { login: 'github-actions[bot]' } }];
+  test('自動は目印で始まる github-actions[bot] のコメントがあれば止まり、ラベルなら再判定する', () => {
+    const comments = [{ body: `${EVIDENCE_REVIEW_MARKER}\n本文`, user: { login: 'github-actions[bot]' } }];
     for (const automatic of [event, workflowRun([{ number: pr.number, base: { repo: sameRepo } }])]) {
       assert.equal(decideReview({ ...input(), event: automatic, comments }).run, false);
     }
@@ -136,6 +136,14 @@ describe('decideReview', () => {
     );
     assert.equal(
       decideReview({ ...input(), comments: [{ body: '<!-- e2e-evidence -->', user: comments[0].user }] }).run,
+      true,
+    );
+    // evidence のコメントはテスト名を並べる。途中に目印の文字が混ざっても、判定のコメントとは数えない
+    assert.equal(
+      decideReview({
+        ...input(),
+        comments: [{ body: `<!-- e2e-evidence -->\n- \`${EVIDENCE_REVIEW_MARKER}\``, user: comments[0].user }],
+      }).run,
       true,
     );
   });
