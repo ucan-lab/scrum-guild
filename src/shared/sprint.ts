@@ -148,11 +148,12 @@ export function sprintDefaults(
 export type SprintProgress = { day: number; length: number; remaining: number };
 
 // 進行中のスプリントの「N 日のうち M 日目」と残りの日数。today はワークスペースのタイムゾーンでの今日。
-// 開始日の前に始めたときは 1 日目、最終日を過ぎたときは最終日の日（残り 0）に丸める
+// 残りは今日を含めて数える（見本の「残り」と同じで、最終日は残り 1 日）。
+// 開始日の前に始めたときは 1 日目で残りは長さのまま、最終日を過ぎたときは最終日の日に丸めて残りは 0
 export function sprintProgress(sprint: { start_on: string; end_on: string }, today: string): SprintProgress {
   const length = sprintLengthOf(sprint.start_on, sprint.end_on);
   const start = dayNumberOf(sprint.start_on)!;
   const now = dayNumberOf(today);
-  const day = now === null ? 1 : Math.min(Math.max(now - start + 1, 1), length);
-  return { day, length, remaining: length - day };
+  const elapsed = now === null ? 1 : Math.max(now - start + 1, 1);
+  return { day: Math.min(elapsed, length), length, remaining: Math.max(length - elapsed + 1, 0) };
 }

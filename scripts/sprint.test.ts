@@ -89,14 +89,15 @@ describe('ゴール', () => {
 describe('進行中の日数', () => {
   const sprint = { start_on: '2026-10-26', end_on: '2026-11-08' };
 
-  test('今日が何日目かと残りの日数を返す', () => {
-    assert.deepEqual(sprintProgress(sprint, '2026-10-26'), { day: 1, length: 14, remaining: 13 });
-    assert.deepEqual(sprintProgress(sprint, '2026-11-02'), { day: 8, length: 14, remaining: 6 });
-    assert.deepEqual(sprintProgress(sprint, '2026-11-08'), { day: 14, length: 14, remaining: 0 });
+  test('今日が何日目かと、今日を含めた残りの日数を返す（見本の「残り」と同じ数え方で、最終日は残り 1 日）', () => {
+    assert.deepEqual(sprintProgress(sprint, '2026-10-26'), { day: 1, length: 14, remaining: 14 });
+    assert.deepEqual(sprintProgress(sprint, '2026-11-02'), { day: 8, length: 14, remaining: 7 });
+    assert.deepEqual(sprintProgress(sprint, '2026-11-08'), { day: 14, length: 14, remaining: 1 });
   });
 
-  test('開始日の前は 1 日目、最終日を過ぎたら最終日に丸める', () => {
-    assert.deepEqual(sprintProgress(sprint, '2026-10-20'), { day: 1, length: 14, remaining: 13 });
+  test('開始日の前は 1 日目で残りは長さのまま、最終日を過ぎたら最終日に丸めて残りは 0', () => {
+    assert.deepEqual(sprintProgress(sprint, '2026-10-20'), { day: 1, length: 14, remaining: 14 });
+    assert.deepEqual(sprintProgress(sprint, '2026-11-09'), { day: 14, length: 14, remaining: 0 });
     assert.deepEqual(sprintProgress(sprint, '2026-12-01'), { day: 14, length: 14, remaining: 0 });
   });
 });
