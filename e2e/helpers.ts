@@ -706,7 +706,7 @@ export async function expectFocusReturned(
   // Chromium の <dialog> は close() の中で開いたボタンへフォーカスを戻し、close イベントは後のタスクで出す。
   // close イベントで別の場所へ移すダイアログでも、その前の一瞬は戻る先にフォーカスがあり、上の確かめが通ってしまう。
   // 2回描画を待った後に、まだ戻る先にあることを待たずに確かめる。描画が止まったページで待ち続けないよう、
-  // expect の既定と同じ 5 秒で待ちを切る
+  // 5 秒で待ちを切る（CI の expect の既定と同じ。手元の既定の 15 秒には合わせない）
   await page.evaluate(
     (limit) =>
       new Promise((resolve) => {
