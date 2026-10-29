@@ -574,7 +574,7 @@ ai-review は Claude のサブスクリプションで動かす。手元で `cla
 - 文書だけの PR（`docs/`、`.md`）、ドラフトの PR、fork と Bot（Dependabot など）の PR では回さない。そこへ付けた `ai-review` のラベルは外れずに残るので、回すときは外してから付け直す
 - `ci-ok` に含めない。AI レビューは助言で、サブスクの上限で落ちてもマージの判定を止めない
 - PR の上で action が読む `.claude/` と `CLAUDE.md` は、base のブランチのもの。スキルやエージェントの変更は `main` に入ってから効く
-- GitHub への書き込みは、ワークフローのトークン（`contents: read`、`pull-requests: write`）で行う。Claude の GitHub App のトークンは `main` に書き込めるため使わない。Claude に許すコマンドは、その PR を読む `gh pr diff` と `gh pr view`、その PR に `--body` で書く `gh pr comment`、`git diff` などの読み取りで、`gh api` は許さない（任意の API と外部の URL を叩けるため）。許可は前方一致なので、`git diff --no-index` でランナーの上のファイルを読むことはできる。Claude が動かすコマンドの環境からは秘密情報を除き（`CLAUDE_CODE_SUBPROCESS_ENV_SCRUB`）、外へ送る道具は許さない。指摘は `github-actions[bot]` の名前で付く
+- GitHub への書き込みは、ワークフローのトークン（`contents: read`、`pull-requests: write`）で行う。Claude の GitHub App のトークンは `main` に書き込めるため使わない。Claude に許すコマンドは、その PR の差分を読む `gh pr diff`、その PR に `--body` で書く `gh pr comment`、`git diff` などの読み取りで、`gh api` は許さない（任意の API と外部の URL を叩けるため）。`gh pr view` も許さない（`--comments` で、`pr-context` で落とした権限の無い人のコメントを読めるため）。本文とコメントは `pr-context` のファイルからだけ読む。許可の一覧は `scripts/ai-review-workflow.test.ts` が確かめる。許可は前方一致なので、`git diff --no-index` でランナーの上のファイルを読むことはできる。Claude が動かすコマンドの環境からは秘密情報を除き（`CLAUDE_CODE_SUBPROCESS_ENV_SCRUB`）、外へ送る道具は許さない。指摘は `github-actions[bot]` の名前で付く
 - ワークフローは PR の head の版が動く。ワークフローを書き換える PR では、上の守り（ワークフローのトークン、許すコマンド、秘密情報の除去）も同じ PR の中で外せる。`.github/` に触れる PR は `needs-human` にし、人がワークフローの差分を読んでからマージする
 - OAuth トークンは長く使え、額の上限を掛けられない。どのブランチにワークフローを置いても（PR の中でも、`on: push` でも）読めるので、リポジトリに push できる人とセッションには、レビューを経ずに読めると考える。漏れた疑いがあれば、`claude setup-token` で作り直してシークレットを入れ替える
 
