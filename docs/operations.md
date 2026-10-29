@@ -278,6 +278,20 @@ rollback で戻るのは、版が持つものすべて。コードと設定の�
 
 マイグレーションは「広げてから縮める」に従うので、コードだけを戻せば足りることが多い。DB まで戻すのは、データを壊したときに限る。
 
+### マイグレーションをまとめ直したとき（DB を作り直す）
+
+「DB を作り直してよい期間」（`docs/development.md`）に、人が決めた Issue で既にあるマイグレーションを書き換えたら、本番の D1 を作り直す。D1 は当てたマイグレーションを名前で `d1_migrations` に記録するので、書き換えたファイルはデプロイしても当たり直さず、本番の表は古い定義のまま残る（`db:migrate:fresh` と CI の migration のジョブは空の D1 に流すので、このずれを見つけない）。
+
+- 今の対象: #256 で 0001 の `users` と `invitations` の `login_email` の CHECK を `login_provider IN ('google', 'password')` に広げた。#256 自体は `login_email` を使わないので作り直さなくても動くが、`password` で待つ指名と招待（#257 以降）を本番で使う前に作り直す
+
+1. 作り直す日と、全員がログインし直すこと、取り込み元から入れ直せないもの（完了の記録、経験値、手で作ったタスク）が消えることを、チームに知らせる
+2. 戻せる時点を控える。`wrangler d1 time-travel info scrum-guild` のブックマークを残す（上の「DB を戻す」）
+3. 手元（上の「手元の準備」）で、全部の表と `d1_migrations` を消す。または新しい D1 を作り、`wrangler.jsonc` の `database_id` を PR で替える
+4. 次の Workers Builds のデプロイが、全部のマイグレーションを当てる。ビルドのログで当たったことを確かめる
+5. 運用者が組織と最初の管理者を作り直し、チームのデータを入れ直す
+
+手元の D1 も同じく、当て済みのファイルは当たり直さない。`.wrangler/state/v3/d1` を消してから `pnpm db:seed` する。
+
 ### 期限切れの行の掃除
 
 毎分の cron（`* * * * *`）が、`oauth_states`、`sessions`、`rate_limits` の期限を過ぎた行を消す（`src/server/scheduled/`、条件と上限は `docs/data-model.md` の「期限切れの行の掃除」）。掃除の失敗や遅れを知らせる通知は無い。D1 の書き込みの使用量の通知（上の「Cloudflare のアカウント」）が届いたら、Workers Logs で `job: "cleanup-expired"` のログを見る。
