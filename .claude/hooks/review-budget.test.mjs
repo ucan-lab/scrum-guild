@@ -404,7 +404,7 @@ describe('review-budget.mjs（入口を実際に起動する）', () => {
       for (const name of readdirSync(dir)) assert.ok(statSync(path.join(dir, name)).isFile(), `${name} は入れ子のディレクトリ`);
       assert.equal(stateFiles(repo).length, 1);
       // 同じ接頭辞の別ブランチや、% で /  を装う名前とは数えが別
-      for (const other of ['claude', 'claude-increment-build-487', 'claude%2Fincrement-build-487']) {
+      for (const other of ['claude.x', 'claude-increment-build-487', 'claude%2Fincrement-build-487']) {
         git(['switch', '-q', '-c', other, 'trunk'], repo);
         allowed(call(repo, 'code-reviewer', T0 + 30 * MIN));
         git(['switch', '-q', 'claude/increment-build-487'], repo);
