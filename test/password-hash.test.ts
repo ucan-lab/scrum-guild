@@ -91,11 +91,19 @@ describe('照合', () => {
     expect(await verifyPassword(`${PASSWORD} `, stored)).toBe(false);
   });
 
-  test('照合は保存した回数で、PBKDF2 を1回回す', async () => {
+  test('照合は保存した回数で回し、今の回数に足りない分を捨てる値で回して、合計を今の回数にそろえる', async () => {
+    // 受け入れ条件「所要時間でも見分けられない」: 回数の古い人の違うパスワードを、無いメールアドレスより速く返さない
     const stored = await hashPassword(PASSWORD, FEW);
     const spy = spyPbkdf2();
     await verifyPassword(OTHER, stored);
-    expect(spy.iterations()).toEqual([FEW]);
+    expect(spy.iterations()).toEqual([PASSWORD_HASH_ITERATIONS - FEW, FEW]);
+  });
+
+  test('保存した回数が今の回数なら、PBKDF2 を1回だけ回す', async () => {
+    const stored = await hashPassword(PASSWORD);
+    const spy = spyPbkdf2();
+    await verifyPassword(OTHER, stored);
+    expect(spy.iterations()).toEqual([PASSWORD_HASH_ITERATIONS]);
   });
 
   test('比べるのは crypto.subtle.timingSafeEqual', async () => {
