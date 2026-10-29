@@ -11,6 +11,7 @@ import {
   createCategory,
   createComment,
   createEpic,
+  createEpicPartyMember,
   createInvitation,
   createMembership,
   createOrganization,
@@ -52,6 +53,18 @@ async function commentFor(target: Target, caller: Person) {
   const author = people.find((person) => person.userId !== null && person.userId === caller.userId) ?? target.admin;
   const task = await createTask(target.organization, target.workspace.id, target.admin.userId!);
   return createComment(target.organization, target.workspace.id, task.id, author.userId!);
+}
+
+// 呼ぶ人が対象の組織の人なら、その人を返す（別の組織の対象を指すときは undefined）
+function personOf(target: Target, caller: Person): Person | undefined {
+  const people = [target.admin, target.leader, target.member, target.bystander];
+  return people.find((person) => person.userId !== null && person.userId === caller.userId);
+}
+
+// 呼ぶ人が対象の組織の人なら、対象のワークスペースに今所属させる（討伐隊に入れる人にする）
+async function ensurePartyCandidate(target: Target, caller: Person): Promise<void> {
+  const person = personOf(target, caller);
+  if (person !== undefined) await ensureMembership(target, target.workspace.id, person.userId!);
 }
 
 // 進行中のスプリントは1つなので、新しく始める入力を作る前に、前の呼び出しで始めたものを終了にして空ける
@@ -287,6 +300,32 @@ export const pointers: Pointers = {
     epic_id: (await createEpic(target.organization, target.workspace.id, target.admin.userId!)).id,
     title: `見直した ${crypto.randomUUID().slice(0, 8)}`,
   }),
+  // 呼ぶたびにエピックを作る（受注した後は、続けて受注しても何も書かないため）。呼ぶ人が対象の組織の人なら、討伐隊に入れる人
+  // （今所属している人）にする。所属していない管理者は受注できない（404）ので、対象のワークスペースに所属させる
+  'epic-party-join': async (target, caller) => {
+    await ensurePartyCandidate(target, caller);
+    return {
+      workspace_id: target.workspace.id,
+      epic_id: (await createEpic(target.organization, target.workspace.id, target.admin.userId!)).id,
+    };
+  },
+  // 呼ぶたびにエピックを作り、呼ぶ人が対象の組織の人なら、その人を討伐隊に入れておく（抜ける行がある入力にする）
+  'epic-party-leave': async (target, caller) => {
+    const epic = await createEpic(target.organization, target.workspace.id, target.admin.userId!);
+    if (personOf(target, caller) !== undefined) {
+      await createEpicPartyMember(target.organization, epic.id, caller.userId!);
+    }
+    return { workspace_id: target.workspace.id, epic_id: epic.id };
+  },
+  // 呼ぶたびにエピックを作る。依頼主は呼ぶ人（対象の組織の人なら。一般のメンバーは依頼主なら割り振れる）で、割り振る相手は
+  // 対象の一般のメンバー（target.member。今所属している）
+  'epic-party-assign': async (target, caller) => {
+    const requester = personOf(target, caller) ?? target.admin;
+    const epic = await createEpic(target.organization, target.workspace.id, target.admin.userId!, {
+      requester_user_id: requester.userId!,
+    });
+    return { workspace_id: target.workspace.id, epic_id: epic.id, user_id: target.member.userId! };
+  },
   // 呼ぶたびにエピックを作る（削除すると2回目は 404 になるため）。作った人は一般のメンバー（作った人なら削除できる）
   'epic-delete': async (target) => ({
     workspace_id: target.workspace.id,

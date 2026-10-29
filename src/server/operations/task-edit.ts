@@ -11,6 +11,7 @@ import {
   refOf,
   repositoryRow,
 } from './definition-refs.ts';
+import { taskAssigneePartyStatements } from './epic-party.ts';
 import { implement } from './implement.ts';
 import { sprintRefColumns, sprintRefOf } from './sprint-refs.ts';
 import {
@@ -361,6 +362,7 @@ export const taskUpdateOperation = implement(taskUpdate, async ({ db, actor, wor
 
 // 担当を替える（null で外す）。読んだ担当から替わるときだけ、「読んだ担当のまま、読んだ今日やるの印のまま、完了していない、
 // 新しい担当が今所属している、ワークスペースが開いている」という条件つきで書き、同じ文で今日やるの印を消す。
+// 担当を付けたら、同じ batch() で、タスクの親のストーリーの親のエピックの討伐隊に担当を足す（taskAssigneePartyStatements）。
 // 通らなかったら読み直して、やり直す（task-update と同じ。3 回まで）
 export const taskAssignOperation = implement(taskAssign, async ({ db, actor, workspace, input }) => {
   const actorUserId = actorUserIdOf(actor);
@@ -447,6 +449,18 @@ export const taskAssignOperation = implement(taskAssign, async ({ db, actor, wor
               .where(previousStatementChanged),
           ),
       ),
+      // 担当を付けたら、タスクの親のストーリーの親の進行中のエピックの討伐隊に、担当を task_assignee で足す（既にいれば何もしない）。
+      // 直前のタスクの履歴が入った（= 上の更新が通った）ときだけ。外すとき（null）は何もしない
+      ...(next === null
+        ? []
+        : taskAssigneePartyStatements(db, {
+            workspaceId,
+            taskId,
+            assignee: next,
+            actorUserId,
+            at,
+            taskUpdatedAt: updatedAt,
+          })),
     ]);
 
     if ((results[0]?.changes ?? 0) > 0) {

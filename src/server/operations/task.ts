@@ -23,6 +23,7 @@ import {
   refOf,
   repositoryRow,
 } from './definition-refs.ts';
+import { taskAssigneePartyStatements } from './epic-party.ts';
 import { implement } from './implement.ts';
 import { sprintRefColumns, sprintRefOf, type SprintRefRow } from './sprint-refs.ts';
 import {
@@ -208,6 +209,18 @@ export const taskCreateOperation = implement(taskCreate, async ({ db, actor, wor
             ),
         ),
     ),
+    // 担当つきで親のストーリーの下に作ったら、そのストーリーの親の進行中のエピックの討伐隊に、担当を task_assignee で足す
+    // （既にいれば何もしない）。直前のタスクの履歴が入った（= タスクを作れた）ときだけ。親のないタスクと担当なしでは文を足さない
+    ...(assignee === null || parent === null
+      ? []
+      : taskAssigneePartyStatements(db, {
+          workspaceId,
+          taskId,
+          assignee,
+          actorUserId,
+          at,
+          taskUpdatedAt: createdAt,
+        })),
   ]);
 
   // 読んでから書くまでに、ワークスペースが閉じたか、担当が所属を外れたか、親が消えたか完了したか、区分かリポジトリが削除されたら何も入らない

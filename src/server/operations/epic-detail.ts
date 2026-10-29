@@ -4,7 +4,7 @@ import { epicDetail, type EpicJoinedVia } from '../../shared/operations/epic/ind
 import { ApiError } from '../errors.ts';
 import { amountOf, epicPartyExperienceTotalsStatement } from './experience.ts';
 import { implement } from './implement.ts';
-import { isLeaderOrAdmin } from './write-guards.ts';
+import { activeMemberName, isLeaderOrAdmin } from './write-guards.ts';
 
 // エピックの画面の読み取り（docs/data-model.md の epics の epic-detail）。読む表はどれも組織の中の表で、
 // ワークスペースとエピックで絞る。人の名前は組織で絞った users から、離脱済みかは、そのワークスペースの今の所属
@@ -14,8 +14,10 @@ export const epicDetailOperation = implement(epicDetail, async ({ db, actor, wor
   const organizationId = db.organizationId;
   const workspaceId = workspace.workspaceId;
   const epicId = input.epic_id;
+  // users の行が無い人（型の上だけ）は、どの行にも当たらない空の ID で読む
+  const actorUserId = actor.userId ?? '';
 
-  const [epicResult, partyResult, storiesResult, totalsResult, settingsResult] = await db.batch([
+  const [epicResult, partyResult, storiesResult, totalsResult, settingsResult, joinableResult] = await db.batch([
     db.statement((q) =>
       q
         .selectFrom('epics')
@@ -115,6 +117,8 @@ export const epicDetailOperation = implement(epicDetail, async ({ db, actor, wor
         .where('workspaces.id', '=', workspaceId)
         .where('workspaces.organization_id', '=', organizationId),
     ),
+    // 呼んだ人が討伐隊に入れる人か（受注の書く文と同じ条件）
+    db.statement((q) => activeMemberName(q, organizationId, workspaceId, actorUserId)),
   ] as const);
 
   const epic = epicResult.rows[0];
@@ -162,5 +166,7 @@ export const epicDetailOperation = implement(epicDetail, async ({ db, actor, wor
       points_all: amountOf(row.points_all),
     })),
     can_manage: (actor.userId !== null && actor.userId === epic.requester_user_id) || isLeaderOrAdmin(actor, workspace),
+    can_join: joinableResult.rows.length > 0,
+    joined: partyResult.rows.some((row) => row.id === actorUserId),
   };
 });

@@ -9,6 +9,7 @@
   import Emblem from '../../../../../../lib/components/Emblem.svelte';
   import EmptyState from '../../../../../../lib/components/EmptyState.svelte';
   import EpicDialog from '../../../../../../lib/components/EpicDialog.svelte';
+  import EpicPartyAssignDialog from '../../../../../../lib/components/EpicPartyAssignDialog.svelte';
   import EpicTier from '../../../../../../lib/components/EpicTier.svelte';
   import Icon from '../../../../../../lib/components/Icon.svelte';
   import LoadFailed from '../../../../../../lib/components/LoadFailed.svelte';
@@ -16,14 +17,20 @@
   import PageHead from '../../../../../../lib/components/PageHead.svelte';
   import Progress from '../../../../../../lib/components/Progress.svelte';
   import Section from '../../../../../../lib/components/Section.svelte';
+  import { callOperation } from '../../../../../../lib/api.ts';
   import { focusPageHeading } from '../../../../../../lib/focus-heading.ts';
+  import { isUnauthenticated, loginUrl } from '../../../../../../lib/login-redirect.ts';
+  import { showToast } from '../../../../../../lib/toast.svelte.ts';
   import { t } from '../../../../../../lib/vocabulary.svelte.ts';
+  import { epicPartyJoin, epicPartyLeave } from '../../../../../../shared/operations/epic/index.ts';
   import type { PageProps } from './$types';
 
-  // エピックの画面（epic.html）。木のエピックの題から開く。この版は読むだけで、概要（本文、リンク）、依頼主、クリア報酬の段階と額、期日、区分、
+  // エピックの画面（epic.html）。木のエピックの題から開く。概要（本文、リンク）、依頼主、クリア報酬の段階と額、期日、区分、
   // 討伐隊の一覧（離脱済みの人も、名前に「（離脱済み）」を添えて出す。レベルは紋章だけで、経験値の数値は API も返さない）、
   // 配下のストーリー（削除していないもの、並びの順。完了の印と、完了 / 全体のポイント）を出す。
-  // 受注、割り振り、報酬と依頼主の変更、クリア、中止、添付ファイルは、後の Issue で足す。
+  // 討伐隊の面の下に、書き込めて終わっていないエピックで、討伐隊に入れる人（can_join）には「受注する」か「抜ける」を、
+  // 依頼主とリーダー（can_manage）には「<討伐隊>に割り振る」（EpicPartyAssignDialog）を出す。どちらも済んだら画面の値を読み直す。
+  // 報酬と依頼主の変更、クリア、中止、添付ファイルは、後の Issue で足す。
   // 見出しの横の「直す」は、エピックのダイアログ（EpicDialog）を開く。書き込めるときだけ出し、終了したワークスペースでは出さない
   // （ダイアログの欄は、この画面がすべて読み取りで出している）。直したら画面の値を読み直し、削除したか消えていたらバックログへ戻る。
   // 無いエピック（別の組織、別のワークスペース、削除済み）は「見つかりません」、読めなかったときは読み込みの失敗を出す。
@@ -66,6 +73,12 @@
   );
 
   let epicDialog = $state<ReturnType<typeof EpicDialog>>();
+  let assignDialog = $state<ReturnType<typeof EpicPartyAssignDialog>>();
+  // 受注か抜けるを送っている間。押しても無視する
+  let partyBusy = $state(false);
+  // 受注は討伐隊に入れる人（can_join）だけ。抜けるは、討伐隊にいれば（joined）入れる人でなくなっていても出す
+  const showJoin = $derived(canWrite && !finished && detail !== null && (detail.joined || detail.can_join));
+  const showAssign = $derived(canWrite && !finished && detail !== null && detail.can_manage);
 
   // ダイアログで直した。この画面の値だけを読み直す（枠は読み直さない）
   async function saved(): Promise<void> {
@@ -75,6 +88,45 @@
     } finally {
       refreshing = false;
     }
+  }
+
+  // 受注する、抜ける。失敗はどれも、もう一度押しても直らないことが多いので、トーストで知らせて読み直す。
+  // 何も書かなかった（changed が偽。別の画面で先に受注した、抜けた）ときは、済んだとは言わず、もう変わっていたことを知らせる。
+  // 読み直した後は、同じボタン（文字が替わる）へ、無くなっていれば画面の見出しへフォーカスを移す
+  async function toggleJoin(): Promise<void> {
+    if (partyBusy || workspace === null || detail === null) return;
+    const joining = !detail.joined;
+    const input = { workspace_id: workspace.id, epic_id: detail.epic.id };
+    partyBusy = true;
+    try {
+      const result = joining
+        ? await callOperation(epicPartyJoin, input, { slug })
+        : await callOperation(epicPartyLeave, input, { slug });
+      if (!result.ok && isUnauthenticated(result)) {
+        window.location.assign(loginUrl(page.url, result));
+        return;
+      }
+      const words = { party: t('party'), epic: t('epic'), workspace: t('workspace') };
+      if (result.ok && result.data.changed) showToast(t(joining ? 'epicPartyJoined' : 'epicPartyLeft', words), 'check');
+      else if (result.ok) showToast(t('epicPartyAlreadyChanged', words), 'alert');
+      else if (result.status === 403) {
+        // 権限を失った（ワークスペースから外された）。もう一度押しても直らないので、枠も読み直す
+        showToast(t('epicPartyForbidden', words), 'alert');
+        await invalidate('app:workspace');
+      } else if (result.error?.code === 'workspace_closed') {
+        showToast(t('workspaceClosedReadOnly', words), 'alert');
+        await invalidate('app:workspace');
+      } else if (result.status === 409) showToast(t('epicPartyFinished', words), 'alert');
+      else if (result.status === 404) showToast(t('epicPartyGone', words), 'alert');
+      else showToast(t('epicPartyFailed', words), 'alert');
+      await saved();
+    } finally {
+      partyBusy = false;
+    }
+    await tick();
+    const button = document.querySelector<HTMLElement>('[data-party-join]');
+    if (button) button.focus();
+    else focusPageHeading();
   }
 
   // ダイアログで削除した、または直そうとしたら無かった。バックログへ戻り、見出しへフォーカスを移す
@@ -185,7 +237,8 @@
       </Section>
     </div>
 
-    <aside class="layout-side">
+    <!-- 討伐隊は人数に上限が無いので、脇を貼り付けず本文と一緒にスクロールさせる（.layout-side.is-static） -->
+    <aside class="layout-side is-static">
       <section class="panel" aria-labelledby="epic-request">
         <div class="panel-title"><h2 id="epic-request">{t('epicPageRequest')}</h2></div>
         <dl class="props">
@@ -260,6 +313,31 @@
             {/each}
           </ul>
         {/if}
+        {#if showJoin || showAssign}
+          <div class="actions-col">
+            {#if showJoin}
+              <button
+                class="btn"
+                class:is-primary={!detail.joined}
+                type="button"
+                data-party-join
+                aria-disabled={partyBusy}
+                onclick={() => void toggleJoin()}
+              >
+                <Icon name="users" />{detail.joined ? t('leave') : t('accept')}
+              </button>
+            {/if}
+            {#if showAssign}
+              <button class="btn" type="button" onclick={(event) => assignDialog?.show(event.currentTarget)}>
+                {t('epicPageAssign', { party: t('party') })}
+              </button>
+            {/if}
+          </div>
+          <!-- 送っている間の読み上げ。常に置き、中の文字だけを替える -->
+          <span class="visually-hidden" role="status"
+            >{partyBusy ? t('epicPartyUpdating', { party: t('party') }) : ''}</span
+          >
+        {/if}
       </section>
     </aside>
   </div>
@@ -273,5 +351,14 @@
     categoriesFailed={data.definitions === null}
     onsaved={() => void saved()}
     ongone={() => void gone()}
+  />
+
+  <EpicPartyAssignDialog
+    bind:this={assignDialog}
+    {slug}
+    workspaceId={workspace.id}
+    epicId={epic.id}
+    partyIds={detail.party.map((member) => member.id)}
+    onassigned={() => void saved()}
   />
 {/if}
