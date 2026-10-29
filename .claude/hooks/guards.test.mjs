@@ -5352,3 +5352,98 @@ describe('bash-rules: force push の判定を git と gh の実際の引数の�
     test(`[誤って止める] ${command} は deny にしない`, () => assert.notEqual(decision(command), 'deny', command));
   }
 });
+
+describe('bash-rules: force push の判定で値の位置と本文の見え方を分ける', () => {
+  for (const command of [
+    // push option の値の後ろの force は、値に隠れず効く
+    'git push -o x -f origin x',
+    'git push --pu x --force origin x',
+    // 標準入力の本文を前の区切りの echo で渡す形は、同じコマンドの && の後ろでも読む
+    "echo '{\"force\":true}' && gh api -X PATCH repos/o/r/git/refs/heads/x --input -",
+    'gh api -X PATCH repos/o/r/git/refs/tags/v1 -F force=true',
+    'curl -X PATCH https://api.github.com/repos/o/r/git/refs/heads/x --data=\'{"force":true}\'',
+    'gh pr update-branch --rebase=true',
+  ]) {
+    test(`[止める] ${command} は deny`, () => assert.equal(decision(command), 'deny', command));
+  }
+  for (const command of [
+    'gh pr update-branch --rebase=false',
+    'gh pr update-branch 12 --repo o/r',
+    "echo '{\"sha\":\"a\"}' | gh api -X PATCH repos/o/r/git/refs/heads/x --input -",
+    "gh api -X PATCH repos/o/r/git/refs/heads/x --input - <<'EOF'\n{\"sha\":\"a\",\"force\":false}\nEOF",
+  ]) {
+    test(`[通す] ${command} は allow`, () => assert.equal(decision(command), 'allow', command));
+  }
+  for (const command of [
+    'curl -X PATCH https://api.github.com/repos/o/r/git/refs/heads/x -d @body.json',
+    'curl -X PATCH https://api.github.com/repos/o/r/git/refs/heads/x --data-binary @- < body.json',
+    'cat body.json | gh api -X PATCH repos/o/r/git/refs/heads/x --input -',
+  ]) {
+    test(`[確認] ${command} は本文を読めないので allow にしない`, () => assert.notEqual(decision(command), 'allow', command));
+  }
+});
+
+describe('bash-rules: force の ref 更新を別の入口と道具の引数の読み方で崩す', () => {
+  // git 2.56.0 の git push --dry-run で forced update になると確かめた形（-- の後ろも refspec として読む）
+  for (const command of ['git push -- origin +HEAD:x', 'git push origin -- +HEAD:x']) {
+    test(`[止める] ${command} は deny`, () => assert.equal(decision(command), 'deny', command));
+  }
+
+  // gh pr update-branch --rebase は GraphQL の updatePullRequestBranch に updateMethod: REBASE を送る（gh 2.103.3 の
+  // バイナリに api.UpdatePullRequestBranch と githubv4.PullRequestBranchUpdateMethod がある）。gh api graphql で直に送れる
+  test('[すり抜け] gh api graphql の updatePullRequestBranch に updateMethod: REBASE を送ると deny', () => {
+    const command = `gh api graphql -f query='mutation { updatePullRequestBranch(input: {pullRequestId: "PR_x", updateMethod: REBASE}) { clientMutationId } }'`;
+    assert.equal(decision(command), 'deny', command);
+  });
+  test('[通す] updateMethod を付けない updatePullRequestBranch は merge の更新なので通す', () => {
+    const command = `gh api graphql -f query='mutation { updatePullRequestBranch(input: {pullRequestId: "PR_x"}) { clientMutationId } }'`;
+    assert.equal(decision(command), 'allow', command);
+  });
+
+  // gh repo sync <リポジトリ> --force は GitHub の側で宛先のブランチを hard reset する（gh repo sync --help）
+  test('[すり抜け] gh repo sync o/r --branch x --force は deny', () =>
+    assert.equal(decision('gh repo sync o/r --branch x --force'), 'deny'));
+  test('[通す] gh repo sync o/r --branch x は fast-forward なので通す', () => assert.equal(decision('gh repo sync o/r --branch x'), 'allow'));
+  test('[通す] gh api で新しいブランチの ref を作るのは force でないので通す', () =>
+    assert.equal(decision('gh api -X POST repos/o/r/git/refs -f ref=refs/heads/x -f sha=abc'), 'allow'));
+
+  for (const command of [
+    // -X と --method を重ねると後ろの値が効く（gh は GH_DEBUG=api で PATCH を送ると確かめ、curl は手元のサーバーで PATCH が届いた）
+    'gh api -X GET -X PATCH repos/o/r/git/refs/heads/x -F force=true',
+    'gh api --method GET --method PATCH repos/o/r/git/refs/heads/x -F force=true',
+    `curl -X GET -X PATCH https://api.github.com/repos/o/r/git/refs/heads/x -d '{"force":true}'`,
+    // curl は短いフラグをまとめ、最後のフラグが値を取る（-sXPATCH、-sd。手元のサーバーで PATCH と本文が届いた）
+    `curl -sXPATCH https://api.github.com/repos/o/r/git/refs/heads/x -sd '{"force":true}'`,
+    // URL のホストは大文字と小文字を区別しない（RFC 3986 の 3.2.2）
+    `curl -X PATCH https://API.github.com/repos/o/r/git/refs/heads/x -d '{"force":true}'`,
+  ]) {
+    test(`[すり抜け] ${command} は deny`, () => assert.equal(decision(command), 'deny', command));
+  }
+
+  for (const command of [
+    // 本文が見えない道。-sd @ファイルは手元のサーバーで本文の force: true が届いた
+    'curl -X PATCH https://api.github.com/repos/o/r/git/refs/heads/x -sd @body.json',
+    // force の値が展開で決まる
+    'gh api -X PATCH repos/o/r/git/refs/heads/x -F force=$F',
+    'gh api -X PATCH repos/o/r/git/refs/heads/x -F "$FIELD"',
+    `gh api -X PATCH repos/o/r/git/refs/heads/x --input - <<< "{\\"force\\":$F}"`,
+    `curl -X PATCH https://api.github.com/repos/o/r/git/refs/heads/x -d "{\\"force\\":$F}"`,
+    // 前の区切りに { があっても、標準入力の本文はその語ではない（jq と printf が組む本文、別のコマンドの {、リダイレクトのファイル）
+    "jq '{sha: .sha, force: true}' x.json | gh api -X PATCH repos/o/r/git/refs/heads/x --input -",
+    `printf '{"%s":true}' force | gh api -X PATCH repos/o/r/git/refs/heads/x --input -`,
+    "git log -1 --format='{%H}'; gh api -X PATCH repos/o/r/git/refs/heads/x --input - < body.json",
+    "echo '{}' > /dev/null; cat body.json | gh api -X PATCH repos/o/r/git/refs/heads/x --input -",
+  ]) {
+    test(`[確認] ${command} は force かを読めないので allow にしない`, () => assert.notEqual(decision(command), 'allow', command));
+  }
+
+  // 誤って止める: ref を動かさないコマンドの語や、標準入力に流れない前の区切りの語を、本文として読む
+  test('[誤って止める] Issue のコメントの本文に ref の API と {"force":true} を書くのは止めない', () => {
+    const command = `gh api -X POST repos/o/r/issues/1/comments -f body='PATCH /repos/o/r/git/refs/heads/x に {"force":true} を送ると force push と同じ'`;
+    assert.equal(decision(command), 'allow', command);
+  });
+  test('[誤って止める] 前の区切りでファイルに書いた {"force":true} は、次の gh api の標準入力の本文ではない', () => {
+    const command = `echo '{"force":true}' > note.json; echo '{"sha":"a"}' | gh api -X PATCH repos/o/r/git/refs/heads/x --input -`;
+    assert.notEqual(decision(command), 'deny', command);
+  });
+});
