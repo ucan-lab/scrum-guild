@@ -49,12 +49,59 @@ export function needsDevBuild(paths: readonly string[]): boolean {
   return paths.length === 0 || paths.some((path) => devBuildPatterns.some((pattern) => pattern.test(path)));
 }
 
+// e2e-repeat（#451）が繰り返す名前の形。repeat_files は GITHUB_OUTPUT の1行に空白区切りで書き、シェルが引用せずに語に分けるので、
+// 空白、改行、グロブやシェルの記号を含みえない形に限る
+const repeatFileName = /^e2e\/[a-z0-9-]+\.test\.ts$/;
+
+// 足したか変えたファイルの一覧（git diff --diff-filter=AM）から、e2e-repeat が繰り返すテストのファイルを選ぶ。
+// 共通のファイル（e2e/fixtures.ts など）と画面のコードは選ばない（docs/development.md の「CI」）。
+// テストのファイルらしい名前（e2e/ で始まり .test.ts で終わる）が形に合わなければ、黙って外さずに例外にして changes を落とす
+export function repeatFiles(paths: readonly string[]): string[] {
+  const files = paths.filter((path) => path.startsWith('e2e/') && path.endsWith('.test.ts'));
+  const bad = files.filter((path) => !repeatFileName.test(path));
+  if (bad.length > 0) {
+    throw new Error(`e2e のテストのファイルの名前が ${repeatFileName} に合わない: ${JSON.stringify(bad)}`);
+  }
+  return [...new Set(files)].sort();
+}
+
+// e2e-repeat が回すテストの件数の上限。1件を5回で約10秒、3つのシャードで上限いっぱいでも1つ約5分（#451）
+export const REPEAT_TEST_LIMIT = 60;
+
+// playwright test --list --reporter=json の出力のうち、件数を数えるのに読む形
+type ListedSuite = { specs?: { tests?: unknown[] }[]; suites?: ListedSuite[] };
+export type ListReport = { suites?: ListedSuite[]; errors?: unknown[] };
+
+// --list の出力のテストの件数。describe は suites の入れ子になるので、たどって specs の tests（プロジェクトごとに1つ）を数える
+export function countListedTests(report: ListReport): number {
+  const count = (suites: readonly ListedSuite[] = []): number =>
+    suites.reduce(
+      (sum, suite) =>
+        sum + (suite.specs ?? []).reduce((n, spec) => n + (spec.tests?.length ?? 0), 0) + count(suite.suites),
+      0,
+    );
+  return count(report.suites);
+}
+
+// e2e-repeat が繰り返すか。上限ちょうどまでは回す。テストのファイルが読めない（構文の誤りなど）ときは、
+// 回さずに通すのでなく例外にしてジョブを落とす
+export function repeatVerdict(report: ListReport): { run: boolean; count: number } {
+  if ((report.errors ?? []).length > 0) {
+    throw new Error(`playwright test --list がエラーを返した: ${JSON.stringify(report.errors)}`);
+  }
+  const count = countListedTests(report);
+  return { run: count <= REPEAT_TEST_LIMIT, count };
+}
+
 // ci-ok のジョブが受け取る toJSON(needs) の形
 export type Needs = Record<string, { result: string; outputs?: Record<string, string> }>;
 
 // 変わったファイルで走るかが決まる重いジョブと、それを決める changes の出力の名前。
 // Map にするのは、ジョブの名前が toString などのときに Object.prototype のメンバーを引かないため
-const conditionalJobs = new Map([['e2e-dev', 'dev_build']]);
+const conditionalJobs = new Map([
+  ['e2e-dev', 'dev_build'],
+  ['e2e-repeat', 'repeat'],
+]);
 
 // changes を除く needs のジョブすべてを重いジョブとして見る。ジョブを足したときは needs に入れれば判定に入る。
 // 文書だけなら重いジョブがすべて skipped、そうでなければすべて success のときだけ通す。

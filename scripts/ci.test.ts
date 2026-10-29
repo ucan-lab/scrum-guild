@@ -1,6 +1,18 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
-import { ciOkVerdict, isDocsOnly, needsDevBuild, migrationFiles, parseNulSeparated, type Needs } from './ci.ts';
+import {
+  ciOkVerdict,
+  countListedTests,
+  isDocsOnly,
+  needsDevBuild,
+  migrationFiles,
+  parseNulSeparated,
+  REPEAT_TEST_LIMIT,
+  repeatFiles,
+  repeatVerdict,
+  type ListReport,
+  type Needs,
+} from './ci.ts';
 
 describe('isDocsOnly', () => {
   test('文書の範囲の .md だけなら真', () => {
@@ -214,6 +226,35 @@ describe('ciOkVerdict', () => {
     });
   });
 
+  describe('繰り返す e2e（e2e-repeat）は repeat で期待が変わる', () => {
+    function withRepeat(repeat: string | undefined, result: string, docsOnly = 'false'): Needs {
+      const outputs: Record<string, string> = { docs_only: docsOnly, dev_build: 'true' };
+      if (repeat !== undefined) outputs.repeat = repeat;
+      return {
+        changes: { result: 'success', outputs },
+        check: { result: docsOnly === 'true' ? 'skipped' : 'success' },
+        'e2e-dev': { result: docsOnly === 'true' ? 'skipped' : 'success' },
+        'e2e-repeat': { result },
+      };
+    }
+
+    const repeatCases: [string, Needs, boolean][] = [
+      ['repeat が真で success', withRepeat('true', 'success'), true],
+      ['repeat が真で failure（揺れた）', withRepeat('true', 'failure'), false],
+      ['repeat が真で skipped', withRepeat('true', 'skipped'), false],
+      ['repeat が偽で skipped', withRepeat('false', 'skipped'), true],
+      ['repeat が偽で success', withRepeat('false', 'success'), false],
+      ['repeat が無ければ、判定を誤ったとみて落とす', withRepeat(undefined, 'skipped'), false],
+      ['repeat が真でも偽でもなければ落とす', withRepeat('', 'skipped'), false],
+      ['文書だけなら repeat が無くても skipped で通す', withRepeat(undefined, 'skipped', 'true'), true],
+    ];
+    for (const [name, input, ok] of repeatCases) {
+      test(name, () => {
+        assert.equal(ciOkVerdict(input).ok, ok);
+      });
+    }
+  });
+
   test('通さないときは、期待と違うジョブを理由に挙げる', () => {
     const verdict = ciOkVerdict(needs('success', 'false', 'success', 'failure'));
     assert.equal(verdict.ok, false);
@@ -231,5 +272,89 @@ describe('migrationFiles', () => {
 
   test('0件なら空', () => {
     assert.deepEqual(migrationFiles([]), []);
+  });
+});
+
+describe('repeatFiles', () => {
+  test('足したか変えた e2e のテストのファイルだけを、重ねずに名前の順で選ぶ', () => {
+    assert.deepEqual(
+      repeatFiles([
+        'e2e/members.test.ts',
+        'src/lib/a.svelte',
+        'e2e/fixtures.ts',
+        'e2e/helpers.ts',
+        'e2e/a11y-check.test.ts',
+        'test/operations.test.ts',
+        'src/lib/a.test.ts',
+        'docs/development.md',
+        'e2e/members.test.ts',
+      ]),
+      ['e2e/a11y-check.test.ts', 'e2e/members.test.ts'],
+    );
+  });
+
+  test('共通のファイルと画面のコードだけなら空', () => {
+    assert.deepEqual(repeatFiles(['e2e/fixtures.ts', 'e2e/operations.ts', 'src/routes/+page.svelte']), []);
+  });
+
+  test('空の一覧は空', () => {
+    assert.deepEqual(repeatFiles([]), []);
+  });
+
+  const bad = [
+    'e2e/Members.test.ts',
+    'e2e/members test.test.ts',
+    'e2e/a\nb.test.ts',
+    'e2e/$(id).test.ts',
+    'e2e/*.test.ts',
+    'e2e/sub/members.test.ts',
+    'e2e/メンバー.test.ts',
+    'e2e/.test.ts',
+  ];
+  for (const path of bad) {
+    test(`形に合わない名前（${JSON.stringify(path)}）は黙って外さずに落とす`, () => {
+      assert.throws(() => repeatFiles(['e2e/members.test.ts', path]), /合わない/);
+    });
+  }
+});
+
+describe('countListedTests と repeatVerdict', () => {
+  function report(...files: number[][]): ListReport {
+    // ファイルごとに、直下の spec の数と、describe の中の spec の数を並べる
+    return {
+      suites: files.map(([top, nested = 0]) => ({
+        specs: Array.from({ length: top }, () => ({ tests: [{}] })),
+        suites: [{ specs: Array.from({ length: nested }, () => ({ tests: [{}] })), suites: [] }],
+      })),
+      errors: [],
+    };
+  }
+
+  test('describe の入れ子もたどって数える', () => {
+    assert.equal(countListedTests(report([3, 2], [0, 4])), 9);
+  });
+
+  test('プロジェクトが2つなら spec ごとに2件と数える', () => {
+    assert.equal(countListedTests({ suites: [{ specs: [{ tests: [{}, {}] }] }] }), 2);
+  });
+
+  test('suites が無ければ 0 件', () => {
+    assert.equal(countListedTests({}), 0);
+  });
+
+  test(`上限の ${REPEAT_TEST_LIMIT} 件ちょうどなら回す`, () => {
+    assert.deepEqual(repeatVerdict(report([REPEAT_TEST_LIMIT])), { run: true, count: REPEAT_TEST_LIMIT });
+  });
+
+  test('上限を1件でも超えたら回さない', () => {
+    assert.deepEqual(repeatVerdict(report([REPEAT_TEST_LIMIT, 1])), { run: false, count: REPEAT_TEST_LIMIT + 1 });
+  });
+
+  test('0 件なら回す（--pass-with-no-tests で通る）', () => {
+    assert.deepEqual(repeatVerdict(report()), { run: true, count: 0 });
+  });
+
+  test('--list がエラーを返したら、回さずに通すのでなく落とす', () => {
+    assert.throws(() => repeatVerdict({ suites: [], errors: [{ message: 'SyntaxError' }] }), /エラー/);
   });
 });
