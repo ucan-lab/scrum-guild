@@ -191,7 +191,7 @@ gh api "repos/{owner}/{repo}/issues?labels=sprint:<番号>&state=all&per_page=10
 
 - 締めた数と、前の記録の Issue の URL
 - 次のスプリントのゴール、期間、作業中の上限、入れた Issue とポイントの合計、記録の Issue の URL
-- 締めの後は `retro` でスプリントを振り返れることと、手元のセッションなら `daily-scrum` で進捗の図を直せることを添える
+- 締めの後は `retro` でスプリントを振り返れることと、手元のセッションなら `daily-scrum` で開発ボードを出し直せることを添える
 
 ## 止まる条件
 
