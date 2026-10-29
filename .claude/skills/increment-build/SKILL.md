@@ -44,6 +44,8 @@ gh api "repos/{owner}/{repo}/pulls?state=open&per_page=100" --jq '.[] | {number,
 
 並べている相手がいれば、両方の「やること」から変えるファイルを比べ、`docs/development.md` の「並行して作業するときの決まり」で並べてよいかを確かめる。
 
+止まらなければ、セッション名を「PR の前」の形 `#<Issue の番号> <Issue の題>` にする。形と付け方は `docs/development.md` の「並行して作業するときの決まり」のセッション名に従う（`pr-create` と同じ形にそろえる）。PR を作った後は `pr-create` が PR の番号を足す。
+
 ### 2. 詰める
 
 Issue の本文、コメント、親の Issue、本文が指す `docs/` を読む。
