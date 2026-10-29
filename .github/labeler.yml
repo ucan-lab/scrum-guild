@@ -48,5 +48,9 @@ needs-human:
           - ".claude/settings.json"
           - ".claude/hooks/**"
           - ".mcp.json"
-          # CI の evidence のジョブが、PR の本文を書けるトークンを持って走らせるスクリプト
-          - ".claude/skills/pr-create/embed-evidence.py"
+  # .claude/ の下の .md 以外のファイル（CI が書き込みのトークンを持って走らせるスクリプトを含む）。
+  # スキル、エージェント、チェックリストの .md は守らない（理由は docs/development.md の「マージの判定」）
+  - changed-files:
+      - all-globs-to-any-file:
+          - ".claude/**"
+          - "!.claude/**/*.md"

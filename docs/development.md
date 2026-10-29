@@ -507,7 +507,9 @@ Bash の判定を `permissions.deny` に置かないのは、規則が前方一�
 | wrangler の設定（見本の Worker の `wrangler.design.jsonc` も含む）、デプロイのスクリプト、依存 | `wrangler*.jsonc` など、`scripts/`、`package.json`、`pnpm-lock.yaml`、`pnpm-workspace.yaml`、`patches/`、`.npmrc`、Node の版の指定 |
 | lint の設定（組織で絞る層を守る規則を含む） | `eslint.config.*` |
 | GitHub と Claude の設定、git のフック | `.github/`、`.claude/settings.json`、`.claude/hooks/`、`.mcp.json`、`.githooks/` |
-| CI が書き込みのトークンを持って走らせる、`.claude/` の下のスクリプト | `.claude/skills/pr-create/embed-evidence.py`（`evidence` のジョブが PR の本文を書き換える） |
+| `.claude/` の下の `.md` 以外のファイル（Claude の設定とフック、CI が書き込みのトークンを持って走らせるスクリプトを含む） | `.claude/` の下の `.md` 以外（`evidence` のジョブが PR の本文を書き換える `.claude/skills/pr-create/embed-evidence.py`、`.claude/skills/sprint-review/check-criterion.py` など） |
+
+`.claude/` の下は、`.md` 以外のファイルだけを守る（`.github/labeler.yml` では `.claude/**` と `!.claude/**/*.md` の両方に当たるファイル）。ファイルを名指さないのは、ワークフローが後から `.claude/` の下のスクリプトを走らせ始めても、守るパスへの足し忘れが起きないようにするため。文書だけの PR の範囲（下の「文書だけの PR」）が `.md` 以外を文書に数えないのともそろう。スキル、エージェント、チェックリストの `.md` は、CI の `ai-review` が `pull-requests: write` のトークンを持って読むが、守らない。エージェントは差分と `docs/` を PR の head の版で読むので、PR の側はそれらに指示を書いて既に差し込める。害を縛っているのは指示のファイルではなく、`ai-review` に許す道具（その PR へのコメントと読み取りだけ）、ワークフローのトークン、秘密情報の除去で、どれも `.github/` にあり守られている（下の「CI」の ai-review）。守ると、`retro` などのスキルとエージェントの直しも人が手でマージすることになり、その手間に見合わない。
 
 ファイルのリネームを含む PR と、変更したファイルが 3000 を超える PR にも付ける。パスの規則は移動先の名前しか見ず、変更したファイルの一覧も 3000 件までしか取れないため。
 
