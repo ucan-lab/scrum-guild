@@ -184,6 +184,12 @@ export const EXCLUDED_SCREENS: readonly Exclusion[] = [
     reason: SCROLL,
   },
   {
+    // 自分の設定の画面のパーティごとの経験値の表に、並べて走るほかのテストが作ったパーティの行が増え、下の節が下にずれた（#465）。
+    // 同じコミットで単独で2回撮ると同じ画像になった
+    pattern: exactTest('client-errors-routes', '-画面の中で移った後のエラーは、移った先の-route-id-で送る-'),
+    reason: '自分の設定の画面は、並べて走るほかのテストが作ったパーティを、パーティごとの経験値の表に並べる',
+  },
+  {
     pattern: exactTest('organization-look-管理者（くもラボ', '-301d1-押し直せ、409-と-403-は読み直して今の値に戻す-'),
     reason: SCROLL,
   },
