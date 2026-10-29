@@ -64,13 +64,14 @@ describe('NFC', () => {
   });
 
   test('そろえると長くなる文字: 入力の11文字がそろえて12文字なら受ける', () => {
-    const input = `${'a'.repeat(10)}${EXPANDS_UNDER_NFC}`;
+    // 前の文字は U+0308 と合成しないもの（'a' だと ä に合成され、長さが増えない）
+    const input = `${'1'.repeat(10)}${EXPANDS_UNDER_NFC}`;
     expect([...input]).toHaveLength(11);
     expect(normalizePassword(input)).toBe(input.normalize('NFC'));
   });
 
   test('そろえると長くなる文字: 入力の128文字がそろえて129文字なら長すぎる', () => {
-    const input = `${'a'.repeat(127)}${EXPANDS_UNDER_NFC}`;
+    const input = `${'1'.repeat(127)}${EXPANDS_UNDER_NFC}`;
     expect([...input]).toHaveLength(128);
     expect(normalizePassword(input)).toBeUndefined();
   });
