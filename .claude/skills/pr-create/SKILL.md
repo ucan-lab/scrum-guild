@@ -35,7 +35,7 @@ gh api "repos/{owner}/{repo}/pulls?head={owner}:{branch}&state=open" --jq '.[0]'
 
 - 出力が空か `null` → 作成モード
 - PRが返る → 更新モード。返ったJSONを現状として保持する。見るのは `number` `title` `body` `assignees` `requested_reviewers` `labels` `milestone` `draft` `base.ref` `head.ref` `html_url`。付いたレビューは `gh api repos/{owner}/{repo}/pulls/<n>/reviews` で別に取る
-- 返った PR が、自分が作者の、本文が空のドラフトなら、Step 2-B で作った後に中断したものとみなし、作成モードの続きとして扱う。Step 2-B の作成は飛ばし、Step 3 から進める（理由: 更新モードでは承認を求め、空の本文を「最小限直す」流れに乗らない）。ドラフトは、引き継いだ `pr-feedback` が外す
+- 返った PR が、自分が作者のドラフトで、本文が目印の `<!-- pr-create:draft-first -->` だけ（前後の空白を除く）なら、Step 2-B で作った後に中断したものとみなし、作成モードの続きとして扱う。本文が空なだけのドラフトは、人が意図して作ったものとして更新モードで扱う。Step 2-B の作成は飛ばし、Step 3 から進める（理由: 更新モードでは承認を求め、空の本文を「最小限直す」流れに乗らない）。ドラフトは、引き継いだ `pr-feedback` が外す
 
 どちらのモードでも Step 1〜4 は共通。Step 5 で分岐する。
 
@@ -118,7 +118,7 @@ PR の本文では、タスクもストーリーもエピックも `Refs #<番�
 
 ## Step 2-B: 手元ではドラフトで先に作る
 
-作成モードで次をすべて満たすときは、Step 3 の前に、本文の無い PR をドラフトで作る（理由: CI が走る間に本文とインラインコメントを書き、待ちを縮める。`ci.yml` はドラフトでも走り、AI レビュー（`ai-review.yml`）はドラフトでは走らないので、本文の無いままレビューされない）。
+作成モードで次をすべて満たすときは、Step 3 の前に、本文に目印だけを入れた PR をドラフトで作る（理由: CI が走る間に本文とインラインコメントを書き、待ちを縮める。`ci.yml` はドラフトでも走り、AI レビュー（`ai-review.yml`）はドラフトでは走らないので、本文の無いままレビューされない）。
 
 - done-check が通っていて、Step 4 の承認が要らない。承認が要るときは、承認の前に PR を作らない
 - GraphQL が使える（`gh api graphql -f query='{ viewer { login } }'` が 403 で落ちない）。ドラフトを外す `markPullRequestReadyForReview` が GraphQL にしか無いため。使えない（クラウド）ときは飛ばし、Step 5-A で本文の入ったドラフトでない PR を作る
@@ -132,11 +132,12 @@ gh api repos/{owner}/{repo}/pulls \
   -f base=<base> \
   -f head=<branch> \
   -f title="<title>" \
+  -f body='<!-- pr-create:draft-first -->' \
   -F draft=true \
   --jq '{number, url: .html_url, draft}' > "<スクラッチパッドの絶対パス>/pr.json"
 ```
 
-本文は渡さない。`draft` が `true` で返ったことを確かめる。
+本文には目印だけを入れる（GitHub の画面には出ない。理由: Step 0 で中断からの再開を、人が空の本文で作ったドラフトと見分ける）。`draft` が `true` で返ったことを確かめる。
 以降の Step 5-A は、作らずに本文を書き込む形で行う（Step 5-A の「ドラフトで先に作ったとき」）。本文とタイトルの編集（`edited`）では `ci.yml` は走り直さない。
 
 ## Step 3: 草案を作る
@@ -239,7 +240,7 @@ gh api repos/{owner}/{repo}/pulls \
 ### ドラフトで先に作ったとき
 
 Step 2-B で作った PR には、作らずに本文を書き込む。Step 3 でタイトルを変えたときだけ `title` も渡す。
-本文の末尾に、目印の `<!-- pr-create:draft-first -->` を1行足す（GitHub の画面には出ない）。`pr-feedback` は、この目印のあるドラフトだけを `ci-ok` の後に外す（理由: 別のセッションで再開しても、人が意図してドラフトにした PR と見分けられる）。
+書き込む本文の末尾にも、目印の `<!-- pr-create:draft-first -->` を1行残す。`pr-feedback` は、この目印のあるドラフトだけを `ci-ok` の後に外す（理由: 別のセッションで再開しても、人が意図してドラフトにした PR と見分けられる）。
 
 ```bash
 gh api -X PATCH repos/{owner}/{repo}/pulls/<n> \
