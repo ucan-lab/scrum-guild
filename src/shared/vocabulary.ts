@@ -2317,6 +2317,9 @@ export const dictionary = defineDictionary({
   moveColumnNext: workspace('次の{column}へ', '次の{column}へ'),
   moveColumnPrevLabel: workspace('前の{column}へ: {title}', '前の{column}へ: {title}'),
   moveColumnNextLabel: workspace('次の{column}へ: {title}', '次の{column}へ: {title}'),
+  // 選んだカードの説明（aria-describedby）。{points} はポイントか未見積もりの文
+  sprintCardSummary: workspace('{points}、{assignee}は{name}', '{points}、{assignee}は{name}'),
+  sprintCardSummaryUnassigned: workspace('{points}、{unassigned}', '{points}、{unassigned}'),
   // 動かした後の読み上げ。{index} は移した先の{column}の中で何番目か、{total} はその件数
   sprintCardMoved: workspace(
     '「{title}」を{column}の {index} 番目に移しました（{total} 件中）',

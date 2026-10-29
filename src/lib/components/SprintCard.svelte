@@ -18,11 +18,14 @@
     canComplete,
     clock,
     pending = false,
+    hintId,
     onmove,
     oncomplete,
   }: {
     task: SprintBoardTask;
     href: string;
+    // 動かし方の案内（画面の下の .action-note）の id。選んだカードの説明に結ぶ
+    hintId?: string;
     // 期日の印を決める今日（ワークスペースのタイムゾーン）と週の始まり。API の値を渡す
     clock: { today: string; weekStart: number };
     // 動かせないカード（完了の列、書き込めない）は null
@@ -51,25 +54,38 @@
   }
 
   const column = $derived(t('column'));
+  const titleId = $derived(`card-${task.id}-title`);
+  const summaryId = $derived(`card-${task.id}-summary`);
+  const pointsText = $derived(
+    task.points === null ? t('pointsUnsetTitle') : t('pointsLabel', { points: t('points'), value: task.points }),
+  );
+  const summary = $derived(
+    task.assignee === null
+      ? t('sprintCardSummaryUnassigned', { points: pointsText, unassigned: t('unassigned') })
+      : t('sprintCardSummary', { points: pointsText, assignee: t('assignee'), name: task.assignee.name }),
+  );
 </script>
 
 <!-- キーは中のリンクとボタンから届く。選べるのは動かせるカードだけ（tabindex は 0 か未指定だけ） -->
+<!-- 選んだときは題を名前に、ポイントと担当の要約と動かし方の案内を説明に読む（中の印は role="img" で、選んだだけでは読まれないため） -->
 <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
 <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
 <article
   class="card"
   class:is-done={done}
   tabindex={movable ? 0 : undefined}
-  aria-label={movable ? task.title : undefined}
+  aria-labelledby={movable ? titleId : undefined}
+  aria-describedby={movable ? [summaryId, hintId].filter(Boolean).join(' ') : undefined}
   data-card-id={task.id}
   onkeydown={keydown}
 >
+  {#if movable}<span class="visually-hidden" id={summaryId}>{summary}</span>{/if}
   {#if task.story !== null}
     <span class="card-parent"><Icon name="flag" /> {task.story.title}</span>
   {/if}
   <!-- 押しても、フォーカスとスクロールの位置は動かさない（引き出しが閉じたとき、data-task-id で探してフォーカスを戻す） -->
   <!-- eslint-disable-next-line svelte/no-navigation-without-resolve -- href は画面が resolve した経路に ?task=<ID> を足したもの -->
-  <a class="card-title" {href} data-task-id={task.id} data-sveltekit-reset="false">{task.title}</a>
+  <a class="card-title" id={titleId} {href} data-task-id={task.id} data-sveltekit-reset="false">{task.title}</a>
   {#if task.repository !== null || task.due_on !== null}
     <div class="card-meta">
       {#if task.repository !== null}<DefinitionChip kind="repository" name={task.repository.name} />{/if}

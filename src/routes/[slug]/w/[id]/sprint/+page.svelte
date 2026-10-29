@@ -51,6 +51,8 @@
   // 画面で動かした後の列とカード。読み直したら捨てる
   let local = $state<SprintBoardColumn[] | null>(null);
   const columns = $derived(local ?? board?.columns ?? []);
+  // 動かし方の案内。動かせるカード（書き込めるときだけ）の説明に結ぶので、案内も書き込めるときだけ出す
+  const KEY_HINT_ID = 'sprint-board-key-hint';
   const moves = new MoveQueue<ApiResult<unknown>>({
     reload: reloadBoard,
     dropped: () => showToast(t('moveReloaded'), 'alert'),
@@ -325,6 +327,7 @@
                 canComplete={canWrite}
                 clock={{ today: board.today, weekStart: board.week_start }}
                 pending={completingId !== null}
+                hintId={KEY_HINT_ID}
                 onmove={moveCard}
                 oncomplete={(target) => void complete(target)}
               />
@@ -336,7 +339,7 @@
       </div>
     </div>
     {#if canWrite}
-      <p class="action-note">{t('sprintBoardKeyHint', { column: t('column') })}</p>
+      <p class="action-note" id={KEY_HINT_ID}>{t('sprintBoardKeyHint', { column: t('column') })}</p>
     {/if}
   {/if}
 {/if}

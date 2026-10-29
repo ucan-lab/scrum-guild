@@ -346,3 +346,13 @@ test('カードが1枚も無いあいだだけ、列とカードの領域その�
   await expect(page.getByRole('article', { name: 'ポイント付与のバッチを作る' })).toBeVisible();
   await expect(region).not.toHaveAttribute('tabindex');
 });
+
+test('選んだカードは題を名前に、ポイントと担い手と動かし方を説明に読み上げる', async ({ page, context, baseURL }) => {
+  await signIn(context, baseURL, 'member');
+  await mockOperation(page, sprintBoard, { slug: 'aoba' }, SAMPLE_BOARD);
+  await page.goto(`${AOBA_TEAM}/sprint`);
+  const assigned = page.getByRole('article', { name: 'ポイント付与のバッチを作る', exact: true });
+  await expect(assigned).toHaveAccessibleDescription(/3.*担い手はミナト.*Alt と ← → で隣の行程/);
+  const unassigned = page.getByRole('article', { name: '障害時の連絡手順を書く', exact: true });
+  await expect(unassigned).toHaveAccessibleDescription(/未見積もり.*担い手なし/);
+});
