@@ -182,7 +182,8 @@ test('後ろと重ならなければ動かない予告を出し、28日では入
   await page.goto('/aoba/w/019a0000-0000-7000-8000-000000000401/sprint');
   await page.getByRole('button', { name: '延長する', exact: true }).click();
   const dialog = page.getByRole('dialog', { name: '遠征を延ばす' });
-  await expect(dialog.getByText('後ろの遠征は動きません')).toBeVisible();
+  // 読み上げの要約にも同じ文が入るので、見える段落を指す
+  await expect(dialog.getByRole('paragraph').filter({ hasText: '後ろの遠征は動きません' })).toBeVisible();
   await dialog.getByRole('button', { name: 'やめる' }).click();
   await unroute();
   await mockOperation(
