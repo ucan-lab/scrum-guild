@@ -28,9 +28,12 @@ export function sprintExtensionUnchanged(
   )`;
 }
 
-// 動かす行は更新後の期間に置き換えて比較する。動かさない planned と closed も検査する。
-// 全対象の全組み合わせを見る重い式なので、最初の UPDATE にだけ置く。後続の UPDATE は previousStatementChanged で最初の文に結ばれ、
-// 同じ batch() の中は別の要求に割り込まれないため、最初の文が通っていれば更新後の期間の重なりは無い。
+// 動かす行の更新後の期間が、動かさない行（planned と closed）と重ならないことを確かめる。動かす行どうしは
+// sprintExtension が前の行の翌日から並べるので重ならず、元の期間は sprintExtensionUnchanged が読んだ値のままと確かめる。
+// 長さは28日までなので、重なりうる相手は「新しい開始日の27日前から新しい最終日まで」に始まる行だけ。開始日の範囲で
+// (workspace_id, start_on) の部分索引を引き、押し出す件数とスプリントの数の積にしない。
+// 最初の UPDATE にだけ置く。後続の UPDATE は previousStatementChanged で最初の文に結ばれ、同じ batch() の中は
+// 別の要求に割り込まれないため、最初の文が通っていれば更新後の期間の重なりは無い。
 export function sprintExtensionNoOverlap(
   workspaceId: string,
   writes: readonly SprintExtensionWrite[],
@@ -39,9 +42,9 @@ export function sprintExtensionNoOverlap(
   return sql<boolean>`not exists (
     select 1 from json_each(${json}) as proposed
     join sprints as other on other.workspace_id = ${workspaceId} and other.deleted_at is null
-      and other.id != json_extract(proposed.value, '$.id')
-    left join json_each(${json}) as replacement on json_extract(replacement.value, '$.id') = other.id
-    where coalesce(json_extract(replacement.value, '$.next_start_on'), other.start_on) <= json_extract(proposed.value, '$.next_end_on')
-      and coalesce(json_extract(replacement.value, '$.next_end_on'), other.end_on) >= json_extract(proposed.value, '$.next_start_on')
+      and other.start_on >= date(json_extract(proposed.value, '$.next_start_on'), '-27 days')
+      and other.start_on <= json_extract(proposed.value, '$.next_end_on')
+    where other.end_on >= json_extract(proposed.value, '$.next_start_on')
+      and other.id not in (select json_extract(value, '$.id') from json_each(${json}))
   )`;
 }

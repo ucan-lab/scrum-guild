@@ -207,9 +207,10 @@ describe('sprint-extend', () => {
       ['2026-11-05', '2026-11-12'],
     ]);
   });
-  test('進行中の直後に隙間なく続く planned 30 件も、全部押し出して通す', async () => {
+  // 重なりの検査が押し出す件数の2乗で伸びると、ここが数十秒かかる（50件で約20秒だった）
+  test('進行中の直後に隙間なく続く planned 200 件も、全部押し出して通す', { timeout: 30_000 }, async () => {
     const { target, sprint } = await setup();
-    const rowsToAdd = Array.from({ length: 30 }, (_, index) => {
+    const rowsToAdd = Array.from({ length: 200 }, (_, index) => {
       const start = new Date(Date.parse('2026-11-02') + index * 7 * 86_400_000);
       const end = new Date(start.getTime() + 6 * 86_400_000);
       return { start_on: start.toISOString().slice(0, 10), end_on: end.toISOString().slice(0, 10) };
@@ -218,13 +219,13 @@ describe('sprint-extend', () => {
     const res = await extend(target, sprint.id, 3);
     expect(res.status).toBe(200);
     const body = (await res.json()) as { shifted: unknown[] };
-    expect(body.shifted).toHaveLength(30);
+    expect(body.shifted).toHaveLength(200);
     expect((await rows(target)).map((r) => r.start_on)).toEqual(
       ['2026-10-19', ...rowsToAdd.map((r) => r.start_on)].map((start, index) =>
         index === 0 ? start : new Date(Date.parse(start) + 3 * 86_400_000).toISOString().slice(0, 10),
       ),
     );
-    expect(await logs(target)).toHaveLength(31);
+    expect(await logs(target)).toHaveLength(201);
   });
   test('応答の shifted は id、name、start_on、end_on の4項目だけ', async () => {
     const { target, sprint } = await setup();
