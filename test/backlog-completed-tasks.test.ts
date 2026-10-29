@@ -83,6 +83,28 @@ describe('backlog-completed-tasks', () => {
     ]);
   });
 
+  test('別の組織の完了したタスクは、親なしにもストーリーの配下にも返らない', async () => {
+    const target = await createTarget();
+    const other = await createTarget();
+    const done = { completed_at: AT, completed_by: other.admin.userId };
+    const foreignStory = await createStory(other.organization, other.workspace.id, other.admin.userId!);
+    await createTask(other.organization, other.workspace.id, other.admin.userId!, done);
+    await createTask(other.organization, other.workspace.id, other.admin.userId!, {
+      ...done,
+      story_id: foreignStory.id,
+    });
+    const story = await createStory(target.organization, target.workspace.id, target.admin.userId!);
+    expect(await body(target)).toEqual({ tasks: [], next: null });
+    expect(await body(target, { story_id: story.id })).toEqual({ tasks: [], next: null });
+    // 別の組織の側から読めば、その組織の行は返る（置いた行が完了したバックログのタスクとして数えられる形であること）
+    const own = await post(app, backlogCompletedTasks, {
+      slug: other.slug,
+      token: other.member.token,
+      body: { workspace_id: other.workspace.id, story_id: null },
+    });
+    expect(((await own.json()) as Output).tasks).toHaveLength(1);
+  });
+
   test('無い、別組織、別ワークスペース、削除済みのストーリーは404', async () => {
     const target = await createTarget();
     const other = await createTarget();
