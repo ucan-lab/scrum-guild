@@ -202,7 +202,20 @@ ul.plain { margin: 0; padding-left: 1.2em; color: var(--muted); }
 </div>
 
 <script type="module">
-import {
+// 静的な import だと、board.js が読めない（file:// で開いた、出し直しで漏れた）ときにこのスクリプトごと評価されず、
+// 「読み込み中…」のまま理由が出ないので、動的に読んで失敗を画面に出す
+let board;
+try {
+  board = await import('./board.js');
+} catch (error) {
+  const message = document.createElement('div');
+  message.className = 'notice';
+  message.setAttribute('role', 'alert');
+  message.textContent = `開発ボードの部品（board.js）を読めない（${error.message}）。board.js を同じ場所に置き、file:// でなく http で開く。`;
+  document.getElementById('app').replaceChildren(message);
+  throw error;
+}
+const {
   areasOf,
   backlogTree,
   daysLeft,
@@ -221,7 +234,7 @@ import {
   sumTotals,
   validateData,
   viewFromHash,
-} from './board.js';
+} = board;
 
 const PHASE_NOTES = { before: '開始前 ', during: '', after: '期間終了 ' };
 
