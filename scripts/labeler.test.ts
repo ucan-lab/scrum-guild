@@ -80,7 +80,15 @@ describe('needs-human の .claude/ の規則', () => {
   });
 
   test('Codex の設定と Codex が読む決まりは守る', () => {
-    for (const path of ['.codex/agents/implementer.toml', '.codex/config.toml', 'AGENTS.md']) {
+    for (const path of [
+      '.codex/agents/implementer.toml',
+      '.codex/config.toml',
+      'AGENTS.md',
+      'AGENTS.override.md',
+      'src/AGENTS.md',
+      'src/AGENTS.override.md',
+      'src/.codex/config.toml',
+    ]) {
       assert.equal(needsHuman(path), true, path);
     }
   });

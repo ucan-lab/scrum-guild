@@ -7,6 +7,7 @@
 `.claude/` のフックは Codex に効かない。フックが止めていたことを自分で守る。
 
 - wrangler の本番の操作（`deploy`、`versions deploy`、`rollback`）と、`--remote` を付けた `wrangler d1` を打たない
-- `.dev.vars` と `.env` を読まない
+- `.dev.vars` と `.env`、ホームの `~/.wrangler` と `~/.config/.wrangler` を読まない
+- `CLAUDE.md` の「コミットし、`done-check` を通して PR を作る」は呼び出し元のセッションの手順で、Codex は行わない
 - `.claude/settings*.json`、`.claude/hooks/`、`.codex/` を書き換えない
 - コミットしない。コミットと PR は呼び出し元のセッションが行う

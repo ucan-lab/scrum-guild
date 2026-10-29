@@ -84,13 +84,14 @@ Issue に、ブランチ名とセッションの識別をコメントで残す�
 
 担い手の選び方（実装の書き手だけ。テストの書き手と崩す書き手は、下の「テストを先に書く」のとおり汎用のサブエージェント）。
 
-1. クラウドのセッションは常に Claude の `implementer`（`.claude/agents/implementer.md`、Sonnet）。クラウドの環境に OpenAI の資格情報を置かないため
+1. クラウドのセッション（環境変数 `CLAUDE_CODE_REMOTE` が `true`）は、Codex の判定をせず常に Claude の `implementer`（`.claude/agents/implementer.md`、Sonnet）。クラウドの環境に OpenAI の資格情報を置かないため
 2. 手元では、`command -v codex` と `codex login status` がどちらも成功すれば Codex の `implementer`（`.codex/agents/implementer.toml`）。どちらかが失敗すれば Claude の `implementer`
 3. Codex は次のように呼ぶ。プロンプトに「`implementer` エージェントで実装する」と明示し（Codex は親が明示したときだけエージェントを起こす）、続けて5つを書く。プロンプトはスクラッチのファイルに Write で書き、標準入力から渡す（Issue の本文の `` ` `` や `$(...)` をシェルに展開させないため。引数に直接入れない）。ネットワークは呼び出しで無しに固定する（`-c sandbox_workspace_write.network_access=false`。人の `~/.codex/config.toml` が有効にしていても効かせないため）
    ```bash
    codex exec -C <ワークツリーの絶対パス> --sandbox workspace-write -c sandbox_workspace_write.network_access=false --output-last-message <スクラッチの path> - < <プロンプトのファイル>
    ```
-4. Codex が 0 でない終了コードで終わり、Codex 自身のエラー（標準エラーの終わりの、Codex が出したエラー行。実装が走らせたテストの出力ではない）に利用上限の印（`usage limit`、`rate limit`、`429`）があれば、Claude の `implementer` に切り替える。ワークツリーの差分は戻さず、`git diff` と Codex の最後の出力（`--output-last-message` のファイル）を添えて、続きから実装させる。上限以外の失敗（テストが通らないなど）では切り替えず、止まる条件で止まる（担い手を替えて失敗を隠さないため）
+   長く掛かるので `run_in_background` で走らせ、終了の通知で終了コードと出力を読む（前景の Bash は10分で打ち切られ、半端な差分だけが残る）。打ち切られたなど、上限の印の無い非 0 は、上限以外の失敗として止まる。Codex が `implementer` として動いたかは、最後の出力の先頭で名乗らせて確かめる（名乗りが無ければ、PR に「定義が効いたか不明」と書く）
+4. Codex が 0 でない終了コードで終わり、Codex 自身のエラー（標準エラーの終わりの、Codex が出したエラー行。実装が走らせたテストの出力ではない）に利用上限の印（大文字小文字を区別せず `usage limit`、`rate limit`、`quota`、`429`）があれば、Claude の `implementer` に切り替える。ワークツリーの差分は戻さず、`git status --short`（新規のファイルを見落とさないため）、`git diff`、Codex の最後の出力（`--output-last-message` のファイル。無ければ標準出力の末尾）を添えて、続きから実装させる。上限以外の失敗（テストが通らないなど）では切り替えず、止まる条件で止まる（担い手を替えて失敗を隠さないため）
 5. どちらで実装したか（Codex、Claude の `implementer`、Codex が上限に当たって Claude に引き継いだ）を控え、`pr-create` に渡す。PR の本文の `## 確認方法` に書かせる（この節を省かせない）。Codex の後に Claude が直したなら、その旨も添える
 
 やることが次のどれかに触れるなら、渡す前に下の「テストを先に書く」を行う。テストの書き手と実装の書き手を分け、実装の思い込みをテストに持ち込ませないため（すり抜けとランタイムの癖は、同じ書き手だとテストからも実装からも同じように抜け、レビューまで見つからない）。
@@ -112,7 +113,7 @@ Issue に、ブランチ名とセッションの識別をコメントで残す�
 - `.claude/hooks/` を変えたら `node --test .claude/hooks/*.test.mjs` が通る
 - コミットしない。ファイルは Edit と Write で書く（Bash で書いたファイルはフックがコミットを止める）。`pkill` を使わない。Codex に渡すときは「Edit と Write で書く」を外す（Codex はファイルを自分の道具で書き、Claude のフックを通らない）。代わりに手順 6 で `pnpm format` を走らせる
 
-画面を作るなら `ui-polish` を読ませる。
+画面を作るなら `ui-polish` を読ませる。`implementer` には Skill ツールが無いので、スキルを要する Issue（`add-operation`、`d1-migration`、`ui-polish`）では `SKILL.md` の絶対パスを渡して Read させる。
 
 #### テストを先に書く
 
