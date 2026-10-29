@@ -350,7 +350,7 @@ const SECTIONS = [
     `<div class="cat-row"><span class="field-hint">開いて読んだ結果が 0 件（引き出しで戻した後など）</span></div>`,
     ["閉じているときは button.tree-folded（aria-expanded と、一覧の id を指す aria-controls）。見える文言は「完了 N 件を折りたたんでいます」、開くと「完了 N 件を閉じる」。ストーリーの配下では、読み上げの名前に題を添える（「完了 N 件を折りたたんでいます（<題>）」）。開閉の印は木の caret と同じ chevron。", "開いた一覧は div.completed-list（role=\"group\"。名前は「<題>の完了した<タスク>」）。行は .entry で、題の button.entry-title（引き出しを開く）、完了した日（<time datetime>。日付は .mono）、ポイント（.pts）、担当（アバター）。つまみ（.grip）と完了の丸（.done-btn）は出さず、落とし先にもしない。", "「さらに見る」「もう一度試す」は .completed-status の .btn.is-sm。狭い幅（760px 以下）と指で押す画面では、見た目は変えず押せる範囲を 44px 四方以上に広げる。開閉のボタンは行の高さごと 44px にする。", "押したボタンが消えたら（最後まで読んだ、再試行で読めた）、フォーカスは新しく並んだ先頭の行の題へ移す。"],
     ".tree-folded button.tree-folded[aria-expanded] / .completed-list[role=group] .completed-status / button.entry-title / time .mono")],
-  ["drag", "木のドラッグ",() => block("drag", "木のドラッグ（バックログの行）", "行の先頭のつまみ（.grip）をつかんで、エピック、ストーリー、タスクを並べ替え、ストーリーとタスクを別の親へ移す。落とす位置は、行と行の間の線か、親の行の囲みで示す。",
+  ["drag", "木のドラッグ", () => block("drag", "木のドラッグ（バックログの行）", "行の先頭のつまみ（.grip）をつかんで、エピック、ストーリー、タスクを並べ替え、ストーリーとタスクを別の親へ移す。落とす位置は、行と行の間の線か、親の行の囲みで示す。",
     `<div class="tree">${treeEpic("e1", { order: { first: true }, storyOpts: (s) => (s === "s1" ? { entryMarks: (x, i) => (i === 1 ? { drop: "after" } : undefined) } : {}) })}</div>` +
     `<div class="cat-row"><span class="field-hint">${t("task")}の行の下の線。開いた${t("story")}の中なので、${t("task")}の字下げから始まる</span></div>` +
     `<div class="tree">${treeEpic("e1", { order: { first: true }, storyOpts: (s) => (s === "s2" ? { mark: { drop: "before" } } : {}) })}</div>` +
