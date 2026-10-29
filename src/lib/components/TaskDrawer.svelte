@@ -1039,8 +1039,7 @@
       if (result.ok) {
         if (task !== null) task = { ...task, completed_at: result.data.completed_at };
         showToast(completedMessage(result.data.left_sprint, t), 'check');
-        // 始まっていないスプリントの中で完了すると、スプリントから外れる。外れたなら詳細ごと読み直す（履歴も読み直す）。
-        // 履歴を読み始めてから木を読み直す（load の最中に読み始めると、開発時に window_fetch_in_load の警告が出る）
+        // 始まっていないスプリントの中で完了すると、スプリントから外れる。外れたなら詳細ごと読み直す（履歴も読み直す）
         if (result.data.left_sprint) await refresh();
         else void loadHistory();
         onchanged();

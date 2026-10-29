@@ -425,13 +425,9 @@ test('変更の履歴: 読めなければ「もう一度試す」で読み直し
 
   // 保存した後の読み直しに失敗しても、前の行を残し、上に失敗を添える
   unrouteHistory = await failOperation(page, taskHistory, AOBA, 500, 'internal');
-  // 保存の後の木の読み直しが返ってから「もう一度試す」を押す。読み直しの load の最中に履歴を読むと、
-  // 開発時に window_fetch_in_load の警告が出る（#393）
-  const reloaded = waitForResponses(page, '/backlog-tree');
   await drawer.getByRole('radio', { name: '5', exact: true }).check();
   await expect(history.getByText('最新の変更の履歴を読み込めませんでした。')).toBeVisible();
   await expect(items).toHaveCount(1);
-  await reloaded;
   await unrouteHistory();
   await history.getByRole('button', { name: 'もう一度試す' }).click();
   await expect(items).toHaveCount(2);
