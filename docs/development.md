@@ -349,7 +349,7 @@ vite の転送先も同じ値から作るので、画面は自分のワークツ
 | --- | --- | --- |
 | 何を作るか、仕様の判断 | 人 | `backlog-refine` で詰め、`docs/` と Issue の「人が決めたこと」に書く |
 | Issue と完了条件 | AI が書き、人が確かめる。人の答えは「人が決めたこと」に言い換えずに写し、AI が調べて決めたことと置いた前提は「セッションが置いた前提」に根拠と一緒に分けて書く。今回やらないことは「やらないこと」に書く | `backlog-add`、`increment-build` |
-| 実装とテスト | AI（手元のセッションはワークツリー、クラウドのセッションはそのままの環境。受け持つ Issue の数は「並行して作業するときの決まり」）。守る仕組み、認証、Workers のランタイムに触れる Issue は、テストの書き手、実装の書き手、崩す書き手を別のエージェントにする（下の「開発の流れ」） | `CLAUDE.md`、リポジトリのスキル |
+| 実装とテスト | AI（手元のセッションはワークツリー、クラウドのセッションはそのままの環境。受け持つ Issue の数は「並行して作業するときの決まり」）。守る仕組み、認証、Workers のランタイムに触れる Issue は、テストの書き手、実装の書き手、崩す書き手を別のエージェントにする（下の「開発の流れ」）。実装の書き手は、手元で Codex が使えれば Codex の `implementer`、使えなければ（クラウドのセッションは常に）Claude の `implementer`（Sonnet）で、Codex が利用上限に当たったら Claude の `implementer` が続きを実装する。テストの書き手と崩す書き手は汎用のサブエージェント | `CLAUDE.md`、`AGENTS.md`、リポジトリのスキル |
 | 点検 | 実装したのとは別のエージェント | `done-check`、CI の AI レビュー |
 | マージ | パスの規則と人 | 下の「マージの判定」 |
 
@@ -376,6 +376,14 @@ vite の転送先も同じ値から作るので、画面は自分のワークツ
 | `format.mjs`（PostToolUse、Write と Edit と MultiEdit） | このリポジトリのファイルを Prettier で整える。依存が入るまでは何もしない |
 | `review-budget.mjs` と `review-budget-rules.mjs`（PreToolUse、Agent） | `done-check` のレビューのエージェント（`code-reviewer`、`security-reviewer`、`database-reviewer`、`ui-reviewer`、`falsification-qa`）の起動を、ブランチごとに2巡までにする。巡の最初の起動から120秒以内の起動は同じ巡で、超えたら新しい巡として数える（窓をまたいで余分に数える側にずれるが、止まってユーザーに聞くだけなので許す）。上限を超えた起動は拒否し、理由に延ばし方を返す。拒否した起動は数えない。`finding-verifier` と、レビュー以外のエージェント（`Explore` など）は数えず、拒否もしない。detached HEAD などブランチを引けないときは拒否せず数えない。状態は `$(git rev-parse --git-common-dir)/review-budget/<ブランチ名を符号化した名前>.json`（起動の時刻、延長の数と理由）に置く。Git の中にあるので、セッションを開き直しても、別のワークツリーからでも巡の数は戻らない。同時の起動は `mkdir` のロックで直列にする。延ばすには、`AskUserQuestion` でユーザーに聞き、承認されたら `node .claude/hooks/review-budget.mjs extend <巡数> --reason <理由>` を実行する（延ばした分だけ起動できる）。承認の真偽はフックが確かめない（抑止であって境界ではない。拒否の理由に延長のコマンドが入るので、セッションは承認なしでも打てる）。拒否されたら、名前を変えて呼び直すなどで回避しない |
 | `session-start.sh`（SessionStart の起動と再開） | クラウドのセッションだけで、`/opt/node<.node-version の主版>/bin` があればそれを PATH の前に置く行を `CLAUDE_ENV_FILE` に足し（同じ行は重ねない。主版を読めない、`/opt/node<主版>` が無い、`CLAUDE_ENV_FILE` が無いときは、理由を出して足さない）、`pnpm install --frozen-lockfile` を行う。pnpm が無ければ corepack で用意し、corepack も無ければ（Node 25 から同梱されない）`packageManager` の版を `npm install -g` で入れる |
+
+Codex は `.claude/` のフックを通らない（`codex exec` が起こす実装専用のエージェント。`.codex/agents/implementer.toml`）。代わりに次で守る。
+
+- Codex の sandbox は `workspace-write` で、ネットワークは無し。本番に触る `wrangler` の操作は、資格情報も通信の道も無いので届かない
+- `AGENTS.md` が `CLAUDE.md` の「守ること」と「コマンド」に従わせ、フックが止めていたこと（本番の操作、`.dev.vars` と `.env`、コミット）を Codex に固有の注意として並べる
+- Codex が戻った後に、呼び出し元のセッションが `pnpm format` と受け入れ条件の検査を走らせ直す（`format.mjs` を通らないため）。コミットは呼び出し元だけが行う
+
+`.codex/` と `AGENTS.md` は sandbox とネットワークの設定、Codex が読む決まりを変えられるので、変えた PR には `needs-human` が付く（下の「マージの判定」）。
 
 allow に入れるものは、確認の数を減らし、残る確認を書き込みや外に出る操作に絞るために選ぶ。
 
@@ -447,7 +455,8 @@ Bash の判定を `permissions.deny` に置かないのは、規則が前方一�
 | `finding-verifier` | 足した。CRITICAL と HIGH の指摘の前提をコードと文書で確かめ、成り立たないと示せたものだけを反証とする。CI の AI レビューはすべての CRITICAL と HIGH を、`done-check` は直さないつもりのものを渡す |
 | `ui-reviewer` | 足した。画面の差分のコードを `docs/design.md` とチェックリストの `ui.md` に突き合わせ、色の役割、テーマ、言葉の切り替え、状態、アクセシビリティ、狭い幅での崩れを見る。観点を当てた後に、PR の確認を疑って画面を壊す筋書きを組み立てる。撮った画像での採点は `screen-review` が受け持つ |
 | `backlog-pick` | 足した（2026-10-26）。開いている Issue と PR から着手できるものを選び、変えるファイルが重ならないレーンに組み、セッションに貼るプロンプトを出す。前に要るものは GitHub の依存関係（blocked by）だけから読む。本文に人と決める分岐が残る Issue は `backlog-refine` で、ほかは `increment-build` で始めるプロンプトにし、選んだ理由を添える（2026-10-28、#383）。1つのレーンは1つの Issue にし、選ぶセッションはプロンプトを出すだけで作業を始めない（2026-10-29） |
-| `increment-build` | 足した（2026-10-26）。1つの Issue を、着手前の確かめ、`backlog-refine`、Issue への記録、ワークツリー、`ucan:implementer` への委譲を経て `done-check` に渡す。守る仕組み、認証と認可、Workers のランタイムに触れる Issue では、テストの書き手、実装の書き手、崩す書き手を分ける（2026-10-27） |
+| `implementer` | 足した（2026-10-29、#519）。実装専用のエージェント。`.claude/agents/implementer.md`（Sonnet）と `.codex/agents/implementer.toml`（Codex。`model` は固定しない）の2つの薄い定義で、役割と禁止事項だけを持つ。受け入れ条件は `increment-build` の手順 5 が渡す。Codex が無いか利用上限に当たったときは Claude の定義を使う。Codex は `AGENTS.md` を読む |
+| `increment-build` | 足した（2026-10-26）。1つの Issue を、着手前の確かめ、`backlog-refine`、Issue への記録、ワークツリー、`implementer` への委譲（Codex が使えれば Codex、使えなければ Claude の `implementer`。どちらで実装したかは PR の `## 確認方法` に書く）を経て `done-check` に渡す。守る仕組み、認証と認可、Workers のランタイムに触れる Issue では、テストの書き手、実装の書き手、崩す書き手を分ける（2026-10-27） |
 | `sprint-review` | 足した（2026-10-28、#373）。受け入れ待ちを一覧にして確かめる場所を決め、条件を1つずつ宣言して止まり、人の「OK」でチェックボックスに印を付け（`check-criterion.py`）、すべて埋まったら閉じるかを聞く。見つけたことは最後にまとめて起票の候補にし、本番と手元に残したものと片付けを報告する |
 | `sprint-plan` | 足した（2026-10-29、#473）。今のスプリントを締めて記録の Issue に数を残し、次のスプリントに入れる Issue、ポイント、ゴールを人と決めて、`sprint:<番号>` のラベルと記録の Issue を作る |
 | `daily-scrum` | 足した（2026-10-26 に `progress-chart` として。2026-10-29 に名前を変えた、#473）。スプリントのゴールに向けて進み具合、待ち、受け入れ待ち、作業中を点検し、人の手元の開発ボード（claude.ai の Artifact「Scrum Guild 開発ボード」）を出し直す。開発ボードは、スプリントバックログ、プロダクトバックログ、インクリメントの3つの成果物を切り替えて見せる（下の「スクラムのイベントと成果物」）。データは `scripts/progress-data.ts` が GitHub から作る JSON で、ページの元はスキルの `page/`（`index.html`、`board.js`、要件の機能の一覧の `features.json`）にあり、Issue ごとの状態を手で書かない（2026-10-29、#477）。出し直すのは Artifact のツールのある手元のセッションだけ |
@@ -525,6 +534,7 @@ Bash の判定を `permissions.deny` に置かないのは、規則が前方一�
 | wrangler の設定（見本の Worker の `wrangler.design.jsonc` も含む）、デプロイのスクリプト、依存 | `wrangler*.jsonc` など、`scripts/`、`package.json`、`pnpm-lock.yaml`、`pnpm-workspace.yaml`、`patches/`、`.npmrc`、Node の版の指定 |
 | lint の設定（組織で絞る層を守る規則を含む） | `eslint.config.*` |
 | GitHub と Claude の設定、git のフック | `.github/`、`.claude/settings.json`、`.claude/hooks/`、`.mcp.json`、`.githooks/` |
+| Codex の実装専用のエージェントと設定（sandbox とネットワークを変えられる）、Codex が読む決まり | `.codex/`、`AGENTS.md` |
 | CI の `ai-review` が書き込みのトークンを持って読むスキルとエージェント | `.claude/skills/ai-review/`、`.claude/agents/` |
 | `.claude/` の下のファイル（入れ子の `.claude/` も含む。CI が書き込みのトークンを持って走らせるスクリプトを含む）。ただし文書だけの PR の範囲のスキルとチェックリストの `.md` を除く | `.claude/` の下の、`.claude/skills/` と `.claude/checklists/` の `.md` のほか（`.claude/skills/sprint-review/check-criterion.py` など） |
 

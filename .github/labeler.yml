@@ -51,6 +51,9 @@ needs-human:
           - ".claude/skills/ai-review/**"
           - ".claude/agents/**"
           - ".mcp.json"
+          # Codex の実装専用のエージェントと設定（sandbox とネットワークを変えられる）、Codex が読む決まり
+          - ".codex/**"
+          - "AGENTS.md"
   # .claude/ の下のファイル（CI が書き込みのトークンを持って走らせるスクリプトを含む。入れ子の .claude/ も）。
   # スキルとチェックリストの .md だけを外す（ai-review のスキルは上の規則が守る。理由は docs/development.md の「マージの判定」）。
   # 評価は scripts/labeler.test.ts で確かめる
