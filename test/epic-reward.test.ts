@@ -150,6 +150,12 @@ async function runRacing(
   return (operation.handler as (context: never) => Promise<unknown>)(context);
 }
 
+function closeWorkspace(db: OrganizationDb, target: Target) {
+  return db.run(
+    db.statement((q) => q.updateTable('workspaces').set({ closed_at: AT }).where('id', '=', target.workspace.id)),
+  );
+}
+
 function setEpic(db: OrganizationDb, target: Target, epicId: string, set: Record<string, unknown>) {
   return db.run(
     db.statement((q) =>
@@ -362,6 +368,24 @@ describe('epic-reward-update', () => {
     expect((await rowOf(target, epic.id)).reward_tier).toBe('small');
   });
 
+  test('読んだ後にワークスペースが閉じられたら、書く文の条件で止まり、読み直して 409 の workspace_closed', async () => {
+    const target = await namedTarget();
+    const epic = await epicOf(target);
+    await expect(
+      runRacing(
+        epicRewardUpdateOperation,
+        target,
+        target.leader,
+        { epic_id: epic.id, reward_tier: 'large' },
+        async (attempt, db) => {
+          if (attempt === 0) await closeWorkspace(db, target);
+        },
+      ),
+    ).rejects.toMatchObject({ status: 409, code: 'workspace_closed' });
+    expect((await rowOf(target, epic.id)).reward_tier).toBe('small');
+    expect(await epicLogsOf(target, epic.id)).toEqual([]);
+  });
+
   test('epic-update の変更とは独立で、タイトルを直しても段階は変わらない', async () => {
     const target = await namedTarget();
     const epic = await epicOf(target, { reward_tier: 'large' });
@@ -545,6 +569,24 @@ describe('epic-requester-update', () => {
         ],
       },
     ]);
+  });
+
+  test('読んだ後にワークスペースが閉じられたら、書く文の条件で止まり、読み直して 409 の workspace_closed', async () => {
+    const target = await namedTarget();
+    const epic = await epicOf(target);
+    await expect(
+      runRacing(
+        epicRequesterUpdateOperation,
+        target,
+        target.leader,
+        { epic_id: epic.id, user_id: target.member.userId! },
+        async (attempt, db) => {
+          if (attempt === 0) await closeWorkspace(db, target);
+        },
+      ),
+    ).rejects.toMatchObject({ status: 409, code: 'workspace_closed' });
+    expect((await rowOf(target, epic.id)).requester_user_id).toBe(target.admin.userId);
+    expect(await epicLogsOf(target, epic.id)).toEqual([]);
   });
 
   test('読んだ後に替え先が所属を外れたら、書く文の条件で止まり、読み直して 404', async () => {

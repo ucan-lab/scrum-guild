@@ -35,9 +35,11 @@
   const formId = `${ids}-form`;
   const legendId = `${ids}-legend`;
   const hintId = `${ids}-hint`;
+  const unchangedId = `${ids}-unchanged`;
 
   let open = $state(false);
   let dialog = $state<ReturnType<typeof Dialog>>();
+  let submitButton = $state<HTMLButtonElement>();
   let choice = $state<EpicRewardTier>('small');
   let submitError = $state<string | null>(null);
   let submitting = $state(false);
@@ -87,6 +89,8 @@
     const chosen = choice;
     submitting = true;
     submitError = null;
+    // 欄が無効になる前にフォーカスを送信ボタンへ移し、Enter で送ったときにフォーカスが落ちないようにする
+    submitButton?.focus();
     const words = {
       reward: t('reward'),
       party: t('party'),
@@ -135,10 +139,8 @@
     }
   }
 
-  // 欄の説明。今の段階のままなら、押せない理由を出す
-  const hint = $derived(
-    unchanged ? t('epicRewardUnchanged') : t('epicRewardHint', { reward: t('reward'), party: t('party') }),
-  );
+  // 欄の説明は常に出し、今の段階のままのときだけ、押せない理由を別の文として足す
+  const hint = $derived(t('epicPageRewardNote', { reward: t('reward'), party: t('party') }));
   // 常に置いた読み上げの領域の文字。送っている間だけ入れる（docs/design.md の「読み上げの領域は常に置き、文字だけを替える」）
   const status = $derived(submitting ? t('epicRewardSubmitting') : '');
 </script>
@@ -153,7 +155,12 @@
     <fieldset class="form-fields" disabled={submitting}>
       <div class="field">
         <span class="field-label" id={legendId}>{t('epicRewardField', { reward: t('reward') })}</span>
-        <div class="choice-list" role="radiogroup" aria-labelledby={legendId} aria-describedby={hintId}>
+        <div
+          class="choice-list"
+          role="radiogroup"
+          aria-labelledby={legendId}
+          aria-describedby={unchanged ? `${hintId} ${unchangedId}` : hintId}
+        >
           {#each epicRewardTiers as value (value)}
             <label class="choice">
               <input type="radio" name="{ids}-tier" {value} bind:group={choice} />
@@ -162,6 +169,7 @@
           {/each}
         </div>
         <span class="field-hint" id={hintId}>{hint}</span>
+        {#if unchanged}<span class="field-hint" id={unchangedId}>{t('epicRewardUnchanged')}</span>{/if}
       </div>
     </fieldset>
 
@@ -172,7 +180,13 @@
   <span class="visually-hidden" role="status">{status}</span>
   {#snippet footer(close)}
     <button class="btn is-quiet" type="button" aria-disabled={submitting} onclick={close}>{t('cancel')}</button>
-    <button class="btn is-primary" type="submit" form={formId} aria-disabled={submitting || unchanged}>
+    <button
+      class="btn is-primary"
+      type="submit"
+      form={formId}
+      aria-disabled={submitting || unchanged}
+      bind:this={submitButton}
+    >
       {submitting ? t('epicRewardSubmitting') : t('epicRewardSubmit')}
     </button>
   {/snippet}

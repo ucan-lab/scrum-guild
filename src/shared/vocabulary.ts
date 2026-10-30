@@ -643,10 +643,6 @@ export const dictionary = defineDictionary({
   epicPageChangeRequester: workspace('{requester}を替える', '{requester}を替える'),
   // クリア報酬を変えるダイアログ。段階は額つきのラジオで選ぶ
   epicRewardField: workspace('{reward}の段階', '{reward}の段階'),
-  epicRewardHint: workspace(
-    '{reward}は、クリアした時点の{party}全員に同じ額が入ります。',
-    '{reward}は、完了にした時点の{party}全員に同じ額が入ります。',
-  ),
   epicRewardUnchanged: workspace(
     '今の段階です。別の段階を選ぶと変えられます。',
     '今の段階です。別の段階を選ぶと変えられます。',
