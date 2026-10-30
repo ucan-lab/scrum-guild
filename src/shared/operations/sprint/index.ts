@@ -1,5 +1,6 @@
 // スプリントの一覧、作成、変更、削除、開始、終了、延長と、タスクの出し入れ、スプリントの画面（列とカード）の操作の定義
 import type { AnyOperationDefinition } from '../define.ts';
+import { planSummary } from './plan-summary.ts';
 import { sprintBoard } from './sprint-board.ts';
 import { sprintClose } from './sprint-close.ts';
 import { sprintCreate } from './sprint-create.ts';
@@ -13,6 +14,7 @@ import { sprintUpdate } from './sprint-update.ts';
 import { taskColumnMove } from './task-column-move.ts';
 
 export {
+  planSummary,
   sprintBoard,
   sprintClose,
   sprintCreate,
@@ -31,6 +33,16 @@ export {
   type SprintCloseConflictReason,
 } from './sprint-close.ts';
 export { SPRINT_TASK_ADD_MAX } from './sprint-task-add.ts';
+export {
+  planEpicSchema,
+  planLaneSchema,
+  planVelocitySchema,
+  velocitySprintSchema,
+  type PlanEpic,
+  type PlanLane,
+  type PlanVelocity,
+  type VelocitySprint,
+} from './plan-summary.ts';
 export {
   columnMoveConflictReasonOf,
   columnMoveConflictReasons,
@@ -71,4 +83,5 @@ export const sprintOperations: readonly AnyOperationDefinition[] = [
   sprintExtend,
   sprintBoard,
   taskColumnMove,
+  planSummary,
 ];

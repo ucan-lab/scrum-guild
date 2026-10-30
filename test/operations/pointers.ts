@@ -414,6 +414,7 @@ export const pointers: Pointers = {
     comment_id: (await commentFor(target, caller)).id,
   }),
   'sprint-list': async (target) => ({ workspace_id: target.workspace.id }),
+  'plan-summary': async (target) => ({ workspace_id: target.workspace.id }),
   // 呼ぶたびに、前の呼び出しと重ならない期間を指す（同じワークスペースに続けて作ると、2回目は 409 の overlap になるため）
   'sprint-create': async (target) => ({
     workspace_id: target.workspace.id,

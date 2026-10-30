@@ -9,7 +9,10 @@
   import EmptyState from '../../../../../lib/components/EmptyState.svelte';
   import Icon from '../../../../../lib/components/Icon.svelte';
   import LoadFailed from '../../../../../lib/components/LoadFailed.svelte';
-  import PageHead from '../../../../../lib/components/PageHead.svelte';
+  import PageHead, { type Tally } from '../../../../../lib/components/PageHead.svelte';
+  import PlanEpics from '../../../../../lib/components/PlanEpics.svelte';
+  import PlanLaneFill from '../../../../../lib/components/PlanLaneFill.svelte';
+  import PlanVelocity from '../../../../../lib/components/PlanVelocity.svelte';
   import SprintCloseDialog from '../../../../../lib/components/SprintCloseDialog.svelte';
   import SprintDialog from '../../../../../lib/components/SprintDialog.svelte';
   import SprintOverdueNotice from '../../../../../lib/components/SprintOverdueNotice.svelte';
@@ -17,6 +20,7 @@
   import SprintTaskPicker from '../../../../../lib/components/SprintTaskPicker.svelte';
   import { focusPageHeading } from '../../../../../lib/focus-heading.ts';
   import { isUnauthenticated, loginUrl } from '../../../../../lib/login-redirect.ts';
+  import { formatPoints, isOverVelocity } from '../../../../../lib/plan-summary.ts';
   import { sprintLabel, sprintPeriod } from '../../../../../lib/sprint-label.ts';
   import { showToast } from '../../../../../lib/toast.svelte.ts';
   import { t } from '../../../../../lib/vocabulary.svelte.ts';
@@ -33,7 +37,10 @@
 
   // 計画の画面（design/plan.html）。先のスプリントと進行中のスプリントを開始日の順に `.lane` で並べ、
   // 名前（無ければ期間）、進行中の印、期間と長さ、入っているタスクの件数とポイントの合計、入っているタスクの行（`.lane-row`）を出す。
-  // 積載量、ベロシティ、エピックごとの残りは、それぞれの Issue（#244 など）で足す。
+  // 積載量は #66 で足す。集計（plan-summary）は、見出しの集計（ベロシティ、超過した先のスプリントの数、未見積もりの件数）、ベロシティ
+  // （PlanVelocity）、先のスプリントごとの入れたポイントの棒（PlanLaneFill。ベロシティを上回れば、棒を赤にして文字でも示す）と未見積もりの件数、
+  // エピックごとの残りの表（PlanEpics）に出す。集計だけが読めなかったときは、先のスプリントの一覧は出して、集計の場所に読み直す口を出す。
+  // 先のスプリントも終了したスプリントも無いワークスペースは、集計を出さず空の状態だけを出す。
   // 行はポイント、タイトル（`?task=<ID>` で詳細の引き出しを開く）、担当と、完了していないタスクの「外す」（`.icon-btn`）。
   // 行の下の「<バックログ>から入れる」は、タスクとストーリーを選ぶダイアログ（SprintTaskPicker）を開く。入れる、外すはメンバーの操作で、
   // 終了していないワークスペースでだけ出す。
@@ -50,6 +57,7 @@
 
   const workspace = $derived(data.workspace);
   const plan = $derived(data.plan);
+  const summary = $derived(data.summary);
   const slug = $derived(page.params.slug ?? '');
   const isAdmin = $derived(data.organization?.me.is_admin === true);
   // 作る、直す、削除するのは、終了していないワークスペースのリーダーと管理者だけ（API も同じ権限で断る）
@@ -72,6 +80,56 @@
       : isLeader
         ? t('sprintEmptyText', sprintWords)
         : t('sprintEmptyMemberText', sprintWords),
+  );
+  // ベロシティ（延長していない終了した直近 3 つの平均）。出ていなければ null
+  const average = $derived(summary?.velocity.average ?? null);
+  const lanes = $derived(new Map((summary?.lanes ?? []).map((lane) => [lane.sprint_id, lane])));
+  // 見出しの集計。ベロシティが出ていなければ、その項目は出さない（偽の 0 を出さない）
+  const tallies = $derived.by<Tally[]>(() => {
+    if (summary === null) return [];
+    const list = [...lanes.values()];
+    const result: Tally[] = [];
+    if (average !== null) {
+      result.push({
+        icon: 'trend',
+        label: t('planTallyVelocity', { velocity: t('velocity') }),
+        count: Number(formatPoints(average)),
+      });
+    }
+    // 比べる相手（ベロシティ）が出ていなければ、超過の項目も出さない（偽の 0 を出さない）
+    if (average !== null) {
+      result.push({
+        tone: 'danger',
+        icon: 'alert',
+        label: t('over'),
+        count: list.filter((lane) => isOverVelocity(lane.points, average)).length,
+      });
+    }
+    result.push({
+      tone: 'warn',
+      label: t('planTallyUnestimated'),
+      count: list.reduce((total, lane) => total + lane.unestimated_count, 0),
+    });
+    return result;
+  });
+  // 先のスプリントも、終了したスプリント（ベロシティの元）も、エピックも無い。集計が読めなかったとき（summary が null）は、
+  // 空とは言えないので偽にして、読み込めなかったことと「もう一度試す」を出す
+  const isBlank = $derived(
+    plan !== null &&
+      summary !== null &&
+      plan.sprints.length === 0 &&
+      summary.velocity.sprints.length === 0 &&
+      summary.epics.length === 0,
+  );
+  // 先のスプリントが無いが、ほかの集計は出すときの空の状態。題は先のスプリントの話だと分かる言葉にし、
+  // 終了したスプリントがあってベロシティが出ているときは、「終えたスプリントがたまると、ベロシティも出ます」の文を出さない
+  const lanesEmptyTitle = $derived(
+    summary === null ? t('sprintEmptyTitle', sprintWords) : t('planLanesEmptyTitle', sprintWords),
+  );
+  const lanesEmptyText = $derived(
+    summary !== null && summary.velocity.average !== null && !isClosed && isLeader
+      ? t('planLanesEmptyText', sprintWords)
+      : emptyText,
   );
   // 行のタイトルは、この画面に `?task=<ID>` を付けて詳細の引き出しを開く（ワークスペースの枠が置く）
   const planHref = $derived(resolve('/[slug]/w/[id]/plan', { slug: page.params.slug ?? '', id: page.params.id ?? '' }));
@@ -101,6 +159,21 @@
 
   async function reload(): Promise<void> {
     await invalidate('app:sprints');
+  }
+
+  // 集計の「もう一度試す」。読んでいる間は押せず（重ねて読まない）、読めたら押したボタンが消えるので画面の見出しへ
+  // フォーカスを移す。読めなかったときは、画面が変わらないので読み上げの領域で知らせる
+  let retryingSummary = $state(false);
+  let retryFailed = $state(false);
+  async function retrySummary(): Promise<void> {
+    if (retryingSummary) return;
+    retryingSummary = true;
+    retryFailed = false;
+    await reload();
+    retryingSummary = false;
+    await tick();
+    if (summary !== null) focusPageHeading();
+    else retryFailed = true;
   }
 
   // 始めたら、押した「始める」が一覧から消えるので、始めたスプリントの見出しへフォーカスを移す（無ければ画面の見出し）
@@ -230,7 +303,7 @@
 {#if workspace && plan === null}
   <LoadFailed inShell />
 {:else if workspace && plan !== null}
-  <PageHead title={t('plan')} eyebrow={workspace.name} focusable>
+  <PageHead title={t('plan')} eyebrow={workspace.name} tallies={isBlank ? [] : tallies} focusable>
     {#snippet actions()}
       {#if canLead}
         <button class="btn is-primary" type="button" onclick={openCreate}
@@ -242,126 +315,170 @@
 
   <!-- 読み上げの領域。常に置き、文字だけを替える -->
   <div class="visually-hidden" role="status">
-    {deleting ? t('sprintDeleting') : removingId !== null ? t('sprintTaskRemoving') : ''}
+    {deleting
+      ? t('sprintDeleting')
+      : removingId !== null
+        ? t('sprintTaskRemoving')
+        : retryingSummary
+          ? t('planSummaryRetrying', { velocity: t('velocity'), epic: t('epic') })
+          : retryFailed
+            ? t('planSummaryFailed', { velocity: t('velocity'), epic: t('epic') })
+            : ''}
   </div>
 
-  {#if plan.sprints.length === 0}
+  {#if isBlank}
     <EmptyState icon="calendar" title={t('sprintEmptyTitle', sprintWords)} text={emptyText} />
   {:else}
-    <div class="lanes">
-      {#each plan.sprints as sprint (sprint.id)}
-        <section class="lane" class:is-active={sprint.status === 'active'}>
-          <div class="lane-head">
-            <!-- tabindex="-1" は、始めた後にプログラムからフォーカスを置くため（キーボードの Tab 順には入らない） -->
-            <h2 class="lane-title" tabindex="-1" data-lane-title={sprint.id}>{labelOf(sprint)}</h2>
-            {#if sprint.status === 'active'}<span class="chip is-ok">{t('sprintActive')}</span>{/if}
-          </div>
-          <div class="lane-sub">
-            <span class="mono">{periodOf(sprint)}</span>
-            <span>{t('sprintLengthDays', { length: sprint.length })}</span>
-            {#if sprint.extended_days > 0}<span>{t('sprintExtended', { days: sprint.extended_days })}</span>{/if}
-            <span>{t('sprintTasksSummary', { count: sprint.tasks.length, points: pointsOf(sprint) })}</span>
-          </div>
-          {#if isOverdue(sprint)}
-            <SprintOverdueNotice
-              {sprint}
-              canClose={canLead}
-              onclose={(trigger) => closeDialog?.show(trigger, sprint)}
-            />
-          {/if}
-          {#if sprint.status === 'active' && sprint.goal !== null}
-            <p class="lane-goal"><span class="lane-goal-label">{t('sprintGoal')}</span>{sprint.goal}</p>
-          {/if}
-          {#each sprint.tasks as task (task.id)}
-            <div class="lane-row" class:is-done={task.completed_at !== null} data-row-id={task.id}>
-              {#if task.points === null}
-                <span class="pts is-none" role="img" aria-label={t('pointsUnsetTitle')} title={t('pointsUnsetTitle')}
-                  >{t('pointsUnsetMark')}</span
-                >
-              {:else}
-                <span
-                  class="pts"
-                  role="img"
-                  aria-label={t('pointsLabel', { points: t('points'), value: task.points })}
-                  title={t('pointsLabel', { points: t('points'), value: task.points })}>{task.points}</span
-                >
-              {/if}
-              <!-- 押しても、フォーカスとスクロールの位置は動かさない（引き出しが閉じたとき、data-task-id で探してフォーカスを戻す） -->
-              <a
-                href="{planHref}?task={encodeURIComponent(task.id)}"
-                data-task-id={task.id}
-                data-sveltekit-reset="false">{task.title}</a
-              >
-              <span class="lane-row-end">
-                {#if task.completed_at !== null}
-                  <!-- 完了の印（バックログの木の行と同じ .hanko）。担当の左に置き、担当の位置をそろえる -->
-                  <span class="hanko" role="img" aria-label={t('doneMarkLabel', { title: task.title, done: t('done') })}
-                    ><Icon name="check" /><b>{t('doneStamp')}</b></span
-                  >
-                {/if}
-                {#if task.assignee === null}
-                  <Avatar userId={null} />
-                {:else}
-                  <Avatar userId={task.assignee.id} name={task.assignee.name} />
-                {/if}
-                {#if canWrite && task.completed_at === null}
-                  <button
-                    class="icon-btn"
-                    type="button"
-                    aria-label={t('sprintTaskRemoveLabel', { title: task.title })}
-                    title={t('sprintTaskRemove')}
-                    aria-disabled={removingId !== null}
-                    onclick={() => void removeTask(sprint, task)}><Icon name="x" /></button
-                  >
-                {:else if canWrite}
-                  <!-- 外す口の無い行（完了したタスク）も、同じ幅を空けて担当の位置をそろえる -->
-                  <span class="lane-row-slot" aria-hidden="true"></span>
-                {/if}
-              </span>
+    {#if summary !== null}
+      <PlanVelocity velocity={summary.velocity} />
+    {:else}
+      <div class="callout is-warn" role="alert">
+        <Icon name="alert" />
+        <span>{t('planSummaryFailed', { velocity: t('velocity'), epic: t('epic') })}</span>
+        <div class="callout-actions">
+          <button class="btn is-sm" type="button" aria-disabled={retryingSummary} onclick={() => void retrySummary()}
+            >{t('retry')}</button
+          >
+        </div>
+      </div>
+    {/if}
+    {#if plan.sprints.length === 0}
+      <EmptyState icon="calendar" title={lanesEmptyTitle} text={lanesEmptyText} />
+    {:else}
+      <div class="lanes">
+        {#each plan.sprints as sprint (sprint.id)}
+          {@const lane = lanes.get(sprint.id)}
+          <section class="lane" class:is-active={sprint.status === 'active'}>
+            <div class="lane-head">
+              <!-- tabindex="-1" は、始めた後にプログラムからフォーカスを置くため（キーボードの Tab 順には入らない） -->
+              <h2 class="lane-title" tabindex="-1" data-lane-title={sprint.id}>{labelOf(sprint)}</h2>
+              {#if sprint.status === 'active'}<span class="chip is-ok">{t('sprintActive')}</span>{/if}
             </div>
-          {:else}
-            <p class="action-note">{t('sprintTasksEmpty')}</p>
-          {/each}
-          {#if canWrite}
-            <button
-              class="btn is-sm"
-              type="button"
-              data-sprint-add={sprint.id}
-              aria-label={t('sprintTaskAddOpenLabel', { backlog: t('backlog'), label: labelOf(sprint) })}
-              onclick={(event) => openPicker(event, sprint)}
-              ><Icon name="plus" />{t('sprintTaskAddOpen', { backlog: t('backlog') })}</button
-            >
-          {/if}
-          {#if canLead && sprint.status === 'planned'}
-            <div class="form-actions">
-              <button
-                class="btn is-sm is-primary"
-                type="button"
-                aria-label={t('sprintStartLabel', { label: labelOf(sprint) })}
-                aria-disabled={deleting}
-                onclick={(event) => !deleting && openStart(event, sprint)}
-                ><Icon name="play" />{t('sprintStartAction')}</button
-              >
+            <div class="lane-sub">
+              <span class="mono">{periodOf(sprint)}</span>
+              <span>{t('sprintLengthDays', { length: sprint.length })}</span>
+              {#if sprint.extended_days > 0}<span>{t('sprintExtended', { days: sprint.extended_days })}</span>{/if}
+              <span>{t('sprintTasksSummary', { count: sprint.tasks.length, points: pointsOf(sprint) })}</span>
+              {#if lane !== undefined && lane.unestimated_count > 0}
+                <span data-lane-unestimated>{t('planUnestimated', { count: lane.unestimated_count })}</span>
+              {/if}
+            </div>
+            {#if isOverdue(sprint)}
+              <SprintOverdueNotice
+                {sprint}
+                canClose={canLead}
+                onclose={(trigger) => closeDialog?.show(trigger, sprint)}
+              />
+            {/if}
+            {#if sprint.status === 'active' && sprint.goal !== null}
+              <p class="lane-goal"><span class="lane-goal-label">{t('sprintGoal')}</span>{sprint.goal}</p>
+            {/if}
+            {#if lane !== undefined}
+              <PlanLaneFill points={lane.points} {average} />
+            {/if}
+            {#each sprint.tasks as task (task.id)}
+              <div class="lane-row" class:is-done={task.completed_at !== null} data-row-id={task.id}>
+                {#if task.points === null}
+                  <span class="pts is-none" role="img" aria-label={t('pointsUnsetTitle')} title={t('pointsUnsetTitle')}
+                    >{t('pointsUnsetMark')}</span
+                  >
+                {:else}
+                  <span
+                    class="pts"
+                    role="img"
+                    aria-label={t('pointsLabel', { points: t('points'), value: task.points })}
+                    title={t('pointsLabel', { points: t('points'), value: task.points })}>{task.points}</span
+                  >
+                {/if}
+                <!-- 押しても、フォーカスとスクロールの位置は動かさない（引き出しが閉じたとき、data-task-id で探してフォーカスを戻す） -->
+                <a
+                  href="{planHref}?task={encodeURIComponent(task.id)}"
+                  data-task-id={task.id}
+                  data-sveltekit-reset="false">{task.title}</a
+                >
+                <span class="lane-row-end">
+                  {#if task.completed_at !== null}
+                    <!-- 完了の印（バックログの木の行と同じ .hanko）。担当の左に置き、担当の位置をそろえる -->
+                    <span
+                      class="hanko"
+                      role="img"
+                      aria-label={t('doneMarkLabel', { title: task.title, done: t('done') })}
+                      ><Icon name="check" /><b>{t('doneStamp')}</b></span
+                    >
+                  {/if}
+                  {#if task.assignee === null}
+                    <Avatar userId={null} />
+                  {:else}
+                    <Avatar userId={task.assignee.id} name={task.assignee.name} />
+                  {/if}
+                  {#if canWrite && task.completed_at === null}
+                    <button
+                      class="icon-btn"
+                      type="button"
+                      aria-label={t('sprintTaskRemoveLabel', { title: task.title })}
+                      title={t('sprintTaskRemove')}
+                      aria-disabled={removingId !== null}
+                      onclick={() => void removeTask(sprint, task)}><Icon name="x" /></button
+                    >
+                  {:else if canWrite}
+                    <!-- 外す口の無い行（完了したタスク）も、同じ幅を空けて担当の位置をそろえる -->
+                    <span class="lane-row-slot" aria-hidden="true"></span>
+                  {/if}
+                </span>
+              </div>
+            {:else}
+              <p class="action-note">{t('sprintTasksEmpty')}</p>
+            {/each}
+            {#if canWrite}
               <button
                 class="btn is-sm"
                 type="button"
-                aria-label={t('sprintEditLabel', { label: labelOf(sprint) })}
-                aria-disabled={deleting}
-                onclick={(event) => !deleting && openEdit(event, sprint)}
-                ><Icon name="pen" />{t('sprintEditAction')}</button
+                data-sprint-add={sprint.id}
+                aria-label={t('sprintTaskAddOpenLabel', { backlog: t('backlog'), label: labelOf(sprint) })}
+                onclick={(event) => openPicker(event, sprint)}
+                ><Icon name="plus" />{t('sprintTaskAddOpen', { backlog: t('backlog') })}</button
               >
-              <button
-                class="btn is-sm is-quiet is-danger"
-                type="button"
-                aria-label={t('sprintDeleteLabel', { label: labelOf(sprint) })}
-                aria-disabled={deleting}
-                onclick={(event) => void remove(event, sprint)}><Icon name="trash" />{t('sprintDeleteAction')}</button
-              >
-            </div>
-          {/if}
-        </section>
-      {/each}
-    </div>
+            {/if}
+            {#if canLead && sprint.status === 'planned'}
+              <div class="form-actions">
+                <button
+                  class="btn is-sm is-primary"
+                  type="button"
+                  aria-label={t('sprintStartLabel', { label: labelOf(sprint) })}
+                  aria-disabled={deleting}
+                  onclick={(event) => !deleting && openStart(event, sprint)}
+                  ><Icon name="play" />{t('sprintStartAction')}</button
+                >
+                <button
+                  class="btn is-sm"
+                  type="button"
+                  aria-label={t('sprintEditLabel', { label: labelOf(sprint) })}
+                  aria-disabled={deleting}
+                  onclick={(event) => !deleting && openEdit(event, sprint)}
+                  ><Icon name="pen" />{t('sprintEditAction')}</button
+                >
+                <button
+                  class="btn is-sm is-quiet is-danger"
+                  type="button"
+                  aria-label={t('sprintDeleteLabel', { label: labelOf(sprint) })}
+                  aria-disabled={deleting}
+                  onclick={(event) => void remove(event, sprint)}><Icon name="trash" />{t('sprintDeleteAction')}</button
+                >
+              </div>
+            {/if}
+          </section>
+        {/each}
+      </div>
+    {/if}
+    {#if summary !== null}
+      <PlanEpics
+        epics={summary.epics}
+        {slug}
+        workspaceId={workspace.id}
+        today={summary.today}
+        weekStart={summary.week_start}
+      />
+    {/if}
   {/if}
 
   {#key workspace.id}
