@@ -846,7 +846,7 @@ const looooooooooooooooooooooooooooooooooongLine = "コードの長い1行は、
     return `<span class="drawer-steps" role="group" aria-label="前後の${t("task")}">${button(-1, `前の${t("task")}`, "[", "up", adjacent.prev, "先頭です")}${button(1, `次の${t("task")}`, "]", "down", adjacent.next, "最後です")}</span>`;
   }
   // 前後へ移る。書きかけがあれば、閉じるときと同じ確認を挟む（force は捨てると決めた後）。閉じたときの戻り先は、最後に表示したタスクの行。
-  // ボタン（viaButton）で移ったときは、押したのと同じ向きのボタンへフォーカスを戻す（端で押せないなら閉じるボタン）。キー（[ ]）のときは閉じるボタン
+  // ボタン（viaButton）で移ったときは、押したのと同じ向きのボタンへフォーカスを戻す（端で押せないなら見出し）。キー（[ ]）のときは見出し
   let pendingDrawerStep = null;
   function stepDrawer(delta, force = false, viaButton = false) {
     const adjacent = drawerAdjacent();
@@ -857,7 +857,9 @@ const looooooooooooooooooooooooooooooooooongLine = "コードの長い1行は、
     drawer.id = id; drawer.tab = "comments"; drawer.thanked = new Set(); drawer.opener = id; drawer.editing = new Set(); drawer.errors = {}; drawer.drafts = {}; drawer.commentEditing = null;
     renderDrawer();
     const again = viaButton && document.querySelector(`#drawer [data-drawer-step="${delta}"]:not([aria-disabled="true"])`);
-    (again || document.querySelector("[data-close-drawer]"))?.focus();
+    if (again) { again.focus(); return; }
+    const heading = document.querySelector("#drawer h2");
+    if (heading) { heading.tabIndex = -1; heading.focus(); }
   }
   let pendingDrawerMode = null;
   function saveDrawerMode(mode) {
