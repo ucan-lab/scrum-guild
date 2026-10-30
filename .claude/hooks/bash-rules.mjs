@@ -535,37 +535,53 @@ function forceOf({ fields, bodies, unreadable }) {
   return verdicts.includes('yes') ? 'yes' : verdicts.includes('unknown') ? 'unknown' : 'no';
 }
 
-const isGraphqlEndpoint = (endpoint) => /(^|\/)graphql$/.test(endpoint.split('?')[0]);
+// graphql の宛先の字面（glob や #、大文字は別の判定が拾うので、graphql を含む語を広く数える）
+const isGraphqlEndpoint = (endpoint) => /graphql/i.test(endpoint);
+const MAIN_REF = /\/git\/refs\/heads\/main(?![\w./-])/;
+
+// 展開より前の字面で資源の種類が決まる宛先か（repos/o/r/issues/$n/comments は issues、repos/o/r/git/refs/$x は git/refs）。
+// repos/$R/… や repos/o/r/$kind/… のように、種類が展開で決まるものは決まらない。種類は repos/<owner>/<repo>/<種類>/ の種類で、
+// git は次の語まで（git/refs/ は ref の更新）。URL の場合はスキームとホストを外して見る
+function resourceKnown(endpoint) {
+  const at = endpoint.search(/[$`]|\{\{/);
+  const prefix = (at === -1 ? endpoint : endpoint.slice(0, at)).replace(/^[a-z][a-z0-9+.-]*:\/\/[^/]+/i, '');
+  const complete = prefix.replace(/^\//, '').split('/').slice(0, -1);
+  return complete[0] === 'repos' && complete.length >= (complete[3] === 'git' ? 5 : 4);
+}
 
 // GitHub の API でも ref の強制更新は force push と同じに扱う。GET（読むだけ）は通す。
-// endpoints はエンドポイントの位置引数（gh api）か URL（curl）。ref の更新かどうかは、コマンドぜんたいの文字列でなく、ここだけで見る
-// （Issue のコメントの本文に書いた /git/refs/ や {"force":true} は、ref を動かさない）
-function judgeGitHubWrite(method, { endpoints = [], fields = [], bodies = [], unreadable = false } = {}) {
+// words は引数ぜんたい、endpoints はエンドポイントの位置引数（gh api）か URL（curl）。ref の更新かどうかは、コマンドぜんたいの文字列でなく、
+// endpoints だけで見る（Issue のコメントの本文に書いた /git/refs/ や {"force":true} は、ref を動かさない）。
+// opaqueQuery は query のフィールドが字面でないか
+function judgeGitHubWrite(words, method, { endpoints = [], fields = [], bodies = [], unreadable = false, opaqueQuery = false } = {}) {
   const path = endpoints.join(' ');
-  // GraphQL の mutation の名前は query の中だけで見る（引数の query と、--input - や -d の本文）。
-  // エンドポイントを展開で渡す形は graphql かを判定できないので、graphql として見る
-  if (endpoints.some(isGraphqlEndpoint) || isDynamic(path)) {
-    const query = [...fields, ...bodies.map(({ text }) => text)].join(' ');
-    if (/enablePullRequestAutoMerge/.test(query)) return [DENY, 'auto-merge は使わない'];
-    if (/mergePullRequest/.test(query)) return [DENY, MERGE_REASON];
-    if (/updateRefs?\b/.test(query)) return [DENY, 'main は PR のマージでだけ進める'];
-    // gh pr update-branch --rebase の中身。updateMethod を付けないか MERGE なら merge のコミットを足す通常の更新
-    if (/updatePullRequestBranch/.test(query)) {
-      if (/\bREBASE\b/.test(query)) return [DENY, REBASE_BRANCH_REASON];
-      if (/updateMethod\s*[:=]\s*\$/.test(query)) return [ASK, 'updatePullRequestBranch の updateMethod を変数で渡すと REBASE かを判定できない。人が確かめる'];
-    }
-    if (endpoints.some(isGraphqlEndpoint) && (unreadable || fields.some((f) => f.startsWith('query=@')))) return [ASK, GRAPHQL_UNREADABLE_REASON];
+  // mutation の名前は、宛先を問わず引数と本文のぜんたいで見る（glob、#、大文字、query string、--url-query、-F で graphql の宛先を字面から外せるため）。
+  // コメントの本文に書いた語も止まる
+  const text = [...words, ...bodies.map(({ text: body }) => body)].join(' ');
+  if (/enablePullRequestAutoMerge/.test(text)) return [DENY, 'auto-merge は使わない'];
+  if (/mergePullRequest/.test(text)) return [DENY, MERGE_REASON];
+  if (/updateRefs?\b/.test(text)) return [DENY, 'main は PR のマージでだけ進める'];
+  // gh pr update-branch --rebase の中身。updateMethod を付けないか MERGE なら merge のコミットを足す通常の更新
+  if (/updatePullRequestBranch/.test(text)) {
+    if (/\bREBASE\b/.test(text)) return [DENY, REBASE_BRANCH_REASON];
+    if (/updateMethod\s*[:=]\s*\$/.test(text)) return [ASK, 'updatePullRequestBranch の updateMethod を変数で渡すと REBASE かを判定できない。人が確かめる'];
   }
+  // 展開より前の字面でも資源の種類が決まらない宛先は、宛先を確定できない
+  const undecided = endpoints.some((e) => isDynamic(e) && !resourceKnown(e));
+  const graphql = endpoints.some(isGraphqlEndpoint);
+  // query か本文が字面でなければ、mutation の名前を読めない
+  if ((graphql || (undecided && method !== 'GET')) && (opaqueQuery || bodies.some(({ literal }) => !literal))) return [ASK, GRAPHQL_UNREADABLE_REASON];
+  if (graphql && (unreadable || fields.some((f) => f.startsWith('query=@')))) return [ASK, GRAPHQL_UNREADABLE_REASON];
   if (method === 'GET') return null;
   // ref の名前を変数で渡す形（git/refs/$REF）も当たるよう、heads/ までは問わない
   const updatesRef = /\/git\/refs\/[^\s]+/.test(path);
-  if (updatesRef || isDynamic(path)) {
+  if (updatesRef || undecided) {
     const force = forceOf({ fields, bodies, unreadable });
     if (force === 'yes') return updatesRef ? [DENY, FORCE_PUSH_REASON] : [ASK, FORCE_DYNAMIC_PATH_REASON];
-    if (force === 'unknown' && !/\/git\/refs\/heads\/main\b/.test(path)) return [ASK, updatesRef ? FORCE_REF_REASON_UNKNOWN : FORCE_DYNAMIC_PATH_REASON];
+    if (force === 'unknown' && !MAIN_REF.test(path)) return [ASK, updatesRef ? FORCE_REF_REASON_UNKNOWN : FORCE_DYNAMIC_PATH_REASON];
   }
   if (/\/pulls\/[^/\s]+\/merge\b|\/merges\b/.test(path)) return [DENY, MERGE_REASON];
-  if (/\/git\/refs\/heads\/main\b/.test(path)) return [DENY, 'main は PR のマージでだけ進める'];
+  if (MAIN_REF.test(path)) return [DENY, 'main は PR のマージでだけ進める'];
   // contents API の書き込みは、ブランチを指定しなければ既定のブランチ（main）へ直にコミットする
   if (/\/contents\//.test(path)) return [DENY, 'contents API でのファイルの書き込みはしない。作業ブランチで git を使う'];
   return null;
@@ -599,36 +615,69 @@ function echoedText(words) {
 // グループ（{ …; }）とサブシェル（( … )）の構文があるか。引用符の外の ( ) と、単独の語の { } を見る。
 // 中の echo が gh や curl の標準入力に流れるとは限らず（cat b.json | { echo x; gh api … --input -; }）、
 // グループぜんたいへのリダイレクト（{ …; } < b.json）も区切りの語からは見えない
+// 引用符の数え方がずれる形（ヒアドキュメントの本文のアポストロフィなど）は、走査の終わりで引用符が閉じないので、グループありとみなす。
+// $( … ) と $(( … )) のコマンド置換は、中を別のコマンドとして判定するので、グループに数えない
 function hasGrouping(command) {
   let quote = '';
+  let substitutions = 0;
   for (let i = 0; i < command.length; i++) {
     const c = command[i];
     if (quote) {
-      if (c === quote) quote = '';
-      else if (quote === '"' && c === '\\') i++;
-    } else if (c === '\\') i++;
-    else if (c === "'" || c === '"') quote = c;
-    else if (c === '(' || c === ')') return true;
-    else if ((c === '{' || c === '}') && /^[\s;&|(]?$/.test(command[i - 1] ?? '') && /^[\s;&|)]?$/.test(command[i + 1] ?? '')) return true;
+      if (c === '\\' && quote !== "'") i++;
+      else if (c === (quote === "$'" ? "'" : quote)) quote = '';
+      continue;
+    }
+    if (c === '\\') i++;
+    else if (c === '#' && /^[\s;&|(]?$/.test(command[i - 1] ?? '')) {
+      // 語の頭の # から行末まではコメント
+      const end = command.indexOf('\n', i);
+      if (end === -1) break;
+      i = end;
+    } else if (c === "'" || c === '"' || c === '`') quote = c;
+    else if (c === '$' && command[i + 1] === "'") {
+      quote = "$'";
+      i++;
+    } else if (c === '$' && command[i + 1] === '(') {
+      const arithmetic = command[i + 2] === '(';
+      substitutions += arithmetic ? 2 : 1;
+      i += arithmetic ? 2 : 1;
+    } else if (c === '(') return true;
+    else if (c === ')') {
+      if (substitutions === 0) return true;
+      substitutions--;
+    } else if ((c === '{' || c === '}') && /^[\s;&|(]?$/.test(command[i - 1] ?? '') && /^[\s;&|)]?$/.test(command[i + 1] ?? '')) return true;
+  }
+  return quote !== '';
+}
+
+// ヒアドキュメントの本文が字面か（終わりの印にクォートがあるか）。区切りの語は redirect に残らないので、
+// 本文の前の行の << の後ろの語と、本文の後ろの終わりの印の行を突き合わせて見つける。見つからなければクォートの無い印として読む
+function heredocIsLiteral(command, body) {
+  if (body === '') return true;
+  for (let from = 0, at; (at = command.indexOf(body, from)) !== -1; from = at + 1) {
+    if (at === 0 || command[at - 1] !== '\n') continue;
+    const delimiter = /^\n([^\n]*)/.exec(command.slice(at + body.length))?.[1].trim();
+    if (!delimiter) continue;
+    const line = command.slice(command.lastIndexOf('\n', at - 2) + 1, at - 1);
+    for (const [, raw] of line.matchAll(/(?<!<)<<-?[ \t]*([^\s;&|()<>]+)/g)) {
+      if (raw.replaceAll(/['"\\]/g, '') === delimiter) return /['"\\]/.test(raw);
+    }
   }
   return false;
 }
 
-// ヒアドキュメントの終わりの印にクォートが無いものがあるか。クォートの無い本文は、シェルが $(…) と $VAR を展開する
-const hasUnquotedHeredoc = (command) => /(?<!<)<<-?[ \t]*[^\s'"\\<-]/.test(command);
-
 // 標準入力の出どころの手がかりのうち、コマンドぜんたいの形で決まるもの
-const stdinShape = (command) => ({ grouped: hasGrouping(command), unquotedHeredoc: hasUnquotedHeredoc(command) });
+const stdinShape = (command) => ({ command, grouped: hasGrouping(command) });
 
 // 標準入力で読む本文 { bodies: [{ text, literal }], unreadable }。読めるのは、この区切りのヒアドキュメントとヒアストリング、
 // 直前の区切りの echo と printf の字面だけ。ファイルから読む（< body.json）、cat や jq のような別の道具の出力、
 // グループの中の区切り、ほかの区切りの語は、本文として読めない
-function stdinBody(args, { previous, grouped = false, unquotedHeredoc = false } = {}) {
+function stdinBody(args, { previous, command = '', grouped = false } = {}) {
   // 標準入力のリダイレクトが重なると、後ろのものが効く（<<<'…' < body.json は body.json）
   const last = redirectsOf(args).filter((r) => isHeredocRedirect(r) || isReadRedirect(r)).at(-1);
   if (last && isHeredocRedirect(last)) {
-    // ヒアストリングは語と同じく展開の印（shape）で、ヒアドキュメントはクォートの有無で、字面かを見る
-    const literal = last.op === '<<<' ? !last.shape.includes(DYNAMIC) : !unquotedHeredoc;
+    // ヒアストリングは語と同じく展開の印（shape）で、ヒアドキュメントは終わりの印のクォートで、字面かを見る
+    const literal = last.op === '<<<' ? !last.shape.includes(DYNAMIC) : heredocIsLiteral(command, last.target);
     return { bodies: [{ text: last.target, literal }], unreadable: false };
   }
   const echoed = last || grouped ? undefined : echoedText(previous);
@@ -645,11 +694,15 @@ const GH_API_SHORT_WITH_VALUE = { X: 'method', H: 'header', f: 'field', F: 'fiel
 // gh api の引数を一度だけ読み、{ methods, fields, input, positionals } にする。
 // pflag は真偽の短いフラグと値を取る短いフラグをまとめ（-iXPATCH、-iFforce=true）、値を取る短いフラグの直後の = は区切りとして外す（-F=k=v）
 function readGhApi(args) {
-  const read = { methods: [], fields: [], inputs: [], positionals: [] };
-  const take = (name, value) => {
+  const read = { methods: [], fields: [], inputs: [], positionals: [], opaqueQuery: false };
+  // at は値のある語の位置。query のフィールド（名前が展開で決まるものも）の語に展開があれば、query を字面で読めない
+  const take = (name, value, at) => {
     if (name === 'method') read.methods.push(value);
-    else if (name === 'field') read.fields.push(value);
-    else if (name === 'input') read.inputs.push(value);
+    else if (name === 'field') {
+      read.fields.push(value);
+      const key = value.split('=')[0];
+      if ((key === 'query' || hasExpansion(key)) && shapeAt(args, at).includes(DYNAMIC)) read.opaqueQuery = true;
+    } else if (name === 'input') read.inputs.push(value);
   };
   let options = true;
   for (let i = 0; i < args.length; i++) {
@@ -658,15 +711,15 @@ function readGhApi(args) {
     else if (options && a.startsWith('--')) {
       const eq = a.indexOf('=');
       const name = GH_API_LONG_WITH_VALUE[a.slice(2, eq === -1 ? undefined : eq)];
-      if (name && eq !== -1) take(name, a.slice(eq + 1));
-      else if (name && i + 1 < args.length) take(name, args[++i]);
+      if (name && eq !== -1) take(name, a.slice(eq + 1), i);
+      else if (name && i + 1 < args.length) take(name, args[++i], i);
     } else if (options && /^-[^-]/.test(a)) {
       for (let k = 1; k < a.length; k++) {
         const name = GH_API_SHORT_WITH_VALUE[a[k]];
         if (!name) continue;
         const attached = a.slice(k + 1);
-        if (attached) take(name, attached.startsWith('=') ? attached.slice(1) : attached);
-        else if (i + 1 < args.length) take(name, args[++i]);
+        if (attached) take(name, attached.startsWith('=') ? attached.slice(1) : attached, i);
+        else if (i + 1 < args.length) take(name, args[++i], i);
         break;
       }
     } else read.positionals.push(a);
@@ -704,13 +757,13 @@ function judgeGh(args, stdinContext) {
     return [DENY, `gh repo sync --force は GitHub の側で宛先のブランチを hard reset する。${FORCE_PUSH_REASON}`];
   }
   if (pos[0] === 'api') {
-    const { methods, fields, inputs, positionals: apiPositionals } = readGhApi(args);
+    const { methods, fields, inputs, positionals: apiPositionals, opaqueQuery } = readGhApi(args);
     // フィールドか --input があれば、メソッドの既定は POST。重ねたメソッドは最後の値が効く
     const method = methodOf(methods.at(-1), fields.length > 0 || inputs.length > 0 ? 'POST' : 'GET');
     const input = inputs.at(-1);
     // --input <ファイル> は中身を読めない
     const body = input === '-' ? stdinBody(args, stdinContext) : { bodies: [], unreadable: input !== undefined };
-    return judgeGitHubWrite(method, { endpoints: apiPositionals.slice(apiPositionals.indexOf('api') + 1), fields, ...body });
+    return judgeGitHubWrite(args, method, { endpoints: apiPositionals.slice(apiPositionals.indexOf('api') + 1), fields, opaqueQuery, ...body });
   }
   return null;
 }
@@ -725,6 +778,9 @@ const CURL_LONG_WITH_VALUE = new Set(
     'oauth2-bearer url url-query request-target interface local-port proxy-header quote telnet-option trace trace-ascii variable'
   ).split(' '),
 );
+// 値を取らず、判定に使うフラグ。-G（--get）は本文を URL の query にして GET に、-g（--globoff）は URL の {} と [] を展開しない
+const CURL_FLAGS = new Set(['get', 'globoff']);
+const CURL_SHORT_FLAGS = { G: '--get', g: '--globoff' };
 const CURL_LONG_ALIASES = { request: '-X', data: '-d', 'upload-file': '-T', form: '-F' };
 // --expand-<名前> は <名前> と同じで、値の {{変数}} を --variable で差し込む
 const CURL_EXPANDABLE = new Set(['data', 'data-raw', 'data-binary', 'data-urlencode', 'json', 'url', 'request-target']);
@@ -751,9 +807,11 @@ function curlRequests(args) {
       const canonical = CURL_LONG_ALIASES[name] ?? `--${name}`;
       if (eq !== -1) add(canonical, a.slice(eq + 1), i, expand);
       else if (CURL_LONG_WITH_VALUE.has(name) && i + 1 < args.length) add(canonical, args[++i], i, expand);
+      else if (CURL_FLAGS.has(name)) add(canonical, '', i);
     } else if (/^-[^-]/.test(a)) {
       for (let k = 1; k < a.length; k++) {
         if (a[k] === ':') requests.push({ options: [], urls: [] });
+        else if (a[k] in CURL_SHORT_FLAGS) add(CURL_SHORT_FLAGS[a[k]], '', i);
         else if (CURL_SHORT_WITH_VALUE.includes(a[k])) {
           if (k + 1 < a.length) add(`-${a[k]}`, a.slice(k + 1), i);
           else add(`-${a[k]}`, args[i + 1] ?? '', ++i);
@@ -787,7 +845,9 @@ function curlBody(options, args, stdinContext) {
     bodies.push(...body.bodies);
     unreadable ||= body.unreadable;
   }
-  return { bodies, unreadable };
+  // -F query=… の query が展開で決まる（名前が展開で決まる形も）
+  const opaqueQuery = options.some(({ name, value, at }) => name === '-F' && (value.startsWith('query=') || hasExpansion(value.split('=')[0])) && shapeAt(args, at).includes(DYNAMIC));
+  return { bodies, unreadable, opaqueQuery };
 }
 
 function judgeHttpClient(tool, args, stdinContext) {
@@ -798,10 +858,15 @@ function judgeHttpClient(tool, args, stdinContext) {
     // --next と -: で区切った要求ごとに判定し、どれかが止めるなら止める
     const verdicts = curlRequests(args).map(({ options, urls }) => {
       const sendsBody = options.some(({ name }) => CURL_BODY_OPTIONS.includes(name) || name === '-F');
-      const method = methodOf(options.findLast(({ name }) => name === '-X')?.value, sendsBody ? 'POST' : 'GET');
-      // URL か path を差し込みで決める形（--variable、--expand-、{{）と、URL の語が無い要求は、決まる先を確定できないので語のぜんたいを path として見る
-      const undecided = urls.length === 0 || urls.some(isDynamic) || options.some(({ name, expand }) => name === '--variable' || expand);
-      return judgeGitHubWrite(method, { endpoints: undecided ? [...urls, ...args] : urls, ...curlBody(options, args, stdinContext) });
+      // -G は本文を URL の query にして GET にする（-X を付ければ -X が効く）
+      const method = methodOf(options.findLast(({ name }) => name === '-X')?.value, options.some(({ name }) => name === '--get') ? 'GET' : sendsBody ? 'POST' : 'GET');
+      // 展開や {{変数}} を含む URL のうち、展開より前の字面で資源の種類が決まらないものと、URL の語が無い要求は、
+      // 決まる先を確定できないので語のぜんたいを path として見る
+      const undecided = urls.length === 0 || urls.some((u) => isDynamic(u) && !resourceKnown(u));
+      const verdict = judgeGitHubWrite(args, method, { endpoints: undecided ? [...urls, ...args] : urls, ...curlBody(options, args, stdinContext) });
+      // curl は URL の {} と [] を展開して複数の要求にする（merg[e-e] は merge）。-g を付けない GET 以外は、送る先を字面で確かめられない
+      const globs = urls.some((u) => /[{[]/.test(u)) && !options.some(({ name }) => name === '--globoff');
+      return verdict ?? (globs && method !== 'GET' ? [ASK, 'curl は URL の {} と [] を展開して複数の要求にするので、送る先を判定できない。-g を付けるか、URL を字面で書く。人が確かめる'] : null);
     });
     return verdicts.find((v) => v?.[0] === DENY) ?? verdicts.find((v) => v?.[0] === ASK) ?? null;
   }
@@ -810,10 +875,10 @@ function judgeHttpClient(tool, args, stdinContext) {
     // --method が無ければ GET（--post-data と --post-file を付ければ POST）
     const at = args.findIndex((a) => a === '--method' || a.startsWith('--method='));
     const value = at === -1 ? undefined : args[at].includes('=') ? args[at].slice(args[at].indexOf('=') + 1) : args[at + 1];
-    return judgeGitHubWrite(methodOf(value, args.some((a) => a.startsWith('--post-')) ? 'POST' : 'GET'), { endpoints });
+    return judgeGitHubWrite(args, methodOf(value, args.some((a) => a.startsWith('--post-')) ? 'POST' : 'GET'), { endpoints });
   }
   // httpie: http PUT https://...
-  return judgeGitHubWrite(args.find((a) => /^[A-Z]+$/.test(a)) ?? 'GET', { endpoints });
+  return judgeGitHubWrite(args, args.find((a) => /^[A-Z]+$/.test(a)) ?? 'GET', { endpoints });
 }
 
 // 値を取るフラグ。findWrangler が依存の情報を見るサブコマンドを探すときに使う。スクリプトの読み取りは道具ごとの表（PACKAGE_MANAGERS の flags）で読む

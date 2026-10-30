@@ -5666,13 +5666,14 @@ describe('bash-rules: done-check の指摘（URL を決めるオプション、�
     test(`[通す] ${command} は GET なので allow`, () => assert.equal(decision(command), 'allow', command));
   }
 
-  // GraphQL の判定は query の中だけで見る。コメントの本文に書いた語は止めない
+  // mutation の名前は、エンドポイントを問わず引数と本文のぜんたいで見る（graphql に絞ると、URL の glob などで前は止めていたマージが通る）。
+  // コメントの本文に書いた語も止まる
   for (const command of [
     `gh api -X POST repos/o/r/issues/1/comments -f body='updateRefs で ref を動かし、mergePullRequest でマージする'`,
     `gh api -X POST repos/o/r/issues/1/comments --input - <<'EOF'\n{"body":"enablePullRequestAutoMerge と updatePullRequestBranch の REBASE"}\nEOF`,
     `gh api -X POST repos/o/r/issues/1/comments -f body='mergePullRequest'`,
   ]) {
-    test(`[通す] ${command} はコメントの本文なので allow`, () => assert.equal(decision(command), 'allow', command));
+    test(`[止める] ${command} はコメントの本文でも mutation の名前に当たるので deny`, () => assert.equal(decision(command), 'deny', command));
   }
   for (const command of [
     `gh api graphql -f query='mutation{updateRefs(input:{repositoryId:"x",refUpdates:[]}){clientMutationId}}'`,
@@ -5687,4 +5688,124 @@ describe('bash-rules: done-check の指摘（URL を決めるオプション、�
     const command = `curl -X PATCH ${ref} -d '{"sha":"a","force":"true"}'`;
     assert.equal(decision(command), 'deny', command);
   });
+});
+
+describe('bash-rules: done-check 2 巡目の指摘（mutation の名前の判定の範囲、展開で渡す query、グループの検出、資源の種類）', () => {
+  const merge = `{"query":"mutation{mergePullRequest(input:{pullRequestId:\\"x\\"}){clientMutationId}}"}`;
+  const ref = 'https://api.github.com/repos/o/r/git/refs/heads/x';
+
+  // mutation の名前は、宛先の字面を問わず、引数と本文のぜんたいで見る
+  for (const url of [
+    'https://api.github.com/graph{ql}',
+    'https://api.github.com/graph[q-q]l',
+    'https://api.github.com/graphql#x',
+    'https://api.github.com/graphql/.',
+    'https://api.github.com/GRAPHQL',
+    'https://api.github.com/graphql?x=1',
+  ]) {
+    test(`[止める] curl ${url} に mergePullRequest を送ると deny`, () => {
+      const command = `curl -X POST '${url}' -d '${merge}'`;
+      assert.equal(decision(command), 'deny', command);
+    });
+  }
+  for (const command of [
+    `curl https://api.github.com/graphql --url-query 'a=1' -d '${merge}'`,
+    `curl https://api.github.com/graphql -F 'query=mutation{mergePullRequest(input:{pullRequestId:"x"}){clientMutationId}}'`,
+    `curl -X POST https://api.github.com/graphql -d '${merge}'`,
+  ]) {
+    test(`[止める] ${command} は deny`, () => assert.equal(decision(command), 'deny', command));
+  }
+
+  // query を展開で渡す形は、mutation の名前を読めない
+  for (const command of [
+    'gh api graphql -f query="$Q"',
+    'gh api graphql -f query="$(cat q.graphql)"',
+    `echo "{\\"query\\":\\"$q\\"}" | gh api graphql --input -`,
+    'curl -X POST https://api.github.com/graphql -d "$BODY"',
+    `gh api graphql --input - <<< "{\\"query\\":\\"$Q\\"}"`,
+    `gh api graphql -f query='mutation{merge'"$X"'}'`,
+    `curl https://api.github.com/graphql -F query="$Q"`,
+  ]) {
+    test(`[確認] ${command} は query を読めないので allow にしない`, () => assert.notEqual(decision(command), 'allow', command));
+  }
+  test('[通す] query が字面で、ほかのフィールドに展開があっても allow', () =>
+    assert.equal(decision(`gh api graphql -f query='query($o:String!){viewer{login}}' -F o="$OWNER"`), 'allow'));
+
+  // グループの検出。引用符の数え方がずれる形は、グループありとみなす
+  for (const command of [
+    `echo x # it's\ncat b.json | { echo '{"force":false}'; gh api -X PATCH repos/o/r/git/refs/heads/x --input -; }`,
+    `echo $'it\\'s'; cat b.json | { echo '{"force":false}'; gh api -X PATCH repos/o/r/git/refs/heads/x --input -; }`,
+    // ヒアドキュメントの本文のアポストロフィで引用符の数がずれ、走査の終わりで閉じていない
+    `cat <<EOF >/dev/null\nit's\nEOF\necho '{"sha":"a"}' | gh api -X PATCH repos/o/r/git/refs/heads/x --input -`,
+  ]) {
+    test(`[確認] ${command} は allow にしない`, () => assert.notEqual(decision(command), 'allow', command));
+  }
+  // $( … ) のコマンド置換はグループではない
+  test('[通す] コマンド置換のあとの echo は標準入力の本文として読む', () => {
+    const command = `n=$(gh api repos/o/r/pulls --jq .[0].number); echo '{"sha":"a"}' | gh api -X PATCH repos/o/r/git/refs/heads/x --input -`;
+    assert.equal(decision(command), 'allow', command);
+  });
+  test('[止める] コマンド置換のあとの echo の {"force":true} は deny', () => {
+    const command = `n=$(gh api repos/o/r/pulls --jq .[0].number); echo '{"force":true}' | gh api -X PATCH repos/o/r/git/refs/heads/x --input -`;
+    assert.equal(decision(command), 'deny', command);
+  });
+
+  // 展開より前の字面で資源の種類が決まる宛先は、force の確認を挟まない
+  for (const command of [
+    `echo '{"body":"x"}' | gh api repos/o/r/issues/$n/comments --input -`,
+    'gh api repos/o/r/pulls/$n/comments --input reply.json',
+    'gh api repos/o/r/pulls/$n/comments --input - < reply.json',
+    'cat reply.json | gh api repos/o/r/pulls/$n/comments --input -',
+    'gh api -X POST repos/o/r/pulls/$n/comments/$id/replies -f body=x',
+    'curl -s -X POST "https://api.github.com/repos/o/r/issues/$n/comments" -d @body.json',
+    `curl -s -X POST "https://api.github.com/repos/o/r/issues/$n/comments" -d '{"body":"/contents/ を直した"}'`,
+    // curl の -G は GET
+    'curl -sG "https://api.github.com/repos/o/r/pulls/$n/files" -d "per_page=$PER"',
+  ]) {
+    test(`[通す] ${command} は allow`, () => assert.equal(decision(command), 'allow', command));
+  }
+  // 資源の種類が展開で決まる宛先は、確認を挟む
+  for (const command of [
+    'gh api -X PATCH repos/o/r/git/refs/$x --input body.json',
+    'gh api -X PATCH repos/$R/issues/1 --input body.json',
+    'curl -X PATCH "https://api.github.com/repos/o/r/git/refs/$x" -d @body.json',
+  ]) {
+    test(`[確認] ${command} は allow にしない`, () => assert.notEqual(decision(command), 'allow', command));
+  }
+
+  // ヒアドキュメントの字面かは、その区切りの印のクォートで見る
+  test('[通す] クォートした印の本文の 1 << 2 と $F は字面なので allow', () => {
+    const command = `gh api -X PATCH repos/o/r/git/refs/heads/x --input - <<'E'\n{"sha":"a","n":"1 << 2",$F}\nE`;
+    assert.equal(decision(command), 'allow', command);
+  });
+  test('[通す] 別の行の $(cat <<EOF …) があっても、gh のクォートした印の本文は字面', () => {
+    const command = `x=$(cat <<EOF\nabc\nEOF\n)\ngh api -X PATCH repos/o/r/git/refs/heads/x --input - <<'E'\n{"sha":"a",$F}\nE`;
+    assert.equal(decision(command), 'allow', command);
+  });
+  for (const command of [
+    // <<- の後ろの印が - で始まる形はクォートの無い印
+    `gh api -X PATCH repos/o/r/git/refs/heads/x --input - <<--X\n{"sha":"a",$F}\n-X`,
+    `gh api -X PATCH repos/o/r/git/refs/heads/x --input - <<EOF\n{"sha":"a",$F}\nEOF`,
+  ]) {
+    test(`[確認] ${command} は展開のある本文なので allow にしない`, () => assert.notEqual(decision(command), 'allow', command));
+  }
+
+  // curl の URL の glob は、curl が展開してから送る
+  for (const command of [
+    `curl -X PUT 'https://api.github.com/repos/o/r/pulls/1/merg[e-e]'`,
+    `curl -X PATCH 'https://api.github.com/repos/o/r/git/refs/heads/mai[n-n]' -d '{"sha":"a"}'`,
+    `curl -X PUT 'https://api.github.com/repos/o/r/conten[t-t]s/a.txt' -d '{"message":"m"}'`,
+  ]) {
+    test(`[確認] ${command} は glob の URL なので allow にしない`, () => assert.notEqual(decision(command), 'allow', command));
+  }
+  test('[通す] -g を付ければ glob を展開しないので allow', () =>
+    assert.equal(decision(`curl -g -X POST 'https://api.github.com/repos/o/r/issues/1/comments?a[]=1' -d '{"body":"x"}'`), 'allow'));
+  test('[通す] glob の URL でも GET なら allow', () => assert.equal(decision(`curl 'https://api.github.com/repos/o/r/pulls/{1,2}'`), 'allow'));
+
+  // main の判定の終端
+  test('[通す] heads/main-fix は main ではない', () =>
+    assert.equal(decision('gh api -X PATCH repos/o/r/git/refs/heads/main-fix -f sha=abc'), 'allow'));
+  for (const command of ['gh api -X PATCH repos/o/r/git/refs/heads/main -f sha=abc', 'gh api -X PATCH repos/o/r/git/refs/heads/main?x=1 -f sha=abc']) {
+    test(`[止める] ${command} は deny`, () => assert.equal(decision(command), 'deny', command));
+  }
 });
