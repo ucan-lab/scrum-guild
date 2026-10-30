@@ -58,6 +58,12 @@ test('担い手、レイド、検索で絞り、URL に残る。絞っている�
   // 何も無いときの最初の一歩には、帯を出さない
   await expect(page.getByText('まだクエストがありません')).toBeVisible();
   await expect(filterBar(page)).toHaveCount(0);
+  // 空の一覧には線画が出る。読み上げから外れ、文とボタンを押し出さない大きさに収まる
+  const emptyArt = page.locator('.empty', { hasText: 'まだクエストがありません' }).locator('svg.art');
+  await expect(emptyArt).toBeVisible();
+  await expect(emptyArt).toHaveAttribute('aria-hidden', 'true');
+  await expect(emptyArt.locator('use')).toHaveAttribute('href', '#a-notice');
+  expect((await emptyArt.boundingBox())?.height).toBeLessThanOrEqual(64);
 
   await create(page, 'レイドを作る', '会員ポイント制度を公開する');
   await create(page, '達成目標を作る', '見積もりを整える');

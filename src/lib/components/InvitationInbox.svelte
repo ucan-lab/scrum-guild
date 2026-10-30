@@ -152,7 +152,12 @@
       <div class="callout is-warn" role="alert"><Icon name="alert" /><span>{error}</span></div>
     {/if}
     {#if list.invitations.length === 0}
-      <EmptyState icon="mail" title={t('invitationInboxEmptyTitle')} text={t('invitationInboxEmptyText')} />
+      <EmptyState
+        icon="mail"
+        art="notice"
+        title={t('invitationInboxEmptyTitle')}
+        text={t('invitationInboxEmptyText')}
+      />
     {:else}
       <div class="choice-list">
         {#each list.invitations as invitation (invitation.invitation_id)}

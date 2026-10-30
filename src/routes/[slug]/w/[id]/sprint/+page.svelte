@@ -518,7 +518,12 @@
 
   {#if sprint === null || progress === null}
     <PageHead title={t('sprint')} eyebrow={workspace.name} focusable />
-    <EmptyState icon="columns" title={t('sprintBoardEmptyTitle', { sprint: t('sprint') })} text={emptyText}>
+    <EmptyState
+      icon="columns"
+      art="notice"
+      title={t('sprintBoardEmptyTitle', { sprint: t('sprint') })}
+      text={emptyText}
+    >
       {#snippet actions()}
         {#if isLeader}
           <a class="btn is-sm" href={planHref}>{t('sprintBoardOpenPlan', { plan: t('plan') })}</a>

@@ -247,6 +247,7 @@
     <EmptyState
       icon="crystal"
       iconTone="xp"
+      art="chest"
       title={t('xpEmptyTitle')}
       text={t('xpEmptyText', { task: t('task'), complete: t('complete'), done: t('done') })}
     />

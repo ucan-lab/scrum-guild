@@ -4,11 +4,33 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { describe, test } from 'node:test';
 import vm from 'node:vm';
+import { artViewBox, arts } from '../src/lib/art.ts';
 import { iconViewBox, icons } from '../src/lib/icons.ts';
 import { themeLabelKeys, themeNoteKeys, themes } from '../src/shared/theme.ts';
 import { defaultVocabularies, dictionary } from '../src/shared/vocabulary.ts';
 
 const read = (file: string) => readFileSync(new URL(`../design/${file}`, import.meta.url), 'utf8');
+
+// design/art.js も同じ作りで、symbol の id は a-<名前>
+function evaluateArts(): { names: string[]; symbols: Map<string, { viewBox: string; body: string }> } {
+  let sprite = '';
+  const window: { SQ_ARTS?: string[] } = {};
+  const document = {
+    createElement: () => ({
+      set innerHTML(html: string) {
+        sprite = html;
+      },
+      firstChild: {},
+    }),
+    body: { prepend: () => {} },
+  };
+  vm.runInNewContext(read('art.js'), { window, document });
+  const symbols = new Map<string, { viewBox: string; body: string }>();
+  for (const [, id, viewBox, body] of sprite.matchAll(/<symbol id="a-([^"]+)" viewBox="([^"]+)">(.*?)<\/symbol>/g)) {
+    symbols.set(id, { viewBox, body });
+  }
+  return { names: [...(window.SQ_ARTS ?? [])], symbols };
+}
 
 // design/icons.js は IIFE で window と document を触り、SVG のスプライトを body に差し込む。
 // 偽の document に渡された文字列を受け取り、symbol を読み出す
@@ -124,6 +146,17 @@ describe('見本との照合', () => {
     for (const [name, symbol] of design.symbols) {
       assert.equal(symbol.viewBox, iconViewBox, `${name} の viewBox`);
       assert.equal(icons[name as keyof typeof icons], symbol.body, `${name} の中身`);
+    }
+  });
+
+  test('線画は見本と同じ名前と中身を持つ', () => {
+    const design = evaluateArts();
+    assert.ok(design.symbols.size > 0, '見本の線画を読めなかった');
+    assert.deepEqual([...design.symbols.keys()].sort(), design.names.slice().sort());
+    assert.deepEqual(Object.keys(arts).sort(), [...design.symbols.keys()].sort());
+    for (const [name, symbol] of design.symbols) {
+      assert.equal(symbol.viewBox, artViewBox, `${name} の viewBox`);
+      assert.equal(arts[name as keyof typeof arts], symbol.body, `${name} の中身`);
     }
   });
 

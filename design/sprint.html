@@ -13,6 +13,7 @@
 <body>
 <div id="app"></div>
 <script src="icons.js"></script>
+<script src="art.js"></script>
 <script src="sample-data.js"></script>
 <script src="kit.js"></script>
 <script>
@@ -33,7 +34,7 @@ SQ.mount("sprint", () => {
           : `${t("sprint")}を作って始めるのは${t("leader")}です。${t("sprint")}に入っていない${t("task")}も、${t("backlog")}から進めて完了にできます。`,
         isLeader
           ? `<a class="btn is-sm" href="${SQ.firstHref("plan.html")}">${t("plan")}を開く</a>`
-          : `<a class="btn is-sm" href="${SQ.firstHref("backlog.html")}">${t("backlog")}を開く</a>`)}`;
+          : `<a class="btn is-sm" href="${SQ.firstHref("backlog.html")}">${t("backlog")}を開く</a>`, undefined, "notice")}`;
   }
   const list = SQ.tasksWhere((x) => x.sprint === "sp14");
   const done = sumPts(list.filter((x) => x.doneAt)), all = sumPts(list);

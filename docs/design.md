@@ -405,13 +405,14 @@ favicon と同じマーク（下の「favicon」）の横に、名前「Scrum Gu
 | `design/tokens.css` | 色、文字、余白、形、動きの変数。テーマごとの値 |
 | `design/components.css` | 部品の CSS。tokens.css の変数だけを使う。末尾にテーマの飾り |
 | `design/icons.js` | アイコンの定義。読み込むと SVG のスプライトが入る |
+| `design/art.js` | 線画の定義。読み込むと SVG のスプライトが入る |
 | `design/sample-data.js` | 見本の画面が共有する例のデータ（すべて架空） |
 | `design/kit.js` | 部品の HTML を作る関数、画面の枠、タスクの詳細の引き出し、AI のアシスタント（パレットと横の欄。見本では例の頼みごとにだけ決まった答えを返す）、言葉の辞書、テーマの切り替え、見本の状態の切り替え（使い込んだ状態と、最初の日の一般、リーダー、管理者。URL の `?first=member` などで選ぶ） |
 | `design/index.html` | 部品のカタログ。色、文字、各部品の見本と使い方の決まり。先頭でテーマを選べる |
 | `design/*.html` | 画面の見本。画面一覧にある初版の画面をすべて作った（ログイン、組織の選択、自分の今日、通知、自分の設定、組織の管理、運用、受信箱、バックログ、スプリント、計画、エピック、積載量、完了の記録、アーカイブ、接続、メンバー、設定、変更の履歴）と、ページ全体で開くタスクの詳細（`task.html`）。部品だけで組んであり、画面に固有の CSS を持たない。タスクを押すと詳細の引き出しが開き、横、真ん中、ページ全体、新しいタブを選べる。スプリントの作成、開始、延長、終了、起票、エピックの中止と削除、完了の記録の修正、組織の作成、停止、管理者の指名し直し、添付ファイルのプレビューと削除、人数と添付ファイルの上限の変更はダイアログで開く |
 
 - 手元では `design/index.html` をブラウザで開く（ビルド不要）。開発者でない人には、見本の Worker の URL を渡す（`docs/development.md` の「見本の Worker」）。
-- 読み込む順は tokens.css、components.css、icons.js、sample-data.js、kit.js。
+- 読み込む順は tokens.css、components.css、icons.js、art.js、sample-data.js、kit.js。
 - 画面に固有の CSS を書かない。足りない部品は components.css とカタログに先に足す。
 - 本番の Svelte では、tokens.css と components.css をそのまま読み込み、kit.js の関数を1つずつコンポーネントにする（次の節）。
 - tokens.css と components.css は `src/routes/+layout.svelte` が `design/` から import する。複製しない。見本の Worker（`wrangler.design.jsonc`）の build watch paths が `design/*` なので、この2つを直すと見本も出し直される。
@@ -435,6 +436,18 @@ favicon と同じマーク（下の「favicon」）の横に、名前「Scrum Gu
 - 付けた所は、自分の設定のレベルの面（合計の前に `crystal`）、経験値の明細（XP の列の見出しと空の状態に `crystal`）、バックログの画面のチーム全体の経験値（`crystal`）、クリア報酬の段階と額の印（`chest`）、自分の設定のレベルの面の「受け取った感謝」の行（`heart`。見本は `levelPanel` の末尾）。見本の通知の「クリア報酬」も `chest`。タスクの詳細の引き出しの「感謝」の欄の題には `heart` を付ける。
 - 紋章（`Emblem`）を出す所（レベルの面、アカウントのメニュー、メンバーの一覧、討伐隊）には `crest` を重ねない。紋章がレベルの印を兼ねるので、重ねると同じ意味の印が2つ並ぶため。今の画面でレベルを出す所はどれも紋章を出すので、`crest` を使う所はまだ無い。紋章を出せない所で「レベル」を出す画面（レベルが上がった知らせなど）を作るときに使う。
 
+### 線画
+
+空の一覧と「最初にやること」を迎える小さな絵。何も無い画面でも冒険の始まりの気分で次の一歩を踏み出せるように置く。見本はカタログの「線画」と「最初にやること」。
+
+- 種類は3つ。掲示板 `notice`（一覧が空）、宝箱 `chest`（報酬や明細が空）、地図 `map`（最初の一歩）。場面ごとに選び、増やすときはカタログに先に足す
+- 64px の格子に、アイコンと同じ線（太さ2px、丸い端）で描く。色は `currentColor` で、空の状態（`.empty`）の薄い文字の色に従う。絵柄はテーマで替えない
+- 文とボタンより目立たせない。大きさは `.empty` の中で64px、「最初にやること」の先頭（`.art.is-lead`）で48px。色を濃くしたり、アイコンより目立つ色を付けたりしない
+- 装飾なので読み上げから外す（`aria-hidden`）。何が出る場所かと次にやることは、隣の文が伝える
+- 空の状態では、アイコンの代わりに置く（見本は `emptyState` の6つ目の引数、本番は `EmptyState` の `art`）。使う所は、バックログの空（`notice`）、自分の今日（空は `notice`、ワークスペースが無いときは `map`）、スプリントの画面（`notice`）、計画の画面（`map`）、届いた招待（`notice`）、経験値の明細（`chest`）。読み込みの失敗、見つからない、権限が無い、読み込み中は、線画を付けずアイコンのままにする
+- 「最初にやること」の本番は自分の今日の Issue（#70）で作る。置き方は見本の `firstSteps` どおり、パネルの先頭に `map` を `lead` で置く（本番は `Art` の `lead`）
+- 本番の部品は `ArtSprite.svelte`（root の `+layout.svelte` に1つ置く）と `Art.svelte`。定義は `src/lib/art.ts` で、`scripts/design-parity.test.ts` が `design/art.js` と突き合わせる
+
 ### 本番の Svelte のコンポーネント
 
 コンポーネントは `src/lib/components/` に、1部品1ファイル（PascalCase）で置く。`kit.js` の関数との対応は次のとおり。ここにない関数（カード、積載量など）は、使う画面の Issue で足す。
@@ -442,6 +455,7 @@ favicon と同じマーク（下の「favicon」）の横に、名前「Scrum Gu
 | `kit.js` | 本番 | 補足 |
 | --- | --- | --- |
 | `icons.js` のスプライトと `icon` | `IconSprite.svelte`、`Icon.svelte` | スプライトは root の `+layout.svelte` に1つ置く。アイコンの定義は `src/lib/icons.ts`。2つ目の引数（本番は `tone`）に `xp` を渡すと経験値の色（`.ico.is-xp`）になる |
+| `art.js` のスプライトと `art` | `ArtSprite.svelte`、`Art.svelte` | スプライトは `IconSprite` の隣に1つ置く。線画の定義は `src/lib/art.ts`。上の「線画」 |
 | `brandMark`（ロゴのマーク） | `BrandMark.svelte` | 左のメニューの上（`AppShell`）と、枠の外の画面の先頭の紙（`GateSheet`）で、名前の横に置く。上の「ロゴ」 |
 | `googleMark`（Google の G のロゴ）、`.btn.is-google` | `GoogleMark.svelte` | ログインの画面の Google のボタン。下の「Google のボタン」 |
 | `mount`（枠） | `AppShell.svelte`、`NavMenu.svelte`、`OrganizationSwitcher.svelte` | 左のメニューと上の帯。`/[slug]` のレイアウトだけが使い、`slug` と、所属するワークスペースがあるか（`hasWorkspace`。無ければワークスペースの中の見出しを出さない）を渡す。ワークスペースの画面を開いている間は、開いているワークスペースの ID（`workspaceId`）も渡し、ワークスペースの経路の項目（バックログ、メンバー）を出す。組織の切り替えは `OrganizationSwitcher`（`kit.js` の `orgMenuHtml`）を snippet で渡し、メニュー（`nav`）の外、ブランドの下に置く。開閉するメニューで、中は各組織へのリンク（今の組織に `aria-current="page"` とチェック）と、最後に `/` へ戻るリンク。select にしないのは、矢印キーで選んだだけで移るのを避けるため（WCAG 3.2.2）。CSS は `.org-menu`。ボタンの名前は今の組織の名前で、入れる組織の一覧の中の名前を使う（一覧に無いときだけ組織の操作の名前）。ボタンとリストに読み上げの名前を付ける。メニューが上の帯になる 760px 以下でも隠さない（`.ws-select`、ワークスペースの切り替えは隠す）。ワークスペースの切り替え、アシスタントのボタンは置き場所だけで、中身は snippet で渡す。メニューの項目は `src/lib/nav.ts`。画面がまだ無い項目（`href` が `null`）はメニューに出さず、項目が1つも無いグループは見出しごと出さない（色を薄くするだけの「まだ無い」の示し方は、色だけに頼りコントラストも足りないので採らない）。上の帯は、アシスタントとログインした人の表示のどちらかを渡したときだけ出す |
@@ -454,7 +468,7 @@ favicon と同じマーク（下の「favicon」）の横に、名前「Scrum Gu
 | `teamXp`（見本に無かったので足した） | `TeamExperience.svelte` | チーム全体の経験値（`.team-xp`）。ワークスペースの全員の合計の1つの数で、人ごとの値は出さない。バックログの画面の見出しの中（`PageHead` の `meta`）に置く。数は経験値の色。ラベルの前に経験値のアイコン（`crystal`） |
 | `xpDelta`（見本に無かったので足した） | （CSS のみ。`.xp-delta`、`.is-minus`） | 経験値の明細の値。付与は経験値の色で「+N」、打ち消しの負の値は赤。自分の設定の画面の明細の表が使う。見本は `design/me.html` とカタログの「記録」 |
 | `section` | `Section.svelte` | |
-| `emptyState` | `EmptyState.svelte` | 見本の5つ目の引数 `tone`、本番の `iconTone` はアイコンの色（`icon` と `Icon` の `tone`）。ゲームの物のアイコンを置くときに使う。見本はカタログの「知らせの一覧と空の状態」 |
+| `emptyState` | `EmptyState.svelte` | 見本の5つ目の引数 `tone`、本番の `iconTone` はアイコンの色（`icon` と `Icon` の `tone`）。ゲームの物のアイコンを置くときに使う。見本の6つ目の引数、本番の `art` は線画（あればアイコンの代わりに置く。上の「線画」）。見本はカタログの「知らせの一覧と空の状態」 |
 | `setting`（`admin.html` の画面内の関数） | `Setting.svelte` | 組織の管理の節。左に見出しと説明、右に中身。`.settings` の中に並べる |
 | `setting`、`orderList`（`settings.html` の区分とリポジトリの節） | `DefinitionsSetting.svelte` | ワークスペースの設定の画面の区分とリポジトリの節。`Setting` を使い、行は `.order-list`（先頭に `.grip`）と `.order-main`（名前と切り替えを並べ、狭い幅では折り返す）、名前は `.order-name`。前の節の「ワークスペースの設定の画面」 |
 | `orderList` の `fixed` と `lockLast`（`settings.html` の列の節） | `ColumnsSetting.svelte` | ワークスペースの設定の画面の列の節。`DefinitionsSetting` と同じ `.order-list` で、末尾に完了の列の固定の行（`.fixed`、`.grip.is-off`）を置き、完了以外の最後の1つの削除ボタンを押せなくする。削除の確かめは `ConfirmDialog` に移し先の `.select` を入れる。前の節の「ワークスペースの設定の画面」 |

@@ -1306,6 +1306,10 @@ a.choice > div > span, .choice.is-static > div > span { display: block; }
 /* ===== 空の状態 ===== */
 .empty { display: grid; gap: var(--space-2); justify-items: center; text-align: center; padding: var(--space-10) var(--space-4); color: var(--color-muted); border: 1px dashed var(--color-line); border-radius: var(--radius-1); }
 .empty > .ico { width: 28px; height: 28px; }
+/* 線画。アイコンと同じ線（太さ2px、丸い端）で、色はテーマの文字の薄い色に従う。絵柄はテーマで替えない。文とボタンより目立たせない */
+.art { width: 64px; height: 64px; flex: none; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.art.is-lead { width: 48px; height: 48px; color: var(--color-muted); opacity: .8; }
+.empty > .art { width: 64px; height: 64px; max-width: 100%; opacity: .8; }
 .empty b { color: var(--color-fg); }
 
 /* ===== ログインの画面（枠の外） ===== */

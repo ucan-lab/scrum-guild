@@ -12,6 +12,7 @@
   import '../../design/components.css';
   import type { Snippet } from 'svelte';
   import { navigating } from '$app/state';
+  import ArtSprite from '../lib/components/ArtSprite.svelte';
   import IconSprite from '../lib/components/IconSprite.svelte';
   import LoadingSheet from '../lib/components/LoadingSheet.svelte';
   import ToastRegion from '../lib/components/ToastRegion.svelte';
@@ -42,6 +43,7 @@
 
 <!-- 全画面に共通のものだけを置く。左のメニューと上の帯の枠は /[slug] のレイアウト（ログインと組織の選択には枠を出さない） -->
 <IconSprite />
+<ArtSprite />
 <!-- 読み込み中を読み上げに伝える。領域は常に置き、中の文字だけを替える -->
 <div class="visually-hidden" role="status">{slow ? t('loading') : ''}</div>
 {#if slow}

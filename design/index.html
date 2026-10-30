@@ -23,6 +23,8 @@
 .cat-block { display: grid; gap: var(--space-4); scroll-margin-top: var(--space-4); }
 .cat-block > p { color: var(--color-muted); max-width: 66ch; font-size: var(--text-sm); }
 .cat-demo { background: var(--color-bg); border: 1px dashed var(--color-line); border-radius: var(--radius-1); padding: var(--space-5); display: grid; gap: var(--space-4); min-width: 0; }
+.cat-art { margin: 0; display: grid; justify-items: center; gap: var(--space-2); color: var(--color-muted); font-size: var(--text-xs); }
+.cat-art figcaption { font-family: var(--font-mono); }
 .cat-row { display: flex; flex-wrap: wrap; gap: var(--space-3); align-items: center; }
 .cat-name { font-family: var(--font-mono); font-size: var(--text-xs); color: var(--color-muted); }
 .cat-rules { margin: 0; padding-left: 1.2em; font-size: var(--text-sm); display: grid; gap: 4px; max-width: 70ch; }
@@ -65,6 +67,7 @@
 <div class="celebrate" id="celebrate" hidden></div>
 <div class="toasts" id="toasts" aria-live="polite"></div>
 <script src="icons.js"></script>
+<script src="art.js"></script>
 <script src="sample-data.js"></script>
 <script src="kit.js"></script>
 <script>
@@ -542,6 +545,11 @@ const SECTIONS = [
   ["steps", "手順", () => block("steps", "手順", "順番に進めるもの（接続の登録、最初にやること）にだけ番号を付ける。",
     `<ol class="steps"><li class="step is-done"><div class="step-body"><span class="step-title">取り込み元を選ぶ</span><span class="props-note">Backlog</span></div></li><li class="step"><div class="step-body"><span class="step-title">認証情報を入れる</span><label class="field" for="k0"><span class="field-label">API キー</span><input class="input" id="k0" type="password"></label></div></li><li class="step"><div class="step-body"><span class="step-title">取り込む範囲を選ぶ</span></div></li></ol>`,
     null, ".steps .step .is-done .step-body .step-title")],
+  ["art", "線画", () => block("art", "線画", "空の一覧と「最初にやること」の先頭に置く小さな絵。64px の格子に、アイコンと同じ線の太さ（2px）と丸い端で描く。art.js を読み込むとスプライトが入る。",
+    `<div class="cat-row">${[["notice", "空の掲示板"], ["chest", "空の宝箱"], ["map", "出発の地図"]].map(([n, label]) => `<figure class="cat-art">${SQ.art(n)}<figcaption>${n}（${label}）</figcaption></figure>`).join("")}</div>
+     <div class="two">${SQ.emptyState("board", `まだ${t("task")}がありません`, `${t("task")}を優先する順に並べる場所です。`, "", undefined, "notice")}${SQ.emptyState("calendar", `まだ${t("sprint")}がありません`, `${t("sprint")}を作ると、ここに先の${t("sprint")}が並びます。`, "", undefined, "map")}</div>`,
+    ["色はテーマの文字の薄い色に従い、絵柄はテーマで替えない。文とボタンより目立たせない（アイコンの色より濃くしない）。", "読み上げから外す（aria-hidden）。何が出る場所かと次にやることは、隣の文が伝える。", "種類は掲示板（一覧が空）、宝箱（報酬や明細が空）、地図（最初の一歩）の3つ。場面ごとに選び、増やすときはここに足す。", "「最初にやること」では、パネルの先頭に小さい形（SQ.art(map, true)、.art.is-lead）で置く。見本は下の「最初にやること」。"],
+    "SQ.art(name, lead) .art .art.is-lead / SQ.emptyState(…, art)")],
   ["first", "最初にやること", () => block("first", "最初にやること", "初めて使う人の自分の今日の先頭に、ロールごとの手順を出す。済んだかは今のデータから決まる。必須の手順がすべて済むと出なくなる。",
     `<div class="two">${SQ.firstSteps("member", { preview: true })}${SQ.firstSteps("admin", { preview: true })}</div>`,
     ["ロールは一般、リーダー、ワークスペースがまだない管理者の3つ。", "主ボタンは、まだ済んでいない最初の手順にだけ付ける。", "取り込み元やスプリントのように使わないチームもあるものは「任意」にし、済んでいなくても手順の一覧を消す妨げにしない。"],
@@ -553,9 +561,9 @@ const SECTIONS = [
   ["feed", "知らせの一覧と空の状態", () => block("feed", "知らせの一覧と空の状態", "",
     `<ul class="feed">${D.notifications.slice(0, 3).map((n) => `<li class="${n.read ? "" : "is-unread"}"><span class="feed-icon">${icon("bell")}</span><span class="feed-main"><span class="feed-text">${SQ.esc(n.text)}</span><span class="feed-at">${n.at}</span></span><button class="btn is-sm is-quiet" type="button">既読にする</button></li>`).join("")}</ul>
      ${SQ.emptyState("inbox", "届いたものはありません", `次の同期で新しく取り込んだ${t("task")}がここに届きます。`)}
-     ${SQ.emptyState("board", `まだ${t("task")}がありません`, `${t("task")}を優先する順に並べる場所です。上の「${t("create")}」から最初の${t("task")}を作ります。`, `<button class="btn is-sm" type="button" data-toast="見本なので画面は移りません">${t("connection")}を登録する</button>`)}
-     ${SQ.emptyState("crystal", "経験値の明細はまだありません", `${t("task")}を${t("complete")}と、起票や${t("done")}の経験値がここに並びます。`, "", "xp")}`,
-    ["未読は太字と淡い藍の地。", "空の状態は、何が出る場所かと、次に何をすればよいかを書く。自分で起こせることがあれば、その画面へのボタンを1つ添える。", "空の状態のボタンは主ボタンにしない。画面の主な操作は見出しの右に置く。"], ".feed .is-unread .feed-icon .feed-main .feed-text .feed-at / SQ.emptyState() .empty")],
+     ${SQ.emptyState("board", `まだ${t("task")}がありません`, `${t("task")}を優先する順に並べる場所です。上の「${t("create")}」から最初の${t("task")}を作ります。`, `<button class="btn is-sm" type="button" data-toast="見本なので画面は移りません">${t("connection")}を登録する</button>`, undefined, "notice")}
+     ${SQ.emptyState("crystal", "経験値の明細はまだありません", `${t("task")}を${t("complete")}と、起票や${t("done")}の経験値がここに並びます。`, "", "xp", "chest")}`,
+    ["未読は太字と淡い藍の地。", "空の状態は、何が出る場所かと、次に何をすればよいかを書く。自分で起こせることがあれば、その画面へのボタンを1つ添える。", "空の状態のボタンは主ボタンにしない。画面の主な操作は見出しの右に置く。", "空の一覧には、アイコンの代わりに線画（6つ目の引数）を置ける。場面に合うものを選ぶ（下の「線画」）。"], ".feed .is-unread .feed-icon .feed-main .feed-text .feed-at / SQ.emptyState() .empty")],
   ["monthly", "月の積載量", () => block("monthly", "月の積載量", "メンバー × 月の表のセル。",
     `<div class="cat-row" style="align-items:flex-start">${[[103.2, 118, 0], [172, 168, 0], [86, 60, 1], [80, 60, 0], "unset", null].map((c) => `<div class="panel" style="padding:var(--space-3)">${SQ.miniCap(c)}</div>`).join("")}</div>`,
     ["スプリントが1つもない月は、余力ありではなく「計画なし」と出す。"], ".mini-cap .is-none .mini-cap-num / .cap.is-mini")],
