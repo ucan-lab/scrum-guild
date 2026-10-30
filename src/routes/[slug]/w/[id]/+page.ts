@@ -19,6 +19,8 @@ import type { PageLoad } from './$types';
 // チーム全体の経験値（teamTotal）は木と並べて読み、読めなければ null で、見出しに出さないだけにする（画面は壊さない）
 export const load: PageLoad = async ({ params, fetch, url, depends }) => {
   depends('app:backlog-tree');
+  // 読み直しを始めた時刻。画面で足した行が、この木に無いのを「消えた」と決めてよいかを、足した時刻との前後で決める
+  const loadedAt = performance.now();
   const filter = filterFromParams(url.searchParams);
   const options = { slug: params.slug, fetcher: fetch };
   const [result, definitions, teamTotal] = await Promise.all([
@@ -29,6 +31,7 @@ export const load: PageLoad = async ({ params, fetch, url, depends }) => {
   if (isUnauthenticated(result)) redirect(307, loginUrl(url, result));
   return {
     tree: result.ok ? result.data : null,
+    loadedAt,
     filter,
     definitions: definitions.ok ? definitions.data : null,
     teamTotal: teamTotal.ok ? teamTotal.data.total : null,
