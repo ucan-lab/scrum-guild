@@ -2,6 +2,8 @@
 // 開発用の時計（DEV_NOW）は、Worker のミドルウェア（src/server/dev-clock.ts）が setFixedNow で渡す。
 // このファイルは scripts/ からも読むので、cloudflare:workers を import しない
 
+import { addDays, weekEndOf } from './due.ts';
+
 let fixedAt: Date | undefined;
 
 // 渡すと、now() はその時刻を返し続ける（時刻を止める）。undefined で本物の時計に戻す
@@ -74,4 +76,32 @@ export function todayIn(timezone: string, at: Date = now()): string {
 export function monthIn(timezone: string, at: Date = now()): string {
   const { year, month } = datePartsIn(timezone, at);
   return `${year}-${month}`;
+}
+
+const HOUR_MS = 3_600_000;
+
+// タイムゾーンで、その日（YYYY-MM-DD）が始まる最初の時刻。夏時間などで 0 時が無い日は、その日の最初の時刻になる。
+// タイムゾーンの時差は UTC−12 時間から +14 時間なので、その日の UTC の 0 時の前後 15 時間の中で、日付が初めてその日になる時刻を二分探索する
+export function startOfDayIn(timezone: string, date: string): Date {
+  const [year, month, day] = date.split('-').map(Number);
+  const base = new Date(0);
+  base.setUTCFullYear(year!, month! - 1, day!);
+  let low = base.getTime() - 15 * HOUR_MS; // この時刻の現地の日付は、その日より前
+  let high = base.getTime() + 15 * HOUR_MS; // この時刻の現地の日付は、その日以後
+  while (high - low > 1) {
+    const middle = low + Math.floor((high - low) / 2);
+    if (todayIn(timezone, new Date(middle)) < date) low = middle;
+    else high = middle;
+  }
+  return new Date(high);
+}
+
+// 時刻を含む週の範囲を、UTC の ISO の時刻で返す。始まり（含む）は週の始まり（0〜6、0 が日曜）の日の 0 時、終わり（含まない）は7日後の 0 時。
+// 日付と週の始まりはワークスペースのタイムゾーンで数える。xp_grants.confirmed_at と同じ形なので、文字列のまま範囲を比べられる
+export function weekRangeIn(timezone: string, weekStart: number, at: Date): { start: string; end: string } {
+  const weekEnd = weekEndOf(todayIn(timezone, at), weekStart);
+  return {
+    start: startOfDayIn(timezone, addDays(weekEnd, -6)).toISOString(),
+    end: startOfDayIn(timezone, addDays(weekEnd, 1)).toISOString(),
+  };
 }

@@ -41,6 +41,13 @@ export function weekEndOf(today: string, weekStart: number): string {
   return end.toISOString().slice(0, 10).padStart(10, '0');
 }
 
+// 暦の日付に日数を足した日付（YYYY-MM-DD。引くなら負の数）。暦に存在しない日付は RangeError
+export function addDays(date: string, days: number): string {
+  const dayNumber = dayNumberOf(date);
+  if (dayNumber === null || !Number.isInteger(days)) throw new RangeError('日付か日数が使えない');
+  return new Date((dayNumber + days) * DAY_MS).toISOString().slice(0, 10).padStart(10, '0');
+}
+
 // 期日が今日より前なら overdue、今日なら today、今日を含む週の終わりまでなら this_week、それより先は later。
 // 完了したタスクの色を付けない扱いは呼び出し側で決める
 export function dueStatus(dueOn: string, today: string, weekStart: number): DueStatus {

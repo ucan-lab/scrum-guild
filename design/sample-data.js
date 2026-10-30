@@ -167,6 +167,9 @@ window.SQ_DATA = (function () {
     teamXp: 8420,
     level: { level: 7, xp: 2550, toNext: 250, soon: 140, gotPct: 64, soonPct: 20, rows: [["受託開発チーム", 1780], ["社内ツール", 770]], total: 2550 },
 
+    // 自分が受け取った感謝の数（組織の合計。本人の面にだけ出す）
+    thanksReceived: 9,
+
     // 第14回の積載量。基準と作業量は時間
     capacity: [
       { who: "u1", alloc: 60, base: 45.6, work: 56.0, off: "10/23 半日" },
