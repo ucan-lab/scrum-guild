@@ -1282,12 +1282,36 @@ const looooooooooooooooooooooooooooooooooongLine = "コードの長い1行は、
          ${submitError}`,
         `<button class="btn is-quiet" type="button" data-close-dialog>やめる</button><button class="btn is-primary" type="button"${state === "active" ? ` aria-disabled="true"` : ` data-close-dialog data-toast="${sprint}を始めました"`}>始める</button>`);
     },
-    sprintExtend: () => openDialog(`${t("sprint")}を延ばす`,
-      `<div class="form-row"><label class="field" for="d-days"><span class="field-label">延ばす日数</span><input class="input" id="d-days" type="number" min="1" value="2"></label>
-         <div class="field"><span class="field-label">新しい最終日</span><span class="mono">2026-10-28（水）</span></div></div>
-       <div class="callout is-info">${icon("calendar")}<span>次の ${sprintLabel("sp15")} と重なるので、${sprintLabel("sp15")} と ${sprintLabel("sp16")} を同じく 2 日ずつ後ろへずらします。</span></div>
-       <p class="field-hint">延ばした${t("sprint")}は、計画の画面のベロシティから除きます。</p>`,
-      `<button class="btn is-quiet" type="button" data-close-dialog>やめる</button><button class="btn is-primary" type="button" data-close-dialog data-toast="2 日延ばしました">2 日延ばす</button>`),
+    // 進行中のスプリントを延ばす（本番の SprintExtendDialog）。日数の下に範囲の添え書きを置き、新しい最終日とずれる分の予告は
+    // aria-live の1つの領域に入れる。名前の無いスプリントは期間が名前なので、冒頭の期間を重ねない。後ろが動かないとき（data-state="none"）は、その旨を出す
+    sprintExtend: (el) => {
+      const none = el && el.dataset.state === "none";
+      const id = none ? "spb" : "sp14";
+      const s = D.sprints[id];
+      const period = `<span class="mono">${md(s.start)}〜${md(s.end)}</span>`;
+      const head = s.name ? `${sprintLabel(id)}（${period}）` : `${t("sprint")} ${period}`;
+      const shift = (to, before, after) => `<div class="field"><span class="field-label">${sprintLabel(to)}</span><span><span class="mono">${before} → ${after}</span> <span>（2 日）</span></span></div>`;
+      const preview = none
+        ? `<p class="props-note">後ろの${t("sprint")}は動きません</p>`
+        : `${shift("sp15", "10/27〜11/9", "10/29〜11/11")}${shift("sp16", "11/10〜11/23", "11/12〜11/25")}`;
+      openDialog(`${t("sprint")}を延ばす`,
+        `<p>${head}</p>
+         <div class="field"><label class="field-label" for="d-days">延ばす日数</label><input class="input" id="d-days" type="number" min="1" max="14" value="2" aria-describedby="d-days-hint"><p class="field-hint" id="d-days-hint">1〜14 日</p></div>
+         <div class="form-fields" aria-live="polite">
+           <div class="field"><span class="field-label">新しい最終日</span><span class="mono">2026-10-28</span></div>
+           ${preview}
+         </div>
+         <p class="field-hint">延ばした${t("sprint")}はベロシティの計算から除きます。</p>`,
+        `<button class="btn is-quiet" type="button" data-close-dialog>やめる</button><button class="btn is-primary" type="button" data-close-dialog data-toast="${t("sprint")}を 2 日延長しました">2 日延長する</button>`);
+    },
+    // 進行中のスプリントの名前とゴールを直す（本番の SprintDialog の進行中）。期間は変えられないので、開始日と長さの欄は出さない
+    sprintEditActive: () => {
+      const s = D.sprints.sp14;
+      openDialog(`${t("sprint")}を直す`,
+        `<label class="field" for="d-an"><span class="field-label">名前（任意）</span><input class="input" id="d-an" placeholder="空なら期間を名前にします" value="${esc(s.name)}"></label>
+         <div class="field"><label class="field-label" for="d-ag">${t("sprintGoal")}</label><textarea class="textarea" id="d-ag" aria-describedby="d-ag-hint" rows="3">${esc(s.goal)}</textarea><p class="field-hint" id="d-ag-hint">200 字まで。空にすると消えます</p></div>`,
+        `<button class="btn is-quiet" type="button" data-close-dialog>やめる</button><button class="btn is-primary" type="button" data-close-dialog data-toast="${t("sprint")}を保存しました">保存する</button>`);
+    },
     sprintEnd: () => openDialog(`${t("sprint")}を終える`,
       `<p>${sprintLabel("sp14")} を終えます。終えた${t("sprint")}の期間と中身は、あとから変えられません。</p>
        <fieldset class="field" style="border:0;padding:0;margin:0"><legend class="field-label">終わらなかった${t("task")} 7 件の行き先</legend>

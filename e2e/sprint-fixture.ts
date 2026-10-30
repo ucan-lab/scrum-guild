@@ -28,6 +28,7 @@ export const SAMPLE_BOARD: Board = {
     start_on: '2026-10-13',
     end_on: '2026-10-26',
     length: 14,
+    extended_days: 0,
     status: 'active',
   },
   today: '2026-10-20',
@@ -90,6 +91,7 @@ export const NEXT_SPRINT = {
   start_on: '2026-10-27',
   end_on: '2026-11-09',
   length: 14,
+  extended_days: 0,
   status: 'planned' as const,
 };
 

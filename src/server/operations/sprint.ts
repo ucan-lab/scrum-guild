@@ -41,13 +41,14 @@ export type SprintRow = {
   start_on: string;
   end_on: string;
   status: string;
+  extended_days: number;
 };
 
 function conflict(reason: SprintConflictReason): ApiError {
   return new ApiError(409, 'conflict', { reason });
 }
 
-// 画面に返す形。一覧は planned と active だけを返し、変える操作は planned だけを書くので、status はこの2つになる
+// 画面に返す形。一覧と変える操作は planned と active を返す
 export function summaryOf(row: SprintRow): SprintSummary {
   return {
     id: row.id,
@@ -56,6 +57,7 @@ export function summaryOf(row: SprintRow): SprintSummary {
     start_on: row.start_on,
     end_on: row.end_on,
     length: sprintLengthOf(row.start_on, row.end_on),
+    extended_days: row.extended_days,
     status: row.status === 'active' ? 'active' : 'planned',
   };
 }
@@ -96,7 +98,15 @@ async function readSprint(db: OrganizationDb, workspaceId: string, sprintId: str
     db.statement((q) =>
       q
         .selectFrom('sprints')
-        .select(['sprints.id', 'sprints.name', 'sprints.goal', 'sprints.start_on', 'sprints.end_on', 'sprints.status'])
+        .select([
+          'sprints.id',
+          'sprints.name',
+          'sprints.goal',
+          'sprints.extended_days',
+          'sprints.start_on',
+          'sprints.end_on',
+          'sprints.status',
+        ])
         .where('sprints.id', '=', sprintId)
         .where('sprints.workspace_id', '=', workspaceId)
         .where('sprints.deleted_at', 'is', null),
@@ -120,7 +130,15 @@ export const sprintListOperation = implement(sprintList, async ({ db, workspace 
     db.statement((q) =>
       q
         .selectFrom('sprints')
-        .select(['sprints.id', 'sprints.name', 'sprints.goal', 'sprints.start_on', 'sprints.end_on', 'sprints.status'])
+        .select([
+          'sprints.id',
+          'sprints.name',
+          'sprints.goal',
+          'sprints.extended_days',
+          'sprints.start_on',
+          'sprints.end_on',
+          'sprints.status',
+        ])
         .where('sprints.workspace_id', '=', workspaceId)
         .where('sprints.deleted_at', 'is', null)
         .where('sprints.status', 'in', ['planned', 'active'])
@@ -272,14 +290,18 @@ export const sprintCreateOperation = implement(sprintCreate, async ({ db, actor,
       start_on: input.start_on,
       end_on: endOn,
       status: 'planned',
+      extended_days: 0,
     }),
   };
 });
 
-type UpdatedFields = { name?: string | null; start_on?: string; end_on?: string };
+type UpdatedFields = { name?: string | null; goal?: string | null; start_on?: string; end_on?: string };
 
 // 読んだ値と、送られた値から決めた次の値の差。長さだけを送ると、今の開始日から最終日を決め直す
-function diffOf(current: SprintRow, input: { name?: string | null; start_on?: string; length?: number }) {
+function diffOf(
+  current: SprintRow,
+  input: { name?: string | null; goal?: string | null; start_on?: string; length?: number },
+) {
   const startOn = input.start_on ?? current.start_on;
   const endOn = sprintEndOn(startOn, input.length ?? sprintLengthOf(current.start_on, current.end_on));
   if (endOn === null) throw new ApiError(400, 'invalid_input');
@@ -288,6 +310,10 @@ function diffOf(current: SprintRow, input: { name?: string | null; start_on?: st
   if (input.name !== undefined && input.name !== current.name) {
     values.name = input.name;
     changes.name = [current.name, input.name];
+  }
+  if (input.goal !== undefined && input.goal !== current.goal) {
+    values.goal = input.goal;
+    changes.goal = [current.goal, input.goal];
   }
   if (startOn !== current.start_on) {
     values.start_on = startOn;
@@ -307,7 +333,7 @@ function diffOf(current: SprintRow, input: { name?: string | null; start_on?: st
   };
 }
 
-// 書き方は epic-update と同じ。読んだ値からの差を、読んだ値のままで、始まっておらず、期間を変えるなら重なるスプリントが無いときだけ書き、
+// 書き方は epic-update と同じ。読んだ値からの差を、値と状態が読んだままで、期間を変えるなら重なるスプリントが無いときだけ書き、
 // 通らなかったら理由を読み直して分ける（閉じた、無い、始まった、重なる）。どれでもなければ、読み直して差を作り直す
 export const sprintUpdateOperation = implement(sprintUpdate, async ({ db, actor, workspace, input }) => {
   const actorUserId = actorUserIdOf(actor);
@@ -321,9 +347,16 @@ export const sprintUpdateOperation = implement(sprintUpdate, async ({ db, actor,
       await throwIfClosed(db, workspaceId);
       throw new ApiError(404, 'not_found');
     }
-    if (current.status !== 'planned') {
+    if (
+      current.status === 'closed' ||
+      (current.status === 'active' && (input.start_on !== undefined || input.length !== undefined))
+    ) {
       await throwIfClosed(db, workspaceId);
       throw conflict('started');
+    }
+    if (current.status !== 'active' && input.goal !== undefined) {
+      await throwIfClosed(db, workspaceId);
+      throw conflict('not_active');
     }
     const { values, changes, startOn, endOn, rangeChanged, isEmpty } = diffOf(current, input);
     if (isEmpty) {
@@ -344,12 +377,13 @@ export const sprintUpdateOperation = implement(sprintUpdate, async ({ db, actor,
               eb('id', '=', sprintId),
               eb('workspace_id', '=', workspaceId),
               eb('deleted_at', 'is', null),
-              eb('status', '=', 'planned'),
+              eb('status', '=', current.status),
               eb.exists(openWorkspace(q, organizationId, workspaceId)),
               ...(rangeChanged ? [eb.not(eb.exists(overlapping(q, workspaceId, startOn, endOn, sprintId)))] : []),
               // 書く列が、読んだときの値のまま。期間を変えるときは、片側だけを書くときも両端を守る
               // （最終日と重なりの検査は読んだ開始日と最終日から決めたので、もう片側を別の要求が動かしていたら書かない）
               ...(values.name === undefined ? [] : [eb('name', 'is', current.name)]),
+              ...(values.goal === undefined ? [] : [eb('goal', 'is', current.goal)]),
               ...(rangeChanged ? [eb('start_on', 'is', current.start_on), eb('end_on', 'is', current.end_on)] : []),
             ]),
           ),
@@ -385,7 +419,12 @@ export const sprintUpdateOperation = implement(sprintUpdate, async ({ db, actor,
     await throwIfClosed(db, workspaceId);
     const reread = await readSprint(db, workspaceId, sprintId);
     if (reread === undefined) throw new ApiError(404, 'not_found');
-    if (reread.status !== 'planned') throw conflict('started');
+    if (
+      reread.status === 'closed' ||
+      (reread.status === 'active' && (input.start_on !== undefined || input.length !== undefined))
+    )
+      throw conflict('started');
+    if (reread.status !== 'active' && input.goal !== undefined) throw conflict('not_active');
     if (rangeChanged && (await overlapExists(db, workspaceId, startOn, endOn, sprintId))) throw conflict('overlap');
   }
   throw new ApiError(409, 'conflict');

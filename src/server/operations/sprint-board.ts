@@ -46,7 +46,15 @@ export const sprintBoardOperation = implement(sprintBoard, async ({ db, workspac
     db.statement((q) =>
       q
         .selectFrom('sprints')
-        .select(['sprints.id', 'sprints.name', 'sprints.goal', 'sprints.start_on', 'sprints.end_on', 'sprints.status'])
+        .select([
+          'sprints.id',
+          'sprints.name',
+          'sprints.goal',
+          'sprints.extended_days',
+          'sprints.start_on',
+          'sprints.end_on',
+          'sprints.status',
+        ])
         .where('sprints.workspace_id', '=', workspaceId)
         .where(activeSprintRowFilter('sprints')),
     ),

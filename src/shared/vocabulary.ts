@@ -2431,6 +2431,59 @@ export const dictionary = defineDictionary({
     'この{sprint}はもう始まっています。一覧を読み直します',
   ),
   sprintStartForbidden: workspace('{sprint}を始めるのは{leader}です', '{sprint}を始めるのは{leader}です'),
+  // 進行中のスプリントを延ばすダイアログ（kit.js の DIALOGS.sprintExtend）と、スプリントの画面の見出しの「延長する」と「名前とゴールを変更」
+  sprintExtendAction: workspace('延長する', '延長する'),
+  sprintExtendSubmit: workspace('{days} 日延長する', '{days} 日延長する'),
+  sprintExtendTitle: workspace('{sprint}を延ばす', '{sprint}を延ばす'),
+  sprintExtendDays: workspace('延ばす日数', '延ばす日数'),
+  sprintExtendRange: workspace('1〜{max} 日', '1〜{max} 日'),
+  sprintExtendEnd: workspace('新しい最終日', '新しい最終日'),
+  // ずれる{sprint}ごとの、今の期間 → 新しい期間と、ずれる日数
+  sprintExtendShift: workspace('{before} → {after}', '{before} → {after}'),
+  sprintExtendShiftDays: workspace('（{days} 日）', '（{days} 日）'),
+  sprintExtendNoShift: workspace('後ろの{sprint}は動きません', '後ろの{sprint}は動きません'),
+  sprintExtendShiftMore: workspace(
+    'ほか {count} 本の{sprint}も、重なる分だけ後ろへずらします',
+    'ほか {count} 本の{sprint}も、重なる分だけ後ろへずらします',
+  ),
+  // 予告の読み上げ。押し出す行を全部読むと長いので、新しい最終日とずらす本数だけを伝える
+  sprintExtendPreviewSummary: workspace(
+    '新しい最終日は {end}。後ろの{sprint}を {count} 本ずらします',
+    '新しい最終日は {end}。後ろの{sprint}を {count} 本ずらします',
+  ),
+  sprintExtendVelocity: workspace(
+    '延ばした{sprint}はベロシティの計算から除きます。',
+    '延ばした{sprint}はベロシティの計算から除きます。',
+  ),
+  sprintExtended: workspace('延長 {days} 日', '延長 {days} 日'),
+  sprintExtending: workspace('延長しています', '延長しています'),
+  sprintExtendDone: workspace('{sprint}を {days} 日延長しました', '{sprint}を {days} 日延長しました'),
+  sprintExtendInvalid: workspace(
+    '延ばす日数は 1〜{max} 日の整数で入力してください。全体の長さは{limit}日までです。',
+    '延ばす日数は 1〜{max} 日の整数で入力してください。全体の長さは{limit}日までです。',
+  ),
+  sprintExtendLimit: workspace(
+    '長さが{limit}日のため、これ以上延長できません。',
+    '長さが{limit}日のため、これ以上延長できません。',
+  ),
+  sprintExtendLoadFailed: workspace(
+    '期間を読み込めませんでした。もう一度試してください。',
+    '期間を読み込めませんでした。もう一度試してください。',
+  ),
+  sprintExtendFailed: workspace(
+    '延長できませんでした。もう一度試してください。',
+    '延長できませんでした。もう一度試してください。',
+  ),
+  sprintExtendNotActive: workspace(
+    'この{sprint}は進行中ではありません。画面を読み直しました。',
+    'この{sprint}は進行中ではありません。画面を読み直しました。',
+  ),
+  sprintExtendChanged: workspace(
+    '期間が変わりました。新しい期間を確かめて、もう一度試してください。',
+    '期間が変わりました。新しい期間を確かめて、もう一度試してください。',
+  ),
+  sprintEditActive: workspace('名前と{sprintGoal}を変更', '名前と{sprintGoal}を変更'),
+  sprintEditGoalHint: workspace('{max} 字まで。空にすると消えます', '{max} 字まで。空にすると消えます'),
   // スプリントを終えるダイアログ（kit.js の DIALOGS.sprintEnd）と、スプリントの画面の見出しの「終える」
   sprintCloseAction: workspace('終える', '終える'),
   sprintCloseLabel: workspace('終える: {label}', '終える: {label}'),

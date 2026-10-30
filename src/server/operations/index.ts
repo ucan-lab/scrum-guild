@@ -28,6 +28,7 @@ import { organizationSettingsUpdateOperation } from './organization-settings.ts'
 import { logoutOperation, meOperation } from './session.ts';
 import { userAdminUpdateOperation, userDisableOperation, userEnableOperation, userListOperation } from './user.ts';
 import { sprintBoardOperation, taskColumnMoveOperation } from './sprint-board.ts';
+import { sprintExtendOperation } from './sprint-extend.ts';
 import { sprintCloseOperation } from './sprint-close.ts';
 import {
   sprintCreateOperation,
@@ -131,6 +132,7 @@ export const implementedOperations: readonly ImplementedOperation[] = [
   sprintTaskRemoveOperation,
   sprintStartOperation,
   sprintCloseOperation,
+  sprintExtendOperation,
   sprintBoardOperation,
   taskColumnMoveOperation,
   taskCreateOperation,
