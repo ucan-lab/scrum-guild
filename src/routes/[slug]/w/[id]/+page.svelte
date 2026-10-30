@@ -154,7 +154,7 @@
             (entry) =>
               !done.includes(entry.task.id) &&
               !inTree(loaded, entry.task.id) &&
-              (loaded === null || entry.at > loadedAt),
+              (loaded === null || entry.at >= loadedAt),
           )
         : [];
     completedIds = [];
