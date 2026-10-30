@@ -6,7 +6,7 @@ import { describe, test } from 'node:test';
 import vm from 'node:vm';
 import { iconViewBox, icons } from '../src/lib/icons.ts';
 import { themeLabelKeys, themeNoteKeys, themes } from '../src/shared/theme.ts';
-import { dictionary } from '../src/shared/vocabulary.ts';
+import { defaultVocabularies, dictionary } from '../src/shared/vocabulary.ts';
 
 const read = (file: string) => readFileSync(new URL(`../design/${file}`, import.meta.url), 'utf8');
 
@@ -160,5 +160,13 @@ describe('見本との照合', () => {
       assert.notEqual(entry.game, '', `${key} の game`);
       assert.notEqual(entry.scrum, '', `${key} の scrum`);
     }
+  });
+
+  test('見本の初めの言葉づかいは、本番の既定と同じ（0 がゲームの言葉、1 がスクラムの言葉）', () => {
+    const initial = /\n {2}let vocab = (\d);/.exec(read('kit.js'))?.[1];
+    assert.ok(initial, 'design/kit.js に let vocab が見つからない（書き方を変えたら、このテストの取り出し方も直す）');
+    const indexOf = { game: '0', scrum: '1' } as const;
+    assert.equal(indexOf[defaultVocabularies.workspace], initial);
+    assert.equal(indexOf[defaultVocabularies.organization], initial);
   });
 });

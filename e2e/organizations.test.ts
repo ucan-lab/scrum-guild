@@ -243,7 +243,7 @@ test.describe('組織が1つの人（あおば開発のハルカ）', () => {
     await expect(page.locator('html')).toHaveAttribute('data-theme', 'medieval');
     expect(await page.evaluate(() => localStorage.getItem('sg-theme'))).toBe('medieval');
 
-    // 見つからない画面（組織の外）。既定はスクラムの言葉なので、組織のゲームの言葉を持ち越していないことが分かる
+    // 見つからない画面（組織の外）。文書ごと読み直すので、確かめるのはテーマの属性と localStorage
     await page.goto('/hibari');
     await expect(page.getByRole('heading', { level: 1, name: '組織が見つかりません' })).toBeVisible();
     await expect(page.locator('html')).not.toHaveAttribute('data-theme', /.*/);

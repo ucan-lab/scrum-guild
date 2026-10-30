@@ -363,7 +363,7 @@
 | name | TEXT | NOT NULL | |
 | timezone | TEXT | NOT NULL | IANA のタイムゾーン名。作った人のブラウザの値を既定にする。時差の表記（`+09:00` など）は受けず、`Intl.DateTimeFormat` で作れる名前を `resolvedOptions().timeZone` にそろえて保存する（`asia/tokyo` は `Asia/Tokyo`）。正式名の一覧とは突き合わせない。ブラウザが旧名（`Asia/Calcutta` など）を返すことがあるため |
 | week_start | INTEGER | NOT NULL、0〜6、既定 1 | 週の始まり。0 が日曜 |
-| vocabulary | TEXT | NOT NULL、`game` か `scrum`、既定 `game` | 言葉づかい |
+| vocabulary | TEXT | NOT NULL、`game` か `scrum`、既定 `game` | 言葉づかい。作成の入力で必須なので、列の既定は使われない |
 | definition_of_done_md | TEXT | 10 万字まで | 完成の定義（Markdown）。空なら `NULL` で、出さない。書くのは `workspace-dod-update`（下の「書き込みの単位」の「完成の定義の変更」）、読むのは `workspace` の操作 |
 | closed_at | TEXT | | 閉じた日時。入っていれば読み取り専用 |
 | created_by | TEXT | NOT NULL、FK users | |

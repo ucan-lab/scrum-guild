@@ -27,7 +27,7 @@
   })();
   const firstHref = (href, role = first) => (role && FIRST_PAGES[role].includes(href) ? `${href}?first=${role}` : href);
   // ワークスペースを作った直後の既定値は requirements.md の「機能」の冒頭。
-  // 決まった欄の名前は作ったときの言葉づかい（既定のゲームの言葉）で付き、あとから訳さない
+  // 決まった欄の名前は作ったときの言葉づかいで付き、あとから訳さない
   function freshData(role) {
     const me = { ...D.users[D.me], level: 1, role: role === "member" ? "member" : "leader" };
     const common = {
