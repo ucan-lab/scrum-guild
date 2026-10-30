@@ -5358,8 +5358,7 @@ describe('bash-rules: force push の判定で値の位置と本文の見え方�
     // push option の値の後ろの force は、値に隠れず効く
     'git push -o x -f origin x',
     'git push --pu x --force origin x',
-    // 標準入力の本文を前の区切りの echo で渡す形は、同じコマンドの && の後ろでも読む
-    "echo '{\"force\":true}' && gh api -X PATCH repos/o/r/git/refs/heads/x --input -",
+    "echo '{\"force\":true}' | gh api -X PATCH repos/o/r/git/refs/heads/x --input -",
     'gh api -X PATCH repos/o/r/git/refs/tags/v1 -F force=true',
     'curl -X PATCH https://api.github.com/repos/o/r/git/refs/heads/x --data=\'{"force":true}\'',
     'gh pr update-branch --rebase=true',
@@ -5637,6 +5636,22 @@ describe('bash-rules: done-check の指摘（URL を決めるオプション、�
   }
   test('[通す] gh api graphql の query が引数にあれば allow', () =>
     assert.equal(decision(`gh api graphql -f query='{ viewer { login } }'`), 'allow'));
+
+  // パイプでつながない echo は、gh と curl の標準入力に流れない
+  for (const command of [
+    `echo '{"force":false}' && gh api -X PATCH repos/o/r/git/refs/heads/x --input - < b.json`,
+    `echo '{"force":false}'; gh api -X PATCH repos/o/r/git/refs/heads/x --input - < b.json`,
+    `echo '{"force":true}'\ngh api -X PATCH repos/o/r/git/refs/heads/x --input -`,
+    `echo '{"force":false}' || gh api -X PATCH repos/o/r/git/refs/heads/x --input -`,
+    `printf '{"force":false}'; curl -X PATCH ${ref} -d @- < b.json`,
+    `while read l; do echo '{"force":false}'; gh api -X PATCH repos/o/r/git/refs/heads/x --input -; done < b.json`,
+  ]) {
+    test(`[確認] ${command} は標準入力の出どころを読めないので ask`, () => assert.equal(decision(command), 'ask', command));
+  }
+  test('[止める] パイプで渡す echo の force:true は読んで deny', () =>
+    assert.equal(decision(`echo x; echo '{"force":true}' | gh api -X PATCH repos/o/r/git/refs/heads/x --input -`), 'deny'));
+  test('[通す] パイプで渡す echo の force:false は allow', () =>
+    assert.equal(decision(`echo x; echo '{"sha":"a","force":false}' | gh api -X PATCH repos/o/r/git/refs/heads/x --input -`), 'allow'));
 
   // グループとサブシェルの中の echo は、gh の標準入力に流れるとは限らない
   for (const command of [

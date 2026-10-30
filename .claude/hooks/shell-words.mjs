@@ -538,7 +538,10 @@ export function splitSegments(command) {
         depth = Math.max(0, depth - 1);
         closesGlobGroup = groups.pop() === true;
       }
+      // この区切りの後ろの演算子。| と |& は、この区切りの標準出力を次の区切りの標準入力に渡す
+      const ended = words;
       endSegment();
+      if (segments.at(-1) === ended) Object.defineProperty(ended, 'endOp', { value: op, configurable: true });
       afterGlobGroup = closesGlobGroup;
       i += op.length - 1;
       // ヒアドキュメントの本文（行の終わりから終わりの印の行まで）は、区切りとして読まない

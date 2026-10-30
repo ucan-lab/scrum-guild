@@ -597,7 +597,7 @@ function methodOf(value, fallback) {
 }
 
 // echo と printf が標準入力に流す本文。字面が引数と同じときだけ読む（printf の % の書式、\ のエスケープ、リダイレクトでファイルに書く echo は読めない）。
-// splitSegments は区切りの種類（| か ;）を残さないので、直前の区切りがパイプで渡るかは見分けない。読めない形は undefined
+// 直前の区切りがパイプで渡すか（endOp）は呼び出し側（stdinBody）が見る。読めない形は undefined
 function echoedText(words) {
   const ci = words ? commandIndex(words) : -1;
   if (ci === -1 || redirectsOf(words).some(isWriteRedirect)) return undefined;
@@ -673,7 +673,7 @@ function heredocIsLiteral(command, body) {
 const stdinShape = (command) => ({ command, grouped: hasGrouping(command) });
 
 // 標準入力で読む本文 { bodies: [{ text, literal }], unreadable }。読めるのは、この区切りのヒアドキュメントとヒアストリング、
-// 直前の区切りの echo と printf の字面だけ。ファイルから読む（< body.json）、cat や jq のような別の道具の出力、
+// 直前の区切りからパイプで渡される echo と printf の字面だけ。ファイルから読む（< body.json）、cat や jq のような別の道具の出力、
 // グループの中の区切り、ほかの区切りの語は、本文として読めない
 function stdinBody(args, { previous, command = '', grouped = false } = {}) {
   // 標準入力のリダイレクトが重なると、後ろのものが効く（<<<'…' < body.json は body.json）
@@ -683,7 +683,9 @@ function stdinBody(args, { previous, command = '', grouped = false } = {}) {
     const literal = last.op === '<<<' ? !last.shape.includes(DYNAMIC) : heredocIsLiteral(command, last.target);
     return { bodies: [{ text: last.target, literal }], unreadable: false };
   }
-  const echoed = last || grouped ? undefined : echoedText(previous);
+  // 前の区切りがパイプで渡すときだけ、その echo が標準入力になる（; と && と改行の前の echo は、標準入力に流れない）
+  const piped = previous?.endOp === '|' || previous?.endOp === '|&';
+  const echoed = last || grouped || !piped ? undefined : echoedText(previous);
   return echoed === undefined ? { bodies: [], unreadable: true } : { bodies: [echoed], unreadable: false };
 }
 
