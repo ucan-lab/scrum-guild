@@ -2125,6 +2125,42 @@ export const dictionary = defineDictionary({
   storyDeleteNoChildren: workspace('配下の{task}はありません。', '配下の{task}はありません。'),
   epicDeleted: workspace('{epic}を削除しました', '{epic}を削除しました'),
   storyDeleted: workspace('{story}を削除しました', '{story}を削除しました'),
+  thanks: workspace('感謝', '感謝'),
+  thanksNone: workspace('なし', 'なし'),
+  thanksEmpty: workspace('まだ感謝は送られていません。', 'まだ感謝は送られていません。'),
+  thanksSend: workspace('{name} に送る', '{name} に送る'),
+  thanksRevoke: workspace('{name} への感謝を取り消す', '{name} への感謝を取り消す'),
+  thanksSent: workspace('感謝を送りました', '感謝を送りました'),
+  thanksRevoked: workspace('感謝を取り消しました', '感謝を取り消しました'),
+  thanksFromTo: workspace('{sender} から {recipient} に送った感謝', '{sender} から {recipient} に送った感謝'),
+  thanksSelf: workspace('自分には感謝を送れません。', '自分には感謝を送れません。'),
+  thanksDuplicate: workspace('この相手には、すでに感謝を送っています。', 'この相手には、すでに感謝を送っています。'),
+  thanksCompleted: workspace(
+    '完了した{task}の感謝は送れず、取り消せません。',
+    '完了した{task}の感謝は送れず、取り消せません。',
+  ),
+  thanksForbidden: workspace(
+    '感謝を送る権限、または取り消す権限がありません。',
+    '感謝を送る権限、または取り消す権限がありません。',
+  ),
+  thanksNotFound: workspace(
+    '対象の{task}、相手、または感謝が見つかりません。',
+    '対象の{task}、相手、または感謝が見つかりません。',
+  ),
+  thanksFailed: workspace(
+    '感謝の操作に失敗しました。もう一度試してください。',
+    '感謝の操作に失敗しました。もう一度試してください。',
+  ),
+  thanksRefreshFailed: workspace(
+    '感謝の操作は完了しましたが、最新の一覧を読み込めませんでした。',
+    '感謝の操作は完了しましたが、最新の一覧を読み込めませんでした。',
+  ),
+  thanksCandidatesFailed: workspace('感謝を送る相手を読み込めませんでした。', '感謝を送る相手を読み込めませんでした。'),
+  thanksCandidatesEmpty: workspace('感謝を送れる相手はいません。', '感謝を送れる相手はいません。'),
+  thanksHint: workspace(
+    '送れるのは{assignee}だけ（{assignee}がいなければ作った人）です。完了するまでは、送った本人が取り消せます。',
+    '送れるのは{assignee}だけ（{assignee}がいなければ作った人）です。完了するまでは、送った本人が取り消せます。',
+  ),
   // 変更の履歴（引き出しの「変更の履歴」の節。src/lib/task-history.ts が列の名前と値を文にする）
   historyTitle: workspace('変更の履歴', '変更の履歴'),
   historyEmpty: workspace('まだ変更はありません。', 'まだ変更はありません。'),

@@ -106,6 +106,7 @@
         slug={page.params.slug ?? ''}
         workspaceId={workspace.id}
         {taskId}
+        currentUserId={data.organization?.me.id ?? null}
         {canWrite}
         definitionOfDone={workspace.definitionOfDone}
         onclose={() => void withoutTask()}
