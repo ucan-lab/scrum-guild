@@ -1359,7 +1359,7 @@ test('前後のボタンとキーで、開いたまま隣のクエストへ移�
   // 末尾では次が押せず、押しても動かない。キー `]` も動かない
   await expect(stepButton(third, '次')).toHaveAttribute('aria-disabled', 'true');
   await expect(stepButton(third, '前')).toHaveAttribute('aria-disabled', 'false');
-  await stepButton(third, '次').click();
+  await stepButton(third, '次').click({ force: true });
   await page.keyboard.press(']');
   await expect(third).toBeVisible();
 
