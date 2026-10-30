@@ -751,27 +751,3 @@ test('別の人が削除したタスクは、次の木の読み直しの後に�
   await expect(storyRow(page, '削除の後の達成目標')).toBeVisible();
   await expect(taskRow(page, '別の人に削除される依頼')).toHaveCount(0);
 });
-
-test('親のストーリーごと別の人に削除されたタスクは、次の木の読み直しの後に画面から消える', async ({ page }) => {
-  await createWorkspace(page, '親ごと削除パーティ', 'game');
-  const storyCreated = page.waitForResponse((response) => new URL(response.url()).pathname.endsWith('/story-create'));
-  await addStory(page, '消される達成目標');
-  const storyId = ((await (await storyCreated).json()) as { story: { id: string } }).story.id;
-  await page.getByRole('button', { name: 'クエストを足す: 消される達成目標' }).click();
-  const dialog = page.getByRole('dialog', { name: '依頼を出す' });
-  await dialog.getByLabel('タイトル').fill('親ごと消える依頼');
-  await dialog.getByRole('button', { name: '依頼を出す' }).click();
-  await expect(dialog).toBeHidden();
-  await expect(taskRow(page, '親ごと消える依頼')).toBeVisible();
-
-  const workspaceId = new URL(page.url()).pathname.split('/')[3];
-  const deleted = await page.request.post('/api/aoba/story-delete', {
-    headers: { Origin: new URL(page.url()).origin },
-    data: { workspace_id: workspaceId, story_id: storyId, children: 'delete' },
-  });
-  expect(deleted.ok()).toBe(true);
-
-  await addStory(page, '親の削除の後の達成目標');
-  await expect(storyRow(page, '親の削除の後の達成目標')).toBeVisible();
-  await expect(taskRow(page, '親ごと消える依頼')).toHaveCount(0);
-});

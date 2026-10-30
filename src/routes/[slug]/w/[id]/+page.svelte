@@ -29,6 +29,7 @@
     sameFilter,
     type BacklogFilter,
   } from '../../../../lib/backlog-filter.ts';
+  import { keepAddedRow } from '../../../../lib/added-rows.ts';
   import { MoveQueue } from '../../../../lib/move-queue.ts';
   import { completedMessage } from '../../../../lib/sprint-label.ts';
   import { showToast } from '../../../../lib/toast.svelte.ts';
@@ -63,6 +64,7 @@
   // 完了にしたタスクの行は、読み直すまで完了の印を付けてその場に残し、その行のポイントを親の「完了」に即時に足す。折りたたみの件数は読み直した値なので、その行は読み直すまで入らない。
   // ストーリーの「完了にする」は、配下の未完了のタスク（画面で完了にした行は数えない）が残るあいだは押せない。完了と取り消しは、通ったら木を読み直す。
   // 起票したタスクは、読み直さずに親の配下（親なしなら一覧の末尾）に足し、親の「全体」のポイントにも足す。親の行が畳まれていれば開く。
+  // 足した行は、読み直した木に入るか、作った後に始まった読み直しの木に無い（別の人の削除など）と外す。
   // ただし絞っているときは、末尾に足さずに木を読み直す（上の帯の段落）。
   // エピックとストーリーを作った、直したときは、木を読み直す。
   // 完了の操作を送っている最中の行（pendingIds、storyPending）は、読み直しでは捨てず、応答が来たら外す。
@@ -138,23 +140,26 @@
     dropped: () => showToast(t('moveReloaded'), 'alert'),
   });
   $effect.pre(() => {
-    // 足した行は、読み直した木に入るまで残す。作る前に読んだ木が遅れて届いても、作った行を消さないため
-    // ワークスペースを替えたときと、絞り込んで読んだときは、木に入らない行が残り続けるので捨てる
+    // 足した行は、読み直した木に入るまで残す。作る前に読んだ木が遅れて届いても、作った行を消さないため。
+    // 作った後に始まった読み直しの木に無い行（別の人の削除、親ごとの消失）は、木に入る日が来ないので捨てる
+    // ワークスペースを替えたときと、絞り込んで読んだときも、木に入らない行が残り続けるので捨てる
     const loaded = tree;
     const workspaceId = page.params.id;
     const sameWorkspace = untrack(() => addedFor) === workspaceId;
     addedFor = workspaceId;
     // 完了にした行は、読み直した木（未完了のタスクだけを返す）に無いので、木に入るのを待たずに捨てる。残すと完了の印を捨てた後に未完了で戻る
     const done = untrack(() => completedIds);
-    // 足した後に始まった読み直しの木に無い行は、別の人の削除か親ごとの消失なので捨てる。木が読めていないとき（null）は決められないので残す
+    // 木に無い行を残すかは、足した時刻と読み直しを始めた時刻で決める（src/lib/added-rows.ts）
     const loadedAt = untrack(() => data.loadedAt);
     added =
       sameWorkspace && !filtering
-        ? untrack(() => added).filter(
-            (entry) =>
-              !done.includes(entry.task.id) &&
-              !inTree(loaded, entry.task.id) &&
-              (loaded === null || entry.at >= loadedAt),
+        ? untrack(() => added).filter((entry) =>
+            keepAddedRow(entry, {
+              inLoadedTree: inTree(loaded, entry.task.id),
+              completed: done.includes(entry.task.id),
+              treeLoaded: loaded !== null,
+              loadedAt,
+            }),
           )
         : [];
     completedIds = [];
