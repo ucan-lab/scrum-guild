@@ -311,12 +311,37 @@ describe('記録の Issue の読み方', () => {
   });
 
   test('PR の列があっても（空欄、複数、題に | を含む行も）ポイントと題を取り違えない', () => {
-    const body = logBody(['| #12 | 画面を足す | 3 | #523 |', '| #13 | 表の \\| を直す | 5 | |', '| #14 | b | 2 | #1、#2 |']);
+    const body = logBody([
+      '| #12 | 画面を足す | 3 | #523 |',
+      '| #13 | 表の \\| を直す | 5 | |',
+      '| #14 | b | 2 | #1、#2 |',
+    ]);
     const parsed = parseSprintLog('スプリント 2（2026-11-05〜2026-11-11）', body);
     assert.deepEqual(parsed.plan, [
       { number: 12, title: '画面を足す', pt: 3 },
       { number: 13, title: '表の | を直す', pt: 5 },
       { number: 14, title: 'b', pt: 2 },
+    ]);
+  });
+
+  test('PR の列は何を書いても読み捨て、行を落とさずポイントも取り違えない', () => {
+    const rows = ['523', '-', 'なし', '#1 #2', '[#5](https://example.com/pull/5)', '#5（取り下げ）'];
+    const body = logBody(rows.map((pr, i) => `| #${i + 1} | 画面を足す | 3 | ${pr} |`));
+    const parsed = parseSprintLog('スプリント 2（2026-11-05〜2026-11-11）', body);
+    assert.deepEqual(
+      parsed.plan,
+      rows.map((_, i) => ({ number: i + 1, title: '画面を足す', pt: 3 })),
+    );
+  });
+
+  test('列が増えた行も、番号、題、ポイントの位置で読む', () => {
+    const parsed = parseSprintLog(
+      'スプリント 2（2026-11-05〜2026-11-11）',
+      logBody(['| #1 | 項目 | 5 | #6 | メモ |', '| #2 | a \\| 3 | 2 | |']),
+    );
+    assert.deepEqual(parsed.plan, [
+      { number: 1, title: '項目', pt: 5 },
+      { number: 2, title: 'a | 3', pt: 2 },
     ]);
   });
 

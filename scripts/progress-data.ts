@@ -243,20 +243,22 @@ export type SprintLog = {
   plan: PlanRow[];
 };
 
-// 記録の Issue の題（番号と期間）と本文（ゴール、期間、計画の表）を読む。計画の表は番号とポイントの列を読む
+// 記録の Issue の題（番号と期間）と本文（ゴール、期間、計画の表）を読む。計画の表は番号、題、ポイントの列を読み、後ろの列は読み捨てる
 export function parseSprintLog(title: string, body: string): SprintLog {
   const head = parseSprintTitle(title);
   const parts = sections(body);
   const period = /(\d{4}-\d{2}-\d{2})\s*〜\s*(\d{4}-\d{2}-\d{2})/.exec(parts.get('期間') ?? '');
   const plan: PlanRow[] = [];
   for (const line of (parts.get('計画') ?? '').split('\n')) {
-    // 題に `|` があれば `\|` で書かれるので、題は番号とポイントの列に挟まれた全体を取る。ポイントの後ろの PR の列（`#523`、空欄）は読み捨てる
-    const row = /^\|\s*#(\d+)\s*\|(.*)\|\s*(\d+)\s*\|(?:\s*(?:#\d+(?:\s*[、,]\s*#\d+)*)?\s*\|)?\s*$/.exec(line.trim());
-    if (!row) continue;
-    const number = Number(row[1]);
+    // 題の `|` は `\|` で書かれるので、`\` の付かない `|` で区切って列の位置で読む。PR の列など4列目以降は人が自由に書くため中身を問わず読み捨てる
+    const [lead, numberCell, titleCell, pointCell] = line.trim().split(/(?<!\\)\|/);
+    const rowNumber = /^\s*#(\d+)\s*$/.exec(numberCell ?? '');
+    const rowPoint = /^\s*(\d+)\s*$/.exec(pointCell ?? '');
+    if (lead !== '' || !rowNumber || !rowPoint) continue;
+    const number = Number(rowNumber[1]);
     // 同じ番号の行が2つあっても二重に数えないよう、最初の行だけ取る
     if (plan.some((existing) => existing.number === number)) continue;
-    plan.push({ number, title: (row[2] ?? '').trim().replace(/\\\|/g, '|'), pt: Number(row[3]) });
+    plan.push({ number, title: (titleCell ?? '').trim().replace(/\\\|/g, '|'), pt: Number(rowPoint[1]) });
   }
   return {
     n: head.n,
