@@ -127,7 +127,7 @@
     summary === null ? t('sprintEmptyTitle', sprintWords) : t('planLanesEmptyTitle', sprintWords),
   );
   const lanesEmptyText = $derived(
-    summary !== null && summary.velocity.sprints.length > 0 && !isClosed && isLeader
+    summary !== null && summary.velocity.average !== null && !isClosed && isLeader
       ? t('planLanesEmptyText', sprintWords)
       : emptyText,
   );

@@ -2282,8 +2282,8 @@ export const dictionary = defineDictionary({
   // 先のスプリントが無いが、ベロシティかエピックの集計は出すときの空の状態（リーダー向けの文は、ベロシティが出ているときの言い回し）
   planLanesEmptyTitle: workspace('先の{sprint}はありません', '先の{sprint}はありません'),
   planLanesEmptyText: workspace(
-    '{sprint}を作ると、ここに先の{sprint}が並び、入れた{points}と{capacity}を見比べられます。',
-    '{sprint}を作ると、ここに先の{sprint}が並び、入れた{points}と{capacity}を見比べられます。',
+    '{sprint}を作ると、ここに先の{sprint}が並び、入れた{points}をベロシティと見比べられます。',
+    '{sprint}を作ると、ここに先の{sprint}が並び、入れた{points}をベロシティと見比べられます。',
   ),
   sprintEditAction: workspace('直す', '直す'),
   sprintEditLabel: workspace('直す: {label}', '直す: {label}'),
