@@ -297,6 +297,43 @@ describe('感謝が割り込む', () => {
     expect(await liveHelps(target, task.id)).toHaveLength(1);
   });
 
+  test('感謝を読んだ後に、取り消しと別の相手への送付が重なって件数が同じでも、読み直して新しい感謝に手助けが付く', async () => {
+    const target = await createTarget();
+    const other = await createPerson({
+      organization: target.organization,
+      membership: { workspaceId: target.workspace.id, role: 'member' },
+    });
+    const task = await createTask(target.organization, target.workspace.id, target.member.userId!);
+    await createThanks(target.organization, target.workspace.id, task.id, target.member.userId!, target.leader.userId!);
+    let swapped = false;
+    const racing = envWithD1Hooks(clockAt(WEDNESDAY), {
+      afterQuery: async (sql) => {
+        if (!sql.startsWith('select') || !sql.includes('from "thanks"') || swapped) return;
+        swapped = true;
+        const db = orgDb(env, target.organization.verified);
+        await db.run(
+          db.statement((q) =>
+            q
+              .deleteFrom('thanks')
+              .where('task_id', '=', task.id)
+              .where('workspace_id', '=', target.workspace.id)
+              .where('recipient_user_id', '=', target.leader.userId!),
+          ),
+        );
+        await createThanks(target.organization, target.workspace.id, task.id, target.member.userId!, other.userId!);
+      },
+    });
+    const res = await post(app, taskComplete, {
+      slug: target.slug,
+      token: target.member.token,
+      body: { workspace_id: target.workspace.id, task_id: task.id },
+      env: racing,
+    });
+    expect(res.status).toBe(200);
+    expect(await thanksCount(target, task.id)).toBe(1);
+    expect((await liveHelps(target, task.id)).map((row) => row.user_id)).toEqual([other.userId]);
+  });
+
   test('読み直しのたびに感謝が届き続けると、3 回で 409 の conflict になり、何も書かない', async () => {
     const target = await createTarget();
     const task = await createTask(target.organization, target.workspace.id, target.member.userId!);

@@ -1156,19 +1156,32 @@ function completeStatements(db: OrganizationDb, context: CompleteContext) {
     return sprint.where('read_sprint.deleted_at', 'is', null).where('read_sprint.status', '=', inSprint!.kind);
   };
 
-  // そのタスクの感謝の数が、読んだ数のまま。読んでから書くまでに thanks-send が通ると数が変わり、手助けの文が届いた感謝を知らないまま
-  // 完了が確定してしまう（完了後は感謝を送れも取り消せもしないので付け直せない）。ここで止めて、読み直してやり直す。
-  // 数は組織の中の表を、ワークスペースとタスクで絞って数える
+  // そのタスクの感謝が、読んだときのまま（数と、最も新しい ID）。読んでから書くまでに thanks-send が通ると、手助けの文が届いた感謝を
+  // 知らないまま完了が確定してしまう（完了後は感謝を送れも取り消せもしないので付け直せない）。ここで止めて、読み直してやり直す。
+  // 数だけでは、取り消し1件と送付1件が重なったときに一致してしまう。ID は UUIDv7 で、後から送った感謝は読んだ最大の ID より必ず大きい
+  // （取り消しは行を消すので、読んだ最大の ID の行が消えても最大の ID が変わる）。組織の中の表を、ワークスペースとタスクで絞って読む
+  const latestThankId = thankIds.reduce((latest, id) => (id > latest ? id : latest), '');
   const thanksAsRead = (eb: ExpressionBuilder<Tables, keyof Tables>) =>
-    eb(
-      eb
-        .selectFrom('thanks as counted')
-        .select((cb) => cb.fn.countAll<number>().as('count'))
-        .where('counted.workspace_id', '=', workspaceId)
-        .where('counted.task_id', '=', taskId),
-      '=',
-      thankIds.length,
-    );
+    eb.and([
+      eb(
+        eb
+          .selectFrom('thanks as counted')
+          .select((cb) => cb.fn.countAll<number>().as('count'))
+          .where('counted.workspace_id', '=', workspaceId)
+          .where('counted.task_id', '=', taskId),
+        '=',
+        thankIds.length,
+      ),
+      eb(
+        eb
+          .selectFrom('thanks as latest')
+          .select((cb) => cb.fn.coalesce(cb.fn.max<string>('latest.id'), cb.val('')).as('latest_id'))
+          .where('latest.workspace_id', '=', workspaceId)
+          .where('latest.task_id', '=', taskId),
+        '=',
+        latestThankId,
+      ),
+    ]);
 
   // 0.（始まっていないスプリントの中だけ）入っている行を removed で閉じる。条件は 1 と同じ前提（読んだスプリントと列のままの、
   // 未完了のバックログのタスク、閉じていないワークスペース、読んだ数のままの感謝）
