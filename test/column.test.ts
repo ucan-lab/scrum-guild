@@ -686,6 +686,16 @@ describe('column-delete', () => {
     expect((await boardColumnRow(target, board.a)).deleted_at).toBeNull();
   });
 
+  test('閉じたワークスペースでは、完了の列や移し先の無い削除も、先に 409 の workspace_closed を返す', async () => {
+    const target = await createTarget({ closed: true });
+    const board = await createBoard(target);
+    for (const input of [{ column_id: board.done }, { column_id: board.a, target_column_id: board.a }]) {
+      const res = await call<ErrorBody>(columnDelete, target, input, target.admin);
+      expect(res.status).toBe(409);
+      expect(res.body.error.code).toBe('workspace_closed');
+    }
+  });
+
   test('別の組織の人は、その組織の slug では 404。別の組織の列を移し先に指しても 404', async () => {
     const target = await createTarget();
     const other = await createTarget();
