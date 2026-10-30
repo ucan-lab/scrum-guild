@@ -288,7 +288,7 @@ resolve もできないので、人の画面で解決してもらうスレッド
 
 ### 5. CI を確認する
 
-手順 1 の check-runs を取り直す。`status` が `completed` でないものがあれば、間を空けて取り直し、全て `completed` になるまで待つ。待つ間に手番を終えるときは、手順 7 の「待つ間に手番を終えるとき」に従って伝える。
+push の後は head を取り直してから（手順 1 のドラフトの節と同じ）、手順 1 の check-runs を取り直す。push の直後は、まだ全部のチェックが付いていない（`label` など一部だけが先に付く）。`ci-ok` が付き、全部のチェックが `completed` になるまで、間を空けて取り直して待つ（理由: 付いたチェックだけを見ると、`label` が終わった時点で全部終わったと読み、CI の本体を待たずに進む）。45 分待っても `ci-ok` が出なければ、待ちをやめて人に渡す。`mergeable` が `false` ならコンフリクトで CI が走っていないので、先に `sync-base` で取り込む。待つ間に手番を終えるときは、手順 7 の「待つ間に手番を終えるとき」に従って伝える。
 
 e2e（`e2e`、`e2e-dev`、`e2e-repeat`）の失敗は、手元で再現させず（フックが `pnpm e2e` を止める）、ジョブのログ（`get_job_logs`）と成果物の `playwright-report/`、trace（`pnpm exec playwright show-trace`）で直す。2回続けて直せなければ、人に手元での再現を頼む（`docs/development.md` の「CI の e2e が落ちたとき」）。
 
@@ -450,7 +450,7 @@ gh api "repos/{owner}/{repo}/pulls/<number>" --jq '{merged, base: .base.ref, hea
 - 全ての指摘にリプライが付いている（外の人の指摘で「扱わない」と答えたものを除く）
 - bot のスレッドは resolve されている（GraphQL が 403 のときは、飛ばしたことを説明資料に書いている）
 - 人へのリプライは、ユーザーの Submit か承認を経て投稿されている。人と外の人のスレッドの resolve は、ユーザーが承認したもの（外の人の指摘への「扱わない」の答えを含む）だけ
-- 手順 1 の check-runs に、`review` と `evidence` を除いて失敗が無い
+- 手順 1 の check-runs に `ci-ok` が付いて `completed` になっていて、`review` と `evidence` を除いて失敗が無い
 - 直しを push したら、Issue の `やらないこと` に新しい head の点検の行が足されている（足す先の節が無い Issue を除く）。人が答えた前提の判断は、`人が決めたこと` に写されている
 - 説明資料を見せ、人の判断が要ることに `AskUserQuestion` で答えが出ている。セッションがマージできるときだけ、マージの扱いも聞いて答えが出ている
 - 作成者以外の人のレビューが付いた PR では、`OWNER` か `COLLABORATOR` のレビュワーの最後の状態が `APPROVED` になっている
