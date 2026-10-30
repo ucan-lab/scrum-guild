@@ -1,3 +1,4 @@
+import { flushSync } from 'svelte';
 import { describe, expect, test, vi } from 'vitest';
 import type { SprintBoardColumn, SprintBoardTask } from '../shared/operations/sprint/index.ts';
 import { SprintDnd } from './sprint-dnd.svelte.ts';
@@ -28,12 +29,70 @@ const before = resolveSprintDrop(columns, 'a', { kind: 'card', id: 'd' }, 'befor
 // a を、遂行中の列の末尾（列の囲み）に落とした結果
 const into = resolveSprintDrop(columns, 'a', { kind: 'column', id: 'c2' }, 'into') as SprintDrop;
 
-function setup() {
+function setup(busy: (taskId: string) => boolean = () => false) {
   const onDrop = vi.fn();
   const onStale = vi.fn();
-  const dnd = new SprintDnd({ columns: () => columns, enabled: () => true, onDrop, onStale });
+  const dnd = new SprintDnd({ columns: () => columns, enabled: () => true, busy, onDrop, onStale });
   return { dnd, onDrop, onStale };
 }
+
+describe('SprintDnd のつかめるカード', () => {
+  test('完了か戻しを送っている最中のカードはつかめず、ほかのカードはつかめる', () => {
+    const sending = new Set(['a']);
+    const { dnd } = setup((id) => sending.has(id));
+    expect(dnd.canGrab('a')).toBe(false);
+    expect(dnd.canGrab('b')).toBe(true);
+    sending.delete('a');
+    expect(dnd.canGrab('a')).toBe(true);
+  });
+
+  test('戻せない完了のカードと、無いカードはつかめない', () => {
+    const locked: SprintBoardColumn[] = [
+      { id: 'c1', name: '出発前', is_done: false, tasks: [] },
+      { id: 'done', name: null, is_done: true, tasks: [{ ...card('x'), completed_at: '2026-10-20T00:00:00Z' }] },
+    ];
+    const dnd = new SprintDnd({ columns: () => locked, enabled: () => true, onDrop: vi.fn(), onStale: vi.fn() });
+    expect(dnd.canGrab('x')).toBe(false);
+    expect(dnd.canGrab('nope')).toBe(false);
+  });
+
+  test('書き込めないときはつかめない', () => {
+    const dnd = new SprintDnd({ columns: () => columns, enabled: () => false, onDrop: vi.fn(), onStale: vi.fn() });
+    expect(dnd.canGrab('a')).toBe(false);
+  });
+});
+
+describe('SprintDnd.resetWhenChanged（画面の読み直しでドラッグを取りやめる配線）', () => {
+  test('source が変わったら、つかんでいるドラッグを取りやめ、離しても送らない', () => {
+    const props = $state({ board: 1 });
+    const { dnd, onDrop, onStale } = setup();
+    const stop = $effect.root(() => dnd.resetWhenChanged(() => props.board));
+    flushSync();
+    dnd.grab('a');
+    dnd.hover(before);
+    expect(dnd.mark).not.toBeNull();
+    props.board = 2;
+    flushSync();
+    expect(dnd.taskId).toBeNull();
+    expect(dnd.mark).toBeNull();
+    dnd.release(before);
+    expect(onDrop).not.toHaveBeenCalled();
+    expect(onStale).toHaveBeenCalledTimes(1);
+    stop();
+  });
+
+  test('source が変わらなければ、取りやめない', () => {
+    const props = $state({ board: 1 });
+    const { dnd, onDrop } = setup();
+    const stop = $effect.root(() => dnd.resetWhenChanged(() => props.board));
+    flushSync();
+    dnd.grab('a');
+    flushSync();
+    dnd.release(before);
+    expect(onDrop).toHaveBeenCalledTimes(1);
+    stop();
+  });
+});
 
 describe('SprintDnd の印', () => {
   test('カードの前後の線は、そのカードだけに付き、列の囲みは、その列だけに付く', () => {

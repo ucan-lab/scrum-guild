@@ -1170,7 +1170,9 @@ a.choice > div > span, .choice.is-static > div > span { display: block; }
   outline: 1px solid transparent; outline-offset: -1px; animation: drop-flash var(--duration-flash) ease-out;
 }
 /* スプリントのカードと列のドラッグ。つかむ場所はカード全体（ドラッグできるカードは draggable="true"）で、題のリンクとボタンは押すだけ。
-   before / after はカードとカードの間の線（カードの幅いっぱい。カードの間の隙間 --space-2 の真ん中に引く）、
+   before / after はカードとカードの間の線（カードの幅いっぱい）。線は隙間（--space-2 = 8px）の真ん中に引く。
+   絶対配置の基準はカードの枠の内側（padding box）で、枠が 1px あるので、隙間の真ん中は内側の端から 5px 外（枠の外へ 4px + 枠 1px）。
+   線（2px）の中心をそこに置くので top / bottom は -6px、丸（8px）の中心もそこに置くので -9px、
    into は列を囲む（.dropzone.is-over と同じ枠と地。離すと列の末尾に入る。完了の列は、どこに重ねても囲む） */
 .card { position: relative; }
 .card[draggable="true"] { cursor: grab; }

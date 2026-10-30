@@ -25,6 +25,7 @@ import type { ElementDragPayload } from '@atlaskit/pragmatic-drag-and-drop/eleme
 import type { SprintBoardColumn } from '../shared/operations/sprint/index.ts';
 import { DropFlash } from './drop-flash.svelte.ts';
 import {
+  gapAbove,
   isGrabbable,
   resolveSprintDrop,
   type SprintDrop,
@@ -42,6 +43,8 @@ export type SprintDndOptions = {
   columns: () => readonly SprintBoardColumn[];
   // つかめるか（書き込めるときだけ）
   enabled: () => boolean;
+  // そのカードの完了か戻し（と、続く列の移動）を送っている間か。真の間は、そのカードをつかめない
+  busy?: (taskId: string) => boolean;
   // 落とせる場所に落とした
   onDrop: (drop: SprintDrop) => void;
   // 落とせる場所に落としたが、つかんでいる間に画面が読み直されていたので取りやめた
@@ -111,18 +114,35 @@ export class SprintDnd {
     this.mark = null;
   }
 
-  // ドラッグの出来事の受け口。monitor() が呼び、判定の結果（SprintDrop。落とせない場所は null）を渡す。
-  // つかんでから画面が読み直されていたら、そのドラッグは取りやめる
+  // 画面を読み直したとき（source の値が変わったとき）に reset() を呼ぶ。部品の初期化の中で呼ぶ（$effect.pre を張る）
+  resetWhenChanged(source: () => unknown): void {
+    $effect.pre(() => {
+      void source();
+      this.reset();
+    });
+  }
+
+  // つかめるか。書き込めて、つかめるカード（sprint-drop.ts の isGrabbable）で、完了か戻しを送っている最中でないとき
+  canGrab(taskId: string): boolean {
+    if (!this.#options.enabled() || this.#options.busy?.(taskId) === true) return false;
+    return isGrabbable(this.#options.columns(), taskId);
+  }
+
+  // 以下の grab / hover / release は、ドラッグの出来事の受け口。monitor() が呼び、hover と release には判定の結果
+  // （SprintDrop。落とせない場所は null）を渡す。つかんでから画面が読み直されていたら、そのドラッグは取りやめる。
+  // grab: つかんだ
   grab(taskId: string | null): void {
     this.taskId = taskId;
     this.mark = null;
     this.#grabbed = this.#generation;
   }
 
+  // hover: 重ねている（取りやめたドラッグには印を出さない）
   hover(drop: SprintDrop | null): void {
     this.#show(this.#grabbed === this.#generation ? drop : null);
   }
 
+  // release: 離した（取りやめたドラッグは、落とせる場所でも onStale を呼ぶだけで送らない）
   release(drop: SprintDrop | null): void {
     const stale = this.#grabbed !== this.#generation;
     this.taskId = null;
@@ -151,7 +171,7 @@ export class SprintDnd {
           element: node,
           // ボタンやリンクを押すつもりで動き出さない。始めた所の下の要素で見分ける
           canDrag: ({ input }) => {
-            if (!this.#options.enabled() || !isGrabbable(this.#options.columns(), id)) return false;
+            if (!this.canGrab(id)) return false;
             const under = document.elementFromPoint(input.clientX, input.clientY);
             const control = under?.closest(CONTROLS);
             return control === null || control === undefined || !node.contains(control);
@@ -163,13 +183,21 @@ export class SprintDnd {
     };
   }
 
-  // 列（.board-col）。カードの無い所と列の頭に重ねると、列の末尾に入る
+  // 列（.board-col）。カードの無い所と列の頭に重ねると、列の末尾に入る。
+  // ただし、カードとカードの間の隙間に重ねたときは、上のカードの後ろ（after）の線として扱い、列の囲みに切り替えない
   column(id: string) {
     return (node: HTMLElement): Cleanup =>
       dropTargetForElements({
         element: node,
         canDrop: ({ source }) => taskIdOf(source) !== null,
-        getData: () => ({ kind: 'column', id }) satisfies SprintDropTarget,
+        getData: ({ input }) => {
+          const cards = [...node.querySelectorAll<HTMLElement>('[data-card-id]')].map((card) => {
+            const box = card.getBoundingClientRect();
+            return { id: card.dataset.cardId ?? '', top: box.top, bottom: box.bottom };
+          });
+          const gap = gapAbove(cards, input.clientY);
+          return gap === null ? { kind: 'column', id } : { kind: 'column', id, gap };
+        },
       });
   }
 
@@ -202,6 +230,11 @@ export class SprintDnd {
     const id = hit.data.id;
     if (typeof id !== 'string') return null;
     if (hit.data.kind === 'column') {
+      // カードの間の隙間は、上のカードの後ろ
+      const gap = hit.data.gap;
+      if (typeof gap === 'string') {
+        return resolveSprintDrop(this.#options.columns(), taskId, { kind: 'card', id: gap }, 'after');
+      }
       return resolveSprintDrop(this.#options.columns(), taskId, { kind: 'column', id }, 'into');
     }
     if (hit.data.kind !== 'card') return null;

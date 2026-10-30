@@ -82,20 +82,33 @@
     reload: reloadBoard,
     dropped: () => showToast(t('moveReloaded'), 'alert'),
   });
+  // ドラッグで落とした完了か戻し（と、続く列の移動）を、積んでから終えるまでのカード。この間は、そのカードをつかめない
+  // （完了を送っている最中に完了の列から落とすと、誤った「完了していない」の断りが出るため）
+  let sendingIds = $state<string[]>([]);
   const dnd = new SprintDnd({
     columns: () => columns,
     enabled: () => canWrite,
+    busy: (id) => sendingIds.includes(id) || completingId === id || reopeningId === id,
     onDrop: dropCard,
     onStale: () => showToast(t('moveReloaded'), 'alert'),
   });
   $effect(() => dnd.monitor());
   // 読み直したら、つかんでいるドラッグは取りやめる（離しても何も送らない）。光らせているカードは、読み直した後も残す
+  dnd.resetWhenChanged(() => board);
   $effect.pre(() => {
     void board;
     local = null;
     moves.reloaded();
-    dnd.reset();
   });
+
+  // 積んだ操作（完了か戻し）を終えるまで、そのカードをつかめなくする
+  function whileSending(id: string, sent: Promise<void>): void {
+    sendingIds = [...sendingIds, id];
+    void sent.then(() => {
+      const at = sendingIds.indexOf(id);
+      if (at !== -1) sendingIds = sendingIds.toSpliced(at, 1);
+    });
+  }
 
   // 動かした結果の読み上げ。領域は常に置き、中の文字だけを替える。同じ文が続いても読まれるよう、一度空にしてから入れる
   let status = $state('');
@@ -217,16 +230,28 @@
     applyMove(task, plan);
   }
 
-  // 完了にする。先に押した移動を送り終えてから送るよう、同じ列に並べる。ドラッグで落としたときは、完了になったカードを光らせる
-  function queueComplete(task: SprintBoardTask, flash = false): void {
-    void moves.send(
+  // 完了にする。先に押した移動を送り終えてから送るよう、同じ列に並べる。
+  // 読み直しは、ここでは行わず、列が空になった後に回す（reloadOnSuccess）。読み直しが列の途中で MoveQueue の世代を進めると、
+  // 続けて積んだ操作（続けて落としたカードの移動など）が送られずに捨てられるため。
+  // ドラッグで落としたとき（dropped）は、完了になったカードを光らせ、フォーカスは動かさない。キーでは、読み直した後に題のリンクへ移す
+  function queueComplete(task: SprintBoardTask, dropped = false): void {
+    let completed = false;
+    const sent = moves.send(
       async () => {
-        const done = await complete(task);
-        if (done && flash) dnd.flash(task.id);
-        return { ok: true, data: null } as const;
+        completed = await complete(task, true);
+        if (completed && dropped) dnd.flash(task.id);
+        return completed ? ({ ok: true, data: null } as const) : ({ ok: false, status: 0, error: null } as const);
       },
       async () => {},
+      true,
     );
+    whileSending(task.id, sent);
+    if (dropped) return;
+    void sent.then(async () => {
+      if (!completed) return;
+      await tick();
+      document.querySelector<HTMLElement>(`a[data-task-id="${CSS.escape(task.id)}"]`)?.focus();
+    });
   }
 
   // 動かした先の位置の読み上げ
@@ -285,7 +310,7 @@
   function applyReopenMove(task: SprintBoardTask, plan: ReopenPlan): void {
     if (workspace === null) return;
     const workspaceId = workspace.id;
-    void moves.send(
+    const sent = moves.send(
       async () => {
         if (!(await reopen(task, true))) return { ok: true, data: null } as const;
         const result = await callOperation(taskColumnMove, columnMoveInput(task, plan.column.id, plan.afterTaskId), {
@@ -300,6 +325,8 @@
       (result) => moveRefused(workspaceId, result),
       true,
     );
+    // 戻しと移動が終わるまで、そのカードをつかめない
+    whileSending(task.id, sent);
   }
 
   // カードを落とした（つかんでいる間に画面が読み直されていれば、ここへは来ない）
@@ -312,8 +339,9 @@
     else applyMove(task, drop.plan, true);
   }
 
-  // 完了にできたら true（別の画面で先に完了にされていたときも）
-  async function complete(task: SprintBoardTask): Promise<boolean> {
+  // 完了にできたら true（別の画面で先に完了にされていたときも）。queued が真のとき（MoveQueue の中で呼ぶとき）は、通っても
+  // 読み直さず、フォーカスも動かさない（列が空になった後に、呼んだ側の reloadOnSuccess が読み直す）。断られたときの扱いは同じ
+  async function complete(task: SprintBoardTask, queued = false): Promise<boolean> {
     if (workspace === null || refusedWhileBusy()) return false;
     completingId = task.id;
     const workspaceId = workspace.id;
@@ -330,10 +358,12 @@
           : t('taskAlreadyDone', { task: t('task'), done: t('done') });
         // トーストが読み上げる
         showToast(message, 'check');
-        await invalidate('app:sprint-board');
-        // 完了の列のカードは選べない。同じカードの題のリンクへフォーカスを移す
-        await tick();
-        document.querySelector<HTMLElement>(`a[data-task-id="${CSS.escape(task.id)}"]`)?.focus();
+        if (!queued) {
+          await invalidate('app:sprint-board');
+          // 完了の列のカードは選べない。同じカードの題のリンクへフォーカスを移す
+          await tick();
+          document.querySelector<HTMLElement>(`a[data-task-id="${CSS.escape(task.id)}"]`)?.focus();
+        }
       } else if (result.status === 401) {
         await invalidateAll();
       } else if (result.status === 404) {
@@ -366,8 +396,8 @@
     }
   }
 
-  // 戻す。戻せたら true。followed が真のとき（ドラッグで別の列へ落とすとき）は、通っても読み直さず、フォーカスも動かさない
-  // （続けて task-column-move を送り、列が空になった後で画面が読み直す）。断られたときの扱いは同じ
+  // 戻す。戻せたら true。followed が真のとき（ドラッグで別の列へ落とすとき）は、通ってもトーストを出さず、読み直さず、
+  // フォーカスも動かさない（続けて task-column-move を送り、列が空になった後で画面が読み直し、位置を読み上げる）。断られたときの扱いは同じ
   async function reopen(task: SprintBoardTask, followed = false): Promise<boolean> {
     if (workspace === null || refusedWhileBusy()) return false;
     reopeningId = task.id;
@@ -379,15 +409,16 @@
       if (workspaceId !== page.params.id) return false;
       if (result.ok) {
         reopened = true;
-        const column = columns.find((candidate) => candidate.id === result.data.column_id);
-        // トーストが読み上げる
-        showToast(
-          column === undefined
-            ? t('taskReopened', { task: t('task'), done: t('done') })
-            : t('sprintCardReopened', { title: task.title, done: t('done'), column: columnName(column) }),
-          'check',
-        );
         if (!followed) {
+          const column = columns.find((candidate) => candidate.id === result.data.column_id);
+          // トーストが読み上げる。ドラッグで落としたときは、戻した列を言っても落とした列と食い違うので出さず、
+          // 移した後の位置の読み上げ（sprintCardMoved）だけにする
+          showToast(
+            column === undefined
+              ? t('taskReopened', { task: t('task'), done: t('done') })
+              : t('sprintCardReopened', { title: task.title, done: t('done'), column: columnName(column) }),
+            'check',
+          );
           await invalidate('app:sprint-board');
           // 押した「戻す」は消えるので、戻した列に出たカードへフォーカスを移す（動かせるカードは選べる）
           await tick();

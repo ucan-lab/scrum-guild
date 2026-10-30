@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest';
 import type { SprintBoardColumn, SprintBoardTask } from '../shared/operations/sprint/index.ts';
-import { isGrabbable, resolveSprintDrop, type SprintDropTarget } from './sprint-drop.ts';
+import { gapAbove, isGrabbable, resolveSprintDrop, type SprintDropTarget } from './sprint-drop.ts';
 
 function card(id: string, extra: Partial<SprintBoardTask> = {}): SprintBoardTask {
   return {
@@ -30,6 +30,28 @@ const columns: SprintBoardColumn[] = [
 const onCard = (id: string): SprintDropTarget => ({ kind: 'card', id });
 const onColumn = (id: string): SprintDropTarget => ({ kind: 'column', id });
 const ids = (list: readonly SprintBoardColumn[]) => list.map((column) => column.tasks.map((task) => task.id));
+
+describe('gapAbove', () => {
+  const boxes = [
+    { id: 'a', top: 100, bottom: 160 },
+    { id: 'b', top: 168, bottom: 230 },
+    { id: 'c', top: 238, bottom: 300 },
+  ];
+
+  test('カードとカードの間の隙間では、上のカードを返す', () => {
+    expect(gapAbove(boxes, 164)).toBe('a');
+    expect(gapAbove(boxes, 160)).toBe('a');
+    expect(gapAbove(boxes, 234)).toBe('b');
+  });
+
+  test('カードの上、最後のカードの下、カードの中、カードが1枚以下では null（列の末尾として扱う）', () => {
+    expect(gapAbove(boxes, 90)).toBeNull();
+    expect(gapAbove(boxes, 310)).toBeNull();
+    expect(gapAbove(boxes, 200)).toBeNull();
+    expect(gapAbove(boxes.slice(0, 1), 165)).toBeNull();
+    expect(gapAbove([], 165)).toBeNull();
+  });
+});
 
 describe('isGrabbable', () => {
   test('完了していないカードと、完了の列で戻せるカードだけつかめる', () => {

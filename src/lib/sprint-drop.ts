@@ -5,7 +5,7 @@
 // 決まり:
 // - つかめるのは、完了していないカードと、完了の列で戻せる（reopenable）カード。完了したストーリーの下のカードはつかめない（null）
 // - カードの前（before）か後ろ（after）は、その列の中のカードとカードの間の線。列の末尾（into）は列を囲む。
-//   カードの無い所と列の頭は、列の末尾に入る
+//   カードの無い所と列の頭は、列の末尾に入る。カードとカードの間の隙間は、上のカードの後ろ（gapAbove）として扱い、囲みに切り替えない
 // - 完了の列は、カードに重ねても、列に重ねても、列を囲む（位置の線は出さない）。完了でないカードを落とすと complete（画面の並びは替えない）。
 //   完了の列のカードを完了の列の中へ落とし直しても、何も示さない（null）
 // - 完了の列のカードを完了でない列へ落とすと reopen。task-reopen で戻してから、落とした列と位置へ task-column-move を続ける。
@@ -45,6 +45,15 @@ export type SprintDrop = {
   mark: SprintDropMark;
   plan: SprintDropPlan;
 };
+
+// 列の中のカードの間の隙間に重ねたとき、隙間の上にあるカードの ID（そのカードの後ろの線として扱う）。隙間でなければ null。
+// cards は列の上から順のカードの上端と下端（画面の座標）、y は重ねた位置。カードの上と下（列の頭と余白）は隙間にしない
+export function gapAbove(cards: readonly { id: string; top: number; bottom: number }[], y: number): string | null {
+  for (let i = 0; i < cards.length - 1; i++) {
+    if (y >= cards[i]!.bottom && y <= cards[i + 1]!.top) return cards[i]!.id;
+  }
+  return null;
+}
 
 // つかめるカードか（書き込めるかは、呼ぶ側が見る）。完了の列では、戻せるカードだけ
 export function isGrabbable(columns: readonly SprintBoardColumn[], taskId: string): boolean {
