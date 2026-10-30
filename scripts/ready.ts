@@ -30,7 +30,7 @@ const BLOCKING_STATUS_LABELS = ['status:refining', 'status:in-progress', 'status
 
 const PR_REFERENCE = /\b(?:closes|fixes|refs) #([0-9]+)/gi;
 
-// 開いた PR が指す Issue の番号。backlog-pick と同じく、ブランチ名の先頭の <番号>- と、本文の Closes、Fixes、Refs を拾う。
+// 開いた PR が指す Issue の番号。sprint-pick と同じく、ブランチ名の先頭の <番号>- と、本文の Closes、Fixes、Refs を拾う。
 // fork の PR はブランチ名も本文も外の人が決めるので拾わない（関係の無い Issue のラベルを外させない）
 export function issuesWithOpenPr(prs: readonly OpenPr[]): Set<number> {
   const numbers = new Set<number>();

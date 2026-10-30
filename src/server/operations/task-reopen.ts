@@ -200,7 +200,7 @@ export const taskReopenOperation = implement(taskReopen, async ({ db, actor, wor
   const completedAt = task.completed_at!;
   const destination = await destinationOf(db, workspaceId, target);
 
-  // 打ち消す付与。その完了の記録で付いた、打ち消されていない経験値（今は起票と完了。所属を外れた人の分も取り消す）。
+  // 打ち消す付与。その完了の記録で付いた、打ち消されていない経験値（起票、完了、手助け。所属を外れた人の分も取り消す）。
   // 完了した日時が読んだ値のままなら（書く文の条件）、読んでから書くまでにこの記録の付与は増えない
   const grants =
     completion === null

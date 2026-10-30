@@ -173,7 +173,7 @@ describe('compareScreens', () => {
 
   test('外す一覧を渡さなければ EXCLUDED_SCREENS を使う', () => {
     const key = k(
-      'workspace-close-管理者（あおば開発のミナト）-390px-の幅でも、操作の列は右端に固定されて見える-chromium',
+      'workspace-close-管理者（あおば開発の-15192--の幅では、行を縦に積み、操作は横にはみ出さずに見える-chromium',
     );
     const result = compareScreens({ [key]: h('1') }, { [key]: h('2') });
     assert.deepEqual(result.changed, []);

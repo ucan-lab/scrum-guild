@@ -592,7 +592,7 @@
   }
 
   // レベルの面
-  function levelPanel(l = D.level) {
+  function levelPanel(l = D.level, thanks = D.thanksReceived) {
     return `<section class="panel" aria-labelledby="level-panel-title">
       <div class="panel-title"><h2 id="level-panel-title">レベル</h2>経験値は本人だけに見えます</div>
       <div class="level">${emblem(l.level)}
@@ -605,7 +605,12 @@
       <div class="legend"><span><i class="is-got"></i>確定</span><span><i class="is-soon"></i>見込み（${t("task")}の${t("done")}で確定）</span></div>
       ${l.rows ? `<div role="group" aria-label="${t("workspace")}ごとの経験値"><dl class="breakdown">${l.rows.map(([n, v]) => `<div><dt>${esc(n)}</dt><dd>${v.toLocaleString()}</dd></div>`).join("")}
         <div class="is-total"><dt>すべての${t("workspace")}</dt><dd>${l.total.toLocaleString()}</dd></div></dl></div>` : ""}
+      ${levelThanks(thanks)}
     </section>`;
+  }
+  // レベルの面の末尾の、受け取った感謝の数（組織の合計。0 のときも出す）。内訳と同じ部品（.breakdown）の1行。感謝のアイコン（heart）は文字の色
+  function levelThanks(count) {
+    return `<div role="group" aria-label="受け取った感謝"><dl class="breakdown"><div><dt>${icon("heart")}受け取った感謝</dt><dd>${count.toLocaleString()}</dd></div></dl></div>`;
   }
 
   // チーム全体の経験値。ワークスペースの全員の合計の1つの数で、人ごとの値は出さない。バックログの画面の見出しの中に置く

@@ -90,7 +90,7 @@ export const experienceSummaryOperation = implement(experienceSummary, async ({ 
   const userId = actorUserIdOf(actor);
   const organizationId = db.organizationId;
 
-  const [grantResult, membershipResult, prospectiveResult] = await db.batch([
+  const [grantResult, membershipResult, prospectiveResult, thanksResult] = await db.batch([
     // ワークスペースごとの確定の合計（明細のあるワークスペース）
     db.statement((q) =>
       q
@@ -132,14 +132,34 @@ export const experienceSummaryOperation = implement(experienceSummary, async ({ 
         .where('t.points', '>=', MIN_POINTS_FOR_EXPERIENCE)
         .groupBy('m.workspace_id'),
     ),
+    // 受け取った感謝の数。送られた相手が本人の行だけを、ワークスペースごとに数える（抜けたワークスペースも含む）。
+    // 索引 thanks_recipient_user で本人の行を引き、結合した workspaces.organization_id を入口の組織で絞る
+    db.statement((q) =>
+      q
+        .selectFrom('thanks as th')
+        .innerJoin('workspaces as w', 'w.id', 'th.workspace_id')
+        .select((eb) => ['w.id', 'w.name', eb.fn.countAll<number>().as('count')])
+        .where('th.recipient_user_id', '=', userId)
+        .where('w.organization_id', '=', organizationId)
+        .groupBy(['w.id', 'w.name']),
+    ),
   ] as const);
 
-  const workspaces = new Map<string, { id: string; name: string; total: number; prospective: number }>();
+  const workspaces = new Map<
+    string,
+    { id: string; name: string; total: number; prospective: number; thanks_received: number }
+  >();
+  const empty = (id: string, name: string) => ({ id, name, total: 0, prospective: 0, thanks_received: 0 });
   for (const row of grantResult.rows) {
-    workspaces.set(row.id, { id: row.id, name: row.name, total: amountOf(row.total), prospective: 0 });
+    workspaces.set(row.id, { ...empty(row.id, row.name), total: amountOf(row.total) });
   }
   for (const row of membershipResult.rows) {
-    if (!workspaces.has(row.id)) workspaces.set(row.id, { id: row.id, name: row.name, total: 0, prospective: 0 });
+    if (!workspaces.has(row.id)) workspaces.set(row.id, empty(row.id, row.name));
+  }
+  for (const row of thanksResult.rows) {
+    const workspace = workspaces.get(row.id) ?? empty(row.id, row.name);
+    workspace.thanks_received = amountOf(row.count);
+    workspaces.set(row.id, workspace);
   }
   for (const row of prospectiveResult.rows) {
     const workspace = workspaces.get(row.workspace_id);
@@ -149,6 +169,7 @@ export const experienceSummaryOperation = implement(experienceSummary, async ({ 
   const rows = [...workspaces.values()].sort(byNameThenId);
   const total = rows.reduce((sum, row) => sum + row.total, 0);
   const prospective = rows.reduce((sum, row) => sum + row.prospective, 0);
+  const thanksReceived = rows.reduce((sum, row) => sum + row.thanks_received, 0);
   const level = levelOf(total);
   return {
     total,
@@ -156,6 +177,7 @@ export const experienceSummaryOperation = implement(experienceSummary, async ({ 
     level_start: levelStartOf(level),
     next_level_at: levelStartOf(level + 1),
     prospective,
+    thanks_received: thanksReceived,
     workspaces: rows,
   };
 });

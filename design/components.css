@@ -484,6 +484,7 @@ button.entry-title { text-align: left; background: transparent; border: 0; paddi
 .breakdown > div { display: flex; justify-content: space-between; gap: var(--space-3); font-size: var(--text-sm); }
 /* 区切りの無い長いワークスペースの名前も、面の幅で折り返す（数は折らない） */
 .breakdown dt { color: var(--color-muted); min-width: 0; overflow-wrap: anywhere; }
+.breakdown dt > .ico { margin-right: var(--space-1); }
 .breakdown dd { margin: 0; flex: none; font-family: var(--font-stat); font-weight: 600; font-variant-numeric: tabular-nums; }
 .breakdown .is-total dt { color: var(--color-fg); font-weight: 700; }
 

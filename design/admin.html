@@ -60,9 +60,9 @@ SQ.mount("admin", () => `
           `チームや用途ごとに作ります。${t("member")}の招待は、作った${t("workspace")}の${t("leader")}が行います。`,
           `<button class="btn is-sm" type="button" data-dialog="createWorkspace">${icon("plus")}${t("workspace")}を作る</button>`)
       : `
-      <div class="table-wrap"><table class="table"><thead><tr><th class="is-name">名前</th><th class="is-num">${t("member")}数</th><th class="is-num">${t("leader")}数</th><th>作った日</th><th class="is-actions"><span class="visually-hidden">操作</span></th></tr></thead>
+      <div class="table-wrap"><table class="table is-stacked" aria-label="${t("workspace")}の一覧"><thead><tr><th class="is-name">名前</th><th class="is-num">${t("member")}数</th><th class="is-num">${t("leader")}数</th><th>作った日</th><th class="is-actions"><span class="visually-hidden">操作</span></th></tr></thead>
         <tbody>${A.workspaces.map((w) => `<tr><td class="is-name">${esc(w.name)}${w.closed ? ` <span class="chip">終了 ${w.closed}</span>` : ""}${!w.closed && !w.leaders ? ` <span class="chip is-warn">${t("leader")}がいない</span>` : ""}</td>
-          <td class="is-num">${w.members}</td><td class="is-num">${w.leaders}</td><td class="mono">${w.created}</td>
+          <td class="is-num" data-label="${t("member")}数">${w.members}</td><td class="is-num" data-label="${t("leader")}数">${w.leaders}</td><td class="mono" data-label="作った日">${w.created}</td>
           <td class="is-actions">${w.closed ? `<button class="btn is-sm is-quiet" type="button" data-toast="${t("workspace")}を再開しました">再開する</button>` : `<button class="btn is-sm is-quiet" type="button" data-dialog="closeWorkspace">終了する</button>`}</td></tr>`).join("")}</tbody></table></div>`)}
     ${setting("添付ファイル", `${t("task")}、${t("story")}、${t("epic")}、コメントに添付したファイルの合計。上限は運用者が決めます。上限に達すると、どの${t("workspace")}でも新しく添付できなくなります。`, `
       ${meter(D.storage.used, D.storage.quota)}

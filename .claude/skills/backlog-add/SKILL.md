@@ -138,7 +138,7 @@ gh api repos/{owner}/{repo}/issues/<親の番号>/sub_issues -F sub_issue_id=<�
 gh api -X POST repos/{owner}/{repo}/issues/<待つ側の番号>/dependencies/blocked_by -F issue_id=<前に要る Issue の id>
 ```
 
-- 前に要る Issue が決まったら、本文に表があるかに関わらずすべてつなぐ（理由: `backlog-pick` は依存関係だけを読んで着手できるかを決め、本文の表を読まない。つなぎ忘れた Issue は着手できる扱いになる）
+- 前に要る Issue が決まったら、本文に表があるかに関わらずすべてつなぐ（理由: `sprint-pick` は依存関係だけを読んで着手できるかを決め、本文の表を読まない。つなぎ忘れた Issue は着手できる扱いになる）
 - ストーリーをタスクに分けたら、ストーリーが待つものを、最初に着手するタスクにもつなぐ
 - 閉じた Issue はつながなくてよい。開いていて `status:accepting`（受け入れ待ち）の無い依存だけが着手を止める。受け入れ待ちの Issue は、待つ側に着手させてよいので、つないだまま残す
 - つなぎ間違えたら `gh api -X DELETE repos/{owner}/{repo}/issues/<待つ側の番号>/dependencies/blocked_by/<前に要る Issue の id>` で外す

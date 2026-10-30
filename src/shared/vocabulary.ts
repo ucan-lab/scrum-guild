@@ -2761,6 +2761,7 @@ export const dictionary = defineDictionary({
   levelBreakdownLabel: organization('{workspace}ごとの経験値', '{workspace}ごとの経験値'),
   levelBreakdownTotal: organization('すべての{workspace}', 'すべての{workspace}'),
   levelLoadFailed: organization('レベルを読み込めませんでした', 'レベルを読み込めませんでした'),
+  levelThanksReceived: organization('受け取った感謝', '受け取った感謝'),
   xpPlus: organization('+{value}', '+{value}'),
   meExperienceTitle: organization('経験値の明細', '経験値の明細'),
   meExperienceDescription: organization(

@@ -222,6 +222,7 @@
         total={summary.total}
         prospective={summary.prospective}
         workspaces={summary.workspaces}
+        thanksReceived={summary.thanks_received}
         still={summaryRetried}
       />
     {:else}
