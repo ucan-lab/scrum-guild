@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { afterEach, beforeEach, describe, test } from 'node:test';
+import { afterEach, beforeEach, describe, mock, test } from 'node:test';
 import { devPorts } from './dev-ports.ts';
 
 // e2e/local-d1.ts の失敗の分岐を、fetch を差し替えて確かめる（ネットワークには出ない）。
@@ -87,6 +87,7 @@ describe('e2e/local-d1.ts の失敗の分岐', () => {
     calls = [];
   });
   afterEach(() => {
+    mock.restoreAll();
     globalThis.fetch = originalFetch;
   });
 
@@ -230,8 +231,14 @@ describe('e2e/local-d1.ts の失敗の分岐', () => {
 
   test('raw には 1つの batch を JSON で送り、どの呼び出しにも打ち切りの signal が付く', async () => {
     stubFetch([listOk, rawOk]);
+    // 打ち切りの値は docs/development.md の「打ち切りは 20 秒」と同じであること
+    const timeout = mock.method(AbortSignal, 'timeout');
     const { resetPasswordLoginRateLimits } = await loadLocalD1();
     await resetPasswordLoginRateLimits();
+    assert.deepEqual(
+      timeout.mock.calls.map((call) => call.arguments[0]),
+      [20_000, 20_000],
+    );
     const post = calls[1];
     assert.equal(post?.contentType, 'application/json');
     assert.deepEqual(JSON.parse(post?.body ?? 'null'), {
