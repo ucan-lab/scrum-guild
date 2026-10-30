@@ -9,7 +9,9 @@
   import NotFoundPage from '../../../../lib/components/NotFoundPage.svelte';
   import TaskDrawer from '../../../../lib/components/TaskDrawer.svelte';
   import {
+    adjacentTaskIds,
     drawerState,
+    taskOrder,
     clearOverlayHandoff,
     markOverlayHandoff,
     openTaskTab,
@@ -35,6 +37,8 @@
   // 木かこの枠（`app:workspace`）だけで、組織の枠は読み直さない（組織の枠の失敗で、引き出しと書きかけが消えないため）。
   // 終了したワークスペースでは、引き出しを読み取り専用で開く
   // ページ全体（tasks/[taskId]）は、ルートが TaskDrawer を置くので、ここでは引き出しを重ねない
+  // 引き出しの帯に、前後のタスクへ移るボタンを出す。順は開いた画面が置く（バックログ、計画、スプリント。画面の見えている行の順で、端で止まる）。
+  // 移るときは `?task=` を置き換え（履歴は積まない）、引き出しは置き直される。閉じたときのフォーカスは、最後に表示したタスクの行へ戻る（下の shownTaskId）
   let { data, children }: { data: LayoutData; children: Snippet } = $props();
 
   const workspace = $derived(data.workspace);
@@ -69,6 +73,16 @@
     return true;
   }
   const canWrite = $derived(workspace !== null && workspace.closedAt === null);
+  // 前後のタスク。開いた画面が置いた、今見えている行の順（task-order.ts）の中の隣。順に無い（画面が順を置かない、完了して外れた）ときは渡さない
+  const adjacent = $derived(taskId === null ? null : adjacentTaskIds(taskOrder.ids, taskId));
+
+  // 前後のタスクへ移る（書きかけの確認は TaskDrawer が済ませている）。`?task=` だけを置き換え、ほかのクエリは残す。履歴は積まない
+  function stepTo(id: string): Promise<void> {
+    const query = new SvelteURLSearchParams(page.url.search);
+    query.set('task', id);
+    // eslint-disable-next-line svelte/no-navigation-without-resolve -- 今の画面の経路（page.url.pathname）に、残すクエリと task だけを足している
+    return goto(`${page.url.pathname}?${query}`, { replace: true, reset: false });
+  }
 
   $effect.pre(() => {
     if (!workspace) return;
@@ -142,6 +156,8 @@
       <TaskDrawer
         mode={overlayMode}
         onmode={changeMode}
+        adjacent={adjacent ?? undefined}
+        onstep={stepTo}
         slug={page.params.slug ?? ''}
         workspaceId={workspace.id}
         {taskId}

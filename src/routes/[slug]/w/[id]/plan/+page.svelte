@@ -23,6 +23,7 @@
   import { isUnauthenticated, loginUrl } from '../../../../../lib/login-redirect.ts';
   import { formatPoints, isOverVelocity } from '../../../../../lib/plan-summary.ts';
   import { sprintLabel, sprintPeriod } from '../../../../../lib/sprint-label.ts';
+  import { trackTaskOrder } from '../../../../../lib/task-order.ts';
   import { showToast } from '../../../../../lib/toast.svelte.ts';
   import { t } from '../../../../../lib/vocabulary.svelte.ts';
   import {
@@ -346,7 +347,8 @@
     {#if plan.sprints.length === 0}
       <EmptyState icon="calendar" title={lanesEmptyTitle} text={lanesEmptyText} />
     {:else}
-      <div class="lanes">
+      <!-- 引き出しの前後のボタンの順は、レーンに今見えているタスクの行（上のレーンから下へ） -->
+      <div class="lanes" {@attach trackTaskOrder}>
         {#each plan.sprints as sprint (sprint.id)}
           {@const lane = lanes.get(sprint.id)}
           <section class="lane" class:is-active={sprint.status === 'active'}>

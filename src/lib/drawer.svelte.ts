@@ -51,6 +51,32 @@ export function handleTaskOpenModeStorage(event: { key: string | null; newValue:
 
 if (typeof window !== 'undefined') window.addEventListener('storage', handleTaskOpenModeStorage);
 
+// 引き出しの「前へ」「次へ」で移る順。開いている画面が、今見えているタスクの行の ID を画面の上から下の順に置く（task-order.ts）。
+// 順を置く画面が無いとき（メンバーなど行を持たない画面）は空で、引き出しは前後のボタンを出さない。
+// 画面を替えるとき、新しい画面の置き直しが古い画面の片付けより先に走りうるので、置いた持ち主を覚え、持ち主でない片付けは無視する
+export const taskOrder = $state<{ ids: readonly string[]; owner: symbol | null }>({ ids: [], owner: null });
+
+export function provideTaskOrder(owner: symbol, ids: readonly string[]): void {
+  taskOrder.owner = owner;
+  taskOrder.ids = ids;
+}
+
+export function releaseTaskOrder(owner: symbol): void {
+  if (taskOrder.owner !== owner) return;
+  taskOrder.owner = null;
+  taskOrder.ids = [];
+}
+
+export type AdjacentTasks = { prev: string | null; next: string | null };
+
+// 順の中の current の前後。端では null（そこで止まる）。順に current が無いとき（完了して木から外れた、まだ描かれていない）は、
+// 前後を決められないので null を返し、引き出しは前後のボタンを出さない
+export function adjacentTaskIds(ids: readonly string[], current: string): AdjacentTasks | null {
+  const index = ids.indexOf(current);
+  if (index < 0) return null;
+  return { prev: ids[index - 1] ?? null, next: ids[index + 1] ?? null };
+}
+
 // リンクの通常操作も、修飾キーで別タブに開く操作も、同じ実在する URL を使う。
 export function taskDetailHref(href: string): string {
   if (drawerState.mode !== 'page' && drawerState.mode !== 'tab') return href;

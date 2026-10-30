@@ -4,6 +4,7 @@
   import { effectiveTaskOpenMode, type TaskOpenMode } from '../drawer.svelte.ts';
   import type { DictionaryKey } from '../../shared/vocabulary.ts';
   import { inertOutside } from '../inert-outside.ts';
+  import { stepOfKey } from '../task-order.ts';
   import { modalState } from '../toast.svelte.ts';
   import { t } from '../vocabulary.svelte.ts';
   import Icon from './Icon.svelte';
@@ -19,11 +20,16 @@
   // 日本語の変換中の Esc は変換の取り消しなので閉じない。ページ全体は引き出しの外（左のメニューなど）にフォーカスがあるときの Esc で閉じない。
   // 開いたらフォーカスを閉じるボタンへ置く。見出しなどへ移すのは中身（呼び出し側）が決める
   // 620px 以下は引き出しがもともと全幅になり、真ん中の見た目が横と変わらないので、切り替えに真ん中を出さず、真ん中は横として描く
+  // 前後のボタン（.drawer-steps。前のタスクと次のタスク）は、横と真ん中で、呼び出し側が adjacent を渡したときだけ出す（ページ全体では出さない）。
+  // 開き方と違い、狭い幅でも出す。端の向きは aria-disabled にして（フォーカスは残す）押しても何もしない。
+  // キーボードは `[`（前）と `]`（次）。押したら onstep を呼ぶだけで、書きかけの確認と移動は呼び出し側が決める
   let {
     labelledBy,
     busy = false,
     mode = 'side',
     onmode,
+    adjacent,
+    onstep,
     onrequestclose,
     top,
     children,
@@ -34,6 +40,9 @@
     mode?: TaskOpenMode;
     // 押した形と、今描いている形（狭い幅の真ん中は横）
     onmode: (mode: TaskOpenMode, shown: TaskOpenMode) => void;
+    // 前後のタスクがあるか。渡さなければ前後のボタンもキーも使わない
+    adjacent?: { hasPrev: boolean; hasNext: boolean };
+    onstep?: (delta: -1 | 1) => void;
     onrequestclose: () => void;
     // 上の帯の左（出どころの印など）
     top?: Snippet;
@@ -54,6 +63,12 @@
   const narrow = new MediaQuery('max-width: 620px');
   const shownMode = $derived(effectiveTaskOpenMode(mode, narrow.current));
   const modal = $derived(shownMode === 'side' || shownMode === 'center');
+  const stepping = $derived(modal && adjacent !== undefined && onstep !== undefined);
+
+  function step(delta: -1 | 1): void {
+    if (!stepping || !(delta < 0 ? adjacent?.hasPrev : adjacent?.hasNext)) return;
+    onstep?.(delta);
+  }
 
   $effect(() => {
     closeButton?.focus();
@@ -70,6 +85,15 @@
 
 <svelte:window
   onkeydown={(event) => {
+    // ほかのモーダルのダイアログ（書きかけの確認など）が開いている間は、後ろの引き出しを動かさない
+    const delta = stepOfKey(event);
+    if (delta !== null) {
+      if (stepping && modalState.openCount === 0) {
+        event.preventDefault();
+        step(delta);
+      }
+      return;
+    }
     // 日本語の変換中の Esc は変換の取り消し。keyCode 229 は、isComposing が偽になる Safari の変換確定の直後の Esc も含む
     if (event.key !== 'Escape' || event.isComposing || event.keyCode === 229) return;
     if (event.defaultPrevented || modalState.openCount > 0) return;
@@ -95,6 +119,30 @@
   <div class="drawer-top">
     {#if top}{@render top()}{/if}
     <span class="drawer-tools">
+      {#if stepping && adjacent}
+        <span class="drawer-steps" role="group" aria-label={t('drawerSteps', { task: t('task') })}>
+          <button
+            class="pill"
+            type="button"
+            aria-label={t('drawerPrev', { task: t('task') })}
+            title={t('drawerPrev', { task: t('task') })}
+            aria-disabled={!adjacent.hasPrev}
+            onclick={() => step(-1)}
+          >
+            <Icon name="up" />
+          </button>
+          <button
+            class="pill"
+            type="button"
+            aria-label={t('drawerNext', { task: t('task') })}
+            title={t('drawerNext', { task: t('task') })}
+            aria-disabled={!adjacent.hasNext}
+            onclick={() => step(1)}
+          >
+            <Icon name="down" />
+          </button>
+        </span>
+      {/if}
       <span class="drawer-mode" role="group" aria-label={t('drawerOpenMode')}>
         {#each modeChoices as choice (choice.value)}
           {#if choice.value !== 'center' || !narrow.current}

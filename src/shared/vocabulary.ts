@@ -1994,6 +1994,10 @@ export const dictionary = defineDictionary({
   drawerPage: organization('ページ全体', 'ページ全体'),
   drawerTab: organization('新しいタブ', '新しいタブ'),
   drawerTabBlocked: organization('新しいタブを開けませんでした', '新しいタブを開けませんでした'),
+  // 上の帯の前後のボタン。{task} は一覧の前後に並ぶ行の呼び名。キーボードは [ と ]
+  drawerSteps: workspace('前後の{task}', '前後の{task}'),
+  drawerPrev: workspace('前の{task}', '前の{task}'),
+  drawerNext: workspace('次の{task}', '次の{task}'),
   taskManualChip: workspace('手で作った{task}', '手で作った{task}'),
   taskImportedChip: workspace('取り込んだ{task}', '取り込んだ{task}'),
   taskDrawerLoadFailed: workspace(
