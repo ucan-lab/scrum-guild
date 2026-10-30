@@ -331,6 +331,17 @@ const SECTIONS = [
     ["列の名前はリーダーが付けたもので、言葉づかいを切り替えても訳さない。完了の列だけは「完遂」か「完了」と出す。列の数は .board の --board-cols で渡す（既定は 4）。列は 232px を下限にし、足りない幅では .board-wrap の中で横にスクロールする。", "カードの操作（列の移動）は、ドラッグの他にキーボードでもできるようにする。完了でないカードは tabindex=\"0\" で選べ、中のどこにフォーカスがあっても Alt と ← → で隣の列の末尾へ、Alt と ↑ ↓ で列の中を1つ動かす。同じ操作を、カードの下の .card-moves の .order-actions（前の列へ、上へ、下へ、次の列へ）のボタンでもできる。動かした後の位置は読み上げる（「<題>を<列>の N 番目に移しました（M 件中）」）。", "最後の完了でない列の「次の列へ」と Alt と → は、完了の列へ移す代わりに完了にする（カードの完了の操作と同じ）。前の列と上と下の端は aria-disabled で、「これより前の列はありません」「いちばん上です」「いちばん下です」を読み上げる。完了の列のカードは選べず、動かすボタンも持たない。完了の印の横の「戻す」（.link-btn）で完了の前の列の末尾へ戻し、戻したカードへフォーカスを移す。完了したストーリーの下のカードと、終了したスプリントのカードには「戻す」を出さない。完了の列の見出しの下には、完成の定義（.dod）を畳んで置く（空なら出さない）。", "選んでいるカード（中にフォーカスがある間）は .card:focus-within で枠の色を変え、左に太い線を入れる（色だけに頼らない）。", "狭い幅（760px 以下）と指で押す画面では、.card-title と .done-btn と .card-moves のボタンと完了のカードの「戻す」（.card .link-btn）を 44px 四方にする。.card-moves のボタン4つ（176px）は隙間を空けずにカードの内側へ収め、収まらない幅では折り返す。",
       `完成の定義（<code>.dod</code>）は畳んで置き、中身はワークスペースの Markdown を <code>.doc-box</code> で描く（<code>.dod</code> の中では枠と余白を外し、見出しも小さい文字のままにする）。開くまで本文を描かない。空なら出さない。${t("backlog")}の木の上にも同じ部品を1つだけ置き、行ごとには繰り返さない。`],
     ".board-wrap .board[--board-cols] .board-col .is-done .board-col-head .board-col-name / .dod / .card .card-parent .card-title .card-meta .card-foot .card-end .card-moves .card:focus-within / .order-actions（left right の across）")],
+  ["boarddrag", "カードのドラッグ", () => block("boarddrag", "カードのドラッグ（スプリントの画面）", "スプリントのカードをつかんで、列の中で並べ替え、別の列へ移し、完了の列へ落として完了にする。落とす位置は、カードとカードの間の線か、列の囲みで示す。",
+    board("sp14", { key: "dg1", cardMarks: (x) => (x.id === "t3" ? { state: "is-dragging" } : x.id === "t4" ? { state: "is-busy" } : x.id === "t1" ? { drop: "after" } : undefined) }) +
+    `<div class="cat-row"><span class="field-hint">1列目の先頭のカードをつかんでいる（元の位置で薄くする）。完了か戻しを送っている間のカードは、薄くしてカーソルを進行中にし、つかめない（.is-busy。aria-busy も付ける）。2列目の先頭のカードの下の線は、そのカードの後ろに入る（下半分に重ねたとき）。上半分に重ねると前の線</span></div>` +
+    board("sp14", { key: "dg2", cardMarks: (x) => (x.id === "t11" ? { state: "is-dragging" } : undefined), columnMarks: (c) => (c.id === "c3" ? { drop: "into" } : undefined) }) +
+    `<div class="cat-row"><span class="field-hint">カードの無い所と${t("column")}の頭に重ねると${t("column")}を囲む。離すと${t("column")}の末尾に入る</span></div>` +
+    board("sp14", { key: "dg3", cardMarks: (x) => (x.id === "t2" ? { state: "is-dragging" } : undefined), columnMarks: (c) => (c.done ? { drop: "into" } : undefined) }) +
+    `<div class="cat-row"><span class="field-hint">${t("done")}の${t("column")}は、どこに重ねても${t("column")}を囲む（位置の線は出さない）。離すと${t("done")}になる</span></div>` +
+    board("sp14", { key: "dg4", cardMarks: (x) => (x.id === "t8" ? { state: "is-dropped" } : undefined) }) +
+    `<div class="cat-row"><button class="btn is-sm" type="button" data-replay-flash>${icon("redo")}もう一度光らせる</button><span class="field-hint">落としたカード（1列目の2枚目）は、背景を戻しながら光る</span></div>`,
+    ["カードはカード全体をつかめる（つかめるカードは draggable=\"true\" で、カーソルは grab）。題のリンクは draggable=\"false\" にして、リンクの既定のドラッグがカードのドラッグを奪わないようにする。完了、戻す、.card-moves のボタンは押すだけで動き出さない。指（タッチ）でも、カードの長押しで動かせる。つかめるのは、書き込めて完了していないカードと、完了の列で「戻す」を出すカード。完了したストーリーの下のカードと、終了したワークスペースのカードはつかめない。", "落とす位置は [data-drop] で示す。before と after はカードとカードの間の線（--color-accent の 2px と左端の小さな丸。カードの幅いっぱい）で、カードの上半分に重ねると前、下半分に重ねると後ろ。into は列（.board-col）の囲みで、.dropzone.is-over と同じ --color-accent の枠と --color-accent-soft の地。カードの無い所と列の頭に重ねると、その列の末尾に入る。", "完了の列は、どこに重ねても列を囲む（位置の線は出さない）。完了でないカードを離すと完了にし、完了の列の中で動かし直しても何も起きない。完了の列のカードを別の列へ落とすと、完了を戻してから落とした列と位置へ移す。元と同じ位置と、落とせない場所には何も示さない。", "つかんだカードは元の位置で薄くする（.is-dragging）。落としたカードは、背景を --color-accent-soft から地の色へ約 0.8 秒（--duration-flash）で戻し、--color-accent の 1px の枠も同じ長さで消して光らせる（.is-dropped）。prefers-reduced-motion のときは光らせず、薄くするのも切り替えだけにする。", "色は既存のトークンだけで、4つのテーマに新しい色は足さない。キーボードとボタンの操作は「列とカード」のまま使える。"],
+    ".card[draggable=true] .card-title[draggable=false] / .card[data-drop=before] .card[data-drop=after] / .board-col[data-drop=into] / .is-dragging .is-dropped（.card.is-dropped）")],
   ["tree", "木", () => block("tree", "木（バックログ）", "エピック、ストーリー、タスクの階層。エピックの行は一段下の地と明朝で区切る。",
     `<div class="tree">${treeEpic("e2")}${treeStory("s4", true)}${treeStory("s1", true, { doneAt: "2026-10-22" })}</div>` +
     `<div class="tree">${treeEpic("e1", { cleared: true, key: "e1-cleared" })}${treeEpic("e2", { canceled: true, empty: true, key: "e2-canceled" })}${treeEpic("e1", { empty: true, key: "e1-empty" })}</div>` +
@@ -602,7 +613,7 @@ function render() {
   document.querySelectorAll("[data-switch='vocab']").forEach((b) => (b.onclick = SQ.toggleVocab));
   document.querySelectorAll("[data-vocab-label]").forEach((el) => (el.textContent = `言葉: ${t("vocab")}`));
   document.querySelectorAll("[data-replay-flash]").forEach((b) => (b.onclick = () => {
-    document.querySelectorAll("#drag .is-dropped").forEach((el) => {
+    document.querySelectorAll("#drag .is-dropped, #boarddrag .is-dropped").forEach((el) => {
       el.classList.remove("is-dropped");
       void el.offsetWidth;
       el.classList.add("is-dropped");

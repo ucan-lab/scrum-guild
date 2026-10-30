@@ -9,10 +9,10 @@
 // 最終日を過ぎた知らせは、sprint-board と sprint-list の応答を差し替えて確かめる（開始は最終日が今日以降の遠征にしか出来ないため）
 import type { Page } from '@playwright/test';
 import { sprintBoard, sprintClose, sprintList, taskColumnMove } from '../src/shared/operations/sprint/index.ts';
-import { taskReopen } from '../src/shared/operations/task/index.ts';
+import { taskComplete, taskReopen } from '../src/shared/operations/task/index.ts';
 import { expect, test } from './fixtures.ts';
-import { createWorkspace, signIn, waitForResponses, waitForSettled, watchViolations } from './helpers.ts';
-import { failOperation, mockOperation } from './operations.ts';
+import { createWorkspace, dragTo, signIn, waitForResponses, waitForSettled, watchViolations } from './helpers.ts';
+import { failOperation, mockOperation, routeOperation } from './operations.ts';
 import { OVERDUE_BOARD, OVERDUE_PLAN, SAMPLE_BOARD } from './sprint-fixture.ts';
 
 test.use({ timezoneId: 'Asia/Tokyo' });
@@ -646,4 +646,296 @@ test('最終日を過ぎた知らせは、リーダーでない人には終え�
   await page.goto(`${AOBA_TEAM}/sprint`);
   await expect(page.getByRole('heading', { level: 1, name: '遠征 第14回' })).toBeVisible();
   await expect(page.locator('.callout.is-warn')).toHaveCount(0);
+});
+
+// カードのドラッグ。カード全体をつかむので、押す場所は題のリンク（ボタンの上からは始めない）。
+// 4つの列が並ぶ幅を確保する（列の幅は 232px 以上で、足りないと .board-wrap の中で横に送られ、離す場所が画面の外になりうる）
+test.describe('カードのドラッグ', () => {
+  test.use({ viewport: { width: 1600, height: 900 } });
+
+  // 完遂の列のカードは選べず、article に名前が付かないので、題のリンクから探す
+  const cardOf = (page: Page, title: string) =>
+    page.locator('.card').filter({ has: page.getByRole('link', { name: title, exact: true }) });
+  const grabOf = (page: Page, title: string) => cardOf(page, title).locator('.card-title');
+  const columnOf = (page: Page, name: string) => page.getByRole('region', { name, exact: true });
+  const headOf = (page: Page, name: string) => columnOf(page, name).locator('.board-col-head');
+  const statusOf = (page: Page, text: string) => page.getByRole('status').filter({ hasText: text });
+
+  test('カードをドラッグして、列の中で並べ替え、隣でない列へ移し、完遂の列へ落として完遂にし、落とし直して戻す', async ({
+    page,
+    context,
+    baseURL,
+  }) => {
+    // 起票から動かすまでを1本で確かめる長い流れ
+    test.setTimeout(120_000);
+    await signIn(context, baseURL, 'admin');
+    const collect = await watchViolations(page);
+    await createWorkspace(page, '落とす見張り番', 'game');
+    for (const title of ['A札', 'B札', 'C札']) await addTask(page, title);
+    await page.getByRole('link', { name: '遠征の計画' }).click();
+    await expect(page.getByRole('heading', { level: 1, name: '遠征の計画' })).toBeVisible();
+    await createSprint(page, '2099-06-07', '第1回');
+    await page.getByRole('button', { name: '掲示板から入れる: 遠征 第1回' }).click();
+    const picker = page.getByRole('dialog', { name: '遠征 第1回 に入れる' });
+    for (const title of ['A札', 'B札', 'C札'])
+      await picker
+        .getByRole('group', { name: '入れるクエスト' })
+        .getByRole('checkbox', { name: new RegExp(`^${title}`) })
+        .check();
+    await picker.getByRole('button', { name: '3 件入れる' }).click();
+    await expect(picker).toBeHidden();
+    await page.getByRole('button', { name: '始める: 遠征 第1回' }).click();
+    const start = page.getByRole('dialog', { name: '遠征を始める' });
+    await start.getByRole('button', { name: '始める' }).click();
+    await expect(start).toBeHidden();
+
+    await page.getByRole('link', { name: '遠征', exact: true }).click();
+    await expect(page.locator('.board-col-name')).toHaveText(['出発前', '遂行中', '査定中', '完遂']);
+    await expect(titlesIn(page, '出発前')).toHaveText(['A札', 'B札', 'C札']);
+    // つかめるカードは draggable で、題のリンクはリンクの既定のドラッグを止めてある
+    await expect(cardOf(page, 'A札')).toHaveAttribute('draggable', 'true');
+    await expect(grabOf(page, 'A札')).toHaveAttribute('draggable', 'false');
+    // 送る移動は、A を査定中へ、C を B の前へ、B を査定中の A の後ろへ、完遂から戻した C を査定中の A の前への4件。
+    // 完遂にするのは task-complete
+    const moved = waitForResponses(page, '/task-column-move', 4);
+
+    // 隣でない列の頭に離すと、その列の末尾に入る。重ねている間は列を囲み、つかんだカードは元の位置で薄くなる
+    await dragTo(page, grabOf(page, 'A札'), headOf(page, '査定中'), 'middle', async () => {
+      await expect(columnOf(page, '査定中')).toHaveAttribute('data-drop', 'into');
+      await expect(cardOf(page, 'A札')).toHaveClass(/is-dragging/);
+    });
+    await expect(titlesIn(page, '査定中')).toHaveText(['A札']);
+    await expect(titlesIn(page, '出発前')).toHaveText(['B札', 'C札']);
+    await expect(statusOf(page, '「A札」を査定中の 1 番目に移しました（1 件中）')).toBeAttached();
+    await expect(cardOf(page, 'A札')).toHaveClass(/is-dropped/);
+    await expect(page.locator('[data-drop]')).toHaveCount(0);
+
+    // 列の中の並べ替え。カードの上半分に重ねると前の線が出て、そのカードの前に入る
+    await dragTo(page, grabOf(page, 'C札'), cardOf(page, 'B札'), 'top', async () => {
+      await expect(cardOf(page, 'B札')).toHaveAttribute('data-drop', 'before');
+      await expect(page.locator('.board-col[data-drop]')).toHaveCount(0);
+    });
+    await expect(titlesIn(page, '出発前')).toHaveText(['C札', 'B札']);
+    await expect(statusOf(page, '「C札」を出発前の 1 番目に移しました（2 件中）')).toBeAttached();
+
+    // 元と同じ位置には何も示さず、送らない（C の前は、今の位置）
+    await dragTo(page, grabOf(page, 'C札'), cardOf(page, 'C札'), 'top', async () => {
+      await expect(page.locator('[data-drop]')).toHaveCount(0);
+    });
+    await expect(titlesIn(page, '出発前')).toHaveText(['C札', 'B札']);
+
+    // 別の列のカードの下半分に重ねると後ろの線が出て、そのカードの後ろに入る
+    await dragTo(page, grabOf(page, 'B札'), cardOf(page, 'A札'), 'bottom', async () => {
+      await expect(cardOf(page, 'A札')).toHaveAttribute('data-drop', 'after');
+    });
+    await expect(titlesIn(page, '査定中')).toHaveText(['A札', 'B札']);
+    await expect(titlesIn(page, '出発前')).toHaveText(['C札']);
+    await expect(statusOf(page, '「B札」を査定中の 2 番目に移しました（2 件中）')).toBeAttached();
+
+    // 完遂の列は、どこに重ねても列を囲む（位置の線は出さない）。離すと完遂になる
+    await dragTo(page, grabOf(page, 'C札'), headOf(page, '完遂'), 'middle', async () => {
+      await expect(columnOf(page, '完遂')).toHaveAttribute('data-drop', 'into');
+      await expect(page.locator('.card[data-drop]')).toHaveCount(0);
+    });
+    await expect(statusOf(page, 'クエストを完遂にしました')).toBeVisible();
+    await expect(titlesIn(page, '完遂')).toHaveText(['C札']);
+    await expect(titlesIn(page, '出発前')).toHaveText([]);
+    await expect(cardOf(page, 'C札')).toHaveClass(/is-dropped/);
+
+    // 完遂の列の中への落とし直しは、何も示さず、何も起きない
+    await dragTo(page, grabOf(page, 'C札'), headOf(page, '完遂'), 'middle', async () => {
+      await expect(page.locator('[data-drop]')).toHaveCount(0);
+    });
+    await expect(titlesIn(page, '完遂')).toHaveText(['C札']);
+
+    // 完遂の列から落とすと、完遂を戻してから、落とした列と位置へ移す
+    await dragTo(page, grabOf(page, 'C札'), cardOf(page, 'A札'), 'top', async () => {
+      await expect(cardOf(page, 'A札')).toHaveAttribute('data-drop', 'before');
+    });
+    await expect(titlesIn(page, '査定中')).toHaveText(['C札', 'A札', 'B札']);
+    await expect(titlesIn(page, '完遂')).toHaveText([]);
+    // 戻した列と落とした列が食い違うので、戻したトーストは出さず、最後の位置の読み上げだけにする
+    await expect(statusOf(page, '「C札」を査定中の 1 番目に移しました（3 件中）')).toBeAttached();
+    await expect(statusOf(page, '完遂を戻し')).toHaveCount(0);
+    await moved;
+
+    // 読み直しても同じ並び
+    await page.reload();
+    await expect(titlesIn(page, '出発前')).toHaveText([]);
+    await expect(titlesIn(page, '遂行中')).toHaveText([]);
+    await expect(titlesIn(page, '査定中')).toHaveText(['C札', 'A札', 'B札']);
+    await expect(titlesIn(page, '完遂')).toHaveText([]);
+    await page.mouse.move(0, 0);
+    expect(await collect()).toEqual([]);
+  });
+
+  test('動かすのが断られたら、理由を知らせて元の位置に戻る', async ({ page, context, baseURL }) => {
+    await signIn(context, baseURL, 'member');
+    await mockOperation(page, sprintBoard, { slug: 'aoba' }, SAMPLE_BOARD);
+    await page.goto(`${AOBA_TEAM}/sprint`);
+    const title = 'ポイント付与のバッチを作る';
+    const unroute = await failOperation(page, taskColumnMove, { slug: 'aoba' }, 409, 'conflict', {
+      details: { reason: 'not_active' },
+    });
+    await expect(grabOf(page, title)).toBeVisible();
+    await waitForSettled(page);
+    const reloaded = page.waitForResponse((response) => response.url().includes('sprint-board'));
+    await dragTo(page, grabOf(page, title), headOf(page, '査定中'), 'middle');
+    await expect(statusOf(page, 'この遠征はもう進行中ではありません。一覧を読み直します')).toBeVisible();
+    // 読み直し（差し替えた応答）を待ってから確かめる。読み直す前の「元の列」を見て通らないように
+    await reloaded;
+    await waitForSettled(page);
+    // 読み直した画面（差し替えた応答）では、カードは元の列に戻る
+    await expect(titlesIn(page, '遂行中')).toHaveText([title]);
+    await expect(titlesIn(page, '査定中')).toHaveText([]);
+    await unroute();
+    await page.mouse.move(0, 0);
+    await expect(page.locator('.toasts:visible .toast')).toHaveCount(0);
+  });
+
+  test('完遂を戻すのが断られたら、列の移動は送らず、理由を知らせる。戻せないカードはつかめない', async ({
+    page,
+    context,
+    baseURL,
+  }) => {
+    await signIn(context, baseURL, 'member');
+    const locked = 'ストーリーが完遂したカード';
+    const done = SAMPLE_BOARD.columns.find((column) => column.is_done)!;
+    await mockOperation(
+      page,
+      sprintBoard,
+      { slug: 'aoba' },
+      {
+        ...SAMPLE_BOARD,
+        columns: SAMPLE_BOARD.columns.map((column) =>
+          column.is_done
+            ? {
+                ...column,
+                tasks: [
+                  ...column.tasks,
+                  { ...column.tasks[0]!, id: '019a0000-0000-7000-8000-00000000f205', title: locked, reopenable: false },
+                ],
+              }
+            : column,
+        ),
+      },
+    );
+    await page.goto(`${AOBA_TEAM}/sprint`);
+    const title = done.tasks[0]!.title;
+    // 完遂したストーリーの下のカードは戻せないので、つかめない
+    await expect(cardOf(page, locked)).toHaveCount(1);
+    await expect(cardOf(page, locked)).not.toHaveAttribute('draggable', 'true');
+    await expect(cardOf(page, title)).toHaveAttribute('draggable', 'true');
+
+    const columnMoves: string[] = [];
+    page.on('request', (request) => {
+      if (request.url().includes('task-column-move')) columnMoves.push(request.url());
+    });
+    const unroute = await failOperation(page, taskReopen, { slug: 'aoba' }, 409, 'conflict', {
+      details: { reason: 'sprint_closed' },
+    });
+    await waitForSettled(page);
+    const reloaded = page.waitForResponse((response) => response.url().includes('sprint-board'));
+    await dragTo(page, grabOf(page, title), headOf(page, '査定中'), 'middle');
+    await expect(statusOf(page, '終了した遠征の中で完遂したクエストは戻せません。一覧を読み直します')).toBeVisible();
+    // 読み直しを待ってから確かめる。読み直す前の画面を見て通らないように
+    await reloaded;
+    await waitForSettled(page);
+    await expect(titlesIn(page, '完遂')).toHaveText([title, locked]);
+    await expect(titlesIn(page, '査定中')).toHaveText([]);
+    expect(columnMoves).toEqual([]);
+    await unroute();
+    await page.mouse.move(0, 0);
+    await expect(page.locator('.toasts:visible .toast')).toHaveCount(0);
+  });
+
+  test('完遂の列へ落とした直後に別のカードを落としても、続けて積んだ移動は捨てられずに送られる', async ({
+    page,
+    context,
+    baseURL,
+  }) => {
+    await signIn(context, baseURL, 'member');
+    await mockOperation(page, sprintBoard, { slug: 'aoba' }, SAMPLE_BOARD);
+    const completing = 'ポイント付与のバッチを作る';
+    const moving = '管理画面にポイント履歴の一覧を出す';
+    const completingId = SAMPLE_BOARD.columns[1]!.tasks[0]!.id;
+    // 完了の応答を遅らせ、返る前に2枚目を落とす。完了が列の途中で読み直すと、続けて積んだ移動は送られずに捨てられていた
+    const unrouteComplete = await routeOperation(page, taskComplete, { slug: 'aoba' }, async (call) => {
+      await new Promise((resolve) => setTimeout(resolve, 1500));
+      await call.fulfill({ task_id: completingId, completed_at: '2026-10-20T00:00:00.000Z', left_sprint: false });
+    });
+    const unrouteMove = await mockOperation(page, taskColumnMove, { slug: 'aoba' }, { task_id: 'x', column_id: 'y' });
+    const columnMoves: string[] = [];
+    page.on('request', (request) => {
+      if (request.url().includes('task-column-move')) columnMoves.push(request.url());
+    });
+    await page.goto(`${AOBA_TEAM}/sprint`);
+    await expect(grabOf(page, completing)).toBeVisible();
+    await waitForSettled(page);
+
+    await dragTo(page, grabOf(page, completing), headOf(page, '完遂'), 'middle');
+    await dragTo(page, grabOf(page, moving), headOf(page, '査定中'), 'middle');
+    await expect.poll(() => columnMoves.length).toBe(1);
+    await expect(statusOf(page, 'クエストを完遂にしました')).toBeVisible();
+    // 捨てたことの知らせは出ない
+    await expect(statusOf(page, '動かしている間に一覧が読み直されたため')).toHaveCount(0);
+    await unrouteComplete();
+    await unrouteMove();
+  });
+
+  test('完遂から落として戻しが通っても、列の移動が断られたら理由を知らせる。戻したトーストは出さない', async ({
+    page,
+    context,
+    baseURL,
+  }) => {
+    await signIn(context, baseURL, 'member');
+    await mockOperation(page, sprintBoard, { slug: 'aoba' }, SAMPLE_BOARD);
+    const done = SAMPLE_BOARD.columns.find((column) => column.is_done)!.tasks[0]!;
+    const reopenColumn = SAMPLE_BOARD.columns[2]!.id;
+    const unrouteReopen = await mockOperation(
+      page,
+      taskReopen,
+      { slug: 'aoba' },
+      { task_id: done.id, sprint_id: SAMPLE_BOARD.sprint!.id, column_id: reopenColumn },
+    );
+    const unrouteMove = await failOperation(page, taskColumnMove, { slug: 'aoba' }, 409, 'conflict', {
+      details: { reason: 'changed' },
+    });
+    await page.goto(`${AOBA_TEAM}/sprint`);
+    await expect(grabOf(page, done.title)).toBeVisible();
+    await waitForSettled(page);
+    const reloaded = page.waitForResponse((response) => response.url().includes('sprint-board'));
+    await dragTo(page, grabOf(page, done.title), headOf(page, '遂行中'), 'middle');
+    await expect(statusOf(page, 'ほかの画面で変わったため、移せませんでした。一覧を読み直します')).toBeVisible();
+    await reloaded;
+    await waitForSettled(page);
+    await expect(statusOf(page, '完遂を戻し')).toHaveCount(0);
+    await unrouteReopen();
+    await unrouteMove();
+    await page.mouse.move(0, 0);
+    await expect(page.locator('.toasts:visible .toast')).toHaveCount(0);
+  });
+
+  test('別の画面で先に完遂にされていたとき（409 の conflict）も、落とした完遂として扱い、読み直す', async ({
+    page,
+    context,
+    baseURL,
+  }) => {
+    await signIn(context, baseURL, 'member');
+    await mockOperation(page, sprintBoard, { slug: 'aoba' }, SAMPLE_BOARD);
+    const title = 'ポイント付与のバッチを作る';
+    const unroute = await failOperation(page, taskComplete, { slug: 'aoba' }, 409, 'conflict');
+    await page.goto(`${AOBA_TEAM}/sprint`);
+    await expect(grabOf(page, title)).toBeVisible();
+    await waitForSettled(page);
+    const reloaded = page.waitForResponse((response) => response.url().includes('sprint-board'));
+    await dragTo(page, grabOf(page, title), headOf(page, '完遂'), 'middle');
+    await expect(statusOf(page, 'このクエストは、すでに完遂です')).toBeVisible();
+    // 列が空になった後に読み直す
+    await reloaded;
+    await waitForSettled(page);
+    await unroute();
+    await page.mouse.move(0, 0);
+    await expect(page.locator('.toasts:visible .toast')).toHaveCount(0);
+  });
 });

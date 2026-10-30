@@ -1149,7 +1149,7 @@ a.choice > div > span, .choice.is-static > div > span { display: block; }
 }
 .icon-btn.is-danger:hover { color: var(--color-danger); border-color: currentColor; }
 
-/* ===== ドラッグで並べ替える（バックログの木の行と、設定の並べ替えられる一覧の行） =====
+/* ===== ドラッグで並べ替える（バックログの木の行と、設定の並べ替えられる一覧の行。スプリントのカードは下） =====
    行の先頭のつまみ（.grip）をつかみ、落とす位置を [data-drop] で示す。色は既存のトークンだけを使う。
    before / after は行と行の間の線（行き先の階層の字下げ --row-indent から始め、左端に小さな丸を置く）。
    into は親の行を囲む（.dropzone.is-over と同じ枠と地）。離すと、その配下の末尾に入る。
@@ -1174,9 +1174,25 @@ a.choice > div > span, .choice.is-static > div > span { display: block; }
   from { background-color: var(--color-accent-soft); outline-color: var(--color-accent); }
   to { outline-color: transparent; }
 }
-.entry.is-dropped, .tree-row.is-dropped, .order-list li.is-dropped {
+.entry.is-dropped, .tree-row.is-dropped, .order-list li.is-dropped, .card.is-dropped {
   outline: 1px solid transparent; outline-offset: -1px; animation: drop-flash var(--duration-flash) ease-out;
 }
+/* スプリントのカードと列のドラッグ。つかむ場所はカード全体（ドラッグできるカードは draggable="true"）で、題のリンクとボタンは押すだけ。
+   before / after はカードとカードの間の線（カードの幅いっぱい）。線は隙間（--space-2 = 8px）の真ん中に引く。
+   絶対配置の基準はカードの枠の内側（padding box）で、枠が 1px あるので、隙間の真ん中は内側の端から 5px 外（枠の外へ 4px + 枠 1px）。
+   線（2px）の中心をそこに置くので top / bottom は -6px、丸（8px）の中心もそこに置くので -9px、
+   into は列を囲む（.dropzone.is-over と同じ枠と地。離すと列の末尾に入る。完了の列は、どこに重ねても囲む） */
+.card { position: relative; }
+.card[draggable="true"] { cursor: grab; }
+/* 完了か戻しを送っている間は、つかめない。薄くして、カーソルも進行中にする（aria-busy も付ける） */
+.card.is-busy { opacity: 0.6; cursor: progress; }
+.card[data-drop="before"]::before, .card[data-drop="after"]::before { left: 4px; right: 0; }
+.card[data-drop="before"]::after, .card[data-drop="after"]::after { left: 0; }
+.card[data-drop="before"]::before { top: -6px; }
+.card[data-drop="before"]::after { top: -9px; }
+.card[data-drop="after"]::before { bottom: -6px; }
+.card[data-drop="after"]::after { bottom: -9px; }
+.board-col[data-drop="into"] { background: var(--color-accent-soft); border-color: var(--color-accent); outline: 1px solid var(--color-accent); outline-offset: -2px; }
 /* 親なしの段が空のとき、行をつかんでいる間だけ出す落とし先。中身は .dropzone で、重ねると .is-over にする */
 .tree-slot { padding: var(--space-3) var(--space-4); }
 /* つまみのドラッグに触れる案内の文。つまみを出さない条件（下）では、この文も隠す */
