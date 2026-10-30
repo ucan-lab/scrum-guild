@@ -188,6 +188,15 @@ describe('感謝を送る・取り消す', () => {
     });
     for (const id of [other.member.userId!, target.bystander.userId!, disabled.id, left.id, crypto.randomUUID()])
       await assertError(await send(target, task.id, id), 404, 'not_found');
+    const waiting = await createUser(target.organization, {
+      login_subject: null,
+      login_provider: 'google',
+      login_email: 'waiting@example.test',
+      claim_token_hash: 'a'.repeat(64),
+      claim_expires_at: '2026-12-01T00:00:00.000Z',
+    });
+    await createMembership(target.organization, target.workspace.id, waiting.id);
+    await assertError(await send(target, task.id, waiting.id), 404, 'not_found');
     const valid = await createUser(target.organization);
     await createMembership(target.organization, target.workspace.id, valid.id);
     expect((await send(target, task.id, valid.id)).status).toBe(200);
@@ -315,9 +324,19 @@ describe('感謝を送る・取り消す', () => {
           .where('id', '=', target.leader.userId!),
       ),
     );
+    await db.run(
+      db.statement((q) =>
+        q
+          .updateTable('memberships')
+          .set({ left_at: '2026-10-20T00:00:00.000Z', left_on: '2026-10-20' })
+          .where('workspace_id', '=', target.workspace.id)
+          .where('user_id', '=', target.admin.userId!),
+      ),
+    );
     const result = await detail(target, task.id);
     expect(result.thanks.map((thanks) => thanks.id)).toEqual([first.id, second.id].sort());
     expect(result.thanks.find((thanks) => thanks.id === first.id)?.recipient.name).not.toBe('');
+    expect(result.thanks.find((thanks) => thanks.id === second.id)?.recipient.name).not.toBe('');
   });
 
   test('閉じたワークスペースは workspace_closed で送り口と取消口も偽', async () => {
@@ -456,6 +475,98 @@ describe('感謝の書き込みの競合', () => {
       }),
     ).rejects.toMatchObject({ status: 404 });
     expect(await logs(target, other.id)).toHaveLength(2);
+  });
+
+  test('書く直前にワークスペースが閉じたら送付も取消も workspace_closed で、感謝を増減させない', async () => {
+    const target = await createTarget();
+    const task = await createTask(target.organization, target.workspace.id, target.member.userId!);
+    const close = async (db: ReturnType<typeof orgDb>) => {
+      await db.run(
+        db.statement((q) =>
+          q
+            .updateTable('workspaces')
+            .set({ closed_at: '2026-10-20T00:00:00.000Z' })
+            .where('id', '=', target.workspace.id)
+            .where('organization_id', '=', target.organization.id),
+        ),
+      );
+    };
+    await expect(
+      beforeWrite(
+        target,
+        target.member,
+        thanksSendOperation,
+        { task_id: task.id, recipient_user_id: target.leader.userId },
+        close,
+      ),
+    ).rejects.toMatchObject({ status: 409 });
+    expect(await countThanks(target, task.id)).toBe(0);
+    expect(await logs(target, task.id)).toHaveLength(0);
+
+    const other = await createTarget();
+    const otherTask = await createTask(other.organization, other.workspace.id, other.member.userId!);
+    const { thanks_id: id } = (await (await send(other, otherTask.id)).json()) as { thanks_id: string };
+    await expect(
+      beforeWrite(other, other.member, thanksRevokeOperation, { thanks_id: id }, async (db) => {
+        await db.run(
+          db.statement((q) =>
+            q
+              .updateTable('workspaces')
+              .set({ closed_at: '2026-10-20T00:00:00.000Z' })
+              .where('id', '=', other.workspace.id)
+              .where('organization_id', '=', other.organization.id),
+          ),
+        );
+      }),
+    ).rejects.toMatchObject({ status: 409 });
+    expect(await countThanks(other, otherTask.id)).toBe(1);
+  });
+
+  test('書く直前にタスクが削除されるか相手が無効になったら 404', async () => {
+    const target = await createTarget();
+    const deleting = await createTask(target.organization, target.workspace.id, target.member.userId!);
+    await expect(
+      beforeWrite(
+        target,
+        target.member,
+        thanksSendOperation,
+        { task_id: deleting.id, recipient_user_id: target.leader.userId },
+        async (db) => {
+          await db.run(
+            db.statement((q) =>
+              q
+                .updateTable('tasks')
+                .set({ deleted_at: '2026-10-20T00:00:00.000Z' })
+                .where('workspace_id', '=', target.workspace.id)
+                .where('id', '=', deleting.id),
+            ),
+          );
+        },
+      ),
+    ).rejects.toMatchObject({ status: 404 });
+    expect(await countThanks(target, deleting.id)).toBe(0);
+
+    const disabling = await createTask(target.organization, target.workspace.id, target.member.userId!);
+    await expect(
+      beforeWrite(
+        target,
+        target.member,
+        thanksSendOperation,
+        { task_id: disabling.id, recipient_user_id: target.leader.userId },
+        async (db) => {
+          await db.run(
+            db.statement((q) =>
+              q
+                .updateTable('users')
+                .set({ disabled_at: '2026-10-20T00:00:00.000Z' })
+                .where('organization_id', '=', target.organization.id)
+                .where('id', '=', target.leader.userId!),
+            ),
+          );
+        },
+      ),
+    ).rejects.toMatchObject({ status: 404 });
+    expect(await countThanks(target, disabling.id)).toBe(0);
   });
 
   test('履歴の受取人の名前は送付も取消も書くときの値', async () => {

@@ -63,7 +63,13 @@ test('送れる人には自分と送付済み以外への送付口、本人が�
 
 test('送れない人、完了済み、閉じたワークスペースでは送り手と受取人の一覧だけを出す', () => {
   for (const changes of [
-    { task: { ...task, can_send_thanks: false } },
+    {
+      task: {
+        ...task,
+        can_send_thanks: false,
+        thanks: task.thanks.map((thanks) => ({ ...thanks, can_revoke: false })),
+      },
+    },
     { task: { ...task, completed_at: '2026-10-01T00:00:00.000Z' } },
     { canWrite: false },
   ]) {
@@ -79,6 +85,17 @@ test('送れる人でも他人が送った感謝は取り消せない', () => {
   });
   expect(body).toContain('次の相手 に送る');
   expect(body).not.toContain('への感謝を取り消す');
+});
+
+test('担当が替わって送れなくなっても、送った本人には取消口だけを出す', () => {
+  const { body } = render(TaskThanks, { props: { ...props, task: { ...task, can_send_thanks: false } } });
+  expect(body).toContain('送付済みの人 への感謝を取り消す');
+  expect(body).not.toContain('次の相手 に送る');
+});
+
+test('候補が無いときは送付ボタンの入れ物を出さない', () => {
+  const { body } = render(TaskThanks, { props: { ...props, candidates: [{ id: 'self', name: '送り手' }] } });
+  expect(body).not.toContain('class="thanks"');
 });
 
 test('空の一覧と候補の読み込み失敗を案内する', () => {

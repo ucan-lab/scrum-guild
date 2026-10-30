@@ -25,7 +25,8 @@ function taskRow(q: QueryCreator<OrganizationTables>, organizationId: string, wo
     .where('tasks.deleted_at', 'is', null);
 }
 
-// 感謝の相手は今の所属と有効な users の行で決める。login_subject は条件にしない。
+// 感謝の相手は今の所属と有効な users の行で決める。ログインの手段と ID がまだ無い行（招待で待っている人）は、
+// 担当の候補（member-list）に出ない人なので除く。
 function recipientRow(
   q: QueryCreator<OrganizationTables>,
   organizationId: string,
@@ -39,6 +40,7 @@ function recipientRow(
     .where('users.organization_id', '=', organizationId)
     .where('users.id', '=', userId)
     .where('users.disabled_at', 'is', null)
+    .where('users.login_subject', 'is not', null)
     .where('memberships.workspace_id', '=', workspaceId)
     .where('memberships.left_at', 'is', null);
 }

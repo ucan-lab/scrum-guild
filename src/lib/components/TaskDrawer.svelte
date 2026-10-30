@@ -1665,8 +1665,6 @@
       </div>
     {/if}
 
-    <!-- コメントと変更の履歴のタブ（kit.js の drawerHtml の .tabs）。中身は外さずに隠す（書きかけのコメントを、タブを切り替えても保つ）。
-         左右の矢印キーと Home、End でタブを移り、移った先を選ぶ -->
     <TaskThanks
       {slug}
       {workspaceId}
@@ -1681,6 +1679,8 @@
       {onstale}
     />
 
+    <!-- コメントと変更の履歴のタブ（kit.js の drawerHtml の .tabs）。中身は外さずに隠す（書きかけのコメントを、タブを切り替えても保つ）。
+         左右の矢印キーと Home、End でタブを移り、移った先を選ぶ -->
     <div>
       <div class="tabs" role="tablist" aria-label={t('drawerTabs')}>
         <button
