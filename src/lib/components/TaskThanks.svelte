@@ -61,6 +61,9 @@
     if (sending || !(revoke ? changeable : sendable)) return;
     sending = true;
     error = null;
+    // 押したボタン。読み直しの間に利用者が別の欄へ移っていたら、フォーカスを奪わない
+    const pressed = document.activeElement;
+    let failure: string | null = null;
     const result = revoke
       ? await callOperation(thanksRevoke, { workspace_id: workspaceId, thanks_id: id }, { slug })
       : await callOperation(
@@ -71,13 +74,13 @@
     if (result.ok) {
       showToast(t(revoke ? 'thanksRevoked' : 'thanksSent'), 'check');
       const refreshed = await onrefresh();
-      if (alive && refreshed === null) error = t('thanksRefreshFailed');
+      if (refreshed === null) failure = t('thanksRefreshFailed');
     } else {
       const message = t(thanksErrorKey(result.status, result.error?.code, result.error?.details), {
         task: t('task'),
         workspace: t('workspace'),
       });
-      if (alive) error = message;
+      if (alive) failure = message;
       else showToast(message, 'alert');
       if (result.status === 401 || result.error?.code === 'workspace_closed') onstale();
       else if ([403, 404, 409].includes(result.status)) {
@@ -87,10 +90,14 @@
       }
     }
     if (!alive) return;
+    // 失敗の文（role="alert"）は、aria-busy の領域が解けてから出す（busy の間は読み上げられないことがある）
     sending = false;
+    error = failure;
     await tick();
     // 押した送付・取消ボタンが消えても、感謝の欄からキーボード操作を続けられる。
-    heading?.focus();
+    // フォーカスがまだ押したボタンか body にあるときだけ移す
+    const active = document.activeElement;
+    if (active === null || active === document.body || active === pressed || !active.isConnected) heading?.focus();
   }
 </script>
 
