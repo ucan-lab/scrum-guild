@@ -7,9 +7,15 @@ import { describe, expect, test } from 'vitest';
 import { backlogTree } from '../src/shared/operations/task/index.ts';
 import { createApp } from '../src/server/app.ts';
 import { orgDb } from '../src/server/db/index.ts';
-import { queryPlanForTest } from '../src/server/db/testing.ts';
+import { queryPlanForTest, runStatementsForTest } from '../src/server/db/testing.ts';
 import { implementedOperations } from '../src/server/operations/index.ts';
-import { openStoryTasksStatement } from '../src/server/operations/task.ts';
+import {
+  lastPositionStatement,
+  openStoryTasksStatement,
+  rootCompletedCountStatement,
+  rootOpenTasksStatement,
+  siblingStatements,
+} from '../src/server/operations/task.ts';
 import {
   AT,
   createCategory,
@@ -524,6 +530,99 @@ describe('実行計画', () => {
       expect(plan).not.toMatch(/^\s*SCAN tasks\b/m);
     },
   );
+
+  // ANALYZE の後、tasks_story の統計は story_id の NULL を別々の値と数える。ストーリーごとの行が少なく、全組織の親なしの行が多い形にして、
+  // 親なしの文が story_id を索引に使わせず tasks_workspace_tray で引くことを確かめる
+  describe('ANALYZE の後も、親のないタスクの文は tasks_workspace_tray で引き、tasks_story を使わない', () => {
+    async function analyzedWorld() {
+      const target = await createTarget();
+      const owner = target.admin.userId!;
+      const { organization } = target;
+      const workspaceId = target.workspace.id;
+      const done = { completed_at: AT, completed_by: owner };
+      const stories = [];
+      for (let i = 0; i < 30; i++) stories.push(await createStory(organization, workspaceId, owner));
+      for (let i = 0; i < 30; i++) {
+        await createTask(organization, workspaceId, owner, done);
+        await createTask(organization, workspaceId, owner);
+      }
+      for (const parent of stories) {
+        await createTask(organization, workspaceId, owner, { ...done, story_id: parent.id });
+        await createTask(organization, workspaceId, owner, { story_id: parent.id });
+      }
+      // 他の組織の親のないタスク（tasks_story はこれも持つ）
+      for (let i = 0; i < 2; i++) {
+        const other = await createTarget();
+        const otherOwner = other.admin.userId!;
+        for (let j = 0; j < 40; j++) {
+          await createTask(other.organization, other.workspace.id, otherOwner, done);
+          await createTask(other.organization, other.workspace.id, otherOwner);
+        }
+      }
+      await runStatementsForTest(env, ['ANALYZE']);
+      return {
+        target,
+        db: orgDb(env, organization.verified),
+        workspaceId,
+        task: await createTask(organization, workspaceId, owner),
+      };
+    }
+
+    const planOf = async (statement: Parameters<typeof queryPlanForTest>[1]) =>
+      (await queryPlanForTest(env, statement)).join('\n');
+
+    // tasks_story を使わない文（byId は主キーで引くので、tasks_workspace_tray は求めない）
+    test('木の読み取りの、親のない未完了のタスク', async () => {
+      const { db, workspaceId } = await analyzedWorld();
+      const plan = await planOf(rootOpenTasksStatement(db, workspaceId, { words: [] }));
+      expect(plan).toMatch(/USING INDEX tasks_workspace_tray/);
+      expect(plan).not.toContain('tasks_story');
+    });
+
+    test('木の読み取りの、親のない完了の件数', async () => {
+      const { db, workspaceId } = await analyzedWorld();
+      const plan = await planOf(rootCompletedCountStatement(db, workspaceId));
+      expect(plan).toMatch(/USING (COVERING )?INDEX tasks_workspace_tray/);
+      expect(plan).not.toContain('tasks_story');
+    });
+
+    test('起票で、親のないタスクの末尾の位置を決める文', async () => {
+      const { db, workspaceId } = await analyzedWorld();
+      const plan = await planOf(lastPositionStatement(db, workspaceId, null));
+      expect(plan).toMatch(/USING (COVERING )?INDEX tasks_workspace_tray/);
+      expect(plan).not.toContain('tasks_story');
+    });
+
+    test.each(['last', 'first', 'next', 'ties', 'byId'] as const)(
+      '並べ替えで、親のないタスクの兄弟を引く文（%s）',
+      async (name) => {
+        const { db, workspaceId, task } = await analyzedWorld();
+        const siblings = siblingStatements(db, workspaceId, null, task.id);
+        const after = { id: task.id, position: task.position };
+        const plan = await planOf(
+          name === 'last'
+            ? siblings.last()
+            : name === 'first'
+              ? siblings.first()
+              : name === 'next'
+                ? siblings.next(after)
+                : name === 'ties'
+                  ? siblings.ties(after)
+                  : siblings.byId(task.id),
+        );
+        expect(plan).not.toContain('tasks_story');
+        if (name === 'last' || name === 'first' || name === 'next')
+          expect(plan).toMatch(/USING (COVERING )?INDEX tasks_workspace_tray/);
+      },
+    );
+
+    test('ストーリーの配下を引く文は、tasks_story で引く', async () => {
+      const { db, workspaceId, target } = await analyzedWorld();
+      const story = await createStory(target.organization, workspaceId, target.admin.userId!);
+      const plan = await planOf(lastPositionStatement(db, workspaceId, story.id));
+      expect(plan).toMatch(/USING (COVERING )?INDEX tasks_story \(story_id=\?\)/);
+    });
+  });
 });
 
 describe('backlog-tree の絞り込みと組織の分離', () => {
