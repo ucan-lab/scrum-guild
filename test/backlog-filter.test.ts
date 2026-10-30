@@ -16,6 +16,7 @@ import {
   rootOpenTasksStatement,
   siblingStatements,
 } from '../src/server/operations/task.ts';
+import { deleteStatements } from '../src/server/operations/tree-delete.ts';
 import {
   AT,
   createCategory,
@@ -614,6 +615,32 @@ describe('実行計画', () => {
         if (name !== 'ties') expect(plan).toMatch(/USING (COVERING )?INDEX tasks_workspace_tray/);
       },
     );
+
+    // ストーリーの削除（keep）で配下のタスクを親なしの末尾へ移す文。末尾の位置を読む副問い合わせは別名なしの tasks で、
+    // 移されるタスク（別名 t）は tasks_story で引く
+    test('ストーリーの削除（keep）で、親のないタスクの末尾の位置を決める文', async () => {
+      const { db, workspaceId, target } = await analyzedWorld();
+      const owner = target.admin.userId!;
+      const story = await createStory(target.organization, workspaceId, owner);
+      await createTask(target.organization, workspaceId, owner, { story_id: story.id });
+      const context = {
+        organizationId: target.organization.id,
+        workspaceId,
+        actorUserId: owner,
+        at: new Date(AT),
+        deletedAt: AT,
+        ownerOnly: null,
+      };
+      const { statements, rootIndex } = deleteStatements(db, context, { kind: 'story', id: story.id }, 'keep');
+      // 親を外して末尾に振る UPDATE を、位置でなく計画で選ぶ（移す先の末尾の位置を振る副問い合わせ n を持つ UPDATE）
+      const plans = await Promise.all(statements.slice(0, rootIndex).map((statement) => planOf(statement)));
+      const plan = plans.find((p) => /^MATERIALIZE n\b/.test(p));
+      expect(plan).toBeDefined();
+      if (plan === undefined) return;
+      expect(plan).toMatch(/SEARCH tasks USING (COVERING )?INDEX tasks_workspace_tray/);
+      expect(plan).not.toMatch(/\btasks USING (COVERING )?INDEX tasks_story\b/);
+      expect(plan).toMatch(/SEARCH t USING (COVERING )?INDEX tasks_story \(story_id=\?\)/);
+    });
 
     test('ストーリーの配下を引く文は、tasks_story で引く', async () => {
       const { db, workspaceId, target } = await analyzedWorld();

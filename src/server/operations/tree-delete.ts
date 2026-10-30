@@ -20,6 +20,7 @@ import {
   type OrganizationTables,
   type QueryCreator,
   type Statement,
+  unindexed,
 } from '../db/index.ts';
 import { ApiError } from '../errors.ts';
 import { uuidv7 } from '../uuid.ts';
@@ -164,14 +165,20 @@ function lastStoryPosition(from: From, workspaceId: string) {
     .limit(1);
 }
 
+// バックログの親なしは、story_id を索引に使わせず（unindexed）、tasks_workspace_tray で引かせる。ANALYZE の後は、SQLite が
+// NULL を別々の値と数えて tasks_story を選び、全組織の親のないタスクを読む計画になるため（task.ts の backlogTasksUnder と同じ。
+// docs/data-model.md の「バックログの木」。test/backlog-filter.test.ts が実行計画で確かめる）。
+// unindexed は表の名前つきの列だけを受けるので、この表は別名を付けずに引く
 function lastTaskPosition(from: From, workspaceId: string, tray: 'backlog' | 'archive') {
   const tasks = from
-    .selectFrom('tasks as a')
-    .select('a.position')
-    .where('a.workspace_id', '=', workspaceId)
-    .where('a.tray', '=', tray)
-    .where('a.deleted_at', 'is', null);
-  return (tray === 'backlog' ? tasks.where('a.story_id', 'is', null) : tasks).orderBy('a.position', 'desc').limit(1);
+    .selectFrom('tasks')
+    .select('tasks.position')
+    .where('tasks.workspace_id', '=', workspaceId)
+    .where('tasks.tray', '=', tray)
+    .where('tasks.deleted_at', 'is', null);
+  return (tray === 'backlog' ? tasks.where(unindexed('tasks.story_id'), 'is', null) : tasks)
+    .orderBy('tasks.position', 'desc')
+    .limit(1);
 }
 
 // 根を削除する UPDATE と、直前の UPDATE に結んだ根の履歴（action = 'delete'）
