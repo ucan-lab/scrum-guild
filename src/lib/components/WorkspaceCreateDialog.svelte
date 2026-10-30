@@ -50,7 +50,7 @@
 
   let name = $state('');
   let leaderUserId = $state('');
-  let vocabulary = $state<Vocabulary>('game');
+  let vocabulary = $state<Vocabulary>('scrum');
   let candidates = $state<Candidate[]>([]);
   let candidatesState = $state<'loading' | 'failed' | 'ready'>('loading');
   // 読み込みに失敗したことがある間は、読み直している最中も「もう一度試す」を残す（フォーカスを失わせない）

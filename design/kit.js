@@ -85,7 +85,7 @@
     filterTotalsNote: ["{points}と件数は、絞る前の全体の値です", "{points}と件数は、絞る前の全体の値です"],
     filterHiddenCreated: ["作りました。絞り込みに当たらないので表示していません", "作りました。絞り込みに当たらないので表示していません"],
   };
-  let vocab = 0;
+  let vocab = 1;
   const listeners = [];
   const t = (k) => (DICT[k] ? DICT[k][vocab] : k);
   function setVocab(v) { vocab = v; listeners.forEach((fn) => fn()); if (assist.open) renderAssist(); }

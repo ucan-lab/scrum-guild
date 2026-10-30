@@ -84,7 +84,7 @@ test.describe('招待だけが届いた人（ヒナタ）', () => {
     try {
       await page.goto('/');
       await expect(page).toHaveURL(/\/$/);
-      await expect(page.getByText('まだ入れる冒険者ギルドがありません')).toBeVisible();
+      await expect(page.getByText('まだ入れる組織がありません')).toBeVisible();
       await expect(page.getByRole('heading', { level: 2, name: '届いた招待' })).toBeVisible();
       const link = page.getByRole('link', { name: /ひばり工房/ });
       await expect(link).toContainText('承諾待ちの招待があります');

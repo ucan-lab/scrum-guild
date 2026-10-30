@@ -17,7 +17,8 @@ export type NewOrganization = {
 
 export type CreatedOrganization = { organizationId: string; db: OrganizationDb };
 
-// 人数と添付ファイルの上限、言葉づかい、テーマは列の既定の値で作る。
+// 言葉づかいはスクラムの言葉で作る（列の既定は 'game' のままで、マイグレーションは足すだけのため、ここで明示する）。
+// 人数と添付ファイルの上限、テーマは列の既定の値で作る。
 // slug が重なったときは 'slug_taken'（同時に作られて UNIQUE に当たった場合を含む）。それ以外の失敗は投げる
 export async function insertOrganization(
   env: Env,
@@ -33,6 +34,7 @@ export async function insertOrganization(
           id: organizationId,
           slug: input.slug,
           name: input.name,
+          vocabulary: 'scrum',
           created_by_operator: input.createdByOperator,
           created_at: at,
           updated_at: at,

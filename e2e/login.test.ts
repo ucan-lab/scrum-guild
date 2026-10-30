@@ -97,11 +97,11 @@ test('return_to は自分のサイトのパスだけを開始の URL に渡す',
 test('?error= の理由を、辞書の文言で出す。知らない値は出さない', async ({ page }) => {
   await page.goto('/login?error=denied');
   await expect(page.getByRole('alert')).toContainText(
-    'ログインできませんでした。どの冒険者ギルドのパーティにも所属しておらず',
+    'ログインできませんでした。どの組織のワークスペースにも所属しておらず',
   );
   await page.goto('/login?error=suspended');
   await expect(page.getByRole('alert')).toHaveText(
-    'ログインできませんでした。所属しているか招待されている冒険者ギルドは停止しています。運用者に問い合わせてください。',
+    'ログインできませんでした。所属しているか招待されている組織は停止しています。運用者に問い合わせてください。',
   );
   await page.goto('/login?error=retry');
   await expect(page.getByRole('alert')).toHaveText('ログインを完了できませんでした。もう一度ログインしてください。');
