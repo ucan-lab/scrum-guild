@@ -271,6 +271,31 @@ describe('experience-summary', () => {
     });
   });
 
+  test('削除したタスクの感謝も数える。感謝だけがあるワークスペースも、名前つきで内訳に出る', async () => {
+    const target = await createTarget();
+    const memberId = target.member.userId!;
+    const leaderId = target.leader.userId!;
+    const task = await createTask(target.organization, target.workspace.id, leaderId);
+    await createThanks(target.organization, target.workspace.id, task.id, leaderId, memberId);
+    const deleted = await createTask(target.organization, target.workspace.id, leaderId, {
+      deleted_at: '2026-10-21T00:00:00.000Z',
+    });
+    await createThanks(target.organization, target.workspace.id, deleted.id, leaderId, memberId);
+    // 所属も明細も無いワークスペースの、削除したタスクの感謝
+    const gone = await createWorkspace(target.organization, target.admin.userId!, { name: 'え班' });
+    const goneTask = await createTask(target.organization, gone.id, leaderId, {
+      deleted_at: '2026-10-21T00:00:00.000Z',
+    });
+    await createThanks(target.organization, gone.id, goneTask.id, leaderId, memberId);
+
+    const summary = await call<Summary>(experienceSummary, target, target.member);
+    expect(summary.thanks_received).toBe(3);
+    expect(summary.workspaces).toEqual([
+      { id: gone.id, name: 'え班', total: 0, prospective: 0, thanks_received: 1 },
+      { id: target.workspace.id, name: '青葉チーム', total: 0, prospective: 0, thanks_received: 2 },
+    ]);
+  });
+
   test('ほかの人の応答に、受け取った感謝の数を載せない（本人の応答にだけある）', async () => {
     const target = await createTarget();
     const task = await createTask(target.organization, target.workspace.id, target.leader.userId!);

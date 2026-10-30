@@ -1156,8 +1156,22 @@ function completeStatements(db: OrganizationDb, context: CompleteContext) {
     return sprint.where('read_sprint.deleted_at', 'is', null).where('read_sprint.status', '=', inSprint!.kind);
   };
 
+  // そのタスクの感謝の数が、読んだ数のまま。読んでから書くまでに thanks-send が通ると数が変わり、手助けの文が届いた感謝を知らないまま
+  // 完了が確定してしまう（完了後は感謝を送れも取り消せもしないので付け直せない）。ここで止めて、読み直してやり直す。
+  // 数は組織の中の表を、ワークスペースとタスクで絞って数える
+  const thanksAsRead = (eb: ExpressionBuilder<Tables, keyof Tables>) =>
+    eb(
+      eb
+        .selectFrom('thanks as counted')
+        .select((cb) => cb.fn.countAll<number>().as('count'))
+        .where('counted.workspace_id', '=', workspaceId)
+        .where('counted.task_id', '=', taskId),
+      '=',
+      thankIds.length,
+    );
+
   // 0.（始まっていないスプリントの中だけ）入っている行を removed で閉じる。条件は 1 と同じ前提（読んだスプリントと列のままの、
-  // 未完了のバックログのタスク、閉じていないワークスペース）
+  // 未完了のバックログのタスク、閉じていないワークスペース、読んだ数のままの感謝）
   const closeEntry =
     placement.kind === 'planned'
       ? [
@@ -1173,6 +1187,7 @@ function completeStatements(db: OrganizationDb, context: CompleteContext) {
                 eb.and([
                   eb.exists(openWorkspace(q, organizationId, workspaceId)),
                   eb.exists(sprintAsRead(q)),
+                  thanksAsRead(eb),
                   eb.exists(
                     q
                       .selectFrom('tasks as closing')
@@ -1213,6 +1228,7 @@ function completeStatements(db: OrganizationDb, context: CompleteContext) {
         .where('completed_at', 'is', null)
         .where('deleted_at', 'is', null)
         .where((eb) => eb.exists(openWorkspace(q, organizationId, workspaceId)))
+        .where((eb) => thanksAsRead(eb))
         .$if(placement.kind === 'outside', (qb) => qb.where('sprint_id', 'is', null))
         .$if(inSprint !== null, (qb) =>
           qb

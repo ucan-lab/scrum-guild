@@ -94,7 +94,7 @@
     <div role="group" aria-label={t('levelThanksReceived')}>
       <dl class="breakdown">
         <div>
-          <dt>{t('levelThanksReceived')}</dt>
+          <dt><Icon name="heart" />{t('levelThanksReceived')}</dt>
           <dd>{formatCount(thanksReceived)}</dd>
         </div>
       </dl>

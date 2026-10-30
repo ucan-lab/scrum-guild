@@ -7,6 +7,7 @@ import { XP_HELP, XP_HELP_WEEKLY_LIMIT } from '../src/shared/experience.ts';
 import { taskComplete, taskReopen } from '../src/shared/operations/task/index.ts';
 import { createApp } from '../src/server/app.ts';
 import { orgDb } from '../src/server/db/index.ts';
+import { envWithD1Hooks } from '../src/server/db/testing.ts';
 import { implementedOperations } from '../src/server/operations/index.ts';
 import { createMembership, createTask, createThanks, createXpGrant } from './factories.ts';
 import { post } from './operations/harness.ts';
@@ -103,6 +104,16 @@ async function liveHelps(target: Target, taskId?: string) {
   const rows = await grantsOf(target, taskId);
   const reversed = new Set(rows.map((row) => row.reverses_grant_id).filter((id) => id !== null));
   return rows.filter((row) => row.amount > 0 && !reversed.has(row.id));
+}
+
+async function thanksCount(target: Target, taskId: string) {
+  const db = orgDb(env, target.organization.verified);
+  const rows = await db.rows(
+    db.statement((q) =>
+      q.selectFrom('thanks').select('id').where('task_id', '=', taskId).where('workspace_id', '=', target.workspace.id),
+    ),
+  );
+  return rows.length;
 }
 
 async function completionIdOf(target: Target, taskId: string) {
@@ -245,6 +256,64 @@ describe('手助けの付与（task-complete）', () => {
   });
 });
 
+describe('感謝が割り込む', () => {
+  // タスクの感謝を読んだ直後に、別の要求が感謝を送った（thanks-send は未完了のタスクにだけ送れる）状態を作って完了にする
+  async function completeWithThanksArriving(target: Target, taskId: string, arrivals: Person[]) {
+    const pending = [...arrivals];
+    const racing = envWithD1Hooks(clockAt(WEDNESDAY), {
+      afterQuery: async (sql) => {
+        if (!sql.startsWith('select') || !sql.includes('from "thanks"') || pending.length === 0) return;
+        const recipient = pending.shift()!;
+        await createThanks(target.organization, target.workspace.id, taskId, target.member.userId!, recipient.userId!);
+      },
+    });
+    return post(app, taskComplete, {
+      slug: target.slug,
+      token: target.member.token,
+      body: { workspace_id: target.workspace.id, task_id: taskId },
+      env: racing,
+    });
+  }
+
+  test('感謝を読んだ後に別の感謝が届いても、読み直して全部の感謝に手助けが付く', async () => {
+    const target = await createTarget();
+    const { task } = await thankedTask(target, [target.leader]);
+    const other = await createPerson({
+      organization: target.organization,
+      membership: { workspaceId: target.workspace.id, role: 'member' },
+    });
+    expect((await completeWithThanksArriving(target, task.id, [other])).status).toBe(200);
+    expect(await thanksCount(target, task.id)).toBe(2);
+    expect((await liveHelps(target, task.id)).map((row) => row.user_id).sort()).toEqual(
+      [target.leader.userId, other.userId].sort(),
+    );
+  });
+
+  test('感謝が1件も無いと読んだ後に届いても、読み直して手助けが付く', async () => {
+    const target = await createTarget();
+    const task = await createTask(target.organization, target.workspace.id, target.member.userId!);
+    expect((await completeWithThanksArriving(target, task.id, [target.leader])).status).toBe(200);
+    expect(await thanksCount(target, task.id)).toBe(1);
+    expect(await liveHelps(target, task.id)).toHaveLength(1);
+  });
+
+  test('読み直しのたびに感謝が届き続けると、3 回で 409 の conflict になり、何も書かない', async () => {
+    const target = await createTarget();
+    const task = await createTask(target.organization, target.workspace.id, target.member.userId!);
+    const people = await Promise.all(
+      [1, 2, 3].map(() =>
+        createPerson({
+          organization: target.organization,
+          membership: { workspaceId: target.workspace.id, role: 'member' },
+        }),
+      ),
+    );
+    const res = await completeWithThanksArriving(target, task.id, people);
+    expect(res.status).toBe(409);
+    expect(await grantsOf(target, task.id)).toEqual([]);
+  });
+});
+
 describe('手助けの週の上限', () => {
   test('同じ送り手と相手は、同じ週に上限の数まで付き、超えた分は付かない。打ち消した分の枠は空く', async () => {
     const target = await createTarget();
@@ -337,6 +406,14 @@ describe('手助けの週の上限', () => {
     // 10-28 10:00 JST は、東京では水曜、ロサンゼルスでは火曜の夕方（どちらも 10-26 始まりの週）
     await seedHelps(target, XP_HELP_WEEKLY_LIMIT, WEDNESDAY);
     expect(await completeThanked(target, '2026-11-02T03:00:00Z')).toBe(expected);
+  });
+
+  // 水曜に2件（週の内）、月曜 0 時ちょうどに1件（次の週）。日曜の最後の1秒に完了にすると、次の週の分は数えず 3 件目として付く
+  test('週の終わり（次の週の始まり）ちょうどの手助けは、その前の週の数に入れない', async () => {
+    const target = await createTarget();
+    await seedHelps(target, XP_HELP_WEEKLY_LIMIT - 1, WEDNESDAY);
+    await seedHelps(target, 1, '2026-11-02T00:00:00+09:00');
+    expect(await completeThanked(target, '2026-11-01T23:59:59+09:00')).toBe(1);
   });
 
   test('同時に完了にした2つのタスクで上限をまたいでも、超えない', async () => {
