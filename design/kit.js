@@ -1075,7 +1075,8 @@ const looooooooooooooooooooooooooooooooooongLine = "コードの長い1行は、
   }
   // 書きかけがあるときは、捨てるかをダイアログで確かめる。force は捨てると決めた後
   function closeDrawer(force = false) {
-    if (!force && drawerHasDraft()) { DIALOGS.discardDraft(); return; }
+    // 形を替える確認で「書き続ける」を選んだ後に、閉じる操作の確認へ前の形の指定を持ち越さない
+    if (!force && drawerHasDraft()) { pendingDrawerMode = null; DIALOGS.discardDraft(); return; }
     if (location.pathname.endsWith("/task.html")) {
       const back = sessionStorage.getItem("sq-design-task-return"); sessionStorage.removeItem("sq-design-task-return");
       location.href = back || "backlog.html"; return;
