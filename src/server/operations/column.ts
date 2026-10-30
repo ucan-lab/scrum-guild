@@ -506,7 +506,11 @@ async function deleteColumn(
     // スプリントごとに、移し先の列の末尾へ、元の列の中の順で並べる
     const positions: [string, string][] = [];
     const bySprint = new Map<string, string[]>();
-    for (const task of tasks) bySprint.set(task.sprint_id, [...(bySprint.get(task.sprint_id) ?? []), task.id]);
+    for (const task of tasks) {
+      const ids = bySprint.get(task.sprint_id);
+      if (ids === undefined) bySprint.set(task.sprint_id, [task.id]);
+      else ids.push(task.id);
+    }
     for (const [sprintId, ids] of bySprint) {
       const keys = generateNKeysBetween(facts.tails.get(sprintId) ?? null, null, ids.length);
       ids.forEach((id, index) => positions.push([id, keys[index]!]));
