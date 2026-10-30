@@ -271,9 +271,14 @@
   }
 
   // task-column-move の入力。直前のカードは、null が先頭、undefined が末尾（省く）
-  function columnMoveInput(task: SprintBoardTask, columnId: string, afterTaskId: string | null | undefined) {
+  function columnMoveInput(
+    workspaceId: string,
+    task: SprintBoardTask,
+    columnId: string,
+    afterTaskId: string | null | undefined,
+  ) {
     return {
-      workspace_id: workspace?.id ?? '',
+      workspace_id: workspaceId,
       task_id: task.id,
       column_id: columnId,
       ...(afterTaskId === undefined ? {} : { after_task_id: afterTaskId }),
@@ -303,8 +308,8 @@
     void restoreFocus(saved);
     if (flash) dnd.flash(task.id);
     void announce(movedMessage(task, plan));
-    const input = columnMoveInput(task, plan.column.id, plan.afterTaskId);
     const workspaceId = workspace.id;
+    const input = columnMoveInput(workspaceId, task, plan.column.id, plan.afterTaskId);
     void moves.send(
       () => callOperation(taskColumnMove, input, { slug }),
       (result) => moveRefused(workspaceId, result),
@@ -319,9 +324,13 @@
     const sent = moves.send(
       async () => {
         if (!(await reopen(task, true))) return { ok: true, data: null } as const;
-        const result = await callOperation(taskColumnMove, columnMoveInput(task, plan.column.id, plan.afterTaskId), {
-          slug,
-        });
+        const result = await callOperation(
+          taskColumnMove,
+          columnMoveInput(workspaceId, task, plan.column.id, plan.afterTaskId),
+          {
+            slug,
+          },
+        );
         if (result.ok && workspaceId === page.params.id) {
           void announce(movedMessage(task, plan));
           flashAfterReload = task.id;
