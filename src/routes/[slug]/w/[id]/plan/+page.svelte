@@ -18,6 +18,7 @@
   import SprintOverdueNotice from '../../../../../lib/components/SprintOverdueNotice.svelte';
   import SprintStartDialog from '../../../../../lib/components/SprintStartDialog.svelte';
   import SprintTaskPicker from '../../../../../lib/components/SprintTaskPicker.svelte';
+  import { taskDetailHref, taskLinkAttrs } from '../../../../../lib/drawer.svelte.ts';
   import { focusPageHeading } from '../../../../../lib/focus-heading.ts';
   import { isUnauthenticated, loginUrl } from '../../../../../lib/login-redirect.ts';
   import { formatPoints, isOverVelocity } from '../../../../../lib/plan-summary.ts';
@@ -390,12 +391,14 @@
                     title={t('pointsLabel', { points: t('points'), value: task.points })}>{task.points}</span
                   >
                 {/if}
-                <!-- 押しても、フォーカスとスクロールの位置は動かさない（引き出しが閉じたとき、data-task-id で探してフォーカスを戻す） -->
+                <!-- 横と真ん中のときは、押しても、フォーカスとスクロールの位置は動かさない（引き出しが閉じたとき、data-task-id で探してフォーカスを戻す）。ページ全体の既定では taskLinkAttrs が reset を外し、先頭から表示する -->
+                <!-- eslint-disable svelte/no-navigation-without-resolve -- href は resolve した経路に ?task=<ID> を足したもの、またはその詳細ページ -->
                 <a
-                  href="{planHref}?task={encodeURIComponent(task.id)}"
+                  href={taskDetailHref(`${planHref}?task=${encodeURIComponent(task.id)}`)}
                   data-task-id={task.id}
-                  data-sveltekit-reset="false">{task.title}</a
+                  {...taskLinkAttrs()}>{task.title}</a
                 >
+                <!-- eslint-enable svelte/no-navigation-without-resolve -->
                 <span class="lane-row-end">
                   {#if task.completed_at !== null}
                     <!-- 完了の印（バックログの木の行と同じ .hanko）。担当の左に置き、担当の位置をそろえる -->

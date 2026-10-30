@@ -1,3 +1,104 @@
-// タスクの詳細の引き出しの、画面の状態。広げた形は、開き直しても、次に開くタスクでも残す（kit.js の drawer.full）。
-// ページを読み直すと戻る（保存しない）
-export const drawerState = $state({ full: false });
+import { SvelteURL } from 'svelte/reactivity';
+import { showToast } from './toast.svelte.ts';
+import { t } from './vocabulary.svelte.ts';
+
+export const TASK_OPEN_MODE_KEY = 'task-open-mode';
+export const taskOpenModes = ['side', 'center', 'page', 'tab'] as const;
+export type TaskOpenMode = (typeof taskOpenModes)[number];
+
+function isTaskOpenMode(value: unknown): value is TaskOpenMode {
+  return taskOpenModes.includes(value as TaskOpenMode);
+}
+
+export function readTaskOpenMode(): TaskOpenMode {
+  try {
+    const value = localStorage.getItem(TASK_OPEN_MODE_KEY);
+    return isTaskOpenMode(value) ? value : 'side';
+  } catch {
+    return 'side';
+  }
+}
+
+// 620px 以下は引き出しがもともと全幅になるので、真ん中の見た目が横と変わらない。切り替えにも真ん中を出さないため、横として描く
+export function effectiveTaskOpenMode(mode: TaskOpenMode, narrow: boolean): TaskOpenMode {
+  return mode === 'center' && narrow ? 'side' : mode;
+}
+
+export const drawerState = $state<{ mode: TaskOpenMode }>({ mode: readTaskOpenMode() });
+
+export function setTaskOpenMode(mode: TaskOpenMode): void {
+  try {
+    localStorage.setItem(TASK_OPEN_MODE_KEY, mode);
+    drawerState.mode = mode;
+  } catch {
+    drawerState.mode = 'side';
+  }
+}
+
+// 帯で押した形が、今描いている形（effectiveTaskOpenMode 後）と同じなら、移らずに既定だけを保存する。
+// 保存済みの既定は描いている形と違いうる（ページ全体や新しいタブの既定のまま `?task=` の横で開いた、狭い幅の真ん中）ので、
+// 描いている形と同じ形を押したときも、押した形を既定にする。違う形は、書きかけの確認の後に呼び出し側が保存して移る
+export function pickTaskOpenMode(next: TaskOpenMode, shown: TaskOpenMode): 'stay' | 'move' {
+  if (next !== shown) return 'move';
+  setTaskOpenMode(next);
+  return 'stay';
+}
+
+// 別のタブで既定を替えたら、開きっぱなしのこのタブにも反映する（storage イベントは、書いたタブ以外に届く）
+export function handleTaskOpenModeStorage(event: { key: string | null; newValue: string | null }): void {
+  if (event.key === TASK_OPEN_MODE_KEY && isTaskOpenMode(event.newValue)) drawerState.mode = event.newValue;
+}
+
+if (typeof window !== 'undefined') window.addEventListener('storage', handleTaskOpenModeStorage);
+
+// リンクの通常操作も、修飾キーで別タブに開く操作も、同じ実在する URL を使う。
+export function taskDetailHref(href: string): string {
+  if (drawerState.mode !== 'page' && drawerState.mode !== 'tab') return href;
+  const url = new SvelteURL(href, location.href);
+  const id = url.searchParams.get('task');
+  const base = url.pathname.match(/^(.*\/w\/[^/]+)/)?.[1];
+  return id && base ? `${base}/tasks/${encodeURIComponent(id)}` : href;
+}
+
+export function taskPageHref(slug: string, workspaceId: string, taskId: string): string {
+  return `/${encodeURIComponent(slug)}/w/${encodeURIComponent(workspaceId)}/tasks/${encodeURIComponent(taskId)}`;
+}
+
+// 行のタイトルのリンクに付ける属性。新しいタブの既定だけ別タブで開く。
+// 横と真ん中は同じ画面の上に重ねるので一覧のスクロールを保つ。ページ全体は別の画面へ移るので、先頭から読む（保つと一覧の位置が持ち越される）
+export function taskLinkAttrs(): Record<string, string> {
+  if (drawerState.mode === 'tab') return { target: '_blank', rel: 'noopener noreferrer' };
+  if (drawerState.mode === 'page') return {};
+  return { 'data-sveltekit-reset': 'false' };
+}
+
+// 新しいタブでページ全体を開く。ポップアップの遮断などで開けなかったときは false を返し、トーストで知らせる。
+// noopener を渡すと成否を戻り値で見られない（常に null）ので、渡さずに開けてから opener を外す
+export function openTaskTab(href: string): boolean {
+  const opened = window.open(href, '_blank');
+  if (opened === null) {
+    showToast(t('drawerTabBlocked'), 'alert');
+    return false;
+  }
+  opened.opener = null;
+  return true;
+}
+
+// 引き出しから「ページ全体」へ移るときは、履歴を足さずに置き換える。そのとき、ページ全体の「前の履歴」は一覧ではない
+// （一覧の前の画面）ので、閉じるときに history.back() で戻れない。ページ全体はこの印を見て、戻り先の URL へ移る
+let overlayHandoff = false;
+
+export function markOverlayHandoff(): void {
+  overlayHandoff = true;
+}
+
+// goto が取り消されるなどでページ全体が開かなかったときに、印を残さない。残ると、次にリンクから来たときの閉じ方が狂う
+export function clearOverlayHandoff(): void {
+  overlayHandoff = false;
+}
+
+export function consumeOverlayHandoff(): boolean {
+  const marked = overlayHandoff;
+  overlayHandoff = false;
+  return marked;
+}
