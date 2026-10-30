@@ -37,6 +37,11 @@ test.describe('自分の設定（ミナト）', () => {
       'aria-label',
       /^次のレベルまでの \d+% を確定、\d+% が見込み$/,
     );
+    // ゲージの両端に今のレベルと次のレベルの数字。読み上げからは外す
+    const gaugeEnds = panel.locator('.gauge-end');
+    await expect(gaugeEnds).toHaveText([/^LV \d+$/, /^LV \d+$/]);
+    await expect(gaugeEnds.first()).toHaveAttribute('aria-hidden', 'true');
+    await expect(gaugeEnds.last()).toHaveAttribute('aria-hidden', 'true');
     await expect(panel.locator('.legend > span')).toHaveText(['確定', '見込み（クエストの完遂で確定）']);
     await expect(panel.getByRole('group', { name: 'パーティごとの経験値' })).toBeVisible();
     // ほかのファイルの e2e がミナトをリーダーにしたワークスペースを足すので、受託開発チームがあることと、末尾の合計だけを見る
@@ -73,6 +78,7 @@ test.describe('自分の設定（ミナト）', () => {
     await expect(panel.locator('.emblem:not(.is-sm)')).toHaveAttribute('aria-label', 'レベル 1');
     await expect(panel.locator('.xp-num')).toHaveText('0XP');
     await expect(panel.locator('.xp-sub')).toHaveText('次のレベルまで 100・見込み +0');
+    await expect(panel.locator('.gauge-end')).toHaveText(['LV 1', 'LV 2']);
     await expect(panel.locator('.breakdown dt')).toHaveText(['社内ツール', 'すべてのパーティ']);
     await expect(panel.locator('.breakdown dd')).toHaveText(['0', '0']);
 

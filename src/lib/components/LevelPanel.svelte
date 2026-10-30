@@ -8,7 +8,8 @@
   // kit.js の levelPanel。自分の記録の面で、本人にだけ出す（経験値の数値を含む）。
   // 紋章（大）、合計、次のレベルまでの残りと見込み、10の目盛りのゲージ（確定は塗り、見込みは斜線）、凡例、
   // ワークスペースごとの内訳と「すべての<ワークスペース>」の合計。レベルとゲージの割合は src/shared/experience.ts の式で出す。
-  // ゲージの幅は style:width（CSSOM）で渡す（style 属性の文字列は CSP に止められる）
+  // ゲージの幅は style:width（CSSOM）で渡す（style 属性の文字列は CSP に止められる）。
+  // ゲージの伸びは CSS の animation が、置かれたときに1回だけ行う。値が変わっても伸び直さない（読み直しで再生しない）
   let {
     total,
     prospective,
@@ -47,13 +48,18 @@
       </div>
     </div>
   </div>
-  <div
-    class="gauge"
-    role="img"
-    aria-label={t('levelGaugeLabel', { confirmed: confirmedPercent, prospective: prospectivePercent })}
-  >
-    <span class="gauge-got" style:width={`${progress.confirmedRatio * 100}%`}></span>
-    <span class="gauge-soon" style:width={`${progress.prospectiveRatio * 100}%`}></span>
+  <!-- 両端の数字は、ゲージの読み上げと上の「次のレベルまで」が伝えるので読み上げから外す -->
+  <div class="gauge-row">
+    <span class="gauge-end" aria-hidden="true">{t('levelShort')} {progress.level}</span>
+    <div
+      class="gauge"
+      role="img"
+      aria-label={t('levelGaugeLabel', { confirmed: confirmedPercent, prospective: prospectivePercent })}
+    >
+      <span class="gauge-got" style:width={`${progress.confirmedRatio * 100}%`}></span>
+      <span class="gauge-soon" style:width={`${progress.prospectiveRatio * 100}%`}></span>
+    </div>
+    <span class="gauge-end is-next" aria-hidden="true">{t('levelShort')} {progress.level + 1}</span>
   </div>
   <div class="legend">
     <span><i class="is-got"></i>{t('levelLegendConfirmed')}</span>

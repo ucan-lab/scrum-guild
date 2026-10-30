@@ -319,7 +319,7 @@ const SECTIONS = [
       <span class="avatar-stack">${avatarOf("u2")}${avatarOf("u1")}${avatarOf("u3")}</span>
       ${emblem(7, true)}${emblem(7)}${emblem(12)}
     </div>`,
-    ["離脱した人は薄くし、title に「離脱済み」を出す。", "ログインの手段の側の画像（運用者が指名する人を確かめるときの GitHub のアバター）は、頭文字の円の中に重ねる（.avatar > img）。画像の組の右側は、画像が読み込めない例で、頭文字に戻る。", "紋章の大は自分の記録の面だけ、小は名前の横に添える。"], ".avatar .is-lg .is-none .is-left / .avatar > img / .avatar-stack / .emblem .is-sm")],
+    ["離脱した人は薄くし、title に「離脱済み」を出す。", "ログインの手段の側の画像（運用者が指名する人を確かめるときの GitHub のアバター）は、頭文字の円の中に重ねる（.avatar > img）。画像の組の右側は、画像が読み込めない例で、頭文字に戻る。", "紋章の大は自分の記録の面だけ、小は名前の横に添える。", "紋章の形はレベルによらず同じ六角。テーマで変わるのは縁と質感だけ（シンプルは縁取り、中世風は蝋の印章、現代風は光る枠）。"],".avatar .is-lg .is-none .is-left / .avatar > img / .avatar-stack / .emblem .is-sm")],
   ["ledger", "台帳", () => block("ledger", "台帳（タスクの一覧）", "タスクの一覧はすべてこの形。左に今日やるの印、右に期日、ポイント、担当、完了の操作。右端の丸を押すと判子が押される。題を押すと詳細が開く。",
     book(SAMPLE, { showAssignee: true }) +
     `<div class="cat-row"><button class="done-btn" type="button" aria-disabled="true" aria-label="送信中">${icon("check")}</button><span class="field-hint">完了の操作を送っている最中（aria-disabled）</span></div>`,
