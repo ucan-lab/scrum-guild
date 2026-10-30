@@ -1087,6 +1087,7 @@ test('ページ全体は一覧を重ねず、アプリ内から来た画面へ�
   await addTask(page, 'ページだけで読む');
   const backlog = page.url();
   await page.getByRole('link', { name: 'ページだけで読む', exact: true }).click();
+  await expect(page).toHaveURL(/[?&]task=[0-9a-f-]{36}/);
   const id = new URL(page.url()).searchParams.get('task')!;
   await page
     .getByRole('dialog', { name: 'ページだけで読む' })
@@ -1131,6 +1132,7 @@ test('開き方の変更は書きかけを確認し、新しいタブなら詳�
   const backlog = page.url();
   const row = page.getByRole('link', { name: '別タブで読む', exact: true });
   await row.click();
+  await expect(page).toHaveURL(/[?&]task=[0-9a-f-]{36}/);
   const id = new URL(page.url()).searchParams.get('task')!;
   const drawer = page.getByRole('dialog', { name: '別タブで読む' });
   await drawer.getByRole('textbox', { name: 'コメントを書く', exact: true }).fill('残したい書きかけ');
@@ -1171,6 +1173,7 @@ test('開き方のボタンは押したときだけ実行する。矢印キー�
   await addTask(page, '既定を替える');
   const backlog = page.url();
   await page.getByRole('link', { name: '既定を替える', exact: true }).click();
+  await expect(page).toHaveURL(/[?&]task=[0-9a-f-]{36}/);
   const id = new URL(page.url()).searchParams.get('task')!;
   const drawer = page.getByRole('dialog', { name: '既定を替える' });
   await expect(drawer).toBeVisible();
@@ -1248,6 +1251,7 @@ test('新しいタブを開けなかったら、詳細も既定もそのまま�
   await addTask(page, '遮断されて読む');
   const backlog = page.url();
   await page.getByRole('link', { name: '遮断されて読む', exact: true }).click();
+  await expect(page).toHaveURL(/[?&]task=[0-9a-f-]{36}/);
   const id = new URL(page.url()).searchParams.get('task')!;
   const drawer = page.getByRole('dialog', { name: '遮断されて読む' });
   await expect(drawer).toBeVisible();
@@ -1307,6 +1311,6 @@ test('既定がページ全体のとき、一覧のスクロールの位置を�
   expect(await settledScrollY(page), '前提: バックログが縦にスクロールする').toBeGreaterThan(0);
   await link.click();
   await expect(page).toHaveURL(/\/tasks\/[0-9a-f-]{36}$/);
-  await expect(page.getByRole('region')).toBeVisible();
+  await expect(page.locator('.drawer.is-page')).toBeVisible();
   expect(await settledScrollY(page)).toBe(0);
 });
