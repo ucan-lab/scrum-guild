@@ -250,8 +250,8 @@ export function parseSprintLog(title: string, body: string): SprintLog {
   const period = /(\d{4}-\d{2}-\d{2})\s*〜\s*(\d{4}-\d{2}-\d{2})/.exec(parts.get('期間') ?? '');
   const plan: PlanRow[] = [];
   for (const line of (parts.get('計画') ?? '').split('\n')) {
-    // 題に `|` があれば `\|` で書かれるので、題は番号と最後の列に挟まれた全体を取る
-    const row = /^\|\s*#(\d+)\s*\|(.*)\|\s*(\d+)\s*\|\s*$/.exec(line.trim());
+    // 題に `|` があれば `\|` で書かれるので、題は番号とポイントの列に挟まれた全体を取る。ポイントの後ろの PR の列（`#523`、空欄）は読み捨てる
+    const row = /^\|\s*#(\d+)\s*\|(.*)\|\s*(\d+)\s*\|(?:\s*(?:#\d+(?:\s*[、,]\s*#\d+)*)?\s*\|)?\s*$/.exec(line.trim());
     if (!row) continue;
     const number = Number(row[1]);
     // 同じ番号の行が2つあっても二重に数えないよう、最初の行だけ取る

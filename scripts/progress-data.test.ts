@@ -310,6 +310,16 @@ describe('記録の Issue の読み方', () => {
     assert.equal(parsed.goal, null);
   });
 
+  test('PR の列があっても（空欄、複数、題に | を含む行も）ポイントと題を取り違えない', () => {
+    const body = logBody(['| #12 | 画面を足す | 3 | #523 |', '| #13 | 表の \\| を直す | 5 | |', '| #14 | b | 2 | #1、#2 |']);
+    const parsed = parseSprintLog('スプリント 2（2026-11-05〜2026-11-11）', body);
+    assert.deepEqual(parsed.plan, [
+      { number: 12, title: '画面を足す', pt: 3 },
+      { number: 13, title: '表の | を直す', pt: 5 },
+      { number: 14, title: 'b', pt: 2 },
+    ]);
+  });
+
   test('題を読めなければ止まる', () => {
     assert.throws(() => parseSprintLog('スプリントの記録', ''), /題を読めない/);
   });
