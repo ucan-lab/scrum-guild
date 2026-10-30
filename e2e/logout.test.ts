@@ -261,7 +261,7 @@ test.describe('組織の外（紙の下のボタン）', () => {
     // 組織が2つの人にだけ組織の選択の画面が出る
     await signIn(context, baseURL, 'admin');
     await page.goto('/');
-    await expect(page.getByRole('heading', { level: 1, name: '冒険者ギルドを選ぶ' })).toBeVisible();
+    await expect(page.getByRole('heading', { level: 1, name: '組織を選ぶ' })).toBeVisible();
     await expect(page.locator('.gate-sheet').first().getByRole('button', { name: 'ログアウト' })).toBeVisible();
   });
 });

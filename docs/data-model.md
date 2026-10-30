@@ -231,7 +231,7 @@
 | id | TEXT | PK | |
 | slug | TEXT | NOT NULL、UNIQUE、`CHECK (slug GLOB '[a-z0-9]*' AND slug NOT GLOB '*[^a-z0-9-]*' AND length(slug) BETWEEN 2 AND 40)` | URL の先頭に入れる名前。後から変えない |
 | name | TEXT | NOT NULL | 組織の表示名 |
-| vocabulary | TEXT | NOT NULL、`game` か `scrum`、既定 `game` | ワークスペースの外の言葉づかい。管理者が組織の管理の画面（`organization-settings-update`）で変え、変えると `updated_at` と `change_logs` が動く（「書き込みの単位」の組織の設定の変更） |
+| vocabulary | TEXT | NOT NULL、`game` か `scrum`、既定 `game` | ワークスペースの外の言葉づかい。組織を作る文（`insertOrganization`）が `scrum` を入れる（列の既定は、マイグレーションを足すだけにするため `game` のまま）。管理者が組織の管理の画面（`organization-settings-update`）で変え、変えると `updated_at` と `change_logs` が動く（「書き込みの単位」の組織の設定の変更） |
 | theme | TEXT | NOT NULL、`simple`、`simple_light`、`simple_dark`、`medieval`、`modern` のどれか、既定 `simple` | 組織の既定のテーマ。`simple` は OS の明暗に合わせる。管理者が組織の管理の画面（`organization-settings-update`）で変え、変えると `updated_at` と `change_logs` が動く |
 | suspended_at | TEXT | | 停止した日時。入っていれば誰も入れず、定期処理も止める |
 | purge_on | TEXT | | 解約で停止したときの、データを消す予定日（解約で停止した日か、停止中に解約へ切り替えた日の30日後）。一時的な停止では空 |
@@ -363,7 +363,7 @@
 | name | TEXT | NOT NULL | |
 | timezone | TEXT | NOT NULL | IANA のタイムゾーン名。作った人のブラウザの値を既定にする。時差の表記（`+09:00` など）は受けず、`Intl.DateTimeFormat` で作れる名前を `resolvedOptions().timeZone` にそろえて保存する（`asia/tokyo` は `Asia/Tokyo`）。正式名の一覧とは突き合わせない。ブラウザが旧名（`Asia/Calcutta` など）を返すことがあるため |
 | week_start | INTEGER | NOT NULL、0〜6、既定 1 | 週の始まり。0 が日曜 |
-| vocabulary | TEXT | NOT NULL、`game` か `scrum`、既定 `game` | 言葉づかい |
+| vocabulary | TEXT | NOT NULL、`game` か `scrum`、既定 `game` | 言葉づかい。作成の入力で必須なので、列の既定は使われない |
 | definition_of_done_md | TEXT | 10 万字まで | 完成の定義（Markdown）。空なら `NULL` で、出さない。書くのは `workspace-dod-update`（下の「書き込みの単位」の「完成の定義の変更」）、読むのは `workspace` の操作 |
 | closed_at | TEXT | | 閉じた日時。入っていれば読み取り専用 |
 | created_by | TEXT | NOT NULL、FK users | |

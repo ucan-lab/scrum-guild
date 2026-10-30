@@ -7,7 +7,7 @@ import {
   type Vocabulary,
 } from '../shared/vocabulary.ts';
 
-// 今の言葉づかい。組織の枠が、組織の操作の結果を入れる（organization.svelte.ts）。入るまでは既定のゲームの言葉
+// 今の言葉づかい。組織の枠が、組織の操作の結果を入れる（organization.svelte.ts）。入るまでは既定のスクラムの言葉
 export const vocabularies: Vocabularies = $state({ ...defaultVocabularies });
 
 // ワークスペースの中の画面が、そのワークスペースの言葉づかいでワークスペースの言葉を上書きする（src/routes/[slug]/w/[id]/+layout.svelte）。

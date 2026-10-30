@@ -77,8 +77,8 @@ SQ.mount("admin", () => `
         : `<ul class="party-list" aria-label="登録した休日">${A.holidays.map(([d, n]) => `<li><span class="mono">${d}</span>${n ? `<span class="party-list-text">${esc(n)}</span>` : ""}<button class="icon-btn is-danger party-list-end" type="button" aria-label="${d} を消す" data-toast="${d}${n ? `（${esc(n)}）` : " "}を消しました">${icon("trash")}</button></li>`).join("")}</ul>`}`)}
     ${setting(`${t("workspace")}の外の言葉づかい`, `「冒険者ギルド」「ギルドマスター」などの言葉。${t("workspace")}の中の言葉づかいは、それぞれの${t("leader")}が決めます。`, `
       <div class="choice-list" role="radiogroup" aria-label="${t("workspace")}の外の言葉づかい">
-        <label class="choice"><input type="radio" name="kv" checked><div><b>ゲームの言葉</b><span>冒険者ギルド、ギルドマスター</span></div></label>
-        <label class="choice"><input type="radio" name="kv"><div><b>スクラムの言葉</b><span>組織、管理者</span></div></label></div>
+        <label class="choice"><input type="radio" name="kv"><div><b>ゲームの言葉</b><span>冒険者ギルド、ギルドマスター</span></div></label>
+        <label class="choice"><input type="radio" name="kv" checked><div><b>スクラムの言葉</b><span>組織、管理者</span></div></label></div>
       <div class="form-actions"><button class="btn" type="button" aria-disabled="true">保存する <span class="visually-hidden">${t("workspace")}の外の言葉づかい</span></button></div>`)}
     ${setting("既定のテーマ", `画面の見た目の既定。自分で選んでいないユーザーに効きます。会社で使うならシンプルが無難です。`, `
       <div class="choice-list" role="radiogroup" aria-label="既定のテーマ">

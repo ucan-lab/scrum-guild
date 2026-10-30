@@ -101,11 +101,11 @@ test('管理者の指名し直しのダイアログを開いた状態に axe の
     }),
   );
   await page.goto('/operator');
-  const open = page.getByRole('button', { name: '「ひばり工房」のギルドマスターを指名' });
+  const open = page.getByRole('button', { name: '「ひばり工房」の管理者を指名' });
   await expect(open).toBeVisible();
   await waitForSettled(page);
   await open.click();
-  const dialog = page.getByRole('dialog', { name: 'ギルドマスターを指名し直す' });
+  const dialog = page.getByRole('dialog', { name: '管理者を指名し直す' });
   await dialog.getByLabel('GitHub のユーザー名').fill('alice');
   await dialog.getByRole('button', { name: '確かめる' }).click();
   await expect(dialog.locator('.choice b.mono')).toHaveText('alice-dev');
