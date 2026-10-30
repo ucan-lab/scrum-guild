@@ -632,8 +632,11 @@ describe('実行計画', () => {
         ownerOnly: null,
       };
       const { statements, rootIndex } = deleteStatements(db, context, { kind: 'story', id: story.id }, 'keep');
-      // 親を外して末尾に振る UPDATE は、子の文の最後（根の UPDATE の前）
-      const plan = await planOf(statements[rootIndex - 1]);
+      // 親を外して末尾に振る UPDATE を、位置でなく計画で選ぶ（移す先の末尾の位置を振る副問い合わせ n を持つ UPDATE）
+      const plans = await Promise.all(statements.slice(0, rootIndex).map((statement) => planOf(statement)));
+      const plan = plans.find((p) => /^MATERIALIZE n\b/.test(p));
+      expect(plan).toBeDefined();
+      if (plan === undefined) return;
       expect(plan).toMatch(/SEARCH tasks USING (COVERING )?INDEX tasks_workspace_tray/);
       expect(plan).not.toMatch(/\btasks USING (COVERING )?INDEX tasks_story\b/);
       expect(plan).toMatch(/SEARCH t USING (COVERING )?INDEX tasks_story \(story_id=\?\)/);
