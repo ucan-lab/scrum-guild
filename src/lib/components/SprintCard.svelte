@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { SprintBoardTask } from '../../shared/operations/sprint/index.ts';
   import type { MoveDirection } from '../sprint-board.ts';
+  import type { SprintDnd } from '../sprint-dnd.svelte.ts';
   import { t } from '../vocabulary.svelte.ts';
   import Avatar from './Avatar.svelte';
   import DefinitionChip from './DefinitionChip.svelte';
@@ -12,7 +13,10 @@
   // Alt と ↑ ↓ で列の中を動かす。同じ操作を、カードの下の .order-actions のボタンでもできる。
   // 端のボタンは aria-disabled（フォーカスを失わない）で、押したり、端で Alt と矢印を押したりしても画面に渡し、動かせないことを読み上げさせる。
   // 最後の完了でない列の「次の列へ」と Alt と → は、画面が完了にする（task-complete）。
-  // 完了したカードは、完了の印の横に「戻す」（kit.js の doneControl の .link-btn。task-reopen）を、戻せるとき（canReopen）だけ出す
+  // 完了したカードは、完了の印の横に「戻す」（kit.js の doneControl の .link-btn。task-reopen）を、戻せるとき（canReopen）だけ出す。
+  // dnd を渡すと（書き込めるとき）、カード全体をつかんで列の間と中へ落とせる（SprintDnd。つかめるのは動かせるカードと、戻せる完了のカードだけ）。
+  // 題のリンクは draggable="false" で、リンクの既定のドラッグがカードのドラッグを奪わない。ボタンは押すだけで動き出さない。
+  // 落とす位置の印は data-drop、つかんだ薄さは .is-dragging、落とした光は .is-dropped
   let {
     task,
     href,
@@ -22,12 +26,15 @@
     clock,
     pending = false,
     hintId,
+    dnd,
     onmove,
     oncomplete,
     onreopen,
   }: {
     task: SprintBoardTask;
     href: string;
+    // ドラッグの配線。書き込めないときは渡さず、つかめず落とし先にもならない
+    dnd?: SprintDnd;
     // 動かし方の案内（画面の下の .action-note）の id。選んだカードの説明に結ぶ
     hintId?: string;
     // 期日の印を決める今日（ワークスペースのタイムゾーン）と週の始まり。API の値を渡す
@@ -46,6 +53,8 @@
 
   const done = $derived(task.completed_at !== null);
   const movable = $derived(edges !== null);
+  // つかめるのは、動かせるカードと、戻せる完了のカード
+  const grabbable = $derived(done ? canReopen : movable);
   const KEY_DIRECTIONS: Record<string, MoveDirection> = {
     ArrowLeft: 'left',
     ArrowRight: 'right',
@@ -83,6 +92,10 @@
 <article
   class="card"
   class:is-done={done}
+  class:is-dragging={dnd?.isDragging(task.id)}
+  class:is-dropped={dnd?.isFlashing(task.id)}
+  data-drop={dnd?.markOfCard(task.id)}
+  {@attach dnd?.card(task.id, grabbable)}
   tabindex={movable ? 0 : undefined}
   aria-labelledby={movable ? titleId : undefined}
   aria-describedby={movable ? [summaryId, hintId].filter(Boolean).join(' ') : undefined}
@@ -95,7 +108,9 @@
   {/if}
   <!-- 押しても、フォーカスとスクロールの位置は動かさない（引き出しが閉じたとき、data-task-id で探してフォーカスを戻す） -->
   <!-- eslint-disable-next-line svelte/no-navigation-without-resolve -- href は画面が resolve した経路に ?task=<ID> を足したもの -->
-  <a class="card-title" id={titleId} {href} data-task-id={task.id} data-sveltekit-reset="false">{task.title}</a>
+  <a class="card-title" id={titleId} {href} data-task-id={task.id} data-sveltekit-reset="false" draggable="false"
+    >{task.title}</a
+  >
   {#if task.repository !== null || task.due_on !== null}
     <div class="card-meta">
       {#if task.repository !== null}<DefinitionChip kind="repository" name={task.repository.name} />{/if}

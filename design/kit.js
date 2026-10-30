@@ -386,21 +386,28 @@
   // スプリントのカード（列の中）
   // order を渡したカード（完了していないカード）は tabindex="0" で選べ、下に移す操作（.order-actions）を持つ。
   // キーボードでは、選んで Alt と ← → で隣の列、Alt と ↑ ↓ で列の中を動かす（本番の SprintBoard）。完了の列のカードは動かさない
-  function card(x, order) {
+  // ドラッグ（本番の SprintCard）: つかめるカードは draggable="true" を持ち、カード全体をつかむ（opts.grab を false にするとつかめないカード）。
+  // opts.mark はドラッグの状態: { drop: "before" | "after", state: "is-dragging" | "is-dropped" }（dropAttr と同じ形。into は列に付ける）
+  function card(x, order, opts = {}) {
+    const mark = opts.mark || {};
+    const grab = opts.grab !== false;
+    // 同じ画面に同じ盤を並べる（カタログ）ときの id の重なりを避ける接頭辞
+    const k = opts.key ? `${opts.key}-` : "";
     const parent = x.story ? D.stories[x.story].title : null;
     // 選べるカードは、題を名前に、ポイントと担当の要約と画面の下の動かし方の案内（#board-key-hint）を説明に読む
     const who = x.who ? user(x.who).name : null;
     const summary = `${x.pts == null ? "未見積もり" : `${t("points")} ${x.pts}`}、${who ? `${t("assignee")}は${esc(who)}` : `${t("assignee")}なし`}`;
-    return `<article class="card ${x.doneAt ? "is-done" : ""}"${order ? ` tabindex="0" aria-labelledby="card-${x.id}-title" aria-describedby="card-${x.id}-summary board-key-hint"` : ""}>
-      ${order ? `<span class="visually-hidden" id="card-${x.id}-summary">${summary}</span>` : ""}
+    return `<article class="card ${x.doneAt ? "is-done" : ""}${mark.state ? ` ${mark.state}` : ""}"${grab ? ` draggable="true"` : ""}${dropAttr(mark)}${order ? ` tabindex="0" aria-labelledby="card-${k}${x.id}-title" aria-describedby="card-${k}${x.id}-summary board-key-hint"` : ""}>
+      ${order ? `<span class="visually-hidden" id="card-${k}${x.id}-summary">${summary}</span>` : ""}
       ${parent ? `<span class="card-parent">${icon("flag")} ${esc(parent)}</span>` : ""}
-      <a class="card-title" id="card-${x.id}-title" href="#" data-task="${x.id}">${titleOf(x)}</a>
+      <a class="card-title" id="card-${k}${x.id}-title" href="#" data-task="${x.id}" draggable="false">${titleOf(x)}</a>
       <div class="card-meta">${repoTag(x)}${sourceKey(x)}${taskFlags(x)}${taskDue(x)}</div>
       <div class="card-foot">${pts(x.pts)}${avatarOf(x.who)}<span class="card-end">${doneControl(x)}</span></div>
       ${order ? `<div class="card-moves">${orderActions(x.title, order)}</div>` : ""}
     </article>`;
   }
-  function board(sprintId) {
+  // opts.key: カードの id の接頭辞、opts.cardMarks: (x, i, c) => card のドラッグの状態、opts.columnMarks: (c) => 列の囲み（{ drop: "into" }）、opts.grab: (x) => つかめるか
+  function board(sprintId, opts = {}) {
     const list = tasksWhere((x) => x.sprint === sprintId);
     const open = D.columns.filter((c) => !c.done);
     return `<div class="board-wrap"><div class="board" style="--board-cols:${D.columns.length}">${D.columns.map((c) => {
@@ -408,10 +415,10 @@
       const at = open.indexOf(c);
       // 最後の完了でない列の「次の列へ」は、完了の列へ移す代わりに完了にする（本番は task-complete を呼ぶ）ので、押せる
       const orderOf = (i) => ({ first: i === 0, last: i === items.length - 1, across: { first: at === 0, last: false } });
-      return `<section class="board-col ${c.done ? "is-done" : ""}" aria-label="${c.done ? t("done") : esc(c.name)}">
+      return `<section class="board-col ${c.done ? "is-done" : ""}"${dropAttr(opts.columnMarks && opts.columnMarks(c))} aria-label="${c.done ? t("done") : esc(c.name)}">
         <div class="board-col-head">${c.done ? icon("check") : ""}<span class="board-col-name">${c.done ? t("done") : esc(c.name)}</span><span class="board-col-n">${items.length}</span><span class="board-col-pts">${sumPts(items)} pt</span></div>
         ${c.done && D.definitionOfDone.length ? `<details class="dod"><summary>${t("dod")}</summary>${dodDoc()}</details>` : ""}
-        ${items.map((x, i) => card(x, c.done ? undefined : orderOf(i))).join("") || `<p class="board-empty">なし</p>`}
+        ${items.map((x, i) => card(x, c.done ? undefined : orderOf(i), { mark: opts.cardMarks && opts.cardMarks(x, i, c), grab: opts.grab ? opts.grab(x) : true, key: opts.key })).join("") || `<p class="board-empty">なし</p>`}
       </section>`;
     }).join("")}</div></div>`;
   }
