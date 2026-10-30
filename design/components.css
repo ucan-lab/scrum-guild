@@ -876,10 +876,12 @@ label.pick-row:hover { background: var(--color-accent-soft); }
   margin-inline: auto; border: 0; box-shadow: none; overflow: visible;
 }
 .drawer-top { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
-.drawer-tools { margin-left: auto; display: flex; align-items: center; gap: var(--space-2); }
+.drawer-tools { margin-left: auto; display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: center; gap: var(--space-2); }
 /* 開き方は押した時点で実行するボタンの組（.pill）。選んでいる形は aria-pressed で示し、色に加えて太字にする */
 .drawer-mode { display: inline-flex; flex-wrap: wrap; gap: var(--space-2); }
 .drawer-mode .pill { white-space: nowrap; }
+/* 前後のタスクへ移るボタンの組（.pill の矢印）。開き方の左に並べる。端の向きは aria-disabled（.pill の見た目）で止める */
+.drawer-steps { display: inline-flex; gap: var(--space-2); }
 .drawer-title { font-family: var(--font-display); font-weight: var(--weight-display); font-size: var(--text-xl); line-height: var(--leading-tight); overflow-wrap: anywhere; }
 .props { margin: 0; display: grid; gap: var(--space-2); }
 .props > div { display: grid; grid-template-columns: 7em minmax(0, 1fr); gap: var(--space-3); align-items: center; padding-bottom: var(--space-2); border-bottom: 1px solid var(--color-rule); font-size: var(--text-sm); }
@@ -1080,8 +1082,8 @@ dialog.dialog::backdrop { background: none; }
   }
   /* 引き出しのタブ（コメントと変更の履歴）は、広げた分が下のタブの中身（.thread）に覆われるので、見た目ごと 44px の高さにする */
   .drawer .tab { min-height: 44px; }
-  /* 開き方のボタンは隣と押せる範囲が重ならないよう、見た目ごと 44px 四方にする */
-  .drawer-mode .pill { min-width: 44px; min-height: 44px; justify-content: center; }
+  /* 開き方と前後のボタンは隣と押せる範囲が重ならないよう、見た目ごと 44px 四方にする */
+  .drawer-steps .pill, .drawer-mode .pill { min-width: 44px; min-height: 44px; justify-content: center; }
   /* 木の行の右端が折り返したとき、上の段の「＋タスク」の広げた分が、下の段の 44px のボタンに重ならないよう段の間を空ける */
   /* --space-3 では、上の段の「＋タスク」と下の段の「完了にする」の広げた範囲が重なる（e2e/layout-narrow-workspace.test.ts で確かめた） */
   .tree-end { row-gap: var(--space-5); }

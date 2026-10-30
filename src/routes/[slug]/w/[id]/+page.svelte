@@ -31,6 +31,7 @@
   } from '../../../../lib/backlog-filter.ts';
   import { keepAddedRow } from '../../../../lib/added-rows.ts';
   import { MoveQueue } from '../../../../lib/move-queue.ts';
+  import { trackTaskOrder } from '../../../../lib/task-order.ts';
   import { completedMessage } from '../../../../lib/sprint-label.ts';
   import { showToast } from '../../../../lib/toast.svelte.ts';
   import { t } from '../../../../lib/vocabulary.svelte.ts';
@@ -1084,7 +1085,8 @@
   {/if}
 
   {#snippet treeView()}
-    <div class="tree" aria-busy={reloading}>
+    <!-- 引き出しの前後のボタンの順は、木に今見えているタスクの行（畳んだ枝の中と、絞り込みで外れた行を除く） -->
+    <div class="tree" aria-busy={reloading} {@attach trackTaskOrder}>
       {#each epics as epic, epicIndex (epic.id)}
         {@const points = epicPoints(epic)}
         <TreeEpic

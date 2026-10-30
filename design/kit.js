@@ -806,7 +806,8 @@ const looooooooooooooooooooooooooooooooooongLine = "コードの長い1行は、
   // commentEditing は直している途中のコメントの番号、commentDeleting は消すかを確かめているコメントの番号
   const drawer = { id: null, tab: "comments", thanked: new Set(), opener: null, mode: readDrawerMode(), editing: new Set(), view: null, errors: {}, drafts: {}, commentEditing: null, commentDeleting: null,
     // 見本の状態の切り替え（カタログの drawerDemo が使う）。commentsView はコメントの読み込み（loading、failed、reloadFailed）
-    commentsView: null, commentViewer: null, commentBlocked: null };
+    // adjacent は前後のタスク（{ prev, next }。順を渡さない画面は null）。undefined なら画面の行から求める（drawerAdjacent）
+    commentsView: null, commentViewer: null, commentBlocked: null, adjacent: undefined };
   const drawerReadOnly = () => drawer.view === "readonly";
   function readDrawerMode() {
     try { const mode = localStorage.getItem("sq-design-task-open-mode"); return ["side", "center", "page", "tab"].includes(mode) ? mode : "side"; }
@@ -822,6 +823,49 @@ const looooooooooooooooooooooooooooooooooongLine = "コードの長い1行は、
       .map(([v, label]) => `<button class="pill" type="button" data-drawer-mode="${v}" aria-pressed="${now === v}">${label}</button>`).join("");
     return `<span class="drawer-mode" role="group" aria-label="開き方">${buttons}</span>`;
   }
+  // 前後のタスクへ移るボタン（本番は Drawer.svelte と task-order.ts）。順は開いた画面に今見えているタスクの行を、画面の上から下の順に並べたもの。
+  // 畳んだ枝の中（[hidden]）と、引き出しやアシスタントの中の行は数えない。端では null で、ボタンは aria-disabled。
+  // 順に無いとき、ページ全体、画面が順を渡さないときは null を返し、ボタンを出さない。drawer.adjacent は見本の状態の切り替え（カタログの drawerDemo が使う）
+  function drawerAdjacent() {
+    if (drawer.adjacent !== undefined) return drawer.adjacent;
+    if (renderedDrawerMode() === "page") return null;
+    const ids = [...new Set([...document.querySelectorAll("[data-task]")]
+      .filter((el) => !el.closest("#drawer, #assist-panel, #assist-palette, [hidden]")).map((el) => el.dataset.task))];
+    const at = ids.indexOf(drawer.id);
+    return at < 0 ? null : { prev: ids[at - 1] ?? null, next: ids[at + 1] ?? null };
+  }
+  // キーの先が文字を打つ場所か（本番は task-order.ts の isTypingTarget）。文字や数字を入れる型の input、textarea、select、contenteditable。
+  // ポイントの radio のように文字を打たない型の input では、[ ] で移れる
+  const TEXT_INPUT_TYPES = ["", "text", "search", "url", "email", "tel", "password", "number", "date", "datetime-local", "month", "week", "time"];
+  function isTypingTarget(el) {
+    if (!el) return false;
+    if (el.isContentEditable === true) return true;
+    const tag = (el.tagName || "").toUpperCase();
+    return tag === "TEXTAREA" || tag === "SELECT" || (tag === "INPUT" && TEXT_INPUT_TYPES.includes((el.type || "").toLowerCase()));
+  }
+  function drawerStepButtons() {
+    const adjacent = drawerAdjacent();
+    if (!adjacent) return "";
+    // 読み上げの名前は変えず、title にだけキーを添える。キーは aria-keyshortcuts でも伝える。端で押せないときの title は理由（先頭です／最後です）
+    const button = (delta, label, key, glyph, has, edge) => `<button class="pill" type="button" data-drawer-step="${delta}" aria-label="${label}" aria-keyshortcuts="${key}" title="${has ? `${label}（${key}）` : edge}" aria-disabled="${!has}">${icon(glyph)}</button>`;
+    return `<span class="drawer-steps" role="group" aria-label="前後の${t("task")}">${button(-1, `前の${t("task")}`, "[", "up", adjacent.prev, "先頭です")}${button(1, `次の${t("task")}`, "]", "down", adjacent.next, "最後です")}</span>`;
+  }
+  // 前後へ移る。書きかけがあれば、閉じるときと同じ確認を挟む（force は捨てると決めた後）。閉じたときの戻り先は、最後に表示したタスクの行。
+  // ボタン（viaButton）で移ったときは、押したのと同じ向きのボタンへフォーカスを戻す（端で押せないなら見出し）。キー（[ ]）のときは見出し
+  let pendingDrawerStep = null;
+  function stepDrawer(delta, force = false, viaButton = false) {
+    const adjacent = drawerAdjacent();
+    const id = adjacent && (delta < 0 ? adjacent.prev : adjacent.next);
+    if (!id) return;
+    if (!force && drawerHasDraft()) { pendingDrawerMode = null; pendingDrawerStep = { delta, viaButton }; DIALOGS.discardDraft(); return; }
+    pendingDrawerStep = null;
+    drawer.id = id; drawer.tab = "comments"; drawer.thanked = new Set(); drawer.opener = id; drawer.editing = new Set(); drawer.errors = {}; drawer.drafts = {}; drawer.commentEditing = null;
+    renderDrawer();
+    const again = viaButton && document.querySelector(`#drawer [data-drawer-step="${delta}"]:not([aria-disabled="true"])`);
+    if (again) { again.focus(); return; }
+    const heading = document.querySelector("#drawer h2");
+    if (heading) { heading.tabIndex = -1; heading.focus(); }
+  }
   let pendingDrawerMode = null;
   function saveDrawerMode(mode) {
     try { localStorage.setItem("sq-design-task-open-mode", mode); drawer.mode = mode; } catch { drawer.mode = "side"; }
@@ -829,7 +873,7 @@ const looooooooooooooooooooooooooooooooooongLine = "コードの長い1行は、
   function changeDrawerMode(mode, force = false) {
     // 描いている形と同じ形を押したときは、移らずに既定だけを保存する
     if (mode === renderedDrawerMode()) { saveDrawerMode(mode); renderDrawer(); return; }
-    if (!force && drawerHasDraft()) { pendingDrawerMode = mode; DIALOGS.discardDraft(); return; }
+    if (!force && drawerHasDraft()) { pendingDrawerMode = mode; pendingDrawerStep = null; DIALOGS.discardDraft(); return; }
     const id = drawer.id;
     pendingDrawerMode = null;
     if (mode === "tab") {
@@ -969,7 +1013,7 @@ const looooooooooooooooooooooooooooooooooongLine = "コードの長い1行は、
         <span class="chip">${icon(x.src ? SRC[x.src.kind].icon : "pen")}${x.src ? SRC[x.src.kind].label : `手で作った${t("task")}`}</span>
         ${x.src ? `<span class="source-key">${esc(x.src.key)}</span><span class="chip">取り込み元: ${esc(x.src.status)}</span>` : ""}
         <span class="drawer-tools">
-          ${drawerModeButtons()}
+          ${drawerStepButtons()}${drawerModeButtons()}
           <button class="pill drawer-close" type="button" data-close-drawer aria-label="閉じる">${icon("x")}</button>
         </span>
       </div>
@@ -1045,7 +1089,7 @@ const looooooooooooooooooooooooooooooooooongLine = "コードの長い1行は、
   // 引き出しの見本の状態。読み込み中と、読めなかったとき（もう一度試す）は、見出しと文だけ
   function drawerStateHtml() {
     const x = task(drawer.id);
-    const top = `<div class="drawer-top"><span class="drawer-tools">${drawerModeButtons()}<button class="pill drawer-close" type="button" data-close-drawer aria-label="閉じる">${icon("x")}</button></span></div>
+    const top = `<div class="drawer-top"><span class="drawer-tools">${drawerStepButtons()}${drawerModeButtons()}<button class="pill drawer-close" type="button" data-close-drawer aria-label="閉じる">${icon("x")}</button></span></div>
       <h2 class="drawer-title"><span id="drawer-title">${t("task")}</span></h2>`;
     if (drawer.view === "loading") return `${top}<p class="field-hint">読み込んでいます</p>`;
     return `${top}<div class="callout is-danger" role="alert">${icon("alert")}<span>この${t("task")}を読み込めませんでした。もう一度試してください。</span></div>
@@ -1085,7 +1129,7 @@ const looooooooooooooooooooooooooooooooooongLine = "コードの長い1行は、
   // 書きかけがあるときは、捨てるかをダイアログで確かめる。force は捨てると決めた後
   function closeDrawer(force = false) {
     // 形を替える確認で「書き続ける」を選んだ後に、閉じる操作の確認へ前の形の指定を持ち越さない
-    if (!force && drawerHasDraft()) { pendingDrawerMode = null; DIALOGS.discardDraft(); return; }
+    if (!force && drawerHasDraft()) { pendingDrawerMode = null; pendingDrawerStep = null; DIALOGS.discardDraft(); return; }
     if (location.pathname.endsWith("/task.html")) {
       const back = sessionStorage.getItem("sq-design-task-return"); sessionStorage.removeItem("sq-design-task-return");
       location.href = back || "backlog.html"; return;
@@ -2238,7 +2282,13 @@ const looooooooooooooooooooooooooooooooooongLine = "コードの長い1行は、
     if ((el = hit("data-drawer-save"))) { saveDrawerEdit(el.dataset.drawerSave); return; }
     if (hit("data-drawer-due-clear")) { task(drawer.id).due = null; redrawAll(); toast(`${icon("check")}保存しました`); return; }
     if ((el = hit("data-drawer-mode"))) { changeDrawerMode(el.dataset.drawerMode); return; }
-    if (hit("data-discard-draft")) { const next = pendingDrawerMode; closeDialog(); if (next) changeDrawerMode(next, true); else closeDrawer(true); return; }
+    if ((el = hit("data-drawer-step"))) { stepDrawer(Number(el.dataset.drawerStep), false, true); return; }
+    if (hit("data-discard-draft")) {
+      const next = pendingDrawerMode, step = pendingDrawerStep;
+      closeDialog();
+      if (next) changeDrawerMode(next, true); else if (step) stepDrawer(step.delta, true, step.viaButton); else closeDrawer(true);
+      return;
+    }
     if (hit("data-delete-task")) {
       const x = task(drawer.id);
       closeDialog(); closeDrawer(true);
@@ -2368,6 +2418,12 @@ const looooooooooooooooooooooooooooooooooongLine = "コードの長い1行は、
     }
     if (ev.key === "Enter" && !ev.isComposing && ev.target.matches && ev.target.matches("input[data-drawer-input]")) {
       ev.preventDefault(); saveDrawerEdit(ev.target.dataset.drawerInput); return;
+    }
+    // [ が前、] が次。文字を打つ場所の中、日本語の変換中、修飾キー付き、押しっぱなしの繰り返しでは移らない（ページ全体では drawerAdjacent が null）
+    if ((ev.key === "[" || ev.key === "]") && drawer.id && !overlay && !ev.isComposing && ev.keyCode !== 229 && !ev.repeat
+      && !ev.ctrlKey && !ev.metaKey && !ev.altKey && !ev.shiftKey && !isTypingTarget(ev.target)) {
+      if (drawerAdjacent()) { ev.preventDefault(); stepDrawer(ev.key === "[" ? -1 : 1); }
+      return;
     }
     if (ev.key !== "Escape" || ev.isComposing || ev.keyCode === 229) return;
     if (orgMenuOpen) { ev.stopPropagation(); closeOrgMenu(); return; }

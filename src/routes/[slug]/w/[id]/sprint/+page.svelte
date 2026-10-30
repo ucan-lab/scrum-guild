@@ -20,6 +20,7 @@
   import { SprintDnd } from '../../../../../lib/sprint-dnd.svelte.ts';
   import type { MovedPlan, ReopenPlan, SprintDrop } from '../../../../../lib/sprint-drop.ts';
   import { completedMessage, sprintLabel, sprintPeriod } from '../../../../../lib/sprint-label.ts';
+  import { trackTaskOrder } from '../../../../../lib/task-order.ts';
   import { showToast } from '../../../../../lib/toast.svelte.ts';
   import { t } from '../../../../../lib/vocabulary.svelte.ts';
   import {
@@ -573,7 +574,8 @@
       tabindex={allTasks.length === 0 ? 0 : undefined}
       {@attach canWrite ? (node) => dnd.wrap(node) : undefined}
     >
-      <div class="board" style:--board-cols={columns.length}>
+      <!-- 引き出しの前後のボタンの順は、ボードに今見えているカード（左の列から右へ、列の中は上から下） -->
+      <div class="board" style:--board-cols={columns.length} {@attach trackTaskOrder}>
         {#each columns as column (column.id)}
           <section
             class="board-col"

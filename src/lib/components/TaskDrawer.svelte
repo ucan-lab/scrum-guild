@@ -27,7 +27,14 @@
   import { TASK_POINT_VALUES, TASK_TITLE_MAX_LENGTH, taskTitleProblem } from '../../shared/task.ts';
   import { callOperation } from '../api.ts';
   import { withCurrent } from '../definition-options.ts';
-  import { pickTaskOpenMode, type TaskOpenMode } from '../drawer.svelte.ts';
+  import {
+    clearStepFocus,
+    consumeStepFocus,
+    markStepFocus,
+    pickTaskOpenMode,
+    type StepSource,
+    type TaskOpenMode,
+  } from '../drawer.svelte.ts';
   import { formatDateTime } from '../format-datetime.ts';
   import { completedMessage, sprintLabel, sprintPeriod } from '../sprint-label.ts';
   import { historyEntryView } from '../task-history.ts';
@@ -62,6 +69,7 @@
   // 書きかけ（タイトル、リンク、本文の直している途中で、保存と同じ整え方の後も値が保存した値と違うもの。保存の要求を送っている間も数える。
   // と、まだ送っていない期日の入力）があるまま閉じる（×、幕、Esc）か、別のタスクや別の画面へ移る（beforeNavigate）ときは、
   // 捨てるかをアプリの中のダイアログで確かめる。捨てると決めたら、閉じる／移る。送っている最中の要求は止められず、そのまま通る。
+  // 帯の前後のボタンと `[` `]` で前後のタスクへ移るとき（開いた画面が順を渡したときだけ。adjacent）も、同じ確認を挟む。
   // 閉じた後に返った保存の応答も、通ったら木を読み直してトーストで知らせ、失敗はトーストで知らせる（saveFields）。
   // 引き出しが読み直すのは木（onchanged）かワークスペースの枠（onstale）だけで、組織の枠は読み直さない。
   // 削除は確認のダイアログを挟む。消したら閉じ、トーストで知らせ、画面が木を読み直す（onremoved）。
@@ -78,6 +86,8 @@
   let {
     mode = 'side',
     onmode,
+    adjacent,
+    onstep,
     slug,
     workspaceId,
     currentUserId,
@@ -92,6 +102,10 @@
     mode?: TaskOpenMode;
     // 確認を通った後に呼ぶ。既定の保存は呼び出し側が行う。移れなかったとき（新しいタブを開けなかった）は false を返す
     onmode: (mode: TaskOpenMode) => boolean;
+    // 開いた画面に今見えているタスクの行の、前と次の ID（端では null）。渡さなければ前後のボタンとキーを使わない（ページ全体など）
+    adjacent?: { prev: string | null; next: string | null };
+    // 確認を通った後に、その ID のタスクへ移る。移り終えるまで待てる値を返す（取り消されたら、この引き出しのまま続けられる）
+    onstep?: (taskId: string) => Promise<void>;
     slug: string;
     workspaceId: string;
     currentUserId: string | null;
@@ -399,7 +413,17 @@
     historyPanel?.focus();
   }
 
+  // 前後のボタンで移ってきたときの、押した向き。置き直した引き出しは、読み込み中から同じ向きのボタンにフォーカスを持ち（Drawer の initialFocus）、
+  // 最初の読み込みの終わりにも同じ向きのボタンへ置き、移った先のタイトルを読み上げる
+  const arrivedByStep = consumeStepFocus();
+  let stepFocus = arrivedByStep;
+  // 移った先のタイトルの読み上げ。ボタンで移ったときだけ入れる（キーで移ったときは、見出しへのフォーカスで読まれる）。
+  // 状態の読み上げ（status）とは別の領域にして、あとから状態が替わっても読み直されないようにする
+  let movedStatus = $state('');
+
   async function load(): Promise<void> {
+    const wantedStepFocus = stepFocus;
+    stepFocus = null;
     const mine = ++loadVersion;
     loadState = 'loading';
     const result = await callOperation(taskDetail, { workspace_id: workspaceId, task_id: taskId }, { slug });
@@ -416,8 +440,19 @@
       // 開いたときの読み上げに、見出しが読まれるようにする。閉じるボタンか何も無い所にフォーカスがあるときだけ移す
       await tick();
       if (!alive) return;
+      // ボタンで移ってきたなら、移った先のタイトルを読み上げに出し、押したのと同じ向きのボタンへフォーカスを置く（続けて押せる）。
+      // 押せない（端）なら見出しへ。読み込みの間に利用者が別の所へ移したフォーカスは奪わない
       const active = document.activeElement;
-      if (active === document.body || active?.classList.contains('drawer-close')) heading?.focus();
+      const idle = active === document.body || active?.classList.contains('drawer-close');
+      if (wantedStepFocus !== null) {
+        movedStatus = t('drawerMoved', { task: t('task'), title: result.data.task.title });
+        const button = document.querySelector<HTMLElement>(`.drawer [data-drawer-step="${wantedStepFocus}"]`);
+        if (button !== null && button.getAttribute('aria-disabled') !== 'true') {
+          if (idle || active === button) button.focus();
+          return;
+        }
+      }
+      if (idle) heading?.focus();
       return;
     }
     if (result.status === 401) {
@@ -461,6 +496,26 @@
     leaving = true;
     // 新しいタブを開けなかったときは移らず、今の詳細を残す
     if (!onmode(next)) leaving = false;
+  }
+
+  // 前後のタスクへ移る操作（帯のボタンと `[` `]`）。書きかけがあれば、閉じるときと同じ確認を挟む。
+  // 移ると引き出しは置き直される（呼び出し側の {#key}）ので、移れなかったとき（移動が取り消された）だけ、この引き出しを続けられる状態に戻す
+  // 移る先は確認の後に決め直す（確認の間に、順が替わったり、引き出しが閉じたりしうる）。消えていれば移らない。
+  // ボタンで移ったときだけ、移った先の引き出しが、押したのと同じ向きのボタンへフォーカスを戻す（stepFocus。キーで移ったときは見出し）
+  const stepTarget = (delta: -1 | 1) => (delta < 0 ? adjacent?.prev : adjacent?.next);
+
+  async function requestStep(delta: -1 | 1, source: StepSource): Promise<void> {
+    if (!onstep || !stepTarget(delta) || asking || leaving) return;
+    if (hasDraft() && !(await confirmDiscard())) return;
+    const target = stepTarget(delta);
+    if (!alive || leaving || !target) return;
+    leaving = true;
+    if (source === 'button') markStepFocus(delta);
+    await onstep(target);
+    if (!alive) return;
+    // 移れなかった（移動が取り消された）。この引き出しを続けられる状態に戻す
+    clearStepFocus();
+    leaving = false;
   }
 
   async function confirmDiscard(): Promise<boolean> {
@@ -1257,6 +1312,9 @@
 <Drawer
   {mode}
   onmode={(next, shown) => void requestMode(next, shown)}
+  adjacent={adjacent === undefined ? undefined : { hasPrev: adjacent.prev !== null, hasNext: adjacent.next !== null }}
+  onstep={(delta, source) => void requestStep(delta, source)}
+  initialFocus={arrivedByStep}
   labelledBy={titleLabelId}
   busy={loadState === 'loading'}
   onrequestclose={() => void requestClose()}
@@ -1844,6 +1902,8 @@
 
   <!-- 状態の読み上げの領域。常に置き、中の文字だけを替える -->
   <span class="visually-hidden" role="status">{status}</span>
+  <!-- 前後のボタンで移ったときだけ、移った先のタイトルを読み上げる（フォーカスは押したボタンに残るため） -->
+  <span class="visually-hidden" role="status">{movedStatus}</span>
 </Drawer>
 
 <ConfirmDialog
