@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { after, describe, test } from 'node:test';
-import { BENCH_PORTS, devPorts, devPublicOrigin } from './dev-ports.ts';
+import { BENCH_PORTS, MAX_OFFSET, devPorts, devPublicOrigin } from './dev-ports.ts';
 
 const MAIN_ROOT = '/work/scrum-guild';
 const worktree = (name: string) => `/work/scrum-guild/worktrees/${name}`;
@@ -203,7 +203,7 @@ describe('devPublicOrigin', () => {
 describe('BENCH_PORTS', () => {
   test('どのオフセット（0〜441）の画面、API、デバッガーとも重ならず、互いにも違う', () => {
     const used = new Set<number>();
-    for (let offset = 0; offset <= 441; offset++) {
+    for (let offset = 0; offset <= MAX_OFFSET; offset++) {
       const ports = devPorts({ DEV_PORT_OFFSET: String(offset) }, MAIN_ROOT, noFile);
       used.add(ports.app).add(ports.api).add(ports.inspector);
     }
