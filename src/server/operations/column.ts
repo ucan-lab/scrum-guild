@@ -15,7 +15,6 @@ import {
   type ColumnConflictReason,
 } from '../../shared/operations/column/index.ts';
 import {
-  jsonList,
   jsonPairRows,
   previousStatementChanged,
   uuidv7Sql,
@@ -504,7 +503,6 @@ async function deleteColumn(
     const at = now();
     const deletedAt = at.toISOString();
     const logId = uuidv7(at);
-    const taskIds = tasks.map((task) => task.id);
     // スプリントごとに、移し先の列の末尾へ、元の列の中の順で並べる
     const positions: [string, string][] = [];
     const bySprint = new Map<string, string[]>();
@@ -552,7 +550,18 @@ async function deleteColumn(
                   movableTasks(q, workspaceId)
                     .select('t.id')
                     .where('t.column_id', '=', columnId)
-                    .where('t.id', 'not in', jsonList(taskIds)),
+                    // 読んだ（タスク、スプリント）の組に無いもの。読んだ後に別のスプリントへ移ったカードも、組が変わるので数える
+                    .where((eb) =>
+                      eb.not(
+                        eb.exists(
+                          eb
+                            .selectFrom(jsonPairRows(sprintPairs).as('seen'))
+                            .select('seen.id')
+                            .whereRef('seen.id', '=', 't.id')
+                            .whereRef('seen.pos', '=', 't.sprint_id'),
+                        ),
+                      ),
+                    ),
                 ),
               ),
             ]),

@@ -806,7 +806,7 @@ describe('読んでから書くまでの割り込み', () => {
     expect(await logsOf(target, 'task', inPlanned.id)).toHaveLength(1);
   });
 
-  test('column-delete: 読んだ直後にタスクが別のスプリントへ移っていたら、そのカードは動かさない', async () => {
+  test('column-delete: 読んだ直後にタスクが別のスプリントへ移っていたら、列を消さずに読み直し、移ったスプリントで移す', async () => {
     const target = await createTarget();
     const board = await createBoard(target);
     const active = await createSprint(target.organization, target.workspace.id, { status: 'active' });
@@ -831,9 +831,10 @@ describe('読んでから書くまでの割り込み', () => {
         },
       },
     )) as { moved_count: number };
-    expect(output.moved_count).toBe(0);
-    expect((await taskRow(target, card.id)).column_id).toBe(board.a);
-    expect(await logsOf(target, 'task', card.id)).toEqual([]);
+    // 書く文は読んだスプリントのままかを条件にするので、列は消えずに読み直し、移ったスプリントのカードとして移す
+    expect(output.moved_count).toBe(1);
+    expect((await taskRow(target, card.id)).column_id).toBe(board.b);
+    expect((await taskRow(target, card.id)).sprint_id).toBe(planned.id);
   });
 
   test('column-move: 読んだ後に直前の列が動かされたら 409 の changed で、並びは動かさない', async () => {
