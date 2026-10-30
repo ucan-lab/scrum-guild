@@ -208,19 +208,19 @@ test.describe('管理者（あおば開発のミナト）', () => {
     return () => calls;
   }
 
-  test('390px の幅でも、操作の列は右端に固定されて見える', async ({ page }) => {
+  test('390px の幅では、行を縦に積み、操作は横にはみ出さずに見える', async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 800 });
     await page.goto('/aoba/admin');
     const button = page
       .locator('tbody tr', { hasText: SEED_NAME })
       .getByRole('button', { name: `「${SEED_NAME}」を終了する` });
-    // 表が横にはみ出す幅であること（固定を外すと、操作の列は横スクロールの先に隠れる）
     await expect(button).toBeAttached();
+    // 760px 以下は列をやめて積むので、表は横にはみ出さず、操作の列を固定する必要が無い（#462）
     const overflow = await workspacesOf(page)
       .locator('.table-wrap')
       .evaluate((el) => el.scrollWidth - el.clientWidth);
-    expect(overflow).toBeGreaterThan(0);
-    // 縦には、その行まで動かす。横には、表がはみ出していても動かさずに見える
+    expect(overflow).toBeLessThanOrEqual(0);
+    // 縦には、その行まで動かす。横には動かさずに見える
     await button.scrollIntoViewIfNeeded();
     await expect(button).toBeInViewport({ ratio: 1 });
     // 押す所は 44px 以上
