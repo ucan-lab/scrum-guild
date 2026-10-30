@@ -110,8 +110,12 @@
           >
           {#if changeable && thanks.can_revoke}
             <span class="party-list-end">
-              <button class="link-btn" type="button" disabled={sending} onclick={() => void change(thanks.id, true)}
-                >{t('thanksRevoke', { name: thanks.recipient.name })}</button
+              <button
+                class="link-btn"
+                type="button"
+                disabled={sending}
+                aria-label={t('thanksRevoke', { name: thanks.recipient.name })}
+                onclick={() => void change(thanks.id, true)}>{t('thanksRevokeShort')}</button
               >
             </span>
           {/if}

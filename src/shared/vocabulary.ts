@@ -2130,7 +2130,9 @@ export const dictionary = defineDictionary({
   thanksEmpty: workspace('まだ感謝は送られていません。', 'まだ感謝は送られていません。'),
   // コメントの「送る」ボタンと名前が重ならないよう、「送る」を含めない
   thanksSend: workspace('{name} に感謝する', '{name} に感謝する'),
+  // 行の右端に寄せる部品（.party-list-end）は縮まないので、見える文字は短くし、相手の名前は読み上げの名前に回す
   thanksRevoke: workspace('{name} への感謝を取り消す', '{name} への感謝を取り消す'),
+  thanksRevokeShort: workspace('取り消す', '取り消す'),
   thanksSent: workspace('感謝を送りました', '感謝を送りました'),
   thanksRevoked: workspace('感謝を取り消しました', '感謝を取り消しました'),
   thanksFromTo: workspace('{sender} から {recipient} に送った感謝', '{sender} から {recipient} に送った感謝'),

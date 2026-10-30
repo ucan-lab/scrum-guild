@@ -56,7 +56,9 @@ test('送れる人には自分と送付済み以外への送付口、本人が�
     expect(body).toContain('次の相手 に感謝する');
     expect(body).not.toContain('送り手 に感謝する');
     expect(body).not.toContain('送付済みの人 に感謝する');
-    expect(body).toContain('送付済みの人 への感謝を取り消す');
+    // 見える文字は短く、相手の名前は読み上げの名前（aria-label）に持たせる
+    expect(body).toContain('aria-label="送付済みの人 への感謝を取り消す"');
+    expect(body).toContain('>取り消す</button>');
     expect(body).toContain('#i-heart');
   }
 });
