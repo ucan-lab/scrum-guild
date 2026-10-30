@@ -1,4 +1,4 @@
-// Bash の判定。本番に触る操作、WORKERS_CI の設定、main の上のコミットと main への push、--force-with-lease 以外の force push、
+// Bash の判定。本番に触る操作、WORKERS_CI の設定、main の上のコミットと main への push、force push、
 // シークレット（.dev.vars と .env）の読み取りと書き込み、gh pr merge を通さないマージを止め、
 // gh pr merge、依存の変更、マイグレーションの作成、判定しきれない push と場所を判定できないデプロイのスクリプト、git のフックを外す --no-verify、
 // 道具の名前が展開で決まるコマンド、env -S、読むだけの道具以外の xargs、wrangler の設定の書き換えと wrangler dev の -c、
@@ -257,7 +257,7 @@ function judgeWrangler(args) {
   return [DENY, `wrangler ${pos.slice(0, 2).join(' ')} は本番に触る。${PRODUCTION_REASON}`];
 }
 
-const GIT_FLAGS_WITH_VALUE = new Set(['-C', '-c', '--git-dir', '--work-tree', '--namespace']);
+const GIT_FLAGS_WITH_VALUE = new Set(['-C', '-c', '--git-dir', '--work-tree', '--namespace', '--super-prefix', '--config-env', '--attr-source']);
 const PUSH_FLAGS_WITH_VALUE = new Set(['-o', '--push-option', '--repo', '--receive-pack', '--exec']);
 // main の上で新しいコミットを作る操作。pull --ff-only と merge --ff-only は main を origin に追いつかせるだけなので通す。
 // --ff-only を打ち消すオプション（--no-ff、--rebase など）と、値の取り違え（-m --abort）では抜けさせない
@@ -272,6 +272,43 @@ function onlyStops(sub, args) {
 function isOption(arg, full, shortest) {
   const name = arg.split('=')[0];
   return name.length >= shortest && full.startsWith(name);
+}
+
+const FORCE_PUSH_REASON = 'force push はしない。ベースは sync-base で merge して取り込み、通常の push をする';
+
+// push の位置引数の位置。--repo を付けると、先頭の位置引数もリモートではなく refspec になる
+function pushOperands(rest) {
+  const pos = positionalIndexes(rest, PUSH_FLAGS_WITH_VALUE);
+  const hasRepo = rest.some((a) => a === '--repo' || a.startsWith('--repo='));
+  return { hasRepo, pos, refspecs: hasRepo ? pos : pos.slice(1) };
+}
+
+// 値を次の語で取る長いオプション。git は一意な省略形でも受ける（--pu は --push-option、--rep は --repo）
+function takesNextWord(a) {
+  if (a.includes('=')) return false;
+  return PUSH_FLAGS_WITH_VALUE.has(a) || isOption(a, '--push-option', 4) || isOption(a, '--repo', 5) || isOption(a, '--receive-pack', 6) || isOption(a, '--exec', 3);
+}
+
+// push の短いフラグは -4、-6、-o（値を取る）もまとめられる。-o の後ろは値なので、そこにある f は force ではない（-oforce、-o -f）
+function forcesPush(rest) {
+  for (let i = 0; i < rest.length; i++) {
+    const a = rest[i];
+    if (a === '--') break;
+    if (a.startsWith('--')) {
+      if (a === '--force' || isOption(a, '--mirror', 3) || isOption(a, '--force-with-lease', 9) || isOption(a, '--force-if-includes', 9)) return true;
+      if (takesNextWord(a)) i++;
+      continue;
+    }
+    if (!/^-[^-]/.test(a)) continue;
+    for (let k = 1; k < a.length; k++) {
+      if (a[k] === 'f') return true;
+      if (a[k] === 'o') {
+        if (k + 1 === a.length) i++;
+        break;
+      }
+    }
+  }
+  return pushOperands(rest).refspecs.some((at) => rest[at].startsWith('+'));
 }
 
 // git -C "$(git rev-parse --show-toplevel)"、-C ~/x、-C /rep?、-C src(N) の行き先は、実行するまで分からない。
@@ -293,6 +330,7 @@ function judgeGit(args, dir, branchOf) {
   }
   const sub = args[i];
   const rest = sliceWords(args, i + 1);
+  if (sub === 'push' && forcesPush(rest)) return [DENY, FORCE_PUSH_REASON];
   // 括弧の glob の後ろに語が続く形（git --no-pager(N) commit）は、judgeBash が道具を問わず確認を挟む。
   // ここで見るのは後ろに語が続かない push の refspec（git push origin x(N)）で、zsh が当たらない語を消して git push origin になり、
   // 今のブランチを push する
@@ -329,21 +367,9 @@ function judgeGitCommand(sub, rest, gitDir, branchOf) {
   if (sub === 'clean' && cleansIgnored(rest)) return [ASK, CLEAN_IGNORED_REASON];
   if (sub !== 'push') return null;
 
-  const forced = rest.some((a) => a === '--force' || isOption(a, '--mirror', 4) || /^-[a-zA-Z]*f[a-zA-Z]*$/.test(a));
-  if (forced) return [DENY, '--force と -f は使わない。rebase の後は --force-with-lease で push する'];
   if (rest.some((a) => isOption(a, '--all', 4))) return [DENY, '--all は main も push する'];
-  // --force-with-lease が守るのは、最後に fetch した後の他人の push だけ。fetch 済みの他人のコミットを
-  // 手元が含んでいるかは sync-base が確かめる。--force-if-includes は lease に添えるときだけ意味を持つ
-  const leased = rest.some((a) => isOption(a, '--force-with-lease', 9));
-  if (rest.some((a) => isOption(a, '--force-if-includes', 9)) && !leased) {
-    return [DENY, '--force-if-includes は --force-with-lease と一緒に使う'];
-  }
 
-  // --repo を付けると、先頭の位置引数もリモートではなく refspec になる
-  const hasRepo = rest.some((a) => a === '--repo' || a.startsWith('--repo='));
-  const pos = positionalIndexes(rest, PUSH_FLAGS_WITH_VALUE);
-  const refspecs = hasRepo ? pos : pos.slice(1);
-  if (refspecs.some((at) => rest[at].startsWith('+'))) return [DENY, '+ で始まる refspec は force push になる'];
+  const { hasRepo, pos, refspecs } = pushOperands(rest);
 
   const current = gitDir ? branchOf(gitDir) : undefined;
   // 先は { name, expands } で、expands は refspec の語に展開の印（変数、$(…)、{a,b}、glob）があるか。
@@ -365,7 +391,6 @@ function judgeGitCommand(sub, rest, gitDir, branchOf) {
   if (targets.some((t) => t.expands)) return [ASK, '変数、$(...)、{a,b}、glob を含む refspec は、main を含むかを判定できない'];
   // リモートの位置の語が展開で複数の語に分かれる（git push {origin,x} main）と、後ろの語がリモートから refspec にずれる
   if (!hasRepo && pos.length > 0 && expandsAt(rest, pos[0])) return [ASK, 'push するリモートの語が展開で複数の語に分かれうるので、refspec を判定できない'];
-  // 作業ブランチへの --force-with-lease は、sync-base の rebase の後に使うので通す
   if (targets.some(unknown)) return [ASK, 'push する先のブランチを判定できない（cd ~ や変数の先、git の管理外）'];
   return null;
 }
@@ -475,31 +500,94 @@ function skipsHooks(args, shortN) {
 
 const MERGE_REASON = 'マージは人が指示したときだけ gh pr merge <番号> --squash --match-head-commit <head> で行う（docs/development.md の「マージの判定」）';
 
-// GitHub の API でのマージと main の書き換え。GET（読むだけ）は通す
-function judgeGitHubWrite(words, method) {
-  const text = words.join(' ');
+const FORCE_REF_REASON_UNKNOWN = 'ref の更新の API に force: true を送るかを判定できない（本文がファイルや読めない標準入力、force の値が展開）。本文は引数かヒアドキュメントで字面を渡す。人が確かめる';
+const FORCE_DYNAMIC_PATH_REASON = 'エンドポイントを変数や展開で渡すと、force: true で ref を更新するかを判定できない。人が確かめる';
+const GRAPHQL_UNREADABLE_REASON = 'GraphQL の query か本文を読めず（--input のファイル、読めない標準入力、query=@ファイル）、mutation の名前を判定できない。query は引数かヒアドキュメントで字面を渡す。人が確かめる';
+const REBASE_BRANCH_REASON = `PR のブランチを rebase で更新する updatePullRequestBranch は、GitHub の側で head を書き換え、force push と同じになる。${FORCE_PUSH_REASON}`;
+
+const hasExpansion = (text) => /[$`]/.test(text);
+// 展開か curl の {{変数}} で決まる語
+const isDynamic = (text) => hasExpansion(text) || text.includes('{{');
+const JSON_STRING = /"(?:[^"\\]|\\.)*"/g;
+
+// 要求の force を 'yes'（字面で true）、'unknown'（読めない）、'no' で返す。
+// fields は gh api の -f と -F の値（key=value）、bodies は本文 { text, literal }（literal は展開を含まない字面）、unreadable は中身が見えない本文があるか。
+// JSON のキーの形だけを見る（-f note=force=true は note の値）
+function forceOf({ fields, bodies, unreadable }) {
+  const verdicts = [unreadable ? 'unknown' : 'no'];
+  for (const field of fields) {
+    const eq = field.indexOf('=');
+    const key = eq === -1 ? field : field.slice(0, eq);
+    const value = eq === -1 ? '' : field.slice(eq + 1);
+    // 展開で決まる名前（-F "$FIELD"）は force になりうる。-F の @ファイル は値を読めない
+    if (hasExpansion(key) || (key === 'force' && (hasExpansion(value) || value.startsWith('@')))) verdicts.push('unknown');
+    else if (key === 'force' && value === 'true') verdicts.push('yes');
+    // true と false 以外（1、yes）を GitHub がどう受けるかは確かめていないので、読めないものとして確認に倒す
+    else if (key === 'force' && value !== 'false') verdicts.push('unknown');
+  }
+  for (const { text, literal } of bodies) {
+    for (const [, value] of text.matchAll(/"force"\s*:\s*"?([^,}\s"]*)/g)) {
+      verdicts.push(value === 'true' ? 'yes' : value === 'false' ? 'no' : 'unknown');
+    }
+    // 展開を含む本文は、JSON の文字列の外（キー、値、区切り）に展開が来る形（{"sha":"a",$F}）と、JSON のキー、
+    // コマンド置換の中身が force を持ち込みうる。文字列の値の中の変数（"sha":"$SHA"）は force を持ち込まないので読まない
+    const outside = text.replace(JSON_STRING, '""');
+    if (!literal && (hasExpansion(outside) || /"[^"]*[$`][^"]*"\s*:/.test(text) || /\$\(|`/.test(text))) verdicts.push('unknown');
+  }
+  return verdicts.includes('yes') ? 'yes' : verdicts.includes('unknown') ? 'unknown' : 'no';
+}
+
+// graphql の宛先の字面（glob や #、大文字は別の判定が拾うので、graphql を含む語を広く数える）
+const isGraphqlEndpoint = (endpoint) => /graphql/i.test(endpoint);
+// main の後ろに続く語（-fix、.json、/x）は別のブランチ。末尾の / だけは main と同じ ref に読まれうるので止める
+const MAIN_REF = /\/git\/refs\/heads\/main(?![\w.-]|\/[^\s?#])/;
+
+// 展開より前の字面で資源の種類が決まる宛先か（repos/o/r/issues/$n/comments は issues、repos/o/r/git/refs/$x は git/refs）。
+// repos/$R/… や repos/o/r/$kind/… のように、種類が展開で決まるものは決まらない。種類は repos/<owner>/<repo>/<種類>/ の種類で、
+// git は次の語まで（git/refs/ は ref の更新）。URL の場合はスキームとホストを外して見る
+function resourceKnown(endpoint) {
+  const at = endpoint.search(/[$`]|\{\{/);
+  const prefix = (at === -1 ? endpoint : endpoint.slice(0, at)).replace(/^[a-z][a-z0-9+.-]*:\/\/[^/]+/i, '');
+  const complete = prefix.replace(/^\//, '').split('/').slice(0, -1);
+  return complete[0] === 'repos' && complete.length >= (complete[3] === 'git' ? 5 : 4);
+}
+
+// GitHub の API でも ref の強制更新は force push と同じに扱う。GET（読むだけ）は通す。
+// words は引数ぜんたい、endpoints はエンドポイントの位置引数（gh api）か URL（curl）。ref の更新かどうかは、コマンドぜんたいの文字列でなく、
+// endpoints だけで見る（Issue のコメントの本文に書いた /git/refs/ や {"force":true} は、ref を動かさない）。
+// opaqueQuery は query のフィールドが字面でないか
+function judgeGitHubWrite(words, method, { endpoints = [], fields = [], bodies = [], unreadable = false, opaqueQuery = false } = {}) {
+  const path = endpoints.join(' ');
+  // mutation の名前は、宛先を問わず引数と本文のぜんたいで見る（glob、#、大文字、query string、--url-query、-F で graphql の宛先を字面から外せるため）。
+  // コメントの本文に書いた語も止まる
+  const text = [...words, ...bodies.map(({ text: body }) => body)].join(' ');
   if (/enablePullRequestAutoMerge/.test(text)) return [DENY, 'auto-merge は使わない'];
   if (/mergePullRequest/.test(text)) return [DENY, MERGE_REASON];
   if (/updateRefs?\b/.test(text)) return [DENY, 'main は PR のマージでだけ進める'];
-  if (method === 'GET') return null;
-  if (/\/pulls\/[^/\s]+\/merge\b|\/merges\b/.test(text)) return [DENY, MERGE_REASON];
-  if (/\/git\/refs\/heads\/main\b/.test(text)) return [DENY, 'main は PR のマージでだけ進める'];
-  // contents API の書き込みは、ブランチを指定しなければ既定のブランチ（main）へ直にコミットする
-  if (/\/contents\//.test(text)) return [DENY, 'contents API でのファイルの書き込みはしない。作業ブランチで git を使う'];
-  return null;
-}
-
-// -X PUT、-XPUT、-X=PUT、--method PUT、--method=PUT のどれでも値を読む
-function valueAfter(words, flags) {
-  for (let i = 0; i < words.length; i++) {
-    const w = words[i];
-    if (flags.includes(w)) return words[i + 1];
-    for (const f of flags) {
-      if (w.startsWith(`${f}=`)) return w.slice(f.length + 1);
-      if (!f.startsWith('--') && w.startsWith(f) && w.length > f.length) return w.slice(f.length);
-    }
+  // gh pr update-branch --rebase の中身。updateMethod を付けないか MERGE なら merge のコミットを足す通常の更新
+  if (/updatePullRequestBranch/.test(text)) {
+    if (/\bREBASE\b/.test(text)) return [DENY, REBASE_BRANCH_REASON];
+    if (/updateMethod\s*[:=]\s*\$/.test(text)) return [ASK, 'updatePullRequestBranch の updateMethod を変数で渡すと REBASE かを判定できない。人が確かめる'];
   }
-  return undefined;
+  // 展開より前の字面でも資源の種類が決まらない宛先は、宛先を確定できない
+  const undecided = endpoints.some((e) => isDynamic(e) && !resourceKnown(e));
+  const graphql = endpoints.some(isGraphqlEndpoint);
+  // query か本文が字面でなければ、mutation の名前を読めない
+  if ((graphql || (undecided && method !== 'GET')) && (opaqueQuery || bodies.some(({ literal }) => !literal))) return [ASK, GRAPHQL_UNREADABLE_REASON];
+  if (graphql && (unreadable || fields.some((f) => f.startsWith('query=@')))) return [ASK, GRAPHQL_UNREADABLE_REASON];
+  if (method === 'GET') return null;
+  // ref の名前を変数で渡す形（git/refs/$REF）も当たるよう、heads/ までは問わない
+  const updatesRef = /\/git\/refs\/[^\s]+/.test(path);
+  if (updatesRef || undecided) {
+    const force = forceOf({ fields, bodies, unreadable });
+    if (force === 'yes') return updatesRef ? [DENY, FORCE_PUSH_REASON] : [ASK, FORCE_DYNAMIC_PATH_REASON];
+    if (force === 'unknown' && !MAIN_REF.test(path)) return [ASK, updatesRef ? FORCE_REF_REASON_UNKNOWN : FORCE_DYNAMIC_PATH_REASON];
+  }
+  if (/\/pulls\/[^/\s]+\/merge\b|\/merges\b/.test(path)) return [DENY, MERGE_REASON];
+  if (MAIN_REF.test(path)) return [DENY, 'main は PR のマージでだけ進める'];
+  // contents API の書き込みは、ブランチを指定しなければ既定のブランチ（main）へ直にコミットする
+  if (/\/contents\//.test(path)) return [DENY, 'contents API でのファイルの書き込みはしない。作業ブランチで git を使う'];
+  return null;
 }
 
 // 変数で渡したメソッドは読めないので、書き込みとみなす
@@ -508,8 +596,147 @@ function methodOf(value, fallback) {
   return value.includes('$') ? 'UNKNOWN' : value.toUpperCase();
 }
 
-function judgeGh(args) {
-  const pos = positionals(args, new Set(['-R', '--repo', '-X', '--method', '-H', '--header', '-f', '-F', '--field', '--raw-field', '--input', '--jq', '-q', '--template', '-t']));
+// echo と printf が標準入力に流す本文。字面が引数と同じときだけ読む（printf の % の書式、\ のエスケープ、リダイレクトでファイルに書く echo は読めない）。
+// 直前の区切りがパイプで渡すか（endOp）は呼び出し側（stdinBody）が見る。読めない形は undefined
+function echoedText(words) {
+  const ci = words ? commandIndex(words) : -1;
+  if (ci === -1 || redirectsOf(words).some(isWriteRedirect)) return undefined;
+  const tool = baseName(words[ci]);
+  if (tool !== 'echo' && tool !== 'printf') return undefined;
+  const args = [...sliceWords(words, ci + 1)];
+  // 引数のどれかに展開があれば、本文は字面ではない
+  const literal = !args.some((_, k) => shapeAt(words, ci + 1 + k).includes(DYNAMIC));
+  while (tool === 'echo' && /^-[neE]+$/.test(args[0] ?? '')) args.shift();
+  // printf の -- は書式の前の区切り
+  if (tool === 'printf' && args[0] === '--') args.shift();
+  const text = tool === 'echo' ? args.join(' ') : (args[0] ?? '');
+  if ((tool === 'printf' && text.includes('%')) || /\\(?!n)/.test(text)) return undefined;
+  // printf と zsh の echo は \n を改行にする。JSON の改行は空白なので、"force":\ntrue は force: true と読める
+  return { text: text.replaceAll('\\n', '\n'), literal };
+}
+
+// グループ（{ …; }）とサブシェル（( … )）の構文があるか。引用符の外の ( ) と、単独の語の { } を見る。
+// 中の echo が gh や curl の標準入力に流れるとは限らず（cat b.json | { echo x; gh api … --input -; }）、
+// グループぜんたいへのリダイレクト（{ …; } < b.json）も区切りの語からは見えない
+// 引用符の数え方がずれる形（ヒアドキュメントの本文のアポストロフィなど）は、走査の終わりで引用符が閉じないので、グループありとみなす。
+// $( … ) と $(( … )) のコマンド置換は、中を別のコマンドとして判定するので、グループに数えない
+function hasGrouping(command) {
+  let quote = '';
+  let substitutions = 0;
+  for (let i = 0; i < command.length; i++) {
+    const c = command[i];
+    if (quote) {
+      if (c === '\\' && quote !== "'") i++;
+      else if (c === (quote === "$'" ? "'" : quote)) quote = '';
+      continue;
+    }
+    if (c === '\\') i++;
+    else if (c === '#' && /^[\s;&|(]?$/.test(command[i - 1] ?? '')) {
+      // 語の頭の # から行末まではコメント
+      const end = command.indexOf('\n', i);
+      if (end === -1) break;
+      i = end;
+    } else if (c === "'" || c === '"' || c === '`') quote = c;
+    else if (c === '$' && command[i + 1] === "'") {
+      quote = "$'";
+      i++;
+    } else if (c === '$' && command[i + 1] === '(') {
+      const arithmetic = command[i + 2] === '(';
+      substitutions += arithmetic ? 2 : 1;
+      i += arithmetic ? 2 : 1;
+    } else if (c === '(') return true;
+    else if (c === ')') {
+      if (substitutions === 0) return true;
+      substitutions--;
+    } else if ((c === '{' || c === '}') && /^[\s;&|(]?$/.test(command[i - 1] ?? '') && /^[\s;&|)]?$/.test(command[i + 1] ?? '')) return true;
+  }
+  return quote !== '';
+}
+
+// ヒアドキュメントの本文が字面か（終わりの印にクォートがあるか）。区切りの語は redirect に残らないので、
+// 本文の前の行の << の後ろの語と、本文の後ろの終わりの印の行を突き合わせて見つける。見つからなければクォートの無い印として読む
+function heredocIsLiteral(command, body) {
+  if (body === '') return true;
+  for (let from = 0, at; (at = command.indexOf(body, from)) !== -1; from = at + 1) {
+    if (at === 0 || command[at - 1] !== '\n') continue;
+    const delimiter = /^\n([^\n]*)/.exec(command.slice(at + body.length))?.[1].trim();
+    if (!delimiter) continue;
+    const line = command.slice(command.lastIndexOf('\n', at - 2) + 1, at - 1);
+    for (const [, raw] of line.matchAll(/(?<!<)<<-?[ \t]*([^\s;&|()<>]+)/g)) {
+      if (raw.replaceAll(/['"\\]/g, '') === delimiter) return /['"\\]/.test(raw);
+    }
+  }
+  return false;
+}
+
+// 標準入力の出どころの手がかりのうち、コマンドぜんたいの形で決まるもの
+const stdinShape = (command) => ({ command, grouped: hasGrouping(command) });
+
+// 標準入力で読む本文 { bodies: [{ text, literal }], unreadable }。読めるのは、この区切りのヒアドキュメントとヒアストリング、
+// 直前の区切りからパイプで渡される echo と printf の字面だけ。ファイルから読む（< body.json）、cat や jq のような別の道具の出力、
+// グループの中の区切り、ほかの区切りの語は、本文として読めない
+function stdinBody(args, { previous, command = '', grouped = false } = {}) {
+  // 標準入力のリダイレクトが重なると、後ろのものが効く（<<<'…' < body.json は body.json）
+  const last = redirectsOf(args).filter((r) => isHeredocRedirect(r) || isReadRedirect(r)).at(-1);
+  if (last && isHeredocRedirect(last)) {
+    // ヒアストリングは語と同じく展開の印（shape）で、ヒアドキュメントは終わりの印のクォートで、字面かを見る
+    const literal = last.op === '<<<' ? !last.shape.includes(DYNAMIC) : heredocIsLiteral(command, last.target);
+    return { bodies: [{ text: last.target, literal }], unreadable: false };
+  }
+  // 前の区切りがパイプで渡すときだけ、その echo が標準入力になる（; と && と改行の前の echo は、標準入力に流れない）
+  const piped = previous?.endOp === '|' || previous?.endOp === '|&';
+  const echoed = last || grouped || !piped ? undefined : echoedText(previous);
+  return echoed === undefined ? { bodies: [], unreadable: true } : { bodies: [echoed], unreadable: false };
+}
+
+// gh の真偽のフラグ（--rebase、--force）が付いているか。--flag=false で打ち消したものは付いていない
+const ghFlagOn = (args, name) => args.some((a) => a === name || (a.startsWith(`${name}=`) && !/^(?:false|0|f|F|FALSE|False)$/.test(a.slice(name.length + 1))));
+
+// gh api の値を取るフラグ（gh 2.103.3 の gh api --help）。別のフラグの値の位置にある語（--preview -XGET の -XGET）は値として飛ばす
+const GH_API_LONG_WITH_VALUE = { method: 'method', header: 'header', field: 'field', 'raw-field': 'field', input: 'input', jq: 'jq', template: 'template', preview: 'preview', hostname: 'hostname', cache: 'cache' };
+const GH_API_SHORT_WITH_VALUE = { X: 'method', H: 'header', f: 'field', F: 'field', q: 'jq', t: 'template', p: 'preview' };
+
+// gh api の引数を一度だけ読み、{ methods, fields, input, positionals } にする。
+// pflag は真偽の短いフラグと値を取る短いフラグをまとめ（-iXPATCH、-iFforce=true）、値を取る短いフラグの直後の = は区切りとして外す（-F=k=v）
+function readGhApi(args) {
+  const read = { methods: [], fields: [], inputs: [], positionals: [], opaqueQuery: false };
+  // at は値のある語の位置。query のフィールド（名前が展開で決まるものも）の語に展開があれば、query を字面で読めない
+  const take = (name, value, at) => {
+    if (name === 'method') read.methods.push(value);
+    else if (name === 'field') {
+      read.fields.push(value);
+      const key = value.split('=')[0];
+      if ((key === 'query' || hasExpansion(key)) && shapeAt(args, at).includes(DYNAMIC)) read.opaqueQuery = true;
+    } else if (name === 'input') read.inputs.push(value);
+  };
+  let options = true;
+  for (let i = 0; i < args.length; i++) {
+    const a = args[i];
+    if (options && a === '--') options = false;
+    else if (options && a.startsWith('--')) {
+      const eq = a.indexOf('=');
+      const name = GH_API_LONG_WITH_VALUE[a.slice(2, eq === -1 ? undefined : eq)];
+      if (name && eq !== -1) take(name, a.slice(eq + 1), i);
+      else if (name && i + 1 < args.length) take(name, args[++i], i);
+    } else if (options && /^-[^-]/.test(a)) {
+      for (let k = 1; k < a.length; k++) {
+        const name = GH_API_SHORT_WITH_VALUE[a[k]];
+        if (!name) continue;
+        const attached = a.slice(k + 1);
+        if (attached) take(name, attached.startsWith('=') ? attached.slice(1) : attached, i);
+        else if (i + 1 < args.length) take(name, args[++i], i);
+        break;
+      }
+    } else read.positionals.push(a);
+  }
+  return read;
+}
+
+function judgeGh(args, stdinContext) {
+  const pos = positionals(
+    args,
+    new Set(['-R', '--repo', '-X', '--method', '-H', '--header', '-f', '-F', '--field', '--raw-field', '--input', '--jq', '-q', '--template', '-t', '--hostname', '--cache', '-p', '--preview']),
+  );
   // 人が指示したときだけ、gh pr merge でマージする。needs-human のラベルはフックから見えないので、確認で人に委ねる
   if (pos[0] === 'pr' && pos[1] === 'merge') {
     // --auto は確認の後に条件がそろった時点でマージし、--admin は条件を飛ばす
@@ -526,26 +753,137 @@ function judgeGh(args) {
   if (pos[0] === 'stack' && ['push', 'sync', 'submit', 'rebase'].includes(pos[1])) {
     return [ASK, `gh stack ${pos[1]} は force push を伴う。スタック PR は原則使わない（docs/development.md の「並行して作業するときの決まり」）`];
   }
+  // GitHub の側で PR のブランチを rebase で書き換え、force の更新と同じになる。付けない更新は merge のコミットを足す通常の更新
+  if (pos[0] === 'pr' && pos[1] === 'update-branch' && ghFlagOn(args, '--rebase')) {
+    return [DENY, `gh pr update-branch --rebase は GitHub の側で head を書き換え、force push と同じになる。--rebase を付けずに merge で更新する。${FORCE_PUSH_REASON}`];
+  }
+  // 宛先のブランチを hard reset する。付けない同期は fast-forward だけ
+  if (pos[0] === 'repo' && pos[1] === 'sync' && ghFlagOn(args, '--force')) {
+    return [DENY, `gh repo sync --force は GitHub の側で宛先のブランチを hard reset する。${FORCE_PUSH_REASON}`];
+  }
   if (pos[0] === 'api') {
-    const hasFields = args.some((a) => ['-f', '-F', '--field', '--raw-field', '--input'].includes(a));
-    return judgeGitHubWrite(args, methodOf(valueAfter(args, ['-X', '--method']), hasFields ? 'POST' : 'GET'));
+    const { methods, fields, inputs, positionals: apiPositionals, opaqueQuery } = readGhApi(args);
+    // フィールドか --input があれば、メソッドの既定は POST。重ねたメソッドは最後の値が効く
+    const method = methodOf(methods.at(-1), fields.length > 0 || inputs.length > 0 ? 'POST' : 'GET');
+    const input = inputs.at(-1);
+    // --input <ファイル> は中身を読めない
+    const body = input === '-' ? stdinBody(args, stdinContext) : { bodies: [], unreadable: input !== undefined };
+    return judgeGitHubWrite(args, method, { endpoints: apiPositionals.slice(apiPositionals.indexOf('api') + 1), fields, opaqueQuery, ...body });
   }
   return null;
 }
 
-function judgeHttpClient(tool, args) {
-  if (!args.some((a) => a.includes('api.github.com'))) return null;
-  let method = 'GET';
-  if (tool === 'curl') {
-    const sendsBody = args.some((a) => /^(-d|--data.*|-F|--form|-T|--upload-file|--json)$/.test(a));
-    method = methodOf(valueAfter(args, ['-X', '--request']), sendsBody ? 'POST' : 'GET');
-  } else if (tool === 'wget') {
-    method = methodOf(valueAfter(args, ['--method']), args.some((a) => a.startsWith('--post-')) ? 'POST' : 'GET');
-  } else {
-    // httpie: http PUT https://...
-    method = args.find((a) => /^[A-Z]+$/.test(a)) ?? 'GET';
+// curl の値を取る短いフラグ。まとめた形（-sXPATCH、-sd）では、最初に出る値を取るフラグ以降が値（語の最後なら次の語）
+const CURL_SHORT_WITH_VALUE = 'XdHFTouAebcwmrxyYzKECDPQtU';
+// 値を取る長いオプション（curl の man の一覧）。値の位置の語（--user-agent -XGET の -XGET）を別のオプションに読まないために使う
+const CURL_LONG_WITH_VALUE = new Set(
+  (
+    'request data data-raw data-binary data-ascii data-urlencode json upload-file form form-string header user-agent referer user proxy proxy-user cookie cookie-jar ' +
+    'output write-out max-time connect-timeout retry retry-delay retry-max-time resolve connect-to cacert capath cert key config dump-header range time-cond limit-rate ' +
+    'oauth2-bearer url url-query request-target interface local-port proxy-header quote telnet-option trace trace-ascii variable'
+  ).split(' '),
+);
+// 値を取らず、判定に使うフラグ。-G（--get）は本文を URL の query にして GET に、-g（--globoff）は URL の {} と [] を展開しない
+const CURL_FLAGS = new Set(['get', 'globoff']);
+const CURL_SHORT_FLAGS = { G: '--get', g: '--globoff' };
+const CURL_LONG_ALIASES = { request: '-X', data: '-d', 'upload-file': '-T', form: '-F' };
+// --expand-<名前> は <名前> と同じで、値の {{変数}} を --variable で差し込む
+const CURL_EXPANDABLE = new Set(['data', 'data-raw', 'data-binary', 'data-urlencode', 'json', 'url', 'request-target']);
+// curl の要求ごとの { options, urls }。--next と -: で区切ると、後ろのオプションは次の要求にだけ効く。
+// options は { name, value, at, expand } で、name は -X のような短い形か --data-raw のような長い形（別名と --expand- はここで寄せる）、
+// at は値のある語の位置、expand は --expand- の形か。
+// urls は位置の語（スキームの無い api.github.com/… も curl は URL に読む）と、URL と path を決めるオプション（--url、--request-target）の値。
+// -H 'Host: api.github.com' のような値は含まない
+function curlRequests(args) {
+  const requests = [{ options: [], urls: [] }];
+  const add = (name, value, at, expand = false) => {
+    const request = requests.at(-1);
+    request.options.push({ name, value, at, expand });
+    if (name === '--url' || name === '--request-target') request.urls.push(value);
+  };
+  for (let i = 0; i < args.length; i++) {
+    const a = args[i];
+    if (a === '--next') requests.push({ options: [], urls: [] });
+    else if (a.startsWith('--')) {
+      const eq = a.indexOf('=');
+      const written = a.slice(2, eq === -1 ? undefined : eq);
+      const expand = written.startsWith('expand-') && CURL_EXPANDABLE.has(written.slice(7));
+      const name = expand ? written.slice(7) : written;
+      const canonical = CURL_LONG_ALIASES[name] ?? `--${name}`;
+      if (eq !== -1) add(canonical, a.slice(eq + 1), i, expand);
+      else if (CURL_LONG_WITH_VALUE.has(name) && i + 1 < args.length) add(canonical, args[++i], i, expand);
+      else if (CURL_FLAGS.has(name)) add(canonical, '', i);
+    } else if (/^-[^-]/.test(a)) {
+      for (let k = 1; k < a.length; k++) {
+        if (a[k] === ':') requests.push({ options: [], urls: [] });
+        else if (a[k] in CURL_SHORT_FLAGS) add(CURL_SHORT_FLAGS[a[k]], '', i);
+        else if (CURL_SHORT_WITH_VALUE.includes(a[k])) {
+          if (k + 1 < a.length) add(`-${a[k]}`, a.slice(k + 1), i);
+          else add(`-${a[k]}`, args[i + 1] ?? '', ++i);
+          break;
+        }
+      }
+    } else if (a !== '-') requests.at(-1).urls.push(a);
   }
-  return judgeGitHubWrite(args, method);
+  return requests;
+}
+
+// curl の本文。-d と --data*、--json、-T の値で、@ファイルは中身が読めず、@- と -T - は標準入力（--data-raw の @ は文字）。
+// --json を重ねると値は間に何も挟まずつながる。--expand- の値に {{ があれば、差し込む値を読めない
+const CURL_BODY_OPTIONS = ['-d', '--data-raw', '--data-binary', '--data-ascii', '--data-urlencode', '--json', '-T'];
+function curlBody(options, args, stdinContext) {
+  const bodies = [];
+  const json = [];
+  let unreadable = false;
+  let stdin = false;
+  for (const { name, value, at, expand } of options.filter(({ name }) => CURL_BODY_OPTIONS.includes(name))) {
+    const literal = !shapeAt(args, at).includes(DYNAMIC);
+    if (value === '@-' || (name === '-T' && value === '-')) stdin = true;
+    else if (name === '-T' || (name !== '--data-raw' && value.startsWith('@'))) unreadable = true;
+    else if (expand && value.includes('{{')) unreadable = true;
+    else if (name === '--json') json.push({ text: value, literal });
+    else bodies.push({ text: value, literal });
+  }
+  if (json.length > 0) bodies.push({ text: json.map(({ text }) => text).join(''), literal: json.every(({ literal }) => literal) });
+  if (stdin) {
+    const body = stdinBody(args, stdinContext);
+    bodies.push(...body.bodies);
+    unreadable ||= body.unreadable;
+  }
+  // -F query=… の query が展開で決まる（名前が展開で決まる形も）
+  const opaqueQuery = options.some(({ name, value, at }) => name === '-F' && (value.startsWith('query=') || hasExpansion(value.split('=')[0])) && shapeAt(args, at).includes(DYNAMIC));
+  return { bodies, unreadable, opaqueQuery };
+}
+
+function judgeHttpClient(tool, args, stdinContext) {
+  // URL のホストは大文字と小文字を区別しない。Host ヘッダーに書いて IP 宛てに送る形もあるので、語のどこかにあれば判定する
+  const mentionsGitHub = args.some((a) => a.toLowerCase().includes('api.github.com'));
+  if (!mentionsGitHub) return null;
+  if (tool === 'curl') {
+    // --next と -: で区切った要求ごとに判定し、どれかが止めるなら止める
+    const verdicts = curlRequests(args).map(({ options, urls }) => {
+      const sendsBody = options.some(({ name }) => CURL_BODY_OPTIONS.includes(name) || name === '-F');
+      // -G は本文を URL の query にして GET にする（-X を付ければ -X が効く）
+      const method = methodOf(options.findLast(({ name }) => name === '-X')?.value, options.some(({ name }) => name === '--get') ? 'GET' : sendsBody ? 'POST' : 'GET');
+      // 展開や {{変数}} を含む URL のうち、展開より前の字面で資源の種類が決まらないものと、URL の語が無い要求は、
+      // 決まる先を確定できないので語のぜんたいを path として見る
+      const undecided = urls.length === 0 || urls.some((u) => isDynamic(u) && !resourceKnown(u));
+      const verdict = judgeGitHubWrite(args, method, { endpoints: undecided ? [...urls, ...args] : urls, ...curlBody(options, args, stdinContext) });
+      // curl は URL の {} と [] を展開して複数の要求にする（merg[e-e] は merge）。-g を付けない GET 以外は、送る先を字面で確かめられない
+      const globs = urls.some((u) => /[{[]/.test(u)) && !options.some(({ name }) => name === '--globoff');
+      return verdict ?? (globs && method !== 'GET' ? [ASK, 'curl は URL の {} と [] を展開して複数の要求にするので、送る先を判定できない。-g を付けるか、URL を字面で書く。人が確かめる'] : null);
+    });
+    return verdicts.find((v) => v?.[0] === DENY) ?? verdicts.find((v) => v?.[0] === ASK) ?? null;
+  }
+  const endpoints = args.filter((a) => a.toLowerCase().includes('api.github.com'));
+  if (tool === 'wget') {
+    // --method が無ければ GET（--post-data と --post-file を付ければ POST）
+    const at = args.findIndex((a) => a === '--method' || a.startsWith('--method='));
+    const value = at === -1 ? undefined : args[at].includes('=') ? args[at].slice(args[at].indexOf('=') + 1) : args[at + 1];
+    return judgeGitHubWrite(args, methodOf(value, args.some((a) => a.startsWith('--post-')) ? 'POST' : 'GET'), { endpoints });
+  }
+  // httpie: http PUT https://...
+  return judgeGitHubWrite(args, args.find((a) => /^[A-Z]+$/.test(a)) ?? 'GET', { endpoints });
 }
 
 // 値を取るフラグ。findWrangler が依存の情報を見るサブコマンドを探すときに使う。スクリプトの読み取りは道具ごとの表（PACKAGE_MANAGERS の flags）で読む
@@ -2416,8 +2754,8 @@ function judgeSegment(words, ctx) {
     const envMovesGit = words.slice(0, ci).some((w) => /^GIT_(DIR|WORK_TREE)=/.test(w)) || GIT_LOCATION_VARIABLES.some((name) => ctx.env?.[name]);
     results.push(judgeGit(args, envMovesGit ? null : ctx.dir, ctx.branchOf));
   }
-  if (tool === 'gh') results.push(judgeGh(args));
-  if (['curl', 'wget', 'http', 'https'].includes(tool)) results.push(judgeHttpClient(tool, args));
+  if (tool === 'gh') results.push(judgeGh(args, ctx.stdinContext));
+  if (['curl', 'wget', 'http', 'https'].includes(tool)) results.push(judgeHttpClient(tool, args, ctx.stdinContext));
   if (tool === 'eval') results.push(judgeBash(args.join(' '), nextCtx));
   if (SHELLS.has(tool)) {
     // bash -c "..."、bash -lc "..."、bash <<< "..."、bash <<EOF の中身も同じ規則で見る
@@ -2562,12 +2900,17 @@ function judgeCommand(
   const currentBranch = (d) => (switched.has(d) ? switched.get(d) : branchOf(d));
   const results = [];
   const segments = splitSegments(command);
+  // 直前の区切り。標準入力を前の区切りから受ける gh api --input - の本文を見るのに使う（ctx.stdinContext）
+  let lastSegment;
+  const shapeOfStdin = stdinShape(command);
   // xargs は標準入力から引数を足すので、シークレットの名前を標準入力に流す形（echo <名前> | xargs cat）は、xargs の後ろの道具からは見えない。
   // xargs がどこかの区切りにあれば、コマンド全体のどこかの語がシークレットの名前に当たるだけで止める。
   // 名前が見えない形（ls -a | xargs grep TOKEN）は止められない
   const hasXargs = segments.some((words) => prefixIndexes(words).some((i) => prefixName(words[i]) === 'xargs'));
   if (hasXargs && segments.some((words) => [...words, ...redirectTargets(words)].some(mentionsSecret))) results.push([DENY, SECRET_FILE_REASON]);
   for (const words of segments) {
+    const previous = lastSegment;
+    lastSegment = words;
     // 括弧の glob（cp /tmp/x(N) wrangler.jsonc）の閉じの後ろの語は、同じコマンドの引数なのに別の区切りに切られ、前の区切りからは見えない。
     // 道具を問わず、何をどこへ渡すかを判定できないものとする。後ろがリダイレクトだけ（ls *(N) 2>/dev/null）なら、宛先はこの区切りで見るので通す
     if (followsGlobGroup(words) && words.length > 0) {
@@ -2592,7 +2935,7 @@ function judgeCommand(
       place = to === null || place === null ? null : to.startsWith('/') ? to : path.posix.join(place, to);
       continue;
     }
-    results.push(...judgeSegment(words, { dir, branchOf: currentBranch, scriptOf, packageDirOf, depth, env: segmentEnv, root, place, findBudget }));
+    results.push(...judgeSegment(words, { dir, branchOf: currentBranch, scriptOf, packageDirOf, depth, env: segmentEnv, root, place, findBudget, stdinContext: { previous, ...shapeOfStdin } }));
     if (ci !== -1 && baseName(words[ci]) === 'git' && dir) {
       const branch = switchedBranch(words.slice(ci + 1));
       if (branch !== null) switched.set(dir, branch);

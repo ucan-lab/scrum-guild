@@ -1,6 +1,6 @@
 ---
 name: done-check
-description: 自分の差分を点検する。Issue の完了条件との突き合わせ、規約違反の確認、レビューエージェントによる指摘出しを行い、直してからコミットする。PR 作成後は、rebase・push・CI・レビューコメントの解決を確認してから点検する。「セルフレビュー」「PR 前に見て」「実装終わったので確認して」と言われたときに使う。PR を作る段階は pr-create、PR に付いた指摘への対応は pr-feedback を使う。
+description: 自分の差分を点検する。Issue の完了条件との突き合わせ、規約違反の確認、レビューエージェントによる指摘出しを行い、直してからコミットする。PR 作成後は、merge・push・CI・レビューコメントの解決を確認してから点検する。「セルフレビュー」「PR 前に見て」「実装終わったので確認して」と言われたときに使う。PR を作る段階は pr-create、PR に付いた指摘への対応は pr-feedback を使う。
 ---
 
 # done-check
@@ -66,7 +66,7 @@ gh api graphql -f query='{ repository(owner:"<owner>", name:"<repo>") { pullRequ
 
 満たさない前提が 1 つでもあれば、レビューに進まず止まり、満たさない前提と次の経路を出力する。
 
-- ベースの取り込みが未了: `sync-base` で rebase して `--force-with-lease` で push する
+- ベースの取り込みが未了: `sync-base` で merge して通常の push をする
 - push が未了: `git push` を提案する
 - CI が失敗: pr-feedback で直す。`review` と `evidence` を除いて `status` が `completed` でないものがあれば、間を空けて check-runs を取り直し、結果が出てから再確認する
 - 未解決のスレッドがある: pr-feedback で対応する
@@ -161,7 +161,7 @@ CRITICAL と HIGH は、別の Issue にするかをユーザーに提案する�
 
 `git add <paths> && git commit -m "..."` のように 1 コマンドにまとめる。
 件名には、変更した対象と内容を書く（例: `fix: fill_results.py で結果の未指定と不正値を検出する`）。「レビュー指摘に対応する」のように、指摘への対応であることしか分からない件名にしない（理由: squash merge ではコミットメッセージが本文に残り、マージ後は直せない）。
-PR があるときは、手順 7 の直しをすべてコミットしてからまとめて `git push` し、手順 0 の check-runs で CI が通ることを確かめる（`review` と `evidence` は手順 0 と同じく除く。修正は通常の push で積む。force push はベースを取り込む `sync-base` の中だけ）。コミットごとに push しない。CI の失敗を直した後の push は、その直しをまとめてから行う（理由: push のたびに CI のジョブがすべて走り直し、前の実行の取り消しが終わるまで次の実行も始まらない。`docs/development.md` の「開発の流れ」）。
+PR があるときは、手順 7 の直しをすべてコミットしてからまとめて `git push` し、手順 0 の check-runs で CI が通ることを確かめる（`review` と `evidence` は手順 0 と同じく除く。修正は通常の push で積む。force push は使わない）。コミットごとに push しない。CI の失敗を直した後の push は、その直しをまとめてから行う（理由: push のたびに CI のジョブがすべて走り直し、前の実行の取り消しが終わるまで次の実行も始まらない。`docs/development.md` の「開発の流れ」）。
 
 手順 7 の直しで差分が変わったら、コミットの後に手順 2 の `やらないこと` との突き合わせと判断の一覧を取り直し、出力の判断の差分をその結果にする（理由: `pr-create` は判断の差分から head の SHA 付きの点検の行を書くので、直しの前の結果のままだと、点検していない head を点検済みと書く）。
 
