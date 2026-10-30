@@ -15,7 +15,7 @@ import { actorUserIdOf } from './write-guards.ts';
 // ほかの人の数値と明細は返さない。人ごとの合計を読むのは、レベルを出す member-list、organization、epic-detail（討伐隊）だけで、数値は応答に入れない
 
 // 1人の、組織の中の経験値の合計（抜けたワークスペースと閉じたワークスペースの分も含む）。行が無ければ 0。
-// 索引 xp_grants_user_workspace（user_id, workspace_id）に乗る
+// 索引 xp_grants_user_workspace_amount（user_id, workspace_id, amount）だけで読む
 export function userExperienceTotalStatement(db: OrganizationDb, userId: string) {
   const organizationId = db.organizationId;
   return db.statement((q) =>
