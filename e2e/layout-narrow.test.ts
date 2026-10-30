@@ -69,7 +69,21 @@ test('組織の管理（/aoba/admin）に空白の無い50字の名前のワー�
     await expect(page.getByRole('heading', { level: 1, name: w('pageOrgAdmin') })).toBeVisible();
     const table = page.getByRole('table', { name: w('workspaceListLabel', { workspace: w('workspace') }) });
     await expect(table.getByRole('link', { name: longName })).toBeVisible();
-    // 同じ行の「終了する」も描かれている（名前の下に入って測られない行ではない）
-    await expect(table.getByRole('button', { name: w('workspaceCloseLabel', { name: longName }) })).toBeVisible();
+    const close = table.getByRole('button', { name: w('workspaceCloseLabel', { name: longName }) });
+    await expect(close).toBeVisible();
+    // 汎用の検査だけでは、表の横スクロール（.table-wrap は除外される）に逃げた重なりを見逃すので、直接確かめる。
+    // 表は横にはみ出さず、名前のリンクと「終了する」の箱が交わらない
+    const overflow = await table.locator('xpath=..').evaluate((el) => el.scrollWidth - el.clientWidth);
+    expect(overflow).toBeLessThanOrEqual(0);
+    const link = await table.getByRole('link', { name: longName }).boundingBox();
+    const button = await close.boundingBox();
+    expect(link).not.toBeNull();
+    expect(button).not.toBeNull();
+    const apart =
+      link!.y + link!.height <= button!.y ||
+      button!.y + button!.height <= link!.y ||
+      link!.x + link!.width <= button!.x ||
+      button!.x + button!.width <= link!.x;
+    expect(apart).toBe(true);
   });
 });
