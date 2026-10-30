@@ -2,9 +2,14 @@
 // 確かめたいのは SQL の制約そのものなので、Kysely の入口を通さず D1 の binding に直に書く
 // （索引の実行計画のうち、処理が組み立てる文そのものを見るものは、その文を queryPlanForTest に渡す）
 import { env } from 'cloudflare:workers';
-import { describe, expect, test } from 'vitest';
+import { describe, expect, test, vi } from 'vitest';
 import { orgDb } from '../src/server/db/index.ts';
 import { compiledQueryForTest, queryPlanForTest, verifiedOrganizationForTest } from '../src/server/db/testing.ts';
+import {
+  experienceGrantsOperation,
+  experienceSummaryOperation,
+  userExperienceTotalStatement,
+} from '../src/server/operations/experience.ts';
 import { revokeSameEmailStatements } from '../src/server/operations/invitation.ts';
 
 const AT = '2026-10-20T00:00:00.000Z';
@@ -196,6 +201,60 @@ describe('外部キー', () => {
     ).all<{ name: string }>();
 
     expect(results).toEqual([]);
+  });
+});
+
+describe('経験値の読み取りの索引', () => {
+  test.each([undefined, { confirmed_at: AT, id: 'cursor' }])(
+    '明細の頁送り（before: %j）は索引の順で読み、並べ替えない',
+    async (before) => {
+      const db = orgDb(env, verifiedOrganizationForTest(id()));
+      // 処理が実際に作った文を捕まえる。結合、カーソル、LIMIT も本番と同じ文で確かめる
+      const rows = vi.spyOn(db, 'rows');
+      try {
+        await experienceGrantsOperation.handler({ db, actor: { userId: id() }, input: { before } } as never);
+        expect(rows).toHaveBeenCalledTimes(1);
+        const statement = rows.mock.calls[0][0];
+        const query = compiledQueryForTest(statement);
+        expect(query.sql).toMatch(/order by "g"\."confirmed_at" desc, "g"\."id" desc limit \?$/);
+        expect(query.parameters.at(-1)).toBe(51);
+        const details = (await queryPlanForTest(env, statement)).join('\n');
+        // 続きの頁は、カーソルの位置を索引の範囲にして、新しい側の項目を読まない
+        expect(details).toContain(
+          before === undefined
+            ? 'SEARCH g USING INDEX xp_grants_user_confirmed (user_id=?)'
+            : 'SEARCH g USING INDEX xp_grants_user_confirmed (user_id=? AND (confirmed_at,id)<(?,?))',
+        );
+        // 索引に id が無いと「LAST TERM OF ORDER BY」の一時 B-tree が出るので、種類を問わず出ないことを見る
+        expect(details).not.toContain('TEMP B-TREE');
+      } finally {
+        rows.mockRestore();
+      }
+    },
+  );
+
+  test('経験値の見込みは、部分索引 tasks_created_by_open で本人の未完了のタスクだけを引く', async () => {
+    const db = orgDb(env, verifiedOrganizationForTest(id()));
+    // 処理が実際に作った3つ目の文（見込み）を捕まえる
+    const batch = vi.spyOn(db, 'batch');
+    try {
+      await experienceSummaryOperation.handler({ db, actor: { userId: id() }, input: {} } as never);
+      // 位置でなく、tasks を引いている文として選ぶ（文の順が変わっても別の文を見ない）
+      const statement = batch.mock.calls[0][0].find((candidate) =>
+        compiledQueryForTest(candidate).sql.includes('"tasks" as "t"'),
+      );
+      expect(statement).toBeDefined();
+      const details = (await queryPlanForTest(env, statement!)).join('\n');
+      expect(details).toContain('SEARCH t USING INDEX tasks_created_by_open (created_by=? AND completed_at=?)');
+    } finally {
+      batch.mockRestore();
+    }
+  });
+
+  test('組織の経験値の合計は、xp_grants の表の行を引かず索引だけで読む', async () => {
+    const db = orgDb(env, verifiedOrganizationForTest(id()));
+    const details = (await queryPlanForTest(env, userExperienceTotalStatement(db, id()))).join('\n');
+    expect(details).toContain('SEARCH g USING COVERING INDEX xp_grants_user_workspace_amount (user_id=?)');
   });
 });
 
