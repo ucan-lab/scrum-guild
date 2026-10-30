@@ -537,7 +537,8 @@ function forceOf({ fields, bodies, unreadable }) {
 
 // graphql の宛先の字面（glob や #、大文字は別の判定が拾うので、graphql を含む語を広く数える）
 const isGraphqlEndpoint = (endpoint) => /graphql/i.test(endpoint);
-const MAIN_REF = /\/git\/refs\/heads\/main(?![\w./-])/;
+// main の後ろに続く語（-fix、.json、/x）は別のブランチ。末尾の / だけは main と同じ ref に読まれうるので止める
+const MAIN_REF = /\/git\/refs\/heads\/main(?![\w.-]|\/[^\s?#])/;
 
 // 展開より前の字面で資源の種類が決まる宛先か（repos/o/r/issues/$n/comments は issues、repos/o/r/git/refs/$x は git/refs）。
 // repos/$R/… や repos/o/r/$kind/… のように、種類が展開で決まるものは決まらない。種類は repos/<owner>/<repo>/<種類>/ の種類で、

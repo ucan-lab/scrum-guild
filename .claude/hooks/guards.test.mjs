@@ -5805,7 +5805,14 @@ describe('bash-rules: done-check 2 巡目の指摘（mutation の名前の判定
   // main の判定の終端
   test('[通す] heads/main-fix は main ではない', () =>
     assert.equal(decision('gh api -X PATCH repos/o/r/git/refs/heads/main-fix -f sha=abc'), 'allow'));
-  for (const command of ['gh api -X PATCH repos/o/r/git/refs/heads/main -f sha=abc', 'gh api -X PATCH repos/o/r/git/refs/heads/main?x=1 -f sha=abc']) {
+  test('[通す] heads/main/x は main ではない', () =>
+    assert.equal(decision('gh api -X PATCH repos/o/r/git/refs/heads/main/x -f sha=abc'), 'allow'));
+  for (const command of [
+    'gh api -X PATCH repos/o/r/git/refs/heads/main -f sha=abc',
+    'gh api -X PATCH repos/o/r/git/refs/heads/main?x=1 -f sha=abc',
+    'gh api -X PATCH repos/o/r/git/refs/heads/main/ -f sha=abc',
+    'gh api -X PATCH repos/o/r/git/refs/heads/main/?x=1 -f sha=abc',
+  ]) {
     test(`[止める] ${command} は deny`, () => assert.equal(decision(command), 'deny', command));
   }
 });
