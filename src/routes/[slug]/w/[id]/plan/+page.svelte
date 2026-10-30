@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { drawerState, taskDetailHref } from '../../../../../lib/drawer.svelte.ts';
   import { tick } from 'svelte';
   import { invalidate } from '$app/navigation';
   import { resolve } from '$app/paths';
@@ -391,11 +392,15 @@
                   >
                 {/if}
                 <!-- 押しても、フォーカスとスクロールの位置は動かさない（引き出しが閉じたとき、data-task-id で探してフォーカスを戻す） -->
+                <!-- eslint-disable svelte/no-navigation-without-resolve -- href は resolve した経路に ?task=<ID> を足したもの、またはその詳細ページ -->
                 <a
-                  href="{planHref}?task={encodeURIComponent(task.id)}"
+                  href={taskDetailHref(`${planHref}?task=${encodeURIComponent(task.id)}`)}
+                  target={drawerState.mode === 'tab' ? '_blank' : undefined}
+                  rel={drawerState.mode === 'tab' ? 'noopener noreferrer' : undefined}
                   data-task-id={task.id}
                   data-sveltekit-reset="false">{task.title}</a
                 >
+                <!-- eslint-enable svelte/no-navigation-without-resolve -->
                 <span class="lane-row-end">
                   {#if task.completed_at !== null}
                     <!-- 完了の印（バックログの木の行と同じ .hanko）。担当の左に置き、担当の位置をそろえる -->

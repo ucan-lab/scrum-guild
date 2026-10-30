@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { drawerState, setTaskOpenMode, taskPageHref, type TaskOpenMode } from '../../../../lib/drawer.svelte.ts';
   import { tick, type Snippet } from 'svelte';
   import { SvelteURLSearchParams } from 'svelte/reactivity';
   import { goto, invalidate } from '$app/navigation';
@@ -32,7 +33,21 @@
   const status = $derived(data.workspaceFailure?.status);
   const code = $derived(data.workspaceFailure?.code);
   const unavailable = $derived((status === 404 && code === 'not_found') || (status === 403 && code === 'forbidden'));
-  const taskId = $derived(page.url.searchParams.get('task'));
+  const taskId = $derived(page.params.taskId ? null : page.url.searchParams.get('task'));
+  let modeRevision = $state(0);
+  const overlayMode = $derived(drawerState.mode === 'center' ? 'center' : 'side');
+
+  function changeMode(mode: TaskOpenMode): void {
+    if (!taskId) return;
+    setTaskOpenMode(mode);
+    if (mode === 'page') {
+      // eslint-disable-next-line svelte/no-navigation-without-resolve -- 同じワークスペース内の詳細の URL
+      void goto(taskPageHref(data.slug, workspace!.id, taskId));
+    } else if (mode === 'tab') {
+      window.open(taskPageHref(data.slug, workspace!.id, taskId), '_blank', 'noopener,noreferrer');
+      void withoutTask();
+    } else modeRevision += 1;
+  }
   const canWrite = $derived(workspace !== null && workspace.closedAt === null);
 
   $effect.pre(() => {
@@ -101,8 +116,10 @@
   {/if}
   {@render children()}
   {#if taskId !== null}
-    {#key taskId}
+    {#key `${taskId}:${modeRevision}`}
       <TaskDrawer
+        mode={overlayMode}
+        onmode={changeMode}
         slug={page.params.slug ?? ''}
         workspaceId={workspace.id}
         {taskId}

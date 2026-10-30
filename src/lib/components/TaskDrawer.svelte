@@ -1,4 +1,5 @@
 <script lang="ts">
+  import type { TaskOpenMode } from '../drawer.svelte.ts';
   import { tick } from 'svelte';
   import { beforeNavigate, goto } from '$app/navigation';
   import {
@@ -75,6 +76,8 @@
   // 完了していて戻せる（task-detail の reopenable）ときは、日時の横に「戻す」（.link-btn。task-reopen。確かめのダイアログは挟まない）。
   // 戻したら、詳細と履歴を読み直し、画面が木を読み直す。押したボタンは消えるので、「完了にする」へフォーカスを移す
   let {
+    mode = 'side',
+    onmode,
     slug,
     workspaceId,
     currentUserId,
@@ -86,6 +89,8 @@
     onstale,
     onremoved,
   }: {
+    mode?: TaskOpenMode;
+    onmode: (mode: TaskOpenMode) => void;
     slug: string;
     workspaceId: string;
     currentUserId: string | null;
@@ -445,6 +450,13 @@
     if (hasDraft() && !(await confirmDiscard())) return;
     leaving = true;
     onclose();
+  }
+
+  async function requestMode(next: TaskOpenMode): Promise<void> {
+    if (next === mode || asking || leaving) return;
+    if (hasDraft() && !(await confirmDiscard())) return;
+    leaving = true;
+    onmode(next);
   }
 
   async function confirmDiscard(): Promise<boolean> {
@@ -1238,7 +1250,13 @@
   {/if}
 {/snippet}
 
-<Drawer labelledBy={titleLabelId} busy={loadState === 'loading'} onrequestclose={() => void requestClose()}>
+<Drawer
+  {mode}
+  onmode={(next) => void requestMode(next)}
+  labelledBy={titleLabelId}
+  busy={loadState === 'loading'}
+  onrequestclose={() => void requestClose()}
+>
   {#snippet top()}
     {#if task !== null}
       <span class="chip"

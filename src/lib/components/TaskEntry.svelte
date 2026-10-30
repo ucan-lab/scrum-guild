@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { drawerState, taskDetailHref } from '../drawer.svelte.ts';
   import { resolve } from '$app/paths';
   import { page } from '$app/state';
   import type { BacklogTask } from '../../shared/operations/task/backlog-tree.ts';
@@ -120,12 +121,16 @@
   <span aria-hidden="true"></span>
   <div class="entry-main">
     <!-- 押しても、フォーカスとスクロールの位置は動かさない（引き出しが閉じたとき、data-task-id で探してフォーカスを戻す） -->
+    <!-- eslint-disable svelte/no-navigation-without-resolve -- href は resolve した経路に ?task=<ID> を足したもの、またはその詳細ページ -->
     <a
       class="entry-title"
-      href="{taskHref}{taskQuery}{encodeURIComponent(task.id)}"
+      href={taskDetailHref(`${taskHref}${taskQuery}${encodeURIComponent(task.id)}`)}
+      target={drawerState.mode === 'tab' ? '_blank' : undefined}
+      rel={drawerState.mode === 'tab' ? 'noopener noreferrer' : undefined}
       data-task-id={task.id}
       data-sveltekit-reset="false">{task.title}</a
     >
+    <!-- eslint-enable svelte/no-navigation-without-resolve -->
     {#if task.repository !== null || category !== null || task.sprint !== null}
       <span class="entry-meta">
         {#if task.sprint !== null}

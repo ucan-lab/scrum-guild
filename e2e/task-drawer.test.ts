@@ -316,25 +316,24 @@ test('担い手は選んで少し待ってから最後の値だけを送り、�
   await expect(page.locator('.toasts:visible .toast')).toHaveCount(0, { timeout: 10_000 });
 });
 
-test('広げると aria-modal が外れ、左のメニューを押せる。広げた形は次に開くときも残る', async ({ page }) => {
-  await createWorkspace(page, '広げるパーティ', 'game');
-  await addTask(page, '広げて読む');
-  const row = page.locator('.entry', { hasText: '広げて読む' });
-  await row.getByRole('link', { name: '広げて読む' }).click();
-  const drawer = page.getByRole('dialog', { name: '広げて読む' });
+test('真ん中は幕と inert を保ち、選んだ既定は再読み込み後も残る', async ({ page }) => {
+  await createWorkspace(page, '開き方パーティ', 'game');
+  await addTask(page, '真ん中で読む');
+  const row = page.getByRole('link', { name: '真ん中で読む', exact: true });
+  await row.click();
+  const drawer = page.getByRole('dialog', { name: '真ん中で読む' });
+  await drawer.getByLabel('開き方').selectOption('center');
+  await expect(drawer).toHaveClass(/is-center/);
   await expect(drawer).toHaveAttribute('aria-modal', 'true');
-  await drawer.getByRole('button', { name: '広げる' }).click();
-  await expect(drawer).toHaveAttribute('aria-modal', 'false');
-  await expect(drawer).toHaveClass(/is-full/);
-  await expect(drawer.getByRole('button', { name: '横に戻す' })).toBeFocused();
-  // 広げている間は、左のメニューが操作できる
-  await expect(page.getByRole('navigation').first()).not.toHaveAttribute('inert', '');
-
-  await drawer.getByRole('button', { name: '閉じる' }).click();
-  await row.getByRole('link', { name: '広げて読む' }).click();
-  await expect(drawer).toHaveClass(/is-full/);
-  await drawer.getByRole('button', { name: '横に戻す' }).click();
-  await expect(drawer).toHaveAttribute('aria-modal', 'true');
+  await expect(page.locator('.binding')).toHaveAttribute('inert', '');
+  await expect(drawer.getByRole('heading', { level: 2 })).toBeFocused();
+  await page.keyboard.press('Escape');
+  await expect(row).toBeFocused();
+  await page.reload();
+  await row.click();
+  await expect(drawer).toHaveClass(/is-center/);
+  await drawer.getByLabel('開き方').selectOption('side');
+  await expect(drawer).not.toHaveClass(/is-center/);
 });
 
 test('スクロールした先の行のリンクで開いても、木のスクロールの位置は動かず、Esc で閉じると開いた行のリンクへ戻る', async ({
@@ -579,25 +578,25 @@ test('2048 字に近い URL を保存しても、390px の引き出しが横に�
   expect(overflow.body).toBeLessThanOrEqual(0);
 });
 
-test('横に出した形は外側が inert で、閉じると外れる。広げると inert が外れ、620px 以下では広げた形を無視する', async ({
-  page,
-}) => {
+test('620px 以下では真ん中を隠し、既定が真ん中でも横で開く。閉じると inert が外れる', async ({ page }) => {
   await createWorkspace(page, 'inert パーティ', 'game');
   await addTask(page, '裏を操作できない');
   const drawer = await openDrawer(page, '裏を操作できない');
-  await expect(page.locator('.binding')).toHaveAttribute('inert', '');
-  await expect(page.locator('.page-head')).toHaveAttribute('inert', '');
-  await drawer.getByRole('button', { name: '広げる' }).click();
-  await expect(page.locator('.binding')).not.toHaveAttribute('inert', '');
-  await page.setViewportSize({ width: 600, height: 800 });
+  await drawer.getByLabel('開き方').selectOption('center');
+  await page.setViewportSize({ width: 620, height: 800 });
+  await expect(drawer).not.toHaveClass(/is-center/);
+  await expect(drawer.getByLabel('開き方').locator('option[value="center"]')).toHaveCount(0);
+  await expect(drawer.getByLabel('開き方')).toHaveValue('side');
   await expect(drawer).toHaveAttribute('aria-modal', 'true');
   await expect(page.locator('.binding')).toHaveAttribute('inert', '');
-  await page.setViewportSize({ width: 1280, height: 800 });
-  await drawer.getByRole('button', { name: '横に戻す' }).click();
-  await drawer.getByRole('button', { name: '閉じる' }).click();
-  await expect(drawer).toBeHidden();
+  await drawer.getByRole('button', { name: '閉じる', exact: true }).click();
   await expect(page.locator('.binding')).not.toHaveAttribute('inert', '');
-  await expect(page.locator('.page-head')).not.toHaveAttribute('inert', '');
+  await page.getByRole('link', { name: '裏を操作できない', exact: true }).click();
+  await expect(drawer).not.toHaveClass(/is-center/);
+  await page.setViewportSize({ width: 621, height: 800 });
+  await expect(drawer).toHaveClass(/is-center/);
+  await page.keyboard.press('Escape');
+  await expect(page.getByRole('link', { name: '裏を操作できない', exact: true })).toBeFocused();
 });
 
 test('書きかけのまま戻るで別の画面へ移ろうとすると確かめ、書き続けると元の URL に残り、捨てると移る', async ({
@@ -1070,4 +1069,80 @@ test('担当が感謝を送り、別のメンバーが一覧を見て、送っ�
   await expect(drawer.getByText('なし → ハルカ', { exact: true }).first()).toBeVisible();
   await expect(drawer.getByText('ハルカ → なし', { exact: true }).first()).toBeVisible();
   expect(await collect()).toEqual([]);
+});
+
+test('ページ全体は一覧を重ねず、アプリ内から来た画面へ閉じ、直接開いたらバックログへ閉じる', async ({ page }) => {
+  await createWorkspace(page, '詳細ページパーティ', 'game');
+  await addTask(page, 'ページだけで読む');
+  const backlog = page.url();
+  await page.getByRole('link', { name: 'ページだけで読む', exact: true }).click();
+  const id = new URL(page.url()).searchParams.get('task')!;
+  await page
+    .getByRole('dialog', { name: 'ページだけで読む' })
+    .getByRole('button', { name: '閉じる', exact: true })
+    .click();
+  const members = `${backlog}/members`;
+  await page.goto(`${members}?task=${id}`);
+  await page.getByRole('dialog', { name: 'ページだけで読む' }).getByLabel('開き方').selectOption('page');
+  const detail = `${backlog}/tasks/${id}`;
+  await expect(page).toHaveURL(detail);
+  const region = page.getByRole('region', { name: 'ページだけで読む', exact: true });
+  await expect(region).toBeVisible();
+  await expect(page.locator('.entry')).toHaveCount(0);
+  await expect(page.locator('.scrim')).toHaveCount(0);
+  await expect(page.locator('.binding')).not.toHaveAttribute('inert', '');
+  await page.keyboard.press('Escape');
+  await expect(page).toHaveURL(members);
+  await expect(page.getByRole('heading', { level: 1 })).toBeFocused();
+  await page.goto(detail);
+  await page.reload();
+  await expect(region).toBeVisible();
+  await region.getByRole('button', { name: '閉じる', exact: true }).click();
+  await expect(page).toHaveURL(backlog);
+  await expect(page.getByRole('link', { name: 'ページだけで読む', exact: true })).toBeFocused();
+  // ページの既定から行を押すとページへ移り、横に替えると戻り先に重なる。
+  await page.getByRole('link', { name: 'ページだけで読む', exact: true }).click();
+  await expect(page).toHaveURL(detail);
+  await region.getByLabel('開き方').selectOption('side');
+  await expect(page).toHaveURL(`${backlog}?task=${id}`);
+  await expect(page.getByRole('dialog', { name: 'ページだけで読む' })).toBeVisible();
+});
+
+test('開き方の変更は書きかけを確認し、新しいタブなら詳細を閉じる。既定の別タブは元画面を保つ', async ({ page }) => {
+  await createWorkspace(page, '別タブパーティ', 'game');
+  await addTask(page, '別タブで読む');
+  const backlog = page.url();
+  const row = page.getByRole('link', { name: '別タブで読む', exact: true });
+  await row.click();
+  const id = new URL(page.url()).searchParams.get('task')!;
+  const drawer = page.getByRole('dialog', { name: '別タブで読む' });
+  await drawer.getByRole('textbox', { name: 'コメントを書く', exact: true }).fill('残したい書きかけ');
+  await drawer.getByLabel('開き方').selectOption('center');
+  const confirm = page.getByRole('dialog', { name: '書きかけを捨てますか' });
+  await expect(confirm).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(confirm).toBeHidden();
+  await expect(drawer.getByLabel('開き方')).toBeFocused();
+  await expect(drawer.getByRole('textbox', { name: 'コメントを書く', exact: true })).toHaveValue('残したい書きかけ');
+  await expect(drawer.getByLabel('開き方')).toHaveValue('side');
+  await drawer.getByLabel('開き方').selectOption('tab');
+  await expect(confirm).toBeVisible();
+  const opened = page.waitForEvent('popup');
+  await confirm.getByRole('button', { name: '捨てる', exact: true }).click();
+  const other = await opened;
+  await expect(other).toHaveURL(`${backlog}/tasks/${id}`);
+  await expect(other.getByRole('region', { name: '別タブで読む', exact: true })).toBeVisible();
+  await expect(page).toHaveURL(backlog);
+  await expect(drawer).toBeHidden();
+  await expect(row).toBeFocused();
+  await other.keyboard.press('Escape');
+  await expect(other).toHaveURL(backlog);
+  await other.close();
+  const nextPopup = page.waitForEvent('popup');
+  await row.click();
+  const next = await nextPopup;
+  await expect(next).toHaveURL(`${backlog}/tasks/${id}`);
+  await expect(page).toHaveURL(backlog);
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await next.close();
 });

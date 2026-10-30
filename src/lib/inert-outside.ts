@@ -1,6 +1,6 @@
 // 要素の外側を操作できなくする（キーボードのフォーカスも、読み上げも届かなくする）。
-// 引き出しは <dialog> の showModal() を使わない（広げた形はメニューを押せるよう、モーダルにしない）ので、
-// モーダルの形のときだけ、要素から body まで、各階層の兄弟に inert を付ける。返す関数で元に戻す。
+// 引き出しは <dialog> の showModal() を使わないので、
+// モーダルの形（横と真ん中）のときだけ、要素から body まで、各階層の兄弟に inert を付ける。返す関数で元に戻す。
 // keep が真の兄弟は残す（幕、トースト、別のダイアログ）。すでに inert の要素は触らない
 export function inertOutside(target: Element, keep: (sibling: Element) => boolean): () => void {
   const changed: Element[] = [];

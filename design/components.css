@@ -831,21 +831,18 @@ label.pick-row:hover { background: var(--color-accent-soft); }
 }
 /* 引き出しの中の URL は折り返す。折り返さないと、2048 字の URL が列を広げて本文まで横にはみ出す */
 .drawer .source-key { white-space: normal; overflow-wrap: anywhere; }
-/*
- * 広げた状態は左のメニュー（.app の 240px）を残して右側を覆い、中身は読める幅（960px）で中央に寄せる。
- * padding の % は引き出しではなく画面の幅を指すので、メニューの幅を引いてから割る。
- * メニューを押せるよう、幕は外す。
- */
-.drawer.is-full {
-  width: calc(100% - 240px); border-left: 0;
-  padding-left: max(var(--space-6), calc((100% - 240px - 960px) / 2));
-  padding-right: max(var(--space-6), calc((100% - 240px - 960px) / 2), env(safe-area-inset-right, 0px));
+.drawer.is-center {
+  inset: 5vh max(var(--space-4), calc((100% - 960px) / 2));
+  width: auto; border: var(--rule-double); border-radius: var(--radius-md);
 }
-.scrim:has(+ .drawer.is-full) { display: none; }
+.drawer.is-page {
+  position: relative; inset: auto; z-index: auto; width: 100%; max-width: 960px;
+  margin-inline: auto; border: 0; box-shadow: none; overflow: visible;
+}
 .drawer-top { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
-.drawer-tools { margin-left: auto; display: flex; gap: var(--space-2); }
-/* 引き出しがもともと全幅になる幅では、広げても変わらない */
-@media (max-width: 620px) { .drawer-size { display: none; } }
+.drawer-tools { margin-left: auto; display: flex; align-items: center; gap: var(--space-2); }
+.drawer-mode .select { width: auto; min-height: 44px; }
+@media (max-width: 620px) { .drawer-mode option[value="center"] { display: none; } }
 .drawer-title { font-family: var(--font-display); font-weight: var(--weight-display); font-size: var(--text-xl); line-height: var(--leading-tight); overflow-wrap: anywhere; }
 .props { margin: 0; display: grid; gap: var(--space-2); }
 .props > div { display: grid; grid-template-columns: 7em minmax(0, 1fr); gap: var(--space-3); align-items: center; padding-bottom: var(--space-2); border-bottom: 1px solid var(--color-rule); font-size: var(--text-sm); }
@@ -961,9 +958,7 @@ a.notice-title.notice-link:hover { text-decoration: underline; text-underline-of
   .lanes { grid-template-columns: minmax(0, 1fr); }
 }
 @media (max-width: 760px) {
-  .drawer, .drawer.is-full { padding-left: max(var(--space-4), env(safe-area-inset-left, 0px)); padding-right: max(var(--space-4), env(safe-area-inset-right, 0px)); }
-  /* メニューが上の帯になる幅では、広げると全幅にする */
-  .drawer.is-full { width: 100%; }
+  .drawer, .drawer.is-page { padding-left: max(var(--space-4), env(safe-area-inset-left, 0px)); padding-right: max(var(--space-4), env(safe-area-inset-right, 0px)); }
   .props > div { grid-template-columns: minmax(0, 1fr); gap: 2px; }
   .velocity { grid-template-columns: minmax(0, 1fr); }
   .tree-children .entry, .tree-children .tree-children .entry { --row-indent: var(--space-4); }
