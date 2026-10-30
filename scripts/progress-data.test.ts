@@ -345,6 +345,17 @@ describe('記録の Issue の読み方', () => {
     ]);
   });
 
+  test('題に `\\` の付かない | が残っていても、最初の数字だけの列をポイントとして読み、行を落とさない', () => {
+    const parsed = parseSprintLog(
+      'スプリント 2（2026-11-05〜2026-11-11）',
+      logBody(['| #1 | a | b | 3 | #5 |', '| #2 | 2026 年 | 5 | 523 |']),
+    );
+    assert.deepEqual(parsed.plan, [
+      { number: 1, title: 'a | b', pt: 3 },
+      { number: 2, title: '2026 年', pt: 5 },
+    ]);
+  });
+
   test('題を読めなければ止まる', () => {
     assert.throws(() => parseSprintLog('スプリントの記録', ''), /題を読めない/);
   });
