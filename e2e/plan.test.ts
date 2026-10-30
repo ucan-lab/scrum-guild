@@ -1,11 +1,11 @@
 // 計画の画面: リーダーが先のスプリントを作り、直し（重なりは断られてダイアログに理由が出る）、削除する。
 // 一般のメンバーには作成、変更、削除のボタンが出ない。スプリントが無いワークスペースでは空の状態が出る。
 // seed のセッション（seed/sessions.ts）の Cookie で開く。あおば開発の管理者はミナト（ひばり工房では一般のユーザー）、一般のユーザーはハルカ
-import { sprintTaskAdd } from '../src/shared/operations/sprint/index.ts';
+import { planSummary, sprintTaskAdd } from '../src/shared/operations/sprint/index.ts';
 import { backlogTree } from '../src/shared/operations/task/index.ts';
 import { expect, test } from './fixtures.ts';
 import { createWorkspace, signIn, watchViolations } from './helpers.ts';
-import { failOperation, rewriteOperation } from './operations.ts';
+import { failOperation, rewriteOperation, routeOperation } from './operations.ts';
 
 test.use({ timezoneId: 'Asia/Tokyo' });
 
@@ -316,4 +316,179 @@ test('スクラムの言葉: スプリントが無いときは空の状態を出
   await expect(page.getByText('まだスプリントがありません')).toBeVisible();
   await expect(page.getByText(/スプリントを作るのはリーダーです。/)).toBeVisible();
   await expect(page.getByRole('button', { name: 'スプリントを作る' })).toHaveCount(0);
+  // 先のスプリントも終了したスプリントも無いときは、集計（ベロシティ、エピックの表）を出さず、空の状態だけを出す
+  await expect(page.locator('.velocity, [data-velocity-empty], [data-plan-epics-empty], .table')).toHaveCount(0);
+  await expect(page.locator('.page-head .tally')).toHaveCount(0);
+});
+
+// seed の受託開発チームには、終了したスプリントが4つある（夏の仕上げ 6 pt、延長した 9月の追い込み 13 pt、秋の準備 8 pt、秋の立ち上げ 7 pt）。
+// 延長した回を除いた新しい3つの平均は 7 pt。先のスプリントは「遠征 11/2〜11/15」（2 pt）と「年末の仕上げ」（未見積もり 1 件）
+test('ベロシティは延長した回を除いた直近3回の平均で、先の遠征の棒と未見積もりの件数、レイドごとの残りが並ぶ', async ({
+  page,
+  context,
+  baseURL,
+}) => {
+  await signIn(context, baseURL, 'member');
+  const collect = await watchViolations(page);
+  await page.goto(AOBA_TEAM);
+  await expect(page.getByRole('heading', { level: 1, name: '遠征の計画' })).toBeVisible();
+
+  // ベロシティ: 平均と、延長した回を除いたことが文字で分かる。棒は4本で、延長した回だけ除外の印
+  const velocity = page.locator('.velocity');
+  await expect(velocity.locator('.stat-label').first()).toHaveText('ベロシティ（直近 3 回の平均）');
+  await expect(velocity.locator('[data-velocity-average]')).toHaveText('7pt');
+  await expect(velocity.getByText('延長した遠征は除く')).toBeVisible();
+  await expect(velocity.locator('.bar-col')).toHaveCount(4);
+  await expect(velocity.locator('.bar-col.is-excluded')).toHaveCount(1);
+  await expect(velocity.locator('.bar-col.is-excluded b')).toHaveText('13');
+  await expect(velocity.locator('.bar-col b')).toHaveText(['6', '13', '8', '7']);
+  await expect(velocity.locator('.bars-labels')).toContainText('延長 3 日・除外');
+  await expect(velocity.getByRole('img', { name: /9月の追い込み 13 pt（延長のため除外）/ })).toBeVisible();
+
+  // 見出しの集計。ベロシティ、超過した先の遠征の数、未見積もりの件数
+  const tally = page.locator('.page-head .tally');
+  await expect(tally.locator('div').filter({ hasText: 'ベロシティ（pt）' }).locator('dd')).toHaveText('7');
+  await expect(tally.locator('div').filter({ hasText: '重量オーバー' }).locator('dd')).toHaveText('0');
+  await expect(tally.locator('div').filter({ hasText: '未見積もり' }).locator('dd')).toHaveText('1');
+
+  // 先の遠征ごとの棒。入れたポイントがベロシティ以下なら、赤の棒も超過の印も出ない。未見積もりは件数で出す
+  const first = page.locator('.lane').first();
+  await expect(first.locator('.lane-fill-text')).toContainText('入れた 2 pt');
+  await expect(first.locator('.lane-fill-text')).toContainText('ベロシティ 7');
+  await expect(first.locator('.lane-fill-bar')).toHaveAttribute('aria-label', '入れた 2 pt、ベロシティ 7 pt');
+  await expect(first.locator('.lane-fill-bar.is-over, [data-lane-over]')).toHaveCount(0);
+  await expect(first.locator('[data-lane-unestimated]')).toHaveCount(0);
+  await expect(page.locator('.lane').nth(1).locator('[data-lane-unestimated]')).toHaveText('未見積もり 1 件');
+
+  // レイドごとの残り。完了も中止もしていないレイドが、題（レイドの画面へのリンク）、残り、進み、期日で並ぶ
+  const row = page.locator('[data-plan-epic]');
+  await expect(page.getByRole('heading', { level: 2, name: 'レイドごとの残り' })).toBeVisible();
+  await expect(row).toHaveCount(1);
+  await expect(row.getByRole('link', { name: 'ポイントの交換先を増やす' })).toHaveAttribute(
+    'href',
+    /\/aoba\/w\/019a0000-0000-7000-8000-000000000401\/epics\/019a0000-0000-7000-8000-000000000b01$/,
+  );
+  await expect(row.locator('td.is-num')).toHaveText('0');
+  await expect(row.locator('.progress-num')).toHaveText('2 / 2 pt');
+  await expect(row.locator('.chip')).toBeVisible();
+  expect(await collect()).toEqual([]);
+});
+
+test('入れたポイントがベロシティを上回る遠征は、赤い棒に加えて文字でも示す。ベロシティが出ないときは「まだ出ません」の文を出す', async ({
+  page,
+  context,
+  baseURL,
+}) => {
+  await signIn(context, baseURL, 'member');
+  // 集計の応答を差し替える（seed の行は書き換えない）。1つ目の遠征に 10 pt 入っていることにして、ベロシティ 7 pt を 3 pt 上回らせる
+  await rewriteOperation(page, planSummary, { slug: 'aoba' }, (output) => ({
+    ...output,
+    lanes: output.lanes.map((lane, index) => (index === 0 ? { ...lane, points: 10 } : lane)),
+  }));
+  await page.goto(AOBA_TEAM);
+  const first = page.locator('.lane').first();
+  await expect(first.locator('.lane-fill-bar.is-over')).toBeVisible();
+  await expect(first.locator('[data-lane-over]')).toHaveText('重量オーバー（ベロシティより 3 pt 多い）');
+  await expect(first.locator('.lane-fill-text')).toContainText('入れた 10 pt');
+  await expect(page.locator('.page-head .tally div').filter({ hasText: '重量オーバー' }).locator('dd')).toHaveText('1');
+
+  // 終了した遠征が無ければ、平均と棒の代わりに文を出す。比べる相手が無いので、遠征の棒は出さず、入れたポイントの文字だけを出す
+  await rewriteOperation(page, planSummary, { slug: 'aoba' }, (output) => ({
+    ...output,
+    velocity: { average: null, sprints: [] },
+  }));
+  await page.reload();
+  await expect(page.locator('[data-velocity-empty]')).toHaveText(
+    '終えた遠征がまだないので、ベロシティはまだ出ません。遠征を終えると、ここに出ます。',
+  );
+  await expect(page.locator('.velocity, .bars')).toHaveCount(0);
+  await expect(page.locator('.lane').first().locator('.lane-fill-bar')).toHaveCount(0);
+  await expect(page.locator('.lane').first().locator('.lane-fill-text')).toContainText('入れた 2 pt');
+  await expect(page.locator('.page-head .tally').getByText('ベロシティ（pt）')).toHaveCount(0);
+});
+
+test('集計だけ読めなかったときは、遠征の一覧を出したまま読み直す口を出す', async ({ page, context, baseURL }) => {
+  await signIn(context, baseURL, 'otherOrg');
+  let fail = true;
+  await routeOperation(page, planSummary, { slug: 'hibari' }, async (call) => {
+    if (fail) await call.fail(500, 'internal');
+    else await call.passThrough();
+  });
+  await page.goto('/hibari/w/019a0000-0000-7000-8000-000000000404/plan');
+  await expect(page.locator('.lane-title')).toHaveText(['遠征 第3回']);
+  await expect(
+    page.getByRole('alert').filter({ hasText: 'ベロシティとレイドごとの残りを読み込めませんでした。' }),
+  ).toBeVisible();
+  fail = false;
+  await page.getByRole('button', { name: 'もう一度試す' }).click();
+  await expect(page.locator('.velocity, [data-velocity-empty]')).toBeVisible();
+  await expect(page.getByRole('heading', { level: 2, name: 'レイドごとの残り' })).toBeVisible();
+  await expect(page.locator('[data-plan-epics-empty]')).toHaveText('進行中のレイドはありません');
+});
+
+test('先の遠征が無くて集計が読めないときは、空の状態だけにせず、読み込めなかったことと読み直す口を出す', async ({
+  page,
+  context,
+  baseURL,
+}) => {
+  await signIn(context, baseURL, 'admin');
+  await createWorkspace(page, '集計が失敗するパーティ', 'game');
+  const unroute = await failOperation(page, planSummary, { slug: 'aoba' }, 500, 'internal');
+  await page.getByRole('link', { name: '遠征の計画' }).click();
+  await expect(page.getByRole('heading', { level: 1, name: '遠征の計画' })).toBeVisible();
+  await expect(page.getByText('まだ遠征がありません')).toBeVisible();
+  await expect(
+    page.getByRole('alert').filter({ hasText: 'ベロシティとレイドごとの残りを読み込めませんでした。' }),
+  ).toBeVisible();
+  await unroute();
+  await page.getByRole('button', { name: 'もう一度試す' }).click();
+  // 読めたら、本当に何も無いので空の状態だけが残る
+  await expect(page.getByRole('alert').filter({ hasText: '読み込めませんでした' })).toHaveCount(0);
+  await expect(page.getByText('まだ遠征がありません')).toBeVisible();
+  await expect(page.locator('.velocity, [data-plan-epics-empty], .table')).toHaveCount(0);
+});
+
+test('先の遠征が無くても、終えた遠征とレイドがあれば、ベロシティとレイドの表を出し、空の状態は先の遠征の話だと分かる', async ({
+  page,
+  context,
+  baseURL,
+}) => {
+  await signIn(context, baseURL, 'admin');
+  await createWorkspace(page, '先の遠征が無いパーティ', 'game');
+  // 集計の応答を差し替える（終えた遠征が1つとレイドが1つ）。seed の行は書き換えない
+  await rewriteOperation(page, planSummary, { slug: 'aoba' }, (output) => ({
+    ...output,
+    velocity: {
+      average: 5,
+      sprints: [
+        {
+          id: '019a0000-0000-7000-8000-00000000f901',
+          name: '第1回',
+          start_on: '2026-09-07',
+          end_on: '2026-09-20',
+          extended_days: 0,
+          points: 5,
+          counted: true,
+        },
+      ],
+    },
+    epics: [
+      {
+        id: '019a0000-0000-7000-8000-00000000f902',
+        title: '長い題のレイド'.repeat(8),
+        due_on: null,
+        points_done: 1,
+        points_all: 4,
+      },
+    ],
+  }));
+  await page.getByRole('link', { name: '遠征の計画' }).click();
+  await expect(page.locator('[data-velocity-average]')).toHaveText('5pt');
+  await expect(page.getByText('先の遠征はありません')).toBeVisible();
+  await expect(page.getByText('まだ遠征がありません')).toHaveCount(0);
+  await expect(page.getByText('ベロシティも出ます')).toHaveCount(0);
+  await expect(page.locator('[data-plan-epic]')).toHaveCount(1);
+  await expect(page.locator('[data-plan-epic] td.is-num')).toHaveText('3');
+  // ベロシティが出ていれば超過の項目は出るが、先の遠征が無いので 0
+  await expect(page.locator('.page-head .tally div').filter({ hasText: '重量オーバー' }).locator('dd')).toHaveText('0');
 });

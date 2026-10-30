@@ -2226,6 +2226,41 @@ export const dictionary = defineDictionary({
 
   // 計画の画面（design/plan.html）と、スプリントの作成と変更のダイアログ（kit.js の sprintCreate）
   planPageName: workspace('{plan}・{name}', '{plan}・{name}'),
+  // 計画の画面の集計（ベロシティ、先のスプリントの棒、エピックごとの残り）
+  velocity: workspace('ベロシティ', 'ベロシティ'),
+  velocityAverage: workspace('{velocity}（直近 {count} 回の平均）', '{velocity}（直近 {count} 回の平均）'),
+  velocityExcludedNote: workspace('延長した{sprint}は除く', '延長した{sprint}は除く'),
+  velocityEmpty: workspace(
+    '終えた{sprint}がまだないので、{velocity}はまだ出ません。{sprint}を終えると、ここに出ます。',
+    '終えた{sprint}がまだないので、{velocity}はまだ出ません。{sprint}を終えると、ここに出ます。',
+  ),
+  velocityAllExtended: workspace(
+    '終えた{sprint}がすべて延長したものなので、{velocity}はまだ出ません。延長していない{sprint}を終えると出ます。',
+    '終えた{sprint}がすべて延長したものなので、{velocity}はまだ出ません。延長していない{sprint}を終えると出ます。',
+  ),
+  velocityBarItem: workspace('{label} {points} pt', '{label} {points} pt'),
+  velocityBarExcluded: workspace('（延長のため除外）', '（延長のため除外）'),
+  velocityAverageMark: workspace('平均 {value}', '平均 {value}'),
+  velocityExcludedLabel: workspace('延長 {days} 日・除外', '延長 {days} 日・除外'),
+  planFilled: workspace('入れた {points} pt', '入れた {points} pt'),
+  planFilledVelocity: workspace('{velocity} {value}', '{velocity} {value}'),
+  planFilledLabel: workspace('入れた {points} pt、{velocity} {value} pt', '入れた {points} pt、{velocity} {value} pt'),
+  planFilledOver: workspace('{over}（{velocity}より {gap} pt 多い）', '{over}（{velocity}より {gap} pt 多い）'),
+  planUnestimated: workspace('未見積もり {count} 件', '未見積もり {count} 件'),
+  planTallyVelocity: workspace('{velocity}（pt）', '{velocity}（pt）'),
+  planTallyUnestimated: workspace('未見積もり', '未見積もり'),
+  planEpicsTitle: workspace('{epic}ごとの残り', '{epic}ごとの残り'),
+  planEpicsEmpty: workspace('進行中の{epic}はありません', '進行中の{epic}はありません'),
+  planEpicRemaining: workspace('残り（pt）', '残り（pt）'),
+  planEpicProgress: workspace('進み', '進み'),
+  planSummaryFailed: workspace(
+    '{velocity}と{epic}ごとの残りを読み込めませんでした。',
+    '{velocity}と{epic}ごとの残りを読み込めませんでした。',
+  ),
+  planSummaryRetrying: workspace(
+    '{velocity}と{epic}ごとの残りを読み直しています。',
+    '{velocity}と{epic}ごとの残りを読み直しています。',
+  ),
   sprintCreate: workspace('{sprint}を作る', '{sprint}を作る'),
   sprintEdit: workspace('{sprint}を直す', '{sprint}を直す'),
   // 名前のあるスプリントは名前を、無いものは期間を名前として出す（kit.js の sprintLabel）
@@ -2247,6 +2282,12 @@ export const dictionary = defineDictionary({
   sprintEmptyClosedText: workspace(
     '終了した{workspace}には、{sprint}を作れません。',
     '終了した{workspace}には、{sprint}を作れません。',
+  ),
+  // 先のスプリントが無いが、ベロシティかエピックの集計は出すときの空の状態（リーダー向けの文は、ベロシティが出ているときの言い回し）
+  planLanesEmptyTitle: workspace('先の{sprint}はありません', '先の{sprint}はありません'),
+  planLanesEmptyText: workspace(
+    '{sprint}を作ると、ここに先の{sprint}が並び、入れた{points}をベロシティと見比べられます。',
+    '{sprint}を作ると、ここに先の{sprint}が並び、入れた{points}をベロシティと見比べられます。',
   ),
   sprintEditAction: workspace('直す', '直す'),
   sprintEditLabel: workspace('直す: {label}', '直す: {label}'),
@@ -2577,8 +2618,8 @@ export const dictionary = defineDictionary({
   sprintBoardColumnEmpty: workspace('なし', 'なし'),
   sprintBoardColumnPoints: workspace('{points} pt', '{points} pt'),
   sprintBoardKeyHint: workspace(
-    'カードを選んで Alt と ← → で隣の{column}、Alt と ↑ ↓ で{column}の中を動かせます。カードの下のボタンでも同じです。{done}の{column}の手前の{column}から次へ送ると、{done}になります。',
-    'カードを選んで Alt と ← → で隣の{column}、Alt と ↑ ↓ で{column}の中を動かせます。カードの下のボタンでも同じです。{done}の{column}の手前の{column}から次へ送ると、{done}になります。',
+    'カードを別の{column}へドラッグして移すか、カードを選んで Alt と ← → で隣の{column}、Alt と ↑ ↓ で{column}の中を動かせます。カードの下のボタンでも同じです。{done}の{column}の手前の{column}から次へ送ると、{done}になります。',
+    'カードを別の{column}へドラッグして移すか、カードを選んで Alt と ← → で隣の{column}、Alt と ↑ ↓ で{column}の中を動かせます。カードの下のボタンでも同じです。{done}の{column}の手前の{column}から次へ送ると、{done}になります。',
   ),
   sprintBoardEmptyTitle: workspace('進行中の{sprint}はありません', '進行中の{sprint}はありません'),
   sprintBoardEmptyLeaderText: workspace(
