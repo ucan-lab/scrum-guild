@@ -56,7 +56,7 @@ test('覚える値は game か scrum で、null で消す', async () => {
   expect(store.has(mod.vocabularyStorageKey)).toBe(false);
 });
 
-test('Node のように localStorage という名前そのものが無くても落ちない', async () => {
+test('localStorage が実験的で使えない環境（Node）でも落ちない', async () => {
   vi.unstubAllGlobals();
   vi.resetModules();
   const mod = await import('./vocabulary.svelte.ts');
