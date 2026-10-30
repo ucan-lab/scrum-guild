@@ -716,3 +716,16 @@ test('ストーリーを作った後の読み直しの応答が、続けて作�
   await expect(storyRow(page, '決済の障害を減らす')).toBeVisible();
   await expect(group.locator('.entry-title')).toHaveText(['付与のバッチを書く']);
 });
+
+test('作って完遂にしたタスクは、その後の読み直しで未完了の行として戻らない', async ({ page }) => {
+  await createWorkspace(page, '完遂後の読み直しパーティ', 'game');
+  await addTask(page, '完遂して消える依頼');
+  const completed = waitForResponses(page, '/task-complete');
+  await page.getByRole('button', { name: '完遂にする: 完遂して消える依頼', exact: true }).click();
+  await completed;
+
+  // 木の読み直しを起こす。読み直した木は未完了のタスクだけを返す
+  await addStory(page, '読み直しを起こす達成目標');
+  await expect(storyRow(page, '読み直しを起こす達成目標')).toBeVisible();
+  await expect(page.getByRole('button', { name: '完遂にする: 完遂して消える依頼', exact: true })).toHaveCount(0);
+});

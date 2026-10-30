@@ -143,7 +143,12 @@
     const workspaceId = page.params.id;
     const sameWorkspace = untrack(() => addedFor) === workspaceId;
     addedFor = workspaceId;
-    added = sameWorkspace && !filtering ? untrack(() => added).filter((entry) => !inTree(loaded, entry.task.id)) : [];
+    // 完了にした行は、読み直した木（未完了のタスクだけを返す）に無いので、木に入るのを待たずに捨てる。残すと完了の印を捨てた後に未完了で戻る
+    const done = untrack(() => completedIds);
+    added =
+      sameWorkspace && !filtering
+        ? untrack(() => added).filter((entry) => !inTree(loaded, entry.task.id) && !done.includes(entry.task.id))
+        : [];
     completedIds = [];
     movedParents = {};
     taskOrders = {};
