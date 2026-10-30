@@ -31,8 +31,7 @@ test('自分の今日（/aoba）が 390px で横にはみ出さず、押せる�
 
 test('組織の管理（/aoba/admin）が 390px で横にはみ出さず、押せる要素が 44px 四方で押せる', async ({ page }) => {
   // ワークスペースの一覧は seed の行だけにする。ほかのファイルが作って消せずに残るワークスペース（空白の無い50字の名前など）で
-  // 並びと幅が変わり、測る画面がほかのテストの走った順で揺れるため。長い名前の行で 44px の押せる範囲が重なることは、
-  // 走る順に頼らずに別に確かめる（#462）
+  // 並びと幅が変わり、測る画面がほかのテストの走った順で揺れるため。長い名前の行は、下のテストが応答の書き換えで足して確かめる（#462）
   await rewriteOperation(page, workspaceList, { slug: 'aoba' }, (output) => ({
     workspaces: output.workspaces.filter((workspace) => SEED_WORKSPACE_IDS.has(workspace.id)),
   }));
@@ -43,5 +42,31 @@ test('組織の管理（/aoba/admin）が 390px で横にはみ出さず、押�
     await expect(
       page.getByRole('table', { name: w('workspaceListLabel', { workspace: w('workspace') }) }),
     ).toBeVisible();
+  });
+});
+
+test('組織の管理（/aoba/admin）に空白の無い50字の名前のワークスペースがあっても、390px で横にはみ出さず、44px の押せる範囲が重ならない（#462）', async ({
+  page,
+}) => {
+  // 長い名前の行を応答の書き換えで足す。ほかのファイルが残した行に頼らず、走る順に関わらず毎回同じ一覧を測る
+  const longName = 'あ'.repeat(50);
+  await rewriteOperation(page, workspaceList, { slug: 'aoba' }, (output) => ({
+    workspaces: [
+      ...output.workspaces.filter((workspace) => SEED_WORKSPACE_IDS.has(workspace.id)),
+      {
+        id: '019a0000-0000-7000-8000-0000000004f2',
+        name: longName,
+        member_count: 1,
+        leader_count: 1,
+        created_on: '2026-10-30',
+        closed_at: null,
+      },
+    ],
+  }));
+  await expectNarrowLayout(page, 'admin', async (w) => {
+    await page.goto('/aoba/admin');
+    await expect(page.getByRole('heading', { level: 1, name: w('pageOrgAdmin') })).toBeVisible();
+    const table = page.getByRole('table', { name: w('workspaceListLabel', { workspace: w('workspace') }) });
+    await expect(table.getByRole('link', { name: longName })).toBeVisible();
   });
 });

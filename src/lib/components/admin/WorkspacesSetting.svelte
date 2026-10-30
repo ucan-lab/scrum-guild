@@ -146,7 +146,7 @@
       </EmptyState>
     {:else}
       <div class="table-wrap">
-        <table class="table" aria-label={t('workspaceListLabel', { workspace: t('workspace') })}>
+        <table class="table is-stacked" aria-label={t('workspaceListLabel', { workspace: t('workspace') })}>
           <thead>
             <tr>
               <th class="is-name">{t('fieldName')}</th>
@@ -167,9 +167,13 @@
                     <span class="chip is-warn">{t('workspaceNoLeaderChip', { leader: t('leader') })}</span>
                   {/if}
                 </td>
-                <td class="is-num">{workspace.member_count}</td>
-                <td class="is-num">{workspace.leader_count}</td>
-                <td class="mono">{workspace.created_on}</td>
+                <td class="is-num" data-label={t('workspaceMemberCountHeader', { member: t('member') })}
+                  >{workspace.member_count}</td
+                >
+                <td class="is-num" data-label={t('workspaceLeaderCountHeader', { leader: t('leader') })}
+                  >{workspace.leader_count}</td
+                >
+                <td class="mono" data-label={t('createdOn')}>{workspace.created_on}</td>
                 <td class="is-actions">
                   <!-- 終了した行は「再開する」、進行中の行は「終了する」。同じ要素のまま文字だけを替え、読み直しでフォーカスを失わない。
                        読み上げの名前に、どのワークスペースかを添える -->
