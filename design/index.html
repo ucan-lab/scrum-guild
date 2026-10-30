@@ -317,9 +317,9 @@ const SECTIONS = [
       ${avatarOf("u1")}${avatarOf("u2", { lg: true })}${avatar(null)}${avatarOf("u5")}
       ${avatar("星野 琴音", 3, { lg: true, image: SQ.SAMPLE_PHOTO })}${avatar("星野 琴音", 3, { lg: true, image: SQ.BROKEN_PHOTO })}
       <span class="avatar-stack">${avatarOf("u2")}${avatarOf("u1")}${avatarOf("u3")}</span>
-      ${emblem(7, true)}${emblem(7)}${emblem(12)}
+      ${emblem(7, true)}${emblem(7)}${emblem(12)}${emblem(100, true)}${emblem(100)}${emblem(1000)}
     </div>`,
-    ["離脱した人は薄くし、title に「離脱済み」を出す。", "ログインの手段の側の画像（運用者が指名する人を確かめるときの GitHub のアバター）は、頭文字の円の中に重ねる（.avatar > img）。画像の組の右側は、画像が読み込めない例で、頭文字に戻る。", "紋章の大は自分の記録の面だけ、小は名前の横に添える。", "紋章の形はレベルによらず同じ六角。テーマで変わるのは縁と質感だけ（シンプルは縁取り、中世風は蝋の印章、現代風は光る枠）。"],".avatar .is-lg .is-none .is-left / .avatar > img / .avatar-stack / .emblem .is-sm")],
+    ["離脱した人は薄くし、title に「離脱済み」を出す。", "ログインの手段の側の画像（運用者が指名する人を確かめるときの GitHub のアバター）は、頭文字の円の中に重ねる（.avatar > img）。画像の組の右側は、画像が読み込めない例で、頭文字に戻る。", "紋章の大は自分の記録の面だけ、小は名前の横に添える。", "紋章の形はレベルによらず同じ六角。テーマで変わるのは縁と質感だけ（シンプルは縁取り、中世風は蝋の印章、現代風は光る枠）。", "3桁以上のレベルは、数字を小さくして面に収める（.is-long は3桁、.is-longer は4桁以上）。"],".avatar .is-lg .is-none .is-left / .avatar > img / .avatar-stack / .emblem .is-sm")],
   ["ledger", "台帳", () => block("ledger", "台帳（タスクの一覧）", "タスクの一覧はすべてこの形。左に今日やるの印、右に期日、ポイント、担当、完了の操作。右端の丸を押すと判子が押される。題を押すと詳細が開く。",
     book(SAMPLE, { showAssignee: true }) +
     `<div class="cat-row"><button class="done-btn" type="button" aria-disabled="true" aria-label="送信中">${icon("check")}</button><span class="field-hint">完了の操作を送っている最中（aria-disabled）</span></div>`,
@@ -387,8 +387,8 @@ const SECTIONS = [
     `<div class="two">${levelPanel()}<section class="panel"><div class="panel-title"><b>${t("capacity")}</b>判定の5つ</div>${capacityRows()}${load("社内ツール", "配分 40%", 30.4, 30.0, { lead: avatarOf("u1") })}</section></div>` +
     `<div class="cat-row">${SQ.teamXp()}<span class="field-hint">チーム全体の経験値（バックログの画面の見出しの中）</span></div>` +
     `<div class="cat-row">${SQ.xpDelta(30)}${SQ.xpDelta(10)}${SQ.xpDelta(-20)}<span class="field-hint">経験値の明細の値（打ち消しは負の値）</span></div>`,
-    ["判定は重量オーバー（赤）、範囲内（藍）、余力あり（緑）、未見積もりあり（灰）、配分未設定（斜線）。必ず文字を添える。", "未見積もりのタスクが1件でもあれば、余力ありの色は付けない。", "時間は0.1時間に丸めて出す。", "チーム全体の経験値は、ワークスペースの全員の合計の1つの数だけを出し、人ごとの値は出さない。画面の見出しの中、集計の下に置く（.team-xp）。", "経験値の明細の値は、付与を経験値の色で「+」を付け、打ち消しを赤の負の値で出す（.xp-delta .is-minus）。"],
-    ".panel .panel-title / .level .emblem .xp-num .xp-sub / .gauge .gauge-got .gauge-soon .legend / .breakdown / .team-xp / .xp-delta .is-minus / .load .cap .is-over .is-free .is-unknown .is-unset .cap-band .cap-fill .verdict")],
+    ["判定は重量オーバー（赤）、範囲内（藍）、余力あり（緑）、未見積もりあり（灰）、配分未設定（斜線）。必ず文字を添える。", "未見積もりのタスクが1件でもあれば、余力ありの色は付けない。", "時間は0.1時間に丸めて出す。", "チーム全体の経験値は、ワークスペースの全員の合計の1つの数だけを出し、人ごとの値は出さない。画面の見出しの中、集計の下に置く（.team-xp）。", "経験値の明細の値は、付与を経験値の色で「+」を付け、打ち消しを赤の負の値で出す（.xp-delta .is-minus）。", "経験値のゲージは、両端に今のレベルと次のレベルの数字を置く（.gauge-end。次のレベルは .is-next。読み上げから外す）。塗りは置かれたときに1回だけ 0 から伸び、伸びる間だけ先端に短い光の線が出る。動きを減らす設定では、伸びも光も出さずに今の値で出る。"],
+    ".panel .panel-title / .level .emblem .xp-num .xp-sub / .gauge-row .gauge-end .is-next .gauge .gauge-got .gauge-soon .legend / .breakdown / .team-xp / .xp-delta .is-minus / .load .cap .is-over .is-free .is-unknown .is-unset .cap-band .cap-fill .verdict")],
   ["plan", "速度とレーン", () => block("plan", "速度とレーン", "計画の画面の部品。ベロシティの棒は、除外した回を斜線で示す。レーンは1本のスプリントで、入れたポイントとベロシティを比べる。",
     `<div class="panel"><div class="velocity"><div class="stat"><span class="stat-label">ベロシティ</span><span class="stat-num">31.7<small>pt</small></span></div>
       <div><div class="bars"><span class="bars-avg" style="bottom:63px"></span><div class="bar-col"><b>32</b><i style="height:64px"></i></div><div class="bar-col is-excluded"><b>41</b><i style="height:82px"></i></div><div class="bar-col"><b>29</b><i style="height:58px"></i></div></div>

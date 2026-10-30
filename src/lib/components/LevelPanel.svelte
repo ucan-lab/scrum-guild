@@ -9,15 +9,19 @@
   // 紋章（大）、合計、次のレベルまでの残りと見込み、10の目盛りのゲージ（確定は塗り、見込みは斜線）、凡例、
   // ワークスペースごとの内訳と「すべての<ワークスペース>」の合計。レベルとゲージの割合は src/shared/experience.ts の式で出す。
   // ゲージの幅は style:width（CSSOM）で渡す（style 属性の文字列は CSP に止められる）。
-  // ゲージの伸びは CSS の animation が、置かれたときに1回だけ行う。値が変わっても伸び直さない（読み直しで再生しない）
+  // ゲージの伸びは CSS の animation が、置かれたときに1回だけ行う。値が変わっても伸び直さない。
+  // 失敗から読み直して置かれる面は still で伸びを止める（読み直しで再生しない）
   let {
     total,
     prospective,
     workspaces = null,
+    still = false,
   }: {
     total: number;
     prospective: number;
     workspaces?: { id: string; name: string; total: number }[] | null;
+    // true のとき、ゲージを伸ばさず今の値で出す（失敗から「もう一度試す」で読めた面。読み直しでは再生しない）
+    still?: boolean;
   } = $props();
 
   const titleId = $props.id();
@@ -53,6 +57,7 @@
     <span class="gauge-end" aria-hidden="true">{t('levelShort')} {progress.level}</span>
     <div
       class="gauge"
+      class:is-still={still}
       role="img"
       aria-label={t('levelGaugeLabel', { confirmed: confirmedPercent, prospective: prospectivePercent })}
     >

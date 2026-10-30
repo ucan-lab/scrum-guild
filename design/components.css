@@ -419,7 +419,7 @@ button.entry-title { text-align: left; background: transparent; border: 0; paddi
 .emblem {
   --emblem-hex: polygon(50% 0, 100% 22%, 100% 70%, 50% 100%, 0 70%, 0 22%);
   --emblem-rim: color-mix(in srgb, var(--color-xp) 72%, var(--color-fg));
-  --emblem-line: color-mix(in srgb, var(--color-xp) 55%, var(--color-surface));
+  --emblem-line: color-mix(in srgb, var(--color-xp) 35%, var(--color-surface));
   --emblem-face: var(--color-xp);
   --emblem-w1: 2px; --emblem-w2: 3px;
   position: relative;
@@ -435,6 +435,11 @@ button.entry-title { text-align: left; background: transparent; border: 0; paddi
 .emblem > span { position: relative; z-index: 1; font-size: 22px; }
 .emblem.is-sm { width: 24px; height: 27px; --emblem-w1: 1px; --emblem-w2: 2px; }
 .emblem.is-sm > span { font-size: 11px; }
+/* 3桁以上のレベルは、数字が面からはみ出さないよう小さくする */
+.emblem.is-long > span { font-size: 16px; }
+.emblem.is-longer > span { font-size: 12px; }
+.emblem.is-sm.is-long > span { font-size: 8px; }
+.emblem.is-sm.is-longer > span { font-size: 6px; }
 .xp-num { font-family: var(--font-stat); font-weight: 700; font-size: var(--text-stat); line-height: 1; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
 .xp-num small { font-size: var(--text-sm); color: var(--color-muted); font-weight: 600; margin-left: 4px; }
 /* 合計の前の経験値のアイコン（crystal）。大きな数字に合わせすぎず、数字の高さに収める */
@@ -458,13 +463,15 @@ button.entry-title { text-align: left; background: transparent; border: 0; paddi
 .gauge-got { position: relative; background: var(--color-xp); animation: gauge-grow var(--duration-gauge) var(--ease-out) 1 backwards; }
 .gauge-got::after {
   content: ""; position: absolute; inset-block: 0; right: 0; width: 10px; opacity: 0;
-  background: linear-gradient(90deg, transparent, rgb(255 255 255 / 0.75));
+  background: linear-gradient(90deg, transparent, var(--color-glint));
   animation: gauge-tip var(--duration-gauge) var(--ease-out) 1;
 }
 .gauge-soon {
   background: repeating-linear-gradient(135deg, var(--color-xp) 0 3px, transparent 3px 6px); opacity: 0.6;
   animation: gauge-grow var(--duration-gauge-soon) var(--ease-out) var(--duration-gauge) 1 backwards;
 }
+/* 失敗から「もう一度試す」で読めた面は伸ばさず、今の値で出す（読み直しでは再生しない） */
+.gauge.is-still .gauge-got, .gauge.is-still .gauge-got::after, .gauge.is-still .gauge-soon { animation: none; }
 .legend { display: flex; gap: var(--space-4); font-size: var(--text-xs); color: var(--color-muted); flex-wrap: wrap; }
 .legend i { display: inline-block; width: 10px; height: 10px; margin-right: 4px; vertical-align: -1px; }
 .legend .is-got { background: var(--color-xp); }
@@ -1561,21 +1568,23 @@ body.has-assist .toasts { right: calc(400px + var(--space-4)); }
   --emblem-line: color-mix(in srgb, var(--color-xp) 40%, var(--color-surface));
   --emblem-face: radial-gradient(circle at 50% 40%, var(--color-xp) 40%, color-mix(in srgb, var(--color-xp) 78%, var(--color-fg)));
   --emblem-w1: 3px; --emblem-w2: 5px;
-  text-shadow: 0 1px 0 rgb(0 0 0 / 0.3);
+  text-shadow: 0 1px 0 color-mix(in srgb, var(--color-fg) 30%, transparent);
 }
-:root[data-theme="medieval"] .emblem.is-sm { --emblem-w1: 1.5px; --emblem-w2: 2.5px; text-shadow: none; }
+:root[data-theme="medieval"] .emblem.is-sm { --emblem-w1: 1px; --emblem-w2: 2px; text-shadow: none; }
 
 /* 現代風: 端末のウィンドウの光 */
 :root[data-theme="modern"] body { background: radial-gradient(1200px 600px at 75% -10%, rgb(76 200 255 / 0.09), transparent 70%) fixed, var(--color-bg); }
 :root[data-theme="modern"] .hanko { background: none; box-shadow: 0 0 10px -3px var(--color-done); }
+/* 要素自身の背景は文字と合う面の色にする（axe は擬似要素の背景を見ず、要素の背景を地として読むため）。縁は ::before（inset 0）が描く */
 :root[data-theme="modern"] .emblem {
-  --emblem-rim: var(--color-xp); --emblem-line: var(--color-xp);
+  --emblem-line: var(--color-xp);
   --emblem-face: color-mix(in srgb, var(--color-xp) 14%, var(--color-surface));
-  --emblem-w1: 1.5px; --emblem-w2: 1.5px;
+  --emblem-w1: 0px; --emblem-w2: 1.5px;
+  background: var(--emblem-face);
   color: var(--color-xp); text-shadow: 0 0 8px var(--color-xp);
 }
 :root[data-theme="modern"] .emblem::after { box-shadow: inset 0 0 8px color-mix(in srgb, var(--color-xp) 60%, transparent); }
-:root[data-theme="modern"] .emblem.is-sm { --emblem-w1: 1px; --emblem-w2: 1px; text-shadow: none; }
+:root[data-theme="modern"] .emblem.is-sm { --emblem-w1: 0px; --emblem-w2: 1px; text-shadow: none; }
 :root[data-theme="modern"] .gauge-got { box-shadow: 0 0 10px var(--color-xp); }
 :root[data-theme="modern"] .xp-num, :root[data-theme="modern"] .stat-num { text-shadow: 0 0 14px color-mix(in srgb, var(--color-xp) 60%, transparent); }
 :root[data-theme="modern"] .panel-title b, :root[data-theme="modern"] .panel-title h2, :root[data-theme="modern"] .notice-label { text-shadow: 0 0 8px color-mix(in srgb, currentColor 70%, transparent); }

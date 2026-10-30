@@ -12,6 +12,23 @@ test.describe('自分の設定（ミナト）', () => {
     await signIn(context, baseURL, 'admin');
   });
 
+  // ゲージの伸びと先端の光は CSS の animation。動きを減らす設定では止まり、光（::after の opacity 0）も出ない
+  test('ゲージは、ふだんは伸びる animation が付き、動きを減らす設定では付かない', async ({ page }) => {
+    const animations = () =>
+      page.locator('.gauge-got').evaluate((got) => ({
+        got: getComputedStyle(got).animationName,
+        gotCount: getComputedStyle(got).animationIterationCount,
+        tip: getComputedStyle(got, '::after').animationName,
+      }));
+    await page.emulateMedia({ reducedMotion: 'no-preference' });
+    await page.goto('/aoba/me');
+    await expect(page.locator('.gauge-got')).toBeVisible();
+    expect(await animations()).toEqual({ got: 'gauge-grow', gotCount: '1', tip: 'gauge-tip' });
+
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    expect(await animations()).toMatchObject({ got: 'none', tip: 'none' });
+  });
+
   test('メニューの「自分の設定」から開くと、レベルの面と経験値の明細が出る', async ({ page }) => {
     const collect = await watchViolations(page);
     await page.goto('/aoba');
@@ -39,7 +56,10 @@ test.describe('自分の設定（ミナト）', () => {
     );
     // ゲージの両端に今のレベルと次のレベルの数字。読み上げからは外す
     const gaugeEnds = panel.locator('.gauge-end');
-    await expect(gaugeEnds).toHaveText([/^LV \d+$/, /^LV \d+$/]);
+    const emblemLevel = Number(
+      (await panel.locator('.emblem:not(.is-sm)').getAttribute('aria-label'))?.replace('レベル ', ''),
+    );
+    await expect(gaugeEnds).toHaveText([`LV ${emblemLevel}`, `LV ${emblemLevel + 1}`]);
     await expect(gaugeEnds.first()).toHaveAttribute('aria-hidden', 'true');
     await expect(gaugeEnds.last()).toHaveAttribute('aria-hidden', 'true');
     await expect(panel.locator('.legend > span')).toHaveText(['確定', '見込み（クエストの完遂で確定）']);
@@ -161,6 +181,9 @@ test.describe('自分の設定（ミナト）', () => {
     const panel = page.getByRole('region', { name: 'レベル' });
     await expect(panel.locator('.xp-num')).toHaveText('0XP');
     await expect(panel.getByRole('heading', { level: 2, name: 'レベル' })).toBeFocused();
+    // 読み直しで出た面は、ゲージを伸ばさず今の値で出す
+    await expect(panel.locator('.gauge.is-still')).toHaveCount(1);
+    expect(await panel.locator('.gauge-got').evaluate((got) => got.getAnimations().length)).toBe(0);
     await expect(page.getByText('経験値の明細を読み込めませんでした')).toBeVisible();
 
     // 明細はまた失敗すると、その節にだけ「まだ読み込めませんでした」

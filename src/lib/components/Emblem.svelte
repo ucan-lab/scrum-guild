@@ -6,6 +6,13 @@
   let { level, small = false }: { level: number; small?: boolean } = $props();
 </script>
 
-<span class="emblem" class:is-sm={small} role="img" aria-label={t('levelLabel', { level })}>
+<span
+  class="emblem"
+  class:is-sm={small}
+  class:is-long={String(level).length === 3}
+  class:is-longer={String(level).length > 3}
+  role="img"
+  aria-label={t('levelLabel', { level })}
+>
   {#if small}<span>{level}</span>{:else}<span><small>{t('levelShort')}</small>{level}</span>{/if}
 </span>

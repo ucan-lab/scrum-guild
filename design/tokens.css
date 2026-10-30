@@ -40,6 +40,7 @@
   --duration-fast: 120ms;
   --duration-stamp: 260ms;
   --duration-flash: 800ms;   /* 落とした行の背景を戻す。変えたら src/lib/drop-flash.svelte.ts の FLASH_MS（印を外すまで）も、これより少し長くそろえる */
+  --color-glint: rgb(255 255 255 / 0.75);   /* ゲージの先端の光の線。どのテーマでも白 */
   --duration-gauge: 700ms;   /* 経験値のゲージの確定の塗りが伸びる。見込みの斜線はこの後に --duration-gauge-soon で続く */
   --duration-gauge-soon: 300ms;
   --ease-out: cubic-bezier(0.2, 0.8, 0.2, 1);

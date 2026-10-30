@@ -51,6 +51,9 @@
   let loadingMore = $state(false);
   let loadMoreFailed = $state(false);
   let summaryRetry = $state<RetryState>('idle');
+  // 「もう一度試す」で面が読めたら true。ゲージを伸ばさず今の値で出す（読み直しでは再生しない）。
+  // 画面を開き直すまで戻さない（false へ戻すと animation の打ち消しが外れて、伸びが始まる）
+  let summaryRetried = $state(false);
   let grantsRetry = $state<RetryState>('idle');
   // 古い応答を捨てるための番号。load の値が替わるたびと、明細を最初から読み直すたびに進める（リアクティブにしない）
   let dataEpoch = 0;
@@ -120,6 +123,7 @@
       summaryRetry = 'failed';
       return;
     }
+    summaryRetried = true;
     summary = result.data;
     summaryRetry = 'idle';
     await tick();
@@ -218,6 +222,7 @@
         total={summary.total}
         prospective={summary.prospective}
         workspaces={summary.workspaces}
+        still={summaryRetried}
       />
     {:else}
       <section class="panel" aria-labelledby="me-level-failed">

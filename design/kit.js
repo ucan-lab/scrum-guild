@@ -171,9 +171,11 @@
     return avatar(u.name, u.hue, { ...opts, left: u.left });
   }
   function emblem(level, sm) {
+    const digits = String(level).length;
+    const size = digits === 3 ? " is-long" : digits > 3 ? " is-longer" : "";
     return sm
-      ? `<span class="emblem is-sm" role="img" aria-label="レベル ${level}"><span>${level}</span></span>`
-      : `<span class="emblem" role="img" aria-label="レベル ${level}"><span><small>LV</small>${level}</span></span>`;
+      ? `<span class="emblem is-sm${size}" role="img" aria-label="レベル ${level}"><span>${level}</span></span>`
+      : `<span class="emblem${size}" role="img" aria-label="レベル ${level}"><span><small>LV</small>${level}</span></span>`;
   }
   function pts(p) {
     return p == null
