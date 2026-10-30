@@ -413,8 +413,13 @@
     historyPanel?.focus();
   }
 
-  // 前後のボタンで移ってきたときの、押した向き。最初の読み込みの終わりに、同じ向きのボタンへフォーカスを置く
-  let stepFocus = consumeStepFocus();
+  // 前後のボタンで移ってきたときの、押した向き。置き直した引き出しは、読み込み中から同じ向きのボタンにフォーカスを持ち（Drawer の initialFocus）、
+  // 最初の読み込みの終わりにも同じ向きのボタンへ置き、移った先のタイトルを読み上げる
+  const arrivedByStep = consumeStepFocus();
+  let stepFocus = arrivedByStep;
+  // 移った先のタイトルの読み上げ。ボタンで移ったときだけ入れる（キーで移ったときは、見出しへのフォーカスで読まれる）。
+  // 状態の読み上げ（status）とは別の領域にして、あとから状態が替わっても読み直されないようにする
+  let movedStatus = $state('');
 
   async function load(): Promise<void> {
     const wantedStepFocus = stepFocus;
@@ -435,16 +440,19 @@
       // 開いたときの読み上げに、見出しが読まれるようにする。閉じるボタンか何も無い所にフォーカスがあるときだけ移す
       await tick();
       if (!alive) return;
-      // ボタンで移ってきたなら、押したのと同じ向きのボタンへ戻す（続けて押せる）。端で押せないなら見出しへ
+      // ボタンで移ってきたなら、移った先のタイトルを読み上げに出し、押したのと同じ向きのボタンへフォーカスを置く（続けて押せる）。
+      // 押せない（端）なら見出しへ。読み込みの間に利用者が別の所へ移したフォーカスは奪わない
+      const active = document.activeElement;
+      const idle = active === document.body || active?.classList.contains('drawer-close');
       if (wantedStepFocus !== null) {
+        movedStatus = t('drawerMoved', { task: t('task'), title: result.data.task.title });
         const button = document.querySelector<HTMLElement>(`.drawer [data-drawer-step="${wantedStepFocus}"]`);
         if (button !== null && button.getAttribute('aria-disabled') !== 'true') {
-          button.focus();
+          if (idle || active === button) button.focus();
           return;
         }
       }
-      const active = document.activeElement;
-      if (active === document.body || active?.classList.contains('drawer-close')) heading?.focus();
+      if (idle) heading?.focus();
       return;
     }
     if (result.status === 401) {
@@ -1306,6 +1314,7 @@
   onmode={(next, shown) => void requestMode(next, shown)}
   adjacent={adjacent === undefined ? undefined : { hasPrev: adjacent.prev !== null, hasNext: adjacent.next !== null }}
   onstep={(delta, source) => void requestStep(delta, source)}
+  initialFocus={arrivedByStep}
   labelledBy={titleLabelId}
   busy={loadState === 'loading'}
   onrequestclose={() => void requestClose()}
@@ -1893,6 +1902,8 @@
 
   <!-- 状態の読み上げの領域。常に置き、中の文字だけを替える -->
   <span class="visually-hidden" role="status">{status}</span>
+  <!-- 前後のボタンで移ったときだけ、移った先のタイトルを読み上げる（フォーカスは押したボタンに残るため） -->
+  <span class="visually-hidden" role="status">{movedStatus}</span>
 </Drawer>
 
 <ConfirmDialog

@@ -1383,6 +1383,27 @@ test('前後のボタンとキーで、開いたまま隣のクエストへ移�
   await expectFocusReturned(page, page.locator('.entry').getByRole('link', { name: '前後 一', exact: true }));
 });
 
+test('ボタンで移ると、押した向きのボタンにフォーカスが残り、移った先のタイトルが読み上げられる', async ({ page }) => {
+  await createWorkspace(page, '読み上げパーティ', 'game');
+  await addTask(page, '読み上げ 一');
+  await addTask(page, '読み上げ 二');
+  await addTask(page, '読み上げ 三');
+  const drawer = await openDrawer(page, '読み上げ 一');
+
+  // 次へ。置き直した引き出しは、閉じるボタンではなく押した向きのボタンにフォーカスを置く（Enter を押し続けても閉じない）
+  await stepButton(drawer, '次').focus();
+  await page.keyboard.press('Enter');
+  const second = page.getByRole('dialog', { name: '読み上げ 二' });
+  await expect(second).toBeVisible();
+  await expect(stepButton(second, '次')).toBeFocused();
+  await expect(second.getByRole('button', { name: '閉じる' })).not.toBeFocused();
+  await expect(second.getByRole('status').filter({ hasText: '「読み上げ 二」に移りました' })).toHaveCount(1);
+
+  // 押し続けた2回目の Enter は、続けて次へ移る（閉じない）
+  await page.keyboard.press('Enter');
+  await expect(page.getByRole('dialog', { name: '読み上げ 三' })).toBeVisible();
+});
+
 test('順は開いた画面の見えている行。絞り込みで外れた行と、畳んだ枝の中の行は飛ばす', async ({ page }) => {
   await createWorkspace(page, '飛ばすパーティ', 'game');
   await createStory(page, '畳む親');

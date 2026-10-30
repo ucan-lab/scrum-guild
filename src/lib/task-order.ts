@@ -59,6 +59,17 @@ export function stepOfKey(event: StepKeyEvent): -1 | 1 | null {
   return event.key === '[' ? -1 : 1;
 }
 
+// 前後のボタンで移ってきて置き直した引き出しが、最初にフォーカスを置くボタンの向き。
+// 押した向きのボタンが押せるならその向き、押せない（端）か向きが無い（普通に開いた、キーで移った）なら null（閉じるボタン）。
+// 読み込み中も押した向きのボタンにフォーカスがあれば、Enter の連打が閉じるボタンに届かない
+export function stepFocusTarget(
+  initialFocus: -1 | 1 | null,
+  adjacent: { hasPrev: boolean; hasNext: boolean } | undefined,
+): -1 | 1 | null {
+  if (initialFocus === null || adjacent === undefined) return null;
+  return (initialFocus < 0 ? adjacent.hasPrev : adjacent.hasNext) ? initialFocus : null;
+}
+
 function sameIds(a: readonly string[], b: readonly string[]): boolean {
   return a.length === b.length && a.every((id, index) => id === b[index]);
 }

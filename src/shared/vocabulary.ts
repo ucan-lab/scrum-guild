@@ -2001,6 +2001,8 @@ export const dictionary = defineDictionary({
   // ボタンの title。キーを添える（読み上げの名前は変えない）。端で押せないときは、その理由
   drawerPrevTitle: workspace('前の{task}（[）', '前の{task}（[）'),
   drawerNextTitle: workspace('次の{task}（]）', '次の{task}（]）'),
+  // 前後のボタンで移った先を読み上げる文。{title} は移った先のタイトル
+  drawerMoved: workspace('{task}「{title}」に移りました', '{task}「{title}」に移りました'),
   drawerAtFirst: organization('先頭です', '先頭です'),
   drawerAtLast: organization('最後です', '最後です'),
   taskManualChip: workspace('手で作った{task}', '手で作った{task}'),

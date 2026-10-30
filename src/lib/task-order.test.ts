@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { adjacentTaskIds, provideTaskOrder, releaseTaskOrder, taskOrder } from './drawer.svelte.ts';
-import { stepOfKey, trackTaskOrder, visibleTaskIds, type StepKeyEvent } from './task-order.ts';
+import { stepFocusTarget, stepOfKey, trackTaskOrder, visibleTaskIds, type StepKeyEvent } from './task-order.ts';
 
 type FakeRow = { id: string | null; hidden?: boolean };
 
@@ -163,6 +163,25 @@ describe('stepOfKey', () => {
   test('キーの先が要素でなくても（document など）移れる', () => {
     expect(stepOfKey(keyEvent({ target: {} as EventTarget }))).toBe(1);
     expect(stepOfKey(keyEvent({ target: null }))).toBe(1);
+  });
+});
+
+describe('stepFocusTarget（置き直した引き出しの最初のフォーカス）', () => {
+  const both = { hasPrev: true, hasNext: true };
+
+  test('ボタンで移ってきたなら、押した向きの、押せるボタンを返す', () => {
+    expect(stepFocusTarget(1, both)).toBe(1);
+    expect(stepFocusTarget(-1, both)).toBe(-1);
+  });
+
+  test('その向きのボタンが端で押せないなら、閉じるボタン（null）のまま', () => {
+    expect(stepFocusTarget(1, { hasPrev: true, hasNext: false })).toBeNull();
+    expect(stepFocusTarget(-1, { hasPrev: false, hasNext: true })).toBeNull();
+  });
+
+  test('向きが渡されていない（普通に開いた、キーで移った）か、前後のボタンが無いときは、閉じるボタン（null）', () => {
+    expect(stepFocusTarget(null, both)).toBeNull();
+    expect(stepFocusTarget(1, undefined)).toBeNull();
   });
 });
 

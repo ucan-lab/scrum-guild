@@ -1,10 +1,10 @@
 <script lang="ts">
-  import type { Snippet } from 'svelte';
+  import { untrack, type Snippet } from 'svelte';
   import { MediaQuery } from 'svelte/reactivity';
   import { effectiveTaskOpenMode, type StepSource, type TaskOpenMode } from '../drawer.svelte.ts';
   import type { DictionaryKey } from '../../shared/vocabulary.ts';
   import { inertOutside } from '../inert-outside.ts';
-  import { stepOfKey } from '../task-order.ts';
+  import { stepFocusTarget, stepOfKey } from '../task-order.ts';
   import { modalState } from '../toast.svelte.ts';
   import { t } from '../vocabulary.svelte.ts';
   import Icon from './Icon.svelte';
@@ -32,6 +32,7 @@
     onmode,
     adjacent,
     onstep,
+    initialFocus = null,
     onrequestclose,
     top,
     children,
@@ -46,6 +47,8 @@
     adjacent?: { hasPrev: boolean; hasNext: boolean };
     // 押したのがボタン（クリックと Enter）かキー（[ ]）か。ボタンで移ったときだけ、移った先でそのボタンへフォーカスを戻す
     onstep?: (delta: -1 | 1, source: StepSource) => void;
+    // 前後のボタンで移ってきたときの、押した向き。最初のフォーカスをその向きのボタンへ置く（端で押せなければ閉じるボタン）
+    initialFocus?: -1 | 1 | null;
     onrequestclose: () => void;
     // 上の帯の左（出どころの印など）
     top?: Snippet;
@@ -73,8 +76,18 @@
     onstep?.(delta, source);
   }
 
+  // 開いたら閉じるボタンへ。ただし前後のボタンで移ってきたなら、読み込み中から押した向きのボタンへ置く
+  // （読み込みを待つ間に Enter を押し続けても、閉じるボタンに届かない）。その向きが端で押せなければ閉じるボタン
+  // 要素がそろった一度だけ置く（前後の有無が後から替わっても、使っている最中のフォーカスを奪わない）
   $effect(() => {
-    closeButton?.focus();
+    const element = drawerElement;
+    const close = closeButton;
+    if (element === undefined || close === undefined) return;
+    untrack(() => {
+      const delta = stepping ? stepFocusTarget(initialFocus, adjacent) : null;
+      const button = delta === null ? null : element.querySelector<HTMLElement>(`[data-drawer-step="${delta}"]`);
+      (button ?? close).focus();
+    });
   });
 
   $effect(() => {
