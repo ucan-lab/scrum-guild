@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { after, describe, test } from 'node:test';
-import { devPorts, devPublicOrigin } from './dev-ports.ts';
+import { BENCH_PORTS, MAX_OFFSET, devPorts, devPublicOrigin } from './dev-ports.ts';
 
 const MAIN_ROOT = '/work/scrum-guild';
 const worktree = (name: string) => `/work/scrum-guild/worktrees/${name}`;
@@ -197,5 +197,19 @@ describe('devPublicOrigin', () => {
     const ports = devPorts({ DEV_PORT_OFFSET: '10' }, MAIN_ROOT, noFile);
     assert.equal(devPublicOrigin(ports, false), 'http://localhost:5183');
     assert.equal(devPublicOrigin(ports, true), 'http://localhost:8797');
+  });
+});
+
+describe('BENCH_PORTS', () => {
+  test('どのオフセット（0〜441）の画面、API、デバッガーとも重ならず、互いにも違う', () => {
+    const used = new Set<number>();
+    for (let offset = 0; offset <= MAX_OFFSET; offset++) {
+      const ports = devPorts({ DEV_PORT_OFFSET: String(offset) }, MAIN_ROOT, noFile);
+      used.add(ports.app).add(ports.api).add(ports.inspector);
+    }
+    assert.ok(!used.has(BENCH_PORTS.api), `API ${BENCH_PORTS.api} が使われている`);
+    assert.ok(!used.has(BENCH_PORTS.inspector), `デバッガー ${BENCH_PORTS.inspector} が使われている`);
+    // backlog-bench.ts はデバッガーを常に --port + 1 に立てるので、既定の2つもその関係にそろえる
+    assert.equal(BENCH_PORTS.inspector, BENCH_PORTS.api + 1);
   });
 });
