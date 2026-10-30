@@ -15,11 +15,13 @@ export const EXPERIENCE_GRANTS_PAGE_SIZE = 50;
 // level_start は今のレベルの始まりの合計、next_level_at は次のレベルに要る合計（src/shared/experience.ts）。
 // 見込みは、今所属している閉じていないワークスペースで、自分が手で作った、未完了の、削除していない、ポイントが1以上のタスク1件につき
 // 起票の経験値（XP_TASK_CREATED）。workspaces は、明細のあるワークスペースと今所属しているワークスペース（閉じたものも含む）で、
-// 名前の昇順、同じ名前は ID の昇順。total と prospective は組織の合計の内訳
+// 名前の昇順、同じ名前は ID の昇順。total と prospective は組織の合計の内訳。
+// thanks_received は、呼んだ人が受け取った感謝（thanks の recipient_user_id が本人の行）の数。ワークスペースごとと、組織の合計
+// （受け取った感謝のあるワークスペースは、明細と所属が無くても workspaces に出る）。感謝を送った人は返さない
 export const experienceSummary = defineOperation({
   name: 'experience-summary',
   description:
-    '呼んだ人の、この組織での経験値の合計、レベル、次のレベルまで、見込みと、ワークスペースごとの内訳を返す。ほかの人の値は返さない',
+    '呼んだ人の、この組織での経験値の合計、レベル、次のレベルまで、見込み、受け取った感謝の数と、ワークスペースごとの内訳を返す。ほかの人の値は返さない',
   mode: 'read',
   permission: 'organization',
   input: z.object({}),
@@ -29,12 +31,14 @@ export const experienceSummary = defineOperation({
     level_start: z.number().int(),
     next_level_at: z.number().int(),
     prospective: z.number().int(),
+    thanks_received: z.number().int(),
     workspaces: z.array(
       z.object({
         id: z.string(),
         name: z.string(),
         total: z.number().int(),
         prospective: z.number().int(),
+        thanks_received: z.number().int(),
       }),
     ),
   }),

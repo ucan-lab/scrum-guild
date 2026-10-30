@@ -17,6 +17,7 @@ import {
   createOrganization,
   createStory,
   createTask,
+  createThanks,
   createWorkspace,
   createXpGrant,
 } from './factories.ts';
@@ -51,7 +52,8 @@ type Summary = {
   level_start: number;
   next_level_at: number;
   prospective: number;
-  workspaces: { id: string; name: string; total: number; prospective: number }[];
+  thanks_received: number;
+  workspaces: { id: string; name: string; total: number; prospective: number; thanks_received: number }[];
 };
 
 type Grants = {
@@ -86,9 +88,10 @@ describe('experience-summary', () => {
       level_start: 100,
       next_level_at: 300,
       prospective: 0,
+      thanks_received: 0,
       workspaces: [
-        { id: second.id, name: 'あさひ班', total: 50, prospective: 0 },
-        { id: target.workspace.id, name: '青葉チーム', total: 60, prospective: 0 },
+        { id: second.id, name: 'あさひ班', total: 50, prospective: 0, thanks_received: 0 },
+        { id: target.workspace.id, name: '青葉チーム', total: 60, prospective: 0, thanks_received: 0 },
       ],
     });
   });
@@ -130,9 +133,9 @@ describe('experience-summary', () => {
     const summary = await call<Summary>(experienceSummary, target, target.member);
     expect(summary.total).toBe(40);
     expect(summary.workspaces).toEqual([
-      { id: left.id, name: 'い班', total: 40, prospective: 0 },
-      { id: closed.id, name: 'う班', total: 0, prospective: 0 },
-      { id: target.workspace.id, name: '青葉チーム', total: 0, prospective: 0 },
+      { id: left.id, name: 'い班', total: 40, prospective: 0, thanks_received: 0 },
+      { id: closed.id, name: 'う班', total: 0, prospective: 0, thanks_received: 0 },
+      { id: target.workspace.id, name: '青葉チーム', total: 0, prospective: 0, thanks_received: 0 },
     ]);
     // 明細も今の所属も無いワークスペース（otherWorkspace）は出さない
     expect(summary.workspaces.map((workspace) => workspace.id)).not.toContain(target.otherWorkspace.id);
@@ -179,8 +182,8 @@ describe('experience-summary', () => {
     expect(summary.prospective).toBe(20);
     expect(summary.total).toBe(0);
     expect(summary.workspaces).toEqual([
-      { id: closed.id, name: 'う班', total: 0, prospective: 0 },
-      { id: workspaceId, name: '青葉チーム', total: 0, prospective: 20 },
+      { id: closed.id, name: 'う班', total: 0, prospective: 0, thanks_received: 0 },
+      { id: workspaceId, name: '青葉チーム', total: 0, prospective: 20, thanks_received: 0 },
     ]);
   });
 
@@ -206,8 +209,78 @@ describe('experience-summary', () => {
       level_start: 0,
       next_level_at: 100,
       prospective: 0,
+      thanks_received: 0,
       workspaces: [],
     });
+  });
+
+  test('受け取った感謝の数は、呼んだ人が受け取った分だけをワークスペースごとと合計で返し、送った分とほかの人の分は数えない', async () => {
+    const target = await createTarget();
+    const memberId = target.member.userId!;
+    const leaderId = target.leader.userId!;
+    const second = await createWorkspace(target.organization, target.admin.userId!, { name: 'あさひ班' });
+    await createMembership(target.organization, second.id, memberId);
+    await createMembership(target.organization, second.id, leaderId);
+    const send = async (workspaceId: string, from: string, to: string) => {
+      const task = await createTask(target.organization, workspaceId, from);
+      await createThanks(target.organization, workspaceId, task.id, from, to);
+    };
+    // メンバーが受け取った: 青葉チームで2件、あさひ班で1件
+    await send(target.workspace.id, leaderId, memberId);
+    await send(target.workspace.id, leaderId, memberId);
+    await send(second.id, leaderId, memberId);
+    // メンバーが送った分と、ほかの人が受け取った分
+    await send(target.workspace.id, memberId, leaderId);
+    await send(second.id, memberId, leaderId);
+
+    const summary = await call<Summary>(experienceSummary, target, target.member);
+    expect(summary.thanks_received).toBe(3);
+    expect(summary.workspaces).toEqual([
+      { id: second.id, name: 'あさひ班', total: 0, prospective: 0, thanks_received: 1 },
+      { id: target.workspace.id, name: '青葉チーム', total: 0, prospective: 0, thanks_received: 2 },
+    ]);
+    // リーダーの応答は、リーダーが受け取った2件だけ
+    expect((await call<Summary>(experienceSummary, target, target.leader)).thanks_received).toBe(2);
+    // 感謝を送っただけの人は 0
+    expect((await call<Summary>(experienceSummary, target, target.admin)).thanks_received).toBe(0);
+  });
+
+  test('今所属していないワークスペースで受け取った感謝も数え、そのワークスペースを内訳に出す。別の組織の感謝は数えない', async () => {
+    const target = await createTarget();
+    const memberId = target.member.userId!;
+    const left = await createWorkspace(target.organization, target.admin.userId!, { name: 'い班' });
+    await createMembership(target.organization, left.id, memberId, {
+      left_at: '2026-10-21T00:00:00.000Z',
+      left_on: '2026-10-21',
+    });
+    const task = await createTask(target.organization, left.id, target.leader.userId!);
+    await createThanks(target.organization, left.id, task.id, target.leader.userId!, memberId);
+    // 別の組織の感謝（この人の ID で書かれた壊れた行）は数えない
+    const other = await createTarget();
+    const otherTask = await createTask(other.organization, other.workspace.id, other.leader.userId!);
+    await createThanks(other.organization, other.workspace.id, otherTask.id, other.leader.userId!, memberId);
+
+    const summary = await call<Summary>(experienceSummary, target, target.member);
+    expect(summary.thanks_received).toBe(1);
+    expect(summary.workspaces.find((workspace) => workspace.id === left.id)).toEqual({
+      id: left.id,
+      name: 'い班',
+      total: 0,
+      prospective: 0,
+      thanks_received: 1,
+    });
+  });
+
+  test('ほかの人の応答に、受け取った感謝の数を載せない（本人の応答にだけある）', async () => {
+    const target = await createTarget();
+    const task = await createTask(target.organization, target.workspace.id, target.leader.userId!);
+    await createThanks(target.organization, target.workspace.id, task.id, target.leader.userId!, target.member.userId!);
+    // メンバー一覧と組織の応答は、レベルだけを返し、感謝の数も経験値も含まない
+    const members = await call<unknown>(memberList, target, target.leader, { workspace_id: target.workspace.id });
+    const organization = await call<unknown>(organizationInfo, target, target.leader);
+    for (const response of [members, organization]) {
+      expect(JSON.stringify(response)).not.toContain('thanks_received');
+    }
   });
 });
 

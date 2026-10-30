@@ -67,6 +67,10 @@ test.describe('自分の設定（ミナト）', () => {
     // ほかのファイルの e2e がミナトをリーダーにしたワークスペースを足すので、受託開発チームがあることと、末尾の合計だけを見る
     await expect(panel.locator('.breakdown dt', { hasText: '受託開発チーム' })).toHaveCount(1);
     await expect(panel.locator('.breakdown .is-total dt')).toHaveText('すべてのパーティ');
+    // 受け取った感謝の数。seed に、ハルカがミナトに送った1件がある（本人の分だけ数える）
+    const thanksReceived = panel.getByRole('group', { name: '受け取った感謝' });
+    await expect(thanksReceived.locator('dt')).toHaveText('受け取った感謝');
+    await expect(thanksReceived.locator('dd')).toHaveText('1');
 
     // 経験値の明細。seed の起票と完了が並ぶ（ほかのファイルが完了にした行が上に足されうる）
     await expect(page.getByRole('heading', { level: 2, name: '経験値の明細' })).toBeVisible();
@@ -99,8 +103,11 @@ test.describe('自分の設定（ミナト）', () => {
     await expect(panel.locator('.xp-num')).toHaveText('0XP');
     await expect(panel.locator('.xp-sub')).toHaveText('次のレベルまで 100・見込み +0');
     await expect(panel.locator('.gauge-end')).toHaveText(['LV 1', 'LV 2']);
-    await expect(panel.locator('.breakdown dt')).toHaveText(['社内ツール', 'すべてのパーティ']);
-    await expect(panel.locator('.breakdown dd')).toHaveText(['0', '0']);
+    const breakdown = panel.getByRole('group', { name: 'パーティごとの経験値' });
+    await expect(breakdown.locator('dt')).toHaveText(['社内ツール', 'すべてのパーティ']);
+    await expect(breakdown.locator('dd')).toHaveText(['0', '0']);
+    // 受け取った感謝は無い（0 と出す）
+    await expect(panel.getByRole('group', { name: '受け取った感謝' }).locator('dd')).toHaveText('0');
 
     const rows = page.getByRole('table', { name: '経験値の明細' }).locator('tbody tr');
     await expect(rows).toHaveCount(50);
@@ -315,7 +322,8 @@ test.describe('自分の設定（ミナト）', () => {
           level_start: 99000,
           next_level_at: 103500,
           prospective: 40,
-          workspaces: [{ id: 'w1', name: longWorkspace, total: 99999, prospective: 40 }],
+          thanks_received: 12,
+          workspaces: [{ id: 'w1', name: longWorkspace, total: 99999, prospective: 40, thanks_received: 12 }],
         },
       }),
     );

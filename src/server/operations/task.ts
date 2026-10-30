@@ -1,6 +1,6 @@
 import { generateKeyBetween } from 'fractional-indexing';
-import { monthIn, now, todayIn } from '../../shared/clock.ts';
-import { XP_TASK_COMPLETED, XP_TASK_CREATED } from '../../shared/experience.ts';
+import { monthIn, now, todayIn, weekRangeIn } from '../../shared/clock.ts';
+import { XP_HELP, XP_HELP_WEEKLY_LIMIT, XP_TASK_COMPLETED, XP_TASK_CREATED } from '../../shared/experience.ts';
 import { backlogTree, taskComplete, taskCreate, taskMove } from '../../shared/operations/task/index.ts';
 import { searchWordsOf } from '../../shared/backlog-filter.ts';
 import { MIN_POINTS_FOR_EXPERIENCE } from '../../shared/task.ts';
@@ -852,18 +852,115 @@ function grantStatement(
   );
 }
 
+const helpColumns = [...grantColumns, 'thank_id', 'helper_sender_user_id'] as const;
+
+type HelpParams = CompletionParams & {
+  // 完了の時刻と同じ週の範囲（UTC の ISO の時刻。始まりは含み、終わりは含まない）
+  weekStart: string;
+  weekEnd: string;
+};
+
+// 手助けの経験値の1行。タスクの感謝1件につき1行で、感謝を受け取った人に付く（送った人は helper_sender_user_id に残す）。
+// 条件は、感謝の行が今もある、受け取る人が今このワークスペースに所属している、自分の完了の記録が入った、
+// 同じ送り手と相手の、打ち消されていない手助け（正の値で、reverses_grant_id で指されていない行）のうち、確定日時が完了と同じ週に入るものが
+// 上限（XP_HELP_WEEKLY_LIMIT）に満たない、の4つ。ポイントの条件は付けない。
+// 件数は書く時点の表を数える。D1 の batch() は1つのトランザクションで、同じ batch の前の文の挿入が次の文に見えるので、
+// 1つのタスクの複数の感謝も、同時に完了にした別のタスクの感謝も、上限を超えない（別の要求の batch() とは交わらない）
+function helpStatement(db: OrganizationDb, params: HelpParams, grant: { id: string; thankId: string }) {
+  const { workspaceId, taskId, completionId, at, weekStart, weekEnd } = params;
+  return db.statement((q) =>
+    q
+      .insertInto('xp_grants')
+      .columns(helpColumns)
+      .expression(
+        q
+          .selectFrom('thanks')
+          .select((eb) => [
+            eb.val(grant.id).as('id'),
+            'thanks.workspace_id as workspace_id',
+            'thanks.recipient_user_id as user_id',
+            eb.val('help').as('action'),
+            'thanks.task_id as task_id',
+            eb.val(completionId).as('completion_id'),
+            eb.val(XP_HELP).as('amount'),
+            eb.val(`help:${grant.thankId}:${completionId}`).as('dedupe_key'),
+            eb.val(at).as('confirmed_at'),
+            'thanks.id as thank_id',
+            'thanks.sender_user_id as helper_sender_user_id',
+          ])
+          .where((eb) =>
+            eb.and([
+              eb('thanks.id', '=', grant.thankId),
+              eb('thanks.workspace_id', '=', workspaceId),
+              eb('thanks.task_id', '=', taskId),
+              // 受け取る人は、このワークスペースに今所属している人だけ
+              eb.exists(
+                eb
+                  .selectFrom('memberships')
+                  .select('memberships.id')
+                  .where('memberships.workspace_id', '=', workspaceId)
+                  .where('memberships.left_at', 'is', null)
+                  .whereRef('memberships.user_id', '=', 'thanks.recipient_user_id'),
+              ),
+              eb.exists(completionExists(q, workspaceId, completionId)),
+              eb(
+                eb
+                  .selectFrom('xp_grants as h')
+                  .select((hb) => hb.fn.countAll<number>().as('count'))
+                  .where('h.workspace_id', '=', workspaceId)
+                  .where('h.action', '=', 'help')
+                  .whereRef('h.user_id', '=', 'thanks.recipient_user_id')
+                  .whereRef('h.helper_sender_user_id', '=', 'thanks.sender_user_id')
+                  .where('h.amount', '>', 0)
+                  .where('h.confirmed_at', '>=', weekStart)
+                  .where('h.confirmed_at', '<', weekEnd)
+                  .where((hb) =>
+                    hb.not(
+                      hb.exists(
+                        hb
+                          .selectFrom('xp_grants as r')
+                          .select('r.id')
+                          .whereRef('r.reverses_grant_id', '=', 'h.id')
+                          .where('r.workspace_id', '=', workspaceId),
+                      ),
+                    ),
+                  ),
+                '<',
+                XP_HELP_WEEKLY_LIMIT,
+              ),
+            ]),
+          ),
+      ),
+  );
+}
+
+// このタスクの感謝を、付ける順（送った順、同じなら id の順）に読む。上限は先に入った行から数えるので、順が結果を決める。ワークスペースで必ず絞る
+function readTaskThanks(db: OrganizationDb, workspaceId: string, taskId: string) {
+  return db.rows(
+    db.statement((q) =>
+      q
+        .selectFrom('thanks')
+        .select('thanks.id')
+        .where('thanks.workspace_id', '=', workspaceId)
+        .where('thanks.task_id', '=', taskId)
+        .orderBy('thanks.created_at')
+        .orderBy('thanks.id'),
+    ),
+  );
+}
+
 export const taskCompleteOperation = implement(taskComplete, async ({ db, actor, workspace, input }) => {
   const userId = actorUserIdOf(actor);
   const organizationId = db.organizationId;
   const workspaceId = workspace.workspaceId;
   const taskId = input.task_id;
 
-  // 計上月を決めるタイムゾーンと、履歴に残す自分の名前。ポイント、担当、区分は読まず、書く文が tasks の行から取る
+  // 計上月と手助けの週を決めるタイムゾーンと週の始まり、履歴に残す自分の名前。ポイント、担当、区分は読まず、書く文が tasks の行から取る
   const [workspaceResult, userResult] = await db.batch([
     db.statement((q) =>
       q
         .selectFrom('workspaces')
-        .select('timezone')
+        .select(['timezone', 'week_start'])
         .where('id', '=', workspaceId)
         .where('organization_id', '=', organizationId),
     ),
@@ -872,8 +969,9 @@ export const taskCompleteOperation = implement(taskComplete, async ({ db, actor,
     ),
   ] as const);
   const timezone = workspaceResult.rows[0]?.timezone;
+  const weekStart = workspaceResult.rows[0]?.week_start;
   const userName = userResult.rows[0]?.name;
-  if (timezone === undefined || userName === undefined) throw new ApiError(404, 'not_found');
+  if (timezone === undefined || weekStart === undefined || userName === undefined) throw new ApiError(404, 'not_found');
 
   for (let attempt = 0; attempt < MAX_COMPLETE_ATTEMPTS; attempt++) {
     const target = await readCompleteTarget(db, workspaceId, taskId);
@@ -886,7 +984,9 @@ export const taskCompleteOperation = implement(taskComplete, async ({ db, actor,
       throw new ApiError(409, 'conflict');
     }
     const placement = await placementOf(db, workspaceId, target);
+    const thanks = await readTaskThanks(db, workspaceId, taskId);
     const at = now();
+    const week = weekRangeIn(timezone, weekStart, at);
     const { statements, taskIndex } = completeStatements(db, {
       organizationId,
       workspaceId,
@@ -895,6 +995,9 @@ export const taskCompleteOperation = implement(taskComplete, async ({ db, actor,
       userName,
       at,
       billingMonth: monthIn(timezone, at),
+      weekStart: week.start,
+      weekEnd: week.end,
+      thankIds: thanks.map((row) => row.id),
       placement,
     });
     const results = await db.batch(statements);
@@ -1020,6 +1123,11 @@ type CompleteContext = {
   userName: string;
   at: Date;
   billingMonth: string;
+  // 完了の時刻と同じ週の範囲（手助けの上限を数える。UTC の ISO の時刻で、始まりは含み、終わりは含まない）
+  weekStart: string;
+  weekEnd: string;
+  // このタスクの感謝の ID（手助けを付ける順）
+  thankIds: string[];
   placement: Placement;
 };
 
@@ -1028,6 +1136,7 @@ type CompleteContext = {
 // （ended_at が自分の時刻）を条件にする。行を閉じる文が負けたら（入っている行が無い、読んでから書くまでに閉じられた）、何も書かない
 function completeStatements(db: OrganizationDb, context: CompleteContext) {
   const { organizationId, workspaceId, taskId, userId, userName, at, billingMonth, placement } = context;
+  const { weekStart, weekEnd, thankIds } = context;
   const completedAt = at.toISOString();
   const params: CompletionParams = { workspaceId, taskId, completionId: uuidv7(at), userId, at: completedAt };
   const { completionId } = params;
@@ -1205,9 +1314,10 @@ function completeStatements(db: OrganizationDb, context: CompleteContext) {
             ),
         ),
     ),
-    // 3. xp_grants。起票と完了
+    // 3. xp_grants。起票と完了、続けてそのタスクの感謝1件につき手助け1行（感謝の順。上限は前の文の挿入を数えて守る）
     grantStatement(db, params, { id: uuidv7(at), action: 'task_created', amount: XP_TASK_CREATED }),
     grantStatement(db, params, { id: uuidv7(at), action: 'task_completed', amount: XP_TASK_COMPLETED }),
+    ...thankIds.map((thankId) => helpStatement(db, { ...params, weekStart, weekEnd }, { id: uuidv7(at), thankId })),
     // 4. change_logs。3 と同じく、自分の完了の記録が入ったときだけ
     db.statement((q) =>
       q

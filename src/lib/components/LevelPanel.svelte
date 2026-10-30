@@ -15,11 +15,14 @@
     total,
     prospective,
     workspaces = null,
+    thanksReceived = null,
     still = false,
   }: {
     total: number;
     prospective: number;
     workspaces?: { id: string; name: string; total: number }[] | null;
+    // 受け取った感謝の数（組織の合計）。null なら出さない
+    thanksReceived?: number | null;
     // true のとき、ゲージを伸ばさず今の値で出す（失敗から「もう一度試す」で読めた面。読み直しでは再生しない）
     still?: boolean;
   } = $props();
@@ -83,6 +86,16 @@
         <div class="is-total">
           <dt>{t('levelBreakdownTotal', { workspace: t('workspace') })}</dt>
           <dd>{formatCount(total)}</dd>
+        </div>
+      </dl>
+    </div>
+  {/if}
+  {#if thanksReceived !== null}
+    <div role="group" aria-label={t('levelThanksReceived')}>
+      <dl class="breakdown">
+        <div>
+          <dt>{t('levelThanksReceived')}</dt>
+          <dd>{formatCount(thanksReceived)}</dd>
         </div>
       </dl>
     </div>
