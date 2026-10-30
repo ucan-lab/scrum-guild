@@ -5379,7 +5379,7 @@ describe('bash-rules: force push の判定で値の位置と本文の見え方�
     'curl -X PATCH https://api.github.com/repos/o/r/git/refs/heads/x --data-binary @- < body.json',
     'cat body.json | gh api -X PATCH repos/o/r/git/refs/heads/x --input -',
   ]) {
-    test(`[確認] ${command} は本文を読めないので allow にしない`, () => assert.notEqual(decision(command), 'allow', command));
+    test(`[確認] ${command} は本文を読めないので allow にしない`, () => assert.equal(decision(command), 'ask', command));
   }
 });
 
@@ -5434,7 +5434,7 @@ describe('bash-rules: force の ref 更新を別の入口と道具の引数の�
     "git log -1 --format='{%H}'; gh api -X PATCH repos/o/r/git/refs/heads/x --input - < body.json",
     "echo '{}' > /dev/null; cat body.json | gh api -X PATCH repos/o/r/git/refs/heads/x --input -",
   ]) {
-    test(`[確認] ${command} は force かを読めないので allow にしない`, () => assert.notEqual(decision(command), 'allow', command));
+    test(`[確認] ${command} は force かを読めないので allow にしない`, () => assert.equal(decision(command), 'ask', command));
   }
 
   // 誤って止める: ref を動かさないコマンドの語や、標準入力に流れない前の区切りの語を、本文として読む
@@ -5479,7 +5479,7 @@ describe('bash-rules: ref の更新の force を字面で読めるかで分け�
     `gh api -X PATCH repos/o/r/git/refs/heads/x --input body.json`,
     `echo '{"force":true}' | sed s/a/b/ | gh api -X PATCH repos/o/r/git/refs/heads/x --input -`,
   ]) {
-    test(`[確認] ${command} は allow にしない`, () => assert.notEqual(decision(command), 'allow', command));
+    test(`[確認] ${command} は allow にしない`, () => assert.equal(decision(command), 'ask', command));
   }
   for (const command of [
     // 短いフラグのまとめと -f だけのフィールドでも、メソッドの既定は POST（マージの API は PUT だけを受けるが、ここでは止める）
@@ -5550,7 +5550,7 @@ describe('bash-rules: メソッドを最後の値で読む作り直しと、本�
     // 番号付きで標準入力をファイルから読む
     'gh api -X PATCH repos/o/r/git/refs/heads/x --input - 0< body.json',
   ]) {
-    test(`[確認] ${command} は本文を読めないので allow にしない`, () => assert.notEqual(decision(command), 'allow', command));
+    test(`[確認] ${command} は本文を読めないので allow にしない`, () => assert.equal(decision(command), 'ask', command));
   }
 
   // GraphQL の本文を標準入力で渡すと、mutation の名前と REBASE を字面で見ない。REST の ref の更新は同じ道の本文を読んでいる
@@ -5593,7 +5593,7 @@ describe('bash-rules: done-check の指摘（URL を決めるオプション、�
     `gh api -X PATCH repos/o/r/git/refs/heads/x --input - <<EOF\n{"sha":"a",$(cat f)}\nEOF`,
     `gh api -X PATCH repos/o/r/git/refs/heads/x --input - <<EOF\n{"sha":"$(cat f)"}\nEOF`,
   ]) {
-    test(`[確認] ${command} は force を持ち込みうるので allow にしない`, () => assert.notEqual(decision(command), 'allow', command));
+    test(`[確認] ${command} は force を持ち込みうるので allow にしない`, () => assert.equal(decision(command), 'ask', command));
   }
   for (const command of [
     `gh api -X PATCH repos/o/r/git/refs/heads/x --input - <<'EOF'\n{"sha":"a",$(cat f)}\nEOF`,
@@ -5622,7 +5622,7 @@ describe('bash-rules: done-check の指摘（URL を決めるオプション、�
     `curl -X PATCH ${ref} --variable f=true --expand-data '{"force":{{f}}}'`,
     `curl -X PATCH ${ref} --expand-json '{{body}}'`,
   ]) {
-    test(`[確認] ${command} は本文を読めないので allow にしない`, () => assert.notEqual(decision(command), 'allow', command));
+    test(`[確認] ${command} は本文を読めないので allow にしない`, () => assert.equal(decision(command), 'ask', command));
   }
 
   // GraphQL の query か本文を読めないとき
@@ -5633,7 +5633,7 @@ describe('bash-rules: done-check の指摘（URL を決めるオプション、�
     'cat q.json | gh api graphql --input -',
     'curl -X POST https://api.github.com/graphql -d @q.json',
   ]) {
-    test(`[確認] ${command} は query を読めないので allow にしない`, () => assert.notEqual(decision(command), 'allow', command));
+    test(`[確認] ${command} は query を読めないので allow にしない`, () => assert.equal(decision(command), 'ask', command));
   }
   test('[通す] gh api graphql の query が引数にあれば allow', () =>
     assert.equal(decision(`gh api graphql -f query='{ viewer { login } }'`), 'allow'));
@@ -5645,7 +5645,7 @@ describe('bash-rules: done-check の指摘（URL を決めるオプション、�
     `{ echo '{"force":false}'; gh api -X PATCH repos/o/r/git/refs/heads/x --input -; } < b.json`,
     `cat b.json | { echo '{"force":false}'; curl -X PATCH ${ref} -d @-; }`,
   ]) {
-    test(`[確認] ${command} は標準入力の出どころを読めないので allow にしない`, () => assert.notEqual(decision(command), 'allow', command));
+    test(`[確認] ${command} は標準入力の出どころを読めないので allow にしない`, () => assert.equal(decision(command), 'ask', command));
   }
 
   // エンドポイントを変数で渡す書き込みは、force が真か読めないとき確認を挟む
@@ -5654,7 +5654,7 @@ describe('bash-rules: done-check の指摘（URL を決めるオプション、�
     'gh api -X PATCH "$EP" -F force=$F',
     'gh api -X PATCH "$EP" --input body.json',
   ]) {
-    test(`[確認] ${command} は allow にしない`, () => assert.notEqual(decision(command), 'allow', command));
+    test(`[確認] ${command} は allow にしない`, () => assert.equal(decision(command), 'ask', command));
   }
   test('[通す] エンドポイントを変数で渡しても force が無ければ allow', () => assert.equal(decision('gh api -X PATCH "$EP" -f sha=abc'), 'allow'));
 
@@ -5726,7 +5726,7 @@ describe('bash-rules: done-check 2 巡目の指摘（mutation の名前の判定
     `gh api graphql -f query='mutation{merge'"$X"'}'`,
     `curl https://api.github.com/graphql -F query="$Q"`,
   ]) {
-    test(`[確認] ${command} は query を読めないので allow にしない`, () => assert.notEqual(decision(command), 'allow', command));
+    test(`[確認] ${command} は query を読めないので allow にしない`, () => assert.equal(decision(command), 'ask', command));
   }
   test('[通す] query が字面で、ほかのフィールドに展開があっても allow', () =>
     assert.equal(decision(`gh api graphql -f query='query($o:String!){viewer{login}}' -F o="$OWNER"`), 'allow'));
@@ -5738,7 +5738,7 @@ describe('bash-rules: done-check 2 巡目の指摘（mutation の名前の判定
     // ヒアドキュメントの本文のアポストロフィで引用符の数がずれ、走査の終わりで閉じていない
     `cat <<EOF >/dev/null\nit's\nEOF\necho '{"sha":"a"}' | gh api -X PATCH repos/o/r/git/refs/heads/x --input -`,
   ]) {
-    test(`[確認] ${command} は allow にしない`, () => assert.notEqual(decision(command), 'allow', command));
+    test(`[確認] ${command} は allow にしない`, () => assert.equal(decision(command), 'ask', command));
   }
   // $( … ) のコマンド置換はグループではない
   test('[通す] コマンド置換のあとの echo は標準入力の本文として読む', () => {
@@ -5770,7 +5770,7 @@ describe('bash-rules: done-check 2 巡目の指摘（mutation の名前の判定
     'gh api -X PATCH repos/$R/issues/1 --input body.json',
     'curl -X PATCH "https://api.github.com/repos/o/r/git/refs/$x" -d @body.json',
   ]) {
-    test(`[確認] ${command} は allow にしない`, () => assert.notEqual(decision(command), 'allow', command));
+    test(`[確認] ${command} は allow にしない`, () => assert.equal(decision(command), 'ask', command));
   }
 
   // ヒアドキュメントの字面かは、その区切りの印のクォートで見る
@@ -5787,7 +5787,7 @@ describe('bash-rules: done-check 2 巡目の指摘（mutation の名前の判定
     `gh api -X PATCH repos/o/r/git/refs/heads/x --input - <<--X\n{"sha":"a",$F}\n-X`,
     `gh api -X PATCH repos/o/r/git/refs/heads/x --input - <<EOF\n{"sha":"a",$F}\nEOF`,
   ]) {
-    test(`[確認] ${command} は展開のある本文なので allow にしない`, () => assert.notEqual(decision(command), 'allow', command));
+    test(`[確認] ${command} は展開のある本文なので allow にしない`, () => assert.equal(decision(command), 'ask', command));
   }
 
   // curl の URL の glob は、curl が展開してから送る
@@ -5796,7 +5796,7 @@ describe('bash-rules: done-check 2 巡目の指摘（mutation の名前の判定
     `curl -X PATCH 'https://api.github.com/repos/o/r/git/refs/heads/mai[n-n]' -d '{"sha":"a"}'`,
     `curl -X PUT 'https://api.github.com/repos/o/r/conten[t-t]s/a.txt' -d '{"message":"m"}'`,
   ]) {
-    test(`[確認] ${command} は glob の URL なので allow にしない`, () => assert.notEqual(decision(command), 'allow', command));
+    test(`[確認] ${command} は glob の URL なので allow にしない`, () => assert.equal(decision(command), 'ask', command));
   }
   test('[通す] -g を付ければ glob を展開しないので allow', () =>
     assert.equal(decision(`curl -g -X POST 'https://api.github.com/repos/o/r/issues/1/comments?a[]=1' -d '{"body":"x"}'`), 'allow'));
