@@ -145,7 +145,8 @@ test('リーダーは行程を足し、名前を直し、ボタンとキーで�
   await expect(last).toHaveAccessibleDescription('最後の行程は削除できません');
   await last.click({ force: true });
   await expect(page.getByRole('dialog')).toHaveCount(0);
-  expect(await collect()).toEqual([]);
+  // 同じ名前の行程を足して断られた 409 のほかに、コンソールのエラーも CSP の違反も出ない
+  expect(await collect()).toEqual(['Failed to load resource: the server responded with a status of 409 (Conflict)']);
 });
 
 test('削除が 404 で断られたら、削除する行程か移し先の行程が見つからないと伝えて読み直す', async ({
