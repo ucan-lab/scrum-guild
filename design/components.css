@@ -716,7 +716,8 @@ label.pick-row:hover { background: var(--color-accent-soft); }
 .lane-fill-bar span { position: absolute; inset: 0 auto 0 0; background: var(--color-accent); }
 .lane-fill-bar i { position: absolute; top: -3px; bottom: -3px; border-left: 2px solid var(--color-fg); }
 .lane-fill-bar.is-over span { background: var(--color-danger); }
-.lane-fill-text { font-size: var(--text-xs); color: var(--color-muted); display: flex; justify-content: space-between; gap: var(--space-2); }
+/* 入れたポイント、ベロシティを上回った印（.chip.is-danger。色だけで伝えない）、ベロシティの文字。狭い幅では折り返す */
+.lane-fill-text { font-size: var(--text-xs); color: var(--color-muted); display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: var(--space-1) var(--space-2); }
 
 /* ===== 速度（完了したポイントの棒） ===== */
 .velocity { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: var(--space-6); align-items: end; }
