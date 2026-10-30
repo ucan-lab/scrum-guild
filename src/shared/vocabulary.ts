@@ -2861,6 +2861,55 @@ export const dictionary = defineDictionary({
   ),
   // 木の行の区分とリポジトリの印。見えない文字で種類を添える
   chipPrefix: workspace('{kind}：', '{kind}：'),
+
+  // ワークスペースの設定の画面の列の節（見本は design/settings.html の列）。リーダーが付けた列の名前は訳さず、
+  // 完了の列だけ、言葉づかいに合わせた名前（done）を出す
+  columnsDesc: workspace(
+    '{sprint}の{column}。名前は言葉づかいを切り替えても訳しません。{task}が残っている{column}を削除するときは移し先を選びます。',
+    '{sprint}の{column}。名前は言葉づかいを切り替えても訳しません。{task}が残っている{column}を削除するときは移し先を選びます。',
+  ),
+  columnDoneNote: workspace('常に末尾', '常に末尾'),
+  columnTaskCount: workspace('削除すると {count} 件を移す', '削除すると {count} 件を移す'),
+  columnNameRequired: workspace('名前を入れてください', '名前を入れてください'),
+  columnNameTooLong: workspace('名前は {max} 字までです', '名前は {max} 字までです'),
+  columnNameInvalidCharacter: workspace(
+    '名前に使えない文字（制御文字、ゼロ幅のスペースなど）が含まれています',
+    '名前に使えない文字（制御文字、ゼロ幅のスペースなど）が含まれています',
+  ),
+  columnSaveChanged: workspace(
+    'ほかの画面で変わったため、保存できませんでした。もう一度試してください',
+    'ほかの画面で変わったため、保存できませんでした。もう一度試してください',
+  ),
+  columnDeleteLastHint: workspace('最後の{column}は削除できません', '最後の{column}は削除できません'),
+  columnDeleteText: workspace(
+    '{count} 件の{task}が残っています。移し先の{column}を選んでください。{sprint}ごとに、移し先の末尾へ今の順で移ります。終了した{sprint}の{task}は変わりません。',
+    '{count} 件の{task}が残っています。移し先の{column}を選んでください。{sprint}ごとに、移し先の末尾へ今の順で移ります。終了した{sprint}の{task}は変わりません。',
+  ),
+  columnDeleteTextEmpty: workspace(
+    '移す{task}はありません。終了した{sprint}の{task}は変わりません。',
+    '移す{task}はありません。終了した{sprint}の{task}は変わりません。',
+  ),
+  columnDeleteTarget: workspace('移し先の{column}', '移し先の{column}'),
+  columnDeletedMoved: workspace(
+    '「{name}」を削除し、{count} 件の{task}を「{target}」へ移しました',
+    '「{name}」を削除し、{count} 件の{task}を「{target}」へ移しました',
+  ),
+  columnDeleteLast: workspace(
+    '最後の{column}は削除できません。一覧を読み直します',
+    '最後の{column}は削除できません。一覧を読み直します',
+  ),
+  columnDeleteTargetRequired: workspace(
+    '確かめている間に{task}が入りました。もう一度、移し先を選んでください。一覧を読み直します',
+    '確かめている間に{task}が入りました。もう一度、移し先を選んでください。一覧を読み直します',
+  ),
+  columnDeleteTargetInvalid: workspace(
+    '移し先に選べない{column}です。選び直してください。一覧を読み直します',
+    '移し先に選べない{column}です。選び直してください。一覧を読み直します',
+  ),
+  columnDeleteNotFound: workspace(
+    '削除する{column}か移し先の{column}が見つかりません。一覧を読み直します',
+    '削除する{column}か移し先の{column}が見つかりません。一覧を読み直します',
+  ),
 });
 
 export type DictionaryKey = keyof typeof dictionary;
