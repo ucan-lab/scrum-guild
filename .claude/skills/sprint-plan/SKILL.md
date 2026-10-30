@@ -135,7 +135,7 @@ gh api "repos/{owner}/{repo}/issues?labels=sprint-log&state=closed&per_page=5&so
    gh api repos/{owner}/{repo}/issues -f title="スプリント <番号>（<開始日>〜<終了日>）" -F body=@<file> -f 'labels[]=sprint-log' --jq '{number, url: .html_url}'
    ```
 
-   本文の形。計画の表は後の数え方が番号とポイントの列だけを読む。PR の列は人が見るためのもので、計画のときは空にする。数え方は読まないので、人が入れるときの書き方は問わない。題に `|` があれば `\|` にする
+   本文の形。計画の表は後の数え方が番号、題、ポイントの列を読み、PR の列は読まない。PR の列は人が見るためのもので、計画のときは空にし、人が入れるときの書き方は問わない。題に `|` があれば `\|` にする
 
    ```markdown
    ## ゴール
