@@ -209,6 +209,7 @@ describe('BENCH_PORTS', () => {
     }
     assert.ok(!used.has(BENCH_PORTS.api), `API ${BENCH_PORTS.api} が使われている`);
     assert.ok(!used.has(BENCH_PORTS.inspector), `デバッガー ${BENCH_PORTS.inspector} が使われている`);
-    assert.notEqual(BENCH_PORTS.api, BENCH_PORTS.inspector);
+    // backlog-bench.ts はデバッガーを常に --port + 1 に立てるので、既定の2つもその関係にそろえる
+    assert.equal(BENCH_PORTS.inspector, BENCH_PORTS.api + 1);
   });
 });

@@ -26,7 +26,7 @@ function option(name: string, fallback: number): number {
 
 const runs = option('--runs', 10);
 const port = option('--port', BENCH_PORTS.api);
-const inspectorPort = port === BENCH_PORTS.api ? BENCH_PORTS.inspector : port + 1;
+const inspectorPort = port + 1;
 const origin = `http://localhost:${port}`;
 
 // seed（seed/data.sql）のあおば開発と、その管理者（ミナト）と一般のユーザー（ハルカ）
