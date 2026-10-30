@@ -161,6 +161,21 @@
     await invalidate('app:sprints');
   }
 
+  // 集計の「もう一度試す」。読んでいる間は押せず（重ねて読まない）、読めたら押したボタンが消えるので画面の見出しへ
+  // フォーカスを移す。読めなかったときは、画面が変わらないので読み上げの領域で知らせる
+  let retryingSummary = $state(false);
+  let retryFailed = $state(false);
+  async function retrySummary(): Promise<void> {
+    if (retryingSummary) return;
+    retryingSummary = true;
+    retryFailed = false;
+    await reload();
+    retryingSummary = false;
+    await tick();
+    if (summary !== null) focusPageHeading();
+    else retryFailed = true;
+  }
+
   // 始めたら、押した「始める」が一覧から消えるので、始めたスプリントの見出しへフォーカスを移す（無ければ画面の見出し）
   async function started(sprintId: string): Promise<void> {
     await reload();
@@ -300,7 +315,15 @@
 
   <!-- 読み上げの領域。常に置き、文字だけを替える -->
   <div class="visually-hidden" role="status">
-    {deleting ? t('sprintDeleting') : removingId !== null ? t('sprintTaskRemoving') : ''}
+    {deleting
+      ? t('sprintDeleting')
+      : removingId !== null
+        ? t('sprintTaskRemoving')
+        : retryingSummary
+          ? t('planSummaryRetrying', { velocity: t('velocity'), epic: t('epic') })
+          : retryFailed
+            ? t('planSummaryFailed', { velocity: t('velocity'), epic: t('epic') })
+            : ''}
   </div>
 
   {#if isBlank}
@@ -313,7 +336,9 @@
         <Icon name="alert" />
         <span>{t('planSummaryFailed', { velocity: t('velocity'), epic: t('epic') })}</span>
         <div class="callout-actions">
-          <button class="btn is-sm" type="button" onclick={() => void reload()}>{t('retry')}</button>
+          <button class="btn is-sm" type="button" aria-disabled={retryingSummary} onclick={() => void retrySummary()}
+            >{t('retry')}</button
+          >
         </div>
       </div>
     {/if}

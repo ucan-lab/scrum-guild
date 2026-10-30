@@ -2257,6 +2257,10 @@ export const dictionary = defineDictionary({
     '{velocity}と{epic}ごとの残りを読み込めませんでした。',
     '{velocity}と{epic}ごとの残りを読み込めませんでした。',
   ),
+  planSummaryRetrying: workspace(
+    '{velocity}と{epic}ごとの残りを読み直しています。',
+    '{velocity}と{epic}ごとの残りを読み直しています。',
+  ),
   sprintCreate: workspace('{sprint}を作る', '{sprint}を作る'),
   sprintEdit: workspace('{sprint}を直す', '{sprint}を直す'),
   // 名前のあるスプリントは名前を、無いものは期間を名前として出す（kit.js の sprintLabel）
