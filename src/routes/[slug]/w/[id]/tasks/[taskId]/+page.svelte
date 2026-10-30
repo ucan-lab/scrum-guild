@@ -25,7 +25,8 @@
   let afterReturn: (() => Promise<void>) | null = null;
 
   afterNavigate(({ from, type }) => {
-    if (!from || from.params?.taskId) return;
+    // 直接開いた（type は enter）ときも `from` は渡るが、`from.url` は null
+    if (!from?.url || from.params?.taskId) return;
     const handoff = consumeOverlayHandoff();
     const url = new URL(from.url);
     const hadTask = url.searchParams.has('task');

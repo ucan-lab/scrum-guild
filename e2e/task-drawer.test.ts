@@ -1105,9 +1105,13 @@ test('ページ全体は一覧を重ねず、アプリ内から来た画面へ�
   await page.keyboard.press('Escape');
   await expect(page).toHaveURL(members);
   await expect(page.getByRole('heading', { level: 1 })).toBeFocused();
+  // 直接開くと afterNavigate の from.url が null になる。その経路で例外が出ない
+  const uncaught: string[] = [];
+  page.on('pageerror', (error) => uncaught.push(error.message));
   await page.goto(detail);
   await page.reload();
   await expect(region).toBeVisible();
+  expect(uncaught).toEqual([]);
   await region.getByRole('button', { name: '閉じる', exact: true }).click();
   await expect(page).toHaveURL(backlog);
   await expect(page.getByRole('link', { name: 'ページだけで読む', exact: true })).toBeFocused();
