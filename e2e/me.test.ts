@@ -12,6 +12,23 @@ test.describe('自分の設定（ミナト）', () => {
     await signIn(context, baseURL, 'admin');
   });
 
+  // ゲージの伸びと先端の光は CSS の animation。動きを減らす設定では止まり、光（::after の opacity 0）も出ない
+  test('ゲージは、ふだんは伸びる animation が付き、動きを減らす設定では付かない', async ({ page }) => {
+    const animations = () =>
+      page.locator('.gauge-got').evaluate((got) => ({
+        got: getComputedStyle(got).animationName,
+        gotCount: getComputedStyle(got).animationIterationCount,
+        tip: getComputedStyle(got, '::after').animationName,
+      }));
+    await page.emulateMedia({ reducedMotion: 'no-preference' });
+    await page.goto('/aoba/me');
+    await expect(page.locator('.gauge-got')).toBeVisible();
+    expect(await animations()).toEqual({ got: 'gauge-grow', gotCount: '1', tip: 'gauge-tip' });
+
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    expect(await animations()).toMatchObject({ got: 'none', tip: 'none' });
+  });
+
   test('メニューの「自分の設定」から開くと、レベルの面と経験値の明細が出る', async ({ page }) => {
     const collect = await watchViolations(page);
     await page.goto('/aoba');
@@ -37,6 +54,14 @@ test.describe('自分の設定（ミナト）', () => {
       'aria-label',
       /^次のレベルまでの \d+% を確定、\d+% が見込み$/,
     );
+    // ゲージの両端に今のレベルと次のレベルの数字。読み上げからは外す
+    const gaugeEnds = panel.locator('.gauge-end');
+    const emblemLevel = Number(
+      (await panel.locator('.emblem:not(.is-sm)').getAttribute('aria-label'))?.replace('レベル ', ''),
+    );
+    await expect(gaugeEnds).toHaveText([`LV ${emblemLevel}`, `LV ${emblemLevel + 1}`]);
+    await expect(gaugeEnds.first()).toHaveAttribute('aria-hidden', 'true');
+    await expect(gaugeEnds.last()).toHaveAttribute('aria-hidden', 'true');
     await expect(panel.locator('.legend > span')).toHaveText(['確定', '見込み（クエストの完遂で確定）']);
     await expect(panel.getByRole('group', { name: 'パーティごとの経験値' })).toBeVisible();
     // ほかのファイルの e2e がミナトをリーダーにしたワークスペースを足すので、受託開発チームがあることと、末尾の合計だけを見る
@@ -73,6 +98,7 @@ test.describe('自分の設定（ミナト）', () => {
     await expect(panel.locator('.emblem:not(.is-sm)')).toHaveAttribute('aria-label', 'レベル 1');
     await expect(panel.locator('.xp-num')).toHaveText('0XP');
     await expect(panel.locator('.xp-sub')).toHaveText('次のレベルまで 100・見込み +0');
+    await expect(panel.locator('.gauge-end')).toHaveText(['LV 1', 'LV 2']);
     await expect(panel.locator('.breakdown dt')).toHaveText(['社内ツール', 'すべてのパーティ']);
     await expect(panel.locator('.breakdown dd')).toHaveText(['0', '0']);
 
@@ -155,6 +181,16 @@ test.describe('自分の設定（ミナト）', () => {
     const panel = page.getByRole('region', { name: 'レベル' });
     await expect(panel.locator('.xp-num')).toHaveText('0XP');
     await expect(panel.getByRole('heading', { level: 2, name: 'レベル' })).toBeFocused();
+    // 読み直しで出た面は、ゲージを伸ばさず今の値で出す
+    await expect(panel.locator('.gauge.is-still')).toHaveCount(1);
+    // 終わった animation は getAnimations() に出ないので、時間に依らない animation-name で見る
+    expect(
+      await panel.locator('.gauge-got').evaluate((got) => ({
+        got: getComputedStyle(got).animationName,
+        tip: getComputedStyle(got, '::after').animationName,
+        soon: getComputedStyle(got.nextElementSibling!).animationName,
+      })),
+    ).toEqual({ got: 'none', tip: 'none', soon: 'none' });
     await expect(page.getByText('経験値の明細を読み込めませんでした')).toBeVisible();
 
     // 明細はまた失敗すると、その節にだけ「まだ読み込めませんでした」

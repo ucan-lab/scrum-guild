@@ -171,9 +171,11 @@
     return avatar(u.name, u.hue, { ...opts, left: u.left });
   }
   function emblem(level, sm) {
+    const digits = String(level).length;
+    const size = digits === 3 ? " is-long" : digits > 3 ? " is-longer" : "";
     return sm
-      ? `<span class="emblem is-sm" role="img" aria-label="レベル ${level}"><span>${level}</span></span>`
-      : `<span class="emblem" role="img" aria-label="レベル ${level}"><span><small>LV</small>${level}</span></span>`;
+      ? `<span class="emblem is-sm${size}" role="img" aria-label="レベル ${level}"><span>${level}</span></span>`
+      : `<span class="emblem${size}" role="img" aria-label="レベル ${level}"><span><small>LV</small>${level}</span></span>`;
   }
   function pts(p) {
     return p == null
@@ -597,7 +599,9 @@
         <div><div class="xp-num">${icon("crystal", "xp")}${l.xp.toLocaleString()}<small>XP</small></div>
         <div class="xp-sub">次のレベルまで <b>${l.toNext}</b>・見込み <b>+${l.soon}</b></div></div>
       </div>
-      <div class="gauge" role="img" aria-label="次のレベルまでの ${l.gotPct}% を確定、${l.soonPct}% が見込み"><span class="gauge-got" style="width:${l.gotPct}%"></span><span class="gauge-soon" style="width:${l.soonPct}%"></span></div>
+      <div class="gauge-row"><span class="gauge-end" aria-hidden="true">LV ${l.level}</span>
+        <div class="gauge" role="img" aria-label="次のレベルまでの ${l.gotPct}% を確定、${l.soonPct}% が見込み"><span class="gauge-got" style="width:${l.gotPct}%"></span><span class="gauge-soon" style="width:${l.soonPct}%"></span></div>
+        <span class="gauge-end is-next" aria-hidden="true">LV ${l.level + 1}</span></div>
       <div class="legend"><span><i class="is-got"></i>確定</span><span><i class="is-soon"></i>見込み（${t("task")}の${t("done")}で確定）</span></div>
       ${l.rows ? `<div role="group" aria-label="${t("workspace")}ごとの経験値"><dl class="breakdown">${l.rows.map(([n, v]) => `<div><dt>${esc(n)}</dt><dd>${v.toLocaleString()}</dd></div>`).join("")}
         <div class="is-total"><dt>すべての${t("workspace")}</dt><dd>${l.total.toLocaleString()}</dd></div></dl></div>` : ""}
