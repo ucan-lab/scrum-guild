@@ -1584,7 +1584,9 @@ body.has-assist .toasts { right: calc(400px + var(--space-4)); }
   color: var(--color-xp); text-shadow: 0 0 8px var(--color-xp);
 }
 :root[data-theme="modern"] .emblem::after { box-shadow: inset 0 0 8px color-mix(in srgb, var(--color-xp) 60%, transparent); }
+/* 小さい紋章（24px）は、内側の光が面全体を明るくして数字の地との差を縮めるので、光を出さない */
 :root[data-theme="modern"] .emblem.is-sm { --emblem-w1: 0px; --emblem-w2: 1px; text-shadow: none; }
+:root[data-theme="modern"] .emblem.is-sm::after { box-shadow: none; }
 :root[data-theme="modern"] .gauge-got { box-shadow: 0 0 10px var(--color-xp); }
 :root[data-theme="modern"] .xp-num, :root[data-theme="modern"] .stat-num { text-shadow: 0 0 14px color-mix(in srgb, var(--color-xp) 60%, transparent); }
 :root[data-theme="modern"] .panel-title b, :root[data-theme="modern"] .panel-title h2, :root[data-theme="modern"] .notice-label { text-shadow: 0 0 8px color-mix(in srgb, currentColor 70%, transparent); }
