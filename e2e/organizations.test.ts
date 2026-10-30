@@ -250,6 +250,31 @@ test.describe('組織が1つの人（あおば開発のハルカ）', () => {
     expect(await page.evaluate(() => localStorage.getItem('sg-theme'))).toBeNull();
   });
 
+  test('組織の言葉づかいを localStorage に覚え、組織の外の画面で消す', async ({ page }) => {
+    const remembered = () => page.evaluate(() => localStorage.getItem('sg-vocabulary'));
+    await patchOrganization(page, 'aoba', (body) => {
+      body.organization.vocabulary = 'game';
+      body.me.is_admin = true;
+    });
+    await page.goto('/aoba');
+    await expect(page.locator('.me .chip')).toHaveText('ギルドマスター');
+    expect(await remembered()).toBe('game');
+
+    // 見つからない画面（組織の外）。文書ごと読み直すので、確かめるのは覚えた値
+    await page.goto('/hibari');
+    await expect(page.getByRole('heading', { level: 1, name: '組織が見つかりません' })).toBeVisible();
+    expect(await remembered()).toBeNull();
+  });
+
+  test('スクラムの言葉の組織は、スクラムの言葉を覚える', async ({ page }) => {
+    await patchOrganization(page, 'aoba', (body) => {
+      body.organization.vocabulary = 'scrum';
+    });
+    await page.goto('/aoba');
+    await expect(page.getByRole('heading', { level: 1, name: '自分の今日' })).toBeVisible();
+    expect(await page.evaluate(() => localStorage.getItem('sg-vocabulary'))).toBe('scrum');
+  });
+
   test('組織の外から組織へ移る間は読み込み中を出し、移ったら組織の値を当てる', async ({ page }) => {
     await patchOrganization(page, 'aoba', (body) => {
       body.organization.theme = 'modern';
