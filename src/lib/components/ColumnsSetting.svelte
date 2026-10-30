@@ -441,6 +441,6 @@
       </select>
     </div>
   {:else}
-    <p>{t('columnDeleteTextEmpty', { task: t('task'), column: columnWord })}</p>
+    <p>{t('columnDeleteTextEmpty', { task: t('task'), column: columnWord, sprint: t('sprint') })}</p>
   {/if}
 </ConfirmDialog>
