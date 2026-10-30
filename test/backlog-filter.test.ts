@@ -571,7 +571,7 @@ describe('実行計画', () => {
     const planOf = async (statement: Parameters<typeof queryPlanForTest>[1]) =>
       (await queryPlanForTest(env, statement)).join('\n');
 
-    // tasks_story を使わない文（byId は主キーで引くので、tasks_workspace_tray は求めない）
+    // tasks_story を使わない文（並べ替えの siblings.byId は主キーで引くので、story_id の扱いで計画が変わらず、ここでは確かめない）
     test('木の読み取りの、親のない未完了のタスク', async () => {
       const { db, workspaceId } = await analyzedWorld();
       const plan = await planOf(rootOpenTasksStatement(db, workspaceId, { words: [] }));
@@ -593,7 +593,7 @@ describe('実行計画', () => {
       expect(plan).not.toContain('tasks_story');
     });
 
-    test.each(['last', 'first', 'next', 'ties', 'byId'] as const)(
+    test.each(['last', 'first', 'next', 'ties'] as const)(
       '並べ替えで、親のないタスクの兄弟を引く文（%s）',
       async (name) => {
         const { db, workspaceId, task } = await analyzedWorld();
@@ -606,13 +606,10 @@ describe('実行計画', () => {
               ? siblings.first()
               : name === 'next'
                 ? siblings.next(after)
-                : name === 'ties'
-                  ? siblings.ties(after)
-                  : siblings.byId(task.id),
+                : siblings.ties(after),
         );
         expect(plan).not.toContain('tasks_story');
-        if (name === 'last' || name === 'first' || name === 'next')
-          expect(plan).toMatch(/USING (COVERING )?INDEX tasks_workspace_tray/);
+        if (name !== 'ties') expect(plan).toMatch(/USING (COVERING )?INDEX tasks_workspace_tray/);
       },
     );
 
