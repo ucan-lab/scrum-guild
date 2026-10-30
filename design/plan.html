@@ -30,10 +30,11 @@ function velocity() {
       <span class="stat-label">延長した${t("sprint")}は除く</span></div>
     <div>
       <div class="bars" role="img" aria-label="${ids.map((id) => `${D.sprints[id].name} ${D.sprints[id].donePts} pt${D.sprints[id].extended ? "（延長のため除外）" : ""}`).join("、")}">
-        <span class="bars-avg" style="bottom:${(avg / max) * 90}px"><span>平均 ${avg.toFixed(1)}</span></span>
+        <span class="bars-avg" style="bottom:${(avg / max) * 90}px"></span>
         ${ids.map((id) => { const s = D.sprints[id]; return `<div class="bar-col ${s.extended ? "is-excluded" : ""}"><b>${s.donePts}</b><i style="height:${(s.donePts / max) * 90}px"></i></div>`; }).join("")}
       </div>
       <div class="bars-labels">${ids.map((id) => { const s = D.sprints[id]; return `<span>${s.name}${s.extended ? `<br>延長 ${s.extended} 日・除外` : ""}</span>`; }).join("")}</div>
+      <p class="bars-legend"><i aria-hidden="true"></i>平均 ${avg.toFixed(1)}</p>
     </div>
   </div>` };
 }

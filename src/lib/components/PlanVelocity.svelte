@@ -51,9 +51,7 @@
       <div>
         <div class="bars" role="img" aria-label={chartLabel}>
           {#if velocity.average !== null && shape.mark !== null}
-            <span class="bars-avg" style:bottom={`${shape.mark}px`}
-              ><span>{t('velocityAverageMark', { value: formatPoints(velocity.average) })}</span></span
-            >
+            <span class="bars-avg" style:bottom={`${shape.mark}px`}></span>
           {/if}
           {#each velocity.sprints as item, index (item.id)}
             <div class="bar-col" class:is-excluded={!item.counted} data-velocity-sprint={item.id}>
@@ -70,6 +68,11 @@
             >
           {/each}
         </div>
+        {#if velocity.average !== null}
+          <p class="bars-legend">
+            <i aria-hidden="true"></i>{t('velocityAverageMark', { value: formatPoints(velocity.average) })}
+          </p>
+        {/if}
       </div>
     </div>
   {/if}
