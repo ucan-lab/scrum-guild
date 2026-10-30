@@ -183,7 +183,14 @@ test.describe('自分の設定（ミナト）', () => {
     await expect(panel.getByRole('heading', { level: 2, name: 'レベル' })).toBeFocused();
     // 読み直しで出た面は、ゲージを伸ばさず今の値で出す
     await expect(panel.locator('.gauge.is-still')).toHaveCount(1);
-    expect(await panel.locator('.gauge-got').evaluate((got) => got.getAnimations().length)).toBe(0);
+    // 終わった animation は getAnimations() に出ないので、時間に依らない animation-name で見る
+    expect(
+      await panel.locator('.gauge-got').evaluate((got) => ({
+        got: getComputedStyle(got).animationName,
+        tip: getComputedStyle(got, '::after').animationName,
+        soon: getComputedStyle(got.nextElementSibling!).animationName,
+      })),
+    ).toEqual({ got: 'none', tip: 'none', soon: 'none' });
     await expect(page.getByText('経験値の明細を読み込めませんでした')).toBeVisible();
 
     // 明細はまた失敗すると、その節にだけ「まだ読み込めませんでした」
