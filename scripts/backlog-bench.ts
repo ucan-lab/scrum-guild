@@ -7,11 +7,12 @@
 // 読み方は3つ: 絞らない、担当で絞る（自分）、検索（1% のタスクの題に入る語）。続けて、担当なし、区分、リポジトリ、エピック、
 // 当たらない語の検索も測る（索引の選び方で遅くならないかを見る）。読み方ごとに、温める 2 回の後に --runs 回（既定 10）測り、
 // 中央値と最大を出す。時間は API の往復（Worker の処理、D1、JSON の組み立てを含む）
-// 使い方: node scripts/backlog-bench.ts [--runs 10] [--port 8797]
+// 使い方: node scripts/backlog-bench.ts [--runs 10] [--port 9700]（既定は dev-ports.ts の BENCH_PORTS。デバッガーは既定で 9701、--port を替えたら --port + 1）
 import { spawn, spawnSync } from 'node:child_process';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+import { BENCH_PORTS } from './dev-ports.ts';
 import { SEED_SESSIONS } from '../seed/sessions.ts';
 import { sessionCookieName } from '../src/shared/session-cookie.ts';
 
@@ -24,7 +25,8 @@ function option(name: string, fallback: number): number {
 }
 
 const runs = option('--runs', 10);
-const port = option('--port', 8797);
+const port = option('--port', BENCH_PORTS.api);
+const inspectorPort = port === BENCH_PORTS.api ? BENCH_PORTS.inspector : port + 1;
 const origin = `http://localhost:${port}`;
 
 // seed（seed/data.sql）のあおば開発と、その管理者（ミナト）と一般のユーザー（ハルカ）
@@ -166,7 +168,7 @@ try {
       '--port',
       String(port),
       '--inspector-port',
-      String(port + 442),
+      String(inspectorPort),
       '--persist-to',
       dir,
       '--var',

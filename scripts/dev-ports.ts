@@ -12,6 +12,10 @@ const base: DevPorts = { app: 5173, api: 8787, inspector: 9229 };
 // API は 8787 + n。n が 442 以上だとデバッガーの 9229（オフセット 0）と重なる
 const MAX_OFFSET = 441;
 
+// bench:backlog の既定のポート。ワークツリーのどのオフセット（0〜441）の画面 5173〜5614、API 8787〜9228、
+// デバッガー 9229〜9670 とも重ならないよう、範囲の外に固定する。devPorts から取ると、同じワークツリーで開発用のサーバーを立てたまま測れない
+export const BENCH_PORTS = { api: 9700, inspector: 9701 } as const;
+
 const OFFSET_FILE = '.dev-port-offset';
 const WORKTREES_DIR = 'worktrees';
 
