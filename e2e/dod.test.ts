@@ -43,9 +43,9 @@ test('完成の定義を書く → バックログと引き出しに出る → �
   await drawer.getByRole('button', { name: '閉じる' }).click();
   await expect(drawer).toBeHidden();
 
-  // 設定の画面で書く。節は区分より前にある
+  // 設定の画面で書く。節は区分より前にある（列の節は、見本の順で、さらにその前）
   await openSettings(page);
-  await expect(page.locator('.settings .setting-title').first()).toHaveText('パーティの掟');
+  await expect(page.locator('.settings .setting-title', { hasText: 'パーティの掟' })).toHaveCount(1);
   const field = page.getByRole('textbox', { name: 'Markdown' });
   await expect(field).toHaveValue('');
   const save = page.getByRole('button', { name: '保存する' });
