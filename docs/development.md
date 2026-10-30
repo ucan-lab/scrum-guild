@@ -211,6 +211,9 @@ GitHub は無料のプランのまま使う（2026-10-23 に決めた）。無�
 
 - リポジトリの設定で squash merge だけを許し、マージ後にブランチを消す。squash のコミットの件名は PR のタイトルにし、本文は空にする（設定済み）
 - `main` の上のコミット、`main` への直接の push、force push は、PreToolUse のフック（`.claude/hooks/guard-bash.mjs`）でセッションから止める
+  - force push は `git push` の `--force` 系と `+` の refspec のほか、`gh api` と curl の `/git/refs/` 以下の更新に `force: true` を付ける形、`gh pr update-branch --rebase`、`gh repo sync --force`、GraphQL の `updatePullRequestBranch` の REBASE も止める（deny）
+  - 本文や `force` の値を字面で読めない ref の更新（`--input` のファイル、読めない標準入力、`force=1`）、展開で渡す GraphQL の query、glob を含む curl の書き込みは、止めずに確認を挟む（ask）
+  - GraphQL の mutation の名前（`mergePullRequest` など）は、宛先を問わず引数と本文のぜんたいで見る。そのため、コメントの本文に `-f body=` やヒアドキュメントで書くと止まる。`--input <ファイル>` なら通る
 - セッションは、`main` にいる作業コピーのファイルを Write と Edit で書き換えられない（`.claude/hooks/guard-files.mjs`）。手元のセッションはワークツリーを切ってから書き、クラウドのセッションは `claude/*` のブランチで書く
 - 人の操作は、`.githooks/` の git のフックで止める。`pre-commit`、`pre-merge-commit`、`prepare-commit-msg`、`pre-applypatch` が `main` の上のコミット（マージ、`cherry-pick`、`revert`、`am` も含む）を、`pre-push` がリモートの `main` への push（削除と force push も含む）を拒む。`main` を `pull --ff-only` で進めるのは通す。同じ場所の `post-checkout` は止めるためのものではなく、追加のワークツリーを切ったときに `.dev.vars` を本体へのリンクにし（上の「ワークツリーで作業する」）、番号付きのブランチなら Issue を作業中にする（下の「Issue の状態」）。`pnpm install` の `prepare`（`scripts/git-hooks.ts`）が `core.hooksPath` を `.githooks` にする。設定はワークツリーで共有し、フックは各ワークツリーのブランチにある `.githooks/` が動く。`pnpm install` をしていない clone と、`.githooks/` の無い古いブランチでは効かない。別の `core.hooksPath` が既にあれば上書きせず、警告だけ出す。取り出したブランチの `.githooks/` がそのまま動き、`post-checkout` は checkout と switch の時点で動くので、信頼できない人のブランチは作業コピーに取り出さず、中身は `git diff` か GitHub で読む。どうしても取り出すときは、`git -c core.hooksPath=/dev/null checkout <ブランチ>` のようにフックを切る。`core.hooksPath` の上書き、`--no-verify`（`commit` の `-n` も）、`git commit-tree` で抜けられる踏み線なので、人も同じ決まりで PR を通す。セッションの `--no-verify` と `core.hooksPath` の書き換えには、第一の守りの `guard-bash.mjs` が確認を挟む
 - 必須のチェックは設定できない。マージする人かセッションが `ci-ok` の成功を確かめてからマージする
