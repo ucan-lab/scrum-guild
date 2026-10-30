@@ -46,10 +46,8 @@ ls "$(git rev-parse --git-path rebase-merge)" "$(git rev-parse --git-path rebase
 
 ```bash
 git fetch origin
-git rev-parse HEAD                                   # 取り込み前のコミットとして控える
 git merge-base --is-ancestor origin/<base> HEAD      # 0 なら取り込み済み
 git rev-list --count HEAD..origin/<base>             # 遅れているコミット数
-git diff --name-only origin/<base>...HEAD            # 取り込み前の PR の差分のファイル。手順 5 で比べる
 ```
 
 リモートにブランチがあれば（`git rev-parse --verify --quiet origin/<branch>` が成功すれば）、手元がリモートのコミットをすべて含むことを確かめる。
@@ -60,6 +58,14 @@ git merge-base --is-ancestor origin/<branch> HEAD
 
 0 でなければ、`git merge --ff-only origin/<branch>` で追いつく。できなければ止まり、手元とリモートの差を示して伝える（理由: 別のセッションか人が push したコミットを、取り込みの前に確かめるため）。
 リモートにブランチが無ければ、そのまま進む。
+
+追いついた後に、手順 5 で比べるものを控える（理由: 追いつく前に控えると、リモートに積まれたコミットの分だけ一覧がずれる）。
+
+```bash
+git rev-parse HEAD                                   # 取り込み前のコミット
+git diff --name-only origin/<base>...HEAD            # 取り込み前の PR の差分のファイル
+```
+
 ベースの最新が HEAD の祖先なら手順 3 と 4 は飛ばし、手順 5 と 6 で確認して push する。
 
 ### 3. merge する
@@ -88,13 +94,17 @@ merge の途中では、ours が自分のブランチの側、theirs がベー�
 ```bash
 git merge-base --is-ancestor origin/<base> HEAD      # 0 であること
 git merge-base --is-ancestor <手順 2 で控えた HEAD> HEAD  # 取り込み前のコミットが残ること
-git diff --name-only origin/<base>...HEAD            # 手順 2 で控えた一覧と同じであること
+git diff --name-only origin/<base>...HEAD            # 手順 2 で控えた一覧と比べる
 ```
 
-一覧が増えていたら、コンフリクトの解消でベースの変更を自分の側として残している。どのファイルかを示して止まる。
+ベースの側の改名で名前が変わったものを除き、一覧が増えも減りもしないこと。増えていたら、コンフリクトの解消でベースの変更を自分の側として残している。減っていたら、ベースの側を採って自分の変更を落としている。どちらも、どのファイルかを示して止まる。
 
 コンフリクトを解消した場合は、触ったファイルに関係するテストか lint を回す。
-`package.json` か `pnpm-lock.yaml` がベースの側で変わっていたら、コンフリクトが無くても `pnpm install --frozen-lockfile` が通ることを確かめる（理由: 両側が別の依存を足すと、衝突せずに混ざって lockfile がマニフェストと合わなくなる）。
+依存の定義がベースの側で変わっていたら、コンフリクトが無くても `pnpm install --frozen-lockfile` が通ることを確かめる（理由: 両側が別の依存を足すと、衝突せずに混ざって lockfile がマニフェストと合わなくなる）。
+
+```bash
+git diff --name-only <手順 2 で控えた HEAD>...origin/<base> -- package.json pnpm-lock.yaml pnpm-workspace.yaml   # ベースの側の変更。何か出たら確かめる
+```
 
 `migrations/` の番号の重なりも見る（理由: `0006_a.sql` と `0006_b.sql` のように名前が違うと、git は衝突にせず merge が黙って通る）。
 
