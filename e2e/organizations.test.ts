@@ -258,7 +258,7 @@ test.describe('組織が1つの人（あおば開発のハルカ）', () => {
     });
     await page.goto('/aoba');
     await expect(page.locator('.me .chip')).toHaveText('ギルドマスター');
-    expect(await remembered()).toBe('game');
+    expect(await remembered()).toBe('game:aoba');
 
     // 見つからない画面（組織の外）。文書ごと読み直すので、確かめるのは覚えた値
     await page.goto('/hibari');
@@ -273,7 +273,7 @@ test.describe('組織が1つの人（あおば開発のハルカ）', () => {
     });
     // 描画のたびに、管理者の印の文字を集める。覚えた値で始まるので「管理者」（スクラムの言葉）が一度も出ない
     await page.addInitScript(() => {
-      localStorage.setItem('sg-vocabulary', 'game');
+      localStorage.setItem('sg-vocabulary', 'game:aoba');
       const seen: string[] = [];
       (window as unknown as { __chipTexts: string[] }).__chipTexts = seen;
       new MutationObserver(() => {
@@ -293,7 +293,7 @@ test.describe('組織が1つの人（あおば開発のハルカ）', () => {
     });
     await page.goto('/aoba');
     await expect(page.getByRole('heading', { level: 1, name: '自分の今日' })).toBeVisible();
-    expect(await page.evaluate(() => localStorage.getItem('sg-vocabulary'))).toBe('scrum');
+    expect(await page.evaluate(() => localStorage.getItem('sg-vocabulary'))).toBe('scrum:aoba');
   });
 
   test('組織の外から組織へ移る間は読み込み中を出し、移ったら組織の値を当てる', async ({ page }) => {

@@ -9,6 +9,7 @@ async function load(stored: Record<string, string>) {
     removeItem: (key: string) => void store.delete(key),
   });
   vi.stubGlobal('document', { documentElement: { dataset: {} } });
+  vi.stubGlobal('location', { pathname: '/aoba' });
   vi.resetModules();
   const organization = await import('./organization.svelte.ts');
   const vocabulary = await import('./vocabulary.svelte.ts');
@@ -27,7 +28,7 @@ test('applyOrganization は組織の言葉づかいを当てて覚え、resetToD
   const { store, organization, vocabulary } = await load({});
   organization.applyOrganization(view('game'));
   expect(vocabulary.vocabularies).toEqual({ organization: 'game', workspace: 'game' });
-  expect(store.get('sg-vocabulary')).toBe('game');
+  expect(store.get('sg-vocabulary')).toBe('game:aoba');
 
   organization.resetToDefaults();
   expect(vocabulary.vocabularies).toEqual({ organization: 'scrum', workspace: 'scrum' });
@@ -35,7 +36,7 @@ test('applyOrganization は組織の言葉づかいを当てて覚え、resetToD
 });
 
 test('applyInvitedOrganization は画面にだけ当て、覚えず、前に別の組織で覚えた値も消す', async () => {
-  const { store, organization, vocabulary } = await load({ 'sg-vocabulary': 'game' });
+  const { store, organization, vocabulary } = await load({ 'sg-vocabulary': 'game:aoba' });
   organization.applyInvitedOrganization({ vocabulary: 'scrum', theme: 'simple' } as never);
   expect(vocabulary.vocabularies).toEqual({ organization: 'scrum', workspace: 'scrum' });
   expect(store.has('sg-vocabulary')).toBe(false);

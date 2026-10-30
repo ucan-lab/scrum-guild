@@ -12,20 +12,31 @@ const VALUES: readonly unknown[] = ['game', 'scrum'];
 // テーマの sg-theme と同じ仕組み。組織の枠が入れた組織の言葉づかいを覚え、次の読み込みの最初の描画から当てる
 export const vocabularyStorageKey = 'sg-vocabulary';
 
-// localStorage を取り出すだけで例外になる環境（権限なし、プライベートモード）、Node のテストでは、覚えていないものとして扱う
-function remembered(): Vocabulary | null {
+// 覚える値は `<言葉づかい>:<組織の slug>`（例 game:aoba）。今開いている URL の組織と同じときだけ使う。
+// 別の組織の値で最初の描画が始まり、スクラムの言葉の組織にゲームの言葉が一瞬出るのを防ぐため
+function currentSlug(): string | null {
   try {
-    const value: unknown = localStorage.getItem(vocabularyStorageKey);
-    return VALUES.includes(value) ? (value as Vocabulary) : null;
+    return location.pathname.split('/')[1] || null;
   } catch {
     return null;
   }
 }
 
-// 覚えられなくても、この画面の間は当たっている
+// localStorage を取り出すだけで例外になる環境（権限なし、プライベートモード）、Node のテストでは、覚えていないものとして扱う
+function remembered(): Vocabulary | null {
+  try {
+    const [value, slug] = (localStorage.getItem(vocabularyStorageKey) ?? '').split(':');
+    return VALUES.includes(value) && slug !== undefined && slug === currentSlug() ? (value as Vocabulary) : null;
+  } catch {
+    return null;
+  }
+}
+
+// 今開いている組織の言葉づかいとして覚える。覚えられなくても、この画面の間は当たっている
 export function rememberVocabulary(value: Vocabulary | null): void {
   try {
-    if (value) localStorage.setItem(vocabularyStorageKey, value);
+    const slug = currentSlug();
+    if (value && slug) localStorage.setItem(vocabularyStorageKey, `${value}:${slug}`);
     else localStorage.removeItem(vocabularyStorageKey);
   } catch {
     // 覚えない
@@ -33,10 +44,10 @@ export function rememberVocabulary(value: Vocabulary | null): void {
 }
 
 // 今の言葉づかい。組織の枠が、組織の操作の結果を入れる（organization.svelte.ts）。
-// 入るまでは、覚えている組織の言葉づかい、なければ既定のスクラムの言葉
-const first = remembered();
+// 入るまでは、今開いている組織について覚えている言葉づかい、なければ既定のスクラムの言葉
+const stored = remembered();
 export const vocabularies: Vocabularies = $state(
-  first ? { workspace: first, organization: first } : { ...defaultVocabularies },
+  stored ? { workspace: stored, organization: stored } : { ...defaultVocabularies },
 );
 
 // ワークスペースの中の画面が、そのワークスペースの言葉づかいでワークスペースの言葉を上書きする（src/routes/[slug]/w/[id]/+layout.svelte）。
