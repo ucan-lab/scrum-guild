@@ -442,10 +442,10 @@ favicon と同じマーク（下の「favicon」）の横に、名前「Scrum Gu
 
 - 種類は3つ。掲示板 `notice`（一覧が空）、宝箱 `chest`（報酬や明細が空）、地図 `map`（最初の一歩）。場面ごとに選び、増やすときはカタログに先に足す
 - 64px の格子に、アイコンと同じ線（太さ2px、丸い端）で描く。色は `currentColor` で、空の状態（`.empty`）の薄い文字の色に従う。絵柄はテーマで替えない
-- 文とボタンより目立たせない。大きさは `.empty` の中で64px、「最初にやること」の先頭（`.art.is-lead`）で48px。色を濃くしたり、アイコンより目立つ色を付けたりしない
+- 文とボタンより目立たせない。大きさは `.empty` の中で64px、「最初にやること」の見出しの横（`.art.is-lead`）で32px（格子が半分になるので線は4にして、見かけを2pxに保つ）。色を濃くしたり、アイコンより目立つ色を付けたりしない
 - 装飾なので読み上げから外す（`aria-hidden`）。何が出る場所かと次にやることは、隣の文が伝える
-- 空の状態では、アイコンの代わりに置く（見本は `emptyState` の6つ目の引数、本番は `EmptyState` の `art`）。使う所は、バックログの空（`notice`）、自分の今日（空は `notice`、ワークスペースが無いときは `map`）、スプリントの画面（`notice`）、計画の画面（`map`）、届いた招待（`notice`）、経験値の明細（`chest`）。読み込みの失敗、見つからない、権限が無い、読み込み中は、線画を付けずアイコンのままにする
-- 「最初にやること」の本番は自分の今日の Issue（#70）で作る。置き方は見本の `firstSteps` どおり、パネルの先頭に `map` を `lead` で置く（本番は `Art` の `lead`）
+- 空の状態では、アイコンの代わりに置く（見本は `emptyState` の6つ目の引数、本番は `EmptyState` の `art`）。使う所は、バックログに何も無いとき（`notice`。全部終えて未完了が無いときは付けない）、自分の今日（空と、所属が無く招待を待つときは `notice`、ワークスペースを作る最初の一歩は `map`）、スプリントの画面（`notice`）、計画の画面（`map`）、届いた招待（`notice`）、経験値の明細（`chest`）。取り込みの受信箱の見本（`design/inbox.html` の「接続がまだありません」）も `notice` で、本番の受信箱はまだ無い。上に挙げた以外の空（メンバー、変更の履歴、休日、エピックなど）と、読み込みの失敗、見つからない、権限が無い、読み込み中は、線画を付けずアイコンのままにする
+- 「最初にやること」の本番は自分の今日の Issue（#70）で作る。置き方は見本の `firstSteps` どおり、パネルの見出しの左に `map` を `lead` で置く（本番は `Art` の `lead`）
 - 本番の部品は `ArtSprite.svelte`（root の `+layout.svelte` に1つ置く）と `Art.svelte`。定義は `src/lib/art.ts` で、`scripts/design-parity.test.ts` が `design/art.js` と突き合わせる
 
 ### 本番の Svelte のコンポーネント
@@ -537,7 +537,7 @@ favicon と同じマーク（下の「favicon」）の横に、名前「Scrum Gu
 
 - 画面は `.svelte` に `<style>` を書かない。足りない CSS は components.css とカタログに先に足す。フックと `pnpm lint` が止める。
 - インラインの `style` 属性は CSP に止められる。動く値は `style:--h` のように CSSOM で当てる（Svelte の `style:` ディレクティブ）。
-- アイコンと言葉の辞書は、見本と本番の二重持ち。`scripts/design-parity.test.ts`（`pnpm test` の `node --test`）が `design/icons.js` と `kit.js` の `DICT` を読み、見本にあるアイコンとキーが本番に同じ中身で在ることを突き合わせる。片方だけを直すと、このテストが落ちる。
+- アイコン、線画、言葉の辞書は、見本と本番の二重持ち。`scripts/design-parity.test.ts`（`pnpm test` の `node --test`）が `design/icons.js`、`design/art.js`、`kit.js` の `DICT` を読み、見本にあるアイコン、線画、キーが本番（`src/lib/icons.ts`、`src/lib/art.ts`、辞書）に同じ中身で在ることを突き合わせる。片方だけを直すと、このテストが落ちる。
 - 照合の対象は見本にあるキーだけで、本番の辞書は画面の文言を足して大きくなってよい。見本を直した PR では、`src/lib/icons.ts` と `src/shared/vocabulary.ts` も一緒に直す。
 
 ### Markdown の本文

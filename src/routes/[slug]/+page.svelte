@@ -65,7 +65,7 @@
   {:else if emptyKind === 'noMembership'}
     <EmptyState
       icon="sun"
-      art="map"
+      art="notice"
       title={t('noMembershipTitle', { workspace: t('workspace') })}
       text={t('noMembershipText', { workspace: t('workspace') })}
     />

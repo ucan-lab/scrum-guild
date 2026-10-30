@@ -63,7 +63,11 @@ test('担い手、レイド、検索で絞り、URL に残る。絞っている�
   await expect(emptyArt).toBeVisible();
   await expect(emptyArt).toHaveAttribute('aria-hidden', 'true');
   await expect(emptyArt.locator('use')).toHaveAttribute('href', '#a-notice');
-  expect((await emptyArt.boundingBox())?.height).toBeLessThanOrEqual(64);
+  // 参照先のスプライトが DOM に在る（無いと、箱だけが見えて何も描かれない）
+  await expect(page.locator('symbol#a-notice path').first()).toBeAttached();
+  const box = await emptyArt.boundingBox();
+  expect(box?.width).toBeGreaterThan(48);
+  expect(box?.width).toBeLessThanOrEqual(64);
 
   await create(page, 'レイドを作る', '会員ポイント制度を公開する');
   await create(page, '達成目標を作る', '見積もりを整える');

@@ -548,7 +548,7 @@ const SECTIONS = [
   ["art", "線画", () => block("art", "線画", "空の一覧と「最初にやること」の先頭に置く小さな絵。64px の格子に、アイコンと同じ線の太さ（2px）と丸い端で描く。art.js を読み込むとスプライトが入る。",
     `<div class="cat-row">${[["notice", "空の掲示板"], ["chest", "空の宝箱"], ["map", "出発の地図"]].map(([n, label]) => `<figure class="cat-art">${SQ.art(n)}<figcaption>${n}（${label}）</figcaption></figure>`).join("")}</div>
      <div class="two">${SQ.emptyState("board", `まだ${t("task")}がありません`, `${t("task")}を優先する順に並べる場所です。`, "", undefined, "notice")}${SQ.emptyState("calendar", `まだ${t("sprint")}がありません`, `${t("sprint")}を作ると、ここに先の${t("sprint")}が並びます。`, "", undefined, "map")}</div>`,
-    ["色はテーマの文字の薄い色に従い、絵柄はテーマで替えない。文とボタンより目立たせない（アイコンの色より濃くしない）。", "読み上げから外す（aria-hidden）。何が出る場所かと次にやることは、隣の文が伝える。", "種類は掲示板（一覧が空）、宝箱（報酬や明細が空）、地図（最初の一歩）の3つ。場面ごとに選び、増やすときはここに足す。", "「最初にやること」では、パネルの先頭に小さい形（SQ.art(map, true)、.art.is-lead）で置く。見本は下の「最初にやること」。"],
+    ["色はテーマの文字の薄い色に従い、絵柄はテーマで替えない。文とボタンより目立たせない（アイコンの色より濃くしない）。", "読み上げから外す（aria-hidden）。何が出る場所かと次にやることは、隣の文が伝える。", "種類は掲示板（一覧が空）、宝箱（報酬や明細が空）、地図（最初の一歩）の3つ。場面ごとに選び、増やすときはここに足す。", "「最初にやること」では、パネルの見出しの左に小さい形（SQ.art(map, true)、.art.is-lead）で置く。見本は下の「最初にやること」。"],
     "SQ.art(name, lead) .art .art.is-lead / SQ.emptyState(…, art)")],
   ["first", "最初にやること", () => block("first", "最初にやること", "初めて使う人の自分の今日の先頭に、ロールごとの手順を出す。済んだかは今のデータから決まる。必須の手順がすべて済むと出なくなる。",
     `<div class="two">${SQ.firstSteps("member", { preview: true })}${SQ.firstSteps("admin", { preview: true })}</div>`,
