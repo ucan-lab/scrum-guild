@@ -790,19 +790,57 @@ const looooooooooooooooooooooooooooooooooongLine = "コードの長い1行は、
       <span class="props-note">${opts.note || `縦の線は 80% の位置。超えると${t("admin")}に通知します。`}</span></div>`;
   }
 
-  // ---- タスクの詳細（右から出る引き出し。左のメニューを残して広げられる） ----
-  // full は開き直しても残し、次に開くタスクも同じ広さで出す
+  // ---- タスクの詳細（横、真ん中、ページ全体、新しいタブ） ----
+  // mode は端末の localStorage に覚え、次に開くタスクも同じ形で出す（task.html はページ全体の見本）
   // editing は直している途中の欄（title、link、body）。欄ごとに別々に開け、保存か取り消しで閉じる
   // view は見本の状態の切り替え（読み込み中、読めない、閉じたワークスペースの読み取り専用）。errors は欄の下に出す理由
   // commentEditing は直している途中のコメントの番号、commentDeleting は消すかを確かめているコメントの番号
-  const drawer = { id: null, tab: "comments", thanked: new Set(), opener: null, full: false, editing: new Set(), view: null, errors: {}, drafts: {}, commentEditing: null, commentDeleting: null,
+  const drawer = { id: null, tab: "comments", thanked: new Set(), opener: null, mode: readDrawerMode(), editing: new Set(), view: null, errors: {}, drafts: {}, commentEditing: null, commentDeleting: null,
     // 見本の状態の切り替え（カタログの drawerDemo が使う）。commentsView はコメントの読み込み（loading、failed、reloadFailed）
     commentsView: null, commentViewer: null, commentBlocked: null };
   const drawerReadOnly = () => drawer.view === "readonly";
-  function drawerSizeBtn() {
-    const label = drawer.full ? "横に戻す" : "広げる";
-    return `<button class="pill drawer-size" type="button" data-drawer-size aria-label="${label}" title="${label}">${icon(drawer.full ? "shrink" : "expand")}</button>`;
+  function readDrawerMode() {
+    try { const mode = localStorage.getItem("sq-design-task-open-mode"); return ["side", "center", "page", "tab"].includes(mode) ? mode : "side"; }
+    catch { return "side"; }
   }
+  function shownDrawerMode() { return drawer.mode === "center" && matchMedia("(max-width: 620px)").matches ? "side" : drawer.mode; }
+  // 今描いている形。ページ全体の見本（task.html）はページ全体、それ以外は横か真ん中（狭い幅の真ん中は横）
+  function renderedDrawerMode() { return location.pathname.endsWith("/task.html") ? "page" : shownDrawerMode() === "center" ? "center" : "side"; }
+  // 開き方は押した時点で実行するボタンの組。select にすると、矢印キーを押すだけで確認なしに遷移してしまう
+  function drawerModeButtons() {
+    const narrow = matchMedia("(max-width: 620px)").matches, now = renderedDrawerMode();
+    const buttons = [["side", "横"], ["center", "真ん中"], ["page", "ページ全体"], ["tab", "新しいタブ"]].filter(([v]) => v !== "center" || !narrow)
+      .map(([v, label]) => `<button class="pill" type="button" data-drawer-mode="${v}" aria-pressed="${now === v}">${label}</button>`).join("");
+    return `<span class="drawer-mode" role="group" aria-label="開き方">${buttons}</span>`;
+  }
+  let pendingDrawerMode = null;
+  function saveDrawerMode(mode) {
+    try { localStorage.setItem("sq-design-task-open-mode", mode); drawer.mode = mode; } catch { drawer.mode = "side"; }
+  }
+  function changeDrawerMode(mode, force = false) {
+    // 描いている形と同じ形を押したときは、移らずに既定だけを保存する
+    if (mode === renderedDrawerMode()) { saveDrawerMode(mode); renderDrawer(); return; }
+    if (!force && drawerHasDraft()) { pendingDrawerMode = mode; DIALOGS.discardDraft(); return; }
+    const id = drawer.id;
+    pendingDrawerMode = null;
+    if (mode === "tab") {
+      // 開けなかったら（遮断された）、詳細も既定もそのままにする
+      const opened = window.open(`task.html?task=${encodeURIComponent(id)}`, "_blank");
+      if (!opened) { toast(`${icon("alert")}新しいタブを開けませんでした`); return; }
+      opened.opener = null;
+      saveDrawerMode(mode); closeDrawer(true);
+      return;
+    }
+    saveDrawerMode(mode);
+    if (mode === "page") {
+      sessionStorage.setItem("sq-design-task-return", location.href); location.href = `task.html?task=${encodeURIComponent(id)}`;
+      return;
+    }
+    if (location.pathname.endsWith("/task.html")) { location.href = `backlog.html?task=${encodeURIComponent(id)}`; return; }
+    closeDrawer(true); openDrawer(id, drawer.opener);
+  }
+  // 画面の幅が 620px を越えたら、真ん中のボタンを出し入れする
+  matchMedia("(max-width: 620px)").addEventListener("change", () => renderDrawer());
   // 欄ごとに直す。値そのものが押せるボタン（edit-trigger）で、押すと入力欄と「保存」「取り消し」に替わる。
   // Enter で保存、Esc で取り消し（本文は Enter が改行なので、保存は「保存」だけ）。ポイントと期日は選んだら保存する
   function editActions(name) {
@@ -922,7 +960,7 @@ const looooooooooooooooooooooooooooooooooongLine = "コードの長い1行は、
         <span class="chip">${icon(x.src ? SRC[x.src.kind].icon : "pen")}${x.src ? SRC[x.src.kind].label : `手で作った${t("task")}`}</span>
         ${x.src ? `<span class="source-key">${esc(x.src.key)}</span><span class="chip">取り込み元: ${esc(x.src.status)}</span>` : ""}
         <span class="drawer-tools">
-          ${drawerSizeBtn()}
+          ${drawerModeButtons()}
           <button class="pill drawer-close" type="button" data-close-drawer aria-label="閉じる">${icon("x")}</button>
         </span>
       </div>
@@ -998,13 +1036,20 @@ const looooooooooooooooooooooooooooooooooongLine = "コードの長い1行は、
   // 引き出しの見本の状態。読み込み中と、読めなかったとき（もう一度試す）は、見出しと文だけ
   function drawerStateHtml() {
     const x = task(drawer.id);
-    const top = `<div class="drawer-top"><span class="drawer-tools">${drawerSizeBtn()}<button class="pill drawer-close" type="button" data-close-drawer aria-label="閉じる">${icon("x")}</button></span></div>
+    const top = `<div class="drawer-top"><span class="drawer-tools">${drawerModeButtons()}<button class="pill drawer-close" type="button" data-close-drawer aria-label="閉じる">${icon("x")}</button></span></div>
       <h2 class="drawer-title"><span id="drawer-title">${t("task")}</span></h2>`;
     if (drawer.view === "loading") return `${top}<p class="field-hint">読み込んでいます</p>`;
     return `${top}<div class="callout is-danger" role="alert">${icon("alert")}<span>この${t("task")}を読み込めませんでした。もう一度試してください。</span></div>
       <div class="form-actions"><button class="btn" type="button">もう一度試す</button></div>`;
   }
   function openDrawer(id, opener) {
+    if (!location.pathname.endsWith("/task.html") && (drawer.mode === "page" || drawer.mode === "tab")) {
+      const url = `task.html?task=${encodeURIComponent(id)}`;
+      if (drawer.mode === "tab") window.open(url, "_blank", "noopener,noreferrer");
+      else { sessionStorage.setItem("sq-design-task-return", location.href); location.href = url; }
+      return;
+    }
+
     drawer.id = id; drawer.tab = "comments"; drawer.thanked = new Set(); drawer.opener = opener || null; drawer.editing = new Set(); drawer.errors = {}; drawer.drafts = {}; drawer.commentEditing = null;
     renderDrawer();
     document.querySelector("[data-close-drawer]")?.focus();
@@ -1030,7 +1075,12 @@ const looooooooooooooooooooooooooooooooooongLine = "コードの長い1行は、
   }
   // 書きかけがあるときは、捨てるかをダイアログで確かめる。force は捨てると決めた後
   function closeDrawer(force = false) {
-    if (!force && drawerHasDraft()) { DIALOGS.discardDraft(); return; }
+    // 形を替える確認で「書き続ける」を選んだ後に、閉じる操作の確認へ前の形の指定を持ち越さない
+    if (!force && drawerHasDraft()) { pendingDrawerMode = null; DIALOGS.discardDraft(); return; }
+    if (location.pathname.endsWith("/task.html")) {
+      const back = sessionStorage.getItem("sq-design-task-return"); sessionStorage.removeItem("sq-design-task-return");
+      location.href = back || "backlog.html"; return;
+    }
     drawer.id = null; drawer.editing = new Set(); drawer.errors = {}; drawer.drafts = {}; drawer.commentEditing = null;
     renderDrawer();
     const back = drawer.opener && document.querySelector(`[data-task="${drawer.opener}"]`);
@@ -1064,16 +1114,18 @@ const looooooooooooooooooooooooooooooooooongLine = "コードの長い1行は、
     else x.due = el.value || null;
     redrawAll(); toast(`${icon("check")}保存しました`);
   });
-  // 広げている間は左のメニューも押せるので、モーダルとして扱わない
   function applyDrawerSize(el) {
-    el.classList.toggle("is-full", drawer.full);
-    el.setAttribute("aria-modal", String(!drawer.full));
+    const isPage = location.pathname.endsWith("/task.html");
+    el.classList.toggle("is-center", !isPage && shownDrawerMode() === "center");
+    el.classList.toggle("is-page", isPage);
+    el.setAttribute("role", isPage ? "region" : "dialog");
+    if (isPage) el.removeAttribute("aria-modal"); else el.setAttribute("aria-modal", "true");
   }
   function renderDrawer() {
     const el = document.getElementById("drawer"), scrim = document.getElementById("scrim");
     if (!el) return;
     applyDrawerSize(el);
-    if (drawer.id) { captureDrafts(); el.innerHTML = drawerHtml(); el.hidden = false; scrim.hidden = false; }
+    if (drawer.id) { captureDrafts(); el.innerHTML = drawerHtml(); el.hidden = false; scrim.hidden = location.pathname.endsWith("/task.html"); }
     else { el.innerHTML = ""; el.hidden = true; scrim.hidden = true; }
     const ctx = document.querySelector("#assist-panel .assist-context");
     if (ctx) ctx.outerHTML = assistCtx();
@@ -1992,6 +2044,14 @@ const looooooooooooooooooooooooooooooooooongLine = "コードの長い1行は、
     onChange(redraw);
     applyTheme();
     redraw();
+    const taskId = new URLSearchParams(location.search).get("task");
+    if (taskId) {
+      if (location.pathname.endsWith("/task.html")) {
+        drawer.mode = "page";
+        document.getElementById("content").append(document.getElementById("drawer"));
+      }
+      openDrawer(taskId, null);
+    }
   }
 
   // 招待と管理者の指名で人を指す欄。手段を選ぶと、欄の名前、例、説明だけを差し替える（描き直さない）。
@@ -2168,19 +2228,13 @@ const looooooooooooooooooooooooooooooooooongLine = "コードの長い1行は、
     if ((el = hit("data-drawer-cancel"))) { cancelDrawerEdit(el.dataset.drawerCancel); return; }
     if ((el = hit("data-drawer-save"))) { saveDrawerEdit(el.dataset.drawerSave); return; }
     if (hit("data-drawer-due-clear")) { task(drawer.id).due = null; redrawAll(); toast(`${icon("check")}保存しました`); return; }
-    if (hit("data-discard-draft")) { closeDialog(); closeDrawer(true); return; }
+    if ((el = hit("data-drawer-mode"))) { changeDrawerMode(el.dataset.drawerMode); return; }
+    if (hit("data-discard-draft")) { const next = pendingDrawerMode; closeDialog(); if (next) changeDrawerMode(next, true); else closeDrawer(true); return; }
     if (hit("data-delete-task")) {
       const x = task(drawer.id);
       closeDialog(); closeDrawer(true);
       D.tasks = D.tasks.filter((y) => y !== x);
       redrawAll(); toast(`${icon("check")}${t("task")}を削除しました`); return;
-    }
-    if ((el = hit("data-drawer-size"))) {
-      // 中身は描き直さない。書きかけのコメントとスクロールの位置を残すため
-      drawer.full = !drawer.full;
-      applyDrawerSize(document.getElementById("drawer"));
-      el.outerHTML = drawerSizeBtn();
-      document.querySelector("#drawer [data-drawer-size]")?.focus({ preventScroll: true }); return;
     }
     if ((el = hit("data-invite-link"))) { inviteLink(el.dataset.inviteLink, el.dataset.inviteDone, false, el.dataset.inviteKind === "workspace"); return; }
     // 組織の作成: GitHub は解決した人を見せ、確かめてから作れる。作った後は組織の URL を出す
@@ -2315,6 +2369,8 @@ const looooooooooooooooooooooooooooooooooongLine = "コードの長い1行は、
       // タイトルとリンクの入力欄では、Esc は欄の取り消し。本文は Esc でも閉じる（書きかけは確かめる）
       const name = ev.target.dataset && ev.target.dataset.drawerInput;
       if (name && name !== "body") { cancelDrawerEdit(name); return; }
+      // ページ全体は、引き出しの外（左のメニューなど）にフォーカスがあるときの Esc で閉じない
+      if (renderedDrawerMode() === "page" && ev.target !== document.body && !ev.target.closest("#drawer")) return;
       closeDrawer(); return;
     }
     if (assist.open === "panel" && ev.target.closest && ev.target.closest("#assist-panel")) closeAssist();

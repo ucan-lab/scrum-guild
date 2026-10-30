@@ -27,6 +27,7 @@
   import { TASK_POINT_VALUES, TASK_TITLE_MAX_LENGTH, taskTitleProblem } from '../../shared/task.ts';
   import { callOperation } from '../api.ts';
   import { withCurrent } from '../definition-options.ts';
+  import { pickTaskOpenMode, type TaskOpenMode } from '../drawer.svelte.ts';
   import { formatDateTime } from '../format-datetime.ts';
   import { completedMessage, sprintLabel, sprintPeriod } from '../sprint-label.ts';
   import { historyEntryView } from '../task-history.ts';
@@ -75,6 +76,8 @@
   // 完了していて戻せる（task-detail の reopenable）ときは、日時の横に「戻す」（.link-btn。task-reopen。確かめのダイアログは挟まない）。
   // 戻したら、詳細と履歴を読み直し、画面が木を読み直す。押したボタンは消えるので、「完了にする」へフォーカスを移す
   let {
+    mode = 'side',
+    onmode,
     slug,
     workspaceId,
     currentUserId,
@@ -86,6 +89,9 @@
     onstale,
     onremoved,
   }: {
+    mode?: TaskOpenMode;
+    // 確認を通った後に呼ぶ。既定の保存は呼び出し側が行う。移れなかったとき（新しいタブを開けなかった）は false を返す
+    onmode: (mode: TaskOpenMode) => boolean;
     slug: string;
     workspaceId: string;
     currentUserId: string | null;
@@ -445,6 +451,16 @@
     if (hasDraft() && !(await confirmDiscard())) return;
     leaving = true;
     onclose();
+  }
+
+  // 帯で形を押したとき。描いている形（shown）と同じなら既定だけ保存して終える。違えば、書きかけの確認の後に呼び出し側が移る
+  async function requestMode(next: TaskOpenMode, shown: TaskOpenMode): Promise<void> {
+    if (asking || leaving) return;
+    if (pickTaskOpenMode(next, shown) === 'stay') return;
+    if (hasDraft() && !(await confirmDiscard())) return;
+    leaving = true;
+    // 新しいタブを開けなかったときは移らず、今の詳細を残す
+    if (!onmode(next)) leaving = false;
   }
 
   async function confirmDiscard(): Promise<boolean> {
@@ -1238,7 +1254,13 @@
   {/if}
 {/snippet}
 
-<Drawer labelledBy={titleLabelId} busy={loadState === 'loading'} onrequestclose={() => void requestClose()}>
+<Drawer
+  {mode}
+  onmode={(next, shown) => void requestMode(next, shown)}
+  labelledBy={titleLabelId}
+  busy={loadState === 'loading'}
+  onrequestclose={() => void requestClose()}
+>
   {#snippet top()}
     {#if task !== null}
       <span class="chip"

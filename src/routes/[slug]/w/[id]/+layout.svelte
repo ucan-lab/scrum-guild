@@ -8,6 +8,15 @@
   import LoadFailed from '../../../../lib/components/LoadFailed.svelte';
   import NotFoundPage from '../../../../lib/components/NotFoundPage.svelte';
   import TaskDrawer from '../../../../lib/components/TaskDrawer.svelte';
+  import {
+    drawerState,
+    clearOverlayHandoff,
+    markOverlayHandoff,
+    openTaskTab,
+    setTaskOpenMode,
+    taskPageHref,
+    type TaskOpenMode,
+  } from '../../../../lib/drawer.svelte.ts';
   import { focusPageHeading } from '../../../../lib/focus-heading.ts';
   import { formatLocalDate } from '../../../../lib/format.ts';
   import { setWorkspaceVocabulary, t } from '../../../../lib/vocabulary.svelte.ts';
@@ -25,6 +34,7 @@
   // 画面にまだ無い）画面の見出しへ移す。保存した欄は、木だけを読み直して行に反映する（`app:backlog-tree`）。引き出しが読み直すのは、
   // 木かこの枠（`app:workspace`）だけで、組織の枠は読み直さない（組織の枠の失敗で、引き出しと書きかけが消えないため）。
   // 終了したワークスペースでは、引き出しを読み取り専用で開く
+  // ページ全体（tasks/[taskId]）は、ルートが TaskDrawer を置くので、ここでは引き出しを重ねない
   let { data, children }: { data: LayoutData; children: Snippet } = $props();
 
   const workspace = $derived(data.workspace);
@@ -32,7 +42,32 @@
   const status = $derived(data.workspaceFailure?.status);
   const code = $derived(data.workspaceFailure?.code);
   const unavailable = $derived((status === 404 && code === 'not_found') || (status === 403 && code === 'forbidden'));
-  const taskId = $derived(page.url.searchParams.get('task'));
+  const taskId = $derived(page.params.taskId ? null : page.url.searchParams.get('task'));
+  let modeRevision = $state(0);
+  const overlayMode = $derived(drawerState.mode === 'center' ? 'center' : 'side');
+
+  // 帯で形を替える（書きかけの確認は TaskDrawer が済ませている）。移れなかったとき（新しいタブを開けなかった）は false を返し、
+  // 引き出しも既定もそのままにする
+  function changeMode(mode: TaskOpenMode): boolean {
+    if (!taskId) return true;
+    if (mode === 'tab') {
+      if (!openTaskTab(taskPageHref(data.slug, workspace!.id, taskId))) return false;
+      setTaskOpenMode(mode);
+      void withoutTask();
+      return true;
+    }
+    setTaskOpenMode(mode);
+    if (mode === 'page') {
+      // 一覧の上の引き出しからページ全体へ移っても履歴は足さない。足すと、ページ全体を閉じたとき引き出しが開いた状態の一覧に戻る
+      markOverlayHandoff();
+      // eslint-disable-next-line svelte/no-navigation-without-resolve -- 同じワークスペース内の詳細の URL
+      void goto(taskPageHref(data.slug, workspace!.id, taskId), { replace: true }).finally(() => {
+        // 移れていれば（URL がページ全体）、ページ側の afterNavigate が印を読む。移れなかったときだけ外す
+        if (!location.pathname.includes('/tasks/')) clearOverlayHandoff();
+      });
+    } else modeRevision += 1;
+    return true;
+  }
   const canWrite = $derived(workspace !== null && workspace.closedAt === null);
 
   $effect.pre(() => {
@@ -63,6 +98,8 @@
     const previous = shownTaskId;
     shownTaskId = taskId;
     if (previous === null || taskId !== null) return;
+    // 引き出しからページ全体へ移ったときも taskId は null になる。ページ全体の TaskDrawer が置いたフォーカスを奪わない
+    if (page.params.taskId) return;
     if (focusAfterReload) {
       focusAfterReload = false;
       return;
@@ -101,8 +138,10 @@
   {/if}
   {@render children()}
   {#if taskId !== null}
-    {#key taskId}
+    {#key `${taskId}:${modeRevision}`}
       <TaskDrawer
+        mode={overlayMode}
+        onmode={changeMode}
         slug={page.params.slug ?? ''}
         workspaceId={workspace.id}
         {taskId}

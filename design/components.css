@@ -217,6 +217,8 @@ h1, h2, h3 { text-wrap: balance; }
 }
 .pill:hover:not([aria-disabled="true"]) { border-color: var(--color-muted); }
 .pill[aria-disabled="true"] { opacity: 0.45; cursor: not-allowed; }
+/* 押した状態は .btn.is-on と同じ（accent-soft の地に accent の枠と文字）。主ボタンの塗りつぶしと紛らわしいので塗りつぶさない。色に加えて太字でも示す */
+.pill[aria-pressed="true"], .pill[aria-pressed="true"]:hover { background: var(--color-accent-soft); border-color: var(--color-accent); color: var(--color-accent); font-weight: 700; }
 .pill-count {
   position: absolute; top: -7px; right: -7px; min-width: 17px; height: 17px; padding: 0 4px;
   background: var(--color-stamp); color: var(--color-on-accent); border-radius: var(--radius-full);
@@ -831,21 +833,19 @@ label.pick-row:hover { background: var(--color-accent-soft); }
 }
 /* 引き出しの中の URL は折り返す。折り返さないと、2048 字の URL が列を広げて本文まで横にはみ出す */
 .drawer .source-key { white-space: normal; overflow-wrap: anywhere; }
-/*
- * 広げた状態は左のメニュー（.app の 240px）を残して右側を覆い、中身は読める幅（960px）で中央に寄せる。
- * padding の % は引き出しではなく画面の幅を指すので、メニューの幅を引いてから割る。
- * メニューを押せるよう、幕は外す。
- */
-.drawer.is-full {
-  width: calc(100% - 240px); border-left: 0;
-  padding-left: max(var(--space-6), calc((100% - 240px - 960px) / 2));
-  padding-right: max(var(--space-6), calc((100% - 240px - 960px) / 2), env(safe-area-inset-right, 0px));
+.drawer.is-center {
+  inset: 5vh max(var(--space-4), calc((100% - 960px) / 2));
+  width: auto; border: var(--rule-double); border-radius: var(--radius-md);
 }
-.scrim:has(+ .drawer.is-full) { display: none; }
+.drawer.is-page {
+  position: relative; inset: auto; z-index: auto; width: 100%; max-width: 960px;
+  margin-inline: auto; border: 0; box-shadow: none; overflow: visible;
+}
 .drawer-top { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
-.drawer-tools { margin-left: auto; display: flex; gap: var(--space-2); }
-/* 引き出しがもともと全幅になる幅では、広げても変わらない */
-@media (max-width: 620px) { .drawer-size { display: none; } }
+.drawer-tools { margin-left: auto; display: flex; align-items: center; gap: var(--space-2); }
+/* 開き方は押した時点で実行するボタンの組（.pill）。選んでいる形は aria-pressed で示し、色に加えて太字にする */
+.drawer-mode { display: inline-flex; flex-wrap: wrap; gap: var(--space-2); }
+.drawer-mode .pill { white-space: nowrap; }
 .drawer-title { font-family: var(--font-display); font-weight: var(--weight-display); font-size: var(--text-xl); line-height: var(--leading-tight); overflow-wrap: anywhere; }
 .props { margin: 0; display: grid; gap: var(--space-2); }
 .props > div { display: grid; grid-template-columns: 7em minmax(0, 1fr); gap: var(--space-3); align-items: center; padding-bottom: var(--space-2); border-bottom: 1px solid var(--color-rule); font-size: var(--text-sm); }
@@ -961,9 +961,7 @@ a.notice-title.notice-link:hover { text-decoration: underline; text-underline-of
   .lanes { grid-template-columns: minmax(0, 1fr); }
 }
 @media (max-width: 760px) {
-  .drawer, .drawer.is-full { padding-left: max(var(--space-4), env(safe-area-inset-left, 0px)); padding-right: max(var(--space-4), env(safe-area-inset-right, 0px)); }
-  /* メニューが上の帯になる幅では、広げると全幅にする */
-  .drawer.is-full { width: 100%; }
+  .drawer, .drawer.is-page { padding-left: max(var(--space-4), env(safe-area-inset-left, 0px)); padding-right: max(var(--space-4), env(safe-area-inset-right, 0px)); }
   .props > div { grid-template-columns: minmax(0, 1fr); gap: 2px; }
   .velocity { grid-template-columns: minmax(0, 1fr); }
   .tree-children .entry, .tree-children .tree-children .entry { --row-indent: var(--space-4); }
@@ -1048,6 +1046,8 @@ dialog.dialog::backdrop { background: none; }
   }
   /* 引き出しのタブ（コメントと変更の履歴）は、広げた分が下のタブの中身（.thread）に覆われるので、見た目ごと 44px の高さにする */
   .drawer .tab { min-height: 44px; }
+  /* 開き方のボタンは隣と押せる範囲が重ならないよう、見た目ごと 44px 四方にする */
+  .drawer-mode .pill { min-width: 44px; min-height: 44px; justify-content: center; }
   /* 木の行の右端が折り返したとき、上の段の「＋タスク」の広げた分が、下の段の 44px のボタンに重ならないよう段の間を空ける */
   /* --space-3 では、上の段の「＋タスク」と下の段の「完了にする」の広げた範囲が重なる（e2e/layout-narrow-workspace.test.ts で確かめた） */
   .tree-end { row-gap: var(--space-5); }

@@ -1988,8 +1988,12 @@ export const dictionary = defineDictionary({
   workspaceClosedBannerLink: organization('{page}で再開する', '{page}で再開する'),
 
   // タスクの詳細の引き出し
-  drawerExpand: organization('広げる', '広げる'),
-  drawerShrink: organization('横に戻す', '横に戻す'),
+  drawerOpenMode: organization('開き方', '開き方'),
+  drawerSide: organization('横', '横'),
+  drawerCenter: organization('真ん中', '真ん中'),
+  drawerPage: organization('ページ全体', 'ページ全体'),
+  drawerTab: organization('新しいタブ', '新しいタブ'),
+  drawerTabBlocked: organization('新しいタブを開けませんでした', '新しいタブを開けませんでした'),
   taskManualChip: workspace('手で作った{task}', '手で作った{task}'),
   taskImportedChip: workspace('取り込んだ{task}', '取り込んだ{task}'),
   taskDrawerLoadFailed: workspace(
