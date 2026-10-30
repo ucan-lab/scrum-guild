@@ -3,6 +3,7 @@
 // 組織を確かめた結果（VerifiedOrganization）を発行するのは、この関数が organizations に挿入した組織の ID に限る。
 // 任意の組織の ID を受けて確かめた結果を発行する関数は、db/ の外へ出さない（index.ts は値を出さない）。
 // 共通の表と組織の中の表は別の batch() で書く（docs/data-model.md の「書き込みの単位」）
+import { defaultVocabularies } from '../../shared/vocabulary.ts';
 import { uuidv7 } from '../uuid.ts';
 import { commonDb, orgDb, type OrganizationDb } from './entries.ts';
 import { issueVerifiedOrganization } from './verify-organization.ts';
@@ -17,7 +18,7 @@ export type NewOrganization = {
 
 export type CreatedOrganization = { organizationId: string; db: OrganizationDb };
 
-// 言葉づかいはスクラムの言葉で作る（列の既定は 'game' のままで、マイグレーションは足すだけのため、ここで明示する）。
+// 言葉づかいは画面の既定（defaultVocabularies）で作る（列の既定は 'game' のままで、マイグレーションは足すだけのため、ここで明示する）。
 // 人数と添付ファイルの上限、テーマは列の既定の値で作る。
 // slug が重なったときは 'slug_taken'（同時に作られて UNIQUE に当たった場合を含む）。それ以外の失敗は投げる
 export async function insertOrganization(
@@ -34,7 +35,7 @@ export async function insertOrganization(
           id: organizationId,
           slug: input.slug,
           name: input.name,
-          vocabulary: 'scrum',
+          vocabulary: defaultVocabularies.organization,
           created_by_operator: input.createdByOperator,
           created_at: at,
           updated_at: at,
