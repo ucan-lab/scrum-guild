@@ -638,6 +638,71 @@ export const dictionary = defineDictionary({
     '{party}に割り振れるのは、{requester}と{leader}だけです',
     '{party}に割り振れるのは、{requester}と{leader}だけです',
   ),
+  // 討伐隊の面の操作。クリア報酬の段階を変えるのは依頼主とリーダー、依頼主を替えるのはリーダーだけ
+  epicPageChangeReward: workspace('{reward}を変える', '{reward}を変える'),
+  epicPageChangeRequester: workspace('{requester}を替える', '{requester}を替える'),
+  // クリア報酬を変えるダイアログ。段階は額つきのラジオで選ぶ
+  epicRewardField: workspace('{reward}の段階', '{reward}の段階'),
+  epicRewardHint: workspace(
+    '{reward}は、クリアした時点の{party}全員に同じ額が入ります。',
+    '{reward}は、完了にした時点の{party}全員に同じ額が入ります。',
+  ),
+  epicRewardUnchanged: workspace(
+    '今の段階です。別の段階を選ぶと変えられます。',
+    '今の段階です。別の段階を選ぶと変えられます。',
+  ),
+  epicRewardSubmit: workspace('変える', '変える'),
+  epicRewardSubmitting: workspace('変えています', '変えています'),
+  epicRewardChanged: workspace('{reward}を「{tier}」に変えました', '{reward}を「{tier}」に変えました'),
+  epicRewardAlready: workspace('{reward}はもう「{tier}」です', '{reward}はもう「{tier}」です'),
+  epicRewardForbidden: workspace(
+    '{reward}を変えられるのは、{requester}と{leader}だけです',
+    '{reward}を変えられるのは、{requester}と{leader}だけです',
+  ),
+  // 報酬の変更が 409（終わったエピック）
+  epicRewardFinished: workspace(
+    'この{epic}は終わっているので、{reward}を変えられません',
+    'この{epic}は終わっているので、{reward}を変えられません',
+  ),
+  epicRewardGone: workspace('{epic}が見つかりません', '{epic}が見つかりません'),
+  epicRewardFailed: workspace(
+    '{reward}を変えられませんでした。もう一度試してください',
+    '{reward}を変えられませんでした。もう一度試してください',
+  ),
+  // 依頼主を替えるダイアログ。候補は member-list の今所属している人のうち、今の依頼主でない人
+  epicRequesterField: workspace('新しい{requester}', '新しい{requester}'),
+  epicRequesterHint: workspace(
+    '{workspace}に今所属している人から選びます。{party}は変わりません。',
+    '{workspace}に今所属している人から選びます。{party}は変わりません。',
+  ),
+  epicRequesterNoCandidates: workspace(
+    '替えられる人がいません。{workspace}に、今の{requester}のほかに所属している人がいません。',
+    '替えられる人がいません。{workspace}に、今の{requester}のほかに所属している人がいません。',
+  ),
+  epicRequesterCandidatesFailed: workspace(
+    '替えられる人を読み込めませんでした。',
+    '替えられる人を読み込めませんでした。',
+  ),
+  epicRequesterSubmit: workspace('替える', '替える'),
+  epicRequesterSubmitting: workspace('替えています', '替えています'),
+  epicRequesterChanged: workspace('{requester}を「{name}」に替えました', '{requester}を「{name}」に替えました'),
+  epicRequesterAlready: workspace('{requester}はもう「{name}」です', '{requester}はもう「{name}」です'),
+  epicRequesterGone: workspace(
+    '選んだ人は{workspace}に所属していないか、{epic}が見つかりません。選び直してください。',
+    '選んだ人は{workspace}に所属していないか、{epic}が見つかりません。選び直してください。',
+  ),
+  epicRequesterForbidden: workspace(
+    '{requester}を替えられるのは、{leader}だけです',
+    '{requester}を替えられるのは、{leader}だけです',
+  ),
+  epicRequesterFinished: workspace(
+    'この{epic}は終わっているので、{requester}を替えられません',
+    'この{epic}は終わっているので、{requester}を替えられません',
+  ),
+  epicRequesterFailed: workspace(
+    '{requester}を替えられませんでした。もう一度試してください',
+    '{requester}を替えられませんでした。もう一度試してください',
+  ),
   // 進み具合の棒の読み上げ（kit.js の progress の aria-label）と、棒の横の数
   progressLabel: workspace('{done} {value} / {all} {points}', '{done} {value} / {all} {points}'),
   progressValue: workspace('{value} / {all} pt', '{value} / {all} pt'),

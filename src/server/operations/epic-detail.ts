@@ -166,6 +166,7 @@ export const epicDetailOperation = implement(epicDetail, async ({ db, actor, wor
       points_all: amountOf(row.points_all),
     })),
     can_manage: (actor.userId !== null && actor.userId === epic.requester_user_id) || isLeaderOrAdmin(actor, workspace),
+    can_change_requester: isLeaderOrAdmin(actor, workspace),
     can_join: joinableResult.rows.length > 0,
     joined: partyResult.rows.some((row) => row.id === actorUserId),
   };
