@@ -1,5 +1,4 @@
 <script lang="ts">
-  import { pickTaskOpenMode, type TaskOpenMode } from '../drawer.svelte.ts';
   import { tick } from 'svelte';
   import { beforeNavigate, goto } from '$app/navigation';
   import {
@@ -28,6 +27,7 @@
   import { TASK_POINT_VALUES, TASK_TITLE_MAX_LENGTH, taskTitleProblem } from '../../shared/task.ts';
   import { callOperation } from '../api.ts';
   import { withCurrent } from '../definition-options.ts';
+  import { pickTaskOpenMode, type TaskOpenMode } from '../drawer.svelte.ts';
   import { formatDateTime } from '../format-datetime.ts';
   import { completedMessage, sprintLabel, sprintPeriod } from '../sprint-label.ts';
   import { historyEntryView } from '../task-history.ts';

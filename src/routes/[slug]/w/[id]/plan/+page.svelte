@@ -1,5 +1,4 @@
 <script lang="ts">
-  import { taskDetailHref, taskLinkAttrs } from '../../../../../lib/drawer.svelte.ts';
   import { tick } from 'svelte';
   import { invalidate } from '$app/navigation';
   import { resolve } from '$app/paths';
@@ -19,6 +18,7 @@
   import SprintOverdueNotice from '../../../../../lib/components/SprintOverdueNotice.svelte';
   import SprintStartDialog from '../../../../../lib/components/SprintStartDialog.svelte';
   import SprintTaskPicker from '../../../../../lib/components/SprintTaskPicker.svelte';
+  import { taskDetailHref, taskLinkAttrs } from '../../../../../lib/drawer.svelte.ts';
   import { focusPageHeading } from '../../../../../lib/focus-heading.ts';
   import { isUnauthenticated, loginUrl } from '../../../../../lib/login-redirect.ts';
   import { formatPoints, isOverVelocity } from '../../../../../lib/plan-summary.ts';
@@ -391,7 +391,7 @@
                     title={t('pointsLabel', { points: t('points'), value: task.points })}>{task.points}</span
                   >
                 {/if}
-                <!-- 押しても、フォーカスとスクロールの位置は動かさない（引き出しが閉じたとき、data-task-id で探してフォーカスを戻す） -->
+                <!-- 横と真ん中のときは、押しても、フォーカスとスクロールの位置は動かさない（引き出しが閉じたとき、data-task-id で探してフォーカスを戻す）。ページ全体の既定では taskLinkAttrs が reset を外し、先頭から表示する -->
                 <!-- eslint-disable svelte/no-navigation-without-resolve -- href は resolve した経路に ?task=<ID> を足したもの、またはその詳細ページ -->
                 <a
                   href={taskDetailHref(`${planHref}?task=${encodeURIComponent(task.id)}`)}

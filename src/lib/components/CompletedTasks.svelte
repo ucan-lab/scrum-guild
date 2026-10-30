@@ -1,5 +1,4 @@
 <script lang="ts">
-  import { drawerState, openTaskTab, taskDetailHref } from '../drawer.svelte.ts';
   import { tick, untrack } from 'svelte';
   import { goto } from '$app/navigation';
   import { page } from '$app/state';
@@ -8,6 +7,7 @@
   import { CompletedBacklog } from '../completed-backlog.svelte.ts';
   import type { BacklogDnd } from '../backlog-dnd.svelte.ts';
   import type { DropRow } from '../backlog-drop.ts';
+  import { drawerState, openTaskTab, taskDetailHref } from '../drawer.svelte.ts';
   import { formatLocalDate } from '../format.ts';
   import { t } from '../vocabulary.svelte.ts';
   import Avatar from './Avatar.svelte';

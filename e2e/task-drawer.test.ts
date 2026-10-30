@@ -1099,6 +1099,8 @@ test('ページ全体は一覧を重ねず、アプリ内から来た画面へ�
   await expect(page).toHaveURL(detail);
   const region = page.getByRole('region', { name: 'ページだけで読む', exact: true });
   await expect(region).toBeVisible();
+  // 引き出しからページ全体へ移った直後も、ページ全体の見出しにフォーカスがある（レイアウトが行へ戻すフォーカスで奪わない）
+  await expect(region.getByRole('heading', { level: 2 })).toBeFocused();
   await expect(page.locator('.entry')).toHaveCount(0);
   await expect(page.locator('.scrim')).toHaveCount(0);
   await expect(page.locator('.binding')).not.toHaveAttribute('inert', '');
@@ -1191,7 +1193,7 @@ test('開き方のボタンは押したときだけ実行する。矢印キー�
   await expect.poll(() => storedMode(page)).toBe('side');
 });
 
-test('既定のページ全体を閉じると、履歴を戻って絞り込みの付いた一覧と行のフォーカスが戻り、履歴が重ならない', async ({
+test('既定のページ全体へ行のリンクで来て閉じると、履歴を戻って絞り込みの付いた一覧と行のフォーカスが戻り、履歴が重ならない', async ({
   page,
 }) => {
   await page.addInitScript(() => localStorage.setItem('task-open-mode', 'page'));
@@ -1208,7 +1210,7 @@ test('既定のページ全体を閉じると、履歴を戻って絞り込み�
   await region.getByRole('button', { name: '閉じる', exact: true }).click();
   await expect(page).toHaveURL(filtered);
   await expect(link).toBeFocused();
-  // 閉じるときに履歴を置き換えて同じ一覧を重ねていれば、進む先が無い
+  // リンクで来たときは履歴を戻って閉じる。置き換えて同じ一覧を重ねていれば、進む先が無い（戻る／進むで来たときは置き換えて移る）
   await page.goForward();
   await expect(page).toHaveURL(detail);
 });

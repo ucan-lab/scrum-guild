@@ -1,12 +1,4 @@
 <script lang="ts">
-  import {
-    drawerState,
-    markOverlayHandoff,
-    openTaskTab,
-    setTaskOpenMode,
-    taskPageHref,
-    type TaskOpenMode,
-  } from '../../../../lib/drawer.svelte.ts';
   import { tick, type Snippet } from 'svelte';
   import { SvelteURLSearchParams } from 'svelte/reactivity';
   import { goto, invalidate } from '$app/navigation';
@@ -16,6 +8,14 @@
   import LoadFailed from '../../../../lib/components/LoadFailed.svelte';
   import NotFoundPage from '../../../../lib/components/NotFoundPage.svelte';
   import TaskDrawer from '../../../../lib/components/TaskDrawer.svelte';
+  import {
+    drawerState,
+    markOverlayHandoff,
+    openTaskTab,
+    setTaskOpenMode,
+    taskPageHref,
+    type TaskOpenMode,
+  } from '../../../../lib/drawer.svelte.ts';
   import { focusPageHeading } from '../../../../lib/focus-heading.ts';
   import { formatLocalDate } from '../../../../lib/format.ts';
   import { setWorkspaceVocabulary, t } from '../../../../lib/vocabulary.svelte.ts';
@@ -33,6 +33,7 @@
   // 画面にまだ無い）画面の見出しへ移す。保存した欄は、木だけを読み直して行に反映する（`app:backlog-tree`）。引き出しが読み直すのは、
   // 木かこの枠（`app:workspace`）だけで、組織の枠は読み直さない（組織の枠の失敗で、引き出しと書きかけが消えないため）。
   // 終了したワークスペースでは、引き出しを読み取り専用で開く
+  // ページ全体（tasks/[taskId]）は、ルートが TaskDrawer を置くので、ここでは引き出しを重ねない
   let { data, children }: { data: LayoutData; children: Snippet } = $props();
 
   const workspace = $derived(data.workspace);
@@ -93,6 +94,8 @@
     const previous = shownTaskId;
     shownTaskId = taskId;
     if (previous === null || taskId !== null) return;
+    // 引き出しからページ全体へ移ったときも taskId は null になる。ページ全体の TaskDrawer が置いたフォーカスを奪わない
+    if (page.params.taskId) return;
     if (focusAfterReload) {
       focusAfterReload = false;
       return;

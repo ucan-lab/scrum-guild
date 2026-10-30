@@ -257,11 +257,16 @@ const SECTIONS = [
       <button class="pill" type="button" aria-label="通知 3件">${icon("bell")}<span class="pill-count">3</span></button>
       <button class="pill" type="button" aria-label="閉じる（いまは閉じられません）" aria-disabled="true">${icon("x")}</button>
     </div>
+    <div class="cat-row" role="group" aria-label="開き方の見本">
+      <button class="pill" type="button" aria-pressed="true">横</button>
+      <button class="pill" type="button" aria-pressed="false">真ん中</button>
+      <button class="pill" type="button" aria-pressed="false">ページ全体</button>
+    </div>
     <div class="cat-row">
       <button class="btn is-google" type="button">${SQ.googleMark}Google でログイン</button>
       <span class="field-hint">ログインの画面の Google のボタン。テーマに合わせて明暗が替わる</span>
     </div>`,
-    ["文言は押すと起きることをそのまま書く（「完遂にする」「受注する」）。", "押せない理由がある無効のボタンは、title か横の文で理由を示す。", "送っている最中や読み直している最中のように、フォーカスを残したいボタンは disabled でなく aria-disabled=\"true\" にする（.btn と .pill が同じ薄い見た目になる）。押しても何も起きないよう、処理の側で無視する。", "取り消せない操作（削除）は is-danger にし、確認は画面の中のダイアログで行う。", "切り替えのボタンは aria-pressed を持ち、押した状態は is-on で示す。", "is-google はログインの画面の Google のボタンだけに使う。ロゴと色は Google のブランドの決まりで固定し（テーマのトークンを通さない）、主ボタン（is-primary）にしない。明暗は、既定のテーマだけ OS に従い、ほかはテーマに合わせる。"],
+    ["文言は押すと起きることをそのまま書く（「完遂にする」「受注する」）。", "押せない理由がある無効のボタンは、title か横の文で理由を示す。", "送っている最中や読み直している最中のように、フォーカスを残したいボタンは disabled でなく aria-disabled=\"true\" にする（.btn と .pill が同じ薄い見た目になる）。押しても何も起きないよう、処理の側で無視する。", "取り消せない操作（削除）は is-danger にし、確認は画面の中のダイアログで行う。", "切り替えのボタンは aria-pressed を持ち、押した状態は is-on で示す。.pill の切り替え（引き出しの開き方）は aria-pressed=\"true\" だけで同じ見た目（accent-soft の地に accent の枠と文字と太字）になる。ホバーしても枠は accent のまま。", "is-google はログインの画面の Google のボタンだけに使う。ロゴと色は Google のブランドの決まりで固定し（テーマのトークンを通さない）、主ボタン（is-primary）にしない。明暗は、既定のテーマだけ OS に従い、ほかはテーマに合わせる。"],
     ".btn .is-primary .is-quiet .is-danger .is-sm .is-on .is-google / .link-btn / .pill .pill-count")],
   ["forms", "入力と道具の帯", () => block("forms", "入力と道具の帯", "",
     `<div class="toolbar"><label class="search" for="q0">${icon("search")}<input id="q0" type="search" placeholder="${t("backlogSearch")}"></label>

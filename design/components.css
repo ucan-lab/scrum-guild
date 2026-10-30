@@ -217,7 +217,8 @@ h1, h2, h3 { text-wrap: balance; }
 }
 .pill:hover:not([aria-disabled="true"]) { border-color: var(--color-muted); }
 .pill[aria-disabled="true"] { opacity: 0.45; cursor: not-allowed; }
-.pill[aria-pressed="true"] { background: var(--color-accent); border-color: var(--color-accent); color: var(--color-on-accent); font-weight: 700; }
+/* 押した状態は .btn.is-on と同じ（accent-soft の地に accent の枠と文字）。主ボタンの塗りつぶしと紛らわしいので塗りつぶさない。色に加えて太字でも示す */
+.pill[aria-pressed="true"], .pill[aria-pressed="true"]:hover { background: var(--color-accent-soft); border-color: var(--color-accent); color: var(--color-accent); font-weight: 700; }
 .pill-count {
   position: absolute; top: -7px; right: -7px; min-width: 17px; height: 17px; padding: 0 4px;
   background: var(--color-stamp); color: var(--color-on-accent); border-radius: var(--radius-full);
@@ -844,6 +845,7 @@ label.pick-row:hover { background: var(--color-accent-soft); }
 .drawer-tools { margin-left: auto; display: flex; align-items: center; gap: var(--space-2); }
 /* 開き方は押した時点で実行するボタンの組（.pill）。選んでいる形は aria-pressed で示し、色に加えて太字にする */
 .drawer-mode { display: inline-flex; flex-wrap: wrap; gap: var(--space-2); }
+.drawer-mode .pill { white-space: nowrap; }
 .drawer-title { font-family: var(--font-display); font-weight: var(--weight-display); font-size: var(--text-xl); line-height: var(--leading-tight); overflow-wrap: anywhere; }
 .props { margin: 0; display: grid; gap: var(--space-2); }
 .props > div { display: grid; grid-template-columns: 7em minmax(0, 1fr); gap: var(--space-3); align-items: center; padding-bottom: var(--space-2); border-bottom: 1px solid var(--color-rule); font-size: var(--text-sm); }
