@@ -288,7 +288,7 @@ resolve もできないので、人の画面で解決してもらうスレッド
 
 ### 5. CI を確認する
 
-手順 1 の check-runs を取り直す。`status` が `completed` でないものがあれば、間を空けて取り直し、全て `completed` になるまで待つ。待つ間に手番を終えるときは、手順 7 の「待つ間に手番を終えるとき」に従って伝える。
+手順 1 の check-runs を取り直す。`status` が `completed` でないものがあれば、間を空けて取り直し、全て `completed` になるまで待つ。push の直後は、まだ全部のチェックが付いていない（`label` だけが先に付く）ので、`ci-ok` が付き、それを含む全部が `completed` になるまで待つ（理由: 付いたチェックだけを見ると、`label` が終わった時点で全部終わったと読み、CI の本体を待たずに進む）。待つ間に手番を終えるときは、手順 7 の「待つ間に手番を終えるとき」に従って伝える。
 
 e2e（`e2e`、`e2e-dev`、`e2e-repeat`）の失敗は、手元で再現させず（フックが `pnpm e2e` を止める）、ジョブのログ（`get_job_logs`）と成果物の `playwright-report/`、trace（`pnpm exec playwright show-trace`）で直す。2回続けて直せなければ、人に手元での再現を頼む（`docs/development.md` の「CI の e2e が落ちたとき」）。
 
