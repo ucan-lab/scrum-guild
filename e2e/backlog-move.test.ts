@@ -671,3 +671,48 @@ test('一覧が広いまま指で押す画面（タブレットの横置き）�
   }
   await context.close();
 });
+
+test('ストーリーを作った後の読み直しの応答が、続けて作ったタスクより遅れて届いても、作ったタスクは画面に残る', async ({
+  page,
+}) => {
+  await createWorkspace(page, '遅れた読み直しパーティ', 'game');
+  await addStory(page, 'ポイント制度を公開する');
+
+  // 次の読み直しは、サーバーから受け取っておいて、タスクを作った後まで画面へ返さない。
+  // 返る木は、タスクを作る前に読んだものなので、作ったタスクを含まない
+  let release: () => void = () => {};
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  let held = false;
+  await page.route('**/api/aoba/backlog-tree', async (route) => {
+    if (held) return route.fallback();
+    held = true;
+    const response = await route.fetch();
+    await gate;
+    await route.fulfill({ response });
+  });
+
+  // 返る前に画面へ出す印を使わずに、ダイアログを閉じるところまで進める
+  await page.getByRole('button', { name: '達成目標を作る' }).click();
+  const storyDialog = page.getByRole('dialog', { name: '達成目標を作る' });
+  await storyDialog.getByLabel('タイトル').fill('決済の障害を減らす');
+  await storyDialog.getByRole('button', { name: '作る' }).click();
+  await expect(storyDialog).toBeHidden();
+  await expect.poll(() => held).toBe(true);
+
+  await page.getByRole('button', { name: 'クエストを足す: ポイント制度を公開する' }).click();
+  const taskDialog = page.getByRole('dialog', { name: '依頼を出す' });
+  await taskDialog.getByLabel('タイトル').fill('付与のバッチを書く');
+  await taskDialog.getByRole('button', { name: '依頼を出す' }).click();
+  await expect(taskDialog).toBeHidden();
+  const group = storyGroup(page, 'ポイント制度を公開する');
+  await expect(group.locator('.entry-title')).toHaveText(['付与のバッチを書く']);
+
+  // 遅れた読み直しを届ける
+  const reloaded = waitForResponses(page, '/backlog-tree');
+  release();
+  await reloaded;
+  await expect(storyRow(page, '決済の障害を減らす')).toBeVisible();
+  await expect(group.locator('.entry-title')).toHaveText(['付与のバッチを書く']);
+});

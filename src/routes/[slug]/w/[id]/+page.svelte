@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { tick } from 'svelte';
+  import { tick, untrack } from 'svelte';
   import { SvelteURLSearchParams } from 'svelte/reactivity';
   import { goto, invalidate, invalidateAll } from '$app/navigation';
   import { navigating, page } from '$app/state';
@@ -103,8 +103,16 @@
   // 期日の印を決める、ワークスペースの今日の日付と週の始まり（API の値）
   const clock = $derived({ today: tree?.today ?? '', weekStart: tree?.week_start ?? 1 });
 
-  // 読み直したら（枠の読み直し、ワークスペースの切り替え）、足した行と完了の印と、画面で動かした並びを捨てる
+  // 読み直したら（枠の読み直し、ワークスペースの切り替え）、木に入った足した行と、完了の印と、画面で動かした並びを捨てる
   let added = $state<{ task: BacklogTask; storyId: string | null }[]>([]);
+  let addedFor: string | undefined;
+  function inTree(loaded: typeof tree, id: string): boolean {
+    if (loaded === null) return false;
+    const stories = [...loaded.epics.flatMap((epic) => epic.stories), ...loaded.stories];
+    return (
+      loaded.tasks.some((task) => task.id === id) || stories.some((story) => story.tasks.some((row) => row.id === id))
+    );
+  }
   let completedIds = $state<string[]>([]);
   let pendingIds = $state<string[]>([]);
   // 完了か取り消しを送っている最中のストーリーと、送っている操作
@@ -129,8 +137,13 @@
     dropped: () => showToast(t('moveReloaded'), 'alert'),
   });
   $effect.pre(() => {
-    void tree;
-    added = [];
+    // 足した行は、読み直した木に入るまで残す。作る前に読んだ木が遅れて届いても、作った行を消さないため
+    // ワークスペースを替えたときと、絞り込んで読んだときは、木に入らない行が残り続けるので捨てる
+    const loaded = tree;
+    const workspaceId = page.params.id;
+    const sameWorkspace = untrack(() => addedFor) === workspaceId;
+    addedFor = workspaceId;
+    added = sameWorkspace && !filtering ? untrack(() => added).filter((entry) => !inTree(loaded, entry.task.id)) : [];
     completedIds = [];
     movedParents = {};
     taskOrders = {};
