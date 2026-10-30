@@ -1,6 +1,7 @@
 // 本番に登録する操作の一覧。定義は src/shared/operations/ に、処理はここに置く（docs/development.md の「操作の定義」）。
 // 仮の操作はテストの中で定義し、ここに入れない
 import type { ImplementedOperation } from './implement.ts';
+import { backlogCompletedTasksOperation } from './backlog-completed-tasks.ts';
 import { experienceGrantsOperation, experienceSummaryOperation, experienceTeamTotalOperation } from './experience.ts';
 import { invitationCreateOperation, invitationRevokeOperation, inviteeResolveOperation } from './invitation.ts';
 import {
@@ -28,6 +29,7 @@ import { organizationSettingsUpdateOperation } from './organization-settings.ts'
 import { logoutOperation, meOperation } from './session.ts';
 import { userAdminUpdateOperation, userDisableOperation, userEnableOperation, userListOperation } from './user.ts';
 import { sprintBoardOperation, taskColumnMoveOperation } from './sprint-board.ts';
+import { sprintExtendOperation } from './sprint-extend.ts';
 import { sprintCloseOperation } from './sprint-close.ts';
 import {
   sprintCreateOperation,
@@ -131,10 +133,12 @@ export const implementedOperations: readonly ImplementedOperation[] = [
   sprintTaskRemoveOperation,
   sprintStartOperation,
   sprintCloseOperation,
+  sprintExtendOperation,
   sprintBoardOperation,
   taskColumnMoveOperation,
   taskCreateOperation,
   backlogTreeOperation,
+  backlogCompletedTasksOperation,
   taskCompleteOperation,
   taskReopenOperation,
   taskDetailOperation,

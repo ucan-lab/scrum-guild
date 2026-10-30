@@ -83,6 +83,11 @@ export const sprintStartOnSchema = z
   .string()
   .refine(isCalendarDate, { message: '開始日が使えない（YYYY-MM-DD の暦の日付）' });
 
+// 延長の入力で、画面が読んだ今の最終日。YYYY-MM-DD の暦の日付
+export const sprintEndOnSchema = z
+  .string()
+  .refine(isCalendarDate, { message: '最終日が使えない（YYYY-MM-DD の暦の日付）' });
+
 const DAY_MS = 86_400_000;
 
 // 暦に存在する YYYY-MM-DD の通し番号（1970-01-01 が 0）。年は 4 桁だけ
@@ -156,4 +161,34 @@ export function sprintProgress(sprint: { start_on: string; end_on: string }, tod
   const now = dayNumberOf(today);
   const elapsed = now === null ? 1 : Math.max(now - start + 1, 1);
   return { day: Math.min(elapsed, length), length, remaining: Math.max(length - elapsed + 1, 0) };
+}
+
+export type ExtensionSprint = {
+  id: string;
+  name: string | null;
+  start_on: string;
+  end_on: string;
+  status: string;
+  deleted_at?: string | null;
+};
+
+// 空きの日で吸収できない分だけ押し出す。入力を変えず、開始日の順で返す。暦を外れたら null。
+export function sprintExtension(current: { end_on: string }, days: number, sprints: readonly ExtensionSprint[]) {
+  const end_on = addDays(current.end_on, days);
+  if (end_on === null) return null;
+  const shifted: { id: string; name: string | null; start_on: string; end_on: string; days: number }[] = [];
+  let previousEnd = end_on;
+  const following = sprints
+    .filter((s) => s.status === 'planned' && s.deleted_at == null && s.start_on > current.end_on)
+    .toSorted((a, b) => a.start_on.localeCompare(b.start_on) || a.id.localeCompare(b.id));
+  for (const sprint of following) {
+    if (sprint.start_on > previousEnd) break;
+    const shift = sprintLengthOf(sprint.start_on, previousEnd);
+    const start = addDays(sprint.start_on, shift);
+    const end = addDays(sprint.end_on, shift);
+    if (start === null || end === null) return null;
+    shifted.push({ id: sprint.id, name: sprint.name, start_on: start, end_on: end, days: shift });
+    previousEnd = end;
+  }
+  return { end_on, shifted };
 }

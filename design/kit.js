@@ -435,6 +435,40 @@
     return `${note}<button class="btn is-sm" type="button" aria-label="${t("complete")}: ${esc(st.title)}"${remaining ? ` aria-disabled="true" aria-describedby="tree-${key}-remaining tree-${key}-reason"` : ` data-toast="${t("story")}を${t("done")}にしました"`}>${icon("check")}${t("complete")}</button>`;
   }
 
+  // 完了の折りたたみ（本番の CompletedTasks）。閉じているときは「完了 N 件を折りたたんでいます」の開閉のボタン（chevron は開くと回る）、
+  // 開くと完了した行を新しい順に並べる。行は題（引き出しを開くボタン）、完了した日（<time> の日付は等幅）、ポイント、担当。
+  // 完了した行は、つまみも完了の丸も持たない。実画面は開くと API から20件ずつ読む。
+  // opts.root は親のないタスク、opts.title はストーリーの配下のときの題（開閉のボタンの読み上げの名前に添える）。
+  // opts.open で開いた状態、opts.status で読み込み中（loading）、失敗（failed）、空（empty）、続きがある（more）の見本を描く。
+  // opts.tail は木のドラッグの落とし先の印（dropAttr）。開閉のボタンが配下の末尾の落とし先を兼ねる
+  function doneDate(v) {
+    const iso = /^\d{4}-\d{2}-\d{2}/.exec(String(v));
+    if (iso) return iso[0];
+    const md = /^(\d+)\/(\d+)/.exec(String(v));
+    return md ? `${D.today.slice(0, 4)}-${md[1].padStart(2, "0")}-${md[2].padStart(2, "0")}` : String(v);
+  }
+  function completedTasks(key, list, opts = {}) {
+    const id = `completed-${key}`;
+    const open = Boolean(opts.open);
+    const prefix = opts.root ? "親のない" : "";
+    const closed = `${prefix}${t("done")} ${list.length} 件を折りたたんでいます`;
+    const opened = `${prefix}${t("done")} ${list.length} 件を閉じる`;
+    const named = (label) => (opts.title ? `${label}（${opts.title}）` : "");
+    const groupName = opts.root ? `親のない${t("done")}した${t("task")}` : `${opts.title}の${t("done")}した${t("task")}`;
+    const rows = list.slice().sort((a, b) => String(b.doneAt).localeCompare(String(a.doneAt)) || b.id.localeCompare(a.id)).map((x) => `<div class="entry">
+        <span aria-hidden="true"></span>
+        <div class="entry-main"><button class="entry-title" type="button" data-task="${esc(x.id)}">${esc(x.title)}</button>
+          <span class="entry-meta"><time datetime="${doneDate(x.doneAt)}">${t("done")}した日 <span class="mono">${doneDate(x.doneAt)}</span></time></span></div>
+        <div class="entry-end">${pts(x.pts)}${avatarOf(x.who)}</div></div>`).join("");
+    const status = {
+      loading: `<p class="completed-status" role="status">読み込んでいます</p>`,
+      failed: `<p class="completed-status" role="status"></p><div class="completed-status"><p role="alert">読み込めませんでした</p><button class="btn is-sm" type="button">もう一度試す</button></div>`,
+      empty: `<p class="completed-status" role="status"></p><p class="completed-status">${t("done")}した${t("task")}はありません</p>`,
+      more: `<p class="completed-status" role="status"></p><div class="completed-status"><button class="btn is-sm" type="button">さらに見る</button></div>`,
+    }[opts.status] || `<p class="completed-status" role="status"></p>`;
+    return `<button class="tree-folded${opts.root ? " is-root" : ""}" type="button" aria-expanded="${open}" aria-controls="${id}"${opts.title ? ` aria-label="${esc(named(open ? opened : closed))}"` : ""} data-completed-toggle="${id}" data-closed="${esc(closed)}" data-opened="${esc(opened)}" data-title="${esc(opts.title || "")}"${dropAttr(opts.tail || {})}>${icon("chevron")}<span>${esc(open ? opened : closed)}</span></button>
+      <div id="${id}" class="completed-list" role="group" aria-label="${esc(groupName)}"${open ? "" : " hidden"}>${rows}${status}</div>`;
+  }
   // バックログの木。opts.order を渡すと、ストーリーの行に「上へ」「下へ」（order.parent が真なら「親を移す」も）を、
   // 配下のタスクの行に並べ替えと「親を移す」を出す。opts.doneAt で、完了したストーリーとして描ける（カタログの見本）。
   // opts.blocked は親のエピックが完了か中止している、opts.key は同じストーリーを2回描くときの id の区別
@@ -465,7 +499,7 @@
       <div class="tree-children" id="tree-${key}">${open.map((x, i) => entry(x, { showParent: false, showAssignee: true, showSprint: true,
         mark: opts.entryMarks ? opts.entryMarks(x, i) : undefined,
         order: opts.order ? { first: i === 0, last: i === open.length - 1, parent: true } : undefined })).join("")}
-        ${done ? `<p class="tree-folded"${dropAttr(tail)}>完了 ${done} 件を折りたたんでいます</p>` : ""}${!list.length ? `<p class="tree-folded"${dropAttr(tail)}>${t("task")}はまだありません</p>` : ""}</div>
+        ${done ? completedTasks(key, list.filter(x => x.doneAt), { title: st.title, tail }) : ""}${!list.length ? `<p class="tree-folded"${dropAttr(tail)}>${t("task")}はまだありません</p>` : ""}</div>
     </div>`;
   }
   // 木の行の開閉。行（div）の中の caret のボタンだけが開閉を受け持ち、題や「＋タスク」のボタンとはぶつからない
@@ -1282,12 +1316,36 @@ const looooooooooooooooooooooooooooooooooongLine = "コードの長い1行は、
          ${submitError}`,
         `<button class="btn is-quiet" type="button" data-close-dialog>やめる</button><button class="btn is-primary" type="button"${state === "active" ? ` aria-disabled="true"` : ` data-close-dialog data-toast="${sprint}を始めました"`}>始める</button>`);
     },
-    sprintExtend: () => openDialog(`${t("sprint")}を延ばす`,
-      `<div class="form-row"><label class="field" for="d-days"><span class="field-label">延ばす日数</span><input class="input" id="d-days" type="number" min="1" value="2"></label>
-         <div class="field"><span class="field-label">新しい最終日</span><span class="mono">2026-10-28（水）</span></div></div>
-       <div class="callout is-info">${icon("calendar")}<span>次の ${sprintLabel("sp15")} と重なるので、${sprintLabel("sp15")} と ${sprintLabel("sp16")} を同じく 2 日ずつ後ろへずらします。</span></div>
-       <p class="field-hint">延ばした${t("sprint")}は、計画の画面のベロシティから除きます。</p>`,
-      `<button class="btn is-quiet" type="button" data-close-dialog>やめる</button><button class="btn is-primary" type="button" data-close-dialog data-toast="2 日延ばしました">2 日延ばす</button>`),
+    // 進行中のスプリントを延ばす（本番の SprintExtendDialog）。日数の下に範囲の添え書きを置き、新しい最終日とずれる分の予告は
+    // aria-live の1つの領域に入れる。名前の無いスプリントは期間が名前なので、冒頭の期間を重ねない。後ろが動かないとき（data-state="none"）は、その旨を出す
+    sprintExtend: (el) => {
+      const none = el && el.dataset.state === "none";
+      const id = none ? "spb" : "sp14";
+      const s = D.sprints[id];
+      const period = `<span class="mono">${md(s.start)}〜${md(s.end)}</span>`;
+      const head = s.name ? `${sprintLabel(id)}（${period}）` : `${t("sprint")} ${period}`;
+      const shift = (to, before, after) => `<div class="field"><span class="field-label">${sprintLabel(to)}</span><span><span class="mono">${before} → ${after}</span> <span>（2 日）</span></span></div>`;
+      const preview = none
+        ? `<p class="props-note">後ろの${t("sprint")}は動きません</p>`
+        : `${shift("sp15", "10/27〜11/9", "10/29〜11/11")}${shift("sp16", "11/10〜11/23", "11/12〜11/25")}`;
+      openDialog(`${t("sprint")}を延ばす`,
+        `<p>${head}</p>
+         <div class="field"><label class="field-label" for="d-days">延ばす日数</label><input class="input" id="d-days" type="number" min="1" max="14" value="2" aria-describedby="d-days-hint"><p class="field-hint" id="d-days-hint">1〜14 日</p></div>
+         <div class="form-fields" aria-live="polite">
+           <div class="field"><span class="field-label">新しい最終日</span><span class="mono">2026-10-28</span></div>
+           ${preview}
+         </div>
+         <p class="field-hint">延ばした${t("sprint")}はベロシティの計算から除きます。</p>`,
+        `<button class="btn is-quiet" type="button" data-close-dialog>やめる</button><button class="btn is-primary" type="button" data-close-dialog data-toast="${t("sprint")}を 2 日延長しました">2 日延長する</button>`);
+    },
+    // 進行中のスプリントの名前とゴールを直す（本番の SprintDialog の進行中）。期間は変えられないので、開始日と長さの欄は出さない
+    sprintEditActive: () => {
+      const s = D.sprints.sp14;
+      openDialog(`${t("sprint")}を直す`,
+        `<label class="field" for="d-an"><span class="field-label">名前（任意）</span><input class="input" id="d-an" placeholder="空なら期間を名前にします" value="${esc(s.name)}"></label>
+         <div class="field"><label class="field-label" for="d-ag">${t("sprintGoal")}</label><textarea class="textarea" id="d-ag" aria-describedby="d-ag-hint" rows="3">${esc(s.goal)}</textarea><p class="field-hint" id="d-ag-hint">200 字まで。空にすると消えます</p></div>`,
+        `<button class="btn is-quiet" type="button" data-close-dialog>やめる</button><button class="btn is-primary" type="button" data-close-dialog data-toast="${t("sprint")}を保存しました">保存する</button>`);
+    },
     sprintEnd: () => openDialog(`${t("sprint")}を終える`,
       `<p>${sprintLabel("sp14")} を終えます。終えた${t("sprint")}の期間と中身は、あとから変えられません。</p>
        <fieldset class="field" style="border:0;padding:0;margin:0"><legend class="field-label">終わらなかった${t("task")} 7 件の行き先</legend>
@@ -2136,6 +2194,16 @@ const looooooooooooooooooooooooooooooooooongLine = "コードの長い1行は、
       else DIALOGS.organizationCreated();
       return;
     }
+    if ((el = hit("data-completed-toggle"))) {
+      const body = document.getElementById(el.dataset.completedToggle);
+      const opened = el.getAttribute("aria-expanded") === "true";
+      el.setAttribute("aria-expanded", String(!opened));
+      const label = opened ? el.dataset.closed : el.dataset.opened;
+      el.querySelector("span").textContent = label;
+      if (el.dataset.title) el.setAttribute("aria-label", `${label}（${el.dataset.title}）`);
+      if (body) body.hidden = opened;
+      return;
+    }
     if ((el = hit("data-tree-toggle"))) {
       const body = document.getElementById(el.dataset.treeToggle);
       const opened = el.getAttribute("aria-expanded") === "true";
@@ -2324,7 +2392,7 @@ const looooooooooooooooooooooooooooooooooongLine = "コードの長い1行は、
     onRedraw: (fn) => extraRedraws.push(fn), openDrawer, drawerHtml, drawerState: drawer,
     user, task, tasksWhere, repoTag, categoryTag, sprintTag, repoPicker, sprintLabel, colName, categoryOf, storyPts, epicPts, dueOf,
     avatar, avatarOf, SAMPLE_PHOTO, BROKEN_PHOTO, emblem, pts, dueChip, taskDue, tier, sourceKey, entry, orderActions, book, section, pageHead,
-    card, board, treeStory, treeEpic, sprintNotice, raidNotice, progress, levelPanel, teamXp, xpDelta, load, capacityRows,
+    card, board, treeStory, treeEpic, completedTasks, sprintNotice, raidNotice, progress, levelPanel, teamXp, xpDelta, load, capacityRows,
     openDialog, closeDialog, toast, celebrate, miniCap, redraw: () => redrawAll(), DIALOGS, loginTarget, orgMenuHtml, accountMenuHtml,
     filesOf, fileThumb, fileRow, dropzone, attachments, mdBody, markdownSample, meter,
     PROVIDER, ASSIST_KEY, assistMsg, assistBlocked, assistSuggest, openAssist,

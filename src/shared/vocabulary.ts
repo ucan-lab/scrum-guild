@@ -213,7 +213,20 @@ export const dictionary = defineDictionary({
     '終了した{workspace}には、{task}を作れません。',
     '終了した{workspace}には、{task}を作れません。',
   ),
-  // 完了にした親のないタスクの件数。行は返さず、件数の1行にする。完了にした行は、読み直すまでこの件数に入らない
+  // 完了の折りたたみを開いた状態の文言。閉じた状態の文言は、親のないタスクが backlogFolded、ストーリーの配下が storyFolded
+  completedCollapse: workspace('{done} {count} 件を閉じる', '{done} {count} 件を閉じる'),
+  completedRootCollapse: workspace('親のない{done} {count} 件を閉じる', '親のない{done} {count} 件を閉じる'),
+  // ストーリーの配下の開閉のボタンの読み上げの名前。見える文言（{label}）を含め、どのストーリーのものかを添える
+  completedToggleLabel: workspace('{label}（{title}）', '{label}（{title}）'),
+  // 開いた一覧（role="group"）の名前
+  completedRootListLabel: workspace('親のない{done}した{task}', '親のない{done}した{task}'),
+  completedListLabel: workspace('{title}の{done}した{task}', '{title}の{done}した{task}'),
+  completedMore: workspace('さらに見る', 'さらに見る'),
+  // 完了した行の日付の前に付ける語。日付そのもの（formatLocalDate）は画面が等幅で続ける
+  completedDate: workspace('{done}した日', '{done}した日'),
+  completedEmpty: workspace('{done}した{task}はありません', '{done}した{task}はありません'),
+  // 完了にした親のないタスクの折りたたみを閉じているときの文言。木は行を返さず件数だけ返し、開くと backlog-completed-tasks で行を読む。
+  // 完了にした行は、読み直すまでこの件数に入らない
   backlogFolded: workspace(
     '親のない{done} {count} 件を折りたたんでいます',
     '親のない{done} {count} 件を折りたたんでいます',
@@ -2431,6 +2444,59 @@ export const dictionary = defineDictionary({
     'この{sprint}はもう始まっています。一覧を読み直します',
   ),
   sprintStartForbidden: workspace('{sprint}を始めるのは{leader}です', '{sprint}を始めるのは{leader}です'),
+  // 進行中のスプリントを延ばすダイアログ（kit.js の DIALOGS.sprintExtend）と、スプリントの画面の見出しの「延長する」と「名前とゴールを変更」
+  sprintExtendAction: workspace('延長する', '延長する'),
+  sprintExtendSubmit: workspace('{days} 日延長する', '{days} 日延長する'),
+  sprintExtendTitle: workspace('{sprint}を延ばす', '{sprint}を延ばす'),
+  sprintExtendDays: workspace('延ばす日数', '延ばす日数'),
+  sprintExtendRange: workspace('1〜{max} 日', '1〜{max} 日'),
+  sprintExtendEnd: workspace('新しい最終日', '新しい最終日'),
+  // ずれる{sprint}ごとの、今の期間 → 新しい期間と、ずれる日数
+  sprintExtendShift: workspace('{before} → {after}', '{before} → {after}'),
+  sprintExtendShiftDays: workspace('（{days} 日）', '（{days} 日）'),
+  sprintExtendNoShift: workspace('後ろの{sprint}は動きません', '後ろの{sprint}は動きません'),
+  sprintExtendShiftMore: workspace(
+    'ほか {count} 本の{sprint}も、重なる分だけ後ろへずらします',
+    'ほか {count} 本の{sprint}も、重なる分だけ後ろへずらします',
+  ),
+  // 予告の読み上げ。押し出す行を全部読むと長いので、新しい最終日とずらす本数だけを伝える
+  sprintExtendPreviewSummary: workspace(
+    '新しい最終日は {end}。後ろの{sprint}を {count} 本ずらします',
+    '新しい最終日は {end}。後ろの{sprint}を {count} 本ずらします',
+  ),
+  sprintExtendVelocity: workspace(
+    '延ばした{sprint}はベロシティの計算から除きます。',
+    '延ばした{sprint}はベロシティの計算から除きます。',
+  ),
+  sprintExtended: workspace('延長 {days} 日', '延長 {days} 日'),
+  sprintExtending: workspace('延長しています', '延長しています'),
+  sprintExtendDone: workspace('{sprint}を {days} 日延長しました', '{sprint}を {days} 日延長しました'),
+  sprintExtendInvalid: workspace(
+    '延ばす日数は 1〜{max} 日の整数で入力してください。全体の長さは{limit}日までです。',
+    '延ばす日数は 1〜{max} 日の整数で入力してください。全体の長さは{limit}日までです。',
+  ),
+  sprintExtendLimit: workspace(
+    '長さが{limit}日のため、これ以上延長できません。',
+    '長さが{limit}日のため、これ以上延長できません。',
+  ),
+  sprintExtendLoadFailed: workspace(
+    '期間を読み込めませんでした。もう一度試してください。',
+    '期間を読み込めませんでした。もう一度試してください。',
+  ),
+  sprintExtendFailed: workspace(
+    '延長できませんでした。もう一度試してください。',
+    '延長できませんでした。もう一度試してください。',
+  ),
+  sprintExtendNotActive: workspace(
+    'この{sprint}は進行中ではありません。画面を読み直しました。',
+    'この{sprint}は進行中ではありません。画面を読み直しました。',
+  ),
+  sprintExtendChanged: workspace(
+    '期間が変わりました。新しい期間を確かめて、もう一度試してください。',
+    '期間が変わりました。新しい期間を確かめて、もう一度試してください。',
+  ),
+  sprintEditActive: workspace('名前と{sprintGoal}を変更', '名前と{sprintGoal}を変更'),
+  sprintEditGoalHint: workspace('{max} 字まで。空にすると消えます', '{max} 字まで。空にすると消えます'),
   // スプリントを終えるダイアログ（kit.js の DIALOGS.sprintEnd）と、スプリントの画面の見出しの「終える」
   sprintCloseAction: workspace('終える', '終える'),
   sprintCloseLabel: workspace('終える: {label}', '終える: {label}'),

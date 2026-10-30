@@ -259,6 +259,7 @@
           <div class="lane-sub">
             <span class="mono">{periodOf(sprint)}</span>
             <span>{t('sprintLengthDays', { length: sprint.length })}</span>
+            {#if sprint.extended_days > 0}<span>{t('sprintExtended', { days: sprint.extended_days })}</span>{/if}
             <span>{t('sprintTasksSummary', { count: sprint.tasks.length, points: pointsOf(sprint) })}</span>
           </div>
           {#if isOverdue(sprint)}

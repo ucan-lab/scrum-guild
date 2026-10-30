@@ -4,6 +4,7 @@
   import { goto, invalidate, invalidateAll } from '$app/navigation';
   import { navigating, page } from '$app/state';
   import BacklogFilterBar from '../../../../lib/components/BacklogFilterBar.svelte';
+  import CompletedTasks from '../../../../lib/components/CompletedTasks.svelte';
   import EmptyState from '../../../../lib/components/EmptyState.svelte';
   import EpicDialog from '../../../../lib/components/EpicDialog.svelte';
   import Icon from '../../../../lib/components/Icon.svelte';
@@ -41,11 +42,11 @@
   import type { PageProps } from './$types';
 
   // ワークスペースの画面（backlog.html の木と起票）。最上段は見本どおり「エピック → 親のないストーリー → 親のないタスク」の3段で、
-  // それぞれ position の順。エピックの下にはストーリーを、ストーリーの下には未完了のタスクを並べ、完了したタスクは件数の1行にする。
+  // それぞれ position の順。エピックの下にはストーリーを、ストーリーの下には未完了のタスクを並べ、完了したタスクは件数の1行（開くと行を読む折りたたみ）にする。
   // 木の上に絞り込みの帯（BacklogFilterBar）を置く。絞り込みは URL の問い合わせに持ち（replace で履歴を積まない）、load がサーバーで絞った木を読む。
   // 絞っている間は「上へ」「下へ」と Alt と ↑ ↓ を出さず（親を移すは残す）、案内を替える。当たるものが無ければ、木の代わりに無いことと外す操作を出す。
   // 絞っているときに作ったタスク、ストーリー、エピックは、読み直した木に無ければ、絞り込みを外す操作つきのトーストで知らせる。
-  // 絞っている間は、つまみのドラッグも出さない（並べ替えは隣を使うため）。折りたたみを開ける操作は、その機能の Issue で足す。
+  // 絞っている間は、つまみのドラッグも出さない（並べ替えは隣を使うため）。完了の折りたたみは、開くと別の操作で20件ずつ読む。
   // 並べ替えは、行の「上へ」「下へ」と Alt と ↑ ↓ で、同じ親（親なしのタスク、親のないストーリー、エピックの下のストーリーはそれぞれの並び）の中で1つ動かす。
   // エピックは親を持たず、画面に出ているエピックの全部（完了と中止したものも含む）の中で動かす（epic-move）。
   // タスクとストーリーの行の「親を移す」は、ダイアログで選んだ親の末尾へ移す。
@@ -928,6 +929,9 @@
   <TreeStory
     bind:this={treeRows[story.id]}
     {story}
+    completedContext={!filtering && workspace
+      ? { slug: page.params.slug ?? '', workspaceId: workspace.id, revision: tree }
+      : undefined}
     tasks={storyRows(story)}
     pointsDone={pointsDoneOf(story)}
     pointsAll={pointsAllOf(story)}
@@ -1091,9 +1095,17 @@
             {@render taskRow(task)}
           {/each}
           {#if rootDone > 0}
-            <p class="tree-folded is-root" data-drop={rowDnd?.markOf(rootTail)} {@attach rowDnd?.target(rootTail)}>
-              {t('backlogFolded', { done: t('done'), count: rootDone })}
-            </p>
+            {#key workspace.id}
+              <CompletedTasks
+                slug={page.params.slug ?? ''}
+                workspaceId={workspace.id}
+                count={rootDone}
+                revision={tree}
+                root
+                dnd={rowDnd}
+                tailRow={rootTail}
+              />
+            {/key}
           {/if}
         </div>
       {:else if rowDnd?.item?.kind === 'task'}

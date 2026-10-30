@@ -1,5 +1,6 @@
 // バックログの木と、タスクの作成、読み取り、変更、担当の変更、完了、完了を戻す、削除、移動、変更の履歴、コメントの操作の定義
 import type { AnyOperationDefinition } from '../define.ts';
+import { backlogCompletedTasks } from './backlog-completed-tasks.ts';
 import { backlogTree } from './backlog-tree.ts';
 import { commentCreate, commentDelete, commentList, commentUpdate } from './comment.ts';
 import { taskAssign } from './task-assign.ts';
@@ -14,6 +15,7 @@ import { taskUpdate } from './task-update.ts';
 
 export {
   backlogTree,
+  backlogCompletedTasks,
   taskAssign,
   taskComplete,
   taskCreate,
@@ -39,6 +41,7 @@ export {
 export const taskOperations: readonly AnyOperationDefinition[] = [
   taskCreate,
   backlogTree,
+  backlogCompletedTasks,
   taskComplete,
   taskReopen,
   taskDetail,

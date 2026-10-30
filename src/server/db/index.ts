@@ -67,3 +67,4 @@ export {
   listAccountOrganizations,
   type AccountOrganizations,
 } from './cross-organization.ts';
+export { sprintExtensionUnchanged, sprintExtensionNoOverlap, type SprintExtensionWrite } from './sprint-extension.ts';

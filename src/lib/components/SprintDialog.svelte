@@ -8,6 +8,9 @@
     type SprintSummary,
   } from '../../shared/operations/sprint/index.ts';
   import {
+    SPRINT_GOAL_MAX_LENGTH,
+    normalizeSprintGoal,
+    sprintGoalProblem,
     SPRINT_MAX_LENGTH,
     SPRINT_MIN_LENGTH,
     SPRINT_NAME_MAX_LENGTH,
@@ -24,7 +27,7 @@
   import Icon from './Icon.svelte';
 
   // スプリントの作成と変更のダイアログ（kit.js の DIALOGS.sprintCreate）。欄は開始日、長さ（日）、最終日（開始日と長さから決まる。曜日を添える）、
-  // 名前（任意。空なら期間を名前にする）。作るときは、画面が渡す初期値（sprint-list の defaults）で開く。
+  // 名前（任意。空なら期間を名前にする）。進行中は名前とゴールだけを直す。作るときは、画面が渡す初期値（sprint-list の defaults）で開く。
   // 直すときは、開いたときの値と比べて変えた欄だけを送り、変えた欄が無ければ何も送らずに閉じる。
   // 期間がほかのスプリントと重なったとき（409 の overlap）は、ダイアログの中に理由を出して開いたままにする。
   // 始まっていた（started）、見つからない（404）ときは、トーストで知らせて閉じ、画面が一覧を読み直す（ongone）。
@@ -54,7 +57,12 @@
 
   const ids = $props.id();
   const formId = `${ids}-form`;
-  const fieldIds = { start: `${ids}-start`, length: `${ids}-length`, name: `${ids}-name` } as const;
+  const fieldIds = {
+    start: `${ids}-start`,
+    length: `${ids}-length`,
+    name: `${ids}-name`,
+    goal: `${ids}-goal`,
+  } as const;
   type FieldName = keyof typeof fieldIds;
 
   let open = $state(false);
@@ -68,6 +76,8 @@
   // number の入力は、空や途中の値で null か NaN になる
   let length = $state<number | null>(null);
   let name = $state('');
+  let goal = $state('');
+  const active = $derived(editing?.status === 'active');
   let errors = $state<Partial<Record<FieldName, string>>>({});
   let submitError = $state<string | null>(null);
   let submitting = $state(false);
@@ -93,18 +103,25 @@
     };
   });
 
-  // 作るときは defaults、直すときは対象の今の値で開く
+  // 作るときは defaults、直すときは対象の今の値で開く（直すときは defaults を渡さない）
+  export function show(trigger: HTMLElement | null, target: SprintSummary): void;
   export function show(
     trigger: HTMLElement | null,
     target: SprintSummary | null,
     defaults: { start_on: string; length: number },
+  ): void;
+  export function show(
+    trigger: HTMLElement | null,
+    target: SprintSummary | null,
+    defaults?: { start_on: string; length: number },
   ): void {
     generation++;
     reloadOnClose = false;
     editing = target;
-    startOn = target?.start_on ?? defaults.start_on;
-    length = target?.length ?? defaults.length;
+    startOn = target?.start_on ?? defaults?.start_on ?? '';
+    length = target?.length ?? defaults?.length ?? null;
     name = target?.name ?? '';
+    goal = target?.goal ?? '';
     errors = {};
     submitError = null;
     submitting = false;
@@ -135,6 +152,13 @@
     const problem = sprintNameProblem(normalizeSprintName(name));
     if (problem === 'too_long') found.name = t('sprintNameTooLong', { max: SPRINT_NAME_MAX_LENGTH });
     if (problem === 'invalid_character') found.name = t('sprintNameInvalidCharacter');
+    if (active) {
+      const goalProblem = sprintGoalProblem(normalizeSprintGoal(goal));
+      if (goalProblem === 'too_long')
+        found.goal = t('sprintStartGoalTooLong', { sprintGoal: t('sprintGoal'), max: SPRINT_GOAL_MAX_LENGTH });
+      if (goalProblem === 'invalid_character')
+        found.goal = t('sprintStartGoalInvalidCharacter', { sprintGoal: t('sprintGoal') });
+    }
     return found;
   }
 
@@ -165,7 +189,13 @@
       if (firstInvalid !== undefined) document.getElementById(fieldIds[firstInvalid])?.focus();
       return;
     }
-    const fields = changedFields(validLength);
+    const fields =
+      active && editing !== null
+        ? {
+            ...(normalizeSprintName(name) === editing.name ? {} : { name: normalizeSprintName(name) }),
+            ...(normalizeSprintGoal(goal) === editing.goal ? {} : { goal: normalizeSprintGoal(goal) }),
+          }
+        : changedFields(validLength);
     if (editing !== null && Object.keys(fields).length === 0) {
       open = false;
       return;
@@ -180,7 +210,7 @@
         editing === null
           ? await callOperation(
               sprintCreate,
-              { workspace_id: workspaceId, ...(fields as Required<typeof fields>) },
+              { workspace_id: workspaceId, start_on: startOn, length: validLength, name: normalizeSprintName(name) },
               { slug },
             )
           : await callOperation(
@@ -197,8 +227,8 @@
         const reason = result.error?.code === 'conflict' ? sprintConflictReasonOf(result.error.details) : undefined;
         if (reason === 'overlap') {
           submitError = t('sprintOverlap', { sprint: t('sprint') });
-        } else if (reason === 'started') {
-          gone('sprintStarted');
+        } else if (reason === 'started' || reason === 'not_active') {
+          gone(active ? 'sprintExtendNotActive' : 'sprintStarted');
         } else if (result.status === 409 && result.error?.code === 'workspace_closed') {
           submitError = t('workspaceClosedReadOnly', { workspace: t('workspace') });
           reloadOnClose = true;
@@ -238,44 +268,45 @@
 <Dialog bind:this={dialog} bind:open dismissible={!submitting} title={dialogTitle}>
   <form id={formId} class="form" onsubmit={submit} novalidate>
     <fieldset class="form-fields" disabled={submitting}>
-      <div class="form-row is-start">
-        <div class="field" class:is-invalid={errors.start !== undefined}>
-          <label class="field-label" for={fieldIds.start}>{t('sprintFieldStart')}</label>
-          <input
-            class="input"
-            id={fieldIds.start}
-            type="date"
-            bind:this={startInput}
-            bind:value={startOn}
-            oninput={() => (errors.start = undefined)}
-            aria-invalid={errors.start !== undefined}
-            aria-describedby={errors.start !== undefined ? `${fieldIds.start}-error` : undefined}
-          />
-          {@render error('start')}
+      {#if !active}
+        <div class="form-row is-start">
+          <div class="field" class:is-invalid={errors.start !== undefined}>
+            <label class="field-label" for={fieldIds.start}>{t('sprintFieldStart')}</label>
+            <input
+              class="input"
+              id={fieldIds.start}
+              type="date"
+              bind:this={startInput}
+              bind:value={startOn}
+              oninput={() => (errors.start = undefined)}
+              aria-invalid={errors.start !== undefined}
+              aria-describedby={errors.start !== undefined ? `${fieldIds.start}-error` : undefined}
+            />
+            {@render error('start')}
+          </div>
+          <div class="field" class:is-invalid={errors.length !== undefined}>
+            <label class="field-label" for={fieldIds.length}>{t('sprintFieldLength')}</label>
+            <input
+              class="input"
+              id={fieldIds.length}
+              type="number"
+              inputmode="numeric"
+              min={SPRINT_MIN_LENGTH}
+              max={SPRINT_MAX_LENGTH}
+              step="1"
+              bind:value={length}
+              oninput={() => (errors.length = undefined)}
+              aria-invalid={errors.length !== undefined}
+              aria-describedby={errors.length !== undefined ? `${fieldIds.length}-error` : undefined}
+            />
+            {@render error('length')}
+          </div>
+          <div class="field">
+            <span class="field-label">{t('sprintFieldEnd')}</span>
+            <span class="mono" data-sprint-end>{endLabel}</span>
+          </div>
         </div>
-        <div class="field" class:is-invalid={errors.length !== undefined}>
-          <label class="field-label" for={fieldIds.length}>{t('sprintFieldLength')}</label>
-          <input
-            class="input"
-            id={fieldIds.length}
-            type="number"
-            inputmode="numeric"
-            min={SPRINT_MIN_LENGTH}
-            max={SPRINT_MAX_LENGTH}
-            step="1"
-            bind:value={length}
-            oninput={() => (errors.length = undefined)}
-            aria-invalid={errors.length !== undefined}
-            aria-describedby={errors.length !== undefined ? `${fieldIds.length}-error` : undefined}
-          />
-          {@render error('length')}
-        </div>
-        <div class="field">
-          <span class="field-label">{t('sprintFieldEnd')}</span>
-          <span class="mono" data-sprint-end>{endLabel}</span>
-        </div>
-      </div>
-
+      {/if}
       <div class="field" class:is-invalid={errors.name !== undefined}>
         <label class="field-label" for={fieldIds.name}>{t('sprintFieldName')}</label>
         <input
@@ -290,14 +321,31 @@
         />
         {@render error('name')}
       </div>
-      <p class="field-hint">
-        {t('sprintFormHint', {
-          min: SPRINT_MIN_LENGTH,
-          max: SPRINT_MAX_LENGTH,
-          backlog: t('backlog'),
-          task: t('task'),
-        })}
-      </p>
+      {#if active}
+        <div class="field" class:is-invalid={errors.goal !== undefined}>
+          <label class="field-label" for={fieldIds.goal}>{t('sprintGoal')}</label>
+          <textarea
+            class="textarea"
+            id={fieldIds.goal}
+            bind:value={goal}
+            oninput={() => (errors.goal = undefined)}
+            rows="3"
+            aria-invalid={errors.goal !== undefined}
+            aria-describedby="{fieldIds.goal}-hint{errors.goal !== undefined ? ` ${fieldIds.goal}-error` : ''}"
+          ></textarea>
+          <p class="field-hint" id="{fieldIds.goal}-hint">{t('sprintEditGoalHint', { max: SPRINT_GOAL_MAX_LENGTH })}</p>
+          {@render error('goal')}
+        </div>
+      {:else}
+        <p class="field-hint">
+          {t('sprintFormHint', {
+            min: SPRINT_MIN_LENGTH,
+            max: SPRINT_MAX_LENGTH,
+            backlog: t('backlog'),
+            task: t('task'),
+          })}
+        </p>
+      {/if}
     </fieldset>
 
     {#if submitError !== null}

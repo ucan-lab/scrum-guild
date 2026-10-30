@@ -56,7 +56,7 @@ window.SQ_DATA = (function () {
       sp11: { ws: "wa", name: "第11回", start: "2026-09-01", end: "2026-09-14", status: "closed", donePts: 34 },
       sp12: { ws: "wa", name: "第12回", start: "2026-09-15", end: "2026-09-28", status: "closed", donePts: 41, extended: 2 },
       sp13: { ws: "wa", name: "第13回", start: "2026-09-29", end: "2026-10-12", status: "closed", donePts: 29 },
-      sp14: { ws: "wa", name: "第14回", start: "2026-10-13", end: "2026-10-26", status: "active", days: 14, dayIndex: 7,
+      sp14: { ws: "wa", name: "第14回", start: "2026-10-13", end: "2026-10-26", status: "active", days: 14, dayIndex: 7, extended: 3,
               goal: "会員ポイントの付与を管理画面で確かめられる所まで進め、決済の障害の検知を入れる" },
       sp15: { ws: "wa", name: null, start: "2026-10-27", end: "2026-11-09", status: "planned" },
       sp16: { ws: "wa", name: null, start: "2026-11-10", end: "2026-11-23", status: "planned" },

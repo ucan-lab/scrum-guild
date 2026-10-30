@@ -246,6 +246,7 @@ export const pointers: Pointers = {
   },
   'task-create': async (target) => ({ workspace_id: target.workspace.id, title: '見積もりを送る', points: 3 }),
   // 絞り込みの値も、対象の組織の行を指す（別の組織を指したときの当たり方は test/backlog-filter.test.ts）
+  'backlog-completed-tasks': async (target) => ({ workspace_id: target.workspace.id, story_id: null }),
   'backlog-tree': async (target) => {
     const category = await createCategory(target.organization, target.workspace.id);
     const repository = await createRepository(target.organization, target.workspace.id);
@@ -457,6 +458,19 @@ export const pointers: Pointers = {
     const endOn = new Date(Date.parse(startOn) + 13 * 86_400_000).toISOString().slice(0, 10);
     const sprint = await createSprint(target.organization, target.workspace.id, { start_on: startOn, end_on: endOn });
     return { workspace_id: target.workspace.id, sprint_id: sprint.id, goal: '新しい依頼を3件受ける' };
+  },
+  // 呼ぶたびに、前の呼び出しの進行中のスプリントを閉じ、重ならない先の期間で進行中のスプリントを作る
+  // （進行中は1つで、延ばした最終日が前に閉じたスプリントと重なると断られるため）
+  'sprint-extend': async (target) => {
+    await closeActiveSprints(target);
+    const startOn = nextSprintStart();
+    const endOn = new Date(Date.parse(startOn) + 13 * 86_400_000).toISOString().slice(0, 10);
+    const sprint = await createSprint(target.organization, target.workspace.id, {
+      status: 'active',
+      start_on: startOn,
+      end_on: endOn,
+    });
+    return { workspace_id: target.workspace.id, sprint_id: sprint.id, days: 1, end_on: endOn };
   },
   // 呼ぶたびに、前の呼び出しの進行中のスプリントを閉じ、ゴールのない進行中のスプリントを作る（終えたスプリントは続けて終えられないため）
   'sprint-close': async (target) => {

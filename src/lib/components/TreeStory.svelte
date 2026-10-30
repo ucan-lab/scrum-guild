@@ -4,6 +4,7 @@
   import type { DropRow } from '../backlog-drop.ts';
   import type { BacklogDnd } from '../backlog-dnd.svelte.ts';
   import { t } from '../vocabulary.svelte.ts';
+  import CompletedTasks from './CompletedTasks.svelte';
   import DefinitionChip from './DefinitionChip.svelte';
   import DueChip from './DueChip.svelte';
   import Icon from './Icon.svelte';
@@ -31,6 +32,7 @@
   // 折りたたみの行と空の案内の行の前後は、配下の末尾の落とし先
   let {
     story,
+    completedContext,
     tasks,
     pointsDone,
     pointsAll,
@@ -52,6 +54,7 @@
     dnd,
   }: {
     story: BacklogStory;
+    completedContext?: { slug: string; workspaceId: string; revision: unknown };
     tasks: readonly BacklogTask[];
     pointsDone: number;
     pointsAll: number;
@@ -264,9 +267,21 @@
       {@render row(task)}
     {/each}
     {#if story.completed_task_count > 0}
-      <p class="tree-folded" data-drop={dnd?.markOf(tailRow)} {@attach dnd?.target(tailRow)}>
-        {t('storyFolded', { done: t('done'), count: story.completed_task_count })}
-      </p>
+      {#if completedContext !== undefined}
+        <CompletedTasks
+          {...completedContext}
+          storyId={story.id}
+          storyTitle={story.title}
+          count={story.completed_task_count}
+          {dnd}
+          {tailRow}
+        />
+      {:else}
+        <!-- 絞り込み中は開く操作を出さず、件数の1行だけにする -->
+        <p class="tree-folded" data-drop={dnd?.markOf(tailRow)} {@attach dnd?.target(tailRow)}>
+          {t('storyFolded', { done: t('done'), count: story.completed_task_count })}
+        </p>
+      {/if}
     {:else if tasks.length === 0}
       <p class="tree-folded" data-drop={dnd?.markOf(tailRow)} {@attach dnd?.target(tailRow)}>
         {t('storyNoTasks', { task: t('task') })}
