@@ -5,7 +5,7 @@
 // 言葉づかいも書き換えない（言葉は organization と workspace の操作の応答の書き換えで当てる。ほかのファイルと並べて走るため）
 import { workspaceList } from '../src/shared/operations/workspace/index.ts';
 import { expect, test } from './fixtures.ts';
-import { expectNarrowLayout, signIn } from './helpers.ts';
+import { applyTheme, expectNarrowLayout, LAYOUT_THEMES, signIn } from './helpers.ts';
 import { rewriteOperation } from './operations.ts';
 
 // あおば開発の seed のワークスペース（受託開発チーム）
@@ -72,18 +72,21 @@ test('組織の管理（/aoba/admin）に空白の無い50字の名前のワー�
     const close = table.getByRole('button', { name: w('workspaceCloseLabel', { name: longName }) });
     await expect(close).toBeVisible();
     // 汎用の検査だけでは、表の横スクロール（.table-wrap は除外される）に逃げた重なりを見逃すので、直接確かめる。
-    // 表は横にはみ出さず、名前のリンクと「終了する」の箱が交わらない
-    const overflow = await table.locator('xpath=..').evaluate((el) => el.scrollWidth - el.clientWidth);
-    expect(overflow).toBeLessThanOrEqual(0);
-    const link = await table.getByRole('link', { name: longName }).boundingBox();
-    const button = await close.boundingBox();
-    expect(link).not.toBeNull();
-    expect(button).not.toBeNull();
-    const apart =
-      link!.y + link!.height <= button!.y ||
-      button!.y + button!.height <= link!.y ||
-      link!.x + link!.width <= button!.x ||
-      button!.x + button!.width <= link!.x;
-    expect(apart).toBe(true);
+    // 表は横にはみ出さず、名前のリンクと「終了する」の箱が交わらない。書体の幅が変わるので、テーマごとに確かめる
+    for (const theme of LAYOUT_THEMES) {
+      await applyTheme(page, theme);
+      const overflow = await table.locator('xpath=..').evaluate((el) => el.scrollWidth - el.clientWidth);
+      expect(overflow, `${theme}: 表が横にはみ出す`).toBeLessThanOrEqual(0);
+      const link = await table.getByRole('link', { name: longName }).boundingBox();
+      const button = await close.boundingBox();
+      expect(link).not.toBeNull();
+      expect(button).not.toBeNull();
+      const apart =
+        link!.y + link!.height <= button!.y ||
+        button!.y + button!.height <= link!.y ||
+        link!.x + link!.width <= button!.x ||
+        button!.x + button!.width <= link!.x;
+      expect(apart, `${theme}: 名前のリンクと「終了する」の箱が交わる`).toBe(true);
+    }
   });
 });
