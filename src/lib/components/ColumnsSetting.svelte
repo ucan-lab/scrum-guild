@@ -335,7 +335,7 @@
           {:else}
             <span class="order-name">{item.name}</span>
           {/if}
-          {#if item.task_count > 0}
+          {#if canWrite && items.length > 1 && item.task_count > 0}
             <span class="props-note">{t('columnTaskCount', { count: item.task_count })}</span>
           {/if}
         </div>
