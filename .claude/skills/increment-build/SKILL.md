@@ -1,6 +1,6 @@
 ---
 name: increment-build
-description: 1つの Issue を、着手前の確かめ、backlog-refine、Issue への記録、ワークツリー、実装の委譲を経て done-check と PR まで進める。「#123 を進めて」「この Issue に着手して」「/increment-build 123」と言われたときに使う。何に着手するかを選ぶのは backlog-pick、Issue を分けるのは backlog-add。
+description: 1つの Issue を、着手前の確かめ、backlog-refine、Issue への記録、ワークツリー、実装の委譲を経て done-check と PR まで進める。「#123 を進めて」「この Issue に着手して」「/increment-build 123」と言われたときに使う。何に着手するかを選ぶのは sprint-pick、Issue を分けるのは backlog-add。
 ---
 
 # increment-build
@@ -13,7 +13,7 @@ description: 1つの Issue を、着手前の確かめ、backlog-refine、Issue 
 
 ## 入力
 
-Issue の番号。並べて進めているほかの Issue があれば、その番号と重なりうるファイル（`backlog-pick` のプロンプトが渡す）。
+Issue の番号。並べて進めているほかの Issue があれば、その番号と重なりうるファイル（`sprint-pick` のプロンプトが渡す）。
 
 ## 手順
 
@@ -36,7 +36,7 @@ gh api "repos/{owner}/{repo}/pulls?state=open&per_page=100" --jq '.[] | {number,
 - 閉じている、PR の番号だった、`epic` か子を持つ（子のタスクを進める）
 - `status:accepting` が付いている（マージ済みで、人の受け入れを待っている）
 - その Issue を指す開いた PR がある（ブランチ名の `<番号>-` の先頭か、本文の `Refs`。決まりの前に立てた PR のために `Closes` も拾う）
-- `status:in-progress` か `status:refining` が付いている（ほかのセッションか人が受け持っている）。前のセッションが落ちて残ったもの、人がこのセッションで続けるよう言ったもの、同じセッションの `backlog-refine` が付けた `status:refining`（`backlog-pick` の「詰め終えたら同じセッションで」の流れ）だけ続ける。手元のワークツリーが残っていれば、それを使う
+- `status:in-progress` か `status:refining` が付いている（ほかのセッションか人が受け持っている）。前のセッションが落ちて残ったもの、人がこのセッションで続けるよう言ったもの、同じセッションの `backlog-refine` が付けた `status:refining`（`sprint-pick` の「詰め終えたら同じセッションで」の流れ）だけ続ける。手元のワークツリーが残っていれば、それを使う
 - 待ちがある。`blocked` が 0 でない Issue（または親のストーリー）だけ、`gh api repos/{owner}/{repo}/issues/<番号>/dependencies/blocked_by --jq '[.[] | select(.state == "open" and (([.labels[].name] | index("status:accepting")) == null)) | .number]'` で前に要るものを引き、開いていて `status:accepting` の無いものが1つでもあれば止まる。`status:accepting` の前に要るものだけなら止まらない（受け入れ待ちは実装が済んでいる。`docs/development.md` の「Issue の運用」）
 - `gh` が使えず、`issue_dependency_read` も使えない（上の段落）。前に要るものを確かめられない
 - 人が行う Issue（題が「確認:」で始まる、要件を決める、本番やアカウントやドメインの操作）
