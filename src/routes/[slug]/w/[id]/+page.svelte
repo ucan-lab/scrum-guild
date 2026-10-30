@@ -104,7 +104,8 @@
   const clock = $derived({ today: tree?.today ?? '', weekStart: tree?.week_start ?? 1 });
 
   // 読み直したら（枠の読み直し、ワークスペースの切り替え）、木に入った足した行と、完了の印と、画面で動かした並びを捨てる
-  let added = $state<{ task: BacklogTask; storyId: string | null }[]>([]);
+  // at は足した時刻（performance.now()）。木の loadedAt（読み直しを始めた時刻）がこれより後なら、その木は足した行を含むはず
+  let added = $state<{ task: BacklogTask; storyId: string | null; at: number }[]>([]);
   let addedFor: string | undefined;
   function inTree(loaded: typeof tree, id: string): boolean {
     if (loaded === null) return false;
@@ -145,9 +146,16 @@
     addedFor = workspaceId;
     // 完了にした行は、読み直した木（未完了のタスクだけを返す）に無いので、木に入るのを待たずに捨てる。残すと完了の印を捨てた後に未完了で戻る
     const done = untrack(() => completedIds);
+    // 足した後に始まった読み直しの木に無い行は、別の人の削除か親ごとの消失なので捨てる。木が読めていないとき（null）は決められないので残す
+    const loadedAt = untrack(() => data.loadedAt);
     added =
       sameWorkspace && !filtering
-        ? untrack(() => added).filter((entry) => !inTree(loaded, entry.task.id) && !done.includes(entry.task.id))
+        ? untrack(() => added).filter(
+            (entry) =>
+              !done.includes(entry.task.id) &&
+              !inTree(loaded, entry.task.id) &&
+              (loaded === null || entry.at > loadedAt),
+          )
         : [];
     completedIds = [];
     movedParents = {};
@@ -543,7 +551,7 @@
       if ((await revealOrNotice('task', task.id, message)) && storyId !== null) expandStory(storyId);
       return;
     }
-    added = [...added, { task, storyId }];
+    added = [...added, { task, storyId, at: performance.now() }];
     // 畳まれている親の行は開いて、足した行が見えるようにする
     if (storyId !== null) expandStory(storyId);
   }

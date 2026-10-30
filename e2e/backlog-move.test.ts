@@ -729,3 +729,25 @@ test('作って完遂にしたタスクは、その後の読み直しで未完�
   await expect(storyRow(page, '読み直しを起こす達成目標')).toBeVisible();
   await expect(page.getByRole('button', { name: '完遂にする: 完遂して消える依頼', exact: true })).toHaveCount(0);
 });
+
+test('別の人が削除したタスクは、次の木の読み直しの後に画面から消える', async ({ page }) => {
+  await createWorkspace(page, '削除された依頼パーティ', 'game');
+  await addStory(page, '読み直しを起こす達成目標');
+  const created = page.waitForResponse((response) => new URL(response.url()).pathname.endsWith('/task-create'));
+  await addTask(page, '別の人に削除される依頼');
+  const taskId = ((await (await created).json()) as { task: { id: string } }).task.id;
+  await expect(taskRow(page, '別の人に削除される依頼')).toBeVisible();
+
+  // 画面の外で削除する（別の人の操作の代わり）
+  const workspaceId = new URL(page.url()).pathname.split('/')[3];
+  const deleted = await page.request.post('/api/aoba/task-delete', {
+    headers: { Origin: new URL(page.url()).origin },
+    data: { workspace_id: workspaceId, task_id: taskId },
+  });
+  expect(deleted.ok()).toBe(true);
+
+  // 次の読み直しで消える
+  await addStory(page, '削除の後の達成目標');
+  await expect(storyRow(page, '削除の後の達成目標')).toBeVisible();
+  await expect(taskRow(page, '別の人に削除される依頼')).toHaveCount(0);
+});
