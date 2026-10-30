@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { drawerState, taskDetailHref } from '../drawer.svelte.ts';
+  import { taskDetailHref, taskLinkAttrs } from '../drawer.svelte.ts';
   import { resolve } from '$app/paths';
   import { page } from '$app/state';
   import type { BacklogTask } from '../../shared/operations/task/backlog-tree.ts';
@@ -125,10 +125,8 @@
     <a
       class="entry-title"
       href={taskDetailHref(`${taskHref}${taskQuery}${encodeURIComponent(task.id)}`)}
-      target={drawerState.mode === 'tab' ? '_blank' : undefined}
-      rel={drawerState.mode === 'tab' ? 'noopener noreferrer' : undefined}
       data-task-id={task.id}
-      data-sveltekit-reset="false">{task.title}</a
+      {...taskLinkAttrs()}>{task.title}</a
     >
     <!-- eslint-enable svelte/no-navigation-without-resolve -->
     {#if task.repository !== null || category !== null || task.sprint !== null}

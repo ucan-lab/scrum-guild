@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { drawerState, taskDetailHref } from '../../../../../lib/drawer.svelte.ts';
+  import { taskDetailHref, taskLinkAttrs } from '../../../../../lib/drawer.svelte.ts';
   import { tick } from 'svelte';
   import { invalidate } from '$app/navigation';
   import { resolve } from '$app/paths';
@@ -395,10 +395,8 @@
                 <!-- eslint-disable svelte/no-navigation-without-resolve -- href は resolve した経路に ?task=<ID> を足したもの、またはその詳細ページ -->
                 <a
                   href={taskDetailHref(`${planHref}?task=${encodeURIComponent(task.id)}`)}
-                  target={drawerState.mode === 'tab' ? '_blank' : undefined}
-                  rel={drawerState.mode === 'tab' ? 'noopener noreferrer' : undefined}
                   data-task-id={task.id}
-                  data-sveltekit-reset="false">{task.title}</a
+                  {...taskLinkAttrs()}>{task.title}</a
                 >
                 <!-- eslint-enable svelte/no-navigation-without-resolve -->
                 <span class="lane-row-end">

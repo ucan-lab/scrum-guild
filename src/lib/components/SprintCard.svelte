@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { drawerState, taskDetailHref } from '../drawer.svelte.ts';
+  import { taskDetailHref, taskLinkAttrs } from '../drawer.svelte.ts';
   import type { SprintBoardTask } from '../../shared/operations/sprint/index.ts';
   import type { MoveDirection } from '../sprint-board.ts';
   import type { SprintDnd } from '../sprint-dnd.svelte.ts';
@@ -115,10 +115,8 @@
     class="card-title"
     id={titleId}
     href={taskDetailHref(href)}
-    target={drawerState.mode === 'tab' ? '_blank' : undefined}
-    rel={drawerState.mode === 'tab' ? 'noopener noreferrer' : undefined}
     data-task-id={task.id}
-    data-sveltekit-reset="false"
+    {...taskLinkAttrs()}
     draggable="false">{task.title}</a
   >
   <!-- eslint-enable svelte/no-navigation-without-resolve -->

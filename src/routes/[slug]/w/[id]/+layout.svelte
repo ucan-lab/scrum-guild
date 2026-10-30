@@ -1,5 +1,12 @@
 <script lang="ts">
-  import { drawerState, setTaskOpenMode, taskPageHref, type TaskOpenMode } from '../../../../lib/drawer.svelte.ts';
+  import {
+    drawerState,
+    markOverlayHandoff,
+    openTaskTab,
+    setTaskOpenMode,
+    taskPageHref,
+    type TaskOpenMode,
+  } from '../../../../lib/drawer.svelte.ts';
   import { tick, type Snippet } from 'svelte';
   import { SvelteURLSearchParams } from 'svelte/reactivity';
   import { goto, invalidate } from '$app/navigation';
@@ -37,16 +44,24 @@
   let modeRevision = $state(0);
   const overlayMode = $derived(drawerState.mode === 'center' ? 'center' : 'side');
 
-  function changeMode(mode: TaskOpenMode): void {
-    if (!taskId) return;
+  // 帯で形を替える（書きかけの確認は TaskDrawer が済ませている）。移れなかったとき（新しいタブを開けなかった）は false を返し、
+  // 引き出しも既定もそのままにする
+  function changeMode(mode: TaskOpenMode): boolean {
+    if (!taskId) return true;
+    if (mode === 'tab') {
+      if (!openTaskTab(taskPageHref(data.slug, workspace!.id, taskId))) return false;
+      setTaskOpenMode(mode);
+      void withoutTask();
+      return true;
+    }
     setTaskOpenMode(mode);
     if (mode === 'page') {
+      // 一覧の上の引き出しからページ全体へ移っても履歴は足さない。足すと、ページ全体を閉じたとき引き出しが開いた状態の一覧に戻る
+      markOverlayHandoff();
       // eslint-disable-next-line svelte/no-navigation-without-resolve -- 同じワークスペース内の詳細の URL
-      void goto(taskPageHref(data.slug, workspace!.id, taskId));
-    } else if (mode === 'tab') {
-      window.open(taskPageHref(data.slug, workspace!.id, taskId), '_blank', 'noopener,noreferrer');
-      void withoutTask();
+      void goto(taskPageHref(data.slug, workspace!.id, taskId), { replace: true });
     } else modeRevision += 1;
+    return true;
   }
   const canWrite = $derived(workspace !== null && workspace.closedAt === null);
 

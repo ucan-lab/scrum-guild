@@ -1993,6 +1993,7 @@ export const dictionary = defineDictionary({
   drawerCenter: organization('真ん中', '真ん中'),
   drawerPage: organization('ページ全体', 'ページ全体'),
   drawerTab: organization('新しいタブ', '新しいタブ'),
+  drawerTabBlocked: organization('新しいタブを開けませんでした', '新しいタブを開けませんでした'),
   taskManualChip: workspace('手で作った{task}', '手で作った{task}'),
   taskImportedChip: workspace('取り込んだ{task}', '取り込んだ{task}'),
   taskDrawerLoadFailed: workspace(

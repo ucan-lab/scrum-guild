@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { drawerState, taskDetailHref } from '../drawer.svelte.ts';
+  import { drawerState, openTaskTab, taskDetailHref } from '../drawer.svelte.ts';
   import { tick, untrack } from 'svelte';
   import { goto } from '$app/navigation';
   import { page } from '$app/state';
@@ -80,11 +80,12 @@
     url.searchParams.set('task', id);
     const href = taskDetailHref(url.href);
     if (drawerState.mode === 'tab') {
-      window.open(href, '_blank', 'noopener,noreferrer');
+      openTaskTab(href);
       return;
     }
+    // ページ全体は別の画面へ移るので、先頭から読む（一覧のスクロールを持ち越さない）
     // eslint-disable-next-line svelte/no-navigation-without-resolve -- page.url は SvelteKit が解決済み。現在の経路の問い合わせだけを変える
-    void goto(href, { reset: false });
+    void goto(href, drawerState.mode === 'page' ? {} : { reset: false });
   }
 
   // 押したボタン（「さらに見る」「もう一度試す」）が読み終えて消えたら、フォーカスが body に落ちる。

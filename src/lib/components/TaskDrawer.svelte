@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { TaskOpenMode } from '../drawer.svelte.ts';
+  import { pickTaskOpenMode, type TaskOpenMode } from '../drawer.svelte.ts';
   import { tick } from 'svelte';
   import { beforeNavigate, goto } from '$app/navigation';
   import {
@@ -90,7 +90,8 @@
     onremoved,
   }: {
     mode?: TaskOpenMode;
-    onmode: (mode: TaskOpenMode) => void;
+    // 確認を通った後に呼ぶ。既定の保存は呼び出し側が行う。移れなかったとき（新しいタブを開けなかった）は false を返す
+    onmode: (mode: TaskOpenMode) => boolean;
     slug: string;
     workspaceId: string;
     currentUserId: string | null;
@@ -452,11 +453,14 @@
     onclose();
   }
 
-  async function requestMode(next: TaskOpenMode): Promise<void> {
-    if (next === mode || asking || leaving) return;
+  // 帯で形を押したとき。描いている形（shown）と同じなら既定だけ保存して終える。違えば、書きかけの確認の後に呼び出し側が移る
+  async function requestMode(next: TaskOpenMode, shown: TaskOpenMode): Promise<void> {
+    if (asking || leaving) return;
+    if (pickTaskOpenMode(next, shown) === 'stay') return;
     if (hasDraft() && !(await confirmDiscard())) return;
     leaving = true;
-    onmode(next);
+    // 新しいタブを開けなかったときは移らず、今の詳細を残す
+    if (!onmode(next)) leaving = false;
   }
 
   async function confirmDiscard(): Promise<boolean> {
@@ -1252,7 +1256,7 @@
 
 <Drawer
   {mode}
-  onmode={(next) => void requestMode(next)}
+  onmode={(next, shown) => void requestMode(next, shown)}
   labelledBy={titleLabelId}
   busy={loadState === 'loading'}
   onrequestclose={() => void requestClose()}

@@ -804,28 +804,43 @@ const looooooooooooooooooooooooooooooooooongLine = "コードの長い1行は、
     catch { return "side"; }
   }
   function shownDrawerMode() { return drawer.mode === "center" && matchMedia("(max-width: 620px)").matches ? "side" : drawer.mode; }
-  function drawerModeSelect() {
-    return `<label class="drawer-mode"><span class="visually-hidden">開き方</span><select class="select" data-drawer-mode>${[["side", "横"], ["center", "真ん中"], ["page", "ページ全体"], ["tab", "新しいタブ"]].filter(([v]) => v !== "center" || !matchMedia("(max-width: 620px)").matches).map(([v, label]) => `<option value="${v}" ${shownDrawerMode() === v ? "selected" : ""}>${label}</option>`).join("")}</select></label>`;
+  // 今描いている形。ページ全体の見本（task.html）はページ全体、それ以外は横か真ん中（狭い幅の真ん中は横）
+  function renderedDrawerMode() { return location.pathname.endsWith("/task.html") ? "page" : shownDrawerMode() === "center" ? "center" : "side"; }
+  // 開き方は押した時点で実行するボタンの組。select にすると、矢印キーを押すだけで確認なしに遷移してしまう
+  function drawerModeButtons() {
+    const narrow = matchMedia("(max-width: 620px)").matches, now = renderedDrawerMode();
+    const buttons = [["side", "横"], ["center", "真ん中"], ["page", "ページ全体"], ["tab", "新しいタブ"]].filter(([v]) => v !== "center" || !narrow)
+      .map(([v, label]) => `<button class="pill" type="button" data-drawer-mode="${v}" aria-pressed="${now === v}">${label}</button>`).join("");
+    return `<span class="drawer-mode" role="group" aria-label="開き方">${buttons}</span>`;
   }
   let pendingDrawerMode = null;
+  function saveDrawerMode(mode) {
+    try { localStorage.setItem("sq-design-task-open-mode", mode); drawer.mode = mode; } catch { drawer.mode = "side"; }
+  }
   function changeDrawerMode(mode, force = false) {
+    // 描いている形と同じ形を押したときは、移らずに既定だけを保存する
+    if (mode === renderedDrawerMode()) { saveDrawerMode(mode); renderDrawer(); return; }
     if (!force && drawerHasDraft()) { pendingDrawerMode = mode; DIALOGS.discardDraft(); return; }
     const id = drawer.id;
-    try { localStorage.setItem("sq-design-task-open-mode", mode); drawer.mode = mode; } catch { drawer.mode = "side"; }
     pendingDrawerMode = null;
-    if (mode === "page" || mode === "tab") {
-      const url = `task.html?task=${encodeURIComponent(id)}`;
-      if (mode === "tab") { window.open(url, "_blank", "noopener,noreferrer"); closeDrawer(true); }
-      else { sessionStorage.setItem("sq-design-task-return", location.href); location.href = url; }
+    if (mode === "tab") {
+      // 開けなかったら（遮断された）、詳細も既定もそのままにする
+      const opened = window.open(`task.html?task=${encodeURIComponent(id)}`, "_blank");
+      if (!opened) { toast(`${icon("alert")}新しいタブを開けませんでした`); return; }
+      opened.opener = null;
+      saveDrawerMode(mode); closeDrawer(true);
+      return;
+    }
+    saveDrawerMode(mode);
+    if (mode === "page") {
+      sessionStorage.setItem("sq-design-task-return", location.href); location.href = `task.html?task=${encodeURIComponent(id)}`;
       return;
     }
     if (location.pathname.endsWith("/task.html")) { location.href = `backlog.html?task=${encodeURIComponent(id)}`; return; }
     closeDrawer(true); openDrawer(id, drawer.opener);
   }
-  document.addEventListener("change", (event) => {
-    if (!event.target.matches?.("[data-drawer-mode]")) return;
-    const mode = event.target.value; event.target.value = shownDrawerMode(); changeDrawerMode(mode);
-  });
+  // 画面の幅が 620px を越えたら、真ん中のボタンを出し入れする
+  matchMedia("(max-width: 620px)").addEventListener("change", () => renderDrawer());
   // 欄ごとに直す。値そのものが押せるボタン（edit-trigger）で、押すと入力欄と「保存」「取り消し」に替わる。
   // Enter で保存、Esc で取り消し（本文は Enter が改行なので、保存は「保存」だけ）。ポイントと期日は選んだら保存する
   function editActions(name) {
@@ -945,7 +960,7 @@ const looooooooooooooooooooooooooooooooooongLine = "コードの長い1行は、
         <span class="chip">${icon(x.src ? SRC[x.src.kind].icon : "pen")}${x.src ? SRC[x.src.kind].label : `手で作った${t("task")}`}</span>
         ${x.src ? `<span class="source-key">${esc(x.src.key)}</span><span class="chip">取り込み元: ${esc(x.src.status)}</span>` : ""}
         <span class="drawer-tools">
-          ${drawerModeSelect()}
+          ${drawerModeButtons()}
           <button class="pill drawer-close" type="button" data-close-drawer aria-label="閉じる">${icon("x")}</button>
         </span>
       </div>
@@ -1021,7 +1036,7 @@ const looooooooooooooooooooooooooooooooooongLine = "コードの長い1行は、
   // 引き出しの見本の状態。読み込み中と、読めなかったとき（もう一度試す）は、見出しと文だけ
   function drawerStateHtml() {
     const x = task(drawer.id);
-    const top = `<div class="drawer-top"><span class="drawer-tools">${drawerModeSelect()}<button class="pill drawer-close" type="button" data-close-drawer aria-label="閉じる">${icon("x")}</button></span></div>
+    const top = `<div class="drawer-top"><span class="drawer-tools">${drawerModeButtons()}<button class="pill drawer-close" type="button" data-close-drawer aria-label="閉じる">${icon("x")}</button></span></div>
       <h2 class="drawer-title"><span id="drawer-title">${t("task")}</span></h2>`;
     if (drawer.view === "loading") return `${top}<p class="field-hint">読み込んでいます</p>`;
     return `${top}<div class="callout is-danger" role="alert">${icon("alert")}<span>この${t("task")}を読み込めませんでした。もう一度試してください。</span></div>
@@ -2212,6 +2227,7 @@ const looooooooooooooooooooooooooooooooooongLine = "コードの長い1行は、
     if ((el = hit("data-drawer-cancel"))) { cancelDrawerEdit(el.dataset.drawerCancel); return; }
     if ((el = hit("data-drawer-save"))) { saveDrawerEdit(el.dataset.drawerSave); return; }
     if (hit("data-drawer-due-clear")) { task(drawer.id).due = null; redrawAll(); toast(`${icon("check")}保存しました`); return; }
+    if ((el = hit("data-drawer-mode"))) { changeDrawerMode(el.dataset.drawerMode); return; }
     if (hit("data-discard-draft")) { const next = pendingDrawerMode; closeDialog(); if (next) changeDrawerMode(next, true); else closeDrawer(true); return; }
     if (hit("data-delete-task")) {
       const x = task(drawer.id);
@@ -2352,6 +2368,8 @@ const looooooooooooooooooooooooooooooooooongLine = "コードの長い1行は、
       // タイトルとリンクの入力欄では、Esc は欄の取り消し。本文は Esc でも閉じる（書きかけは確かめる）
       const name = ev.target.dataset && ev.target.dataset.drawerInput;
       if (name && name !== "body") { cancelDrawerEdit(name); return; }
+      // ページ全体は、引き出しの外（左のメニューなど）にフォーカスがあるときの Esc で閉じない
+      if (renderedDrawerMode() === "page" && ev.target !== document.body && !ev.target.closest("#drawer")) return;
       closeDrawer(); return;
     }
     if (assist.open === "panel" && ev.target.closest && ev.target.closest("#assist-panel")) closeAssist();
