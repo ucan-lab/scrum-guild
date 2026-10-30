@@ -10,6 +10,7 @@
   import TaskDrawer from '../../../../lib/components/TaskDrawer.svelte';
   import {
     drawerState,
+    clearOverlayHandoff,
     markOverlayHandoff,
     openTaskTab,
     setTaskOpenMode,
@@ -60,7 +61,10 @@
       // 一覧の上の引き出しからページ全体へ移っても履歴は足さない。足すと、ページ全体を閉じたとき引き出しが開いた状態の一覧に戻る
       markOverlayHandoff();
       // eslint-disable-next-line svelte/no-navigation-without-resolve -- 同じワークスペース内の詳細の URL
-      void goto(taskPageHref(data.slug, workspace!.id, taskId), { replace: true });
+      void goto(taskPageHref(data.slug, workspace!.id, taskId), { replace: true }).finally(() => {
+        // 移れていれば（URL がページ全体）、ページ側の afterNavigate が印を読む。移れなかったときだけ外す
+        if (!location.pathname.includes('/tasks/')) clearOverlayHandoff();
+      });
     } else modeRevision += 1;
     return true;
   }

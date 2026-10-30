@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import {
+  clearOverlayHandoff,
   consumeOverlayHandoff,
   drawerState,
   effectiveTaskOpenMode,
@@ -173,6 +174,12 @@ describe('引き出しからページ全体への受け渡し', () => {
     expect(consumeOverlayHandoff()).toBe(false);
     markOverlayHandoff();
     expect(consumeOverlayHandoff()).toBe(true);
+    expect(consumeOverlayHandoff()).toBe(false);
+  });
+
+  test('移動が成り立たなかったときは、印を外せる', () => {
+    markOverlayHandoff();
+    clearOverlayHandoff();
     expect(consumeOverlayHandoff()).toBe(false);
   });
 });

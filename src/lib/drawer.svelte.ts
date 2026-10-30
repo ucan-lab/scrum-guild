@@ -92,6 +92,11 @@ export function markOverlayHandoff(): void {
   overlayHandoff = true;
 }
 
+// goto が取り消されるなどでページ全体が開かなかったときに、印を残さない。残ると、次にリンクから来たときの閉じ方が狂う
+export function clearOverlayHandoff(): void {
+  overlayHandoff = false;
+}
+
 export function consumeOverlayHandoff(): boolean {
   const marked = overlayHandoff;
   overlayHandoff = false;
