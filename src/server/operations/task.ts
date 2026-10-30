@@ -40,18 +40,31 @@ import { activeMemberName, actorUserIdOf, changeLogColumns, openWorkspace, throw
 type Tables = OrganizationTables;
 
 // 削除していないバックログのタスク。親のないタスク（storyId が null）か、ストーリーの配下のタスク。
-// 木の読み取りと、末尾の位置を決める読み取りが同じ範囲を使う
+// 木の読み取りと、末尾の位置を決める読み取りと、並べ替えの兄弟を引く読み取りが同じ範囲を使う。
+// tasks_story は story_id が NULL の行を全組織のぶん持ち（workspace_id を持たない）、ANALYZE の後は SQLite が NULL を別々の値と
+// 数えて tasks_story を選び、全組織の親のないタスクを読んでから絞る計画に変わる。親なしの分岐は列を索引に使わせず（unindexed）、
+// tasks_workspace_tray で引かせる。ストーリーの分岐は story_id の等号で tasks_story を使う
+// （docs/data-model.md の「バックログの木」。test/backlog-filter.test.ts が ANALYZE の後の実行計画で確かめる）
 function backlogTasksUnder(
   from: Pick<QueryCreator<Tables>, 'selectFrom'>,
   workspaceId: string,
   storyId: string | null,
 ) {
-  return from
+  const tasks = from
     .selectFrom('tasks')
     .where('tasks.workspace_id', '=', workspaceId)
     .where('tasks.tray', '=', 'backlog')
-    .where('tasks.story_id', storyId === null ? 'is' : '=', storyId)
     .where('tasks.deleted_at', 'is', null);
+  return storyId === null
+    ? tasks.where(unindexed('tasks.story_id'), 'is', null)
+    : tasks.where('tasks.story_id', '=', storyId);
+}
+
+// 起票で、親の配下（親なしなら親のないタスク）の末尾の位置を決めるために、いちばん後ろの行の position を読む文
+export function lastPositionStatement(db: OrganizationDb, workspaceId: string, storyId: string | null) {
+  return db.statement((q) =>
+    backlogTasksUnder(q, workspaceId, storyId).select('tasks.position').orderBy('tasks.position', 'desc').limit(1),
+  );
 }
 
 // 作るタスクの親にできる、削除していないストーリー。完了しているかは completed_at で見る
@@ -102,11 +115,7 @@ export const taskCreateOperation = implement(taskCreate, async ({ db, actor, wor
 
   // 位置は親の配下（親なしなら、親のないタスク）の末尾。完了したタスクも並びに残っているので、それも含めた末尾に置く。
   // 同時に作ると同じ位置になりうる。同じ位置の行は id の順に並ぶ（同じミリ秒の中では作った順とは限らない）
-  const last = await db.first(
-    db.statement((q) =>
-      backlogTasksUnder(q, workspaceId, parentId).select('tasks.position').orderBy('tasks.position', 'desc').limit(1),
-    ),
-  );
+  const last = await db.first(lastPositionStatement(db, workspaceId, parentId));
   const at = now();
   const createdAt = at.toISOString();
   const taskId = uuidv7(at);
@@ -380,6 +389,70 @@ export function openStoryTasksStatement(db: OrganizationDb, workspaceId: string,
   );
 }
 
+// 親のない未完了のタスク。story_id は backlogTasksUnder が索引に使わせず、tasks_workspace_tray で引く
+// （test/backlog-filter.test.ts が ANALYZE の後の実行計画で確かめる）
+export function rootOpenTasksStatement(db: OrganizationDb, workspaceId: string, filter: BacklogTreeFilter) {
+  const { assignee, category, repository, epic, words } = filter;
+  const organizationId = db.organizationId;
+  return db.statement((q) =>
+    backlogTasksUnder(q, workspaceId, null)
+      .leftJoin('users', (join) =>
+        join.onRef('users.id', '=', 'tasks.assignee_user_id').on('users.organization_id', '=', organizationId),
+      )
+      .leftJoin('categories', (join) =>
+        join
+          .onRef('categories.id', '=', 'tasks.category_id')
+          .on('categories.workspace_id', '=', workspaceId)
+          .on('categories.deleted_at', 'is', null),
+      )
+      .leftJoin('repositories', (join) =>
+        join
+          .onRef('repositories.id', '=', 'tasks.repository_id')
+          .on('repositories.workspace_id', '=', workspaceId)
+          .on('repositories.deleted_at', 'is', null),
+      )
+      .leftJoin('sprints', (join) =>
+        join
+          .onRef('sprints.id', '=', 'tasks.sprint_id')
+          .on('sprints.workspace_id', '=', workspaceId)
+          .on('sprints.deleted_at', 'is', null),
+      )
+      .select([
+        'tasks.id',
+        'tasks.title',
+        'tasks.points',
+        'tasks.due_on',
+        'tasks.assignee_user_id',
+        'users.name as assignee_name',
+        'categories.id as category_ref_id',
+        'categories.name as category_name',
+        'repositories.id as repository_ref_id',
+        'repositories.name as repository_name',
+        ...sprintRefColumns,
+      ])
+      .where('tasks.completed_at', 'is', null)
+      .$if(assignee !== undefined, (qb) =>
+        qb.where('tasks.assignee_user_id', assignee === null ? 'is' : '=', assignee!),
+      )
+      .$if(repository !== undefined, (qb) => qb.where('repositories.id', repository === null ? 'is' : '=', repository!))
+      .$if(category !== undefined, (qb) => qb.where('categories.id', category === null ? 'is' : '=', category!))
+      // 親のないタスクはエピックの下に無いので、エピックで絞ると（エピックなしを除いて）どれも当たらない
+      .$if(typeof epic === 'string', (qb) => qb.limit(0))
+      .$if(words.length > 0, (qb) => qb.where(titleContainsAll('tasks.title', words)))
+      .orderBy('tasks.position')
+      .orderBy('tasks.id'),
+  );
+}
+
+// 親のない完了したタスクの件数（行は返さない）
+export function rootCompletedCountStatement(db: OrganizationDb, workspaceId: string) {
+  return db.statement((q) =>
+    backlogTasksUnder(q, workspaceId, null)
+      .select((eb) => eb.fn.countAll<number>().as('count'))
+      .where('tasks.completed_at', 'is not', null),
+  );
+}
+
 // 件数に上限を付けない（5 万件で測った数は docs/data-model.md）。
 // ストーリーは親のないものとエピックの下のものを1つの文で読み、epic_id で分ける。削除したエピックの下のストーリーも
 // （その配下のタスクも）読むが、エピックの一覧に親が無いので、どこにも並べずに捨てる。
@@ -492,61 +565,8 @@ export const backlogTreeOperation = implement(backlogTree, async ({ db, actor, w
         ])
         .groupBy('stories.id'),
     ),
-    db.statement((q) =>
-      backlogTasksUnder(q, workspaceId, null)
-        .leftJoin('users', (join) =>
-          join.onRef('users.id', '=', 'tasks.assignee_user_id').on('users.organization_id', '=', organizationId),
-        )
-        .leftJoin('categories', (join) =>
-          join
-            .onRef('categories.id', '=', 'tasks.category_id')
-            .on('categories.workspace_id', '=', workspaceId)
-            .on('categories.deleted_at', 'is', null),
-        )
-        .leftJoin('repositories', (join) =>
-          join
-            .onRef('repositories.id', '=', 'tasks.repository_id')
-            .on('repositories.workspace_id', '=', workspaceId)
-            .on('repositories.deleted_at', 'is', null),
-        )
-        .leftJoin('sprints', (join) =>
-          join
-            .onRef('sprints.id', '=', 'tasks.sprint_id')
-            .on('sprints.workspace_id', '=', workspaceId)
-            .on('sprints.deleted_at', 'is', null),
-        )
-        .select([
-          'tasks.id',
-          'tasks.title',
-          'tasks.points',
-          'tasks.due_on',
-          'tasks.assignee_user_id',
-          'users.name as assignee_name',
-          'categories.id as category_ref_id',
-          'categories.name as category_name',
-          'repositories.id as repository_ref_id',
-          'repositories.name as repository_name',
-          ...sprintRefColumns,
-        ])
-        .where('tasks.completed_at', 'is', null)
-        .$if(assignee !== undefined, (qb) =>
-          qb.where('tasks.assignee_user_id', assignee === null ? 'is' : '=', assignee!),
-        )
-        .$if(repository !== undefined, (qb) =>
-          qb.where('repositories.id', repository === null ? 'is' : '=', repository!),
-        )
-        .$if(category !== undefined, (qb) => qb.where('categories.id', category === null ? 'is' : '=', category!))
-        // 親のないタスクはエピックの下に無いので、エピックで絞ると（エピックなしを除いて）どれも当たらない
-        .$if(typeof epic === 'string', (qb) => qb.limit(0))
-        .$if(searching, (qb) => qb.where(titleContainsAll('tasks.title', words)))
-        .orderBy('tasks.position')
-        .orderBy('tasks.id'),
-    ),
-    db.statement((q) =>
-      backlogTasksUnder(q, workspaceId, null)
-        .select((eb) => eb.fn.countAll<number>().as('count'))
-        .where('tasks.completed_at', 'is not', null),
-    ),
+    rootOpenTasksStatement(db, workspaceId, filter),
+    rootCompletedCountStatement(db, workspaceId),
     // 担当の絞り込みの選択肢。今所属している人（担当にできる人と同じ条件）と、未完了のバックログのタスクの担当に残っている人
     db.statement((q) =>
       q
@@ -1269,6 +1289,52 @@ function siblingTasks(
   return backlogTasksUnder(from, workspaceId, storyId).where('tasks.id', '!=', taskId);
 }
 
+// 並べ替えで兄弟を引く文。親なしの分岐は backlogTasksUnder が story_id を索引に使わせない
+// （test/backlog-filter.test.ts が ANALYZE の後の実行計画で確かめる）
+export function siblingStatements(db: OrganizationDb, workspaceId: string, storyId: string | null, taskId: string) {
+  const columns = ['tasks.id', 'tasks.position'] as const;
+  return {
+    last: () =>
+      db.statement((q) =>
+        siblingTasks(q, workspaceId, storyId, taskId)
+          .select(columns)
+          .orderBy('tasks.position', 'desc')
+          .orderBy('tasks.id', 'desc')
+          .limit(1),
+      ),
+    first: () =>
+      db.statement((q) =>
+        siblingTasks(q, workspaceId, storyId, taskId)
+          .select(columns)
+          .orderBy('tasks.position')
+          .orderBy('tasks.id')
+          .limit(1),
+      ),
+    byId: (afterId: string) =>
+      db.statement((q) =>
+        siblingTasks(q, workspaceId, storyId, taskId).select(columns).where('tasks.id', '=', afterId),
+      ),
+    ties: (after: Positioned) =>
+      db.statement((q) =>
+        siblingTasks(q, workspaceId, storyId, taskId)
+          .select(columns)
+          .where('tasks.position', '=', after.position)
+          .where('tasks.id', '>', after.id)
+          .orderBy('tasks.id')
+          .limit(MAX_TIES + 1),
+      ),
+    next: (after: Positioned) =>
+      db.statement((q) =>
+        siblingTasks(q, workspaceId, storyId, taskId)
+          .select(columns)
+          .where('tasks.position', '>', after.position)
+          .orderBy('tasks.position')
+          .orderBy('tasks.id')
+          .limit(1),
+      ),
+  };
+}
+
 // 移すタスクの新しい位置と、読んだ直前の行を決める。直前の行が移す先に無ければ 404。親の行の全件は読まず、直前の行と同じ値の行
 // （上限 MAX_TIES より1行多くまで）と、それより大きい値の最初の行だけを読む
 async function planTaskMove(
@@ -1278,53 +1344,12 @@ async function planTaskMove(
   taskId: string,
   afterId: string | null | undefined,
 ): Promise<{ plan: MovePlan; after: Positioned | null }> {
-  const columns = ['tasks.id', 'tasks.position'] as const;
-  if (afterId === undefined) {
-    const last = await db.first(
-      db.statement((q) =>
-        siblingTasks(q, workspaceId, storyId, taskId)
-          .select(columns)
-          .orderBy('tasks.position', 'desc')
-          .orderBy('tasks.id', 'desc')
-          .limit(1),
-      ),
-    );
-    return { plan: placeLast(last), after: null };
-  }
-  if (afterId === null) {
-    const first = await db.first(
-      db.statement((q) =>
-        siblingTasks(q, workspaceId, storyId, taskId)
-          .select(columns)
-          .orderBy('tasks.position')
-          .orderBy('tasks.id')
-          .limit(1),
-      ),
-    );
-    return { plan: placeFirst(first), after: null };
-  }
-  const after = await db.first(
-    db.statement((q) => siblingTasks(q, workspaceId, storyId, taskId).select(columns).where('tasks.id', '=', afterId)),
-  );
+  const siblings = siblingStatements(db, workspaceId, storyId, taskId);
+  if (afterId === undefined) return { plan: placeLast(await db.first(siblings.last())), after: null };
+  if (afterId === null) return { plan: placeFirst(await db.first(siblings.first())), after: null };
+  const after = await db.first(siblings.byId(afterId));
   if (after === undefined) throw new ApiError(404, 'not_found');
-  const [ties, next] = await db.batch([
-    db.statement((q) =>
-      siblingTasks(q, workspaceId, storyId, taskId)
-        .select(columns)
-        .where('tasks.position', '=', after.position)
-        .where('tasks.id', '>', after.id)
-        .orderBy('tasks.id')
-        .limit(MAX_TIES + 1),
-    ),
-    db.statement((q) =>
-      siblingTasks(q, workspaceId, storyId, taskId)
-        .select(columns)
-        .where('tasks.position', '>', after.position)
-        .orderBy('tasks.position')
-        .orderBy('tasks.id')
-        .limit(1),
-    ),
-  ] as const);
+  const [ties, next] = await db.batch([siblings.ties(after), siblings.next(after)] as const);
   return { plan: placeAfter(after, ties.rows, next.rows[0]), after };
 }
 
