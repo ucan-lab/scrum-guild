@@ -95,10 +95,16 @@
   $effect(() => dnd.monitor());
   // 読み直したら、つかんでいるドラッグは取りやめる（離しても何も送らない）。光らせているカードは、読み直した後も残す
   dnd.resetWhenChanged(() => board);
+  // 完了にした、または戻したカード。読み直した後の列に出てから光らせる（応答の直後に光らせると、読み直しが遅いとき元の列で終わる）
+  let flashAfterReload: string | null = null;
   $effect.pre(() => {
     void board;
     local = null;
     moves.reloaded();
+    if (flashAfterReload !== null) {
+      dnd.flash(flashAfterReload);
+      flashAfterReload = null;
+    }
   });
 
   // 積んだ操作（完了か戻し）を終えるまで、そのカードをつかめなくする
@@ -239,7 +245,7 @@
     const sent = moves.send(
       async () => {
         completed = await complete(task, true);
-        if (completed && dropped) dnd.flash(task.id);
+        if (completed && dropped) flashAfterReload = task.id;
         return completed ? ({ ok: true, data: null } as const) : ({ ok: false, status: 0, error: null } as const);
       },
       async () => {},
@@ -318,7 +324,7 @@
         });
         if (result.ok && workspaceId === page.params.id) {
           void announce(movedMessage(task, plan));
-          dnd.flash(task.id);
+          flashAfterReload = task.id;
         }
         return result;
       },
