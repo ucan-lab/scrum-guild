@@ -122,6 +122,11 @@ export class SprintDnd {
     });
   }
 
+  // 完了か戻しを送っている最中か（カードを薄くし、aria-busy を付ける）
+  isBusy(taskId: string): boolean {
+    return this.#options.busy?.(taskId) === true;
+  }
+
   // つかめるか。書き込めて、つかめるカード（sprint-drop.ts の isGrabbable）で、完了か戻しを送っている最中でないとき
   canGrab(taskId: string): boolean {
     if (!this.#options.enabled() || this.#options.busy?.(taskId) === true) return false;

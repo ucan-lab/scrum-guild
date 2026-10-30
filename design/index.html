@@ -332,8 +332,8 @@ const SECTIONS = [
       `完成の定義（<code>.dod</code>）は畳んで置き、中身はワークスペースの Markdown を <code>.doc-box</code> で描く（<code>.dod</code> の中では枠と余白を外し、見出しも小さい文字のままにする）。開くまで本文を描かない。空なら出さない。${t("backlog")}の木の上にも同じ部品を1つだけ置き、行ごとには繰り返さない。`],
     ".board-wrap .board[--board-cols] .board-col .is-done .board-col-head .board-col-name / .dod / .card .card-parent .card-title .card-meta .card-foot .card-end .card-moves .card:focus-within / .order-actions（left right の across）")],
   ["boarddrag", "カードのドラッグ", () => block("boarddrag", "カードのドラッグ（スプリントの画面）", "スプリントのカードをつかんで、列の中で並べ替え、別の列へ移し、完了の列へ落として完了にする。落とす位置は、カードとカードの間の線か、列の囲みで示す。",
-    board("sp14", { key: "dg1", cardMarks: (x) => (x.id === "t3" ? { state: "is-dragging" } : x.id === "t1" ? { drop: "after" } : undefined) }) +
-    `<div class="cat-row"><span class="field-hint">1列目の先頭のカードをつかんでいる（元の位置で薄くする）。2列目の先頭のカードの下の線は、そのカードの後ろに入る（下半分に重ねたとき）。上半分に重ねると前の線</span></div>` +
+    board("sp14", { key: "dg1", cardMarks: (x) => (x.id === "t3" ? { state: "is-dragging" } : x.id === "t4" ? { state: "is-busy" } : x.id === "t1" ? { drop: "after" } : undefined) }) +
+    `<div class="cat-row"><span class="field-hint">1列目の先頭のカードをつかんでいる（元の位置で薄くする）。完了か戻しを送っている間のカードは、薄くしてカーソルを進行中にし、つかめない（.is-busy。aria-busy も付ける）。2列目の先頭のカードの下の線は、そのカードの後ろに入る（下半分に重ねたとき）。上半分に重ねると前の線</span></div>` +
     board("sp14", { key: "dg2", cardMarks: (x) => (x.id === "t11" ? { state: "is-dragging" } : undefined), columnMarks: (c) => (c.id === "c3" ? { drop: "into" } : undefined) }) +
     `<div class="cat-row"><span class="field-hint">カードの無い所と${t("column")}の頭に重ねると${t("column")}を囲む。離すと${t("column")}の末尾に入る</span></div>` +
     board("sp14", { key: "dg3", cardMarks: (x) => (x.id === "t2" ? { state: "is-dragging" } : undefined), columnMarks: (c) => (c.done ? { drop: "into" } : undefined) }) +

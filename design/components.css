@@ -1176,6 +1176,8 @@ a.choice > div > span, .choice.is-static > div > span { display: block; }
    into は列を囲む（.dropzone.is-over と同じ枠と地。離すと列の末尾に入る。完了の列は、どこに重ねても囲む） */
 .card { position: relative; }
 .card[draggable="true"] { cursor: grab; }
+/* 完了か戻しを送っている間は、つかめない。薄くして、カーソルも進行中にする（aria-busy も付ける） */
+.card.is-busy { opacity: 0.6; cursor: progress; }
 .card[data-drop="before"]::before, .card[data-drop="after"]::before { left: 4px; right: 0; }
 .card[data-drop="before"]::after, .card[data-drop="after"]::after { left: 0; }
 .card[data-drop="before"]::before { top: -6px; }

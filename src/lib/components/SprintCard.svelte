@@ -94,6 +94,8 @@
   class:is-done={done}
   class:is-dragging={dnd?.isDragging(task.id)}
   class:is-dropped={dnd?.isFlashing(task.id)}
+  class:is-busy={dnd?.isBusy(task.id)}
+  aria-busy={dnd?.isBusy(task.id) ? true : undefined}
   data-drop={dnd?.markOfCard(task.id)}
   {@attach dnd?.card(task.id, grabbable)}
   tabindex={movable ? 0 : undefined}
