@@ -14,7 +14,7 @@ import type { AnyOperationDefinition } from '../src/shared/operations/define.ts'
 import { sprintBoard } from '../src/shared/operations/sprint/index.ts';
 import { createApp } from '../src/server/app.ts';
 import { orgDb, verifyWorkspace } from '../src/server/db/index.ts';
-import { columnDeleteOperation } from '../src/server/operations/column.ts';
+import { columnCreateOperation, columnDeleteOperation, columnMoveOperation } from '../src/server/operations/column.ts';
 import { implementedOperations } from '../src/server/operations/index.ts';
 import { createBoardColumn, createSprint, createSprintEntry, createTask, createWorkspace } from './factories.ts';
 import { post } from './operations/harness.ts';
@@ -135,6 +135,66 @@ async function cardIn(
   });
   await createSprintEntry(target.organization, target.workspace.id, sprintId, task.id, target.member.userId!);
   return task;
+}
+
+// 処理を直に呼び、db の method の nth 回目の呼び出しが返った直後に、1回だけ race を走らせる（読んでから書くまでの割り込み）。
+// 登録の関数を通らないので、閉じたワークスペースなどの事前の確かめは掛からず、書く文の条件だけが効く
+async function withRace(
+  target: Target,
+  operation: { handler: (context: never) => Promise<unknown> },
+  input: Record<string, unknown>,
+  race: { method: 'batch' | 'first'; nth: number; run: () => Promise<void> },
+  person: Person = target.leader,
+): Promise<unknown> {
+  const db = orgDb(env, target.organization.verified);
+  const actor = { accountId: person.accountId, userId: person.userId, isAdmin: false, invitedOnly: false };
+  const workspace = await verifyWorkspace(db, actor, target.workspace.id);
+  let calls = 0;
+  const racing = new Proxy(db, {
+    get(base, key) {
+      const value = Reflect.get(base, key, base);
+      if (typeof value !== 'function') return value;
+      if (key !== race.method) return value.bind(base);
+      return async (...args: unknown[]) => {
+        const result = await (value as (...a: unknown[]) => Promise<unknown>).apply(base, args);
+        if (++calls === race.nth) await race.run();
+        return result;
+      };
+    },
+  });
+  return operation.handler({
+    db: racing,
+    actor,
+    workspace,
+    input: { workspace_id: target.workspace.id, ...input },
+    defer: () => {},
+  } as never);
+}
+
+async function closeWorkspace(target: Target): Promise<void> {
+  const db = orgDb(env, target.organization.verified);
+  await db.run(
+    db.statement((q) =>
+      q
+        .updateTable('workspaces')
+        .set({ closed_at: '2026-10-22T00:00:00.000Z' })
+        .where('id', '=', target.workspace.id)
+        .where('organization_id', '=', target.organization.id),
+    ),
+  );
+}
+
+function updateRow(table: 'sprints' | 'board_columns', target: Target, id: string, values: Record<string, unknown>) {
+  const db = orgDb(env, target.organization.verified);
+  return db.run(
+    db.statement((q) =>
+      q
+        .updateTable(table as 'sprints')
+        .set(values as never)
+        .where('id', '=', id)
+        .where('workspace_id', '=', target.workspace.id),
+    ),
+  );
 }
 
 describe('column-list', () => {
@@ -299,6 +359,21 @@ describe('column-update', () => {
     expect(await logsOf(target, 'workspace', target.workspace.id)).toHaveLength(1);
   });
 
+  test('応答の task_count は、column-list と同じ数（タスクのある列を改名しても、名前を変えなくても）', async () => {
+    const target = await createTarget();
+    const board = await createBoard(target);
+    const active = await createSprint(target.organization, target.workspace.id, { status: 'active' });
+    await cardIn(target, active.id, board.b, 'a0');
+    await cardIn(target, active.id, board.b, 'a1');
+    const renamed = await call<{ column: ListedColumn }>(columnUpdate, target, { column_id: board.b, name: '作業中' });
+    expect(renamed.body.column.task_count).toBe(2);
+    const same = await call<{ column: ListedColumn }>(columnUpdate, target, { column_id: board.b, name: '作業中' });
+    expect(same.body.column.task_count).toBe(2);
+    const listed = (await list(target)).find((column) => column.id === board.b);
+    expect(listed?.task_count).toBe(2);
+    expect(renamed.body.column).toEqual(listed);
+  });
+
   test('ほかの列と同じ名前は 409 の duplicate_name。自分の名前の付け直しは通る', async () => {
     const target = await createTarget();
     const board = await createBoard(target);
@@ -358,6 +433,16 @@ describe('column-move', () => {
     expect((await call(columnMove, target, { column_id: elsewhere.id })).status).toBe(404);
     expect((await call(columnMove, target, { column_id: board.a, after_column_id: elsewhere.id })).status).toBe(404);
     expect(await names(target)).toEqual(['出発前', '遂行中', '査定中', '(完了)']);
+  });
+
+  test('別の組織の列を直前に指すと 404 で、並びは変わらない', async () => {
+    const target = await createTarget();
+    const other = await createTarget();
+    const board = await createBoard(target);
+    const otherBoard = await createBoard(other);
+    expect((await call(columnMove, target, { column_id: board.a, after_column_id: otherBoard.b })).status).toBe(404);
+    expect(await names(target)).toEqual(['出発前', '遂行中', '査定中', '(完了)']);
+    expect(await names(other)).toEqual(['出発前', '遂行中', '査定中', '(完了)']);
   });
 
   test('同じ位置の列が並んでいる直後へ置いても、並びが壊れない', async () => {
@@ -468,7 +553,7 @@ describe('column-delete', () => {
     expect(res.body.columns.map((column) => column.name)).toEqual(['遂行中', '査定中', null]);
   });
 
-  test('移すタスクが無ければ移し先は要らない。送っても通り、そのときは移し先を履歴に書く', async () => {
+  test('移すタスクが無ければ移し先は要らない。送っても通るが、移し先は履歴に書かない', async () => {
     const target = await createTarget();
     const board = await createBoard(target);
     const first = await call<{ moved_count: number }>(columnDelete, target, { column_id: board.a });
@@ -484,6 +569,9 @@ describe('column-delete', () => {
     expect(second.status).toBe(200);
     expect(second.body.moved_count).toBe(0);
     expect(await names(target)).toEqual(['査定中', '(完了)']);
+    const logs = await logsOf(target, 'workspace', target.workspace.id);
+    expect(logs).toHaveLength(2);
+    expect(logs[1]!.changes).toEqual({ column: [{ id: board.b, name: '遂行中' }, null] });
   });
 
   test('移すタスクがあるのに移し先が無ければ 409 の target_required。移し先が自分自身か完了の列なら 409 の target_invalid、無い列と別のワークスペースの列は 404。何も書かない', async () => {
@@ -571,35 +659,19 @@ describe('column-delete', () => {
     const early = await cardIn(target, active.id, board.a, 'a0');
     let late: Awaited<ReturnType<typeof cardIn>> | undefined;
 
-    const db = orgDb(env, target.organization.verified);
-    const actor = {
-      accountId: target.leader.accountId,
-      userId: target.leader.userId,
-      isAdmin: false,
-      invitedOnly: false,
-    };
-    const workspace = await verifyWorkspace(db, actor, target.workspace.id);
-    let batches = 0;
-    const racing = new Proxy(db, {
-      get(base, key) {
-        const value = Reflect.get(base, key, base);
-        if (typeof value !== 'function') return value;
-        if (key !== 'batch') return value.bind(base);
-        return async (...args: unknown[]) => {
-          const result = await (value as (...a: unknown[]) => Promise<unknown>).apply(base, args);
-          // 最初の読み取りの直後に、消す列へカードが入る
-          if (++batches === 1) late = await cardIn(target, active.id, board.a, 'a1');
-          return result;
-        };
+    // 最初の読み取りの直後に、消す列へカードが入る
+    const output = (await withRace(
+      target,
+      columnDeleteOperation,
+      { column_id: board.a, target_column_id: board.b },
+      {
+        method: 'batch',
+        nth: 1,
+        run: async () => {
+          late = await cardIn(target, active.id, board.a, 'a1');
+        },
       },
-    });
-    const output = (await columnDeleteOperation.handler({
-      db: racing,
-      actor,
-      workspace,
-      input: { workspace_id: target.workspace.id, column_id: board.a, target_column_id: board.b },
-      defer: () => {},
-    } as never)) as { moved_count: number };
+    )) as { moved_count: number };
     expect(output.moved_count).toBe(2);
     expect(await orderIn(target, active.id, board.b)).toEqual([early.id, late!.id]);
     expect(await orderIn(target, active.id, board.a)).toEqual([]);
@@ -643,5 +715,166 @@ describe('column-delete', () => {
     await cardIn(target, active.id, board.a, 'a0');
     expect((await call(columnDelete, target, { column_id: board.a, target_column_id: elsewhere.id })).status).toBe(404);
     expect((await boardColumnRow(target, elsewhere.id, other.id)).deleted_at).toBeNull();
+  });
+});
+
+// 読んでから書くまでの間に別の要求が割り込んでも、書く文の条件が止めることを確かめる（登録の関数の確かめを通らない）
+describe('読んでから書くまでの割り込み', () => {
+  test('column-delete: 移し先が先に削除されたら 404 で、列もタスクも変わらない', async () => {
+    const target = await createTarget();
+    const board = await createBoard(target);
+    const active = await createSprint(target.organization, target.workspace.id, { status: 'active' });
+    const card = await cardIn(target, active.id, board.a, 'a0');
+    await expect(
+      withRace(
+        target,
+        columnDeleteOperation,
+        { column_id: board.a, target_column_id: board.c },
+        {
+          method: 'batch',
+          nth: 1,
+          run: async () => {
+            expect((await call(columnDelete, target, { column_id: board.c })).status).toBe(200);
+          },
+        },
+      ),
+    ).rejects.toMatchObject({ status: 404, code: 'not_found' });
+    expect((await boardColumnRow(target, board.a)).deleted_at).toBeNull();
+    expect((await taskRow(target, card.id)).column_id).toBe(board.a);
+    expect(await logsOf(target, 'task', card.id)).toEqual([]);
+  });
+
+  test('column-delete: 読んだ直後にワークスペースが閉じたら 409 の workspace_closed で、列もタスクも変わらない', async () => {
+    const target = await createTarget();
+    const board = await createBoard(target);
+    const active = await createSprint(target.organization, target.workspace.id, { status: 'active' });
+    const card = await cardIn(target, active.id, board.a, 'a0');
+    await expect(
+      withRace(
+        target,
+        columnDeleteOperation,
+        { column_id: board.a, target_column_id: board.b },
+        { method: 'batch', nth: 1, run: () => closeWorkspace(target) },
+      ),
+    ).rejects.toMatchObject({ status: 409, code: 'workspace_closed' });
+    expect((await boardColumnRow(target, board.a)).deleted_at).toBeNull();
+    expect((await taskRow(target, card.id)).column_id).toBe(board.a);
+    expect(await logsOf(target, 'workspace', target.workspace.id)).toEqual([]);
+  });
+
+  test('column-create: 読んだ直後にワークスペースが閉じたら 409 の workspace_closed で、列は増えない', async () => {
+    const target = await createTarget();
+    await createBoard(target);
+    await expect(
+      withRace(
+        target,
+        columnCreateOperation,
+        { name: '確認待ち' },
+        { method: 'first', nth: 1, run: () => closeWorkspace(target) },
+      ),
+    ).rejects.toMatchObject({ status: 409, code: 'workspace_closed' });
+    expect(await names(target)).toEqual(['出発前', '遂行中', '査定中', '(完了)']);
+    expect(await logsOf(target, 'workspace', target.workspace.id)).toEqual([]);
+  });
+
+  test('column-delete: 読んだ直後にスプリントが終了していたら、そのスプリントのカードは動かさず、履歴も書かない', async () => {
+    const target = await createTarget();
+    const board = await createBoard(target);
+    const active = await createSprint(target.organization, target.workspace.id, { status: 'active' });
+    const planned = await createSprint(target.organization, target.workspace.id, {
+      start_on: '2030-01-07',
+      end_on: '2030-01-20',
+    });
+    const inActive = await cardIn(target, active.id, board.a, 'a0');
+    const inPlanned = await cardIn(target, planned.id, board.a, 'a0');
+    const output = (await withRace(
+      target,
+      columnDeleteOperation,
+      { column_id: board.a, target_column_id: board.b },
+      {
+        method: 'batch',
+        nth: 1,
+        run: async () => {
+          await updateRow('sprints', target, active.id, { status: 'closed' });
+        },
+      },
+    )) as { moved_count: number };
+    expect(output.moved_count).toBe(1);
+    expect((await taskRow(target, inPlanned.id)).column_id).toBe(board.b);
+    expect((await taskRow(target, inActive.id)).column_id).toBe(board.a);
+    expect(await logsOf(target, 'task', inActive.id)).toEqual([]);
+    expect(await logsOf(target, 'task', inPlanned.id)).toHaveLength(1);
+  });
+
+  test('column-delete: 読んだ直後にタスクが別のスプリントへ移っていたら、そのカードは動かさない', async () => {
+    const target = await createTarget();
+    const board = await createBoard(target);
+    const active = await createSprint(target.organization, target.workspace.id, { status: 'active' });
+    const planned = await createSprint(target.organization, target.workspace.id, {
+      start_on: '2030-01-07',
+      end_on: '2030-01-20',
+    });
+    const card = await cardIn(target, active.id, board.a, 'a0');
+    const db = orgDb(env, target.organization.verified);
+    const output = (await withRace(
+      target,
+      columnDeleteOperation,
+      { column_id: board.a, target_column_id: board.b },
+      {
+        method: 'batch',
+        nth: 1,
+        // 持ち越しの後のように、同じ列のまま別のスプリントに入る
+        run: async () => {
+          await db.run(
+            db.statement((q) => q.updateTable('tasks').set({ sprint_id: planned.id }).where('id', '=', card.id)),
+          );
+        },
+      },
+    )) as { moved_count: number };
+    expect(output.moved_count).toBe(0);
+    expect((await taskRow(target, card.id)).column_id).toBe(board.a);
+    expect(await logsOf(target, 'task', card.id)).toEqual([]);
+  });
+
+  test('column-move: 読んだ後に直前の列が動かされたら 409 の changed で、並びは動かさない', async () => {
+    const target = await createTarget();
+    const board = await createBoard(target);
+    await expect(
+      withRace(
+        target,
+        columnMoveOperation,
+        { column_id: board.c, after_column_id: board.a },
+        {
+          method: 'batch',
+          nth: 1,
+          run: async () => {
+            expect((await call(columnMove, target, { column_id: board.a })).status).toBe(200);
+          },
+        },
+      ),
+    ).rejects.toMatchObject({ status: 409, code: 'conflict', details: { reason: 'changed' } });
+    expect(await names(target)).toEqual(['遂行中', '査定中', '出発前', '(完了)']);
+  });
+
+  test('column-move: 読んだ直後に動かす列が完了の列になっていたら、動かさない（404）', async () => {
+    const target = await createTarget();
+    const a = await createBoardColumn(target.organization, target.workspace.id, { name: '甲', position: 'a0' });
+    const b = await createBoardColumn(target.organization, target.workspace.id, { name: '乙', position: 'a1' });
+    await expect(
+      withRace(
+        target,
+        columnMoveOperation,
+        { column_id: a.id },
+        {
+          method: 'first',
+          nth: 2,
+          run: async () => {
+            await updateRow('board_columns', target, a.id, { is_done: 1 });
+          },
+        },
+      ),
+    ).rejects.toMatchObject({ status: 404, code: 'not_found' });
+    expect((await boardColumnRow(target, a.id)).position).toBe('a0');
+    expect(b.position).toBe('a1');
   });
 });

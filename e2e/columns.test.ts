@@ -2,8 +2,10 @@
 // 移し先を選んで削除し、スプリントの画面で移ったのを見る。完了の列は末尾に固定で、名前は言葉づかいに合わせて出る。
 // 自分で作ったワークスペースで行う（seed の行は他の e2e も読むため）
 import type { Page } from '@playwright/test';
+import { columnDelete } from '../src/shared/operations/column/index.ts';
 import { expect, test } from './fixtures.ts';
 import { createWorkspace, signIn, watchViolations } from './helpers.ts';
+import { failOperation } from './operations.ts';
 
 test.use({ timezoneId: 'Asia/Tokyo' });
 
@@ -74,7 +76,7 @@ test('リーダーは行程を足し、名前を直し、ボタンとキーで�
   await expect(done).toContainText('常に末尾');
   await expect(done.getByRole('button')).toHaveCount(0);
   // 入っているクエストの数。削除の確かめの前に分かる
-  await expect(rows.nth(0)).toContainText('2 件');
+  await expect(rows.nth(0)).toContainText('削除すると 2 件を移す');
 
   // 足す。完遂の行程の手前に入る。同じ名前は断る
   await page.getByLabel('新しい行程の名前').fill('公開待ち');
@@ -114,7 +116,7 @@ test('リーダーは行程を足し、名前を直し、ボタンとキーで�
   await expect(confirm).toBeHidden();
   await expect(status('「出発前」を削除し、2 件のクエストを「遂行中」へ移しました')).toBeVisible();
   await expect(rows).toHaveText([/公開確認/, /遂行中/, /査定中/, /完遂/]);
-  await expect(rows.nth(1)).toContainText('2 件');
+  await expect(rows.nth(1)).toContainText('削除すると 2 件を移す');
 
   // 遠征の画面は、設定の並びの行程にカードを出す
   await page.getByRole('link', { name: '遠征', exact: true }).click();
@@ -129,7 +131,7 @@ test('リーダーは行程を足し、名前を直し、ボタンとキーで�
   for (const name of ['公開確認', '査定中']) {
     await columns.getByRole('button', { name: `削除: ${name}` }).click();
     const empty = page.getByRole('dialog', { name: `「${name}」を削除する` });
-    await expect(empty).toContainText('残っているクエストはありません');
+    await expect(empty).toContainText('移すクエストはありません。終了した遠征のクエストは変わりません。');
     await expect(empty.getByLabel('移し先の行程')).toHaveCount(0);
     await empty.getByRole('button', { name: '削除する' }).click();
     await expect(empty).toBeHidden();
@@ -138,10 +140,32 @@ test('リーダーは行程を足し、名前を直し、ボタンとキーで�
   await expect(rows).toHaveText([/遂行中/, /完遂/]);
   const last = columns.getByRole('button', { name: '削除: 遂行中' });
   await expect(last).toHaveAttribute('aria-disabled', 'true');
-  await expect(last).toHaveAttribute('title', '最後の行程は削除できません');
+  // 押せない理由は、title だけでなく見える文字でも伝え、ボタンの説明に結ぶ
+  await expect(page.getByText('最後の行程は削除できません', { exact: true })).toBeVisible();
+  await expect(last).toHaveAccessibleDescription('最後の行程は削除できません');
   await last.click({ force: true });
   await expect(page.getByRole('dialog')).toHaveCount(0);
   expect(await collect()).toEqual([]);
+});
+
+test('削除が 404 で断られたら、削除する行程か移し先の行程が見つからないと伝えて読み直す', async ({
+  page,
+  context,
+  baseURL,
+}) => {
+  await signIn(context, baseURL, 'admin');
+  await createWorkspace(page, '見つからない行程の確認', 'game');
+  await openSettings(page);
+  const columns = page.getByRole('list', { name: '行程の一覧' });
+  const unroute = await failOperation(page, columnDelete, { slug: 'aoba' }, 404, 'not_found');
+  await columns.getByRole('button', { name: '削除: 査定中' }).click();
+  await page.getByRole('dialog', { name: '「査定中」を削除する' }).getByRole('button', { name: '削除する' }).click();
+  await expect(
+    page.getByRole('status').filter({ hasText: '削除する行程か移し先の行程が見つかりません。一覧を読み直します' }),
+  ).toBeVisible();
+  await unroute();
+  // 本物の API へ戻すと、行程は消えておらず、読み直した一覧に残っている
+  await expect(columns.locator('li')).toHaveText([/出発前/, /遂行中/, /査定中/, /完遂/]);
 });
 
 test('スクラムの言葉では、列の節の見出しと完了の列の名前がスクラムの言葉になり、付けた列の名前はそのまま', async ({

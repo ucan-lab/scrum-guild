@@ -547,22 +547,31 @@ export const pointers: Pointers = {
       .id,
     name: `確認 ${uniqueSuffix()}`,
   }),
-  'column-move': async (target) => ({
-    workspace_id: target.workspace.id,
-    column_id: (await createBoardColumn(target.organization, target.workspace.id, { name: `検証 ${uniqueSuffix()}` }))
-      .id,
-    after_column_id: null,
-  }),
-  // 呼ぶたびに列を2つ作って片方を指す（削除した列は続けて削除できず、最後の1つの列は削除できないため）
+  // 動かす列と、直前の列（同じワークスペースの別の列）の2つを作る
+  'column-move': async (target) => {
+    const moving = await createBoardColumn(target.organization, target.workspace.id, {
+      name: `検証 ${uniqueSuffix()}`,
+    });
+    const before = await createBoardColumn(target.organization, target.workspace.id, {
+      name: `直前 ${uniqueSuffix()}`,
+      position: 'a1',
+    });
+    return { workspace_id: target.workspace.id, column_id: moving.id, after_column_id: before.id };
+  },
+  // 呼ぶたびに列を2つ作って、1つ目を消し、2つ目を移し先に指す（削除した列は続けて削除できず、最後の1つの列は削除できないため）
   'column-delete': async (target) => {
     const doomed = await createBoardColumn(target.organization, target.workspace.id, {
       name: `検証 ${uniqueSuffix()}`,
     });
-    await createBoardColumn(target.organization, target.workspace.id, {
+    const destination = await createBoardColumn(target.organization, target.workspace.id, {
       name: `残る ${uniqueSuffix()}`,
       position: 'a1',
     });
-    return { workspace_id: target.workspace.id, column_id: doomed.id };
+    return {
+      workspace_id: target.workspace.id,
+      column_id: doomed.id,
+      target_column_id: destination.id,
+    };
   },
   // 呼んだ人の分だけを読み、入力は行を指さない（明細の続きの位置は行を指さず、別の組織の位置でも読む範囲が変わるだけ）
   'experience-summary': { noReference: {} },

@@ -2869,15 +2869,25 @@ export const dictionary = defineDictionary({
     '{sprint}の{column}。名前は言葉づかいを切り替えても訳しません。{task}が残っている{column}を削除するときは移し先を選びます。',
   ),
   columnDoneNote: workspace('常に末尾', '常に末尾'),
-  columnTaskCount: workspace('{count} 件', '{count} 件'),
+  columnTaskCount: workspace('削除すると {count} 件を移す', '削除すると {count} 件を移す'),
+  columnNameRequired: workspace('名前を入れてください', '名前を入れてください'),
+  columnNameTooLong: workspace('名前は {max} 字までです', '名前は {max} 字までです'),
+  columnNameInvalidCharacter: workspace(
+    '名前に使えない文字（制御文字、ゼロ幅のスペースなど）が含まれています',
+    '名前に使えない文字（制御文字、ゼロ幅のスペースなど）が含まれています',
+  ),
+  columnSaveChanged: workspace(
+    'ほかの画面で変わったため、保存できませんでした。もう一度試してください',
+    'ほかの画面で変わったため、保存できませんでした。もう一度試してください',
+  ),
   columnDeleteLastHint: workspace('最後の{column}は削除できません', '最後の{column}は削除できません'),
   columnDeleteText: workspace(
-    '{count} 件の{task}が残っています。移し先の{column}を選んでください。{sprint}ごとに、移し先の末尾へ今の順で移ります。終了した{sprint}のカードは変わりません。',
-    '{count} 件の{task}が残っています。移し先の{column}を選んでください。{sprint}ごとに、移し先の末尾へ今の順で移ります。終了した{sprint}のカードは変わりません。',
+    '{count} 件の{task}が残っています。移し先の{column}を選んでください。{sprint}ごとに、移し先の末尾へ今の順で移ります。終了した{sprint}の{task}は変わりません。',
+    '{count} 件の{task}が残っています。移し先の{column}を選んでください。{sprint}ごとに、移し先の末尾へ今の順で移ります。終了した{sprint}の{task}は変わりません。',
   ),
   columnDeleteTextEmpty: workspace(
-    'この{column}に残っている{task}はありません。',
-    'この{column}に残っている{task}はありません。',
+    '移す{task}はありません。終了した{sprint}の{task}は変わりません。',
+    '移す{task}はありません。終了した{sprint}の{task}は変わりません。',
   ),
   columnDeleteTarget: workspace('移し先の{column}', '移し先の{column}'),
   columnDeletedMoved: workspace(
@@ -2892,9 +2902,13 @@ export const dictionary = defineDictionary({
     '確かめている間に{task}が入りました。もう一度、移し先を選んでください。一覧を読み直します',
     '確かめている間に{task}が入りました。もう一度、移し先を選んでください。一覧を読み直します',
   ),
-  columnDeleteTargetGone: workspace(
-    '移し先の{column}が見つかりません。一覧を読み直します',
-    '移し先の{column}が見つかりません。一覧を読み直します',
+  columnDeleteTargetInvalid: workspace(
+    '移し先に選べない{column}です。選び直してください。一覧を読み直します',
+    '移し先に選べない{column}です。選び直してください。一覧を読み直します',
+  ),
+  columnDeleteNotFound: workspace(
+    '削除する{column}か移し先の{column}が見つかりません。一覧を読み直します',
+    '削除する{column}か移し先の{column}が見つかりません。一覧を読み直します',
   ),
 });
 

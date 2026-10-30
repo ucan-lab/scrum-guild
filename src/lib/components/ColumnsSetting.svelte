@@ -53,6 +53,7 @@
   const newId = `${ids}-new`;
   const newErrorId = `${ids}-new-error`;
   const targetId = `${ids}-target`;
+  const lastHintId = `${ids}-last`;
 
   const items = $derived(columns.filter((column) => !column.is_done));
   const hasDone = $derived(columns.some((column) => column.is_done));
@@ -94,9 +95,9 @@
 
   function nameProblem(raw: string): string | null {
     const problem = columnNameProblem(raw.trim());
-    if (problem === 'required') return t('workspaceNameRequired');
-    if (problem === 'too_long') return t('workspaceNameTooLong', { max: COLUMN_NAME_MAX_LENGTH });
-    if (problem === 'invalid_character') return t('workspaceNameInvalidCharacter');
+    if (problem === 'required') return t('columnNameRequired');
+    if (problem === 'too_long') return t('columnNameTooLong', { max: COLUMN_NAME_MAX_LENGTH });
+    if (problem === 'invalid_character') return t('columnNameInvalidCharacter');
     return null;
   }
 
@@ -119,12 +120,13 @@
     return false;
   }
 
-  // 名前の 409 の文。同じ名前と、数の上限
+  // 名前の 409 の文。同じ名前と、数の上限と、読んでから書くまでに別の画面が変えたとき（changed）
   function conflictText(result: ApiResult<unknown>): string | null {
     if (result.ok || result.status !== 409 || result.error?.code !== 'conflict') return null;
     const reason = columnConflictReasonOf(result.error.details);
     if (reason === 'duplicate_name') return t('definitionDuplicate', { kind: columnWord });
     if (reason === 'limit') return t('definitionLimit', { kind: columnWord, max: COLUMNS_PER_WORKSPACE });
+    if (reason === 'changed') return t('columnSaveChanged');
     return null;
   }
 
@@ -266,6 +268,9 @@
             : t('definitionDeleted', { name: item.name }),
           'check',
         );
+      } else if (!isUnauthenticated(result) && result.status === 404) {
+        // 404 は削除する列か移し先のどちらか。どちらとは言えないので、両方を指す
+        showToast(t('columnDeleteNotFound', { column: columnWord }), 'alert');
       } else if (!handledCommon(result)) {
         const reason = result.status === 409 ? columnConflictReasonOf(result.error?.details) : undefined;
         showToast(deleteFailureText(result.status, reason), 'alert');
@@ -283,7 +288,7 @@
   function deleteFailureText(status: number, reason: ReturnType<typeof columnConflictReasonOf>): string {
     if (reason === 'last_column') return t('columnDeleteLast', { column: columnWord });
     if (reason === 'target_required') return t('columnDeleteTargetRequired', { task: t('task') });
-    if (reason === 'target_invalid') return t('columnDeleteTargetGone', { column: columnWord });
+    if (reason === 'target_invalid') return t('columnDeleteTargetInvalid', { column: columnWord });
     if (status === 409) return t('definitionChanged');
     return t('definitionDeleteFailed');
   }
@@ -359,10 +364,9 @@
               type="button"
               data-delete
               aria-label={t('definitionDeleteLabel', { name: item.name })}
-              title={items.length <= 1
-                ? t('columnDeleteLastHint', { column: columnWord })
-                : t('definitionDeleteAction')}
+              title={t('definitionDeleteAction')}
               aria-disabled={busy || items.length <= 1}
+              aria-describedby={items.length <= 1 ? lastHintId : undefined}
               onclick={(event) => void remove(item, index, event.currentTarget)}><Icon name="trash" /></button
             >
           </span>
@@ -378,6 +382,10 @@
       </li>
     {/if}
   </ol>
+  <!-- 削除ボタンを押せない理由。title だけにせず見える文字にして、ボタンに aria-describedby で結ぶ -->
+  {#if canWrite && items.length === 1}
+    <p class="props-note" id={lastHintId}>{t('columnDeleteLastHint', { column: columnWord })}</p>
+  {/if}
 
   {#if canWrite}
     <!-- 欄の下にエラーが出ても「足す」がずれないよう、入力欄とボタンを1行（.input-row）にまとめる -->

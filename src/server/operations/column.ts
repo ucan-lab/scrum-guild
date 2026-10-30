@@ -106,7 +106,8 @@ function workspaceLog(
   ]);
 }
 
-// 書いた後に読めなかった理由を決める。閉じていれば 409 の workspace_closed、名前が重なれば duplicate_name、数が上限なら limit
+// 書いた後に読めなかった理由を決める。閉じていれば 409 の workspace_closed、名前が重なれば duplicate_name、数が上限なら limit、
+// どれでもなければ changed
 async function throwCreateFailure(db: OrganizationDb, workspaceId: string, name: string): Promise<never> {
   await throwIfClosed(db, workspaceId);
   const [duplicate, count] = await db.batch([
@@ -115,7 +116,8 @@ async function throwCreateFailure(db: OrganizationDb, workspaceId: string, name:
   ] as const);
   if (duplicate.rows.length > 0) throw columnConflict('duplicate_name');
   if (Number(count.rows[0]?.count ?? 0) >= COLUMNS_PER_WORKSPACE) throw columnConflict('limit');
-  throw new ApiError(409, 'conflict');
+  // どれでもなければ、読んでから書くまでに別の要求が名前か数を変えた。足す操作はやり直さず、changed で返す
+  throw columnConflict('changed');
 }
 
 // 足す。位置は完了以外の列の末尾。同じ名前と数の上限は、書く文の条件（INSERT ... SELECT ... WHERE）で守り、同時に足しても重複を作らない
@@ -179,6 +181,18 @@ async function createColumn({ db, actor, workspace }: Context, name: string): Pr
   return { id, name, is_done: false, task_count: 0 };
 }
 
+// 削除すると移るタスクの数（column-list の task_count と同じ集計。movableTasks は下で定義する）
+async function taskCountOf(db: OrganizationDb, workspaceId: string, columnId: string): Promise<number> {
+  const row = await db.first(
+    db.statement((q) =>
+      movableTasks(q, workspaceId)
+        .select((eb) => eb.fn.countAll<number>().as('count'))
+        .where('t.column_id', '=', columnId),
+    ),
+  );
+  return Number(row?.count ?? 0);
+}
+
 // 名前を直す。今の名前と違うときだけ、読んだ名前のままで、同じ名前の列が無ければ、という条件つきで書く
 async function updateColumn({ db, actor, workspace }: Context, id: string, name: string): Promise<Column> {
   const actorUserId = actorUserIdOf(actor);
@@ -193,7 +207,7 @@ async function updateColumn({ db, actor, workspace }: Context, id: string, name:
     }
     if (name === current.name) {
       await throwIfClosed(db, workspaceId);
-      return { id, name, is_done: false, task_count: 0 };
+      return { id, name, is_done: false, task_count: await taskCountOf(db, workspaceId, id) };
     }
     const at = now();
     const updatedAt = at.toISOString();
@@ -235,7 +249,9 @@ async function updateColumn({ db, actor, workspace }: Context, id: string, name:
           ),
       ),
     ]);
-    if ((results[0]?.changes ?? 0) > 0) return { id, name, is_done: false, task_count: 0 };
+    if ((results[0]?.changes ?? 0) > 0) {
+      return { id, name, is_done: false, task_count: await taskCountOf(db, workspaceId, id) };
+    }
     // 閉じていれば 409、無ければ 404、同じ名前があれば duplicate_name。どれでもなければ、別の要求が先に変えたので読み直してやり直す
     await throwIfClosed(db, workspaceId);
     if ((await readOpenColumn(db, workspaceId, id)) === undefined) throw new ApiError(404, 'not_found');
@@ -466,7 +482,9 @@ function assertDeletable(
 // 2. ワークスペースの change_logs: 直前の UPDATE が行を変えたときだけ入れる。以降の文は、この履歴の行（この要求だけの id）が
 //    あることを条件にする。止めた時計（DEV_NOW）では、先に削除した要求と自分の削除を時刻で見分けられないため
 // 3. 移すタスクごとの change_logs（task-column-move と同じ {"column": [{id, name}, {id, name}]}。名前は書くときの今の名前）、
-//    4. 移すタスクを書く（column_id、column_position、updated_at）。3 は 4 より前に置く（書き換えた後は条件に当たらなくなるため）
+//    4. 移すタスクを書く（column_id、column_position、updated_at）。3 と 4 は、読んだときのスプリント（sprintPairs）のままで、
+//    そのスプリントが削除されておらず planned か active のタスクだけを対象にする（読んだ後に終了したスプリントのカードを動かさない）。
+//    3 は 4 より前に置く（書き換えた後は条件に当たらなくなるため）
 // 書けなかったら読み直して理由を分け（閉じた、無い、完了の列、最後の1つ、移し先が足りない）、どれでもなければやり直す
 async function deleteColumn(
   { db, actor, workspace }: Context,
@@ -496,6 +514,9 @@ async function deleteColumn(
       ids.forEach((id, index) => positions.push([id, keys[index]!]));
     }
 
+    // 移すタスクと、読んだときに入っていたスプリント（[タスクの ID, スプリントの ID]）
+    const sprintPairs: [string, string][] = tasks.map((task) => [task.id, task.sprint_id]);
+
     const ownLog = (from: From) =>
       from
         .selectFrom('change_logs as own')
@@ -504,7 +525,10 @@ async function deleteColumn(
         .where('own.workspace_id', '=', workspaceId);
 
     const changes: Record<string, unknown> = { column: [{ id: column.id, name: column.name }, null] };
-    if (target !== undefined) changes.target_column = [null, { id: target.id, name: target.name }];
+    // 移すタスクが無ければ、移し先は書かない
+    if (target !== undefined && tasks.length > 0) {
+      changes.target_column = [null, { id: target.id, name: target.name }];
+    }
 
     const results = await db.batch([
       db.statement((q) =>
@@ -589,7 +613,21 @@ async function deleteColumn(
                         .as('changes_json'),
                       eb.val(deletedAt).as('created_at'),
                     ])
-                    .where('t.id', 'in', jsonList(taskIds))
+                    // 読んだときのスプリントのままで、そのスプリントが削除されておらず planned か active のタスクだけ
+                    .innerJoin(jsonPairRows(sprintPairs).as('sp'), (join) =>
+                      join.onRef('sp.id', '=', 't.id').onRef('sp.pos', '=', 't.sprint_id'),
+                    )
+                    .where((eb) =>
+                      eb.exists(
+                        q
+                          .selectFrom('sprints as live')
+                          .select('live.id')
+                          .where('live.id', '=', eb.ref('t.sprint_id'))
+                          .where('live.workspace_id', '=', workspaceId)
+                          .where('live.deleted_at', 'is', null)
+                          .where('live.status', 'in', ['planned', 'active']),
+                      ),
+                    )
                     .where('t.workspace_id', '=', workspaceId)
                     .where('t.column_id', '=', columnId)
                     .where('t.deleted_at', 'is', null)
@@ -601,8 +639,23 @@ async function deleteColumn(
               q
                 .updateTable('tasks')
                 .from(jsonPairRows(positions).as('p'))
+                .from(jsonPairRows(sprintPairs).as('sp'))
                 .set((eb) => ({ column_id: targetId, column_position: eb.ref('p.pos'), updated_at: deletedAt }))
                 .whereRef('tasks.id', '=', 'p.id')
+                // 読んだときのスプリントのままで、そのスプリントが削除されておらず planned か active のタスクだけ
+                .whereRef('sp.id', '=', 'tasks.id')
+                .whereRef('sp.pos', '=', 'tasks.sprint_id')
+                .where((eb) =>
+                  eb.exists(
+                    q
+                      .selectFrom('sprints as live')
+                      .select('live.id')
+                      .where('live.id', '=', eb.ref('tasks.sprint_id'))
+                      .where('live.workspace_id', '=', workspaceId)
+                      .where('live.deleted_at', 'is', null)
+                      .where('live.status', 'in', ['planned', 'active']),
+                  ),
+                )
                 .where('tasks.workspace_id', '=', workspaceId)
                 .where('tasks.column_id', '=', columnId)
                 .where('tasks.deleted_at', 'is', null)
