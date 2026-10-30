@@ -161,6 +161,51 @@ describe('plan-summary のベロシティ', () => {
   });
 });
 
+describe('plan-summary のベロシティの選び方', () => {
+  test('新しい 3 つは作った順ではなく start_on で選び、開始日が古いスプリントを後から作っても入らない', async () => {
+    const target = await createTarget();
+    const newest = await closedSprint(target, [9], { start_on: '2031-03-01', end_on: '2031-03-14' });
+    const middle = await closedSprint(target, [6], { start_on: '2031-02-01', end_on: '2031-02-14' });
+    const oldest = await closedSprint(target, [3], { start_on: '2031-01-01', end_on: '2031-01-14' });
+    // 後から作った、開始日の古いスプリントは新しい 3 つに入らない
+    await closedSprint(target, [300], { start_on: '2020-01-01', end_on: '2020-01-14' });
+    const body = await read(target);
+    expect(body.velocity.sprints.map((sprint) => sprint.id)).toEqual([oldest.id, middle.id, newest.id]);
+    expect(body.velocity.average).toBe(6);
+  });
+
+  test('先のスプリントは、作った順ではなく start_on の順に並ぶ', async () => {
+    const target = await createTarget();
+    const later = await createSprint(target.organization, target.workspace.id, {
+      status: 'planned',
+      start_on: '2032-02-01',
+      end_on: '2032-02-14',
+    });
+    const earlier = await createSprint(target.organization, target.workspace.id, {
+      status: 'active',
+      start_on: '2032-01-01',
+      end_on: '2032-01-14',
+    });
+    const body = await read(target);
+    expect(body.lanes.map((lane) => lane.sprint_id)).toEqual([earlier.id, later.id]);
+  });
+
+  test('延長した回が 7 つあっても、除いた回として出るのは新しい 6 つまで', async () => {
+    const target = await createTarget();
+    for (const value of [1, 2, 3]) await closedSprint(target, [value]);
+    const extended = [];
+    for (let index = 0; index < 7; index += 1) {
+      extended.push(await closedSprint(target, [2], { extended_days: 1 }));
+    }
+    const body = await read(target);
+    const excluded = body.velocity.sprints.filter((sprint) => !sprint.counted);
+    expect(excluded.map((sprint) => sprint.id)).toEqual(extended.slice(1).map((sprint) => sprint.id));
+    expect(body.velocity.sprints.filter((sprint) => sprint.counted)).toHaveLength(3);
+    expect(body.velocity.sprints).toHaveLength(9);
+    expect(body.velocity.average).toBe(2);
+  });
+});
+
 describe('plan-summary の先のスプリントの集計', () => {
   test('入れたポイント、件数、未見積もりの件数を開始日の順に返す。タスクの無いスプリントは 0', async () => {
     const target = await createTarget();

@@ -5,14 +5,15 @@ export function formatPoints(value: number): string {
   return Number.isInteger(value) ? String(value) : value.toFixed(1);
 }
 
-// 先のスプリントに入れたポイントが、ベロシティ（平均）を上回るか。ベロシティが出ていない（null）ときは比べない
+// 先のスプリントに入れたポイントが、ベロシティ（平均）を厳密に上回るか。同じ値は上回らない。
+// ベロシティが出ていない（null）ときと、0 のとき（比べる基準にならない）は比べない
 export function isOverVelocity(points: number, average: number | null): boolean {
-  return average !== null && points > average;
+  return average !== null && average > 0 && points > average;
 }
 
 // 上回った分（ポイント）。上回っていなければ 0
 export function overBy(points: number, average: number | null): number {
-  return average !== null && points > average ? points - average : 0;
+  return average === null ? 0 : Math.max(0, points - average);
 }
 
 // 先のスプリントの棒（.lane-fill-bar）の、入れたポイントの幅と、ベロシティの印の位置（どちらも 0〜100 の %）。

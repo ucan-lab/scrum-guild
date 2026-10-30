@@ -425,3 +425,70 @@ test('集計だけ読めなかったときは、遠征の一覧を出したま�
   await expect(page.getByRole('heading', { level: 2, name: 'レイドごとの残り' })).toBeVisible();
   await expect(page.locator('[data-plan-epics-empty]')).toHaveText('進行中のレイドはありません');
 });
+
+test('先の遠征が無くて集計が読めないときは、空の状態だけにせず、読み込めなかったことと読み直す口を出す', async ({
+  page,
+  context,
+  baseURL,
+}) => {
+  await signIn(context, baseURL, 'admin');
+  await createWorkspace(page, '集計が失敗するパーティ', 'game');
+  const unroute = await failOperation(page, planSummary, { slug: 'aoba' }, 500, 'internal');
+  await page.getByRole('link', { name: '遠征の計画' }).click();
+  await expect(page.getByRole('heading', { level: 1, name: '遠征の計画' })).toBeVisible();
+  await expect(page.getByText('まだ遠征がありません')).toBeVisible();
+  await expect(
+    page.getByRole('alert').filter({ hasText: 'ベロシティとレイドごとの残りを読み込めませんでした。' }),
+  ).toBeVisible();
+  await unroute();
+  await page.getByRole('button', { name: 'もう一度試す' }).click();
+  // 読めたら、本当に何も無いので空の状態だけが残る
+  await expect(page.getByRole('alert').filter({ hasText: '読み込めませんでした' })).toHaveCount(0);
+  await expect(page.getByText('まだ遠征がありません')).toBeVisible();
+  await expect(page.locator('.velocity, [data-plan-epics-empty], .table')).toHaveCount(0);
+});
+
+test('先の遠征が無くても、終えた遠征とレイドがあれば、ベロシティとレイドの表を出し、空の状態は先の遠征の話だと分かる', async ({
+  page,
+  context,
+  baseURL,
+}) => {
+  await signIn(context, baseURL, 'admin');
+  await createWorkspace(page, '先の遠征が無いパーティ', 'game');
+  // 集計の応答を差し替える（終えた遠征が1つとレイドが1つ）。seed の行は書き換えない
+  await rewriteOperation(page, planSummary, { slug: 'aoba' }, (output) => ({
+    ...output,
+    velocity: {
+      average: 5,
+      sprints: [
+        {
+          id: '019a0000-0000-7000-8000-00000000f901',
+          name: '第1回',
+          start_on: '2026-09-07',
+          end_on: '2026-09-20',
+          extended_days: 0,
+          points: 5,
+          counted: true,
+        },
+      ],
+    },
+    epics: [
+      {
+        id: '019a0000-0000-7000-8000-00000000f902',
+        title: '長い題のレイド'.repeat(8),
+        due_on: null,
+        points_done: 1,
+        points_all: 4,
+      },
+    ],
+  }));
+  await page.getByRole('link', { name: '遠征の計画' }).click();
+  await expect(page.locator('[data-velocity-average]')).toHaveText('5pt');
+  await expect(page.getByText('先の遠征はありません')).toBeVisible();
+  await expect(page.getByText('まだ遠征がありません')).toHaveCount(0);
+  await expect(page.getByText('ベロシティも出ます')).toHaveCount(0);
+  await expect(page.locator('[data-plan-epic]')).toHaveCount(1);
+  await expect(page.locator('[data-plan-epic] td.is-num')).toHaveText('3');
+  // ベロシティが出ていれば超過の項目は出るが、先の遠征が無いので 0
+  await expect(page.locator('.page-head .tally div').filter({ hasText: '重量オーバー' }).locator('dd')).toHaveText('0');
+});

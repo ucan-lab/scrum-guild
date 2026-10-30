@@ -36,13 +36,15 @@
   {#if velocity.sprints.length === 0}
     <p class="action-note" data-velocity-empty>{t('velocityEmpty', words)}</p>
   {:else}
+    <!-- 平均が出ない理由の文は、平均の列（.stat の auto 列）に入れず、グリッドの上に置く（長い文が棒を潰さない） -->
+    {#if velocity.average === null}
+      <p class="action-note" data-velocity-empty>{t('velocityAllExtended', words)}</p>
+    {/if}
     <div class="velocity">
       <div class="stat">
         {#if velocity.average !== null}
           <span class="stat-label">{t('velocityAverage', { velocity: t('velocity'), count: countedCount })}</span>
           <span class="stat-num" data-velocity-average>{formatPoints(velocity.average)}<small>pt</small></span>
-        {:else}
-          <span class="stat-label" data-velocity-empty>{t('velocityAllExtended', words)}</span>
         {/if}
         <span class="stat-label">{t('velocityExcludedNote', words)}</span>
       </div>

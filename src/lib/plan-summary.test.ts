@@ -23,6 +23,7 @@ describe('isOverVelocity と overBy', () => {
     expect(isOverVelocity(21, 21.3)).toBe(false);
     expect(isOverVelocity(8, 8)).toBe(false);
     expect(isOverVelocity(99, null)).toBe(false);
+    expect(isOverVelocity(3, 0)).toBe(false);
     expect(overBy(22, 20)).toBe(2);
     expect(overBy(20, 20)).toBe(0);
     expect(overBy(10, 20)).toBe(0);

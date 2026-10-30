@@ -96,12 +96,15 @@
         count: Number(formatPoints(average)),
       });
     }
-    result.push({
-      tone: 'danger',
-      icon: 'alert',
-      label: t('over'),
-      count: list.filter((lane) => isOverVelocity(lane.points, average)).length,
-    });
+    // 比べる相手（ベロシティ）が出ていなければ、超過の項目も出さない（偽の 0 を出さない）
+    if (average !== null) {
+      result.push({
+        tone: 'danger',
+        icon: 'alert',
+        label: t('over'),
+        count: list.filter((lane) => isOverVelocity(lane.points, average)).length,
+      });
+    }
     result.push({
       tone: 'warn',
       label: t('planTallyUnestimated'),
@@ -109,9 +112,24 @@
     });
     return result;
   });
-  // 先のスプリントも、終了したスプリント（ベロシティの元）も無い
+  // 先のスプリントも、終了したスプリント（ベロシティの元）も、エピックも無い。集計が読めなかったとき（summary が null）は、
+  // 空とは言えないので偽にして、読み込めなかったことと「もう一度試す」を出す
   const isBlank = $derived(
-    plan !== null && plan.sprints.length === 0 && (summary === null || summary.velocity.sprints.length === 0),
+    plan !== null &&
+      summary !== null &&
+      plan.sprints.length === 0 &&
+      summary.velocity.sprints.length === 0 &&
+      summary.epics.length === 0,
+  );
+  // 先のスプリントが無いが、ほかの集計は出すときの空の状態。題は先のスプリントの話だと分かる言葉にし、
+  // 終了したスプリントがあってベロシティが出ているときは、「終えたスプリントがたまると、ベロシティも出ます」の文を出さない
+  const lanesEmptyTitle = $derived(
+    summary === null ? t('sprintEmptyTitle', sprintWords) : t('planLanesEmptyTitle', sprintWords),
+  );
+  const lanesEmptyText = $derived(
+    summary !== null && summary.velocity.sprints.length > 0 && !isClosed && isLeader
+      ? t('planLanesEmptyText', sprintWords)
+      : emptyText,
   );
   // 行のタイトルは、この画面に `?task=<ID>` を付けて詳細の引き出しを開く（ワークスペースの枠が置く）
   const planHref = $derived(resolve('/[slug]/w/[id]/plan', { slug: page.params.slug ?? '', id: page.params.id ?? '' }));
@@ -300,7 +318,7 @@
       </div>
     {/if}
     {#if plan.sprints.length === 0}
-      <EmptyState icon="calendar" title={t('sprintEmptyTitle', sprintWords)} text={emptyText} />
+      <EmptyState icon="calendar" title={lanesEmptyTitle} text={lanesEmptyText} />
     {:else}
       <div class="lanes">
         {#each plan.sprints as sprint (sprint.id)}
