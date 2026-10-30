@@ -609,6 +609,8 @@ describe('実行計画', () => {
                 : siblings.ties(after),
         );
         expect(plan).not.toContain('tasks_story');
+        // ties は tasks_workspace_tray を求めないが、全表走査や別の組織の行まで読む計画には揺れない
+        expect(plan).not.toMatch(/^\s*SCAN tasks\b/m);
         if (name !== 'ties') expect(plan).toMatch(/USING (COVERING )?INDEX tasks_workspace_tray/);
       },
     );
