@@ -1,13 +1,13 @@
 ---
-name: backlog-pick
-description: 進捗を確かめ、今着手できる Issue を選んで、並べて進めるレーンとセッションに貼るプロンプトを出す。「進捗を確認して」「次は何をやる」「今着手できるもの」「並べて進めたい」と言われたときに使う。1つの Issue を進めるのは increment-build、スプリントのゴールに向けた点検と開発ボードは daily-scrum。
+name: sprint-pick
+description: 今のスプリントから、自分にアサインされた Issue を先に、無ければ着手できる Issue を選び、並べて進めるレーンとセッションに貼るプロンプトを出す。「次は何をやる」「自分のタスクは」「今着手できるもの」「並べて進めたい」「進捗を確認して」と言われたときに使う。1つの Issue を進めるのは increment-build、スプリントのゴールに向けた点検と開発ボードは daily-scrum。
 ---
 
-# backlog-pick
+# sprint-pick
 
 ## 仕事
 
-GitHub の今の状態から着手できる Issue を選び、変えるファイルが重ならないレーンに組んで、人が選んだレーンのプロンプトを出す。
+GitHub の今の状態から、今のスプリントで自分が着手できる Issue を選ぶ。先に出すのは自分にアサインされたもので、無ければ（または人が別のものを選ぶなら）今のスプリントの着手できるものから選ぶ。変えるファイルが重ならないレーンに組み、人が選んだレーンのプロンプトを出す。
 終わりは「人の番のものと着手できるものが一覧になり、人が選んだレーンごとに、貼れるプロンプトが出ている」状態。
 このスキルは Issue もコードも書き換えない。
 このスキルを使ったセッションは、プロンプトを出して終わる。選んだ Issue の作業（`increment-build`、`backlog-refine`、`backlog-add` の起動、ワークツリーを切る、ラベルを付ける）は、このセッションで始めない。人に聞けない実行でも同じ。状態を引いた結果で会話が膨らんだセッションで作業まで始めると、1つの Issue に使える文脈が減るため。
@@ -23,8 +23,10 @@ GitHub の今の状態から着手できる Issue を選び、変えるファイ
 
 ### 1. 状態を引く
 
+自分のログインは `gh api user --jq .login` で引く（MCP では `get_me`）。引けなければ、アサインでの絞り込みはせず、今のスプリントの着手できるものから選ぶ。
+
 ```bash
-gh api "repos/{owner}/{repo}/issues?state=open&per_page=100" --paginate --jq '.[] | select(.pull_request | not) | {number, title, author: .user.login, association: .author_association, labels: [.labels[].name], milestone: .milestone.title, parent: (.parent_issue_url // "" | split("/") | last), blocked: .issue_dependencies_summary.blocked_by, subs: .sub_issues_summary}'
+gh api "repos/{owner}/{repo}/issues?state=open&per_page=100" --paginate --jq '.[] | select(.pull_request | not) | {number, title, author: .user.login, association: .author_association, assignees: [.assignees[].login], labels: [.labels[].name], milestone: .milestone.title, parent: (.parent_issue_url // "" | split("/") | last), blocked: .issue_dependencies_summary.blocked_by, subs: .sub_issues_summary}'
 gh api "repos/{owner}/{repo}/pulls?state=open&per_page=100" --jq '.[] | {number, head: .head.ref, refs: ([.body // "" | scan("(?i)(?:closes|fixes|refs) #([0-9]+)") | .[0]])}'
 ```
 
@@ -62,7 +64,7 @@ Issue を指す開いた PR は、ブランチ名の `<番号>-` の先頭か、
 
 待ちの Issue が待っている番号は、上の手順で引いた一覧をそのまま使う。
 
-今のスプリントの `sprint:<番号>` が付いたものを先に、次にマイルストーンが「初版」のものを並べ、ほかは後ろにまとめる。
+着手できるものは、次の順に並べる。(1) 今のスプリントの `sprint:<番号>` が付いていて、自分にアサインされたもの (2) 今のスプリントの、だれにもアサインされていないもの (3) 今のスプリントの、ほかの人にアサインされたもの（着手の候補にはせず、一覧に添えるだけ） (4) スプリントの外のもの（マイルストーンが「初版」を先に、ほかは後ろ）。自分にアサインされていても、人の番、作業中、待ちの組にあるものは、その組のまま「自分のアサイン」と添える。
 
 今のスプリントの進み具合を出す。数え方は `docs/development.md` の「スプリントとポイント」の表に従い、計画の済み ÷ 計画、受け入れ待ち、途中で足した分（とその済み）、作業中の件数とポイントを出す。計画のポイントは記録の Issue の本文の値を使う。
 
@@ -80,11 +82,21 @@ gh api "repos/{owner}/{repo}/issues?labels=sprint:<番号>&state=all&per_page=10
 
 - 共通の層を2つが形を変えるなら並べない
 - `migration` の付いた Issue は、作業中とレビュー中を合わせて1本まで
-- 1つのレーン（1つのセッション）が受け持つ Issue は1つ。続けて進めたい Issue は別のレーンにするか、先のレーンの PR が閉じた後の次の `backlog-pick` に回す
+- 1つのレーン（1つのセッション）が受け持つ Issue は1つ。続けて進めたい Issue は別のレーンにするか、先のレーンの PR が閉じた後の次の `sprint-pick` に回す
 - `needs-human` の Issue は、人が差分を読む量を添える
 
 人の番が多いときは、着手を足すより人の番を先に片付ける案を推す。並べるほど、人が読む PR が増えるため。
-スプリントの外の Issue を着手できるものに選ぶときは、レーンの案に「スプリントの外」と添える。足すと途中で足した分に数えるため、人がスプリントに入れると答えたときだけ、`sprint:<番号>` を付けるよう人に頼む（このスキルは Issue を書き換えない）。
+レーンに選ぶのは (1) と (2) だけにする。(1) が1つでもあれば、(2) より先に推す。(3) のほかの人にアサインされたものは、重なるので取らない。
+
+着手できるものが無いとき: 今のスプリントに (1) も (2) も無いとき、理由を見て、推す順に案を出す。
+
+1. 人の番（受け入れ待ち、人が行う Issue）がある: 先に片付ける。受け入れ待ちなら `sprint-review`
+2. 残りが待ちか、(3) のほかの人のアサインだけ: そう書き、手を出さない
+3. 計画の分がすべて済んだ: `AskUserQuestion` で「`sprint-plan` で計画に足す」「スプリントの外から1件選ぶ」「止める」を聞く。人に聞けない実行では、止めて `sprint-plan` を推す1行を出す
+4. スプリントの外も着手できるものが無い: 子の無いエピックがあれば `backlog-add` で分けるレーン、無ければ `backlog-add` での起票を推す
+
+スプリントの外の Issue（(4)）は、自動で選ばず、3 で人が選んだときだけレーンに入れ、「スプリントの外」と添える。足すと途中で足した分に数えるため、人がスプリントに入れると答えたときだけ、`sprint:<番号>` を付けるよう人に頼む（このスキルは Issue を書き換えない）。
+
 次に来るのが分ける前のエピックなら、`backlog-add` で分けるレーンを1本入れる。
 
 同じ本文から、各 Issue を何で始めるかを決める。本文のどの節にあるかは問わず、中身で見る。次のどれかがあれば `backlog-refine` で始め、無ければ `increment-build` で始める。
@@ -106,7 +118,7 @@ gh api "repos/{owner}/{repo}/issues?labels=sprint:<番号>&state=all&per_page=10
 
 ### 4. 聞く
 
-`AskUserQuestion` で、レーンの組み合わせ（推す案を先頭に）を聞く。どのレーンも新しいセッションで始める。
+`AskUserQuestion` で、レーンの組み合わせ（自分のアサインを含む案を先頭に推す）を聞く。どのレーンも新しいセッションで始める。
 人に聞けない実行では、推す案を選んだものとしてプロンプトまで出す。
 
 ### 5. プロンプトを出す
@@ -138,9 +150,10 @@ gh api "repos/{owner}/{repo}/issues?labels=sprint:<番号>&state=all&per_page=10
 ## 出力
 
 - 今のスプリントの進み具合の1行（例 `スプリント 3（2026-11-05〜2026-11-11）: 計画の済み 8/21 pt、受け入れ待ち 5 pt、途中で足した分 2 pt（済み 1 pt）、作業中 3 件 8 pt`）。スプリントが無ければ `sprint-plan` を推す1行
+- 自分にアサインされた今のスプリントの Issue（状態つき）。無ければ、そう書く
 - 人の番（受け入れ待ちを含む）、作業中とレビュー中、着手できるもの、待ち（待っている番号）の短い一覧
 - レーンの案と、選ばれたレーンのプロンプト（1つのレーンに1つの Issue）。プロンプトごとに、`increment-build` か `backlog-refine` を選んだ理由を1行
-- 着手できるものが無ければ、そう書き、人の番か分けるレーンを推す
+- 着手できるものが無ければ、理由（人の番だけ、待ちだけ、計画の分が済んだ、外にも無い）を書き、手順 3 の「着手できるものが無いとき」の順で次の手を推す
 - 手元のセッションなら、開発ボードを出し直すかを添える（直すのは `daily-scrum` で、このセッションでは直さない）
 
 ## 止まる条件

@@ -2,7 +2,7 @@ name: ready
 
 # 着手できる Issue に status:ready を付け、当てはまらなくなったら外す（docs/development.md の「Issue の状態」）。
 # ラベルは人が画面の一覧で見るための写しで、着手できるかの判定には使わない。
-# backlog-pick と increment-build は依存関係の API で毎回判定する（ラベルは次の実行まで古いことがあるため）
+# sprint-pick と increment-build は依存関係の API で毎回判定する（ラベルは次の実行まで古いことがあるため）
 on:
   # 開いている Issue の数え直しの種。どのきっかけでも、イベントの Issue ではなく開いている Issue をすべて数え直す。
   # 前に要るものが閉じたり受け入れ待ちになったりすると、待つ側の状態も変わり、イベントの Issue だけでは直せないため

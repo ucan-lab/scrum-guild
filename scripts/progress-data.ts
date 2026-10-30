@@ -1,6 +1,6 @@
 // 開発ボードのデータを GitHub から作る（node scripts/progress-data.ts <出力のパス>）。
 // GitHub を読む部分（readGitHub）と、JSON を組む部分（buildProgress。I/O を持たない）を分けてある。
-// 読み方の根拠は docs/development.md の「スプリントとポイント」と「Issue の状態」、スキルの daily-scrum と backlog-pick。
+// 読み方の根拠は docs/development.md の「スプリントとポイント」と「Issue の状態」、スキルの daily-scrum と sprint-pick。
 //
 // 出力: { asOf, sprint, issues, history }
 //   asOf     作った日時（日本時間の ISO 8601、+09:00 付き）
@@ -134,7 +134,7 @@ function levelOf(labels: string[]): Level {
 }
 
 // Issue を指す PR は、ブランチ名の `<番号>-` の先頭か、本文の Refs、Closes、Fixes で引く
-// （backlog-pick と同じ。クラウドのブランチ（claude/*）は番号を持たず、決まりの前の PR は Closes で指している）
+// （sprint-pick と同じ。クラウドのブランチ（claude/*）は番号を持たず、決まりの前の PR は Closes で指している）
 export function pullTargets(pull: RawPull): number[] {
   const found = new Set<number>();
   const head = /^(\d+)-/.exec(pull.head);
