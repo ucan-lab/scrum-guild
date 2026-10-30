@@ -67,10 +67,10 @@ const logBody = (plan: string[], extra = '') =>
     '',
     '## 計画',
     '',
-    '| 番号 | 題 | ポイント |',
-    '| --- | --- | --- |',
+    '| 番号 | PR | 題 | ポイント |',
+    '| --- | --- | --- | --- |',
     ...plan,
-    '| 合計 | | 0 |',
+    '| 合計 | | | 0 |',
     extra,
   ].join('\n');
 
@@ -291,7 +291,7 @@ describe('前に要るもの', () => {
 
 describe('記録の Issue の読み方', () => {
   test('題から番号と期間、本文からゴール、期間、計画の表を読む', () => {
-    const body = logBody(['| #12 | 画面を足す | 3 |', '| #13 | 表の \\| を直す | 5 |']);
+    const body = logBody(['| #12 | | 画面を足す | 3 |', '| #13 | | 表の \\| を直す | 5 |']);
     const parsed = parseSprintLog('スプリント 2（2026-11-05〜2026-11-11）', body);
     assert.equal(parsed.n, 2);
     assert.equal(parsed.from, '2026-10-29');
@@ -304,7 +304,7 @@ describe('記録の Issue の読み方', () => {
   });
 
   test('改行が CRLF の本文も読み、本文に期間やゴールが無ければ題の期間を使い、計画は無しになる', () => {
-    const parsed = parseSprintLog('スプリント 3（2026-11-12〜2026-11-18）', '## 計画\r\n\r\n| #1 | a | 2 |\r\n');
+    const parsed = parseSprintLog('スプリント 3（2026-11-12〜2026-11-18）', '## 計画\r\n\r\n| #1 | | a | 2 |\r\n');
     assert.deepEqual(parsed.plan, [{ number: 1, title: 'a', pt: 2 }]);
     assert.equal(parsed.from, '2026-11-12');
     assert.equal(parsed.goal, null);
@@ -312,9 +312,9 @@ describe('記録の Issue の読み方', () => {
 
   test('PR の列があっても（空欄、複数、題に | を含む行も）ポイントと題を取り違えない', () => {
     const body = logBody([
-      '| #12 | 画面を足す | 3 | #523 |',
-      '| #13 | 表の \\| を直す | 5 | |',
-      '| #14 | b | 2 | #1、#2 |',
+      '| #12 | #523 | 画面を足す | 3 |',
+      '| #13 | | 表の \\| を直す | 5 |',
+      '| #14 | #1、#2 | b | 2 |',
     ]);
     const parsed = parseSprintLog('スプリント 2（2026-11-05〜2026-11-11）', body);
     assert.deepEqual(parsed.plan, [
@@ -326,7 +326,7 @@ describe('記録の Issue の読み方', () => {
 
   test('PR の列は何を書いても読み捨て、行を落とさずポイントも取り違えない', () => {
     const rows = ['523', '-', 'なし', '#1 #2', '[#5](https://example.com/pull/5)', '#5（取り下げ）'];
-    const body = logBody(rows.map((pr, i) => `| #${i + 1} | 画面を足す | 3 | ${pr} |`));
+    const body = logBody(rows.map((pr, i) => `| #${i + 1} | ${pr} | 画面を足す | 3 |`));
     const parsed = parseSprintLog('スプリント 2（2026-11-05〜2026-11-11）', body);
     assert.deepEqual(
       parsed.plan,
@@ -337,7 +337,7 @@ describe('記録の Issue の読み方', () => {
   test('列が増えた行も、番号、題、ポイントの位置で読む', () => {
     const parsed = parseSprintLog(
       'スプリント 2（2026-11-05〜2026-11-11）',
-      logBody(['| #1 | 項目 | 5 | #6 | メモ |', '| #2 | a \\| 3 | 2 | |']),
+      logBody(['| #1 | #6 | 項目 | 5 | メモ |', '| #2 | | a \\| 3 | 2 |']),
     );
     assert.deepEqual(parsed.plan, [
       { number: 1, title: '項目', pt: 5 },
@@ -348,7 +348,7 @@ describe('記録の Issue の読み方', () => {
   test('題に `\\` の付かない | が残っていても、最初の数字だけの列をポイントとして読み、行を落とさない', () => {
     const parsed = parseSprintLog(
       'スプリント 2（2026-11-05〜2026-11-11）',
-      logBody(['| #1 | a | b | 3 | #5 |', '| #2 | 2026 年 | 5 | 523 |']),
+      logBody(['| #1 | #5 | a | b | 3 |', '| #2 | 523 | 2026 年 | 5 |']),
     );
     assert.deepEqual(parsed.plan, [
       { number: 1, title: 'a | b', pt: 3 },
@@ -376,12 +376,12 @@ describe('記録の Issue の読み方', () => {
 
 describe('スプリントの数', () => {
   const planned = [
-    '| #1 | 済み | 3 |',
-    '| #2 | 受け入れ待ち | 2 |',
-    '| #3 | 作業中 | 5 |',
-    '| #4 | ラベルを外した | 1 |',
-    '| #5 | 対応しない | 2 |',
-    '| #6 | 計画の済み（ポイントを後で変えた） | 3 |',
+    '| #1 | | 済み | 3 |',
+    '| #2 | | 受け入れ待ち | 2 |',
+    '| #3 | | 作業中 | 5 |',
+    '| #4 | | ラベルを外した | 1 |',
+    '| #5 | | 対応しない | 2 |',
+    '| #6 | | 計画の済み（ポイントを後で変えた） | 3 |',
   ];
 
   function sprintOf(extra: RawIssue[] = [], patch: Partial<RawData> = {}) {
@@ -412,7 +412,7 @@ describe('スプリントの数', () => {
 
   test('受け入れで閉じたものは、sprint のラベルが無くても取り下げに数えない', () => {
     const without = buildProgress(
-      raw({ issues: [sprintLog(100, 1, ['| #1 | a | 3 |']), closed(1, { labels: ['pt:3'] })] }),
+      raw({ issues: [sprintLog(100, 1, ['| #1 | | a | 3 |']), closed(1, { labels: ['pt:3'] })] }),
       NOW,
     ).sprint;
     assert.deepEqual(without?.withdrawn, { pt: 0, count: 0 });
@@ -441,7 +441,7 @@ describe('スプリントの数', () => {
     const sprint = buildProgress(
       raw({
         issues: [
-          sprintLog(100, 1, ['| #1 | a | 3 |', '| #2 | b | 2 |', '| #1 | a | 3 |']),
+          sprintLog(100, 1, ['| #1 | | a | 3 |', '| #2 | | b | 2 |', '| #1 | | a | 3 |']),
           closed(1, { labels: ['sprint:1'] }),
         ],
       }),
@@ -571,7 +571,7 @@ describe('履歴', () => {
   });
 
   test('記録に作業中の上限の節が無くても、前の記録のように節があっても、警告せず、sprint に上限を出さない', () => {
-    const without = logBody(['| #1 | 一 | 3 |']);
+    const without = logBody(['| #1 | | 一 | 3 |']);
     const withLimit = without.replace('## 計画', '## 作業中の上限\n\n3\n\n## 計画');
     for (const body of [without, withLimit]) {
       const built = buildProgress(
@@ -585,7 +585,7 @@ describe('履歴', () => {
   });
 
   test('題を読めない開いた記録は警告して飛ばし、読める開いた記録を今のスプリントにする', () => {
-    const issues = [sprintLog(30, 1, ['| #1 | 一 | 3 |']), issue(31, { labels: ['sprint-log'], title: '記録' })];
+    const issues = [sprintLog(30, 1, ['| #1 | | 一 | 3 |']), issue(31, { labels: ['sprint-log'], title: '記録' })];
     const built = buildProgress(raw({ issues }), NOW);
     assert.equal(built.sprint?.log, 30);
     assert.equal(built.warnings.length, 1);
@@ -650,7 +650,9 @@ describe('本文を出力に入れない', () => {
         issue(1, { body: `${marker} issue` }),
         closed(2, { body: `${marker} closed`, labels: ['sprint:1'] }),
         // 記録の本文はゴールと計画の表だけを読み、ほかの行は出さない
-        sprintLog(100, 1, ['| #1 | a | 3 |'], { body: `${logBody(['| #1 | a | 3 |'])}\n\n## メモ\n\n${marker} log` }),
+        sprintLog(100, 1, ['| #1 | | a | 3 |'], {
+          body: `${logBody(['| #1 | | a | 3 |'])}\n\n## メモ\n\n${marker} log`,
+        }),
         closed(200, { labels: ['sprint-log'], title: 'スプリント 0（2026-10-22〜2026-10-28）' }),
       ],
       openPulls: [pull(9, { head: '1-x', body: `${marker} open pull\nRefs #1` })],

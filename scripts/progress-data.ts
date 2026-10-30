@@ -243,16 +243,17 @@ export type SprintLog = {
   plan: PlanRow[];
 };
 
-// 記録の Issue の題（番号と期間）と本文（ゴール、期間、計画の表）を読む。計画の表は番号、題、ポイントの列を読み、後ろの列は読み捨てる
+// 記録の Issue の題（番号と期間）と本文（ゴール、期間、計画の表）を読む。計画の表は番号、題、ポイントの列を読み、番号の右の PR の列とポイントの後ろの列は読み捨てる
 export function parseSprintLog(title: string, body: string): SprintLog {
   const head = parseSprintTitle(title);
   const parts = sections(body);
   const period = /(\d{4}-\d{2}-\d{2})\s*〜\s*(\d{4}-\d{2}-\d{2})/.exec(parts.get('期間') ?? '');
   const plan: PlanRow[] = [];
   for (const line of (parts.get('計画') ?? '').split('\n')) {
-    // 題の `|` は `\|` で書かれるので、`\` の付かない `|` で区切って列で読む。ポイントは題の後ろで最初の数字だけの列とし、
-    // `\` を付け忘れた題の `|` があっても行を落とさない。PR の列など、ポイントより後ろは人が自由に書くため中身を問わず読み捨てる
-    const [lead, numberCell, ...rest] = line.trim().split(/(?<!\\)\|/);
+    // 列は 番号、PR、題、ポイントの順。題の `|` は `\|` で書かれるので、`\` の付かない `|` で区切って列で読む。
+    // ポイントは題の後ろで最初の数字だけの列とし、`\` を付け忘れた題の `|` があっても行を落とさない。
+    // PR の列と、ポイントより後ろの列は人が自由に書くため、中身を問わず読み捨てる
+    const [lead, numberCell, , ...rest] = line.trim().split(/(?<!\\)\|/);
     const rowNumber = /^\s*#(\d+)\s*$/.exec(numberCell ?? '');
     const pointAt = rest.findIndex((cell, i) => i > 0 && /^\s*\d+\s*$/.test(cell));
     if (lead !== '' || !rowNumber || pointAt === -1) continue;

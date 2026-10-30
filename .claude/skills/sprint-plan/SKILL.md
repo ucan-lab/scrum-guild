@@ -135,7 +135,7 @@ gh api "repos/{owner}/{repo}/issues?labels=sprint-log&state=closed&per_page=5&so
    gh api repos/{owner}/{repo}/issues -f title="スプリント <番号>（<開始日>〜<終了日>）" -F body=@<file> -f 'labels[]=sprint-log' --jq '{number, url: .html_url}'
    ```
 
-   本文の形。計画の表は後の数え方が番号、題、ポイントの列を読み、PR の列は読まない。PR の列は人が見るためのもので、計画のときは空にし、人が入れるときの書き方は問わない。題に `|` があれば `\|` にする
+   本文の形。計画の表は後の数え方が番号、題、ポイントの列を読み、番号の右の PR の列は読まない。PR の列は人が見るためのもので、計画のときは空にし、人が入れるときの書き方は問わない。題に `|` があれば `\|` にする
 
    ```markdown
    ## ゴール
@@ -148,10 +148,10 @@ gh api "repos/{owner}/{repo}/issues?labels=sprint-log&state=closed&per_page=5&so
 
    ## 計画
 
-   | 番号 | 題 | ポイント | PR |
+   | 番号 | PR | 題 | ポイント |
    | --- | --- | --- | --- |
-   | #<番号> | <題> | <数> | |
-   | 合計 | | <数> | |
+   | #<番号> | | <題> | <数> |
+   | 合計 | | | <数> |
    ```
 
 3. スプリントのラベルを作る。既にあれば（422）作らずに進む
