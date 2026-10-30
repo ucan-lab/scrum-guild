@@ -49,7 +49,8 @@ test('組織の管理（/aoba/admin）に空白の無い50字の名前のワー�
   page,
 }) => {
   // 長い名前の行を応答の書き換えで足す。ほかのファイルが残した行に頼らず、走る順に関わらず毎回同じ一覧を測る
-  const longName = 'あ'.repeat(50);
+  // 空白も折り返せる位置も無い並び（#462 の再現と同じ、Latin の W を50字）
+  const longName = 'W'.repeat(50);
   await rewriteOperation(page, workspaceList, { slug: 'aoba' }, (output) => ({
     workspaces: [
       ...output.workspaces.filter((workspace) => SEED_WORKSPACE_IDS.has(workspace.id)),
@@ -68,5 +69,7 @@ test('組織の管理（/aoba/admin）に空白の無い50字の名前のワー�
     await expect(page.getByRole('heading', { level: 1, name: w('pageOrgAdmin') })).toBeVisible();
     const table = page.getByRole('table', { name: w('workspaceListLabel', { workspace: w('workspace') }) });
     await expect(table.getByRole('link', { name: longName })).toBeVisible();
+    // 同じ行の「終了する」も描かれている（名前の下に入って測られない行ではない）
+    await expect(table.getByRole('button', { name: w('workspaceCloseLabel', { name: longName }) })).toBeVisible();
   });
 });
