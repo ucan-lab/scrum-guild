@@ -19,6 +19,7 @@ import {
   CLEANUP_MAX_ROUNDS,
   CLEANUP_ROW_LIMIT,
   CLEANUP_TIME_BUDGET_MS,
+  classifyFailure,
 } from '../src/server/scheduled/cleanup-expired.ts';
 import { operations } from '../src/shared/operations/index.ts';
 import { defineOperation } from '../src/shared/operations/define.ts';
@@ -268,8 +269,45 @@ describe('失敗の切り分け', () => {
     // 失敗した表の名前と例外の名前だけが残る。message の中身は出さない
     expect(error).toHaveBeenCalledTimes(1);
     const line = String(error.mock.calls[0]?.[0]);
-    expect(JSON.parse(line)).toMatchObject({ level: 'error', table: 'sessions', error: 'Error' });
+    expect(JSON.parse(line)).toMatchObject({
+      level: 'error',
+      table: 'sessions',
+      error: 'Error',
+      cause: 'unknown',
+      rounds: 0,
+      elapsedMs: expect.any(Number),
+    });
     expect(line).not.toContain('secret SQL detail');
+  });
+
+  test('失敗のログに、message を固定の分類名に直した cause が残り、message は出ない', async () => {
+    const failing = envWithD1Hooks(env, {
+      beforeBatch: (sqls) => {
+        if (sqls.some((sql) => sql.startsWith('delete from "sessions"'))) {
+          throw new Error('D1_ERROR: Network connection lost token_hash=secret-hash');
+        }
+      },
+    });
+
+    await expect(runScheduled(failing)).rejects.toThrow('sessions');
+
+    const line = String(error.mock.calls[0]?.[0]);
+    expect(JSON.parse(line)).toMatchObject({ table: 'sessions', cause: 'network' });
+    expect(line).not.toContain('secret-hash');
+  });
+
+  test.each([
+    [new Error('D1_ERROR: Network connection lost'), 'network'],
+    [new Error('D1 DB reset because its code was updated'), 'reset'],
+    [new Error('D1 DB is overloaded. Requests queued for too long'), 'overloaded'],
+    [new Error('operation timed out'), 'timeout'],
+    [new Error('UNIQUE constraint failed: sessions.token_hash'), 'constraint'],
+    [new Error('no such table: sessions'), 'syntax'],
+    [new Error('wrapper', { cause: new Error('Network connection lost') }), 'network'],
+    [new Error('something new'), 'unknown'],
+    ['not an error', 'unknown'],
+  ])('例外 %s の分類は %s', (err, expected) => {
+    expect(classifyFailure(err)).toBe(expected);
   });
 
   test('繰り返しの途中で表が失敗したら、その表はそこで止まり、残りの表は続く', async () => {

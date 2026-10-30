@@ -16,6 +16,27 @@ const JOB = 'cleanup-expired';
 
 type CleanupTable = 'oauth_states' | 'sessions' | 'rate_limits';
 
+// 例外の message には SQL や値が混ざりうるので、ログには出さない。
+// 一時的な D1 の失敗か、文の不具合かを後から見分けられるよう、message を固定の分類名に直して残す
+const FAILURE_CAUSES: readonly (readonly [string, RegExp])[] = [
+  ['network', /network connection lost|connection (?:reset|closed)|disconnected/i],
+  ['timeout', /timed? ?out|exceeded.*(?:time|cpu)/i],
+  ['overloaded', /overloaded|too many requests|rate.?limit/i],
+  ['reset', /reset because|code was updated|broken/i],
+  ['constraint', /constraint failed/i],
+  ['syntax', /syntax error|no such (?:table|column)/i],
+];
+
+export function classifyFailure(err: unknown): string {
+  const messages: string[] = [];
+  for (let current: unknown = err, depth = 0; current instanceof Error && depth < 3; depth++) {
+    messages.push(current.message);
+    current = current.cause;
+  }
+  const text = messages.join('\n');
+  return FAILURE_CAUSES.find(([, pattern]) => pattern.test(text))?.[0] ?? 'unknown';
+}
+
 // D1 は DELETE ... LIMIT を受けないので、主キーの副問い合わせで上限を付ける。
 // 時刻の列は ISO 8601 の UTC で、文字列の比較が時刻の順になる（consumeRateLimit と同じ前提）。
 // 文は表の try の中で組み立てる（時刻の計算が例外になっても、ほかの表は消す）
@@ -83,6 +104,7 @@ export async function cleanupExpired(env: Env, now: Date, options: CleanupOption
   for (const table of Object.keys(statements) as CleanupTable[]) {
     deleted[table] = 0;
     rounds[table] = 0;
+    const tableStartedAt = Date.now();
     try {
       const statement = statements[table]();
       for (;;) {
@@ -97,7 +119,7 @@ export async function cleanupExpired(env: Env, now: Date, options: CleanupOption
       }
     } catch (err) {
       failed.push(table);
-      // 例外の message に SQL や接続の詳細が混ざりうるので、名前だけを残す
+      // 例外の message に SQL や接続の詳細が混ざりうるので、名前と分類名だけを残す
       console.error(
         JSON.stringify({
           level: 'error',
@@ -106,6 +128,9 @@ export async function cleanupExpired(env: Env, now: Date, options: CleanupOption
           table,
           reason: '期限を過ぎた行の掃除に失敗した',
           error: err instanceof Error ? err.name : typeof err,
+          cause: classifyFailure(err),
+          rounds: rounds[table],
+          elapsedMs: Date.now() - tableStartedAt,
         }),
       );
     }
