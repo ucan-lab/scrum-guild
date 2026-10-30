@@ -6,8 +6,6 @@
   },
   "permissions": {
     "allow": [
-      "Bash(git push --force-with-lease *)",
-      "Bash(git push --force-with-lease=*)",
       "mcp__github__issue_read",
       "mcp__github__pull_request_read",
       "mcp__github__list_issues",
