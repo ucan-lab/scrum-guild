@@ -53,7 +53,8 @@
     });
   };
 
-  // 閉じたら、開いた行のリンクへフォーカスを戻す。行が無ければ（消えた、画面にまだ無い）画面の見出しへ移す。
+  // 閉じたら、開いた行の題（data-task-id を持つリンクか、バックログの完了した行の題のボタン）へフォーカスを戻す。
+  // 行が無ければ（消えた、画面にまだ無い）画面の見出しへ移す。
   // 閉じるボタンと Esc だけでなく、戻る／進むで `?task=` が外れて閉じたときも同じ。タスクが消えて閉じたときは、
   // 木を読み直した後に見出しへ移す（removed）ので、ここでは移さない
   let shownTaskId: string | null = null;
@@ -67,7 +68,7 @@
       return;
     }
     void tick().then(() => {
-      const row = document.querySelector<HTMLElement>(`a[data-task-id="${CSS.escape(previous)}"]`);
+      const row = document.querySelector<HTMLElement>(`[data-task-id="${CSS.escape(previous)}"]`);
       if (row) row.focus();
       else focusPageHeading();
     });

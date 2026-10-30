@@ -328,6 +328,9 @@ h1, h2, h3 { text-wrap: balance; }
 .entry-main { display: grid; gap: 4px; min-width: 0; }
 .entry-title { font-weight: 700; overflow-wrap: anywhere; color: var(--color-fg); text-decoration: none; }
 .entry-title:hover { text-decoration: underline; text-underline-offset: 3px; }
+/* 完了した行の題は、引き出しを開くボタン（バックログの行の題はリンク）。ボタンの既定の見た目を外して、リンクの題に揃える */
+button.entry-title { text-align: left; background: transparent; border: 0; padding: 0; cursor: pointer; font: inherit; font-weight: 700; }
+.completed-list .entry-meta { overflow-wrap: anywhere; }
 .entry-meta { display: flex; flex-wrap: wrap; gap: 4px var(--space-3); align-items: center; font-size: var(--text-xs); color: var(--color-muted); }
 .entry-end { display: flex; align-items: center; gap: var(--space-2); }
 .entry.is-done .entry-title { color: var(--color-muted); font-weight: 400; }
@@ -633,6 +636,18 @@ button.tree-link { border: 0; background: none; padding: 0; font: inherit; text-
 .tree-folded { --row-indent: var(--space-10); font-size: var(--text-xs); color: var(--color-muted); padding: var(--space-2) var(--space-4) var(--space-2) var(--row-indent); border-top: 1px solid var(--color-rule); position: relative; }
 .tree-children .tree-children .tree-folded { --row-indent: calc(var(--space-10) + var(--space-6)); }
 .tree-folded.is-root { --row-indent: var(--space-4); }
+/* 完了の折りたたみ（CompletedTasks）。開閉のボタンにしたもの。印は木の caret と同じ chevron で、開くと同じく回す */
+button.tree-folded { display: flex; align-items: center; gap: var(--space-2); width: 100%; text-align: left; background: transparent; border-inline: 0; border-bottom: 0; cursor: pointer; font-family: inherit; }
+button.tree-folded:hover { color: var(--color-fg); }
+button.tree-folded .ico { flex: none; transition: transform var(--duration-fast); }
+button.tree-folded[aria-expanded="true"] .ico { transform: rotate(90deg); }
+/* 読み込み中の案内（常に置く領域。空の間は場所を取らない）、失敗、空、「さらに見る」 */
+/* 開いた一覧の字下げは、開閉のボタン（.tree-folded）と同じ段に揃える。親なしは .is-root と同じ、ストーリーの配下は配下の行と同じ */
+.completed-list { --row-indent: var(--space-4); }
+.tree-children .completed-list { --row-indent: var(--space-10); }
+.tree-children .tree-children .completed-list { --row-indent: calc(var(--space-10) + var(--space-6)); }
+.completed-status { padding: var(--space-3) var(--space-4) var(--space-3) var(--row-indent); font-size: var(--text-xs); color: var(--color-muted); }
+.completed-status:empty { padding: 0; }
 .kind { display: inline-grid; place-items: center; width: 22px; height: 22px; border-radius: var(--radius-1); border: 1px solid currentColor; }
 .kind .ico { width: 13px; height: 13px; }
 .kind.is-epic { color: var(--color-xp); background: var(--color-xp-soft); }
@@ -946,6 +961,7 @@ a.notice-title.notice-link:hover { text-decoration: underline; text-underline-of
   .tree-children .entry, .tree-children .tree-children .entry { --row-indent: var(--space-4); }
   .tree-children .tree-row.is-story, .tree-children .tree-group { --row-indent: var(--space-4); }
   .tree-folded, .tree-children .tree-children .tree-folded { --row-indent: var(--space-4); }
+  .tree-children .completed-list, .tree-children .tree-children .completed-list { --row-indent: var(--space-4); }
   .tree-row { grid-template-columns: var(--grip-col, ) 20px 24px minmax(0, 1fr); }
   .tree-ratio, .tree-end { grid-column: -2; }
   .story-head .progress { margin-left: 0; max-width: none; }
@@ -992,13 +1008,16 @@ dialog.dialog::backdrop { background: none; }
   .done-btn::after { content: ""; position: absolute; left: 50%; top: 50%; width: 44px; height: 44px; transform: translate(-50%, -50%); }
   /* 見た目は変えず、押せる範囲だけを 44px 四方以上に広げる部品。木の行のボタン（開閉の caret、題、＋タスク）、操作の並びと
      囲みの中と絞り込みの帯の端の小さいボタン（高さを変えると、横に並ぶヒントの文字が上にずれるため）、バックログの行の押せる題
-     （.entry-title）、上の帯の小さな切り替え（.pill。引き出しの閉じるも。.pill は元から position: relative） */
+     （.entry-title）、完了の一覧の「さらに見る」と「もう一度試す」（.completed-status .btn.is-sm）、
+     上の帯の小さな切り替え（.pill。引き出しの閉じるも。.pill は元から position: relative） */
   .tree-caret, button.tree-link, .tree-row .btn.is-sm, .form-actions .btn.is-sm, .callout-actions .btn.is-sm, .toolbar-end .btn.is-sm,
-  a.entry-title, button.entry-title { position: relative; }
+  .completed-status .btn.is-sm, a.entry-title, button.entry-title { position: relative; }
   .tree-caret::after, button.tree-link::after, .tree-row .btn.is-sm::after, .form-actions .btn.is-sm::after, .callout-actions .btn.is-sm::after,
-  .toolbar-end .btn.is-sm::after, a.entry-title::after, button.entry-title::after, .pill::after {
+  .toolbar-end .btn.is-sm::after, .completed-status .btn.is-sm::after, a.entry-title::after, button.entry-title::after, .pill::after {
     content: ""; position: absolute; left: 50%; top: 50%; width: max(100%, 44px); height: max(100%, 44px); transform: translate(-50%, -50%);
   }
+  /* 完了の折りたたみの開閉は行いっぱいのボタンなので、行の高さごと 44px にする */
+  button.tree-folded { min-height: 44px; }
   /* エピックの行の題はエピックの画面へのリンク（a.tree-link）。ボタンの題と同じ範囲に広げる */
   a.tree-link { position: relative; }
   a.tree-link::after {
