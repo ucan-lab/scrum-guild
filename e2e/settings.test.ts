@@ -215,6 +215,9 @@ test.describe('一般のメンバー（あおば開発のハルカ）', () => {
     await page.goto(`${SEED_GAME_WORKSPACE}/settings`);
     await expect(page.getByText('この画面には入れません')).toBeVisible();
     await expect(page.getByLabel('新しい系統の名前')).toHaveCount(0);
+    // 行程の節も出さない
+    await expect(page.getByLabel('新しい行程の名前')).toHaveCount(0);
+    await expect(page.getByRole('list', { name: '行程の一覧' })).toHaveCount(0);
     await page.getByRole('link', { name: '掲示板へ戻る' }).click();
     await expect(page.getByRole('heading', { level: 1, name: '掲示板' })).toBeVisible();
   });

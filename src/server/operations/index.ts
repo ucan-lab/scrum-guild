@@ -55,6 +55,13 @@ import {
   repositoryUpdateOperation,
 } from './definition.ts';
 import {
+  columnCreateOperation,
+  columnDeleteOperation,
+  columnListOperation,
+  columnMoveOperation,
+  columnUpdateOperation,
+} from './column.ts';
+import {
   storyCompleteOperation,
   storyCreateOperation,
   storyGetOperation,
@@ -173,6 +180,11 @@ export const implementedOperations: readonly ImplementedOperation[] = [
   repositoryUpdateOperation,
   repositoryMoveOperation,
   repositoryDeleteOperation,
+  columnListOperation,
+  columnCreateOperation,
+  columnUpdateOperation,
+  columnMoveOperation,
+  columnDeleteOperation,
   invitationListOperation,
   invitationAcceptOperation,
   invitationDeclineOperation,

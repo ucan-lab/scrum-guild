@@ -538,6 +538,32 @@ export const pointers: Pointers = {
       await createRepository(target.organization, target.workspace.id, { name: `shop-api-${uniqueSuffix()}` })
     ).id,
   }),
+  'column-list': async (target) => ({ workspace_id: target.workspace.id }),
+  // 名前は呼ぶたびに変える（同じ名前は 409 になるため）
+  'column-create': async (target) => ({ workspace_id: target.workspace.id, name: `検証 ${uniqueSuffix()}` }),
+  'column-update': async (target) => ({
+    workspace_id: target.workspace.id,
+    column_id: (await createBoardColumn(target.organization, target.workspace.id, { name: `検証 ${uniqueSuffix()}` }))
+      .id,
+    name: `確認 ${uniqueSuffix()}`,
+  }),
+  'column-move': async (target) => ({
+    workspace_id: target.workspace.id,
+    column_id: (await createBoardColumn(target.organization, target.workspace.id, { name: `検証 ${uniqueSuffix()}` }))
+      .id,
+    after_column_id: null,
+  }),
+  // 呼ぶたびに列を2つ作って片方を指す（削除した列は続けて削除できず、最後の1つの列は削除できないため）
+  'column-delete': async (target) => {
+    const doomed = await createBoardColumn(target.organization, target.workspace.id, {
+      name: `検証 ${uniqueSuffix()}`,
+    });
+    await createBoardColumn(target.organization, target.workspace.id, {
+      name: `残る ${uniqueSuffix()}`,
+      position: 'a1',
+    });
+    return { workspace_id: target.workspace.id, column_id: doomed.id };
+  },
   // 呼んだ人の分だけを読み、入力は行を指さない（明細の続きの位置は行を指さず、別の組織の位置でも読む範囲が変わるだけ）
   'experience-summary': { noReference: {} },
   'experience-grants': { noReference: {} },
