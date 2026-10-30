@@ -18,23 +18,31 @@ type CleanupTable = 'oauth_states' | 'sessions' | 'rate_limits';
 
 // 例外の message には SQL や値が混ざりうるので、ログには出さない。
 // 一時的な D1 の失敗か、文の不具合かを後から見分けられるよう、message を固定の分類名に直して残す
+// 表名や列名が message に入るので、文の不具合（constraint、syntax）を先に見る
 const FAILURE_CAUSES: readonly (readonly [string, RegExp])[] = [
-  ['network', /network connection lost|connection (?:reset|closed)|disconnected/i],
-  ['timeout', /timed? ?out|exceeded.*(?:time|cpu)/i],
-  ['overloaded', /overloaded|too many requests|rate.?limit/i],
-  ['reset', /reset because|code was updated|broken/i],
   ['constraint', /constraint failed/i],
   ['syntax', /syntax error|no such (?:table|column)/i],
+  ['network', /network connection lost|connection (?:reset|closed)|disconnected/i],
+  ['timeout', /timed? ?out|exceeded (?:its )?(?:cpu|time)/i],
+  ['overloaded', /overloaded|too many requests/i],
+  ['busy', /SQLITE_BUSY|database is locked/i],
+  ['reset', /caused object to be reset|reset because|code was updated/i],
+  ['storage', /exceeded maximum db size|SQLITE_FULL/i],
 ];
 
+// ログのための分類が例外になると、残りの表の掃除まで止まるので、読めなければ unknown にする
 export function classifyFailure(err: unknown): string {
-  const messages: string[] = [];
-  for (let current: unknown = err, depth = 0; current instanceof Error && depth < 3; depth++) {
-    messages.push(current.message);
-    current = current.cause;
+  try {
+    const messages: string[] = [];
+    for (let current: unknown = err, depth = 0; current instanceof Error && depth < 3; depth++) {
+      messages.push(current.message);
+      current = current.cause;
+    }
+    const text = messages.join('\n');
+    return FAILURE_CAUSES.find(([, pattern]) => pattern.test(text))?.[0] ?? 'unknown';
+  } catch {
+    return 'unknown';
   }
-  const text = messages.join('\n');
-  return FAILURE_CAUSES.find(([, pattern]) => pattern.test(text))?.[0] ?? 'unknown';
 }
 
 // D1 は DELETE ... LIMIT を受けないので、主キーの副問い合わせで上限を付ける。

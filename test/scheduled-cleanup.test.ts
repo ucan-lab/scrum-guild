@@ -296,13 +296,41 @@ describe('失敗の切り分け', () => {
     expect(line).not.toContain('secret-hash');
   });
 
+  test('message を読むと例外になる Error でも、分類は unknown になり、他の表は消える', async () => {
+    const state = await insertOauthState(iso(-MINUTE));
+    const broken = new Error('x');
+    Object.defineProperty(broken, 'message', {
+      get() {
+        throw new Error('getter failed');
+      },
+    });
+    const failing = envWithD1Hooks(env, {
+      beforeBatch: (sqls) => {
+        if (sqls.some((sql) => sql.startsWith('delete from "sessions"'))) throw broken;
+      },
+    });
+
+    await expect(runScheduled(failing)).rejects.toThrow('sessions');
+
+    expect(await remaining('oauth_states', [state])).toEqual([]);
+    expect(JSON.parse(String(error.mock.calls[0]?.[0]))).toMatchObject({ table: 'sessions', cause: 'unknown' });
+  });
+
   test.each([
+    [new Error('D1_ERROR: syntax error near "timeout"'), 'syntax'],
     [new Error('D1_ERROR: Network connection lost'), 'network'],
     [new Error('D1 DB reset because its code was updated'), 'reset'],
     [new Error('D1 DB is overloaded. Requests queued for too long'), 'overloaded'],
     [new Error('operation timed out'), 'timeout'],
     [new Error('UNIQUE constraint failed: sessions.token_hash'), 'constraint'],
     [new Error('no such table: sessions'), 'syntax'],
+    [new Error('D1 DB storage operation exceeded CPU time limit'), 'timeout'],
+    [new Error('Internal error while starting up D1 DB storage caused object to be reset.'), 'reset'],
+    [new Error('database is locked: SQLITE_BUSY'), 'busy'],
+    [new Error('Exceeded maximum DB size'), 'storage'],
+    // 表名の rate_limits が overloaded の「rate limit」に当たらない
+    [new Error('no such table: rate_limits'), 'syntax'],
+    [new Error('UNIQUE constraint failed: rate_limits.key'), 'constraint'],
     [new Error('wrapper', { cause: new Error('Network connection lost') }), 'network'],
     [new Error('something new'), 'unknown'],
     ['not an error', 'unknown'],
@@ -329,6 +357,8 @@ describe('失敗の切り分け', () => {
     await expect(cleanupExpired(failing, new Date(NOW), { limit: 1 })).rejects.toThrow('oauth_states');
 
     expect(oauthStateBatches).toBe(2);
+    // rounds は失敗するまでに成功した文の回数
+    expect(JSON.parse(String(error.mock.calls[0]?.[0]))).toMatchObject({ table: 'oauth_states', rounds: 1 });
     expect(await remaining('oauth_states', states)).toHaveLength(2);
     expect(await remaining('rate_limits', [rateLimit])).toEqual([]);
   });
