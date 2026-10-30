@@ -1,7 +1,7 @@
 <script lang="ts">
   import type { Snippet } from 'svelte';
   import { MediaQuery } from 'svelte/reactivity';
-  import { effectiveTaskOpenMode, type TaskOpenMode } from '../drawer.svelte.ts';
+  import { effectiveTaskOpenMode, type StepSource, type TaskOpenMode } from '../drawer.svelte.ts';
   import type { DictionaryKey } from '../../shared/vocabulary.ts';
   import { inertOutside } from '../inert-outside.ts';
   import { stepOfKey } from '../task-order.ts';
@@ -22,7 +22,9 @@
   // 620px 以下は引き出しがもともと全幅になり、真ん中の見た目が横と変わらないので、切り替えに真ん中を出さず、真ん中は横として描く
   // 前後のボタン（.drawer-steps。前のタスクと次のタスク）は、横と真ん中で、呼び出し側が adjacent を渡したときだけ出す（ページ全体では出さない）。
   // 開き方と違い、狭い幅でも出す。端の向きは aria-disabled にして（フォーカスは残す）押しても何もしない。
-  // キーボードは `[`（前）と `]`（次）。押したら onstep を呼ぶだけで、書きかけの確認と移動は呼び出し側が決める
+  // キーボードは `[`（前）と `]`（次）。押したら onstep を呼ぶだけで、書きかけの確認と移動は呼び出し側が決める。
+  // ボタンには aria-keyshortcuts でキーを伝え、title にだけ「（[）」「（]）」を添える（読み上げの名前は変えない）。
+  // 端のボタンの title は「先頭です」「最後です」
   let {
     labelledBy,
     busy = false,
@@ -42,7 +44,8 @@
     onmode: (mode: TaskOpenMode, shown: TaskOpenMode) => void;
     // 前後のタスクがあるか。渡さなければ前後のボタンもキーも使わない
     adjacent?: { hasPrev: boolean; hasNext: boolean };
-    onstep?: (delta: -1 | 1) => void;
+    // 押したのがボタン（クリックと Enter）かキー（[ ]）か。ボタンで移ったときだけ、移った先でそのボタンへフォーカスを戻す
+    onstep?: (delta: -1 | 1, source: StepSource) => void;
     onrequestclose: () => void;
     // 上の帯の左（出どころの印など）
     top?: Snippet;
@@ -65,9 +68,9 @@
   const modal = $derived(shownMode === 'side' || shownMode === 'center');
   const stepping = $derived(modal && adjacent !== undefined && onstep !== undefined);
 
-  function step(delta: -1 | 1): void {
+  function step(delta: -1 | 1, source: StepSource): void {
     if (!stepping || !(delta < 0 ? adjacent?.hasPrev : adjacent?.hasNext)) return;
-    onstep?.(delta);
+    onstep?.(delta, source);
   }
 
   $effect(() => {
@@ -90,7 +93,7 @@
     if (delta !== null) {
       if (stepping && modalState.openCount === 0) {
         event.preventDefault();
-        step(delta);
+        step(delta, 'key');
       }
       return;
     }
@@ -124,20 +127,24 @@
           <button
             class="pill"
             type="button"
+            data-drawer-step="-1"
             aria-label={t('drawerPrev', { task: t('task') })}
-            title={t('drawerPrev', { task: t('task') })}
+            aria-keyshortcuts="["
+            title={adjacent.hasPrev ? t('drawerPrevTitle', { task: t('task') }) : t('drawerAtFirst')}
             aria-disabled={!adjacent.hasPrev}
-            onclick={() => step(-1)}
+            onclick={() => step(-1, 'button')}
           >
             <Icon name="up" />
           </button>
           <button
             class="pill"
             type="button"
+            data-drawer-step="1"
             aria-label={t('drawerNext', { task: t('task') })}
-            title={t('drawerNext', { task: t('task') })}
+            aria-keyshortcuts="]"
+            title={adjacent.hasNext ? t('drawerNextTitle', { task: t('task') }) : t('drawerAtLast')}
             aria-disabled={!adjacent.hasNext}
-            onclick={() => step(1)}
+            onclick={() => step(1, 'button')}
           >
             <Icon name="down" />
           </button>

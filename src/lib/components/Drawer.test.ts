@@ -21,6 +21,22 @@ describe('前後のタスクへ移るボタン', () => {
     expect(body).not.toContain('aria-disabled="true"');
   });
 
+  test('ボタンはキーを aria-keyshortcuts で伝え、title にだけキーを添える（読み上げの名前は変えない）', () => {
+    const body = html({ adjacent: { hasPrev: true, hasNext: true }, onstep: () => {} });
+    expect(body).toMatch(/aria-label="前の[^"]*"[^>]*aria-keyshortcuts="\["[^>]*title="前の[^"]*（\[）"/);
+    expect(body).toMatch(/aria-label="次の[^"]*"[^>]*aria-keyshortcuts="\]"[^>]*title="次の[^"]*（\]）"/);
+    expect(body).toMatch(/aria-label="前の[^"（]*"/);
+  });
+
+  test('端で押せないボタンの title は、その理由', () => {
+    const first = html({ adjacent: { hasPrev: false, hasNext: true }, onstep: () => {} });
+    expect(first).toContain('title="先頭です"');
+    expect(first).not.toContain('title="最後です"');
+    const last = html({ adjacent: { hasPrev: true, hasNext: false }, onstep: () => {} });
+    expect(last).toContain('title="最後です"');
+    expect(last).not.toContain('title="先頭です"');
+  });
+
   test('真ん中の枠にも出す', () => {
     const body = html({ mode: 'center', adjacent: { hasPrev: true, hasNext: true }, onstep: () => {} });
     expect(body).toContain('class="drawer-steps"');

@@ -16,11 +16,32 @@ export function visibleTaskIds(root: ParentNode): string[] {
   return ids;
 }
 
-// キー入力の先が、文字を打つ場所か（入力欄、textarea、select、contenteditable）。`[` と `]` を打つ人の邪魔をしない
+// 文字や数字を入れる input の型。ブラウザは type 属性が無いか不明な値の input を 'text' として返す（空文字は属性が空のときの保険）。
+// radio、checkbox、button、range など文字を打たない型は含めない（ポイントの radio にフォーカスがあっても前後へ移れる）
+const TEXT_INPUT_TYPES: ReadonlySet<string> = new Set([
+  '',
+  'text',
+  'search',
+  'url',
+  'email',
+  'tel',
+  'password',
+  'number',
+  'date',
+  'datetime-local',
+  'month',
+  'week',
+  'time',
+]);
+
+// キー入力の先が、文字を打つ場所か（文字を入れる型の input、textarea、select、contenteditable）。`[` と `]` を打つ人の邪魔をしない
 function isTypingTarget(target: unknown): boolean {
-  const element = target as { closest?: (selector: string) => unknown; isContentEditable?: boolean } | null;
-  if (element === null || typeof element.closest !== 'function') return false;
-  return element.closest('input, textarea, select') !== null || element.isContentEditable === true;
+  const element = target as { tagName?: string; type?: string; isContentEditable?: boolean } | null;
+  if (element === null) return false;
+  if (element.isContentEditable === true) return true;
+  const tag = element.tagName?.toUpperCase();
+  if (tag === 'TEXTAREA' || tag === 'SELECT') return true;
+  return tag === 'INPUT' && TEXT_INPUT_TYPES.has((element.type ?? '').toLowerCase());
 }
 
 export type StepKeyEvent = Pick<
@@ -43,16 +64,22 @@ function sameIds(a: readonly string[], b: readonly string[]): boolean {
 }
 
 // 行の入れ物に付ける（`{@attach trackTaskOrder}`）。付いている間、見えている行の順を引き出しへ渡し、外れたら空へ戻す。
-// 行の出入り、並べ替え、畳む／開くを MutationObserver で追う（同じ順のときは渡し直さない）
+// 行の出入り、並べ替え、畳む／開くを MutationObserver で追う（同じ順のときは渡し直さない）。
+// 引き出しを開いていなくても木は変わり続けるので、変化は requestAnimationFrame でまとめ、1フレームに1回だけ全行を走査する
 export function trackTaskOrder(root: HTMLElement): () => void {
   const owner = Symbol('task-order');
   let current: readonly string[] = visibleTaskIds(root);
   provideTaskOrder(owner, current);
+  let frame: number | null = null;
   const observer = new MutationObserver(() => {
-    const next = visibleTaskIds(root);
-    if (sameIds(next, current)) return;
-    current = next;
-    provideTaskOrder(owner, next);
+    if (frame !== null) return;
+    frame = requestAnimationFrame(() => {
+      frame = null;
+      const next = visibleTaskIds(root);
+      if (sameIds(next, current)) return;
+      current = next;
+      provideTaskOrder(owner, next);
+    });
   });
   observer.observe(root, {
     childList: true,
@@ -62,6 +89,7 @@ export function trackTaskOrder(root: HTMLElement): () => void {
   });
   return () => {
     observer.disconnect();
+    if (frame !== null) cancelAnimationFrame(frame);
     releaseTaskOrder(owner);
   };
 }

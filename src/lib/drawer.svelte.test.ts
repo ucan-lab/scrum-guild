@@ -1,7 +1,10 @@
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import {
   clearOverlayHandoff,
+  clearStepFocus,
   consumeOverlayHandoff,
+  consumeStepFocus,
+  markStepFocus,
   drawerState,
   effectiveTaskOpenMode,
   handleTaskOpenModeStorage,
@@ -166,6 +169,23 @@ describe('ほかのタブでの変更', () => {
     expect(drawerState.mode).toBe('page');
     handleTaskOpenModeStorage({ key: 'theme', newValue: 'tab' });
     expect(drawerState.mode).toBe('page');
+  });
+});
+
+describe('前後のボタンで移ったときのフォーカスの向き', () => {
+  test('押した向きは次の引き出しが1度だけ読め、読むと消える', () => {
+    expect(consumeStepFocus()).toBeNull();
+    markStepFocus(-1);
+    expect(consumeStepFocus()).toBe(-1);
+    expect(consumeStepFocus()).toBeNull();
+    markStepFocus(1);
+    expect(consumeStepFocus()).toBe(1);
+  });
+
+  test('移れなかったときは、残さないよう外せる', () => {
+    markStepFocus(1);
+    clearStepFocus();
+    expect(consumeStepFocus()).toBeNull();
   });
 });
 

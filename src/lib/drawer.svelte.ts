@@ -54,17 +54,46 @@ if (typeof window !== 'undefined') window.addEventListener('storage', handleTask
 // 引き出しの「前へ」「次へ」で移る順。開いている画面が、今見えているタスクの行の ID を画面の上から下の順に置く（task-order.ts）。
 // 順を置く画面が無いとき（メンバーなど行を持たない画面）は空で、引き出しは前後のボタンを出さない。
 // 画面を替えるとき、新しい画面の置き直しが古い画面の片付けより先に走りうるので、置いた持ち主を覚え、持ち主でない片付けは無視する
-export const taskOrder = $state<{ ids: readonly string[]; owner: symbol | null }>({ ids: [], owner: null });
+// 行は数百から数千になりうるので、配列は deep proxy にせず（$state.raw）、置き換えて知らせる。読む側は taskOrder.ids を読む
+let orderIds = $state.raw<readonly string[]>([]);
+let orderOwner: symbol | null = null;
+
+export const taskOrder = {
+  get ids(): readonly string[] {
+    return orderIds;
+  },
+};
 
 export function provideTaskOrder(owner: symbol, ids: readonly string[]): void {
-  taskOrder.owner = owner;
-  taskOrder.ids = ids;
+  orderOwner = owner;
+  orderIds = ids;
 }
 
 export function releaseTaskOrder(owner: symbol): void {
-  if (taskOrder.owner !== owner) return;
-  taskOrder.owner = null;
-  taskOrder.ids = [];
+  if (orderOwner !== owner) return;
+  orderOwner = null;
+  orderIds = [];
+}
+
+// 帯の前後のボタン（クリックと Enter）で移ったときだけ、移った先の読み込みの後に、押したのと同じ向きのボタンへフォーカスを戻す。
+// 引き出しは移るたびに置き直されるので、向きを次の引き出しへ渡す。`[` `]` のキーで移ったときは渡さない（見出しへ移る）。
+// 移れなかったとき（移動が取り消された）に残さないよう、移る側が clear する
+export type StepSource = 'button' | 'key';
+
+let stepFocus: -1 | 1 | null = null;
+
+export function markStepFocus(delta: -1 | 1): void {
+  stepFocus = delta;
+}
+
+export function clearStepFocus(): void {
+  stepFocus = null;
+}
+
+export function consumeStepFocus(): -1 | 1 | null {
+  const delta = stepFocus;
+  stepFocus = null;
+  return delta;
 }
 
 export type AdjacentTasks = { prev: string | null; next: string | null };

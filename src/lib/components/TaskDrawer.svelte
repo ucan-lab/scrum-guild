@@ -27,7 +27,14 @@
   import { TASK_POINT_VALUES, TASK_TITLE_MAX_LENGTH, taskTitleProblem } from '../../shared/task.ts';
   import { callOperation } from '../api.ts';
   import { withCurrent } from '../definition-options.ts';
-  import { pickTaskOpenMode, type TaskOpenMode } from '../drawer.svelte.ts';
+  import {
+    clearStepFocus,
+    consumeStepFocus,
+    markStepFocus,
+    pickTaskOpenMode,
+    type StepSource,
+    type TaskOpenMode,
+  } from '../drawer.svelte.ts';
   import { formatDateTime } from '../format-datetime.ts';
   import { completedMessage, sprintLabel, sprintPeriod } from '../sprint-label.ts';
   import { historyEntryView } from '../task-history.ts';
@@ -406,7 +413,12 @@
     historyPanel?.focus();
   }
 
+  // 前後のボタンで移ってきたときの、押した向き。最初の読み込みの終わりに、同じ向きのボタンへフォーカスを置く
+  let stepFocus = consumeStepFocus();
+
   async function load(): Promise<void> {
+    const wantedStepFocus = stepFocus;
+    stepFocus = null;
     const mine = ++loadVersion;
     loadState = 'loading';
     const result = await callOperation(taskDetail, { workspace_id: workspaceId, task_id: taskId }, { slug });
@@ -423,6 +435,14 @@
       // 開いたときの読み上げに、見出しが読まれるようにする。閉じるボタンか何も無い所にフォーカスがあるときだけ移す
       await tick();
       if (!alive) return;
+      // ボタンで移ってきたなら、押したのと同じ向きのボタンへ戻す（続けて押せる）。端で押せないなら見出しへ
+      if (wantedStepFocus !== null) {
+        const button = document.querySelector<HTMLElement>(`.drawer [data-drawer-step="${wantedStepFocus}"]`);
+        if (button !== null && button.getAttribute('aria-disabled') !== 'true') {
+          button.focus();
+          return;
+        }
+      }
       const active = document.activeElement;
       if (active === document.body || active?.classList.contains('drawer-close')) heading?.focus();
       return;
@@ -472,13 +492,22 @@
 
   // 前後のタスクへ移る操作（帯のボタンと `[` `]`）。書きかけがあれば、閉じるときと同じ確認を挟む。
   // 移ると引き出しは置き直される（呼び出し側の {#key}）ので、移れなかったとき（移動が取り消された）だけ、この引き出しを続けられる状態に戻す
-  async function requestStep(delta: -1 | 1): Promise<void> {
-    const target = delta < 0 ? adjacent?.prev : adjacent?.next;
-    if (!target || !onstep || asking || leaving) return;
+  // 移る先は確認の後に決め直す（確認の間に、順が替わったり、引き出しが閉じたりしうる）。消えていれば移らない。
+  // ボタンで移ったときだけ、移った先の引き出しが、押したのと同じ向きのボタンへフォーカスを戻す（stepFocus。キーで移ったときは見出し）
+  const stepTarget = (delta: -1 | 1) => (delta < 0 ? adjacent?.prev : adjacent?.next);
+
+  async function requestStep(delta: -1 | 1, source: StepSource): Promise<void> {
+    if (!onstep || !stepTarget(delta) || asking || leaving) return;
     if (hasDraft() && !(await confirmDiscard())) return;
+    const target = stepTarget(delta);
+    if (!alive || leaving || !target) return;
     leaving = true;
+    if (source === 'button') markStepFocus(delta);
     await onstep(target);
-    if (alive) leaving = false;
+    if (!alive) return;
+    // 移れなかった（移動が取り消された）。この引き出しを続けられる状態に戻す
+    clearStepFocus();
+    leaving = false;
   }
 
   async function confirmDiscard(): Promise<boolean> {
@@ -1276,7 +1305,7 @@
   {mode}
   onmode={(next, shown) => void requestMode(next, shown)}
   adjacent={adjacent === undefined ? undefined : { hasPrev: adjacent.prev !== null, hasNext: adjacent.next !== null }}
-  onstep={(delta) => void requestStep(delta)}
+  onstep={(delta, source) => void requestStep(delta, source)}
   labelledBy={titleLabelId}
   busy={loadState === 'loading'}
   onrequestclose={() => void requestClose()}

@@ -13,6 +13,13 @@ function fakeRoot(rows: readonly FakeRow[]) {
   return { querySelectorAll: () => elements };
 }
 
+// 順を空へ戻す（持ち主を問わず、置いてすぐ片付ける）
+function clearOrder(): void {
+  const owner = Symbol('clear');
+  provideTaskOrder(owner, []);
+  releaseTaskOrder(owner);
+}
+
 describe('visibleTaskIds', () => {
   test('描かれた順に、見えている行の ID を返す', () => {
     const root = fakeRoot([{ id: 'a' }, { id: 'b' }, { id: 'c' }]);
@@ -67,17 +74,44 @@ function keyEvent(overrides: Partial<StepKeyEvent> = {}): StepKeyEvent {
     shiftKey: false,
     repeat: false,
     defaultPrevented: false,
-    target: { closest: () => null, isContentEditable: false } as unknown as EventTarget,
+    target: { tagName: 'BUTTON', closest: () => null, isContentEditable: false } as unknown as EventTarget,
     ...overrides,
   };
 }
 
-function targetOf(selectorHit: boolean, isContentEditable = false): EventTarget {
+// 本物の要素のように、tagName と type を持ち、closest は自分のタグが並べたセレクタにあれば自分を返す
+function targetOf(tagName: string, type?: string, isContentEditable = false): EventTarget {
   return {
-    closest: (selector: string) => (selectorHit && selector.includes('textarea') ? {} : null),
+    tagName,
+    type,
+    closest: (selector: string) =>
+      selector
+        .split(',')
+        .map((part) => part.trim().toUpperCase())
+        .includes(tagName)
+        ? {}
+        : null,
     isContentEditable,
   } as unknown as EventTarget;
 }
+
+// 文字や数字を入れる型。ブラウザは type 属性が無いか不明な input を text として返す
+const TEXT_TYPES = [
+  'text',
+  'search',
+  'url',
+  'email',
+  'tel',
+  'password',
+  'number',
+  'date',
+  'datetime-local',
+  'month',
+  'week',
+  'time',
+];
+// 文字を打たない型（ポイントの radio など）。フォーカスがあっても移れる
+const NON_TEXT_TYPES = ['radio', 'checkbox', 'button', 'submit', 'reset', 'range', 'color', 'file', 'image'];
 
 describe('stepOfKey', () => {
   test('[ は前、] は次', () => {
@@ -104,9 +138,26 @@ describe('stepOfKey', () => {
     expect(stepOfKey(keyEvent({ defaultPrevented: true }))).toBeNull();
   });
 
-  test('入力欄、textarea、select の中と contenteditable の中では移らない', () => {
-    expect(stepOfKey(keyEvent({ target: targetOf(true) }))).toBeNull();
-    expect(stepOfKey(keyEvent({ target: targetOf(false, true) }))).toBeNull();
+  test.each(TEXT_TYPES)('文字や数字を入れる input（%s）の中では移らない', (type) => {
+    expect(stepOfKey(keyEvent({ target: targetOf('INPUT', type) }))).toBeNull();
+  });
+
+  test('type が無い input（text として扱う）、textarea、select、contenteditable の中では移らない', () => {
+    expect(stepOfKey(keyEvent({ target: targetOf('INPUT', undefined) }))).toBeNull();
+    expect(stepOfKey(keyEvent({ target: targetOf('INPUT', '') }))).toBeNull();
+    expect(stepOfKey(keyEvent({ target: targetOf('TEXTAREA') }))).toBeNull();
+    expect(stepOfKey(keyEvent({ target: targetOf('SELECT') }))).toBeNull();
+    expect(stepOfKey(keyEvent({ target: targetOf('DIV', undefined, true) }))).toBeNull();
+  });
+
+  test.each(NON_TEXT_TYPES)('文字を打たない input（%s）にフォーカスがあっても移る', (type) => {
+    expect(stepOfKey(keyEvent({ key: ']', target: targetOf('INPUT', type) }))).toBe(1);
+    expect(stepOfKey(keyEvent({ key: '[', target: targetOf('INPUT', type) }))).toBe(-1);
+  });
+
+  test('ボタンやリンクにフォーカスがあっても移る', () => {
+    expect(stepOfKey(keyEvent({ target: targetOf('BUTTON') }))).toBe(1);
+    expect(stepOfKey(keyEvent({ target: targetOf('A') }))).toBe(1);
   });
 
   test('キーの先が要素でなくても（document など）移れる', () => {
@@ -127,15 +178,35 @@ describe('trackTaskOrder', () => {
     observe() {}
   }
 
+  // 次のフレームで走る関数の列。フレームを手で進める
+  let frames: (() => void)[] = [];
+  const cancelled = new Set<number>();
+
   afterEach(() => {
     vi.unstubAllGlobals();
     observers.length = 0;
-    taskOrder.ids = [];
-    taskOrder.owner = null;
+    frames = [];
+    cancelled.clear();
+    clearOrder();
   });
 
-  function track(rows: FakeRow[]) {
+  function stubBrowser(): void {
     vi.stubGlobal('MutationObserver', FakeObserver);
+    vi.stubGlobal('requestAnimationFrame', (callback: () => void) => frames.push(callback));
+    vi.stubGlobal('cancelAnimationFrame', (handle: number) => cancelled.add(handle));
+  }
+
+  // 溜まったフレームを1回進める（取り消したものは走らせない）
+  function runFrame(): void {
+    const pending = frames;
+    frames = [];
+    pending.forEach((callback, index) => {
+      if (!cancelled.has(index + 1)) callback();
+    });
+  }
+
+  function track(rows: FakeRow[]) {
+    stubBrowser();
     const root = fakeRoot(rows);
     const cleanup = trackTaskOrder(root as unknown as HTMLElement);
     return { rows, cleanup };
@@ -149,35 +220,80 @@ describe('trackTaskOrder', () => {
     expect(observers[0]?.disconnect).toHaveBeenCalled();
   });
 
-  test('行の出入りと畳む／開くを見て、順を置き直す', () => {
-    const rows: FakeRow[] = [{ id: 'a' }, { id: 'b' }];
-    vi.stubGlobal('MutationObserver', FakeObserver);
+  test('行の出入りと畳む／開くを見て、次のフレームで順を置き直す', () => {
+    stubBrowser();
     // 行は参照で渡し、後から差し替える
-    const elements = { current: fakeRoot(rows) };
+    const elements = { current: fakeRoot([{ id: 'a' }, { id: 'b' }]) };
     const root = { querySelectorAll: () => elements.current.querySelectorAll() };
     trackTaskOrder(root as unknown as HTMLElement);
     expect([...taskOrder.ids]).toEqual(['a', 'b']);
 
     elements.current = fakeRoot([{ id: 'a' }, { id: 'b', hidden: true }, { id: 'c' }]);
     observers[0]?.callback();
+    runFrame();
     expect([...taskOrder.ids]).toEqual(['a', 'c']);
   });
 
+  test('1フレームの間に何度変化しても、走査は1回だけ', () => {
+    stubBrowser();
+    let scans = 0;
+    const root = {
+      querySelectorAll: () => {
+        scans++;
+        return [];
+      },
+    };
+    trackTaskOrder(root as unknown as HTMLElement);
+    const initial = scans;
+    observers[0]?.callback();
+    observers[0]?.callback();
+    observers[0]?.callback();
+    expect(scans).toBe(initial);
+    runFrame();
+    expect(scans).toBe(initial + 1);
+    // 次のフレームの変化は、また1回
+    observers[0]?.callback();
+    observers[0]?.callback();
+    runFrame();
+    expect(scans).toBe(initial + 2);
+  });
+
+  test('外れたら、待っているフレームの走査は取り消して、置き直さない', () => {
+    stubBrowser();
+    const elements = { current: fakeRoot([{ id: 'a' }]) };
+    const root = { querySelectorAll: () => elements.current.querySelectorAll() };
+    const cleanup = trackTaskOrder(root as unknown as HTMLElement);
+    elements.current = fakeRoot([{ id: 'a' }, { id: 'b' }]);
+    observers[0]?.callback();
+    cleanup();
+    runFrame();
+    expect([...taskOrder.ids]).toEqual([]);
+  });
+
   test('順が変わらなければ置き直さない', () => {
-    vi.stubGlobal('MutationObserver', FakeObserver);
+    stubBrowser();
     const root = fakeRoot([{ id: 'a' }, { id: 'b' }]);
     trackTaskOrder(root as unknown as HTMLElement);
     const before = taskOrder.ids;
     observers[0]?.callback();
+    runFrame();
     expect(taskOrder.ids).toBe(before);
+  });
+
+  test('2つ重ねて付けても、先に付けた方の片付けが後から付けた方の順を消さない', () => {
+    stubBrowser();
+    const cleanupA = trackTaskOrder(fakeRoot([{ id: 'a1' }, { id: 'a2' }]) as unknown as HTMLElement);
+    const cleanupB = trackTaskOrder(fakeRoot([{ id: 'b1' }, { id: 'b2' }]) as unknown as HTMLElement);
+    expect([...taskOrder.ids]).toEqual(['b1', 'b2']);
+    cleanupA();
+    expect([...taskOrder.ids]).toEqual(['b1', 'b2']);
+    cleanupB();
+    expect([...taskOrder.ids]).toEqual([]);
   });
 });
 
 describe('持ち主つきの順', () => {
-  afterEach(() => {
-    taskOrder.ids = [];
-    taskOrder.owner = null;
-  });
+  afterEach(clearOrder);
 
   test('持ち主でない片付けは、あとから置かれた順を消さない', () => {
     const first = Symbol('first');

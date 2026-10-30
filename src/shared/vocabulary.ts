@@ -1998,6 +1998,11 @@ export const dictionary = defineDictionary({
   drawerSteps: workspace('前後の{task}', '前後の{task}'),
   drawerPrev: workspace('前の{task}', '前の{task}'),
   drawerNext: workspace('次の{task}', '次の{task}'),
+  // ボタンの title。キーを添える（読み上げの名前は変えない）。端で押せないときは、その理由
+  drawerPrevTitle: workspace('前の{task}（[）', '前の{task}（[）'),
+  drawerNextTitle: workspace('次の{task}（]）', '次の{task}（]）'),
+  drawerAtFirst: organization('先頭です', '先頭です'),
+  drawerAtLast: organization('最後です', '最後です'),
   taskManualChip: workspace('手で作った{task}', '手で作った{task}'),
   taskImportedChip: workspace('取り込んだ{task}', '取り込んだ{task}'),
   taskDrawerLoadFailed: workspace(

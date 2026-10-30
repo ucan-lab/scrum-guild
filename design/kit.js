@@ -825,23 +825,35 @@ const looooooooooooooooooooooooooooooooooongLine = "コードの長い1行は、
     const at = ids.indexOf(drawer.id);
     return at < 0 ? null : { prev: ids[at - 1] ?? null, next: ids[at + 1] ?? null };
   }
+  // キーの先が文字を打つ場所か（本番は task-order.ts の isTypingTarget）。文字や数字を入れる型の input、textarea、select、contenteditable。
+  // ポイントの radio のように文字を打たない型の input では、[ ] で移れる
+  const TEXT_INPUT_TYPES = ["", "text", "search", "url", "email", "tel", "password", "number", "date", "datetime-local", "month", "week", "time"];
+  function isTypingTarget(el) {
+    if (!el) return false;
+    if (el.isContentEditable === true) return true;
+    const tag = (el.tagName || "").toUpperCase();
+    return tag === "TEXTAREA" || tag === "SELECT" || (tag === "INPUT" && TEXT_INPUT_TYPES.includes((el.type || "").toLowerCase()));
+  }
   function drawerStepButtons() {
     const adjacent = drawerAdjacent();
     if (!adjacent) return "";
-    const button = (delta, label, glyph, has) => `<button class="pill" type="button" data-drawer-step="${delta}" aria-label="${label}" title="${label}" aria-disabled="${!has}">${icon(glyph)}</button>`;
-    return `<span class="drawer-steps" role="group" aria-label="前後の${t("task")}">${button(-1, `前の${t("task")}`, "up", adjacent.prev)}${button(1, `次の${t("task")}`, "down", adjacent.next)}</span>`;
+    // 読み上げの名前は変えず、title にだけキーを添える。キーは aria-keyshortcuts でも伝える。端で押せないときの title は理由（先頭です／最後です）
+    const button = (delta, label, key, glyph, has, edge) => `<button class="pill" type="button" data-drawer-step="${delta}" aria-label="${label}" aria-keyshortcuts="${key}" title="${has ? `${label}（${key}）` : edge}" aria-disabled="${!has}">${icon(glyph)}</button>`;
+    return `<span class="drawer-steps" role="group" aria-label="前後の${t("task")}">${button(-1, `前の${t("task")}`, "[", "up", adjacent.prev, "先頭です")}${button(1, `次の${t("task")}`, "]", "down", adjacent.next, "最後です")}</span>`;
   }
-  // 前後へ移る。書きかけがあれば、閉じるときと同じ確認を挟む（force は捨てると決めた後）。閉じたときの戻り先は、最後に表示したタスクの行
+  // 前後へ移る。書きかけがあれば、閉じるときと同じ確認を挟む（force は捨てると決めた後）。閉じたときの戻り先は、最後に表示したタスクの行。
+  // ボタン（viaButton）で移ったときは、押したのと同じ向きのボタンへフォーカスを戻す（端で押せないなら閉じるボタン）。キー（[ ]）のときは閉じるボタン
   let pendingDrawerStep = null;
-  function stepDrawer(delta, force = false) {
+  function stepDrawer(delta, force = false, viaButton = false) {
     const adjacent = drawerAdjacent();
     const id = adjacent && (delta < 0 ? adjacent.prev : adjacent.next);
     if (!id) return;
-    if (!force && drawerHasDraft()) { pendingDrawerMode = null; pendingDrawerStep = delta; DIALOGS.discardDraft(); return; }
+    if (!force && drawerHasDraft()) { pendingDrawerMode = null; pendingDrawerStep = { delta, viaButton }; DIALOGS.discardDraft(); return; }
     pendingDrawerStep = null;
     drawer.id = id; drawer.tab = "comments"; drawer.thanked = new Set(); drawer.opener = id; drawer.editing = new Set(); drawer.errors = {}; drawer.drafts = {}; drawer.commentEditing = null;
     renderDrawer();
-    document.querySelector("[data-close-drawer]")?.focus();
+    const again = viaButton && document.querySelector(`#drawer [data-drawer-step="${delta}"]:not([aria-disabled="true"])`);
+    (again || document.querySelector("[data-close-drawer]"))?.focus();
   }
   let pendingDrawerMode = null;
   function saveDrawerMode(mode) {
@@ -2259,11 +2271,11 @@ const looooooooooooooooooooooooooooooooooongLine = "コードの長い1行は、
     if ((el = hit("data-drawer-save"))) { saveDrawerEdit(el.dataset.drawerSave); return; }
     if (hit("data-drawer-due-clear")) { task(drawer.id).due = null; redrawAll(); toast(`${icon("check")}保存しました`); return; }
     if ((el = hit("data-drawer-mode"))) { changeDrawerMode(el.dataset.drawerMode); return; }
-    if ((el = hit("data-drawer-step"))) { stepDrawer(Number(el.dataset.drawerStep)); return; }
+    if ((el = hit("data-drawer-step"))) { stepDrawer(Number(el.dataset.drawerStep), false, true); return; }
     if (hit("data-discard-draft")) {
       const next = pendingDrawerMode, step = pendingDrawerStep;
       closeDialog();
-      if (next) changeDrawerMode(next, true); else if (step) stepDrawer(step, true); else closeDrawer(true);
+      if (next) changeDrawerMode(next, true); else if (step) stepDrawer(step.delta, true, step.viaButton); else closeDrawer(true);
       return;
     }
     if (hit("data-delete-task")) {
@@ -2396,9 +2408,9 @@ const looooooooooooooooooooooooooooooooooongLine = "コードの長い1行は、
     if (ev.key === "Enter" && !ev.isComposing && ev.target.matches && ev.target.matches("input[data-drawer-input]")) {
       ev.preventDefault(); saveDrawerEdit(ev.target.dataset.drawerInput); return;
     }
-    // [ が前、] が次。入力欄の中、日本語の変換中、修飾キー付き、押しっぱなしの繰り返しでは移らない（ページ全体では drawerAdjacent が null）
+    // [ が前、] が次。文字を打つ場所の中、日本語の変換中、修飾キー付き、押しっぱなしの繰り返しでは移らない（ページ全体では drawerAdjacent が null）
     if ((ev.key === "[" || ev.key === "]") && drawer.id && !overlay && !ev.isComposing && ev.keyCode !== 229 && !ev.repeat
-      && !ev.ctrlKey && !ev.metaKey && !ev.altKey && !ev.shiftKey && !(ev.target.closest && ev.target.closest("input, textarea, select")) && !ev.target.isContentEditable) {
+      && !ev.ctrlKey && !ev.metaKey && !ev.altKey && !ev.shiftKey && !isTypingTarget(ev.target)) {
       if (drawerAdjacent()) { ev.preventDefault(); stepDrawer(ev.key === "[" ? -1 : 1); }
       return;
     }

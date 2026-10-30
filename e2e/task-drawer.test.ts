@@ -1373,8 +1373,9 @@ test('前後のボタンとキーで、開いたまま隣のクエストへ移�
   await page.keyboard.press('[');
   await expect(first).toBeVisible();
 
-  // 開いた行（二）ではなく、そのとき開いている行（一）へ、Esc でフォーカスが戻る
+  // 開いた行（二）ではなく、そのとき開いている行（一）へ、Esc でフォーカスが戻る。移った先の表示を待ってから戻る
   await stepButton(first, '次').click();
+  await expect(page.getByRole('dialog', { name: '前後 二' })).toBeVisible();
   await page.keyboard.press('[');
   await expect(first).toBeVisible();
   await page.keyboard.press('Escape');
@@ -1502,4 +1503,173 @@ test('行を持たない画面（メンバー）とページ全体では前後�
   const pageDrawer = page.locator('.drawer.is-page');
   await expect(pageDrawer).toBeVisible();
   await expect(stepGroup(pageDrawer)).toHaveCount(0);
+});
+
+test('ポイントの radio にフォーカスがあっても、[ ] で隣へ移れる', async ({ page }) => {
+  await createWorkspace(page, 'radio 前後パーティ', 'game');
+  await addTask(page, '選ぶ 一');
+  await addTask(page, '選ぶ 二');
+  await addTask(page, '選ぶ 三');
+  const drawer = await openDrawer(page, '選ぶ 二');
+
+  // 難易度を選んだ直後は、フォーカスが radio にある
+  const radio = drawer.getByRole('radio', { name: '5', exact: true });
+  await radio.check();
+  await expect(page.getByRole('status').filter({ hasText: '保存しました' })).toBeVisible();
+  await expect(radio).toBeFocused();
+
+  await page.keyboard.press(']');
+  await expect(page.getByRole('dialog', { name: '選ぶ 三' })).toBeVisible();
+  await page.getByRole('dialog', { name: '選ぶ 三' }).getByRole('radio', { name: '3', exact: true }).check();
+  await expect(
+    page.getByRole('dialog', { name: '選ぶ 三' }).getByRole('radio', { name: '3', exact: true }),
+  ).toBeFocused();
+  await page.keyboard.press('[');
+  await expect(page.getByRole('dialog', { name: '選ぶ 二' })).toBeVisible();
+});
+
+test('ボタン（クリックと Enter）で移ると、移った先でも同じ向きのボタンにフォーカスがある。端のボタンと、キーで移ったときは見出し', async ({
+  page,
+}) => {
+  await createWorkspace(page, '前後の焦点パーティ', 'game');
+  await addTask(page, '焦点 一');
+  await addTask(page, '焦点 二');
+  await addTask(page, '焦点 三');
+  const first = await openDrawer(page, '焦点 一');
+
+  // クリックで次へ移ると、移った先でも「次の」にフォーカスがあり、続けて Enter で押せる
+  await stepButton(first, '次').click();
+  const second = page.getByRole('dialog', { name: '焦点 二' });
+  await expect(second).toBeVisible();
+  await expect(stepButton(second, '次')).toBeFocused();
+  await page.keyboard.press('Enter');
+  const third = page.getByRole('dialog', { name: '焦点 三' });
+  await expect(third).toBeVisible();
+
+  // 端（末尾）で「次の」は押せないので、見出しへ移る
+  await expect(stepButton(third, '次')).toHaveAttribute('aria-disabled', 'true');
+  await expect(third.getByRole('heading', { level: 2 })).toBeFocused();
+
+  // キー [ で移ったときは、見出しへ移る（ボタンへ戻さない）
+  await page.keyboard.press('[');
+  await expect(second).toBeVisible();
+  await expect(second.getByRole('heading', { level: 2 })).toBeFocused();
+
+  // 前のボタンでも同じ。先頭に着くと見出しへ移る
+  await stepButton(second, '前').click();
+  await expect(first).toBeVisible();
+  await expect(stepButton(first, '前')).toHaveAttribute('aria-disabled', 'true');
+  await expect(first.getByRole('heading', { level: 2 })).toBeFocused();
+});
+
+test('書きかけを捨てるかの確認を出している間は、] を押しても移らず、確認が残る', async ({ page }) => {
+  await createWorkspace(page, '確認中の前後パーティ', 'game');
+  await addTask(page, '確認中 一');
+  await addTask(page, '確認中 二');
+  const drawer = await openDrawer(page, '確認中 一');
+  await drawer.getByRole('button', { name: /確認中 一/ }).click();
+  await drawer.getByRole('textbox', { name: 'タイトル' }).fill('書きかけ');
+  await stepButton(drawer, '次').click();
+  const confirm = page.getByRole('dialog', { name: '書きかけを捨てますか' });
+  await expect(confirm).toBeVisible();
+  const url = page.url();
+
+  await page.keyboard.press(']');
+  await page.keyboard.press('[');
+  await expect(confirm).toBeVisible();
+  expect(page.url()).toBe(url);
+  await expect(page.getByRole('dialog', { name: '確認中 二' })).toHaveCount(0);
+
+  // 書き続けると、そのまま残る
+  await confirm.getByRole('button', { name: '書き続ける' }).click();
+  await expect(drawer.getByRole('textbox', { name: 'タイトル' })).toHaveValue('書きかけ');
+});
+
+// 計画の画面で遠征を作り、起票したクエストを入れる
+async function createSprint(page: Page, startOn: string, name: string): Promise<void> {
+  await page.getByRole('button', { name: '遠征を作る' }).click();
+  const dialog = page.getByRole('dialog', { name: '遠征を作る' });
+  await dialog.getByLabel('開始日').fill(startOn);
+  await dialog.getByLabel('長さ（日）').fill('14');
+  await dialog.getByLabel('名前（任意）').fill(name);
+  await dialog.getByRole('button', { name: '作る' }).click();
+  await expect(dialog).toBeHidden();
+  await expect(page.locator('.lane-title', { hasText: name })).toBeVisible();
+}
+
+async function putIntoSprint(page: Page, sprint: string, titles: string[]): Promise<void> {
+  await page.getByRole('button', { name: `掲示板から入れる: 遠征 ${sprint}` }).click();
+  const picker = page.getByRole('dialog', { name: `遠征 ${sprint} に入れる` });
+  const list = picker.getByRole('group', { name: '入れるクエスト' });
+  for (const title of titles) await list.getByRole('checkbox', { name: new RegExp(`^${title}`) }).check();
+  await picker.getByRole('button', { name: `${titles.length} 件入れる` }).click();
+  await expect(picker).toBeHidden();
+}
+
+test('計画の画面では、遠征をまたいで上から下の順に前後へ移る', async ({ page }) => {
+  test.setTimeout(90_000);
+  await createWorkspace(page, '計画の前後パーティ', 'game');
+  for (const title of ['計画 一', '計画 二', '計画 三']) await addTask(page, title);
+  await page.getByRole('link', { name: '遠征の計画' }).click();
+  await createSprint(page, '2099-03-01', '第1回');
+  await createSprint(page, '2099-03-15', '第2回');
+  await putIntoSprint(page, '第1回', ['計画 一', '計画 二']);
+  await putIntoSprint(page, '第2回', ['計画 三']);
+  await expect(page.locator('.lane-row a')).toHaveText(['計画 一', '計画 二', '計画 三']);
+
+  await page.locator('.lane-row').getByRole('link', { name: '計画 一', exact: true }).click();
+  const first = page.getByRole('dialog', { name: '計画 一' });
+  await expect(first).toBeVisible();
+  await expect(stepButton(first, '前')).toHaveAttribute('aria-disabled', 'true');
+  await page.keyboard.press(']');
+  await expect(page.getByRole('dialog', { name: '計画 二' })).toBeVisible();
+  // 次の遠征のレーンへ移る
+  await page.keyboard.press(']');
+  const third = page.getByRole('dialog', { name: '計画 三' });
+  await expect(third).toBeVisible();
+  await expect(stepButton(third, '次')).toHaveAttribute('aria-disabled', 'true');
+  await page.keyboard.press('[');
+  await expect(page.getByRole('dialog', { name: '計画 二' })).toBeVisible();
+  // 閉じると、そのとき開いている行へフォーカスが戻る
+  await page.keyboard.press('Escape');
+  await expectFocusReturned(page, page.locator('.lane-row').getByRole('link', { name: '計画 二', exact: true }));
+});
+
+test('スプリントの画面では、列は左から右、列の中は上から下の順に前後へ移る', async ({ page }) => {
+  test.setTimeout(90_000);
+  await createWorkspace(page, '盤の前後パーティ', 'game');
+  for (const title of ['盤 一', '盤 二', '盤 三']) await addTask(page, title);
+  await page.getByRole('link', { name: '遠征の計画' }).click();
+  await createSprint(page, '2099-03-01', '第1回');
+  await putIntoSprint(page, '第1回', ['盤 一', '盤 二', '盤 三']);
+  await page.getByRole('button', { name: '始める: 遠征 第1回' }).click();
+  const start = page.getByRole('dialog', { name: '遠征を始める' });
+  await start.getByRole('button', { name: '始める' }).click();
+  await expect(start).toBeHidden();
+  await page.getByRole('link', { name: '遠征', exact: true }).click();
+  await expect(page.getByRole('heading', { level: 1, name: '遠征 第1回' })).toBeVisible();
+
+  // 盤 一 を右の列（遂行中）へ移す。出発前は 盤 二、盤 三、遂行中は 盤 一
+  const columnTitles = (column: string) =>
+    page.getByRole('region', { name: column, exact: true }).locator('.card-title');
+  await expect(columnTitles('出発前')).toHaveText(['盤 一', '盤 二', '盤 三']);
+  const moved = waitForResponses(page, '/task-column-move');
+  await page.getByRole('article', { name: '盤 一', exact: true }).press('Alt+ArrowRight');
+  await moved;
+  await expect(columnTitles('遂行中')).toHaveText(['盤 一']);
+  await expect(columnTitles('出発前')).toHaveText(['盤 二', '盤 三']);
+
+  // 先頭のカード（出発前の 盤 二）から ] で進むと、同じ列の下、次の列の順
+  await page.getByRole('link', { name: '盤 二', exact: true }).click();
+  const second = page.getByRole('dialog', { name: '盤 二' });
+  await expect(second).toBeVisible();
+  await expect(stepButton(second, '前')).toHaveAttribute('aria-disabled', 'true');
+  await page.keyboard.press(']');
+  await expect(page.getByRole('dialog', { name: '盤 三' })).toBeVisible();
+  await page.keyboard.press(']');
+  const last = page.getByRole('dialog', { name: '盤 一' });
+  await expect(last).toBeVisible();
+  await expect(stepButton(last, '次')).toHaveAttribute('aria-disabled', 'true');
+  await page.keyboard.press('[');
+  await expect(page.getByRole('dialog', { name: '盤 三' })).toBeVisible();
 });
