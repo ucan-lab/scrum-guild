@@ -112,7 +112,7 @@ export const experienceSummaryOperation = implement(experienceSummary, async ({ 
         .where('w.organization_id', '=', organizationId),
     ),
     // 見込み。今所属している閉じていないワークスペースで、自分が手で作った、未完了の、削除していない、ポイントが1以上のタスクの件数。
-    // 実行計画は、索引 tasks_created_by（created_by）から本人のタスクを引き、memberships_current で今の所属を確かめる。
+    // 実行計画は、部分索引 tasks_created_by_open（created_by, completed_at）から本人の未完了のタスクだけを引き、memberships_current で今の所属を確かめる。
     // 手で作ったタスクはいつもバックログにある（tasks の CHECK）ので、tray = 'backlog' は結果を変えない念押しの条件
     db.statement((q) =>
       q
@@ -204,13 +204,10 @@ export const experienceGrantsOperation = implement(experienceGrants, async ({ db
         ])
         .where('g.user_id', '=', userId)
         .where('w.organization_id', '=', organizationId)
+        // 行値の比較にすると、SQLite が索引 xp_grants_user_confirmed の範囲にできる（OR に展開した書き方は範囲にならず、
+        // カーソルより新しい側の項目を先頭から読み捨てる）
         .$if(before !== undefined, (qb) =>
-          qb.where((eb) =>
-            eb.or([
-              eb('g.confirmed_at', '<', before!.confirmed_at),
-              eb.and([eb('g.confirmed_at', '=', before!.confirmed_at), eb('g.id', '<', before!.id)]),
-            ]),
-          ),
+          qb.where((eb) => eb(eb.refTuple('g.confirmed_at', 'g.id'), '<', eb.tuple(before!.confirmed_at, before!.id))),
         )
         .orderBy('g.confirmed_at', 'desc')
         .orderBy('g.id', 'desc')

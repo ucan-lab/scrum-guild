@@ -206,7 +206,7 @@ describe('外部キー', () => {
 
 describe('経験値の読み取りの索引', () => {
   test.each([undefined, { confirmed_at: AT, id: 'cursor' }])(
-    '明細の頁送り（before: %j）は索引の順で51件まで読み、並べ替えない',
+    '明細の頁送り（before: %j）は索引の順で読み、並べ替えない',
     async (before) => {
       const db = orgDb(env, verifiedOrganizationForTest(id()));
       // 処理が実際に作った文を捕まえる。結合、カーソル、LIMIT も本番と同じ文で確かめる
@@ -219,8 +219,14 @@ describe('経験値の読み取りの索引', () => {
         expect(query.sql).toMatch(/order by "g"\."confirmed_at" desc, "g"\."id" desc limit \?$/);
         expect(query.parameters.at(-1)).toBe(51);
         const details = (await queryPlanForTest(env, statement)).join('\n');
-        expect(details).toContain('SEARCH g USING INDEX xp_grants_user_confirmed (user_id=?)');
-        expect(details).not.toContain('USE TEMP B-TREE FOR ORDER BY');
+        // 続きの頁は、カーソルの位置を索引の範囲にして、新しい側の項目を読まない
+        expect(details).toContain(
+          before === undefined
+            ? 'SEARCH g USING INDEX xp_grants_user_confirmed (user_id=?)'
+            : 'SEARCH g USING INDEX xp_grants_user_confirmed (user_id=? AND (confirmed_at,id)<(?,?))',
+        );
+        // 索引に id が無いと「LAST TERM OF ORDER BY」の一時 B-tree が出るので、種類を問わず出ないことを見る
+        expect(details).not.toContain('TEMP B-TREE');
       } finally {
         rows.mockRestore();
       }
@@ -233,8 +239,12 @@ describe('経験値の読み取りの索引', () => {
     const batch = vi.spyOn(db, 'batch');
     try {
       await experienceSummaryOperation.handler({ db, actor: { userId: id() }, input: {} } as never);
-      const statement = batch.mock.calls[0][0][2];
-      const details = (await queryPlanForTest(env, statement)).join('\n');
+      // 位置でなく、tasks を引いている文として選ぶ（文の順が変わっても別の文を見ない）
+      const statement = batch.mock.calls[0][0].find((candidate) =>
+        compiledQueryForTest(candidate).sql.includes('"tasks" as "t"'),
+      );
+      expect(statement).toBeDefined();
+      const details = (await queryPlanForTest(env, statement!)).join('\n');
       expect(details).toContain('SEARCH t USING INDEX tasks_created_by_open (created_by=? AND completed_at=?)');
     } finally {
       batch.mockRestore();

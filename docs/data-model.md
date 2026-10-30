@@ -1097,7 +1097,7 @@
 
 `xp_grants` は `organization_id` を持たないので、どの読み取りも `workspaces` と結合して `workspaces.organization_id` を入口の組織で絞る（別の組織のワークスペースを指す行は数えない）。経験値の数値と明細は本人にだけ返し、ほかの人に返すのはレベルだけにする（`docs/requirements.md` の「ゲームの仕組み」）。ほかの人の数値を返す操作は作らない。
 
-- 組織の合計: その組織のワークスペースの `xp_grants` のうち、`user_id` が本人の行の `SUM(amount)`。抜けたワークスペースと閉じたワークスペースの分も含む。行が無ければ 0。索引 `xp_grants_user_workspace_amount`（`user_id, workspace_id, amount`）だけで明細を読む。
+- 組織の合計: その組織のワークスペースの `xp_grants` のうち、`user_id` が本人の行の `SUM(amount)`。抜けたワークスペースと閉じたワークスペースの分も含む。行が無ければ 0。索引 `xp_grants_user_workspace_amount`（`user_id, workspace_id, amount`）だけで合計を出す。
 - レベル: 組織の合計から `src/shared/experience.ts` の `levelOf` で出す（レベル `L` に達する合計は `50 × L × (L − 1)`、次のレベルまでに要るのは `100 × L`、合計が 0 を下回ってもレベル1、上限なし）。DB に列を持たず、読むたびに計算する。`levelProgressOf` が、今のレベルの始まり、次のレベルに要る合計、ゲージの割合（確定 = `(合計 − 今のレベルの始まり) / (100 × L)`、負なら 0。見込み = `見込み / (100 × L)` を残りの幅 `1 − 確定` で切る）を出す。
 - 見込み: 今所属している（`memberships.left_at IS NULL`）閉じていないワークスペースで、本人が作った（`tasks.created_by`）、手で作った（`is_imported = 0`）、未完了（`completed_at IS NULL`）、削除していない（`deleted_at IS NULL`）、ポイントが1以上のタスク1件につき `XP_TASK_CREATED`（起票の経験値）。手で作ったタスクはいつもバックログにある（`tasks` の CHECK）ので、アーカイブで外れるものは無い（`tray = 'backlog'` の条件は結果を変えない念押しとして残す）。実行計画は、部分索引 `tasks_created_by_open`（`created_by`、`completed_at`）から本人の未完了のタスクだけを引き、`memberships_current` で今の所属を、`workspaces` の主キーで組織と閉じたかを確かめる。詳細の経験値の見込みは、詳細を作る Issue で足す。
 - ワークスペースごとの内訳（`experience-summary` の `workspaces`）: 明細のあるワークスペースと、今所属しているワークスペース（閉じたものも含む。明細が無ければ 0）。各行はワークスペースの確定の合計と見込み。並びは名前の昇順、同じ名前は ID の昇順。2つの文（明細のあるワークスペースと、今の所属）の結果を処理の中で合わせて並べるので、SQL の `ORDER BY` ではなく JavaScript の文字列の比較（UTF-16 の符号単位の順）で決まる。組織の合計と見込みは、内訳の合計と同じ。
@@ -1106,7 +1106,7 @@
   - 受け入れた制約: チーム全体の合計から、自分の内訳（`experience-summary` のそのワークスペースの合計）を引くと、ほかの人の合計の和が求まる。2人のワークスペースなら、もう1人の数値がそのまま分かる。要件の「チーム全体の合計は全員が見られる」と表裏の関係にあるので、少人数のワークスペースでは差し引きで分かることを受け入れ、合計をぼかしたり人数で出し分けたりはしない。
 - メンバーの一覧（`member-list`）の各行の `level` と、組織の枠（`organization`）の `me.level`: その人の組織の合計から出したレベルだけを返し、合計は返さない。メンバーの一覧は、そのワークスペースに今所属している人ごとの組織の合計を、1つの文（`GROUP BY user_id`）で、所属を読む文と同じ `batch()` で読む。
 - エピックの画面（`epic-detail`）の討伐隊の各行の `level`: メンバーの一覧と同じく、レベルだけを返し、合計は返さない。討伐隊は抜けた人も含むので、今の所属でなく討伐隊の行（`epic_party_members`）の人で絞って、1つの文で読む。
-- 読む量: 明細は `xp_grants_user_confirmed`（`user_id, confirmed_at, id`）を逆順にたどり、`ORDER BY confirmed_at DESC, id DESC` のための一時 B-tree を作らず、条件に合う51行までを読む（50件と続きの有無を確かめる1件）。続きの条件は索引の中で絞るので、カーソルより新しい索引の項目は読み飛ばす。組織の合計は `xp_grants_user_workspace_amount` の `COVERING INDEX` で本人の `workspace_id` と `amount` を読み、`xp_grants` の表の行は引かない。合計のために読む索引の項目数は本人の明細の総数に比例する。どちらも結合した `workspaces` で組織を確かめる。実際の文が使う索引と、明細の並べ替えが不要なこと、合計が索引だけで読めることは `test/schema.test.ts` の実行計画のテストで確かめる。
+- 読む量: 明細は `xp_grants_user_confirmed`（`user_id, confirmed_at, id`）を逆順にたどり、`ORDER BY confirmed_at DESC, id DESC` のための一時 B-tree を作らず、条件に合う51行までを読む（50件と続きの有無を確かめる1件）。続きの頁は、カーソルを行値の比較 `(confirmed_at, id) < (?, ?)` で書くので、索引の範囲として直接その位置から読み、カーソルより新しい側の項目は読まない。組織の合計は `xp_grants_user_workspace_amount` の `COVERING INDEX` で本人の `workspace_id` と `amount` を読み、`xp_grants` の表の行は引かない。合計のために読む索引の項目数は本人の明細の総数に比例する。どちらも結合した `workspaces` で組織を確かめる。実際の文が使う索引と、明細の並べ替えが不要なこと、合計が索引だけで読めることは `test/schema.test.ts` の実行計画のテストで確かめる。
 
 ### notifications
 
