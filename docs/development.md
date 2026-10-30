@@ -340,7 +340,7 @@ vite の転送先も同じ値から作るので、画面は自分のワークツ
 
 ### バックログの木を 5 万件で測る
 
-`pnpm bench:backlog`（`scripts/backlog-bench.ts`）は、使い捨ての場所（`--persist-to` の一時ディレクトリ）の D1 に全マイグレーションと seed と 5 万件のタスクのワークスペース（現実の形と最悪の形）を入れ、その D1 で `wrangler dev`（ポート 8797。`--port` で替える）を立てて、`backlog-tree` を絞らない、担当、検索などの読み方ごとに測る（#165）。手元の開発用の D1 と本番には触らない。`--runs` で回数（既定 10）を替える。`--prepare-only <場所>` は、その場所の D1 に入れて終える（測らず、消さない）ので、遅い文を `wrangler d1 execute DB --local --persist-to <場所> --command "EXPLAIN QUERY PLAN ..."` で見るのに使う。測った数と結論は `docs/data-model.md` の `tasks` の節。木を読む文、索引、絞り込みを変えたら流し直し、数が変わったら書き直す。
+`pnpm bench:backlog`（`scripts/backlog-bench.ts`）は、使い捨ての場所（`--persist-to` の一時ディレクトリ）の D1 に全マイグレーションと seed と 5 万件のタスクのワークスペース（現実の形と最悪の形）を入れ、その D1 で `wrangler dev`（API はポート 9700、デバッガーは 9701。デバッガーは常に `--port` + 1。`--port` を上の範囲の中に替えると、そのオフセットのワークツリーと重なりうるので、替える側が空きを選ぶ。既定の 2 つは、ワークツリーが使う範囲（画面 5173〜5614、API 8787〜9228、デバッガー 9229〜9670）の外に固定してあるので、どのオフセットの開発用のサーバーや `pnpm e2e` を立てたままでも重ならない。`scripts/dev-ports.ts` の `BENCH_PORTS`）を立てて、`backlog-tree` を絞らない、担当、検索などの読み方ごとに測る（#165）。手元の開発用の D1 と本番には触らない。`--runs` で回数（既定 10）を替える。`--prepare-only <場所>` は、その場所の D1 に入れて終える（測らず、消さない）ので、遅い文を `wrangler d1 execute DB --local --persist-to <場所> --command "EXPLAIN QUERY PLAN ..."` で見るのに使う。測った数と結論は `docs/data-model.md` の `tasks` の節。木を読む文、索引、絞り込みを変えたら流し直し、数が変わったら書き直す。
 
 ### 依存を入れたばかりの作業コピー
 
