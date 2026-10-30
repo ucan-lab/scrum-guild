@@ -522,10 +522,12 @@ function forceOf({ fields, bodies, unreadable }) {
     // 展開で決まる名前（-F "$FIELD"）は force になりうる。-F の @ファイル は値を読めない
     if (hasExpansion(key) || (key === 'force' && (hasExpansion(value) || value.startsWith('@')))) verdicts.push('unknown');
     else if (key === 'force' && value === 'true') verdicts.push('yes');
+    // true と false 以外（1、yes）を GitHub がどう受けるかは確かめていないので、読めないものとして確認に倒す
+    else if (key === 'force' && value !== 'false') verdicts.push('unknown');
   }
   for (const { text, literal } of bodies) {
     for (const [, value] of text.matchAll(/"force"\s*:\s*"?([^,}\s"]*)/g)) {
-      verdicts.push(value === 'true' ? 'yes' : !literal && hasExpansion(value) ? 'unknown' : 'no');
+      verdicts.push(value === 'true' ? 'yes' : value === 'false' ? 'no' : 'unknown');
     }
     // 展開を含む本文は、JSON の文字列の外（キー、値、区切り）に展開が来る形（{"sha":"a",$F}）と、JSON のキー、
     // コマンド置換の中身が force を持ち込みうる。文字列の値の中の変数（"sha":"$SHA"）は force を持ち込まないので読まない

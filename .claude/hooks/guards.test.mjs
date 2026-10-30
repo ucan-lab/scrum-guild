@@ -5802,6 +5802,16 @@ describe('bash-rules: done-check 2 巡目の指摘（mutation の名前の判定
     assert.equal(decision(`curl -g -X POST 'https://api.github.com/repos/o/r/issues/1/comments?a[]=1' -d '{"body":"x"}'`), 'allow'));
   test('[通す] glob の URL でも GET なら allow', () => assert.equal(decision(`curl 'https://api.github.com/repos/o/r/pulls/{1,2}'`), 'allow'));
 
+  // force の値が true と false 以外
+  for (const command of [
+    'gh api -X PATCH repos/o/r/git/refs/heads/x -f sha=abc -F force=1',
+    'gh api -X PATCH repos/o/r/git/refs/heads/x -f sha=abc -f force=yes',
+    `gh api -X PATCH repos/o/r/git/refs/heads/x --input - <<'EOF'\n{"sha":"abc","force":1}\nEOF`,
+  ]) {
+    test(`[確認] ${command} は force かを読めないので ask`, () => assert.equal(decision(command), 'ask', command));
+  }
+  test('[通す] force=false は allow', () => assert.equal(decision('gh api -X PATCH repos/o/r/git/refs/heads/x -f sha=abc -F force=false'), 'allow'));
+
   // main の判定の終端
   test('[通す] heads/main-fix は main ではない', () =>
     assert.equal(decision('gh api -X PATCH repos/o/r/git/refs/heads/main-fix -f sha=abc'), 'allow'));
