@@ -9,7 +9,7 @@ import {
 import { ApiError } from '../errors.ts';
 import { uuidv7 } from '../uuid.ts';
 import { implement } from './implement.ts';
-import { actorUserIdOf, changeLogColumns, openWorkspace, throwIfClosed } from './write-guards.ts';
+import { activeMemberName, actorUserIdOf, changeLogColumns, openWorkspace, throwIfClosed } from './write-guards.ts';
 
 const MAX_ATTEMPTS = 3;
 const conflict = (reason: ThanksConflictReason) => new ApiError(409, 'conflict', { reason });
@@ -23,26 +23,6 @@ function taskRow(q: QueryCreator<OrganizationTables>, organizationId: string, wo
     .where('tasks.workspace_id', '=', workspaceId)
     .where('tasks.id', '=', taskId)
     .where('tasks.deleted_at', 'is', null);
-}
-
-// 感謝の相手は今の所属と有効な users の行で決める。ログインの手段と ID がまだ無い行（招待で待っている人）は、
-// 担当の候補（member-list）に出ない人なので除く。
-function recipientRow(
-  q: QueryCreator<OrganizationTables>,
-  organizationId: string,
-  workspaceId: string,
-  userId: string,
-) {
-  return q
-    .selectFrom('users')
-    .innerJoin('memberships', 'memberships.user_id', 'users.id')
-    .select('users.id')
-    .where('users.organization_id', '=', organizationId)
-    .where('users.id', '=', userId)
-    .where('users.disabled_at', 'is', null)
-    .where('users.login_subject', 'is not', null)
-    .where('memberships.workspace_id', '=', workspaceId)
-    .where('memberships.left_at', 'is', null);
 }
 
 // 名前は事前の読み取りの値を使わず、履歴を書く文の中で users から引く。
@@ -109,7 +89,10 @@ export const thanksSendOperation = implement(thanksSend, async ({ db, workspace,
     if ((task.assignee_user_id ?? task.created_by) !== actorId) throw new ApiError(403, 'forbidden');
     if (task.completed_at !== null) throw conflict('completed');
     if (input.recipient_user_id === actorId) throw conflict('self');
-    if (!(await db.first(db.statement((q) => recipientRow(q, organizationId, workspaceId, input.recipient_user_id))))) {
+    // 感謝の相手は、担当にできる人と同じ条件（activeMemberName）で決める。片方だけ直して食い違わせない
+    if (
+      !(await db.first(db.statement((q) => activeMemberName(q, organizationId, workspaceId, input.recipient_user_id))))
+    ) {
       throw new ApiError(404, 'not_found');
     }
     const duplicate = await db.first(
@@ -148,7 +131,7 @@ export const thanksSendOperation = implement(thanksSend, async ({ db, workspace,
                 ]),
               )
               .where((eb) => eb.exists(openWorkspace(q, organizationId, workspaceId)))
-              .where((eb) => eb.exists(recipientRow(q, organizationId, workspaceId, input.recipient_user_id))),
+              .where((eb) => eb.exists(activeMemberName(q, organizationId, workspaceId, input.recipient_user_id))),
           )
           .onConflict((oc) => oc.columns(['task_id', 'recipient_user_id']).doNothing()),
       ),
