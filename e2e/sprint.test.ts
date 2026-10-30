@@ -539,9 +539,9 @@ test('リーダーは遠征を終え、終わらなかったクエストを次�
     page.getByRole('status').filter({ hasText: '遠征 第2回を終えました。クエスト 2 件を掲示板へ戻しました' }),
   ).toBeVisible();
 
-  // 計画の画面は空になり、掲示板では2件がどの遠征にも入っていない
+  // 計画の画面には先の遠征が無くなる（終えた遠征があるので、題は「先の遠征はありません」）。掲示板では2件がどの遠征にも入っていない
   await page.getByRole('link', { name: '遠征の計画', exact: true }).click();
-  await expect(page.getByText('まだ遠征がありません')).toBeVisible();
+  await expect(page.getByText('先の遠征はありません')).toBeVisible();
   await page.getByRole('link', { name: '掲示板', exact: true }).click();
   for (const title of ['B札', 'C札']) {
     const entry = page.locator('.entry', { hasText: title });
