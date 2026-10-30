@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { thanksSchema } from './thanks.ts';
 import { taskPointsSchema } from '../../task.ts';
 import { definitionRefSchema, resolvedCategorySchema } from '../definition/definition.ts';
 import { sprintRefSchema } from '../sprint/sprint.ts';
@@ -24,6 +25,8 @@ export const taskDetailSchema = z.object({
   reopenable: z.boolean(),
   // 呼んだ人が削除できるか（作った人とリーダー、管理者）。画面が削除の操作を出すかを決める
   can_delete: z.boolean(),
+  thanks: z.array(thanksSchema),
+  can_send_thanks: z.boolean(),
   // 親のストーリー。親のあるタスクは区分を振れない（親から引き継ぐ）
   story_id: z.string().nullable(),
   // 引き継ぎを解いた区分（親のエピック、親のストーリー、タスク自身の順）。inherited は親から引き継いだもの

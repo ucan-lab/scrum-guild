@@ -21,6 +21,7 @@ import {
   createSprintEntry,
   createStory,
   createTask,
+  createThanks,
   createUser,
   createWorkspace,
 } from '../factories.ts';
@@ -366,6 +367,25 @@ export const pointers: Pointers = {
       })
     ).id,
   }),
+  'thanks-send': async (target, caller) => {
+    const sender = personOf(target, caller) ?? target.admin;
+    const recipient = sender.userId === target.member.userId ? target.leader : target.member;
+    const task = await createTask(target.organization, target.workspace.id, sender.userId!);
+    return { workspace_id: target.workspace.id, task_id: task.id, recipient_user_id: recipient.userId! };
+  },
+  'thanks-revoke': async (target, caller) => {
+    const sender = personOf(target, caller) ?? target.admin;
+    const recipient = sender.userId === target.member.userId ? target.leader : target.member;
+    const task = await createTask(target.organization, target.workspace.id, sender.userId!);
+    const thanks = await createThanks(
+      target.organization,
+      target.workspace.id,
+      task.id,
+      sender.userId!,
+      recipient.userId!,
+    );
+    return { workspace_id: target.workspace.id, thanks_id: thanks.id };
+  },
   'task-detail': async (target) => ({
     workspace_id: target.workspace.id,
     task_id: (await createTask(target.organization, target.workspace.id, target.admin.userId!)).id,

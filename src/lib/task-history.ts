@@ -26,6 +26,7 @@ export type HistoryEntryView = {
 // 完了と削除の行は操作だけを出すので、その列（completed_at、completed_by、deleted_at）は表に入れない。
 // 列の名前は保存した JSON のキーなので、__proto__ などで Object の持ち物を引かないよう Map で持つ
 const FIELD_LABELS: ReadonlyMap<string, (t: Translate) => string> = new Map([
+  ['thanks', (t: Translate) => t('thanks')],
   ['title', (t: Translate) => t('fieldTitle')],
   ['points', (t: Translate) => t('points')],
   ['due_on', (t: Translate) => t('due')],
@@ -88,6 +89,7 @@ function nameText(name: string, t: Translate): string {
 
 function valueText(field: string, value: TaskHistoryValue, t: Translate): string {
   if (value === null) {
+    if (field === 'thanks') return t('thanksNone');
     if (field === 'points') return t('pointsUnsetTitle');
     if (field === 'assignee') return t('unassigned');
     return t('historyNone');

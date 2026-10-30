@@ -139,6 +139,8 @@ describe('task-detail', () => {
       category: null,
       repository: null,
       sprint: null,
+      thanks: [],
+      can_send_thanks: true,
     });
     for (const person of [target.leader, target.admin]) {
       expect(((await (await detail(target, task.id, person)).json()) as { task: Detail }).task.can_delete).toBe(true);

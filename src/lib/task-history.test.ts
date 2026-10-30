@@ -202,3 +202,14 @@ describe('historyEntryView', () => {
     ]);
   });
 });
+
+test('感謝の履歴は両方の言葉づかいで相手の名前と「なし」を出す', () => {
+  for (const t of [game, scrum]) {
+    expect(
+      historyEntryView(entry({ changes: [{ field: 'thanks', before: null, after: member }] }), 'UTC', t).lines,
+    ).toEqual([{ label: '感謝', text: `なし → ${member.name}` }]);
+    expect(
+      historyEntryView(entry({ changes: [{ field: 'thanks', before: member, after: null }] }), 'UTC', t).lines,
+    ).toEqual([{ label: '感謝', text: `${member.name} → なし` }]);
+  }
+});

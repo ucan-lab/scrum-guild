@@ -2125,6 +2125,47 @@ export const dictionary = defineDictionary({
   storyDeleteNoChildren: workspace('配下の{task}はありません。', '配下の{task}はありません。'),
   epicDeleted: workspace('{epic}を削除しました', '{epic}を削除しました'),
   storyDeleted: workspace('{story}を削除しました', '{story}を削除しました'),
+  thanks: workspace('感謝', '感謝'),
+  thanksNone: workspace('なし', 'なし'),
+  thanksEmpty: workspace('まだ感謝は送られていません。', 'まだ感謝は送られていません。'),
+  // コメントの「送る」ボタンと名前が重ならないよう、「送る」を含めない
+  thanksSend: workspace('{name} に感謝する', '{name} に感謝する'),
+  // 行の右端に寄せる部品（.party-list-end）は縮まないので、見える文字は短くし、相手の名前は読み上げの名前に回す
+  thanksRevoke: workspace('{name} への感謝を取り消す', '{name} への感謝を取り消す'),
+  thanksRevokeShort: workspace('取り消す', '取り消す'),
+  thanksSent: workspace('感謝を送りました', '感謝を送りました'),
+  thanksRevoked: workspace('感謝を取り消しました', '感謝を取り消しました'),
+  thanksFromTo: workspace('{sender} から {recipient} に送った感謝', '{sender} から {recipient} に送った感謝'),
+  thanksSelf: workspace('自分には感謝を送れません。', '自分には感謝を送れません。'),
+  thanksDuplicate: workspace('この相手には、すでに感謝を送っています。', 'この相手には、すでに感謝を送っています。'),
+  thanksCompleted: workspace(
+    '完了した{task}の感謝は送れず、取り消せません。',
+    '完了した{task}の感謝は送れず、取り消せません。',
+  ),
+  thanksForbidden: workspace(
+    '感謝を送る権限、または取り消す権限がありません。',
+    '感謝を送る権限、または取り消す権限がありません。',
+  ),
+  thanksNotFound: workspace(
+    '対象の{task}、相手、または感謝が見つかりません。',
+    '対象の{task}、相手、または感謝が見つかりません。',
+  ),
+  thanksFailed: workspace(
+    '感謝の操作に失敗しました。もう一度試してください。',
+    '感謝の操作に失敗しました。もう一度試してください。',
+  ),
+  thanksRefreshFailed: workspace(
+    '感謝の操作は完了しましたが、最新の一覧を読み込めませんでした。',
+    '感謝の操作は完了しましたが、最新の一覧を読み込めませんでした。',
+  ),
+  thanksCandidatesFailed: workspace('感謝を送る相手を読み込めませんでした。', '感謝を送る相手を読み込めませんでした。'),
+  // 担当の欄の「もう一度試す」と同じ引き出しに並ぶので、名前を分ける
+  thanksCandidatesRetry: workspace('相手を読み直す', '相手を読み直す'),
+  thanksCandidatesEmpty: workspace('感謝を送れる相手はいません。', '感謝を送れる相手はいません。'),
+  thanksHint: workspace(
+    '送れるのは{assignee}だけ（{assignee}がいなければ作った人）です。完了するまでは、送った本人が取り消せます。',
+    '送れるのは{assignee}だけ（{assignee}がいなければ作った人）です。完了するまでは、送った本人が取り消せます。',
+  ),
   // 変更の履歴（引き出しの「変更の履歴」の節。src/lib/task-history.ts が列の名前と値を文にする）
   historyTitle: workspace('変更の履歴', '変更の履歴'),
   historyEmpty: workspace('まだ変更はありません。', 'まだ変更はありません。'),

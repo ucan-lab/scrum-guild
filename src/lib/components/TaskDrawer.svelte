@@ -41,6 +41,7 @@
   import Markdown from './Markdown.svelte';
   import RepositoryPicker from './RepositoryPicker.svelte';
   import TaskComments from './TaskComments.svelte';
+  import TaskThanks from './TaskThanks.svelte';
 
   // タスクの詳細の引き出しの中身（kit.js の drawerHtml）。`?task=<ID>` が付いている間、画面の枠（/[slug]/w/[id] のレイアウト）が置く。
   // 開いたら task-detail で1件を読む（本文は長いので、木には載せない）。読んでいる間は読み込み中を出し、読めなければ
@@ -76,6 +77,7 @@
   let {
     slug,
     workspaceId,
+    currentUserId,
     taskId,
     canWrite,
     definitionOfDone,
@@ -86,6 +88,7 @@
   }: {
     slug: string;
     workspaceId: string;
+    currentUserId: string | null;
     taskId: string;
     canWrite: boolean;
     // ワークスペースの完成の定義（Markdown）。空なら null で、完了の操作の横に何も出さない
@@ -566,6 +569,7 @@
     if (alive) {
       task = result.data.task;
       clock = { today: result.data.today, weekStart: result.data.week_start };
+      if (canWrite && task.completed_at === null && candidates === null) void loadCandidates();
       // 別の人の変更を読み直したので、その変更が載った履歴も読み直す
       void loadHistory();
     }
@@ -668,7 +672,13 @@
     if (result.ok) {
       if (alive && task !== null) {
         const saved = result.data.task;
-        task = { ...task, assignee: saved.assignee, completed_at: saved.completed_at, can_delete: saved.can_delete };
+        task = {
+          ...task,
+          assignee: saved.assignee,
+          completed_at: saved.completed_at,
+          can_delete: saved.can_delete,
+          can_send_thanks: saved.can_send_thanks,
+        };
         void loadHistory();
       }
       showToast(t('taskSaved'), 'check');
@@ -1654,6 +1664,20 @@
         {/if}
       </div>
     {/if}
+
+    <TaskThanks
+      {slug}
+      {workspaceId}
+      {task}
+      {currentUserId}
+      {canWrite}
+      {candidates}
+      {candidatesLoading}
+      {candidatesFailed}
+      onretry={() => void loadCandidates()}
+      onrefresh={refresh}
+      {onstale}
+    />
 
     <!-- コメントと変更の履歴のタブ（kit.js の drawerHtml の .tabs）。中身は外さずに隠す（書きかけのコメントを、タブを切り替えても保つ）。
          左右の矢印キーと Home、End でタブを移り、移った先を選ぶ -->
