@@ -13,8 +13,8 @@ export type VocabularyScope = 'workspace' | 'organization';
 
 export type Vocabularies = Record<VocabularyScope, Vocabulary>;
 
-// 既定はゲームの言葉
-export const defaultVocabularies: Vocabularies = { workspace: 'game', organization: 'game' };
+// 既定はスクラムの言葉
+export const defaultVocabularies: Vocabularies = { workspace: 'scrum', organization: 'scrum' };
 
 export type Entry = { readonly scope: VocabularyScope; readonly game: string; readonly scrum: string };
 

@@ -20,8 +20,10 @@ describe('言葉の辞書', () => {
   });
 
   test('組織の言葉とワークスペースの言葉は、別々に選べる', () => {
-    assert.equal(word('task', defaultVocabularies), 'クエスト');
-    assert.equal(word('organization', defaultVocabularies), '冒険者ギルド');
+    assert.equal(word('task', defaultVocabularies), 'タスク');
+    assert.equal(word('organization', defaultVocabularies), '組織');
+    assert.equal(word('task', { workspace: 'game', organization: 'game' }), 'クエスト');
+    assert.equal(word('organization', { workspace: 'game', organization: 'game' }), '冒険者ギルド');
     assert.equal(word('task', { workspace: 'scrum', organization: 'game' }), 'タスク');
     assert.equal(word('organization', { workspace: 'scrum', organization: 'game' }), '冒険者ギルド');
     assert.equal(word('organization', { workspace: 'game', organization: 'scrum' }), '組織');

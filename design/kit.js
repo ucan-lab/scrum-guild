@@ -27,7 +27,7 @@
   })();
   const firstHref = (href, role = first) => (role && FIRST_PAGES[role].includes(href) ? `${href}?first=${role}` : href);
   // ワークスペースを作った直後の既定値は requirements.md の「機能」の冒頭。
-  // 決まった欄の名前は作ったときの言葉づかい（既定のゲームの言葉）で付き、あとから訳さない
+  // 決まった欄の名前は作ったときの言葉づかいで付き、あとから訳さない
   function freshData(role) {
     const me = { ...D.users[D.me], level: 1, role: role === "member" ? "member" : "leader" };
     const common = {
@@ -85,7 +85,7 @@
     filterTotalsNote: ["{points}と件数は、絞る前の全体の値です", "{points}と件数は、絞る前の全体の値です"],
     filterHiddenCreated: ["作りました。絞り込みに当たらないので表示していません", "作りました。絞り込みに当たらないので表示していません"],
   };
-  let vocab = 0;
+  let vocab = 1;
   const listeners = [];
   const t = (k) => (DICT[k] ? DICT[k][vocab] : k);
   function setVocab(v) { vocab = v; listeners.forEach((fn) => fn()); if (assist.open) renderAssist(); }

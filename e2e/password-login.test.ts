@@ -71,7 +71,7 @@ test('入れる組織が2つの人は、パスワードで入ると組織の選�
   await emailField(page).fill(person.email);
   await passwordField(page).fill(person.password);
   await passwordField(page).press('Enter');
-  await expect(page.getByRole('heading', { level: 1, name: '冒険者ギルドを選ぶ' })).toBeVisible();
+  await expect(page.getByRole('heading', { level: 1, name: '組織を選ぶ' })).toBeVisible();
   await expect(page).toHaveURL(/\/$/);
   await expect(page.getByRole('link', { name: /ゆず書房/ })).toBeVisible();
   await expect(page.getByRole('link', { name: /みなも舎/ })).toBeVisible();
@@ -157,7 +157,7 @@ test('入れる組織が無い（403 の denied）と、招待された手段を
   await passwordField(page).fill(SEED_PASSWORD_LOGINS.single.password);
   await submitButton(page).click();
   await expect(page.getByRole('alert')).toContainText(
-    'ログインできませんでした。どの冒険者ギルドのパーティにも所属しておらず',
+    'ログインできませんでした。どの組織のワークスペースにも所属しておらず',
   );
   await expect(page.getByRole('alert')).not.toContainText('GitHub');
   await expect(emailField(page)).toHaveValue(SEED_PASSWORD_LOGINS.single.email);

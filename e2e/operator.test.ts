@@ -114,11 +114,9 @@ test.describe('運用者', () => {
     await expect(rows).toHaveCount(5);
     await expect(rows.filter({ hasText: 'あおば開発' })).toContainText('aoba');
     await expect(rows.filter({ hasText: 'あおば開発' }).locator('.chip')).toHaveCount(0);
-    await expect(rows.filter({ hasText: 'ひばり工房' }).locator('.chip.is-danger')).toHaveText(
-      'ギルドマスターがいない',
-    );
+    await expect(rows.filter({ hasText: 'ひばり工房' }).locator('.chip.is-danger')).toHaveText('管理者がいない');
     await expect(rows.filter({ hasText: 'つばめ商会' }).locator('.chip.is-warn')).toHaveText(
-      'ギルドマスターは指名済み、ログイン待ち',
+      '管理者は指名済み、ログイン待ち',
     );
     // 停止した日は UTC の日付（東京のブラウザでは 10/11 5:00 になる時刻でも 10/10）。一時的な停止には、消す予定日の印を付けない
     await expect(rows.filter({ hasText: 'かもめ社' }).locator('.chip.is-warn')).toHaveText('停止 2026-10-10');
@@ -128,17 +126,17 @@ test.describe('運用者', () => {
     await expect(rows.filter({ hasText: 'とき運送' }).locator('.chip.is-danger')).toHaveText('2026-11-10 に消す');
     // 操作のボタンは、どの行にも「管理者を指名」。続けて、停止していない組織は「停止する」（is-danger）、停止中の組織は「再開する」
     const activeButtons = rows.filter({ hasText: 'あおば開発' }).locator('td.is-actions').getByRole('button');
-    await expect(activeButtons).toHaveText(['ギルドマスターを指名', '停止する']);
+    await expect(activeButtons).toHaveText(['管理者を指名', '停止する']);
     await expect(activeButtons.first()).not.toHaveClass(/is-danger/);
     await expect(activeButtons.last()).toHaveClass(/is-danger/);
     // 停止中の行は「管理者を指名」「停止の理由を変える」「再開する」。どれも危険の色にしない
     const suspendedButtons = rows.filter({ hasText: 'かもめ社' }).locator('td.is-actions').getByRole('button');
-    await expect(suspendedButtons).toHaveText(['ギルドマスターを指名', '停止の理由を変える', '再開する']);
+    await expect(suspendedButtons).toHaveText(['管理者を指名', '停止の理由を変える', '再開する']);
     for (const button of await suspendedButtons.all()) await expect(button).not.toHaveClass(/is-danger/);
     // 読み上げの名前に、どの組織かを添える
     await expect(
       rows.filter({ hasText: 'ひばり工房' }).locator('td.is-actions').getByRole('button').first(),
-    ).toHaveAccessibleName('「ひばり工房」のギルドマスターを指名');
+    ).toHaveAccessibleName('「ひばり工房」の管理者を指名');
     // 2026-10-01T09:30Z は、東京のブラウザでは 18:30
     // 作った日時は列にせず、名前の列の slug の行に並べる
     await expect(rows.filter({ hasText: 'あおば開発' }).locator('td.is-name .props-note')).toHaveText(
@@ -180,18 +178,18 @@ test.describe('運用者', () => {
     const rows = page.locator('.table tbody tr');
     await expect(rows).toHaveCount(3);
     await expect(page.locator('.table thead th')).toHaveText([
-      '冒険者ギルド・slug',
+      '組織・slug',
       '人数 / 上限',
-      'パーティの数',
-      'クエストの数',
+      'ワークスペースの数',
+      'タスクの数',
       '添付ファイルの上限',
       '最後に使われた日時',
       '操作',
     ]);
     const aoba = rows.filter({ hasText: 'あおば開発' });
     await expect(aoba.locator('td[data-label="人数 / 上限"]')).toHaveText('5 / 15');
-    await expect(aoba.locator('td[data-label="パーティの数"]')).toHaveText('3');
-    await expect(aoba.locator('td[data-label="クエストの数"]')).toHaveText('1,284');
+    await expect(aoba.locator('td[data-label="ワークスペースの数"]')).toHaveText('3');
+    await expect(aoba.locator('td[data-label="タスクの数"]')).toHaveText('1,284');
     // 上限の下に、人数と容量の上限を変える文字のボタンを置く。読み上げの名前に、どの組織かを添える
     const aobaQuota = aoba.locator('td[data-label="添付ファイルの上限"]');
     await expect(aobaQuota).toHaveText(/^\s*30\sGB\s*人数と容量の上限を変える\s*$/);
@@ -261,7 +259,7 @@ test.describe('運用者', () => {
           name: 'とき運送',
           suspended_at: '2026-10-11T00:00:00.000Z',
           purge_on: '2026-11-10',
-          // 印の中でいちばん長い文（ギルドマスターの招待の URL は期限切れ）
+          // 印の中でいちばん長い文（管理者の招待の URL は期限切れ）
           admin_status: 'expired',
           last_used_at: null,
         }),
@@ -286,9 +284,9 @@ test.describe('運用者', () => {
       }
 
       for (const [name, buttonTexts] of [
-        ['あおば開発', ['ギルドマスターを指名', '停止する']],
-        ['かもめ社', ['ギルドマスターを指名', '停止の理由を変える', '再開する']],
-        ['とき運送', ['ギルドマスターを指名', '停止の理由を変える', '再開する']],
+        ['あおば開発', ['管理者を指名', '停止する']],
+        ['かもめ社', ['管理者を指名', '停止の理由を変える', '再開する']],
+        ['とき運送', ['管理者を指名', '停止の理由を変える', '再開する']],
       ] as const) {
         const row = page.locator('.table tbody tr').filter({ hasText: name });
         const nameBox = (await row.locator('td.is-name').boundingBox())!;
@@ -314,7 +312,7 @@ test.describe('運用者', () => {
   test('組織が無いときは、作る案内を出す', async ({ page }) => {
     await mockList(page, []);
     await page.goto('/operator');
-    await expect(page.getByText('冒険者ギルドがまだありません')).toBeVisible();
+    await expect(page.getByText('組織がまだありません')).toBeVisible();
     await expect(page.locator('.table')).toHaveCount(0);
   });
 
@@ -349,10 +347,10 @@ test.describe('運用者', () => {
 
     const collect = await watchViolations(page);
     await page.goto('/operator');
-    await page.getByRole('button', { name: '冒険者ギルドを作る' }).click();
+    await page.getByRole('button', { name: '組織を作る' }).click();
     // 完了の表示では題名が替わるので、名前では絞らない
     const dialog = page.getByRole('dialog');
-    await expect(dialog.getByRole('heading', { name: '冒険者ギルドを作る' })).toBeVisible();
+    await expect(dialog.getByRole('heading', { name: '組織を作る' })).toBeVisible();
 
     await dialog.getByLabel('URL の名前（slug）').fill('sakura-dev');
     await dialog.getByLabel('表示名').fill('さくら開発');
@@ -381,8 +379,8 @@ test.describe('運用者', () => {
 
     await submit.click();
     // 完了の表示: 組織の URL とコピー、伝えること
-    await expect(dialog.getByRole('heading', { name: '冒険者ギルドを作りました' })).toBeVisible();
-    await expect(dialog.getByLabel('冒険者ギルドの URL')).toHaveValue(/\/sakura-dev\/$/);
+    await expect(dialog.getByRole('heading', { name: '組織を作りました' })).toBeVisible();
+    await expect(dialog.getByLabel('組織の URL')).toHaveValue(/\/sakura-dev\/$/);
     await expect(dialog.getByRole('button', { name: 'コピー' })).toBeVisible();
     await expect(dialog.getByText('GitHub の kotone-dev でログインするよう伝えてください。')).toBeVisible();
     expect(created).toEqual({
@@ -397,13 +395,13 @@ test.describe('運用者', () => {
     // 一覧が読み直され、指名した人のログイン待ちの印が付く
     const row = page.locator('.table tbody tr').filter({ hasText: 'さくら開発' });
     await expect(row).toContainText('sakura-dev');
-    await expect(row.locator('.chip.is-warn')).toHaveText('ギルドマスターは指名済み、ログイン待ち');
+    await expect(row.locator('.chip.is-warn')).toHaveText('管理者は指名済み、ログイン待ち');
   });
 
   test('組織のアカウントや、いないユーザー名は、理由を出して確かめた結果にしない', async ({ page }) => {
     await mockList(page, []);
     await page.goto('/operator');
-    await page.getByRole('button', { name: '冒険者ギルドを作る' }).click();
+    await page.getByRole('button', { name: '組織を作る' }).click();
     const dialog = page.getByRole('dialog');
 
     await mockGithubUser(page, invalidInput('username', 'github_not_a_user'));
@@ -431,7 +429,7 @@ test.describe('運用者', () => {
       avatar_url: null,
     });
     await page.goto('/operator');
-    await page.getByRole('button', { name: '冒険者ギルドを作る' }).click();
+    await page.getByRole('button', { name: '組織を作る' }).click();
     const dialog = page.getByRole('dialog');
     await dialog.getByLabel('表示名').fill('工房');
     await dialog.getByLabel('GitHub のユーザー名').fill('rin-dev');
@@ -459,7 +457,7 @@ test.describe('運用者', () => {
       route.fulfill({ status: 409, json: { error: { code: 'conflict', message: 'x' } } }),
     );
     await page.goto('/operator');
-    await page.getByRole('button', { name: '冒険者ギルドを作る' }).click();
+    await page.getByRole('button', { name: '組織を作る' }).click();
     const dialog = page.getByRole('dialog');
     await dialog.getByLabel('URL の名前（slug）').fill('aoba');
     await dialog.getByLabel('表示名').fill('工房');
@@ -479,7 +477,7 @@ test.describe('運用者', () => {
       await route.fulfill({ json: TOKYO_USER });
     });
     await page.goto('/operator');
-    await page.getByRole('button', { name: '冒険者ギルドを作る' }).click();
+    await page.getByRole('button', { name: '組織を作る' }).click();
     const dialog = page.getByRole('dialog');
     await dialog.getByLabel('URL の名前（slug）').fill('sakura-dev');
     await dialog.getByLabel('表示名').fill('工房');
@@ -504,7 +502,7 @@ test.describe('運用者', () => {
       await route.fulfill({ json: TOKYO_USER });
     });
     await page.goto('/operator');
-    const open = page.getByRole('button', { name: '冒険者ギルドを作る' });
+    const open = page.getByRole('button', { name: '組織を作る' });
     await open.click();
     const dialog = page.getByRole('dialog');
     await dialog.getByLabel('GitHub のユーザー名').fill('alice');
@@ -531,7 +529,7 @@ test.describe('運用者', () => {
       await route.fulfill({ json: { slug: 'sakura-dev', name: '工房', admin_login_name: 'alice-dev' } });
     });
     await page.goto('/operator');
-    await page.getByRole('button', { name: '冒険者ギルドを作る' }).click();
+    await page.getByRole('button', { name: '組織を作る' }).click();
     const dialog = page.getByRole('dialog');
     await dialog.getByLabel('URL の名前（slug）').fill('sakura-dev');
     await dialog.getByLabel('表示名').fill('工房');
@@ -558,7 +556,7 @@ test.describe('運用者', () => {
     await expect(dialog).toBeVisible();
 
     await settleAfterResponse(page, 'create-organization', pending.release);
-    await expect(dialog.getByRole('heading', { name: '冒険者ギルドを作りました' })).toBeVisible();
+    await expect(dialog.getByRole('heading', { name: '組織を作りました' })).toBeVisible();
     await expect(dialog.getByRole('status')).toHaveText('作りました');
     // フォーカスは完了の表示の本文に移る
     await expect(dialog.locator('p[tabindex="-1"]')).toBeFocused();
@@ -566,9 +564,9 @@ test.describe('運用者', () => {
 
   // 管理者がダイアログで確かめた人だとは限らないので、作られていた組織の表示は、人の名前を出さず、一覧の状態だけを出す
   for (const [status, text] of [
-    ['active', 'ギルドマスターは、もうログインしています。'],
-    ['pending', '指名されたギルドマスターは、まだログインしていません。'],
-    ['none', '最初のギルドマスターが書かれていません'],
+    ['active', '管理者は、もうログインしています。'],
+    ['pending', '指名された管理者は、まだログインしていません。'],
+    ['none', '最初の管理者が書かれていません'],
   ] as const) {
     test(`作れたか分からない失敗の後は一覧を読み直し、同じ slug の組織（管理者の状態 ${status}）があれば、ダイアログの中で示し、URL と状態だけの表示へ移せる`, async ({
       page,
@@ -593,7 +591,7 @@ test.describe('運用者', () => {
       return route.fulfill({ status: 502, body: 'bad gateway', contentType: 'text/plain' });
     });
     await page.goto('/operator');
-    await page.getByRole('button', { name: '冒険者ギルドを作る' }).click();
+    await page.getByRole('button', { name: '組織を作る' }).click();
     const dialog = page.getByRole('dialog');
     await dialog.getByLabel('URL の名前（slug）').fill('sakura-dev');
     await dialog.getByLabel('表示名').fill('工房');
@@ -601,15 +599,15 @@ test.describe('運用者', () => {
     await dialog.getByRole('button', { name: '確かめる' }).click();
     await dialog.getByRole('button', { name: '作る', exact: true }).click();
 
-    await expect(dialog.getByText('「sakura-dev」の冒険者ギルドはもう作られています。名前も入力と同じ')).toBeVisible();
+    await expect(dialog.getByText('「sakura-dev」の組織はもう作られています。名前も入力と同じ')).toBeVisible();
     await expect(dialog.getByRole('alert')).toContainText('このダイアログを閉じると入力は消えます');
     // 失敗の枠にフォーカスが移っている
     await expect(dialog.locator('.callout.is-danger')).toBeFocused();
 
-    await dialog.getByRole('button', { name: '作られた冒険者ギルドの URL を見る' }).click();
-    await expect(dialog.getByRole('heading', { name: '冒険者ギルドはもう作られています' })).toBeVisible();
-    await expect(dialog.getByLabel('冒険者ギルドの URL')).toHaveValue(/\/sakura-dev\/$/);
-    await expect(dialog.getByRole('status')).toHaveText('作られていた冒険者ギルドを見ています');
+    await dialog.getByRole('button', { name: '作られた組織の URL を見る' }).click();
+    await expect(dialog.getByRole('heading', { name: '組織はもう作られています' })).toBeVisible();
+    await expect(dialog.getByLabel('組織の URL')).toHaveValue(/\/sakura-dev\/$/);
+    await expect(dialog.getByRole('status')).toHaveText('作られていた組織を見ています');
     await expect(dialog.getByText(text)).toBeVisible();
     // 確かめた人（alice-dev）の名前で、ログインするよう伝えない
     await expect(dialog.getByText('でログインするよう伝えてください')).toHaveCount(0);
@@ -625,7 +623,7 @@ test.describe('運用者', () => {
       route.fulfill({ status: 409, json: { error: { code: 'conflict', message: 'x' } } }),
     );
     await page.goto('/operator');
-    await page.getByRole('button', { name: '冒険者ギルドを作る' }).click();
+    await page.getByRole('button', { name: '組織を作る' }).click();
     const dialog = page.getByRole('dialog');
     await dialog.getByLabel('URL の名前（slug）').fill('sakura-dev');
     await dialog.getByLabel('表示名').fill('工房');
@@ -633,8 +631,8 @@ test.describe('運用者', () => {
     await dialog.getByRole('button', { name: '確かめる' }).click();
     await dialog.getByRole('button', { name: '作る', exact: true }).click();
     await expect(dialog.getByText('名前が入力と違うので')).toBeVisible();
-    await expect(dialog.getByText('最初のギルドマスターが書かれていません')).toBeVisible();
-    await expect(dialog.getByRole('button', { name: '作られた冒険者ギルドの URL を見る' })).toHaveCount(0);
+    await expect(dialog.getByText('最初の管理者が書かれていません')).toBeVisible();
+    await expect(dialog.getByRole('button', { name: '作られた組織の URL を見る' })).toHaveCount(0);
     // slug の欄にフォーカスが移っている
     await expect(dialog.getByLabel('URL の名前（slug）')).toBeFocused();
   });
@@ -647,7 +645,7 @@ test.describe('運用者', () => {
       await route.fulfill({ json: TOKYO_USER });
     });
     await page.goto('/operator');
-    await page.getByRole('button', { name: '冒険者ギルドを作る' }).click();
+    await page.getByRole('button', { name: '組織を作る' }).click();
     const dialog = page.getByRole('dialog');
     const status = dialog.getByRole('status');
     await expect(status).toHaveText('');
@@ -672,18 +670,18 @@ test.describe('運用者', () => {
       route.fulfill({ json: { slug: 'sakura-dev', name: '工房', admin_login_name: 'alice-dev' } }),
     );
     await page.goto('/operator');
-    await page.getByRole('button', { name: '冒険者ギルドを作る' }).click();
+    await page.getByRole('button', { name: '組織を作る' }).click();
     const dialog = page.getByRole('dialog');
     await dialog.getByLabel('URL の名前（slug）').fill('sakura-dev');
     await dialog.getByLabel('表示名').fill('工房');
     await dialog.getByLabel('GitHub のユーザー名').fill('alice');
     await dialog.getByRole('button', { name: '確かめる' }).click();
     await dialog.getByRole('button', { name: '作る', exact: true }).click();
-    await expect(dialog.getByLabel('冒険者ギルドの URL')).toHaveValue(/\/sakura-dev\/$/);
+    await expect(dialog.getByLabel('組織の URL')).toHaveValue(/\/sakura-dev\/$/);
     // 一覧の読み直しは失敗して、画面の裏は読み込みの失敗になるが、ダイアログは残る
     await expect.poll(() => reads).toBeGreaterThan(1);
     await expect(page.locator('.gate-title')).toHaveText('読み込めませんでした');
-    await expect(dialog.getByLabel('冒険者ギルドの URL')).toHaveValue(/\/sakura-dev\/$/);
+    await expect(dialog.getByLabel('組織の URL')).toHaveValue(/\/sakura-dev\/$/);
     await expect(dialog.getByText('GitHub の alice-dev でログインするよう伝えてください。')).toBeVisible();
   });
 
@@ -691,7 +689,7 @@ test.describe('運用者', () => {
     await mockList(page, []);
     await mockGithubUser(page, TOKYO_USER);
     await page.goto('/operator');
-    await page.getByRole('button', { name: '冒険者ギルドを作る' }).click();
+    await page.getByRole('button', { name: '組織を作る' }).click();
     const dialog = page.getByRole('dialog');
     await dialog.getByLabel('URL の名前（slug）').fill('sakura-dev');
     await dialog.getByLabel('表示名').fill('工房');
@@ -727,14 +725,14 @@ test.describe('運用者', () => {
       route.fulfill({ status: 409, json: { error: { code: 'conflict', message: 'x' } } }),
     );
     await submit.click();
-    await expect(dialog.getByRole('alert')).toContainText('今作った冒険者ギルドかもしれない');
+    await expect(dialog.getByRole('alert')).toContainText('今作った組織かもしれない');
   });
 
   test('入力欄の長さの上限と、誤りのある欄へのフォーカス、読み上げとの結び付き', async ({ page }) => {
     await mockList(page, []);
     await mockGithubUser(page, { status: 400, json: invalidInput('username', 'github_user_not_found').json });
     await page.goto('/operator');
-    await page.getByRole('button', { name: '冒険者ギルドを作る' }).click();
+    await page.getByRole('button', { name: '組織を作る' }).click();
     const dialog = page.getByRole('dialog');
     const slug = dialog.getByLabel('URL の名前（slug）');
     await slug.fill('a'.repeat(60));
@@ -782,7 +780,7 @@ test.describe('運用者', () => {
     await mockGithubUser(page, { status: 400, json: invalidInput('username', 'github_not_a_user').json });
     await page.setViewportSize({ width: 360, height: 800 });
     await page.goto('/operator');
-    await page.getByRole('button', { name: '冒険者ギルドを作る' }).click();
+    await page.getByRole('button', { name: '組織を作る' }).click();
     const dialog = page.getByRole('dialog');
     await dialog.getByLabel('GitHub のユーザー名').fill('github');
     await dialog.getByRole('button', { name: '確かめる' }).click();
@@ -800,7 +798,7 @@ test.describe('運用者', () => {
   test('Google を選ぶと、メールアドレスの欄が出る。確かめる手順は無く、入れると作れる', async ({ page }) => {
     await mockList(page, []);
     await page.goto('/operator');
-    await page.getByRole('button', { name: '冒険者ギルドを作る' }).click();
+    await page.getByRole('button', { name: '組織を作る' }).click();
     const dialog = page.getByRole('dialog');
     await dialog.getByRole('radio', { name: 'Google' }).check();
     await expect(dialog.getByLabel('Google のメールアドレス')).toBeVisible();
@@ -832,7 +830,7 @@ test.describe('運用者', () => {
     });
     const collect = await watchViolations(page);
     await page.goto('/operator');
-    await page.getByRole('button', { name: '冒険者ギルドを作る' }).click();
+    await page.getByRole('button', { name: '組織を作る' }).click();
     const dialog = page.getByRole('dialog');
     await dialog.getByLabel('URL の名前（slug）').fill('sakura-dev');
     await dialog.getByLabel('表示名').fill('さくら開発');
@@ -840,7 +838,7 @@ test.describe('運用者', () => {
     await dialog.getByLabel('Google のメールアドレス').fill(' Mio.Hoshino@Example.com ');
     await dialog.getByRole('button', { name: '作る', exact: true }).click();
 
-    await expect(dialog.getByRole('heading', { name: '冒険者ギルドを作りました' })).toBeVisible();
+    await expect(dialog.getByRole('heading', { name: '組織を作りました' })).toBeVisible();
     await expect(dialog.getByLabel('招待の URL')).toHaveValue(inviteUrl);
     await expect(dialog.getByRole('button', { name: 'コピー' })).toBeVisible();
     await expect(
@@ -852,9 +850,7 @@ test.describe('運用者', () => {
     await expect(dialog.getByText('この画面を閉じると二度と出せません')).toBeVisible();
     await expect(dialog.getByText('期限までに本人へ伝えてください')).toBeVisible();
     // 招待の URL を失ったときと期限が切れたときは、指名し直すと新しい URL が出ることを添える
-    await expect(
-      dialog.getByText('一覧の「ギルドマスターを指名」から指名し直すと、新しい招待の URL が出ます'),
-    ).toBeVisible();
+    await expect(dialog.getByText('一覧の「管理者を指名」から指名し直すと、新しい招待の URL が出ます')).toBeVisible();
     await expect(dialog.getByText('期限は14日（2026/11/09 09:00 まで）')).toBeVisible();
     // メールアドレスは前後の空白を除いて送る（大文字小文字はサーバーがそろえる）
     expect(created).toEqual({
@@ -867,13 +863,13 @@ test.describe('運用者', () => {
     await dialog.locator('.dialog-foot').getByRole('button', { name: '閉じる' }).click();
     await expect(dialog).toBeHidden();
     // 開き直しても、招待の URL は二度と出ない
-    await page.getByRole('button', { name: '冒険者ギルドを作る' }).click();
+    await page.getByRole('button', { name: '組織を作る' }).click();
     await expect(page.getByRole('dialog').getByLabel('招待の URL')).toHaveCount(0);
     await expect(page.locator('body')).not.toContainText('Qm7tX2vLr9aKpE4wZc8hN3bYd6fGs1uJ0oTiRl5eWxA');
     await page.getByRole('dialog').locator('.dialog-foot').getByRole('button', { name: 'やめる' }).click();
     // 一覧には、指名済み、ログイン待ちの印が付く
     const row = page.locator('.table tbody tr').filter({ hasText: 'さくら開発' });
-    await expect(row.locator('.chip.is-warn')).toHaveText('ギルドマスターは指名済み、ログイン待ち');
+    await expect(row.locator('.chip.is-warn')).toHaveText('管理者は指名済み、ログイン待ち');
   });
 
   test('メールアドレスの形が合わないという応答は、メールアドレスの欄の下で知らせる', async ({ page }) => {
@@ -882,7 +878,7 @@ test.describe('運用者', () => {
       route.fulfill(invalidInput('admin.email', 'email_invalid')),
     );
     await page.goto('/operator');
-    await page.getByRole('button', { name: '冒険者ギルドを作る' }).click();
+    await page.getByRole('button', { name: '組織を作る' }).click();
     const dialog = page.getByRole('dialog');
     await dialog.getByLabel('URL の名前（slug）').fill('sakura-dev');
     await dialog.getByLabel('表示名').fill('さくら開発');
@@ -897,7 +893,7 @@ test.describe('運用者', () => {
     await mockList(page, [organization({ slug: 'kamome', name: 'かもめ社', admin_status: 'expired' })]);
     await page.goto('/operator');
     await expect(page.locator('.table tbody tr').filter({ hasText: 'かもめ社' }).locator('.chip.is-danger')).toHaveText(
-      'ギルドマスターの招待の URL は期限切れ',
+      '管理者の招待の URL は期限切れ',
     );
   });
 
@@ -926,7 +922,7 @@ test.describe('運用者', () => {
     await button.click();
 
     // 危険の色の確認。理由は既定が「一時的に止める」。取り消せば何も送らない
-    const dialog = page.getByRole('dialog', { name: '冒険者ギルドを停止する' });
+    const dialog = page.getByRole('dialog', { name: '組織を停止する' });
     await expect(page.locator('.dialog-sheet.is-danger')).toBeVisible();
     await expect(dialog).toContainText('「ひばり工房」を停止します');
     await expect(dialog).not.toContainText('{');
@@ -946,7 +942,7 @@ test.describe('運用者', () => {
     await expect(row.locator('.chip.is-warn')).toHaveText('停止 2026-10-26');
     await expect(row.locator('.chip.is-danger')).toHaveText('2026-11-25 に消す');
     await expect(row.locator('td.is-actions').getByRole('button')).toHaveText([
-      'ギルドマスターを指名',
+      '管理者を指名',
       '停止の理由を変える',
       '再開する',
     ]);
@@ -980,7 +976,7 @@ test.describe('運用者', () => {
     expect(sent).toEqual({ slug: 'hibari' });
     await expect(page.getByRole('status').filter({ hasText: '「ひばり工房」を再開しました' })).toBeVisible();
     await expect(row.locator('.chip')).toHaveCount(0);
-    await expect(row.locator('td.is-actions').getByRole('button')).toHaveText(['ギルドマスターを指名', '停止する']);
+    await expect(row.locator('td.is-actions').getByRole('button')).toHaveText(['管理者を指名', '停止する']);
   });
 
   test('再開を送っている間は、送っている行のボタンの文字が「再開しています」になり、押しても二重に送らない', async ({
@@ -1015,7 +1011,7 @@ test.describe('運用者', () => {
     await expect(page.getByRole('dialog')).toHaveCount(0);
 
     await settleAfterResponse(page, 'organization-resume', () => gate.release());
-    await expect(row.locator('td.is-actions').getByRole('button')).toHaveText(['ギルドマスターを指名', '停止する']);
+    await expect(row.locator('td.is-actions').getByRole('button')).toHaveText(['管理者を指名', '停止する']);
     expect(requests).toBe(1);
   });
 
@@ -1106,12 +1102,12 @@ test.describe('運用者', () => {
     // 管理者の指名し直しも出さない（サーバーが purge_due で断る）
     await expect(actions.getByRole('button')).toHaveCount(0);
     await expect(actions.locator('.props-note')).toHaveText(
-      '消す予定日を過ぎたので、再開も停止の理由の切り替えもギルドマスターの指名もできません',
+      '消す予定日を過ぎたので、再開も停止の理由の切り替えも管理者の指名もできません',
     );
     // 予定日を過ぎていない解約の組織は、今どおり両方を出す
     await expect(
       page.locator('.table tbody tr', { hasText: 'なぎ設計' }).locator('td.is-actions').getByRole('button'),
-    ).toHaveText(['ギルドマスターを指名', '停止の理由を変える', '再開する']);
+    ).toHaveText(['管理者を指名', '停止の理由を変える', '再開する']);
     expect(await collect()).toEqual([]);
   });
 
@@ -1247,7 +1243,7 @@ test.describe('運用者', () => {
     const nagi = page.locator('.table tbody tr', { hasText: 'なぎ設計' }).locator('td.is-actions');
     await expect(nagi.getByRole('button')).toHaveCount(0);
     await expect(nagi.locator('.props-note')).toHaveText(
-      '消す予定日を過ぎたので、再開も停止の理由の切り替えもギルドマスターの指名もできません',
+      '消す予定日を過ぎたので、再開も停止の理由の切り替えも管理者の指名もできません',
     );
     await expect(nagi.locator('.props-note')).toBeFocused();
   });
@@ -1271,8 +1267,8 @@ test.describe('運用者', () => {
       return route.fulfill({ status: 409, json: { error: { code: 'purge_due', message: 'x' } } });
     });
     await page.goto('/operator');
-    await page.getByRole('button', { name: '「きり製作所」のギルドマスターを指名' }).click();
-    const dialog = page.getByRole('dialog', { name: 'ギルドマスターを指名し直す' });
+    await page.getByRole('button', { name: '「きり製作所」の管理者を指名' }).click();
+    const dialog = page.getByRole('dialog', { name: '管理者を指名し直す' });
     await dialog.getByRole('radio', { name: 'Google' }).check();
     await dialog.getByLabel('Google のメールアドレス').fill('kai.tsukishiro@example.com');
     await dialog.getByRole('button', { name: '指名する', exact: true }).click();
@@ -1280,9 +1276,7 @@ test.describe('運用者', () => {
     await expect(dialog).toBeHidden();
     expect(sent).toEqual({ slug: 'kiri', admin: { provider: 'google', email: 'kai.tsukishiro@example.com' } });
     await expect(
-      page
-        .getByRole('status')
-        .filter({ hasText: '「きり製作所」は消す予定日を過ぎたので、ギルドマスターを指名できません' }),
+      page.getByRole('status').filter({ hasText: '「きり製作所」は消す予定日を過ぎたので、管理者を指名できません' }),
     ).toBeVisible();
     const kiri = page.locator('.table tbody tr', { hasText: 'きり製作所' }).locator('td.is-actions');
     await expect(kiri.getByRole('button')).toHaveCount(0);
@@ -1320,7 +1314,7 @@ test.describe('運用者', () => {
     });
     await page.goto('/operator');
     await page.getByRole('button', { name: '「あおば開発」を停止する' }).click();
-    const dialog = page.getByRole('dialog', { name: '冒険者ギルドを停止する' });
+    const dialog = page.getByRole('dialog', { name: '組織を停止する' });
     await dialog.getByRole('button', { name: '「あおば開発」を停止する' }).click();
 
     const submitting = dialog.getByRole('button', { name: '停止しています' });
@@ -1362,7 +1356,7 @@ test.describe('運用者', () => {
     await expect(page.getByRole('status').filter({ hasText: '「ひばり工房」の状態が変わっていました' })).toBeVisible();
     await expect(
       page.locator('.table tbody tr', { hasText: 'ひばり工房' }).locator('td.is-actions').getByRole('button'),
-    ).toHaveText(['ギルドマスターを指名', '停止する']);
+    ).toHaveText(['管理者を指名', '停止する']);
   });
 
   test('停止の通信や 5xx の失敗は、ダイアログを開いたまま中に理由を出し、見つからない（404）はトーストで知らせて閉じる', async ({
@@ -1378,9 +1372,9 @@ test.describe('運用者', () => {
     );
     await page.goto('/operator');
     await page.getByRole('button', { name: '「あおば開発」を停止する' }).click();
-    const dialog = page.getByRole('dialog', { name: '冒険者ギルドを停止する' });
+    const dialog = page.getByRole('dialog', { name: '組織を停止する' });
     await dialog.getByRole('button', { name: '「あおば開発」を停止する' }).click();
-    await expect(dialog.getByRole('alert')).toHaveText('冒険者ギルドを停止できませんでした。もう一度試してください。');
+    await expect(dialog.getByRole('alert')).toHaveText('組織を停止できませんでした。もう一度試してください。');
     await expect(dialog).toBeVisible();
 
     status = 404;
@@ -1425,7 +1419,7 @@ test.describe('運用者', () => {
       await expect(dialog).not.toContainText('合計');
       await expect(dialog).not.toContainText('80%');
       await expect(dialog.getByRole('radio')).toHaveCount(3);
-      const small = dialog.getByRole('radio', { name: /小さい冒険者ギルド/ });
+      const small = dialog.getByRole('radio', { name: /小さい組織/ });
       await expect(small).toBeChecked();
       await expect(small).toBeFocused();
       await expect(dialog.getByText('15 人・30')).toBeVisible();
@@ -1648,7 +1642,7 @@ test.describe('運用者', () => {
       // 通信の切れも同じ文
       status = 0;
       await open.click();
-      await dialog.getByRole('radio', { name: /小さい冒険者ギルド/ }).check();
+      await dialog.getByRole('radio', { name: /小さい組織/ }).check();
       await dialog.getByRole('button', { name: '変える' }).click();
       await expect(dialog.getByRole('alert')).toHaveText(failedText);
 
@@ -1692,8 +1686,8 @@ test.describe('運用者', () => {
   // 管理者の指名し直し（organization-admin-reassign）。サーバーの処理は test/operator-admin-reassign.test.ts
   test.describe('管理者の指名し直し', () => {
     async function openReassign(page: Page, name: string) {
-      await page.getByRole('button', { name: `「${name}」のギルドマスターを指名` }).click();
-      await expect(page.getByRole('dialog', { name: 'ギルドマスターを指名し直す' })).toBeVisible();
+      await page.getByRole('button', { name: `「${name}」の管理者を指名` }).click();
+      await expect(page.getByRole('dialog', { name: '管理者を指名し直す' })).toBeVisible();
       // 指名した後は、同じダイアログの見出しが「指名しました」に替わる（開いているダイアログは1つ）
       return page.getByRole('dialog');
     }
@@ -1713,10 +1707,10 @@ test.describe('運用者', () => {
       const collect = await watchViolations(page);
       await page.goto('/operator');
       const row = page.locator('.table tbody tr', { hasText: 'ひばり工房' });
-      const trigger = row.getByRole('button', { name: '「ひばり工房」のギルドマスターを指名' });
+      const trigger = row.getByRole('button', { name: '「ひばり工房」の管理者を指名' });
       const dialog = await openReassign(page, 'ひばり工房');
       // 文は開いたときの管理者の状態で変える
-      await expect(dialog).toContainText('「ひばり工房」には今ギルドマスターがいません');
+      await expect(dialog).toContainText('「ひばり工房」には今管理者がいません');
       await expect(dialog).toContainText('まだログインしていない前の指名は取り消されます');
       await expect(dialog).toContainText('運用者の操作として残ります');
       await expect(dialog).not.toContainText('{');
@@ -1725,14 +1719,14 @@ test.describe('運用者', () => {
       await expect(submit).toBeDisabled();
       await dialog.getByLabel('GitHub のユーザー名').fill('alice');
       await dialog.getByRole('button', { name: '確かめる' }).click();
-      await expect(dialog.getByText('この人をギルドマスターにします')).toBeVisible();
+      await expect(dialog.getByText('この人を管理者にします')).toBeVisible();
       await expect(dialog.locator('.choice b.mono')).toHaveText('alice-dev');
       await submit.click();
 
-      await expect(dialog.getByRole('heading', { name: 'ギルドマスターを指名しました' })).toBeVisible();
+      await expect(dialog.getByRole('heading', { name: '管理者を指名しました' })).toBeVisible();
       await expect(dialog.getByRole('status')).toHaveText('指名しました');
       await expect(dialog.locator('p[tabindex="-1"]')).toBeFocused();
-      await expect(dialog.getByLabel('冒険者ギルドの URL')).toHaveValue(/\/hibari\/$/);
+      await expect(dialog.getByLabel('組織の URL')).toHaveValue(/\/hibari\/$/);
       await expect(dialog.getByText('GitHub の alice-dev でログインするよう伝えてください。')).toBeVisible();
       expect(sent).toEqual({
         slug: 'hibari',
@@ -1742,7 +1736,7 @@ test.describe('運用者', () => {
 
       await dialog.locator('.dialog-foot').getByRole('button', { name: '閉じる' }).click();
       await expect(dialog).toBeHidden();
-      await expect(row.locator('.chip.is-warn')).toHaveText('ギルドマスターは指名済み、ログイン待ち');
+      await expect(row.locator('.chip.is-warn')).toHaveText('管理者は指名済み、ログイン待ち');
       await expect(row.locator('.chip.is-danger')).toHaveCount(0);
       await expectFocusReturned(page, trigger);
     });
@@ -1779,7 +1773,7 @@ test.describe('運用者', () => {
       const row = page.locator('.table tbody tr', { hasText: 'かもめ社' });
       // 停止中の組織にも指名できる
       const dialog = await openReassign(page, 'かもめ社');
-      await expect(dialog).toContainText('「かもめ社」のギルドマスターの招待の URL は、期限が切れています');
+      await expect(dialog).toContainText('「かもめ社」の管理者の招待の URL は、期限が切れています');
       await dialog.getByRole('radio', { name: 'Google' }).check();
       await expect(dialog.getByRole('button', { name: '確かめる' })).toHaveCount(0);
       const submit = dialog.getByRole('button', { name: '指名する', exact: true });
@@ -1787,7 +1781,7 @@ test.describe('運用者', () => {
       await dialog.getByLabel('Google のメールアドレス').fill(' Nagi.Kurose@Example.com ');
       await submit.click();
 
-      await expect(dialog.getByRole('heading', { name: 'ギルドマスターを指名しました' })).toBeVisible();
+      await expect(dialog.getByRole('heading', { name: '管理者を指名しました' })).toBeVisible();
       await expect(dialog.getByLabel('招待の URL')).toHaveValue(inviteUrl);
       await expect(dialog.locator('b.mono.wrap-anywhere')).toHaveText('nagi.kurose@example.com');
       await expect(dialog.getByText('期限は14日（2026/11/09 09:00 まで）')).toBeVisible();
@@ -1800,12 +1794,10 @@ test.describe('運用者', () => {
 
       await dialog.locator('.dialog-foot').getByRole('button', { name: '閉じる' }).click();
       await expect(dialog).toBeHidden();
-      await expect(row.locator('.chip', { hasText: 'ギルドマスター' })).toHaveText(
-        'ギルドマスターは指名済み、ログイン待ち',
-      );
+      await expect(row.locator('.chip', { hasText: '管理者' })).toHaveText('管理者は指名済み、ログイン待ち');
       // 開き直しても、招待の URL は二度と出ない。文は今の状態（ログイン待ち）に変わる
       const again = await openReassign(page, 'かもめ社');
-      await expect(again).toContainText('「かもめ社」のギルドマスターは指名済みで、まだログインしていません');
+      await expect(again).toContainText('「かもめ社」の管理者は指名済みで、まだログインしていません');
       await expect(again.getByLabel('招待の URL')).toHaveCount(0);
       await expect(page.locator('body')).not.toContainText('Zx8tY2vLr9aKpE4wQc8hN3bYd6fGs1uJ0oTiRl5eWmB');
     });
@@ -1827,8 +1819,8 @@ test.describe('運用者', () => {
       await expect(page.locator('.table tbody tr')).toHaveCount(1);
       const before = lists;
       const dialog = await openReassign(page, 'あおば開発');
-      await expect(dialog).toContainText('「あおば開発」には、ログインしたギルドマスターがいます');
-      await expect(dialog).toContainText('今のギルドマスターは外れません');
+      await expect(dialog).toContainText('「あおば開発」には、ログインした管理者がいます');
+      await expect(dialog).toContainText('今の管理者は外れません');
       await dialog.getByRole('button', { name: 'やめる' }).click();
       await expect(dialog).toBeHidden();
       expect(sent).toBe(false);
@@ -1859,14 +1851,10 @@ test.describe('運用者', () => {
       const cases: [Reply, string, boolean][] = [
         [
           { status: 409, json: { error: { code: 'conflict', message: 'x' } } },
-          '指名している間に、この冒険者ギルドの人の状態が変わりました',
+          '指名している間に、この組織の人の状態が変わりました',
           true,
         ],
-        [
-          { status: 404, json: { error: { code: 'not_found', message: 'x' } } },
-          'この冒険者ギルドが見つかりません',
-          false,
-        ],
+        [{ status: 404, json: { error: { code: 'not_found', message: 'x' } } }, 'この組織が見つかりません', false],
         [{ status: 503, json: { error: { code: 'unavailable', message: 'x' } } }, 'GitHub に届きませんでした', false],
         // 書く前に断られた 4xx（回数の上限など）は、何も書かれていないと伝え、読み直さない
         [{ status: 429, json: { error: { code: 'rate_limited', message: 'x' } } }, '何も書かれていません', false],
@@ -1938,7 +1926,7 @@ test.describe('運用者', () => {
       await expect(dialog).toBeVisible();
 
       await settleAfterResponse(page, 'organization-admin-reassign', () => gate.release());
-      await expect(dialog.getByRole('heading', { name: 'ギルドマスターを指名しました' })).toBeVisible();
+      await expect(dialog.getByRole('heading', { name: '管理者を指名しました' })).toBeVisible();
       expect(requests).toBe(1);
     });
 
@@ -1967,9 +1955,7 @@ test.describe('運用者', () => {
       reply = { status: 404, json: { error: { code: 'not_found', message: 'x' } } };
       await dialog.getByRole('button', { name: '確かめる' }).click();
       await submit.click();
-      await expect(dialog.locator('.callout.is-danger[role="alert"]')).toContainText(
-        'この冒険者ギルドが見つかりません',
-      );
+      await expect(dialog.locator('.callout.is-danger[role="alert"]')).toContainText('この組織が見つかりません');
       const before = lists;
       await dialog.getByRole('button', { name: 'やめる' }).click();
       await expect(dialog).toBeHidden();
@@ -1995,8 +1981,8 @@ test.describe('運用者', () => {
       await page.setViewportSize({ width: 390, height: 844 });
       await mockList(page, [organization({ name: 'とても長い名前の組織'.repeat(6), admin_status: 'expired' })]);
       await page.goto('/operator');
-      await page.getByRole('button', { name: /のギルドマスターを指名/ }).click();
-      const dialog = page.getByRole('dialog', { name: 'ギルドマスターを指名し直す' });
+      await page.getByRole('button', { name: /の管理者を指名/ }).click();
+      const dialog = page.getByRole('dialog', { name: '管理者を指名し直す' });
       await expect(dialog).toBeVisible();
       const lead = dialog.locator('p.wrap-anywhere');
       expect(await lead.evaluate((el) => el.scrollWidth - el.clientWidth)).toBeLessThanOrEqual(0);
