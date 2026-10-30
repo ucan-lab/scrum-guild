@@ -133,7 +133,7 @@
       <p class="field-hint" role="status">{t('loading')}</p>
     {:else if candidatesFailed}
       <p class="field-error"><Icon name="alert" />{t('thanksCandidatesFailed')}</p>
-      <button class="link-btn" type="button" onclick={retry}>{t('retry')}</button>
+      <button class="link-btn" type="button" onclick={retry}>{t('thanksCandidatesRetry')}</button>
     {:else if recipients.length === 0}
       <p class="field-hint">{t('thanksCandidatesEmpty')}</p>
     {/if}

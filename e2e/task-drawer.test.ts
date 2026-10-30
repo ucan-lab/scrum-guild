@@ -1035,21 +1035,18 @@ test('長い本文（順序付きリスト、チェックリスト、表）を�
 
 test('担当が感謝を送り、別のメンバーが一覧を見て、送った本人が取り消す', async ({ page, context, baseURL }) => {
   const collect = await watchViolations(page);
-  // 今のメンバーが複数いる seed のワークスペースで、このテスト専用のタスクを作る。
-  await page.goto('/aoba/w/019a0000-0000-7000-8000-000000000401');
-  const title = '感謝の送付と取消を確かめる';
-  await addTask(page, title);
-  let drawer = await openDrawer(page, title);
-  const assigned = waitForResponses(page, '/task-assign');
-  await drawer.getByLabel('担い手').selectOption({ label: 'ミナト' });
-  await drawer.getByLabel('担い手').blur();
-  await assigned;
-  await expect(drawer.getByLabel('担い手')).toHaveValue('019a0000-0000-7000-8000-000000000301');
+  // 今のメンバーが2人いる seed のあおば開発で、ミナトが担当のタスク（障害時の連絡手順を書く）を使う。
+  // seed のワークスペースでは task-create が使えない（完了済みの行の position が順序キーとして不正）ので、タスクは作らない。
+  // 最後に取り消して、ほかのテストと繰り返しの実行に感謝を残さない
+  const title = '障害時の連絡手順を書く';
+  await page.goto('/aoba/w/019a0000-0000-7000-8000-000000000401?task=019a0000-0000-7000-8000-000000000802');
+  let drawer = page.getByRole('dialog', { name: title });
   let thanks = drawer.getByRole('region', { name: '感謝', exact: true });
-  await expect(thanks.getByRole('button', { name: 'ミナト に送る', exact: true })).toHaveCount(0);
-  await thanks.getByRole('button', { name: 'ハルカ に送る', exact: true }).click();
+  await expect(thanks.getByText('まだ感謝は送られていません。', { exact: true })).toBeVisible();
+  await expect(thanks.getByRole('button', { name: 'ミナト に感謝する', exact: true })).toHaveCount(0);
+  await thanks.getByRole('button', { name: 'ハルカ に感謝する', exact: true }).click();
   await expect(thanks.getByText('ミナト から ハルカ に送った感謝', { exact: true })).toBeVisible();
-  await expect(thanks.getByRole('button', { name: 'ハルカ に送る', exact: true })).toHaveCount(0);
+  await expect(thanks.getByRole('button', { name: 'ハルカ に感謝する', exact: true })).toHaveCount(0);
   const url = page.url();
 
   await context.clearCookies();
@@ -1067,7 +1064,7 @@ test('担当が感謝を送り、別のメンバーが一覧を見て、送っ�
   thanks = drawer.getByRole('region', { name: '感謝', exact: true });
   await thanks.getByRole('button', { name: 'ハルカ への感謝を取り消す', exact: true }).click();
   await expect(thanks.getByText('まだ感謝は送られていません。', { exact: true })).toBeVisible();
-  await expect(thanks.getByRole('button', { name: 'ハルカ に送る', exact: true })).toBeVisible();
+  await expect(thanks.getByRole('button', { name: 'ハルカ に感謝する', exact: true })).toBeVisible();
   await drawer.getByRole('tab', { name: '変更の履歴' }).click();
   await expect(drawer.getByText('なし → ハルカ', { exact: true })).toBeVisible();
   await expect(drawer.getByText('ハルカ → なし', { exact: true })).toBeVisible();

@@ -53,9 +53,9 @@ test('送れる人には自分と送付済み以外への送付口、本人が�
   for (const vocabulary of ['game', 'scrum'] as const) {
     setVocabularies({ workspace: vocabulary });
     const { body } = render(TaskThanks, { props });
-    expect(body).toContain('次の相手 に送る');
-    expect(body).not.toContain('送り手 に送る');
-    expect(body).not.toContain('送付済みの人 に送る');
+    expect(body).toContain('次の相手 に感謝する');
+    expect(body).not.toContain('送り手 に感謝する');
+    expect(body).not.toContain('送付済みの人 に感謝する');
     expect(body).toContain('送付済みの人 への感謝を取り消す');
     expect(body).toContain('#i-heart');
   }
@@ -83,14 +83,14 @@ test('送れる人でも他人が送った感謝は取り消せない', () => {
   const { body } = render(TaskThanks, {
     props: { ...props, task: { ...task, thanks: task.thanks.map((thanks) => ({ ...thanks, can_revoke: false })) } },
   });
-  expect(body).toContain('次の相手 に送る');
+  expect(body).toContain('次の相手 に感謝する');
   expect(body).not.toContain('への感謝を取り消す');
 });
 
 test('担当が替わって送れなくなっても、送った本人には取消口だけを出す', () => {
   const { body } = render(TaskThanks, { props: { ...props, task: { ...task, can_send_thanks: false } } });
   expect(body).toContain('送付済みの人 への感謝を取り消す');
-  expect(body).not.toContain('次の相手 に送る');
+  expect(body).not.toContain('次の相手 に感謝する');
 });
 
 test('候補が無いときは送付ボタンの入れ物を出さない', () => {
@@ -104,5 +104,6 @@ test('空の一覧と候補の読み込み失敗を案内する', () => {
   });
   expect(body).toContain('まだ感謝は送られていません。');
   expect(body).toContain('感謝を送る相手を読み込めませんでした。');
-  expect(body).toContain('もう一度試す');
+  expect(body).toContain('相手を読み直す');
+  expect(body).not.toContain('もう一度試す');
 });
