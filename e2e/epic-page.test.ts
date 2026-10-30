@@ -283,13 +283,17 @@ test('ゲームの言葉: クリア報酬の段階を額つきのラジオで選
   await expect(dialog.getByRole('radio', { name: '大 · 600 XP' })).not.toBeChecked();
   const submit = dialog.getByRole('button', { name: '変える' });
   await expect(submit).toHaveAttribute('aria-disabled', 'true');
-  await expect(dialog.locator('.field-hint')).toHaveText('今の段階です。別の段階を選ぶと変えられます。');
+  // 説明は常に出し、今の段階のままのときだけ、押せない理由が別の文として加わる
+  await expect(dialog.locator('.field-hint')).toHaveText([
+    'クリア報酬は、クリアした時点の討伐隊全員に同じ額が入ります。',
+    '今の段階です。別の段階を選ぶと変えられます。',
+  ]);
 
   await dialog.getByRole('radio', { name: '大 · 600 XP' }).check();
   await expect(submit).not.toHaveAttribute('aria-disabled', 'true');
-  await expect(dialog.locator('.field-hint')).toHaveText(
+  await expect(dialog.locator('.field-hint')).toHaveText([
     'クリア報酬は、クリアした時点の討伐隊全員に同じ額が入ります。',
-  );
+  ]);
   await submit.click();
   await expect(dialog).toBeHidden();
   await expect(toast.last()).toHaveText('クリア報酬を「大」に変えました');
