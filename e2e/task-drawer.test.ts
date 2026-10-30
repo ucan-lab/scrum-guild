@@ -1066,7 +1066,8 @@ test('担当が感謝を送り、別のメンバーが一覧を見て、送っ�
   await expect(thanks.getByText('まだ感謝は送られていません。', { exact: true })).toBeVisible();
   await expect(thanks.getByRole('button', { name: 'ハルカ に感謝する', exact: true })).toBeVisible();
   await drawer.getByRole('tab', { name: '変更の履歴' }).click();
-  await expect(drawer.getByText('なし → ハルカ', { exact: true })).toBeVisible();
-  await expect(drawer.getByText('ハルカ → なし', { exact: true })).toBeVisible();
+  // 繰り返しの実行では、前の回の履歴の行も残るので、最初の1行を見る
+  await expect(drawer.getByText('なし → ハルカ', { exact: true }).first()).toBeVisible();
+  await expect(drawer.getByText('ハルカ → なし', { exact: true }).first()).toBeVisible();
   expect(await collect()).toEqual([]);
 });
