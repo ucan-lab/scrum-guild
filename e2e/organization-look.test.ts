@@ -3,7 +3,7 @@
 // 管理者はカイ（lookAdmin。テーマを選んでいない）、一般のユーザーはテーマを選んでいないソウタ（lookMember）と、
 // 自分のテーマ（シンプル（ダーク））を選んだコハル（lookThemed）。変えた値は、各テストの終わりに画面から元に戻す
 import type { Browser, Page } from '@playwright/test';
-import { expect, steadyScreenshots, test } from './fixtures.ts';
+import { expect, test } from './fixtures.ts';
 import type { SEED_SESSIONS } from '../seed/sessions.ts';
 import { signIn, waitForSettled, watchViolations } from './helpers.ts';
 
@@ -15,7 +15,6 @@ test.describe.configure({ mode: 'serial' });
 // くもラボの一般のユーザーとして、組織の画面を開き直して data-theme を読む
 async function themeOf(browser: Browser, baseURL: string | undefined, who: keyof typeof SEED_SESSIONS) {
   const context = await browser.newContext();
-  await steadyScreenshots(context);
   try {
     await signIn(context, baseURL, who);
     const page = await context.newPage();

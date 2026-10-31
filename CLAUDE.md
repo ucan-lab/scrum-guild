@@ -28,7 +28,7 @@ Node は `.node-version`（26）、pnpm は `package.json` の `packageManager` 
 - lint と整形: `pnpm lint`、`pnpm format:check`、直すときは `pnpm format`
 - build: `pnpm build`（`build/` に書き出し、`build/_headers` を作る）
 - フックのテスト: `node --test .claude/hooks/*.test.mjs`
-- e2e: Claude のセッション（手元でもクラウドでも）は手元で走らせない（`pnpm e2e`、`playwright test` はフックが止める）。PR の CI の `e2e`、`e2e-dev`、`e2e-repeat` が確かめ、落ちたらジョブのログと成果物の trace で直す（`docs/development.md` の「CI の e2e が落ちたとき」）。人が自分の端末で調べるときは `pnpm e2e`（build し直してサーバーを立て、手元の D1 を seed で入れ直してから Playwright で確かめる。手元の D1 の行は消える。初めは `pnpm exec playwright install chromium`）で、`pnpm e2e e2e/members.test.ts` のようにファイルを渡せる。サーバーの扱い、`--workers`、`expect` の待ち、`E2E_EVIDENCE=1` と `E2E_DEV_BUILD=1` は `docs/development.md` の「e2e のサーバー」「e2e の書き方」
+- e2e: Claude のセッション（手元でもクラウドでも）は手元で走らせない（`pnpm e2e`、`playwright test` はフックが止める）。PR の CI の `e2e`、`e2e-dev`、`e2e-repeat` が確かめ、落ちたらジョブのログと成果物の trace で直す（`docs/development.md` の「CI の e2e が落ちたとき」）。人が自分の端末で調べるときは `pnpm e2e`（build し直してサーバーを立て、手元の D1 を seed で入れ直してから Playwright で確かめる。手元の D1 の行は消える。初めは `pnpm exec playwright install chromium`）で、`pnpm e2e e2e/members.test.ts` のようにファイルを渡せる。サーバーの扱い、`--workers`、`expect` の待ち、`E2E_DEV_BUILD=1` は `docs/development.md` の「e2e のサーバー」「e2e の書き方」
 - 空の D1 に全マイグレーションを当て、seed を2回流して確かめる: `pnpm db:migrate:fresh`
 - バックログの木を 5 万件で測る: `pnpm bench:backlog`（使い捨ての D1 で `wrangler dev --local` を立てて測る。`docs/development.md` の「バックログの木を 5 万件で測る」）
 - 手元の D1 にマイグレーションを当て、全部の行を消して seed を入れ直す: `pnpm db:seed`（ログインに使うトークンは `seed/sessions.ts`）
