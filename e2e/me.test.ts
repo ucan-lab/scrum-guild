@@ -174,7 +174,7 @@ test.describe('自分の設定（ミナト）', () => {
     }
     await page.goto('/hibari/me');
     await expect(page.getByRole('heading', { level: 1, name: '自分の設定' })).toBeVisible();
-    await expect(page.getByText('今は経験値だけを見られます。')).toBeVisible();
+    await expect(page.getByText('今は経験値と API トークンだけを扱えます。')).toBeVisible();
     await expect(page.getByText('レベルを読み込めませんでした')).toBeVisible();
     await expect(page.getByText('経験値の明細を読み込めませんでした')).toBeVisible();
     const retrySummary = page.getByRole('button', { name: 'もう一度試す（レベル）' });
@@ -266,9 +266,10 @@ test.describe('自分の設定（ミナト）', () => {
       // 説明は表の上（.setting の見出しの列に入れない）
       await expect(page.locator('.setting')).toHaveCount(0);
       const sizes = await page.evaluate(() => {
-        const wrap = document.querySelector('.table-wrap')!;
+        const ledger = document.querySelector('table[aria-label="経験値の明細"]')!;
+        const wrap = ledger.closest('.table-wrap')!;
         const main = document.querySelector('.layout-main')!;
-        const content = document.querySelector('.table tbody td.is-name')!;
+        const content = ledger.querySelector('tbody td.is-name')!;
         return {
           overflow: wrap.scrollWidth - wrap.clientWidth,
           wrapWidth: wrap.getBoundingClientRect().width,
@@ -352,10 +353,11 @@ test.describe('自分の設定（ミナト）', () => {
     await expect(page.getByRole('table', { name: '経験値の明細' }).locator('tbody tr')).toHaveCount(1);
     const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
     expect(overflow).toBeLessThanOrEqual(0);
-    // 面と表の中身が、面と表の枠の外へはみ出さない
-    const inside = await page.evaluate(() =>
-      [...document.querySelectorAll('.panel, .table-wrap')].every((box) => box.scrollWidth <= box.clientWidth),
-    );
+    // 面と明細の表の中身が、面と表の枠の外へはみ出さない（API トークンの節の表は含めない。明細の表の枠に絞る）
+    const inside = await page.evaluate(() => {
+      const ledger = document.querySelector('table[aria-label="経験値の明細"]')!.closest('.table-wrap')!;
+      return [...document.querySelectorAll('.panel'), ledger].every((box) => box.scrollWidth <= box.clientWidth);
+    });
     expect(inside).toBe(true);
   });
 });

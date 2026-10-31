@@ -28,6 +28,7 @@ import {
 } from './organization-holiday.ts';
 import { organizationSettingsUpdateOperation } from './organization-settings.ts';
 import { logoutOperation, meOperation } from './session.ts';
+import { tokenCreateOperation, tokenListOperation, tokenRevokeOperation } from './token.ts';
 import { userAdminUpdateOperation, userDisableOperation, userEnableOperation, userListOperation } from './user.ts';
 import { planSummaryOperation } from './plan-summary.ts';
 import { sprintBoardOperation, taskColumnMoveOperation } from './sprint-board.ts';
@@ -116,6 +117,9 @@ export const implementedOperations: readonly ImplementedOperation[] = [
   userEnableOperation,
   meOperation,
   logoutOperation,
+  tokenCreateOperation,
+  tokenListOperation,
+  tokenRevokeOperation,
   epicCreateOperation,
   epicGetOperation,
   epicDetailOperation,
