@@ -189,7 +189,7 @@ export function defineOperationChecks(
         createTarget({ suspended: true }),
         getOperator().then(withNewSession),
       ]);
-      // 停止した組織にしか入れない人は、403 の前にセッションを消されて 401 になる。ほかの組織にも入れる人にして、403 を見る
+      // 停止した組織にしか入れない人も、403 の organization_suspended を受ける（セッションは消えない）。ほかの組織にも入れる人にして、403 を見る
       await Promise.all(
         [suspended.admin, suspended.leader, suspended.member, suspended.bystander, suspended.invitee].map(
           admitElsewhere,
@@ -344,7 +344,7 @@ export function defineOperationChecks(
         expect(await errorCodeOf(res)).toBe('organization_suspended');
       }
       // 入れない人。別の組織の管理者と、この組織で無効にされた管理者（ほかの組織には入れる）。
-      // どの組織にも入れない人は、ログインできる条件を失って 401 になるので、ほかの組織に入れる人で見る
+      // どの組織にも入れない人も、404 を受ける（セッションは消えない）。ここでは、ほかの組織に入れる人で見る
       const disabledAdmin = await admitElsewhere(
         await createPerson({ organization: suspended.organization, admin: true, disabled: true }),
       );

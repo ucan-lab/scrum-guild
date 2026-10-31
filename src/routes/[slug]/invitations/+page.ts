@@ -13,6 +13,6 @@ export const load: PageLoad = async ({ params, fetch, url, parent }) => {
   const { invitationInbox } = await parent();
   if (invitationInbox !== null) return { invitationPage: { list: invitationInbox } };
   const result = await callOperation(invitationList, {}, { slug: params.slug, fetcher: fetch });
-  if (isUnauthenticated(result)) redirect(307, loginUrl(url, result));
+  if (isUnauthenticated(result)) redirect(307, loginUrl(url));
   return { invitationPage: { list: result.ok ? result.data : null } };
 };

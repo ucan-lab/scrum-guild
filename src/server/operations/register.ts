@@ -1,6 +1,6 @@
 // 操作の一覧を Hono のルートに登録する1つの関数。順に行うこと（docs/development.md の「操作の定義」）:
 // 認証（Authorization: Bearer があれば API トークンの読み取り、無ければ Origin の検査とセッションの読み取り）→
-// 組織の確かめと権限の検査（ログインできる条件の確かめを含む）→ API トークンの範囲の検査 → 回数の上限 →
+// 組織の確かめと権限の検査 → API トークンの範囲の検査 → 回数の上限 →
 // 入力の検証 → ワークスペースの確かめと権限の検査 → 処理 → 出力の検証。
 // 入力に workspace_id がある操作では、ワークスペースの確かめは入力の検証の後になる。
 // 処理に渡す道具は、運用者の操作には運用者を確かめた後の運用者の道具、組織の中の操作には組織に入れた後の、その組織に結んだ組織の道具
@@ -13,9 +13,7 @@ import {
   type AnyOperationDefinition,
   type Permission,
 } from '../../shared/operations/define.ts';
-import { UNAUTHENTICATED_SUSPENDED } from '../../shared/errors.ts';
 import { readApiToken, type ApiToken } from '../auth/api-token.ts';
-import { endCredentialsOf } from '../auth/end-credentials.ts';
 import { sessionCookieClearOptions, sessionCookieName, sessionCookieOptions } from '../../shared/session-cookie.ts';
 import type { AppEnv } from '../app-env.ts';
 import type { InviteeResolver } from '../auth/login-method.ts';
@@ -33,7 +31,7 @@ import {
 } from '../db/index.ts';
 import { ApiError, knownError } from '../errors.ts';
 import { executionContextOf } from '../execution-context.ts';
-import { outsideAccount, type OutsideAccount } from './account.ts';
+import { outsideAccount } from './account.ts';
 import { readInput, requireOrigin } from './guards.ts';
 import type { CurrentSession, Defer, ImplementedOperation } from './implement.ts';
 import { operatorTools, type OperatorTools } from './operator-tools.ts';
@@ -201,32 +199,6 @@ function isAllowedInWorkspace(permission: Permission, actor: OrganizationActor, 
   }
 }
 
-// ログインできる条件を失った人（入れる組織も届いた招待も無く、運用者でもない人）は、セッションを消し、Cookie も消して 401。
-// 組織に入れるかはリクエストのたびに確かめているので、消し忘れても入れはしない（docs/data-model.md の「書き込みの単位」）。
-// API トークンの呼び出しでも同じ判定をする。セッションと同じ時刻までに作られたその人のトークンも取り消す
-// （トークンの呼び出しは Cookie を読まないので、Cookie は消さない）。
-// 判定を走らせるのは、組織の外の操作（定義が skipsLoginAccess を付けたものを除く）と、組織の中の操作で組織に入れなかったとき。
-// 運用者は入れる組織が無くても通す。消すのは判定した時刻までに作られたセッションで、判定の後に作られたものは残す
-async function requireLoginAccess(
-  c: Context<AppEnv>,
-  cookie: SessionCookie,
-  accountId: string,
-  account: OutsideAccount,
-  apiToken: ApiToken | undefined,
-): Promise<void> {
-  if (await account.isOperator()) return;
-  const checkedAt = new Date();
-  // 組織の選択と同じ読み取りの結果（account.organizations()。同じリクエストの中で1回だけ引く）。
-  // アカウントに結ばれる前の行は数えない。数えると、結ばれる前の行だけの人が、どこにも入れないままセッションを持ち続ける。
-  // その人は 401 でセッションが消え、もう一度ログインすると結ばれて入れる
-  const { organizations, invitations, suspended } = await account.organizations();
-  if (organizations.length > 0 || invitations.length > 0) return;
-  await endCredentialsOf(commonDb(c.env), accountId, checkedAt);
-  if (apiToken === undefined) cookie.clear = true;
-  // 入れたはずの組織が停止しているだけなら、details の reason で伝える。画面はログインの画面へ移すときの理由（suspended）にする
-  throw new ApiError(401, 'unauthenticated', suspended ? { reason: UNAUTHENTICATED_SUSPENDED } : undefined);
-}
-
 // API トークンで呼べるかの検査。権限の検査の後、入力を読む前に行う。
 // 運用者の操作と cookieOnly の操作は、どのトークンでも 403。write の操作は write のトークンだけ（read のトークンは 403）
 function checkTokenScope(definition: AnyOperationDefinition, apiToken: ApiToken | undefined): void {
@@ -296,10 +268,7 @@ async function execute(
   const account = outsideAccount(c.env, accountId);
   let result: unknown;
   if (isOutsideOperation(definition)) {
-    // 運用者は入れる組織が無くてもログインできる。それ以外は、入れる組織を失っていればセッションとトークンを消して 401。
-    // 確かめないのは、定義が skipsLoginAccess を付けた操作（ログアウトなど）だけ。
-    // 運用者の権限の検査（403）より前に確かめる（入れる組織を失った非運用者には、403 でなく 401 を返す）
-    if (definition.skipsLoginAccess !== true) await requireLoginAccess(c, cookie, accountId, account, apiToken);
+    // 組織の外の操作は、アカウントがあれば入れる組織が無くても通す（入れる組織を失った人も、停止した組織にしか入れない人も）
     // トークンでは運用者の操作と cookieOnly の操作を呼べない。運用者かどうかを引く前に 403 にする
     checkTokenScope(definition, apiToken);
     // 運用者の操作には、運用者のログインの ID と運用者の道具を渡す。運用者でなければ 403
@@ -332,14 +301,10 @@ async function execute(
     // 停止した組織は、停止していなければ入れた人にだけ伝える。入れない人は下の 404（組織があることを漏らさない）
     if (isSuspendedOrganization(entry)) {
       trace.organizationId = entry.organizationId;
-      // 停止した組織にしか入れない人は、ログインできる条件を失っている。403 を返し続けるとセッションが延び続けるので、
-      // ほかに入れる組織が無ければ、セッションを消して 401（理由 suspended）にする
-      await requireLoginAccess(c, cookie, accountId, account, apiToken);
       throw new ApiError(403, 'organization_suspended');
     }
     if (entry === undefined) {
-      // この組織に入れないだけか、どの組織にも入れなくなったか。入れる組織があれば、組織が無いときと同じ 404
-      await requireLoginAccess(c, cookie, accountId, account, apiToken);
+      // 入れないときは、組織が無いときと同じ 404（入れる組織が1つも無い人も同じ）
       throw new ApiError(404, 'not_found');
     }
     const { db, actor, organization } = entry;

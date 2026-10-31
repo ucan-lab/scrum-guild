@@ -28,7 +28,7 @@ export const load: PageLoad = async ({ params, fetch, url, depends }) => {
     callOperation(categoryRepositoryList, { workspace_id: params.id }, options),
     callOperation(experienceTeamTotal, { workspace_id: params.id }, options),
   ]);
-  if (isUnauthenticated(result)) redirect(307, loginUrl(url, result));
+  if (isUnauthenticated(result)) redirect(307, loginUrl(url));
   return {
     tree: result.ok ? result.data : null,
     loadedAt,

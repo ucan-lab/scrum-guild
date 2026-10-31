@@ -79,8 +79,8 @@
   let levelPanel = $state<ReturnType<typeof LevelPanel>>();
   let allLoadedNote = $state<HTMLElement>();
 
-  function toLogin(result: Parameters<typeof loginUrl>[1]): void {
-    window.location.assign(loginUrl(page.url, result));
+  function toLogin(): void {
+    window.location.assign(loginUrl(page.url));
   }
 
   async function loadMore(): Promise<void> {
@@ -93,7 +93,7 @@
     if (token !== grantsEpoch) return;
     loadingMore = false;
     if (!result.ok && isUnauthenticated(result)) {
-      toLogin(result);
+      toLogin();
       return;
     }
     if (!result.ok) {
@@ -117,7 +117,7 @@
     const result = await callOperation(experienceSummary, {}, { slug });
     if (token !== dataEpoch) return;
     if (!result.ok && isUnauthenticated(result)) {
-      toLogin(result);
+      toLogin();
       return;
     }
     if (!result.ok) {
@@ -139,7 +139,7 @@
     const result = await callOperation(experienceGrants, {}, { slug });
     if (token !== grantsEpoch) return;
     if (!result.ok && isUnauthenticated(result)) {
-      toLogin(result);
+      toLogin();
       return;
     }
     if (!result.ok) {

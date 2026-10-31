@@ -74,7 +74,6 @@ export async function readSession(
 // セッションを作り、Cookie に入れるトークンを返す。DB には SHA-256 のハッシュだけを入れ、トークンは残さない。
 // replacedToken は、このリクエストが持っていた古いセッションの Cookie の値。ログインし直したら同じ書き込みで消す。
 // 期限（expires_at）は呼び出しの時刻 now から30日。作成の時刻（created_at と last_used_at）は、挿入の直前の時刻にする。
-// ログインできる条件を失ったと判定した時刻より後に作ったセッションを、その判定が消さないため（deleteSessionsOf）
 export async function createSession(
   env: Env,
   accountId: string,
@@ -107,15 +106,12 @@ export async function createSession(
   return token;
 }
 
-// その人のセッションを消す。ログインできる条件を失ったと判定した時刻（checkedAt）までに作られたものだけ。
-// 判定の後に、その人が入れる条件を満たして作ったセッション（ログインし直した直後など）を消さないため
+// その人のセッションを、checkedAt までに作られたものだけ消す。checkedAt より後に作られたセッションは残す
+// （消す判定の後にログインし直したセッションを消さないため）。呼ぶのは今はテストだけで、本番の道は無い（退会とアカウントの削除で使う見込み）
 export async function deleteSessionsOf(db: CommonDb, accountId: string, checkedAt: Date): Promise<void> {
-  await db.batch([deleteSessionsStatement(db, accountId, checkedAt)]);
-}
-
-// deleteSessionsOf の文。トークンの取り消しと1回の batch() で送る呼び出し（end-credentials.ts）が、条件を別に持たずに使う
-export function deleteSessionsStatement(db: CommonDb, accountId: string, checkedAt: Date): Statement<'common'> {
-  return db.statement((q) =>
-    q.deleteFrom('sessions').where('account_id', '=', accountId).where('created_at', '<=', checkedAt.toISOString()),
-  );
+  await db.batch([
+    db.statement((q) =>
+      q.deleteFrom('sessions').where('account_id', '=', accountId).where('created_at', '<=', checkedAt.toISOString()),
+    ),
+  ]);
 }

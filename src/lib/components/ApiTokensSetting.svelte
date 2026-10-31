@@ -93,8 +93,8 @@
   let revokeDialog = $state<ReturnType<typeof ConfirmDialog>>();
   let revokeTarget = $state<Token | null>(null);
 
-  function toLogin(result: Parameters<typeof loginUrl>[1]): void {
-    window.location.assign(loginUrl(page.url, result));
+  function toLogin(): void {
+    window.location.assign(loginUrl(page.url));
   }
 
   async function reload(): Promise<ReloadOutcome> {
@@ -102,7 +102,7 @@
     const result = await callOperation(tokenList, {});
     if (mine !== loadSeq) return 'stale';
     if (!result.ok && isUnauthenticated(result)) {
-      toLogin(result);
+      toLogin();
       return 'failed';
     }
     if (!result.ok) {
@@ -190,7 +190,7 @@
         return;
       }
       if (isUnauthenticated(result)) {
-        toLogin(result);
+        toLogin();
         return;
       }
       // 400 は画面の検査を通った後なので、理由を決めつけず、ほかの失敗と同じ文にする。
@@ -235,7 +235,7 @@
     try {
       const result = await callOperation(tokenRevoke, { id: token.id });
       if (!result.ok && isUnauthenticated(result)) {
-        toLogin(result);
+        toLogin();
         return;
       }
       // 404 は、ほかで取り消したか期限が来て消えた行。取り消された扱いにして、読み直して行を消す

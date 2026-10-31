@@ -7,7 +7,7 @@
 //   3. レート制限（IP の枠と、そろえたメールアドレスの SHA-256 の枠）→ 上限なら 429 rate_limited（ハッシュを回さない）
 //   4. 照合。違うパスワード、無いメールアドレス、そろえ方に合わない入力は、どれも同じ 401 invalid_credentials で、
 //      どれもハッシュを今の回数で1回回す（無いときはダミーの値で）。応答の形と所要時間でメールアドレスの有無を見分けさせない
-//   5. completeLogin。入れる組織が無いことは、パスワードが合った後にだけ 403 forbidden の details.reason（denied、suspended）で
+//   5. completeLogin。アカウントが無く、入れる組織も招待も無いことは、パスワードが合った後にだけ 403 forbidden の details.reason（denied）で
 //      伝える。結ぶ書き込みの失敗は 503 unavailable。成功は 200 { return_to } とセッションの Cookie
 // パスワード、ハッシュ、メールアドレスはログにも応答にも出さない。
 // 人が差分を読む領域（docs/development.md の「マージの判定」）
@@ -180,7 +180,7 @@ export function passwordLoginRoutes(): Hono<AppEnv> {
     });
     if (!outcome.ok) {
       log(c, { outcome: outcome.reason });
-      if (outcome.reason === 'denied' || outcome.reason === 'suspended') {
+      if (outcome.reason === 'denied') {
         throw new ApiError(403, 'forbidden', { reason: outcome.reason });
       }
       throw new ApiError(503, 'unavailable');

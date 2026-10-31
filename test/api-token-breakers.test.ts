@@ -190,14 +190,16 @@ describe('Bearer を受けないルート', () => {
 });
 
 describe('入れなかった組織', () => {
-  test('停止した組織にしか入れない人は、トークンで 401（理由 suspended）になり、トークンは取り消され、Cookie は付かない', async () => {
+  // #639: 停止した組織にしか入れない人も、ほかに入れる人と同じ 403 で、トークンは取り消さない
+  test('停止した組織にしか入れない人は、トークンで 403 の organization_suspended になり、取り消されず、Cookie は付かない', async () => {
     const target = await createTarget({ suspended: true });
     const { raw, hash } = await insertApiToken(target.member.accountId, { expiresAt: future() });
     const res = await post(app, organizationProfile, { slug: target.slug, bearer: raw, origin: null });
-    expect(res.status).toBe(401);
-    expect(await errorCodeOf(res)).toBe('unauthenticated');
-    expect((await tokenRow(hash))!.revoked_at).not.toBeNull();
+    expect(res.status).toBe(403);
+    expect(await errorCodeOf(res)).toBe('organization_suspended');
+    expect((await tokenRow(hash))!.revoked_at).toBeNull();
     expect(res.headers.get('Set-Cookie')).toBeNull();
+    expect((await post(app, whoAmI, { bearer: raw, origin: null })).status).toBe(200);
   });
 
   test('停止した組織のほかにも入れる人は、トークンで 403 の organization_suspended のまま、取り消されない', async () => {
@@ -210,26 +212,25 @@ describe('入れなかった組織', () => {
     expect((await tokenRow(hash))!.revoked_at).toBeNull();
   });
 
-  test('離脱した（disabled の）人のトークンを取り消す判定は、同じ人のセッションも消す', async () => {
+  test('無効にされた（入れる組織を失った）人のトークンも Cookie も、組織の外の操作で 200 のまま', async () => {
     const organization = (await createTarget()).organization;
     const person = await createPerson({ organization, disabled: true });
     const { raw } = await insertApiToken(person.accountId, { expiresAt: future() });
-    expect((await post(app, whoAmI, { bearer: raw })).status).toBe(401);
-    // Cookie 側も同じ判定で 401（セッションが消えている）
-    expect((await post(app, whoAmI, { token: person.token })).status).toBe(401);
+    expect((await post(app, whoAmI, { bearer: raw })).status).toBe(200);
+    expect((await post(app, whoAmI, { token: person.token })).status).toBe(200);
   });
 
-  test('トークンで 401 になる呼び出しは Set-Cookie を付けないが、Cookie なら消す Cookie を付ける', async () => {
+  test('入れる組織を失った人の呼び出しは、トークンでも Cookie でも、Cookie を消す Set-Cookie を付けない', async () => {
     const organization = (await createTarget()).organization;
     const viaToken = await createPerson({ organization, disabled: true });
     const viaCookie = await createPerson({ organization, disabled: true });
     const { raw } = await insertApiToken(viaToken.accountId, { expiresAt: future() });
     const tokenRes = await post(app, whoAmI, { bearer: raw });
-    expect(tokenRes.status).toBe(401);
+    expect(tokenRes.status).toBe(200);
     expect(tokenRes.headers.get('Set-Cookie')).toBeNull();
     const cookieRes = await post(app, whoAmI, { token: viaCookie.token });
-    expect(cookieRes.status).toBe(401);
-    expect(cookieRes.headers.get('Set-Cookie') ?? '').toContain(sessionCookieName(testEnv.PUBLIC_ORIGIN));
+    expect(cookieRes.status).toBe(200);
+    expect(cookieRes.headers.get('Set-Cookie') ?? '').not.toContain('Max-Age=0');
   });
 });
 

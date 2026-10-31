@@ -348,39 +348,38 @@ describe('越境', () => {
   });
 });
 
-describe('ログインできる条件を失った人', () => {
+// #639: 入れる組織を失ってもアカウントがあればログインできるので、トークンの画面の操作（組織の外）も使える
+describe('入れる組織を失った人', () => {
   async function strandedPerson(): Promise<Person> {
     // どの組織にも入れない（組織の人が無効）。セッションの行は残っている
     return createPerson({ organization: await createOrganization(), admin: true, disabled: true });
   }
 
-  test('残っているセッションの Cookie では、発行・一覧・取消のどれも 401 で、行を足しも消しもしない', async () => {
+  test('セッションの Cookie で、発行・一覧・取消のどれも 200 で、行が足され、取り消される', async () => {
     const person = await strandedPerson();
     const existing = await insertApiToken(person.accountId, { expiresAt: future() });
-    for (const res of [
-      await create(person, { name: 'x', scope: 'read' }),
-      await list(person),
-      await revoke(person, existing.hash),
-    ]) {
-      expect(res.status).toBe(401);
-      expect(await errorCodeOf(res)).toBe('unauthenticated');
-    }
-    expect(await tokenRowsOf(person.accountId)).toHaveLength(1);
+    const created = await create(person, { name: 'x', scope: 'read' });
+    expect(created.status).toBe(200);
+    expect((await list(person)).status).toBe(200);
+    expect((await revoke(person, existing.hash)).status).toBe(200);
+    const rows = await tokenRowsOf(person.accountId);
+    expect(rows).toHaveLength(2);
+    expect(rows.find((row) => row.token_hash === existing.hash)?.revoked_at).not.toBeNull();
   });
 
-  test('同じ人の残っているトークンの Bearer も 401', async () => {
+  test('同じ人のトークンの Bearer も 200', async () => {
     const person = await strandedPerson();
     const { raw } = await insertApiToken(person.accountId, { expiresAt: future() });
-    expect((await callWhoAmI(raw)).status).toBe(401);
+    expect((await callWhoAmI(raw)).status).toBe(200);
   });
 
-  test('組織を1つも持たない（users の行が無い）アカウントも Cookie の token-create は 401', async () => {
+  test('組織を1つも持たない（users の行が無い）アカウントも Cookie の token-create は 200', async () => {
     const account = await createAccount();
     const { createSessionWithToken } = await import('./factories.ts');
     const { token } = await createSessionWithToken(account.id);
     const res = await post(app, tokenCreate, { token, body: { name: 'x', scope: 'read' } });
-    expect(res.status).toBe(401);
-    expect(await tokenRowsOf(account.id)).toHaveLength(0);
+    expect(res.status).toBe(200);
+    expect(await tokenRowsOf(account.id)).toHaveLength(1);
   });
 });
 

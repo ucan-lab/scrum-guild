@@ -12,6 +12,7 @@ import {
   userList,
 } from '../src/shared/operations/organization/index.ts';
 import { memberList } from '../src/shared/operations/workspace/index.ts';
+import { me } from '../src/shared/operations/session/index.ts';
 import { createApp } from '../src/server/app.ts';
 import { commonDb, orgDb } from '../src/server/db/index.ts';
 import { implementedOperations } from '../src/server/operations/index.ts';
@@ -415,7 +416,7 @@ async function runWithRace(
     db: racing,
     actor,
     // 指名は人数の上限を数える（readSeats が上限だけを読む）。上限に当たらない値にする
-    tools: { endSessionsIfLoginLost: async () => {}, readOrganization: async () => ({ memberLimit: 1000 }) },
+    tools: { readOrganization: async () => ({ memberLimit: 1000 }) },
     input,
     defer: () => {},
   } as never;
@@ -688,13 +689,16 @@ describe('user-disable', () => {
     expect(await logsOf(target, 'task', task.id)).toHaveLength(1);
   });
 
-  test('無効にした人は組織に入れず、入れる組織が無くなればセッションが消える', async () => {
+  // #639: 入れる組織が無くなっても、セッションは消さない。組織の中は 404、組織の外は 200
+  test('無効にした人は組織に入れず 404 になるが、入れる組織が無くなってもセッションは消えず、組織の外の操作は通る', async () => {
     const target = await createTarget();
     expect(await sessionCount(target.member.accountId)).toBe(1);
     expect((await disable(target, target.admin, target.member.userId!)).status).toBe(200);
-    expect(await sessionCount(target.member.accountId)).toBe(0);
+    expect(await sessionCount(target.member.accountId)).toBe(1);
     const res = await post(app, organizationInfo, { slug: target.slug, token: target.member.token, body: {} });
-    expect(res.status).toBe(401);
+    expect(res.status).toBe(404);
+    expect(res.headers.getSetCookie().filter((line) => line.includes('Max-Age=0'))).toEqual([]);
+    expect((await post(app, me, { token: target.member.token })).status).toBe(200);
   });
 
   test('ほかの組織に入れる人は、セッションが残り、この組織にだけ入れない。メンバーの一覧からも消える', async () => {

@@ -10,8 +10,13 @@ import { implement } from './implement.ts';
 const LAST_SEEN_INTERVAL_MS = 60 * 60 * 1000;
 
 export const myOrganizationsOperation = implement(myOrganizations, async ({ account }) => {
-  const { organizations, invitations } = await account.organizations();
-  return { organizations: [...organizations], invitations: [...invitations], operator: await account.isOperator() };
+  const { organizations, invitations, suspended } = await account.organizations();
+  return {
+    organizations: [...organizations],
+    invitations: [...invitations],
+    suspended: [...suspended],
+    operator: await account.isOperator(),
+  };
 });
 
 export const organizationInfoOperation = implement(organizationInfo, async ({ db, actor, organization, defer }) => {

@@ -186,7 +186,7 @@ export const pointers: Pointers = {
   },
   // 対象の一般のメンバー（target.member）を指す。一般のメンバーは自分なら抜けられ、リーダーと管理者は外せるので、どの呼ぶ人でも通る。
   // 抜けた所属は続けて抜けられないので、呼ぶたびに今の所属を作り直す。別のワークスペース（otherWorkspace）にも所属させ、
-  // 抜けても入れる組織を失わない（セッションを消されると、同じ describe の後の検査が 401 になるため）
+  // 抜けても入れる組織を失わない（同じ describe の後の検査が、入れる組織を持つ人で動くようにするため）
   'membership-leave': async (target) => {
     const userId = target.member.userId!;
     await ensureMembership(target, target.workspace.id, userId);
@@ -223,7 +223,7 @@ export const pointers: Pointers = {
       admin: { provider: 'github', username: user.login, login_subject: String(user.id) },
     };
   },
-  // 停止と再開は、呼ぶたびに別の組織を作る（対象の組織を停止すると、同じ describe の運用者でない人の検査が 401 になるため。
+  // 停止と再開は、呼ぶたびに別の組織を作る（対象の組織を停止すると、同じ describe の運用者でない人の検査が、組織の停止の 403 や 404 になるため。
   // 停止済みの組織を停止する、停止していない組織を再開するのは 409 になる）
   'organization-suspend': async () => ({ slug: (await createOrganization()).slug, kind: 'temporary' }),
   'organization-suspension-update': async () => ({

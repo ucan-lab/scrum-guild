@@ -109,7 +109,7 @@
         ? await callOperation(epicPartyJoin, input, { slug })
         : await callOperation(epicPartyLeave, input, { slug });
       if (!result.ok && isUnauthenticated(result)) {
-        window.location.assign(loginUrl(page.url, result));
+        window.location.assign(loginUrl(page.url));
         return;
       }
       const words = { party: t('party'), epic: t('epic'), workspace: t('workspace') };

@@ -40,7 +40,8 @@ test.describe('管理者（あおば開発のミナト）', () => {
     const table = sectionOf(page).getByRole('table', { name: '組織のユーザーの一覧' });
     await expect(table.getByRole('columnheader')).toHaveText(['名前', '管理者', '所属', '最後に入った日', '操作']);
     // アバターの頭文字は除いて読む
-    await expect(table.locator('tbody tr')).toHaveCount(4);
+    // すべてのワークスペースから外れたツバサ（seed の leftAll、#639）も、所属の無いユーザーとして出る
+    await expect(table.locator('tbody tr')).toHaveCount(5);
     const names = await table.locator('tbody tr td.is-name').evaluateAll((cells) =>
       cells.map((cell) => {
         const copy = cell.cloneNode(true) as HTMLElement;
@@ -48,7 +49,7 @@ test.describe('管理者（あおば開発のミナト）', () => {
         return (copy.textContent ?? '').trim();
       }),
     );
-    expect(names).toEqual(['ソラ', 'ハルカ', 'ミナト', 'ユイ']);
+    expect(names).toEqual(['ソラ', 'ツバサ', 'ハルカ', 'ミナト', 'ユイ']);
     // ユーザーの節は、ワークスペースの節より前に並ぶ
     await expect(page.locator('.settings > .setting .setting-title').first()).toHaveText('ユーザー');
 
@@ -72,7 +73,7 @@ test.describe('管理者（あおば開発のミナト）', () => {
     await expect(rowOf(page, 'ユイ').locator('td.mono .visually-hidden')).toHaveText('まだ入っていません');
 
     const tallies = page.locator('.tally > div');
-    await expect(tallies.nth(0)).toHaveText('ユーザー 4');
+    await expect(tallies.nth(0)).toHaveText('ユーザー 5');
     await expect(tallies.nth(1)).toHaveText('管理者 1');
     expect(await collect()).toEqual([]);
   });
@@ -239,7 +240,7 @@ test.describe('管理者（あおば開発のミナト）', () => {
     await page.goto('/aoba/admin');
     const row = rowOf(page, 'ユイ');
     const users = page.locator('.tally > div').nth(0);
-    await expect(users).toHaveText('ユーザー 4');
+    await expect(users).toHaveText('ユーザー 5');
     const disableButton = row.getByRole('button', { name: 'ユイを無効にする' });
     await disableButton.click();
 
@@ -266,7 +267,7 @@ test.describe('管理者（あおば開発のミナト）', () => {
     await expect(enableButton).toHaveText('有効に戻す');
     await expect(enableButton).toBeFocused();
     // 見出しのユーザーの数は、無効でない人だけを数える
-    await expect(users).toHaveText('ユーザー 3');
+    await expect(users).toHaveText('ユーザー 4');
 
     // 有効に戻すは確認なしで送る
     await enableButton.click();
@@ -274,7 +275,7 @@ test.describe('管理者（あおば開発のミナト）', () => {
     await expect(row.locator('.chip')).toHaveCount(0);
     await expect(row.getByRole('checkbox', { name: 'ユイを管理者にする' })).toBeEnabled();
     await expect(row.getByRole('button', { name: 'ユイを無効にする' })).toBeFocused();
-    await expect(users).toHaveText('ユーザー 4');
+    await expect(users).toHaveText('ユーザー 5');
 
     const history = page.getByRole('region', { name: '変更の履歴' });
     await page.reload();
