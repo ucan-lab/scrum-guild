@@ -1,0 +1,15 @@
+# レビューのエージェントの呼び分け
+
+`done-check` と CI の `ai-review` が、どのレビューのエージェントを呼ぶかを決める表。両方がこの表だけを見る。エージェントの定義は `.claude/agents/` にある。
+
+差分（変わったファイルとその中身）を「呼ぶとき」に当て、当たったエージェントのうち、自分の列が「呼ぶ」のものをすべて呼ぶ。
+
+| エージェント | 呼ぶとき | 手元（done-check） | CI |
+| --- | --- | --- | --- |
+| `code-reviewer` | 常に | 呼ぶ | 呼ぶ |
+| `security-reviewer` | API（エンドポイントの追加や変更に限らず、ミドルウェア、入力の検証、エラーの返し方を含む）、認証、認可、セッション、外部入力を SQL・シェル・ファイル・HTML・外部 URL に渡す処理、秘密情報、R2、取り込み、定期処理、wrangler の設定、`package.json` とロックファイル、`.github/` に触れたとき | 呼ぶ | 呼ぶ |
+| `database-reviewer` | マイグレーション、スキーマの変更、Kysely の問い合わせと SQL、D1 に読み書きするコード（Kysely の入口を通る呼び出しを足すか変える）、`docs/data-model.md` に触れたとき | 呼ぶ | 呼ぶ |
+| `ui-reviewer` | 画面のコード（`.svelte`、画面の TypeScript、CSS）、`design/`、言葉の辞書に触れたとき | 呼ぶ | 呼ぶ |
+| `falsification-qa` | コード（Markdown 以外のファイル）に触れたとき。Markdown だけの差分では呼ばない | 呼ぶ | 呼ばない |
+
+呼ぶ巡の上限、`finding-verifier` の扱い、使用量の注意は、呼ぶ側のスキル（`done-check`、`ai-review`）に書く。
