@@ -107,6 +107,19 @@ export async function seatHoldersIn(
   return people;
 }
 
+// あるワークスペースの承諾待ちの招待のうち、人数に数えられる人（personKey の集合）。期限の過ぎた Google の招待と、
+// 同じ組織で無効にされた人への招待は含めない。ワークスペースが閉じていても数える（開き直しで新しく数えられる人を求めるため）
+export async function seatHoldersOfWorkspaceInvitations(
+  db: OrganizationDb,
+  workspaceId: string,
+  at: Date,
+): Promise<Set<string>> {
+  void db;
+  void workspaceId;
+  void at;
+  throw new Error('未実装');
+}
+
 // 確かめた組織の人数に数える人。組織の ID は入口の organizationId から取り、ほかの組織を数えられない
 export async function seatHoldersOf(db: OrganizationDb, at: Date): Promise<Set<string>> {
   const organizationId = db.organizationId;
