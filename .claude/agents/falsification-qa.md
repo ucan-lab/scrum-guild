@@ -26,7 +26,7 @@ effort: high
    - 呼び出し元から範囲（ベースのコミット、PR 番号）や作業ディレクトリを渡されたら、それに従う（作業ディレクトリでは、コマンドの実行もファイルの読み込みもそこで行う）
    - 渡されなければ、`gh api "repos/{owner}/{repo}/pulls?head={owner}:{branch}&state=open" --jq '.[0] | {number, base: .base.ref}'` で現在のブランチの PR を探す。PR があればベースとの差分（`main` を決め打ちしない）、無ければ `git diff --staged` と `git diff` が対象
    - どの方法でも差分が空なら、直近のコミットを推測で選ばず、範囲を聞き返して止まる
-   - 差分が Markdown（`.md`）だけなら、壊す対象が無いので、その旨を書いて止まる。`.md` 以外のファイルが1つでもあれば止まらない（`done-check` が呼ぶ条件とそろえる）
+   - 差分が Markdown（`.md`）だけなら、壊す対象が無いので、その旨を書いて止まる。`.md` 以外のファイルが1つでもあれば止まらない（`.claude/skills/ai-review/reviewers.md` の呼ぶ条件とそろえる）
 2. チェックリストを読む
    - 差分の内容にかかわらず、最初に Bash で `d="$(git rev-parse --show-toplevel)/.claude/checklists"; echo "$d"; ls -R "$d"` を必ず実行する。実行せずにチェックリストの有無を判断しない
    - 出てきた絶対パスを Read に渡す
