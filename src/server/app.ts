@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import type { ContentfulStatusCode } from 'hono/utils/http-status';
 import { routePath } from 'hono/route';
 import type { Health } from '../shared/health.ts';
+import { PASSWORD_LOGIN_ENABLED } from '../shared/password-login-enabled.ts';
 import { apiCacheControl, apiCsp, fixedHeaders } from '../shared/security-headers.ts';
 import { isAllowedPublicOrigin } from '../shared/session-cookie.ts';
 import type { AppEnv } from './app-env.ts';
@@ -19,6 +20,8 @@ import { operationsApp } from './operations/register.ts';
 export type AppOptions = {
   // ログインの手段（GitHub）への通信。テストが差し替える
   fetcher?: typeof fetch;
+  // メールアドレスとパスワードでのログインの口を登録するか。省略すると PASSWORD_LOGIN_ENABLED。テストが開いた経路を確かめるのに使う
+  passwordLogin?: boolean;
 };
 
 // テストで例外を投げるルートや仮の操作を足せるよう、アプリを作る関数にしておく
@@ -126,8 +129,11 @@ export function createApp(
   // 操作の定義の外に直に書く（/api/health と同じ例外）
   const fetcher = options.fetcher ?? ((input, init) => fetch(input, init));
   // メールアドレスとパスワードでのログイン（POST /api/auth/password/login）。ログイン前の人が呼ぶので、同じく直に書く例外。
-  // OAuth の手段の `/:provider/...` に当たらないよう、先に登録する
-  app.route('/auth/password', passwordLoginRoutes());
+  // OAuth の手段の `/:provider/...` に当たらないよう、先に登録する。閉じている間（PASSWORD_LOGIN_ENABLED が偽）は登録せず、
+  // 404 の not_found（app.notFound）にする
+  if (options.passwordLogin ?? PASSWORD_LOGIN_ENABLED) {
+    app.route('/auth/password', passwordLoginRoutes());
+  }
   app.route('/auth', loginRoutes({ fetcher }));
 
   // 画面で起きた JavaScript のエラーの送信。ログイン前の画面（ログイン、招待）のエラーも受けるので、操作の定義の外に直に書く

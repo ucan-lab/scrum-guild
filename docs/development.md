@@ -343,7 +343,7 @@ vite の転送先も同じ値から作るので、画面は自分のワークツ
   - テストが変えるか消すのは、原則としてそのテストが作った行だけにする。作る行の名前（題、本文、メールアドレスなど一意の制約や探す手がかりになるもの）には `test.info().repeatEachIndex` と `test.info().retry` を混ぜる（`e2e/backlog-move.test.ts` と `e2e/comments.test.ts` が既にそうしている）
   - seed の行を変えるしかないテストは、途中で落ちても戻るよう `try`/`finally` か `afterEach` で元へ戻す。戻せない変更（消す、閉じるなど）は、seed の行でなく自分で作った行に対して行う
   - 自分で作れない行（ログアウトで消すセッションは OAuth、承諾か取り消しで閉じる招待は GitHub の解決を通る）は、seed の行に対して行い、テストの前か後で `e2e/local-d1.ts` の関数で seed の状態へ戻す（#459）。関数は e2e の Worker（`wrangler dev`）の手元のエクスプローラー（`POST http://localhost:<API のポート>/cdn-cgi/local/explorer/api/d1/database/<database_id>/raw`）に文を `batch`（1つのトランザクション）で送り、手元の D1 に直に書く（localhost の `wrangler dev` にしか送らない。値は seed の固定の値だけを埋める。組織の中の表の文は組織かワークスペースで絞り、共通の表の `sessions` には seed の `sessionInserts` の文で seed のセッションの行だけを `INSERT OR IGNORE` で入れる）。`wrangler d1 execute --local` を使わないのは、別プロセスが Worker と同じ SQLite のファイルを開いて取り合い、双方に `SQLITE_BUSY` が出て Worker が 500 を返し、隣のテストが落ちたため（#501）。エクスプローラーは同じ workerd の中で Worker と同じ D1 のオブジェクトに文を順に流すので、取り合わない（`pnpm db:seed` は `wrangler d1 execute --local` のまま。e2e の初めの seed は Worker の起動後に流れるが、その間にテストの並行は無いので取り合いは起きにくい）。送り先のポートは `playwright.config.ts` と同じ `devPorts(process.env).api`。`database_id` は、一覧（`GET .../api/d1/database`）から binding 名 `DB` で引き、決め打ちしない（エクスプローラーは無い ID を渡されると空の D1 を新しく作って成功を返し、戻したつもりで何も戻らない）。引くのはモジュールの中で1回で、引けなかったときは次の呼び出しで引き直す。一覧か `raw` が 2xx でないとき（404 はエクスプローラーが無効か、口が変わった。環境変数 `X_LOCAL_EXPLORER` の既定は有効で、miniflare 5.20261019.2-beta、wrangler 4.152.0 で確かめた）、応答の `success` が true でないとき（SQL のエラーはこの版では HTTP 500 と `success: false` で返る。どちらでも `errors` の `message` を添える）、一覧に `DB` が無いときは、テストを落として止める（この失敗の分岐は `scripts/e2e-local-d1.test.ts` が `fetch` を差し替えて守る。`pnpm test` で走る）。打ち切りは 20 秒。画面と API の振る舞いは本物の操作で確かめ、直に書くのは戻すときだけにする。同じファイルの複製が並べて走ると、戻す前の行に別の複製が当たるので、`--repeat-each` は `--workers=1` で回す
-  - パスワードのログイン（`e2e/password-login.test.ts`）は、seed のパスワードの人（`seed/passwords.ts`）でログインの画面から入る場面（組織が1つの人は組織の画面へ、2つの人は組織の選択へ）と、違うパスワードで理由が出て欄が残る場面を、本物の API に当てて確かめる。同じメールアドレスと IP の枠（10分に10回、30回）を繰り返しで使い切らないよう、場面ごとに `e2e/local-d1.ts` の `resetPasswordLoginRateLimits` で、手元の D1 のパスワードの枠の行（`password` で始まるキー）だけを消す。ログインの画面は主な画面の機械の検査（a11y と狭い幅）に入っていないので、同じファイルが 390px のはみ出し、44px、axe を確かめる
+  - パスワードのログイン（`e2e/password-login.test.ts`。`PASSWORD_LOGIN_ENABLED` が偽の間は飛ばす）は、seed のパスワードの人（`seed/passwords.ts`）でログインの画面から入る場面（組織が1つの人は組織の画面へ、2つの人は組織の選択へ）と、違うパスワードで理由が出て欄が残る場面を、本物の API に当てて確かめる。同じメールアドレスと IP の枠（10分に10回、30回）を繰り返しで使い切らないよう、場面ごとに `e2e/local-d1.ts` の `resetPasswordLoginRateLimits` で、手元の D1 のパスワードの枠の行（`password` で始まるキー）だけを消す。ログインの画面は主な画面の機械の検査（a11y と狭い幅）に入っていないので、`e2e/login.test.ts` が、フォームの無い版（初版）を 390px のはみ出し、押せる範囲、axe で、理由（`?error=invite` など長い文言）を出した状態も含めて常に確かめ、`e2e/password-login.test.ts` がフォームを出す版（開いているとき）を同じ検査で確かめる
   - 2回目から必ず落ちるなら、揺れでなくこの決まりに反している。1回目と同じ落ち方が毎回出るかを見て見分ける
   - 足したか変えたテストの繰り返しは、PR の CI の `e2e-repeat` に任せる。セッションは手元で回さない。人が手元で調べるときは `pnpm e2e --workers=1 --repeat-each=5 --retries=0 e2e/<名前>.test.ts` と同じ形で回す（`expect` の既定の待ちだけは手元が 15 秒）。ワーカーを絞らずに繰り返すと負荷だけで落ちる（#364）
 - `e2e/task-drawer.test.ts` の「担い手は選んで少し待ってから最後の値だけを送り、断られたら理由を出して前の値に戻す」は、手元の macOS の Chromium では必ず落ち、Linux の CI で確かめる。macOS の Chromium は、閉じた `<select>` で矢印キーを押すと値を変えずに選択肢の一覧を開くので、押した後の「保存しました」が出ず、その待ちで落ちる（素の Playwright で、押した後も値が変わらないことを確かめた。#529）。人が手元で調べるときも、このテストの失敗は macOS の挙動と見て、CI の `e2e` と `e2e-repeat` の結果で判断する。macOS でも通る押し方（`selectOption` など）には、矢印キーで続けて替える操作を確かめられなくなるので替えていない
@@ -832,7 +832,16 @@ GitHub App も比べた。人が抜けても取り込みが止まらない、PAT
 
 ## パスワードのログイン
 
-GitHub のアカウントも Google のアカウントも使わない人のために、メールアドレスとパスワードを3つ目の手段（`password`）にする（#255、#256）。OAuth の往復を持たないので、ログインの手段の型（`login-method.ts`）には入れず、別の口で受けて `completeLogin`（`login.ts`）に合流する。
+GitHub のアカウントも Google のアカウントも使わない人のために、メールアドレスとパスワードを3つ目の手段（`password`）として実装してある（#255、#256）。初版で開くログインの手段は GitHub と Google で、パスワードは口と画面を閉じている（#635）。OAuth の往復を持たないので、ログインの手段の型（`login-method.ts`）には入れず、別の口で受けて `completeLogin`（`login.ts`）に合流する。
+
+- 開閉の定数: `src/shared/password-login-enabled.ts` の `PASSWORD_LOGIN_ENABLED`（型は `boolean`。初版は `false`）。API の口、ログインの画面、e2e の飛ばし方がこの1つを読む。実行時の設定（wrangler の `vars` など）にしないのは、ログイン前の画面が API の設定を読む口が無く、足すと画面と API が食い違う（フォームが出て POST が 404）ことがありうるため
+- 閉じているときのふるまい
+  - `createApp`（`src/server/app.ts`）が `app.route('/auth/password', …)` を登録しない。`POST /api/auth/password/login` は 404 の `not_found`（`app.notFound` の既存の形。ほかの存在しない経路と同じ）で、本文も読まず、セッションも作らず、回数の枠も数えない。`AppOptions.passwordLogin` で、省略したときの `PASSWORD_LOGIN_ENABLED` を上書きできる
+  - ログインの画面（`src/routes/login/+page.svelte`）は、区切り（`.gate-divider`）とフォームを出さず、GitHub と Google のボタンだけを出す。見本 `design/login.html` も同じ
+  - 単体テストは `createApp(undefined, { passwordLogin: true })` で口を開けて常に走る（`test/password-login*.test.ts`）。既定の `createApp()` が 404 の `not_found` を返すことは `test/password-login.test.ts` が確かめる
+  - e2e は `e2e/password-login.test.ts` を `test.skip(!PASSWORD_LOGIN_ENABLED, …)` で飛ばし、`e2e/login.test.ts` が、フォームと「または」が出ないことと、POST が 404 の `not_found` を返すことを確かめる（`PASSWORD_LOGIN_ENABLED` が真のときは飛ばす）
+  - `password_credentials` の表、`seed/passwords.ts` と `seed/data.sql` の行、辞書のキー、`src/lib/password-login.ts`、`password-hash.ts` は残す。閉じている間は読まれないだけ
+- 開き方: 登録の入口（#257、#258）と一緒に、1つの PR で次をする。(1) `PASSWORD_LOGIN_ENABLED` を `true` にする。(2) `design/login.html` に区切りとフォームと、断られたときの見本を戻す（git の履歴から。#635 の差分）。(3) `docs/requirements.md` の「後回し」の項目を「初版」へ移し、`docs/design.md` のログインの画面の行を、パスワードのフォームを出すものに戻す。(4) `e2e/login.test.ts` の閉じている間の場面は自動で飛ぶので、`e2e/password-login.test.ts` が PR の CI の `e2e` で通ることを見る（Claude のセッションは e2e を手元で走らせない）
 
 - 口: `POST /api/auth/password/login`（`src/server/auth/password-login.ts`）。本文は JSON の `{ email, password, return_to? }`（zod の strict）で、4KiB まで。成功は 200 の `{ return_to }` とセッションの Cookie で、`return_to` は自分のサイトのパスだけ（`safeReturnTo` と、URL の解決の後の `resolvedReturnTo`）。画面（`src/routes/login/+page.svelte`、送るのは `src/lib/password-login.ts`）はその値へ `location.replace` で移り、ページごと読み直す。入れる組織が2つ以上の人は `/`（組織の選択）へ移る
 - 検査の順と応答
@@ -844,13 +853,13 @@ GitHub のアカウントも Google のアカウントも使わない人のた�
 - 画面の文言: 401 は「メールアドレスかパスワードが違います」の1つ、403 の `denied` は招待された手段（GitHub か Google）を確かめる案内を外した `loginErrorDeniedPassword`、`suspended` は OAuth の `?error=suspended` と同じ、429 は `too_many` と同じ、そのほかは `unavailable` と同じ。断られても画面を移らず、理由は押したボタンのすぐ上（フォームの中）に出して欄に `aria-describedby` で結び、メールアドレスの欄は残してパスワードの欄だけを空にする。前の理由は送っている間も残す。メールアドレス（前後の空白を除いて）かパスワードが空なら送らずに `loginErrorEmptyFields` を出す（パスワードは空白も文字として送る）。送っている間はボタンを `aria-disabled` にし、文言を「ログインしています」にする
 - ハッシュ: `src/server/auth/password-hash.ts`。PBKDF2-HMAC-SHA256、16 バイトの塩、32 バイトの鍵、反復回数 100,000。文字列は `pbkdf2-sha256$<回数>$<塩 base64url>$<鍵 base64url>`。本番の Workers の WebCrypto は 100,000 を超える回数を断る（手元の workerd は 600,000 も通すので、手元で上限を確かめられない）。手元の workerd で1回約 12ms。照合は `crypto.subtle.timingSafeEqual` で比べる。形の壊れた保存値と、今の回数より多い回数の保存値（本番では例外の 500 になり、無いメールアドレスと見分けられる）は、例外を投げずに `verifyDummyPassword` と同じだけ回して偽にする
 - ログ: `route: "auth"`、`step: "login"`、`provider: "password"`、`outcome`（`ok`、`invalid_credentials`、`too_many`、`denied`、`suspended`、`retry`、`forbidden_origin`）、成功のときの `accountId` を1行出す。パスワード、ハッシュ、メールアドレスは出さない（`test/password-login.test.ts` が確かめる）。想定外の例外は `app.onError` が例外の名前だけを出す
-- 登録の入口（パスワードを決める画面）は、招待の URL からだけで、#257 以降で作る。今は seed の行だけ（下の「開発とテストでのログイン」）
+- 登録の入口（パスワードを決める画面）は、招待の URL からだけで、パスワードの手段を開くときに作る（#257、#258、初版には入れない）。今は seed の行だけ（下の「開発とテストでのログイン」）
 
 ## 開発とテストでのログイン
 
 ログインを飛ばす口は作らない（2026-10-22 に決めた）。本番に罠として残るコードを無くすため。
 
-- seed は、メールアドレスとパスワードでログインする2人（入れる組織が1つの人と2つの人）も入れる。メールアドレスとパスワードは `seed/passwords.ts`、ハッシュは `seed/data.sql` に固定の文字列で書く（`seed/README.md` の「パスワード」）。開発用の公開した値なので、本番の D1 には入れない
+- seed は、メールアドレスとパスワードでログインする2人（入れる組織が1つの人と2つの人）も入れる。メールアドレスとパスワードは `seed/passwords.ts`、ハッシュは `seed/data.sql` に固定の文字列で書く（`seed/README.md` の「パスワード」）。開発用の公開した値なので、本番の D1 には入れない。パスワードの手段を閉じている間（`PASSWORD_LOGIN_ENABLED` が偽）は、この 2 人の行は使われない
 
 - seed（`pnpm db:seed`）が、決まったトークンのセッションをローカルの D1 に入れる。e2e と画面の自己レビューは、その Cookie を置いてログインした画面を開く。トークンは開発用の値で、本番の D1 には入れない
   - セッションは9つ: あおば開発の管理者、あおば開発の一般のユーザー、ひばり工房だけに入れる管理者、どの組織にも属さない運用者（`OPERATOR_LOGIN_IDS` の開発用の値、`.dev.vars.example`）、と、e2e のログアウトが消すための2本（`adminLogout` は管理者と、`operatorLogout` は運用者と同じアカウントの2本目）、e2e の組織の既定のテーマだけが使うくもラボの3人（`lookAdmin`、`lookMember`、`lookThemed`。その e2e が組織の値を書き換えるので、ほかのファイルが確かめる組織と分けた）。e2e は共有のセッションをログアウトしない（並列に走る別のテストが 401 で落ちるため）

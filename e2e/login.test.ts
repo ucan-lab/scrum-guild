@@ -1,6 +1,13 @@
 import { expect, test } from './fixtures.ts';
 import { SEED_SESSIONS } from '../seed/sessions.ts';
-import { signIn } from './helpers.ts';
+import { PASSWORD_LOGIN_ENABLED } from '../src/shared/password-login-enabled.ts';
+import {
+  findA11yViolations,
+  findOverflowViolations,
+  findTargetSizeViolations,
+  NARROW_VIEWPORT,
+  signIn,
+} from './helpers.ts';
 
 // ログインの画面（枠の外）と、ログインの API。本物の GitHub へは行かない（ログインを飛ばす口は作らず、seed のセッションの Cookie で通す。
 // docs/development.md の「開発とテストでのログイン」）。seed を入れた手元の D1（pnpm db:seed）が要る
@@ -20,6 +27,51 @@ test('/login は枠の外に GitHub のボタンを出す', async ({ page }) => 
   await expect(page.locator('.app')).toHaveCount(0);
   await expect(page.getByRole('navigation')).toHaveCount(0);
   await expect(page).toHaveTitle('ログイン - Scrum Guild');
+});
+
+// ログインの画面は枠の外で、主な画面の機械の検査（e2e/a11y-*.test.ts、e2e/layout-narrow*.test.ts）に入っていないので、ここで確かめる。
+// パスワードのフォームを出す版（開いているとき）は e2e/password-login.test.ts が確かめる。長い文言の理由（?error=invite）も見る
+for (const query of ['', '?error=invite', '?error=denied']) {
+  test(`ログインの画面${query ? `（${query}）` : ''}は、幅 390px で横にはみ出さず、押せる範囲が足り、axe の違反が無い`, async ({
+    page,
+  }) => {
+    await page.setViewportSize(NARROW_VIEWPORT);
+    await page.goto(`/login${query}`);
+    await expect(page.getByRole('link', { name: 'GitHub でログイン' })).toBeVisible();
+    if (query) await expect(page.getByRole('alert')).toBeVisible();
+    expect(await findOverflowViolations(page)).toEqual([]);
+    expect(await findTargetSizeViolations(page)).toEqual([]);
+    expect(await findA11yViolations(page)).toEqual([]);
+  });
+}
+
+// メールアドレスとパスワードのログインを閉じている間（PASSWORD_LOGIN_ENABLED が偽、Issue #635）。開いたら e2e/password-login.test.ts が確かめる
+test.describe('パスワードのログインを閉じている間', () => {
+  test.skip(
+    PASSWORD_LOGIN_ENABLED,
+    'メールアドレスとパスワードのログインを開いているときは e2e/password-login.test.ts が確かめる',
+  );
+
+  test('/login に区切り「または」、メールアドレスとパスワードの欄、「メールアドレスでログイン」のボタンを出さない', async ({
+    page,
+  }) => {
+    await page.goto('/login');
+    await expect(page.getByRole('link', { name: 'GitHub でログイン' })).toBeVisible();
+    await expect(page.getByRole('link', { name: 'Google でログイン' })).toBeVisible();
+    await expect(page.getByText('または', { exact: true })).toHaveCount(0);
+    await expect(page.getByLabel('メールアドレス', { exact: true })).toHaveCount(0);
+    await expect(page.getByLabel('パスワード', { exact: true })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'メールアドレスでログイン' })).toHaveCount(0);
+  });
+
+  test('POST /api/auth/password/login は 404 の not_found を返す', async ({ request, baseURL }) => {
+    const res = await request.post('/api/auth/password/login', {
+      headers: { Origin: new URL(baseURL ?? '').origin },
+      data: { email: 'tsumugi@example.test', password: 'tsubame-hoshi-2026' },
+    });
+    expect(res.status()).toBe(404);
+    expect((await res.json()).error.code).toBe('not_found');
+  });
 });
 
 test('Google のボタンは GitHub と同じ幅で、ロゴが出る', async ({ page }) => {
