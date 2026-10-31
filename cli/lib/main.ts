@@ -147,6 +147,8 @@ function checkedUrl(raw: string): string {
   if (url.protocol !== 'http:' && url.protocol !== 'https:') throw usage(URL_MESSAGE);
   if (url.username !== '' || url.password !== '') throw usage(URL_MESSAGE);
   if (url.protocol === 'http:' && !LOOPBACK_HOSTS.includes(url.hostname)) throw usage(URL_MESSAGE);
+  // 後ろに /api/<操作名> を足すので、問い合わせと断片があると宛先が壊れる。末尾の ? だけは url.search が空になるので、元の文字列で見る
+  if (raw.includes('?') || raw.includes('#')) throw usage(URL_MESSAGE);
   return raw.replace(/\/+$/, '');
 }
 

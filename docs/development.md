@@ -362,7 +362,7 @@ vite の転送先も同じ値から作るので、画面は自分のワークツ
 
 - 設定: `sg config set url <URL>` と `sg config set token`（トークンは標準入力から読む。引数では受けない）で接続先を設定する。`config set org|workspace <値>` で既定の組織とワークスペース、`config use <名前>` で既定の接続先、`config show` でトークンを伏せた設定を扱う。`config` も `--profile <名前>` で接続先を選ぶ。保存先は `$XDG_CONFIG_HOME/scrum-guild/config.json`（未設定、空、相対パスなら `~/.config/scrum-guild/config.json`）で、0600 で書く。接続先の名前に `__proto__`、`constructor`、`prototype` は使えない
 - 環境変数: `SG_URL`、`SG_TOKEN`、`SG_ORG`、`SG_WORKSPACE`、`SG_PROFILE` が設定に勝ち、`--profile` が `SG_PROFILE` に勝つ。空の値は未設定と同じ。`SG_URL` と `SG_TOKEN` は両方を設定する（片方だけなら使い方の誤り）。別の出どころの URL とトークンを組み合わせて、トークンを意図しない宛先へ送らないため
-- URL: `https:` か、ループバック（`localhost`、`127.0.0.1`、`[::1]`）への `http:` だけ。認証情報を含む URL は使えない。リダイレクトは追わず、3xx は API のエラーにする。30 秒で応答が無ければ打ち切る
+- URL: `https:` か、ループバック（`localhost`、`127.0.0.1`、`[::1]`）への `http:` だけ。認証情報、問い合わせ（`?`）、断片（`#`）を含む URL は使えない（パスは含めてよく、その下に `/api` を足す）。リダイレクトは追わず、3xx は API のエラーにする。30 秒で応答が無ければ打ち切る
 - `sg ops` は一覧を、`sg ops <操作名>` は説明と、入力と出力の JSON Schema を出す。`sg call <操作名> [JSON] [--<項目> <値>]...` は入力を作って呼び、`--org` と `--workspace` で既定を上書きする。`workspace_id` は入力に無いときだけ補う。一覧はトークンで絞るので、読み取りのトークンで書き込みの操作を呼ぶと、無い操作と同じく使い方の誤りになる
 - 引数の型: 項目の Schema の `type`、`const`、`enum`、`anyOf`、`oneOf` を辿って決める（null を許す項目は `null` で null、数の `const` だけの分岐は数）。入力が `oneOf` の操作は、どれかの分岐にある項目を受け付ける。数は10進の書き方だけを受け、整数は安全な範囲に限る。boolean や数に変えられない値は、string を許す項目なら文字列のまま送り、許さなければ使い方の誤り。`allOf` と `$ref` は辿らないので、その項目は JSON で渡す。同じ `--<項目>` を2回渡すのも使い方の誤り
 - 出力と終了コード: 成功は標準出力に JSON で 0。API のエラーは標準エラーに `{"status", "error"}` で 1（応答の形が不正なときの `invalid_response` も 1）。使い方の誤りは `{"error": {"code": "usage", …}}` で 2。サーバーへ送る前の誤り（壊れた JSON、無い操作、余分な引数、設定が無い、設定ファイルを読めないか書けないか形が違う、ヘッダーに置けない文字を含むトークン、使えない URL）が当たる。つながらないときは `connection_failed` で 3。どの出力にもトークンと設定の中身を出さない
