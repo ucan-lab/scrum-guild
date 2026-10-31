@@ -117,6 +117,9 @@ function fake(options: {
   return result;
 }
 
+// Cookie のセッションと Bearer の API トークンを合わせた、本番に拒ませる seed のトークンの数
+const seedCount = Object.keys(SEED_SESSIONS).length + Object.keys(SEED_API_TOKENS).length;
+
 const commands = (calls: string[][]) => calls.map((args) => args.slice(0, 2).join(' '));
 const lastCall = (f: Fake) => f.calls.at(-1)?.slice(0, 2);
 
@@ -363,7 +366,7 @@ describe('deploy', () => {
       f.seedRequests.map((request) => request.headers.Cookie),
       Object.values(SEED_SESSIONS).map((seed) => `__Host-sg_session=${seed.token}`),
     );
-    assert.ok(f.logs.includes(`seed のトークンの確認: ${Object.keys(SEED_SESSIONS).length}つとも本番が拒みました`));
+    assert.ok(f.logs.includes(`seed のトークンの確認: ${seedCount}つとも本番が拒みました`));
   });
 
   test('本番が seed のトークンを受け付けたら、繰り返さずに控えた版へ戻して失敗し、sessions の行を消す手順を指す', async () => {
@@ -401,7 +404,7 @@ describe('deploy', () => {
     for (const name of Object.keys(SEED_SESSIONS).filter((key) => !acceptedNames.some((a) => a === key))) {
       assert.ok(!message.includes(`${name}（`), name);
     }
-    assert.ok(message.includes(`${Object.keys(SEED_SESSIONS).length}つのうち 2つ`));
+    assert.ok(message.includes(`${seedCount}つのうち 2つ`));
     assert.deepEqual(lastCall(f), ['rollback', CURRENT]);
   });
 

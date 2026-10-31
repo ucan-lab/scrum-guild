@@ -217,19 +217,23 @@ Worker のシークレットは、ダッシュボードの Worker の Settings �
 
 ### seed のセッションが本番に入ったとき
 
-seed のセッションのトークン（`seed/sessions.ts`）は公開された開発用の値で、本番の `sessions` に行があれば、誰でも管理者と運用者として入れる。デプロイの煙のテストが、全部のトークンを本番の `POST /api/logout` に送って確かめる（`docs/development.md` の「開発とテストでのログイン」）。`logout` は入れる組織があるかを判定しない操作なので、seed の行が残っていれば、入れる組織が無くても 2xx で通る（判定をする `me` では、行があっても 401 になり、見逃す）。受け付けたトークンがあっても、残りのトークンも全部確かめてから失敗にする。ビルドのログの `本番が seed のトークンを受け付けました: admin（200）、operator（200）` には、受け付けられたトークンの名前（`seed/sessions.ts` のキー）だけを全部並べ、値は出さない。`logout` は受け付けたトークンの行を消す副作用を持つが、確かめた後で、行が残っていないことを下の手順の3で確かめる。スクリプトが前の版へ戻しても、戻るのはコードだけで、DB の行は残る。次の手順は人が手元（上の「手元の準備」）で実行する。Claude のセッションと自動のデプロイは `--remote` の `wrangler d1` を実行しない。
+seed のセッションのトークン（`seed/sessions.ts`）と API トークン（`seed/api-tokens.ts`）は公開された開発用の値で、本番の `sessions` か `api_tokens` に行があれば、誰でも管理者として入れる（API トークンでは運用者の操作は 403 で、運用者にはなれない）。デプロイの煙のテストが、セッションのトークンを Cookie で本番の `POST /api/logout` に、API トークンを `Authorization: Bearer` で本番の `POST /api/me` に送って確かめる（`docs/development.md` の「開発とテストでのログイン」）。`logout` は入れる組織があるかを判定しない操作なので、seed の行が残っていれば、入れる組織が無くても 2xx で通る（判定をする `me` では、行があっても 401 になり、見逃す）。受け付けたトークンがあっても、残りのトークンも全部確かめてから失敗にする。ビルドのログの `本番が seed のトークンを受け付けました: admin（200）、operator（200）` には、受け付けられたトークンの名前（`seed/sessions.ts` のキー）だけを全部並べ、値は出さない。`logout` は受け付けたトークンの行を消す副作用を持つが、確かめた後で、行が残っていないことを下の手順の3で確かめる。スクリプトが前の版へ戻しても、戻るのはコードだけで、DB の行は残る。次の手順は人が手元（上の「手元の準備」）で実行する。Claude のセッションと自動のデプロイは `--remote` の `wrangler d1` を実行しない。
 
 1. 使われた形跡を、ビルドのログの `seed のトークン（…）を受け付けました` と、Workers Logs の `operation: "logout"` と `operation: "me"` や、`accountId` が下の seed のアカウントの ID のログで見る
-2. seed のセッションの行を消す。アカウントの ID は `seed/sessions.ts` の `accountId`（`019a0000-0000-7000-8000-000000000101` から `…104` の4つ）
+2. seed のセッションと API トークンの行を消す。アカウントの ID は `seed/sessions.ts` の `accountId`（`019a0000-0000-7000-8000-000000000101` から `…104` の4つ）
 
    ```bash
    pnpm exec wrangler d1 execute scrum-guild --remote --command "DELETE FROM sessions WHERE account_id IN ('019a0000-0000-7000-8000-000000000101', '019a0000-0000-7000-8000-000000000102', '019a0000-0000-7000-8000-000000000103', '019a0000-0000-7000-8000-000000000104')"
+   ```
+   ```bash
+   pnpm exec wrangler d1 execute scrum-guild --remote --command "DELETE FROM api_tokens WHERE account_id IN ('019a0000-0000-7000-8000-000000000101', '019a0000-0000-7000-8000-000000000102', '019a0000-0000-7000-8000-000000000103', '019a0000-0000-7000-8000-000000000104')"
    ```
 
 3. 行が消えたことと、seed のほかの行（`seed/data.sql`）が本番に残っていないことを確かめる。
 
    ```bash
    pnpm exec wrangler d1 execute scrum-guild --remote --command "SELECT count(*) AS n FROM sessions WHERE account_id LIKE '019a0000-0000-7000-8000-%'"
+   pnpm exec wrangler d1 execute scrum-guild --remote --command "SELECT count(*) AS n FROM api_tokens WHERE account_id LIKE '019a0000-0000-7000-8000-%'"
    pnpm exec wrangler d1 execute scrum-guild --remote --command "SELECT id, slug FROM organizations WHERE id LIKE '019a0000-0000-7000-8000-%'"
    ```
 

@@ -1,11 +1,12 @@
 // 本番へのデプロイの手順（docs/development.md の「CD」）。Workers Builds のデプロイのコマンドが
 // scripts/deploy-production.ts から呼ぶ。wrangler と HTTP を差し替えて node --test にかけられるよう、外への作用は deps で受け取る。
 
+import { SEED_API_TOKENS } from '../seed/api-tokens.ts';
 import { SEED_SESSIONS } from '../seed/sessions.ts';
 import { isErrorBody } from '../src/shared/errors.ts';
 import { isHealth } from '../src/shared/health.ts';
 import { operationPath } from '../src/shared/operations/define.ts';
-import { logout } from '../src/shared/operations/session/index.ts';
+import { logout, me } from '../src/shared/operations/session/index.ts';
 import { sessionCookieName } from '../src/shared/session-cookie.ts';
 
 // 煙のテストが叩く本番の URL。ドメインへ移すときはここを直す（docs/operations.md の「ドメインへ移す」）
@@ -119,7 +120,7 @@ async function waitForVersion(deps: DeployDeps, expected: string): Promise<boole
 // 401 だけが「拒んだ」。2xx（受け付けた）とそのほかの 4xx、3xx（リダイレクトは辿らない）は、繰り返さずに失敗にする
 type SeedCheck = { ok: true } | { ok: false; reason: string };
 
-const SEED_COUNT = Object.keys(SEED_SESSIONS).length;
+const SEED_COUNT = Object.keys(SEED_SESSIONS).length + Object.keys(SEED_API_TOKENS).length;
 
 function isRetryableStatus(status: number): boolean {
   return status >= 500 || status === 429;
@@ -128,24 +129,38 @@ function isRetryableStatus(status: number): boolean {
 // 1つのトークンの結果。accepted（2xx）は、本番が受け付けた。problem は、受け付けたのではないが、拒んだと確かめられなかった
 type TokenCheck = { kind: 'rejected' } | { kind: 'accepted'; status: number } | { kind: 'problem'; reason: string };
 
-async function checkSeedToken(deps: DeployDeps, name: string, token: string): Promise<TokenCheck> {
-  const url = `${PRODUCTION_URL}${operationPath(logout)}`;
+// 本番に送る問い合わせ。seed のセッションは Cookie で logout に、seed の API トークンは Bearer で me に送る
+type SeedRequest = { url: string; headers: Record<string, string> };
+
+// Origin を付けるのは、Origin の検査（403）で止まって、セッションを読む前に終わらないようにするため
+function cookieRequest(token: string): SeedRequest {
+  return {
+    url: `${PRODUCTION_URL}${operationPath(logout)}`,
+    headers: {
+      'Content-Type': 'application/json',
+      Origin: PRODUCTION_URL,
+      Cookie: `${sessionCookieName(PRODUCTION_URL)}=${token}`,
+    },
+  };
+}
+
+// Bearer の呼び出しは Origin も Cookie も要らない。logout は cookieOnly でトークンからは 403 になるので、me を使う。
+// me は入れる組織があるかを判定する。seed のアカウントに入れる組織が無ければ 401 でトークンの行が取り消され、見逃すが、
+// 入れる組織（seed の組織）が本番にあれば 2xx になる。どちらでも行が残っていれば、人が手順で消す
+function bearerRequest(token: string): SeedRequest {
+  return {
+    url: `${PRODUCTION_URL}${operationPath(me)}`,
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+  };
+}
+
+async function checkSeedToken(deps: DeployDeps, name: string, request: SeedRequest): Promise<TokenCheck> {
+  const { url, headers } = request;
   let status: number | undefined;
   let errorCode: string | undefined;
   for (let attempt = 1; attempt <= SEED_CHECK_ATTEMPTS && status === undefined; attempt++) {
     try {
-      const answered = await deps.postStatus(
-        url,
-        {
-          headers: {
-            'Content-Type': 'application/json',
-            Origin: PRODUCTION_URL,
-            Cookie: `${sessionCookieName(PRODUCTION_URL)}=${token}`,
-          },
-          body: '{}',
-        },
-        SMOKE_REQUEST_TIMEOUT_MS,
-      );
+      const answered = await deps.postStatus(url, { headers, body: '{}' }, SMOKE_REQUEST_TIMEOUT_MS);
       if (isRetryableStatus(answered.status)) {
         deps.log(
           `seed のトークンの確認: ${name} の${attempt}回目は ${answered.status} でした。答えられていないので繰り返します`,
@@ -189,8 +204,12 @@ async function checkSeedToken(deps: DeployDeps, name: string, token: string): Pr
 async function seedSessionsRejected(deps: DeployDeps): Promise<SeedCheck> {
   const accepted: string[] = [];
   const problems: string[] = [];
-  for (const [name, seed] of Object.entries(SEED_SESSIONS)) {
-    const result = await checkSeedToken(deps, name, seed.token);
+  const checks = [
+    ...Object.entries(SEED_SESSIONS).map(([name, seed]) => ({ name, request: cookieRequest(seed.token) })),
+    ...Object.entries(SEED_API_TOKENS).map(([name, seed]) => ({ name, request: bearerRequest(seed.token) })),
+  ];
+  for (const { name, request } of checks) {
+    const result = await checkSeedToken(deps, name, request);
     if (result.kind === 'accepted') accepted.push(`${name}（${result.status}）`);
     else if (result.kind === 'problem') problems.push(result.reason);
   }
@@ -201,7 +220,7 @@ async function seedSessionsRejected(deps: DeployDeps): Promise<SeedCheck> {
   const reasons: string[] = [];
   if (accepted.length > 0) {
     reasons.push(
-      `本番が seed のトークンを受け付けました: ${accepted.join('、')}（${SEED_COUNT}つのうち ${accepted.length}つ）。前の版へ戻しても、本番の sessions に seed の行が残っていれば直りません。` +
+      `本番が seed のトークンを受け付けました: ${accepted.join('、')}（${SEED_COUNT}つのうち ${accepted.length}つ）。前の版へ戻しても、本番の sessions か api_tokens に seed の行が残っていれば直りません。` +
         'docs/operations.md の「seed のセッションが本番に入ったとき」の手順で消してください',
     );
   }

@@ -14,13 +14,14 @@ import {
   type Permission,
 } from '../../shared/operations/define.ts';
 import { UNAUTHENTICATED_SUSPENDED } from '../../shared/errors.ts';
-import { readApiToken, revokeApiTokensOf, type ApiToken } from '../auth/api-token.ts';
+import { readApiToken, type ApiToken } from '../auth/api-token.ts';
+import { endCredentialsOf } from '../auth/end-credentials.ts';
 import { sessionCookieClearOptions, sessionCookieName, sessionCookieOptions } from '../../shared/session-cookie.ts';
 import type { AppEnv } from '../app-env.ts';
 import type { InviteeResolver } from '../auth/login-method.ts';
 import { githubMethod } from '../auth/login-routes.ts';
 import { consumeRateLimit } from '../auth/rate-limit.ts';
-import { deleteSessionsOf, readSession } from '../auth/session.ts';
+import { readSession } from '../auth/session.ts';
 import {
   assertVerifiedWorkspace,
   commonDb,
@@ -219,9 +220,7 @@ async function requireLoginAccess(
   // その人は 401 でセッションが消え、もう一度ログインすると結ばれて入れる
   const { organizations, invitations, suspended } = await account.organizations();
   if (organizations.length > 0 || invitations.length > 0) return;
-  const db = commonDb(c.env);
-  await deleteSessionsOf(db, accountId, checkedAt);
-  await revokeApiTokensOf(db, accountId, checkedAt);
+  await endCredentialsOf(commonDb(c.env), accountId, checkedAt);
   if (apiToken === undefined) cookie.clear = true;
   // 入れたはずの組織が停止しているだけなら、details の reason で伝える。画面はログインの画面へ移すときの理由（suspended）にする
   throw new ApiError(401, 'unauthenticated', suspended ? { reason: UNAUTHENTICATED_SUSPENDED } : undefined);

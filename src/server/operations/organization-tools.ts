@@ -9,7 +9,7 @@ import { INVITE_PATH } from '../../shared/claim-token.ts';
 import { accountLogins } from '../auth/account-logins.ts';
 import type { InviteeResolver } from '../auth/login-method.ts';
 import { isOperatorLogin } from '../auth/operators.ts';
-import { deleteSessionsOf } from '../auth/session.ts';
+import { endCredentialsOf } from '../auth/end-credentials.ts';
 import {
   commonDb,
   listAccountOrganizations,
@@ -115,5 +115,5 @@ async function endSessionsIfLoginLost(env: Env, db: OrganizationDb, userId: stri
   const checkedAt = new Date();
   const { organizations, invitations } = await listAccountOrganizations(env, { accountId, logins });
   if (organizations.length > 0 || invitations.length > 0) return;
-  await deleteSessionsOf(commonDb(env), accountId, checkedAt);
+  await endCredentialsOf(commonDb(env), accountId, checkedAt);
 }
