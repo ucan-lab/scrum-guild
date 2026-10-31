@@ -82,7 +82,7 @@ gh api "repos/{owner}/{repo}/issues?labels=sprint-log&state=closed&per_page=5&so
 gh api "repos/{owner}/{repo}/issues/<記録の番号>/comments" --paginate --jq '.[] | select(.body | startswith("## レビュー")) | select(.author_association == "OWNER" or .author_association == "COLLABORATOR") | {html_url, body}'
 ```
 
-コメントが無ければ、何も変えずに下へ進む。あれば、次のとおり案に使う。
+「今のスプリントの記録」は、締めのコメントを付ける側の記録（手順 1 の表で、前のスプリントとして締める記録）。コメントが無ければ、何も変えずに下へ進む。あれば、次のとおり案に使う。同じ Issue への操作が食い違えば、新しいコメントを優先する。1 から 3 のどの区分にも入らない「上げる」「足す」の Issue は、候補に出さず、人に添える。
 
 - 「上げる」の Issue は、下の 1 から 3 のどの区分でも、その区分の先頭に並べ、理由に「レビューで上げた」と添える。「下げる」は、同じ区分の後ろに並べる
 - 「外す」の Issue は、候補に入れない。ただし持ち越しの Issue は手順 3 のとおり持ち越しに数え、手順 5 の「バックログに戻すか」の問いで、「レビューで外す方向だった」と添え、戻す案を推す

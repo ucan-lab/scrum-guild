@@ -40,7 +40,8 @@ Issue の読み書きは `gh api` の REST で行う。クラウドのセッシ�
 gh api "repos/{owner}/{repo}/issues?labels=sprint-log&state=open&per_page=100" --jq '.[] | {number, title}'
 ```
 
-記録が1つでなければ（無い、2つ以上）、`AskUserQuestion` で、どの記録をこのレビューの記録にするか、記録なしで進めるかを聞く。推す案は、記録が2つなら番号の大きいほう、無ければ「記録なしで進める」。記録なしで進めるときは、手順 9 と 11 のコメントを書かず、中身を報告（手順 12）に出す。
+記録が1つでなければ（無い、2つ以上）、`AskUserQuestion` で、どの記録をこのレビューの記録にするか、記録なしで進めるかを聞く。推す案は、記録が2つなら番号の大きいほう、無ければ「記録なしで進める」。記録なしで進めるときは、手順 9 と 11 のコメントを書かず、中身を報告（手順 12）に出す。`## 締め` で始まるコメントの有無は、`sprint-plan` の手順 1 と同じ `gh api "repos/{owner}/{repo}/issues/<記録の番号>/comments" --paginate --jq '.[] | select(.body | startswith("## 締め")) | .body'` で確かめる。
+`progress-data.ts` の `sprint` は、開いた記録のうち番号の大きいほうで、記録が無ければ `null` になる。選んだ記録が `sprint.log` と違うとき、または `null` のときは、`sprint` を使わず、選んだ記録の本文（ゴール、計画の表）から読み、状態は `issues` の `s` で引く。記録なしのときは、ゴールと計画を「記録なし」と出し、受け入れ待ちの一覧だけを共有する。Done は手順 7 で閉じたものだけになる。`gh` が使えないときは共有を省き、省いたことを伝える。
 
 数は `daily-scrum` と同じ `scripts/progress-data.ts` で出す（`docs/development.md` の「スプリントとポイント」の数え方に合わせ、`sprint-plan` と `daily-scrum` と食い違わせない）。`<作業場所>` はスクラッチパッドの中の新しいディレクトリにする。スクリプトの `gh` はカレントのリポジトリを読むので、リポジトリの中から走らせる。
 
@@ -209,7 +210,7 @@ gh api -X PATCH repos/{owner}/{repo}/issues/<番号> -f state=closed -f state_re
 
 ### 8. Done のデモを動画で見せる
 
-手元のセッションだけで行う。デモに出すのは、Done の Issue だけ。手順 7 で閉じた Issue と、手順 1 で控えた、すでに `completed` で閉じていた `sprint:<番号>` の Issue を合わせる。開いたまま残した Issue、「後で」にした Issue、不合格だった Issue は出さない。Done の Issue が1つも無ければ、「Done が無いのでデモを飛ばした」と伝えて手順 9 に進む。
+手元のセッションだけで行う。画面を出せない環境（クラウドのセッション）では、「動画を飛ばした」と伝えて手順 9 に進む。デモに出すのは、Done の Issue だけ。手順 7 で閉じた Issue と、手順 1 で控えた、すでに `completed` で閉じていた `sprint:<番号>` の Issue を合わせる。開いたまま残した Issue、「後で」にした Issue、不合格だった Issue は出さない。Done の Issue が1つも無ければ、「Done が無いのでデモを飛ばした」と伝えて手順 9 に進む。
 
 合否は手順 5 から 7 で決まっている。ここは、Done になったものの動きを、全部まとめて見る場にする。録画と手順書の書き方は `acceptance-video` に従う。ここでは、まとめて撮る流れだけを書く。確かめる場所に「手元」を選んでいなくても、デモは手元の preview で撮るので、手順 3 の「手元を立てる」でワークツリーを切る（切っていなければ、切って `pnpm install` までする）。
 
@@ -220,7 +221,7 @@ gh api -X PATCH repos/{owner}/{repo}/issues/<番号> -f state=closed -f state_re
    4. 子を持つストーリーとエピックは、子のどれかが今回の動画の対象になっている（Done の一覧にあり、人が撮るのを断っておらず、手順書を作れている）ときだけ、「子 #<番号> の動画で足りる」と理由を付けて飛ばす。どの子も対象でないときは、親自身の紐づく PR で、上と同じに決める。飛ばした親の子が撮れなかったときは、手順 12 で、親の理由に「子 #<番号> が撮れなかった」を足す
 2. 対象が 6 本を超えるときは、撮る前に `AskUserQuestion` で、全部撮るか、絞るかを聞く（理由: 1 本あたり約 30 秒の録画と合成がかかる）
 3. 対象の Issue ごとに、`acceptance-video` の手順 1 で手順書を書き、`--check` を通す。`--check` を通らない手順書は、一覧に出す前に直し、直せなければその Issue を「手順書を作れなかった（理由）」で撮れなかった扱いにする。書いた人の確認（`OWNER`、`COLLABORATOR`、`github-actions[bot]` 以外なら、要旨を見せて続けるかを聞く）は、まとめた承認とは別に、Issue ごとに先に行う。全部の手順書を、Issue の作者と `association`、場面ごとの字幕と操作を並べた 1 つの一覧にして出し、`AskUserQuestion` で、録画してよいかを 1 回で聞く。質問には「録画は、このワークツリーの D1 を書き換え、終わりに seed で戻す」を含める。直したい Issue があれば、その手順書だけ直して、もう一度一覧を出す
-4. 撮る前に、手順 3 の「手元を立てる」で立てた `pnpm dev` と `pnpm dev:open` のバックグラウンドのタスクがあれば止め、`acceptance-video` の手順 3 で `pnpm preview` を立てて、応答を待つ（`pnpm dev` と `pnpm preview` は API のポートが同じで、同時には立てられない。`record.mjs` は API のポートの preview につなぐ）
+4. 撮る前に、手順 3 の「手元を立てる」で立てた `pnpm dev` と `pnpm dev:open` のバックグラウンドのタスクがあれば止める。`pnpm preview` が既に立っていれば（手順 3 で「手元の preview」を選んだとき）、立て直さずに `curl` の応答を確かめて使う。無ければ、`acceptance-video` の手順 3 で立てて、応答を待つ（`pnpm dev` と `pnpm preview` は API のポートが同じで、同時には立てられない。`record.mjs` は API のポートの preview につなぐ）
 5. Issue を 1 本ずつ撮る。毎回 `pnpm db:seed` から始め、`acceptance-video` の手順 4 の seed、録画、合成の 3 コマンドを走らせる。動画の置き場所は、スクラッチパッドの `acceptance-videos-<日付>/` に 1 つ決める。1 本が失敗しても、残りは撮り、失敗した Issue と理由を控える。合成が終了コード 3（30 秒超え）なら、承認した手順書の `read` と `hold` の待ちだけを縮めて（場面と字幕は変えない）1 回だけ撮り直し、縮めた分を手順 12 の報告に出す。それでも超えたら撮れなかった扱いにする。失敗した録画が mp4 を残していても、`manifest.json` の `video` には入れない
 6. 全部撮り終えたら、`pnpm db:seed` で D1 を戻す。条件の確認は終わっているので、preview は止め（止めたことを `curl` の無応答で確かめる）、止めたことを手順 12 に控える
 7. 置き場所に `manifest.json` を書き（親を子の動画で足りるとして飛ばしたのに、その子が撮れなかったときは、親の理由に「子 #<番号> が撮れなかった」を足す。Done にならなかった Issue は入れない）、`acceptance-video` の `gallery.mjs` で 1 枚の HTML に並べて開く。書き方と開き方は `acceptance-video` の「まとめて撮る」に従う。人が動画を見て回ったら、手順 9 に進む
@@ -252,7 +253,7 @@ gh api -X PATCH repos/{owner}/{repo}/issues/<番号> -f state=closed -f state_re
 - <要旨>
 ```
 
-無い区分の見出しは書かない。本文はスクラッチパッドのファイルに書いてから渡す。
+無い区分の見出しは書かない。コメントは公開リポジトリの Issue に残るので、要旨を見せるときに伝える。本文はスクラッチパッドのファイルに書いてから渡す（MCP では `add_issue_comment`）。
 
 ```bash
 gh api repos/{owner}/{repo}/issues/<記録の番号>/comments -F body=@<file> --jq .html_url
