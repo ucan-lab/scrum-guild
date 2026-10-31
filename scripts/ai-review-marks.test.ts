@@ -75,6 +75,7 @@ describe('直しの後に AI レビューを1回回す', () => {
   test('見た回数と見た先を、まとめの先頭の印から取る', () => {
     assert.ok(capture, 'pr-feedback に印を拾う jq の capture が無い');
     has(prFeedback, 'select(.user.login == "github-actions[bot]" and .user.type == "Bot")', 'pr-feedback の jq');
+    has(prFeedback, '{created_at, sha: (.body | capture(', 'pr-feedback の jq が印のコメントの時刻を出す');
     const pattern = new RegExp(capture);
     assert.equal(pattern.exec(summaryBody('まとめ', SHA))?.groups?.sha, SHA, 'まとめの印を拾えない');
     assert.equal(pattern.exec(noDiffBody(SHA)), null, '差分なしのコメントを見たものに数えた');
@@ -94,6 +95,16 @@ describe('直しの後に AI レビューを1回回す', () => {
       'pr-feedback',
     );
     has(prFeedback, '実行の履歴とラベルのイベントでは決めない', 'pr-feedback');
+    has(
+      prFeedback,
+      '最後の印のコメントより後に、`ai-review` のラベルの付与のイベントが無い',
+      'pr-feedback の付け直しの止め',
+    );
+    has(
+      prFeedback,
+      '0（最初のレビューが「差分が無いので見ない」か、印の無いまま終わった）なら',
+      'pr-feedback の見た回数 0',
+    );
     has(prFeedback, 'このセッションで push したかでは決めない', 'pr-feedback');
     has(prFeedback, '手元の `git rev-parse HEAD` と一致する', 'pr-feedback');
     has(prFeedback, 'gh api -X DELETE "repos/{owner}/{repo}/issues/{number}/labels/ai-review"', 'pr-feedback');
