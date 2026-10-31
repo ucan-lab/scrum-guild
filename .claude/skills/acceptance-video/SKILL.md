@@ -148,14 +148,16 @@ mp4 の場所と長さ、手元に残したもの（ワークツリー、書き�
 node .claude/skills/acceptance-video/gallery.mjs <置き場所>
 ```
 
-`index.html` を書き、開く `file://` の URL を出す。`gallery.mjs` が成功したら、人に「開いて」と頼まれるのを待たず、出た URL を続けて `terminal-browser` で隣のペインに開く（単独で実行する）。人は開く操作をせずに、状況タブと全 Issue のタブから確認を始められる。
+`index.html` を書き、開く `file://` の URL を出す（置き場所が同じなら URL も同じ）。`gallery.mjs` が成功したら、人に「開いて」と頼まれるのを待たず、続けて開く。人は開く操作をせずに、状況タブと全 Issue のタブから確認を始められる。
+
+開く前に、書き出した `index.html` が呼び元の用途と合っていることを確かめる（`grep -c 'data-judge' <置き場所>/index.html`）。`sprint-review` の手順 2 の「先に動画で判定する」（受け入れ待ち）なら 1、手順 8 のデモ（Done）なら 0 であること。合っていなければ、`manifest.json` の `judge` を直して `gallery.mjs` を走らせ直し、もう一度確かめる（理由: `judge` なしの版を判定で開くと ok / ng の欄が無く、確認を始められない。見るのは `manifest.json` でなく `index.html`。直した `manifest.json` から作り直し忘れた古い HTML を開かないため）。動画が 1 本も無い（全部が `skipped` か `failed`）ときは、判定する物が無いので開かず、その旨を伝える。
 
 ```bash
 terminal-browser open <出た URL> --split right
 ```
 
-開く前に、`manifest.json` の `judge` が呼び元の用途と合っていることを確かめる（`grep -n '"judge"' <置き場所>/manifest.json`）。`sprint-review` の手順 2 の「先に動画で判定する」（受け入れ待ち）なら `"judge": true` が書いてあること、手順 8 のデモ（Done）なら `judge` の行が無いこと。合っていなければ、`manifest.json` を直して `gallery.mjs` を走らせ直してから開く（理由: `judge` なしの版を判定で開くと ok / ng の欄が無く、確認を始められない。開いた後に気づくと、開き直しで待たせる）。同じ置き場所を作り直して開き直すときは、前に開いたタブを使わず、新しい URL を開く。
+同じ置き場所で作り直して開き直すと、前に開いたペインが残る。手順 8 のデモは新しいペインで開き、人には新しいほうを見るよう伝える（判定の状態は HTML ごとに分かれ、混ざらない）。
 
-`terminal-browser` が `file://` を開けないときや、mp4 を再生できないときは、URL と mp4 の置き場所を人に渡し、人のブラウザで開いてもらう（この Mac の `terminal-browser` では、`file://` で開けて、動画も再生できた）。
+`terminal-browser` が無いか、終了コードが 0 以外のとき、`file://` を開けないとき、mp4 を再生できないときは、URL と mp4 の置き場所を人に渡し、人のブラウザで開いてもらう（この Mac の `terminal-browser` では、`file://` で開けて、動画も再生できた）。
 
 HTML に入れる Issue の題、字幕、理由は、エスケープされる。HTML には、外のファイルと外への通信を止める `Content-Security-Policy` も付けてある。
