@@ -329,8 +329,10 @@ describe('失敗の切り分け', () => {
     [new Error('D1 exceeded timeout which caused object to be reset'), 'reset'],
     [new Error('database is locked: SQLITE_BUSY'), 'busy'],
     [new Error('Exceeded maximum DB size'), 'storage'],
-    // 表名の rate_limits が overloaded の「rate limit」に当たらない
+    // 表名や SQL の断片が message に入っても、文の不具合（constraint、syntax）を先に取る
     [new Error('no such table: rate_limits'), 'syntax'],
+    [new Error('D1_ERROR: near "timeout": syntax error'), 'syntax'],
+    [new Error('UNIQUE constraint failed: sessions.token_hash (database is locked)'), 'constraint'],
     [new Error('UNIQUE constraint failed: rate_limits.key'), 'constraint'],
     [new Error('wrapper', { cause: new Error('Network connection lost') }), 'network'],
     [new Error('something new'), 'unknown'],
