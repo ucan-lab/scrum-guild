@@ -155,6 +155,8 @@ describe('同意の操作', () => {
 
   test('API トークンでは record が 403', async () => {
     const person = await createLoginPerson({ consented: false });
+    // token-create は同意の門を通る（未同意だと 403 の terms_required）ので、先に同意してからトークンを作る
+    expect((await post(app, consentRecord, { token: person.token, body: CURRENT_INPUT })).status).toBe(200);
     const created = await post(app, tokenCreate, {
       token: person.token,
       body: { name: 'consent test', scope: 'write' },
