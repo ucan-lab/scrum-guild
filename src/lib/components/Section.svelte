@@ -8,15 +8,36 @@
     title,
     count,
     hint,
+    folded = false,
+    foldedHint,
     children,
-  }: { id: string; title: string; count?: number; hint?: string; children: Snippet } = $props();
+  }: {
+    id: string;
+    title: string;
+    count?: number;
+    hint?: string;
+    folded?: boolean;
+    foldedHint?: string;
+    children: Snippet;
+  } = $props();
 </script>
 
-<section class="section" aria-labelledby={id}>
-  <div class="section-head">
-    <h2 class="section-title" {id}>{title}</h2>
-    {#if count != null}<span class="section-count">{count} {t('countUnit')}</span>{/if}
-    {#if hint}<span class="section-hint">{hint}</span>{/if}
-  </div>
-  {@render children()}
-</section>
+{#if folded}
+  <details class="section is-folded">
+    <summary class="section-head">
+      <h2 class="section-title" {id}>{title}</h2>
+      {#if count != null}<span class="section-count">{count} {t('countUnit')}</span>{/if}
+      <span class="section-hint">{foldedHint ?? t('sectionOpen')}</span>
+    </summary>
+    {@render children()}
+  </details>
+{:else}
+  <section class="section" aria-labelledby={id}>
+    <div class="section-head">
+      <h2 class="section-title" {id}>{title}</h2>
+      {#if count != null}<span class="section-count">{count} {t('countUnit')}</span>{/if}
+      {#if hint}<span class="section-hint">{hint}</span>{/if}
+    </div>
+    {@render children()}
+  </section>
+{/if}

@@ -81,11 +81,16 @@ export const dictionary = defineDictionary({
   groupRecords: '記録',
   groupManage: '管理',
 
-  // 今日やること（仮の画面）
+  // 今日やること
   sectionToday: '今日やると決めたもの',
   sectionTodayHint: '印を付けた日が過ぎても、完了にするか印を外すまで残ります',
-  todayEmptyTitle: '今日やるタスクは、この画面ができたらここに並びます',
-  todayEmptyText: 'いまは API の疎通だけを確かめる仮の画面です。',
+  todayEmptyTitle: '今日やるタスクはまだありません',
+  todayEmptyText: 'バックログやスプリントの行の左端にある太陽を押すと、ここに並びます。',
+  sectionOpen: '開くと一覧を表示',
+  overdue: '期日切れ',
+  weekDue: '今週が期日',
+  carryDays: '{days}日前に印を付けた',
+  sprintInProgress: '進行中のスプリント',
 
   // 今日やることの空の状態（管理者）。{workspace} と {member} は、辞書の言葉を画面が渡す。
   // 組織にワークスペースが1つも無いときは、最初のワークスペースを作る案内。作る画面の行き先は、その画面を作る Issue で決める

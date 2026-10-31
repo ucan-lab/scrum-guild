@@ -21,6 +21,7 @@ import {
   organizationSuspensionUpdateOperation,
 } from './operator-suspension.ts';
 import { myOrganizationsOperation, organizationInfoOperation } from './organization.ts';
+import { todayOperation } from './today.ts';
 import { organizationHistoryOperation } from './organization-history.ts';
 import {
   organizationHolidayAddOperation,
@@ -108,6 +109,7 @@ const listedOperations: readonly ImplementedOperation[] = [
   organizationQuotaUpdateOperation,
   myOrganizationsOperation,
   organizationInfoOperation,
+  todayOperation,
   organizationHolidayListOperation,
   organizationHolidayAddOperation,
   organizationHolidayDeleteOperation,

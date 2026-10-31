@@ -1,116 +1,195 @@
 <script lang="ts">
-  import { getHealth } from '../../lib/api.ts';
-  import Dialog from '../../lib/components/Dialog.svelte';
   import EmptyState from '../../lib/components/EmptyState.svelte';
   import Icon from '../../lib/components/Icon.svelte';
+  import LevelPanel from '../../lib/components/LevelPanel.svelte';
   import PageHead from '../../lib/components/PageHead.svelte';
   import Section from '../../lib/components/Section.svelte';
+  import TaskEntry from '../../lib/components/TaskEntry.svelte';
   import WorkspaceCreateDialog from '../../lib/components/WorkspaceCreateDialog.svelte';
-  import { showToast } from '../../lib/toast.svelte.ts';
   import { t } from '../../lib/vocabulary.svelte.ts';
+  import { dueStatus } from '../../shared/due.ts';
+  import type { BacklogTask } from '../../shared/operations/task/backlog-tree.ts';
   import type { PageProps } from './$types';
 
-  // 今日やることの仮の画面。枠と見出しと空の状態を部品で組み、API と画面がつながったことを示す。文言はすべて辞書を通す。
-  // 今日やるタスクは API から取っていないので、件数や「所属すると並ぶ」といった事実は書かない。
-  // 空の状態は管理者の場合を分ける。組織にワークスペースが1つも無いときは、最初のワークスペースを作る案内。
-  // ワークスペースはあるが所属が0件のときは、所属が無いことの案内。最初のワークスペースを作る案内には、作るダイアログを開くボタンを置く
   let { data }: PageProps = $props();
-
   let createDialog = $state<ReturnType<typeof WorkspaceCreateDialog>>();
-
   const emptyKind = $derived.by(() => {
     const view = data.organization;
     if (view === null || !view.me.is_admin) return 'default';
     if (!view.organization.has_workspaces) return 'firstWorkspace';
     return view.workspaces.length === 0 ? 'noMembership' : 'default';
   });
-
-  let health = $state(getHealth());
-  let checking = $state(false);
-  let detailOpen = $state(false);
-  let detailDialog = $state<ReturnType<typeof Dialog>>();
-
-  // 結果が出てから、成功と失敗を分けて知らせる。確かめている間は押せない
-  async function recheck(): Promise<void> {
-    checking = true;
-    const next = getHealth();
-    health = next;
-    const result = await next.catch(() => null);
-    checking = false;
-    if (result?.ok) showToast(t('apiRecheckOk'), 'check');
-    else showToast(t('apiRecheckFailed'), 'alert');
+  const tasks = $derived(data.today?.tasks ?? []);
+  const open = $derived(tasks.filter((task) => !task.is_today_completed));
+  const todayTasks = $derived(
+    open.filter((task) => task.today_on !== null).sort((a, b) => b.carry_days - a.carry_days || byDue(a, b)),
+  );
+  const overdueTasks = $derived(
+    open
+      .filter(
+        (task) =>
+          task.today_on === null &&
+          task.due_on !== null &&
+          dueStatus(task.due_on, task.today, task.week_start) === 'overdue',
+      )
+      .sort(byDue),
+  );
+  const weekTasks = $derived(
+    open
+      .filter(
+        (task) =>
+          task.today_on === null &&
+          task.due_on !== null &&
+          ['today', 'this_week'].includes(dueStatus(task.due_on, task.today, task.week_start)),
+      )
+      .sort(byDue),
+  );
+  const sprintTasks = $derived(
+    open
+      .filter(
+        (task) =>
+          task.today_on === null &&
+          (task.due_on === null || dueStatus(task.due_on, task.today, task.week_start) === 'later') &&
+          task.sprint_active,
+      )
+      .sort(byDue),
+  );
+  const doneTasks = $derived(tasks.filter((task) => task.is_today_completed).sort(byDue));
+  function byDue(a: (typeof tasks)[number], b: (typeof tasks)[number]): number {
+    return (
+      (a.due_on ?? '9999').localeCompare(b.due_on ?? '9999') ||
+      a.workspace_name.localeCompare(b.workspace_name) ||
+      a.position.localeCompare(b.position)
+    );
+  }
+  function taskOf(task: (typeof tasks)[number]): BacklogTask {
+    return {
+      id: task.id,
+      title: task.title,
+      points: task.points,
+      due_on: task.due_on,
+      assignee: task.assignee,
+      category: null,
+      repository: task.repository,
+      sprint: task.sprint,
+    };
   }
 </script>
 
-<svelte:head>
-  <title>{t('pageTitle', { page: t('pageToday'), app: t('appName') })}</title>
-</svelte:head>
-
+<svelte:head><title>{t('pageTitle', { page: t('pageToday'), app: t('appName') })}</title></svelte:head>
 <PageHead title={t('pageToday')} />
-
-<Section id="s-today" title={t('sectionToday')} hint={t('sectionTodayHint')}>
-  {#if emptyKind === 'firstWorkspace'}
-    <EmptyState
-      icon="sun"
-      art="map"
-      title={t('firstWorkspaceTitle', { workspace: t('workspace') })}
-      text={t('firstWorkspaceText', { workspace: t('workspace'), leader: t('leader') })}
-    >
-      {#snippet actions()}
-        <button class="btn is-sm" type="button" onclick={(event) => createDialog?.show(event.currentTarget)}>
-          <Icon name="plus" />{t('workspaceCreateAction', { workspace: t('workspace') })}
-        </button>
-      {/snippet}
-    </EmptyState>
-  {:else if emptyKind === 'noMembership'}
-    <EmptyState
-      icon="sun"
-      art="notice"
-      title={t('noMembershipTitle', { workspace: t('workspace') })}
-      text={t('noMembershipText', { workspace: t('workspace') })}
-    />
-  {:else}
-    <EmptyState icon="sun" art="notice" title={t('todayEmptyTitle')} text={t('todayEmptyText')} />
-  {/if}
-</Section>
-
-<Section id="s-api" title={t('apiHeading')}>
-  <p role="status" class="wrap-anywhere">
-    {#await health}
-      {t('apiChecking')}
-    {:then result}
-      {#if result.ok}
-        {t('apiStatus', { status: result.data.status, version: result.data.version })}
-      {:else}
-        {t('apiUnreachableStatus', { status: result.status })}
-      {/if}
-    {:catch}
-      {t('apiUnreachable')}
-    {/await}
-  </p>
-  <div class="form-actions">
-    <!-- Safari と Firefox はクリックでボタンにフォーカスを移さないので、開く操作を起こしたボタンを渡す -->
-    <button class="btn is-sm" type="button" onclick={(event) => detailDialog?.show(event.currentTarget)}>
-      {t('apiShowDetail')}
-    </button>
-    <button class="btn is-sm" type="button" disabled={checking} onclick={recheck}>{t('apiRecheck')}</button>
+<div class="layout-aside">
+  <div class="layout-main">
+    <Section id="s-today" title={t('sectionToday')} count={todayTasks.length} hint={t('sectionTodayHint')}>
+      {#if todayTasks.length === 0}
+        {#if emptyKind === 'firstWorkspace'}
+          <EmptyState
+            icon="sun"
+            art="map"
+            title={t('firstWorkspaceTitle', { workspace: t('workspace') })}
+            text={t('firstWorkspaceText', { workspace: t('workspace'), leader: t('leader') })}
+          >
+            {#snippet actions()}<button
+                class="btn is-sm"
+                type="button"
+                onclick={(event) => createDialog?.show(event.currentTarget)}
+                ><Icon name="plus" />{t('workspaceCreateAction', { workspace: t('workspace') })}</button
+              >{/snippet}
+          </EmptyState>
+        {:else if emptyKind === 'noMembership'}
+          <EmptyState
+            icon="sun"
+            art="notice"
+            title={t('noMembershipTitle', { workspace: t('workspace') })}
+            text={t('noMembershipText', { workspace: t('workspace') })}
+          />
+        {:else}<EmptyState icon="sun" art="notice" title={t('todayEmptyTitle')} text={t('todayEmptyText')} />{/if}
+      {:else}<div class="book">
+          {#each todayTasks as task (task.id)}<TaskEntry
+              task={taskOf(task)}
+              clock={{ today: task.today, weekStart: task.week_start }}
+              workspaceId={task.workspace_id}
+              workspaceName={task.workspace_name}
+              metaText={task.carry_days > 0 ? t('carryDays', { days: task.carry_days }) : undefined}
+              onComplete={() => {}}
+            />{/each}
+        </div>{/if}
+    </Section>
+    {#if data.today?.sprint_goals.length}
+      <Section id="s-goals" title={t('sprintGoal')}>
+        <div class="notice-grid">
+          {#each data.today.sprint_goals as sprint (sprint.workspace_id)}
+            <div class="panel">
+              <div class="panel-title"><b>{sprint.workspace_name}</b></div>
+              <p class="panel-note wrap-anywhere">{sprint.goal}</p>
+            </div>
+          {/each}
+        </div>
+      </Section>
+    {/if}
+    {#if overdueTasks.length}<Section id="s-overdue" title={t('overdue')} count={overdueTasks.length}
+        ><div class="book">
+          {#each overdueTasks as task (task.id)}<TaskEntry
+              task={taskOf(task)}
+              clock={{ today: task.today, weekStart: task.week_start }}
+              workspaceId={task.workspace_id}
+              workspaceName={task.workspace_name}
+              onComplete={() => {}}
+            />{/each}
+        </div></Section
+      >{/if}
+    {#if weekTasks.length}<Section id="s-week" title={t('weekDue')} count={weekTasks.length}
+        ><div class="book">
+          {#each weekTasks as task (task.id)}<TaskEntry
+              task={taskOf(task)}
+              clock={{ today: task.today, weekStart: task.week_start }}
+              workspaceId={task.workspace_id}
+              workspaceName={task.workspace_name}
+              metaText={task.due_on === task.today ? t('dueToday') : undefined}
+              onComplete={() => {}}
+            />{/each}
+        </div></Section
+      >{/if}
+    {#if sprintTasks.length}<Section
+        id="s-sprint"
+        title={t('sprintInProgress')}
+        count={sprintTasks.length}
+        folded
+        foldedHint={t('sectionOpen')}
+        ><div class="book">
+          {#each sprintTasks as task (task.id)}<TaskEntry
+              task={taskOf(task)}
+              clock={{ today: task.today, weekStart: task.week_start }}
+              workspaceId={task.workspace_id}
+              workspaceName={task.workspace_name}
+              onComplete={() => {}}
+            />{/each}
+        </div></Section
+      >{/if}
+    {#if doneTasks.length}<Section id="s-done" title={t('doneToday')} count={doneTasks.length}
+        ><div class="book">
+          {#each doneTasks as task (task.id)}<TaskEntry
+              task={taskOf(task)}
+              done
+              clock={{ today: task.today, weekStart: task.week_start }}
+              workspaceId={task.workspace_id}
+              workspaceName={task.workspace_name}
+              onComplete={() => {}}
+            />{/each}
+        </div></Section
+      >{/if}
   </div>
-</Section>
-
-{#if data.organization?.me.is_admin}
-  <WorkspaceCreateDialog bind:this={createDialog} slug={data.slug} meId={data.organization.me.id} />
-{/if}
-
-<Dialog bind:this={detailDialog} bind:open={detailOpen} title={t('apiDetailTitle')}>
-  <p>{t('apiDetailBody')}</p>
-  <!-- ダイアログは閉じていても中身を描くので、ここでも拒否を受けないと処理されない例外になる -->
-  {#await health then result}
-    <p class="mono wrap-anywhere">{JSON.stringify(result)}</p>
-  {:catch}
-    <p>{t('apiUnreachable')}</p>
-  {/await}
-  {#snippet footer(close)}
-    <button class="btn" type="button" disabled={checking} onclick={recheck}>{t('apiRecheck')}</button>
-    <button class="btn is-primary" type="button" onclick={close}>{t('close')}</button>
-  {/snippet}
-</Dialog>
+  <aside class="layout-side" aria-label={t('pageMe')}>
+    {#if data.experience}<LevelPanel
+        total={data.experience.total}
+        prospective={data.experience.prospective}
+        thanksReceived={data.experience.thanks_received}
+        workspaces={data.experience.workspaces}
+      />{/if}
+  </aside>
+</div>
+{#if data.organization?.me.is_admin}<WorkspaceCreateDialog
+    bind:this={createDialog}
+    slug={data.slug}
+    meId={data.organization.me.id}
+  />{/if}

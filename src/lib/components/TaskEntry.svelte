@@ -43,6 +43,9 @@
     showCategory = false,
     dnd,
     taskQuery = '?task=',
+    workspaceId,
+    workspaceName,
+    metaText,
   }: {
     task: BacklogTask;
     clock: { today: string; weekStart: number };
@@ -57,6 +60,9 @@
     showCategory?: boolean;
     dnd?: BacklogDnd;
     taskQuery?: string;
+    workspaceId?: string;
+    workspaceName?: string;
+    metaText?: string;
   } = $props();
 
   const category = $derived(showCategory ? task.category : null);
@@ -82,7 +88,9 @@
   let mark = $state<HTMLElement>();
   // タイトルのリンクは、今のワークスペースの画面に `?task=<ID>` を付ける。絞り込みの問い合わせ（assignee、q など）は残す。
   // 問い合わせの前半（taskQuery。`?...&task=` か `?task=`）は画面が1回だけ組んで渡し、行は ID だけを足す
-  const taskHref = $derived(resolve('/[slug]/w/[id]', { slug: page.params.slug ?? '', id: page.params.id ?? '' }));
+  const taskHref = $derived(
+    resolve('/[slug]/w/[id]', { slug: page.params.slug ?? '', id: workspaceId ?? page.params.id ?? '' }),
+  );
 
   export function focusMark(): void {
     mark?.focus();
@@ -140,6 +148,12 @@
         {#if category !== null}
           <DefinitionChip kind="category" name={category.name} />
         {/if}
+      </span>
+    {/if}
+    {#if workspaceName !== undefined || metaText !== undefined}
+      <span class="entry-meta">
+        {#if workspaceName !== undefined}<span>{workspaceName}</span>{/if}
+        {#if metaText !== undefined}<span>{metaText}</span>{/if}
       </span>
     {/if}
   </div>
