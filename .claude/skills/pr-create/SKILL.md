@@ -182,7 +182,7 @@ done-check の判断の差分が、人に聞けない実行（`AskUserQuestion` 
 SHA は、会話にある done-check の出力の「点検した head」。次をすべて満たすときだけ書き、1つでも満たさなければ印を書かない（理由: 点検していないコミットを点検済みにすると、AI レビューがそのコミットを見ない。印が無ければ、AI レビューは PR 全体を見る側に倒れる）。
 
 - このセッションで done-check を実行し、点検した head が小文字40桁の16進で出ている。done-check を省いたとき、点検した head が `無し` のときは書かない
-- push 済みの head（`gh api "repos/{owner}/{repo}/branches/<branch>" --jq .commit.sha`）が、点検した head と一致する。一致しなくても、違いが `sync-base` で main を取り込んだ merge だけなら書く。`git fetch origin` の後、`git rev-list --no-merges <点検した head>..<push 済みの head> ^origin/<base>` が空で、点検した head が push 済みの head の祖先（`git merge-base --is-ancestor`）なら、違いは merge だけとみなす（理由: AI レビューは取り込んだ main の分を差分から除き、衝突したファイルだけを PR 全体の差分で見る）
+- 点検した head が、push 済みの head（`gh api "repos/{owner}/{repo}/branches/<branch>" --jq .commit.sha`）と同じか、その祖先である（`git fetch origin` の後の `git merge-base --is-ancestor <点検した head> <push 済みの head>` が 0 で終わる）。祖先でなければ（force push で履歴が変わった）書かない。点検した head より後のコミット（done-check の直し、`sync-base` で main を取り込んだ merge）は、AI レビューが印から後の差分として見る。取り込んだ main の分は差分から除かれ、衝突したファイルは PR 全体の差分で見られる。done-check の後に手で積んだコミットは、「作成モードは done-check を先に済ませる」のとおり done-check を回し直してから来るので、ここには混ざらない
 
 書かなかったときは、その理由を Step 7 の報告に書く。
 
