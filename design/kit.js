@@ -1986,11 +1986,13 @@ const looooooooooooooooooooooooooooooooooongLine = "コードの長い1行は、
   let orgMenuOpen = false;
   let navCollapsed = (() => { try { return localStorage.getItem("sg-nav-collapsed") === "true"; } catch (e) { return false; } })();
   // カタログの見本は、開いた状態と閉じた状態、組織の数、招待の有無を替えて並べるので、引数で渡す。live が偽なら押しても動かない
-  function orgMenuHtml({ open = orgMenuOpen, id = "org-menu-list", live = true, orgs = D.organizations, invited = (D.receivedInvites || []).length > 0 } = {}) {
+  // moving は別の組織へ移っている最中（本番の OrganizationSwitcher の moving）。名前の欄と札に「移っています」を出す
+  function orgMenuHtml({ open = orgMenuOpen, id = "org-menu-list", live = true, orgs = D.organizations, invited = (D.receivedInvites || []).length > 0, moving = false } = {}) {
     if (orgs.length < 2 && !invited) return "";
     const current = orgs.find((k) => k.slug === D.organization) || orgs[0];
     const label = `${current.name}。${t("organization")}を切り替える${invited ? "。届いた招待あり" : ""}`;
-    return `<div class="org-menu"><button class="org-menu-button" type="button" aria-expanded="${open}" aria-controls="${id}" aria-label="${esc(label)}" ${live ? "data-org-menu" : ""}><span class="org-menu-label">${t("organization")}</span><b>${esc(current.name)}</b>${invited ? '<span class="chip">届いた招待あり</span>' : ""}${invited ? '<span class="org-menu-invite" aria-hidden="true"></span>' : ""}${icon("swap")}${icon("chevron")}<span class="nav-tip" aria-hidden="true">${esc(current.name)}${invited ? "<small>届いた招待あり</small>" : ""}</span></button>
+    const shown = moving ? "移っています" : esc(current.name);
+    return `<div class="org-menu"><button class="org-menu-button" type="button" aria-expanded="${open}" aria-controls="${id}" aria-label="${esc(label)}" ${moving ? 'data-moving="true"' : ""} ${live ? "data-org-menu" : ""}><span class="org-menu-label">${t("organization")}</span><b>${shown}</b>${invited ? '<span class="chip">届いた招待あり</span>' : ""}${invited ? '<span class="org-menu-invite" aria-hidden="true"></span>' : ""}${icon("swap")}${icon("chevron")}<span class="nav-tip" aria-hidden="true">${shown}${invited && !moving ? "<small>届いた招待あり</small>" : ""}</span></button>
       <ul class="org-menu-list" id="${id}" aria-label="入れる${t("organization")}" ${open ? "" : "hidden"}>${orgs.map((k) => `<li><a href="today.html"${k.slug === current.slug ? ' aria-current="page"' : ""}><span class="org-menu-name">${esc(k.name)}</span>${k.slug === current.slug ? icon("check") : ""}</a></li>`).join("")}<li><a href="organizations.html"><span class="org-menu-name">${t("organization")}の一覧へ</span>${invited ? '<span class="org-menu-note">招待が届いています</span>' : ""}</a></li></ul></div>`;
   }
   function setOrgMenu(open, focus) {
