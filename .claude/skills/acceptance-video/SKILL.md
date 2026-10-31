@@ -116,3 +116,38 @@ ffmpeg -y -loglevel error -i <mp4> -vf "fps=1,scale=480:-1,tile=6x5" -frames:v 1
 
 録画が失敗した場合も行う。`pnpm preview` のバックグラウンドのタスクを止め（`pkill` は使わない）、手順 3 の `curl` が応答しないことを確かめる。`pnpm db:seed` で D1 を戻す。ワークツリーは人に聞いてから消す（`sprint-review` の手順 7）。
 mp4 の場所と長さ、手元に残したもの（ワークツリー、書き換えた D1 を戻したか）を報告する。
+
+## まとめて撮る
+
+`sprint-review` の手順 2-C が呼ぶ。Issue ごとに上の手順を繰り返す代わりに、次の形で 1 回にまとめる。
+
+- 手順 1 と 2: 対象の Issue 全部の手順書を書き、一覧にして、承認を 1 回で取る
+- 手順 3: preview を 1 回だけ立て、全部撮り終えるまで止めない
+- 手順 4: 動画の置き場所を 1 つ決め（スクラッチパッドの `acceptance-videos-<日付>/`）、Issue を 1 本ずつ撮る。毎回 `pnpm db:seed` から始める。録画は `<置き場所>/rec-<番号>/`、mp4 は `<置き場所>/issue-<番号>.mp4` に置く。1 本が失敗しても残りを撮り、失敗の理由を控える
+- 手順 5 と 6: 全部撮り終えてから、まとめて行う
+
+撮り終えたら、置き場所の `manifest.json` に、Issue ごとの結果を書く。
+
+```json
+{
+  "items": [
+    { "issue": 574, "title": "Issue の題", "video": "issue-574.mp4", "captions": ["手順書の字幕を、場面の順に"] },
+    { "issue": 575, "title": "Issue の題", "skipped": "画面のコードを変えていない" },
+    { "issue": 576, "title": "Issue の題", "failed": "要素が見つからない（手順書の steps[3]）" }
+  ]
+}
+```
+
+`video`、`skipped`、`failed` のどれか 1 つを持たせる。`captions` は、手順書の `caption` を場面の順に写す。
+
+```bash
+node .claude/skills/acceptance-video/gallery.mjs <置き場所>
+```
+
+`index.html` を書き、開く `file://` の URL を出す。`terminal-browser` で隣のペインに開く（単独で実行する）。
+
+```bash
+terminal-browser open <出た URL> --split right
+```
+
+`terminal-browser` が `file://` を開けなければ、URL と mp4 の置き場所を人に渡し、人のブラウザで開いてもらう。Issue の題と理由は、HTML に入れる前にエスケープされる。
