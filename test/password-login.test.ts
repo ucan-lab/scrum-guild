@@ -11,12 +11,13 @@ import { hashSessionToken } from '../src/server/auth/session.ts';
 import { commonDb } from '../src/server/db/index.ts';
 import { sessionCookieName } from '../src/shared/session-cookie.ts';
 import { normalizePassword } from '../src/shared/password.ts';
+import { PASSWORD_LOGIN_ENABLED } from '../src/shared/password-login-enabled.ts';
 import { failUserWrites } from './auth/helpers.ts';
 import { spyPbkdf2 } from './auth/pbkdf2-spy.ts';
 import { AT, createOrganization, createUser } from './factories.ts';
 import { testEnv } from './operations/world.ts';
 
-const app = createApp();
+const app = createApp(undefined, { passwordLogin: true });
 const ORIGIN = new URL(testEnv.PUBLIC_ORIGIN).origin;
 const SESSION_COOKIE = sessionCookieName(testEnv.PUBLIC_ORIGIN);
 const PATH = '/api/auth/password/login';
@@ -717,5 +718,52 @@ describe('ログと応答に出さない', () => {
     expect(res.status).toBe(500);
     expect((await errorOf(res)).code).toBe('internal');
     expectClean([await res.text(), ...logs], secretsOf(person));
+  });
+});
+
+// 初版は口を閉じている（PASSWORD_LOGIN_ENABLED、Issue #635）。省略した createApp() と、passwordLogin: false は、登録しない
+describe('口を閉じているとき', () => {
+  // 定数を true にして口を開けたときは、この場面は成り立たない
+  test.skipIf(PASSWORD_LOGIN_ENABLED)(
+    '既定の createApp() は、有効な資格情報でも 404 の not_found を返し、セッションを作らない',
+    async () => {
+      const person = await passwordPerson();
+      const res = await createApp().request(
+        PATH,
+        {
+          method: 'POST',
+          headers: {
+            Origin: ORIGIN,
+            'Content-Type': 'application/json',
+            'Sec-Fetch-Site': 'same-origin',
+            'CF-Connecting-IP': nextIp(),
+          },
+          body: JSON.stringify({ email: person.email, password: person.password }),
+        },
+        testEnv,
+      );
+      expect(res.status).toBe(404);
+      expect(await errorOf(res)).toMatchObject({ code: 'not_found' });
+      expect(res.headers.getSetCookie()).toEqual([]);
+      expect(await passwordLoginOf(person.subject)).toBeUndefined();
+    },
+  );
+
+  test('passwordLogin: false は、既定が開いていても閉じる', async () => {
+    const res = await createApp(undefined, { passwordLogin: false }).request(
+      PATH,
+      { method: 'POST', headers: { Origin: ORIGIN, 'Content-Type': 'application/json' }, body: '{}' },
+      testEnv,
+    );
+    expect(res.status).toBe(404);
+    expect((await errorOf(res)).code).toBe('not_found');
+  });
+
+  test('ほかの口（GitHub と Google のログインの開始）は閉じない', async () => {
+    const closed = createApp();
+    for (const provider of ['github', 'google']) {
+      const res = await closed.request(`/api/auth/${provider}/start?return_to=%2F`, { redirect: 'manual' }, testEnv);
+      expect(res.status).toBe(302);
+    }
   });
 });
