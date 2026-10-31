@@ -114,8 +114,9 @@ describe('Claude が書いた印と、見終えていない実行', () => {
     ['BOM', `${ch(0xfeff)}${INCOMPLETE_LINE}\n`],
     ['ゼロ幅の空白', `${ch(0x200b)}${INCOMPLETE_LINE}\n`],
     ['先頭の空行', `\n\n${INCOMPLETE_LINE}\n`],
+    ['先頭の区切り線', `---\n${INCOMPLETE_LINE}\n`],
   ]) {
-    test(`1行目が「見終えていない」なら印を付けない（${name}）`, () => {
+    test(`最初の中身のある行が「見終えていない」なら印を付けない（${name}）`, () => {
       assert.doesNotMatch(summaryBody(summary, sha), /<!-- ai-review:/);
     });
   }
