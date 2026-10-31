@@ -14,9 +14,10 @@ const schemasOf = new WeakMap<AnyOperationDefinition, JsonSchemas>();
 function schemasFor(definition: AnyOperationDefinition) {
   let schemas = schemasOf.get(definition);
   if (schemas === undefined) {
+    // 表せない型（z.date() など）は {}（何でもよい）にする。既定は例外で、1つの定義が一覧全体を 500 にし、CLI がすべて止まるため
     schemas = {
-      input_schema: z.toJSONSchema(definition.input, { io: 'input' }),
-      output_schema: z.toJSONSchema(definition.output, { io: 'output' }),
+      input_schema: z.toJSONSchema(definition.input, { io: 'input', unrepresentable: 'any' }),
+      output_schema: z.toJSONSchema(definition.output, { io: 'output', unrepresentable: 'any' }),
     };
     schemasOf.set(definition, schemas);
   }
