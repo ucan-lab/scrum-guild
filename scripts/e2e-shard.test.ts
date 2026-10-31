@@ -205,12 +205,10 @@ describe('weightsOf の中央値', () => {
   });
 });
 
-describe('手元の e2e/ と scripts/e2e-shard-weights.json', () => {
+describe('手元の e2e/ と scripts/e2e-shard-weights.json（不変条件だけ。別の PR がテストを足しても落ちない）', () => {
   const files = listE2eFiles();
   const weights = readWeights();
-  const weight = weightsOf(files, weights);
   const shards = assignShards(files, weights, SHARDS);
-  const seconds = shards.map((shard) => simulateSeconds(shard, weight));
 
   test('重みの JSON は、ファイル名から正の秒への対応', () => {
     for (const [name, value] of Object.entries(weights)) {
@@ -229,6 +227,21 @@ describe('手元の e2e/ と scripts/e2e-shard-weights.json', () => {
     for (const shard of shards) assert.ok(shard.length > 0);
   });
 
+  test('重みに無いファイルが増えても、全ファイルがいずれかのシャードに入る', () => {
+    const more = [...files, 'zz-new-1.test.ts', 'zz-new-2.test.ts'];
+    assert.deepEqual([...assignShards(more, weights, SHARDS).flat()].sort(), more);
+  });
+});
+
+// 所要時間の閾値は、重みの JSON に載るファイルだけで確かめる（実物の e2e/ を読まない）。別の PR が e2e/ にテストを足すと、
+// 重みに無いファイルが中央値で数えられて割り方が動くが、そのたびにこのテストが落ちて重みの作り直しを強いないため
+describe('scripts/e2e-shard-weights.json の割り方（受け入れ条件の数値）', () => {
+  const weights = readWeights();
+  const files = Object.keys(weights).sort();
+  const weight = weightsOf(files, weights);
+  const shards = assignShards(files, weights, SHARDS);
+  const seconds = shards.map((shard) => simulateSeconds(shard, weight));
+
   test(`見積もりの差が ${MAX_SPREAD_SECONDS} 秒以内（余裕を見て 40 秒以内）`, () => {
     assert.ok(Math.max(...seconds) - Math.min(...seconds) <= 40, JSON.stringify(seconds));
   });
@@ -242,11 +255,6 @@ describe('手元の e2e/ と scripts/e2e-shard-weights.json', () => {
   test('合計だけの貪欲な割り方では足りず、シミュレーションで詰めている（詰めた割り方が貪欲より最長が短い）', () => {
     const greedy = greedyShards(files, weight, SHARDS).map((shard) => simulateSeconds(shard, weight));
     assert.ok(Math.max(...seconds) < Math.max(...greedy), `${JSON.stringify(seconds)} と ${JSON.stringify(greedy)}`);
-  });
-
-  test('重みに無いファイルが増えても、全ファイルがいずれかのシャードに入る', () => {
-    const more = [...files, 'zz-new-1.test.ts', 'zz-new-2.test.ts'];
-    assert.deepEqual([...assignShards(more, weights, SHARDS).flat()].sort(), more);
   });
 
   test('重みの合計は、完全に均した下限（約 205 秒）から大きく外れない', () => {
