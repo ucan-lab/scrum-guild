@@ -72,10 +72,10 @@ SQ.mount("me", () => `
       </section>
     </aside>
   </div>
-  <!-- API トークンの節も5列の表を持つので、経験値の明細と同じ理由で、横の面と並ぶ本文（.layout-main）には入れず、
-       .layout-aside の下に全幅の .settings として置く（表を押しつぶさないため） -->
-  <div class="settings">
-    ${setting("API トークン", `CLI や MCP に渡す鍵。発行した人と同じ権限の範囲で、画面を通さずに API を呼べます。`, `
+  <!-- API トークンの節も5列の表を持つので、経験値の明細と同じ理由で、.setting（見出しの列 260px）にも、横の面と並ぶ本文
+       （.layout-main）にも入れず、.layout-aside の下に Section で全幅に置く（説明を見出しの下に置き、表を押しつぶさない） -->
+  ${SQ.section("me-tokens", "API トークン", null, `
+    <p class="action-note">CLI や MCP に渡す鍵。発行した人と同じ権限の範囲で、画面を通さずに API を呼べます。</p>
       <form class="form" aria-label="API トークンの発行" onsubmit="return false">
         <div class="form-row is-start">
           <div class="field"><label class="field-label" for="tk-name">名前</label><input class="input" id="tk-name" autocomplete="off" aria-describedby="tk-name-hint"><span class="field-hint" id="tk-name-hint">何に使う鍵か分かる名前（100文字まで）</span></div>
@@ -91,10 +91,8 @@ SQ.mount("me", () => `
           <tr><td class="is-name wrap-anywhere" data-label="名前">手元の CLI</td><td data-label="範囲"><span class="tag">書き込み</span></td><td class="mono" data-label="期限">2026-12-29</td><td class="mono" data-label="最後に使った日">2026-10-30</td><td class="is-actions"><button class="btn is-sm is-quiet is-danger" type="button" data-dialog="tokenRevoke" aria-label="API トークン「手元の CLI」を取り消す">取り消す</button></td></tr>
           <tr><td class="is-name wrap-anywhere" data-label="名前">MCP（読み取りだけ）</td><td data-label="範囲"><span class="tag">読み取り</span></td><td class="mono" data-label="期限">2026-11-15</td><td data-label="最後に使った日">未使用</td><td class="is-actions"><button class="btn is-sm is-quiet is-danger" type="button" data-dialog="tokenRevoke" aria-label="API トークン「MCP（読み取りだけ）」を取り消す">取り消す</button></td></tr>
         </tbody></table></div>`)}
-  </div>
   <!-- 経験値の明細は5列の表なので、.setting（見出しの列 260px）にも、横の面と並ぶ本文にも入れず、説明を表の上に置いて
-       画面の幅いっぱいに出す。上の API トークンの節（.settings）も表を持つので、同じ理由で全幅に置く。
-       760px 以下は is-stacked で行を縦に積む。今所属していないワークスペースの行は内容を伏せる（最後の行） -->
+       画面の幅いっぱいに出す（上の API トークンの節も同じ）。760px 以下は is-stacked で行を縦に積む。今所属していないワークスペースの行は内容を伏せる（最後の行） -->
   ${SQ.section("me-experience", "経験値の明細", null, `
     <p class="action-note">本人だけが見られます。打ち消しは負の値で残ります。手で足し引きする操作はありません。</p>
     <div class="table-wrap"><table class="table is-stacked" aria-label="経験値の明細"><thead><tr><th>確定日時</th><th>${t("workspace")}</th><th>行動</th><th class="is-name">内容</th><th class="is-num">${icon("crystal", "xp")} XP</th></tr></thead>

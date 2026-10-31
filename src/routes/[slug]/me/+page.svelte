@@ -212,7 +212,7 @@
 <PageHead title={t('pageMe')} eyebrow={me?.name} />
 
 <!-- 本文（#70 で設定の節を足す）と横のレベルの面。API トークンと経験値の明細は表を持つので、この下に画面の幅いっぱいに出す
-     （5列の表を横の面と並べると、PC の幅でも押しつぶされるため。設定の節は見出しの列も取るので、表の幅はさらに狭くなる） -->
+     （5列の表を横の面と並べると、PC の幅でも押しつぶされるため。.setting は見出しの列も取るので使わず、どちらも Section で出す） -->
 <div class="layout-aside">
   <div class="layout-main">
     <p class="action-note">{t('meOtherSettingsNote')}</p>
@@ -241,9 +241,7 @@
   </aside>
 </div>
 
-<div class="settings">
-  <ApiTokensSetting initial={data.tokens} />
-</div>
+<ApiTokensSetting initial={data.tokens} />
 
 <Section id={LEDGER_ID} title={t('meExperienceTitle')}>
   <p class="action-note">{t('meExperienceDescription')}</p>

@@ -20,7 +20,7 @@
   import Dialog from './Dialog.svelte';
   import EmptyState from './EmptyState.svelte';
   import Icon from './Icon.svelte';
-  import Setting from './Setting.svelte';
+  import Section from './Section.svelte';
 
   // 自分の設定の画面の「API トークン」の節（見本は design/me.html）。CLI や MCP に渡す鍵を、自分で発行して取り消す。
   // - 発行: 名前、範囲（読み取り／書き込み）、有効日数（1〜90、既定 90）。通ったら、生の値をダイアログに出す。
@@ -44,6 +44,8 @@
   let { initial }: { initial: Token[] | null } = $props();
 
   const ids = $props.id();
+  // 節の見出し（h2）の id。Section が見出しと節を結ぶ。読み直せた後にここへフォーカスを移す
+  const sectionId = `${ids}-section`;
   const nameId = `${ids}-name`;
   const nameHintId = `${ids}-name-hint`;
   const nameErrorId = `${ids}-name-error`;
@@ -77,7 +79,6 @@
   // 読み上げの領域に入れる文（発行中、取消中、読み直せた）
   let status = $state('');
 
-  let setting = $state<ReturnType<typeof Setting>>();
   let nameInput = $state<HTMLInputElement>();
   let lifetimeInput = $state<HTMLInputElement>();
   let formError = $state<HTMLElement>();
@@ -123,7 +124,10 @@
     // 押したボタンが消えるので、節の題へフォーカスを移し、読めたことを読み上げに伝える
     status = t('apiTokenLoaded');
     await tick();
-    setting?.focusTitle();
+    // 見出しは Tab の順に入れず、プログラムからだけフォーカスを置く（自分の設定の「経験値の明細」の読み直しと同じ）
+    const heading = document.getElementById(sectionId);
+    heading?.setAttribute('tabindex', '-1');
+    heading?.focus();
   }
 
   // 入力欄の誤り。送る前に画面で見つけて、その欄へフォーカスを移す（API は同じ範囲で 400 を返す）
@@ -270,7 +274,9 @@
   >
 {/snippet}
 
-<Setting bind:this={setting} title={t('apiTokenTitle')} description={t('apiTokenDesc')}>
+<!-- 5列の表を持つので、.setting（見出しの列 260px）には入れず、経験値の明細と同じ Section で全幅に出す -->
+<Section id={sectionId} title={t('apiTokenTitle')}>
+  <p class="action-note">{t('apiTokenDesc')}</p>
   <form class="form" aria-label={t('apiTokenFormLabel')} onsubmit={create} novalidate>
     <div class="form-row is-start">
       <div class="field" class:is-invalid={fieldError?.field === 'name'}>
@@ -411,7 +417,7 @@
       </div>
     {/if}
   {/if}
-</Setting>
+</Section>
 
 <Dialog bind:this={issuedDialog} bind:open={issuedOpen} outsideDismiss={false} title={t('apiTokenIssuedTitle')}>
   {#if issued}
