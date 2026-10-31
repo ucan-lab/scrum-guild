@@ -544,7 +544,7 @@ Bash の判定を `permissions.deny` に置かないのは、規則が前方一�
 | GitHub と Claude の設定、git のフック | `.github/`、`.claude/settings.json`、`.claude/hooks/`、`.mcp.json`、`.githooks/` |
 | Codex の実装専用のエージェントと設定（sandbox とネットワークを変えられる）、Codex が読む決まり | `.codex/`、`AGENTS.md` |
 | CI の `ai-review` が書き込みのトークンを持って読むスキルとエージェント | `.claude/skills/ai-review/`、`.claude/agents/` |
-| `.claude/` の下のファイル（入れ子の `.claude/` も含む。CI が書き込みのトークンを持って走らせるスクリプトを含む）。ただし文書だけの PR の範囲のスキルとチェックリストの `.md` を除く | `.claude/` の下の、`.claude/skills/` と `.claude/checklists/` の `.md` のほか（`.claude/skills/sprint-review/check-criterion.py`、`.claude/skills/acceptance-video/` の `.mjs` と `.py` など） |
+| `.claude/` の下のファイル（入れ子の `.claude/` も含む。CI が書き込みのトークンを持って走らせるスクリプトを含む）。ただし文書だけの PR の範囲のスキルとチェックリストの `.md` を除く | `.claude/` の下の、`.claude/skills/` と `.claude/checklists/` の `.md` のほか（`.claude/skills/sprint-review/check-criterion.py`、`.claude/skills/acceptance-video/` の `.mjs`、`.py`、`.json` など） |
 
 `.claude/` の下は、文書だけの PR の範囲（下の「文書だけの PR」）のスキルとチェックリストの `.md` を除いて、すべて守る。`.github/labeler.yml` では、`**/.claude/**` に当たり、`.claude/{skills,checklists}/**/*.md` に当たらないファイルとして拾い、ファイルを名指さない（判定は `scripts/labeler.test.ts` が labeler と同じ minimatch で確かめる）。ワークフローが後から `.claude/` の下のスクリプトを走らせ始めても、守るパスへの足し忘れが起きないようにするため。入れ子の `.claude/`（`src/.claude/skills/` など）も Claude Code が読むので拾う。`ai-review` が読むスキルとエージェント（`.claude/skills/ai-review/`、`.claude/agents/`）は、`.md` も守る。frontmatter（`allowed-tools`、`hooks`、`permissionMode` など）で、ワークフローの `--allowedTools` より広い道具を許し、シェルのコマンドを走らせられるため。action は `.claude/` を base の版に戻すので、これらは `main` に入ると以降のすべての PR の `ai-review`（`pull-requests: write` のトークン）に効く。`.md` だけの PR には `ai-review` も重い CI も走らないので、人が読まなければ誰も確かめない。
 

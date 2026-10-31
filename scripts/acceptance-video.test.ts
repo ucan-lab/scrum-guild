@@ -1,18 +1,21 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 
-// acceptance-video で、セッションが受け入れ動画を撮る前に手順書と字幕の区間を確かめるスクリプト
+// acceptance-video で、セッションが受け入れ動画を撮る前に手順書と字幕の区間を確かめ、字幕の帯を載せるスクリプト
 const skillDir = fileURLToPath(new URL('../.claude/skills/acceptance-video/', import.meta.url));
+const recordScript = join(skillDir, 'record.mjs');
+const composeScript = join(skillDir, 'compose.py');
+const FONT = '/System/Library/Fonts/ヒラギノ角ゴシック W6.ttc';
 
-function inTempDir<T>(files: Record<string, unknown>, run: (path: (name: string) => string) => T): T {
+function inTempDir<T>(files: Record<string, string>, run: (path: (name: string) => string) => T): T {
   const dir = mkdtempSync(join(tmpdir(), 'acceptance-video-'));
   try {
-    for (const [name, content] of Object.entries(files)) writeFileSync(join(dir, name), JSON.stringify(content));
+    for (const [name, content] of Object.entries(files)) writeFileSync(join(dir, name), content);
     return run((name) => join(dir, name));
   } finally {
     rmSync(dir, { recursive: true, force: true });
@@ -20,79 +23,114 @@ function inTempDir<T>(files: Record<string, unknown>, run: (path: (name: string)
 }
 
 describe('record.mjs --check', () => {
-  const check = (plan: unknown) =>
-    inTempDir({ 'steps.json': plan }, (path) => {
-      const result = spawnSync(process.execPath, [join(skillDir, 'record.mjs'), '--check', path('steps.json')], {
-        encoding: 'utf8',
-      });
+  const checkRaw = (text: string) =>
+    inTempDir({ 'steps.json': text }, (path) => {
+      const result = spawnSync(process.execPath, [recordScript, '--check', path('steps.json')], { encoding: 'utf8' });
       assert.ifError(result.error);
       return result;
     });
+  const check = (plan: unknown) => checkRaw(JSON.stringify(plan));
+  const seconds = (stdout: string) => Number(/見積もり (\d+\.\d) 秒/.exec(stdout)?.[1]);
+  const rejected = (plan: unknown, message: RegExp) => {
+    const result = check(plan);
+    assert.equal(result.status, 1, result.stdout);
+    assert.match(result.stderr, message);
+  };
 
-  test('見本の手順書は通り、待ちの合計を出す', () => {
-    const result = spawnSync(
-      process.execPath,
-      [join(skillDir, 'record.mjs'), '--check', join(skillDir, 'example-574.json')],
-      {
-        encoding: 'utf8',
-      },
-    );
+  test('見本の手順書は通り、見積もりを出す', () => {
+    const result = spawnSync(process.execPath, [recordScript, '--check', join(skillDir, 'example-574.json')], {
+      encoding: 'utf8',
+    });
     assert.equal(result.status, 0, result.stderr);
-    assert.match(result.stdout, /場面 8、待ちの合計 25\.1 秒/);
+    assert.match(result.stdout, /場面 8、見積もり \d+\.\d 秒/);
+  });
+
+  test('JSON として読めない手順書は、読めないと断る', () => {
+    const result = checkRaw('{ "steps": [');
+    assert.equal(result.status, 1);
+    assert.match(result.stderr, /手順書を読めない/);
+  });
+
+  test('steps が空の手順書は断る', () => {
+    rejected({ steps: [] }, /steps が空/);
   });
 
   test('操作が1つの動詞に決まらない手順書は、場所を添えて断る', () => {
-    const result = check({ steps: [{ actions: [{ click: { css: 'a' }, check: { css: 'b' } }] }] });
-    assert.equal(result.status, 1);
-    assert.match(result.stderr, /steps\[0\]\.actions\[0\]/);
+    rejected({ steps: [{ actions: [{ click: { css: 'a' }, check: { css: 'b' } }] }] }, /steps\[0\]\.actions\[0\]/);
+  });
+
+  test('綴りの誤り（未知のキー）は黙って通さず断る', () => {
+    rejected({ steps: [{ caption: 'あ', action: [{ click: { css: 'a' } }] }] }, /steps\[0\]: action は使えない/);
+    rejected({ steps: [{ actions: [{ click: { css: 'a' }, lable: 'x' }] }] }, /lable は使えない/);
+    rejected({ step: [] }, /step は使えない/);
   });
 
   test('role を指すのに name が無い要素は断る', () => {
-    const result = check({ steps: [{ mark: { role: 'button' } }] });
-    assert.equal(result.status, 1);
-    assert.match(result.stderr, /steps\[0\]\.mark: role には name も指定する/);
+    rejected({ steps: [{ mark: { role: 'button' } }] }, /steps\[0\]\.mark: role には name も指定する/);
   });
 
-  test('字幕が帯に収まらない長さなら断る', () => {
-    const result = check({ steps: [{ caption: 'あ'.repeat(39) }] });
-    assert.equal(result.status, 1);
-    assert.match(result.stderr, /caption が 38 文字を超える/);
+  test('空の css や label、不正な nth と state は断る', () => {
+    rejected({ steps: [{ mark: { css: '' } }] }, /css は空でない文字列/);
+    rejected({ steps: [{ mark: { css: 'a', nth: -1 } }] }, /nth は 0 以上の整数/);
+    rejected({ steps: [{ actions: [{ wait: { css: 'a' }, state: 'gone' }] }] }, /state は visible/);
   });
 
-  test('38 文字ちょうどの字幕は通る', () => {
+  test('goto、select、fill、pause の値の誤りは断る', () => {
+    rejected({ steps: [{ actions: [{ goto: 'x' }] }] }, /goto は \/ で始まるパス/);
+    rejected({ steps: [{ actions: [{ select: { css: 'a' } }] }] }, /select には label/);
+    rejected({ steps: [{ actions: [{ fill: { css: 'a' } }] }] }, /fill には text/);
+    rejected({ steps: [{ actions: [{ pause: 10_001 }] }] }, /pause は 0 から 10000/);
+  });
+
+  test('入れ子の within の誤りも場所を添えて断る', () => {
+    rejected(
+      { steps: [{ mark: { css: 'a', within: { role: 'region' } } }] },
+      /mark\.within: role には name も指定する/,
+    );
+  });
+
+  test('字幕が帯に収まらない長さなら断り、38 文字ちょうど（と空白だけの字幕）の扱いを分ける', () => {
+    rejected({ steps: [{ caption: 'あ'.repeat(39) }] }, /caption が 38 文字を超える/);
     assert.equal(check({ steps: [{ caption: 'あ'.repeat(38) }] }).status, 0);
+    rejected({ steps: [{ caption: '   ' }] }, /caption は空でない文/);
   });
 
-  test('待ちの合計が長すぎる手順書は断る', () => {
-    const result = check({ steps: Array.from({ length: 10 }, () => ({ caption: 'あ' })) });
-    assert.equal(result.status, 1);
-    assert.match(result.stderr, /26 秒を超える/);
+  test('字幕のある場面で、読む時間と結果を見る時間が短すぎる手順書は断る', () => {
+    const click = { click: { css: 'a' } };
+    rejected({ steps: [{ caption: 'あ', read: 0, actions: [click] }] }, /read を 1500 ミリ秒以上にする/);
+    rejected({ steps: [{ caption: 'あ', hold: 300 }] }, /hold を 1500 ミリ秒以上にする/);
+    assert.equal(check({ steps: [{ caption: 'あ', read: 1500, actions: [click], hold: 0 }] }).status, 0);
   });
 
-  test('見える操作が続くときだけ、操作の間に1秒を数える', () => {
-    // check → click は 1 秒、click → wait は 0 秒。始まりの 0.5 秒と合わせて 1.5 秒
-    const result = check({
-      steps: [
-        {
-          actions: [{ check: { css: 'a' } }, { click: { css: 'b' } }, { wait: { css: 'c' } }],
-          hold: 0,
-        },
-      ],
-    });
-    assert.equal(result.status, 0, result.stderr);
-    assert.match(result.stdout, /待ちの合計 1\.5 秒/);
+  test('見積もりは 28 秒ちょうどまで通り、1 ミリ秒でも超えれば断る', () => {
+    assert.equal(check({ steps: [{ hold: 10_000 }, { hold: 10_000 }, { hold: 7_700 }] }).status, 0);
+    rejected({ steps: [{ hold: 10_000 }, { hold: 10_000 }, { hold: 7_701 }] }, /28 秒を超える/);
+  });
+
+  test('操作の間は、見える操作が続くときだけ 1 秒を数える', () => {
+    const only = (...actions: object[]) => seconds(check({ steps: [{ actions, hold: 0 }] }).stdout);
+    const check_ = { check: { css: 'a' } };
+    const click = { click: { css: 'b' } };
+    const wait = { wait: { css: 'c' } };
+    // 見える操作が 2 つ並ぶ check → click だけが 1 秒増える。待つだけの操作の前後は増えない
+    assert.equal(only(check_, click) - only(click, wait), 1);
+    assert.equal(only(wait, click), only(click, wait));
   });
 });
 
 describe('compose.py --spans', () => {
   const spans = (cues: unknown) =>
-    inTempDir({ 'cues.json': cues }, (path) => {
-      const result = spawnSync('python3', ['-I', join(skillDir, 'compose.py'), '--spans', path('cues.json')], {
-        encoding: 'utf8',
-      });
+    inTempDir({ 'cues.json': typeof cues === 'string' ? cues : JSON.stringify(cues) }, (path) => {
+      const result = spawnSync('python3', ['-I', composeScript, '--spans', path('cues.json')], { encoding: 'utf8' });
       assert.ifError(result.error);
       return result;
     });
+  const rejected = (cues: unknown, message: RegExp) => {
+    const result = spans(cues);
+    assert.equal(result.status, 1, result.stdout);
+    assert.match(result.stderr, message);
+    assert.doesNotMatch(result.stderr, /Traceback/);
+  };
 
   test('字幕は次の字幕の時刻まで出し、空の字幕は帯を空にする', () => {
     const result = spans([
@@ -111,18 +149,133 @@ describe('compose.py --spans', () => {
   });
 
   test('最後が空の字幕でなければ、最後の字幕を閉じられないので断る', () => {
-    const result = spans([{ t: 0, text: '閉じない' }]);
-    assert.equal(result.status, 1);
-    assert.match(result.stderr, /最後は、字幕を閉じる空の文/);
+    rejected([{ t: 0, text: '閉じない' }], /最後は、字幕を閉じる空の文/);
   });
 
-  test('時刻が戻っている字幕は断る', () => {
-    const result = spans([
-      { t: 5, text: 'あ' },
-      { t: 3, text: 'い' },
-      { t: 6, text: '' },
+  test('時刻が戻っている字幕と、同じ時刻に並ぶ字幕は断る', () => {
+    const closing = { t: 6, text: '' };
+    rejected([{ t: 5, text: 'あ' }, { t: 3, text: 'い' }, closing], /時刻が戻っている/);
+    rejected([{ t: 3, text: 'あ' }, { t: 3, text: 'い' }, closing], /同じ時刻に2つの字幕/);
+  });
+
+  test('字幕が1つも無い cues と、空白だけの字幕は断る', () => {
+    rejected([{ t: 0, text: '' }], /字幕が1つも無い/);
+    rejected(
+      [
+        { t: 0, text: '   ' },
+        { t: 1, text: '' },
+      ],
+      /字幕が1つも無い/,
+    );
+  });
+
+  test('t や text の欠落、負の時刻、配列でない cues は、スタックトレースでなく理由を出して断る', () => {
+    rejected([{ text: 'あ' }, { t: 1, text: '' }], /cues\[0\] の t は 0 以上の数/);
+    rejected(
+      [
+        { t: -1, text: 'あ' },
+        { t: 1, text: '' },
+      ],
+      /cues\[0\] の t は 0 以上の数/,
+    );
+    rejected(
+      [
+        { t: 0, text: 5 },
+        { t: 1, text: '' },
+      ],
+      /cues\[0\] の text は文字列/,
+    );
+    rejected({}, /cues は、\{t, text\} の配列/);
+    rejected('[', /Expecting value|Unterminated/);
+  });
+});
+
+// ffmpeg と Pillow と日本語フォントが要る。無い環境では飛ばす
+describe('compose.py', () => {
+  const tool = (command: string, args: string[]) => spawnSync(command, args, { encoding: 'utf8' });
+  const ready =
+    tool('ffmpeg', ['-version']).status === 0 &&
+    tool('python3', ['-I', '-c', 'import PIL']).status === 0 &&
+    existsSync(FONT);
+  const options = { skip: ready ? false : 'ffmpeg、Pillow、日本語フォントのどれかが無い' };
+
+  const run = (size: string, seconds: number, cues: unknown) =>
+    inTempDir({ 'cues.json': JSON.stringify(cues) }, (path) => {
+      const made = tool('ffmpeg', [
+        '-y',
+        '-loglevel',
+        'error',
+        '-f',
+        'lavfi',
+        '-i',
+        `testsrc=size=${size}:rate=5`,
+        '-t',
+        String(seconds),
+        '-pix_fmt',
+        'yuv420p',
+        path('in.mp4'),
+      ]);
+      assert.equal(made.status, 0, made.stderr);
+      const result = tool('python3', ['-I', composeScript, path('in.mp4'), path('cues.json'), path('out.mp4')]);
+      const probe = existsSync(path('out.mp4'))
+        ? JSON.parse(
+            tool('ffprobe', [
+              '-v',
+              'error',
+              '-show_entries',
+              'stream=codec_type,width,height:format=duration',
+              '-of',
+              'json',
+              path('out.mp4'),
+            ]).stdout,
+          )
+        : undefined;
+      return { result, probe };
+    });
+
+  test('1280×640 の録画に帯を足して、音声の無い 1280×720 にし、最後の字幕のすぐ後で切る', options, () => {
+    const { result, probe } = run('1280x640', 5, [
+      { t: 0.2, text: 'テストの字幕' },
+      { t: 2, text: '' },
+    ]);
+    assert.equal(result.status, 0, result.stderr);
+    assert.deepEqual(
+      probe.streams.map((s: { codec_type: string; width: number; height: number }) => [
+        s.codec_type,
+        s.width,
+        s.height,
+      ]),
+      [['video', 1280, 720]],
+    );
+    // 録画は 5 秒だが、最後の字幕を閉じた 2 秒の 0.3 秒後で切る
+    assert.ok(Math.abs(Number(probe.format.duration) - 2.3) < 0.25, probe.format.duration);
+  });
+
+  test('1280×640 でない録画は、帯が画面を覆うので断る', options, () => {
+    const { result, probe } = run('1280x720', 3, [
+      { t: 0.2, text: 'あ' },
+      { t: 2, text: '' },
     ]);
     assert.equal(result.status, 1);
-    assert.match(result.stderr, /時刻が戻っている/);
+    assert.match(result.stderr, /録画は 1280×640 で撮る/);
+    assert.equal(probe, undefined, '断るときは動画を書かない');
+  });
+
+  test('帯に収まらない字幕は断る', options, () => {
+    const { result } = run('1280x640', 3, [
+      { t: 0.2, text: 'あ'.repeat(60) },
+      { t: 2, text: '' },
+    ]);
+    assert.equal(result.status, 1);
+    assert.match(result.stderr, /字幕が帯に収まらない/);
+  });
+
+  test('30 秒を超える動画は、書いたうえで終了コード 3 を返す', options, () => {
+    const { result, probe } = run('1280x640', 32, [
+      { t: 0.2, text: 'あ' },
+      { t: 31, text: '' },
+    ]);
+    assert.equal(result.status, 3, result.stderr);
+    assert.ok(Number(probe.format.duration) > 30);
   });
 });
