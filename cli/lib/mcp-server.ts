@@ -9,6 +9,7 @@ import { callTool, listTools } from './mcp-tools.ts';
 
 // idle は、処理中のリクエストが無くなるまで待つ（標準入力が閉じても、送られた分の応答は返してから閉じる）
 export function createMcpServer(deps: CliDeps, connection: Connection): { server: Server; idle(): Promise<void> } {
+  // version は固定。CLI は npm に出さずリポジトリから動かすので、配る版が無い（package.json にも version が無い）。MCP の initialize に版が要るので置いている
   const server = new Server({ name: 'scrum-guild', version: '0.1.0' }, { capabilities: { tools: {} } });
   const pending = new Set<Promise<unknown>>();
   const track = <T>(work: Promise<T>): Promise<T> => {
@@ -59,6 +60,11 @@ export async function runMcp(args: string[], deps: CliDeps, transport?: Transpor
   });
   if (transport === undefined) {
     process.stdin.once('end', () => void idle().then(() => server.close()));
+    // クライアントが先に消えて読み手の無い標準出力に書くと EPIPE になる。スタックトレースを出さず静かに閉じる
+    process.stdout.on('error', (error: NodeJS.ErrnoException) => {
+      if (error.code !== 'EPIPE') throw error;
+      void server.close();
+    });
     transport = new StdioServerTransport();
   }
   await server.connect(transport);

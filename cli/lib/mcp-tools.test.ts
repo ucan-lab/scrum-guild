@@ -115,10 +115,12 @@ describe('listTools', () => {
         ['task-edit', 'タスクを書き換える', false],
         ['task-get', 'タスクを返す', true],
         ['who-am-i', 'ログインしているアカウントを返す', true],
-        ['pick', '分岐の入力', false],
+        ['pick', '分岐の入力\n分岐: kind=a の必須: workspace_id, kind / kind=b の必須: workspace_id, kind', false],
       ],
     );
-    assert.deepEqual(tools[0]!.inputSchema, catalog.operations[0]!.input_schema);
+    const expected: Record<string, unknown> = { ...catalog.operations[0]!.input_schema };
+    delete expected.$schema;
+    assert.deepEqual(tools[0]!.inputSchema, expected);
     assert.ok(tools.every((tool) => tool.inputSchema.type === 'object'));
     assert.ok(tools.every((tool) => !('outputSchema' in tool)));
   });
@@ -127,7 +129,7 @@ describe('listTools', () => {
     const tools = await listTools(depsOf(fakeServer()), connectionOf());
     const pick = tools.find((tool) => tool.name === 'pick')!;
     assert.equal(pick.inputSchema.type, 'object');
-    assert.equal((pick.inputSchema.oneOf as unknown[]).length, 2);
+    assert.ok(!('oneOf' in pick.inputSchema));
   });
 
   test('tools/list のたびに一覧を取る（キャッシュしない）', async () => {
@@ -147,12 +149,8 @@ describe('listTools', () => {
     assert.ok('workspace_id' in (byName['task-edit']!.inputSchema.properties as object));
     // 補わない scope の操作は、そのまま
     assert.deepEqual(byName['task-get']!.inputSchema.required, ['task_id', 'workspace_id']);
-    // 分岐の required からも外れる
-    const branches = byName['pick']!.inputSchema.oneOf as { required: string[] }[];
-    assert.deepEqual(
-      branches.map((branch) => branch.required),
-      [['kind'], ['kind']],
-    );
+    // 平らにした pick の required からも外れる
+    assert.deepEqual(byName['pick']!.inputSchema.required, ['kind']);
   });
 
   test('ワークスペースを持たない接続先では required のまま', async () => {
@@ -176,6 +174,114 @@ describe('listTools', () => {
     };
     const tools = await listTools(depsOf(fakeServer({ operations })), connectionOf({ org: 'aoba', workspace: 'ws-1' }));
     assert.ok(!('required' in tools[0]!.inputSchema));
+  });
+});
+
+// 本物の invitation-create と adminNomineeInput（discriminatedUnion('provider', …)）の入力の Schema の形
+const providerBranch = (provider: string, fields: Record<string, unknown>, required: string[]) => ({
+  type: 'object',
+  properties: {
+    workspace_id: { type: 'string' },
+    role: { enum: ['leader', 'member'] },
+    provider: { const: provider },
+    ...fields,
+  },
+  required: ['workspace_id', 'role', 'provider', ...required],
+  additionalProperties: false,
+});
+const invitationCreate = {
+  name: 'invitation-create',
+  description: '人を招待する',
+  mode: 'write',
+  scope: 'workspace',
+  permission: 'leader',
+  input_schema: {
+    $schema: 'https://json-schema.org/draft/2020-12/schema',
+    oneOf: [
+      providerBranch('github', { username: { type: 'string' }, login_subject: { type: 'string' } }, [
+        'username',
+        'login_subject',
+      ]),
+      providerBranch('google', { email: { type: 'string' } }, ['email']),
+    ],
+  },
+  output_schema: object({}),
+};
+const adminNominee = {
+  name: 'nominee',
+  description: '管理者の候補',
+  mode: 'write',
+  scope: 'outside',
+  permission: 'operator',
+  input_schema: {
+    anyOf: [
+      object({ provider: { const: 'github' }, username: { type: 'string' } }, ['provider', 'username']),
+      object({ provider: { const: 'google' }, email: { type: 'string' } }, ['provider', 'email']),
+    ],
+  },
+  output_schema: object({}),
+};
+const forbiddenTop = ['oneOf', 'anyOf', 'allOf'];
+
+describe('最上位が oneOf と anyOf の入力は、1つの object に平らにする', () => {
+  test('invitation-create: 最上位に oneOf/anyOf/allOf が無く、各分岐の項目が全部 properties にある', async () => {
+    const operations = { operations: [invitationCreate, adminNominee] };
+    const tools = await listTools(depsOf(fakeServer({ operations })), connectionOf({ org: 'aoba' }));
+    for (const tool of tools) {
+      assert.equal(tool.inputSchema.type, 'object');
+      for (const key of forbiddenTop) assert.ok(!(key in tool.inputSchema), `${tool.name} の最上位に ${key}`);
+      assert.ok(!('$schema' in tool.inputSchema));
+    }
+    const invitation = tools[0]!.inputSchema;
+    const properties = invitation.properties as Record<string, unknown>;
+    for (const key of ['workspace_id', 'role', 'provider', 'username', 'login_subject', 'email']) {
+      assert.ok(key in properties, key);
+    }
+    // 全分岐に共通のものだけ必須
+    assert.deepEqual(invitation.required, ['workspace_id', 'role', 'provider']);
+    // 同名の項目で Schema が分かれる provider は anyOf でまとめる
+    assert.deepEqual(properties.provider, { anyOf: [{ const: 'github' }, { const: 'google' }] });
+    // 同じ Schema の項目はそのまま
+    assert.deepEqual(properties.workspace_id, { type: 'string' });
+    // 分岐ごとの条件を description の末尾に足す
+    assert.ok(tools[0]!.description.startsWith('人を招待する'));
+    assert.ok(tools[0]!.description.includes('分岐'));
+    assert.ok(tools[0]!.description.includes('provider=github'));
+    assert.ok(tools[0]!.description.includes('email'));
+
+    const nominee = tools[1]!.inputSchema;
+    assert.deepEqual(Object.keys(nominee.properties as object).sort(), ['email', 'provider', 'username']);
+    assert.deepEqual(nominee.required, ['provider']);
+  });
+
+  test('workspace_id の required を外す処理が、平らにした後の形でも効く', async () => {
+    const operations = { operations: [invitationCreate] };
+    const tools = await listTools(depsOf(fakeServer({ operations })), connectionOf({ org: 'aoba', workspace: 'ws-1' }));
+    assert.deepEqual(tools[0]!.inputSchema.required, ['role', 'provider']);
+    assert.ok('workspace_id' in (tools[0]!.inputSchema.properties as object));
+    assert.ok(!tools[0]!.description.includes('workspace_id'));
+  });
+
+  test('最上位の allOf も平らにする', async () => {
+    const operations = {
+      operations: [
+        {
+          name: 'merged',
+          description: '合成',
+          mode: 'read',
+          scope: 'outside',
+          permission: 'login',
+          input_schema: {
+            allOf: [object({ a: { type: 'string' } }, ['a']), object({ b: { type: 'number' } }, ['b'])],
+          },
+          output_schema: object({}),
+        },
+      ],
+    };
+    const [tool] = await listTools(depsOf(fakeServer({ operations })), connectionOf());
+    for (const key of forbiddenTop) assert.ok(!(key in tool!.inputSchema));
+    assert.deepEqual(Object.keys(tool!.inputSchema.properties as object), ['a', 'b']);
+    assert.deepEqual(tool!.inputSchema.required, ['a', 'b']);
   });
 });
 
@@ -209,6 +315,23 @@ describe('callTool', () => {
     const server = fakeServer();
     await callTool(depsOf(server), connectionOf({ org: 'aoba' }), 'task-get', { task_id: 't-1', org: 'other' });
     assert.equal(server.calls()[0]!.path, '/api/aoba/task-get');
+  });
+
+  test('接続先がワークスペースを持つとき、入力の workspace_id が null か空文字なら省いたものとして補う', async () => {
+    for (const empty of [null, '']) {
+      const server = fakeServer();
+      await callTool(depsOf(server), connectionOf({ org: 'aoba', workspace: 'W1' }), 'task-edit', {
+        task_id: 't-1',
+        workspace_id: empty,
+      });
+      assert.deepEqual(server.calls()[0]!.body, { task_id: 't-1', workspace_id: 'W1' }, JSON.stringify(empty));
+    }
+  });
+
+  test('接続先がワークスペースを持たないとき、null の workspace_id はそのまま送る', async () => {
+    const server = fakeServer();
+    await callTool(depsOf(server), connectionOf({ org: 'aoba' }), 'task-edit', { task_id: 't-1', workspace_id: null });
+    assert.deepEqual(server.calls()[0]!.body, { task_id: 't-1', workspace_id: null });
   });
 
   test('渡された引数を書き換えない', async () => {

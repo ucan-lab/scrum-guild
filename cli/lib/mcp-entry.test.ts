@@ -87,6 +87,36 @@ describe('sg mcp（子プロセス）', () => {
     }
   });
 
+  test('クライアントが先に消えて標準出力が EPIPE になっても、スタックトレースを出さず静かに終わる', async () => {
+    const home = mkdtempSync(join(tmpdir(), 'sg-mcp-home-'));
+    try {
+      const child = spawn(process.execPath, [ENTRY, 'mcp'], {
+        env: { PATH: process.env.PATH, HOME: home, SG_URL: 'http://127.0.0.1:9', SG_TOKEN: TOKEN } as NodeJS.ProcessEnv,
+      });
+      let stderr = '';
+      child.stderr.on('data', (chunk) => (stderr += chunk));
+      const exited = new Promise<number | null>((resolve) => child.on('close', resolve));
+      // 読み手を先に閉じる。標準入力は開けたままにして、サーバーが応答を書こうとして EPIPE になるようにする
+      child.stdout.destroy();
+      const timer = setTimeout(() => child.kill(), 20_000);
+      child.stdin.write(
+        JSON.stringify({
+          jsonrpc: '2.0',
+          id: 1,
+          method: 'initialize',
+          params: { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 't', version: '0' } },
+        }) + '\n',
+      );
+      const code = await exited;
+      clearTimeout(timer);
+      assert.equal(code, 0, stderr);
+      assert.ok(!/EPIPE|\n\s+at /.test(stderr), stderr);
+      assert.ok(!stderr.includes(TOKEN));
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
+
   test('接続先が無いと stderr に JSON を出して 2、stdout は空', async () => {
     const result = await run(['mcp'], {}, []);
     assert.equal(result.code, 2);

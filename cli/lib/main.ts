@@ -25,7 +25,7 @@ export async function main(argv: string[], deps: CliDeps): Promise<number> {
     if (command === 'config') return await configCommand(argv.slice(1), deps);
     if (command === 'ops') return await opsCommand(argv.slice(1), deps);
     if (command === 'call') return await callCommand(argv.slice(1), deps);
-    throw usage('コマンドは ops、call、config のいずれか');
+    throw usage('コマンドは ops、call、config、mcp のいずれか');
   } catch (error) {
     const report = reportOf(error);
     deps.stderr(report.text + '\n');

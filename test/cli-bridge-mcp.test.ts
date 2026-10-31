@@ -3,6 +3,8 @@
 import { describe, expect, test } from 'vitest';
 import { z } from 'zod';
 import { defineOperation } from '../src/shared/operations/define.ts';
+import { invitationCreate } from '../src/shared/operations/workspace/invitation-create.ts';
+import { adminNomineeInput } from '../src/shared/operations/operator/create-organization.ts';
 import { createApp } from '../src/server/app.ts';
 import { implement, type ImplementedOperation } from '../src/server/operations/implement.ts';
 import { operationListOperationFor } from '../src/server/operations/operation-list.ts';
@@ -34,8 +36,22 @@ const lanternCount = defineOperation({
   output: z.object({ count: z.number() }),
 });
 
+// 最上位が discriminatedUnion（JSON Schema の oneOf）の入力を持つ本物の定義と、その形の仮の定義
+const nomineePick = defineOperation({
+  name: 'nominee-pick',
+  description: '管理者の候補を指す仮の操作',
+  mode: 'read',
+  permission: 'login',
+  input: adminNomineeInput,
+  output: z.object({}),
+});
+
 const implemented: ImplementedOperation[] = [
   ...provisionalOperations,
+  implement(invitationCreate, async () => {
+    throw new Error('一覧にだけ出す');
+  }),
+  implement(nomineePick, async () => ({})),
   implement(lanternLight, async ({ input }) => ({ lit: input.count, color: input.color })),
   implement(lanternCount, async () => ({ count: 3 })),
 ];
@@ -86,6 +102,25 @@ describe('sg mcp の道具の一覧', () => {
     expect(light.annotations.readOnlyHint).toBe(false);
     expect(tools.find((tool) => tool.name === 'lantern-count')!.annotations.readOnlyHint).toBe(true);
     noToken(connection, JSON.stringify(tools));
+  });
+
+  test('最上位が oneOf の本物の入力（invitation-create）は、1つの object に平らにして出る', async () => {
+    const target = await createTarget();
+    const connection = await connectionOf(target.leader, { org: target.slug, workspace: target.workspace.id });
+    const tools = await listTools(depsOf(), connection);
+    for (const name of ['invitation-create', 'nominee-pick']) {
+      const tool = tools.find((item) => item.name === name)!;
+      expect(tool.inputSchema.type).toBe('object');
+      for (const key of ['oneOf', 'anyOf', 'allOf']) expect(tool.inputSchema).not.toHaveProperty(key);
+      expect(Object.keys(tool.inputSchema.properties as object)).toContain('provider');
+    }
+    const invitation = tools.find((item) => item.name === 'invitation-create')!;
+    expect(Object.keys(invitation.inputSchema.properties as object)).toEqual(
+      expect.arrayContaining(['workspace_id', 'role', 'provider', 'username', 'login_subject', 'email']),
+    );
+    expect(invitation.inputSchema.required).toEqual(expect.arrayContaining(['role', 'provider']));
+    expect(invitation.inputSchema.required).not.toContain('workspace_id');
+    expect(invitation.inputSchema.required).not.toContain('email');
   });
 
   test('接続先のワークスペースがあると、workspace_id が required から外れる', async () => {
