@@ -18,6 +18,25 @@ export type NewOrganization = {
 
 export type CreatedOrganization = { organizationId: string; db: OrganizationDb };
 
+// 自分で作った組織の created_by_operator に入れる値。運用者のログインの ID（`github:12345` の形）と重ならない
+export const SELF_SERVICE_CREATOR = 'self-service';
+
+export type NewSelfCreatedOrganization = {
+  slug: string;
+  name: string;
+  accountId: string;
+  now: Date;
+};
+
+// 自分で作る組織。お試し中の組織が1つまでの上限に当たれば 'trial_limit'、slug が重なれば 'slug_taken'
+export async function insertSelfCreatedOrganization(
+  env: Env,
+  input: NewSelfCreatedOrganization,
+): Promise<CreatedOrganization | 'slug_taken' | 'trial_limit'> {
+  void [env, input];
+  throw new Error('未実装');
+}
+
 // 言葉づかいの列（vocabulary）には VOCABULARY_COLUMN_VALUE を明示して入れる。
 // 人数と添付ファイルの上限、テーマは列の既定の値で作る。
 // slug が重なったときは 'slug_taken'（同時に作られて UNIQUE に当たった場合を含む）。それ以外の失敗は投げる
