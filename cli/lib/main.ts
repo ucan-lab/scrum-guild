@@ -362,9 +362,12 @@ export async function connectionFromArgs(
   args: string[],
   deps: CliDeps,
 ): Promise<{ connection: Connection; allowWrite: boolean }> {
-  const flags = args.filter((arg) => arg === '--allow-write');
+  // 値を取るフラグの直後の --allow-write は値の位置なので取り除かず、optionsOf に「値が無い」の誤りとして渡す
+  const isFlag = (arg: string, index: number) =>
+    arg === '--allow-write' && !['--profile', '--org', '--workspace'].includes(args[index - 1] ?? '');
+  const flags = args.filter(isFlag);
   if (flags.length > 1) throw usage('--allow-write が重なっている');
-  const { positional, options } = optionsOf(args.filter((arg) => arg !== '--allow-write'));
+  const { positional, options } = optionsOf(args.filter((arg, index) => !isFlag(arg, index)));
   if (positional.length > 0 || options.extra.length > 0) throw usage('mcp に余分な引数がある');
   return { connection: await connectionOf(options, deps), allowWrite: flags.length === 1 };
 }

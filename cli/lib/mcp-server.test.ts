@@ -271,4 +271,17 @@ describe('sg mcp の --allow-write', () => {
     assert.equal(await runMcp(['--allow-write', '--allow-write'], world.deps, serverSide), 2);
     assert.equal(JSON.parse(world.output().stderr).error.code, 'usage');
   });
+
+  test('値を取るフラグの直後の --allow-write は値の位置なので、フラグとして受けず 2', async () => {
+    for (const args of [
+      ['--org', '--allow-write', 'aoba'],
+      ['--workspace', '--allow-write', 'ws-1'],
+      ['--profile', '--allow-write', 'main'],
+    ]) {
+      const world = setup(profile());
+      const [, serverSide] = InMemoryTransport.createLinkedPair();
+      assert.equal(await runMcp(args, world.deps, serverSide), 2, args.join(' '));
+      assert.equal(JSON.parse(world.output().stderr).error.code, 'usage');
+    }
+  });
 });
