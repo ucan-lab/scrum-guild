@@ -533,7 +533,7 @@ async function throwIfEnableExceedsLimit(
 ): Promise<void> {
   const at = now();
   const login = { provider: user.login_provider, subject: user.login_subject };
-  if (!(await hasSeatInvitationOfLogin(db, login, disabledAt, at))) return;
+  if (!(await hasSeatInvitationOfLogin(db, login, disabledAt))) return;
   const [counted, organization] = await Promise.all([seatHoldersOf(db, at), tools.readOrganization()]);
   const adding = 1;
   const used = counted.size;
