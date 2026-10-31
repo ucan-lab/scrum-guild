@@ -47,9 +47,8 @@ gh api "repos/{owner}/{repo}/commits/<head_sha>/check-runs" --jq '.check_runs[] 
 ```
 
 作成者以外の人のレビュワーのうち、`author_association` が `OWNER` か `COLLABORATOR` の人ごとに、最後の `APPROVED` か `CHANGES_REQUESTED` を見る（手順 8 で使う。理由: 書き込みの権限の無い人の `CHANGES_REQUESTED` で、繰り返しが終わらなくならないようにする）。
-`review` と `evidence` を除き、`conclusion` が `failure`、`timed_out`、`cancelled` の CI があれば、レビュー指摘より先に直す（理由: CI が赤いとレビュワーは読み始めない）。
+`review` を除き、`conclusion` が `failure`、`timed_out`、`cancelled` の CI があれば、レビュー指摘より先に直す（理由: CI が赤いとレビュワーは読み始めない）。
 `review` は下の AI レビューで、助言なので `ci-ok` に含めず、落ちてもマージの判定を止めない。
-`evidence` は e2e の変更前と変更後の画像を PR にコメントで並べるジョブで、同じく助言なので `ci-ok` に含めず、落ちてもマージの判定を止めない（`docs/development.md` の「e2e の画像のコメント」）。UI が変わる PR で落ちていたら、ジョブの注記とログを見て、画像が付かない理由を人に伝える。
 
 #### ドラフトで先に作った PR のドラフトを外す
 
@@ -407,7 +406,7 @@ gh api "repos/{owner}/{repo}/commits/<head>/check-runs" --paginate --jq '.check_
 - `base` が `main` でなければマージしない（別のブランチへの PR では、`ci-ok` はそのブランチとの差分しか見ていない）
 - `label` は同じ head に何件も付く（作成、push、再開、タイトルや本文の編集、ラベルを外したときに動き、飛ばない）。`label` が1件以上あり、すべて `completed` で `success` のときだけ成功とみなす。1件も無い、実行中、`success` 以外があるときは成功とみなさない。ベースを付け替えた後にその head で CI が動き直していなければ `label` が失敗する（`docs/development.md` の「文書だけの PR」）。`sync-base` で取り込んで push し直す
 - `ci-ok` も同じ基準で見る。文書だけの PR でも `ci-ok` は飛ばずに動くので、1件も無ければ成功とみなさない
-- `review` と `evidence` を除くどの名前のチェックでも、`completed` でないもの、`conclusion` が `failure`、`cancelled`、`timed_out`、`action_required` のものが1件でもあればマージしない。`review`（AI レビュー）と `evidence`（e2e の画像のコメント）は助言で、マージの判定を止めない
+- `review` を除くどの名前のチェックでも、`completed` でないもの、`conclusion` が `failure`、`cancelled`、`timed_out`、`action_required` のものが1件でもあればマージしない。`review`（AI レビュー）は助言で、マージの判定を止めない
 - 満たさなければマージせず、理由を伝えて人にマージを依頼する
 - 満たせば `gh pr merge <number> --squash --match-head-commit <head>` を打つ（確かめた後に push された head をマージしないため）。フックが確認を挟む。head が変わって失敗したら、この確認からやり直す
 - ユーザーが確認で断ったら、マージせずに止まる
@@ -451,7 +450,7 @@ gh api "repos/{owner}/{repo}/pulls/<number>" --jq '{merged, base: .base.ref, hea
 - 全ての指摘にリプライが付いている（外の人の指摘で「扱わない」と答えたものを除く）
 - bot のスレッドは resolve されている（GraphQL が 403 のときは、飛ばしたことを説明資料に書いている）
 - 人へのリプライは、ユーザーの Submit か承認を経て投稿されている。人と外の人のスレッドの resolve は、ユーザーが承認したもの（外の人の指摘への「扱わない」の答えを含む）だけ
-- 手順 1 の check-runs に `ci-ok` が付いて `completed` になっていて、`review` と `evidence` を除いて失敗が無い
+- 手順 1 の check-runs に `ci-ok` が付いて `completed` になっていて、`review` を除いて失敗が無い
 - 直しを push したら、Issue の `やらないこと` に新しい head の点検の行が足されている（足す先の節が無い Issue を除く）。人が答えた前提の判断は、`人が決めたこと` に写されている
 - 説明資料を見せ、人の判断が要ることに `AskUserQuestion` で答えが出ている。セッションがマージできるときだけ、マージの扱いも聞いて答えが出ている
 - 作成者以外の人のレビューが付いた PR では、`OWNER` か `COLLABORATOR` のレビュワーの最後の状態が `APPROVED` になっている

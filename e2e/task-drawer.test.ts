@@ -197,7 +197,7 @@ test('完了したタスクの難易度は直せず、理由を添える。ほ�
     drawer.getByRole('radiogroup', { name: 'リポジトリ' }).getByRole('radio', { name: 'なし' }),
   ).toBeEnabled();
   // 前のトースト（足した、難易度を保存した、完遂にした）が消えてから入れる。難易度の「保存しました」と取り違えずに
-  // 期限の保存を確かめ、終わりの画面（evidence-<n>.png）に写るトーストを、出したばかりの「保存しました」の1つにそろえる（#413）
+  // 期限の保存を確かめ、トーストを、出したばかりの「保存しました」の1つにそろえる（#413）
   const toasts = page.locator('.toasts:visible .toast');
   await expect(toasts).toHaveCount(0, { timeout: 10_000 });
   const saved = waitForResponses(page, '/task-update');
@@ -322,7 +322,7 @@ test('担い手は選んで少し待ってから最後の値だけを送り、�
   await expect(drawer).toBeVisible();
   // 「もう一度試す」を押した位置に残るマウスの下に、エラーの文で動いた要素が来てホバーの色になるかを、実行ごとに変えない（#460）
   await page.mouse.move(0, 0);
-  // 途中の「保存しました」のトースト（4 秒）が、終わりの画面（evidence-<n>.png）に写るかは、ここまでの速さで変わる（#511）
+  // 途中の「保存しました」のトースト（4 秒）が消えるのを待つ（#511）
   await expect(page.locator('.toasts:visible .toast')).toHaveCount(0, { timeout: 10_000 });
 });
 
@@ -356,7 +356,7 @@ test('スクロールした先の行のリンクで開いても、木のスク�
   const link = page.locator('a.entry-title').last();
   await expect(link).toBeVisible();
   // 読み込みと書体の差し替えが終わってから送る。送る位置は、その時の最後の行の位置とページの高さで決まり、後から変わっても
-  // 送り直さない。#506 の終わりの画面（evidence-<n>.png）では、後ろの木のスクロールの位置が 40px 違った（#511）。
+  // 送り直さない。後ろの木のスクロールの位置が 40px 違うことがあった（#511）。
   // settledScrollY は、ここでは値を使わず、書体の読み込みを待つために呼ぶ
   await waitForSettled(page);
   await settledScrollY(page);
@@ -1038,8 +1038,7 @@ test('長い本文（順序付きリスト、チェックリスト、表）を�
   });
   expect(duplicates).toEqual([]);
   expect(await collect()).toEqual([]);
-  // 作る、足す、保存のトースト（4 秒）のどれが終わりの画面（evidence-<n>.png）に残るかが、長い本文を描く時間で変わるので、
-  // すべて消えるのを待つ（#491）
+  // 作る、足す、保存のトースト（4 秒）がすべて消えるのを待つ（#491）
   await expect(page.locator('.toasts:visible .toast')).toHaveCount(0, { timeout: 10_000 });
 });
 

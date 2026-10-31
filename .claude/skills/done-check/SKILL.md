@@ -43,7 +43,7 @@ PR があれば、ベースは `origin/<base>` とし、次の前提をすべて
 | --- | --- | --- |
 | 最新のベースを取り込み済み | `git fetch origin && git merge-base --is-ancestor origin/<base> HEAD` | 終了コード 0 |
 | 最新のコミットを push 済み | `git rev-parse HEAD` と `head_sha` を比べる。`git status --short` も見る | 一致し、未コミットの変更が無い |
-| CI が成功 | 下の check-runs | `review` と `evidence` を除き、全て `status` が `completed` で、`conclusion` が `success`、`skipped`、`neutral` のどれか |
+| CI が成功 | 下の check-runs | `review` を除き、全て `status` が `completed` で、`conclusion` が `success`、`skipped`、`neutral` のどれか |
 | レビューコメントを解決済み | 下の GraphQL | PR の作成者が書き、`pr-create` の目印が付いたコメントで始まるスレッドを除き、`isResolved: false` のスレッドが 0 件 |
 
 ```bash
@@ -53,7 +53,6 @@ gh api "repos/{owner}/{repo}/commits/<head_sha>/check-runs" --jq '.check_runs[] 
 `review` は AI レビュー（`.github/workflows/ai-review.yml`）のチェックで、助言なので `ci-ok` に含めず、落ちてもマージの判定を止めない（`docs/development.md` の「CI」）。
 `review` の `status` と `conclusion` が何でも、この前提は満たすものとして扱う（理由: 回した先の pr-feedback も `review` の失敗は直さないので、数に入れると done-check が先へ進めない）。
 実行中の `review` が後から付ける指摘は、pr-feedback の手順 1 が完了を待って拾う。
-`evidence` は e2e の画像を PR にコメントで並べるジョブ（`.github/workflows/ci.yml`）で、同じく助言なので `ci-ok` に含めない。`review` と同じく、何で終わっても満たすものとして扱う。UI が変わる PR で落ちていたら、画像が付かないことを出力に書く。
 PR 作成後の段では、`e2e`、`e2e-dev`、`e2e-repeat` の結果も確かめる。e2e はセッションが手元で走らせないので、これが e2e の確かめになる。この 3 つは `ci-ok` に含まれ、上の表の「CI が成功」で見る。落ちていたら手元で再現せず、回した先の pr-feedback の手順 5 が、ログと trace で直す（`docs/development.md` の「CI の e2e が落ちたとき」）。
 
 ```bash
@@ -68,7 +67,7 @@ gh api graphql -f query='{ repository(owner:"<owner>", name:"<repo>") { pullRequ
 
 - ベースの取り込みが未了: `sync-base` で merge して通常の push をする
 - push が未了: `git push` を提案する
-- CI が失敗: pr-feedback で直す。`review` と `evidence` を除いて `status` が `completed` でないものがあれば、間を空けて check-runs を取り直し、結果が出てから再確認する
+- CI が失敗: pr-feedback で直す。`review` を除いて `status` が `completed` でないものがあれば、間を空けて check-runs を取り直し、結果が出てから再確認する
 - 未解決のスレッドがある: pr-feedback で対応する
 
 全て満たせば手順 1 へ進む。
@@ -114,7 +113,7 @@ Issue の「確認方法」を自分で実行し、完了条件を満たすか�
 | 変更の及ぶ先 | 確かめ方 |
 | --- | --- |
 | API | `wrangler dev` を立て、Cookie を付けてリクエストを送り、レスポンスと D1 の中身を見る。組織をまたぐ操作は、別の組織の ID で呼んで 404 になることも見る |
-| 画面 | 手元は `terminal-browser` で Cookie を置いて開き、操作して表示と状態を見る。ブラウザの無いクラウドのセッションは、PR の後の CI の `evidence` のコメントと、ジョブの成果物の画像（`test-results/` の `evidence-<n>.png`、落ちたテストは `test-failed-<n>.png`）で見る。e2e はセッションが手元で走らせない（`docs/development.md` の「開発の流れ」）。変えた画面と状態を開く e2e のテストが無ければ足す。変更前と変更後の画像は、e2e が開く画面にだけ CI の `evidence` が R2 に上げ、PR のコメントに並べるため。PR の本文には画像を載せない（`pr-create` の Step 3）。この手順では PR の本文に触らない |
+| 画面 | 手元は `terminal-browser` で Cookie を置いて開き、操作して表示と状態を見る。ブラウザの無いクラウドのセッションは、PR の後の CI の e2e の結果で確かめる（落ちたテストの画像は成果物の `test-results/` の `test-failed-<n>.png`）。e2e はセッションが手元で走らせない（`docs/development.md` の「開発の流れ」）。変えた画面と状態を開く e2e のテストが無ければ足す。PR の本文には画像を載せない（`pr-create` の Step 3）。この手順では PR の本文に触らない |
 | 挙動の変わらない変更（リファクタ、型、ドキュメント、設定） | 手順 4 で足りる。省いた旨を出力に書く |
 
 動かせなかった項目は、確かめられなかった項目として出力に書く（理由: 確認済みと書くと、マージの判定で人が動作確認を省く）。
@@ -161,7 +160,7 @@ CRITICAL と HIGH は、別の Issue にするかをユーザーに提案する�
 
 `git add <paths> && git commit -m "..."` のように 1 コマンドにまとめる。
 件名には、変更した対象と内容を書く（例: `fix: fill_results.py で結果の未指定と不正値を検出する`）。「レビュー指摘に対応する」のように、指摘への対応であることしか分からない件名にしない（理由: squash merge ではコミットメッセージが本文に残り、マージ後は直せない）。
-PR があるときは、手順 7 の直しをすべてコミットしてからまとめて `git push` し、手順 0 の check-runs で CI が通ることを確かめる（`review` と `evidence` は手順 0 と同じく除く。修正は通常の push で積む。force push は使わない）。コミットごとに push しない。CI の失敗を直した後の push は、その直しをまとめてから行う（理由: push のたびに CI のジョブがすべて走り直し、前の実行の取り消しが終わるまで次の実行も始まらない。`docs/development.md` の「開発の流れ」）。
+PR があるときは、手順 7 の直しをすべてコミットしてからまとめて `git push` し、手順 0 の check-runs で CI が通ることを確かめる（`review` は手順 0 と同じく除く。修正は通常の push で積む。force push は使わない）。コミットごとに push しない。CI の失敗を直した後の push は、その直しをまとめてから行う（理由: push のたびに CI のジョブがすべて走り直し、前の実行の取り消しが終わるまで次の実行も始まらない。`docs/development.md` の「開発の流れ」）。
 
 手順 7 の直しで差分が変わったら、コミットの後に手順 2 の `やらないこと` との突き合わせと判断の一覧を取り直し、出力の判断の差分をその結果にする（理由: `pr-create` は判断の差分から head の SHA 付きの点検の行を書くので、直しの前の結果のままだと、点検していない head を点検済みと書く）。
 

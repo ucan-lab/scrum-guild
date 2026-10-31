@@ -408,7 +408,7 @@ test('戻すのが断られたら理由を知らせて読み直す', async ({ pa
   const unroute = await failOperation(page, taskReopen, { slug: 'aoba' }, 409, 'conflict', {
     details: { reason: 'sprint_closed' },
   });
-  // 読み込みで行が動いている間に押すと、Playwright が押し直す前にスクロールし、その位置が画像に残る（#354、#491）
+  // 読み込みで行が動いている間に押すと、Playwright が押し直す前にスクロールし、画面の位置が実行ごとに変わる（#354、#491）
   const reopen = page.getByRole('button', { name: '完遂を戻す: 付与の履歴を返す API を作る' });
   await expect(reopen).toBeVisible();
   await waitForSettled(page);
