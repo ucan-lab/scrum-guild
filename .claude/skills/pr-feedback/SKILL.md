@@ -51,14 +51,9 @@ gh api "repos/{owner}/{repo}/commits/<head_sha>/check-runs" --jq '.check_runs[] 
 `review` を除き、`conclusion` が `failure`、`timed_out`、`cancelled` の CI があれば、レビュー指摘より先に直す（理由: CI が赤いとレビュワーは読み始めない）。
 `review` は下の AI レビューで、助言なので `ci-ok` に含めず、落ちてもマージの判定を止めない。
 
-#### ドラフトで先に作った PR のドラフトを外す
+#### ドラフトで作った PR のドラフトを外す
 
-`pr-create` が先にドラフトで作った PR は、AI レビューを待つ前に次を行う。見分けるのは、PR が `draft` で、本文に目印の `<!-- pr-create:draft-first -->` があること（`pr-create` の Step 5-A が入れる。スタック PR の `gh stack submit` の下書きを含む）。目印の無いドラフトは人が意図してドラフトにしているので外さない（理由: 会話の記憶で決めると、別のセッションで再開したときに外れず、AI レビューが一度も走らない）。
-
-1. head を取り直してから（`gh api "repos/{owner}/{repo}/pulls/{number}" --jq '{head_sha: .head.sha, mergeable}'`）、その head の `ci-ok` が `completed` になるまで、間を空けて check-runs を取り直す（Monitor が使えればそれで待つ）。push か `sync-base` の後は、必ず head を取り直す（理由: 古い head の結果を見続けない）。待つ間に手番を終えるときは、手順 7 の「待つ間に手番を終えるとき」に従って伝える
-   - 45 分待っても `ci-ok` が出なければ、待ちをやめて人に渡す。`mergeable` が `false` ならコンフリクトで CI が走っていないので、先に `sync-base` で取り込む
-2. `ci-ok` が `success` でなければ、手順 3 の書き方（直しごとに 1 コミット）で CI を直し、まとめて push してから 1 に戻る（理由: 外すと `ready_for_review` で AI レビューが走る。直す前に走らせると、直した後に回し直すことになり、サブスクの使用量を余分に使う）。直した内容は、手順 6 の報告に書く
-3. `success` なら、ドラフトを外す。文書だけの PR と base が `main` でない PR も外す（AI レビューは走らないが、人がマージを判断できる状態にする）
+`pr-create` は PR をドラフトにせず作るので、ふだんはここを飛ばす。目印の `<!-- pr-create:draft-first -->` が本文にあるドラフト（スタック PR の `gh stack submit` の下書きで、`pr-create` が外す前に中断したもの、前のやり方で作ったもの）だけ、AI レビューを待つ前に外す。`ci-ok` の結果は待たない（理由: AI レビューを CI と並べて始める。2026-10-31 に決めた）。目印の無いドラフトは人が意図してドラフトにしているので外さない（理由: 会話の記憶で決めると、別のセッションで再開したときに外れず、AI レビューが一度も走らない）。文書だけの PR と base が `main` でない PR も外す（AI レビューは走らないが、人がマージを判断できる状態にする）。
 
 ```graphql
 mutation($id: ID!) { markPullRequestReadyForReview(input: { pullRequestId: $id }) { pullRequest { isDraft } } }
@@ -75,7 +70,7 @@ GraphQL が 403 か、ほかのエラーで外せなければ、エラーをそ�
 
 CI の AI レビュー（`.github/workflows/ai-review.yml`、チェックの名前は `review`）が終わるまで、手順 2 に進まない（理由: 途中で集めると、後から付いた指摘を拾い損ねる）。
 
-AI レビューは push では走らない。走る契機は、ドラフトでない PR の作成、開き直し（`reopened`）、ドラフトの解除（`ready_for_review`）、`ai-review` のラベルの付与の4つ。`pr-create` がドラフトで作った PR では、上でドラフトを外したときに走る。AI レビューの指摘の直しを push した後は、手順 4 の「直しのレビューを1回回す」でラベルを付けて走らせる。
+AI レビューは push では走らない。走る契機は、ドラフトでない PR の作成、開き直し（`reopened`）、ドラフトの解除（`ready_for_review`）、`ai-review` のラベルの付与の4つ。`pr-create` が作った PR では作成で走り、CI と並んで進む。AI レビューの指摘の直しを push した後は、手順 4 の「直しのレビューを1回回す」でラベルを付けて走らせる。
 本文に done-check の印があれば、AI レビューはその SHA（前の AI レビューのまとめの印のほうが head に近ければそちら）から head までの差分だけを見る。どの範囲を見たかは、まとめの冒頭に書かれる。
 待つかどうかは今の head の check-runs でなく、PR のワークフローの実行の履歴と、契機のイベントの履歴で決める（理由: 指摘は head に関係なく PR 全体から集めるため）。
 
@@ -474,7 +469,7 @@ gh api "repos/{owner}/{repo}/pulls/<number>" --jq '{merged, base: .base.ref, hea
 ## 完了条件
 
 - AI レビューが走る PR（手順 1 の 1 に当たらない PR）では、`ai-review` の実行が全て `completed` になり、最後の契機より後の実行が出たか、手順 1 の取り直しを終えてから指摘を集めている
-- `pr-create` がドラフトで作った PR は、`ci-ok` の成功の後にドラフトが外れている
+- 目印 `<!-- pr-create:draft-first -->` のあるドラフトは、AI レビューを待つ前に外れている
 - AI レビューの指摘の直しを push したら、まとめの印で見た回数が 1 の PR では `ai-review` のラベルを1回付け、その完了を待って指摘を集め直している。ほかの AI に見られていない直しにはラベルを付けず、手順 6 に並べ、手順 7 で付けるかを聞いている
 - 本文を書き換えても、目印と done-check の印が残っている
 - 外の人の指摘は、人に扱いを聞いて答えが出てから直すか返している。答えが出なかったものは直さず、そのことを返答に書いている
