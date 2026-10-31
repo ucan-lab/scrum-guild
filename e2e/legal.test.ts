@@ -84,6 +84,36 @@ test('/login?return_to=… から規約へ移り、「前の画面に戻る」�
   await expect(page.getByRole('heading', { level: 1, name: 'ログイン' })).toBeVisible();
 });
 
+test('/login?return_to=… から規約、ポリシーと移っても、「前の画面に戻る」で同じクエリのログインの画面に戻る', async ({
+  page,
+}) => {
+  await page.goto('/login?return_to=%2Faoba');
+  await page
+    .getByRole('group', { name: '利用規約とプライバシーポリシー' })
+    .getByRole('link', { name: '利用規約' })
+    .click();
+  await expect(page).toHaveURL(/\/terms$/);
+  const related = page.getByRole('group', { name: '関連するページ' });
+  await related.getByRole('link', { name: 'プライバシーポリシー' }).click();
+  await expect(page).toHaveURL(/\/privacy$/);
+  await expect(page.getByRole('heading', { level: 1, name: 'プライバシーポリシー' })).toBeVisible();
+
+  await related.getByRole('button', { name: '前の画面に戻る' }).click();
+  await expect(page).toHaveURL(/\/login\?return_to=%2Faoba$/);
+  await expect(page.getByRole('heading', { level: 1, name: 'ログイン' })).toBeVisible();
+});
+
+test('/terms を直に開いてポリシーへ移っても、戻るボタンを出さず / へのリンクのまま', async ({ page }) => {
+  await page.goto('/terms');
+  const related = page.getByRole('group', { name: '関連するページ' });
+  await expect(related.getByRole('link', { name: 'Scrum Guild を開く' })).toBeVisible();
+  await related.getByRole('link', { name: 'プライバシーポリシー' }).click();
+  await expect(page).toHaveURL(/\/privacy$/);
+  await expect(page.getByRole('heading', { level: 1, name: 'プライバシーポリシー' })).toBeVisible();
+  await expect(related.getByRole('link', { name: 'Scrum Guild を開く' })).toBeVisible();
+  await expect(related.getByRole('button', { name: '前の画面に戻る' })).toHaveCount(0);
+});
+
 test('/terms を直に開いたときは、戻るボタンの代わりに / へのリンクを出し、ログインしていなければログインの画面へ移る', async ({
   page,
 }) => {
