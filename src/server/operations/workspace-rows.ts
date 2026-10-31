@@ -2,14 +2,13 @@
 // 書く順は workspaces、換算比率、列、決まった欄、所属、変更の履歴。外部キーの親が先
 import { generateKeyBetween, generateNKeysBetween } from 'fractional-indexing';
 import { monthIn, todayIn } from '../../shared/clock.ts';
-import { defaultVocabularies } from '../../shared/vocabulary.ts';
 import {
   DEFAULT_HOURS_PER_POINT,
   DEFAULT_WEEK_START,
   defaultColumnNames,
   defaultDetailFieldName,
 } from '../../shared/workspace.ts';
-import type { Insertable, OrganizationTables } from '../db/index.ts';
+import { VOCABULARY_COLUMN_VALUE, type Insertable, type OrganizationTables } from '../db/index.ts';
 import { uuidv7 } from '../uuid.ts';
 
 type Row<T extends keyof OrganizationTables> = Insertable<OrganizationTables[T]>;
@@ -77,8 +76,7 @@ export function newWorkspaceRows(params: {
       name,
       timezone,
       week_start: DEFAULT_WEEK_START,
-      // 列は残すが、言葉づかいは選べない。スクラムの言葉で作る
-      vocabulary: defaultVocabularies.workspace,
+      vocabulary: VOCABULARY_COLUMN_VALUE,
       created_by: actorUserId,
       ...timestamps,
     },

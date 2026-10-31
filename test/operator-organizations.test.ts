@@ -25,7 +25,6 @@ import {
   resolveGithubUser,
 } from '../src/shared/operations/operator/index.ts';
 import { organizationInfo } from '../src/shared/operations/organization/index.ts';
-import { defaultVocabularies } from '../src/shared/vocabulary.ts';
 import { createFakeGithub } from './auth/fake-github.ts';
 import { createLoginApp, FakeBrowser } from './auth/browser.ts';
 import { githubUser } from './auth/helpers.ts';
@@ -196,7 +195,7 @@ describe('組織の作成', () => {
     expect(organization).toMatchObject({
       slug,
       name: 'さくら開発',
-      vocabulary: defaultVocabularies.organization,
+      vocabulary: 'scrum',
       theme: 'simple',
       suspended_at: null,
       member_limit: 15,

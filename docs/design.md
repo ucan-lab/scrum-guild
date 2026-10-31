@@ -49,7 +49,7 @@ favicon と同じマーク（下の「favicon」）の横に、名前「Scrum Gu
 - 明暗の切り替え: アプリのテーマに合わせる。`data-theme` が無い既定とシンプル（自動）だけ OS の明暗（`prefers-color-scheme`）に従う。シンプル（ダーク、`simple_dark`）と現代風（`modern`）はダーク版、シンプル（ライト、`simple_light`）と中世風（`medieval`）はライト版で、OS の明暗に依らない。ログインの画面は枠の外でテーマを既定に戻すので、実際には OS の明暗で決まる。テーマごとの分岐が効くのは、テーマを当てたまま出す見本とカタログ
 - 書体と重み: アプリの本文の書体と、`.btn` の重みのまま（GitHub のボタンと同じ）。Roboto は足さない。角丸もアプリのもの（`--radius-1`）にする。書体と角丸は、公式から外す意図的な例外
 - 並べ方: GitHub のボタンと同じ `.is-wide` で、同じ幅にする。ロゴと文字の間は 10px
-- 文言: 辞書の `loginWithGoogle`（「Google でログイン」。ゲームとスクラムで同じ文）
+- 文言: 辞書の `loginWithGoogle`（「Google でログイン」）
 
 ## 画面一覧
 
@@ -541,7 +541,7 @@ favicon と同じマーク（下の「favicon」）の横に、名前「Scrum Gu
 
 - 画面は `.svelte` に `<style>` を書かない。足りない CSS は components.css とカタログに先に足す。フックと `pnpm lint` が止める。
 - インラインの `style` 属性は CSP に止められる。動く値は `style:--h` のように CSSOM で当てる（Svelte の `style:` ディレクティブ）。
-- アイコン、線画、言葉の辞書は、見本と本番の二重持ち。`scripts/design-parity.test.ts`（`pnpm test` の `node --test`）が `design/icons.js`、`design/art.js`、`kit.js` の `DICT` を読み、見本にあるアイコン、線画、キーが本番（`src/lib/icons.ts`、`src/lib/art.ts`、辞書）に同じ中身で在ることを突き合わせる。片方だけを直すと、このテストが落ちる。
+- アイコン、線画、言葉の辞書は、見本と本番の二重持ち。`scripts/design-parity.test.ts`（`pnpm test` の `node --test`）が `design/icons.js`、`design/art.js`、`kit.js` の `DICT` を読み、見本にあるアイコン、線画、キーが本番（`src/lib/icons.ts`、`src/lib/art.ts`、辞書）に同じ中身で在ることを突き合わせる（辞書は、キーごとの文字列どうし）。片方だけを直すと、このテストが落ちる。
 - 照合の対象は見本にあるキーだけで、本番の辞書は画面の文言を足して大きくなってよい。見本を直した PR では、`src/lib/icons.ts` と `src/shared/vocabulary.ts` も一緒に直す。
 
 ### Markdown の本文

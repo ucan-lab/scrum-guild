@@ -52,42 +52,25 @@
   }
   if (first) Object.assign(D, freshData(first));
 
-  // ---- 言葉の辞書（各キーは [ゲームの言葉, スクラムの言葉]。見本はスクラムの言葉で出す） ----
+  // ---- 言葉の辞書（各キーはスクラムの言葉の文字列1つ） ----
   const DICT = {
-    workspace: ["パーティ", "ワークスペース"], inbox: ["届いた便り", "受信箱"], backlog: ["掲示板", "バックログ"],
-    sprint: ["遠征", "スプリント"], plan: ["遠征の計画", "計画"], epic: ["レイド", "エピック"], story: ["達成目標", "ストーリー"],
-    task: ["クエスト", "タスク"], archive: ["保管庫", "アーカイブ"], connection: ["便りの経路", "接続"],
-    sprintGoal: ["遠征の目的", "スプリントゴール"], detail: ["手配書", "詳細"], ac: ["達成条件", "受け入れ基準"],
-    due: ["期限", "期日"], points: ["難易度", "ポイント"], assignee: ["担い手", "担当"], category: ["系統", "区分"],
-    capacity: ["積載量", "作業量と基準"], over: ["重量オーバー", "超過"], done: ["完遂", "完了"], column: ["行程", "列"],
-    doneToday: ["今日の完遂", "今日の完了"], complete: ["完遂にする", "完了にする"],
-    requester: ["依頼主", "作成者"], party: ["討伐隊", "参加者"], accept: ["受注する", "参加する"], leave: ["討伐隊を抜ける", "参加をやめる"],
-    historyCreated: ["依頼を出した", "作成した"], historyUpdated: ["書き換えた", "変更した"],
-    reward: ["クリア報酬", "クリア報酬"], clear: ["レイドをクリアする", "エピックを完了にする"], create: ["依頼を出す", "起票"],
-    leader: ["パーティリーダー", "リーダー"], member: ["冒険者", "メンバー"], dod: ["パーティの掟", "完成の定義"],
-    vocab: ["ゲームの言葉", "スクラムの言葉"], organization: ["冒険者ギルド", "組織"], admin: ["ギルドマスター", "管理者"],
-    assistant: ["ギルドの書記", "アシスタント"], epicPageRequest: ["依頼書", "概要"],
-    epicPagePartyEmpty: ["討伐隊にはまだ誰もいません。", "参加者はまだいません。"],
-    accountMenuLabel: ["{name}。アカウントのメニュー", "{name}。アカウントのメニュー"], logout: ["ログアウト", "ログアウト"],
-    logoutMoving: ["ログアウトしています", "ログアウトしています"], loggedOut: ["ログアウトしました。", "ログアウトしました。"],
-    logoutFailed: ["ログアウトできませんでした。時間をおいてもう一度試してください。", "ログアウトできませんでした。時間をおいてもう一度試してください。"],
-    markdownPlainNote: ["整形せずに表示しています", "整形せずに表示しています"], markdownNewTab: ["新しいタブで開きます", "新しいタブで開きます"],
-    markdownCodeRegion: ["コード", "コード"], markdownTableRegion: ["表", "表"],
-    teamXpLabel: ["パーティ全体の経験値", "チーム全体の経験値"],
-    filterLabel: ["{backlog}の絞り込み", "{backlog}の絞り込み"], backlogSearch: ["タイトルで探す", "タイトルで探す"],
-    filterAll: ["{label}: すべて", "{label}: すべて"], filterMe: ["自分", "自分"],
-    unassigned: ["担い手なし", "担当なし"], leftMember: ["（離脱済み）", "（離脱済み）"], categoryNone: ["{category}なし", "{category}なし"],
-    filterNoRepository: ["リポジトリなし", "リポジトリなし"], filterNoEpic: ["{epic}なし", "{epic}なし"],
-    filterClear: ["絞り込みを外す", "絞り込みを外す"],
-    backlogFilterOrderNote: ["上にあるものほど優先します。絞り込みを外すと並べ替えられます。", "上にあるものほど優先します。絞り込みを外すと並べ替えられます。"],
-    backlogNoMatchTitle: ["絞り込みに当たるものはありません", "絞り込みに当たるものはありません"],
-    backlogNoMatchText: ["条件を変えるか、絞り込みを外してください。", "条件を変えるか、絞り込みを外してください。"],
-    filterTotalsNote: ["{points}と件数は、絞る前の全体の値です", "{points}と件数は、絞る前の全体の値です"],
-    filterHiddenCreated: ["作りました。絞り込みに当たらないので表示していません", "作りました。絞り込みに当たらないので表示していません"],
+    workspace: "ワークスペース", inbox: "受信箱", backlog: "バックログ", sprint: "スプリント", plan: "計画", epic: "エピック", story: "ストーリー",
+    task: "タスク", archive: "アーカイブ", connection: "接続", sprintGoal: "スプリントゴール", detail: "詳細", ac: "受け入れ基準", due: "期日",
+    points: "ポイント", assignee: "担当", category: "区分", capacity: "作業量と基準", over: "超過", done: "完了", column: "列",
+    doneToday: "今日の完了", complete: "完了にする", requester: "作成者", party: "参加者", accept: "参加する", leave: "参加をやめる",
+    historyCreated: "作成した", historyUpdated: "変更した", reward: "クリア報酬", clear: "エピックを完了にする", create: "起票", leader: "リーダー",
+    member: "メンバー", dod: "完成の定義", vocab: "スクラムの言葉", organization: "組織", admin: "管理者", assistant: "アシスタント",
+    epicPageRequest: "概要", epicPagePartyEmpty: "参加者はまだいません。", accountMenuLabel: "{name}。アカウントのメニュー", logout: "ログアウト",
+    logoutMoving: "ログアウトしています", loggedOut: "ログアウトしました。", logoutFailed: "ログアウトできませんでした。時間をおいてもう一度試してください。",
+    markdownPlainNote: "整形せずに表示しています", markdownNewTab: "新しいタブで開きます", markdownCodeRegion: "コード",
+    markdownTableRegion: "表", teamXpLabel: "チーム全体の経験値", filterLabel: "{backlog}の絞り込み", backlogSearch: "タイトルで探す",
+    filterAll: "{label}: すべて", filterMe: "自分", unassigned: "担当なし", leftMember: "（離脱済み）", categoryNone: "{category}なし",
+    filterNoRepository: "リポジトリなし", filterNoEpic: "{epic}なし", filterClear: "絞り込みを外す",
+    backlogFilterOrderNote: "上にあるものほど優先します。絞り込みを外すと並べ替えられます。", backlogNoMatchTitle: "絞り込みに当たるものはありません",
+    backlogNoMatchText: "条件を変えるか、絞り込みを外してください。", filterTotalsNote: "{points}と件数は、絞る前の全体の値です",
+    filterHiddenCreated: "作りました。絞り込みに当たらないので表示していません",
   };
-  // 言葉は切り替えない。1 がスクラムの言葉の列（0 のゲームの言葉の列は、本番の辞書と突き合わせるために DICT に残している）
-  let vocab = 1;
-  const t = (k) => (DICT[k] ? DICT[k][vocab] : k);
+  const t = (k) => DICT[k] ?? k;
 
   // ---- 小さな道具 ----
   const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));

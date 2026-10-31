@@ -8,7 +8,7 @@ import vm from 'node:vm';
 import { artViewBox, arts } from '../src/lib/art.ts';
 import { iconViewBox, icons } from '../src/lib/icons.ts';
 import { themeLabelKeys, themeNoteKeys, themes } from '../src/shared/theme.ts';
-import { defaultVocabularies, dictionary } from '../src/shared/vocabulary.ts';
+import { dictionary } from '../src/shared/vocabulary.ts';
 
 const read = (file: string) => readFileSync(new URL(`../design/${file}`, import.meta.url), 'utf8');
 
@@ -57,7 +57,7 @@ function evaluateIcons(): { names: string[]; symbols: Map<string, { viewBox: str
 }
 
 // design/kit.js の DICT は、全体が IIFE の中で window.SQ_DATA などを前提にするので、DICT のリテラルだけを取り出して評価する
-function readKitDictionary(): Record<string, [string, string]> {
+function readKitDictionary(): Record<string, string> {
   const literal = /\n {2}const DICT = (\{[\s\S]*?\n {2}\});/.exec(read('kit.js'))?.[1];
   assert.ok(literal, 'design/kit.js に DICT が見つからない（書き方を変えたら、このテストの取り出し方も直す）');
   return vm.runInNewContext(`(${literal})`);
@@ -183,15 +183,15 @@ describe('見本との照合', () => {
     for (const name of names) assert.ok(name in arts, `${name} は線画の定義に無い`);
   });
 
-  test('言葉の辞書は、見本の DICT の全キーについて、ゲームとスクラムの言葉が同じ', () => {
+  test('言葉の辞書は、見本の DICT の全キーについて、言葉が同じ', () => {
     const design = readKitDictionary();
     const keys = Object.keys(design);
     assert.ok(keys.length > 0, '見本の DICT を読めなかった');
-    const production: Record<string, { game: string; scrum: string } | undefined> = dictionary;
+    const production: Record<string, string | undefined> = dictionary;
     for (const key of keys) {
-      const entry = production[key];
-      assert.ok(entry, `本番の辞書に ${key} が無い`);
-      assert.deepEqual([entry.game, entry.scrum], [...design[key]], `${key} の中身`);
+      const text = production[key];
+      assert.ok(text, `本番の辞書に ${key} が無い`);
+      assert.equal(text, design[key], `${key} の中身`);
     }
   });
 
@@ -204,25 +204,14 @@ describe('見本との照合', () => {
     const labels = readObject('THEME_LABEL');
     const notes = readObject('THEME_NOTE');
     for (const theme of themes) {
-      const label = dictionary[themeLabelKeys[theme]];
-      const note = dictionary[themeNoteKeys[theme]];
-      assert.deepEqual([label.game, label.scrum], [labels[theme], labels[theme]], `${theme} の名前`);
-      assert.deepEqual([note.game, note.scrum], [notes[theme], notes[theme]], `${theme} の説明`);
+      assert.equal(dictionary[themeLabelKeys[theme]], labels[theme], `${theme} の名前`);
+      assert.equal(dictionary[themeNoteKeys[theme]], notes[theme], `${theme} の説明`);
     }
   });
 
-  test('本番の辞書は、どのキーもゲームとスクラムの言葉が空でない', () => {
-    for (const [key, entry] of Object.entries(dictionary)) {
-      assert.notEqual(entry.game, '', `${key} の game`);
-      assert.notEqual(entry.scrum, '', `${key} の scrum`);
+  test('本番の辞書は、どのキーも空でない', () => {
+    for (const [key, text] of Object.entries(dictionary)) {
+      assert.notEqual(text, '', key);
     }
-  });
-
-  test('見本の初めの言葉づかいは、本番の既定と同じ（0 がゲームの言葉、1 がスクラムの言葉）', () => {
-    const initial = /\n {2}let vocab = (\d);/.exec(read('kit.js'))?.[1];
-    assert.ok(initial, 'design/kit.js に let vocab が見つからない（書き方を変えたら、このテストの取り出し方も直す）');
-    const indexOf = { game: '0', scrum: '1' } as const;
-    assert.equal(indexOf[defaultVocabularies.workspace], initial);
-    assert.equal(indexOf[defaultVocabularies.organization], initial);
   });
 });

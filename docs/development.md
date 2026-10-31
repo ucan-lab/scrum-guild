@@ -18,7 +18,7 @@
 | D1 への問い合わせ | Kysely。マイグレーションは SQL のファイルで手書きし、wrangler で当てる | 型付きで SQL に近い。組織を確かめた入口からしか組織の中の表を引けない型を作れる |
 | スキーマ | zod | Hono のバリデーター、Claude の道具や MCP の定義（JSON Schema）への変換など、周りの道具が揃っている |
 | 操作の定義 | 自前の定義から形を推論する。コードの生成はしない | 下の「操作の定義」 |
-| 言葉の切り替え | 型付きの辞書を自前で持つ | 下の「言葉の辞書」 |
+| 画面の言葉 | 型付きの辞書を自前で持つ | 下の「言葉の辞書」 |
 | 並べ替えの並び（`position`） | `fractional-indexing`（分数の並びの文字列を作る定番のパッケージ） | 間に入れても他の行を書き換えない並びを自前で書かずに済む。ワークスペースを作るときの最初の列と、並べ替えの操作が同じものを使う |
 | 行のドラッグ | `@atlaskit/pragmatic-drag-and-drop`（本体）、`-hitbox`、`-auto-scroll`（`src/lib/backlog-dnd.svelte.ts`、`src/lib/list-dnd.svelte.ts`、`src/lib/sprint-dnd.svelte.ts`。落とせる場所の判定は部品に依らない純粋な関数 `src/lib/backlog-drop.ts`、`src/lib/list-drop.ts`、`src/lib/sprint-drop.ts`）。画面は SPA で Svelte に直す | 行の上半分か下半分か、木の間か子にするかの判定と、端での自動スクロールを自前で保たずに済む。React に依存しない。配列を部品が入れ替える `svelte-dnd-action` は、先に画面を動かして押した順に送る並べ替え（`src/lib/move-queue.ts`）と二重になるので使わない |
 | Markdown の描画 | `mdast-util-from-markdown` と GFM の拡張4つ（自動リンク、打ち消し線、表、チェックリスト。脚注は入れない）で構文木にし、自前の安全な節に直して Svelte の再帰の部品で描く（`src/lib/markdown.ts`、`src/lib/components/MarkdownBlocks.svelte`）。変換は Web Worker で行い、1秒で終わらない本文は Worker を止めて文字のまま出す（`docs/design.md` の「Markdown の本文」） | HTML の文字列を作らないので無害化器が要らず、リンクと画像の規則を型の上で守れる。悪意のある本文は変換に数秒から分かかるので、画面の本体では走らせない |
@@ -125,11 +125,10 @@
 
 ### 言葉の辞書
 
-- 辞書は `src/shared/vocabulary.ts` に置く。画面に出すのはスクラムの言葉（`scrum`）で、`t(key)` が引く。キーごとに、`game` の列（ゲームの用語）も持つ。`workspace('パーティ', 'ワークスペース')` のように2つ渡す形なので、片方を消すと `pnpm check` が落ちる。言葉が同じ項目（`reward` など）も両方書く。`game` の列は画面に出ないが、見本（`design/kit.js` の `DICT`）との突き合わせ（`scripts/design-parity.test.ts`）と、言葉づかいの選択を戻すときのために残している。
-- キーには、使う範囲の単位（`scope`）がある。`workspace` はワークスペースの中の言葉、`organization` は組織、管理者のほか、ワークスペースの外の画面の名前（自分の今日、通知、自分の設定、組織の管理）と、枠の共通の文言（閉じる、件など）。`word(key, { workspace, organization })` が引き、画面は `defaultVocabularies` で引く。
-- 語順や記号を含む文は、`{名前}` の置き換えを持つ1項目にする（`pageTitle` の `{page} - {app}`、`apiStatus` など）。`t(key, { 名前: 値 })` で埋める。ゲームとスクラムで置き換えの名前をそろえることは `scripts/vocabulary.test.ts` が確かめる。テンプレートに語順や記号を直に書かない。
-- 画面は `src/lib/vocabulary.svelte.ts` の `t(key)` で文言を出し、直に書かない。`t` は常にスクラムの言葉で引く（`src/shared/vocabulary.ts` の `defaultVocabularies`）。言葉づかいを選ぶ口は無く、組織やワークスペースの値も、`localStorage` の記憶も持たない。列と決まった欄に付けた名前は、辞書を通さず、作るときにスクラムの言葉で決めた値を保存する（`src/shared/workspace.ts` の `defaultColumnNames`、`defaultDetailFieldName`）。
-- 辞書の型の保証は `src/shared/vocabulary.typecheck.ts` が持つ。片方の言葉が欠けた項目が型で落ちることを `@ts-expect-error` で確かめ、落ちなくなると `pnpm check` が落ちる。
+- 辞書は `src/shared/vocabulary.ts` に置く。キーごとにスクラムの言葉の文字列を1つ持つ（`task: 'タスク'`）。引くのは `word(key, params?)` で、画面は `src/lib/vocabulary.svelte.ts` の `t(key, params?)` を通す。
+- 語順や記号を含む文は、`{名前}` の置き換えを持つ1項目にする（`pageTitle` の `{page} - {app}`、`apiStatus` など）。`t(key, { 名前: 値 })` で埋め、テンプレートには語順や記号を直に書かない。
+- 画面は `t(key)` で文言を出す。直に書かず、言葉づかいを選ぶ口も、組織やワークスペースの値も、`localStorage` の記憶も持たない。列と決まった欄に付けた名前は、辞書を通さず、作るときにスクラムの言葉で決めた値を保存する（`src/shared/workspace.ts` の `defaultColumnNames`、`defaultDetailFieldName`）。DB の `vocabulary` の列は使わず、行を作る文が `scrum` を入れる（`src/server/db/vocabulary-column.ts` の `VOCABULARY_COLUMN_VALUE`）。
+- 辞書の型の保証は `src/shared/vocabulary.typecheck.ts` が持つ。文字列でない項目（数、オブジェクト、`{ scope, game, scrum }` の旧形式）が型で落ちることを `@ts-expect-error` で確かめ、落ちなくなると `pnpm check` が落ちる。
 - 見本の `design/kit.js` の `DICT` にあるキーは、本番も同じ中身で持つ。`scripts/design-parity.test.ts` が突き合わせる（`docs/design.md` の「デザインシステムの構成」）。
 
 ### 書体

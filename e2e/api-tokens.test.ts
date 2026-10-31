@@ -4,7 +4,7 @@
 // 有効なトークンの上限（20件）は test/api-token-settings-fixes.test.ts が確かめ、ここは上限で断られたときの画面の知らせだけを見る
 import type { Page } from '@playwright/test';
 import { tokenCreate, tokenList, tokenRevoke } from '../src/shared/operations/session/index.ts';
-import { word, type Vocabulary } from '../src/shared/vocabulary.ts';
+import { word } from '../src/shared/vocabulary.ts';
 import { expect, test } from './fixtures.ts';
 import { signIn, waitForSettled, watchViolations } from './helpers.ts';
 import { failOperation, mockOperation } from './operations.ts';
@@ -295,9 +295,7 @@ test('有効なトークンが上限に達していたら、断られた理由�
 
 {
   test('節の文言が言葉の辞書のスクラムの言葉で出る', async ({ page }) => {
-    const vocabulary: Vocabulary = 'scrum';
-    const vocabularies = { workspace: vocabulary, organization: vocabulary };
-    const w = (key: Parameters<typeof word>[0], params?: Parameters<typeof word>[2]) => word(key, vocabularies, params);
+    const w = word;
     await page.goto('/aoba/me');
     await waitForSettled(page);
     await expect(page.locator('.org-menu-label')).toHaveText(w('organization'));
@@ -321,7 +319,7 @@ test('有効なトークンが上限に達していたら、断られた理由�
     await expect(page.getByText(w('meOtherSettingsNote'))).toBeVisible();
 
     // 発行した直後のダイアログと、取り消しの確認も同じ辞書の文言で出す
-    const name = uniqueName(`辞書 ${vocabulary}`);
+    const name = uniqueName('辞書');
     await section.getByLabel(w('apiTokenNameLabel'), { exact: true }).fill(name);
     await section.getByRole('button', { name: w('apiTokenCreate') }).click();
     const issued = page.getByRole('dialog', { name: w('apiTokenIssuedTitle') });

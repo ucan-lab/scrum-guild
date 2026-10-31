@@ -1,48 +1,46 @@
 // Scrum Guild のモック。データはすべて架空の例で、操作は保存しない
 "use strict";
 
-// ---- 言葉の辞書（ゲームの言葉 / スクラムの言葉） ----
+// ---- 言葉の辞書（スクラムの言葉） ----
 const DICT = {
-  workspace: ["パーティ", "ワークスペース"],
-  inbox: ["届いた便り", "受信箱"],
-  archive: ["保管庫", "アーカイブ"],
-  backlog: ["掲示板", "バックログ"],
-  epic: ["レイド", "エピック"],
-  story: ["達成目標", "ストーリー"],
-  task: ["クエスト", "タスク"],
-  sprint: ["遠征", "スプリント"],
-  sprintGoal: ["遠征の目的", "スプリントゴール"],
-  dod: ["パーティの掟", "完成の定義"],
-  requester: ["依頼主", "作成者"],
-  party: ["討伐隊", "参加者"],
-  accept: ["受注する", "参加する"],
-  leave: ["討伐隊を抜ける", "参加をやめる"],
-  clear: ["レイドをクリアする", "エピックを完了する"],
-  column: ["行程", "列"],
-  doneCol: ["完遂", "完了"],
-  connection: ["便りの経路", "接続"],
-  create: ["依頼を出す", "起票"],
-  detail: ["手配書", "詳細"],
-  ac: ["達成条件", "受け入れ基準"],
-  due: ["期限", "期日"],
-  points: ["難易度", "ポイント"],
-  assignee: ["担い手", "担当"],
-  category: ["系統", "区分"],
-  capacity: ["積載量", "作業量と基準"],
-  over: ["重量オーバー", "超過"],
-  leader: ["パーティリーダー", "リーダー"],
-  member: ["冒険者", "メンバー"],
-  plan: ["遠征の計画", "計画"],
-  vocabName: ["ゲームの言葉", "スクラムの言葉"],
+  workspace: "ワークスペース",
+  inbox: "受信箱",
+  archive: "アーカイブ",
+  backlog: "バックログ",
+  epic: "エピック",
+  story: "ストーリー",
+  task: "タスク",
+  sprint: "スプリント",
+  sprintGoal: "スプリントゴール",
+  dod: "完成の定義",
+  requester: "作成者",
+  party: "参加者",
+  accept: "参加する",
+  leave: "参加をやめる",
+  clear: "エピックを完了する",
+  column: "列",
+  doneCol: "完了",
+  connection: "接続",
+  create: "起票",
+  detail: "詳細",
+  ac: "受け入れ基準",
+  due: "期日",
+  points: "ポイント",
+  assignee: "担当",
+  category: "区分",
+  capacity: "作業量と基準",
+  over: "超過",
+  leader: "リーダー",
+  member: "メンバー",
+  plan: "計画",
 };
 const state = {
-  vocab: 0, // 0 = ゲーム、1 = スクラム
   view: "today",
   epicId: "e1",
   taskId: null,
   drawerTab: "comments",
 };
-const t = (k) => (DICT[k] ? DICT[k][state.vocab] : k);
+const t = (k) => DICT[k] ?? k;
 
 // ---- 例のデータ ----
 const TODAY = "2026-10-20";
@@ -631,7 +629,6 @@ function render() {
   document.getElementById("page-title").textContent = v.title();
   document.title = `${v.title()} · Scrum Guild モック`;
   document.querySelectorAll("[data-t]").forEach((el) => (el.textContent = t(el.dataset.t)));
-  document.getElementById("vocab-label").textContent = `言葉: ${t("vocabName")}`;
   document.getElementById("me-chip").innerHTML = `${avatar(ME)}${esc(USERS[ME].name)} ${lv(ME)}`;
   renderNav();
   document.getElementById("main").innerHTML = v.later ? renderLater() : v.render();
@@ -710,11 +707,6 @@ document.addEventListener("keydown", (ev) => {
     openTask(ev.target.dataset.task);
   }
 });
-document.getElementById("vocab-btn").addEventListener("click", () => {
-  state.vocab = state.vocab ? 0 : 1;
-  render();
-});
-
 // 配色: OS に合わせる → ライト → ダーク の順に切り替える
 const THEMES = [null, "light", "dark"];
 const THEME_LABEL = { null: "OS に合わせる", light: "ライト", dark: "ダーク" };
