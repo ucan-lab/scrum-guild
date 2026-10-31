@@ -87,7 +87,8 @@ async function main(planPath, outArg) {
     await context.addCookies([
       { name: sessionCookieName(base), value: SEED_SESSIONS[who].token, url: base, httpOnly: true },
     ]);
-    // 手順書の操作（リンクを押す、アドレスを入れる）で、手元のブラウザが preview の外へ出ないようにする。
+    // 手順書の操作（リンクを押す、アドレスを入れる）で、手元のブラウザが preview の外のページへ移らないようにする。
+    // 止めるのは別オリジンへのナビゲーションだけで、画像や API などの別オリジンの読み込みは止めない。
     // あわせて API の応答の言葉づかいを vocabulary にそろえる。seed にはゲームの言葉のワークスペースがあり、
     // データを書き換えずに、録画の言葉だけをそろえるため
     let blocked;
