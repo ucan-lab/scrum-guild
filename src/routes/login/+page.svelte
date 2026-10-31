@@ -4,6 +4,7 @@
   import GateSheet from '../../lib/components/GateSheet.svelte';
   import GoogleMark from '../../lib/components/GoogleMark.svelte';
   import Icon from '../../lib/components/Icon.svelte';
+  import LegalLinks from '../../lib/components/LegalLinks.svelte';
   import { submitPasswordLogin } from '../../lib/password-login.ts';
   import { t } from '../../lib/vocabulary.svelte.ts';
   import { PASSWORD_LOGIN_ENABLED } from '../../shared/password-login-enabled.ts';
@@ -137,5 +138,6 @@
       </form>
     {/if}
     <p class="gate-note">{t('loginNote', words)}</p>
+    <LegalLinks />
   </GateSheet>
 </Gate>
