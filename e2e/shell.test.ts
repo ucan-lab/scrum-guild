@@ -55,7 +55,8 @@ test('1280px では左のメニューを折りたため、幅とラベルと状�
   expect(after!.x).toBeLessThan(before!.x);
 
   // 今のページは、太字の名前の代わりに左の縦棒（縁）で示す
-  // 縁の色は今のページのアイコンと同じ（操作の色）で、縦棒は 64px の列の内側に収まる
+  // 縁の色は今のページのアイコンと同じ（操作の色）。縦棒は列の端でなく項目の左端に重ね（罫の太さで位置がにじまない）、
+  // 64px の列の内側に収まる
   const bar = await page.locator('#app-nav .nav-item[aria-current="page"]').evaluate((el) => {
     const before = getComputedStyle(el, '::before');
     const item = el.getBoundingClientRect();
@@ -63,11 +64,13 @@ test('1280px では左のメニューを折りたため、幅とラベルと状�
       width: before.borderLeftWidth,
       color: before.borderLeftColor,
       icon: getComputedStyle(el.querySelector('.ico')!).color,
+      offset: before.left,
       left: item.left + parseFloat(before.left),
     };
   });
   expect(bar.width).toBe('3px');
   expect(bar.color).toBe(bar.icon);
+  expect(bar.offset).toBe('0px');
   expect(bar.left).toBeGreaterThanOrEqual(0);
   expect(bar.left + 3).toBeLessThanOrEqual(64);
 
