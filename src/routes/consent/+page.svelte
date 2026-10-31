@@ -147,7 +147,8 @@
         </button>
         <LogoutButton />
       </div>
-      <span class="field-hint is-reserved" id="consent-submit-hint">{checked ? '' : t('consentSubmitHint')}</span>
+      <span class="field-hint is-reserved" id="consent-submit-hint" aria-hidden={checked}>{t('consentSubmitHint')}</span
+      >
     {/if}
   </GateSheet>
 </Gate>

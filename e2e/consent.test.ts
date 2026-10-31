@@ -36,8 +36,9 @@ test.describe('本物の API', () => {
     await checkbox.check();
     await expect(submit).toHaveAttribute('aria-disabled', 'false');
     await expect(submit).not.toHaveAttribute('aria-describedby');
-    // 説明の要素は残して文だけを空にする（外すと縦中央の紙が縮み、押した位置の下の部品が動く）
-    await expect(page.locator('#consent-submit-hint')).toBeEmpty();
+    // 説明は外さず、文を描いたまま隠す（外すと縦中央の紙が縮み、押した位置の下の部品が動く）
+    await expect(page.locator('#consent-submit-hint')).toHaveAttribute('aria-hidden', 'true');
+    await expect(page.locator('#consent-submit-hint')).toBeHidden();
     await checkbox.uncheck();
     await expect(submit).toHaveAttribute('aria-describedby', 'consent-submit-hint');
     await expect(page.locator('#consent-submit-hint')).toHaveText(

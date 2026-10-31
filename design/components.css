@@ -352,8 +352,9 @@ h1, h2, h3 { text-wrap: balance; }
 .field { display: grid; gap: 6px; }
 .field-label { font-size: var(--text-sm); font-weight: 700; }
 .field-hint { font-size: var(--text-xs); color: var(--color-muted); }
-/* 出し入れする説明が消えても1行分の高さを残す。縦中央の紙（.gate）が縮んで、押した位置の下の部品が動くのを防ぐ */
-.field-hint.is-reserved { display: block; min-height: 1lh; }
+/* 出し入れする説明は、要らないとき aria-hidden="true" にして文を描いたまま隠す。行数に頼らず高さを保ち、縦中央の紙（.gate）が縮んで押した位置の下の部品が動くのを防ぐ */
+.field-hint.is-reserved { display: block; }
+.field-hint.is-reserved[aria-hidden="true"] { visibility: hidden; }
 .field-error { font-size: var(--text-xs); color: var(--color-danger); display: flex; gap: 4px; align-items: center; }
 /* 1つの欄に複数の誤りがあるとき（貼り付けた行ごとの理由など）。.field-error の見出しの下に並べる */
 .field-error-list { margin: 0; padding-left: 1.6em; display: grid; gap: 2px; font-size: var(--text-xs); color: var(--color-danger); overflow-wrap: anywhere; }
