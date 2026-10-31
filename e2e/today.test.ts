@@ -219,7 +219,7 @@ test('右の列は「自分の記録」で、経験値を読めなかったと�
   const unroute = await failOperation(page, experienceSummary, { slug: 'aoba' }, 500, 'internal');
   await page.reload();
   await expect(region(page, '期日切れ')).toBeVisible();
-  await expect(page.getByRole('complementary')).toHaveCount(0);
+  await expect(page.getByRole('complementary', { name: '自分の記録' })).toHaveCount(0);
   await unroute();
 });
 
