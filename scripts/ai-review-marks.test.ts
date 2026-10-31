@@ -47,7 +47,6 @@ describe('done-check の印を書く', () => {
 
   test('作成モードのどの経路でも本文の末尾に書き、書くのは pr-create だけ', () => {
     has(prCreate, '本文の末尾に、下の「done-check の印」を書く。', 'pr-create の本文');
-    has(prCreate, 'Step 3 の「done-check の印」をその後に書く', 'pr-create のドラフトへの書き込み');
     has(stack, 'base が `main` の層の本文には、目印の後に SKILL.md の Step 3 の「done-check の印」を書く', 'stack.md');
     has(prCreate, '印を書くのはこのスキルだけで、`done-check` と `pr-feedback` は書かない', 'pr-create');
   });

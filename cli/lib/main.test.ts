@@ -516,3 +516,19 @@ describe('sg ops', () => {
     usageError(await sg(['ops', 'no-such-operation']));
   });
 });
+
+describe('コマンドの名前', () => {
+  test('無いコマンドは使い方の誤りで、一覧に mcp を含める（mcp は入口の cli/sg.ts が処理する）', async () => {
+    const result = await sg(['nope']);
+    usageError(result);
+    assert.match(JSON.parse(result.stderr).error.message, /ops、call、config、mcp/);
+  });
+});
+
+describe('--allow-write は sg mcp だけが受ける', () => {
+  test('sg call と sg ops に付けると使い方の誤りのまま', async () => {
+    usageError(await sg(['call', 'who-am-i', '--allow-write']));
+    usageError(await sg(['call', 'who-am-i', '--allow-write', 'true']));
+    usageError(await sg(['ops', '--allow-write']));
+  });
+});
