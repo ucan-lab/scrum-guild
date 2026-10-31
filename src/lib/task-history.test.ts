@@ -59,7 +59,7 @@ describe('historyEntryView', () => {
         { label: 'ポイント', text: '3 → 未見積もり' },
         { label: '担当', text: '若葉 湊 → 朝霧 楓' },
         { label: '期日', text: 'なし → 2026-10-30' },
-        { label: '今日やると決めたもの', text: '2026-10-25 → なし' },
+        { label: '今日やる', text: '2026-10-25 → なし' },
         { label: '担当', text: '朝霧 楓 → 担当なし' },
       ],
     });

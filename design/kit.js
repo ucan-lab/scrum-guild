@@ -219,7 +219,7 @@
   }
   function taskFlags(x) {
     const carried = x.todayOn && x.todayOn < D.today && !x.doneAt;
-    return `${carried ? `<span class="chip is-carry">${icon("redo")}昨日から持ち越し</span>` : ""}
+    return `${carried ? `<span class="chip is-carry">${icon("redo")}持ち越し</span>` : ""}
       ${x.unfilled ? `<span class="chip is-todo">${icon("pen")}${t("detail")} 未記入</span>` : ""}
       ${x.srcDone && !x.doneAt ? `<span class="chip is-ok">${icon("check")}取り込み元で完了</span>` : ""}`;
   }
@@ -358,7 +358,7 @@
     </section>`;
   }
   function foldedSection(id, title, count, body) {
-    return `<details class="section"><summary class="section-head"><h2 class="section-title" id="${id}">${title}</h2><span class="section-count">${count} 件</span><span class="section-hint">開く</span></summary>${body}</details>`;
+    return `<details class="section is-folded"><summary class="section-head"><h2 class="section-title" id="${id}">${title}</h2><span class="section-count">${count} 件</span><span class="section-hint">押すと開きます</span></summary>${body}</details>`;
   }
   // meta は集計の下に置く1行（バックログの画面のチーム全体の経験値 teamXp など）
   function pageHead(eyebrow, title, tallies = [], actions = "", meta = "") {

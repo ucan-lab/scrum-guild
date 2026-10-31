@@ -287,6 +287,11 @@ h1, h2, h3 { text-wrap: balance; }
 .section-title { font-family: var(--font-display); font-weight: var(--weight-display); font-size: var(--text-xl); letter-spacing: 0.04em; }
 .section-count { font-family: var(--font-mono); font-size: var(--text-sm); color: var(--color-muted); }
 .section-hint { margin-left: auto; font-size: var(--text-xs); color: var(--color-muted); }
+/* 閉じた節: 見出しの行を押して開く。ブラウザ既定の三角は消し、押せることは .section-hint の文字で伝える */
+.section.is-folded > summary { cursor: pointer; list-style: none; }
+.section.is-folded > summary::-webkit-details-marker { display: none; }
+.section.is-folded[open] > summary .section-hint { visibility: hidden; }
+@media (max-width: 760px), (pointer: coarse) { .section.is-folded > summary { min-height: 44px; align-items: center; } }
 
 /* ===== ボタン ===== */
 .btn {

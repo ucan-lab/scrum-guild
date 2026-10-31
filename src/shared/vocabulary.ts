@@ -1343,6 +1343,8 @@ export const dictionary = defineDictionary({
   historyNone: 'なし',
   historyFieldOther: 'そのほかの欄',
   historyFieldParent: '親の{story}',
+  // 太陽の印（today_on）の履歴の欄名。画面の区分の名前（sectionToday）とは別に、印の名前を保つ
+  historyFieldToday: '今日やる',
   // 名前が空の人、区分、親（読めなかった名前）
   historyUnknownName: '不明',
   // 「さらに読む」で行を足したことを、読み上げに伝える

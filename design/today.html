@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>今日やること - Scrum Guild</title>
+<title>Scrum Guild 今日やること</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=BIZ+UDPGothic:wght@400;700&family=Chakra+Petch:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500&family=Zen+Old+Mincho:wght@700;900&display=swap">
@@ -24,15 +24,21 @@ const { D, t, book, section, foldedSection, pageHead, sprintNotice, levelPanel, 
 SQ.mount("today", () => {
   const mine = SQ.tasksWhere((x) => x.who === D.me);
   const open = mine.filter((x) => !x.doneAt);
-  const inWeek = (x) => { const d = SQ.dueOf(x); return d && d.date >= D.today && d.date <= D.weekEnd; };
-  const carryDays = (x) => x.todayOn && x.todayOn < D.today ? Math.max(1, Math.round((new Date(`${D.today}T00:00:00Z`) - new Date(`${x.todayOn}T00:00:00Z`)) / 86400000)) : 0;
-  const todayList = open.filter((x) => x.todayOn).sort((a, b) => carryDays(b) - carryDays(a));
-  const dueList = open.filter((x) => !x.todayOn && inWeek(x));
-  const restList = open.filter((x) => !x.todayOn && !inWeek(x) && x.sprint && D.sprints[x.sprint].status === "active");
+  const dueDate = (x) => SQ.dueOf(x)?.date ?? null;
+  const byDue = (a, b) => (dueDate(a) ?? "9999").localeCompare(dueDate(b) ?? "9999");
+  const isOverdue = (x) => dueDate(x) !== null && dueDate(x) < D.today;
+  const inWeek = (x) => dueDate(x) !== null && dueDate(x) >= D.today && dueDate(x) <= D.weekEnd;
+  const carryDays = (x) => {
+    if (!x.todayOn || x.todayOn >= D.today) return 0;
+    return Math.round((Date.parse(`${D.today}T00:00:00Z`) - Date.parse(`${x.todayOn}T00:00:00Z`)) / 86400000);
+  };
+  // 印を付けたものは、期日に関わらず「今日やると決めたもの」だけに出す。持ち越しを先頭にまとめ、日数の多い順、同じなら期日の早い順
+  const todayList = open.filter((x) => x.todayOn).sort((a, b) => carryDays(b) - carryDays(a) || byDue(a, b));
+  const overdueList = open.filter((x) => !x.todayOn && isOverdue(x)).sort(byDue);
+  const dueList = open.filter((x) => !x.todayOn && inWeek(x)).sort(byDue);
+  const restList = open.filter((x) => !x.todayOn && !isOverdue(x) && !inWeek(x) && x.sprint && D.sprints[x.sprint].status === "active").sort(byDue);
   const doneList = mine.filter((x) => x.doneAt && x.doneAt.startsWith("10/20"));
-  const overdue = open.filter((x) => { const d = SQ.dueOf(x); return d && d.date < D.today; }).length;
-  const thisWeek = open.filter((x) => { const d = SQ.dueOf(x); return d && d.date >= D.today && d.date <= D.weekEnd; }).length;
-  const opts = { showWs: true, meta: (x) => carryDays(x) ? `<span class="props-note">${carryDays(x)} 日前から</span>` : "" };
+  const opts = { showWs: true, meta: (x) => carryDays(x) ? `<span class="props-note">${carryDays(x)} 日前に印を付けた</span>` : "" };
   const hasWs = Object.keys(D.workspaces).length > 0;
   const active = Object.keys(D.sprints).filter((id) => D.sprints[id].status === "active");
   const todayEmpty = hasWs
@@ -42,7 +48,7 @@ SQ.mount("today", () => {
     : SQ.emptyState("sun", `今日やる${t("task")}はまだありません`, `${t("workspace")}に所属すると、自分が担当する${t("task")}がここに並びます。`, "", undefined, "notice");
   // 今日やる以外の区分は、空なら出さない
   const part = (id, title, list) => (list.length ? section(id, title, list.length, book(list, opts)) : "");
-  const dueOpts = { ...opts, meta: (x) => `${x.due === D.today ? '<span class="chip is-warn">今日</span>' : ''}${opts.meta(x)}` };
+  const dueOpts = { ...opts, meta: (x) => (dueDate(x) === D.today ? '<span class="chip is-warn">期日は今日</span>' : "") };
   const capacityPanel = SQ.first
     ? `<section class="panel"><div class="panel-title"><b>${t("capacity")}</b></div>
         <p class="panel-note">${hasWs ? "" : `${t("workspace")}に所属して、`}${t("sprint")}に担当の${t("task")}が入ると、作業量と基準がここに並びます。</p></section>`
@@ -57,14 +63,14 @@ SQ.mount("today", () => {
     <div class="layout-main">
       ${pageHead(D.todayLabel, "今日やること", [
         ["", "sun", "今日やると決めたもの", todayList.length],
-        ["is-danger", "alert", `${t("due")}切れ`, overdue],
-        ["is-warn", "clock", `今週が${t("due")}`, thisWeek],
+        ["is-danger", "alert", `${t("due")}切れ`, overdueList.length],
+        ["is-warn", "clock", `今週が${t("due")}`, dueList.length],
         ["is-ok", "check", "取り込み元で完了", open.filter((x) => x.srcDone).length],
         ["", "check", t("doneToday"), doneList.length],
       ])}
       ${SQ.first ? SQ.firstSteps(SQ.first) : ""}
       ${active.length ? `<div class="notice-grid">${active.map((id) => sprintNotice(id)).join("")}</div>` : ""}
-      ${part("s-overdue", `${t("due")}切れ`, open.filter((x) => { const d = SQ.dueOf(x); return d && d.date < D.today; }))}
+      ${part("s-overdue", `${t("due")}切れ`, overdueList)}
       ${section("s-today", "今日やると決めたもの", todayList.length, book(todayList, { ...opts, empty: todayEmpty }), "印を付けた日が過ぎても、完了にするか印を外すまで残ります")}
       ${dueList.length ? section("s-due", `今週が${t("due")}`, dueList.length, book(dueList, dueOpts)) : ""}
       ${restList.length ? foldedSection("s-sprint", `進行中の${t("sprint")}`, restList.length, book(restList, opts)) : ""}
