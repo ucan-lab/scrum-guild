@@ -186,7 +186,7 @@ D1（`.wrangler/state`）はワークツリーごとに分かれるので、seed
 
 - コード: 受け入れる時点の `main` のコミットの SHA を付けた GitHub の URL に、行の範囲を付ける（`https://github.com/{owner}/{repo}/blob/<SHA>/src/server/operations/tasks.ts#L40-L58`）。ブランチ名の URL は後で行がずれるので使わない。どの行が条件のどこに当たるかを添える
 - D1: 確かめるワークツリーの D1 を `pnpm exec wrangler d1 execute DB --local --command "<SELECT 文>"` で読んだ結果。組織の中の表は組織で絞って読む
-- PR の記録: PR の本文の `## 確認方法`、CI の実行の時間、テストの件数。PR と実行の URL を添える
+- PR の記録: PR の本文の `## テストと動作確認`（2026-10-31 より前の PR は `## 確認方法`）、CI の実行の時間、テストの件数。PR と実行の URL を添える
 
 ### 6. 印を付ける
 
