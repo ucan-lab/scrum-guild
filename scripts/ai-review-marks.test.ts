@@ -91,6 +91,11 @@ describe('直しの後に AI レビューを1回回す', () => {
     has(prFeedback, '- 見た回数: 出力の SHA の重複を除いた数', 'pr-feedback');
     has(
       prFeedback,
+      '`git rev-list --count <SHA>..HEAD` が最小のもの。並べば ai-review の印を先にする',
+      'pr-feedback の見た先',
+    );
+    has(
+      prFeedback,
       '- 見た回数が 1（最初のレビューだけ）。2 以上なら、直しのレビューは回したものとする',
       'pr-feedback',
     );
