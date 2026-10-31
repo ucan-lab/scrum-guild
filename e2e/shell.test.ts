@@ -55,10 +55,21 @@ test('1280px では左のメニューを折りたため、幅とラベルと状�
   expect(after!.x).toBeLessThan(before!.x);
 
   // 今のページは、太字の名前の代わりに左の縦棒（縁）で示す
-  const currentWidth = await page
-    .locator('#app-nav .nav-item[aria-current="page"]')
-    .evaluate((el) => getComputedStyle(el, '::before').borderLeftWidth);
-  expect(currentWidth).toBe('3px');
+  // 縁の色は今のページのアイコンと同じ（操作の色）で、縦棒は 64px の列の内側に収まる
+  const bar = await page.locator('#app-nav .nav-item[aria-current="page"]').evaluate((el) => {
+    const before = getComputedStyle(el, '::before');
+    const item = el.getBoundingClientRect();
+    return {
+      width: before.borderLeftWidth,
+      color: before.borderLeftColor,
+      icon: getComputedStyle(el.querySelector('.ico')!).color,
+      left: item.left + parseFloat(before.left),
+    };
+  });
+  expect(bar.width).toBe('3px');
+  expect(bar.color).toBe(bar.icon);
+  expect(bar.left).toBeGreaterThanOrEqual(0);
+  expect(bar.left + 3).toBeLessThanOrEqual(64);
 
   // 項目はアイコンだけで、名前は見えないが読み上げには残る
   const item = page.locator('.nav-item').first();
@@ -158,7 +169,8 @@ test.describe('ホバーのできない端末（1024px の指のタブレット�
     await expect(page.locator('.app')).toHaveAttribute('data-nav-collapsed', 'true');
     await expect(page.locator('.nav-toggle')).toBeHidden();
     await expect(page.locator('.binding')).toHaveJSProperty('offsetWidth', 240);
-    await expect(page.locator('.brand-name')).toBeVisible();
+    // 畳んだ列のブランドの名前は 1px の見えない箱になる。toBeVisible はそれも見えると扱うので、幅で確かめる
+    expect((await page.locator('.brand-name').boundingBox())!.width).toBeGreaterThan(50);
     await expect(page.locator('#app-nav .nav-item-label').first()).toHaveCSS('opacity', '1');
   });
 });
@@ -216,6 +228,34 @@ test.describe('組織が2つの人（ミナト）', () => {
     await expect(org.locator('.nav-tip')).toHaveText('移っています');
     await expect(page).toHaveURL(/\/hibari$/);
     await expect(org).not.toHaveAttribute('data-moving', 'true');
+  });
+
+  test('畳んだ列で移っている最中に組織の一覧を開くと、札は一覧に重ねず、閉じるとまた出る', async ({ page }) => {
+    // 一覧を開き直して確かめる間、移り終わらないよう長めに待たせる
+    await page.route('**/api/hibari/organization', async (route) => {
+      await new Promise((resolve) => setTimeout(resolve, 4000));
+      await route.continue();
+    });
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await page.goto(today);
+    await page.getByRole('button', { name: 'メニューを畳む' }).click();
+    const org = page.locator('.org-menu-button');
+    const tip = org.locator('.nav-tip');
+    await org.click();
+    await page.locator('.org-menu-list').getByRole('link', { name: 'ひばり工房' }).click();
+    await page.mouse.move(700, 600);
+    await expect(org).toHaveAttribute('data-moving', 'true');
+    await expect(tip).toBeVisible();
+
+    await org.click();
+    await expect(org).toHaveAttribute('aria-expanded', 'true');
+    await expect(page.getByRole('list', { name: '入れる組織' })).toBeVisible();
+    await expect(tip).toBeHidden();
+
+    await page.keyboard.press('Escape');
+    await expect(org).toHaveAttribute('aria-expanded', 'false');
+    await expect(tip).toBeVisible();
+    await expect(page).toHaveURL(/\/hibari$/);
   });
 
   test('バックログの画面でも、畳んだ列から開いた組織の一覧は本文の行に覆われない', async ({ page }) => {
