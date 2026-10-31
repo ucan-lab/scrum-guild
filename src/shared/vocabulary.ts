@@ -475,7 +475,7 @@ export const dictionary = defineDictionary({
   noOrganizationTitle: '入れる組織がありません',
   noOrganizationText: '管理者から招待が届くと、ここに出ます。',
   // 入れる組織も招待も無く、停止していなければ入れた{organization}だけがある人
-  noOrganizationSuspendedText: '下の停止している{organization}は、再開すると入れます。',
+  noOrganizationSuspendedText: '停止している{organization}があります。下の案内を見てください。',
   // 入れる組織は無いが、届いた招待がある人
   noOrganizationInvitedTitle: 'まだ入れる組織がありません',
   noOrganizationInvitedText: '下の届いた招待から組織を選び、招待を承諾すると入れます。',
