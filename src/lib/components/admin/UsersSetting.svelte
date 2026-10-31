@@ -9,10 +9,12 @@
   import { focusPageHeading } from '../../focus-heading.ts';
   import { formatLocalDate } from '../../format.ts';
   import { isUnauthenticated, loginUrl } from '../../login-redirect.ts';
+  import { memberLimitDetailsOf } from '../../member-limit-details.ts';
   import { showToast } from '../../toast.svelte.ts';
   import { t } from '../../vocabulary.svelte.ts';
   import Avatar from '../Avatar.svelte';
   import ConfirmDialog from '../ConfirmDialog.svelte';
+  import Icon from '../Icon.svelte';
   import Setting from '../Setting.svelte';
   import SectionBoundary from './SectionBoundary.svelte';
   import { SectionLoad } from './section-load.svelte.ts';
@@ -26,7 +28,8 @@
   //   解除できたら、組織の枠（管理者の判定）を読み直し（この画面は「見つからない」になる）、見出しへフォーカスを移す
   // - 通ったら、応答の値で行を先に書き換えてから読み直す（読み直しが失敗しても、見た目が書いた後の値とずれない）
   // - 無効の人の押せない切り替えには、理由を読み上げの説明（aria-describedby）で結ぶ。入ったことの無い人の「—」には見えない文字を添える
-  // - 409 は理由（details.reason）ごとに、そのほかの失敗は種類ごとにトーストで知らせ、一覧を読み直す
+  // - 409 は理由（details.reason）ごとに、そのほかの失敗は種類ごとにトーストで知らせ、一覧を読み直す。
+  //   有効に戻すのが人数の上限で断られた（409 の member_limit_reached）ときだけは、長い理由と対処を表の上のコールアウトに残す
   // 操作は1件ずつ送り、送っている間はどの行の操作も aria-disabled にして押しても無視する。
   // 画面の見出しの集計（無効でないユーザーの数、管理者の数）は oncounts で渡す（読めるまでは null）
   let {
@@ -47,6 +50,10 @@
   let users = $state<User[]>([]);
   // 操作を送っている行
   let busyId = $state<string | null>(null);
+  // 有効に戻すのが人数の上限で断られた理由。読み返せるよう、トーストでなく表の上のコールアウトに残す。
+  // 次に有効に戻す／無効にするを押したとき、組織が替わったときに消し、一覧を読み直しても残す
+  let enableRefusal = $state<string | null>(null);
+  let refusalBox = $state<HTMLElement>();
   let confirmDialog = $state<ReturnType<typeof ConfirmDialog>>();
   // 確かめのダイアログで聞いている操作。disable は無効にする、revokeSelf は自分の管理者の解除
   let pending = $state<{ kind: 'disable' | 'revokeSelf'; user: User } | null>(null);
@@ -87,6 +94,7 @@
       users = [];
       oncounts(null);
       busyId = null;
+      enableRefusal = null;
     },
   );
 
@@ -110,7 +118,19 @@
       return true;
     }
     const name = user.name;
-    if (result.status === 409 && result.error?.code === 'conflict') {
+    if (result.status === 409 && result.error?.code === 'member_limit_reached') {
+      // 有効に戻すのが人数の上限で断られた。長い理由と対処は、トーストでなく表の上のコールアウトに残す。
+      // 数が読めない応答（details が無いか不正）は、数を含まない文言にする
+      const seats = memberLimitDetailsOf(result.error.details);
+      const common = { ...words, name, leader: t('leader') };
+      enableRefusal =
+        seats === undefined
+          ? t('userEnableMemberLimitUnknown', common)
+          : t('userEnableMemberLimit', { ...common, adding: seats.adding, used: seats.used, limit: seats.limit });
+      // 押した行が表の下にあっても理由が見えるよう、描いた後に画面の中へ動かす。フォーカスは押したボタンに残す
+      await tick();
+      refusalBox?.scrollIntoView({ block: 'nearest' });
+    } else if (result.status === 409 && result.error?.code === 'conflict') {
       const reason = userConflictReasonOf(result.error.details);
       if (reason === 'last_admin') showToast(t('userErrorLastAdmin', words), 'alert');
       else if (reason === 'self') showToast(t('userErrorSelf'), 'alert');
@@ -191,6 +211,7 @@
     if (busyId !== null) return;
     const disabling = user.disabled_at === null;
     if (disabling && !(await confirmAction({ kind: 'disable', user }, trigger))) return;
+    enableRefusal = null;
     const token = section.token();
     busyId = user.id;
     try {
@@ -223,6 +244,11 @@
 
 <Setting title={t('userSectionTitle')} description={t('userSectionDesc', words)}>
   <SectionBoundary {section} failedTitle={t('userListLoadFailed')} refreshFailedText={t('userListRefreshFailed')}>
+    {#if enableRefusal !== null}
+      <div class="callout is-warn" role="alert" bind:this={refusalBox}>
+        <Icon name="alert" /><span class="wrap-anywhere">{enableRefusal}</span>
+      </div>
+    {/if}
     <div class="table-wrap">
       <!-- 行の操作（切り替えとボタン）を持つので、狭い幅で1行を縦に積む（is-stacked） -->
       <table class="table is-stacked" aria-label={t('userListLabel', words)}>

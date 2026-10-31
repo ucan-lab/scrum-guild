@@ -151,6 +151,32 @@ export async function seatHoldersOfWorkspaceInvitations(
   return people;
 }
 
+// 無効にされた人を有効に戻すと、人数に数えられる承諾待ちの招待（開いたワークスペース、期限内、同じ組織）が、そのログイン
+// （手段と ID）にあるか。無効の間は人数に数えない招待なので、inviteeNotDisabled では除かず、有効に戻した後の数え方で見る。
+// 数えるのは seatInvitationsStatement と同じ条件（承諾待ち、開いたワークスペース、期限内）。同じ人への招待が複数でも、あるかどうかだけを返す。
+// 組織の ID は入口の organizationId から取り、ほかの組織の招待は見ない
+export async function hasSeatInvitationOfLogin(
+  db: OrganizationDb,
+  login: { provider: string; subject: string },
+  at: Date,
+): Promise<boolean> {
+  const rows = await db.rows(
+    db.statement((q) =>
+      q
+        .selectFrom('invitations as i')
+        .innerJoin('workspaces as w', 'w.id', 'i.workspace_id')
+        .select(['i.claim_expires_at'])
+        .where('w.organization_id', '=', db.organizationId)
+        .where('w.closed_at', 'is', null)
+        .where('i.status', '=', 'pending')
+        .where('i.login_provider', '=', login.provider)
+        .where('i.login_subject', '=', login.subject),
+    ),
+  );
+  const time = at.getTime();
+  return rows.some((row) => !isExpiredClaim(row.claim_expires_at, time));
+}
+
 // 確かめた組織の人数に数える人。組織の ID は入口の organizationId から取り、ほかの組織を数えられない
 export async function seatHoldersOf(db: OrganizationDb, at: Date): Promise<Set<string>> {
   const organizationId = db.organizationId;

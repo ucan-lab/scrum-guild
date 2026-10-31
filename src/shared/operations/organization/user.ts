@@ -70,11 +70,15 @@ export const userDisable = defineOperation({
   output: userState,
 });
 
-// 無効のユーザーを有効に戻す。所属と管理者は戻らないので、組織に入るには招待し直すか指名し直す。有効な人なら書かずに今の値を返す
+// 無効のユーザーを有効に戻す。所属と管理者は戻らないので、組織に入るには招待し直すか指名し直す。有効な人なら書かずに今の値を返す。
+// 無効の間に招待し直した承諾待ちの招待（開いたワークスペース、期限内）は、有効に戻すとその人が新しく人数に数えられる。
+// その人（adding。同じ人への招待が複数でも 1 人）を今の人数に足すと member_limit を超えるときは、何も書かずに
+// 409 の member_limit_reached（details は { used, limit, adding }）で断り、招待は残す。招待が無い（adding が 0）有効化は、
+// 段階を下げて人数が上限を超えている組織でも通す。ちょうど上限に達する有効化も通す
 export const userEnable = defineOperation({
   name: 'user-enable',
   description:
-    '無効のユーザーを有効に戻し、組織の変更の履歴に残す。所属と管理者は戻らない（入るには招待し直すか、管理者に指名し直す）',
+    '無効のユーザーを有効に戻し、組織の変更の履歴に残す。所属と管理者は戻らない（入るには招待し直すか、管理者に指名し直す）。無効の間の招待で新しく人数に数えられる人がいて、足すと組織の人数の上限を超えるときは、何も書かずに 409 の member_limit_reached（details は { used, limit, adding }）',
   mode: 'write',
   permission: 'admin',
   input: z.object({ user_id: idSchema }),
