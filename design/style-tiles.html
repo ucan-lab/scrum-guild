@@ -365,24 +365,22 @@ h1, h2, h3 { margin: 0; text-wrap: balance; }
     <p>見た目の方向の3案。どれも同じ部品と同じ例のデータで作ってあるので、横に見比べて選んでください。データはすべて架空の例です。</p>
   </div>
   <div class="switches">
-    <button class="switch" id="vocab" type="button"></button>
     <button class="switch" id="theme" type="button"></button>
   </div>
 </header>
 <main class="tiles" id="tiles"></main>
-<p class="foot-note">部品: 色、文字、ボタン、状態の印、タスクの行、レイドのカード、レベルと積載量。言葉づかいを切り替えて、どの案でも崩れないかも確かめられます。</p>
+<p class="foot-note">部品: 色、文字、ボタン、状態の印、タスクの行、レイドのカード、レベルと積載量。</p>
 
 <script>
 "use strict";
 const WORDS = {
-  epic: ["レイド", "エピック"], requester: ["依頼主", "作成者"], party: ["討伐隊", "参加者"],
-  accept: ["受注する", "参加する"], detail: ["手配書", "詳細"], points: ["難易度", "ポイント"],
-  due: ["期限", "期日"], capacity: ["積載量", "作業量と基準"], over: ["重量オーバー", "超過"],
-  done: ["完遂", "完了"], complete: ["完遂にする", "完了にする"], reward: ["クリア報酬", "クリア報酬"],
-  task: ["クエスト", "タスク"], sprint: ["遠征", "スプリント"],
+  epic: "エピック", requester: "作成者", party: "参加者",
+  accept: "参加する", detail: "詳細", points: "ポイント",
+  due: "期日", capacity: "作業量と基準", over: "超過",
+  done: "完了", complete: "完了にする", reward: "クリア報酬",
+  task: "タスク", sprint: "スプリント",
 };
-let vocab = 0;
-const w = (k) => WORDS[k][vocab];
+const w = (k) => WORDS[k];
 const icon = (id) => `<svg class="ico" aria-hidden="true"><use href="#i-${id}"/></svg>`;
 const av = (ch, h) => `<span class="avatar" style="--h:${h}">${ch}</span>`;
 
@@ -496,9 +494,7 @@ function tile(T) {
 
 function render() {
   document.getElementById("tiles").innerHTML = TILES.map(tile).join("");
-  document.getElementById("vocab").textContent = `言葉: ${vocab ? "スクラム" : "ゲーム"}`;
 }
-document.getElementById("vocab").addEventListener("click", () => { vocab = vocab ? 0 : 1; render(); });
 
 const THEMES = [null, "light", "dark"];
 const LABEL = { null: "OS に合わせる", light: "ライト", dark: "ダーク" };
