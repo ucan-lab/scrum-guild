@@ -1,5 +1,7 @@
 // ログインの結合テストで使う、Cookie を持つ疑似のブラウザ。アプリに直に流し、リダイレクトは辿らず、Location を返す
+import { PRIVACY_VERSION, TERMS_VERSION } from '../../src/lib/legal/versions.ts';
 import { createApp } from '../../src/server/app.ts';
+import { consentRecord } from '../../src/shared/operations/session/consent.ts';
 import { implementedOperations } from '../../src/server/operations/index.ts';
 import { operationPath, type AnyOperationDefinition } from '../../src/shared/operations/define.ts';
 import { testEnv } from '../operations/world.ts';
@@ -192,6 +194,13 @@ export class FakeBrowser {
       headers: { 'Content-Type': 'application/json', Origin: this.#env.PUBLIC_ORIGIN },
       body: JSON.stringify(body),
     });
+  }
+
+  // 今の版への同意を、このブラウザのセッションで記録する。ログインで作られた人は同意の行を持たず、
+  // 同意するまで me、logout、同意の操作のほかを 403 の terms_required で断られる（同意の門）
+  async consent(): Promise<void> {
+    const response = await this.post(consentRecord, { terms_version: TERMS_VERSION, privacy_version: PRIVACY_VERSION });
+    if (response.status !== 200) throw new Error(`同意を記録できなかった（${response.status}）`);
   }
 
   get sessionToken(): string | undefined {

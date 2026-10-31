@@ -65,6 +65,8 @@ type ListedOrganizations = {
 };
 
 async function myOrganizationsOf(browser: FakeBrowser): Promise<ListedOrganizations> {
+  // ログインで作られた人は未同意なので、組織の操作の前に同意する（同意の門は test/consent-gate.test.ts が確かめる）
+  await browser.consent();
   const res = await browser.post(myOrganizations);
   expect(res.status).toBe(200);
   return (await res.json()) as ListedOrganizations;
@@ -518,6 +520,7 @@ describe('運用者', () => {
     const other = new FakeBrowser(app, github, removed);
     expect((await other.login(operator)).location).toBe('/');
     expect(other.sessionToken).toBeDefined();
+    await other.consent();
     const listed = await other.post(myOrganizations);
     expect(listed.status).toBe(200);
     expect(await listed.json()).toMatchObject({ organizations: [], invitations: [], operator: false });
@@ -594,6 +597,7 @@ describe('組織を失ったあと、結ばれる前の指名の行だけを持�
     const browser = newBrowser();
     await browser.login(user);
     expect((await browser.post(me)).status).toBe(200);
+    await browser.consent();
     const accountId = (await accountLoginOf(user))!.account_id;
 
     // 最初の組織で無効にされ、別の組織に account_id が空の行で指名される

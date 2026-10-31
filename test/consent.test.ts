@@ -38,7 +38,7 @@ const CURRENT_INPUT = { terms_version: TERMS_VERSION, privacy_version: PRIVACY_V
 
 describe('同意の操作', () => {
   test('consent-status は現在の版と、同意が無い状態を返す', async () => {
-    const person = await createLoginPerson();
+    const person = await createLoginPerson({ consented: false });
     const response = await post(app, consentStatus, { token: person.token });
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual({
@@ -50,7 +50,7 @@ describe('同意の操作', () => {
   });
 
   test('現在の版を同意すると行が書かれ、同じ版への二度目は行が増えない', async () => {
-    const person = await createLoginPerson();
+    const person = await createLoginPerson({ consented: false });
     const input = { terms_version: TERMS_VERSION, privacy_version: PRIVACY_VERSION };
     expect((await post(app, consentRecord, { token: person.token, body: input })).status).toBe(200);
     expect((await post(app, consentRecord, { token: person.token, body: input })).status).toBe(200);
@@ -60,7 +60,7 @@ describe('同意の操作', () => {
   });
 
   test('画面の版が古いと 409 conflict で、行を増やさない', async () => {
-    const person = await createLoginPerson();
+    const person = await createLoginPerson({ consented: false });
     const response = await post(app, consentRecord, {
       token: person.token,
       body: { terms_version: '2026-01-01', privacy_version: PRIVACY_VERSION },
@@ -71,7 +71,7 @@ describe('同意の操作', () => {
   });
 
   test('プライバシーポリシーの版だけが古い画面の同意は 409 で、行を増やさない', async () => {
-    const person = await createLoginPerson();
+    const person = await createLoginPerson({ consented: false });
     const response = await post(app, consentRecord, {
       token: person.token,
       body: { terms_version: TERMS_VERSION, privacy_version: OLD },
@@ -81,7 +81,7 @@ describe('同意の操作', () => {
   });
 
   test('旧版の行と現在版の行があれば最新は現在版で、record を重ねても行は増えない', async () => {
-    const person = await createLoginPerson();
+    const person = await createLoginPerson({ consented: false });
     await seedConsent(person.accountId, OLD, OLD, '2026-01-01T00:00:00.000Z');
     await seedConsent(person.accountId, TERMS_VERSION, PRIVACY_VERSION, '2026-10-31T00:00:00.000Z');
     const status = await post(app, consentStatus, { token: person.token });
@@ -104,7 +104,7 @@ describe('同意の操作', () => {
     ['規約だけが旧版', OLD, PRIVACY_VERSION],
     ['プライバシーポリシーだけが旧版', TERMS_VERSION, OLD],
   ])('最新の同意が%sなら current は false で、record すると新しい行が足される', async (_name, terms, privacy) => {
-    const person = await createLoginPerson();
+    const person = await createLoginPerson({ consented: false });
     await seedConsent(person.accountId, terms, privacy, '2026-01-01T00:00:00.000Z');
     const before = await post(app, consentStatus, { token: person.token });
     expect(await before.json()).toMatchObject({
@@ -118,7 +118,7 @@ describe('同意の操作', () => {
   });
 
   test('現在版の行より新しい旧版の行があれば current は false で、record すると新しい行が足されて current になる', async () => {
-    const person = await createLoginPerson();
+    const person = await createLoginPerson({ consented: false });
     await seedConsent(person.accountId, TERMS_VERSION, PRIVACY_VERSION, '2026-10-30T00:00:00.000Z');
     // 実行時刻より過去にする（record が足す行は今の時刻で、これより新しくなければならない）
     await seedConsent(person.accountId, OLD, OLD, '2026-10-31T00:00:00.000Z');
@@ -135,7 +135,7 @@ describe('同意の操作', () => {
     ['旧版を先に入れた', true],
     ['現在版を先に入れた', false],
   ])('同じ時刻の行は、%sときも版が新しいほうを最新にする', async (_name, oldFirst) => {
-    const person = await createLoginPerson();
+    const person = await createLoginPerson({ consented: false });
     const at = '2026-10-31T00:00:00.000Z';
     if (oldFirst) await seedConsent(person.accountId, OLD, OLD, at);
     await seedConsent(person.accountId, TERMS_VERSION, PRIVACY_VERSION, at);
@@ -145,7 +145,7 @@ describe('同意の操作', () => {
   });
 
   test('同じ同意を同時に送っても、すべて 200 で行は 1 つ', async () => {
-    const person = await createLoginPerson();
+    const person = await createLoginPerson({ consented: false });
     const responses = await Promise.all(
       Array.from({ length: 5 }, () => post(app, consentRecord, { token: person.token, body: CURRENT_INPUT })),
     );
@@ -154,7 +154,9 @@ describe('同意の操作', () => {
   });
 
   test('API トークンでは record が 403', async () => {
-    const person = await createLoginPerson();
+    const person = await createLoginPerson({ consented: false });
+    // token-create は同意の門を通る（未同意だと 403 の terms_required）ので、先に同意してからトークンを作る
+    expect((await post(app, consentRecord, { token: person.token, body: CURRENT_INPUT })).status).toBe(200);
     const created = await post(app, tokenCreate, {
       token: person.token,
       body: { name: 'consent test', scope: 'write' },

@@ -1009,7 +1009,8 @@ export const dictionary = defineDictionary({
   consentUpdated: '規約が更新されました。内容を確認し直してください。',
   consentSubmitting: '同意を記録しています',
   consentCurrent: '現在の版に同意しています。',
-  consentRecordedAt: '同意した日時: {date}',
+  consentRecordedAt: '同意した日時:',
+  consentSubmitHint: '利用規約とプライバシーポリシーを確認し、印を付けてください。',
   consentLoadFailed: '同意の状態を読み込めませんでした。もう一度試してください。',
   consentRecordFailed: '同意を記録できませんでした。もう一度試してください。',
 

@@ -44,9 +44,11 @@ export async function createPerson(
     // 今所属するワークスペースとロール
     membership?: { workspaceId: string; role: WorkspaceRoleName };
     sessionOverrides?: Parameters<typeof createSessionWithToken>[1];
+    // false は、同意の行を持たない人（省略は今の版に同意済み）
+    consented?: boolean;
   } = {},
 ): Promise<Person> {
-  const account = await createAccount();
+  const account = await createAccount({}, { consented: options.consented ?? true });
   const login = await createAccountLogin(
     account.id,
     options.login && {
@@ -94,7 +96,7 @@ export async function admitElsewhere(person: Person): Promise<Person> {
 
 // ログインできる人（どこかの組織の管理者）。組織の外の操作（permission: login）の呼び出しに使う
 export async function createLoginPerson(
-  options: { sessionOverrides?: Parameters<typeof createSessionWithToken>[1] } = {},
+  options: { sessionOverrides?: Parameters<typeof createSessionWithToken>[1]; consented?: boolean } = {},
 ): Promise<Person> {
   return createPerson({ organization: await createOrganization(), admin: true, ...options });
 }

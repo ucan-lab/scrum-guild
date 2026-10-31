@@ -1,5 +1,6 @@
 // 操作の一覧を Hono のルートに登録する1つの関数。順に行うこと（docs/development.md の「操作の定義」）:
 // 認証（Authorization: Bearer があれば API トークンの読み取り、無ければ Origin の検査とセッションの読み取り）→
+// 同意の検査（今の版に同意していなければ 403 の terms_required。skipsConsent の操作は飛ばす）→
 // 組織の確かめと権限の検査 → API トークンの範囲の検査 → 回数の上限 →
 // 入力の検証 → ワークスペースの確かめと権限の検査 → 処理 → 出力の検証。
 // 入力に workspace_id がある操作では、ワークスペースの確かめは入力の検証の後になる。
@@ -32,6 +33,7 @@ import {
 import { ApiError, knownError } from '../errors.ts';
 import { executionContextOf } from '../execution-context.ts';
 import { outsideAccount } from './account.ts';
+import { isCurrentConsent, latestConsentOf } from './consent.ts';
 import { readInput, requireOrigin } from './guards.ts';
 import type { CurrentSession, Defer, ImplementedOperation } from './implement.ts';
 import { operatorTools, type OperatorTools } from './operator-tools.ts';
@@ -261,6 +263,13 @@ async function execute(
     };
   }
   trace.accountId = accountId;
+
+  // 今の版に同意していない人は、組織に入る前（存在しない slug も入れない組織も同じ）、トークンの範囲の検査より前に断る。
+  // 飛ばせるのは skipsConsent を付けた操作だけ（同意の操作、ログアウト、自分の確かめ）
+  if (definition.skipsConsent !== true) {
+    const latest = await latestConsentOf(commonDb(c.env), accountId);
+    if (!isCurrentConsent(latest)) throw new ApiError(403, 'terms_required');
+  }
 
   const deferred = deferrer(c);
   // 運用者の判定と、アカウントに結んだログインの手段と ID の読み取りは account.ts の1か所。

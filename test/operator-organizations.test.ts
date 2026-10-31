@@ -266,6 +266,7 @@ describe('組織の作成', () => {
     const browser = new FakeBrowser(createLoginApp(github), github);
     const login = await browser.login(user);
     expect(login.response.status).toBe(302);
+    await browser.consent();
 
     const res = await post(app, organizationInfo, { slug, token: browser.sessionToken });
     expect(res.status).toBe(200);

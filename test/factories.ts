@@ -9,6 +9,7 @@ import {
   type Selectable,
   type VerifiedOrganization,
 } from '../src/server/db/index.ts';
+import { PRIVACY_VERSION, TERMS_VERSION } from '../src/lib/legal/versions.ts';
 import { hashSessionToken } from '../src/server/auth/session.ts';
 import { uuidv7 as newUuidv7 } from '../src/server/uuid.ts';
 import { verifiedOrganizationForTest } from '../src/server/db/testing.ts';
@@ -64,7 +65,14 @@ export async function createOrganization(overrides: Partial<Row<CommonTables, 'o
   return { ...row, verified: verifiedOrganizationForTest(row.id) } satisfies OrganizationFixture;
 }
 
-export async function createAccount(overrides: Partial<Row<CommonTables, 'accounts'>> = {}) {
+// createAccount が足す同意の行の日時
+export const CONSENTED_AT = '2026-10-31T00:00:00.000Z';
+
+// 既定で今の版の同意の行を足す（未同意の人は、同意するまで操作できない）。未同意の人を作るときは { consented: false }
+export async function createAccount(
+  overrides: Partial<Row<CommonTables, 'accounts'>> = {},
+  options: { consented?: boolean } = {},
+) {
   const row: Row<CommonTables, 'accounts'> = {
     id: uuidv7(),
     last_login_at: null,
@@ -74,6 +82,18 @@ export async function createAccount(overrides: Partial<Row<CommonTables, 'accoun
   };
   const db = commonDb(env);
   await db.run(db.statement((q) => q.insertInto('accounts').values(row)));
+  if (options.consented ?? true) {
+    await db.run(
+      db.statement((q) =>
+        q.insertInto('account_consents').values({
+          account_id: row.id,
+          terms_version: TERMS_VERSION,
+          privacy_version: PRIVACY_VERSION,
+          consented_at: CONSENTED_AT,
+        }),
+      ),
+    );
+  }
   return row;
 }
 

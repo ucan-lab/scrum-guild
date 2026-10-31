@@ -14,7 +14,7 @@ import {
   waitForSettled,
   watchViolations,
 } from './helpers.ts';
-import { resetPasswordLoginRateLimits } from './local-d1.ts';
+import { resetPasswordAccountConsents, resetPasswordLoginRateLimits } from './local-d1.ts';
 
 // 初版は口と画面を閉じている（PASSWORD_LOGIN_ENABLED、Issue #635）。閉じている間の確かめは e2e/login.test.ts
 test.skip(!PASSWORD_LOGIN_ENABLED, 'メールアドレスとパスワードのログインを閉じている間は飛ばす');
@@ -23,8 +23,23 @@ const emailField = (page: Page) => page.getByLabel('メールアドレス', { ex
 const passwordField = (page: Page) => page.getByLabel('パスワード', { exact: true });
 const submitButton = (page: Page) => page.getByRole('button', { name: 'メールアドレスでログイン' });
 
+// パスワードのログインで作られたアカウントは同意の行を持たないので、ログインの直後は同意の画面へ移る（同意の門、#648）。
+// 同意した後の行は毎回消して、どの場面も未同意から始める
+const CONSENT_CHECKBOX = '利用規約とプライバシーポリシーを確認し、同意します';
+const consentCheckbox = (page: Page) => page.getByRole('checkbox', { name: CONSENT_CHECKBOX });
+
+async function consent(page: Page): Promise<void> {
+  await consentCheckbox(page).check();
+  await page.getByRole('button', { name: '同意して進む' }).click();
+}
+
 test.beforeEach(async () => {
   await resetPasswordLoginRateLimits();
+  await resetPasswordAccountConsents();
+});
+
+test.afterEach(async () => {
+  await resetPasswordAccountConsents();
 });
 
 test('ログインの画面に、GitHub と Google のボタンと並んで、メールアドレスとパスワードの欄とログインのボタンを出す', async ({
@@ -59,34 +74,40 @@ test('ログインの画面は、幅 390px で横にはみ出さず、押せる�
   expect(await findA11yViolations(page)).toEqual([]);
 });
 
-test('入れる組織が1つの人は、パスワードで入るとその組織の画面に移る', async ({ page }) => {
+test('入れる組織が1つの人は、パスワードで入ると同意の画面に移り、同意するとその組織の画面に移る', async ({ page }) => {
   const person = SEED_PASSWORD_LOGINS.single;
   await page.goto('/login');
   await emailField(page).fill(person.email);
   await passwordField(page).fill(person.password);
   await submitButton(page).click();
+  await expect(page).toHaveURL(/\/consent\?return_to=%2Fyuzu$/);
+  await consent(page);
   await expect(page).toHaveURL(/\/yuzu$/);
   await expect(page.locator('.me')).toContainText(person.name);
 });
 
-test('入れる組織が2つの人は、パスワードで入ると組織の選択に移る', async ({ page }) => {
+test('入れる組織が2つの人は、パスワードで入ると同意の画面に移り、同意すると組織の選択に移る', async ({ page }) => {
   const person = SEED_PASSWORD_LOGINS.multi;
   await page.goto('/login');
   await emailField(page).fill(person.email);
   await passwordField(page).fill(person.password);
   await passwordField(page).press('Enter');
+  await expect(page).toHaveURL(/\/consent\?return_to=%2F$/);
+  await consent(page);
   await expect(page.getByRole('heading', { level: 1, name: '組織を選ぶ' })).toBeVisible();
   await expect(page).toHaveURL(/\/$/);
   await expect(page.getByRole('link', { name: /ゆず書房/ })).toBeVisible();
   await expect(page.getByRole('link', { name: /みなも舎/ })).toBeVisible();
 });
 
-test('ログインの画面の戻る先（return_to）があれば、パスワードで入った後にそこへ移る', async ({ page }) => {
+test('ログインの画面の戻る先（return_to）があれば、パスワードで入って同意した後にそこへ移る', async ({ page }) => {
   const person = SEED_PASSWORD_LOGINS.multi;
   await page.goto(`/login?return_to=${encodeURIComponent('/minamo')}`);
   await emailField(page).fill(person.email);
   await passwordField(page).fill(person.password);
   await submitButton(page).click();
+  await expect(page).toHaveURL(/\/consent\?return_to=%2Fminamo$/);
+  await consent(page);
   await expect(page).toHaveURL(/\/minamo$/);
   // ログインの画面は location.replace で文書ごと移るので、URL は画面が描かれる前に変わる。
   // URL は新しい文書が描かれる前に変わるので、移った先の画面が出て読み込みが終わるのを待つ（#510）

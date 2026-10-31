@@ -9,6 +9,8 @@ export const consentStatus = defineOperation({
   description: '現在の利用規約とプライバシーポリシーの版と、自分の最新の同意を返す',
   mode: 'read',
   permission: 'login',
+  // 同意していない人が、今の版と自分の状態を読めるように
+  skipsConsent: true,
   input: z.object({}),
   output: z.object({
     terms_version: z.string(),
@@ -24,6 +26,8 @@ export const consentRecord = defineOperation({
   mode: 'write',
   permission: 'login',
   cookieOnly: true,
+  // 同意するための操作なので、同意していない人も呼べる
+  skipsConsent: true,
   rateLimit: { max: 30, windowSeconds: 600 },
   input: z.object({ terms_version: legalVersion, privacy_version: legalVersion }),
   output: z.object({}),

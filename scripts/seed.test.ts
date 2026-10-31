@@ -6,6 +6,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { describe, test } from 'node:test';
 import { fileURLToPath } from 'node:url';
+import { PRIVACY_VERSION, TERMS_VERSION } from '../src/lib/legal/versions.ts';
 import { SEED_PASSWORD_LOGINS } from '../seed/passwords.ts';
 import { SEED_OPERATOR_LOGIN_ID, SEED_SESSIONS } from '../seed/sessions.ts';
 import { seedSql, seedTables, sessionInserts, tokenHash } from './seed.ts';
@@ -68,6 +69,40 @@ describe('seed のパスワード', () => {
         'sha256',
       );
       assert.equal(derived.toString('base64url'), key, `${login.email} のハッシュがパスワードに合わない`);
+    }
+  });
+});
+
+// data.sql の account_consents の行（account_id、terms_version、privacy_version、consented_at の順）
+function seedConsentRows(): { accountId: string; terms: string; privacy: string }[] {
+  const data = readFileSync(new URL('../seed/data.sql', import.meta.url), 'utf8');
+  const statements = [...data.matchAll(/INSERT\s+(?:OR\s+\w+\s+)?INTO\s+account_consents\b[^;]*;/gi)].map(
+    ([statement]) => statement,
+  );
+  const row = /\('([^']+)', '([^']+)', '([^']+)', '[^']+'\)/g;
+  return statements.flatMap((statement) =>
+    [...statement.matchAll(row)].map(([, accountId, terms, privacy]) => ({
+      accountId: accountId!,
+      terms: terms!,
+      privacy: privacy!,
+    })),
+  );
+}
+
+describe('seed の同意', () => {
+  test('data.sql の同意の行の版は、今の規約とプライバシーポリシーの版と一致する', () => {
+    const rows = seedConsentRows();
+    assert.ok(rows.length > 0, 'account_consents の行が無い');
+    for (const row of rows) {
+      assert.equal(row.terms, TERMS_VERSION, `${row.accountId} の terms_version`);
+      assert.equal(row.privacy, PRIVACY_VERSION, `${row.accountId} の privacy_version`);
+    }
+  });
+
+  test('unconsented 以外のセッションのアカウントは同意済みで、unconsented は同意の行を持たない', () => {
+    const consented = new Set(seedConsentRows().map((row) => row.accountId));
+    for (const [name, session] of Object.entries(SEED_SESSIONS)) {
+      assert.equal(consented.has(session.accountId), name !== 'unconsented', name);
     }
   });
 });

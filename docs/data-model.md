@@ -203,6 +203,7 @@
 
 - 索引: `(account_id, consented_at)`。アカウントの最新の同意を読む。
 - 行は消さず、書き換えず、`consent-record` の `batch()` で足す。同じ現在版への二度目の同意は行を足さず成功する（最新の行が今の2つの版と一致するかの確かめと INSERT を1文にし、同時の送信でも行は増えない）。
+- 同意の門: アカウントの最新の行（`consented_at`、同時刻なら版の大きい順）の `terms_version` と `privacy_version` が、どちらも今の版（`src/lib/legal/versions.ts`）と一致するときだけ同意済み。行が無い、片方が古い、最新の行が古い（より前の行が今の版でも）ときは未同意で、`consent-status` の `current` が偽になる。登録の関数（`execute()`）は、認証の直後、組織に入る前（組織の中の表を引く前）、API トークンの範囲の検査より前に、この表を1回だけ共通の入口で読む。未同意なら 403 の `terms_required` で、組織の中の表には触れない。共通の表だけを読み、組織の中の表と結合せず、`batch()` にも混ぜない。飛ばせるのは `skipsConsent` を付けた `me`、`logout`、`consent-status`、`consent-record` の4つ（`docs/development.md` の「操作の定義」）。
 
 ### oauth_states
 

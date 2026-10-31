@@ -39,6 +39,11 @@ export const SEED_SESSIONS = {
     description:
       'あおば開発に users の行だけを持ち、すべてのワークスペースから外れた人（ツバサ）。管理者でなく、招待も無い。入れる組織が無くてもログインできる',
   },
+  unconsented: {
+    token: 'dev-seed-unconsented-0000000000000000000000',
+    accountId: '019a0000-0000-7000-8000-000000000111',
+    description: '今の版の規約に同意していない人（同意の行を持たない）。どの組織にも属さない',
+  },
   // e2e のログアウトが消すための2本目。e2e は上のセッションを全ファイルで共有して並列に走るので、共有のものはログアウトしない
   adminLogout: {
     token: 'dev-seed-admin-logout-000000000000000000000',

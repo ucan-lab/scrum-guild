@@ -51,6 +51,14 @@ INSERT INTO account_logins (login_provider, login_subject, account_id, login_nam
 INSERT INTO users (id, organization_id, account_id, login_provider, login_subject, name, is_admin, last_seen_at, created_at, updated_at) VALUES
   ('019a0000-0000-7000-8000-000000000313', '019a0000-0000-7000-8000-000000000201', '019a0000-0000-7000-8000-000000000110', 'github', '9000000000000110', 'ツバサ', 0, NULL, '2026-10-01T00:00:00.000Z', '2026-10-01T00:00:00.000Z');
 
+-- 今の版の規約に同意していない人（ミオ、seed/sessions.ts の unconsented）。アカウントとログインだけを持ち、
+-- どの組織にもワークスペースにも入らず、account_consents の行も持たない。どの画面も API も、同意するまで 403 の terms_required になる（#648）
+INSERT INTO accounts (id, last_login_at, created_at, updated_at) VALUES
+  ('019a0000-0000-7000-8000-000000000111', '2026-10-20T00:00:00.000Z', '2026-10-20T00:00:00.000Z', '2026-10-20T00:00:00.000Z');
+
+INSERT INTO account_logins (login_provider, login_subject, account_id, login_name, display_name, avatar_url, created_at, updated_at) VALUES
+  ('github', '9000000000000111', '019a0000-0000-7000-8000-000000000111', 'mio--seed', 'ミオ', NULL, '2026-10-20T00:00:00.000Z', '2026-10-20T00:00:00.000Z');
+
 -- 組織の休日。あおば開発は祝日2日と名前の無い会社の休み、ひばり工房は祝日1日。
 -- e2e（e2e/holiday.test.ts）は 2027 年の日付を登録して消すので、ここには入れない
 INSERT INTO organization_holidays (organization_id, holiday_on, name, created_by, created_at) VALUES
@@ -316,6 +324,19 @@ INSERT INTO account_logins (login_provider, login_subject, account_id, login_nam
   ('github', '9000000000000105', '019a0000-0000-7000-8000-000000000105', 'kai--seed', 'カイ', NULL, '2026-10-01T00:00:00.000Z', '2026-10-20T00:00:00.000Z'),
   ('github', '9000000000000106', '019a0000-0000-7000-8000-000000000106', 'souta--seed', 'ソウタ', NULL, '2026-10-01T00:00:00.000Z', '2026-10-20T00:00:00.000Z'),
   ('github', '9000000000000107', '019a0000-0000-7000-8000-000000000107', 'koharu--seed', 'コハル', NULL, '2026-10-01T00:00:00.000Z', '2026-10-20T00:00:00.000Z');
+
+-- セッションを持つアカウントすべての、今の版（src/lib/legal/versions.ts の TERMS_VERSION と PRIVACY_VERSION）への同意。
+-- 持たないのは unconsented（ミオ）だけ。版を改めたら、ここも同じ値に直す（scripts/seed.test.ts が照合する）
+INSERT INTO account_consents (account_id, terms_version, privacy_version, consented_at) VALUES
+  ('019a0000-0000-7000-8000-000000000101', '2026-10-31', '2026-10-31', '2026-10-20T00:00:00.000Z'),
+  ('019a0000-0000-7000-8000-000000000102', '2026-10-31', '2026-10-31', '2026-10-20T00:00:00.000Z'),
+  ('019a0000-0000-7000-8000-000000000103', '2026-10-31', '2026-10-31', '2026-10-20T00:00:00.000Z'),
+  ('019a0000-0000-7000-8000-000000000104', '2026-10-31', '2026-10-31', '2026-10-20T00:00:00.000Z'),
+  ('019a0000-0000-7000-8000-000000000105', '2026-10-31', '2026-10-31', '2026-10-20T00:00:00.000Z'),
+  ('019a0000-0000-7000-8000-000000000106', '2026-10-31', '2026-10-31', '2026-10-20T00:00:00.000Z'),
+  ('019a0000-0000-7000-8000-000000000107', '2026-10-31', '2026-10-31', '2026-10-20T00:00:00.000Z'),
+  ('019a0000-0000-7000-8000-000000000108', '2026-10-31', '2026-10-31', '2026-10-20T00:00:00.000Z'),
+  ('019a0000-0000-7000-8000-000000000110', '2026-10-31', '2026-10-31', '2026-10-20T00:00:00.000Z');
 
 INSERT INTO organizations (id, slug, name, vocabulary, created_by_operator, created_at, updated_at) VALUES
   ('019a0000-0000-7000-8000-000000000203', 'kumo', 'くもラボ', 'scrum', 'github:9000000000000001', '2026-10-01T00:00:00.000Z', '2026-10-01T00:00:00.000Z');
