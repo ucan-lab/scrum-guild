@@ -1,6 +1,7 @@
 // API トークンのテストが使う道具。api_tokens の行は、実装の関数（issueApiToken、hashApiToken）を通さずにここで作る。
-// 読む側のテストが、発行の関数の不具合で落ちないようにするため。D1 の binding は、Kysely の型に表が入る前から使えるよう直に使う
-/* eslint-disable db-entry/guard -- api_tokens は Kysely の表の型に入る前でも、行を直に作って確かめるため。型に入ったら commonDb に替える */
+// 読む側のテストが、発行の関数の不具合で落ちないようにするため。行の作成と、制約や取り消しの確かめでは、
+// 入口（commonDb）を通さず D1 の binding に直に書く
+/* eslint-disable db-entry/guard -- 実装の関数を通さず行を直に作り、入口の条件に頼らずに確かめるため */
 import { env } from 'cloudflare:workers';
 import { sha256Hex } from '../../src/server/auth/tokens.ts';
 import type { Person } from './world.ts';
