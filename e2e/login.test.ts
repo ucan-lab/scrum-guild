@@ -151,10 +151,10 @@ test('?error= の理由を、辞書の文言で出す。知らない値は出さ
   await expect(page.getByRole('alert')).toContainText(
     'ログインできませんでした。どの組織のワークスペースにも所属しておらず',
   );
+  // 停止した組織にしか入れない人もログインできるので、suspended の理由は無くなった（#639）。古い URL は知らない値と同じく何も出さない
   await page.goto('/login?error=suspended');
-  await expect(page.getByRole('alert')).toHaveText(
-    'ログインできませんでした。所属しているか招待されている組織は停止しています。運用者に問い合わせてください。',
-  );
+  await expect(page.getByRole('heading', { level: 1, name: 'ログイン' })).toBeVisible();
+  await expect(page.getByRole('alert')).toHaveCount(0);
   await page.goto('/login?error=retry');
   await expect(page.getByRole('alert')).toHaveText('ログインを完了できませんでした。もう一度ログインしてください。');
   await page.goto('/login?error=too_many');

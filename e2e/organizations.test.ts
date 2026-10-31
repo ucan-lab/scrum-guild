@@ -2,8 +2,9 @@
 import type { Page } from '@playwright/test';
 import { expect, test } from './fixtures.ts';
 import type { OutputOf } from '../src/shared/operations/define.ts';
-import type { organizationInfo } from '../src/shared/operations/organization/index.ts';
-import { signIn, watchViolations } from './helpers.ts';
+import { myOrganizations, type organizationInfo } from '../src/shared/operations/organization/index.ts';
+import { findA11yViolations, signIn, watchViolations } from './helpers.ts';
+import { rewriteOperation } from './operations.ts';
 
 // 組織の操作の応答を書き換える。サーバーの応答をそのまま取り、必要な項目だけ上書きして返す
 async function patchOrganization(page: Page, slug: string, patch: (body: OutputOf<typeof organizationInfo>) => void) {
@@ -169,9 +170,8 @@ test.describe('組織が1つの人（あおば開発のハルカ）', () => {
     expect((await collect()).filter((entry) => !entry.includes('403 (Forbidden)'))).toEqual([]);
   });
 
-  test('停止した組織にしか入れない人の 401（理由 suspended）は、ログインの画面の suspended へ移す', async ({
-    page,
-  }) => {
+  // #639: サーバーは理由付きの 401 を返さなくなった。届いても、理由を付けずにログインの画面へ移し、何も出さない
+  test('理由（suspended）を持つ 401 も、理由なしでログインの画面へ移す', async ({ page }) => {
     await page.route('**/api/aoba/organization', (route) =>
       route.fulfill({ status: 403, json: { error: { code: 'organization_suspended', message: 'x' } } }),
     );
@@ -182,10 +182,8 @@ test.describe('組織が1つの人（あおば開発のハルカ）', () => {
       }),
     );
     await page.goto('/aoba');
-    await expect(page).toHaveURL('/login?return_to=%2Faoba&error=suspended');
-    await expect(page.getByRole('alert')).toHaveText(
-      'ログインできませんでした。所属しているか招待されている組織は停止しています。運用者に問い合わせてください。',
-    );
+    await expect(page).toHaveURL('/login?return_to=%2Faoba');
+    await expect(page.getByRole('alert')).toHaveCount(0);
   });
 
   test('理由を持たない 401 は、理由なしでログインの画面へ移す', async ({ page }) => {
@@ -715,5 +713,67 @@ test.describe('ログインしていない人と、組織が無い人', () => {
     await expect(page.getByRole('heading', { level: 1, name: '組織を選ぶ' })).toBeVisible();
     await expect(page.locator('html')).not.toHaveAttribute('data-theme', /.*/);
     expect(await page.evaluate(() => localStorage.getItem('sg-theme'))).toBeNull();
+  });
+});
+
+// #639: すべてのワークスペースから外れた人（seed の leftAll、あおば開発のツバサ）。入れる組織が無くてもセッションは消えず、
+// 組織の選択の画面で招待を待つ。共有の seed の行は変えない（読むだけ。停止は応答の書き換えで作る）
+test.describe('すべてのワークスペースから外れた人（ツバサ）', () => {
+  test.beforeEach(async ({ context, baseURL }) => {
+    await signIn(context, baseURL, 'leftAll');
+  });
+
+  test('/ を開くと、ログインの画面へ移らず、「入れる組織がありません」と招待を待つ案内が出る', async ({ page }) => {
+    const collect = await watchViolations(page);
+    await page.goto('/');
+    await expect(page).toHaveURL(/\/$/);
+    await expect(page.getByRole('heading', { level: 1, name: '組織を選ぶ' })).toBeVisible();
+    await expect(page.getByText('入れる組織がありません', { exact: true })).toBeVisible();
+    await expect(page.getByText('管理者から招待が届くと、ここに出ます。')).toBeVisible();
+    // 入れる組織の一覧も、届いた招待も出ない
+    await expect(page.locator('.choice')).toHaveCount(0);
+    await expect(page.getByRole('heading', { name: '届いた招待' })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'ログアウト' })).toBeVisible();
+    expect(await findA11yViolations(page)).toEqual([]);
+    expect(await collect()).toEqual([]);
+  });
+
+  test('外れた組織の画面は、ログインの画面へ移らず「組織が見つかりません」で、そのあと / を開いても同じ案内が出る', async ({
+    page,
+  }) => {
+    await page.goto('/aoba');
+    await expect(page).toHaveURL(/\/aoba$/);
+    await expect(page.getByRole('heading', { level: 1, name: '組織が見つかりません' })).toBeVisible();
+    // セッションは消えていない（使い続けても、ログインの画面へ落ちない）
+    await page.goto('/');
+    await expect(page).toHaveURL(/\/$/);
+    await expect(page.getByText('入れる組織がありません', { exact: true })).toBeVisible();
+  });
+
+  // 停止は応答の書き換えで作る（共有の seed の組織を停止すると、並べて走るほかのテストが落ちるため）。サーバーの判定は test/organization.test.ts
+  test('停止していなければ入れた組織が停止しているときは、/ にその組織が停止していることと、運用者に問い合わせることが出る', async ({
+    page,
+  }) => {
+    await rewriteOperation(
+      page,
+      myOrganizations,
+      (output) =>
+        ({
+          ...output,
+          organizations: [],
+          invitations: [],
+          suspended: [{ slug: 'kamome', name: 'かもめ社' }],
+        }) as typeof output,
+    );
+    const collect = await watchViolations(page);
+    await page.goto('/');
+    await expect(page).toHaveURL(/\/$/);
+    await expect(page.getByText('かもめ社')).toBeVisible();
+    await expect(page.getByText(/停止/).first()).toBeVisible();
+    await expect(page.getByText(/運用者に問い合わせ/).first()).toBeVisible();
+    // 停止した組織へは入れないので、組織の画面へのリンクにしない
+    await expect(page.getByRole('link', { name: /かもめ社/ })).toHaveCount(0);
+    expect(await findA11yViolations(page)).toEqual([]);
+    expect(await collect()).toEqual([]);
   });
 });

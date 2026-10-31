@@ -4,7 +4,7 @@ import { env } from 'cloudflare:workers';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { myOrganizations, organizationInfo } from '../src/shared/operations/organization/index.ts';
 import { createApp } from '../src/server/app.ts';
-import { orgDb } from '../src/server/db/index.ts';
+import { commonDb, orgDb } from '../src/server/db/index.ts';
 import {
   compiledQueryForTest,
   crossOrganizationStatementsForTest,
@@ -59,6 +59,8 @@ async function createVisitor(options: { extraLogin?: boolean } = {}) {
 type Listed = {
   organizations: { slug: string; name: string }[];
   invitations: { organization_name: string; slug: string }[];
+  // #639 で足す。停止していなければ入れた組織（管理者、所属、承諾待ちの招待）のうち、停止したもの。organizations と同じ名前順
+  suspended: { slug: string; name: string }[];
   operator: boolean;
 };
 
@@ -68,12 +70,15 @@ async function listOrganizations(token: string): Promise<Listed> {
   return (await res.json()) as Listed;
 }
 
-// 入れる組織も届いた招待も無く、運用者でもない人は、ログインできる条件を持たない。組織の外の操作は、
-// 一覧を空で返さずに、セッションを消して 401 の unauthenticated にする（組織をまたいで読む関数の読み取りは、空を返す）
+// 入れる組織も届いた招待も無く、運用者でもない人も、アカウントがあればログインできる（#639）。
+// 組織の外の操作は 401 にせず、空の一覧を返す
 async function expectNoAccess(token: string): Promise<void> {
-  const res = await post(app, myOrganizations, { token });
-  expect(res.status).toBe(401);
-  expect(await res.json()).toMatchObject({ error: { code: 'unauthenticated' } });
+  expect(await listOrganizations(token)).toEqual({
+    organizations: [],
+    invitations: [],
+    suspended: [],
+    operator: false,
+  });
 }
 
 // 管理者の組織を作る。ワークスペースを1つ持つ
@@ -165,7 +170,13 @@ describe('my-organizations', () => {
     await visitor.join(own.organization, { disabled_at: AT });
     await createInvitation(own.organization, own.workspace.id, own.owner.id, visitor.identity);
 
-    await expectNoAccess(visitor.token);
+    // 停止した組織は、入れる組織にも招待にも出さず、停止の一覧にだけ出す。無効にされた組織は、どこにも出さない
+    expect(await listOrganizations(visitor.token)).toEqual({
+      organizations: [],
+      invitations: [],
+      suspended: [{ slug: suspended.slug, name: suspended.name }],
+      operator: false,
+    });
   });
 
   test('有効な行と無効な行を持つ人は、enterOrganization と同じく、有効な行で入れる', async () => {
@@ -197,7 +208,7 @@ describe('my-organizations', () => {
     await createInvitation(organization, workspace.id, owner.id, visitor.identity);
 
     // ほかに入れる組織があれば、この組織の招待は出さず、組織の枠は 404 のまま
-    // （入れる組織が1つも無ければ、どちらも 401 になり、セッションが消える。上のテストが確かめる）
+    // （入れる組織が1つも無くても、一覧は空で返り、組織の枠は 404 のまま）
     const elsewhere = await createOrganizationWithOwner({ name: 'ほかの工房' });
     await visitor.join(elsewhere.organization, { is_admin: 1 });
     const result = await listOrganizations(visitor.token);
@@ -237,7 +248,12 @@ describe('my-organizations', () => {
 
   test('運用者のログインには operator が真で、入れる組織が無くても返る', async () => {
     const operator = await getOperator();
-    expect(await listOrganizations(operator.token)).toEqual({ organizations: [], invitations: [], operator: true });
+    expect(await listOrganizations(operator.token)).toEqual({
+      organizations: [],
+      invitations: [],
+      suspended: [],
+      operator: true,
+    });
   });
 
   // 共通の表を引く文の束縛は100個まで。組織の数が100を超えても、分けて引いて合わせる
@@ -306,6 +322,164 @@ describe('my-organizations', () => {
     );
     expect(res.status).toBe(404);
     expect(await res.json()).toEqual({ error: { code: 'not_found', message: 'not found' } });
+  });
+});
+
+// #639: 停止した組織を / で伝える一覧。停止していなければ入れた人にだけ出し、ほかの人には漏らさない
+describe('my-organizations の suspended', () => {
+  async function suspend(organization: OrganizationFixture, at: string | null = AT): Promise<void> {
+    const db = commonDb(env);
+    await db.batch([
+      db.statement((q) => q.updateTable('organizations').set({ suspended_at: at }).where('id', '=', organization.id)),
+    ]);
+  }
+
+  test('管理者、所属、承諾待ちの招待の組織が停止したら、organizations と invitations から外れ、suspended に名前と slug だけが出る', async () => {
+    const visitor = await createVisitor();
+    const adminOf = await createOrganization({ name: '停止した管理の工房' });
+    await visitor.join(adminOf, { is_admin: 1 });
+    const memberOf = await createOrganizationWithOwner({ name: '停止した所属の工房' });
+    const memberUser = await visitor.join(memberOf.organization);
+    await createMembership(memberOf.organization, memberOf.workspace.id, memberUser.id);
+    const invitedTo = await createOrganizationWithOwner({ name: '停止した招待の工房' });
+    await createInvitation(invitedTo.organization, invitedTo.workspace.id, invitedTo.owner.id, visitor.identity);
+
+    for (const organization of [adminOf, memberOf.organization, invitedTo.organization]) await suspend(organization);
+
+    const result = await listOrganizations(visitor.token);
+    expect(result.organizations).toEqual([]);
+    expect(result.invitations).toEqual([]);
+    // 名前順（管理 < 招待 < 所属。コードポイント順）
+    expect(result.suspended).toEqual(
+      [
+        { slug: adminOf.slug, name: '停止した管理の工房' },
+        { slug: memberOf.organization.slug, name: '停止した所属の工房' },
+        { slug: invitedTo.organization.slug, name: '停止した招待の工房' },
+      ].sort((a, b) => (a.name < b.name ? -1 : 1)),
+    );
+    // 組織の中の値（ワークスペースや管理者の ID）は出さない
+    expect(JSON.stringify(result)).not.toContain(memberOf.workspace.id);
+    expect(JSON.stringify(result)).not.toContain(invitedTo.owner.id);
+  });
+
+  test('suspended は名前の順で、名前が同じなら slug の順', async () => {
+    const visitor = await createVisitor();
+    const names = ['ゆ工房', 'あ工房', 'か工房'];
+    const created = [];
+    for (const name of names) {
+      const organization = await createOrganization({ name, suspended_at: AT });
+      await visitor.join(organization, { is_admin: 1 });
+      created.push(organization);
+    }
+    const twins = [await createOrganization({ name: 'あ工房', suspended_at: AT })];
+    await visitor.join(twins[0]!, { is_admin: 1 });
+    const result = await listOrganizations(visitor.token);
+    const expected = [...created, ...twins]
+      .map(({ slug, name }) => ({ slug, name }))
+      .sort((a, b) => (a.name === b.name ? (a.slug < b.slug ? -1 : 1) : a.name < b.name ? -1 : 1));
+    expect(result.suspended).toEqual(expected);
+  });
+
+  test('停止していない組織と停止した組織の両方に入れる人は、それぞれに分けて出す', async () => {
+    const visitor = await createVisitor();
+    const active = await createOrganization({ name: '動いている工房' });
+    const paused = await createOrganization({ name: '止まっている工房', suspended_at: AT });
+    await visitor.join(active, { is_admin: 1 });
+    await visitor.join(paused, { is_admin: 1 });
+    const result = await listOrganizations(visitor.token);
+    expect(result.organizations).toEqual([{ slug: active.slug, name: '動いている工房' }]);
+    expect(result.suspended).toEqual([{ slug: paused.slug, name: '止まっている工房' }]);
+  });
+
+  test('所属も招待も無い組織、終わった所属だけの組織、無効にされた組織、別の人宛の招待の組織は、停止していても出さない', async () => {
+    const visitor = await createVisitor();
+    const stranger = await createVisitor();
+    // users の行はあるが、管理者でも所属でもない
+    const idle = await createOrganization({ suspended_at: AT });
+    await visitor.join(idle);
+    // 終わった所属だけ
+    const left = await createOrganizationWithOwner();
+    const leftUser = await visitor.join(left.organization);
+    await createMembership(left.organization, left.workspace.id, leftUser.id, { left_at: AT, left_on: '2026-10-10' });
+    await suspend(left.organization);
+    // 無効にされた管理者
+    const disabled = await createOrganization({ suspended_at: AT });
+    await visitor.join(disabled, { is_admin: 1, disabled_at: AT });
+    // 無効にされた行があれば、招待があっても出さない
+    const blocked = await createOrganizationWithOwner();
+    await visitor.join(blocked.organization, { disabled_at: AT });
+    await createInvitation(blocked.organization, blocked.workspace.id, blocked.owner.id, visitor.identity);
+    await suspend(blocked.organization);
+    // 別の人宛の招待
+    const others = await createOrganizationWithOwner();
+    await createInvitation(others.organization, others.workspace.id, others.owner.id, stranger.identity);
+    await suspend(others.organization);
+    // 辞退した招待
+    const declined = await createOrganizationWithOwner();
+    await createInvitation(declined.organization, declined.workspace.id, declined.owner.id, visitor.identity, {
+      status: 'declined',
+      responded_at: AT,
+    });
+    await suspend(declined.organization);
+
+    await expectNoAccess(visitor.token);
+  });
+
+  test('アカウントに結ばれる前の指名の行だけの組織は、停止していても出さない（組織の一覧と同じく数えない）', async () => {
+    const visitor = await createVisitor();
+    const organization = await createOrganization({ suspended_at: AT });
+    await createUser(organization, {
+      account_id: null,
+      login_provider: visitor.identity.provider,
+      login_subject: visitor.identity.subject,
+      is_admin: 1,
+    });
+    await expectNoAccess(visitor.token);
+  });
+
+  test('組織の分離: 同じ組織の別の人が停止の一覧を見ても、自分が入れない停止した組織は出ない', async () => {
+    const insider = await createVisitor();
+    const outsider = await createVisitor();
+    const paused = await createOrganization({ name: '分離の工房', suspended_at: AT });
+    await insider.join(paused, { is_admin: 1 });
+    const outsiderHome = await createOrganization({ name: '外の人の工房' });
+    await outsider.join(outsiderHome, { is_admin: 1 });
+
+    expect((await listOrganizations(insider.token)).suspended).toEqual([{ slug: paused.slug, name: '分離の工房' }]);
+    const seen = await listOrganizations(outsider.token);
+    expect(seen.suspended).toEqual([]);
+    expect(JSON.stringify(seen)).not.toContain(paused.slug);
+  });
+
+  test('停止を解くと suspended から消え、organizations と invitations に戻る', async () => {
+    const visitor = await createVisitor();
+    const adminOf = await createOrganization({ name: '戻る管理の工房' });
+    await visitor.join(adminOf, { is_admin: 1 });
+    const invitedTo = await createOrganizationWithOwner({ name: '戻る招待の工房' });
+    await createInvitation(invitedTo.organization, invitedTo.workspace.id, invitedTo.owner.id, visitor.identity);
+    await suspend(adminOf);
+    await suspend(invitedTo.organization);
+    expect((await listOrganizations(visitor.token)).suspended).toHaveLength(2);
+
+    await suspend(adminOf, null);
+    await suspend(invitedTo.organization, null);
+    const result = await listOrganizations(visitor.token);
+    expect(result.suspended).toEqual([]);
+    expect(result.organizations).toEqual([{ slug: adminOf.slug, name: '戻る管理の工房' }]);
+    expect(result.invitations).toEqual([{ organization_name: '戻る招待の工房', slug: invitedTo.organization.slug }]);
+  });
+
+  test('停止した組織の画面は、停止していなければ入れた人には 403、入れない人には 404 のまま', async () => {
+    const visitor = await createVisitor();
+    const stranger = await createVisitor();
+    const paused = await createOrganization({ suspended_at: AT });
+    await visitor.join(paused, { is_admin: 1 });
+    const mine = await post(app, organizationInfo, { slug: paused.slug, token: visitor.token });
+    expect(mine.status).toBe(403);
+    expect(await mine.json()).toMatchObject({ error: { code: 'organization_suspended' } });
+    const theirs = await post(app, organizationInfo, { slug: paused.slug, token: stranger.token });
+    expect(theirs.status).toBe(404);
+    expect(await theirs.json()).toMatchObject({ error: { code: 'not_found' } });
   });
 });
 

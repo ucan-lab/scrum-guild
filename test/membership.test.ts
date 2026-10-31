@@ -3,6 +3,7 @@
 import { env } from 'cloudflare:workers';
 import { describe, expect, test } from 'vitest';
 import { organizationInfo } from '../src/shared/operations/organization/index.ts';
+import { me } from '../src/shared/operations/session/index.ts';
 import { taskComplete } from '../src/shared/operations/task/index.ts';
 import { memberList, membershipLeave, membershipRoleUpdate } from '../src/shared/operations/workspace/index.ts';
 import { createApp } from '../src/server/app.ts';
@@ -331,13 +332,23 @@ describe('離脱', () => {
     expect(await countOf('xp_grants')).toBe(grantsBefore);
   });
 
-  test('すべてのワークスペースから外れた人は組織に入れず、入れる組織が無くなればセッションが消える', async () => {
+  // #639: 入れる組織が無くなっても、セッションもトークンも消さない。組織の中は 404、組織の外は 200
+  test('すべてのワークスペースから外れた人は組織に入れず 404 になるが、セッションは消えず、組織の外の操作は通る', async () => {
     const target = await createTarget();
     expect(await sessionCount(target.member.accountId)).toBe(1);
     expect((await leave(target, target.leader, target.member.userId!)).status).toBe(200);
-    expect(await sessionCount(target.member.accountId)).toBe(0);
+    expect(await sessionCount(target.member.accountId)).toBe(1);
     const res = await post(app, organizationInfo, { slug: target.slug, token: target.member.token, body: {} });
-    expect(res.status).toBe(401);
+    expect(res.status).toBe(404);
+    expect(res.headers.getSetCookie().filter((line) => line.includes('Max-Age=0'))).toEqual([]);
+    expect((await post(app, me, { token: target.member.token })).status).toBe(200);
+  });
+
+  test('自分で抜けて入れる組織が無くなった人も、セッションは残る', async () => {
+    const target = await createTarget();
+    expect((await leave(target, target.member, target.member.userId!)).status).toBe(200);
+    expect(await sessionCount(target.member.accountId)).toBe(1);
+    expect((await post(app, me, { token: target.member.token })).status).toBe(200);
   });
 
   test('ほかのワークスペースに残る人は、組織に入れたままでセッションも消えない', async () => {
@@ -409,7 +420,7 @@ describe('読んでから書くまでの競合', () => {
       db: racing,
       actor,
       workspace,
-      tools: { endSessionsIfLoginLost: async () => {} },
+      tools: {},
       input: { workspace_id: target.workspace.id, ...input },
       defer: () => {},
     } as never;

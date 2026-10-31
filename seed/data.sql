@@ -39,6 +39,18 @@ INSERT INTO users (id, organization_id, account_id, login_provider, login_subjec
   ('019a0000-0000-7000-8000-000000000308', '019a0000-0000-7000-8000-000000000201', NULL, 'github', '9000000000000201', 'ソラ', 0, '2026-10-12T01:00:00.000Z', '2026-10-01T00:00:00.000Z', '2026-10-01T00:00:00.000Z'),
   ('019a0000-0000-7000-8000-000000000309', '019a0000-0000-7000-8000-000000000201', NULL, 'github', '9000000000000109', 'ユイ', 0, NULL, '2026-10-01T00:00:00.000Z', '2026-10-01T00:00:00.000Z');
 
+-- すべてのワークスペースから外れた人（ツバサ、seed/sessions.ts の leftAll）。アカウントとセッションを持ち、あおば開発に users の行を持つが、
+-- 管理者でも所属でもなく、招待も無い。入れる組織が無くてもログインでき、/ に「入れる組織がありません」が出ることを e2e が確かめる（#639）。
+-- 所属が無いので、組織の人数、メンバーの一覧、最初のリーダーの候補には出ない（組織の管理のユーザーの一覧には出る）
+INSERT INTO accounts (id, last_login_at, created_at, updated_at) VALUES
+  ('019a0000-0000-7000-8000-000000000110', '2026-10-20T00:00:00.000Z', '2026-10-01T00:00:00.000Z', '2026-10-20T00:00:00.000Z');
+
+INSERT INTO account_logins (login_provider, login_subject, account_id, login_name, display_name, avatar_url, created_at, updated_at) VALUES
+  ('github', '9000000000000110', '019a0000-0000-7000-8000-000000000110', 'tsubasa--seed', 'ツバサ', NULL, '2026-10-01T00:00:00.000Z', '2026-10-20T00:00:00.000Z');
+
+INSERT INTO users (id, organization_id, account_id, login_provider, login_subject, name, is_admin, last_seen_at, created_at, updated_at) VALUES
+  ('019a0000-0000-7000-8000-000000000313', '019a0000-0000-7000-8000-000000000201', '019a0000-0000-7000-8000-000000000110', 'github', '9000000000000110', 'ツバサ', 0, NULL, '2026-10-01T00:00:00.000Z', '2026-10-01T00:00:00.000Z');
+
 -- 組織の休日。あおば開発は祝日2日と名前の無い会社の休み、ひばり工房は祝日1日。
 -- e2e（e2e/holiday.test.ts）は 2027 年の日付を登録して消すので、ここには入れない
 INSERT INTO organization_holidays (organization_id, holiday_on, name, created_by, created_at) VALUES
