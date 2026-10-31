@@ -5,6 +5,7 @@ import { defineOperation } from '../define.ts';
 import type { AnyOperationDefinition } from '../define.ts';
 import { tokenCreate, tokenList, tokenRevoke } from './token.ts';
 import { operationList } from './operation-list.ts';
+import { consentRecord, consentStatus } from './consent.ts';
 
 export const me = defineOperation({
   name: 'me',
@@ -39,6 +40,8 @@ export { operationList } from './operation-list.ts';
 export const sessionOperations: readonly AnyOperationDefinition[] = [
   me,
   logout,
+  consentStatus,
+  consentRecord,
   tokenCreate,
   tokenList,
   tokenRevoke,
