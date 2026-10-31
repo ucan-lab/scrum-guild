@@ -77,6 +77,14 @@ async function list(app: ReturnType<typeof createApp>, person: Person, credentia
 
 const namesOf = (listed: Listed[]) => listed.map((operation) => operation.name);
 
+type SchemaBranch = { type?: unknown; properties?: Record<string, unknown> };
+
+// object の Schema はそのまま、union（oneOf か anyOf）は分岐の一覧を返す
+function objectBranchesOf(schema: unknown): SchemaBranch[] {
+  const { oneOf, anyOf } = schema as { oneOf?: SchemaBranch[]; anyOf?: SchemaBranch[] };
+  return oneOf ?? anyOf ?? [schema as SchemaBranch];
+}
+
 // Issue の決まりで、一覧に載るはずの名前。Cookie は write のトークンと同じ
 function expectedNames(definitions: readonly AnyOperationDefinition[], credential: Credential): string[] {
   const scope = credential === 'cookie' ? 'write' : credential;
@@ -201,12 +209,15 @@ describe('本番の一覧', () => {
         expect(typeof schema, item.name).toBe('object');
         expect(schema, item.name).not.toBeNull();
         expect(Array.isArray(schema), item.name).toBe(false);
-        expect((schema as { type?: unknown }).type, item.name).toBe('object');
+        // 入力が union の操作（invitation-create）は、最上位に type を持たず、分岐の1つずつが object になる
+        for (const branch of objectBranchesOf(schema)) {
+          expect(branch.type, item.name).toBe('object');
+        }
       }
       if (definition!.workspace === true) {
-        expect(Object.keys((item.input_schema as { properties: object }).properties), item.name).toContain(
-          'workspace_id',
-        );
+        for (const branch of objectBranchesOf(item.input_schema)) {
+          expect(Object.keys(branch.properties ?? {}), item.name).toContain('workspace_id');
+        }
       }
     }
   });
