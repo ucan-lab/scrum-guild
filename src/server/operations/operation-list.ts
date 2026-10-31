@@ -7,6 +7,22 @@ import { operationList } from '../../shared/operations/session/index.ts';
 import { implement, type ImplementedOperation } from './implement.ts';
 import { tokenAllows } from './token-scope.ts';
 
+// 定義ごとの JSON Schema。定義は固定で組織のデータを含まないので、リクエストをまたいで isolate で共有してよい（変換は呼び出しのたびに行うと重い）
+type JsonSchemas = { input_schema: Record<string, unknown>; output_schema: Record<string, unknown> };
+const schemasOf = new WeakMap<AnyOperationDefinition, JsonSchemas>();
+
+function schemasFor(definition: AnyOperationDefinition) {
+  let schemas = schemasOf.get(definition);
+  if (schemas === undefined) {
+    schemas = {
+      input_schema: z.toJSONSchema(definition.input, { io: 'input' }),
+      output_schema: z.toJSONSchema(definition.output, { io: 'output' }),
+    };
+    schemasOf.set(definition, schemas);
+  }
+  return schemas;
+}
+
 export function operationListOperationFor(definitions: readonly AnyOperationDefinition[]): ImplementedOperation {
   const all = [...definitions.filter((definition) => definition.name !== operationList.name), operationList];
   return implement(operationList, async ({ tokenScope }) => {
@@ -25,8 +41,7 @@ export function operationListOperationFor(definitions: readonly AnyOperationDefi
             ? 'workspace'
             : 'organization') as 'outside' | 'organization' | 'workspace',
         permission: definition.permission,
-        input_schema: z.toJSONSchema(definition.input, { io: 'input' }),
-        output_schema: z.toJSONSchema(definition.output, { io: 'output' }),
+        ...schemasFor(definition),
       }))
       .sort((a, b) => a.name.localeCompare(b.name));
     return { operations };

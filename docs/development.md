@@ -26,11 +26,9 @@
 
 ### 操作の定義
 
-`operation-list` は API トークンの範囲で呼べる操作の定義と JSON Schema を返すため、CLI が毎回取得して使う。
-
 `ai.md` の「操作の定義を1か所に持つ」の形。
 
-- 定義: 操作ごとに、名前、説明、入力と出力の zod のスキーマ、`read` か `write`、要る権限を1つのオブジェクトに書き、`src/shared/operations/` に置く（`defineOperation()`）。一覧は `src/shared/operations/index.ts`。運用者の操作は `src/shared/operations/operator/`（人が差分を読む領域）、ログインしている人自身の操作（`me`、`logout`）は `src/shared/operations/session/`。定義は処理を持たない。画面の束に Worker のコードを入れないため。定義は画面の束にも入るので、`define.ts` が `src/shared/zod-config.ts` を先に読み込み、zod の eval の試し（`new Function`）を止める（`jitless`）。画面の CSP に `'unsafe-eval'` が無く、試しが違反として報告されるため。
+- 定義: 操作ごとに、名前、説明、入力と出力の zod のスキーマ、`read` か `write`、要る権限を1つのオブジェクトに書き、`src/shared/operations/` に置く（`defineOperation()`）。一覧は `src/shared/operations/index.ts`。運用者の操作は `src/shared/operations/operator/`（人が差分を読む領域）、ログインしている人自身の操作（`me`、`logout`、API トークンの操作、`operation-list`）は `src/shared/operations/session/`。定義は処理を持たない。画面の束に Worker のコードを入れないため。定義は画面の束にも入るので、`define.ts` が `src/shared/zod-config.ts` を先に読み込み、zod の eval の試し（`new Function`）を止める（`jitless`）。画面の CSP に `'unsafe-eval'` が無く、試しが違反として報告されるため。
 - 回数の上限: 重い操作（手動の同期など）には、定義に `rateLimit: { max, windowSeconds }` を付ける。登録の関数が、権限の検査の後、入力を読む前に、アカウントと操作ごとに `rate_limits` の `operation:<操作の名前>:<アカウントの ID>` で数え、窓の中で `max` を超えた呼び出しは 429 の `rate_limited` で断る（処理は動かない）。窓の最初の呼び出しから `windowSeconds` たつと数え直す。数えるのは1文の upsert で、並行した呼び出しも取りこぼさない（`src/server/auth/rate-limit.ts`）。アプリ側のレート制限は、ログイン、画面のエラーの送信（`POST /api/client-errors`）、手動の同期、招待する人の解決（`invitee-resolve` と `invitation-create`。GitHub に問い合わせる）、完成の定義の変更（`workspace-dod-update`。10 万字の本文を書く）にだけ設ける（`docs/requirements.md` の「運用」）。ログインは GET の例外なので定義に付けず、`login:<IP>` で数える（「GitHub のログインと取り込み」）。パスワードのログインも直に書く例外なので定義に付けず、`password:<IP>` と `password-email:<メールアドレスのハッシュ>` で数える（「パスワードのログイン」）。画面のエラーの送信も直に書く例外なので定義に付けず、`client-error:<IP>` で数える（「本番で壊れたことに気づく」）。手動の同期の「接続ごとに5分に1回」は `connections.last_manual_sync_at` で判定し、この項目とは別。
 - 処理: `src/server/operations/` で `implement(定義, 処理)` の形に書き、`src/server/operations/index.ts` の一覧に足す。Hono のルートは、この一覧を `createApp()` が1つの関数（`operationsApp()`）で登録する。ルートを直に書かない。仮の操作は本番の一覧に入れず、テストの中で定義する。
 - 直に書く例外（GET のルートと、招待の URL の画面のフォームの POST、画面のエラーの送信）: `/api/health` と、ログインの開始 `GET /api/auth/<手段>/start?return_to=<パス>` と戻り先 `GET /api/auth/<手段>/callback`、招待の URL から Google のログインを始める `POST /api/auth/google/start`（`src/server/auth/login-routes.ts`）。ログインの3つは手段（GitHub か Google）へ移し、手段から戻るブラウザの移動（リダイレクト）で、JSON の応答を返す操作の形に合わない。POST は `/invite` の画面のフォームから送る `application/x-www-form-urlencoded` の本文（欄 `claim_token`）に秘密を持ち、302 で Google へ移す。fetch で認可の URL を JSON で受ける形にしないのは、Google へ移す開始が2通りになり、ほかのサイトからの防ぎを Origin の検査で作り直すことになるため。Origin の検査は掛けず（ほかのサイトからの移動で呼ばれる）、ログインの CSRF は state の Cookie で止める（「GitHub のログインと取り込み」）。失敗は JSON のエラーではなく `/login?error=<理由>` へのリダイレクトで返す。画面で捕まえていない例外と Promise の拒否を送る `POST /api/client-errors`（`src/server/client-errors.ts`）も例外にする。今の操作の定義はどれもログインが前提で、ログインと招待の画面が壊れて誰も入れない故障を拾えないため。Origin の検査は操作と同じに掛け、セッションは読まない（「本番で壊れたことに気づく」）。メールアドレスとパスワードでログインする `POST /api/auth/password/login`（`src/server/auth/password-login.ts`）も、同じ理由（ログイン前の人が呼ぶ）で例外にする。OAuth の道（`login-routes.ts`）の外に置き、ログインの画面が fetch で JSON を送り、JSON で答える。Origin の検査は操作と同じに掛け、加えて `Sec-Fetch-Site` があれば `same-origin` だけを受ける（「パスワードのログイン」）。ログアウトと「自分」を返す口（`logout`、`me`）は例外にせず、操作の定義で作る（`src/shared/operations/session/`）。
@@ -361,15 +359,25 @@ vite の転送先も同じ値から作るので、画面は自分のワークツ
 
 ## CLI（sg）
 
-`sg config set url <URL>` と `sg config set token`（トークンは標準入力）で接続先を設定する。`config set org|workspace <値>` は既定値、`config use <名前>` は名前付き接続先の切り替え、`config show` はトークンを伏せた設定の表示に使う。`SG_URL`、`SG_TOKEN`、`SG_ORG`、`SG_WORKSPACE`、`SG_PROFILE` でも設定でき、`--profile` が `SG_PROFILE` に勝つ。
+`sg`（`cli/`）は API トークンで操作を呼ぶコマンドラインのクライアント。操作の定義を取り込まず、呼ぶたびに `operation-list` で一覧を取り、その JSON Schema から入力を作る。
 
-`sg ops` はサーバーから操作一覧を取得して表示し、`sg ops <操作名>` は説明と、入力と出力の JSON Schema を表示する。`sg call <操作名> [JSON] [--項目 値]...` は一覧の Schema に従って入力を作り、`--org` と `--workspace` で既定値を上書きする。設定した接続先の保存先は `$XDG_CONFIG_HOME/scrum-guild/config.json`（未設定なら `~/.config/scrum-guild/config.json`）。
+- 設定: `sg config set url <URL>` と `sg config set token`（トークンは標準入力から読む。引数では受けない）で接続先を設定する。`config set org|workspace <値>` で既定の組織とワークスペース、`config use <名前>` で既定の接続先、`config show` でトークンを伏せた設定を扱う。`config` も `--profile <名前>` で接続先を選ぶ。保存先は `$XDG_CONFIG_HOME/scrum-guild/config.json`（未設定、空、相対パスなら `~/.config/scrum-guild/config.json`）で、0600 で書く。接続先の名前に `__proto__`、`constructor`、`prototype` は使えない
+- 環境変数: `SG_URL`、`SG_TOKEN`、`SG_ORG`、`SG_WORKSPACE`、`SG_PROFILE` が設定に勝ち、`--profile` が `SG_PROFILE` に勝つ。空の値は未設定と同じ。`SG_URL` と `SG_TOKEN` は両方を設定する（片方だけなら使い方の誤り）。別の出どころの URL とトークンを組み合わせて、トークンを意図しない宛先へ送らないため
+- URL: `https:` か、ループバック（`localhost`、`127.0.0.1`、`[::1]`）への `http:` だけ。認証情報を含む URL は使えない。リダイレクトは追わず、3xx は API のエラーにする。30 秒で応答が無ければ打ち切る
+- `sg ops` は一覧を、`sg ops <操作名>` は説明と、入力と出力の JSON Schema を出す。`sg call <操作名> [JSON] [--<項目> <値>]...` は入力を作って呼び、`--org` と `--workspace` で既定を上書きする。`workspace_id` は入力に無いときだけ補う。一覧はトークンで絞るので、読み取りのトークンで書き込みの操作を呼ぶと、無い操作と同じく使い方の誤りになる
+- 引数の型: 項目の Schema の `type`、`const`、`enum`、`anyOf`、`oneOf` を辿って決める（null を許す項目は `null` で null、数の `const` だけの分岐は数）。入力が `oneOf` の操作は、どれかの分岐にある項目を受け付ける。数は10進の書き方だけを受け、整数は安全な範囲に限る。boolean や数に変えられない値は、string を許す項目なら文字列のまま送り、許さなければ使い方の誤り。`allOf` と `$ref` は辿らないので、その項目は JSON で渡す。同じ `--<項目>` を2回渡すのも使い方の誤り
+- 出力と終了コード: 成功は標準出力に JSON で 0。API のエラーは標準エラーに `{"status", "error"}` で 1（応答の形が不正なときの `invalid_response` も 1）。使い方の誤りは `{"error": {"code": "usage", …}}` で 2。サーバーへ送る前の誤り（壊れた JSON、無い操作、余分な引数、設定が無い、設定ファイルを読めないか書けないか形が違う、ヘッダーに置けない文字を含むトークン、使えない URL）が当たる。つながらないときは `connection_failed` で 3。どの出力にもトークンと設定の中身を出さない
 
-引数の値は、項目の Schema の `type`、`const`、`enum`、`anyOf`、`oneOf` を辿って型を決める（null を許す項目は `null` で null、数の `const` だけの分岐は数）。入力が `oneOf` の操作は、どれかの分岐にある項目を受け付ける。空の値は数にしない。boolean や数に変えられない値は、string を許す項目なら文字列のまま送り、許さなければ使い方の誤りにする。
+手元のサーバーへ向けるときは、`pnpm db:seed` と `pnpm dev` の後に次を打つ。seed のトークンは `seed/api-tokens.ts` にある。URL は `pnpm dev` が出す画面の URL を使う（ワークツリーではポートがずれる。下の「ポート」）。
 
-成功は JSON を標準出力に出して終了コード 0、API のエラーは標準エラーに出して 1、使い方の誤りは 2、接続失敗は 3。サーバーへ送る前の誤りは 2 で、読めない設定ファイル、`profiles` を持たないなど形の違う設定ファイル、書けない設定ファイル、ヘッダーに置けない文字を含むトークンが当たる（誤りの message に設定の中身は出さない）。`XDG_CONFIG_HOME` が空の文字列なら、未設定と同じく `~/.config` を使う。
+```bash
+printf '%s\n' 'sgp_dev-seed-admin-write00000000000000000000000' | pnpm -s sg config set token
+pnpm -s sg config set url http://localhost:5173
+pnpm -s sg config set org aoba
+pnpm -s sg ops
+```
 
-手元のサーバーへ向けるときは `pnpm db:seed` と `pnpm dev` の後、seed のトークンを標準入力から `pnpm -s sg config set token` に渡し、`pnpm -s sg config set url http://localhost:5173` を設定する。`pnpm -s` は pnpm の見出し（`$ node cli/sg.ts ...`）と失敗時の `ELIFECYCLE` を出さないので、出力を `jq` に渡すときは `pnpm -s sg` か `node cli/sg.ts` で呼ぶ。
+`pnpm -s` を付けると、pnpm の見出しと失敗時の `ELIFECYCLE` が出ない。出力を `jq` に渡すときは `pnpm -s sg` か `node cli/sg.ts` で呼ぶ。
 
 ## AI 開発の分担
 
