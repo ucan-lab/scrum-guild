@@ -110,9 +110,12 @@ export async function createSession(
 // その人のセッションを消す。ログインできる条件を失ったと判定した時刻（checkedAt）までに作られたものだけ。
 // 判定の後に、その人が入れる条件を満たして作ったセッション（ログインし直した直後など）を消さないため
 export async function deleteSessionsOf(db: CommonDb, accountId: string, checkedAt: Date): Promise<void> {
-  await db.batch([
-    db.statement((q) =>
-      q.deleteFrom('sessions').where('account_id', '=', accountId).where('created_at', '<=', checkedAt.toISOString()),
-    ),
-  ]);
+  await db.batch([deleteSessionsStatement(db, accountId, checkedAt)]);
+}
+
+// deleteSessionsOf の文。トークンの取り消しと1回の batch() で送る呼び出し（end-credentials.ts）が、条件を別に持たずに使う
+export function deleteSessionsStatement(db: CommonDb, accountId: string, checkedAt: Date): Statement<'common'> {
+  return db.statement((q) =>
+    q.deleteFrom('sessions').where('account_id', '=', accountId).where('created_at', '<=', checkedAt.toISOString()),
+  );
 }
