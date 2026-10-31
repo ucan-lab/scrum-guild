@@ -37,6 +37,7 @@ describe('done-check の印を書く', () => {
       'done-check の出力',
     );
     has(doneCheck, '手順 7 の直しのコミットは含めない', 'done-check の出力');
+    has(doneCheck, '呼ぶ直前に `git rev-parse HEAD` の完全な SHA を控え', 'done-check の手順 6');
     has(doneCheck, '`点検した head: 無し — <理由>`', 'done-check の出力');
     has(prCreate, 'done-check の出力の「点検した head」', 'pr-create');
     has(prCreate, '1つでも満たさなければ印を書かない', 'pr-create');
