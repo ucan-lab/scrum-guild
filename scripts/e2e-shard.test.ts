@@ -271,7 +271,8 @@ describe('scripts/e2e-shard-weights.json の割り方（受け入れ条件の数
   });
 
   test('最も重い 1 ファイルの重みが伸びても、割り方が正しければ下限の検査は通る', () => {
-    const heavier = { ...weights, 'task-drawer.test.ts': weights['task-drawer.test.ts']! + 30 };
+    const [heaviest, heaviestSeconds] = Object.entries(weights).reduce((a, b) => (b[1] > a[1] ? b : a));
+    const heavier = { ...weights, [heaviest]: heaviestSeconds + 30 };
     const heavierWeight = weightsOf(Object.keys(heavier), heavier);
     const times = assignShards(Object.keys(heavier).sort(), heavier, SHARDS).map((shard) =>
       simulateSeconds(shard, heavierWeight),
