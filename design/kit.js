@@ -64,7 +64,7 @@
     epicPageRequest: "概要", epicPagePartyEmpty: "参加者はまだいません。", accountMenuLabel: "{name}。アカウントのメニュー", logout: "ログアウト",
     logoutMoving: "ログアウトしています", loggedOut: "ログアウトしました。", logoutFailed: "ログアウトできませんでした。時間をおいてもう一度試してください。",
     markdownPlainNote: "整形せずに表示しています", markdownNewTab: "新しいタブで開きます", markdownCodeRegion: "コード",
-    termsTitle: "利用規約", privacyTitle: "プライバシーポリシー", retry: "もう一度試す",
+    termsTitle: "利用規約", privacyTitle: "プライバシーポリシー", retry: "もう一度試す", retrying: "読み込んでいます",
     consentTitle: "同意の確認", consentLead: "{app} を使うには、利用規約とプライバシーポリシーを確認してください。", consentVersion: "版: {version}",
     consentCheckLabel: "利用規約とプライバシーポリシーを確認し、同意します", consentSubmit: "同意して進む", consentContinue: "進む",
     consentUpdated: "規約が更新されました。内容を確認し直してください。", consentCurrent: "現在の版に同意しています。",
