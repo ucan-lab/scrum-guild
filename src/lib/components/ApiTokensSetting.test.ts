@@ -24,8 +24,8 @@ test('apiToken の辞書のキーは、スクラムの言葉の文言を持つ',
   const keys = Object.keys(dictionary).filter((key) => key.startsWith('apiToken'));
   expect(keys.length).toBeGreaterThan(20);
   for (const key of keys) {
-    const entry = (dictionary as Record<string, { scrum: string }>)[key]!;
-    expect(entry.scrum.length, key).toBeGreaterThan(0);
+    const text = (dictionary as Record<string, string>)[key]!;
+    expect(text.length, key).toBeGreaterThan(0);
   }
 });
 

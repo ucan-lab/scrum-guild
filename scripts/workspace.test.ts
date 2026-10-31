@@ -157,7 +157,7 @@ describe('名前', () => {
 
 describe('既定の列と決まった欄の名前', () => {
   test('決まった欄の名前は、辞書の受け入れ基準（スクラムの言葉）と同じ', () => {
-    assert.equal(defaultDetailFieldName, dictionary.ac.scrum);
+    assert.equal(defaultDetailFieldName, dictionary.ac);
   });
 
   test('列は完了の列を除く3つで、スクラムの言葉', () => {
