@@ -36,6 +36,7 @@ export const commonTableColumns = {
     expires_at: text,
     revoked_at: textOrNull,
   },
+  account_consents: { account_id: text, terms_version: text, privacy_version: text, consented_at: text },
   oauth_states: {
     state: text,
     login_provider: text,

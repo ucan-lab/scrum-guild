@@ -26,6 +26,11 @@ const screens: {
   ready: (page: Page) => Locator[];
 }[] = [
   {
+    screen: 'consent',
+    path: '/consent',
+    ready: (page) => [page.getByRole('heading', { level: 1, name: '同意の確認' })],
+  },
+  {
     screen: 'today',
     path: '/aoba',
     ready: (page) => [

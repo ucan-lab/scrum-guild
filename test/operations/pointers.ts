@@ -3,6 +3,7 @@
 // キーは操作の名前。値は、対象の組織の行を指す成功する入力を作る関数（別の組織の対象を渡すと 404 になる入力）。
 // 組織の外の操作は、入力が必須の項目を持つときだけ足す（運用者の操作は、成功する入力を作る）
 import { env } from 'cloudflare:workers';
+import { PRIVACY_VERSION, TERMS_VERSION } from '../../src/lib/legal/versions.ts';
 import { orgDb } from '../../src/server/db/index.ts';
 import { createFakeGithub } from '../auth/fake-github.ts';
 import { githubUser } from '../auth/helpers.ts';
@@ -211,6 +212,7 @@ export const pointers: Pointers = {
     };
   },
   'token-create': { noReference: { name: '分離の検査', scope: 'read' } },
+  'consent-record': { noReference: { terms_version: TERMS_VERSION, privacy_version: PRIVACY_VERSION } },
   // 呼ぶ人の行を指す。取消は二度目も成功するので、呼ぶたびに作らなくてよいが、作り直して他の検査と独立にする
   'token-revoke': async (_target, caller) => ({ id: (await insertApiToken(caller.accountId)).hash }),
   'resolve-github-user': async () => ({ username: newGithubUser().login }),
