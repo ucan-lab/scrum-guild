@@ -309,6 +309,12 @@ describe('node scripts/e2e-shard.ts', () => {
         .join('\n');
     };
     for (const name of ['e2e', 'e2e-dev']) {
+      // テストの SHARDS が matrix の数とずれると、見積もりの確かめが実際の割り方を見なくなる
+      assert.match(
+        job(name),
+        new RegExp(`shard: \\[${Array.from({ length: SHARDS }, (_, i) => i + 1).join(', ')}\\]`),
+        name,
+      );
       assert.match(
         job(name),
         /node scripts\/e2e-shard\.ts \$\{\{ matrix\.shard \}\} \$\{\{ strategy\.job-total \}\}/,
