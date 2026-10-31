@@ -85,7 +85,7 @@ export const renameWorkspaceOperation = implement(renameWorkspace, async ({ db, 
 
 ### 4. 組織の分離のテスト用の関数を足す
 
-組織の中の操作（`invitee`、`organization`、`member`、`leader`、`admin`）は、`test/operations/pointers.ts` に操作の名前をキーにして足す。足し忘れると `test/operation-registry.test.ts` が落ちる。
+組織の中の操作（`invitee`、`organization`、`member`、`leader`、`admin`）は、`test/operations/pointers.ts` に操作の名前をキーにして足す。足し忘れると `test/operation-registry.test.ts`（と、一覧を回す `test/operation-registry-production-<番号>.test.ts`）が落ちる。
 
 ```ts
 'rename-workspace': async (target) => ({ workspace_id: target.workspace.id, name: '青葉チーム' }),

@@ -29,7 +29,7 @@ import { insertApiToken } from './api-token.ts';
 import type { Pointers } from './harness.ts';
 import { SUSPENDED_AT, type Person, type Target } from './world.ts';
 
-// 運用者の操作が問い合わせる GitHub。operation-registry.test.ts が fetcher を createApp に渡す
+// 運用者の操作が問い合わせる GitHub。chunks.ts の defineProductionChunk が fetcher を createApp に渡す
 export const operatorGithub = createFakeGithub();
 
 // そのワークスペースに今の所属が無ければ、一般のメンバーとして作る

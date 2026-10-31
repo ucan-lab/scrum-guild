@@ -1,5 +1,7 @@
 // 本番の操作の一覧を回して、組織の分離と権限を確かめる。新しい操作を足しても、このファイルは書き足さない。
-// 組織の中の操作のテスト用の関数（test/operations/pointers.ts）が無いと落ちる
+// 組織の中の操作のテスト用の関数（test/operations/pointers.ts）が無いと落ちる。
+// 一覧の各操作を回す検査は、塊に分けた test/operation-registry-production-<番号>.test.ts にある。
+// このファイルは、仕組みの自己確認、テスト用の関数の確認、塊が全操作を覆うことの確認、運用者の操作の確認を持つ
 import { describe, expect, test } from 'vitest';
 import { isWorkspaceOperation, permissions } from '../src/shared/operations/define.ts';
 import { operations } from '../src/shared/operations/index.ts';
@@ -7,8 +9,9 @@ import { createApp } from '../src/server/app.ts';
 import { ApiError } from '../src/server/errors.ts';
 import { implement } from '../src/server/operations/implement.ts';
 import { implementedOperations } from '../src/server/operations/index.ts';
+import { operationChunk, productionChunkCount } from './operations/chunks.ts';
 import { assertPointersCover, checkRowIsolation, defineOperationChecks, post } from './operations/harness.ts';
-import { operatorGithub, pointers } from './operations/pointers.ts';
+import { pointers } from './operations/pointers.ts';
 import { provisionalOperations, provisionalPointers, renameWorkspace, taskTitle } from './operations/provisional.ts';
 import { createTarget } from './operations/world.ts';
 
@@ -108,13 +111,74 @@ describe('仮の操作の一覧（API トークン）', () => {
   defineOperationChecks(provisionalOperations, provisionalPointers, { credential: 'bearer' });
 });
 
-// 本番の一覧。関数の足し忘れは、ファイルの読み込みで落ちる。運用者の操作は、差し替えた GitHub に問い合わせる。
-// Cookie と API トークンの2通りで回す（トークンでも、組織の分離と権限は Cookie と同じ結果になる）
+// 本番の一覧。関数の足し忘れは、ファイルの読み込みで落ちる。
+// 一覧の各操作を回す検査（Cookie と API トークンの2通り。運用者の操作は、差し替えた GitHub に問い合わせる）は、
+// 1つのファイルで回すと終わりが遅い尾になるので、操作の名前で決まる塊に分け、塊ごとに
+// test/operation-registry-production-<番号>.test.ts で回す（割り方は test/operations/chunks.ts）
 assertPointersCover(implementedOperations, pointers);
-describe('本番の一覧の分離と権限', () =>
-  defineOperationChecks(implementedOperations, pointers, { fetcher: operatorGithub.fetcher }));
-describe('本番の一覧の分離と権限（API トークン）', () =>
-  defineOperationChecks(implementedOperations, pointers, { fetcher: operatorGithub.fetcher, credential: 'bearer' }));
+
+describe('本番の一覧の塊', () => {
+  const names = implementedOperations.map((operation) => operation.definition.name);
+  const chunks = Array.from({ length: productionChunkCount }, (_, index) =>
+    operationChunk(implementedOperations, index, productionChunkCount).map((operation) => operation.definition.name),
+  );
+
+  test('塊を合わせると、一覧のすべての操作を1回ずつ覆う（抜けも重なりも無い）', () => {
+    expect(chunks.flat().sort()).toEqual([...names].sort());
+    expect(new Set(chunks.flat()).size).toBe(names.length);
+  });
+
+  test('どの塊にも操作がある', () => {
+    for (const chunk of chunks) expect(chunk.length).toBeGreaterThan(0);
+  });
+
+  test('同じ入力なら、操作の並びが違っても同じ塊になる', () => {
+    const reversed = [...implementedOperations].reverse();
+    for (let index = 0; index < productionChunkCount; index++) {
+      expect(
+        operationChunk(reversed, index, productionChunkCount).map((operation) => operation.definition.name),
+      ).toEqual(chunks[index]);
+    }
+  });
+
+  test('塊の番号か数が正しくないと落ちる', () => {
+    expect(() => operationChunk(implementedOperations, productionChunkCount, productionChunkCount)).toThrow();
+    expect(() => operationChunk(implementedOperations, -1, productionChunkCount)).toThrow();
+    expect(() => operationChunk(implementedOperations, 0, 0)).toThrow();
+  });
+
+  test('塊のファイルが、塊の数と同じだけある（番号は 1 から）', () => {
+    const files = Object.keys(import.meta.glob('./operation-registry-production-*.test.ts')).sort();
+    expect(files).toEqual(
+      Array.from({ length: productionChunkCount }, (_, i) => `./operation-registry-production-${i + 1}.test.ts`),
+    );
+  });
+
+  // ファイルを複製して番号を直し忘れると、ある塊が二重に走り、別の塊の操作が黙って検査から外れる
+  test('塊のファイルは、自分の番号の塊だけを回す', () => {
+    const sources = import.meta.glob('./operation-registry-production-*.test.ts', {
+      query: '?raw',
+      import: 'default',
+      eager: true,
+    });
+    // 空だとループが回らず、何も確かめずに通るので、このテストだけで走らせても数を見る
+    expect(Object.keys(sources)).toHaveLength(productionChunkCount);
+    for (const [file, source] of Object.entries(sources)) {
+      const number = /production-(\d+)\.test\.ts$/.exec(file)?.[1];
+      // コメントアウトや分岐の中の呼び出しで通らないよう、コメントと空行を除いたコードが、
+      // import の1行と、行頭の自分の番号の呼び出しの1行だけであることを見る
+      const code = source
+        .replace(/\/\*[\s\S]*?\*\//g, '')
+        .split('\n')
+        .map((line) => line.replace(/\/\/.*$/, '').trimEnd())
+        .filter((line) => line !== '');
+      expect(code, file).toEqual([
+        "import { defineProductionChunk } from './operations/chunks.ts';",
+        `defineProductionChunk(${number});`,
+      ]);
+    }
+  });
+});
 
 // allowClosed の無いワークスペースの下の write を、閉じたワークスペースで呼んで 409 の workspace_closed になることは、
 // 一覧の各操作に当てる検査（defineOperationChecks。test/operations/harness.ts）が確かめる。
