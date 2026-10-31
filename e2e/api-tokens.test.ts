@@ -276,6 +276,10 @@ test('有効なトークンが上限に達していたら、断られた理由�
   const section = sectionOf(page);
   await page.goto('/aoba/me');
   await expect(section.getByRole('table', { name: '発行済みの API トークン' })).toBeVisible();
+  // 取り消す行。上限の知らせは取り消しを促すので、取り消せたら消える
+  const spare = uniqueName('上限の確かめ用');
+  await issue(page, spare, '読み取り', '7');
+  await closeIssued(page);
   const unroute = await failOperation(page, tokenCreate, 409, 'conflict', { details: { reason: 'limit' } });
   await section.getByLabel('名前', { exact: true }).fill('上限の確かめ');
   await section.getByRole('button', { name: '発行する' }).click();
@@ -284,6 +288,8 @@ test('有効なトークンが上限に達していたら、断られた理由�
   );
   await expect(section.getByLabel('名前', { exact: true })).toHaveValue('上限の確かめ');
   await expect(page.getByRole('dialog')).toHaveCount(0);
+  await revoke(page, spare);
+  await expect(section.getByRole('alert')).toHaveCount(0);
   await unroute();
 });
 
@@ -338,6 +344,55 @@ for (const vocabulary of ['game', 'scrum'] as const satisfies readonly Vocabular
     await confirm.getByRole('button', { name: w('apiTokenRevoke'), exact: true }).click();
     await expect(row).toHaveCount(0);
     await unroute();
+  });
+}
+
+// 5列の表は、横の面と並ぶ本文（.layout-main）に入れると PC の幅で押しつぶされるので、経験値の明細と同じく .layout-aside の下に全幅で置く
+for (const width of [1100, 1280, 1440]) {
+  test(`${width}px の幅では、API トークンの節が本文の幅より広く出て、表が横にはみ出さず、「取り消す」が同じ行の別のセルに重ならない`, async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width, height: 900 });
+    // 区切りの無い長めの名前で、名前の列が広がっても取り消すボタンが押しつぶされないことも見る
+    const name = uniqueName('長い名前の確かめ'.repeat(5));
+    await page.goto('/aoba/me');
+    await expect(sectionOf(page).getByRole('table', { name: '発行済みの API トークン' })).toBeVisible();
+    await issue(page, name, '読み取り', '7');
+    await closeIssued(page);
+    await expect(rowOf(page, name)).toHaveCount(1);
+
+    const measured = await page.evaluate((rowName) => {
+      const table = document.querySelector('table[aria-label="発行済みの API トークン"]')!;
+      const wrap = table.closest('.table-wrap')!;
+      const setting = table.closest('.setting')!;
+      const main = document.querySelector('.layout-main')!;
+      const row = [...table.querySelectorAll('tbody tr')].find((tr) => tr.textContent?.includes(rowName))!;
+      const button = row.querySelector('td.is-actions button')!.getBoundingClientRect();
+      const overlaps = [...row.querySelectorAll('td:not(.is-actions)')].map((td) => {
+        const box = td.getBoundingClientRect();
+        return button.left < box.right && button.right > box.left && button.top < box.bottom && button.bottom > box.top;
+      });
+      return {
+        overflow: wrap.scrollWidth - wrap.clientWidth,
+        pageOverflow: document.documentElement.scrollWidth - window.innerWidth,
+        settingWidth: setting.getBoundingClientRect().width,
+        mainWidth: main.getBoundingClientRect().width,
+        buttonRight: button.right,
+        buttonWidth: button.width,
+        overlaps,
+      };
+    }, name);
+    expect(measured.overflow).toBeLessThanOrEqual(0);
+    expect(measured.pageOverflow).toBeLessThanOrEqual(0);
+    // 本文（.layout-main）の中でなく、その外の全幅に置かれている
+    expect(measured.settingWidth).toBeGreaterThan(measured.mainWidth);
+    expect(measured.buttonRight).toBeLessThanOrEqual(width);
+    expect(measured.buttonWidth).toBeGreaterThan(0);
+    expect(measured.overlaps.length).toBeGreaterThan(0);
+    expect(measured.overlaps.every((overlap) => !overlap)).toBe(true);
+
+    await revoke(page, name);
+    await expect(rowOf(page, name)).toHaveCount(0);
   });
 }
 
