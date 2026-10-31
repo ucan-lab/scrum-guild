@@ -104,10 +104,17 @@ describe('仮の操作の一覧', () => {
   defineOperationChecks(provisionalOperations, provisionalPointers);
 });
 
-// 本番の一覧。関数の足し忘れは、ファイルの読み込みで落ちる。運用者の操作は、差し替えた GitHub に問い合わせる
+describe('仮の操作の一覧（API トークン）', () => {
+  defineOperationChecks(provisionalOperations, provisionalPointers, { credential: 'bearer' });
+});
+
+// 本番の一覧。関数の足し忘れは、ファイルの読み込みで落ちる。運用者の操作は、差し替えた GitHub に問い合わせる。
+// Cookie と API トークンの2通りで回す（トークンでも、組織の分離と権限は Cookie と同じ結果になる）
 assertPointersCover(implementedOperations, pointers);
 describe('本番の一覧の分離と権限', () =>
   defineOperationChecks(implementedOperations, pointers, { fetcher: operatorGithub.fetcher }));
+describe('本番の一覧の分離と権限（API トークン）', () =>
+  defineOperationChecks(implementedOperations, pointers, { fetcher: operatorGithub.fetcher, credential: 'bearer' }));
 
 // allowClosed の無いワークスペースの下の write を、閉じたワークスペースで呼んで 409 の workspace_closed になることは、
 // 一覧の各操作に当てる検査（defineOperationChecks。test/operations/harness.ts）が確かめる。
