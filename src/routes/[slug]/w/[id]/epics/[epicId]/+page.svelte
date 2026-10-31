@@ -10,6 +10,8 @@
   import EmptyState from '../../../../../../lib/components/EmptyState.svelte';
   import EpicDialog from '../../../../../../lib/components/EpicDialog.svelte';
   import EpicPartyAssignDialog from '../../../../../../lib/components/EpicPartyAssignDialog.svelte';
+  import EpicRequesterDialog from '../../../../../../lib/components/EpicRequesterDialog.svelte';
+  import EpicRewardDialog from '../../../../../../lib/components/EpicRewardDialog.svelte';
   import EpicTier from '../../../../../../lib/components/EpicTier.svelte';
   import Icon from '../../../../../../lib/components/Icon.svelte';
   import LoadFailed from '../../../../../../lib/components/LoadFailed.svelte';
@@ -29,8 +31,9 @@
   // 討伐隊の一覧（離脱済みの人も、名前に「（離脱済み）」を添えて出す。レベルは紋章だけで、経験値の数値は API も返さない）、
   // 配下のストーリー（削除していないもの、並びの順。完了の印と、完了 / 全体のポイント）を出す。
   // 討伐隊の面の下に、書き込めて終わっていないエピックで、討伐隊に入れる人（can_join）には「受注する」か「抜ける」を、
-  // 依頼主とリーダー（can_manage）には「<討伐隊>に割り振る」（EpicPartyAssignDialog）を出す。どちらも済んだら画面の値を読み直す。
-  // 報酬と依頼主の変更、クリア、中止、添付ファイルは、後の Issue で足す。
+  // 依頼主とリーダー（can_manage）には「<討伐隊>に割り振る」（EpicPartyAssignDialog）と「<クリア報酬>を変える」（EpicRewardDialog）を、
+  // リーダー（can_change_requester）には「<依頼主>を替える」（EpicRequesterDialog）を出す。どれも済んだら画面の値を読み直す。
+  // クリア、中止、添付ファイルは、後の Issue で足す。
   // 見出しの横の「直す」は、エピックのダイアログ（EpicDialog）を開く。書き込めるときだけ出し、終了したワークスペースでは出さない
   // （ダイアログの欄は、この画面がすべて読み取りで出している）。直したら画面の値を読み直し、削除したか消えていたらバックログへ戻る。
   // 無いエピック（別の組織、別のワークスペース、削除済み）は「見つかりません」、読めなかったときは読み込みの失敗を出す。
@@ -74,11 +77,14 @@
 
   let epicDialog = $state<ReturnType<typeof EpicDialog>>();
   let assignDialog = $state<ReturnType<typeof EpicPartyAssignDialog>>();
+  let rewardDialog = $state<ReturnType<typeof EpicRewardDialog>>();
+  let requesterDialog = $state<ReturnType<typeof EpicRequesterDialog>>();
   // 受注か抜けるを送っている間。押しても無視する
   let partyBusy = $state(false);
   // 受注は討伐隊に入れる人（can_join）だけ。抜けるは、討伐隊にいれば（joined）入れる人でなくなっていても出す
   const showJoin = $derived(canWrite && !finished && detail !== null && (detail.joined || detail.can_join));
   const showAssign = $derived(canWrite && !finished && detail !== null && detail.can_manage);
+  const showRequesterChange = $derived(canWrite && !finished && detail !== null && detail.can_change_requester);
 
   // ダイアログで直した。この画面の値だけを読み直す（枠は読み直さない）
   async function saved(): Promise<void> {
@@ -313,7 +319,7 @@
             {/each}
           </ul>
         {/if}
-        {#if showJoin || showAssign}
+        {#if showJoin || showAssign || showRequesterChange}
           <div class="actions-col">
             {#if showJoin}
               <button
@@ -330,6 +336,14 @@
             {#if showAssign}
               <button class="btn" type="button" onclick={(event) => assignDialog?.show(event.currentTarget)}>
                 {t('epicPageAssign', { party: t('party') })}
+              </button>
+              <button class="btn" type="button" onclick={(event) => rewardDialog?.show(event.currentTarget)}>
+                {t('epicPageChangeReward', { reward: t('reward') })}
+              </button>
+            {/if}
+            {#if showRequesterChange}
+              <button class="btn" type="button" onclick={(event) => requesterDialog?.show(event.currentTarget)}>
+                {t('epicPageChangeRequester', { requester: t('requester') })}
               </button>
             {/if}
           </div>
@@ -360,5 +374,23 @@
     epicId={epic.id}
     partyIds={detail.party.map((member) => member.id)}
     onassigned={() => void saved()}
+  />
+
+  <EpicRewardDialog
+    bind:this={rewardDialog}
+    {slug}
+    workspaceId={workspace.id}
+    epicId={epic.id}
+    tier={detail.reward_tier}
+    onchanged={() => void saved()}
+  />
+
+  <EpicRequesterDialog
+    bind:this={requesterDialog}
+    {slug}
+    workspaceId={workspace.id}
+    epicId={epic.id}
+    requesterId={detail.requester.id}
+    onchanged={() => void saved()}
   />
 {/if}

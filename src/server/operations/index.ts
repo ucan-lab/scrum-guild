@@ -45,6 +45,7 @@ import {
 import { epicCreateOperation, epicGetOperation, epicMoveOperation, epicUpdateOperation } from './epic.ts';
 import { epicDetailOperation } from './epic-detail.ts';
 import { epicPartyAssignOperation, epicPartyJoinOperation, epicPartyLeaveOperation } from './epic-party.ts';
+import { epicRequesterUpdateOperation, epicRewardUpdateOperation } from './epic-reward.ts';
 import {
   categoryCreateOperation,
   categoryDeleteOperation,
@@ -123,6 +124,8 @@ export const implementedOperations: readonly ImplementedOperation[] = [
   epicPartyJoinOperation,
   epicPartyLeaveOperation,
   epicPartyAssignOperation,
+  epicRewardUpdateOperation,
+  epicRequesterUpdateOperation,
   experienceSummaryOperation,
   experienceGrantsOperation,
   experienceTeamTotalOperation,

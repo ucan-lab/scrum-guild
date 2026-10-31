@@ -81,6 +81,7 @@ SQ.mount("epic", () => {
             <button class="btn ${joined ? "" : "is-primary"}" type="button" data-join="${ID}">${icon("users")}${joined ? t("leave") : t("accept")}</button>
             <button class="btn" type="button">${t("party")}に割り振る</button>
             <button class="btn" type="button">${t("reward")}を変える</button>
+            <button class="btn" type="button">${t("requester")}を替える</button>
             <button class="btn is-primary" type="button" ${allDone ? "" : "disabled"}>${icon("check")}${t("clear")}</button>
             ${allDone ? "" : `<span class="action-note">配下の${t("story")}がすべて${t("done")}すると押せます（残り ${openStories} 件）</span>`}
             <button class="btn is-quiet" type="button" data-dialog="cancelEpic">${icon("x")}${t("epic")}を中止する</button>
