@@ -7,6 +7,7 @@ import {
   signIn,
   watchViolations,
 } from './helpers.ts';
+import { exclusionsFor, isAxeCheck } from './ui-exclusions.ts';
 
 // build と wrangler dev に渡した版。playwright.config.ts が決めて process.env に置く（docs/development.md の「e2e のサーバー」）
 const version = process.env.APP_VERSION || 'dev';
@@ -145,7 +146,12 @@ test('畳んだ列のまま、全テーマでアクセシビリティの検査�
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.goto(today);
   await page.getByRole('button', { name: 'メニューを畳む' }).click();
-  await expectNoA11yViolationsInThemes(page, 'today');
+  // 畳んだ列では組織のボタンの見える文字（「組織」と名前）を隠すので、#343 の見える名前と aria-label の食い違いが起きない。
+  // その除外を渡すと「当たらなくなった除外」で落ちるので外す（広げた列では今までどおり当たる）
+  const exclusions = exclusionsFor('today', isAxeCheck).filter(
+    (exclusion) => !(exclusion.check === 'label-content-name-mismatch' && exclusion.selector === '.org-menu-button'),
+  );
+  await expectNoA11yViolationsInThemes(page, 'today', exclusions);
   expect(await collect()).toEqual([]);
 });
 
