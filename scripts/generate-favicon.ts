@@ -1,9 +1,14 @@
-// SVG を Chromium で実寸描画し、透過 PNG を16px・32pxの ICO にまとめる。
+// SVG を Chromium で実寸描画し、透過 PNG を16px・32pxの ICO と、生成りの地のホーム画面用 PNG にまとめる。
 import { readFile, writeFile } from 'node:fs/promises';
 import { chromium } from '@playwright/test';
 
 const svg = await readFile(new URL('../static/favicon.svg', import.meta.url), 'utf8');
 const sizes = [16, 32];
+const homeScreenIcons = [
+  ['apple-touch-icon.png', 180],
+  ['icon-192.png', 192],
+  ['icon-512.png', 512],
+] as const;
 const browser = await chromium.launch();
 try {
   const page = await browser.newPage({ deviceScaleFactor: 1 });
@@ -31,6 +36,14 @@ try {
     offset += image.length;
   }
   await writeFile(new URL('../static/favicon.ico', import.meta.url), Buffer.concat([header, ...images]));
+
+  for (const [name, size] of homeScreenIcons) {
+    await page.setViewportSize({ width: size, height: size });
+    await page.setContent(
+      `<style>html,body{width:100%;height:100%;margin:0;background:#fffaf0}body{display:grid;place-items:center}svg{display:block;width:66.6667%;height:66.6667%}</style>${svg}`,
+    );
+    await writeFile(new URL(`../static/${name}`, import.meta.url), await page.screenshot());
+  }
 } finally {
   await browser.close();
 }

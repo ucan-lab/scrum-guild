@@ -5,6 +5,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <link rel="icon" href="%sveltekit.assets%/favicon.ico" sizes="16x16 32x32" />
     <link rel="icon" href="%sveltekit.assets%/favicon.svg" type="image/svg+xml" sizes="any" />
+    <link rel="apple-touch-icon" href="%sveltekit.assets%/apple-touch-icon.png" />
+    <link rel="manifest" href="%sveltekit.assets%/manifest.webmanifest" />
+    <!-- 追加時の名前。無いと iOS は開いていた画面の <title>（「ページ名 - Scrum Guild」）を使う。辞書の appName と同じにする（scripts/vocabulary.test.ts） -->
+    <meta name="apple-mobile-web-app-title" content="Scrum Guild" />
     <!-- 画面が動き出すまでの題名。画面ごとの題名は画面が辞書から組み立てる（scripts/vocabulary.test.ts が辞書の appName と同じことを確かめる） -->
     <title>Scrum Guild</title>
     %sveltekit.head%
