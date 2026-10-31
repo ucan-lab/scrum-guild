@@ -130,10 +130,16 @@ describe('同意の操作', () => {
     expect(await after.json()).toMatchObject({ latest: { terms_version: TERMS_VERSION }, current: true });
   });
 
-  test('同じ時刻の行は、版が新しいほうを最新にする', async () => {
+  // 索引を逆向きに走ると rowid の大きい行が先に出るので、どちらの順に入れても版で決まることを確かめる
+  test.each([
+    ['旧版を先に入れた', true],
+    ['現在版を先に入れた', false],
+  ])('同じ時刻の行は、%sときも版が新しいほうを最新にする', async (_name, oldFirst) => {
     const person = await createLoginPerson();
-    await seedConsent(person.accountId, OLD, OLD, '2026-10-31T00:00:00.000Z');
-    await seedConsent(person.accountId, TERMS_VERSION, PRIVACY_VERSION, '2026-10-31T00:00:00.000Z');
+    const at = '2026-10-31T00:00:00.000Z';
+    if (oldFirst) await seedConsent(person.accountId, OLD, OLD, at);
+    await seedConsent(person.accountId, TERMS_VERSION, PRIVACY_VERSION, at);
+    if (!oldFirst) await seedConsent(person.accountId, OLD, OLD, at);
     const status = await post(app, consentStatus, { token: person.token });
     expect(await status.json()).toMatchObject({ latest: { terms_version: TERMS_VERSION }, current: true });
   });
