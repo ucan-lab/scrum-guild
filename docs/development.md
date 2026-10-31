@@ -378,6 +378,27 @@ pnpm -s sg ops
 
 `pnpm -s` を付けると、pnpm の見出しと失敗時の `ELIFECYCLE` が出ない。出力を `jq` に渡すときは `pnpm -s sg` か `node cli/sg.ts` で呼ぶ。
 
+### MCP（sg mcp）
+
+`sg mcp` は stdio の MCP サーバーで、手元の AI（Claude Code など）に操作を道具として見せる。`--profile`、`--org`、`--workspace` と環境変数、設定ファイルは `sg call` と同じ意味で、同じ順に接続先を決める。操作の定義は取り込まず、`tools/list` のたびに `operation-list` を取るので、サーバーに操作の定義を足すと、MCP のコードを書かずに道具が増える。
+
+- 道具: 名前は操作の `name`、説明は `description`、入力は `input_schema`。`mode` が `read` の操作に `readOnlyHint: true` を、`write` に `false` を付ける。`outputSchema` は付けず、成功の本文は JSON の text で返す
+- 接続先: 組織とワークスペースは接続先から補い、道具の入力に `org` は足さない（AI が引数で別の組織へ切り替えられないようにする）。接続先がワークスペースを持つと、ワークスペースの下の操作の `workspace_id` は必須から外れる（入力に渡せば、その値を使う）
+- 権限: 呼び出しは `sg call` と同じ経路（トークン付きの API）で、トークンの持ち主の権限の範囲で動く。読み取り／書き込みはトークンの範囲（`read` か `write`）で決まる。読み取りのトークンでは書き込みの道具が一覧に出ず、名指しで呼んでも `isError` の結果になる。運用者の操作は出ない。書き込む道具を実行する前の確認は、クライアント（Claude Code の許可の確認）に任せる
+- エラー: API のエラーは `isError: true` の結果に、`sg call` の標準エラーと同じ `{"status", "error"}` の JSON を text で返す（権限が無ければ 403、別の組織の ID は 404）。使い方の誤りとつながらない場合も `isError` の結果にし、サーバーは落とさない。一覧が取れないときの `tools/list` はプロトコルのエラーにする
+- 起動: 標準出力は MCP のプロトコル専用で、ほかは書かない。接続先の誤り（設定が無い、`--profile` が無いなど）は標準エラーに `{"error": {"code": "usage", …}}` を出して終了コード 2。標準入力が閉じたら終わる。どの出力にもトークンを含めない
+
+Claude Code への登録は、このリポジトリの作業コピーで次を打つ（`pnpm -s` は、`package.json` のあるディレクトリで動くため）。
+
+```bash
+claude mcp add scrum-guild -- pnpm -s sg mcp
+```
+
+- 組織ごとに登録を分ける。別の組織は別の名前で、`--org` を付けて登録する: `claude mcp add scrum-guild-aoba -- pnpm -s sg mcp --org aoba`。組織ごとに別のトークンを使うなら、`sg config set` で接続先（`--profile`）を作り、`-- pnpm -s sg mcp --profile <名前>` と登録する
+- 読み取りだけにしたいときは、読み取りのトークンを発行して接続先に設定し、その接続先を登録する。書き込みの道具は、書き込みのトークンを設定した接続先だけが見せる
+- どの作業コピーからでも動かすときは、`pnpm -s sg` の代わりに `node <作業コピーの絶対パス>/cli/sg.ts mcp` と登録する
+- 登録の後、Claude Code の `/mcp` で道具の一覧を見られる。読み取りと書き込みを1つずつ頼んで確かめる
+
 ## AI 開発の分担
 
 人が決め、AI が作り、別の AI が点検する。マージするかは、パスの規則と人が決める。

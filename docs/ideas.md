@@ -4,7 +4,7 @@
 
 ## 外部からの操作
 
-- MCP で操作できる
+- 遠隔の MCP（Worker の `/api/mcp`）で操作できる。手元の AI から使う stdio の MCP（`sg mcp`）は `requirements.md` に移した
 - 画面上から Claude などの AI に指示して操作できる。案は `ai.md`
 
 ## AI

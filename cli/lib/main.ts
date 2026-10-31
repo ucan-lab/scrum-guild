@@ -27,21 +27,26 @@ export async function main(argv: string[], deps: CliDeps): Promise<number> {
     if (command === 'call') return await callCommand(argv.slice(1), deps);
     throw usage('コマンドは ops、call、config のいずれか');
   } catch (error) {
-    if (error instanceof ApiCliError) {
-      deps.stderr(error.output + '\n');
-      return 1;
-    }
-    if (error instanceof CliError) {
-      deps.stderr(JSON.stringify({ error: { code: error.code, message: error.message } }) + '\n');
-      return error.code === 'usage' ? 2 : error.code === 'connection_failed' ? 3 : 1;
-    }
-    // 想定外の失敗。元の message には設定やヘッダーの値が入りうるので出さない
-    deps.stderr(JSON.stringify({ error: { code: 'internal_error', message: '想定外の失敗' } }) + '\n');
-    return 1;
+    const report = reportOf(error);
+    deps.stderr(report.text + '\n');
+    return report.exitCode;
   }
 }
 
-type CatalogOperation = {
+// 失敗の出力（標準エラーの JSON、MCP の isError の text）と終了コード。sg mcp も同じ形を使う
+export function reportOf(error: unknown): { text: string; exitCode: number } {
+  if (error instanceof ApiCliError) return { text: error.output, exitCode: 1 };
+  if (error instanceof CliError) {
+    return {
+      text: JSON.stringify({ error: { code: error.code, message: error.message } }),
+      exitCode: error.code === 'usage' ? 2 : error.code === 'connection_failed' ? 3 : 1,
+    };
+  }
+  // 想定外の失敗。元の message には設定やヘッダーの値が入りうるので出さない
+  return { text: JSON.stringify({ error: { code: 'internal_error', message: '想定外の失敗' } }), exitCode: 1 };
+}
+
+export type CatalogOperation = {
   name: string;
   description: string;
   mode: 'read' | 'write';
@@ -49,7 +54,7 @@ type CatalogOperation = {
   input_schema: JsonSchema;
   output_schema: JsonSchema;
 };
-type JsonSchema = {
+export type JsonSchema = {
   type?: string | string[];
   properties?: Record<string, JsonSchema>;
   required?: string[];
@@ -59,26 +64,26 @@ type JsonSchema = {
   enum?: unknown[];
 };
 
-type CliErrorCode = 'usage' | 'connection_failed' | 'invalid_response';
-class CliError extends Error {
+export type CliErrorCode = 'usage' | 'connection_failed' | 'invalid_response';
+export class CliError extends Error {
   readonly code: CliErrorCode;
   constructor(code: CliErrorCode, message: string) {
     super(message);
     this.code = code;
   }
 }
-class ApiCliError extends Error {
+export class ApiCliError extends Error {
   readonly output: string;
   constructor(output: string) {
     super(output);
     this.output = output;
   }
 }
-const usage = (message: string) => new CliError('usage', message);
+export const usage = (message: string) => new CliError('usage', message);
 const messageOf = (error: unknown) => (error instanceof Error ? error.message : String(error));
 
 const REQUEST_TIMEOUT_MS = 30_000;
-const UNLISTED_OPERATION = '操作が一覧に無い（無い操作か、このトークンでは呼べない操作）';
+export const UNLISTED_OPERATION = '操作が一覧に無い（無い操作か、このトークンでは呼べない操作）';
 const URL_MESSAGE = 'url が不正（http か https、認証情報なし。http は localhost のみ）';
 // 接続先の名前にできない。オブジェクトの組み込みの項目を引かないため
 const FORBIDDEN_PROFILE_NAMES = ['__proto__', 'constructor', 'prototype'];
@@ -199,7 +204,7 @@ async function configCommand(args: string[], deps: CliDeps): Promise<number> {
   throw usage('config の使い方が不正');
 }
 
-type Options = { profile?: string; org?: string; workspace?: string; extra: string[] };
+export type Options = { profile?: string; org?: string; workspace?: string; extra: string[] };
 
 function optionsOf(args: string[]): { positional: string[]; options: Options } {
   const positional: string[] = [];
@@ -245,7 +250,7 @@ function isCatalog(body: unknown): body is { operations: CatalogOperation[] } {
   );
 }
 
-async function catalogFor(deps: CliDeps, connection: Connection): Promise<CatalogOperation[]> {
+export async function catalogFor(deps: CliDeps, connection: Connection): Promise<CatalogOperation[]> {
   const response = await request(deps, connection, '/api/operation-list', {});
   if (!response.ok) throw await apiError(response);
   const body = await jsonOf(response);
@@ -265,8 +270,8 @@ async function opsCommand(args: string[], deps: CliDeps): Promise<number> {
   return 0;
 }
 
-type Connection = { url: string; token: string; org?: string; workspace?: string };
-async function connectionOf(options: Options, deps: CliDeps): Promise<Connection> {
+export type Connection = { url: string; token: string; org?: string; workspace?: string };
+export async function connectionOf(options: Options, deps: CliDeps): Promise<Connection> {
   const config = (await readConfig(deps)) ?? { profiles: {} };
   const name = checkedProfileName(options.profile ?? envOf(deps, 'SG_PROFILE') ?? config.default_profile ?? 'main');
   const profile = hasProfile(config, name) ? config.profiles[name] : undefined;
@@ -326,16 +331,36 @@ async function callCommand(args: string[], deps: CliDeps): Promise<number> {
     const value = options.extra[i + 1]!;
     input[key] = valueOf(value, propertySchema(operation.input_schema, key));
   }
+  deps.stdout(JSON.stringify(await callOperation(deps, connection, operation, input), null, 2) + '\n');
+  return 0;
+}
+
+// 一覧にある操作を呼ぶ。組織の slug とワークスペースの ID を補い、API のエラーは ApiCliError で投げる。sg call と sg mcp が共通に使う。input は書き換える
+export async function callOperation(
+  deps: CliDeps,
+  connection: Connection,
+  operation: CatalogOperation,
+  input: Record<string, unknown>,
+): Promise<unknown> {
   if (operation.scope !== 'outside' && !connection.org) throw usage('org が必要');
   if (operation.scope === 'workspace' && input.workspace_id === undefined) {
     if (!connection.workspace) throw usage('workspace が必要');
     input.workspace_id = connection.workspace;
   }
-  const path = operation.scope === 'outside' ? `/api/${name}` : `/api/${encodeURIComponent(connection.org!)}/${name}`;
+  const path =
+    operation.scope === 'outside'
+      ? `/api/${operation.name}`
+      : `/api/${encodeURIComponent(connection.org!)}/${operation.name}`;
   const response = await request(deps, connection, path, input);
   if (!response.ok) throw await apiError(response);
-  deps.stdout(JSON.stringify(await jsonOf(response), null, 2) + '\n');
-  return 0;
+  return await jsonOf(response);
+}
+
+// sg mcp の引数（--profile、--org、--workspace だけ）から接続先を決める。sg call と同じ順で補う
+export async function connectionFromArgs(args: string[], deps: CliDeps): Promise<Connection> {
+  const { positional, options } = optionsOf(args);
+  if (positional.length > 0 || options.extra.length > 0) throw usage('mcp に余分な引数がある');
+  return await connectionOf(options, deps);
 }
 
 // 最上位が oneOf/anyOf（discriminatedUnion）の入力は、分岐のどれかに項目があれば受け付け、分岐ごとの Schema を anyOf にまとめる
@@ -383,7 +408,7 @@ function valueOf(raw: string, schema: JsonSchema | undefined): unknown {
 }
 
 // リダイレクトは追わない（Authorization を別のサーバーへ送らない）。Workers の実行環境は 'error' を投げるので 'manual' にし、3xx は !ok として扱う
-async function request(deps: CliDeps, connection: Connection, path: string, body: unknown): Promise<Response> {
+export async function request(deps: CliDeps, connection: Connection, path: string, body: unknown): Promise<Response> {
   try {
     return await deps.fetch(`${connection.url}${path}`, {
       method: 'POST',
@@ -398,7 +423,7 @@ async function request(deps: CliDeps, connection: Connection, path: string, body
   }
 }
 
-async function apiError(response: Response): Promise<ApiCliError> {
+export async function apiError(response: Response): Promise<ApiCliError> {
   let error: unknown;
   try {
     error = ((await response.json()) as { error?: unknown }).error;
