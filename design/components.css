@@ -186,9 +186,10 @@ h1, h2, h3 { text-wrap: balance; }
   .app[data-nav-collapsed="true"] .nav-item,
   .app[data-nav-collapsed="true"] .org-menu-button { width: 44px; min-height: 44px; justify-content: center; }
   .app[data-nav-collapsed="true"] .nav-item { padding: 0; gap: 0; }
-  /* 今のページは、太字が名前と一緒に見えなくなるので、左に縦棒の形の印を足す。強制カラーでも残るよう、背景でなく縁で描く */
+  /* 今のページは、太字が名前と一緒に見えなくなるので、左に縦棒の形の印を足す。強制カラーでも残るよう、背景でなく縁で描く。
+     項目の内側（左端）に置く。列の端に寄せると、罫の太さ（中世風は 3px）で位置が半端になってにじむため */
   .app[data-nav-collapsed="true"] .nav-item[aria-current="page"]::before {
-    content: ""; position: absolute; left: calc(-1 * var(--space-2)); top: var(--space-2); bottom: var(--space-2);
+    content: ""; position: absolute; left: 0; top: var(--space-2); bottom: var(--space-2);
     border-left: 3px solid var(--color-accent); border-radius: var(--radius-1);
   }
   /* 項目の名前は見えなくしても読み上げに残す（display: none にしない）。キーボードのフォーカスとホバーでだけ見せる。
