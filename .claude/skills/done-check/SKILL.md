@@ -129,7 +129,6 @@ Issue の「確認方法」を自分で実行し、完了条件を満たすか�
 レビューのエージェント（`code-reviewer`、`security-reviewer`、`database-reviewer`、`ui-reviewer`、`falsification-qa`）は、ブランチごとに2巡まで起動できる（フック `.claude/hooks/review-budget.mjs`。最初の起動から120秒以内の起動は同じ巡）。`finding-verifier` は数えない（理由: 指摘を反証にかけるだけで、新しい指摘を出す巡ではないため）。
 起動が拒否されたら、エージェントの名前を変えて呼び直す、Skill や別の経路で同じ点検をするなどで回避しない。`AskUserQuestion` でユーザーに延長を聞き、承認されたら `node .claude/hooks/review-budget.mjs extend <巡数> --reason <理由>` を実行してから呼び直す。承認されなければ、レビューを省いた旨を出力に書いて続ける。
 
-
 ### 7. 直す
 
 出た指摘を、直すものと直さないものに分ける。
