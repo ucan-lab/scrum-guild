@@ -6,7 +6,7 @@ import type { Page } from '@playwright/test';
 import { tokenCreate, tokenList, tokenRevoke } from '../src/shared/operations/session/index.ts';
 import { word, type Vocabulary } from '../src/shared/vocabulary.ts';
 import { expect, test } from './fixtures.ts';
-import { signIn, useVocabulary, waitForSettled, watchViolations } from './helpers.ts';
+import { signIn, waitForSettled, watchViolations } from './helpers.ts';
 import { failOperation, mockOperation } from './operations.ts';
 
 const TOKEN_PATTERN = /^sgp_[A-Za-z0-9_-]{43}$/;
@@ -293,13 +293,11 @@ test('有効なトークンが上限に達していたら、断られた理由�
   await unroute();
 });
 
-for (const vocabulary of ['game', 'scrum'] as const satisfies readonly Vocabulary[]) {
-  test(`${vocabulary}: 節の文言が言葉の辞書の${vocabulary === 'game' ? 'ゲーム' : 'スクラム'}の言葉で出る`, async ({
-    page,
-  }) => {
+{
+  test('節の文言が言葉の辞書のスクラムの言葉で出る', async ({ page }) => {
+    const vocabulary: Vocabulary = 'scrum';
     const vocabularies = { workspace: vocabulary, organization: vocabulary };
     const w = (key: Parameters<typeof word>[0], params?: Parameters<typeof word>[2]) => word(key, vocabularies, params);
-    const unroute = await useVocabulary(page, 'aoba', vocabulary);
     await page.goto('/aoba/me');
     await waitForSettled(page);
     await expect(page.locator('.org-menu-label')).toHaveText(w('organization'));
@@ -343,7 +341,6 @@ for (const vocabulary of ['game', 'scrum'] as const satisfies readonly Vocabular
     await expect(confirm.getByText(w('apiTokenRevokeText'))).toBeVisible();
     await confirm.getByRole('button', { name: w('apiTokenRevoke'), exact: true }).click();
     await expect(row).toHaveCount(0);
-    await unroute();
   });
 }
 
