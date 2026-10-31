@@ -10,6 +10,16 @@ export function loginUrl(current: { pathname: string; search: string }): string 
   return `${loginPath}?return_to=${encodeURIComponent(safeReturnTo(current.pathname + current.search))}`;
 }
 
+/* eslint-disable @typescript-eslint/no-unused-vars -- 入れ物（実装の担当が置き換える） */
+export function consentUrl(_current: { pathname: string; search: string }): string {
+  throw new Error('未実装');
+}
+
+export function isTermsRequired(_result: { ok: boolean; error?: { code: string } | null }): boolean {
+  throw new Error('未実装');
+}
+/* eslint-enable @typescript-eslint/no-unused-vars */
+
 export function isUnauthenticated(result: { ok: boolean; error?: { code: string } | null }): boolean {
   return !result.ok && result.error?.code === 'unauthenticated';
 }

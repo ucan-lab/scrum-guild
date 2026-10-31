@@ -8,14 +8,41 @@ import { routeOperation } from './operations.ts';
 const CHECKBOX_NAME = '利用規約とプライバシーポリシーを確認し、同意します';
 const UNCONSENTED = { terms_version: TERMS_VERSION, privacy_version: PRIVACY_VERSION, latest: null, current: false };
 
-// 同意の行は追記だけで API に戻す操作が無いので、本物の同意を書くテストは前後に seed の未同意へ戻す（e2e/local-d1.ts）。
-// 繰り返し（--repeat-each）で毎回未同意から始め、同じ admin を開く a11y の検査にも同意を残さない
+// 同意の行は追記だけで API に戻す操作が無いので、本物の同意を書くテストは前後に seed の未同意（unconsented）へ戻す（e2e/local-d1.ts）。
+// 繰り返し（--repeat-each）で毎回未同意から始める。同意していない人は seed の unconsented だけなので、同じ人の行を書くテストはこのファイルにまとめる
 test.describe('本物の API', () => {
   test.beforeEach(async () => {
-    await resetAccountConsents('admin');
+    await resetAccountConsents('unconsented');
   });
   test.afterEach(async () => {
-    await resetAccountConsents('admin');
+    await resetAccountConsents('unconsented');
+  });
+
+  test('同意していない人が組織の画面を開くと同意の画面に移り、同意すると開こうとした画面に戻る', async ({
+    page,
+    context,
+    baseURL,
+  }) => {
+    await signIn(context, baseURL, 'unconsented');
+    await page.goto('/aoba');
+    await expect(page).toHaveURL(/\/consent\?return_to=%2Faoba$/);
+    await page.getByRole('checkbox', { name: CHECKBOX_NAME }).check();
+    await page.getByRole('button', { name: '同意して進む' }).click();
+    await expect(page).toHaveURL(/\/aoba$/);
+  });
+
+  test('同意していない人が / を開くと同意の画面に移る', async ({ page, context, baseURL }) => {
+    await signIn(context, baseURL, 'unconsented');
+    await page.goto('/');
+    await expect(page).toHaveURL(/\/consent/);
+    await expect(page.getByRole('checkbox', { name: CHECKBOX_NAME })).toBeVisible();
+  });
+
+  test('同意済みの admin は組織の画面をそのまま開ける', async ({ page, context, baseURL }) => {
+    await signIn(context, baseURL, 'admin');
+    await page.goto('/aoba');
+    await expect(page).toHaveURL(/\/aoba$/);
+    await expect(page).not.toHaveURL(/\/consent/);
   });
 
   test('ログインした人が印を付けて同意し、return_to の画面へ戻り、開き直すと同意済みと出る', async ({
@@ -23,7 +50,7 @@ test.describe('本物の API', () => {
     context,
     baseURL,
   }) => {
-    await signIn(context, baseURL, 'admin');
+    await signIn(context, baseURL, 'unconsented');
     await page.goto('/consent?return_to=%2Faoba');
     const checkbox = page.getByRole('checkbox', { name: CHECKBOX_NAME });
     const submit = page.getByRole('button', { name: '同意して進む' });
@@ -41,7 +68,7 @@ test.describe('本物の API', () => {
 });
 
 test('版が上がった直後の同意は 409 で断られ、読み直した版と更新の知らせが出る', async ({ page, context, baseURL }) => {
-  await signIn(context, baseURL, 'admin');
+  await signIn(context, baseURL, 'unconsented');
   let reads = 0;
   await routeOperation(page, consentStatus, async (call) => {
     reads += 1;
@@ -58,7 +85,7 @@ test('版が上がった直後の同意は 409 で断られ、読み直した版
 });
 
 test('409 の後の読み直しで同意済みと分かったら、更新の知らせは出さない', async ({ page, context, baseURL }) => {
-  await signIn(context, baseURL, 'admin');
+  await signIn(context, baseURL, 'unconsented');
   const consented = {
     ...UNCONSENTED,
     latest: {
@@ -86,7 +113,7 @@ test('状態を読み込めないときは、もう一度試すとログアウ�
   context,
   baseURL,
 }) => {
-  await signIn(context, baseURL, 'admin');
+  await signIn(context, baseURL, 'unconsented');
   let reads = 0;
   await routeOperation(page, consentStatus, async (call) => {
     reads += 1;
@@ -105,7 +132,7 @@ test('409 の後の読み直しに失敗したら、古い版のフォームを�
   context,
   baseURL,
 }) => {
-  await signIn(context, baseURL, 'admin');
+  await signIn(context, baseURL, 'unconsented');
   let reads = 0;
   await routeOperation(page, consentStatus, async (call) => {
     reads += 1;

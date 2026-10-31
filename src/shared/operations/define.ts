@@ -47,6 +47,8 @@ type Common<Input, Output> = {
   readonly rateLimit?: RateLimit;
   // API トークンでは呼べない（403）。Cookie のセッションの行や Cookie を直に扱う操作（ログアウト）に付ける。組織の外の操作だけ
   readonly cookieOnly?: true;
+  // 同意していない人にも通す（同意の検査を飛ばす）。permission: 'login' の操作だけ
+  readonly skipsConsent?: true;
 };
 
 // ワークスペースの下の操作は、入力に workspace_id を持つ。無いと型で落ちる

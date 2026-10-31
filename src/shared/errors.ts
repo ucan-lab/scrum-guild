@@ -9,6 +9,8 @@ export const errorCodes = [
   // パスワードでのログインの、違うパスワード、無いメールアドレス、そろえ方に合わない入力。401。どれも同じ本文にする
   'invalid_credentials',
   'not_found',
+  // 今の版の規約に同意していない。403。同意の操作とログアウトなど、定義に skipsConsent を付けた操作以外をすべて断る。画面は同意の画面へ移す
+  'terms_required',
   'conflict',
   // 閉じたワークスペースへの書き込み。読み取り専用なので書けない。409
   'workspace_closed',
