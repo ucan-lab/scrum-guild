@@ -264,8 +264,7 @@ test.describe('自分の設定（ミナト）', () => {
       const table = page.getByRole('table', { name: '経験値の明細' });
       await expect(table.locator('tbody tr')).toHaveCount(50);
       // 説明は表の上（.setting の見出しの列に入れない）
-      // （本文の API トークンの節は .setting を使うので、明細の表を含む .setting が無いことで確かめる）
-      await expect(page.locator('.setting').filter({ has: table })).toHaveCount(0);
+      await expect(page.locator('.setting')).toHaveCount(0);
       const sizes = await page.evaluate(() => {
         const ledger = document.querySelector('table[aria-label="経験値の明細"]')!;
         const wrap = ledger.closest('.table-wrap')!;

@@ -364,7 +364,7 @@ for (const width of [1100, 1280, 1440]) {
     const measured = await page.evaluate((rowName) => {
       const table = document.querySelector('table[aria-label="発行済みの API トークン"]')!;
       const wrap = table.closest('.table-wrap')!;
-      const setting = table.closest('.setting')!;
+      const section = table.closest('.section')!;
       const main = document.querySelector('.layout-main')!;
       const row = [...table.querySelectorAll('tbody tr')].find((tr) => tr.textContent?.includes(rowName))!;
       const button = row.querySelector('td.is-actions button')!.getBoundingClientRect();
@@ -375,7 +375,9 @@ for (const width of [1100, 1280, 1440]) {
       return {
         overflow: wrap.scrollWidth - wrap.clientWidth,
         pageOverflow: document.documentElement.scrollWidth - window.innerWidth,
-        settingWidth: setting.getBoundingClientRect().width,
+        sectionWidth: section.getBoundingClientRect().width,
+        // .setting（見出しの列 260px）に入れていないこと
+        inSetting: table.closest('.setting') !== null,
         mainWidth: main.getBoundingClientRect().width,
         buttonRight: button.right,
         buttonWidth: button.width,
@@ -385,7 +387,8 @@ for (const width of [1100, 1280, 1440]) {
     expect(measured.overflow).toBeLessThanOrEqual(0);
     expect(measured.pageOverflow).toBeLessThanOrEqual(0);
     // 本文（.layout-main）の中でなく、その外の全幅に置かれている
-    expect(measured.settingWidth).toBeGreaterThan(measured.mainWidth);
+    expect(measured.sectionWidth).toBeGreaterThan(measured.mainWidth);
+    expect(measured.inSetting).toBe(false);
     expect(measured.buttonRight).toBeLessThanOrEqual(width);
     expect(measured.buttonWidth).toBeGreaterThan(0);
     expect(measured.overlaps.length).toBeGreaterThan(0);
