@@ -81,6 +81,24 @@ test('一覧だけが 401 でも、ログインへ 307 で移し、戻り先に�
 });
 
 test('3つとも同時に読みに行く（直列にしない）', async () => {
-  const { calls } = await run({ [summaryPath]: ok({}), [grantsPath]: ok({}), [tokenPath]: ok(tokens) });
-  expect([...calls].sort()).toEqual([grantsPath, summaryPath, tokenPath].sort());
+  // どの応答も、3件の要求が出そろうまで返さない。直列の実装は1件目の応答を待って止まり、3件そろわない
+  const started: string[] = [];
+  const release: (() => void)[] = [];
+  const fake = ((input: RequestInfo | URL) => {
+    started.push(String(input));
+    return new Promise<Response>((resolve) => {
+      release.push(() => resolve(new Response(JSON.stringify({}), { status: 200 })));
+    });
+  }) as typeof fetch;
+  const event = {
+    params: { slug: 'aoba' },
+    fetch: fake,
+    url: new URL('http://localhost/aoba/me'),
+  } as unknown as Parameters<typeof load>[0];
+  const running = (load as (e: typeof event) => Promise<unknown>)(event);
+  await new Promise((resolve) => setTimeout(resolve, 50));
+  const startedBeforeAnyReply = [...started].sort();
+  for (const resolve of release) resolve();
+  await running;
+  expect(startedBeforeAnyReply).toEqual([grantsPath, summaryPath, tokenPath].sort());
 });

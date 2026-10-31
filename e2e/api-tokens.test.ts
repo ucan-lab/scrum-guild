@@ -1,6 +1,7 @@
 // 自分の設定（/<slug>/me）の「API トークン」の節（#581）。seed のセッション（seed/sessions.ts）の Cookie で開く。
 // あおば開発の管理者のミナトで、発行 → 値が1回だけ見える → 一覧に出る（値は出ない）→ そのトークンで API を呼ぶ → 取り消す → 一覧から消える、
-// を通す。作ったトークンは、各テストの中で取り消して残さない。ミナトには seed のトークン（seed/api-tokens.ts）もあるので、行は名前で絞る
+// を通す。作ったトークンは、各テストの中で取り消して残さない。ミナトには seed のトークン（seed/api-tokens.ts）もあるので、行は名前で絞る。
+// 有効なトークンの上限（20件）は test/api-token-settings-fixes.test.ts が確かめ、ここは上限で断られたときの画面の知らせだけを見る
 import type { Page } from '@playwright/test';
 import { tokenCreate, tokenList, tokenRevoke } from '../src/shared/operations/session/index.ts';
 import { word, type Vocabulary } from '../src/shared/vocabulary.ts';
@@ -122,8 +123,9 @@ test('発行すると値が1回だけ見え、一覧に出て（値は出ない�
   expect((await call()).status()).toBe(200);
 
   await revoke(page, name);
-  await expect(rowOf(page, name)).toHaveCount(0);
+  // 知らせは数秒で消えるので、行が消える確認より先に見る
   await expect(toast(page, `「${name}」を取り消しました`)).toBeVisible();
+  await expect(rowOf(page, name)).toHaveCount(0);
   await expect(section.getByLabel('名前', { exact: true })).toBeFocused();
   expect((await call()).status()).toBe(401);
   // 開き直しても出ない
@@ -223,6 +225,66 @@ test('一覧が空なら空の状態を出し、読めなければこの節に�
   await section.getByRole('button', { name: 'もう一度試す（API トークン）' }).click();
   await expect(section.getByRole('table', { name: '発行済みの API トークン' })).toBeVisible();
   await expect(section.getByText('API トークンを読み込めませんでした')).toHaveCount(0);
+  // 押したボタンが消えるので、節の題へフォーカスを移し、読めたことを読み上げの領域で伝える
+  await expect(section.getByRole('heading', { level: 2, name: 'API トークン' })).toBeFocused();
+  await expect(section.getByRole('status').filter({ hasText: 'API トークンの一覧を読み込みました' })).toHaveCount(1);
+});
+
+test('発行直後のダイアログは、Esc を押しても背景を押しても閉じず、値が残り、「閉じる」で閉じる', async ({ page }) => {
+  const name = uniqueName('閉じない');
+  await page.goto('/aoba/me');
+  await expect(sectionOf(page).getByRole('table', { name: '発行済みの API トークン' })).toBeVisible();
+  const token = await issue(page, name, '読み取り', '1');
+  const dialog = page.getByRole('dialog', { name: 'API トークンを発行しました' });
+  const value = dialog.getByLabel('トークンの値');
+
+  await page.keyboard.press('Escape');
+  await expect(dialog).toBeVisible();
+  await expect(value).toHaveValue(token);
+  // 続けてもう一度押しても残る（ブラウザは止めた後の2回目の Esc で閉じることがあるので、Dialog が開き直す）
+  await page.keyboard.press('Escape');
+  await expect(dialog).toBeVisible();
+  await expect(value).toHaveValue(token);
+
+  // 背景（画面の左上の隅。ダイアログの外側）を押す
+  await page.mouse.click(2, 2);
+  await expect(dialog).toBeVisible();
+  await expect(value).toHaveValue(token);
+
+  // × でも閉じられる
+  await dialog.getByRole('button', { name: '閉じる', exact: true }).first().click();
+  await expect(dialog).toHaveCount(0);
+  await revoke(page, name);
+  await expect(rowOf(page, name)).toHaveCount(0);
+});
+
+test('名前は絵文字51個（102単位）と半角100文字でも、有効日数は1でも、発行できる', async ({ page }) => {
+  await page.goto('/aoba/me');
+  await expect(sectionOf(page).getByRole('table', { name: '発行済みの API トークン' })).toBeVisible();
+  for (const name of ['😀'.repeat(51), 'a'.repeat(100)]) {
+    expect(await issue(page, name, '読み取り', '1')).toMatch(TOKEN_PATTERN);
+    await closeIssued(page);
+    await expect(rowOf(page, name)).toHaveCount(1);
+    await revoke(page, name);
+    await expect(rowOf(page, name)).toHaveCount(0);
+  }
+});
+
+test('有効なトークンが上限に達していたら、断られた理由と取り消しの促しを出し、値のダイアログは開かない', async ({
+  page,
+}) => {
+  const section = sectionOf(page);
+  await page.goto('/aoba/me');
+  await expect(section.getByRole('table', { name: '発行済みの API トークン' })).toBeVisible();
+  const unroute = await failOperation(page, tokenCreate, 409, 'conflict', { details: { reason: 'limit' } });
+  await section.getByLabel('名前', { exact: true }).fill('上限の確かめ');
+  await section.getByRole('button', { name: '発行する' }).click();
+  await expect(section.getByRole('alert')).toHaveText(
+    '発行できるトークンは20件までです。使わないものを取り消してください',
+  );
+  await expect(section.getByLabel('名前', { exact: true })).toHaveValue('上限の確かめ');
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await unroute();
 });
 
 for (const vocabulary of ['game', 'scrum'] as const satisfies readonly Vocabulary[]) {

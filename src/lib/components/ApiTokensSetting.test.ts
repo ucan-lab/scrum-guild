@@ -32,12 +32,29 @@ test('どちらの言葉づかいでも、apiToken の辞書のキーはゲー�
   }
 });
 
+// 行のセル（td[data-label=…]）の文字だけを取り出す。範囲の選択肢の文字（発行の欄の「書き込み」）と取り違えないため
+function cellText(body: string, label: string): string {
+  const cell = new RegExp(`<td[^>]*data-label="${label}"[^>]*>(.*?)</td>`, 's').exec(body);
+  expect(cell, `${label} のセル`).not.toBeNull();
+  return cell![1]!
+    .replace(/<!--.*?-->/gs, '')
+    .replace(/<[^>]*>/g, '')
+    .trim();
+}
+
+test('一覧の行の範囲のセルは、write なら書き込み、read なら読み取りを出す', () => {
+  expect(cellText(renderWith([token]), '範囲')).toBe('書き込み');
+  expect(cellText(renderWith([{ ...token, scope: 'read' as never }]), '範囲')).toBe('読み取り');
+});
+
 test('一覧の行は名前、範囲、期限、未使用を出し、ハッシュ（id）と生の値の接頭辞は HTML のどこにも出ない', () => {
   for (const vocabulary of VOCABULARIES) {
     setVocabularies({ organization: vocabulary });
     const body = renderWith([token]);
     expect(body).toContain('手元の端末');
-    expect(body).toContain('書き込み');
+    expect(cellText(body, '範囲')).toBe('書き込み');
+    expect(cellText(body, '期限')).toBe(formatLocalDate(token.expires_at));
+    expect(cellText(body, '最後に使った日')).toBe('未使用');
     expect(body).toContain(formatLocalDate(token.expires_at));
     expect(body).toContain('未使用');
     expect(body).toContain('aria-label="API トークン「手元の端末」を取り消す"');

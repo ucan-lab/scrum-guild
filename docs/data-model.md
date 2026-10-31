@@ -176,7 +176,7 @@
 | --- | --- | --- | --- |
 | token_hash | TEXT | PK、`CHECK (length(token_hash) = 64 AND token_hash NOT GLOB '*[^0-9a-f]*')` | 生の値 `sgp_` + 32 バイトの乱数の base64url（43文字）の SHA-256 を小文字の16進（64文字）にしたもの。生の値は発行の応答で1回だけ返し、DB にもログにも残さない。形は `sessions.token_hash` と同じ CHECK |
 | account_id | TEXT | NOT NULL、FK accounts | トークンを発行した人。呼び出しはこの人として行う |
-| name | TEXT | NOT NULL、`CHECK (length(name) BETWEEN 1 AND 100)` | 発行した人が付ける、用途を思い出すための名前 |
+| name | TEXT | NOT NULL、`CHECK (length(name) BETWEEN 1 AND 100)` | 発行した人が付ける、用途を思い出すための名前。SQLite の `length()` は NUL（U+0000）で数えるのをやめて CHECK に落ちるので、発行の入力の検証で NUL を断る |
 | scope | TEXT | NOT NULL、`CHECK (scope IN ('read', 'write'))` | `read` は読み取りの操作（`mode: 'read'`）だけ、`write` は読み取りと書き込みの両方を呼べる |
 | created_at | TEXT | NOT NULL | |
 | last_used_at | TEXT | | 最後に使った日時。一度も使っていなければ空。使うたびに今へ書き直す（前の値が今より前のときだけ） |
@@ -186,6 +186,7 @@
 - 索引: `(account_id)`。その人のトークンを取り消すときと、一覧が引く。
 - 読めるのは、`token_hash` の行があり、`revoked_at` が空で、`expires_at` が基準の時刻より後のとき。形が違う値（`API_TOKEN_PATTERN` に合わない）は DB を引かずに断る。
 - ログインできる条件を失ったとき（入れる組織が1つもなくなり、運用者でもないとき。`sessions` と同じ判定）は、判定した時刻までに作られたその人のトークンに `revoked_at` を書く。判定の後に発行したトークンは残す。取り消したトークンは戻さない。
+- 行数の上限: 1アカウントの有効な行（`revoked_at` が空で、`expires_at` が基準の時刻より後）は20件まで（`API_TOKEN_MAX_ACTIVE`）。発行の `INSERT` を `INSERT ... SELECT ... WHERE (有効な行の数) < 20` の1文にして守り、同時に発行しても超えない。入らなかったとき（`changes` が 0）は 409 の `conflict`（`details.reason` は `limit`）。取り消し済みと期限切れの行は数えない。一覧は上限と同じ件数までを返す（超えないはずの保険）。
 - 取り消し済みの行も、`expires_at` を過ぎるまで残す。期限を過ぎた行（`expires_at <= 定期処理の基準の時刻`）を、毎分の定期処理で消す（「期限切れの行の掃除」）。
 - 発行、一覧、取り消しは、自分の設定の画面から行う操作（`token-create`、`token-list`、`token-revoke`。どれも Cookie のセッションだけ）。発行は 1 行を `INSERT` し、生の値は応答で1回だけ返す。一覧は呼んだ人の、`revoked_at` が空で `expires_at` が今より後の行を、`created_at` の新しい順に返し、値は返さない（`id` は `token_hash`）。取り消しは呼んだ人の行だけを指し、他人の行と存在しない行は同じ 404。先に行を読んで 404 と成功を分け、書く文は `revoked_at IS NULL` の行だけを `UPDATE` するので、取り消し済みの行の `revoked_at` は書き直さない。
 

@@ -1190,7 +1190,10 @@ const looooooooooooooooooooooooooooooooooongLine = "コードの長い1行は、
   // ---- ダイアログ ----
   // html は中身。閉じる操作は data-close-dialog。開いた元の要素にフォーカスを戻す
   let dialogOpener = null;
-  function openDialog(title, body, foot) {
+  // 値を二度と出せないダイアログ（API トークンの発行直後）は、Esc と背景では閉じず、「閉じる」と × だけで閉じる（本番の Dialog の outsideDismiss={false}）
+  let dialogOnlyButtons = false;
+  function openDialog(title, body, foot, onlyButtons = false) {
+    dialogOnlyButtons = onlyButtons;
     dialogOpener = document.activeElement;
     const el = document.getElementById("dialog");
     el.innerHTML = `<div class="dialog-sheet" role="dialog" aria-modal="true" aria-labelledby="dialog-title">
@@ -1204,7 +1207,7 @@ const looooooooooooooooooooooooooooooooooongLine = "コードの長い1行は、
   function closeDialog() {
     const el = document.getElementById("dialog");
     if (!el || el.hidden) return false;
-    el.hidden = true; el.innerHTML = "";
+    el.hidden = true; el.innerHTML = ""; dialogOnlyButtons = false;
     if (dialogOpener && dialogOpener.focus) dialogOpener.focus();
     return true;
   }
@@ -1421,7 +1424,7 @@ const looooooooooooooooooooooooooooooooooongLine = "コードの長い1行は、
              <button class="btn" type="button" data-toast="トークンの値をコピーしました">${icon("link")}コピーする</button></div></div>
          <div class="callout is-warn">${icon("alert")}<span>この値は二度と見られません。閉じる前にコピーして、安全な場所に保管してください。</span></div>
          <p class="field-hint">2027/01/29 09:00 まで使えます。</p>`,
-        `<button class="btn is-primary" type="button" data-close-dialog>閉じる</button>`);
+        `<button class="btn is-primary" type="button" data-close-dialog>閉じる</button>`, true);
     },
     // API トークンの取消の確認（本番は ConfirmDialog）。自分の設定の一覧の「取り消す」から開く。取り消せない旨を書く
     tokenRevoke: () => {
@@ -2378,7 +2381,7 @@ const looooooooooooooooooooooooooooooooooongLine = "コードの長い1行は、
       const e = D.epics[el.dataset.celebrate];
       celebrate(e.title, `${t("party")}の ${e.party.length} 人に ${{ small: 100, medium: 300, large: 600 }[e.tier]} XP`); return;
     }
-    if ((el = hit("data-close-dialog")) || ev.target.id === "dialog") {
+    if ((el = hit("data-close-dialog")) || (ev.target.id === "dialog" && !dialogOnlyButtons)) {
       const msg = el && el.dataset.toast; closeDialog(); if (msg) toast(`${icon("check")}${esc(msg)}`); return;
     }
     if ((el = hit("data-toast"))) {
@@ -2450,7 +2453,9 @@ const looooooooooooooooooooooooooooooooooongLine = "コードの長い1行は、
     if (ev.key !== "Escape" || ev.isComposing || ev.keyCode === 229) return;
     if (orgMenuOpen) { ev.stopPropagation(); closeOrgMenu(); return; }
     if (accountMenuOpen) { ev.stopPropagation(); closeAccountMenu(); return; }
-    if (closeCelebrate() || closeDialog()) return;
+    if (closeCelebrate()) return;
+    if (dialogOnlyButtons && !document.getElementById("dialog")?.hidden) return;
+    if (closeDialog()) return;
     if (assist.open === "palette") { closeAssist(); return; }
     if (drawer.id) {
       // タイトルとリンクの入力欄では、Esc は欄の取り消し。本文は Esc でも閉じる（書きかけは確かめる）

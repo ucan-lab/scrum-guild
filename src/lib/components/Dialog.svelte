@@ -13,10 +13,13 @@
   // Safari と Firefox はクリックしたボタンにフォーカスを移さない（activeElement が body になる）ので、
   // 開く操作を起こした要素は show(trigger) で渡すと確実に戻せる
   // dismissible が偽の間は、閉じる操作（×、Esc、背景、footer に渡す close）をすべて無視する（送っている最中など）。
-  // 呼び出し側が open を直に偽にするのは止めない
+  // 呼び出し側が open を直に偽にするのは止めない。
+  // outsideDismiss を偽にすると、Esc と背景では閉じず、×と footer に渡す close だけで閉じる（二度と出せない値を見せる間、
+  // うっかり閉じさせないため）。dismissible と違い、×と close は効く
   let {
     open = $bindable(false),
     dismissible = true,
+    outsideDismiss = true,
     danger = false,
     title,
     children,
@@ -24,6 +27,7 @@
   }: {
     open?: boolean;
     dismissible?: boolean;
+    outsideDismiss?: boolean;
     // 取り消せない操作の確認。上辺を赤にする（.dialog-sheet.is-danger）
     danger?: boolean;
     title: string;
@@ -87,7 +91,7 @@
   // もう一度 Esc を押されると、cancel を経ずに閉じる（止められない）ため。open は真のまま保つ
   function onclose(): void {
     if (dialog.open) return;
-    if (!dismissible && open) {
+    if ((!dismissible || !outsideDismiss) && open) {
       dialog.showModal();
       focusFirst();
       return;
@@ -120,7 +124,7 @@
     // Esc。ブラウザに閉じさせず、閉じた状態を open にすぐ反映する（close の event は遅れて届くので、
     // その間に開き直すと open が true のまま変わらず、開かなくなる）
     event.preventDefault();
-    close();
+    if (outsideDismiss) close();
   }}
   {onclose}
   onpointerdown={(event) => {
@@ -133,7 +137,7 @@
     const closing = pressedOnBackdrop && releasedOnBackdrop && event.target === dialog;
     pressedOnBackdrop = false;
     releasedOnBackdrop = false;
-    if (closing) close();
+    if (closing && outsideDismiss) close();
   }}
 >
   <div class="dialog-sheet" class:is-danger={danger}>

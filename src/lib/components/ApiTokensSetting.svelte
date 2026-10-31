@@ -4,8 +4,13 @@
   import type { OutputOf } from '../../shared/operations/define.ts';
   import { tokenCreate, tokenList, tokenRevoke } from '../../shared/operations/session/index.ts';
   import { API_TOKEN_NAME_MAX_LENGTH } from '../../shared/operations/session/token.ts';
-  import { API_TOKEN_MAX_LIFETIME_DAYS, type ApiTokenScope } from '../../shared/api-token.ts';
-  import { callOperation } from '../api.ts';
+  import {
+    API_TOKEN_LIMIT_REASON,
+    API_TOKEN_MAX_ACTIVE,
+    API_TOKEN_MAX_LIFETIME_DAYS,
+    type ApiTokenScope,
+  } from '../../shared/api-token.ts';
+  import { callOperation, type ApiResult } from '../api.ts';
   import { formatDateTime } from '../format-datetime.ts';
   import { formatLocalDate } from '../format.ts';
   import { isUnauthenticated, loginUrl } from '../login-redirect.ts';
@@ -19,15 +24,21 @@
 
   // 自分の設定の画面の「API トークン」の節（見本は design/me.html）。CLI や MCP に渡す鍵を、自分で発行して取り消す。
   // - 発行: 名前、範囲（読み取り／書き込み）、有効日数（1〜90、既定 90）。通ったら、生の値をダイアログに出す。
-  //   値は応答の本文にだけあり、ダイアログを閉じると画面からも消える（再び出す手段は無い）。開いた直後は値の欄でなく、
-  //   「二度と見られません」の知らせへフォーカスを移す（先に読み上げる）。閉じたら、発行の欄へフォーカスを戻す
+  //   値は応答の本文にだけあり、ダイアログを閉じると画面からも消える（再び出す手段は無い）。Esc と背景では閉じず
+  //   （うっかり閉じて値を失わないため）、「閉じる」と × だけで閉じる。開いた直後は値の欄でなく、
+  //   「二度と見られません」の知らせへフォーカスを移す（先に読み上げる）。閉じたら、発行の欄へフォーカスを戻す。
+  //   有効なトークンが上限（API_TOKEN_MAX_ACTIVE）に達していたら 409 が返り、取り消しを促す
   // - 一覧: 名前、範囲、期限、最後に使った日。値は出さない。各行の「取り消す」は確認のダイアログを経る（元に戻せない）。
-  //   取り消せたら一覧を読み直し、フォーカスを発行の欄へ移す（押した行が消えるため）
-  // - 一覧が読めなければ、この節にだけ失敗と「もう一度試す」を出す（画面のほかの節は生かす）。読み直しの失敗は、今の一覧を残して知らせる
+  //   取り消せて一覧も読み直せたら、フォーカスを発行の欄へ移す（押した行が消えるため）。失敗したら、押したボタンに残す。
+  //   取消の 404 は、ほかで取り消されたか期限が来て消えた行なので、取り消された扱いにして読み直す
+  // - 一覧が読めなければ、この節にだけ失敗と「もう一度試す」を出す（画面のほかの節は生かす）。読み直せたら節の題へフォーカスを移す。
+  //   読み直しの失敗は、今の一覧を残して知らせる
   // 操作は1件ずつ送り、送っている間はどの操作も aria-disabled にして押しても無視する
   type Token = OutputOf<typeof tokenList>['tokens'][number];
   type FieldName = 'name' | 'lifetime';
   type RetryState = 'idle' | 'retrying' | 'failed';
+  // stale は、待つ間に新しい読み込みが始まったので、この応答を捨てたこと
+  type ReloadOutcome = 'ok' | 'failed' | 'stale';
 
   // initial は画面の load が読んだ一覧。読めなかったときは null
   let { initial }: { initial: Token[] | null } = $props();
@@ -41,21 +52,20 @@
   const lifetimeId = `${ids}-lifetime`;
   const lifetimeHintId = `${ids}-lifetime-hint`;
   const lifetimeErrorId = `${ids}-lifetime-error`;
-  const formErrorId = `${ids}-form-error`;
 
   let tokens = $state<Token[] | null>(untrack(() => initial));
   // 一覧を読み直せなかった（今の一覧は残す）
   let refreshFailed = $state(false);
   let retry = $state<RetryState>('idle');
-  // 古い応答を捨てるための番号。画面の load が替わったときに進める（リアクティブにしない）
-  let epoch = 0;
+  // 古い応答を捨てるための番号。一覧を読むたびと、画面の load が替わったときに進める（リアクティブにしない）
+  let loadSeq = 0;
   $effect.pre(() => {
     const next = initial;
     untrack(() => {
       tokens = next;
       refreshFailed = false;
       retry = 'idle';
-      epoch++;
+      loadSeq++;
     });
   });
 
@@ -64,8 +74,10 @@
   let lifetime = $state<number | null>(API_TOKEN_MAX_LIFETIME_DAYS);
   let fieldError = $state<{ field: FieldName | 'form'; text: string } | null>(null);
   let busy = $state<'create' | 'revoke' | null>(null);
+  // 読み上げの領域に入れる文（発行中、取消中、読み直せた）
   let status = $state('');
 
+  let setting = $state<ReturnType<typeof Setting>>();
   let nameInput = $state<HTMLInputElement>();
   let lifetimeInput = $state<HTMLInputElement>();
   let formError = $state<HTMLElement>();
@@ -84,28 +96,34 @@
     window.location.assign(loginUrl(page.url, result));
   }
 
-  async function reload(): Promise<boolean> {
-    const mine = epoch;
+  async function reload(): Promise<ReloadOutcome> {
+    const mine = ++loadSeq;
     const result = await callOperation(tokenList, {});
-    if (mine !== epoch) return false;
+    if (mine !== loadSeq) return 'stale';
     if (!result.ok && isUnauthenticated(result)) {
       toLogin(result);
-      return false;
+      return 'failed';
     }
     if (!result.ok) {
       if (tokens !== null) refreshFailed = true;
-      return false;
+      return 'failed';
     }
     tokens = result.data.tokens;
     refreshFailed = false;
-    return true;
+    return 'ok';
   }
 
   async function retryLoad(): Promise<void> {
     if (retry === 'retrying') return;
     retry = 'retrying';
-    const ok = await reload();
-    retry = ok ? 'idle' : 'failed';
+    const outcome = await reload();
+    // 捨てた応答は失敗ではない。新しい読み込みが、この節の表示を決める
+    retry = outcome === 'failed' ? 'failed' : 'idle';
+    if (outcome !== 'ok') return;
+    // 押したボタンが消えるので、節の題へフォーカスを移し、読めたことを読み上げに伝える
+    status = t('apiTokenLoaded');
+    await tick();
+    setting?.focusTitle();
   }
 
   // 入力欄の誤り。送る前に画面で見つけて、その欄へフォーカスを移す（API は同じ範囲で 400 を返す）
@@ -113,11 +131,26 @@
     const trimmed = name.trim();
     if (trimmed.length === 0) return { field: 'name', text: t('apiTokenNameRequired') };
     // API と DB は文字数（コードポイント）で数える。length は UTF-16 の単位なので、絵文字が多い名前を誤って断る
-    if ([...trimmed].length > API_TOKEN_NAME_MAX_LENGTH) return { field: 'name', text: t('apiTokenNameTooLong') };
+    if ([...trimmed].length > API_TOKEN_NAME_MAX_LENGTH) {
+      return { field: 'name', text: t('apiTokenNameTooLong', { max: String(API_TOKEN_NAME_MAX_LENGTH) }) };
+    }
     if (lifetime === null || !Number.isInteger(lifetime) || lifetime < 1 || lifetime > API_TOKEN_MAX_LIFETIME_DAYS) {
-      return { field: 'lifetime', text: t('apiTokenLifetimeInvalid') };
+      return { field: 'lifetime', text: t('apiTokenLifetimeInvalid', { max: String(API_TOKEN_MAX_LIFETIME_DAYS) }) };
     }
     return null;
+  }
+
+  // 発行の上限に達した 409（details.reason が limit）
+  function isLimitReached(result: Exclude<ApiResult<unknown>, { ok: true }>): boolean {
+    const details = result.error?.details;
+    return (
+      result.status === 409 &&
+      result.error?.code === 'conflict' &&
+      typeof details === 'object' &&
+      details !== null &&
+      'reason' in details &&
+      details.reason === API_TOKEN_LIMIT_REASON
+    );
   }
 
   async function create(event: SubmitEvent): Promise<void> {
@@ -156,8 +189,13 @@
         toLogin(result);
         return;
       }
-      // 400 は画面の検査を通った後なので、理由を決めつけず、ほかの失敗と同じ文にする
-      fieldError = { field: 'form', text: t('apiTokenCreateFailed') };
+      // 400 は画面の検査を通った後なので、理由を決めつけず、ほかの失敗と同じ文にする。
+      // 応答が届かなかっただけで、サーバーでは作れていることがあるので、一覧は読み直す
+      const text = isLimitReached(result)
+        ? t('apiTokenLimitReached', { max: String(API_TOKEN_MAX_ACTIVE) })
+        : t('apiTokenCreateFailed');
+      fieldError = { field: 'form', text };
+      void reload();
       await tick();
       formError?.focus();
     } finally {
@@ -189,21 +227,25 @@
     if (!((await revokeDialog?.ask(trigger)) ?? false)) return;
     busy = 'revoke';
     status = t('apiTokenRevoking');
+    let rowGone: boolean;
     try {
       const result = await callOperation(tokenRevoke, { id: token.id });
       if (!result.ok && isUnauthenticated(result)) {
         toLogin(result);
         return;
       }
-      if (result.ok) showToast(t('apiTokenRevoked', { name: token.name }), 'check');
+      // 404 は、ほかで取り消したか期限が来て消えた行。取り消された扱いにして、読み直して行を消す
+      const revoked = result.ok || result.status === 404;
+      if (revoked) showToast(t('apiTokenRevoked', { name: token.name }), 'check');
       else showToast(t('apiTokenRevokeFailed'), 'alert');
       // 取り消せなかったときも、行の今の状態に合わせるために読み直す
-      await reload();
+      rowGone = revoked && (await reload()) === 'ok';
     } finally {
       busy = null;
       status = '';
     }
-    // 押した行は一覧から消えるので、発行の欄へフォーカスを移す
+    // 押した行が一覧から消えたときだけ、発行の欄へフォーカスを移す。残ったときは、確認のダイアログが戻した押したボタンのまま
+    if (!rowGone) return;
     await tick();
     nameInput?.focus();
   }
@@ -225,7 +267,7 @@
   >
 {/snippet}
 
-<Setting title={t('apiTokenTitle')} description={t('apiTokenDesc')}>
+<Setting bind:this={setting} title={t('apiTokenTitle')} description={t('apiTokenDesc')}>
   <form class="form" aria-label={t('apiTokenFormLabel')} onsubmit={create} novalidate>
     <div class="form-row is-start">
       <div class="field" class:is-invalid={fieldError?.field === 'name'}>
@@ -241,20 +283,37 @@
           aria-describedby={describedBy(nameHintId, fieldError?.field === 'name' ? nameErrorId : null)}
           oninput={() => (fieldError = fieldError?.field === 'name' ? null : fieldError)}
         />
-        <span class="field-hint" id={nameHintId}>{t('apiTokenNameHint')}</span>
+        <span class="field-hint" id={nameHintId}
+          >{t('apiTokenNameHint', { max: String(API_TOKEN_NAME_MAX_LENGTH) })}</span
+        >
         {#if fieldError?.field === 'name'}
           <span class="field-error" id={nameErrorId} role="alert"><Icon name="alert" />{fieldError.text}</span>
         {/if}
       </div>
       <div class="field">
         <span class="field-label" id={scopeLabelId}>{t('apiTokenScopeLabel')}</span>
+        <!-- 送っている間は disabled でなく aria-disabled にして、押しても選びを変えない（フォーカスを失わせないため） -->
         <div class="segmented" role="radiogroup" aria-labelledby={scopeLabelId} aria-describedby={scopeHintId}>
           <label>
-            <input type="radio" name={`${ids}-scope`} value="read" bind:group={scope} disabled={busy === 'create'} />
+            <input
+              type="radio"
+              name={`${ids}-scope`}
+              value="read"
+              bind:group={scope}
+              aria-disabled={busy === 'create'}
+              onclick={(event) => busy === 'create' && event.preventDefault()}
+            />
             <span>{t('apiTokenScopeRead')}</span>
           </label>
           <label>
-            <input type="radio" name={`${ids}-scope`} value="write" bind:group={scope} disabled={busy === 'create'} />
+            <input
+              type="radio"
+              name={`${ids}-scope`}
+              value="write"
+              bind:group={scope}
+              aria-disabled={busy === 'create'}
+              onclick={(event) => busy === 'create' && event.preventDefault()}
+            />
             <span>{t('apiTokenScopeWrite')}</span>
           </label>
         </div>
@@ -277,14 +336,16 @@
           aria-describedby={describedBy(lifetimeHintId, fieldError?.field === 'lifetime' ? lifetimeErrorId : null)}
           oninput={() => (fieldError = fieldError?.field === 'lifetime' ? null : fieldError)}
         />
-        <span class="field-hint" id={lifetimeHintId}>{t('apiTokenLifetimeHint')}</span>
+        <span class="field-hint" id={lifetimeHintId}
+          >{t('apiTokenLifetimeHint', { max: String(API_TOKEN_MAX_LIFETIME_DAYS) })}</span
+        >
         {#if fieldError?.field === 'lifetime'}
           <span class="field-error" id={lifetimeErrorId} role="alert"><Icon name="alert" />{fieldError.text}</span>
         {/if}
       </div>
     </div>
     {#if fieldError?.field === 'form'}
-      <div class="callout is-danger" id={formErrorId} role="alert" tabindex="-1" bind:this={formError}>
+      <div class="callout is-danger" role="alert" tabindex="-1" bind:this={formError}>
         <Icon name="alert" /><span>{fieldError.text}</span>
       </div>
     {/if}
@@ -292,10 +353,10 @@
       <button class="btn is-primary" type="submit" aria-disabled={busy !== null}>
         {busy === 'create' ? t('apiTokenCreating') : t('apiTokenCreate')}
       </button>
-      <!-- 送っている間の読み上げ。領域は常に置き、中の文字だけを替える -->
-      <span class="field-hint" role="status">{status}</span>
     </div>
   </form>
+  <!-- 発行中、取消中、読み直せたことの読み上げ。領域は常に置き、中の文字だけを替える（見える所には出さない） -->
+  <span class="visually-hidden" role="status">{status}</span>
 
   {#if tokens === null}
     <EmptyState icon="alert" title={t('apiTokenLoadFailed')} text={t('loadFailedText')} actions={retryActions} />
@@ -327,7 +388,8 @@
                 <td class="is-name wrap-anywhere" data-label={t('apiTokenNameLabel')}>{token.name}</td>
                 <td data-label={t('apiTokenScopeLabel')}><span class="tag">{scopeLabel(token.scope)}</span></td>
                 <td class="mono" data-label={t('apiTokenHeaderExpires')}>{formatLocalDate(token.expires_at)}</td>
-                <td class="mono" data-label={t('apiTokenHeaderLastUsed')}>
+                <!-- 日付だけ等幅にする。「未使用」は文なので等幅にしない -->
+                <td class:mono={token.last_used_at !== null} data-label={t('apiTokenHeaderLastUsed')}>
                   {token.last_used_at === null ? t('apiTokenNeverUsed') : formatLocalDate(token.last_used_at)}
                 </td>
                 <td class="is-actions">
@@ -348,7 +410,7 @@
   {/if}
 </Setting>
 
-<Dialog bind:this={issuedDialog} bind:open={issuedOpen} title={t('apiTokenIssuedTitle')}>
+<Dialog bind:this={issuedDialog} bind:open={issuedOpen} outsideDismiss={false} title={t('apiTokenIssuedTitle')}>
   {#if issued}
     <p tabindex="-1" bind:this={issuedLead}>{t('apiTokenIssuedLead', { name: issued.name })}</p>
     <div class="field">

@@ -354,10 +354,11 @@ test.describe('自分の設定（ミナト）', () => {
     await expect(page.getByRole('table', { name: '経験値の明細' }).locator('tbody tr')).toHaveCount(1);
     const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
     expect(overflow).toBeLessThanOrEqual(0);
-    // 面と表の中身が、面と表の枠の外へはみ出さない
-    const inside = await page.evaluate(() =>
-      [...document.querySelectorAll('.panel, .table-wrap')].every((box) => box.scrollWidth <= box.clientWidth),
-    );
+    // 面と明細の表の中身が、面と表の枠の外へはみ出さない（API トークンの節の表は含めない。明細の表の枠に絞る）
+    const inside = await page.evaluate(() => {
+      const ledger = document.querySelector('table[aria-label="経験値の明細"]')!.closest('.table-wrap')!;
+      return [...document.querySelectorAll('.panel'), ledger].every((box) => box.scrollWidth <= box.clientWidth);
+    });
     expect(inside).toBe(true);
   });
 });

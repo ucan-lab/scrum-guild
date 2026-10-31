@@ -1,7 +1,14 @@
 // API トークンを発行し、読み、取り消し、掃除する（docs/data-model.md の `api_tokens`）。
 // 人が差分を読む領域（docs/development.md の「マージの判定」）
-import { API_TOKEN_MAX_LIFETIME_DAYS, API_TOKEN_PATTERN, type ApiTokenScope } from '../../shared/api-token.ts';
+import {
+  API_TOKEN_LIMIT_REASON,
+  API_TOKEN_MAX_ACTIVE,
+  API_TOKEN_MAX_LIFETIME_DAYS,
+  API_TOKEN_PATTERN,
+  type ApiTokenScope,
+} from '../../shared/api-token.ts';
 import { commonDb, type CommonDb, type Statement } from '../db/index.ts';
+import { ApiError } from '../errors.ts';
 import { randomToken, sha256Hex } from './tokens.ts';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -41,20 +48,50 @@ export async function issueApiTokenWith(
   const raw = `sgp_${randomToken()}`;
   const tokenHash = await hashApiToken(raw);
   const expiresAt = new Date(input.now.getTime() + lifetimeDays * DAY_MS).toISOString();
-  await db.batch([
+  const createdAt = input.now.toISOString();
+  // 有効な行の数の確かめと INSERT を1文にする。読んでから書くと、同時の発行が揃って上限を超える
+  const [inserted] = await db.batch([
     db.statement((q) =>
-      q.insertInto('api_tokens').values({
-        token_hash: tokenHash,
-        account_id: input.accountId,
-        name: input.name,
-        scope: input.scope,
-        created_at: input.now.toISOString(),
-        last_used_at: null,
-        expires_at: expiresAt,
-        revoked_at: null,
-      }),
+      q
+        .insertInto('api_tokens')
+        .columns([
+          'token_hash',
+          'account_id',
+          'name',
+          'scope',
+          'created_at',
+          'last_used_at',
+          'expires_at',
+          'revoked_at',
+        ])
+        .expression(
+          q
+            .selectNoFrom((eb) => [
+              eb.val(tokenHash).as('token_hash'),
+              eb.val(input.accountId).as('account_id'),
+              eb.val(input.name).as('name'),
+              eb.val(input.scope).as('scope'),
+              eb.val(createdAt).as('created_at'),
+              eb.val(null).as('last_used_at'),
+              eb.val(expiresAt).as('expires_at'),
+              eb.val(null).as('revoked_at'),
+            ])
+            .where((eb) =>
+              eb(
+                eb
+                  .selectFrom('api_tokens')
+                  .select((count) => count.fn.countAll<number>().as('count'))
+                  .where('account_id', '=', input.accountId)
+                  .where('revoked_at', 'is', null)
+                  .where('expires_at', '>', createdAt),
+                '<',
+                API_TOKEN_MAX_ACTIVE,
+              ),
+            ),
+        ),
     ),
   ]);
+  if (inserted.changes === 0) throw new ApiError(409, 'conflict', { reason: API_TOKEN_LIMIT_REASON });
   return { raw, tokenHash, expiresAt };
 }
 
@@ -79,7 +116,9 @@ export async function listApiTokensOf(db: CommonDb, accountId: string, now: Date
         .where('revoked_at', 'is', null)
         .where('expires_at', '>', now.toISOString())
         .orderBy('created_at', 'desc')
-        .orderBy('token_hash'),
+        .orderBy('token_hash')
+        // 発行が上限を守るので超えないはずの保険。行が増えても一覧が膨らまない
+        .limit(API_TOKEN_MAX_ACTIVE),
     ),
   );
   return rows.flatMap((row) =>
