@@ -117,8 +117,17 @@ describe('直しの後に AI レビューを1回回す', () => {
       '0（最初のレビューが「差分が無いので見ない」か、印の無いまま終わった）なら',
       'pr-feedback の見た回数 0',
     );
+    has(
+      prFeedback,
+      'select(.event == "labeled" and .label.name == "ai-review") | .created_at',
+      'pr-feedback のラベルのイベントの jq',
+    );
     has(prFeedback, 'このセッションで push したかでは決めない', 'pr-feedback');
+    has(prFeedback, '`git rev-parse <短い SHA>`）の先頭と一致するもの', 'pr-feedback の短い SHA の突き合わせ');
     has(prFeedback, '手元の `git rev-parse HEAD` と一致する', 'pr-feedback');
+    has(prFeedback, '30 秒おきに 5 回まで取り直し', 'pr-feedback の head の待ち');
+    has(prFeedback, '先に `git fetch origin` で `origin/<base>` を最新にしてから', 'pr-feedback の fetch');
+    has(prFeedback, '"$(git merge-base origin/<base> HEAD)"', 'pr-feedback の main 上の判定');
     has(prFeedback, 'gh api -X DELETE "repos/{owner}/{repo}/issues/{number}/labels/ai-review"', 'pr-feedback');
     has(
       prFeedback,
@@ -130,6 +139,7 @@ describe('直しの後に AI レビューを1回回す', () => {
   test('ほかの直しにはラベルを付けず、短い SHA を報告に並べて人に聞く', () => {
     has(prFeedback, '`git rev-list --no-merges --abbrev-commit <見た先>..HEAD ^origin/<base>`', 'pr-feedback');
     has(prFeedback, '見た回数が 2 以上になった後の直し', 'pr-feedback');
+    has(prFeedback, 'ラベルで回したのに印が増えなかった後の直しにも付けない', 'pr-feedback');
     has(
       prFeedback,
       '- AI に見られていない直し: 手順 4 の「AI に見られた範囲」で決めたコミットの短い SHA',
