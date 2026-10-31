@@ -290,6 +290,30 @@ test.describe('管理者（あおば開発のミナト）', () => {
     await expect.poll(listCalls).toBe(2);
   });
 
+  test('再開が 409 の member_limit_reached になったら、増える人数と上限、対処を知らせて読み直す', async ({ page }) => {
+    const listCalls = await showSeedWorkspaceClosed(page, () => 'real');
+    await page.route('**/api/aoba/workspace-reopen', (route) =>
+      route.fulfill({
+        status: 409,
+        json: { error: { code: 'member_limit_reached', message: 'x', details: { used: 14, limit: 15, adding: 2 } } },
+      }),
+    );
+    await page.goto('/aoba/admin');
+    const row = workspacesOf(page).locator('tbody tr', { hasText: SEED_NAME });
+    await row.getByRole('button', { name: `「${SEED_NAME}」を再開する` }).click();
+
+    const toast = page.getByRole('status').filter({ hasText: `「${SEED_NAME}」を再開すると` });
+    await expect(toast).toContainText('2 人が組織の人数に数えられ、上限の 15 人を超えるため、再開できません');
+    // 対処は、上限の見直し（運用者に相談）と、ほかのユーザーを無効にすることだけ。閉じたパーティの招待は取り消せない
+    await expect(toast).toContainText('運用者に相談してください');
+    await expect(toast).toContainText('ほかのユーザーを無効にして人数を減らしてください');
+    await expect(toast).not.toContainText('取り消');
+    // 汎用の失敗の文言には落とさない。テンプレートの穴も残さない
+    await expect(page.getByText('を再開できませんでした')).toHaveCount(0);
+    await expect(toast).not.toContainText('{');
+    await expect.poll(listCalls).toBe(2);
+  });
+
   test('操作の後の読み直しに失敗したら、一覧を残したまま知らせ、「もう一度試す」で読み直せる', async ({ page }) => {
     // 2回目（操作の後の読み直し）だけ失敗させる
     await showSeedWorkspaceClosed(page, (call) => (call === 2 ? 'fail' : 'real'));

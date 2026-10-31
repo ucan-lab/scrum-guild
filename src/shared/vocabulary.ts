@@ -1697,6 +1697,12 @@ export const dictionary = defineDictionary({
     '{workspace}を再開できませんでした。もう一度試してください。',
     '{workspace}を再開できませんでした。もう一度試してください。',
   ),
+  // 再開が人数の上限で断られた（409 の member_limit_reached）。{name} は再開しようとした{workspace}の名前、
+  // {adding} は再開で新しく人数に数えられる人、{limit} は人数の上限。閉じた{workspace}の招待は取り消せないので、対処は上限の見直しと、ほかのユーザーの無効化
+  workspaceReopenMemberLimit: organization(
+    '「{name}」を再開すると {adding} 人が{organization}の人数に数えられ、上限の {limit} 人を超えるため、再開できません。上限を見直すか（運用者に相談してください）、ほかのユーザーを無効にして人数を減らしてください',
+    '「{name}」を再開すると {adding} 人が{organization}の人数に数えられ、上限の {limit} 人を超えるため、再開できません。上限を見直すか（運用者に相談してください）、ほかのユーザーを無効にして人数を減らしてください',
+  ),
   // 別の画面で先に操作されていた（409）。終了した状態か再開した状態かは言い切らず、読み直した一覧を見てもらう
   workspaceStateChanged: organization(
     '「{name}」の状態が変わっていました。一覧で状態を確かめてください',

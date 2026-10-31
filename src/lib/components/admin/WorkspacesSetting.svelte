@@ -7,6 +7,7 @@
   import { callOperation } from '../../api.ts';
   import { formatLocalDate } from '../../format.ts';
   import { isUnauthenticated, loginUrl } from '../../login-redirect.ts';
+  import { memberLimitDetailsOf } from '../../member-limit-details.ts';
   import { showToast } from '../../toast.svelte.ts';
   import { t } from '../../vocabulary.svelte.ts';
   import EmptyState from '../EmptyState.svelte';
@@ -88,6 +89,20 @@
       } else if (result.status === 409 && result.error?.code === 'conflict') {
         // 別の画面で先に操作されていた。再開されたのか、終了し直されたのかは言い切らず、読み直した一覧を見てもらう
         showToast(t('workspaceStateChanged', { name: workspace.name }), 'alert');
+      } else if (result.status === 409 && result.error?.code === 'member_limit_reached') {
+        // 人数の上限で断られた。増える人数と上限を含む理由を出す。数が読めない応答は、汎用の失敗に落とす
+        const limit = memberLimitDetailsOf(result.error.details);
+        showToast(
+          limit === undefined
+            ? t('workspaceReopenFailed', { workspace: t('workspace') })
+            : t('workspaceReopenMemberLimit', {
+                name: workspace.name,
+                adding: limit.adding,
+                limit: limit.limit,
+                organization: t('organization'),
+              }),
+          'alert',
+        );
       } else if (result.status === 404 || result.status === 403) {
         showToast(t('workspaceUnavailable', { name: workspace.name }), 'alert');
       } else {
