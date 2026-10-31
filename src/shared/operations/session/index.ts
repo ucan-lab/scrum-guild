@@ -3,6 +3,7 @@
 import { z } from 'zod';
 import { defineOperation } from '../define.ts';
 import type { AnyOperationDefinition } from '../define.ts';
+import { tokenCreate, tokenList, tokenRevoke } from './token.ts';
 
 export const me = defineOperation({
   name: 'me',
@@ -32,4 +33,6 @@ export const logout = defineOperation({
   output: z.object({}),
 });
 
-export const sessionOperations: readonly AnyOperationDefinition[] = [me, logout];
+export { tokenCreate, tokenList, tokenRevoke } from './token.ts';
+
+export const sessionOperations: readonly AnyOperationDefinition[] = [me, logout, tokenCreate, tokenList, tokenRevoke];
