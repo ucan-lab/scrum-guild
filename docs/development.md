@@ -389,11 +389,13 @@ pnpm -s sg ops
 - 起動: 標準出力は MCP のプロトコル専用で、ほかは書かない。接続先の誤り（設定が無い、`--profile` が無いなど）は標準エラーに `{"error": {"code": "usage", …}}` を出して終了コード 2。標準入力が閉じたら終わり、クライアントが先に消えて標準出力が閉じたときも、スタックトレースを出さず静かに終わる。どの出力にもトークンを含めない
 - 環境変数: `SG_URL` と `SG_TOKEN` は、`--profile` を明示しても設定に勝つ（`sg call` と同じ）。Claude Code は起動したシェルの環境変数を道具のサーバーに引き継ぐので、読み取りだけで使うなら、`SG_URL` と `SG_TOKEN` を `export` したまま Claude Code を起動しない（書き込みのトークンが `--profile` の読み取りのトークンに勝つ）
 
-Claude Code への登録は、このリポジトリの作業コピーで次を打つ（`pnpm -s` は、`package.json` のあるディレクトリで動くため）。
+Claude Code への登録は、`main` の作業コピーの絶対パスで CLI を直に指すのを勧める（`pnpm` を挟むと、起動したディレクトリの `package.json` のスクリプトが動き、`pnpm` の出力が標準出力に混ざる余地も残る）。
 
 ```bash
-claude mcp add scrum-guild -- pnpm -s sg mcp
+claude mcp add scrum-guild -- node <main の作業コピーの絶対パス>/cli/sg.ts mcp
 ```
+
+このリポジトリの作業コピーの中だけで試すなら、`claude mcp add scrum-guild -- pnpm -s sg mcp` でもよい（`pnpm -s` は、`package.json` のあるディレクトリで動くため）。
 
 - 組織ごとに登録を分ける。別の組織は別の名前で、`--org` を付けて登録する: `claude mcp add scrum-guild-aoba -- pnpm -s sg mcp --org aoba`。組織ごとに別のトークンを使うなら、`sg config set` で接続先（`--profile`）を作り、`-- pnpm -s sg mcp --profile <名前>` と登録する
 - 読み取りだけにしたいときは、読み取りのトークンを発行して接続先に設定し、その接続先を登録する。書き込みの道具は、書き込みのトークンを設定した接続先だけが見せる。普段は読み取りのトークンで登録し、書き込みが要るときだけ書き込みのトークンの登録を足す
