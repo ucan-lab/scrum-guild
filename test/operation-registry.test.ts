@@ -161,6 +161,8 @@ describe('本番の一覧の塊', () => {
       import: 'default',
       eager: true,
     });
+    // 空だとループが回らず、何も確かめずに通るので、このテストだけで走らせても数を見る
+    expect(Object.keys(sources)).toHaveLength(productionChunkCount);
     for (const [file, source] of Object.entries(sources)) {
       const number = /production-(\d+)\.test\.ts$/.exec(file)?.[1];
       // コメントアウトや分岐の中の呼び出しで通らないよう、コメントと空行を除いたコードが、
