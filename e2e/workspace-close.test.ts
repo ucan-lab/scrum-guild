@@ -290,6 +290,116 @@ test.describe('管理者（あおば開発のミナト）', () => {
     await expect.poll(listCalls).toBe(2);
   });
 
+  // 人数の上限で断られた理由は、4秒で消えるトーストでなく、表の上の消えないコールアウトに出す
+  function refusalOf(page: Page) {
+    return workspacesOf(page).locator('.callout.is-warn[role="alert"]', {
+      hasText: `「${SEED_NAME}」は再開できません`,
+    });
+  }
+
+  test('再開が 409 の member_limit_reached になったら、増える人数と今の人数、上限、対処を表の上に残して読み直す', async ({
+    page,
+  }) => {
+    const listCalls = await showSeedWorkspaceClosed(page, () => 'real');
+    await page.route('**/api/aoba/workspace-reopen', (route) =>
+      route.fulfill({
+        status: 409,
+        json: { error: { code: 'member_limit_reached', message: 'x', details: { used: 14, limit: 15, adding: 2 } } },
+      }),
+    );
+    await page.goto('/aoba/admin');
+    const row = workspacesOf(page).locator('tbody tr', { hasText: SEED_NAME });
+    await row.getByRole('button', { name: `「${SEED_NAME}」を再開する` }).click();
+
+    const refusal = refusalOf(page);
+    await expect(refusal).toBeVisible();
+    await expect(refusal).toContainText('承諾待ちの招待の 2 人が冒険者ギルドの人数に加わり');
+    await expect(refusal).toContainText('今の 14 人と合わせて上限の 15 人を超えます');
+    // 対処は、上限の見直し（運用者に問い合わせる）と、ほかのユーザーを無効にすることだけ。閉じたパーティの招待は取り消せない
+    await expect(refusal).toContainText('上限の見直しは運用者に問い合わせてください');
+    await expect(refusal).toContainText('組織の管理の「ユーザー」で、ほかのユーザーを無効にして人数を減らしてください');
+    await expect(refusal).toContainText('有効に戻しても所属は戻りません');
+    await expect(refusal).not.toContainText('取り消');
+    await expect(refusal).not.toContainText('{');
+    // 表の上にある。汎用の失敗の文言には落とさない
+    const aboveTable = await refusal.evaluate(
+      (el) =>
+        (el.compareDocumentPosition(el.parentElement!.querySelector('table')!) & Node.DOCUMENT_POSITION_FOLLOWING) !==
+        0,
+    );
+    expect(aboveTable).toBe(true);
+    await expect(page.getByText('を再開できませんでした')).toHaveCount(0);
+    // 一覧を読み直した後も、トーストが消える時間を過ぎても残る
+    await expect.poll(listCalls).toBe(2);
+    await page.waitForTimeout(5000);
+    await expect(refusal).toBeVisible();
+
+    // 次に「再開する」を押すと消える（成功すれば、そのままトーストで知らせる）
+    await page.unroute('**/api/aoba/workspace-reopen');
+    await page.route('**/api/aoba/workspace-reopen', (route) =>
+      route.fulfill({ json: { workspace_id: '019a0000-0000-7000-8000-000000000401' } }),
+    );
+    await row.getByRole('button', { name: `「${SEED_NAME}」を再開する` }).click();
+    await expect(refusal).toHaveCount(0);
+  });
+
+  test('details の無い 409 の member_limit_reached は、数なしの理由を同じ場所に残して読み直す', async ({ page }) => {
+    const listCalls = await showSeedWorkspaceClosed(page, () => 'real');
+    await page.route('**/api/aoba/workspace-reopen', (route) =>
+      route.fulfill({ status: 409, json: { error: { code: 'member_limit_reached', message: 'x' } } }),
+    );
+    await page.goto('/aoba/admin');
+    const row = workspacesOf(page).locator('tbody tr', { hasText: SEED_NAME });
+    await row.getByRole('button', { name: `「${SEED_NAME}」を再開する` }).click();
+
+    const refusal = refusalOf(page);
+    await expect(refusal).toBeVisible();
+    await expect(refusal).toContainText('承諾待ちの招待を含めると、冒険者ギルドの人数が上限を超えます');
+    await expect(refusal).toContainText('上限の見直しは運用者に問い合わせてください');
+    await expect(refusal).toContainText('ほかのユーザーを無効にして人数を減らしてください');
+    // 数の穴を残さない。汎用の失敗の文言にも落とさない
+    for (const leaked of ['人が', '{', 'undefined', 'NaN']) await expect(refusal).not.toContainText(leaked);
+    await expect(page.getByText('を再開できませんでした')).toHaveCount(0);
+    await expect.poll(listCalls).toBe(2);
+    await expect(refusal).toBeVisible();
+  });
+
+  test('空白の無い長い名前でも、断った理由は折り返してはみ出さず、画面の中に入る', async ({ page }) => {
+    // 名前の上限（50字）いっぱいに、空白を入れない
+    const longName = 'W'.repeat(50);
+    await page.setViewportSize({ width: 390, height: 800 });
+    await page.route('**/api/aoba/workspace-list', async (route) => {
+      const response = await route.fetch();
+      const body = (await response.json()) as { workspaces: { name: string; closed_at: string | null }[] };
+      for (const workspace of body.workspaces) {
+        if (workspace.name === SEED_NAME)
+          Object.assign(workspace, { name: longName, closed_at: '2026-10-22T00:00:00.000Z' });
+      }
+      return route.fulfill({ response, json: body });
+    });
+    await page.route('**/api/aoba/workspace-reopen', (route) =>
+      route.fulfill({
+        status: 409,
+        json: { error: { code: 'member_limit_reached', message: 'x', details: { used: 14, limit: 15, adding: 2 } } },
+      }),
+    );
+    await page.goto('/aoba/admin');
+    const button = workspacesOf(page)
+      .locator('tbody tr', { hasText: longName })
+      .getByRole('button', { name: `「${longName}」を再開する` });
+    await button.scrollIntoViewIfNeeded();
+    await button.click();
+
+    const refusal = workspacesOf(page).locator('.callout.is-warn[role="alert"]', {
+      hasText: `「${longName}」は再開できません`,
+    });
+    await expect(refusal).toBeVisible();
+    expect(await refusal.evaluate((el) => el.scrollWidth - el.clientWidth)).toBeLessThanOrEqual(0);
+    expect(await refusal.evaluate((el) => el.getBoundingClientRect().right)).toBeLessThanOrEqual(390);
+    // 押した行が下にあっても、理由が画面の中に入る
+    await expect(refusal).toBeInViewport();
+  });
+
   test('操作の後の読み直しに失敗したら、一覧を残したまま知らせ、「もう一度試す」で読み直せる', async ({ page }) => {
     // 2回目（操作の後の読み直し）だけ失敗させる
     await showSeedWorkspaceClosed(page, (call) => (call === 2 ? 'fail' : 'real'));

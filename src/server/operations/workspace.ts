@@ -12,6 +12,8 @@ import {
 } from '../../shared/operations/workspace/index.ts';
 import {
   previousStatementChanged,
+  seatHoldersOf,
+  seatHoldersOfWorkspaceInvitations,
   type Insertable,
   type OrganizationDb,
   type OrganizationTables,
@@ -22,6 +24,7 @@ import { uuidv7 } from '../uuid.ts';
 import { amountOf, memberExperienceTotalsStatement } from './experience.ts';
 import { implement } from './implement.ts';
 import { readSeats } from './invitation.ts';
+import type { OrganizationTools } from './organization-tools.ts';
 import { newWorkspaceRows } from './workspace-rows.ts';
 import { actorUserIdOf, changeLogColumns, throwIfClosed } from './write-guards.ts';
 
@@ -494,7 +497,31 @@ export const workspaceCloseOperation = implement(workspaceClose, async ({ db, ac
   return { workspace_id: workspace.workspaceId, closed_at: closedAt };
 });
 
-export const workspaceReopenOperation = implement(workspaceReopen, async ({ db, actor, workspace }) => {
+// 開き直すと、そのワークスペースの承諾待ちの招待の人が新しく人数に数えられる（閉じている間は数えない）。
+// 新しく数えられる人（adding）が1人以上で、足すと上限を超えるときだけ断る。adding が 0 の開き直しは、
+// 段階を下げて人数が上限を超えている組織でも通す。ちょうど上限に達する開き直しも通す。
+// 人数は書く文の条件に入れない（招待の作成と同じ。数えてから書くまでの間に同時に増えた分は、超えるのを認める）
+async function throwIfReopenExceedsLimit(
+  db: OrganizationDb,
+  tools: OrganizationTools,
+  workspaceId: string,
+): Promise<void> {
+  const at = now();
+  const [counted, invited, organization] = await Promise.all([
+    seatHoldersOf(db, at),
+    seatHoldersOfWorkspaceInvitations(db, workspaceId, at),
+    tools.readOrganization(),
+  ]);
+  let adding = 0;
+  for (const key of invited) if (!counted.has(key)) adding++;
+  const used = counted.size;
+  const limit = organization.memberLimit;
+  if (adding >= 1 && used + adding > limit) {
+    throw new ApiError(409, 'member_limit_reached', { used, limit, adding });
+  }
+}
+
+export const workspaceReopenOperation = implement(workspaceReopen, async ({ db, actor, workspace, tools }) => {
   const row = await db.first(
     db.statement((q) =>
       q
@@ -507,6 +534,7 @@ export const workspaceReopenOperation = implement(workspaceReopen, async ({ db, 
   if (row === undefined) throw new ApiError(404, 'not_found');
   // 開いているものは開き直せない。何も書かない
   if (row.closed_at === null) throw new ApiError(409, 'conflict');
+  await throwIfReopenExceedsLimit(db, tools, workspace.workspaceId);
   await writeClosedState(db, actor, workspace.workspaceId, { action: 'reopen', closedAt: row.closed_at });
   return { workspace_id: workspace.workspaceId };
 });
