@@ -116,3 +116,40 @@ describe('名前の NUL 文字', () => {
     }
   });
 });
+
+// 有効な件数の上限（20件）は、発行して取り消す繰り返しで迂回できる。取り消した行は期限まで残るので、呼び出しの回数も抑える
+describe('回数の上限', () => {
+  test('発行はアカウントと操作ごとに 10 分に 30 回まで（上限で断られた呼び出しも数える）。31 回目は 429 の rate_limited', async () => {
+    const person = await createLoginPerson();
+    await fill(person, API_TOKEN_MAX_ACTIVE);
+    for (let index = 0; index < 30; index++) {
+      expect((await create(person)).status, `${index + 1} 回目`).toBe(409);
+    }
+    const res = await create(person);
+    expect(res.status).toBe(429);
+    expect(await errorCodeOf(res)).toBe('rate_limited');
+    expect(await tokenRowsOf(person.accountId)).toHaveLength(API_TOKEN_MAX_ACTIVE);
+  });
+
+  test('取消もアカウントと操作ごとに 10 分に 30 回まで。31 回目は 429 の rate_limited で、行は変わらない', async () => {
+    const person = await createLoginPerson();
+    const [hash] = await fill(person, 1);
+    for (let index = 0; index < 30; index++) {
+      expect((await revoke(person, hash!)).status, `${index + 1} 回目`).toBe(200);
+    }
+    const other = await insertApiToken(person.accountId, { name: '31 回目の相手', expiresAt: future() });
+    const res = await revoke(person, other.hash);
+    expect(res.status).toBe(429);
+    expect(await errorCodeOf(res)).toBe('rate_limited');
+    expect((await tokenRowsOf(person.accountId)).find((row) => row.token_hash === other.hash)?.revoked_at).toBeNull();
+  });
+
+  test('発行の回数は取消の回数と別の枠で、別のアカウントの回数にも影響されない', async () => {
+    const [first, second] = await Promise.all([createLoginPerson(), createLoginPerson()]);
+    const hashes = await fill(first, API_TOKEN_MAX_ACTIVE);
+    for (let index = 0; index < 30; index++) await create(first);
+    expect((await create(first)).status).toBe(429);
+    expect((await revoke(first, hashes[0]!)).status).toBe(200);
+    expect((await create(second)).status).toBe(200);
+  });
+});

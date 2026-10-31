@@ -6,6 +6,9 @@ import { defineOperation } from '../define.ts';
 
 export const API_TOKEN_NAME_MAX_LENGTH = 100;
 
+// 発行と取消の回数の上限。ほかの書き込みの操作（コメントの作成など）と同じ枠
+const API_TOKEN_RATE_LIMIT = { max: 30, windowSeconds: 600 } as const;
+
 const scope = z.enum(['read', 'write']);
 
 export const tokenCreate = defineOperation({
@@ -14,6 +17,8 @@ export const tokenCreate = defineOperation({
   mode: 'write',
   permission: 'login',
   cookieOnly: true,
+  // 有効な件数の上限（API_TOKEN_MAX_ACTIVE）は、発行と取消の繰り返しで迂回できる。取り消した行は期限まで残るので、回数も抑える
+  rateLimit: API_TOKEN_RATE_LIMIT,
   input: z.object({
     // 対のないサロゲートは D1 が U+FFFD に変えて保存するので、応答の name と一覧の name が食い違う。入力で断る
     name: z
@@ -65,6 +70,7 @@ export const tokenRevoke = defineOperation({
   mode: 'write',
   permission: 'login',
   cookieOnly: true,
+  rateLimit: API_TOKEN_RATE_LIMIT,
   input: z.object({ id: z.string().regex(/^[0-9a-f]{64}$/) }),
   output: z.object({}),
 });
