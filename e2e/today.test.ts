@@ -129,6 +129,15 @@ test('行にワークスペース名の印が出る。持ち越しは日数の�
   await expect(entry('今日付けた印').locator('.entry-meta .chip')).toHaveCount(0);
 });
 
+test('今日完了した行は静止した完了の印を持ち、判を押す動き（.is-new）は付かない', async ({ page }) => {
+  await mockOperation(page, today, { slug: 'aoba' }, { tasks: ALL_SECTIONS, sprint_goals: [] });
+  await page.goto('/aoba');
+
+  const done = region(page, '今日の完了').locator('.entry', { hasText: '今日完了した' });
+  await expect(done.locator('.hanko')).toHaveCount(1);
+  await expect(done.locator('.hanko')).not.toHaveClass(/\bis-new\b/);
+});
+
 test('進行中のスプリントの区分は閉じて件数だけが出て、見出しの行を押すと一覧が開く', async ({ page }) => {
   await mockOperation(page, today, { slug: 'aoba' }, { tasks: ALL_SECTIONS, sprint_goals: [] });
   await page.goto('/aoba');
