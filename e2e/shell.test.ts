@@ -54,6 +54,12 @@ test('1280px では左のメニューを折りたため、幅とラベルと状�
   const after = await page.locator('.content').boundingBox();
   expect(after!.x).toBeLessThan(before!.x);
 
+  // 今のページは、太字の名前の代わりに左の縦棒（縁）で示す
+  const currentWidth = await page
+    .locator('#app-nav .nav-item[aria-current="page"]')
+    .evaluate((el) => getComputedStyle(el, '::before').borderLeftWidth);
+  expect(currentWidth).toBe('3px');
+
   // 項目はアイコンだけで、名前は見えないが読み上げには残る
   const item = page.locator('.nav-item').first();
   await expect(item.locator('.nav-item-label')).toHaveCSS('opacity', '0');
@@ -204,7 +210,7 @@ test.describe('組織が2つの人（ミナト）', () => {
     await page.getByRole('button', { name: 'メニューを畳む' }).click();
     const org = page.locator('.org-menu-button');
     await org.click();
-    await page.locator('.org-menu-list a').nth(1).click();
+    await page.locator('.org-menu-list').getByRole('link', { name: 'ひばり工房' }).click();
     await page.mouse.move(700, 600);
     await expect(org.locator('.nav-tip')).toBeVisible();
     await expect(org.locator('.nav-tip')).toHaveText('移っています');
