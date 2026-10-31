@@ -238,6 +238,8 @@
       const revoked = result.ok || result.status === 404;
       if (revoked) showToast(t('apiTokenRevoked', { name: token.name }), 'check');
       else showToast(t('apiTokenRevokeFailed'), 'alert');
+      // 上限の知らせは「取り消してください」と促すので、取り消せたら消す（発行の入力の誤りは、その欄を直すまで残す）
+      if (revoked && fieldError?.field === 'form') fieldError = null;
       // 取り消せなかったときも、行の今の状態に合わせるために読み直す
       rowGone = revoked && (await reload()) === 'ok';
     } finally {
