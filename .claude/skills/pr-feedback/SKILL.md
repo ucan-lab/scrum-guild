@@ -299,11 +299,11 @@ AI レビューがどこまで見たかは、bot のまとめのコメントの�
 gh api "repos/{owner}/{repo}/issues/{number}/comments" --paginate --jq '.[] | select(.user.login == "github-actions[bot]" and .user.type == "Bot") | {created_at, sha: (.body | capture("^<!-- ai-review:(?<sha>[0-9a-f]{40}) -->") | .sha)}'
 ```
 
-出力は古い順に並んだ、見終えた head の SHA と、その印のコメントの時刻（印の無いコメントは出ない）。ここから次の3つを決める。
+出力は古い順に並んだ、見終えた head の SHA と、その印のコメントの時刻（印の無いコメントは出ない）。先に `git fetch origin` で `origin/<base>` を最新にしてから（理由: 古いと、main 上のコミットの判定と、取り込んだ main の除き方がずれる）、次の3つを決める。
 
 - 見た回数: 出力の SHA の重複を除いた数。同じ head を2度見たもの（直す前に人がラベルで回した、など）は1回に数える。人がラベルで回した分も、見終えていれば数える
-- 見た先: 出力の SHA と PR 本文の done-check の印の SHA のうち、HEAD の祖先で（`git merge-base --is-ancestor <SHA> HEAD` が 0 で終わる）、main 上のコミットでない（`git merge-base --is-ancestor <SHA> origin/<base>` が 0 で終わらない）もののうち、`git rev-list --count <SHA>..HEAD` が最小のもの。並べば ai-review の印を先にする。CI の起点（`scripts/ai-review-scope.ts` の `chooseScope`）と同じ選び方にする（理由: force push で新しい印だけが外れたときも、CI と同じ前の印から数える）。祖先のものが1つも無ければ、見た先は無い
-- AI に見られていない直し: 見た先から HEAD までのコミットのうち、取り込んだ main の分を除いたもの（`git fetch origin` の後に `git rev-list --no-merges --abbrev-commit <見た先>..HEAD ^origin/<base>`。fetch しないと、古い `origin/<base>` で main の分が混ざる）。見た先が無ければ、判定できないとして手順 6 に書く
+- 見た先: 出力の SHA と PR 本文の done-check の印の SHA のうち、HEAD の祖先で（`git merge-base --is-ancestor <SHA> HEAD` が 0 で終わる）、main 上のコミットでない（`git merge-base --is-ancestor <SHA> "$(git merge-base origin/<base> HEAD)"` が 0 で終わらない。CI と同じく、base と head の merge-base の祖先かで見る）もののうち、`git rev-list --count <SHA>..HEAD` が最小のもの。並べば ai-review の印を先にする。CI の起点（`scripts/ai-review-scope.ts` の `chooseScope`）と同じ選び方にする（理由: force push で新しい印だけが外れたときも、CI と同じ前の印から数える）。祖先のものが1つも無ければ、見た先は無い
+- AI に見られていない直し: 見た先から HEAD までのコミットのうち、取り込んだ main の分を除いたもの（`git rev-list --no-merges --abbrev-commit <見た先>..HEAD ^origin/<base>`）。見た先が無ければ、判定できないとして手順 6 に書く
 
 ##### ラベルを付けるとき
 
