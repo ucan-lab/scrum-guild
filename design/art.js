@@ -10,7 +10,8 @@
     // 空の宝箱: 報酬や明細がまだ入っていない場面
     chest: '<path d="M10 32h44v20H10z"/><path d="M10 32l4-16h36l4 16"/><path d="M28 32v6h8v-6"/><path d="M32 4v5M21 7l2 4M43 7l-2 4"/>',
     // 出発の地図: 最初の一歩を踏み出す場面
-    map: '<path d="M8 14l16-6 16 6 16-6v42l-16 6-16-6-16 6z"/><path d="M24 8v42M40 14v42"/><path d="M13 40c5-8 10-8 15-4s9 0 11-8" stroke-dasharray="2 4"/><path d="M45 28l6 6M51 28l-6 6"/>',
+    // 道筋の破線は長さ0の点（丸い端で点になる）。線を太くした .art.is-lead（線4）でも隙間が閉じない
+    map: '<path d="M8 14l16-6 16 6 16-6v42l-16 6-16-6-16 6z"/><path d="M24 8v42M40 14v42"/><path d="M13 40c5-8 10-8 15-4s9 0 11-8" stroke-dasharray="0 6"/><path d="M45 28l6 6M51 28l-6 6"/>',
   };
   const svg = Object.entries(ARTS)
     .map(([id, body]) => `<symbol id="a-${id}" viewBox="0 0 64 64">${body}</symbol>`)
