@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import { describe, test } from 'node:test';
 
 import { extractMarkers, noDiffBody } from './ai-review-scope.ts';
-import { summaryBody } from './ai-review-summary.ts';
+import { INCOMPLETE_LINE, summaryBody } from './ai-review-summary.ts';
 
 // CI の ai-review は、PR 本文の done-check の印と前のまとめの印から後の差分だけを見る（scripts/ai-review-scope.ts）。
 // 印を書く、残す、直しの後にラベルを1回付ける決まりはスキルの文言にしか無い。
@@ -70,7 +70,8 @@ describe('本文を書き換えても印を残す', () => {
 });
 
 describe('直しの後に AI レビューを1回回す', () => {
-  // pr-feedback が jq で拾う形（先頭の印、40桁）と、ai-review-summary.ts が付ける形を突き合わせる
+  // pr-feedback が jq の capture に書いた正規表現を JS の正規表現として読み、ai-review-summary.ts が付ける形と突き合わせる。
+  // jq（Oniguruma）そのものは動かさないので、確かめるのは形が合っていることまで
   const capture = /capture\("(\^<!-- ai-review:\(\?<sha>\[0-9a-f\]\{40\}\) -->)"\)/.exec(prFeedback)?.[1];
 
   test('見た回数と見た先を、まとめの先頭の印から取る', () => {
@@ -80,6 +81,11 @@ describe('直しの後に AI レビューを1回回す', () => {
     const pattern = new RegExp(capture);
     assert.equal(pattern.exec(summaryBody('まとめ', SHA))?.groups?.sha, SHA, 'まとめの印を拾えない');
     assert.equal(pattern.exec(noDiffBody(SHA)), null, '差分なしのコメントを見たものに数えた');
+    assert.equal(
+      pattern.exec(summaryBody(`${INCOMPLETE_LINE}。エージェントの報告が返らなかった`, SHA)),
+      null,
+      '見終えていないまとめを見たものに数えた',
+    );
     assert.equal(pattern.exec(`まとめ\n<!-- ai-review:${OTHER_SHA} -->`), null, '先頭でない印を拾った');
     // ai-review-scope.ts も同じコメントから同じ SHA を拾う
     assert.deepEqual(extractMarkers('', [[{ user: bot, body: summaryBody('まとめ', SHA) }]]), [
