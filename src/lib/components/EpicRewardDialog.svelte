@@ -186,6 +186,7 @@
       type="submit"
       form={formId}
       aria-disabled={submitting || unchanged}
+      aria-describedby={unchanged ? unchangedId : undefined}
       bind:this={submitButton}
     >
       {submitting ? t('epicRewardSubmitting') : t('epicRewardSubmit')}
