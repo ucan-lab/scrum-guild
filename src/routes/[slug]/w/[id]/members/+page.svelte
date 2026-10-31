@@ -180,7 +180,6 @@
     heading?.focus();
   }
 
-  // 言葉は、開いているワークスペースの言葉づかいで引く（t が当てる）
   function roleLabel(role: 'leader' | 'member'): string {
     return role === 'leader' ? t('leader') : t('roleMember');
   }

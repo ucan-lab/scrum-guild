@@ -6,9 +6,7 @@
 
 export type Vocabulary = 'game' | 'scrum';
 
-// 言葉づかいを決める単位。ワークスペースの中の言葉は、ワークスペースの設定で切り替える。
-// ワークスペースの外の言葉（冒険者ギルド、ギルドマスター、組織の画面の名前、枠の共通の文言）は、管理者が組織の設定で切り替える
-// （docs/requirements.md の「ゲームの仕組み」）
+// 辞書の項目が属する範囲。ワークスペースの中の言葉と、ワークスペースの外の言葉（組織の画面の名前、枠の共通の文言）に分ける
 export type VocabularyScope = 'workspace' | 'organization';
 
 export type Vocabularies = Record<VocabularyScope, Vocabulary>;
