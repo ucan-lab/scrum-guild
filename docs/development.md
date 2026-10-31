@@ -466,6 +466,7 @@ Bash の判定を `permissions.deny` に置かないのは、規則が前方一�
 | `implementer` | 足した（2026-10-29、#519）。実装専用のエージェント。`.claude/agents/implementer.md`（Sonnet）と `.codex/agents/implementer.toml`（Codex。`model` は固定しない）の2つの薄い定義で、役割と禁止事項だけを持つ。受け入れ条件は `increment-build` の手順 5 が渡す。Codex が無いか利用上限に当たったときは Claude の定義を使う。Codex は `AGENTS.md` を読む |
 | `increment-build` | 足した（2026-10-26）。1つの Issue を、着手前の確かめ、`backlog-refine`、Issue への記録、ワークツリー、`implementer` への委譲（Codex が使えれば Codex、使えなければ Claude の `implementer`。どちらで実装したかは PR の `## 確認方法` に書く）を経て `done-check` に渡す。守る仕組み、認証と認可、Workers のランタイムに触れる Issue では、テストの書き手、実装の書き手、崩す書き手を分ける（2026-10-27） |
 | `sprint-review` | 足した（2026-10-28、#373）。受け入れ待ちを一覧にして確かめる場所を決め、条件を1つずつ宣言して止まり、人の「OK」でチェックボックスに印を付け（`check-criterion.py`）、すべて埋まったら閉じるかを聞く。見つけたことは最後にまとめて起票の候補にし、本番と手元に残したものと片付けを報告する |
+| `acceptance-video` | 足した（2026-10-31、#578）。受け入れ待ちの Issue の変更点を、30 秒以内の無音の画面録画（字幕つきの mp4）にする。Issue の「変更点」「確認方法」から seed の画面の操作の手順書を書き、人が確かめてから Playwright で録画する。字幕は画面の外の帯に載せる。ffmpeg に字幕のフィルタが無い環境があるので、Pillow の画像を重ねる。合否は変えず、印も閉じるのも `sprint-review` の人の答えで行う。手元のセッションだけで使う |
 | `sprint-plan` | 足した（2026-10-29、#473）。今のスプリントを締めて記録の Issue に数を残し、次のスプリントに入れる Issue、ポイント、ゴールを人と決めて、`sprint:<番号>` のラベルと記録の Issue を作る |
 | `daily-scrum` | 足した（2026-10-26 に `progress-chart` として。2026-10-29 に名前を変えた、#473）。スプリントのゴールに向けて進み具合、待ち、受け入れ待ち、作業中を点検し、人の手元の開発ボード（claude.ai の Artifact「Scrum Guild 開発ボード」）を出し直す。開発ボードは、スプリントバックログ、プロダクトバックログ、インクリメントの3つの成果物を切り替えて見せる（下の「スクラムのイベントと成果物」）。データは `scripts/progress-data.ts` が GitHub から作る JSON で、ページの元はスキルの `page/`（`index.html`、`board.js`、要件の機能の一覧の `features.json`）にあり、Issue ごとの状態を手で書かない（2026-10-29、#477）。出し直すのは Artifact のツールのある手元のセッションだけ |
 | `add-operation` | 足した（2026-10-25）。操作の定義を1つ足す型紙。定義、処理、一覧への登録、組織の分離のテスト用の関数、権限のテスト、画面から呼ぶ口までを一続きで作る |
@@ -543,7 +544,7 @@ Bash の判定を `permissions.deny` に置かないのは、規則が前方一�
 | GitHub と Claude の設定、git のフック | `.github/`、`.claude/settings.json`、`.claude/hooks/`、`.mcp.json`、`.githooks/` |
 | Codex の実装専用のエージェントと設定（sandbox とネットワークを変えられる）、Codex が読む決まり | `.codex/`、`AGENTS.md` |
 | CI の `ai-review` が書き込みのトークンを持って読むスキルとエージェント | `.claude/skills/ai-review/`、`.claude/agents/` |
-| `.claude/` の下のファイル（入れ子の `.claude/` も含む。CI が書き込みのトークンを持って走らせるスクリプトを含む）。ただし文書だけの PR の範囲のスキルとチェックリストの `.md` を除く | `.claude/` の下の、`.claude/skills/` と `.claude/checklists/` の `.md` のほか（`.claude/skills/sprint-review/check-criterion.py` など） |
+| `.claude/` の下のファイル（入れ子の `.claude/` も含む。CI が書き込みのトークンを持って走らせるスクリプトを含む）。ただし文書だけの PR の範囲のスキルとチェックリストの `.md` を除く | `.claude/` の下の、`.claude/skills/` と `.claude/checklists/` の `.md` のほか（`.claude/skills/sprint-review/check-criterion.py`、`.claude/skills/acceptance-video/` の `.mjs` と `.py` など） |
 
 `.claude/` の下は、文書だけの PR の範囲（下の「文書だけの PR」）のスキルとチェックリストの `.md` を除いて、すべて守る。`.github/labeler.yml` では、`**/.claude/**` に当たり、`.claude/{skills,checklists}/**/*.md` に当たらないファイルとして拾い、ファイルを名指さない（判定は `scripts/labeler.test.ts` が labeler と同じ minimatch で確かめる）。ワークフローが後から `.claude/` の下のスクリプトを走らせ始めても、守るパスへの足し忘れが起きないようにするため。入れ子の `.claude/`（`src/.claude/skills/` など）も Claude Code が読むので拾う。`ai-review` が読むスキルとエージェント（`.claude/skills/ai-review/`、`.claude/agents/`）は、`.md` も守る。frontmatter（`allowed-tools`、`hooks`、`permissionMode` など）で、ワークフローの `--allowedTools` より広い道具を許し、シェルのコマンドを走らせられるため。action は `.claude/` を base の版に戻すので、これらは `main` に入ると以降のすべての PR の `ai-review`（`pull-requests: write` のトークン）に効く。`.md` だけの PR には `ai-review` も重い CI も走らないので、人が読まなければ誰も確かめない。
 
