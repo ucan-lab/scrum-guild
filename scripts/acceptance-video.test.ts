@@ -67,12 +67,10 @@ describe('record.mjs --check', () => {
     assert.match(result.stderr, /手順書を読めない/);
   });
 
-  test('言葉づかいの指定は scrum、game、seed のどれかで、省けば通る', () => {
+  test('言葉づかいの指定（vocabulary）は持たず、書けば未知のキーとして断る', () => {
     const steps = [{ hold: 1000 }];
-    for (const vocabulary of ['scrum', 'game', 'seed'])
-      assert.equal(check({ vocabulary, steps }).status, 0, vocabulary);
     assert.equal(check({ steps }).status, 0);
-    rejected({ vocabulary: 'klingon', steps }, /vocabulary は scrum、game、seed のどれか/);
+    rejected({ vocabulary: 'scrum', steps }, /vocabulary/);
   });
 
   test('steps が空の手順書は断る', () => {
@@ -147,38 +145,6 @@ describe('record.mjs --check', () => {
     // 見える操作が 2 つ並ぶ check → click だけが 1 秒増える。待つだけの操作の前後は増えない
     assert.equal(only(check_, click) - only(click, wait), 1);
     assert.equal(only(wait, click), only(click, wait));
-  });
-});
-
-describe('withVocabulary', () => {
-  const planUrl = JSON.stringify(pathToFileURL(join(skillDir, 'plan.mjs')).href);
-  const rewrite = (value: unknown, vocabulary: string) => {
-    const code = `import { withVocabulary } from ${planUrl};
-      console.log(JSON.stringify(withVocabulary(JSON.parse(process.argv[1]), ${JSON.stringify(vocabulary)})));`;
-    const result = spawnSync(process.execPath, ['--input-type=module', '-e', code, JSON.stringify(value)], {
-      encoding: 'utf8',
-    });
-    assert.equal(result.status, 0, result.stderr);
-    return JSON.parse(result.stdout);
-  };
-
-  test('どの深さの vocabulary も指定した言葉づかいにそろえ、ほかの値は変えない', () => {
-    const response = {
-      organization: { name: 'game', vocabulary: 'game' },
-      workspaces: [{ vocabulary: 'scrum', title: 'scrum' }, { vocabulary: 'game' }],
-      vocabulary: 'game',
-    };
-    assert.deepEqual(rewrite(response, 'scrum'), {
-      organization: { name: 'game', vocabulary: 'scrum' },
-      workspaces: [{ vocabulary: 'scrum', title: 'scrum' }, { vocabulary: 'scrum' }],
-      vocabulary: 'scrum',
-    });
-    assert.deepEqual(rewrite({ nested: [{ vocabulary: 'scrum' }] }, 'game'), { nested: [{ vocabulary: 'game' }] });
-  });
-
-  test('vocabulary が言葉づかいの値でないもの（オブジェクトや別の文字列）は替えない', () => {
-    const response = { vocabulary: { game: 1 }, other: { vocabulary: 'x' }, list: [1, null, 'game'] };
-    assert.deepEqual(rewrite(response, 'scrum'), response);
   });
 });
 

@@ -1,6 +1,6 @@
 // タスクの詳細の引き出しの「変更の履歴」の、1件ごとの見せ方（task-history の結果を、辞書の言葉の文にする）。
-// 列の名前は、下の表で辞書の言葉にする（言葉づかいを切り替えると、列の名前も替わる）。
-// 辞書は引数（translate）で受け取り、画面の状態に頼らない（テストで言葉づかいを替えて確かめる）
+// 列の名前は、下の表で辞書の言葉にする。
+// 辞書は引数（translate）で受け取り、画面の状態に頼らない（テストが画面なしで呼べる）
 import type { TaskHistoryEntry, TaskHistoryValue } from '../shared/operations/task/index.ts';
 import type { DictionaryKey, TemplateParams } from '../shared/vocabulary.ts';
 

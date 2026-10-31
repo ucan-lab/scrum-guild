@@ -40,45 +40,45 @@ async function createStory(page: Page, label: string, title: string): Promise<vo
   await reloaded;
 }
 
-test('ゲームの言葉: レイドを作り、達成目標を下へ移し、配下のクエストを完遂にしてから達成目標を完遂にし、取り消す', async ({
+test('作ったワークスペース: エピックを作り、ストーリーを下へ移し、配下のタスクを完了にしてからストーリーを完了にし、取り消す', async ({
   page,
 }) => {
   const collect = await watchViolations(page);
-  await createWorkspace(page, 'レイドのパーティ', 'game');
+  await createWorkspace(page, 'エピックのワークスペース');
 
   // エピックを作る。木の最上段に出て、配下が無い
-  await createEpic(page, 'レイドを作る', 'ポイント制度を公開する');
-  await expect(page.getByRole('status').filter({ hasText: 'レイドを作りました' })).toBeVisible();
+  await createEpic(page, 'エピックを作る', 'ポイント制度を公開する');
+  await expect(page.getByRole('status').filter({ hasText: 'エピックを作りました' })).toBeVisible();
   const epic = rowGroup(page, 'ポイント制度を公開する');
-  await expect(epic.locator('.tree-row.is-epic .tree-ratio')).toHaveText('完遂 0 / 0 pt');
-  await expect(epic.getByText('達成目標はまだありません')).toBeVisible();
+  await expect(epic.locator('.tree-row.is-epic .tree-ratio')).toHaveText('完了 0 / 0 pt');
+  await expect(epic.getByText('ストーリーはまだありません')).toBeVisible();
 
   // 題からエピックの画面を開き、見出しの横の「直す」で開くダイアログで直す。開いたら1件を読む
   await page.getByRole('link', { name: 'ポイント制度を公開する', exact: true }).click();
   await expect(page.getByRole('heading', { level: 1, name: 'ポイント制度を公開する' })).toBeVisible();
-  const editEpic = page.getByRole('button', { name: 'レイドを直す' });
+  const editEpic = page.getByRole('button', { name: 'エピックを直す' });
   await editEpic.click();
-  const epicDialog = page.getByRole('dialog', { name: 'レイド' });
+  const epicDialog = page.getByRole('dialog', { name: 'エピック' });
   await expect(epicDialog.getByLabel('タイトル')).toHaveValue('ポイント制度を公開する');
   await epicDialog.getByLabel('本文').fill('年内に公開する');
-  await epicDialog.getByLabel('期限').fill('2026-12-25');
+  await epicDialog.getByLabel('期日').fill('2026-12-25');
   const detailReloaded = waitForResponses(page, '/epic-detail');
   await epicDialog.getByRole('button', { name: '保存する' }).click();
   await expect(epicDialog).toBeHidden();
-  await expect(page.getByRole('status').filter({ hasText: 'レイドを保存しました' })).toBeVisible();
-  // 直したら画面を読み直す。本文は概要に、期日は依頼書に出る
+  await expect(page.getByRole('status').filter({ hasText: 'エピックを保存しました' })).toBeVisible();
+  // 直したら画面を読み直す。本文は概要に、期日は概要に出る
   await detailReloaded;
   await expect(page.getByText('年内に公開する')).toBeVisible();
   await expect(page.locator('.props').getByText('12/25')).toBeVisible();
   await editEpic.click();
   await expect(epicDialog.getByLabel('本文')).toHaveValue('年内に公開する');
   await epicDialog.getByRole('button', { name: 'やめる' }).click();
-  // 掲示板へ戻ると、木のエピックの行に期日が出る
-  await page.getByRole('link', { name: '掲示板へ戻る' }).click();
+  // バックログへ戻ると、木のエピックの行に期日が出る
+  await page.getByRole('link', { name: 'バックログへ戻る' }).click();
   await expect(epic.locator('.tree-row.is-epic .chip')).toHaveText('12/25');
 
   // 親のないストーリーを作り、「親を移す」でエピックの下へ移す。今が親なしなので、親なしは候補に出さない
-  await createStory(page, '達成目標を作る', '残高が見える');
+  await createStory(page, 'ストーリーを作る', '残高が見える');
   await page.getByRole('button', { name: '親を移す: 残高が見える' }).click();
   const moveDialog = page.getByRole('dialog', { name: '「残高が見える」の親を移す' });
   await expect(moveDialog.getByLabel('移す先').locator('option')).toHaveText(['ポイント制度を公開する']);
@@ -90,7 +90,7 @@ test('ゲームの言葉: レイドを作り、達成目標を下へ移し、配
   await expect(
     page
       .getByRole('status')
-      .filter({ hasText: '「残高が見える」をレイド「ポイント制度を公開する」の末尾へ移しました' }),
+      .filter({ hasText: '「残高が見える」をエピック「ポイント制度を公開する」の末尾へ移しました' }),
   ).toBeAttached();
   await moved;
   await page.reload();
@@ -98,25 +98,25 @@ test('ゲームの言葉: レイドを作り、達成目標を下へ移し、配
 
   // 配下が無いあいだは完了にできる状態。タスクを足すと、残りの件数が出て押せなくなる
   const story = rowGroup(page, '残高が見える');
-  await story.getByRole('button', { name: 'クエストを足す: 残高が見える' }).click();
-  const taskDialog = page.getByRole('dialog', { name: '依頼を出す' });
-  await expect(taskDialog.getByLabel('親の達成目標').locator('option:checked')).toHaveText('残高が見える');
+  await story.getByRole('button', { name: 'タスクを足す: 残高が見える' }).click();
+  const taskDialog = page.getByRole('dialog', { name: '起票' });
+  await expect(taskDialog.getByLabel('親のストーリー').locator('option:checked')).toHaveText('残高が見える');
   // 親の候補は、親のエピックの題でまとめる
-  await expect(taskDialog.getByLabel('親の達成目標').locator('optgroup')).toHaveAttribute(
+  await expect(taskDialog.getByLabel('親のストーリー').locator('optgroup')).toHaveAttribute(
     'label',
     'ポイント制度を公開する',
   );
   await taskDialog.getByLabel('タイトル').fill('残高の API を作る');
   await taskDialog.getByRole('radio', { name: '3', exact: true }).check();
-  await taskDialog.getByRole('button', { name: '依頼を出す' }).click();
+  await taskDialog.getByRole('button', { name: '起票' }).click();
   await expect(taskDialog).toBeHidden();
-  const completeStory = story.getByRole('button', { name: '完遂にする: 残高が見える' });
+  const completeStory = story.getByRole('button', { name: '完了にする: 残高が見える' });
   await expect(completeStory).toHaveAttribute('aria-disabled', 'true');
-  await expect(story.locator('.tree-note')).toHaveText('残り 1 件のクエスト');
+  await expect(story.locator('.tree-note')).toHaveText('残り 1 件のタスク');
   await expect(completeStory).toHaveAccessibleDescription(
-    '残り 1 件のクエスト 未完了のクエストが残っているあいだは完遂にできません',
+    '残り 1 件のタスク 未完了のタスクが残っているあいだは完了にできません',
   );
-  await expect(epic.locator('.tree-row.is-epic .tree-ratio')).toHaveText('完遂 0 / 3 pt');
+  await expect(epic.locator('.tree-row.is-epic .tree-ratio')).toHaveText('完了 0 / 3 pt');
   // 押しても何も送らない
   let sent = 0;
   page.on('request', (request) => {
@@ -126,36 +126,36 @@ test('ゲームの言葉: レイドを作り、達成目標を下へ移し、配
   await completeStory.click({ force: true });
   expect(sent).toBe(0);
 
-  // タスクを完了にすると、読み直さずに押せるようになり、エピックの「完遂」にも足される
-  await story.getByRole('button', { name: '完遂にする: 残高の API を作る' }).click();
-  await expect(story.getByRole('img', { name: '残高の API を作る: 完遂' })).toBeVisible();
+  // タスクを完了にすると、読み直さずに押せるようになり、エピックの「完了」にも足される
+  await story.getByRole('button', { name: '完了にする: 残高の API を作る' }).click();
+  await expect(story.getByRole('img', { name: '残高の API を作る: 完了' })).toBeVisible();
   await expect(completeStory).toHaveAttribute('aria-disabled', 'false');
   await expect(story.locator('.tree-note')).toHaveCount(0);
-  await expect(epic.locator('.tree-row.is-epic .tree-ratio')).toHaveText('完遂 3 / 3 pt');
+  await expect(epic.locator('.tree-row.is-epic .tree-ratio')).toHaveText('完了 3 / 3 pt');
 
   // ストーリーを完了にする。完了の印と「取り消す」が出て、フォーカスは「取り消す」へ移る
   await completeStory.click();
-  await expect(page.getByRole('status').filter({ hasText: '達成目標を完遂にしました' })).toBeVisible();
-  await expect(story.getByRole('img', { name: '残高が見える: 完遂' })).toBeVisible();
-  const reopen = story.getByRole('button', { name: '完遂を取り消す: 残高が見える' });
+  await expect(page.getByRole('status').filter({ hasText: 'ストーリーを完了にしました' })).toBeVisible();
+  await expect(story.getByRole('img', { name: '残高が見える: 完了' })).toBeVisible();
+  const reopen = story.getByRole('button', { name: '完了を取り消す: 残高が見える' });
   await expect(reopen).toBeFocused();
-  await expect(story.getByRole('button', { name: 'クエストを足す: 残高が見える' })).toHaveCount(0);
+  await expect(story.getByRole('button', { name: 'タスクを足す: 残高が見える' })).toHaveCount(0);
   // 完了したストーリーは、タスクの親の候補に出ない
-  await page.getByRole('button', { name: '依頼を出す' }).click();
-  await expect(taskDialog.getByLabel('親の達成目標').locator('option')).toHaveText(['なし']);
+  await page.getByRole('button', { name: '起票' }).click();
+  await expect(taskDialog.getByLabel('親のストーリー').locator('option')).toHaveText(['なし']);
   await taskDialog.getByRole('button', { name: 'やめる' }).click();
 
   // 取り消すと「完了にする」に戻る
   await reopen.click();
-  await expect(page.getByRole('status').filter({ hasText: '達成目標の完遂を取り消しました' })).toBeVisible();
+  await expect(page.getByRole('status').filter({ hasText: 'ストーリーの完了を取り消しました' })).toBeVisible();
   await expect(completeStory).toBeFocused();
-  await expect(story.getByRole('img', { name: '残高が見える: 完遂' })).toHaveCount(0);
+  await expect(story.getByRole('img', { name: '残高が見える: 完了' })).toHaveCount(0);
 
   // エピックの下から親なしへ戻す
   await story.getByRole('button', { name: '親を移す: 残高が見える' }).click();
   await moveDialog.getByLabel('移す先').selectOption({ label: '親なし' });
   await moveDialog.getByRole('button', { name: '移す' }).click();
-  await expect(epic.getByText('達成目標はまだありません')).toBeVisible();
+  await expect(epic.getByText('ストーリーはまだありません')).toBeVisible();
   await expect(page.getByRole('button', { name: '親を移す: 残高が見える' })).toBeFocused();
   expect(await collect()).toEqual([]);
 });
@@ -163,7 +163,7 @@ test('ゲームの言葉: レイドを作り、達成目標を下へ移し、配
 test('スクラムの言葉: 配下の無いストーリーは完了にでき、断られたら理由を知らせて読み直す。狭い幅でもはみ出さない', async ({
   page,
 }) => {
-  await createWorkspace(page, 'エピックのワークスペース', 'scrum');
+  await createWorkspace(page, 'エピックのワークスペース');
   await createEpic(page, 'エピックを作る', '決済の障害を減らす');
   await createStory(page, 'ストーリーを作る', '検知を早くする');
   await page.getByRole('button', { name: '親を移す: 検知を早くする' }).click();
@@ -218,12 +218,12 @@ test('スクラムの言葉: 配下の無いストーリーは完了にでき、
 });
 
 // seed のワークスペース（受託開発チーム）。エピック「ポイントの交換先を増やす」の下に、ストーリー「送料の割引にポイントを使える」がある
-const SEED_GAME_WORKSPACE = '/aoba/w/019a0000-0000-7000-8000-000000000401';
+const SEED_CLIENT_WORKSPACE = '/aoba/w/019a0000-0000-7000-8000-000000000401';
 const SEED_EPIC_STORY = '送料の割引にポイントを使える';
 const SEED_ROOT_STORY = 'ポイントの付与と失効を管理画面で確かめられる';
 
-test('クリアしたレイドの下の完遂した達成目標は、取り消しを押せず、理由を出す', async ({ page }) => {
-  // 木の応答で、seed のエピックをクリア済みに、その下のストーリーを完了にする
+test('クリアしたエピックの下の完了したストーリーは、取り消しを押せず、理由を出す', async ({ page }) => {
+  // 木の応答で、seed のエピックを完了に、その下のストーリーを完了にする
   await page.route('**/api/aoba/backlog-tree', async (route) => {
     const response = await route.fetch();
     const body = (await response.json()) as { epics: { completed_at: string | null; stories: object[] }[] };
@@ -238,20 +238,20 @@ test('クリアしたレイドの下の完遂した達成目標は、取り消�
   page.on('request', (request) => {
     if (request.url().endsWith('/story-reopen')) sent++;
   });
-  await page.goto(SEED_GAME_WORKSPACE);
+  await page.goto(SEED_CLIENT_WORKSPACE);
   const epic = rowGroup(page, 'ポイントの交換先を増やす');
-  await expect(epic.locator('.tree-row.is-epic .chip.is-done')).toHaveText('クリア済み');
+  await expect(epic.locator('.tree-row.is-epic .chip.is-done')).toHaveText('完了');
   const story = rowGroup(page, SEED_EPIC_STORY);
-  const reopen = story.getByRole('button', { name: `完遂を取り消す: ${SEED_EPIC_STORY}` });
+  const reopen = story.getByRole('button', { name: `完了を取り消す: ${SEED_EPIC_STORY}` });
   await expect(reopen).toHaveAttribute('aria-disabled', 'true');
-  await expect(reopen).toHaveAccessibleDescription('完遂か中止したレイドの下の達成目標は取り消せません');
+  await expect(reopen).toHaveAccessibleDescription('完了か中止したエピックの下のストーリーは取り消せません');
   await expect(story.locator('.tree-note')).toBeVisible();
   // aria-disabled のボタンは Playwright が押せないものとして待つので、待たずに押す
   await reopen.click({ force: true });
   expect(sent).toBe(0);
 });
 
-test('中止したレイドの下の達成目標は、完遂にするを押せず、理由を出す', async ({ page }) => {
+test('中止したエピックの下のストーリーは、完了にするを押せず、理由を出す', async ({ page }) => {
   await page.route('**/api/aoba/backlog-tree', async (route) => {
     const response = await route.fetch();
     const body = (await response.json()) as { epics: { canceled_at: string | null }[] };
@@ -262,14 +262,14 @@ test('中止したレイドの下の達成目標は、完遂にするを押せ�
   page.on('request', (request) => {
     if (request.url().endsWith('/story-complete')) sent++;
   });
-  await page.goto(SEED_GAME_WORKSPACE);
+  await page.goto(SEED_CLIENT_WORKSPACE);
   await expect(
     rowGroup(page, 'ポイントの交換先を増やす').locator('.tree-row.is-epic .chip', { hasText: '中止' }),
   ).toBeVisible();
   const story = rowGroup(page, SEED_EPIC_STORY);
-  const complete = story.getByRole('button', { name: `完遂にする: ${SEED_EPIC_STORY}` });
+  const complete = story.getByRole('button', { name: `完了にする: ${SEED_EPIC_STORY}` });
   await expect(complete).toHaveAttribute('aria-disabled', 'true');
-  await expect(complete).toHaveAccessibleDescription('完遂か中止したレイドの下の達成目標は完遂にできません');
+  await expect(complete).toHaveAccessibleDescription('完了か中止したエピックの下のストーリーは完了にできません');
   await complete.click({ force: true });
   expect(sent).toBe(0);
 });
@@ -287,7 +287,7 @@ test('ストーリーの行は、メニューの横の幅と指で押す画面�
     const context = await browser.newContext(options);
     await signIn(context, baseURL, 'admin');
     const page = await context.newPage();
-    await page.goto(SEED_GAME_WORKSPACE);
+    await page.goto(SEED_CLIENT_WORKSPACE);
     const label = `${options.viewport.width}px${options.hasTouch ? ' coarse' : ''}`;
     // 親のないストーリーと、エピックの下のストーリー（一段字下げする）
     for (const title of [SEED_ROOT_STORY, SEED_EPIC_STORY]) {

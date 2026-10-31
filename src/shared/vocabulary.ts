@@ -6,9 +6,7 @@
 
 export type Vocabulary = 'game' | 'scrum';
 
-// 言葉づかいを決める単位。ワークスペースの中の言葉は、ワークスペースの設定で切り替える。
-// ワークスペースの外の言葉（冒険者ギルド、ギルドマスター、組織の画面の名前、枠の共通の文言）は、管理者が組織の設定で切り替える
-// （docs/requirements.md の「ゲームの仕組み」）
+// 辞書の項目が属する範囲。ワークスペースの中の言葉と、ワークスペースの外の言葉（組織の画面の名前、枠の共通の文言）に分ける
 export type VocabularyScope = 'workspace' | 'organization';
 
 export type Vocabularies = Record<VocabularyScope, Vocabulary>;
@@ -3111,11 +3109,11 @@ export const dictionary = defineDictionary({
   // 木の行の区分とリポジトリの印。見えない文字で種類を添える
   chipPrefix: workspace('{kind}：', '{kind}：'),
 
-  // ワークスペースの設定の画面の列の節（見本は design/settings.html の列）。リーダーが付けた列の名前は訳さず、
-  // 完了の列だけ、言葉づかいに合わせた名前（done）を出す
+  // ワークスペースの設定の画面の列の節（見本は design/settings.html の列）。リーダーが付けた列の名前は辞書を通さず
+  // そのまま出し、完了の列だけ辞書の名前（done）を出す
   columnsDesc: workspace(
-    '{sprint}の{column}。名前は言葉づかいを切り替えても訳しません。{task}が残っている{column}を削除するときは移し先を選びます。',
-    '{sprint}の{column}。名前は言葉づかいを切り替えても訳しません。{task}が残っている{column}を削除するときは移し先を選びます。',
+    '{sprint}の{column}。名前は付けたままで、訳しません。{task}が残っている{column}を削除するときは移し先を選びます。',
+    '{sprint}の{column}。名前は付けたままで、訳しません。{task}が残っている{column}を削除するときは移し先を選びます。',
   ),
   columnDoneNote: workspace('常に末尾', '常に末尾'),
   columnTaskCount: workspace('削除すると {count} 件を移す', '削除すると {count} 件を移す'),

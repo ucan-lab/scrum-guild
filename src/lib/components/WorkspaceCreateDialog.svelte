@@ -3,31 +3,28 @@
   import { goto, invalidateAll } from '$app/navigation';
   import { resolve } from '$app/paths';
   import { workspaceCreate, workspaceLeaderCandidates } from '../../shared/operations/workspace/index.ts';
-  import type { Vocabulary } from '../../shared/vocabulary.ts';
   import {
     DEFAULT_HOURS_PER_POINT,
     WORKSPACE_NAME_MAX_LENGTH,
     defaultColumnNames,
-    defaultDetailFieldNames,
+    defaultDetailFieldName,
     workspaceNameProblem,
     type WorkspaceNameProblem,
   } from '../../shared/workspace.ts';
   import { callOperation } from '../api.ts';
   import { browserTimezone } from '../format.ts';
   import { showToast } from '../toast.svelte.ts';
-  import { t, tIn } from '../vocabulary.svelte.ts';
+  import { t } from '../vocabulary.svelte.ts';
   import Dialog from './Dialog.svelte';
   import Icon from './Icon.svelte';
 
   // admin.html / kit.js の createWorkspace。管理の画面と自分の今日の2か所が、同じ部品を使う。
-  // 開いたときに最初のリーダーの候補を取る（既定は自分）。言葉づかいの既定は組織の言葉づかい。
-  // 題、リーダーのラベル、説明文は、選んだ言葉づかいの言葉で出す。説明文には、列と決まった欄の名前、換算比率、
+  // 開いたときに最初のリーダーの候補を取る（既定は自分）。説明文には、列と決まった欄の名前、換算比率、
   // 週の始まり、このブラウザのタイムゾーンを出す。
   // 送っている間は、「作る」を押しても無視し（aria-disabled）、ダイアログも閉じられない。二重送信はそれだけで防ぐ。
   // 作れたら組織の枠のデータを読み直し、そのワークスペースの画面へ移って、見出しにフォーカスを置く。
   // 送り始めた後に部品が外れた（画面を離れた、組織が替わった）ときは、古い応答で移らず、状態も更新しない（generation）
-  let { slug, meId, organizationVocabulary }: { slug: string; meId: string; organizationVocabulary: Vocabulary } =
-    $props();
+  let { slug, meId }: { slug: string; meId: string } = $props();
 
   type Candidate = { id: string; name: string };
 
@@ -38,9 +35,6 @@
   const leaderId = `${ids}-leader`;
   const leaderHintId = `${ids}-leader-hint`;
   const leaderStateId = `${ids}-leader-state`;
-  const vocabularyLabelId = `${ids}-vocabulary`;
-  const vocabularyHintId = `${ids}-vocabulary-hint`;
-  const defaultsId = `${ids}-defaults`;
 
   let open = $state(false);
   let dialog = $state<ReturnType<typeof Dialog>>();
@@ -50,7 +44,6 @@
 
   let name = $state('');
   let leaderUserId = $state('');
-  let vocabulary = $state<Vocabulary>('game');
   let candidates = $state<Candidate[]>([]);
   let candidatesState = $state<'loading' | 'failed' | 'ready'>('loading');
   // 読み込みに失敗したことがある間は、読み直している最中も「もう一度試す」を残す（フォーカスを失わせない）
@@ -63,8 +56,6 @@
   // 開き直し、部品の取り外し、組織の入れ替わりで進める。古い読み込みと古い応答が、今の状態を上書きしない
   let generation = 0;
 
-  // 選んだ言葉づかいの言葉。ワークスペースの言葉だけを替える
-  const words = $derived({ workspace: vocabulary });
   const canSubmit = $derived(!submitting && candidatesState === 'ready' && leaderUserId !== '');
 
   // 組織の枠のデータを読み直すと slug の props は新しい getter になるが、値が同じなら $derived は変わらない
@@ -82,7 +73,6 @@
   export function show(trigger?: HTMLElement | null): void {
     generation++;
     name = '';
-    vocabulary = organizationVocabulary;
     nameError = null;
     submitError = null;
     submitting = false;
@@ -130,27 +120,15 @@
     return problem === null ? null : nameMessages[problem];
   }
 
-  const leaderWord = $derived(tIn('leader', words));
-  const defaultsNote = $derived(
-    tIn('workspaceDefaultsNote', words, {
-      column: tIn('column', words),
-      columns: [...defaultColumnNames[vocabulary], tIn('done', words)].join('、'),
-      field: defaultDetailFieldNames[vocabulary],
-      points: tIn('points', words),
-      hours: DEFAULT_HOURS_PER_POINT,
-      timezone,
-    }),
-  );
-
-  // 言葉づかいの選択肢の例。その言葉づかいの言葉で出す
-  function vocabularyExample(value: Vocabulary): string {
-    const scope = { workspace: value };
-    return tIn('vocabularyNote', scope, {
-      workspace: tIn('workspace', scope),
-      task: tIn('task', scope),
-      epic: tIn('epic', scope),
-    });
-  }
+  const leaderWord = t('leader');
+  const defaultsNote = t('workspaceDefaultsNote', {
+    column: t('column'),
+    columns: [...defaultColumnNames, t('done')].join('、'),
+    field: defaultDetailFieldName,
+    points: t('points'),
+    hours: DEFAULT_HOURS_PER_POINT,
+    timezone,
+  });
 
   // 400 の details（項目ごとの path）から、断られた項目を取り出す
   function rejectedFields(details: unknown): string[] {
@@ -181,7 +159,7 @@
     try {
       const result = await callOperation(
         workspaceCreate,
-        { name: name.trim(), timezone: sentTimezone, vocabulary, leader_user_id: leaderUserId },
+        { name: name.trim(), timezone: sentTimezone, leader_user_id: leaderUserId },
         { slug: targetSlug },
       );
       if (mine !== generation) return;
@@ -192,7 +170,7 @@
           return;
         }
         if (result.status === 404) {
-          submitError = tIn('workspaceLeaderRejected', words, { leader: leaderWord });
+          submitError = t('workspaceLeaderRejected', { leader: leaderWord });
           // 候補を取り直して、選び直せるようにする
           void loadCandidates();
         } else if (result.status === 400 && rejectedFields(result.error?.details).includes('timezone')) {
@@ -216,7 +194,7 @@
       // 移った先の見出しへフォーカスを置く（移った画面の題は、SvelteKit のルートの読み上げが伝える）
       await tick();
       document.querySelector<HTMLElement>('main h1')?.focus();
-      showToast(t('workspaceCreated', { workspace: tIn('workspace', words) }), 'check');
+      showToast(t('workspaceCreated', { workspace: t('workspace') }), 'check');
     } finally {
       if (mine === generation) {
         submitting = false;
@@ -236,7 +214,7 @@
   bind:this={dialog}
   bind:open
   dismissible={!submitting}
-  title={tIn('workspaceCreateAction', words, { workspace: tIn('workspace', words) })}
+  title={t('workspaceCreateAction', { workspace: t('workspace') })}
 >
   <form id={formId} class="form" onsubmit={submit} novalidate>
     <!-- 送っている間は、欄も変えられない。「作る」はフォーカスを残すため、欄のまとまりの外で aria-disabled にしている -->
@@ -260,7 +238,7 @@
       </div>
 
       <div class="field">
-        <label class="field-label" for={leaderId}>{tIn('workspaceLeaderLabel', words, { leader: leaderWord })}</label>
+        <label class="field-label" for={leaderId}>{t('workspaceLeaderLabel', { leader: leaderWord })}</label>
         <select
           class="select"
           id={leaderId}
@@ -281,15 +259,13 @@
             {/each}
           {/if}
         </select>
-        <span class="field-hint" id={leaderHintId}>{tIn('workspaceLeaderHint', words, { leader: leaderWord })}</span>
+        <span class="field-hint" id={leaderHintId}>{t('workspaceLeaderHint', { leader: leaderWord })}</span>
         <!-- 候補を取れない、または0件のときは、「作る」を押せない理由をここに出す -->
         <span id={leaderStateId}>
           {#if candidatesState === 'failed'}
             <span class="field-error" role="alert"><Icon name="alert" />{t('workspaceLeaderLoadFailed')}</span>
           {:else if candidatesState === 'ready' && candidates.length === 0}
-            <span class="field-error"
-              ><Icon name="alert" />{tIn('workspaceNoCandidates', words, { leader: leaderWord })}</span
-            >
+            <span class="field-error"><Icon name="alert" />{t('workspaceNoCandidates', { leader: leaderWord })}</span>
           {/if}
         </span>
         {#if candidatesFailedBefore}
@@ -306,29 +282,7 @@
         {/if}
       </div>
 
-      <div class="field">
-        <span class="field-label" id={vocabularyLabelId}>{t('workspaceVocabularyLabel')}</span>
-        <div
-          class="choice-list"
-          role="radiogroup"
-          aria-labelledby={vocabularyLabelId}
-          aria-describedby="{vocabularyHintId} {defaultsId}"
-        >
-          <label class="choice">
-            <input type="radio" name="{ids}-vocabulary" value="game" bind:group={vocabulary} />
-            <div><b>{t('vocabularyGameLabel')}</b><span>{vocabularyExample('game')}</span></div>
-          </label>
-          <label class="choice">
-            <input type="radio" name="{ids}-vocabulary" value="scrum" bind:group={vocabulary} />
-            <div><b>{t('vocabularyScrumLabel')}</b><span>{vocabularyExample('scrum')}</span></div>
-          </label>
-        </div>
-        <span class="field-hint" id={vocabularyHintId}
-          >{tIn('workspaceVocabularyHint', words, { column: tIn('column', words) })}</span
-        >
-      </div>
-
-      <p class="field-hint" id={defaultsId}>{defaultsNote}</p>
+      <p class="field-hint">{defaultsNote}</p>
     </fieldset>
 
     {#if submitError !== null}

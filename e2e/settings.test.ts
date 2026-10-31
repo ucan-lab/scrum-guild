@@ -4,7 +4,7 @@ import type { Page } from '@playwright/test';
 import { expect, test } from './fixtures.ts';
 import { createWorkspace, dragTo, signIn, waitForResponses, watchViolations } from './helpers.ts';
 
-const SEED_GAME_WORKSPACE = '/aoba/w/019a0000-0000-7000-8000-000000000401';
+const SEED_CLIENT_WORKSPACE = '/aoba/w/019a0000-0000-7000-8000-000000000401';
 
 async function openSettings(page: Page): Promise<void> {
   // 「自分の設定」の項目にも当たらないよう、全体が「設定」の項目だけを選ぶ
@@ -13,7 +13,7 @@ async function openSettings(page: Page): Promise<void> {
   await expect(page.getByRole('heading', { level: 1, name: '設定' })).toBeVisible();
 }
 
-async function addDefinition(page: Page, kind: '系統' | 'リポジトリ', name: string): Promise<void> {
+async function addDefinition(page: Page, kind: '区分' | 'リポジトリ', name: string): Promise<void> {
   await page.getByLabel(`新しい${kind}の名前`).fill(name);
   await page.getByRole('button', { name: `${kind}を足す` }).click();
   await expect(page.getByRole('list', { name: `${kind}の一覧` }).getByText(name, { exact: true })).toBeVisible();
@@ -28,17 +28,17 @@ test.describe('リーダー（あおば開発のミナト）', () => {
     page,
   }) => {
     const collect = await watchViolations(page);
-    await createWorkspace(page, '設定パーティ', 'game');
+    await createWorkspace(page, '設定ワークスペース');
     await openSettings(page);
-    await expect(page).toHaveTitle('設定・設定パーティ - Scrum Guild');
+    await expect(page).toHaveTitle('設定・設定ワークスペース - Scrum Guild');
     await expect(page.locator('.nav-item[aria-current="page"]')).toHaveText('設定');
 
     // 空のうちは案内を出す
-    await expect(page.getByText('まだ系統がありません')).toBeVisible();
+    await expect(page.getByText('まだ区分がありません')).toBeVisible();
     await expect(page.getByText('まだリポジトリがありません')).toBeVisible();
 
-    await addDefinition(page, '系統', '保守');
-    await addDefinition(page, '系統', '追加案件');
+    await addDefinition(page, '区分', '保守');
+    await addDefinition(page, '区分', '追加案件');
     await addDefinition(page, 'リポジトリ', 'point-api');
     await addDefinition(page, 'リポジトリ', 'admin-web');
 
@@ -50,10 +50,10 @@ test.describe('リーダー（あおば開発のミナト）', () => {
     await expect(billed).toBeChecked();
 
     // 名前を直す
-    const categories = page.getByRole('list', { name: '系統の一覧' });
+    const categories = page.getByRole('list', { name: '区分の一覧' });
     // 名前そのものが押せるボタン（ほかの「上へ: 追加案件」などと分けるため、名前で始まるものを押す）
     await categories.getByRole('button', { name: /^追加案件/ }).click();
-    const nameInput = categories.getByLabel('系統の名前');
+    const nameInput = categories.getByLabel('区分の名前');
     await nameInput.fill('改修');
     await nameInput.press('Enter');
     await expect(categories.locator('li')).toHaveText([/保守/, /改修/]);
@@ -65,29 +65,29 @@ test.describe('リーダー（あおば開発のミナト）', () => {
     await expect(categories.getByRole('button', { name: '上へ: 改修' })).toBeFocused();
 
     // バックログで起票する。リポジトリはボタンで1回押して選び、区分は親なしのときだけ選べる
-    await page.locator('.nav-item', { hasText: '掲示板' }).click();
-    await page.getByRole('button', { name: '依頼を出す' }).click();
-    const dialog = page.getByRole('dialog', { name: '依頼を出す' });
+    await page.locator('.nav-item', { hasText: 'バックログ' }).click();
+    await page.getByRole('button', { name: '起票' }).click();
+    const dialog = page.getByRole('dialog', { name: '起票' });
     const repositories = dialog.getByRole('radiogroup', { name: 'リポジトリ' });
     // 2つあるので、既定は「なし」
     await expect(repositories.getByRole('radio', { name: 'なし' })).toBeChecked();
     await dialog.getByLabel('タイトル').fill('ポイントの失効を直す');
     await repositories.getByRole('radio', { name: 'point-api' }).check();
-    await dialog.getByLabel('系統').selectOption({ label: '保守' });
-    await dialog.getByRole('button', { name: '依頼を出す' }).click();
+    await dialog.getByLabel('区分').selectOption({ label: '保守' });
+    await dialog.getByRole('button', { name: '起票' }).click();
     await expect(dialog).toBeHidden();
 
     const row = page.locator('.entry', { hasText: 'ポイントの失効を直す' });
-    await expect(row.locator('.entry-meta .chip')).toHaveText(['リポジトリ：point-api', '系統：保守']);
+    await expect(row.locator('.entry-meta .chip')).toHaveText(['リポジトリ：point-api', '区分：保守']);
     // 読み直しても出る
     await page.reload();
-    await expect(row.locator('.entry-meta .chip')).toHaveText(['リポジトリ：point-api', '系統：保守']);
+    await expect(row.locator('.entry-meta .chip')).toHaveText(['リポジトリ：point-api', '区分：保守']);
 
     // 引き出しでリポジトリを直す
     await row.getByRole('link', { name: 'ポイントの失効を直す' }).click();
     const drawer = page.getByRole('dialog', { name: 'ポイントの失効を直す' });
     await drawer.getByRole('radiogroup', { name: 'リポジトリ' }).getByRole('radio', { name: 'admin-web' }).check();
-    await expect(row.locator('.entry-meta .chip')).toHaveText(['リポジトリ：admin-web', '系統：保守']);
+    await expect(row.locator('.entry-meta .chip')).toHaveText(['リポジトリ：admin-web', '区分：保守']);
     await drawer.getByRole('button', { name: '閉じる' }).click();
     await expect(drawer).toBeHidden();
 
@@ -95,10 +95,10 @@ test.describe('リーダー（あおば開発のミナト）', () => {
     await openSettings(page);
     await page.getByRole('button', { name: '削除: 保守' }).click();
     const confirm = page.getByRole('dialog', { name: '「保守」を削除する' });
-    await expect(confirm).toContainText('完了の記録は元の系統のまま残ります');
+    await expect(confirm).toContainText('完了の記録は元の区分のまま残ります');
     await confirm.getByRole('button', { name: '削除する' }).click();
-    await expect(page.getByRole('list', { name: '系統の一覧' }).locator('li')).toHaveText([/改修/]);
-    await page.locator('.nav-item', { hasText: '掲示板' }).click();
+    await expect(page.getByRole('list', { name: '区分の一覧' }).locator('li')).toHaveText([/改修/]);
+    await page.locator('.nav-item', { hasText: 'バックログ' }).click();
     await expect(row.locator('.entry-meta .chip')).toHaveText(['リポジトリ：admin-web']);
     expect(await collect()).toEqual([]);
   });
@@ -107,10 +107,10 @@ test.describe('リーダー（あおば開発のミナト）', () => {
     page,
   }) => {
     const collect = await watchViolations(page);
-    await createWorkspace(page, 'つまみの設定パーティ', 'game');
+    await createWorkspace(page, 'つまみの設定ワークスペース');
     await openSettings(page);
-    for (const name of ['保守', '追加案件', '改修']) await addDefinition(page, '系統', name);
-    const categories = page.getByRole('list', { name: '系統の一覧' });
+    for (const name of ['保守', '追加案件', '改修']) await addDefinition(page, '区分', name);
+    const categories = page.getByRole('list', { name: '区分の一覧' });
     const row = (name: string) => categories.locator('li', { hasText: name });
 
     // 3番目を先頭の行の上半分へ。離す前に、その行の上に線が出る
@@ -144,51 +144,51 @@ test.describe('リーダー（あおば開発のミナト）', () => {
   });
 
   test('ストーリーの下のタスクには区分を振れず、親の区分を引き継いで出る', async ({ page }) => {
-    await createWorkspace(page, '引き継ぎパーティ', 'game');
+    await createWorkspace(page, '引き継ぎワークスペース');
     await openSettings(page);
-    await addDefinition(page, '系統', '保守');
+    await addDefinition(page, '区分', '保守');
     await addDefinition(page, 'リポジトリ', 'point-api');
     // 同じ名前は断り、欄の下に理由を出す
-    await page.getByLabel('新しい系統の名前').fill('保守');
-    await page.getByRole('button', { name: '系統を足す' }).click();
-    await expect(page.getByRole('alert').filter({ hasText: '同じ名前の系統があります' })).toBeVisible();
-    await expect(page.getByLabel('新しい系統の名前')).toBeFocused();
+    await page.getByLabel('新しい区分の名前').fill('保守');
+    await page.getByRole('button', { name: '区分を足す' }).click();
+    await expect(page.getByRole('alert').filter({ hasText: '同じ名前の区分があります' })).toBeVisible();
+    await expect(page.getByLabel('新しい区分の名前')).toBeFocused();
 
     // 書いた後の読み直しが失敗しても、前の一覧を残し、更新できなかったことと「もう一度試す」を出す
     await page.route('**/api/aoba/category-repository-list', (route) => route.fulfill({ status: 503, body: '' }));
-    await page.getByLabel('新しい系統の名前').fill('追加案件');
-    await page.getByRole('button', { name: '系統を足す' }).click();
+    await page.getByLabel('新しい区分の名前').fill('追加案件');
+    await page.getByRole('button', { name: '区分を足す' }).click();
     await expect(page.getByRole('alert').filter({ hasText: '一覧を更新できませんでした' })).toBeVisible();
-    await expect(page.getByRole('list', { name: '系統の一覧' }).getByText('保守', { exact: true })).toBeVisible();
+    await expect(page.getByRole('list', { name: '区分の一覧' }).getByText('保守', { exact: true })).toBeVisible();
     await page.unroute('**/api/aoba/category-repository-list');
     await page.getByRole('button', { name: 'もう一度試す' }).click();
     await expect(page.getByRole('alert').filter({ hasText: '一覧を更新できませんでした' })).toHaveCount(0);
-    await expect(page.getByRole('list', { name: '系統の一覧' }).getByText('追加案件', { exact: true })).toBeVisible();
+    await expect(page.getByRole('list', { name: '区分の一覧' }).getByText('追加案件', { exact: true })).toBeVisible();
     // 押したボタンが消えるので、先頭の節の見出しへフォーカスを移し、読み直せたことを常に置いた領域で伝える
     await expect(page.locator('.settings .setting-title').first()).toBeFocused();
     await expect(page.getByRole('status').filter({ hasText: '一覧を更新しました' })).toHaveCount(1);
-    await page.locator('.nav-item', { hasText: '掲示板' }).click();
+    await page.locator('.nav-item', { hasText: 'バックログ' }).click();
 
     // 親のないストーリーに区分を振る
-    await page.getByRole('button', { name: '達成目標を作る' }).click();
-    const storyDialog = page.getByRole('dialog', { name: '達成目標を作る' });
+    await page.getByRole('button', { name: 'ストーリーを作る' }).click();
+    const storyDialog = page.getByRole('dialog', { name: 'ストーリーを作る' });
     await storyDialog.getByLabel('タイトル').fill('ポイントを使える');
-    await storyDialog.getByLabel('系統').selectOption({ label: '保守' });
+    await storyDialog.getByLabel('区分').selectOption({ label: '保守' });
     await storyDialog.getByRole('button', { name: '作る' }).click();
     await expect(storyDialog).toBeHidden();
     const story = page.locator('.tree-group', { hasText: 'ポイントを使える' });
-    await expect(story.locator('.tree-row .chip')).toHaveText('系統：保守');
+    await expect(story.locator('.tree-row .chip')).toHaveText('区分：保守');
 
     // 一覧が1つだけなら、リポジトリはそれを選んだ状態で開く。親を選ぶと区分の欄は引き継ぎの表示になる
-    await story.getByRole('button', { name: /クエストを足す/ }).click();
-    const dialog = page.getByRole('dialog', { name: '依頼を出す' });
+    await story.getByRole('button', { name: /タスクを足す/ }).click();
+    const dialog = page.getByRole('dialog', { name: '起票' });
     await expect(
       dialog.getByRole('radiogroup', { name: 'リポジトリ' }).getByRole('radio', { name: 'point-api' }),
     ).toBeChecked();
-    await expect(dialog.getByLabel('系統')).toHaveCount(0);
+    await expect(dialog.getByLabel('区分')).toHaveCount(0);
     await expect(dialog.getByText('親から引き継ぎ')).toBeVisible();
     await dialog.getByLabel('タイトル').fill('残高の画面を作る');
-    await dialog.getByRole('button', { name: '依頼を出す' }).click();
+    await dialog.getByRole('button', { name: '起票' }).click();
     await expect(dialog).toBeHidden();
     const task = story.locator('.entry', { hasText: '残高の画面を作る' });
     // 配下の行では区分を繰り返さず、リポジトリだけを出す
@@ -198,7 +198,7 @@ test.describe('リーダー（あおば開発のミナト）', () => {
     await task.getByRole('link', { name: '残高の画面を作る' }).click();
     const drawer = page.getByRole('dialog', { name: '残高の画面を作る' });
     await expect(drawer.getByText('親から引き継ぎ')).toBeVisible();
-    await expect(drawer.getByLabel('系統')).toHaveCount(0);
+    await expect(drawer.getByLabel('区分')).toHaveCount(0);
   });
 });
 
@@ -208,25 +208,25 @@ test.describe('一般のメンバー（あおば開発のハルカ）', () => {
   });
 
   test('メニューに設定を出さず、URL で開くと入れないことを伝える', async ({ page }) => {
-    await page.goto(SEED_GAME_WORKSPACE);
-    await expect(page.getByRole('heading', { level: 1, name: '掲示板' })).toBeVisible();
+    await page.goto(SEED_CLIENT_WORKSPACE);
+    await expect(page.getByRole('heading', { level: 1, name: 'バックログ' })).toBeVisible();
     await expect(page.locator('.nav-item', { hasText: 'メンバー' })).toBeVisible();
     await expect(page.locator('.nav-item', { hasText: /^\s*設定\s*$/ })).toHaveCount(0);
-    await page.goto(`${SEED_GAME_WORKSPACE}/settings`);
+    await page.goto(`${SEED_CLIENT_WORKSPACE}/settings`);
     await expect(page.getByText('この画面には入れません')).toBeVisible();
-    await expect(page.getByLabel('新しい系統の名前')).toHaveCount(0);
-    // 行程の節も出さない
-    await expect(page.getByLabel('新しい行程の名前')).toHaveCount(0);
-    await expect(page.getByRole('list', { name: '行程の一覧' })).toHaveCount(0);
-    await page.getByRole('link', { name: '掲示板へ戻る' }).click();
-    await expect(page.getByRole('heading', { level: 1, name: '掲示板' })).toBeVisible();
+    await expect(page.getByLabel('新しい区分の名前')).toHaveCount(0);
+    // 列の節も出さない
+    await expect(page.getByLabel('新しい列の名前')).toHaveCount(0);
+    await expect(page.getByRole('list', { name: '列の一覧' })).toHaveCount(0);
+    await page.getByRole('link', { name: 'バックログへ戻る' }).click();
+    await expect(page.getByRole('heading', { level: 1, name: 'バックログ' })).toBeVisible();
   });
 
   test('seed の区分とリポジトリが木の行に出る', async ({ page }) => {
-    await page.goto(SEED_GAME_WORKSPACE);
+    await page.goto(SEED_CLIENT_WORKSPACE);
     const epic = page.locator('.tree-group', { hasText: 'ポイントの交換先を増やす' }).first();
-    await expect(epic.locator('.tree-row.is-epic .chip', { hasText: '系統：追加案件' })).toBeVisible();
+    await expect(epic.locator('.tree-row.is-epic .chip', { hasText: '区分：追加案件' })).toBeVisible();
     const task = page.locator('.entry', { hasText: 'ポイント付与のバッチを作る' });
-    await expect(task.locator('.entry-meta .chip')).toHaveText(['リポジトリ：point-api', '系統：保守']);
+    await expect(task.locator('.entry-meta .chip')).toHaveText(['リポジトリ：point-api', '区分：保守']);
   });
 });

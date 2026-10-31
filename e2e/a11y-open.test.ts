@@ -1,6 +1,6 @@
-// 開いた状態（タスクの引き出し、Dialog のダイアログ、ConfirmDialog、運用の画面の管理者の指名し直し）を axe で確かめる（#334）。4つのテーマ × ゲームの言葉。
+// 開いた状態（タスクの引き出し、Dialog のダイアログ、ConfirmDialog、運用の画面の管理者の指名し直し）を axe で確かめる（#334）。4つのテーマ × スクラムの言葉。
 // 主な画面は e2e/a11y-screens.test.ts、除外は e2e/ui-exclusions.ts。
-// seed のセッション（seed/sessions.ts）の Cookie で開く。あおば開発の管理者はミナト。受託開発チームはゲームの言葉。
+// seed のセッション（seed/sessions.ts）の Cookie で開く。あおば開発の管理者はミナト。受託開発チームも社内ツールもスクラムの言葉。
 // 開くだけで、作る、外すは押さない。seed の行もテーマの設定も書き換えない（ほかのファイルと並べて走るため）
 import { expect, test } from './fixtures.ts';
 import { expectNoA11yViolationsInThemes, signIn, waitForSettled } from './helpers.ts';
@@ -23,37 +23,37 @@ test('タスクの引き出しを開いた状態に axe の違反が無い', asy
 
 test('タスクを作るダイアログ（Dialog）を開いた状態に axe の違反が無い', async ({ page }) => {
   await page.goto(WORKSPACE);
-  await expect(page.getByRole('heading', { level: 1, name: '掲示板' })).toBeVisible();
-  const create = page.getByRole('button', { name: '依頼を出す' });
+  await expect(page.getByRole('heading', { level: 1, name: 'バックログ' })).toBeVisible();
+  const create = page.getByRole('button', { name: '起票' });
   await expect(create).toBeVisible();
   await waitForSettled(page);
   await create.click();
-  const dialog = page.getByRole('dialog', { name: '依頼を出す' });
+  const dialog = page.getByRole('dialog', { name: '起票' });
   await expect(dialog.getByLabel('タイトル')).toBeVisible();
   await expect(page.locator('[aria-busy="true"]:visible')).toHaveCount(0);
   await expectNoA11yViolationsInThemes(page, 'task-dialog');
 });
 
-test('遠征に入れるダイアログ（SprintTaskPicker）を開いた状態に axe の違反が無い', async ({ page }) => {
+test('スプリントに入れるダイアログ（SprintTaskPicker）を開いた状態に axe の違反が無い', async ({ page }) => {
   await page.goto(`${WORKSPACE}/plan`);
-  const open = page.getByRole('button', { name: '掲示板から入れる: 遠征 年末の仕上げ' });
+  const open = page.getByRole('button', { name: 'バックログから入れる: スプリント 年末の仕上げ' });
   await expect(open).toBeVisible();
   await waitForSettled(page);
   await open.click();
-  const dialog = page.getByRole('dialog', { name: '遠征 年末の仕上げ に入れる' });
-  await expect(dialog.getByRole('group', { name: '入れるクエスト' })).toBeVisible();
+  const dialog = page.getByRole('dialog', { name: 'スプリント 年末の仕上げ に入れる' });
+  await expect(dialog.getByRole('group', { name: '入れるタスク' })).toBeVisible();
   await expect(page.locator('[aria-busy="true"]:visible')).toHaveCount(0);
   await expectNoA11yViolationsInThemes(page, 'sprint-task-picker');
 });
 
-test('遠征を始めるダイアログ（SprintStartDialog）を開いた状態に axe の違反が無い', async ({ page }) => {
+test('スプリントを始めるダイアログ（SprintStartDialog）を開いた状態に axe の違反が無い', async ({ page }) => {
   await page.goto(`${WORKSPACE}/plan`);
-  const open = page.getByRole('button', { name: '始める: 遠征 11/2〜11/15' });
+  const open = page.getByRole('button', { name: '始める: スプリント 11/2〜11/15' });
   await expect(open).toBeVisible();
   await waitForSettled(page);
   await open.click();
-  const dialog = page.getByRole('dialog', { name: '遠征を始める' });
-  await expect(dialog.getByLabel('遠征の目的')).toBeVisible();
+  const dialog = page.getByRole('dialog', { name: 'スプリントを始める' });
+  await expect(dialog.getByLabel('スプリントゴール')).toBeVisible();
   await expect(page.locator('[aria-busy="true"]:visible')).toHaveCount(0);
   await expectNoA11yViolationsInThemes(page, 'sprint-start');
 });

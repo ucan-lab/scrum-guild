@@ -310,7 +310,7 @@ describe('my-organizations', () => {
 });
 
 type Info = {
-  organization: { name: string; vocabulary: string; theme: string; has_workspaces: boolean };
+  organization: { name: string; theme: string; has_workspaces: boolean };
   me: { id: string; name: string; is_admin: boolean; theme: string | null };
   workspaces: { id: string; name: string; role: string }[];
 };
@@ -391,10 +391,10 @@ describe('organization', () => {
     const result = await readOrganization(organization.slug, person.token);
     expect(result.organization).toEqual({
       name: '青葉工房',
-      vocabulary: 'scrum',
       theme: 'medieval',
       has_workspaces: true,
     });
+    expect(result.organization).not.toHaveProperty('vocabulary');
     expect(result.me).toEqual({ id: person.userId, name: '星野 澪', is_admin: false, theme: null, level: 1 });
     expect(result.workspaces).toEqual([
       { id: first.id, name: 'あ開発', role: 'member' },

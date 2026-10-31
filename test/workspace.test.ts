@@ -115,13 +115,13 @@ async function readCreated(organization: OrganizationFixture, workspaceId: strin
   };
 }
 
-type CreateInput = { name?: string; timezone?: string; vocabulary?: string; leader_user_id: string };
+type CreateInput = { name?: string; timezone?: string; leader_user_id: string };
 
 function create(target: Target, token: string, input: CreateInput) {
   return post(app, workspaceCreate, {
     slug: target.slug,
     token,
-    body: { name: '保守チーム', timezone: 'Asia/Tokyo', vocabulary: 'game', ...input },
+    body: { name: '保守チーム', timezone: 'Asia/Tokyo', ...input },
   });
 }
 
@@ -146,7 +146,7 @@ describe('workspace-create', () => {
       name: '保守チーム',
       timezone: 'Asia/Tokyo',
       week_start: 1,
-      vocabulary: 'game',
+      vocabulary: 'scrum',
       definition_of_done_md: null,
       closed_at: null,
       created_by: target.admin.userId,
@@ -158,15 +158,15 @@ describe('workspace-create', () => {
     ]);
     // 完了の列が末尾。完了の列は name が空で、位置は他の列より後
     expect(columns.map((column) => [column.name, column.is_done])).toEqual([
-      ['出発前', 0],
-      ['遂行中', 0],
-      ['査定中', 0],
+      ['未着手', 0],
+      ['作業中', 0],
+      ['レビュー', 0],
       [null, 1],
     ]);
     expect(new Set(columns.map((column) => column.position)).size).toBe(4);
     const ordered = [...columns].sort((a, b) => (a.position < b.position ? -1 : 1));
     expect(ordered.map((column) => column.is_done)).toEqual([0, 0, 0, 1]);
-    expect(fields.map((field) => field.name)).toEqual(['達成条件']);
+    expect(fields.map((field) => field.name)).toEqual(['受け入れ基準']);
     expect(fields[0]?.position).toBeTruthy();
     expect(memberships).toEqual([
       {
@@ -193,10 +193,10 @@ describe('workspace-create', () => {
       entity_id: id,
       action: 'create',
     });
+    // vocabulary が入らないことも、完全一致で固定する
     expect(JSON.parse(workspaceLog!.changes_json)).toEqual({
       name: [null, '保守チーム'],
       timezone: [null, 'Asia/Tokyo'],
-      vocabulary: [null, 'game'],
     });
     expect(membershipLog).toMatchObject({
       actor_user_id: target.admin.userId,
@@ -210,11 +210,14 @@ describe('workspace-create', () => {
     });
   });
 
-  test('スクラムの言葉で作ると、列と決まった欄の名前がスクラムの言葉になる', async () => {
+  test('入力に vocabulary を足して送っても捨てられ、DB の vocabulary 列は scrum で、列と決まった欄の名前もスクラムの言葉になる', async () => {
     const target = await createTarget();
-    const id = await created(
-      await create(target, target.admin.token, { vocabulary: 'scrum', leader_user_id: target.leader.userId! }),
-    );
+    const res = await post(app, workspaceCreate, {
+      slug: target.slug,
+      token: target.admin.token,
+      body: { name: '保守チーム', timezone: 'Asia/Tokyo', vocabulary: 'game', leader_user_id: target.leader.userId! },
+    });
+    const id = await created(res);
     const { workspace, columns, fields } = await readCreated(target.organization, id);
     expect(workspace?.vocabulary).toBe('scrum');
     expect(columns.map((column) => column.name)).toEqual(['未着手', '作業中', 'レビュー', null]);
@@ -242,7 +245,6 @@ describe('workspace-create', () => {
     // 作った直後の完成の定義は空
     expect(await info.json()).toEqual({
       name: '保守チーム',
-      vocabulary: 'game',
       closed_at: null,
       definition_of_done_md: null,
       role: null,
@@ -674,7 +676,7 @@ describe('workspace', () => {
     return post(app, workspaceInfo, { slug: target.slug, token: person.token, body: { workspace_id: workspaceId } });
   }
 
-  test('名前、言葉づかい、閉じた日時と、自分のロールを返す', async () => {
+  test('名前、閉じた日時と、自分のロールを返す（vocabulary を含まない）', async () => {
     const target = await createTarget();
     const workspace = await createWorkspace(target.organization, target.admin.userId!, {
       name: '社内ツール',
@@ -686,7 +688,6 @@ describe('workspace', () => {
 
     const expected = {
       name: '社内ツール',
-      vocabulary: 'scrum',
       closed_at: '2026-10-22T00:00:00.000Z',
       definition_of_done_md: null,
     };

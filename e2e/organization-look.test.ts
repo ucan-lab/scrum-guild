@@ -1,4 +1,4 @@
-// 組織の言葉づかいと既定のテーマ（組織の管理の画面）。管理者が選んで「保存する」を押すと送り、組織の枠を読み直して自分の画面にも当てる。
+// 組織の既定のテーマ（組織の管理の画面）。管理者が選んで「保存する」を押すと送り、組織の枠を読み直して自分の画面にも当てる。
 // 組織の値を書き換えるので、このファイルだけが使う seed の組織、くもラボで確かめる（seed/README.md）。
 // 管理者はカイ（lookAdmin。テーマを選んでいない）、一般のユーザーはテーマを選んでいないソウタ（lookMember）と、
 // 自分のテーマ（シンプル（ダーク））を選んだコハル（lookThemed）。変えた値は、各テストの終わりに画面から元に戻す
@@ -57,9 +57,6 @@ test.describe('管理者（くもラボのカイ）', () => {
     await expect(section.getByRole('radio')).toHaveCount(5);
     await expect(section.getByRole('radio', { name: /^シンプル（自動）/ })).toBeChecked();
     await expect(section).toContainText('冒険者ギルドの帳簿。紙と墨、完了に朱の判子');
-    // 2つの「保存する」は、読み上げの名前でどの節のものかが分かる
-    await expect(page.getByRole('button', { name: '保存する 既定のテーマ', exact: true })).toHaveCount(1);
-    await expect(page.getByRole('button', { name: '保存する パーティの外の言葉づかい', exact: true })).toHaveCount(1);
     // 今の値のままなら押せない
     await expect(save).toHaveAttribute('aria-disabled', 'true');
     expect(await themeOf(browser, baseURL, 'lookMember')).toBe('simple');
@@ -102,60 +99,15 @@ test.describe('管理者（くもラボのカイ）', () => {
     await themeSection(page).evaluate((section) => section.scrollIntoView({ block: 'start' }));
   });
 
-  test('言葉づかいを保存すると、送っている間はボタンを止め、通るとワークスペースの外の画面の言葉が切り替わる', async ({
-    page,
-  }) => {
+  test('組織の設定に言葉づかいの節は無く、テーマの節だけがある。画面の言葉はスクラムの言葉', async ({ page }) => {
     await page.goto('/kumo/admin');
-    await expect(page.locator('.page-eyebrow')).toHaveText('ギルドマスターだけが見られます');
-    const section = page.getByRole('region', { name: 'パーティの外の言葉づかい' });
-    await expect(section.getByRole('radio', { name: /^ゲームの言葉/ })).toBeChecked();
-    await expect(section).toContainText('冒険者ギルド、ギルドマスター');
-    await expect(section).toContainText('組織、管理者');
-
-    let release: () => void = () => {};
-    const held = new Promise<void>((resolve) => (release = resolve));
-    let calls = 0;
-    await page.route(UPDATE_ROUTE, async (route) => {
-      calls++;
-      await held;
-      await route.continue();
-    });
-    await section.getByRole('radio', { name: /^スクラムの言葉/ }).check();
-    // 送っている間は名前が「保存しています」に替わるので、名前の頭で引く
-    const save = section.getByRole('button', { name: /^保存/ });
-    await save.click();
-    // 送っている間はボタンを aria-disabled にし、押しても送らない。ラジオは選べたまま
-    await expect(save).toHaveText(/^保存しています/);
-    await expect(save).toHaveAttribute('aria-disabled', 'true');
-    // aria-disabled のボタンは Playwright が押せないものとして待つので、確かめを飛ばして押す
-    await save.click({ force: true });
-    await expect(section.getByRole('radio', { name: /^ゲームの言葉/ })).toBeEnabled();
-    release();
-
-    await expect(
-      page.getByRole('status').filter({ hasText: '言葉づかいを「スクラムの言葉」に変えました' }),
-    ).toBeVisible();
-    expect(calls).toBe(1);
-    await page.unroute(UPDATE_ROUTE);
-    // 組織の枠を読み直し、この画面の言葉も替わる
     await expect(page.locator('.page-eyebrow')).toHaveText('管理者だけが見られます');
     await expect(page.locator('.me .chip')).toHaveText('管理者');
-    const renamed = page.getByRole('region', { name: 'ワークスペースの外の言葉づかい' });
-    await expect(renamed.getByRole('radio', { name: /^スクラムの言葉/ })).toBeChecked();
-    await expect(renamed.getByRole('button', { name: '保存する' })).toHaveAttribute('aria-disabled', 'true');
-
-    // 組織のほかの画面も、組織の言葉になる
-    await page.goto('/kumo');
-    await expect(page.locator('.me .chip')).toHaveText('管理者');
-
-    // 後片付け（seed の値に戻す）
-    await page.goto('/kumo/admin');
-    await renamed.getByRole('radio', { name: /^ゲームの言葉/ }).check();
-    await renamed.getByRole('button', { name: '保存する' }).click();
-    await expect(
-      page.getByRole('status').filter({ hasText: '言葉づかいを「ゲームの言葉」に変えました' }),
-    ).toBeVisible();
-    await expect(page.locator('.me .chip')).toHaveText('ギルドマスター');
+    await expect(themeSection(page)).toBeVisible();
+    await expect(page.getByRole('region', { name: /言葉づかい/ })).toHaveCount(0);
+    await expect(page.getByText('スクラムの言葉', { exact: true })).toHaveCount(0);
+    await expect(page.getByRole('radio', { name: /の言葉/ })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: /^保存/ })).toHaveCount(1);
   });
 
   test('失敗は節の中に次の操作まで残す。通信の失敗では選んだ値を残して押し直せ、409 と 403 は読み直して今の値に戻す', async ({
@@ -181,7 +133,7 @@ test.describe('管理者（くもラボのカイ）', () => {
       route.fulfill({ status: 409, json: { error: { code: 'conflict', message: 'test' } } }),
     );
     await save.click();
-    await expect(section.getByRole('alert')).toContainText('ほかのギルドマスターが先に変えていました');
+    await expect(section.getByRole('alert')).toContainText('ほかの管理者が先に変えていました');
     await expect(section.getByRole('radio', { name: /^シンプル（自動）/ })).toBeChecked();
     await expect(save).toHaveAttribute('aria-disabled', 'true');
     await page.unroute(UPDATE_ROUTE);

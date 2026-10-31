@@ -33,12 +33,12 @@ test.beforeEach(async ({ context, baseURL }) => {
   await signIn(context, baseURL, 'admin');
 });
 
-// 起票のダイアログから、タイトルだけでタスクを1件作る（ゲームの言葉）
+// 起票のダイアログから、タイトルだけでタスクを1件作る
 async function addTask(page: Page, title: string): Promise<void> {
-  await page.getByRole('button', { name: '依頼を出す' }).click();
-  const dialog = page.getByRole('dialog', { name: '依頼を出す' });
+  await page.getByRole('button', { name: '起票' }).click();
+  const dialog = page.getByRole('dialog', { name: '起票' });
   await dialog.getByLabel('タイトル').fill(title);
-  await dialog.getByRole('button', { name: '依頼を出す' }).click();
+  await dialog.getByRole('button', { name: '起票' }).click();
   await expect(dialog).toBeHidden();
 }
 
@@ -65,7 +65,7 @@ test('開く → 属性を直す → 本文に script を含む Markdown を書�
   page,
 }) => {
   const collect = await watchViolations(page);
-  await createWorkspace(page, '引き出しパーティ', 'game');
+  await createWorkspace(page, '引き出しワークスペース');
   await addTask(page, '見積もりを送る');
 
   // 行のリンクで開く。見出しにフォーカスが移り、URL に ?task=<ID> が付く
@@ -78,15 +78,15 @@ test('開く → 属性を直す → 本文に script を含む Markdown を書�
   await expect(drawer).toHaveAttribute('aria-modal', 'true');
   await expect(drawer.getByRole('heading', { level: 2 })).toBeFocused();
 
-  // 難易度は選んだら保存し、その場で木の行に反映する
+  // ポイントは選んだら保存し、その場で木の行に反映する
   await drawer.getByRole('radio', { name: '5', exact: true }).check();
   await expect(page.getByRole('status').filter({ hasText: '保存しました' })).toBeVisible();
   await expect(row.locator('.pts')).toHaveText('5');
 
-  // 期限も選んだら保存する。木の行に期日の印が出る
-  await drawer.getByLabel('期限').fill('2099-12-31');
+  // 期日も選んだら保存する。木の行に期日の印が出る
+  await drawer.getByLabel('期日').fill('2099-12-31');
   await expect(row.locator('.chip')).toBeVisible();
-  await drawer.getByLabel('期限').fill('');
+  await drawer.getByLabel('期日').fill('');
   await expect(row.locator('.chip')).toHaveCount(0);
 
   // タイトルは押すと入力欄になり、Enter で確定する。行のタイトルが変わる
@@ -150,22 +150,22 @@ test('開く → 属性を直す → 本文に script を含む Markdown を書�
 
   // 削除は確認を挟む。やめると残り、削除すると引き出しが閉じて、木から消える
   await row.getByRole('link', { name: '見積もりを送って確かめる' }).click();
-  await drawer.getByRole('button', { name: 'このクエストを削除する' }).click();
-  const deleteConfirm = page.getByRole('dialog', { name: 'クエストを削除する' });
+  await drawer.getByRole('button', { name: 'このタスクを削除する' }).click();
+  const deleteConfirm = page.getByRole('dialog', { name: 'タスクを削除する' });
   await deleteConfirm.getByRole('button', { name: 'やめる' }).click();
   await expect(drawer).toBeVisible();
-  await drawer.getByRole('button', { name: 'このクエストを削除する' }).click();
+  await drawer.getByRole('button', { name: 'このタスクを削除する' }).click();
   await deleteConfirm.getByRole('button', { name: '削除する' }).click();
   await expect(drawer).toBeHidden();
-  await expect(page.getByRole('status').filter({ hasText: 'クエストを削除しました' })).toBeVisible();
+  await expect(page.getByRole('status').filter({ hasText: 'タスクを削除しました' })).toBeVisible();
   await expect(page.locator('.entry', { hasText: '見積もりを送って確かめる' })).toHaveCount(0);
   await expect(page).not.toHaveURL(/\?task=/);
 
   expect(await collect()).toEqual([]);
 });
 
-test('完了したタスクの難易度は直せず、理由を添える。ほかの属性は直せる', async ({ page }) => {
-  await createWorkspace(page, '完了の引き出しパーティ', 'game');
+test('完了したタスクのポイントは直せず、理由を添える。ほかの属性は直せる', async ({ page }) => {
+  await createWorkspace(page, '完了の引き出しワークスペース');
   await addTask(page, '済んだ依頼');
   const row = page.locator('.entry', { hasText: '済んだ依頼' });
   await row.getByRole('link', { name: '済んだ依頼' }).click();
@@ -174,13 +174,13 @@ test('完了したタスクの難易度は直せず、理由を添える。ほ�
   await expect(row.locator('.pts')).toHaveText('3');
   await drawer.getByRole('button', { name: '閉じる' }).click();
 
-  await row.getByRole('button', { name: /完遂にする/ }).click();
-  await expect(row.getByRole('img', { name: '済んだ依頼: 完遂' })).toBeVisible();
+  await row.getByRole('button', { name: /完了にする/ }).click();
+  await expect(row.getByRole('img', { name: '済んだ依頼: 完了' })).toBeVisible();
   await row.getByRole('link', { name: '済んだ依頼' }).click();
-  await expect(drawer.getByText('完遂したクエストの難易度は直せません')).toBeVisible();
-  // 理由の文は、難易度の欄の説明に結ばれる。読み取り専用でも、選んだ値は薄めずに読める
-  await expect(drawer.getByRole('radiogroup', { name: '難易度' })).toHaveAccessibleDescription(
-    '完遂したクエストの難易度は直せません',
+  await expect(drawer.getByText('完了したタスクのポイントは直せません')).toBeVisible();
+  // 理由の文は、ポイントの欄の説明に結ばれる。読み取り専用でも、選んだ値は薄めずに読める
+  await expect(drawer.getByRole('radiogroup', { name: 'ポイント' })).toHaveAccessibleDescription(
+    '完了したタスクのポイントは直せません',
   );
   await expect(drawer.getByRole('radio', { name: '3', exact: true })).toBeChecked();
   expect(
@@ -189,38 +189,38 @@ test('完了したタスクの難易度は直せず、理由を添える。ほ�
       .first()
       .evaluate((el) => getComputedStyle(el).opacity),
   ).toBe('1');
-  for (const radio of await drawer.getByRole('radiogroup', { name: '難易度' }).getByRole('radio').all()) {
+  for (const radio of await drawer.getByRole('radiogroup', { name: 'ポイント' }).getByRole('radio').all()) {
     await expect(radio).toBeDisabled();
   }
-  // 期限とリポジトリは完了の後も直せる
+  // 期日とリポジトリは完了の後も直せる
   await expect(
     drawer.getByRole('radiogroup', { name: 'リポジトリ' }).getByRole('radio', { name: 'なし' }),
   ).toBeEnabled();
-  // 前のトースト（足した、難易度を保存した、完遂にした）が消えてから入れる。難易度の「保存しました」と取り違えずに
-  // 期限の保存を確かめ、トーストを、出したばかりの「保存しました」の1つにそろえる（#413）
+  // 前のトースト（足した、ポイントを保存した、完了にした）が消えてから入れる。ポイントの「保存しました」と取り違えずに
+  // 期日の保存を確かめ、トーストを、出したばかりの「保存しました」の1つにそろえる（#413）
   const toasts = page.locator('.toasts:visible .toast');
   await expect(toasts).toHaveCount(0, { timeout: 10_000 });
   const saved = waitForResponses(page, '/task-update');
-  await drawer.getByLabel('期限').fill('2099-01-02');
+  await drawer.getByLabel('期日').fill('2099-01-02');
   await saved;
   await expect(toasts).toHaveText(['保存しました']);
   await expect(drawer.getByRole('button', { name: 'クリア' })).toBeVisible();
-  // 後ろの掲示板も読み直し終えている（完遂の経験値が入り、完遂の行は畳まれる）
-  await expect(page.locator('.page-head .team-xp')).toHaveText('パーティ全体の経験値40XP');
-  await expect(page.locator('.tree-folded.is-root')).toHaveText('親のない完遂 1 件を折りたたんでいます');
+  // 後ろのバックログも読み直し終えている（完了の経験値が入り、完了の行は畳まれる）
+  await expect(page.locator('.page-head .team-xp')).toHaveText('チーム全体の経験値40XP');
+  await expect(page.locator('.tree-folded.is-root')).toHaveText('親のない完了 1 件を折りたたんでいます');
 });
 
-test('担い手を引き出しで選ぶと、木の行にアバターが出る。外すと担い手なしに戻る。起票のダイアログでも選べる', async ({
+test('担当を引き出しで選ぶと、木の行にアバターが出る。外すと担当なしに戻る。起票のダイアログでも選べる', async ({
   page,
 }) => {
   // 作った管理者（ミナト）がリーダーとして所属するので、候補はミナト
-  await createWorkspace(page, '担い手パーティ', 'game');
-  await addTask(page, '担い手を決める');
-  const row = page.locator('.entry', { hasText: '担い手を決める' });
-  await expect(row.getByRole('img', { name: '担い手なし' })).toBeVisible();
-  await row.getByRole('link', { name: '担い手を決める' }).click();
-  const drawer = page.getByRole('dialog', { name: '担い手を決める' });
-  const select = drawer.getByRole('combobox', { name: '担い手' });
+  await createWorkspace(page, '担当ワークスペース');
+  await addTask(page, '担当を決める');
+  const row = page.locator('.entry', { hasText: '担当を決める' });
+  await expect(row.getByRole('img', { name: '担当なし' })).toBeVisible();
+  await row.getByRole('link', { name: '担当を決める' }).click();
+  const drawer = page.getByRole('dialog', { name: '担当を決める' });
+  const select = drawer.getByRole('combobox', { name: '担当' });
   await expect(select).toHaveValue('');
   await expect(select.getByRole('option', { name: 'ミナト' })).toBeAttached();
   await select.selectOption({ label: 'ミナト' });
@@ -232,44 +232,44 @@ test('担い手を引き出しで選ぶと、木の行にアバターが出る�
   await expect(drawerAvatar).toHaveAttribute('aria-hidden', 'true');
   await expect(row.getByRole('img', { name: 'ミナト' })).toBeVisible();
 
-  await select.selectOption({ label: '担い手なし' });
-  await expect(row.getByRole('img', { name: '担い手なし' })).toBeVisible();
+  await select.selectOption({ label: '担当なし' });
+  await expect(row.getByRole('img', { name: '担当なし' })).toBeVisible();
   await expect(select).toHaveValue('');
   await drawer.getByRole('button', { name: '閉じる' }).click();
   await expect(drawer).toBeHidden();
 
-  // 起票のダイアログでは、親の横に担い手を選ぶ（既定は担い手なし）
-  await page.getByRole('button', { name: '依頼を出す' }).click();
-  const dialog = page.getByRole('dialog', { name: '依頼を出す' });
-  await dialog.getByLabel('タイトル').fill('担い手つきの依頼');
-  const assignee = dialog.getByRole('combobox', { name: '担い手' });
+  // 起票のダイアログでは、親の横に担当を選ぶ（既定は担当なし）
+  await page.getByRole('button', { name: '起票' }).click();
+  const dialog = page.getByRole('dialog', { name: '起票' });
+  await dialog.getByLabel('タイトル').fill('担当つきの依頼');
+  const assignee = dialog.getByRole('combobox', { name: '担当' });
   await expect(assignee).toHaveValue('');
   await expect(assignee.getByRole('option', { name: 'ミナト' })).toBeAttached();
   await assignee.selectOption({ label: 'ミナト' });
-  await dialog.getByRole('button', { name: '依頼を出す' }).click();
+  await dialog.getByRole('button', { name: '起票' }).click();
   await expect(dialog).toBeHidden();
-  const created = page.locator('.entry', { hasText: '担い手つきの依頼' });
+  const created = page.locator('.entry', { hasText: '担当つきの依頼' });
   await expect(created.getByRole('img', { name: 'ミナト' })).toBeVisible();
-  // 引き出しを開くと、選んだ担い手が出る
-  await created.getByRole('link', { name: '担い手つきの依頼' }).click();
+  // 引き出しを開くと、選んだ担当が出る
+  await created.getByRole('link', { name: '担当つきの依頼' }).click();
   await expect(
-    page.getByRole('dialog', { name: '担い手つきの依頼' }).getByRole('combobox', { name: '担い手' }),
+    page.getByRole('dialog', { name: '担当つきの依頼' }).getByRole('combobox', { name: '担当' }),
   ).toHaveValue(/[0-9a-f-]{36}/);
 });
 
-test('担い手は選んで少し待ってから最後の値だけを送り、断られたら理由を出して前の値に戻す', async ({ page }) => {
-  await createWorkspace(page, '担い手の断られるパーティ', 'game');
-  await addTask(page, '担い手が断られる');
+test('担当は選んで少し待ってから最後の値だけを送り、断られたら理由を出して前の値に戻す', async ({ page }) => {
+  await createWorkspace(page, '担当の断られるワークスペース');
+  await addTask(page, '担当が断られる');
   // 候補を読めないときは知らせ、「もう一度試す」で読み直せる
   const unrouteMembers = await failOperation(page, memberList, AOBA, 500, 'internal');
-  const drawer = await openDrawer(page, '担い手が断られる');
-  const select = drawer.getByRole('combobox', { name: '担い手' });
-  await expect(drawer.getByText('担い手の候補を読み込めませんでした')).toBeVisible();
-  await expect(select.getByRole('option')).toHaveText(['担い手なし']);
+  const drawer = await openDrawer(page, '担当が断られる');
+  const select = drawer.getByRole('combobox', { name: '担当' });
+  await expect(drawer.getByText('担当の候補を読み込めませんでした')).toBeVisible();
+  await expect(select.getByRole('option')).toHaveText(['担当なし']);
   await unrouteMembers();
   await drawer.getByRole('button', { name: 'もう一度試す' }).click();
   await expect(select.getByRole('option', { name: 'ミナト' })).toBeAttached();
-  await expect(drawer.getByText('担い手の候補を読み込めませんでした')).toHaveCount(0);
+  await expect(drawer.getByText('担当の候補を読み込めませんでした')).toHaveCount(0);
   await expect(select).toBeFocused();
 
   // 閉じた選択欄で矢印キーを続けて押しても、途中の値は送らず、待った後に最後の値だけを送る
@@ -283,10 +283,10 @@ test('担い手は選んで少し待ってから最後の値だけを送り、�
   await expect(page.getByRole('status').filter({ hasText: '保存しました' })).toBeVisible();
   expect(bodies).toHaveLength(1);
   expect(bodies[0]!.assignee_user_id).toMatch(/[0-9a-f-]{36}/);
-  await select.selectOption({ label: '担い手なし' });
+  await select.selectOption({ label: '担当なし' });
   await expect.poll(() => bodies.length).toBe(2);
   await expect(
-    page.locator('.entry', { hasText: '担い手が断られる' }).getByRole('img', { name: '担い手なし' }),
+    page.locator('.entry', { hasText: '担当が断られる' }).getByRole('img', { name: '担当なし' }),
   ).toBeVisible();
 
   // 同時に替えられた（409 の conflict）
@@ -304,7 +304,7 @@ test('担い手は選んで少し待ってから最後の値だけを送り、�
   request = page.waitForRequest('**/api/aoba/task-assign');
   await select.selectOption({ label: 'ミナト' });
   await request;
-  await expect(drawer.getByText('終了したパーティには書き込めません')).toBeVisible();
+  await expect(drawer.getByText('終了したワークスペースには書き込めません')).toBeVisible();
   await expect(select).toHaveValue('');
 
   // 選んだ人が所属を外れていた（404 で、タスクはある）。理由を出し、候補を読み直す（読み直した候補にはもういない）
@@ -316,7 +316,9 @@ test('担い手は選んで少し待ってから最後の値だけを送り、�
   await select.selectOption({ label: 'ミナト' });
   await request;
   await reload;
-  await expect(drawer.getByText('選んだ人は、もうこのパーティにいません。担い手を選び直してください')).toBeVisible();
+  await expect(
+    drawer.getByText('選んだ人は、もうこのワークスペースに所属していません。担当を選び直してください'),
+  ).toBeVisible();
   await expect(select.getByRole('option', { name: 'ミナト' })).toHaveCount(0);
   await expect(select).toHaveValue('');
   await expect(drawer).toBeVisible();
@@ -327,7 +329,7 @@ test('担い手は選んで少し待ってから最後の値だけを送り、�
 });
 
 test('真ん中は幕と inert を保ち、選んだ既定は再読み込み後も残る', async ({ page }) => {
-  await createWorkspace(page, '開き方パーティ', 'game');
+  await createWorkspace(page, '開き方ワークスペース');
   await addTask(page, '真ん中で読む');
   const row = page.getByRole('link', { name: '真ん中で読む', exact: true });
   await row.click();
@@ -381,10 +383,10 @@ test('スクロールした先の行のリンクで開いても、木のスク�
 });
 
 test('存在しないタスクの ID で開くと、トーストで知らせて閉じる', async ({ page }) => {
-  await createWorkspace(page, '見つからないパーティ', 'game');
+  await createWorkspace(page, '見つからないワークスペース');
   const url = new URL(page.url());
   await page.goto(`${url.pathname}?task=019a0000-0000-7000-8000-00000000ffff`);
-  await expect(page.getByRole('status').filter({ hasText: 'このクエストは見つかりません' })).toBeVisible();
+  await expect(page.getByRole('status').filter({ hasText: 'このタスクは見つかりません' })).toBeVisible();
   await expect(page).not.toHaveURL(/\?task=/);
   await expect(page.getByRole('dialog')).toHaveCount(0);
 });
@@ -392,7 +394,7 @@ test('存在しないタスクの ID で開くと、トーストで知らせて�
 test('終了したワークスペースは読み取り専用で開く（seed のひばり工房ではなく、画面の応答を差し替えて確かめる）', async ({
   page,
 }) => {
-  await createWorkspace(page, '閉じたパーティ', 'game');
+  await createWorkspace(page, '閉じたワークスペース');
   await addTask(page, '読むだけ');
   const row = page.locator('.entry', { hasText: '読むだけ' });
   // ワークスペースの情報だけを閉じた状態に差し替える
@@ -403,13 +405,13 @@ test('終了したワークスペースは読み取り専用で開く（seed の
   await page.reload();
   await page.locator('.entry', { hasText: '読むだけ' }).getByRole('link', { name: '読むだけ' }).click();
   const drawer = page.getByRole('dialog', { name: '読むだけ' });
-  await expect(drawer.getByText('終了したパーティのクエストは、読み取りだけできます')).toBeVisible();
+  await expect(drawer.getByText('終了したワークスペースのタスクは、読み取りだけできます')).toBeVisible();
   await expect(drawer.getByRole('button', { name: '編集' })).toHaveCount(0);
   await expect(drawer.getByRole('button', { name: /削除する/ })).toHaveCount(0);
   for (const radio of await drawer.getByRole('radio').all()) await expect(radio).toBeDisabled();
-  // 担い手は選択欄を出さず、アバターと名前だけ
+  // 担当は選択欄を出さず、アバターと名前だけ
   await expect(drawer.getByRole('combobox')).toHaveCount(0);
-  await expect(drawer.getByText('担い手なし', { exact: true })).toBeVisible();
+  await expect(drawer.getByText('担当なし', { exact: true })).toBeVisible();
   await expect(row).toHaveCount(1);
 });
 
@@ -432,7 +434,7 @@ async function openHistory(drawer: Locator) {
 test('変更の履歴: 読めなければ「もう一度試す」で読み直し、保存の後の読み直しに失敗しても行を残し、「さらに読む」で続きを足す', async ({
   page,
 }) => {
-  await createWorkspace(page, '履歴の読み込みパーティ', 'game');
+  await createWorkspace(page, '履歴の読み込みワークスペース');
   await addTask(page, '履歴を読み直す');
 
   // 初めに読めない。失敗の文と「もう一度試す」を出す
@@ -470,18 +472,18 @@ test('変更の履歴: 読めなければ「もう一度試す」で読み直し
   });
   await drawer.getByRole('radio', { name: '8', exact: true }).check();
   await expect(items).toHaveCount(1);
-  await expect(items.nth(0).locator('.history-changes li span')).toHaveText(['難易度', '5 → 8']);
+  await expect(items.nth(0).locator('.history-changes li span')).toHaveText(['ポイント', '5 → 8']);
   await history.getByRole('button', { name: 'さらに読む' }).click();
   await expect(items).toHaveCount(3);
-  await expect(items.nth(1).locator('.history-changes li span')).toHaveText(['難易度', '未見積もり → 5']);
-  await expect(items.nth(2)).toContainText('依頼を出した');
+  await expect(items.nth(1).locator('.history-changes li span')).toHaveText(['ポイント', '未見積もり → 5']);
+  await expect(items.nth(2)).toContainText('作成した');
   await expect(history.getByRole('button', { name: 'さらに読む' })).toHaveCount(0);
   await expect(history).toBeFocused();
   expect(befores).toHaveLength(1);
 });
 
 test('変更の履歴が無ければ「まだ変更はありません。」', async ({ page }) => {
-  await createWorkspace(page, '履歴の無いパーティ', 'game');
+  await createWorkspace(page, '履歴の無いワークスペース');
   await addTask(page, '履歴の無い依頼');
   await mockOperation(page, taskHistory, AOBA, { entries: [], next: null, timezone: 'Asia/Tokyo' });
   const drawer = await openDrawer(page, '履歴の無い依頼');
@@ -489,83 +491,64 @@ test('変更の履歴が無ければ「まだ変更はありません。」', as
 });
 
 test('変更の履歴が 404（タスクが消えた）なら、「もう一度試す」を出さず、トーストで知らせて閉じる', async ({ page }) => {
-  await createWorkspace(page, '履歴が消えるパーティ', 'game');
+  await createWorkspace(page, '履歴が消えるワークスペース');
   await addTask(page, '履歴が消える依頼');
   await failOperation(page, taskHistory, AOBA, 404, 'not_found');
   await page.locator('.entry').getByRole('link', { name: '履歴が消える依頼' }).click();
-  await expect(page.getByRole('status').filter({ hasText: 'このクエストは見つかりません' })).toBeVisible();
+  await expect(page.getByRole('status').filter({ hasText: 'このタスクは見つかりません' })).toBeVisible();
   await expect(page).not.toHaveURL(/\?task=/);
   await expect(page.getByRole('dialog')).toHaveCount(0);
 });
 
-// 変更の履歴: 難易度と担い手を直すと、新しい順に、日時と人と、列の名前と前と後が出る。列の名前は言葉づかいの辞書の言葉
-for (const [vocabulary, words] of [
-  [
-    'game',
-    {
-      create: '依頼を出す',
-      points: '難易度',
-      assignee: '担い手',
-      unassigned: '担い手なし',
-      created: '依頼を出した',
-      updated: '書き換えた',
-    },
-  ],
-  [
-    'scrum',
-    {
-      create: '起票',
-      points: 'ポイント',
-      assignee: '担当',
-      unassigned: '担当なし',
-      created: '作成した',
-      updated: '変更した',
-    },
-  ],
-] as const) {
-  test(`変更の履歴を新しい順に、${vocabulary === 'game' ? 'ゲーム' : 'スクラム'}の言葉の列の名前で出す`, async ({
-    page,
-  }) => {
-    const collect = await watchViolations(page);
-    await createWorkspace(page, `履歴の${vocabulary}チーム`, vocabulary);
-    const title = `履歴をたどる（${vocabulary}）`;
-    await page.getByRole('button', { name: words.create }).click();
-    const dialog = page.getByRole('dialog', { name: words.create });
-    await dialog.getByLabel('タイトル').fill(title);
-    await dialog.getByRole('button', { name: words.create }).click();
-    await expect(dialog).toBeHidden();
+// 変更の履歴: ポイントと担当を直すと、新しい順に、日時と人と、列の名前と前と後が出る。列の名前は辞書の言葉
+const words = {
+  create: '起票',
+  points: 'ポイント',
+  assignee: '担当',
+  unassigned: '担当なし',
+  created: '作成した',
+  updated: '変更した',
+};
+test('変更の履歴を新しい順に、スクラムの言葉の列の名前で出す', async ({ page }) => {
+  const collect = await watchViolations(page);
+  await createWorkspace(page, '履歴のチーム');
+  const title = '履歴をたどる';
+  await page.getByRole('button', { name: words.create }).click();
+  const dialog = page.getByRole('dialog', { name: words.create });
+  await dialog.getByLabel('タイトル').fill(title);
+  await dialog.getByRole('button', { name: words.create }).click();
+  await expect(dialog).toBeHidden();
 
-    const drawer = await openDrawer(page, title);
-    const history = await openHistory(drawer);
-    const items = history.locator('.history > li');
-    // 開いたときに読む。作成の行だけ
-    await expect(items).toHaveCount(1);
-    await expect(items.nth(0)).toContainText(words.created);
-    await expect(items.nth(0).locator('time')).toHaveText(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/);
-    await expect(items.nth(0)).toContainText('ミナト');
+  const drawer = await openDrawer(page, title);
+  const history = await openHistory(drawer);
+  const items = history.locator('.history > li');
+  // 開いたときに読む。作成の行だけ
+  await expect(items).toHaveCount(1);
+  await expect(items.nth(0)).toContainText(words.created);
+  await expect(items.nth(0).locator('time')).toHaveText(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/);
+  await expect(items.nth(0)).toContainText('ミナト');
 
-    await drawer.getByRole('radio', { name: '5', exact: true }).check();
-    await expect(items).toHaveCount(2);
-    await drawer.getByRole('combobox', { name: words.assignee }).selectOption({ label: 'ミナト' });
-    // 保存した後に読み直す。新しい順
-    await expect(items).toHaveCount(3);
-    await expect(items.nth(0).locator('> .props-note')).toHaveText(words.updated);
-    await expect(items.nth(0).locator('.history-changes li span')).toHaveText([
-      words.assignee,
-      `${words.unassigned} → ミナト`,
-    ]);
-    await expect(items.nth(1).locator('.history-changes li span')).toHaveText([words.points, '未見積もり → 5']);
-    await expect(items.nth(2).locator('> .props-note')).toHaveText(words.created);
-    await expect(items.nth(2).locator('.history-changes li').first().locator('span')).toHaveText(['タイトル', title]);
-    // 続きは無い
-    await expect(history.getByRole('button', { name: 'さらに読む' })).toHaveCount(0);
-    expect(await collect()).toEqual([]);
-  });
-}
+  await drawer.getByRole('radio', { name: '5', exact: true }).check();
+  await expect(items).toHaveCount(2);
+  await drawer.getByRole('combobox', { name: words.assignee }).selectOption({ label: 'ミナト' });
+  // 保存した後に読み直す。新しい順
+  await expect(items).toHaveCount(3);
+  await expect(items.nth(0).locator('> .props-note')).toHaveText(words.updated);
+  await expect(items.nth(0).locator('.history-changes li span')).toHaveText([
+    words.assignee,
+    `${words.unassigned} → ミナト`,
+  ]);
+  await expect(items.nth(1).locator('.history-changes li span')).toHaveText([words.points, '未見積もり → 5']);
+  await expect(items.nth(2).locator('> .props-note')).toHaveText(words.created);
+  await expect(items.nth(2).locator('.history-changes li').first().locator('span')).toHaveText(['タイトル', title]);
+  // 続きは無い
+  await expect(history.getByRole('button', { name: 'さらに読む' })).toHaveCount(0);
+  expect(await collect()).toEqual([]);
+});
 
 test('2048 字に近い URL を保存しても、390px の引き出しが横にはみ出さない', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 800 });
-  await createWorkspace(page, '長いリンクパーティ', 'game');
+  await createWorkspace(page, '長いリンクワークスペース');
   await addTask(page, '長いリンク');
   const drawer = await openDrawer(page, '長いリンク');
   const url = `https://example.com/${'a'.repeat(2000)}`;
@@ -590,7 +573,7 @@ test('2048 字に近い URL を保存しても、390px の引き出しが横に�
 });
 
 test('620px 以下では真ん中を隠し、既定が真ん中でも横で開く。閉じると inert が外れる', async ({ page }) => {
-  await createWorkspace(page, 'inert パーティ', 'game');
+  await createWorkspace(page, 'inert ワークスペース');
   await addTask(page, '裏を操作できない');
   const drawer = await openDrawer(page, '裏を操作できない');
   await modeButton(drawer, '真ん中').click();
@@ -613,7 +596,7 @@ test('620px 以下では真ん中を隠し、既定が真ん中でも横で開�
 test('書きかけのまま戻るで別の画面へ移ろうとすると確かめ、書き続けると元の URL に残り、捨てると移る', async ({
   page,
 }) => {
-  await createWorkspace(page, '戻るパーティ', 'game');
+  await createWorkspace(page, '戻るワークスペース');
   await addTask(page, '戻る前の確認');
   const listUrl = page.url();
   const drawer = await openDrawer(page, '戻る前の確認');
@@ -636,7 +619,7 @@ test('書きかけのまま戻るで別の画面へ移ろうとすると確か�
 });
 
 test('前後の空白だけの違いは、書きかけに数えず、確認せずに閉じる', async ({ page }) => {
-  await createWorkspace(page, '書きかけの判定パーティ', 'game');
+  await createWorkspace(page, '書きかけの判定ワークスペース');
   await addTask(page, '同じ値');
   const drawer = await openDrawer(page, '同じ値');
   await drawer.getByRole('button', { name: /同じ値/ }).click();
@@ -655,7 +638,7 @@ test('一般のメンバーには、人が作ったタスクの削除のボタ�
   const drawer = page.getByRole('dialog', { name: 'ポイント付与のバッチを作る' });
   await expect(drawer).toBeVisible();
   await expect(drawer.getByRole('button', { name: /削除する/ })).toHaveCount(0);
-  await expect(drawer.getByText('削除できるのは作った人とパーティリーダーです。')).toBeVisible();
+  await expect(drawer.getByText('削除できるのは作った人とリーダーです。')).toBeVisible();
   // 自分が作ったタスクには出る（ハルカが作った「管理画面にポイント履歴の一覧を出す」）
   await page.goto('/aoba/w/019a0000-0000-7000-8000-000000000401?task=019a0000-0000-7000-8000-000000000803');
   await expect(
@@ -663,8 +646,8 @@ test('一般のメンバーには、人が作ったタスクの削除のボタ�
   ).toBeVisible();
 });
 
-test('矢印キーで難易度を続けて動かしても、保存は1本ずつで、最後の選択が残る', async ({ page }) => {
-  await createWorkspace(page, '続けて選ぶパーティ', 'game');
+test('矢印キーでポイントを続けて動かしても、保存は1本ずつで、最後の選択が残る', async ({ page }) => {
+  await createWorkspace(page, '続けて選ぶワークスペース');
   await addTask(page, '続けて選ぶ');
   const row = page.locator('.entry', { hasText: '続けて選ぶ' });
   const drawer = await openDrawer(page, '続けて選ぶ');
@@ -696,14 +679,14 @@ test('矢印キーで難易度を続けて動かしても、保存は1本ずつ�
 test('期日は、打ちかけの年は送らず、年がそろった値だけを保存し、欄を離れたときに直っていなければ知らせる', async ({
   page,
 }) => {
-  await createWorkspace(page, '期日パーティ', 'game');
+  await createWorkspace(page, '期日ワークスペース');
   await addTask(page, '期日を打つ');
   const drawer = await openDrawer(page, '期日を打つ');
   const requests: string[] = [];
   page.on('request', (request) => {
     if (request.url().endsWith('/api/aoba/task-update')) requests.push(request.postData() ?? '');
   });
-  const due = drawer.getByLabel('期限');
+  const due = drawer.getByLabel('期日');
   const type = (value: string) =>
     due.evaluate((input: HTMLInputElement, next) => {
       input.value = next;
@@ -716,7 +699,7 @@ test('期日は、打ちかけの年は送らず、年がそろった値だけ�
   // 欄を離れたとき、打ちかけのままなら知らせる
   await due.focus();
   await due.blur();
-  await expect(drawer.getByText(/期限は正しい日付で入れてください/)).toBeVisible();
+  await expect(drawer.getByText(/期日は正しい日付で入れてください/)).toBeVisible();
   // 年がそろったら、少し待って保存する
   await type('2026-10-19');
   await expect.poll(() => requests.length).toBe(1);
@@ -726,7 +709,7 @@ test('期日は、打ちかけの年は送らず、年がそろった値だけ�
 test('保存を409で断られたとき、送った欄に合う文を出す。ワークスペースの読み直しが失敗しても、引き出しと書きかけは残る', async ({
   page,
 }) => {
-  await createWorkspace(page, '断られるパーティ', 'game');
+  await createWorkspace(page, '断られるワークスペース');
   await addTask(page, '断られる');
   const drawer = await openDrawer(page, '断られる');
   const unrouteUpdate = await failOperation(page, taskUpdate, AOBA, 409, 'conflict');
@@ -735,7 +718,7 @@ test('保存を409で断られたとき、送った欄に合う文を出す。�
   // 完了していないタスクの 409 は、「完了している」でなく、同時に直された競合の文（読み直した今の値で決める）
   const raced = 'ほかの人が同時に直したため、保存できませんでした';
   await expect(drawer.locator('.props').getByText(raced, { exact: false })).toBeVisible();
-  await expect(drawer.getByText('完遂したクエストの難易度は直せません')).toHaveCount(0);
+  await expect(drawer.getByText('完了したタスクのポイントは直せません')).toHaveCount(0);
   await drawer.getByRole('button', { name: /断られる/ }).click();
   await drawer.getByRole('textbox', { name: 'タイトル' }).fill('同時に直された');
   await drawer.getByRole('button', { name: '保存', exact: true }).click();
@@ -753,7 +736,7 @@ test('保存を409で断られたとき、送った欄に合う文を出す。�
     if (request.url().endsWith('/api/aoba/organization')) organizationRequests.push(request.url());
   });
   // 保存の後は木だけを読み直す
-  await drawer.getByLabel('期限').fill('2099-12-31');
+  await drawer.getByLabel('期日').fill('2099-12-31');
   await expect(page.getByRole('status').filter({ hasText: '保存しました' })).toBeVisible();
   await expect(drawer).toBeVisible();
   await expect(drawer.getByRole('textbox', { name: 'タイトル' })).toHaveValue('書きかけが残る');
@@ -762,7 +745,7 @@ test('保存を409で断られたとき、送った欄に合う文を出す。�
   // 閉じたと分かったときは、ワークスペースの枠だけを読み直す。それが 500 でも、前の値を保って引き出しと書きかけを残す
   await failOperation(page, taskUpdate, AOBA, 409, 'workspace_closed');
   await drawer.getByRole('radio', { name: '8', exact: true }).click();
-  await expect(drawer.getByText('終了したパーティには書き込めません')).toBeVisible();
+  await expect(drawer.getByText('終了したワークスペースには書き込めません')).toBeVisible();
   await expect.poll(() => workspaceRequests.length).toBeGreaterThan(0);
   expect(organizationRequests).toEqual([]);
   await expect(drawer).toBeVisible();
@@ -790,7 +773,7 @@ async function slowTaskUpdate(page: Page, failure?: { status: number; code: Erro
 }
 
 test('メンバーの画面で開いて閉じても、メンバーの画面に残り、ほかのクエリも残る', async ({ page }) => {
-  await createWorkspace(page, 'メンバー画面パーティ', 'game');
+  await createWorkspace(page, 'メンバー画面ワークスペース');
   await addTask(page, 'メンバー画面で開く');
   const taskId = await taskIdOf(page, 'メンバー画面で開く');
   const workspacePath = new URL(page.url()).pathname;
@@ -804,8 +787,8 @@ test('メンバーの画面で開いて閉じても、メンバーの画面に�
   await expect(page.getByRole('heading', { level: 1 })).toBeFocused();
   // 削除して閉じたときも、メンバーの画面のまま
   await page.goto(`${workspacePath}/members?task=${taskId}`);
-  await drawer.getByRole('button', { name: 'このクエストを削除する' }).click();
-  await page.getByRole('dialog', { name: 'クエストを削除する' }).getByRole('button', { name: '削除する' }).click();
+  await drawer.getByRole('button', { name: 'このタスクを削除する' }).click();
+  await page.getByRole('dialog', { name: 'タスクを削除する' }).getByRole('button', { name: '削除する' }).click();
   await expect(drawer).toBeHidden();
   await expect(page).toHaveURL(`${new URL(page.url()).origin}${workspacePath}/members`);
   await expect(page.getByRole('heading', { level: 1 })).toBeFocused();
@@ -814,7 +797,7 @@ test('メンバーの画面で開いて閉じても、メンバーの画面に�
 test('保存の要求を送っている間の入力は書きかけで、閉じようとすると確かめる。失敗しても入力が消えない', async ({
   page,
 }) => {
-  await createWorkspace(page, '送信中の書きかけパーティ', 'game');
+  await createWorkspace(page, '送信中の書きかけワークスペース');
   await addTask(page, '送信中に閉じる');
   const drawer = await openDrawer(page, '送信中に閉じる');
   await slowTaskUpdate(page, { status: 500, code: 'internal' });
@@ -833,12 +816,12 @@ test('保存の要求を送っている間の入力は書きかけで、閉じ�
 test('期日で欄を離れた直後と、ポイントを選んだ直後に閉じても、結果は木に反映され、トーストで知らせる', async ({
   page,
 }) => {
-  await createWorkspace(page, '閉じた後の応答パーティ', 'game');
+  await createWorkspace(page, '閉じた後の応答ワークスペース');
   await addTask(page, '閉じた後に返る');
   const row = page.locator('.entry', { hasText: '閉じた後に返る' });
   const drawer = await openDrawer(page, '閉じた後に返る');
   let slow = await slowTaskUpdate(page);
-  await drawer.getByLabel('期限').fill('2099-12-31');
+  await drawer.getByLabel('期日').fill('2099-12-31');
   // 閉じるボタンを押すと、期日の入力が外れて（blur）送られる。送った値は書きかけではないので、確認なしで閉じる
   await drawer.getByRole('button', { name: '閉じる' }).click();
   await expect(drawer).toBeHidden();
@@ -863,11 +846,11 @@ test('期日で欄を離れた直後と、ポイントを選んだ直後に閉�
 });
 
 test('期日の 600ms の待ちの間に Esc で閉じようとすると確かめ、捨てると何も送らない', async ({ page }) => {
-  await createWorkspace(page, '期日の待ちパーティ', 'game');
+  await createWorkspace(page, '期日の待ちワークスペース');
   await addTask(page, '期日を待つ');
   const drawer = await openDrawer(page, '期日を待つ');
   const { bodies } = await slowTaskUpdate(page);
-  await drawer.getByLabel('期限').fill('2099-12-31');
+  await drawer.getByLabel('期日').fill('2099-12-31');
   await page.keyboard.press('Escape');
   const confirm = page.getByRole('dialog', { name: '書きかけを捨てますか' });
   await expect(confirm).toBeVisible();
@@ -878,11 +861,11 @@ test('期日の 600ms の待ちの間に Esc で閉じようとすると確か�
 });
 
 test('期日の保存中に次の値を選んでも、先の応答で入力欄が上書きされず、次の値が送られる', async ({ page }) => {
-  await createWorkspace(page, '期日の連続パーティ', 'game');
+  await createWorkspace(page, '期日の連続ワークスペース');
   await addTask(page, '期日を続ける');
   const drawer = await openDrawer(page, '期日を続ける');
   const { bodies } = await slowTaskUpdate(page);
-  const due = drawer.getByLabel('期限');
+  const due = drawer.getByLabel('期日');
   await due.fill('2099-12-30');
   await due.press('Enter');
   await expect.poll(() => bodies.length).toBe(1);
@@ -897,11 +880,11 @@ test('期日の保存中に次の値を選んでも、先の応答で入力欄�
   await expect(due).toHaveValue('2099-12-31');
   // 保存した値は、読み直しても同じ
   await page.reload();
-  await expect(page.getByRole('dialog', { name: '期日を続ける' }).getByLabel('期限')).toHaveValue('2099-12-31');
+  await expect(page.getByRole('dialog', { name: '期日を続ける' }).getByLabel('期日')).toHaveValue('2099-12-31');
 });
 
 test('期日は Enter で保存でき、「クリア」を押すと空にして保存し、フォーカスを入力欄へ移す', async ({ page }) => {
-  await createWorkspace(page, '期日のクリアパーティ', 'game');
+  await createWorkspace(page, '期日のクリアワークスペース');
   await addTask(page, '期日をクリアする');
   const row = page.locator('.entry', { hasText: '期日をクリアする' });
   const drawer = await openDrawer(page, '期日をクリアする');
@@ -909,7 +892,7 @@ test('期日は Enter で保存でき、「クリア」を押すと空にして�
   page.on('request', (request) => {
     if (request.url().endsWith('/api/aoba/task-update')) bodies.push(request.postDataJSON());
   });
-  const due = drawer.getByLabel('期限');
+  const due = drawer.getByLabel('期日');
   await due.fill('2099-12-31');
   await due.press('Enter');
   // 600ms を待たずに、Enter で送る
@@ -922,29 +905,29 @@ test('期日は Enter で保存でき、「クリア」を押すと空にして�
   expect(bodies.map((body) => body.due_on)).toEqual(['2099-12-31', null]);
 });
 
-test('期日が過ぎたタスクを開くと、引き出しの期日に「期限切れ」の印が出て、保存した値で出し直す', async ({ page }) => {
+test('期日が過ぎたタスクを開くと、引き出しの期日に「期日切れ」の印が出て、保存した値で出し直す', async ({ page }) => {
   // seed の行は他の e2e も読むので、このテストで作ったタスクの期日を書き換える
-  await createWorkspace(page, '期限切れパーティ', 'game');
-  await addTask(page, '期限の印を見る');
-  const drawer = await openDrawer(page, '期限の印を見る');
+  await createWorkspace(page, '期日切れワークスペース');
+  await addTask(page, '期日の印を見る');
+  const drawer = await openDrawer(page, '期日の印を見る');
   const chip = drawer.locator('.props .chip');
-  await drawer.getByLabel('期限').fill('2000-01-02');
-  await expect(chip).toHaveText(/期限切れ 1\/2/);
+  await drawer.getByLabel('期日').fill('2000-01-02');
+  await expect(chip).toHaveText(/期日切れ 1\/2/);
   // 開き直しても、読み込んだ値で印を出す
   await page.reload();
-  const reopened = page.getByRole('dialog', { name: '期限の印を見る' });
+  const reopened = page.getByRole('dialog', { name: '期日の印を見る' });
   const reopenedChip = reopened.locator('.props .chip');
-  await expect(reopenedChip).toHaveText(/期限切れ 1\/2/);
+  await expect(reopenedChip).toHaveText(/期日切れ 1\/2/);
   await expect(reopenedChip).toHaveClass(/is-danger/);
   await expect(reopened.locator('.props .chip svg, .props .chip .ico')).toHaveCount(1);
   // 期日を直すと、保存した値で印を出し直す（未来の日付は、色なしの印）
-  await reopened.getByLabel('期限').fill('2099-12-31');
+  await reopened.getByLabel('期日').fill('2099-12-31');
   await expect(reopenedChip).toHaveText('12/31');
   await expect(reopenedChip).not.toHaveClass(/is-danger/);
 });
 
 test('取り込んだタスクは、タイトルを直せず、リンクの欄と削除を出さず、理由を添える', async ({ page }) => {
-  await createWorkspace(page, '取り込みパーティ', 'game');
+  await createWorkspace(page, '取り込みワークスペース');
   await addTask(page, '取り込んだ体');
   const taskId = await taskIdOf(page, '取り込んだ体');
   // 取り込みはまだ無いので、1件の読み取りの応答を、取り込んだタスクに差し替える
@@ -953,16 +936,16 @@ test('取り込んだタスクは、タイトルを直せず、リンクの欄�
     task: { ...output.task, is_imported: true, can_delete: false, link_url: null },
   }));
   const drawer = await openDrawer(page, '取り込んだ体');
-  await expect(drawer.getByText('取り込んだクエストのタイトルは、ここでは直せません')).toBeVisible();
+  await expect(drawer.getByText('取り込んだタスクのタイトルは、ここでは直せません')).toBeVisible();
   await expect(drawer.getByRole('button', { name: /取り込んだ体/ })).toHaveCount(0);
   await expect(drawer.getByRole('button', { name: /削除する/ })).toHaveCount(0);
-  await expect(drawer.getByText('取り込んだクエストは削除せず、保管庫へ移して外します。')).toBeVisible();
+  await expect(drawer.getByText('取り込んだタスクは削除せず、アーカイブへ移して外します。')).toBeVisible();
   await expect(drawer.getByText('リンク', { exact: true })).toHaveCount(0);
   expect(taskId).toMatch(/^[0-9a-f-]{36}$/);
 });
 
 test('1行の入力欄は、日本語の変換中の Enter では送らない', async ({ page }) => {
-  await createWorkspace(page, '変換中パーティ', 'game');
+  await createWorkspace(page, '変換中ワークスペース');
   await addTask(page, '変換中に送らない');
   const drawer = await openDrawer(page, '変換中に送らない');
   await drawer.getByRole('button', { name: /変換中に送らない/ }).click();
@@ -988,7 +971,7 @@ test('長い本文（順序付きリスト、チェックリスト、表）を�
   const CHECKS = 200;
   const ROWS = 300;
   const collect = await watchViolations(page);
-  await createWorkspace(page, '長い本文パーティ', 'game');
+  await createWorkspace(page, '長い本文ワークスペース');
   await addTask(page, '長い本文');
   const markdown = [
     ...Array.from({ length: ORDERED }, (_, i) => `${i + 3}. 項`),
@@ -1082,7 +1065,7 @@ test('担当が感謝を送り、別のメンバーが一覧を見て、送っ�
 });
 
 test('ページ全体は一覧を重ねず、アプリ内から来た画面へ閉じ、直接開いたらバックログへ閉じる', async ({ page }) => {
-  await createWorkspace(page, '詳細ページパーティ', 'game');
+  await createWorkspace(page, '詳細ページワークスペース');
   await addTask(page, 'ページだけで読む');
   const backlog = page.url();
   await page.getByRole('link', { name: 'ページだけで読む', exact: true }).click();
@@ -1126,7 +1109,7 @@ test('ページ全体は一覧を重ねず、アプリ内から来た画面へ�
 });
 
 test('開き方の変更は書きかけを確認し、新しいタブなら詳細を閉じる。既定の別タブは元画面を保つ', async ({ page }) => {
-  await createWorkspace(page, '別タブパーティ', 'game');
+  await createWorkspace(page, '別タブワークスペース');
   await addTask(page, '別タブで読む');
   const backlog = page.url();
   const row = page.getByRole('link', { name: '別タブで読む', exact: true });
@@ -1168,7 +1151,7 @@ test('開き方の変更は書きかけを確認し、新しいタブなら詳�
 test('開き方のボタンは押したときだけ実行する。矢印キーでは何も起きず、押した形は描いている形と同じでも既定になる', async ({
   page,
 }) => {
-  await createWorkspace(page, '既定パーティ', 'game');
+  await createWorkspace(page, '既定ワークスペース');
   await addTask(page, '既定を替える');
   const backlog = page.url();
   await page.getByRole('link', { name: '既定を替える', exact: true }).click();
@@ -1199,7 +1182,7 @@ test('既定のページ全体へ行のリンクで来て閉じると、履歴�
   page,
 }) => {
   await page.addInitScript(() => localStorage.setItem('task-open-mode', 'page'));
-  await createWorkspace(page, '絞り込みパーティ', 'game');
+  await createWorkspace(page, '絞り込みワークスペース');
   await addTask(page, '絞り込みから読む');
   const backlog = page.url();
   await page.goto(`${backlog}?q=${encodeURIComponent('絞り込み')}`);
@@ -1218,16 +1201,16 @@ test('既定のページ全体へ行のリンクで来て閉じると、履歴�
 });
 
 test('存在しないタスクの URL を直接開くと、トーストで知らせてバックログへ移る', async ({ page }) => {
-  await createWorkspace(page, '消えた詳細パーティ', 'game');
+  await createWorkspace(page, '消えた詳細ワークスペース');
   const backlog = page.url();
   await page.goto(`${backlog}/tasks/019a0000-0000-7000-8000-00000000ffff`);
-  await expect(page.getByRole('status').filter({ hasText: 'このクエストは見つかりません' })).toBeVisible();
+  await expect(page.getByRole('status').filter({ hasText: 'このタスクは見つかりません' })).toBeVisible();
   await expect(page).toHaveURL(backlog);
 });
 
 test('ページ全体から新しいタブを選ぶと、別タブで開き、元のタブは直前の画面へ戻る', async ({ page }) => {
   await page.addInitScript(() => localStorage.setItem('task-open-mode', 'page'));
-  await createWorkspace(page, '別タブ移りパーティ', 'game');
+  await createWorkspace(page, '別タブ移りワークスペース');
   await addTask(page, 'ページから別タブへ');
   const backlog = page.url();
   const link = page.getByRole('link', { name: 'ページから別タブへ', exact: true });
@@ -1246,7 +1229,7 @@ test('ページ全体から新しいタブを選ぶと、別タブで開き、�
 });
 
 test('新しいタブを開けなかったら、詳細も既定もそのままにして、トーストで知らせる', async ({ page }) => {
-  await createWorkspace(page, '遮断パーティ', 'game');
+  await createWorkspace(page, '遮断ワークスペース');
   await addTask(page, '遮断されて読む');
   const backlog = page.url();
   await page.getByRole('link', { name: '遮断されて読む', exact: true }).click();
@@ -1269,7 +1252,7 @@ test('新しいタブを開けなかったら、詳細も既定もそのまま�
 
 test('ページ全体は、左のメニューにフォーカスがあるときの Esc では閉じない', async ({ page }) => {
   await page.addInitScript(() => localStorage.setItem('task-open-mode', 'page'));
-  await createWorkspace(page, 'メニュー Esc パーティ', 'game');
+  await createWorkspace(page, 'メニュー Esc ワークスペース');
   await addTask(page, 'Esc を確かめる');
   await page.getByRole('link', { name: 'Esc を確かめる', exact: true }).click();
   await expect(page).toHaveURL(/\/tasks\/[0-9a-f-]{36}$/);
@@ -1286,7 +1269,7 @@ test('ページ全体は、左のメニューにフォーカスがあるとき�
 });
 
 test('別のタブで替えた既定は、開きっぱなしのタブにも反映される', async ({ context, page }) => {
-  await createWorkspace(page, '同期パーティ', 'game');
+  await createWorkspace(page, '同期ワークスペース');
   await addTask(page, '同期して読む');
   const backlog = page.url();
   const link = page.getByRole('link', { name: '同期して読む', exact: true });
@@ -1314,19 +1297,19 @@ test('既定がページ全体のとき、一覧のスクロールの位置を�
   expect(await settledScrollY(page)).toBe(0);
 });
 
-// 帯の前後のボタン（開き方の左）。名前はワークスペースの言葉（ゲームの言葉では「クエスト」）
+// 帯の前後のボタン（開き方の左）。名前はワークスペースの言葉（「タスク」）
 function stepGroup(scope: Page | Locator): Locator {
-  return scope.getByRole('group', { name: '前後のクエスト' });
+  return scope.getByRole('group', { name: '前後のタスク' });
 }
 
 function stepButton(scope: Page | Locator, direction: '前' | '次'): Locator {
-  return stepGroup(scope).getByRole('button', { name: `${direction}のクエスト`, exact: true });
+  return stepGroup(scope).getByRole('button', { name: `${direction}のタスク`, exact: true });
 }
 
 // 作った後は、木の読み直しが返るまで待つ（待たずに続けると、画面だけで足した行が読み直しで消えうる）
 async function createStory(page: Page, title: string): Promise<void> {
-  await page.getByRole('button', { name: '達成目標を作る' }).click();
-  const dialog = page.getByRole('dialog', { name: '達成目標を作る' });
+  await page.getByRole('button', { name: 'ストーリーを作る' }).click();
+  const dialog = page.getByRole('dialog', { name: 'ストーリーを作る' });
   await dialog.getByLabel('タイトル').fill(title);
   const reloaded = waitForResponses(page, '/backlog-tree');
   await dialog.getByRole('button', { name: '作る' }).click();
@@ -1334,10 +1317,10 @@ async function createStory(page: Page, title: string): Promise<void> {
   await reloaded;
 }
 
-test('前後のボタンとキーで、開いたまま隣のクエストへ移る。端で止まり、履歴は積まず、Esc で最後に表示した行へ戻る', async ({
+test('前後のボタンとキーで、開いたまま隣のタスクへ移る。端で止まり、履歴は積まず、Esc で最後に表示した行へ戻る', async ({
   page,
 }) => {
-  await createWorkspace(page, '前後パーティ', 'game');
+  await createWorkspace(page, '前後ワークスペース');
   await addTask(page, '前後 一');
   await addTask(page, '前後 二');
   await addTask(page, '前後 三');
@@ -1383,7 +1366,7 @@ test('前後のボタンとキーで、開いたまま隣のクエストへ移�
 });
 
 test('ボタンで移ると、押した向きのボタンにフォーカスが残り、移った先のタイトルが読み上げられる', async ({ page }) => {
-  await createWorkspace(page, '読み上げパーティ', 'game');
+  await createWorkspace(page, '読み上げワークスペース');
   await addTask(page, '読み上げ 一');
   await addTask(page, '読み上げ 二');
   await addTask(page, '読み上げ 三');
@@ -1404,13 +1387,13 @@ test('ボタンで移ると、押した向きのボタンにフォーカスが�
 });
 
 test('順は開いた画面の見えている行。絞り込みで外れた行と、畳んだ枝の中の行は飛ばす', async ({ page }) => {
-  await createWorkspace(page, '飛ばすパーティ', 'game');
+  await createWorkspace(page, '飛ばすワークスペース');
   await createStory(page, '畳む親');
   for (const title of ['枝の一', '枝の二']) {
     await page.getByRole('button', { name: /を足す: 畳む親$/ }).click();
-    const dialog = page.getByRole('dialog', { name: '依頼を出す' });
+    const dialog = page.getByRole('dialog', { name: '起票' });
     await dialog.getByLabel('タイトル').fill(title);
-    await dialog.getByRole('button', { name: '依頼を出す' }).click();
+    await dialog.getByRole('button', { name: '起票' }).click();
     await expect(dialog).toBeHidden();
   }
   await addTask(page, '検索 甲');
@@ -1450,7 +1433,7 @@ test('順は開いた画面の見えている行。絞り込みで外れた行�
 test('書きかけがあるまま前後へ移ろうとすると確かめる。書き続けると移らず、捨てると移る。入力欄の中の [ ] と変換中は移らない', async ({
   page,
 }) => {
-  await createWorkspace(page, '前後の確認パーティ', 'game');
+  await createWorkspace(page, '前後の確認ワークスペース');
   await addTask(page, '確認 一');
   await addTask(page, '確認 二');
   const drawer = await openDrawer(page, '確認 一');
@@ -1472,7 +1455,7 @@ test('書きかけがあるまま前後へ移ろうとすると確かめる。�
   await expect(drawer).toBeVisible();
   await expect(input).toHaveValue('書きかけ]');
 
-  // 捨てると決めたら、隣のクエストへ移る
+  // 捨てると決めたら、隣のタスクへ移る
   await stepButton(drawer, '次').click();
   await page.getByRole('dialog', { name: '書きかけを捨てますか' }).getByRole('button', { name: '捨てる' }).click();
   const second = page.getByRole('dialog', { name: '確認 二' });
@@ -1494,7 +1477,7 @@ test('書きかけがあるまま前後へ移ろうとすると確かめる。�
 test('行を持たない画面（メンバー）とページ全体では前後のボタンを出さない。狭い幅でも前後のボタンは出る', async ({
   page,
 }) => {
-  await createWorkspace(page, '前後の範囲パーティ', 'game');
+  await createWorkspace(page, '前後の範囲ワークスペース');
   await addTask(page, '範囲 一');
   await addTask(page, '範囲 二');
   const taskId = await taskIdOf(page, '範囲 一');
@@ -1526,13 +1509,13 @@ test('行を持たない画面（メンバー）とページ全体では前後�
 });
 
 test('ポイントの radio にフォーカスがあっても、[ ] で隣へ移れる', async ({ page }) => {
-  await createWorkspace(page, 'radio 前後パーティ', 'game');
+  await createWorkspace(page, 'radio 前後ワークスペース');
   await addTask(page, '選ぶ 一');
   await addTask(page, '選ぶ 二');
   await addTask(page, '選ぶ 三');
   const drawer = await openDrawer(page, '選ぶ 二');
 
-  // 難易度を選んだ直後は、フォーカスが radio にある
+  // ポイントを選んだ直後は、フォーカスが radio にある
   const radio = drawer.getByRole('radio', { name: '5', exact: true });
   await radio.check();
   await expect(page.getByRole('status').filter({ hasText: '保存しました' })).toBeVisible();
@@ -1551,7 +1534,7 @@ test('ポイントの radio にフォーカスがあっても、[ ] で隣へ移
 test('ボタン（クリックと Enter）で移ると、移った先でも同じ向きのボタンにフォーカスがある。端のボタンと、キーで移ったときは見出し', async ({
   page,
 }) => {
-  await createWorkspace(page, '前後の焦点パーティ', 'game');
+  await createWorkspace(page, '前後の焦点ワークスペース');
   await addTask(page, '焦点 一');
   await addTask(page, '焦点 二');
   await addTask(page, '焦点 三');
@@ -1583,7 +1566,7 @@ test('ボタン（クリックと Enter）で移ると、移った先でも同�
 });
 
 test('書きかけを捨てるかの確認を出している間は、] を押しても移らず、確認が残る', async ({ page }) => {
-  await createWorkspace(page, '確認中の前後パーティ', 'game');
+  await createWorkspace(page, '確認中の前後ワークスペース');
   await addTask(page, '確認中 一');
   await addTask(page, '確認中 二');
   const drawer = await openDrawer(page, '確認中 一');
@@ -1605,10 +1588,10 @@ test('書きかけを捨てるかの確認を出している間は、] を押し
   await expect(drawer.getByRole('textbox', { name: 'タイトル' })).toHaveValue('書きかけ');
 });
 
-// 計画の画面で遠征を作り、起票したクエストを入れる
+// 計画の画面でスプリントを作り、起票したタスクを入れる
 async function createSprint(page: Page, startOn: string, name: string): Promise<void> {
-  await page.getByRole('button', { name: '遠征を作る' }).click();
-  const dialog = page.getByRole('dialog', { name: '遠征を作る' });
+  await page.getByRole('button', { name: 'スプリントを作る' }).click();
+  const dialog = page.getByRole('dialog', { name: 'スプリントを作る' });
   await dialog.getByLabel('開始日').fill(startOn);
   await dialog.getByLabel('長さ（日）').fill('14');
   await dialog.getByLabel('名前（任意）').fill(name);
@@ -1618,19 +1601,19 @@ async function createSprint(page: Page, startOn: string, name: string): Promise<
 }
 
 async function putIntoSprint(page: Page, sprint: string, titles: string[]): Promise<void> {
-  await page.getByRole('button', { name: `掲示板から入れる: 遠征 ${sprint}` }).click();
-  const picker = page.getByRole('dialog', { name: `遠征 ${sprint} に入れる` });
-  const list = picker.getByRole('group', { name: '入れるクエスト' });
+  await page.getByRole('button', { name: `バックログから入れる: スプリント ${sprint}` }).click();
+  const picker = page.getByRole('dialog', { name: `スプリント ${sprint} に入れる` });
+  const list = picker.getByRole('group', { name: '入れるタスク' });
   for (const title of titles) await list.getByRole('checkbox', { name: new RegExp(`^${title}`) }).check();
   await picker.getByRole('button', { name: `${titles.length} 件入れる` }).click();
   await expect(picker).toBeHidden();
 }
 
-test('計画の画面では、遠征をまたいで上から下の順に前後へ移る', async ({ page }) => {
+test('計画の画面では、スプリントをまたいで上から下の順に前後へ移る', async ({ page }) => {
   test.setTimeout(90_000);
-  await createWorkspace(page, '計画の前後パーティ', 'game');
+  await createWorkspace(page, '計画の前後ワークスペース');
   for (const title of ['計画 一', '計画 二', '計画 三']) await addTask(page, title);
-  await page.getByRole('link', { name: '遠征の計画' }).click();
+  await page.getByRole('link', { name: '計画', exact: true }).click();
   await createSprint(page, '2099-03-01', '第1回');
   await createSprint(page, '2099-03-15', '第2回');
   await putIntoSprint(page, '第1回', ['計画 一', '計画 二']);
@@ -1643,7 +1626,7 @@ test('計画の画面では、遠征をまたいで上から下の順に前後�
   await expect(stepButton(first, '前')).toHaveAttribute('aria-disabled', 'true');
   await page.keyboard.press(']');
   await expect(page.getByRole('dialog', { name: '計画 二' })).toBeVisible();
-  // 次の遠征のレーンへ移る
+  // 次のスプリントのレーンへ移る
   await page.keyboard.press(']');
   const third = page.getByRole('dialog', { name: '計画 三' });
   await expect(third).toBeVisible();
@@ -1657,29 +1640,29 @@ test('計画の画面では、遠征をまたいで上から下の順に前後�
 
 test('スプリントの画面では、列は左から右、列の中は上から下の順に前後へ移る', async ({ page }) => {
   test.setTimeout(90_000);
-  await createWorkspace(page, '盤の前後パーティ', 'game');
+  await createWorkspace(page, '盤の前後ワークスペース');
   for (const title of ['盤 一', '盤 二', '盤 三']) await addTask(page, title);
-  await page.getByRole('link', { name: '遠征の計画' }).click();
+  await page.getByRole('link', { name: '計画' }).click();
   await createSprint(page, '2099-03-01', '第1回');
   await putIntoSprint(page, '第1回', ['盤 一', '盤 二', '盤 三']);
-  await page.getByRole('button', { name: '始める: 遠征 第1回' }).click();
-  const start = page.getByRole('dialog', { name: '遠征を始める' });
+  await page.getByRole('button', { name: '始める: スプリント 第1回' }).click();
+  const start = page.getByRole('dialog', { name: 'スプリントを始める' });
   await start.getByRole('button', { name: '始める' }).click();
   await expect(start).toBeHidden();
-  await page.getByRole('link', { name: '遠征', exact: true }).click();
-  await expect(page.getByRole('heading', { level: 1, name: '遠征 第1回' })).toBeVisible();
+  await page.getByRole('link', { name: 'スプリント', exact: true }).click();
+  await expect(page.getByRole('heading', { level: 1, name: 'スプリント 第1回' })).toBeVisible();
 
-  // 盤 一 を右の列（遂行中）へ移す。出発前は 盤 二、盤 三、遂行中は 盤 一
+  // 盤 一 を右の列（作業中）へ移す。未着手は 盤 二、盤 三、作業中は 盤 一
   const columnTitles = (column: string) =>
     page.getByRole('region', { name: column, exact: true }).locator('.card-title');
-  await expect(columnTitles('出発前')).toHaveText(['盤 一', '盤 二', '盤 三']);
+  await expect(columnTitles('未着手')).toHaveText(['盤 一', '盤 二', '盤 三']);
   const moved = waitForResponses(page, '/task-column-move');
   await page.getByRole('article', { name: '盤 一', exact: true }).press('Alt+ArrowRight');
   await moved;
-  await expect(columnTitles('遂行中')).toHaveText(['盤 一']);
-  await expect(columnTitles('出発前')).toHaveText(['盤 二', '盤 三']);
+  await expect(columnTitles('作業中')).toHaveText(['盤 一']);
+  await expect(columnTitles('未着手')).toHaveText(['盤 二', '盤 三']);
 
-  // 先頭のカード（出発前の 盤 二）から ] で進むと、同じ列の下、次の列の順
+  // 先頭のカード（未着手の 盤 二）から ] で進むと、同じ列の下、次の列の順
   await page.getByRole('link', { name: '盤 二', exact: true }).click();
   const second = page.getByRole('dialog', { name: '盤 二' });
   await expect(second).toBeVisible();

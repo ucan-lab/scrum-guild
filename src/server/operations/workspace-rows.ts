@@ -2,12 +2,12 @@
 // 書く順は workspaces、換算比率、列、決まった欄、所属、変更の履歴。外部キーの親が先
 import { generateKeyBetween, generateNKeysBetween } from 'fractional-indexing';
 import { monthIn, todayIn } from '../../shared/clock.ts';
-import type { Vocabulary } from '../../shared/vocabulary.ts';
+import { defaultVocabularies } from '../../shared/vocabulary.ts';
 import {
   DEFAULT_HOURS_PER_POINT,
   DEFAULT_WEEK_START,
   defaultColumnNames,
-  defaultDetailFieldNames,
+  defaultDetailFieldName,
 } from '../../shared/workspace.ts';
 import type { Insertable, OrganizationTables } from '../db/index.ts';
 import { uuidv7 } from '../uuid.ts';
@@ -34,9 +34,8 @@ export function newWorkspaceRows(params: {
   name: string;
   // 正規の名前（normalizeTimezone を通した値）
   timezone: string;
-  vocabulary: Vocabulary;
 }): NewWorkspaceRows {
-  const { at, organizationId, actorUserId, leader, name, timezone, vocabulary } = params;
+  const { at, organizationId, actorUserId, leader, name, timezone } = params;
   const createdAt = at.toISOString();
   const workspaceId = uuidv7(at);
   const membershipId = uuidv7(at);
@@ -45,7 +44,7 @@ export function newWorkspaceRows(params: {
   // 完了の列は末尾の値を持つ（読むときは使わないが NOT NULL）
   const positions = generateNKeysBetween(null, null, 4);
   const columns: Row<'board_columns'>[] = [
-    ...defaultColumnNames[vocabulary].map((columnName, index) => ({
+    ...defaultColumnNames.map((columnName, index) => ({
       id: uuidv7(at),
       workspace_id: workspaceId,
       name: columnName,
@@ -78,7 +77,8 @@ export function newWorkspaceRows(params: {
       name,
       timezone,
       week_start: DEFAULT_WEEK_START,
-      vocabulary,
+      // 列は残すが、言葉づかいは選べない。スクラムの言葉で作る
+      vocabulary: defaultVocabularies.workspace,
       created_by: actorUserId,
       ...timestamps,
     },
@@ -92,7 +92,7 @@ export function newWorkspaceRows(params: {
     detailField: {
       id: uuidv7(at),
       workspace_id: workspaceId,
-      name: defaultDetailFieldNames[vocabulary],
+      name: defaultDetailFieldName,
       position: generateKeyBetween(null, null),
       ...timestamps,
     },
@@ -113,7 +113,6 @@ export function newWorkspaceRows(params: {
         changes_json: JSON.stringify({
           name: [null, name],
           timezone: [null, timezone],
-          vocabulary: [null, vocabulary],
         }),
       },
       {

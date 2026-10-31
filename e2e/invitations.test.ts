@@ -40,10 +40,7 @@ function invitation(overrides: Partial<InboxInvitation> = {}): InboxInvitation {
 
 // 招待だけの人として、ひばり工房の枠と招待の一覧を差し替える。invitations は呼ぶたびに今の値を返す。
 // 招待が残っていなければ、本物と同じく組織の選択の読み取りが 401（入れる組織も招待も無い人はセッションが消える）
-async function stubInvitedOnly(
-  page: Page,
-  state: { invitations: InboxInvitation[]; vocabulary?: 'game' | 'scrum'; theme?: string },
-): Promise<void> {
+async function stubInvitedOnly(page: Page, state: { invitations: InboxInvitation[]; theme?: string }): Promise<void> {
   await page.route('**/api/hibari/organization', (route) =>
     route.fulfill({ status: 404, json: { error: { code: 'not_found', message: 'not found' } } }),
   );
@@ -61,11 +58,7 @@ async function stubInvitedOnly(
   await page.route('**/api/hibari/invitation-list', (route) =>
     route.fulfill({
       json: {
-        organization: {
-          name: 'ひばり工房',
-          vocabulary: state.vocabulary ?? 'game',
-          theme: state.theme ?? 'simple',
-        },
+        organization: { name: 'ひばり工房', theme: state.theme ?? 'simple' },
         invitations: state.invitations,
       },
     }),
@@ -103,7 +96,7 @@ test.describe('招待だけが届いた人（ヒナタ）', () => {
       await page.getByRole('button', { name: 'デザイン相談室への招待を承諾する' }).click();
       await expect(page).toHaveURL(new RegExp(`/hibari/w/${DESIGN_WORKSPACE_ID}$`));
       await expect(toast(page)).toHaveText('招待を承諾しました');
-      await expect(page.getByRole('heading', { level: 1, name: '掲示板' })).toBeVisible();
+      await expect(page.getByRole('heading', { level: 1, name: 'バックログ' })).toBeVisible();
       await expect(page.locator('.page-eyebrow')).toHaveText('デザイン相談室');
       // 組織の中に入ったので、枠が出る
       await expect(page.locator('.nav')).toHaveCount(1);
@@ -114,12 +107,11 @@ test.describe('招待だけが届いた人（ヒナタ）', () => {
     }
   });
 
-  test('組織の直下を開いても招待の画面になり、組織の言葉づかいとテーマが当たる。終了したワークスペースは承諾できない', async ({
+  test('組織の直下を開いても招待の画面になり、組織のテーマが当たる。終了したワークスペースは承諾できない', async ({
     page,
   }) => {
     const collect = await watchViolations(page);
     await stubInvitedOnly(page, {
-      vocabulary: 'scrum',
       theme: 'medieval',
       invitations: [
         invitation({ role: 'leader' }),
@@ -137,7 +129,6 @@ test.describe('招待だけが届いた人（ヒナタ）', () => {
     await expect(page.locator('html')).toHaveAttribute('data-theme', 'medieval');
     // まだ入っていない組織のテーマは、属性だけで覚えない
     expect(await page.evaluate(() => localStorage.getItem('sg-theme'))).not.toBe('medieval');
-    // スクラムの言葉（ワークスペース、リーダー）
     await expect(
       page.getByText('ひばり工房から届いた招待です。承諾すると、そのワークスペースに入れます。'),
     ).toBeVisible();
@@ -231,7 +222,7 @@ test.describe('招待だけが届いた人（ヒナタ）', () => {
     code = 'workspace_closed';
     state.invitations = [invitation({ closed: true })];
     await accept.click();
-    await expect(page.getByRole('alert')).toHaveText('このパーティは終了したため、承諾できませんでした。');
+    await expect(page.getByRole('alert')).toHaveText('このワークスペースは終了したため、承諾できませんでした。');
     await expect(accept).toBeDisabled();
     // 押したボタンが押せなくなったので、同じ行の「辞退する」へフォーカスを移す
     await expect(page.getByRole('button', { name: 'デザイン相談室への招待を辞退する' })).toBeFocused();
@@ -252,7 +243,7 @@ test.describe('組織に入れる人（あおば開発のミナト）', () => {
     await expect(page.getByRole('heading', { level: 1, name: '届いた招待' })).toBeVisible();
     await expect(page.locator('.nav')).toHaveCount(0);
     await expect(page.getByText('承諾待ちの招待はありません')).toBeVisible();
-    await page.getByRole('link', { name: '冒険者ギルドの画面へ戻る' }).click();
+    await page.getByRole('link', { name: '組織の画面へ戻る' }).click();
     await expect(page).toHaveURL(/\/aoba$/);
     await expect(page.locator('.nav')).toHaveCount(1);
     expect(await collect()).toEqual([]);

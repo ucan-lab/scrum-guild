@@ -3,7 +3,6 @@
 import { z } from 'zod';
 import './zod-config.ts';
 import { shortTextProblem, type ShortTextProblem } from './text-rules.ts';
-import type { Vocabulary } from './vocabulary.ts';
 
 // 名前は前後の空白を除いて 1〜50 字。字数はコードポイントで数える（絵文字も1字）
 export const WORKSPACE_NAME_MAX_LENGTH = 50;
@@ -23,22 +22,14 @@ export const workspaceNameSchema = z
     if (problem !== null) ctx.addIssue({ code: 'custom', message: `ワークスペースの名前が使えない（${problem}）` });
   });
 
-export const workspaceVocabularySchema = z.enum(['game', 'scrum']);
-
 // ワークスペースを作った直後の値（docs/requirements.md の「機能」）
 export const DEFAULT_HOURS_PER_POINT = 4;
 // 0 が日曜。1 は月曜
 export const DEFAULT_WEEK_START = 1;
 
-// 列と決まった欄に付けた名前は、言葉づかいを切り替えても訳さない。作るときの言葉づかいで名前を決める。
-// 完了の列は name を空にして保存し、言葉づかいに合わせた名前を辞書の done から出す
-export const defaultColumnNames = {
-  game: ['出発前', '遂行中', '査定中'],
-  scrum: ['未着手', '作業中', 'レビュー'],
-} as const satisfies Record<Vocabulary, readonly [string, string, string]>;
+// 作るときにスクラムの言葉で名前を付け、保存する。
+// 完了の列は name を空にして保存し、名前は辞書の done から出す
+export const defaultColumnNames = ['未着手', '作業中', 'レビュー'] as const;
 
-// 辞書の ac と同じ言葉（scripts/workspace.test.ts が突き合わせる）
-export const defaultDetailFieldNames = {
-  game: '達成条件',
-  scrum: '受け入れ基準',
-} as const satisfies Record<Vocabulary, string>;
+// 辞書の ac のスクラムの言葉と同じ（scripts/workspace.test.ts が突き合わせる）
+export const defaultDetailFieldName = '受け入れ基準';

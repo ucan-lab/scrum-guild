@@ -12,18 +12,18 @@ test.beforeEach(async ({ context, baseURL }) => {
 });
 
 async function addTask(page: Page, title: string): Promise<void> {
-  await page.getByRole('button', { name: '依頼を出す' }).click();
-  const dialog = page.getByRole('dialog', { name: '依頼を出す' });
+  await page.getByRole('button', { name: '起票' }).click();
+  const dialog = page.getByRole('dialog', { name: '起票' });
   await dialog.getByLabel('タイトル').fill(title);
-  await dialog.getByRole('button', { name: '依頼を出す' }).click();
+  await dialog.getByRole('button', { name: '起票' }).click();
   await expect(dialog).toBeHidden();
 }
 
 // 作った後は、木の読み直しが返るまで待つ。読み直しで木が替わると、画面は画面だけで足したタスクと並べ替えを捨てる（+page.svelte）。
 // 返る前に次のタスクを足すか並べ替えると、それが遅れて届いた読み直しで消えうる
 async function addStory(page: Page, title: string): Promise<void> {
-  await page.getByRole('button', { name: '達成目標を作る' }).click();
-  const dialog = page.getByRole('dialog', { name: '達成目標を作る' });
+  await page.getByRole('button', { name: 'ストーリーを作る' }).click();
+  const dialog = page.getByRole('dialog', { name: 'ストーリーを作る' });
   await dialog.getByLabel('タイトル').fill(title);
   const reloaded = waitForResponses(page, '/backlog-tree');
   await dialog.getByRole('button', { name: '作る' }).click();
@@ -49,7 +49,7 @@ test('「上へ」「下へ」と Alt と ↑ ↓ で並べ替え、フォーカ
   page,
 }) => {
   const collect = await watchViolations(page);
-  await createWorkspace(page, '並べ替えパーティ', 'game');
+  await createWorkspace(page, '並べ替えワークスペース');
   for (const title of ['見積もりを送る', '請求書を出す', '議事録をまとめる']) await addTask(page, title);
   await expect(page.getByText(/上にあるものほど優先します/)).toBeVisible();
   await expect(rootTitles(page)).toHaveText(['見積もりを送る', '請求書を出す', '議事録をまとめる']);
@@ -90,20 +90,20 @@ test('「上へ」「下へ」と Alt と ↑ ↓ で並べ替え、フォーカ
   // 送り終えてから読み直す。並びは API に残っている
   await moved;
   await page.reload();
-  await expect(page.getByRole('heading', { level: 1, name: '掲示板' })).toBeVisible();
+  await expect(page.getByRole('heading', { level: 1, name: 'バックログ' })).toBeVisible();
   await expect(rootTitles(page)).toHaveText(['議事録をまとめる', '請求書を出す', '見積もりを送る']);
   expect(await collect()).toEqual([]);
 });
 
 test('「親を移す」でストーリーの下の末尾へ移し、親なしへ戻せる。ストーリーも並べ替えられる', async ({ page }) => {
   const collect = await watchViolations(page);
-  await createWorkspace(page, '親を移すパーティ', 'game');
+  await createWorkspace(page, '親を移すワークスペース');
   await addStory(page, 'ポイント制度を公開する');
   await addStory(page, '決済の障害を減らす');
-  await page.getByRole('button', { name: 'クエストを足す: ポイント制度を公開する' }).click();
-  const taskDialog = page.getByRole('dialog', { name: '依頼を出す' });
+  await page.getByRole('button', { name: 'タスクを足す: ポイント制度を公開する' }).click();
+  const taskDialog = page.getByRole('dialog', { name: '起票' });
   await taskDialog.getByLabel('タイトル').fill('付与のバッチを書く');
-  await taskDialog.getByRole('button', { name: '依頼を出す' }).click();
+  await taskDialog.getByRole('button', { name: '起票' }).click();
   await expect(taskDialog).toBeHidden();
   await addTask(page, '残高の画面を作る');
 
@@ -122,7 +122,7 @@ test('「親を移す」でストーリーの下の末尾へ移し、親なし�
   await expect(
     page
       .getByRole('status')
-      .filter({ hasText: '「残高の画面を作る」を達成目標「ポイント制度を公開する」の末尾へ移しました' }),
+      .filter({ hasText: '「残高の画面を作る」をストーリー「ポイント制度を公開する」の末尾へ移しました' }),
   ).toBeAttached();
   // ダイアログを閉じたら、開いたボタンへフォーカスが戻る
   await expect(page.getByRole('button', { name: '親を移す: 残高の画面を作る' })).toBeFocused();
@@ -161,21 +161,21 @@ test('「親を移す」でストーリーの下の末尾へ移し、親なし�
 });
 
 test('並べ替えを断られたら、理由を知らせて読み直す', async ({ page }) => {
-  await createWorkspace(page, '断られるパーティ', 'game');
+  await createWorkspace(page, '断られるワークスペース');
   for (const title of ['見積もりを送る', '請求書を出す']) await addTask(page, title);
   await page.route('**/api/aoba/task-move', (route) =>
     route.fulfill({ status: 409, json: { error: { code: 'workspace_closed', message: 'workspace_closed' } } }),
   );
   const down = page.getByRole('button', { name: '下へ: 見積もりを送る' });
   await down.click();
-  await expect(page.getByRole('status').filter({ hasText: '終了したパーティには書き込めません' })).toBeVisible();
+  await expect(page.getByRole('status').filter({ hasText: '終了したワークスペースには書き込めません' })).toBeVisible();
   // 読み直すと、送れなかった並べ替えは元に戻り、フォーカスは同じ行の同じ操作に戻る
   await expect(rootTitles(page)).toHaveText(['見積もりを送る', '請求書を出す']);
   await expect(down).toBeFocused();
 
   // 409 の conflict は、理由（details.reason）で知らせる文を選ぶ
   for (const [reason, message] of [
-    ['task_completed', 'このクエストは完遂しています。一覧を読み直します'],
+    ['task_completed', 'このタスクは完了しています。一覧を読み直します'],
     ['changed', 'ほかの画面で変わったため、移せませんでした。一覧を読み直します'],
   ] as const) {
     await page.unrouteAll();
@@ -200,7 +200,7 @@ test('並べ替えを断られたら、理由を知らせて読み直す', async
 test('先に送った並べ替えが断られて読み直したら、待っていた並べ替えは送らずに捨て、そのことを知らせる', async ({
   page,
 }) => {
-  await createWorkspace(page, '捨てるパーティ', 'game');
+  await createWorkspace(page, '捨てるワークスペース');
   for (const title of ['見積もりを送る', '請求書を出す', '議事録をまとめる']) await addTask(page, title);
   // 1件目の応答を、3回目を押し終えるまで止めてから断る。その間に2件を待たせる
   let sent = 0;
@@ -226,7 +226,7 @@ test('先に送った並べ替えが断られて読み直したら、待って�
 });
 
 test('端の行で Alt と ↑ ↓ を押すと、動かせないことを読み上げる', async ({ page }) => {
-  await createWorkspace(page, '端のパーティ', 'game');
+  await createWorkspace(page, '端のワークスペース');
   for (const title of ['見積もりを送る', '請求書を出す']) await addTask(page, title);
   await page.getByRole('link', { name: '見積もりを送る' }).focus();
   await page.keyboard.press('Alt+ArrowUp');
@@ -239,8 +239,8 @@ test('端の行で Alt と ↑ ↓ を押すと、動かせないことを読み
 
 // 作った後は、木の読み直しが返るまで待つ（上の addStory と同じ）
 async function addEpic(page: Page, title: string): Promise<void> {
-  await page.getByRole('button', { name: 'レイドを作る' }).click();
-  const dialog = page.getByRole('dialog', { name: 'レイドを作る' });
+  await page.getByRole('button', { name: 'エピックを作る' }).click();
+  const dialog = page.getByRole('dialog', { name: 'エピックを作る' });
   await dialog.getByLabel('タイトル').fill(title);
   const reloaded = waitForResponses(page, '/backlog-tree');
   await dialog.getByRole('button', { name: '作る' }).click();
@@ -261,10 +261,10 @@ test('エピックを「上へ」「下へ」と Alt と ↑ ↓ で並べ替え
   page,
 }) => {
   const collect = await watchViolations(page);
-  await createWorkspace(page, 'レイドの並べ替えパーティ', 'game');
+  await createWorkspace(page, 'エピックの並べ替えワークスペース');
   for (const title of ['ポイント制度を公開する', '決済の障害を減らす', '会員ランクを見直す'])
     await addEpic(page, title);
-  await expect(page.getByText(/上にあるものほど優先します。レイド、達成目標、クエストは/)).toBeVisible();
+  await expect(page.getByText(/上にあるものほど優先します。エピック、ストーリー、タスクは/)).toBeVisible();
   await expect(epicTitles(page)).toHaveText(['ポイント制度を公開する', '決済の障害を減らす', '会員ランクを見直す']);
 
   // 端の向きは押せない（フォーカスは残せるよう aria-disabled）
@@ -309,7 +309,7 @@ test('エピックを「上へ」「下へ」と Alt と ↑ ↓ で並べ替え
 
 test('エピックをつまみのドラッグで並べ替え、線はエピックの塊に出て、読み直しても同じ順になる', async ({ page }) => {
   const collect = await watchViolations(page);
-  await createWorkspace(page, 'レイドのドラッグパーティ', 'game');
+  await createWorkspace(page, 'エピックのドラッグワークスペース');
   for (const title of ['ポイント制度を公開する', '決済の障害を減らす']) await addEpic(page, title);
   // 配下のストーリーを足す（エピックの線が、開いた配下の途中に入らないことを確かめる）
   await addStory(page, '残高が見える');
@@ -364,7 +364,7 @@ test('エピックをつまみのドラッグで並べ替え、線はエピッ�
 });
 
 test('完了か中止したエピックも並べ替えられる。断られたら、理由を知らせて読み直す', async ({ page }) => {
-  await createWorkspace(page, 'レイドの中止パーティ', 'game');
+  await createWorkspace(page, 'エピックの中止ワークスペース');
   for (const title of ['ポイント制度を公開する', '決済の障害を減らす']) await addEpic(page, title);
   // 2番目のエピックを、木の上だけ中止したことにする（中止の操作は #65 で足す）
   await page.route('**/api/aoba/backlog-tree', async (route) => {
@@ -425,7 +425,7 @@ test('つまみのドラッグで、同じ親の中のタスクを並べ替え�
   page,
 }) => {
   const collect = await watchViolations(page);
-  await createWorkspace(page, 'ドラッグパーティ', 'game');
+  await createWorkspace(page, 'ドラッグワークスペース');
   for (const title of ['見積もりを送る', '請求書を出す', '議事録をまとめる']) await addTask(page, title);
   const sent: string[] = [];
   page.on('request', (request) => {
@@ -479,13 +479,13 @@ test('畳んだストーリーの行やタスクの無いストーリーの行�
   page,
 }) => {
   const collect = await watchViolations(page);
-  await createWorkspace(page, 'ドラッグの親パーティ', 'game');
+  await createWorkspace(page, 'ドラッグの親ワークスペース');
   await addStory(page, 'ポイント制度を公開する');
   await addStory(page, '決済の障害を減らす');
-  await page.getByRole('button', { name: 'クエストを足す: ポイント制度を公開する' }).click();
-  const taskDialog = page.getByRole('dialog', { name: '依頼を出す' });
+  await page.getByRole('button', { name: 'タスクを足す: ポイント制度を公開する' }).click();
+  const taskDialog = page.getByRole('dialog', { name: '起票' });
   await taskDialog.getByLabel('タイトル').fill('付与のバッチを書く');
-  await taskDialog.getByRole('button', { name: '依頼を出す' }).click();
+  await taskDialog.getByRole('button', { name: '起票' }).click();
   await expect(taskDialog).toBeHidden();
   await addTask(page, '残高の画面を作る');
   await addTask(page, '請求書を出す');
@@ -510,7 +510,7 @@ test('畳んだストーリーの行やタスクの無いストーリーの行�
   await expect(
     page
       .getByRole('status')
-      .filter({ hasText: '「残高の画面を作る」を達成目標「ポイント制度を公開する」の末尾へ移しました' }),
+      .filter({ hasText: '「残高の画面を作る」をストーリー「ポイント制度を公開する」の末尾へ移しました' }),
   ).toBeAttached();
   await expect(rootTitles(page)).toHaveText(['請求書を出す']);
 
@@ -550,12 +550,12 @@ test('畳んだストーリーの行やタスクの無いストーリーの行�
 
 test('親なしの段が空でも、つかんでいる間だけ出る落とし先に落として、タスクを親なしへ引き出せる', async ({ page }) => {
   const collect = await watchViolations(page);
-  await createWorkspace(page, '引き出しパーティ', 'game');
+  await createWorkspace(page, '引き出しワークスペース');
   await addStory(page, 'ポイント制度を公開する');
-  await page.getByRole('button', { name: 'クエストを足す: ポイント制度を公開する' }).click();
-  const taskDialog = page.getByRole('dialog', { name: '依頼を出す' });
+  await page.getByRole('button', { name: 'タスクを足す: ポイント制度を公開する' }).click();
+  const taskDialog = page.getByRole('dialog', { name: '起票' });
   await taskDialog.getByLabel('タイトル').fill('付与のバッチを書く');
-  await taskDialog.getByRole('button', { name: '依頼を出す' }).click();
+  await taskDialog.getByRole('button', { name: '起票' }).click();
   await expect(taskDialog).toBeHidden();
   await expect(rootTitles(page)).toHaveCount(0);
   // つかんでいないときは、落とし先を出さない
@@ -566,7 +566,7 @@ test('親なしの段が空でも、つかんでいる間だけ出る落とし�
   await dragTo(page, taskGrip(page, '付与のバッチを書く'), slot, 'middle', async () => {
     // つかんでいる間は出て、重ねると囲む
     await expect(slot).toHaveClass(/is-over/);
-    await expect(slot).toContainText('親なしのクエストへ移す');
+    await expect(slot).toContainText('親なしのタスクへ移す');
   });
   await expect(rootTitles(page)).toHaveText(['付与のバッチを書く']);
   await expect(storyGroup(page, 'ポイント制度を公開する').locator('.entry-title')).toHaveCount(0);
@@ -583,8 +583,8 @@ test('親なしの段が空でも、つかんでいる間だけ出る落とし�
 
 test('終了したワークスペースでは、つまみを出さない', async ({ page }) => {
   // 管理の画面の行を名前で探すので、繰り返しと再試行で作った同じ名前の行に当てない
-  const name = `終了したつまみパーティ ${test.info().repeatEachIndex}-${test.info().retry}`;
-  await createWorkspace(page, name, 'game');
+  const name = `終了したつまみワークスペース ${test.info().repeatEachIndex}-${test.info().retry}`;
+  await createWorkspace(page, name);
   await addTask(page, '見積もりを送る');
   await addEpic(page, 'ポイント制度を公開する');
   await expect(page.locator('.entry .grip')).toBeVisible();
@@ -592,7 +592,7 @@ test('終了したワークスペースでは、つまみを出さない', async
   const workspaceUrl = page.url();
   // 管理の画面から終了する
   await page.goto('/aoba/admin');
-  const row = page.getByRole('region', { name: 'パーティ', exact: true }).locator('tbody tr', { hasText: name });
+  const row = page.getByRole('region', { name: 'ワークスペース', exact: true }).locator('tbody tr', { hasText: name });
   await row.getByRole('button', { name: `「${name}」を終了する` }).click();
   await page
     .getByRole('dialog', { name: `「${name}」を終了しますか？` })
@@ -610,7 +610,7 @@ test('終了したワークスペースでは、つまみを出さない', async
 });
 
 test('狭い幅ではつまみを出さず、題の列も空けない', async ({ page }) => {
-  await createWorkspace(page, 'つまみのパーティ', 'game');
+  await createWorkspace(page, 'つまみのワークスペース');
   await addTask(page, '見積もりを送る');
   await expect(page.locator('.entry .grip')).toBeVisible();
   await expect(page.locator('.drag-note')).toBeVisible();
@@ -626,12 +626,12 @@ test('狭い幅ではつまみを出さず、題の列も空けない', async ({
 });
 
 // seed のワークスペース（受託開発チーム）。ストーリーの下に、期日、ポイント、担当の付いたタスクがある
-const SEED_GAME_WORKSPACE = '/aoba/w/019a0000-0000-7000-8000-000000000401';
+const SEED_CLIENT_WORKSPACE = '/aoba/w/019a0000-0000-7000-8000-000000000401';
 
 test('メニューの横で一覧が狭い幅でも、題の列は縮みすぎず、狭い画面でも横にはみ出さない', async ({ page }) => {
   for (const width of [800, 900, 390, 320]) {
     await page.setViewportSize({ width, height: 900 });
-    await page.goto(SEED_GAME_WORKSPACE);
+    await page.goto(SEED_CLIENT_WORKSPACE);
     const title = page.locator('.tree-children .entry .entry-title').first();
     await expect(title).toBeVisible();
     // 題の列は 120px 以上（右端の操作が並んだままだと、数文字の幅に縮む）
@@ -660,7 +660,7 @@ test('一覧が広いまま指で押す画面（タブレットの横置き）�
   const context = await browser.newContext({ hasTouch: true, isMobile: true, viewport: { width: 960, height: 768 } });
   await signIn(context, baseURL, 'admin');
   const page = await context.newPage();
-  await page.goto(SEED_GAME_WORKSPACE);
+  await page.goto(SEED_CLIENT_WORKSPACE);
   expect(await page.evaluate(() => matchMedia('(pointer: coarse)').matches)).toBe(true);
   const up = page.locator('.tree-children .entry .order-actions .icon-btn').first();
   expect((await up.boundingBox())!.width).toBeGreaterThanOrEqual(44);
@@ -674,7 +674,7 @@ test('一覧が広いまま指で押す画面（タブレットの横置き）�
 test('ストーリーを作った後の読み直しの応答が、続けて作ったタスクより遅れて届いても、作ったタスクは画面に残る', async ({
   page,
 }) => {
-  await createWorkspace(page, '遅れた読み直しパーティ', 'game');
+  await createWorkspace(page, '遅れた読み直しワークスペース');
   await addStory(page, 'ポイント制度を公開する');
 
   // 次の読み直しは、サーバーから受け取っておいて、タスクを作った後まで画面へ返さない。
@@ -693,17 +693,17 @@ test('ストーリーを作った後の読み直しの応答が、続けて作�
   });
 
   // 返る前に画面へ出す印を使わずに、ダイアログを閉じるところまで進める
-  await page.getByRole('button', { name: '達成目標を作る' }).click();
-  const storyDialog = page.getByRole('dialog', { name: '達成目標を作る' });
+  await page.getByRole('button', { name: 'ストーリーを作る' }).click();
+  const storyDialog = page.getByRole('dialog', { name: 'ストーリーを作る' });
   await storyDialog.getByLabel('タイトル').fill('決済の障害を減らす');
   await storyDialog.getByRole('button', { name: '作る' }).click();
   await expect(storyDialog).toBeHidden();
   await expect.poll(() => held).toBe(true);
 
-  await page.getByRole('button', { name: 'クエストを足す: ポイント制度を公開する' }).click();
-  const taskDialog = page.getByRole('dialog', { name: '依頼を出す' });
+  await page.getByRole('button', { name: 'タスクを足す: ポイント制度を公開する' }).click();
+  const taskDialog = page.getByRole('dialog', { name: '起票' });
   await taskDialog.getByLabel('タイトル').fill('付与のバッチを書く');
-  await taskDialog.getByRole('button', { name: '依頼を出す' }).click();
+  await taskDialog.getByRole('button', { name: '起票' }).click();
   await expect(taskDialog).toBeHidden();
   const group = storyGroup(page, 'ポイント制度を公開する');
   await expect(group.locator('.entry-title')).toHaveText(['付与のバッチを書く']);
@@ -716,22 +716,22 @@ test('ストーリーを作った後の読み直しの応答が、続けて作�
   await expect(group.locator('.entry-title')).toHaveText(['付与のバッチを書く']);
 });
 
-test('作って完遂にしたタスクは、その後の読み直しで未完了の行として戻らない', async ({ page }) => {
-  await createWorkspace(page, '完遂後の読み直しパーティ', 'game');
-  await addTask(page, '完遂して消える依頼');
+test('作って完了にしたタスクは、その後の読み直しで未完了の行として戻らない', async ({ page }) => {
+  await createWorkspace(page, '完了後の読み直しワークスペース');
+  await addTask(page, '完了して消える依頼');
   const completed = waitForResponses(page, '/task-complete');
-  await page.getByRole('button', { name: '完遂にする: 完遂して消える依頼', exact: true }).click();
+  await page.getByRole('button', { name: '完了にする: 完了して消える依頼', exact: true }).click();
   await completed;
 
   // 木の読み直しを起こす。読み直した木は未完了のタスクだけを返す
-  await addStory(page, '読み直しを起こす達成目標');
-  await expect(storyRow(page, '読み直しを起こす達成目標')).toBeVisible();
-  await expect(page.getByRole('button', { name: '完遂にする: 完遂して消える依頼', exact: true })).toHaveCount(0);
+  await addStory(page, '読み直しを起こすストーリー');
+  await expect(storyRow(page, '読み直しを起こすストーリー')).toBeVisible();
+  await expect(page.getByRole('button', { name: '完了にする: 完了して消える依頼', exact: true })).toHaveCount(0);
 });
 
 test('別の人が削除したタスクは、次の木の読み直しの後に画面から消える', async ({ page }) => {
-  await createWorkspace(page, '削除された依頼パーティ', 'game');
-  await addStory(page, '読み直しを起こす達成目標');
+  await createWorkspace(page, '削除された依頼ワークスペース');
+  await addStory(page, '読み直しを起こすストーリー');
   const created = page.waitForResponse((response) => new URL(response.url()).pathname.endsWith('/task-create'));
   await addTask(page, '別の人に削除される依頼');
   const taskId = ((await (await created).json()) as { task: { id: string } }).task.id;
@@ -746,7 +746,7 @@ test('別の人が削除したタスクは、次の木の読み直しの後に�
   expect(deleted.ok()).toBe(true);
 
   // 次の読み直しで消える
-  await addStory(page, '削除の後の達成目標');
-  await expect(storyRow(page, '削除の後の達成目標')).toBeVisible();
+  await addStory(page, '削除の後のストーリー');
+  await expect(storyRow(page, '削除の後のストーリー')).toBeVisible();
   await expect(taskRow(page, '別の人に削除される依頼')).toHaveCount(0);
 });

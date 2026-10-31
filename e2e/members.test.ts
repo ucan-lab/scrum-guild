@@ -38,7 +38,7 @@ test.describe('リーダー（あおば開発のミナト）', () => {
 
     // 頭の数字は所属、リーダー、招待中
     const tally = page.locator('.tally > div');
-    await expect(tally).toHaveText(['所属 2', 'パーティリーダー 1', '招待中 1']);
+    await expect(tally).toHaveText(['所属 2', 'リーダー 1', '招待中 1']);
 
     // 所属している人。リーダーが先。リーダーと管理者には、ロールの選択欄と、自分の行の「抜ける」、他人の行の「外す」
     const members = page.getByRole('table', { name: '所属している人の一覧' });
@@ -59,12 +59,12 @@ test.describe('リーダー（あおば開発のミナト）', () => {
     await expect(rows.nth(1).locator('td').nth(0)).toHaveText(/^ハハルカ\d+$/);
     await expect(page.getByRole('combobox', { name: 'ハルカのロール' })).toHaveValue('member');
     await expect(page.getByRole('combobox', { name: 'ハルカのロール' }).locator('option')).toHaveText([
-      'パーティリーダー',
+      'リーダー',
       '一般',
     ]);
     await expect(rows.nth(1).getByRole('button', { name: 'ハルカを外す' })).toHaveText('外す');
     await expect(page.locator('.action-note')).toHaveText(
-      '外すと、その人の未完了のクエストは担当なしに戻ります。完了の記録と経験値は残ります。',
+      '外すと、その人の未完了のタスクは担当なしに戻ります。完了の記録と経験値は残ります。',
     );
 
     // 承諾待ちの招待。招待した日はワークスペースのタイムゾーン（東京）の日付
@@ -77,7 +77,7 @@ test.describe('リーダー（あおば開発のミナト）', () => {
     // 招待する。組織の人数は、管理者のミナト、一般のハルカ、承諾待ちのそら の3人。ログインの手段は GitHub（既定）と Google
     await expect(page.getByRole('heading', { level: 2, name: '招待する' })).toBeVisible();
     await expect(page.locator('#members-invite').locator('..').locator('.section-hint')).toHaveText(
-      '冒険者ギルドの人数 3 / 15 人',
+      '組織の人数 3 / 15 人',
     );
     const vias = page.getByRole('radiogroup', { name: 'ログインの手段' }).getByRole('radio');
     await expect(vias).toHaveCount(2);
@@ -110,7 +110,7 @@ test.describe('リーダー（あおば開発のミナト）', () => {
     );
     await page.goto(MEMBERS_PATH);
     await expect(page.locator('.callout.is-warn')).toHaveText(
-      '冒険者ギルドの人数が上限（15 人）に達しているため、新しい人は招待できません。すでに冒険者ギルドにいる人は招待できます。上限を上げるにはギルドマスターに相談してください。',
+      '組織の人数が上限（15 人）に達しているため、新しい人は招待できません。すでに組織にいる人は招待できます。上限を上げるには管理者に相談してください。',
     );
     // 確かめることはできる
     const username = page.getByLabel('GitHub のユーザー名');
@@ -125,7 +125,7 @@ test.describe('リーダー（あおば開発のミナト）', () => {
     await expect(page.locator('.choice')).toContainText('tsumugi--seed');
     await expect(invite).toBeDisabled();
     await expect(invite).toHaveAccessibleDescription(
-      'この人はまだ冒険者ギルドの人数に数えられていないため、上限に達している間は招待できません。',
+      'この人はまだ組織の人数に数えられていないため、上限に達している間は招待できません。',
     );
 
     // すでに数えられている人は招待できる
@@ -184,7 +184,7 @@ test.describe('リーダー（あおば開発のミナト）', () => {
     await page.getByRole('button', { name: '確かめる' }).click();
     await expect(page.locator('.choice')).toContainText('haruka--seed');
     await page.getByRole('button', { name: '招待する' }).click();
-    await expect(page.getByRole('alert')).toHaveText('この人は、もうこのパーティに所属しています。');
+    await expect(page.getByRole('alert')).toHaveText('この人は、もうこのワークスペースに所属しています。');
     await expect(page.getByLabel('GitHub のユーザー名')).toBeFocused();
     await expect(page.locator('.choice')).toHaveCount(0);
     await expect(page.getByRole('button', { name: '招待する' })).toBeDisabled();
@@ -208,7 +208,7 @@ test.describe('リーダー（あおば開発のミナト）', () => {
     await email.fill(E2E_GOOGLE_INVITE_EMAIL);
     await invite.click();
     await expect(page.locator('#invite-email-error')).toHaveText(
-      'この人には、このパーティへの承諾待ちの招待があります。',
+      'この人には、このワークスペースへの承諾待ちの招待があります。',
     );
     await expect(email).toBeFocused();
 
@@ -326,7 +326,7 @@ test.describe('リーダー（あおば開発のミナト）', () => {
     // やめると送らない
     await remove.click();
     await expect(dialog).toContainText(
-      'ハルカはパーティから外れます。担当していた未完了のクエストは担当なしに戻ります。完了の記録と経験値は残ります。戻すには、もう一度招待します。',
+      'ハルカはワークスペースから外れます。担当していた未完了のタスクは担当なしに戻ります。完了の記録と経験値は残ります。戻すには、もう一度招待します。',
     );
     await dialog.getByRole('button', { name: 'やめる' }).click();
     await expect(dialog).toBeHidden();
@@ -365,7 +365,7 @@ test.describe('リーダー（あおば開発のミナト）', () => {
     await page.getByRole('button', { name: '受託開発チームから抜ける' }).click();
     const dialog = page.getByRole('dialog', { name: '受託開発チームから抜けますか' });
     await expect(dialog).toContainText(
-      'このパーティのパーティリーダーがいなくなります。新しいパーティリーダーはギルドマスターが任命します。',
+      'このワークスペースのリーダーがいなくなります。新しいリーダーは管理者が任命します。',
     );
     await dialog.getByRole('button', { name: '抜ける' }).click();
     await expect(page).toHaveURL(/\/aoba$/);
@@ -411,10 +411,10 @@ test.describe('リーダー（あおば開発のミナト）', () => {
     await role.selectOption('member');
     const dialog = page.getByRole('dialog', { name: 'ハルカを一般に戻しますか' });
     await expect(dialog).toContainText(
-      'ハルカは一般に戻り、ロールの付け替え、招待、冒険者を外すことができなくなります。',
+      'ハルカは一般に戻り、ロールの付け替え、招待、メンバーを外すことができなくなります。',
     );
     await expect(dialog).toContainText(
-      'このパーティのパーティリーダーがいなくなります。新しいパーティリーダーはギルドマスターが任命します。',
+      'このワークスペースのリーダーがいなくなります。新しいリーダーは管理者が任命します。',
     );
     await dialog.getByRole('button', { name: 'やめる' }).click();
     await expect(dialog).toBeHidden();
@@ -445,9 +445,9 @@ test.describe('リーダー（あおば開発のミナト）', () => {
 
     reply = { status: 200, json: { user_id: HARUKA_USER_ID, role: 'leader' } };
     await role.selectOption('leader');
-    await expect(page.locator('.toasts:visible .toast')).toHaveText('ハルカをパーティリーダーにしました');
+    await expect(page.locator('.toasts:visible .toast')).toHaveText('ハルカをリーダーにしました');
     expect(sent).toEqual([{ workspace_id: AOBA_WORKSPACE_ID, user_id: HARUKA_USER_ID, role: 'leader' }]);
-    await expect(page.locator('.tally > div').nth(1)).toHaveText('パーティリーダー 2');
+    await expect(page.locator('.tally > div').nth(1)).toHaveText('リーダー 2');
     await expect(role).toHaveValue('leader');
 
     reply = { status: 409, json: { error: { code: 'conflict', message: 'x' } } };
@@ -457,7 +457,7 @@ test.describe('リーダー（あおば開発のミナト）', () => {
     await role.selectOption('member');
     await Promise.all([
       expect(page.locator('.toasts:visible .toast').last()).toHaveText(
-        '冒険者のロールが先に変わっていました。一覧を読み直しました。',
+        'メンバーのロールが先に変わっていました。一覧を読み直しました。',
       ),
       reloaded,
     ]);
@@ -470,7 +470,7 @@ test.describe('リーダー（あおば開発のミナト）', () => {
   }) => {
     const collect = await watchViolations(page);
     const name = `名簿確認チーム${Date.now() % 100000}`;
-    await createWorkspace(page, name, 'game');
+    await createWorkspace(page, name);
     await page.goto(`${new URL(page.url()).pathname}/members`);
     const role = page.getByRole('combobox', { name: 'ミナトのロール' });
     await expect(role).toHaveValue('leader');
@@ -478,22 +478,20 @@ test.describe('リーダー（あおば開発のミナト）', () => {
     // 管理者は一般に戻しても付け替えられるが、唯一のリーダーなので、リーダーがいなくなることを確かめる。0人になっても止めない
     await role.selectOption('member');
     const demote = page.getByRole('dialog', { name: '自分を一般に戻しますか' });
-    await expect(demote).toHaveText(
-      /パーティリーダーがいなくなります。新しいパーティリーダーはギルドマスターが任命します。/,
-    );
+    await expect(demote).toHaveText(/リーダーがいなくなります。新しいリーダーは管理者が任命します。/);
     // 管理者には「付け替えができなくなる」は出さない
     await expect(demote).not.toContainText('できなくなります');
     await demote.getByRole('button', { name: '一般に戻す' }).click();
     await expect(page.locator('.toasts:visible .toast')).toHaveText('ミナトを一般にしました');
-    await expect(page.locator('.tally > div').nth(1)).toHaveText('パーティリーダー 0');
+    await expect(page.locator('.tally > div').nth(1)).toHaveText('リーダー 0');
     await expect(role).toHaveValue('member');
     await role.selectOption('leader');
-    await expect(page.locator('.toasts:visible .toast').last()).toHaveText('ミナトをパーティリーダーにしました');
-    await expect(page.locator('.tally > div').nth(1)).toHaveText('パーティリーダー 1');
+    await expect(page.locator('.toasts:visible .toast').last()).toHaveText('ミナトをリーダーにしました');
+    await expect(page.locator('.tally > div').nth(1)).toHaveText('リーダー 1');
 
     await page.getByRole('button', { name: `${name}から抜ける` }).click();
     const dialog = page.getByRole('dialog', { name: `${name}から抜けますか` });
-    await expect(dialog).toContainText('担当していた未完了のクエストは担当なしに戻ります。');
+    await expect(dialog).toContainText('担当していた未完了のタスクは担当なしに戻ります。');
     await dialog.getByRole('button', { name: '抜ける' }).click();
     await expect(page).toHaveURL(/\/aoba$/);
     await expect(page.locator('.toasts:visible .toast').last()).toHaveText(`${name}から抜けました`);
@@ -512,7 +510,7 @@ test.describe('リーダー（あおば開発のミナト）', () => {
     await page.goto(MEMBERS_PATH);
     const members = page.getByRole('table', { name: '所属している人の一覧' });
     await expect(members.locator('tbody tr')).toHaveCount(2);
-    await expect(members.locator('tbody tr').nth(0).locator('td').nth(1)).toHaveText('パーティリーダー');
+    await expect(members.locator('tbody tr').nth(0).locator('td').nth(1)).toHaveText('リーダー');
     await expect(members.locator('select, button')).toHaveCount(0);
     await expect(page.locator('.action-note')).toHaveCount(0);
   });
@@ -612,11 +610,11 @@ test.describe('一般のユーザー（あおば開発のハルカ）', () => {
     expect(body.seats).toBeNull();
 
     await expect(page.getByRole('heading', { level: 1, name: 'メンバー' })).toBeVisible();
-    await expect(page.locator('.tally > div')).toHaveText(['所属 2', 'パーティリーダー 1']);
+    await expect(page.locator('.tally > div')).toHaveText(['所属 2', 'リーダー 1']);
     const rows = page.getByRole('table', { name: '所属している人の一覧' }).locator('tbody tr');
     await expect(rows).toHaveCount(2);
     // ロールは文字で、自分の行の「抜ける」だけを出す（ロールの選択欄、外す、表の下の注意は出ない）
-    await expect(rows.nth(0).locator('td').nth(1)).toHaveText('パーティリーダー');
+    await expect(rows.nth(0).locator('td').nth(1)).toHaveText('リーダー');
     await expect(rows.nth(1).locator('td').nth(1)).toHaveText('一般');
     await expect(page.getByRole('combobox')).toHaveCount(0);
     await expect(rows.nth(0).getByRole('button')).toHaveCount(0);
@@ -645,7 +643,7 @@ test.describe('一般のユーザー（あおば開発のハルカ）', () => {
     await leave.click();
     const dialog = page.getByRole('dialog', { name: '受託開発チームから抜けますか' });
     await expect(dialog).toContainText(
-      'ほかに所属しているパーティが無いので、抜けると、この冒険者ギルドに入れなくなります。',
+      'ほかに所属しているワークスペースが無いので、抜けると、この組織に入れなくなります。',
     );
     await dialog.getByRole('button', { name: 'やめる' }).click();
     await expect(dialog).toBeHidden();
@@ -660,7 +658,7 @@ test.describe('一般のユーザー（あおば開発のハルカ）', () => {
     await page.goto(MEMBERS_PATH);
     await page.getByRole('button', { name: '受託開発チームから抜ける' }).click();
     const dialog = page.getByRole('dialog', { name: '受託開発チームから抜けますか' });
-    await expect(dialog).toContainText('担当していた未完了のクエストは担当なしに戻ります。');
+    await expect(dialog).toContainText('担当していた未完了のタスクは担当なしに戻ります。');
     await expect(dialog).not.toContainText('入れなくなります');
     await dialog.getByRole('button', { name: 'やめる' }).click();
     await expect(dialog).toBeHidden();
@@ -710,7 +708,7 @@ test.describe('リーダー（ひばり工房のリン）', () => {
     await expect(
       page.locator('.panel .field-hint', { hasText: 'Scrum Guild は招待をメールで送りません。' }),
     ).toHaveText(
-      /^Scrum Guild は招待をメールで送りません。Google の招待は、招待したときに出る招待の URL（14日で切れます）を本人に伝えてください。GitHub の招待は、次の冒険者ギルドの URL を伝えてください。\s*http:\/\/localhost:\d+\/hibari\/$/,
+      /^Scrum Guild は招待をメールで送りません。Google の招待は、招待したときに出る招待の URL（14日で切れます）を本人に伝えてください。GitHub の招待は、次の組織の URL を伝えてください。\s*http:\/\/localhost:\d+\/hibari\/$/,
     );
 
     // 形の合わないアドレスは欄の下に出す
@@ -744,7 +742,7 @@ test.describe('リーダー（ひばり工房のリン）', () => {
       /^この URL はこの画面を閉じると二度と出せません。期限は14日（\d{4}\/\d{2}\/\d{2}\s\d{2}:\d{2} まで）です。期限までに本人へ伝えてください。$/,
     );
     await expect(dialog).toContainText(
-      '同じメールアドレスで招待し直すと、新しい招待の URL が出ます（期限が切れた後は、冒険者ギルドの人数が上限なら招待し直せません）。招待し直すと（ほかのリーダーが招待し直したときも）、前の招待の URL は使えなくなります。',
+      '同じメールアドレスで招待し直すと、新しい招待の URL が出ます（期限が切れた後は、組織の人数が上限なら招待し直せません）。招待し直すと（ほかのリーダーが招待し直したときも）、前の招待の URL は使えなくなります。',
     );
     await dialog.getByRole('button', { name: 'コピー' }).click();
     await expect(page.locator('.toasts:visible .toast').last()).toHaveText('招待の URL をコピーしました');

@@ -12,6 +12,12 @@ describe('言葉の辞書', () => {
     }
   });
 
+  test('列の節の説明は、切り替えを前提にした「言葉づかい」を含まない', () => {
+    assert.ok(!dictionary.columnsDesc.game.includes('言葉づかい'));
+    assert.ok(!dictionary.columnsDesc.scrum.includes('言葉づかい'));
+    assert.ok(dictionary.columnsDesc.scrum.includes('名前は付けたままで、訳しません。'));
+  });
+
   test('format は名前を埋め、params に無い名前はそのまま残す', () => {
     assert.equal(format('{page} - {app}', { page: '自分の今日', app: 'Scrum Guild' }), '自分の今日 - Scrum Guild');
     assert.equal(format('API: {status}（版 {version}）', { status: 'ok' }), 'API: ok（版 {version}）');

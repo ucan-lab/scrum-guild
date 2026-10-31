@@ -1,7 +1,6 @@
 import { render } from 'svelte/server';
 import { expect, test } from 'vitest';
 import type { TaskDetail } from '../../shared/operations/task/index.ts';
-import { setVocabularies } from '../vocabulary.svelte.ts';
 import TaskThanks from './TaskThanks.svelte';
 
 const task: TaskDetail = {
@@ -50,17 +49,14 @@ const props = {
 };
 
 test('送れる人には自分と送付済み以外への送付口、本人が送った行には取消口を出す', () => {
-  for (const vocabulary of ['game', 'scrum'] as const) {
-    setVocabularies({ workspace: vocabulary });
-    const { body } = render(TaskThanks, { props });
-    expect(body).toContain('次の相手 に感謝する');
-    expect(body).not.toContain('送り手 に感謝する');
-    expect(body).not.toContain('送付済みの人 に感謝する');
-    // 見える文字は短く、相手の名前は読み上げの名前（aria-label）に持たせる
-    expect(body).toContain('aria-label="送付済みの人 への感謝を取り消す"');
-    expect(body).toContain('>取り消す</button>');
-    expect(body).toContain('#i-heart');
-  }
+  const { body } = render(TaskThanks, { props });
+  expect(body).toContain('次の相手 に感謝する');
+  expect(body).not.toContain('送り手 に感謝する');
+  expect(body).not.toContain('送付済みの人 に感謝する');
+  // 見える文字は短く、相手の名前は読み上げの名前（aria-label）に持たせる
+  expect(body).toContain('aria-label="送付済みの人 への感謝を取り消す"');
+  expect(body).toContain('>取り消す</button>');
+  expect(body).toContain('#i-heart');
 });
 
 test('送れない人、完了済み、閉じたワークスペースでは送り手と受取人の一覧だけを出す', () => {

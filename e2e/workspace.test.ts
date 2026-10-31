@@ -6,7 +6,7 @@ import { signIn, watchViolations } from './helpers.ts';
 
 // 管理の画面のワークスペースの一覧の行。変更の履歴の節もワークスペースの名前の行を持つので、節で絞る
 function workspaceRow(page: Page, name: string) {
-  return page.getByRole('region', { name: 'パーティ', exact: true }).locator('tbody tr', { hasText: name });
+  return page.getByRole('region', { name: 'ワークスペース', exact: true }).locator('tbody tr', { hasText: name });
 }
 
 const HIBARI_WORKSPACE_ID = '019a0000-0000-7000-8000-000000000402';
@@ -27,9 +27,9 @@ test.describe('管理者（あおば開発のミナト）', () => {
     // 見出しにフォーカスを置くのはワークスペースの画面だけ。ほかの画面の見出しは、フォーカスを受けない
     await expect(page.getByRole('heading', { level: 1 })).not.toHaveAttribute('tabindex', /.*/);
     // 表の見出しは数だと分かる短い形。名前の列には最小幅を持たせる（ユーザーの節の表が先に並ぶので、ワークスペースの表で絞る）
-    const table = page.getByRole('table', { name: 'パーティの一覧' });
-    await expect(table.locator('thead th').nth(1)).toHaveText('冒険者数');
-    await expect(table.locator('thead th').nth(2)).toHaveText('パーティリーダー数');
+    const table = page.getByRole('table', { name: 'ワークスペースの一覧' });
+    await expect(table.locator('thead th').nth(1)).toHaveText('メンバー数');
+    await expect(table.locator('thead th').nth(2)).toHaveText('リーダー数');
     expect(await table.locator('th.is-name').evaluate((th) => getComputedStyle(th).minWidth)).not.toBe('auto');
 
     const row = workspaceRow(page, '受託開発チーム');
@@ -43,35 +43,38 @@ test.describe('管理者（あおば開発のミナト）', () => {
     expect(await collect()).toEqual([]);
   });
 
-  test('自分をリーダーに、ゲームの言葉で作ると、そのワークスペースの画面へ移る', async ({ page }) => {
+  test('自分をリーダーに作ると、そのワークスペースの画面へ移る。作成ダイアログに言葉づかいの選択は無い', async ({
+    page,
+  }) => {
     const collect = await watchViolations(page);
     await page.goto('/aoba/admin');
-    await page.getByRole('button', { name: 'パーティを作る' }).first().click();
-    const dialog = page.getByRole('dialog', { name: 'パーティを作る' });
-    // 説明文に、選んだ言葉づかいの列と決まった欄の名前、換算、週の始まり、このブラウザのタイムゾーンを出す
-    await expect(dialog.getByText(/行程は「出発前、遂行中、査定中、完遂」/)).toBeVisible();
-    await expect(dialog.getByText(/決まった欄は「達成条件」/)).toBeVisible();
-    await expect(dialog.getByText(/1 難易度 = 4 時間、週の始まりは月曜、タイムゾーンは Asia\/Tokyo/)).toBeVisible();
-    // 最初のリーダーの既定は自分。言葉づかいの既定は組織の言葉づかい（ゲーム）
+    await page.getByRole('button', { name: 'ワークスペースを作る' }).first().click();
+    const dialog = page.getByRole('dialog', { name: 'ワークスペースを作る' });
+    // 説明文に、列と決まった欄の名前、換算、週の始まり、このブラウザのタイムゾーンを出す
+    await expect(dialog.getByText(/列は「未着手、作業中、レビュー、完了」/)).toBeVisible();
+    await expect(dialog.getByText(/決まった欄は「受け入れ基準」/)).toBeVisible();
+    await expect(dialog.getByText(/1 ポイント = 4 時間、週の始まりは月曜、タイムゾーンは Asia\/Tokyo/)).toBeVisible();
+    // 最初のリーダーの既定は自分。言葉づかいは選べない
     await expect(dialog.getByRole('combobox')).toBeEnabled();
     await expect(dialog.getByRole('combobox').locator('option:checked')).toHaveText('ミナト');
-    await expect(dialog.getByRole('radio', { name: /ゲームの言葉/ })).toBeChecked();
+    await expect(dialog.getByRole('radio')).toHaveCount(0);
+    await expect(dialog.getByText('言葉づかい')).toHaveCount(0);
     await dialog.getByLabel('名前').fill('  保守チーム  ');
     await dialog.getByRole('button', { name: '作る' }).click();
 
     await expect(page).toHaveURL(/\/aoba\/w\/[0-9a-f-]{36}$/);
-    // 見出しは画面の名前（掲示板）で、小見出しがワークスペースの名前
-    await expect(page.getByRole('heading', { level: 1, name: '掲示板' })).toBeVisible();
+    // 見出しは画面の名前（バックログ）で、小見出しがワークスペースの名前
+    await expect(page.getByRole('heading', { level: 1, name: 'バックログ' })).toBeVisible();
     await expect(page.locator('.page-eyebrow')).toHaveText('保守チーム');
     // 移った先の見出しにフォーカスが移る
-    await expect(page.getByRole('heading', { level: 1, name: '掲示板' })).toBeFocused();
+    await expect(page.getByRole('heading', { level: 1, name: 'バックログ' })).toBeFocused();
     // 所属しているので、所属していない印は出ない。メニューにワークスペースの節が出る
     await expect(page.getByText(/所属せず/)).toHaveCount(0);
     await expect(page.locator('.ws-select')).toContainText('保守チーム');
     // 画面のある項目だけを出すので、ワークスペースの節と、メンバーを持つ管理の節
-    await expect(page.locator('.nav-group')).toHaveText(['パーティ', '管理']);
+    await expect(page.locator('.nav-group')).toHaveText(['ワークスペース', '管理']);
     // 画面にも起票のダイアログ（中に閉じた読み上げの領域がある）があるので、見える領域だけを role で引く
-    await expect(page.getByRole('status').filter({ hasText: 'パーティを作りました' })).toBeVisible();
+    await expect(page.getByRole('status').filter({ hasText: 'ワークスペースを作りました' })).toBeVisible();
     expect(await collect()).toEqual([]);
 
     // 一覧に出て、リーダーが1人のメンバーが1人
@@ -81,19 +84,12 @@ test.describe('管理者（あおば開発のミナト）', () => {
     await expect(row.locator('td').nth(2)).toHaveText('1');
   });
 
-  test('別の人をリーダーにスクラムの言葉で作ると、中の言葉づかいがスクラムになり、所属していない印が出る', async ({
-    page,
-  }) => {
+  test('別の人をリーダーに作ると、所属していない印が出る', async ({ page }) => {
     await page.goto('/aoba/admin');
-    await page.getByRole('button', { name: 'パーティを作る' }).first().click();
-    // 題とラベルと説明文は、選んだ言葉づかいの言葉に替わる（題が替わるので、名前では探さない）
-    const dialog = page.getByRole('dialog');
+    await page.getByRole('button', { name: 'ワークスペースを作る' }).first().click();
+    const dialog = page.getByRole('dialog', { name: 'ワークスペースを作る' });
     await expect(dialog.getByRole('combobox')).toBeEnabled();
-    await expect(dialog.getByLabel('最初のパーティリーダー')).toBeVisible();
-    await dialog.getByRole('radio', { name: /スクラムの言葉/ }).check();
-    await expect(page.getByRole('dialog', { name: 'ワークスペースを作る' })).toBeVisible();
     await expect(dialog.getByLabel('最初のリーダー')).toBeVisible();
-    // 説明文が、選んだ言葉づかいの名前に替わる
     await expect(dialog.getByText(/列は「未着手、作業中、レビュー、完了」/)).toBeVisible();
     await expect(dialog.getByText(/決まった欄は「受け入れ基準」/)).toBeVisible();
     await expect(dialog.getByText(/1 ポイント = 4 時間/)).toBeVisible();
@@ -104,16 +100,16 @@ test.describe('管理者（あおば開発のミナト）', () => {
     await expect(page).toHaveURL(/\/aoba\/w\/[0-9a-f-]{36}$/);
     await expect(page.getByRole('heading', { level: 1, name: 'バックログ' })).toBeVisible();
     await expect(page.locator('.page-eyebrow')).toHaveText('社内ツール改善');
-    // ワークスペースの中の言葉はスクラム。組織の言葉（ギルドマスター）はそのまま
+    // ワークスペースの中の言葉はスクラム。組織の言葉（管理者）はそのまま
     await expect(page.locator('.nav-group')).toHaveText(['ワークスペース', '管理']);
     await expect(page.getByText('まだタスクがありません')).toBeVisible();
     // 作った管理者は所属していない。それでも画面に入れて、印が出る
-    await expect(page.locator('.topbar .chip').first()).toHaveText('所属せずギルドマスターとして開いています');
+    await expect(page.locator('.topbar .chip').first()).toHaveText('所属せず管理者として開いています');
 
-    // 画面を読み直さずにワークスペースの外へ移ると、ワークスペースの言葉は組織の言葉づかい（ゲーム）に戻り、印も消える
+    // 画面を読み直さずにワークスペースの外へ移ると、印が消える
     await page.locator('.nav-item', { hasText: '組織の管理' }).click();
     await expect(page).toHaveURL(/\/aoba\/admin$/);
-    await expect(page.getByRole('button', { name: 'パーティを作る' }).first()).toBeVisible();
+    await expect(page.getByRole('button', { name: 'ワークスペースを作る' }).first()).toBeVisible();
     await expect(page.locator('.topbar .chip')).toHaveCount(1);
   });
 
@@ -124,8 +120,8 @@ test.describe('管理者（あおば開発のミナト）', () => {
       return route.continue();
     });
     await page.goto('/aoba/admin');
-    await page.getByRole('button', { name: 'パーティを作る' }).first().click();
-    const dialog = page.getByRole('dialog', { name: 'パーティを作る' });
+    await page.getByRole('button', { name: 'ワークスペースを作る' }).first().click();
+    const dialog = page.getByRole('dialog', { name: 'ワークスペースを作る' });
     await expect(dialog.getByRole('combobox')).toBeEnabled();
 
     await dialog.getByLabel('名前').fill('   ');
@@ -160,8 +156,8 @@ test.describe('管理者（あおば開発のミナト）', () => {
       await route.continue();
     });
     await page.goto('/aoba/admin');
-    await page.getByRole('button', { name: 'パーティを作る' }).first().click();
-    const dialog = page.getByRole('dialog', { name: 'パーティを作る' });
+    await page.getByRole('button', { name: 'ワークスペースを作る' }).first().click();
+    const dialog = page.getByRole('dialog', { name: 'ワークスペースを作る' });
     await expect(dialog.getByRole('combobox')).toBeEnabled();
     await dialog.getByLabel('名前').fill('二重送信の確認');
     await dialog.getByRole('button', { name: '作る' }).click();
@@ -189,8 +185,7 @@ test.describe('管理者（あおば開発のミナト）', () => {
     await expect(dialog).toBeVisible();
     // 欄は変えられず、読み上げの領域は form の外にある
     await expect(dialog.getByLabel('名前')).toBeDisabled();
-    await expect(dialog.getByLabel('最初のパーティリーダー')).toBeDisabled();
-    await expect(dialog.getByRole('radio', { name: /スクラムの言葉/ })).toBeDisabled();
+    await expect(dialog.getByLabel('最初のリーダー')).toBeDisabled();
     await expect(dialog.locator('form [role="status"]')).toHaveCount(0);
 
     await expect(page).toHaveURL(/\/aoba\/w\/[0-9a-f-]{36}$/);
@@ -205,8 +200,8 @@ test.describe('管理者（あおば開発のミナト）', () => {
     await page.goto('/aoba');
     await page.locator('.nav-item', { hasText: '組織の管理' }).click();
     await expect(page).toHaveURL(/\/aoba\/admin$/);
-    await page.getByRole('button', { name: 'パーティを作る' }).first().click();
-    const dialog = page.getByRole('dialog', { name: 'パーティを作る' });
+    await page.getByRole('button', { name: 'ワークスペースを作る' }).first().click();
+    const dialog = page.getByRole('dialog', { name: 'ワークスペースを作る' });
     await expect(dialog.getByRole('combobox')).toBeEnabled();
     await dialog.getByLabel('名前').fill('離れた後の応答');
     await dialog.getByRole('button', { name: '作る' }).click();
@@ -227,11 +222,11 @@ test.describe('管理者（あおば開発のミナト）', () => {
       return route.continue();
     });
     await page.goto('/aoba/admin');
-    await page.getByRole('button', { name: 'パーティを作る' }).first().click();
-    const dialog = page.getByRole('dialog', { name: 'パーティを作る' });
+    await page.getByRole('button', { name: 'ワークスペースを作る' }).first().click();
+    const dialog = page.getByRole('dialog', { name: 'ワークスペースを作る' });
     await expect(dialog.getByRole('alert')).toHaveText('選べる人を読み込めませんでした');
     // 選ぶ欄は常に置き、ラベルがその欄を指す
-    await expect(dialog.getByLabel('最初のパーティリーダー')).toBeDisabled();
+    await expect(dialog.getByLabel('最初のリーダー')).toBeDisabled();
     await expect(dialog.getByRole('button', { name: '作る' })).toHaveAttribute('aria-disabled', 'true');
 
     const retry = dialog.getByRole('button', { name: 'もう一度試す' });
@@ -239,7 +234,7 @@ test.describe('管理者（あおば開発のミナト）', () => {
     // 読み直している間も、ボタンは残り、押せない。欄は読み込み中の表示になる
     const retrying = dialog.getByRole('button', { name: '読み込んでいます' });
     await expect(retrying).toHaveAttribute('aria-disabled', 'true');
-    await expect(dialog.getByLabel('最初のパーティリーダー')).toHaveAttribute('aria-busy', 'true');
+    await expect(dialog.getByLabel('最初のリーダー')).toHaveAttribute('aria-busy', 'true');
     await expect(dialog.getByRole('status')).toHaveText('読み込んでいます');
 
     await expect(dialog.getByRole('combobox')).toBeEnabled();
@@ -254,8 +249,8 @@ test.describe('管理者（あおば開発のミナト）', () => {
       route.fulfill({ status: 500, json: { error: { code: 'internal', message: 'x' } } }),
     );
     await page.goto('/aoba/admin');
-    await page.getByRole('button', { name: 'パーティを作る' }).first().click();
-    const dialog = page.getByRole('dialog', { name: 'パーティを作る' });
+    await page.getByRole('button', { name: 'ワークスペースを作る' }).first().click();
+    const dialog = page.getByRole('dialog', { name: 'ワークスペースを作る' });
     await expect(dialog.getByRole('alert')).toHaveText('選べる人を読み込めませんでした');
     await expect(dialog.getByRole('combobox').locator('option')).toHaveText(['—']);
     await expect(dialog.getByText('選べる人を読み込めませんでした')).toHaveCount(1);
@@ -272,8 +267,8 @@ test.describe('管理者（あおば開発のミナト）', () => {
       created ? route.fulfill({ status: 500, json: { error: { code: 'internal', message: 'x' } } }) : route.continue(),
     );
     await page.goto('/aoba/admin');
-    await page.getByRole('button', { name: 'パーティを作る' }).first().click();
-    const dialog = page.getByRole('dialog', { name: 'パーティを作る' });
+    await page.getByRole('button', { name: 'ワークスペースを作る' }).first().click();
+    const dialog = page.getByRole('dialog', { name: 'ワークスペースを作る' });
     await expect(dialog.getByRole('combobox')).toBeEnabled();
     await dialog.getByLabel('名前').fill('読み直しに失敗');
     await dialog.getByRole('button', { name: '作る' }).click();
@@ -292,8 +287,8 @@ test.describe('管理者（あおば開発のミナト）', () => {
       route.fulfill({ status: 404, json: { error: { code: 'not_found', message: 'x' } } }),
     );
     await page.goto('/aoba/admin');
-    await page.getByRole('button', { name: 'パーティを作る' }).first().click();
-    const dialog = page.getByRole('dialog', { name: 'パーティを作る' });
+    await page.getByRole('button', { name: 'ワークスペースを作る' }).first().click();
+    const dialog = page.getByRole('dialog', { name: 'ワークスペースを作る' });
     await expect(dialog.getByRole('combobox')).toBeEnabled();
     expect(candidateCalls).toBe(1);
     await dialog.getByLabel('名前').fill('選び直し');
@@ -321,8 +316,8 @@ test.describe('管理者（あおば開発のミナト）', () => {
       }),
     );
     await page.goto('/aoba/admin');
-    await page.getByRole('button', { name: 'パーティを作る' }).first().click();
-    const dialog = page.getByRole('dialog', { name: 'パーティを作る' });
+    await page.getByRole('button', { name: 'ワークスペースを作る' }).first().click();
+    const dialog = page.getByRole('dialog', { name: 'ワークスペースを作る' });
     await expect(dialog.getByRole('combobox')).toBeEnabled();
     await dialog.getByLabel('名前').fill('タイムゾーン');
     await dialog.getByRole('button', { name: '作る' }).click();
@@ -353,8 +348,8 @@ test.describe('管理者（あおば開発のミナト）', () => {
       }),
     );
     await page.goto('/aoba/admin');
-    await page.getByRole('button', { name: 'パーティを作る' }).first().click();
-    const dialog = page.getByRole('dialog', { name: 'パーティを作る' });
+    await page.getByRole('button', { name: 'ワークスペースを作る' }).first().click();
+    const dialog = page.getByRole('dialog', { name: 'ワークスペースを作る' });
     await expect(dialog.getByRole('combobox')).toBeEnabled();
     const nameField = dialog.getByLabel('名前');
     await nameField.fill('断られる名前');
@@ -366,8 +361,8 @@ test.describe('管理者（あおば開発のミナト）', () => {
   test('存在しない ID と別の組織のワークスペースの ID は、同じ「見つからない」', async ({ page }) => {
     for (const id of ['no-such-workspace', HIBARI_WORKSPACE_ID]) {
       await page.goto(`/aoba/w/${id}`);
-      await expect(page.getByRole('heading', { level: 1, name: 'パーティが見つかりません' })).toBeVisible();
-      await expect(page.getByText('URL が違うか、入れないパーティです。')).toBeVisible();
+      await expect(page.getByRole('heading', { level: 1, name: 'ワークスペースが見つかりません' })).toBeVisible();
+      await expect(page.getByText('URL が違うか、入れないワークスペースです。')).toBeVisible();
       // 組織の枠は残る
       await expect(page.locator('.nav-item', { hasText: '自分の今日' })).toBeVisible();
     }
@@ -380,21 +375,21 @@ test.describe('管理者（あおば開発のミナト）', () => {
       route.fulfill({ status: 403, json: { error: { code: 'forbidden', message: 'x' } } }),
     );
     await page.goto('/aoba/w/019a0000-0000-7000-8000-000000000401');
-    await expect(page.getByRole('heading', { level: 1, name: 'パーティが見つかりません' })).toBeVisible();
-    await expect(page.getByText('URL が違うか、入れないパーティです。')).toBeVisible();
+    await expect(page.getByRole('heading', { level: 1, name: 'ワークスペースが見つかりません' })).toBeVisible();
+    await expect(page.getByText('URL が違うか、入れないワークスペースです。')).toBeVisible();
     await expect(page.getByRole('button', { name: 'もう一度試す' })).toHaveCount(0);
     await page.getByRole('link', { name: '自分の今日へ' }).click();
     await expect(page).toHaveURL(/\/aoba$/);
   });
 
-  test('ワークスペースの言葉づかいは、最初の描画から当たる', async ({ page }) => {
+  test('応答に vocabulary が混ざっても、最初の描画からスクラムの言葉で出る', async ({ page }) => {
     await page.route('**/api/aoba/workspace', async (route) => {
       const response = await route.fetch();
-      const body = (await response.json()) as { vocabulary: string };
-      body.vocabulary = 'scrum';
+      const body = (await response.json()) as { vocabulary?: string };
+      body.vocabulary = 'game';
       await route.fulfill({ response, json: body });
     });
-    // 描画のたびに、ワークスペースの節の見出しの文字を集める。ゲームの言葉（パーティ）が一度も出ない
+    // 描画のたびに、ワークスペースの節の見出しの文字を集める。ゲームの用語（パーティ）が一度も出ない
     await page.addInitScript(() => {
       const seen: string[] = [];
       (window as unknown as { __groupTexts: string[] }).__groupTexts = seen;
@@ -424,12 +419,12 @@ test.describe('一般のユーザー（あおば開発のハルカ）', () => {
 
     await page.goto('/aoba/admin');
     await expect(page.getByRole('heading', { level: 1, name: '画面が見つかりません' })).toBeVisible();
-    await expect(page.getByRole('button', { name: 'パーティを作る' })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'ワークスペースを作る' })).toHaveCount(0);
   });
 
   test('所属するワークスペースは開け、所属していないロールの印は出ない', async ({ page }) => {
     await page.goto('/aoba/w/019a0000-0000-7000-8000-000000000401');
-    await expect(page.getByRole('heading', { level: 1, name: '掲示板' })).toBeVisible();
+    await expect(page.getByRole('heading', { level: 1, name: 'バックログ' })).toBeVisible();
     await expect(page.locator('.page-eyebrow')).toHaveText('受託開発チーム');
     await expect(page.getByText(/所属せず/)).toHaveCount(0);
     await expect(page.locator('.ws-select')).toContainText('受託開発チーム');

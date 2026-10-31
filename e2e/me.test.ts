@@ -62,11 +62,11 @@ test.describe('自分の設定（ミナト）', () => {
     await expect(gaugeEnds).toHaveText([`LV ${emblemLevel}`, `LV ${emblemLevel + 1}`]);
     await expect(gaugeEnds.first()).toHaveAttribute('aria-hidden', 'true');
     await expect(gaugeEnds.last()).toHaveAttribute('aria-hidden', 'true');
-    await expect(panel.locator('.legend > span')).toHaveText(['確定', '見込み（クエストの完遂で確定）']);
-    await expect(panel.getByRole('group', { name: 'パーティごとの経験値' })).toBeVisible();
+    await expect(panel.locator('.legend > span')).toHaveText(['確定', '見込み（タスクの完了で確定）']);
+    await expect(panel.getByRole('group', { name: 'ワークスペースごとの経験値' })).toBeVisible();
     // ほかのファイルの e2e がミナトをリーダーにしたワークスペースを足すので、受託開発チームがあることと、末尾の合計だけを見る
     await expect(panel.locator('.breakdown dt', { hasText: '受託開発チーム' })).toHaveCount(1);
-    await expect(panel.locator('.breakdown .is-total dt')).toHaveText('すべてのパーティ');
+    await expect(panel.locator('.breakdown .is-total dt')).toHaveText('すべてのワークスペース');
     // 受け取った感謝の数。seed に、ハルカがミナトに送った1件がある（本人の分だけ数える）
     const thanksReceived = panel.getByRole('group', { name: '受け取った感謝' });
     await expect(thanksReceived.locator('dt')).toHaveText('受け取った感謝');
@@ -75,7 +75,7 @@ test.describe('自分の設定（ミナト）', () => {
     // 経験値の明細。seed の起票と完了が並ぶ（ほかのファイルが完了にした行が上に足されうる）
     await expect(page.getByRole('heading', { level: 2, name: '経験値の明細' })).toBeVisible();
     const table = page.getByRole('table', { name: '経験値の明細' });
-    await expect(table.locator('thead th')).toHaveText(['確定日時', 'パーティ', '行動', '内容', 'XP']);
+    await expect(table.locator('thead th')).toHaveText(['確定日時', 'ワークスペース', '行動', '内容', 'XP']);
     // XP の列の見出しに経験値のアイコン（crystal）。読み上げの名前は文字の「XP」だけ
     const headerIcon = table.locator('thead th').last().locator('svg.ico');
     await expect(headerIcon).toHaveClass(/\bis-xp\b/);
@@ -85,7 +85,7 @@ test.describe('自分の設定（ミナト）', () => {
     const seeded = table.locator('tbody tr', { hasText: '付与の履歴を返す API を作る' });
     await expect(seeded).toHaveCount(2);
     await expect(seeded.nth(0).locator('td').nth(1)).toHaveText('受託開発チーム');
-    await expect(seeded.locator('.tag')).toHaveText(['完遂', '起票']);
+    await expect(seeded.locator('.tag')).toHaveText(['完了', '起票']);
     await expect(seeded.locator('.xp-delta')).toHaveText(['+30', '+10']);
     await expect(page.getByText('明細をすべて表示しました')).toBeVisible();
 
@@ -103,8 +103,8 @@ test.describe('自分の設定（ミナト）', () => {
     await expect(panel.locator('.xp-num')).toHaveText('0XP');
     await expect(panel.locator('.xp-sub')).toHaveText('次のレベルまで 100・見込み +0');
     await expect(panel.locator('.gauge-end')).toHaveText(['LV 1', 'LV 2']);
-    const breakdown = panel.getByRole('group', { name: 'パーティごとの経験値' });
-    await expect(breakdown.locator('dt')).toHaveText(['社内ツール', 'すべてのパーティ']);
+    const breakdown = panel.getByRole('group', { name: 'ワークスペースごとの経験値' });
+    await expect(breakdown.locator('dt')).toHaveText(['社内ツール', 'すべてのワークスペース']);
     await expect(breakdown.locator('dd')).toHaveText(['0', '0']);
     // 受け取った感謝は無い（0 と出す）
     await expect(panel.getByRole('group', { name: '受け取った感謝' }).locator('dd')).toHaveText('0');
@@ -112,9 +112,9 @@ test.describe('自分の設定（ミナト）', () => {
     const rows = page.getByRole('table', { name: '経験値の明細' }).locator('tbody tr');
     await expect(rows).toHaveCount(50);
     // 新しい順。打ち消しは元の行動に「の打ち消し」を添えて負の値
-    await expect(rows.nth(0).locator('td').nth(2)).toHaveText('完遂の打ち消し');
+    await expect(rows.nth(0).locator('td').nth(2)).toHaveText('完了の打ち消し');
     await expect(rows.nth(0).locator('.xp-delta.is-minus')).toHaveText('-30');
-    await expect(rows.nth(1).locator('td').nth(2)).toHaveText('完遂');
+    await expect(rows.nth(1).locator('td').nth(2)).toHaveText('完了');
     await expect(rows.nth(1).locator('.xp-delta')).toHaveText('+30');
     await expect(rows.nth(0).locator('td').nth(3)).toHaveText('締め日の選択欄を足す');
 
@@ -123,7 +123,7 @@ test.describe('自分の設定（ミナト）', () => {
     await expect(page.getByRole('button', { name: '続きを読む' })).toHaveCount(0);
     await expect(page.getByText('明細をすべて表示しました')).toBeFocused();
     // 一番古い行は、最初の完了
-    await expect(rows.nth(51).locator('td').nth(2)).toHaveText('完遂');
+    await expect(rows.nth(51).locator('td').nth(2)).toHaveText('完了');
     expect(await collect()).toEqual([]);
   });
 
@@ -156,8 +156,8 @@ test.describe('自分の設定（ミナト）', () => {
     await page.route('**/api/aoba/experience-grants', (route) => route.fulfill({ json: { grants: [], next: null } }));
     await page.goto('/aoba/me');
     await expect(page.getByText('経験値の明細はまだありません')).toBeVisible();
-    // ゲームの言葉の「完遂」で出す（辞書の complete と done）
-    await expect(page.getByText('クエストを完遂にすると、起票や完遂の経験値がここに並びます。')).toBeVisible();
+    // 「完了」で出す（辞書の complete と done）
+    await expect(page.getByText('タスクを完了にすると、起票や完了の経験値がここに並びます。')).toBeVisible();
     await expect(page.getByRole('table', { name: '経験値の明細' })).toHaveCount(0);
   });
 
@@ -239,7 +239,7 @@ test.describe('自分の設定（ミナト）', () => {
               id: '019a0000-0000-7000-8000-00000000fff1',
               confirmed_at: '2026-09-18T01:30:00.000Z',
               workspace_id: '019a0000-0000-7000-8000-00000000fff2',
-              workspace_name: '旧パーティ',
+              workspace_name: '旧ワークスペース',
               action: 'task_completed',
               content: null,
               content_hidden: true,
@@ -252,8 +252,8 @@ test.describe('自分の設定（ミナト）', () => {
     );
     await page.goto('/aoba/me');
     const cells = page.getByRole('table', { name: '経験値の明細' }).locator('tbody tr').first().locator('td');
-    await expect(cells.nth(1)).toHaveText('旧パーティ');
-    await expect(cells.nth(3)).toHaveText('（今所属していないパーティの内容は表示しません）');
+    await expect(cells.nth(1)).toHaveText('旧ワークスペース');
+    await expect(cells.nth(3)).toHaveText('（今所属していないワークスペースの内容は表示しません）');
     await expect(cells.nth(4)).toHaveText('+30');
   });
 
@@ -307,7 +307,7 @@ test.describe('自分の設定（ミナト）', () => {
   }) => {
     await page.setViewportSize({ width: 320, height: 800 });
     const longName = 'ミナト'.repeat(15);
-    const longWorkspace = 'とても長いパーティの名前'.repeat(5);
+    const longWorkspace = 'とても長いワークスペースの名前'.repeat(5);
     const longTitle = 'ポイント付与のバッチを作る'.repeat(6);
     await page.route('**/api/hibari/organization', async (route) => {
       const response = await route.fetch();
@@ -370,8 +370,8 @@ test.describe('チーム全体の経験値（バックログの画面）', () =>
   }) => {
     await signIn(context, baseURL, 'member');
     await page.goto(`/aoba/w/${AOBA_WORKSPACE_ID}`);
-    await expect(page.getByRole('heading', { level: 1, name: '掲示板' })).toBeVisible();
-    await expect(page.locator('.page-head .team-xp')).toHaveText(/^パーティ全体の経験値[\d,]+XP$/);
+    await expect(page.getByRole('heading', { level: 1, name: 'バックログ' })).toBeVisible();
+    await expect(page.locator('.page-head .team-xp')).toHaveText(/^チーム全体の経験値[\d,]+XP$/);
     // ラベルの前に経験値のアイコン（crystal）。経験値の色で、読み上げから外す
     const icon = page.locator('.page-head .team-xp > svg.ico');
     await expect(icon).toHaveClass(/\bis-xp\b/);
@@ -385,7 +385,7 @@ test.describe('チーム全体の経験値（バックログの画面）', () =>
       route.fulfill({ status: 500, json: { error: { code: 'internal', message: 'x' } } }),
     );
     await page.goto(`/aoba/w/${AOBA_WORKSPACE_ID}`);
-    await expect(page.getByRole('heading', { level: 1, name: '掲示板' })).toBeVisible();
+    await expect(page.getByRole('heading', { level: 1, name: 'バックログ' })).toBeVisible();
     await expect(page.locator('.tree')).toBeVisible();
     await expect(page.locator('.team-xp')).toHaveCount(0);
   });

@@ -21,11 +21,10 @@
   } from '../../../../lib/drawer.svelte.ts';
   import { focusPageHeading } from '../../../../lib/focus-heading.ts';
   import { formatLocalDate } from '../../../../lib/format.ts';
-  import { setWorkspaceVocabulary, t } from '../../../../lib/vocabulary.svelte.ts';
+  import { t } from '../../../../lib/vocabulary.svelte.ts';
   import type { LayoutData } from './$types';
 
-  // ワークスペースの枠。workspace の操作の結果で、ワークスペースの中の言葉づかいを当てる（離れるときに戻す）。
-  // 最初の描画から当たるよう、描く前に走る $effect.pre で入れる。
+  // ワークスペースの枠。
   // 左のメニューのワークスペースの節と、上の帯の「所属せず管理者として開いています」の印は、組織の枠が page.data から出す。
   // 存在しない ID と別の組織の ID（404）は、同じ「見つからない」。所属していない一般のユーザー（403）も、
   // 読み直しても直らないので「入れない」の案内にする（組織の枠の 403 とは違い、ここでは「もう一度試す」を出さない）。
@@ -83,12 +82,6 @@
     // eslint-disable-next-line svelte/no-navigation-without-resolve -- 今の画面の経路（page.url.pathname）に、残すクエリと task だけを足している
     return goto(`${page.url.pathname}?${query}`, { replace: true, reset: false });
   }
-
-  $effect.pre(() => {
-    if (!workspace) return;
-    setWorkspaceVocabulary(workspace.vocabulary);
-    return () => setWorkspaceVocabulary(null);
-  });
 
   // 今の URL から `task` だけを外した画面。開いた画面（バックログ、メンバーなど）のまま、ほかのクエリも残す
   const withoutTask = () => {

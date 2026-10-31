@@ -8,11 +8,9 @@ import { createRequire } from 'node:module';
 import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import {
-  DEFAULT_VOCABULARY,
   ESTIMATE_LIMIT_SECONDS,
   FINISH_MS,
   HOLD_MS,
-  KEEP_SEED_VOCABULARY,
   MARK_MS,
   PAUSE_MS,
   READ_MS,
@@ -20,7 +18,6 @@ import {
   estimateSeconds,
   pausesAfter,
   validatePlan,
-  withVocabulary,
 } from './plan.mjs';
 
 // 録画の画面。上に 80px の帯を足して 1280×720 にする（compose.py）
@@ -74,8 +71,7 @@ async function main(planPath, outArg) {
   const base = `http://localhost:${devPorts({}).api}`;
   const who = plan.who ?? 'admin';
   if (!Object.hasOwn(SEED_SESSIONS, who)) fail(`seed に ${who} のセッションが無い（seed/sessions.ts）`);
-  const vocabulary = plan.vocabulary ?? DEFAULT_VOCABULARY;
-  console.log(`root: ${root}\nbase: ${base}\n言葉づかい: ${vocabulary}\n見積もり: ${seconds.toFixed(1)} 秒`);
+  console.log(`root: ${root}\nbase: ${base}\n見積もり: ${seconds.toFixed(1)} 秒`);
 
   const browser = await chromium.launch();
   try {
@@ -88,36 +84,11 @@ async function main(planPath, outArg) {
       { name: sessionCookieName(base), value: SEED_SESSIONS[who].token, url: base, httpOnly: true },
     ]);
     // 手順書の操作（リンクを押す、アドレスを入れる）で、手元のブラウザが preview の外のページへ移らないようにする。
-    // 止めるのは別オリジンへのナビゲーションだけで、画像や API などの別オリジンの読み込みは止めない。
-    // あわせて API の応答の言葉づかいを vocabulary にそろえる。seed にはゲームの言葉のワークスペースがあり、
-    // データを書き換えずに、録画の言葉だけをそろえるため
-    let blocked;
+    // 止めるのは別オリジンへのナビゲーションだけで、画像や API などの別オリジンの読み込みは止めない
     await context.route('**/*', async (route) => {
       const request = route.request();
-      const url = new URL(request.url());
-      if (request.isNavigationRequest() && url.origin !== base) return route.abort();
-      if (url.origin !== base || !url.pathname.startsWith('/api/') || vocabulary === KEEP_SEED_VOCABULARY) {
-        return route.continue();
-      }
-      // 画面が見ている言葉づかいは、そろえた偽の値になっている。組織の設定の変更のように、見ていた値を前の値（from）として
-      // 送り返す操作を通すと、偽の from で断られるか、偽の値が D1 に入る。止めて、録画を失敗させる
-      if ((request.postData() ?? '').includes('"vocabulary"')) {
-        blocked = '言葉づかいを送る操作は、応答をそろえたままでは撮れない。手順書の vocabulary を seed にする';
-        return route.abort();
-      }
-      const response = await route.fetch();
-      if (!(response.headers()['content-type'] ?? '').includes('application/json')) return route.fulfill({ response });
-      // 本文を替えるので、元の長さと圧縮の指定は引き継がない。本文が空などで JSON として読めない応答は、そのまま返す
-      let json;
-      try {
-        json = withVocabulary(await response.json(), vocabulary);
-      } catch {
-        return route.fulfill({ response });
-      }
-      const headers = { ...response.headers() };
-      delete headers['content-length'];
-      delete headers['content-encoding'];
-      return route.fulfill({ response, headers, json });
+      if (request.isNavigationRequest() && new URL(request.url()).origin !== base) return route.abort();
+      return route.continue();
     });
     const page = await context.newPage();
 
@@ -164,7 +135,6 @@ async function main(planPath, outArg) {
         if (step.caption) await wait(step.read ?? READ_MS);
         for (const [i, action] of actions.entries()) {
           await perform(action);
-          if (blocked) throw new Error(blocked);
           if (pausesAfter(actions, i)) await wait(PAUSE_MS);
         }
         await unmark();
@@ -173,8 +143,6 @@ async function main(planPath, outArg) {
         await wait(step.hold ?? RESULT_MS);
         await unmark();
       }
-      // 操作の直後に止めた通信は、少し遅れて来ることがあるので、場面の終わりでも確かめる
-      if (blocked) throw new Error(blocked);
     }
 
     // 空の字幕で、最後の字幕を閉じる時刻を残す。compose.py は、この少し後で動画を切る

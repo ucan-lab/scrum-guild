@@ -4,7 +4,6 @@ import { render } from 'svelte/server';
 import { expect, test, vi } from 'vitest';
 import { formatLocalDate } from '../format.ts';
 import { dictionary } from '../../shared/vocabulary.ts';
-import { setVocabularies } from '../vocabulary.svelte.ts';
 import ApiTokensSetting from './ApiTokensSetting.svelte';
 
 vi.mock('$app/state', () => ({ page: { url: new URL('http://localhost/aoba/me') } }));
@@ -18,16 +17,14 @@ const token = {
   last_used_at: null as string | null,
   expires_at: '2026-12-31T12:00:00.000Z',
 };
-const VOCABULARIES = ['game', 'scrum'] as const;
 
 const renderWith = (initial: (typeof token)[] | null) => render(ApiTokensSetting, { props: { initial } }).body;
 
-test('どちらの言葉づかいでも、apiToken の辞書のキーはゲームとスクラムの両方の文言を持つ', () => {
+test('apiToken の辞書のキーは、スクラムの言葉の文言を持つ', () => {
   const keys = Object.keys(dictionary).filter((key) => key.startsWith('apiToken'));
   expect(keys.length).toBeGreaterThan(20);
   for (const key of keys) {
-    const entry = (dictionary as Record<string, { game: string; scrum: string }>)[key]!;
-    expect(entry.game.length, key).toBeGreaterThan(0);
+    const entry = (dictionary as Record<string, { scrum: string }>)[key]!;
     expect(entry.scrum.length, key).toBeGreaterThan(0);
   }
 });
@@ -48,19 +45,16 @@ test('一覧の行の範囲のセルは、write なら書き込み、read なら
 });
 
 test('一覧の行は名前、範囲、期限、未使用を出し、ハッシュ（id）と生の値の接頭辞は HTML のどこにも出ない', () => {
-  for (const vocabulary of VOCABULARIES) {
-    setVocabularies({ organization: vocabulary });
-    const body = renderWith([token]);
-    expect(body).toContain('手元の端末');
-    expect(cellText(body, '範囲')).toBe('書き込み');
-    expect(cellText(body, '期限')).toBe(formatLocalDate(token.expires_at));
-    expect(cellText(body, '最後に使った日')).toBe('未使用');
-    expect(body).toContain(formatLocalDate(token.expires_at));
-    expect(body).toContain('未使用');
-    expect(body).toContain('aria-label="API トークン「手元の端末」を取り消す"');
-    expect(body).not.toContain(HASH);
-    expect(body).not.toContain('sgp_');
-  }
+  const body = renderWith([token]);
+  expect(body).toContain('手元の端末');
+  expect(cellText(body, '範囲')).toBe('書き込み');
+  expect(cellText(body, '期限')).toBe(formatLocalDate(token.expires_at));
+  expect(cellText(body, '最後に使った日')).toBe('未使用');
+  expect(body).toContain(formatLocalDate(token.expires_at));
+  expect(body).toContain('未使用');
+  expect(body).toContain('aria-label="API トークン「手元の端末」を取り消す"');
+  expect(body).not.toContain(HASH);
+  expect(body).not.toContain('sgp_');
 });
 
 test('最後に使った日があれば未使用を出さず、日付を出す', () => {

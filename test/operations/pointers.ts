@@ -97,7 +97,6 @@ export const pointers: Pointers = {
   'workspace-create': async (target) => ({
     name: '保守チーム',
     timezone: 'Asia/Tokyo',
-    vocabulary: 'game',
     leader_user_id: target.admin.userId,
   }),
   'organization-holiday-list': { noReference: {} },
@@ -111,7 +110,7 @@ export const pointers: Pointers = {
   // 組織は URL の slug で決まり、入力は組織の中の行を指さない。from は作ったばかりの組織の値で、to が同じなら書かずに成功する。
   // 値を変える入力だと、同じ組織に続けて2回成功させる検査（API トークンの Origin の検査と行の分離）の2回目が、from が合わず 409 になる
   'organization-settings-update': {
-    noReference: { vocabulary: { from: 'game', to: 'game' }, theme: { from: 'simple', to: 'simple' } },
+    noReference: { theme: { from: 'simple', to: 'simple' } },
   },
   // カーソルを渡さなければ最新から読む。組織は URL の slug で決まる
   'organization-history': { noReference: {} },

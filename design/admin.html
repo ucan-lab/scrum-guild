@@ -18,10 +18,10 @@
 <script src="kit.js"></script>
 <script>
 "use strict";
-// 組織の管理（管理者）: ユーザー、ワークスペース、添付ファイルの合計、組織の休日、言葉づかい、既定のテーマ、配分と積載量の合計、取り込み元の応答、AI の機能、変更の履歴
+// 組織の管理（管理者）: ユーザー、ワークスペース、添付ファイルの合計、組織の休日、既定のテーマ、配分と積載量の合計、取り込み元の応答、AI の機能、変更の履歴
 const { D, t, icon, esc, pageHead, avatarOf, user, meter } = SQ;
 const A = D.admin;
-// 変更の履歴の内容の文。本番の辞書（src/shared/vocabulary.ts の orgHistory*）と同じ文を、言葉づかいに合わせて作る
+// 変更の履歴の内容の文。本番の辞書（src/shared/vocabulary.ts の orgHistory*）と同じ文を作る
 const AUDIT = {
   organizationCreated: (name) => `${t("organization")}「${name}」を作りました`,
   adminDesignated: (name) => `${name}を${t("admin")}に指名しました`,
@@ -76,15 +76,10 @@ SQ.mount("admin", () => `
       ${!A.holidays.length
         ? SQ.emptyState("calendar", "まだ休日がありません", `登録した日は、${t("capacity")}の計算で全員が稼働しない日になります。`)
         : `<ul class="party-list" aria-label="登録した休日">${A.holidays.map(([d, n]) => `<li><span class="mono">${d}</span>${n ? `<span class="party-list-text">${esc(n)}</span>` : ""}<button class="icon-btn is-danger party-list-end" type="button" aria-label="${d} を消す" data-toast="${d}${n ? `（${esc(n)}）` : " "}を消しました">${icon("trash")}</button></li>`).join("")}</ul>`}`)}
-    ${setting(`${t("workspace")}の外の言葉づかい`, `「冒険者ギルド」「ギルドマスター」などの言葉。${t("workspace")}の中の言葉づかいは、それぞれの${t("leader")}が決めます。`, `
-      <div class="choice-list" role="radiogroup" aria-label="${t("workspace")}の外の言葉づかい">
-        <label class="choice"><input type="radio" name="kv"><div><b>ゲームの言葉</b><span>冒険者ギルド、ギルドマスター</span></div></label>
-        <label class="choice"><input type="radio" name="kv" checked><div><b>スクラムの言葉</b><span>組織、管理者</span></div></label></div>
-      <div class="form-actions"><button class="btn" type="button" aria-disabled="true">保存する <span class="visually-hidden">${t("workspace")}の外の言葉づかい</span></button></div>`)}
     ${setting("既定のテーマ", `画面の見た目の既定。自分で選んでいないユーザーに効きます。会社で使うならシンプルが無難です。`, `
       <div class="choice-list" role="radiogroup" aria-label="既定のテーマ">
         ${SQ.THEMES.map((v, i) => `<label class="choice"><input type="radio" name="kt" ${i === 0 ? "checked" : ""}><div><b>${SQ.THEME_LABEL[v]}</b><span>${SQ.THEME_NOTE[v]}</span></div></label>`).join("")}</div>
-      <div class="form-actions"><button class="btn" type="button" aria-disabled="true">保存する <span class="visually-hidden">既定のテーマ</span></button></div>`)}
+      <div class="form-actions"><button class="btn" type="button" aria-disabled="true">保存する</button></div>`)}
     ${setting("配分の合計", `ユーザーごとの、すべての${t("workspace")}の配分の合計。100% を超えた月は本人にも知らせています。`, !A.allocTotals.length
       ? `<p class="props-note">${t("workspace")}ができて、${t("leader")}が配分を決めると出ます。</p>`
       : `

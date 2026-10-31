@@ -120,7 +120,7 @@ describe('organization-history', () => {
     const createRes = await post(app, workspaceCreate, {
       slug: target.slug,
       token: target.admin.token,
-      body: { name: '保守チーム', timezone: 'Asia/Tokyo', vocabulary: 'game', leader_user_id: target.admin.userId },
+      body: { name: '保守チーム', timezone: 'Asia/Tokyo', leader_user_id: target.admin.userId },
     });
     expect(createRes.status).toBe(200);
     const workspaceId = ((await createRes.json()) as { workspace_id: string }).workspace_id;
@@ -154,12 +154,12 @@ describe('organization-history', () => {
     }
   });
 
-  test('組織の言葉づかいと既定のテーマの変更の操作が書いた行を、組織の設定の変更として返す', async () => {
+  test('組織の既定のテーマの変更の操作が書いた行を、組織の設定の変更として返す', async () => {
     const target = await createTarget();
     const res = await post(app, organizationSettingsUpdate, {
       slug: target.slug,
       token: target.admin.token,
-      body: { vocabulary: { from: 'game', to: 'scrum' }, theme: { from: 'simple', to: 'medieval' } },
+      body: { theme: { from: 'simple', to: 'medieval' } },
     });
     expect(res.status).toBe(200);
 

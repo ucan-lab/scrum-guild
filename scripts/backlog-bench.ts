@@ -57,7 +57,7 @@ function shapeSql(shape: Shape): string {
   const { workspaceId: ws, prefix } = shape;
   return `
 INSERT INTO workspaces (id, organization_id, name, timezone, vocabulary, created_by, created_at, updated_at) VALUES
-  ('${ws}', '${ORGANIZATION_ID}', '測る形 ${prefix}', 'Asia/Tokyo', 'game', '${ADMIN_USER_ID}', '${AT}', '${AT}');
+  ('${ws}', '${ORGANIZATION_ID}', '測る形 ${prefix}', 'Asia/Tokyo', 'scrum', '${ADMIN_USER_ID}', '${AT}', '${AT}');
 INSERT INTO memberships (id, workspace_id, user_id, role, joined_on, joined_at) VALUES
   ('${id(prefix, 1, 'm')}', '${ws}', '${ADMIN_USER_ID}', 'leader', '2026-10-01', '${AT}'),
   ('${id(prefix, 2, 'm')}', '${ws}', '${MEMBER_USER_ID}', 'member', '2026-10-01', '${AT}');

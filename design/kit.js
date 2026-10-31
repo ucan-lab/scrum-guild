@@ -1,4 +1,4 @@
-// 部品の HTML を作る関数、画面の枠、言葉づかいとテーマの切り替え。
+// 部品の HTML を作る関数、画面の枠、テーマの切り替え。
 // カタログ（index.html）と画面の見本が同じ関数を使い、見た目がずれないようにする。
 // 本番の Svelte では、ここの関数がそれぞれ1つのコンポーネントになる。
 // sample-data.js を先に読み込んでおくこと。
@@ -27,14 +27,14 @@
   })();
   const firstHref = (href, role = first) => (role && FIRST_PAGES[role].includes(href) ? `${href}?first=${role}` : href);
   // ワークスペースを作った直後の既定値は requirements.md の「機能」の冒頭。
-  // 決まった欄の名前は作ったときの言葉づかいで付き、あとから訳さない
+  // 決まった欄の名前は作ったときに付けたまま、訳さない
   function freshData(role) {
     const me = { ...D.users[D.me], level: 1, role: role === "member" ? "member" : "leader" };
     const common = {
       organizations: [{ ...D.organizations[0], level: 1, admin: role === "admin" }], receivedInvites: [],
       tasks: [], inbox: [], archive: [], epics: {}, stories: {}, sprints: {}, comments: {}, history: {}, files: {},
       connections: [], notifications: [], completions: [], audit: [], capacity: [], invitations: [],
-      categories: {}, repositories: {}, detailFields: ["達成条件"], definitionOfDone: [], pointRates: [["2026-10", 4]], workspaceHolidays: [],
+      categories: {}, repositories: {}, detailFields: ["受け入れ基準"], definitionOfDone: [], pointRates: [["2026-10", 4]], workspaceHolidays: [],
       storage: { ...D.storage, used: 0, byWorkspace: [] },
       level: { level: 1, xp: 0, toNext: 100, soon: 0, gotPct: 0, soonPct: 0 },
     };
@@ -52,7 +52,7 @@
   }
   if (first) Object.assign(D, freshData(first));
 
-  // ---- 言葉の辞書（ゲームの言葉 / スクラムの言葉） ----
+  // ---- 言葉の辞書（各キーは [ゲームの言葉, スクラムの言葉]。見本はスクラムの言葉で出す） ----
   const DICT = {
     workspace: ["パーティ", "ワークスペース"], inbox: ["届いた便り", "受信箱"], backlog: ["掲示板", "バックログ"],
     sprint: ["遠征", "スプリント"], plan: ["遠征の計画", "計画"], epic: ["レイド", "エピック"], story: ["達成目標", "ストーリー"],
@@ -85,12 +85,9 @@
     filterTotalsNote: ["{points}と件数は、絞る前の全体の値です", "{points}と件数は、絞る前の全体の値です"],
     filterHiddenCreated: ["作りました。絞り込みに当たらないので表示していません", "作りました。絞り込みに当たらないので表示していません"],
   };
+  // 言葉は切り替えない。1 がスクラムの言葉の列（0 のゲームの言葉の列は、本番の辞書と突き合わせるために DICT に残している）
   let vocab = 1;
-  const listeners = [];
   const t = (k) => (DICT[k] ? DICT[k][vocab] : k);
-  function setVocab(v) { vocab = v; listeners.forEach((fn) => fn()); if (assist.open) renderAssist(); }
-  function toggleVocab() { setVocab(vocab ? 0 : 1); }
-  function onChange(fn) { listeners.push(fn); }
 
   // ---- 小さな道具 ----
   const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
@@ -350,7 +347,7 @@
   };
   const FIRST_HINT = {
     member: () => `1日の時間は8時間、稼働する曜日は月〜金として${t("capacity")}を数えます。違うときは<a href="me.html">自分の設定</a>で変えます。`,
-    leader: () => `${t("column")}、${t("detail")}の決まった欄、言葉づかいは、作ったときの既定のままです。変えるときは<a href="${firstHref("settings.html")}">設定</a>で変えます。`,
+    leader: () => `${t("column")}、${t("detail")}の決まった欄は、作ったときの既定のままです。変えるときは<a href="${firstHref("settings.html")}">設定</a>で変えます。`,
     admin: () => "",
   };
   function firstWsName() { const ws = Object.values(D.workspaces)[0]; return ws ? ws.name : ""; }
@@ -534,7 +531,7 @@
     const p = opts.cleared ? { done: pts.all, all: pts.all } : pts;
     const stories = opts.empty ? [] : Object.keys(D.stories).filter((s) => D.stories[s].epic === eid);
     const finished = Boolean(opts.cleared || opts.canceled);
-    const state = opts.cleared ? `<span class="chip is-done">${icon("check")}${vocab ? t("done") : "クリア済み"}</span>`
+    const state = opts.cleared ? `<span class="chip is-done">${icon("check")}${t("done")}</span>`
       : opts.canceled ? `<span class="chip">中止</span>` : "";
     const mark = opts.mark || {};
     const into = mark.drop === "into";
@@ -585,7 +582,7 @@
       </dl>
       <div class="notice-foot">
         ${progress(p.done, p.all)}
-        ${cleared ? `<span class="hanko" role="img" aria-label="クリア済み">${icon("check")}<b>済</b></span>` : `<button class="btn ${joined ? "" : "is-primary"} is-sm" type="button" data-join="${eid}">${joined ? t("leave") : t("accept")}</button>`}
+        ${cleared ? `<span class="hanko" role="img" aria-label="完了">${icon("check")}<b>済</b></span>` : `<button class="btn ${joined ? "" : "is-primary"} is-sm" type="button" data-join="${eid}">${joined ? t("leave") : t("accept")}</button>`}
       </div>
     </article>`;
   }
@@ -1583,12 +1580,7 @@ const looooooooooooooooooooooooooooooooooongLine = "コードの長い1行は、
     createWorkspace: () => openDialog(`${t("workspace")}を作る`,
       `<label class="field" for="d-wn"><span class="field-label">名前</span><input class="input" id="d-wn" placeholder="例: 保守チーム"></label>
        <label class="field" for="d-wl"><span class="field-label">最初の${t("leader")}</span><select class="select" id="d-wl">${Object.values(D.users).filter((u) => !u.left).map((u) => `<option>${esc(u.name)}</option>`).join("")}</select><span class="field-hint">自分でもかまいません。あとから${t("leader")}を足せます。</span></label>
-       <div class="field"><span class="field-label" id="d-wv">言葉づかい</span>
-         <div class="choice-list" role="radiogroup" aria-labelledby="d-wv">
-           <label class="choice"><input type="radio" name="d-wv" ${vocab ? "" : "checked"}><div><b>ゲームの言葉</b><span>パーティ、クエスト、レイド</span></div></label>
-           <label class="choice"><input type="radio" name="d-wv" ${vocab ? "checked" : ""}><div><b>スクラムの言葉</b><span>ワークスペース、タスク、エピック</span></div></label></div>
-         <span class="field-hint">${t("column")}と決まった欄の名前は、選んだ言葉づかいで決まります。あとから言葉づかいを替えても、名前は変わりません。</span></div>
-       <p class="field-hint">${t("column")}は「${vocab ? "未着手、作業中、レビュー" : "出発前、遂行中、査定中"}、${t("done")}」、決まった欄は「${vocab ? "受け入れ基準" : "達成条件"}」、換算は 1 ${t("points")} = 4 時間、週の始まりは月曜、タイムゾーンは Asia/Tokyo（このブラウザの設定）で作ります。あとから設定で変えられます。</p>`,
+       <p class="field-hint">${t("column")}は「未着手、作業中、レビュー、${t("done")}」、決まった欄は「受け入れ基準」、換算は 1 ${t("points")} = 4 時間、週の始まりは月曜、タイムゾーンは Asia/Tokyo（このブラウザの設定）で作ります。あとから設定で変えられます。</p>`,
       `<button class="btn is-quiet" type="button" data-close-dialog>やめる</button><button class="btn is-primary" type="button" data-close-dialog data-toast="${t("workspace")}を作りました">作る</button>`),
     closeWorkspace: () => {
       const target = D.admin.workspaces.find((w) => !w.closed);
@@ -1752,7 +1744,7 @@ const looooooooooooooooooooooooooooooooooongLine = "コードの長い1行は、
       `<button class="assist-example" type="button" data-assist-ask="${esc(q)}">${icon("spark")}<span>${esc(q)}</span></button>`).join("")}
       <span class="field-hint">${t("task")}を読む頼みごとはすぐ答えます。変える頼みごとは、実行する前に何をどう変えるかを見せます。できるのは、あなたが画面でできる操作だけです。</span></div>`;
   }
-  // 答えの文は、描くときに言葉を通す関数で持つ（言葉を切り替えると会話の中も切り替わる）。カタログの見本は文字列でもよい
+  // 答えの文は、描くときに言葉を通す関数で持つ（辞書の言葉は描く時点で決まるため）。カタログの見本は文字列でもよい
   const val = (x) => (typeof x === "function" ? x() : x);
   // 1つのやり取り。i は assist.msgs の位置（カタログの見本では null）
   function assistMsg(m, i = null) {
@@ -2076,7 +2068,6 @@ const looooooooooooooooooooooooooooooooooongLine = "コードの長い1行は、
     document.getElementById("org-menu-slot").innerHTML = page.operator ? "" : orgMenuHtml();
     document.getElementById("account-menu-slot").innerHTML = accountMenuHtml();
     document.getElementById("nav").innerHTML = navHtml(page.current, page.operator ? OPERATOR_PAGES : PAGES);
-    document.querySelectorAll("[data-vocab-label]").forEach((el) => (el.textContent = `言葉: ${t("vocab")}`));
     document.querySelectorAll("[data-assist-label]").forEach((el) => (el.textContent = `${t("assistant")}に頼む`));
     document.getElementById("content").innerHTML = page.render();
     applyTheme();
@@ -2103,7 +2094,6 @@ const looooooooooooooooooooooooooooooooooongLine = "コードの長い1行は、
       <div class="sheet">
         <div class="topbar">
           ${page.operator ? "" : `<button class="pill assist-launch" type="button" data-assist-open aria-keyshortcuts="Control+K Meta+K">${icon("spark")}<span data-assist-label></span><kbd class="kbd">${ASSIST_KEY}</kbd></button>`}
-          <button class="pill" type="button" data-switch="vocab">${icon("swap")}<span data-vocab-label></span></button>
           <button class="pill" type="button" data-switch="theme">${icon("moon")}<span data-theme-label></span></button>
           ${page.operator ? "" : `<button class="pill" type="button" data-switch="first">${icon("redo")}<span>見本: ${firstLabel(first)}</span></button>`}
           ${who}
@@ -2116,10 +2106,8 @@ const looooooooooooooooooooooooooooooooooongLine = "コードの長い1行は、
     <div class="dialog" id="dialog" hidden></div>
     <div class="celebrate" id="celebrate" hidden></div>
     <div class="toasts" id="toasts" aria-live="polite"></div>`;
-    document.querySelector("[data-switch='vocab']").addEventListener("click", toggleVocab);
     document.querySelector("[data-switch='theme']").addEventListener("click", cycleTheme);
     document.querySelector("[data-switch='first']")?.addEventListener("click", cycleFirst);
-    onChange(redraw);
     applyTheme();
     redraw();
     const taskId = new URLSearchParams(location.search).get("task");
@@ -2543,7 +2531,7 @@ const looooooooooooooooooooooooooooooooooongLine = "コードの長い1行は、
 
   window.SQ = {
     first, firstHref, firstSteps, emptyState, art,
-    D, t, brandMark, googleMark, THEMES, THEME_LABEL, THEME_NOTE, setVocab, toggleVocab, onChange, esc, icon, md, sumPts, cycleTheme, setTheme, applyTheme, mount,
+    D, t, brandMark, googleMark, THEMES, THEME_LABEL, THEME_NOTE, esc, icon, md, sumPts, cycleTheme, setTheme, applyTheme, mount,
     onRedraw: (fn) => extraRedraws.push(fn), openDrawer, drawerHtml, drawerState: drawer,
     user, task, tasksWhere, repoTag, categoryTag, sprintTag, repoPicker, sprintLabel, colName, categoryOf, storyPts, epicPts, dueOf,
     avatar, avatarOf, SAMPLE_PHOTO, BROKEN_PHOTO, emblem, pts, dueChip, taskDue, tier, sourceKey, entry, orderActions, book, section, pageHead,

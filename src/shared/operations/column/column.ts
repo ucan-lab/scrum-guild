@@ -21,7 +21,7 @@ export function columnConflictReasonOf(details: unknown): ColumnConflictReason |
   return conflictReasonOf(details, columnConflictReasons);
 }
 
-// 列の定義。完了の列（is_done）は name が空で、画面が言葉づかいに合わせた名前を辞書から出す。
+// 列の定義。完了の列（is_done）は name が空で、画面が辞書の名前を出す。
 // task_count は、削除すると移り先へ移る、進行中と先のスプリントの未完了のタスクの数（削除の確かめに出す。完了の列は 0）
 export const columnSchema = z.object({
   id: z.string(),

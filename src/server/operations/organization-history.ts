@@ -124,6 +124,7 @@ function organizationEvent(action: string, changes: Changes): HistoryEvent {
     case 'update': {
       const purgeOn = pairOf(changes, 'purge_on');
       if (purgeOn !== undefined) return { kind: 'organization_suspension_changed', purge_on: textOrNull(purgeOn[1]) };
+      // vocabulary は言葉づかいを選べた頃に残した行の項目
       if ('vocabulary' in changes || 'theme' in changes) return { kind: 'organization_settings_changed' };
       return { kind: 'other' };
     }

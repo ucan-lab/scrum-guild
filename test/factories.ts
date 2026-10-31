@@ -45,6 +45,7 @@ export async function createOrganization(overrides: Partial<Row<CommonTables, 'o
     id,
     slug: `org-${id.slice(-8)}`,
     name: '青葉工房',
+    // 列は残っているので、言葉づかいを選べた頃の 'game' の行を模す（画面も API もこの値を読まない）
     vocabulary: 'game',
     theme: 'simple',
     suspended_at: null,
@@ -191,6 +192,7 @@ export async function createWorkspace(
     name: '青葉チーム',
     timezone: 'Asia/Tokyo',
     week_start: 1,
+    // 列は残っているので、言葉づかいを選べた頃の 'game' の行を模す（画面も API もこの値を読まない）
     vocabulary: 'game',
     definition_of_done_md: null,
     closed_at: null,

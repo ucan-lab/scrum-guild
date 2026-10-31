@@ -175,7 +175,7 @@ function assistDemo() {
   const confirm = (state, more) => ({ state, more, note: `${t("assignee")}を変えても、${t("points")}と${t("column")}はそのままです。`, rows });
   const sp = D.sprints.sp14;
   const late = ai({ steps, text: `残り ${sp.days - sp.dayIndex} 日で、気になるのは 2 件です。${t("due")}を過ぎたものと、${t("points")}が大きいのにまだ手を付けていないものを挙げました。`,
-    refs: [["t8", `<span class="chip is-danger">${icon("alert")}${t("due")}切れ 10/17</span>`], ["t3", `<span class="chip is-warn">${icon("clock")}5 pt で出発前</span>`]] });
+    refs: [["t8", `<span class="chip is-danger">${icon("alert")}${t("due")}切れ 10/17</span>`], ["t3", `<span class="chip is-warn">${icon("clock")}5 pt で未着手</span>`]] });
   return `
     <div class="field"><span class="field-label">開く所とパレット</span>
       <div class="cat-row"><button class="pill assist-launch" type="button" data-assist-open>${icon("spark")}<span>${t("assistant")}に頼む</span><kbd class="kbd">${SQ.ASSIST_KEY}</kbd></button><span class="field-hint">押すと本物のパレットが開く。例の頼みごとを押して試せる</span></div>
@@ -259,7 +259,6 @@ const SECTIONS = [
       <button class="link-btn" type="button">戻す</button>
     </div>
     <div class="cat-row">
-      <button class="pill" type="button">${icon("swap")}言葉: ${t("vocab")}</button>
       <button class="pill" type="button" aria-label="通知 3件">${icon("bell")}<span class="pill-count">3</span></button>
       <button class="pill" type="button" aria-label="閉じる（いまは閉じられません）" aria-disabled="true">${icon("x")}</button>
     </div>
@@ -302,7 +301,7 @@ const SECTIONS = [
     <div class="cat-row">
       <span class="chip is-todo">${icon("pen")}${t("detail")} 未記入</span>
       <span class="chip is-ok">${icon("check")}取り込み元で完了</span>
-      <span class="chip is-done">${icon("check")}クリア済み</span>
+      <span class="chip is-done">${icon("check")}完了</span>
       <span class="chip is-carry">${icon("redo")}昨日から持ち越し</span>
       <span class="chip is-danger">${icon("alert")}取り込み元で見つからない</span>
     </div>
@@ -314,7 +313,7 @@ const SECTIONS = [
       <span class="chip is-name">${icon("calendar")}<span><span class="visually-hidden">${t("sprint")}：</span><span class="mono">11/2〜11/15</span></span></span>
     </div>
     <div class="cat-row">
-      <span class="tag">受託開発チーム</span><span class="status-dot">遂行中</span>
+      <span class="tag">受託開発チーム</span><span class="status-dot">作業中</span>
       <span class="source-key">${icon("link")} SHOP-128</span><span class="source-key">${icon("git")} acme/shop#412</span>
       <span class="source-key is-wrap">${icon("link")} https://example.com/spec/points/very-long-path-without-any-space-that-must-wrap-inside-the-column-even-on-a-narrow-screen/0123456789012345678901234567890123456789</span><a class="btn is-sm" href="#" aria-label="リンクを新しいタブで開く">開く</a>
       ${pts(0)}${pts(5)}${pts(13)}${pts(null)}
@@ -343,7 +342,7 @@ const SECTIONS = [
   ["board", "列とカード", () => block("board", "列とカード", "スプリントの列。列の名前は明朝。完了の列にだけ完成の定義を添える。狭いときは横に送る。",
     board("sp14") +
     `<div class="cat-row"><span class="order-actions"><button class="icon-btn" type="button" aria-label="前の${t("column")}へ" title="前の${t("column")}へ" aria-disabled="true">${icon("left")}</button><button class="icon-btn" type="button" aria-label="上へ" title="上へ" aria-disabled="true">${icon("up")}</button><button class="icon-btn" type="button" aria-label="下へ" title="下へ">${icon("down")}</button><button class="icon-btn" type="button" aria-label="次の${t("column")}へ" title="次の${t("column")}へ">${icon("right")}</button></span><span class="field-hint">order-actions に隣の列へ移す left と right を両端に足した形（across）。先頭の列の「前の列へ」は aria-disabled</span></div>`,
-    ["列の名前はリーダーが付けたもので、言葉づかいを切り替えても訳さない。完了の列だけは「完遂」か「完了」と出す。列の数は .board の --board-cols で渡す（既定は 4）。列は 232px を下限にし、足りない幅では .board-wrap の中で横にスクロールする。", "カードの操作（列の移動）は、ドラッグの他にキーボードでもできるようにする。完了でないカードは tabindex=\"0\" で選べ、中のどこにフォーカスがあっても Alt と ← → で隣の列の末尾へ、Alt と ↑ ↓ で列の中を1つ動かす。同じ操作を、カードの下の .card-moves の .order-actions（前の列へ、上へ、下へ、次の列へ）のボタンでもできる。動かした後の位置は読み上げる（「<題>を<列>の N 番目に移しました（M 件中）」）。", "最後の完了でない列の「次の列へ」と Alt と → は、完了の列へ移す代わりに完了にする（カードの完了の操作と同じ）。前の列と上と下の端は aria-disabled で、「これより前の列はありません」「いちばん上です」「いちばん下です」を読み上げる。完了の列のカードは選べず、動かすボタンも持たない。完了の印の横の「戻す」（.link-btn）で完了の前の列の末尾へ戻し、戻したカードへフォーカスを移す。完了したストーリーの下のカードと、終了したスプリントのカードには「戻す」を出さない。完了の列の見出しの下には、完成の定義（.dod）を畳んで置く（空なら出さない）。", "選んでいるカード（中にフォーカスがある間）は .card:focus-within で枠の色を変え、左に太い線を入れる（色だけに頼らない）。", "狭い幅（760px 以下）と指で押す画面では、.card-title と .done-btn と .card-moves のボタンと完了のカードの「戻す」（.card .link-btn）を 44px 四方にする。.card-moves のボタン4つ（176px）は隙間を空けずにカードの内側へ収め、収まらない幅では折り返す。",
+    ["列の名前はリーダーが付けたもので、訳さない。完了の列だけは「完了」と出す。列の数は .board の --board-cols で渡す（既定は 4）。列は 232px を下限にし、足りない幅では .board-wrap の中で横にスクロールする。", "カードの操作（列の移動）は、ドラッグの他にキーボードでもできるようにする。完了でないカードは tabindex=\"0\" で選べ、中のどこにフォーカスがあっても Alt と ← → で隣の列の末尾へ、Alt と ↑ ↓ で列の中を1つ動かす。同じ操作を、カードの下の .card-moves の .order-actions（前の列へ、上へ、下へ、次の列へ）のボタンでもできる。動かした後の位置は読み上げる（「<題>を<列>の N 番目に移しました（M 件中）」）。", "最後の完了でない列の「次の列へ」と Alt と → は、完了の列へ移す代わりに完了にする（カードの完了の操作と同じ）。前の列と上と下の端は aria-disabled で、「これより前の列はありません」「いちばん上です」「いちばん下です」を読み上げる。完了の列のカードは選べず、動かすボタンも持たない。完了の印の横の「戻す」（.link-btn）で完了の前の列の末尾へ戻し、戻したカードへフォーカスを移す。完了したストーリーの下のカードと、終了したスプリントのカードには「戻す」を出さない。完了の列の見出しの下には、完成の定義（.dod）を畳んで置く（空なら出さない）。", "選んでいるカード（中にフォーカスがある間）は .card:focus-within で枠の色を変え、左に太い線を入れる（色だけに頼らない）。", "狭い幅（760px 以下）と指で押す画面では、.card-title と .done-btn と .card-moves のボタンと完了のカードの「戻す」（.card .link-btn）を 44px 四方にする。.card-moves のボタン4つ（176px）は隙間を空けずにカードの内側へ収め、収まらない幅では折り返す。",
       `完成の定義（<code>.dod</code>）は畳んで置き、中身はワークスペースの Markdown を <code>.doc-box</code> で描く（<code>.dod</code> の中では枠と余白を外し、見出しも小さい文字のままにする）。開くまで本文を描かない。空なら出さない。${t("backlog")}の木の上にも同じ部品を1つだけ置き、行ごとには繰り返さない。`],
     ".board-wrap .board[--board-cols] .board-col .is-done .board-col-head .board-col-name / .dod / .card .card-parent .card-title .card-meta .card-foot .card-end .card-moves .card:focus-within / .order-actions（left right の across）")],
   ["boarddrag", "カードのドラッグ", () => block("boarddrag", "カードのドラッグ（スプリントの画面）", "スプリントのカードをつかんで、列の中で並べ替え、別の列へ移し、完了の列へ落として完了にする。落とす位置は、カードとカードの間の線か、列の囲みで示す。",
@@ -361,7 +360,7 @@ const SECTIONS = [
     `<div class="tree">${treeEpic("e2")}${treeStory("s4", true)}${treeStory("s1", true, { doneAt: "2026-10-22" })}</div>` +
     `<div class="tree">${treeEpic("e1", { cleared: true, key: "e1-cleared" })}${treeEpic("e2", { canceled: true, empty: true, key: "e2-canceled" })}${treeEpic("e1", { empty: true, key: "e1-empty" })}</div>` +
     `<div class="cat-row"><span class="order-actions"><button class="icon-btn" type="button" aria-label="上へ" title="上へ" aria-disabled="true">${icon("up")}</button><button class="icon-btn" type="button" aria-label="下へ" title="下へ">${icon("down")}</button><button class="icon-btn" type="button" aria-label="親を移す" title="親を移す">${icon("swap")}</button></span><span class="field-hint">行の並べ替えと親の移動。先頭の行の「上へ」は aria-disabled</span></div>`,
-    ["最上段はエピック、親のないストーリー、親のないタスクの順。エピックの行の題はエピックの画面へのリンク（a.tree-link）。配下が無いエピックには「ストーリーはまだありません」の1行を出す。", "右端の数は「完了 / 全体」のポイント。エピックの行は、配下のストーリーの合計。", "完了したタスクは折りたたみ、件数だけ出す。", "ストーリーの行の右端に「完了にする」（.btn.is-sm）を置く。配下に未完了のタスクが残るあいだは、押してもフォーカスが残るよう aria-disabled にし、横に「残り N 件のタスク」（.tree-note）と、見えない文字の押せない理由を置き、どちらも aria-describedby で結ぶ。完了したストーリー（1つ目の木の下の行）は、「＋タスク」を出さず、完了の印（.hanko）と「取り消す」（.btn.is-sm.is-quiet）を置く。", "2つ目の木は、クリア済みのエピック（.chip.is-done。完了の印と同じ役の色）、中止したエピック（.chip）、配下の無いエピック。完了か中止したエピックの期日には色を付けず、配下の「取り消す」は必ず断られるので aria-disabled にして、理由（.tree-note）を横に出す。エピックの行には区分の印を出さない（本番と同じ）。", "ストーリーの行の「親を移す」は、親なしと、完了も中止もしていないエピックから選ぶ（タスクの「親を移す」と同じダイアログ）。", "行は普通の要素（div）で、開閉は左端の caret のボタン（button.tree-caret の aria-expanded と aria-controls）だけが受け持つ。details と summary は使わない（行の中のボタンと開閉がぶつかるため）。", "ストーリーの題はボタン（button.tree-link）で、押すとダイアログが開く。行の右端の「＋タスク」（.tree-end）は、親を選んだ状態でタスクのダイアログを開く。caret、題、「＋タスク」は独立したボタンで、狭い幅（760px 以下）と指で押す画面では、見た目は変えず押せる範囲を 44px 四方以上に広げる。", "書き込めるときは、タスクの行（.entry-end）とストーリーとエピックの行（.tree-end）の右に .order-actions の「上へ」「下へ」を置き（エピックは親を持たないので「親を移す」は無い）、タスクの行には「親を移す」も添える。行の中で Alt と ↑ ↓ を押しても同じ。端の向きは、押した後もフォーカスが残るよう disabled でなく aria-disabled にする。狭い幅と指で押す画面では、ボタンを 44px 四方にする。"],
+    ["最上段はエピック、親のないストーリー、親のないタスクの順。エピックの行の題はエピックの画面へのリンク（a.tree-link）。配下が無いエピックには「ストーリーはまだありません」の1行を出す。", "右端の数は「完了 / 全体」のポイント。エピックの行は、配下のストーリーの合計。", "完了したタスクは折りたたみ、件数だけ出す。", "ストーリーの行の右端に「完了にする」（.btn.is-sm）を置く。配下に未完了のタスクが残るあいだは、押してもフォーカスが残るよう aria-disabled にし、横に「残り N 件のタスク」（.tree-note）と、見えない文字の押せない理由を置き、どちらも aria-describedby で結ぶ。完了したストーリー（1つ目の木の下の行）は、「＋タスク」を出さず、完了の印（.hanko）と「取り消す」（.btn.is-sm.is-quiet）を置く。", "2つ目の木は、完了したエピック（.chip.is-done。完了の印と同じ役の色）、中止したエピック（.chip）、配下の無いエピック。完了か中止したエピックの期日には色を付けず、配下の「取り消す」は必ず断られるので aria-disabled にして、理由（.tree-note）を横に出す。エピックの行には区分の印を出さない（本番と同じ）。", "ストーリーの行の「親を移す」は、親なしと、完了も中止もしていないエピックから選ぶ（タスクの「親を移す」と同じダイアログ）。", "行は普通の要素（div）で、開閉は左端の caret のボタン（button.tree-caret の aria-expanded と aria-controls）だけが受け持つ。details と summary は使わない（行の中のボタンと開閉がぶつかるため）。", "ストーリーの題はボタン（button.tree-link）で、押すとダイアログが開く。行の右端の「＋タスク」（.tree-end）は、親を選んだ状態でタスクのダイアログを開く。caret、題、「＋タスク」は独立したボタンで、狭い幅（760px 以下）と指で押す画面では、見た目は変えず押せる範囲を 44px 四方以上に広げる。", "書き込めるときは、タスクの行（.entry-end）とストーリーとエピックの行（.tree-end）の右に .order-actions の「上へ」「下へ」を置き（エピックは親を持たないので「親を移す」は無い）、タスクの行には「親を移す」も添える。行の中で Alt と ↑ ↓ を押しても同じ。端の向きは、押した後もフォーカスが残るよう disabled でなく aria-disabled にする。狭い幅と指で押す画面では、ボタンを 44px 四方にする。"],
     ".tree .tree-group .tree-row .is-epic .is-story .is-root .tree-caret .tree-title .tree-ratio .tree-note .tree-end .tree-children .tree-folded / .chip.is-done / a.tree-link / button.tree-link / button.tree-caret[aria-expanded] / .order-actions .icon-btn[aria-disabled]")],
   ["completed", "完了の一覧", () => block("completed", "完了の一覧（バックログの折りたたみ）", "完了にしたタスクの「完了 N 件を折りたたんでいます」の行を、開閉のボタンにした部品。開くと完了した行を新しい順に並べる。",
     `<div class="tree">${completedTasks("catalog-open", SQ.tasksWhere((x) => x.story === "s3" && x.doneAt), { open: true, title: SQ.D.stories.s3.title, status: "more" })}</div>` +
@@ -531,10 +530,10 @@ const SECTIONS = [
         </section>
       </div>
     </div>`,
-    ["紙の幅は 440px までで、狭い画面では画面の幅に収める。", "表を載せる画面（運用）は、外側の .gate に is-wide を付けて、紙の幅を 1200px までに広げる（本番では Gate の wide）。", "枠の外の画面では、テーマと言葉づかいを既定（シンプル（自動）、スクラムの言葉）に戻す。どの組織の値も持ち越さない。", "本番の Gate は、外側を main にする。"],
+    ["紙の幅は 440px までで、狭い画面では画面の幅に収める。", "表を載せる画面（運用）は、外側の .gate に is-wide を付けて、紙の幅を 1200px までに広げる（本番では Gate の wide）。", "枠の外の画面では、テーマを既定（シンプル（自動））に戻す。どの組織の値も持ち越さない。", "本番の Gate は、外側を main にする。"],
     ".gate .gate-stack .gate-sheet .gate-brand .gate-title .gate-note .gate-divider / .gate.is-wide")],
   ["settings", "設定の節と並べ替え", () => block("settings", "設定の節と並べ替え", "設定の画面は、左に説明、右に入力を置く節を縦に並べる。並べ替えられる一覧は、ドラッグの他に上下のボタンを持つ。",
-    `<div class="settings"><section class="setting"><div class="setting-head"><h3 class="setting-title">${t("column")}</h3><p class="setting-desc">名前は言葉づかいを切り替えても訳しません。</p></div><div class="setting-body">
+    `<div class="settings"><section class="setting"><div class="setting-head"><h3 class="setting-title">${t("column")}</h3><p class="setting-desc">名前は付けたままで、訳しません。</p></div><div class="setting-body">
       <ol class="order-list">${D.columns.filter((c) => !c.done).map((c, i, a) => `<li><span class="grip" aria-hidden="true">${icon("grip")}</span><input class="input" value="${c.name}" aria-label="名前"><span class="order-actions"><button class="icon-btn" type="button" aria-label="上へ" ${i === 0 ? "disabled" : ""}>${icon("up")}</button><button class="icon-btn" type="button" aria-label="下へ" ${i === a.length - 1 ? "disabled" : ""}>${icon("down")}</button><button class="icon-btn is-danger" type="button" aria-label="削除">${icon("trash")}</button></span></li>`).join("")}
         <li><span class="grip is-off" aria-hidden="true"></span><span class="fixed">${icon("check")} ${t("done")}</span><span class="props-note">常に末尾</span></li></ol></div></section>
       <section class="setting"><div class="setting-head"><h3 class="setting-title">${t("category")}</h3><p class="setting-desc">行ごとにすぐ書く形（本番の区分とリポジトリの節）。名前は押すと入力欄になる。</p></div><div class="setting-body">
@@ -632,14 +631,9 @@ function render() {
         <h1 class="page-title">デザインシステム</h1>
         <p class="cat-lead">テーマは5つ（シンプル（自動、ライト、ダーク）、中世風、現代風）。すぐ下で切り替えられる。部品はどのテーマでも同じで、変わるのは tokens.css の変数とテーマの飾りだけ。画面は、ここにある部品だけで組む。足りない部品は先にここへ足す。読み込む順は tokens.css、components.css、icons.js、sample-data.js、kit.js。</p>
       </div>
-      <div class="cat-row">
-        <button class="pill" type="button" data-switch="vocab">${icon("swap")}<span data-vocab-label></span></button>
-      </div>
       <div class="segmented" role="radiogroup" aria-label="テーマ">${SQ.THEMES.map((v) => `<label><input type="radio" name="cat-theme" value="${v}" data-pick-theme><span>${SQ.THEME_LABEL[v]}</span></label>`).join("")}</div>
     </header>
     ${SECTIONS.map(([, , fn]) => fn()).join("")}`;
-  document.querySelectorAll("[data-switch='vocab']").forEach((b) => (b.onclick = SQ.toggleVocab));
-  document.querySelectorAll("[data-vocab-label]").forEach((el) => (el.textContent = `言葉: ${t("vocab")}`));
   document.querySelectorAll("[data-replay-flash]").forEach((b) => (b.onclick = () => {
     document.querySelectorAll("#drag .is-dropped, #boarddrag .is-dropped").forEach((el) => {
       el.classList.remove("is-dropped");
@@ -650,7 +644,6 @@ function render() {
   SQ.applyTheme();
 }
 SQ.enableAssistOnCatalog();
-SQ.onChange(render);
 SQ.onRedraw(render);
 new MutationObserver(() => { const el = document.querySelector("#colors .cat-demo"); if (el) el.innerHTML = colorBlock(); })
   .observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
