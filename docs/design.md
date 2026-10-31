@@ -474,7 +474,7 @@ favicon と同じマーク（下の「favicon」）の横に、名前「Scrum Gu
 | `xpDelta`（見本に無かったので足した） | （CSS のみ。`.xp-delta`、`.is-minus`） | 経験値の明細の値。付与は経験値の色で「+N」、打ち消しの負の値は赤。自分の設定の画面の明細の表が使う。見本は `design/me.html` とカタログの「記録」 |
 | `section` | `Section.svelte` | |
 | `foldedSection` | 本番はまだ無い（今日やることの画面の Issue で `Section.svelte` に足す） | 閉じた区分（`details.section.is-folded`）。見出しと件数だけを出し、見出しの行を押すと一覧が開く。開いたら「押すと開きます」を隠し、狭い幅と指で押す画面では見出しの行を44px にする。見本はカタログの「見出しと集計」。本番は開閉の状態を持つ。見出し（`h2`）を `summary` の中に置く組み方なので、本番では読み上げと見出し一覧での扱いを確かめる |
-| `entry` の `meta` | 本番はまだ無い（今日やることの画面の Issue で `TaskEntry.svelte` に足す） | 今日やることの持ち越し行に「N 日前に印を付けた」を、今週が期日の行に「期日は今日」の印を添える1行 |
+| `entry` の `meta` | 本番はまだ無い（今日やることの画面の Issue で `TaskEntry.svelte` に足す） | 今日やることの持ち越し行に「N 日前に印を付けた」を、今週が期日の行に「期日は今日」の印を添える1行。見本の今日の完了の区分は、戻せない行に「戻す」を出さない出し分けを持たない（本番は `reopenable` が真の行だけに出す） |
 | `emptyState` | `EmptyState.svelte` | 見本の5つ目の引数 `tone`、本番の `iconTone` はアイコンの色（`icon` と `Icon` の `tone`）。ゲームの物のアイコンを置くときに使う。見本の6つ目の引数、本番の `art` は線画（あればアイコンの代わりに置く。上の「線画」）。見本はカタログの「知らせの一覧と空の状態」 |
 | `setting`（`admin.html` の画面内の関数） | `Setting.svelte` | 組織の管理の節。左に見出しと説明、右に中身。`.settings` の中に並べる |
 | `setting`、`orderList`（`settings.html` の区分とリポジトリの節） | `DefinitionsSetting.svelte` | ワークスペースの設定の画面の区分とリポジトリの節。`Setting` を使い、行は `.order-list`（先頭に `.grip`）と `.order-main`（名前と切り替えを並べ、狭い幅では折り返す）、名前は `.order-name`。前の節の「ワークスペースの設定の画面」 |
