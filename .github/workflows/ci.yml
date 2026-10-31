@@ -93,6 +93,8 @@ jobs:
         with:
           persist-credentials: false
       - uses: ./.github/actions/setup
+      # scripts/acceptance-video.test.ts が、判定の HTML を chromium で動かす。無いとそのテストがスキップされる
+      - uses: ./.github/actions/playwright
       - run: pnpm test
 
   migration:
