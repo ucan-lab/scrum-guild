@@ -234,9 +234,12 @@
     } finally {
       if (section.isCurrent(token)) busyId = null;
     }
-    // 読み直しても行は残り、ボタンは文字だけを替える。押した行のボタンへフォーカスを戻す
+    // 読み直しても行は残り、ボタンは文字だけを替える。押した行のボタンへフォーカスを戻す。
+    // 理由のコールアウトを出したときは、フォーカスの移動で画面が押した行へ戻り、理由が画面の外に出ないよう、スクロールさせない
     await tick();
-    document.querySelector<HTMLButtonElement>(`[data-user-action="${CSS.escape(user.id)}"]`)?.focus();
+    document
+      .querySelector<HTMLButtonElement>(`[data-user-action="${CSS.escape(user.id)}"]`)
+      ?.focus({ preventScroll: enableRefusal !== null });
   }
 
   const status = $derived(busyId !== null ? t('userWorking') : '');
