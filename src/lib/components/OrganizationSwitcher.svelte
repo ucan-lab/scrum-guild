@@ -74,7 +74,7 @@
     <span class="org-menu-label">{t('organization')}</span>
     <b>{moving ? t('organizationMoving') : currentName}</b>
     {#if invited}<span class="chip">{t('invitationsBadge')}</span>{/if}
-    <span class="org-menu-invite" aria-hidden="true"></span>
+    {#if invited}<span class="org-menu-invite" aria-hidden="true"></span>{/if}
     <Icon name="swap" />
     <Icon name="chevron" />
   </button>

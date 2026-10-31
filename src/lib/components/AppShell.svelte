@@ -39,21 +39,22 @@
 <div class="app" data-nav-collapsed={navState.collapsed ? 'true' : undefined}>
   <aside class="binding" aria-label={t('menu')}>
     <div class="binding-inner">
-      <a class="brand" href={resolve('/[slug]', { slug })}>
-        <BrandMark />
-        <span class="brand-name">{t('appName')}</span>
-      </a>
-      <button
-        class="nav-toggle"
-        type="button"
-        aria-expanded={!navState.collapsed}
-        aria-controls="app-nav"
-        aria-label={t(navState.collapsed ? 'menuExpand' : 'menuCollapse')}
-        onclick={() => setNavCollapsed(!navState.collapsed)}
-      >
-        <Icon name="panel" />
-        <span class="nav-toggle-label">{t(navState.collapsed ? 'menuExpand' : 'menuCollapse')}</span>
-      </button>
+      <div class="binding-head">
+        <a class="brand" href={resolve('/[slug]', { slug })}>
+          <BrandMark />
+          <span class="brand-name">{t('appName')}</span>
+        </a>
+        <button
+          class="nav-toggle"
+          type="button"
+          aria-expanded={!navState.collapsed}
+          aria-controls="app-nav"
+          aria-label={t(navState.collapsed ? 'menuExpand' : 'menuCollapse')}
+          onclick={() => setNavCollapsed(!navState.collapsed)}
+        >
+          <Icon name="panel" />
+        </button>
+      </div>
       {#if organizationSwitcher}{@render organizationSwitcher()}{/if}
       <NavMenu id="app-nav" {current} {slug} {hasWorkspace} {isAdmin} {workspaceId} {workspaceSwitcher} />
     </div>

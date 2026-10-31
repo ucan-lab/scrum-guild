@@ -36,53 +36,115 @@ test('1280px では左のメニューを折りたため、幅とラベルと状�
   await page.reload();
 
   const app = page.locator('.app');
-  const toggle = page.locator('.nav-toggle');
+  const toggle = page.getByRole('button', { name: 'メニューを畳む' });
+  await expect(toggle).toHaveAttribute('aria-expanded', 'true');
+  await expect(toggle).toHaveAttribute('aria-controls', 'app-nav');
   const before = await page.locator('.content').boundingBox();
   await toggle.click();
-  await expect(page.getByRole('button', { name: 'メニューを広げる' })).toHaveAttribute('aria-expanded', 'false');
-  await expect(toggle).toHaveAttribute('aria-controls', 'app-nav');
+  const expand = page.getByRole('button', { name: 'メニューを広げる' });
+  await expect(expand).toHaveAttribute('aria-expanded', 'false');
+  // 押してもフォーカスはボタンに残る
+  await expect(expand).toBeFocused();
   await expect(app).toHaveAttribute('data-nav-collapsed', 'true');
-  await expect(page.locator('.nav-item-label').first()).toHaveCSS('opacity', '0');
-  await expect(page.locator('.brand-name')).toBeHidden();
+  await expect(page.locator('.binding')).toHaveJSProperty('offsetWidth', 64);
   const after = await page.locator('.content').boundingBox();
-  expect(after && before && after.x).toBeLessThan(before?.x ?? 0);
+  expect(after!.x).toBeLessThan(before!.x);
+
+  // 項目はアイコンだけで、名前は見えないが読み上げには残る
+  const item = page.locator('.nav-item').first();
+  await expect(item.locator('.nav-item-label')).toHaveCSS('opacity', '0');
+  await expect(page.locator('#app-nav').getByRole('link', { name: '自分の今日' })).toBeVisible();
+  // ロゴはマークだけで、リンクの名前は残り、押すと組織の画面へ戻る
+  await expect(page.locator('.brand-name')).toHaveJSProperty('offsetWidth', 1);
+  await expect(page.getByRole('link', { name: 'Scrum Guild' })).toHaveAttribute('href', '/aoba');
+
+  // 再読み込みしても畳んだまま。キーボードだけで広げられる
   await page.reload();
-  await expect(page.locator('.app')).toHaveAttribute('data-nav-collapsed', 'true');
-  await expect(page.getByRole('button', { name: 'メニューを広げる' })).toBeVisible();
-  await page.getByRole('button', { name: 'メニューを広げる' }).press('Enter');
-  await expect(page.getByRole('button', { name: 'メニューを畳む' })).toBeVisible();
+  await expect(app).toHaveAttribute('data-nav-collapsed', 'true');
+  await expect(page.locator('.binding')).toHaveJSProperty('offsetWidth', 64);
+  await expand.focus();
+  await page.keyboard.press('Enter');
+  await expect(page.getByRole('button', { name: 'メニューを畳む' })).toHaveAttribute('aria-expanded', 'true');
+  await expect(page.locator('.binding')).toHaveJSProperty('offsetWidth', 240);
+  await page.keyboard.press('Space');
+  await expect(expand).toHaveAttribute('aria-expanded', 'false');
   expect(await collect()).toEqual([]);
 });
 
-test('折りたたんだ列でもキーボードで項目名を確認でき、組織の切り替えを開ける', async ({ page, context, baseURL }) => {
+test('畳んだ列では、マウスを載せるかフォーカスすると項目の名前が横に見える', async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.goto(today);
   await page.getByRole('button', { name: 'メニューを畳む' }).click();
-  const item = page.locator('.nav-item').first();
-  await item.focus();
-  await expect(item.locator('.nav-item-label')).toBeVisible();
-
-  await signIn(context, baseURL, 'admin');
-  await page.goto(today);
-  const org = page.getByRole('button', { name: /組織を切り替える/ });
-  await expect(org).toBeVisible();
-  await org.click();
-  await expect(page.getByRole('list', { name: '入れる組織' })).toBeVisible();
+  const items = page.locator('.nav-item');
+  await items.nth(0).focus();
+  await expect(items.nth(0).locator('.nav-item-label')).toHaveCSS('opacity', '1');
+  await items.nth(1).hover();
+  await expect(items.nth(1).locator('.nav-item-label')).toHaveCSS('opacity', '1');
+  // 名前は列の外（右）に浮く
+  const label = await items.nth(1).locator('.nav-item-label').boundingBox();
+  expect(label!.x).toBeGreaterThanOrEqual(64);
 });
 
-test('760px 以下では折りたたみボタンが無く、帯の形を保つ', async ({ page }) => {
-  await page.setViewportSize({ width: 390, height: 700 });
+test('760px 以下では、畳んだままでも開閉のボタンが無く、帯の形で出る', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
   await page.goto(today);
-  await expect(page.locator('.app')).not.toHaveAttribute('data-nav-collapsed', 'true');
+  await page.getByRole('button', { name: 'メニューを畳む' }).click();
+  await page.setViewportSize({ width: 390, height: 700 });
   await expect(page.locator('.nav-toggle')).toBeHidden();
   await expect(page.locator('.binding')).toHaveCSS('border-right-width', '0px');
+  await expect(page.locator('.brand-name')).toBeVisible();
+  await expect(page.locator('.nav-item-label').first()).toHaveCSS('opacity', '1');
 });
 
-test('メニューのシェルはテーマごとのアクセシビリティ検査と CSP 検査を通る', async ({ page }) => {
+test('畳んだ列のまま、全テーマでアクセシビリティの検査と CSP の違反が無い', async ({ page }) => {
   const collect = await watchViolations(page);
+  await page.setViewportSize({ width: 1280, height: 900 });
   await page.goto(today);
+  await page.getByRole('button', { name: 'メニューを畳む' }).click();
   await expectNoA11yViolationsInThemes(page, 'today');
   expect(await collect()).toEqual([]);
+});
+
+test.describe('組織が2つの人（ミナト）', () => {
+  test.beforeEach(async ({ context, baseURL }) => {
+    await signIn(context, baseURL, 'admin');
+  });
+
+  test('畳んだ列から組織の切り替えを開いて別の組織へ移れる', async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await page.goto(today);
+    await page.getByRole('button', { name: 'メニューを畳む' }).click();
+    const org = page.getByRole('button', { name: 'あおば開発。組織を切り替える' });
+    await expect(org).toBeVisible();
+    // 招待が無いときは印を出さない
+    await expect(org.locator('.org-menu-invite')).toHaveCount(0);
+    await org.click();
+    const list = page.getByRole('list', { name: '入れる組織' });
+    await expect(list).toBeVisible();
+    // 一覧は列の横に浮かせる
+    expect((await list.boundingBox())!.x).toBeGreaterThanOrEqual(64);
+    await list.getByRole('link', { name: 'ひばり工房' }).click();
+    await expect(page).toHaveURL(/\/hibari$/);
+    await expect(page.locator('.app')).toHaveAttribute('data-nav-collapsed', 'true');
+  });
+
+  test('畳んだ列でも、届いた招待があることが印と読み上げで分かる', async ({ page }) => {
+    await page.route('**/api/my-organizations', (route) =>
+      route.fulfill({
+        json: {
+          organizations: [{ slug: 'aoba', name: 'あおば開発' }],
+          invitations: [{ organization_name: 'つばめ商会', slug: 'tsubame' }],
+          operator: false,
+        },
+      }),
+    );
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await page.goto(today);
+    await page.getByRole('button', { name: 'メニューを畳む' }).click();
+    const org = page.locator('.org-menu-button');
+    await expect(org).toHaveAttribute('aria-label', /届いた招待あり/);
+    await expect(org.locator('.org-menu-invite')).toBeVisible();
+  });
 });
 
 // 書体は @fontsource を自分の Worker から配る。外への通信が無く、本来の書体が読み込まれる

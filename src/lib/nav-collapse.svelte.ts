@@ -24,17 +24,13 @@ export function readNavCollapsed(): boolean {
 
 export const navState = $state({ collapsed: readNavCollapsed() });
 
+// 覚えられない端末（localStorage が拒まれる）でも、押したら今の画面では開閉する。覚えないだけで、次に開くと広げた状態に戻る
 export function setNavCollapsed(collapsed: boolean): void {
-  const store = storage();
-  if (!store) {
-    navState.collapsed = false;
-    return;
-  }
+  navState.collapsed = collapsed;
   try {
-    store.setItem(NAV_COLLAPSED_KEY, String(collapsed));
-    navState.collapsed = collapsed;
+    storage()?.setItem(NAV_COLLAPSED_KEY, String(collapsed));
   } catch {
-    navState.collapsed = false;
+    // 容量超過や拒否は、覚えないだけにする
   }
 }
 

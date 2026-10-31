@@ -44,17 +44,25 @@ describe('左のメニューの開閉の既定', () => {
     expect(navState.collapsed).toBe(false);
   });
 
-  test('localStorage が使えないときは広げた状態で落ちない', () => {
+  test('localStorage が使えないときは広げた状態で読み、押せば今の画面では畳める', () => {
     Object.defineProperty(globalThis, 'localStorage', {
       configurable: true,
       get() {
         throw new Error('SecurityError');
       },
     });
-    navState.collapsed = true;
     expect(readNavCollapsed()).toBe(false);
     expect(() => setNavCollapsed(true)).not.toThrow();
-    expect(navState.collapsed).toBe(false);
+    expect(navState.collapsed).toBe(true);
+  });
+
+  test('保存が失敗しても落ちず、状態は替わる', () => {
+    const store = storage();
+    store.setItem.mockImplementation(() => {
+      throw new Error('QuotaExceededError');
+    });
+    expect(() => setNavCollapsed(true)).not.toThrow();
+    expect(navState.collapsed).toBe(true);
   });
 });
 

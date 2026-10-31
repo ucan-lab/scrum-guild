@@ -1990,7 +1990,7 @@ const looooooooooooooooooooooooooooooooooongLine = "コードの長い1行は、
     if (orgs.length < 2 && !invited) return "";
     const current = orgs.find((k) => k.slug === D.organization) || orgs[0];
     const label = `${current.name}。${t("organization")}を切り替える${invited ? "。届いた招待あり" : ""}`;
-    return `<div class="org-menu"><button class="org-menu-button" type="button" aria-expanded="${open}" aria-controls="${id}" aria-label="${esc(label)}" ${live ? "data-org-menu" : ""}><span class="org-menu-label">${t("organization")}</span><b>${esc(current.name)}</b>${invited ? '<span class="chip">届いた招待あり</span>' : ""}<span class="org-menu-invite" aria-hidden="true"></span>${icon("swap")}${icon("chevron")}</button>
+    return `<div class="org-menu"><button class="org-menu-button" type="button" aria-expanded="${open}" aria-controls="${id}" aria-label="${esc(label)}" ${live ? "data-org-menu" : ""}><span class="org-menu-label">${t("organization")}</span><b>${esc(current.name)}</b>${invited ? '<span class="chip">届いた招待あり</span>' : ""}${invited ? '<span class="org-menu-invite" aria-hidden="true"></span>' : ""}${icon("swap")}${icon("chevron")}</button>
       <ul class="org-menu-list" id="${id}" aria-label="入れる${t("organization")}" ${open ? "" : "hidden"}>${orgs.map((k) => `<li><a href="today.html"${k.slug === current.slug ? ' aria-current="page"' : ""}><span class="org-menu-name">${esc(k.name)}</span>${k.slug === current.slug ? icon("check") : ""}</a></li>`).join("")}<li><a href="organizations.html"><span class="org-menu-name">${t("organization")}の一覧へ</span>${invited ? '<span class="org-menu-note">招待が届いています</span>' : ""}</a></li></ul></div>`;
   }
   function setOrgMenu(open, focus) {
@@ -2056,13 +2056,12 @@ const looooooooooooooooooooooooooooooooooongLine = "コードの長い1行は、
     document.querySelectorAll("[data-assist-label]").forEach((el) => (el.textContent = `${t("assistant")}に頼む`));
     document.getElementById("content").innerHTML = page.render();
     const app = document.querySelector(".app");
-    if (app) app.toggleAttribute("data-nav-collapsed", navCollapsed);
+    // CSS は [data-nav-collapsed="true"] で当てるので、値を "true" にする（toggleAttribute の空の値では当たらない）
+    if (app) { if (navCollapsed) app.setAttribute("data-nav-collapsed", "true"); else app.removeAttribute("data-nav-collapsed"); }
     const toggle = document.querySelector("[data-nav-toggle]");
     if (toggle) {
       toggle.setAttribute("aria-expanded", String(!navCollapsed));
       toggle.setAttribute("aria-label", t(navCollapsed ? "menuExpand" : "menuCollapse"));
-      const label = toggle.querySelector(".nav-toggle-label");
-      if (label) label.textContent = t(navCollapsed ? "menuExpand" : "menuCollapse");
     }
     applyTheme();
     renderDrawer();
@@ -2080,8 +2079,10 @@ const looooooooooooooooooooooooooooooooooongLine = "コードの長い1行は、
     document.getElementById("app").innerHTML = `
     <div class="app">
       <aside class="binding" aria-label="メニュー"><div class="binding-inner">
-        <a class="brand" href="index.html" title="デザインシステムのカタログへ">${brandMark}<span class="brand-name">Scrum Guild</span></a>
-        <button class="nav-toggle" type="button" data-nav-toggle aria-expanded="${!navCollapsed}" aria-controls="app-nav" aria-label="${t(navCollapsed ? "menuExpand" : "menuCollapse")}">${icon("panel")}<span class="nav-toggle-label">${t(navCollapsed ? "menuExpand" : "menuCollapse")}</span></button>
+        <div class="binding-head">
+          <a class="brand" href="index.html" title="デザインシステムのカタログへ">${brandMark}<span class="brand-name">Scrum Guild</span></a>
+          <button class="nav-toggle" type="button" data-nav-toggle aria-expanded="${!navCollapsed}" aria-controls="app-nav" aria-label="${t(navCollapsed ? "menuExpand" : "menuCollapse")}">${icon("panel")}</button>
+        </div>
         <div id="org-menu-slot"></div>
         <nav class="nav" id="app-nav"></nav>
         <p class="binding-foot">デザインの見本。データはすべて架空の例です</p>
@@ -2104,7 +2105,7 @@ const looooooooooooooooooooooooooooooooooongLine = "コードの長い1行は、
     document.querySelector("[data-switch='theme']").addEventListener("click", cycleTheme);
     document.querySelector("[data-nav-toggle]").addEventListener("click", () => {
       navCollapsed = !navCollapsed;
-      try { localStorage.setItem("sg-nav-collapsed", String(navCollapsed)); } catch (e) { navCollapsed = false; }
+      try { localStorage.setItem("sg-nav-collapsed", String(navCollapsed)); } catch (e) { /* 覚えられないだけで、今の画面では開閉する */ }
       redraw();
     });
     document.querySelector("[data-switch='first']")?.addEventListener("click", cycleFirst);
