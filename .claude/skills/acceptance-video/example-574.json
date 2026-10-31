@@ -1,0 +1,62 @@
+{
+  "who": "admin",
+  "vocabulary": "scrum",
+  "steps": [
+    {
+      "actions": [
+        { "goto": "/aoba/w/019a0000-0000-7000-8000-000000000401/epics/019a0000-0000-7000-8000-000000000b01" },
+        { "wait": { "role": "region", "name": "概要" } }
+      ],
+      "hold": 0
+    },
+    {
+      "caption": "エピックの画面。作成者はミナト、クリア報酬は「中 · 300 XP」",
+      "mark": { "within": { "role": "region", "name": "概要" }, "css": ".tier" },
+      "hold": 2500
+    },
+    {
+      "caption": "「クリア報酬を変える」を押す",
+      "mark": { "within": { "role": "region", "name": "参加者" }, "role": "button", "name": "クリア報酬を変える" },
+      "actions": [
+        { "click": { "within": { "role": "region", "name": "参加者" }, "role": "button", "name": "クリア報酬を変える" } },
+        { "wait": { "role": "dialog", "name": "クリア報酬を変える" } }
+      ],
+      "hold": 1200
+    },
+    {
+      "caption": "段階を「大 · 600 XP」に選んで、「変える」を押す",
+      "actions": [
+        { "check": { "within": { "role": "dialog", "name": "クリア報酬を変える" }, "role": "radio", "name": "大 · 600 XP" } },
+        { "click": { "within": { "role": "dialog", "name": "クリア報酬を変える" }, "role": "button", "name": "変える" } },
+        { "wait": { "role": "dialog", "name": "クリア報酬を変える" }, "state": "hidden" }
+      ],
+      "hold": 300
+    },
+    {
+      "caption": "クリア報酬が「大 · 600 XP」に変わった",
+      "mark": { "within": { "role": "region", "name": "概要" }, "css": ".tier" }
+    },
+    {
+      "caption": "リーダーは、作成者を別の人に替えられる",
+      "mark": { "within": { "role": "region", "name": "参加者" }, "role": "button", "name": "作成者を替える" },
+      "actions": [
+        { "click": { "within": { "role": "region", "name": "参加者" }, "role": "button", "name": "作成者を替える" } },
+        { "wait": { "role": "dialog", "name": "作成者を替える" } }
+      ],
+      "hold": 1200
+    },
+    {
+      "caption": "新しい作成者に「ハルカ」を選んで、「替える」を押す",
+      "actions": [
+        { "select": { "within": { "role": "dialog", "name": "作成者を替える" }, "label": "新しい作成者" }, "label": "ハルカ" },
+        { "click": { "within": { "role": "dialog", "name": "作成者を替える" }, "role": "button", "name": "替える" } },
+        { "wait": { "role": "dialog", "name": "作成者を替える" }, "state": "hidden" }
+      ],
+      "hold": 300
+    },
+    {
+      "caption": "作成者がハルカに替わった",
+      "mark": { "within": { "role": "region", "name": "概要" }, "css": "dd", "nth": 0 }
+    }
+  ]
+}
