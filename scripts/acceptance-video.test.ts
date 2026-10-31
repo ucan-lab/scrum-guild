@@ -301,6 +301,26 @@ describe('gallery.mjs', () => {
     assert.match(html, /動画が無いので、ここでは判定しない/);
   });
 
+  test('SKILL.md の開く前の確かめのコマンドは、判定の版で 1、デモの版で 0 を数える', () => {
+    // 手順書の文字列をそのまま grep に渡す。手順書とテストで数え方が分かれないようにするため
+    const skill = readFileSync(join(skillDir, 'SKILL.md'), 'utf8');
+    const commands = [...skill.matchAll(/`grep -c '([^']+)' <置き場所>\/index\.html`/g)];
+    // 同じ形のコマンドが別の用途で増えたら、どれを確かめるかが曖昧になるので落とす
+    assert.equal(commands.length, 1, 'SKILL.md の開く前の確かめの grep -c のコマンドは 1 つだけ');
+    const pattern = commands[0][1];
+    const count = (manifest: object) =>
+      inTempDir({ 'index.html': call('renderGallery', manifest) as string }, (path) => {
+        const result = spawnSync('grep', ['-c', pattern, path('index.html')], { encoding: 'utf8' });
+        assert.ifError(result.error);
+        // grep は一致が 0 件で 1、パターンの誤りで 2 を返す。2 を 0 件と取り違えない
+        assert.ok(result.status === 0 || result.status === 1, result.stderr);
+        return result.stdout.trim();
+      });
+    const items = [video, { issue: 575, title: 'API だけ', skipped: '画面が変わらない' }];
+    assert.equal(count({ judge: true, items }), '1');
+    assert.equal(count({ items }), '0');
+  });
+
   test('埋め込むスクリプトは構文が正しく、題をスクリプトに埋め込まない', () => {
     const attack = '</script><script>alert(1)</script>';
     const html: string = call('renderGallery', { judge: true, items: [{ ...video, title: attack }] });
