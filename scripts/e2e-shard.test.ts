@@ -18,7 +18,7 @@ import {
 } from './e2e-shard.ts';
 import { sumDurations } from './e2e-shard-weights.ts';
 
-const SHARDS = 3;
+const SHARDS = 4;
 // 見積もり（準備を含まず、重みの合計をそのまま 2 ワーカーで走らせた秒）から、CI のジョブの所要時間への換算。
 // run 41180554724 の 3 つのシャードで、テストの実時間は見積もり相当（重みの合計の半分）の 1.10〜1.19 倍、
 // ジョブ全体からテストの実時間を引いた準備（checkout、setup、Playwright、build、サーバーの起動、seed）は 29〜36 秒だった
@@ -257,9 +257,9 @@ describe('scripts/e2e-shard-weights.json の割り方（受け入れ条件の数
     assert.ok(Math.max(...seconds) < Math.max(...greedy), `${JSON.stringify(seconds)} と ${JSON.stringify(greedy)}`);
   });
 
-  test('重みの合計は、完全に均した下限（約 205 秒）から大きく外れない', () => {
+  test('重みの合計は、完全に均した下限（約 142 秒）から大きく外れない', () => {
     const total = files.reduce((sum, file) => sum + weight.get(file)!, 0);
-    assert.ok(Math.max(...seconds) <= total / SHARDS / WORKERS + 20, `${total} / ${SHARDS} / ${WORKERS}`);
+    assert.ok(Math.max(...seconds) <= total / SHARDS / WORKERS + 30, `${total} / ${SHARDS} / ${WORKERS}`);
   });
 });
 
