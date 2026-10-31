@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { describe, test } from 'node:test';
+import { SEED_API_TOKENS } from '../seed/api-tokens.ts';
 import { SEED_SESSIONS } from '../seed/sessions.ts';
 import { deploy, PRODUCTION_URL, versionFromHealth, type DeployDeps, type WranglerResult } from './deploy.ts';
 
@@ -25,6 +26,8 @@ type Fake = {
   clock: () => number;
   // seed のトークンを付けた本番への問い合わせ
   seedRequests: { url: string; headers: Record<string, string>; body: string }[];
+  // seed の API トークンを Authorization: Bearer で付けた本番への問い合わせ
+  bearerRequests: { url: string; headers: Record<string, string>; body: string }[];
 };
 
 // wrangler の呼び出しは引数の先頭の語で答えを返す。deployments status は statuses を呼ばれた順に返し、
@@ -41,6 +44,8 @@ function fake(options: {
   // seed のトークンへの本番の応答。状態（401 の本文の code は unauthenticated とみなす）、状態と code、投げる失敗のどれか。
   // 既定はすべて 401 の unauthenticated
   seedStatus?: (token: string, call: number) => number | { status: number; code: string | undefined } | Error;
+  // seed の API トークン（Authorization: Bearer）への本番の応答。seedStatus と同じ形で、既定はすべて 401 の unauthenticated
+  bearerStatus?: (token: string, call: number) => number | { status: number; code: string | undefined } | Error;
 }): Fake {
   const calls: string[][] = [];
   const logs: string[] = [];
@@ -55,6 +60,7 @@ function fake(options: {
     fetches: 0,
     attempts: [],
     seedRequests: [],
+    bearerRequests: [],
     clock: () => clock,
     deps: {
       inWorkersBuilds: options.inWorkersBuilds ?? true,
@@ -80,6 +86,17 @@ function fake(options: {
         return value!;
       },
       postStatus: async (url, init) => {
+        // Authorization: Bearer で送る API トークンの確認は、Cookie のセッションの確認（seedRequests）と数えを分ける
+        const bearer = init.headers.Authorization?.replace(/^Bearer /, '');
+        if (bearer !== undefined) {
+          result.bearerRequests.push({ url, ...init });
+          const answer = options.bearerStatus?.(bearer, result.bearerRequests.length) ?? 401;
+          if (answer instanceof Error) throw answer;
+          if (typeof answer === 'number') {
+            return { status: answer, errorCode: answer === 401 ? 'unauthenticated' : undefined };
+          }
+          return { status: answer.status, errorCode: answer.code };
+        }
         result.seedRequests.push({ url, ...init });
         const token = init.headers.Cookie!.split('=')[1]!;
         const value = options.seedStatus?.(token, result.seedRequests.length) ?? 401;
@@ -483,6 +500,82 @@ describe('deploy', () => {
     const f = fake({ versions: [CURRENT] });
     assert.equal(await deploy(f.deps), 1);
     assert.equal(f.seedRequests.length, 0);
+    assert.equal(f.bearerRequests.length, 0);
+  });
+
+  describe('seed の API トークン（Authorization: Bearer）', () => {
+    const bearerNames = Object.keys(SEED_API_TOKENS) as (keyof typeof SEED_API_TOKENS)[];
+    const allValues = [
+      ...Object.values(SEED_SESSIONS).map((seed) => seed.token),
+      ...Object.values(SEED_API_TOKENS).map((seed) => seed.token),
+    ];
+    const leaked = (f: Fake) =>
+      [...f.errors, ...f.logs].some((line) => allValues.some((value) => line.includes(value)));
+
+    test('どれも本番が拒めば成功し、各トークンを Origin と Cookie 無しで POST /api/me に送る', async () => {
+      const f = fake({});
+      assert.equal(await deploy(f.deps), 0);
+      assert.equal(f.bearerRequests.length, bearerNames.length);
+      for (const request of f.bearerRequests) {
+        assert.equal(request.url, `${PRODUCTION_URL}/api/me`);
+        assert.equal(request.headers.Origin, undefined);
+        assert.equal(request.headers.Cookie, undefined);
+        assert.equal(request.headers['Content-Type'], 'application/json');
+      }
+      assert.deepEqual(
+        f.bearerRequests.map((request) => request.headers.Authorization),
+        bearerNames.map((name) => `Bearer ${SEED_API_TOKENS[name].token}`),
+      );
+      assert.ok(!f.calls.some((args) => args[0] === 'rollback'));
+    });
+
+    test('Cookie 側が拒まれ、Bearer 側が受け付けられたら、全部確かめてから戻して失敗し、Bearer 側の名前だけを報告する', async () => {
+      const f = fake({
+        bearerStatus: (token) =>
+          token === SEED_API_TOKENS.adminWrite.token || token === SEED_API_TOKENS.operatorWrite.token ? 200 : 401,
+      });
+      assert.equal(await deploy(f.deps), 1);
+      assert.deepEqual(lastCall(f), ['rollback', CURRENT]);
+      assert.equal(f.bearerRequests.length, bearerNames.length);
+      const message = f.errors.find((entry) => entry.includes('adminWrite'));
+      assert.ok(message);
+      assert.ok(message.includes('operatorWrite'));
+      assert.ok(!message.includes('memberRead'));
+      assert.ok(!leaked(f));
+    });
+
+    test('Cookie 側も Bearer 側も受け付けられたら、両方の名前を報告して失敗する', async () => {
+      const f = fake({
+        seedStatus: (token) => (token === SEED_SESSIONS.admin.token ? 200 : 401),
+        bearerStatus: (token) => (token === SEED_API_TOKENS.memberRead.token ? 200 : 401),
+      });
+      assert.equal(await deploy(f.deps), 1);
+      assert.deepEqual(lastCall(f), ['rollback', CURRENT]);
+      assert.ok(f.errors.some((entry) => entry.includes('admin（200）')));
+      assert.ok(f.errors.some((entry) => entry.includes('memberRead')));
+      assert.ok(!leaked(f));
+    });
+
+    test('Cookie 側が受け付けられても、Bearer 側にも送る（最初の失敗で止めない）', async () => {
+      const f = fake({ seedStatus: () => 200 });
+      assert.equal(await deploy(f.deps), 1);
+      assert.equal(f.bearerRequests.length, bearerNames.length);
+    });
+
+    test('Bearer 側の応答が 5xx か届かないときは 3回まで繰り返し、それでも確かめられなければ戻す', async () => {
+      const flaky = fake({ bearerStatus: (_token, call) => (call <= 2 ? 503 : 401) });
+      assert.equal(await deploy(flaky.deps), 0);
+      const down = fake({ bearerStatus: () => new Error('timeout') });
+      assert.equal(await deploy(down.deps), 1);
+      assert.equal(down.bearerRequests.length, 3 * bearerNames.length);
+      assert.deepEqual(lastCall(down), ['rollback', CURRENT]);
+    });
+
+    test('Bearer 側が 401 でも code が unauthenticated でなければ、確かめられなかった失敗にする', async () => {
+      const f = fake({ bearerStatus: () => ({ status: 401, code: 'forbidden' }) });
+      assert.equal(await deploy(f.deps), 1);
+      assert.deepEqual(lastCall(f), ['rollback', CURRENT]);
+    });
   });
 
   test('反映が遅れても、何回目かで版が一致すれば成功する', async () => {
