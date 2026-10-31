@@ -309,6 +309,9 @@ describe('gallery.mjs', () => {
     const count = (manifest: object) =>
       inTempDir({ 'index.html': call('renderGallery', manifest) as string }, (path) => {
         const result = spawnSync('grep', ['-c', pattern, path('index.html')], { encoding: 'utf8' });
+        assert.ifError(result.error);
+        // grep は一致が 0 件で 1、パターンの誤りで 2 を返す。2 を 0 件と取り違えない
+        assert.ok(result.status === 0 || result.status === 1, result.stderr);
         return result.stdout.trim();
       });
     const items = [video, { issue: 575, title: 'API だけ', skipped: '画面が変わらない' }];
