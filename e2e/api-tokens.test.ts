@@ -365,7 +365,7 @@ test('390px の幅でも、発行と取り消しができ、画面が横には�
   expect(token).toMatch(TOKEN_PATTERN);
   // 長い値も、ダイアログの中で横にはみ出さない（値の欄は横へ送れる）
   expect(await overflow()).toBeLessThanOrEqual(0);
-  const sheet = await size(page.locator('.dialog-sheet'));
+  const sheet = await size(page.locator('.dialog-sheet', { hasText: 'API トークンを発行しました' }));
   expect(sheet.x).toBeGreaterThanOrEqual(0);
   expect(sheet.x + sheet.width).toBeLessThanOrEqual(390);
   await closeIssued(page);
