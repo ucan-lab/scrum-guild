@@ -45,6 +45,7 @@ const KEPT_COMMON_TABLES = [
   'accounts',
   'account_logins',
   'sessions',
+  'api_tokens',
   'oauth_states',
   'rate_limits',
   'password_credentials',

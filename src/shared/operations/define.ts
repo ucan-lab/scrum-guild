@@ -49,6 +49,8 @@ type Common<Input, Output> = {
   // （判定は DB を3〜4回引く。運用者は確かめずに通す）。確かめない操作だけに true を付ける（ログアウトなど、
   // 入れる組織を失った人にも使わせる操作）。組織の中の操作には付けられない（組織に入れなかったときに、登録の関数が確かめる）
   readonly skipsLoginAccess?: true;
+  // API トークンでは呼べない（403）。Cookie のセッションの行や Cookie を直に扱う操作（ログアウト）に付ける。組織の外の操作だけ
+  readonly cookieOnly?: true;
 };
 
 // ワークスペースの下の操作は、入力に workspace_id を持つ。無いと型で落ちる
@@ -99,6 +101,9 @@ export function assertOperationDefinition(definition: AnyOperationDefinition): v
   }
   if (definition.skipsLoginAccess !== undefined && (definition.skipsLoginAccess !== true || scope !== 'outside')) {
     throw new Error(`操作 ${name} の skipsLoginAccess は、組織の外の操作に true だけ付けられる`);
+  }
+  if (definition.cookieOnly !== undefined && (definition.cookieOnly !== true || scope !== 'outside')) {
+    throw new Error(`操作 ${name} の cookieOnly は、組織の外の操作に true だけ付けられる`);
   }
   const rateLimit = definition.rateLimit;
   if (rateLimit !== undefined && !(Number.isInteger(rateLimit.max) && rateLimit.max > 0)) {

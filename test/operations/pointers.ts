@@ -107,9 +107,10 @@ export const pointers: Pointers = {
   'organization-holiday-delete': async (target) => ({
     holiday_on: (await createOrganizationHoliday(target.organization, target.admin.userId!)).holiday_on,
   }),
-  // 組織は URL の slug で決まり、入力は組織の中の行を指さない（同じ値なら書かずに成功する）
+  // 組織は URL の slug で決まり、入力は組織の中の行を指さない。from は作ったばかりの組織の値で、to が同じなら書かずに成功する。
+  // 値を変える入力だと、同じ組織に続けて2回成功させる検査（API トークンの Origin の検査と行の分離）の2回目が、from が合わず 409 になる
   'organization-settings-update': {
-    noReference: { vocabulary: { from: 'game', to: 'scrum' }, theme: { from: 'simple', to: 'medieval' } },
+    noReference: { vocabulary: { from: 'game', to: 'game' }, theme: { from: 'simple', to: 'simple' } },
   },
   // カーソルを渡さなければ最新から読む。組織は URL の slug で決まる
   'organization-history': { noReference: {} },
