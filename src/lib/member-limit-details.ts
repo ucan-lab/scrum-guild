@@ -1,4 +1,4 @@
-// 409 の member_limit_reached の details（workspace-reopen は { used, limit, adding } を載せる）から、
+// 409 の member_limit_reached の details（workspace-reopen と user-enable は { used, limit, adding } を載せる）から、
 // 画面に出す数を取り出す。details は unknown なので、形と値を確かめ、読めないときは undefined を返す
 export type MemberLimitDetails = { used: number; limit: number; adding: number };
 
