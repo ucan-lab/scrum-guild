@@ -231,7 +231,8 @@ async function requireLoginAccess(
 function checkTokenScope(definition: AnyOperationDefinition, apiToken: ApiToken | undefined): void {
   if (apiToken === undefined) return;
   if (definition.permission === 'operator' || definition.cookieOnly === true) throw new ApiError(403, 'forbidden');
-  if (definition.mode === 'write' && apiToken.scope !== 'write') throw new ApiError(403, 'forbidden');
+  // read のトークンが通すのは mode が read の操作だけ（許す側を列挙し、想定外の mode は断る）
+  if (apiToken.scope !== 'write' && definition.mode !== 'read') throw new ApiError(403, 'forbidden');
 }
 
 // 定義の rateLimit を、アカウントと操作ごとに数える。権限の検査の後、入力を読む前に行う
