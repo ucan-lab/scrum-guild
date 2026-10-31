@@ -449,13 +449,14 @@ describe('組織に入れなくなった人のトークン', () => {
     expect((await post(app, whoAmI, { bearer: raw })).status).toBe(200);
   });
 
-  test('判定の後に作ったトークンは取り消さない', async () => {
+  // #639: 前は判定の時刻までに作ったトークンだけを取り消していた。今はどの時刻に作ったトークンも取り消さない
+  test('作った時刻に関わらず、どのトークンも取り消さない', async () => {
     const organization = await createOrganization();
     const person = await createPerson({ organization, admin: true, disabled: true });
     const later = await tokenOf(person, 'write', { createdAt: new Date(Date.now() + 60 * 1000).toISOString() });
     const earlier = await tokenOf(person);
-    expect((await post(app, whoAmI, { bearer: earlier.raw })).status).toBe(401);
-    expect((await tokenRow(earlier.hash))!.revoked_at).not.toBeNull();
+    expect((await post(app, whoAmI, { bearer: earlier.raw })).status).toBe(200);
+    expect((await tokenRow(earlier.hash))!.revoked_at).toBeNull();
     expect((await tokenRow(later.hash))!.revoked_at).toBeNull();
   });
 });
