@@ -8,18 +8,30 @@ import { PRIVACY_VERSION, TERMS_VERSION } from './versions.ts';
 export type LegalKind = 'terms' | 'privacy';
 
 export type LegalDocument = {
-  // Markdown の本文
+  // Markdown の全文（末尾の「改定日: YYYY-MM-DD」の行を含む）
   source: string;
+  // 画面に描く本文。末尾の改定日の行を落としたもの（改定日は画面の別の場所に、版として出す）
+  body: string;
   // 版（改定日の YYYY-MM-DD）
   version: string;
 };
 
-export const legalDocuments: Record<LegalKind, LegalDocument> = {
-  terms: { source: termsSource, version: TERMS_VERSION },
-  privacy: { source: privacySource, version: PRIVACY_VERSION },
-};
-
-// 本文の末尾の行の「改定日: YYYY-MM-DD」から日付を取り出す。無ければ undefined
+// 末尾の行の「改定日: YYYY-MM-DD」から日付を取り出す。無ければ undefined
 export function revisedDateOf(source: string): string | undefined {
   return /^改定日: (\d{4}-\d{2}-\d{2})$/.exec(source.trimEnd().split('\n').at(-1) ?? '')?.[1];
 }
+
+// 末尾の改定日の行（とその前の空行）を落とした本文。末尾が改定日の行でなければそのまま返す
+export function bodyOf(source: string): string {
+  if (revisedDateOf(source) === undefined) return source;
+  return source.trimEnd().split('\n').slice(0, -1).join('\n').trimEnd();
+}
+
+function document(source: string, version: string): LegalDocument {
+  return { source, body: bodyOf(source), version };
+}
+
+export const legalDocuments: Record<LegalKind, LegalDocument> = {
+  terms: document(termsSource, TERMS_VERSION),
+  privacy: document(privacySource, PRIVACY_VERSION),
+};

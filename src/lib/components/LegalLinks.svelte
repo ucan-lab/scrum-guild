@@ -13,9 +13,9 @@
 
 <div class="form-actions" role="group" aria-label={t('legalLinksLabel')}>
   <a class="btn is-sm is-quiet" href={resolve('/terms')} {target} {rel}
-    >{t('termsTitle')}{#if newTab}<span class="visually-hidden">（{t('legalNewTab')}）</span>{/if}</a
+    >{t('termsTitle')}{#if newTab}<span class="visually-hidden"> {t('markdownNewTab')}</span>{/if}</a
   >
   <a class="btn is-sm is-quiet" href={resolve('/privacy')} {target} {rel}
-    >{t('privacyTitle')}{#if newTab}<span class="visually-hidden">（{t('legalNewTab')}）</span>{/if}</a
+    >{t('privacyTitle')}{#if newTab}<span class="visually-hidden"> {t('markdownNewTab')}</span>{/if}</a
   >
 </div>
