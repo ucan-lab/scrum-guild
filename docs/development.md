@@ -397,8 +397,8 @@ claude mcp add scrum-guild -- node <main の作業コピーの絶対パス>/cli/
 
 このリポジトリの作業コピーの中だけで試すなら、`claude mcp add scrum-guild -- pnpm -s sg mcp` でもよい（`pnpm -s` は、`package.json` のあるディレクトリで動くため）。
 
-- 組織ごとに登録を分ける。別の組織は別の名前で、`--org` を付けて登録する: `claude mcp add scrum-guild-aoba -- pnpm -s sg mcp --org aoba`。組織ごとに別のトークンを使うなら、`sg config set` で接続先（`--profile`）を作り、`-- pnpm -s sg mcp --profile <名前>` と登録する
-- 普段は `--allow-write` を付けずに登録し（読み取りの道具だけ）、読み取りのトークンの接続先を使う。書き込みが要るときだけ、書き込みのトークンの接続先に `--allow-write` を付けた登録を足す: `claude mcp add scrum-guild-write -- node <main の作業コピーの絶対パス>/cli/sg.ts mcp --profile <書き込みの接続先> --allow-write`。書き込みの道具が出るのは、`--allow-write` と書き込みのトークンの両方が揃ったときだけ
+- 組織ごとに登録を分ける。別の組織は別の名前で、`--org` を付けて登録する: `claude mcp add scrum-guild-aoba -- node <main の作業コピーの絶対パス>/cli/sg.ts mcp --org aoba`。組織ごとに別のトークンを使うなら、`sg config set` で接続先（`--profile`）を作り、`-- node <main の作業コピーの絶対パス>/cli/sg.ts mcp --profile <名前>` と登録する
+- 普段は `--allow-write` を付けずに登録し（読み取りの道具だけ）、読み取りのトークンの接続先を使う。書き込みが要るときだけ、書き込みのトークンの接続先に `--allow-write` を付けた登録を足す: `claude mcp add scrum-guild-write -- node <main の作業コピーの絶対パス>/cli/sg.ts mcp --profile <書き込みの接続先> --allow-write`。書き込みの道具が出るのは、`--allow-write` と書き込みのトークンの両方が揃ったときだけ。使い終えたら `claude mcp remove scrum-guild-write` で外す（残すと読み取りの登録と同時に有効のまま）。`--allow-write` は道具の見せ方を決めるだけで、境界ではない（Bash が使える AI は `sg call` で直に書き込める）。書き込みを確実に防ぐのは、読み取りのトークンだけ
 - 書き込みの道具（`mcp__scrum-guild__*` のうち書き込むもの）を、Claude Code の許可（`permissions.allow`）に常には入れない。取り込んだ内容や他人が書いたタスクの本文は信頼できない入力で、AI が読むと、本文の指示に従って書き込みの道具を呼びかねない。呼ぶたびに人が確かめる
 - どの作業コピーからでも動かすときは、`pnpm -s sg` の代わりに `node <作業コピーの絶対パス>/cli/sg.ts mcp` と登録する。決まった版の CLI（`main` の作業コピーの絶対パス）にしておくことを勧める。作業ブランチのワークツリーを指すと、その作業中のコードが道具の実体になり、ブランチを消すと動かなくなる
 - 登録の後、Claude Code の `/mcp` で道具の一覧を見られる。読み取りを1つ頼んで確かめ、書き込みは `--allow-write` を付けた登録で1つ頼んで確かめる
