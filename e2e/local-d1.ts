@@ -141,6 +141,15 @@ export async function restoreSeedSession(who: keyof typeof SEED_SESSIONS): Promi
   await executeLocalD1([insert.replace(/^INSERT INTO /, 'INSERT OR IGNORE INTO ')]);
 }
 
+// パスワードのログインで作られたアカウント（手段 `password`）の同意の行を消す。seed のパスワードの人（seed/passwords.ts）は
+// 初めてのログインでアカウントができ、同意の行を持たない。同意まで通した後の繰り返し（--repeat-each）でも、
+// ログインの直後に同意の画面へ移る状態から始めるため、パスワードのログインの e2e（e2e/password-login.test.ts）が場面ごとに使う
+export async function resetPasswordAccountConsents(): Promise<void> {
+  await executeLocalD1([
+    `DELETE FROM account_consents WHERE account_id IN (SELECT account_id FROM account_logins WHERE login_provider = 'password');`,
+  ]);
+}
+
 // seed のセッションのアカウントの同意の行を消し、未同意の状態へ戻す。同意の e2e（e2e/consent.test.ts）が、
 // 繰り返し（--repeat-each）で毎回「未同意」から始めるため、テストの前と後に使う。同意の行は追記だけで API に消す操作が無い
 export async function resetAccountConsents(who: keyof typeof SEED_SESSIONS): Promise<void> {

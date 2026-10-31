@@ -10,6 +10,16 @@ export function loginUrl(current: { pathname: string; search: string }): string 
   return `${loginPath}?return_to=${encodeURIComponent(safeReturnTo(current.pathname + current.search))}`;
 }
 
+// 403 の terms_required（今の版の規約に同意していない）を受けたときの行き先。同意の画面（/consent）が、
+// 同意した後に return_to へ戻す。return_to の作り方は loginUrl と同じ
+export function consentUrl(current: { pathname: string; search: string }): string {
+  return `/consent?return_to=${encodeURIComponent(safeReturnTo(current.pathname + current.search))}`;
+}
+
+export function isTermsRequired(result: { ok: boolean; error?: { code: string } | null }): boolean {
+  return !result.ok && result.error?.code === 'terms_required';
+}
+
 export function isUnauthenticated(result: { ok: boolean; error?: { code: string } | null }): boolean {
   return !result.ok && result.error?.code === 'unauthenticated';
 }
