@@ -583,7 +583,7 @@ export async function watchViolations(page: Page): Promise<() => Promise<string[
 }
 
 // 開いた画面の読み込みが終わるまで待つ。読み込みで行が動いている間に押すと、Playwright は押し直す前に画面をスクロールするので、
-// 撮る画像のスクロールの位置が実行ごとに変わる（#354）。テストの終わりに背景の画面が写るとき（ダイアログを開くなど）は、押す前に呼ぶ
+// 背景の画面のスクロールの位置が実行ごとに変わる（#354）。ダイアログを開くなど、背景の画面が残るときは、押す前に呼ぶ
 export async function waitForSettled(page: Page): Promise<void> {
   await page.waitForLoadState('networkidle');
   await expect(page.locator('[aria-busy="true"]:visible')).toHaveCount(0);
@@ -632,7 +632,7 @@ export async function signIn(
 
 // 組織の管理の画面の上の2つの節（ユーザーとワークスペースの一覧）を、あおば開発の seed（seed/data.sql）の行に固定する。
 // 並べて走るほかのテストが作ったワークスペースと所属で、ワークスペースの行の数とミナトの所属の数が実行ごとに変わり、
-// 下の節を写す画像の中身と位置がずれるため（#509）。最後に入った日時だけは seed に無い値を置く。ログインで入り、
+// 下の節の中身と位置がずれるため（#509）。最後に入った日時だけは seed に無い値を置く。ログインで入り、
 // サーバーの今日で変わるので、ミナトは決まった日（2026-10-20 の UTC の正午。UTC±11 時間のどのタイムゾーンでも同じ日）にする。seed のユーザーとワークスペースを変えたら、ここも直す
 export async function mockSeedAdminLists(page: Page): Promise<void> {
   await mockOperation(

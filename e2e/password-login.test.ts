@@ -85,7 +85,7 @@ test('ログインの画面の戻る先（return_to）があれば、パスワ�
   await submitButton(page).click();
   await expect(page).toHaveURL(/\/minamo$/);
   // ログインの画面は location.replace で文書ごと移るので、URL は画面が描かれる前に変わる。
-  // 終わりに撮る画像が描く前の空の画面にならないよう、移った先の画面が出て読み込みが終わるのを待つ（#510）
+  // URL は新しい文書が描かれる前に変わるので、移った先の画面が出て読み込みが終わるのを待つ（#510）
   await expect(page.getByRole('heading', { level: 1, name: '自分の今日' })).toBeVisible();
   await expect(page.locator('.me')).toContainText(person.name);
   await waitForSettled(page);
