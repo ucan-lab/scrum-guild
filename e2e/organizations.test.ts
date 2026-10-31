@@ -771,7 +771,9 @@ test.describe('すべてのワークスペースから外れた人（ツバサ�
     await expect(page.getByText('かもめ社')).toBeVisible();
     await expect(page.getByText(/停止/).first()).toBeVisible();
     await expect(page.getByText(/運用者に問い合わせ/).first()).toBeVisible();
-    // 招待を待つ案内は出さない（停止した組織の人に、招待を待てと伝えない）
+    // 招待を待つ案内の代わりに、停止した組織の案内を指す文を出す（停止した組織の人に、招待を待てと伝えない）
+    await expect(page.getByText('入れる組織がありません', { exact: true })).toBeVisible();
+    await expect(page.getByText('下の停止している組織は、再開すると入れます。')).toBeVisible();
     await expect(page.getByText('管理者から招待が届くと、ここに出ます。')).toHaveCount(0);
     // 停止した組織へは入れないので、組織の画面へのリンクにしない
     await expect(page.getByRole('link', { name: /かもめ社/ })).toHaveCount(0);
