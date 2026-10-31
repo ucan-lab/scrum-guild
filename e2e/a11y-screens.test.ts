@@ -3,6 +3,8 @@
 // seed のセッション（seed/sessions.ts）の Cookie で開く。あおば開発の管理者はミナト。受託開発チームも社内ツールもスクラムの言葉。
 // 読むだけにし、seed の行もテーマの設定も書き換えない（ほかのファイルと並べて走るため）
 import type { Locator, Page } from '@playwright/test';
+import { PRIVACY_VERSION, TERMS_VERSION } from '../src/lib/legal/versions.ts';
+import { consentStatus } from '../src/shared/operations/session/consent.ts';
 import { sprintBoard } from '../src/shared/operations/sprint/index.ts';
 import { expect, test } from './fixtures.ts';
 import { expectNoA11yViolationsInThemes, signIn } from './helpers.ts';
@@ -28,6 +30,14 @@ const screens: {
   {
     screen: 'consent',
     path: '/consent',
+    // 同意の e2e（e2e/consent.test.ts）が seed の admin に同意を書くので、状態は固定して、読むだけにする
+    prepare: (page) =>
+      mockOperation(page, consentStatus, {
+        terms_version: TERMS_VERSION,
+        privacy_version: PRIVACY_VERSION,
+        latest: null,
+        current: false,
+      }),
     ready: (page) => [
       page.getByRole('heading', { level: 1, name: '同意の確認' }),
       page.getByRole('checkbox', { name: '利用規約とプライバシーポリシーを確認し、同意します' }),
