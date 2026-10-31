@@ -63,9 +63,28 @@ function sourceRank(source: MarkerSource): number {
   return source === 'ai-review' ? 0 : 1;
 }
 
+// 印は本文、コメントの古い順に並ぶ。同じ印は後ろの位置に寄せ、出どころごとに新しい側の MAX_MARKERS 件を残す
+// （コメントの印が多くても本文の done-check の印を落とさず、本文に印を並べても最新の ai-review の印を押し出させない）
+function limitMarkers(markers: readonly Marker[]): { kept: Marker[]; skipped: [MarkerSource, number][] } {
+  const byKey = new Map<string, Marker>();
+  for (const m of markers) {
+    const key = `${m.source} ${m.sha}`;
+    byKey.delete(key);
+    byKey.set(key, m);
+  }
+  const unique = [...byKey.values()];
+  const kept: Marker[] = [];
+  const skipped: [MarkerSource, number][] = [];
+  for (const source of ['done-check', 'ai-review'] as const) {
+    const ofSource = unique.filter((m) => m.source === source);
+    kept.push(...ofSource.slice(-MAX_MARKERS));
+    if (ofSource.length > MAX_MARKERS) skipped.push([source, ofSource.length - MAX_MARKERS]);
+  }
+  return { kept, skipped };
+}
+
 export function chooseScope(markers: readonly Marker[], baseSha: string, headSha: string, cwd = process.cwd()): Scope {
-  // 印は本文、コメントの古い順に並ぶ。上限を超えたら新しい側を残す（本文に印を並べて、最新の ai-review の印を押し出させない）
-  const unique = [...new Map(markers.map((m) => [`${m.source} ${m.sha}`, m])).values()].slice(-MAX_MARKERS);
+  const { kept: unique, skipped } = limitMarkers(markers);
   const mb = git(['merge-base', baseSha, headSha], cwd).trim();
   const rejected: RejectedMarker[] = [];
   const candidates: (Marker & { distance: number })[] = [];
@@ -87,6 +106,9 @@ export function chooseScope(markers: readonly Marker[], baseSha: string, headSha
       const distance = Number(git(['rev-list', '--count', `${marker.sha}..${headSha}`], cwd).trim());
       candidates.push({ ...marker, distance });
     }
+  }
+  for (const [source, count] of skipped) {
+    rejected.push({ marker: source, reason: `上限を超えて調べなかった ${count} 件` });
   }
   if (candidates.length === 0) {
     return { mode: 'full', reason: markers.length === 0 ? '印が無い' : 'すべての印が退けられた', rejected };

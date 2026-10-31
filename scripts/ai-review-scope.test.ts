@@ -160,17 +160,44 @@ describe('chooseScope', () => {
     const head = r.commit('one.txt', '1\n');
     const many = Array.from({ length: 50 }, (_, i) => marker(i.toString(16).padStart(40, '0')));
     const scope = chooseScope([...many, ...many], r.base, head, r.dir);
-    assert.equal(scope.rejected.length, MAX_MARKERS);
+    // 調べた MAX_MARKERS 件と、上限で調べなかった件数の1行
+    assert.equal(scope.rejected.length, MAX_MARKERS + 1);
+    assert.deepEqual(scope.rejected.at(-1), {
+      marker: 'done-check',
+      reason: `上限を超えて調べなかった ${50 - MAX_MARKERS} 件`,
+    });
   });
 
-  test('印が上限を超えたら、新しい側（コメントの後ろ）の印を残す', () => {
+  test('印が上限を超えたら、出どころごとに新しい側（後ろ）の印を残す', () => {
     const r = repo();
     const start = r.commit('one.txt', '1\n');
     const head = r.commit('two.txt', '2\n');
-    const old = Array.from({ length: MAX_MARKERS }, (_, i) => marker(i.toString(16).padStart(40, '0')));
+    const old = Array.from({ length: MAX_MARKERS }, (_, i) => marker(i.toString(16).padStart(40, '0'), 'ai-review'));
     const scope = chooseScope([...old, marker(start, 'ai-review')], r.base, head, r.dir);
     assert.equal(scope.start, start);
-    assert.equal(scope.rejected.length, MAX_MARKERS - 1);
+  });
+
+  test('ai-review の印が上限を超えても、本文の done-check の印を落とさない', () => {
+    const r = repo();
+    r.commit('one.txt', '1\n');
+    const start = r.commit('two.txt', '2\n');
+    const head = r.commit('three.txt', '3\n');
+    const comments = Array.from({ length: MAX_MARKERS + 3 }, (_, i) =>
+      marker(i.toString(16).padStart(40, '0'), 'ai-review'),
+    );
+    const scope = chooseScope([marker(start), ...comments], r.base, head, r.dir);
+    assert.equal(scope.start, start);
+    assert.equal(scope.startSource, 'done-check');
+  });
+
+  test('同じ印が後ろにもう一度出たら、後ろの位置で数える', () => {
+    const r = repo();
+    const start = r.commit('one.txt', '1\n');
+    const head = r.commit('two.txt', '2\n');
+    const others = Array.from({ length: MAX_MARKERS }, (_, i) => marker(i.toString(16).padStart(40, '0'), 'ai-review'));
+    const x = marker(start, 'ai-review');
+    const scope = chooseScope([x, ...others, x], r.base, head, r.dir);
+    assert.equal(scope.start, start);
   });
 
   test('退けた印のうち、SHA の形でない値は見せない', () => {
