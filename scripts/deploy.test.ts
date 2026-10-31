@@ -356,7 +356,7 @@ describe('deploy', () => {
     assert.equal(await deploy(f.deps), 0);
     assert.equal(f.seedRequests.length, Object.keys(SEED_SESSIONS).length);
     for (const request of f.seedRequests) {
-      // 入れる組織の判定をしない logout で確かめる（判定をする me だと、行が残っていても 401 になり、見逃す）
+      // logout で確かめる（受け付けられたときに、その行を消す副作用が付く）
       assert.equal(request.url, `${PRODUCTION_URL}/api/logout`);
       // Origin が公開する URL と合わないと、セッションを読む前に 403 で終わる
       assert.equal(request.headers.Origin, PRODUCTION_URL);

@@ -45,21 +45,6 @@ export type ErrorBody = {
   };
 };
 
-// 入れる組織を失ってセッションが消えた 401 の details.reason。入れたはずの組織が停止しているだけのときに付く。
-// 画面はログインの画面へ移すときの理由（/login?error=suspended）にする
-export const UNAUTHENTICATED_SUSPENDED = 'suspended';
-
-export function isSuspendedUnauthenticated(error: ErrorBody['error'] | null | undefined): boolean {
-  const details = error?.details;
-  return (
-    error?.code === 'unauthenticated' &&
-    typeof details === 'object' &&
-    details !== null &&
-    'reason' in details &&
-    details.reason === UNAUTHENTICATED_SUSPENDED
-  );
-}
-
 export function isErrorBody(value: unknown): value is ErrorBody {
   if (typeof value !== 'object' || value === null || !('error' in value)) return false;
   const { error } = value;

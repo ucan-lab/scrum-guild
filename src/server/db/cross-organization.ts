@@ -1,12 +1,13 @@
 // 組織をまたいで読む処理の置き場所（docs/data-model.md の「読み書きの入口」）。1つの関数にまとめ、
-// 組織を分けるときはここだけを直す。当たるのは、ログインできるか（入れる組織と届いた招待があるか）、ログインの直後の組織の選択、
+// 組織を分けるときはここだけを直す。当たるのは、ログインできるか（アカウントが無い人に、入れる組織か届いた招待があるか）、ログインの直後の組織の選択、
 // 届いた招待の一覧、初めてのログインで users.account_id を埋めること、招待の URL の秘密のハッシュから待っている指名と招待を引くこと。
 // 今あるのは、組織の選択と届いた招待の一覧、ログインできるか、users.account_id を埋めること、運用者の一覧の管理者の状態と
 // 組織ごとの集計（organizationUsage。人数の数え方は seats.ts）、招待の URL の秘密のハッシュから待っている指名と招待を引いて結ぶこと（claimPendingLogin）。
 // ログインできるか（hasLoginAccess）は、組織の選択と同じ読み取り（readAccountOrganizations）を使う。判定の元を1つにするため。
-// 使うのはログインのとき（login.ts）だけで、アカウントに結ばれる前の指名の行も数える。セッションの判定（register.ts）は、
-// 組織の選択と同じ結果（結ばれる前の行を数えない）を使う。結ばれる前の行だけを持つ人のセッションを、結べないまま残さないため。
-// 組織の道具（operations/organization-tools.ts）が、組織を離れた人や無効にされた人のセッションを消すかの判定にも、同じ結果を使う
+// 使うのはログインのとき（login.ts）だけで、アカウントに結ばれる前の指名の行も数える。ログインできるのは、運用者、アカウントがある人、
+// 停止していなければ入れた組織か届いた招待がある人で、この関数が答えるのは最後のとき（アカウントが無い人）だけ。
+// アカウントがある人は、入れる組織を失ってもログインできる（セッションと API トークンも消さない）。
+// 組織の選択（my-organizations）は、結ばれる前の行を数えない結果を使う。結ばれるまでその組織には入れないため
 //
 // 書き込みは linkLoginToAccount と claimPendingLogin だけ。
 //   - linkLoginToAccount: 組織で絞らずに users.account_id と updated_at を書く、この関数だけの例外
@@ -28,12 +29,13 @@ import type { OrganizationTables } from './tables.ts';
 // 入れる組織と、承諾待ちの招待がある組織。入れる組織は管理者か、いずれかのワークスペースに今所属する組織。
 // 招待は入れる組織の分も含める（届いた招待はすべての組織の分をまとめて出す）。招待は組織の名前と slug しか持たない
 // （slug は承諾と辞退の操作を、その組織の slug の下で呼ぶのに使う）
-// suspended は、入れる組織か承諾待ちの招待が、停止した組織に1つでもあるか（停止していなければ入れた人か）。組織の一覧と
-// 招待の一覧には停止した組織を出さず、入れる組織を失った人のログインの画面に「所属する組織が停止している」を出すのに使う
+// suspended は、停止していなければ入れた組織（管理者、今の所属、表示する承諾待ちの招待）のうち、停止したもの。名前順（同名は slug 順）。
+// 組織の一覧と招待の一覧には停止した組織を出さず、組織の選択の画面（/）に「停止している」ことを伝えるのに使う。
+// 無効にされた人と、入れたはずでない組織は含めない（停止した組織を、入れない人に漏らさない）
 export type AccountOrganizations = {
   readonly organizations: readonly { readonly slug: string; readonly name: string }[];
   readonly invitations: readonly { readonly organization_name: string; readonly slug: string }[];
-  readonly suspended: boolean;
+  readonly suspended: readonly { readonly slug: string; readonly name: string }[];
 };
 
 type Account = { accountId: string; logins: readonly LoginId[] };
@@ -96,7 +98,7 @@ export function invitationsStatement(db: OrganizationEntry, login: LoginId) {
   );
 }
 
-// 停止した組織は organizations と invitations に含めず、入れたはずの組織が停止していることだけを suspended で返す。無効にされた人の扱いは enterOrganization と同じにする。
+// 停止した組織は organizations と invitations に含めず、入れたはずの組織が停止していることを suspended（名前と slug）で返す。無効にされた人の扱いは enterOrganization と同じにする。
 // - このアカウントの行が無効なら、入れず、招待も出さない
 // - 管理者の行か今の所属があれば入れる。そのとき、手段と ID が一致する別の無効な行は見ない
 // - 入れない組織の招待は、手段と ID が一致する無効な行があれば出さない
@@ -119,16 +121,17 @@ export function listAccountOrganizationsIn(
   return readAccountOrganizations(env, { ...account, includeUnlinked: false }, entries);
 }
 
-// ログインできるか: 入れる組織か、承諾待ちの招待が、停止していない組織に1つでもあるか。
+// 入れる組織か、承諾待ちの招待が、停止していない組織に1つでもあるか。停止した組織の分は数えない（readLoginAccess が分けて返す）。
 // 組織の選択と同じ読み取りを通し、アカウントに結ばれる前の行も数える。accountId は初めてのログインなら undefined。
-// 運用者の例外（入れる組織が無くてもログインできる）は呼び出し側が先に見る
+// 運用者とアカウントがある人の例外（入れる組織が無くてもログインできる）は呼び出し側が先に見る
 export function hasLoginAccess(env: Env, who: LoginAccessTarget): Promise<boolean> {
   return hasLoginAccessIn(env, who, crossOrganizationEntries(env));
 }
 
 export type LoginAccessTarget = { accountId: string | undefined; logins: readonly LoginId[] };
 
-// ログインできるかと、できないときに停止した組織が理由か。ログインの画面に出す理由（denied か suspended）を決めるのに使う
+// 停止していない組織に入れるか（allowed）と、停止した組織にしか入れないか（suspended。停止していなければ入れた組織が1つでもある）。
+// アカウントが無い人のログインは、どちらかが真なら通す
 export type LoginAccess = { readonly allowed: boolean; readonly suspended: boolean };
 
 export function readLoginAccess(env: Env, who: LoginAccessTarget): Promise<LoginAccess> {
@@ -145,7 +148,7 @@ export async function readLoginAccessIn(
     { ...who, includeUnlinked: true },
     entries,
   );
-  return { allowed: organizations.length > 0 || invitations.length > 0, suspended };
+  return { allowed: organizations.length > 0 || invitations.length > 0, suspended: suspended.length > 0 };
 }
 
 // 入口の一覧を受け取る本体。index.ts は出さない。DB を複数にした場合を、テストが testing.ts から確かめる
@@ -162,7 +165,7 @@ async function readAccountOrganizations(
   account: Reading,
   entries: readonly OrganizationEntry[],
 ): Promise<AccountOrganizations> {
-  if (account.logins.length === 0) return { organizations: [], invitations: [], suspended: false };
+  if (account.logins.length === 0) return { organizations: [], invitations: [], suspended: [] };
 
   const enterable = new Set<string>();
   // 入れず、招待も出さない組織
@@ -214,10 +217,11 @@ async function readAccountOrganizations(
       )),
     );
   }
-  // 停止した組織は一覧にも招待にも出さず、入れたはずかどうかだけを返す
-  const suspended = rows.some((row) => row.suspended_at !== null);
-  const active = rows.filter((row) => row.suspended_at === null);
-  active.sort((a, b) => (a.name === b.name ? (a.slug < b.slug ? -1 : 1) : a.name < b.name ? -1 : 1));
+  // 停止した組織は一覧にも招待にも出さず、入れたはずの組織として suspended に分ける
+  const byName = (a: { name: string; slug: string }, b: { name: string; slug: string }) =>
+    a.name === b.name ? (a.slug < b.slug ? -1 : 1) : a.name < b.name ? -1 : 1;
+  const active = rows.filter((row) => row.suspended_at === null).sort(byName);
+  const paused = rows.filter((row) => row.suspended_at !== null).sort(byName);
 
   const shown = new Set(invitedShown);
   return {
@@ -225,7 +229,7 @@ async function readAccountOrganizations(
     invitations: active
       .filter((row) => shown.has(row.id))
       .map((row) => ({ organization_name: row.name, slug: row.slug })),
-    suspended,
+    suspended: paused.map(({ slug, name }) => ({ slug, name })),
   };
 }
 

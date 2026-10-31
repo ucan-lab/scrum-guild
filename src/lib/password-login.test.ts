@@ -73,7 +73,8 @@ describe('失敗の文言', () => {
   test.each([
     [401, { code: 'invalid_credentials', message: 'x' }, 'loginErrorInvalidCredentials'],
     [403, { code: 'forbidden', message: 'x', details: { reason: 'denied' } }, 'loginErrorDeniedPassword'],
-    [403, { code: 'forbidden', message: 'x', details: { reason: 'suspended' } }, 'loginErrorSuspended'],
+    // 停止した組織にしか入れない人もログインできるので、suspended の理由は返らない。知らない理由と同じ扱い（#639）
+    [403, { code: 'forbidden', message: 'x', details: { reason: 'suspended' } }, 'loginErrorUnavailable'],
     [403, { code: 'forbidden', message: 'x' }, 'loginErrorUnavailable'],
     [429, { code: 'rate_limited', message: 'x' }, 'loginErrorTooMany'],
     [400, { code: 'invalid_input', message: 'x' }, 'loginErrorUnavailable'],

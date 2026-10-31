@@ -71,7 +71,7 @@
       const result = await callOperation(organizationHistory, { before }, { slug: currentSlug });
       if (!section.isCurrent(token)) return;
       if (isUnauthenticated(result)) {
-        window.location.assign(loginUrl(page.url, result));
+        window.location.assign(loginUrl(page.url));
         return;
       }
       if (!result.ok) {

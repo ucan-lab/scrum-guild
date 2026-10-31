@@ -26,8 +26,6 @@ export const logout = defineOperation({
   description: '今のセッションを消し、セッションの Cookie も消す',
   mode: 'write',
   permission: 'login',
-  // 入れる組織を失った人にも使わせる。ここで確かめると、セッションの行を消す仕事が、確かめの失敗の 401 に先を越される
-  skipsLoginAccess: true,
   // 消すのは sessions の行と Cookie だけで、API トークンの行は指せない。トークンからは断る
   cookieOnly: true,
   input: z.object({}),

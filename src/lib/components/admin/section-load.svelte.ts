@@ -102,7 +102,7 @@ export class SectionLoad<T> {
     const result = await this.#fetch();
     if (mine !== this.#sequence) return 'stale';
     if (isUnauthenticated(result)) {
-      window.location.assign(loginUrl(page.url, result));
+      window.location.assign(loginUrl(page.url));
       return 'failed';
     }
     if (!result.ok) {

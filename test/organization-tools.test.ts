@@ -16,19 +16,11 @@ import {
   createAccountLogin,
   createInvitation,
   createOrganization,
-  createSessionWithToken,
   createUser,
   createWorkspace,
 } from './factories.ts';
 import { post } from './operations/harness.ts';
-import {
-  admitElsewhere,
-  createPerson,
-  getOperator,
-  SUSPENDED_AT,
-  suspendAfterEntering,
-  testEnv,
-} from './operations/world.ts';
+import { createPerson, SUSPENDED_AT, suspendAfterEntering, testEnv } from './operations/world.ts';
 
 const organizationRow = defineOperation({
   name: 'tools-organization-row',
@@ -60,13 +52,13 @@ const writeSettings = defineOperation({
   output: z.object({ result: z.enum(['written', 'conflict', 'suspended']) }),
 });
 
-const endSessions = defineOperation({
-  name: 'tools-end-sessions',
-  description: 'ログインできる条件を失った人のセッションを消す',
-  mode: 'write',
+const toolNames = defineOperation({
+  name: 'tools-names',
+  description: '組織の道具にセッションを消す道具があるかを返す',
+  mode: 'read',
   permission: 'admin',
-  input: z.object({ user_id: z.string() }),
-  output: z.object({ ok: z.literal(true) }),
+  input: z.object({}),
+  output: z.object({ has_end_sessions: z.boolean() }),
 });
 
 const avatars = defineOperation({
@@ -127,10 +119,7 @@ const app = createApp(
     implement(writeSettings, async ({ tools, input }) => ({
       result: await tools.writeOrganizationSettings(input, new Date('2026-10-25T00:00:00.000Z')),
     })),
-    implement(endSessions, async ({ tools, input }) => {
-      await tools.endSessionsIfLoginLost(input.user_id);
-      return { ok: true as const };
-    }),
+    implement(toolNames, async ({ tools }) => ({ has_end_sessions: 'endSessionsIfLoginLost' in tools })),
     implement(avatars, async ({ tools, input }) => ({
       avatars: [...(await tools.avatarsOf(input.user_ids))].map(([user_id, avatar_url]) => ({ user_id, avatar_url })),
     })),
@@ -163,14 +152,6 @@ const app = createApp(
 async function organizationRowOf(id: string) {
   const db = commonDb(env);
   return db.first(db.statement((q) => q.selectFrom('organizations').selectAll().where('id', '=', id)));
-}
-
-async function sessionCount(accountId: string): Promise<number> {
-  const db = commonDb(env);
-  const rows = await db.rows(
-    db.statement((q) => q.selectFrom('sessions').select('token_hash').where('account_id', '=', accountId)),
-  );
-  return rows.length;
 }
 
 async function ok(res: Response): Promise<unknown> {
@@ -333,106 +314,14 @@ describe('自分のログイン', () => {
   });
 });
 
-describe('ログインできる条件を失った人のセッション', () => {
-  test('入れる組織も届いた招待も無い、自分の組織の人のセッションを消す', async () => {
+// #639: 組織を失ったことでセッションを消す道具（endSessionsIfLoginLost）は無くした
+describe('セッションを消す道具が無いこと', () => {
+  test('組織の道具は endSessionsIfLoginLost を持たない', async () => {
     const own = await createOrganization();
     const admin = await createPerson({ organization: own, admin: true });
-    // 所属が無い（離れた後の）人
-    const left = await createPerson({ organization: own });
-    await createSessionWithToken(left.accountId);
-    expect(await sessionCount(left.accountId)).toBe(2);
-
-    await ok(await post(app, endSessions, { slug: own.slug, token: admin.token, body: { user_id: left.userId } }));
-    expect(await sessionCount(left.accountId)).toBe(0);
-  });
-
-  test('別の組織の users の ID は、その人が入れる組織を持たなくても何もしない', async () => {
-    const own = await createOrganization();
-    const other = await createOrganization();
-    const admin = await createPerson({ organization: own, admin: true });
-    const stranger = await createPerson({ organization: other });
-
-    const res = await post(app, endSessions, {
-      slug: own.slug,
-      token: admin.token,
-      body: { user_id: stranger.userId },
+    expect(await ok(await post(app, toolNames, { slug: own.slug, token: admin.token }))).toMatchObject({
+      has_end_sessions: false,
     });
-    expect(res.status).toBe(200);
-    expect(await sessionCount(stranger.accountId)).toBe(1);
-  });
-
-  test('ほかの組織に入れる人と、運用者のセッションは残す', async () => {
-    const own = await createOrganization();
-    const admin = await createPerson({ organization: own, admin: true });
-    const elsewhere = await admitElsewhere(await createPerson({ organization: own }));
-    const operator = await getOperator();
-    const operatorUser = await createUser(own, {
-      account_id: operator.accountId,
-      login_provider: operator.login.provider,
-      login_subject: operator.login.subject,
-    });
-
-    for (const userId of [elsewhere.userId, operatorUser.id]) {
-      await ok(await post(app, endSessions, { slug: own.slug, token: admin.token, body: { user_id: userId } }));
-    }
-    expect(await sessionCount(elsewhere.accountId)).toBe(1);
-    expect(await sessionCount(operator.accountId)).toBe(1);
-  });
-
-  test('ほかの入口が、別の組織のアカウントに結ばれる前の指名の行だけなら、セッションを消す', async () => {
-    const own = await createOrganization();
-    const other = await createOrganization();
-    const admin = await createPerson({ organization: own, admin: true });
-    const left = await createPerson({ organization: own });
-    // 別の組織で管理者に指名されているが、まだ結ばれていない（account_id が空）行。セッションの判定では数えない
-    await createUser(other, {
-      account_id: null,
-      login_provider: left.login.provider,
-      login_subject: left.login.subject,
-      is_admin: 1,
-    });
-
-    await ok(await post(app, endSessions, { slug: own.slug, token: admin.token, body: { user_id: left.userId } }));
-    expect(await sessionCount(left.accountId)).toBe(0);
-  });
-
-  test('入れる組織が無くても、承諾待ちの招待があればセッションを残す', async () => {
-    const own = await createOrganization();
-    const admin = await createPerson({ organization: own, admin: true });
-    const left = await createPerson({ organization: own });
-    const other = await createOrganization();
-    const owner = await createUser(other, { is_admin: 1 });
-    const workspace = await createWorkspace(other, owner.id);
-    await createInvitation(other, workspace.id, owner.id, left.login);
-
-    await ok(await post(app, endSessions, { slug: own.slug, token: admin.token, body: { user_id: left.userId } }));
-    expect(await sessionCount(left.accountId)).toBe(1);
-  });
-
-  test('判定した時刻より後に作られたセッションは残す', async () => {
-    const own = await createOrganization();
-    const admin = await createPerson({ organization: own, admin: true });
-    const left = await createPerson({ organization: own });
-    // 判定の後にログインし直したセッションの代わりに、作った時刻が先の行を入れる
-    const later = await createSessionWithToken(left.accountId, { created_at: '2099-01-01T00:00:00.000Z' });
-
-    await ok(await post(app, endSessions, { slug: own.slug, token: admin.token, body: { user_id: left.userId } }));
-    expect(await sessionCount(left.accountId)).toBe(1);
-    const db = commonDb(env);
-    const rows = await db.rows(
-      db.statement((q) => q.selectFrom('sessions').select('token_hash').where('account_id', '=', left.accountId)),
-    );
-    expect(rows.map((row) => row.token_hash)).toEqual([later.row.token_hash]);
-  });
-
-  test('アカウントに結ばれていない行と、無い ID は何もしない', async () => {
-    const own = await createOrganization();
-    const admin = await createPerson({ organization: own, admin: true });
-    const waiting = await createUser(own);
-    for (const userId of [waiting.id, 'no-such-user']) {
-      await ok(await post(app, endSessions, { slug: own.slug, token: admin.token, body: { user_id: userId } }));
-    }
-    expect(await sessionCount(admin.accountId)).toBe(1);
   });
 });
 

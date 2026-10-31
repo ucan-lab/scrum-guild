@@ -17,14 +17,13 @@ function reasonOf(error: ErrorBody['error'] | null): unknown {
   return typeof details === 'object' && details !== null && 'reason' in details ? details.reason : undefined;
 }
 
-// 失敗の応答から出す文言。403 は、パスワードが合った後に入れる組織が無いときだけ details.reason（denied、suspended）が付く
+// 失敗の応答から出す文言。403 は、パスワードが合った後に、アカウントも入れる組織も招待も無いときだけ details.reason（denied）が付く
 export function passwordLoginErrorMessage(status: number, error: ErrorBody['error'] | null): DictionaryKey {
   if (status === 401) return 'loginErrorInvalidCredentials';
   if (status === 403) {
     const reason = reasonOf(error);
     // 文言は OAuth の denied と同じ事情を伝えるが、招待された手段（GitHub か Google）を確かめる案内は外す
     if (reason === 'denied') return 'loginErrorDeniedPassword';
-    if (reason === 'suspended') return 'loginErrorSuspended';
   }
   if (status === 429) return 'loginErrorTooMany';
   return 'loginErrorUnavailable';

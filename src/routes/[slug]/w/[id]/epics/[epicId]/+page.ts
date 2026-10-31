@@ -18,7 +18,7 @@ export const load: PageLoad = async ({ params, fetch, url, depends }) => {
     callOperation(epicDetail, { workspace_id: params.id, epic_id: params.epicId }, options),
     callOperation(categoryRepositoryList, { workspace_id: params.id }, options),
   ]);
-  if (isUnauthenticated(result)) redirect(307, loginUrl(url, result));
+  if (isUnauthenticated(result)) redirect(307, loginUrl(url));
   return {
     detail: result.ok ? result.data : null,
     notFound: !result.ok && (result.status === 404 || result.status === 400),

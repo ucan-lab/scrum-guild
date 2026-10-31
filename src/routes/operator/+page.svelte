@@ -76,7 +76,7 @@
       if (result.ok) {
         showToast(t('operatorResumeDone', { name: row.name }), 'check');
       } else if (isUnauthenticated(result)) {
-        window.location.assign(loginUrl(page.url, result));
+        window.location.assign(loginUrl(page.url));
         return;
       } else if (result.status === 409 && result.error?.code === 'conflict') {
         // 別の画面で先に操作されていた。再開されたのか、停止し直されたのかは言い切らず、読み直した一覧を見てもらう

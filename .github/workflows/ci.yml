@@ -88,6 +88,26 @@ jobs:
     if: needs.changes.outputs.docs_only != 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    strategy:
+      # 1つが落ちても残りを走らせ、落ちたテストを一度に見られるようにする
+      fail-fast: false
+      # vitest のファイルを2つのランナーに分ける。1つのランナーでは、ファイルごとの起動の重さと並びの上限（4 コア）で
+      # e2e の最長より長くなるため（#653）。数を変えるときは、この配列と docs/development.md の「CI」の test の行も直す
+      matrix:
+        shard: [1, 2]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+      - run: pnpm test:vitest --shard=${{ matrix.shard }}/${{ strategy.job-total }}
+
+  # test から node --test の側（scripts/ と cli/lib/）を分けて並べ、PR の待ちを e2e の最長より短くする
+  test-node:
+    needs: changes
+    if: needs.changes.outputs.docs_only != 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -95,7 +115,7 @@ jobs:
       - uses: ./.github/actions/setup
       # scripts/acceptance-video.test.ts が、判定の HTML を chromium で動かす。無いとそのテストがスキップされる
       - uses: ./.github/actions/playwright
-      - run: pnpm test
+      - run: pnpm test:node
 
   migration:
     needs: changes
@@ -240,7 +260,7 @@ jobs:
   # 取り消された実行でも always() で動かして failure を残す。!cancelled() にすると ci-ok が skipped になり、
   # 同じ head の結果がマージの欄で skipped しか出ず、成功していないことが読み取りにくくなるため
   ci-ok:
-    needs: [changes, check, test, migration, e2e, e2e-dev, e2e-repeat]
+    needs: [changes, check, test, test-node, migration, e2e, e2e-dev, e2e-repeat]
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 5

@@ -1,10 +1,11 @@
-// ログインできる条件を失った人のセッション（docs/data-model.md の「書き込みの単位」の失敗の扱い）と、
+// 入れる組織を失った人のセッション（#639 から、組織を失ってもセッションと Cookie は消さない）と、
 // 操作の回数の上限（定義の rateLimit）、ログインの手段の型（招待する人の指し方）
 import { env } from 'cloudflare:workers';
 import { describe, expect, test, vi } from 'vitest';
 import { z } from 'zod';
 import { defineOperation } from '../src/shared/operations/define.ts';
 import { logout, me } from '../src/shared/operations/session/index.ts';
+import { myOrganizations } from '../src/shared/operations/organization/index.ts';
 import { createApp } from '../src/server/app.ts';
 import { createGithubLoginMethod } from '../src/server/auth/github.ts';
 import { LoginMethodError } from '../src/server/auth/login-method.ts';
@@ -12,7 +13,7 @@ import { consumeRateLimit } from '../src/server/auth/rate-limit.ts';
 import { createSession, deleteSessionsOf, hashSessionToken } from '../src/server/auth/session.ts';
 import { commonDb, orgDb } from '../src/server/db/index.ts';
 import { verifiedOrganizationForTest } from '../src/server/db/testing.ts';
-import { implement, type ImplementedOperation } from '../src/server/operations/implement.ts';
+import { implement } from '../src/server/operations/implement.ts';
 import { implementedOperations } from '../src/server/operations/index.ts';
 import { createFakeGithub, FAKE_CLIENT_ID, FAKE_CLIENT_SECRET, quietGithubOptions } from './auth/fake-github.ts';
 import { createInvitation, createOrganization, createUser, createWorkspace } from './factories.ts';
@@ -41,6 +42,13 @@ async function sessionCount(accountId: string): Promise<number> {
   ).length;
 }
 
+// セッションの Cookie を消す Set-Cookie（Max-Age=0）の行
+function clearedCookies(res: Response): string[] {
+  return res.headers
+    .getSetCookie()
+    .filter((line) => line.startsWith(`${SESSION_COOKIE}=`) && line.includes('Max-Age=0'));
+}
+
 async function endMemberships(organizationId: string, userId: string): Promise<void> {
   const db = orgDb(env, verifiedOrganizationForTest(organizationId));
   await db.batch([
@@ -62,36 +70,38 @@ describe('ログインできる条件を失った人', () => {
     return { organization, workspace, member };
   }
 
-  test('入れる組織が1つも無くなった人は、次のリクエストでセッションをすべて消され、Cookie も消えて 401', async () => {
+  // #639: 組織を失ってもログインできる条件（アカウントがある）は失われないので、セッションも Cookie も消さない
+  test('入れる組織が1つも無くなった人も、組織の外の操作は 200 で、セッションは消えず、Cookie を消す Set-Cookie も出ない', async () => {
     const { organization, member } = await memberOf();
     const second = await withNewSession(member);
     expect((await post(app, me, { token: member.token })).status).toBe(200);
 
     await endMemberships(organization.id, member.userId!);
     const res = await post(app, me, { token: member.token });
-    expect(res.status).toBe(401);
-    expect(await errorCodeOf(res)).toBe('unauthenticated');
-    expect(res.headers.getSetCookie().find((line) => line.startsWith(`${SESSION_COOKIE}=`))).toContain('Max-Age=0');
-    expect(await sessionCount(member.accountId)).toBe(0);
-    expect((await post(app, me, { token: second.token })).status).toBe(401);
+    expect(res.status).toBe(200);
+    expect(clearedCookies(res)).toEqual([]);
+    expect(await sessionCount(member.accountId)).toBe(2);
+    expect((await post(app, me, { token: second.token })).status).toBe(200);
+    const listed = await post(app, myOrganizations, { token: member.token });
+    expect(listed.status).toBe(200);
+    expect(await listed.json()).toMatchObject({ organizations: [], invitations: [], operator: false });
   });
 
-  test('組織の中の操作でも、どの組織にも入れなくなっていれば 401 で消し、ほかの組織に入れるなら 404 のまま残す', async () => {
+  test('組織の中の操作は、どの組織にも入れなくなっていても 404 のままで、セッションも Cookie も残す', async () => {
     const { organization, member } = await memberOf();
-    const stayer = await admitElsewhere(await createPerson());
     const target = await createTarget();
     await endMemberships(organization.id, member.userId!);
 
-    const lost = await post(provisionalApp, organizationProfile, { slug: target.slug, token: member.token });
-    expect(lost.status).toBe(401);
-    expect(await sessionCount(member.accountId)).toBe(0);
-
-    const other = await post(provisionalApp, organizationProfile, { slug: target.slug, token: stayer.token });
-    expect(other.status).toBe(404);
-    expect(await sessionCount(stayer.accountId)).toBe(1);
+    for (const slug of [target.slug, organization.slug]) {
+      const lost = await post(provisionalApp, organizationProfile, { slug, token: member.token });
+      expect(lost.status, slug).toBe(404);
+      expect(await errorCodeOf(lost)).toBe('not_found');
+      expect(clearedCookies(lost), slug).toEqual([]);
+    }
+    expect(await sessionCount(member.accountId)).toBe(1);
   });
 
-  test('停止した組織だけの人、無効にされた人も同じ。承諾待ちの招待がある人と、運用者は残る', async () => {
+  test('停止した組織だけの人、無効にされた人、承諾待ちの招待がある人、運用者の、どのセッションも残る', async () => {
     const suspendedOrg = await createOrganization();
     const suspendedAdmin = await createPerson({ organization: suspendedOrg, admin: true });
     const disabledOrg = await createOrganization();
@@ -110,16 +120,15 @@ describe('ログインできる条件を失った人', () => {
     const invitee = target.invitee;
     const operator = await withNewSession(await getOperator());
 
-    for (const person of [suspendedAdmin, disabledAdmin]) {
-      expect((await post(app, me, { token: person.token })).status, 'lost').toBe(401);
-      expect(await sessionCount(person.accountId)).toBe(0);
-    }
-    for (const person of [invitee, operator, target.admin]) {
-      expect((await post(app, me, { token: person.token })).status, 'kept').toBe(200);
+    for (const person of [suspendedAdmin, disabledAdmin, invitee, operator, target.admin]) {
+      const res = await post(app, me, { token: person.token });
+      expect(res.status, person.accountId).toBe(200);
+      expect(clearedCookies(res)).toEqual([]);
+      expect(await sessionCount(person.accountId)).toBeGreaterThanOrEqual(1);
     }
   });
 
-  test('停止した組織にしか入れない人の 401 は details.reason が suspended で、無効にされた人の 401 は理由を持たない', async () => {
+  test('停止した組織にしか入れない人も、無効にされた人も、組織の外の操作は 200 で、401 の理由（details.reason）は出ない', async () => {
     const suspendedOrg = await createOrganization({ suspended_at: '2026-10-22T00:00:00.000Z' });
     const suspendedAdmin = await createPerson({ organization: suspendedOrg, admin: true });
     const disabledAdmin = await createPerson({
@@ -128,36 +137,43 @@ describe('ログインできる条件を失った人', () => {
       disabled: true,
     });
 
-    const suspendedRes = await post(app, me, { token: suspendedAdmin.token });
-    expect(suspendedRes.status).toBe(401);
-    expect(await suspendedRes.json()).toMatchObject({
-      error: { code: 'unauthenticated', details: { reason: 'suspended' } },
-    });
-
-    const disabledRes = await post(app, me, { token: disabledAdmin.token });
-    expect(disabledRes.status).toBe(401);
-    expect(((await disabledRes.json()) as { error: { details?: unknown } }).error.details).toBeUndefined();
+    for (const person of [suspendedAdmin, disabledAdmin]) {
+      const res = await post(app, myOrganizations, { token: person.token });
+      expect(res.status).toBe(200);
+      expect(JSON.stringify(await res.json())).not.toContain('"reason"');
+    }
   });
 
-  test('停止した組織の中の操作でも、ほかに入れる組織が無い人は 401（理由 suspended）でセッションを消し、ある人は 403 でセッションを残す', async () => {
+  test('停止した組織の中の操作は、ほかに入れる組織が無い人にも 403 organization_suspended で、セッションも Cookie も残す', async () => {
     const suspendedOrg = await createOrganization({ suspended_at: '2026-10-22T00:00:00.000Z' });
     const only = await createPerson({ organization: suspendedOrg, admin: true });
     const second = await withNewSession(only);
     const stayer = await admitElsewhere(await createPerson({ organization: suspendedOrg, admin: true }));
     const call = (token: string) => post(provisionalApp, organizationProfile, { slug: suspendedOrg.slug, token });
 
-    // 403 を返し続けるとセッションが延び続ける。組織の中の操作だけを呼ぶ人も、ここで消える
-    const lost = await call(only.token);
-    expect(lost.status).toBe(401);
-    expect(await lost.json()).toMatchObject({ error: { code: 'unauthenticated', details: { reason: 'suspended' } } });
-    expect(lost.headers.getSetCookie().find((line) => line.startsWith(`${SESSION_COOKIE}=`))).toContain('Max-Age=0');
-    expect(await sessionCount(only.accountId)).toBe(0);
-    expect((await call(second.token)).status).toBe(401);
-
-    const kept = await call(stayer.token);
-    expect(kept.status).toBe(403);
-    expect(await errorCodeOf(kept)).toBe('organization_suspended');
+    for (const person of [only, second, stayer]) {
+      const res = await call(person.token);
+      expect(res.status).toBe(403);
+      expect(await errorCodeOf(res)).toBe('organization_suspended');
+      expect(clearedCookies(res)).toEqual([]);
+    }
+    expect(await sessionCount(only.accountId)).toBe(2);
     expect(await sessionCount(stayer.accountId)).toBe(1);
+    expect((await post(app, me, { token: only.token })).status).toBe(200);
+  });
+
+  test('停止した組織の、入れない人（無効にされた人、所属も招待も無い人）は 404 で、セッションは残る', async () => {
+    const suspendedOrg = await createOrganization({ suspended_at: '2026-10-22T00:00:00.000Z' });
+    const disabled = await createPerson({ organization: suspendedOrg, admin: true, disabled: true });
+    const idle = await createPerson({ organization: suspendedOrg });
+    const stranger = await createPerson();
+    for (const person of [disabled, idle, stranger]) {
+      const res = await post(provisionalApp, organizationProfile, { slug: suspendedOrg.slug, token: person.token });
+      expect(res.status).toBe(404);
+      expect(await errorCodeOf(res)).toBe('not_found');
+      expect(clearedCookies(res)).toEqual([]);
+      expect(await sessionCount(person.accountId)).toBe(1);
+    }
   });
 
   test('停止した組織への 403 の操作のログに、組織の ID が付く', async () => {
@@ -170,15 +186,17 @@ describe('ログインできる条件を失った人', () => {
     log.mockRestore();
   });
 
-  test('運用者の一覧から外れ、入れる組織も無い人は 401 になる', async () => {
+  test('運用者の一覧から外れ、入れる組織も無い人も、200 でセッションは残る（運用者ではなくなる）', async () => {
     const operator = await withNewSession(await getOperator());
     const removed: Env = Object.assign({}, testEnv, { OPERATOR_LOGIN_IDS: 'github:9000000000000002' });
-    const res = await post(app, me, { token: operator.token, env: removed });
-    expect(res.status).toBe(401);
-    expect(await sessionCount(operator.accountId)).toBe(0);
+    const before = await sessionCount(operator.accountId);
+    const res = await post(app, myOrganizations, { token: operator.token, env: removed });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ operator: false });
+    expect(await sessionCount(operator.accountId)).toBe(before);
   });
 
-  test('アカウントに結ばれる前の指名の行だけを持つ人は、セッションの判定では数えず、401 でセッションが消える', async () => {
+  test('アカウントに結ばれる前の指名の行だけを持つ人は、組織の一覧に数えず、セッションは残る', async () => {
     const organization = await createOrganization();
     const person = await createPerson();
     const second = await withNewSession(person);
@@ -188,25 +206,26 @@ describe('ログインできる条件を失った人', () => {
       login_subject: person.login.subject,
       is_admin: 1,
     });
-    // 組織の枠は account_id で引くので入れない。セッションの判定も同じ読み取りで、数えない。
-    // 数えると、どこにも入れないまま、セッションが30日以上続く。もう一度ログインすれば結ばれる（test/login.test.ts）
+    // 組織の枠は account_id で引くので入れない（一覧にも出ない）。もう一度ログインすれば結ばれる（test/login.test.ts）
     expect(await sessionCount(person.accountId)).toBe(2);
-    const res = await post(app, me, { token: person.token });
-    expect(res.status).toBe(401);
-    expect(await errorCodeOf(res)).toBe('unauthenticated');
-    expect(await sessionCount(person.accountId)).toBe(0);
-    expect((await post(app, me, { token: second.token })).status).toBe(401);
+    const res = await post(app, myOrganizations, { token: person.token });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ organizations: [], invitations: [] });
+    expect(await sessionCount(person.accountId)).toBe(2);
+    expect((await post(app, me, { token: second.token })).status).toBe(200);
+    const inside = await post(provisionalApp, organizationProfile, { slug: organization.slug, token: person.token });
+    expect(inside.status).toBe(404);
   });
 
-  test('運用者の権限の操作を、入れる組織を失った非運用者が呼ぶと、403 でなく 401 でセッションが消える', async () => {
+  test('運用者の権限の操作を、入れる組織を失った非運用者が呼ぶと、入れる組織のある非運用者と同じ 403 で、セッションは残る', async () => {
     vi.spyOn(console, 'log').mockImplementation(() => {});
     const lost = await createPerson();
     const res = await post(provisionalApp, operatorPing, { token: lost.token });
-    expect(res.status).toBe(401);
-    expect(await errorCodeOf(res)).toBe('unauthenticated');
-    expect(await sessionCount(lost.accountId)).toBe(0);
+    expect(res.status).toBe(403);
+    expect(await errorCodeOf(res)).toBe('forbidden');
+    expect(await sessionCount(lost.accountId)).toBe(1);
 
-    // 入れる組織のある非運用者は、これまでどおり 403。運用者は通る
+    // 入れる組織のある非運用者も、これまでどおり 403。運用者は通る
     const member = await createLoginPerson();
     const forbidden = await post(provisionalApp, operatorPing, { token: member.token });
     expect(forbidden.status).toBe(403);
@@ -221,14 +240,14 @@ describe('ログインできる条件を失った人', () => {
     const sessionCookies = (res: Response) =>
       res.headers.getSetCookie().filter((line) => line.startsWith(`${SESSION_COOKIE}=`));
 
-    test('期限を延ばす古いセッションで、入れる組織を失った人が呼ぶと、消す1本だけになる', async () => {
+    test('期限を延ばす古いセッションで、入れる組織を失った人が呼ぶと、期限を延ばす1本だけになる（消さない）', async () => {
       const lost = await createPerson({ sessionOverrides: staleSession });
       const res = await post(app, me, { token: lost.token });
-      expect(res.status).toBe(401);
+      expect(res.status).toBe(200);
       const cookies = sessionCookies(res);
       expect(cookies).toHaveLength(1);
-      expect(cookies[0]).toContain('Max-Age=0');
-      expect(cookies[0]).not.toContain(lost.token);
+      expect(cookies[0]).toContain(`${SESSION_COOKIE}=${lost.token}`);
+      expect(cookies[0]).toContain('Max-Age=2592000');
     });
 
     test('期限を延ばす古いセッションのログアウトも、消す1本だけになる', async () => {
@@ -240,14 +259,24 @@ describe('ログインできる条件を失った人', () => {
       expect(cookies[0]).toContain('Max-Age=0');
     });
 
-    test('組織に入れなかった組織の中の操作でも、消す1本だけになる', async () => {
+    test('どの組織にも入れない人が組織の中の操作を呼んだ 404 でも、期限を延ばす1本だけになる（消さない）', async () => {
       const target = await createTarget();
       const lost = await createPerson({ sessionOverrides: staleSession });
       const res = await post(provisionalApp, organizationProfile, { slug: target.slug, token: lost.token });
-      expect(res.status).toBe(401);
+      expect(res.status).toBe(404);
       const cookies = sessionCookies(res);
       expect(cookies).toHaveLength(1);
-      expect(cookies[0]).toContain('Max-Age=0');
+      expect(cookies[0]).toContain('Max-Age=2592000');
+    });
+
+    test('停止した組織にしか入れない人の 403 でも、期限を延ばす1本だけになる（消さない）', async () => {
+      const suspendedOrg = await createOrganization({ suspended_at: '2026-10-22T00:00:00.000Z' });
+      const only = await createPerson({ organization: suspendedOrg, admin: true, sessionOverrides: staleSession });
+      const res = await post(provisionalApp, organizationProfile, { slug: suspendedOrg.slug, token: only.token });
+      expect(res.status).toBe(403);
+      const cookies = sessionCookies(res);
+      expect(cookies).toHaveLength(1);
+      expect(cookies[0]).toContain('Max-Age=2592000');
     });
 
     test('消さない応答では、期限を延ばす1本だけが付く（失敗の応答にも付く）', async () => {
@@ -268,89 +297,43 @@ describe('ログインできる条件を失った人', () => {
     });
   });
 
-  test('招待の取り消しだけで入れていた人は、承諾待ちが無くなれば 401', async () => {
+  test('招待の取り消しだけで入れていた人も、承諾待ちが無くなった後に 200 で、セッションは残る', async () => {
     const organization = await createOrganization();
     const admin = await createPerson({ organization, admin: true });
     const workspace = await createWorkspace(organization, admin.userId!);
     const person = await createPerson();
     await createInvitation(organization, workspace.id, admin.userId!, person.login, { status: 'revoked' });
-    expect((await post(app, me, { token: person.token })).status).toBe(401);
+    expect((await post(app, me, { token: person.token })).status).toBe(200);
+    expect(await sessionCount(person.accountId)).toBe(1);
   });
 
-  test('組織の外の操作は既定で判定する。skipsLoginAccess を付けた操作（logout）だけ判定しない', async () => {
+  test('組織の外の操作（me、whoAmI）は、入れる組織を失った人にも判定せずに通り、logout は今のセッションだけを消す', async () => {
     vi.spyOn(console, 'log').mockImplementation(() => {});
     // 入れる組織を失った人（組織に属さず、招待も無く、運用者でもない）
     const lost = async () => {
       const person = await createPerson();
       return { person, second: await withNewSession(person) };
     };
-    const skipping = defineOperation({
-      name: 'skipping-ping',
-      description: '判定しない組織の外の操作',
-      mode: 'read',
-      permission: 'login',
-      skipsLoginAccess: true,
-      input: z.object({}),
-      output: z.object({ ok: z.literal(true) }),
-    });
-    const skippingApp = createApp([implement(skipping, async () => ({ ok: true as const }))]);
 
-    // 何も付けない操作（me、whoAmI）は、全部のセッションを消して 401
     for (const [operationApp, definition] of [
       [app, me],
       [provisionalApp, whoAmI],
     ] as const) {
       const checked = await lost();
       const res = await post(operationApp, definition, { token: checked.person.token });
-      expect(res.status, definition.name).toBe(401);
-      expect(await sessionCount(checked.person.accountId), definition.name).toBe(0);
+      expect(res.status, definition.name).toBe(200);
+      expect(await sessionCount(checked.person.accountId), definition.name).toBe(2);
     }
 
-    // skipsLoginAccess を付けた操作は、判定せずに通り、セッションも消えない
-    const skipped = await lost();
-    expect((await post(skippingApp, skipping, { token: skipped.person.token })).status).toBe(200);
-    expect(await sessionCount(skipped.person.accountId)).toBe(2);
-
-    // logout は、今のセッションだけを消す（判定で全部を消すのではない）
     const leaving = await lost();
     const res = await post(app, logout, { token: leaving.person.token });
     expect(res.status).toBe(200);
     expect(await sessionCount(leaving.person.accountId)).toBe(1);
-
-    // 運用者と、入れる組織のある人は、判定を通る
-    const operator = await withNewSession(await getOperator());
-    expect((await post(app, me, { token: operator.token })).status).toBe(200);
-    expect((await post(provisionalApp, whoAmI, { token: (await createLoginPerson()).token })).status).toBe(200);
+    expect((await post(app, me, { token: leaving.second.token })).status).toBe(200);
   });
 
-  test('skipsLoginAccess は組織の外の操作に true だけ付けられる。登録の時に投げる', () => {
-    const base = {
-      name: 'skips-check',
-      description: '登録の時の検査',
-      mode: 'read',
-      input: z.object({}),
-      output: z.object({}),
-    } as const;
-    const forged = (overrides: Record<string, unknown>) => () =>
-      defineOperation({ ...base, permission: 'login', ...overrides } as unknown as Parameters<
-        typeof defineOperation
-      >[0]);
-    expect(forged({ skipsLoginAccess: true })).not.toThrow();
-    expect(forged({ skipsLoginAccess: false })).toThrow(/skipsLoginAccess/);
-    expect(forged({ skipsLoginAccess: 'yes' })).toThrow(/skipsLoginAccess/);
-    for (const permission of ['organization', 'invitee', 'admin']) {
-      expect(forged({ permission, skipsLoginAccess: true }), permission).toThrow(/skipsLoginAccess/);
-    }
-    expect(forged({ permission: 'member', workspace: true, skipsLoginAccess: true })).toThrow(/skipsLoginAccess/);
-    // 一覧に登録する関数も落ちる（型を消した定義）
-    expect(() =>
-      createApp([
-        {
-          definition: { ...base, permission: 'organization', skipsLoginAccess: true },
-          handler: async () => ({}),
-        } as unknown as ImplementedOperation,
-      ]),
-    ).toThrow(/skipsLoginAccess/);
+  test('logout の定義は skipsLoginAccess を持たない（#639 で項目ごと消す）', () => {
+    expect(Object.hasOwn(logout, 'skipsLoginAccess')).toBe(false);
   });
 
   test('createSession の作成の時刻は挿入の直前で、期限だけが渡した時刻から30日', async () => {

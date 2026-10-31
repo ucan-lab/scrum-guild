@@ -412,26 +412,26 @@ describe('Cookie と同じ結果', () => {
 });
 
 describe('組織に入れなくなった人のトークン', () => {
-  test('組織の外の操作で 401 になり、トークンは取り消され、以後も使えない', async () => {
+  // #639: 入れる組織を失っても、トークンは取り消さない
+  test('組織の外の操作は 200 で、トークンは取り消されず、入れるようになってもそのまま使える', async () => {
     const organization = await createOrganization();
     const person = await createPerson({ organization, admin: true, disabled: true });
     const { raw, hash } = await tokenOf(person);
     const res = await post(app, whoAmI, { bearer: raw });
-    expect(res.status).toBe(401);
-    expect(await errorCodeOf(res)).toBe('unauthenticated');
-    expect((await tokenRow(hash))!.revoked_at).not.toBeNull();
-    // 入れるようになっても、取り消したトークンは戻らない
+    expect(res.status).toBe(200);
+    expect((await tokenRow(hash))!.revoked_at).toBeNull();
     await admitElsewhere(person);
-    expect((await post(app, whoAmI, { bearer: raw })).status).toBe(401);
+    expect((await post(app, whoAmI, { bearer: raw })).status).toBe(200);
   });
 
-  test('組織の中の操作で入れなかったときも 401 で取り消される', async () => {
+  test('組織の中の操作で入れなかったときは 404 で、取り消されない', async () => {
     const organization = await createOrganization();
     const person = await createPerson({ organization, admin: true, disabled: true });
     const { raw, hash } = await tokenOf(person);
     const res = await post(app, organizationProfile, { slug: organization.slug, bearer: raw });
-    expect(res.status).toBe(401);
-    expect((await tokenRow(hash))!.revoked_at).not.toBeNull();
+    expect(res.status).toBe(404);
+    expect(await errorCodeOf(res)).toBe('not_found');
+    expect((await tokenRow(hash))!.revoked_at).toBeNull();
   });
 
   test('ほかの組織に入れる人は、404 で取り消されない', async () => {
@@ -449,13 +449,14 @@ describe('組織に入れなくなった人のトークン', () => {
     expect((await post(app, whoAmI, { bearer: raw })).status).toBe(200);
   });
 
-  test('判定の後に作ったトークンは取り消さない', async () => {
+  // #639: 前は判定の時刻までに作ったトークンだけを取り消していた。今はどの時刻に作ったトークンも取り消さない
+  test('作った時刻に関わらず、どのトークンも取り消さない', async () => {
     const organization = await createOrganization();
     const person = await createPerson({ organization, admin: true, disabled: true });
     const later = await tokenOf(person, 'write', { createdAt: new Date(Date.now() + 60 * 1000).toISOString() });
     const earlier = await tokenOf(person);
-    expect((await post(app, whoAmI, { bearer: earlier.raw })).status).toBe(401);
-    expect((await tokenRow(earlier.hash))!.revoked_at).not.toBeNull();
+    expect((await post(app, whoAmI, { bearer: earlier.raw })).status).toBe(200);
+    expect((await tokenRow(earlier.hash))!.revoked_at).toBeNull();
     expect((await tokenRow(later.hash))!.revoked_at).toBeNull();
   });
 });

@@ -6,7 +6,7 @@ import { env } from 'cloudflare:workers';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { logout, me } from '../src/shared/operations/session/index.ts';
 import { hashSessionToken } from '../src/server/auth/session.ts';
-import { organizationInfo } from '../src/shared/operations/organization/index.ts';
+import { myOrganizations, organizationInfo } from '../src/shared/operations/organization/index.ts';
 import { commonDb, orgDb } from '../src/server/db/index.ts';
 import { verifiedOrganizationForTest } from '../src/server/db/testing.ts';
 import { createFakeGithub } from './auth/fake-github.ts';
@@ -26,6 +26,49 @@ import { createInvitation, createMembership, createUser } from './factories.ts';
 const github = createFakeGithub();
 const app = createLoginApp(github);
 const newBrowser = () => new FakeBrowser(app, github);
+
+async function suspendOrganization(organizationId: string): Promise<void> {
+  const db = commonDb(env);
+  await db.batch([
+    db.statement((q) =>
+      q.updateTable('organizations').set({ suspended_at: '2026-10-22T00:00:00.000Z' }).where('id', '=', organizationId),
+    ),
+  ]);
+}
+
+async function resumeOrganization(organizationId: string): Promise<void> {
+  const db = commonDb(env);
+  await db.batch([
+    db.statement((q) => q.updateTable('organizations').set({ suspended_at: null }).where('id', '=', organizationId)),
+  ]);
+}
+
+// 所属を終える（すべてのワークスペースから外れた人にする）
+async function endMembership(organizationId: string, userId: string): Promise<void> {
+  const db = orgDb(env, verifiedOrganizationForTest(organizationId));
+  await db.batch([
+    db.statement((q) =>
+      q
+        .updateTable('memberships')
+        .set({ left_on: '2026-10-21', left_at: '2026-10-21T00:00:00.000Z' })
+        .where('user_id', '=', userId),
+    ),
+  ]);
+}
+
+type ListedOrganizations = {
+  organizations: { slug: string; name: string }[];
+  invitations: { organization_name: string; slug: string }[];
+  // #639 で足す。停止していなければ入れた組織のうち、停止したもの
+  suspended?: { slug: string; name: string }[];
+  operator: boolean;
+};
+
+async function myOrganizationsOf(browser: FakeBrowser): Promise<ListedOrganizations> {
+  const res = await browser.post(myOrganizations);
+  expect(res.status).toBe(200);
+  return (await res.json()) as ListedOrganizations;
+}
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -264,7 +307,7 @@ describe('入れない人', () => {
     expect((await browser.post(me)).status).toBe(401);
   });
 
-  test('無効にされた人、終わった所属だけの人、取り消された招待だけの人も入れない。停止した組織だけの人は理由が suspended', async () => {
+  test('アカウントが無く、無効にされた行、終わった所属、取り消された招待だけの人も入れない（denied）', async () => {
     const { organization, admin, workspace } = await organizationWithAdmin();
     const disabled = githubUser('disabled');
     await createUser(organization, {
@@ -287,40 +330,20 @@ describe('入れない人', () => {
       { provider: 'github', subject: String(revoked.id) },
       { status: 'revoked' },
     );
-    const suspendedOrg = await organizationWithAdmin();
-    const suspended = githubUser('suspended');
-    await createUser(suspendedOrg.organization, {
-      login_provider: 'github',
-      login_subject: String(suspended.id),
-      is_admin: 1,
-    });
-    const db = commonDb(env);
-    await db.batch([
-      db.statement((q) =>
-        q
-          .updateTable('organizations')
-          .set({ suspended_at: '2026-10-22T00:00:00.000Z' })
-          .where('id', '=', suspendedOrg.organization.id),
-      ),
-    ]);
 
-    // 入れる組織が、停止した組織にだけある人には、入れる組織が無い（denied）のでなく、所属する組織が停止している（suspended）と伝える
-    for (const [user, error] of [
-      [disabled, 'denied'],
-      [left, 'denied'],
-      [revoked, 'denied'],
-      [suspended, 'suspended'],
-    ] as const) {
-      const result = await newBrowser().login(user);
-      expect(result.location, user.login).toBe(`/login?error=${error}`);
+    for (const user of [disabled, left, revoked]) {
+      const before = await countAccounts();
+      const browser = newBrowser();
+      const result = await browser.login(user);
+      expect(result.location, user.login).toBe('/login?error=denied');
+      expect(browser.sessionToken, user.login).toBeUndefined();
       expect(await accountLoginOf(user), user.login).toBeUndefined();
+      expect(await countAccounts(), user.login).toBe(before);
     }
   });
 
-  test('停止した組織の承諾待ちの招待だけの人も、理由が suspended。停止した組織で無効にされた人は denied', async () => {
-    const { organization, admin, workspace } = await organizationWithAdmin();
-    const invited = githubUser('invited-to-suspended');
-    await createInvitation(organization, workspace.id, admin.id, { provider: 'github', subject: String(invited.id) });
+  test('アカウントが無く、停止した組織で無効にされた行だけの人は denied（停止していなければ入れた人ではない）', async () => {
+    const { organization } = await organizationWithAdmin();
     const disabled = githubUser('disabled-in-suspended');
     await createUser(organization, {
       login_provider: 'github',
@@ -328,19 +351,22 @@ describe('入れない人', () => {
       is_admin: 1,
       disabled_at: '2026-10-21T00:00:00.000Z',
     });
-    const db = commonDb(env);
-    await db.batch([
-      db.statement((q) =>
-        q
-          .updateTable('organizations')
-          .set({ suspended_at: '2026-10-22T00:00:00.000Z' })
-          .where('id', '=', organization.id),
-      ),
-    ]);
+    await suspendOrganization(organization.id);
 
-    expect((await newBrowser().login(invited)).location).toBe('/login?error=suspended');
-    // 停止した組織の中で無効にされた人は、停止していなければ入れた人ではない
-    expect((await newBrowser().login(disabled)).location).toBe('/login?error=denied');
+    const browser = newBrowser();
+    expect((await browser.login(disabled)).location).toBe('/login?error=denied');
+    expect(browser.sessionToken).toBeUndefined();
+    expect(await accountLoginOf(disabled)).toBeUndefined();
+  });
+
+  test('アカウントが無く、別の人宛の招待しか無い組織が停止していても denied', async () => {
+    const { organization, admin, workspace } = await organizationWithAdmin();
+    const invited = githubUser('invited-someone');
+    await createInvitation(organization, workspace.id, admin.id, { provider: 'github', subject: String(invited.id) });
+    await suspendOrganization(organization.id);
+    const stranger = githubUser('stranger-of-suspended');
+    expect((await newBrowser().login(stranger)).location).toBe('/login?error=denied');
+    expect(await accountLoginOf(stranger)).toBeUndefined();
   });
 
   test('ある組織で無効にされていても、別の組織に入れる人はログインできる', async () => {
@@ -358,8 +384,127 @@ describe('入れない人', () => {
   });
 });
 
+// #639: ログインは、運用者、アカウントがある人、停止していなければ入れた組織か招待がある人（停止した組織の分も数える）を通す
+describe('入れる組織が無くてもアカウントがある人と、停止した組織にだけ入れる人', () => {
+  test('すべてのワークスペースから外れた人は、ログインし直しても入れ、/ へ戻り、組織の一覧は空', async () => {
+    const { organization, workspace } = await organizationWithAdmin();
+    const user = githubUser('left-all');
+    const row = await createUser(organization, { login_provider: 'github', login_subject: String(user.id) });
+    await createMembership(organization, workspace.id, row.id);
+    const first = newBrowser();
+    expect((await first.login(user)).location).toBe('/');
+    const accountId = (await accountLoginOf(user))!.account_id;
+
+    await endMembership(organization.id, row.id);
+    const before = await countAccounts();
+    const again = newBrowser();
+    const result = await again.login(user, { returnTo: '/' });
+    expect(result.location).toBe('/');
+    expect(again.sessionToken).toBeDefined();
+    expect((await accountLoginOf(user))!.account_id).toBe(accountId);
+    expect(await countAccounts()).toBe(before);
+    expect((await again.post(me)).status).toBe(200);
+    expect(await myOrganizationsOf(again)).toMatchObject({ organizations: [], invitations: [], operator: false });
+    // その組織の画面は、今どおり見つからないときと同じ 404
+    const inside = await post(app, organizationInfo, { slug: organization.slug, token: again.sessionToken! });
+    expect(inside.status).toBe(404);
+  });
+
+  test('すべての組織で無効にされた人も、アカウントがあればログインできる', async () => {
+    const { organization } = await organizationWithAdmin();
+    const user = githubUser('disabled-everywhere');
+    const row = await createUser(organization, {
+      login_provider: 'github',
+      login_subject: String(user.id),
+      is_admin: 1,
+    });
+    await newBrowser().login(user);
+    const db = orgDb(env, verifiedOrganizationForTest(organization.id));
+    await db.batch([
+      db.statement((q) =>
+        q.updateTable('users').set({ disabled_at: '2026-10-21T00:00:00.000Z' }).where('id', '=', row.id),
+      ),
+    ]);
+    const browser = newBrowser();
+    expect((await browser.login(user)).location).toBe('/');
+    expect((await browser.post(me)).status).toBe(200);
+    // 無効にされた組織は、停止していても一覧に出ない
+    await suspendOrganization(organization.id);
+    const listed = await myOrganizationsOf(browser);
+    expect(listed.organizations).toEqual([]);
+    expect(listed.suspended ?? []).toEqual([]);
+  });
+
+  test('アカウントがあり、停止した組織にしか入れない人はログインでき、/ の一覧にその組織が停止として出る', async () => {
+    const { organization } = await organizationWithAdmin();
+    const user = githubUser('only-suspended-account');
+    await createUser(organization, { login_provider: 'github', login_subject: String(user.id), is_admin: 1 });
+    await newBrowser().login(user);
+    await suspendOrganization(organization.id);
+
+    const browser = newBrowser();
+    const result = await browser.login(user);
+    expect(result.location).toBe('/');
+    expect(browser.sessionToken).toBeDefined();
+    const listed = await myOrganizationsOf(browser);
+    expect(listed.organizations).toEqual([]);
+    expect(listed.suspended).toEqual([{ slug: organization.slug, name: organization.name }]);
+    // 組織の中は今どおり 403 の organization_suspended で、セッションは残る
+    const inside = await post(app, organizationInfo, { slug: organization.slug, token: browser.sessionToken! });
+    expect(inside.status).toBe(403);
+    expect((await browser.post(me)).status).toBe(200);
+  });
+
+  test('アカウントが無く、停止した組織にだけ指名されている人は、ログインでき、アカウントが作られる', async () => {
+    const { organization } = await organizationWithAdmin();
+    const user = githubUser('nominated-in-suspended');
+    await createUser(organization, {
+      account_id: null,
+      login_provider: 'github',
+      login_subject: String(user.id),
+      is_admin: 1,
+    });
+    await suspendOrganization(organization.id);
+    const before = await countAccounts();
+
+    const browser = newBrowser();
+    const result = await browser.login(user);
+    expect(result.location).toBe('/');
+    expect(browser.sessionToken).toBeDefined();
+    const login = await accountLoginOf(user);
+    expect(login).toBeDefined();
+    expect(await countAccounts()).toBe(before + 1);
+    expect(await sessionRowsOf(login!.account_id)).toHaveLength(1);
+    expect((await myOrganizationsOf(browser)).suspended).toEqual([
+      { slug: organization.slug, name: organization.name },
+    ]);
+
+    // 再開すれば、結んだ行で組織に入れる
+    await resumeOrganization(organization.id);
+    expect((await userRow(organization.id, user))?.account_id).toBe(login!.account_id);
+    const listed = await myOrganizationsOf(browser);
+    expect(listed.organizations).toEqual([{ slug: organization.slug, name: organization.name }]);
+    expect(listed.suspended).toEqual([]);
+  });
+
+  test('アカウントが無く、停止した組織の承諾待ちの招待だけの人も、ログインでき、アカウントが作られる', async () => {
+    const { organization, admin, workspace } = await organizationWithAdmin();
+    const invited = githubUser('invited-to-suspended');
+    await createInvitation(organization, workspace.id, admin.id, { provider: 'github', subject: String(invited.id) });
+    await suspendOrganization(organization.id);
+
+    const browser = newBrowser();
+    expect((await browser.login(invited)).location).toBe('/');
+    expect(browser.sessionToken).toBeDefined();
+    expect(await accountLoginOf(invited)).toBeDefined();
+    const listed = await myOrganizationsOf(browser);
+    expect(listed.invitations).toEqual([]);
+    expect(listed.suspended).toEqual([{ slug: organization.slug, name: organization.name }]);
+  });
+});
+
 describe('運用者', () => {
-  test('運用者の一覧にあるログインの ID は、入れる組織が無くてもログインでき、一覧から外れれば入れない', async () => {
+  test('運用者の一覧にあるログインの ID は、入れる組織が無くてもログインでき、一覧から外れてもアカウントがあれば入れる', async () => {
     // 開発用の運用者のログインの ID（seed/sessions.ts と同じ。実在の人に当たらない桁）
     const operator = githubUser('operator--test', { id: 9_000_000_000_000_001 });
     const browser = newBrowser();
@@ -368,11 +513,22 @@ describe('運用者', () => {
     expect((await accountLoginOf(operator))?.login_subject).toBe('9000000000000001');
     expect((await browser.post(me)).status).toBe(200);
 
-    // 一覧から外れ、入れる組織も無ければ、ログインできない
+    // 一覧から外れても、アカウントはあるのでログインできる（#639）。運用者ではなくなる
     const removed: Env = Object.assign({}, loginEnv, { OPERATOR_LOGIN_IDS: 'github:9000000000000002' });
     const other = new FakeBrowser(app, github, removed);
-    expect((await other.login(operator)).location).toBe('/login?error=denied');
-    expect(other.sessionToken).toBeUndefined();
+    expect((await other.login(operator)).location).toBe('/');
+    expect(other.sessionToken).toBeDefined();
+    const listed = await other.post(myOrganizations);
+    expect(listed.status).toBe(200);
+    expect(await listed.json()).toMatchObject({ organizations: [], invitations: [], operator: false });
+  });
+
+  test('アカウントの無い人は、運用者の一覧に無ければ、入れる組織も無いので denied', async () => {
+    const removed: Env = Object.assign({}, loginEnv, { OPERATOR_LOGIN_IDS: 'github:9000000000000002' });
+    const browser = new FakeBrowser(app, github, removed);
+    const stranger = githubUser('not-operator');
+    expect((await browser.login(stranger)).location).toBe('/login?error=denied');
+    expect(browser.sessionToken).toBeUndefined();
   });
 
   test('運用者の一覧が未設定なら、運用者はいない', async () => {
@@ -426,7 +582,7 @@ describe('ログアウト', () => {
 });
 
 describe('組織を失ったあと、結ばれる前の指名の行だけを持つ人', () => {
-  test('401 でセッションが消え、もう一度ログインすると結ばれて、指名された組織に入れる', async () => {
+  test('セッションは残り、その組織にはまだ入れず、もう一度ログインすると結ばれて入れる', async () => {
     vi.spyOn(console, 'log').mockImplementation(() => {});
     const user = githubUser('renominated');
     const first = await organizationWithAdmin();
@@ -455,14 +611,14 @@ describe('組織を失ったあと、結ばれる前の指名の行だけを持�
       is_admin: 1,
     });
 
-    // 組織の一覧も組織の枠も account_id で引くので、結ばれる前の行には入れない。セッションを残すと、どこにも入れないまま続く
+    // 組織の一覧も組織の枠も account_id で引くので、結ばれる前の行には入れない。組織を失ってもセッションは消さない（#639）
     const token = browser.sessionToken!;
-    const lost = await browser.post(me);
-    expect(lost.status).toBe(401);
-    expect(lost.headers.getSetCookie().find((line) => line.startsWith(`${SESSION_COOKIE}=`))).toContain('Max-Age=0');
-    expect(await sessionRowsOf(accountId)).toHaveLength(0);
-    expect(browser.sessionToken).toBeUndefined();
-    expect((await post(app, organizationInfo, { slug: second.organization.slug, token })).status).toBe(401);
+    const kept = await browser.post(me);
+    expect(kept.status).toBe(200);
+    expect(kept.headers.getSetCookie().find((line) => line.includes('Max-Age=0'))).toBeUndefined();
+    expect(await sessionRowsOf(accountId)).toHaveLength(1);
+    expect(browser.sessionToken).toBe(token);
+    expect((await post(app, organizationInfo, { slug: second.organization.slug, token })).status).toBe(404);
     expect((await userRow(second.organization.id, user))?.account_id).toBeNull();
 
     // もう一度ログインすると、ログインのときの判定は結ばれる前の行を数え、結んでから、セッションを作る
