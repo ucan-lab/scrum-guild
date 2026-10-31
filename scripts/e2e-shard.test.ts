@@ -18,7 +18,7 @@ import {
 } from './e2e-shard.ts';
 import { sumDurations } from './e2e-shard-weights.ts';
 
-const SHARDS = 3;
+const SHARDS = 4;
 // 見積もり（準備を含まず、重みの合計をそのまま 2 ワーカーで走らせた秒）から、CI のジョブの所要時間への換算。
 // run 41180554724 の 3 つのシャードで、テストの実時間は見積もり相当（重みの合計の半分）の 1.10〜1.19 倍、
 // ジョブ全体からテストの実時間を引いた準備（checkout、setup、Playwright、build、サーバーの起動、seed）は 29〜36 秒だった
@@ -247,7 +247,7 @@ describe('scripts/e2e-shard-weights.json の割り方（受け入れ条件の数
   });
 
   test(`実測の換算（${RUNTIME_FACTOR} 倍と準備 ${SETUP_SECONDS} 秒）で、ジョブの所要時間が最長でも ${MAX_SECONDS} 秒以下`, () => {
-    // 換算は 265 秒前後で、受け入れ条件の ${MAX_SECONDS} 秒に余裕が薄い。ここは割り方が崩れていないかを見る下限で、CI の実測が正
+    // 換算は 220 秒前後。ここは割り方が崩れていないかを見る検査で、受け入れ条件の数値は CI の実測が正
     const job = Math.max(...seconds) * RUNTIME_FACTOR + SETUP_SECONDS;
     assert.ok(job <= MAX_SECONDS, `${JSON.stringify(seconds)} → ${job}`);
   });
@@ -257,9 +257,27 @@ describe('scripts/e2e-shard-weights.json の割り方（受け入れ条件の数
     assert.ok(Math.max(...seconds) < Math.max(...greedy), `${JSON.stringify(seconds)} と ${JSON.stringify(greedy)}`);
   });
 
-  test('重みの合計は、完全に均した下限（約 205 秒）から大きく外れない', () => {
-    const total = files.reduce((sum, file) => sum + weight.get(file)!, 0);
-    assert.ok(Math.max(...seconds) <= total / SHARDS / WORKERS + 20, `${total} / ${SHARDS} / ${WORKERS}`);
+  // 最長のシャードの下限は、合計を均した値と、最も重い 1 ファイルのどちらか大きいほう（1 ファイルは 1 つのワーカーが順に走らせる）。
+  // 重い 1 ファイル（task-drawer.test.ts）が律速のとき、合計を均した値だけを下限にすると、重みを 1 秒更新しただけで落ちる
+  const lowerBound = (target: Record<string, number>) => {
+    const w = weightsOf(Object.keys(target), target);
+    const total = [...w.values()].reduce((sum, value) => sum + value, 0);
+    return Math.max(total / SHARDS / WORKERS, ...w.values());
+  };
+  const LOWER_BOUND_MARGIN = 20;
+
+  test('最長の見積もりは、下限（合計を均した値か最も重い 1 ファイル）から大きく外れない', () => {
+    assert.ok(Math.max(...seconds) <= lowerBound(weights) + LOWER_BOUND_MARGIN, JSON.stringify(seconds));
+  });
+
+  test('最も重い 1 ファイルの重みが伸びても、割り方が正しければ下限の検査は通る', () => {
+    const [heaviest, heaviestSeconds] = Object.entries(weights).reduce((a, b) => (b[1] > a[1] ? b : a));
+    const heavier = { ...weights, [heaviest]: heaviestSeconds + 30 };
+    const heavierWeight = weightsOf(Object.keys(heavier), heavier);
+    const times = assignShards(Object.keys(heavier).sort(), heavier, SHARDS).map((shard) =>
+      simulateSeconds(shard, heavierWeight),
+    );
+    assert.ok(Math.max(...times) <= lowerBound(heavier) + LOWER_BOUND_MARGIN, JSON.stringify(times));
   });
 });
 
@@ -267,9 +285,9 @@ describe('node scripts/e2e-shard.ts', () => {
   const script = new URL('./e2e-shard.ts', import.meta.url).pathname;
   const run = (...args: string[]) => spawnSync('node', [script, ...args], { encoding: 'utf8' });
 
-  test('標準出力に e2e/<名前> を空白区切りの 1 行で出し、3 つ合わせて全ファイルになる', () => {
-    const out = [1, 2, 3].map((i) => {
-      const result = run(String(i), '3');
+  test(`標準出力に e2e/<名前> を空白区切りの 1 行で出し、${SHARDS} つ合わせて全ファイルになる`, () => {
+    const out = Array.from({ length: SHARDS }, (_, index) => {
+      const result = run(String(index + 1), String(SHARDS));
       assert.equal(result.status, 0, result.stderr);
       assert.match(result.stdout, /^e2e\/[a-z0-9-]+\\\.test\\\.ts\$( e2e\/[a-z0-9-]+\\\.test\\\.ts\$)*\n$/);
       return result.stdout.trim().split(' ');
