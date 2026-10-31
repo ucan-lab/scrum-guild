@@ -15,7 +15,13 @@ export const tokenCreate = defineOperation({
   permission: 'login',
   cookieOnly: true,
   input: z.object({
-    name: z.string().trim().min(1).max(API_TOKEN_NAME_MAX_LENGTH),
+    // 対のないサロゲートは D1 が U+FFFD に変えて保存するので、応答の name と一覧の name が食い違う。入力で断る
+    name: z
+      .string()
+      .trim()
+      .min(1)
+      .max(API_TOKEN_NAME_MAX_LENGTH)
+      .refine((value) => value.isWellFormed()),
     scope,
     lifetime_days: z.number().int().min(1).max(API_TOKEN_MAX_LIFETIME_DAYS).optional(),
   }),

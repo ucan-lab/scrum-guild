@@ -174,7 +174,7 @@ test.describe('自分の設定（ミナト）', () => {
     }
     await page.goto('/hibari/me');
     await expect(page.getByRole('heading', { level: 1, name: '自分の設定' })).toBeVisible();
-    await expect(page.getByText('今は経験値だけを見られます。')).toBeVisible();
+    await expect(page.getByText('今は経験値と API トークンだけを扱えます。')).toBeVisible();
     await expect(page.getByText('レベルを読み込めませんでした')).toBeVisible();
     await expect(page.getByText('経験値の明細を読み込めませんでした')).toBeVisible();
     const retrySummary = page.getByRole('button', { name: 'もう一度試す（レベル）' });
@@ -264,11 +264,13 @@ test.describe('自分の設定（ミナト）', () => {
       const table = page.getByRole('table', { name: '経験値の明細' });
       await expect(table.locator('tbody tr')).toHaveCount(50);
       // 説明は表の上（.setting の見出しの列に入れない）
-      await expect(page.locator('.setting')).toHaveCount(0);
+      // （本文の API トークンの節は .setting を使うので、明細の表を含む .setting が無いことで確かめる）
+      await expect(page.locator('.setting').filter({ has: table })).toHaveCount(0);
       const sizes = await page.evaluate(() => {
-        const wrap = document.querySelector('.table-wrap')!;
+        const ledger = document.querySelector('table[aria-label="経験値の明細"]')!;
+        const wrap = ledger.closest('.table-wrap')!;
         const main = document.querySelector('.layout-main')!;
-        const content = document.querySelector('.table tbody td.is-name')!;
+        const content = ledger.querySelector('tbody td.is-name')!;
         return {
           overflow: wrap.scrollWidth - wrap.clientWidth,
           wrapWidth: wrap.getBoundingClientRect().width,

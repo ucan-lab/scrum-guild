@@ -1411,6 +1411,25 @@ const looooooooooooooooooooooooooooooooooongLine = "コードの長い1行は、
         `<button class="btn is-primary" type="button" data-close-dialog>やめる</button><button class="btn is-danger" type="button" data-close-dialog data-toast="${t("sprint")}を削除しました">削除する</button>`);
       document.querySelector(".dialog-sheet").classList.add("is-danger");
     },
+    // API トークンを発行した直後（本番は ApiTokensSetting の Dialog）。自分の設定の「発行する」から開く。
+    // 生の値はこのダイアログの中にだけ出し、閉じると二度と出せない。値は固定の架空の値
+    tokenIssued: () => {
+      openDialog("API トークンを発行しました",
+        `<p>「手元の CLI」の値です。</p>
+         <div class="field"><label class="field-label" for="d-token">トークンの値</label>
+           <div class="input-row"><input class="input mono" id="d-token" value="sgp_Qm7tX2vLr9aKpE4wZc8hN3bYd6fGs1uJ0oTiRl5eWxA" readonly spellcheck="false" autocomplete="off">
+             <button class="btn" type="button" data-toast="トークンの値をコピーしました">${icon("link")}コピーする</button></div></div>
+         <div class="callout is-warn">${icon("alert")}<span>この値は二度と見られません。閉じる前にコピーして、安全な場所に保管してください。</span></div>
+         <p class="field-hint">2027/01/29 09:00 まで使えます。</p>`,
+        `<button class="btn is-primary" type="button" data-close-dialog>閉じる</button>`);
+    },
+    // API トークンの取消の確認（本番は ConfirmDialog）。自分の設定の一覧の「取り消す」から開く。取り消せない旨を書く
+    tokenRevoke: () => {
+      openDialog("API トークン「手元の CLI」を取り消しますか",
+        `<p>取り消すと、このトークンはすぐ使えなくなります。元に戻せません。使っている CLI や MCP は、新しく発行したトークンに替えてください。</p>`,
+        `<button class="btn is-primary" type="button" data-close-dialog>やめる</button><button class="btn is-danger" type="button" data-close-dialog data-toast="「手元の CLI」を取り消しました">取り消す</button>`);
+      document.querySelector(".dialog-sheet").classList.add("is-danger");
+    },
     // スプリントを始めるダイアログ（本番は SprintStartDialog）。押したボタンの data-state で状態を替える。
     // active: 進行中のスプリントが既にある（開いた時点から理由を出し、「始める」を押せなくする）、
     // ended: 最終日が今日より前（押した後に理由を出して開いたまま）、toolong: ゴールが 200 字を超えた（欄の下に理由）

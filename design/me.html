@@ -18,7 +18,7 @@
 <script src="kit.js"></script>
 <script>
 "use strict";
-// 自分の設定: 稼働の基準、休み、全ワークスペースの積載量、経験値の明細、届いた招待
+// 自分の設定: 稼働の基準、休み、API トークン、全ワークスペースの積載量、経験値の明細、届いた招待
 const { D, t, icon, esc, pageHead, load, levelPanel } = SQ;
 const M = D.mine;
 const WEEK = ["日", "月", "火", "水", "木", "金", "土"];
@@ -61,6 +61,22 @@ SQ.mount("me", () => `
             <label class="choice"><input type="radio" name="my-theme" value="" data-pick-theme><div><b>組織の既定に従う</b><span>今はシンプル（自動）</span></div></label>
             ${SQ.THEMES.map((v) => `<label class="choice"><input type="radio" name="my-theme" value="${v}" data-pick-theme><div><b>${SQ.THEME_LABEL[v]}</b><span>${SQ.THEME_NOTE[v]}</span></div></label>`).join("")}
           </div>`)}
+        ${setting("API トークン", `CLI や MCP に渡す鍵。発行した人と同じ権限の範囲で、画面を通さずに API を呼べます。`, `
+          <form class="form" aria-label="API トークンの発行" onsubmit="return false">
+            <div class="form-row is-start">
+              <div class="field"><label class="field-label" for="tk-name">名前</label><input class="input" id="tk-name" autocomplete="off" aria-describedby="tk-name-hint"><span class="field-hint" id="tk-name-hint">何に使う鍵か分かる名前（100文字まで）</span></div>
+              <div class="field"><span class="field-label" id="tk-scope-label">範囲</span>
+                <div class="segmented" role="radiogroup" aria-labelledby="tk-scope-label" aria-describedby="tk-scope-hint"><label><input type="radio" name="tk-scope" checked><span>読み取り</span></label><label><input type="radio" name="tk-scope"><span>書き込み</span></label></div>
+                <span class="field-hint" id="tk-scope-hint">読み取りは見るだけ。書き込みは、あなたの権限で変えることもできます。</span></div>
+              <div class="field"><label class="field-label" for="tk-days">有効日数</label><input class="input" id="tk-days" type="number" inputmode="numeric" min="1" max="90" step="1" value="90" aria-describedby="tk-days-hint"><span class="field-hint" id="tk-days-hint">1〜90日。期限が来ると使えなくなります</span></div>
+            </div>
+            <div class="form-actions"><button class="btn is-primary" type="button" data-dialog="tokenIssued">発行する</button></div>
+          </form>
+          <div class="table-wrap"><table class="table is-stacked" aria-label="発行済みの API トークン"><thead><tr><th class="is-name">名前</th><th>範囲</th><th>期限</th><th>最後に使った日</th><th class="is-actions"><span class="visually-hidden">操作</span></th></tr></thead>
+            <tbody>
+              <tr><td class="is-name wrap-anywhere" data-label="名前">手元の CLI</td><td data-label="範囲"><span class="tag">書き込み</span></td><td class="mono" data-label="期限">2026-12-29</td><td class="mono" data-label="最後に使った日">2026-10-30</td><td class="is-actions"><button class="btn is-sm is-quiet is-danger" type="button" data-dialog="tokenRevoke" aria-label="API トークン「手元の CLI」を取り消す">取り消す</button></td></tr>
+              <tr><td class="is-name wrap-anywhere" data-label="名前">MCP（読み取りだけ）</td><td data-label="範囲"><span class="tag">読み取り</span></td><td class="mono" data-label="期限">2026-11-15</td><td class="mono" data-label="最後に使った日">未使用</td><td class="is-actions"><button class="btn is-sm is-quiet is-danger" type="button" data-dialog="tokenRevoke" aria-label="API トークン「MCP（読み取りだけ）」を取り消す">取り消す</button></td></tr>
+            </tbody></table></div>`)}
       </div>
     </div>
     <aside class="layout-side">
