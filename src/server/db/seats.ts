@@ -153,11 +153,14 @@ export async function seatHoldersOfWorkspaceInvitations(
 
 // 無効にされた人を有効に戻すと、人数に数えられる承諾待ちの招待（開いたワークスペース、期限内、同じ組織）が、そのログイン
 // （手段と ID）にあるか。無効の間は人数に数えない招待なので、inviteeNotDisabled では除かず、有効に戻した後の数え方で見る。
-// 数えるのは seatInvitationsStatement と同じ条件（承諾待ち、開いたワークスペース、期限内）。同じ人への招待が複数でも、あるかどうかだけを返す。
-// 組織の ID は入口の organizationId から取り、ほかの組織の招待は見ない
+// 数えるのは seatInvitationsStatement と同じ条件（承諾待ち、開いたワークスペース、期限内）に、無効にした日時（disabledAt）以後に作った
+// 招待という条件を足したもの。無効にする前に作った招待は、有効に戻す同じ batch で取り消されて人数に加わらないので数えない
+// （取り消す側の revokeInvitationStatements の createdBefore と境界をそろえた補集合）。
+// 同じ人への招待が複数でも、あるかどうかだけを返す。組織の ID は入口の organizationId から取り、ほかの組織の招待は見ない
 export async function hasSeatInvitationOfLogin(
   db: OrganizationDb,
   login: { provider: string; subject: string },
+  disabledAt: string,
   at: Date,
 ): Promise<boolean> {
   const rows = await db.rows(
@@ -170,7 +173,8 @@ export async function hasSeatInvitationOfLogin(
         .where('w.closed_at', 'is', null)
         .where('i.status', '=', 'pending')
         .where('i.login_provider', '=', login.provider)
-        .where('i.login_subject', '=', login.subject),
+        .where('i.login_subject', '=', login.subject)
+        .where('i.created_at', '>=', disabledAt),
     ),
   );
   const time = at.getTime();

@@ -11,7 +11,6 @@ import type { UserConflictReason } from '../../shared/operations/organization/us
 import {
   hasSeatInvitationOfLogin,
   jsonLookup,
-  personKey,
   previousStatementChanged,
   seatHoldersOf,
   uuidv7Sql,
@@ -523,25 +522,23 @@ export const userDisableOperation = implement(userDisable, async ({ db, actor, t
   return { user_id: userId, is_admin: false, disabled_at: stamp };
 });
 
-// 無効の人を有効に戻すときの人数の検査。招待が無ければ（adding が 0）人数を数えずに通す
+// 無効の人を有効に戻すときの人数の検査。有効に戻した後も残る招待（無効にした日時以後に作ったもの）が無ければ（adding が 0）、
+// 人数を数えずに通す。あれば、無効の人は今は人数に数えられておらず（所属は終わり、その人への招待も数えない）、有効に戻すと
+// 新しく数えられるので、adding は常に 1
 async function throwIfEnableExceedsLimit(
   db: OrganizationDb,
   tools: OrganizationTools,
   user: { login_provider: string; login_subject: string },
+  disabledAt: string,
 ): Promise<void> {
   const at = now();
   const login = { provider: user.login_provider, subject: user.login_subject };
-  if (!(await hasSeatInvitationOfLogin(db, login, at))) return;
+  if (!(await hasSeatInvitationOfLogin(db, login, disabledAt, at))) return;
   const [counted, organization] = await Promise.all([seatHoldersOf(db, at), tools.readOrganization()]);
-  // 無効の人は今は数えられていないが、同じ人がすでに数えられているなら足さない
-  const adding = counted.has(
-    personKey({ login_provider: user.login_provider, login_subject: user.login_subject, login_email: null }),
-  )
-    ? 0
-    : 1;
+  const adding = 1;
   const used = counted.size;
   const limit = organization.memberLimit;
-  if (adding >= 1 && used + adding > limit) {
+  if (used + adding > limit) {
     throw new ApiError(409, 'member_limit_reached', { used, limit, adding });
   }
 }
@@ -567,7 +564,7 @@ export const userEnableOperation = implement(userEnable, async ({ db, actor, too
   const disabledAt = current.disabled_at;
   if (disabledAt === null) return stateOf(current);
 
-  await throwIfEnableExceedsLimit(db, tools, current);
+  await throwIfEnableExceedsLimit(db, tools, current, disabledAt);
 
   const at = now();
   const stamp = at.toISOString();
