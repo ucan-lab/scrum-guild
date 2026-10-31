@@ -1,5 +1,6 @@
 // API トークンの発行・一覧・取消の処理（定義は src/shared/operations/session/token.ts）。
-// 生の値は token-create の応答にだけ載せる。ログにも一覧にも、値もハッシュも渡さない
+// 生の値は token-create の応答にだけ載せる。ログには値もハッシュも出さない。ハッシュ（token_hash）は、一覧と発行の応答で
+// 取消に使う id として返す（ハッシュからは認証できず、生の値は復元できない）
 import { tokenCreate, tokenList, tokenRevoke } from '../../shared/operations/session/index.ts';
 import { issueApiTokenWith, listApiTokensOf, revokeApiTokenOf } from '../auth/api-token.ts';
 import { ApiError } from '../errors.ts';
