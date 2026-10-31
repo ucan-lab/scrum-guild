@@ -156,11 +156,16 @@ const SOURCE_LABEL: Record<MarkerSource, string> = {
 };
 
 // 衝突したパスは PR の作成者が決める文字列で、-z で読むので改行も残る。scope.md は Claude が読み、まとめのコメントに写るので、
-// 制御文字とバッククォートを除いてコードスパンで囲み、件数も抑える
+// 制御文字、書式の文字（双方向制御、ゼロ幅）、行区切りとバッククォートを除いてコードスパンで囲み、件数と1件の長さも抑える
+export const MAX_PATHS = 20;
+export const MAX_PATH_LENGTH = 200;
+
 export function formatPaths(paths: readonly string[]): string {
-  const clean = (p: string) =>
-    [...p].map((c) => (c.charCodeAt(0) < 0x20 || c === '\u007f' ? ' ' : c === '`' ? "'" : c)).join('');
-  const shown = paths.slice(0, MAX_MARKERS).map((p) => '`' + clean(p) + '`');
+  const clean = (p: string) => {
+    const chars = [...p.replace(/[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/gu, ' ').replaceAll('`', "'")];
+    return chars.length > MAX_PATH_LENGTH ? chars.slice(0, MAX_PATH_LENGTH).join('') + '…' : chars.join('');
+  };
+  const shown = paths.slice(0, MAX_PATHS).map((p) => '`' + clean(p) + '`');
   const rest = paths.length - shown.length;
   return [...shown, ...(rest > 0 ? [`ほか ${rest} 件`] : [])].join('、');
 }

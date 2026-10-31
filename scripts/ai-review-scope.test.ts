@@ -10,6 +10,8 @@ import {
   extractMarkers,
   formatPaths,
   MAX_MARKERS,
+  MAX_PATH_LENGTH,
+  MAX_PATHS,
   type Marker,
   noDiffBody,
   scopedDiff,
@@ -271,10 +273,44 @@ describe('scopedDiff', () => {
 
 test('scope.md に書くパスは、制御文字とバッククォートを除いてコードスパンで囲み、件数を抑える', () => {
   assert.equal(formatPaths(['a.txt', 'x\n## 見出し`y`.txt']), "`a.txt`、`x ## 見出し'y'.txt`");
-  const many = Array.from({ length: MAX_MARKERS + 5 }, (_, i) => `f${i}.txt`);
+  const many = Array.from({ length: MAX_PATHS + 5 }, (_, i) => `f${i}.txt`);
   const text = formatPaths(many);
-  assert.equal(text.split('、').length, MAX_MARKERS + 1);
+  assert.equal(text.split('、').length, MAX_PATHS + 1);
   assert.ok(text.endsWith('ほか 5 件'));
+});
+
+test('scope.md に書くパスは、ちょうど上限なら「ほか」を付けず、空なら空', () => {
+  const exact = Array.from({ length: MAX_PATHS }, (_, i) => `f${i}.txt`);
+  assert.doesNotMatch(formatPaths(exact), /ほか/);
+  assert.equal(formatPaths([]), '');
+});
+
+// 不可視の文字はソースに生で置かず、符号位置から作る
+const ch = (code: number) => String.fromCharCode(code);
+
+for (const [name, code] of [
+  ['タブ', 0x09],
+  ['CR', 0x0d],
+  ['ESC', 0x1b],
+  ['DEL', 0x7f],
+  ['NEL', 0x85],
+  ['CSI', 0x9b],
+  ['ゼロ幅の空白', 0x200b],
+  ['RLO', 0x202e],
+  ['行区切り', 0x2028],
+  ['段落区切り', 0x2029],
+  ['BOM', 0xfeff],
+] as const) {
+  test(`scope.md に書くパスは、${name}を空白にする`, () => {
+    assert.equal(formatPaths([`a${ch(code)}b`]), '`a b`');
+  });
+}
+
+test('scope.md に書くパスは、1件の長さを抑え、サロゲートペアを割らない', () => {
+  const text = formatPaths(['x'.repeat(100000), '😀'.repeat(MAX_PATH_LENGTH + 1)]);
+  const [first, second] = text.split('、');
+  assert.equal(first, '`' + 'x'.repeat(MAX_PATH_LENGTH) + '…`');
+  assert.equal(second, '`' + '😀'.repeat(MAX_PATH_LENGTH) + '…`');
 });
 
 test('差分なしのコメントは決まった1行で、印を含まない', () => {
