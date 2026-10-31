@@ -90,6 +90,23 @@ const screens: {
       page.getByRole('table', { name: 'ワークスペースの一覧' }),
     ],
   },
+  // 枠の外の画面。ログインしていなくても開ける（開く確かめは e2e/legal.test.ts）。ここはログインした状態でも同じ画面が出て、axe の違反が無いことを見る
+  {
+    screen: 'terms',
+    path: '/terms',
+    ready: (page) => [
+      page.getByRole('heading', { level: 1, name: '利用規約' }),
+      page.getByRole('heading', { level: 2, name: /^第1条/ }),
+    ],
+  },
+  {
+    screen: 'privacy',
+    path: '/privacy',
+    ready: (page) => [
+      page.getByRole('heading', { level: 1, name: 'プライバシーポリシー' }),
+      page.getByRole('heading', { level: 2, name: /預からないもの/ }),
+    ],
+  },
 ];
 
 for (const { screen, path, prepare, ready } of screens) {

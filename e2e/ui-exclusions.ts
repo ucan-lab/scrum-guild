@@ -18,6 +18,8 @@ export const uiScreens = [
   'workspace-settings',
   'admin',
   'operator-reassign',
+  'terms',
+  'privacy',
 ] as const;
 export type UiScreen = (typeof uiScreens)[number];
 

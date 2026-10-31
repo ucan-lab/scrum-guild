@@ -11,6 +11,7 @@
   import GateSheet from '../../lib/components/GateSheet.svelte';
   import GoogleMark from '../../lib/components/GoogleMark.svelte';
   import Icon from '../../lib/components/Icon.svelte';
+  import LegalLinks from '../../lib/components/LegalLinks.svelte';
   import { t } from '../../lib/vocabulary.svelte.ts';
   import { CLAIM_TOKEN_FIELD, CLAIM_TOKEN_PATTERN } from '../../shared/claim-token.ts';
 
@@ -103,6 +104,8 @@
         >
         <p class="gate-note">{t('inviteNote')}</p>
       {/if}
+      <!-- 秘密を持つ画面なので、離れても秘密が消えないよう新しいタブで開く（別の画面へ移ると秘密を消し、戻ると使えなくなる） -->
+      <LegalLinks newTab />
     </GateSheet>
   </Gate>
 {/if}

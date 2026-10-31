@@ -973,6 +973,21 @@ export const dictionary = defineDictionary({
   inviteNote:
     'ボタンを押すまでログインを始めません。すでにログインしていても、Google のアカウントでログインし直します。',
 
+  // 利用規約とプライバシーポリシー（/terms、/privacy。ログインしていなくても開ける）。
+  // 法文の本体は src/lib/legal/ の Markdown に置き、辞書には見出し、リンク、案内の文だけを入れる（辞書は長い文の置き場ではない）
+  termsTitle: '利用規約',
+  privacyTitle: 'プライバシーポリシー',
+  // 紙の上に出す改定日（版）。{date} は YYYY-MM-DD
+  legalRevised: '改定日: {date}',
+  // ログインと招待の画面の、両方のページへのリンクの組の名前（読み上げ）。招待の画面は、秘密を持つ画面から離れると秘密を消すので、
+  // リンクを新しいタブで開く（読み上げの補足は markdownNewTab を使う）
+  legalLinksLabel: '利用規約とプライバシーポリシー',
+  // 規約とポリシーの画面の下の、もう一方のページと元の画面へのリンクの組の名前（読み上げ）
+  legalPageLinksLabel: '関連するページ',
+  // アプリの中から移ってきたときの「元の画面へ戻る」ボタン（履歴を戻る）と、直に開いたときの / へのリンク
+  legalBack: '前の画面に戻る',
+  legalOpenApp: '{app} を開く',
+
   // テーマ
   themeLabel: 'テーマ',
   themeSimple: 'シンプル（自動）',

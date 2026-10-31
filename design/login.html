@@ -30,6 +30,7 @@ function render() {
       <button class="btn is-wide" type="button">${icon("git")}GitHub でログイン</button>
       <button class="btn is-wide is-google" type="button">${SQ.googleMark}Google でログイン</button>
       <p class="gate-note">GitHub と Google は本人確認だけに使います。入れる${t("organization")}が2つ以上あれば、ログインのあとに選びます。</p>
+      <div class="form-actions" role="group" aria-label="利用規約とプライバシーポリシー"><a class="btn is-sm is-quiet" href="#">利用規約</a><a class="btn is-sm is-quiet" href="#">プライバシーポリシー</a></div>
     </section>
     <section class="gate-sheet">
       <h2 class="dialog-title">Scrum Guild への招待</h2>
@@ -37,6 +38,7 @@ function render() {
       <button class="btn is-wide is-google" type="button">${SQ.googleMark}Google でログイン</button>
       <div class="callout is-warn">${icon("alert")}<span>この招待の URL は使えません。期限が切れたか、取り消されたか、招待されたのと別のアカウントでログインしています。招待した人に確かめるか、届いた招待の URL をもう一度開いてください。もう入れる${t("organization")}がある人は、下のボタンからそのままログインできます。</span></div>
       <p class="gate-note">Google の招待の URL から開いたときの見本です。ボタンを押すまでログインを始めず、すでにログインしていても Google のログインを通します。下は使えなかったときの表示です。</p>
+      <div class="form-actions" role="group" aria-label="利用規約とプライバシーポリシー"><a class="btn is-sm is-quiet" href="#" target="_blank" rel="noopener noreferrer">利用規約<span class="visually-hidden"> 新しいタブで開きます</span></a><a class="btn is-sm is-quiet" href="#" target="_blank" rel="noopener noreferrer">プライバシーポリシー<span class="visually-hidden"> 新しいタブで開きます</span></a></div>
     </section>
     <section class="gate-sheet">
       <div class="callout is-info">${icon("shield")}<span>${t("loggedOut")}</span></div>
@@ -59,6 +61,21 @@ function render() {
       <p class="gate-note">${t("organization")}ごとの招待の画面（/&lt;slug&gt;/invitations）の見本です。組織の選択の画面の届いた招待から開きます。入れる${t("organization")}が無く招待だけの人は、その${t("organization")}のどの画面を開いてもこの画面になります。</p>
     </section>
     <p class="gate-note" style="text-align:center"><a href="index.html">デザインシステムのカタログへ戻る</a></p>
+  </div></div>
+  <div class="gate is-reading" style="min-height:0"><div class="gate-stack">
+    <section class="gate-sheet">
+      <div class="gate-brand">${SQ.brandMark}<span class="brand-name">Scrum Guild</span></div>
+      <h2 class="gate-title">プライバシーポリシー</h2>
+      <p>改定日: 2026-10-31</p>
+      <div class="doc-box">
+        <h2 class="doc-h1">第2条 預からないもの</h2>
+        <ul><li>取り込み元の本文は、既定では預かりません。</li><li>GitHub と Google のパスワードは預かりません。</li></ul>
+        <h2 class="doc-h1">第6条 消す時期</h2>
+        <ul><li>解約した組織のデータは、解約にした日（一時停止の後に解約へ切り替えたときは、切り替えた日）から 30 日後に、運営者がすべて消します。</li></ul>
+      </div>
+      <div class="form-actions" role="group" aria-label="関連するページ"><a class="btn is-sm" href="#">利用規約</a><button class="btn is-sm is-quiet" type="button">前の画面に戻る</button></div>
+    </section>
+    <p class="gate-note">利用規約とプライバシーポリシー（/terms、/privacy）の見本です。ログインしていなくても開けます。紙の幅は 720px までで、本文は紙の直下に Markdown で置き、下にもう一方のページへのリンクと、元の画面へ戻る操作を置きます（アプリの中から移ってきたときは「前の画面に戻る」ボタン、直に開いたときは「Scrum Guild を開く」リンク）。改定日は紙の上に本文と同じ大きさで1か所だけ出します。ログインと招待の画面の紙の下にも、両方へのリンクを置きます（招待の画面は、秘密を持つので新しいタブで開きます）。</p>
   </div></div>`;
 }
 SQ.applyTheme();

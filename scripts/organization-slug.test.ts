@@ -17,6 +17,10 @@ describe('組織の slug', () => {
     }
   });
 
+  test('規約とポリシーの画面（terms、privacy）と、同意の画面の経路（consent）も予約した名前に入っている', () => {
+    for (const name of ['terms', 'privacy', 'consent']) assert.equal(slugProblem(name), 'reserved', name);
+  });
+
   test('API の最上段（api）も予約した名前に入っている', () => {
     assert.equal(slugProblem('api'), 'reserved');
   });
