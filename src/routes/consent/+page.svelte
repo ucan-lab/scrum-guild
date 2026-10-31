@@ -53,8 +53,10 @@
     if (result.status === 409) {
       checked = false;
       const reloaded = await loadStatus();
+      // 読み直せなければ、古い版のフォームを残さず、読み込み失敗の画面（もう一度試す）に入れる
+      if (!reloaded.ok) status = undefined;
       // 別のタブで同意済みなら、読み直した画面が同意済みを出すので、更新の知らせは添えない
-      if (reloaded.ok && !reloaded.data.current) error = 'updated';
+      else if (!reloaded.data.current) error = 'updated';
     } else {
       error = 'record';
     }
@@ -64,8 +66,9 @@
   async function retryLoad(): Promise<void> {
     if (busy) return;
     busy = true;
-    error = undefined;
-    await loadStatus();
+    // 読み直している間も、押したボタンとログアウトを残す（外すとフォーカスが失われ、出口も消える）。成功したときだけ警告を消す
+    const result = await loadStatus();
+    if (result.ok) error = undefined;
     busy = false;
   }
 
@@ -94,6 +97,7 @@
         <div class="form-actions">
           <button class="btn is-sm" type="button" aria-disabled={busy} onclick={retryLoad}>{t('retry')}</button>
           <LogoutButton />
+          <span class="field-hint" role="status">{busy ? t('retrying') : ''}</span>
         </div>
       {:else}
         <p role="status">{t('loading')}</p>

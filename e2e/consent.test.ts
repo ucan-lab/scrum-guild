@@ -99,3 +99,26 @@ test('状態を読み込めないときは、もう一度試すとログアウ�
   await page.getByRole('button', { name: 'もう一度試す' }).click();
   await expect(page.getByRole('checkbox', { name: CHECKBOX_NAME })).toBeVisible();
 });
+
+test('409 の後の読み直しに失敗したら、古い版のフォームを残さず、もう一度試すで続きへ進める', async ({
+  page,
+  context,
+  baseURL,
+}) => {
+  await signIn(context, baseURL, 'admin');
+  let reads = 0;
+  await routeOperation(page, consentStatus, async (call) => {
+    reads += 1;
+    if (reads === 2) await call.fail(500, 'internal');
+    else await call.fulfill(UNCONSENTED);
+  });
+  await routeOperation(page, consentRecord, (call) => call.fail(409, 'conflict'));
+  await page.goto('/consent');
+  await page.getByRole('checkbox', { name: CHECKBOX_NAME }).check();
+  await page.getByRole('button', { name: '同意して進む' }).click();
+  await expect(page.getByText('同意の状態を読み込めませんでした。もう一度試してください。')).toBeVisible();
+  await expect(page.getByRole('checkbox', { name: CHECKBOX_NAME })).toHaveCount(0);
+  await page.getByRole('button', { name: 'もう一度試す' }).click();
+  await expect(page.getByRole('checkbox', { name: CHECKBOX_NAME })).toBeVisible();
+  await expect(page.getByText('同意の状態を読み込めませんでした。もう一度試してください。')).toHaveCount(0);
+});
