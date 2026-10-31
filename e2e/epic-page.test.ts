@@ -344,6 +344,16 @@ test('クリア報酬の変更と依頼主の変更の失敗と成功を、ダ�
   await expect(rewardDialog).toBeHidden();
   await page.unrouteAll();
 
+  // 終了したワークスペース（409 の workspace_closed）。辞書の {workspace} を置き換えた文が出る
+  await failOperation(page, epicRewardUpdate, AOBA, 409, 'workspace_closed');
+  await party.getByRole('button', { name: 'クリア報酬を変える' }).click();
+  await rewardDialog.getByRole('radio', { name: '大 · 600 XP' }).check();
+  await rewardDialog.getByRole('button', { name: '変える' }).click();
+  await expect(rewardDialog.getByRole('alert')).toHaveText('終了したパーティには書き込めません');
+  await rewardDialog.getByRole('button', { name: 'やめる' }).click();
+  await expect(rewardDialog).toBeHidden();
+  await page.unrouteAll();
+
   // 依頼主の候補に、今の依頼主（ミナト）は出ない。架空の人を足し、替えられた知らせを出す
   await rewriteOperation(page, memberList, AOBA, (output) => ({
     ...output,

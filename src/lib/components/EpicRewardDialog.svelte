@@ -95,6 +95,7 @@
       reward: t('reward'),
       party: t('party'),
       epic: t('epic'),
+      workspace: t('workspace'),
       requester: t('requester'),
       leader: t('leader'),
       tier: tierLabel(chosen),
