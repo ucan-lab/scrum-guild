@@ -37,6 +37,8 @@ export type OutsideContext<Input> = {
   accountId: string;
   account: OutsideAccount;
   session: CurrentSession;
+  // 呼び出しの API トークンの範囲。Cookie の呼び出しは undefined
+  tokenScope: 'read' | 'write' | undefined;
   input: Input;
 };
 // 運用者の操作（permission: 'operator'）。登録の関数が運用者を確かめた後に、運用者の道具を渡す

@@ -18,6 +18,20 @@ export default defineConfig(
   prettier,
   svelte.configs.prettier,
   {
+    files: ['cli/**'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            // $lib と $app は SvelteKit の別名で、src/ に届く
+            { regex: '^((\\.{1,2}/)+(.*/)?src|\\$lib|\\$app)(/|$)', message: 'CLI から src/ を import しない' },
+          ],
+        },
+      ],
+    },
+  },
+  {
     languageOptions: { globals: { ...globals.browser, ...globals.node } },
     rules: {
       // 型の検査が受け持つ（typescript-eslint の FAQ）
