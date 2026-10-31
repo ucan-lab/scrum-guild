@@ -153,6 +153,20 @@ describe('本番の一覧の塊', () => {
       Array.from({ length: productionChunkCount }, (_, i) => `./operation-registry-production-${i + 1}.test.ts`),
     );
   });
+
+  // ファイルを複製して番号を直し忘れると、ある塊が二重に走り、別の塊の操作が黙って検査から外れる
+  test('塊のファイルは、自分の番号の塊だけを回す', () => {
+    const sources = import.meta.glob('./operation-registry-production-*.test.ts', {
+      query: '?raw',
+      import: 'default',
+      eager: true,
+    });
+    for (const [file, source] of Object.entries(sources)) {
+      const number = Number(/production-(\d+)\.test\.ts$/.exec(file)?.[1]);
+      const calls = [...String(source).matchAll(/defineProductionChunk\(([^)]*)\)/g)].map((match) => match[1]);
+      expect(calls, file).toEqual([String(number)]);
+    }
+  });
 });
 
 // allowClosed の無いワークスペースの下の write を、閉じたワークスペースで呼んで 409 の workspace_closed になることは、
