@@ -178,6 +178,24 @@ test.describe('組織が2つの人（ミナト）', () => {
     await expect(page.locator('.app')).toHaveAttribute('data-nav-collapsed', 'true');
   });
 
+  test('畳んだ列で別の組織へ移っている間は、札に「移っています」を出したままにする', async ({ page }) => {
+    await page.route('**/api/hibari/organization', async (route) => {
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+      await route.continue();
+    });
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await page.goto(today);
+    await page.getByRole('button', { name: 'メニューを畳む' }).click();
+    const org = page.locator('.org-menu-button');
+    await org.click();
+    await page.locator('.org-menu-list a').nth(1).click();
+    await page.mouse.move(700, 600);
+    await expect(org.locator('.nav-tip')).toBeVisible();
+    await expect(org.locator('.nav-tip')).toHaveText('移っています');
+    await expect(page).toHaveURL(/\/hibari$/);
+    await expect(org).not.toHaveAttribute('data-moving', 'true');
+  });
+
   test('バックログの画面でも、畳んだ列から開いた組織の一覧は本文の行に覆われない', async ({ page }) => {
     await page.setViewportSize({ width: 1280, height: 900 });
     await page.goto(`/aoba/w/${AOBA_WORKSPACE_ID}`);

@@ -68,6 +68,7 @@
     aria-expanded={open}
     aria-controls={listId}
     aria-label={label}
+    data-moving={moving ? 'true' : undefined}
     bind:this={button}
     onclick={() => (open = !open)}
   >
@@ -77,9 +78,11 @@
     {#if invited}<span class="org-menu-invite" aria-hidden="true"></span>{/if}
     <Icon name="swap" />
     <Icon name="chevron" />
-    <!-- 畳んだ列で、ホバーとキーボードのフォーカスのときに今の組織と招待の有無を目で読ませる札。読み上げは aria-label が受け持つ -->
+    <!-- 畳んだ列で、ホバーとキーボードのフォーカスのときに今の組織と招待の有無を目で読ませる札。読み上げは aria-label が受け持つ。
+         移っている最中は、広げた列の名前の欄と同じく「移っています」を出し、畳んだ列では札を出したままにする（押し直しを誘わない） -->
     <span class="nav-tip" aria-hidden="true"
-      >{currentName}{#if invited}<small>{t('invitationsBadge')}</small>{/if}</span
+      >{moving ? t('organizationMoving') : currentName}{#if invited && !moving}<small>{t('invitationsBadge')}</small
+        >{/if}</span
     >
   </button>
   <!-- 移っている最中を読み上げに伝える。領域は常に置き、中の文字だけを替える -->
