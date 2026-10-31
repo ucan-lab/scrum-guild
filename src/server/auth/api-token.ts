@@ -66,15 +66,28 @@ export async function readApiToken(env: Env, token: string | undefined, now: Dat
   if (!isScope(row.scope)) return undefined;
 
   const usedAt = now.toISOString();
-  await db.batch([
-    db.statement((q) =>
-      q
-        .updateTable('api_tokens')
-        .set({ last_used_at: usedAt })
-        .where('token_hash', '=', tokenHash)
-        .where((eb) => eb.or([eb('last_used_at', 'is', null), eb('last_used_at', '<', usedAt)])),
-    ),
-  ]);
+  try {
+    await db.batch([
+      db.statement((q) =>
+        q
+          .updateTable('api_tokens')
+          .set({ last_used_at: usedAt })
+          .where('token_hash', '=', tokenHash)
+          .where((eb) => eb.or([eb('last_used_at', 'is', null), eb('last_used_at', '<', usedAt)])),
+      ),
+    ]);
+  } catch (err) {
+    // last_used_at は記録にすぎず、トークンは読めているのでリクエストは続ける（readSession の書き直しと同じ）。
+    // 例外の message に SQL や接続の詳細が混ざりうるので、名前だけを残す
+    console.error(
+      JSON.stringify({
+        level: 'error',
+        code: 'internal',
+        reason: 'トークンの last_used_at の書き込みに失敗した',
+        error: err instanceof Error ? err.name : typeof err,
+      }),
+    );
+  }
   return { accountId: row.account_id, tokenHash, scope: row.scope };
 }
 
