@@ -31,10 +31,12 @@
   // onMove と dnd を渡すと（書き込めるとき）、行の先頭にドラッグのつまみ（.grip。飾りで aria-hidden）を置く。つかむのはここだけで、
   // 完了にした行はつかめない（列だけ空ける）。ほかの行をつかんだときの落とす位置は、行の data-drop（線）で示す。狭い幅と指の画面では CSS がつまみを隠す。
   // ドラッグの代わりは「上へ」「下へ」と Alt と ↑ ↓
+  // 完了の印の判を押す動き（.is-new）は、今押した行（justDone が真）だけで再生する。開いた時点で完了済みの行（今日やることの今日完了）は静止した印を出す
   let {
     task,
     clock,
     done = false,
+    justDone = false,
     pending = false,
     canComplete = true,
     onComplete,
@@ -53,6 +55,7 @@
     task: BacklogTask;
     clock: { today: string; weekStart: number };
     done?: boolean;
+    justDone?: boolean;
     pending?: boolean;
     canComplete?: boolean;
     onComplete?: (task: BacklogTask) => void;
@@ -214,7 +217,8 @@
     {#if done}
       <!-- tabindex="-1" は、完了にした後にフォーカスを置くため（キーボードの Tab 順には入らない） -->
       <span
-        class="hanko is-new"
+        class="hanko"
+        class:is-new={justDone}
         role="img"
         aria-label={t('doneMarkLabel', { title: task.title, done: t('done') })}
         tabindex="-1"

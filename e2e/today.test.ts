@@ -120,7 +120,7 @@ test('行にワークスペース名の印が出る。持ち越しは日数の�
   // 行のメタ情報は 1 つ
   await expect(entry('金曜が期日').locator('.entry-meta')).toHaveCount(1);
 
-  await expect(entry('三日前に付けた印').locator('.entry-meta .props-note')).toHaveText('3日前に付けた印');
+  await expect(entry('三日前に付けた印').locator('.entry-meta .props-note')).toHaveText('3日前に印を付けた');
   await expect(entry('今日付けた印').locator('.props-note')).toHaveCount(0);
 
   await expect(entry('今日が期日').locator('.entry-meta .chip.is-warn')).toHaveText('期日は今日');

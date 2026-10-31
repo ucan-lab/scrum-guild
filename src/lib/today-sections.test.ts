@@ -41,6 +41,18 @@ describe('todaySections', () => {
     expect(sections.week).toEqual([]);
   });
 
+  test('壊れた期日（暦にない日付）は期日なしとして扱い、画面を落とさない。進行中のスプリントなら スプリントの区分に出る', () => {
+    const sections = todaySections([
+      task('broken', { due_on: '2026-02-30' }),
+      task('broken-sprint', { due_on: '2026-02-30', sprint_active: true }),
+      task('late', { due_on: '2026-11-03' }),
+    ]);
+    expect(ids(sections.sprint)).toEqual(['broken-sprint']);
+    expect(ids(sections.overdue)).toEqual(['late']);
+    expect(sections.week).toEqual([]);
+    expect(sections.today).toEqual([]);
+  });
+
   test('印が無く期日を過ぎたものは期日切れ', () => {
     const sections = todaySections([task('late', { due_on: '2026-11-03' })]);
     expect(ids(sections.overdue)).toEqual(['late']);

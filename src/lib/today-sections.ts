@@ -1,6 +1,6 @@
 // 今日やることの区分の振り分けと並べ替え。`today` が返す行を、docs/requirements.md の「今日やること」の区分に分ける。
 // 同じタスクは1つの区分にだけ入る。今日と今週の判定は、行ごとのワークスペースの今日と週の始まりで決める
-import { dueStatus } from '../shared/due.ts';
+import { dueStatus, type DueStatus } from '../shared/due.ts';
 import type { TodayTask } from '../shared/operations/organization/today.ts';
 
 export type TodaySections = {
@@ -37,6 +37,16 @@ function compareTodayMarked(a: TodayTask, b: TodayTask): number {
   return b.carry_days - a.carry_days || compareTodayTasks(a, b);
 }
 
+// 期日の状態。暦にない期日（壊れた値）は読めないので期日なしとして扱い、画面全体を落とさない（DueChip と同じ）
+function dueStatusOf(task: TodayTask): DueStatus | null {
+  if (task.due_on === null) return null;
+  try {
+    return dueStatus(task.due_on, task.today, task.week_start);
+  } catch {
+    return null;
+  }
+}
+
 export function todaySections(tasks: readonly TodayTask[]): TodaySections {
   const sections: TodaySections = { overdue: [], today: [], week: [], sprint: [], done: [] };
   for (const task of tasks) {
@@ -50,7 +60,7 @@ export function todaySections(tasks: readonly TodayTask[]): TodaySections {
       sections.today.push(task);
       continue;
     }
-    const status = task.due_on === null ? null : dueStatus(task.due_on, task.today, task.week_start);
+    const status = dueStatusOf(task);
     if (status === 'overdue') sections.overdue.push(task);
     else if (status === 'today' || status === 'this_week') sections.week.push(task);
     // 期日が来週以降か無いもので、進行中のスプリントに入っているものだけ

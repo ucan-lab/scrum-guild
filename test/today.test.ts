@@ -370,6 +370,47 @@ describe('today: 区分に入るタスクの境界', () => {
     expect(titlesOf(await world.read())).toEqual(['東の今日の始まりに完了', '西の今日の始まりに完了'].sort());
   });
 
+  test('UTC−12 のワークスペースは、現地の今日の始まりに完了したタスクを、現地の今日が終わる直前まで返す', async () => {
+    const world = await createWorld();
+    const baker = await world.workspace({ timezone: 'Etc/GMT+12' });
+    // 現地は 10-31 23:59:59。現地の今日の始まり（UTC の 10-31 12:00）から 24 時間近く経つ
+    vi.setSystemTime(new Date('2026-11-01T11:59:59.000Z'));
+    await world.task(baker, { title: '今日の始まりに完了', completed_at: '2026-10-31T12:00:00.000Z' });
+
+    const view = await world.read();
+
+    expect(titlesOf(view)).toEqual(['今日の始まりに完了']);
+    expect(view.tasks[0]).toMatchObject({ is_today_completed: true });
+  });
+
+  test('UTC+14 のワークスペースは、現地の今日の始まりに完了したタスクを、現地の今日が終わる直前まで返す', async () => {
+    const world = await createWorld();
+    const kiritimati = await world.workspace({ timezone: 'Pacific/Kiritimati' });
+    // 現地は 11-02 の直前（UTC の 11-02 09:59:59 は現地の 11-02 23:59:59）。現地の今日の始まりは UTC の 11-01 10:00
+    vi.setSystemTime(new Date('2026-11-02T09:59:59.000Z'));
+    await world.task(kiritimati, { title: '今日の始まりに完了', completed_at: '2026-11-01T10:00:00.000Z' });
+
+    const view = await world.read();
+
+    expect(titlesOf(view)).toEqual(['今日の始まりに完了']);
+    expect(view.tasks[0]).toMatchObject({ is_today_completed: true });
+  });
+
+  test('今日完了した行は、前日に印を付けていても carry_days が 0（完了した印は区分に使わない）', async () => {
+    const world = await createWorld();
+    const ws = await world.workspace({ timezone: TOKYO });
+    await world.task(ws, {
+      title: '昨日印を付けて今日完了',
+      today_on: '2026-10-31',
+      completed_at: '2026-11-01T01:00:00.000Z',
+    });
+    await world.task(ws, { title: '昨日印を付けて未完了', today_on: '2026-10-31' });
+
+    const days = Object.fromEntries((await world.read()).tasks.map((task) => [task.title, task.carry_days]));
+
+    expect(days).toEqual({ 昨日印を付けて今日完了: 0, 昨日印を付けて未完了: 1 });
+  });
+
   test('未完了のタスクは is_today_completed が偽', async () => {
     const world = await createWorld();
     const ws = await world.workspace();
