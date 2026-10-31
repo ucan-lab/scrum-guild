@@ -175,7 +175,7 @@ function assistDemo() {
   const confirm = (state, more) => ({ state, more, note: `${t("assignee")}を変えても、${t("points")}と${t("column")}はそのままです。`, rows });
   const sp = D.sprints.sp14;
   const late = ai({ steps, text: `残り ${sp.days - sp.dayIndex} 日で、気になるのは 2 件です。${t("due")}を過ぎたものと、${t("points")}が大きいのにまだ手を付けていないものを挙げました。`,
-    refs: [["t8", `<span class="chip is-danger">${icon("alert")}${t("due")}切れ 10/17</span>`], ["t3", `<span class="chip is-warn">${icon("clock")}5 pt で出発前</span>`]] });
+    refs: [["t8", `<span class="chip is-danger">${icon("alert")}${t("due")}切れ 10/17</span>`], ["t3", `<span class="chip is-warn">${icon("clock")}5 pt で未着手</span>`]] });
   return `
     <div class="field"><span class="field-label">開く所とパレット</span>
       <div class="cat-row"><button class="pill assist-launch" type="button" data-assist-open>${icon("spark")}<span>${t("assistant")}に頼む</span><kbd class="kbd">${SQ.ASSIST_KEY}</kbd></button><span class="field-hint">押すと本物のパレットが開く。例の頼みごとを押して試せる</span></div>
@@ -301,7 +301,7 @@ const SECTIONS = [
     <div class="cat-row">
       <span class="chip is-todo">${icon("pen")}${t("detail")} 未記入</span>
       <span class="chip is-ok">${icon("check")}取り込み元で完了</span>
-      <span class="chip is-done">${icon("check")}クリア済み</span>
+      <span class="chip is-done">${icon("check")}完了</span>
       <span class="chip is-carry">${icon("redo")}昨日から持ち越し</span>
       <span class="chip is-danger">${icon("alert")}取り込み元で見つからない</span>
     </div>
@@ -313,7 +313,7 @@ const SECTIONS = [
       <span class="chip is-name">${icon("calendar")}<span><span class="visually-hidden">${t("sprint")}：</span><span class="mono">11/2〜11/15</span></span></span>
     </div>
     <div class="cat-row">
-      <span class="tag">受託開発チーム</span><span class="status-dot">遂行中</span>
+      <span class="tag">受託開発チーム</span><span class="status-dot">作業中</span>
       <span class="source-key">${icon("link")} SHOP-128</span><span class="source-key">${icon("git")} acme/shop#412</span>
       <span class="source-key is-wrap">${icon("link")} https://example.com/spec/points/very-long-path-without-any-space-that-must-wrap-inside-the-column-even-on-a-narrow-screen/0123456789012345678901234567890123456789</span><a class="btn is-sm" href="#" aria-label="リンクを新しいタブで開く">開く</a>
       ${pts(0)}${pts(5)}${pts(13)}${pts(null)}
@@ -360,7 +360,7 @@ const SECTIONS = [
     `<div class="tree">${treeEpic("e2")}${treeStory("s4", true)}${treeStory("s1", true, { doneAt: "2026-10-22" })}</div>` +
     `<div class="tree">${treeEpic("e1", { cleared: true, key: "e1-cleared" })}${treeEpic("e2", { canceled: true, empty: true, key: "e2-canceled" })}${treeEpic("e1", { empty: true, key: "e1-empty" })}</div>` +
     `<div class="cat-row"><span class="order-actions"><button class="icon-btn" type="button" aria-label="上へ" title="上へ" aria-disabled="true">${icon("up")}</button><button class="icon-btn" type="button" aria-label="下へ" title="下へ">${icon("down")}</button><button class="icon-btn" type="button" aria-label="親を移す" title="親を移す">${icon("swap")}</button></span><span class="field-hint">行の並べ替えと親の移動。先頭の行の「上へ」は aria-disabled</span></div>`,
-    ["最上段はエピック、親のないストーリー、親のないタスクの順。エピックの行の題はエピックの画面へのリンク（a.tree-link）。配下が無いエピックには「ストーリーはまだありません」の1行を出す。", "右端の数は「完了 / 全体」のポイント。エピックの行は、配下のストーリーの合計。", "完了したタスクは折りたたみ、件数だけ出す。", "ストーリーの行の右端に「完了にする」（.btn.is-sm）を置く。配下に未完了のタスクが残るあいだは、押してもフォーカスが残るよう aria-disabled にし、横に「残り N 件のタスク」（.tree-note）と、見えない文字の押せない理由を置き、どちらも aria-describedby で結ぶ。完了したストーリー（1つ目の木の下の行）は、「＋タスク」を出さず、完了の印（.hanko）と「取り消す」（.btn.is-sm.is-quiet）を置く。", "2つ目の木は、クリア済みのエピック（.chip.is-done。完了の印と同じ役の色）、中止したエピック（.chip）、配下の無いエピック。完了か中止したエピックの期日には色を付けず、配下の「取り消す」は必ず断られるので aria-disabled にして、理由（.tree-note）を横に出す。エピックの行には区分の印を出さない（本番と同じ）。", "ストーリーの行の「親を移す」は、親なしと、完了も中止もしていないエピックから選ぶ（タスクの「親を移す」と同じダイアログ）。", "行は普通の要素（div）で、開閉は左端の caret のボタン（button.tree-caret の aria-expanded と aria-controls）だけが受け持つ。details と summary は使わない（行の中のボタンと開閉がぶつかるため）。", "ストーリーの題はボタン（button.tree-link）で、押すとダイアログが開く。行の右端の「＋タスク」（.tree-end）は、親を選んだ状態でタスクのダイアログを開く。caret、題、「＋タスク」は独立したボタンで、狭い幅（760px 以下）と指で押す画面では、見た目は変えず押せる範囲を 44px 四方以上に広げる。", "書き込めるときは、タスクの行（.entry-end）とストーリーとエピックの行（.tree-end）の右に .order-actions の「上へ」「下へ」を置き（エピックは親を持たないので「親を移す」は無い）、タスクの行には「親を移す」も添える。行の中で Alt と ↑ ↓ を押しても同じ。端の向きは、押した後もフォーカスが残るよう disabled でなく aria-disabled にする。狭い幅と指で押す画面では、ボタンを 44px 四方にする。"],
+    ["最上段はエピック、親のないストーリー、親のないタスクの順。エピックの行の題はエピックの画面へのリンク（a.tree-link）。配下が無いエピックには「ストーリーはまだありません」の1行を出す。", "右端の数は「完了 / 全体」のポイント。エピックの行は、配下のストーリーの合計。", "完了したタスクは折りたたみ、件数だけ出す。", "ストーリーの行の右端に「完了にする」（.btn.is-sm）を置く。配下に未完了のタスクが残るあいだは、押してもフォーカスが残るよう aria-disabled にし、横に「残り N 件のタスク」（.tree-note）と、見えない文字の押せない理由を置き、どちらも aria-describedby で結ぶ。完了したストーリー（1つ目の木の下の行）は、「＋タスク」を出さず、完了の印（.hanko）と「取り消す」（.btn.is-sm.is-quiet）を置く。", "2つ目の木は、完了したエピック（.chip.is-done。完了の印と同じ役の色）、中止したエピック（.chip）、配下の無いエピック。完了か中止したエピックの期日には色を付けず、配下の「取り消す」は必ず断られるので aria-disabled にして、理由（.tree-note）を横に出す。エピックの行には区分の印を出さない（本番と同じ）。", "ストーリーの行の「親を移す」は、親なしと、完了も中止もしていないエピックから選ぶ（タスクの「親を移す」と同じダイアログ）。", "行は普通の要素（div）で、開閉は左端の caret のボタン（button.tree-caret の aria-expanded と aria-controls）だけが受け持つ。details と summary は使わない（行の中のボタンと開閉がぶつかるため）。", "ストーリーの題はボタン（button.tree-link）で、押すとダイアログが開く。行の右端の「＋タスク」（.tree-end）は、親を選んだ状態でタスクのダイアログを開く。caret、題、「＋タスク」は独立したボタンで、狭い幅（760px 以下）と指で押す画面では、見た目は変えず押せる範囲を 44px 四方以上に広げる。", "書き込めるときは、タスクの行（.entry-end）とストーリーとエピックの行（.tree-end）の右に .order-actions の「上へ」「下へ」を置き（エピックは親を持たないので「親を移す」は無い）、タスクの行には「親を移す」も添える。行の中で Alt と ↑ ↓ を押しても同じ。端の向きは、押した後もフォーカスが残るよう disabled でなく aria-disabled にする。狭い幅と指で押す画面では、ボタンを 44px 四方にする。"],
     ".tree .tree-group .tree-row .is-epic .is-story .is-root .tree-caret .tree-title .tree-ratio .tree-note .tree-end .tree-children .tree-folded / .chip.is-done / a.tree-link / button.tree-link / button.tree-caret[aria-expanded] / .order-actions .icon-btn[aria-disabled]")],
   ["completed", "完了の一覧", () => block("completed", "完了の一覧（バックログの折りたたみ）", "完了にしたタスクの「完了 N 件を折りたたんでいます」の行を、開閉のボタンにした部品。開くと完了した行を新しい順に並べる。",
     `<div class="tree">${completedTasks("catalog-open", SQ.tasksWhere((x) => x.story === "s3" && x.doneAt), { open: true, title: SQ.D.stories.s3.title, status: "more" })}</div>` +
@@ -644,7 +644,6 @@ function render() {
   SQ.applyTheme();
 }
 SQ.enableAssistOnCatalog();
-SQ.onChange(render);
 SQ.onRedraw(render);
 new MutationObserver(() => { const el = document.querySelector("#colors .cat-demo"); if (el) el.innerHTML = colorBlock(); })
   .observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });

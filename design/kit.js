@@ -34,7 +34,7 @@
       organizations: [{ ...D.organizations[0], level: 1, admin: role === "admin" }], receivedInvites: [],
       tasks: [], inbox: [], archive: [], epics: {}, stories: {}, sprints: {}, comments: {}, history: {}, files: {},
       connections: [], notifications: [], completions: [], audit: [], capacity: [], invitations: [],
-      categories: {}, repositories: {}, detailFields: ["達成条件"], definitionOfDone: [], pointRates: [["2026-10", 4]], workspaceHolidays: [],
+      categories: {}, repositories: {}, detailFields: ["受け入れ基準"], definitionOfDone: [], pointRates: [["2026-10", 4]], workspaceHolidays: [],
       storage: { ...D.storage, used: 0, byWorkspace: [] },
       level: { level: 1, xp: 0, toNext: 100, soon: 0, gotPct: 0, soonPct: 0 },
     };
@@ -87,9 +87,7 @@
   };
   // 言葉は切り替えない。1 がスクラムの言葉の列（0 のゲームの言葉の列は、本番の辞書と突き合わせるために DICT に残している）
   let vocab = 1;
-  const listeners = [];
   const t = (k) => (DICT[k] ? DICT[k][vocab] : k);
-  function onChange(fn) { listeners.push(fn); }
 
   // ---- 小さな道具 ----
   const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
@@ -584,7 +582,7 @@
       </dl>
       <div class="notice-foot">
         ${progress(p.done, p.all)}
-        ${cleared ? `<span class="hanko" role="img" aria-label="クリア済み">${icon("check")}<b>済</b></span>` : `<button class="btn ${joined ? "" : "is-primary"} is-sm" type="button" data-join="${eid}">${joined ? t("leave") : t("accept")}</button>`}
+        ${cleared ? `<span class="hanko" role="img" aria-label="完了">${icon("check")}<b>済</b></span>` : `<button class="btn ${joined ? "" : "is-primary"} is-sm" type="button" data-join="${eid}">${joined ? t("leave") : t("accept")}</button>`}
       </div>
     </article>`;
   }
@@ -2088,7 +2086,6 @@ const looooooooooooooooooooooooooooooooooongLine = "コードの長い1行は、
     <div class="toasts" id="toasts" aria-live="polite"></div>`;
     document.querySelector("[data-switch='theme']").addEventListener("click", cycleTheme);
     document.querySelector("[data-switch='first']")?.addEventListener("click", cycleFirst);
-    onChange(redraw);
     applyTheme();
     redraw();
     const taskId = new URLSearchParams(location.search).get("task");
@@ -2510,7 +2507,7 @@ const looooooooooooooooooooooooooooooooooongLine = "コードの長い1行は、
 
   window.SQ = {
     first, firstHref, firstSteps, emptyState, art,
-    D, t, brandMark, googleMark, THEMES, THEME_LABEL, THEME_NOTE, onChange, esc, icon, md, sumPts, cycleTheme, setTheme, applyTheme, mount,
+    D, t, brandMark, googleMark, THEMES, THEME_LABEL, THEME_NOTE, esc, icon, md, sumPts, cycleTheme, setTheme, applyTheme, mount,
     onRedraw: (fn) => extraRedraws.push(fn), openDrawer, drawerHtml, drawerState: drawer,
     user, task, tasksWhere, repoTag, categoryTag, sprintTag, repoPicker, sprintLabel, colName, categoryOf, storyPts, epicPts, dueOf,
     avatar, avatarOf, SAMPLE_PHOTO, BROKEN_PHOTO, emblem, pts, dueChip, taskDue, tier, sourceKey, entry, orderActions, book, section, pageHead,

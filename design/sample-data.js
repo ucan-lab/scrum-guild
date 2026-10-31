@@ -35,9 +35,9 @@ window.SQ_DATA = (function () {
       wb: { name: "社内ツール" },
     },
     columns: [
-      { id: "c1", name: "出発前" },
-      { id: "c2", name: "遂行中" },
-      { id: "c3", name: "査定中" },
+      { id: "c1", name: "未着手" },
+      { id: "c2", name: "作業中" },
+      { id: "c3", name: "レビュー" },
       { id: "done", done: true },
     ],
     categories: {
@@ -115,8 +115,8 @@ window.SQ_DATA = (function () {
       { id: "t13", ws: "wa", repo: "r2", title: "ポイント失効の通知メールを作る", story: "s1", sprint: "sp15", who: null, pts: null, unfilled: true, creator: "u2" },
       { id: "t14", ws: "wa", repo: "r1", title: "決済通知のメール文面を直す", story: "s3", sprint: "sp14", col: "done", who: "u1", pts: 1, doneAt: "10/20 09:40",
         src: { kind: "backlog", key: "SHOP-126", status: "完了" } },
-      { id: "t15", ws: "wb", title: "勤怠の CSV 出力で締め日を選べるようにする", sprint: "spb", colName: "遂行中", who: "u1", pts: 3, due: "2026-10-22", creator: "u1" },
-      { id: "t16", ws: "wb", title: "有給の残日数を一覧に出す", sprint: "spb", colName: "出発前", who: "u1", pts: null, unfilled: true, creator: "u1" },
+      { id: "t15", ws: "wb", title: "勤怠の CSV 出力で締め日を選べるようにする", sprint: "spb", colName: "作業中", who: "u1", pts: 3, due: "2026-10-22", creator: "u1" },
+      { id: "t16", ws: "wb", title: "有給の残日数を一覧に出す", sprint: "spb", colName: "未着手", who: "u1", pts: null, unfilled: true, creator: "u1" },
     ],
 
     comments: {
@@ -201,10 +201,10 @@ Object.assign(window.SQ_DATA, {
 
   connections: [
     { id: "c1", owner: "u1", provider: "backlog", name: "ミナトの Backlog", host: "acme.backlog.jp", status: "active",
-      lastSuccess: "10/20 10:00", scope: { mode: "include", items: ["SHOP（ECサイト）"] }, last4: "q9Zt", mappings: [["未対応", "出発前"], ["処理中", "遂行中"], ["処理済み", "査定中"]] },
+      lastSuccess: "10/20 10:00", scope: { mode: "include", items: ["SHOP（ECサイト）"] }, last4: "q9Zt", mappings: [["未対応", "未着手"], ["処理中", "作業中"], ["処理済み", "レビュー"]] },
     { id: "c2", owner: "u1", provider: "github", name: "ミナトの GitHub", host: "github.com", status: "error",
       lastSuccess: "10/20 08:15", error: "GitHub の応答が遅れています（503）。次の同期で再試行します。", errorAt: "10/20 10:00", failures: 2,
-      scope: { mode: "include", items: ["acme/shop", "acme/web"] }, last4: "Xk2c", mappings: [["open", "出発前"]] },
+      scope: { mode: "include", items: ["acme/shop", "acme/web"] }, last4: "Xk2c", mappings: [["open", "未着手"]] },
     { id: "c3", owner: "u4", provider: "backlog", name: "リンの Backlog", host: "acme.backlog.jp", status: "stopped",
       stoppedReason: "認証に失敗したので止めました。本人が API キーを登録し直すと再開します。", lastSuccess: "10/17 18:00",
       scope: { mode: "exclude", items: ["SANDBOX"] }, last4: "7hQe", mappings: [] },
@@ -222,7 +222,7 @@ Object.assign(window.SQ_DATA, {
     { login: "mio.hoshino@example.com", via: "google", role: "member", by: "u1", at: "10/20", expires: "11/03" },
   ],
 
-  detailFields: ["達成条件", "確かめ方"],
+  detailFields: ["受け入れ基準", "確かめ方"],
   pointRates: [["2026-04", 4], ["2025-04", 3]],
   workspaceHolidays: [["2026-12-29", "年末休業"], ["2026-12-30", "年末休業"], ["2026-12-31", "年末休業"]],
   settings: { timezone: "Asia/Tokyo", weekStart: 1 },
