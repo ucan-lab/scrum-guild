@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, test } from 'node:test';
@@ -268,6 +268,92 @@ describe('gallery.mjs', () => {
       assert.equal(result.status, 1);
       assert.match(result.stderr, /manifest を読めない/);
     });
+  });
+
+  test('シングルクォートもエスケープし、外のファイルと通信を止める CSP を付ける', () => {
+    const html: string = call('renderGallery', { items: [{ issue: 1, title: "it's", skipped: 'r' }] });
+    assert.match(html, /it&#39;s/);
+    assert.match(
+      html,
+      /<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; media-src file: 'self'">/,
+    );
+  });
+
+  test('同じ Issue の重複、動画の無い Issue の captions、title の欠落、同時指定は断る', () => {
+    const problems = (items: unknown[]): string => (call('validateManifest', { items }) as string[]).join('\n');
+    assert.match(problems([video, { ...video, title: 'もう 1 枚' }]), /issue #574 が重複している/);
+    assert.match(
+      problems([{ issue: 2, title: 't', skipped: 'r', captions: ['あ'] }]),
+      /captions は video の Issue にだけ付ける/,
+    );
+    assert.match(problems([{ issue: 2, skipped: 'r' }]), /title は空でない文字列/);
+    assert.match(
+      problems([{ issue: 2, title: 't', skipped: 'r', failed: 'f' }]),
+      /video、skipped、failed のどれか 1 つ/,
+    );
+  });
+
+  test('manifest がオブジェクトでないときは、スタックトレースでなく理由を出して断る', () => {
+    for (const text of ['null', '[]', '"x"']) {
+      inTempDir({ 'manifest.json': text }, (path) => {
+        const result = run(join(path('manifest.json'), '..'));
+        assert.equal(result.status, 1, text);
+        assert.match(result.stderr, /manifest がオブジェクトでない/);
+        assert.doesNotMatch(result.stderr, /TypeError|at /);
+      });
+    }
+  });
+
+  test('引数が無ければ使い方を出して終了コード 2', () => {
+    const result = spawnSync(process.execPath, [galleryScript], { encoding: 'utf8' });
+    assert.equal(result.status, 2);
+    assert.match(result.stderr, /使い方/);
+  });
+
+  test('動画がディレクトリや空のファイルなら断り、index.html を書かない', () => {
+    inTempDir({ 'manifest.json': JSON.stringify({ items: [video] }), 'issue-574.mp4': '' }, (path) => {
+      const result = run(join(path('manifest.json'), '..'));
+      assert.equal(result.status, 1);
+      assert.match(result.stderr, /#574: issue-574\.mp4 が空か、ファイルでない/);
+      assert.equal(existsSync(path('index.html')), false);
+    });
+    inTempDir({ 'manifest.json': JSON.stringify({ items: [video] }) }, (path) => {
+      mkdirSync(path('issue-574.mp4'));
+      const result = run(join(path('manifest.json'), '..'));
+      assert.equal(result.status, 1);
+      assert.match(result.stderr, /issue-574\.mp4 が空か、ファイルでない/);
+    });
+  });
+
+  test('index.html が通常のファイルでなければ（symlink など）、リンク先を上書きせず断る', () => {
+    inTempDir(
+      { 'manifest.json': JSON.stringify({ items: [video] }), 'issue-574.mp4': 'dummy', 'target.txt': 'そのまま' },
+      (path) => {
+        symlinkSync(path('target.txt'), path('index.html'));
+        const result = run(join(path('manifest.json'), '..'));
+        assert.equal(result.status, 1);
+        assert.match(result.stderr, /index\.html が通常のファイルでない/);
+        assert.equal(readFileSync(path('target.txt'), 'utf8'), 'そのまま');
+      },
+    );
+  });
+
+  test('symlink 経由のパスで呼んでも、何もせずに成功扱いにならず、index.html を書く', () => {
+    inTempDir({ 'manifest.json': JSON.stringify({ items: [video] }), 'issue-574.mp4': 'dummy' }, (path) => {
+      symlinkSync(galleryScript, path('gallery-link.mjs'));
+      const result = spawnSync(process.execPath, [path('gallery-link.mjs'), join(path('manifest.json'), '..')], {
+        encoding: 'utf8',
+      });
+      assert.equal(result.status, 0, result.stderr);
+      assert.ok(existsSync(path('index.html')));
+    });
+  });
+
+  test('SKILL.md の manifest の例は、検査を通る', () => {
+    const skill = readFileSync(join(skillDir, 'SKILL.md'), 'utf8');
+    const example = /## まとめて撮る[\s\S]*?```json\n([\s\S]*?)\n```/.exec(skill)?.[1];
+    assert.ok(example, 'SKILL.md に manifest の例が無い');
+    assert.deepEqual(call('validateManifest', JSON.parse(example)), []);
   });
 });
 

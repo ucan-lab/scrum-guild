@@ -3,7 +3,7 @@
 //   <動画の置き場所>/manifest.json を読み、同じ場所に index.html を書いて、開く URL を出す。外のファイルは読み込まない
 // manifest.json: { "title"?: string, "items": [{ "issue": 番号, "title": Issue の題, "video"?: "issue-番号.mp4", "skipped"?: 理由, "failed"?: 理由, "captions"?: [字幕] }] }
 //   video、skipped、failed のどれか 1 つだけを持つ
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, lstatSync, readFileSync, realpathSync, statSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
@@ -27,6 +27,7 @@ export function validateManifest(manifest) {
     .map((key) => `manifest: ${key} は使えない`);
   if (manifest.title !== undefined && !isText(manifest.title)) problems.push('manifest: title は空でない文字列');
   if (!Array.isArray(manifest.items) || manifest.items.length === 0) return [...problems, 'items が空'];
+  const seen = new Set();
   manifest.items.forEach((item, i) => {
     const where = `items[${i}]`;
     if (!isObject(item)) {
@@ -37,6 +38,8 @@ export function validateManifest(manifest) {
       if (!ITEM_KEYS.includes(key)) problems.push(`${where}: ${key} は使えない`);
     }
     if (!(Number.isInteger(item.issue) && item.issue > 0)) problems.push(`${where}: issue は正の整数`);
+    else if (seen.has(item.issue)) problems.push(`${where}: issue #${item.issue} が重複している`);
+    else seen.add(item.issue);
     if (!isText(item.title)) problems.push(`${where}: title は空でない文字列`);
     const given = OUTCOMES.filter((key) => item[key] !== undefined);
     if (given.length !== 1) problems.push(`${where}: ${OUTCOMES.join('、')} のどれか 1 つだけを指定する`);
@@ -48,6 +51,9 @@ export function validateManifest(manifest) {
     }
     if (item.captions !== undefined && !(Array.isArray(item.captions) && item.captions.every(isText))) {
       problems.push(`${where}: captions は空でない文字列の配列`);
+    }
+    if (item.captions !== undefined && item.video === undefined) {
+      problems.push(`${where}: captions は video の Issue にだけ付ける（HTML に出ない）`);
     }
   });
   return problems;
@@ -75,6 +81,7 @@ export function renderGallery(manifest) {
 <html lang="ja">
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; media-src file: 'self'">
 <title>${escapeHtml(title)}</title>
 <style>
   :root { --bg: #f6f7f8; --surface: #fff; --fg: #1d2630; --muted: #5d6a78; --line: #dde2e7; --warn: #9a5b00; --bad: #b3261e; color-scheme: light; }
@@ -114,22 +121,47 @@ function main(dir) {
     console.error(`manifest を読めない（${manifestPath}）: ${err.message}`);
     process.exit(1);
   }
+  // 形の検査を通ってから、動画のファイルを確かめる（形が誤りなら、items を読まない）
   const problems = validateManifest(manifest);
-  for (const item of Array.isArray(manifest.items) ? manifest.items : []) {
-    if (typeof item?.video === 'string' && VIDEO_NAME.test(item.video) && !existsSync(join(dir, item.video))) {
-      problems.push(`#${item.issue}: ${item.video} が置き場所に無い`);
+  if (problems.length === 0) {
+    for (const item of manifest.items) {
+      if (item.video === undefined) continue;
+      const file = join(dir, item.video);
+      if (!existsSync(file)) problems.push(`#${item.issue}: ${item.video} が置き場所に無い`);
+      else if (!statSync(file).isFile() || statSync(file).size === 0) {
+        problems.push(`#${item.issue}: ${item.video} が空か、ファイルでない`);
+      }
     }
   }
   if (problems.length > 0) {
     console.error(problems.join('\n'));
     process.exit(1);
   }
+  // 既にある index.html が symlink などだと、書き込みがリンク先を上書きするので、通常のファイルでなければ断る
   const out = join(dir, 'index.html');
-  writeFileSync(out, renderGallery(manifest));
+  if (lstatSync(out, { throwIfNoEntry: false })?.isFile() === false) {
+    console.error(`index.html が通常のファイルでない（${out}）。消してから、もう一度走らせる`);
+    process.exit(1);
+  }
+  try {
+    writeFileSync(out, renderGallery(manifest));
+  } catch (err) {
+    console.error(`index.html を書けない（${out}）: ${err.message}`);
+    process.exit(1);
+  }
   console.log(pathToFileURL(out).href);
 }
 
-if (process.argv[1] === fileURLToPath(import.meta.url)) {
+// symlink 経由で呼ばれても動くよう、呼ばれたパスを realpath にして比べる（import.meta.url は realpath になる）
+function isEntryPoint() {
+  try {
+    return realpathSync(process.argv[1]) === fileURLToPath(import.meta.url);
+  } catch {
+    return false;
+  }
+}
+
+if (isEntryPoint()) {
   if (process.argv[2] === undefined) {
     console.error('使い方: node gallery.mjs <動画の置き場所>');
     process.exit(2);

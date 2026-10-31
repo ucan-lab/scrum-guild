@@ -2,6 +2,7 @@
 name: acceptance-video
 description: >-
   受け入れ待ちの Issue の変更点を、30 秒以内の無音の画面録画（字幕つきの mp4）にする。Issue から seed の画面の操作の手順書を書き、人が確かめてから録画する。
+  複数の Issue は、`sprint-review` の手順 2-C から呼び、まとめて撮って 1 枚の HTML に並べる。
   「受け入れの動画を撮って」「変更点を動画にして」「Issue の動きを録画して」と言われたときに使う。受け入れそのものを進めるのは sprint-review。
 ---
 
@@ -121,9 +122,10 @@ mp4 の場所と長さ、手元に残したもの（ワークツリー、書き�
 
 `sprint-review` の手順 2-C が呼ぶ。Issue ごとに上の手順を繰り返す代わりに、次の形で 1 回にまとめる。
 
-- 手順 1 と 2: 対象の Issue 全部の手順書を書き、一覧にして、承認を 1 回で取る
+- 手順 1: 対象の Issue 全部の手順書を書く。書いた人の確認は、Issue ごとに先に行う（まとめた承認に畳まない）
+- 手順 2: 全部の手順書を作者つきの 1 つの一覧にして、承認を 1 回で取る
 - 手順 3: preview を 1 回だけ立て、全部撮り終えるまで止めない
-- 手順 4: 動画の置き場所を 1 つ決め（スクラッチパッドの `acceptance-videos-<日付>/`）、Issue を 1 本ずつ撮る。毎回 `pnpm db:seed` から始める。録画は `<置き場所>/rec-<番号>/`、mp4 は `<置き場所>/issue-<番号>.mp4` に置く。1 本が失敗しても残りを撮り、失敗の理由を控える
+- 手順 4: 動画の置き場所を 1 つ決め（スクラッチパッドの `acceptance-videos-<日付>/`）、Issue を 1 本ずつ撮る。毎回、seed、録画、合成の順に走らせ、`pnpm db:seed` から始める。録画は `<置き場所>/rec-<番号>/`、mp4 は `<置き場所>/issue-<番号>.mp4` に置く。1 本が失敗しても残りを撮り、失敗の理由を控える
 - 手順 5 と 6: 全部撮り終えてから、まとめて行う
 
 撮り終えたら、置き場所の `manifest.json` に、Issue ごとの結果を書く。
@@ -138,7 +140,7 @@ mp4 の場所と長さ、手元に残したもの（ワークツリー、書き�
 }
 ```
 
-`video`、`skipped`、`failed` のどれか 1 つを持たせる。`captions` は、手順書の `caption` を場面の順に写す。
+`video`、`skipped`、`failed` のどれか 1 つを持たせる。`captions` は、`video` の Issue にだけ付け、手順書の `caption` を場面の順に写す。失敗した録画が mp4 を残していても、`video` には入れない。`manifest.json` は、Issue の題を文字列でつなげずに、オブジェクトから `JSON.stringify` で書く（理由: 題は外の人も書け、引用符を含む題で別のキーを差し込まれうる）。
 
 ```bash
 node .claude/skills/acceptance-video/gallery.mjs <置き場所>
@@ -150,4 +152,6 @@ node .claude/skills/acceptance-video/gallery.mjs <置き場所>
 terminal-browser open <出た URL> --split right
 ```
 
-`terminal-browser` が `file://` を開けなければ、URL と mp4 の置き場所を人に渡し、人のブラウザで開いてもらう。Issue の題と理由は、HTML に入れる前にエスケープされる。
+`terminal-browser` が `file://` を開けないときや、mp4 を再生できないときは、URL と mp4 の置き場所を人に渡し、人のブラウザで開いてもらう（この Mac の `terminal-browser` では、`file://` で開けて、動画も再生できた）。
+
+HTML に入れる Issue の題、字幕、理由は、エスケープされる。HTML には、外のファイルと外への通信を止める `Content-Security-Policy` も付けてある。
