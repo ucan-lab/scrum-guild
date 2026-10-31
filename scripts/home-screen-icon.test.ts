@@ -67,6 +67,11 @@ describe('ホーム画面アイコン', () => {
     }
   });
 
+  test('start_url を置かない（組織の画面で追加したとき、その画面から起動する）', () => {
+    assert.equal('start_url' in manifest, false);
+    assert.equal('lang' in manifest, false);
+  });
+
   test('テーマに追従できない固定の theme-color の meta を置かない', () => {
     assert.doesNotMatch(appHtml, /<meta\s[^>]*name="theme-color"/);
   });
