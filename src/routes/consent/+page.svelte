@@ -147,7 +147,7 @@
         </button>
         <LogoutButton />
       </div>
-      {#if !checked}<span class="field-hint" id="consent-submit-hint">{t('consentSubmitHint')}</span>{/if}
+      <span class="field-hint is-reserved" id="consent-submit-hint">{checked ? '' : t('consentSubmitHint')}</span>
     {/if}
   </GateSheet>
 </Gate>

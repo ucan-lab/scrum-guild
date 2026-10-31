@@ -36,7 +36,7 @@ const form = (id, checked) => `<label class="choice is-static is-consent"><input
 <div class="form-actions">
   <button class="btn is-primary" type="button" aria-disabled="${checked ? "false" : "true"}"${checked ? "" : ` aria-describedby="${id}"`}>${t("consentSubmit")}</button>
   ${logout}
-</div>${checked ? "" : `<span class="field-hint" id="${id}">${t("consentSubmitHint")}</span>`}`;
+</div><span class="field-hint is-reserved" id="${id}">${checked ? "" : t("consentSubmitHint")}</span>`;
 const warn = (text) => `<div class="callout is-warn" role="alert">${icon("alert")}<span>${text}</span></div>`;
 const sheet = (body, note) => `<section class="gate-sheet">
   <div class="gate-brand">${SQ.brandMark}<span class="brand-name">${app}</span></div>
@@ -47,10 +47,10 @@ const sheet = (body, note) => `<section class="gate-sheet">
 
 document.getElementById("gate").innerHTML = `<div class="gate"><div class="gate-stack">
   ${sheet(`<p>${consentLead}</p>${legalLinks()}${form("consent-submit-hint-unchecked", false)}`, "未同意の人が開いた状態。主文は本文と同じ大きさと色で、印を付けるまで同意のボタンは押せない（aria-disabled）。押せない理由は、ボタンの近くの説明を aria-describedby で結んで読み上げる。チェックボックスのラベルは指さない。")}
-  ${sheet(`<p>${consentLead}</p>${legalLinks()}${form("", true)}`, "印を付けた状態。ボタンが押せるようになり、説明は外れる。")}
+  ${sheet(`<p>${consentLead}</p>${legalLinks()}${form("consent-submit-hint-checked", true)}`, "印を付けた状態。ボタンが押せるようになり、説明の文と aria-describedby は外れる。説明の要素は1行分の高さを残し、紙が動かない。")}
   ${sheet(`<p>${t("consentCurrent")}</p><p class="panel-note">${t("consentRecordedAt")} <span class="mono">2026/10/31&nbsp;09:00</span></p><div class="form-actions"><button class="btn is-primary" type="button">${t("consentContinue")}</button>${logout}</div>`, "同意済みの人が開いた状態。日時の値だけを等幅（.mono）で出し、ラベルは通常の字。")}
   ${sheet(`${warn(t("consentUpdated"))}<p>${consentLead}</p>${legalLinks()}${form("consent-submit-hint-updated", false)}`, "同意の記録を断られた（版が上がっていた）状態。更新の知らせを上に出し、印を外す。")}
-  ${sheet(`${warn(t("consentLoadFailed"))}<div class="form-actions"><button class="btn is-sm" type="button">${t("retry")}</button>${logout}</div>`, "同意の状態を読み込めなかった状態。もう一度試すとログアウトを残す。")}
+  ${sheet(`${warn(t("consentLoadFailed"))}<div class="form-actions"><button class="btn is-sm" type="button" aria-disabled="false">${t("retry")}</button>${logout}<span class="field-hint" role="status"></span></div>`, "同意の状態を読み込めなかった状態。もう一度試すとログアウトを残す。読み直している間は、押したボタンを aria-disabled にして「読み直しています」を role=status で伝える。")}
   <p class="gate-note" style="text-align:center"><a href="index.html">デザインシステムのカタログへ戻る</a></p>
 </div></div>`;
 
