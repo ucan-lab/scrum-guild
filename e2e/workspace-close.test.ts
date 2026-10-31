@@ -364,6 +364,42 @@ test.describe('管理者（あおば開発のミナト）', () => {
     await expect(refusal).toBeVisible();
   });
 
+  test('空白の無い長い名前でも、断った理由は折り返してはみ出さず、画面の中に入る', async ({ page }) => {
+    // 名前の上限（50字）いっぱいに、空白を入れない
+    const longName = 'W'.repeat(50);
+    await page.setViewportSize({ width: 390, height: 800 });
+    await page.route('**/api/aoba/workspace-list', async (route) => {
+      const response = await route.fetch();
+      const body = (await response.json()) as { workspaces: { name: string; closed_at: string | null }[] };
+      for (const workspace of body.workspaces) {
+        if (workspace.name === SEED_NAME)
+          Object.assign(workspace, { name: longName, closed_at: '2026-10-22T00:00:00.000Z' });
+      }
+      return route.fulfill({ response, json: body });
+    });
+    await page.route('**/api/aoba/workspace-reopen', (route) =>
+      route.fulfill({
+        status: 409,
+        json: { error: { code: 'member_limit_reached', message: 'x', details: { used: 14, limit: 15, adding: 2 } } },
+      }),
+    );
+    await page.goto('/aoba/admin');
+    const button = workspacesOf(page)
+      .locator('tbody tr', { hasText: longName })
+      .getByRole('button', { name: `「${longName}」を再開する` });
+    await button.scrollIntoViewIfNeeded();
+    await button.click();
+
+    const refusal = workspacesOf(page).locator('.callout.is-warn[role="alert"]', {
+      hasText: `「${longName}」は再開できません`,
+    });
+    await expect(refusal).toBeVisible();
+    expect(await refusal.evaluate((el) => el.scrollWidth - el.clientWidth)).toBeLessThanOrEqual(0);
+    expect(await refusal.evaluate((el) => el.getBoundingClientRect().right)).toBeLessThanOrEqual(390);
+    // 押した行が下にあっても、理由が画面の中に入る
+    await expect(refusal).toBeInViewport();
+  });
+
   test('操作の後の読み直しに失敗したら、一覧を残したまま知らせ、「もう一度試す」で読み直せる', async ({ page }) => {
     // 2回目（操作の後の読み直し）だけ失敗させる
     await showSeedWorkspaceClosed(page, (call) => (call === 2 ? 'fail' : 'real'));

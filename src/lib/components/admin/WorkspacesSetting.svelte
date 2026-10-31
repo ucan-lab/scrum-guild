@@ -1,6 +1,7 @@
 <script lang="ts">
   import { resolve } from '$app/paths';
   import { page } from '$app/state';
+  import { tick } from 'svelte';
   import { workspaceList, workspaceReopen } from '../../../shared/operations/workspace/index.ts';
   import type { OutputOf } from '../../../shared/operations/define.ts';
   import type { Vocabulary } from '../../../shared/vocabulary.ts';
@@ -50,6 +51,7 @@
   // 再開が人数の上限で断られた理由。読み返せるよう、トーストでなく表の上のコールアウトに残す。
   // 次に「再開する」を押したとき、再開か終了が成功したとき、組織が替わったときに消し、一覧を読み直しても残す
   let reopenRefusal = $state<string | null>(null);
+  let refusalBox = $state<HTMLElement>();
   let createDialog = $state<ReturnType<typeof WorkspaceCreateDialog>>();
   let closeDialog = $state<ReturnType<typeof WorkspaceCloseDialog>>();
   // 終了の確認の対象。ダイアログの結果を受けるとき、どの行だったかを名前で知らせるのに使う
@@ -114,6 +116,9 @@
                 used: seats.used,
                 limit: seats.limit,
               });
+        // 押した行が表の下にあっても理由が見えるよう、描いた後に画面の中へ動かす。フォーカスは押したボタンに残す
+        await tick();
+        refusalBox?.scrollIntoView({ block: 'nearest' });
       } else if (result.status === 404 || result.status === 403) {
         showToast(t('workspaceUnavailable', { name: workspace.name }), 'alert');
       } else {
@@ -161,7 +166,9 @@
     refreshFailedText={t('workspaceListRefreshFailed', { workspace: t('workspace') })}
   >
     {#if reopenRefusal !== null}
-      <div class="callout is-warn" role="alert"><Icon name="alert" /><span>{reopenRefusal}</span></div>
+      <div class="callout is-warn" role="alert" bind:this={refusalBox}>
+        <Icon name="alert" /><span class="wrap-anywhere">{reopenRefusal}</span>
+      </div>
     {/if}
     {#if workspaces.length === 0}
       <EmptyState
