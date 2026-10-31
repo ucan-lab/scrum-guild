@@ -310,7 +310,7 @@ CI の `label` が機械的に付けるのとは別の経路で、パスの規�
 
 ## Step 5-D: セッション名に Issue と PR の番号を入れる
 
-どちらのモードでも、PR の番号が分かったら、セッション名を「PR の後」の形 `#<Issue の番号> PR #<PR の番号> <Issue の題>` にする。紐づく Issue が無ければ `PR #<PR の番号> <PR のタイトル>` にする。形と付け方は `docs/development.md` の「並行して作業するときの決まり」のセッション名に従う（`increment-build` が付けた名前に PR の番号を足す形にそろえる）。
+どちらのモードでも、PR の番号が分かったら、`rename-session` に Issue の番号（無ければ無し）と PR の番号を渡して、セッション名を「PR の後」の形 `#<Issue の番号> PR #<PR の番号> <Issue の題>` にする。紐づく Issue が無ければ `PR #<PR の番号> <PR のタイトル>` になる。形は `docs/development.md` の「並行して作業するときの決まり」のセッション名に従う（`increment-build` が付けた名前に PR の番号を足す形）。
 
 ## Step 6: インラインコメントを投稿する
 
