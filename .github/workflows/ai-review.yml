@@ -74,6 +74,19 @@ jobs:
           gh api --paginate --slurp "repos/$REPO/issues/$PR_NUMBER/comments" > "$RAW_DIR/issue-comments.json"
           gh api --paginate --slurp "repos/$REPO/pulls/$PR_NUMBER/comments" > "$RAW_DIR/review-comments.json"
 
+      # done-check と前の AI レビューの印から、今回見る範囲の起点を決める。印が読めないときは全体に倒す。
+      - name: 起点を決める
+        id: scope
+        continue-on-error: true
+        env:
+          RAW_DIR: ${{ runner.temp }}/pr-raw
+          CONTEXT_DIR: ${{ runner.temp }}/pr-context
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          EVENT_ACTION: ${{ github.event.action }}
+          NO_DIFF_BODY_FILE: ${{ runner.temp }}/pr-no-diff-body.md
+        run: node scripts/ai-review-scope.ts
+
       # 権限の無い人のコメントを落とし、大きさを抑える。ログには件数だけを出す。
       # 整形が落ちても、絞る前の JSON は消す。
       # pr-context は Claude の --add-dir に渡すので、整形が落ちても空で作っておく
@@ -92,20 +105,42 @@ jobs:
       # 差分の無いレビューは意味が無いので、上の2段と違い、落ちたらジョブを落とす。
       # まとめの置き場の pr-out も、Claude の --add-dir に渡すのでここで空で作る
       - name: 差分を書き出す
+        id: diff
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           CONTEXT_DIR: ${{ runner.temp }}/pr-context
           OUT_DIR: ${{ runner.temp }}/pr-out
+          SCOPE_OUTCOME: ${{ steps.scope.outcome }}
+          SCOPE_MODE: ${{ steps.scope.outputs.mode }}
+          SCOPE_START: ${{ steps.scope.outputs.start }}
         run: |
           set -euo pipefail
           mkdir -p "$CONTEXT_DIR" "$OUT_DIR"
-          git diff "$BASE_SHA...$HEAD_SHA" > "$CONTEXT_DIR/diff.patch"
-          # Claude はパスをそのまま Read に渡すので、日本語のパスをクォートさせない
-          git -c core.quotePath=false diff --name-status "$BASE_SHA...$HEAD_SHA" > "$CONTEXT_DIR/files.txt"
+          if [ "$SCOPE_OUTCOME" = success ] && [ -f "$CONTEXT_DIR/diff.patch" ] && [ -f "$CONTEXT_DIR/files.txt" ] && [ -f "$CONTEXT_DIR/scope.md" ]; then
+            printf 'mode=%s\nstart=%s\n' "$SCOPE_MODE" "$SCOPE_START" >> "$GITHUB_OUTPUT"
+          else
+            git diff "$BASE_SHA...$HEAD_SHA" > "$CONTEXT_DIR/diff.patch"
+            # Claude はパスをそのまま Read に渡すので、日本語のパスをクォートさせない
+            git -c core.quotePath=false diff --name-status "$BASE_SHA...$HEAD_SHA" > "$CONTEXT_DIR/files.txt"
+            printf '%s\n' '## AI レビューの範囲' '' '- 方式: 全体（起点の判定が落ちたため）' > "$CONTEXT_DIR/scope.md"
+            printf 'mode=full\nstart=\n' >> "$GITHUB_OUTPUT"
+          fi
           echo "変わったファイル: $(wc -l < "$CONTEXT_DIR/files.txt") 件"
 
+      # 起点から差分が無いイベントでは、Claude を動かさず決まった文だけを付ける。
+      - name: 差分が無い旨を PR に付ける
+        if: steps.diff.outputs.mode == 'none'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          NO_DIFF_BODY_FILE: ${{ runner.temp }}/pr-no-diff-body.md
+        run: gh pr comment "$PR_NUMBER" -R "$REPO" --body-file "$NO_DIFF_BODY_FILE"
+
       - uses: anthropics/claude-code-action@ae68417a745a5df4b2124873632bd73a2255e6f6 # v1.0.259
+        id: claude
+        if: steps.diff.outputs.mode != 'none'
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           # Claude の GitHub App のトークンは contents: write を持ち、上の permissions に縛られない。
@@ -134,16 +169,17 @@ jobs:
       # Claude にはコメントを書く道具を許さないので、まとめはここでこの PR の番号に固定して1件付ける。
       # Claude が書かずに終わったか、action が落ちたときも、その旨を1件付ける
       - name: まとめを PR に付ける
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && steps.diff.outputs.mode != 'none' }}
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
           OUT_FILE: ${{ runner.temp }}/pr-out/summary.md
           BODY_FILE: ${{ runner.temp }}/pr-summary-body.md
+          MARK_SHA: ${{ steps.claude.outcome == 'success' && github.event.pull_request.head.sha || '' }}
         run: |
           set -euo pipefail
-          node scripts/ai-review-summary.ts "$OUT_FILE" "$BODY_FILE"
+          node scripts/ai-review-summary.ts "$OUT_FILE" "$BODY_FILE" "$MARK_SHA"
           gh pr comment "$PR_NUMBER" -R "$REPO" --body-file "$BODY_FILE"
 
       - name: ai-review のラベルを外す

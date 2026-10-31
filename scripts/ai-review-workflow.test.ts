@@ -7,6 +7,7 @@ import { load } from 'js-yaml';
 // Bash の許可は前方一致で後ろの引数を縛らず、gh pr comment -R で外へ送る、git diff --output= でランナーのファイルに書く、
 // といった抜け道が残る。Bash は一切許さず、一部を絞り込んで見ずに、一覧を丸ごと固定する。許可を足すときは、この一覧も直す
 type Step = {
+  id?: string;
   name?: string;
   uses?: string;
   if?: string;
@@ -109,6 +110,10 @@ describe('ai-review の前後の段', () => {
     const step = named('差分を書き出す');
     assert.ok(steps.indexOf(step) < actionIndex);
     assert.equal(step['continue-on-error'], undefined);
+    assert.equal(step.id, 'diff');
+    assert.equal(step.env?.SCOPE_OUTCOME, '${{ steps.scope.outcome }}');
+    assert.equal(step.env?.SCOPE_MODE, '${{ steps.scope.outputs.mode }}');
+    assert.equal(step.env?.SCOPE_START, '${{ steps.scope.outputs.start }}');
     assert.equal(step.env?.BASE_SHA, '${{ github.event.pull_request.base.sha }}');
     assert.equal(step.env?.HEAD_SHA, '${{ github.event.pull_request.head.sha }}');
     const run = step.run ?? '';
@@ -119,13 +124,48 @@ describe('ai-review の前後の段', () => {
     );
   });
 
+  test('取る、起点、整える、差分、差分なし、action、まとめ、ラベルの順に並ぶ', () => {
+    const names = steps
+      .map((step) => step.name)
+      .filter(
+        (name): name is string =>
+          name !== undefined &&
+          (name.includes('PR の本文') ||
+            [
+              '起点を決める',
+              '差分を書き出す',
+              '差分が無い旨を PR に付ける',
+              'まとめを PR に付ける',
+              'ai-review のラベルを外す',
+            ].includes(name)),
+      );
+    assert.deepEqual(names, [
+      'PR の本文とコメントを取る',
+      '起点を決める',
+      'PR の本文とコメントを整える',
+      '差分を書き出す',
+      '差分が無い旨を PR に付ける',
+      'まとめを PR に付ける',
+      'ai-review のラベルを外す',
+    ]);
+    assert.equal(named('起点を決める').id, 'scope');
+    assert.equal(named('起点を決める')['continue-on-error'], true);
+    assert.equal(named('差分が無い旨を PR に付ける').if, "steps.diff.outputs.mode == 'none'");
+    assert.equal(actionStep().id, 'claude');
+    assert.equal(actionStep().if, "steps.diff.outputs.mode != 'none'");
+  });
+
   // 番号を Claude に選ばせず、イベントの PR の番号に固定する。action が落ちても、書かずに終わった旨を付ける
   test('まとめは action の後の段が、この PR の番号に固定して付ける', () => {
     const step = named('まとめを PR に付ける');
     assert.ok(steps.indexOf(step) > actionIndex);
-    assert.equal(step.if, '${{ !cancelled() }}');
+    assert.equal(step.if, "${{ !cancelled() && steps.diff.outputs.mode != 'none' }}");
     assert.equal(step.env?.PR_NUMBER, '${{ github.event.pull_request.number }}');
     assert.equal(step.env?.REPO, '${{ github.repository }}');
+    assert.equal(
+      step.env?.MARK_SHA,
+      "${{ steps.claude.outcome == 'success' && github.event.pull_request.head.sha || '' }}",
+    );
     const run = step.run ?? '';
     const build = run.indexOf('node scripts/ai-review-summary.ts "$OUT_FILE" "$BODY_FILE"');
     const post = run.indexOf('gh pr comment "$PR_NUMBER" -R "$REPO" --body-file "$BODY_FILE"');

@@ -12,14 +12,17 @@ export const TRUNCATED_NOTE = '\n\n---\n\nまとめが GitHub のコメントの
 
 // 上限は UTF-16 の長さで測る（コードポイントの数より短くならないので、上限を超えない側に倒れる）。
 // 切り口でサロゲートペアを割らない
-export function summaryBody(summary: string | undefined): string {
+const SHA = /^[0-9a-f]{40}$/;
+
+export function summaryBody(summary: string | undefined, headSha?: string): string {
   if (summary === undefined || summary.trim() === '') {
     return MISSING_SUMMARY;
   }
-  if (summary.length <= MAX_COMMENT_LENGTH) {
-    return summary;
+  const marked = headSha !== undefined && SHA.test(headSha) ? `<!-- ai-review:${headSha} -->\n${summary}` : summary;
+  if (marked.length <= MAX_COMMENT_LENGTH) {
+    return marked;
   }
-  let head = summary.slice(0, MAX_COMMENT_LENGTH - TRUNCATED_NOTE.length);
+  let head = marked.slice(0, MAX_COMMENT_LENGTH - TRUNCATED_NOTE.length);
   const last = head.charCodeAt(head.length - 1);
   if (last >= 0xd800 && last <= 0xdbff) {
     head = head.slice(0, -1);
@@ -28,15 +31,15 @@ export function summaryBody(summary: string | undefined): string {
 }
 
 if (import.meta.main) {
-  const [summaryFile, bodyFile] = process.argv.slice(2);
+  const [summaryFile, bodyFile, headSha] = process.argv.slice(2);
   if (!summaryFile || !bodyFile) {
     console.error(
-      '使い方: node scripts/ai-review-summary.ts <Claude が書いたまとめのファイル> <書き出す本文のファイル>',
+      '使い方: node scripts/ai-review-summary.ts <Claude が書いたまとめのファイル> <書き出す本文のファイル> [HEAD_SHA]',
     );
     process.exit(1);
   }
   const summary = existsSync(summaryFile) ? readFileSync(summaryFile, 'utf8') : undefined;
-  const body = summaryBody(summary);
+  const body = summaryBody(summary, headSha);
   writeFileSync(bodyFile, body);
   console.log(
     body === MISSING_SUMMARY
