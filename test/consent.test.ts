@@ -117,6 +117,27 @@ describe('同意の操作', () => {
     expect(await after.json()).toMatchObject({ current: true });
   });
 
+  test('現在版の行より新しい旧版の行があれば current は false で、record すると新しい行が足されて current になる', async () => {
+    const person = await createLoginPerson();
+    await seedConsent(person.accountId, TERMS_VERSION, PRIVACY_VERSION, '2026-10-30T00:00:00.000Z');
+    // 実行時刻より過去にする（record が足す行は今の時刻で、これより新しくなければならない）
+    await seedConsent(person.accountId, OLD, OLD, '2026-10-31T00:00:00.000Z');
+    const before = await post(app, consentStatus, { token: person.token });
+    expect(await before.json()).toMatchObject({ latest: { terms_version: OLD }, current: false });
+    expect((await post(app, consentRecord, { token: person.token, body: CURRENT_INPUT })).status).toBe(200);
+    expect(await rowsFor(person.accountId)).toHaveLength(3);
+    const after = await post(app, consentStatus, { token: person.token });
+    expect(await after.json()).toMatchObject({ latest: { terms_version: TERMS_VERSION }, current: true });
+  });
+
+  test('同じ時刻の行は、版が新しいほうを最新にする', async () => {
+    const person = await createLoginPerson();
+    await seedConsent(person.accountId, OLD, OLD, '2026-10-31T00:00:00.000Z');
+    await seedConsent(person.accountId, TERMS_VERSION, PRIVACY_VERSION, '2026-10-31T00:00:00.000Z');
+    const status = await post(app, consentStatus, { token: person.token });
+    expect(await status.json()).toMatchObject({ latest: { terms_version: TERMS_VERSION }, current: true });
+  });
+
   test('同じ同意を同時に送っても、すべて 200 で行は 1 つ', async () => {
     const person = await createLoginPerson();
     const responses = await Promise.all(
