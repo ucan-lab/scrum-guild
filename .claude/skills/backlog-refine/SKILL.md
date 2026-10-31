@@ -13,7 +13,7 @@ description: 計画や設計について、共通理解に到達するまでユ�
 2. **これから何をするか宣言する**: 「論点を洗い出して 1 つずつ一緒に決めていく」という進め方と、おおよその規模感（論点が何個くらいになりそうか）を伝える。
 3. 宣言したら、返事を待たずに論点ボードを出して最初の質問に入る。ズレていたら答える側が最初の回答で直せるよう、宣言の末尾に「ズレていたら教えてください」と添える。対象がそもそも特定できないときだけ、宣言の代わりに `AskUserQuestion` で対象を聞く。
 
-詰める対象が GitHub の Issue なら、最初の質問の前にその Issue へ `status:refining` を付ける。並行するセッションと開発ボードに、要件整理中と分かるようにするため（`docs/development.md` の「Issue の状態」）。
+詰める対象が GitHub の Issue なら、最初の質問の前に `rename-session` に Issue の番号を渡してセッション名を付け、その Issue へ `status:refining` を付ける。並行するセッションと開発ボードに、要件整理中と分かるようにするため（`docs/development.md` の「Issue の状態」）。
 
 - `gh api repos/{owner}/{repo}/issues/<番号> --jq '[.labels[].name]'` でラベルを見て、`status:in-progress` が無ければ `gh api -X POST repos/{owner}/{repo}/issues/<番号>/labels -f 'labels[]=status:refining'` で付ける。作業中の Issue を詰め直すときは付けない
 - REST を使う。GraphQL の `gh issue edit` はクラウドのセッションで 403 になるため
