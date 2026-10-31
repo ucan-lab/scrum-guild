@@ -140,7 +140,7 @@ mp4 の場所と長さ、手元に残したもの（ワークツリー、書き�
 }
 ```
 
-`video`、`skipped`、`failed` のどれか 1 つを持たせる。`captions` は、`video` の Issue にだけ付け、手順書の `caption` を場面の順に写す。失敗した録画が mp4 を残していても、`video` には入れない。`manifest.json` は、Issue の題を文字列でつなげずに、オブジェクトから `JSON.stringify` で書く（理由: 題は外の人も書け、引用符を含む題で別のキーを差し込まれうる）。
+`video`、`skipped`、`failed` のどれか 1 つを持たせる。`captions` は、`video` の Issue にだけ付け、手順書の `caption` を場面の順に写す。失敗した録画が mp4 を残していても、`video` には入れない。`manifest.json` は、Issue の題の引用符を `\"`、改行を `\n` にして、JSON として正しくエスケープして書く。書いたら `gallery.mjs` を走らせて検査を通し、断られたら直す（理由: 題は外の人も書け、引用符を含む題で別のキーを差し込まれうる。知らないキー、動画名の形、重複は、検査が断る）。
 
 ```bash
 node .claude/skills/acceptance-video/gallery.mjs <置き場所>
