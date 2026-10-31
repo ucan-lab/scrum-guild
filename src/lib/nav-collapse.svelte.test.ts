@@ -92,6 +92,18 @@ describe('ほかのタブでの変更', () => {
     expect(navState.collapsed).toBe(false);
   });
 
+  test('localStorage 以外の保存領域（sessionStorage など）の変更は見ない', () => {
+    const local = storage('true');
+    navState.collapsed = true;
+    const other = { getItem: () => null, setItem: () => undefined };
+    handleNavCollapsedStorage({ key: null, newValue: null, storageArea: other as unknown as Storage });
+    expect(navState.collapsed).toBe(true);
+    handleNavCollapsedStorage({ key: NAV_COLLAPSED_KEY, newValue: 'false', storageArea: other as unknown as Storage });
+    expect(navState.collapsed).toBe(true);
+    handleNavCollapsedStorage({ key: NAV_COLLAPSED_KEY, newValue: 'false', storageArea: local as unknown as Storage });
+    expect(navState.collapsed).toBe(false);
+  });
+
   test('storage のイベントを受ける', () => {
     const addEventListener = vi.fn();
     listenNavCollapsedStorage({ addEventListener });

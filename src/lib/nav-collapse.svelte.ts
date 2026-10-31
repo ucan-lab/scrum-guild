@@ -37,8 +37,14 @@ export function setNavCollapsed(collapsed: boolean): void {
 }
 
 // 別のタブでの変更を追う。key が null なのは別のタブの localStorage.clear() で、既定（広げた状態）に戻す。
-// 値は 'true' と 'false' と消去（null）だけを当て、それ以外は今の状態を保つ（drawer.svelte.ts と同じ扱い）
-export function handleNavCollapsedStorage(event: { key: string | null; newValue: string | null }): void {
+// 値は 'true' と 'false' と消去（null）だけを当て、それ以外は今の状態を保つ（drawer.svelte.ts と同じ扱い）。
+// storage のイベントは sessionStorage の変更でも届き、その clear() も key が null になるので、localStorage のものだけを見る
+export function handleNavCollapsedStorage(event: {
+  key: string | null;
+  newValue: string | null;
+  storageArea?: Storage | null;
+}): void {
+  if (event.storageArea !== undefined && event.storageArea !== storage()) return;
   if (event.key === null) {
     navState.collapsed = false;
     return;
