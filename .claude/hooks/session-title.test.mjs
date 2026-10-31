@@ -1,10 +1,10 @@
 // node --test .claude/hooks/*.test.mjs
 import assert from 'node:assert/strict';
 import { execFileSync, spawnSync } from 'node:child_process';
-import { chmodSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { describe, test } from 'node:test';
+import { after, describe, test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { issueNumberOf, pickPr, titleFor } from './session-title-rules.mjs';
 
@@ -59,10 +59,16 @@ describe('titleFor', () => {
     assert.ok(title.endsWith('…'));
   });
   test('絵文字が切り口にまたがっても、孤立したサロゲートを残さない', () => {
-    const title = titleFor({ issueNumber: 1, issueTitle: 'a'.repeat(73) + '😀😀😀' });
+    // `#1 ` の3文字を足して 3 + 73 + 5 = 81 文字になり、切り口（79 文字目）が絵文字に当たる
+    const title = titleFor({ issueNumber: 1, issueTitle: 'a'.repeat(73) + '😀'.repeat(5) });
     assert.ok(!/[\ud800-\udbff](?![\udc00-\udfff])|(?<![\ud800-\udbff])[\udc00-\udfff]/.test(title));
-    assert.ok([...title].length <= 80);
+    assert.equal([...title].length, 80);
+    assert.ok(title.endsWith('😀…'));
     assert.equal([...titleFor({ issueNumber: 1, issueTitle: '😀'.repeat(60) })].length, 60 + 3);
+  });
+  test('ちょうど 80 文字までは切らず、81 文字からは切る', () => {
+    assert.equal([...titleFor({ issueNumber: 1, issueTitle: 'a'.repeat(77) })].join(''), `#1 ${'a'.repeat(77)}`);
+    assert.ok(titleFor({ issueNumber: 1, issueTitle: 'a'.repeat(78) }).endsWith('…'));
   });
 });
 
@@ -84,6 +90,7 @@ describe('pickPr', () => {
 
 describe('session-title.mjs（本物の git と偽の gh）', () => {
   const root = realpathSync(mkdtempSync(path.join(os.tmpdir(), 'session-title-')));
+  after(() => rmSync(root, { recursive: true, force: true }));
   const bin = path.join(root, 'bin');
   const calls = path.join(root, 'gh-calls');
   mkdirSync(bin);
@@ -121,6 +128,11 @@ describe('session-title.mjs（本物の git と偽の gh）', () => {
     const r = start({ cwd: repoOn('123-invite') }, { GH_PR_LIST: '[]' });
     assert.equal(r.status, 0);
     assert.deepEqual(JSON.parse(r.stdout), { hookSpecificOutput: { hookEventName: 'SessionStart', sessionTitle: '#123 招待する' } });
+  });
+  test('gh には Issue の番号と、PR を絞る引数を渡す', () => {
+    const r = start({ cwd: repoOn('128-invite') }, { GH_PR_LIST: '[]' });
+    assert.ok(r.calls.includes('issue view 128 --json title'));
+    assert.ok(r.calls.includes('pr list --head 128-invite --state all --limit 10 --json number,state,isCrossRepository'));
   });
   test('PR があれば `#番号 PR #n 題`', () => {
     const r = start({ cwd: repoOn('124-invite') }, { GH_PR_LIST: '[{"number":9,"state":"CLOSED"},{"number":8,"state":"OPEN"}]' });
