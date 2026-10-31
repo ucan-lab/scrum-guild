@@ -5,6 +5,7 @@
 import type { Page } from '@playwright/test';
 import { expect, test } from './fixtures.ts';
 import { SEED_PASSWORD_LOGINS } from '../seed/passwords.ts';
+import { PASSWORD_LOGIN_ENABLED } from '../src/shared/password-login-enabled.ts';
 import {
   findA11yViolations,
   findOverflowViolations,
@@ -14,6 +15,9 @@ import {
   watchViolations,
 } from './helpers.ts';
 import { resetPasswordLoginRateLimits } from './local-d1.ts';
+
+// 初版は口と画面を閉じている（PASSWORD_LOGIN_ENABLED、Issue #635）。閉じている間の確かめは e2e/login.test.ts
+test.skip(!PASSWORD_LOGIN_ENABLED, 'メールアドレスとパスワードのログインを閉じている間は飛ばす');
 
 const emailField = (page: Page) => page.getByLabel('メールアドレス', { exact: true });
 const passwordField = (page: Page) => page.getByLabel('パスワード', { exact: true });

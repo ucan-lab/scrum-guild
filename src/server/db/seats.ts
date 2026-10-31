@@ -151,6 +151,36 @@ export async function seatHoldersOfWorkspaceInvitations(
   return people;
 }
 
+// 無効にされた人を有効に戻すと、人数に数えられる承諾待ちの招待（開いたワークスペース、同じ組織）が、そのログイン
+// （手段と ID）にあるか。無効の間は人数に数えない招待なので、inviteeNotDisabled では除かず、有効に戻した後の数え方で見る。
+// 数えるのは seatInvitationsStatement と同じ条件（承諾待ち、開いたワークスペース）に、無効にした日時（disabledAt）以後に作った
+// 招待という条件を足したもの。無効にする前に作った招待は、有効に戻す同じ batch で取り消されて人数に加わらないので数えない
+// （取り消す側の revokeInvitationStatements の createdBefore と境界をそろえた補集合）。
+// 期限（claim_expires_at）は見ない。login_subject の入った行は claim の列が空（migrations/0001 の CHECK）で、期限の過ぎた Google の招待は
+// login_subject が空のメールアドレスで待つ行にしか無く、この検索（login_subject の一致）に当たらない。
+// 同じ人への招待が複数でも、あるかどうかだけを返す。組織の ID は入口の organizationId から取り、ほかの組織の招待は見ない
+export async function hasSeatInvitationOfLogin(
+  db: OrganizationDb,
+  login: { provider: string; subject: string },
+  disabledAt: string,
+): Promise<boolean> {
+  const row = await db.first(
+    db.statement((q) =>
+      q
+        .selectFrom('invitations as i')
+        .innerJoin('workspaces as w', 'w.id', 'i.workspace_id')
+        .select('i.id')
+        .where('w.organization_id', '=', db.organizationId)
+        .where('w.closed_at', 'is', null)
+        .where('i.status', '=', 'pending')
+        .where('i.login_provider', '=', login.provider)
+        .where('i.login_subject', '=', login.subject)
+        .where('i.created_at', '>=', disabledAt),
+    ),
+  );
+  return row !== undefined;
+}
+
 // 確かめた組織の人数に数える人。組織の ID は入口の organizationId から取り、ほかの組織を数えられない
 export async function seatHoldersOf(db: OrganizationDb, at: Date): Promise<Set<string>> {
   const organizationId = db.organizationId;

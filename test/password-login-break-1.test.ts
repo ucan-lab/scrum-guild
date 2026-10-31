@@ -13,7 +13,7 @@ import { spyPbkdf2 } from './auth/pbkdf2-spy.ts';
 import { AT, createOrganization, createUser } from './factories.ts';
 import { testEnv } from './operations/world.ts';
 
-const app = createApp();
+const app = createApp(undefined, { passwordLogin: true });
 const ORIGIN = new URL(testEnv.PUBLIC_ORIGIN).origin;
 const SESSION_COOKIE = sessionCookieName(testEnv.PUBLIC_ORIGIN);
 const PATH = '/api/auth/password/login';

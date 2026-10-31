@@ -1073,6 +1073,17 @@ export const dictionary = defineDictionary({
   userErrorDisabled: '無効の人は{admin}に指名できません。先に有効に戻してください',
   userErrorMemberLimit:
     '{organization}の人数が上限に達しているため、{name}を{admin}に指名できません。上限を上げるには運用者に相談してください',
+  // 有効に戻すのが人数の上限で断られた（409 の member_limit_reached）。表の上のコールアウトに出して残す。
+  // {name} は有効に戻そうとした人の名前、{adding} は有効に戻すと新しく人数に数えられる人、{used} は今の人数、{limit} は人数の上限、
+  // {organization}、{workspace}、{leader} は辞書の言葉。
+  // 数と「人」の間は不可分の空白（U+00A0）で、折り返しで割れない。
+  // 無効の間に招待し直した承諾待ちの招待は、有効に戻すまで数えていなかった。招待は残してあるので、対処は上限の見直し（運用者に問い合わせる）と、
+  // ほかのユーザーの無効化に加え、{leader}にその人への承諾待ちの招待を取り消してもらうこと（招待を取り消せるのは{leader}）
+  userEnableMemberLimit:
+    '{name}を有効に戻せません。無効の間に招待し直した承諾待ちの招待の {adding} 人が{organization}の人数に加わり、今の {used} 人と合わせて上限の {limit} 人を超えます。上限の見直しは運用者に問い合わせてください。または、ほかのユーザーを無効にして人数を減らすか、{workspace}の{leader}に{name}への承諾待ちの招待を取り消してもらってください。',
+  // 上の文言の、数が読めない応答（details が無いか不正）の版。数は出さず、対処は同じ
+  userEnableMemberLimitUnknown:
+    '{name}を有効に戻せません。無効の間に招待し直した承諾待ちの招待を含めると、{organization}の人数が上限を超えます。上限の見直しは運用者に問い合わせてください。または、ほかのユーザーを無効にして人数を減らすか、{workspace}の{leader}に{name}への承諾待ちの招待を取り消してもらってください。',
   userErrorChanged: '{name}の状態が先に変わっていました。一覧を読み直しました',
   userErrorNotFound: '{name}が見つかりませんでした。一覧を読み直しました',
   userErrorForbidden: 'この操作ができるのは{admin}だけです。画面を読み直しました',

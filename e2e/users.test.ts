@@ -5,10 +5,10 @@
 // ファイルの中のテストは順に走る（集計の数を見るため）
 import type { Page } from '@playwright/test';
 import type { OutputOf } from '../src/shared/operations/define.ts';
-import { userList } from '../src/shared/operations/organization/user.ts';
+import { userEnable, userList } from '../src/shared/operations/organization/user.ts';
 import { expect, test } from './fixtures.ts';
 import { expectFocusReturned, signIn, watchViolations } from './helpers.ts';
-import { rewriteOperation } from './operations.ts';
+import { failOperation, mockOperation, rewriteOperation } from './operations.ts';
 
 test.use({ timezoneId: 'Asia/Tokyo' });
 
@@ -314,6 +314,87 @@ test.describe('管理者（あおば開発のミナト）', () => {
       ),
     ).toBeVisible();
     await expect(toggle).not.toBeChecked();
+  });
+
+  // ユイを、一覧の上だけで無効の人にする（seed のユイを無効にしたままにしない）。有効に戻す操作は route で差し替える
+  async function showYuiDisabled(page: Page) {
+    await rewriteOperation(page, userList, { slug: 'aoba' }, (output) => ({
+      users: output.users.map((user) =>
+        user.name === 'ユイ' ? { ...user, disabled_at: '2026-10-22T00:00:00.000Z' } : user,
+      ),
+    }));
+  }
+
+  // 人数の上限で断られた理由は、4秒で消えるトーストでなく、表の上の消えないコールアウトに出す
+  function refusalOf(page: Page) {
+    return sectionOf(page).locator('.callout.is-warn[role="alert"]', { hasText: 'ユイを有効に戻せません' });
+  }
+
+  test('有効に戻すが 409 の member_limit_reached になったら、増える人数と今の人数、上限、対処を表の上に残して読み直す', async ({
+    page,
+  }) => {
+    await showYuiDisabled(page);
+    let lists = 0;
+    await page.route('**/api/aoba/user-list', async (route) => {
+      lists++;
+      await route.fallback();
+    });
+    const unroute = await failOperation(page, userEnable, { slug: 'aoba' }, 409, 'member_limit_reached', {
+      details: { used: 15, limit: 15, adding: 1 },
+    });
+    await page.goto('/aoba/admin');
+    const button = rowOf(page, 'ユイ').getByRole('button', { name: 'ユイを有効に戻す' });
+    await button.click();
+
+    const refusal = refusalOf(page);
+    await expect(refusal).toBeVisible();
+    await expect(refusal).toContainText('承諾待ちの招待の 1 人が組織の人数に加わり');
+    await expect(refusal).toContainText('今の 15 人と合わせて上限の 15 人を超えます');
+    // 対処は、上限の見直し（運用者に問い合わせる）と、ほかのユーザーを無効にすること、リーダーに招待を取り消してもらうこと
+    await expect(refusal).toContainText('上限の見直しは運用者に問い合わせてください');
+    await expect(refusal).toContainText('ほかのユーザーを無効にして人数を減らす');
+    await expect(refusal).toContainText('リーダーにユイへの承諾待ちの招待を取り消してもらってください');
+    await expect(refusal).not.toContainText('{');
+    // 表の上にある。汎用の失敗の文言には落とさない
+    const aboveTable = await refusal.evaluate(
+      (el) =>
+        (el.compareDocumentPosition(el.parentElement!.querySelector('table')!) & Node.DOCUMENT_POSITION_FOLLOWING) !==
+        0,
+    );
+    expect(aboveTable).toBe(true);
+    await expect(page.getByText('を変更できませんでした')).toHaveCount(0);
+    // 無効のまま、押したボタンにフォーカスが残る。一覧を読み直した後も、トーストが消える時間を過ぎても残る
+    await expect.poll(() => lists).toBe(2);
+    await expect(rowOf(page, 'ユイ').locator('.chip')).toHaveText('無効');
+    await expect(button).toBeFocused();
+    await page.waitForTimeout(5000);
+    await expect(refusal).toBeVisible();
+
+    // 次に「有効に戻す」を押すと消える（成功すれば、そのままトーストで知らせる）
+    await unroute();
+    await mockOperation(page, userEnable, { slug: 'aoba' }, { user_id: 'ignored', is_admin: false, disabled_at: null });
+    // 成功の後の一覧の読み直しが途中のままテストを終えると、差し替えの route が切れた応答を読んで落ちるので、応答まで待つ
+    const reread = page.waitForResponse('**/api/aoba/user-list');
+    await button.click();
+    await expect(toast(page, 'ユイを有効に戻しました')).toBeVisible();
+    await expect(refusal).toHaveCount(0);
+    await reread;
+  });
+
+  test('details の無い 409 の member_limit_reached は、数なしの理由を同じ場所に残して読み直す', async ({ page }) => {
+    await showYuiDisabled(page);
+    await failOperation(page, userEnable, { slug: 'aoba' }, 409, 'member_limit_reached');
+    await page.goto('/aoba/admin');
+    await rowOf(page, 'ユイ').getByRole('button', { name: 'ユイを有効に戻す' }).click();
+
+    const refusal = refusalOf(page);
+    await expect(refusal).toBeVisible();
+    await expect(refusal).toContainText('承諾待ちの招待を含めると、組織の人数が上限を超えます');
+    await expect(refusal).toContainText('上限の見直しは運用者に問い合わせてください');
+    // 数の穴を残さない。汎用の失敗の文言にも落とさない
+    for (const leaked of ['人が', '{', 'undefined', 'NaN']) await expect(refusal).not.toContainText(leaked);
+    await expect(page.getByText('を変更できませんでした')).toHaveCount(0);
+    await expect(rowOf(page, 'ユイ').locator('.chip')).toHaveText('無効');
   });
 });
 
