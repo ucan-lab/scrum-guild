@@ -30,7 +30,7 @@ SQ.mount("archive", () => {
   };
   return `
     ${pageHead(D.workspaces.wa.name, t("archive"), [["", "archive", `${t("archive")}したもの`, items.length]])}
-    <p class="action-note">取り込んだ${t("task")}のうち、この${t("workspace")}で扱わないもの。検索、${t("capacity")}、自分の今日には出ません。同期で取り込み元の属性は更新しますが、完了しても知らせません。</p>
+    <p class="action-note">取り込んだ${t("task")}のうち、この${t("workspace")}で扱わないもの。検索、${t("capacity")}、今日やることには出ません。同期で取り込み元の属性は更新しますが、完了しても知らせません。</p>
     ${items.length ? `<div class="book">${items.map((x) => entry(x, opts)).join("")}</div>`
       : `<div class="empty">${icon("archive")}<b>${t("archive")}は空です</b></div>`}`;
 });

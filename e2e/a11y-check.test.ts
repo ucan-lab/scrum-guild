@@ -52,13 +52,13 @@ test('アイコンだけのボタンとコントラストの足りない文字�
 test('本物の画面の日本語の見出しを、axe が文字のコントラストの判定にかける', async ({ page, context, baseURL }) => {
   await signIn(context, baseURL, 'admin');
   await page.goto('/aoba');
-  await expect(page.getByRole('heading', { level: 1, name: '自分の今日' })).toBeVisible();
+  await expect(page.getByRole('heading', { level: 1, name: '今日やること' })).toBeVisible();
   const results = await new AxeBuilder({ page }).withRules(['color-contrast']).analyze();
   const judged = [...results.passes, ...results.violations, ...results.incomplete]
     .filter((result) => result.id === 'color-contrast')
     .flatMap((result) => result.nodes.map((node) => node.html));
   expect(
-    judged.some((html) => html.startsWith('<h1') && html.includes('自分の今日')),
+    judged.some((html) => html.startsWith('<h1') && html.includes('今日やること')),
     judged.join('\n'),
   ).toBe(true);
 });

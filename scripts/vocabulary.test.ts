@@ -25,7 +25,7 @@ describe('言葉の辞書', () => {
   });
 
   test('format は名前を埋め、params に無い名前はそのまま残す', () => {
-    assert.equal(format('{page} - {app}', { page: '自分の今日', app: 'Scrum Guild' }), '自分の今日 - Scrum Guild');
+    assert.equal(format('{page} - {app}', { page: '今日やること', app: 'Scrum Guild' }), '今日やること - Scrum Guild');
     assert.equal(format('API: {status}（版 {version}）', { status: 'ok' }), 'API: ok（版 {version}）');
     assert.equal(format('{count} 件', { count: 0 }), '0 件');
     assert.equal(format('置き換えなし'), '置き換えなし');
@@ -39,7 +39,7 @@ describe('言葉の辞書', () => {
   test('題名の組み立ては辞書の1項目で、画面の既定の題名は辞書の名前と同じ', () => {
     const html = readFileSync(new URL('../src/app.html', import.meta.url), 'utf8');
     assert.equal(/<title>([^<]*)<\/title>/.exec(html)?.[1], dictionary.appName);
-    assert.equal(word('pageTitle', { page: word('pageToday'), app: word('appName') }), '自分の今日 - Scrum Guild');
+    assert.equal(word('pageTitle', { page: word('pageToday'), app: word('appName') }), '今日やること - Scrum Guild');
   });
 
   test('ホーム画面に出る名前（iOS の追加時の名前とマニフェスト）は辞書の名前と同じ', () => {

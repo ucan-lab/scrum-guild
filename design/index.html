@@ -93,7 +93,7 @@ const COLORS = [
 const SCREENS = [
   ["login.html", "ログイン", "ログイン、ログインできないとき、届いた招待"],
   ["organizations.html", "組織の選択", "入れる組織が2つ以上の人のログイン直後"],
-  ["today.html", "自分の今日", "全ワークスペースの自分のタスク、レベル、積載量"],
+  ["today.html", "今日やること", "全ワークスペースの自分のタスク、レベル、積載量"],
   ["notifications.html", "通知", "画面の中の知らせ、既読"],
   ["me.html", "自分の設定", "1日の基準、休み、API トークン、経験値の明細、招待"],
   ["admin.html", "組織の管理", "ユーザー、ワークスペース、組織の休日"],
@@ -214,7 +214,7 @@ const SECTIONS = [
     colorBlock(), ["完了の色は完了の印とクリアだけ、経験値の色は経験値とレベルとレイドだけに使い、他の意味を持たせない。", "状態の色は、必ずアイコンか文字と一緒に使う（色だけで区別しない）。", "操作の色は操作と選択と進みの色。飾りには使わない。"])],
   ["type", "文字", () => block("type", "文字", "書体は役割で4つに分ける。",
     `<div>
-      <div class="type-row"><span class="cat-name">--font-display<br>2xl / --weight-display</span><span class="page-title">自分の今日</span></div>
+      <div class="type-row"><span class="cat-name">--font-display<br>2xl / --weight-display</span><span class="page-title">今日やること</span></div>
       <div class="type-row"><span class="cat-name">--font-display<br>xl / --weight-display</span><span class="section-title">今週が${t("due")}</span></div>
       <div class="type-row"><span class="cat-name">--font-display<br>lg / 700</span><span class="notice-title">勤怠の月次の締めを手作業なしで回す</span></div>
       <div class="type-row"><span class="cat-name">--font-body<br>md / 400</span><span>購入額に応じてポイントを付け、次の購入で使えるようにする。年内の公開が先方との約束。</span></div>
@@ -245,8 +245,9 @@ const SECTIONS = [
     ["アイコンは文字の代わりにしない。意味のある操作には文字か aria-label を付ける。", "ゲームの物のアイコンは、経験値、クリア報酬、レベル、感謝の4つの語にだけ使う。エピック、ストーリー、タスクとメニューは業務のアイコンのまま。", "ゲームの物のアイコンの色は、語の色の役割に従う。経験値とレベルは経験値の色（.ico.is-xp）、クリア報酬は段階の色（.tier の中で受ける）、感謝は文字の色。", "レベルの紋章（.emblem）を出す所には crest を重ねない。紋章がレベルの印を兼ねる。", "本番では、同じ描き方の OSS のアイコンセット（Lucide など）に置き換えてよい。"], `&lt;svg class="ico"&gt;&lt;use href="#i-sun"/&gt;&lt;/svg&gt; / .ico.is-xp`)],
   ["heads", "見出しと集計", () => block("heads", "画面の見出しと集計", "画面の先頭には、見出しと「今気にすること」の件数を置く。画面の主な操作は見出しの右。",
     `${pageHead(D.todayLabel, SQ.sprintLabel("sp14"), [["", "check", "完了", "4 / 24 pt"], ["is-danger", "alert", `${t("due")}切れ`, 1], ["is-warn", "pen", `${t("detail")} 未記入`, 1], ["is-ok", "check", "取り込み元で完了", 0]], `<button class="btn" type="button">延長する</button>`)}
-     <div class="section-head"><h2 class="section-title">今日やる</h2><span class="section-count">3 件</span><span class="section-hint">日付が変わると印は外れます</span></div>`,
-    ["件数が0の集計は色を付けない。"], ".page-head .page-eyebrow .page-head-row .page-title .page-actions .tally / .section-head .section-title .section-count .section-hint")],
+     <div class="section-head"><h2 class="section-title">今日やると決めたもの</h2><span class="section-count">3 件</span><span class="section-hint">印を付けた日が過ぎても、完了にするか印を外すまで残ります</span></div>
+     ${SQ.foldedSection("fold-sample", `進行中の${t("sprint")}`, 2, SQ.book(SQ.tasksWhere((x) => x.who === D.me && !x.doneAt).slice(0, 2), { showWs: true }))}`,
+    ["件数が0の集計は色を付けない。", "初めは閉じて件数だけ出す区分は foldedSection（details と summary）で作る。見出しの行を押すと開き、開いたら「押すと開きます」を隠す。狭い幅と指で押す画面では、見出しの行を44px の高さにする。", "持ち越した行の日数は、book の opts.meta に渡した1行（.props-note）で添える。"], ".page-head .page-eyebrow .page-head-row .page-title .page-actions .tally / .section-head .section-title .section-count .section-hint / .section.is-folded SQ.foldedSection(id, title, count, body)")],
   ["buttons", "ボタン", () => block("buttons", "ボタン", "1つの面に主ボタン（is-primary）は1つまで。",
     `<div class="cat-row">
       <button class="btn is-primary" type="button">${icon("check")}${t("complete")}</button>
@@ -302,7 +303,7 @@ const SECTIONS = [
       <span class="chip is-todo">${icon("pen")}${t("detail")} 未記入</span>
       <span class="chip is-ok">${icon("check")}取り込み元で完了</span>
       <span class="chip is-done">${icon("check")}完了</span>
-      <span class="chip is-carry">${icon("redo")}昨日から持ち越し</span>
+      <span class="chip is-carry">${icon("redo")}持ち越し</span>
       <span class="chip is-danger">${icon("alert")}取り込み元で見つからない</span>
     </div>
     <div class="cat-row">
@@ -571,7 +572,7 @@ const SECTIONS = [
      <div class="two">${SQ.emptyState("board", `まだ${t("task")}がありません`, `${t("task")}を優先する順に並べる場所です。`, "", undefined, "notice")}${SQ.emptyState("calendar", `まだ${t("sprint")}がありません`, `${t("sprint")}を作ると、ここに先の${t("sprint")}が並びます。`, "", undefined, "map")}</div>`,
     ["色はテーマの文字の薄い色に従い、絵柄はテーマで替えない。文とボタンより目立たせない（アイコンの色より濃くしない）。", "読み上げから外す（aria-hidden）。何が出る場所かと次にやることは、隣の文が伝える。", "種類は掲示板（一覧が空）、宝箱（報酬や明細が空）、地図（最初の一歩）の3つ。場面ごとに選び、増やすときはここに足す。", "「最初にやること」では、パネルの見出しの左に小さい形（SQ.art(map, true)、.art.is-lead）で置く。見本は下の「最初にやること」。"],
     "SQ.art(name, lead) .art .art.is-lead / SQ.emptyState(…, art)")],
-  ["first", "最初にやること", () => block("first", "最初にやること", "初めて使う人の自分の今日の先頭に、ロールごとの手順を出す。済んだかは今のデータから決まる。必須の手順がすべて済むと出なくなる。",
+  ["first", "最初にやること", () => block("first", "最初にやること", "初めて使う人の今日やることの先頭に、ロールごとの手順を出す。済んだかは今のデータから決まる。必須の手順がすべて済むと出なくなる。",
     `<div class="two">${SQ.firstSteps("member", { preview: true })}${SQ.firstSteps("admin", { preview: true })}</div>`,
     ["ロールは一般、リーダー、ワークスペースがまだない管理者の3つ。", "主ボタンは、まだ済んでいない最初の手順にだけ付ける。", "取り込み元やスプリントのように使わないチームもあるものは「任意」にし、済んでいなくても手順の一覧を消す妨げにしない。"],
     "SQ.firstSteps(role) / .panel .steps .step .is-done .chip")],

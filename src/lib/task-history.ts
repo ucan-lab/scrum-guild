@@ -38,7 +38,7 @@ const FIELD_LABELS: ReadonlyMap<string, (t: Translate) => string> = new Map([
   ['repository', (t: Translate) => t('repository')],
   ['sprint', (t: Translate) => t('sprint')],
   ['column', (t: Translate) => t('column')],
-  ['today_on', (t: Translate) => t('sectionToday')],
+  ['today_on', (t: Translate) => t('historyFieldToday')],
 ]);
 
 // 値を出さない列（本文は長いので、API も値を返さない）

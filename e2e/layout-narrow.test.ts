@@ -1,4 +1,4 @@
-// ワークスペースの外の主な画面（自分の今日、組織の管理）を幅 390px で開き、横のはみ出しと 44px の押せる範囲を確かめる（#336）。
+// ワークスペースの外の主な画面（今日やること、組織の管理）を幅 390px で開き、横のはみ出しと 44px の押せる範囲を確かめる（#336）。
 // 3つのテーマ × 1つの言葉（スクラムの言葉）。ワークスペースの中の画面は e2e/layout-narrow-workspace.test.ts（CI のシャードに散るよう分けた）。
 // 検査が空振りしないことは e2e/layout-narrow-check.test.ts。除外は e2e/ui-exclusions.ts。
 // seed のセッション（seed/sessions.ts）の Cookie で開く。あおば開発の管理者はミナト。読むだけにし、seed の行もテーマも
@@ -15,7 +15,7 @@ test.beforeEach(async ({ context, baseURL }) => {
   await signIn(context, baseURL, 'admin');
 });
 
-test('自分の今日（/aoba）が 390px で横にはみ出さず、押せる要素が 44px 四方で押せる', async ({ page }) => {
+test('今日やること（/aoba）が 390px で横にはみ出さず、押せる要素が 44px 四方で押せる', async ({ page }) => {
   await expectNarrowLayout(page, 'today', async (w) => {
     await page.goto('/aoba');
     await expect(page.getByRole('heading', { level: 1, name: w('pageToday') })).toBeVisible();

@@ -100,7 +100,7 @@ window.SQ_DATA = (function () {
         src: { kind: "pr", key: "acme/shop#412", status: "open" } },
       { id: "t3", ws: "wa", repo: "r2", title: "管理画面にポイント履歴の一覧を出す", story: "s1", sprint: "sp14", col: "c1", who: "u2", pts: 5, unfilled: true, creator: "u2" },
       { id: "t4", ws: "wa", repo: "r1", title: "購入画面でポイント残高を出す", story: "s2", sprint: "sp15", who: "u3", pts: 3, creator: "u3" },
-      { id: "t5", ws: "wa", repo: "r1", title: "ポイント利用の API を設計する", story: "s2", sprint: "sp15", who: "u1", pts: 8, unfilled: true, creator: "u1" },
+      { id: "t5", ws: "wa", repo: "r1", title: "ポイント利用の API を設計する", story: "s2", sprint: "sp15", who: "u1", pts: 8, due: "2026-10-18", unfilled: true, creator: "u1" },
       { id: "t6", ws: "wa", repo: "r1", title: "決済 Webhook の再送を監視する", story: "s3", sprint: "sp14", col: "c2", who: "u4", pts: 3,
         src: { kind: "backlog", key: "SHOP-128", status: "処理中", due: today } },
       { id: "t7", ws: "wa", repo: "r1", title: "タイムアウトの閾値を見直す", story: "s3", sprint: "sp14", col: "done", who: "u4", pts: 2, doneAt: "10/16 15:20", creator: "u4" },
@@ -115,8 +115,8 @@ window.SQ_DATA = (function () {
       { id: "t13", ws: "wa", repo: "r2", title: "ポイント失効の通知メールを作る", story: "s1", sprint: "sp15", who: null, pts: null, unfilled: true, creator: "u2" },
       { id: "t14", ws: "wa", repo: "r1", title: "決済通知のメール文面を直す", story: "s3", sprint: "sp14", col: "done", who: "u1", pts: 1, doneAt: "10/20 09:40",
         src: { kind: "backlog", key: "SHOP-126", status: "完了" } },
-      { id: "t15", ws: "wb", title: "勤怠の CSV 出力で締め日を選べるようにする", sprint: "spb", colName: "作業中", who: "u1", pts: 3, due: "2026-10-22", creator: "u1" },
-      { id: "t16", ws: "wb", title: "有給の残日数を一覧に出す", sprint: "spb", colName: "未着手", who: "u1", pts: null, unfilled: true, creator: "u1" },
+      { id: "t15", ws: "wb", title: "勤怠の CSV 出力で締め日を選べるようにする", sprint: "spb", colName: "作業中", who: "u1", pts: 3, due: "2026-10-22", todayOn: "2026-10-18", creator: "u1" },
+      { id: "t16", ws: "wb", title: "有給の残日数を一覧に出す", sprint: "spb", colName: "未着手", who: "u1", pts: null, due: today, unfilled: true, creator: "u1" },
     ],
 
     comments: {
