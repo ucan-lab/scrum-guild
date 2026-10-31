@@ -96,7 +96,7 @@ D1（`.wrangler/state`）はワークツリーごとに分かれるので、seed
 2. 対象が 6 本を超えるときは、撮る前に `AskUserQuestion` で、全部撮るか、絞るかを聞く（理由: 1 本あたり約 30 秒の録画と合成がかかる）
 3. 対象の Issue ごとに、`acceptance-video` の手順 1 で手順書を書き、`--check` を通す。`--check` を通らない手順書は、一覧に出す前に直し、直せなければその Issue を「手順書を作れなかった（理由）」で撮れなかった扱いにする。書いた人の確認（`OWNER`、`COLLABORATOR`、`github-actions[bot]` 以外なら、要旨を見せて続けるかを聞く）は、まとめた承認とは別に、Issue ごとに先に行う。全部の手順書を、Issue の作者と `association`、場面ごとの字幕と操作を並べた 1 つの一覧にして出し、`AskUserQuestion` で、録画してよいかを 1 回で聞く。質問には「録画は、このワークツリーの D1 を書き換え、終わりに seed で戻す」を含める。直したい Issue があれば、その手順書だけ直して、もう一度一覧を出す
 4. 撮る前に、手順 2 の「手元を立てる」で立てた `pnpm dev` を止め、`acceptance-video` の手順 3 で `pnpm preview` を立てて、応答を待つ（`pnpm dev` と `pnpm preview` は API のポートが同じで、同時には立てられない。`record.mjs` は API のポートの preview につなぐ）
-5. Issue を 1 本ずつ撮る。毎回 `pnpm db:seed` から始め、`acceptance-video` の手順 4 の seed、録画、合成の 3 コマンドを走らせる。動画の置き場所は、スクラッチパッドの `acceptance-videos-<日付>/` に 1 つ決める。1 本が失敗しても、残りは撮り、失敗した Issue と理由を控える。合成が終了コード 3（30 秒超え）なら、待ちを縮めて 1 回だけ撮り直し、それでも超えたら撮れなかった扱いにする。失敗した録画が mp4 を残していても、`manifest.json` の `video` には入れない
+5. Issue を 1 本ずつ撮る。毎回 `pnpm db:seed` から始め、`acceptance-video` の手順 4 の seed、録画、合成の 3 コマンドを走らせる。動画の置き場所は、スクラッチパッドの `acceptance-videos-<日付>/` に 1 つ決める。1 本が失敗しても、残りは撮り、失敗した Issue と理由を控える。合成が終了コード 3（30 秒超え）なら、承認した手順書の `read` と `hold` の待ちだけを縮めて（場面と字幕は変えない）1 回だけ撮り直し、縮めた分を手順 7 の報告に出す。それでも超えたら撮れなかった扱いにする。失敗した録画が mp4 を残していても、`manifest.json` の `video` には入れない
 6. 全部撮り終えたら、`pnpm db:seed` で D1 を戻し、手順 2 で選んだ場所に合わせて続ける。`pnpm dev` と `pnpm preview` は同時に立てられないので、次のどちらかにする
    - 「手元の preview」を選んだ条件が 1 つでもあるとき: preview を止めずに残し、「手元」を選んだ条件も `pnpm dev:open --preview` で開く
    - 「手元」の条件だけのとき: preview を止め（止めたことを `curl` の無応答で確かめる）、手順 3 の確認のために `pnpm dev` を立て直す
