@@ -2,7 +2,7 @@
 // seed のセッション（seed/sessions.ts）の Cookie で開く。あおば開発の管理者はミナト。
 // seed の受託開発チームのエピック「ポイントの交換先を増やす」は、作成者がミナトで、報酬は中、参加者は2人
 // （ミナト、ハルカ）、配下のストーリーは完了したタスク1件（2 ポイント）の「送料の割引にポイントを使える」。
-// 読むだけで、seed の行は書き換えない（ほかのファイルと並べて走るため）。書き込み（受注、抜ける、割り振り、報酬の変更）はテストで作った
+// 読むだけで、seed の行は書き換えない（ほかのファイルと並べて走るため）。書き込み（参加する、参加をやめる、割り振り、報酬の変更）はテストで作った
 // ワークスペースの中で行い、seed の画面での失敗の扱いは応答を差し替えて確かめる
 import {
   epicDetail,
@@ -130,7 +130,7 @@ test('スクラムの言葉: 参加者が空で配下も無いエピックは、
   await expect(page.locator('.tally > div')).toHaveText(['完了のポイント 0', '残りのポイント 0', '参加者 0']);
 });
 
-test('seed の受託開発チーム: 受注して参加者に加わり、抜けられる。割り振りのダイアログで、参加者にいない人を割り振れる', async ({
+test('作ったワークスペース: 参加するで参加者に加わり、参加をやめられる。割り振りのダイアログで、参加者にいない人を割り振れる', async ({
   page,
 }) => {
   const collect = await watchViolations(page);
@@ -194,7 +194,7 @@ test('seed の受託開発チーム: 受注して参加者に加わり、抜け�
   expect(await collect()).toEqual([]);
 });
 
-test('受注と抜けるの失敗はトーストで知らせ、割り振りの失敗はダイアログの中に理由を出す（応答を差し替えて確かめる）', async ({
+test('参加するとやめるの失敗はトーストで知らせ、割り振りの失敗はダイアログの中に理由を出す（応答を差し替えて確かめる）', async ({
   page,
 }) => {
   await page.goto(`${WORKSPACE}/epics/${EPIC_ID}`);
@@ -253,7 +253,7 @@ test('受注と抜けるの失敗はトーストで知らせ、割り振りの�
   await expect(dialog).toBeHidden();
 });
 
-test('seed の受託開発チーム: クリア報酬の段階を額つきのラジオで選んで変えられる。作成者を替える候補は今の作成者を除く', async ({
+test('作ったワークスペース: クリア報酬の段階を額つきのラジオで選んで変えられる。作成者を替える候補は今の作成者を除く', async ({
   page,
 }) => {
   const collect = await watchViolations(page);
@@ -427,7 +427,7 @@ test('参加者に入れる人でなくなっていても、参加者にいれ�
   await expect(party.getByRole('button', { name: '参加をやめる' })).toBeVisible();
   await expect(party.getByRole('button', { name: '参加する' })).toHaveCount(0);
 
-  // 入れる人でなく、参加者にもいなければ、受注も抜けるも出さない
+  // 入れる人でなく、参加者にもいなければ、参加するも参加をやめるも出さない
   await page.unrouteAll();
   await rewriteOperation(page, epicDetail, AOBA, (output) => ({ ...output, can_join: false, joined: false }));
   await page.goto(`${WORKSPACE}/epics/${EPIC_ID}`);
@@ -466,7 +466,7 @@ test('進行中のエピックは報酬が入る注記、完了は過去形、�
   await expect(request.locator('.panel-note')).toHaveText(
     'クリア報酬は、完了にした時点の参加者全員に同じ額が入りました。',
   );
-  // 終わったエピックの参加者は変えないので、受注、抜ける、割り振りは出さない
+  // 終わったエピックの参加者は変えないので、参加する、参加をやめる、割り振りは出さない
   const party = page.getByRole('region', { name: '参加者' });
   await expect(party.locator('.party-list > li')).toHaveCount(2);
   await expect(party.getByRole('button')).toHaveCount(0);

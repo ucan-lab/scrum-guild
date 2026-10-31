@@ -52,7 +52,7 @@
   }
   if (first) Object.assign(D, freshData(first));
 
-  // ---- 言葉の辞書（ゲームの言葉 / スクラムの言葉） ----
+  // ---- 言葉の辞書（各キーは [ゲームの言葉, スクラムの言葉]。見本はスクラムの言葉で出す） ----
   const DICT = {
     workspace: ["パーティ", "ワークスペース"], inbox: ["届いた便り", "受信箱"], backlog: ["掲示板", "バックログ"],
     sprint: ["遠征", "スプリント"], plan: ["遠征の計画", "計画"], epic: ["レイド", "エピック"], story: ["達成目標", "ストーリー"],
@@ -1724,7 +1724,7 @@ const looooooooooooooooooooooooooooooooooongLine = "コードの長い1行は、
       `<button class="assist-example" type="button" data-assist-ask="${esc(q)}">${icon("spark")}<span>${esc(q)}</span></button>`).join("")}
       <span class="field-hint">${t("task")}を読む頼みごとはすぐ答えます。変える頼みごとは、実行する前に何をどう変えるかを見せます。できるのは、あなたが画面でできる操作だけです。</span></div>`;
   }
-  // 答えの文は、描くときに言葉を通す関数で持つ（言葉を切り替えると会話の中も切り替わる）。カタログの見本は文字列でもよい
+  // 答えの文は、描くときに言葉を通す関数で持つ（辞書の言葉は描く時点で決まるため）。カタログの見本は文字列でもよい
   const val = (x) => (typeof x === "function" ? x() : x);
   // 1つのやり取り。i は assist.msgs の位置（カタログの見本では null）
   function assistMsg(m, i = null) {

@@ -35,6 +35,7 @@ test('applyOrganization はテーマを当てても、言葉づかいを覚え�
 
 test('前に覚えていた言葉づかい（sg-vocabulary）が残っていても、画面の言葉は変わらない', async () => {
   const { organization, vocabulary } = await load({ 'sg-vocabulary': 'game:aoba' });
+  expect(vocabulary.t('workspace')).toBe('ワークスペース');
   organization.applyOrganization(view('simple'));
   organization.resetToDefaults();
   expect(vocabulary.t('workspace')).toBe('ワークスペース');

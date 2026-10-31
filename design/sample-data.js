@@ -225,7 +225,7 @@ Object.assign(window.SQ_DATA, {
   detailFields: ["達成条件", "確かめ方"],
   pointRates: [["2026-04", 4], ["2025-04", 3]],
   workspaceHolidays: [["2026-12-29", "年末休業"], ["2026-12-30", "年末休業"], ["2026-12-31", "年末休業"]],
-  settings: { timezone: "Asia/Tokyo", weekStart: 1, vocab: 0 },
+  settings: { timezone: "Asia/Tokyo", weekStart: 1 },
 
   // 完了の記録（10月）
   completions: [

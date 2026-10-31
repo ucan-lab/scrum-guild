@@ -11,7 +11,7 @@ test.beforeEach(async ({ context, baseURL }) => {
   await signIn(context, baseURL, 'admin');
 });
 
-test('seed の受託開発チーム: タスクを作って完了にすると、その行に完了の印が出て、読み直すと折りたたみの件数に入る', async ({
+test('作ったワークスペース: タスクを作って完了にすると、その行に完了の印が出て、読み直すと折りたたみの件数に入る', async ({
   page,
 }) => {
   const collect = await watchViolations(page);

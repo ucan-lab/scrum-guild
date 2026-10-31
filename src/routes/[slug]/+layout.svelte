@@ -15,7 +15,7 @@
   import { workspaceViewOf } from '../../lib/workspace.ts';
   import type { LayoutData } from './$types';
 
-  // 組織の枠。組織の操作の結果で data-theme と言葉づかいを当て、左のメニューと上の帯を出す。
+  // 組織の枠。組織の操作の結果で data-theme を当て、左のメニューと上の帯を出す。
   // 組織に入れないときと無いときは、どちらも同じ「見つからない」の画面（どちらかを漏らさない）。
   // 見つからないのは、API が not_found の 404 を返したときだけ。停止しているのは、organization_suspended の 403
   // （停止していなければ入れた人にだけ返る。入れない人は見つからない）。ほかの失敗（通信、5xx、権限）は読み込みの失敗。

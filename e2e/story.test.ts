@@ -16,15 +16,15 @@ test.beforeEach(async ({ context, baseURL }) => {
 });
 
 // seed のワークスペース。受託開発チーム（あおば開発）と社内ツール（ひばり工房）
-const SEED_GAME_WORKSPACE = '/aoba/w/019a0000-0000-7000-8000-000000000401';
-const SEED_SCRUM_WORKSPACE = '/hibari/w/019a0000-0000-7000-8000-000000000402';
+const SEED_CLIENT_WORKSPACE = '/aoba/w/019a0000-0000-7000-8000-000000000401';
+const SEED_INTERNAL_WORKSPACE = '/hibari/w/019a0000-0000-7000-8000-000000000402';
 
 // 木のストーリー1件
 function storyGroup(page: Page, title: string) {
   return page.locator('.tree-group', { has: page.getByRole('button', { name: title, exact: true }) });
 }
 
-test('seed の受託開発チーム: ストーリーを作り、＋タスクでその下にタスクを作って完了にすると、「完了 / 全体」がその場で変わる', async ({
+test('作ったワークスペース: ストーリーを作り、＋タスクでその下にタスクを作って完了にすると、「完了 / 全体」がその場で変わる', async ({
   page,
 }) => {
   const collect = await watchViolations(page);
@@ -213,7 +213,7 @@ test('ストーリーを直すときは、開いたら1件を読み、変えた�
 test('ストーリーのダイアログは、読んでいる間は読み込み中を出し、読めなければもう一度試せ、消えていれば閉じて見出しにフォーカスを移す', async ({
   page,
 }) => {
-  await page.goto(SEED_GAME_WORKSPACE);
+  await page.goto(SEED_CLIENT_WORKSPACE);
   await expect(page.getByRole('heading', { level: 1, name: 'バックログ' })).toBeVisible();
   const title = page.getByRole('button', { name: '問い合わせの一次回答を早くする', exact: true });
   const dialog = page.getByRole('dialog', { name: 'ストーリー' });
@@ -294,7 +294,7 @@ test('期日の印: 過ぎた（赤）、今日と今週（橙）、それ以外
     today: '2026-10-20',
     week_start: 1,
   }));
-  await page.goto(SEED_GAME_WORKSPACE);
+  await page.goto(SEED_CLIENT_WORKSPACE);
   await expect(page.getByRole('heading', { level: 1, name: 'バックログ' })).toBeVisible();
 
   const first = storyGroup(page, 'ポイントの付与と失効を管理画面で確かめられる');
@@ -341,7 +341,7 @@ test('完了したストーリーには「＋タスク」を出さず、期日�
       index === 0 ? { ...story, completed_at: '2026-10-19T00:00:00.000Z' } : story,
     ),
   }));
-  await page.goto(SEED_GAME_WORKSPACE);
+  await page.goto(SEED_CLIENT_WORKSPACE);
   const done = storyGroup(page, 'ポイントの付与と失効を管理画面で確かめられる');
   await expect(done.locator('.tree-ratio')).toBeVisible();
   await expect(done.getByRole('button', { name: /タスクを足す/ })).toHaveCount(0);
@@ -365,7 +365,7 @@ test('完了したストーリーには「＋タスク」を出さず、期日�
 test('親のストーリーが消えていたら、理由を出し、その場で候補を読み直して親なしに戻し、親の選択欄にフォーカスを移す', async ({
   page,
 }) => {
-  await page.goto(SEED_GAME_WORKSPACE);
+  await page.goto(SEED_CLIENT_WORKSPACE);
   await expect(page.getByRole('heading', { level: 1, name: 'バックログ' })).toBeVisible();
   // 送ったときだけ 404 にして、読み直した木では候補から消えているようにする
   let gone = false;
@@ -398,8 +398,8 @@ test('親のストーリーが消えていたら、理由を出し、その場�
   await expect(dialog).toBeVisible();
 });
 
-test('スクラムの言葉の seed: 言葉が替わり、ストーリーの行の合計と畳んだ件数が出る', async ({ page }) => {
-  await page.goto(SEED_SCRUM_WORKSPACE);
+test('seed の社内ツール: ストーリーの行の合計と畳んだ件数が出る', async ({ page }) => {
+  await page.goto(SEED_INTERNAL_WORKSPACE);
   await expect(page.getByRole('heading', { level: 1, name: 'バックログ' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'ストーリーを作る' })).toBeVisible();
   const group = storyGroup(page, '勤怠の締め処理を月末にまとめて回せる');
@@ -421,7 +421,7 @@ test('閉じたワークスペースでは、作る操作と「＋タスク」�
     ...output,
     closed_at: '2026-10-21T00:00:00.000Z',
   }));
-  await page.goto(SEED_GAME_WORKSPACE);
+  await page.goto(SEED_CLIENT_WORKSPACE);
   await expect(page.getByRole('heading', { level: 1, name: 'バックログ' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'ストーリーを作る' })).toHaveCount(0);
   await expect(page.getByRole('button', { name: /タスクを足す/ })).toHaveCount(0);
@@ -449,7 +449,7 @@ test('狭い幅では、caret、題、「＋タスク」の押せる範囲が 44
   page,
 }) => {
   await page.setViewportSize({ width: 390, height: 900 });
-  await page.goto(SEED_GAME_WORKSPACE);
+  await page.goto(SEED_CLIENT_WORKSPACE);
   const group = storyGroup(page, '問い合わせの一次回答を早くする');
   await expect(group.locator('.tree-ratio')).toBeVisible();
 

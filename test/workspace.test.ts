@@ -193,7 +193,8 @@ describe('workspace-create', () => {
       entity_id: id,
       action: 'create',
     });
-    expect(JSON.parse(workspaceLog!.changes_json)).toMatchObject({
+    // vocabulary が入らないことも、完全一致で固定する
+    expect(JSON.parse(workspaceLog!.changes_json)).toEqual({
       name: [null, '保守チーム'],
       timezone: [null, 'Asia/Tokyo'],
     });

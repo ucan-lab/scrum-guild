@@ -40,7 +40,7 @@ async function createStory(page: Page, label: string, title: string): Promise<vo
   await reloaded;
 }
 
-test('seed の受託開発チーム: エピックを作り、ストーリーを下へ移し、配下のタスクを完了にしてからストーリーを完了にし、取り消す', async ({
+test('作ったワークスペース: エピックを作り、ストーリーを下へ移し、配下のタスクを完了にしてからストーリーを完了にし、取り消す', async ({
   page,
 }) => {
   const collect = await watchViolations(page);
@@ -218,7 +218,7 @@ test('スクラムの言葉: 配下の無いストーリーは完了にでき、
 });
 
 // seed のワークスペース（受託開発チーム）。エピック「ポイントの交換先を増やす」の下に、ストーリー「送料の割引にポイントを使える」がある
-const SEED_GAME_WORKSPACE = '/aoba/w/019a0000-0000-7000-8000-000000000401';
+const SEED_CLIENT_WORKSPACE = '/aoba/w/019a0000-0000-7000-8000-000000000401';
 const SEED_EPIC_STORY = '送料の割引にポイントを使える';
 const SEED_ROOT_STORY = 'ポイントの付与と失効を管理画面で確かめられる';
 
@@ -238,7 +238,7 @@ test('クリアしたエピックの下の完了したストーリーは、取�
   page.on('request', (request) => {
     if (request.url().endsWith('/story-reopen')) sent++;
   });
-  await page.goto(SEED_GAME_WORKSPACE);
+  await page.goto(SEED_CLIENT_WORKSPACE);
   const epic = rowGroup(page, 'ポイントの交換先を増やす');
   await expect(epic.locator('.tree-row.is-epic .chip.is-done')).toHaveText('完了');
   const story = rowGroup(page, SEED_EPIC_STORY);
@@ -262,7 +262,7 @@ test('中止したエピックの下のストーリーは、完了にするを�
   page.on('request', (request) => {
     if (request.url().endsWith('/story-complete')) sent++;
   });
-  await page.goto(SEED_GAME_WORKSPACE);
+  await page.goto(SEED_CLIENT_WORKSPACE);
   await expect(
     rowGroup(page, 'ポイントの交換先を増やす').locator('.tree-row.is-epic .chip', { hasText: '中止' }),
   ).toBeVisible();
@@ -287,7 +287,7 @@ test('ストーリーの行は、メニューの横の幅と指で押す画面�
     const context = await browser.newContext(options);
     await signIn(context, baseURL, 'admin');
     const page = await context.newPage();
-    await page.goto(SEED_GAME_WORKSPACE);
+    await page.goto(SEED_CLIENT_WORKSPACE);
     const label = `${options.viewport.width}px${options.hasTouch ? ' coarse' : ''}`;
     // 親のないストーリーと、エピックの下のストーリー（一段字下げする）
     for (const title of [SEED_ROOT_STORY, SEED_EPIC_STORY]) {

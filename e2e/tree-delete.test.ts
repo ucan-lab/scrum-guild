@@ -132,7 +132,7 @@ test('スクラムの言葉: エピックを配下を残して削除し、残っ
   expect(await collect()).toEqual([]);
 });
 
-test('seed の受託開発チーム: 配下の無いエピックは選ばせずに削除する。断られたら理由を確認の中に出す', async ({
+test('作ったワークスペース: 配下の無いエピックは選ばせずに削除する。断られたら理由を確認の中に出す', async ({
   context,
   baseURL,
   page,
@@ -312,7 +312,7 @@ test('読み直しで削除できなくなったら主ボタンを押せなく�
 });
 
 // seed のワークスペース（受託開発チーム）。エピック「ポイントの交換先を増やす」とストーリーは、管理者のミナトが作った
-const SEED_GAME_WORKSPACE = '/aoba/w/019a0000-0000-7000-8000-000000000401';
+const SEED_CLIENT_WORKSPACE = '/aoba/w/019a0000-0000-7000-8000-000000000401';
 
 test('作った人でもリーダーでもないメンバーには、削除のボタンを出さず、削除できる人を出す', async ({
   context,
@@ -320,7 +320,7 @@ test('作った人でもリーダーでもないメンバーには、削除の�
   page,
 }) => {
   await signIn(context, baseURL, 'member');
-  await page.goto(SEED_GAME_WORKSPACE);
+  await page.goto(SEED_CLIENT_WORKSPACE);
   const epic = page.getByRole('link', { name: 'ポイントの交換先を増やす', exact: true });
   await expect(epic).toBeVisible();
   await waitForSettled(page);

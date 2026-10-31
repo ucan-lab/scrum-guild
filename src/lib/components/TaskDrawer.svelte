@@ -346,7 +346,7 @@
   let historyAdded = $state('');
   // 履歴の読み込みの進み具合を読み上げに伝える（見える「読み込んでいます」は aria-hidden にする）
   const historyStatus = $derived(historyState === 'loading' || historyMore === 'loading' ? t('loading') : historyAdded);
-  // 言葉づかいを切り替えたら、列の名前と操作の言葉も描き直す（t を $derived の中で呼ぶ）
+  // 履歴の行の文は、列の名前と操作の言葉を辞書の t で組む（t を $derived の中で呼ぶ）
   const historyViews = $derived(historyEntries.map((entry) => historyEntryView(entry, historyTimezone, t)));
 
   // 先頭の 50 件を読み直す。読み直している間は、前に読めた行を残す（保存のたびに消えてちらつかない）。

@@ -4,7 +4,7 @@ import type { Page } from '@playwright/test';
 import { expect, test } from './fixtures.ts';
 import { createWorkspace, dragTo, signIn, waitForResponses, watchViolations } from './helpers.ts';
 
-const SEED_GAME_WORKSPACE = '/aoba/w/019a0000-0000-7000-8000-000000000401';
+const SEED_CLIENT_WORKSPACE = '/aoba/w/019a0000-0000-7000-8000-000000000401';
 
 async function openSettings(page: Page): Promise<void> {
   // 「自分の設定」の項目にも当たらないよう、全体が「設定」の項目だけを選ぶ
@@ -208,11 +208,11 @@ test.describe('一般のメンバー（あおば開発のハルカ）', () => {
   });
 
   test('メニューに設定を出さず、URL で開くと入れないことを伝える', async ({ page }) => {
-    await page.goto(SEED_GAME_WORKSPACE);
+    await page.goto(SEED_CLIENT_WORKSPACE);
     await expect(page.getByRole('heading', { level: 1, name: 'バックログ' })).toBeVisible();
     await expect(page.locator('.nav-item', { hasText: 'メンバー' })).toBeVisible();
     await expect(page.locator('.nav-item', { hasText: /^\s*設定\s*$/ })).toHaveCount(0);
-    await page.goto(`${SEED_GAME_WORKSPACE}/settings`);
+    await page.goto(`${SEED_CLIENT_WORKSPACE}/settings`);
     await expect(page.getByText('この画面には入れません')).toBeVisible();
     await expect(page.getByLabel('新しい区分の名前')).toHaveCount(0);
     // 列の節も出さない
@@ -223,7 +223,7 @@ test.describe('一般のメンバー（あおば開発のハルカ）', () => {
   });
 
   test('seed の区分とリポジトリが木の行に出る', async ({ page }) => {
-    await page.goto(SEED_GAME_WORKSPACE);
+    await page.goto(SEED_CLIENT_WORKSPACE);
     const epic = page.locator('.tree-group', { hasText: 'ポイントの交換先を増やす' }).first();
     await expect(epic.locator('.tree-row.is-epic .chip', { hasText: '区分：追加案件' })).toBeVisible();
     const task = page.locator('.entry', { hasText: 'ポイント付与のバッチを作る' });

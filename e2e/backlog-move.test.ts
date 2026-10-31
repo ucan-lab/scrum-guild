@@ -626,12 +626,12 @@ test('狭い幅ではつまみを出さず、題の列も空けない', async ({
 });
 
 // seed のワークスペース（受託開発チーム）。ストーリーの下に、期日、ポイント、担当の付いたタスクがある
-const SEED_GAME_WORKSPACE = '/aoba/w/019a0000-0000-7000-8000-000000000401';
+const SEED_CLIENT_WORKSPACE = '/aoba/w/019a0000-0000-7000-8000-000000000401';
 
 test('メニューの横で一覧が狭い幅でも、題の列は縮みすぎず、狭い画面でも横にはみ出さない', async ({ page }) => {
   for (const width of [800, 900, 390, 320]) {
     await page.setViewportSize({ width, height: 900 });
-    await page.goto(SEED_GAME_WORKSPACE);
+    await page.goto(SEED_CLIENT_WORKSPACE);
     const title = page.locator('.tree-children .entry .entry-title').first();
     await expect(title).toBeVisible();
     // 題の列は 120px 以上（右端の操作が並んだままだと、数文字の幅に縮む）
@@ -660,7 +660,7 @@ test('一覧が広いまま指で押す画面（タブレットの横置き）�
   const context = await browser.newContext({ hasTouch: true, isMobile: true, viewport: { width: 960, height: 768 } });
   await signIn(context, baseURL, 'admin');
   const page = await context.newPage();
-  await page.goto(SEED_GAME_WORKSPACE);
+  await page.goto(SEED_CLIENT_WORKSPACE);
   expect(await page.evaluate(() => matchMedia('(pointer: coarse)').matches)).toBe(true);
   const up = page.locator('.tree-children .entry .order-actions .icon-btn').first();
   expect((await up.boundingBox())!.width).toBeGreaterThanOrEqual(44);
