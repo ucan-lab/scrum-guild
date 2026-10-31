@@ -16,12 +16,23 @@ export const INCOMPLETE_LINE = 'AI レビュー: 見終えていない';
 
 const SHA = /^[0-9a-f]{40}$/;
 
+// 判定を外すと、見終えていない head が次の起点になる。迷う形（同じ行の続き、装飾、ゼロ幅の文字、CR だけの改行）は
+// 見終えていない側に倒す。1行目を行区切りのどれでも切り、空白と書式の文字と Markdown の装飾を先頭から除いて、前方一致で見る
+// NEL\u3001\u884c\u533a\u5207\u308a\u3001\u6bb5\u843d\u533a\u5207\u308a\u3002\u30bd\u30fc\u30b9\u306b\u751f\u306e\u6587\u5b57\u3092\u7f6e\u304b\u306a\u3044\u3088\u3046\u3001\u7b26\u53f7\u4f4d\u7f6e\u304b\u3089\u4f5c\u308b
+const EXTRA_BREAKS = String.fromCharCode(0x85, 0x2028, 0x2029);
+
+function isIncomplete(summary: string): boolean {
+  const lines = [...EXTRA_BREAKS].reduce((text, c) => text.replaceAll(c, '\n'), summary).split(/\r\n|[\r\n]/);
+  const first = lines.map((line) => line.replace(/^[\s\p{Cf}#*_>`~-]+/u, '')).find((line) => line !== '') ?? '';
+  return first.startsWith(INCOMPLETE_LINE);
+}
+
 // 印は、Claude の段が成功し、まとめが見終えていない旨で始まらないときだけ付ける。
 // まとめの中の印は、差分やコメントに仕込まれた指示で Claude が書いたものなので、どの場合も無効にする
 // （印を付けない実行で先頭に残ると、次の実行がそれを起点に読む）
 function markedSummary(summary: string, headSha: string | undefined): string {
   const defused = summary.replaceAll('<!-- ai-review:', '<!-- ai-review-ignored:');
-  const incomplete = summary.trimStart().split(/\r?\n/, 1)[0]!.trim() === INCOMPLETE_LINE;
+  const incomplete = isIncomplete(summary);
   return headSha !== undefined && SHA.test(headSha) && !incomplete
     ? `<!-- ai-review:${headSha} -->\n${defused}`
     : defused;

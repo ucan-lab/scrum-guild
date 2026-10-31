@@ -13,6 +13,9 @@ import {
   TRUNCATED_NOTE,
 } from './ai-review-summary.ts';
 
+// 不可視の文字はソースに生で置かず、符号位置から作る
+const ch = (code: number) => String.fromCharCode(code);
+
 describe('summaryBody', () => {
   const head = 'a'.repeat(40);
 
@@ -98,10 +101,24 @@ describe('Claude が書いた印と、見終えていない実行', () => {
     assert.ok(body.startsWith(INCOMPLETE_LINE));
   });
 
-  test('1行目が「見終えていない」で始まるだけの別の文なら、印を付ける', () => {
-    const body = summaryBody(`${INCOMPLETE_LINE}ことは無い。全部見た\n`, sha);
-    assert.ok(body.startsWith(`<!-- ai-review:${sha} -->\n`));
-  });
+  // 判定を外すと見終えていない head が次の起点になるので、迷う形は印を付けない側に倒す
+  for (const [name, summary] of [
+    ['同じ行に理由が続く', `${INCOMPLETE_LINE}。files.txt が無い\n`],
+    ['コロンで理由が続く', `${INCOMPLETE_LINE}: 報告が返らなかった\n`],
+    ['太字', `**${INCOMPLETE_LINE}**\n`],
+    ['見出し', `# ${INCOMPLETE_LINE}\n本文`],
+    ['CRLF と行末の空白', `${INCOMPLETE_LINE}  \r\n本文`],
+    ['CR だけの改行', `${INCOMPLETE_LINE}\r本文`],
+    ['NEL', `${INCOMPLETE_LINE}${ch(0x85)}本文`],
+    ['行区切り', `${INCOMPLETE_LINE}${ch(0x2028)}本文`],
+    ['BOM', `${ch(0xfeff)}${INCOMPLETE_LINE}\n`],
+    ['ゼロ幅の空白', `${ch(0x200b)}${INCOMPLETE_LINE}\n`],
+    ['先頭の空行', `\n\n${INCOMPLETE_LINE}\n`],
+  ]) {
+    test(`1行目が「見終えていない」なら印を付けない（${name}）`, () => {
+      assert.doesNotMatch(summaryBody(summary, sha), /<!-- ai-review:/);
+    });
+  }
 
   test('「見終えていない」の行が先頭でなければ、印を付ける', () => {
     const body = summaryBody(`## まとめ\n${INCOMPLETE_LINE}\n`, sha);
