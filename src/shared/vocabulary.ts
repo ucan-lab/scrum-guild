@@ -486,7 +486,7 @@ export const dictionary = defineDictionary({
   suspendedOrganizationsHeading: '停止している{organization}',
   suspendedOrganizationStatus: '停止しています',
   suspendedOrganizationsNote:
-    '停止している間は、{organization}に入れません。再開については、運用者に問い合わせてください。',
+    '停止している{organization}には、停止している間は入れません。再開については、運用者に問い合わせてください。',
   // 招待の画面（/<slug>/invitations と、組織に入れず招待だけがある人の組織の画面）。
   // {organization} は組織の名前、{workspace} はワークスペースの言葉、{name} はワークスペースの名前
   invitationInboxLead: '{organization}から届いた招待です。承諾すると、その{workspace}に入れます。',
