@@ -2,9 +2,16 @@
 // seed のセッション（seed/sessions.ts）の Cookie で開く。あおば開発の管理者はミナト。
 // seed の受託開発チーム（ゲームの言葉）のエピック「ポイントの交換先を増やす」は、依頼主がミナトで、報酬は中、討伐隊は2人
 // （ミナト、ハルカ）、配下のストーリーは完了したタスク1件（2 ポイント）の「送料の割引にポイントを使える」。
-// 読むだけで、seed の行は書き換えない（ほかのファイルと並べて走るため）。書き込み（受注、抜ける、割り振り）はテストで作った
+// 読むだけで、seed の行は書き換えない（ほかのファイルと並べて走るため）。書き込み（受注、抜ける、割り振り、報酬の変更）はテストで作った
 // ワークスペースの中で行い、seed の画面での失敗の扱いは応答を差し替えて確かめる
-import { epicDetail, epicPartyAssign, epicPartyLeave, epicUpdate } from '../src/shared/operations/epic/index.ts';
+import {
+  epicDetail,
+  epicPartyAssign,
+  epicPartyLeave,
+  epicRequesterUpdate,
+  epicRewardUpdate,
+  epicUpdate,
+} from '../src/shared/operations/epic/index.ts';
 import { memberList } from '../src/shared/operations/workspace/index.ts';
 import { workspaceInfo } from '../src/shared/operations/workspace/workspace.ts';
 import { expect, test } from './fixtures.ts';
@@ -75,11 +82,13 @@ test('ゲームの言葉: 木のエピックの題から画面が開き、依頼
   // 頭の集計
   await expect(page.locator('.tally > div')).toHaveText(['完遂の難易度 2', '残りの難易度 0', '討伐隊 2']);
 
-  // 依頼主でリーダーのミナトは討伐隊にいるので、討伐隊の面の下に「討伐隊を抜ける」と「討伐隊に割り振る」が出る。
-  // 報酬の変更、クリア、中止はまだ出さない。直す口は見出しの横のボタン
+  // 依頼主でリーダーのミナトは討伐隊にいるので、討伐隊の面の下に「討伐隊を抜ける」と「討伐隊に割り振る」、
+  // 「クリア報酬を変える」、リーダーだけの「依頼主を替える」が出る。クリア、中止はまだ出さない。直す口は見出しの横のボタン
   await expect(party.getByRole('button', { name: '討伐隊を抜ける' })).toBeVisible();
   await expect(party.getByRole('button', { name: '受注する' })).toHaveCount(0);
   await expect(party.getByRole('button', { name: '討伐隊に割り振る' })).toBeVisible();
+  await expect(party.getByRole('button', { name: 'クリア報酬を変える' })).toBeVisible();
+  await expect(party.getByRole('button', { name: '依頼主を替える' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'レイドをクリアする' })).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'レイドを直す' })).toBeVisible();
 
@@ -242,6 +251,170 @@ test('受注と抜けるの失敗はトーストで知らせ、割り振りの�
   await expect(select).toBeFocused();
   await dialog.getByRole('button', { name: 'やめる' }).click();
   await expect(dialog).toBeHidden();
+});
+
+test('ゲームの言葉: クリア報酬の段階を額つきのラジオで選んで変えられる。依頼主を替える候補は今の依頼主を除く', async ({
+  page,
+}) => {
+  const collect = await watchViolations(page);
+  await createWorkspace(page, '報酬のワークスペース', 'game');
+  await page.getByRole('button', { name: 'レイドを作る' }).click();
+  const create = page.getByRole('dialog', { name: 'レイドを作る' });
+  await create.getByLabel('タイトル').fill('会員ランクを公開する');
+  const reloaded = waitForResponses(page, '/backlog-tree');
+  await create.getByRole('button', { name: '作る' }).click();
+  await expect(create).toBeHidden();
+  await reloaded;
+  await page.getByRole('link', { name: '会員ランクを公開する', exact: true }).click();
+  await expect(page.getByRole('heading', { level: 1, name: '会員ランクを公開する' })).toBeVisible();
+
+  const request = page.getByRole('region', { name: '依頼書' });
+  const party = page.getByRole('region', { name: '討伐隊' });
+  const toast = page.locator('.toasts:visible .toast');
+  await expect(request.locator('.tier')).toHaveText('中 · 300 XP');
+
+  // 小、中、大を額つきで選ぶ。開いたときは今の段階（中）が選ばれ、そのままでは「変える」は押せない
+  await party.getByRole('button', { name: 'クリア報酬を変える' }).click();
+  const dialog = page.getByRole('dialog', { name: 'クリア報酬を変える' });
+  await expect(dialog.getByRole('radiogroup', { name: 'クリア報酬の段階' })).toBeVisible();
+  await expect(dialog.getByRole('radio')).toHaveCount(3);
+  await expect(dialog.getByRole('radio', { name: '小 · 100 XP' })).not.toBeChecked();
+  await expect(dialog.getByRole('radio', { name: '中 · 300 XP' })).toBeChecked();
+  await expect(dialog.getByRole('radio', { name: '大 · 600 XP' })).not.toBeChecked();
+  const submit = dialog.getByRole('button', { name: '変える' });
+  await expect(submit).toHaveAttribute('aria-disabled', 'true');
+  // 説明は常に出し、今の段階のままのときだけ、押せない理由が別の文として加わる
+  await expect(dialog.locator('.field-hint')).toHaveText([
+    'クリア報酬は、クリアした時点の討伐隊全員に同じ額が入ります。',
+    '今の段階です。別の段階を選ぶと変えられます。',
+  ]);
+
+  await dialog.getByRole('radio', { name: '大 · 600 XP' }).check();
+  await expect(submit).not.toHaveAttribute('aria-disabled', 'true');
+  await expect(dialog.locator('.field-hint')).toHaveText([
+    'クリア報酬は、クリアした時点の討伐隊全員に同じ額が入ります。',
+  ]);
+  await submit.click();
+  await expect(dialog).toBeHidden();
+  await expect(toast.last()).toHaveText('クリア報酬を「大」に変えました');
+  await expect(request.locator('.tier')).toHaveText('大 · 600 XP');
+  await expect(request.locator('.tier')).toHaveClass(/is-large/);
+
+  // 依頼主を替える。作ったワークスペースには今の依頼主（ミナト）だけなので、候補は無く、「替える」は押せない
+  await party.getByRole('button', { name: '依頼主を替える' }).click();
+  const requesterDialog = page.getByRole('dialog', { name: '依頼主を替える' });
+  const noCandidates = '替えられる人がいません。パーティに、今の依頼主のほかに所属している人がいません。';
+  await expect(requesterDialog.locator('.field-hint')).toHaveText(noCandidates);
+  await expect(requesterDialog.getByLabel('新しい依頼主').locator('option')).toHaveCount(0);
+  await expect(requesterDialog.getByRole('button', { name: '替える' })).toHaveAttribute('aria-disabled', 'true');
+  await requesterDialog.getByRole('button', { name: 'やめる' }).click();
+  await expect(requesterDialog).toBeHidden();
+  expect(await collect()).toEqual([]);
+});
+
+test('クリア報酬の変更と依頼主の変更の失敗と成功を、ダイアログとトーストで知らせる（応答を差し替えて確かめる）', async ({
+  page,
+}) => {
+  await page.goto(`${WORKSPACE}/epics/${EPIC_ID}`);
+  const party = page.getByRole('region', { name: '討伐隊' });
+  const request = page.getByRole('region', { name: '依頼書' });
+  const toast = page.locator('.toasts:visible .toast');
+  await expect(request.locator('.tier')).toHaveText('中 · 300 XP');
+
+  // 報酬の変更が 403（権限を失った）。理由をダイアログの中に出し、閉じたときに画面を読み直す
+  await failOperation(page, epicRewardUpdate, AOBA, 403, 'forbidden');
+  await party.getByRole('button', { name: 'クリア報酬を変える' }).click();
+  const rewardDialog = page.getByRole('dialog', { name: 'クリア報酬を変える' });
+  await rewardDialog.getByRole('radio', { name: '小 · 100 XP' }).check();
+  await rewardDialog.getByRole('button', { name: '変える' }).click();
+  await expect(rewardDialog.getByRole('alert')).toHaveText(
+    'クリア報酬を変えられるのは、依頼主とパーティリーダーだけです',
+  );
+  await rewardDialog.getByRole('button', { name: 'やめる' }).click();
+  await expect(rewardDialog).toBeHidden();
+
+  // 終わったエピック（409 の conflict）
+  await page.unrouteAll();
+  await failOperation(page, epicRewardUpdate, AOBA, 409, 'conflict');
+  await party.getByRole('button', { name: 'クリア報酬を変える' }).click();
+  await rewardDialog.getByRole('radio', { name: '大 · 600 XP' }).check();
+  await rewardDialog.getByRole('button', { name: '変える' }).click();
+  await expect(rewardDialog.getByRole('alert')).toHaveText('このレイドは終わっているので、クリア報酬を変えられません');
+  await rewardDialog.getByRole('button', { name: 'やめる' }).click();
+  await expect(rewardDialog).toBeHidden();
+  await page.unrouteAll();
+
+  // 終了したワークスペース（409 の workspace_closed）。辞書の {workspace} を置き換えた文が出る
+  await failOperation(page, epicRewardUpdate, AOBA, 409, 'workspace_closed');
+  await party.getByRole('button', { name: 'クリア報酬を変える' }).click();
+  await rewardDialog.getByRole('radio', { name: '大 · 600 XP' }).check();
+  await rewardDialog.getByRole('button', { name: '変える' }).click();
+  await expect(rewardDialog.getByRole('alert')).toHaveText('終了したパーティには書き込めません');
+  await rewardDialog.getByRole('button', { name: 'やめる' }).click();
+  await expect(rewardDialog).toBeHidden();
+  await page.unrouteAll();
+
+  // 依頼主の候補に、今の依頼主（ミナト）は出ない。架空の人を足し、替えられた知らせを出す
+  await rewriteOperation(page, memberList, AOBA, (output) => ({
+    ...output,
+    members: [
+      ...output.members,
+      {
+        id: '019a0000-0000-7000-8000-00000000fff1',
+        name: '仮置き 太郎',
+        role: 'member' as const,
+        joined_on: '2026-10-01',
+        avatar_url: null,
+        level: 1,
+      },
+    ],
+  }));
+  await page.reload();
+  await party.getByRole('button', { name: '依頼主を替える' }).click();
+  const dialog = page.getByRole('dialog', { name: '依頼主を替える' });
+  const select = dialog.getByLabel('新しい依頼主');
+  await expect(select.locator('option', { hasText: '仮置き 太郎' })).toHaveCount(1);
+  await expect(select.locator('option', { hasText: 'ミナト' })).toHaveCount(0);
+  await expect(select).toBeFocused();
+
+  // 選んだ人が所属を外れていた（404）。理由を出し、候補を選び直せる
+  const unfailRequester = await failOperation(page, epicRequesterUpdate, AOBA, 404, 'not_found');
+  await select.selectOption({ label: '仮置き 太郎' });
+  await dialog.getByRole('button', { name: '替える' }).click();
+  await expect(dialog.getByRole('alert')).toHaveText(
+    '選んだ人はパーティに所属していないか、レイドが見つかりません。選び直してください。',
+  );
+  await expect(select).toBeFocused();
+  await unfailRequester();
+
+  // 替えられた
+  await mockOperation(page, epicRequesterUpdate, AOBA, {
+    changed: true,
+    requester: { id: '019a0000-0000-7000-8000-00000000fff1', name: '仮置き 太郎', left: false },
+  });
+  await dialog.getByRole('button', { name: '替える' }).click();
+  await expect(dialog).toBeHidden();
+  await expect(toast.last()).toHaveText('依頼主を「仮置き 太郎」に替えました');
+});
+
+test('依頼主の一般のメンバーには「クリア報酬を変える」だけを出し、「依頼主を替える」は出さない（応答を差し替えて確かめる）', async ({
+  page,
+}) => {
+  await rewriteOperation(page, epicDetail, AOBA, (output) => ({ ...output, can_change_requester: false }));
+  await page.goto(`${WORKSPACE}/epics/${EPIC_ID}`);
+  const party = page.getByRole('region', { name: '討伐隊' });
+  await expect(party.getByRole('button', { name: 'クリア報酬を変える' })).toBeVisible();
+  await expect(party.getByRole('button', { name: '依頼主を替える' })).toHaveCount(0);
+
+  await page.unrouteAll();
+  await rewriteOperation(page, epicDetail, AOBA, (output) => ({
+    ...output,
+    can_manage: false,
+    can_change_requester: false,
+  }));
+  await page.goto(`${WORKSPACE}/epics/${EPIC_ID}`);
+  await expect(party.getByRole('button', { name: 'クリア報酬を変える' })).toHaveCount(0);
+  await expect(party.getByRole('button', { name: '依頼主を替える' })).toHaveCount(0);
 });
 
 // 離脱済みの本物の行は、DB の seed に置けない（所属の無いユーザーは運用者の指名し直しが物理削除する）。API の確かめは test/epic-detail.test.ts

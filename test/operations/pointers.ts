@@ -328,6 +328,22 @@ export const pointers: Pointers = {
     });
     return { workspace_id: target.workspace.id, epic_id: epic.id, user_id: target.member.userId! };
   },
+  // 呼ぶたびにエピックを作る（ファクトリーの段階は small。変えた後に同じ段階を送ると何も書かないため）。依頼主は呼ぶ人
+  // （対象の組織の人なら。一般のメンバーは依頼主なら変えられる）
+  'epic-reward-update': async (target, caller) => {
+    const requester = personOf(target, caller) ?? target.admin;
+    const epic = await createEpic(target.organization, target.workspace.id, target.admin.userId!, {
+      requester_user_id: requester.userId!,
+    });
+    return { workspace_id: target.workspace.id, epic_id: epic.id, reward_tier: 'large' };
+  },
+  // 呼ぶたびにエピックを作る（依頼主を替えた後に同じ人を送ると何も書かないため）。依頼主は管理者で、替え先は対象の一般のメンバー
+  // （今所属している）。リーダーだけが呼べる
+  'epic-requester-update': async (target) => ({
+    workspace_id: target.workspace.id,
+    epic_id: (await createEpic(target.organization, target.workspace.id, target.admin.userId!)).id,
+    user_id: target.member.userId!,
+  }),
   // 呼ぶたびにエピックを作る（削除すると2回目は 404 になるため）。作った人は一般のメンバー（作った人なら削除できる）
   'epic-delete': async (target) => ({
     workspace_id: target.workspace.id,

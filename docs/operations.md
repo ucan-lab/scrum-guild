@@ -297,7 +297,7 @@ rollback で戻るのは、版が持つものすべて。コードと設定の�
 毎分の cron（`* * * * *`）が、`oauth_states`、`sessions`、`rate_limits` の期限を過ぎた行を消す（`src/server/scheduled/`、条件と上限は `docs/data-model.md` の「期限切れの行の掃除」）。掃除の失敗や遅れを知らせる通知は無い。D1 の書き込みの使用量の通知（上の「Cloudflare のアカウント」）が届いたら、Workers Logs で `job: "cleanup-expired"` のログを見る。
 
 - `level: "warn"`: 回数か時間の予算を使い切っても、消すのが追いついていない。`behind` が追いついていない表。1回の warn では動かない。毎分続いたときに、行が増えている原因（攻撃や設定の誤り）を調べる
-- `level: "error"`: その表の掃除が失敗した。`table` が表の名前、`error` が例外の種類。cron の失敗にも残る。ほかの表は消えている
+- `level: "error"`: その表の掃除が失敗した。`table` が表の名前、`error` が例外の種類、`cause` が例外の message を分けた分類名（`network`、`timeout`、`overloaded`、`busy`、`reset`、`storage`、`constraint`、`syntax`、どれにも当たらないものは `unknown`。message そのものは SQL や値が混ざりうるので出さない）、`rounds` がその表で成功した文の回数、`elapsedMs` がその表の掃除を始めてからの経過時間。`network`、`timeout`、`overloaded`、`busy`、`reset` は D1 側の一時的な失敗で、次の回で消えていれば様子を見る。`constraint`、`syntax` は文の不具合なので直す。`storage` は D1 の容量の上限なので、容量を調べる。`unknown` は分類に無い失敗なので、`requestId` と `traceId` から Workers Logs を調べ、分類を足す。cron の失敗にも残る。ほかの表は消えている
 - `level: "info"`: 1行以上消した回の件数（`deleted` は表ごとの合計、`rounds` は表ごとに文を送った回数）。掃除が動いていることは、このログが出ることで分かる。行が無い回は何も出ない
 - 掃除だけが静かに止まったときは、通知が来ないので気づきにくい
 
