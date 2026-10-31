@@ -302,11 +302,14 @@ describe('運用者の操作はトークンから一律 403', () => {
 });
 
 describe('cookieOnly の logout', () => {
-  test('定義が cookieOnly を持ち、cookieOnly を持つ本番の操作は logout だけ', () => {
+  test('定義が cookieOnly を持ち、cookieOnly を持つ本番の操作は logout とトークンの3操作だけ', () => {
     expect((logout as { cookieOnly?: true }).cookieOnly).toBe(true);
     expect(
-      operations.filter((definition) => definition.cookieOnly === true).map((definition) => definition.name),
-    ).toEqual(['logout']);
+      operations
+        .filter((definition) => definition.cookieOnly === true)
+        .map((definition) => definition.name)
+        .sort(),
+    ).toEqual(['logout', 'token-create', 'token-list', 'token-revoke']);
   });
 
   test('トークンから呼ぶと 403 の forbidden で、トークンもセッションも残る', async () => {

@@ -202,7 +202,9 @@ export function defineOperationChecks(
       expect(res.status).toBe(200);
       expect(definition.output.safeParse(await res.json()).success).toBe(true);
     };
-    const input = (target: Target, caller?: Person) => inputFor(pointers, definition, target, caller);
+    // 組織の外の操作は運用者が呼ぶので、入力が呼ぶ人の行を指す操作（token-revoke）には運用者を渡す
+    const input = (target: Target, caller?: Person) =>
+      inputFor(pointers, definition, target, caller ?? (isOutsideOperation(definition) ? operator : undefined));
 
     const caller = () => as(isOutsideOperation(definition) ? operator : own.admin);
 
