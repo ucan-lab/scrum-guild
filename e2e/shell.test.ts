@@ -141,6 +141,22 @@ test('760px 以下では、畳んだままでも開閉のボタンが無く、�
   await expect(page.locator('.nav-item-label').first()).toHaveCSS('opacity', '1');
 });
 
+test.describe('ホバーのできない端末（1024px の指のタブレット）', () => {
+  test.use({ viewport: { width: 1024, height: 768 }, hasTouch: true, isMobile: true });
+
+  test('覚えた状態が畳んだでも、開閉のボタンを出さず、広げた列で出す', async ({ page }) => {
+    await page.goto(today);
+    expect(await page.evaluate(() => matchMedia('(hover: none)').matches)).toBe(true);
+    await page.evaluate(() => localStorage.setItem('sg-nav-collapsed', 'true'));
+    await page.reload();
+    await expect(page.locator('.app')).toHaveAttribute('data-nav-collapsed', 'true');
+    await expect(page.locator('.nav-toggle')).toBeHidden();
+    await expect(page.locator('.binding')).toHaveJSProperty('offsetWidth', 240);
+    await expect(page.locator('.brand-name')).toBeVisible();
+    await expect(page.locator('#app-nav .nav-item-label').first()).toHaveCSS('opacity', '1');
+  });
+});
+
 test('畳んだ列のまま、全テーマでアクセシビリティの検査と CSP の違反が無い', async ({ page }) => {
   const collect = await watchViolations(page);
   await page.setViewportSize({ width: 1280, height: 900 });

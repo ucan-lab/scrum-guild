@@ -129,23 +129,37 @@ h1, h2, h3 { text-wrap: balance; }
   .brand, .nav-item:not(.is-later) { min-height: 44px; }
 }
 
-/* 761px 以上だけ、左のメニューを 64px のアイコン列へ畳む。狭い画面では上の帯の形を保つ。 */
 @media (min-width: 761px) {
   /* 浮かせた札と組織の一覧を本文の位置付きの要素（バックログの行など）より上に出す。綴じの sticky は自前の重なりの文脈を作り、
      中の z-index は文脈の外に効かないので、綴じごと本文の上に置く。引き出し（.scrim の 20）とアシスタント（15）より下 */
   .binding { position: relative; z-index: 5; }
   /* 名前を通常の文字の大きさで1行に収めるため、ブランドの右の余白を削る（240px の列の内側は 207px） */
   .binding-head .brand { padding-right: 0; }
-  .nav-toggle:focus-visible .nav-tip,
+  .nav-toggle:focus-visible .nav-tip { display: grid; }
+  .nav-tip {
+    position: absolute; z-index: 1; left: calc(100% + var(--space-3)); top: 50%; transform: translateY(-50%);
+    width: max-content; max-width: 18rem; padding: var(--space-1) var(--space-2); border: 1px solid var(--color-line);
+    border-radius: var(--radius-1); background: var(--color-surface); color: var(--color-fg);
+    font-size: var(--text-sm); font-weight: 400; text-align: left; box-shadow: var(--shadow-float); pointer-events: none;
+    overflow-wrap: anywhere;
+  }
+  .nav-tip small { color: var(--color-muted); }
+}
+/* ホバーのできない端末（指だけのタブレットなど）では畳まない。畳んだ列の名前は、ホバーとキーボードのフォーカスでしか見えないため。
+   760px 以下と同じく開閉のボタンを出さず、覚えた状態も当てずに広げた列で出す */
+@media (hover: none) {
+  .nav-toggle { display: none; }
+}
+/* 761px 以上でホバーのできる端末だけ、左のメニューを 64px のアイコン列へ畳む。狭い画面では上の帯の形を保つ */
+@media (min-width: 761px) and (hover: hover) {
   .app[data-nav-collapsed="true"] .org-menu-button:focus-visible .nav-tip { display: grid; }
-  .nav-tip, .app[data-nav-collapsed="true"] .nav-item-label {
+  /* 項目の名前の札。開閉のボタンの札（.nav-tip）と同じ見た目 */
+  .app[data-nav-collapsed="true"] .nav-item-label {
     position: absolute; z-index: 1; left: calc(100% + var(--space-3)); top: 50%; transform: translateY(-50%);
     width: max-content; max-width: 18rem; padding: var(--space-1) var(--space-2); border: 1px solid var(--color-line);
     border-radius: var(--radius-1); background: var(--color-surface); color: var(--color-fg);
     font-size: var(--text-sm); font-weight: 400; text-align: left; box-shadow: var(--shadow-float); pointer-events: none;
   }
-  .nav-tip { overflow-wrap: anywhere; }
-  .nav-tip small { color: var(--color-muted); }
 
   .app[data-nav-collapsed="true"] { grid-template-columns: var(--binding-width-collapsed) minmax(0, 1fr); }
   /* 列の罫（中世風は 3px）を引いても、内側に 44px の項目が収まる余白にする */
@@ -195,21 +209,19 @@ h1, h2, h3 { text-wrap: balance; }
     position: absolute; z-index: 1; top: 0; left: calc(100% + var(--space-3)); width: 15rem; max-width: min(18rem, 70vw);
     box-shadow: var(--shadow-float);
   }
-}
-/* ホバーで出す札は、ホバーのできる端末だけ。指の端末では押した後も :hover が残り、札が本文に重なり続けるため */
-@media (min-width: 761px) and (hover: hover) {
+
+  /* ホバーで出す札。この塊はホバーのできる端末だけなので、押した後に :hover が残る指の端末には当たらない */
   .nav-toggle:hover .nav-tip,
   .app[data-nav-collapsed="true"] .org-menu-button:hover .nav-tip { display: grid; }
   .app[data-nav-collapsed="true"] .nav-item:hover .nav-item-label { opacity: 1; }
-}
-/* 組織の札の出し方の上書き。ホバーとフォーカスの規則より後ろに置く（同じ詳細度なので、後ろが勝つ） */
-@media (min-width: 761px) {
-  /* 一覧を開いている間は、一覧と重なるので札を出さない */
+
+  /* 組織の札の出し方の上書き。ホバーとフォーカスの規則より後ろに置く（同じ詳細度なので、後ろが勝つ）。
+     一覧を開いている間は、一覧と重なるので札を出さない。移っている最中は、名前の欄が隠れた畳んだ列でも見えるよう、
+     一覧を閉じていれば札（「移っています」）を出したままにする */
   .app[data-nav-collapsed="true"] .org-menu-button[aria-expanded="true"] .nav-tip { display: none; }
-  /* 組織を移っている最中は、名前の欄が隠れた畳んだ列でも目に見えるよう、札（「移っています」）を出したままにする */
-  .app[data-nav-collapsed="true"] .org-menu-button[data-moving="true"] .nav-tip { display: grid; }
+  .app[data-nav-collapsed="true"] .org-menu-button[data-moving="true"][aria-expanded="false"] .nav-tip { display: grid; }
 }
-@media (min-width: 761px) and (forced-colors: active) {
+@media (min-width: 761px) and (hover: hover) and (forced-colors: active) {
   .app[data-nav-collapsed="true"] .org-menu-invite { border-color: CanvasText; background: CanvasText; }
 }
 /* アカウントのメニュー。上の帯の自分の名前を押すと開く。リストの見た目は組織の切り替えと同じ（上の .org-menu-list と並べて書く）で、
