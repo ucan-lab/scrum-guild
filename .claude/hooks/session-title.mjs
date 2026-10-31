@@ -17,7 +17,7 @@ const run = (command, args, options = {}) =>
 // PR の取得に失敗しても、Issue の題だけで名前を付ける
 function prOf(branch, cwd) {
   try {
-    const json = run('gh', ['pr', 'list', '--head', branch, '--state', 'all', '--limit', '10', '--json', 'number,state'], { cwd });
+    const json = run('gh', ['pr', 'list', '--head', branch, '--state', 'all', '--limit', '10', '--json', 'number,state,isCrossRepository'], { cwd });
     return pickPr(JSON.parse(json || '[]'));
   } catch {
     return undefined;

@@ -70,6 +70,11 @@ describe('pickPr', () => {
   test('開いている PR を先に使う', () => {
     assert.deepEqual(pickPr([{ number: 9, state: 'CLOSED' }, { number: 8, state: 'OPEN' }]), { number: 8, state: 'OPEN' });
   });
+  test('fork の同名ブランチの PR は使わない', () => {
+    const list = [{ number: 9, state: 'OPEN', isCrossRepository: true }, { number: 8, state: 'CLOSED', isCrossRepository: false }];
+    assert.equal(pickPr(list).number, 8);
+    assert.equal(pickPr([{ number: 9, state: 'OPEN', isCrossRepository: true }]), undefined);
+  });
   test('開いているものが無ければ先頭、空なら undefined', () => {
     assert.equal(pickPr([{ number: 9, state: 'MERGED' }, { number: 8, state: 'CLOSED' }]).number, 9);
     assert.equal(pickPr([]), undefined);

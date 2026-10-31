@@ -33,8 +33,10 @@ export function titleFor({ issueNumber, issueTitle, pr }) {
   return tidy(`#${issueNumber} ${issueTitle}`);
 }
 
-// ブランチの PR が複数あるとき、開いているものを先に、無ければ新しい順の先頭を使う
+// ブランチの PR が複数あるとき、開いているものを先に、無ければ新しい順の先頭を使う。
+// `--head` はブランチ名だけで引くので、fork の同名ブランチの PR（別の人のもの）は除く
 export function pickPr(list) {
   if (!Array.isArray(list)) return undefined;
-  return list.find((pr) => pr.state === 'OPEN') ?? list[0];
+  const own = list.filter((pr) => !pr.isCrossRepository);
+  return own.find((pr) => pr.state === 'OPEN') ?? own[0];
 }
