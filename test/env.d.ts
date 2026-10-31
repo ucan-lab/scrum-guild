@@ -5,6 +5,12 @@ declare module '*.sql?raw' {
   export default content;
 }
 
+// vite の import.meta.glob の、キーだけを読む使い方の型（test/operation-registry.test.ts が塊のファイルの一覧を取る）。
+// vite/client を丸ごと入れると、Worker の型に無い名前が増えるので、必要な分だけ宣言する
+interface ImportMeta {
+  glob(pattern: string): Record<string, () => Promise<unknown>>;
+}
+
 declare namespace Cloudflare {
   interface Env {
     TEST_MIGRATIONS: import('cloudflare:test').D1Migration[];

@@ -23,7 +23,7 @@ Node は `.node-version`（26）、pnpm は `package.json` の `packageManager` 
 - 依存の導入: `pnpm install`（`prepare` が `core.hooksPath` を `.githooks` にし、`main` を守る git のフックを有効にする）
 - 開発用のサーバー: `pnpm dev`（画面 `http://localhost:5173`、`/api` は `wrangler dev` へ転送）。ワークツリーではポートが名前から自動で決まり、Issue の番号が違うワークツリーとは重ならない（441 を超える番号と番号の無い名前は重なりうる。直し方は `docs/development.md` の「ポート」）
 - 本番と同じ配り方での確認: `pnpm preview`（build して `http://localhost:8787`）
-- テスト: `pnpm test`（API は Workers の実行環境、画面のコード（`src/` の `*.test.ts`）は vitest の node の環境、runes を使うコード（`src/` の `*.svelte.test.ts`）はブラウザ向けの Svelte で動かす node の環境、`scripts/` と `cli/lib/` は `node --test`）
+- テスト: `pnpm test`（API は Workers の実行環境、画面のコード（`src/` の `*.test.ts`）は vitest の node の環境、runes を使うコード（`src/` の `*.svelte.test.ts`）はブラウザ向けの Svelte で動かす node の環境、`scripts/` と `cli/lib/` は `node --test`）。`pnpm test:vitest` と `pnpm test:node` に分けて走らせられる（CI も別のジョブで、vitest はさらに2つのシャードに分ける）
 - 型の検査: `pnpm check`（`svelte-check`、Worker の `tsc`）。Worker の型（`worker-configuration.d.ts`）は、`pnpm install`、`dev`、`test`、`check` の前に `wrangler types` で作り直す
 - lint と整形: `pnpm lint`、`pnpm format:check`、直すときは `pnpm format`
 - build: `pnpm build`（`build/` に書き出し、`build/_headers` を作る）
