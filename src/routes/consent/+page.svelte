@@ -53,10 +53,19 @@
     if (result.status === 409) {
       checked = false;
       const reloaded = await loadStatus();
-      if (reloaded.ok) error = 'updated';
+      // 別のタブで同意済みなら、読み直した画面が同意済みを出すので、更新の知らせは添えない
+      if (reloaded.ok && !reloaded.data.current) error = 'updated';
     } else {
       error = 'record';
     }
+    busy = false;
+  }
+
+  async function retryLoad(): Promise<void> {
+    if (busy) return;
+    busy = true;
+    error = undefined;
+    await loadStatus();
     busy = false;
   }
 
@@ -81,7 +90,14 @@
       </div>
     {/if}
     {#if status === undefined}
-      {#if error !== 'load'}<p role="status">{t('loading')}</p>{/if}
+      {#if error === 'load'}
+        <div class="form-actions">
+          <button class="btn is-sm" type="button" aria-disabled={busy} onclick={retryLoad}>{t('retry')}</button>
+          <LogoutButton />
+        </div>
+      {:else}
+        <p role="status">{t('loading')}</p>
+      {/if}
     {:else if status.current}
       <p>{t('consentCurrent')}</p>
       {#if status.latest}<p class="panel-note">
