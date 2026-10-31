@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, test } from 'node:test';
-import { chooseScope, extractMarkers, type Marker, noDiffBody, scopedDiff } from './ai-review-scope.ts';
+import { chooseScope, extractMarkers, MAX_MARKERS, type Marker, noDiffBody, scopedDiff } from './ai-review-scope.ts';
 
 const git = (dir: string, args: string[]) => execFileSync('git', args, { cwd: dir, encoding: 'utf8' }).trim();
 
@@ -36,7 +36,7 @@ function repo() {
   return { dir, base, commit, onMain, mainSha };
 }
 
-const marker = (sha: string, source: Marker['source'] = 'done-check'): Marker => ({ sha, source, raw: '' });
+const marker = (sha: string, source: Marker['source'] = 'done-check'): Marker => ({ sha, source });
 const bot = { login: 'github-actions[bot]', type: 'Bot' };
 
 describe('extractMarkers', () => {
@@ -127,6 +127,40 @@ describe('chooseScope', () => {
     );
   });
 
+  test('別の枝を merge して距離が同じ印が並ぶときは、並び順によらず ai-review の印を起点にする', () => {
+    const r = repo();
+    const p1 = r.commit('p1.txt', '1\n');
+    git(r.dir, ['switch', '-qc', 'side', r.base]);
+    const s1 = r.commit('s1.txt', 's\n');
+    git(r.dir, ['switch', '-q', 'pr']);
+    git(r.dir, ['merge', '-q', '--no-edit', 'side']);
+    const head = r.commit('p2.txt', '2\n');
+    for (const order of [
+      [marker(p1), marker(s1, 'ai-review')],
+      [marker(s1, 'ai-review'), marker(p1)],
+    ]) {
+      const scope = chooseScope(order, r.base, head, r.dir);
+      assert.equal(scope.start, s1);
+      assert.equal(scope.startSource, 'ai-review');
+    }
+  });
+
+  test('同じ印は1度だけ調べ、調べる印の数に上限を設ける', () => {
+    const r = repo();
+    const head = r.commit('one.txt', '1\n');
+    const many = Array.from({ length: 50 }, (_, i) => marker(i.toString(16).padStart(40, '0')));
+    const scope = chooseScope([...many, ...many], r.base, head, r.dir);
+    assert.equal(scope.rejected.length, MAX_MARKERS);
+  });
+
+  test('退けた印のうち、SHA の形でない値は見せない', () => {
+    const r = repo();
+    const head = r.commit('one.txt', '1\n');
+    const scope = chooseScope([marker('@someone![x](https://example.invalid/a.png)')], r.base, head, r.dir);
+    assert.equal(scope.rejected.length, 1);
+    assert.doesNotMatch(JSON.stringify(scope.rejected), /someone|example\.invalid/);
+  });
+
   test('退けた印があっても、有効な印があればそこを起点にする', () => {
     const r = repo();
     const start = r.commit('one.txt', '1\n');
@@ -146,8 +180,8 @@ describe('scopedDiff', () => {
     const head = r.commit('two.txt', '2\n3\n');
     const result = scopedDiff(r.base, head, start, r.dir);
     assert.equal(result.files, 'M\ttwo.txt\n');
-    assert.match(result.patch, /@@ -1 \+1,2 @@/);
-    assert.doesNotMatch(result.patch, /one\.txt/);
+    assert.match(String(result.patch), /@@ -1 \+1,2 @@/);
+    assert.doesNotMatch(String(result.patch), /one\.txt/);
     assert.deepEqual(result.conflicts, []);
   });
 
@@ -159,7 +193,7 @@ describe('scopedDiff', () => {
     const head = r.commit('変更.txt', 'pr\n');
     const result = scopedDiff(r.mainSha(), head, start, r.dir);
     assert.equal(result.files, 'A\t変更.txt\n');
-    assert.doesNotMatch(result.patch, /main\.txt/);
+    assert.doesNotMatch(String(result.patch), /main\.txt/);
     assert.equal(result.empty, false);
   });
 
@@ -173,9 +207,38 @@ describe('scopedDiff', () => {
     const head = r.commit('other.txt', 'o\n');
     const result = scopedDiff(r.mainSha(), head, start, r.dir);
     assert.deepEqual(result.conflicts, ['shared.txt']);
-    assert.doesNotMatch(result.patch, /<<<<<<<|>>>>>>>/);
-    assert.match(result.patch, /-MAIN\n\+PR\+MAIN/);
+    assert.doesNotMatch(String(result.patch), /<<<<<<<|>>>>>>>/);
+    assert.match(String(result.patch), /-MAIN\n\+PR\+MAIN/);
     assert.equal(result.files.split('\n').filter(Boolean).sort().join('\n'), 'A\tother.txt\nM\tshared.txt');
+  });
+
+  test('衝突が複数あるときはすべてを広げ、記号を含むパスは文字どおりに除く', () => {
+    const r = repo();
+    const files = ['a.txt', 'b.txt', '[x]*.txt'];
+    for (const f of files) writeFileSync(join(r.dir, f), 'base\n');
+    writeFileSync(join(r.dir, 'xa.txt'), 'base\n');
+    git(r.dir, ['add', '.']);
+    git(r.dir, ['commit', '-qm', 'more']);
+    git(r.dir, ['switch', '-q', 'main']);
+    git(r.dir, ['merge', '-q', '--ff-only', 'pr']);
+    for (const f of files) writeFileSync(join(r.dir, f), 'main\n');
+    git(r.dir, ['commit', '-qam', 'main']);
+    git(r.dir, ['switch', '-q', 'pr']);
+    for (const f of files) writeFileSync(join(r.dir, f), 'pr\n');
+    git(r.dir, ['commit', '-qam', 'pr']);
+    const start = git(r.dir, ['rev-parse', 'HEAD']);
+    spawnSync('git', ['merge', '-q', '--no-edit', 'main'], { cwd: r.dir });
+    for (const f of files) writeFileSync(join(r.dir, f), 'pr+main\n');
+    git(r.dir, ['commit', '-qam', 'merge']);
+    const head = r.commit('xa.txt', 'later\n');
+    const result = scopedDiff(r.mainSha(), head, start, r.dir);
+    assert.deepEqual([...result.conflicts].sort(), [...files].sort());
+    assert.doesNotMatch(String(result.patch), /<<<<<<<|>>>>>>>/);
+    assert.equal(
+      result.files.split('\n').filter(Boolean).sort().join('\n'),
+      ['M\t[x]*.txt', 'M\ta.txt', 'M\tb.txt', 'M\txa.txt'].join('\n'),
+    );
+    assert.match(String(result.patch), /\+later/);
   });
 
   test('起点が head なら空', () => {
@@ -183,7 +246,7 @@ describe('scopedDiff', () => {
     const head = r.commit('one.txt', '1\n');
     const result = scopedDiff(r.base, head, head, r.dir);
     assert.equal(result.empty, true);
-    assert.equal(result.patch, '');
+    assert.equal(result.patch.length, 0);
     assert.equal(result.files, '');
   });
 });
@@ -274,6 +337,37 @@ describe('ai-review-scope.ts を直に走らせる', () => {
     assert.match(out.scope, /ラベルで回したので全体を見る/);
     assert.equal(out.files, 'A\tone.txt\nA\ttwo.txt\n');
     assert.equal(out.noDiff, undefined);
+  });
+
+  test('scope.md に起点の出どころ（done-check の印は本文の自己申告）を書く', () => {
+    const out = runCli({ body: '<!-- done-check:START -->', action: 'ready_for_review' });
+    assert.match(out.scope, /done-check の印（PR の本文の自己申告）/);
+  });
+
+  test('UTF-8 でないバイトを含むファイルの差分を、git diff の出力とバイトで同じに書く', () => {
+    const r = repo();
+    writeFileSync(join(r.dir, 'latin.txt'), Buffer.from([0x63, 0x61, 0x66, 0xe9, 0x0a]));
+    git(r.dir, ['add', 'latin.txt']);
+    git(r.dir, ['commit', '-qm', 'latin']);
+    const head = git(r.dir, ['rev-parse', 'HEAD']);
+    const context = join(r.dir, '.context');
+    const result = spawnSync(process.execPath, [script], {
+      cwd: r.dir,
+      encoding: 'utf8',
+      env: {
+        ...process.env,
+        RAW_DIR: join(r.dir, '.raw'),
+        CONTEXT_DIR: context,
+        BASE_SHA: r.base,
+        HEAD_SHA: head,
+        EVENT_ACTION: 'opened',
+        NO_DIFF_BODY_FILE: join(r.dir, '.none.md'),
+        GITHUB_OUTPUT: join(r.dir, '.output'),
+      },
+    });
+    assert.equal(result.status, 0, result.stderr);
+    const expected = execFileSync('git', ['diff', `${r.base}...${head}`], { cwd: r.dir });
+    assert.ok(readFileSync(join(context, 'diff.patch')).equals(expected));
   });
 
   test('退けた印は理由とともに scope.md に書く', () => {

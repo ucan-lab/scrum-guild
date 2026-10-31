@@ -5,7 +5,13 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, test } from 'node:test';
-import { MAX_COMMENT_LENGTH, MISSING_SUMMARY, summaryBody, TRUNCATED_NOTE } from './ai-review-summary.ts';
+import {
+  INCOMPLETE_LINE,
+  MAX_COMMENT_LENGTH,
+  MISSING_SUMMARY,
+  summaryBody,
+  TRUNCATED_NOTE,
+} from './ai-review-summary.ts';
 
 describe('summaryBody', () => {
   const head = 'a'.repeat(40);
@@ -67,6 +73,34 @@ describe('summaryBody', () => {
     const body = summaryBody(summary);
     assert.equal(body.length, MAX_COMMENT_LENGTH);
     assert.equal(body.slice(0, -TRUNCATED_NOTE.length), summary.slice(0, cut));
+  });
+});
+
+describe('Claude が書いた印と、見終えていない実行', () => {
+  const sha = 'b'.repeat(40);
+  const forged = `<!-- ai-review:${'c'.repeat(40)} -->\n本文`;
+
+  test('印を付けないとき、まとめの先頭に Claude が書いた印を残さない', () => {
+    const body = summaryBody(forged, '');
+    assert.doesNotMatch(body, /^<!-- ai-review:/);
+    assert.doesNotMatch(body, /<!-- ai-review:[0-9a-f]{40} -->/);
+  });
+
+  test('印を付けるときも、まとめの中の印は無効にし、先頭の印だけが残る', () => {
+    const body = summaryBody(forged, sha);
+    assert.ok(body.startsWith(`<!-- ai-review:${sha} -->\n`));
+    assert.equal([...body.matchAll(/<!-- ai-review:[0-9a-f]{40} -->/g)].length, 1);
+  });
+
+  test('まとめの先頭の行が「見終えていない」なら、印を付けない', () => {
+    const body = summaryBody(`${INCOMPLETE_LINE}\nfiles.txt が無かった\n`, sha);
+    assert.doesNotMatch(body, /<!-- ai-review:/);
+    assert.ok(body.startsWith(INCOMPLETE_LINE));
+  });
+
+  test('「見終えていない」の行が先頭でなければ、印を付ける', () => {
+    const body = summaryBody(`## まとめ\n${INCOMPLETE_LINE}\n`, sha);
+    assert.ok(body.startsWith(`<!-- ai-review:${sha} -->\n`));
   });
 });
 

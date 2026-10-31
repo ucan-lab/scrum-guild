@@ -51,7 +51,7 @@ jobs:
           fi
 
       # .ts を直に動かすには、ランナーの既定より新しい Node が要る
-      # 本文とコメントは補助の情報なので、次の2段が落ちても差分だけで AI レビューを続ける
+      # 本文とコメントは補助の情報なので、取る段と整える段が落ちても差分だけで AI レビューを続ける
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         continue-on-error: true
         with:
@@ -102,7 +102,8 @@ jobs:
           node scripts/ai-review-context.ts "$RAW_DIR" "$CONTEXT_DIR"
 
       # Claude には Bash を許さないので、差分はここで書き出して pr-context で渡す。
-      # 差分の無いレビューは意味が無いので、上の2段と違い、落ちたらジョブを落とす。
+      # 起点の段が落ちたか、書くはずのファイルが欠けていれば、PR 全体の差分に倒す。
+      # 差分の無いレビューは意味が無いので、上の3段と違い、落ちたらジョブを落とす。
       # まとめの置き場の pr-out も、Claude の --add-dir に渡すのでここで空で作る
       - name: 差分を書き出す
         id: diff

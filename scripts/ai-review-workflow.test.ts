@@ -1,5 +1,8 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { execFileSync, spawnSync } from 'node:child_process';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { describe, test } from 'node:test';
 import { load } from 'js-yaml';
 
@@ -179,4 +182,104 @@ describe('ai-review の前後の段', () => {
     assert.ok(toolList('--allowedTools').includes(`Edit(/${outFile})`));
     assert.equal(named('まとめを PR に付ける').env?.OUT_FILE, outFile);
   });
+
+  // EVENT_ACTION が渡らないと labeled でも none になり、人が回したのに全体を見ない。
+  // 差分なしの本文のファイルが起点の段とずれると、gh pr comment が無いファイルを読んで落ちる
+  test('起点の段は pr-raw を消す前にスクリプトを走らせ、差分なしの段と本文のファイルを共有する', () => {
+    const scope = named('起点を決める');
+    assert.equal(scope.run, 'node scripts/ai-review-scope.ts');
+    assert.deepEqual(scope.env, {
+      RAW_DIR: '${{ runner.temp }}/pr-raw',
+      CONTEXT_DIR: '${{ runner.temp }}/pr-context',
+      BASE_SHA: '${{ github.event.pull_request.base.sha }}',
+      HEAD_SHA: '${{ github.event.pull_request.head.sha }}',
+      EVENT_ACTION: '${{ github.event.action }}',
+      NO_DIFF_BODY_FILE: '${{ runner.temp }}/pr-no-diff-body.md',
+    });
+    assert.equal(named('PR の本文とコメントを整える').env?.RAW_DIR, scope.env?.RAW_DIR);
+    const noDiff = named('差分が無い旨を PR に付ける');
+    assert.equal(noDiff.env?.NO_DIFF_BODY_FILE, scope.env?.NO_DIFF_BODY_FILE);
+    assert.equal(noDiff.env?.PR_NUMBER, '${{ github.event.pull_request.number }}');
+    assert.equal(noDiff.run, 'gh pr comment "$PR_NUMBER" -R "$REPO" --body-file "$NO_DIFF_BODY_FILE"');
+  });
+});
+
+// 「差分を書き出す」段の run を、使い捨てのリポジトリで bash に走らせる。
+// 起点の段が落ちたら全体に倒すのが Issue の要なので、文字列の有無でなく振る舞いで固定する
+describe('差分を書き出す段の run', () => {
+  const run = workflow.jobs.review.steps.find((s) => s.name === '差分を書き出す')?.run ?? '';
+  const git = (dir: string, args: string[]) => execFileSync('git', args, { cwd: dir, encoding: 'utf8' }).trim();
+
+  function exec(opts: { outcome: string; mode?: string; start?: string; prepare?: (context: string) => void }) {
+    const dir = mkdtempSync(join(tmpdir(), 'ai-review-diff-step-'));
+    git(dir, ['init', '-q', '-b', 'main']);
+    git(dir, ['config', 'user.email', 'test@example.invalid']);
+    git(dir, ['config', 'user.name', 'test']);
+    writeFileSync(join(dir, 'a.txt'), 'a\n');
+    git(dir, ['add', '.']);
+    git(dir, ['commit', '-qm', 'base']);
+    const base = git(dir, ['rev-parse', 'HEAD']);
+    writeFileSync(join(dir, 'b.txt'), 'b\n');
+    git(dir, ['add', '.']);
+    git(dir, ['commit', '-qm', 'head']);
+    const head = git(dir, ['rev-parse', 'HEAD']);
+    const context = join(dir, '.context');
+    const output = join(dir, '.output');
+    mkdirSync(context);
+    writeFileSync(output, '');
+    opts.prepare?.(context);
+    const result = spawnSync('bash', ['-c', run], {
+      cwd: dir,
+      encoding: 'utf8',
+      env: {
+        ...process.env,
+        BASE_SHA: base,
+        HEAD_SHA: head,
+        CONTEXT_DIR: context,
+        OUT_DIR: join(dir, '.out'),
+        SCOPE_OUTCOME: opts.outcome,
+        SCOPE_MODE: opts.mode ?? '',
+        SCOPE_START: opts.start ?? '',
+        GITHUB_OUTPUT: output,
+      },
+    });
+    assert.equal(result.status, 0, result.stderr);
+    const read = (name: string) => readFileSync(join(context, name), 'utf8');
+    return { output: readFileSync(output, 'utf8'), read, outDir: existsSync(join(dir, '.out')) };
+  }
+
+  const prepared = (context: string) => {
+    writeFileSync(join(context, 'diff.patch'), 'SCOPED\n');
+    writeFileSync(join(context, 'files.txt'), 'M\tscoped.txt\n');
+    writeFileSync(join(context, 'scope.md'), '- 方式: 起点から\n');
+  };
+
+  test('起点の段が落ちたら、全体の差分を書いて mode=full を出す', () => {
+    const out = exec({ outcome: 'failure', mode: 'none', prepare: prepared });
+    assert.equal(out.output, 'mode=full\nstart=\n');
+    assert.equal(out.read('files.txt'), 'A\tb.txt\n');
+    assert.match(out.read('diff.patch'), /\+b/);
+    assert.match(out.read('scope.md'), /全体（起点の判定が落ちたため）/);
+    assert.ok(out.outDir);
+  });
+
+  test('起点の段が成功しても、書いたファイルが欠けていれば全体に倒す', () => {
+    const out = exec({
+      outcome: 'success',
+      mode: 'since',
+      start: 'a'.repeat(40),
+      prepare: (context) => writeFileSync(join(context, 'files.txt'), 'M\tscoped.txt\n'),
+    });
+    assert.equal(out.output, 'mode=full\nstart=\n');
+    assert.equal(out.read('files.txt'), 'A\tb.txt\n');
+  });
+
+  for (const mode of ['since', 'none', 'full']) {
+    test(`起点の段が成功して3つのファイルがそろえば、書いたものを使い mode=${mode} をそのまま出す`, () => {
+      const out = exec({ outcome: 'success', mode, start: 'a'.repeat(40), prepare: prepared });
+      assert.equal(out.output, `mode=${mode}\nstart=${'a'.repeat(40)}\n`);
+      assert.equal(out.read('diff.patch'), 'SCOPED\n');
+      assert.equal(out.read('files.txt'), 'M\tscoped.txt\n');
+    });
+  }
 });
