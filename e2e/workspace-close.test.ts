@@ -313,7 +313,7 @@ test.describe('管理者（あおば開発のミナト）', () => {
 
     const refusal = refusalOf(page);
     await expect(refusal).toBeVisible();
-    await expect(refusal).toContainText('承諾待ちの招待の 2 人が組織の人数に加わり');
+    await expect(refusal).toContainText('承諾待ちの招待の 2 人が冒険者ギルドの人数に加わり');
     await expect(refusal).toContainText('今の 14 人と合わせて上限の 15 人を超えます');
     // 対処は、上限の見直し（運用者に問い合わせる）と、ほかのユーザーを無効にすることだけ。閉じたパーティの招待は取り消せない
     await expect(refusal).toContainText('上限の見直しは運用者に問い合わせてください');
@@ -354,7 +354,7 @@ test.describe('管理者（あおば開発のミナト）', () => {
 
     const refusal = refusalOf(page);
     await expect(refusal).toBeVisible();
-    await expect(refusal).toContainText('承諾待ちの招待を含めると、組織の人数が上限を超えます');
+    await expect(refusal).toContainText('承諾待ちの招待を含めると、冒険者ギルドの人数が上限を超えます');
     await expect(refusal).toContainText('上限の見直しは運用者に問い合わせてください');
     await expect(refusal).toContainText('ほかのユーザーを無効にして人数を減らしてください');
     // 数の穴を残さない。汎用の失敗の文言にも落とさない
