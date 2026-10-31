@@ -140,3 +140,9 @@ export async function restoreSeedSession(who: keyof typeof SEED_SESSIONS): Promi
   if (!insert.startsWith('INSERT INTO sessions ')) throw new Error('sessionInserts の文の形が変わった');
   await executeLocalD1([insert.replace(/^INSERT INTO /, 'INSERT OR IGNORE INTO ')]);
 }
+
+// seed のセッションのアカウントの同意の行を消し、未同意の状態へ戻す。同意の e2e（e2e/consent.test.ts）が、
+// 繰り返し（--repeat-each）で毎回「未同意」から始めるため、テストの前と後に使う。同意の行は追記だけで API に消す操作が無い
+export async function resetAccountConsents(who: keyof typeof SEED_SESSIONS): Promise<void> {
+  await executeLocalD1([`DELETE FROM account_consents WHERE account_id = '${SEED_SESSIONS[who].accountId}';`]);
+}

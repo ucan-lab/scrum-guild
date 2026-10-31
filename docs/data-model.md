@@ -1,6 +1,6 @@
 # Scrum Guild データモデル
 
-状態: 確定。要件定義（`requirements.md`）を D1（SQLite）のテーブルに落としたもの。最初のマイグレーション（`migrations/0001_create_initial_tables.sql`）で、共通の6表と、一本道に要る組織の中の16表を作った。`organization_holidays` は `migrations/0004_add_organization_holidays.sql` で、`comments` は `migrations/0006_add_comments.sql` で、`sprint_entries` と `completions.previous_column_id` は `migrations/0008_add_sprint_entries.sql` で、`epic_party_members` と `thanks` は `migrations/0009_add_epic_party_members_and_thanks.sql` で、共通の表の `password_credentials` は `migrations/0010_add_password_credentials.sql` で、`api_tokens` は `migrations/0012_add_api_tokens.sql` で足した（共通の表は8表になった）。残りの表は、使う機能の Issue でマイグレーションを足して作る
+状態: 確定。要件定義（`requirements.md`）を D1（SQLite）のテーブルに落としたもの。最初のマイグレーション（`migrations/0001_create_initial_tables.sql`）で、共通の6表と、一本道に要る組織の中の16表を作った。`organization_holidays` は `migrations/0004_add_organization_holidays.sql` で、`comments` は `migrations/0006_add_comments.sql` で、`sprint_entries` と `completions.previous_column_id` は `migrations/0008_add_sprint_entries.sql` で、`epic_party_members` と `thanks` は `migrations/0009_add_epic_party_members_and_thanks.sql` で、共通の表の `password_credentials` は `migrations/0010_add_password_credentials.sql`、`api_tokens` は `migrations/0012_add_api_tokens.sql`、`account_consents` は `migrations/0013_add_account_consents.sql` で足した（共通の表は9表になった）。残りの表は、使う機能の Issue でマイグレーションを足して作る
 
 ## 決まりごと
 
@@ -27,7 +27,7 @@
 
 | まとまり | テーブル |
 | --- | --- |
-| アカウント | `accounts`、`account_logins`、`password_credentials`、`sessions`、`api_tokens`、`oauth_states`、`rate_limits` |
+| アカウント | `accounts`、`account_logins`、`password_credentials`、`sessions`、`api_tokens`、`account_consents`、`oauth_states`、`rate_limits` |
 | 組織 | `organizations`、`users`、`organization_holidays` |
 | ユーザーの稼働 | `user_capacity_settings`、`user_monthly_overrides`、`user_time_off` |
 | ワークスペース | `workspaces`、`workspace_point_rates`、`workspace_holidays`、`memberships`、`invitations`、`allocations` |
@@ -55,7 +55,7 @@
 
 | 区分 | テーブル | 置き場所 |
 | --- | --- | --- |
-| 共通 | `accounts`、`account_logins`、`password_credentials`、`sessions`、`api_tokens`、`oauth_states`、`rate_limits`、`organizations` | 共通の DB に1つだけ |
+| 共通 | `accounts`、`account_logins`、`password_credentials`、`sessions`、`api_tokens`、`account_consents`、`oauth_states`、`rate_limits`、`organizations` | 共通の DB に1つだけ |
 | 組織の中 | それ以外のすべて | 組織が置かれた DB |
 
 添付ファイルの中身は D1 ではなく R2 に置く。R2 のキーの先頭は組織の ID なので、D1 を分けても R2 は分けずに済む。
@@ -190,6 +190,20 @@
 - 取り消し済みの行も、`expires_at` を過ぎるまで残す。期限を過ぎた行（`expires_at <= 定期処理の基準の時刻`）を、毎分の定期処理で消す（「期限切れの行の掃除」）。
 - 発行、一覧、取り消しは、自分の設定の画面から行う操作（`token-create`、`token-list`、`token-revoke`。どれも Cookie のセッションだけ）。発行は 1 行を `INSERT` し、生の値は応答で1回だけ返す。一覧は呼んだ人の、`revoked_at` が空で `expires_at` が今より後の行を、`created_at` の新しい順に返し、値は返さない（`id` は `token_hash`）。取り消しは呼んだ人の行だけを指し、他人の行と存在しない行は同じ 404。先に行を読んで 404 と成功を分け、書く文は `revoked_at IS NULL` の行だけを `UPDATE` するので、取り消し済みの行の `revoked_at` は書き直さない。
 
+### account_consents
+
+利用者が同意した利用規約とプライバシーポリシーの版を残す追記専用の記録。共通の表で、組織の中の表とは混ぜない。
+
+| 列 | 型 | 制約 | 説明 |
+| --- | --- | --- | --- |
+| account_id | TEXT | NOT NULL、FK accounts | 同意したアカウント |
+| terms_version | TEXT | NOT NULL、日付形式の CHECK | 同意した利用規約の版 |
+| privacy_version | TEXT | NOT NULL、日付形式の CHECK | 同意したプライバシーポリシーの版 |
+| consented_at | TEXT | NOT NULL | 同意した日時（ISO 8601） |
+
+- 索引: `(account_id, consented_at)`。アカウントの最新の同意を読む。
+- 行は消さず、書き換えず、`consent-record` の `batch()` で足す。同じ現在版への二度目の同意は行を足さず成功する（最新の行が今の2つの版と一致するかの確かめと INSERT を1文にし、同時の送信でも行は増えない）。
+
 ### oauth_states
 
 ログインの手段の OAuth の state と PKCE の code_verifier、OpenID Connect の nonce。
@@ -266,7 +280,7 @@
 | created_at、updated_at | TEXT | NOT NULL | |
 
 - 運用者の画面で作る。作るときに最初の管理者の `users` を同じバッチで入れる（アカウントがまだなければ、`account_id` が空の `users` の行で待つ。下の `users` を参照）。
-- アプリが使う名前（`api`、`login`、`operator`、`terms`、`privacy` など）を slug にできないことは、アプリが検査する。`consent` は、規約への同意の画面（まだ作っていない）の経路として先に予約している。予約した名前の一覧は `src/shared/organization-slug.ts` に持ち、画面の最上段のルートを足したら合わせて足す（`scripts/organization-slug.test.ts` が照合する）。
+- アプリが使う名前（`api`、`login`、`operator`、`terms`、`privacy` など）を slug にできないことは、アプリが検査する。`consent` は、規約への同意の画面（`/consent`）の経路で、予約している。予約した名前の一覧は `src/shared/organization-slug.ts` に持ち、画面の最上段のルートを足したら合わせて足す（`scripts/organization-slug.test.ts` が照合する）。
 - 続けて書く `users` と `change_logs` の入口は、組織の作成の関数（`src/server/db/create-organization.ts`）が作る。入口を作れるのは `organizations` に挿入した組織の ID だけで、任意の組織の ID から入口を作る関数は `db/` の外へ出さない。既にある組織の中の表に運用者が書くものは、組織の中の入口を渡さず、決まった書き込みだけをする関数にする。停止、再開、停止の理由の切り替えの `change_logs` は、履歴を1行足すだけの関数 `appendOperatorChangeLog`（`src/server/db/operator-change-log.ts`）、管理者の指名し直しの `users` と `change_logs` は、指名し直すだけの関数 `reassignOrganizationAdmin`（`src/server/db/operator-reassign-admin.ts`。書き方は「書き込みの単位」の管理者の指名し直し）。組織を確かめた結果はこれらの関数の中で作って外へ出さず、停止中の組織にも書ける。組織の ID は、呼び出し側が共通の表の `organizations` から読んだ値を渡し、行が無い ID は `change_logs.organization_id` の外部キーが断る。これらの関数を import できるのは運用者の道具（`operator-tools.ts` の `appendChangeLog` と `reassignAdmin`。`operator` の列に運用者のログインの ID を入れる）だけで、ESLint の入口を守る規則（`eslint.config.db-entry.js`）が止める。同時に作られて `slug` の UNIQUE に当たったときは、`slug` の行が今あるかを読み直し、重なりとして 409 を返す。
 - 人数は保存せず、招待のたびと、メンバーの画面と運用者の組織の一覧を開くたびに数える。対象は、無効にしていない管理者と、いずれかのワークスペースに今所属しているか承諾待ちの招待を持つ人（まだアカウントのない人への招待を含む）で、同じ人は1人とする。招待のうち、閉じたワークスペースへの招待と、同じ組織で無効にされた人（同じ `(login_provider, login_subject)`）への招待は数えない。人数が `member_limit` 以上なら、まだ数えられていない人の招待と、管理者への指名（`user-admin-update`。「書き込みの単位」の管理者の指名と解除）を断る。運用者の管理者の指名し直しは、組織の作成の最初の管理者と同じく上限を見ない。すでに数えられている人（同じ `(login_provider, login_subject)` の、無効でない管理者、いずれかのワークスペースに今所属している人、数えられる承諾待ちの招待を持つ人）は、上限でも招待できる。数えるのは GitHub に問い合わせた後で、数えてから書くまでの間に同時に招待されたときはそのまま認める（超えるのは同時に送った招待の数まで）。
 - 閉じたワークスペースの承諾待ちの招待は数えないので、開き直す（`workspace-reopen`。「書き込みの単位」のワークスペースを開き直す）と、その招待の人が新しく数えられる。開き直しは書く前に、そのワークスペースの承諾待ちの招待の人（期限の過ぎた Google の招待と、同じ組織で無効にされた人への招待を除く。`seatHoldersOfWorkspaceInvitations`）のうち、すでに数えられている人を除いた人数 `adding` を求め、今の人数 `used` に足して上限を見る。`adding` が 1 以上で `used + adding` が `member_limit` を超えるときだけ、何も書かずに 409（`member_limit_reached`、`details` は `{ used, limit, adding }`）で断る。ちょうど上限に達する開き直しは通す。`adding` が 0 の開き直しは、段階を下げて人数が上限を超えている組織でも通す。断られた管理者は、上限を見直す（運用者に頼む）か、ほかのユーザーを無効にして人数を減らすと、同じワークスペースを開き直せる。閉じている間は招待を取り消せない。招待の承諾（`invitation-accept`）は上限を見ない（承諾待ちの招待は数えているため、開き直しで上限を守る）。数えてから書くまでの間に同時に増えた分は、招待と同じく認める（`adding` の人数は文の条件に入れない）。別々のワークスペースの開き直しを同時に送ると、それぞれが検査を通り、超える量は各ワークスペースの `adding` の合計までになりうる。開き直しの `adding` も `personKey` で数えるので、メールアドレスで待つ招待と、`sub` を持つ所属の同一人物は別々の人として数える。そのため、人数がちょうど上限の組織では、本来 `adding` が 0 の開き直しが断られうる（招待の作成と同じ既存の限界。「メールアドレスで待つ指名と招待」の数え方に従う）。

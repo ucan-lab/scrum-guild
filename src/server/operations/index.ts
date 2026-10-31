@@ -30,6 +30,7 @@ import {
 } from './organization-holiday.ts';
 import { organizationSettingsUpdateOperation } from './organization-settings.ts';
 import { logoutOperation, meOperation } from './session.ts';
+import { consentRecordOperation, consentStatusOperation } from './consent.ts';
 import { tokenCreateOperation, tokenListOperation, tokenRevokeOperation } from './token.ts';
 import { userAdminUpdateOperation, userDisableOperation, userEnableOperation, userListOperation } from './user.ts';
 import { planSummaryOperation } from './plan-summary.ts';
@@ -121,6 +122,8 @@ const listedOperations: readonly ImplementedOperation[] = [
   userEnableOperation,
   meOperation,
   logoutOperation,
+  consentStatusOperation,
+  consentRecordOperation,
   tokenCreateOperation,
   tokenListOperation,
   tokenRevokeOperation,

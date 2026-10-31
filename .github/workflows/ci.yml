@@ -143,7 +143,7 @@ jobs:
       # シャードの数は strategy.job-total で scripts/e2e-shard.ts に渡して追従する。数を変えるときは、この配列と、
       # docs/development.md の「CI」の e2e の行（シャードの数と成果物の名前）も直す
       matrix:
-        shard: [1, 2, 3]
+        shard: [1, 2, 3, 4]
     env:
       # 画面と /api/health に同じ版が出ることも確かめる
       APP_VERSION: ${{ github.event.pull_request.head.sha }}
@@ -181,7 +181,7 @@ jobs:
       fail-fast: false
       # e2e と同じ割り方（scripts/e2e-shard.ts）。数を変えるときは docs/development.md の「CI」の e2e-dev の行も直す
       matrix:
-        shard: [1, 2, 3]
+        shard: [1, 2, 3, 4]
     env:
       APP_VERSION: ${{ github.event.pull_request.head.sha }}
       E2E_DEV_BUILD: '1'

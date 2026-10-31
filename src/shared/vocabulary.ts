@@ -999,6 +999,20 @@ export const dictionary = defineDictionary({
   legalBack: '前の画面に戻る',
   legalOpenApp: '{app} を開く',
 
+  // 同意の画面。版は API の値を画面が埋める。
+  consentTitle: '同意の確認',
+  consentLead: '{app} を使うには、利用規約とプライバシーポリシーを確認してください。',
+  consentVersion: '版: {version}',
+  consentCheckLabel: '利用規約とプライバシーポリシーを確認し、同意します',
+  consentSubmit: '同意して進む',
+  consentContinue: '進む',
+  consentUpdated: '規約が更新されました。内容を確認し直してください。',
+  consentSubmitting: '同意を記録しています',
+  consentCurrent: '現在の版に同意しています。',
+  consentRecordedAt: '同意した日時: {date}',
+  consentLoadFailed: '同意の状態を読み込めませんでした。もう一度試してください。',
+  consentRecordFailed: '同意を記録できませんでした。もう一度試してください。',
+
   // テーマ
   themeLabel: 'テーマ',
   themeSimple: 'シンプル（自動）',

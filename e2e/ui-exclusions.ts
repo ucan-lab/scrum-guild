@@ -18,6 +18,7 @@ export const uiScreens = [
   'workspace-settings',
   'admin',
   'operator-reassign',
+  'consent',
   'terms',
   'privacy',
 ] as const;

@@ -49,6 +49,7 @@ const KEPT_COMMON_TABLES = [
   'oauth_states',
   'rate_limits',
   'password_credentials',
+  'account_consents',
 ];
 
 // purge_on に入れる UTC の日付。消す SQL の条件は SQL の date('now') と比べる。ここで日付を作ってから SQL を流すまでに
