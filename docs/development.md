@@ -49,7 +49,7 @@
   - 権限の種類と範囲は `src/shared/operations/define.ts` の1つの表から、型と実行時の検査を導く。登録のときに、権限の種類が一覧にあること、`member` と `leader` に `workspace: true` が付くこと、組織の外の操作に `workspace` が付かないことを確かめ、合わなければ起動のときに落とす。
   - 閉じたワークスペースは読み取り専用。`write` の操作は、閉じていれば 409 の `workspace_closed` で止まる。開き直す操作のように閉じていても書く操作には、定義に `allowClosed: true` を付ける（ワークスペースの下の `write` だけに付けられる）。権限の検査が先で、権限の無い人には 403 を返す。
 - 登録の関数が行う順: 認証（`Authorization: Bearer` があれば API トークンの読み取り、無ければ Origin の検査とセッションの読み取り）、組織の確かめ（組織の中の操作）と運用者や管理者の検査、API トークンの範囲の検査、回数の上限、入力の検証、ワークスペースの確かめとメンバーやリーダーの検査（ワークスペースの下の操作）、処理、出力の検証。ワークスペースの確かめが入力の検証の後になるのは、検証した入力の `workspace_id` から取り出すため。
-  - ログインできる条件: 組織の外の操作は、入れる組織を確かめない。セッションか API トークンが読めれば（アカウントがあれば）通し、入れる組織を失った人（すべてのワークスペースから外れた人）、停止した組織にしか入れない人、運用者の一覧から外れた人も 401 にしない。セッションも Cookie も API トークンも消さない（#639。前は `requireLoginAccess()` が、入れる組織も届いた招待も無い人のセッションとトークンを消して 401 にしていた。定義の `skipsLoginAccess` と、その確かめの失敗に付けた 401 の `details.reason` も、同じ Issue で無くした）
+  - ログインできる条件: 組織の外の操作は、入れる組織を確かめない。セッションか API トークンが読めれば（アカウントがあれば）通し、入れる組織を失った人（すべてのワークスペースから外れた人）、停止した組織にしか入れない人、運用者の一覧から外れた人も 401 にしない。セッションも Cookie も API トークンも消さない
     - 組織の中の操作は、組織に入れなかったときは 404 の `not_found`、停止した組織で停止していなければ入れた人には 403 の `organization_suspended`（「API のエラーとログ」）。どちらもセッションを消さず、ほかに入れる組織があるかも確かめない
     - 運用者の権限（`operator`）の操作は、アカウントがあれば 403 の検査まで進む（運用者でなければ 403）
     - 応答のセッションの Set-Cookie は、期限を延ばす1本か、消す1本のどちらかだけにする。同じ名前の2本（Max-Age 30日と Max-Age=0）が並ぶと、受け取る側の処理の順に頼ることになるため。Cookie は応答を作る直前に付け、失敗の応答にも付く。消すのは、処理が `clearCookie()` を呼んだとき（ログアウト）だけ
@@ -162,7 +162,7 @@
 - 閉じたワークスペースへの書き込みは、409 の `workspace_closed`（先に読んだ値の競合の `conflict` とは分ける）。
 - 招待の作成（`invitation-create`）が断るときは 409 で、理由を `code` で分ける（`member_limit_reached`、`invitee_changed`、`already_member`、`already_invited`）。届いた招待の承諾（`invitation-accept`）が断るときも 409 で、承諾待ちでない（`conflict`）、ワークスペースが閉じている（`workspace_closed`）、もう所属している（`already_member`）を分ける。辞退（`invitation-decline`）の 409 は、承諾待ちでない（`conflict`）だけ。どちらも、無い招待と別の人や別の組織の招待は 404 の `not_found`。招待する人の解決（`invitee-resolve`、`invitation-create`）が当たらないときは、運用者の操作と同じ 400 の `invalid_input` で、`details` の `code` が `github_user_not_found` か `github_not_a_user`。Google の招待でそろえられないメールアドレスも 400 の `invalid_input` で、`code` は `email_invalid`（運用者の Google の指名と同じ）。
 - 停止した組織の中の操作は、停止していなければ入れた人（無効でない管理者、今の所属がある人、承諾待ちの招待がある人）に 403 の `organization_suspended` を返す。入れない人（無効にされた人を含む）は、組織が無いときと同じ 404 の `not_found`。判定は `enterOrganization` が行い、停止した組織では入口を渡さず、組織の ID だけを持つ `SuspendedOrganization` を返す（操作のログに組織の ID が付く）。停止した組織にしか入れない人も、セッションを消さず、同じ 403 を返す（組織の外の操作は使える。組織の選択の画面（`/`）は `my-organizations` の `suspended` で、停止していることと運用者に問い合わせることを伝える）。組織の分離のテスト（`test/operations/harness.ts`）が、組織の中のすべての操作について回す。
-- 401 の `unauthenticated` に理由（`details.reason`）は付けない。入れる組織を失ったことでは 401 にならない（#639）。
+- 401 の `unauthenticated` に理由（`details.reason`）は付けない。入れる組織を失ったことでは 401 にならない。
 - 定義の `rateLimit` を超えた呼び出しは、429 の `rate_limited`。
 - 本文が 1MiB を超えたときは、413 で `code` は `invalid_input`。画面のエラーの送信（`POST /api/client-errors`）の上限は 4KiB。パスワードのログイン（`POST /api/auth/password/login`）の上限も 4KiB で、超えたときは 413 でなく 400 の `invalid_input` にする（形の誤りと同じ応答にする）。
 - D1 に届かないとき（`/api/health` の疎通）と、運用者の操作と招待の操作が問い合わせる GitHub に届かないとき（上限、障害、クライアントの ID と秘密が未設定）は 503 の `unavailable`。入力の誤りの 400 の `invalid_input` とは分け、人がしばらくしてからやり直せる失敗として扱う。

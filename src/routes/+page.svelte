@@ -40,6 +40,12 @@
         <p class="gate-note">{t('organizationChooseNote')}</p>
       {:else if data.invitations.length > 0}
         <EmptyState icon="shield" title={t('noOrganizationInvitedTitle')} text={t('noOrganizationInvitedText')} />
+      {:else if data.suspended.length > 0}
+        <EmptyState
+          icon="shield"
+          title={t('noOrganizationTitle')}
+          text={t('noOrganizationSuspendedText', { organization: t('organization') })}
+        />
       {:else}
         <EmptyState icon="shield" title={t('noOrganizationTitle')} text={t('noOrganizationText')} />
       {/if}

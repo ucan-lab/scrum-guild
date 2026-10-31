@@ -474,6 +474,8 @@ export const dictionary = defineDictionary({
   invitationsReceived: '招待が届いています',
   noOrganizationTitle: '入れる組織がありません',
   noOrganizationText: '管理者から招待が届くと、ここに出ます。',
+  // 入れる組織も招待も無く、停止していなければ入れた{organization}だけがある人
+  noOrganizationSuspendedText: '下の停止している{organization}は、再開すると入れます。',
   // 入れる組織は無いが、届いた招待がある人
   noOrganizationInvitedTitle: 'まだ入れる組織がありません',
   noOrganizationInvitedText: '下の届いた招待から組織を選び、招待を承諾すると入れます。',
@@ -484,7 +486,7 @@ export const dictionary = defineDictionary({
   suspendedOrganizationsHeading: '停止している{organization}',
   suspendedOrganizationStatus: '停止しています',
   suspendedOrganizationsNote:
-    '停止している間は、この{organization}に入れません。再開については、運用者に問い合わせてください。',
+    '停止している間は、{organization}に入れません。再開については、運用者に問い合わせてください。',
   // 招待の画面（/<slug>/invitations と、組織に入れず招待だけがある人の組織の画面）。
   // {organization} は組織の名前、{workspace} はワークスペースの言葉、{name} はワークスペースの名前
   invitationInboxLead: '{organization}から届いた招待です。承諾すると、その{workspace}に入れます。',
