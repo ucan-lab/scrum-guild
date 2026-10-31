@@ -148,11 +148,13 @@ mp4 の場所と長さ、手元に残したもの（ワークツリー、書き�
 node .claude/skills/acceptance-video/gallery.mjs <置き場所>
 ```
 
-`index.html` を書き、開く `file://` の URL を出す。`terminal-browser` で隣のペインに開く（単独で実行する）。
+`index.html` を書き、開く `file://` の URL を出す。`gallery.mjs` が成功したら、人に「開いて」と頼まれるのを待たず、出た URL を続けて `terminal-browser` で隣のペインに開く（単独で実行する）。人は開く操作をせずに、状況タブと全 Issue のタブから確認を始められる。
 
 ```bash
 terminal-browser open <出た URL> --split right
 ```
+
+開く前に、`manifest.json` の `judge` が呼び元の用途と合っていることを確かめる（`grep -n '"judge"' <置き場所>/manifest.json`）。`sprint-review` の手順 2 の「先に動画で判定する」（受け入れ待ち）なら `"judge": true` が書いてあること、手順 8 のデモ（Done）なら `judge` の行が無いこと。合っていなければ、`manifest.json` を直して `gallery.mjs` を走らせ直してから開く（理由: `judge` なしの版を判定で開くと ok / ng の欄が無く、確認を始められない。開いた後に気づくと、開き直しで待たせる）。同じ置き場所を作り直して開き直すときは、前に開いたタブを使わず、新しい URL を開く。
 
 `terminal-browser` が `file://` を開けないときや、mp4 を再生できないときは、URL と mp4 の置き場所を人に渡し、人のブラウザで開いてもらう（この Mac の `terminal-browser` では、`file://` で開けて、動画も再生できた）。
 
