@@ -136,18 +136,15 @@ h1, h2, h3 { text-wrap: balance; }
   .binding { position: relative; z-index: 5; }
   /* 名前を通常の文字の大きさで1行に収めるため、ブランドの右の余白を削る（240px の列の内側は 207px） */
   .binding-head .brand { padding-right: 0; }
-  .nav-toggle:hover .nav-tip, .nav-toggle:focus-visible .nav-tip,
-  .app[data-nav-collapsed="true"] .org-menu-button:hover .nav-tip,
+  .nav-toggle:focus-visible .nav-tip,
   .app[data-nav-collapsed="true"] .org-menu-button:focus-visible .nav-tip { display: grid; }
-  .app[data-nav-collapsed="true"] .org-menu-button[aria-expanded="true"] .nav-tip { display: none; }
-  /* 組織を移っている最中は、名前の欄が隠れた畳んだ列でも目に見えるよう、札（「移っています」）を出したままにする */
-  .app[data-nav-collapsed="true"] .org-menu-button[data-moving="true"] .nav-tip { display: grid; }
   .nav-tip, .app[data-nav-collapsed="true"] .nav-item-label {
     position: absolute; z-index: 1; left: calc(100% + var(--space-3)); top: 50%; transform: translateY(-50%);
     width: max-content; max-width: 18rem; padding: var(--space-1) var(--space-2); border: 1px solid var(--color-line);
     border-radius: var(--radius-1); background: var(--color-surface); color: var(--color-fg);
     font-size: var(--text-sm); font-weight: 400; text-align: left; box-shadow: var(--shadow-float); pointer-events: none;
   }
+  .nav-tip { overflow-wrap: anywhere; }
   .nav-tip small { color: var(--color-muted); }
 
   .app[data-nav-collapsed="true"] { grid-template-columns: var(--binding-width-collapsed) minmax(0, 1fr); }
@@ -183,7 +180,6 @@ h1, h2, h3 { text-wrap: balance; }
   /* 項目の名前は見えなくしても読み上げに残す（display: none にしない）。キーボードのフォーカスとホバーでだけ見せる。
      :focus-within にしないのは、マウスで押した後もリンクにフォーカスが残り、札が出続けるため */
   .app[data-nav-collapsed="true"] .nav-item-label { opacity: 0; }
-  .app[data-nav-collapsed="true"] .nav-item:hover .nav-item-label,
   .app[data-nav-collapsed="true"] .nav-item:focus-visible .nav-item-label { opacity: 1; }
   .app[data-nav-collapsed="true"] .nav-group { height: 1px; margin: var(--space-3) 0; padding: 0; border-top: 1px solid var(--color-line); }
   .app[data-nav-collapsed="true"] .org-menu { position: relative; }
@@ -199,6 +195,19 @@ h1, h2, h3 { text-wrap: balance; }
     position: absolute; z-index: 1; top: 0; left: calc(100% + var(--space-3)); width: 15rem; max-width: min(18rem, 70vw);
     box-shadow: var(--shadow-float);
   }
+}
+/* ホバーで出す札は、ホバーのできる端末だけ。指の端末では押した後も :hover が残り、札が本文に重なり続けるため */
+@media (min-width: 761px) and (hover: hover) {
+  .nav-toggle:hover .nav-tip,
+  .app[data-nav-collapsed="true"] .org-menu-button:hover .nav-tip { display: grid; }
+  .app[data-nav-collapsed="true"] .nav-item:hover .nav-item-label { opacity: 1; }
+}
+/* 組織の札の出し方の上書き。ホバーとフォーカスの規則より後ろに置く（同じ詳細度なので、後ろが勝つ） */
+@media (min-width: 761px) {
+  /* 一覧を開いている間は、一覧と重なるので札を出さない */
+  .app[data-nav-collapsed="true"] .org-menu-button[aria-expanded="true"] .nav-tip { display: none; }
+  /* 組織を移っている最中は、名前の欄が隠れた畳んだ列でも目に見えるよう、札（「移っています」）を出したままにする */
+  .app[data-nav-collapsed="true"] .org-menu-button[data-moving="true"] .nav-tip { display: grid; }
 }
 @media (min-width: 761px) and (forced-colors: active) {
   .app[data-nav-collapsed="true"] .org-menu-invite { border-color: CanvasText; background: CanvasText; }
