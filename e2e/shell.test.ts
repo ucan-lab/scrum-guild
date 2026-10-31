@@ -254,6 +254,11 @@ test.describe('組織が2つの人（ミナト）', () => {
 
     await page.keyboard.press('Escape');
     await expect(org).toHaveAttribute('aria-expanded', 'false');
+    // ホバーとフォーカスの札の規則で出ないよう、ポインターを外し、Esc でボタンに戻ったフォーカスも外してから確かめる。
+    // これで札が見えるのは、移っている最中の規則（[data-moving="true"][aria-expanded="false"]）だけによる
+    await page.mouse.move(700, 600);
+    await org.evaluate((el) => el.blur());
+    await expect(org).toHaveAttribute('data-moving', 'true');
     await expect(tip).toBeVisible();
     await expect(page).toHaveURL(/\/hibari$/);
   });
