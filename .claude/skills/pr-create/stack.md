@@ -9,3 +9,4 @@
 - SKILL.md の Step 4 の承認は作成モードと同じ扱いにする（done-check が通っていれば取らない）。`gh stack submit` が作った直後の PR を整えるのは作成の続きのため
 - 本文の `## 概要` の冒頭に、スタック全体での位置（何層目か、下の層に何を依存しているか）を1行書く
 - 下書きの PR は、その層の Step 5-B で本文を書いた後に、すぐドラフトを外す（`pr-feedback` の「ドラフトで作った PR のドラフトを外す」の GraphQL）。CI の結果は待たない（理由: SKILL.md と同じく、AI レビューを CI と並べて始める）。Step 5-B で書く本文の末尾には目印の `<!-- pr-create:draft-first -->` を1行足す（外す前に中断しても、`pr-feedback` が人の意図したドラフトと見分けて外せるように）。AI レビューが走るのは base が `main` の層だけ
+- 作成の続きなので、Step 5-B の「done-check の印は無ければ足さない」に当たらない。base が `main` の層の本文には、目印の後に SKILL.md の Step 3 の「done-check の印」を書く（点検した head と比べる push 済みの head は、その層のブランチの head）。ほかの層には AI レビューが走らないので書かない
