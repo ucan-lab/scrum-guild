@@ -167,7 +167,9 @@ describe('Bearer を受けないルート', () => {
 
   test('パスワードのログインは Bearer を見ず、資格情報が無ければ成功しない', async () => {
     const { raw } = await loginWithToken();
-    const res = await app.request(
+    // 口を閉じている既定（404）では確かめにならないので、開いたアプリで確かめる
+    const openApp = createApp(provisionalOperations, { passwordLogin: true });
+    const res = await openApp.request(
       '/api/auth/password/login',
       {
         method: 'POST',
@@ -176,7 +178,8 @@ describe('Bearer を受けないルート', () => {
       },
       testEnv,
     );
-    expect(res.status).toBeGreaterThanOrEqual(400);
+    expect(res.status).toBe(400);
+    expect(await errorCodeOf(res)).toBe('invalid_input');
     expect(res.headers.get('Set-Cookie') ?? '').not.toContain(sessionCookieName(testEnv.PUBLIC_ORIGIN));
   });
 

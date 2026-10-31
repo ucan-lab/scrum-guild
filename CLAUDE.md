@@ -7,6 +7,7 @@
 | 知りたいこと | 文書 |
 | --- | --- |
 | 要件 | `docs/requirements.md` |
+| 誰が何をできるか（ユースケース図） | `docs/use-cases.md` |
 | 表と列 | `docs/data-model.md` |
 | 画面とデザインの決まり | `docs/design.md`、見本は `design/`（`design/index.html` をブラウザで開く。人に見せるときは `docs/development.md` の「見本の Worker」） |
 | ブランチ、PR、CI/CD、スキルの使い分け | `docs/development.md` |
