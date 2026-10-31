@@ -903,7 +903,7 @@ Issue はエピック、ストーリー、タスクの3階層にし、親子は�
 | スプリントバックログ | `sprint:<番号>` の付いた Issue と、記録の Issue のゴール | `#sprint`（既定）。ゴール、期間と残りの日数、計画の済み ÷ 計画の棒と受け入れ待ち、途中で足した分、作業中の件数とポイントと、状態の列に並べた Issue。待ちの Issue には待っている番号を出す |
 | インクリメント | 受け入れで閉じた（`completed`）`sprint:<番号>` の Issue。閉じた Issue のラベルは付け替えないので、付いたまま残る。受け入れ待ちはまだ含めない | `#increment`。締めたスプリントごとの、受け入れで閉じた Issue とその PR、ベロシティの推移 |
 
-開発ボードは、`daily-scrum` が出し直す人の手元の Artifact（「Scrum Guild 開発ボード」）で、上の3つを1つの URL で切り替えて見せる（2026-10-29 に決めた。#477）。Issue の状態と数は、出し直すたびに `scripts/progress-data.ts` が GitHub から作るので、手で書かない。要件の機能の一覧だけは GitHub に無いので、スキルの `page/features.json` に置く。`docs/requirements.md` の「機能」、`docs/ai.md` の「決めること」、`docs/design.md` の「画面一覧」を変える PR は、同じ PR で `features.json` とユースケース図（`docs/use-cases.md` と2枚の SVG）も直す（直し方は `daily-scrum` の「機能の一覧を直す」）。
+開発ボードは、`daily-scrum` が出し直す人の手元の Artifact（「Scrum Guild 開発ボード」）で、上の3つを1つの URL で切り替えて見せる（2026-10-29 に決めた。#477）。Issue の状態と数は、出し直すたびに `scripts/progress-data.ts` が GitHub から作るので、手で書かない。要件の機能の一覧だけは GitHub に無いので、スキルの `page/features.json` に置く。`docs/requirements.md` の「機能」、`docs/ai.md` の「決めること」、`docs/design.md` の「画面一覧」を変える PR は、同じ PR で `features.json` とユースケース図（`docs/use-cases.md` と2枚の SVG）も直す（直し方は `daily-scrum` の「機能の一覧を直す」）。`docs/requirements.md` の「メンバーと権限」の権限の表を変える PR も、同じ PR でユースケース図を直す。
 
 ### スプリントとポイント
 

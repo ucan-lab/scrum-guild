@@ -68,7 +68,7 @@ Artifact のツールがある手元のセッションでだけ行う。無け�
 
 ## 機能の一覧を直す
 
-手順の外で、要件が変わったときに行う。`docs/requirements.md` の「機能」、`docs/ai.md` の「決めること」、`docs/design.md` の「画面一覧」を変える PR では、同じ PR で `features.json` とユースケース図（`docs/use-cases.md` と2枚の SVG）も直す（`docs/development.md` の「スクラムのイベントと成果物」）。開発ボードのプロダクトバックログに出る要件の機能（領域、機能、段階、受け持つ Issue）は `page/features.json` だけが持つ。機能の状態は受け持つ Issue の状態からページが出すので、Issue が進んでも直さない。次のときに Issue を立て、PR で `features.json` を直す。
+手順の外で、要件が変わったときに行う。`docs/requirements.md` の「機能」、`docs/ai.md` の「決めること」、`docs/design.md` の「画面一覧」を変える PR では、同じ PR で `features.json` とユースケース図（`docs/use-cases.md` と2枚の SVG）も直す（`docs/development.md` の「スクラムのイベントと成果物」）。「メンバーと権限」の権限の表を変える PR も、同じ PR でユースケース図を直す（直し方は `docs/use-cases.md` の「図の直し方」）。開発ボードのプロダクトバックログに出る要件の機能（領域、機能、段階、受け持つ Issue）は `page/features.json` だけが持つ。機能の状態は受け持つ Issue の状態からページが出すので、Issue が進んでも直さない。次のときに Issue を立て、PR で `features.json` を直す。
 
 - `docs/requirements.md` の「機能」で、後回しから初版に移った機能は `phase` を外し（既定が初版）、受け持つ Issue を `issues` に入れる
 - AI の機能は、`docs/ai.md` の「決めること」で初版に入れると決まったら `phase: "open"` を外す
