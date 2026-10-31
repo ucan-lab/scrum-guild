@@ -1,68 +1,62 @@
 <script lang="ts">
+  import { resolve } from '$app/paths';
+  import { getHealth } from '../../lib/api.ts';
+  import Dialog from '../../lib/components/Dialog.svelte';
   import EmptyState from '../../lib/components/EmptyState.svelte';
   import Icon from '../../lib/components/Icon.svelte';
   import LevelPanel from '../../lib/components/LevelPanel.svelte';
-  import PageHead from '../../lib/components/PageHead.svelte';
+  import LoadFailed from '../../lib/components/LoadFailed.svelte';
+  import PageHead, { type Tally } from '../../lib/components/PageHead.svelte';
   import Section from '../../lib/components/Section.svelte';
+  import SprintGoalNotice from '../../lib/components/SprintGoalNotice.svelte';
   import TaskEntry from '../../lib/components/TaskEntry.svelte';
   import WorkspaceCreateDialog from '../../lib/components/WorkspaceCreateDialog.svelte';
+  import { showToast } from '../../lib/toast.svelte.ts';
+  import { todaySections } from '../../lib/today-sections.ts';
   import { t } from '../../lib/vocabulary.svelte.ts';
-  import { dueStatus } from '../../shared/due.ts';
+  import type { TodayTask } from '../../shared/operations/organization/today.ts';
   import type { BacklogTask } from '../../shared/operations/task/backlog-tree.ts';
   import type { PageProps } from './$types';
 
   let { data }: PageProps = $props();
   let createDialog = $state<ReturnType<typeof WorkspaceCreateDialog>>();
+  // 管理者でワークスペースが無い、または所属が無いときの案内。ほかは 'default'
   const emptyKind = $derived.by(() => {
     const view = data.organization;
     if (view === null || !view.me.is_admin) return 'default';
     if (!view.organization.has_workspaces) return 'firstWorkspace';
     return view.workspaces.length === 0 ? 'noMembership' : 'default';
   });
-  const tasks = $derived(data.today?.tasks ?? []);
-  const open = $derived(tasks.filter((task) => !task.is_today_completed));
-  const todayTasks = $derived(
-    open.filter((task) => task.today_on !== null).sort((a, b) => b.carry_days - a.carry_days || byDue(a, b)),
-  );
-  const overdueTasks = $derived(
-    open
-      .filter(
-        (task) =>
-          task.today_on === null &&
-          task.due_on !== null &&
-          dueStatus(task.due_on, task.today, task.week_start) === 'overdue',
-      )
-      .sort(byDue),
-  );
-  const weekTasks = $derived(
-    open
-      .filter(
-        (task) =>
-          task.today_on === null &&
-          task.due_on !== null &&
-          ['today', 'this_week'].includes(dueStatus(task.due_on, task.today, task.week_start)),
-      )
-      .sort(byDue),
-  );
-  const sprintTasks = $derived(
-    open
-      .filter(
-        (task) =>
-          task.today_on === null &&
-          (task.due_on === null || dueStatus(task.due_on, task.today, task.week_start) === 'later') &&
-          task.sprint_active,
-      )
-      .sort(byDue),
-  );
-  const doneTasks = $derived(tasks.filter((task) => task.is_today_completed).sort(byDue));
-  function byDue(a: (typeof tasks)[number], b: (typeof tasks)[number]): number {
-    return (
-      (a.due_on ?? '9999').localeCompare(b.due_on ?? '9999') ||
-      a.workspace_name.localeCompare(b.workspace_name) ||
-      a.position.localeCompare(b.position)
-    );
+  // 次にやることのボタンの行き先（所属する最初のワークスペースのバックログ）
+  const firstWorkspace = $derived(data.organization?.workspaces[0] ?? null);
+  // today の読み込みの失敗（data.today が null）は、空の一覧と区別して失敗の画面を出す
+  const sections = $derived(todaySections(data.today?.tasks ?? []));
+  const tallies = $derived<Tally[]>([
+    { icon: 'sun', label: t('sectionToday'), count: sections.today.length },
+    { tone: 'danger', icon: 'alert', label: t('overdue'), count: sections.overdue.length },
+    { tone: 'warn', icon: 'clock', label: t('weekDue'), count: sections.week.length },
+    { icon: 'check', label: t('doneToday'), count: sections.done.length },
+  ]);
+
+  // API の疎通の表示（仮の画面から残した節）。ダイアログとトーストの e2e（e2e/shell.test.ts）が試験台にしている。
+  // 外す作業は、試験台を別の画面へ移す Issue で行う
+  let health = $state(getHealth());
+  let checking = $state(false);
+  let detailOpen = $state(false);
+  let detailDialog = $state<ReturnType<typeof Dialog>>();
+
+  // 結果が出てから、成功と失敗を分けて知らせる。確かめている間は押せない
+  async function recheck(): Promise<void> {
+    checking = true;
+    const next = getHealth();
+    health = next;
+    const result = await next.catch(() => null);
+    checking = false;
+    if (result?.ok) showToast(t('apiRecheckOk'), 'check');
+    else showToast(t('apiRecheckFailed'), 'alert');
   }
-  function taskOf(task: (typeof tasks)[number]): BacklogTask {
+
+  function taskOf(task: TodayTask): BacklogTask {
     return {
       id: task.id,
       title: task.title,
@@ -76,120 +70,166 @@
   }
 </script>
 
-<svelte:head><title>{t('pageTitle', { page: t('pageToday'), app: t('appName') })}</title></svelte:head>
-<PageHead title={t('pageToday')} />
-<div class="layout-aside">
-  <div class="layout-main">
-    <Section id="s-today" title={t('sectionToday')} count={todayTasks.length} hint={t('sectionTodayHint')}>
-      {#if todayTasks.length === 0}
-        {#if emptyKind === 'firstWorkspace'}
-          <EmptyState
-            icon="sun"
-            art="map"
-            title={t('firstWorkspaceTitle', { workspace: t('workspace') })}
-            text={t('firstWorkspaceText', { workspace: t('workspace'), leader: t('leader') })}
-          >
-            {#snippet actions()}<button
-                class="btn is-sm"
-                type="button"
-                onclick={(event) => createDialog?.show(event.currentTarget)}
-                ><Icon name="plus" />{t('workspaceCreateAction', { workspace: t('workspace') })}</button
-              >{/snippet}
-          </EmptyState>
-        {:else if emptyKind === 'noMembership'}
-          <EmptyState
-            icon="sun"
-            art="notice"
-            title={t('noMembershipTitle', { workspace: t('workspace') })}
-            text={t('noMembershipText', { workspace: t('workspace') })}
-          />
-        {:else}<EmptyState icon="sun" art="notice" title={t('todayEmptyTitle')} text={t('todayEmptyText')} />{/if}
-      {:else}<div class="book">
-          {#each todayTasks as task (task.id)}<TaskEntry
-              task={taskOf(task)}
-              clock={{ today: task.today, weekStart: task.week_start }}
-              workspaceId={task.workspace_id}
-              workspaceName={task.workspace_name}
-              metaText={task.carry_days > 0 ? t('carryDays', { days: task.carry_days }) : undefined}
-              onComplete={() => {}}
-            />{/each}
-        </div>{/if}
-    </Section>
-    {#if data.today?.sprint_goals.length}
-      <Section id="s-goals" title={t('sprintGoal')}>
-        <div class="notice-grid">
-          {#each data.today.sprint_goals as sprint (sprint.workspace_id)}
-            <div class="panel">
-              <div class="panel-title"><b>{sprint.workspace_name}</b></div>
-              <p class="panel-note wrap-anywhere">{sprint.goal}</p>
-            </div>
-          {/each}
-        </div>
-      </Section>
-    {/if}
-    {#if overdueTasks.length}<Section id="s-overdue" title={t('overdue')} count={overdueTasks.length}
-        ><div class="book">
-          {#each overdueTasks as task (task.id)}<TaskEntry
-              task={taskOf(task)}
-              clock={{ today: task.today, weekStart: task.week_start }}
-              workspaceId={task.workspace_id}
-              workspaceName={task.workspace_name}
-              onComplete={() => {}}
-            />{/each}
-        </div></Section
-      >{/if}
-    {#if weekTasks.length}<Section id="s-week" title={t('weekDue')} count={weekTasks.length}
-        ><div class="book">
-          {#each weekTasks as task (task.id)}<TaskEntry
-              task={taskOf(task)}
-              clock={{ today: task.today, weekStart: task.week_start }}
-              workspaceId={task.workspace_id}
-              workspaceName={task.workspace_name}
-              metaText={task.due_on === task.today ? t('dueToday') : undefined}
-              onComplete={() => {}}
-            />{/each}
-        </div></Section
-      >{/if}
-    {#if sprintTasks.length}<Section
-        id="s-sprint"
-        title={t('sprintInProgress')}
-        count={sprintTasks.length}
-        folded
-        foldedHint={t('sectionOpen')}
-        ><div class="book">
-          {#each sprintTasks as task (task.id)}<TaskEntry
-              task={taskOf(task)}
-              clock={{ today: task.today, weekStart: task.week_start }}
-              workspaceId={task.workspace_id}
-              workspaceName={task.workspace_name}
-              onComplete={() => {}}
-            />{/each}
-        </div></Section
-      >{/if}
-    {#if doneTasks.length}<Section id="s-done" title={t('doneToday')} count={doneTasks.length}
-        ><div class="book">
-          {#each doneTasks as task (task.id)}<TaskEntry
-              task={taskOf(task)}
-              done
-              clock={{ today: task.today, weekStart: task.week_start }}
-              workspaceId={task.workspace_id}
-              workspaceName={task.workspace_name}
-              onComplete={() => {}}
-            />{/each}
-        </div></Section
-      >{/if}
+<!-- 完了の操作は、印と完了を足す Issue（3本目）まで出さない（canComplete を偽にする） -->
+{#snippet rows(list: TodayTask[], options: { done?: boolean; markDueToday?: boolean } = {})}
+  <div class="book">
+    {#each list as task (task.id)}<TaskEntry
+        task={taskOf(task)}
+        done={options.done ?? false}
+        canComplete={false}
+        clock={{ today: task.today, weekStart: task.week_start }}
+        workspaceId={task.workspace_id}
+        workspaceName={task.workspace_name}
+        metaChip={options.markDueToday && task.due_on === task.today ? t('dueIsToday') : undefined}
+        metaText={task.carry_days > 0 ? t('carryDays', { days: task.carry_days }) : undefined}
+      />{/each}
   </div>
-  <aside class="layout-side" aria-label={t('pageMe')}>
-    {#if data.experience}<LevelPanel
-        total={data.experience.total}
-        prospective={data.experience.prospective}
-        thanksReceived={data.experience.thanks_received}
-        workspaces={data.experience.workspaces}
-      />{/if}
-  </aside>
-</div>
-{#if data.organization?.me.is_admin}<WorkspaceCreateDialog
-    bind:this={createDialog}
-    slug={data.slug}
-    meId={data.organization.me.id}
-  />{/if}
+{/snippet}
+
+{#snippet todayEmpty()}
+  {#if emptyKind === 'firstWorkspace'}
+    <EmptyState
+      icon="sun"
+      art="map"
+      title={t('firstWorkspaceTitle', { workspace: t('workspace') })}
+      text={t('firstWorkspaceText', { workspace: t('workspace'), leader: t('leader') })}
+    >
+      {#snippet actions()}<button
+          class="btn is-sm"
+          type="button"
+          onclick={(event) => createDialog?.show(event.currentTarget)}
+          ><Icon name="plus" />{t('workspaceCreateAction', { workspace: t('workspace') })}</button
+        >{/snippet}
+    </EmptyState>
+  {:else if emptyKind === 'noMembership'}
+    <EmptyState
+      icon="sun"
+      art="notice"
+      title={t('noMembershipTitle', { workspace: t('workspace') })}
+      text={t('noMembershipText', { workspace: t('workspace') })}
+    />
+  {:else if firstWorkspace !== null}
+    <EmptyState
+      icon="sun"
+      art="notice"
+      title={t('todayEmptyTitle', { task: t('task') })}
+      text={t('todayEmptyText', { assignee: t('assignee'), task: t('task'), backlog: t('backlog') })}
+    >
+      {#snippet actions()}<a
+          class="btn is-sm"
+          href={resolve('/[slug]/w/[id]', { slug: data.slug, id: firstWorkspace.id })}
+          >{t('todayEmptyAction', { backlog: t('backlog') })}</a
+        >{/snippet}
+    </EmptyState>
+  {:else}
+    <EmptyState
+      icon="sun"
+      art="notice"
+      title={t('todayEmptyTitle', { task: t('task') })}
+      text={t('todayEmptyNoWorkspaceText', { workspace: t('workspace'), assignee: t('assignee'), task: t('task') })}
+    />
+  {/if}
+{/snippet}
+
+{#snippet main()}
+  {#if data.today !== null && data.today.sprint_goals.length > 0}
+    <div class="notice-grid">
+      {#each data.today.sprint_goals as sprint (sprint.workspace_id)}
+        <SprintGoalNotice goal={sprint.goal} workspaceName={sprint.workspace_name} />
+      {/each}
+    </div>
+  {/if}
+  {#if sections.overdue.length > 0}
+    <Section id="s-overdue" title={t('overdue')} count={sections.overdue.length}>
+      {@render rows(sections.overdue)}
+    </Section>
+  {/if}
+  <Section id="s-today" title={t('sectionToday')} count={sections.today.length} hint={t('sectionTodayHint')}>
+    {#if sections.today.length === 0}
+      {@render todayEmpty()}
+    {:else}
+      {@render rows(sections.today)}
+    {/if}
+  </Section>
+  {#if sections.week.length > 0}
+    <Section id="s-week" title={t('weekDue')} count={sections.week.length}>
+      {@render rows(sections.week, { markDueToday: true })}
+    </Section>
+  {/if}
+  {#if sections.sprint.length > 0}
+    <Section id="s-sprint" title={t('sprintInProgress')} count={sections.sprint.length} folded>
+      {@render rows(sections.sprint)}
+    </Section>
+  {/if}
+  {#if sections.done.length > 0}
+    <Section id="s-done" title={t('doneToday')} count={sections.done.length}>
+      {@render rows(sections.done, { done: true })}
+    </Section>
+  {/if}
+{/snippet}
+
+<!-- 読み込みに失敗したときの題名は LoadFailed が持つ -->
+<svelte:head>
+  {#if data.today !== null}<title>{t('pageTitle', { page: t('pageToday'), app: t('appName') })}</title>{/if}
+</svelte:head>
+{#if data.today === null}
+  <LoadFailed inShell />
+{:else}
+  <PageHead title={t('pageToday')} {tallies} />
+  {#if data.experience}
+    <div class="layout-aside">
+      <div class="layout-main">{@render main()}</div>
+      <aside class="layout-side" aria-label={t('myRecord')}>
+        <LevelPanel
+          total={data.experience.total}
+          prospective={data.experience.prospective}
+          thanksReceived={data.experience.thanks_received}
+          workspaces={data.experience.workspaces}
+        />
+      </aside>
+    </div>
+  {:else}
+    <!-- 経験値を読めなかったときは右の列ごと省く（列の幅だけ空けない） -->
+    <div class="layout-main">{@render main()}</div>
+  {/if}
+  <Section id="s-api" title={t('apiHeading')}>
+    <p role="status" class="wrap-anywhere">
+      {#await health}
+        {t('apiChecking')}
+      {:then result}
+        {#if result.ok}
+          {t('apiStatus', { status: result.data.status, version: result.data.version })}
+        {:else}
+          {t('apiUnreachableStatus', { status: result.status })}
+        {/if}
+      {:catch}
+        {t('apiUnreachable')}
+      {/await}
+    </p>
+    <div class="form-actions">
+      <!-- Safari と Firefox はクリックでボタンにフォーカスを移さないので、開く操作を起こしたボタンを渡す -->
+      <button class="btn is-sm" type="button" onclick={(event) => detailDialog?.show(event.currentTarget)}>
+        {t('apiShowDetail')}
+      </button>
+      <button class="btn is-sm" type="button" disabled={checking} onclick={recheck}>{t('apiRecheck')}</button>
+    </div>
+  </Section>
+  <Dialog bind:this={detailDialog} bind:open={detailOpen} title={t('apiDetailTitle')}>
+    <p>{t('apiDetailBody')}</p>
+    <!-- ダイアログは閉じていても中身を描くので、ここでも拒否を受けないと処理されない例外になる -->
+    {#await health then result}
+      <p class="mono wrap-anywhere">{JSON.stringify(result)}</p>
+    {:catch}
+      <p>{t('apiUnreachable')}</p>
+    {/await}
+    {#snippet footer(close)}
+      <button class="btn" type="button" disabled={checking} onclick={recheck}>{t('apiRecheck')}</button>
+      <button class="btn is-primary" type="button" onclick={close}>{t('close')}</button>
+    {/snippet}
+  </Dialog>
+  {#if data.organization?.me.is_admin}<WorkspaceCreateDialog
+      bind:this={createDialog}
+      slug={data.slug}
+      meId={data.organization.me.id}
+    />{/if}
+{/if}

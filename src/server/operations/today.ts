@@ -1,7 +1,11 @@
-import { todayIn } from '../../shared/clock.ts';
-import { addDays, dueStatus } from '../../shared/due.ts';
+import { now, todayIn } from '../../shared/clock.ts';
+import { daysBetween, dueStatus } from '../../shared/due.ts';
 import { today, type TodayTask } from '../../shared/operations/organization/today.ts';
 import { implement } from './implement.ts';
+
+// タイムゾーンは UTC−12 時間から +14 時間なので、どのワークスペースの「今日」の始まりも今から 24 時間より前にはならない。
+// 余裕を見て 2 日前より古い完了は SQL で落とす。今日かどうかの厳密な判定はワークスペースのタイムゾーンで行う
+const COMPLETED_WINDOW_MS = 2 * 86_400_000;
 
 type Row = {
   id: string;
@@ -28,17 +32,20 @@ type Row = {
 
 function carryDays(todayDate: string, markedOn: string | null): number {
   if (markedOn === null || markedOn >= todayDate) return 0;
-  let days = 0;
-  let date = markedOn;
-  while (date < todayDate) {
-    date = addDays(date, 1);
-    days++;
-  }
-  return days;
+  return daysBetween(markedOn, todayDate);
+}
+
+// 区分のどれかに入りうるか。完了したものは今日完了だけ。未完了は、印がある、期日が今週の終わりまで、進行中のスプリントのどれか
+function belongsToSection(row: Row, clock: { today: string; week_start: number }, completedToday: boolean): boolean {
+  if (row.completed_at !== null) return completedToday;
+  if (row.today_on !== null) return true;
+  if (row.due_on !== null && dueStatus(row.due_on, clock.today, clock.week_start) !== 'later') return true;
+  return row.sprint_status === 'active';
 }
 
 export const todayOperation = implement(today, async ({ db, actor }) => {
   if (actor.userId === null) return { tasks: [], sprint_goals: [] };
+  const completedSince = new Date(now().getTime() - COMPLETED_WINDOW_MS).toISOString();
   const [tasksResult, goalsResult] = await db.batch([
     db.statement((q) =>
       q
@@ -88,7 +95,22 @@ export const todayOperation = implement(today, async ({ db, actor }) => {
         .where('w.closed_at', 'is', null)
         .where('t.tray', '=', 'backlog')
         .where('t.deleted_at', 'is', null)
-        .where('t.assignee_user_id', '=', actor.userId),
+        .where('t.assignee_user_id', '=', actor.userId)
+        // 粗い絞り込み。未完了は印か期日かスプリントのどれかがあるものだけ、完了は直近 2 日だけ読む。
+        // 区分に入るかの厳密な判定（ワークスペースのタイムゾーンでの今日、今週）は下の belongsToSection で行う
+        .where((eb) =>
+          eb.or([
+            eb.and([
+              eb('t.completed_at', 'is', null),
+              eb.or([
+                eb('t.today_on', 'is not', null),
+                eb('t.due_on', 'is not', null),
+                eb('t.sprint_id', 'is not', null),
+              ]),
+            ]),
+            eb('t.completed_at', '>=', completedSince),
+          ]),
+        ),
     ),
     db.statement((q) =>
       q
@@ -103,14 +125,26 @@ export const todayOperation = implement(today, async ({ db, actor }) => {
         .where('s.deleted_at', 'is', null)
         .where('s.status', '=', 'active')
         .where('s.goal', 'is not', null)
-        .where('s.goal', '!=', ''),
+        .where('s.goal', '!=', '')
+        .orderBy('w.name')
+        .orderBy('w.id'),
     ),
   ] as const);
 
   const rows = tasksResult.rows as Row[];
-  const tasks = rows.map((row): TodayTask & { timezone: string } => {
-    const clock = { today: todayIn(row.timezone), week_start: Number(row.week_start) };
-    return {
+  // ワークスペースの今日は行ごとに求めず、ワークスペースごとに 1 回だけ求める
+  const todayOfWorkspace = new Map<string, string>();
+  const tasks: TodayTask[] = [];
+  for (const row of rows) {
+    let todayDate = todayOfWorkspace.get(row.workspace_id);
+    if (todayDate === undefined) {
+      todayDate = todayIn(row.timezone);
+      todayOfWorkspace.set(row.workspace_id, todayDate);
+    }
+    const clock = { today: todayDate, week_start: Number(row.week_start) };
+    const completedToday = row.completed_at !== null && todayIn(row.timezone, new Date(row.completed_at)) === todayDate;
+    if (!belongsToSection(row, clock, completedToday)) continue;
+    tasks.push({
       id: row.id,
       title: row.title,
       points: row.points as TodayTask['points'],
@@ -121,30 +155,19 @@ export const todayOperation = implement(today, async ({ db, actor }) => {
       workspace_name: row.workspace_name,
       ...clock,
       position: row.position,
-      timezone: row.timezone,
       assignee: row.assignee_id === null ? null : { id: row.assignee_id, name: row.assignee_name ?? '' },
       repository: row.repository_id === null ? null : { id: row.repository_id, name: row.repository_name ?? '' },
       sprint:
         row.sprint_id === null
           ? null
           : { id: row.sprint_id, name: row.sprint_name, start_on: row.sprint_start_on!, end_on: row.sprint_end_on! },
-      carry_days: carryDays(clock.today, row.today_on),
+      carry_days: carryDays(todayDate, row.today_on),
       sprint_active: row.sprint_status === 'active',
-      is_today_completed:
-        row.completed_at !== null && todayIn(row.timezone, new Date(row.completed_at)) === clock.today,
-    };
-  });
+      is_today_completed: completedToday,
+    });
+  }
   return {
-    tasks: tasks.filter((task) => {
-      if (task.completed_at !== null) return todayIn(task.timezone, new Date(task.completed_at)) === task.today;
-      if (task.today_on !== null) return true;
-      if (
-        task.due_on !== null &&
-        ['overdue', 'today', 'this_week'].includes(dueStatus(task.due_on, task.today, task.week_start))
-      )
-        return true;
-      return task.sprint_active;
-    }),
+    tasks,
     sprint_goals: goalsResult.rows.map((row) => ({
       workspace_id: row.workspace_id,
       workspace_name: row.workspace_name,

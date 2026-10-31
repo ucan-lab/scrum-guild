@@ -16,7 +16,9 @@
   // 完了の操作と完了の印。リンクは詳細の引き出しを開く（/[slug]/w/[id] のレイアウトが `?task=<ID>` を見て置く）。
   // 先頭の「今日やる」、親は、それぞれの機能の Issue で足す。先頭の枠（.entry の1列目）は、その機能が入るまで空の要素で埋める。
   // 期日の印は、API が返したワークスペースの今日の日付と週の始まり（clock）で決める。完了にした行は色を付けない。
-  // 完了の操作が押されると、onComplete を呼ぶ。完了にした行は、done を真にして完了の印を付ける。
+  // 完了の操作が押されると、onComplete を呼ぶ（canComplete が偽で操作を出さない行は渡さなくてよい）。完了にした行は、done を真にして完了の印を付ける。
+  // 複数のワークスペースの行を並べる画面（今日やること）は、行ごとに workspaceId（タイトルのリンク先）と workspaceName（.entry-meta の先頭に
+  // .tag で出す）を渡す。metaChip は期日の印とは別に添える橙の印（今週が期日の行の「期日は今日」）、metaText は注記（.props-note。持ち越しの日数）
   // 押したボタンは消えるので、完了の印にフォーカスを移せるよう focusMark() を出す。
   // canComplete が偽（閉じたワークスペース）の行は、完了の操作を出さない。pending の間は押しても無視する（aria-disabled）
   // onMove を渡すと、「上へ」「下へ」（同じ親の中で1つ動かす）を出し、行の中で Alt と ↑ ↓ を押しても同じことをする。
@@ -45,6 +47,7 @@
     taskQuery = '?task=',
     workspaceId,
     workspaceName,
+    metaChip,
     metaText,
   }: {
     task: BacklogTask;
@@ -52,7 +55,7 @@
     done?: boolean;
     pending?: boolean;
     canComplete?: boolean;
-    onComplete: (task: BacklogTask) => void;
+    onComplete?: (task: BacklogTask) => void;
     canMoveUp?: boolean;
     canMoveDown?: boolean;
     onMove?: (task: BacklogTask, delta: -1 | 1) => void;
@@ -62,6 +65,7 @@
     taskQuery?: string;
     workspaceId?: string;
     workspaceName?: string;
+    metaChip?: string;
     metaText?: string;
   } = $props();
 
@@ -137,8 +141,9 @@
       {...taskLinkAttrs()}>{task.title}</a
     >
     <!-- eslint-enable svelte/no-navigation-without-resolve -->
-    {#if task.repository !== null || category !== null || task.sprint !== null}
+    {#if workspaceName !== undefined || task.repository !== null || category !== null || task.sprint !== null || metaChip !== undefined || metaText !== undefined}
       <span class="entry-meta">
+        {#if workspaceName !== undefined}<span class="tag">{workspaceName}</span>{/if}
         {#if task.sprint !== null}
           <DefinitionChip kind="sprint" name={sprintShortName(task.sprint, t)} mono={task.sprint.name === null} />
         {/if}
@@ -148,12 +153,8 @@
         {#if category !== null}
           <DefinitionChip kind="category" name={category.name} />
         {/if}
-      </span>
-    {/if}
-    {#if workspaceName !== undefined || metaText !== undefined}
-      <span class="entry-meta">
-        {#if workspaceName !== undefined}<span>{workspaceName}</span>{/if}
-        {#if metaText !== undefined}<span>{metaText}</span>{/if}
+        {#if metaChip !== undefined}<span class="chip is-warn">{metaChip}</span>{/if}
+        {#if metaText !== undefined}<span class="props-note">{metaText}</span>{/if}
       </span>
     {/if}
   </div>
@@ -229,7 +230,7 @@
         title={t('complete')}
         aria-disabled={pending}
         onclick={() => {
-          if (!pending) onComplete(task);
+          if (!pending) onComplete?.(task);
         }}
       >
         <Icon name="check" />

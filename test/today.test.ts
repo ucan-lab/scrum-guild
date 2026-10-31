@@ -1,5 +1,5 @@
 // 今日やること（today）の読み取り。呼んだ人が今所属する、閉じていないワークスペースの、担当するバックログのタスクのうち、
-// 今日やることの画面のどれかの区分に入りうるものを返す。区分への振り分けと並べ替えは画面（src/routes/[slug]/+page.svelte）が行うので、
+// 今日やることの画面のどれかの区分に入りうるものを返す。区分への振り分けと並べ替えは画面（src/lib/today-sections.ts）が行うので、
 // ここでは「どのタスクが返るか」と、画面が振り分けに使う値（today、week_start、carry_days、sprint_active、is_today_completed）を確かめる。
 // 組織の分離と権限の種類ごとの許可と拒否は、一覧を回す test/operation-registry.test.ts が確かめる
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
@@ -354,6 +354,22 @@ describe('today: 区分に入るタスクの境界', () => {
     expect(view.tasks.every((task) => task.is_today_completed)).toBe(true);
   });
 
+  test('2日より前の完了は返らず、時差が最も大きいワークスペースの今日の完了は返る', async () => {
+    const world = await createWorld();
+    // UTC+14。NOW（UTC の 11-01 03:00）の現地は 11-01 17:00 で、現地の今日は UTC の 10-31 10:00 から始まる
+    const kiritimati = await world.workspace({ name: '最も東の班', timezone: 'Pacific/Kiritimati' });
+    // UTC−12。現地は 10-31 15:00 で、現地の今日は UTC の 10-31 12:00 から始まる
+    const baker = await world.workspace({ name: '最も西の班', timezone: 'Etc/GMT+12' });
+    await world.task(kiritimati, { title: '東の今日の始まりに完了', completed_at: '2026-10-31T10:00:00.000Z' });
+    await world.task(kiritimati, { title: '東の昨日に完了', completed_at: '2026-10-31T09:59:59.999Z' });
+    await world.task(baker, { title: '西の今日の始まりに完了', completed_at: '2026-10-31T12:00:00.000Z' });
+    await world.task(baker, { title: '西の昨日に完了', completed_at: '2026-10-31T11:59:59.999Z' });
+    await world.task(baker, { title: '3日前に完了', completed_at: '2026-10-29T03:00:00.000Z' });
+    await world.task(baker, { title: '1年前に完了', completed_at: '2025-11-01T03:00:00.000Z', today_on: '2025-11-01' });
+
+    expect(titlesOf(await world.read())).toEqual(['東の今日の始まりに完了', '西の今日の始まりに完了'].sort());
+  });
+
   test('未完了のタスクは is_today_completed が偽', async () => {
     const world = await createWorld();
     const ws = await world.workspace();
@@ -442,6 +458,17 @@ describe('today: 持ち越し', () => {
       前の月に付けた: 32,
       明日付け: 0,
     });
+  });
+
+  test('遠い過去の印でも、日数を正しく数えて返す', async () => {
+    const world = await createWorld();
+    const ws = await world.workspace({ timezone: TOKYO });
+    await world.task(ws, { title: '最も古い印', today_on: '0001-01-01' });
+
+    const view = await world.read();
+
+    expect(view.tasks).toHaveLength(1);
+    expect(view.tasks[0]).toMatchObject({ today_on: '0001-01-01', carry_days: 739_920 });
   });
 
   test('持ち越しの日数は、ワークスペースのタイムゾーンの今日から数える', async () => {
