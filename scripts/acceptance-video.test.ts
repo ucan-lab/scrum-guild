@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, test } from 'node:test';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import vm from 'node:vm';
 
 // acceptance-video で、セッションが受け入れ動画を撮る前に手順書と字幕の区間を確かめ、字幕の帯を載せるスクリプト
 const skillDir = fileURLToPath(new URL('../.claude/skills/acceptance-video/', import.meta.url));
@@ -170,7 +171,7 @@ describe('gallery.mjs', () => {
   const galleryScript = join(skillDir, 'gallery.mjs');
   const galleryUrl = JSON.stringify(pathToFileURL(galleryScript).href);
   // export した関数を、JSON で渡した値で呼ぶ
-  const call = (fn: 'validateManifest' | 'renderGallery', value: unknown) => {
+  const call = (fn: 'validateManifest' | 'renderGallery' | 'buildResult', value: unknown) => {
     const code = `import * as g from ${galleryUrl}; console.log(JSON.stringify(g[process.argv[1]](JSON.parse(process.argv[2]))));`;
     const result = spawnSync(process.execPath, ['--input-type=module', '-e', code, fn, JSON.stringify(value)], {
       encoding: 'utf8',
@@ -275,8 +276,72 @@ describe('gallery.mjs', () => {
     assert.match(html, /it&#39;s/);
     assert.match(
       html,
-      /<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; media-src file: 'self'">/,
+      /<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; media-src file: 'self'">/,
     );
+  });
+
+  test('Issue ごとのタブと、先頭の状況タブ（一覧の項目で移る）に分かれる', () => {
+    const html: string = call('renderGallery', {
+      items: [video, { issue: 575, title: 'API だけ', skipped: '画面が変わらない' }],
+    });
+    assert.match(html, /<button[^>]*id="tab-status"[^>]*aria-selected="true"[^>]*>状況<\/button>/);
+    assert.match(html, /<button[^>]*id="tab-574"[^>]*data-tab="574">#574/);
+    assert.match(html, /<button[^>]*id="tab-575"[^>]*data-tab="575">#575/);
+    assert.match(html, /<button type="button" class="row" data-goto="574">/);
+    assert.match(html, /<section[^>]*id="panel-574"[^>]*hidden>/);
+    // judge でなければ、判定の部品は出さない
+    assert.doesNotMatch(html, /data-set=|id="copy"|<body data-judge>/);
+  });
+
+  test('judge なら、動画の Issue にだけ ok / ng と理由とコメントを付け、結果をコピーする部品が出る', () => {
+    const html: string = call('renderGallery', {
+      judge: true,
+      items: [video, { issue: 575, title: 'API だけ', skipped: '画面が変わらない' }],
+    });
+    assert.match(html, /<body data-judge>/);
+    assert.equal(html.match(/data-set="ok"/g)?.length, 1);
+    assert.equal(html.match(/data-set="ng"/g)?.length, 1);
+    assert.match(html, /<input type="checkbox" value="条件を満たさない">/);
+    assert.match(html, /id="copy"/);
+    assert.match(html, /動画が無いので、ここでは判定しない/);
+  });
+
+  test('埋め込むスクリプトは構文が正しく、題をスクリプトに埋め込まない', () => {
+    const attack = '</script><script>alert(1)</script>';
+    const html: string = call('renderGallery', { judge: true, items: [{ ...video, title: attack }] });
+    const scripts = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)].map((match) => match[1]);
+    assert.equal(scripts.length, 1);
+    assert.doesNotThrow(() => new vm.Script(scripts[0]));
+    assert.doesNotMatch(scripts[0], /alert\(1\)/);
+  });
+
+  test('judge は真偽値だけを通す', () => {
+    const problems = (judge: unknown): string =>
+      (call('validateManifest', { judge, items: [video] }) as string[]).join('\n');
+    assert.equal(problems(true), '');
+    assert.match(problems('yes'), /judge は true か false/);
+  });
+
+  test('結果の文は、ok / ng / 未判定の件数と、ng の理由とコメントを含む', () => {
+    const text: string = call('buildResult', [
+      { issue: 574, title: '報酬を変える', status: 'ok', reasons: ['要望がある'], comment: '' },
+      {
+        issue: 576,
+        title: '一覧',
+        status: 'ng',
+        reasons: ['条件を満たさない', '想定と違う'],
+        comment: '1 行目\n2 行目',
+      },
+      { issue: 577, title: '未着手', status: '', reasons: [], comment: '' },
+      { issue: 578, title: 'API だけ', status: '', reasons: [], comment: '', note: '飛ばした: 画面が変わらない' },
+    ]);
+    assert.match(text, /ok 1 件、ng 1 件、未判定 2 件/);
+    assert.match(text, /- #574 報酬を変える: ok\n- #576 一覧: ng\n/);
+    assert.match(text, / {2}- 理由: 条件を満たさない、想定と違う\n/);
+    assert.match(text, / {2}- コメント: 1 行目\n {6}2 行目\n/);
+    assert.match(text, /- #577 未着手: 未判定\n- #578 API だけ: 未判定\n {2}- メモ: 飛ばした: 画面が変わらない/);
+    // ng でない Issue の理由は、選び直す前の残りなので出さない
+    assert.doesNotMatch(text, /要望がある/);
   });
 
   test('同じ Issue の重複、動画の無い Issue の captions、title の欠落、同時指定は断る', () => {

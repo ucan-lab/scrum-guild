@@ -1,15 +1,18 @@
 // 撮った受け入れ動画を、Issue ごとに 1 枚の HTML に並べる。sprint-review で、まとめて撮った動画を見て回るために使う。
 // 使い方: node .claude/skills/acceptance-video/gallery.mjs <動画の置き場所>
 //   <動画の置き場所>/manifest.json を読み、同じ場所に index.html を書いて、開く URL を出す。外のファイルは読み込まない
-// manifest.json: { "title"?: string, "items": [{ "issue": 番号, "title": Issue の題, "video"?: "issue-番号.mp4", "skipped"?: 理由, "failed"?: 理由, "captions"?: [字幕] }] }
-//   video、skipped、failed のどれか 1 つだけを持つ
+// manifest.json: { "title"?: string, "judge"?: boolean, "items": [{ "issue": 番号, "title": Issue の題, "video"?: "issue-番号.mp4", "skipped"?: 理由, "failed"?: 理由, "captions"?: [字幕] }] }
+//   video、skipped、failed のどれか 1 つだけを持つ。judge が true なら、動画の Issue ごとに ok / ng と理由とコメントを付けられ、結果をプロンプト用の文にしてコピーできる
+//   HTML は Issue ごとのタブと、先頭の「状況」タブ（一覧と判定の進み具合）に分かれる
 import { existsSync, lstatSync, readFileSync, realpathSync, statSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 // Issue の題と理由は外の人も書けるので、HTML に入れる前にエスケープする。動画は置き場所の直下の mp4 だけを読む
 const VIDEO_NAME = /^[A-Za-z0-9._-]+\.mp4$/;
-const MANIFEST_KEYS = ['title', 'items'];
+const MANIFEST_KEYS = ['title', 'judge', 'items'];
+// ng の理由の選択肢。sprint-review の手順 10 の候補の種別（不具合、仕様の穴、要望）に写せる分け方にしてある
+export const NG_REASONS = ['条件を満たさない', '表示が崩れる・動かない', '文言・言葉づかいが違う', '想定と違う', '要望がある'];
 const ITEM_KEYS = ['issue', 'title', 'video', 'skipped', 'failed', 'captions'];
 const OUTCOMES = ['video', 'skipped', 'failed'];
 
@@ -26,6 +29,7 @@ export function validateManifest(manifest) {
     .filter((key) => !MANIFEST_KEYS.includes(key))
     .map((key) => `manifest: ${key} は使えない`);
   if (manifest.title !== undefined && !isText(manifest.title)) problems.push('manifest: title は空でない文字列');
+  if (manifest.judge !== undefined && typeof manifest.judge !== 'boolean') problems.push('manifest: judge は true か false');
   if (!Array.isArray(manifest.items) || manifest.items.length === 0) return [...problems, 'items が空'];
   const seen = new Set();
   manifest.items.forEach((item, i) => {
@@ -59,56 +63,289 @@ export function validateManifest(manifest) {
   return problems;
 }
 
-function renderItem(item) {
+/**
+ * 判定の結果を、プロンプトに貼る文にする。entries: [{ issue, title, status: 'ok' | 'ng' | '', reasons: [理由], comment, note? }]
+ * HTML にそのまま埋め込んで動かすので、外の値を参照しない（toString で写す）。ng でない Issue の理由は出さない
+ */
+export function buildResult(entries) {
+  const count = (status) => entries.filter((entry) => (entry.status || '') === status).length;
+  const lines = [
+    'sprint-review の受け入れの結果です（動画の HTML で判定）。',
+    'ok ' + count('ok') + ' 件、ng ' + count('ng') + ' 件、未判定 ' + count('') + ' 件',
+    '',
+  ];
+  for (const entry of entries) {
+    const label = entry.status === 'ok' ? 'ok' : entry.status === 'ng' ? 'ng' : '未判定';
+    lines.push('- #' + entry.issue + ' ' + entry.title + ': ' + label);
+    const reasons = entry.status === 'ng' ? entry.reasons || [] : [];
+    if (reasons.length > 0) lines.push('  - 理由: ' + reasons.join('、'));
+    const comment = (entry.comment || '').trim();
+    if (comment) lines.push('  - コメント: ' + comment.split('\n').join('\n      '));
+    if (entry.note) lines.push('  - メモ: ' + entry.note);
+  }
+  return lines.join('\n');
+}
+
+const KIND_LABELS = { video: '動画', skipped: '飛ばした', failed: '撮れなかった' };
+const kindOf = (item) => OUTCOMES.find((key) => item[key] !== undefined);
+// 動画の無い Issue は HTML で判定できないので、結果には未判定のメモとして入れる
+const noteOf = (item) => (item.video === undefined ? `${KIND_LABELS[kindOf(item)]}: ${item[kindOf(item)]}` : '');
+
+function renderJudge() {
+  const reasons = NG_REASONS.map(
+    (reason) => `<label class="check"><input type="checkbox" value="${escapeHtml(reason)}"> ${escapeHtml(reason)}</label>`,
+  ).join('');
+  return `<div class="judge">
+<div class="verdict" role="group" aria-label="判定"><button type="button" class="verdict-btn ok" data-set="ok" aria-pressed="false">ok</button><button type="button" class="verdict-btn ng" data-set="ng" aria-pressed="false">ng</button></div>
+<fieldset class="reasons" hidden><legend>ng の理由（複数選べる）</legend>${reasons}</fieldset>
+<label class="comment">フィードバック（任意）<textarea rows="3"></textarea></label>
+</div>`;
+}
+
+function renderPanel(item, judge) {
   const heading = `<h2><span class="num">#${item.issue}</span> ${escapeHtml(item.title)}</h2>`;
+  let body;
   if (item.video !== undefined) {
     const captions = (item.captions ?? []).map((caption) => `<li>${escapeHtml(caption)}</li>`).join('');
     // 録画の頭は、画面を読み込む前の白い画面なので、再生前のサムネイルを 2 秒目の画面にする
-    return `<article class="card">${heading}<video controls preload="metadata" src="${escapeHtml(item.video)}#t=2"></video>${
+    body = `<video controls preload="metadata" src="${escapeHtml(item.video)}#t=2"></video>${
       captions ? `<ol class="captions">${captions}</ol>` : ''
-    }</article>`;
+    }${judge ? renderJudge() : ''}`;
+  } else {
+    const kind = kindOf(item);
+    body = `<p class="note ${kind}">${KIND_LABELS[kind]}: ${escapeHtml(item[kind])}</p>${
+      judge ? '<p class="note">動画が無いので、ここでは判定しない。未判定のまま、画面で 1 条件ずつ確かめる。</p>' : ''
+    }`;
   }
-  const [kind, label] = item.skipped !== undefined ? ['skipped', '飛ばした'] : ['failed', '撮れなかった'];
-  return `<article class="card">${heading}<p class="note ${kind}">${label}: ${escapeHtml(item[kind])}</p></article>`;
+  const n = item.issue;
+  return `<section class="card" role="tabpanel" id="panel-${n}" aria-labelledby="tab-${n}" data-issue="${n}" data-title="${escapeHtml(item.title)}" data-note="${escapeHtml(noteOf(item))}" hidden>${heading}${body}</section>`;
 }
+
+function renderTab(item) {
+  const n = item.issue;
+  return `<button type="button" role="tab" id="tab-${n}" aria-controls="panel-${n}" aria-selected="false" tabindex="-1" data-tab="${n}">#${n}<span class="mark" data-mark="${n}"></span></button>`;
+}
+
+function renderRow(item, judge) {
+  const n = item.issue;
+  const badge = judge ? `<span class="badge" data-badge="${n}">未判定</span>` : '';
+  return `<li><button type="button" class="row" data-goto="${n}"><span class="num">#${n}</span><span class="row-title">${escapeHtml(item.title)}</span><span class="kind ${kindOf(item)}">${KIND_LABELS[kindOf(item)]}</span>${badge}</button></li>`;
+}
+
+// タブの切り替え、判定の保存、結果のコピー。データは DOM の data 属性から読む（スクリプトに値を埋め込まない）
+const CLIENT_SCRIPT = String.raw`(function () {
+  var judge = document.body.hasAttribute('data-judge');
+  var tabs = [].slice.call(document.querySelectorAll('[role=tab]'));
+  var panels = [].slice.call(document.querySelectorAll('[role=tabpanel]'));
+  var issuePanels = panels.filter(function (p) { return p.hasAttribute('data-issue'); });
+  var storeKey = 'scrum-guild-review:' + location.pathname;
+
+  function select(id, focus) {
+    tabs.forEach(function (tab) {
+      var on = tab.getAttribute('data-tab') === id;
+      tab.setAttribute('aria-selected', on ? 'true' : 'false');
+      tab.tabIndex = on ? 0 : -1;
+      if (on && focus) tab.focus();
+    });
+    panels.forEach(function (panel) {
+      var on = panel.id === 'panel-' + id;
+      panel.hidden = !on;
+      if (!on) [].forEach.call(panel.querySelectorAll('video'), function (v) { v.pause(); });
+    });
+    try { history.replaceState(null, '', '#' + id); } catch (e) {}
+  }
+
+  function read(panel) {
+    var status = panel.getAttribute('data-status') || '';
+    return {
+      issue: Number(panel.getAttribute('data-issue')),
+      title: panel.getAttribute('data-title'),
+      status: status,
+      reasons: [].map.call(panel.querySelectorAll('.reasons input:checked'), function (i) { return i.value; }),
+      comment: panel.querySelector('textarea') ? panel.querySelector('textarea').value : '',
+      note: panel.getAttribute('data-note') || ''
+    };
+  }
+
+  function refresh(save) {
+    if (!judge) return;
+    var entries = issuePanels.map(read);
+    entries.forEach(function (e) {
+      var panel = document.getElementById('panel-' + e.issue);
+      [].forEach.call(panel.querySelectorAll('.verdict-btn'), function (b) {
+        b.setAttribute('aria-pressed', b.getAttribute('data-set') === e.status ? 'true' : 'false');
+      });
+      var reasons = panel.querySelector('.reasons');
+      if (reasons) reasons.hidden = e.status !== 'ng';
+      var label = e.status === 'ok' ? 'ok' : e.status === 'ng' ? 'ng' : '未判定';
+      var badge = document.querySelector('[data-badge="' + e.issue + '"]');
+      badge.textContent = label;
+      badge.className = 'badge ' + (e.status || 'none');
+      var mark = document.querySelector('[data-mark="' + e.issue + '"]');
+      mark.textContent = e.status === 'ok' ? ' ✓' : e.status === 'ng' ? ' ✕' : '';
+      mark.className = 'mark ' + (e.status || 'none');
+    });
+    var n = function (s) { return entries.filter(function (e) { return e.status === s; }).length; };
+    document.getElementById('counts').textContent = 'ok ' + n('ok') + ' 件、ng ' + n('ng') + ' 件、未判定 ' + n('') + ' 件';
+    document.getElementById('result').value = buildResult(entries);
+    if (save) {
+      try { localStorage.setItem(storeKey, JSON.stringify(entries)); } catch (e) {}
+    }
+  }
+
+  function restore() {
+    var saved;
+    try { saved = JSON.parse(localStorage.getItem(storeKey) || '[]'); } catch (e) { return; }
+    if (!Array.isArray(saved)) return;
+    saved.forEach(function (e) {
+      var panel = e && document.getElementById('panel-' + e.issue);
+      if (!panel || !panel.hasAttribute('data-issue') || !panel.querySelector('.judge')) return;
+      if (e.status === 'ok' || e.status === 'ng') panel.setAttribute('data-status', e.status);
+      [].forEach.call(panel.querySelectorAll('.reasons input'), function (i) {
+        i.checked = Array.isArray(e.reasons) && e.reasons.indexOf(i.value) >= 0;
+      });
+      if (typeof e.comment === 'string') panel.querySelector('textarea').value = e.comment;
+    });
+  }
+
+  tabs.forEach(function (tab, i) {
+    tab.addEventListener('click', function () { select(tab.getAttribute('data-tab')); });
+    tab.addEventListener('keydown', function (ev) {
+      var step = ev.key === 'ArrowRight' ? 1 : ev.key === 'ArrowLeft' ? -1 : 0;
+      if (step) {
+        ev.preventDefault();
+        select(tabs[(i + step + tabs.length) % tabs.length].getAttribute('data-tab'), true);
+      }
+    });
+  });
+  [].forEach.call(document.querySelectorAll('[data-goto]'), function (row) {
+    row.addEventListener('click', function () { select(row.getAttribute('data-goto')); window.scrollTo(0, 0); });
+  });
+
+  if (judge) {
+    [].forEach.call(document.querySelectorAll('.verdict-btn'), function (btn) {
+      btn.addEventListener('click', function () {
+        var panel = btn.closest('[data-issue]');
+        var next = btn.getAttribute('data-set');
+        // 押し直すと未判定に戻す
+        if (panel.getAttribute('data-status') === next) panel.removeAttribute('data-status');
+        else panel.setAttribute('data-status', next);
+        refresh(true);
+      });
+    });
+    document.addEventListener('input', function () { refresh(true); });
+    document.getElementById('copy').addEventListener('click', function () {
+      var result = document.getElementById('result');
+      var message = document.getElementById('copied');
+      var done = function (ok) { message.textContent = ok ? 'コピーした' : 'コピーできなかった。下の欄を選んでコピーする'; };
+      var fallback = function () {
+        result.select();
+        var ok = false;
+        try { ok = document.execCommand('copy'); } catch (e) {}
+        done(ok);
+      };
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(result.value).then(function () { done(true); }, fallback);
+      } else {
+        fallback();
+      }
+    });
+    restore();
+    refresh(false);
+  }
+
+  var initial = location.hash.slice(1);
+  select(tabs.some(function (t) { return t.getAttribute('data-tab') === initial; }) ? initial : 'status');
+})();`;
 
 /** manifest から、外のファイルを読まない 1 枚の HTML を作る。呼ぶ前に validateManifest を通す */
 export function renderGallery(manifest) {
   const title = manifest.title ?? '受け入れ動画';
   const count = (key) => manifest.items.filter((item) => item[key] !== undefined).length;
   const summary = `動画 ${count('video')} 本、飛ばした ${count('skipped')} 件、撮れなかった ${count('failed')} 件`;
+  const judge = manifest.judge === true;
+  const statusPanel = `<section class="card" role="tabpanel" id="panel-status" aria-labelledby="tab-status" hidden>
+<h2>状況</h2>
+<p class="summary">${summary}</p>${judge ? '\n<p class="progress" id="counts"></p>' : ''}
+<ul class="rows">
+${manifest.items.map((item) => renderRow(item, judge)).join('\n')}
+</ul>${
+    judge
+      ? `
+<h3>結果（プロンプトに貼る）</h3>
+<p class="hint">ok / ng を付けた分だけが入る。未判定は、セッションが画面で 1 条件ずつ確かめる。</p>
+<div class="actions"><button type="button" class="copy" id="copy">結果をコピー</button><span id="copied" role="status"></span></div>
+<textarea id="result" class="result" rows="12" readonly></textarea>`
+      : ''
+  }
+</section>`;
+  const tabBar = `<div class="tabs" role="tablist" aria-label="Issue">
+<button type="button" role="tab" id="tab-status" aria-controls="panel-status" aria-selected="true" data-tab="status">状況</button>
+${manifest.items.map(renderTab).join('\n')}
+</div>`;
   return `<!doctype html>
 <html lang="ja">
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; media-src file: 'self'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; media-src file: 'self'">
 <title>${escapeHtml(title)}</title>
 <style>
-  :root { --bg: #f6f7f8; --surface: #fff; --fg: #1d2630; --muted: #5d6a78; --line: #dde2e7; --warn: #9a5b00; --bad: #b3261e; color-scheme: light; }
+  :root { --bg: #f6f7f8; --surface: #fff; --fg: #1d2630; --muted: #5d6a78; --line: #dde2e7; --warn: #9a5b00; --bad: #b3261e; --ok: #1b7f3b; --accent: #1f5fbf; --on: #fff; color-scheme: light; }
   @media (prefers-color-scheme: dark) {
-    :root { --bg: #12171d; --surface: #1a212a; --fg: #e4e9ee; --muted: #9aa7b5; --line: #2b3541; --warn: #f0b457; --bad: #f2938d; color-scheme: dark; }
+    :root { --bg: #12171d; --surface: #1a212a; --fg: #e4e9ee; --muted: #9aa7b5; --line: #2b3541; --warn: #f0b457; --bad: #f2938d; --ok: #6fcf8e; --accent: #7ab0f5; --on: #12171d; color-scheme: dark; }
   }
   body { margin: 0; padding: 24px 16px 48px; background: var(--bg); color: var(--fg); font: 15px/1.7 "Hiragino Sans", "Noto Sans JP", system-ui, sans-serif; }
   main { max-width: 1100px; margin: 0 auto; }
   h1 { font-size: 22px; margin: 0 0 4px; }
   .summary { margin: 0 0 20px; color: var(--muted); }
-  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 480px), 1fr)); gap: 16px; }
+  .tabs { display: flex; flex-wrap: wrap; gap: 4px; margin: 0 0 12px; position: sticky; top: 0; padding: 8px 0; background: var(--bg); z-index: 1; }
+  .tabs [role=tab] { font: inherit; padding: 6px 12px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); color: var(--fg); cursor: pointer; font-variant-numeric: tabular-nums; }
+  .tabs [role=tab][aria-selected=true] { background: var(--accent); border-color: var(--accent); color: var(--on); }
   .card { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 14px 16px; min-width: 0; }
+  .card[hidden] { display: none; }
   h2 { font-size: 16px; margin: 0 0 10px; overflow-wrap: anywhere; }
+  h3 { font-size: 14px; margin: 20px 0 4px; }
   .num { color: var(--muted); font-variant-numeric: tabular-nums; }
-  video { width: 100%; max-width: 100%; background: #000; border-radius: 4px; }
+  video { width: 100%; max-width: 100%; max-height: 70vh; background: #000; border-radius: 4px; }
   .captions { margin: 10px 0 0; padding-left: 1.4em; color: var(--muted); font-size: 14px; }
-  .note { margin: 0; }
+  .note { margin: 0 0 8px; }
+  .hint { margin: 0 0 8px; color: var(--muted); font-size: 14px; }
   .skipped { color: var(--warn); }
   .failed { color: var(--bad); }
+  .progress { margin: 0 0 12px; font-weight: 600; }
+  .rows { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+  .row { font: inherit; width: 100%; display: flex; gap: 10px; align-items: baseline; text-align: left; padding: 8px 10px; border: 1px solid var(--line); border-radius: 6px; background: var(--bg); color: var(--fg); cursor: pointer; }
+  .row:hover { border-color: var(--accent); }
+  .row-title { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+  .kind { color: var(--muted); font-size: 13px; white-space: nowrap; }
+  .badge { font-size: 13px; padding: 0 8px; border-radius: 10px; border: 1px solid var(--line); white-space: nowrap; }
+  .badge.ok, .mark.ok { color: var(--ok); border-color: var(--ok); }
+  .badge.ng, .mark.ng { color: var(--bad); border-color: var(--bad); }
+  .tabs .mark { font-weight: 700; }
+  .judge { margin-top: 14px; display: grid; gap: 12px; }
+  .verdict { display: flex; gap: 8px; }
+  .verdict-btn { font: inherit; font-weight: 600; min-width: 88px; padding: 6px 16px; border-radius: 6px; border: 1px solid var(--line); background: var(--bg); color: var(--fg); cursor: pointer; }
+  .verdict-btn.ok[aria-pressed=true] { background: var(--ok); border-color: var(--ok); color: var(--on); }
+  .verdict-btn.ng[aria-pressed=true] { background: var(--bad); border-color: var(--bad); color: var(--on); }
+  .reasons { border: 1px solid var(--line); border-radius: 6px; padding: 8px 12px; }
+  .reasons[hidden] { display: none; }
+  .check { display: block; }
+  .comment { display: grid; gap: 4px; }
+  textarea { font: inherit; width: 100%; box-sizing: border-box; background: var(--bg); color: var(--fg); border: 1px solid var(--line); border-radius: 6px; padding: 8px; }
+  .result { font-family: ui-monospace, monospace; font-size: 13px; }
+  .actions { display: flex; gap: 12px; align-items: center; margin-bottom: 8px; }
+  .copy { font: inherit; padding: 6px 16px; border-radius: 6px; border: 1px solid var(--accent); background: var(--accent); color: var(--on); cursor: pointer; }
+  button:focus-visible, textarea:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 </style>
+<body${judge ? ' data-judge' : ''}>
 <main>
   <h1>${escapeHtml(title)}</h1>
-  <p class="summary">${summary}</p>
-  <section class="grid">
-${manifest.items.map(renderItem).join('\n')}
-  </section>
+${tabBar}
+${statusPanel}
+${manifest.items.map((item) => renderPanel(item, judge)).join('\n')}
 </main>
+<script>${buildResult.toString()}
+${CLIENT_SCRIPT}</script>
 `;
 }
 
