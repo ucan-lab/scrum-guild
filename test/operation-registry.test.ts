@@ -162,9 +162,18 @@ describe('本番の一覧の塊', () => {
       eager: true,
     });
     for (const [file, source] of Object.entries(sources)) {
-      const number = Number(/production-(\d+)\.test\.ts$/.exec(file)?.[1]);
-      const calls = [...String(source).matchAll(/defineProductionChunk\(([^)]*)\)/g)].map((match) => match[1]);
-      expect(calls, file).toEqual([String(number)]);
+      const number = /production-(\d+)\.test\.ts$/.exec(file)?.[1];
+      // コメントアウトや分岐の中の呼び出しで通らないよう、コメントと空行を除いたコードが、
+      // import の1行と、行頭の自分の番号の呼び出しの1行だけであることを見る
+      const code = source
+        .replace(/\/\*[\s\S]*?\*\//g, '')
+        .split('\n')
+        .map((line) => line.replace(/\/\/.*$/, '').trimEnd())
+        .filter((line) => line !== '');
+      expect(code, file).toEqual([
+        "import { defineProductionChunk } from './operations/chunks.ts';",
+        `defineProductionChunk(${number});`,
+      ]);
     }
   });
 });
