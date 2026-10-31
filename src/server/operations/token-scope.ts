@@ -2,7 +2,8 @@
 import type { AnyOperationDefinition } from '../../shared/operations/define.ts';
 
 export function tokenAllows(definition: AnyOperationDefinition, scope: 'read' | 'write'): boolean {
-  void definition;
-  void scope;
-  throw new Error('未実装');
+  if (definition.permission === 'operator' || definition.cookieOnly === true) return false;
+  if (scope === 'write') return definition.mode === 'read' || definition.mode === 'write';
+  if (scope === 'read') return definition.mode === 'read';
+  return false;
 }

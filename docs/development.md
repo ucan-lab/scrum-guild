@@ -26,6 +26,8 @@
 
 ### 操作の定義
 
+`operation-list` は API トークンの範囲で呼べる操作の定義と JSON Schema を返すため、CLI が毎回取得して使う。
+
 `ai.md` の「操作の定義を1か所に持つ」の形。
 
 - 定義: 操作ごとに、名前、説明、入力と出力の zod のスキーマ、`read` か `write`、要る権限を1つのオブジェクトに書き、`src/shared/operations/` に置く（`defineOperation()`）。一覧は `src/shared/operations/index.ts`。運用者の操作は `src/shared/operations/operator/`（人が差分を読む領域）、ログインしている人自身の操作（`me`、`logout`）は `src/shared/operations/session/`。定義は処理を持たない。画面の束に Worker のコードを入れないため。定義は画面の束にも入るので、`define.ts` が `src/shared/zod-config.ts` を先に読み込み、zod の eval の試し（`new Function`）を止める（`jitless`）。画面の CSP に `'unsafe-eval'` が無く、試しが違反として報告されるため。
@@ -356,6 +358,18 @@ vite の転送先も同じ値から作るので、画面は自分のワークツ
 ### 依存を入れたばかりの作業コピー
 
 `pnpm install` の後（`prepare`）と、`pnpm dev`、`pnpm test`、`pnpm check` の前に、`scripts/prepare.ts` が `svelte-kit sync` と `wrangler types` を走らせ、空の `build/` を作る。`tsconfig.json` は `svelte-kit sync` が作る `$app/tsconfig` を継ぎ、Worker の型は `wrangler types` が作る `worker-configuration.d.ts`（git に入れない）を読み、wrangler の設定の `assets` は `build/` を指す。どれも、`pnpm build` より先に型の検査とテストを通すための準備。
+
+## CLI（sg）
+
+`sg config set url <URL>` と `sg config set token`（トークンは標準入力）で接続先を設定する。`config set org|workspace <値>` は既定値、`config use <名前>` は名前付き接続先の切り替え、`config show` はトークンを伏せた設定の表示に使う。`SG_URL`、`SG_TOKEN`、`SG_ORG`、`SG_WORKSPACE`、`SG_PROFILE` でも設定でき、`--profile` が `SG_PROFILE` に勝つ。
+
+`sg ops` はサーバーから操作一覧を取得して表示し、`sg ops <操作名>` は説明と、入力と出力の JSON Schema を表示する。`sg call <操作名> [JSON] [--項目 値]...` は一覧の Schema に従って入力を作り、`--org` と `--workspace` で既定値を上書きする。設定した接続先の保存先は `$XDG_CONFIG_HOME/scrum-guild/config.json`（未設定なら `~/.config/scrum-guild/config.json`）。
+
+引数の値は、項目の Schema の `type`、`const`、`enum`、`anyOf`、`oneOf` を辿って型を決める（null を許す項目は `null` で null、数の `const` だけの分岐は数）。入力が `oneOf` の操作は、どれかの分岐にある項目を受け付ける。空の値は数にしない。boolean や数に変えられない値は、string を許す項目なら文字列のまま送り、許さなければ使い方の誤りにする。
+
+成功は JSON を標準出力に出して終了コード 0、API のエラーは標準エラーに出して 1、使い方の誤りは 2、接続失敗は 3。サーバーへ送る前の誤りは 2 で、読めない設定ファイル、`profiles` を持たないなど形の違う設定ファイル、書けない設定ファイル、ヘッダーに置けない文字を含むトークンが当たる（誤りの message に設定の中身は出さない）。`XDG_CONFIG_HOME` が空の文字列なら、未設定と同じく `~/.config` を使う。
+
+手元のサーバーへ向けるときは `pnpm db:seed` と `pnpm dev` の後、seed のトークンを標準入力から `pnpm -s sg config set token` に渡し、`pnpm -s sg config set url http://localhost:5173` を設定する。`pnpm -s` は pnpm の見出し（`$ node cli/sg.ts ...`）と失敗時の `ELIFECYCLE` を出さないので、出力を `jq` に渡すときは `pnpm -s sg` か `node cli/sg.ts` で呼ぶ。
 
 ## AI 開発の分担
 

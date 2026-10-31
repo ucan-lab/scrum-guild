@@ -39,6 +39,7 @@ import type { CurrentSession, Defer, ImplementedOperation } from './implement.ts
 import { operatorTools, type OperatorTools } from './operator-tools.ts';
 import { organizationTools } from './organization-tools.ts';
 import { logOperation } from './operation-log.ts';
+import { tokenAllows } from './token-scope.ts';
 
 // ログに残す、リクエストの途中で分かった値
 type Trace = { organizationId: string | null; userId: string | null; accountId: string | null };
@@ -230,9 +231,7 @@ async function requireLoginAccess(
 // 運用者の操作と cookieOnly の操作は、どのトークンでも 403。write の操作は write のトークンだけ（read のトークンは 403）
 function checkTokenScope(definition: AnyOperationDefinition, apiToken: ApiToken | undefined): void {
   if (apiToken === undefined) return;
-  if (definition.permission === 'operator' || definition.cookieOnly === true) throw new ApiError(403, 'forbidden');
-  // read のトークンが通すのは mode が read の操作だけ（許す側を列挙し、想定外の mode は断る）
-  if (apiToken.scope !== 'write' && definition.mode !== 'read') throw new ApiError(403, 'forbidden');
+  if (!tokenAllows(definition, apiToken.scope)) throw new ApiError(403, 'forbidden');
 }
 
 // 定義の rateLimit を、アカウントと操作ごとに数える。権限の検査の後、入力を読む前に行う
@@ -321,6 +320,7 @@ async function execute(
       accountId,
       account,
       session,
+      tokenScope: apiToken?.scope,
       ...(operator === undefined ? {} : { operator }),
       input,
     });
