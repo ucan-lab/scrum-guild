@@ -193,7 +193,7 @@ test('ストーリーを直すときは、開いたら1件を読み、変えた�
   await page.getByRole('button', { name: '元のタイトル', exact: true }).click();
   await expect(dialog.getByLabel('本文')).toHaveValue('元の本文');
   await dialog.getByLabel('タイトル').fill('新しいタイトル');
-  await dialog.getByLabel('期限').fill('2020-01-02');
+  await dialog.getByLabel('期日').fill('2020-01-02');
   await dialog.getByRole('button', { name: '保存する' }).click();
   await expect(dialog).toBeHidden();
   await expect(page.getByRole('status').filter({ hasText: 'ストーリーを保存しました' })).toBeVisible();
@@ -204,7 +204,7 @@ test('ストーリーを直すときは、開いたら1件を読み、変えた�
   // 読み直された木で、色だけでなく文字とアイコンを添えた赤い印が出る。ほかの欄は残っている
   const group = storyGroup(page, '新しいタイトル');
   const chip = group.locator('.chip.is-danger');
-  await expect(chip).toHaveText('期限切れ 1/2');
+  await expect(chip).toHaveText('期日切れ 1/2');
   await expect(chip.locator('svg')).toHaveCount(1);
   await page.getByRole('button', { name: '新しいタイトル', exact: true }).click();
   await expect(dialog.getByLabel('本文')).toHaveValue('元の本文');
@@ -277,12 +277,12 @@ test('日付の入力が途中までしか打たれていなければ、期日�
     if (request.url().endsWith('/api/aoba/story-create')) requests++;
   });
   // 日付の入力は、年月日の一部だけだと value が空のまま、validity.badInput が立つ
-  const due = dialog.getByLabel('期限');
+  const due = dialog.getByLabel('期日');
   await due.focus();
   await page.keyboard.type('12');
   await expect(due).toHaveJSProperty('value', '');
   await dialog.getByRole('button', { name: '作る' }).click();
-  await expect(dialog.getByText('期限は正しい日付で入れてください')).toBeVisible();
+  await expect(dialog.getByText('期日は正しい日付で入れてください')).toBeVisible();
   await expect(due).toBeFocused();
   expect(requests).toBe(0);
 });
@@ -303,7 +303,7 @@ test('期日の印: 過ぎた（赤）、今日と今週（橙）、それ以外
   await expect(first.locator('.tree-ratio')).toHaveText('完了 5 / 10 pt');
   await expect(first.locator('.tree-folded')).toHaveText('完了 1 件を折りたたんでいます');
   const overdue = first.locator('.entry', { hasText: '失効日の計算に月末の扱いを足す' });
-  await expect(overdue.locator('.chip.is-danger')).toHaveText('期限切れ 10/19');
+  await expect(overdue.locator('.chip.is-danger')).toHaveText('期日切れ 10/19');
   const thisWeek = first.locator('.entry', { hasText: '失効予定のポイントを知らせる文面を決める' });
   await expect(thisWeek.locator('.chip.is-warn')).toHaveText('今週 10/22');
 
@@ -315,7 +315,7 @@ test('期日の印: 過ぎた（赤）、今日と今週（橙）、それ以外
 
   // 親のないタスクの期日（10/17）は過ぎている
   await expect(page.locator('.entry', { hasText: '障害時の連絡手順を書く' }).locator('.chip.is-danger')).toHaveText(
-    '期限切れ 10/17',
+    '期日切れ 10/17',
   );
 
   // 今日を 10/12 に替えると、期日（10/19 以降）は来週以降で色なし
@@ -429,13 +429,13 @@ test('閉じたワークスペースでは、作る操作と「＋タスク」�
   await page.getByRole('button', { name: 'ポイントの付与と失効を管理画面で確かめられる', exact: true }).click();
   const dialog = page.getByRole('dialog', { name: 'ストーリー' });
   await expect(dialog.getByLabel('タイトル')).toHaveValue('ポイントの付与と失効を管理画面で確かめられる');
-  for (const label of ['タイトル', '受け入れ基準', '本文', '期限', 'リンク']) {
+  for (const label of ['タイトル', '受け入れ基準', '本文', '期日', 'リンク']) {
     const field = dialog.getByRole('textbox', { name: label, exact: true });
     await expect(field).toHaveAttribute('readonly', '');
     await expect(field).not.toBeDisabled();
   }
   // 日付は読み取り専用の text で出す
-  await expect(dialog.getByLabel('期限')).toHaveValue('2026-10-23');
+  await expect(dialog.getByLabel('期日')).toHaveValue('2026-10-23');
   await expect(dialog.getByRole('button', { name: '保存する' })).toHaveCount(0);
   await expect(dialog.getByText(/読み取りだけできます/)).toBeVisible();
   // リンクは読み取り専用でも開ける

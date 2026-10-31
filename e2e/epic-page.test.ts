@@ -46,7 +46,7 @@ test('seed の受託開発チーム: 木のエピックの題から画面が開�
 
   // 概要。作成者、報酬の段階と額、期日、区分
   const request = page.getByRole('region', { name: '概要' });
-  await expect(request.locator('dt')).toHaveText(['作成者', 'クリア報酬', '期限', '区分']);
+  await expect(request.locator('dt')).toHaveText(['作成者', 'クリア報酬', '期日', '区分']);
   await expect(request.locator('dd').nth(0)).toContainText('ミナト');
   await expect(request.locator('dd').nth(0)).not.toContainText('離脱済み');
   await expect(request.locator('.tier')).toHaveText('中 · 300 XP');
@@ -72,7 +72,7 @@ test('seed の受託開発チーム: 木のエピックの題から画面が開�
   for (const member of await members.all()) {
     await expect(member.locator('.emblem')).toHaveAttribute('aria-label', /^レベル \d+$/);
   }
-  await expect(party.getByText('まだ誰もいません')).toHaveCount(0);
+  await expect(party.getByText('参加者はまだいません')).toHaveCount(0);
 
   // 配下のストーリー。完了したタスクだけなので、完了 / 全体のポイントが同じ
   const stories = page.getByRole('region', { name: '配下のストーリー' });
@@ -147,7 +147,7 @@ test('作ったワークスペース: 参加するで参加者に加わり、参
 
   const party = page.getByRole('region', { name: '参加者' });
   const toast = page.locator('.toasts:visible .toast');
-  await expect(party.getByText('参加者にはまだ誰もいません。')).toBeVisible();
+  await expect(party.getByText('参加者はまだいません。')).toBeVisible();
 
   // 参加する（主ボタン）。加わると、同じ位置のボタンが「参加をやめる」に替わり、フォーカスが残る
   const accept = party.getByRole('button', { name: '参加する' });
@@ -165,7 +165,7 @@ test('作ったワークスペース: 参加するで参加者に加わり、参
   // 抜ける
   await leave.click();
   await expect(toast.last()).toHaveText('参加者から抜けました');
-  await expect(party.getByText('参加者にはまだ誰もいません。')).toBeVisible();
+  await expect(party.getByText('参加者はまだいません。')).toBeVisible();
   await expect(party.getByRole('button', { name: '参加する' })).toBeFocused();
 
   // 割り振る。候補は今所属していて参加者にいない人（作ったワークスペースにはミナトだけ）

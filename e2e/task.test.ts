@@ -190,7 +190,7 @@ test('選んだ担当が所属を外れていたら、理由を出し、候補�
   await assignee.selectOption({ label: 'ミナト' });
   await dialog.getByRole('button', { name: '起票' }).click();
   await expect(
-    dialog.getByText('選んだ人は、もうこのワークスペースにいません。担当を選び直してください'),
+    dialog.getByText('選んだ人は、もうこのワークスペースに所属していません。担当を選び直してください'),
   ).toBeVisible();
   await expect(assignee).toHaveValue('');
   await expect(assignee).toBeFocused();

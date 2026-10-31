@@ -83,10 +83,10 @@ test('開く → 属性を直す → 本文に script を含む Markdown を書�
   await expect(page.getByRole('status').filter({ hasText: '保存しました' })).toBeVisible();
   await expect(row.locator('.pts')).toHaveText('5');
 
-  // 期限も選んだら保存する。木の行に期日の印が出る
-  await drawer.getByLabel('期限').fill('2099-12-31');
+  // 期日も選んだら保存する。木の行に期日の印が出る
+  await drawer.getByLabel('期日').fill('2099-12-31');
   await expect(row.locator('.chip')).toBeVisible();
-  await drawer.getByLabel('期限').fill('');
+  await drawer.getByLabel('期日').fill('');
   await expect(row.locator('.chip')).toHaveCount(0);
 
   // タイトルは押すと入力欄になり、Enter で確定する。行のタイトルが変わる
@@ -192,16 +192,16 @@ test('完了したタスクのポイントは直せず、理由を添える。�
   for (const radio of await drawer.getByRole('radiogroup', { name: 'ポイント' }).getByRole('radio').all()) {
     await expect(radio).toBeDisabled();
   }
-  // 期限とリポジトリは完了の後も直せる
+  // 期日とリポジトリは完了の後も直せる
   await expect(
     drawer.getByRole('radiogroup', { name: 'リポジトリ' }).getByRole('radio', { name: 'なし' }),
   ).toBeEnabled();
   // 前のトースト（足した、ポイントを保存した、完了にした）が消えてから入れる。ポイントの「保存しました」と取り違えずに
-  // 期限の保存を確かめ、トーストを、出したばかりの「保存しました」の1つにそろえる（#413）
+  // 期日の保存を確かめ、トーストを、出したばかりの「保存しました」の1つにそろえる（#413）
   const toasts = page.locator('.toasts:visible .toast');
   await expect(toasts).toHaveCount(0, { timeout: 10_000 });
   const saved = waitForResponses(page, '/task-update');
-  await drawer.getByLabel('期限').fill('2099-01-02');
+  await drawer.getByLabel('期日').fill('2099-01-02');
   await saved;
   await expect(toasts).toHaveText(['保存しました']);
   await expect(drawer.getByRole('button', { name: 'クリア' })).toBeVisible();
@@ -317,7 +317,7 @@ test('担当は選んで少し待ってから最後の値だけを送り、断�
   await request;
   await reload;
   await expect(
-    drawer.getByText('選んだ人は、もうこのワークスペースにいません。担当を選び直してください'),
+    drawer.getByText('選んだ人は、もうこのワークスペースに所属していません。担当を選び直してください'),
   ).toBeVisible();
   await expect(select.getByRole('option', { name: 'ミナト' })).toHaveCount(0);
   await expect(select).toHaveValue('');
@@ -686,7 +686,7 @@ test('期日は、打ちかけの年は送らず、年がそろった値だけ�
   page.on('request', (request) => {
     if (request.url().endsWith('/api/aoba/task-update')) requests.push(request.postData() ?? '');
   });
-  const due = drawer.getByLabel('期限');
+  const due = drawer.getByLabel('期日');
   const type = (value: string) =>
     due.evaluate((input: HTMLInputElement, next) => {
       input.value = next;
@@ -699,7 +699,7 @@ test('期日は、打ちかけの年は送らず、年がそろった値だけ�
   // 欄を離れたとき、打ちかけのままなら知らせる
   await due.focus();
   await due.blur();
-  await expect(drawer.getByText(/期限は正しい日付で入れてください/)).toBeVisible();
+  await expect(drawer.getByText(/期日は正しい日付で入れてください/)).toBeVisible();
   // 年がそろったら、少し待って保存する
   await type('2026-10-19');
   await expect.poll(() => requests.length).toBe(1);
@@ -736,7 +736,7 @@ test('保存を409で断られたとき、送った欄に合う文を出す。�
     if (request.url().endsWith('/api/aoba/organization')) organizationRequests.push(request.url());
   });
   // 保存の後は木だけを読み直す
-  await drawer.getByLabel('期限').fill('2099-12-31');
+  await drawer.getByLabel('期日').fill('2099-12-31');
   await expect(page.getByRole('status').filter({ hasText: '保存しました' })).toBeVisible();
   await expect(drawer).toBeVisible();
   await expect(drawer.getByRole('textbox', { name: 'タイトル' })).toHaveValue('書きかけが残る');
@@ -821,7 +821,7 @@ test('期日で欄を離れた直後と、ポイントを選んだ直後に閉�
   const row = page.locator('.entry', { hasText: '閉じた後に返る' });
   const drawer = await openDrawer(page, '閉じた後に返る');
   let slow = await slowTaskUpdate(page);
-  await drawer.getByLabel('期限').fill('2099-12-31');
+  await drawer.getByLabel('期日').fill('2099-12-31');
   // 閉じるボタンを押すと、期日の入力が外れて（blur）送られる。送った値は書きかけではないので、確認なしで閉じる
   await drawer.getByRole('button', { name: '閉じる' }).click();
   await expect(drawer).toBeHidden();
@@ -850,7 +850,7 @@ test('期日の 600ms の待ちの間に Esc で閉じようとすると確か�
   await addTask(page, '期日を待つ');
   const drawer = await openDrawer(page, '期日を待つ');
   const { bodies } = await slowTaskUpdate(page);
-  await drawer.getByLabel('期限').fill('2099-12-31');
+  await drawer.getByLabel('期日').fill('2099-12-31');
   await page.keyboard.press('Escape');
   const confirm = page.getByRole('dialog', { name: '書きかけを捨てますか' });
   await expect(confirm).toBeVisible();
@@ -865,7 +865,7 @@ test('期日の保存中に次の値を選んでも、先の応答で入力欄�
   await addTask(page, '期日を続ける');
   const drawer = await openDrawer(page, '期日を続ける');
   const { bodies } = await slowTaskUpdate(page);
-  const due = drawer.getByLabel('期限');
+  const due = drawer.getByLabel('期日');
   await due.fill('2099-12-30');
   await due.press('Enter');
   await expect.poll(() => bodies.length).toBe(1);
@@ -880,7 +880,7 @@ test('期日の保存中に次の値を選んでも、先の応答で入力欄�
   await expect(due).toHaveValue('2099-12-31');
   // 保存した値は、読み直しても同じ
   await page.reload();
-  await expect(page.getByRole('dialog', { name: '期日を続ける' }).getByLabel('期限')).toHaveValue('2099-12-31');
+  await expect(page.getByRole('dialog', { name: '期日を続ける' }).getByLabel('期日')).toHaveValue('2099-12-31');
 });
 
 test('期日は Enter で保存でき、「クリア」を押すと空にして保存し、フォーカスを入力欄へ移す', async ({ page }) => {
@@ -892,7 +892,7 @@ test('期日は Enter で保存でき、「クリア」を押すと空にして�
   page.on('request', (request) => {
     if (request.url().endsWith('/api/aoba/task-update')) bodies.push(request.postDataJSON());
   });
-  const due = drawer.getByLabel('期限');
+  const due = drawer.getByLabel('期日');
   await due.fill('2099-12-31');
   await due.press('Enter');
   // 600ms を待たずに、Enter で送る
@@ -905,23 +905,23 @@ test('期日は Enter で保存でき、「クリア」を押すと空にして�
   expect(bodies.map((body) => body.due_on)).toEqual(['2099-12-31', null]);
 });
 
-test('期日が過ぎたタスクを開くと、引き出しの期日に「期限切れ」の印が出て、保存した値で出し直す', async ({ page }) => {
+test('期日が過ぎたタスクを開くと、引き出しの期日に「期日切れ」の印が出て、保存した値で出し直す', async ({ page }) => {
   // seed の行は他の e2e も読むので、このテストで作ったタスクの期日を書き換える
-  await createWorkspace(page, '期限切れワークスペース');
-  await addTask(page, '期限の印を見る');
-  const drawer = await openDrawer(page, '期限の印を見る');
+  await createWorkspace(page, '期日切れワークスペース');
+  await addTask(page, '期日の印を見る');
+  const drawer = await openDrawer(page, '期日の印を見る');
   const chip = drawer.locator('.props .chip');
-  await drawer.getByLabel('期限').fill('2000-01-02');
-  await expect(chip).toHaveText(/期限切れ 1\/2/);
+  await drawer.getByLabel('期日').fill('2000-01-02');
+  await expect(chip).toHaveText(/期日切れ 1\/2/);
   // 開き直しても、読み込んだ値で印を出す
   await page.reload();
-  const reopened = page.getByRole('dialog', { name: '期限の印を見る' });
+  const reopened = page.getByRole('dialog', { name: '期日の印を見る' });
   const reopenedChip = reopened.locator('.props .chip');
-  await expect(reopenedChip).toHaveText(/期限切れ 1\/2/);
+  await expect(reopenedChip).toHaveText(/期日切れ 1\/2/);
   await expect(reopenedChip).toHaveClass(/is-danger/);
   await expect(reopened.locator('.props .chip svg, .props .chip .ico')).toHaveCount(1);
   // 期日を直すと、保存した値で印を出し直す（未来の日付は、色なしの印）
-  await reopened.getByLabel('期限').fill('2099-12-31');
+  await reopened.getByLabel('期日').fill('2099-12-31');
   await expect(reopenedChip).toHaveText('12/31');
   await expect(reopenedChip).not.toHaveClass(/is-danger/);
 });
@@ -1613,7 +1613,7 @@ test('計画の画面では、スプリントをまたいで上から下の順�
   test.setTimeout(90_000);
   await createWorkspace(page, '計画の前後ワークスペース');
   for (const title of ['計画 一', '計画 二', '計画 三']) await addTask(page, title);
-  await page.getByRole('link', { name: '計画' }).click();
+  await page.getByRole('link', { name: '計画', exact: true }).click();
   await createSprint(page, '2099-03-01', '第1回');
   await createSprint(page, '2099-03-15', '第2回');
   await putIntoSprint(page, '第1回', ['計画 一', '計画 二']);

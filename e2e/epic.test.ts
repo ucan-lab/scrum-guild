@@ -61,7 +61,7 @@ test('作ったワークスペース: エピックを作り、ストーリーを
   const epicDialog = page.getByRole('dialog', { name: 'エピック' });
   await expect(epicDialog.getByLabel('タイトル')).toHaveValue('ポイント制度を公開する');
   await epicDialog.getByLabel('本文').fill('年内に公開する');
-  await epicDialog.getByLabel('期限').fill('2026-12-25');
+  await epicDialog.getByLabel('期日').fill('2026-12-25');
   const detailReloaded = waitForResponses(page, '/epic-detail');
   await epicDialog.getByRole('button', { name: '保存する' }).click();
   await expect(epicDialog).toBeHidden();
