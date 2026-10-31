@@ -475,7 +475,8 @@ test('トーストは数秒で消え、同時に出るのは3件まで', async (
 test('アバターの色相が当たり、CSP の違反が無い', async ({ page }) => {
   const collect = await watchViolations(page);
   await page.goto(today);
-  const avatar = page.getByRole('img', { name: 'ハルカ' });
+  // 今日やること（左のメニューと「自分の記録」の列）にも同じ名前のアバターが出るので、最初の1つを確かめる
+  const avatar = page.getByRole('img', { name: 'ハルカ' }).first();
   await expect(avatar).toBeVisible();
   const style = await avatar.evaluate((element) => ({
     hue: getComputedStyle(element).getPropertyValue('--h').trim(),
