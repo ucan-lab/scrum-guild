@@ -47,7 +47,10 @@ describe('titleFor', () => {
   });
   test('制御文字と書式の文字を取り除く（端末とクリップボードに渡るため）', () => {
     const evil = `a\u001b[201~\u0007b${RLO}c${ZWSP}d\u0085e\u007ff`;
-    assert.equal(titleFor({ issueNumber: 1, issueTitle: evil }), '#1 a[201~bcdef');
+    assert.equal(titleFor({ issueNumber: 1, issueTitle: evil }), '#1 a[201~bcd ef');
+  });
+  test('U+0085（NEL）は改行として空白に置き、前後の語をつなげない', () => {
+    assert.equal(titleFor({ issueNumber: 1, issueTitle: 'foo\u0085bar' }), '#1 foo bar');
   });
   test('書式の文字をはさんだ空白も1つに詰める', () => {
     assert.equal(titleFor({ issueNumber: 1, issueTitle: `a ${ZWSP} b` }), '#1 a b');

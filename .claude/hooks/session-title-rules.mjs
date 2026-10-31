@@ -15,7 +15,8 @@ export function issueNumberOf(branch) {
 function tidy(text) {
   // 改行などの空白は先に空白へ、それ以外の制御文字と書式の文字は消してから詰める（消す前に詰めると、間に書式の文字がある空白が2つ残る）
   const oneLine = String(text ?? '')
-    .replace(/[\p{Cc}\p{Cf}]/gu, (char) => (/\s/.test(char) ? ' ' : ''))
+    // U+0085（NEL）は改行の仲間だが JS の `\s` に入らないので、空白として扱う
+    .replace(/[\p{Cc}\p{Cf}]/gu, (char) => (/\s/.test(char) || char === '\u0085' ? ' ' : ''))
     .replace(/\s+/g, ' ')
     .trim();
   const chars = [...oneLine];
