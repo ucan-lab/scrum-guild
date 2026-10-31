@@ -132,7 +132,7 @@
         </a>
       </div>
       <label class="choice is-static is-consent">
-        <input type="checkbox" bind:checked />
+        <input type="checkbox" bind:checked disabled={busy} />
         <span>{t('consentCheckLabel')}</span>
       </label>
       <div class="form-actions">

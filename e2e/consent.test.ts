@@ -116,6 +116,30 @@ test('版が上がった直後の同意は 409 で断られ、読み直した版
   );
 });
 
+test('送っている間は印を外せず、記録に失敗しても印は付いたまま、そのままもう一度押せる', async ({
+  page,
+  context,
+  baseURL,
+}) => {
+  await signIn(context, baseURL, 'admin');
+  await routeOperation(page, consentStatus, (call) => call.fulfill(UNCONSENTED));
+  await routeOperation(page, consentRecord, async (call) => {
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    await call.fail(500, 'internal');
+  });
+  await page.goto('/consent');
+  const checkbox = page.getByRole('checkbox', { name: CHECKBOX_NAME });
+  const submit = page.getByRole('button', { name: /^同意/ });
+  await checkbox.check();
+  await submit.click();
+  // 送っている間に外すと、失敗した後に押せなくなる
+  await expect(checkbox).toBeDisabled();
+  await expect(page.getByText('同意を記録できませんでした。もう一度試してください。')).toBeVisible();
+  await expect(checkbox).toBeEnabled();
+  await expect(checkbox).toBeChecked();
+  await expect(page.getByRole('button', { name: '同意して進む' })).toHaveAttribute('aria-disabled', 'false');
+});
+
 test('409 の後の読み直しで同意済みと分かったら、更新の知らせは出さない', async ({ page, context, baseURL }) => {
   await signIn(context, baseURL, 'admin');
   const consented = {
