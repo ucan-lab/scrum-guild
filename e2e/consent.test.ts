@@ -1,7 +1,7 @@
 import { PRIVACY_VERSION, TERMS_VERSION } from '../src/lib/legal/versions.ts';
 import { consentRecord, consentStatus } from '../src/shared/operations/session/consent.ts';
 import { expect, test } from './fixtures.ts';
-import { signIn } from './helpers.ts';
+import { signIn, waitForSettled } from './helpers.ts';
 import { resetAccountConsents } from './local-d1.ts';
 import { routeOperation } from './operations.ts';
 
@@ -29,6 +29,9 @@ test.describe('本物の API', () => {
     await page.getByRole('checkbox', { name: CHECKBOX_NAME }).check();
     await page.getByRole('button', { name: '同意して進む' }).click();
     await expect(page).toHaveURL(/\/aoba$/);
+    // 戻った先の読み込みが終わってから確かめる（同意が記録されず /consent へ戻る往復を見逃さないため）
+    await waitForSettled(page);
+    await expect(page).not.toHaveURL(/\/consent/);
   });
 
   test('同意していない人が / を開くと同意の画面に移る', async ({ page, context, baseURL }) => {
@@ -41,6 +44,8 @@ test.describe('本物の API', () => {
   test('同意済みの admin は組織の画面をそのまま開ける', async ({ page, context, baseURL }) => {
     await signIn(context, baseURL, 'admin');
     await page.goto('/aoba');
+    // goto は load イベントで戻り、画面の load（API の呼び出し）はその後に走る。読み込みが終わってから、移っていないことを確かめる
+    await waitForSettled(page);
     await expect(page).toHaveURL(/\/aoba$/);
     await expect(page).not.toHaveURL(/\/consent/);
   });

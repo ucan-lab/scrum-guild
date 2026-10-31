@@ -30,7 +30,7 @@ const screens: {
   {
     screen: 'consent',
     path: '/consent',
-    // 同意の e2e（e2e/consent.test.ts）が seed の admin に同意を書くので、状態は固定して、読むだけにする
+    // 同意の e2e（e2e/consent.test.ts）が seed の unconsented に同意を書くので、状態は固定して、読むだけにする
     prepare: (page) =>
       mockOperation(page, consentStatus, {
         terms_version: TERMS_VERSION,

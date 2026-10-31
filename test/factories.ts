@@ -65,9 +65,10 @@ export async function createOrganization(overrides: Partial<Row<CommonTables, 'o
   return { ...row, verified: verifiedOrganizationForTest(row.id) } satisfies OrganizationFixture;
 }
 
-// 既定で今の版の同意の行を足す（未同意の人は、同意するまで操作できない）。未同意の人を作るときは { consented: false }
+// createAccount が足す同意の行の日時
 export const CONSENTED_AT = '2026-10-31T00:00:00.000Z';
 
+// 既定で今の版の同意の行を足す（未同意の人は、同意するまで操作できない）。未同意の人を作るときは { consented: false }
 export async function createAccount(
   overrides: Partial<Row<CommonTables, 'accounts'>> = {},
   options: { consented?: boolean } = {},
