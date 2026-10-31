@@ -21,7 +21,7 @@ const SHA = /^[0-9a-f]{40}$/;
 // （印を付けない実行で先頭に残ると、次の実行がそれを起点に読む）
 function markedSummary(summary: string, headSha: string | undefined): string {
   const defused = summary.replaceAll('<!-- ai-review:', '<!-- ai-review-ignored:');
-  const incomplete = summary.trimStart().startsWith(INCOMPLETE_LINE);
+  const incomplete = summary.trimStart().split(/\r?\n/, 1)[0]!.trim() === INCOMPLETE_LINE;
   return headSha !== undefined && SHA.test(headSha) && !incomplete
     ? `<!-- ai-review:${headSha} -->\n${defused}`
     : defused;

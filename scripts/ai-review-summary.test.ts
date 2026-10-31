@@ -98,6 +98,11 @@ describe('Claude が書いた印と、見終えていない実行', () => {
     assert.ok(body.startsWith(INCOMPLETE_LINE));
   });
 
+  test('1行目が「見終えていない」で始まるだけの別の文なら、印を付ける', () => {
+    const body = summaryBody(`${INCOMPLETE_LINE}ことは無い。全部見た\n`, sha);
+    assert.ok(body.startsWith(`<!-- ai-review:${sha} -->\n`));
+  });
+
   test('「見終えていない」の行が先頭でなければ、印を付ける', () => {
     const body = summaryBody(`## まとめ\n${INCOMPLETE_LINE}\n`, sha);
     assert.ok(body.startsWith(`<!-- ai-review:${sha} -->\n`));
