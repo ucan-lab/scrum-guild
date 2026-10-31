@@ -6,6 +6,6 @@
     "allowImportingTsExtensions": true,
     "types": ["$app/types", "node"]
   },
-  "include": ["src", "scripts", "seed", "e2e", "vite.config.ts", "vitest.config.ts", "playwright.config.ts"],
+  "include": ["src", "scripts", "seed", "e2e", "cli", "vite.config.ts", "vitest.config.ts", "playwright.config.ts"],
   "exclude": ["src/server"]
 }

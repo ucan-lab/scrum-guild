@@ -20,6 +20,8 @@ needs-human:
           # 応答の形とヘッダー（app.ts、errors.ts）、ログの項目（operation-log.ts）も、権限の検査が頼る
           - "src/server/operations/register.ts"
           - "src/server/operations/guards.ts"
+          # API トークンで呼べるかの判定（register.ts の範囲の検査と operation-list の絞りが使う）
+          - "src/server/operations/token-scope.ts"
           - "src/server/operations/implement.ts"
           - "src/server/operations/operation-log.ts"
           - "src/server/app.ts"
