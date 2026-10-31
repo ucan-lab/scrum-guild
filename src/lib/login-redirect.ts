@@ -10,15 +10,15 @@ export function loginUrl(current: { pathname: string; search: string }): string 
   return `${loginPath}?return_to=${encodeURIComponent(safeReturnTo(current.pathname + current.search))}`;
 }
 
-/* eslint-disable @typescript-eslint/no-unused-vars -- 入れ物（実装の担当が置き換える） */
-export function consentUrl(_current: { pathname: string; search: string }): string {
-  throw new Error('未実装');
+// 403 の terms_required（今の版の規約に同意していない）を受けたときの行き先。同意の画面（/consent）が、
+// 同意した後に return_to へ戻す。return_to の作り方は loginUrl と同じ
+export function consentUrl(current: { pathname: string; search: string }): string {
+  return `/consent?return_to=${encodeURIComponent(safeReturnTo(current.pathname + current.search))}`;
 }
 
-export function isTermsRequired(_result: { ok: boolean; error?: { code: string } | null }): boolean {
-  throw new Error('未実装');
+export function isTermsRequired(result: { ok: boolean; error?: { code: string } | null }): boolean {
+  return !result.ok && result.error?.code === 'terms_required';
 }
-/* eslint-enable @typescript-eslint/no-unused-vars */
 
 export function isUnauthenticated(result: { ok: boolean; error?: { code: string } | null }): boolean {
   return !result.ok && result.error?.code === 'unauthenticated';

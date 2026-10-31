@@ -4,8 +4,8 @@ import type { CommonDb } from '../db/index.ts';
 import { ApiError } from '../errors.ts';
 import { implement } from './implement.ts';
 
-// 同じ時刻（ミリ秒）の行が並んでも結果が決まるよう、版でも並べる
-async function latestConsentOf(db: CommonDb, accountId: string) {
+// 同じ時刻（ミリ秒）の行が並んでも結果が決まるよう、版でも並べる。同意の門（register.ts）も使う
+export async function latestConsentOf(db: CommonDb, accountId: string) {
   return db.first(
     db.statement((q) =>
       q
@@ -20,13 +20,18 @@ async function latestConsentOf(db: CommonDb, accountId: string) {
   );
 }
 
+// 最新の同意が今の2つの版と一致するか。consent-status の current と、execute() の同意の門が同じ判定を使う
+export function isCurrentConsent(latest: { terms_version: string; privacy_version: string } | undefined): boolean {
+  return latest?.terms_version === TERMS_VERSION && latest.privacy_version === PRIVACY_VERSION;
+}
+
 export const consentStatusOperation = implement(consentStatus, async ({ db, accountId }) => {
   const latest = await latestConsentOf(db, accountId);
   return {
     terms_version: TERMS_VERSION,
     privacy_version: PRIVACY_VERSION,
     latest: latest ?? null,
-    current: latest?.terms_version === TERMS_VERSION && latest.privacy_version === PRIVACY_VERSION,
+    current: isCurrentConsent(latest),
   };
 });
 

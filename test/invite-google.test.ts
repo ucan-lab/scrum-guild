@@ -219,6 +219,8 @@ describe('運用者の指名から結ぶまで', () => {
       account_id: account!.account_id,
     });
 
+    // ログインで作られた人は未同意なので、同意してから組織に入る（同意の門）
+    await browser.consent();
     const entered = await post(app, organizationInfo, { slug, token: browser.sessionToken });
     expect(entered.status).toBe(200);
     expect(await entered.json()).toMatchObject({ organization: { name: 'ひばり工房' }, me: { is_admin: true } });
@@ -730,6 +732,7 @@ describe('招待（invitations）の結び', () => {
       claim_token_hash: null,
       claim_expires_at: null,
     });
+    await browser.consent();
     const list = (await browser.post(myOrganizations).then((res) => res.json())) as {
       invitations: { organization_name: string; slug: string }[];
     };
@@ -1084,6 +1087,7 @@ describe('リーダーの Google の招待から所属まで', () => {
       claim_token_hash: null,
     });
 
+    await browser.consent();
     const accepted = await post(app, invitationAccept, {
       slug: target.slug,
       token: browser.sessionToken,

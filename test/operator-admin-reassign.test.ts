@@ -206,6 +206,7 @@ describe('GitHub のユーザー名で指名し直す', () => {
     const browser = newBrowser();
     const login = await browser.login(user);
     expect(login.response.status).toBe(302);
+    await browser.consent();
     const entered = await post(app, organizationInfo, { slug: organization.slug, token: browser.sessionToken });
     expect(entered.status).toBe(200);
     expect(await entered.json()).toMatchObject({ organization: { name: 'こもれび工房' }, me: { is_admin: true } });
@@ -302,6 +303,7 @@ describe('Google のメールアドレスで指名し直す', () => {
       claimToken,
     );
     expect(result.location).toBe(`/${organization.slug}`);
+    await browser.consent();
     const entered = await post(app, organizationInfo, { slug: organization.slug, token: browser.sessionToken });
     expect(entered.status).toBe(200);
     expect(await entered.json()).toMatchObject({ me: { is_admin: true } });

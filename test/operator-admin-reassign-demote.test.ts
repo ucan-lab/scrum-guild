@@ -96,6 +96,7 @@ describe('ワークスペースの所属を持つ前の指名', () => {
     // 後でログインしても、管理者としては入れない（所属のある一般の人として入る）
     const browser = new FakeBrowser(app, github, loginEnv, undefined, google);
     await browser.login(user);
+    await browser.consent();
     const entered = await post(app, organizationInfo, { slug: target.slug, token: browser.sessionToken });
     expect(entered.status).toBe(200);
     expect(await entered.json()).toMatchObject({ me: { is_admin: false } });

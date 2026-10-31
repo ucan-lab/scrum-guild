@@ -12,6 +12,8 @@ export const me = defineOperation({
   description: 'ログインしている自分のアカウントと、ログインの手段の表示用の名前とアバターを返す',
   mode: 'read',
   permission: 'login',
+  // 同意の画面が、同意していない人の表示にも使う
+  skipsConsent: true,
   input: z.object({}),
   output: z.object({
     account_id: z.string(),
@@ -29,6 +31,8 @@ export const logout = defineOperation({
   permission: 'login',
   // 消すのは sessions の行と Cookie だけで、API トークンの行は指せない。トークンからは断る
   cookieOnly: true,
+  // 同意しない人が抜けられるように
+  skipsConsent: true,
   input: z.object({}),
   output: z.object({}),
 });
