@@ -6,6 +6,8 @@
   import GateSheet from '../../lib/components/GateSheet.svelte';
   import LogoutButton from '../../lib/components/LogoutButton.svelte';
   import { callOperation } from '../../lib/api.ts';
+  import Icon from '../../lib/components/Icon.svelte';
+  import { formatDateTime } from '../../lib/format-datetime.ts';
   import { isUnauthenticated, loginUrl } from '../../lib/login-redirect.ts';
   import { t } from '../../lib/vocabulary.svelte.ts';
   import type { OutputOf } from '../../shared/operations/define.ts';
@@ -15,7 +17,7 @@
   let status = $state<OutputOf<typeof consentStatus>>();
   let checked = $state(false);
   let busy = $state(false);
-  let error = $state<'load' | 'record' | undefined>();
+  let error = $state<'load' | 'record' | 'updated' | undefined>();
   const returnTo = $derived(safeReturnTo(page.url.searchParams.get('return_to')));
 
   async function loadStatus() {
@@ -26,7 +28,6 @@
     }
     if (result.ok) {
       status = result.data;
-      error = undefined;
     } else {
       error = 'load';
     }
@@ -51,7 +52,8 @@
     }
     if (result.status === 409) {
       checked = false;
-      await loadStatus();
+      const reloaded = await loadStatus();
+      if (reloaded.ok) error = 'updated';
     } else {
       error = 'record';
     }
@@ -67,21 +69,32 @@
 
 <Gate>
   <GateSheet brand title={t('consentTitle')}>
+    {#if error}
+      <div class="callout is-warn" role="alert">
+        <Icon name="alert" /><span
+          >{error === 'load'
+            ? t('consentLoadFailed')
+            : error === 'record'
+              ? t('consentRecordFailed')
+              : t('consentUpdated')}</span
+        >
+      </div>
+    {/if}
     {#if status === undefined}
-      {#if error === 'load'}<div class="callout is-warn" role="alert">{t('consentLoadFailed')}</div>{:else}<p>
-          {t('loading')}
-        </p>{/if}
+      {#if error !== 'load'}<p role="status">{t('loading')}</p>{/if}
     {:else if status.current}
       <p>{t('consentCurrent')}</p>
-      {#if status.latest}<p class="panel-note">{t('consentRecordedAt', { date: status.latest.consented_at })}</p>{/if}
+      {#if status.latest}<p class="panel-note">
+          {t('consentRecordedAt', { date: formatDateTime(status.latest.consented_at) })}
+        </p>{/if}
       <div class="form-actions">
         <button class="btn is-primary" type="button" onclick={() => location.replace(returnTo)}
-          >{t('consentSubmit')}</button
+          >{t('consentContinue')}</button
         >
         <LogoutButton />
       </div>
     {:else}
-      <p>{t('consentLead')}</p>
+      <p>{t('consentLead', { app: t('appName') })}</p>
       <div class="choice-list">
         <a class="choice" href={resolve('/terms')} target="_blank" rel="noopener noreferrer">
           <div>
@@ -97,12 +110,11 @@
         </a>
       </div>
       <label class="choice is-static">
-        <input type="checkbox" bind:checked aria-describedby="consent-check-hint" />
-        <span id="consent-check-hint">{t('consentCheckLabel')}</span>
+        <input type="checkbox" bind:checked />
+        <span>{t('consentCheckLabel')}</span>
       </label>
-      {#if error === 'record'}<div class="callout is-warn" role="alert">{t('consentRecordFailed')}</div>{/if}
       <div class="form-actions">
-        <button class="btn is-primary" type="button" disabled={!checked || busy} aria-disabled={busy} onclick={submit}>
+        <button class="btn is-primary" type="button" aria-disabled={!checked || busy} onclick={submit}>
           {busy ? t('consentSubmitting') : t('consentSubmit')}
         </button>
         <LogoutButton />

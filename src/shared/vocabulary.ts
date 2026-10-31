@@ -990,10 +990,12 @@ export const dictionary = defineDictionary({
 
   // 同意の画面。版は API の値を画面が埋める。
   consentTitle: '同意の確認',
-  consentLead: 'Scrum Guild を使うには、利用規約とプライバシーポリシーを確認してください。',
+  consentLead: '{app} を使うには、利用規約とプライバシーポリシーを確認してください。',
   consentVersion: '版: {version}',
   consentCheckLabel: '利用規約とプライバシーポリシーを確認し、同意します',
   consentSubmit: '同意して進む',
+  consentContinue: '進む',
+  consentUpdated: '規約が更新されました。内容を確認し直してください。',
   consentSubmitting: '同意を記録しています',
   consentCurrent: '現在の版に同意しています。',
   consentRecordedAt: '同意した日時: {date}',

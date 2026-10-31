@@ -19,6 +19,23 @@ async function rowsFor(accountId: string) {
   );
 }
 
+async function seedConsent(accountId: string, terms: string, privacy: string, consentedAt: string) {
+  const db = commonDb(env);
+  await db.batch([
+    db.statement((q) =>
+      q.insertInto('account_consents').values({
+        account_id: accountId,
+        terms_version: terms,
+        privacy_version: privacy,
+        consented_at: consentedAt,
+      }),
+    ),
+  ]);
+}
+
+const OLD = '2026-01-01';
+const CURRENT_INPUT = { terms_version: TERMS_VERSION, privacy_version: PRIVACY_VERSION };
+
 describe('同意の操作', () => {
   test('consent-status は現在の版と、同意が無い状態を返す', async () => {
     const person = await createLoginPerson();
@@ -51,6 +68,62 @@ describe('同意の操作', () => {
     expect(response.status).toBe(409);
     expect(await errorCodeOf(response)).toBe('conflict');
     expect(await rowsFor(person.accountId)).toHaveLength(0);
+  });
+
+  test('プライバシーポリシーの版だけが古い画面の同意は 409 で、行を増やさない', async () => {
+    const person = await createLoginPerson();
+    const response = await post(app, consentRecord, {
+      token: person.token,
+      body: { terms_version: TERMS_VERSION, privacy_version: OLD },
+    });
+    expect(response.status).toBe(409);
+    expect(await rowsFor(person.accountId)).toHaveLength(0);
+  });
+
+  test('旧版の行と現在版の行があれば最新は現在版で、record を重ねても行は増えない', async () => {
+    const person = await createLoginPerson();
+    await seedConsent(person.accountId, OLD, OLD, '2026-01-01T00:00:00.000Z');
+    await seedConsent(person.accountId, TERMS_VERSION, PRIVACY_VERSION, '2026-10-31T00:00:00.000Z');
+    const status = await post(app, consentStatus, { token: person.token });
+    expect(await status.json()).toEqual({
+      terms_version: TERMS_VERSION,
+      privacy_version: PRIVACY_VERSION,
+      latest: {
+        terms_version: TERMS_VERSION,
+        privacy_version: PRIVACY_VERSION,
+        consented_at: '2026-10-31T00:00:00.000Z',
+      },
+      current: true,
+    });
+    expect((await post(app, consentRecord, { token: person.token, body: CURRENT_INPUT })).status).toBe(200);
+    expect(await rowsFor(person.accountId)).toHaveLength(2);
+  });
+
+  test.each([
+    ['両方が旧版', OLD, OLD],
+    ['規約だけが旧版', OLD, PRIVACY_VERSION],
+    ['プライバシーポリシーだけが旧版', TERMS_VERSION, OLD],
+  ])('最新の同意が%sなら current は false で、record すると新しい行が足される', async (_name, terms, privacy) => {
+    const person = await createLoginPerson();
+    await seedConsent(person.accountId, terms, privacy, '2026-01-01T00:00:00.000Z');
+    const before = await post(app, consentStatus, { token: person.token });
+    expect(await before.json()).toMatchObject({
+      latest: { terms_version: terms, privacy_version: privacy, consented_at: '2026-01-01T00:00:00.000Z' },
+      current: false,
+    });
+    expect((await post(app, consentRecord, { token: person.token, body: CURRENT_INPUT })).status).toBe(200);
+    expect(await rowsFor(person.accountId)).toHaveLength(2);
+    const after = await post(app, consentStatus, { token: person.token });
+    expect(await after.json()).toMatchObject({ current: true });
+  });
+
+  test('同じ同意を同時に送っても、すべて 200 で行は 1 つ', async () => {
+    const person = await createLoginPerson();
+    const responses = await Promise.all(
+      Array.from({ length: 5 }, () => post(app, consentRecord, { token: person.token, body: CURRENT_INPUT })),
+    );
+    expect(responses.map((response) => response.status)).toEqual([200, 200, 200, 200, 200]);
+    expect(await rowsFor(person.accountId)).toHaveLength(1);
   });
 
   test('API トークンでは record が 403', async () => {

@@ -28,7 +28,10 @@ const screens: {
   {
     screen: 'consent',
     path: '/consent',
-    ready: (page) => [page.getByRole('heading', { level: 1, name: '同意の確認' })],
+    ready: (page) => [
+      page.getByRole('heading', { level: 1, name: '同意の確認' }),
+      page.getByRole('checkbox', { name: '利用規約とプライバシーポリシーを確認し、同意します' }),
+    ],
   },
   {
     screen: 'today',
