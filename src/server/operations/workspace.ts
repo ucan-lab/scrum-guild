@@ -117,7 +117,6 @@ export const workspaceCreateOperation = implement(workspaceCreate, async ({ db, 
     name: input.name,
     // 検証のときに正規の名前にそろっている（timezoneSchema）
     timezone: input.timezone,
-    vocabulary: input.vocabulary,
   });
   const ids = { leaderUserId: leader.id, actorUserId };
   const results = await db.batch([
@@ -303,16 +302,14 @@ export const workspaceInfoOperation = implement(workspaceInfo, async ({ db, work
     db.statement((q) =>
       q
         .selectFrom('workspaces')
-        .select(['name', 'vocabulary', 'closed_at', 'definition_of_done_md'])
+        .select(['name', 'closed_at', 'definition_of_done_md'])
         .where('id', '=', workspace.workspaceId)
         .where('organization_id', '=', workspace.organizationId),
     ),
   );
   if (row === undefined) throw new ApiError(404, 'not_found');
-  // vocabulary は列の CHECK が守る値。列挙に無い値が来ても、出力のスキーマ（z.enum）が 500 で止める
   return {
     name: row.name,
-    vocabulary: row.vocabulary as 'game' | 'scrum',
     closed_at: row.closed_at,
     // 書く操作は空を null にそろえるが、空の文字列の行があっても、画面には「空」として渡す
     definition_of_done_md: row.definition_of_done_md === '' ? null : row.definition_of_done_md,

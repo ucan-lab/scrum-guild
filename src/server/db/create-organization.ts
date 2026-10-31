@@ -18,7 +18,7 @@ export type NewOrganization = {
 
 export type CreatedOrganization = { organizationId: string; db: OrganizationDb };
 
-// 言葉づかいは画面の既定（defaultVocabularies）で作る（列の既定は 'game' のままで、マイグレーションは足すだけのため、ここで明示する）。
+// 言葉づかいの列は使わないが、列の既定は 'game' のままでマイグレーションは足すだけのため、スクラムの言葉（defaultVocabularies）を明示して入れる。
 // 人数と添付ファイルの上限、テーマは列の既定の値で作る。
 // slug が重なったときは 'slug_taken'（同時に作られて UNIQUE に当たった場合を含む）。それ以外の失敗は投げる
 export async function insertOrganization(

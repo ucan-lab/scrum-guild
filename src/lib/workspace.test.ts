@@ -4,7 +4,6 @@ import { settleWorkspace, type KnownWorkspace, type WorkspaceView } from './work
 const view = (id: string): WorkspaceView => ({
   id,
   name: '青葉チーム',
-  vocabulary: 'game',
   closedAt: null,
   definitionOfDone: null,
   role: 'member',

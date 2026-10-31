@@ -1,12 +1,9 @@
-import type { Vocabulary } from '../shared/vocabulary.ts';
-
 // ワークスペースの枠（src/routes/[slug]/w/[id]/+layout.ts）が読み込む、今開いているワークスペース。
 // 組織の枠のメニューと上の帯も、page.data から同じ値を読む。role は自分の今のロールで、所属していない管理者では null。
 // definitionOfDone は完成の定義（Markdown）で、空なら null
 export type WorkspaceView = {
   id: string;
   name: string;
-  vocabulary: Vocabulary;
   closedAt: string | null;
   definitionOfDone: string | null;
   role: 'leader' | 'member' | null;

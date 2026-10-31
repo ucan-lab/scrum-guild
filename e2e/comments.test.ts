@@ -13,10 +13,10 @@ const SEED_TASK_URL = '/aoba/w/019a0000-0000-7000-8000-000000000401?task=019a000
 const SEED_TASK_TITLE = '問い合わせテンプレートを整える';
 
 async function addTask(page: Page, title: string): Promise<void> {
-  await page.getByRole('button', { name: '依頼を出す' }).click();
-  const dialog = page.getByRole('dialog', { name: '依頼を出す' });
+  await page.getByRole('button', { name: '起票' }).click();
+  const dialog = page.getByRole('dialog', { name: '起票' });
   await dialog.getByLabel('タイトル').fill(title);
-  await dialog.getByRole('button', { name: '依頼を出す' }).click();
+  await dialog.getByRole('button', { name: '起票' }).click();
   await expect(dialog).toBeHidden();
 }
 
@@ -57,7 +57,7 @@ test.describe('自分のコメント', () => {
     page,
   }) => {
     const collect = await watchViolations(page);
-    await createWorkspace(page, 'コメントのパーティ', 'game');
+    await createWorkspace(page, 'コメントのワークスペース');
     await addTask(page, '手順を確かめる');
     const drawer = await openDrawer(page, '手順を確かめる');
 
@@ -115,7 +115,7 @@ test.describe('自分のコメント', () => {
   });
 
   test('書きかけのコメントは、タブを切り替えても残り、閉じようとすると捨てるかを確かめる', async ({ page }) => {
-    await createWorkspace(page, '書きかけのコメントのパーティ', 'game');
+    await createWorkspace(page, '書きかけのコメントのワークスペース');
     await addTask(page, '書きかけを残す');
     const drawer = await openDrawer(page, '書きかけを残す');
     const input = drawer.getByRole('textbox', { name: 'コメントを書く' });
@@ -152,7 +152,7 @@ test.describe('自分のコメント', () => {
   });
 
   test('一覧を読めるまでは、書く欄と件数を出さない。読めなければ「もう一度試す」で読み直す', async ({ page }) => {
-    await createWorkspace(page, '読めないコメントのパーティ', 'game');
+    await createWorkspace(page, '読めないコメントのワークスペース');
     await addTask(page, '読めないコメント');
     await page.route('**/api/aoba/comment-list', (route) =>
       route.fulfill({ status: 500, json: { error: { code: 'internal', message: 'x' } } }),
@@ -174,7 +174,7 @@ test.describe('自分のコメント', () => {
   test('書いている間にワークスペースが終了したら、書きかけを読み取り専用で残し、理由を添えて「送る」を出さない', async ({
     page,
   }) => {
-    await createWorkspace(page, '途中で閉じるパーティ', 'game');
+    await createWorkspace(page, '途中で閉じるワークスペース');
     await addTask(page, '途中で閉じる依頼');
     const drawer = await openDrawer(page, '途中で閉じる依頼');
     // 送ると 409 の workspace_closed で断られ、枠を読み直すと閉じている
@@ -189,14 +189,16 @@ test.describe('自分のコメント', () => {
     const input = drawer.getByRole('textbox', { name: 'コメントを書く' });
     await input.fill('閉じる前に書きかけた文');
     await drawer.getByRole('button', { name: '送る' }).click();
-    await expect(drawer.getByText('終了したパーティには送れません。書きかけの文は写して残せます。')).toBeVisible();
+    await expect(
+      drawer.getByText('終了したワークスペースには送れません。書きかけの文は写して残せます。'),
+    ).toBeVisible();
     await expect(input).toHaveValue('閉じる前に書きかけた文');
     await expect(input).toHaveAttribute('readonly', '');
     await expect(drawer.getByRole('button', { name: '送る' })).toHaveCount(0);
   });
 
   test('スクラムの言葉: 同じ流れで、文言がスクラムの言葉になる', async ({ page }) => {
-    await createWorkspace(page, 'コメントのチーム', 'scrum');
+    await createWorkspace(page, 'コメントのチーム');
     await page.getByRole('button', { name: '起票' }).click();
     const dialog = page.getByRole('dialog', { name: '起票' });
     await dialog.getByLabel('タイトル').fill('スクラムの言葉で話す');
@@ -224,7 +226,7 @@ test.describe('自分のコメント', () => {
   });
 
   test('送るのに失敗したら、文を欄に残して理由を出す', async ({ page }) => {
-    await createWorkspace(page, '送れないパーティ', 'game');
+    await createWorkspace(page, '送れないワークスペース');
     await addTask(page, '送れない依頼');
     const drawer = await openDrawer(page, '送れない依頼');
     await page.route('**/api/aoba/comment-create', (route) =>
@@ -244,7 +246,7 @@ test.describe('自分のコメント', () => {
   });
 
   test('新しい 50 件より前は、「前のコメントを読む」で一覧の上に足し、読み終えるとボタンを消す', async ({ page }) => {
-    await createWorkspace(page, '前を足すパーティ', 'game');
+    await createWorkspace(page, '前を足すワークスペース');
     await addTask(page, '前を足す依頼');
     // 51 件を書くと回数の上限（10 分に 30 回）に当たるので、一覧の応答を作って返す。先頭は 50 件と続きの位置、続きは古い 1 件
     const at = (n: number) => new Date(Date.UTC(2026, 9, 1, 0, n)).toISOString();
@@ -288,7 +290,7 @@ test.describe('自分のコメント', () => {
   });
 
   test('「前のコメントを読む」で、タスクが消えていたら（404）、引き出しを閉じる', async ({ page }) => {
-    await createWorkspace(page, '前を読むパーティ', 'game');
+    await createWorkspace(page, '前を読むワークスペース');
     await addTask(page, '前を読む依頼');
     // 先頭の読みには続きがあるように見せ、続きの読みはタスクが消えたときの 404 にする
     await page.route('**/api/aoba/comment-list', async (route) => {
@@ -310,7 +312,7 @@ test.describe('自分のコメント', () => {
   });
 
   test('直している途中にワークスペースが終了したら、「保存」を出さず、書きかけを残す', async ({ page }) => {
-    await createWorkspace(page, '直す途中で閉じるパーティ', 'game');
+    await createWorkspace(page, '直す途中で閉じるワークスペース');
     await addTask(page, '直す途中で閉じる依頼');
     const drawer = await openDrawer(page, '直す途中で閉じる依頼');
     const comment = await sendComment(drawer, '閉じる前に書いた文');
@@ -327,13 +329,13 @@ test.describe('自分のコメント', () => {
       await route.fulfill({ response, json: { ...body, closed_at: '2026-10-20T00:00:00.000Z' } });
     });
     await comment.getByRole('button', { name: '保存', exact: true }).click();
-    await expect(comment.getByText('終了したパーティには書き込めません', { exact: false })).toBeVisible();
+    await expect(comment.getByText('終了したワークスペースには書き込めません', { exact: false })).toBeVisible();
     await expect(comment.getByRole('button', { name: '保存', exact: true })).toHaveCount(0);
     await expect(edit).toHaveValue('閉じた後に直そうとした文');
   });
 
   test('終了したワークスペースでは、コメントを読めるが、書く欄と操作を出さない', async ({ page }) => {
-    await createWorkspace(page, 'コメントを閉じるパーティ', 'game');
+    await createWorkspace(page, 'コメントを閉じるワークスペース');
     await addTask(page, '閉じた後に読む');
     let drawer = await openDrawer(page, '閉じた後に読む');
     await sendComment(drawer, '閉じる前に書いた文');

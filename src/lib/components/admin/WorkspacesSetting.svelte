@@ -4,7 +4,6 @@
   import { tick } from 'svelte';
   import { workspaceList, workspaceReopen } from '../../../shared/operations/workspace/index.ts';
   import type { OutputOf } from '../../../shared/operations/define.ts';
-  import type { Vocabulary } from '../../../shared/vocabulary.ts';
   import { callOperation } from '../../api.ts';
   import { formatLocalDate } from '../../format.ts';
   import { isUnauthenticated, loginUrl } from '../../login-redirect.ts';
@@ -31,12 +30,10 @@
   let {
     slug,
     meId,
-    organizationVocabulary,
     onopencount,
   }: {
     slug: string;
     meId: string;
-    organizationVocabulary: Vocabulary;
     onopencount: (count: number | null) => void;
   } = $props();
 
@@ -238,7 +235,7 @@
   <span class="visually-hidden" role="status">{status}</span>
 </Setting>
 
-<WorkspaceCreateDialog bind:this={createDialog} {slug} {meId} {organizationVocabulary} />
+<WorkspaceCreateDialog bind:this={createDialog} {slug} {meId} />
 <WorkspaceCloseDialog
   bind:this={closeDialog}
   {slug}

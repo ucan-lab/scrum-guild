@@ -10,14 +10,13 @@ const theme = z.enum(themes);
 export const organizationInfo = defineOperation({
   name: 'organization',
   description:
-    '組織の名前、言葉づかい、既定のテーマと、この組織での自分、所属するワークスペースを返す。呼ぶと last_seen_at を書く（1時間に1回まで）',
+    '組織の名前、既定のテーマと、この組織での自分、所属するワークスペースを返す。呼ぶと last_seen_at を書く（1時間に1回まで）',
   mode: 'read',
   permission: 'organization',
   input: z.object({}),
   output: z.object({
     organization: z.object({
       name: z.string(),
-      vocabulary: z.enum(['game', 'scrum']),
       theme,
       // 組織にワークスペースが1つでもあるか（所属していないものと、閉じたものを含む）。最初のワークスペースを作る案内の判定に使う
       has_workspaces: z.boolean(),

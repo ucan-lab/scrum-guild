@@ -14,18 +14,18 @@ test.beforeEach(async ({ context, baseURL }) => {
 });
 
 async function addTask(page: Page, title: string, options: { assignee?: string; parent?: string } = {}) {
-  await page.getByRole('button', { name: '依頼を出す' }).click();
-  const dialog = page.getByRole('dialog', { name: '依頼を出す' });
+  await page.getByRole('button', { name: '起票' }).click();
+  const dialog = page.getByRole('dialog', { name: '起票' });
   await dialog.getByLabel('タイトル').fill(title);
   if (options.assignee !== undefined) {
-    const assignee = dialog.getByRole('combobox', { name: '担い手' });
+    const assignee = dialog.getByRole('combobox', { name: '担当' });
     await expect(assignee.getByRole('option', { name: options.assignee })).toBeAttached();
     await assignee.selectOption({ label: options.assignee });
   }
   if (options.parent !== undefined) {
-    await dialog.getByRole('combobox', { name: '親の達成目標' }).selectOption({ label: options.parent });
+    await dialog.getByRole('combobox', { name: '親のストーリー' }).selectOption({ label: options.parent });
   }
-  await dialog.getByRole('button', { name: '依頼を出す' }).click();
+  await dialog.getByRole('button', { name: '起票' }).click();
   await expect(dialog).toBeHidden();
 }
 
@@ -47,19 +47,19 @@ function taskTitles(page: Page) {
 }
 
 function filterBar(page: Page) {
-  return page.getByRole('search', { name: '掲示板の絞り込み' });
+  return page.getByRole('search', { name: 'バックログの絞り込み' });
 }
 
-test('担い手、レイド、検索で絞り、URL に残る。絞っている間は並べ替えを出さない。当たるものが無ければ外す操作と一緒に出す', async ({
+test('担当、エピック、検索で絞り、URL に残る。絞っている間は並べ替えを出さない。当たるものが無ければ外す操作と一緒に出す', async ({
   page,
 }) => {
   const collect = await watchViolations(page);
-  await createWorkspace(page, '絞り込みパーティ', 'game');
+  await createWorkspace(page, '絞り込みワークスペース');
   // 何も無いときの最初の一歩には、帯を出さない
-  await expect(page.getByText('まだクエストがありません')).toBeVisible();
+  await expect(page.getByText('まだタスクがありません')).toBeVisible();
   await expect(filterBar(page)).toHaveCount(0);
   // 空の一覧には線画が出る。読み上げから外れ、文とボタンを押し出さない大きさに収まる
-  const emptyArt = page.locator('.empty', { hasText: 'まだクエストがありません' }).locator('svg.art');
+  const emptyArt = page.locator('.empty', { hasText: 'まだタスクがありません' }).locator('svg.art');
   await expect(emptyArt).toBeVisible();
   await expect(emptyArt).toHaveAttribute('aria-hidden', 'true');
   await expect(emptyArt.locator('use')).toHaveAttribute('href', '#a-notice');
@@ -69,8 +69,8 @@ test('担い手、レイド、検索で絞り、URL に残る。絞っている�
   expect(box?.width).toBeGreaterThan(48);
   expect(box?.width).toBeLessThanOrEqual(64);
 
-  await create(page, 'レイドを作る', '会員ポイント制度を公開する');
-  await create(page, '達成目標を作る', '見積もりを整える');
+  await create(page, 'エピックを作る', '会員ポイント制度を公開する');
+  await create(page, 'ストーリーを作る', '見積もりを整える');
   await addTask(page, 'ポイント表示の API を作る', { assignee: 'ミナト' });
   await addTask(page, '請求書を出す');
   await addTask(page, '議事録をまとめる');
@@ -89,9 +89,9 @@ test('担い手、レイド、検索で絞り、URL に残る。絞っている�
   await expect(page.locator('.entry .grip').first()).toBeVisible();
   await expect(page.locator('.drag-note')).toBeVisible();
 
-  // 担い手の「自分」で絞る。すぐ読み直し、URL に残る。当たるタスクの無い達成目標とレイドは出さない
-  const assignee = bar.getByRole('combobox', { name: '担い手' });
-  await expect(assignee.getByRole('option')).toHaveText(['担い手: すべて', '自分', 'ミナト', '担い手なし']);
+  // 担当の「自分」で絞る。すぐ読み直し、URL に残る。当たるタスクの無いストーリーとエピックは出さない
+  const assignee = bar.getByRole('combobox', { name: '担当' });
+  await expect(assignee.getByRole('option')).toHaveText(['担当: すべて', '自分', 'ミナト', '担当なし']);
   await assignee.selectOption({ label: '自分' });
   await expect(page).toHaveURL(/\?assignee=me$/);
   await expect(taskTitles(page)).toHaveText(['ポイント表示の API を作る']);
@@ -107,7 +107,7 @@ test('担い手、レイド、検索で絞り、URL に残る。絞っている�
   await expect(page.locator('.drag-note')).toHaveCount(0);
   // 結果を読み上げ、ポイントと件数が絞る前の値であることを添える
   await expect(page.getByRole('status').filter({ hasText: '1 件に絞りました' })).toBeAttached();
-  await expect(page.getByText('難易度と件数は、絞る前の全体の値です')).toBeVisible();
+  await expect(page.getByText('ポイントと件数は、絞る前の全体の値です')).toBeVisible();
 
   // 再読み込みしても、同じ絞り込みで出る
   await page.reload();
@@ -126,13 +126,13 @@ test('担い手、レイド、検索で絞り、URL に残る。絞っている�
   await search.fill('api');
   await expect(page).toHaveURL(/\?q=api$/);
   await expect(taskTitles(page)).toHaveText(['ポイント表示の API を作る']);
-  // 達成目標の題に当たれば、配下のクエストも出す
+  // ストーリーの題に当たれば、配下のタスクも出す
   await search.fill('を整える');
   await expect(taskTitles(page)).toHaveText(['見積もりを送る']);
   await expect(page.getByRole('button', { name: '見積もりを整える', exact: true })).toBeVisible();
 
-  // 担い手なしと検索を組み合わせる（「かつ」）
-  await assignee.selectOption({ label: '担い手なし' });
+  // 担当なしと検索を組み合わせる（「かつ」）
+  await assignee.selectOption({ label: '担当なし' });
   await search.fill('請求');
   await expect(page).toHaveURL(/assignee=none/);
   await expect(page).toHaveURL(/q=%E8%AB%8B%E6%B1%82/);
@@ -143,14 +143,14 @@ test('担い手、レイド、検索で絞り、URL に残る。絞っている�
   const other = await page.context().newPage();
   await other.goto(link);
   await expect(other.locator('.tree .entry-title')).toHaveText(['請求書を出す']);
-  await expect(other.getByRole('combobox', { name: '担い手' })).toHaveValue('none');
+  await expect(other.getByRole('combobox', { name: '担当' })).toHaveValue('none');
   await expect(other.getByRole('searchbox', { name: 'タイトルで探す' })).toHaveValue('請求');
   await other.close();
 
   // 上限を超えた検索の文字は送らず、理由を出す。ほかの欄を変えて木を読み直しても、欄の文字は巻き戻さない
   await search.fill('a b c d e f');
   await expect(bar.getByRole('alert')).toHaveText('検索の語は 5 つまでです');
-  await assignee.selectOption({ label: '担い手: すべて' });
+  await assignee.selectOption({ label: '担当: すべて' });
   await expect(page).toHaveURL(/\?q=%E8%AB%8B%E6%B1%82$/);
   await expect(taskTitles(page)).toHaveText(['請求書を出す']);
   await expect(search).toHaveValue('a b c d e f');
@@ -165,14 +165,14 @@ test('担い手、レイド、検索で絞り、URL に残る。絞っている�
   await expect(search).toBeFocused();
   await expect(search).toHaveValue('');
 
-  // レイドで絞ると、そのレイドだけを出す（配下が無くても出す）。親のないクエストは出さない
-  await bar.getByRole('combobox', { name: 'レイド' }).selectOption({ label: '会員ポイント制度を公開する' });
+  // エピックで絞ると、そのエピックだけを出す（配下が無くても出す）。親のないタスクは出さない
+  await bar.getByRole('combobox', { name: 'エピック' }).selectOption({ label: '会員ポイント制度を公開する' });
   await expect(page.getByRole('link', { name: '会員ポイント制度を公開する', exact: true })).toBeVisible();
-  await expect(page.getByText('達成目標はまだありません')).toBeVisible();
+  await expect(page.getByText('ストーリーはまだありません')).toBeVisible();
   await expect(taskTitles(page)).toHaveCount(0);
 
   // 行のリンクは絞り込みを残して引き出しを開く
-  await bar.getByRole('combobox', { name: 'レイド' }).selectOption({ label: 'レイドなし' });
+  await bar.getByRole('combobox', { name: 'エピック' }).selectOption({ label: 'エピックなし' });
   await expect(taskTitles(page)).toHaveCount(4);
   await page.getByRole('link', { name: '請求書を出す' }).click();
   await expect(page).toHaveURL(/\?epic=none&task=[0-9a-f-]{36}$/);
@@ -180,70 +180,70 @@ test('担い手、レイド、検索で絞り、URL に残る。絞っている�
   expect(await collect()).toEqual([]);
 });
 
-test('絞っているときに作ったクエストや達成目標が当たらなければ、絞り込みを外す操作つきのトーストで知らせる', async ({
+test('絞っているときに作ったタスクやストーリーが当たらなければ、絞り込みを外す操作つきのトーストで知らせる', async ({
   page,
 }) => {
   const collect = await watchViolations(page);
-  await createWorkspace(page, '絞り込みと起票のパーティ', 'game');
-  await addTask(page, '自分のクエスト', { assignee: 'ミナト' });
+  await createWorkspace(page, '絞り込みと起票のワークスペース');
+  await addTask(page, '自分のタスク', { assignee: 'ミナト' });
   const bar = filterBar(page);
-  await bar.getByRole('combobox', { name: '担い手' }).selectOption({ label: '自分' });
+  await bar.getByRole('combobox', { name: '担当' }).selectOption({ label: '自分' });
   await expect(page).toHaveURL(/\?assignee=me$/);
 
   // 当たるものは、読み直した木に出し、作ったことだけを知らせる（絞る前に作った知らせを消すため読み直す）
   await page.reload();
-  const added = page.getByRole('status').filter({ hasText: '掲示板の末尾に足しました' });
+  const added = page.getByRole('status').filter({ hasText: 'バックログの末尾に足しました' });
   await expect(added).toHaveCount(0);
   await addTask(page, '自分のもう1つ', { assignee: 'ミナト' });
-  await expect(taskTitles(page)).toHaveText(['自分のクエスト', '自分のもう1つ']);
+  await expect(taskTitles(page)).toHaveText(['自分のタスク', '自分のもう1つ']);
   await expect(added).toBeVisible();
   const notice = page.getByRole('status').filter({ hasText: '作りました。絞り込みに当たらないので表示していません' });
   await expect(notice).toHaveCount(0);
 
-  // 当たらないクエストは出さず、「表示していません」の1つだけで知らせる（作った知らせは重ねない）
+  // 当たらないタスクは出さず、「表示していません」の1つだけで知らせる（作った知らせは重ねない）
   await page.reload();
-  await addTask(page, '誰かのクエスト');
+  await addTask(page, '誰かのタスク');
   await expect(notice).toBeVisible();
   await expect(added).toHaveCount(0);
-  await expect(taskTitles(page)).toHaveText(['自分のクエスト', '自分のもう1つ']);
+  await expect(taskTitles(page)).toHaveText(['自分のタスク', '自分のもう1つ']);
 
-  // 達成目標も同じ（担い手で絞っているので、配下の無い達成目標は当たらない）。前のトーストを消すため読み直す（絞り込みは残る）
+  // ストーリーも同じ（担当で絞っているので、配下の無いストーリーは当たらない）。前のトーストを消すため読み直す（絞り込みは残る）
   await page.reload();
   await expect(notice).toHaveCount(0);
-  await create(page, '達成目標を作る', '新しい目標');
+  await create(page, 'ストーリーを作る', '新しい目標');
   await expect(notice).toBeVisible();
-  await expect(page.getByRole('status').filter({ hasText: '達成目標を作りました' })).toHaveCount(0);
+  await expect(page.getByRole('status').filter({ hasText: 'ストーリーを作りました' })).toHaveCount(0);
   await expect(page.getByRole('button', { name: '新しい目標', exact: true })).toHaveCount(0);
 
   // トーストの「絞り込みを外す」で外すと、作ったものが出る
   await notice.getByRole('button', { name: '絞り込みを外す' }).click();
   await expect(notice).toHaveCount(0);
   await expect(page).toHaveURL(/\/w\/[0-9a-f-]{36}$/);
-  await expect(taskTitles(page)).toHaveText(['自分のクエスト', '自分のもう1つ', '誰かのクエスト']);
+  await expect(taskTitles(page)).toHaveText(['自分のタスク', '自分のもう1つ', '誰かのタスク']);
   await expect(page.getByRole('button', { name: '新しい目標', exact: true })).toBeVisible();
 
-  // 絞り込みは戻る操作の履歴を積まない。戻ると、絞り込みの手前（掲示板）ではなく、その前の画面（パーティを作った管理の画面）へ戻る
+  // 絞り込みは戻る操作の履歴を積まない。戻ると、絞り込みの手前（バックログ）ではなく、その前の画面（ワークスペースを作った管理の画面）へ戻る
   await page.goBack();
   await expect(page).toHaveURL(/\/aoba\/admin$/);
   expect(await collect()).toEqual([]);
 });
 
-test('絞っているときに、木に出ていない達成目標へ親を移すと、通った後に木を読み直して移した先の下に出す', async ({
+test('絞っているときに、木に出ていないストーリーへ親を移すと、通った後に木を読み直して移した先の下に出す', async ({
   page,
 }) => {
   const collect = await watchViolations(page);
-  await createWorkspace(page, '絞り込みと親の移動のパーティ', 'game');
-  await create(page, '達成目標を作る', '配下の無い目標');
-  await addTask(page, '自分のクエスト', { assignee: 'ミナト' });
+  await createWorkspace(page, '絞り込みと親の移動のワークスペース');
+  await create(page, 'ストーリーを作る', '配下の無い目標');
+  await addTask(page, '自分のタスク', { assignee: 'ミナト' });
   await addTask(page, '自分の2つ目', { assignee: 'ミナト' });
-  await filterBar(page).getByRole('combobox', { name: '担い手' }).selectOption({ label: '自分' });
+  await filterBar(page).getByRole('combobox', { name: '担当' }).selectOption({ label: '自分' });
   await expect(page).toHaveURL(/\?assignee=me$/);
-  // 配下に当たるクエストの無い達成目標は、担い手で絞ると出ない
+  // 配下に当たるタスクの無いストーリーは、担当で絞ると出ない
   await expect(page.getByRole('button', { name: '配下の無い目標', exact: true })).toHaveCount(0);
 
-  // 親の候補には、木に出ていない達成目標も出る
-  await page.getByRole('button', { name: '親を移す: 自分のクエスト' }).click();
-  const dialog = page.getByRole('dialog', { name: '「自分のクエスト」の親を移す' });
+  // 親の候補には、木に出ていないストーリーも出る
+  await page.getByRole('button', { name: '親を移す: 自分のタスク' }).click();
+  const dialog = page.getByRole('dialog', { name: '「自分のタスク」の親を移す' });
   await dialog.getByLabel('移す先').selectOption({ label: '配下の無い目標' });
   // 移す要求を止めておき、通った後の読み直し（フォーカスを失っていれば見出しへ移す）より前の状態を確かめる
   let release: () => void = () => {};
@@ -252,20 +252,20 @@ test('絞っているときに、木に出ていない達成目標へ親を移�
     await held;
     await call.passThrough();
   });
-  const opener = page.getByRole('button', { name: '親を移す: 自分のクエスト' });
+  const opener = page.getByRole('button', { name: '親を移す: 自分のタスク' });
   await dialog.getByRole('button', { name: '移す' }).click();
   await expect(dialog).toBeHidden();
-  // 移した行は、木に出ていない達成目標の下へ移るので、読み直すまで画面から消え、ダイアログを開いた「親を移す」も無くなる。
+  // 移した行は、木に出ていないストーリーの下へ移るので、読み直すまで画面から消え、ダイアログを開いた「親を移す」も無くなる。
   // 閉じたときに戻る先が無いので、Dialog が画面の見出しへフォーカスを移す
   await expect(opener).toHaveCount(0);
-  await expect(page.getByRole('heading', { level: 1, name: '掲示板' })).toBeFocused();
+  await expect(page.getByRole('heading', { level: 1, name: 'バックログ' })).toBeFocused();
   release();
-  // 通った後に読み直すので、移した先の達成目標が当たるようになり、その下に出る。もう1つは親なしのまま
+  // 通った後に読み直すので、移した先のストーリーが当たるようになり、その下に出る。もう1つは親なしのまま
   await expect(page.getByRole('button', { name: '配下の無い目標', exact: true })).toBeVisible();
-  await expect(taskTitles(page)).toHaveText(['自分のクエスト', '自分の2つ目']);
+  await expect(taskTitles(page)).toHaveText(['自分のタスク', '自分の2つ目']);
   // 再読み込みしても同じ（サーバーに通っている）
   await page.reload();
   await expect(page.getByRole('button', { name: '配下の無い目標', exact: true })).toBeVisible();
-  await expect(taskTitles(page)).toHaveText(['自分のクエスト', '自分の2つ目']);
+  await expect(taskTitles(page)).toHaveText(['自分のタスク', '自分の2つ目']);
   expect(await collect()).toEqual([]);
 });

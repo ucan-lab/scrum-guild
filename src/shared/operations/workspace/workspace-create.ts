@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { idSchema } from '../../id.ts';
 import { timezoneSchema } from '../../timezone.ts';
-import { workspaceNameSchema, workspaceVocabularySchema } from '../../workspace.ts';
+import { workspaceNameSchema } from '../../workspace.ts';
 import { defineOperation } from '../define.ts';
 
 // 作ると同時に、既定の列、決まった欄、換算比率、最初のリーダーの所属を書く（1回の batch）。
@@ -11,13 +11,12 @@ import { defineOperation } from '../define.ts';
 export const workspaceCreate = defineOperation({
   name: 'workspace-create',
   description:
-    'ワークスペースを作る。名前、タイムゾーン、言葉づかい、最初のリーダーを指す。既定の列、決まった欄、換算比率（1ポイント = 4時間）、週の始まり（月曜）も同時に入れる',
+    'ワークスペースを作る。名前、タイムゾーン、最初のリーダーを指す。既定の列、決まった欄、換算比率（1ポイント = 4時間）、週の始まり（月曜）も同時に入れる',
   mode: 'write',
   permission: 'admin',
   input: z.object({
     name: workspaceNameSchema,
     timezone: timezoneSchema,
-    vocabulary: workspaceVocabularySchema,
     leader_user_id: idSchema,
   }),
   output: z.object({ workspace_id: z.string() }),

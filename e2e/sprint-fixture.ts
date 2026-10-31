@@ -36,7 +36,7 @@ export const SAMPLE_BOARD: Board = {
   columns: [
     {
       id: '019a0000-0000-7000-8000-00000000f101',
-      name: '出発前',
+      name: '未着手',
       is_done: false,
       tasks: [
         card('019a0000-0000-7000-8000-00000000f201', '管理画面にポイント履歴の一覧を出す', {
@@ -52,7 +52,7 @@ export const SAMPLE_BOARD: Board = {
     },
     {
       id: '019a0000-0000-7000-8000-00000000f102',
-      name: '遂行中',
+      name: '作業中',
       is_done: false,
       tasks: [
         card('019a0000-0000-7000-8000-00000000f203', 'ポイント付与のバッチを作る', {
@@ -61,7 +61,7 @@ export const SAMPLE_BOARD: Board = {
         }),
       ],
     },
-    { id: '019a0000-0000-7000-8000-00000000f103', name: '査定中', is_done: false, tasks: [] },
+    { id: '019a0000-0000-7000-8000-00000000f103', name: 'レビュー', is_done: false, tasks: [] },
     {
       id: '019a0000-0000-7000-8000-00000000f104',
       name: null,
@@ -78,8 +78,8 @@ export const SAMPLE_BOARD: Board = {
   ],
 };
 
-// SAMPLE_BOARD の遠征が最終日を過ぎた日（today）の計画の画面。進行中の遠征の下に、終えるときの持ち越し先になる先の遠征が1つ。
-// 進行中の遠征の未完了のクエストは2件（出発前の1件と遂行中の1件）、完遂は1件
+// SAMPLE_BOARD のスプリントが最終日を過ぎた日（today）の計画の画面。進行中のスプリントの下に、終えるときの持ち越し先になる先のスプリントが1つ。
+// 進行中のスプリントの未完了のタスクは2件（未着手の1件と作業中の1件）、完了は1件
 export const OVERDUE_TODAY = '2026-11-02';
 
 export const OVERDUE_BOARD: Board = { ...SAMPLE_BOARD, today: OVERDUE_TODAY };

@@ -49,12 +49,7 @@ SQ.mount("settings", () => `
         <label class="field" for="tz"><span class="field-label">タイムゾーン</span><select class="select" id="tz">${TZ.map((z) => `<option ${z === D.settings.timezone ? "selected" : ""}>${z}</option>`).join("")}</select></label>
       </div>
       <div class="field"><span class="field-label">週の始まり</span><div class="segmented" role="radiogroup">${WEEK.map((w, i) => `<label><input type="radio" name="ws" ${i === D.settings.weekStart ? "checked" : ""}><span>${w}</span></label>`).join("")}</div></div>`)}
-    ${setting("言葉づかい", `切り替わるのは言葉だけで、経験値や報酬の仕組みはどちらでも同じです。`, `
-      <div class="choice-list">
-        <label class="choice"><input type="radio" name="vocab"><div><b>ゲームの言葉</b><span>レイド、達成目標、クエスト、遠征、討伐隊、依頼主、受注</span></div></label>
-        <label class="choice"><input type="radio" name="vocab" checked><div><b>スクラムの言葉</b><span>エピック、ストーリー、タスク、スプリント、参加者、作成者、参加</span></div></label>
-      </div>`)}
-    ${setting(t("column"), `${t("sprint")}の${t("column")}。名前は言葉づかいを切り替えても訳しません。${t("task")}が残っている${t("column")}を削除するときは移し先を選びます。`,
+    ${setting(t("column"), `${t("sprint")}の${t("column")}。名前は付けたままで、訳しません。${t("task")}が残っている${t("column")}を削除するときは移し先を選びます。`,
       orderList(D.columns.filter((c) => !c.done).map((c) => c.name), { fixed: `${icon("check")} ${t("done")}`, lockLast: true }) +
       `<div><button class="btn is-sm" type="button">${icon("plus")}${t("column")}を足す</button></div>`)}
     ${setting(`${t("detail")}の決まった欄`, `${t("task")}ごとに書く欄。${t("task")}を完了にした時点ですべて埋まっていると、最後に書いた人に経験値が付きます。`,

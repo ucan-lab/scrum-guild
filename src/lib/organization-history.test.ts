@@ -11,7 +11,7 @@ const game = translator('game');
 const scrum = translator('scrum');
 
 describe('historyEventText', () => {
-  test('種類ごとに、ゲームの言葉とスクラムの言葉の文を作る', () => {
+  test('種類ごとに、辞書の文を作る', () => {
     const cases: [HistoryEntry['event'], string, string][] = [
       [
         { kind: 'organization_created', name: 'あおば開発' },

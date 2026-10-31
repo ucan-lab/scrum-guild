@@ -5,8 +5,8 @@
 // 最後の完了でない列から次の列へ送ると完了になり、完了の列のカードは「戻す」で完了の前の列へ戻る。完了の列には完成の定義が出る。
 // 自分のワークスペースを作って動かす（ほかのファイルと並べて走るため、seed の行は書き換えない）。
 // 空の状態は seed のあおば開発（進行中のスプリントが無い）を開くだけ。
-// 終える流れは、リーダーが終了のダイアログで持ち越し先（次の遠征かバックログ）とゴールの達成を選んで終え、計画の画面とバックログで移ったのを見る。
-// 最終日を過ぎた知らせは、sprint-board と sprint-list の応答を差し替えて確かめる（開始は最終日が今日以降の遠征にしか出来ないため）
+// 終える流れは、リーダーが終了のダイアログで持ち越し先（次のスプリントかバックログ）とゴールの達成を選んで終え、計画の画面とバックログで移ったのを見る。
+// 最終日を過ぎた知らせは、sprint-board と sprint-list の応答を差し替えて確かめる（開始は最終日が今日以降のスプリントにしか出来ないため）
 import type { Page } from '@playwright/test';
 import { sprintBoard, sprintClose, sprintList, taskColumnMove } from '../src/shared/operations/sprint/index.ts';
 import { taskComplete, taskReopen } from '../src/shared/operations/task/index.ts';
@@ -21,17 +21,17 @@ const AOBA_TEAM = '/aoba/w/019a0000-0000-7000-8000-000000000401';
 const GOAL = '先方の運用担当が、付与の履歴を自分で追えるようにする';
 
 async function addTask(page: Page, title: string): Promise<void> {
-  await page.getByRole('button', { name: '依頼を出す' }).click();
-  const dialog = page.getByRole('dialog', { name: '依頼を出す' });
+  await page.getByRole('button', { name: '起票' }).click();
+  const dialog = page.getByRole('dialog', { name: '起票' });
   await dialog.getByLabel('タイトル').fill(title);
-  await dialog.getByRole('button', { name: '依頼を出す' }).click();
+  await dialog.getByRole('button', { name: '起票' }).click();
   await expect(dialog).toBeHidden();
   await expect(page.locator('.entry', { hasText: title })).toBeVisible();
 }
 
 async function createSprint(page: Page, startOn: string, name: string): Promise<void> {
-  await page.getByRole('button', { name: '遠征を作る' }).click();
-  const dialog = page.getByRole('dialog', { name: '遠征を作る' });
+  await page.getByRole('button', { name: 'スプリントを作る' }).click();
+  const dialog = page.getByRole('dialog', { name: 'スプリントを作る' });
   await dialog.getByLabel('開始日').fill(startOn);
   await dialog.getByLabel('長さ（日）').fill('14');
   await dialog.getByLabel('名前（任意）').fill(name);
@@ -44,7 +44,7 @@ async function createSprint(page: Page, startOn: string, name: string): Promise<
 const titlesIn = (page: Page, column: string) =>
   page.getByRole('region', { name: column, exact: true }).locator('.card-title');
 
-test('リーダーはゴールを書いて遠征を始め、2つ目は始められず、カードをボタンとキーで動かし、読み直しても同じ', async ({
+test('リーダーはゴールを書いてスプリントを始め、2つ目は始められず、カードをボタンとキーで動かし、読み直しても同じ', async ({
   page,
   context,
   baseURL,
@@ -54,62 +54,64 @@ test('リーダーはゴールを書いて遠征を始め、2つ目は始めら�
   test.setTimeout(90_000);
   await signIn(context, baseURL, 'admin');
   const collect = await watchViolations(page);
-  await createWorkspace(page, '出発の見張り番', 'game');
+  await createWorkspace(page, '出発の見張り番');
 
-  // クエストを3件起票する
+  // タスクを3件起票する
   for (const title of ['A札', 'B札', 'C札']) await addTask(page, title);
 
-  // 遠征を2つ作り、先の遠征に3件入れる
-  await page.getByRole('link', { name: '遠征の計画' }).click();
-  await expect(page.getByRole('heading', { level: 1, name: '遠征の計画' })).toBeVisible();
+  // スプリントを2つ作り、先のスプリントに3件入れる
+  await page.getByRole('link', { name: '計画' }).click();
+  await expect(page.getByRole('heading', { level: 1, name: '計画' })).toBeVisible();
   // 最終日が今日より前のスプリントは始められないので、遠い先の期間にする
   await createSprint(page, '2099-03-01', '第1回');
   await createSprint(page, '2099-03-15', '第2回');
-  await page.getByRole('button', { name: '掲示板から入れる: 遠征 第1回' }).click();
-  const picker = page.getByRole('dialog', { name: '遠征 第1回 に入れる' });
-  const list = picker.getByRole('group', { name: '入れるクエスト' });
+  await page.getByRole('button', { name: 'バックログから入れる: スプリント 第1回' }).click();
+  const picker = page.getByRole('dialog', { name: 'スプリント 第1回 に入れる' });
+  const list = picker.getByRole('group', { name: '入れるタスク' });
   for (const title of ['A札', 'B札', 'C札'])
     await list.getByRole('checkbox', { name: new RegExp(`^${title}`) }).check();
   await picker.getByRole('button', { name: '3 件入れる' }).click();
   await expect(picker).toBeHidden();
   await expect(page.locator('.lane').first().locator('.lane-row a')).toHaveText(['A札', 'B札', 'C札']);
 
-  // 2つ目の遠征の「始める」を開いておき、その間に別の画面で1つ目を始める
-  await page.getByRole('button', { name: '始める: 遠征 第2回' }).click();
-  const secondDialog = page.getByRole('dialog', { name: '遠征を始める' });
+  // 2つ目のスプリントの「始める」を開いておき、その間に別の画面で1つ目を始める
+  await page.getByRole('button', { name: '始める: スプリント 第2回' }).click();
+  const secondDialog = page.getByRole('dialog', { name: 'スプリントを始める' });
   await expect(secondDialog).toContainText(
-    '遠征 第2回（3/15〜3/28）を始めます。入っているクエストは 0 件、0 pt です。',
+    'スプリント 第2回（3/15〜3/28）を始めます。入っているタスクは 0 件、0 pt です。',
   );
   await expect(secondDialog.getByRole('alert')).toHaveCount(0);
 
   const other = await context.newPage();
   await other.goto(page.url());
-  await other.getByRole('button', { name: '始める: 遠征 第1回' }).click();
-  const firstDialog = other.getByRole('dialog', { name: '遠征を始める' });
-  // 入っているクエストは3件、ポイントは未見積もり。始めることはできる
-  await expect(firstDialog).toContainText('遠征 第1回（3/1〜3/14）を始めます。入っているクエストは 3 件、0 pt です。');
+  await other.getByRole('button', { name: '始める: スプリント 第1回' }).click();
+  const firstDialog = other.getByRole('dialog', { name: 'スプリントを始める' });
+  // 入っているタスクは3件、ポイントは未見積もり。始めることはできる
+  await expect(firstDialog).toContainText(
+    'スプリント 第1回（3/1〜3/14）を始めます。入っているタスクは 3 件、0 pt です。',
+  );
   await expect(firstDialog.locator('.callout.is-warn')).toHaveText('未見積もりが 3 件あります。始めることはできます。');
   // ゴールの欄は任意だが、長すぎれば断られる
-  await firstDialog.getByLabel('遠征の目的').fill('あ'.repeat(201));
+  await firstDialog.getByLabel('スプリントゴール').fill('あ'.repeat(201));
   await firstDialog.getByRole('button', { name: '始める' }).click();
-  await expect(firstDialog.getByRole('alert')).toHaveText('遠征の目的は 200 字までです');
-  await firstDialog.getByLabel('遠征の目的').fill(GOAL);
+  await expect(firstDialog.getByRole('alert')).toHaveText('スプリントゴールは 200 字までです');
+  await firstDialog.getByLabel('スプリントゴール').fill(GOAL);
   await firstDialog.getByRole('button', { name: '始める' }).click();
   await expect(firstDialog).toBeHidden();
-  await expect(other.getByRole('status').filter({ hasText: '遠征を始めました' })).toBeVisible();
+  await expect(other.getByRole('status').filter({ hasText: 'スプリントを始めました' })).toBeVisible();
   // 計画の画面には、進行中の印とゴールが出て、「始める」は消える
   const firstLane = other.locator('.lane', { hasText: '第1回' });
   await expect(firstLane.locator('.chip.is-ok')).toHaveText('進行中');
   await expect(firstLane.locator('.lane-goal')).toContainText(GOAL);
-  await expect(other.getByRole('button', { name: '始める: 遠征 第1回' })).toHaveCount(0);
-  // 押した「始める」は消えるので、フォーカスは始めた遠征の見出しへ移る
+  await expect(other.getByRole('button', { name: '始める: スプリント 第1回' })).toHaveCount(0);
+  // 押した「始める」は消えるので、フォーカスは始めたスプリントの見出しへ移る
   await expect(firstLane.locator('.lane-title')).toBeFocused();
   await other.close();
 
   // 開いておいたダイアログから始めようとすると、サーバーが進行中が既にあることを断り、理由がダイアログの中に出る
   await secondDialog.getByRole('button', { name: '始める' }).click();
   await expect(secondDialog.getByRole('alert')).toHaveText(
-    '進行中の遠征があるので、始められません。終えてから始めてください',
+    '進行中のスプリントがあるので、始められません。終えてから始めてください',
   );
   await expect(secondDialog).toBeVisible();
   await expect(secondDialog.getByRole('button', { name: '始める' })).toHaveAttribute('aria-disabled', 'true');
@@ -118,120 +120,120 @@ test('リーダーはゴールを書いて遠征を始め、2つ目は始めら�
 
   // 読み直した画面では、押す前から理由が出る
   await page.reload();
-  await page.getByRole('button', { name: '始める: 遠征 第2回' }).click();
+  await page.getByRole('button', { name: '始める: スプリント 第2回' }).click();
   await expect(secondDialog.getByRole('alert')).toHaveText(
-    '進行中の遠征があるので、始められません。終えてから始めてください',
+    '進行中のスプリントがあるので、始められません。終えてから始めてください',
   );
   await expect(secondDialog.getByRole('button', { name: '始める' })).toHaveAttribute('aria-disabled', 'true');
   await secondDialog.getByRole('button', { name: 'やめる' }).click();
   await expect(secondDialog).toBeHidden();
   await expect(page.locator('.lane', { hasText: '第1回' }).locator('.lane-goal')).toContainText(GOAL);
 
-  // 左のメニューの「遠征」から、スプリントの画面を開く。見出しは遠征の名前、ゴールは貼り紙、列は行程の順で完遂が最後
-  await page.getByRole('link', { name: '遠征', exact: true }).click();
-  await expect(page.getByRole('heading', { level: 1, name: '遠征 第1回' })).toBeVisible();
-  await expect(page).toHaveTitle('遠征 第1回・出発の見張り番 - Scrum Guild');
+  // 左のメニューの「スプリント」から、スプリントの画面を開く。見出しはスプリントの名前、ゴールは貼り紙、列は列の順で完了が最後
+  await page.getByRole('link', { name: 'スプリント', exact: true }).click();
+  await expect(page.getByRole('heading', { level: 1, name: 'スプリント 第1回' })).toBeVisible();
+  await expect(page).toHaveTitle('スプリント 第1回・出発の見張り番 - Scrum Guild');
   await expect(page.locator('.notice-title')).toHaveText(GOAL);
-  await expect(page.locator('.board-col-name')).toHaveText(['出発前', '遂行中', '査定中', '完遂']);
-  await expect(titlesIn(page, '出発前')).toHaveText(['A札', 'B札', 'C札']);
+  await expect(page.locator('.board-col-name')).toHaveText(['未着手', '作業中', 'レビュー', '完了']);
+  await expect(titlesIn(page, '未着手')).toHaveText(['A札', 'B札', 'C札']);
   const card = (title: string) => page.getByRole('article', { name: title, exact: true });
   const status = (text: string | RegExp) => page.getByRole('status').filter({ hasText: text });
-  // 送る移動は、A を右、B を次の行程へ、B を上、B を下、B を上、C を右に2回の7件（端で押したものは送らない）
+  // 送る移動は、A を右、B を次の列へ、B を上、B を下、B を上、C を右に2回の7件（端で押したものは送らない）
   const moved = waitForResponses(page, '/task-column-move', 7);
 
   // カードを選んで Alt と → で隣の列へ移す。移した先の位置が読み上げられ、フォーカスは同じカードに残る
   await card('A札').press('Alt+ArrowRight');
-  await expect(status('「A札」を遂行中の 1 番目に移しました（1 件中）')).toBeVisible();
-  await expect(titlesIn(page, '遂行中')).toHaveText(['A札']);
-  await expect(titlesIn(page, '出発前')).toHaveText(['B札', 'C札']);
+  await expect(status('「A札」を作業中の 1 番目に移しました（1 件中）')).toBeVisible();
+  await expect(titlesIn(page, '作業中')).toHaveText(['A札']);
+  await expect(titlesIn(page, '未着手')).toHaveText(['B札', 'C札']);
   await expect(card('A札')).toBeFocused();
 
   // ボタンでも同じ。移した先の末尾に入る
-  await page.getByRole('button', { name: '次の行程へ: B札' }).click();
-  await expect(status('「B札」を遂行中の 2 番目に移しました（2 件中）')).toBeVisible();
-  await expect(titlesIn(page, '遂行中')).toHaveText(['A札', 'B札']);
+  await page.getByRole('button', { name: '次の列へ: B札' }).click();
+  await expect(status('「B札」を作業中の 2 番目に移しました（2 件中）')).toBeVisible();
+  await expect(titlesIn(page, '作業中')).toHaveText(['A札', 'B札']);
 
   // 列の中の並べ替え。Alt と ↑ で1つ上、端では動かさず、端であることを読み上げる
   await card('B札').press('Alt+ArrowUp');
-  await expect(status('「B札」を遂行中の 1 番目に移しました（2 件中）')).toBeVisible();
-  await expect(titlesIn(page, '遂行中')).toHaveText(['B札', 'A札']);
+  await expect(status('「B札」を作業中の 1 番目に移しました（2 件中）')).toBeVisible();
+  await expect(titlesIn(page, '作業中')).toHaveText(['B札', 'A札']);
   await card('B札').press('Alt+ArrowUp');
   await expect(status('いちばん上です')).toBeVisible();
   await card('A札').press('Alt+ArrowDown');
   await expect(status('いちばん下です')).toBeVisible();
   await page.getByRole('button', { name: '下へ: B札' }).click();
-  await expect(titlesIn(page, '遂行中')).toHaveText(['A札', 'B札']);
+  await expect(titlesIn(page, '作業中')).toHaveText(['A札', 'B札']);
   await page.getByRole('button', { name: '上へ: B札' }).click();
-  await expect(titlesIn(page, '遂行中')).toHaveText(['B札', 'A札']);
+  await expect(titlesIn(page, '作業中')).toHaveText(['B札', 'A札']);
 
-  // 最後の完了でない列から先（完遂の列）へ Alt と → で送ると、完遂にする（task-column-move では移さない）
+  // 最後の完了でない列から先（完了の列）へ Alt と → で送ると、完了にする（task-column-move では移さない）
   await card('C札').press('Alt+ArrowRight');
   await card('C札').press('Alt+ArrowRight');
-  await expect(titlesIn(page, '査定中')).toHaveText(['C札']);
-  // その列の「次の行程へ」は完遂にするので、読み上げの名前と title もそう言う。動かし方の案内にも添える
-  const completeNext = page.getByRole('button', { name: '完遂の行程へ（完遂にする）: C札' });
+  await expect(titlesIn(page, 'レビュー')).toHaveText(['C札']);
+  // その列の「次の列へ」は完了にするので、読み上げの名前と title もそう言う。動かし方の案内にも添える
+  const completeNext = page.getByRole('button', { name: '完了の列へ（完了にする）: C札' });
   await expect(completeNext).toHaveAttribute('aria-disabled', 'false');
-  await expect(completeNext).toHaveAttribute('title', '完遂の行程へ（完遂にする）');
-  await expect(page.getByRole('button', { name: '次の行程へ: C札' })).toHaveCount(0);
-  await expect(page.locator('.action-note')).toContainText('完遂の行程の手前の行程から次へ送ると、完遂になります。');
-  await expect(page.getByRole('button', { name: '前の行程へ: B札' })).toHaveAttribute('aria-disabled', 'false');
-  await expect(page.getByRole('button', { name: '前の行程へ: A札' })).toHaveAttribute('aria-disabled', 'false');
+  await expect(completeNext).toHaveAttribute('title', '完了の列へ（完了にする）');
+  await expect(page.getByRole('button', { name: '次の列へ: C札' })).toHaveCount(0);
+  await expect(page.locator('.action-note')).toContainText('完了の列の手前の列から次へ送ると、完了になります。');
+  await expect(page.getByRole('button', { name: '前の列へ: B札' })).toHaveAttribute('aria-disabled', 'false');
+  await expect(page.getByRole('button', { name: '前の列へ: A札' })).toHaveAttribute('aria-disabled', 'false');
   await moved;
   await card('C札').press('Alt+ArrowRight');
-  await expect(status('クエストを完遂にしました')).toBeVisible();
-  await expect(titlesIn(page, '完遂')).toHaveText(['C札']);
-  await expect(titlesIn(page, '査定中')).toHaveText([]);
-  // 完遂の列のカードは、完了の印の横に「戻す」を持つ。戻すと完遂の前の列（査定中）へ戻り、フォーカスはそのカードへ移る
-  await page.getByRole('button', { name: '完遂を戻す: C札' }).click();
-  await expect(status('「C札」の完遂を戻し、査定中へ移しました')).toBeVisible();
-  await expect(titlesIn(page, '査定中')).toHaveText(['C札']);
-  await expect(titlesIn(page, '完遂')).toHaveText([]);
+  await expect(status('タスクを完了にしました')).toBeVisible();
+  await expect(titlesIn(page, '完了')).toHaveText(['C札']);
+  await expect(titlesIn(page, 'レビュー')).toHaveText([]);
+  // 完了の列のカードは、完了の印の横に「戻す」を持つ。戻すと完了の前の列（レビュー）へ戻り、フォーカスはそのカードへ移る
+  await page.getByRole('button', { name: '完了を戻す: C札' }).click();
+  await expect(status('「C札」の完了を戻し、レビューへ移しました')).toBeVisible();
+  await expect(titlesIn(page, 'レビュー')).toHaveText(['C札']);
+  await expect(titlesIn(page, '完了')).toHaveText([]);
   await expect(card('C札')).toBeFocused();
-  await expect(page.getByRole('button', { name: '完遂を戻す: C札' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: '完了を戻す: C札' })).toHaveCount(0);
 
   // 読み直しても、別の画面でも、同じ列と順
   await page.reload();
-  await expect(titlesIn(page, '出発前')).toHaveText([]);
-  await expect(titlesIn(page, '遂行中')).toHaveText(['B札', 'A札']);
-  await expect(titlesIn(page, '査定中')).toHaveText(['C札']);
+  await expect(titlesIn(page, '未着手')).toHaveText([]);
+  await expect(titlesIn(page, '作業中')).toHaveText(['B札', 'A札']);
+  await expect(titlesIn(page, 'レビュー')).toHaveText(['C札']);
   const elsewhere = await browser.newContext({ baseURL });
   await signIn(elsewhere, baseURL, 'admin');
   const otherPage = await elsewhere.newPage();
   await otherPage.goto(page.url());
-  await expect(otherPage.locator('.board-col-name')).toHaveText(['出発前', '遂行中', '査定中', '完遂']);
-  await expect(titlesIn(otherPage, '遂行中')).toHaveText(['B札', 'A札']);
-  await expect(titlesIn(otherPage, '査定中')).toHaveText(['C札']);
+  await expect(otherPage.locator('.board-col-name')).toHaveText(['未着手', '作業中', 'レビュー', '完了']);
+  await expect(titlesIn(otherPage, '作業中')).toHaveText(['B札', 'A札']);
+  await expect(titlesIn(otherPage, 'レビュー')).toHaveText(['C札']);
   await elsewhere.close();
 
   // カードの題から詳細の引き出しが開き、列の移動が変更の履歴に残る（並べ替えは残らない）。閉じると題のリンクへフォーカスが戻る
-  await titlesIn(page, '遂行中').filter({ hasText: 'A札' }).click();
+  await titlesIn(page, '作業中').filter({ hasText: 'A札' }).click();
   const drawer = page.getByRole('dialog', { name: 'A札' });
   await expect(drawer).toBeVisible();
   await expect(page).toHaveURL(/\/sprint\?task=/);
   await drawer.getByRole('tab', { name: '変更の履歴' }).click();
   const history = drawer.getByRole('tabpanel', { name: '変更の履歴' });
-  await expect(history.getByText('出発前 → 遂行中')).toHaveCount(1);
+  await expect(history.getByText('未着手 → 作業中')).toHaveCount(1);
   await page.keyboard.press('Escape');
   await expect(drawer).toBeHidden();
-  await expect(titlesIn(page, '遂行中').filter({ hasText: 'A札' })).toBeFocused();
+  await expect(titlesIn(page, '作業中').filter({ hasText: 'A札' })).toBeFocused();
 
-  // カードの完了の操作は task-complete を呼ぶだけ。完遂の列のカードは完了の印と「戻す」を持ち、動かすボタンを持たない
-  await page.getByRole('button', { name: '完遂にする: C札' }).click();
-  await expect(status('クエストを完遂にしました')).toBeVisible();
-  await expect(titlesIn(page, '完遂')).toHaveText(['C札']);
-  await expect(titlesIn(page, '査定中')).toHaveText([]);
+  // カードの完了の操作は task-complete を呼ぶだけ。完了の列のカードは完了の印と「戻す」を持ち、動かすボタンを持たない
+  await page.getByRole('button', { name: '完了にする: C札' }).click();
+  await expect(status('タスクを完了にしました')).toBeVisible();
+  await expect(titlesIn(page, '完了')).toHaveText(['C札']);
+  await expect(titlesIn(page, 'レビュー')).toHaveText([]);
   await expect(
-    page.getByRole('region', { name: '完遂', exact: true }).getByRole('img', { name: 'C札: 完遂' }),
+    page.getByRole('region', { name: '完了', exact: true }).getByRole('img', { name: 'C札: 完了' }),
   ).toBeVisible();
   await expect(page.getByRole('button', { name: /: C札$/ })).toHaveText(['戻す']);
   await expect(page.getByRole('article', { name: 'C札' })).toHaveCount(0);
   // 完了と戻しは、詳細の引き出しの変更の履歴に残る
-  await titlesIn(page, '完遂').filter({ hasText: 'C札' }).click();
+  await titlesIn(page, '完了').filter({ hasText: 'C札' }).click();
   const doneDrawer = page.getByRole('dialog', { name: 'C札' });
   await doneDrawer.getByRole('tab', { name: '変更の履歴' }).click();
   const doneHistory = doneDrawer.getByRole('tabpanel', { name: '変更の履歴' });
-  await expect(doneHistory.getByText('完遂を戻した')).toHaveCount(1);
-  await expect(doneHistory.getByText('完遂 → 査定中')).toHaveCount(1);
+  await expect(doneHistory.getByText('完了を戻した')).toHaveCount(1);
+  await expect(doneHistory.getByText('完了 → レビュー')).toHaveCount(1);
   await page.keyboard.press('Escape');
   await expect(doneDrawer).toBeHidden();
 
@@ -242,24 +244,24 @@ test('リーダーはゴールを書いて遠征を始め、2つ目は始めら�
 
 test('動かすのが断られたら理由を知らせて読み直し、カードは元の列に戻る', async ({ page, context, baseURL }) => {
   await signIn(context, baseURL, 'admin');
-  await createWorkspace(page, '断られる見張り番', 'game');
+  await createWorkspace(page, '断られる見張り番');
   await addTask(page, 'D札');
-  await page.getByRole('link', { name: '遠征の計画' }).click();
+  await page.getByRole('link', { name: '計画' }).click();
   await createSprint(page, '2099-04-05', '第1回');
-  await page.getByRole('button', { name: '掲示板から入れる: 遠征 第1回' }).click();
-  const picker = page.getByRole('dialog', { name: '遠征 第1回 に入れる' });
-  await picker.getByRole('group', { name: '入れるクエスト' }).getByRole('checkbox', { name: /^D札/ }).check();
+  await page.getByRole('button', { name: 'バックログから入れる: スプリント 第1回' }).click();
+  const picker = page.getByRole('dialog', { name: 'スプリント 第1回 に入れる' });
+  await picker.getByRole('group', { name: '入れるタスク' }).getByRole('checkbox', { name: /^D札/ }).check();
   await picker.getByRole('button', { name: '1 件入れる' }).click();
   await expect(picker).toBeHidden();
-  await page.getByRole('button', { name: '始める: 遠征 第1回' }).click();
-  const dialog = page.getByRole('dialog', { name: '遠征を始める' });
+  await page.getByRole('button', { name: '始める: スプリント 第1回' }).click();
+  const dialog = page.getByRole('dialog', { name: 'スプリントを始める' });
   // ゴールを書かずに始められる。ゴールの貼り紙は出ない
   await dialog.getByRole('button', { name: '始める' }).click();
   await expect(dialog).toBeHidden();
   await expect(page.locator('.lane-goal')).toHaveCount(0);
 
-  await page.getByRole('link', { name: '遠征', exact: true }).click();
-  await expect(page.getByRole('heading', { level: 1, name: '遠征 第1回' })).toBeVisible();
+  await page.getByRole('link', { name: 'スプリント', exact: true }).click();
+  await expect(page.getByRole('heading', { level: 1, name: 'スプリント 第1回' })).toBeVisible();
   await expect(page.locator('.notice')).toHaveCount(0);
 
   // サーバーが「もう進行中ではない」と断った。トーストで理由を知らせ、読み直して元の列に戻る
@@ -268,28 +270,28 @@ test('動かすのが断られたら理由を知らせて読み直し、カー�
   });
   await page.getByRole('article', { name: 'D札', exact: true }).press('Alt+ArrowRight');
   await expect(
-    page.getByRole('status').filter({ hasText: 'この遠征はもう進行中ではありません。一覧を読み直します' }),
+    page.getByRole('status').filter({ hasText: 'このスプリントはもう進行中ではありません。一覧を読み直します' }),
   ).toBeVisible();
-  await expect(titlesIn(page, '出発前')).toHaveText(['D札']);
-  await expect(titlesIn(page, '遂行中')).toHaveText([]);
+  await expect(titlesIn(page, '未着手')).toHaveText(['D札']);
+  await expect(titlesIn(page, '作業中')).toHaveText([]);
   await unroute();
 });
 
-test('最終日がワークスペースの今日より前の遠征は始められず、理由がダイアログに出る', async ({
+test('最終日がワークスペースの今日より前のスプリントは始められず、理由がダイアログに出る', async ({
   page,
   context,
   baseURL,
 }) => {
   await signIn(context, baseURL, 'admin');
   const collect = await watchViolations(page);
-  await createWorkspace(page, '過ぎた見張り番', 'game');
-  await page.getByRole('link', { name: '遠征の計画' }).click();
+  await createWorkspace(page, '過ぎた見張り番');
+  await page.getByRole('link', { name: '計画' }).click();
   await createSprint(page, '2020-01-06', '過去の回');
-  await page.getByRole('button', { name: '始める: 遠征 過去の回' }).click();
-  const dialog = page.getByRole('dialog', { name: '遠征を始める' });
+  await page.getByRole('button', { name: '始める: スプリント 過去の回' }).click();
+  const dialog = page.getByRole('dialog', { name: 'スプリントを始める' });
   await dialog.getByRole('button', { name: '始める' }).click();
   await expect(dialog.getByRole('alert')).toHaveText(
-    'この遠征は最終日を過ぎているので、始められません。期間を直すか、削除して作り直してください',
+    'このスプリントは最終日を過ぎているので、始められません。期間を直すか、削除して作り直してください',
   );
   await expect(dialog).toBeVisible();
   await dialog.getByRole('button', { name: 'やめる' }).click();
@@ -299,22 +301,26 @@ test('最終日がワークスペースの今日より前の遠征は始めら�
   expect(problems.filter((problem) => !problem.includes('status of 409'))).toEqual([]);
 });
 
-test('進行中の遠征が無いときの空の状態は、リーダーと一般のメンバーで文が違う', async ({ page, context, baseURL }) => {
+test('進行中のスプリントが無いときの空の状態は、リーダーと一般のメンバーで文が違う', async ({
+  page,
+  context,
+  baseURL,
+}) => {
   await signIn(context, baseURL, 'member');
   await page.goto(`${AOBA_TEAM}/sprint`);
-  await expect(page.getByRole('heading', { level: 1, name: '遠征' })).toBeVisible();
-  await expect(page.getByText('進行中の遠征はありません')).toBeVisible();
-  await expect(page.getByText('遠征を作って始めるのは', { exact: false })).toBeVisible();
-  await expect(page.getByRole('link', { name: '掲示板を開く' })).toBeVisible();
-  await expect(page.getByRole('link', { name: '遠征の計画を開く' })).toHaveCount(0);
+  await expect(page.getByRole('heading', { level: 1, name: 'スプリント' })).toBeVisible();
+  await expect(page.getByText('進行中のスプリントはありません')).toBeVisible();
+  await expect(page.getByText('スプリントを作って始めるのは', { exact: false })).toBeVisible();
+  await expect(page.getByRole('link', { name: 'バックログを開く' })).toBeVisible();
+  await expect(page.getByRole('link', { name: '計画を開く' })).toHaveCount(0);
 
   await context.clearCookies();
   await signIn(context, baseURL, 'admin');
   await page.goto(`${AOBA_TEAM}/sprint`);
-  await expect(page.getByText('進行中の遠征はありません')).toBeVisible();
-  await expect(page.getByText('遠征の計画の画面で遠征を作り', { exact: false })).toBeVisible();
-  await page.getByRole('link', { name: '遠征の計画を開く' }).click();
-  await expect(page.getByRole('heading', { level: 1, name: '遠征の計画' })).toBeVisible();
+  await expect(page.getByText('進行中のスプリントはありません')).toBeVisible();
+  await expect(page.getByText('計画の画面でスプリントを作り', { exact: false })).toBeVisible();
+  await page.getByRole('link', { name: '計画を開く' }).click();
+  await expect(page.getByRole('heading', { level: 1, name: '計画' })).toBeVisible();
 });
 
 test('スクラムの言葉でも、スプリントを始めて、列とカードを動かし、次の列へで完了にして戻せる。完了の列に完成の定義が出る', async ({
@@ -323,7 +329,7 @@ test('スクラムの言葉でも、スプリントを始めて、列とカー�
   baseURL,
 }) => {
   await signIn(context, baseURL, 'admin');
-  await createWorkspace(page, 'スクラムの見張り番', 'scrum');
+  await createWorkspace(page, 'スクラムの見張り番');
   // 完成の定義を書いておく
   await page.getByRole('link', { name: '設定', exact: true }).click();
   await page.getByRole('textbox', { name: 'Markdown' }).fill('- レビューを1人以上が通した');
@@ -409,21 +415,23 @@ test('戻すのが断られたら理由を知らせて読み直す', async ({ pa
     details: { reason: 'sprint_closed' },
   });
   // 読み込みで行が動いている間に押すと、Playwright が押し直す前にスクロールし、画面の位置が実行ごとに変わる（#354、#491）
-  const reopen = page.getByRole('button', { name: '完遂を戻す: 付与の履歴を返す API を作る' });
+  const reopen = page.getByRole('button', { name: '完了を戻す: 付与の履歴を返す API を作る' });
   await expect(reopen).toBeVisible();
   await waitForSettled(page);
   await reopen.click();
   await expect(
-    page.getByRole('status').filter({ hasText: '終了した遠征の中で完遂したクエストは戻せません。一覧を読み直します' }),
+    page
+      .getByRole('status')
+      .filter({ hasText: '終了したスプリントの中で完了したタスクは戻せません。一覧を読み直します' }),
   ).toBeVisible();
-  // 読み直した画面（差し替えた応答）では、カードは完遂の列に残る
-  await expect(titlesIn(page, '完遂')).toHaveText(['付与の履歴を返す API を作る']);
+  // 読み直した画面（差し替えた応答）では、カードは完了の列に残る
+  await expect(titlesIn(page, '完了')).toHaveText(['付与の履歴を返す API を作る']);
   await unroute();
 });
 
 test('カードが1枚も無いあいだだけ、列とカードの領域そのものに Tab で止まれる', async ({ page, context, baseURL }) => {
   await signIn(context, baseURL, 'member');
-  const region = page.getByRole('region', { name: '遠征の行程とカード' });
+  const region = page.getByRole('region', { name: 'スプリントの列とカード' });
   const emptyBoard = {
     ...SAMPLE_BOARD,
     columns: SAMPLE_BOARD.columns.map((column) => ({ ...column, tasks: [] })),
@@ -440,17 +448,17 @@ test('カードが1枚も無いあいだだけ、列とカードの領域その�
   await expect(region).not.toHaveAttribute('tabindex');
 });
 
-test('選んだカードは題を名前に、ポイントと担い手と動かし方を説明に読み上げる', async ({ page, context, baseURL }) => {
+test('選んだカードは題を名前に、ポイントと担当と動かし方を説明に読み上げる', async ({ page, context, baseURL }) => {
   await signIn(context, baseURL, 'member');
   await mockOperation(page, sprintBoard, { slug: 'aoba' }, SAMPLE_BOARD);
   await page.goto(`${AOBA_TEAM}/sprint`);
   const assigned = page.getByRole('article', { name: 'ポイント付与のバッチを作る', exact: true });
-  await expect(assigned).toHaveAccessibleDescription(/3.*担い手はミナト.*Alt と ← → で隣の行程/);
+  await expect(assigned).toHaveAccessibleDescription(/3.*担当はミナト.*Alt と ← → で隣の列/);
   const unassigned = page.getByRole('article', { name: '障害時の連絡手順を書く', exact: true });
-  await expect(unassigned).toHaveAccessibleDescription(/未見積もり.*担い手なし/);
+  await expect(unassigned).toHaveAccessibleDescription(/未見積もり.*担当なし/);
 });
 
-test('リーダーは遠征を終え、終わらなかったクエストを次の遠征へ、次はバックログへ持ち越し、移ったのを見る', async ({
+test('リーダーはスプリントを終え、終わらなかったタスクを次のスプリントへ、次はバックログへ持ち越し、移ったのを見る', async ({
   page,
   context,
   baseURL,
@@ -458,91 +466,93 @@ test('リーダーは遠征を終え、終わらなかったクエストを次�
   // 起票から2回終えるまでを1本で確かめる長い流れ
   test.setTimeout(120_000);
   await signIn(context, baseURL, 'admin');
-  await createWorkspace(page, '帰還の見張り番', 'game');
+  await createWorkspace(page, '帰還の見張り番');
   for (const title of ['A札', 'B札', 'C札']) await addTask(page, title);
 
-  await page.getByRole('link', { name: '遠征の計画' }).click();
-  await expect(page.getByRole('heading', { level: 1, name: '遠征の計画' })).toBeVisible();
+  await page.getByRole('link', { name: '計画' }).click();
+  await expect(page.getByRole('heading', { level: 1, name: '計画' })).toBeVisible();
   // 最終日が今日より前のスプリントは始められないので、遠い先の期間にする
   await createSprint(page, '2099-03-01', '第1回');
   await createSprint(page, '2099-03-15', '第2回');
-  await page.getByRole('button', { name: '掲示板から入れる: 遠征 第1回' }).click();
-  const picker = page.getByRole('dialog', { name: '遠征 第1回 に入れる' });
-  const list = picker.getByRole('group', { name: '入れるクエスト' });
+  await page.getByRole('button', { name: 'バックログから入れる: スプリント 第1回' }).click();
+  const picker = page.getByRole('dialog', { name: 'スプリント 第1回 に入れる' });
+  const list = picker.getByRole('group', { name: '入れるタスク' });
   for (const title of ['A札', 'B札', 'C札'])
     await list.getByRole('checkbox', { name: new RegExp(`^${title}`) }).check();
   await picker.getByRole('button', { name: '3 件入れる' }).click();
   await expect(picker).toBeHidden();
 
-  // 第1回をゴールを書いて始め、スプリントの画面で A札 を完遂にする
-  await page.getByRole('button', { name: '始める: 遠征 第1回' }).click();
-  const startDialog = page.getByRole('dialog', { name: '遠征を始める' });
-  await startDialog.getByLabel('遠征の目的').fill(GOAL);
+  // 第1回をゴールを書いて始め、スプリントの画面で A札 を完了にする
+  await page.getByRole('button', { name: '始める: スプリント 第1回' }).click();
+  const startDialog = page.getByRole('dialog', { name: 'スプリントを始める' });
+  await startDialog.getByLabel('スプリントゴール').fill(GOAL);
   await startDialog.getByRole('button', { name: '始める' }).click();
   await expect(startDialog).toBeHidden();
-  await page.getByRole('link', { name: '遠征', exact: true }).click();
-  await expect(page.getByRole('heading', { level: 1, name: '遠征 第1回' })).toBeVisible();
+  await page.getByRole('link', { name: 'スプリント', exact: true }).click();
+  await expect(page.getByRole('heading', { level: 1, name: 'スプリント 第1回' })).toBeVisible();
   // 最終日の前なので、最終日を過ぎた知らせは出ない。見出しの右の「終える」だけがある
   await expect(page.locator('.callout.is-warn')).toHaveCount(0);
-  await page.getByRole('button', { name: '完遂にする: A札' }).click();
-  await expect(page.getByRole('status').filter({ hasText: 'クエストを完遂にしました' })).toBeVisible();
-  await expect(titlesIn(page, '完遂')).toHaveText(['A札']);
+  await page.getByRole('button', { name: '完了にする: A札' }).click();
+  await expect(page.getByRole('status').filter({ hasText: 'タスクを完了にしました' })).toBeVisible();
+  await expect(titlesIn(page, '完了')).toHaveText(['A札']);
 
-  // 終える。未完了の2件の行き先は、既定が次の遠征（第2回）で、バックログへ戻すことも選べる。ゴールがあるので達成を聞く（既定は達成した）
-  await page.getByRole('button', { name: '終える: 遠征 第1回' }).click();
-  const closeDialog = page.getByRole('dialog', { name: '遠征を終える' });
+  // 終える。未完了の2件の行き先は、既定が次のスプリント（第2回）で、バックログへ戻すことも選べる。ゴールがあるので達成を聞く（既定は達成した）
+  await page.getByRole('button', { name: '終える: スプリント 第1回' }).click();
+  const closeDialog = page.getByRole('dialog', { name: 'スプリントを終える' });
   await expect(closeDialog).toContainText(
-    '遠征 第1回（3/1〜3/14）を終えます。終えた遠征の期間と中身は、あとから変えられません。',
+    'スプリント 第1回（3/1〜3/14）を終えます。終えたスプリントの期間と中身は、あとから変えられません。',
   );
-  const carry = closeDialog.getByRole('radiogroup', { name: '終わらなかったクエスト 2 件の行き先' });
+  const carry = closeDialog.getByRole('radiogroup', { name: '終わらなかったタスク 2 件の行き先' });
   await expect(carry.getByRole('radio')).toHaveCount(2);
-  await expect(carry.getByRole('radio', { name: /^遠征 第2回（3\/15〜3\/28）へ持ち越す/ })).toBeChecked();
-  await expect(carry.getByRole('radio', { name: /^掲示板へ戻す/ })).not.toBeChecked();
+  await expect(carry.getByRole('radio', { name: /^スプリント 第2回（3\/15〜3\/28）へ持ち越す/ })).toBeChecked();
+  await expect(carry.getByRole('radio', { name: /^バックログへ戻す/ })).not.toBeChecked();
   // 読み込みが終わったら、フォーカスは選ばれている行き先へ移る（開いた直後の主ボタンから）
-  await expect(carry.getByRole('radio', { name: /^遠征 第2回（3\/15〜3\/28）へ持ち越す/ })).toBeFocused();
-  const goal = closeDialog.getByRole('radiogroup', { name: '遠征の目的は達成できましたか' });
+  await expect(carry.getByRole('radio', { name: /^スプリント 第2回（3\/15〜3\/28）へ持ち越す/ })).toBeFocused();
+  const goal = closeDialog.getByRole('radiogroup', { name: 'スプリントゴールは達成できましたか' });
   await expect(closeDialog.locator('.props-note')).toHaveText(GOAL);
   await expect(goal.getByRole('radio', { name: '達成した' })).toBeChecked();
   await closeDialog.getByRole('button', { name: '終える', exact: true }).click();
   await expect(closeDialog).toBeHidden();
   await expect(
-    page.getByRole('status').filter({ hasText: '遠征 第1回を終えました。クエスト 2 件を遠征 第2回へ持ち越しました' }),
+    page
+      .getByRole('status')
+      .filter({ hasText: 'スプリント 第1回を終えました。タスク 2 件をスプリント 第2回へ持ち越しました' }),
   ).toBeVisible();
-  // 進行中の遠征が無い表示に戻り、フォーカスは見出しへ移る
-  await expect(page.getByRole('heading', { level: 1, name: '遠征', exact: true })).toBeFocused();
-  await expect(page.getByText('進行中の遠征はありません')).toBeVisible();
+  // 進行中のスプリントが無い表示に戻り、フォーカスは見出しへ移る
+  await expect(page.getByRole('heading', { level: 1, name: 'スプリント', exact: true })).toBeFocused();
+  await expect(page.getByText('進行中のスプリントはありません')).toBeVisible();
 
-  // 計画の画面では、終えた第1回は並ばず、持ち越した2件は第2回に元の順で入っている。完遂した A札 は入らない
-  await page.getByRole('link', { name: '遠征の計画', exact: true }).click();
+  // 計画の画面では、終えた第1回は並ばず、持ち越した2件は第2回に元の順で入っている。完了した A札 は入らない
+  await page.getByRole('link', { name: '計画', exact: true }).click();
   await expect(page.locator('.lane-title', { hasText: '第2回' })).toBeVisible();
   await expect(page.locator('.lane')).toHaveCount(1);
   await expect(page.locator('.lane', { hasText: '第2回' }).locator('.lane-row a')).toHaveText(['B札', 'C札']);
 
-  // 第2回をゴールなしで始め、スプリントの画面で終える。持ち越し先の遠征が無いので、バックログへ戻すだけを出し、達成は聞かない
-  await page.getByRole('button', { name: '始める: 遠征 第2回' }).click();
+  // 第2回をゴールなしで始め、スプリントの画面で終える。持ち越し先のスプリントが無いので、バックログへ戻すだけを出し、達成は聞かない
+  await page.getByRole('button', { name: '始める: スプリント 第2回' }).click();
   await startDialog.getByRole('button', { name: '始める' }).click();
   await expect(startDialog).toBeHidden();
-  await page.getByRole('link', { name: '遠征', exact: true }).click();
-  await expect(page.getByRole('heading', { level: 1, name: '遠征 第2回' })).toBeVisible();
-  await expect(titlesIn(page, '出発前')).toHaveText(['B札', 'C札']);
-  await page.getByRole('button', { name: '終える: 遠征 第2回' }).click();
+  await page.getByRole('link', { name: 'スプリント', exact: true }).click();
+  await expect(page.getByRole('heading', { level: 1, name: 'スプリント 第2回' })).toBeVisible();
+  await expect(titlesIn(page, '未着手')).toHaveText(['B札', 'C札']);
+  await page.getByRole('button', { name: '終える: スプリント 第2回' }).click();
   await expect(closeDialog).toBeVisible();
-  const backlogOnly = closeDialog.getByRole('radiogroup', { name: '終わらなかったクエスト 2 件の行き先' });
+  const backlogOnly = closeDialog.getByRole('radiogroup', { name: '終わらなかったタスク 2 件の行き先' });
   await expect(backlogOnly.getByRole('radio')).toHaveCount(1);
-  await expect(backlogOnly.getByRole('radio', { name: /^掲示板へ戻す/ })).toBeChecked();
-  await expect(backlogOnly.getByRole('radio', { name: /^掲示板へ戻す/ })).toBeFocused();
-  await expect(closeDialog).toContainText('持ち越せる遠征がありません。掲示板へ戻します。');
-  await expect(closeDialog.getByRole('radiogroup', { name: '遠征の目的は達成できましたか' })).toHaveCount(0);
+  await expect(backlogOnly.getByRole('radio', { name: /^バックログへ戻す/ })).toBeChecked();
+  await expect(backlogOnly.getByRole('radio', { name: /^バックログへ戻す/ })).toBeFocused();
+  await expect(closeDialog).toContainText('持ち越せるスプリントがありません。バックログへ戻します。');
+  await expect(closeDialog.getByRole('radiogroup', { name: 'スプリントゴールは達成できましたか' })).toHaveCount(0);
   await closeDialog.getByRole('button', { name: '終える', exact: true }).click();
   await expect(closeDialog).toBeHidden();
   await expect(
-    page.getByRole('status').filter({ hasText: '遠征 第2回を終えました。クエスト 2 件を掲示板へ戻しました' }),
+    page.getByRole('status').filter({ hasText: 'スプリント 第2回を終えました。タスク 2 件をバックログへ戻しました' }),
   ).toBeVisible();
 
-  // 計画の画面には先の遠征が無くなる（終えた遠征があるので、題は「先の遠征はありません」）。掲示板では2件がどの遠征にも入っていない
-  await page.getByRole('link', { name: '遠征の計画', exact: true }).click();
-  await expect(page.getByText('先の遠征はありません')).toBeVisible();
-  await page.getByRole('link', { name: '掲示板', exact: true }).click();
+  // 計画の画面には先のスプリントが無くなる（終えたスプリントがあるので、題は「先のスプリントはありません」）。バックログでは2件がどのスプリントにも入っていない
+  await page.getByRole('link', { name: '計画', exact: true }).click();
+  await expect(page.getByText('先のスプリントはありません')).toBeVisible();
+  await page.getByRole('link', { name: 'バックログ', exact: true }).click();
   for (const title of ['B札', 'C札']) {
     const entry = page.locator('.entry', { hasText: title });
     await expect(entry).toBeVisible();
@@ -550,7 +560,7 @@ test('リーダーは遠征を終え、終わらなかったクエストを次�
   }
 });
 
-test('最終日を過ぎた進行中の遠征には終えるのを促す知らせが出て、終えられるのはリーダーだけ', async ({
+test('最終日を過ぎた進行中のスプリントには終えるのを促す知らせが出て、終えられるのはリーダーだけ', async ({
   page,
   context,
   baseURL,
@@ -559,16 +569,16 @@ test('最終日を過ぎた進行中の遠征には終えるのを促す知ら�
   await mockOperation(page, sprintBoard, { slug: 'aoba' }, OVERDUE_BOARD);
   await mockOperation(page, sprintList, { slug: 'aoba' }, OVERDUE_PLAN);
   const notice = page.locator('.callout.is-warn');
-  const text = '遠征 第14回は最終日（10/26）を過ぎています。';
+  const text = 'スプリント 第14回は最終日（10/26）を過ぎています。';
 
   // スプリントの画面。見出しの下に知らせ、リーダーには「終える」を添える
   await page.goto(`${AOBA_TEAM}/sprint`);
-  await expect(notice).toContainText(`${text}終わらなかったクエストの行き先を決めて、終えてください。`);
+  await expect(notice).toContainText(`${text}終わらなかったタスクの行き先を決めて、終えてください。`);
   // 知らせの「終える」から、見出しの右と同じダイアログを開く。持ち越し先は最終日より後に始まる第15回
-  await notice.getByRole('button', { name: '終える: 遠征 第14回' }).click();
-  const dialog = page.getByRole('dialog', { name: '遠征を終える' });
-  const carry = dialog.getByRole('radiogroup', { name: '終わらなかったクエスト 2 件の行き先' });
-  await expect(carry.getByRole('radio', { name: /^遠征 第15回（10\/27〜11\/9）へ持ち越す/ })).toBeChecked();
+  await notice.getByRole('button', { name: '終える: スプリント 第14回' }).click();
+  const dialog = page.getByRole('dialog', { name: 'スプリントを終える' });
+  const carry = dialog.getByRole('radiogroup', { name: '終わらなかったタスク 2 件の行き先' });
+  await expect(carry.getByRole('radio', { name: /^スプリント 第15回（10\/27〜11\/9）へ持ち越す/ })).toBeChecked();
   // 別の画面で先に終えられていたら、理由を知らせてダイアログを閉じ、読み直す
   const unroute = await failOperation(page, sprintClose, { slug: 'aoba' }, 409, 'conflict', {
     details: { reason: 'not_active' },
@@ -576,16 +586,18 @@ test('最終日を過ぎた進行中の遠征には終えるのを促す知ら�
   await dialog.getByRole('button', { name: '終える', exact: true }).click();
   await expect(dialog).toBeHidden();
   await expect(
-    page.getByRole('status').filter({ hasText: 'この遠征は進行中ではありません（もう終わっています）。読み直します' }),
+    page
+      .getByRole('status')
+      .filter({ hasText: 'このスプリントは進行中ではありません（もう終わっています）。読み直します' }),
   ).toBeVisible();
   await unroute();
 
-  // 計画の画面。進行中の遠征のレーンに同じ知らせが出る。先の遠征には出ない
+  // 計画の画面。進行中のスプリントのレーンに同じ知らせが出る。先のスプリントには出ない
   await page.goto(`${AOBA_TEAM}/plan`);
   const lane = page.locator('.lane.is-active');
   await expect(lane.locator('.callout.is-warn')).toContainText(text);
   await expect(page.locator('.callout.is-warn')).toHaveCount(1);
-  await lane.getByRole('button', { name: '終える: 遠征 第14回' }).click();
+  await lane.getByRole('button', { name: '終える: スプリント 第14回' }).click();
   await expect(dialog).toBeVisible();
   await expect(carry).toBeVisible();
   await dialog.getByRole('button', { name: 'やめる' }).click();
@@ -601,9 +613,9 @@ test('終了のダイアログは、読み込めなければ「終える」を�
   await mockOperation(page, sprintBoard, { slug: 'aoba' }, OVERDUE_BOARD);
   const unroute = await failOperation(page, sprintList, { slug: 'aoba' }, 500, 'internal');
   await page.goto(`${AOBA_TEAM}/sprint`);
-  await page.locator('.callout.is-warn').getByRole('button', { name: '終える: 遠征 第14回' }).click();
-  const dialog = page.getByRole('dialog', { name: '遠征を終える' });
-  await expect(dialog.getByRole('alert')).toContainText('遠征の状態を読み込めませんでした');
+  await page.locator('.callout.is-warn').getByRole('button', { name: '終える: スプリント 第14回' }).click();
+  const dialog = page.getByRole('dialog', { name: 'スプリントを終える' });
+  await expect(dialog.getByRole('alert')).toContainText('スプリントの状態を読み込めませんでした');
   const submit = dialog.getByRole('button', { name: '終える', exact: true });
   await expect(submit).toHaveAttribute('aria-disabled', 'true');
   // 押しても送らない
@@ -618,7 +630,7 @@ test('終了のダイアログは、読み込めなければ「終える」を�
   await unroute();
   await mockOperation(page, sprintList, { slug: 'aoba' }, OVERDUE_PLAN);
   await dialog.getByRole('button', { name: 'もう一度試す' }).click();
-  const first = dialog.getByRole('radio', { name: /^遠征 第15回（10\/27〜11\/9）へ持ち越す/ });
+  const first = dialog.getByRole('radio', { name: /^スプリント 第15回（10\/27〜11\/9）へ持ち越す/ });
   await expect(first).toBeChecked();
   await expect(first).toBeFocused();
   await expect(submit).toHaveAttribute('aria-disabled', 'false');
@@ -634,7 +646,7 @@ test('最終日を過ぎた知らせは、リーダーでない人には終え�
   await mockOperation(page, sprintList, { slug: 'aoba' }, OVERDUE_PLAN);
   await page.goto(`${AOBA_TEAM}/sprint`);
   await expect(page.locator('.callout.is-warn')).toContainText(
-    '遠征 第14回は最終日（10/26）を過ぎています。終えるのはパーティリーダーです。',
+    'スプリント 第14回は最終日（10/26）を過ぎています。終えるのはリーダーです。',
   );
   await expect(page.getByRole('button', { name: /^終える/ })).toHaveCount(0);
   await page.goto(`${AOBA_TEAM}/plan`);
@@ -644,7 +656,7 @@ test('最終日を過ぎた知らせは、リーダーでない人には終え�
   // 最終日の前（today が最終日と同じ日）には出ない
   await mockOperation(page, sprintBoard, { slug: 'aoba' }, { ...OVERDUE_BOARD, today: SAMPLE_BOARD.sprint!.end_on });
   await page.goto(`${AOBA_TEAM}/sprint`);
-  await expect(page.getByRole('heading', { level: 1, name: '遠征 第14回' })).toBeVisible();
+  await expect(page.getByRole('heading', { level: 1, name: 'スプリント 第14回' })).toBeVisible();
   await expect(page.locator('.callout.is-warn')).toHaveCount(0);
 });
 
@@ -653,7 +665,7 @@ test('最終日を過ぎた知らせは、リーダーでない人には終え�
 test.describe('カードのドラッグ', () => {
   test.use({ viewport: { width: 1600, height: 900 } });
 
-  // 完遂の列のカードは選べず、article に名前が付かないので、題のリンクから探す
+  // 完了の列のカードは選べず、article に名前が付かないので、題のリンクから探す
   const cardOf = (page: Page, title: string) =>
     page.locator('.card').filter({ has: page.getByRole('link', { name: title, exact: true }) });
   const grabOf = (page: Page, title: string) => cardOf(page, title).locator('.card-title');
@@ -661,7 +673,7 @@ test.describe('カードのドラッグ', () => {
   const headOf = (page: Page, name: string) => columnOf(page, name).locator('.board-col-head');
   const statusOf = (page: Page, text: string) => page.getByRole('status').filter({ hasText: text });
 
-  test('カードをドラッグして、列の中で並べ替え、隣でない列へ移し、完遂の列へ落として完遂にし、落とし直して戻す', async ({
+  test('カードをドラッグして、列の中で並べ替え、隣でない列へ移し、完了の列へ落として完了にし、落とし直して戻す', async ({
     page,
     context,
     baseURL,
@@ -670,43 +682,43 @@ test.describe('カードのドラッグ', () => {
     test.setTimeout(120_000);
     await signIn(context, baseURL, 'admin');
     const collect = await watchViolations(page);
-    await createWorkspace(page, '落とす見張り番', 'game');
+    await createWorkspace(page, '落とす見張り番');
     for (const title of ['A札', 'B札', 'C札']) await addTask(page, title);
-    await page.getByRole('link', { name: '遠征の計画' }).click();
-    await expect(page.getByRole('heading', { level: 1, name: '遠征の計画' })).toBeVisible();
+    await page.getByRole('link', { name: '計画' }).click();
+    await expect(page.getByRole('heading', { level: 1, name: '計画' })).toBeVisible();
     await createSprint(page, '2099-06-07', '第1回');
-    await page.getByRole('button', { name: '掲示板から入れる: 遠征 第1回' }).click();
-    const picker = page.getByRole('dialog', { name: '遠征 第1回 に入れる' });
+    await page.getByRole('button', { name: 'バックログから入れる: スプリント 第1回' }).click();
+    const picker = page.getByRole('dialog', { name: 'スプリント 第1回 に入れる' });
     for (const title of ['A札', 'B札', 'C札'])
       await picker
-        .getByRole('group', { name: '入れるクエスト' })
+        .getByRole('group', { name: '入れるタスク' })
         .getByRole('checkbox', { name: new RegExp(`^${title}`) })
         .check();
     await picker.getByRole('button', { name: '3 件入れる' }).click();
     await expect(picker).toBeHidden();
-    await page.getByRole('button', { name: '始める: 遠征 第1回' }).click();
-    const start = page.getByRole('dialog', { name: '遠征を始める' });
+    await page.getByRole('button', { name: '始める: スプリント 第1回' }).click();
+    const start = page.getByRole('dialog', { name: 'スプリントを始める' });
     await start.getByRole('button', { name: '始める' }).click();
     await expect(start).toBeHidden();
 
-    await page.getByRole('link', { name: '遠征', exact: true }).click();
-    await expect(page.locator('.board-col-name')).toHaveText(['出発前', '遂行中', '査定中', '完遂']);
-    await expect(titlesIn(page, '出発前')).toHaveText(['A札', 'B札', 'C札']);
+    await page.getByRole('link', { name: 'スプリント', exact: true }).click();
+    await expect(page.locator('.board-col-name')).toHaveText(['未着手', '作業中', 'レビュー', '完了']);
+    await expect(titlesIn(page, '未着手')).toHaveText(['A札', 'B札', 'C札']);
     // つかめるカードは draggable で、題のリンクはリンクの既定のドラッグを止めてある
     await expect(cardOf(page, 'A札')).toHaveAttribute('draggable', 'true');
     await expect(grabOf(page, 'A札')).toHaveAttribute('draggable', 'false');
-    // 送る移動は、A を査定中へ、C を B の前へ、B を査定中の A の後ろへ、完遂から戻した C を査定中の A の前への4件。
-    // 完遂にするのは task-complete
+    // 送る移動は、A をレビューへ、C を B の前へ、B をレビューの A の後ろへ、完了から戻した C をレビューの A の前への4件。
+    // 完了にするのは task-complete
     const moved = waitForResponses(page, '/task-column-move', 4);
 
     // 隣でない列の頭に離すと、その列の末尾に入る。重ねている間は列を囲み、つかんだカードは元の位置で薄くなる
-    await dragTo(page, grabOf(page, 'A札'), headOf(page, '査定中'), 'middle', async () => {
-      await expect(columnOf(page, '査定中')).toHaveAttribute('data-drop', 'into');
+    await dragTo(page, grabOf(page, 'A札'), headOf(page, 'レビュー'), 'middle', async () => {
+      await expect(columnOf(page, 'レビュー')).toHaveAttribute('data-drop', 'into');
       await expect(cardOf(page, 'A札')).toHaveClass(/is-dragging/);
     });
-    await expect(titlesIn(page, '査定中')).toHaveText(['A札']);
-    await expect(titlesIn(page, '出発前')).toHaveText(['B札', 'C札']);
-    await expect(statusOf(page, '「A札」を査定中の 1 番目に移しました（1 件中）')).toBeAttached();
+    await expect(titlesIn(page, 'レビュー')).toHaveText(['A札']);
+    await expect(titlesIn(page, '未着手')).toHaveText(['B札', 'C札']);
+    await expect(statusOf(page, '「A札」をレビューの 1 番目に移しました（1 件中）')).toBeAttached();
     await expect(cardOf(page, 'A札')).toHaveClass(/is-dropped/);
     await expect(page.locator('[data-drop]')).toHaveCount(0);
 
@@ -715,56 +727,56 @@ test.describe('カードのドラッグ', () => {
       await expect(cardOf(page, 'B札')).toHaveAttribute('data-drop', 'before');
       await expect(page.locator('.board-col[data-drop]')).toHaveCount(0);
     });
-    await expect(titlesIn(page, '出発前')).toHaveText(['C札', 'B札']);
-    await expect(statusOf(page, '「C札」を出発前の 1 番目に移しました（2 件中）')).toBeAttached();
+    await expect(titlesIn(page, '未着手')).toHaveText(['C札', 'B札']);
+    await expect(statusOf(page, '「C札」を未着手の 1 番目に移しました（2 件中）')).toBeAttached();
 
     // 元と同じ位置には何も示さず、送らない（C の前は、今の位置）
     await dragTo(page, grabOf(page, 'C札'), cardOf(page, 'C札'), 'top', async () => {
       await expect(page.locator('[data-drop]')).toHaveCount(0);
     });
-    await expect(titlesIn(page, '出発前')).toHaveText(['C札', 'B札']);
+    await expect(titlesIn(page, '未着手')).toHaveText(['C札', 'B札']);
 
     // 別の列のカードの下半分に重ねると後ろの線が出て、そのカードの後ろに入る
     await dragTo(page, grabOf(page, 'B札'), cardOf(page, 'A札'), 'bottom', async () => {
       await expect(cardOf(page, 'A札')).toHaveAttribute('data-drop', 'after');
     });
-    await expect(titlesIn(page, '査定中')).toHaveText(['A札', 'B札']);
-    await expect(titlesIn(page, '出発前')).toHaveText(['C札']);
-    await expect(statusOf(page, '「B札」を査定中の 2 番目に移しました（2 件中）')).toBeAttached();
+    await expect(titlesIn(page, 'レビュー')).toHaveText(['A札', 'B札']);
+    await expect(titlesIn(page, '未着手')).toHaveText(['C札']);
+    await expect(statusOf(page, '「B札」をレビューの 2 番目に移しました（2 件中）')).toBeAttached();
 
-    // 完遂の列は、どこに重ねても列を囲む（位置の線は出さない）。離すと完遂になる
-    await dragTo(page, grabOf(page, 'C札'), headOf(page, '完遂'), 'middle', async () => {
-      await expect(columnOf(page, '完遂')).toHaveAttribute('data-drop', 'into');
+    // 完了の列は、どこに重ねても列を囲む（位置の線は出さない）。離すと完了になる
+    await dragTo(page, grabOf(page, 'C札'), headOf(page, '完了'), 'middle', async () => {
+      await expect(columnOf(page, '完了')).toHaveAttribute('data-drop', 'into');
       await expect(page.locator('.card[data-drop]')).toHaveCount(0);
     });
-    await expect(statusOf(page, 'クエストを完遂にしました')).toBeVisible();
-    await expect(titlesIn(page, '完遂')).toHaveText(['C札']);
-    await expect(titlesIn(page, '出発前')).toHaveText([]);
+    await expect(statusOf(page, 'タスクを完了にしました')).toBeVisible();
+    await expect(titlesIn(page, '完了')).toHaveText(['C札']);
+    await expect(titlesIn(page, '未着手')).toHaveText([]);
     await expect(cardOf(page, 'C札')).toHaveClass(/is-dropped/);
 
-    // 完遂の列の中への落とし直しは、何も示さず、何も起きない
-    await dragTo(page, grabOf(page, 'C札'), headOf(page, '完遂'), 'middle', async () => {
+    // 完了の列の中への落とし直しは、何も示さず、何も起きない
+    await dragTo(page, grabOf(page, 'C札'), headOf(page, '完了'), 'middle', async () => {
       await expect(page.locator('[data-drop]')).toHaveCount(0);
     });
-    await expect(titlesIn(page, '完遂')).toHaveText(['C札']);
+    await expect(titlesIn(page, '完了')).toHaveText(['C札']);
 
-    // 完遂の列から落とすと、完遂を戻してから、落とした列と位置へ移す
+    // 完了の列から落とすと、完了を戻してから、落とした列と位置へ移す
     await dragTo(page, grabOf(page, 'C札'), cardOf(page, 'A札'), 'top', async () => {
       await expect(cardOf(page, 'A札')).toHaveAttribute('data-drop', 'before');
     });
-    await expect(titlesIn(page, '査定中')).toHaveText(['C札', 'A札', 'B札']);
-    await expect(titlesIn(page, '完遂')).toHaveText([]);
+    await expect(titlesIn(page, 'レビュー')).toHaveText(['C札', 'A札', 'B札']);
+    await expect(titlesIn(page, '完了')).toHaveText([]);
     // 戻した列と落とした列が食い違うので、戻したトーストは出さず、最後の位置の読み上げだけにする
-    await expect(statusOf(page, '「C札」を査定中の 1 番目に移しました（3 件中）')).toBeAttached();
-    await expect(statusOf(page, '完遂を戻し')).toHaveCount(0);
+    await expect(statusOf(page, '「C札」をレビューの 1 番目に移しました（3 件中）')).toBeAttached();
+    await expect(statusOf(page, '完了を戻し')).toHaveCount(0);
     await moved;
 
     // 読み直しても同じ並び
     await page.reload();
-    await expect(titlesIn(page, '出発前')).toHaveText([]);
-    await expect(titlesIn(page, '遂行中')).toHaveText([]);
-    await expect(titlesIn(page, '査定中')).toHaveText(['C札', 'A札', 'B札']);
-    await expect(titlesIn(page, '完遂')).toHaveText([]);
+    await expect(titlesIn(page, '未着手')).toHaveText([]);
+    await expect(titlesIn(page, '作業中')).toHaveText([]);
+    await expect(titlesIn(page, 'レビュー')).toHaveText(['C札', 'A札', 'B札']);
+    await expect(titlesIn(page, '完了')).toHaveText([]);
     await page.mouse.move(0, 0);
     expect(await collect()).toEqual([]);
   });
@@ -780,26 +792,26 @@ test.describe('カードのドラッグ', () => {
     await expect(grabOf(page, title)).toBeVisible();
     await waitForSettled(page);
     const reloaded = page.waitForResponse((response) => response.url().includes('sprint-board'));
-    await dragTo(page, grabOf(page, title), headOf(page, '査定中'), 'middle');
-    await expect(statusOf(page, 'この遠征はもう進行中ではありません。一覧を読み直します')).toBeVisible();
+    await dragTo(page, grabOf(page, title), headOf(page, 'レビュー'), 'middle');
+    await expect(statusOf(page, 'このスプリントはもう進行中ではありません。一覧を読み直します')).toBeVisible();
     // 読み直し（差し替えた応答）を待ってから確かめる。読み直す前の「元の列」を見て通らないように
     await reloaded;
     await waitForSettled(page);
     // 読み直した画面（差し替えた応答）では、カードは元の列に戻る
-    await expect(titlesIn(page, '遂行中')).toHaveText([title]);
-    await expect(titlesIn(page, '査定中')).toHaveText([]);
+    await expect(titlesIn(page, '作業中')).toHaveText([title]);
+    await expect(titlesIn(page, 'レビュー')).toHaveText([]);
     await unroute();
     await page.mouse.move(0, 0);
     await expect(page.locator('.toasts:visible .toast')).toHaveCount(0);
   });
 
-  test('完遂を戻すのが断られたら、列の移動は送らず、理由を知らせる。戻せないカードはつかめない', async ({
+  test('完了を戻すのが断られたら、列の移動は送らず、理由を知らせる。戻せないカードはつかめない', async ({
     page,
     context,
     baseURL,
   }) => {
     await signIn(context, baseURL, 'member');
-    const locked = 'ストーリーが完遂したカード';
+    const locked = 'ストーリーが完了したカード';
     const done = SAMPLE_BOARD.columns.find((column) => column.is_done)!;
     await mockOperation(
       page,
@@ -822,7 +834,7 @@ test.describe('カードのドラッグ', () => {
     );
     await page.goto(`${AOBA_TEAM}/sprint`);
     const title = done.tasks[0]!.title;
-    // 完遂したストーリーの下のカードは戻せないので、つかめない
+    // 完了したストーリーの下のカードは戻せないので、つかめない
     await expect(cardOf(page, locked)).toHaveCount(1);
     await expect(cardOf(page, locked)).not.toHaveAttribute('draggable', 'true');
     await expect(cardOf(page, title)).toHaveAttribute('draggable', 'true');
@@ -836,20 +848,22 @@ test.describe('カードのドラッグ', () => {
     });
     await waitForSettled(page);
     const reloaded = page.waitForResponse((response) => response.url().includes('sprint-board'));
-    await dragTo(page, grabOf(page, title), headOf(page, '査定中'), 'middle');
-    await expect(statusOf(page, '終了した遠征の中で完遂したクエストは戻せません。一覧を読み直します')).toBeVisible();
+    await dragTo(page, grabOf(page, title), headOf(page, 'レビュー'), 'middle');
+    await expect(
+      statusOf(page, '終了したスプリントの中で完了したタスクは戻せません。一覧を読み直します'),
+    ).toBeVisible();
     // 読み直しを待ってから確かめる。読み直す前の画面を見て通らないように
     await reloaded;
     await waitForSettled(page);
-    await expect(titlesIn(page, '完遂')).toHaveText([title, locked]);
-    await expect(titlesIn(page, '査定中')).toHaveText([]);
+    await expect(titlesIn(page, '完了')).toHaveText([title, locked]);
+    await expect(titlesIn(page, 'レビュー')).toHaveText([]);
     expect(columnMoves).toEqual([]);
     await unroute();
     await page.mouse.move(0, 0);
     await expect(page.locator('.toasts:visible .toast')).toHaveCount(0);
   });
 
-  test('完遂の列へ落とした直後に別のカードを落としても、続けて積んだ移動は捨てられずに送られる', async ({
+  test('完了の列へ落とした直後に別のカードを落としても、続けて積んだ移動は捨てられずに送られる', async ({
     page,
     context,
     baseURL,
@@ -873,17 +887,17 @@ test.describe('カードのドラッグ', () => {
     await expect(grabOf(page, completing)).toBeVisible();
     await waitForSettled(page);
 
-    await dragTo(page, grabOf(page, completing), headOf(page, '完遂'), 'middle');
-    await dragTo(page, grabOf(page, moving), headOf(page, '査定中'), 'middle');
+    await dragTo(page, grabOf(page, completing), headOf(page, '完了'), 'middle');
+    await dragTo(page, grabOf(page, moving), headOf(page, 'レビュー'), 'middle');
     await expect.poll(() => columnMoves.length).toBe(1);
-    await expect(statusOf(page, 'クエストを完遂にしました')).toBeVisible();
+    await expect(statusOf(page, 'タスクを完了にしました')).toBeVisible();
     // 捨てたことの知らせは出ない
     await expect(statusOf(page, '動かしている間に一覧が読み直されたため')).toHaveCount(0);
     await unrouteComplete();
     await unrouteMove();
   });
 
-  test('完遂から落として戻しが通っても、列の移動が断られたら理由を知らせる。戻したトーストは出さない', async ({
+  test('完了から落として戻しが通っても、列の移動が断られたら理由を知らせる。戻したトーストは出さない', async ({
     page,
     context,
     baseURL,
@@ -905,18 +919,18 @@ test.describe('カードのドラッグ', () => {
     await expect(grabOf(page, done.title)).toBeVisible();
     await waitForSettled(page);
     const reloaded = page.waitForResponse((response) => response.url().includes('sprint-board'));
-    await dragTo(page, grabOf(page, done.title), headOf(page, '遂行中'), 'middle');
+    await dragTo(page, grabOf(page, done.title), headOf(page, '作業中'), 'middle');
     await expect(statusOf(page, 'ほかの画面で変わったため、移せませんでした。一覧を読み直します')).toBeVisible();
     await reloaded;
     await waitForSettled(page);
-    await expect(statusOf(page, '完遂を戻し')).toHaveCount(0);
+    await expect(statusOf(page, '完了を戻し')).toHaveCount(0);
     await unrouteReopen();
     await unrouteMove();
     await page.mouse.move(0, 0);
     await expect(page.locator('.toasts:visible .toast')).toHaveCount(0);
   });
 
-  test('別の画面で先に完遂にされていたとき（409 の conflict）も、落とした完遂として扱い、読み直す', async ({
+  test('別の画面で先に完了にされていたとき（409 の conflict）も、落とした完了として扱い、読み直す', async ({
     page,
     context,
     baseURL,
@@ -929,8 +943,8 @@ test.describe('カードのドラッグ', () => {
     await expect(grabOf(page, title)).toBeVisible();
     await waitForSettled(page);
     const reloaded = page.waitForResponse((response) => response.url().includes('sprint-board'));
-    await dragTo(page, grabOf(page, title), headOf(page, '完遂'), 'middle');
-    await expect(statusOf(page, 'このクエストは、すでに完遂です')).toBeVisible();
+    await dragTo(page, grabOf(page, title), headOf(page, '完了'), 'middle');
+    await expect(statusOf(page, 'このタスクは、すでに完了です')).toBeVisible();
     // 列が空になった後に読み直す
     await reloaded;
     await waitForSettled(page);

@@ -65,14 +65,9 @@
       onopencount={(count) => (openCount = count)}
       slug={data.slug}
       meId={organization.me.id}
-      organizationVocabulary={organization.organization.vocabulary}
     />
     <HolidaysSetting slug={data.slug} />
-    <OrganizationLookSetting
-      slug={data.slug}
-      vocabulary={organization.organization.vocabulary}
-      theme={organization.organization.theme}
-    />
+    <OrganizationLookSetting slug={data.slug} theme={organization.organization.theme} />
     <HistorySetting slug={data.slug} />
   </div>
 {/if}

@@ -21,7 +21,7 @@
   } from '../../../../lib/drawer.svelte.ts';
   import { focusPageHeading } from '../../../../lib/focus-heading.ts';
   import { formatLocalDate } from '../../../../lib/format.ts';
-  import { setWorkspaceVocabulary, t } from '../../../../lib/vocabulary.svelte.ts';
+  import { t } from '../../../../lib/vocabulary.svelte.ts';
   import type { LayoutData } from './$types';
 
   // ワークスペースの枠。workspace の操作の結果で、ワークスペースの中の言葉づかいを当てる（離れるときに戻す）。
@@ -83,12 +83,6 @@
     // eslint-disable-next-line svelte/no-navigation-without-resolve -- 今の画面の経路（page.url.pathname）に、残すクエリと task だけを足している
     return goto(`${page.url.pathname}?${query}`, { replace: true, reset: false });
   }
-
-  $effect.pre(() => {
-    if (!workspace) return;
-    setWorkspaceVocabulary(workspace.vocabulary);
-    return () => setWorkspaceVocabulary(null);
-  });
 
   // 今の URL から `task` だけを外した画面。開いた画面（バックログ、メンバーなど）のまま、ほかのクエリも残す
   const withoutTask = () => {

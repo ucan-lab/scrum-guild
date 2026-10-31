@@ -98,12 +98,7 @@
 </Section>
 
 {#if data.organization?.me.is_admin}
-  <WorkspaceCreateDialog
-    bind:this={createDialog}
-    slug={data.slug}
-    meId={data.organization.me.id}
-    organizationVocabulary={data.organization.organization.vocabulary}
-  />
+  <WorkspaceCreateDialog bind:this={createDialog} slug={data.slug} meId={data.organization.me.id} />
 {/if}
 
 <Dialog bind:this={detailDialog} bind:open={detailOpen} title={t('apiDetailTitle')}>

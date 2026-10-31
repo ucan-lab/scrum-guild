@@ -96,8 +96,8 @@ export const invitationListOperation = implement(invitationList, async ({ db, or
           ),
         );
   return {
-    // vocabulary と theme の形は出力のスキーマ（z.enum）が検証する
-    organization: { name: organization.name, vocabulary: organization.vocabulary, theme: organization.theme },
+    // theme の形は出力のスキーマ（z.enum）が検証する
+    organization: { name: organization.name, theme: organization.theme },
     invitations: rows.map((row) => ({
       invitation_id: row.id,
       workspace_id: row.workspace_id,

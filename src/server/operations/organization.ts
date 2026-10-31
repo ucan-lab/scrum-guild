@@ -66,10 +66,9 @@ export const organizationInfoOperation = implement(organizationInfo, async ({ db
   );
 
   return {
-    // vocabulary と theme の形は出力のスキーマ（z.enum）が検証する
+    // theme の形は出力のスキーマ（z.enum）が検証する
     organization: {
       name: organization.name,
-      vocabulary: organization.vocabulary,
       theme: organization.theme,
       has_workspaces: anyWorkspaceResult.rows.length > 0,
     },

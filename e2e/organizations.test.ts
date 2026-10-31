@@ -58,9 +58,8 @@ test.describe('組織が1つの人（あおば開発のハルカ）', () => {
     expect(await page.evaluate(() => localStorage.getItem('sg-theme'))).toBe('modern');
   });
 
-  test('組織の言葉づかいを当てる（スクラムの言葉では管理者の印が「管理者」になる）', async ({ page }) => {
+  test('管理者の印は、スクラムの言葉の「管理者」になる', async ({ page }) => {
     await patchOrganization(page, 'aoba', (body) => {
-      body.organization.vocabulary = 'scrum';
       body.me.is_admin = true;
     });
     await page.goto('/aoba');
@@ -76,10 +75,10 @@ test.describe('組織が1つの人（あおば開発のハルカ）', () => {
       body.workspaces = [];
     });
     await page.goto('/aoba');
-    await expect(page.getByText('まだパーティがありません')).toBeVisible();
-    await expect(page.getByText('最初のパーティを作ります。')).toBeVisible();
+    await expect(page.getByText('まだワークスペースがありません')).toBeVisible();
+    await expect(page.getByText('最初のワークスペースを作ります。')).toBeVisible();
     await expect(page.locator('.empty a')).toHaveCount(0);
-    await expect(page.locator('.empty button')).toHaveText('パーティを作る');
+    await expect(page.locator('.empty button')).toHaveText('ワークスペースを作る');
     await expect(page.locator('.nav-group')).toHaveCount(0);
   });
 
@@ -90,16 +89,16 @@ test.describe('組織が1つの人（あおば開発のハルカ）', () => {
       body.workspaces = [];
     });
     await page.goto('/aoba');
-    await expect(page.getByText('どのパーティにも所属していません')).toBeVisible();
-    await expect(page.getByText('まだパーティがありません')).toHaveCount(0);
+    await expect(page.getByText('どのワークスペースにも所属していません')).toBeVisible();
+    await expect(page.getByText('まだワークスペースがありません')).toHaveCount(0);
     await expect(page.locator('.empty a, .empty button')).toHaveCount(0);
   });
 
   test('所属のある人には、ワークスペースの案内を出さない', async ({ page }) => {
     await page.goto('/aoba');
     await expect(page.getByRole('heading', { level: 1, name: '自分の今日' })).toBeVisible();
-    await expect(page.getByText('まだパーティがありません')).toHaveCount(0);
-    await expect(page.getByText('どのパーティにも所属していません')).toHaveCount(0);
+    await expect(page.getByText('まだワークスペースがありません')).toHaveCount(0);
+    await expect(page.getByText('どのワークスペースにも所属していません')).toHaveCount(0);
   });
 
   test('入れない組織の slug と存在しない slug は、同じ「見つからない」の画面になり、API はどちらも 404', async ({
@@ -234,10 +233,9 @@ test.describe('組織が1つの人（あおば開発のハルカ）', () => {
     await expect(page.getByRole('heading', { level: 1, name: '自分の今日' })).toBeVisible();
   });
 
-  test('組織の外の画面は、テーマと言葉づかいを既定に戻し、覚えたテーマも消す', async ({ page }) => {
+  test('組織の外の画面は、テーマを既定に戻し、覚えたテーマも消す', async ({ page }) => {
     await patchOrganization(page, 'aoba', (body) => {
       body.organization.theme = 'medieval';
-      body.organization.vocabulary = 'game';
     });
     await page.goto('/aoba');
     await expect(page.locator('html')).toHaveAttribute('data-theme', 'medieval');
@@ -250,28 +248,13 @@ test.describe('組織が1つの人（あおば開発のハルカ）', () => {
     expect(await page.evaluate(() => localStorage.getItem('sg-theme'))).toBeNull();
   });
 
-  test('組織の言葉づかいを localStorage に覚え、組織の外の画面で消す', async ({ page }) => {
-    const remembered = () => page.evaluate(() => localStorage.getItem('sg-vocabulary'));
+  test('言葉づかいは覚えない。前に覚えていた値（sg-vocabulary）が残っていても、最初の描画からスクラムの言葉で出る', async ({
+    page,
+  }) => {
     await patchOrganization(page, 'aoba', (body) => {
-      body.organization.vocabulary = 'game';
       body.me.is_admin = true;
     });
-    await page.goto('/aoba');
-    await expect(page.locator('.me .chip')).toHaveText('ギルドマスター');
-    expect(await remembered()).toBe('game:aoba');
-
-    // 見つからない画面（組織の外）。文書ごと読み直すので、確かめるのは覚えた値
-    await page.goto('/hibari');
-    await expect(page.getByRole('heading', { level: 1, name: '組織が見つかりません' })).toBeVisible();
-    expect(await remembered()).toBeNull();
-  });
-
-  test('覚えたゲームの言葉は、開き直した最初の描画から当たる（スクラムの言葉が一度も出ない）', async ({ page }) => {
-    await patchOrganization(page, 'aoba', (body) => {
-      body.organization.vocabulary = 'game';
-      body.me.is_admin = true;
-    });
-    // 描画のたびに、管理者の印の文字を集める。覚えた値で始まるので「管理者」（スクラムの言葉）が一度も出ない
+    // 描画のたびに、管理者の印の文字を集める。ゲームの用語の「ギルドマスター」が一度も出ない
     await page.addInitScript(() => {
       localStorage.setItem('sg-vocabulary', 'game:aoba');
       const seen: string[] = [];
@@ -281,19 +264,10 @@ test.describe('組織が1つの人（あおば開発のハルカ）', () => {
       }).observe(document, { childList: true, subtree: true, characterData: true });
     });
     await page.goto('/aoba');
-    await expect(page.locator('.me .chip')).toHaveText('ギルドマスター');
+    await expect(page.locator('.me .chip')).toHaveText('管理者');
     const seen = await page.evaluate(() => (window as unknown as { __chipTexts: string[] }).__chipTexts);
     expect(seen.length).toBeGreaterThan(0);
-    expect(seen).not.toContain('管理者');
-  });
-
-  test('スクラムの言葉の組織は、スクラムの言葉を覚える', async ({ page }) => {
-    await patchOrganization(page, 'aoba', (body) => {
-      body.organization.vocabulary = 'scrum';
-    });
-    await page.goto('/aoba');
-    await expect(page.getByRole('heading', { level: 1, name: '自分の今日' })).toBeVisible();
-    expect(await page.evaluate(() => localStorage.getItem('sg-vocabulary'))).toBe('scrum:aoba');
+    expect(seen).not.toContain('ギルドマスター');
   });
 
   test('組織の外から組織へ移る間は読み込み中を出し、移ったら組織の値を当てる', async ({ page }) => {
@@ -384,7 +358,7 @@ test.describe('組織が2つの人（あおば開発の管理者でひばり工�
     });
     await page.goto('/aoba');
     await expect(page.locator('.me')).toContainText('ミナト（あおば）');
-    await expect(page.locator('.me .chip')).toHaveText('ギルドマスター');
+    await expect(page.locator('.me .chip')).toHaveText('管理者');
     await expect(page.locator('html')).toHaveAttribute('data-theme', 'medieval');
 
     // 閉じているときは、今の組織の名前だけを出す。開くと各組織へのリンクと、最後に一覧へ戻るリンク
@@ -393,13 +367,13 @@ test.describe('組織が2つの人（あおば開発の管理者でひばり工�
     await expect(page.locator('.org-menu-list')).toBeHidden();
     await menuButton(page).click();
     await expect(menuButton(page)).toHaveAttribute('aria-expanded', 'true');
-    await expect(menuLinks(page)).toHaveText(['あおば開発', 'ひばり工房', '冒険者ギルドの一覧へ']);
+    await expect(menuLinks(page)).toHaveText(['あおば開発', 'ひばり工房', '組織の一覧へ']);
     await expect(menuLinks(page).nth(0)).toHaveAttribute('aria-current', 'page');
     await expect(menuLinks(page).nth(0).locator('svg')).toHaveCount(1);
     await expect(menuLinks(page).nth(1)).not.toHaveAttribute('aria-current', /.*/);
     // ボタンとリストには、読み上げの名前がある
-    await expect(menuButton(page)).toHaveAttribute('aria-label', 'あおば開発。冒険者ギルドを切り替える');
-    await expect(page.getByRole('list', { name: '入れる冒険者ギルド' })).toBeVisible();
+    await expect(menuButton(page)).toHaveAttribute('aria-label', 'あおば開発。組織を切り替える');
+    await expect(page.getByRole('list', { name: '入れる組織' })).toBeVisible();
     await menuLinks(page).nth(1).click();
 
     await expect(page).toHaveURL(/\/hibari$/);
@@ -581,7 +555,7 @@ test.describe('組織が2つの人（あおば開発の管理者でひばり工�
     await page.goto('/aoba');
     await expect(menuButton(page)).toBeVisible();
     await menuButton(page).click();
-    await expect(menuLinks(page)).toHaveText(['あおば開発', 'ひばり工房', '冒険者ギルドの一覧へ']);
+    await expect(menuLinks(page)).toHaveText(['あおば開発', 'ひばり工房', '組織の一覧へ']);
     for (const link of await menuLinks(page).all()) await expect(link).toBeVisible();
     const closed = await overflowOf(page);
     expect(closed.scroll).toBeLessThanOrEqual(closed.inner);
@@ -638,7 +612,7 @@ test.describe('ひばり工房だけの管理者（リン）', () => {
     await page.goto('/');
     await expect(page).toHaveURL(/\/hibari$/);
     await expect(page.locator('.me')).toContainText('リン');
-    await expect(page.locator('.me .chip')).toHaveText('ギルドマスター');
+    await expect(page.locator('.me .chip')).toHaveText('管理者');
 
     await page.goto('/aoba');
     await expect(page.getByRole('heading', { level: 1, name: '組織が見つかりません' })).toBeVisible();
@@ -734,7 +708,7 @@ test.describe('ログインしていない人と、組織が無い人', () => {
     await expect(page.getByRole('button', { name: 'もう一度試す' })).toBeEnabled();
   });
 
-  test('組織の選択の画面は、テーマと言葉づかいを既定に戻す', async ({ page, context, baseURL }) => {
+  test('組織の選択の画面は、テーマを既定に戻す', async ({ page, context, baseURL }) => {
     await signIn(context, baseURL, 'admin');
     await page.addInitScript(() => localStorage.setItem('sg-theme', 'medieval'));
     await page.goto('/');

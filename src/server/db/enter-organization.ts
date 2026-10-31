@@ -2,7 +2,6 @@
 // リクエストのたびに行う。共通の表（organizations）と組織の中の表（users、memberships、invitations）は別の問い合わせで引き、
 // 1つの SQL で結合しない（docs/data-model.md の「データベースの分け方」）
 import type { Theme } from '../../shared/theme.ts';
-import type { Vocabulary } from '../../shared/vocabulary.ts';
 import { commonDb, orgDb, type OrganizationDb } from './entries.ts';
 import { issueVerifiedOrganization } from './verify-organization.ts';
 import { issueVerifiedWorkspace, type VerifiedWorkspace, type WorkspaceRole } from './verify-workspace.ts';
@@ -24,7 +23,6 @@ export type OrganizationActor = {
 export type OrganizationSummary = {
   readonly slug: string;
   readonly name: string;
-  readonly vocabulary: Vocabulary;
   readonly theme: Theme;
 };
 
@@ -56,10 +54,7 @@ export async function enterOrganization(
   const common = commonDb(env);
   const organization = await common.first(
     common.statement((q) =>
-      q
-        .selectFrom('organizations')
-        .select(['id', 'suspended_at', 'slug', 'name', 'vocabulary', 'theme'])
-        .where('slug', '=', slug),
+      q.selectFrom('organizations').select(['id', 'suspended_at', 'slug', 'name', 'theme']).where('slug', '=', slug),
     ),
   );
   if (organization === undefined) return undefined;
@@ -93,7 +88,6 @@ export async function enterOrganization(
             slug: organization.slug,
             name: organization.name,
             // 列の CHECK が守る値。列挙に無い値が来ても、操作の出力のスキーマ（z.enum）が 500 で止める
-            vocabulary: organization.vocabulary as Vocabulary,
             theme: organization.theme as Theme,
           },
         };

@@ -8,7 +8,7 @@ import { dictionary } from '../src/shared/vocabulary.ts';
 import {
   WORKSPACE_NAME_MAX_LENGTH,
   defaultColumnNames,
-  defaultDetailFieldNames,
+  defaultDetailFieldName,
   workspaceNameProblem,
   workspaceNameSchema,
 } from '../src/shared/workspace.ts';
@@ -156,13 +156,11 @@ describe('名前', () => {
 });
 
 describe('既定の列と決まった欄の名前', () => {
-  test('決まった欄の名前は、辞書の達成条件と受け入れ基準と同じ', () => {
-    assert.equal(defaultDetailFieldNames.game, dictionary.ac.game);
-    assert.equal(defaultDetailFieldNames.scrum, dictionary.ac.scrum);
+  test('決まった欄の名前は、辞書の受け入れ基準（スクラムの言葉）と同じ', () => {
+    assert.equal(defaultDetailFieldName, dictionary.ac.scrum);
   });
 
-  test('列は完了の列を除く3つで、言葉づかいごとに持つ', () => {
-    assert.deepEqual(defaultColumnNames.game, ['出発前', '遂行中', '査定中']);
-    assert.deepEqual(defaultColumnNames.scrum, ['未着手', '作業中', 'レビュー']);
+  test('列は完了の列を除く3つで、スクラムの言葉', () => {
+    assert.deepEqual(defaultColumnNames, ['未着手', '作業中', 'レビュー']);
   });
 });

@@ -48,7 +48,7 @@ test('スクラムの言葉: エピックを配下を残して削除し、残っ
 }) => {
   await signIn(context, baseURL, 'admin');
   const collect = await watchViolations(page);
-  await createWorkspace(page, '削除のワークスペース', 'scrum');
+  await createWorkspace(page, '削除のワークスペース');
 
   await create(page, 'エピックを作る', '会員証を作り直す');
   await create(page, 'ストーリーを作る', 'カードの画面');
@@ -132,22 +132,22 @@ test('スクラムの言葉: エピックを配下を残して削除し、残っ
   expect(await collect()).toEqual([]);
 });
 
-test('ゲームの言葉: 配下の無いレイドは選ばせずに削除する。断られたら理由を確認の中に出す', async ({
+test('seed の受託開発チーム: 配下の無いエピックは選ばせずに削除する。断られたら理由を確認の中に出す', async ({
   context,
   baseURL,
   page,
 }) => {
   await signIn(context, baseURL, 'admin');
-  await createWorkspace(page, '削除のパーティ', 'game');
-  await create(page, 'レイドを作る', '倉庫の棚卸し');
+  await createWorkspace(page, '削除のワークスペース');
+  await create(page, 'エピックを作る', '倉庫の棚卸し');
   await page.waitForLoadState('networkidle');
 
   await page.getByRole('link', { name: '倉庫の棚卸し', exact: true }).click();
-  await page.getByRole('button', { name: 'レイドを直す' }).click();
-  const epicDialog = page.getByRole('dialog', { name: 'レイド', exact: true });
-  await epicDialog.getByRole('button', { name: 'このレイドを削除する' }).click();
-  const confirm = page.getByRole('dialog', { name: 'レイドを削除する' });
-  await expect(confirm.getByText('配下の達成目標はありません。')).toBeVisible();
+  await page.getByRole('button', { name: 'エピックを直す' }).click();
+  const epicDialog = page.getByRole('dialog', { name: 'エピック', exact: true });
+  await epicDialog.getByRole('button', { name: 'このエピックを削除する' }).click();
+  const confirm = page.getByRole('dialog', { name: 'エピックを削除する' });
+  await expect(confirm.getByText('配下のストーリーはありません。')).toBeVisible();
   await expect(confirm.getByRole('radio')).toHaveCount(0);
 
   // 権限が無い（別の画面で外された）と断られたら、確認を開いたまま理由を出す
@@ -155,12 +155,12 @@ test('ゲームの言葉: 配下の無いレイドは選ばせずに削除する
     route.fulfill({ status: 403, json: { error: { code: 'forbidden', message: 'forbidden' } } }),
   );
   await confirm.getByRole('button', { name: '削除する' }).click();
-  await expect(confirm.getByRole('alert')).toHaveText('作った人とパーティリーダーだけが削除できます');
+  await expect(confirm.getByRole('alert')).toHaveText('作った人とリーダーだけが削除できます');
   await page.unroute('**/epic-delete');
 
   await confirm.getByRole('button', { name: '削除する' }).click();
   await expect(epicDialog).toBeHidden();
-  await expect(page.getByRole('status').filter({ hasText: 'レイドを削除しました' })).toBeVisible();
+  await expect(page.getByRole('status').filter({ hasText: 'エピックを削除しました' })).toBeVisible();
   await expect(page).toHaveURL(/\/w\/[^/]+$/);
   await expect(page.getByRole('link', { name: '倉庫の棚卸し', exact: true })).toHaveCount(0);
 });
@@ -171,7 +171,7 @@ test('確認は開いたときに件数とまとめて削除できるかを読�
   page,
 }) => {
   await signIn(context, baseURL, 'admin');
-  await createWorkspace(page, '読み直しのワークスペース', 'scrum');
+  await createWorkspace(page, '読み直しのワークスペース');
   await create(page, 'ストーリーを作る', '問い合わせの窓口');
   await addTask(page, '問い合わせの窓口', '返信の型を作る', '起票');
   await page.waitForLoadState('networkidle');
@@ -222,7 +222,7 @@ test('確認を開いた後の読み直しで配下が無くなったら、選�
   page,
 }) => {
   await signIn(context, baseURL, 'admin');
-  await createWorkspace(page, '配下が消えるワークスペース', 'scrum');
+  await createWorkspace(page, '配下が消えるワークスペース');
   await create(page, 'ストーリーを作る', '請求書の発行');
   await addTask(page, '請求書の発行', '宛名を直す', '起票');
   await page.waitForLoadState('networkidle');
@@ -256,7 +256,7 @@ test('読み直しで削除できなくなったら主ボタンを押せなく�
   page,
 }) => {
   await signIn(context, baseURL, 'admin');
-  await createWorkspace(page, '権限が変わるワークスペース', 'scrum');
+  await createWorkspace(page, '権限が変わるワークスペース');
   await create(page, 'ストーリーを作る', '在庫の通知');
   await page.waitForLoadState('networkidle');
 
@@ -325,17 +325,17 @@ test('作った人でもリーダーでもないメンバーには、削除の�
   await expect(epic).toBeVisible();
   await waitForSettled(page);
   await epic.click();
-  await page.getByRole('button', { name: 'レイドを直す' }).click();
-  const epicDialog = page.getByRole('dialog', { name: 'レイド', exact: true });
+  await page.getByRole('button', { name: 'エピックを直す' }).click();
+  const epicDialog = page.getByRole('dialog', { name: 'エピック', exact: true });
   await expect(epicDialog.getByLabel('タイトル')).toHaveValue('ポイントの交換先を増やす');
   await expect(epicDialog.getByRole('button', { name: /を削除する/ })).toHaveCount(0);
-  await expect(epicDialog.getByText('削除できるのは作った人とパーティリーダーです。')).toBeVisible();
+  await expect(epicDialog.getByText('削除できるのは作った人とリーダーです。')).toBeVisible();
   await epicDialog.getByRole('button', { name: 'やめる' }).click();
-  await page.getByRole('link', { name: '掲示板へ戻る' }).click();
+  await page.getByRole('link', { name: 'バックログへ戻る' }).click();
 
   await page.getByRole('button', { name: '送料の割引にポイントを使える', exact: true }).click();
-  const storyDialog = page.getByRole('dialog', { name: '達成目標', exact: true });
+  const storyDialog = page.getByRole('dialog', { name: 'ストーリー', exact: true });
   await expect(storyDialog.getByLabel('タイトル')).toHaveValue('送料の割引にポイントを使える');
   await expect(storyDialog.getByRole('button', { name: /を削除する/ })).toHaveCount(0);
-  await expect(storyDialog.getByText('削除できるのは作った人とパーティリーダーです。')).toBeVisible();
+  await expect(storyDialog.getByText('削除できるのは作った人とリーダーです。')).toBeVisible();
 });

@@ -1,6 +1,6 @@
-// 主な画面を axe で確かめる（#334）。4つのテーマ × ゲームの言葉。除外は e2e/ui-exclusions.ts。
+// 主な画面を axe で確かめる（#334）。4つのテーマ × スクラムの言葉。除外は e2e/ui-exclusions.ts。
 // 開いた状態（引き出し、ダイアログ、確かめ）は e2e/a11y-open.test.ts。CI のシャードに散るようファイルを分けた。
-// seed のセッション（seed/sessions.ts）の Cookie で開く。あおば開発の管理者はミナト。受託開発チームはゲームの言葉。
+// seed のセッション（seed/sessions.ts）の Cookie で開く。あおば開発の管理者はミナト。受託開発チームも社内ツールもスクラムの言葉。
 // 読むだけにし、seed の行もテーマの設定も書き換えない（ほかのファイルと並べて走るため）
 import type { Locator, Page } from '@playwright/test';
 import { sprintBoard } from '../src/shared/operations/sprint/index.ts';
@@ -41,7 +41,7 @@ const screens: {
     screen: 'backlog',
     path: WORKSPACE,
     ready: (page) => [
-      page.getByRole('heading', { level: 1, name: '掲示板' }),
+      page.getByRole('heading', { level: 1, name: 'バックログ' }),
       page.getByRole('link', { name: 'ポイント付与のバッチを作る' }),
     ],
   },
@@ -50,13 +50,13 @@ const screens: {
     path: `${WORKSPACE}/epics/${EPIC_ID}`,
     ready: (page) => [
       page.getByRole('heading', { level: 1, name: 'ポイントの交換先を増やす' }),
-      page.getByRole('heading', { level: 2, name: '討伐隊' }),
+      page.getByRole('heading', { level: 2, name: '参加者' }),
     ],
   },
   {
     screen: 'plan',
     path: `${WORKSPACE}/plan`,
-    ready: (page) => [page.getByRole('heading', { level: 1, name: '遠征の計画' })],
+    ready: (page) => [page.getByRole('heading', { level: 1, name: '計画' })],
   },
   {
     screen: 'sprint',
@@ -64,7 +64,7 @@ const screens: {
     // aoba のワークスペースには進行中のスプリントを置かない（seed の進行中は別の組織のワークスペース）ので、架空のスプリントと列とカードに差し替える
     prepare: (page) => mockOperation(page, sprintBoard, { slug: 'aoba' }, SAMPLE_BOARD),
     ready: (page) => [
-      page.getByRole('heading', { level: 1, name: '遠征 第14回' }),
+      page.getByRole('heading', { level: 1, name: 'スプリント 第14回' }),
       page.getByRole('article', { name: 'ポイント付与のバッチを作る' }),
     ],
   },
@@ -87,7 +87,7 @@ const screens: {
     ready: (page) => [
       page.getByRole('heading', { level: 1 }),
       // 節ごとに読む一覧のうち、seed の行がほかのファイルに消されないもの（ワークスペースの一覧）
-      page.getByRole('table', { name: 'パーティの一覧' }),
+      page.getByRole('table', { name: 'ワークスペースの一覧' }),
     ],
   },
 ];
@@ -97,7 +97,7 @@ for (const { screen, path, prepare, ready } of screens) {
     await prepare?.(page);
     await page.goto(path);
     for (const locator of ready(page)) await expect(locator.first()).toBeVisible();
-    // 節ごとに読む部品（休日、言葉づかい、決まった欄など）は aria-busy を付けないものもあるので、
+    // 節ごとに読む部品（休日、決まった欄など）は aria-busy を付けないものもあるので、
     // 要求が止むまで待ってから測る（画面は読み込みの後に要求を出し続けない）
     await page.waitForLoadState('networkidle');
     // 見えている所の読み込みが終わるまで待つ（閉じたダイアログの中の欄は、開くまで読み込み中のまま残る）

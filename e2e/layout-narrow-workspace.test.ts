@@ -1,8 +1,8 @@
 // ワークスペースの中の主な画面（バックログ、タスクの引き出し、計画、メンバー、ワークスペースの設定）を幅 390px で開き、
-// 横のはみ出しと 44px の押せる範囲を確かめる（#336）。3つのテーマ × 2つの言葉。ワークスペースの外の画面は
+// 横のはみ出しと 44px の押せる範囲を確かめる（#336）。3つのテーマ × 1つの言葉（スクラムの言葉）。ワークスペースの外の画面は
 // e2e/layout-narrow.test.ts（CI のシャードに散るよう分けた）。除外は e2e/ui-exclusions.ts。
-// seed のセッション（seed/sessions.ts）の Cookie で開く。あおば開発の管理者はミナト。受託開発チームの言葉づかいはゲームで、
-// スクラムの言葉は workspace の操作の応答の書き換えで当てる。開くだけで、seed の行もテーマも書き換えない（ほかのファイルと並べて走るため）
+// seed のセッション（seed/sessions.ts）の Cookie で開く。あおば開発の管理者はミナト。
+// 開くだけで、seed の行もテーマも書き換えない（ほかのファイルと並べて走るため）
 import type { Page } from '@playwright/test';
 import type { DictionaryKey, TemplateParams } from '../src/shared/vocabulary.ts';
 import { sprintBoard } from '../src/shared/operations/sprint/index.ts';
@@ -29,7 +29,7 @@ test.beforeEach(async ({ context, baseURL }) => {
   await signIn(context, baseURL, 'admin');
 });
 
-// ワークスペースの言葉づかいが当たったこと。左のメニューのバックログの項目の名前で見る（狭い幅では帯の中に畳まれる）
+// ワークスペースの言葉が出ていること。左のメニューのバックログの項目の名前で見る（狭い幅では帯の中に畳まれる）
 async function expectWorkspaceWords(page: Page, w: W): Promise<void> {
   await expect(page.locator('.nav a.nav-item', { hasText: w('backlog') })).toHaveCount(1);
 }
@@ -100,12 +100,12 @@ test('ワークスペースの設定が 390px で横にはみ出さず、押せ�
 
 // 空白の無い 2048 字近い URL のリンクを持つエピック。seed の行は書き換えず、作ったワークスペースの中に作る（ほかのファイルと並べて走るため）
 async function createEpicWithLongLink(page: Page): Promise<{ epicPath: string; link: string }> {
-  await createWorkspace(page, '長いリンクのパーティ', 'game');
+  await createWorkspace(page, '長いリンクのワークスペース');
   const workspacePath = new URL(page.url()).pathname;
   const link = `https://example.com/${'a'.repeat(2000)}`;
   const response = await page.request.post('/api/aoba/epic-create', {
     headers: { Origin: new URL(page.url()).origin },
-    data: { workspace_id: workspacePath.split('/').pop(), title: '長いリンクのレイド', link_url: link },
+    data: { workspace_id: workspacePath.split('/').pop(), title: '長いリンクのエピック', link_url: link },
   });
   expect(response.ok()).toBe(true);
   const { epic } = (await response.json()) as { epic: { id: string } };
@@ -118,7 +118,7 @@ test('長い URL のリンクを持つエピックの画面が 390px で横に�
   const { epicPath, link } = await createEpicWithLongLink(page);
   await expectNarrowLayout(page, 'epic', async (w) => {
     await page.goto(epicPath);
-    await expect(page.getByRole('heading', { level: 1, name: '長いリンクのレイド' })).toBeVisible();
+    await expect(page.getByRole('heading', { level: 1, name: '長いリンクのエピック' })).toBeVisible();
     // URL は全文を出し、折り返す。「開く」は URL の文字と別のリンクで、読み上げの名前に「開く」を含む
     await expect(page.locator('.source-key.is-wrap')).toContainText(link);
     await expect(page.getByRole('link', { name: 'リンクを新しいタブで開く' })).toHaveText('開く');
@@ -132,7 +132,7 @@ test('長い URL のリンクを持つエピックの画面が 320px でも横�
   const { epicPath } = await createEpicWithLongLink(page);
   await page.setViewportSize({ width: 320, height: 844 });
   await page.goto(epicPath);
-  await expect(page.getByRole('heading', { level: 1, name: '長いリンクのレイド' })).toBeVisible();
+  await expect(page.getByRole('heading', { level: 1, name: '長いリンクのエピック' })).toBeVisible();
   await page.waitForLoadState('networkidle');
   expect(await findOverflowViolations(page)).toEqual([]);
   expect(await findTargetSizeViolations(page)).toEqual([]);

@@ -15,11 +15,11 @@ function sectionOf(page: Page) {
 }
 
 function tableOf(page: Page) {
-  return sectionOf(page).getByRole('table', { name: '冒険者ギルドの変更の履歴' });
+  return sectionOf(page).getByRole('table', { name: '組織の変更の履歴' });
 }
 
 // seed の一番古い行。これより古い履歴は無い
-const OLDEST_SEED_EVENT = '冒険者ギルド「あおば開発」を作りました';
+const OLDEST_SEED_EVENT = '組織「あおば開発」を作りました';
 
 // 一番古い seed の行が出るまで「古い履歴を読む」で読み足す。読み足すたびに、行が増えるのを待ってから次を押す
 async function readToOldestSeedRow(page: Page): Promise<void> {
@@ -67,11 +67,11 @@ test.describe('管理者（あおば開発のミナト）', () => {
     const table = tableOf(page);
     await expect(table.getByRole('columnheader')).toHaveText(['日時', 'した人', '内容']);
     const seedRows = [
-      ['2026/10/10 14:00', '運用者', '冒険者ギルドを再開しました'],
-      ['2026/10/10 12:00', '運用者', '冒険者ギルドを一時的に停止しました'],
-      ['2026/10/01 09:30', 'ミナト', 'パーティ「受託開発チーム」を作りました'],
-      ['2026/10/01 09:00', '運用者', 'ミナトをギルドマスターに指名しました'],
-      ['2026/10/01 09:00', '運用者', '冒険者ギルド「あおば開発」を作りました'],
+      ['2026/10/10 14:00', '運用者', '組織を再開しました'],
+      ['2026/10/10 12:00', '運用者', '組織を一時的に停止しました'],
+      ['2026/10/01 09:30', 'ミナト', 'ワークスペース「受託開発チーム」を作りました'],
+      ['2026/10/01 09:00', '運用者', 'ミナトを管理者に指名しました'],
+      ['2026/10/01 09:00', '運用者', '組織「あおば開発」を作りました'],
     ];
     // 並列のテストが足した行（新しい日時）は先頭に来るので、seed の行だけを抜き出して順を見る
     await readToOldestSeedRow(page);
@@ -91,8 +91,8 @@ test.describe('管理者（あおば開発のミナト）', () => {
     expect(texts.filter((row) => seedTexts.has(row[2]!))).toEqual(seedRows);
     // 運用者のログインの ID も、所属の行も出ない
     await expect(sectionOf(page)).not.toContainText('9000000000000001');
-    // 所属の行（受託開発チームの作成と同じ日時）が出ていれば、知らない組の「冒険者ギルドを変更しました」になる
-    await expect(table).not.toContainText('冒険者ギルドを変更しました');
+    // 所属の行（受託開発チームの作成と同じ日時）が出ていれば、知らない組の「組織を変更しました」になる
+    await expect(table).not.toContainText('組織を変更しました');
     await expect(rows.filter({ hasText: '2026/10/01' })).toHaveCount(3);
     // した人がユーザーなら名前とアバター、運用者は文字だけ
     await expect(rows.filter({ hasText: '受託開発チーム' }).getByRole('img')).toHaveCount(0);
@@ -134,7 +134,7 @@ test.describe('管理者（あおば開発のミナト）', () => {
     release();
 
     await expect(rows).toHaveCount(3);
-    await expect(rows.nth(2)).toContainText('パーティ「三番目」を作りました');
+    await expect(rows.nth(2)).toContainText('ワークスペース「三番目」を作りました');
     await expect(rows.first()).toContainText('自動の処理');
     await expect(more).toHaveCount(0);
     await expect(section.getByText('これより前の履歴はありません')).toBeFocused();
@@ -211,7 +211,7 @@ test.describe('管理者（あおば開発のミナト）', () => {
       await page.goto('/aoba/admin');
       const table = tableOf(page);
       const rows = table.locator('tbody tr');
-      await expect(rows.first()).toContainText(`パーティ「${long}」を作りました`);
+      await expect(rows.first()).toContainText(`ワークスペース「${long}」を作りました`);
       await rows.first().scrollIntoViewIfNeeded();
       // 表の枠の中でも、画面でも、横にはみ出さない
       const wrap = sectionOf(page).locator('.table-wrap');

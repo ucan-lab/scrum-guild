@@ -22,7 +22,6 @@ export const load: LayoutLoad = async ({ params, fetch, url, depends }) => {
     ? {
         id: params.id,
         name: result.data.name,
-        vocabulary: result.data.vocabulary,
         closedAt: result.data.closed_at,
         definitionOfDone: result.data.definition_of_done_md,
         role: result.data.role,

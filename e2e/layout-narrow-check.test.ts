@@ -176,11 +176,11 @@ test('押せる要素も文字を持つ要素も1つも数えなかった組み�
     `<!doctype html><html lang="en"><head><title>Empty</title></head><body><div></div></body></html>`,
   );
   const check = createLayoutCheck('today', []);
-  await check.inThemes(page, 'ゲーム');
+  await check.inThemes(page);
   expect(() => check.finish()).toThrow(
-    /\[today\] 押せる要素を 1 つも数えなかった組み合わせがある: simple_light・ゲーム、medieval・ゲーム、modern・ゲーム/,
+    /\[today\] 押せる要素を 1 つも数えなかった組み合わせがある: simple_light、medieval、modern/,
   );
-  expect(() => check.finish()).toThrow(/文字を持つ要素を 1 つも数えなかった組み合わせがある: simple_light・ゲーム、/);
+  expect(() => check.finish()).toThrow(/文字を持つ要素を 1 つも数えなかった組み合わせがある: simple_light、/);
 });
 
 test('selectorOf は、html に当たったとき html を返す', async ({ page }) => {
@@ -218,18 +218,17 @@ test('除外は、その種類の当たった要素だけを外し、当たら�
   expect(staleExclusions('today', isLayoutCheck, used, list)).toEqual([otherCheck, missing]);
 });
 
-test('画面のテストの入口は、テーマと言葉の組み合わせで出た違反をまとめて落ち、当たらなくなった除外だけでも落ちる', async ({
+test('画面のテストの入口は、テーマごとに出た違反をまとめて落ち、当たらなくなった除外だけでも落ちる', async ({
   page,
 }) => {
   await page.setContent(BROKEN);
   // 除外が無ければ、3つの違反を出た組み合わせとともに並べて落ちる
   const bare = createLayoutCheck('today', []);
-  await bare.inThemes(page, 'ゲーム');
-  await bare.inThemes(page, 'スクラム');
+  await bare.inThemes(page);
   expect(() => bare.finish()).toThrow(
-    /\[today\] 狭い幅（390px）の違反が 3 件ある[\s\S]*- target-44: button\.small（simple_light・ゲーム、medieval・ゲーム、modern・ゲーム、simple_light・スクラム、medieval・スクラム、modern・スクラム）\n {2}見た目の箱は 30×30px/,
+    /\[today\] 狭い幅（390px）の違反が 3 件ある[\s\S]*- target-44: button\.small（simple_light、medieval、modern）\n {2}見た目の箱は 30×30px/,
   );
-  expect(() => bare.finish()).toThrow(/- overflow: div\.wide（simple_light・ゲーム、/);
+  expect(() => bare.finish()).toThrow(/- overflow: div\.wide（simple_light、/);
   // 違反をすべて除外で外せば通る
   const covering: UiExclusion[] = [
     { check: 'overflow', selector: 'html', screen: 'today', reason: '確かめ', issue: 1 },
@@ -237,11 +236,11 @@ test('画面のテストの入口は、テーマと言葉の組み合わせで�
     { check: 'target-44', selector: '.small', screen: 'today', reason: '確かめ', issue: 1 },
   ];
   const covered = createLayoutCheck('today', covering);
-  await covered.inThemes(page, 'ゲーム');
+  await covered.inThemes(page);
   covered.finish();
   // どれにも当たらない除外が残れば落ちる
   const missing: UiExclusion = { check: 'target-44', selector: '.gone', screen: 'today', reason: '確かめ', issue: 1 };
   const stale = createLayoutCheck('today', [...covering, missing]);
-  await stale.inThemes(page, 'ゲーム');
+  await stale.inThemes(page);
   expect(() => stale.finish()).toThrow(/当たらなくなった除外が 1 件ある。[\s\S]*- today target-44 \.gone/);
 });
