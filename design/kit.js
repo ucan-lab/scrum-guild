@@ -55,6 +55,7 @@
   // ---- 言葉の辞書（各キーはスクラムの言葉の文字列1つ） ----
   const DICT = {
     workspace: "ワークスペース", inbox: "受信箱", backlog: "バックログ", sprint: "スプリント", plan: "計画", epic: "エピック", story: "ストーリー",
+    menuCollapse: "メニューを畳む", menuExpand: "メニューを広げる",
     task: "タスク", archive: "アーカイブ", connection: "接続", sprintGoal: "スプリントゴール", detail: "詳細", ac: "受け入れ基準", due: "期日",
     points: "ポイント", assignee: "担当", category: "区分", capacity: "作業量と基準", over: "超過", done: "完了", column: "列",
     doneToday: "今日の完了", complete: "完了にする", requester: "作成者", party: "参加者", accept: "参加する", leave: "参加をやめる",
@@ -1971,11 +1972,11 @@ const looooooooooooooooooooooooooooooooooongLine = "コードの長い1行は、
     return pages.slice(0, cut < 0 ? pages.length : cut).map((p) => {
       // 組織の切り替えは、メニューの外（ブランドの下）の orgMenuHtml
       if (p === "organization") return "";
-      if (p === "workspace") return `<div class="nav-group">${t("workspace")}</div>
+      if (p === "workspace") return `<div class="nav-group"><span class="nav-group-label">${t("workspace")}</span></div>
         <label class="ws-select" for="ws"><span>${t("workspace")}</span><select id="ws">${Object.values(D.workspaces).map((w) => `<option>${esc(w.name)}</option>`).join("")}</select></label>`;
-      if (typeof p === "string") return `<div class="nav-group">${p}</div>`;
+      if (typeof p === "string") return `<div class="nav-group"><span class="nav-group-label">${p}</span></div>`;
       const [id, ic, label, href, badge] = p;
-      return `<a class="nav-item" href="${firstHref(href)}" ${current === id ? 'aria-current="page"' : ""}>${icon(ic)}<span>${label()}</span>${badge && !first ? `<span class="nav-badge">${badge}</span>` : ""}</a>`;
+      return `<a class="nav-item" href="${firstHref(href)}" ${current === id ? 'aria-current="page"' : ""}>${icon(ic)}<span class="nav-item-label">${label()}</span>${badge && !first ? `<span class="nav-badge">${badge}</span>` : ""}</a>`;
     }).join("");
   }
   // 組織の切り替え。開閉するメニューで、中は各組織へのリンクと、最後に組織の選択の画面へ戻るリンク。
@@ -1983,12 +1984,13 @@ const looooooooooooooooooooooooooooooooooongLine = "コードの長い1行は、
   // select にしないのは、矢印キーで選んだだけで画面が移らないようにするため。
   // 閉じるのは、ボタン、外を押す、Tab で外へ出る、リンクを押す、Esc。メニューの中にフォーカスがあるときに閉じたら、ボタンへ戻す
   let orgMenuOpen = false;
+  let navCollapsed = (() => { try { return localStorage.getItem("sg-nav-collapsed") === "true"; } catch (e) { return false; } })();
   // カタログの見本は、開いた状態と閉じた状態、組織の数、招待の有無を替えて並べるので、引数で渡す。live が偽なら押しても動かない
   function orgMenuHtml({ open = orgMenuOpen, id = "org-menu-list", live = true, orgs = D.organizations, invited = (D.receivedInvites || []).length > 0 } = {}) {
     if (orgs.length < 2 && !invited) return "";
     const current = orgs.find((k) => k.slug === D.organization) || orgs[0];
     const label = `${current.name}。${t("organization")}を切り替える${invited ? "。届いた招待あり" : ""}`;
-    return `<div class="org-menu"><button class="org-menu-button" type="button" aria-expanded="${open}" aria-controls="${id}" aria-label="${esc(label)}" ${live ? "data-org-menu" : ""}><span class="org-menu-label">${t("organization")}</span><b>${esc(current.name)}</b>${invited ? '<span class="chip">届いた招待あり</span>' : ""}${icon("chevron")}</button>
+    return `<div class="org-menu"><button class="org-menu-button" type="button" aria-expanded="${open}" aria-controls="${id}" aria-label="${esc(label)}" ${live ? "data-org-menu" : ""}><span class="org-menu-label">${t("organization")}</span><b>${esc(current.name)}</b>${invited ? '<span class="chip">届いた招待あり</span>' : ""}${invited ? '<span class="org-menu-invite" aria-hidden="true"></span>' : ""}${icon("swap")}${icon("chevron")}<span class="nav-tip" aria-hidden="true">${esc(current.name)}${invited ? "<small>届いた招待あり</small>" : ""}</span></button>
       <ul class="org-menu-list" id="${id}" aria-label="入れる${t("organization")}" ${open ? "" : "hidden"}>${orgs.map((k) => `<li><a href="today.html"${k.slug === current.slug ? ' aria-current="page"' : ""}><span class="org-menu-name">${esc(k.name)}</span>${k.slug === current.slug ? icon("check") : ""}</a></li>`).join("")}<li><a href="organizations.html"><span class="org-menu-name">${t("organization")}の一覧へ</span>${invited ? '<span class="org-menu-note">招待が届いています</span>' : ""}</a></li></ul></div>`;
   }
   function setOrgMenu(open, focus) {
@@ -2050,12 +2052,26 @@ const looooooooooooooooooooooooooooooooooongLine = "コードの長い1行は、
     if (!page) return;
     document.getElementById("org-menu-slot").innerHTML = page.operator ? "" : orgMenuHtml();
     document.getElementById("account-menu-slot").innerHTML = accountMenuHtml();
-    document.getElementById("nav").innerHTML = navHtml(page.current, page.operator ? OPERATOR_PAGES : PAGES);
+    document.getElementById("app-nav").innerHTML = navHtml(page.current, page.operator ? OPERATOR_PAGES : PAGES);
     document.querySelectorAll("[data-assist-label]").forEach((el) => (el.textContent = `${t("assistant")}に頼む`));
     document.getElementById("content").innerHTML = page.render();
+    applyNavCollapsed();
     applyTheme();
     renderDrawer();
     stamped.clear();
+  }
+  // 左のメニューの開閉を枠とボタンの属性にだけ当てる（本文は描き直さない。開いた引き出しや入力を消さないため）。
+  // CSS は [data-nav-collapsed="true"] で当てるので、値を "true" にする（toggleAttribute の空の値では当たらない）
+  function applyNavCollapsed() {
+    const app = document.querySelector(".app");
+    if (app) { if (navCollapsed) app.setAttribute("data-nav-collapsed", "true"); else app.removeAttribute("data-nav-collapsed"); }
+    const toggle = document.querySelector("[data-nav-toggle]");
+    if (!toggle) return;
+    const label = t(navCollapsed ? "menuExpand" : "menuCollapse");
+    toggle.setAttribute("aria-expanded", String(!navCollapsed));
+    toggle.setAttribute("aria-label", label);
+    const tip = toggle.querySelector(".nav-tip");
+    if (tip) tip.textContent = label;
   }
   // 画面の見本を組み立てる。render は中身の HTML を返す関数。
   // opts.operator なら運用者の画面の枠にする（組織のメニュー、通知、レベルを出さない）
@@ -2069,9 +2085,12 @@ const looooooooooooooooooooooooooooooooooongLine = "コードの長い1行は、
     document.getElementById("app").innerHTML = `
     <div class="app">
       <aside class="binding" aria-label="メニュー"><div class="binding-inner">
-        <a class="brand" href="index.html" title="デザインシステムのカタログへ">${brandMark}<span class="brand-name">Scrum Guild</span></a>
+        <div class="binding-head">
+          <a class="brand" href="index.html" title="デザインシステムのカタログへ">${brandMark}<span class="brand-name">Scrum Guild</span></a>
+          <button class="nav-toggle" type="button" data-nav-toggle aria-expanded="${!navCollapsed}" aria-controls="app-nav" aria-label="${t(navCollapsed ? "menuExpand" : "menuCollapse")}">${icon("panel")}<span class="nav-tip" aria-hidden="true">${t(navCollapsed ? "menuExpand" : "menuCollapse")}</span></button>
+        </div>
         <div id="org-menu-slot"></div>
-        <nav class="nav" id="nav"></nav>
+        <nav class="nav" id="app-nav"></nav>
         <p class="binding-foot">デザインの見本。データはすべて架空の例です</p>
       </div></aside>
       <div class="sheet">
@@ -2090,6 +2109,11 @@ const looooooooooooooooooooooooooooooooooongLine = "コードの長い1行は、
     <div class="celebrate" id="celebrate" hidden></div>
     <div class="toasts" id="toasts" aria-live="polite"></div>`;
     document.querySelector("[data-switch='theme']").addEventListener("click", cycleTheme);
+    document.querySelector("[data-nav-toggle]").addEventListener("click", () => {
+      navCollapsed = !navCollapsed;
+      try { localStorage.setItem("sg-nav-collapsed", String(navCollapsed)); } catch (e) { /* 覚えられないだけで、今の画面では開閉する */ }
+      applyNavCollapsed();
+    });
     document.querySelector("[data-switch='first']")?.addEventListener("click", cycleFirst);
     applyTheme();
     redraw();

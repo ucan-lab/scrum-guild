@@ -1,11 +1,21 @@
+import type { Page } from '@playwright/test';
 import { expect, test } from './fixtures.ts';
-import { expectFocusReturned, expectModalFocus, signIn, watchViolations } from './helpers.ts';
+import {
+  expectFocusReturned,
+  expectModalFocus,
+  expectNoA11yViolationsInThemes,
+  signIn,
+  watchViolations,
+} from './helpers.ts';
+import { exclusionsFor, isAxeCheck } from './ui-exclusions.ts';
 
 // build と wrangler dev に渡した版。playwright.config.ts が決めて process.env に置く（docs/development.md の「e2e のサーバー」）
 const version = process.env.APP_VERSION || 'dev';
 
 // 枠の部品は組織の中の画面が使う。あおば開発だけに入れるユーザー（ハルカ）で、組織の画面を開く
 const today = '/aoba';
+// あおば開発のワークスペース（seed）。バックログの木の行が本文の左端に並ぶ
+const AOBA_WORKSPACE_ID = '019a0000-0000-7000-8000-000000000401';
 
 test.beforeEach(async ({ context, baseURL }) => {
   await signIn(context, baseURL, 'member');
@@ -20,6 +30,199 @@ test('組織の画面はシェルを返し、API の版を出し、CSP の違反
   await expect(page.getByRole('heading', { level: 1, name: '自分の今日' })).toBeVisible();
   await expect(page.locator('p[role="status"]')).toHaveText(`API: ok（版 ${version}）`);
   expect(await collect()).toEqual([]);
+});
+
+test('1280px では左のメニューを折りたため、幅とラベルと状態を覚える', async ({ page }) => {
+  const collect = await watchViolations(page);
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto(today);
+  await page.evaluate(() => localStorage.removeItem('sg-nav-collapsed'));
+  await page.reload();
+
+  const app = page.locator('.app');
+  const toggle = page.getByRole('button', { name: 'メニューを畳む' });
+  await expect(toggle).toHaveAttribute('aria-expanded', 'true');
+  await expect(toggle).toHaveAttribute('aria-controls', 'app-nav');
+  const before = await page.locator('.content').boundingBox();
+  await toggle.click();
+  const expand = page.getByRole('button', { name: 'メニューを広げる' });
+  await expect(expand).toHaveAttribute('aria-expanded', 'false');
+  // 押してもフォーカスはボタンに残る
+  await expect(expand).toBeFocused();
+  await expect(app).toHaveAttribute('data-nav-collapsed', 'true');
+  await expect(page.locator('.binding')).toHaveJSProperty('offsetWidth', 64);
+  const after = await page.locator('.content').boundingBox();
+  expect(after!.x).toBeLessThan(before!.x);
+
+  // 項目はアイコンだけで、名前は見えないが読み上げには残る
+  const item = page.locator('.nav-item').first();
+  await expect(item.locator('.nav-item-label')).toHaveCSS('opacity', '0');
+  await expect(page.locator('#app-nav').getByRole('link', { name: '自分の今日' })).toBeVisible();
+  // ロゴはマークだけで、リンクの名前は残り、押すと組織の画面へ戻る
+  await expect(page.locator('.brand-name')).toHaveJSProperty('offsetWidth', 1);
+  await expect(page.getByRole('link', { name: 'Scrum Guild' })).toHaveAttribute('href', '/aoba');
+
+  // 再読み込みしても畳んだまま。キーボードだけで広げられる
+  await page.reload();
+  await expect(app).toHaveAttribute('data-nav-collapsed', 'true');
+  await expect(page.locator('.binding')).toHaveJSProperty('offsetWidth', 64);
+  await expand.focus();
+  await page.keyboard.press('Enter');
+  await expect(page.getByRole('button', { name: 'メニューを畳む' })).toHaveAttribute('aria-expanded', 'true');
+  await expect(page.locator('.binding')).toHaveJSProperty('offsetWidth', 240);
+  await page.keyboard.press('Space');
+  await expect(expand).toHaveAttribute('aria-expanded', 'false');
+  expect(await collect()).toEqual([]);
+});
+
+test('畳んだ列では、マウスを載せるかフォーカスすると項目の名前が横に見える', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto(today);
+  await page.getByRole('button', { name: 'メニューを畳む' }).click();
+  const items = page.locator('#app-nav .nav-item');
+  // キーボードで移ると名前が出る（開閉のボタンから Tab で組織の切り替えを越え、最初の項目へ）
+  await page.getByRole('button', { name: 'メニューを広げる' }).focus();
+  for (let i = 0; i < 5 && !(await items.nth(0).evaluate((el) => el === document.activeElement)); i++)
+    await page.keyboard.press('Tab');
+  await expect(items.nth(0)).toBeFocused();
+  await expect(items.nth(0).locator('.nav-item-label')).toHaveCSS('opacity', '1');
+  await items.nth(1).hover();
+  await expect(items.nth(1).locator('.nav-item-label')).toHaveCSS('opacity', '1');
+  // 名前は列の外（右）に浮く
+  const label = await items.nth(1).locator('.nav-item-label').boundingBox();
+  expect(label!.x).toBeGreaterThanOrEqual(64);
+
+  // マウスで押した後は、マウスを外せば名前が消える（押したリンクにフォーカスが残っても出し続けない）
+  await items.nth(0).click();
+  await page.mouse.move(700, 600);
+  await expect(items.nth(0).locator('.nav-item-label')).toHaveCSS('opacity', '0');
+});
+
+// 浮かせた名前の中の点が、本文の要素に覆われずに名前自身を返すか（名前は pointer-events: none なので、測る間だけ戻す）
+async function frontmostAcross(page: Page, selector: string): Promise<boolean[]> {
+  return page.locator(selector).evaluate((el: HTMLElement) => {
+    el.style.pointerEvents = 'auto';
+    const r = el.getBoundingClientRect();
+    const hits = [0.1, 0.5, 0.9].map((f) => {
+      const hit = document.elementFromPoint(r.left + r.width * f, r.top + r.height / 2);
+      return hit !== null && el.contains(hit);
+    });
+    el.style.pointerEvents = '';
+    return hits;
+  });
+}
+
+test('畳んだ列の名前と組織の一覧は、バックログの行に覆われず、列の外に出る', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto(`/aoba/w/${AOBA_WORKSPACE_ID}`);
+  await expect(page.locator('.tree-row').first()).toBeVisible();
+  await page.getByRole('button', { name: 'メニューを畳む' }).click();
+
+  const backlog = page.locator('#app-nav').getByRole('link', { name: 'バックログ' });
+  await backlog.hover();
+  const label = backlog.locator('.nav-item-label');
+  await expect(label).toHaveCSS('opacity', '1');
+  expect((await label.boundingBox())!.x).toBeGreaterThanOrEqual(64);
+  expect(await frontmostAcross(page, '#app-nav .nav-item[aria-current="page"] .nav-item-label')).toEqual([
+    true,
+    true,
+    true,
+  ]);
+});
+
+test('760px 以下では、畳んだままでも開閉のボタンが無く、帯の形で出る', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto(today);
+  await page.getByRole('button', { name: 'メニューを畳む' }).click();
+  await page.setViewportSize({ width: 390, height: 700 });
+  await expect(page.locator('.nav-toggle')).toBeHidden();
+  await expect(page.locator('.binding')).toHaveCSS('border-right-width', '0px');
+  await expect(page.locator('.brand-name')).toBeVisible();
+  await expect(page.locator('.nav-item-label').first()).toHaveCSS('opacity', '1');
+});
+
+test('畳んだ列のまま、全テーマでアクセシビリティの検査と CSP の違反が無い', async ({ page }) => {
+  const collect = await watchViolations(page);
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto(today);
+  await page.getByRole('button', { name: 'メニューを畳む' }).click();
+  // 畳んだ列では組織のボタンの見える文字（「組織」と名前）を隠すので、#343 の見える名前と aria-label の食い違いが起きない。
+  // その除外を渡すと「当たらなくなった除外」で落ちるので外す（広げた列では今までどおり当たる）
+  const exclusions = exclusionsFor('today', isAxeCheck).filter(
+    (exclusion) => !(exclusion.check === 'label-content-name-mismatch' && exclusion.selector === '.org-menu-button'),
+  );
+  await expectNoA11yViolationsInThemes(page, 'today', exclusions);
+  expect(await collect()).toEqual([]);
+});
+
+test.describe('組織が2つの人（ミナト）', () => {
+  test.beforeEach(async ({ context, baseURL }) => {
+    await signIn(context, baseURL, 'admin');
+  });
+
+  test('畳んだ列から組織の切り替えを開いて別の組織へ移れる', async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await page.goto(today);
+    await page.getByRole('button', { name: 'メニューを畳む' }).click();
+    const org = page.getByRole('button', { name: 'あおば開発。組織を切り替える' });
+    await expect(org).toBeVisible();
+    // 招待が無いときは印を出さない
+    await expect(org.locator('.org-menu-invite')).toHaveCount(0);
+    await org.click();
+    const list = page.getByRole('list', { name: '入れる組織' });
+    await expect(list).toBeVisible();
+    // 一覧は列の横に浮かせる
+    expect((await list.boundingBox())!.x).toBeGreaterThanOrEqual(64);
+    await list.getByRole('link', { name: 'ひばり工房' }).click();
+    await expect(page).toHaveURL(/\/hibari$/);
+    await expect(page.locator('.app')).toHaveAttribute('data-nav-collapsed', 'true');
+  });
+
+  test('畳んだ列で別の組織へ移っている間は、札に「移っています」を出したままにする', async ({ page }) => {
+    await page.route('**/api/hibari/organization', async (route) => {
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+      await route.continue();
+    });
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await page.goto(today);
+    await page.getByRole('button', { name: 'メニューを畳む' }).click();
+    const org = page.locator('.org-menu-button');
+    await org.click();
+    await page.locator('.org-menu-list a').nth(1).click();
+    await page.mouse.move(700, 600);
+    await expect(org.locator('.nav-tip')).toBeVisible();
+    await expect(org.locator('.nav-tip')).toHaveText('移っています');
+    await expect(page).toHaveURL(/\/hibari$/);
+    await expect(org).not.toHaveAttribute('data-moving', 'true');
+  });
+
+  test('バックログの画面でも、畳んだ列から開いた組織の一覧は本文の行に覆われない', async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await page.goto(`/aoba/w/${AOBA_WORKSPACE_ID}`);
+    await expect(page.locator('.tree-row').first()).toBeVisible();
+    await page.getByRole('button', { name: 'メニューを畳む' }).click();
+    await page.locator('.org-menu-button').click();
+    for (const selector of ['.org-menu-list li:first-child a', '.org-menu-list li:last-child a'])
+      expect(await frontmostAcross(page, selector)).toEqual([true, true, true]);
+  });
+
+  test('畳んだ列でも、届いた招待があることが印と読み上げで分かる', async ({ page }) => {
+    await page.route('**/api/my-organizations', (route) =>
+      route.fulfill({
+        json: {
+          organizations: [{ slug: 'aoba', name: 'あおば開発' }],
+          invitations: [{ organization_name: 'つばめ商会', slug: 'tsubame' }],
+          operator: false,
+        },
+      }),
+    );
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await page.goto(today);
+    await page.getByRole('button', { name: 'メニューを畳む' }).click();
+    const org = page.locator('.org-menu-button');
+    await expect(org).toHaveAttribute('aria-label', /届いた招待あり/);
+    await expect(org.locator('.org-menu-invite')).toBeVisible();
+  });
 });
 
 // 書体は @fontsource を自分の Worker から配る。外への通信が無く、本来の書体が読み込まれる
