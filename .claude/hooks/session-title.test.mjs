@@ -8,6 +8,10 @@ import { after, describe, test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { issueNumberOf, pickPr, titleFor } from './session-title-rules.mjs';
 
+// 見えない文字は、整形や編集で消えても気づけないので、生で書かずコードポイントで組む
+const ZWSP = String.fromCodePoint(0x200b);
+const RLO = String.fromCodePoint(0x202e);
+
 const script = path.join(path.dirname(fileURLToPath(import.meta.url)), 'session-title.mjs');
 
 describe('issueNumberOf', () => {
@@ -42,16 +46,16 @@ describe('titleFor', () => {
     assert.equal(titleFor({ issueNumber: 1, issueTitle: 'a\n  b' }), '#1 a b');
   });
   test('制御文字と書式の文字を取り除く（端末とクリップボードに渡るため）', () => {
-    const evil = 'a\u001b[201~\u0007b‮c​d\u0085e\u007ff';
+    const evil = `a\u001b[201~\u0007b${RLO}c${ZWSP}d\u0085e\u007ff`;
     assert.equal(titleFor({ issueNumber: 1, issueTitle: evil }), '#1 a[201~bcdef');
   });
   test('書式の文字をはさんだ空白も1つに詰める', () => {
-    assert.equal(titleFor({ issueNumber: 1, issueTitle: 'a ​ b' }), '#1 a b');
+    assert.equal(titleFor({ issueNumber: 1, issueTitle: `a ${ZWSP} b` }), '#1 a b');
   });
   test('題が書式の文字だけなど、空になるときは名前を出さない', () => {
-    assert.equal(titleFor({ issueNumber: 1, issueTitle: '​‮' }), '');
-    assert.equal(titleFor({ issueNumber: 1, issueTitle: '​', pr: { number: 2, title: 'x' } }), '');
-    assert.equal(titleFor({ pr: { number: 2, title: '​' } }), '');
+    assert.equal(titleFor({ issueNumber: 1, issueTitle: `${ZWSP}${RLO}` }), '');
+    assert.equal(titleFor({ issueNumber: 1, issueTitle: ZWSP, pr: { number: 2, title: 'x' } }), '');
+    assert.equal(titleFor({ pr: { number: 2, title: ZWSP } }), '');
   });
   test('長いタイトルは 80 文字に切る', () => {
     const title = titleFor({ issueNumber: 1, issueTitle: 'あ'.repeat(200) });

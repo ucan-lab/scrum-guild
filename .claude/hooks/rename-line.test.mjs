@@ -8,6 +8,10 @@ import path from 'node:path';
 import { after, describe, test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 
+// 見えない文字は、整形や編集で消えても気づけないので、生で書かずコードポイントで組む
+const ZWSP = String.fromCodePoint(0x200b);
+const RLO = String.fromCodePoint(0x202e);
+
 const script = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'skills', 'rename-session', 'rename-line.mjs');
 
 describe('rename-line.mjs（偽の gh と pbcopy）', () => {
@@ -64,7 +68,7 @@ describe('rename-line.mjs（偽の gh と pbcopy）', () => {
       assert.equal(r.stdout, '/rename PR #663 feat: 招待\n');
     });
     test('題の制御文字は取り除かれる', () => {
-      const r = run(['--issue', '661'], { GH_ISSUE_TITLE: 'a\u001b[201~‮b' });
+      const r = run(['--issue', '661'], { GH_ISSUE_TITLE: `a\u001b[201~${RLO}b` });
       assert.equal(r.stdout, '/rename #661 a[201~b\n');
     });
   });
@@ -99,7 +103,7 @@ describe('rename-line.mjs（偽の gh と pbcopy）', () => {
       assert.ok(r.stderr.includes('gh で Issue か PR の題を引けませんでした'));
     });
     test('題が書式の文字だけで空になるときは、名前を組み立てられないと失敗する', () => {
-      const r = run(['--issue', '661'], { GH_ISSUE_TITLE: '​' });
+      const r = run(['--issue', '661'], { GH_ISSUE_TITLE: ZWSP });
       assert.equal(r.status, 1);
       assert.equal(r.stdout, '');
       assert.ok(r.stderr.includes('名前を組み立てられませんでした'));
