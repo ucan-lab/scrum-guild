@@ -20,7 +20,13 @@ export const MAX_CAPTION_CHARS = 38;
 const VERBS = ['goto', 'click', 'check', 'select', 'fill', 'wait', 'pause'];
 const ACTION_EXTRA_KEYS = { select: ['label'], fill: ['text'], wait: ['state'] };
 const WAIT_STATES = ['visible', 'hidden', 'attached', 'detached'];
-const PLAN_KEYS = ['who', 'steps'];
+// 録画に出す言葉づかい。既定はスクラムの言葉で、scrum と game は応答をそろえる。
+// seed は応答をそろえず、seed のワークスペースの言葉のまま撮る（言葉づかいの切り替えそのものを見せる Issue 用）
+export const DEFAULT_VOCABULARY = 'scrum';
+export const KEEP_SEED_VOCABULARY = 'seed';
+const VOCABULARY_VALUES = ['game', 'scrum'];
+const VOCABULARIES = ['scrum', 'game', KEEP_SEED_VOCABULARY];
+const PLAN_KEYS = ['who', 'vocabulary', 'steps'];
 const STEP_KEYS = ['caption', 'read', 'hold', 'mark', 'actions'];
 const TARGET_KEYS = ['css', 'role', 'label'];
 const LOCATOR_KEYS = [...TARGET_KEYS, 'name', 'exact', 'within', 'nth'];
@@ -111,9 +117,27 @@ export function validatePlan(plan) {
   if (!isObject(plan)) return ['手順書がオブジェクトでない'];
   const problems = unknownKeys(plan, PLAN_KEYS, '手順書');
   if (plan.who !== undefined && !isText(plan.who)) problems.push('who は seed のセッションの名前（admin など）');
+  if (plan.vocabulary !== undefined && !VOCABULARIES.includes(plan.vocabulary)) {
+    problems.push(`vocabulary は ${VOCABULARIES.join('、')} のどれか（既定は ${DEFAULT_VOCABULARY}）`);
+  }
   if (!Array.isArray(plan.steps) || plan.steps.length === 0) return [...problems, 'steps が空'];
   plan.steps.forEach((step, i) => problems.push(...stepProblems(step, `steps[${i}]`)));
   return problems;
+}
+
+/**
+ * API の応答の vocabulary（組織とワークスペースの言葉づかい）を、指定した値にそろえた複製を返す。
+ * seed のワークスペースはゲームの言葉のものがあり、録画の言葉をスクラムの言葉にそろえるために、データを書き換えず応答だけを替える
+ */
+export function withVocabulary(value, vocabulary) {
+  if (Array.isArray(value)) return value.map((item) => withVocabulary(item, vocabulary));
+  if (!isObject(value)) return value;
+  return Object.fromEntries(
+    Object.entries(value).map(([key, item]) => [
+      key,
+      key === 'vocabulary' && VOCABULARY_VALUES.includes(item) ? vocabulary : withVocabulary(item, vocabulary),
+    ]),
+  );
 }
 
 /** 待ちと、操作の実時間の目安から見積もった長さ（秒）。読み込みの揺れは含まない */

@@ -8,9 +8,11 @@ import { createRequire } from 'node:module';
 import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import {
+  DEFAULT_VOCABULARY,
   ESTIMATE_LIMIT_SECONDS,
   FINISH_MS,
   HOLD_MS,
+  KEEP_SEED_VOCABULARY,
   MARK_MS,
   PAUSE_MS,
   READ_MS,
@@ -18,6 +20,7 @@ import {
   estimateSeconds,
   pausesAfter,
   validatePlan,
+  withVocabulary,
 } from './plan.mjs';
 
 // 録画の画面。上に 80px の帯を足して 1280×720 にする（compose.py）
@@ -71,7 +74,8 @@ async function main(planPath, outArg) {
   const base = `http://localhost:${devPorts({}).api}`;
   const who = plan.who ?? 'admin';
   if (!Object.hasOwn(SEED_SESSIONS, who)) fail(`seed に ${who} のセッションが無い（seed/sessions.ts）`);
-  console.log(`root: ${root}\nbase: ${base}\n見積もり: ${seconds.toFixed(1)} 秒`);
+  const vocabulary = plan.vocabulary ?? DEFAULT_VOCABULARY;
+  console.log(`root: ${root}\nbase: ${base}\n言葉づかい: ${vocabulary}\n見積もり: ${seconds.toFixed(1)} 秒`);
 
   const browser = await chromium.launch();
   try {
@@ -83,12 +87,24 @@ async function main(planPath, outArg) {
     await context.addCookies([
       { name: sessionCookieName(base), value: SEED_SESSIONS[who].token, url: base, httpOnly: true },
     ]);
-    // 手順書の操作（リンクを押す、アドレスを入れる）で、手元のブラウザが preview の外へ出ないようにする
-    await context.route('**/*', (route) =>
-      route.request().isNavigationRequest() && new URL(route.request().url()).origin !== base
-        ? route.abort()
-        : route.continue(),
-    );
+    // 手順書の操作（リンクを押す、アドレスを入れる）で、手元のブラウザが preview の外へ出ないようにする。
+    // あわせて API の応答の言葉づかいを vocabulary にそろえる。seed にはゲームの言葉のワークスペースがあり、
+    // データを書き換えずに、録画の言葉だけをそろえるため
+    await context.route('**/*', async (route) => {
+      const request = route.request();
+      const url = new URL(request.url());
+      if (request.isNavigationRequest() && url.origin !== base) return route.abort();
+      if (url.origin !== base || !url.pathname.startsWith('/api/') || vocabulary === KEEP_SEED_VOCABULARY) {
+        return route.continue();
+      }
+      const response = await route.fetch();
+      if (!(response.headers()['content-type'] ?? '').includes('application/json')) return route.fulfill({ response });
+      // 本文を替えるので、元の長さと圧縮の指定は引き継がない
+      const headers = { ...response.headers() };
+      delete headers['content-length'];
+      delete headers['content-encoding'];
+      return route.fulfill({ response, headers, json: withVocabulary(await response.json(), vocabulary) });
+    });
     const page = await context.newPage();
 
     // 録画は newPage から始まるので、字幕の時刻の起点をここに置く
