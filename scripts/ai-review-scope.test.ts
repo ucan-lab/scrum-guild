@@ -153,6 +153,16 @@ describe('chooseScope', () => {
     assert.equal(scope.rejected.length, MAX_MARKERS);
   });
 
+  test('印が上限を超えたら、新しい側（コメントの後ろ）の印を残す', () => {
+    const r = repo();
+    const start = r.commit('one.txt', '1\n');
+    const head = r.commit('two.txt', '2\n');
+    const old = Array.from({ length: MAX_MARKERS }, (_, i) => marker(i.toString(16).padStart(40, '0')));
+    const scope = chooseScope([...old, marker(start, 'ai-review')], r.base, head, r.dir);
+    assert.equal(scope.start, start);
+    assert.equal(scope.rejected.length, MAX_MARKERS - 1);
+  });
+
   test('退けた印のうち、SHA の形でない値は見せない', () => {
     const r = repo();
     const head = r.commit('one.txt', '1\n');

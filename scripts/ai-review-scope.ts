@@ -64,7 +64,8 @@ function sourceRank(source: MarkerSource): number {
 }
 
 export function chooseScope(markers: readonly Marker[], baseSha: string, headSha: string, cwd = process.cwd()): Scope {
-  const unique = [...new Map(markers.map((m) => [`${m.source} ${m.sha}`, m])).values()].slice(0, MAX_MARKERS);
+  // 印は本文、コメントの古い順に並ぶ。上限を超えたら新しい側を残す（本文に印を並べて、最新の ai-review の印を押し出させない）
+  const unique = [...new Map(markers.map((m) => [`${m.source} ${m.sha}`, m])).values()].slice(-MAX_MARKERS);
   const mb = git(['merge-base', baseSha, headSha], cwd).trim();
   const rejected: RejectedMarker[] = [];
   const candidates: (Marker & { distance: number })[] = [];
