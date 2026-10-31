@@ -29,14 +29,65 @@ test.describe('本物の API', () => {
     const submit = page.getByRole('button', { name: '同意して進む' });
     await expect(checkbox).toBeVisible();
     await expect(submit).toHaveAttribute('aria-disabled', 'true');
+    await expect(submit).toHaveAttribute('aria-describedby', 'consent-submit-hint');
+    await expect(page.locator('#consent-submit-hint')).toHaveText(
+      '利用規約とプライバシーポリシーを確認し、印を付けてください。',
+    );
     await checkbox.check();
     await expect(submit).toHaveAttribute('aria-disabled', 'false');
+    await expect(submit).not.toHaveAttribute('aria-describedby');
+    // 説明は外さず、文を描いたまま隠す（外すと縦中央の紙が縮み、押した位置の下の部品が動く）
+    await expect(page.locator('#consent-submit-hint')).toHaveAttribute('aria-hidden', 'true');
+    await expect(page.locator('#consent-submit-hint')).toBeHidden();
+    await checkbox.uncheck();
+    await expect(submit).toHaveAttribute('aria-describedby', 'consent-submit-hint');
+    await expect(page.locator('#consent-submit-hint')).toHaveText(
+      '利用規約とプライバシーポリシーを確認し、印を付けてください。',
+    );
+    await checkbox.check();
     await submit.click();
     await expect(page).toHaveURL(/\/aoba$/);
 
     await page.goto('/consent');
     await expect(page.getByText('現在の版に同意しています。')).toBeVisible();
     await expect(page.getByText(/^同意した日時: /)).toBeVisible();
+    // 日時の値だけが等幅で、ラベルは通常の字（formatDateTime の書式。日付と時刻の間は NBSP）
+    await expect(page.locator('.panel-note .mono')).toHaveText(/^\d{4}\/\d{2}\/\d{2}\s\d{2}:\d{2}$/);
+  });
+
+  for (const width of [1280, 390]) {
+    test(`印を付けても紙の高さと送信ボタンの位置が動かない（幅 ${width}px）`, async ({ page, context, baseURL }) => {
+      await signIn(context, baseURL, 'admin');
+      await page.setViewportSize({ width, height: 900 });
+      await page.goto('/consent');
+      const checkbox = page.getByRole('checkbox', { name: CHECKBOX_NAME });
+      const submit = page.getByRole('button', { name: '同意して進む' });
+      const sheet = page.locator('.gate-sheet');
+      await expect(checkbox).toBeVisible();
+      const before = { sheet: await sheet.boundingBox(), submit: await submit.boundingBox() };
+      await checkbox.check();
+      await expect(submit).toHaveAttribute('aria-disabled', 'false');
+      const after = { sheet: await sheet.boundingBox(), submit: await submit.boundingBox() };
+      expect(after.sheet?.height).toBe(before.sheet?.height);
+      expect(after.submit?.y).toBe(before.submit?.y);
+    });
+  }
+
+  test('新しいタブで開く2つのリンクは、読み上げに「新しいタブで開きます」を補う', async ({
+    page,
+    context,
+    baseURL,
+  }) => {
+    await signIn(context, baseURL, 'admin');
+    await page.goto('/consent');
+    await expect(page.getByRole('link', { name: /^利用規約.*新しいタブで開きます$/ })).toHaveAttribute(
+      'target',
+      '_blank',
+    );
+    await expect(page.getByRole('link', { name: /^プライバシーポリシー.*新しいタブで開きます$/ })).toHaveAttribute(
+      'target',
+      '_blank',
+    );
   });
 });
 
@@ -55,6 +106,14 @@ test('版が上がった直後の同意は 409 で断られ、読み直した版
   await expect(page.getByText('規約が更新されました。内容を確認し直してください。')).toBeVisible();
   await expect(page.getByText(`版: ${TERMS_VERSION}`).first()).toBeVisible();
   await expect(checkbox).not.toBeChecked();
+  // 印が外れたので、押せない理由が読み上げに戻る
+  await expect(page.getByRole('button', { name: '同意して進む' })).toHaveAttribute(
+    'aria-describedby',
+    'consent-submit-hint',
+  );
+  await expect(page.locator('#consent-submit-hint')).toHaveText(
+    '利用規約とプライバシーポリシーを確認し、印を付けてください。',
+  );
 });
 
 test('409 の後の読み直しで同意済みと分かったら、更新の知らせは出さない', async ({ page, context, baseURL }) => {

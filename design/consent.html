@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Scrum Guild 同意の確認</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=BIZ+UDPGothic:wght@400;700&family=Chakra+Petch:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500&family=Zen+Old+Mincho:wght@700;900&display=swap">
+<link rel="stylesheet" href="tokens.css">
+<link rel="stylesheet" href="components.css">
+</head>
+<body>
+<div id="gate"></div>
+<script src="icons.js"></script>
+<script src="art.js"></script>
+<script src="sample-data.js"></script>
+<script src="kit.js"></script>
+<script>
+"use strict";
+
+// 同意の確認（/consent）。src/routes/consent/+page.svelte と同じマークアップにする
+const { t, icon } = SQ;
+const app = "Scrum Guild";
+const version = "2026-10-31";
+const consentLead = t("consentLead").replace("{app}", app);
+const consentVersion = (v) => t("consentVersion").replace("{version}", v);
+const newTab = `<span class="visually-hidden"> ${t("markdownNewTab")}</span>`;
+// 同じ画面に複数の状態を並べるので、説明の id は状態ごとに分ける（本番は画面に1つ）
+const legalLinks = () => `<div class="choice-list">
+  <a class="choice" href="terms.html" target="_blank" rel="noopener noreferrer"><div><b>${t("termsTitle")}</b><span class="mono">${consentVersion(version)}</span></div>${newTab}</a>
+  <a class="choice" href="privacy.html" target="_blank" rel="noopener noreferrer"><div><b>${t("privacyTitle")}</b><span class="mono">${consentVersion(version)}</span></div>${newTab}</a>
+</div>`;
+const logout = `<button class="btn is-sm is-quiet" type="button">${t("logout")}</button>`;
+const form = (id, checked, busy = false) => `<label class="choice is-static is-consent"><input type="checkbox"${checked ? " checked" : ""}><span>${t("consentCheckLabel")}</span></label>
+<div class="form-actions">
+  <button class="btn is-primary" type="button" aria-disabled="${checked && !busy ? "false" : "true"}"${checked ? "" : ` aria-describedby="${id}"`}>${busy ? t("consentSubmitting") : t("consentSubmit")}</button>
+  ${logout}
+</div><span class="field-hint is-reserved" id="${id}" aria-hidden="${checked ? "true" : "false"}">${t("consentSubmitHint")}</span>`;
+const warn = (text) => `<div class="callout is-warn" role="alert">${icon("alert")}<span>${text}</span></div>`;
+const sheet = (body, note) => `<section class="gate-sheet">
+  <div class="gate-brand">${SQ.brandMark}<span class="brand-name">${app}</span></div>
+  <h1 class="gate-title">${t("consentTitle")}</h1>
+  ${body}
+  <p class="gate-note">${note}</p>
+</section>`;
+
+document.getElementById("gate").innerHTML = `<div class="gate"><div class="gate-stack">
+  ${sheet(`<p>${consentLead}</p>${legalLinks()}${form("consent-submit-hint-unchecked", false)}`, "未同意の人が開いた状態。主文は本文と同じ大きさと色で、印を付けるまで同意のボタンは押せない（aria-disabled）。押せない理由は、ボタンの近くの説明を aria-describedby で結んで読み上げる。チェックボックスのラベルは指さない。")}
+  ${sheet(`<p>${consentLead}</p>${legalLinks()}${form("consent-submit-hint-checked", true)}`, "印を付けた状態。ボタンが押せるようになり、aria-describedby は外れ、説明は文を描いたまま隠れる（aria-hidden）。説明の高さは行数によらず残り、紙が動かない。")}
+  ${sheet(`<p>${t("consentCurrent")}</p><p class="panel-note">${t("consentRecordedAt")} <span class="mono">2026/10/31&nbsp;09:00</span></p><div class="form-actions"><button class="btn is-primary" type="button">${t("consentContinue")}</button>${logout}</div>`, "同意済みの人が開いた状態。日時の値だけを等幅（.mono）で出し、ラベルは通常の字。")}
+  ${sheet(`${warn(t("consentUpdated"))}<p>${consentLead}</p>${legalLinks()}${form("consent-submit-hint-updated", false)}`, "同意の記録を断られた（版が上がっていた）状態。更新の知らせを上に出し、印を外す。")}
+  ${sheet(`<p>${consentLead}</p>${legalLinks()}${form("consent-submit-hint-busy", true, true)}`, "同意を送っている間。印は付いたままで、ボタンは aria-disabled になり「同意を記録しています」と出る。")}
+  ${sheet(`${warn(t("consentRecordFailed"))}<p>${consentLead}</p>${legalLinks()}${form("consent-submit-hint-failed", true)}`, "同意を記録できなかった状態（通信の失敗など）。警告を上に出し、印は付いたままにして、そのままもう一度押せる。")}
+  ${sheet(`${warn(t("consentLoadFailed"))}<div class="form-actions"><button class="btn is-sm" type="button" aria-disabled="false">${t("retry")}</button>${logout}<span class="field-hint" role="status"></span></div>`, "同意の状態を読み込めなかった状態。もう一度試すとログアウトを残す。")}
+  ${sheet(`${warn(t("consentLoadFailed"))}<div class="form-actions"><button class="btn is-sm" type="button" aria-disabled="true">${t("retry")}</button>${logout}<span class="field-hint" role="status">${t("retrying")}</span></div>`, "もう一度試すを押して読み直している間。押したボタンを aria-disabled にして、「読み込んでいます」を role=status で伝える。ボタンとログアウトは残す。")}
+  <p class="gate-note" style="text-align:center"><a href="index.html">デザインシステムのカタログへ戻る</a></p>
+</div></div>`;
+
+SQ.applyTheme();
+</script>
+</body>
+</html>
