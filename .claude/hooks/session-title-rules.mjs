@@ -13,9 +13,10 @@ export function issueNumberOf(branch) {
 // 制御文字（ESC、BEL、C1）と書式の文字（向きを変える文字、幅ゼロの文字）を取り除く。
 // 長い題はコードポイント単位で切る（サロゲートペアを割らない）
 function tidy(text) {
+  // 改行などの空白は先に空白へ、それ以外の制御文字と書式の文字は消してから詰める（消す前に詰めると、間に書式の文字がある空白が2つ残る）
   const oneLine = String(text ?? '')
+    .replace(/[\p{Cc}\p{Cf}]/gu, (char) => (/\s/.test(char) ? ' ' : ''))
     .replace(/\s+/g, ' ')
-    .replace(/[\p{Cc}\p{Cf}]/gu, '')
     .trim();
   const chars = [...oneLine];
   return chars.length > MAX_LENGTH ? `${chars.slice(0, MAX_LENGTH - 1).join('')}…` : oneLine;
@@ -25,7 +26,9 @@ function tidy(text) {
 // PR があれば `#<Issue番号> PR #<PR番号> <Issueの題>`、なければ `#<Issue番号> <Issueの題>`。
 // Issue が無い PR は `PR #<PR番号> <PRのタイトル>`
 export function titleFor({ issueNumber, issueTitle, pr }) {
-  if (issueNumber === undefined) return pr ? tidy(`PR #${pr.number} ${pr.title}`) : '';
+  if (issueNumber === undefined) return pr && tidy(pr.title) ? tidy(`PR #${pr.number} ${pr.title}`) : '';
+  // 題が書式の文字だけなどで空になるときは、番号だけの名前を出さない
+  if (!tidy(issueTitle)) return '';
   if (pr) return tidy(`#${issueNumber} PR #${pr.number} ${issueTitle}`);
   return tidy(`#${issueNumber} ${issueTitle}`);
 }

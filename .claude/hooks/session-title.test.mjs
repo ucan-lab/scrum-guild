@@ -45,6 +45,14 @@ describe('titleFor', () => {
     const evil = 'a\u001b[201~\u0007b‮c​d\u0085e\u007ff';
     assert.equal(titleFor({ issueNumber: 1, issueTitle: evil }), '#1 a[201~bcdef');
   });
+  test('書式の文字をはさんだ空白も1つに詰める', () => {
+    assert.equal(titleFor({ issueNumber: 1, issueTitle: 'a ​ b' }), '#1 a b');
+  });
+  test('題が書式の文字だけなど、空になるときは名前を出さない', () => {
+    assert.equal(titleFor({ issueNumber: 1, issueTitle: '​‮' }), '');
+    assert.equal(titleFor({ issueNumber: 1, issueTitle: '​', pr: { number: 2, title: 'x' } }), '');
+    assert.equal(titleFor({ pr: { number: 2, title: '​' } }), '');
+  });
   test('長いタイトルは 80 文字に切る', () => {
     const title = titleFor({ issueNumber: 1, issueTitle: 'あ'.repeat(200) });
     assert.equal([...title].length, 80);
