@@ -2,8 +2,10 @@
   import type { Snippet } from 'svelte';
   import { resolve } from '$app/paths';
   import { t } from '../vocabulary.svelte.ts';
+  import { NAV_MENU_ID, navState, setNavCollapsed } from '../nav-collapse.svelte.ts';
   import BrandMark from './BrandMark.svelte';
   import NavMenu from './NavMenu.svelte';
+  import Icon from './Icon.svelte';
 
   // kit.js の mount が組む画面の枠。左のメニュー（綴じ）と、上の帯と本文（帳面）。slug は今の組織で、組織の中の画面だけが使う。
   // 組織の切り替え（ブランドの下）、ワークスペースの切り替え、アシスタントのボタンは置き場所だけで、中身は snippet で渡す。
@@ -34,13 +36,26 @@
   } = $props();
 </script>
 
-<div class="app">
+<div class="app" data-nav-collapsed={navState.collapsed ? 'true' : undefined}>
   <aside class="binding" aria-label={t('menu')}>
     <div class="binding-inner">
-      <a class="brand" href={resolve('/[slug]', { slug })}>
-        <BrandMark />
-        <span class="brand-name">{t('appName')}</span>
-      </a>
+      <div class="binding-head">
+        <a class="brand" href={resolve('/[slug]', { slug })}>
+          <BrandMark />
+          <span class="brand-name">{t('appName')}</span>
+        </a>
+        <button
+          class="nav-toggle"
+          type="button"
+          aria-expanded={!navState.collapsed}
+          aria-controls={NAV_MENU_ID}
+          aria-label={t(navState.collapsed ? 'menuExpand' : 'menuCollapse')}
+          onclick={() => setNavCollapsed(!navState.collapsed)}
+        >
+          <Icon name="panel" />
+          <span class="nav-tip" aria-hidden="true">{t(navState.collapsed ? 'menuExpand' : 'menuCollapse')}</span>
+        </button>
+      </div>
       {#if organizationSwitcher}{@render organizationSwitcher()}{/if}
       <NavMenu {current} {slug} {hasWorkspace} {isAdmin} {workspaceId} {workspaceSwitcher} />
     </div>
