@@ -117,6 +117,50 @@ describe('sg mcp（子プロセス）', () => {
     }
   });
 
+  test('--allow-write は子プロセスまで届く。既定は読み取りの道具だけで、付けると書き込みの道具も出る', async () => {
+    const operation = (name: string, mode: string) => ({
+      name,
+      description: name,
+      mode,
+      scope: 'outside',
+      permission: 'login',
+      input_schema: { type: 'object', properties: {}, required: [] },
+      output_schema: { type: 'object' },
+    });
+    const server = createServer((_request, response) => {
+      response.setHeader('Content-Type', 'application/json');
+      response.end(JSON.stringify({ operations: [operation('reader', 'read'), operation('writer', 'write')] }));
+    });
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+    const url = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+    const input = [
+      JSON.stringify({
+        jsonrpc: '2.0',
+        id: 1,
+        method: 'initialize',
+        params: { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 't', version: '0' } },
+      }),
+      JSON.stringify({ jsonrpc: '2.0', method: 'notifications/initialized' }),
+      JSON.stringify({ jsonrpc: '2.0', id: 2, method: 'tools/list' }),
+    ];
+    const toolNames = async (args: string[]) => {
+      const result = await run(args, { SG_URL: url, SG_TOKEN: TOKEN }, input);
+      assert.equal(result.code, 0, result.stderr);
+      const list = result.stdout
+        .trim()
+        .split('\n')
+        .map((line) => JSON.parse(line))
+        .find((message) => message.id === 2);
+      return list.result.tools.map((tool: { name: string }) => tool.name);
+    };
+    try {
+      assert.deepEqual(await toolNames(['mcp']), ['reader']);
+      assert.deepEqual(await toolNames(['mcp', '--allow-write']), ['reader', 'writer']);
+    } finally {
+      server.close();
+    }
+  });
+
   test('接続先が無いと stderr に JSON を出して 2、stdout は空', async () => {
     const result = await run(['mcp'], {}, []);
     assert.equal(result.code, 2);

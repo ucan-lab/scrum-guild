@@ -524,3 +524,11 @@ describe('コマンドの名前', () => {
     assert.match(JSON.parse(result.stderr).error.message, /ops、call、config、mcp/);
   });
 });
+
+describe('--allow-write は sg mcp だけが受ける', () => {
+  test('sg call と sg ops に付けると使い方の誤りのまま', async () => {
+    usageError(await sg(['call', 'who-am-i', '--allow-write']));
+    usageError(await sg(['call', 'who-am-i', '--allow-write', 'true']));
+    usageError(await sg(['ops', '--allow-write']));
+  });
+});

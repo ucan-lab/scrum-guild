@@ -106,9 +106,17 @@ function toolOf(operation: CatalogOperation, connection: Connection): McpTool {
   };
 }
 
+// sg mcp の --allow-write。既定（false）では、読み取り（mode: 'read'）の操作だけを道具にする。
+// 付けても、読み取りのトークンでは書き込みの操作が一覧に来ない（サーバーがトークンで絞る）ので、書き込みの道具は出ない
+export type McpOptions = { allowWrite?: boolean };
+const visible = (operation: CatalogOperation, options: McpOptions) =>
+  options.allowWrite === true || operation.mode === 'read';
+
 // tools/list のたびに操作の一覧を取る（キャッシュしない）。取れないときは ApiCliError か CliError を投げる
-export async function listTools(deps: CliDeps, connection: Connection): Promise<McpTool[]> {
-  return (await catalogFor(deps, connection)).map((operation) => toolOf(operation, connection));
+export async function listTools(deps: CliDeps, connection: Connection, options: McpOptions = {}): Promise<McpTool[]> {
+  return (await catalogFor(deps, connection))
+    .filter((operation) => visible(operation, options))
+    .map((operation) => toolOf(operation, connection));
 }
 
 // 失敗は isError の結果にして返す（投げない）。API のエラーは {"status", "error"} の JSON、そのほかは {"error": {"code", "message"}}。
@@ -118,9 +126,13 @@ export async function callTool(
   connection: Connection,
   name: string,
   args: Record<string, unknown> | undefined,
+  options: McpOptions = {},
 ): Promise<McpToolResult> {
   try {
-    const operation = (await catalogFor(deps, connection)).find((item) => item.name === name);
+    // 一覧に出さない操作（既定の書き込み）は、無い操作と同じ使い方の誤りで断る
+    const operation = (await catalogFor(deps, connection))
+      .filter((item) => visible(item, options))
+      .find((item) => item.name === name);
     if (!operation) throw usage(UNLISTED_OPERATION);
     const input = { ...args };
     // 接続先がワークスペースを持つとき、null と空文字の workspace_id は省いたものとして補う（AI が空欄を埋めて渡すため。sg call は変えない）

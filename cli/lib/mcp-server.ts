@@ -5,10 +5,14 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import type { Transport } from '@modelcontextprotocol/sdk/shared/transport.js';
 import { CallToolRequestSchema, ErrorCode, ListToolsRequestSchema, McpError } from '@modelcontextprotocol/sdk/types.js';
 import { connectionFromArgs, reportOf, type CliDeps, type Connection } from './main.ts';
-import { callTool, listTools } from './mcp-tools.ts';
+import { callTool, listTools, type McpOptions } from './mcp-tools.ts';
 
 // idle は、処理中のリクエストが無くなるまで待つ（標準入力が閉じても、送られた分の応答は返してから閉じる）
-export function createMcpServer(deps: CliDeps, connection: Connection): { server: Server; idle(): Promise<void> } {
+export function createMcpServer(
+  deps: CliDeps,
+  connection: Connection,
+  options: McpOptions,
+): { server: Server; idle(): Promise<void> } {
   // version は固定。CLI は npm に出さずリポジトリから動かすので、配る版が無い（package.json にも version が無い）。MCP の initialize に版が要るので置いている
   const server = new Server({ name: 'scrum-guild', version: '0.1.0' }, { capabilities: { tools: {} } });
   const pending = new Set<Promise<unknown>>();
@@ -22,7 +26,7 @@ export function createMcpServer(deps: CliDeps, connection: Connection): { server
   };
   server.setRequestHandler(ListToolsRequestSchema, () =>
     track(
-      listTools(deps, connection).then(
+      listTools(deps, connection, options).then(
         (tools) => ({ tools }),
         (error: unknown) => {
           // 一覧が取れないのはプロトコルの誤り。message はトークンを含まない（reportOf が伏せる）
@@ -33,7 +37,7 @@ export function createMcpServer(deps: CliDeps, connection: Connection): { server
   );
   server.setRequestHandler(CallToolRequestSchema, (request) => {
     const { name, arguments: args } = request.params;
-    return track(callTool(deps, connection, name, args));
+    return track(callTool(deps, connection, name, args, options));
   });
   const idle = async () => {
     // SDK はハンドラーを Promise.resolve().then で呼ぶので、受け取った直後は pending がまだ空。1周待ってから数える
@@ -49,14 +53,15 @@ export function createMcpServer(deps: CliDeps, connection: Connection): { server
 // transport を渡さないときは標準入出力で動き、標準入力の終わりで閉じる
 export async function runMcp(args: string[], deps: CliDeps, transport?: Transport): Promise<number> {
   let connection: Connection;
+  let allowWrite: boolean;
   try {
-    connection = await connectionFromArgs(args, deps);
+    ({ connection, allowWrite } = await connectionFromArgs(args, deps));
   } catch (error) {
     const report = reportOf(error);
     deps.stderr(report.text + '\n');
     return report.exitCode;
   }
-  const { server, idle } = createMcpServer(deps, connection);
+  const { server, idle } = createMcpServer(deps, connection, { allowWrite });
   const closed = new Promise<void>((resolve) => {
     server.onclose = resolve;
   });

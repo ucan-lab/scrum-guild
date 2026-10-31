@@ -356,11 +356,17 @@ export async function callOperation(
   return await jsonOf(response);
 }
 
-// sg mcp の引数（--profile、--org、--workspace だけ）から接続先を決める。sg call と同じ順で補う
-export async function connectionFromArgs(args: string[], deps: CliDeps): Promise<Connection> {
-  const { positional, options } = optionsOf(args);
+// sg mcp の引数（--profile、--org、--workspace、--allow-write）から接続先を決める。接続先は sg call と同じ順で補う。
+// --allow-write は値を取らないフラグで、sg mcp だけが受ける（sg call と sg ops は optionsOf に渡るので、付けると使い方の誤りのまま）
+export async function connectionFromArgs(
+  args: string[],
+  deps: CliDeps,
+): Promise<{ connection: Connection; allowWrite: boolean }> {
+  const flags = args.filter((arg) => arg === '--allow-write');
+  if (flags.length > 1) throw usage('--allow-write が重なっている');
+  const { positional, options } = optionsOf(args.filter((arg) => arg !== '--allow-write'));
   if (positional.length > 0 || options.extra.length > 0) throw usage('mcp に余分な引数がある');
-  return await connectionOf(options, deps);
+  return { connection: await connectionOf(options, deps), allowWrite: flags.length === 1 };
 }
 
 // 最上位が oneOf/anyOf（discriminatedUnion）の入力は、分岐のどれかに項目があれば受け付け、分岐ごとの Schema を anyOf にまとめる

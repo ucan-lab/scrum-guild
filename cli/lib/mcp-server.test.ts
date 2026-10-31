@@ -89,7 +89,7 @@ describe('sg mcp', () => {
   test('tools/list で操作の一覧が道具として見える。サーバーに足すと次の tools/list で増える', async () => {
     resetOperations();
     const world = setup(profile({ org: 'aoba', workspace: 'ws-1' }));
-    const { client, done } = await connected([], world);
+    const { client, done } = await connected(['--allow-write'], world);
     const first = await client.listTools();
     assert.deepEqual(
       first.tools.map((tool) => [tool.name, tool.annotations?.readOnlyHint]),
@@ -121,7 +121,7 @@ describe('sg mcp', () => {
   test('tools/call でトークン付きの API を呼び、本文の JSON を text で返す', async () => {
     resetOperations();
     const world = setup(profile({ org: 'aoba', workspace: 'ws-1' }));
-    const { client, done } = await connected([], world);
+    const { client, done } = await connected(['--allow-write'], world);
     const result = await client.callTool({ name: 'task-edit', arguments: { title: '新しい題名' } });
     assert.equal(result.isError, undefined);
     assert.deepEqual(result.content, [{ type: 'text', text: JSON.stringify({ path: '/api/aoba/task-edit' }) }]);
@@ -155,7 +155,10 @@ describe('sg mcp', () => {
       },
     };
     const world = setup(config);
-    const { client, done } = await connected(['--profile', 'sub', '--org', 'momiji', '--workspace', 'ws-9'], world);
+    const { client, done } = await connected(
+      ['--profile', 'sub', '--org', 'momiji', '--workspace', 'ws-9', '--allow-write'],
+      world,
+    );
     const tools = await client.listTools();
     assert.deepEqual(tools.tools[1]!.inputSchema.required, ['title']);
     await client.callTool({ name: 'task-edit', arguments: { title: 'x' } });
@@ -224,5 +227,48 @@ describe('sg mcp の起動の誤り', () => {
     const result = await startupError([], setup(undefined, { SG_TOKEN: OTHER_TOKEN }));
     assert.equal(result.code, 2);
     assert.ok(!result.stderr.includes(OTHER_TOKEN));
+  });
+});
+
+describe('sg mcp の --allow-write', () => {
+  test('既定では読み取りの道具だけを出し、書き込みの道具の tools/call は isError', async () => {
+    resetOperations();
+    const world = setup(profile({ org: 'aoba', workspace: 'ws-1' }));
+    const { client, done } = await connected([], world);
+    assert.deepEqual(
+      (await client.listTools()).tools.map((tool) => tool.name),
+      ['who-am-i'],
+    );
+    const result = await client.callTool({ name: 'task-edit', arguments: { title: 'x' } });
+    assert.equal(result.isError, true);
+    assert.equal(JSON.parse((result.content as { text: string }[])[0]!.text).error.code, 'usage');
+    assert.ok(!world.seen.some((item) => item.path.endsWith('/task-edit')));
+    await client.close();
+    await done;
+  });
+
+  test('--allow-write が runMcp まで届き、書き込みの道具が出て呼べる。ほかのフラグと並べてもよい', async () => {
+    resetOperations();
+    const world = setup(profile({ org: 'aoba' }));
+    const { client, done } = await connected(['--workspace', 'ws-9', '--allow-write'], world);
+    assert.deepEqual(
+      (await client.listTools()).tools.map((tool) => tool.name),
+      ['who-am-i', 'task-edit'],
+    );
+    const result = await client.callTool({ name: 'task-edit', arguments: { title: 'x' } });
+    assert.equal(result.isError, undefined);
+    assert.deepEqual(world.seen.find((item) => item.path.endsWith('/task-edit'))!.body, {
+      title: 'x',
+      workspace_id: 'ws-9',
+    });
+    await client.close();
+    await done;
+  });
+
+  test('--allow-write が重なると 2', async () => {
+    const world = setup(profile());
+    const [, serverSide] = InMemoryTransport.createLinkedPair();
+    assert.equal(await runMcp(['--allow-write', '--allow-write'], world.deps, serverSide), 2);
+    assert.equal(JSON.parse(world.output().stderr).error.code, 'usage');
   });
 });

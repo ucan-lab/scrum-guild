@@ -2,7 +2,13 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 import type { CliDeps, Connection } from './main.ts';
-import { callTool, listTools } from './mcp-tools.ts';
+import { callTool as callToolWith, listTools as listToolsWith } from './mcp-tools.ts';
+
+// 既定は読み取りの道具だけ（allowWrite 無し）。書き込みの道具を前提にするテストは、この2つ（allowWrite: true）を使う。
+// 既定の挙動を見るテストは listToolsWith と callToolWith を options 無しで呼ぶ
+const listTools = (deps: CliDeps, connection: Connection) => listToolsWith(deps, connection, { allowWrite: true });
+const callTool = (deps: CliDeps, connection: Connection, name: string, args: Record<string, unknown> | undefined) =>
+  callToolWith(deps, connection, name, args, { allowWrite: true });
 
 const URL_MAIN = 'https://guild.example';
 const TOKEN = `sgp_${'M'.repeat(43)}`;
@@ -384,5 +390,63 @@ describe('callTool', () => {
     const result = await callTool(depsOf(fakeServer({ operations: { nope: 1 } })), connectionOf(), 'who-am-i', {});
     assert.equal(result.isError, true);
     assert.equal(parseText(result).error.code, 'invalid_response');
+  });
+});
+
+describe('--allow-write（allowWrite）', () => {
+  const names = (tools: { name: string }[]) => tools.map((tool) => tool.name);
+
+  test('既定では、読み取りの道具だけを一覧に出す', async () => {
+    const tools = await listToolsWith(depsOf(fakeServer()), connectionOf({ org: 'aoba' }));
+    assert.deepEqual(names(tools), ['task-get', 'who-am-i']);
+    assert.ok(tools.every((tool) => tool.annotations.readOnlyHint));
+    // 説明に既定の注意を足さない
+    assert.equal(tools[0]!.description, 'タスクを返す');
+  });
+
+  test('既定では、書き込みの道具を名指しで呼んでも、一覧に無い操作と同じ使い方の誤りの isError で、API を呼ばない', async () => {
+    const server = fakeServer();
+    const result = await callToolWith(depsOf(server), connectionOf({ org: 'aoba' }), 'task-edit', { task_id: 't-1' });
+    assert.equal(result.isError, true);
+    const body = JSON.parse(result.content[0]!.text);
+    assert.equal(body.error.code, 'usage');
+    assert.match(body.error.message, /一覧に無い/);
+    assert.equal(server.calls().length, 0);
+  });
+
+  test('既定でも、読み取りの道具は呼べる', async () => {
+    const server = fakeServer();
+    const result = await callToolWith(depsOf(server), connectionOf({ org: 'aoba' }), 'task-get', { task_id: 't-1' });
+    assert.equal(result.isError, undefined);
+    assert.equal(server.calls().length, 1);
+  });
+
+  test('allowWrite: false を明示しても同じ', async () => {
+    const tools = await listToolsWith(depsOf(fakeServer()), connectionOf(), { allowWrite: false });
+    assert.deepEqual(names(tools), ['task-get', 'who-am-i']);
+  });
+
+  test('allowWrite のときは、書き込みの道具も一覧に出て、呼べる', async () => {
+    const server = fakeServer();
+    const options = { allowWrite: true };
+    const connection = connectionOf({ org: 'aoba', workspace: 'ws-1' });
+    const tools = await listToolsWith(depsOf(server), connection, options);
+    assert.deepEqual(names(tools), ['task-edit', 'task-get', 'who-am-i', 'pick']);
+    assert.equal(tools.find((tool) => tool.name === 'task-edit')!.annotations.readOnlyHint, false);
+    const result = await callToolWith(depsOf(server), connection, 'task-edit', { task_id: 't-1' }, options);
+    assert.equal(result.isError, undefined);
+    assert.equal(server.calls()[0]!.path, '/api/aoba/task-edit');
+  });
+
+  test('読み取りのトークンでは、allowWrite でもサーバーが一覧に載せない書き込みの道具は出ず、呼べない', async () => {
+    // 読み取りのトークンの一覧は、サーバーが書き込みの操作を除いて返す
+    const readOnly = { operations: catalog.operations.filter((operation) => operation.mode === 'read') };
+    const server = fakeServer({ operations: readOnly });
+    const options = { allowWrite: true };
+    const tools = await listToolsWith(depsOf(server), connectionOf({ org: 'aoba' }), options);
+    assert.deepEqual(names(tools), ['task-get', 'who-am-i']);
+    const result = await callToolWith(depsOf(server), connectionOf({ org: 'aoba' }), 'task-edit', {}, options);
+    assert.equal(result.isError, true);
+    assert.equal(server.calls().length, 0);
   });
 });

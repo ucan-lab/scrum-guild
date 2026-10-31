@@ -9,13 +9,19 @@ import { createApp } from '../src/server/app.ts';
 import { implement, type ImplementedOperation } from '../src/server/operations/implement.ts';
 import { operationListOperationFor } from '../src/server/operations/operation-list.ts';
 import type { CliDeps, Connection } from '../cli/lib/main.ts';
-import { callTool, listTools, type McpToolResult } from '../cli/lib/mcp-tools.ts';
+import { callTool as callToolWith, listTools as listToolsWith, type McpToolResult } from '../cli/lib/mcp-tools.ts';
 import { createTask, createWorkspace } from './factories.ts';
 import { insertApiToken, type TokenScope } from './operations/api-token.ts';
 import { provisionalOperations } from './operations/provisional.ts';
 import { createLoginPerson, createTarget, testEnv, type Person } from './operations/world.ts';
 
 const BASE_URL = 'https://mcp.guild.example';
+
+// 既定は読み取りの道具だけ（--allow-write 無し）。書き込みの道具を前提にするテストは、この2つ（allowWrite: true）を使う。
+// 既定の挙動を見るテストは listToolsWith と callToolWith を options 無しで呼ぶ
+const listTools = (deps: CliDeps, connection: Connection) => listToolsWith(deps, connection, { allowWrite: true });
+const callTool = (deps: CliDeps, connection: Connection, name: string, args: Record<string, unknown> | undefined) =>
+  callToolWith(deps, connection, name, args, { allowWrite: true });
 
 // サーバーにだけ足した操作。MCP のコードには名前も入力の形も無い
 const lanternLight = defineOperation({
@@ -216,5 +222,39 @@ describe('sg mcp の道具の呼び出し', () => {
     const read = await callTool(depsOf(), connection, 'lantern-count', {});
     expect(read.isError).toBeUndefined();
     expect(JSON.parse(textOf(read))).toEqual({ count: 3 });
+  });
+});
+
+describe('sg mcp の既定は読み取りだけ（--allow-write）', () => {
+  test('書き込みのトークンでも、既定では書き込みの道具が一覧に無く、呼ぶと isError で実行されない。--allow-write で出て呼べる', async () => {
+    const person = await createLoginPerson();
+    const connection = await connectionOf(person, { scope: 'write' });
+    const defaults = await listToolsWith(depsOf(), connection);
+    expect(defaults.length).toBeGreaterThan(0);
+    expect(defaults.every((tool) => tool.annotations.readOnlyHint)).toBe(true);
+    expect(defaults.map((tool) => tool.name)).toContain('lantern-count');
+    expect(defaults.map((tool) => tool.name)).not.toContain('lantern-light');
+
+    const refused = await callToolWith(depsOf(), connection, 'lantern-light', { count: 1, color: '白' });
+    expect(refused.isError).toBe(true);
+    expect(JSON.parse(textOf(refused)).error.code).toBe('usage');
+
+    const options = { allowWrite: true };
+    const allowed = await listToolsWith(depsOf(), connection, options);
+    expect(allowed.map((tool) => tool.name)).toContain('lantern-light');
+    const result = await callToolWith(depsOf(), connection, 'lantern-light', { count: 2, color: '白' }, options);
+    expect(result.isError).toBeUndefined();
+    expect(JSON.parse(textOf(result))).toEqual({ lit: 2, color: '白' });
+  });
+
+  test('読み取りのトークンでは、--allow-write でも書き込みの道具が出ず、呼ぶと isError', async () => {
+    const person = await createLoginPerson();
+    const connection = await connectionOf(person, { scope: 'read' });
+    const options = { allowWrite: true };
+    const tools = await listToolsWith(depsOf(), connection, options);
+    expect(tools.map((tool) => tool.name)).not.toContain('lantern-light');
+    const result = await callToolWith(depsOf(), connection, 'lantern-light', { count: 1, color: '白' }, options);
+    expect(result.isError).toBe(true);
+    expect(JSON.parse(textOf(result)).error.code).toBe('usage');
   });
 });
