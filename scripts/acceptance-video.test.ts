@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, test } from 'node:test';
@@ -163,6 +163,197 @@ describe('withVocabulary', () => {
   test('vocabulary が言葉づかいの値でないもの（オブジェクトや別の文字列）は替えない', () => {
     const response = { vocabulary: { game: 1 }, other: { vocabulary: 'x' }, list: [1, null, 'game'] };
     assert.deepEqual(rewrite(response, 'scrum'), response);
+  });
+});
+
+describe('gallery.mjs', () => {
+  const galleryScript = join(skillDir, 'gallery.mjs');
+  const galleryUrl = JSON.stringify(pathToFileURL(galleryScript).href);
+  // export した関数を、JSON で渡した値で呼ぶ
+  const call = (fn: 'validateManifest' | 'renderGallery', value: unknown) => {
+    const code = `import * as g from ${galleryUrl}; console.log(JSON.stringify(g[process.argv[1]](JSON.parse(process.argv[2]))));`;
+    const result = spawnSync(process.execPath, ['--input-type=module', '-e', code, fn, JSON.stringify(value)], {
+      encoding: 'utf8',
+    });
+    assert.equal(result.status, 0, result.stderr);
+    return JSON.parse(result.stdout);
+  };
+  const video = {
+    issue: 574,
+    title: 'クリア報酬を変える',
+    video: 'issue-574.mp4',
+    captions: ['報酬を変える', '依頼主を替える'],
+  };
+  const run = (dir: string) => spawnSync(process.execPath, [galleryScript, dir], { encoding: 'utf8' });
+
+  test('動画、飛ばした Issue、撮れなかった Issue が、それぞれの形で並び、数が出る', () => {
+    const html: string = call('renderGallery', {
+      items: [
+        video,
+        { issue: 575, title: 'API だけ', skipped: '画面が変わらない' },
+        { issue: 576, title: '撮れず', failed: '要素が見つからない' },
+      ],
+    });
+    // 再生前のサムネイルを、録画の頭の白い画面でなく、2 秒目にする
+    assert.match(html, /<video controls preload="metadata" src="issue-574\.mp4#t=2">/);
+    assert.match(html, /<li>報酬を変える<\/li><li>依頼主を替える<\/li>/);
+    assert.match(html, /飛ばした: 画面が変わらない/);
+    assert.match(html, /撮れなかった: 要素が見つからない/);
+    assert.match(html, /動画 1 本、飛ばした 1 件、撮れなかった 1 件/);
+  });
+
+  test('Issue の題、理由、字幕に入った HTML は、タグとして働かない', () => {
+    const attack = '<script>alert(1)</script><img src=x onerror=alert(2)> & "q"';
+    const html: string = call('renderGallery', {
+      title: attack,
+      items: [
+        { ...video, title: attack, captions: [attack] },
+        { issue: 2, title: 't', skipped: attack },
+      ],
+    });
+    assert.doesNotMatch(html, /<script>alert|<img src=x/);
+    assert.match(html, /&lt;script&gt;alert\(1\)&lt;\/script&gt;/);
+    assert.match(html, /&amp; &quot;q&quot;/);
+  });
+
+  test('manifest の誤りは、場所を添えて断る', () => {
+    const problems = (value: unknown): string => (call('validateManifest', value) as string[]).join('\n');
+    assert.equal(problems({ items: [video] }), '');
+    assert.match(problems({ items: [] }), /items が空/);
+    assert.match(
+      problems({ items: [{ ...video, skipped: '理由' }] }),
+      /items\[0\]: video、skipped、failed のどれか 1 つ/,
+    );
+    assert.match(problems({ items: [{ issue: 1, title: 't' }] }), /items\[0\]: video、skipped、failed のどれか 1 つ/);
+    assert.match(problems({ items: [{ ...video, issue: 0 }] }), /issue は正の整数/);
+    assert.match(problems({ items: [{ ...video, vidoe: 'x' }] }), /vidoe は使えない/);
+    assert.match(problems({ items: [{ ...video, captions: [''] }] }), /captions は空でない文字列の配列/);
+  });
+
+  test('動画のファイル名は、置き場所の直下の mp4 だけを通す', () => {
+    const problems = (name: string): string =>
+      (call('validateManifest', { items: [{ ...video, video: name }] }) as string[]).join('\n');
+    assert.equal(problems('issue-574.mp4'), '');
+    for (const name of [
+      '../secret.mp4',
+      'a/b.mp4',
+      '/etc/x.mp4',
+      'x.mp4"onerror="y',
+      'issue.webm',
+      'file:x.mp4',
+      '.mp4',
+    ]) {
+      assert.match(problems(name), /置き場所の直下の \.mp4/, name);
+    }
+  });
+
+  test('置き場所に manifest.json があれば index.html を書き、開く URL を出す', () => {
+    inTempDir({ 'manifest.json': JSON.stringify({ items: [video] }), 'issue-574.mp4': 'dummy' }, (path) => {
+      const result = run(join(path('manifest.json'), '..'));
+      assert.equal(result.status, 0, result.stderr);
+      assert.equal(result.stdout.trim(), pathToFileURL(path('index.html')).href);
+      assert.ok(existsSync(path('index.html')));
+    });
+  });
+
+  test('動画のファイルが置き場所に無い、または manifest.json が読めないときは、書かずに断る', () => {
+    inTempDir({ 'manifest.json': JSON.stringify({ items: [video] }) }, (path) => {
+      const result = run(join(path('manifest.json'), '..'));
+      assert.equal(result.status, 1);
+      assert.match(result.stderr, /#574: issue-574\.mp4 が置き場所に無い/);
+      assert.equal(existsSync(path('index.html')), false);
+    });
+    inTempDir({ 'manifest.json': '{ "items": [' }, (path) => {
+      const result = run(join(path('manifest.json'), '..'));
+      assert.equal(result.status, 1);
+      assert.match(result.stderr, /manifest を読めない/);
+    });
+  });
+
+  test('シングルクォートもエスケープし、外のファイルと通信を止める CSP を付ける', () => {
+    const html: string = call('renderGallery', { items: [{ issue: 1, title: "it's", skipped: 'r' }] });
+    assert.match(html, /it&#39;s/);
+    assert.match(
+      html,
+      /<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; media-src file: 'self'">/,
+    );
+  });
+
+  test('同じ Issue の重複、動画の無い Issue の captions、title の欠落、同時指定は断る', () => {
+    const problems = (items: unknown[]): string => (call('validateManifest', { items }) as string[]).join('\n');
+    assert.match(problems([video, { ...video, title: 'もう 1 枚' }]), /issue #574 が重複している/);
+    assert.match(
+      problems([{ issue: 2, title: 't', skipped: 'r', captions: ['あ'] }]),
+      /captions は video の Issue にだけ付ける/,
+    );
+    assert.match(problems([{ issue: 2, skipped: 'r' }]), /title は空でない文字列/);
+    assert.match(
+      problems([{ issue: 2, title: 't', skipped: 'r', failed: 'f' }]),
+      /video、skipped、failed のどれか 1 つ/,
+    );
+  });
+
+  test('manifest がオブジェクトでないときは、スタックトレースでなく理由を出して断る', () => {
+    for (const text of ['null', '[]', '"x"']) {
+      inTempDir({ 'manifest.json': text }, (path) => {
+        const result = run(join(path('manifest.json'), '..'));
+        assert.equal(result.status, 1, text);
+        assert.match(result.stderr, /manifest がオブジェクトでない/);
+        assert.doesNotMatch(result.stderr, /TypeError|at /);
+      });
+    }
+  });
+
+  test('引数が無ければ使い方を出して終了コード 2', () => {
+    const result = spawnSync(process.execPath, [galleryScript], { encoding: 'utf8' });
+    assert.equal(result.status, 2);
+    assert.match(result.stderr, /使い方/);
+  });
+
+  test('動画がディレクトリや空のファイルなら断り、index.html を書かない', () => {
+    inTempDir({ 'manifest.json': JSON.stringify({ items: [video] }), 'issue-574.mp4': '' }, (path) => {
+      const result = run(join(path('manifest.json'), '..'));
+      assert.equal(result.status, 1);
+      assert.match(result.stderr, /#574: issue-574\.mp4 が空か、ファイルでない/);
+      assert.equal(existsSync(path('index.html')), false);
+    });
+    inTempDir({ 'manifest.json': JSON.stringify({ items: [video] }) }, (path) => {
+      mkdirSync(path('issue-574.mp4'));
+      const result = run(join(path('manifest.json'), '..'));
+      assert.equal(result.status, 1);
+      assert.match(result.stderr, /issue-574\.mp4 が空か、ファイルでない/);
+    });
+  });
+
+  test('index.html が通常のファイルでなければ（symlink など）、リンク先を上書きせず断る', () => {
+    inTempDir(
+      { 'manifest.json': JSON.stringify({ items: [video] }), 'issue-574.mp4': 'dummy', 'target.txt': 'そのまま' },
+      (path) => {
+        symlinkSync(path('target.txt'), path('index.html'));
+        const result = run(join(path('manifest.json'), '..'));
+        assert.equal(result.status, 1);
+        assert.match(result.stderr, /index\.html が通常のファイルでない/);
+        assert.equal(readFileSync(path('target.txt'), 'utf8'), 'そのまま');
+      },
+    );
+  });
+
+  test('symlink 経由のパスで呼んでも、何もせずに成功扱いにならず、index.html を書く', () => {
+    inTempDir({ 'manifest.json': JSON.stringify({ items: [video] }), 'issue-574.mp4': 'dummy' }, (path) => {
+      symlinkSync(galleryScript, path('gallery-link.mjs'));
+      const result = spawnSync(process.execPath, [path('gallery-link.mjs'), join(path('manifest.json'), '..')], {
+        encoding: 'utf8',
+      });
+      assert.equal(result.status, 0, result.stderr);
+      assert.ok(existsSync(path('index.html')));
+    });
+  });
+
+  test('SKILL.md の manifest の例は、検査を通る', () => {
+    const skill = readFileSync(join(skillDir, 'SKILL.md'), 'utf8');
+    const example = /## まとめて撮る[\s\S]*?```json\n([\s\S]*?)\n```/.exec(skill)?.[1];
+    assert.ok(example, 'SKILL.md に manifest の例が無い');
+    assert.deepEqual(call('validateManifest', JSON.parse(example)), []);
   });
 });
 
