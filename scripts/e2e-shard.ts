@@ -20,11 +20,28 @@ export function readWeights(file: URL = WEIGHTS_FILE): Weights {
   return JSON.parse(readFileSync(file, 'utf8')) as Weights;
 }
 
-// e2e/ の直下の *.test.ts を名前順に並べる
+// Playwright の既定の testMatch（**/*.@(spec|test).?(c|m)[jt]s?(x)）に当たる名前。playwright.config.ts は testMatch を替えていない
+const PLAYWRIGHT_TEST = /\.(spec|test)\.[cm]?[jt]sx?$/;
+
+// e2e/ の直下の *.test.ts を名前順に並べる。Playwright が拾うのに、ここで割り当てから漏れる形のテスト（下位のディレクトリ、
+// .spec.ts、.test.js など）があれば例外にする。pnpm e2e <ファイル…> は渡したものしか走らせないので、漏れると CI が緑のまま、
+// そのテストだけが走らなくなるため
 export function listE2eFiles(dir: URL = E2E_DIR): string[] {
-  return readdirSync(dir)
-    .filter((name) => name.endsWith('.test.ts'))
-    .sort();
+  const found = readdirSync(dir, { recursive: true, encoding: 'utf8' }).filter((name) => PLAYWRIGHT_TEST.test(name));
+  const leaking = found.filter((name) => name.includes('/') || !name.endsWith('.test.ts'));
+  if (leaking.length > 0) {
+    throw new Error(
+      `Playwright が拾うのに割り当てから漏れる e2e のテストのファイルがある（e2e/ の直下の <名前>.test.ts にする）: ${JSON.stringify(leaking.sort())}`,
+    );
+  }
+  return found.sort();
+}
+
+// pnpm e2e に渡す引数。Playwright は引数を絶対パスへの正規表現（大文字小文字を区別しない、前後は固定しない）として当てるので、
+// . を \. にして末尾を固定し、別のファイルの名前（task-test-ts.test.ts など）に当たらないようにする。
+// ファイル名は FILE_NAME で英数字、ハイフン、. に限るので、\ と $ を足してもシェルの語分割は崩れない
+export function toPlaywrightArg(file: string): string {
+  return `e2e/${file.replaceAll('.', '\\.')}$`;
 }
 
 // 重みに載っているファイルの重みの中央値。重みが空なら 1
@@ -35,9 +52,12 @@ export function medianWeight(weights: Weights): number {
   return values.length % 2 === 1 ? values[mid]! : (values[mid - 1]! + values[mid]!) / 2;
 }
 
-// 割る対象のファイルの重み。載っていないファイル（新しく足したテスト）は中央値。重みにあって e2e/ に無いファイルは使わない
+// 割る対象のファイルの重み。載っていないファイル（新しく足したテスト）は、割る対象のうち載っているファイルの重みの中央値。
+// 重みにあって e2e/ に無いファイルは、割り当てにも中央値にも使わない
 export function weightsOf(files: readonly string[], weights: Weights): Map<string, number> {
-  const median = medianWeight(weights);
+  const median = medianWeight(
+    Object.fromEntries(files.filter((file) => Object.hasOwn(weights, file)).map((file) => [file, weights[file]!])),
+  );
   return new Map(files.map((file) => [file, Object.hasOwn(weights, file) ? weights[file]! : median]));
 }
 
@@ -168,7 +188,7 @@ function main(argv: readonly string[]): void {
   console.error(
     `shard ${i}/${n}: ${shard.files.length} files, weight ${shard.weightSum} s, estimate ${shard.seconds} s (without setup)`,
   );
-  console.log(shard.files.map((file) => `e2e/${file}`).join(' '));
+  console.log(shard.files.map(toPlaywrightArg).join(' '));
 }
 
 if (import.meta.main) {

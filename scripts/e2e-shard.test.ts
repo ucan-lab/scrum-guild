@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
 import { execFileSync, spawnSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { describe, test } from 'node:test';
 import {
   assignShards,
@@ -10,14 +12,18 @@ import {
   readWeights,
   shardFor,
   simulateSeconds,
+  toPlaywrightArg,
   weightsOf,
   WORKERS,
 } from './e2e-shard.ts';
 import { sumDurations } from './e2e-shard-weights.ts';
 
 const SHARDS = 3;
-// CI のジョブの準備（checkout、setup、Playwright、build、サーバーの起動。run 41180554724 で約 40 秒）
-const SETUP_SECONDS = 40;
+// 見積もり（準備を含まず、重みの合計をそのまま 2 ワーカーで走らせた秒）から、CI のジョブの所要時間への換算。
+// run 41180554724 の 3 つのシャードで、テストの実時間は見積もり相当（重みの合計の半分）の 1.10〜1.19 倍、
+// ジョブ全体からテストの実時間を引いた準備（checkout、setup、Playwright、build、サーバーの起動、seed）は 29〜36 秒だった
+const RUNTIME_FACTOR = 1.1;
+const SETUP_SECONDS = 32;
 // Issue #601 の受け入れ条件
 const MAX_SECONDS = 270;
 const MAX_SPREAD_SECONDS = 60;
@@ -144,6 +150,61 @@ describe('shardFor', () => {
   });
 });
 
+describe('listE2eFiles', () => {
+  const make = (files: string[]) => {
+    const dir = mkdtempSync(join(tmpdir(), 'e2e-shard-'));
+    for (const file of files) {
+      mkdirSync(join(dir, file, '..'), { recursive: true });
+      writeFileSync(join(dir, file), '');
+    }
+    return dir;
+  };
+  const list = (files: string[]) => {
+    const dir = make(files);
+    try {
+      return listE2eFiles(new URL(`file://${dir}/`));
+    } finally {
+      rmSync(dir, { recursive: true });
+    }
+  };
+
+  test('直下の *.test.ts だけを名前順に返し、テストでないファイル（fixtures.ts など）は数えない', () => {
+    assert.deepEqual(list(['b.test.ts', 'a.test.ts', 'fixtures.ts', 'helpers.ts']), ['a.test.ts', 'b.test.ts']);
+  });
+
+  test('Playwright が拾うのに、割り当てから漏れる形のテストは、黙らず落とす', () => {
+    // Playwright の既定の testMatch は **/*.@(spec|test).?(c|m)[jt]s?(x)。pnpm e2e <ファイル> は渡したものしか走らせないので、漏れると CI が緑のまま消える
+    for (const name of ['x.spec.ts', 'x.test.js', 'x.test.mts', 'x.test.tsx', 'sub/x.test.ts', 'sub/deep/x.spec.js']) {
+      assert.throws(() => list(['a.test.ts', name]), /漏れる|割り当て/, name);
+    }
+  });
+});
+
+describe('toPlaywrightArg', () => {
+  test('. を \\. にして末尾を固定し、別のファイルの名前に当たらない', () => {
+    assert.equal(toPlaywrightArg('task.test.ts'), 'e2e/task\\.test\\.ts$');
+    const pattern = new RegExp(toPlaywrightArg('task.test.ts'), 'gi');
+    assert.ok(pattern.test('/work/e2e/task.test.ts'));
+    for (const other of [
+      '/work/e2e/task-test-ts.test.ts',
+      '/work/e2e/task.test.ts.bak',
+      '/work/e2e/sub-task.test.ts',
+    ]) {
+      assert.equal(new RegExp(toPlaywrightArg('task.test.ts'), 'gi').test(other), false, other);
+    }
+  });
+});
+
+describe('weightsOf の中央値', () => {
+  test('e2e/ に無い古い重みの項目は、新しいファイルの重みを動かさない', () => {
+    const weights: Record<string, number> = { 'a.test.ts': 10, 'b.test.ts': 30 };
+    const before = weightsOf(['a.test.ts', 'b.test.ts', 'new.test.ts'], weights).get('new.test.ts');
+    for (let i = 0; i < 10; i++) weights[`gone-${i}.test.ts`] = 1;
+    assert.equal(weightsOf(['a.test.ts', 'b.test.ts', 'new.test.ts'], weights).get('new.test.ts'), before);
+    assert.equal(before, 20);
+  });
+});
+
 describe('手元の e2e/ と scripts/e2e-shard-weights.json', () => {
   const files = listE2eFiles();
   const weights = readWeights();
@@ -172,8 +233,10 @@ describe('手元の e2e/ と scripts/e2e-shard-weights.json', () => {
     assert.ok(Math.max(...seconds) - Math.min(...seconds) <= 40, JSON.stringify(seconds));
   });
 
-  test(`準備の ${SETUP_SECONDS} 秒を足しても最長が ${MAX_SECONDS} 秒以下`, () => {
-    assert.ok(Math.max(...seconds) + SETUP_SECONDS <= MAX_SECONDS, JSON.stringify(seconds));
+  test(`実測の換算（${RUNTIME_FACTOR} 倍と準備 ${SETUP_SECONDS} 秒）で、ジョブの所要時間が最長でも ${MAX_SECONDS} 秒以下`, () => {
+    // 換算は 265 秒前後で、受け入れ条件の ${MAX_SECONDS} 秒に余裕が薄い。ここは割り方が崩れていないかを見る下限で、CI の実測が正
+    const job = Math.max(...seconds) * RUNTIME_FACTOR + SETUP_SECONDS;
+    assert.ok(job <= MAX_SECONDS, `${JSON.stringify(seconds)} → ${job}`);
   });
 
   test('合計だけの貪欲な割り方では足りず、シミュレーションで詰めている（詰めた割り方が貪欲より最長が短い）', () => {
@@ -200,13 +263,10 @@ describe('node scripts/e2e-shard.ts', () => {
     const out = [1, 2, 3].map((i) => {
       const result = run(String(i), '3');
       assert.equal(result.status, 0, result.stderr);
-      assert.match(result.stdout, /^e2e\/[a-z0-9-]+\.test\.ts( e2e\/[a-z0-9-]+\.test\.ts)*\n$/);
+      assert.match(result.stdout, /^e2e\/[a-z0-9-]+\\\.test\\\.ts\$( e2e\/[a-z0-9-]+\\\.test\\\.ts\$)*\n$/);
       return result.stdout.trim().split(' ');
     });
-    assert.deepEqual(
-      out.flat().sort(),
-      listE2eFiles().map((file) => `e2e/${file}`),
-    );
+    assert.deepEqual(out.flat().sort(), listE2eFiles().map(toPlaywrightArg));
   });
 
   test('不正な引数と空のシャードは非 0 で、標準出力に何も出さない', () => {
