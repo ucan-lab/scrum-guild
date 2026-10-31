@@ -9,11 +9,12 @@ import { sha256Hex } from '../src/server/auth/tokens.ts';
 import { implementedOperations } from '../src/server/operations/index.ts';
 import { insertApiToken, rawApiToken, tokenRow, tokenRowsOf } from './operations/api-token.ts';
 import { errorCodeOf, post } from './operations/harness.ts';
-import { whoAmI } from './operations/provisional.ts';
+import { provisionalOperations, whoAmI } from './operations/provisional.ts';
 import { createLoginPerson } from './operations/world.ts';
 import type { Person } from './operations/world.ts';
 
-const app = createApp([...implementedOperations]);
+// whoAmI は、発行したトークンで API を呼べるかを確かめる仮の操作
+const app = createApp([...implementedOperations, ...provisionalOperations]);
 const DAY_MS = 24 * 60 * 60 * 1000;
 const HASH_PATTERN = /^[0-9a-f]{64}$/;
 const future = (days = 30) => new Date(Date.now() + days * DAY_MS).toISOString();
@@ -275,9 +276,10 @@ describe('完了条件: 取消', () => {
     const theirs = await insertApiToken(other.accountId);
     const missing = await revoke(me, await sha256Hex(rawApiToken()));
     const foreign = await revoke(me, theirs.hash);
+    const [missingText, foreignText] = [await missing.clone().text(), await foreign.clone().text()];
     expect(missing.status).toBe(404);
     expect(await errorCodeOf(missing)).toBe('not_found');
-    expect(await missing.text()).toBe(await foreign.text());
+    expect(missingText).toBe(foreignText);
   });
 
   test('すでに取り消した自分の行をもう一度取り消しても成功し、revoked_at は変わらない', async () => {
