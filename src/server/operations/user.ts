@@ -9,8 +9,10 @@ import { now, todayIn } from '../../shared/clock.ts';
 import { userAdminUpdate, userDisable, userEnable, userList } from '../../shared/operations/organization/index.ts';
 import type { UserConflictReason } from '../../shared/operations/organization/user.ts';
 import {
+  hasSeatInvitationOfLogin,
   jsonLookup,
   previousStatementChanged,
+  seatHoldersOf,
   uuidv7Sql,
   type OrganizationDb,
   type OrganizationTables,
@@ -20,6 +22,7 @@ import { ApiError } from '../errors.ts';
 import { uuidv7 } from '../uuid.ts';
 import { implement } from './implement.ts';
 import { readSeats } from './invitation.ts';
+import type { OrganizationTools } from './organization-tools.ts';
 import { createdOn } from './workspace.ts';
 import { actorUserIdOf, changeLogColumns } from './write-guards.ts';
 
@@ -519,11 +522,39 @@ export const userDisableOperation = implement(userDisable, async ({ db, actor, t
   return { user_id: userId, is_admin: false, disabled_at: stamp };
 });
 
+// 無効の人を有効に戻すときの人数の検査。有効に戻した後も残る招待（無効にした日時以後に作ったもの）が無ければ（adding が 0）、
+// 人数を数えずに通す。あれば、無効の人は今は人数に数えられておらず（所属は終わり、その人への招待も数えない）、有効に戻すと
+// 新しく数えられるので、adding は常に 1
+async function throwIfEnableExceedsLimit(
+  db: OrganizationDb,
+  tools: OrganizationTools,
+  user: { login_provider: string; login_subject: string },
+  disabledAt: string,
+): Promise<void> {
+  const at = now();
+  const login = { provider: user.login_provider, subject: user.login_subject };
+  if (!(await hasSeatInvitationOfLogin(db, login, disabledAt))) return;
+  const [counted, organization] = await Promise.all([seatHoldersOf(db, at), tools.readOrganization()]);
+  const adding = 1;
+  const used = counted.size;
+  const limit = organization.memberLimit;
+  if (used + adding > limit) {
+    throw new ApiError(409, 'member_limit_reached', { used, limit, adding });
+  }
+}
+
 // 有効に戻す。disabled_at を空にし、所属と管理者は戻さない。記録は {"disabled_at": [前の日時, null]}。
 // 同じ batch で、無効にする前に作ったその人のログインへの承諾待ちの招待を取り消す（下のコメント）。
 // 限界: 結ばれないまま残った Google のメールアドレスの招待は、users にメールアドレスが残らないので、その人への招待と見分けられず
 // 取り消せない。有効に戻した後に本人がその URL から結べば、招待し直さずに承諾できる（docs/data-model.md の users）
-export const userEnableOperation = implement(userEnable, async ({ db, actor, input }) => {
+//
+// 有効に戻すと、無効の間は人数に数えなかった承諾待ちの招待（無効の間に招待し直したもの。開いたワークスペース、期限内）の人が
+// 新しく数えられる。新しく数えられる人（adding）は、その招待があれば1人（同じ人への招待が複数でも1）、無ければ 0 で、
+// adding が 1 以上で、今の人数（used）に足すと member_limit を超えるときは、何も書かずに 409（member_limit_reached、
+// details は { used, limit, adding }）で断る。無効の間に作った招待は残す。adding が 0 の有効化は、段階を下げて
+// 人数が上限を超えている組織でも通す。ちょうど上限に達する有効化も通す。
+// 人数は書く文の条件に入れない（招待の作成、workspace-reopen と同じ。数えてから書くまでの間に同時に増えた分は、超えるのを認める）
+export const userEnableOperation = implement(userEnable, async ({ db, actor, tools, input }) => {
   const actorUserId = actorUserIdOf(actor);
   const organizationId = db.organizationId;
   const userId = input.user_id;
@@ -532,6 +563,8 @@ export const userEnableOperation = implement(userEnable, async ({ db, actor, inp
   if (current === undefined) throw new ApiError(404, 'not_found');
   const disabledAt = current.disabled_at;
   if (disabledAt === null) return stateOf(current);
+
+  await throwIfEnableExceedsLimit(db, tools, current, disabledAt);
 
   const at = now();
   const stamp = at.toISOString();
