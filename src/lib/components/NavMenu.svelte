@@ -2,6 +2,7 @@
   import type { Snippet } from 'svelte';
   import { resolve } from '$app/paths';
   import { page } from '$app/state';
+  import { NAV_MENU_ID } from '../nav-collapse.svelte.ts';
   import { isWorkspaceId, isWorkspaceRoute, visibleNav } from '../nav.ts';
   import { t } from '../vocabulary.svelte.ts';
   import { workspaceViewOf } from '../workspace.ts';
@@ -21,7 +22,6 @@
     isAdmin,
     workspaceId,
     workspaceSwitcher,
-    id = 'app-nav',
   }: {
     current: string;
     slug: string;
@@ -29,7 +29,6 @@
     isAdmin: boolean;
     workspaceId?: string;
     workspaceSwitcher?: Snippet;
-    id?: string;
   } = $props();
 
   const sections = $derived(
@@ -43,7 +42,7 @@
   );
 </script>
 
-<nav class="nav" {id}>
+<nav class="nav" id={NAV_MENU_ID}>
   {#each sections as section (section.heading ?? 'organization')}
     {#if section.heading}<div class="nav-group"><span class="nav-group-label">{t(section.heading)}</span></div>{/if}
     {#if section.slot === 'workspace' && workspaceSwitcher}{@render workspaceSwitcher()}{/if}

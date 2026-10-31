@@ -1,3 +1,4 @@
+import type { Page } from '@playwright/test';
 import { expect, test } from './fixtures.ts';
 import {
   expectFocusReturned,
@@ -12,6 +13,8 @@ const version = process.env.APP_VERSION || 'dev';
 
 // 枠の部品は組織の中の画面が使う。あおば開発だけに入れるユーザー（ハルカ）で、組織の画面を開く
 const today = '/aoba';
+// あおば開発のワークスペース（seed）。バックログの木の行が本文の左端に並ぶ
+const AOBA_WORKSPACE_ID = '019a0000-0000-7000-8000-000000000401';
 
 test.beforeEach(async ({ context, baseURL }) => {
   await signIn(context, baseURL, 'member');
@@ -75,14 +78,55 @@ test('畳んだ列では、マウスを載せるかフォーカスすると項�
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.goto(today);
   await page.getByRole('button', { name: 'メニューを畳む' }).click();
-  const items = page.locator('.nav-item');
-  await items.nth(0).focus();
+  const items = page.locator('#app-nav .nav-item');
+  // キーボードで移ると名前が出る（開閉のボタンから Tab で組織の切り替えを越え、最初の項目へ）
+  await page.getByRole('button', { name: 'メニューを広げる' }).focus();
+  for (let i = 0; i < 5 && !(await items.nth(0).evaluate((el) => el === document.activeElement)); i++)
+    await page.keyboard.press('Tab');
+  await expect(items.nth(0)).toBeFocused();
   await expect(items.nth(0).locator('.nav-item-label')).toHaveCSS('opacity', '1');
   await items.nth(1).hover();
   await expect(items.nth(1).locator('.nav-item-label')).toHaveCSS('opacity', '1');
   // 名前は列の外（右）に浮く
   const label = await items.nth(1).locator('.nav-item-label').boundingBox();
   expect(label!.x).toBeGreaterThanOrEqual(64);
+
+  // マウスで押した後は、マウスを外せば名前が消える（押したリンクにフォーカスが残っても出し続けない）
+  await items.nth(0).click();
+  await page.mouse.move(700, 600);
+  await expect(items.nth(0).locator('.nav-item-label')).toHaveCSS('opacity', '0');
+});
+
+// 浮かせた名前の中の点が、本文の要素に覆われずに名前自身を返すか（名前は pointer-events: none なので、測る間だけ戻す）
+async function frontmostAcross(page: Page, selector: string): Promise<boolean[]> {
+  return page.locator(selector).evaluate((el: HTMLElement) => {
+    el.style.pointerEvents = 'auto';
+    const r = el.getBoundingClientRect();
+    const hits = [0.1, 0.5, 0.9].map((f) => {
+      const hit = document.elementFromPoint(r.left + r.width * f, r.top + r.height / 2);
+      return hit !== null && el.contains(hit);
+    });
+    el.style.pointerEvents = '';
+    return hits;
+  });
+}
+
+test('畳んだ列の名前と組織の一覧は、バックログの行に覆われず、列の外に出る', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto(`/aoba/w/${AOBA_WORKSPACE_ID}`);
+  await expect(page.locator('.tree-row').first()).toBeVisible();
+  await page.getByRole('button', { name: 'メニューを畳む' }).click();
+
+  const backlog = page.locator('#app-nav').getByRole('link', { name: 'バックログ' });
+  await backlog.hover();
+  const label = backlog.locator('.nav-item-label');
+  await expect(label).toHaveCSS('opacity', '1');
+  expect((await label.boundingBox())!.x).toBeGreaterThanOrEqual(64);
+  expect(await frontmostAcross(page, '#app-nav .nav-item[aria-current="page"] .nav-item-label')).toEqual([
+    true,
+    true,
+    true,
+  ]);
 });
 
 test('760px 以下では、畳んだままでも開閉のボタンが無く、帯の形で出る', async ({ page }) => {
@@ -126,6 +170,16 @@ test.describe('組織が2つの人（ミナト）', () => {
     await list.getByRole('link', { name: 'ひばり工房' }).click();
     await expect(page).toHaveURL(/\/hibari$/);
     await expect(page.locator('.app')).toHaveAttribute('data-nav-collapsed', 'true');
+  });
+
+  test('バックログの画面でも、畳んだ列から開いた組織の一覧は本文の行に覆われない', async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await page.goto(`/aoba/w/${AOBA_WORKSPACE_ID}`);
+    await expect(page.locator('.tree-row').first()).toBeVisible();
+    await page.getByRole('button', { name: 'メニューを畳む' }).click();
+    await page.locator('.org-menu-button').click();
+    for (const selector of ['.org-menu-list li:first-child a', '.org-menu-list li:last-child a'])
+      expect(await frontmostAcross(page, selector)).toEqual([true, true, true]);
   });
 
   test('畳んだ列でも、届いた招待があることが印と読み上げで分かる', async ({ page }) => {

@@ -77,6 +77,10 @@
     {#if invited}<span class="org-menu-invite" aria-hidden="true"></span>{/if}
     <Icon name="swap" />
     <Icon name="chevron" />
+    <!-- 畳んだ列で、ホバーとキーボードのフォーカスのときに今の組織と招待の有無を目で読ませる札。読み上げは aria-label が受け持つ -->
+    <span class="nav-tip" aria-hidden="true"
+      >{currentName}{#if invited}<small>{t('invitationsBadge')}</small>{/if}</span
+    >
   </button>
   <!-- 移っている最中を読み上げに伝える。領域は常に置き、中の文字だけを替える -->
   <span class="visually-hidden" role="status">{moving ? t('organizationMoving') : ''}</span>

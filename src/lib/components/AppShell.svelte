@@ -2,7 +2,7 @@
   import type { Snippet } from 'svelte';
   import { resolve } from '$app/paths';
   import { t } from '../vocabulary.svelte.ts';
-  import { navState, setNavCollapsed } from '../nav-collapse.svelte.ts';
+  import { NAV_MENU_ID, navState, setNavCollapsed } from '../nav-collapse.svelte.ts';
   import BrandMark from './BrandMark.svelte';
   import NavMenu from './NavMenu.svelte';
   import Icon from './Icon.svelte';
@@ -48,15 +48,16 @@
           class="nav-toggle"
           type="button"
           aria-expanded={!navState.collapsed}
-          aria-controls="app-nav"
+          aria-controls={NAV_MENU_ID}
           aria-label={t(navState.collapsed ? 'menuExpand' : 'menuCollapse')}
           onclick={() => setNavCollapsed(!navState.collapsed)}
         >
           <Icon name="panel" />
+          <span class="nav-tip" aria-hidden="true">{t(navState.collapsed ? 'menuExpand' : 'menuCollapse')}</span>
         </button>
       </div>
       {#if organizationSwitcher}{@render organizationSwitcher()}{/if}
-      <NavMenu id="app-nav" {current} {slug} {hasWorkspace} {isAdmin} {workspaceId} {workspaceSwitcher} />
+      <NavMenu {current} {slug} {hasWorkspace} {isAdmin} {workspaceId} {workspaceSwitcher} />
     </div>
   </aside>
   <div class="sheet">

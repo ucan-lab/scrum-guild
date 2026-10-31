@@ -1,4 +1,6 @@
 export const NAV_COLLAPSED_KEY = 'sg-nav-collapsed';
+// 左のメニュー（nav）の id。開閉のボタンの aria-controls が指す
+export const NAV_MENU_ID = 'app-nav';
 
 function isCollapsedValue(value: string | null): boolean {
   return value === 'true';
@@ -34,9 +36,20 @@ export function setNavCollapsed(collapsed: boolean): void {
   }
 }
 
+// 別のタブでの変更を追う。key が null なのは別のタブの localStorage.clear() で、既定（広げた状態）に戻す。
+// 値は 'true' と 'false' と消去（null）だけを当て、それ以外は今の状態を保つ（drawer.svelte.ts と同じ扱い）
 export function handleNavCollapsedStorage(event: { key: string | null; newValue: string | null }): void {
+  if (event.key === null) {
+    navState.collapsed = false;
+    return;
+  }
   if (event.key !== NAV_COLLAPSED_KEY) return;
-  navState.collapsed = isCollapsedValue(event.newValue);
+  if (event.newValue === null || event.newValue === 'false') navState.collapsed = false;
+  else if (event.newValue === 'true') navState.collapsed = true;
 }
 
-if (typeof window !== 'undefined') window.addEventListener('storage', handleNavCollapsedStorage);
+export function listenNavCollapsedStorage(target: Pick<Window, 'addEventListener'>): void {
+  target.addEventListener('storage', handleNavCollapsedStorage);
+}
+
+if (typeof window !== 'undefined') listenNavCollapsedStorage(window);

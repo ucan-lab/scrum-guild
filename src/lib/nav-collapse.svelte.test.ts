@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import {
   handleNavCollapsedStorage,
+  listenNavCollapsedStorage,
   navState,
   NAV_COLLAPSED_KEY,
   readNavCollapsed,
@@ -67,15 +68,38 @@ describe('左のメニューの開閉の既定', () => {
 });
 
 describe('ほかのタブでの変更', () => {
-  test('正しいキーの true / false だけを反映する', () => {
-    navState.collapsed = false;
+  test('キーの true と false を当てる', () => {
     handleNavCollapsedStorage({ key: NAV_COLLAPSED_KEY, newValue: 'true' });
     expect(navState.collapsed).toBe(true);
     handleNavCollapsedStorage({ key: NAV_COLLAPSED_KEY, newValue: 'false' });
     expect(navState.collapsed).toBe(false);
+  });
+
+  test('知らない値と別のキーは、今の状態を保つ', () => {
+    navState.collapsed = true;
     handleNavCollapsedStorage({ key: NAV_COLLAPSED_KEY, newValue: 'unknown' });
+    expect(navState.collapsed).toBe(true);
+    handleNavCollapsedStorage({ key: 'sg-theme', newValue: 'false' });
+    expect(navState.collapsed).toBe(true);
+  });
+
+  test('キーの消去（removeItem）と、別のタブの clear() は広げた状態に戻す', () => {
+    navState.collapsed = true;
+    handleNavCollapsedStorage({ key: NAV_COLLAPSED_KEY, newValue: null });
     expect(navState.collapsed).toBe(false);
-    handleNavCollapsedStorage({ key: 'theme', newValue: 'true' });
+    navState.collapsed = true;
+    handleNavCollapsedStorage({ key: null, newValue: null });
     expect(navState.collapsed).toBe(false);
   });
+
+  test('storage のイベントを受ける', () => {
+    const addEventListener = vi.fn();
+    listenNavCollapsedStorage({ addEventListener });
+    expect(addEventListener).toHaveBeenCalledWith('storage', handleNavCollapsedStorage);
+  });
+});
+
+test('保存された true を読むと畳んだ状態', () => {
+  storage('true');
+  expect(readNavCollapsed()).toBe(true);
 });
