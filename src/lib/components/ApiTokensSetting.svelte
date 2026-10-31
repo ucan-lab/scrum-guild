@@ -241,7 +241,8 @@
       // 上限の知らせは「取り消してください」と促すので、取り消せたら消す（発行の入力の誤りは、その欄を直すまで残す）
       if (revoked && fieldError?.field === 'form') fieldError = null;
       // 取り消せなかったときも、行の今の状態に合わせるために読み直す
-      rowGone = revoked && (await reload()) === 'ok';
+      const reloaded = (await reload()) === 'ok';
+      rowGone = revoked && reloaded;
     } finally {
       busy = null;
       status = '';
