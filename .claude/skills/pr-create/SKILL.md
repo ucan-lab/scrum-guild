@@ -150,7 +150,7 @@ gh api repos/{owner}/{repo}/pulls \
 
 ### 本文
 
-`.github/pull_request_template.md` の見出しの順に埋める。各節の書き方はテンプレートのコメントに従い、テンプレートのコメントは本文に残さない（`<!-- pr-create:draft-first -->` など、このスキルが入れる目印は残す）。見出しの構成をこのスキルに写さない（理由: 2か所に持つと片方だけ直ってずれる）。テンプレートが無いリポジトリでは、直近の PR の本文の構成に合わせる。
+`.github/pull_request_template.md` の見出しの順に埋める。各節の書き方はテンプレートのコメントに従い、テンプレートのコメントは本文に残さない（`<!-- pr-create:draft-first -->` と `<!-- done-check:<SHA> -->` など、このスキルが入れる目印は残す）。見出しの構成をこのスキルに写さない（理由: 2か所に持つと片方だけ直ってずれる）。テンプレートが無いリポジトリでは、直近の PR の本文の構成に合わせる。
 
 - 紐づく Issue が無ければ、`Refs` の行ごと消す
 - `## リスク` と `## 戻し方` は、文書だけの PR でも空にしない。差分から決める。文書だけなら「低（文書のみ）」「revert」の1行でよい。差分のパスを `.github/labeler.yml` に当て、`needs-human` の領域に触れたら `## リスク` にその領域を書く。revert で戻らないものを含むなら、`## 戻し方` に戻し方を書く。マイグレーションは `docs/operations.md` の「戻し方」の DB の手順を指す。R2 の中身や外への送信など手順が文書に無いものは、戻せない旨と、壊れたときにどう扱うかを書く（手順を作って書かない）
@@ -168,10 +168,23 @@ done-check で直さなかった CRITICAL と HIGH の指摘があれば、理�
 
 done-check の判断の差分が、人に聞けない実行（`AskUserQuestion` を出せないか、答える人がいない実行）で `触れた: <パス> — <理由>` なら、その行を本文の `## 補足` にも書く（Step 5-C がラベルを足す。Issue の `やらないこと` に触れたまま PR を出したことを、本文だけを読む人に見せるため）。対話の実行では、done-check の段で止まって人に聞いているので、ここには書かない。
 
+本文の末尾に、下の「done-check の印」を書く。
+
 本文を書いたら、書いてから差分と突き合わせて2観点でセルフチェックする。
 
 - 本文に書いたが差分にない記述がないか
 - 差分にあるがレビュワーが「これは何？」と思う変更で本文にないものがないか
+
+### done-check の印
+
+作成モードでは、本文の末尾に `<!-- done-check:<完全な SHA> -->` を1行書く（GitHub の画面には出ない）。CI の AI レビューは、この印の SHA から head までの差分だけを見る（`docs/development.md` の「CI」）。印を書くのはこのスキルだけで、`done-check` と `pr-feedback` は書かない。
+
+SHA は、会話にある done-check の出力の「点検した head」。次をすべて満たすときだけ書き、1つでも満たさなければ印を書かない（理由: 点検していないコミットを点検済みにすると、AI レビューがそのコミットを見ない。印が無ければ、AI レビューは PR 全体を見る側に倒れる）。
+
+- このセッションで done-check を実行し、点検した head が小文字40桁の16進で出ている。done-check を省いたとき、点検した head が `無し` のときは書かない
+- 点検した head が、push 済みの head（`gh api "repos/{owner}/{repo}/branches/<branch>" --jq .commit.sha`）と同じか、その祖先である（`git fetch origin` の後の `git merge-base --is-ancestor <点検した head> <push 済みの head>` が 0 で終わる）。祖先でなければ（force push で履歴が変わった）書かない。点検した head より後のコミット（done-check の直し、`sync-base` で main を取り込んだ merge）は、AI レビューが印から後の差分として見る。取り込んだ main の分は差分から除かれ、衝突したファイルは PR 全体の差分で見られる。done-check の後に手で積んだコミットは、「作成モードは done-check を先に済ませる」のとおり done-check を回し直してから来るので、ここには混ざらない
+
+書かなかったときは、その理由を Step 7 の報告に書く。
 
 ### メタデータ
 
@@ -241,7 +254,7 @@ gh api repos/{owner}/{repo}/pulls \
 ### ドラフトで先に作ったとき
 
 Step 2-B で作った PR には、作らずに本文を書き込む。Step 3 でタイトルを変えたときだけ `title` も渡す。
-書き込む本文の末尾にも、目印の `<!-- pr-create:draft-first -->` を1行残す。`pr-feedback` は、この目印のあるドラフトだけを `ci-ok` の後に外す（理由: 別のセッションで再開しても、人が意図してドラフトにした PR と見分けられる）。
+書き込む本文の末尾にも、目印の `<!-- pr-create:draft-first -->` を1行残し、Step 3 の「done-check の印」をその後に書く。`pr-feedback` は、この目印のあるドラフトだけを `ci-ok` の後に外す（理由: 別のセッションで再開しても、人が意図してドラフトにした PR と見分けられる）。
 
 ```bash
 gh api -X PATCH repos/{owner}/{repo}/pulls/<n> \
@@ -280,7 +293,7 @@ gh api repos/{owner}/{repo}/issues/<n>/assignees -f "assignees[]=<user>"
 ```
 
 更新モードでも本文に画像を足さない。人が貼った `## スクリーンショット / 動画` の節は残す。
-本文に目印の `<!-- pr-create:draft-first -->` があれば、書き換えた本文にも残す（理由: 消すと、`pr-feedback` が `ci-ok` の後にドラフトを外さなくなる）。インラインコメントの目印 `<!-- pr-create:guide -->` も、コメントを直すときに消さない。
+本文に目印の `<!-- pr-create:draft-first -->` があれば、書き換えた本文にも残す（理由: 消すと、`pr-feedback` が `ci-ok` の後にドラフトを外さなくなる）。done-check の印 `<!-- done-check:<SHA> -->` も、あれば一字も変えずに残し、無ければ足さない。更新モードでは印を書き換えも進めもしない（理由: 印を書くのは作成のときだけと決めた。消すと AI レビューは PR 全体を見直し、使用量が増える。進めると、更新モードの前に積んだ点検していないコミットを点検済みにしうる）。インラインコメントの目印 `<!-- pr-create:guide -->` も、コメントを直すときに消さない。
 
 ラベル、レビュワー、アサインの `DELETE` と、ラベルを丸ごと置き換える `PUT` は使わない。人が意図して設定したものを消さないため。外す必要があると判断した場合は、実行せずユーザーに提案だけする。
 
@@ -325,7 +338,7 @@ gh api -X PATCH repos/{owner}/{repo}/issues/<issue> -F body=@"<スクラッチ�
 
 done-check の判断の差分が、人に聞けない実行で `触れた: <パス> — <理由>` なら、次の2つを行う。
 
-1. PR の本文の `## 補足` に、その行がある（Step 3 で書いた）ことを確かめる。無ければ PR の本文を取り直し（`gh api "repos/{owner}/{repo}/pulls/<PR の番号>" --jq .body`）、`## 補足` に足して（節が無ければ末尾に作って）書き戻す（`gh api -X PATCH "repos/{owner}/{repo}/pulls/<PR の番号>" --input <JSON のファイル>`。JSON は Python で書く）
+1. PR の本文の `## 補足` に、その行がある（Step 3 で書いた）ことを確かめる。無ければ PR の本文を取り直し（`gh api "repos/{owner}/{repo}/pulls/<PR の番号>" --jq .body`）、`## 補足` に足して（節が無ければ印の行より前に作って）、目印と done-check の印を残したまま書き戻す（`gh api -X PATCH "repos/{owner}/{repo}/pulls/<PR の番号>" --input <JSON のファイル>`。JSON は Python で書く）
 2. PR に `needs-human` を足す。付けるだけで外さない（セッションが外すと、人が差分を読まずに済んでしまう）
 
 ```bash
@@ -440,6 +453,7 @@ gh api -X POST "repos/{owner}/{repo}/pulls/<n>/reviews/<review_id>/events" -f ev
 ## Step 7: 報告
 
 - PRのURL
+- 本文の done-check の印の短い SHA（Step 3 の「done-check の印」。書かなかったときはその理由）
 - 設定した項目（スキップした項目はその理由を一言）
 - Issue の完了条件でチェックを付けた項目と、残した項目
 - Issue の本文の3節に足した行（`セッションが置いた前提`、`やらないこと`、`人が決めたこと`）と、足せなかった行とその理由。`needs-human` を足したときはそのことと理由
