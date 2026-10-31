@@ -1,5 +1,6 @@
 // 本人を確かめた後の分かれ道（docs/requirements.md の「メンバーと権限」、docs/data-model.md の「書き込みの単位」）。
-//   - 入れる組織も届いた招待も無い人は、運用者でない限りログインさせず、accounts を作らない
+//   - ログインさせるのは、運用者、アカウントがある人、停止していなければ入れた組織か届いた招待がある人（停止した組織の分も数える）。
+//     アカウントがある人は、入れる組織を失っていても通す。残り（アカウントが無く、組織も招待も無い人）はログインさせず、accounts を作らない
 //   - 初めてログインできた人は、accounts と account_logins を1回の batch() で作る。運用者は入れる組織が無くても作る
 //   - 2回目以降は、account_logins の表示名とアバター、accounts.last_login_at を書き直す
 //   - ログインのたびに、組織の DB の users.account_id が空で、ログインの ID が同じ行（指名で待っていた行）を結ぶ。
@@ -20,9 +21,9 @@ import { createSession } from './session.ts';
 export type LoginOutcome =
   // claimed: 招待の URL から結んだときの、結んだ先
   | { ok: true; accountId: string; sessionToken: string; claimed?: ClaimOutcome }
-  // denied: 入れる組織も招待も無い。suspended: 入れる組織か招待が、停止した組織にだけある。
+  // denied: アカウントが無く、入れる組織も招待も無い（停止した組織の分も数える）。
   // retry: 結ぶ書き込みが失敗した。invite: 招待の URL から結べなかった
-  | { ok: false; reason: 'denied' | 'suspended' | 'retry' | 'invite' };
+  | { ok: false; reason: 'denied' | 'retry' | 'invite' };
 
 type LoginInput = {
   provider: string;
@@ -136,16 +137,16 @@ export async function completeLogin(env: Env, input: LoginInput): Promise<LoginO
 
   let existing = await findAccountId(env, provider, profile.subject);
   const operator = isOperatorLogin(env, [login]);
-  if (!operator) {
-    let access = await readLoginAccess(env, { accountId: existing, logins: [login] });
-    // 同じ人の最初のログインが並行すると、アカウントが無いと読んだ後に、もう片方がアカウントを作り、指名の行を結ぶ
-    // （結んだ行は、アカウントが無い側からは当たらなくなる）。判定が落ちたら読み直し、できていればその ID で判定し直す。
-    // 権限の無い人のアカウントを先に作ることはしない
-    if (!access.allowed && existing === undefined) {
+  // アカウントがある人は、入れる組織を失っていても通す。判定するのはアカウントが無いときだけ
+  if (!operator && existing === undefined) {
+    const access = await readLoginAccess(env, { accountId: undefined, logins: [login] });
+    if (!access.allowed && !access.suspended) {
+      // 同じ人の最初のログインが並行すると、アカウントが無いと読んだ後に、もう片方がアカウントを作り、指名の行を結ぶ
+      // （結んだ行は、アカウントが無い側からは当たらなくなる）。判定が落ちたら読み直し、できていれば（アカウントがあるので）通す。
+      // 権限の無い人のアカウントを先に作ることはしない
       existing = await findAccountId(env, provider, profile.subject);
-      if (existing !== undefined) access = await readLoginAccess(env, { accountId: existing, logins: [login] });
+      if (existing === undefined) return { ok: false, reason: 'denied' };
     }
-    if (!access.allowed) return { ok: false, reason: access.suspended ? 'suspended' : 'denied' };
   }
 
   const accountId = await ensureAccount(env, input, existing);

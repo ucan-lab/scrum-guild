@@ -311,7 +311,7 @@ export const userAdminUpdateOperation = implement(userAdminUpdate, async ({ db, 
 // 記録はどれも、変える文より前に置く（変えた後では対象の行を選べない）。行の ID は SQL の中で作るので、件数によらず文の数は決まっている。
 // 完了したタスク、完了の記録、経験値は変えない。討伐隊（epic_party_members）と接続（connections）は、表を足す Issue（#267、#67）で
 // この batch に文を足す
-export const userDisableOperation = implement(userDisable, async ({ db, actor, tools, defer, input }) => {
+export const userDisableOperation = implement(userDisable, async ({ db, actor, input }) => {
   const actorUserId = actorUserIdOf(actor);
   const organizationId = db.organizationId;
   const userId = input.user_id;
@@ -517,8 +517,6 @@ export const userDisableOperation = implement(userDisable, async ({ db, actor, t
     if (after.disabled_at !== null) return stateOf(after);
     throw new ApiError(409, 'conflict');
   }
-  // 入れる組織を失った人のセッションを、応答を待たせずに消す（組織に入れるかはリクエストのたびに確かめるので、消し損ねても入れない）
-  defer(() => tools.endSessionsIfLoginLost(userId));
   return { user_id: userId, is_admin: false, disabled_at: stamp };
 });
 

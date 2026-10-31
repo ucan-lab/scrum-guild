@@ -32,8 +32,7 @@ import { sha256Hex, timingSafeEqualStrings } from './tokens.ts';
 
 // ログインの画面（/login?error=）が扱う失敗。画面は文言を辞書から出す（src/routes/login/）。
 // invite: 招待の URL から結べなかった（秘密の形が違う、当たらない、期限切れ、使い済み、別のアカウント、停止した組織など。理由は分けない）
-// suspended: 入れる組織か招待が、停止した組織にだけある（denied は入れる組織も招待も無い）
-export type LoginError = 'denied' | 'suspended' | 'retry' | 'too_many' | 'unavailable' | 'invite';
+export type LoginError = 'denied' | 'retry' | 'too_many' | 'unavailable' | 'invite';
 
 // 戻り先の code の形。GitHub の code は短い英数字で、Google の code は `4/0A...` のように `/` を含む。長さと文字で弾いてから送る
 const CODE_PATTERN = /^[A-Za-z0-9._~/-]{1,512}$/;

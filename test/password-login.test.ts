@@ -8,7 +8,8 @@ import { createApp } from '../src/server/app.ts';
 import { hashPassword, PASSWORD_HASH_ITERATIONS, verifyPassword } from '../src/server/auth/password-hash.ts';
 import { PASSWORD_LOGIN_RATE_LIMITS } from '../src/server/auth/rate-limit.ts';
 import { hashSessionToken } from '../src/server/auth/session.ts';
-import { commonDb } from '../src/server/db/index.ts';
+import { commonDb, orgDb } from '../src/server/db/index.ts';
+import { verifiedOrganizationForTest } from '../src/server/db/testing.ts';
 import { sessionCookieName } from '../src/shared/session-cookie.ts';
 import { normalizePassword } from '../src/shared/password.ts';
 import { PASSWORD_LOGIN_ENABLED } from '../src/shared/password-login-enabled.ts';
@@ -37,6 +38,8 @@ type PasswordPerson = {
   email: string;
   password: string;
   storedHash: string;
+  // 管理者の行を作った組織
+  organizationIds: string[];
 };
 
 type PersonOptions = {
@@ -71,6 +74,7 @@ async function passwordPerson(options: PersonOptions = {}): Promise<PasswordPers
     ),
   ]);
   const count = options.organizations ?? 1;
+  const organizationIds: string[] = [];
   for (let i = 0; i < count; i++) {
     const organization = await createOrganization(options.suspended ? { suspended_at: AT } : {});
     await createUser(organization, {
@@ -79,8 +83,9 @@ async function passwordPerson(options: PersonOptions = {}): Promise<PasswordPers
       name: DISPLAY_NAME,
       is_admin: 1,
     });
+    organizationIds.push(organization.id);
   }
-  return { subject, email, password, storedHash };
+  return { subject, email, password, storedHash, organizationIds };
 }
 
 type SendOptions = {
@@ -129,6 +134,23 @@ async function passwordLoginOf(subject: string) {
         .where('login_subject', '=', subject),
     ),
   );
+}
+
+// この人の入れる組織の users の行を、すべて無効にする（組織ごとの入口を通す）
+async function disablePasswordUsers(person: PasswordPerson): Promise<void> {
+  for (const id of person.organizationIds) {
+    const db = orgDb(env, verifiedOrganizationForTest(id));
+    await db.batch([
+      db.statement((q) =>
+        q
+          .updateTable('users')
+          .set({ disabled_at: AT })
+          .where('organization_id', '=', id)
+          .where('login_provider', '=', 'password')
+          .where('login_subject', '=', person.subject),
+      ),
+    ]);
+  }
 }
 
 async function credentialOf(subject: string) {
@@ -382,14 +404,37 @@ describe('断る（列挙を防ぐ）', () => {
     expect(await passwordLoginOf(person.subject)).toBeUndefined();
   });
 
-  test('パスワードが合い、停止した組織にだけ入れるなら 403 forbidden の suspended', async () => {
+  // #639: 停止した組織にしか入れない人も通す（アカウントが無ければ作る）。suspended の理由は返らない
+  test('パスワードが合い、停止した組織にだけ入れるなら 200 でセッションを作り、アカウントも作る', async () => {
     const person = await passwordPerson({ suspended: true });
     const res = await send({ email: person.email, password: person.password });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ return_to: '/' });
+    expect(sessionTokenOf(res)).toMatch(/^[A-Za-z0-9_-]{43}$/);
+    expect(await passwordLoginOf(person.subject)).toBeDefined();
+  });
+
+  test('アカウントがあれば、入れる組織も招待も無くなっても 200 でセッションを作る（同じアカウント）', async () => {
+    const person = await passwordPerson();
+    expect((await send({ email: person.email, password: person.password })).status).toBe(200);
+    const accountId = (await passwordLoginOf(person.subject))!.account_id;
+    await disablePasswordUsers(person);
+
+    const res = await send({ email: person.email, password: person.password });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ return_to: '/' });
+    expect(sessionTokenOf(res)).toBeDefined();
+    expect((await passwordLoginOf(person.subject))!.account_id).toBe(accountId);
+  });
+
+  test('アカウントが無く、無効にされた行しか無ければ 403 forbidden の denied。アカウントもセッションも作らない', async () => {
+    const person = await passwordPerson();
+    await disablePasswordUsers(person);
+    const res = await send({ email: person.email, password: person.password });
     expect(res.status).toBe(403);
-    const error = await errorOf(res);
-    expect(error.code).toBe('forbidden');
-    expect(error.details).toMatchObject({ reason: 'suspended' });
+    expect((await errorOf(res)).details).toMatchObject({ reason: 'denied' });
     expect(res.headers.getSetCookie()).toEqual([]);
+    expect(await passwordLoginOf(person.subject)).toBeUndefined();
   });
 
   test('入れる組織が無い人も、パスワードが違えば 401 invalid_credentials（組織の有無を漏らさない）', async () => {

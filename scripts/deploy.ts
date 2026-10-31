@@ -112,8 +112,8 @@ async function waitForVersion(deps: DeployDeps, expected: string): Promise<boole
 
 // seed のセッションのトークン（seed/sessions.ts）は公開された開発用の値。本番が受け付けると、誰でも管理者と運用者として入れる。
 // Cookie に付けてログアウト（logout）を呼び、どれも 401 で、本文の code が unauthenticated（ログインしていない扱い）になることを確かめる。
-// logout は、入れる組織があるかの判定をしない操作（skipsLoginAccess）なので、seed のセッションの行が本番に残っていれば、
-// 入れる組織が無くても 2xx で通る。判定をする操作（me など）だと、行があっても 401 になり、見逃す。
+// logout は組織の外の操作で、Cookie のセッションの行があれば（入れる組織が無くても）2xx で通る。入れる組織を確かめる判定は無い
+// （アカウントがあれば、入れる組織を失ってもログインできる）。seed のセッションの行が本番に残っていれば、組織の有無によらず 2xx になる。
 // Origin を付けるのは、Origin の検査（403）で止まって、セッションを読む前に終わらないようにするため。
 // 受け付けられたときは、その行を消すという副作用が付く（残りの行は、人が手順で消す）。
 // 5xx、429、届かない（例外）は、本番が答えられていないだけなので、確かめられるまで SEED_CHECK_ATTEMPTS 回まで繰り返す。
@@ -145,8 +145,8 @@ function cookieRequest(token: string): SeedRequest {
 }
 
 // Bearer の呼び出しは Origin も Cookie も要らない。logout は cookieOnly でトークンからは 403 になるので、me を使う。
-// me は入れる組織があるかを判定する。seed のアカウントに入れる組織が無ければ 401 でトークンの行が取り消され、見逃すが、
-// 入れる組織（seed の組織）が本番にあれば 2xx になる。どちらでも行が残っていれば、人が手順で消す
+// me は組織の外の操作で、入れる組織の有無を確かめない。トークンの行が本番に残っていれば、seed の組織が本番に無くても 2xx になる。
+// 行が残っていれば、人が手順で消す
 function bearerRequest(token: string): SeedRequest {
   return {
     url: `${PRODUCTION_URL}${operationPath(me)}`,

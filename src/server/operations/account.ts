@@ -1,6 +1,6 @@
 // 組織の外の操作の処理に渡す、ログインした人についての読み取り。env を処理に渡さず、決まった問い合わせだけを渡す。
-// アカウントに結んだログインの手段と ID、入れる組織と届いた招待は、使われたときに1回だけ引く
-// （登録の関数のログインできる条件の判定と、my-organizations の処理が、同じ読み取りの結果を使う）
+// アカウントに結んだログインの手段と ID、入れる組織と届いた招待と停止した組織は、使われたときに1回だけ引く
+// （入れる組織の確かめは登録の関数では行わない。my-organizations の処理が使う）
 import { accountLogins } from '../auth/account-logins.ts';
 import { isOperatorLogin, operatorLoginIdOf } from '../auth/operators.ts';
 import { listAccountOrganizations, type AccountOrganizations, type LoginId } from '../db/index.ts';

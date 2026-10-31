@@ -55,7 +55,6 @@ function pingOperation(name: string, shape: Partial<Parameters<typeof defineOper
 }
 
 const loginWrite = pingOperation('login-write-ping');
-const skipWrite = pingOperation('skip-write-ping', { skipsLoginAccess: true });
 const strictWrite = pingOperation('strict-write-ping', {
   input: z.object({ n: z.number() }),
   rateLimit: { max: 1, windowSeconds: 60 },
@@ -88,7 +87,6 @@ const sessionClear = defineOperation({
 const app = createApp([
   ...provisionalOperations,
   implement(loginWrite, ok),
-  implement(skipWrite, ok),
   implement(strictWrite, ok),
   implement(orgLimited, ok),
   implement(operatorLimited, ok),
@@ -245,31 +243,26 @@ describe('範囲の検査と、ワークスペースの確かめ・状態の順'
   });
 });
 
-describe('入れる組織を失った人の判定と範囲の検査の順（組織の外の操作）', () => {
-  test('組織の無い人が read のトークンで書き込みの login 操作を呼ぶと、403 でなく 401 で取り消される', async () => {
+// #639: 入れる組織の有無を判定しなくなったので、組織の無い人も、入れる組織のある人と同じ範囲の検査だけを通る
+describe('組織の無い人のトークンの範囲の検査（組織の外の操作）', () => {
+  test('組織の無い人が read のトークンで書き込みの login 操作を呼ぶと 403、write なら 200。どちらも取り消されない', async () => {
     const person = await createPerson();
     const { read, write } = await tokens(person.accountId);
-    const res = await post(app, loginWrite, { bearer: read.raw, origin: null });
-    expect(res.status).toBe(401);
-    expect(await revokedAt(read.hash)).not.toBeNull();
-    expect(await revokedAt(write.hash)).not.toBeNull();
+    const refused = await post(app, loginWrite, { bearer: read.raw, origin: null });
+    expect(refused.status).toBe(403);
+    expect(await errorCodeOf(refused)).toBe('forbidden');
+    expect((await post(app, loginWrite, { bearer: write.raw, origin: null })).status).toBe(200);
+    expect(await revokedAt(read.hash)).toBeNull();
+    expect(await revokedAt(write.hash)).toBeNull();
   });
 
-  test('組織の無い非運用者が運用者の操作を呼ぶと、403 でなく 401 で取り消される', async () => {
+  test('組織の無い非運用者が運用者の操作を呼ぶと、トークンの 403 で、取り消されない', async () => {
     const person = await createPerson();
     const { write } = await tokens(person.accountId);
     const res = await post(app, operatorPing, { bearer: write.raw, origin: null });
-    expect(res.status).toBe(401);
-    expect(await revokedAt(write.hash)).not.toBeNull();
-  });
-
-  test('skipsLoginAccess の操作は判定しないので取り消されず、範囲は検査する（read は 403、write は 200）', async () => {
-    const person = await createPerson();
-    const { read, write } = await tokens(person.accountId);
-    expect((await post(app, skipWrite, { bearer: read.raw, origin: null })).status).toBe(403);
-    expect((await post(app, skipWrite, { bearer: write.raw, origin: null })).status).toBe(200);
-    expect(await revokedAt(read.hash)).toBeNull();
+    expect(res.status).toBe(403);
     expect(await revokedAt(write.hash)).toBeNull();
+    expect((await post(app, whoAmI, { bearer: write.raw, origin: null })).status).toBe(200);
   });
 });
 
@@ -310,48 +303,43 @@ describe('運用者のトークン', () => {
   });
 });
 
-describe('同じ人の複数のトークンの失効', () => {
-  test('判定の時刻までに作った有効なトークンはすべて取り消し、取消済みの日時は書き直さず、判定の後のものと別の人のものは残す', async () => {
+// #639: 入れる組織を失ってもトークンは取り消さない。取り消し済みの行は、今どおり通らない
+describe('入れる組織を失った人の複数のトークン', () => {
+  test('無効にされた人の有効なトークンはどれも通り、取り消されない。取消済みのトークンは 401 のまま、日時も書き直さない', async () => {
     const organization = (await createTarget()).organization;
     const lost = await createPerson({ organization, disabled: true });
-    const bystander = await createLoginPerson();
     const early = '2026-10-01T00:00:00.000Z';
-    const [a, b, alreadyRevoked, later, others] = await Promise.all([
+    const [a, b, alreadyRevoked] = await Promise.all([
       insertApiToken(lost.accountId, { scope: 'read', expiresAt: future() }),
       insertApiToken(lost.accountId, { scope: 'write', expiresAt: future() }),
       insertApiToken(lost.accountId, { expiresAt: future(), revokedAt: early }),
-      insertApiToken(lost.accountId, { expiresAt: future(), createdAt: new Date(Date.now() + DAY_MS).toISOString() }),
-      insertApiToken(bystander.accountId, { expiresAt: future() }),
     ]);
-    expect((await post(app, whoAmI, { bearer: a.raw, origin: null })).status).toBe(401);
-    expect(await revokedAt(a.hash)).not.toBeNull();
-    expect(await revokedAt(b.hash)).not.toBeNull();
+    for (const token of [a, b]) {
+      expect((await post(app, whoAmI, { bearer: token.raw, origin: null })).status).toBe(200);
+      expect(await revokedAt(token.hash)).toBeNull();
+    }
+    expect((await post(app, whoAmI, { bearer: alreadyRevoked.raw, origin: null })).status).toBe(401);
     expect(await revokedAt(alreadyRevoked.hash)).toBe(early);
-    expect(await revokedAt(later.hash)).toBeNull();
-    expect(await revokedAt(others.hash)).toBeNull();
-    // 取り消した別のトークンも、判定の後に作ったトークンも、この人には通らない
-    expect((await post(app, whoAmI, { bearer: b.raw, origin: null })).status).toBe(401);
-    expect((await post(app, whoAmI, { bearer: later.raw, origin: null })).status).toBe(401);
-    expect((await post(app, whoAmI, { bearer: others.raw, origin: null })).status).toBe(200);
   });
 
-  test('Cookie の呼び出しでログインできる条件を失ったと判定されても、その人のトークンは取り消される', async () => {
+  test('Cookie の呼び出しでも、入れる組織を失った人のトークンは取り消されず、セッションも残る', async () => {
     const organization = (await createTarget()).organization;
     const lost = await createPerson({ organization, disabled: true });
     const { read, write } = await tokens(lost.accountId);
-    expect((await post(app, whoAmI, { token: lost.token })).status).toBe(401);
-    expect(await revokedAt(read.hash)).not.toBeNull();
-    expect(await revokedAt(write.hash)).not.toBeNull();
+    expect((await post(app, whoAmI, { token: lost.token })).status).toBe(200);
+    expect(await revokedAt(read.hash)).toBeNull();
+    expect(await revokedAt(write.hash)).toBeNull();
+    expect((await post(app, whoAmI, { token: lost.token })).status).toBe(200);
   });
 
-  test('取り消した後に、入れる組織に戻っても、取り消したトークンは戻らない', async () => {
+  test('入れる組織に戻った後も、同じトークンがそのまま通る', async () => {
     const organization = (await createTarget()).organization;
     const lost = await createPerson({ organization, disabled: true });
     const { write } = await tokens(lost.accountId);
-    expect((await post(app, whoAmI, { bearer: write.raw, origin: null })).status).toBe(401);
+    expect((await post(app, whoAmI, { bearer: write.raw, origin: null })).status).toBe(200);
     await admitElsewhere(lost);
-    expect((await post(app, whoAmI, { bearer: write.raw, origin: null })).status).toBe(401);
-    expect((await post(app, whoAmI, { token: lost.token })).status).toBe(401);
+    expect((await post(app, whoAmI, { bearer: write.raw, origin: null })).status).toBe(200);
+    expect((await post(app, whoAmI, { token: lost.token })).status).toBe(200);
   });
 });
 

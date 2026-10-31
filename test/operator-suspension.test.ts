@@ -579,7 +579,7 @@ describe('変更の履歴', () => {
 describe('停止中の組織に入る人', () => {
   test('入れたはずの人は 403 の organization_suspended、入れない人は 404。再開すれば入れる', async () => {
     const target = await createTarget();
-    // 停止した組織にしか入れない人は、403 の前にセッションを消されて 401 になるので、ほかの組織にも入れる人にする
+    // 停止した組織にしか入れない人も 403 を受ける（セッションは消えない）。ここでは、ほかの組織にも入れる人にする
     const stayer = await admitElsewhere(target.admin);
     await admitElsewhere(target.member);
     await admitElsewhere(target.invitee);
@@ -622,12 +622,54 @@ describe('停止中の組織に入る人', () => {
     expect(await slugsOf()).toContain(target.slug);
   });
 
-  test('停止した組織にしか入れない人は、次の組織の外の操作で 401 になり、理由は suspended', async () => {
+  // #639: 停止した組織にしか入れない人もセッションを失わず、組織の選択に停止した組織が出る
+  test('停止した組織にしか入れない人も、組織の外の操作は 200 で、suspended にその組織が出る。再開すれば戻る', async () => {
     const target = await createTarget();
-    await suspendBy(await operatorToken(), target.slug, 'temporary');
+    const token = await operatorToken();
+    await suspendBy(token, target.slug, 'temporary');
 
-    const res = await post(app, myOrganizations, { token: target.admin.token });
-    expect(res.status).toBe(401);
-    expect(await res.json()).toMatchObject({ error: { code: 'unauthenticated', details: { reason: 'suspended' } } });
+    for (const person of [target.admin, target.member, target.invitee]) {
+      const res = await post(app, myOrganizations, { token: person.token });
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as {
+        organizations: unknown[];
+        invitations: unknown[];
+        suspended?: { slug: string; name: string }[];
+      };
+      expect(body.organizations).toEqual([]);
+      expect(body.invitations).toEqual([]);
+      expect(body.suspended).toEqual([{ slug: target.slug, name: target.organization.name }]);
+      // 組織の中は 403 のままで、セッションは残る（次の呼び出しも 403）
+      for (let i = 0; i < 2; i++) {
+        const inside = await post(app, organizationInfo, { slug: target.slug, token: person.token });
+        expect(inside.status).toBe(403);
+        expect(await errorCodeOf(inside)).toBe('organization_suspended');
+      }
+    }
+
+    // 入れない人（別の組織の人、組織も招待も無い人）には、停止した組織を出さない
+    const outsider = await createPerson();
+    const listed = await post(app, myOrganizations, { token: outsider.token });
+    expect(listed.status).toBe(200);
+    expect(JSON.stringify(await listed.json())).not.toContain(target.slug);
+    expect((await post(app, organizationInfo, { slug: target.slug, token: outsider.token })).status).toBe(404);
+
+    expect((await resumeBy(token, target.slug)).status).toBe(200);
+    const back = (await (await post(app, myOrganizations, { token: target.admin.token })).json()) as {
+      organizations: { slug: string }[];
+      suspended?: unknown[];
+    };
+    expect(back.organizations.map((organization) => organization.slug)).toEqual([target.slug]);
+    expect(back.suspended).toEqual([]);
+  });
+
+  test('解約の停止でも、停止した組織にしか入れない人はセッションを失わない', async () => {
+    const target = await createTarget();
+    await suspendBy(await operatorToken(), target.slug, 'cancellation');
+    const res = await post(app, myOrganizations, { token: target.member.token });
+    expect(res.status).toBe(200);
+    expect(((await res.json()) as { suspended?: { slug: string }[] }).suspended?.map((o) => o.slug)).toEqual([
+      target.slug,
+    ]);
   });
 });

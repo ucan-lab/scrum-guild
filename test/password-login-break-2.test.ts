@@ -285,7 +285,8 @@ describe('ログの1行（docs/development.md の「パスワードのログイ�
       ['invalid_credentials', () => send({ email: 'nobody-break-2@example.test', password: PASSWORD })],
       ['invalid_credentials', () => send({ email: person.email, password: 'short' })],
       ['denied', () => send({ email: nowhere.email, password: nowhere.password })],
-      ['suspended', () => send({ email: paused.email, password: paused.password })],
+      // 停止した組織にしか入れない人も通す（#639）。suspended の outcome は無くなる
+      ['ok', () => send({ email: paused.email, password: paused.password })],
       ['too_many', () => send({ email: person.email, password: person.password }, { ip: limitedIp })],
       ['retry', () => send({ email: unlinked.email, password: unlinked.password }, { env: failUserWrites(testEnv) })],
       [

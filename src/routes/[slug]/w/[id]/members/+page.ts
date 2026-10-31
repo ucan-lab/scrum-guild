@@ -12,7 +12,7 @@ import type { PageLoad } from './$types';
 export const load: PageLoad = async ({ params, fetch, url, depends }) => {
   depends('app:members');
   const result = await callOperation(memberList, { workspace_id: params.id }, { slug: params.slug, fetcher: fetch });
-  if (isUnauthenticated(result)) redirect(307, loginUrl(url, result));
+  if (isUnauthenticated(result)) redirect(307, loginUrl(url));
   return {
     members: result.ok ? result.data.members : null,
     invitations: result.ok ? result.data.invitations : null,

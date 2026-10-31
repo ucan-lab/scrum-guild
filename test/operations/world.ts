@@ -79,8 +79,8 @@ export async function createPerson(
   };
 }
 
-// ほかの組織の管理者でもある人にする。ある組織に入れない人の結果を、どの組織にも入れなくなった人の 401 と
-// 区別して見るために使う（セッションは、ログインできる条件を失うと消える）
+// ほかの組織の管理者でもある人にする。ある組織に入れない人の結果を、どの組織にも入れない人の結果と
+// 区別して見るために使う（どの組織にも入れなくなっても、セッションは消えない）
 export async function admitElsewhere(person: Person): Promise<Person> {
   const elsewhere = await createOrganization();
   await createUser(elsewhere, {
