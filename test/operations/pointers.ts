@@ -25,6 +25,7 @@ import {
   createUser,
   createWorkspace,
 } from '../factories.ts';
+import { insertApiToken } from './api-token.ts';
 import type { Pointers } from './harness.ts';
 import { SUSPENDED_AT, type Person, type Target } from './world.ts';
 
@@ -210,6 +211,9 @@ export const pointers: Pointers = {
       invitation_id: (await createInvitation(target.organization, workspace.id, target.admin.userId!, caller.login)).id,
     };
   },
+  'token-create': { noReference: { name: '分離の検査', scope: 'read' } },
+  // 呼ぶ人の行を指す。取消は二度目も成功するので、呼ぶたびに作らなくてよいが、作り直して他の検査と独立にする
+  'token-revoke': async (_target, caller) => ({ id: (await insertApiToken(caller.accountId)).hash }),
   'resolve-github-user': async () => ({ username: newGithubUser().login }),
   // slug は呼ぶたびに別の値にする（重なると 409 になる）
   'create-organization': async () => {

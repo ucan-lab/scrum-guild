@@ -2,6 +2,7 @@
   import { tick } from 'svelte';
   import { page } from '$app/state';
   import { callOperation } from '../../../lib/api.ts';
+  import ApiTokensSetting from '../../../lib/components/ApiTokensSetting.svelte';
   import EmptyState from '../../../lib/components/EmptyState.svelte';
   import Icon from '../../../lib/components/Icon.svelte';
   import LevelPanel from '../../../lib/components/LevelPanel.svelte';
@@ -21,7 +22,7 @@
   import type { DictionaryKey } from '../../../shared/vocabulary.ts';
   import type { PageProps } from './$types';
 
-  // 自分の設定の画面（me.html）。今は経験値の節だけの骨組みで、ほかの節（1日の基準、稼働期間、休み、月の基準の上書き、テーマ、
+  // 自分の設定の画面（me.html）。今は経験値と API トークン（ApiTokensSetting）の節だけの骨組みで、ほかの節（1日の基準、稼働期間、休み、月の基準の上書き、テーマ、
   // 届いた招待、配分の知らせ、積載量の合計）は #70 で足す（まだ無いことを本文の先頭に1行で知らせる）。
   // 横（layout-side）にレベルの面（LevelPanel。合計、レベル、次のレベルまで、見込み、ゲージ、ワークスペースごとの内訳）、
   // その下に「経験値の明細」の節（説明を表の上に置き、表は画面の幅いっぱいに出す。5列の表を横の面と並べると、
@@ -210,7 +211,8 @@
 
 <PageHead title={t('pageMe')} eyebrow={me?.name} />
 
-<!-- 本文（#70 で設定の節を足す）と横のレベルの面。経験値の明細は5列の表なので、この下に画面の幅いっぱいに出す -->
+<!-- 本文（#70 で設定の節を足す）と横のレベルの面。API トークンと経験値の明細は表を持つので、この下に画面の幅いっぱいに出す
+     （5列の表を横の面と並べると、PC の幅でも押しつぶされるため。.setting は見出しの列も取るので使わず、どちらも Section で出す） -->
 <div class="layout-aside">
   <div class="layout-main">
     <p class="action-note">{t('meOtherSettingsNote')}</p>
@@ -238,6 +240,8 @@
     {/if}
   </aside>
 </div>
+
+<ApiTokensSetting initial={data.tokens} />
 
 <Section id={LEDGER_ID} title={t('meExperienceTitle')}>
   <p class="action-note">{t('meExperienceDescription')}</p>
