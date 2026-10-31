@@ -36,6 +36,8 @@ export function createMcpServer(deps: CliDeps, connection: Connection): { server
     return track(callTool(deps, connection, name, args));
   });
   const idle = async () => {
+    // SDK はハンドラーを Promise.resolve().then で呼ぶので、受け取った直後は pending がまだ空。1周待ってから数える
+    await new Promise((resolve) => setImmediate(resolve));
     while (pending.size > 0) await Promise.allSettled([...pending]);
     // 応答を書く処理が済むまで 1 周待つ
     await new Promise((resolve) => setImmediate(resolve));
