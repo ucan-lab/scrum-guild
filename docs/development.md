@@ -66,7 +66,7 @@
     - Origin の検査と Cookie の読み取りを飛ばし、応答には Cookie の延長も消去も付けない。ブラウザは `Authorization` を他のサイトからの要求に勝手に付けず、CSRF は成り立たないため
     - トークンの値の形（`API_TOKEN_PATTERN`）を確かめ、SHA-256 にして `api_tokens` を引く。形が違う、行が無い、期限切れ（`expires_at <= now`）、取消済みは、どれも 401 の `unauthenticated`。有効な Cookie が同じリクエストにあっても Cookie に落とさない
     - 読めたら `last_used_at` を今に書き直す（前の値が今より前のときだけ）。`expires_at` は延ばさない。期限は発行のとき固定で、上限は90日（`API_TOKEN_MAX_LIFETIME_DAYS`）
-    - 入れる組織を失った人（`requireLoginAccess()` の判定）は、同じ呼び出し点で `revokeApiTokensOf()` により、判定した時刻までに作られたその人のトークンを取り消し（`revoked_at`）、401 にする。セッションの行も消すが、トークンの呼び出しは Cookie を消さない
+    - 入れる組織を失った人（`requireLoginAccess()` の判定）は、同じ呼び出し点で `endCredentialsOf()`（`src/server/auth/end-credentials.ts`）により、判定した時刻までに作られたその人のセッションの行を消し、トークンを取り消して（`revoked_at`）、401 にする。2つの文は1回の `batch()` で送る。トークンの呼び出しは Cookie を消さない
     - トークンの呼び出しにセッションは無い。処理に渡す `session` は、使うと例外を投げる（`tokenHash`、`clearCookie()`）ので、セッションを使う操作は `cookieOnly` を付ける
     - 回数の上限のキー `operation:<名>:<accountId>` は Cookie と同じ。同じ人の呼び出しを、認証の種類によらず1つの枠で数える
   - API トークンの範囲: 権限の検査（組織の中の操作は `checkOrganizationPermission()`、組織の外の操作は入れる組織の確かめ）の後、回数の上限と入力の読み取りの前に行う。入力を読む前なので、本文が壊れていても範囲の足りない呼び出しは 400 でなく 403 になる。ワークスペースの確かめも入力を使うので、範囲の検査より後
