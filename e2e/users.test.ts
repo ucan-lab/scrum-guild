@@ -373,9 +373,12 @@ test.describe('管理者（あおば開発のミナト）', () => {
     // 次に「有効に戻す」を押すと消える（成功すれば、そのままトーストで知らせる）
     await unroute();
     await mockOperation(page, userEnable, { slug: 'aoba' }, { user_id: 'ignored', is_admin: false, disabled_at: null });
+    // 成功の後の一覧の読み直しが途中のままテストを終えると、差し替えの route が切れた応答を読んで落ちるので、応答まで待つ
+    const reread = page.waitForResponse('**/api/aoba/user-list');
     await button.click();
     await expect(toast(page, 'ユイを有効に戻しました')).toBeVisible();
     await expect(refusal).toHaveCount(0);
+    await reread;
   });
 
   test('details の無い 409 の member_limit_reached は、数なしの理由を同じ場所に残して読み直す', async ({ page }) => {
