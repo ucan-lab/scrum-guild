@@ -110,6 +110,14 @@ describe('record.mjs --check', () => {
     assert.equal(check({ steps: [{ caption: 'あ', read: 1500, actions: [click], hold: 0 }] }).status, 0);
   });
 
+  test('字幕を出した後の、字幕の無い操作の場面は断る（前の字幕が出たまま画面が動くため）', () => {
+    const click = { actions: [{ click: { css: 'a' } }] };
+    rejected({ steps: [{ caption: 'あ' }, click] }, /steps\[1\]: 字幕を出した後の操作のある場面には caption が要る/);
+    // 最初の字幕の前の準備と、字幕の無い結果だけの場面は通る
+    assert.equal(check({ steps: [{ actions: [{ goto: '/x' }] }, { caption: 'あ' }] }).status, 0);
+    assert.equal(check({ steps: [{ caption: 'あ' }, { hold: 500 }] }).status, 0);
+  });
+
   test('見積もりは 28 秒ちょうどまで通り、1 ミリ秒でも超えれば断る', () => {
     assert.equal(check({ steps: [{ hold: 10_000 }, { hold: 10_000 }, { hold: 7_700 }] }).status, 0);
     rejected({ steps: [{ hold: 10_000 }, { hold: 10_000 }, { hold: 7_701 }] }, /28 秒を超える/);

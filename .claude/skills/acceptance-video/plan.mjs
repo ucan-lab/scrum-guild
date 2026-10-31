@@ -122,6 +122,15 @@ export function validatePlan(plan) {
   }
   if (!Array.isArray(plan.steps) || plan.steps.length === 0) return [...problems, 'steps が空'];
   plan.steps.forEach((step, i) => problems.push(...stepProblems(step, `steps[${i}]`)));
+  // 字幕は次の字幕まで出たままなので、字幕を出した後に字幕の無い操作の場面を置くと、前の字幕を出したまま画面が動く
+  let captioned = false;
+  plan.steps.forEach((step, i) => {
+    if (!isObject(step)) return;
+    if (step.caption !== undefined) captioned = true;
+    else if (captioned && Array.isArray(step.actions) && step.actions.length > 0) {
+      problems.push(`steps[${i}]: 字幕を出した後の操作のある場面には caption が要る（前の字幕が出たまま画面が動く）`);
+    }
+  });
   return problems;
 }
 
