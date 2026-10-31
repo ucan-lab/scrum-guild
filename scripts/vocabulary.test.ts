@@ -41,4 +41,16 @@ describe('言葉の辞書', () => {
     assert.equal(/<title>([^<]*)<\/title>/.exec(html)?.[1], dictionary.appName);
     assert.equal(word('pageTitle', { page: word('pageToday'), app: word('appName') }), '自分の今日 - Scrum Guild');
   });
+
+  test('ホーム画面に出る名前（iOS の追加時の名前とマニフェスト）は辞書の名前と同じ', () => {
+    const html = readFileSync(new URL('../src/app.html', import.meta.url), 'utf8');
+    const iosTitle = /<meta\s[^>]*name="apple-mobile-web-app-title"[^>]*content="([^"]*)"/.exec(html)?.[1];
+    assert.equal(iosTitle, dictionary.appName);
+    const manifest = JSON.parse(readFileSync(new URL('../static/manifest.webmanifest', import.meta.url), 'utf8')) as {
+      name: string;
+      short_name: string;
+    };
+    assert.equal(manifest.name, dictionary.appName);
+    assert.equal(manifest.short_name, dictionary.appName);
+  });
 });

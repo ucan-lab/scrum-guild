@@ -42,7 +42,7 @@ try {
     await page.setContent(
       `<style>html,body{width:100%;height:100%;margin:0;background:#fffaf0}body{display:grid;place-items:center}svg{display:block;width:66.6667%;height:66.6667%}</style>${svg}`,
     );
-    await page.screenshot({ path: new URL(`../static/${name}`, import.meta.url).pathname });
+    await writeFile(new URL(`../static/${name}`, import.meta.url), await page.screenshot());
   }
 } finally {
   await browser.close();
