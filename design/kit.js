@@ -59,7 +59,7 @@
     points: "ポイント", assignee: "担当", category: "区分", capacity: "作業量と基準", over: "超過", done: "完了", column: "列",
     doneToday: "今日の完了", complete: "完了にする", requester: "作成者", party: "参加者", accept: "参加する", leave: "参加をやめる",
     historyCreated: "作成した", historyUpdated: "変更した", reward: "クリア報酬", clear: "エピックを完了にする", create: "起票", leader: "リーダー",
-    member: "メンバー", dod: "完成の定義", vocab: "スクラムの言葉", organization: "組織", admin: "管理者", assistant: "アシスタント",
+    member: "メンバー", dod: "完成の定義", organization: "組織", admin: "管理者", assistant: "アシスタント",
     epicPageRequest: "概要", epicPagePartyEmpty: "参加者はまだいません。", accountMenuLabel: "{name}。アカウントのメニュー", logout: "ログアウト",
     logoutMoving: "ログアウトしています", loggedOut: "ログアウトしました。", logoutFailed: "ログアウトできませんでした。時間をおいてもう一度試してください。",
     markdownPlainNote: "整形せずに表示しています", markdownNewTab: "新しいタブで開きます", markdownCodeRegion: "コード",

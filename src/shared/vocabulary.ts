@@ -45,7 +45,6 @@ export const dictionary = defineDictionary({
   leader: 'リーダー',
   member: 'メンバー',
   dod: '完成の定義',
-  vocab: 'スクラムの言葉',
   organization: '組織',
   admin: '管理者',
   assistant: 'アシスタント',
@@ -86,7 +85,7 @@ export const dictionary = defineDictionary({
   todayEmptyTitle: '今日やるタスクは、この画面ができたらここに並びます',
   todayEmptyText: 'いまは API の疎通だけを確かめる仮の画面です。',
 
-  // 自分の今日の空の状態（管理者）。{workspace} と {member} は、その言葉づかいの言葉を画面が渡す。
+  // 自分の今日の空の状態（管理者）。{workspace} と {member} は、辞書の言葉を画面が渡す。
   // 組織にワークスペースが1つも無いときは、最初のワークスペースを作る案内。作る画面の行き先は、その画面を作る Issue で決める
   firstWorkspaceTitle: 'まだ{workspace}がありません',
   firstWorkspaceText: '最初の{workspace}を作ります。最初の{leader}を1人決めて作ります。',
@@ -94,7 +93,7 @@ export const dictionary = defineDictionary({
   noMembershipTitle: 'どの{workspace}にも所属していません',
   noMembershipText: '{workspace}に加わると、ここから使えます。',
 
-  // 組織の管理の画面（管理者）。{workspace} と {leader} は、その言葉づかいの言葉を画面が渡す
+  // 組織の管理の画面（管理者）。{workspace} と {leader} は、辞書の言葉を画面が渡す
   adminEyebrow: '{admin}だけが見られます',
   adminWorkspacesDesc: '作った{workspace}の一覧です。終了した{workspace}も含みます。{member}の数は{leader}を含みます。',
   workspaceListLabel: '{workspace}の一覧',
@@ -107,7 +106,7 @@ export const dictionary = defineDictionary({
   workspaceClosedChip: '終了 {date}',
   workspaceNoLeaderChip: '{leader}がいない',
 
-  // ワークスペースを作るダイアログ。選んだ言葉づかいの名前は、画面が選んだ言葉づかいで引いて渡す
+  // ワークスペースを作るダイアログ
   workspaceCreateAction: '{workspace}を作る',
   workspaceNamePlaceholder: '例: 保守チーム',
   workspaceNameRequired: '名前を入れてください',
@@ -115,13 +114,6 @@ export const dictionary = defineDictionary({
   workspaceLeaderLabel: '最初の{leader}',
   workspaceLeaderHint: '自分でもかまいません。あとから{leader}を足せます。',
   workspaceLeaderLoadFailed: '選べる人を読み込めませんでした',
-  workspaceVocabularyLabel: '言葉づかい',
-  vocabularyGameLabel: 'ゲームの言葉',
-  vocabularyScrumLabel: 'スクラムの言葉',
-  // 言葉づかいの選択肢の例。その言葉づかいの言葉を、画面が渡す
-  vocabularyNote: '{workspace}、{task}、{epic}',
-  workspaceVocabularyHint:
-    '{column}と決まった欄の名前は、選んだ言葉づかいで決まります。あとから言葉づかいを替えても、名前は変わりません。',
   workspaceNameInvalidCharacter: '名前に使えない文字（制御文字、ゼロ幅のスペースなど）が含まれています',
   workspaceNoCandidates: '最初の{leader}に指せる人がいません',
   workspaceTimezoneRejected:
@@ -143,7 +135,7 @@ export const dictionary = defineDictionary({
   pageNotFoundText: 'URL が違うか、開けない画面です。',
   backToToday: '自分の今日へ',
 
-  // バックログ（ワークスペースの画面）。{backlog} {task} {create} {done} {points} は、その言葉づかいの言葉を画面が渡す
+  // バックログ（ワークスペースの画面）。{backlog} {task} {create} {done} {points} は、辞書の言葉を画面が渡す
   backlogTasksLabel: '{backlog}の{task}',
   backlogEmptyTitle: 'まだ{task}がありません',
   backlogEmptyText: '{task}を優先する順に並べる場所です。上の「{create}」から最初の{task}を作ります。',
@@ -232,7 +224,7 @@ export const dictionary = defineDictionary({
   taskSubmitting: '作っています',
   taskCreated: '{backlog}の末尾に足しました',
   taskCreateFailed: '作れませんでした。もう一度試してください。',
-  // 親の選択欄。選べるのは、親のないストーリー。{story} {done} は、その言葉づかいの言葉を画面が渡す
+  // 親の選択欄。選べるのは、親のないストーリー。{story} {done} は、辞書の言葉を画面が渡す
   taskParent: '親の{story}',
   taskParentNone: 'なし',
   // {title} は親のストーリーの題
@@ -287,7 +279,7 @@ export const dictionary = defineDictionary({
   treeClose: '{title}を閉じる',
 
   // バックログの並べ替えと親の移動。{title} は動かす行の題
-  // {epic} {story} {task} は、その言葉づかいの言葉を画面が渡す
+  // {epic} {story} {task} は、辞書の言葉を画面が渡す
   backlogOrderNote:
     '上にあるものほど優先します。{epic}、{story}、{task}は、行の「上へ」「下へ」か、行の中にフォーカスを置いて Alt と ↑ ↓ で並べ替えます。',
   // つまみのドラッグに触れる文。つまみを出さない狭い幅と指の画面では、この文も隠す（.drag-note）
@@ -824,11 +816,8 @@ export const dictionary = defineDictionary({
   loginErrorUnavailable:
     'いまログインを受け付けられません。時間をおいてもう一度試してください。続くときは運用者に連絡してください。',
 
-  // メンバーの画面（ワークスペースの画面）。{leader} {member} {admin} は、その言葉づかいの言葉を画面が渡す。
+  // メンバーの画面（ワークスペースの画面）。{leader} {member} {admin} は、辞書の言葉を画面が渡す。
   // ロールは、リーダーと管理者には選択欄で、一般のメンバーには文字で出す。
-  // 以下のキーのうち、ゲームとスクラムで同じ文字列にしているのは見本（design/members.html）どおりの意図による
-  // （例: 「一般」はゲームの言葉でも「一般」。見本はロールの select の「一般」を言葉づかいで替えない）。
-  // 言葉づかいで変わるのは、{leader} {member} {admin} などの辞書の言葉を埋め込むところだけ
   membersPageName: '{members}・{name}',
   membersTallyBelonging: '所属',
   membersTallyInvited: '招待中',
@@ -863,7 +852,7 @@ export const dictionary = defineDictionary({
   invitationRevokeFailed: '招待を取り消せませんでした。もう一度試してください。',
   // 所属している人の行の操作。ロールの付け替えと「外す」はリーダーと管理者に、「抜ける」は自分の行に出す。
   // {name} は人の名前、{role} はロールの名前、{workspaceName} は開いているワークスペースの名前、
-  // {task} {workspace} {organization} {leader} {admin} は、その言葉づかいの言葉を画面が渡す
+  // {task} {workspace} {organization} {leader} {admin} は、辞書の言葉を画面が渡す
   memberActionsHeader: '操作',
   memberRoleLabel: '{name}のロール',
   memberRemove: '外す',
@@ -901,7 +890,7 @@ export const dictionary = defineDictionary({
   memberRemoveFailed: 'メンバーを外せませんでした。もう一度試してください。',
   memberLeaveFailed: '{workspace}から抜けられませんでした。もう一度試してください。',
   // 「招待する」の節（リーダーと管理者）。ログインの手段は GitHub と Google。
-  // {organization} {admin} {workspace} は、その言葉づかいの言葉を画面が渡す
+  // {organization} {admin} {workspace} は、辞書の言葉を画面が渡す
   inviteSectionTitle: '招待する',
   inviteSeats: '{organization}の人数 {used} / {limit} 人',
   inviteViaLabel: 'ログインの手段',
@@ -991,17 +980,12 @@ export const dictionary = defineDictionary({
   themeNoteMedieval: '冒険者ギルドの帳簿。紙と墨、完了に朱の判子',
   themeNoteModern: '近未来の端末のウィンドウ。暗い地に光る枠',
 
-  // 組織の言葉づかいと既定のテーマ（組織の管理の画面）。{workspace} と {leader} は、その言葉づかいの言葉を画面が渡す。
-  // 言葉づかいの選択肢の例（orgVocabularyNote）は、その言葉づかいの {organization} と {admin} を画面が渡す
-  orgVocabularyTitle: '{workspace}の外の言葉づかい',
-  orgVocabularyDesc: '「組織」「管理者」などの言葉。{workspace}の中の言葉づかいは、それぞれの{leader}が決めます。',
-  orgVocabularyNote: '{organization}、{admin}',
+  // 組織の既定のテーマ（組織の管理の画面）
   orgThemeTitle: '既定のテーマ',
   orgThemeDesc: '画面の見た目の既定。自分で選んでいないユーザーに効きます。会社で使うならシンプルが無難です。',
   // 節ごとの「保存する」。選んだ値が今の値と違うときだけ押せる
   orgSettingsSave: '保存する',
   orgSettingsSaving: '保存しています',
-  orgVocabularyChanged: '言葉づかいを「{label}」に変えました',
   orgThemeChanged: '既定のテーマを「{label}」に変えました',
   // ほかの管理者が先に同じ項目を変えていた（409）。読み直した値を見てもらう
   orgSettingsConflict: 'ほかの{admin}が先に変えていました。今の値を読み直したので、確かめてから選び直してください',
@@ -1011,7 +995,7 @@ export const dictionary = defineDictionary({
   orgSettingsFailed: '保存できませんでした。もう一度「保存する」を押してください。',
 
   // ワークスペースを終了する、再開する（組織の管理の画面。API の操作の名前は workspace-close と workspace-reopen のまま）。
-  // {workspace} は、その言葉づかいの言葉を画面が渡す。{name} はワークスペースの名前
+  // {workspace} は、辞書の言葉を画面が渡す。{name} はワークスペースの名前
   workspaceActionsHeader: '操作',
   workspaceCloseAction: '終了する',
   workspaceReopenAction: '再開する',
@@ -1045,7 +1029,7 @@ export const dictionary = defineDictionary({
   workspaceListLoadFailed: '{workspace}の一覧を読み込めませんでした',
 
   // 組織のユーザー（組織の管理の画面の「ユーザー」の節。API の操作は user-list、user-admin-update、user-disable、user-enable）。
-  // {admin}、{organization}、{workspace}、{task} は、その言葉づかいの言葉を画面が渡す。{name} はユーザーの名前
+  // {admin}、{organization}、{workspace}、{task} は、辞書の言葉を画面が渡す。{name} はユーザーの名前
   userSectionTitle: 'ユーザー',
   userSectionDesc:
     '{admin}は他のユーザーを{admin}に指名でき、解除もできます。最後の{admin}は解除できません。無効にした人は{organization}に入れず、すべての{workspace}から外れます。名前、完了の記録、経験値は残ります。',
@@ -1095,7 +1079,7 @@ export const dictionary = defineDictionary({
   userListRefreshFailed: 'ユーザーの一覧を更新できませんでした',
   userListLoadFailed: 'ユーザーの一覧を読み込めませんでした',
 
-  // 組織の休日（組織の管理の画面）。{workspace} と {capacity} は、その言葉づかいの言葉を画面が渡す。
+  // 組織の休日（組織の管理の画面）。{workspace} と {capacity} は、辞書の言葉を画面が渡す。
   // {date} は休日の日付（YYYY-MM-DD）、{line} は貼り付けた行の番号、{text} はその行、{max} は上限
   holidaysTitle: '組織の休日',
   holidaysDesc: '祝日など、すべての{workspace}に効く休日。日付の一覧を貼り付けて、まとめて登録できます。',
@@ -1137,7 +1121,7 @@ export const dictionary = defineDictionary({
   holidayListLoadFailed: '休日の一覧を読み込めませんでした',
   holidayListRefreshFailed: '休日の一覧を更新できませんでした',
 
-  // 組織の変更の履歴（組織の管理の画面）。{organization}、{admin}、{workspace}、{member} は、その言葉づかいの言葉を画面が渡す。
+  // 組織の変更の履歴（組織の管理の画面）。{organization}、{admin}、{workspace}、{member} は、辞書の言葉を画面が渡す。
   // 内容の文は organization-history の種類ごとに1つ。{name} は人か組織かワークスペースの名前、{date} は消す予定日（YYYY-MM-DD）
   orgHistoryTitle: '変更の履歴',
   orgHistoryDesc:
@@ -1728,7 +1712,7 @@ export const dictionary = defineDictionary({
   markdownTableRegion: '表',
 
   // 完成の定義（設定の画面の節、詳細の引き出しの完了の操作の横、バックログの画面の上、スプリントの画面の完了の列）。
-  // {dod} はその言葉づかいの言葉を画面が渡す
+  // {dod} は辞書の言葉を画面が渡す
   dodDesc:
     'すべての{task}に共通する完了の基準。{backlog}の上と、{sprint}の{done}の{column}と、完了の操作の横に出します。',
   dodFieldLabel: 'Markdown',

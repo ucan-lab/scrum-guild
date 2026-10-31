@@ -11,6 +11,14 @@ describe('言葉の辞書', () => {
     }
   });
 
+  test('言葉づかいを選ぶ項目を持たない（選べないため）', () => {
+    for (const [key, text] of Object.entries(dictionary)) {
+      assert.doesNotMatch(key, /vocab/i, key);
+      for (const name of ['言葉づかい', 'ゲームの言葉', 'スクラムの言葉'])
+        assert.ok(!text.includes(name), `${key}: ${name}`);
+    }
+  });
+
   test('列の節の説明は、切り替えを前提にした「言葉づかい」を含まない', () => {
     assert.ok(!dictionary.columnsDesc.includes('言葉づかい'));
     assert.ok(dictionary.columnsDesc.includes('名前は付けたままで、訳しません。'));
