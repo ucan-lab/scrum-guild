@@ -62,9 +62,9 @@ const CATEGORIES = {
 };
 
 const COLUMNS = [
-  { id: "c1", name: "出発前" },
-  { id: "c2", name: "遂行中" },
-  { id: "c3", name: "査定中" },
+  { id: "c1", name: "未着手" },
+  { id: "c2", name: "作業中" },
+  { id: "c3", name: "レビュー" },
   { id: "done", done: true },
 ];
 
@@ -147,9 +147,9 @@ const COMMENTS = {
 };
 const HISTORY = {
   t1: [
-    ["10/19 18:02", "u1", "行程", "出発前 → 遂行中"],
-    ["10/14 09:30", "u2", "難易度", "3 → 5"],
-    ["10/13 10:00", "u2", "遠征", "なし → 第14回"],
+    ["10/19 18:02", "u1", t("column"), "未着手 → 作業中"],
+    ["10/14 09:30", "u2", t("points"), "3 → 5"],
+    ["10/13 10:00", "u2", t("sprint"), "なし → 第14回"],
     ["10/12 16:44", "u1", "作成", ""],
   ],
 };
@@ -315,10 +315,10 @@ function renderToday() {
           <span style="margin-left:auto" class="lvbig">Lv 7</span></div>
         <div class="xp-bar" role="img" aria-label="次のレベルまで 160、見込み 90"><span class="got" style="width:64%"></span><span class="soon" style="width:20%"></span></div>
         <dl class="kv">
-          <dt>このパーティの経験値</dt><dd>1,240</dd>
+          <dt>この${t("workspace")}の経験値</dt><dd>1,240</dd>
           <dt>見込み（${t("sprint")}の終了で確定）</dt><dd>+90</dd>
           <dt>次のレベルまで</dt><dd>160</dd>
-          <dt>すべてのパーティの合計</dt><dd>2,010</dd>
+          <dt>すべての${t("workspace")}の合計</dt><dd>2,010</dd>
         </dl>
         <div class="muted" style="font-size:var(--fs-xs)">経験値の数値は本人だけに見えます。他のメンバーにはレベルだけが見えます。</div>
       </div>
