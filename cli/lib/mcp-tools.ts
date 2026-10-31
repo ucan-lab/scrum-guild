@@ -124,7 +124,12 @@ export async function callTool(
     if (!operation) throw usage(UNLISTED_OPERATION);
     const input = { ...args };
     // 接続先がワークスペースを持つとき、null と空文字の workspace_id は省いたものとして補う（AI が空欄を埋めて渡すため。sg call は変えない）
-    if (connection.workspace && (input.workspace_id === null || input.workspace_id === '')) delete input.workspace_id;
+    if (
+      connection.workspace &&
+      operation.scope === 'workspace' &&
+      (input.workspace_id === null || input.workspace_id === '')
+    )
+      delete input.workspace_id;
     const body = await callOperation(deps, connection, operation, input);
     return { content: [{ type: 'text', text: JSON.stringify(body) }] };
   } catch (error) {

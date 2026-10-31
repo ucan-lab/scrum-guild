@@ -328,6 +328,15 @@ describe('callTool', () => {
     }
   });
 
+  test('scope が workspace でない操作の null の workspace_id は、接続先がワークスペースを持っても補わずそのまま送る', async () => {
+    const server = fakeServer();
+    await callTool(depsOf(server), connectionOf({ org: 'aoba', workspace: 'W1' }), 'task-get', {
+      task_id: 't-1',
+      workspace_id: null,
+    });
+    assert.deepEqual(server.calls()[0]!.body, { task_id: 't-1', workspace_id: null });
+  });
+
   test('接続先がワークスペースを持たないとき、null の workspace_id はそのまま送る', async () => {
     const server = fakeServer();
     await callTool(depsOf(server), connectionOf({ org: 'aoba' }), 'task-edit', { task_id: 't-1', workspace_id: null });
