@@ -18,7 +18,7 @@ export const load: PageLoad = async ({ params, fetch, url, depends }) => {
     callOperation(sprintList, { workspace_id: params.id }, { slug: params.slug, fetcher: fetch }),
     callOperation(planSummary, { workspace_id: params.id }, { slug: params.slug, fetcher: fetch }),
   ]);
-  if (isUnauthenticated(result)) redirect(307, loginUrl(url, result));
-  if (isUnauthenticated(summaryResult)) redirect(307, loginUrl(url, summaryResult));
+  if (isUnauthenticated(result)) redirect(307, loginUrl(url));
+  if (isUnauthenticated(summaryResult)) redirect(307, loginUrl(url));
   return { plan: result.ok ? result.data : null, summary: summaryResult.ok ? summaryResult.data : null };
 };

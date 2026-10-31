@@ -480,6 +480,11 @@ export const dictionary = defineDictionary({
   invitationsHeading: '届いた招待',
   invitationPending: '承諾待ちの招待があります',
   invitationsNote: 'すべての組織に届いた招待を、組織ごとにまとめて出します。押すと、承諾するか辞退するかを選べます。',
+  // 停止していなければ入れた{organization}が停止しているとき（組織の選択の画面）。押せる行にはしない
+  suspendedOrganizationsHeading: '停止している{organization}',
+  suspendedOrganizationStatus: '停止しています',
+  suspendedOrganizationsNote:
+    '停止している間は、この{organization}に入れません。再開については、運用者に問い合わせてください。',
   // 招待の画面（/<slug>/invitations と、組織に入れず招待だけがある人の組織の画面）。
   // {organization} は組織の名前、{workspace} はワークスペースの言葉、{name} はワークスペースの名前
   invitationInboxLead: '{organization}から届いた招待です。承諾すると、その{workspace}に入れます。',
@@ -799,9 +804,6 @@ export const dictionary = defineDictionary({
     'ログインできませんでした。どの{organization}の{workspace}にも所属しておらず、招待も届いていません。ほかの手段で招待されていないか確かめてください。招待がまだなら、{leader}に招待してもらってください。',
   // メールアドレスかパスワードの欄が空のまま送ろうとしたとき。送らずに出す（回数の上限を使わない）
   loginErrorEmptyFields: 'メールアドレスとパスワードを入れてください。',
-  // 入れる{organization}（や届いた招待）が、停止した{organization}にだけあるとき（?error=suspended）
-  loginErrorSuspended:
-    'ログインできませんでした。所属しているか招待されている{organization}は停止しています。運用者に問い合わせてください。',
   // 招待の URL から結べなかったとき。理由（期限切れ、取り消し、別のアカウント、使い済み）は分けず、どのメールアドレスに招待したかも出さない
   loginErrorInvite:
     'この招待の URL は使えません。期限が切れたか、取り消されたか、招待されたのと別のアカウントでログインしています。招待した人に確かめるか、届いた招待の URL をもう一度開いてください。もう入れる{organization}がある人は、下のボタンからそのままログインできます。',

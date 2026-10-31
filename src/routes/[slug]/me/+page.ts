@@ -16,7 +16,7 @@ export const load: PageLoad = async ({ params, fetch, url }) => {
     callOperation(tokenList, {}, { fetcher: fetch }),
   ]);
   if (isUnauthenticated(summary) || isUnauthenticated(grants) || isUnauthenticated(tokens)) {
-    redirect(307, loginUrl(url, summary, grants, tokens));
+    redirect(307, loginUrl(url));
   }
   return {
     summary: summary.ok ? summary.data : null,

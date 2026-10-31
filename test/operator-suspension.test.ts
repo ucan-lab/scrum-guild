@@ -579,7 +579,7 @@ describe('変更の履歴', () => {
 describe('停止中の組織に入る人', () => {
   test('入れたはずの人は 403 の organization_suspended、入れない人は 404。再開すれば入れる', async () => {
     const target = await createTarget();
-    // 停止した組織にしか入れない人は、403 の前にセッションを消されて 401 になるので、ほかの組織にも入れる人にする
+    // 停止した組織にしか入れない人も 403 を受ける（セッションは消えない）。ここでは、ほかの組織にも入れる人にする
     const stayer = await admitElsewhere(target.admin);
     await admitElsewhere(target.member);
     await admitElsewhere(target.invitee);

@@ -20,8 +20,8 @@ export const load: PageLoad = async ({ params, fetch, url, depends, parent }) =>
     callOperation(categoryRepositoryList, { workspace_id: params.id }, { slug: params.slug, fetcher: fetch }),
     callOperation(columnList, { workspace_id: params.id }, { slug: params.slug, fetcher: fetch }),
   ]);
-  if (isUnauthenticated(result)) redirect(307, loginUrl(url, result));
-  if (isUnauthenticated(columns)) redirect(307, loginUrl(url, columns));
+  if (isUnauthenticated(result)) redirect(307, loginUrl(url));
+  if (isUnauthenticated(columns)) redirect(307, loginUrl(url));
   return {
     forbidden: false,
     definitions: result.ok && columns.ok ? { ...result.data, columns: columns.data.columns } : null,

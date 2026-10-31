@@ -16,10 +16,10 @@ export const load: LayoutLoad = async ({ params, fetch, url }) => {
     callOperation(organizationInfo, {}, { slug: params.slug, fetcher: fetch }),
     callOperation(myOrganizations, {}, { fetcher: fetch }),
   ]);
-  // 停止した組織にしか入れない人は、組織の選択の読み取りがセッションを消して 401（理由 suspended）を返すので、ログインの画面へ移す。
-  // ほかに入れる組織がある人は、組織の操作が 403 の organization_suspended を返し、組織の枠が停止の画面を出す
+  // ログインしていない（401）ときだけ、ログインの画面へ移す。入れる組織を失った人や、停止した組織にしか入れない人は
+  // セッションが残るので 401 にならない（組織の操作が 404 か 403 の organization_suspended を返し、組織の枠が画面を出す）
   if (isUnauthenticated(organization) || isUnauthenticated(accountOrganizations)) {
-    redirect(307, loginUrl(url, organization, accountOrganizations));
+    redirect(307, loginUrl(url));
   }
 
   let failure = organization.ok ? null : { status: organization.status, code: organization.error?.code ?? null };
@@ -32,7 +32,7 @@ export const load: LayoutLoad = async ({ params, fetch, url }) => {
     accountOrganizations.data.invitations.some((invitation) => invitation.slug === params.slug);
   if (invited) {
     const inbox = await callOperation(invitationList, {}, { slug: params.slug, fetcher: fetch });
-    if (isUnauthenticated(inbox)) redirect(307, loginUrl(url, inbox));
+    if (isUnauthenticated(inbox)) redirect(307, loginUrl(url));
     if (inbox.ok) invitationInbox = inbox.data;
     else if (inbox.status !== 404) failure = { status: inbox.status, code: inbox.error?.code ?? null };
   }

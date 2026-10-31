@@ -233,7 +233,7 @@
     try {
       const result = await callOperation(sprintDelete, { workspace_id: workspace.id, sprint_id: sprint.id }, { slug });
       if (!result.ok && isUnauthenticated(result)) {
-        window.location.assign(loginUrl(page.url, result));
+        window.location.assign(loginUrl(page.url));
         return;
       }
       const words = { sprint: t('sprint'), workspace: t('workspace'), leader: t('leader') };
@@ -267,7 +267,7 @@
         { slug },
       );
       if (!result.ok && isUnauthenticated(result)) {
-        window.location.assign(loginUrl(page.url, result));
+        window.location.assign(loginUrl(page.url));
         return;
       }
       const words = { sprint: t('sprint'), task: t('task'), done: t('done'), workspace: t('workspace') };

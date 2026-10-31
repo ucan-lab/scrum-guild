@@ -7,7 +7,7 @@ import {
   API_TOKEN_PATTERN,
   type ApiTokenScope,
 } from '../../shared/api-token.ts';
-import { commonDb, type CommonDb, type Statement } from '../db/index.ts';
+import { commonDb, type CommonDb } from '../db/index.ts';
 import { ApiError } from '../errors.ts';
 import { randomToken, sha256Hex } from './tokens.ts';
 
@@ -213,22 +213,19 @@ export async function readApiToken(env: Env, token: string | undefined, now: Dat
   return { accountId: row.account_id, tokenHash, scope: row.scope };
 }
 
-// その人のトークンを取り消す。ログインできる条件を失ったと判定した時刻（checkedAt）までに作られたものだけ。
-// 判定の後に発行したトークンを、その判定が取り消さないため（deleteSessionsOf と同じ）。取り消し済みの行は書き直さない
+// その人のトークンを、checkedAt までに作られたものだけ取り消す。checkedAt より後に発行したトークンは残す（deleteSessionsOf と同じ）。
+// 取り消し済みの行は書き直さない。呼ぶのは今はテストだけで、本番の道は無い
 export async function revokeApiTokensOf(db: CommonDb, accountId: string, checkedAt: Date): Promise<void> {
-  await db.batch([revokeApiTokensStatement(db, accountId, checkedAt)]);
-}
-
-// revokeApiTokensOf の文。セッションの削除と1回の batch() で送る呼び出し（end-credentials.ts）が、条件を別に持たずに使う
-export function revokeApiTokensStatement(db: CommonDb, accountId: string, checkedAt: Date): Statement<'common'> {
-  return db.statement((q) =>
-    q
-      .updateTable('api_tokens')
-      .set({ revoked_at: new Date().toISOString() })
-      .where('account_id', '=', accountId)
-      .where('revoked_at', 'is', null)
-      .where('created_at', '<=', checkedAt.toISOString()),
-  );
+  await db.batch([
+    db.statement((q) =>
+      q
+        .updateTable('api_tokens')
+        .set({ revoked_at: new Date().toISOString() })
+        .where('account_id', '=', accountId)
+        .where('revoked_at', 'is', null)
+        .where('created_at', '<=', checkedAt.toISOString()),
+    ),
+  ]);
 }
 
 // 期限切れ（expires_at <= now）の行を消し、消した件数を返す。取り消し済みでも、期限が来るまでは残す。

@@ -15,6 +15,6 @@ export const load: PageLoad = async ({ params, fetch, url, depends }) => {
   depends('app:sprints');
   depends('app:backlog-tree');
   const result = await callOperation(sprintBoard, { workspace_id: params.id }, { slug: params.slug, fetcher: fetch });
-  if (isUnauthenticated(result)) redirect(307, loginUrl(url, result));
+  if (isUnauthenticated(result)) redirect(307, loginUrl(url));
   return { board: result.ok ? result.data : null };
 };
