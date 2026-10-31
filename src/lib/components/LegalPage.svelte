@@ -25,9 +25,11 @@
   const blocks = $derived(parseMarkdown(doc.body));
   const title = $derived(t(kind === 'terms' ? 'termsTitle' : 'privacyTitle'));
 
+  // SPA の最初の読み込み（type が 'enter'）でも from は null にならず、url の無い入れ物が渡る（SvelteKit の create_navigation）。
+  // そのため from の有無でなく、type で直に開いたかを決める
   let cameFromApp = $state(false);
-  afterNavigate(({ from }) => {
-    cameFromApp = from !== null;
+  afterNavigate(({ type }) => {
+    cameFromApp = type !== 'enter';
   });
 </script>
 
