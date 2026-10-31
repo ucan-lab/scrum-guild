@@ -1,6 +1,6 @@
 # Scrum Guild データモデル
 
-状態: 確定。要件定義（`requirements.md`）を D1（SQLite）のテーブルに落としたもの。最初のマイグレーション（`migrations/0001_create_initial_tables.sql`）で、共通の6表と、一本道に要る組織の中の16表を作った。`organization_holidays` は `migrations/0004_add_organization_holidays.sql` で、`comments` は `migrations/0006_add_comments.sql` で、`sprint_entries` と `completions.previous_column_id` は `migrations/0008_add_sprint_entries.sql` で、`epic_party_members` と `thanks` は `migrations/0009_add_epic_party_members_and_thanks.sql` で、共通の表の `password_credentials` は `migrations/0010_add_password_credentials.sql` で足した（共通の表は7表になった）。残りの表は、使う機能の Issue でマイグレーションを足して作る
+状態: 確定。要件定義（`requirements.md`）を D1（SQLite）のテーブルに落としたもの。最初のマイグレーション（`migrations/0001_create_initial_tables.sql`）で、共通の6表と、一本道に要る組織の中の16表を作った。`organization_holidays` は `migrations/0004_add_organization_holidays.sql` で、`comments` は `migrations/0006_add_comments.sql` で、`sprint_entries` と `completions.previous_column_id` は `migrations/0008_add_sprint_entries.sql` で、`epic_party_members` と `thanks` は `migrations/0009_add_epic_party_members_and_thanks.sql` で、共通の表の `password_credentials` は `migrations/0010_add_password_credentials.sql` で、`api_tokens` は `migrations/0012_add_api_tokens.sql` で足した（共通の表は8表になった）。残りの表は、使う機能の Issue でマイグレーションを足して作る
 
 ## 決まりごと
 
@@ -27,7 +27,7 @@
 
 | まとまり | テーブル |
 | --- | --- |
-| アカウント | `accounts`、`account_logins`、`password_credentials`、`sessions`、`oauth_states`、`rate_limits` |
+| アカウント | `accounts`、`account_logins`、`password_credentials`、`sessions`、`api_tokens`、`oauth_states`、`rate_limits` |
 | 組織 | `organizations`、`users`、`organization_holidays` |
 | ユーザーの稼働 | `user_capacity_settings`、`user_monthly_overrides`、`user_time_off` |
 | ワークスペース | `workspaces`、`workspace_point_rates`、`workspace_holidays`、`memberships`、`invitations`、`allocations` |
@@ -55,7 +55,7 @@
 
 | 区分 | テーブル | 置き場所 |
 | --- | --- | --- |
-| 共通 | `accounts`、`account_logins`、`password_credentials`、`sessions`、`oauth_states`、`rate_limits`、`organizations` | 共通の DB に1つだけ |
+| 共通 | `accounts`、`account_logins`、`password_credentials`、`sessions`、`api_tokens`、`oauth_states`、`rate_limits`、`organizations` | 共通の DB に1つだけ |
 | 組織の中 | それ以外のすべて | 組織が置かれた DB |
 
 添付ファイルの中身は D1 ではなく R2 に置く。R2 のキーの先頭は組織の ID なので、D1 を分けても R2 は分けずに済む。
@@ -168,6 +168,27 @@
 - 書き込みを減らすため、`last_used_at` は前回から1時間以上たったときだけ書き直す。
 - `expires_at <= 定期処理の基準の時刻` の行を、毎分の定期処理で消す（「期限切れの行の掃除」）。
 
+### api_tokens
+
+画面以外のクライアントが `Authorization: Bearer` で API を呼ぶためのトークン（PAT）。トークンを発行した人のアカウントに付く。
+
+| 列 | 型 | 制約 | 説明 |
+| --- | --- | --- | --- |
+| token_hash | TEXT | PK、`CHECK (length(token_hash) = 64 AND token_hash NOT GLOB '*[^0-9a-f]*')` | 生の値 `sgp_` + 32 バイトの乱数の base64url（43文字）の SHA-256 を小文字の16進（64文字）にしたもの。生の値は発行の応答で1回だけ返し、DB にもログにも残さない。形は `sessions.token_hash` と同じ CHECK |
+| account_id | TEXT | NOT NULL、FK accounts | トークンを発行した人。呼び出しはこの人として行う |
+| name | TEXT | NOT NULL、`CHECK (length(name) BETWEEN 1 AND 100)` | 発行した人が付ける、用途を思い出すための名前 |
+| scope | TEXT | NOT NULL、`CHECK (scope IN ('read', 'write'))` | `read` は読み取りの操作（`mode: 'read'`）だけ、`write` は読み取りと書き込みの両方を呼べる |
+| created_at | TEXT | NOT NULL | |
+| last_used_at | TEXT | | 最後に使った日時。一度も使っていなければ空。使うたびに今へ書き直す（前の値が今より前のときだけ） |
+| expires_at | TEXT | NOT NULL | 発行の日時から90日以内の固定の日時（`API_TOKEN_MAX_LIFETIME_DAYS`）。使っても延ばさない |
+| revoked_at | TEXT | | 取り消した日時。取り消していなければ空 |
+
+- 索引: `(account_id)`。その人のトークンを取り消すときと、一覧（後のストーリー）が引く。
+- 読めるのは、`token_hash` の行があり、`revoked_at` が空で、`expires_at` が基準の時刻より後のとき。形が違う値（`API_TOKEN_PATTERN` に合わない）は DB を引かずに断る。
+- ログインできる条件を失ったとき（入れる組織が1つもなくなり、運用者でもないとき。`sessions` と同じ判定）は、判定した時刻までに作られたその人のトークンに `revoked_at` を書く。判定の後に発行したトークンは残す。取り消したトークンは戻さない。
+- 取り消し済みの行も、`expires_at` を過ぎるまで残す。期限を過ぎた行（`expires_at <= 定期処理の基準の時刻`）を、毎分の定期処理で消す（「期限切れの行の掃除」）。
+- 発行、一覧、取り消しの操作は後のストーリーで作る。それまでは、テストと seed が行を作る。
+
 ### oauth_states
 
 ログインの手段の OAuth の state と PKCE の code_verifier、OpenID Connect の nonce。
@@ -221,6 +242,7 @@
 - 消した件数が1万行に届いた表は、同じ文をもう一度送る。1回の定期処理で1つの表に送る文は20回まで、かつ定期処理の開始から20秒まで。どちらか先に尽きたら止め、残りは次の回に消す。普段は1文で終わる。
 - 1つの表が失敗したら、その表はそこで止め、残りの表は続け、全部を終えてから定期処理は例外で終わる。
 - 期限の列に索引は無い。消す行が少ない回は表を全部読む。表が数十万行で常にとどまるようになったら、索引を見直す。
+- `api_tokens` の期限を過ぎた行（`expires_at <= 基準の時刻`）も、同じ毎分の定期処理が消す。上の3表とは別の処理（`cleanup-api-tokens.ts`）で、手で発行する上限90日のトークンなので行は少なく、上限や繰り返しを持たず1文で消す。消した件数があった回だけ、表名と件数を1行ログに出す。3表の掃除が失敗しても、この掃除は続ける（逆も同じ）。どちらかが失敗すれば、定期処理は例外で終わる。
 
 ## 組織
 
@@ -249,7 +271,7 @@
 - 閉じたワークスペースの承諾待ちの招待は数えないので、開き直す（`workspace-reopen`。「書き込みの単位」のワークスペースを開き直す）と、その招待の人が新しく数えられる。開き直しは書く前に、そのワークスペースの承諾待ちの招待の人（期限の過ぎた Google の招待と、同じ組織で無効にされた人への招待を除く。`seatHoldersOfWorkspaceInvitations`）のうち、すでに数えられている人を除いた人数 `adding` を求め、今の人数 `used` に足して上限を見る。`adding` が 1 以上で `used + adding` が `member_limit` を超えるときだけ、何も書かずに 409（`member_limit_reached`、`details` は `{ used, limit, adding }`）で断る。ちょうど上限に達する開き直しは通す。`adding` が 0 の開き直しは、段階を下げて人数が上限を超えている組織でも通す。断られた管理者は、上限を見直す（運用者に頼む）か、ほかのユーザーを無効にして人数を減らすと、同じワークスペースを開き直せる。閉じている間は招待を取り消せない。招待の承諾（`invitation-accept`）は上限を見ない（承諾待ちの招待は数えているため、開き直しで上限を守る）。数えてから書くまでの間に同時に増えた分は、招待と同じく認める（`adding` の人数は文の条件に入れない）。別々のワークスペースの開き直しを同時に送ると、それぞれが検査を通り、超える量は各ワークスペースの `adding` の合計までになりうる。開き直しの `adding` も `personKey` で数えるので、メールアドレスで待つ招待と、`sub` を持つ所属の同一人物は別々の人として数える。そのため、人数がちょうど上限の組織では、本来 `adding` が 0 の開き直しが断られうる（招待の作成と同じ既存の限界。「メールアドレスで待つ指名と招待」の数え方に従う）。
 - 人数を数える関数は `src/server/db/seats.ts` の1つ（`seatHoldersIn`）に置く。組織の ID の束を受け、組織ごとの数える人（1人の見分け方 `personKey` の集合）を返す。どの文も `organization_id IN (...)` で組織に絞り、組織の ID は束縛の上限で区切る。招待の上限の検査と member-list の `seats` は、確かめた組織の入口だけを受ける `seatHoldersOf` から1つの組織で呼び、運用者の組織の一覧（`users` の節の、運用者の組織の一覧の集計の箇条書き）は組織をまたぐ入口ごとに組織の ID の束で呼ぶ。数え方は同じなので、同じ組織なら同じ数になる。
 - 解約した組織は、`purge_on` を過ぎたら運用の手順でこの組織の行をすべて消し、R2 の `<organization_id>/` で始まるファイルも消す。再開したら `suspended_at` と `purge_on` を空に戻す。`purge_on` は、解約で停止した日時の UTC の日付の30日後（`YYYY-MM-DD`）。停止中に解約へ切り替えたときは、切り替えた日時の UTC の日付の30日後。`purge_on` が今日（UTC の日付）より前の組織は、再開も一時的な停止への切り替えもできない（409 の `purge_due`。消す SQL のガードと同じ境目で、予定日の当日まではできる。「書き込みの単位」の組織の停止と再開）。運用者の組織の一覧は、この組織に `purge_due` を真で返す。
-- 消す手順は `docs/operations.md` の「解約した組織のデータを消す」。消す SQL は `scripts/purge-organization.ts` が1行に1文で書き出し（組み立ては `scripts/purge-organization-sql.ts`）、運用者が1文ずつ流して、組織の中のすべての表と最後に `organizations` の行を、外部キーの子から順に消す。どの文も、その組織が解約で停止していて `purge_on` を過ぎている（`purge_on < date('now')`、UTC の日付）ことを条件にするので、一時的な停止と予定日の当日までの組織では何も消えない。共通の表のうち `accounts`、`account_logins`、`password_credentials`、`sessions`、`oauth_states`、`rate_limits` は消さない（アカウントをどうするかは #407。セッションは、入れる組織を失った人の次のリクエストか期限切れで消える）。この SQL は条件の確かめに共通の表の `organizations` を組織の中の表の文から引く（「データベースの分け方」の例外で、DB が1つの今だけ使える）。組織ごとに DB を分けるときは、確かめを共通の DB で先に行う形に直す。
+- 消す手順は `docs/operations.md` の「解約した組織のデータを消す」。消す SQL は `scripts/purge-organization.ts` が1行に1文で書き出し（組み立ては `scripts/purge-organization-sql.ts`）、運用者が1文ずつ流して、組織の中のすべての表と最後に `organizations` の行を、外部キーの子から順に消す。どの文も、その組織が解約で停止していて `purge_on` を過ぎている（`purge_on < date('now')`、UTC の日付）ことを条件にするので、一時的な停止と予定日の当日までの組織では何も消えない。共通の表のうち `accounts`、`account_logins`、`password_credentials`、`sessions`、`api_tokens`、`oauth_states`、`rate_limits` は消さない（アカウントをどうするかは #407。セッションと API トークンは、入れる組織を失った人の次のリクエストか期限切れで消える）。この SQL は条件の確かめに共通の表の `organizations` を組織の中の表の文から引く（「データベースの分け方」の例外で、DB が1つの今だけ使える）。組織ごとに DB を分けるときは、確かめを共通の DB で先に行う形に直す。
 
 ### users
 

@@ -102,6 +102,9 @@ export function assertOperationDefinition(definition: AnyOperationDefinition): v
   if (definition.skipsLoginAccess !== undefined && (definition.skipsLoginAccess !== true || scope !== 'outside')) {
     throw new Error(`操作 ${name} の skipsLoginAccess は、組織の外の操作に true だけ付けられる`);
   }
+  if (definition.cookieOnly !== undefined && (definition.cookieOnly !== true || scope !== 'outside')) {
+    throw new Error(`操作 ${name} の cookieOnly は、組織の外の操作に true だけ付けられる`);
+  }
   const rateLimit = definition.rateLimit;
   if (rateLimit !== undefined && !(Number.isInteger(rateLimit.max) && rateLimit.max > 0)) {
     throw new Error(`操作 ${name} の rateLimit.max は 1 以上の整数`);

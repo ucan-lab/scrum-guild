@@ -655,6 +655,7 @@ describe('操作のログ', () => {
       organizationId: target.organization.id,
       userId: target.leader.userId,
       accountId: target.leader.accountId,
+      credential: 'cookie',
       code: 'ok',
       status: 200,
       durationMs: expect.any(Number),

@@ -8,6 +8,8 @@ export type OperationLog = {
   // 組織の中の操作では users の ID。組織の外の操作では null（accountId で見る）
   userId: string | null;
   accountId: string | null;
+  // 何で認証した呼び出しか。トークンの値もハッシュも出さない。認証の前に落ちた呼び出しは Authorization の有無で決まる
+  credential: 'cookie' | 'token';
   // 成功は ok、失敗は応答の code
   code: string;
   status: number;
