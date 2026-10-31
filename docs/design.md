@@ -40,6 +40,8 @@ favicon と同じマーク（下の「favicon」）の横に、名前「Scrum Gu
 
 原本は `static/favicon.svg`。金色は `#b58020`、チェックは `#fffaf0`、背景は透明。旗とチェックのコントラスト比は約3.32:1。下端の V 字の切れ込みと太いチェックが16pxでも残る形にする。`static/favicon.ico` は同じ SVG から作った16px・32pxの画像を含むフォールバックで、`src/app.html` から両方を参照する。形や色を変えたときは `pnpm exec node scripts/generate-favicon.ts` で ICO も作り直し、明暗背景で両サイズを確かめる。初回は `pnpm exec playwright install chromium` で描画用のブラウザを入れる。生成には既存の Playwright を使い、SVG と ICO を同じコミットに含める。
 
+ホーム画面用は、`#fffaf0` の不透明な正方形の地の中央に、旗とチェックを余白つき（正方形の約66%）で置く。原本の形と色は変えず、Android のマスクで角が切れても旗が残る安全領域に収める。`static/apple-touch-icon.png`（180px）、`static/icon-192.png`（192px）、`static/icon-512.png`（512px）と `static/manifest.webmanifest` に置き、マニフェストの `icons` から PNG を指す。作り直しは favicon.ico と同じ `pnpm exec node scripts/generate-favicon.ts` を使う。
+
 ## Google のボタン
 
 ログインの画面の Google のボタンは、Google のブランドの決まり（Sign in with Google）に合わせる。`.btn` の変種 `.btn.is-google` で、画面ごとの CSS は持たない。
