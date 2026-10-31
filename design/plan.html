@@ -13,6 +13,7 @@
 <body>
 <div id="app"></div>
 <script src="icons.js"></script>
+<script src="art.js"></script>
 <script src="sample-data.js"></script>
 <script src="kit.js"></script>
 <script>
@@ -74,7 +75,7 @@ SQ.mount("plan", () => {
       ${pageHead(D.workspaces.wa.name, t("plan"), [], actions)}
       ${SQ.emptyState("calendar", `まだ${t("sprint")}がありません`,
         `${t("sprint")}は、期間を区切って${t("task")}を進める単位です。作ると、ここに先の${t("sprint")}が並び、入れた${t("points")}と${t("capacity")}を見比べられます。終えた${t("sprint")}がたまると、ベロシティも出ます。` +
-        (isLeader ? "" : `${t("sprint")}を作るのは${t("leader")}です。`))}`;
+        (isLeader ? "" : `${t("sprint")}を作るのは${t("leader")}です。`), "", undefined, "map")}`;
   }
   const v = velocity();
   const epicRows = Object.keys(D.epics).map((id) => {

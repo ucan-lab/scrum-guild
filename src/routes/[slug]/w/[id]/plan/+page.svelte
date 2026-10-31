@@ -329,7 +329,7 @@
   </div>
 
   {#if isBlank}
-    <EmptyState icon="calendar" title={t('sprintEmptyTitle', sprintWords)} text={emptyText} />
+    <EmptyState icon="calendar" art="map" title={t('sprintEmptyTitle', sprintWords)} text={emptyText} />
   {:else}
     {#if summary !== null}
       <PlanVelocity velocity={summary.velocity} />

@@ -1,14 +1,37 @@
 // 見本（design/）と本番（src/）の二重持ちを突き合わせる。アイコンと言葉の辞書は見本が先に決まるので、
 // 見本だけ、または本番だけを直すとここで落ちる。照合するのは見本にあるキーだけで、本番の辞書は画面の文言を足して大きくなってよい。
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { describe, test } from 'node:test';
 import vm from 'node:vm';
+import { artViewBox, arts } from '../src/lib/art.ts';
 import { iconViewBox, icons } from '../src/lib/icons.ts';
 import { themeLabelKeys, themeNoteKeys, themes } from '../src/shared/theme.ts';
 import { defaultVocabularies, dictionary } from '../src/shared/vocabulary.ts';
 
 const read = (file: string) => readFileSync(new URL(`../design/${file}`, import.meta.url), 'utf8');
+
+// design/art.js も同じ作りで、symbol の id は a-<名前>
+function evaluateArts(): { names: string[]; symbols: Map<string, { viewBox: string; body: string }> } {
+  let sprite = '';
+  const window: { SQ_ARTS?: string[] } = {};
+  const document = {
+    createElement: () => ({
+      set innerHTML(html: string) {
+        sprite = html;
+      },
+      firstChild: {},
+    }),
+    body: { prepend: () => {} },
+  };
+  vm.runInNewContext(read('art.js'), { window, document });
+  const symbols = new Map<string, { viewBox: string; body: string }>();
+  for (const [, id, viewBox, body] of sprite.matchAll(/<symbol id="a-([^"]+)" viewBox="([^"]+)">(.*?)<\/symbol>/g)) {
+    symbols.set(id, { viewBox, body });
+  }
+  return { names: [...(window.SQ_ARTS ?? [])], symbols };
+}
 
 // design/icons.js は IIFE で window と document を触り、SVG のスプライトを body に差し込む。
 // 偽の document に渡された文字列を受け取り、symbol を読み出す
@@ -125,6 +148,39 @@ describe('見本との照合', () => {
       assert.equal(symbol.viewBox, iconViewBox, `${name} の viewBox`);
       assert.equal(icons[name as keyof typeof icons], symbol.body, `${name} の中身`);
     }
+  });
+
+  test('線画は見本と同じ名前と中身を持つ', () => {
+    const design = evaluateArts();
+    assert.ok(design.symbols.size > 0, '見本の線画を読めなかった');
+    assert.deepEqual([...design.symbols.keys()].sort(), design.names.slice().sort());
+    assert.deepEqual(Object.keys(arts).sort(), [...design.symbols.keys()].sort());
+    for (const [name, symbol] of design.symbols) {
+      assert.equal(symbol.viewBox, artViewBox, `${name} の viewBox`);
+      assert.equal(arts[name as keyof typeof arts], symbol.body, `${name} の中身`);
+    }
+  });
+
+  test('画面が指定する線画の名前は、定義にある', () => {
+    // 綴りを誤ると <use> が空の絵を描くので、本番の art="…" と見本の emptyState の最後の引数、art(…) の名前を引く
+    const names = new Set<string>();
+    const walk = (dir: string) => {
+      for (const entry of readdirSync(dir, { withFileTypes: true })) {
+        const path = `${dir}/${entry.name}`;
+        if (entry.isDirectory()) walk(path);
+        else if (entry.name.endsWith('.svelte')) {
+          for (const m of readFileSync(path, 'utf8').matchAll(/\bart="(\w+)"/g)) names.add(m[1]);
+        }
+      }
+    };
+    walk(fileURLToPath(new URL('../src', import.meta.url)));
+    for (const file of readdirSync(fileURLToPath(new URL('../design', import.meta.url)))) {
+      if (!file.endsWith('.html')) continue;
+      for (const m of read(file).matchAll(/(?:undefined|tone|""|"xp"), "(\w+)"\)|SQ\.art\("(\w+)"/g))
+        names.add(m[1] ?? m[2]);
+    }
+    assert.ok(names.size > 0, '画面の線画の指定を読めなかった');
+    for (const name of names) assert.ok(name in arts, `${name} は線画の定義に無い`);
   });
 
   test('言葉の辞書は、見本の DICT の全キーについて、ゲームとスクラムの言葉が同じ', () => {

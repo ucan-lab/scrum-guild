@@ -52,6 +52,7 @@
   {#if emptyKind === 'firstWorkspace'}
     <EmptyState
       icon="sun"
+      art="map"
       title={t('firstWorkspaceTitle', { workspace: t('workspace') })}
       text={t('firstWorkspaceText', { workspace: t('workspace'), leader: t('leader') })}
     >
@@ -64,11 +65,12 @@
   {:else if emptyKind === 'noMembership'}
     <EmptyState
       icon="sun"
+      art="notice"
       title={t('noMembershipTitle', { workspace: t('workspace') })}
       text={t('noMembershipText', { workspace: t('workspace') })}
     />
   {:else}
-    <EmptyState icon="sun" title={t('todayEmptyTitle')} text={t('todayEmptyText')} />
+    <EmptyState icon="sun" art="notice" title={t('todayEmptyTitle')} text={t('todayEmptyText')} />
   {/if}
 </Section>
 

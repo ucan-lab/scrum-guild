@@ -97,6 +97,9 @@
   // 完成の定義。本番はワークスペースの Markdown を Markdown の部品（.doc-box）で描く。見本は箇条書きの Markdown を描いた形。
   // 空なら、完了の列（.dod）にも、バックログの木の上（.dod）にも、完了の操作の横（.done-bar-dod）にも出さない
   const dodDoc = () => `<div class="doc-box"><ul>${D.definitionOfDone.map((d) => `<li>${esc(d)}</li>`).join("")}</ul></div>`;
+  // 線画。装飾なので読み上げから外す（本番の Art.svelte）。種類は art.js の ARTS
+  // lead は「最初にやること」の先頭に置く小さい形（.art.is-lead）
+  const art = (id, lead) => `<svg class="${lead ? "art is-lead" : "art"}" aria-hidden="true"><use href="#a-${id}"/></svg>`;
   // tone は "xp" で経験値の色（.ico.is-xp）。ゲームの物の経験値（crystal）とレベル（crest）に使う。本番の Icon と同じく "xp" だけを受ける
   const icon = (id, tone) => `<svg class="${tone === "xp" ? "ico is-xp" : "ico"}" aria-hidden="true"><use href="#i-${id}"/></svg>`;
   const md = (d) => `${+d.slice(5, 7)}/${+d.slice(8, 10)}`;
@@ -301,8 +304,8 @@
   // 空の状態。何が出る場所かと、次に何をすればよいかを書く。actions は押す操作の HTML。
   // title と text も HTML として埋め込むので、利用者のデータは esc してから渡す
   // tone はアイコンの色（icon の tone。本番の EmptyState の iconTone）。ゲームの物のアイコンを置くときに使う
-  function emptyState(ic, title, text, actions = "", tone) {
-    return `<div class="empty">${icon(ic, tone)}<b>${title}</b>${text ? `<span>${text}</span>` : ""}${actions ? `<div class="form-actions">${actions}</div>` : ""}</div>`;
+  function emptyState(ic, title, text, actions = "", tone, artName) {
+    return `<div class="empty">${artName ? art(artName) : icon(ic, tone)}<b>${title}</b>${text ? `<span>${text}</span>` : ""}${actions ? `<div class="form-actions">${actions}</div>` : ""}</div>`;
   }
 
   // 最初にやること。済んだかは今のデータから決まるので、閉じた印を持たない。
@@ -358,7 +361,7 @@
     const next = steps.findIndex((s) => !s.done && s.action);
     const hint = FIRST_HINT[role]();
     return `<section class="panel" aria-labelledby="first-steps-${role}">
-      <div class="panel-title"><b id="first-steps-${role}">最初にやること</b>${steps.filter((s) => s.done).length} / ${steps.length} 済み</div>
+      <div class="panel-title">${art("map", true)}<b id="first-steps-${role}">最初にやること</b>${steps.filter((s) => s.done).length} / ${steps.length} 済み</div>
       <ol class="steps">${steps.map((s, i) => `<li class="step ${s.done ? "is-done" : ""}"><div class="step-body">
         <span class="step-title">${s.title}${s.optional ? ` <span class="chip">任意</span>` : ""}</span>
         <span class="action-note">${s.note}</span>
@@ -2515,7 +2518,7 @@ const looooooooooooooooooooooooooooooooooongLine = "コードの長い1行は、
   }
 
   window.SQ = {
-    first, firstHref, firstSteps, emptyState,
+    first, firstHref, firstSteps, emptyState, art,
     D, t, brandMark, googleMark, THEMES, THEME_LABEL, THEME_NOTE, setVocab, toggleVocab, onChange, esc, icon, md, sumPts, cycleTheme, setTheme, applyTheme, mount,
     onRedraw: (fn) => extraRedraws.push(fn), openDrawer, drawerHtml, drawerState: drawer,
     user, task, tasksWhere, repoTag, categoryTag, sprintTag, repoPicker, sprintLabel, colName, categoryOf, storyPts, epicPts, dueOf,

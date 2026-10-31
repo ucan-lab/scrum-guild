@@ -1039,6 +1039,7 @@
   {#if !filtering && epics.length === 0 && tree.stories.length === 0 && rootRows.length === 0 && rootDone === 0}
     <EmptyState
       icon="board"
+      art="notice"
       title={t('backlogEmptyTitle', { task: t('task') })}
       text={canWrite
         ? t('backlogEmptyText', { task: t('task'), create: t('create') })

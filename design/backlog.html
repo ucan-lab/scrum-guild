@@ -13,6 +13,7 @@
 <body>
 <div id="app"></div>
 <script src="icons.js"></script>
+<script src="art.js"></script>
 <script src="sample-data.js"></script>
 <script src="kit.js"></script>
 <script>
@@ -82,7 +83,7 @@ SQ.mount("backlog", () => {
       ${SQ.emptyState("board", `まだ${t("task")}がありません`,
         `${t("task")}を優先する順に並べる場所です。上の「${t("create")}」から最初の${t("task")}を作ります。` +
         (D.connections.length ? "" : `取り込み元を使うなら、${t("connection")}を登録すると${t("inbox")}に届き、そこからここへ入れられます。`),
-        D.connections.length ? "" : `<a class="btn is-sm" href="${SQ.firstHref("connections.html")}">${t("connection")}を登録する</a>`)}`;
+        D.connections.length ? "" : `<a class="btn is-sm" href="${SQ.firstHref("connections.html")}">${t("connection")}を登録する</a>`, undefined, "notice")}`;
   }
   return `
     ${pageHead(D.workspaces.wa.name, t("backlog"), [

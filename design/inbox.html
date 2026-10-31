@@ -13,6 +13,7 @@
 <body>
 <div id="app"></div>
 <script src="icons.js"></script>
+<script src="art.js"></script>
 <script src="sample-data.js"></script>
 <script src="kit.js"></script>
 <script>
@@ -38,7 +39,7 @@ SQ.mount("inbox", () => {
     ${D.connections.length ? `<div class="callout is-info">${icon("refresh")}<span>最後の同期 10/20 10:00。<a href="connections.html">${t("connection")}</a>のうち「ミナトの GitHub」は失敗が続いています。届いたものは${t("workspace")}の全員に見えます。</span></div>` : ""}
     ${!D.connections.length ? SQ.emptyState("inbox", `${t("connection")}がまだありません`,
         `Backlog や GitHub を${t("connection")}として登録すると、自分が担当している課題や PR が次の同期でここに届きます。取り込み元を使わないなら、この画面は使いません。`,
-        `<a class="btn is-sm" href="${SQ.firstHref("connections.html")}">${t("connection")}を登録する</a>`)
+        `<a class="btn is-sm" href="${SQ.firstHref("connections.html")}">${t("connection")}を登録する</a>`, undefined, "notice")
     : items.length ? `
     <div class="toolbar">
       <label class="toggle" for="all"><input type="checkbox" id="all"><span>すべて選ぶ</span></label>
