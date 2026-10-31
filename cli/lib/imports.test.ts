@@ -40,3 +40,21 @@ test('cli/lib/main.ts は node の組み込みを import しない', () => {
     assert.ok(!specifier.startsWith('node:'), specifier);
   }
 });
+
+test('cli/lib/mcp-tools.ts は node の組み込みと MCP の SDK を import しない', () => {
+  const specifiers = specifiersOf(readFileSync(join(cliDir, 'lib', 'mcp-tools.ts'), 'utf8'));
+  assert.ok(specifiers.length > 0);
+  for (const specifier of specifiers) {
+    assert.ok(!specifier.startsWith('node:'), specifier);
+    assert.ok(!specifier.startsWith('@modelcontextprotocol/'), specifier);
+  }
+});
+
+test('MCP の SDK を import するのは cli/lib/mcp-server.ts だけ', () => {
+  const importers = sourcesIn(cliDir)
+    .filter((path) =>
+      specifiersOf(readFileSync(path, 'utf8')).some((specifier) => specifier.startsWith('@modelcontextprotocol/')),
+    )
+    .map((path) => relative(cliDir, path));
+  assert.deepEqual(importers, [join('lib', 'mcp-server.ts')]);
+});
