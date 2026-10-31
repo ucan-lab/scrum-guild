@@ -74,6 +74,8 @@
     <span class="org-menu-label">{t('organization')}</span>
     <b>{moving ? t('organizationMoving') : currentName}</b>
     {#if invited}<span class="chip">{t('invitationsBadge')}</span>{/if}
+    <span class="org-menu-invite" aria-hidden="true"></span>
+    <Icon name="swap" />
     <Icon name="chevron" />
   </button>
   <!-- 移っている最中を読み上げに伝える。領域は常に置き、中の文字だけを替える -->

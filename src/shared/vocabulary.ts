@@ -54,6 +54,8 @@ export const dictionary = defineDictionary({
   appName: 'Scrum Guild',
   pageTitle: '{page} - {app}',
   menu: 'メニュー',
+  menuCollapse: 'メニューを畳む',
+  menuExpand: 'メニューを広げる',
   close: '閉じる',
   countUnit: '件',
   unassigned: '担当なし',

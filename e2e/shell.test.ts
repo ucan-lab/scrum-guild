@@ -1,5 +1,11 @@
 import { expect, test } from './fixtures.ts';
-import { expectFocusReturned, expectModalFocus, signIn, watchViolations } from './helpers.ts';
+import {
+  expectFocusReturned,
+  expectModalFocus,
+  expectNoA11yViolationsInThemes,
+  signIn,
+  watchViolations,
+} from './helpers.ts';
 
 // build と wrangler dev に渡した版。playwright.config.ts が決めて process.env に置く（docs/development.md の「e2e のサーバー」）
 const version = process.env.APP_VERSION || 'dev';
@@ -19,6 +25,63 @@ test('組織の画面はシェルを返し、API の版を出し、CSP の違反
 
   await expect(page.getByRole('heading', { level: 1, name: '自分の今日' })).toBeVisible();
   await expect(page.locator('p[role="status"]')).toHaveText(`API: ok（版 ${version}）`);
+  expect(await collect()).toEqual([]);
+});
+
+test('1280px では左のメニューを折りたため、幅とラベルと状態を覚える', async ({ page }) => {
+  const collect = await watchViolations(page);
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto(today);
+  await page.evaluate(() => localStorage.removeItem('sg-nav-collapsed'));
+  await page.reload();
+
+  const app = page.locator('.app');
+  const toggle = page.locator('.nav-toggle');
+  const before = await page.locator('.content').boundingBox();
+  await toggle.click();
+  await expect(page.getByRole('button', { name: 'メニューを広げる' })).toHaveAttribute('aria-expanded', 'false');
+  await expect(toggle).toHaveAttribute('aria-controls', 'app-nav');
+  await expect(app).toHaveAttribute('data-nav-collapsed', 'true');
+  await expect(page.locator('.nav-item-label').first()).toHaveCSS('opacity', '0');
+  await expect(page.locator('.brand-name')).toBeHidden();
+  const after = await page.locator('.content').boundingBox();
+  expect(after && before && after.x).toBeLessThan(before?.x ?? 0);
+  await page.reload();
+  await expect(page.locator('.app')).toHaveAttribute('data-nav-collapsed', 'true');
+  await expect(page.getByRole('button', { name: 'メニューを広げる' })).toBeVisible();
+  await page.getByRole('button', { name: 'メニューを広げる' }).press('Enter');
+  await expect(page.getByRole('button', { name: 'メニューを畳む' })).toBeVisible();
+  expect(await collect()).toEqual([]);
+});
+
+test('折りたたんだ列でもキーボードで項目名を確認でき、組織の切り替えを開ける', async ({ page, context, baseURL }) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto(today);
+  await page.getByRole('button', { name: 'メニューを畳む' }).click();
+  const item = page.locator('.nav-item').first();
+  await item.focus();
+  await expect(item.locator('.nav-item-label')).toBeVisible();
+
+  await signIn(context, baseURL, 'admin');
+  await page.goto(today);
+  const org = page.getByRole('button', { name: /組織を切り替える/ });
+  await expect(org).toBeVisible();
+  await org.click();
+  await expect(page.getByRole('list', { name: '入れる組織' })).toBeVisible();
+});
+
+test('760px 以下では折りたたみボタンが無く、帯の形を保つ', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 700 });
+  await page.goto(today);
+  await expect(page.locator('.app')).not.toHaveAttribute('data-nav-collapsed', 'true');
+  await expect(page.locator('.nav-toggle')).toBeHidden();
+  await expect(page.locator('.binding')).toHaveCSS('border-right-width', '0px');
+});
+
+test('メニューのシェルはテーマごとのアクセシビリティ検査と CSP 検査を通る', async ({ page }) => {
+  const collect = await watchViolations(page);
+  await page.goto(today);
+  await expectNoA11yViolationsInThemes(page, 'today');
   expect(await collect()).toEqual([]);
 });
 
