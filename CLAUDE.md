@@ -23,11 +23,12 @@ Node は `.node-version`（26）、pnpm は `package.json` の `packageManager` 
 - 依存の導入: `pnpm install`（`prepare` が `core.hooksPath` を `.githooks` にし、`main` を守る git のフックを有効にする）
 - 開発用のサーバー: `pnpm dev`（画面 `http://localhost:5173`、`/api` は `wrangler dev` へ転送）。ワークツリーではポートが名前から自動で決まり、Issue の番号が違うワークツリーとは重ならない（441 を超える番号と番号の無い名前は重なりうる。直し方は `docs/development.md` の「ポート」）
 - 本番と同じ配り方での確認: `pnpm preview`（build して `http://localhost:8787`）
-- テスト: `pnpm test`（API は Workers の実行環境、画面のコード（`src/` の `*.test.ts`）は vitest の node の環境、runes を使うコード（`src/` の `*.svelte.test.ts`）はブラウザ向けの Svelte で動かす node の環境、`scripts/` は `node --test`）
+- テスト: `pnpm test`（API は Workers の実行環境、画面のコード（`src/` の `*.test.ts`）は vitest の node の環境、runes を使うコード（`src/` の `*.svelte.test.ts`）はブラウザ向けの Svelte で動かす node の環境、`scripts/` と `cli/lib/` は `node --test`）
 - 型の検査: `pnpm check`（`svelte-check`、Worker の `tsc`）。Worker の型（`worker-configuration.d.ts`）は、`pnpm install`、`dev`、`test`、`check` の前に `wrangler types` で作り直す
 - lint と整形: `pnpm lint`、`pnpm format:check`、直すときは `pnpm format`
 - build: `pnpm build`（`build/` に書き出し、`build/_headers` を作る）
 - フックのテスト: `node --test .claude/hooks/*.test.mjs`
+- CLI: `pnpm -s sg ops`、`pnpm -s sg call <操作名>`（API トークンで操作を呼ぶ。設定と手元のサーバーへの向け方は `docs/development.md` の「CLI（sg）」）
 - e2e: Claude のセッション（手元でもクラウドでも）は手元で走らせない（`pnpm e2e`、`playwright test` はフックが止める）。PR の CI の `e2e`、`e2e-dev`、`e2e-repeat` が確かめ、落ちたらジョブのログと成果物の trace で直す（`docs/development.md` の「CI の e2e が落ちたとき」）。人が自分の端末で調べるときは `pnpm e2e`（build し直してサーバーを立て、手元の D1 を seed で入れ直してから Playwright で確かめる。手元の D1 の行は消える。初めは `pnpm exec playwright install chromium`）で、`pnpm e2e e2e/members.test.ts` のようにファイルを渡せる。サーバーの扱い、`--workers`、`expect` の待ち、`E2E_DEV_BUILD=1` は `docs/development.md` の「e2e のサーバー」「e2e の書き方」
 - 空の D1 に全マイグレーションを当て、seed を2回流して確かめる: `pnpm db:migrate:fresh`
 - バックログの木を 5 万件で測る: `pnpm bench:backlog`（使い捨ての D1 で `wrangler dev --local` を立てて測る。`docs/development.md` の「バックログの木を 5 万件で測る」）

@@ -93,6 +93,11 @@ describe('needs-human の .claude/ の規則', () => {
     }
   });
 
+  test('API トークンで呼べるかの判定は権限の検査として守り、各操作の処理は守らない', () => {
+    assert.equal(needsHuman('src/server/operations/token-scope.ts'), true);
+    assert.equal(needsHuman('src/server/operations/operation-list.ts'), false);
+  });
+
   test('.claude/ の外の文書は守らない', () => {
     for (const path of ['docs/development.md', 'CLAUDE.md', 'README.md']) {
       assert.equal(needsHuman(path), false, path);
