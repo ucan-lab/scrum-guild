@@ -13,6 +13,7 @@ import {
   createOrganization,
   createUser,
   createWorkspace,
+  hash64,
   type OrganizationFixture,
 } from './factories.ts';
 import { post } from './operations/harness.ts';
@@ -22,6 +23,7 @@ const app = createApp(implementedOperations);
 
 const CLOSED_AT = '2026-10-22T00:00:00.000Z';
 const DISABLED_AT = '2026-10-21T00:00:00.000Z';
+const FUTURE_AT = '2999-01-01T00:00:00.000Z';
 
 type Login = { provider: string; subject: string };
 
@@ -235,5 +237,57 @@ describe('workspace-reopen の人数の上限を崩す', () => {
     expect(res.status).toBe(404);
     expect((await workspaceRow(other.organization, other.closed.id))?.closed_at).toBe(CLOSED_AT);
     expect(await changeLogCount(other.organization, other.closed.id)).toBe(0);
+  });
+
+  test('段階を下げて人数が上限を超えている（used > limit）組織でも、adding が 1 以上の再開は断られ、details の数は正しい', async () => {
+    const world = await setup(15);
+    for (let i = 0; i < 2; i++) {
+      const member = await createUser(world.organization, {
+        login_provider: 'github',
+        login_subject: `b-${crypto.randomUUID()}`,
+      });
+      await createMembership(world.organization, world.open.id, member.id);
+    }
+    await invite(world, world.closed.id);
+    await setMemberLimit(world.organization, 1);
+
+    const res = await reopen(world, world.closed.id);
+    expect(res.status).toBe(409);
+    expect(await res.json()).toMatchObject({
+      error: { code: 'member_limit_reached', details: { used: 3, limit: 1, adding: 1 } },
+    });
+    expect((await workspaceRow(world.organization, world.closed.id))?.closed_at).toBe(CLOSED_AT);
+    expect(await changeLogCount(world.organization, world.closed.id)).toBe(0);
+  });
+
+  // 既存の限界の固定。人数の数え方（docs/data-model.md の organizations の「人数」と、メールアドレスで待つ指名と招待）は、
+  // sub の行を (login_provider, login_subject)、待つ行を (login_provider, login_email) で見分けるので、
+  // 同じ人でも「メールで待つ招待」と「sub を持つ所属」は別々に数える。開き直しの adding も同じ数え方に従う
+  test('メール待ちの招待と sub を持つ同一人物は別々に数える既存の限界。上限ちょうどの組織では、本来 adding 0 のはずの再開が断られる', async () => {
+    const world = await setup(3);
+    const email = `member-${crypto.randomUUID()}@example.com`;
+    const sub = `b-${crypto.randomUUID()}`;
+    const member = await createUser(world.organization, {
+      login_provider: 'google',
+      login_subject: sub,
+    });
+    await createMembership(world.organization, world.open.id, member.id);
+    const other = await createUser(world.organization, { login_provider: 'github', login_subject: newLogin().subject });
+    await createMembership(world.organization, world.open.id, other.id);
+    await createInvitation(
+      world.organization,
+      world.closed.id,
+      world.admin.userId!,
+      { provider: 'google', subject: '' },
+      { login_subject: null, login_email: email, claim_token_hash: hash64(), claim_expires_at: FUTURE_AT },
+    );
+
+    // used = 管理者、メンバー、もう1人 = 3 = 上限。メール待ちの招待は google:email:<email>、所属は google:subject:<sub> で別の人
+    const res = await reopen(world, world.closed.id);
+    expect(res.status).toBe(409);
+    expect(await res.json()).toMatchObject({
+      error: { code: 'member_limit_reached', details: { used: 3, limit: 3, adding: 1 } },
+    });
+    expect((await workspaceRow(world.organization, world.closed.id))?.closed_at).toBe(CLOSED_AT);
   });
 });

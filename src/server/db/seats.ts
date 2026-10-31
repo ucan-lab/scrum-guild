@@ -68,6 +68,12 @@ function inviteeNotDisabled(eb: ExpressionBuilder<InvitationJoin, 'i' | 'w'>) {
   );
 }
 
+// 期限の過ぎた Google の招待か。member-list の expired と同じく、文字列でなく時刻で比べる（at 以前で切れる）。
+// 人数に数える招待を絞る2つの関数（組織全体と、1つのワークスペース）が同じ判定を通り、数え方が片方だけずれないようにする
+function isExpiredClaim(claimExpiresAt: string | null, time: number): boolean {
+  return claimExpiresAt !== null && Date.parse(claimExpiresAt) <= time;
+}
+
 // 人数に数える承諾待ちの招待。閉じたワークスペースへの招待と、同じ組織で無効にされた人（同じログインの手段と ID）への招待を除く。
 // 期限の過ぎた Google の招待は、読んだ後に時刻で除く
 export function seatInvitationsStatement(db: OrganizationEntry, organizationIds: readonly string[]) {
@@ -108,8 +114,7 @@ export async function seatHoldersIn(
       ] as const);
       for (const row of userResult.rows) people.get(row.organization_id)?.add(personKey(row));
       for (const row of invitationResult.rows) {
-        // 期限の判定は member-list の expired と同じく時刻で比べる
-        if (row.claim_expires_at !== null && Date.parse(row.claim_expires_at) <= time) continue;
+        if (isExpiredClaim(row.claim_expires_at, time)) continue;
         people.get(row.organization_id)?.add(personKey(row));
       }
     }
@@ -140,8 +145,7 @@ export async function seatHoldersOfWorkspaceInvitations(
   const time = at.getTime();
   const people = new Set<string>();
   for (const row of rows) {
-    // 期限の判定は seatHoldersIn と同じく時刻で比べる
-    if (row.claim_expires_at !== null && Date.parse(row.claim_expires_at) <= time) continue;
+    if (isExpiredClaim(row.claim_expires_at, time)) continue;
     people.add(personKey(row));
   }
   return people;
