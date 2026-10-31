@@ -4,7 +4,7 @@ import { SEED_SESSIONS } from '../seed/sessions.ts';
 import { userList } from '../src/shared/operations/organization/user.ts';
 import { workspaceList } from '../src/shared/operations/workspace/workspace-list.ts';
 import { sessionCookieName } from '../src/shared/session-cookie.ts';
-import { defaultVocabularies, word, type DictionaryKey, type TemplateParams } from '../src/shared/vocabulary.ts';
+import { word, type DictionaryKey, type TemplateParams } from '../src/shared/vocabulary.ts';
 import { mockOperation } from './operations.ts';
 import {
   exclusionsFor,
@@ -507,10 +507,10 @@ export async function expectNarrowLayout(
 ): Promise<void> {
   await page.setViewportSize(NARROW_VIEWPORT);
   const check = createLayoutCheck(screen);
-  await open((key, params) => word(key, defaultVocabularies, params));
+  await open((key, params) => word(key, params));
   await page.waitForLoadState('networkidle');
   await expect(page.locator('[aria-busy="true"]:visible')).toHaveCount(0);
-  await expect(page.locator('.org-menu-label')).toHaveText(word('organization', defaultVocabularies));
+  await expect(page.locator('.org-menu-label')).toHaveText(word('organization'));
   await check.inThemes(page);
   check.finish();
 }

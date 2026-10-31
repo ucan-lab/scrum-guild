@@ -10,16 +10,34 @@ export const MISSING_SUMMARY =
 
 export const TRUNCATED_NOTE = '\n\n---\n\nまとめが GitHub のコメントの上限を超えたので、ここで切り詰めた。\n';
 
+// ai-review のスキルが、差分を読めなかったか、選んだエージェントの報告が返らなかったときに、まとめの1行目に書く。
+// この行で始まるまとめには印を付けない（見終えていない head を、次の起点にしないため）
+export const INCOMPLETE_LINE = 'AI レビュー: 見終えていない';
+
+const SHA = /^[0-9a-f]{40}$/;
+
+// 印は、Claude の段が成功し、まとめが見終えていない旨で始まらないときだけ付ける。
+// まとめの中の印は、差分やコメントに仕込まれた指示で Claude が書いたものなので、どの場合も無効にする
+// （印を付けない実行で先頭に残ると、次の実行がそれを起点に読む）
+function markedSummary(summary: string, headSha: string | undefined): string {
+  const defused = summary.replaceAll('<!-- ai-review:', '<!-- ai-review-ignored:');
+  const incomplete = summary.trimStart().startsWith(INCOMPLETE_LINE);
+  return headSha !== undefined && SHA.test(headSha) && !incomplete
+    ? `<!-- ai-review:${headSha} -->\n${defused}`
+    : defused;
+}
+
 // 上限は UTF-16 の長さで測る（コードポイントの数より短くならないので、上限を超えない側に倒れる）。
 // 切り口でサロゲートペアを割らない
-export function summaryBody(summary: string | undefined): string {
+export function summaryBody(summary: string | undefined, headSha?: string): string {
   if (summary === undefined || summary.trim() === '') {
     return MISSING_SUMMARY;
   }
-  if (summary.length <= MAX_COMMENT_LENGTH) {
-    return summary;
+  const marked = markedSummary(summary, headSha);
+  if (marked.length <= MAX_COMMENT_LENGTH) {
+    return marked;
   }
-  let head = summary.slice(0, MAX_COMMENT_LENGTH - TRUNCATED_NOTE.length);
+  let head = marked.slice(0, MAX_COMMENT_LENGTH - TRUNCATED_NOTE.length);
   const last = head.charCodeAt(head.length - 1);
   if (last >= 0xd800 && last <= 0xdbff) {
     head = head.slice(0, -1);
@@ -28,15 +46,15 @@ export function summaryBody(summary: string | undefined): string {
 }
 
 if (import.meta.main) {
-  const [summaryFile, bodyFile] = process.argv.slice(2);
+  const [summaryFile, bodyFile, headSha] = process.argv.slice(2);
   if (!summaryFile || !bodyFile) {
     console.error(
-      '使い方: node scripts/ai-review-summary.ts <Claude が書いたまとめのファイル> <書き出す本文のファイル>',
+      '使い方: node scripts/ai-review-summary.ts <Claude が書いたまとめのファイル> <書き出す本文のファイル> [HEAD_SHA]',
     );
     process.exit(1);
   }
   const summary = existsSync(summaryFile) ? readFileSync(summaryFile, 'utf8') : undefined;
-  const body = summaryBody(summary);
+  const body = summaryBody(summary, headSha);
   writeFileSync(bodyFile, body);
   console.log(
     body === MISSING_SUMMARY

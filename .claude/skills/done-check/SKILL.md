@@ -120,17 +120,7 @@ Issue の「確認方法」を自分で実行し、完了条件を満たすか�
 
 ### 6. レビューエージェントに渡す
 
-エージェントの定義はこのリポジトリの `.claude/agents/` にある。
-
-| 対象 | エージェント |
-| --- | --- |
-| すべて | `code-reviewer` |
-| 認証、認可、API エンドポイントの追加や変更、外部入力を SQL、シェル、ファイル、HTML、外部 URL に渡す処理、秘密情報を含む | `security-reviewer` |
-| マイグレーション、クエリ、スキーマの変更、D1 に読み書きするコード（Kysely の入口を通る呼び出しを足すか変える）を含む | `database-reviewer` |
-| 画面（`.svelte`、CSS、`design/`、言葉の辞書）の変更を含む | `ui-reviewer` |
-| コード（Markdown 以外のファイル）の変更を含む。Markdown だけの差分では呼ばない | `falsification-qa` |
-
-該当するエージェントは、1つのメッセージで同時に呼ぶ。
+呼ぶエージェントは `.claude/skills/ai-review/reviewers.md` の表で決める。差分を「呼ぶとき」に当て、当たったエージェントのうち手元（done-check）の列が「呼ぶ」のものをすべて、1つのメッセージで同時に呼ぶ。
 
 エージェントには範囲として「ベースは `<base>`。コミット済みの `git diff <base>...HEAD`（3点。分岐した点からの差分）と、未コミットの `git diff HEAD` を合わせて見る」と渡す。
 範囲を渡さないと、エージェントは未コミットの差分しか見ない。
@@ -138,10 +128,6 @@ Issue の「確認方法」を自分で実行し、完了条件を満たすか�
 
 レビューのエージェント（`code-reviewer`、`security-reviewer`、`database-reviewer`、`ui-reviewer`、`falsification-qa`）は、ブランチごとに2巡まで起動できる（フック `.claude/hooks/review-budget.mjs`。最初の起動から120秒以内の起動は同じ巡）。`finding-verifier` は数えない（理由: 指摘を反証にかけるだけで、新しい指摘を出す巡ではないため）。
 起動が拒否されたら、エージェントの名前を変えて呼び直す、Skill や別の経路で同じ点検をするなどで回避しない。`AskUserQuestion` でユーザーに延長を聞き、承認されたら `node .claude/hooks/review-budget.mjs extend <巡数> --reason <理由>` を実行してから呼び直す。承認されなければ、レビューを省いた旨を出力に書いて続ける。
-
-差分が依存のバージョン指定とロックファイル（`package.json` と `package-lock.json` など）だけなら、エージェントを省いてよい。
-省いたときは、出力に「依存ファイルだけの差分のためレビューを省略」と書く。
-それ以外の差分では、`code-reviewer` を必ず呼ぶ。
 
 ### 7. 直す
 
