@@ -23,10 +23,11 @@ const FAILURE_CAUSES: readonly (readonly [string, RegExp])[] = [
   ['constraint', /constraint failed/i],
   ['syntax', /syntax error|no such (?:table|column)/i],
   ['network', /network connection lost|connection (?:reset|closed)|disconnected/i],
+  // 「timeout が原因で reset された」message は、結果の reset を取る
+  ['reset', /caused object to be reset|reset because|code was updated/i],
   ['timeout', /timed? ?out|exceeded (?:its )?(?:cpu|time)/i],
   ['overloaded', /overloaded|too many requests/i],
   ['busy', /SQLITE_BUSY|database is locked/i],
-  ['reset', /caused object to be reset|reset because|code was updated/i],
   ['storage', /exceeded maximum db size|SQLITE_FULL/i],
 ];
 

@@ -326,6 +326,7 @@ describe('失敗の切り分け', () => {
     [new Error('no such table: sessions'), 'syntax'],
     [new Error('D1 DB storage operation exceeded CPU time limit'), 'timeout'],
     [new Error('Internal error while starting up D1 DB storage caused object to be reset.'), 'reset'],
+    [new Error('D1 exceeded timeout which caused object to be reset'), 'reset'],
     [new Error('database is locked: SQLITE_BUSY'), 'busy'],
     [new Error('Exceeded maximum DB size'), 'storage'],
     // 表名の rate_limits が overloaded の「rate limit」に当たらない
