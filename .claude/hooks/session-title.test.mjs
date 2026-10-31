@@ -70,6 +70,12 @@ describe('titleFor', () => {
     assert.ok(title.endsWith('😀…'));
     assert.equal([...titleFor({ issueNumber: 1, issueTitle: '😀'.repeat(60) })].length, 60 + 3);
   });
+  test('切り口が空白に当たっても、`…` の前に空白を残さない', () => {
+    // `#1 ` の3文字を足して、79 文字目が空白になる
+    const title = titleFor({ issueNumber: 1, issueTitle: `${'a'.repeat(75)} ${'b'.repeat(10)}` });
+    assert.ok(title.endsWith('a…'), title);
+    assert.ok(!title.includes(' …'));
+  });
   test('ちょうど 80 文字までは切らず、81 文字からは切る', () => {
     assert.equal([...titleFor({ issueNumber: 1, issueTitle: 'a'.repeat(77) })].join(''), `#1 ${'a'.repeat(77)}`);
     assert.ok(titleFor({ issueNumber: 1, issueTitle: 'a'.repeat(78) }).endsWith('…'));

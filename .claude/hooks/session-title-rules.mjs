@@ -19,7 +19,8 @@ function tidy(text) {
     .replace(/\s+/g, ' ')
     .trim();
   const chars = [...oneLine];
-  return chars.length > MAX_LENGTH ? `${chars.slice(0, MAX_LENGTH - 1).join('')}…` : oneLine;
+  // 切り口が空白に当たっても、`…` の前に空白を残さない
+  return chars.length > MAX_LENGTH ? `${chars.slice(0, MAX_LENGTH - 1).join('').trimEnd()}…` : oneLine;
 }
 
 // docs/development.md の「並行して作業するときの決まり」のセッション名。
