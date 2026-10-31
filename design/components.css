@@ -1228,6 +1228,8 @@ dialog.dialog::backdrop { background: none; }
 .choice input:disabled { cursor: not-allowed; }
 .choice b { display: block; font-size: var(--text-sm); overflow-wrap: anywhere; }
 .choice span { font-size: var(--text-xs); color: var(--color-muted); overflow-wrap: anywhere; }
+/* 同意の主文は補足ではなく、確認して行う操作そのものなので本文と同じ強さで出す */
+.choice.is-consent > span { font-size: var(--text-md); color: var(--color-fg); }
 /* 選択肢にクリア報酬の印（.tier）を載せるとき、額の数字は印の中で続けて読ませる（.choice b の見出しの指定を戻す） */
 .choice .tier b { display: inline; font-size: inherit; }
 /* 押すと移る選択肢（組織の選択など）。choice と同じ見た目のリンク */

@@ -29,14 +29,40 @@ test.describe('本物の API', () => {
     const submit = page.getByRole('button', { name: '同意して進む' });
     await expect(checkbox).toBeVisible();
     await expect(submit).toHaveAttribute('aria-disabled', 'true');
+    await expect(submit).toHaveAttribute('aria-describedby', 'consent-submit-hint');
+    await expect(page.locator('#consent-submit-hint')).toHaveText(
+      '利用規約とプライバシーポリシーを確認し、印を付けてください。',
+    );
     await checkbox.check();
     await expect(submit).toHaveAttribute('aria-disabled', 'false');
+    await expect(submit).not.toHaveAttribute('aria-describedby');
+    await expect(page.locator('#consent-submit-hint')).toHaveCount(0);
     await submit.click();
     await expect(page).toHaveURL(/\/aoba$/);
 
     await page.goto('/consent');
     await expect(page.getByText('現在の版に同意しています。')).toBeVisible();
     await expect(page.getByText(/^同意した日時: /)).toBeVisible();
+    // 日時の値だけが等幅で、ラベルは通常の字
+    await expect(page.locator('.panel-note .mono')).toHaveText(/^\d{4}\/\d{2}\/\d{2}/);
+    await expect(page.locator('.panel-note .mono')).not.toContainText('同意した日時');
+  });
+
+  test('新しいタブで開く2つのリンクは、読み上げに「新しいタブで開きます」を補う', async ({
+    page,
+    context,
+    baseURL,
+  }) => {
+    await signIn(context, baseURL, 'admin');
+    await page.goto('/consent');
+    await expect(page.getByRole('link', { name: /^利用規約.*新しいタブで開きます$/ })).toHaveAttribute(
+      'target',
+      '_blank',
+    );
+    await expect(page.getByRole('link', { name: /^プライバシーポリシー.*新しいタブで開きます$/ })).toHaveAttribute(
+      'target',
+      '_blank',
+    );
   });
 });
 

@@ -105,7 +105,7 @@
     {:else if status.current}
       <p>{t('consentCurrent')}</p>
       {#if status.latest}<p class="panel-note">
-          {t('consentRecordedAt', { date: formatDateTime(status.latest.consented_at) })}
+          {t('consentRecordedAt')} <span class="mono">{formatDateTime(status.latest.consented_at)}</span>
         </p>{/if}
       <div class="form-actions">
         <button class="btn is-primary" type="button" onclick={() => location.replace(returnTo)}
@@ -120,6 +120,7 @@
           <div>
             <b>{t('termsTitle')}</b><span class="mono">{t('consentVersion', { version: status.terms_version })}</span>
           </div>
+          <span class="visually-hidden"> {t('markdownNewTab')}</span>
         </a>
         <a class="choice" href={resolve('/privacy')} target="_blank" rel="noopener noreferrer">
           <div>
@@ -127,18 +128,26 @@
               >{t('consentVersion', { version: status.privacy_version })}</span
             >
           </div>
+          <span class="visually-hidden"> {t('markdownNewTab')}</span>
         </a>
       </div>
-      <label class="choice is-static">
+      <label class="choice is-static is-consent">
         <input type="checkbox" bind:checked />
         <span>{t('consentCheckLabel')}</span>
       </label>
       <div class="form-actions">
-        <button class="btn is-primary" type="button" aria-disabled={!checked || busy} onclick={submit}>
+        <button
+          class="btn is-primary"
+          type="button"
+          aria-disabled={!checked || busy}
+          aria-describedby={checked ? undefined : 'consent-submit-hint'}
+          onclick={submit}
+        >
           {busy ? t('consentSubmitting') : t('consentSubmit')}
         </button>
         <LogoutButton />
       </div>
+      {#if !checked}<span class="field-hint" id="consent-submit-hint">{t('consentSubmitHint')}</span>{/if}
     {/if}
   </GateSheet>
 </Gate>
