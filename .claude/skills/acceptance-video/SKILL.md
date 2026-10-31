@@ -150,7 +150,7 @@ node .claude/skills/acceptance-video/gallery.mjs <置き場所>
 
 `index.html` を書き、開く `file://` の URL を出す（置き場所が同じなら URL も同じ）。`gallery.mjs` が成功したら、人に「開いて」と頼まれるのを待たず、続けて開く。人は開く操作をせずに、状況タブと全 Issue のタブから確認を始められる。
 
-開く前に、書き出した `index.html` が呼び元の用途と合っていることを確かめる（`grep -c 'data-judge' <置き場所>/index.html`）。`sprint-review` の手順 2 の「先に動画で判定する」（受け入れ待ち）なら 1、手順 8 のデモ（Done）なら 0 であること。合っていなければ、`manifest.json` の `judge` を直して `gallery.mjs` を走らせ直し、もう一度確かめる（理由: `judge` なしの版を判定で開くと ok / ng の欄が無く、確認を始められない。見るのは `manifest.json` でなく `index.html`。直した `manifest.json` から作り直し忘れた古い HTML を開かないため）。動画が 1 本も無い（全部が `skipped` か `failed`）ときは、判定する物が無いので開かず、その旨を伝える。
+開く前に、書き出した `index.html` が呼び元の用途と合っていることを確かめる（`grep -c '<body[^>]* data-judge' <置き場所>/index.html`）。`sprint-review` の手順 2 の「先に動画で判定する」（受け入れ待ち）なら 1、手順 8 のデモ（Done）なら 0 であること。数えるのは `<body` の開きタグの属性だけにする（理由: 埋め込みのスクリプトも `data-judge` の文字列を持ち、`data-judge` だけで数えると、判定の版で 2、デモの版で 1 になる）。合っていなければ、`manifest.json` の `judge` を直して `gallery.mjs` を走らせ直し、もう一度確かめる（理由: `judge` なしの版を判定で開くと ok / ng の欄が無く、確認を始められない。見るのは `manifest.json` でなく `index.html`。直した `manifest.json` から作り直し忘れた古い HTML を開かないため）。動画が 1 本も無い（全部が `skipped` か `failed`）ときは、判定する物が無いので開かず、その旨を伝える。
 
 ```bash
 terminal-browser open <出た URL> --split right
