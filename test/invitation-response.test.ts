@@ -167,8 +167,10 @@ describe('invitation-list', () => {
 
     const res = await list(organization, invitee);
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({
-      organization: { name: 'ひばり工房', vocabulary: 'scrum', theme: 'medieval' },
+    const listed = (await res.json()) as { organization: object };
+    expect(listed.organization).not.toHaveProperty('vocabulary');
+    expect(listed).toEqual({
+      organization: { name: 'ひばり工房', theme: 'medieval' },
       invitations: [
         {
           invitation_id: first.id,

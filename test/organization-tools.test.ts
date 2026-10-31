@@ -55,7 +55,6 @@ const writeSettings = defineOperation({
   mode: 'write',
   permission: 'admin',
   input: z.object({
-    vocabulary: z.object({ from: z.enum(['game', 'scrum']), to: z.enum(['game', 'scrum']) }).optional(),
     theme: z.object({ from: z.enum(themes), to: z.enum(themes) }).optional(),
   }),
   output: z.object({ result: z.enum(['written', 'conflict', 'suspended']) }),
@@ -143,7 +142,7 @@ const app = createApp(
     }),
     implement(memberWritesSettings, async ({ tools }) => ({
       result: await tools.writeOrganizationSettings(
-        { vocabulary: { from: 'game', to: 'scrum' } },
+        { theme: { from: 'simple', to: 'medieval' } },
         new Date('2026-10-25T00:00:00.000Z'),
       ),
     })),
@@ -211,18 +210,16 @@ describe('組織の行', () => {
         await post(app, writeSettings, {
           slug: own.slug,
           token: admin.token,
-          body: { vocabulary: { from: 'game', to: 'scrum' }, theme: { from: 'simple', to: 'medieval' } },
+          body: { theme: { from: 'simple', to: 'medieval' } },
         }),
       ),
     ).toEqual({ result: 'written' });
     expect(await organizationRowOf(own.id)).toMatchObject({
-      vocabulary: 'scrum',
       theme: 'medieval',
       updated_at: '2026-10-25T00:00:00.000Z',
     });
     expect(await organizationRowOf(other.id)).toEqual(otherBefore);
 
-    // 渡した項目だけを書く
     await ok(
       await post(app, writeSettings, {
         slug: own.slug,
@@ -230,7 +227,7 @@ describe('組織の行', () => {
         body: { theme: { from: 'medieval', to: 'modern' } },
       }),
     );
-    expect(await organizationRowOf(own.id)).toMatchObject({ vocabulary: 'scrum', theme: 'modern' });
+    expect(await organizationRowOf(own.id)).toMatchObject({ theme: 'modern' });
   });
 
   test('書く項目が無ければ何も書かず、updated_at も変えない', async () => {
@@ -244,15 +241,10 @@ describe('組織の行', () => {
   });
 
   test('読んだ値が今の値と違えば conflict で、行は変わらない', async () => {
-    const own = await createOrganization({ vocabulary: 'scrum', theme: 'modern' });
+    const own = await createOrganization({ theme: 'modern' });
     const admin = await createPerson({ organization: own, admin: true });
     const before = await organizationRowOf(own.id);
-    for (const body of [
-      { vocabulary: { from: 'game', to: 'scrum' } },
-      { theme: { from: 'simple', to: 'medieval' } },
-      // 片方の欄だけが古くても、もう片方も書かない
-      { vocabulary: { from: 'scrum', to: 'game' }, theme: { from: 'simple', to: 'medieval' } },
-    ]) {
+    for (const body of [{ theme: { from: 'simple', to: 'medieval' } }]) {
       expect(await ok(await post(app, writeSettings, { slug: own.slug, token: admin.token, body }))).toEqual({
         result: 'conflict',
       });
@@ -262,7 +254,7 @@ describe('組織の行', () => {
 
   test('入ってから書くまでに組織が停止されたら suspended で、読んだ値が古くても conflict より先に返し、行は変わらない', async () => {
     for (const body of [
-      { vocabulary: { from: 'game', to: 'scrum' } },
+      { theme: { from: 'modern', to: 'simple' } },
       // 読んだ値が古い（今は modern）。停止を先に伝える
       { theme: { from: 'medieval', to: 'simple' } },
     ]) {
