@@ -4,6 +4,7 @@
 // manifest.json: { "title"?: string, "judge"?: boolean, "items": [{ "issue": 番号, "title": Issue の題, "video"?: "issue-番号.mp4", "skipped"?: 理由, "failed"?: 理由, "captions"?: [字幕] }] }
 //   video、skipped、failed のどれか 1 つだけを持つ。judge が true なら、動画の Issue ごとに ok / ng と理由とコメントを付けられ、結果をプロンプト用の文にしてコピーできる
 //   HTML は Issue ごとのタブと、先頭の「状況」タブ（一覧と判定の進み具合）に分かれる
+import { createHash, randomUUID } from 'node:crypto';
 import { existsSync, lstatSync, readFileSync, realpathSync, statSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -68,6 +69,8 @@ export function validateManifest(manifest) {
  * HTML にそのまま埋め込んで動かすので、外の値を参照しない（toString で写す）。ng でない Issue の理由は出さない
  */
 export function buildResult(entries) {
+  // 題とメモは外の人も書ける。改行を残すと、別の Issue の行を偽れるので、1 行に潰す
+  const flat = (text) => String(text).replace(/\s+/g, ' ').trim();
   const count = (status) => entries.filter((entry) => (entry.status || '') === status).length;
   const lines = [
     'sprint-review の受け入れの結果です（動画の HTML で判定）。',
@@ -76,12 +79,12 @@ export function buildResult(entries) {
   ];
   for (const entry of entries) {
     const label = entry.status === 'ok' ? 'ok' : entry.status === 'ng' ? 'ng' : '未判定';
-    lines.push('- #' + entry.issue + ' ' + entry.title + ': ' + label);
+    lines.push('- #' + entry.issue + ' ' + flat(entry.title) + ': ' + label);
     const reasons = entry.status === 'ng' ? entry.reasons || [] : [];
     if (reasons.length > 0) lines.push('  - 理由: ' + reasons.join('、'));
     const comment = (entry.comment || '').trim();
     if (comment) lines.push('  - コメント: ' + comment.split('\n').join('\n      '));
-    if (entry.note) lines.push('  - メモ: ' + entry.note);
+    if (entry.note) lines.push('  - メモ: ' + flat(entry.note));
   }
   return lines.join('\n');
 }
@@ -138,7 +141,8 @@ const CLIENT_SCRIPT = String.raw`(function () {
   var tabs = [].slice.call(document.querySelectorAll('[role=tab]'));
   var panels = [].slice.call(document.querySelectorAll('[role=tabpanel]'));
   var issuePanels = panels.filter(function (p) { return p.hasAttribute('data-issue'); });
-  var storeKey = 'scrum-guild-review:' + location.pathname;
+  // 作り直した HTML に、前の判定を引き継がないよう、生成ごとの値をキーに入れる。file:// は同じ origin で共有される
+  var storeKey = 'scrum-guild-review:' + location.pathname + ':' + document.body.getAttribute('data-run');
 
   function select(id, focus) {
     tabs.forEach(function (tab) {
@@ -189,7 +193,8 @@ const CLIENT_SCRIPT = String.raw`(function () {
     document.getElementById('counts').textContent = 'ok ' + n('ok') + ' 件、ng ' + n('ng') + ' 件、未判定 ' + n('') + ' 件';
     document.getElementById('result').value = buildResult(entries);
     if (save) {
-      try { localStorage.setItem(storeKey, JSON.stringify(entries)); } catch (e) {}
+      var kept = entries.map(function (e) { return { issue: e.issue, status: e.status, reasons: e.reasons, comment: e.comment }; });
+      try { localStorage.setItem(storeKey, JSON.stringify(kept)); } catch (e) {}
     }
   }
 
@@ -264,6 +269,9 @@ export function renderGallery(manifest) {
   const count = (key) => manifest.items.filter((item) => item[key] !== undefined).length;
   const summary = `動画 ${count('video')} 本、飛ばした ${count('skipped')} 件、撮れなかった ${count('failed')} 件`;
   const judge = manifest.judge === true;
+  // スクリプトは固定で、manifest の値を含まない。本文のハッシュだけを CSP で許し、エスケープの漏れが実行にならないようにする
+  const script = `${buildResult.toString()}\n${CLIENT_SCRIPT}`;
+  const scriptHash = createHash('sha256').update(script).digest('base64');
   const statusPanel = `<section class="card" role="tabpanel" id="panel-status" aria-labelledby="tab-status" hidden>
 <h2>状況</h2>
 <p class="summary">${summary}</p>${judge ? '\n<p class="progress" id="counts"></p>' : ''}
@@ -273,7 +281,7 @@ ${manifest.items.map((item) => renderRow(item, judge)).join('\n')}
     judge
       ? `
 <h3>結果（プロンプトに貼る）</h3>
-<p class="hint">ok / ng を付けた分だけが入る。未判定は、セッションが画面で 1 条件ずつ確かめる。</p>
+<p class="hint">未判定も含めて、全部の Issue が入る。未判定は、セッションが画面で 1 条件ずつ確かめる。</p>
 <div class="actions"><button type="button" class="copy" id="copy">結果をコピー</button><span id="copied" role="status"></span></div>
 <textarea id="result" class="result" rows="12" readonly></textarea>`
       : ''
@@ -287,7 +295,7 @@ ${manifest.items.map(renderTab).join('\n')}
 <html lang="ja">
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; media-src file: 'self'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'sha256-${scriptHash}'; base-uri 'none'; form-action 'none'; media-src file: 'self'">
 <title>${escapeHtml(title)}</title>
 <style>
   :root { --bg: #f6f7f8; --surface: #fff; --fg: #1d2630; --muted: #5d6a78; --line: #dde2e7; --warn: #9a5b00; --bad: #b3261e; --ok: #1b7f3b; --accent: #1f5fbf; --on: #fff; color-scheme: light; }
@@ -337,15 +345,14 @@ ${manifest.items.map(renderTab).join('\n')}
   .copy { font: inherit; padding: 6px 16px; border-radius: 6px; border: 1px solid var(--accent); background: var(--accent); color: var(--on); cursor: pointer; }
   button:focus-visible, textarea:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 </style>
-<body${judge ? ' data-judge' : ''}>
+<body data-run="${randomUUID()}"${judge ? ' data-judge' : ''}>
 <main>
   <h1>${escapeHtml(title)}</h1>
 ${tabBar}
 ${statusPanel}
 ${manifest.items.map((item) => renderPanel(item, judge)).join('\n')}
 </main>
-<script>${buildResult.toString()}
-${CLIENT_SCRIPT}</script>
+<script>${script}</script>
 `;
 }
 

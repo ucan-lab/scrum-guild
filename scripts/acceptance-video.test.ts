@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { chromium } from '@playwright/test';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, test } from 'node:test';
@@ -18,6 +20,19 @@ function inTempDir<T>(files: Record<string, string>, run: (path: (name: string) 
   try {
     for (const [name, content] of Object.entries(files)) writeFileSync(join(dir, name), content);
     return run((name) => join(dir, name));
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+async function inTempDirAsync(
+  files: Record<string, string>,
+  run: (path: (name: string) => string) => Promise<void>,
+): Promise<void> {
+  const dir = mkdtempSync(join(tmpdir(), 'acceptance-video-'));
+  try {
+    for (const [name, content] of Object.entries(files)) writeFileSync(join(dir, name), content);
+    await run((name) => join(dir, name));
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -276,8 +291,22 @@ describe('gallery.mjs', () => {
     assert.match(html, /it&#39;s/);
     assert.match(
       html,
-      /<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; media-src file: 'self'">/,
+      /<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'sha256-[A-Za-z0-9+/]+=*'; base-uri 'none'; form-action 'none'; media-src file: 'self'">/,
     );
+  });
+
+  test('CSP が許すスクリプトは、埋め込んだスクリプトの本文のハッシュだけ', () => {
+    const html: string = call('renderGallery', { judge: true, items: [video] });
+    const script = /<script>([\s\S]*?)<\/script>/.exec(html)?.[1] ?? '';
+    const hash = createHash('sha256').update(script).digest('base64');
+    assert.ok(html.includes(`script-src 'sha256-${hash}'`));
+  });
+
+  test('作り直すたびに、判定の保存先の値が変わる', () => {
+    const run = () =>
+      (call('renderGallery', { judge: true, items: [video] }) as string).match(/data-run="([^"]+)"/)?.[1];
+    assert.ok(run());
+    assert.notEqual(run(), run());
   });
 
   test('Issue ごとのタブと、先頭の状況タブ（一覧の項目で移る）に分かれる', () => {
@@ -290,7 +319,7 @@ describe('gallery.mjs', () => {
     assert.match(html, /<button type="button" class="row" data-goto="574">/);
     assert.match(html, /<section[^>]*id="panel-574"[^>]*hidden>/);
     // judge でなければ、判定の部品は出さない
-    assert.doesNotMatch(html, /data-set=|id="copy"|<body data-judge>/);
+    assert.doesNotMatch(html, /data-set=|id="copy"| data-judge>/);
   });
 
   test('judge なら、動画の Issue にだけ ok / ng と理由とコメントを付け、結果をコピーする部品が出る', () => {
@@ -298,7 +327,7 @@ describe('gallery.mjs', () => {
       judge: true,
       items: [video, { issue: 575, title: 'API だけ', skipped: '画面が変わらない' }],
     });
-    assert.match(html, /<body data-judge>/);
+    assert.match(html, /<body data-run="[^"]+" data-judge>/);
     assert.equal(html.match(/data-set="ok"/g)?.length, 1);
     assert.equal(html.match(/data-set="ng"/g)?.length, 1);
     assert.match(html, /<input type="checkbox" value="条件を満たさない">/);
@@ -314,6 +343,74 @@ describe('gallery.mjs', () => {
     assert.doesNotThrow(() => new vm.Script(scripts[0]));
     assert.doesNotMatch(scripts[0], /alert\(1\)/);
   });
+
+  test('埋め込んだ buildResult は、外の変数を参照せずに、空の環境で動く', () => {
+    const html: string = call('renderGallery', { judge: true, items: [video] });
+    const source = /<script>(function buildResult[\s\S]*?\n})\n\(function/.exec(html)?.[1];
+    assert.ok(source, '埋め込んだ buildResult が見つからない');
+    const embedded = vm.runInNewContext(`(${source})`, {}) as (entries: unknown[]) => string;
+    const text = embedded([{ issue: 1, title: 't', status: 'ng', reasons: ['想定と違う'], comment: 'c' }]);
+    assert.match(text, /- #1 t: ng\n {2}- 理由: 想定と違う\n {2}- コメント: c/);
+  });
+
+  test('題とメモの改行は 1 行に潰し、別の Issue の行を偽れない', () => {
+    const text: string = call('buildResult', [
+      { issue: 1, title: 'A: ng\n- #580 B: ok', status: '', reasons: [], comment: '', note: '飛ばした\n- #581 C: ok' },
+    ]);
+    assert.deepEqual(
+      text.split('\n').filter((line) => line.startsWith('- #')),
+      ['- #1 A: ng - #580 B: ok: 未判定'],
+    );
+    assert.match(text, / {2}- メモ: 飛ばした - #581 C: ok$/);
+  });
+
+  // 画面側のスクリプトは、実際のブラウザで動かして確かめる。ブラウザの無い環境ではスキップする
+  test(
+    '判定の画面: ok / ng の切り替えと取り消し、理由の表示、保存と復元、作り直したときは復元しない',
+    { skip: !existsSync(chromium.executablePath()) && 'Playwright の chromium が無い' },
+    async () => {
+      const files = {
+        'manifest.json': JSON.stringify({ judge: true, items: [video] }),
+        'issue-574.mp4': 'dummy',
+      };
+      const browser = await chromium.launch();
+      try {
+        await inTempDirAsync(files, async (path) => {
+          const dir = join(path('manifest.json'), '..');
+          assert.equal(run(dir).status, 0);
+          const page = await browser.newPage();
+          const result = () => page.locator('#result').inputValue();
+          const open = () => page.goto(pathToFileURL(path('index.html')).href);
+          await open();
+          await page.click('#tab-574');
+          await page.click('#panel-574 [data-set=ng]');
+          assert.equal(await page.locator('#panel-574 .reasons').isVisible(), true);
+          await page.check('#panel-574 .reasons input[value="想定と違う"]');
+          assert.match(await result(), /ng 1 件/);
+          assert.match(await result(), /理由: 想定と違う/);
+          // ok に替えると、ng の理由は結果から消え、欄も隠れる
+          await page.click('#panel-574 [data-set=ok]');
+          assert.equal(await page.locator('#panel-574 .reasons').isVisible(), false);
+          assert.doesNotMatch(await result(), /想定と違う/);
+          // 押し直すと未判定に戻る
+          await page.click('#panel-574 [data-set=ok]');
+          assert.match(await result(), /#574 .*: 未判定/);
+          // ng とコメントは、開き直しても残る
+          await page.click('#panel-574 [data-set=ng]');
+          await page.fill('#panel-574 textarea', '報酬が反映されない');
+          await open();
+          assert.match(await result(), /#574 .*: ng/);
+          assert.match(await result(), /コメント: 報酬が反映されない/);
+          // 作り直した HTML には、前の判定を引き継がない
+          assert.equal(run(dir).status, 0);
+          await open();
+          assert.match(await result(), /未判定 1 件/);
+        });
+      } finally {
+        await browser.close();
+      }
+    },
+  );
 
   test('judge は真偽値だけを通す', () => {
     const problems = (judge: unknown): string =>
