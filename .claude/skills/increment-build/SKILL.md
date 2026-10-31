@@ -146,7 +146,7 @@ Issue に、ブランチ名とセッションの識別をコメントで残す�
 
 ### 7. 渡した後
 
-`done-check` から `pr-create`、`pr-feedback` へ続ける。ストーリーの最後のタスクなら、`pr-feedback` の説明資料で親のストーリーの受け入れ条件を示す。
+`done-check` から `pr-create`、`pr-feedback` へ続ける。ストーリーの最後のタスクなら、`pr-feedback` の手順 6 の報告で親のストーリーの受け入れ条件を示す。
 マージの後は `pr-feedback` の後片付けまで続ける。
 
 ## 止まる条件
