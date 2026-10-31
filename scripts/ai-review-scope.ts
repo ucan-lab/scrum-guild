@@ -63,8 +63,28 @@ function sourceRank(source: MarkerSource): number {
   return source === 'ai-review' ? 0 : 1;
 }
 
+// 印は本文、コメントの古い順に並ぶ。同じ印は後ろの位置に寄せ、出どころごとに新しい側の MAX_MARKERS 件を残す
+// （コメントの印が多くても本文の done-check の印を落とさず、本文に印を並べても最新の ai-review の印を押し出させない）
+function limitMarkers(markers: readonly Marker[]): { kept: Marker[]; skipped: [MarkerSource, number][] } {
+  const byKey = new Map<string, Marker>();
+  for (const m of markers) {
+    const key = `${m.source} ${m.sha}`;
+    byKey.delete(key);
+    byKey.set(key, m);
+  }
+  const unique = [...byKey.values()];
+  const kept: Marker[] = [];
+  const skipped: [MarkerSource, number][] = [];
+  for (const source of ['done-check', 'ai-review'] as const) {
+    const ofSource = unique.filter((m) => m.source === source);
+    kept.push(...ofSource.slice(-MAX_MARKERS));
+    if (ofSource.length > MAX_MARKERS) skipped.push([source, ofSource.length - MAX_MARKERS]);
+  }
+  return { kept, skipped };
+}
+
 export function chooseScope(markers: readonly Marker[], baseSha: string, headSha: string, cwd = process.cwd()): Scope {
-  const unique = [...new Map(markers.map((m) => [`${m.source} ${m.sha}`, m])).values()].slice(0, MAX_MARKERS);
+  const { kept: unique, skipped } = limitMarkers(markers);
   const mb = git(['merge-base', baseSha, headSha], cwd).trim();
   const rejected: RejectedMarker[] = [];
   const candidates: (Marker & { distance: number })[] = [];
@@ -86,6 +106,9 @@ export function chooseScope(markers: readonly Marker[], baseSha: string, headSha
       const distance = Number(git(['rev-list', '--count', `${marker.sha}..${headSha}`], cwd).trim());
       candidates.push({ ...marker, distance });
     }
+  }
+  for (const [source, count] of skipped) {
+    rejected.push({ marker: source, reason: `上限を超えて調べなかった ${count} 件` });
   }
   if (candidates.length === 0) {
     return { mode: 'full', reason: markers.length === 0 ? '印が無い' : 'すべての印が退けられた', rejected };
@@ -154,6 +177,21 @@ const SOURCE_LABEL: Record<MarkerSource, string> = {
   'ai-review': '前の AI レビューの印',
 };
 
+// 衝突したパスは PR の作成者が決める文字列で、-z で読むので改行も残る。scope.md は Claude が読み、まとめのコメントに写るので、
+// 制御文字、書式の文字（双方向制御、ゼロ幅）、行区切りとバッククォートを除いてコードスパンで囲み、件数と1件の長さも抑える
+export const MAX_PATHS = 20;
+export const MAX_PATH_LENGTH = 200;
+
+export function formatPaths(paths: readonly string[]): string {
+  const clean = (p: string) => {
+    const chars = [...p.replace(/[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/gu, ' ').replaceAll('`', "'")];
+    return chars.length > MAX_PATH_LENGTH ? chars.slice(0, MAX_PATH_LENGTH).join('') + '…' : chars.join('');
+  };
+  const shown = paths.slice(0, MAX_PATHS).map((p) => '`' + clean(p) + '`');
+  const rest = paths.length - shown.length;
+  return [...shown, ...(rest > 0 ? [`ほか ${rest} 件`] : [])].join('、');
+}
+
 function scopeMarkdown(scope: Scope, conflicts: readonly string[]): string {
   const mode = scope.mode === 'since' ? '起点から' : scope.mode === 'none' ? '差分なし' : '全体';
   const start = scope.start ? `${scope.start}（${SOURCE_LABEL[scope.startSource!]}）` : 'なし';
@@ -161,7 +199,7 @@ function scopeMarkdown(scope: Scope, conflicts: readonly string[]): string {
   if (scope.rejected.length) {
     lines.push(`- 退けた印: ${scope.rejected.map((x) => `${x.marker}（${x.reason}）`).join('、')}`);
   }
-  if (conflicts.length) lines.push(`- 衝突で全体に広げたパス: ${conflicts.join('、')}`);
+  if (conflicts.length) lines.push(`- 衝突で全体に広げたパス: ${formatPaths(conflicts)}`);
   return lines.join('\n') + '\n';
 }
 
