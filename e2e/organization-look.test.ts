@@ -19,7 +19,7 @@ async function themeOf(browser: Browser, baseURL: string | undefined, who: keyof
     await signIn(context, baseURL, who);
     const page = await context.newPage();
     await page.goto('/kumo');
-    await expect(page.getByRole('heading', { level: 1, name: '自分の今日' })).toBeVisible();
+    await expect(page.getByRole('heading', { level: 1, name: '今日やること' })).toBeVisible();
     return await page.locator('html').getAttribute('data-theme');
   } finally {
     await context.close();

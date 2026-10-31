@@ -18,7 +18,7 @@
   import Dialog from './Dialog.svelte';
   import Icon from './Icon.svelte';
 
-  // admin.html / kit.js の createWorkspace。管理の画面と自分の今日の2か所が、同じ部品を使う。
+  // admin.html / kit.js の createWorkspace。管理の画面と今日やることの2か所が、同じ部品を使う。
   // 開いたときに最初のリーダーの候補を取る（既定は自分）。説明文には、列と決まった欄の名前、換算比率、
   // 週の始まり、このブラウザのタイムゾーンを出す。
   // 送っている間は、「作る」を押しても無視し（aria-disabled）、ダイアログも閉じられない。二重送信はそれだけで防ぐ。

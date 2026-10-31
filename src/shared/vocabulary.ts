@@ -70,7 +70,7 @@ export const dictionary = defineDictionary({
   loadingText: 'しばらくお待ちください。',
 
   // メニューの項目と見出し。ワークスペースの外の画面は organization
-  pageToday: '自分の今日',
+  pageToday: '今日やること',
   pageNotifications: '通知',
   pageMe: '自分の設定',
   pageOrgAdmin: '組織の管理',
@@ -81,13 +81,13 @@ export const dictionary = defineDictionary({
   groupRecords: '記録',
   groupManage: '管理',
 
-  // 自分の今日（仮の画面）
-  sectionToday: '今日やる',
-  sectionTodayHint: '日付が変わると印は外れます',
+  // 今日やること（仮の画面）
+  sectionToday: '今日やると決めたもの',
+  sectionTodayHint: '印を付けた日が過ぎても、完了にするか印を外すまで残ります',
   todayEmptyTitle: '今日やるタスクは、この画面ができたらここに並びます',
   todayEmptyText: 'いまは API の疎通だけを確かめる仮の画面です。',
 
-  // 自分の今日の空の状態（管理者）。{workspace} と {member} は、辞書の言葉を画面が渡す。
+  // 今日やることの空の状態（管理者）。{workspace} と {member} は、辞書の言葉を画面が渡す。
   // 組織にワークスペースが1つも無いときは、最初のワークスペースを作る案内。作る画面の行き先は、その画面を作る Issue で決める
   firstWorkspaceTitle: 'まだ{workspace}がありません',
   firstWorkspaceText: '最初の{workspace}を作ります。最初の{leader}を1人決めて作ります。',
@@ -135,7 +135,7 @@ export const dictionary = defineDictionary({
   workspaceNotFoundText: 'URL が違うか、入れない{workspace}です。',
   pageNotFoundTitle: '画面が見つかりません',
   pageNotFoundText: 'URL が違うか、開けない画面です。',
-  backToToday: '自分の今日へ',
+  backToToday: '今日やることへ',
 
   // バックログ（ワークスペースの画面）。{backlog} {task} {create} {done} {points} は、辞書の言葉を画面が渡す
   backlogTasksLabel: '{backlog}の{task}',

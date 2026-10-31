@@ -33,7 +33,7 @@ test.describe('組織が1つの人（あおば開発のハルカ）', () => {
     const collect = await watchViolations(page);
     await page.goto('/');
     await expect(page).toHaveURL(/\/aoba$/);
-    await expect(page.getByRole('heading', { level: 1, name: '自分の今日' })).toBeVisible();
+    await expect(page.getByRole('heading', { level: 1, name: '今日やること' })).toBeVisible();
     await expect(page.locator('.me')).toContainText('ハルカ');
     await expect(page.locator('.me .chip')).toHaveCount(0);
     await expect(menuButton(page)).toHaveCount(0);
@@ -97,7 +97,7 @@ test.describe('組織が1つの人（あおば開発のハルカ）', () => {
 
   test('所属のある人には、ワークスペースの案内を出さない', async ({ page }) => {
     await page.goto('/aoba');
-    await expect(page.getByRole('heading', { level: 1, name: '自分の今日' })).toBeVisible();
+    await expect(page.getByRole('heading', { level: 1, name: '今日やること' })).toBeVisible();
     await expect(page.getByText('まだワークスペースがありません')).toHaveCount(0);
     await expect(page.getByText('どのワークスペースにも所属していません')).toHaveCount(0);
   });
@@ -228,7 +228,7 @@ test.describe('組織が1つの人（あおば開発のハルカ）', () => {
     expect(calls).toBe(2);
 
     await retry.click();
-    await expect(page.getByRole('heading', { level: 1, name: '自分の今日' })).toBeVisible();
+    await expect(page.getByRole('heading', { level: 1, name: '今日やること' })).toBeVisible();
   });
 
   test('組織の外の画面は、テーマを既定に戻し、覚えたテーマも消す', async ({ page }) => {
@@ -291,7 +291,7 @@ test.describe('組織が1つの人（あおば開発のハルカ）', () => {
     await expect(page.getByRole('heading', { level: 1, name: '読み込んでいます' })).toBeVisible();
     await expect(page).toHaveTitle('読み込んでいます - Scrum Guild');
     await expect(page.locator('[role="status"].visually-hidden').first()).toHaveText('読み込んでいます');
-    await expect(page.getByRole('heading', { level: 1, name: '自分の今日' })).toBeVisible();
+    await expect(page.getByRole('heading', { level: 1, name: '今日やること' })).toBeVisible();
   });
 
   test('読み込み中の表示は、移り始めてから 300ms たつまで出さない', async ({ page }) => {
@@ -317,7 +317,7 @@ test.describe('組織が1つの人（あおば開発のハルカ）', () => {
       }).observe(document.body, { childList: true, subtree: true, characterData: true });
     });
     await page.getByRole('link', { name: /あおば開発/ }).click();
-    await expect(page.getByRole('heading', { level: 1, name: '自分の今日' })).toBeVisible();
+    await expect(page.getByRole('heading', { level: 1, name: '今日やること' })).toBeVisible();
     const seen = await page.evaluate(
       () => (window as unknown as { __seen: { clickedAt: number | null; shownAt: number | null } }).__seen,
     );
@@ -341,7 +341,7 @@ test.describe('組織が2つの人（あおば開発の管理者でひばり工�
 
     await page.getByRole('link', { name: /あおば開発/ }).click();
     await expect(page).toHaveURL(/\/aoba$/);
-    await expect(page.getByRole('heading', { level: 1, name: '自分の今日' })).toBeVisible();
+    await expect(page.getByRole('heading', { level: 1, name: '今日やること' })).toBeVisible();
     expect(await collect()).toEqual([]);
   });
 
@@ -415,7 +415,7 @@ test.describe('組織が2つの人（あおば開発の管理者でひばり工�
     await page.goto('/aoba');
     await menuButton(page).click();
     await expect(menuButton(page)).toHaveAttribute('aria-expanded', 'true');
-    await page.getByRole('heading', { level: 1, name: '自分の今日' }).click();
+    await page.getByRole('heading', { level: 1, name: '今日やること' }).click();
     await expect(menuButton(page)).toHaveAttribute('aria-expanded', 'false');
   });
 

@@ -36,7 +36,7 @@ test.describe('組織の中（アカウントのメニュー）', () => {
 
     await signIn(context, baseURL, 'adminLogout');
     await page.goto('/aoba');
-    await expect(page.getByRole('heading', { level: 1, name: '自分の今日' })).toBeVisible();
+    await expect(page.getByRole('heading', { level: 1, name: '今日やること' })).toBeVisible();
     // 別の画面へ移ってからログアウトする（「戻る」の先に組織の画面がある）
     await page.goto('/aoba/admin');
     await expect(accountButton(page)).toBeVisible();

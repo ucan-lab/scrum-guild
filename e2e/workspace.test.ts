@@ -364,11 +364,11 @@ test.describe('管理者（あおば開発のミナト）', () => {
       await expect(page.getByRole('heading', { level: 1, name: 'ワークスペースが見つかりません' })).toBeVisible();
       await expect(page.getByText('URL が違うか、入れないワークスペースです。')).toBeVisible();
       // 組織の枠は残る
-      await expect(page.locator('.nav-item', { hasText: '自分の今日' })).toBeVisible();
+      await expect(page.locator('.nav-item', { hasText: '今日やること' })).toBeVisible();
     }
   });
 
-  test('入れないワークスペース（403）は、「もう一度試す」を出さず、入れない案内と自分の今日へ戻るリンクを出す', async ({
+  test('入れないワークスペース（403）は、「もう一度試す」を出さず、入れない案内と今日やることへ戻るリンクを出す', async ({
     page,
   }) => {
     await page.route('**/api/aoba/workspace', (route) =>
@@ -378,7 +378,7 @@ test.describe('管理者（あおば開発のミナト）', () => {
     await expect(page.getByRole('heading', { level: 1, name: 'ワークスペースが見つかりません' })).toBeVisible();
     await expect(page.getByText('URL が違うか、入れないワークスペースです。')).toBeVisible();
     await expect(page.getByRole('button', { name: 'もう一度試す' })).toHaveCount(0);
-    await page.getByRole('link', { name: '自分の今日へ' }).click();
+    await page.getByRole('link', { name: '今日やることへ' }).click();
     await expect(page).toHaveURL(/\/aoba$/);
   });
 
@@ -414,7 +414,7 @@ test.describe('一般のユーザー（あおば開発のハルカ）', () => {
 
   test('メニューに組織の管理が出ず、/aoba/admin は「見つからない」', async ({ page }) => {
     await page.goto('/aoba');
-    await expect(page.getByRole('heading', { level: 1, name: '自分の今日' })).toBeVisible();
+    await expect(page.getByRole('heading', { level: 1, name: '今日やること' })).toBeVisible();
     await expect(page.locator('.nav-item', { hasText: '組織の管理' })).toHaveCount(0);
 
     await page.goto('/aoba/admin');

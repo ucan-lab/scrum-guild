@@ -27,7 +27,7 @@ test('組織の画面はシェルを返し、API の版を出し、CSP の違反
   expect(res?.status()).toBe(200);
   expect(res?.headers()['content-security-policy']).toContain("frame-ancestors 'none'");
 
-  await expect(page.getByRole('heading', { level: 1, name: '自分の今日' })).toBeVisible();
+  await expect(page.getByRole('heading', { level: 1, name: '今日やること' })).toBeVisible();
   await expect(page.locator('p[role="status"]')).toHaveText(`API: ok（版 ${version}）`);
   expect(await collect()).toEqual([]);
 });
@@ -77,7 +77,7 @@ test('1280px では左のメニューを折りたため、幅とラベルと状�
   // 項目はアイコンだけで、名前は見えないが読み上げには残る
   const item = page.locator('.nav-item').first();
   await expect(item.locator('.nav-item-label')).toHaveCSS('opacity', '0');
-  await expect(page.locator('#app-nav').getByRole('link', { name: '自分の今日' })).toBeVisible();
+  await expect(page.locator('#app-nav').getByRole('link', { name: '今日やること' })).toBeVisible();
   // ロゴはマークだけで、リンクの名前は残り、押すと組織の画面へ戻る
   await expect(page.locator('.brand-name')).toHaveJSProperty('offsetWidth', 1);
   await expect(page.getByRole('link', { name: 'Scrum Guild' })).toHaveAttribute('href', '/aoba');
@@ -305,7 +305,7 @@ test('書体を自分のオリジンから読み込み、外へ通信しない',
     if (/\.woff2?$/.test(new URL(request.url()).pathname)) fonts.push(request.url());
   });
   await page.goto(today);
-  await expect(page.getByRole('heading', { level: 1, name: '自分の今日' })).toBeVisible();
+  await expect(page.getByRole('heading', { level: 1, name: '今日やること' })).toBeVisible();
   await page.evaluate(() => document.fonts.ready);
 
   expect([...origins]).toEqual([new URL(baseURL ?? '').origin]);
@@ -327,7 +327,7 @@ test('覚えたテーマを、body ができる前に当てる', async ({ page }
     }).observe(document, { attributes: true, attributeFilter: ['data-theme'], subtree: true });
   });
   await page.goto(today);
-  await expect(page.getByRole('heading', { level: 1, name: '自分の今日' })).toBeVisible();
+  await expect(page.getByRole('heading', { level: 1, name: '今日やること' })).toBeVisible();
 
   const seen = await page.evaluate(
     () => (window as unknown as { __themeSeen: { theme: string | undefined; bodyExists: boolean }[] }).__themeSeen,
@@ -339,7 +339,7 @@ test('覚えたテーマを、body ができる前に当てる', async ({ page }
 test('覚えた値が壊れていても、落ちずに描く', async ({ page }) => {
   await page.addInitScript(() => localStorage.setItem('sg-theme', 'retro'));
   await page.goto(today);
-  await expect(page.getByRole('heading', { level: 1, name: '自分の今日' })).toBeVisible();
+  await expect(page.getByRole('heading', { level: 1, name: '今日やること' })).toBeVisible();
   // 壊れた値は先当てで無視され、組織の値（seed は simple）が当たる
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'simple');
 });
@@ -491,7 +491,7 @@ test('アバターの色相が当たり、CSP の違反が無い', async ({ page
 
 test('画面の題名は「画面 - Scrum Guild」で、メニューには画面のある項目だけが出る', async ({ page }) => {
   await page.goto(today);
-  await expect(page).toHaveTitle('自分の今日 - Scrum Guild');
+  await expect(page).toHaveTitle('今日やること - Scrum Guild');
   // 出る項目はすべて行き先を持つ（画面のある項目だけ）。今の画面は1つだけ
   await expect(page.locator('.nav-item')).not.toHaveCount(0);
   for (const item of await page.locator('.nav-item').all()) await expect(item).toHaveAttribute('href', /^\/aoba/);
@@ -555,7 +555,7 @@ for (const width of [390, 672]) {
     const height = 2000;
     await page.setViewportSize({ width, height });
     await page.goto(today);
-    await expect(page.getByRole('heading', { level: 1, name: '自分の今日' })).toBeVisible();
+    await expect(page.getByRole('heading', { level: 1, name: '今日やること' })).toBeVisible();
     // 本文が画面より長いと空きは出ないので、この検査の前提が崩れたことを空きの失敗と分けて出す
     const pageHeight = await page.evaluate(() => document.documentElement.scrollHeight);
     expect(pageHeight, '画面の内容が高さを超えたので、height を上げる').toBeLessThanOrEqual(height);

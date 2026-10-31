@@ -446,7 +446,7 @@
 
 - 一意: `(workspace_id, user_id) WHERE left_at IS NULL`。今の所属は1人1行。
 - `CHECK ((left_on IS NULL) = (left_at IS NULL))`、`CHECK (left_on >= joined_on)`。離脱の日付と日時はそろって入り、離脱日は参加日より前にならない。今の所属の一意は `left_at` で、積載量の期間は `left_on` で見るので、片方だけ入った行は2つの判定を食い違わせる。
-- 索引: `(user_id, left_at)`。外部キーの検査と、ログインできるか、自分の今日に出すワークスペースはどれか（今の所属）を引く。
+- 索引: `(user_id, left_at)`。外部キーの検査と、ログインできるか、今日やることに出すワークスペースはどれか（今の所属）を引く。
 - 積載量では、日がいずれかの行の `joined_on`〜`left_on` に入るかで、所属していた期間を数える。
 - 管理者が所属していないワークスペースを操作するときは、行を作らない。担当や討伐隊の候補は、この表の今の所属から選ぶ。
 
@@ -824,14 +824,14 @@
   - `(story_id, position) WHERE deleted_at IS NULL`: ストーリーの配下
   - `tasks_story_open`: `(story_id, position) WHERE deleted_at IS NULL AND completed_at IS NULL`: バックログの木のストーリーの配下の未完了のタスク（完了したタスクを読み飛ばさない。#165 で 5 万件を測って足した。数は下の「バックログの木」）
   - `(sprint_id, column_id, column_position) WHERE deleted_at IS NULL`: スプリントの列
-  - `(assignee_user_id, deleted_at, completed_at) WHERE assignee_user_id IS NOT NULL`: 外部キーの検査と、自分の今日、積載量（担当の未完了のタスク）
+  - `(assignee_user_id, deleted_at, completed_at) WHERE assignee_user_id IS NOT NULL`: 外部キーの検査と、今日やること、積載量（担当の未完了のタスク）
   - `(completed_by) WHERE completed_by IS NOT NULL`、`(created_by) WHERE created_by IS NOT NULL`: 外部キーの検査
   - `(created_by, completed_at) WHERE created_by IS NOT NULL AND deleted_at IS NULL`（`tasks_created_by_open`）: 経験値の見込み（`experience-summary`）が、本人が作った未完了で削除していないタスクだけを引く。問い合わせは `deleted_at IS NULL` を文字のまま書く。`migrations/0011_add_xp_grants_read_indexes.sql`（#296）で足した。
 - 手で作るタスクの `title` は、前後の空白を除いて 1〜200 字。字数の数え方と断る文字は `workspaces.name` と同じ。
 - 引き出しの読み取り（`task-detail`）と、引き出しで書いた後の値（`task-update`、`task-assign`）の `reopenable`（完了を戻せるか）は、閉じていないワークスペースで、`task-reopen` と同じ判定（`reopenBlockOf`）に当たらないとき真。バックログのタスク（`tray = 'backlog'`。アーカイブへ移った完了済みのタスクは偽）で、完了していて、スプリントに入っていないか入っているスプリントが削除していない進行中のもので、親のストーリーが完了していないこと。
 - 引き出しで直す欄（`task-update`）の決まりは、ストーリーと同じ。`body_md` は 1 万字まで（`stories.body_md` と同じ正規化。空は `NULL`）、`link_url` は http と https の URL だけで 2048 字まで（解釈した URL にそろえる）、`due_on` は暦に存在する日付。取り込んだタスクはリンクを持たず（上の CHECK）、タイトルは同期で書き直すので、どちらも直せない。完了したタスクのポイントは直せない（「書き込みの単位」の「タスクの変更」）。1件の読み取り（`task-detail`）は、これらの欄と、親のストーリー（`story_id`）、引き継ぎを解いた区分（`category`。`{ id, name, inherited }` か null。親のエピック、親のストーリー、タスク自身の順で、親から引き継いだものは `inherited` が真）、リポジトリ（`repository`。`{ id, name }` か null）、入っているスプリント（`sprint`。`backlog-tree` の行と同じ形）、担当（`assignee`。ID、名前と、今そのワークスペースに所属していないか（`left`。抜けた、無効にされた、所属が無い）。名前は組織で絞った `users` から、所属はそのワークスペースの `left_at IS NULL` の `memberships` から読む）、取り込んだタスクか、完了した日時、呼んだ人が削除できるかに加えて、期日の印を決める今日（`today`。ワークスペースのタイムゾーン）と週の始まり（`week_start`）を返す（`backlog-tree` と同じ決め方。ワークスペースの行は組織とワークスペースで絞って読む）。本文は長いので、バックログの木には載せない。
 - 担当は `task-assign` で替える（`task-update` では替えない）。担当にできるのは、そのワークスペースに今所属している、無効でなく `login_subject` のある人（`task-create` と同じ条件。候補を出すメンバーの一覧（`member-list`）と同じ人で、Google で待っている行は担当にしない）で、外す（`NULL`）のはいつでもできる。完了したタスクの担当は替えない（完了の経験値と `completions` が完了した時点の担当を使うため。直すのは完了の記録の修正）。取り込んだタスクの担当は替えられる。書き方は「書き込みの単位」の「タスクの担当の変更」。
-- 「今日やる」は、`today_on` が今日（ワークスペースのタイムゾーン）なら今日の印、それより前で未完了なら前日からの持ち越しとして示す。担当が替わったら消す（`task-assign` が担当を書く同じ文で `NULL` にする。同じ担当を送ったときは消さない）。
+- 「今日やる」は、`today_on` が今日（ワークスペースのタイムゾーン）なら今日の印、それより前で未完了なら持ち越しとして示し、`today_on` から今日までの日数を行に出す。印は完了にするか外すまで自動では外さない。担当が替わったら消す（`task-assign` が担当を書く同じ文で `NULL` にする。同じ担当を送ったときは消さない）。
 - 区分は、親のエピック、親のストーリー、タスク自身の順に、最初に入っているものを使う。読むときに結合して出し、タスクには写さない。完了の記録（`completions.category_id`）には、完了した時点の値を写す。
 - `repository_id` は、取り込むときに `repositories` の `(workspace_id, provider, source_container_id)` が `task_sources` と一致する行があれば入れる。同期では書き換えない。
 - 表示する期日は `due_on`、なければ `task_sources.source_due_on`（接続の `ignore_source_due` が 0 のとき）。

@@ -115,7 +115,7 @@ window.SQ_DATA = (function () {
       { id: "t13", ws: "wa", repo: "r2", title: "ポイント失効の通知メールを作る", story: "s1", sprint: "sp15", who: null, pts: null, unfilled: true, creator: "u2" },
       { id: "t14", ws: "wa", repo: "r1", title: "決済通知のメール文面を直す", story: "s3", sprint: "sp14", col: "done", who: "u1", pts: 1, doneAt: "10/20 09:40",
         src: { kind: "backlog", key: "SHOP-126", status: "完了" } },
-      { id: "t15", ws: "wb", title: "勤怠の CSV 出力で締め日を選べるようにする", sprint: "spb", colName: "作業中", who: "u1", pts: 3, due: "2026-10-22", creator: "u1" },
+      { id: "t15", ws: "wb", title: "勤怠の CSV 出力で締め日を選べるようにする", sprint: "spb", colName: "作業中", who: "u1", pts: 3, due: "2026-10-22", todayOn: "2026-10-18", creator: "u1" },
       { id: "t16", ws: "wb", title: "有給の残日数を一覧に出す", sprint: "spb", colName: "未着手", who: "u1", pts: null, unfilled: true, creator: "u1" },
     ],
 

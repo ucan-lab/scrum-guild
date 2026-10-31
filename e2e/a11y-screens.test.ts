@@ -29,7 +29,7 @@ const screens: {
     screen: 'today',
     path: '/aoba',
     ready: (page) => [
-      page.getByRole('heading', { level: 1, name: '自分の今日' }),
+      page.getByRole('heading', { level: 1, name: '今日やること' }),
       // /api/health を読み終えた後にだけ出る文
       page
         .getByRole('region', { name: 'API の疎通' })
