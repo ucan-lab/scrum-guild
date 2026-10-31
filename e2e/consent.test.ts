@@ -55,6 +55,24 @@ test.describe('本物の API', () => {
     await expect(page.locator('.panel-note .mono')).toHaveText(/^\d{4}\/\d{2}\/\d{2}\s\d{2}:\d{2}$/);
   });
 
+  for (const width of [1280, 390]) {
+    test(`印を付けても紙の高さと送信ボタンの位置が動かない（幅 ${width}px）`, async ({ page, context, baseURL }) => {
+      await signIn(context, baseURL, 'admin');
+      await page.setViewportSize({ width, height: 900 });
+      await page.goto('/consent');
+      const checkbox = page.getByRole('checkbox', { name: CHECKBOX_NAME });
+      const submit = page.getByRole('button', { name: '同意して進む' });
+      const sheet = page.locator('.gate-sheet');
+      await expect(checkbox).toBeVisible();
+      const before = { sheet: await sheet.boundingBox(), submit: await submit.boundingBox() };
+      await checkbox.check();
+      await expect(submit).toHaveAttribute('aria-disabled', 'false');
+      const after = { sheet: await sheet.boundingBox(), submit: await submit.boundingBox() };
+      expect(after.sheet?.height).toBe(before.sheet?.height);
+      expect(after.submit?.y).toBe(before.submit?.y);
+    });
+  }
+
   test('新しいタブで開く2つのリンクは、読み上げに「新しいタブで開きます」を補う', async ({
     page,
     context,
