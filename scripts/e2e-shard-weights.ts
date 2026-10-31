@@ -1,5 +1,5 @@
 // scripts/e2e-shard-weights.json を作り直す道具: CI の e2e のログ（Playwright の list reporter の行）から、e2e のテストのファイルごとの
-// 合計の秒を数え、重みの JSON と同じ形で標準出力に出す。使い方は docs/development.md の「CI」の e2e の行。
+// 合計の秒を数え、重みの JSON と同じ形で標準出力に出す。使い方は docs/development.md の「e2e のシャードの割り方」。
 //   node scripts/e2e-shard-weights.ts <ログのファイル…>   （ファイルを渡さないか - を渡すと標準入力を読む）
 // 複数のログ（3 つのシャードなど）を渡せば合算する。ログはジョブの 1 つ分でもよく、ジョブ全体の生のログ（行頭に時刻が付く）でもよい。
 // ワークフローは pnpm install の前でも動くように、node: の組み込みだけを import する
