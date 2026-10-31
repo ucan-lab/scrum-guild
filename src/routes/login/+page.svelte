@@ -6,6 +6,7 @@
   import Icon from '../../lib/components/Icon.svelte';
   import { submitPasswordLogin } from '../../lib/password-login.ts';
   import { t } from '../../lib/vocabulary.svelte.ts';
+  import { PASSWORD_LOGIN_ENABLED } from '../../shared/password-login-enabled.ts';
   import type { DictionaryKey } from '../../shared/vocabulary.ts';
   import { safeReturnTo } from '../../shared/return-to.ts';
 
@@ -93,45 +94,48 @@
     <a class="btn is-wide is-google" href={googleStartHref} data-sveltekit-reload
       ><GoogleMark />{t('loginWithGoogle')}</a
     >
-    <p class="gate-divider">{t('loginDivider')}</p>
-    <!-- method="post": 万一ブラウザの送信が走っても、パスワードを URL に載せない -->
-    <form class="form-fields" method="post" novalidate onsubmit={submitPassword}>
-      <div class="field">
-        <label class="field-label" for="login-email">{t('loginEmailLabel')}</label>
-        <input
-          class="input"
-          id="login-email"
-          name="email"
-          type="email"
-          autocomplete="email"
-          spellcheck="false"
-          aria-describedby={formError ? formErrorId : undefined}
-          bind:value={email}
-        />
-      </div>
-      <div class="field">
-        <label class="field-label" for="login-password">{t('loginPasswordLabel')}</label>
-        <input
-          class="input"
-          id="login-password"
-          name="password"
-          type="password"
-          autocomplete="current-password"
-          aria-describedby={formError ? formErrorId : undefined}
-          bind:value={password}
-        />
-      </div>
-      {#if formError}
-        {#key attempts}
-          <div class="callout is-warn" id={formErrorId} role="alert">
-            <Icon name="alert" /><span>{t(formError, words)}</span>
-          </div>
-        {/key}
-      {/if}
-      <button class="btn is-primary is-wide" type="submit" aria-disabled={submitting}>
-        {submitting ? t('loginWithPasswordMoving') : t('loginWithPassword')}
-      </button>
-    </form>
+    <!-- 閉じている間（PASSWORD_LOGIN_ENABLED が偽）は、区切りもフォームも出さない。API の口も閉じている（src/server/app.ts） -->
+    {#if PASSWORD_LOGIN_ENABLED}
+      <p class="gate-divider">{t('loginDivider')}</p>
+      <!-- method="post": 万一ブラウザの送信が走っても、パスワードを URL に載せない -->
+      <form class="form-fields" method="post" novalidate onsubmit={submitPassword}>
+        <div class="field">
+          <label class="field-label" for="login-email">{t('loginEmailLabel')}</label>
+          <input
+            class="input"
+            id="login-email"
+            name="email"
+            type="email"
+            autocomplete="email"
+            spellcheck="false"
+            aria-describedby={formError ? formErrorId : undefined}
+            bind:value={email}
+          />
+        </div>
+        <div class="field">
+          <label class="field-label" for="login-password">{t('loginPasswordLabel')}</label>
+          <input
+            class="input"
+            id="login-password"
+            name="password"
+            type="password"
+            autocomplete="current-password"
+            aria-describedby={formError ? formErrorId : undefined}
+            bind:value={password}
+          />
+        </div>
+        {#if formError}
+          {#key attempts}
+            <div class="callout is-warn" id={formErrorId} role="alert">
+              <Icon name="alert" /><span>{t(formError, words)}</span>
+            </div>
+          {/key}
+        {/if}
+        <button class="btn is-primary is-wide" type="submit" aria-disabled={submitting}>
+          {submitting ? t('loginWithPasswordMoving') : t('loginWithPassword')}
+        </button>
+      </form>
+    {/if}
     <p class="gate-note">{t('loginNote', words)}</p>
   </GateSheet>
 </Gate>
