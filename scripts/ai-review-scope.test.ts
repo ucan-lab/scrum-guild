@@ -5,7 +5,15 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, test } from 'node:test';
-import { chooseScope, extractMarkers, MAX_MARKERS, type Marker, noDiffBody, scopedDiff } from './ai-review-scope.ts';
+import {
+  chooseScope,
+  extractMarkers,
+  formatPaths,
+  MAX_MARKERS,
+  type Marker,
+  noDiffBody,
+  scopedDiff,
+} from './ai-review-scope.ts';
 
 const git = (dir: string, args: string[]) => execFileSync('git', args, { cwd: dir, encoding: 'utf8' }).trim();
 
@@ -259,6 +267,14 @@ describe('scopedDiff', () => {
     assert.equal(result.patch.length, 0);
     assert.equal(result.files, '');
   });
+});
+
+test('scope.md に書くパスは、制御文字とバッククォートを除いてコードスパンで囲み、件数を抑える', () => {
+  assert.equal(formatPaths(['a.txt', 'x\n## 見出し`y`.txt']), "`a.txt`、`x ## 見出し'y'.txt`");
+  const many = Array.from({ length: MAX_MARKERS + 5 }, (_, i) => `f${i}.txt`);
+  const text = formatPaths(many);
+  assert.equal(text.split('、').length, MAX_MARKERS + 1);
+  assert.ok(text.endsWith('ほか 5 件'));
 });
 
 test('差分なしのコメントは決まった1行で、印を含まない', () => {

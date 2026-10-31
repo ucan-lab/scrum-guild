@@ -155,6 +155,16 @@ const SOURCE_LABEL: Record<MarkerSource, string> = {
   'ai-review': '前の AI レビューの印',
 };
 
+// 衝突したパスは PR の作成者が決める文字列で、-z で読むので改行も残る。scope.md は Claude が読み、まとめのコメントに写るので、
+// 制御文字とバッククォートを除いてコードスパンで囲み、件数も抑える
+export function formatPaths(paths: readonly string[]): string {
+  const clean = (p: string) =>
+    [...p].map((c) => (c.charCodeAt(0) < 0x20 || c === '\u007f' ? ' ' : c === '`' ? "'" : c)).join('');
+  const shown = paths.slice(0, MAX_MARKERS).map((p) => '`' + clean(p) + '`');
+  const rest = paths.length - shown.length;
+  return [...shown, ...(rest > 0 ? [`ほか ${rest} 件`] : [])].join('、');
+}
+
 function scopeMarkdown(scope: Scope, conflicts: readonly string[]): string {
   const mode = scope.mode === 'since' ? '起点から' : scope.mode === 'none' ? '差分なし' : '全体';
   const start = scope.start ? `${scope.start}（${SOURCE_LABEL[scope.startSource!]}）` : 'なし';
@@ -162,7 +172,7 @@ function scopeMarkdown(scope: Scope, conflicts: readonly string[]): string {
   if (scope.rejected.length) {
     lines.push(`- 退けた印: ${scope.rejected.map((x) => `${x.marker}（${x.reason}）`).join('、')}`);
   }
-  if (conflicts.length) lines.push(`- 衝突で全体に広げたパス: ${conflicts.join('、')}`);
+  if (conflicts.length) lines.push(`- 衝突で全体に広げたパス: ${formatPaths(conflicts)}`);
   return lines.join('\n') + '\n';
 }
 
