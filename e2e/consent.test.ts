@@ -29,8 +29,9 @@ test.describe('本物の API', () => {
     await page.getByRole('checkbox', { name: CHECKBOX_NAME }).check();
     await page.getByRole('button', { name: '同意して進む' }).click();
     await expect(page).toHaveURL(/\/aoba$/);
-    // 戻った先の読み込みが終わってから確かめる（同意が記録されず /consent へ戻る往復を見逃さないため）
-    await waitForSettled(page);
+    // unconsented はどの組織にも入っていないので、戻った /aoba は「見つからない」の画面になる。この画面が描かれるまで待ってから、
+    // 同意の画面へ戻っていないことを確かめる（同意が記録されず /consent へ戻る往復を、URL だけの確かめで見逃さないため）
+    await expect(page.getByRole('heading', { name: '組織が見つかりません' })).toBeVisible();
     await expect(page).not.toHaveURL(/\/consent/);
   });
 
