@@ -24,8 +24,10 @@ test('期限の当日は、「残り 0 日」ではなく「今日までです�
 
 test.each([-1, -3])('期限を過ぎたとき（%i 日）は、日数を出さずに期限切れを形と言葉で示す', (days) => {
   const body = bodyOf(days);
-  expect(body).toContain('お試しの期限を過ぎています');
-  expect(body).toContain('is-danger');
+  // 色だけで示さない: 同じ chip の中に、alert のアイコンと文言がそろっている
+  expect(body).toMatch(
+    /<span class="chip is-danger"><svg[^>]*><use href="#i-alert"><\/use><\/svg>お試しの期限を過ぎています<\/span>/,
+  );
   expect(body).not.toContain('残り');
   expect(body).not.toContain('今日までです');
 });
