@@ -319,7 +319,7 @@
     ],
     leader: () => [
       { title: `${t("workspace")}「${esc(firstWsName())}」の${t("leader")}になる`, note: `${t("member")}の招待と、${t("backlog")}の準備を進められます。`, done: true },
-      { title: "メンバーを招待する", done: D.invitations.length > 0 || D.members.filter((m) => !m.left).length > 1,
+      { title: "メンバーを招待する", optional: true, done: D.invitations.length > 0 || D.members.filter((m) => !m.left).length > 1,
         note: `GitHub のユーザー名か Google のメールアドレスで招待し、${t("organization")}の URL（Google なら招待の URL）を本人に伝えます。Scrum Guild は招待をメールで送りません。`,
         action: (p) => `<a class="btn is-sm ${p}" href="${firstHref("members.html")}">メンバーを招待する</a>` },
       { title: `${t("backlog")}に最初の${t("task")}を入れる`, done: D.tasks.some((x) => x.ws === D.workspace),
