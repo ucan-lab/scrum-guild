@@ -8,8 +8,10 @@
     API_TOKEN_LIMIT_REASON,
     API_TOKEN_MAX_ACTIVE,
     API_TOKEN_MAX_LIFETIME_DAYS,
+    API_TOKEN_REAUTH_MINUTES,
     type ApiTokenScope,
   } from '../../shared/api-token.ts';
+  import { safeReturnTo } from '../../shared/return-to.ts';
   import { callOperation, type ApiResult } from '../api.ts';
   import { formatDateTime } from '../format-datetime.ts';
   import { formatLocalDate } from '../format.ts';
@@ -41,7 +43,27 @@
   type ReloadOutcome = 'ok' | 'failed' | 'stale';
 
   // initial は画面の load が読んだ一覧。読めなかったときは null
-  let { initial }: { initial: Token[] | null } = $props();
+  let {
+    initial,
+    canCreate,
+    loginProvider,
+    slug,
+  }: {
+    initial: Token[] | null;
+    canCreate: boolean;
+    loginProvider: string | null;
+    slug: string;
+  } = $props();
+
+  let allowedToCreate = $state(untrack(() => canCreate));
+  const returnTo = $derived(safeReturnTo(`/${slug}/me`));
+  // me が読めない場合は手段を推測せず、ログインの画面で選んでもらう。
+  const reauthUrl = $derived(
+    loginProvider === 'github' || loginProvider === 'google'
+      ? `/api/auth/${loginProvider}/start?return_to=${encodeURIComponent(returnTo)}`
+      : loginUrl({ pathname: returnTo, search: '' }),
+  );
+  let reauthLink = $state<HTMLAnchorElement>();
 
   const ids = $props.id();
   // 節の見出し（h2）の id。Section が見出しと節を結ぶ。読み直せた後にここへフォーカスを移す
@@ -63,8 +85,10 @@
   let loadSeq = 0;
   $effect.pre(() => {
     const next = initial;
+    const nextCanCreate = canCreate;
     untrack(() => {
       tokens = next;
+      allowedToCreate = nextCanCreate;
       refreshFailed = false;
       retry = 'idle';
       loadSeq++;
@@ -110,6 +134,7 @@
       return 'failed';
     }
     tokens = result.data.tokens;
+    allowedToCreate = result.data.can_create;
     refreshFailed = false;
     return 'ok';
   }
@@ -159,7 +184,7 @@
 
   async function create(event: SubmitEvent): Promise<void> {
     event.preventDefault();
-    if (busy !== null) return;
+    if (busy !== null || !allowedToCreate) return;
     const found = problem();
     if (found !== null) {
       fieldError = found;
@@ -191,6 +216,14 @@
       }
       if (isUnauthenticated(result)) {
         toLogin();
+        return;
+      }
+      if (result.status === 403 && result.error?.code === 'reauth_required') {
+        // 入力中に猶予を過ぎた。消える送信ボタンから、次の操作へフォーカスを移す。
+        loadSeq++;
+        allowedToCreate = false;
+        await tick();
+        reauthLink?.focus();
         return;
       }
       // 400 は画面の検査を通った後なので、理由を決めつけず、ほかの失敗と同じ文にする。
@@ -254,7 +287,8 @@
     // 押した行が一覧から消えたときだけ、発行の欄へフォーカスを移す。残ったときは、確認のダイアログが戻した押したボタンのまま
     if (!rowGone) return;
     await tick();
-    nameInput?.focus();
+    if (allowedToCreate) nameInput?.focus();
+    else reauthLink?.focus();
   }
 
   const scopeLabel = (value: ApiTokenScope): string => t(value === 'read' ? 'apiTokenScopeRead' : 'apiTokenScopeWrite');
@@ -277,93 +311,106 @@
 <!-- 5列の表を持つので、.setting（見出しの列 260px）には入れず、経験値の明細と同じ Section で全幅に出す -->
 <Section id={sectionId} title={t('apiTokenTitle')}>
   <p class="action-note">{t('apiTokenDesc')}</p>
-  <form class="form" aria-label={t('apiTokenFormLabel')} onsubmit={create} novalidate>
-    <div class="form-row is-start">
-      <div class="field" class:is-invalid={fieldError?.field === 'name'}>
-        <label class="field-label" for={nameId}>{t('apiTokenNameLabel')}</label>
-        <input
-          class="input"
-          id={nameId}
-          bind:this={nameInput}
-          bind:value={name}
-          autocomplete="off"
-          readonly={busy === 'create'}
-          aria-invalid={fieldError?.field === 'name'}
-          aria-describedby={describedBy(nameHintId, fieldError?.field === 'name' ? nameErrorId : null)}
-          oninput={() => (fieldError = fieldError?.field === 'name' ? null : fieldError)}
-        />
-        <span class="field-hint" id={nameHintId}
-          >{t('apiTokenNameHint', { max: String(API_TOKEN_NAME_MAX_LENGTH) })}</span
+  {#if !allowedToCreate}
+    <div class="callout">
+      <Icon name="lock" />
+      <span>{t('apiTokenReauthRequired', { minutes: String(API_TOKEN_REAUTH_MINUTES) })}</span>
+      <div class="callout-actions">
+        <!-- ログイン開始は Worker の GET。画面の経路として解決せず、直接開く（ログイン画面と同じ）。 -->
+        <!-- eslint-disable-next-line svelte/no-navigation-without-resolve -->
+        <a class="btn is-primary" href={reauthUrl} data-sveltekit-reload bind:this={reauthLink}>{t('apiTokenReauth')}</a
         >
-        {#if fieldError?.field === 'name'}
-          <span class="field-error" id={nameErrorId} role="alert"><Icon name="alert" />{fieldError.text}</span>
-        {/if}
       </div>
-      <div class="field">
-        <span class="field-label" id={scopeLabelId}>{t('apiTokenScopeLabel')}</span>
-        <!-- 送っている間は disabled でなく aria-disabled にして、押しても選びを変えない（フォーカスを失わせないため） -->
-        <div class="segmented" role="radiogroup" aria-labelledby={scopeLabelId} aria-describedby={scopeHintId}>
-          <label>
-            <input
-              type="radio"
-              name={`${ids}-scope`}
-              value="read"
-              bind:group={scope}
-              aria-disabled={busy === 'create'}
-              onclick={(event) => busy === 'create' && event.preventDefault()}
-            />
-            <span>{t('apiTokenScopeRead')}</span>
-          </label>
-          <label>
-            <input
-              type="radio"
-              name={`${ids}-scope`}
-              value="write"
-              bind:group={scope}
-              aria-disabled={busy === 'create'}
-              onclick={(event) => busy === 'create' && event.preventDefault()}
-            />
-            <span>{t('apiTokenScopeWrite')}</span>
-          </label>
+    </div>
+  {:else}
+    <form class="form" aria-label={t('apiTokenFormLabel')} onsubmit={create} novalidate>
+      <div class="form-row is-start">
+        <div class="field" class:is-invalid={fieldError?.field === 'name'}>
+          <label class="field-label" for={nameId}>{t('apiTokenNameLabel')}</label>
+          <input
+            class="input"
+            id={nameId}
+            bind:this={nameInput}
+            bind:value={name}
+            autocomplete="off"
+            readonly={busy === 'create'}
+            aria-invalid={fieldError?.field === 'name'}
+            aria-describedby={describedBy(nameHintId, fieldError?.field === 'name' ? nameErrorId : null)}
+            oninput={() => (fieldError = fieldError?.field === 'name' ? null : fieldError)}
+          />
+          <span class="field-hint" id={nameHintId}
+            >{t('apiTokenNameHint', { max: String(API_TOKEN_NAME_MAX_LENGTH) })}</span
+          >
+          {#if fieldError?.field === 'name'}
+            <span class="field-error" id={nameErrorId} role="alert"><Icon name="alert" />{fieldError.text}</span>
+          {/if}
         </div>
-        <span class="field-hint" id={scopeHintId}>{t('apiTokenScopeHint')}</span>
+        <div class="field">
+          <span class="field-label" id={scopeLabelId}>{t('apiTokenScopeLabel')}</span>
+          <!-- 送っている間は disabled でなく aria-disabled にして、押しても選びを変えない（フォーカスを失わせないため） -->
+          <div class="segmented" role="radiogroup" aria-labelledby={scopeLabelId} aria-describedby={scopeHintId}>
+            <label>
+              <input
+                type="radio"
+                name={`${ids}-scope`}
+                value="read"
+                bind:group={scope}
+                aria-disabled={busy === 'create'}
+                onclick={(event) => busy === 'create' && event.preventDefault()}
+              />
+              <span>{t('apiTokenScopeRead')}</span>
+            </label>
+            <label>
+              <input
+                type="radio"
+                name={`${ids}-scope`}
+                value="write"
+                bind:group={scope}
+                aria-disabled={busy === 'create'}
+                onclick={(event) => busy === 'create' && event.preventDefault()}
+              />
+              <span>{t('apiTokenScopeWrite')}</span>
+            </label>
+          </div>
+          <span class="field-hint" id={scopeHintId}>{t('apiTokenScopeHint')}</span>
+        </div>
+        <div class="field" class:is-invalid={fieldError?.field === 'lifetime'}>
+          <label class="field-label" for={lifetimeId}>{t('apiTokenLifetimeLabel')}</label>
+          <input
+            class="input"
+            id={lifetimeId}
+            type="number"
+            inputmode="numeric"
+            min="1"
+            max={API_TOKEN_MAX_LIFETIME_DAYS}
+            step="1"
+            bind:this={lifetimeInput}
+            bind:value={lifetime}
+            readonly={busy === 'create'}
+            aria-invalid={fieldError?.field === 'lifetime'}
+            aria-describedby={describedBy(lifetimeHintId, fieldError?.field === 'lifetime' ? lifetimeErrorId : null)}
+            oninput={() => (fieldError = fieldError?.field === 'lifetime' ? null : fieldError)}
+          />
+          <span class="field-hint" id={lifetimeHintId}
+            >{t('apiTokenLifetimeHint', { max: String(API_TOKEN_MAX_LIFETIME_DAYS) })}</span
+          >
+          {#if fieldError?.field === 'lifetime'}
+            <span class="field-error" id={lifetimeErrorId} role="alert"><Icon name="alert" />{fieldError.text}</span>
+          {/if}
+        </div>
       </div>
-      <div class="field" class:is-invalid={fieldError?.field === 'lifetime'}>
-        <label class="field-label" for={lifetimeId}>{t('apiTokenLifetimeLabel')}</label>
-        <input
-          class="input"
-          id={lifetimeId}
-          type="number"
-          inputmode="numeric"
-          min="1"
-          max={API_TOKEN_MAX_LIFETIME_DAYS}
-          step="1"
-          bind:this={lifetimeInput}
-          bind:value={lifetime}
-          readonly={busy === 'create'}
-          aria-invalid={fieldError?.field === 'lifetime'}
-          aria-describedby={describedBy(lifetimeHintId, fieldError?.field === 'lifetime' ? lifetimeErrorId : null)}
-          oninput={() => (fieldError = fieldError?.field === 'lifetime' ? null : fieldError)}
-        />
-        <span class="field-hint" id={lifetimeHintId}
-          >{t('apiTokenLifetimeHint', { max: String(API_TOKEN_MAX_LIFETIME_DAYS) })}</span
-        >
-        {#if fieldError?.field === 'lifetime'}
-          <span class="field-error" id={lifetimeErrorId} role="alert"><Icon name="alert" />{fieldError.text}</span>
-        {/if}
+      {#if fieldError?.field === 'form'}
+        <div class="callout is-danger" role="alert" tabindex="-1" bind:this={formError}>
+          <Icon name="alert" /><span>{fieldError.text}</span>
+        </div>
+      {/if}
+      <div class="form-actions">
+        <button class="btn is-primary" type="submit" aria-disabled={busy !== null}>
+          {busy === 'create' ? t('apiTokenCreating') : t('apiTokenCreate')}
+        </button>
       </div>
-    </div>
-    {#if fieldError?.field === 'form'}
-      <div class="callout is-danger" role="alert" tabindex="-1" bind:this={formError}>
-        <Icon name="alert" /><span>{fieldError.text}</span>
-      </div>
-    {/if}
-    <div class="form-actions">
-      <button class="btn is-primary" type="submit" aria-disabled={busy !== null}>
-        {busy === 'create' ? t('apiTokenCreating') : t('apiTokenCreate')}
-      </button>
-    </div>
-  </form>
+    </form>
+  {/if}
   <!-- 発行中、取消中、読み直せたことの読み上げ。領域は常に置き、中の文字だけを替える（見える所には出さない） -->
   <span class="visually-hidden" role="status">{status}</span>
 
@@ -377,7 +424,11 @@
       </div>
     {/if}
     {#if tokens.length === 0}
-      <EmptyState icon="lock" title={t('apiTokenEmptyTitle')} text={t('apiTokenEmptyText')} />
+      <EmptyState
+        icon="lock"
+        title={t('apiTokenEmptyTitle')}
+        text={t(allowedToCreate ? 'apiTokenEmptyText' : 'apiTokenEmptyReauthText')}
+      />
     {:else}
       <div class="table-wrap">
         <!-- 行の操作（取り消す）を持つので、狭い幅で1行を縦に積む（is-stacked） -->

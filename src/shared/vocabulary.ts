@@ -1828,6 +1828,10 @@ export const dictionary = defineDictionary({
   apiTokenLifetimeHint: '1〜{max}日。期限が来ると使えなくなります',
   apiTokenCreate: '発行する',
   apiTokenCreating: '発行しています',
+  apiTokenReauthRequired:
+    'API トークンを発行するには、ログインし直してください。発行はログインから{minutes}分以内に限られます。',
+  apiTokenReauth: 'ログインし直す',
+  apiTokenEmptyReauthText: 'ログインし直すと、API トークンを発行できます。',
   apiTokenNameRequired: '名前を入力してください',
   apiTokenNameTooLong: '名前は{max}文字までです',
   apiTokenLifetimeInvalid: '有効日数は1〜{max}の整数で入力してください',
