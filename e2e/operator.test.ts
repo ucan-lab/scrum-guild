@@ -698,7 +698,7 @@ test.describe('運用者', () => {
     await failOperation(page, createOrganization, 500, 'internal');
     await submit.click();
     await expect(dialog.getByRole('alert')).toContainText('一覧を確かめてから');
-    await routeOperation(page, createOrganization, (call) => call.abort());
+    await routeOperation(page, createOrganization, (call) => call.route.abort('connectionreset'));
     await submit.click();
     await expect(dialog.getByRole('alert')).toContainText('一覧を確かめてから');
 
@@ -1574,7 +1574,7 @@ test.describe('運用者', () => {
         // 書かれたか分からない失敗。サーバーでは書けていた
         if (status === 500)
           listed[0] = organization({ seats: { used: 5, limit: 50 }, attachment_quota_bytes: 100 * GIB });
-        if (status === 0) return call.abort();
+        if (status === 0) return call.route.abort('connectionreset');
         const code = status === 409 ? 'conflict' : status === 404 ? 'not_found' : 'internal';
         return call.fail(status, code);
       });
