@@ -378,7 +378,7 @@ test('印を断られたら理由を知らせて読み直し、完了を戻せ�
 
   await page.getByRole('button', { name: '今日やる: ほかの人に替わった' }).click();
   await expect(
-    page.getByRole('status').filter({ hasText: 'ほかの人が担当しているため、印を付け外しできません' }),
+    page.getByRole('status').filter({ hasText: '担当が替わったため、今日やるの印を付け外しできませんでした' }),
   ).toBeVisible();
   await expect(page.getByRole('button', { name: '今日やる: ほかの人に替わった' })).toHaveAttribute(
     'aria-pressed',
@@ -388,4 +388,50 @@ test('印を断られたら理由を知らせて読み直し、完了を戻せ�
   await page.getByRole('button', { name: '完了を戻す: 親が完了した' }).click();
   await expect(page.getByRole('status').filter({ hasText: 'の下のタスクは戻せません' })).toBeVisible();
   await expect(region(page, '今日の完了').locator('.entry-title')).toHaveText(['親が完了した']);
+});
+
+test('行が消えていて印を 404 で断られたら、読み直して行を外し、見出しにフォーカスを置く', async ({ page }) => {
+  const tasks = [row('消えた行', { due_on: '2026-11-06' }), row('残る行', { due_on: '2026-11-06' })];
+  await routeOperation(page, today, { slug: 'aoba' }, (call) => call.fulfill({ tasks, sprint_goals: [] }));
+  await routeOperation(page, taskTodayMark, { slug: 'aoba' }, (call) => {
+    tasks.splice(
+      tasks.findIndex((entry) => entry.id === call.input.task_id),
+      1,
+    );
+    return call.fail(404, 'not_found');
+  });
+  await page.goto('/aoba');
+
+  await page.getByRole('button', { name: '今日やる: 消えた行' }).click();
+  await expect(page.getByRole('status').filter({ hasText: 'このタスクは見つかりません' })).toBeVisible();
+  await expect(page.locator('.entry-title')).toHaveText(['残る行']);
+  await expect(page.getByRole('heading', { level: 1, name: '今日やること' })).toBeFocused();
+});
+
+test('完了を 409 の conflict で断られたとき、読み直して完了していれば「すでに完了」、未完了のままなら失敗の知らせを出す', async ({
+  page,
+}) => {
+  const tasks = [row('先に完了された', { today_on: TODAY }), row('競合に負け続けた', { today_on: TODAY })];
+  await routeOperation(page, today, { slug: 'aoba' }, (call) => call.fulfill({ tasks, sprint_goals: [] }));
+  await routeOperation(page, taskComplete, { slug: 'aoba' }, (call) => {
+    if (call.input.task_id === '先に完了された') {
+      // 別の画面が先に完了にした
+      Object.assign(tasks[0]!, {
+        completed_at: '2026-11-04T01:00:00.000Z',
+        is_today_completed: true,
+        reopenable: true,
+      });
+    }
+    return call.fail(409, 'conflict');
+  });
+  await page.goto('/aoba');
+
+  await page.getByRole('button', { name: '完了にする: 先に完了された' }).click();
+  await expect(page.getByRole('status').filter({ hasText: 'このタスクは、すでに完了です' })).toBeVisible();
+  await expect(region(page, '今日の完了').locator('.entry-title')).toHaveText(['先に完了された']);
+
+  await page.getByRole('button', { name: '完了にする: 競合に負け続けた' }).click();
+  await expect(page.getByRole('status').filter({ hasText: '完了にできませんでした' })).toBeVisible();
+  await expect(region(page, '今日の完了').locator('.entry-title')).toHaveText(['先に完了された']);
+  await expect(page.getByRole('button', { name: '完了にする: 競合に負け続けた' })).toBeFocused();
 });

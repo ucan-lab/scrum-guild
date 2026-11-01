@@ -14,7 +14,7 @@ function markConflict(reason: TaskTodayMarkConflictReason): ApiError {
   return new ApiError(409, 'conflict', { reason });
 }
 
-// 削除していないタスクの、担当と印と完了。ワークスペースで必ず絞る
+// 削除していないバックログのタスクの、担当と印と完了。ワークスペースで必ず絞る（受信箱とアーカイブのタスクは、task-complete と同じく 404）
 async function readMarkState(db: OrganizationDb, workspaceId: string, taskId: string) {
   return db.first(
     db.statement((q) =>
@@ -23,6 +23,7 @@ async function readMarkState(db: OrganizationDb, workspaceId: string, taskId: st
         .select(['tasks.assignee_user_id', 'tasks.today_on', 'tasks.completed_at'])
         .where('tasks.id', '=', taskId)
         .where('tasks.workspace_id', '=', workspaceId)
+        .where('tasks.tray', '=', 'backlog')
         .where('tasks.deleted_at', 'is', null),
     ),
   );
@@ -45,7 +46,7 @@ async function workspaceToday(db: OrganizationDb, workspaceId: string): Promise<
 
 // 印を付けるか外す。読んだ状態が違うときだけ、「読んだ担当（呼んだ本人）のまま、読んだ今日やるの印のまま、完了していない、
 // ワークスペースが開いている」という条件つきで書き、直前の更新が行を変えたときだけ履歴を書く。
-// 通らなかったら読み直して、やり直す（task-assign と同じ。3 回まで）
+// 通らなかったら読み直して、やり直す（task-assign と同じ。3 回まで）。バックログでないタスクと削除したタスクは 404
 export const taskTodayMarkOperation = implement(taskTodayMark, async ({ db, actor, workspace, input }) => {
   const actorUserId = actorUserIdOf(actor);
   const organizationId = db.organizationId;
@@ -77,6 +78,7 @@ export const taskTodayMarkOperation = implement(taskTodayMark, async ({ db, acto
             eb.and([
               eb('id', '=', taskId),
               eb('workspace_id', '=', workspaceId),
+              eb('tray', '=', 'backlog'),
               eb('deleted_at', 'is', null),
               eb('completed_at', 'is', null),
               // 読んだときの担当（呼んだ本人）と今日やるの印のまま（履歴の「前」がずれないように）

@@ -68,13 +68,19 @@
   // 今この画面で完了にした行。判を押す動き（.is-new）はこの行だけで再生する
   let justDoneIds = $state<string[]>([]);
 
-  type Outcome = { message: string; icon: 'check' | 'alert'; reload: boolean; focus: string };
+  // afterReload は、読み直した後の今日の読み取りを見て知らせる文を決めるとき（message と icon は使わない）
+  type Notice = { message: string; icon: 'check' | 'alert' };
+  type Outcome = Notice & { reload: boolean; focus: string; afterReload?: () => Notice };
 
-  // 読み直した後、同じ行の操作（selector）へフォーカスを戻す。行が無ければ見出しへ
+  // 読み直した後、同じ行の操作（selector）へフォーカスを戻す。行が無いか、フォーカスが行の中に入らなかったとき
+  // （畳んだ区分の中など）は見出しへ
   async function focusRow(taskId: string, selector: string): Promise<void> {
     await tick();
     const row = [...document.querySelectorAll<HTMLElement>('[data-row-id]')].find((el) => el.dataset.rowId === taskId);
-    (row?.querySelector<HTMLElement>(selector) ?? document.querySelector<HTMLElement>('h1.page-title'))?.focus();
+    row?.querySelector<HTMLElement>(selector)?.focus();
+    if (row === undefined || !row.contains(document.activeElement)) {
+      document.querySelector<HTMLElement>('h1.page-title')?.focus();
+    }
   }
 
   // 1つの操作を送る。outcomeOf が null を返すのはログインが切れたとき（読み直して、load にログインの画面へ移してもらう）
@@ -92,8 +98,13 @@
         await invalidate('app:today');
         return;
       }
-      showToast(outcome.message, outcome.icon);
+      if (outcome.afterReload === undefined) showToast(outcome.message, outcome.icon);
       if (outcome.reload) await invalidate('app:today');
+      if (outcome.afterReload !== undefined) {
+        await tick();
+        const notice = outcome.afterReload();
+        showToast(notice.message, notice.icon);
+      }
       await focusRow(task.id, outcome.focus);
     } finally {
       pendingIds = pendingIds.filter((id) => id !== task.id);
@@ -137,7 +148,7 @@
           const reason = taskTodayMarkConflictReasonOf(result.error?.details);
           const message =
             reason === 'not_assignee'
-              ? t('todayMarkNotAssignee', { task: t('task'), assignee: t('assignee') })
+              ? t('todayMarkNotAssignee', { assignee: t('assignee') })
               : reason === 'completed'
                 ? t('todayMarkDone', { task: t('task'), done: t('done') })
                 : t('todayMarkFailed');
@@ -162,13 +173,19 @@
         if (result.status === 401) return null;
         const refused = gone(result, focus);
         if (refused !== null) return refused;
-        // 別の画面で先に完了にされていた
+        // 409 の conflict は、別の画面で先に完了にされたか、競合でやり直しきれなかったか。読み直して完了していた行だけ「すでに完了」にし、
+        // 完了していなければ失敗として知らせる
         if (result.status === 409 && result.error?.code === 'conflict') {
           return {
-            message: t('taskAlreadyDone', { task: t('task'), done: t('done') }),
-            icon: 'check',
+            message: t('taskCompleteFailed', { done: t('done') }),
+            icon: 'alert',
             reload: true,
-            focus,
+            // 完了していれば完了の印へ、していなければ完了のボタンへ
+            focus: '.hanko, .done-btn',
+            afterReload: () =>
+              data.today?.tasks.some((entry) => entry.id === task.id && entry.completed_at !== null)
+                ? { message: t('taskAlreadyDone', { task: t('task'), done: t('done') }), icon: 'check' }
+                : { message: t('taskCompleteFailed', { done: t('done') }), icon: 'alert' },
           };
         }
         return { message: t('taskCompleteFailed', { done: t('done') }), icon: 'alert', reload: false, focus };
@@ -327,7 +344,7 @@
 {#if data.today === null}
   <LoadFailed inShell />
 {:else}
-  <PageHead title={t('pageToday')} {tallies} />
+  <PageHead title={t('pageToday')} {tallies} focusable />
   {#if data.experience}
     <div class="layout-aside">
       <div class="layout-main">{@render main()}</div>

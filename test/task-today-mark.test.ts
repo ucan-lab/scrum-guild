@@ -204,6 +204,26 @@ describe('task-today-mark', () => {
     expect(await logsOf(foreign, foreignTask.id)).toEqual([]);
   });
 
+  test('バックログでないタスク（受信箱、アーカイブ）は担当本人でも 404 で、今日やるの印も履歴も変わらない', async () => {
+    const target = await createTarget();
+    for (const tray of ['inbox', 'archive'] as const) {
+      // バックログの外のタスクは取り込んだタスクだけ
+      const task = await mine(target, {
+        tray,
+        is_imported: 1,
+        created_by: null,
+        today_on: tray === 'inbox' ? null : '2026-10-25',
+      });
+      for (const marked of [true, false]) {
+        const res = await mark(target, task.id, marked);
+        expect(res.status, `${tray} ${marked}`).toBe(404);
+        expect(await errorCodeOf(res)).toBe('not_found');
+      }
+      expect(await rowOf(target, task.id)).toEqual(task);
+      expect(await logsOf(target, task.id)).toEqual([]);
+    }
+  });
+
   test('所属しないワークスペース（別の組織のワークスペースの ID を含む）を指すと 404', async () => {
     const target = await createTarget();
     const foreign = await createTarget();
@@ -354,6 +374,18 @@ describe('task-today-mark', () => {
         }),
       ).rejects.toMatchObject({ status: 409, code: 'conflict' });
       expect((await rowOf(target, task.id))!.today_on).toBe('2026-10-28');
+      expect(await logsOf(target, task.id)).toEqual([]);
+    });
+
+    test('読んだ後に削除されたら、次の周の読み取りで 404 になり、今日やるの印も履歴も書かない', async () => {
+      const target = await createTarget();
+      const task = await mine(target);
+      await expect(
+        runWithRace(target, { task_id: task.id, marked: true }, async (n) => {
+          if (n === 1) await setRow(target, task.id, { deleted_at: '2026-10-24T00:00:00.000Z' });
+        }),
+      ).rejects.toMatchObject({ status: 404, code: 'not_found' });
+      expect((await rowOf(target, task.id))!.today_on).toBeNull();
       expect(await logsOf(target, task.id)).toEqual([]);
     });
 

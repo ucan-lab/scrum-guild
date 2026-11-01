@@ -100,7 +100,7 @@ export const dictionary = defineDictionary({
   todayMarked: '今日やると決めました',
   todayUnmarked: '今日やるの印を外しました',
   // 断られた理由（taskTodayMarkConflictReasons）。読み直すと、行は今の区分に移る
-  todayMarkNotAssignee: 'この{task}は、ほかの人が{assignee}しているため、印を付け外しできません。一覧を読み直します',
+  todayMarkNotAssignee: '{assignee}が替わったため、今日やるの印を付け外しできませんでした。一覧を読み直します',
   todayMarkDone: 'この{task}は{done}になっているため、印を付け外しできません。一覧を読み直します',
   todayMarkFailed: '今日やるの印を変えられませんでした。もう一度試してください。',
   sprintInProgress: '進行中のスプリント',
