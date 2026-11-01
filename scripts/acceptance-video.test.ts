@@ -332,11 +332,25 @@ describe('gallery.mjs', () => {
 
   test('埋め込んだ buildResult は、外の変数を参照せずに、空の環境で動く', () => {
     const html: string = call('renderGallery', { judge: true, items: [video] });
-    const source = /<script>(function buildResult[\s\S]*?\n})\n\(function/.exec(html)?.[1];
+    const source = /<script>(function buildResult[\s\S]*?\n})\nfunction buildSummary/.exec(html)?.[1];
     assert.ok(source, '埋め込んだ buildResult が見つからない');
     const embedded = vm.runInNewContext(`(${source})`, {}) as (entries: unknown[]) => string;
     const text = embedded([{ issue: 1, title: 't', status: 'ng', reasons: ['想定と違う'], comment: 'c' }]);
     assert.match(text, /- #1 t: ng\n {2}- 理由: 想定と違う\n {2}- コメント: c/);
+  });
+
+  test('埋め込んだ buildSummary も、外の変数を参照せずに、空の環境で動く', () => {
+    const html: string = call('renderGallery', { judge: true, items: [video] });
+    const source = /\n(function buildSummary[\s\S]*?\n})\n\(function/.exec(html)?.[1];
+    assert.ok(source, '埋め込んだ buildSummary が見つからない');
+    const embedded = vm.runInNewContext(`(${source})`, {}) as (entries: unknown[]) => string;
+    assert.equal(
+      embedded([
+        { kind: 'video', done: false },
+        { kind: 'skipped', done: true },
+      ]),
+      '動画 1 本、飛ばした 0 件、撮れなかった 0 件、完了済み 1 件',
+    );
   });
 
   test('題とメモの改行は 1 行に潰し、別の Issue の行を偽れない', () => {
@@ -523,6 +537,22 @@ describe('gallery.mjs', () => {
       await open();
       assert.deepEqual(await rowIds(page), rows);
       assert.deepEqual(await tabIds(page), tabs);
+    });
+  });
+
+  test('戻すと、状況の要約も判定の対象の数に更新され、開き直しても同じ', chromiumSkip, async () => {
+    await withDoneGallery([video, doneVideo(575), doneVideo(576)], async (page, open) => {
+      await open();
+      const summary = () => page.locator('.summary').textContent();
+      assert.equal(await summary(), '動画 1 本、飛ばした 0 件、撮れなかった 0 件、完了済み 2 件');
+      await page.click('#tab-575');
+      await page.click('#panel-575 [data-return]');
+      assert.equal(await summary(), '動画 2 本、飛ばした 0 件、撮れなかった 0 件、完了済み 1 件');
+      await open();
+      assert.equal(await summary(), '動画 2 本、飛ばした 0 件、撮れなかった 0 件、完了済み 1 件');
+      await page.click('#tab-576');
+      await page.click('#panel-576 [data-return]');
+      assert.equal(await summary(), '動画 3 本、飛ばした 0 件、撮れなかった 0 件');
     });
   });
 

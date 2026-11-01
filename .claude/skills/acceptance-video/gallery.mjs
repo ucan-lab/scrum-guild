@@ -95,6 +95,21 @@ export function buildResult(allEntries) {
   return lines.join('\n');
 }
 
+/**
+ * 状況タブの要約の文。entries: [{ kind: 'video' | 'skipped' | 'failed', done: boolean }]
+ * 判定の対象（done でないもの）だけを数え、完了済みがあれば件数を末尾に添える。生成時とクライアントの更新で同じ文にするため共有する
+ * HTML にそのまま埋め込んで動かすので、外の値を参照しない（toString で写す）
+ */
+export function buildSummary(entries) {
+  const active = entries.filter((entry) => !entry.done);
+  const count = (kind) => active.filter((entry) => entry.kind === kind).length;
+  const done = entries.length - active.length;
+  return (
+    '動画 ' + count('video') + ' 本、飛ばした ' + count('skipped') + ' 件、撮れなかった ' + count('failed') + ' 件' +
+    (done > 0 ? '、完了済み ' + done + ' 件' : '')
+  );
+}
+
 const KIND_LABELS = { video: '動画', skipped: '飛ばした', failed: '撮れなかった' };
 const kindOf = (item) => OUTCOMES.find((key) => item[key] !== undefined);
 // 動画の無い Issue は HTML で判定できないので、結果には未判定のメモとして入れる
@@ -142,7 +157,7 @@ function renderPanel(item, judge) {
   const n = item.issue;
   // data-was-done は、戻した後も残り、戻したことを localStorage に保存する目印になる
   const doneAttrs = done ? ' data-done data-was-done' : '';
-  return `<section class="card" role="tabpanel" id="panel-${n}" aria-labelledby="tab-${n}" data-issue="${n}" data-title="${escapeHtml(item.title)}" data-note="${escapeHtml(noteOf(item))}"${doneAttrs} hidden>${heading}${body}</section>`;
+  return `<section class="card" role="tabpanel" id="panel-${n}" aria-labelledby="tab-${n}" data-issue="${n}" data-title="${escapeHtml(item.title)}" data-note="${escapeHtml(noteOf(item))}" data-kind="${kindOf(item)}"${doneAttrs} hidden>${heading}${body}</section>`;
 }
 
 function renderTab(item) {
@@ -190,6 +205,7 @@ const CLIENT_SCRIPT = String.raw`(function () {
       reasons: [].map.call(panel.querySelectorAll('.reasons input:checked'), function (i) { return i.value; }),
       comment: panel.querySelector('textarea') ? panel.querySelector('textarea').value : '',
       note: panel.getAttribute('data-note') || '',
+      kind: panel.getAttribute('data-kind'),
       // done は、戻していない完了済み。returned は、完了済みから判定の対象に戻したもの
       done: panel.hasAttribute('data-done'),
       returned: panel.hasAttribute('data-was-done') && !panel.hasAttribute('data-done')
@@ -241,6 +257,8 @@ const CLIENT_SCRIPT = String.raw`(function () {
     // 戻していない完了済みは、進み具合の件数に入れない（結果の文は buildResult が同じ決まりで外す）
     var counted = entries.filter(function (e) { return !e.done; });
     var n = function (s) { return counted.filter(function (e) { return e.status === s; }).length; };
+    // 戻した分を反映する。生成時の要約と同じ決まり（buildSummary）で作る
+    document.querySelector('.summary').textContent = buildSummary(entries);
     document.getElementById('counts').textContent = 'ok ' + n('ok') + ' 件、ng ' + n('ng') + ' 件、未判定 ' + n('') + ' 件';
     document.getElementById('result').value = buildResult(entries);
     layout();
@@ -336,15 +354,10 @@ const CLIENT_SCRIPT = String.raw`(function () {
 /** manifest から、外のファイルを読まない 1 枚の HTML を作る。呼ぶ前に validateManifest を通す */
 export function renderGallery(manifest) {
   const title = manifest.title ?? '受け入れ動画';
-  // 要約は判定の対象だけを数え、完了済みは別に件数を添える
-  const countActive = (key) => manifest.items.filter((item) => item.done !== true && item[key] !== undefined).length;
-  const doneCount = manifest.items.filter((item) => item.done === true).length;
-  const summary = `動画 ${countActive('video')} 本、飛ばした ${countActive('skipped')} 件、撮れなかった ${countActive('failed')} 件${
-    doneCount > 0 ? `、完了済み ${doneCount} 件` : ''
-  }`;
+  const summary = buildSummary(manifest.items.map((item) => ({ kind: kindOf(item), done: item.done === true })));
   const judge = manifest.judge === true;
   // スクリプトは固定で、manifest の値を含まない。本文のハッシュだけを CSP で許し、エスケープの漏れが実行にならないようにする
-  const script = `${buildResult.toString()}\n${CLIENT_SCRIPT}`;
+  const script = `${buildResult.toString()}\n${buildSummary.toString()}\n${CLIENT_SCRIPT}`;
   const scriptHash = createHash('sha256').update(script).digest('base64');
   // 完了済み（done: true）は、判定の対象と別の枠に置く。枠の見出しは、両方があるときだけ見せる
   const activeItems = manifest.items.filter((item) => item.done !== true);
