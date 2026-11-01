@@ -326,7 +326,8 @@ const CLIENT_SCRIPT = String.raw`(function () {
         place(panel);
         refresh(true);
         // 押したボタンを含む帯が消えるので、フォーカスが body に落ちないよう判定の先頭のボタンへ移す
-        panel.querySelector('.verdict-btn.ok').focus();
+        var first = panel.querySelector('.verdict-btn.ok');
+        if (first) first.focus();
       });
     });
     document.addEventListener('input', function () { refresh(true); });
