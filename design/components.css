@@ -81,53 +81,49 @@ h1, h2, h3 { text-wrap: balance; }
 .nav-badge { margin-left: auto; font-family: var(--font-mono); font-size: var(--text-xs); color: var(--color-muted); }
 /* 届いた招待の印（自分の設定の項目）。件数は .nav-badge、畳んだ列では件数を隠して、この点を項目の角に出す */
 .nav-item-invite { display: none; }
-.ws-select {
-  display: grid; gap: 2px; padding: var(--space-2); border-radius: var(--radius-1);
-  border: 1px solid var(--color-line); background: var(--color-surface);
-}
-.ws-select span { font-size: var(--text-xs); color: var(--color-muted); }
-.ws-select b { min-width: 0; overflow-wrap: anywhere; }
-.ws-select select { border: 0; background: none; padding: 0; font-weight: 700; }
-/* 組織の切り替え。開閉するメニューで、中は各組織へのリンクと、最後に組織の選択の画面へ戻るリンク。
-   選ぶと画面が移るので select にしない（矢印キーで選んだだけで移ってしまう）。狭い幅でも隠さない */
-.org-menu { display: grid; gap: var(--space-1); min-width: 0; }
-.org-menu-button {
+/* 組織とワークスペースの切り替え。共通のボタンとリンクの一覧。
+   選ぶと画面が移るので select にしない（矢印キーで選んだだけで移ってしまう）。
+   組織は狭い幅でも出し、ワークスペースは760px以下と畳んだ列で隠す。 */
+:is(.org-menu, .ws-menu) { display: grid; gap: var(--space-1); min-width: 0; }
+:is(.org-menu-button, .ws-menu-button) {
   display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; column-gap: var(--space-2);
   width: 100%; padding: var(--space-2); text-align: left; font: inherit; color: inherit; cursor: pointer;
   border-radius: var(--radius-1); border: 1px solid var(--color-line); background: var(--color-surface);
 }
-.org-menu-button:hover { border-color: var(--color-muted); }
-.org-menu-label { grid-column: 1; font-size: var(--text-xs); color: var(--color-muted); }
-.org-menu-button > b { grid-column: 1; font-weight: 700; overflow-wrap: anywhere; }
-.org-menu-button > .chip { grid-column: 1; justify-self: start; margin-top: var(--space-1); }
-.org-menu-button > .ico { grid-column: 2; grid-row: 1 / span 3; color: var(--color-muted); transform: rotate(90deg); }
-.org-menu-button[aria-expanded="true"] > .ico:last-of-type { transform: rotate(-90deg); }
+:is(.org-menu-button, .ws-menu-button):hover { border-color: var(--color-muted); }
+:is(.org-menu-label, .ws-menu-label) { grid-column: 1; font-size: var(--text-xs); color: var(--color-muted); }
+:is(.org-menu-button, .ws-menu-button) > b { grid-column: 1; font-weight: 700; overflow-wrap: anywhere; }
+:is(.org-menu-button, .ws-menu-button) > .chip { grid-column: 1; justify-self: start; margin-top: var(--space-1); }
+:is(.org-menu-button, .ws-menu-button) > .ico { grid-column: 2; grid-row: 1 / span 3; color: var(--color-muted); transform: rotate(90deg); }
+:is(.org-menu-button, .ws-menu-button)[aria-expanded="true"] > .ico:last-of-type { transform: rotate(-90deg); }
 /* swap のアイコンと招待の印は、畳んだ列でだけ見せる（広げた列は組織の名前と「届いた招待あり」で示す） */
-.org-menu-button > .ico:first-of-type:not(:last-of-type) { display: none; }
+:is(.org-menu-button, .ws-menu-button) > .ico:first-of-type:not(:last-of-type) { display: none; }
 .org-menu-invite { display: none; }
 /* 組織が多いときは、一覧の中でスクロールする（メニューの綴じが画面の高さに収まらなくなるため） */
-.org-menu-list, .account-menu-list {
+:is(.org-menu-list, .ws-menu-list), .account-menu-list {
   list-style: none; margin: 0; padding: var(--space-1); display: grid; gap: 1px;
-  max-height: 40vh; overflow-y: auto;
+  max-height: 40vh; overflow-y: auto; overscroll-behavior: contain;
   border-radius: var(--radius-1); border: 1px solid var(--color-line); background: var(--color-surface);
 }
-.org-menu-list[hidden], .account-menu-list[hidden] { display: none; }
-.org-menu-list a, .org-menu-list button, .account-menu-list button {
+:is(.org-menu-list, .ws-menu-list)[hidden], .account-menu-list[hidden] { display: none; }
+:is(.org-menu-list, .ws-menu-list) a, :is(.org-menu-list, .ws-menu-list) button, .account-menu-list button {
   display: flex; flex-wrap: wrap; align-items: center; column-gap: var(--space-2);
   padding: 7px var(--space-2); border-radius: var(--radius-1); color: var(--color-fg); text-decoration: none;
 }
-.org-menu-list button, .account-menu-list button { width: 100%; border: 0; background: none; text-align: left; }
-.org-menu-list a:hover, .org-menu-list button:hover, .account-menu-list button:hover:not([aria-disabled="true"]) { background: var(--color-rule); }
+:is(.org-menu-list, .ws-menu-list) button, .account-menu-list button { width: 100%; border: 0; background: none; text-align: left; }
+:is(.org-menu-list, .ws-menu-list) a:hover, :is(.org-menu-list, .ws-menu-list) button:hover, .account-menu-list button:hover:not([aria-disabled="true"]) { background: var(--color-rule); }
 .account-menu-list button[aria-disabled="true"] { opacity: 0.45; cursor: not-allowed; }
-.org-menu-list a[aria-current="page"] { background: var(--color-sunken); font-weight: 700; box-shadow: 0 0 0 1px var(--color-line); }
-.org-menu-list a .ico { margin-left: auto; color: var(--color-accent); }
+:is(.org-menu-list, .ws-menu-list) a[aria-current="page"] { background: var(--color-sunken); font-weight: 700; box-shadow: 0 0 0 1px var(--color-line); }
+:is(.org-menu-list, .ws-menu-list) a .ico { margin-left: auto; color: var(--color-accent); }
 .org-menu-name { min-width: 0; overflow-wrap: anywhere; }
+/* 所属していない管理者が開いているワークスペースの名前は、押せる行と区別する。 */
+.ws-menu-current { padding: 7px var(--space-2); color: var(--color-muted); overflow-wrap: anywhere; }
 .org-menu-note { flex-basis: 100%; font-size: var(--text-xs); color: var(--color-muted); }
 /* 組織ではない行（組織の一覧へ戻るリンクと、押すとダイアログを開く「組織を作る」）は、組織の行より控えめにする */
-.org-menu-list .is-aside a, .org-menu-list .is-aside button { color: var(--color-muted); }
+:is(.org-menu-list, .ws-menu-list) .is-aside a, :is(.org-menu-list, .ws-menu-list) .is-aside button { color: var(--color-muted); }
 /* 狭い幅と、指で押す画面では、押す所を 44px 以上にする。左のメニューのロゴと項目（狭い幅では上の帯に並ぶ）も同じ */
 @media (max-width: 760px), (pointer: coarse) {
-  .org-menu-list a, .org-menu-list button, .account-menu-list button, .account-menu-button { min-height: 44px; }
+  :is(.org-menu-list, .ws-menu-list) a, :is(.org-menu-list, .ws-menu-list) button, .account-menu-list button, .account-menu-button { min-height: 44px; }
   .nav-toggle { width: 44px; height: 44px; }
   .brand, .nav-item:not(.is-later) { min-height: 44px; }
 }
@@ -178,7 +174,7 @@ h1, h2, h3 { text-wrap: balance; }
   .app[data-nav-collapsed="true"] .org-menu-label,
   .app[data-nav-collapsed="true"] .org-menu-button > b,
   .app[data-nav-collapsed="true"] .org-menu-button > .chip,
-  .app[data-nav-collapsed="true"] .ws-select,
+  .app[data-nav-collapsed="true"] .ws-menu,
   .app[data-nav-collapsed="true"] .nav-badge,
   .app[data-nav-collapsed="true"] .binding-foot { display: none; }
   /* 節の見出しは罫だけを見せ、文字は読み上げに残す */
@@ -680,7 +676,7 @@ button.entry-title { text-align: left; background: transparent; border: 0; paddi
     padding-left: max(var(--space-4), env(safe-area-inset-left, 0px));
     padding-right: max(var(--space-4), env(safe-area-inset-right, 0px));
   }
-  .ws-select, .nav-group, .binding-foot { display: none; }
+  .ws-menu, .nav-group, .binding-foot { display: none; }
   .nav-toggle { display: none; }
   .org-menu { flex: 1 1 12rem; }
   .nav { display: flex; overflow-x: auto; width: 100%; gap: var(--space-1); }
