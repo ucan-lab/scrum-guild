@@ -1,0 +1,97 @@
+// 組織の無い会員が、組織を作ってその組織へ移る流れ。手元では実行せず、CI の e2e で確かめる。
+import type { Page } from '@playwright/test';
+import { word } from '../src/shared/vocabulary.ts';
+import { expect, test } from './fixtures.ts';
+import { expectFocusReturned, signIn } from './helpers.ts';
+import { removeCreatedOrganizations } from './local-d1.ts';
+
+// 作った組織は API に消す操作が無く、お試し中の組織は1アカウントに1つまでなので、テストの前と後に seed の状態（組織の無い会員）へ戻す
+// （e2e/local-d1.ts）。繰り返し（--repeat-each）でも毎回組織の無い状態から始める。この会員を使うテストはこのファイルにまとめる
+test.beforeEach(async () => {
+  await removeCreatedOrganizations('createOrg');
+});
+test.afterEach(async () => {
+  await removeCreatedOrganizations('createOrg');
+});
+
+async function openDialog(page: Page) {
+  await page.goto('/');
+  await expect(page.getByText('入れる組織がありません', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: '組織を作る' }).click();
+  const dialog = page.getByRole('dialog', { name: word('createMyOrganizationTitle') });
+  await expect(dialog).toBeVisible();
+  return dialog;
+}
+
+test('組織の無い会員は「組織を作る」から作成後の組織へ移る', async ({ context, baseURL, page }) => {
+  await signIn(context, baseURL, 'createOrg');
+  const dialog = await openDialog(page);
+  await dialog.getByLabel('URL の名前（slug）').fill('nagi-trial');
+  await dialog.getByLabel('組織の名前').fill('ナギの工房');
+  await dialog.getByRole('button', { name: '組織を作る' }).click();
+  await expect(page).toHaveURL(/\/nagi-trial\/?$/);
+});
+
+test('80 字を超える名前は黙って切られず、名前の欄に理由が出て、組織は作られない', async ({
+  context,
+  baseURL,
+  page,
+}) => {
+  await signIn(context, baseURL, 'createOrg');
+  const dialog = await openDialog(page);
+  await dialog.getByLabel('URL の名前（slug）').fill('nagi-long');
+  const longName = 'あ'.repeat(81);
+  await dialog.getByLabel('組織の名前').fill(longName);
+  // 欄が値を切らない（maxlength が無い）。上限は、送る前から欄の下のヒントに出ている
+  await expect(dialog.getByLabel('組織の名前')).not.toHaveAttribute('maxlength');
+  await expect(dialog.getByLabel('組織の名前')).toHaveValue(longName);
+  await expect(dialog.getByLabel('組織の名前')).toHaveAccessibleDescription(
+    word('createMyOrganizationNameHint', { max: '80' }),
+  );
+  await dialog.getByRole('button', { name: '組織を作る' }).click();
+  await expect(
+    dialog.getByText(word('createMyOrganizationNameLong', { organization: word('organization'), max: '80' })),
+  ).toBeVisible();
+  await expect(page).not.toHaveURL(/\/nagi-long/);
+});
+
+test('すでにある組織の slug を入れると、ダイアログに理由が出て、組織は作られない', async ({
+  context,
+  baseURL,
+  page,
+}) => {
+  await signIn(context, baseURL, 'createOrg');
+  const dialog = await openDialog(page);
+  // seed の組織（aoba）と同じ slug
+  await dialog.getByLabel('URL の名前（slug）').fill('aoba');
+  await dialog.getByLabel('組織の名前').fill('ナギの工房');
+  await dialog.getByRole('button', { name: '組織を作る' }).click();
+  await expect(dialog.getByText(word('createMyOrganizationSlugTaken'))).toBeVisible();
+  await expect(dialog).toBeVisible();
+  await expect(page).not.toHaveURL(/\/aoba/);
+});
+
+// 入れる組織が1つで招待が無い会員（ハルカ）は / を開くとその組織へ移り、組織の選択の画面に届かない。切り替えのメニューが入口になる。
+// ハルカで組織を作ると手元の D1 に組織が残り、繰り返し（e2e-repeat）が崩れるので、作成までは進めず、開いて、やめるで閉じるところまで確かめる
+test('入れる組織が1つの会員は、組織の切り替えのメニューから「組織を作る」を開き、閉じるとフォーカスが切り替えのボタンへ戻る', async ({
+  context,
+  baseURL,
+  page,
+}) => {
+  await signIn(context, baseURL, 'member');
+  await page.goto('/');
+  await expect(page).toHaveURL(/\/aoba$/);
+  const menuButton = page.getByRole('button', { name: 'あおば開発。組織を切り替える' });
+  await menuButton.click();
+  await expect(menuButton).toHaveAttribute('aria-expanded', 'true');
+  await page.getByRole('list', { name: '入れる組織' }).getByRole('button', { name: '組織を作る' }).click();
+
+  const dialog = page.getByRole('dialog', { name: word('createMyOrganizationTitle') });
+  await expect(dialog).toBeVisible();
+  // メニューは閉じて、ダイアログは残っている
+  await expect(menuButton).toHaveAttribute('aria-expanded', 'false');
+  await dialog.getByRole('button', { name: word('cancel') }).click();
+  await expect(dialog).toBeHidden();
+  await expectFocusReturned(page, menuButton);
+  await expect(page).toHaveURL(/\/aoba$/);
+});

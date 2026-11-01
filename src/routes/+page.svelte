@@ -2,6 +2,7 @@
   import { resolve } from '$app/paths';
   import { page } from '$app/state';
   import EmptyState from '../lib/components/EmptyState.svelte';
+  import CreateMyOrganizationDialog from '../lib/components/CreateMyOrganizationDialog.svelte';
   import Gate from '../lib/components/Gate.svelte';
   import GateSheet from '../lib/components/GateSheet.svelte';
   import LoadFailed from '../lib/components/LoadFailed.svelte';
@@ -15,7 +16,20 @@
   // 停止した組織だけがある人には、招待を待つ案内の代わりに、下の停止した組織の紙を指す文を出す。
   // 停止していなければ入れた組織が停止しているときは、その名前と、運用者に問い合わせることを別の紙に出す（入れないのでリンクにしない）
   let { data }: PageProps = $props();
+  let createDialog = $state<ReturnType<typeof CreateMyOrganizationDialog>>();
+  let createDialogOpen = $state(false);
 </script>
+
+<!-- 自分の組織を作る入口。入れる組織が無く、ほかに進む道が無い人だけ主ボタンにし、ほかは一覧や案内の下の静かな大きさにそろえる -->
+{#snippet createAction(primary: boolean)}
+  <button
+    class="btn"
+    class:is-primary={primary}
+    class:is-sm={!primary}
+    type="button"
+    onclick={(event) => createDialog?.show(event.currentTarget)}>{t('createMyOrganizationAction')}</button
+  >
+{/snippet}
 
 <svelte:head>
   <title>{t('pageTitle', { page: t('organizationChooseTitle'), app: t('appName') })}</title>
@@ -46,9 +60,20 @@
           icon="shield"
           title={t('noOrganizationTitle')}
           text={t('noOrganizationSuspendedText', { organization: t('organization') })}
-        />
+        >
+          {#snippet actions()}{@render createAction(false)}{/snippet}
+        </EmptyState>
       {:else}
-        <EmptyState icon="shield" title={t('noOrganizationTitle')} text={t('noOrganizationText')} />
+        <EmptyState
+          icon="shield"
+          title={t('noOrganizationTitle')}
+          text={t('noOrganizationText', { organization: t('organization') })}
+        >
+          {#snippet actions()}{@render createAction(true)}{/snippet}
+        </EmptyState>
+      {/if}
+      {#if data.organizations.length > 0 || data.invitations.length > 0}
+        <div class="form-actions">{@render createAction(false)}</div>
       {/if}
       <div class="form-actions">
         {#if data.operator}
@@ -89,3 +114,5 @@
     {/if}
   </Gate>
 {/if}
+
+<CreateMyOrganizationDialog bind:this={createDialog} bind:open={createDialogOpen} />

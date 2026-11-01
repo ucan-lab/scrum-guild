@@ -588,6 +588,7 @@ describe('組織の一覧', () => {
       task_count: 0,
       attachment_quota_bytes: 32212254720,
       last_used_at: null,
+      self_created: false,
     });
   });
 
@@ -840,6 +841,7 @@ describe('組織ごとの集計', () => {
       'purge_due',
       'purge_on',
       'seats',
+      'self_created',
       'slug',
       'suspended_at',
       'task_count',

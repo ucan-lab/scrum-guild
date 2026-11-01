@@ -492,6 +492,34 @@ export const dictionary = defineDictionary({
   organizationChooseTitle: '組織を選ぶ',
   organizationChooseLead: '入れる組織が {count} つあります。名前や稼働の設定は組織ごとに別です。',
   organizationChooseNote: 'あとから、画面の左上（狭い幅では上の帯）の組織の切り替えで選び直せます。',
+  createMyOrganizationAction: '組織を作る',
+  createMyOrganizationTitle: '自分の組織を作る',
+  createMyOrganizationLead:
+    'あなたが{admin}になり、30日間のお試しで始めます。お試し中の{organization}は、1つのアカウントにつき1つまでです。',
+  createMyOrganizationSlugLabel: 'URL の名前（slug）',
+  createMyOrganizationSlugExample: '例: sakura-dev',
+  createMyOrganizationSlugHint: '英小文字、数字、ハイフンで 2〜40 字。あとから変えられません。',
+  // {url} は、入れた slug でできあがる組織の URL（まだ入れていなければ <slug>）
+  createMyOrganizationSlugUrl: '{organization}の URL は {url} になります。',
+  createMyOrganizationNameLabel: '{organization}の名前',
+  createMyOrganizationNameExample: '例: さくら開発',
+  createMyOrganizationNameHint: '{max} 字までです。',
+  createMyOrganizationSlugRequired: 'URL の名前を入れてください。',
+  createMyOrganizationSlugFormat: '英小文字、数字、ハイフンで2〜40字にしてください。',
+  createMyOrganizationSlugReserved: 'この名前はサービスが使うため、{organization}の名前にできません。',
+  createMyOrganizationSlugTaken: 'この URL の名前はすでに使われています。別の名前を入れてください。',
+  createMyOrganizationNameRequired: '{organization}の名前を入れてください。',
+  createMyOrganizationNameLong: '{organization}の名前は {max} 字までです。',
+  createMyOrganizationNameInvalid:
+    '{organization}の名前に使えない文字（制御文字、行や段落の区切り、向きを変える文字、見えない空白や演算子）が含まれています。',
+  createMyOrganizationTrialLimit:
+    'お試し中の{organization}は、1つのアカウントにつき1つまでです。入れる{organization}は「{organization}の一覧へ」から開けます（停止している{organization}には入れません）。継続して使う場合は、運用者に問い合わせてください。',
+  createMyOrganizationTrialLimitLink: '{organization}の一覧へ',
+  createMyOrganizationRateLimited: '短い間に操作が重なりました。しばらくしてから、もう一度試してください。',
+  createMyOrganizationInvalid: '入力を受け付けられませんでした。内容を確かめてください。',
+  createMyOrganizationFailed: '{organization}を作れませんでした。もう一度試してください。',
+  createMyOrganizationSubmit: '{organization}を作る',
+  createMyOrganizationSubmitting: '{organization}を作っています',
   organizationList: '組織の一覧へ',
   // 組織の切り替えのボタンと一覧の読み上げの名前。{name} は今の組織の名前
   organizationSwitchLabel: '{name}。組織を切り替える',
@@ -500,7 +528,8 @@ export const dictionary = defineDictionary({
   invitationsBadge: '届いた招待あり',
   invitationsReceived: '招待が届いています',
   noOrganizationTitle: '入れる組織がありません',
-  noOrganizationText: '管理者から招待が届くと、ここに出ます。',
+  noOrganizationText:
+    '管理者から招待が届くと、ここに出ます。自分で{organization}を作って、30日間のお試しで始めることもできます。',
   // 入れる組織も招待も無く、停止していなければ入れた{organization}だけがある人
   noOrganizationSuspendedText:
     '停止している{organization}があります。下の「停止している{organization}」を見てください。',
@@ -553,6 +582,7 @@ export const dictionary = defineDictionary({
   operatorEmptyText: '{organization}を作り、最初の{admin}を指名してください。',
   operatorCreate: '{organization}を作る',
   operatorColumnOrganization: '{organization}・slug',
+  operatorSelfCreated: '自分で作った組織',
   // 組織ごとの集計の列。{workspace} {task} は辞書の同じ名前の項目で埋める
   operatorColumnSeats: '人数 / 上限',
   operatorColumnWorkspaces: '{workspace}の数',

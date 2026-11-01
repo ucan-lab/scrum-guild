@@ -12,6 +12,8 @@
 </head>
 <body>
 <div id="gate"></div>
+<div class="dialog" id="dialog" hidden></div>
+<div class="toasts" id="toasts" aria-live="polite"></div>
 <script src="icons.js"></script>
 <script src="art.js"></script>
 <script src="sample-data.js"></script>
@@ -33,6 +35,7 @@ function render() {
           ${k.admin ? `<span class="chip">${t("admin")}</span>` : ""}${emblem(k.level, true)}</a>`).join("")}
       </div>
       <p class="gate-note">あとから、メニューの上の${t("organization")}の切り替えで選び直せます。</p>
+      <div class="form-actions"><button class="btn is-sm" type="button" data-dialog="createMyOrganization">${t("organization")}を作る</button></div>
       <div class="form-actions"><button class="btn is-sm is-quiet" type="button" data-toast="見本のため、ログアウトしません">${t("logout")}</button></div>
     </section>
     <section class="gate-sheet">
@@ -44,6 +47,16 @@ function render() {
       </a>`).join("")}
       </div>
       <p class="gate-note">すべての${t("organization")}に届いた招待を、${t("organization")}ごとに1件にまとめて出します。押すと、その${t("organization")}の招待の画面（見本は login.html の「届いた招待」）で承諾か辞退を選べます。</p>
+    </section>
+    <section class="gate-sheet">
+      <h2 class="dialog-title">入れる${t("organization")}が無い人</h2>
+      ${SQ.emptyState("shield", `入れる${t("organization")}がありません`, `${t("admin")}から招待が届くと、ここに出ます。自分で${t("organization")}を作って、30日間のお試しで始めることもできます。`, `<button class="btn is-primary" type="button" data-dialog="createMyOrganization">${t("organization")}を作る</button>`)}
+      <p class="gate-note">招待を待つほかに道が無いので、「${t("organization")}を作る」を主ボタンにする。</p>
+    </section>
+    <section class="gate-sheet">
+      <h2 class="dialog-title">停止している${t("organization")}だけがある人</h2>
+      ${SQ.emptyState("shield", `入れる${t("organization")}がありません`, `停止している${t("organization")}があります。下の「停止している${t("organization")}」を見てください。`, `<button class="btn is-sm" type="button" data-dialog="createMyOrganization">${t("organization")}を作る</button>`)}
+      <p class="gate-note">再開を待つ道があるので、「${t("organization")}を作る」は主ボタンにせず、一覧の下と同じ is-sm にそろえる。</p>
     </section>
     <p class="gate-note" style="text-align:center"><a href="index.html">デザインシステムのカタログへ戻る</a></p>
   </div></div>`;

@@ -273,7 +273,7 @@ test.describe('組織が2つの人（ミナト）', () => {
     await expect(page.locator('.tree-row').first()).toBeVisible();
     await page.getByRole('button', { name: 'メニューを畳む' }).click();
     await page.locator('.org-menu-button').click();
-    for (const selector of ['.org-menu-list li:first-child a', '.org-menu-list li:last-child a'])
+    for (const selector of ['.org-menu-list li:first-child a', '.org-menu-list li:last-child button'])
       expect(await frontmostAcross(page, selector)).toEqual([true, true, true]);
   });
 

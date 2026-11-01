@@ -70,6 +70,9 @@ export const commonTableColumns = {
     attachment_quota_warned_at: textOrNull,
     stores_source_payload: integerDefault,
     created_by_operator: text,
+    // migrations/0014_add_organization_trial.sql で足す。運用者が作る組織は両方 NULL
+    created_by_account_id: textOrNull,
+    trial_ends_on: textOrNull,
     created_at: text,
     updated_at: text,
   },
