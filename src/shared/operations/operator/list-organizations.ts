@@ -23,6 +23,7 @@ export const listOrganizations = defineOperation({
       z.object({
         slug: z.string(),
         name: z.string(),
+        self_created: z.boolean(),
         suspended_at: z.string().nullable(),
         // 解約で停止した組織の、データを消す予定日（YYYY-MM-DD）。一時的な停止と、停止していない組織では null
         purge_on: z.string().nullable(),

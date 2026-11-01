@@ -33,8 +33,68 @@ export async function insertSelfCreatedOrganization(
   env: Env,
   input: NewSelfCreatedOrganization,
 ): Promise<CreatedOrganization | 'slug_taken' | 'trial_limit'> {
-  void [env, input];
-  throw new Error('未実装');
+  const organizationId = uuidv7(input.now.getTime());
+  const at = input.now.toISOString();
+  const trialEndsOn = new Date(input.now.getTime() + 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  const common = commonDb(env);
+  try {
+    // 上限の確かめと INSERT を1文にする。読んでから書くと、同じアカウントの同時の作成が揃って通る
+    const [result] = await common.batch([
+      common.statement((q) =>
+        q
+          .insertInto('organizations')
+          .columns([
+            'id',
+            'slug',
+            'name',
+            'vocabulary',
+            'created_by_operator',
+            'created_by_account_id',
+            'trial_ends_on',
+            'created_at',
+            'updated_at',
+          ])
+          .expression(
+            q
+              .selectNoFrom((eb) => [
+                eb.val(organizationId).as('id'),
+                eb.val(input.slug).as('slug'),
+                eb.val(input.name).as('name'),
+                eb.val(VOCABULARY_COLUMN_VALUE).as('vocabulary'),
+                eb.val(SELF_SERVICE_CREATOR).as('created_by_operator'),
+                eb.val(input.accountId).as('created_by_account_id'),
+                eb.val(trialEndsOn).as('trial_ends_on'),
+                eb.val(at).as('created_at'),
+                eb.val(at).as('updated_at'),
+              ])
+              .where((eb) =>
+                eb.not(
+                  eb.exists(
+                    eb
+                      .selectFrom('organizations')
+                      .select('id')
+                      .where('created_by_account_id', '=', input.accountId)
+                      .where('trial_ends_on', 'is not', null),
+                  ),
+                ),
+              ),
+          ),
+      ),
+    ] as const);
+    if (result.changes === 0) return 'trial_limit';
+  } catch (err) {
+    let existing: { id: string } | undefined;
+    try {
+      existing = await common.first(
+        common.statement((q) => q.selectFrom('organizations').select('id').where('slug', '=', input.slug)),
+      );
+    } catch {
+      throw new Error('slug の行を読み直せなかったので、組織を作れたか分からない', { cause: err });
+    }
+    if (existing === undefined) throw err;
+    if (existing.id !== organizationId) return 'slug_taken';
+  }
+  return { organizationId, db: orgDb(env, issueVerifiedOrganization(organizationId)) };
 }
 
 // 言葉づかいの列（vocabulary）には VOCABULARY_COLUMN_VALUE を明示して入れる。

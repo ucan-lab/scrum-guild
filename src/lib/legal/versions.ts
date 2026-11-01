@@ -3,7 +3,7 @@
 // 文面を直したら、この日付も同じ日に直す。
 // Markdown を読み込まない（`?raw` を使わない）ので、Worker からも同じ版を読める（同意を記録するときに、この版を残す）
 
-export const TERMS_VERSION = '2026-10-31';
+export const TERMS_VERSION = '2026-11-01';
 export const PRIVACY_VERSION = '2026-10-31';
 
 export const LEGAL_VERSION_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
