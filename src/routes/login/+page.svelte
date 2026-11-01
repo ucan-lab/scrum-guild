@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { resolve } from '$app/paths';
   import { page } from '$app/state';
   import Gate from '../../lib/components/Gate.svelte';
   import GateSheet from '../../lib/components/GateSheet.svelte';
@@ -137,6 +138,11 @@
       </form>
     {/if}
     <p class="gate-note">{t('loginNote', words)}</p>
+    <!-- 会員登録の画面へ。戻り先は引き継がない（組織の画面から来た人は、登録した後に入れない組織の画面でなく `/` に着く）。
+         ログインのボタンはアカウントを作らないので、作りたい人はここから -->
+    <div class="form-actions">
+      <a class="btn is-sm is-quiet" href={resolve('/signup')}>{t('loginSignupLink')}</a>
+    </div>
     <LegalLinks />
   </GateSheet>
 </Gate>

@@ -880,7 +880,7 @@ export const dictionary = defineDictionary({
   // 違うパスワード、登録の無いメールアドレス、形の合わない入力（401）。どれかは分けない（登録の有無を漏らさない）
   loginErrorInvalidCredentials: 'メールアドレスかパスワードが違います。確かめて、もう一度ログインしてください。',
   loginErrorDenied:
-    'ログインできませんでした。どの{organization}の{workspace}にも所属しておらず、招待も届いていません。招待された手段（GitHub か Google）と、招待されたアカウントでログインしているか確かめてください。招待がまだなら、{leader}に GitHub のユーザー名か Google のメールアドレスで招待してもらってください。',
+    'ログインできませんでした。どの{organization}の{workspace}にも所属しておらず、招待も届いていません。招待された手段（GitHub か Google）と、招待されたアカウントでログインしているか確かめてください。招待がまだなら、{leader}に GitHub のユーザー名か Google のメールアドレスで招待してもらってください。アカウントがまだ無い人は、会員登録から始められます。',
   // パスワードが合った後に、入れる{organization}も招待も無いとき（POST /api/auth/password/login の 403 denied）。
   // 招待された手段を確かめる案内は GitHub と Google の人向けなので、パスワードの人には出さない
   loginErrorDeniedPassword:
@@ -900,6 +900,19 @@ export const dictionary = defineDictionary({
   loginErrorTooMany: 'ログインの試行が多すぎます。しばらく待ってから、もう一度ログインしてください。',
   loginErrorUnavailable:
     'いまログインを受け付けられません。時間をおいてもう一度試してください。続くときは運用者に連絡してください。',
+  // ログインの画面の、会員登録への入口。アカウントがまだ無い人向け（ログインのボタンはアカウントを作らない）
+  loginSignupLink: 'アカウントがまだ無い人は会員登録',
+
+  // 会員登録の画面（/signup。枠の外）。招待の無い人が GitHub か Google でアカウントを作る。パスワードでの登録は無い。
+  // 失敗の理由（?error=）はログインの画面に戻して出すので、この画面には出し口を持たない
+  signupTitle: '会員登録',
+  signupLead:
+    'GitHub か Google のアカウントで、アカウントを作ります。アカウントだけ作った人は無料で、招待されて入る人も無料です。自分の{organization}を作った場合は、30日間お試しで使い始められます。',
+  signupWithGithub: 'GitHub で会員登録',
+  signupWithGoogle: 'Google で会員登録',
+  signupNote:
+    'GitHub と Google は本人確認だけに使います。会員登録のあとに、自分の{organization}を作るか、招待を待つかを選べます。',
+  signupLoginLink: 'アカウントがある人はログイン',
 
   // メンバーの画面（ワークスペースの画面）。{leader} {member} {admin} は、辞書の言葉を画面が渡す。
   // ロールは、リーダーと管理者には選択欄で、一般のメンバーには文字で出す。

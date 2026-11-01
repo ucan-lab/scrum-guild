@@ -1,6 +1,8 @@
 // ログインの開始と戻り先。ブラウザの GET の移動（リダイレクト）なので、操作の定義の外に直に書く例外
 // （docs/development.md の「操作の定義」。/api/health と同じ）。
-//   GET /api/auth/<手段>/start?return_to=<自分のサイトのパス>
+//   GET /api/auth/<手段>/start?return_to=<自分のサイトのパス>[&signup=1]
+//     signup=1 は会員登録の画面（/signup）のボタンが付ける。値がちょうど `1` の1つだけのときに限り、state の行に登録の印を付ける
+//     （戻り先で、アカウントも組織も招待も無い人のアカウントを作ってよい。ログインの画面のボタンは付けない）
 //   POST /api/auth/google/start（招待の URL の画面のフォーム。本文に秘密）
 //   GET /api/auth/<手段>/callback?code=...&state=...
 // どちらも失敗はログインの画面（/login?error=...）へ移す。ブラウザが見る応答に JSON のエラーを返さないため。
@@ -160,12 +162,14 @@ export function loginRoutes(options: LoginRoutesOptions): Hono<AppEnv> {
   const app = new Hono<AppEnv>();
 
   // 開始の共通の道。画面の移動だけを受けた後に、レート制限、state の行と Cookie、手段の認可の URL への移動を行う。
-  // claimTokenHash は招待の URL から始めたログインの、その URL の秘密の SHA-256（state の行に入れる）
+  // claimTokenHash は招待の URL から始めたログインの、その URL の秘密の SHA-256（state の行に入れる）。
+  // signup は会員登録の往復の印（state の行に入れる）。回数の上限は登録もログインと同じ枠で数える
   async function redirectToProvider(
     c: Context<AppEnv>,
     provider: string,
     returnTo: string,
     claimTokenHash: string | null,
+    signup: boolean,
   ): Promise<Response> {
     const limit = await consumeStartRateLimit(c);
     if (!limit.allowed) {
@@ -178,7 +182,15 @@ export function loginRoutes(options: LoginRoutesOptions): Hono<AppEnv> {
       log(c, { step: 'start', provider, outcome: 'unavailable' });
       return toLoginPage(c, 'unavailable', returnTo);
     }
-    const started = await startOAuthState(c.env, provider, returnTo, new Date(), method.usesNonce, claimTokenHash);
+    const started = await startOAuthState(
+      c.env,
+      provider,
+      returnTo,
+      new Date(),
+      method.usesNonce,
+      claimTokenHash,
+      signup,
+    );
     setCookie(
       c,
       oauthStateCookieName(c.env.PUBLIC_ORIGIN),
@@ -207,7 +219,11 @@ export function loginRoutes(options: LoginRoutesOptions): Hono<AppEnv> {
         log(c, { step: 'start', provider, outcome: 'not_navigation' });
         return toLoginPage(c, undefined, returnTo);
       }
-      return await redirectToProvider(c, provider, returnTo, null);
+      // 登録の印は、signup の値がちょうど `1` の1つのときだけ。`?signup=1&signup=0` のように重ねた値は印なし
+      // （c.req.query は最初の値を返すので、全部の値を見る queries を使う）
+      const signupValues = c.req.queries('signup');
+      const signup = signupValues?.length === 1 && signupValues[0] === '1';
+      return await redirectToProvider(c, provider, returnTo, null, signup);
     } catch (err) {
       logError(c, 'ログインを始められなかった', err);
       return toLoginPage(c, 'unavailable', returnTo);
@@ -236,7 +252,8 @@ export function loginRoutes(options: LoginRoutesOptions): Hono<AppEnv> {
         log(c, { step: 'start', provider, outcome: 'invalid_claim' });
         return toLoginPage(c, 'invite');
       }
-      return await redirectToProvider(c, provider, DEFAULT_RETURN_TO, await sha256Hex(claimToken));
+      // 招待の URL はすでに指名と招待を結ぶ道なので、登録の印は付けない
+      return await redirectToProvider(c, provider, DEFAULT_RETURN_TO, await sha256Hex(claimToken), false);
     } catch (err) {
       logError(c, 'ログインを始められなかった', err);
       return toLoginPage(c, 'unavailable');
@@ -313,6 +330,7 @@ export function loginRoutes(options: LoginRoutesOptions): Hono<AppEnv> {
         replacedSessionToken: getCookie(c, sessionCookie),
         requestId: c.get('requestId'),
         claimTokenHash: consumed.claimTokenHash,
+        signup: consumed.signup,
       });
       if (!outcome.ok) {
         log(c, { step: 'callback', provider, outcome: outcome.reason });

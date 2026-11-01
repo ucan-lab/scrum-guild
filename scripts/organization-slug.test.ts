@@ -21,6 +21,11 @@ describe('組織の slug', () => {
     for (const name of ['terms', 'privacy', 'consent']) assert.equal(slugProblem(name), 'reserved', name);
   });
 
+  test('会員登録の画面（signup）も予約した名前に入っていて、組織の slug にできない', () => {
+    assert.ok(reservedSlugs.includes('signup'));
+    assert.equal(slugProblem('signup'), 'reserved');
+  });
+
   test('API の最上段（api）も予約した名前に入っている', () => {
     assert.equal(slugProblem('api'), 'reserved');
   });
