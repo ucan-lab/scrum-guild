@@ -81,6 +81,8 @@ export function buildResult(allEntries) {
     'ok ' + count('ok') + ' 件、ng ' + count('ng') + ' 件、未判定 ' + count('') + ' 件',
     '',
   ];
+  // 判定の対象が 1 件も無いときは、ヘッダだけの 0 件が空の結果に見えないよう、理由を 1 行で添える
+  if (entries.length === 0) lines.push('判定の対象の Issue が無い（すべて完了済み）。');
   for (const entry of entries) {
     const label = entry.status === 'ok' ? 'ok' : entry.status === 'ng' ? 'ng' : '未判定';
     lines.push('- #' + entry.issue + ' ' + flat(entry.title) + ': ' + label);
@@ -194,19 +196,17 @@ const CLIENT_SCRIPT = String.raw`(function () {
     };
   }
 
-  // 完了済みの枠と判定の対象の枠のどちらに置くかを、パネルの data-done に合わせる
+  function rowOf(panel) { return document.querySelector('[data-goto="' + panel.getAttribute('data-issue') + '"]').parentNode; }
+  function tabOf(panel) { return document.getElementById('tab-' + panel.getAttribute('data-issue')); }
+
+  // 戻したパネルの一覧の行とタブを、判定の対象の枠の中で manifest の順（issuePanels の順）の位置に入れる。
+  // 開き直したときの復元（manifest の順）と、戻した順に関わらず並びが同じになる
   function place(panel) {
-    var n = panel.getAttribute('data-issue');
-    var done = panel.hasAttribute('data-done');
-    var row = document.querySelector('[data-goto="' + n + '"]').parentNode;
-    var tab = document.getElementById('tab-' + n);
+    var later = issuePanels.slice(issuePanels.indexOf(panel) + 1).filter(function (p) { return !p.hasAttribute('data-done'); })[0];
     var sep = document.getElementById('tabs-sep');
-    var doneRows = document.getElementById('rows-done');
-    var activeRows = document.getElementById('rows-active');
-    (done ? doneRows : activeRows).appendChild(row);
-    if (done) tab.parentNode.appendChild(tab);
-    else sep.parentNode.insertBefore(tab, sep);
-    tab.classList.toggle('done', done);
+    document.getElementById('rows-active').insertBefore(rowOf(panel), later ? rowOf(later) : null);
+    sep.parentNode.insertBefore(tabOf(panel), later ? tabOf(later) : sep);
+    tabOf(panel).classList.remove('done');
   }
 
   // 枠の見出しは、判定の対象と完了済みが両方あるときだけ見せる
@@ -304,6 +304,8 @@ const CLIENT_SCRIPT = String.raw`(function () {
         panel.removeAttribute('data-done');
         place(panel);
         refresh(true);
+        // 押したボタンを含む帯が消えるので、フォーカスが body に落ちないよう判定の先頭のボタンへ移す
+        panel.querySelector('.verdict-btn.ok').focus();
       });
     });
     document.addEventListener('input', function () { refresh(true); });
@@ -334,8 +336,12 @@ const CLIENT_SCRIPT = String.raw`(function () {
 /** manifest から、外のファイルを読まない 1 枚の HTML を作る。呼ぶ前に validateManifest を通す */
 export function renderGallery(manifest) {
   const title = manifest.title ?? '受け入れ動画';
-  const count = (key) => manifest.items.filter((item) => item[key] !== undefined).length;
-  const summary = `動画 ${count('video')} 本、飛ばした ${count('skipped')} 件、撮れなかった ${count('failed')} 件`;
+  // 要約は判定の対象だけを数え、完了済みは別に件数を添える
+  const countActive = (key) => manifest.items.filter((item) => item.done !== true && item[key] !== undefined).length;
+  const doneCount = manifest.items.filter((item) => item.done === true).length;
+  const summary = `動画 ${countActive('video')} 本、飛ばした ${countActive('skipped')} 件、撮れなかった ${countActive('failed')} 件${
+    doneCount > 0 ? `、完了済み ${doneCount} 件` : ''
+  }`;
   const judge = manifest.judge === true;
   // スクリプトは固定で、manifest の値を含まない。本文のハッシュだけを CSP で許し、エスケープの漏れが実行にならないようにする
   const script = `${buildResult.toString()}\n${CLIENT_SCRIPT}`;
@@ -362,7 +368,7 @@ ${rows(activeItems)}
     judge
       ? `
 <h3>結果（プロンプトに貼る）</h3>
-<p class="hint">未判定も含めて、全部の Issue が入る。未判定は、セッションが画面で 1 条件ずつ確かめる。</p>
+<p class="hint">未判定も含めて、判定の対象の Issue が全部入る。完了済み（判定の対象に戻していないもの）は入らない。未判定は、セッションが画面で 1 条件ずつ確かめる。</p>
 <div class="actions"><button type="button" class="copy" id="copy">結果をコピー</button><span id="copied" role="status"></span></div>
 <textarea id="result" class="result" rows="12" readonly></textarea>`
       : ''
@@ -372,7 +378,7 @@ ${rows(activeItems)}
 <button type="button" role="tab" id="tab-status" aria-controls="panel-status" aria-selected="true" data-tab="status">状況</button>
 ${activeItems.map(renderTab).join('\n')}${
     doneItems.length > 0
-      ? `\n<span class="tabs-sep" id="tabs-sep" role="presentation"${split ? '' : ' hidden'}>完了済み</span>\n${doneItems.map(renderTab).join('\n')}`
+      ? `\n<span class="tabs-sep" id="tabs-sep" role="presentation" aria-hidden="true"${split ? '' : ' hidden'}>完了済み</span>\n${doneItems.map(renderTab).join('\n')}`
       : ''
   }
 </div>`;

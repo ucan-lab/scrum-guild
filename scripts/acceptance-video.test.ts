@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
-import { chromium } from '@playwright/test';
+import { chromium, type Page } from '@playwright/test';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, test } from 'node:test';
@@ -406,9 +406,9 @@ describe('gallery.mjs', () => {
         'manifest.json': JSON.stringify({
           judge: true,
           items: [
+            video,
             { issue: 575, title: '済んだもの', video: 'issue-575.mp4', done: true },
             { issue: 576, title: '済んだが撮れず', failed: '要素が見つからない', done: true },
-            video,
           ],
         }),
         'issue-574.mp4': 'dummy',
@@ -484,6 +484,148 @@ describe('gallery.mjs', () => {
     },
   );
 
+  // judge の manifest から HTML を作り、ブラウザのページと、開き直す関数を渡す
+  async function withDoneGallery(
+    items: unknown[],
+    body: (page: Page, open: () => Promise<unknown>) => Promise<void>,
+  ): Promise<void> {
+    const files: Record<string, string> = { 'manifest.json': JSON.stringify({ judge: true, items }) };
+    for (const item of items as { video?: string }[]) if (item.video) files[item.video] = 'dummy';
+    const browser = await chromium.launch();
+    try {
+      await inTempDirAsync(files, async (path) => {
+        assert.equal(run(join(path('manifest.json'), '..')).status, 0);
+        const page = await browser.newPage();
+        await body(page, () => page.goto(pathToFileURL(path('index.html')).href));
+      });
+    } finally {
+      await browser.close();
+    }
+  }
+  const doneVideo = (issue: number) => ({ issue, title: `済んだ ${issue}`, video: `issue-${issue}.mp4`, done: true });
+  const chromiumSkip = { skip: !existsSync(chromium.executablePath()) && 'Playwright の chromium が無い' };
+  const tabIds = (page: Page) => page.$$eval('[role=tab]', (tabs) => tabs.map((tab) => tab.id));
+  const rowIds = (page: Page) =>
+    page.$$eval('#rows-active [data-goto]', (rows) => rows.map((row) => row.getAttribute('data-goto')));
+  const barIds = (page: Page) => page.$$eval('.tabs > *', (nodes) => nodes.map((node) => node.id));
+
+  test('戻した項目は、判定の対象の枠の中で manifest の順に並び、開き直しても同じ', chromiumSkip, async () => {
+    await withDoneGallery([doneVideo(601), doneVideo(602), doneVideo(603)], async (page, open) => {
+      await open();
+      await page.click('#tab-603');
+      await page.click('#panel-603 [data-return]');
+      await page.click('#tab-601');
+      await page.click('#panel-601 [data-return]');
+      const rows = await rowIds(page);
+      const tabs = await tabIds(page);
+      assert.deepEqual(rows, ['601', '603']);
+      assert.deepEqual(tabs, ['tab-status', 'tab-601', 'tab-603', 'tab-602']);
+      await open();
+      assert.deepEqual(await rowIds(page), rows);
+      assert.deepEqual(await tabIds(page), tabs);
+    });
+  });
+
+  test('全部が完了済みから 1 件戻すと区切りと見出しが出て、全部戻すと隠れる', chromiumSkip, async () => {
+    await withDoneGallery([doneVideo(601), doneVideo(602)], async (page, open) => {
+      await open();
+      const shown = async () => {
+        await page.click('#tab-status');
+        return [await page.locator('#tabs-sep').isVisible(), await page.locator('#done-heading').isVisible()];
+      };
+      assert.deepEqual(await shown(), [false, false]);
+      await page.click('#tab-601');
+      await page.click('#panel-601 [data-return]');
+      assert.deepEqual(await shown(), [true, true]);
+      await page.click('#tab-602');
+      await page.click('#panel-602 [data-return]');
+      assert.deepEqual(await shown(), [false, false]);
+    });
+  });
+
+  test(
+    'タブバーは戻したタブを区切りの前に置いて .done を外し、矢印キーは並び順に環状に動く',
+    chromiumSkip,
+    async () => {
+      await withDoneGallery([video, doneVideo(602), doneVideo(603)], async (page, open) => {
+        await open();
+        await page.click('#tab-603');
+        await page.click('#panel-603 [data-return]');
+        assert.deepEqual(await barIds(page), ['tab-status', 'tab-574', 'tab-603', 'tabs-sep', 'tab-602']);
+        assert.equal(await page.locator('#tab-603').evaluate((el) => el.classList.contains('done')), false);
+        assert.equal(await page.locator('#tab-602').evaluate((el) => el.classList.contains('done')), true);
+        const active = () => page.evaluate(() => document.activeElement?.id);
+        await page.focus('#tab-status');
+        const forward: (string | undefined)[] = [];
+        for (let i = 0; i < 4; i++) {
+          await page.keyboard.press('ArrowRight');
+          forward.push(await active());
+        }
+        assert.deepEqual(forward, ['tab-574', 'tab-603', 'tab-602', 'tab-status']);
+        const backward: (string | undefined)[] = [];
+        for (let i = 0; i < 2; i++) {
+          await page.keyboard.press('ArrowLeft');
+          backward.push(await active());
+        }
+        assert.deepEqual(backward, ['tab-602', 'tab-603']);
+      });
+    },
+  );
+
+  test('戻した後は、そのパネルの ok のボタンにフォーカスが移る', chromiumSkip, async () => {
+    await withDoneGallery([doneVideo(601)], async (page, open) => {
+      await open();
+      await page.click('#tab-601');
+      await page.click('#panel-601 [data-return]');
+      const focused = await page.evaluate(() => {
+        const el = document.activeElement;
+        return { panel: el?.closest('[data-issue]')?.id, cls: el?.className };
+      });
+      assert.equal(focused.panel, 'panel-601');
+      assert.match(focused.cls ?? '', /verdict-btn ok/);
+    });
+  });
+
+  test('状況の要約は判定の対象だけを数え、完了済みがあれば件数を末尾に足す', () => {
+    const summary = (items: unknown[]) =>
+      ((call('renderGallery', { items }) as string).match(/<p class="summary">([^<]*)<\/p>/) ?? [])[1];
+    const skipped = { issue: 575, title: 'API だけ', skipped: '画面が変わらない' };
+    assert.equal(summary([video, skipped]), '動画 1 本、飛ばした 1 件、撮れなかった 0 件');
+    assert.equal(
+      summary([
+        video,
+        skipped,
+        doneVideo(576),
+        { issue: 577, title: 's', skipped: 'r', done: true },
+        { issue: 578, title: 'f', failed: 'r', done: true },
+      ]),
+      '動画 1 本、飛ばした 1 件、撮れなかった 0 件、完了済み 3 件',
+    );
+    assert.equal(summary([doneVideo(576)]), '動画 0 本、飛ばした 0 件、撮れなかった 0 件、完了済み 1 件');
+  });
+
+  test('結果欄の説明は完了済みが入らないと伝え、全部が完了済みなら判定の対象が無いと結果の文に書く', () => {
+    const html: string = call('renderGallery', { judge: true, items: [video, doneVideo(576)] });
+    assert.match(
+      html,
+      /<p class="hint">未判定も含めて、判定の対象の Issue が全部入る。完了済み（判定の対象に戻していないもの）は入らない。/,
+    );
+    const text: string = call('buildResult', [
+      { issue: 576, title: '済んだ', status: '', reasons: [], comment: '', done: true },
+    ]);
+    assert.match(text, /ok 0 件、ng 0 件、未判定 0 件\n/);
+    assert.match(text, /判定の対象の Issue が無い（すべて完了済み）/);
+    assert.doesNotMatch(text, /#576/);
+    // 判定の対象があるときは、この行を出さない
+    const some: string = call('buildResult', [{ issue: 574, title: 't', status: '', reasons: [], comment: '' }]);
+    assert.doesNotMatch(some, /判定の対象の Issue が無い/);
+  });
+
+  test('タブの区切りは、読み上げの対象から外す', () => {
+    const html: string = call('renderGallery', { judge: true, items: [video, doneVideo(576)] });
+    assert.match(html, /<span class="tabs-sep" id="tabs-sep" role="presentation" aria-hidden="true">/);
+  });
+
   test('judge は真偽値だけを通す', () => {
     const problems = (judge: unknown): string =>
       (call('validateManifest', { judge, items: [video] }) as string[]).join('\n');
@@ -525,7 +667,7 @@ describe('gallery.mjs', () => {
     assert.ok(html.indexOf('id="tabs-sep"') < html.indexOf('data-tab="575"'));
     assert.ok(html.indexOf('data-goto="574"') < html.indexOf('id="rows-done"'));
     assert.ok(html.indexOf('id="rows-done"') < html.indexOf('data-goto="575"'));
-    assert.doesNotMatch(html, /id="tabs-sep" role="presentation" hidden/);
+    assert.doesNotMatch(html, /id="tabs-sep" role="presentation" aria-hidden="true" hidden/);
     assert.doesNotMatch(html, /id="done-heading" hidden/);
     assert.match(html, /<section[^>]*id="panel-575"[^>]*data-done data-was-done hidden>/);
     assert.doesNotMatch(html, /<section[^>]*id="panel-574"[^>]*data-done/);
@@ -535,7 +677,7 @@ describe('gallery.mjs', () => {
     const onlyActive: string = call('renderGallery', { judge: true, items: [video] });
     assert.doesNotMatch(onlyActive, /id="(tabs-sep|done-heading)"/);
     const onlyDone: string = call('renderGallery', { judge: true, items: [second] });
-    assert.match(onlyDone, /id="tabs-sep" role="presentation" hidden/);
+    assert.match(onlyDone, /id="tabs-sep" role="presentation" aria-hidden="true" hidden/);
     assert.match(onlyDone, /id="done-heading" hidden/);
   });
 
@@ -547,7 +689,7 @@ describe('gallery.mjs', () => {
         { issue: 576, title: 's', skipped: '理由', done: true },
       ],
     });
-    assert.match(html, /id="tabs-sep" role="presentation">完了済み/);
+    assert.match(html, /id="tabs-sep" role="presentation" aria-hidden="true">完了済み/);
     assert.doesNotMatch(html, /class="return-btn"/);
     assert.match(html, /飛ばした: 理由/);
     assert.doesNotMatch(html, /動画が無いので、ここでは判定しない/);
