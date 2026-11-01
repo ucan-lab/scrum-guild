@@ -9,14 +9,12 @@
   import Icon from './Icon.svelte';
 
   // kit.js の navHtml。current は今の画面のパス、slug は今の組織。画面のある項目だけを出す（nav.ts の visibleNav）。
-  // 組織の管理は管理者にだけ出す。所属するワークスペースが無い人（hasWorkspace が偽）には、組織の画面だけを出す。
+  // アカウントと組織の入口は上の帯の AccountMenu に置く。所属するワークスペースが無い人（hasWorkspace が偽）には、組織の画面だけを出す。
   // workspaceSwitcher を渡すのは、ワークスペースの画面を開いている間。所属していない管理者にも、
   // ワークスペースの節の見出しと、所属するワークスペースへの切り替えを出す。
   // ワークスペースの経路の項目（メンバーなど）は、workspaceId を渡したときだけ出す。渡すのは、開いているワークスペースの ID。
   // 組織の切り替えはメニューの外（AppShell のブランドの下）に置く。
   // ワークスペースの設定は、開いているワークスペースのリーダーと管理者にだけ出す。ロールは、ワークスペースの枠が読み込んだ値（page.data）から取る。
-  // invitationCount は、この組織に届いた承諾待ちの招待の件数。1件以上のとき「自分の設定」に件数（.nav-badge）を出し、
-  // 畳んだ列では件数の代わりに点（.nav-item-invite）を出す。件数は見た目だけにして、読み上げには「届いた招待 N件」を足す
   let {
     current,
     slug,
@@ -24,7 +22,6 @@
     isAdmin,
     workspaceId,
     workspaceSwitcher,
-    invitationCount = 0,
   }: {
     current: string;
     slug: string;
@@ -32,7 +29,6 @@
     isAdmin: boolean;
     workspaceId?: string;
     workspaceSwitcher?: Snippet;
-    invitationCount?: number;
   } = $props();
 
   const sections = $derived(
@@ -60,11 +56,6 @@
       {#if href !== null}
         <a class="nav-item" {href} aria-current={current === href ? 'page' : undefined}>
           <Icon name={item.icon} /><span class="nav-item-label">{t(item.label)}</span>
-          {#if item.badge === 'invitations' && invitationCount > 0}
-            <span class="nav-badge" aria-hidden="true">{t('navInvitationsBadge', { count: invitationCount })}</span>
-            <span class="nav-item-invite" aria-hidden="true"></span>
-            <span class="visually-hidden">{t('navInvitationsLabel', { count: invitationCount })}</span>
-          {/if}
         </a>
       {/if}
     {/each}

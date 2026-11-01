@@ -7,7 +7,7 @@ import { createWorkspace, dragTo, signIn, waitForResponses, watchViolations } fr
 const SEED_CLIENT_WORKSPACE = '/aoba/w/019a0000-0000-7000-8000-000000000401';
 
 async function openSettings(page: Page): Promise<void> {
-  // 「自分の設定」の項目にも当たらないよう、全体が「設定」の項目だけを選ぶ
+  // 「マイプロフィール」の項目にも当たらないよう、全体が「設定」の項目だけを選ぶ
   await page.locator('.nav-item', { hasText: /^\s*設定\s*$/ }).click();
   await expect(page).toHaveURL(/\/aoba\/w\/[0-9a-f-]{36}\/settings$/);
   await expect(page.getByRole('heading', { level: 1, name: '設定' })).toBeVisible();

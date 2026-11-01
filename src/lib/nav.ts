@@ -11,7 +11,7 @@ const workspaceRoutes = [
   '/[slug]/w/[id]/sprint',
 ] as const;
 export type WorkspaceNavRoute = (typeof workspaceRoutes)[number];
-export type NavRoute = '/[slug]' | '/[slug]/me' | '/[slug]/admin' | WorkspaceNavRoute;
+export type NavRoute = '/[slug]' | WorkspaceNavRoute;
 
 export function isWorkspaceRoute(route: NavRoute): route is WorkspaceNavRoute {
   return (workspaceRoutes as readonly string[]).includes(route);
@@ -26,15 +26,12 @@ export function isWorkspaceId(id: string | null | undefined): id is string {
 // メニューの項目。kit.js の PAGES と同じ並びと見出し。
 // href が null の項目は、画面がまだ無いのでメニューに出さない（色を薄くして押せなくする形は、
 // 状態が色だけに頼り、コントラストも足りないので採らない）。画面を足したら href に経路の ID を入れる。
-// adminOnly の項目は管理者にだけ出す。leaderOnly の項目は、開いているワークスペースのリーダーと管理者にだけ出す
+// leaderOnly の項目は、開いているワークスペースのリーダーと管理者にだけ出す
 export type NavItem = {
   icon: IconName;
   label: DictionaryKey;
   href: NavRoute | null;
-  adminOnly?: true;
   leaderOnly?: true;
-  // 項目に添える印。invitations は、この組織に届いた承諾待ちの招待の件数（0 なら出さない）
-  badge?: 'invitations';
 };
 
 // slot は、見出しのすぐ下に置く切り替え（組織、ワークスペース）。ワークスペースの画面を開いている間は、
@@ -47,7 +44,7 @@ export type NavSection = {
   items: NavItem[];
 };
 
-export type VisibleNavItem = { icon: IconName; label: DictionaryKey; href: NavRoute; badge?: 'invitations' };
+export type VisibleNavItem = { icon: IconName; label: DictionaryKey; href: NavRoute };
 export type VisibleNavSection = Omit<NavSection, 'items'> & { items: VisibleNavItem[] };
 
 export type VisibleNavOptions = {
@@ -80,7 +77,6 @@ export function visibleNav(
       items: section.items.filter(
         (item): item is VisibleNavItem =>
           item.href !== null &&
-          (!item.adminOnly || isAdmin) &&
           (!item.leaderOnly || isAdmin || isLeader) &&
           (!isWorkspaceRoute(item.href) || (inWorkspaceScreen && isWorkspaceId(workspaceId))),
       ),
@@ -93,8 +89,6 @@ export const navSections: NavSection[] = [
     items: [
       { icon: 'sun', label: 'pageToday', href: '/[slug]' },
       { icon: 'bell', label: 'pageNotifications', href: null },
-      { icon: 'users', label: 'pageMe', href: '/[slug]/me', badge: 'invitations' },
-      { icon: 'shield', label: 'pageOrgAdmin', href: '/[slug]/admin', adminOnly: true },
     ],
   },
   {

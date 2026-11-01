@@ -1,16 +1,35 @@
 <script lang="ts">
+  import { resolve } from '$app/paths';
+  import { page } from '$app/state';
   import { logoutState, performLogout } from '../logout-action.svelte.ts';
   import { t } from '../vocabulary.svelte.ts';
   import Avatar from './Avatar.svelte';
   import Emblem from './Emblem.svelte';
   import Icon from './Icon.svelte';
 
-  // kit.js の accountMenuHtml。上の帯の自分の名前を押すと開くメニューで、中は「ログアウト」の1項目（後で「自分の設定」も入る）。
+  // kit.js の accountMenuHtml。上の帯の自分の名前を押すと開くメニューで、中は「マイプロフィール」、管理者だけ「組織の管理」、最後に「ログアウト」。
   // 開閉は OrganizationSwitcher と同じ: ボタン、メニューの外を押す、Tab でメニューの外へ出る、Esc。
   // メニューの中にフォーカスがあるときに閉じたら、ボタンへフォーカスを戻す（隠れた要素にフォーカスを残さない）。
   // ログアウトを押しても閉じない。結果が返るまで項目を止めて「ログアウトしています」を見せ、失敗したら項目を戻す
   // level は自分のレベル。名前（と管理者の印）の横に小さい紋章で出す（kit.js の accountMenuHtml と同じ並び）
-  let { userId, name, isAdmin, level }: { userId: string; name: string; isAdmin: boolean; level: number } = $props();
+  let {
+    userId,
+    name,
+    isAdmin,
+    level,
+    slug,
+    invitationCount = 0,
+  }: {
+    userId: string;
+    name: string;
+    isAdmin: boolean;
+    level: number;
+    slug: string;
+    invitationCount?: number;
+  } = $props();
+
+  const profileHref = $derived(resolve('/[slug]/me', { slug }));
+  const adminHref = $derived(resolve('/[slug]/admin', { slug }));
 
   const listId = $props.id();
   let open = $state(false);
@@ -60,11 +79,30 @@
       {#if isAdmin}<span class="chip">{t('admin')}</span>{/if}
       <Emblem {level} small />
     </span>
+    {#if invitationCount > 0}<span class="account-menu-invite" aria-hidden="true"></span>{/if}
     <Icon name="chevron" />
   </button>
   <!-- ログアウトを待っている間を読み上げに伝える。領域は常に置き、中の文字だけを替える（OrganizationSwitcher と同じ） -->
   <span class="visually-hidden" role="status">{logoutState.busy ? t('logoutMoving') : ''}</span>
   <ul class="account-menu-list" id={listId} aria-label={label} hidden={!open}>
+    <li>
+      <a href={profileHref} aria-current={page.url.pathname === profileHref ? 'page' : undefined} onclick={closeMenu}>
+        <span class="org-menu-name">{t('pageMe')}</span>
+        {#if invitationCount > 0}
+          <span class="account-menu-badge" aria-hidden="true"
+            >{t('navInvitationsBadge', { count: invitationCount })}</span
+          >
+          <span class="visually-hidden">{t('navInvitationsLabel', { count: invitationCount })}</span>
+        {/if}
+      </a>
+    </li>
+    {#if isAdmin}
+      <li>
+        <a href={adminHref} aria-current={page.url.pathname === adminHref ? 'page' : undefined} onclick={closeMenu}>
+          <span class="org-menu-name">{t('pageOrgAdmin')}</span>
+        </a>
+      </li>
+    {/if}
     <li>
       <button type="button" aria-disabled={logoutState.busy} onclick={performLogout}>
         <span class="org-menu-name">{logoutState.busy ? t('logoutMoving') : t('logout')}</span>
