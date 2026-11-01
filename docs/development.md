@@ -449,7 +449,7 @@ claude mcp add scrum-guild -- node <main の作業コピーの絶対パス>/cli/
 
 Codex は `.claude/` のフックを通らない（`codex exec` が起こす実装専用のエージェント。`.codex/agents/implementer.toml`）。代わりに次で守る。
 
-- Codex の sandbox は `workspace-write` で、ネットワークは無し（`increment-build` が `codex exec` の呼び出しで固定する。サブエージェントの中で効くことは、実機では確かめていない想定）。`wrangler` の資格情報は読めるが、通信の道が無ければ本番に触る `wrangler` の操作は届かない。資格情報の値が書いた差分に混ざることは、この守りの外で、人が差分を読んで止める（`needs-human` ではない通常の PR でも、コミット前に差分を目で確かめる）。`increment-build` の `codex exec` の呼び出しの変更も、人が差分を読む
+- Codex の sandbox は `workspace-write` で、ネットワーク全体を有効にする（`increment-build` が `codex exec` の呼び出しで `-c sandbox_workspace_write.network_access=true` を渡す。Issue の本文の取得や依存の導入に使う。2026-11-02 に決めた）。通信で本番への接続を遮断する守りは無いため、本番の操作と資格情報の読み出しの禁止は `AGENTS.md` の指示に従わせる。資格情報の値が書いた差分に混ざることは、人が差分を読んで止める（`needs-human` ではない通常の PR でも、コミット前に差分を目で確かめる）。`increment-build` の `codex exec` の呼び出しの変更も、人が差分を読む。手元の Codex 0.166.0 の `codex sandbox` では、同じ `workspace-write` の設定で、ネットワークが `false` だと `api.github.com` の名前解決に失敗し、`true` だと HTTP 200 を返すことを確かめた。委譲先のサブエージェントの中で効くことは、実機では確かめていない
 - `AGENTS.md` が `CLAUDE.md` の「守ること」と「コマンド」に従わせ、フックが止めていたこと（本番の操作、`.dev.vars` と `.env`、コミット）を Codex に固有の注意として並べる
 - Codex が戻った後に、呼び出し元のセッションはまず `git status --short` と `git diff --name-only` を見る。変えてよい範囲の外の守るファイル（`.githooks/`、`.claude/`、`.codex/`、`AGENTS.md`、`package.json`、`scripts/` など）が変わっていれば、何も走らせずに止まる（呼び出し元は sandbox の外で動くため、Codex が書き換えたフックやスクリプトを動かさない）。範囲の中だけなら、`pnpm format` と受け入れ条件の検査を走らせ直す（`format.mjs` を通らないため）。コミットは呼び出し元だけが行う
 
