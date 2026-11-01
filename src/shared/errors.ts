@@ -12,6 +12,9 @@ export const errorCodes = [
   // 今の版の規約に同意していない。403。同意の操作とログアウトなど、定義に skipsConsent を付けた操作以外をすべて断る。画面は同意の画面へ移す
   'terms_required',
   'conflict',
+  // クリアか中止した（終わった）エピックの討伐隊・報酬・依頼主を変える操作（epic-party-join、epic-party-leave、epic-party-assign、
+  // epic-reward-update、epic-requester-update）の 409。書き込みの競合に 3 回続けて負けたときは conflict のまま。画面は「終わっているので変えられません」を出す
+  'epic_finished',
   // 閉じたワークスペースへの書き込み。読み取り専用なので書けない。409
   'workspace_closed',
   // 招待の作成（invitation-create）の 409。招待する人がもうそのワークスペースに所属している、同じワークスペースに承諾待ちの招待がある、

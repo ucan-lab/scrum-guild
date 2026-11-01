@@ -13,8 +13,8 @@
   // 候補は、開くたびに member-list で読む、そのワークスペースに今所属している人のうち、partyIds（画面が渡す、今の討伐隊の人）に
   // いない人。1人を選んで「割り振る」を押すと epic-party-assign を送る。
   // 割り振れたら閉じて、トーストで知らせ、onassigned で画面に読み直させる（既に討伐隊にいたときも同じく閉じて、その旨を知らせる）。
-  // 選んだ人が所属を外れていた、エピックが消えた（404）ときは、理由を出し、候補を読み直す。終わったエピック（409 の conflict）、
-  // 権限が無い（403）、閉じたワークスペース（409 の workspace_closed）は理由を出し、閉じたときに画面を読み直す。
+  // 選んだ人が所属を外れていた、エピックが消えた（404）ときは、理由を出し、候補を読み直す。終わったエピック（409 の epic_finished）、
+  // 書き込みの競合（409 の conflict）、権限が無い（403）、閉じたワークスペース（409 の workspace_closed）は理由を出し、閉じたときに画面を読み直す。
   // 送っている間は「割り振る」を押しても無視し（aria-disabled）、ダイアログも閉じられない。
   // 送り始めた後に開き直した、部品が外れたときは、古い応答で状態を更新しない（generation）
   let {
@@ -165,8 +165,11 @@
       if (result.error?.code === 'workspace_closed') {
         submitError = t('workspaceClosedReadOnly', words);
         reloadOnClose = 'workspace';
-      } else if (result.status === 409) {
+      } else if (result.error?.code === 'epic_finished') {
         submitError = t('epicPartyFinished', words);
+        reloadOnClose = 'epic';
+      } else if (result.error?.code === 'conflict') {
+        submitError = t('epicPartyConflict', words);
         reloadOnClose = 'epic';
       } else if (result.status === 403) {
         submitError = t('epicAssignForbidden', words);

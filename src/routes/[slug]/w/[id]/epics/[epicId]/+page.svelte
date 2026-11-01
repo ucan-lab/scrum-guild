@@ -122,7 +122,8 @@
       } else if (result.error?.code === 'workspace_closed') {
         showToast(t('workspaceClosedReadOnly', words), 'alert');
         await invalidate('app:workspace');
-      } else if (result.status === 409) showToast(t('epicPartyFinished', words), 'alert');
+      } else if (result.error?.code === 'epic_finished') showToast(t('epicPartyFinished', words), 'alert');
+      else if (result.error?.code === 'conflict') showToast(t('epicPartyConflict', words), 'alert');
       else if (result.status === 404) showToast(t('epicPartyGone', words), 'alert');
       else showToast(t('epicPartyFailed', words), 'alert');
       await saved();

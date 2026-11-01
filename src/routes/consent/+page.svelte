@@ -7,7 +7,9 @@
   import LogoutButton from '../../lib/components/LogoutButton.svelte';
   import { callOperation } from '../../lib/api.ts';
   import Icon from '../../lib/components/Icon.svelte';
+  import { revisedDocuments } from '../../lib/consent-revision.ts';
   import { formatDateTime } from '../../lib/format-datetime.ts';
+  import { REVISION_HISTORY_ID } from '../../lib/legal/revision-history.ts';
   import { isUnauthenticated, loginUrl } from '../../lib/login-redirect.ts';
   import { t } from '../../lib/vocabulary.svelte.ts';
   import type { OutputOf } from '../../shared/operations/define.ts';
@@ -19,6 +21,20 @@
   let busy = $state(false);
   let error = $state<'load' | 'record' | 'updated' | undefined>();
   const returnTo = $derived(safeReturnTo(page.url.searchParams.get('return_to')));
+  // 前の同意と版が違う文書。初めて同意する人と、今の版に同意済みの人では空（案内を出さない）
+  const revised = $derived(status === undefined ? [] : revisedDocuments(status));
+  const revisedHeading = $derived(
+    revised.length === 2
+      ? 'consentRevisedBoth'
+      : revised[0]?.kind === 'terms'
+        ? 'consentRevisedTerms'
+        : 'consentRevisedPrivacy',
+  );
+
+  // 改めた文書の「改定の履歴」の節（/terms#revision-history、/privacy#revision-history）
+  function historyHref(kind: 'terms' | 'privacy'): string {
+    return `${resolve(kind === 'terms' ? '/terms' : '/privacy')}#${REVISION_HISTORY_ID}`;
+  }
 
   async function loadStatus() {
     const result = await callOperation(consentStatus, {});
@@ -114,6 +130,25 @@
         <LogoutButton />
       </div>
     {:else}
+      {#if revised.length > 0}
+        <div class="callout is-info">
+          <Icon name="file" /><span
+            ><b>{t(revisedHeading)}</b>
+            {#each revised as doc (doc.kind)}
+              {@const title = t(doc.kind === 'terms' ? 'termsTitle' : 'privacyTitle')}
+              <br />{title}
+              <span class="mono">{t('legalRevised', { date: doc.version })}</span>
+              <!-- eslint-disable-next-line svelte/no-navigation-without-resolve -- href は resolve した経路に、履歴の節の id（ハッシュ）を足したもの -->
+              <a href={historyHref(doc.kind)} target="_blank" rel="noopener noreferrer"
+                >{t('consentRevisedHistory')}<span class="visually-hidden">
+                  {t('consentRevisedHistoryOf', { document: title })}
+                  {t('markdownNewTab')}</span
+                ></a
+              >
+            {/each}</span
+          >
+        </div>
+      {/if}
       <p>{t('consentLead', { app: t('appName') })}</p>
       <div class="choice-list">
         <a class="choice" href={resolve('/terms')} target="_blank" rel="noopener noreferrer">
