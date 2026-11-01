@@ -186,6 +186,11 @@ export function formatProbeLine(r) {
   return `場面 ${r.step}: ${verdict}: ${describeItem(r)}${tail}`;
 }
 
+/** preview に届かない失敗が 1 件でもあるか。指し方の誤りでなく環境の問題なので、一覧より先に知らせる */
+export function isUnreachable(results) {
+  return results.some((r) => r.status === 'missing' && /ERR_CONNECTION_REFUSED|ECONNREFUSED/.test(r.detail));
+}
+
 /** 失敗の理由。1 行目に、指し方が違うのか、在るのに操作できないのかを分ける行を足す */
 export function probeDetail(message) {
   const [first, ...rest] = String(message).split('\n');

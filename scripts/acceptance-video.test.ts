@@ -734,6 +734,20 @@ console.log(JSON.stringify([
     ]);
   });
 
+  test('preview に届かない失敗は、先頭が goto でなくても、手前に別の見つからないがあっても見つける', () => {
+    const code = `import * as p from ${planUrl};
+const miss = (detail) => ({ status: 'missing', detail });
+console.log(JSON.stringify([
+  p.isUnreachable([{ status: 'found' }, miss('page.goto: net::ERR_CONNECTION_REFUSED at http://localhost:1/')]),
+  p.isUnreachable([miss('locator.click: Timeout 5000ms exceeded.'), miss('page.goto: net::ERR_CONNECTION_REFUSED')]),
+  p.isUnreachable([miss('locator.click: Timeout 5000ms exceeded.'), { status: 'skipped', reason: 'ERR_CONNECTION_REFUSED' }]),
+  p.isUnreachable([]),
+]));`;
+    const result = spawnSync(process.execPath, ['--input-type=module', '-e', code], { encoding: 'utf8' });
+    assert.equal(result.status, 0, result.stderr);
+    assert.deepEqual(JSON.parse(result.stdout), [true, true, false, false]);
+  });
+
   test('在るのに操作できない理由と、見つからないときの報告の形', () => {
     const { printed } = probe(plan, { step: 2, kind: 'click' });
     assert.equal(

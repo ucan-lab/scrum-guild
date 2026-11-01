@@ -18,6 +18,7 @@ import {
   RESULT_MS,
   estimateSeconds,
   formatProbeLine,
+  isUnreachable,
   pausesAfter,
   probePlan,
   runProbe,
@@ -101,7 +102,7 @@ async function probe(planPath) {
     await browser.close();
   }
   // preview に届かないのは指し方の誤りでないので、一覧でなく環境の問題として知らせる
-  if (results.some((r) => r.status === 'missing' && /ERR_CONNECTION_REFUSED|ECONNREFUSED/.test(r.detail))) {
+  if (isUnreachable(results)) {
     console.error('preview に届かない（先に pnpm preview を立て、応答を確かめる）');
     process.exit(2);
   }
