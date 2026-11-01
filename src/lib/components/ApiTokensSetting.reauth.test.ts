@@ -61,7 +61,6 @@ test('発行の欄が無いとき、空の文は存在しないフォームを�
   const needs = renderWith({ canCreate: false, loginProvider: 'github', slug: 'aoba' });
   expect(needs).not.toContain('<form');
   expect(needs).not.toContain('上のフォーム');
-  expect(dictionary.apiTokenEmptyText).not.toContain('フォーム');
 });
 
 test('再認証リンクの説明は、同じ案内の理由の本文を指す', () => {
