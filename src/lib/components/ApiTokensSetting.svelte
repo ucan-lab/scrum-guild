@@ -255,6 +255,20 @@
     });
   });
 
+  // 閉じた後の reload で発行できなくなると、フォーカスのあった発行の欄が消えて body に落ちる。
+  // 発行できる状態から変わった瞬間にだけ、失われたフォーカスを案内のリンクへ移す（初めの描画では動かさない）
+  let wasAllowedToCreate = untrack(() => allowedToCreate);
+  $effect(() => {
+    const allowed = allowedToCreate;
+    const lostFocus = wasAllowedToCreate && !allowed;
+    wasAllowedToCreate = allowed;
+    if (!lostFocus) return;
+    void tick().then(() => {
+      const active = document.activeElement;
+      if (active === null || active === document.body) reauthLink?.focus();
+    });
+  });
+
   async function copy(): Promise<void> {
     if (issued === null) return;
     try {
