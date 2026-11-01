@@ -115,9 +115,9 @@ Issue に、ブランチ名とセッションの識別をコメントで残す�
 
 1. クラウドのセッション（環境変数 `CLAUDE_CODE_REMOTE` が `true`）は、Codex の判定をせず常に Claude の `implementer`（`.claude/agents/implementer.md`、Sonnet）。クラウドの環境に OpenAI の資格情報を置かないため
 2. 手元では、`command -v codex` と `codex login status` がどちらも成功すれば Codex の `implementer`（`.codex/agents/implementer.toml`）。どちらかが失敗すれば Claude の `implementer`
-3. Codex は次のように呼ぶ。プロンプトに「`implementer` エージェントで実装する」と明示し（Codex は親が明示したときだけエージェントを起こす）、続けて5つを書く。プロンプトはスクラッチのファイルに Write で書き、標準入力から渡す（Issue の本文の `` ` `` や `$(...)` をシェルに展開させないため。引数に直接入れない）。ネットワークは呼び出しで無しに固定する（`-c sandbox_workspace_write.network_access=false`。人の `~/.codex/config.toml` が有効にしていても効かせないため）
+3. Codex は次のように呼ぶ。プロンプトに「`implementer` エージェントで実装する」と明示し（Codex は親が明示したときだけエージェントを起こす）、続けて5つを書く。プロンプトはスクラッチのファイルに Write で書き、標準入力から渡す（Issue の本文の `` ` `` や `$(...)` をシェルに展開させないため。引数に直接入れない）。sandbox は `workspace-write` のまま、ネットワーク全体を有効にする（`-c sandbox_workspace_write.network_access=true`。Issue の本文の取得や依存の導入に使う。2026-11-02 に決めた）。本番の操作と資格情報の読み出しの禁止は `AGENTS.md` に従う
    ```bash
-   codex exec -C <ワークツリーの絶対パス> --sandbox workspace-write -c sandbox_workspace_write.network_access=false --output-last-message <スクラッチの path> - < <プロンプトのファイル>
+   codex exec -C <ワークツリーの絶対パス> --sandbox workspace-write -c sandbox_workspace_write.network_access=true --output-last-message <スクラッチの path> - < <プロンプトのファイル>
    ```
    長く掛かるので `run_in_background` で走らせ、終了の通知で終了コードと出力を読む（前景の Bash は10分で打ち切られ、半端な差分だけが残る）。打ち切られたなど、上限の印の無い非 0 は、上限以外の失敗として止まる。Codex が `implementer` として動いたかは、最後の出力の先頭で名乗らせて確かめる（名乗りが無ければ、PR に「定義が効いたか不明」と書く）
 4. Codex が 0 でない終了コードで終わり、Codex 自身のエラー（標準エラーの終わりの、Codex が出したエラー行。実装が走らせたテストの出力ではない）に利用上限の印（大文字小文字を区別せず `usage limit`、`rate limit`、`quota`、`429`）があれば、Claude の `implementer` に切り替える。ワークツリーの差分は戻さず、`git status --short`（新規のファイルを見落とさないため）、`git diff`、Codex の最後の出力（`--output-last-message` のファイル。無ければ標準出力の末尾）を添えて、続きから実装させる。上限以外の失敗（テストが通らないなど）では切り替えず、止まる条件で止まる（担い手を替えて失敗を隠さないため）
