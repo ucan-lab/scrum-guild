@@ -709,6 +709,22 @@ try {
     ]);
   });
 
+  test('wait で在るのに隠れている／消えないときの Call log の行も、理由に足す', () => {
+    const code = `import * as p from ${planUrl};
+console.log(JSON.stringify([
+  p.probeDetail('locator.waitFor: Timeout 5000ms exceeded.\\nCall log:\\n  - waiting for locator(\\'#a\\') to be visible\\n  -   locator resolved to hidden <div id="a">…</div>'),
+  p.probeDetail('locator.waitFor: Timeout 5000ms exceeded.\\nCall log:\\n  - waiting for locator(\\'#a\\') to be hidden\\n  -   locator resolved to visible <div id="a">…</div>'),
+  p.probeDetail('locator.click: Timeout 5000ms exceeded.\\nCall log:\\n  - waiting for locator(\\'#a\\')'),
+]));`;
+    const result = spawnSync(process.execPath, ['--input-type=module', '-e', code], { encoding: 'utf8' });
+    assert.equal(result.status, 0, result.stderr);
+    assert.deepEqual(JSON.parse(result.stdout), [
+      'locator.waitFor: Timeout 5000ms exceeded. / locator resolved to hidden <div id="a">…</div>',
+      'locator.waitFor: Timeout 5000ms exceeded. / locator resolved to visible <div id="a">…</div>',
+      'locator.click: Timeout 5000ms exceeded.',
+    ]);
+  });
+
   test('在るのに操作できない理由と、見つからないときの報告の形', () => {
     const { printed } = probe(plan, { step: 2, kind: 'click' });
     assert.equal(

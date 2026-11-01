@@ -171,7 +171,8 @@ export function describeItem(item) {
 }
 
 // 要素は在るのに操作できない理由（無効、隠れている、覆われている）。Playwright の Call log にだけ出るので、1 行目に足す
-const BLOCKED_REASON = /not (enabled|visible|stable|editable)|intercepts pointer events|strict mode violation|resolved to \d+/;
+const BLOCKED_REASON =
+  /not (enabled|visible|stable|editable)|intercepts pointer events|strict mode violation|resolved to (\d+|hidden|visible)/;
 
 /** 試しの結果 1 件の、報告の 1 行 */
 export function formatProbeLine(r) {
