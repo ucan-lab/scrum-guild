@@ -450,3 +450,22 @@ test('完了を 409 の conflict で断られたとき、読み直して完了�
   await expect(region(page, '今日の完了').locator('.entry-title')).toHaveText(['先に完了された']);
   await expect(page.getByRole('button', { name: '完了にする: 競合に負け続けた' })).toBeFocused();
 });
+
+test('完了を 409 の conflict で断られた後に今日を読み直せなかったときは、行が消えたとは言わず完了にできなかった旨を知らせる', async ({
+  page,
+}) => {
+  const tasks = [row('読み直せない行', { today_on: TODAY })];
+  let readable = true;
+  await routeOperation(page, today, { slug: 'aoba' }, (call) =>
+    readable ? call.fulfill({ tasks, sprint_goals: [] }) : call.fail(500, 'internal'),
+  );
+  await routeOperation(page, taskComplete, { slug: 'aoba' }, (call) => {
+    readable = false;
+    return call.fail(409, 'conflict');
+  });
+  await page.goto('/aoba');
+
+  await page.getByRole('button', { name: '完了にする: 読み直せない行' }).click();
+  await expect(page.getByRole('status').filter({ hasText: '完了にできませんでした' })).toBeVisible();
+  await expect(page.getByText('このタスクは見つかりません')).toHaveCount(0);
+});

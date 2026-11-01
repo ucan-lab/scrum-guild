@@ -101,14 +101,8 @@
       }
       const deferred = typeof outcome.notice === 'function' ? outcome.notice : undefined;
       if (typeof outcome.notice !== 'function') showToast(outcome.notice.message, outcome.notice.icon);
-      if (outcome.reload) {
-        // 読み直しに失敗しても、知らせは出す（読み直せなかった今の読み取りで決める）
-        try {
-          await invalidate('app:today');
-        } catch {
-          // 知らせとフォーカスは続ける
-        }
-      }
+      // 読み直しの失敗は、load が today を null にして答える（invalidate は reject しない）。知らせは、そのとき残った読み取りで決める
+      if (outcome.reload) await invalidate('app:today');
       if (deferred !== undefined) {
         await tick();
         const notice = deferred();
@@ -189,7 +183,9 @@
             // 完了していれば完了の印へ、していなければ完了のボタンへ
             focus: '.hanko, .done-btn',
             notice: () => {
-              const entry = data.today?.tasks.find((candidate) => candidate.id === task.id);
+              // 読み直しに失敗した（today が null）ときは、行が消えたとは言えないので、失敗の知らせにする
+              if (data.today === null) return notify(t('taskCompleteFailed', { done: t('done') }), 'alert');
+              const entry = data.today.tasks.find((candidate) => candidate.id === task.id);
               if (entry === undefined) return notify(t('taskGone', { task: t('task') }), 'alert');
               return entry.completed_at !== null
                 ? notify(t('taskAlreadyDone', { task: t('task'), done: t('done') }), 'check')
