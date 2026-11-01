@@ -29,14 +29,19 @@ test.describe('組織が1つの人（あおば開発のハルカ）', () => {
     await signIn(context, baseURL, 'member');
   });
 
-  test('/ を開くと組織の画面に入り、組織の切り替えは出ない', async ({ page }) => {
+  test('/ を開くと組織の画面に入り、組織の切り替えには「組織を作る」だけが並ぶ', async ({ page }) => {
     const collect = await watchViolations(page);
     await page.goto('/');
     await expect(page).toHaveURL(/\/aoba$/);
     await expect(page.getByRole('heading', { level: 1, name: '今日やること' })).toBeVisible();
     await expect(page.locator('.me')).toContainText('ハルカ');
     await expect(page.locator('.me .chip')).toHaveCount(0);
-    await expect(menuButton(page)).toHaveCount(0);
+    // / は今の組織へ戻すだけなので、組織の一覧へ戻る行は出さない。招待も無いので印も出ない
+    await expect(menuButton(page)).toHaveAttribute('aria-label', 'あおば開発。組織を切り替える');
+    await expect(page.locator('.org-menu-invite')).toHaveCount(0);
+    await menuButton(page).click();
+    await expect(menuLinks(page)).toHaveText(['あおば開発']);
+    await expect(page.locator('.org-menu-list button')).toHaveText(['組織を作る']);
     expect(await collect()).toEqual([]);
   });
 
@@ -424,8 +429,8 @@ test.describe('組織が2つの人（あおば開発の管理者でひばり工�
     await menuButton(page).focus();
     await page.keyboard.press('Enter');
     await expect(menuButton(page)).toHaveAttribute('aria-expanded', 'true');
-    // 3つのリンクを通り過ぎて、メニューの外（左のメニューの項目）へ出る
-    for (let index = 0; index < 4; index++) await page.keyboard.press('Tab');
+    // 3つのリンクと「組織を作る」のボタンを通り過ぎて、メニューの外（左のメニューの項目）へ出る
+    for (let index = 0; index < 5; index++) await page.keyboard.press('Tab');
     await expect(page.locator('.nav-item').first()).toBeFocused();
     await expect(menuButton(page)).toHaveAttribute('aria-expanded', 'false');
   });

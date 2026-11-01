@@ -2,7 +2,7 @@
 import type { Page } from '@playwright/test';
 import { word } from '../src/shared/vocabulary.ts';
 import { expect, test } from './fixtures.ts';
-import { signIn } from './helpers.ts';
+import { expectFocusReturned, signIn } from './helpers.ts';
 import { removeCreatedOrganizations } from './local-d1.ts';
 
 // 作った組織は API に消す操作が無く、お試し中の組織は1アカウントに1つまでなので、テストの前と後に seed の状態（組織の無い会員）へ戻す
@@ -69,4 +69,29 @@ test('すでにある組織の slug を入れると、ダイアログに理由�
   await expect(dialog.getByText(word('createMyOrganizationSlugTaken'))).toBeVisible();
   await expect(dialog).toBeVisible();
   await expect(page).not.toHaveURL(/\/aoba/);
+});
+
+// 入れる組織が1つで招待が無い会員（ハルカ）は / を開くとその組織へ移り、組織の選択の画面に届かない。切り替えのメニューが入口になる。
+// ハルカで組織を作ると手元の D1 に組織が残り、繰り返し（e2e-repeat）が崩れるので、作成までは進めず、開いて、やめるで閉じるところまで確かめる
+test('入れる組織が1つの会員は、組織の切り替えのメニューから「組織を作る」を開き、閉じるとフォーカスが切り替えのボタンへ戻る', async ({
+  context,
+  baseURL,
+  page,
+}) => {
+  await signIn(context, baseURL, 'member');
+  await page.goto('/');
+  await expect(page).toHaveURL(/\/aoba$/);
+  const menuButton = page.getByRole('button', { name: 'あおば開発。組織を切り替える' });
+  await menuButton.click();
+  await expect(menuButton).toHaveAttribute('aria-expanded', 'true');
+  await page.getByRole('list', { name: '入れる組織' }).getByRole('button', { name: '組織を作る' }).click();
+
+  const dialog = page.getByRole('dialog', { name: word('createMyOrganizationTitle') });
+  await expect(dialog).toBeVisible();
+  // メニューは閉じて、ダイアログは残っている
+  await expect(menuButton).toHaveAttribute('aria-expanded', 'false');
+  await dialog.getByRole('button', { name: word('cancel') }).click();
+  await expect(dialog).toBeHidden();
+  await expectFocusReturned(page, menuButton);
+  await expect(page).toHaveURL(/\/aoba$/);
 });

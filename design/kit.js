@@ -2003,8 +2003,9 @@ const looooooooooooooooooooooooooooooooooongLine = "コードの長い1行は、
       return `<a class="nav-item" href="${firstHref(href)}" ${current === id ? 'aria-current="page"' : ""}>${icon(ic)}<span class="nav-item-label">${label()}</span>${badge && !first ? `<span class="nav-badge">${badge}</span>` : ""}</a>`;
     }).join("");
   }
-  // 組織の切り替え。開閉するメニューで、中は各組織へのリンクと、最後に組織の選択の画面へ戻るリンク。
-  // 入れる組織が2つ以上、または届いた招待があるときだけ出す（1組織でも招待があれば、一覧へ戻る道が要る）。
+  // 組織の切り替え。開閉するメニューで、中は各組織へのリンクと、組織の選択の画面へ戻るリンクと、最後に「組織を作る」（ダイアログを開く）。
+  // 戻るリンクは、入れる組織が2つ以上、または届いた招待があるときだけ出す（1組織でも招待があれば、一覧へ戻る道が要る）。
+  // 「組織を作る」は常に出す（入れる組織が1つで招待が無い人は、/ を開くと今の組織へ移り、組織の選択の画面に届かない）。
   // select にしないのは、矢印キーで選んだだけで画面が移らないようにするため。
   // 閉じるのは、ボタン、外を押す、Tab で外へ出る、リンクを押す、Esc。メニューの中にフォーカスがあるときに閉じたら、ボタンへ戻す
   let orgMenuOpen = false;
@@ -2012,12 +2013,13 @@ const looooooooooooooooooooooooooooooooooongLine = "コードの長い1行は、
   // カタログの見本は、開いた状態と閉じた状態、組織の数、招待の有無を替えて並べるので、引数で渡す。live が偽なら押しても動かない
   // moving は別の組織へ移っている最中（本番の OrganizationSwitcher の moving）。名前の欄と札に「移っています」を出す
   function orgMenuHtml({ open = orgMenuOpen, id = "org-menu-list", live = true, orgs = D.organizations, invited = (D.receivedInvites || []).length > 0, moving = false } = {}) {
-    if (orgs.length < 2 && !invited) return "";
+    // 入れる組織が1つで招待が無い人は、/ を開くと今の組織へ移るので、一覧へ戻る行を出さない（「組織を作る」の入口は残す）
+    const hasList = orgs.length > 1 || invited;
     const current = orgs.find((k) => k.slug === D.organization) || orgs[0];
     const label = `${current.name}。${t("organization")}を切り替える${invited ? "。届いた招待あり" : ""}`;
     const shown = moving ? t("organizationMoving") : esc(current.name);
     return `<div class="org-menu"><button class="org-menu-button" type="button" aria-expanded="${open}" aria-controls="${id}" aria-label="${esc(label)}" ${moving ? 'data-moving="true"' : ""} ${live ? "data-org-menu" : ""}><span class="org-menu-label">${t("organization")}</span><b>${shown}</b>${invited ? '<span class="chip">届いた招待あり</span>' : ""}${invited ? '<span class="org-menu-invite" aria-hidden="true"></span>' : ""}${icon("swap")}${icon("chevron")}<span class="nav-tip" aria-hidden="true">${shown}${invited && !moving ? "<small>届いた招待あり</small>" : ""}</span></button><span class="visually-hidden" role="status">${moving ? t("organizationMoving") : ""}</span>
-      <ul class="org-menu-list" id="${id}" aria-label="入れる${t("organization")}" ${open ? "" : "hidden"}>${orgs.map((k) => `<li><a href="today.html"${k.slug === current.slug ? ' aria-current="page"' : ""}><span class="org-menu-name">${esc(k.name)}</span>${k.slug === current.slug ? icon("check") : ""}</a></li>`).join("")}<li><a href="organizations.html"><span class="org-menu-name">${t("organization")}の一覧へ</span>${invited ? '<span class="org-menu-note">招待が届いています</span>' : ""}</a></li></ul></div>`;
+      <ul class="org-menu-list" id="${id}" aria-label="入れる${t("organization")}" ${open ? "" : "hidden"}>${orgs.map((k) => `<li><a href="today.html"${k.slug === current.slug ? ' aria-current="page"' : ""}><span class="org-menu-name">${esc(k.name)}</span>${k.slug === current.slug ? icon("check") : ""}</a></li>`).join("")}${hasList ? `<li class="is-aside"><a href="organizations.html"><span class="org-menu-name">${t("organization")}の一覧へ</span>${invited ? '<span class="org-menu-note">招待が届いています</span>' : ""}</a></li>` : ""}<li class="is-aside"><button type="button" ${live ? 'data-dialog="createMyOrganization"' : ""}><span class="org-menu-name">${t("organization")}を作る</span></button></li></ul></div>`;
   }
   function setOrgMenu(open, focus) {
     orgMenuOpen = open;
@@ -2257,7 +2259,7 @@ const looooooooooooooooooooooooooooooooooongLine = "コードの長い1行は、
     let el;
     // 組織の切り替えを開閉する。外を押したら閉じる（押したものの動きは続ける）
     if (hit("data-org-menu")) { setOrgMenu(!orgMenuOpen, true); return; }
-    if (orgMenuOpen && ev.target.closest(".org-menu-list a")) closeOrgMenu();
+    if (orgMenuOpen && ev.target.closest(".org-menu-list a, .org-menu-list button")) closeOrgMenu();
     else if (orgMenuOpen && !ev.target.closest(".org-menu")) closeOrgMenu();
     // アカウントのメニューも同じ。ただしログアウトの項目を押しても閉じない（本番は待ちの表示を見せるため）
     if (hit("data-account-menu")) { setAccountMenu(!accountMenuOpen, true); return; }

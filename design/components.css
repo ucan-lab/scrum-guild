@@ -112,21 +112,22 @@ h1, h2, h3 { text-wrap: balance; }
   border-radius: var(--radius-1); border: 1px solid var(--color-line); background: var(--color-surface);
 }
 .org-menu-list[hidden], .account-menu-list[hidden] { display: none; }
-.org-menu-list a, .account-menu-list button {
+.org-menu-list a, .org-menu-list button, .account-menu-list button {
   display: flex; flex-wrap: wrap; align-items: center; column-gap: var(--space-2);
   padding: 7px var(--space-2); border-radius: var(--radius-1); color: var(--color-fg); text-decoration: none;
 }
-.account-menu-list button { width: 100%; border: 0; background: none; text-align: left; }
-.org-menu-list a:hover, .account-menu-list button:hover:not([aria-disabled="true"]) { background: var(--color-rule); }
+.org-menu-list button, .account-menu-list button { width: 100%; border: 0; background: none; text-align: left; }
+.org-menu-list a:hover, .org-menu-list button:hover, .account-menu-list button:hover:not([aria-disabled="true"]) { background: var(--color-rule); }
 .account-menu-list button[aria-disabled="true"] { opacity: 0.45; cursor: not-allowed; }
 .org-menu-list a[aria-current="page"] { background: var(--color-sunken); font-weight: 700; box-shadow: 0 0 0 1px var(--color-line); }
 .org-menu-list a .ico { margin-left: auto; color: var(--color-accent); }
 .org-menu-name { min-width: 0; overflow-wrap: anywhere; }
 .org-menu-note { flex-basis: 100%; font-size: var(--text-xs); color: var(--color-muted); }
-.org-menu-list li:last-child:not(:only-child) a { color: var(--color-muted); }
+/* 組織ではない行（組織の一覧へ戻るリンクと、押すとダイアログを開く「組織を作る」）は、組織の行より控えめにする */
+.org-menu-list .is-aside a, .org-menu-list .is-aside button { color: var(--color-muted); }
 /* 狭い幅と、指で押す画面では、押す所を 44px 以上にする。左のメニューのロゴと項目（狭い幅では上の帯に並ぶ）も同じ */
 @media (max-width: 760px), (pointer: coarse) {
-  .org-menu-list a, .account-menu-list button, .account-menu-button { min-height: 44px; }
+  .org-menu-list a, .org-menu-list button, .account-menu-list button, .account-menu-button { min-height: 44px; }
   .nav-toggle { width: 44px; height: 44px; }
   .brand, .nav-item:not(.is-later) { min-height: 44px; }
 }
