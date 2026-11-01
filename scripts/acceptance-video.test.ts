@@ -351,6 +351,16 @@ describe('gallery.mjs', () => {
       ]),
       '動画 1 本、飛ばした 0 件、撮れなかった 0 件、完了済み 1 件',
     );
+    // 判定の対象の skipped と failed は、それぞれの欄に数える
+    assert.equal(
+      embedded([
+        { kind: 'video', done: false },
+        { kind: 'skipped', done: false },
+        { kind: 'failed', done: false },
+        { kind: 'video', done: true },
+      ]),
+      '動画 1 本、飛ばした 1 件、撮れなかった 1 件、完了済み 1 件',
+    );
   });
 
   test('題とメモの改行は 1 行に潰し、別の Issue の行を偽れない', () => {
@@ -574,6 +584,22 @@ describe('gallery.mjs', () => {
       await open();
       assert.equal(await label('602'), null);
       assert.equal(await label('603'), '#603 完了済み');
+    });
+  });
+
+  test('開いた直後の要約は、skipped と failed も判定の対象の欄に数える', chromiumSkip, async () => {
+    const items = [
+      video,
+      { issue: 575, title: 'API だけ', skipped: '画面が変わらない' },
+      { issue: 576, title: '撮れず', failed: '要素が見つからない' },
+      doneVideo(577),
+    ];
+    await withDoneGallery(items, async (page, open) => {
+      await open();
+      assert.equal(
+        await page.locator('.summary').textContent(),
+        '動画 1 本、飛ばした 1 件、撮れなかった 1 件、完了済み 1 件',
+      );
     });
   });
 
