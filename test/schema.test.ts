@@ -348,6 +348,33 @@ describe('セッションとログインの途中の状態', () => {
     await expect(oauthState({ claimTokenHash: tokenHash })).rejects.toThrow(/CHECK/);
   });
 
+  const oauthStateWithSignup = (signup: number) =>
+    run(
+      `INSERT INTO oauth_states (state, login_provider, code_verifier, expires_at, signup) VALUES (?, 'google', 'v', ?, ?)`,
+      id(),
+      AT,
+      signup,
+    );
+
+  test.each([0, 1])('会員登録の印 signup=%i は通る（#640）', async (signup) => {
+    await expect(oauthStateWithSignup(signup)).resolves.toBeTruthy();
+  });
+
+  test.each([2, -1])('会員登録の印 signup=%i は当たる（#640）', async (signup) => {
+    await expect(oauthStateWithSignup(signup)).rejects.toThrow(/CHECK/);
+  });
+
+  test('会員登録の印の列を省くと 0 になる（#640）', async () => {
+    const state = id();
+    await run(
+      `INSERT INTO oauth_states (state, login_provider, code_verifier, expires_at) VALUES (?, 'google', 'v', ?)`,
+      state,
+      AT,
+    );
+    const row = await env.DB.prepare('SELECT signup FROM oauth_states WHERE state = ?').bind(state).first();
+    expect(row).toEqual({ signup: 0 });
+  });
+
   test.each(['/aoba', '/invite', '/'])('戻り先 %s は通る', async (returnTo) => {
     await expect(oauthState({ returnTo })).resolves.toBeTruthy();
   });
