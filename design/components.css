@@ -46,7 +46,7 @@ h1, h2, h3 { text-wrap: balance; }
   padding-left: max(var(--space-4), env(safe-area-inset-left, 0px));
   padding-right: var(--space-4);
   display: flex; flex-direction: column; gap: var(--space-5);
-  position: sticky; top: 0; height: 100vh; overflow-y: auto; overscroll-behavior: contain;
+  position: sticky; top: 0; height: 100vh; height: 100dvh; overflow-y: auto; scrollbar-width: thin;
 }
 .binding-foot { margin-top: auto; font-size: var(--text-xs); color: var(--color-faint); padding-inline: var(--space-2); }
 
@@ -147,6 +147,15 @@ h1, h2, h3 { text-wrap: balance; }
     overflow-wrap: anywhere;
   }
   .nav-tip small { color: var(--color-muted); }
+  /* 列は中で縦に送るので、浮かせた札は列のスクロールに追従させる（static position は送る前の位置に残る）。
+     アンカーで開閉のボタンの右・縦の中央に結ぶ。非対応のブラウザは上の static position のまま */
+  @supports (anchor-name: --nav-hit) {
+    .nav-toggle { anchor-name: --nav-hit; anchor-scope: --nav-hit; }
+    .nav-tip {
+      position-anchor: --nav-hit; left: calc(anchor(right) + var(--space-3)); top: anchor(center);
+      transform: translateY(-50%);
+    }
+  }
 }
 /* ホバーのできない端末（指だけのタブレットなど）では畳まない。畳んだ列の名前は、ホバーとキーボードのフォーカスでしか見えないため。
    760px 以下と同じく開閉のボタンを出さず、覚えた状態も当てずに広げた列で出す */
@@ -217,6 +226,21 @@ h1, h2, h3 { text-wrap: balance; }
     /* grid の static position はボタンの左上。列の外へずらし、スクロール領域に切られずに出す。 */
     position: fixed; z-index: 1; margin-left: calc(44px + var(--space-3)); width: 15rem; max-width: min(18rem, 70vw);
     box-shadow: var(--shadow-float);
+  }
+  /* 項目の札と組織の一覧も、列のスクロールに追従するようアンカーで結ぶ（非対応のブラウザは上の static position のまま）。
+     一覧が画面の下に出るときは、ボタンの下端に揃えて上へ開く */
+  @supports (anchor-name: --nav-hit) {
+    .app[data-nav-collapsed="true"] .nav-item { anchor-name: --nav-hit; anchor-scope: --nav-hit; }
+    .app[data-nav-collapsed="true"] .nav-item-label {
+      position-anchor: --nav-hit; left: calc(anchor(right) + var(--space-3)); top: anchor(center);
+      transform: translateY(-50%);
+    }
+    .app[data-nav-collapsed="true"] .org-menu { anchor-scope: --org-hit; }
+    .app[data-nav-collapsed="true"] .org-menu-button { anchor-name: --org-hit; }
+    .app[data-nav-collapsed="true"] .org-menu-list {
+      position-anchor: --org-hit; left: calc(anchor(right) + var(--space-3)); top: anchor(top); margin-left: 0;
+      position-try-fallbacks: flip-block;
+    }
   }
 
   /* ホバーで出す札。この塊はホバーのできる端末だけなので、押した後に :hover が残る指の端末には当たらない */
@@ -675,7 +699,7 @@ button.entry-title { text-align: left; background: transparent; border: 0; paddi
   .app { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto 1fr; }
   .binding { border-right: 0; border-bottom: var(--rule-double); }
   .binding-inner {
-    position: static; height: auto; overflow: visible; overscroll-behavior: auto;
+    position: static; height: auto; overflow: visible;
     flex-direction: row; flex-wrap: wrap; align-items: center; gap: var(--space-3);
     padding-block: var(--space-3);
     padding-left: max(var(--space-4), env(safe-area-inset-left, 0px));
