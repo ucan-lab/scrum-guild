@@ -319,7 +319,7 @@
     ],
     leader: () => [
       { title: `${t("workspace")}「${esc(firstWsName())}」の${t("leader")}になる`, note: `${t("member")}の招待と、${t("backlog")}の準備を進められます。`, done: true },
-      { title: "メンバーを招待する", done: D.invitations.length > 0 || D.members.filter((m) => !m.left).length > 1,
+      { title: "メンバーを招待する", optional: true, done: D.invitations.length > 0 || D.members.filter((m) => !m.left).length > 1,
         note: `GitHub のユーザー名か Google のメールアドレスで招待し、${t("organization")}の URL（Google なら招待の URL）を本人に伝えます。Scrum Guild は招待をメールで送りません。`,
         action: (p) => `<a class="btn is-sm ${p}" href="${firstHref("members.html")}">メンバーを招待する</a>` },
       { title: `${t("backlog")}に最初の${t("task")}を入れる`, done: D.tasks.some((x) => x.ws === D.workspace),
@@ -351,8 +351,8 @@
   function firstSteps(role, opts = {}) {
     const steps = FIRST_STEPS[role]().map((s, i) => ({ ...s, done: opts.preview ? i === 0 : s.done }));
     if (steps.every((s) => s.done || s.optional)) return "";
-    // 主ボタンは、まだ済んでいない最初の手順にだけ付ける
-    const next = steps.findIndex((s) => !s.done && s.action);
+    // 主ボタンは、まだ済んでいない最初の必須の手順にだけ付ける
+    const next = steps.findIndex((s) => !s.done && !s.optional && s.action);
     const hint = FIRST_HINT[role]();
     return `<section class="panel" aria-labelledby="first-steps-${role}">
       <div class="panel-title">${art("map", true)}<b id="first-steps-${role}">最初にやること</b>${steps.filter((s) => s.done).length} / ${steps.length} 済み</div>
