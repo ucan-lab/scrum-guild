@@ -2,9 +2,11 @@
 // 権限の種類ごとの許可と拒否、組織の分離（スラッグ）は、一覧を回す test/operation-registry.test.ts が確かめる
 import { describe, expect, test } from 'vitest';
 import { firstSteps } from '../src/shared/operations/organization/index.ts';
+import { envWithD1Hooks } from '../src/server/db/testing.ts';
 import { createApp } from '../src/server/app.ts';
 import { implementedOperations } from '../src/server/operations/index.ts';
 import {
+  hash64,
   createInvitation,
   createMembership,
   createOrganization,
@@ -15,7 +17,7 @@ import {
   createWorkspace,
 } from './factories.ts';
 import { post } from './operations/harness.ts';
-import { createPerson, type Person } from './operations/world.ts';
+import { createPerson, testEnv, type Person } from './operations/world.ts';
 
 const app = createApp(implementedOperations);
 
@@ -28,6 +30,17 @@ async function read(slug: string, person: Person): Promise<View> {
   const res = await post(app, firstSteps, { slug, token: person.token });
   expect(res.status).toBe(200);
   return (await res.json()) as View;
+}
+
+// 呼び出しの間に D1 へ送られた文の SQL（小文字）を集めて返す
+async function readWithSql(slug: string, person: Person): Promise<{ view: View; sqls: string[] }> {
+  const sqls: string[] = [];
+  const recording = envWithD1Hooks(testEnv, {
+    beforeBatch: (batch) => sqls.push(...batch.map((sql) => sql.toLowerCase())),
+  });
+  const res = await post(app, firstSteps, { slug, token: person.token, env: recording });
+  expect(res.status).toBe(200);
+  return { view: (await res.json()) as View, sqls };
 }
 
 const doneOf = (view: View) => Object.fromEntries(view.steps.map((step) => [step.key, step.done]));
@@ -68,10 +81,16 @@ describe('first-steps: 一般', () => {
     expect(await read(world.slug, world.member)).toEqual({ role: null, steps: [] });
   });
 
-  test('ほかの人が起票したタスクと、取り込んだ担当のタスクは、起票の手順を済ませない', async () => {
+  test('ほかの人が起票したタスクと、取り込んだ（起票者のいない）担当のタスクは、起票の手順を済ませない', async () => {
     const world = await createWorld();
     await createTask(world.organization, world.workspace.id, world.leader.userId!, {
       assignee_user_id: world.member.userId,
+    });
+    await createTask(world.organization, world.workspace.id, world.leader.userId!, {
+      assignee_user_id: world.member.userId,
+      is_imported: 1,
+      tray: 'inbox',
+      created_by: null,
     });
 
     const view = await read(world.slug, world.member);
@@ -353,5 +372,121 @@ describe('first-steps: 管理者', () => {
       invite_by_admin: false,
       register_holiday: false,
     });
+  });
+
+  test('ログインの手段が決まっていない指名の行（login_subject が空）だけでは、招待の手順は済まない', async () => {
+    const world = await adminOnlyWorld();
+    await createUser(world.organization, {
+      login_provider: 'google',
+      login_subject: null,
+      login_email: 'nominee@example.com',
+      claim_token_hash: hash64(),
+      claim_expires_at: '2099-01-01T00:00:00.000Z',
+    });
+
+    expect(doneOf(await read(world.slug, world.admin)).invite_by_admin).toBe(false);
+  });
+});
+
+describe('first-steps: リーダーの手順の範囲', () => {
+  test('(a) 開いているワークスペースと閉じたワークスペースのリーダーで、閉じた方にだけタスクと承諾待ちの招待があっても、手順は済まない', async () => {
+    const world = await soloLeaderWorld();
+    const closed = await createWorkspace(world.organization, world.admin.userId!, {
+      name: 'あさひ班',
+      closed_at: '2026-10-22T00:00:00.000Z',
+    });
+    await createMembership(world.organization, closed.id, world.leader.userId!, { role: 'leader' });
+    await createTask(world.organization, closed.id, world.admin.userId!);
+    const invitee = await createPerson();
+    await createInvitation(world.organization, closed.id, world.leader.userId!, invitee.login);
+
+    const view = await read(world.slug, world.leader);
+
+    expect(doneOf(view)).toMatchObject({ invite_members: false, first_backlog_task: false });
+  });
+
+  test('(b) 所属を外れたワークスペースにだけタスクがあっても、バックログの手順は済まない', async () => {
+    const world = await soloLeaderWorld();
+    const left = await createWorkspace(world.organization, world.admin.userId!, { name: 'あさひ班' });
+    await createMembership(world.organization, left.id, world.leader.userId!, {
+      role: 'leader',
+      left_on: '2026-10-20',
+      left_at: '2026-10-20T00:00:00.000Z',
+    });
+    await createTask(world.organization, left.id, world.admin.userId!);
+
+    expect(doneOf(await read(world.slug, world.leader)).first_backlog_task).toBe(false);
+  });
+
+  test('(c) 別の組織のワークスペースにタスク、招待、スプリントがあっても、リーダーの手順は済まない', async () => {
+    const world = await soloLeaderWorld();
+    const other = await soloLeaderWorld();
+    await createTask(other.organization, other.workspace.id, other.admin.userId!);
+    const invitee = await createPerson();
+    await createInvitation(other.organization, other.workspace.id, other.leader.userId!, invitee.login);
+    await createSprint(other.organization, other.workspace.id, { status: 'active' });
+
+    expect(doneOf(await read(world.slug, world.leader))).toMatchObject({
+      invite_members: false,
+      first_backlog_task: false,
+      start_sprint: false,
+    });
+  });
+
+  test('ログインの手段が決まっていない行や、無効な人だけが所属していても、招待の手順は済まない。ログインできる人が所属すれば済む', async () => {
+    const world = await soloLeaderWorld();
+    const nominee = await createUser(world.organization, {
+      login_provider: 'google',
+      login_subject: null,
+      login_email: 'nominee@example.com',
+      claim_token_hash: hash64(),
+      claim_expires_at: '2099-01-01T00:00:00.000Z',
+    });
+    await createMembership(world.organization, world.workspace.id, nominee.id);
+    const disabled = await createPerson({ organization: world.organization, disabled: true });
+    await createMembership(world.organization, world.workspace.id, disabled.userId!);
+    expect(doneOf(await read(world.slug, world.leader)).invite_members).toBe(false);
+
+    const joined = await createPerson({ organization: world.organization });
+    await createMembership(world.organization, world.workspace.id, joined.userId!);
+    expect(doneOf(await read(world.slug, world.leader)).invite_members).toBe(true);
+  });
+});
+
+describe('first-steps: 読み取りの文', () => {
+  test('必須が済んでいれば、任意の手順の文（スプリント）は流さず、全タスクの索引を読む DISTINCT も使わない', async () => {
+    const world = await soloLeaderWorld();
+    await createTask(world.organization, world.workspace.id, world.admin.userId!);
+    const invitee = await createPerson();
+    await createInvitation(world.organization, world.workspace.id, world.leader.userId!, invitee.login);
+
+    const { view, sqls } = await readWithSql(world.slug, world.leader);
+
+    expect(view).toEqual({ role: null, steps: [] });
+    expect(sqls.some((sql) => sql.includes('"sprints"'))).toBe(false);
+    expect(sqls.some((sql) => sql.includes('distinct'))).toBe(false);
+  });
+
+  test('一般は、起票が済んでいれば今日やるの印の文を流さない。済んでいなければ任意も含めて流す', async () => {
+    const world = await createWorld();
+    await createTask(world.organization, world.workspace.id, world.member.userId!);
+    const done = await readWithSql(world.slug, world.member);
+    expect(done.view).toEqual({ role: null, steps: [] });
+    expect(done.sqls.some((sql) => sql.includes('"today_on"'))).toBe(false);
+
+    const other = await createWorld();
+    const pending = await readWithSql(other.slug, other.member);
+    expect(pending.view.role).toBe('member');
+    expect(pending.sqls.some((sql) => sql.includes('"today_on"'))).toBe(true);
+  });
+
+  test('必須が済んでいないリーダーには、任意の手順（スプリント）の文も流す。全タスクを読む DISTINCT は使わない', async () => {
+    const world = await soloLeaderWorld();
+
+    const { view, sqls } = await readWithSql(world.slug, world.leader);
+
+    expect(view.role).toBe('leader');
+    expect(sqls.some((sql) => sql.includes('"sprints"'))).toBe(true);
+    expect(sqls.some((sql) => sql.includes('distinct'))).toBe(false);
   });
 });

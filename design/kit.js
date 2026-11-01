@@ -302,7 +302,7 @@
   // title と note は HTML として埋め込む。利用者のデータは esc してから渡す
   const FIRST_STEPS = {
     member: () => [
-      { title: `${t("workspace")}「${esc(firstWsName())}」に入る`, note: "招待を承諾しました。", done: true },
+      { title: `${t("workspace")}「${esc(firstWsName())}」に入る`, note: `この${t("workspace")}の${t("backlog")}と${t("sprint")}を使えます。`, done: true },
       // 取り込み元だけで回す人は起票者にならないので、接続の登録でも済んだことにする
       { title: `自分の${t("task")}を用意する`, done: D.tasks.some((x) => x.creator === D.me) || D.connections.some((c) => c.owner === D.me),
         note: `「${t("create")}」で作るか、Backlog や GitHub を${t("connection")}として登録して、自分の担当分を${t("inbox")}に取り込みます。${t("points")}を1以上振ったまま完了にすると、起票の経験値が付きます。`,
@@ -313,7 +313,7 @@
         action: (p) => `<a class="btn is-sm ${p}" href="${firstHref("backlog.html")}">${t("backlog")}を開く</a>` },
     ],
     leader: () => [
-      { title: `${t("workspace")}「${esc(firstWsName())}」の${t("leader")}になる`, note: `${t("admin")}が${t("workspace")}を作り、あなたを指名しました。`, done: true },
+      { title: `${t("workspace")}「${esc(firstWsName())}」の${t("leader")}になる`, note: `${t("member")}の招待と、${t("backlog")}の準備を進められます。`, done: true },
       { title: "メンバーを招待する", done: D.invitations.length > 0 || D.members.filter((m) => !m.left).length > 1,
         note: `GitHub のユーザー名か Google のメールアドレスで招待し、${t("organization")}の URL（Google なら招待の URL）を本人に伝えます。Scrum Guild は招待をメールで送りません。`,
         action: (p) => `<a class="btn is-sm ${p}" href="${firstHref("members.html")}">メンバーを招待する</a>` },

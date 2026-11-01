@@ -112,12 +112,12 @@ export const dictionary = defineDictionary({
   firstStepOptional: '任意',
   firstStepDone: '済み',
   firstStepJoinedTitle: '{workspace}「{name}」に入る',
-  firstStepJoinedNote: '招待を承諾しました。',
+  firstStepJoinedNote: 'この{workspace}の{backlog}と{sprint}を使えます。',
   firstStepPrepareTaskTitle: '自分の{task}を用意する',
   firstStepPrepareTaskNote:
     '{backlog}の「{create}」で作ります。{points}を1以上振ったまま完了にすると、起票の経験値が付きます。',
   firstStepBecameLeaderTitle: '{workspace}「{name}」の{leader}になる',
-  firstStepBecameLeaderNote: '{admin}が{workspace}を作り、あなたを指名しました。',
+  firstStepBecameLeaderNote: '{member}の招待と、{backlog}の準備を進められます。',
   firstStepInviteTitle: '{member}を招待する',
   firstStepInviteNote:
     'GitHub のユーザー名か Google のメールアドレスで招待し、{organization}の URL（Google なら招待の URL）を本人に伝えます。Scrum Guild は招待をメールで送りません。',

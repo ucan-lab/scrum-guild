@@ -119,7 +119,7 @@
       role={data.firstSteps.role}
       steps={data.firstSteps.steps}
       organizationName={data.organization?.organization.name ?? ''}
-      onCreateWorkspace={(opener) => createDialog?.show(opener)}
+      onCreateWorkspace={data.organization?.me.is_admin ? (opener) => createDialog?.show(opener) : undefined}
     />
   {/if}
   {#if data.today !== null && data.today.sprint_goals.length > 0}

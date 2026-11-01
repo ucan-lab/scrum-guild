@@ -1406,7 +1406,7 @@ a.choice > div > span, .choice.is-static > div > span { display: block; }
 .step::before { content: counter(step); display: grid; place-items: center; width: 28px; height: 28px; border: 1.5px solid var(--color-accent); color: var(--color-accent); border-radius: 50%; font-family: var(--font-mono); font-size: var(--text-sm); }
 .step.is-done::before { content: "✓"; background: var(--color-accent); color: var(--color-on-accent); }
 .step-body { display: grid; gap: var(--space-3); min-width: 0; }
-.step-title { font-weight: 700; padding-top: 3px; }
+.step-title { font-weight: 700; padding-top: 3px; min-width: 0; overflow-wrap: anywhere; }
 
 /* ===== 接続 ===== */
 .conn { display: grid; gap: var(--space-3); }

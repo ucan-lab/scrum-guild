@@ -44,7 +44,7 @@
         return {
           ...base,
           title: t('firstStepJoinedTitle', { workspace: t('workspace'), name }),
-          note: t('firstStepJoinedNote'),
+          note: t('firstStepJoinedNote', { workspace: t('workspace'), backlog: t('backlog'), sprint: t('sprint') }),
         };
       case 'prepare_task': {
         const href = backlogHref(step);
@@ -62,7 +62,7 @@
         return {
           ...base,
           title: t('firstStepBecameLeaderTitle', { workspace: t('workspace'), name, leader: t('leader') }),
-          note: t('firstStepBecameLeaderNote', { admin: t('admin'), workspace: t('workspace') }),
+          note: t('firstStepBecameLeaderNote', { member: t('member'), backlog: t('backlog') }),
         };
       case 'invite_members':
         return {
