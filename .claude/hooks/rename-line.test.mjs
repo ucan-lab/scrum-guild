@@ -28,8 +28,12 @@ describe('rename-line.mjs（偽の gh と pbcopy）', () => {
   stub('gh', [
     'echo "$*" >>"$GH_CALLS"',
     '[ -z "${GH_FAIL:-}" ] || exit 1',
-    'if [ "$1 $2" = "issue view" ]; then echo "$GH_ISSUE_TITLE"; exit 0; fi',
-    'if [ "$1 $2" = "pr view" ]; then echo "$GH_PR_TITLE"; exit 0; fi',
+    '[ "$1" = "api" ] || exit 1',
+    '[ "$3 $4" = "--jq .title" ] || exit 1',
+    'case "$2" in',
+    '  repos/{owner}/{repo}/issues/*) echo "$GH_ISSUE_TITLE"; exit 0;;',
+    '  repos/{owner}/{repo}/pulls/*) echo "$GH_PR_TITLE"; exit 0;;',
+    'esac',
     'exit 1',
   ]);
   stub('pbcopy', ['cat >"$PB_OUT"', 'exit "${PB_EXIT:-0}"']);
@@ -61,11 +65,12 @@ describe('rename-line.mjs（偽の gh と pbcopy）', () => {
     test('--issue と --pr なら PR の後の形で、題は Issue のまま', () => {
       const r = run(['--issue', '661', '--pr', '663']);
       assert.equal(r.stdout, '/rename #661 PR #663 招待する\n');
-      assert.ok(!r.ghCalls.includes('pr view'), 'Issue があるときは PR のタイトルを引かない');
+      assert.equal(r.ghCalls, 'api repos/{owner}/{repo}/issues/661 --jq .title\n', 'Issue の題だけを REST で引き、PR のタイトルは引かない');
     });
     test('--pr だけなら Issue の無い PR の形で、PR のタイトルを使う', () => {
       const r = run(['--pr', '663']);
       assert.equal(r.stdout, '/rename PR #663 feat: 招待\n');
+      assert.equal(r.ghCalls, 'api repos/{owner}/{repo}/pulls/663 --jq .title\n', 'PR のタイトルだけを REST で引く');
     });
     test('題の制御文字は取り除かれる', () => {
       const r = run(['--issue', '661'], { GH_ISSUE_TITLE: `a\u001b[201~${RLO}b` });
@@ -98,6 +103,12 @@ describe('rename-line.mjs（偽の gh と pbcopy）', () => {
   describe('gh の失敗', () => {
     test('Issue の題を引けなければ失敗し、何も出さない', () => {
       const r = run(['--issue', '661'], { GH_FAIL: '1' });
+      assert.equal(r.status, 1);
+      assert.equal(r.stdout, '');
+      assert.ok(r.stderr.includes('gh で Issue か PR の題を引けませんでした'));
+    });
+    test('PR のタイトルを引けなければ失敗し、何も出さない', () => {
+      const r = run(['--pr', '663'], { GH_FAIL: '1' });
       assert.equal(r.status, 1);
       assert.equal(r.stdout, '');
       assert.ok(r.stderr.includes('gh で Issue か PR の題を引けませんでした'));

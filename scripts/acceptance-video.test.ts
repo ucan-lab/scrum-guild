@@ -505,6 +505,269 @@ describe('gallery.mjs', () => {
   });
 });
 
+describe('plan.mjs の試し（record.mjs --probe の中身）', () => {
+  type Item = { step: number; kind: string };
+  type Result = Item & { status: string; detail?: string; reason?: string };
+  // plan.mjs を型の検査に入れないよう、子プロセスで読む。fail に合う項目だけ exec が投げる
+  const planUrl = JSON.stringify(pathToFileURL(join(skillDir, 'plan.mjs')).href);
+  const probe = (plan: unknown, fail: Record<string, unknown> | null = null) => {
+    const code = `import * as p from ${planUrl};
+const { plan, fail } = JSON.parse(process.argv[1]);
+const items = p.probePlan(plan);
+const ran = [];
+const results = await p.runProbe(items, async (item) => {
+  ran.push(item.kind);
+  if (fail && Object.entries(fail).every(([k, v]) => item[k] === v)) throw new Error('Timeout 5000ms exceeded.\\nCall log:\\n  - waiting for locator\\n  - element is not enabled\\n  - retrying');
+});
+console.log(JSON.stringify({ items, ran, results, lines: results.map(p.describeItem), printed: results.map(p.formatProbeLine) }));`;
+    const result = spawnSync(process.execPath, ['--input-type=module', '-e', code, JSON.stringify({ plan, fail })], {
+      encoding: 'utf8',
+    });
+    assert.equal(result.status, 0, result.stderr);
+    return JSON.parse(result.stdout) as {
+      items: Item[];
+      ran: string[];
+      results: Result[];
+      lines: string[];
+      printed: string[];
+    };
+  };
+  const button = { role: 'button', name: '押す' };
+  const plan = {
+    steps: [
+      { actions: [{ goto: '/a' }, { wait: { css: '.a' } }], hold: 0 },
+      {
+        caption: '押す',
+        mark: button,
+        actions: [{ click: button }, { pause: 500 }, { wait: { css: '.b' }, state: 'hidden' }],
+      },
+      {
+        caption: '入れる',
+        actions: [
+          { fill: { label: '日数' }, text: '3' },
+          { select: { label: '人' }, label: 'ハルカ' },
+        ],
+      },
+      { caption: '別の画面', actions: [{ goto: '/b' }, { wait: { css: '.c' } }] },
+    ],
+  };
+
+  test('手順書を、録画と同じ順の項目にし、pause は入れず、場面は 1 から数える', () => {
+    const { items } = probe(plan);
+    assert.deepEqual(
+      items.map((i) => `${i.step}:${i.kind}`),
+      ['1:goto', '1:wait', '2:mark', '2:click', '2:wait', '3:fill', '3:select', '4:goto', '4:wait'],
+    );
+  });
+
+  test('全部見つかれば、click や fill も含めて全項目を実行する', () => {
+    const { ran, results } = probe(plan);
+    assert.equal(ran.length, 9);
+    assert.ok(results.every((r) => r.status === 'found'));
+  });
+
+  test('見つからない項目は場面番号つきで missing になり、次の goto までは試せなかったになる', () => {
+    const { results, lines } = probe(plan, { step: 2, kind: 'click' });
+    const view = results.map((r) => `${r.step}:${r.kind}:${r.status}`);
+    assert.deepEqual(view, [
+      '1:goto:found',
+      '1:wait:found',
+      '2:mark:found',
+      '2:click:missing',
+      '2:wait:skipped',
+      '3:fill:skipped',
+      '3:select:skipped',
+      '4:goto:found',
+      '4:wait:found',
+    ]);
+    // 在るのに押せない理由は Call log の行にだけ出るので、1 行目に足す
+    assert.equal(
+      results.find((r) => r.status === 'missing')?.detail,
+      'Timeout 5000ms exceeded. / element is not enabled',
+    );
+    assert.match(
+      results.find((r) => r.status === 'skipped')?.reason ?? '',
+      /場面 2 の click role=button name="押す" が見つからず/,
+    );
+    assert.equal(lines[4], 'wait css=.b state="hidden"');
+  });
+
+  test('goto が失敗しても、その後ろは試せなかったになり、次の goto からまた試す', () => {
+    const { results } = probe(plan, { kind: 'goto', path: '/a' });
+    const status = results.map((r) => r.status);
+    assert.deepEqual(status, [
+      'missing',
+      'skipped',
+      'skipped',
+      'skipped',
+      'skipped',
+      'skipped',
+      'skipped',
+      'found',
+      'found',
+    ]);
+  });
+
+  test('select の項目名と fill の文字列、wait の state を、報告の 1 行に出す', () => {
+    const { lines } = probe(plan);
+    assert.deepEqual(lines.slice(5, 7), ['fill label="日数" text="3"', 'select label="人" option="ハルカ"']);
+    assert.equal(lines[4], 'wait css=.b state="hidden"');
+  });
+
+  test('入れ子の指し方と nth を、報告の 1 行に出す', () => {
+    const nested = { steps: [{ mark: { within: { role: 'dialog', name: '延ばす' }, css: '[data-x]', nth: 1 } }] };
+    assert.deepEqual(probe(nested).lines, ['mark role=dialog name="延ばす" の中の css=[data-x] nth=1']);
+  });
+
+  // 項目を実画面で実行する probeExec を、小さな HTML と HTTP サーバーで確かめる。Playwright はリポジトリの根のものを使う
+  test(
+    'probeExec: 種類ごとに録画と同じ操作で試し、在るのに操作できないものと HTTP のエラーは失敗にする',
+    { skip: !existsSync(chromium.executablePath()) && 'Playwright の chromium が無い' },
+    () => {
+      const root = fileURLToPath(new URL('../', import.meta.url));
+      const probeUrl = JSON.stringify(pathToFileURL(join(skillDir, 'probe.mjs')).href);
+      const code = `import { createRequire } from 'node:module';
+import { createServer } from 'node:http';
+import * as p from ${probeUrl};
+import * as plan from ${planUrl};
+const { chromium } = createRequire(process.cwd() + '/package.json')('@playwright/test');
+const server = createServer((req, res) => {
+  res.statusCode = req.url === '/missing' ? 404 : 200;
+  res.setHeader('content-type', 'text/html');
+  res.end('<html></html>');
+}).listen(0);
+const base = 'http://localhost:' + server.address().port;
+const browser = await chromium.launch();
+try {
+  const page = await browser.newPage();
+  await page.goto(base + '/ok');
+  await page.setContent(\`
+    <button id="off" disabled>押せない</button>
+    <button id="on" onclick="document.title='clicked'">押す</button>
+    <div id="hide" style="display:none">隠れている</div>
+    <select id="s"><option value="1">A</option><option value="2">B</option></select>
+    <input id="t"><input id="c" type="checkbox">
+    <label>延ばす日数 <input id="n"></label>
+    <label>確認する日数 <input id="m"></label>\`);
+  const pageExec = p.probeExec(page, base);
+  // goto は画面を作り直すので、別のページで実行する
+  const gotoExec = p.probeExec(await browser.newPage(), base);
+  const exec = (item) => (item.kind === 'goto' ? gotoExec : pageExec)(item);
+  const spec = (id) => ({ css: '#' + id });
+  const items = {
+    markHidden: { kind: 'mark', spec: spec('hide') },
+    clickOn: { kind: 'click', spec: spec('on') },
+    clickDisabled: { kind: 'click', spec: spec('off') },
+    selectB: { kind: 'select', spec: spec('s'), action: { label: 'B' } },
+    selectZ: { kind: 'select', spec: spec('s'), action: { label: 'Z' } },
+    fill: { kind: 'fill', spec: spec('t'), action: { text: '3' } },
+    labelExact: { kind: 'fill', spec: { label: '延ばす日数', exact: true }, action: { text: '1' } },
+    labelPartialExact: { kind: 'fill', spec: { label: '確認する', exact: true }, action: { text: '9' } },
+    labelPartial: { kind: 'fill', spec: { label: '確認する' }, action: { text: '2' } },
+    check: { kind: 'check', spec: spec('c') },
+    waitVisibleHidden: { kind: 'wait', spec: spec('hide'), action: {} },
+    waitHiddenAbsent: { kind: 'wait', spec: spec('nope'), action: { state: 'hidden' } },
+    gotoOk: { kind: 'goto', path: '/ok' },
+    gotoMissing: { kind: 'goto', path: '/missing' },
+    unknown: { kind: 'swim', spec: spec('on') },
+  };
+  const outcome = {};
+  // 失敗するものは 5 秒待つので、最初に同時に走らせる。成功するものは、その後に順に実行して状態を確かめる
+  const failing = ['clickDisabled', 'selectZ', 'waitVisibleHidden', 'labelPartialExact', 'gotoMissing', 'unknown'];
+  // 失敗の理由は、一覧に出る probeDetail を通した形で見る（Playwright の本物の Call log で確かめる）
+  await Promise.all(failing.map(async (k) => {
+    try { await exec(items[k]); outcome[k] = 'ok'; } catch (err) { outcome[k] = 'ng: ' + plan.probeDetail(err.message); }
+  }));
+  for (const k of Object.keys(items).filter((k) => !failing.includes(k))) {
+    try { await exec(items[k]); outcome[k] = 'ok'; } catch (err) { outcome[k] = 'ng: ' + err.message; }
+  }
+  const state = await page.evaluate(() => ({ title: document.title, select: document.querySelector('#s').value, text: document.querySelector('#t').value, checked: document.querySelector('#c').checked, days: document.querySelector('#n').value, confirm: document.querySelector('#m').value }));
+  console.log(JSON.stringify({ outcome, state }));
+} finally {
+  await browser.close();
+  server.close();
+}`;
+      const result = spawnSync(process.execPath, ['--input-type=module', '-e', code], { encoding: 'utf8', cwd: root });
+      assert.equal(result.status, 0, result.stderr);
+      const { outcome, state } = JSON.parse(result.stdout) as {
+        outcome: Record<string, string>;
+        state: Record<string, unknown>;
+      };
+      const oks = ['markHidden', 'clickOn', 'selectB', 'fill', 'check', 'waitHiddenAbsent', 'gotoOk'];
+      for (const ok of [...oks, 'labelExact', 'labelPartial']) {
+        assert.equal(outcome[ok], 'ok', `${ok}: ${outcome[ok]}`);
+      }
+      // 録画と同じ操作を実際にしている（取り違えると、状態が変わらない）。label の exact は部分一致を断つ
+      assert.deepEqual(state, { title: 'clicked', select: '2', text: '3', checked: true, days: '1', confirm: '2' });
+      for (const ng of ['clickDisabled', 'selectZ', 'waitVisibleHidden', 'labelPartialExact'])
+        assert.match(outcome[ng], /^ng: .*Timeout/, ng);
+      assert.match(outcome.clickDisabled, /not enabled/);
+      // wait で display:none の要素を visible で待つと、在るのに隠れている理由が添う
+      assert.match(outcome.waitVisibleHidden, /resolved to hidden/);
+      assert.match(outcome.gotoMissing, /HTTP 404/);
+      assert.match(outcome.unknown, /知らない操作: swim/);
+    },
+  );
+
+  test('hidden と detached の wait が通っても、在るとは言わない', () => {
+    const { printed } = probe({
+      steps: [{ actions: [{ wait: { css: '.t' }, state: 'hidden' }, { wait: { css: '.t' } }] }],
+    });
+    assert.deepEqual(printed, [
+      '場面 1: 通った（存在は未確認）: wait css=.t state="hidden"',
+      '場面 1: 在る: wait css=.t',
+    ]);
+  });
+
+  test('wait で在るのに隠れている／消えないときの Call log の行も、理由に足す', () => {
+    const code = `import * as p from ${planUrl};
+console.log(JSON.stringify([
+  p.probeDetail('locator.waitFor: Timeout 5000ms exceeded.\\nCall log:\\n  - waiting for locator(\\'#a\\') to be visible\\n  -   locator resolved to hidden <div id="a">…</div>'),
+  p.probeDetail('locator.waitFor: Timeout 5000ms exceeded.\\nCall log:\\n  - waiting for locator(\\'#a\\') to be hidden\\n  -   locator resolved to visible <div id="a">…</div>'),
+  p.probeDetail('locator.click: Timeout 5000ms exceeded.\\nCall log:\\n  - waiting for locator(\\'#a\\')'),
+]));`;
+    const result = spawnSync(process.execPath, ['--input-type=module', '-e', code], { encoding: 'utf8' });
+    assert.equal(result.status, 0, result.stderr);
+    assert.deepEqual(JSON.parse(result.stdout), [
+      'locator.waitFor: Timeout 5000ms exceeded. / locator resolved to hidden <div id="a">…</div>',
+      'locator.waitFor: Timeout 5000ms exceeded. / locator resolved to visible <div id="a">…</div>',
+      'locator.click: Timeout 5000ms exceeded.',
+    ]);
+  });
+
+  test('preview に届かない失敗は、先頭が goto でなくても、手前に別の見つからないがあっても見つける', () => {
+    const code = `import * as p from ${planUrl};
+const miss = (detail) => ({ status: 'missing', detail });
+console.log(JSON.stringify([
+  p.isUnreachable([{ status: 'found' }, miss('page.goto: net::ERR_CONNECTION_REFUSED at http://localhost:1/')]),
+  p.isUnreachable([miss('locator.click: Timeout 5000ms exceeded.'), miss('page.goto: net::ERR_CONNECTION_REFUSED')]),
+  p.isUnreachable([miss('locator.click: Timeout 5000ms exceeded.'), { status: 'skipped', reason: 'ERR_CONNECTION_REFUSED' }]),
+  p.isUnreachable([]),
+]));`;
+    const result = spawnSync(process.execPath, ['--input-type=module', '-e', code], { encoding: 'utf8' });
+    assert.equal(result.status, 0, result.stderr);
+    assert.deepEqual(JSON.parse(result.stdout), [true, true, false, false]);
+  });
+
+  test('在るのに操作できない理由と、見つからないときの報告の形', () => {
+    const { printed } = probe(plan, { step: 2, kind: 'click' });
+    assert.equal(
+      printed[3],
+      '場面 2: 見つからない: click role=button name="押す"（Timeout 5000ms exceeded. / element is not enabled）',
+    );
+    assert.match(printed[4], /^場面 2: 試せなかった: wait css=\.b state="hidden"（場面 2 の click role=button/);
+  });
+
+  test('--probe は手順書の形が誤りなら、ブラウザを立てずに理由を出して終了コード 1', () => {
+    inTempDir({ 'steps.json': JSON.stringify({ steps: [{ actions: [{ click: {} }] }] }) }, (path) => {
+      const result = spawnSync(process.execPath, [recordScript, '--probe', path('steps.json')], { encoding: 'utf8' });
+      assert.equal(result.status, 1);
+      assert.match(result.stderr, /css、role、label のどれか1つだけ/);
+      assert.doesNotMatch(result.stdout, /base:/);
+    });
+  });
+});
+
 describe('compose.py --spans', () => {
   const spans = (cues: unknown) =>
     inTempDir({ 'cues.json': typeof cues === 'string' ? cues : JSON.stringify(cues) }, (path) => {

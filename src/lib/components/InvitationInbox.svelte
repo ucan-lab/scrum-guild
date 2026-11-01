@@ -4,6 +4,7 @@
   import { resolve } from '$app/paths';
   import { page } from '$app/state';
   import { callOperation } from '../api.ts';
+  import { invitationErrorText, invitationRoleLabel } from '../invitation-text.ts';
   import { isUnauthenticated, loginUrl } from '../login-redirect.ts';
   import { applyInvitedOrganization } from '../organization.svelte.ts';
   import { showToast } from '../toast.svelte.ts';
@@ -38,31 +39,13 @@
     if (!member) applyInvitedOrganization(list.organization);
   });
 
-  function roleLabel(role: Invitation['role']): string {
-    return role === 'leader' ? t('leader') : t('roleMember');
-  }
+  const roleLabel = invitationRoleLabel;
 
   function isSending(invitation: Invitation, action: 'accept' | 'decline'): boolean {
     return sending?.id === invitation.invitation_id && sending.action === action;
   }
 
-  // 失敗の理由
-  function errorText(result: { status: number; error?: { code: string } | null }): string {
-    const words = { workspace: t('workspace') };
-    if (result.status === 0) return t('invitationErrorUnreachable');
-    switch (result.error?.code) {
-      case 'not_found':
-        return t('invitationErrorNotFound');
-      case 'conflict':
-        return t('invitationErrorChanged');
-      case 'workspace_closed':
-        return t('invitationErrorClosed', words);
-      case 'already_member':
-        return t('invitationErrorAlreadyMember', words);
-      default:
-        return t('invitationErrorFailed');
-    }
-  }
+  const errorText = invitationErrorText;
 
   // 招待だけの人の招待が残っていないか。残っていなければ、読み直すと組織に入れず「見つからない」になる
   async function noInvitationLeft(): Promise<boolean> {

@@ -3,6 +3,7 @@
 // 使い方（ワークツリーの根で。先に pnpm preview と pnpm db:seed）:
 //   node .claude/skills/acceptance-video/record.mjs <steps.json> <出力のディレクトリ>
 //   node .claude/skills/acceptance-video/record.mjs --check <steps.json>    手順書の形と、見積もりの長さを確かめる
+//   node .claude/skills/acceptance-video/record.mjs --probe <steps.json>    録画せずに、要素の指し方が実画面に在るかを試す（click などまで実行し seed の行を書き換えるので、終わったら pnpm db:seed で戻す）
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { join, resolve } from 'node:path';
@@ -16,9 +17,14 @@ import {
   READ_MS,
   RESULT_MS,
   estimateSeconds,
+  formatProbeLine,
+  isUnreachable,
   pausesAfter,
+  probePlan,
+  runProbe,
   validatePlan,
 } from './plan.mjs';
+import { locate, probeExec } from './probe.mjs';
 
 // 録画の画面。上に 80px の帯を足して 1280×720 にする（compose.py）
 const VIEWPORT = { width: 1280, height: 640 };
@@ -45,21 +51,10 @@ function readPlan(path) {
   return { plan, seconds };
 }
 
-function locate(page, spec) {
-  const scope = spec.within ? locate(page, spec.within) : page;
-  let locator;
-  if (spec.css) locator = scope.locator(spec.css);
-  else if (spec.role) locator = scope.getByRole(spec.role, { name: spec.name, exact: spec.exact });
-  else locator = scope.getByLabel(spec.label);
-  return spec.nth === undefined ? locator : locator.nth(spec.nth);
-}
-
-async function main(planPath, outArg) {
-  const { plan, seconds } = readPlan(planPath);
-  const out = resolve(outArg);
-  mkdirSync(out, { recursive: true });
-
-  // ワークツリーの根（cwd）の Playwright、seed のセッション、ポートを使う。別のコピーの値を混ぜない
+// ワークツリーの根（cwd）の Playwright、seed のセッション、ポートで、seed のセッションを持つブラウザを開く。
+// 録画と試しで、向き先と外へ出さない制限を同じにする
+async function openSession(plan, contextOptions) {
+  // 別のコピーの値を混ぜない
   const root = process.cwd();
   const { chromium } = createRequire(join(root, 'package.json'))('@playwright/test');
   const load = (file) => import(pathToFileURL(join(root, file)).href);
@@ -71,15 +66,11 @@ async function main(planPath, outArg) {
   const base = `http://localhost:${devPorts({}).api}`;
   const who = plan.who ?? 'admin';
   if (!Object.hasOwn(SEED_SESSIONS, who)) fail(`seed に ${who} のセッションが無い（seed/sessions.ts）`);
-  console.log(`root: ${root}\nbase: ${base}\n見積もり: ${seconds.toFixed(1)} 秒`);
+  console.log(`root: ${root}\nbase: ${base}`);
 
   const browser = await chromium.launch();
   try {
-    const context = await browser.newContext({
-      viewport: VIEWPORT,
-      recordVideo: { dir: out, size: VIEWPORT },
-      timezoneId: 'Asia/Tokyo',
-    });
+    const context = await browser.newContext({ viewport: VIEWPORT, timezoneId: 'Asia/Tokyo', ...contextOptions });
     await context.addCookies([
       { name: sessionCookieName(base), value: SEED_SESSIONS[who].token, url: base, httpOnly: true },
     ]);
@@ -90,6 +81,45 @@ async function main(planPath, outArg) {
       if (request.isNavigationRequest() && new URL(request.url()).origin !== base) return route.abort();
       return route.continue();
     });
+    return { browser, context, base };
+  } catch (err) {
+    await browser.close();
+    throw err;
+  }
+}
+
+// 録画しない試し。手順書を録画と同じ操作で最後まで通し（待ちは省く）、場面ごとに指し方が実画面に在るかを一覧にする。
+// click などで seed の行を書き換えるので、録画の前に pnpm db:seed で戻す。見つからないものがあれば終了コード 1
+async function probe(planPath) {
+  const { plan } = readPlan(planPath);
+  const { browser, context, base } = await openSession(plan);
+  let results;
+  try {
+    const page = await context.newPage();
+    results = await runProbe(probePlan(plan), probeExec(page, base));
+  } finally {
+    await context.close();
+    await browser.close();
+  }
+  // preview に届かないのは指し方の誤りでないので、一覧でなく環境の問題として知らせる
+  if (isUnreachable(results)) {
+    console.error('preview に届かない（先に pnpm preview を立て、応答を確かめる）');
+    process.exit(2);
+  }
+  for (const r of results) console.log(formatProbeLine(r));
+  const count = (status) => results.filter((r) => r.status === status).length;
+  console.log(`試した ${count('found') + count('missing')}、見つからない ${count('missing')}、試せなかった ${count('skipped')}`);
+  if (count('missing') > 0) process.exit(1);
+}
+
+async function main(planPath, outArg) {
+  const { plan, seconds } = readPlan(planPath);
+  const out = resolve(outArg);
+  mkdirSync(out, { recursive: true });
+  console.log(`見積もり: ${seconds.toFixed(1)} 秒`);
+
+  const { browser, context, base } = await openSession(plan, { recordVideo: { dir: out, size: VIEWPORT } });
+  try {
     const page = await context.newPage();
 
     // 録画は newPage から始まるので、字幕の時刻の起点をここに置く
@@ -162,11 +192,15 @@ async function main(planPath, outArg) {
 }
 
 const [first, second] = process.argv.slice(2);
-if (first === '--check') {
+if (first === '--probe') {
+  await probe(second ?? '');
+} else if (first === '--check') {
   const { plan, seconds } = readPlan(second ?? '');
   console.log(`場面 ${plan.steps.length}、見積もり ${seconds.toFixed(1)} 秒（${ESTIMATE_LIMIT_SECONDS} 秒まで）`);
 } else if (first === undefined || second === undefined) {
-  console.error('使い方: node record.mjs <steps.json> <出力のディレクトリ> | node record.mjs --check <steps.json>');
+  console.error(
+    '使い方: node record.mjs <steps.json> <出力のディレクトリ> | node record.mjs --check <steps.json> | node record.mjs --probe <steps.json>',
+  );
   process.exit(2);
 } else {
   await main(first, second);

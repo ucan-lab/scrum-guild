@@ -10,6 +10,8 @@ import type { LayoutLoad } from './$types';
 // 組織に入れない（404 の not_found）が、組織の選択の届いた招待にこの slug があるとき（承諾待ちの招待だけの人）だけ、
 // 届いた招待の一覧（invitation-list）を読んで invitationInbox に入れる。枠はこれがあれば招待の画面を出す。
 // 読めなかったとき（通信、5xx）は failure をその応答にして、読み込みの失敗を出す。
+// 組織に入れる人で、組織の選択の届いた招待にこの slug があるとき（別のワークスペースから招待が届いた）だけ、同じく invitation-list を読み、
+// 件数を invitationCount に入れる（メニューの「自分の設定」の印に出す）。招待が無い人は追加の呼び出しをしない。読めなかったときは 0（印を出さない）。
 // url は 401 と terms_required のときだけ読む（読むと、移るたびにこの load が走り直る）
 export const load: LayoutLoad = async ({ params, fetch, url }) => {
   const [organization, accountOrganizations] = await Promise.all([
@@ -42,11 +44,22 @@ export const load: LayoutLoad = async ({ params, fetch, url }) => {
     else if (inbox.status !== 404) failure = { status: inbox.status, code: inbox.error?.code ?? null };
   }
 
+  let invitationCount = 0;
+  if (
+    organization.ok &&
+    accountOrganizations.ok &&
+    accountOrganizations.data.invitations.some((invitation) => invitation.slug === params.slug)
+  ) {
+    const list = await callOperation(invitationList, {}, { slug: params.slug, fetcher: fetch });
+    if (list.ok) invitationCount = list.data.invitations.length;
+  }
+
   return {
     slug: params.slug,
     organization: organization.ok ? organization.data : null,
     failure,
     invitationInbox,
+    invitationCount,
     // 組織の切り替えの一覧。取れなかったときは切り替えを出さない
     organizations: accountOrganizations.ok ? accountOrganizations.data : null,
   };

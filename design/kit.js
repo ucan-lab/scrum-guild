@@ -1955,7 +1955,7 @@ const looooooooooooooooooooooooooooooooooongLine = "コードの長い1行は、
     "organization",
     ["today", "sun", () => "今日やること", "today.html"],
     ["notifications", "bell", () => "通知", "notifications.html", 3],
-    ["me", "users", () => "自分の設定", "me.html"],
+    ["me", "users", () => "自分の設定", "me.html", () => (D.receivedInvites || []).length],
     ["admin", "shield", () => "組織の管理", "admin.html"],
     "workspace",
     ["inbox", "inbox", () => t("inbox"), "inbox.html", 4],
@@ -1987,6 +1987,12 @@ const looooooooooooooooooooooooooooooooooongLine = "コードの長い1行は、
         <label class="ws-select" for="ws"><span>${t("workspace")}</span><select id="ws">${Object.values(D.workspaces).map((w) => `<option>${esc(w.name)}</option>`).join("")}</select></label>`;
       if (typeof p === "string") return `<div class="nav-group"><span class="nav-group-label">${p}</span></div>`;
       const [id, ic, label, href, badge] = p;
+      // 自分の設定の件数は、届いた招待の数（関数で渡す）。畳んだ列では件数を隠し、点（.nav-item-invite）を項目の角に出す。読み上げには件数を足す
+      if (typeof badge === "function") {
+        const n = badge();
+        const note = n > 0 && !first ? `<span class="nav-badge" aria-hidden="true">招待 ${n}</span><span class="nav-item-invite" aria-hidden="true"></span><span class="visually-hidden">、届いた招待 ${n}件</span>` : "";
+        return `<a class="nav-item" href="${firstHref(href)}" ${current === id ? 'aria-current="page"' : ""}>${icon(ic)}<span class="nav-item-label">${label()}</span>${note}</a>`;
+      }
       return `<a class="nav-item" href="${firstHref(href)}" ${current === id ? 'aria-current="page"' : ""}>${icon(ic)}<span class="nav-item-label">${label()}</span>${badge && !first ? `<span class="nav-badge">${badge}</span>` : ""}</a>`;
     }).join("");
   }

@@ -42,8 +42,9 @@ if (issueNumber === undefined && prNumber === undefined) fail('--issue か --pr 
 let issueTitle;
 let pr;
 try {
-  if (issueNumber !== undefined) issueTitle = gh('issue', 'view', String(issueNumber), '--json', 'title', '--jq', '.title');
-  if (prNumber !== undefined) pr = { number: prNumber, title: issueNumber === undefined ? gh('pr', 'view', String(prNumber), '--json', 'title', '--jq', '.title') : '' };
+  // クラウドのセッションは GraphQL（gh issue view、gh pr view）が 403 になるので、REST の gh api で引く。{owner}/{repo} は gh api が置き換える
+  if (issueNumber !== undefined) issueTitle = gh('api', `repos/{owner}/{repo}/issues/${issueNumber}`, '--jq', '.title');
+  if (prNumber !== undefined) pr = { number: prNumber, title: issueNumber === undefined ? gh('api', `repos/{owner}/{repo}/pulls/${prNumber}`, '--jq', '.title') : '' };
 } catch {
   fail('gh で Issue か PR の題を引けませんでした');
 }

@@ -125,6 +125,105 @@ export function validatePlan(plan) {
   return problems;
 }
 
+// 録画の前の試し（record.mjs --probe）で、要素を待つ上限。録画本番の待ち（30 秒）を待たずに、見つからないと分かる長さ
+export const PROBE_TIMEOUT_MS = 5000;
+// goto は画面の読み込みを待つので長くする（preview の起動直後に、偽の「見つからない」を出さない）
+export const PROBE_GOTO_TIMEOUT_MS = 30_000;
+
+/** 要素の指し方を、報告に出す 1 行にする */
+export function describeLocator(spec) {
+  const parts = [];
+  if (spec.within) parts.push(`${describeLocator(spec.within)} の中の`);
+  if (spec.css) parts.push(`css=${spec.css}`);
+  if (spec.role) parts.push(`role=${spec.role} name=${JSON.stringify(spec.name)}${spec.exact ? ' exact' : ''}`);
+  if (spec.label) parts.push(`label=${JSON.stringify(spec.label)}${spec.exact ? ' exact' : ''}`);
+  if (spec.nth !== undefined) parts.push(`nth=${spec.nth}`);
+  return parts.join(' ');
+}
+
+/**
+ * 録画せずに通す項目を、録画と同じ順に並べる。場面は 1 から数える。待ち（pause、read、hold）は含めない。
+ * 各項目は { step, kind: goto|mark|click|check|select|fill|wait, action?, spec?, path? }。
+ * mark の spec は枠で示す要素、それ以外は action に手順書の操作がそのまま入る。
+ */
+export function probePlan(plan) {
+  const items = [];
+  plan.steps.forEach((step, i) => {
+    const n = i + 1;
+    if (step.mark) items.push({ step: n, kind: 'mark', spec: step.mark });
+    for (const action of step.actions ?? []) {
+      const kind = VERBS.find((verb) => action[verb] !== undefined);
+      if (kind === 'pause') continue;
+      items.push(
+        kind === 'goto' ? { step: n, kind, path: action.goto } : { step: n, kind, action, spec: action[kind] },
+      );
+    }
+  });
+  return items;
+}
+
+/** 報告に出す、項目の 1 行 */
+export function describeItem(item) {
+  if (item.kind === 'goto') return `goto ${item.path}`;
+  // 手順書のキーと、報告での名前。select の label は指し方の label と紛れるので option と書く
+  const extra = { wait: ['state', 'state'], select: ['label', 'option'], fill: ['text', 'text'] }[item.kind];
+  const value = extra && item.action[extra[0]] !== undefined ? ` ${extra[1]}=${JSON.stringify(item.action[extra[0]])}` : '';
+  return `${item.kind} ${describeLocator(item.spec)}${value}`;
+}
+
+// 要素は在るのに操作できない理由（無効、隠れている、覆われている）。Playwright の Call log にだけ出るので、1 行目に足す
+const BLOCKED_REASON =
+  /not (enabled|visible|stable|editable)|intercepts pointer events|strict mode violation|resolved to (\d+|hidden|visible)/;
+
+/** 試しの結果 1 件の、報告の 1 行 */
+export function formatProbeLine(r) {
+  let verdict = { found: '在る', missing: '見つからない', skipped: '試せなかった' }[r.status];
+  // hidden と detached は、要素が最初から無くても通るので、在ることを示さない
+  if (r.status === 'found' && r.kind === 'wait' && ['hidden', 'detached'].includes(r.action.state)) {
+    verdict = '通った（存在は未確認）';
+  }
+  const tail = r.status === 'skipped' ? `（${r.reason}）` : r.detail ? `（${r.detail}）` : '';
+  return `場面 ${r.step}: ${verdict}: ${describeItem(r)}${tail}`;
+}
+
+/** preview に届かない失敗が 1 件でもあるか。指し方の誤りでなく環境の問題なので、一覧より先に知らせる */
+export function isUnreachable(results) {
+  return results.some((r) => r.status === 'missing' && /ERR_CONNECTION_REFUSED|ECONNREFUSED/.test(r.detail));
+}
+
+/** 失敗の理由。1 行目に、指し方が違うのか、在るのに操作できないのかを分ける行を足す */
+export function probeDetail(message) {
+  const [first, ...rest] = String(message).split('\n');
+  const reasons = [...new Set(rest.map((line) => line.trim().replace(/^-\s*/, '')).filter((line) => BLOCKED_REASON.test(line)))];
+  return [first, ...reasons.slice(0, 2)].join(' / ');
+}
+
+/**
+ * probePlan の項目を順に exec で実行し、場面ごとの結果を返す。exec は見つからないとき（HTTP のエラーも）投げる。
+ * 項目が見つからなかったら、次の goto までは画面の状態が分からないので、その間の項目は実行せず「試せなかった」にする
+ * （1 つの欠けから後ろの項目が連鎖して落ち、本当の原因が埋もれるのを避ける）。
+ * 結果は { ...item, status: 'found'|'missing'|'skipped', detail?, reason? }
+ */
+export async function runProbe(items, exec) {
+  const results = [];
+  let blockedBy = null;
+  for (const item of items) {
+    if (item.kind === 'goto') blockedBy = null;
+    if (blockedBy) {
+      results.push({ ...item, status: 'skipped', reason: blockedBy });
+      continue;
+    }
+    try {
+      await exec(item);
+      results.push({ ...item, status: 'found' });
+    } catch (err) {
+      results.push({ ...item, status: 'missing', detail: probeDetail(err.message) });
+      blockedBy = `場面 ${item.step} の ${describeItem(item)} が見つからず、次の goto までは画面の状態が分からない`;
+    }
+  }
+  return results;
+}
+
 /** 待ちと、操作の実時間の目安から見積もった長さ（秒）。読み込みの揺れは含まない */
 export function estimateSeconds(plan) {
   let ms = FINISH_MS;

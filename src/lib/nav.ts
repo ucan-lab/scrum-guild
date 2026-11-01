@@ -33,6 +33,8 @@ export type NavItem = {
   href: NavRoute | null;
   adminOnly?: true;
   leaderOnly?: true;
+  // 項目に添える印。invitations は、この組織に届いた承諾待ちの招待の件数（0 なら出さない）
+  badge?: 'invitations';
 };
 
 // slot は、見出しのすぐ下に置く切り替え（組織、ワークスペース）。ワークスペースの画面を開いている間は、
@@ -45,7 +47,7 @@ export type NavSection = {
   items: NavItem[];
 };
 
-export type VisibleNavItem = { icon: IconName; label: DictionaryKey; href: NavRoute };
+export type VisibleNavItem = { icon: IconName; label: DictionaryKey; href: NavRoute; badge?: 'invitations' };
 export type VisibleNavSection = Omit<NavSection, 'items'> & { items: VisibleNavItem[] };
 
 export type VisibleNavOptions = {
@@ -91,7 +93,7 @@ export const navSections: NavSection[] = [
     items: [
       { icon: 'sun', label: 'pageToday', href: '/[slug]' },
       { icon: 'bell', label: 'pageNotifications', href: null },
-      { icon: 'users', label: 'pageMe', href: '/[slug]/me' },
+      { icon: 'users', label: 'pageMe', href: '/[slug]/me', badge: 'invitations' },
       { icon: 'shield', label: 'pageOrgAdmin', href: '/[slug]/admin', adminOnly: true },
     ],
   },
