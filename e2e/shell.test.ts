@@ -612,3 +612,64 @@ test('画面の build に埋めた版が API の版と同じ', async ({ request 
   expect(res.status()).toBe(200);
   expect(await res.json()).toEqual({ version });
 });
+
+// 本文（.content）は幅の上限を持たない。広い画面でも左のメニューの右から画面の右の端まで広がる
+// 4000px は、左のメニューを広げても畳んでも、2000px 台の上限を見逃さない幅
+const WIDE_VIEWPORT = { width: 4000, height: 900 };
+// 縦スクロールバーの幅の余裕
+const SCROLLBAR_ALLOWANCE = 24;
+// 欄の幅の上限（design/components.css の `.form` などの 56rem）
+const FORM_MAX_PX = 56 * 16;
+
+test('4000px の幅で、本文が画面の右の端まで広がり、畳んでも変わらない', async ({ page }) => {
+  await page.setViewportSize(WIDE_VIEWPORT);
+  await page.goto(today);
+  await page.evaluate(() => localStorage.removeItem('sg-nav-collapsed'));
+  await page.reload();
+
+  const content = page.locator('.content');
+  await expect(content).toBeVisible();
+  const open = await content.boundingBox();
+  expect(open!.x + open!.width).toBeGreaterThan(WIDE_VIEWPORT.width - SCROLLBAR_ALLOWANCE);
+  // 以前の上限（1320px）を超えている
+  expect(open!.width).toBeGreaterThan(1320);
+
+  await page.getByRole('button', { name: 'メニューを畳む' }).click();
+  await expect(page.locator('.app')).toHaveAttribute('data-nav-collapsed', 'true');
+  const folded = await content.boundingBox();
+  expect(folded!.x + folded!.width).toBeGreaterThan(WIDE_VIEWPORT.width - SCROLLBAR_ALLOWANCE);
+  expect(folded!.width).toBeGreaterThan(open!.width);
+});
+
+test('4000px の幅でも、組織の管理の欄は 56rem で止まり、表は止まらない', async ({ context, baseURL, page }) => {
+  await signIn(context, baseURL, 'admin');
+  await page.setViewportSize(WIDE_VIEWPORT);
+  await page.goto('/aoba/admin');
+
+  // 表が出てから測る（読み込み前の空の箱は、上限が無くても幅が小さい）
+  const table = page.locator('.setting-body > .table-wrap').first();
+  await expect(table).toBeVisible();
+  expect((await table.boundingBox())!.width).toBeGreaterThan(FORM_MAX_PX);
+
+  const fieldWidths = await page
+    .locator('.setting-body :is(.form, .form-row, .input-row, .field, .order-list)')
+    .evaluateAll((els) => els.map((el) => el.getBoundingClientRect().width));
+  expect(fieldWidths.length).toBeGreaterThan(0);
+  for (const width of fieldWidths) expect(width).toBeLessThanOrEqual(FORM_MAX_PX);
+});
+
+test('4000px の幅でも、自分の設定の API トークンの発行の欄は 56rem で止まる', async ({ page }) => {
+  await page.setViewportSize(WIDE_VIEWPORT);
+  await page.goto('/aoba/me');
+
+  const form = page.locator('form.form').first();
+  await expect(form).toBeVisible();
+  expect((await form.boundingBox())!.width).toBeLessThanOrEqual(FORM_MAX_PX);
+});
+
+test('4000px の幅でも、今日やることの画面に、アクセシビリティの違反が無い', async ({ page }) => {
+  await page.setViewportSize(WIDE_VIEWPORT);
+  await page.goto(today);
+  await expect(page.getByRole('heading', { level: 1, name: '今日やること' })).toBeVisible();
+  await expectNoA11yViolationsInThemes(page, 'today', exclusionsFor('today', isAxeCheck));
+});
