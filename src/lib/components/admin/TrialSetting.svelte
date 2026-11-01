@@ -9,7 +9,7 @@
 <Setting title={t('orgTrialTitle')} description={t('orgTrialDesc')}>
   <p class="mono">{t('orgTrialEndsOn', { date: trial.ends_on })}</p>
   {#if trial.days_left < 0}
-    <p><span class="chip is-danger"><Icon name="alert" />{t('orgTrialExpired')}</span></p>
+    <p><span class="chip is-danger"><Icon name="alert" />{t('trialExpired')}</span></p>
   {:else if trial.days_left === 0}
     <p class="props-note">{t('orgTrialLastDay')}</p>
   {:else}

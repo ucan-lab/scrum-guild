@@ -217,7 +217,7 @@
                     {#if organization.trial_ends_on !== null}
                       <span class="chip">{t('orgTrialEndsOn', { date: organization.trial_ends_on })}</span>
                       {#if organization.trial_expired}<span class="chip is-danger"
-                          ><Icon name="alert" />{t('operatorTrialExpired')}</span
+                          ><Icon name="alert" />{t('trialExpired')}</span
                         >{/if}
                     {/if}
                     {#if organization.suspended_at}

@@ -617,7 +617,6 @@ export const dictionary = defineDictionary({
   operatorCreate: '{organization}を作る',
   operatorColumnOrganization: '{organization}・slug',
   operatorSelfCreated: '自分で作った組織',
-  operatorTrialExpired: 'お試しの期限を過ぎています',
   // 組織ごとの集計の列。{workspace} {task} は辞書の同じ名前の項目で埋める
   operatorColumnSeats: '人数 / 上限',
   operatorColumnWorkspaces: '{workspace}の数',
@@ -1121,8 +1120,8 @@ export const dictionary = defineDictionary({
   orgTrialDaysLeft: '残り {days} 日',
   // 期限の当日（days_left が 0）。当日まで使えることを伝え、「残り 0 日」を終了済みに読ませない
   orgTrialLastDay: '今日までです',
-  // 期限の翌日から定期処理が止めるまでの間（days_left が負）に、「残り -1 日」と出さない
-  orgTrialExpired: 'お試しの期限を過ぎています',
+  // 期限を過ぎた組織の印。管理者の画面（days_left が負。「残り -1 日」と出さない）と運用者の一覧が同じ文を使う
+  trialExpired: 'お試しの期限を過ぎています',
 
   // 組織の既定のテーマ（組織の管理の画面）
   orgThemeTitle: '既定のテーマ',
