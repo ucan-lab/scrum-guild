@@ -588,7 +588,7 @@ const SECTIONS = [
     "SQ.art(name, lead) .art .art.is-lead / SQ.emptyState(…, art)")],
   ["first", "最初にやること", () => block("first", "最初にやること", "初めて使う人の今日やることの先頭に、ロールごとの手順を出す。済んだかは今のデータから決まる。必須の手順がすべて済むと出なくなる。",
     `<div class="two">${SQ.firstSteps("member", { preview: true })}${SQ.firstSteps("admin", { preview: true })}</div>`,
-    ["ロールは一般、リーダー、ワークスペースがまだない管理者の3つ。", "主ボタンは、まだ済んでいない最初の手順にだけ付ける。", "取り込み元やスプリントのように使わないチームもあるものは「任意」にし、済んでいなくても手順の一覧を消す妨げにしない。"],
+    ["ロールは一般、リーダー、ワークスペースがまだない管理者の3つ。", "主ボタンは、まだ済んでいない最初の必須の手順にだけ付ける（必須が済んでいれば最初の任意の手順）。", "取り込み元やスプリントのように使わないチームもあるものは「任意」にし、済んでいなくても手順の一覧を消す妨げにしない。"],
     "SQ.firstSteps(role) / .panel .steps .step .is-done .chip")],
   ["status", "状態と事実の並び", () => block("status", "状態と事実の並び", "接続などの状態は、色と文字の両方で示す。事実は見出しと値の組で並べる。",
     `<div class="cat-row"><span class="state-badge is-ok">有効</span><span class="state-badge is-error">エラー</span><span class="state-badge is-stopped">停止</span><span class="state-badge is-muted">下書き</span></div>

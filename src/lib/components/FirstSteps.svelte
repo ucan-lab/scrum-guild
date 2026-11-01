@@ -7,7 +7,7 @@
 
   // kit.js の firstSteps。初めて使う人の今日やることの先頭に、ロールごとの手順を出す。
   // 手順と済みはサーバー（first-steps）が今のデータから決めて返すので、閉じた印は持たない。必須が済むとサーバーが空を返し、この面は置かれない。
-  // 主ボタンは、まだ済んでいない最初の手順にだけ付ける。ワークスペースを作る手順は、押すと onCreateWorkspace を呼ぶ（ダイアログは画面が持つ）
+  // 主ボタンは、まだ済んでいない最初の必須の手順にだけ付ける（必須が済んでいれば最初の任意の手順）。ワークスペースを作る手順は、押すと onCreateWorkspace を呼ぶ（ダイアログは画面が持つ）
   let {
     slug,
     role,
@@ -149,7 +149,11 @@
 
   const rows = $derived(shown.map(rowOf));
   // 主ボタンは、まだ済んでいない最初の手順（押せる操作を持つもの）にだけ付ける
-  const nextIndex = $derived(rows.findIndex((row) => !row.done && row.action !== null));
+  const nextIndex = $derived.by(() => {
+    const open = (row: (typeof rows)[number]) => !row.done && row.action !== null;
+    const required = rows.findIndex((row) => open(row) && !row.optional);
+    return required !== -1 ? required : rows.findIndex(open);
+  });
 
   // 末尾の一言。自分の設定、またはワークスペースの設定へ案内するリンクを文の中に置く
   const hint = $derived.by(() => {
