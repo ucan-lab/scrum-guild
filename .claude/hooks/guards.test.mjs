@@ -1,7 +1,7 @@
 // node --test .claude/hooks/*.test.mjs
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { copyFileSync, existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { after, describe, test } from 'node:test';
@@ -1056,12 +1056,6 @@ describe('bash-rules: 確認を挟む', () => {
     '{wrangler,x} deploy',
     'gh stack push',
     'gh stack sync',
-    'gh pr merge 21 --squash --match-head-commit abc123',
-    'gh pr merge 21 --squash --match-head-commit=abc123',
-    'gh -R ucan-lab/scrum-guild pr merge 21 --match-head-commit abc123',
-    'gh pr merge --repo o/r 21 --squash --match-head-commit abc123',
-    'gh pr merge $N --squash --match-head-commit $HEAD',
-    'bash -c "gh pr merge 21 --squash --match-head-commit abc123"',
     'git push origin $BRANCH',
     'git push origin $(echo main)',
     `echo '{"disableAllHooks": true}' > .claude/settings.local.json`,
@@ -1553,11 +1547,22 @@ describe('bash-rules: 確認を挟む', () => {
     assert.match(verdict('cf-wrangler dev')[1], /util\.parseArgs/);
   });
 
-  test('マージの確認の理由に、使うコマンドと needs-human の扱いを書く', () => {
-    const [d, reason] = verdict('gh pr merge 1 --squash --match-head-commit abc123');
-    assert.equal(d, 'ask');
-    assert.match(reason, /gh pr merge <番号> --squash --match-head-commit/);
-    assert.match(reason, /needs-human の PR .*人がマージする/);
+  for (const command of [
+    'gh pr merge 21 --squash --match-head-commit abc123',
+    'gh pr merge 21 --squash --match-head-commit=abc123',
+    'gh -R ucan-lab/scrum-guild pr merge 21 --match-head-commit abc123',
+    'gh pr merge --repo o/r 21 --squash --match-head-commit abc123',
+    'gh pr merge $N --squash --match-head-commit $HEAD',
+    'bash -c "gh pr merge 21 --squash --match-head-commit abc123"',
+  ]) {
+    test(`確認を挟まず、許可ルールに任せる: ${command}`, () => {
+      assert.equal(verdict(command), null);
+    });
+  }
+
+  test('.claude/settings.json の許可に gh pr merge がある', () => {
+    const settings = JSON.parse(readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'settings.json'), 'utf8'));
+    assert.ok(settings.permissions.allow.includes('Bash(gh pr merge *)'));
   });
 
   test('止めるものと確認を挟むものが並んだら止める', () => {

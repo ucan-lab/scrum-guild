@@ -8,7 +8,7 @@ description: 1つの Issue を、着手前の確かめ、backlog-refine、Issue 
 ## 仕事
 
 1つのタスク（または子の無いストーリー）の Issue を、実装して `done-check` に渡す。`done-check` が `pr-create` と `pr-feedback` へ続け、PR、レビューへの対応、マージの後片付けまでを受け持つ。
-終わりは「`pr-feedback` が後片付けを終えている」状態。
+終わりは「`pr-feedback` がマージ（`needs-human` や確かめを満たさない PR は人に渡した状態）の後片付けを終えている」状態。
 人が担うのは判断だけにする。判断が要る点は推す案を先頭にした `AskUserQuestion` で聞き、チャットの文章で選ばせない。
 
 ## 入力

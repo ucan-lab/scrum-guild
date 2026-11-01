@@ -498,7 +498,7 @@ function skipsHooks(args, shortN) {
   return false;
 }
 
-const MERGE_REASON = 'マージは人が指示したときだけ gh pr merge <番号> --squash --match-head-commit <head> で行う（docs/development.md の「マージの判定」）';
+const MERGE_REASON = 'マージは gh pr merge <番号> --squash --match-head-commit <head> で行う（docs/development.md の「マージの判定」）';
 
 const FORCE_REF_REASON_UNKNOWN = 'ref の更新の API に force: true を送るかを判定できない（本文がファイルや読めない標準入力、force の値が展開）。本文は引数かヒアドキュメントで字面を渡す。人が確かめる';
 const FORCE_DYNAMIC_PATH_REASON = 'エンドポイントを変数や展開で渡すと、force: true で ref を更新するかを判定できない。人が確かめる';
@@ -737,7 +737,8 @@ function judgeGh(args, stdinContext) {
     args,
     new Set(['-R', '--repo', '-X', '--method', '-H', '--header', '-f', '-F', '--field', '--raw-field', '--input', '--jq', '-q', '--template', '-t', '--hostname', '--cache', '-p', '--preview']),
   );
-  // 人が指示したときだけ、gh pr merge でマージする。needs-human のラベルはフックから見えないので、確認で人に委ねる
+  // needs-human のラベルはフックから見えないので、マージするかの判定はスキル（pr-feedback）が行う。
+  // 拒否する形だけここで止め、残りは判定せず、.claude/settings.json の許可ルール（Bash(gh pr merge *)）に任せる
   if (pos[0] === 'pr' && pos[1] === 'merge') {
     // --auto は確認の後に条件がそろった時点でマージし、--admin は条件を飛ばす
     if (args.some((a) => /^--(auto|admin)(=|$)/.test(a))) return [DENY, 'gh pr merge の --auto と --admin は使わない'];
@@ -745,7 +746,7 @@ function judgeGh(args, stdinContext) {
     if (!args.some((a) => /^--match-head-commit(=.|$)/.test(a))) {
       return [DENY, 'gh pr merge には --match-head-commit <確かめた head> を付ける'];
     }
-    return [ASK, `${MERGE_REASON}。needs-human の PR と label が成功していない PR は人がマージする`];
+    return null;
   }
   // エイリアスは中身のサブコマンドをフックから隠す（gh alias set m 'pr merge --auto' の後の gh m）
   if (pos[0] === 'alias' && ['set', 'import'].includes(pos[1])) return [DENY, 'gh のエイリアスはフックから中身が見えないので作らない'];
