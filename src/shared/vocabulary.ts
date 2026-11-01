@@ -617,6 +617,7 @@ export const dictionary = defineDictionary({
   operatorCreate: '{organization}を作る',
   operatorColumnOrganization: '{organization}・slug',
   operatorSelfCreated: '自分で作った組織',
+  operatorTrialExpired: 'お試しの期限を過ぎています',
   // 組織ごとの集計の列。{workspace} {task} は辞書の同じ名前の項目で埋める
   operatorColumnSeats: '人数 / 上限',
   operatorColumnWorkspaces: '{workspace}の数',
@@ -1100,12 +1101,17 @@ export const dictionary = defineDictionary({
   themeNoteMedieval: '冒険者ギルドの帳簿。紙と墨、完了に朱の判子',
   themeNoteModern: '近未来の端末のウィンドウ。暗い地に光る枠',
 
-  // 組織の既定のテーマ（組織の管理の画面）
+  // お試しの期限（組織の管理の画面。期限の日付は運用者の一覧も使う）
   orgTrialTitle: 'お試し',
   orgTrialDesc: '継続して使うには、運用者に問い合わせてください。',
   orgTrialEndsOn: 'お試しの期限（UTC）: {date}',
   orgTrialDaysLeft: '残り {days} 日',
-  operatorTrialExpired: 'お試しの期限を過ぎています',
+  // 期限の当日（days_left が 0）。当日まで使えることを伝え、「残り 0 日」を終了済みに読ませない
+  orgTrialLastDay: '今日までです',
+  // 期限の翌日から定期処理が止めるまでの間（days_left が負）に、「残り -1 日」と出さない
+  orgTrialExpired: 'お試しの期限を過ぎています',
+
+  // 組織の既定のテーマ（組織の管理の画面）
   orgThemeTitle: '既定のテーマ',
   orgThemeDesc: '画面の見た目の既定。自分で選んでいないユーザーに効きます。会社で使うならシンプルが無難です。',
   // 節ごとの「保存する」。選んだ値が今の値と違うときだけ押せる
