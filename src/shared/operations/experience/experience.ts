@@ -10,7 +10,7 @@ import { defineOperation } from '../define.ts';
 // 1回に返す明細の件数の上限。続きは next を before に渡して読む
 export const EXPERIENCE_GRANTS_PAGE_SIZE = 50;
 
-// 自分の設定の画面の「レベル」の面。組織の中の自分の合計とレベル、見込み、ワークスペースごとの内訳を返す。
+// マイプロフィールの画面の「レベル」の面。組織の中の自分の合計とレベル、見込み、ワークスペースごとの内訳を返す。
 // 合計は、その組織のワークスペースの xp_grants のうち、呼んだ人の行の SUM(amount)（抜けたワークスペースと閉じたワークスペースの分も含む）。
 // level_start は今のレベルの始まりの合計、next_level_at は次のレベルに要る合計（src/shared/experience.ts）。
 // 見込みは、今所属している閉じていないワークスペースで、自分が手で作った、未完了の、削除していない、ポイントが1以上のタスク1件につき
@@ -62,7 +62,7 @@ export const experienceGrantSchema = z.object({
   amount: z.number().int(),
 });
 
-// 自分の設定の画面の「経験値の明細」。呼んだ人の、この組織のワークスペースの xp_grants を、新しい順
+// マイプロフィールの画面の「経験値の明細」。呼んだ人の、この組織のワークスペースの xp_grants を、新しい順
 // （confirmed_at の降順、同じなら id の降順）に 1回 50 件まで返す。続きがあれば next（次に before へ渡す値）を返す
 export const experienceGrants = defineOperation({
   name: 'experience-grants',

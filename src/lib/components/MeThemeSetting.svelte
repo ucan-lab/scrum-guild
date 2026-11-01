@@ -12,7 +12,7 @@
   import Icon from './Icon.svelte';
   import Setting from './Setting.svelte';
 
-  // 自分の設定の画面（me.html）の「テーマ」の節。「組織の既定に従う」（null）と5つのテーマから選ぶ。
+  // マイプロフィールの画面（me.html）の「テーマ」の節。「組織の既定に従う」（null）と5つのテーマから選ぶ。
   // 管理者の組織の既定（OrganizationLookSetting）と違い、選んだ瞬間に保存して画面に当てる（自分の見た目だけで、組織の全員には効かない）。
   // 値は組織の枠が読んだ自分のテーマ（theme）と組織の既定（organizationTheme）を受け取り、節は自分で読まない。
   // 選ぶと、先に画面へ当て（setTheme。localStorage にも覚える）、me-theme-update を送る。通ったら組織の枠を読み直して、枠の値を今の値にそろえる。

@@ -1,4 +1,4 @@
-// 自分の設定の load（routes/[slug]/me/+page.ts）が、API トークンの一覧と届いた招待を経験値の2つと並べて読み、
+// マイプロフィールの load（routes/[slug]/me/+page.ts）が、API トークンの一覧と届いた招待を経験値の2つと並べて読み、
 // 読めなかったものだけを null にし、401 ならログインへ移すことを、fetch を差し替えて確かめる
 import { expect, test } from 'vitest';
 import { load } from '../routes/[slug]/me/+page.ts';

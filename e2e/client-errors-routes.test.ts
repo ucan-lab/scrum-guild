@@ -24,9 +24,10 @@ async function throwAndCapture(page: Page, message: string): Promise<Record<stri
 test('画面の中で移った後のエラーは、移った先の route.id で送る', async ({ page, context, baseURL }) => {
   await signIn(context, baseURL, 'admin');
   await page.goto('/aoba');
-  await page.locator('.nav-item', { hasText: '自分の設定' }).click();
+  await page.getByRole('button', { name: /アカウントのメニュー$/ }).click();
+  await page.locator('.account-menu-list').getByRole('link', { name: 'マイプロフィール', exact: true }).click();
   await expect(page).toHaveURL(/\/aoba\/me$/);
-  await expect(page.getByRole('heading', { level: 1, name: '自分の設定' })).toBeVisible();
+  await expect(page.getByRole('heading', { level: 1, name: 'マイプロフィール' })).toBeVisible();
 
   const body = await throwAndCapture(page, 'e2e boom after navigation');
   expect(body).toMatchObject({ kind: 'error', name: 'TypeError', route: '/[slug]/me' });
