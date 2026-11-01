@@ -1090,7 +1090,7 @@ export const dictionary = defineDictionary({
   consentSubmitting: '同意を記録しています',
   consentCurrent: '現在の版に同意しています。',
   consentRecordedAt: '同意した日時:',
-  consentSubmitHint: '利用規約とプライバシーポリシーを確認し、印を付けてください。',
+  consentSubmitHint: '利用規約とプライバシーポリシーを確認し、チェックしてください。',
   consentLoadFailed: '同意の状態を読み込めませんでした。もう一度試してください。',
   consentRecordFailed: '同意を記録できませんでした。もう一度試してください。',
   // 前の版に同意した人が開いたときの「改めました」の案内（改めた文書の名前は termsTitle、privacyTitle、改定日は legalRevised を使う）。

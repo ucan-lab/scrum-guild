@@ -70,7 +70,7 @@ test.describe('本物の API', () => {
     await expect(submit).toHaveAttribute('aria-disabled', 'true');
     await expect(submit).toHaveAttribute('aria-describedby', 'consent-submit-hint');
     await expect(page.locator('#consent-submit-hint')).toHaveText(
-      '利用規約とプライバシーポリシーを確認し、印を付けてください。',
+      '利用規約とプライバシーポリシーを確認し、チェックしてください。',
     );
     await checkbox.check();
     await expect(submit).toHaveAttribute('aria-disabled', 'false');
@@ -81,7 +81,7 @@ test.describe('本物の API', () => {
     await checkbox.uncheck();
     await expect(submit).toHaveAttribute('aria-describedby', 'consent-submit-hint');
     await expect(page.locator('#consent-submit-hint')).toHaveText(
-      '利用規約とプライバシーポリシーを確認し、印を付けてください。',
+      '利用規約とプライバシーポリシーを確認し、チェックしてください。',
     );
     await checkbox.check();
     await submit.click();
@@ -219,7 +219,7 @@ test('版が上がった直後の同意は 409 で断られ、読み直した版
     'consent-submit-hint',
   );
   await expect(page.locator('#consent-submit-hint')).toHaveText(
-    '利用規約とプライバシーポリシーを確認し、印を付けてください。',
+    '利用規約とプライバシーポリシーを確認し、チェックしてください。',
   );
 });
 
