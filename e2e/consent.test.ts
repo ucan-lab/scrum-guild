@@ -164,7 +164,7 @@ test.describe('本物の API', () => {
 
   for (const width of [1280, 390]) {
     test(`印を付けても紙の高さと送信ボタンの位置が動かない（幅 ${width}px）`, async ({ page, context, baseURL }) => {
-      await signIn(context, baseURL, 'admin');
+      await signIn(context, baseURL, 'unconsented');
       await page.setViewportSize({ width, height: 900 });
       await page.goto('/consent');
       const checkbox = page.getByRole('checkbox', { name: CHECKBOX_NAME });
@@ -185,7 +185,7 @@ test.describe('本物の API', () => {
     context,
     baseURL,
   }) => {
-    await signIn(context, baseURL, 'admin');
+    await signIn(context, baseURL, 'unconsented');
     await page.goto('/consent');
     await expect(page.getByRole('link', { name: /^利用規約.*新しいタブで開きます$/ })).toHaveAttribute(
       'target',

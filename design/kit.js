@@ -366,7 +366,7 @@
     </section>`;
   }
   function foldedSection(id, title, count, body) {
-    return `<details class="section is-folded"><summary class="section-head"><h2 class="section-title" id="${id}">${title}</h2><span class="section-count">${count} 件</span><span class="section-hint">押すと開きます</span></summary>${body}</details>`;
+    return `<details class="section is-folded"><summary class="section-head"><h2 class="section-title" id="${id}">${title}</h2><span class="section-count">${count} 件</span><span class="section-hint">開くと一覧を表示</span></summary>${body}</details>`;
   }
   // meta は集計の下に置く1行（バックログの画面のチーム全体の経験値 teamXp など）
   function pageHead(eyebrow, title, tallies = [], actions = "", meta = "") {

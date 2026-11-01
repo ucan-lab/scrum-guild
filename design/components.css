@@ -460,6 +460,8 @@ h1, h2, h3 { text-wrap: balance; }
 button.entry-title { text-align: left; background: transparent; border: 0; padding: 0; cursor: pointer; font: inherit; font-weight: 700; }
 .completed-list .entry-meta { overflow-wrap: anywhere; }
 .entry-meta { display: flex; flex-wrap: wrap; gap: 4px var(--space-3); align-items: center; font-size: var(--text-xs); color: var(--color-muted); }
+/* ワークスペース名の印（.tag は折り返さない）は、長い名前だけ折り返して全文を読めるようにする */
+.entry-meta .tag { white-space: normal; overflow-wrap: anywhere; }
 .entry-end { display: flex; align-items: center; gap: var(--space-2); }
 .entry.is-done .entry-title { color: var(--color-muted); font-weight: 400; }
 .book-empty { padding: var(--space-4); color: var(--color-muted); font-size: var(--text-sm); }
@@ -510,7 +512,7 @@ button.entry-title { text-align: left; background: transparent; border: 0; paddi
 .notice-label { font-size: var(--text-xs); color: var(--color-accent); font-weight: 700; letter-spacing: 0.3em; }
 .notice-title { font-family: var(--font-display); font-weight: 700; font-size: var(--text-lg); line-height: 1.5; }
 .notice-title.is-goal { white-space: pre-line; overflow-wrap: anywhere; }
-.notice-meta { display: flex; flex-wrap: wrap; gap: var(--space-2) var(--space-4); font-size: var(--text-xs); color: var(--color-muted); align-items: center; }
+.notice-meta { display: flex; flex-wrap: wrap; gap: var(--space-2) var(--space-4); font-size: var(--text-xs); color: var(--color-muted); align-items: center; overflow-wrap: anywhere; min-width: 0; }
 .notice-facts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-2) var(--space-4); margin: 0; }
 .notice-facts > div { display: grid; gap: 2px; min-width: 0; }
 .notice-facts dt { font-size: var(--text-xs); color: var(--color-muted); }

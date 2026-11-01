@@ -248,7 +248,7 @@ const SECTIONS = [
     `${pageHead(D.todayLabel, SQ.sprintLabel("sp14"), [["", "check", "完了", "4 / 24 pt"], ["is-danger", "alert", `${t("due")}切れ`, 1], ["is-warn", "pen", `${t("detail")} 未記入`, 1], ["is-ok", "check", "取り込み元で完了", 0]], `<button class="btn" type="button">延長する</button>`)}
      <div class="section-head"><h2 class="section-title">今日やると決めたもの</h2><span class="section-count">3 件</span><span class="section-hint">印を付けた日が過ぎても、完了にするか印を外すまで残ります</span></div>
      ${SQ.foldedSection("fold-sample", `進行中の${t("sprint")}`, 2, SQ.book(SQ.tasksWhere((x) => x.who === D.me && !x.doneAt).slice(0, 2), { showWs: true }))}`,
-    ["件数が0の集計は色を付けない。", "初めは閉じて件数だけ出す区分は foldedSection（details と summary）で作る。見出しの行を押すと開き、開いたら「押すと開きます」を隠す。狭い幅と指で押す画面では、見出しの行を44px の高さにする。", "持ち越した行の日数は、book の opts.meta に渡した1行（.props-note）で添える。"], ".page-head .page-eyebrow .page-head-row .page-title .page-actions .tally / .section-head .section-title .section-count .section-hint / .section.is-folded SQ.foldedSection(id, title, count, body)")],
+    ["件数が0の集計は色を付けない。", "初めは閉じて件数だけ出す区分は foldedSection（details と summary）で作る。見出しの行を押すと開き、開いたら「開くと一覧を表示」を隠す。狭い幅と指で押す画面では、見出しの行を44px の高さにする。", "持ち越した行の日数は、book の opts.meta に渡した1行（.props-note）で添える。"], ".page-head .page-eyebrow .page-head-row .page-title .page-actions .tally / .section-head .section-title .section-count .section-hint / .section.is-folded SQ.foldedSection(id, title, count, body)")],
   ["buttons", "ボタン", () => block("buttons", "ボタン", "1つの面に主ボタン（is-primary）は1つまで。",
     `<div class="cat-row">
       <button class="btn is-primary" type="button">${icon("check")}${t("complete")}</button>
