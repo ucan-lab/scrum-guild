@@ -226,6 +226,8 @@
         // 入力中に猶予を過ぎた。消える送信ボタンから、次の操作へフォーカスを移す。
         loadSeq++;
         allowedToCreate = false;
+        // 前の失敗（上限の 409 など）の囲みを残さない。案内は再ログインの1つだけにする
+        fieldError = null;
         await tick();
         reauthLink?.focus();
         return;
