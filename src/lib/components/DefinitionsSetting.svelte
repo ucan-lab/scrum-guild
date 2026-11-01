@@ -4,6 +4,7 @@
   import {
     DEFINITION_NAME_MAX_LENGTH,
     DEFINITIONS_PER_WORKSPACE,
+    DETAIL_FIELDS_PER_WORKSPACE,
     definitionNameProblem,
   } from '../../shared/definition.ts';
   import {
@@ -12,6 +13,10 @@
     categoryMove,
     categoryUpdate,
     definitionConflictReasonOf,
+    detailFieldCreate,
+    detailFieldDelete,
+    detailFieldMove,
+    detailFieldUpdate,
     repositoryCreate,
     repositoryDelete,
     repositoryMove,
@@ -29,7 +34,9 @@
   import InlineEdit from './InlineEdit.svelte';
   import Setting from './Setting.svelte';
 
-  // ワークスペースの設定の画面の、区分（kind = 'category'）とリポジトリ（kind = 'repository'）の節（見本は design/settings.html）。
+  // ワークスペースの設定の画面の、区分（kind = 'category'）とリポジトリ（kind = 'repository'）と、タスクの決まった欄（kind = 'field'）の節
+  // （見本は design/settings.html）。決まった欄は 10 件までで（区分とリポジトリは 50 件）、名前を直しても値は残り、
+  // 削除は論理削除だけ（値は残るが、削除した欄は引き出しに出ず、未記入の判定から外れる）。
   // 見本の「保存する」でまとめる形は採らず、行ごとにすぐ書く: 足す（下の欄）、名前を直す（InlineEdit）、月ごとに計上するの切り替え（区分だけ）、
   // 上へ／下へ（.order-actions。端の向きは aria-disabled）、削除（確かめのダイアログを挟む）。書いた後は画面が一覧を読み直す（onchanged）。
   // 足す、切り替え、並べ替え、削除は1本ずつ送り、送っている間はほかの操作を押しても無視する（aria-disabled）。名前の確定は InlineEdit が
@@ -47,7 +54,7 @@
     onchanged,
     onstale,
   }: {
-    kind: 'category' | 'repository';
+    kind: 'category' | 'repository' | 'field';
     slug: string;
     workspaceId: string;
     items: readonly Item[];
@@ -62,7 +69,11 @@
   const newId = `${ids}-new`;
   const newErrorId = `${ids}-new-error`;
 
-  const kindWord = $derived(kind === 'category' ? t('category') : t('repository'));
+  const kindWord = $derived(
+    kind === 'category' ? t('category') : kind === 'repository' ? t('repository') : t('detailFieldKind'),
+  );
+  // 数の上限（決まった欄は 10 件、区分とリポジトリは 50 件）
+  const limit = $derived(kind === 'field' ? DETAIL_FIELDS_PER_WORKSPACE : DEFINITIONS_PER_WORKSPACE);
   let newName = $state('');
   let addError = $state<string | null>(null);
   // 足す、切り替え、並べ替え、削除を送っている間（名前の確定は数えない）
@@ -126,7 +137,7 @@
     if (result.ok || result.status !== 409 || result.error?.code !== 'conflict') return null;
     const reason = definitionConflictReasonOf(result.error.details);
     if (reason === 'duplicate_name') return t('definitionDuplicate', { kind: kindWord });
-    if (reason === 'limit') return t('definitionLimit', { kind: kindWord, max: DEFINITIONS_PER_WORKSPACE });
+    if (reason === 'limit') return t('definitionLimit', { kind: kindWord, max: limit });
     return null;
   }
 
@@ -150,7 +161,9 @@
       const result =
         kind === 'category'
           ? await callOperation(categoryCreate, { workspace_id: workspaceId, name }, { slug })
-          : await callOperation(repositoryCreate, { workspace_id: workspaceId, name }, { slug });
+          : kind === 'repository'
+            ? await callOperation(repositoryCreate, { workspace_id: workspaceId, name }, { slug })
+            : await callOperation(detailFieldCreate, { workspace_id: workspaceId, name }, { slug });
       if (result.ok) {
         newName = '';
         showToast(t('definitionAdded', { name }), 'check');
@@ -176,7 +189,9 @@
     const result =
       kind === 'category'
         ? await callOperation(categoryUpdate, { workspace_id: workspaceId, category_id: item.id, name }, { slug })
-        : await callOperation(repositoryUpdate, { workspace_id: workspaceId, repository_id: item.id, name }, { slug });
+        : kind === 'repository'
+          ? await callOperation(repositoryUpdate, { workspace_id: workspaceId, repository_id: item.id, name }, { slug })
+          : await callOperation(detailFieldUpdate, { workspace_id: workspaceId, field_id: item.id, name }, { slug });
     if (result.ok) {
       showToast(t('definitionSaved', { name }), 'check');
       await onchanged();
@@ -225,11 +240,17 @@
               { workspace_id: workspaceId, category_id: item.id, after_category_id: afterId },
               { slug },
             )
-          : await callOperation(
-              repositoryMove,
-              { workspace_id: workspaceId, repository_id: item.id, after_repository_id: afterId },
-              { slug },
-            );
+          : kind === 'repository'
+            ? await callOperation(
+                repositoryMove,
+                { workspace_id: workspaceId, repository_id: item.id, after_repository_id: afterId },
+                { slug },
+              )
+            : await callOperation(
+                detailFieldMove,
+                { workspace_id: workspaceId, field_id: item.id, after_field_id: afterId },
+                { slug },
+              );
       if (result.ok) moved = true;
       else if (!handledCommon(result)) {
         const reason = result.status === 409 ? moveConflictReasonOf(result.error?.details) : undefined;
@@ -284,7 +305,9 @@
       const result =
         kind === 'category'
           ? await callOperation(categoryDelete, { workspace_id: workspaceId, category_id: item.id }, { slug })
-          : await callOperation(repositoryDelete, { workspace_id: workspaceId, repository_id: item.id }, { slug });
+          : kind === 'repository'
+            ? await callOperation(repositoryDelete, { workspace_id: workspaceId, repository_id: item.id }, { slug })
+            : await callOperation(detailFieldDelete, { workspace_id: workspaceId, field_id: item.id }, { slug });
       if (result.ok) showToast(t('definitionDeleted', { name: item.name }), 'check');
       else if (!handledCommon(result)) {
         showToast(result.status === 409 ? t('definitionChanged') : t('definitionDeleteFailed'), 'alert');
@@ -301,14 +324,16 @@
 </script>
 
 <Setting
-  title={kindWord}
+  title={kind === 'field' ? t('detailFieldsTitle', { detail: t('detail') }) : kindWord}
   description={kind === 'category'
     ? t('categoriesDesc', { epic: t('epic'), category: t('category') })
-    : t('repositoriesDesc', { task: t('task') })}
+    : kind === 'repository'
+      ? t('repositoriesDesc', { task: t('task') })
+      : t('detailFieldsDesc', { task: t('task'), detail: t('detail') })}
 >
   {#if items.length === 0}
     <EmptyState
-      icon={kind === 'category' ? 'tag' : 'git'}
+      icon={kind === 'category' ? 'tag' : kind === 'repository' ? 'git' : 'pen'}
       title={canWrite
         ? t('definitionEmptyTitle', { kind: kindWord })
         : t('definitionEmptyReadOnly', { kind: kindWord })}
@@ -428,6 +453,11 @@
       {#if addError !== null}
         <span class="field-error" id={newErrorId} role="alert"><Icon name="alert" />{addError}</span>
       {/if}
+      <!-- 決まった欄の上限は、押す前に文で示す（超えると足せない） -->
+      {#if kind === 'field'}
+        <span class="field-hint">{t('detailFieldsLimitNote', { kind: kindWord, count: items.length, max: limit })}</span
+        >
+      {/if}
     </form>
   {/if}
   <!-- 送っている間と動かした結果の読み上げ。領域は常に置き、中の文字だけを替える -->
@@ -444,6 +474,8 @@
   <p>
     {kind === 'category'
       ? t('categoryDeleteText', { epic: t('epic'), story: t('story'), task: t('task'), category: t('category') })
-      : t('repositoryDeleteText', { task: t('task') })}
+      : kind === 'repository'
+        ? t('repositoryDeleteText', { task: t('task') })
+        : t('detailFieldDeleteText', { task: t('task'), detail: t('detail') })}
   </p>
 </ConfirmDialog>

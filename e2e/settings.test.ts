@@ -77,17 +77,18 @@ test.describe('リーダー（あおば開発のミナト）', () => {
     await dialog.getByRole('button', { name: '起票' }).click();
     await expect(dialog).toBeHidden();
 
+    // 新しいワークスペースには決まった欄が1つあり、書かれていないので「詳細 未記入」の印が最後に並ぶ
     const row = page.locator('.entry', { hasText: 'ポイントの失効を直す' });
-    await expect(row.locator('.entry-meta .chip')).toHaveText(['リポジトリ：point-api', '区分：保守']);
+    await expect(row.locator('.entry-meta .chip')).toHaveText(['リポジトリ：point-api', '区分：保守', '詳細 未記入']);
     // 読み直しても出る
     await page.reload();
-    await expect(row.locator('.entry-meta .chip')).toHaveText(['リポジトリ：point-api', '区分：保守']);
+    await expect(row.locator('.entry-meta .chip')).toHaveText(['リポジトリ：point-api', '区分：保守', '詳細 未記入']);
 
     // 引き出しでリポジトリを直す
     await row.getByRole('link', { name: 'ポイントの失効を直す' }).click();
     const drawer = page.getByRole('dialog', { name: 'ポイントの失効を直す' });
     await drawer.getByRole('radiogroup', { name: 'リポジトリ' }).getByRole('radio', { name: 'admin-web' }).check();
-    await expect(row.locator('.entry-meta .chip')).toHaveText(['リポジトリ：admin-web', '区分：保守']);
+    await expect(row.locator('.entry-meta .chip')).toHaveText(['リポジトリ：admin-web', '区分：保守', '詳細 未記入']);
     await drawer.getByRole('button', { name: '閉じる' }).click();
     await expect(drawer).toBeHidden();
 
@@ -99,7 +100,7 @@ test.describe('リーダー（あおば開発のミナト）', () => {
     await confirm.getByRole('button', { name: '削除する' }).click();
     await expect(page.getByRole('list', { name: '区分の一覧' }).locator('li')).toHaveText([/改修/]);
     await page.locator('.nav-item', { hasText: 'バックログ' }).click();
-    await expect(row.locator('.entry-meta .chip')).toHaveText(['リポジトリ：admin-web']);
+    await expect(row.locator('.entry-meta .chip')).toHaveText(['リポジトリ：admin-web', '詳細 未記入']);
     expect(await collect()).toEqual([]);
   });
 
@@ -192,7 +193,7 @@ test.describe('リーダー（あおば開発のミナト）', () => {
     await expect(dialog).toBeHidden();
     const task = story.locator('.entry', { hasText: '残高の画面を作る' });
     // 配下の行では区分を繰り返さず、リポジトリだけを出す
-    await expect(task.locator('.entry-meta .chip')).toHaveText(['リポジトリ：point-api']);
+    await expect(task.locator('.entry-meta .chip')).toHaveText(['リポジトリ：point-api', '詳細 未記入']);
 
     // 引き出しでは、引き継いだ区分を読み取り専用で出す
     await task.getByRole('link', { name: '残高の画面を作る' }).click();
@@ -227,6 +228,6 @@ test.describe('一般のメンバー（あおば開発のハルカ）', () => {
     const epic = page.locator('.tree-group', { hasText: 'ポイントの交換先を増やす' }).first();
     await expect(epic.locator('.tree-row.is-epic .chip', { hasText: '区分：追加案件' })).toBeVisible();
     const task = page.locator('.entry', { hasText: 'ポイント付与のバッチを作る' });
-    await expect(task.locator('.entry-meta .chip')).toHaveText(['リポジトリ：point-api', '区分：保守']);
+    await expect(task.locator('.entry-meta .chip')).toHaveText(['リポジトリ：point-api', '区分：保守', '詳細 未記入']);
   });
 });

@@ -1,15 +1,22 @@
-// ワークスペースの区分（categories）とリポジトリ（repositories）の定義の、一覧、作成、変更、並べ替え、削除。
-// 2つの表は、使う列（id、workspace_id、name、position、deleted_at、created_at、updated_at）が同じ名前と型なので、文を1つの書き方で組む。
-// Kysely の型は categories の表で書き（asTable）、どちらの表でも同じ列だけを、表の名前を付けずに参照する（区分だけの列
-// is_billed_monthly は、区分のときだけ選ぶ）。どの文もワークスペースで絞る
+// ワークスペースの区分（categories）とリポジトリ（repositories）、タスクの決まった欄（detail_fields）の定義の、一覧、作成、変更、並べ替え、削除。
+// 3つの表は、使う列（id、workspace_id、name、position、deleted_at、created_at、updated_at）が同じ名前と型なので、文を1つの書き方で組む。
+// Kysely の型は categories の表で書き（asTable）、どの表でも同じ列だけを、表の名前を付けずに参照する（区分だけの列
+// is_billed_monthly は、区分のときだけ選ぶ）。どの文もワークスペースで絞る。
+// 数の上限は表ごと（spec.limit。区分とリポジトリは 50、決まった欄は 10）。決まった欄は、削除しても振っていた先を戻さない
+// （値の行は残し、削除した欄は未記入の判定から外れるだけ）ので、spec.items が空で、削除の文は定義の削除とその履歴の2つ
 import { now } from '../../shared/clock.ts';
-import { DEFINITIONS_PER_WORKSPACE } from '../../shared/definition.ts';
+import { DEFINITIONS_PER_WORKSPACE, DETAIL_FIELDS_PER_WORKSPACE } from '../../shared/definition.ts';
 import {
   categoryCreate,
   categoryDelete,
   categoryMove,
   categoryRepositoryList,
   categoryUpdate,
+  detailFieldCreate,
+  detailFieldDelete,
+  detailFieldList,
+  detailFieldMove,
+  detailFieldUpdate,
   repositoryCreate,
   repositoryDelete,
   repositoryMove,
@@ -40,7 +47,7 @@ import {
 import { actorUserIdOf, changeLogColumns, openWorkspace, throwIfClosed } from './write-guards.ts';
 
 type From = Pick<QueryCreator<OrganizationTables>, 'selectFrom'>;
-type DefinitionTable = 'categories' | 'repositories';
+type DefinitionTable = 'categories' | 'repositories' | 'detail_fields';
 
 // 定義を振る先。区分はエピック、ストーリー、タスクの category_id、リポジトリはタスクの repository_id
 type ItemTarget = {
@@ -52,13 +59,16 @@ type ItemTarget = {
 type DefinitionSpec = {
   readonly table: DefinitionTable;
   // 変更の履歴の entity_type と、振った先の履歴の欄の名前
-  readonly entityType: 'category' | 'repository';
+  readonly entityType: 'category' | 'repository' | 'detail_field';
   readonly items: readonly ItemTarget[];
+  // 削除していない定義の数の上限
+  readonly limit: number;
 };
 
 const categorySpec: DefinitionSpec = {
   table: 'categories',
   entityType: 'category',
+  limit: DEFINITIONS_PER_WORKSPACE,
   items: [
     { table: 'epics', column: 'category_id', entityType: 'epic' },
     { table: 'stories', column: 'category_id', entityType: 'story' },
@@ -69,7 +79,15 @@ const categorySpec: DefinitionSpec = {
 const repositorySpec: DefinitionSpec = {
   table: 'repositories',
   entityType: 'repository',
+  limit: DEFINITIONS_PER_WORKSPACE,
   items: [{ table: 'tasks', column: 'repository_id', entityType: 'task' }],
+};
+
+const detailFieldSpec: DefinitionSpec = {
+  table: 'detail_fields',
+  entityType: 'detail_field',
+  limit: DETAIL_FIELDS_PER_WORKSPACE,
+  items: [],
 };
 
 // 同時の更新に負けたときにやり直す回数の上限。超えたら 409 の conflict
@@ -137,7 +155,7 @@ async function throwCreateFailure(db: OrganizationDb, spec: DefinitionSpec, work
     db.statement((q) => liveCount(q, spec.table, workspaceId)),
   ] as const);
   if (duplicate.rows.length > 0) throw definitionConflict('duplicate_name');
-  if (Number(count.rows[0]?.count ?? 0) >= DEFINITIONS_PER_WORKSPACE) throw definitionConflict('limit');
+  if (Number(count.rows[0]?.count ?? 0) >= spec.limit) throw definitionConflict('limit');
   throw new ApiError(409, 'conflict');
 }
 
@@ -225,7 +243,7 @@ async function createDefinition(
               eb.and([
                 eb.exists(openWorkspace(eb, organizationId, workspaceId)),
                 eb.not(eb.exists(sameName(eb, spec.table, workspaceId, input.name, null))),
-                eb(liveCount(eb, spec.table, workspaceId), '<', DEFINITIONS_PER_WORKSPACE),
+                eb(liveCount(eb, spec.table, workspaceId), '<', spec.limit),
               ]),
             ),
         ),
@@ -644,6 +662,33 @@ export const categoryMoveOperation = implement(categoryMove, async (context) => 
 export const categoryDeleteOperation = implement(categoryDelete, async (context) => {
   await deleteDefinition(context, categorySpec, context.input.category_id);
   return { category_id: context.input.category_id };
+});
+
+export const detailFieldListOperation = implement(detailFieldList, async ({ db, workspace }) => {
+  const rows = await db.rows(
+    db.statement((q) =>
+      liveRows(q, 'detail_fields', workspace.workspaceId).select(['id', 'name']).orderBy('position').orderBy('id'),
+    ),
+  );
+  return { fields: rows.map((row) => ({ id: row.id, name: row.name })) };
+});
+
+export const detailFieldCreateOperation = implement(detailFieldCreate, async (context) => ({
+  field: repositoryOf(await createDefinition(context, detailFieldSpec, context.input)),
+}));
+
+export const detailFieldUpdateOperation = implement(detailFieldUpdate, async (context) => ({
+  field: repositoryOf(await updateDefinition(context, detailFieldSpec, context.input.field_id, context.input)),
+}));
+
+export const detailFieldMoveOperation = implement(detailFieldMove, async (context) => {
+  await moveDefinition(context, detailFieldSpec, context.input.field_id, context.input.after_field_id);
+  return { field_id: context.input.field_id };
+});
+
+export const detailFieldDeleteOperation = implement(detailFieldDelete, async (context) => {
+  await deleteDefinition(context, detailFieldSpec, context.input.field_id);
+  return { field_id: context.input.field_id };
 });
 
 export const repositoryCreateOperation = implement(repositoryCreate, async (context) => ({

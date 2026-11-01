@@ -33,6 +33,30 @@ describe('formatHistoryTime', () => {
   });
 });
 
+describe('historyEntryView の決まった欄', () => {
+  test('欄の値の書き込みは、欄の名前だけで、書いた、直した、空にしたを出す（値の全文は持たない）', () => {
+    const criteria = { id: 'f1', name: '受け入れ基準' };
+    const view = historyEntryView(
+      entry({
+        changes: [
+          { field: 'field', before: null, after: criteria },
+          { field: 'field', before: criteria, after: criteria },
+          { field: 'field', before: criteria, after: null },
+          { field: 'field', before: null, after: { id: 'f2', name: '' } },
+        ],
+      }),
+      'Asia/Tokyo',
+      t,
+    );
+    expect(view.lines).toEqual([
+      { label: null, text: '「受け入れ基準」を書いた' },
+      { label: null, text: '「受け入れ基準」を直した' },
+      { label: null, text: '「受け入れ基準」を空にした' },
+      { label: null, text: '「不明」を書いた' },
+    ]);
+  });
+});
+
 describe('historyEntryView', () => {
   test('変更は、列の名前と前と後を出す。空の値は列ごとの言葉', () => {
     const view = historyEntryView(

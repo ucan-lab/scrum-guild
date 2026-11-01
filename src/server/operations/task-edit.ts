@@ -15,6 +15,7 @@ import {
 import { taskAssigneePartyStatements } from './epic-party.ts';
 import { implement } from './implement.ts';
 import { sprintRefColumns, sprintRefOf } from './sprint-refs.ts';
+import { readTaskFields } from './task-field.ts';
 import { reopenBlockOf } from './task-reopen.ts';
 import {
   activeMemberName,
@@ -222,8 +223,12 @@ export const taskDetailOperation = implement(taskDetail, async ({ db, actor, wor
     ),
   );
   if (settings === undefined) throw new ApiError(404, 'not_found');
+  // 削除していない決まった欄と値。未記入は、完了していないタスクで、値の無い欄があるとき（backlog-tree の unfilled と同じ判定）
+  const fields = await readTaskFields(db, workspace.workspaceId, task.id);
   return {
     task: await detailOf(db, task, actor, workspace),
+    fields,
+    unfilled: task.completed_at === null && fields.some((field) => field.value_md === null),
     today: todayIn(settings.timezone),
     week_start: settings.week_start,
   };

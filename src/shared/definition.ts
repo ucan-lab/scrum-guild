@@ -24,3 +24,8 @@ export const definitionNameSchema = z
 
 // 1つのワークスペースに置ける、削除していない区分とリポジトリの数（それぞれ）
 export const DEFINITIONS_PER_WORKSPACE = 50;
+
+// 1つのワークスペースに置ける、削除していない決まった欄（detail_fields）の数。タスクの引き出しに並ぶので、区分より少なくする
+export const DETAIL_FIELDS_PER_WORKSPACE = 10;
+
+// 決まった欄の値（task_field_values.value_md）の上限は、ストーリーの本文と同じ（STORY_TEXT_MAX_LENGTH。コードポイントで数える）

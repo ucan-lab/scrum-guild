@@ -11,6 +11,7 @@
     taskReopenConflictReasonOf,
     taskUpdate,
     type TaskDetail,
+    type TaskFieldValue,
     type TaskHistoryEntry,
   } from '../../shared/operations/task/index.ts';
   import { memberList } from '../../shared/operations/workspace/index.ts';
@@ -49,11 +50,15 @@
   import Markdown from './Markdown.svelte';
   import RepositoryPicker from './RepositoryPicker.svelte';
   import TaskComments from './TaskComments.svelte';
+  import TaskFieldValues from './TaskFieldValues.svelte';
   import TaskThanks from './TaskThanks.svelte';
 
   // タスクの詳細の引き出しの中身（kit.js の drawerHtml）。`?task=<ID>` が付いている間、画面の枠（/[slug]/w/[id] のレイアウト）が置く。
   // 開いたら task-detail で1件を読む（本文は長いので、木には載せない）。読んでいる間は読み込み中を出し、読めなければ
   // （404 以外）もう一度試すを出す（フォーカスもそこへ置く）。404 は、トーストで知らせて閉じ、画面が木を読み直す（onremoved）。
+  // ワークスペースの決まった欄は、属性の下、本文の前に欄ごとに並べる（TaskFieldValues。値は Markdown で、書かれていなければ
+  // 完了していないタスクだけ「未記入」の印を添える。task-detail の fields を読み、保存は task-field-set で、読んだ値のままなら書き、
+  // 同時に直されていれば断って読み直す）。
   // 欄ごとに、その場で直す。ポイントと期日は選んだら保存し、タイトル、リンク、本文は InlineEdit で確定する（本文は Markdown の部品で描く）。
   // 送る欄は、今の値と違うものだけ。保存したら、その欄だけを応答で入れ替え、画面が木を読み直す（onchanged）。
   // ポイントの保存は1本ずつ送る。送っている間に選び直したら、最後の選択だけを溜め、送り終えた後に送る（矢印キーで動かしても要求が飛び交わず、
@@ -158,20 +163,23 @@
   let task = $state<TaskDetail | null>(null);
   // 期日の印を決める、ワークスペースの今日と週の始まり（task-detail の値。ブラウザの時計に頼らない）
   let clock = $state<{ today: string; weekStart: number } | null>(null);
+  // 削除していない決まった欄と値（task-detail の fields。書かれていなければ value_md が null）
+  let fields = $state<TaskFieldValue[]>([]);
   let heading = $state<HTMLElement>();
   let retryButton = $state<HTMLButtonElement>();
   let discardDialog = $state<ReturnType<typeof ConfirmDialog>>();
   let deleteDialog = $state<ReturnType<typeof ConfirmDialog>>();
 
   // 直している途中の欄ごとの書きかけ（保存の要求を送っている間も数える）
-  const dirty = $state({ title: false, link: false, body: false });
-  // 書きかけ。タイトル、リンク、本文の書きかけと、まだ送っていない期日の入力（待っている間と、打ちかけ）と担当の選択（待っている間）と、
+  const dirty = $state({ title: false, link: false, body: false, fields: false });
+  // 書きかけ。タイトル、リンク、本文、決まった欄の書きかけと、まだ送っていない期日の入力（待っている間と、打ちかけ）と担当の選択（待っている間）と、
   // コメントの書きかけ（新しいコメントの欄の文字と、直している途中のコメント。TaskComments の hasDraft）
   function hasDraft(): boolean {
     return (
       dirty.title ||
       dirty.link ||
       dirty.body ||
+      dirty.fields ||
       dueUnsent() ||
       assigneeChoice !== null ||
       categoryChoice !== null ||
@@ -430,6 +438,7 @@
     if (!alive || mine !== loadVersion) return;
     if (result.ok) {
       task = result.data.task;
+      fields = result.data.fields;
       clock = { today: result.data.today, weekStart: result.data.week_start };
       loadState = 'ready';
       void loadHistory();
@@ -639,12 +648,43 @@
     if (!result.ok) return null;
     if (alive) {
       task = result.data.task;
+      fields = result.data.fields;
       clock = { today: result.data.today, weekStart: result.data.week_start };
       if (canWrite && task.completed_at === null && candidates === null) void loadCandidates();
       // 別の人の変更を読み直したので、その変更が載った履歴も読み直す
       void loadHistory();
     }
     return result.data.task;
+  }
+
+  // ---- 決まった欄（TaskFieldValues が task-field-set で保存する） ----
+  // 書けた。応答の欄だけを入れ替え（別の欄の保存と前後しても、古い値で戻さない）、履歴と木を読み直す
+  function fieldSaved(saved: TaskFieldValue): void {
+    if (!alive) {
+      onchanged();
+      return;
+    }
+    fields = fields.map((field) => (field.id === saved.id ? saved : field));
+    void loadHistory();
+    onchanged();
+  }
+
+  // 欄かタスクが見つからなかった。読み直して、タスクが消えていれば閉じる。欄だけが削除されていたら、欄の一覧から外れる
+  async function fieldMissing(): Promise<void> {
+    const latest = await callOperation(taskDetail, { workspace_id: workspaceId, task_id: taskId }, { slug });
+    if (!latest.ok && latest.status === 404) {
+      taskGone = true;
+      if (alive) gone();
+      else {
+        showToast(t('taskGone', { task: t('task') }), 'alert');
+        onchanged();
+      }
+      return;
+    }
+    if (latest.ok && alive) {
+      task = latest.data.task;
+      fields = latest.data.fields;
+    }
   }
 
   // ---- 担当（選んで少し待ってから、か欄を離れたときに保存する。1本ずつ送る） ----
@@ -1670,6 +1710,21 @@
         </div>
       {/if}
     </dl>
+
+    <!-- 決まった欄（ワークスペースで定義した欄ごと）。本文の前に置く -->
+    <TaskFieldValues
+      {slug}
+      {workspaceId}
+      {taskId}
+      {fields}
+      completed={task.completed_at !== null}
+      {canWrite}
+      onsaved={fieldSaved}
+      onrefresh={async () => void (await refresh())}
+      onmissing={fieldMissing}
+      {onstale}
+      ondirty={(value) => (dirty.fields = value)}
+    />
 
     <div class="field">
       {#if canWrite}
