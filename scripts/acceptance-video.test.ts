@@ -645,7 +645,8 @@ try {
     <button id="on" onclick="document.title='clicked'">押す</button>
     <div id="hide" style="display:none">隠れている</div>
     <select id="s"><option>A</option><option>B</option></select>
-    <input id="t"><input id="c" type="checkbox">\`);
+    <input id="t"><input id="c" type="checkbox">
+    <label>延ばす日数 <input id="n"></label>\`);
   const pageExec = p.probeExec(page, base);
   // goto は画面を作り直すので、別のページで実行する
   const gotoExec = p.probeExec(await browser.newPage(), base);
@@ -658,6 +659,9 @@ try {
     selectB: { kind: 'select', spec: spec('s'), action: { label: 'B' } },
     selectZ: { kind: 'select', spec: spec('s'), action: { label: 'Z' } },
     fill: { kind: 'fill', spec: spec('t'), action: { text: '3' } },
+    labelExact: { kind: 'fill', spec: { label: '延ばす日数', exact: true }, action: { text: '1' } },
+    labelPartialExact: { kind: 'fill', spec: { label: '日数', exact: true }, action: { text: '1' } },
+    labelPartial: { kind: 'fill', spec: { label: '日数' }, action: { text: '2' } },
     check: { kind: 'check', spec: spec('c') },
     waitVisibleHidden: { kind: 'wait', spec: spec('hide'), action: {} },
     waitHiddenAbsent: { kind: 'wait', spec: spec('nope'), action: { state: 'hidden' } },
@@ -667,14 +671,14 @@ try {
   };
   const outcome = {};
   // 失敗するものは 5 秒待つので、最初に同時に走らせる。成功するものは、その後に順に実行して状態を確かめる
-  const failing = ['clickDisabled', 'selectZ', 'waitVisibleHidden', 'gotoMissing', 'unknown'];
+  const failing = ['clickDisabled', 'selectZ', 'waitVisibleHidden', 'labelPartialExact', 'gotoMissing', 'unknown'];
   await Promise.all(failing.map(async (k) => {
     try { await exec(items[k]); outcome[k] = 'ok'; } catch (err) { outcome[k] = 'ng: ' + err.message; }
   }));
   for (const k of Object.keys(items).filter((k) => !failing.includes(k))) {
     try { await exec(items[k]); outcome[k] = 'ok'; } catch (err) { outcome[k] = 'ng: ' + err.message; }
   }
-  const state = await page.evaluate(() => ({ title: document.title, select: document.querySelector('#s').value, text: document.querySelector('#t').value, checked: document.querySelector('#c').checked }));
+  const state = await page.evaluate(() => ({ title: document.title, select: document.querySelector('#s').value, text: document.querySelector('#t').value, checked: document.querySelector('#c').checked, days: document.querySelector('#n').value }));
   console.log(JSON.stringify({ outcome, state }));
 } finally {
   await browser.close();
@@ -686,12 +690,13 @@ try {
         outcome: Record<string, string>;
         state: Record<string, unknown>;
       };
-      for (const ok of ['markHidden', 'clickOn', 'selectB', 'fill', 'check', 'waitHiddenAbsent', 'gotoOk']) {
+      const oks = ['markHidden', 'clickOn', 'selectB', 'fill', 'check', 'waitHiddenAbsent', 'gotoOk'];
+      for (const ok of [...oks, 'labelExact', 'labelPartial']) {
         assert.equal(outcome[ok], 'ok', `${ok}: ${outcome[ok]}`);
       }
-      // 録画と同じ操作を実際にしている（取り違えると、状態が変わらない）
-      assert.deepEqual(state, { title: 'clicked', select: 'B', text: '3', checked: true });
-      for (const ng of ['clickDisabled', 'selectZ', 'waitVisibleHidden'])
+      // 録画と同じ操作を実際にしている（取り違えると、状態が変わらない）。label の exact は部分一致を断つ
+      assert.deepEqual(state, { title: 'clicked', select: 'B', text: '3', checked: true, days: '2' });
+      for (const ng of ['clickDisabled', 'selectZ', 'waitVisibleHidden', 'labelPartialExact'])
         assert.match(outcome[ng], /^ng: .*Timeout/, ng);
       assert.match(outcome.clickDisabled, /not enabled/);
       assert.match(outcome.gotoMissing, /HTTP 404/);

@@ -7,7 +7,7 @@ export function locate(page, spec) {
   let locator;
   if (spec.css) locator = scope.locator(spec.css);
   else if (spec.role) locator = scope.getByRole(spec.role, { name: spec.name, exact: spec.exact });
-  else locator = scope.getByLabel(spec.label);
+  else locator = scope.getByLabel(spec.label, { exact: spec.exact });
   return spec.nth === undefined ? locator : locator.nth(spec.nth);
 }
 

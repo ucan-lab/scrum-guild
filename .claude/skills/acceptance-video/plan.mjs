@@ -136,7 +136,7 @@ export function describeLocator(spec) {
   if (spec.within) parts.push(`${describeLocator(spec.within)} の中の`);
   if (spec.css) parts.push(`css=${spec.css}`);
   if (spec.role) parts.push(`role=${spec.role} name=${JSON.stringify(spec.name)}${spec.exact ? ' exact' : ''}`);
-  if (spec.label) parts.push(`label=${JSON.stringify(spec.label)}`);
+  if (spec.label) parts.push(`label=${JSON.stringify(spec.label)}${spec.exact ? ' exact' : ''}`);
   if (spec.nth !== undefined) parts.push(`nth=${spec.nth}`);
   return parts.join(' ');
 }
