@@ -35,7 +35,8 @@ export function oauthStateCookieName(publicOrigin: string): string {
 export type StartedLogin = { state: string; codeChallenge: string; nonce: string | null };
 
 // state の行を入れる。returnTo は検査済みの自分のサイトのパス。withNonce が真の手段（LoginMethod.usesNonce）には nonce も作って入れる。
-// claimTokenHash は招待の URL から始めたログインの、その URL の秘密の SHA-256（秘密そのものは受け取らない）
+// claimTokenHash は招待の URL から始めたログインの、その URL の秘密の SHA-256（秘密そのものは受け取らない）。
+// signup は会員登録の画面から始めた往復の印（oauth_states.signup）。戻り先が読み、アカウントを作ってよいかを決める
 export async function startOAuthState(
   env: Env,
   provider: string,
@@ -43,6 +44,7 @@ export async function startOAuthState(
   now: Date,
   withNonce: boolean,
   claimTokenHash: string | null = null,
+  signup = false,
 ): Promise<StartedLogin> {
   const state = randomToken();
   const codeVerifier = randomToken();
@@ -56,6 +58,7 @@ export async function startOAuthState(
         code_verifier: codeVerifier,
         nonce,
         claim_token_hash: claimTokenHash,
+        signup: signup ? 1 : 0,
         return_to: returnTo,
         expires_at: new Date(now.getTime() + OAUTH_STATE_LIFETIME_MS).toISOString(),
       }),
@@ -70,6 +73,8 @@ export type ConsumedOAuthState = {
   returnTo: string | null;
   // 招待の URL から始めたログインの、その URL の秘密の SHA-256。通常のログインは null
   claimTokenHash: string | null;
+  // 会員登録の画面から始めた往復か。通常のログインは false
+  signup: boolean;
 };
 
 // state の行を消して返す。1回の DELETE ... RETURNING なので、同じ state の戻りが並行しても1回しか通らない（使い回させない）。
@@ -86,7 +91,15 @@ export async function consumeOAuthState(
       q
         .deleteFrom('oauth_states')
         .where('state', '=', state)
-        .returning(['login_provider', 'code_verifier', 'nonce', 'claim_token_hash', 'return_to', 'expires_at']),
+        .returning([
+          'login_provider',
+          'code_verifier',
+          'nonce',
+          'claim_token_hash',
+          'signup',
+          'return_to',
+          'expires_at',
+        ]),
     ),
   ]);
   const row = result.rows[0];
@@ -96,5 +109,6 @@ export async function consumeOAuthState(
     nonce: row.nonce,
     returnTo: row.return_to,
     claimTokenHash: row.claim_token_hash,
+    signup: row.signup === 1,
   };
 }

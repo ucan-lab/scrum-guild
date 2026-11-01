@@ -45,6 +45,8 @@ export const commonTableColumns = {
     claim_token_hash: textOrNull,
     return_to: textOrNull,
     expires_at: text,
+    // migrations/0015_add_oauth_states_signup.sql で足した。会員登録の往復なら 1
+    signup: integerDefault,
   },
   rate_limits: { key: text, window_start_at: text, count: integer },
   // migrations/0010_add_password_credentials.sql で足した
