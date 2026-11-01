@@ -57,6 +57,13 @@ test('一覧が空なら通常の空の文を出し、再認証の理由とロ�
   expect(needs).toContain('class="callout is-info"');
 });
 
+test('発行の欄が無いとき、空の文は存在しないフォームを指さない', () => {
+  const needs = renderWith({ canCreate: false, loginProvider: 'github', slug: 'aoba' });
+  expect(needs).not.toContain('<form');
+  expect(needs).not.toContain('上のフォーム');
+  expect(dictionary.apiTokenEmptyText).not.toContain('フォーム');
+});
+
 test('再認証リンクの説明は、同じ案内の理由の本文を指す', () => {
   const body = renderWith({ canCreate: false, loginProvider: 'github', slug: 'aoba' });
   const link = /<a[^>]*aria-describedby="([^"]+)"[^>]*>ログインし直す/.exec(body);

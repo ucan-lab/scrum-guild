@@ -1859,7 +1859,7 @@ export const dictionary = defineDictionary({
   apiTokenRevoked: '「{name}」を取り消しました',
   apiTokenRevokeFailed: '取り消せませんでした。時間をおいて、もう一度試してください',
   apiTokenEmptyTitle: '発行済みの API トークンはありません',
-  apiTokenEmptyText: '上のフォームで発行すると、ここに並びます。',
+  apiTokenEmptyText: '発行すると、ここに並びます。',
   apiTokenLoadFailed: 'API トークンを読み込めませんでした',
   xpLedgerFailedTitle: '経験値の明細を読み込めませんでした',
   xpLoadMore: '続きを読む',
