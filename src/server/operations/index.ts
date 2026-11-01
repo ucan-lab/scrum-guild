@@ -24,6 +24,7 @@ import {
 import { createMyOrganizationOperation } from './create-my-organization.ts';
 import { myOrganizationsOperation, organizationInfoOperation } from './organization.ts';
 import { todayOperation } from './today.ts';
+import { firstStepsOperation } from './first-steps.ts';
 import { organizationHistoryOperation } from './organization-history.ts';
 import {
   organizationHolidayAddOperation,
@@ -116,6 +117,7 @@ const listedOperations: readonly ImplementedOperation[] = [
   organizationInfoOperation,
   meThemeUpdateOperation,
   todayOperation,
+  firstStepsOperation,
   organizationHolidayListOperation,
   organizationHolidayAddOperation,
   organizationHolidayDeleteOperation,

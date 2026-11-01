@@ -1,6 +1,7 @@
 // 定期処理の表。wrangler.jsonc の triggers.crons の式から処理を引く。表に無い式で起きたら、設定の食い違いなので例外にする
 import { cleanupApiTokens } from './cleanup-api-tokens.ts';
 import { cleanupExpired } from './cleanup-expired.ts';
+import { suspendExpiredTrialsJob } from './suspend-expired-trials.ts';
 
 type ScheduledJob = (env: Env, scheduledTime: Date) => Promise<void>;
 
@@ -20,6 +21,8 @@ async function cleanupAll(env: Env, scheduledTime: Date): Promise<void> {
 const scheduledJobs: ReadonlyMap<string, ScheduledJob> = new Map<string, ScheduledJob>([
   // 毎分: 期限を過ぎた行を消す（oauth_states、sessions、rate_limits と、api_tokens）
   ['* * * * *', cleanupAll],
+  // 毎時 0 分: お試しの期限を過ぎた組織を一時的な停止にする
+  ['0 * * * *', suspendExpiredTrialsJob],
 ]);
 
 export async function runScheduled(controller: ScheduledController, env: Env): Promise<void> {

@@ -6,6 +6,7 @@ import {
   createMyOrganizationConflictReasons,
   type CreateMyOrganizationConflictReason,
 } from './create-my-organization.ts';
+import { firstSteps } from './first-steps.ts';
 import { meThemeUpdate } from './me-theme-update.ts';
 import { myOrganizations } from './my-organizations.ts';
 import { organizationInfo } from './organization.ts';
@@ -20,6 +21,7 @@ export {
   createMyOrganizationConflictReasonOf,
   createMyOrganizationConflictReasons,
   type CreateMyOrganizationConflictReason,
+  firstSteps,
   meThemeUpdate,
   myOrganizations,
   organizationHistory,
@@ -50,4 +52,5 @@ export const organizationOperations: readonly AnyOperationDefinition[] = [
   userDisable,
   userEnable,
   today,
+  firstSteps,
 ];

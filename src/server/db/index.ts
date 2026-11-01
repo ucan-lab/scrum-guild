@@ -46,6 +46,10 @@ export { VOCABULARY_COLUMN_VALUE } from './vocabulary-column.ts';
 export { hasSeatInvitationOfLogin, personKey, seatHoldersOf, seatHoldersOfWorkspaceInvitations } from './seats.ts';
 // 運用者の道具（operations/operator-tools.ts）だけが import できる（eslint.config.db-entry.js）
 export { appendOperatorChangeLog, type OperatorChangeLog } from './operator-change-log.ts';
+// お試しの期限切れの組織を止める1文（定期処理が呼ぶ）
+export { SUSPEND_EXPIRED_TRIALS_LIMIT, suspendExpiredTrials } from './suspend-expired-trials.ts';
+// 定期処理（src/server/scheduled/）だけが import できる（eslint.config.db-entry.js）
+export { appendScheduledChangeLog, type ScheduledChangeLog } from './scheduled-change-log.ts';
 // 運用者の道具（operations/operator-tools.ts）だけが import できる（eslint.config.db-entry.js）
 export {
   reassignOrganizationAdmin,

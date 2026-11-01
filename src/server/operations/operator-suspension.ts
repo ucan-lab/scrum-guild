@@ -150,7 +150,8 @@ export const organizationResumeOperation = implement(organizationResume, async (
     db.statement((q) =>
       q
         .updateTable('organizations')
-        .set({ ...after, updated_at: at.toISOString() })
+        // 再開でお試しが終わる。期限を空にして、以後の定期処理（お試しの期限切れの停止）の対象から外す
+        .set({ ...after, trial_ends_on: null, updated_at: at.toISOString() })
         .where('id', '=', current.id)
         .where('suspended_at', '=', current.suspended_at)
         .where(notPurgeDue(at)),
