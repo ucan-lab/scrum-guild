@@ -587,6 +587,32 @@ describe('gallery.mjs', () => {
     });
   });
 
+  test(
+    '完了済みを全部戻すと、結果欄の説明から完了済みの一文が消え、done の無い manifest と同じになる',
+    chromiumSkip,
+    async () => {
+      const plain = '未判定も含めて、判定の対象の Issue が全部入る。未判定は、セッションが画面で 1 条件ずつ確かめる。';
+      await withDoneGallery([video, doneVideo(575), doneVideo(576)], async (page, open) => {
+        await open();
+        // 見えている文字だけを読む（innerText は、表示されていない状況パネルの中では textContent と同じになる）
+        const hint = async () => {
+          await page.click('#tab-status');
+          return page.locator('.hint').innerText();
+        };
+        assert.match(await hint(), /完了済み（判定の対象に戻していないもの）は入らない。/);
+        await page.click('#tab-575');
+        await page.click('#panel-575 [data-return]');
+        assert.match(await hint(), /完了済み（判定の対象に戻していないもの）は入らない。/);
+        await page.click('#tab-576');
+        await page.click('#panel-576 [data-return]');
+        assert.equal(await hint(), plain);
+        // 開き直しても同じ
+        await open();
+        assert.equal(await hint(), plain);
+      });
+    },
+  );
+
   test('開いた直後の要約は、skipped と failed も判定の対象の欄に数える', chromiumSkip, async () => {
     const items = [
       video,
@@ -701,10 +727,11 @@ describe('gallery.mjs', () => {
     const html: string = call('renderGallery', { judge: true, items: [video, doneVideo(576)] });
     assert.match(
       html,
-      /<p class="hint">未判定も含めて、判定の対象の Issue が全部入る。完了済み（判定の対象に戻していないもの）は入らない。/,
+      /<p class="hint">未判定も含めて、判定の対象の Issue が全部入る。<span id="hint-done">完了済み（判定の対象に戻していないもの）は入らない。<\/span>/,
     );
     // done の無い manifest の説明には、完了済みの語を出さない（埋め込みのスクリプトは固定で語を含むので、説明の段落だけを見る）
-    const hint = (manifestHtml: string) => /<p class="hint">([^<]*)<\/p>/.exec(manifestHtml)?.[1] ?? '';
+    const hint = (manifestHtml: string) =>
+      (/<p class="hint">(.*?)<\/p>/.exec(manifestHtml)?.[1] ?? '').replace(/<[^>]*>/g, '');
     const plain: string = call('renderGallery', { judge: true, items: [video] });
     assert.equal(
       hint(plain),

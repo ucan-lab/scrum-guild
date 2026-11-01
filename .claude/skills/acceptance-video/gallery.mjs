@@ -236,6 +236,8 @@ const CLIENT_SCRIPT = String.raw`(function () {
     var split = doneCount > 0 && doneCount < issuePanels.length;
     sep.hidden = !split;
     document.getElementById('done-heading').hidden = !split;
+    // 結果欄の説明の完了済みの一文は、完了済みが残っているときだけ見せる（要約の「完了済み N 件」と同じ条件）
+    document.getElementById('hint-done').hidden = doneCount === 0;
   }
 
   function refresh(save) {
@@ -385,7 +387,7 @@ ${rows(activeItems)}
     judge
       ? `
 <h3>結果（プロンプトに貼る）</h3>
-<p class="hint">未判定も含めて、判定の対象の Issue が全部入る。${doneItems.length > 0 ? '完了済み（判定の対象に戻していないもの）は入らない。' : ''}未判定は、セッションが画面で 1 条件ずつ確かめる。</p>
+<p class="hint">未判定も含めて、判定の対象の Issue が全部入る。${doneItems.length > 0 ? '<span id="hint-done">完了済み（判定の対象に戻していないもの）は入らない。</span>' : ''}未判定は、セッションが画面で 1 条件ずつ確かめる。</p>
 <div class="actions"><button type="button" class="copy" id="copy">結果をコピー</button><span id="copied" role="status"></span></div>
 <textarea id="result" class="result" rows="12" readonly></textarea>`
       : ''
