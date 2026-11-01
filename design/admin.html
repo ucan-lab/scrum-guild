@@ -27,6 +27,9 @@ const AUDIT = {
   adminDesignated: (name) => `${name}を${t("admin")}に指名しました`,
   userDisabled: (name) => `${name}を無効にしました`,
 };
+// お試しの節の状態。?trial=lastday（期限の当日）か ?trial=expired（期限を過ぎて、定期処理が止めるまでの間）で切り替える。
+// 本番は TrialSetting.svelte が days_left の 0 と負で同じ出し分けをする
+const TRIAL_STATE = new URLSearchParams(location.search).get("trial");
 function setting(title, desc, body) {
   return `<section class="setting"><div class="setting-head"><h2 class="setting-title">${title}</h2><p class="setting-desc">${desc}</p></div><div class="setting-body">${body}</div></section>`;
 }
@@ -38,6 +41,13 @@ SQ.mount("admin", () => `
     ["", "", t("workspace"), A.workspaces.filter((w) => !w.closed).length],
   ], `<button class="btn is-primary" type="button" data-dialog="createWorkspace">${icon("plus")}${t("workspace")}を作る</button>`)}
   <div class="settings">
+    ${setting("お試し", "継続して使うには、運用者に問い合わせてください。", `
+      <p class="mono">お試しの期限（UTC）: 2026-11-19</p>
+      ${TRIAL_STATE === "expired"
+        ? `<p><span class="chip is-danger">${icon("alert")}お試しの期限を過ぎています</span></p>`
+        : TRIAL_STATE === "lastday"
+          ? `<p class="props-note">今日までです</p>`
+          : `<p class="props-note">残り 30 日</p>`}`)}
     ${setting("ユーザー", `${t("admin")}は他のユーザーを${t("admin")}に指名でき、解除もできます。最後の${t("admin")}は解除できません。無効にした人は${t("organization")}に入れず、すべての${t("workspace")}から外れます。名前、完了の記録、経験値は残ります。`, `
       <div class="table-wrap"><table class="table is-stacked" aria-label="${t("organization")}のユーザーの一覧"><thead><tr><th class="is-name">名前</th><th>${t("admin")}</th><th class="is-num">所属</th><th>最後に入った日</th><th class="is-actions"><span class="visually-hidden">操作</span></th></tr></thead>
         <tbody>${A.users.map((r) => {

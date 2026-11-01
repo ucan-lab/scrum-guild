@@ -14,7 +14,7 @@ export type AdminStatus = (typeof adminStatuses)[number];
 export const listOrganizations = defineOperation({
   name: 'list-organizations',
   description:
-    '組織の一覧を返す。slug、名前、停止した日時、データを消す予定日とそれを過ぎたか、作った日時、管理者の状態と、組織ごとの集計（人数と上限、閉じていないワークスペースの数、削除していないタスクの数、添付ファイルの上限、最後に使われた日時）だけで、組織の中のデータは返さない',
+    '組織の一覧を返す。slug、名前、お試しの期限とそれを過ぎたか、停止した日時、データを消す予定日とそれを過ぎたか、作った日時、管理者の状態と、組織ごとの集計（人数と上限、閉じていないワークスペースの数、削除していないタスクの数、添付ファイルの上限、最後に使われた日時）だけで、組織の中のデータは返さない',
   mode: 'read',
   permission: 'operator',
   input: z.object({}),
@@ -24,6 +24,8 @@ export const listOrganizations = defineOperation({
         slug: z.string(),
         name: z.string(),
         self_created: z.boolean(),
+        trial_ends_on: z.string().nullable(),
+        trial_expired: z.boolean(),
         suspended_at: z.string().nullable(),
         // 解約で停止した組織の、データを消す予定日（YYYY-MM-DD）。一時的な停止と、停止していない組織では null
         purge_on: z.string().nullable(),

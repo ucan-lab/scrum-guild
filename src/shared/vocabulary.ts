@@ -558,6 +558,8 @@ export const dictionary = defineDictionary({
   // 組織の切り替えのボタンと一覧の読み上げの名前。{name} は今の組織の名前
   organizationSwitchLabel: '{name}。組織を切り替える',
   organizationListLabel: '入れる組織',
+  workspaceSwitchLabel: '{name}。{workspace}を切り替える',
+  workspaceSwitchListLabel: '所属する{workspace}',
   organizationMoving: '移っています',
   invitationsBadge: '届いた招待あり',
   invitationsReceived: '招待が届いています',
@@ -1112,6 +1114,16 @@ export const dictionary = defineDictionary({
   themeNoteSimpleDark: '業務の道具として落ち着いた見た目。いつも暗い地',
   themeNoteMedieval: '冒険者ギルドの帳簿。紙と墨、完了に朱の判子',
   themeNoteModern: '近未来の端末のウィンドウ。暗い地に光る枠',
+
+  // お試しの期限（組織の管理の画面。期限の日付は運用者の一覧も使う）
+  orgTrialTitle: 'お試し',
+  orgTrialDesc: '継続して使うには、運用者に問い合わせてください。',
+  orgTrialEndsOn: 'お試しの期限（UTC）: {date}',
+  orgTrialDaysLeft: '残り {days} 日',
+  // 期限の当日（days_left が 0）。当日まで使えることを伝え、「残り 0 日」を終了済みに読ませない
+  orgTrialLastDay: '今日までです',
+  // 期限を過ぎた組織の印。管理者の画面（days_left が負。「残り -1 日」と出さない）と運用者の一覧が同じ文を使う
+  trialExpired: 'お試しの期限を過ぎています',
 
   // 組織の既定のテーマ（組織の管理の画面）
   orgThemeTitle: '既定のテーマ',

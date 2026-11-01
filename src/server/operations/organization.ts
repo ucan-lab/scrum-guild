@@ -85,6 +85,14 @@ export const organizationInfoOperation = implement(organizationInfo, async ({ db
       theme: user.theme as Theme | null,
       level: levelOf(amountOf(experienceResult.rows[0]?.total)),
     },
+    trial:
+      actor.isAdmin && organization.trial_ends_on !== null
+        ? {
+            ends_on: organization.trial_ends_on,
+            days_left:
+              (Date.parse(organization.trial_ends_on) - Date.parse(at.toISOString().slice(0, 10))) / 86_400_000,
+          }
+        : null,
     workspaces: workspaceResult.rows.map((row) => ({
       id: row.id,
       name: row.name,

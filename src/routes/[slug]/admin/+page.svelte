@@ -6,6 +6,7 @@
   import WorkspacesSetting from '../../../lib/components/admin/WorkspacesSetting.svelte';
   import HolidaysSetting from '../../../lib/components/admin/HolidaysSetting.svelte';
   import OrganizationLookSetting from '../../../lib/components/admin/OrganizationLookSetting.svelte';
+  import TrialSetting from '../../../lib/components/admin/TrialSetting.svelte';
   import HistorySetting from '../../../lib/components/admin/HistorySetting.svelte';
   import { t } from '../../../lib/vocabulary.svelte.ts';
   import type { PageProps } from './$types';
@@ -59,6 +60,7 @@
   </PageHead>
 
   <div class="settings">
+    {#if organization.trial !== null}<TrialSetting trial={organization.trial} />{/if}
     <UsersSetting slug={data.slug} meId={organization.me.id} oncounts={(counts) => (userCounts = counts)} />
     <WorkspacesSetting
       bind:this={workspacesSetting}

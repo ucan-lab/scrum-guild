@@ -10,7 +10,7 @@ const theme = z.enum(themes);
 export const organizationInfo = defineOperation({
   name: 'organization',
   description:
-    '組織の名前、既定のテーマと、この組織での自分、所属するワークスペースを返す。呼ぶと last_seen_at を書く（1時間に1回まで）',
+    '組織の名前、既定のテーマと、この組織での自分、所属するワークスペース、管理者ならお試しの期限と残りの日数を返す。呼ぶと last_seen_at を書く（1時間に1回まで）',
   mode: 'read',
   permission: 'organization',
   input: z.object({}),
@@ -29,6 +29,7 @@ export const organizationInfo = defineOperation({
       theme: theme.nullable(),
       level: z.number().int(),
     }),
+    trial: z.object({ ends_on: z.string(), days_left: z.number().int() }).nullable(),
     workspaces: z.array(z.object({ id: z.string(), name: z.string(), role: z.enum(['leader', 'member']) })),
   }),
 });

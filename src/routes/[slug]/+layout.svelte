@@ -11,6 +11,7 @@
   import InvitationInbox from '../../lib/components/InvitationInbox.svelte';
   import LoadFailed from '../../lib/components/LoadFailed.svelte';
   import OrganizationSwitcher from '../../lib/components/OrganizationSwitcher.svelte';
+  import WorkspaceSwitcher from '../../lib/components/WorkspaceSwitcher.svelte';
   import { applyOrganization } from '../../lib/organization.svelte.ts';
   import { t } from '../../lib/vocabulary.svelte.ts';
   import { workspaceViewOf } from '../../lib/workspace.ts';
@@ -86,7 +87,7 @@
   {/snippet}
   {#snippet workspaceSwitcher()}
     {#if openWorkspace}
-      <div class="ws-select"><span>{t('workspace')}</span><b>{openWorkspace.name}</b></div>
+      <WorkspaceSwitcher workspaces={organization.workspaces} currentWorkspace={openWorkspace} slug={data.slug} />
     {/if}
   {/snippet}
   <AppShell
