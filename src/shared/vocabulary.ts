@@ -503,8 +503,8 @@ export const dictionary = defineDictionary({
   createMyOrganizationNameInvalid:
     '{organization}の名前に使えない文字（制御文字、行や段落の区切り、向きを変える文字、見えない空白や演算子）が含まれています。',
   createMyOrganizationTrialLimit:
-    'お試し中の{organization}は、1つのアカウントにつき1つまでです。すでにある{organization}には、「すでにある{organization}へ」から入れます。継続して使う場合は、運用者に問い合わせてください。',
-  createMyOrganizationTrialLimitLink: 'すでにある{organization}へ',
+    'お試し中の{organization}は、1つのアカウントにつき1つまでです。入れる{organization}は「{organization}の一覧へ」から開けます（停止している{organization}には入れません）。継続して使う場合は、運用者に問い合わせてください。',
+  createMyOrganizationTrialLimitLink: '{organization}の一覧へ',
   createMyOrganizationRateLimited: '短い間に操作が重なりました。しばらくしてから、もう一度試してください。',
   createMyOrganizationInvalid: '入力を受け付けられませんでした。内容を確かめてください。',
   createMyOrganizationFailed: '{organization}を作れませんでした。もう一度試してください。',
