@@ -351,8 +351,8 @@
   function firstSteps(role, opts = {}) {
     const steps = FIRST_STEPS[role]().map((s, i) => ({ ...s, done: opts.preview ? i === 0 : s.done }));
     if (steps.every((s) => s.done || s.optional)) return "";
-    // 主ボタンは、まだ済んでいない最初の必須の手順にだけ付ける（必須が済んでいれば最初の任意の手順）
-    const next = (() => { const required = steps.findIndex((s) => !s.done && s.action && !s.optional); return required !== -1 ? required : steps.findIndex((s) => !s.done && s.action); })();
+    // 主ボタンは、まだ済んでいない最初の必須の手順にだけ付ける
+    const next = steps.findIndex((s) => !s.done && !s.optional && s.action);
     const hint = FIRST_HINT[role]();
     return `<section class="panel" aria-labelledby="first-steps-${role}">
       <div class="panel-title">${art("map", true)}<b id="first-steps-${role}">最初にやること</b>${steps.filter((s) => s.done).length} / ${steps.length} 済み</div>
