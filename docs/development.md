@@ -897,9 +897,10 @@ GitHub のアカウントも Google のアカウントも使わない人のた�
 - seed は、メールアドレスとパスワードでログインする2人（入れる組織が1つの人と2つの人）も入れる。メールアドレスとパスワードは `seed/passwords.ts`、ハッシュは `seed/data.sql` に固定の文字列で書く（`seed/README.md` の「パスワード」）。開発用の公開した値なので、本番の D1 には入れない。パスワードの手段を閉じている間（`PASSWORD_LOGIN_ENABLED` が偽）は、この 2 人の行は使われない
 
 - seed（`pnpm db:seed`）が、決まったトークンのセッションをローカルの D1 に入れる。e2e と画面の自己レビューは、その Cookie を置いてログインした画面を開く。トークンは開発用の値で、本番の D1 には入れない
+  - seed のセッションで API トークンを発行できるのは、`pnpm db:seed` を流してから10分以内。e2e では `signIn`（`e2e/helpers.ts`）が Cookie を置く前に、その seed のセッションの `created_at` を今に更新する。手元で発行を試すときは、`pnpm db:seed` を流し直す
   - セッションは9つ: あおば開発の管理者、あおば開発の一般のユーザー、ひばり工房だけに入れる管理者、どの組織にも属さない運用者（`OPERATOR_LOGIN_IDS` の開発用の値、`.dev.vars.example`）、と、e2e のログアウトが消すための2本（`adminLogout` は管理者と、`operatorLogout` は運用者と同じアカウントの2本目）、e2e の組織の既定のテーマだけが使うくもラボの3人（`lookAdmin`、`lookMember`、`lookThemed`。その e2e が組織の値を書き換えるので、ほかのファイルが確かめる組織と分けた）。e2e は共有のセッションをログアウトしない（並列に走る別のテストが 401 で落ちるため）
   - トークンは `seed/sessions.ts` の1か所に置き、seed はそこから SHA-256 の16進を計算して入れる。e2e も同じ定数を import し、Cookie の名前は `sessionCookieName()` で決める（e2e は `pnpm preview` の http の localhost なので `sg_session`）。中身と流し方は `seed/README.md`
-  - セッションの `last_used_at` と `expires_at` は seed を流した時刻から数える。ほかの日時は固定の値にする。切れたら seed を流し直す
+  - セッションの `created_at` と `last_used_at` は seed を流した時刻、`expires_at` はその30日後にする。ほかの日時は固定の値にする。切れたら seed を流し直す
   - seed は全部の表の行を消してから入れる。手で足した行も消える
   - seed のセッションが入った手元の `wrangler dev` を、`--ip 0.0.0.0` やトンネルで外に開かない。公開されたトークンで、誰でも管理者と運用者として入れるため
   - 本体の `.dev.vars` の `OPERATOR_LOGIN_IDS` には、seed の運用者の ID（`github:9000000000000001`）と、本物のログインで使う自分の ID を、カンマで両方並べる（`github:9000000000000001,github:<自分の数字>`）。自分の ID だけに書き換えると seed の運用者が抜け、`pnpm dev:open operator` が 401 になる。ワークツリーの `.dev.vars` は本体へのリンクなので、直すのは本体の側（上の「ワークツリーで作業する」）

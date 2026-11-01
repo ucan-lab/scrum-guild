@@ -159,7 +159,7 @@
 | --- | --- | --- | --- |
 | token_hash | TEXT | PK、`CHECK (length(token_hash) = 64 AND token_hash NOT GLOB '*[^0-9a-f]*')` | Cookie に入れたランダムな ID（32 バイトの乱数の base64url、43文字）の SHA-256 を小文字の16進（64文字）にしたもの。ハッシュする前の値を入れる取り違えを DB で止める。`claim_token_hash` の列（`oauth_states`、`users`、`invitations`）も同じ CHECK を持つ |
 | account_id | TEXT | NOT NULL、FK accounts | |
-| created_at | TEXT | NOT NULL | |
+| created_at | TEXT | NOT NULL | ログイン（セッションの作成）の時刻。セッションの延長では変えない。`token-create` は、この時刻から `API_TOKEN_REAUTH_MINUTES` 分以内に限る（ちょうどの時刻も含む） |
 | last_used_at | TEXT | NOT NULL | 使うたびに書き直す |
 | expires_at | TEXT | NOT NULL | `last_used_at` の30日後 |
 

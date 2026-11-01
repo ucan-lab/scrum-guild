@@ -40,18 +40,28 @@ test('再認証の案内は猶予の分数を辞書の文言どおりに出し�
   const body = renderWith({ canCreate: false, loginProvider: 'github', slug: 'aoba' });
   expect(body).not.toContain('{minutes}');
   expect(body).toContain('10分以内');
-  for (const key of ['apiTokenReauthRequired', 'apiTokenReauth', 'apiTokenEmptyReauthText'] as const) {
+  for (const key of ['apiTokenReauthRequired', 'apiTokenReauth'] as const) {
     expect(dictionary[key].length, key).toBeGreaterThan(0);
   }
 });
 
-test('一覧が空で再認証が要るときは、空の知らせに「ログインし直すと発行できます」を出し、発行を促す文は出さない', () => {
+test('一覧が空なら通常の空の文を出し、再認証の理由とロックは案内の1か所だけに出す', () => {
   const needs = renderWith({ canCreate: false, loginProvider: 'github', slug: 'aoba' });
-  expect(needs).toContain(dictionary.apiTokenEmptyReauthText);
-  expect(needs).not.toContain(dictionary.apiTokenEmptyText);
   const ok = renderWith({ canCreate: true, loginProvider: 'github', slug: 'aoba' });
-  expect(ok).toContain(dictionary.apiTokenEmptyText);
-  expect(ok).not.toContain(dictionary.apiTokenEmptyReauthText);
+  for (const body of [needs, ok]) {
+    expect(body).toContain(dictionary.apiTokenEmptyTitle);
+    expect(body).toContain(dictionary.apiTokenEmptyText);
+  }
+  expect(needs.match(/ログインし直してください/g)).toHaveLength(1);
+  expect(needs.match(/#i-lock/g)).toHaveLength(1);
+  expect(needs).toContain('class="callout is-info"');
+});
+
+test('再認証リンクの説明は、同じ案内の理由の本文を指す', () => {
+  const body = renderWith({ canCreate: false, loginProvider: 'github', slug: 'aoba' });
+  const link = /<a[^>]*aria-describedby="([^"]+)"[^>]*>ログインし直す/.exec(body);
+  expect(link).not.toBeNull();
+  expect(body).toContain(`<span id="${link![1]}">API トークンを発行するには、ログインし直してください。`);
 });
 
 // slug に特殊な文字があっても、return_to は自分のサイトの1つのパスに収まり、別のサイトや API に向かない

@@ -87,6 +87,11 @@ SQ.mount("me", () => `
         </div>
         <div class="form-actions"><button class="btn is-primary" type="button" data-dialog="tokenIssued">発行する</button></div>
       </form>
+      <!-- 通常の発行の欄と、発行できないときにその欄へ出す案内を並べて示す。 -->
+      <h3 class="field-label">発行できないとき</h3>
+      <div class="callout is-info">${icon("lock")}<span id="tk-reauth-hint">API トークンを発行するには、ログインし直してください。発行はログインから10分以内に限られます。</span>
+        <div class="callout-actions"><a class="btn is-primary" href="login.html?return_to=%2Faoba%2Fme" aria-describedby="tk-reauth-hint">ログインし直す</a></div>
+      </div>
       <div class="table-wrap"><table class="table is-stacked" aria-label="発行済みの API トークン"><thead><tr><th class="is-name">名前</th><th>範囲</th><th>期限</th><th>最後に使った日</th><th class="is-actions"><span class="visually-hidden">操作</span></th></tr></thead>
         <tbody>
           <tr><td class="is-name wrap-anywhere" data-label="名前">手元の CLI</td><td data-label="範囲"><span class="tag">書き込み</span></td><td class="mono" data-label="期限">2026-12-29</td><td class="mono" data-label="最後に使った日">2026-10-30</td><td class="is-actions"><button class="btn is-sm is-quiet is-danger" type="button" data-dialog="tokenRevoke" aria-label="API トークン「手元の CLI」を取り消す">取り消す</button></td></tr>

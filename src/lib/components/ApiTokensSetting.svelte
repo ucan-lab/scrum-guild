@@ -28,11 +28,14 @@
   // - 発行: 名前、範囲（読み取り／書き込み）、有効日数（1〜90、既定 90）。通ったら、生の値をダイアログに出す。
   //   値は応答の本文にだけあり、ダイアログを閉じると画面からも消える（再び出す手段は無い）。Esc と背景では閉じず
   //   （うっかり閉じて値を失わないため）、「閉じる」と × だけで閉じる。開いた直後は値の欄でなく、
-  //   「二度と見られません」の知らせへフォーカスを移す（先に読み上げる）。閉じたら、発行の欄へフォーカスを戻す。
+  //   「二度と見られません」の知らせへフォーカスを移す（先に読み上げる）。
   //   有効なトークンが上限（API_TOKEN_MAX_ACTIVE）に達していたら 409 が返り、取り消しを促す
   // - 一覧: 名前、範囲、期限、最後に使った日。値は出さない。各行の「取り消す」は確認のダイアログを経る（元に戻せない）。
-  //   取り消せて一覧も読み直せたら、フォーカスを発行の欄へ移す（押した行が消えるため）。失敗したら、押したボタンに残す。
+  //   取り消せて一覧も読み直せたら、フォーカスを次の操作へ移す（押した行が消えるため）。失敗したら、押したボタンに残す。
   //   取消の 404 は、ほかで取り消されたか期限が来て消えた行なので、取り消された扱いにして読み直す
+  // - 発行できないとき: 発行の欄を再認証の案内に替える。発行中に reauth_required を受けたときも同じ案内に替え、
+  //   本文を aria-describedby で結んだ「ログインし直す」へフォーカスを移す。取り消した後と発行直後のダイアログを閉じた後は、
+  //   allowedToCreate が true なら nameInput、false なら reauthLink にフォーカスを戻す
   // - 一覧が読めなければ、この節にだけ失敗と「もう一度試す」を出す（画面のほかの節は生かす）。読み直せたら節の題へフォーカスを移す。
   //   読み直しの失敗は、今の一覧を残して知らせる
   // 操作は1件ずつ送り、送っている間はどの操作も aria-disabled にして押しても無視する
@@ -69,6 +72,7 @@
   // 節の見出し（h2）の id。Section が見出しと節を結ぶ。読み直せた後にここへフォーカスを移す
   const sectionId = `${ids}-section`;
   const nameId = `${ids}-name`;
+  const reauthHintId = `${ids}-reauth-hint`;
   const nameHintId = `${ids}-name-hint`;
   const nameErrorId = `${ids}-name-error`;
   const scopeLabelId = `${ids}-scope-label`;
@@ -208,7 +212,7 @@
         lifetime = API_TOKEN_MAX_LIFETIME_DAYS;
         status = '';
         // 開いたら、値の欄でなく本文へフォーカスを移す。「二度と見られません」まで続けて読めるように
-        issuedDialog?.show(nameInput);
+        issuedDialog?.show(allowedToCreate ? nameInput : reauthLink);
         await tick();
         issuedLead?.focus();
         void reload();
@@ -241,10 +245,14 @@
     }
   }
 
-  // ダイアログを閉じたら、生の値を捨てる
+  // ダイアログを閉じたら、生の値を捨てる。開いている間の reload で発行の欄が消えても、今の戻り先へ移す。
   $effect(() => {
     if (issuedOpen || issued === null) return;
     issued = null;
+    void tick().then(() => {
+      if (allowedToCreate) nameInput?.focus();
+      else reauthLink?.focus();
+    });
   });
 
   async function copy(): Promise<void> {
@@ -312,14 +320,20 @@
 <Section id={sectionId} title={t('apiTokenTitle')}>
   <p class="action-note">{t('apiTokenDesc')}</p>
   {#if !allowedToCreate}
-    <div class="callout">
+    <div class="callout is-info">
       <Icon name="lock" />
-      <span>{t('apiTokenReauthRequired', { minutes: String(API_TOKEN_REAUTH_MINUTES) })}</span>
+      <span id={reauthHintId}>{t('apiTokenReauthRequired', { minutes: String(API_TOKEN_REAUTH_MINUTES) })}</span>
       <div class="callout-actions">
         <!-- ログイン開始は Worker の GET。画面の経路として解決せず、直接開く（ログイン画面と同じ）。 -->
-        <!-- eslint-disable-next-line svelte/no-navigation-without-resolve -->
-        <a class="btn is-primary" href={reauthUrl} data-sveltekit-reload bind:this={reauthLink}>{t('apiTokenReauth')}</a
+        <!-- eslint-disable svelte/no-navigation-without-resolve -->
+        <a
+          class="btn is-primary"
+          href={reauthUrl}
+          aria-describedby={reauthHintId}
+          data-sveltekit-reload
+          bind:this={reauthLink}>{t('apiTokenReauth')}</a
         >
+        <!-- eslint-enable svelte/no-navigation-without-resolve -->
       </div>
     </div>
   {:else}
@@ -424,11 +438,7 @@
       </div>
     {/if}
     {#if tokens.length === 0}
-      <EmptyState
-        icon="lock"
-        title={t('apiTokenEmptyTitle')}
-        text={t(allowedToCreate ? 'apiTokenEmptyText' : 'apiTokenEmptyReauthText')}
-      />
+      <EmptyState icon="inbox" title={t('apiTokenEmptyTitle')} text={t('apiTokenEmptyText')} />
     {:else}
       <div class="table-wrap">
         <!-- 行の操作（取り消す）を持つので、狭い幅で1行を縦に積む（is-stacked） -->
