@@ -106,6 +106,40 @@ export const dictionary = defineDictionary({
   noMembershipTitle: 'どの{workspace}にも所属していません',
   noMembershipText: '{workspace}に加わると、ここから使えます。',
 
+  // 今日やることの先頭の「最初にやること」。見本は design/kit.js の FIRST_STEPS と FIRST_HINT
+  firstStepsTitle: '最初にやること',
+  firstStepsProgress: '{done} / {total} 済み',
+  firstStepOptional: '任意',
+  firstStepDone: '済み',
+  firstStepJoinedTitle: '{workspace}「{name}」に入る',
+  firstStepJoinedNote: '招待を承諾しました。',
+  firstStepPrepareTaskTitle: '自分の{task}を用意する',
+  firstStepPrepareTaskNote:
+    '{backlog}の「{create}」で作ります。{points}を1以上振ったまま完了にすると、起票の経験値が付きます。',
+  firstStepBecameLeaderTitle: '{workspace}「{name}」の{leader}になる',
+  firstStepBecameLeaderNote: '{admin}が{workspace}を作り、あなたを指名しました。',
+  firstStepInviteTitle: '{member}を招待する',
+  firstStepInviteNote:
+    'GitHub のユーザー名か Google のメールアドレスで招待し、{organization}の URL（Google なら招待の URL）を本人に伝えます。Scrum Guild は招待をメールで送りません。',
+  firstStepFirstTaskTitle: '{backlog}に最初の{task}を入れる',
+  firstStepFirstTaskNote: '「{create}」で作ります。{member}が入る前に並べておくと、何から始めるかが伝わります。',
+  firstStepSprintTitle: '最初の{sprint}を作って始める',
+  firstStepSprintNote:
+    '{plan}の画面で期間を決め、{backlog}から{task}を入れて始めます。{sprint}を回さないなら要りません。',
+  firstStepSprintAction: '{plan}を開く',
+  firstStepBecameAdminTitle: '{organization}「{name}」の{admin}になる',
+  firstStepBecameAdminNote: '運用者が{organization}を作り、あなたを指名しました。',
+  firstStepCreateWorkspaceTitle: '最初の{workspace}を作る',
+  firstStepCreateWorkspaceNote:
+    'チームや用途ごとに作ります。作るときに最初の{leader}を選びます。自分でもかまいません。',
+  firstStepAdminInviteNote:
+    '招待は{workspace}の中で{leader}が行います。自分を{leader}にしたら、作った{workspace}の{member}の画面から招待します。',
+  firstStepHolidayTitle: '{organization}の休日を登録する',
+  firstStepHolidayNote: '祝日などを貼り付けて、まとめて登録します。{capacity}の稼働日から除きます。',
+  firstStepHolidayAction: '{page}を開く',
+  firstHintMember: '1日の時間は8時間、稼働する曜日は月〜金として{capacity}を数えます。違うときは{setting}で変えます。',
+  firstHintLeader: '{column}、{detail}の決まった欄は、作ったときの既定のままです。変えるときは{setting}で変えます。',
+
   // 組織の管理の画面（管理者）。{workspace} と {leader} は、辞書の言葉を画面が渡す
   adminEyebrow: '{admin}だけが見られます',
   adminWorkspacesDesc: '作った{workspace}の一覧です。終了した{workspace}も含みます。{member}の数は{leader}を含みます。',

@@ -95,6 +95,7 @@ export const pointers: Pointers = {
   // 入力は空。組織は URL の slug で決まる
   organization: { noReference: {} },
   today: { noReference: {} },
+  'first-steps': { noReference: {} },
   // 最初のリーダーに、対象の組織の管理者を指す。別の組織の管理者を指すと 404
   'workspace-create': async (target) => ({
     name: '保守チーム',
