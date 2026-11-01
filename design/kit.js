@@ -70,6 +70,8 @@
     consentUpdated: "規約が更新されました。内容を確認し直してください。", consentCurrent: "現在の版に同意しています。",
     consentRecordedAt: "同意した日時:", consentSubmitHint: "利用規約とプライバシーポリシーを確認し、印を付けてください。",
     consentLoadFailed: "同意の状態を読み込めませんでした。もう一度試してください。", consentSubmitting: "同意を記録しています", consentRecordFailed: "同意を記録できませんでした。もう一度試してください。",
+    legalRevised: "改定日: {date}", consentRevisedTerms: "利用規約が改められました", consentRevisedPrivacy: "プライバシーポリシーが改められました",
+    consentRevisedBoth: "利用規約とプライバシーポリシーが改められました", consentRevisedHistory: "改定の履歴を見る", consentRevisedHistoryOf: "（{document}）",
     markdownTableRegion: "表", teamXpLabel: "チーム全体の経験値", filterLabel: "{backlog}の絞り込み", backlogSearch: "タイトルで探す",
     filterAll: "{label}: すべて", filterMe: "自分", unassigned: "担当なし", leftMember: "（離脱済み）", categoryNone: "{category}なし",
     filterNoRepository: "リポジトリなし", filterNoEpic: "{epic}なし", filterClear: "絞り込みを外す",
@@ -364,7 +366,7 @@
     </section>`;
   }
   function foldedSection(id, title, count, body) {
-    return `<details class="section is-folded"><summary class="section-head"><h2 class="section-title" id="${id}">${title}</h2><span class="section-count">${count} 件</span><span class="section-hint">押すと開きます</span></summary>${body}</details>`;
+    return `<details class="section is-folded"><summary class="section-head"><h2 class="section-title" id="${id}">${title}</h2><span class="section-count">${count} 件</span><span class="section-hint">開くと一覧を表示</span></summary>${body}</details>`;
   }
   // meta は集計の下に置く1行（バックログの画面のチーム全体の経験値 teamXp など）
   function pageHead(eyebrow, title, tallies = [], actions = "", meta = "") {

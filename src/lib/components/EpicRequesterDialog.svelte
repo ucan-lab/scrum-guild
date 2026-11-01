@@ -13,8 +13,8 @@
   // 候補は、開くたびに member-list で読む、そのワークスペースに今所属している人のうち、今の依頼主（requesterId。画面が渡す）でない人。
   // 1人を選んで「替える」を押すと epic-requester-update を送る。討伐隊は変わらない。
   // 替えられたら閉じて、トーストで知らせ、onchanged で画面に読み直させる（別の画面で先に同じ人になっていたときも、閉じてその旨を知らせる）。
-  // 選んだ人が所属を外れていた、エピックが消えた（404）ときは、理由を出し、候補を読み直す。終わったエピック（409 の conflict）、
-  // 権限が無い（403）は理由を出し、閉じたときに画面を読み直す。閉じたワークスペース（409 の workspace_closed）は理由を出し、
+  // 選んだ人が所属を外れていた、エピックが消えた（404）ときは、理由を出し、候補を読み直す。終わったエピック（409 の epic_finished）、
+  // 書き込みの競合（409 の conflict）、権限が無い（403）は理由を出し、閉じたときに画面を読み直す。閉じたワークスペース（409 の workspace_closed）は理由を出し、
   // 閉じたときに枠ごと読み直す。
   // 送っている間は「替える」を押しても無視し（aria-disabled）、ダイアログも閉じられない。
   // 送り始めた後に開き直した、部品が外れたときは、古い応答で状態を更新しない（generation）
@@ -166,8 +166,11 @@
       if (result.error?.code === 'workspace_closed') {
         submitError = t('workspaceClosedReadOnly', words);
         reloadOnClose = 'workspace';
-      } else if (result.status === 409) {
+      } else if (result.error?.code === 'epic_finished') {
         submitError = t('epicRequesterFinished', words);
+        reloadOnClose = 'epic';
+      } else if (result.error?.code === 'conflict') {
+        submitError = t('epicRequesterConflict', words);
         reloadOnClose = 'epic';
       } else if (result.status === 403) {
         submitError = t('epicRequesterForbidden', words);

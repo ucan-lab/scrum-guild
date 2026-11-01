@@ -12,6 +12,7 @@
   import SprintCard from '../../../../../lib/components/SprintCard.svelte';
   import SprintDialog from '../../../../../lib/components/SprintDialog.svelte';
   import SprintExtendDialog from '../../../../../lib/components/SprintExtendDialog.svelte';
+  import SprintGoalNotice from '../../../../../lib/components/SprintGoalNotice.svelte';
   import SprintCloseDialog from '../../../../../lib/components/SprintCloseDialog.svelte';
   import SprintOverdueNotice from '../../../../../lib/components/SprintOverdueNotice.svelte';
   import { focusPageHeading } from '../../../../../lib/focus-heading.ts';
@@ -564,12 +565,7 @@
     {#if overdue}
       <SprintOverdueNotice {sprint} canClose={canLead} onclose={openClose} />
     {/if}
-    {#if sprint.goal !== null}
-      <article class="notice">
-        <span class="notice-label">{t('sprintGoal')}</span>
-        <p class="notice-title is-goal">{sprint.goal}</p>
-      </article>
-    {/if}
+    {#if sprint.goal !== null}<SprintGoalNotice goal={sprint.goal} />{/if}
     <!-- 列が並ぶと狭い幅で横に溢れる。カードが無いと中に止まる先が無く、キーボードで横へ送れないので、その間だけ領域に止まる -->
     <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
     <div

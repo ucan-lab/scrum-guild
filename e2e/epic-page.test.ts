@@ -201,13 +201,23 @@ test('参加するとやめるの失敗はトーストで知らせ、割り振�
   const party = page.getByRole('region', { name: '参加者' });
   await expect(party.locator('.party-list > li')).toHaveCount(2);
 
-  // 抜ける前にエピックが終わっていた（409 の conflict）。参加者は変わらない
-  await failOperation(page, epicPartyLeave, AOBA, 409, 'conflict');
+  // 抜ける前にエピックが終わっていた（409 の epic_finished）。参加者は変わらない
+  const unfailFinished = await failOperation(page, epicPartyLeave, AOBA, 409, 'epic_finished');
   await party.getByRole('button', { name: '参加をやめる' }).click();
   await expect(page.locator('.toasts:visible .toast').last()).toHaveText(
     'このエピックは終わっているので、参加者を変えられません',
   );
   await expect(party.locator('.party-list > li')).toHaveCount(2);
+  await unfailFinished();
+
+  // 書き込みの競合に負け続けた（409 の conflict）。終わったとは言わず、重なったことを知らせる
+  const unfailConflict = await failOperation(page, epicPartyLeave, AOBA, 409, 'conflict');
+  await party.getByRole('button', { name: '参加をやめる' }).click();
+  await expect(page.locator('.toasts:visible .toast').last()).toHaveText(
+    'ほかの変更と重なりました。もう一度試してください',
+  );
+  await expect(party.locator('.party-list > li')).toHaveCount(2);
+  await unfailConflict();
 
   // 何も書かなかった（別の画面で先に抜けていた）ときは、抜けたとは言わず、もう変わっていたことを知らせる
   const unmockLeave = await mockOperation(page, epicPartyLeave, AOBA, { changed: false });
@@ -249,6 +259,14 @@ test('参加するとやめるの失敗はトーストで知らせ、割り振�
     '選んだ人はワークスペースに所属していないか、エピックが見つかりません。選び直してください。',
   );
   await expect(select).toBeFocused();
+
+  // 終わったエピック（409 の epic_finished）と、書き込みの競合に負け続けた（409 の conflict）は、文で見分けられる
+  await failOperation(page, epicPartyAssign, AOBA, 409, 'epic_finished');
+  await dialog.getByRole('button', { name: '割り振る' }).click();
+  await expect(dialog.getByRole('alert')).toHaveText('このエピックは終わっているので、参加者を変えられません');
+  await failOperation(page, epicPartyAssign, AOBA, 409, 'conflict');
+  await dialog.getByRole('button', { name: '割り振る' }).click();
+  await expect(dialog.getByRole('alert')).toHaveText('ほかの変更と重なりました。もう一度試してください');
   await dialog.getByRole('button', { name: 'やめる' }).click();
   await expect(dialog).toBeHidden();
 });
@@ -331,15 +349,25 @@ test('クリア報酬の変更と作成者の変更の失敗と成功を、ダ�
   await rewardDialog.getByRole('button', { name: 'やめる' }).click();
   await expect(rewardDialog).toBeHidden();
 
-  // 終わったエピック（409 の conflict）
+  // 終わったエピック（409 の epic_finished）
   await page.unrouteAll();
-  await failOperation(page, epicRewardUpdate, AOBA, 409, 'conflict');
+  await failOperation(page, epicRewardUpdate, AOBA, 409, 'epic_finished');
   await party.getByRole('button', { name: 'クリア報酬を変える' }).click();
   await rewardDialog.getByRole('radio', { name: '大 · 600 XP' }).check();
   await rewardDialog.getByRole('button', { name: '変える' }).click();
   await expect(rewardDialog.getByRole('alert')).toHaveText(
     'このエピックは終わっているので、クリア報酬を変えられません',
   );
+  await rewardDialog.getByRole('button', { name: 'やめる' }).click();
+  await expect(rewardDialog).toBeHidden();
+  await page.unrouteAll();
+
+  // 書き込みの競合に負け続けた（409 の conflict）。終わったとは言わず、重なったことを知らせる
+  await failOperation(page, epicRewardUpdate, AOBA, 409, 'conflict');
+  await party.getByRole('button', { name: 'クリア報酬を変える' }).click();
+  await rewardDialog.getByRole('radio', { name: '大 · 600 XP' }).check();
+  await rewardDialog.getByRole('button', { name: '変える' }).click();
+  await expect(rewardDialog.getByRole('alert')).toHaveText('ほかの変更と重なりました。もう一度試してください');
   await rewardDialog.getByRole('button', { name: 'やめる' }).click();
   await expect(rewardDialog).toBeHidden();
   await page.unrouteAll();
@@ -386,6 +414,16 @@ test('クリア報酬の変更と作成者の変更の失敗と成功を、ダ�
   );
   await expect(select).toBeFocused();
   await unfailRequester();
+
+  // 終わったエピック（409 の epic_finished）と、書き込みの競合に負け続けた（409 の conflict）
+  const unfailRequesterFinished = await failOperation(page, epicRequesterUpdate, AOBA, 409, 'epic_finished');
+  await dialog.getByRole('button', { name: '替える' }).click();
+  await expect(dialog.getByRole('alert')).toHaveText('このエピックは終わっているので、作成者を替えられません');
+  await unfailRequesterFinished();
+  const unfailRequesterConflict = await failOperation(page, epicRequesterUpdate, AOBA, 409, 'conflict');
+  await dialog.getByRole('button', { name: '替える' }).click();
+  await expect(dialog.getByRole('alert')).toHaveText('ほかの変更と重なりました。もう一度試してください');
+  await unfailRequesterConflict();
 
   // 替えられた
   await mockOperation(page, epicRequesterUpdate, AOBA, {

@@ -127,7 +127,7 @@
 ### 言葉の辞書
 
 - 辞書は `src/shared/vocabulary.ts` に置く。キーごとにスクラムの言葉の文字列を1つ持つ（`task: 'タスク'`）。引くのは `word(key, params?)` で、画面は `src/lib/vocabulary.svelte.ts` の `t(key, params?)` を通す。
-- 語順や記号を含む文は、`{名前}` の置き換えを持つ1項目にする（`pageTitle` の `{page} - {app}`、`apiStatus` など）。`t(key, { 名前: 値 })` で埋め、テンプレートには語順や記号を直に書かない。
+- 語順や記号を含む文は、`{名前}` の置き換えを持つ1項目にする（`pageTitle` の `{page} - {app}`、`accountMenuLabel` の `{name}。アカウントのメニュー` など）。`t(key, { 名前: 値 })` で埋め、テンプレートには語順や記号を直に書かない。
 - 画面は `t(key)` で文言を出す。直に書かず、言葉づかいを選ぶ口も、組織やワークスペースの値も、`localStorage` の記憶も持たない。列と決まった欄に付けた名前は、辞書を通さず、作るときにスクラムの言葉で決めた値を保存する（`src/shared/workspace.ts` の `defaultColumnNames`、`defaultDetailFieldName`）。DB の `vocabulary` の列は使わず、行を作る文が `scrum` を入れる（`src/server/db/vocabulary-column.ts` の `VOCABULARY_COLUMN_VALUE`）。
 - 辞書の型の保証は `src/shared/vocabulary.typecheck.ts` が持つ。文字列でない項目（数、オブジェクト、`{ scope, game, scrum }` の旧形式）が型で落ちることを `@ts-expect-error` で確かめ、落ちなくなると `pnpm check` が落ちる。
 - 見本の `design/kit.js` の `DICT` にあるキーは、本番も同じ中身で持つ。`scripts/design-parity.test.ts` が突き合わせる（`docs/design.md` の「デザインシステムの構成」）。
@@ -167,6 +167,7 @@
 - 今の版の規約に同意していない人の呼び出しは、403 の `terms_required`（権限が無い `forbidden` とは分ける）。画面はこれを見て同意の画面（`/consent`）へ移す。API トークンも同じで、`skipsConsent` を付けた操作（`me`、`logout`、`consent-status`、`consent-record`）以外はすべて断る。
 - 閉じたワークスペースへの書き込みは、409 の `workspace_closed`（先に読んだ値の競合の `conflict` とは分ける）。
 - 招待の作成（`invitation-create`）が断るときは 409 で、理由を `code` で分ける（`member_limit_reached`、`invitee_changed`、`already_member`、`already_invited`）。届いた招待の承諾（`invitation-accept`）が断るときも 409 で、承諾待ちでない（`conflict`）、ワークスペースが閉じている（`workspace_closed`）、もう所属している（`already_member`）を分ける。辞退（`invitation-decline`）の 409 は、承諾待ちでない（`conflict`）だけ。どちらも、無い招待と別の人や別の組織の招待は 404 の `not_found`。招待する人の解決（`invitee-resolve`、`invitation-create`）が当たらないときは、運用者の操作と同じ 400 の `invalid_input` で、`details` の `code` が `github_user_not_found` か `github_not_a_user`。Google の招待でそろえられないメールアドレスも 400 の `invalid_input` で、`code` は `email_invalid`（運用者の Google の指名と同じ）。
+- エピックの討伐隊と報酬と依頼主を変える操作（`epic-party-join`、`epic-party-leave`、`epic-party-assign`、`epic-reward-update`、`epic-requester-update`）が、終わった（クリアか中止した）エピックを断るときは 409 の `epic_finished`。書き込みの競合に 3 回続けて負けたときは、書かずに読み直し、終わっていれば 409 の `epic_finished`、そうでなければ 409 の `conflict`（使い切った後の読み直しは終わったかどうかだけを見て、閉じたワークスペースなら 409 の `workspace_closed` を先に返し、エピックが消えていても 404 でなく `conflict` にする。ループ内の 404 と 403 の順は通らない。3 回続けて負けた稀な経路で、終わったかどうかは同じワークスペースの人なら読める情報なので許す）。閉じたワークスペースは `workspace_closed`。画面は `code` で文言を選び、`epic_finished` は「終わっているので変えられません」、`conflict` は「ほかの変更と重なりました。もう一度試してください」を出す。
 - 停止した組織の中の操作は、停止していなければ入れた人（無効でない管理者、今の所属がある人、承諾待ちの招待がある人）に 403 の `organization_suspended` を返す。入れない人（無効にされた人を含む）は、組織が無いときと同じ 404 の `not_found`。判定は `enterOrganization` が行い、停止した組織では入口を渡さず、組織の ID だけを持つ `SuspendedOrganization` を返す（操作のログに組織の ID が付く）。停止した組織にしか入れない人も、セッションを消さず、同じ 403 を返す（組織の外の操作は使える。組織の選択の画面（`/`）は `my-organizations` の `suspended` で、停止していることと運用者に問い合わせることを伝える）。組織の分離のテスト（`test/operations/harness.ts`）が、組織の中のすべての操作について回す。
 - 401 の `unauthenticated` に理由（`details.reason`）は付けない。入れる組織を失ったことでは 401 にならない。
 - 定義の `rateLimit` を超えた呼び出しは、429 の `rate_limited`。
@@ -658,7 +659,7 @@ ai-review は Claude のサブスクリプションで動かす。手元で `cla
 - 起点から差分が無いとき、PR の作成、再開、ドラフトの解除で回ったなら Claude を動かさず、「AI レビュー: 起点 `<SHA>` から差分が無いので見ない。」のコメントを1件付ける。`ai-review` のラベルで回ったなら全体を見る（人が回したいと決めたため）
 - まとめのコメントの先頭に、ワークフローが `<!-- ai-review:<head の SHA> -->` を付ける。付けるのは、Claude の段が成功し、まとめの最初の中身のある行が `AI レビュー: 見終えていない` で始まらないときだけ。この判定は、行の先頭の空白、ゼロ幅の文字、Markdown の装飾を除き、同じ行に続きがあっても見終えていない側に倒す。ai-review のスキルは、差分を読めなかったか、選んだエージェントの報告が返らなかったときにこの1行を書く。まとめが無い実行と差分なしのコメントにも付けない。まとめの中に Claude が書いた印は無効にする（`scripts/ai-review-summary.ts`）。付かなかった実行の後は、前の起点から見直す
 - done-check の印は、本文を書ける人（`OWNER` か `COLLABORATOR`）の自己申告で、done-check の点検と結び付いていない。head の SHA を書けば、作成、再開、ドラフトの解除での AI レビューは「差分が無い」のコメントだけになる。ラベルで回しても、起点から差分があれば、見るのは起点からの差分だけ。PR 全体を見せ直したいときは、本文の done-check の印と、bot のまとめのコメントの先頭の ai-review の印を消して（まとめのコメントごと削除してもよい）からラベルを付ける。ai-review の印も、コメントを編集できる人なら書き換えられる。AI レビューは助言で、印を書ける人は書き込みの権限を持つので、この形で受け入れる。起点がどちらの印から来たかは `scope.md` とまとめの冒頭に出す
-- `falsification-qa` は、起点からの差分を見るときだけ呼ぶ。全体を見るときは `done-check` で回しているので重ねない。呼び分けは `.claude/skills/ai-review/reviewers.md` の CI の2列
+- `falsification-qa` は、起点からの差分を見るときだけ呼ぶ（差分が小さければ省いてよい。基準は `reviewers.md` の表の下の注記）。全体を見るときは `done-check` で回しているので重ねない。呼び分けは `.claude/skills/ai-review/reviewers.md` の CI の2列
 - 文書だけの PR（`docs/`、`.md`）、ドラフトの PR、fork と Bot（Dependabot など）の PR では回さない。そこへ付けた `ai-review` のラベルは外れずに残るので、回すときは外してから付け直す
 - `ci-ok` に含めない。AI レビューは助言で、サブスクの上限で落ちてもマージの判定を止めない
 - PR の上で action が読む `.claude/` と `CLAUDE.md` は、base のブランチのもの。スキルやエージェントの変更は `main` に入ってから効く
