@@ -362,10 +362,10 @@ async function openTokenSection(page: Page): Promise<void> {
 }
 
 // 発行の応答を差し替えて、値のダイアログを開く。トークンの値はコピーの確かめ用の偽の値で、DB には書かれない
-async function openIssuedDialog(page: Page, token = `sgp_${'A'.repeat(43)}`): Promise<Locator> {
+async function openIssuedDialog(page: Page, token = `sgp_${'A'.repeat(43)}`, name = '確かめ用'): Promise<Locator> {
   await mockOperation(page, tokenCreate, {
     id: '019a0000-0000-7000-8000-00000000f686',
-    name: '確かめ用',
+    name,
     scope: 'read',
     expires_at: '2099-01-01T00:00:00.000Z',
     token,
@@ -491,9 +491,10 @@ test.describe('トースト（自分の設定の API トークンの節。発行
       navigator.clipboard.writeText = () => Promise.reject(new Error('denied'));
     });
     await copyButton(dialog).click();
-    await expect(toasts).toHaveCount(2);
-    await expect(toasts.last()).toHaveText('コピーできませんでした。値を選んで、手でコピーしてください');
-    await expect(toasts.last().locator('use')).toHaveAttribute('href', '#i-alert');
+    // 最初のトーストは4秒で消えるので、数ではなく文言で絞る
+    const failed = toasts.filter({ hasText: 'コピーできませんでした。値を選んで、手でコピーしてください' });
+    await expect(failed).toHaveCount(1);
+    await expect(failed.locator('use')).toHaveAttribute('href', '#i-alert');
   });
 
   test('トーストは数秒で消え、同時に出るのは3件まで', async ({ page }) => {
@@ -544,7 +545,8 @@ test('画面の題名は「画面 - Scrum Guild」で、メニューには画面
 test('320px の幅で、長いトークンの値のダイアログが横にはみ出さない', async ({ context, baseURL, page }) => {
   await signIn(context, baseURL, 'admin');
   await page.setViewportSize({ width: 320, height: 700 });
-  const dialog = await openIssuedDialog(page, `sgp_${'A'.repeat(120)}`);
+  // 空白の無い半角100文字の名前（API が通す上限）が、本文の「「…」の値です。」で折り返される
+  const dialog = await openIssuedDialog(page, `sgp_${'A'.repeat(120)}`, 'A'.repeat(100));
 
   const overflow = () =>
     page.evaluate(() => ({ scroll: document.documentElement.scrollWidth, inner: window.innerWidth }));
