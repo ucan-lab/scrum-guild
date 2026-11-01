@@ -14,7 +14,8 @@ test.beforeEach(async ({ context, baseURL }) => {
 });
 
 async function addTask(page: Page, title: string, options: { assignee?: string; parent?: string } = {}) {
-  await page.getByRole('button', { name: '起票' }).click();
+  // ワークスペースの切り替えのボタンの名前にも、ワークスペースの名前（「…起票の…」）が入りうるので、完全一致で選ぶ。
+  await page.getByRole('button', { name: '起票', exact: true }).click();
   const dialog = page.getByRole('dialog', { name: '起票' });
   await dialog.getByLabel('タイトル').fill(title);
   if (options.assignee !== undefined) {
