@@ -18,7 +18,7 @@ import {
 // 書き方は討伐隊の割り振り（epic-party.ts）と同じで、読んで断る順を決め、書く文は読んだ値を条件にした UPDATE と、
 // 直前の文が行を変えたときだけ入れる履歴にする。通らなければ読み直して決め直す
 
-// 同時の書き込みに負けたときにやり直す回数の上限。超えたら 409 の conflict（epic-party と同じ）
+// 同時の書き込みに負けたときにやり直す回数の上限。超えたら読み直し、終わったエピックなら 409 の epic_finished、そうでなければ 409 の conflict（epic-party と同じ）
 const MAX_ATTEMPTS = 3;
 
 // エピックの現在の欄。同じワークスペースの削除していないもの（クリアと中止も含む）。
@@ -53,6 +53,17 @@ async function readEpic(db: OrganizationDb, workspaceId: string, epicId: string)
     requesterName: row.requester_name,
     finished: row.completed_at !== null || row.canceled_at !== null,
   };
+}
+
+// やり直しの回数を使い切ったときに、断る理由を決める。最後の書き込みの直前にエピックが終わっていたら 409 の epic_finished、
+// そうでなければ（書き込みの競合に負け続けた）409 の conflict。最後に読み直すだけで、書かない
+async function throwIfFinishedOrConflict(db: OrganizationDb, workspaceId: string, epicId: string): Promise<never> {
+  const epic = await readEpic(db, workspaceId, epicId);
+  if (epic?.finished) {
+    await throwIfClosed(db, workspaceId);
+    throw new ApiError(409, 'epic_finished');
+  }
+  throw new ApiError(409, 'conflict');
 }
 
 // 履歴の1行。直前の文が行を変えたときだけ入れる
@@ -106,7 +117,7 @@ export const epicRewardUpdateOperation = implement(epicRewardUpdate, async ({ db
     if (!leader && epic.requesterUserId !== actorUserId) throw new ApiError(403, 'forbidden');
     if (epic.finished) {
       await throwIfClosed(db, workspaceId);
-      throw new ApiError(409, 'conflict');
+      throw new ApiError(409, 'epic_finished');
     }
     if (epic.rewardTier === next) {
       // 同じ段階なら何も書かない。書くものが無くても、閉じたワークスペースは断る
@@ -141,7 +152,7 @@ export const epicRewardUpdateOperation = implement(epicRewardUpdate, async ({ db
     if ((results[0]?.changes ?? 0) > 0) return { ...output, changed: true };
     await throwIfClosed(db, workspaceId);
   }
-  throw new ApiError(409, 'conflict');
+  return throwIfFinishedOrConflict(db, workspaceId, epicId);
 });
 
 // リーダー（管理者を含む）でない人（依頼主も）は、権限の種類 leader が登録の関数で 403 にする。
@@ -169,7 +180,7 @@ export const epicRequesterUpdateOperation = implement(epicRequesterUpdate, async
     }
     if (epic.finished) {
       await throwIfClosed(db, workspaceId);
-      throw new ApiError(409, 'conflict');
+      throw new ApiError(409, 'epic_finished');
     }
     const requester = { id: userId, name: active.name, left: false };
     if (epic.requesterUserId === userId) {
@@ -214,5 +225,5 @@ export const epicRequesterUpdateOperation = implement(epicRequesterUpdate, async
     if ((results[0]?.changes ?? 0) > 0) return { changed: true, requester };
     await throwIfClosed(db, workspaceId);
   }
-  throw new ApiError(409, 'conflict');
+  return throwIfFinishedOrConflict(db, workspaceId, epicId);
 });
