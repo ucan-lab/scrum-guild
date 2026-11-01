@@ -113,7 +113,7 @@
 
 {#snippet main()}
   <!-- 最初にやること。手順が空（必須が済んだ、出す手順が無い）か読めなかったときは置かない -->
-  {#if data.firstSteps !== null && data.firstSteps.role !== null && data.firstSteps.steps.length > 0}
+  {#if data.firstSteps !== null && data.firstSteps.role !== null && data.firstSteps.steps.length > 0 && (data.firstSteps.role !== 'admin' || data.organization?.me.is_admin)}
     <FirstSteps
       slug={data.slug}
       role={data.firstSteps.role}
