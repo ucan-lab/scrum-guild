@@ -1,30 +1,45 @@
 <script lang="ts">
+  import { resolve } from '$app/paths';
   import { getHealth } from '../../lib/api.ts';
   import Dialog from '../../lib/components/Dialog.svelte';
   import EmptyState from '../../lib/components/EmptyState.svelte';
   import Icon from '../../lib/components/Icon.svelte';
-  import PageHead from '../../lib/components/PageHead.svelte';
+  import LevelPanel from '../../lib/components/LevelPanel.svelte';
+  import LoadFailed from '../../lib/components/LoadFailed.svelte';
+  import PageHead, { type Tally } from '../../lib/components/PageHead.svelte';
   import Section from '../../lib/components/Section.svelte';
+  import SprintGoalNotice from '../../lib/components/SprintGoalNotice.svelte';
+  import TaskEntry from '../../lib/components/TaskEntry.svelte';
   import WorkspaceCreateDialog from '../../lib/components/WorkspaceCreateDialog.svelte';
   import { showToast } from '../../lib/toast.svelte.ts';
+  import { todaySections } from '../../lib/today-sections.ts';
   import { t } from '../../lib/vocabulary.svelte.ts';
+  import type { TodayTask } from '../../shared/operations/organization/today.ts';
+  import type { BacklogTask } from '../../shared/operations/task/backlog-tree.ts';
   import type { PageProps } from './$types';
 
-  // 今日やることの仮の画面。枠と見出しと空の状態を部品で組み、API と画面がつながったことを示す。文言はすべて辞書を通す。
-  // 今日やるタスクは API から取っていないので、件数や「所属すると並ぶ」といった事実は書かない。
-  // 空の状態は管理者の場合を分ける。組織にワークスペースが1つも無いときは、最初のワークスペースを作る案内。
-  // ワークスペースはあるが所属が0件のときは、所属が無いことの案内。最初のワークスペースを作る案内には、作るダイアログを開くボタンを置く
   let { data }: PageProps = $props();
-
   let createDialog = $state<ReturnType<typeof WorkspaceCreateDialog>>();
-
+  // 管理者でワークスペースが無い、または所属が無いときの案内。ほかは 'default'
   const emptyKind = $derived.by(() => {
     const view = data.organization;
     if (view === null || !view.me.is_admin) return 'default';
     if (!view.organization.has_workspaces) return 'firstWorkspace';
     return view.workspaces.length === 0 ? 'noMembership' : 'default';
   });
+  // 次にやることのボタンの行き先（所属する最初のワークスペースのバックログ）
+  const firstWorkspace = $derived(data.organization?.workspaces[0] ?? null);
+  // today の読み込みの失敗（data.today が null）は、空の一覧と区別して失敗の画面を出す
+  const sections = $derived(todaySections(data.today?.tasks ?? []));
+  const tallies = $derived<Tally[]>([
+    { icon: 'sun', label: t('sectionToday'), count: sections.today.length },
+    { tone: 'danger', icon: 'alert', label: t('overdue'), count: sections.overdue.length },
+    { tone: 'warn', icon: 'clock', label: t('weekDue'), count: sections.week.length },
+    { icon: 'check', label: t('doneToday'), count: sections.done.length },
+  ]);
 
+  // API の疎通の表示（仮の画面から残した節）。ダイアログとトーストの e2e（e2e/shell.test.ts）が試験台にしている。
+  // 外す作業は、試験台を別の画面へ移す Issue で行う
   let health = $state(getHealth());
   let checking = $state(false);
   let detailOpen = $state(false);
@@ -40,15 +55,38 @@
     if (result?.ok) showToast(t('apiRecheckOk'), 'check');
     else showToast(t('apiRecheckFailed'), 'alert');
   }
+
+  function taskOf(task: TodayTask): BacklogTask {
+    return {
+      id: task.id,
+      title: task.title,
+      points: task.points,
+      due_on: task.due_on,
+      assignee: task.assignee,
+      category: null,
+      repository: task.repository,
+      sprint: task.sprint,
+    };
+  }
 </script>
 
-<svelte:head>
-  <title>{t('pageTitle', { page: t('pageToday'), app: t('appName') })}</title>
-</svelte:head>
+<!-- 完了の操作は、印と完了を足す Issue（3本目）まで出さない（canComplete を偽にする） -->
+{#snippet rows(list: TodayTask[], options: { done?: boolean; markDueToday?: boolean } = {})}
+  <div class="book">
+    {#each list as task (task.id)}<TaskEntry
+        task={taskOf(task)}
+        done={options.done ?? false}
+        canComplete={false}
+        clock={{ today: task.today, weekStart: task.week_start }}
+        workspaceId={task.workspace_id}
+        workspaceName={task.workspace_name}
+        metaChip={options.markDueToday && task.due_on === task.today ? t('dueIsToday') : undefined}
+        metaText={task.carry_days > 0 ? t('carryDays', { days: task.carry_days }) : undefined}
+      />{/each}
+  </div>
+{/snippet}
 
-<PageHead title={t('pageToday')} />
-
-<Section id="s-today" title={t('sectionToday')} hint={t('sectionTodayHint')}>
+{#snippet todayEmpty()}
   {#if emptyKind === 'firstWorkspace'}
     <EmptyState
       icon="sun"
@@ -56,11 +94,12 @@
       title={t('firstWorkspaceTitle', { workspace: t('workspace') })}
       text={t('firstWorkspaceText', { workspace: t('workspace'), leader: t('leader') })}
     >
-      {#snippet actions()}
-        <button class="btn is-sm" type="button" onclick={(event) => createDialog?.show(event.currentTarget)}>
-          <Icon name="plus" />{t('workspaceCreateAction', { workspace: t('workspace') })}
-        </button>
-      {/snippet}
+      {#snippet actions()}<button
+          class="btn is-sm"
+          type="button"
+          onclick={(event) => createDialog?.show(event.currentTarget)}
+          ><Icon name="plus" />{t('workspaceCreateAction', { workspace: t('workspace') })}</button
+        >{/snippet}
     </EmptyState>
   {:else if emptyKind === 'noMembership'}
     <EmptyState
@@ -69,48 +108,128 @@
       title={t('noMembershipTitle', { workspace: t('workspace') })}
       text={t('noMembershipText', { workspace: t('workspace') })}
     />
+  {:else if firstWorkspace !== null}
+    <EmptyState
+      icon="sun"
+      art="notice"
+      title={t('todayEmptyTitle', { task: t('task') })}
+      text={t('todayEmptyText', { assignee: t('assignee'), task: t('task'), backlog: t('backlog') })}
+    >
+      {#snippet actions()}<a
+          class="btn is-sm"
+          href={resolve('/[slug]/w/[id]', { slug: data.slug, id: firstWorkspace.id })}
+          >{t('todayEmptyAction', { backlog: t('backlog') })}</a
+        >{/snippet}
+    </EmptyState>
   {:else}
-    <EmptyState icon="sun" art="notice" title={t('todayEmptyTitle')} text={t('todayEmptyText')} />
+    <EmptyState
+      icon="sun"
+      art="notice"
+      title={t('todayEmptyTitle', { task: t('task') })}
+      text={t('todayEmptyNoWorkspaceText', { workspace: t('workspace'), assignee: t('assignee'), task: t('task') })}
+    />
   {/if}
-</Section>
+{/snippet}
 
-<Section id="s-api" title={t('apiHeading')}>
-  <p role="status" class="wrap-anywhere">
-    {#await health}
-      {t('apiChecking')}
-    {:then result}
-      {#if result.ok}
-        {t('apiStatus', { status: result.data.status, version: result.data.version })}
-      {:else}
-        {t('apiUnreachableStatus', { status: result.status })}
-      {/if}
+{#snippet main()}
+  {#if data.today !== null && data.today.sprint_goals.length > 0}
+    <div class="notice-grid">
+      {#each data.today.sprint_goals as sprint (sprint.workspace_id)}
+        <SprintGoalNotice goal={sprint.goal} workspaceName={sprint.workspace_name} />
+      {/each}
+    </div>
+  {/if}
+  {#if sections.overdue.length > 0}
+    <Section id="s-overdue" title={t('overdue')} count={sections.overdue.length}>
+      {@render rows(sections.overdue)}
+    </Section>
+  {/if}
+  <Section id="s-today" title={t('sectionToday')} count={sections.today.length} hint={t('sectionTodayHint')}>
+    {#if sections.today.length === 0}
+      {@render todayEmpty()}
+    {:else}
+      {@render rows(sections.today)}
+    {/if}
+  </Section>
+  {#if sections.week.length > 0}
+    <Section id="s-week" title={t('weekDue')} count={sections.week.length}>
+      {@render rows(sections.week, { markDueToday: true })}
+    </Section>
+  {/if}
+  {#if sections.sprint.length > 0}
+    <Section id="s-sprint" title={t('sprintInProgress')} count={sections.sprint.length} folded>
+      {@render rows(sections.sprint)}
+    </Section>
+  {/if}
+  {#if sections.done.length > 0}
+    <Section id="s-done" title={t('doneToday')} count={sections.done.length}>
+      {@render rows(sections.done, { done: true })}
+    </Section>
+  {/if}
+{/snippet}
+
+<!-- 読み込みに失敗したときの題名は LoadFailed が持つ -->
+<svelte:head>
+  {#if data.today !== null}<title>{t('pageTitle', { page: t('pageToday'), app: t('appName') })}</title>{/if}
+</svelte:head>
+{#if data.today === null}
+  <LoadFailed inShell />
+{:else}
+  <PageHead title={t('pageToday')} {tallies} />
+  {#if data.experience}
+    <div class="layout-aside">
+      <div class="layout-main">{@render main()}</div>
+      <aside class="layout-side" aria-label={t('myRecord')}>
+        <LevelPanel
+          total={data.experience.total}
+          prospective={data.experience.prospective}
+          thanksReceived={data.experience.thanks_received}
+          workspaces={data.experience.workspaces}
+        />
+      </aside>
+    </div>
+  {:else}
+    <!-- 経験値を読めなかったときは右の列ごと省く（列の幅だけ空けない） -->
+    <div class="layout-main">{@render main()}</div>
+  {/if}
+  <Section id="s-api" title={t('apiHeading')}>
+    <p role="status" class="wrap-anywhere">
+      {#await health}
+        {t('apiChecking')}
+      {:then result}
+        {#if result.ok}
+          {t('apiStatus', { status: result.data.status, version: result.data.version })}
+        {:else}
+          {t('apiUnreachableStatus', { status: result.status })}
+        {/if}
+      {:catch}
+        {t('apiUnreachable')}
+      {/await}
+    </p>
+    <div class="form-actions">
+      <!-- Safari と Firefox はクリックでボタンにフォーカスを移さないので、開く操作を起こしたボタンを渡す -->
+      <button class="btn is-sm" type="button" onclick={(event) => detailDialog?.show(event.currentTarget)}>
+        {t('apiShowDetail')}
+      </button>
+      <button class="btn is-sm" type="button" disabled={checking} onclick={recheck}>{t('apiRecheck')}</button>
+    </div>
+  </Section>
+  <Dialog bind:this={detailDialog} bind:open={detailOpen} title={t('apiDetailTitle')}>
+    <p>{t('apiDetailBody')}</p>
+    <!-- ダイアログは閉じていても中身を描くので、ここでも拒否を受けないと処理されない例外になる -->
+    {#await health then result}
+      <p class="mono wrap-anywhere">{JSON.stringify(result)}</p>
     {:catch}
-      {t('apiUnreachable')}
+      <p>{t('apiUnreachable')}</p>
     {/await}
-  </p>
-  <div class="form-actions">
-    <!-- Safari と Firefox はクリックでボタンにフォーカスを移さないので、開く操作を起こしたボタンを渡す -->
-    <button class="btn is-sm" type="button" onclick={(event) => detailDialog?.show(event.currentTarget)}>
-      {t('apiShowDetail')}
-    </button>
-    <button class="btn is-sm" type="button" disabled={checking} onclick={recheck}>{t('apiRecheck')}</button>
-  </div>
-</Section>
-
-{#if data.organization?.me.is_admin}
-  <WorkspaceCreateDialog bind:this={createDialog} slug={data.slug} meId={data.organization.me.id} />
+    {#snippet footer(close)}
+      <button class="btn" type="button" disabled={checking} onclick={recheck}>{t('apiRecheck')}</button>
+      <button class="btn is-primary" type="button" onclick={close}>{t('close')}</button>
+    {/snippet}
+  </Dialog>
+  {#if data.organization?.me.is_admin}<WorkspaceCreateDialog
+      bind:this={createDialog}
+      slug={data.slug}
+      meId={data.organization.me.id}
+    />{/if}
 {/if}
-
-<Dialog bind:this={detailDialog} bind:open={detailOpen} title={t('apiDetailTitle')}>
-  <p>{t('apiDetailBody')}</p>
-  <!-- ダイアログは閉じていても中身を描くので、ここでも拒否を受けないと処理されない例外になる -->
-  {#await health then result}
-    <p class="mono wrap-anywhere">{JSON.stringify(result)}</p>
-  {:catch}
-    <p>{t('apiUnreachable')}</p>
-  {/await}
-  {#snippet footer(close)}
-    <button class="btn" type="button" disabled={checking} onclick={recheck}>{t('apiRecheck')}</button>
-    <button class="btn is-primary" type="button" onclick={close}>{t('close')}</button>
-  {/snippet}
-</Dialog>
