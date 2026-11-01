@@ -9,7 +9,6 @@
   import Icon from '../../lib/components/Icon.svelte';
   import { revisedDocuments } from '../../lib/consent-revision.ts';
   import { formatDateTime } from '../../lib/format-datetime.ts';
-  import { REVISION_HISTORY_ID } from '../../lib/legal/revision-history.ts';
   import { isUnauthenticated, loginUrl } from '../../lib/login-redirect.ts';
   import { t } from '../../lib/vocabulary.svelte.ts';
   import type { OutputOf } from '../../shared/operations/define.ts';
@@ -30,11 +29,6 @@
         ? 'consentRevisedTerms'
         : 'consentRevisedPrivacy',
   );
-
-  // 改めた文書の「改定の履歴」の節（/terms#revision-history、/privacy#revision-history）
-  function historyHref(kind: 'terms' | 'privacy'): string {
-    return `${resolve(kind === 'terms' ? '/terms' : '/privacy')}#${REVISION_HISTORY_ID}`;
-  }
 
   async function loadStatus() {
     const result = await callOperation(consentStatus, {});
@@ -138,13 +132,6 @@
               {@const title = t(doc.kind === 'terms' ? 'termsTitle' : 'privacyTitle')}
               <br />{title}
               <span class="mono">{t('legalRevised', { date: doc.version })}</span>
-              <!-- eslint-disable-next-line svelte/no-navigation-without-resolve -- href は resolve した経路に、履歴の節の id（ハッシュ）を足したもの -->
-              <a href={historyHref(doc.kind)} target="_blank" rel="noopener noreferrer"
-                >{t('consentRevisedHistory')}<span class="visually-hidden">
-                  {t('consentRevisedHistoryOf', { document: title })}
-                  {t('markdownNewTab')}</span
-                ></a
-              >
             {/each}</span
           >
         </div>

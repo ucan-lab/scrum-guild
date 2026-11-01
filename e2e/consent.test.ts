@@ -70,7 +70,7 @@ test.describe('本物の API', () => {
     await expect(submit).toHaveAttribute('aria-disabled', 'true');
     await expect(submit).toHaveAttribute('aria-describedby', 'consent-submit-hint');
     await expect(page.locator('#consent-submit-hint')).toHaveText(
-      '利用規約とプライバシーポリシーを確認し、印を付けてください。',
+      '利用規約とプライバシーポリシーを確認し、チェックしてください。',
     );
     await checkbox.check();
     await expect(submit).toHaveAttribute('aria-disabled', 'false');
@@ -81,7 +81,7 @@ test.describe('本物の API', () => {
     await checkbox.uncheck();
     await expect(submit).toHaveAttribute('aria-describedby', 'consent-submit-hint');
     await expect(page.locator('#consent-submit-hint')).toHaveText(
-      '利用規約とプライバシーポリシーを確認し、印を付けてください。',
+      '利用規約とプライバシーポリシーを確認し、チェックしてください。',
     );
     await checkbox.check();
     await submit.click();
@@ -94,7 +94,7 @@ test.describe('本物の API', () => {
     await expect(page.locator('.panel-note .mono')).toHaveText(/^\d{4}\/\d{2}\/\d{2}\s\d{2}:\d{2}$/);
   });
 
-  test('旧い版に同意した人が開くと、改めたことと改定日と改定の履歴へのリンクが出て、同意すると return_to に戻る', async ({
+  test('旧い版に同意した人が開くと、改めたことと文書の名前と改定日が出て、履歴へのリンクは出ず、同意すると return_to に戻る', async ({
     page,
     context,
     baseURL,
@@ -104,15 +104,11 @@ test.describe('本物の API', () => {
     await page.goto('/consent?return_to=%2Faoba');
     const revised = page.locator('.callout.is-info');
     await expect(revised).toContainText('利用規約とプライバシーポリシーが改められました');
+    await expect(revised).toContainText(`利用規約 改定日: ${TERMS_VERSION}`);
+    await expect(revised).toContainText(`プライバシーポリシー 改定日: ${PRIVACY_VERSION}`);
     await expect(revised.locator('.mono')).toHaveText([`改定日: ${TERMS_VERSION}`, `改定日: ${PRIVACY_VERSION}`]);
-    const termsHistory = revised.getByRole('link', { name: /^改定の履歴を見る.*利用規約.*新しいタブで開きます$/ });
-    await expect(termsHistory).toHaveAttribute('href', '/terms#revision-history');
-    await expect(termsHistory).toHaveAttribute('target', '_blank');
-    const privacyHistory = revised.getByRole('link', {
-      name: /^改定の履歴を見る.*プライバシーポリシー.*新しいタブで開きます$/,
-    });
-    await expect(privacyHistory).toHaveAttribute('href', '/privacy#revision-history');
-    await expect(privacyHistory).toHaveAttribute('target', '_blank');
+    await expect(revised.getByRole('link')).toHaveCount(0);
+    await expect(page.getByRole('link', { name: /改定の履歴を見る/ })).toHaveCount(0);
     // 案内は主文の上に出る
     const lead = page.getByText('を使うには、利用規約とプライバシーポリシーを確認してください。');
     expect((await revised.boundingBox())?.y).toBeLessThan((await lead.boundingBox())?.y ?? 0);
@@ -132,9 +128,10 @@ test.describe('本物の API', () => {
     await page.goto('/consent');
     const revised = page.locator('.callout.is-info');
     await expect(revised).toContainText('利用規約が改められました');
+    await expect(revised).toContainText(`利用規約 改定日: ${TERMS_VERSION}`);
     await expect(revised).not.toContainText('プライバシーポリシー');
     await expect(revised.locator('.mono')).toHaveText([`改定日: ${TERMS_VERSION}`]);
-    await expect(revised.getByRole('link')).toHaveCount(1);
+    await expect(revised.getByRole('link')).toHaveCount(0);
   });
 
   test('プライバシーポリシーだけが旧い版の人には、プライバシーポリシーだけを改めたと案内する', async ({
@@ -148,10 +145,9 @@ test.describe('本物の API', () => {
     const revised = page.locator('.callout.is-info');
     // 見出しは完全一致で確かめる。部分一致だと、両方改めたときの見出し（「利用規約とプライバシーポリシーが…」）でも通る
     await expect(revised.locator('b')).toHaveText('プライバシーポリシーが改められました');
+    await expect(revised).toContainText(`プライバシーポリシー 改定日: ${PRIVACY_VERSION}`);
     await expect(revised.locator('.mono')).toHaveText([`改定日: ${PRIVACY_VERSION}`]);
-    const history = revised.getByRole('link');
-    await expect(history).toHaveCount(1);
-    await expect(history).toHaveAttribute('href', '/privacy#revision-history');
+    await expect(revised.getByRole('link')).toHaveCount(0);
   });
 
   test('同意の行が無い人（初めて同意する人）には、改めた案内を出さない', async ({ page, context, baseURL }) => {
@@ -219,7 +215,7 @@ test('版が上がった直後の同意は 409 で断られ、読み直した版
     'consent-submit-hint',
   );
   await expect(page.locator('#consent-submit-hint')).toHaveText(
-    '利用規約とプライバシーポリシーを確認し、印を付けてください。',
+    '利用規約とプライバシーポリシーを確認し、チェックしてください。',
   );
 });
 
