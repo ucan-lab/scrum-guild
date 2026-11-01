@@ -101,6 +101,8 @@ export const pointers: Pointers = {
     timezone: 'Asia/Tokyo',
     leader_user_id: target.admin.userId,
   }),
+  // 呼んだ人自身の users.theme を書く。入力は組織の中の行を指さない（人は ID でなく呼んだ人で決まる）
+  'me-theme-update': { noReference: { theme: 'medieval' } },
   'organization-holiday-list': { noReference: {} },
   // 日付は組織の中の行を指さない（登録済みなら飛ばすだけで成功する）
   'organization-holiday-add': { noReference: { holidays: [{ holiday_on: '2026-11-03', name: '文化の日' }] } },

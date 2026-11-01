@@ -6,6 +6,7 @@ import {
   createMyOrganizationConflictReasons,
   type CreateMyOrganizationConflictReason,
 } from './create-my-organization.ts';
+import { meThemeUpdate } from './me-theme-update.ts';
 import { myOrganizations } from './my-organizations.ts';
 import { organizationInfo } from './organization.ts';
 import { organizationHistory } from './organization-history.ts';
@@ -19,6 +20,7 @@ export {
   createMyOrganizationConflictReasonOf,
   createMyOrganizationConflictReasons,
   type CreateMyOrganizationConflictReason,
+  meThemeUpdate,
   myOrganizations,
   organizationHistory,
   organizationHolidayAdd,
@@ -37,6 +39,7 @@ export const organizationOperations: readonly AnyOperationDefinition[] = [
   myOrganizations,
   createMyOrganization,
   organizationInfo,
+  meThemeUpdate,
   organizationHolidayList,
   organizationHolidayAdd,
   organizationHolidayDelete,

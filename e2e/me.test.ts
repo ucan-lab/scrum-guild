@@ -142,14 +142,15 @@ test.describe('自分の設定（ミナト）', () => {
     const rows = page.getByRole('table', { name: '経験値の明細' }).locator('tbody tr');
     await expect(rows).toHaveCount(50);
     // 知らせの領域は押す前から置き、失敗したときに文字だけを入れる（読み上げに確かに伝えるため）
-    await expect(page.getByRole('alert')).toHaveText('');
+    const ledgerAlert = page.getByRole('region', { name: '経験値の明細' }).getByRole('alert');
+    await expect(ledgerAlert).toHaveText('');
     await page.getByRole('button', { name: '続きを読む' }).click();
-    await expect(page.getByRole('alert')).toHaveText('続きを読み込めませんでした。もう一度試してください');
+    await expect(ledgerAlert).toHaveText('続きを読み込めませんでした。もう一度試してください');
     await expect(page.locator('.callout.is-warn', { hasText: '続きを読み込めませんでした' })).toBeVisible();
     await expect(rows).toHaveCount(50);
     await page.getByRole('button', { name: '続きを読む' }).click();
     await expect(rows).toHaveCount(52);
-    await expect(page.getByRole('alert')).toHaveText('');
+    await expect(ledgerAlert).toHaveText('');
   });
 
   test('明細が無ければ空の状態を出す', async ({ page }) => {
@@ -174,7 +175,7 @@ test.describe('自分の設定（ミナト）', () => {
     }
     await page.goto('/hibari/me');
     await expect(page.getByRole('heading', { level: 1, name: '自分の設定' })).toBeVisible();
-    await expect(page.getByText('今は経験値と API トークンだけを扱えます。')).toBeVisible();
+    await expect(page.getByText('今は経験値、API トークン、テーマ、届いた招待を扱えます。')).toBeVisible();
     await expect(page.getByText('レベルを読み込めませんでした')).toBeVisible();
     await expect(page.getByText('経験値の明細を読み込めませんでした')).toBeVisible();
     const retrySummary = page.getByRole('button', { name: 'もう一度試す（レベル）' });
@@ -264,7 +265,7 @@ test.describe('自分の設定（ミナト）', () => {
       const table = page.getByRole('table', { name: '経験値の明細' });
       await expect(table.locator('tbody tr')).toHaveCount(50);
       // 説明は表の上（.setting の見出しの列に入れない）
-      await expect(page.locator('.setting')).toHaveCount(0);
+      await expect(page.locator('.setting').filter({ has: table })).toHaveCount(0);
       const sizes = await page.evaluate(() => {
         const ledger = document.querySelector('table[aria-label="経験値の明細"]')!;
         const wrap = ledger.closest('.table-wrap')!;
