@@ -100,8 +100,8 @@ describe('定義', () => {
       permission: 'login',
       rateLimit: { max: 30, windowSeconds: 600 },
     });
-    // トークンでも呼べ、同意の門も通る
-    expect(createMyOrganization).not.toHaveProperty('cookieOnly');
+    // 画面（Cookie）からだけ呼べる（2026-11-01 に人が決めた。お試しの枠はトークンの持ち主の判断なしに使わせない）。同意の門は通る
+    expect(createMyOrganization).toMatchObject({ cookieOnly: true });
     expect(createMyOrganization).not.toHaveProperty('skipsConsent');
   });
 
@@ -516,25 +516,16 @@ describe('権限', () => {
     expect(await organizationsOf(member.accountId)).toHaveLength(0);
   });
 
-  test('write の API トークンでも呼べる', async () => {
+  test.each(['write', 'read'] as const)('%s の API トークンは 403 で、組織を作らない（cookieOnly）', async (scope) => {
     const member = await newMember();
     const slug = newSlug();
     const res = await post(app, createMyOrganization, {
-      bearer: await bearerFor(member, 'write'),
+      bearer: await bearerFor(member, scope),
       body: { slug, name: '青葉工房' },
-    });
-    expect(res.status).toBe(200);
-    expect((await organizationRow(slug))?.created_by_account_id).toBe(member.accountId);
-  });
-
-  test('read の API トークンは 403 で、組織を作らない', async () => {
-    const member = await newMember();
-    const res = await post(app, createMyOrganization, {
-      bearer: await bearerFor(member, 'read'),
-      body: { slug: newSlug(), name: '青葉工房' },
     });
     expect(res.status).toBe(403);
     expect(await errorCodeOf(res)).toBe('forbidden');
+    expect(await organizationRow(slug)).toBeUndefined();
     expect(await organizationsOf(member.accountId)).toHaveLength(0);
   });
 });

@@ -21,6 +21,8 @@ export const createMyOrganization = defineOperation({
   mode: 'write',
   permission: 'login',
   rateLimit: { max: 30, windowSeconds: 600 },
+  // お試しの枠は一度使うとアカウントでは戻せないので、本人が画面で操作したときだけ使う（API トークンでは呼べない）
+  cookieOnly: true,
   input: z.object({
     slug: z.string().max(SLUG_MAX_LENGTH * 2),
     name: z
