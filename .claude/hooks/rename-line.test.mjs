@@ -65,12 +65,12 @@ describe('rename-line.mjs（偽の gh と pbcopy）', () => {
     test('--issue と --pr なら PR の後の形で、題は Issue のまま', () => {
       const r = run(['--issue', '661', '--pr', '663']);
       assert.equal(r.stdout, '/rename #661 PR #663 招待する\n');
-      assert.ok(!r.ghCalls.includes('/pulls/'), 'Issue があるときは PR のタイトルを引かない');
-      assert.ok(!/\b(issue|pr) view\b/.test(r.ghCalls), 'GraphQL を使う gh issue view と gh pr view を呼ばない');
+      assert.equal(r.ghCalls, 'api repos/{owner}/{repo}/issues/661 --jq .title\n', 'Issue の題だけを REST で引き、PR のタイトルは引かない');
     });
     test('--pr だけなら Issue の無い PR の形で、PR のタイトルを使う', () => {
       const r = run(['--pr', '663']);
       assert.equal(r.stdout, '/rename PR #663 feat: 招待\n');
+      assert.equal(r.ghCalls, 'api repos/{owner}/{repo}/pulls/663 --jq .title\n', 'PR のタイトルだけを REST で引く');
     });
     test('題の制御文字は取り除かれる', () => {
       const r = run(['--issue', '661'], { GH_ISSUE_TITLE: `a\u001b[201~${RLO}b` });
@@ -103,6 +103,12 @@ describe('rename-line.mjs（偽の gh と pbcopy）', () => {
   describe('gh の失敗', () => {
     test('Issue の題を引けなければ失敗し、何も出さない', () => {
       const r = run(['--issue', '661'], { GH_FAIL: '1' });
+      assert.equal(r.status, 1);
+      assert.equal(r.stdout, '');
+      assert.ok(r.stderr.includes('gh で Issue か PR の題を引けませんでした'));
+    });
+    test('PR のタイトルを引けなければ失敗し、何も出さない', () => {
+      const r = run(['--pr', '663'], { GH_FAIL: '1' });
       assert.equal(r.status, 1);
       assert.equal(r.stdout, '');
       assert.ok(r.stderr.includes('gh で Issue か PR の題を引けませんでした'));
