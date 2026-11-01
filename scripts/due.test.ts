@@ -1,7 +1,7 @@
 // 期日の判定（src/shared/due.ts）。Worker と画面の両方が使うので、Node でも確かめる
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
-import { dueStatus, isCalendarDate, weekEndOf } from '../src/shared/due.ts';
+import { daysBetween, dueStatus, isCalendarDate, weekEndOf } from '../src/shared/due.ts';
 
 describe('isCalendarDate', () => {
   test('暦に存在する日付だけ通す', () => {
@@ -64,6 +64,30 @@ describe('weekEndOf', () => {
     assert.throws(() => weekEndOf('2026-10-26', 7), RangeError);
     assert.throws(() => weekEndOf('2026-10-26', -1), RangeError);
     assert.throws(() => weekEndOf('2026-10-26', 1.5), RangeError);
+  });
+});
+
+describe('daysBetween', () => {
+  test('to が後なら正、同じ日なら 0、前なら負', () => {
+    assert.equal(daysBetween('2026-10-26', '2026-10-27'), 1);
+    assert.equal(daysBetween('2026-10-26', '2026-10-26'), 0);
+    assert.equal(daysBetween('2026-10-27', '2026-10-26'), -1);
+  });
+
+  test('月、年、閏日をまたぐ', () => {
+    assert.equal(daysBetween('2026-10-31', '2026-11-01'), 1);
+    assert.equal(daysBetween('2026-12-31', '2027-01-01'), 1);
+    assert.equal(daysBetween('2028-02-28', '2028-03-01'), 2);
+    assert.equal(daysBetween('2027-02-28', '2027-03-01'), 1);
+  });
+
+  test('遠い過去でも通し番号の差で求める', () => {
+    assert.equal(daysBetween('0001-01-01', '2026-11-01'), 739_920);
+  });
+
+  test('暦に存在しない日付は例外', () => {
+    assert.throws(() => daysBetween('2026-02-30', '2026-03-01'), RangeError);
+    assert.throws(() => daysBetween('2026-03-01', 'x'), RangeError);
   });
 });
 
