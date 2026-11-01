@@ -213,6 +213,7 @@
                 <tr>
                   <td class="is-name">
                     {organization.name}
+                    {#if organization.self_created}<span class="chip">{t('operatorSelfCreated')}</span>{/if}
                     {#if organization.suspended_at}
                       <span class="chip is-warn"
                         >{t('operatorSuspended', { date: formatUtcDate(organization.suspended_at) })}</span

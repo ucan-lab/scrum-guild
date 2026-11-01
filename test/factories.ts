@@ -42,7 +42,9 @@ export type OrganizationFixture = Row<CommonTables, 'organizations'> & {
 
 export async function createOrganization(overrides: Partial<Row<CommonTables, 'organizations'>> = {}) {
   const id = overrides.id ?? uuidv7();
-  const row: Row<CommonTables, 'organizations'> = {
+  // 作った人のアカウントとお試しの期限は、渡さなければ列を省いて NULL にする（運用者が作った組織の形）
+  const row: Omit<Row<CommonTables, 'organizations'>, 'created_by_account_id' | 'trial_ends_on'> &
+    Partial<Pick<Row<CommonTables, 'organizations'>, 'created_by_account_id' | 'trial_ends_on'>> = {
     id,
     slug: `org-${id.slice(-8)}`,
     name: '青葉工房',
@@ -62,7 +64,12 @@ export async function createOrganization(overrides: Partial<Row<CommonTables, 'o
   };
   const db = commonDb(env);
   await db.run(db.statement((q) => q.insertInto('organizations').values(row)));
-  return { ...row, verified: verifiedOrganizationForTest(row.id) } satisfies OrganizationFixture;
+  return {
+    created_by_account_id: null,
+    trial_ends_on: null,
+    ...row,
+    verified: verifiedOrganizationForTest(row.id),
+  } satisfies OrganizationFixture;
 }
 
 // createAccount が足す同意の行の日時

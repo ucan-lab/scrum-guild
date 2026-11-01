@@ -4,7 +4,7 @@
 // 組織の外の操作は、入力が必須の項目を持つときだけ足す（運用者の操作は、成功する入力を作る）
 import { env } from 'cloudflare:workers';
 import { PRIVACY_VERSION, TERMS_VERSION } from '../../src/lib/legal/versions.ts';
-import { orgDb } from '../../src/server/db/index.ts';
+import { commonDb, orgDb } from '../../src/server/db/index.ts';
 import { createFakeGithub } from '../auth/fake-github.ts';
 import { githubUser } from '../auth/helpers.ts';
 import {
@@ -228,6 +228,20 @@ export const pointers: Pointers = {
       name: '分離の検査の組織',
       admin: { provider: 'github', username: user.login, login_subject: String(user.id) },
     };
+  },
+  // お試し中の組織は1アカウントにつき1つまでなので、同じ運用者が一覧の検査で何度も成功させられるよう、
+  // 呼ぶ前にその人が作った組織のお試しを終えた状態（trial_ends_on が NULL）にして、slug は呼ぶたびに別の値にする
+  'create-my-organization': async (_target, caller) => {
+    const db = commonDb(env);
+    await db.run(
+      db.statement((q) =>
+        q
+          .updateTable('organizations')
+          .set({ trial_ends_on: null })
+          .where('created_by_account_id', '=', caller.accountId),
+      ),
+    );
+    return { slug: `mine-${crypto.randomUUID().slice(0, 8)}`, name: '分離の検査の組織' };
   },
   // 停止と再開は、呼ぶたびに別の組織を作る（対象の組織を停止すると、同じ describe の運用者でない人の検査が、組織の停止の 403 や 404 になるため。
   // 停止済みの組織を停止する、停止していない組織を再開するのは 409 になる）

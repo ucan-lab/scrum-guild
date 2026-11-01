@@ -18,6 +18,103 @@ export type NewOrganization = {
 
 export type CreatedOrganization = { organizationId: string; db: OrganizationDb };
 
+// 自分で作った組織の created_by_operator に入れる値。運用者のログインの ID（`github:12345` の形）と重ならない
+export const SELF_SERVICE_CREATOR = 'self-service';
+
+export type NewSelfCreatedOrganization = {
+  slug: string;
+  name: string;
+  accountId: string;
+  now: Date;
+};
+
+// 自分で作る組織。お試し中の組織が1つまでの上限に当たれば 'trial_limit'、slug が重なれば 'slug_taken'
+export async function insertSelfCreatedOrganization(
+  env: Env,
+  input: NewSelfCreatedOrganization,
+): Promise<CreatedOrganization | 'slug_taken' | 'trial_limit'> {
+  const organizationId = uuidv7(input.now.getTime());
+  const at = input.now.toISOString();
+  const trialEndsOn = new Date(input.now.getTime() + 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  const common = commonDb(env);
+  try {
+    // 上限の確かめと INSERT を1文にする。読んでから書くと、同じアカウントの同時の作成が揃って通る
+    const [result] = await common.batch([
+      common.statement((q) =>
+        q
+          .insertInto('organizations')
+          .columns([
+            'id',
+            'slug',
+            'name',
+            'vocabulary',
+            'created_by_operator',
+            'created_by_account_id',
+            'trial_ends_on',
+            'created_at',
+            'updated_at',
+          ])
+          .expression(
+            q
+              .selectNoFrom((eb) => [
+                eb.val(organizationId).as('id'),
+                eb.val(input.slug).as('slug'),
+                eb.val(input.name).as('name'),
+                eb.val(VOCABULARY_COLUMN_VALUE).as('vocabulary'),
+                eb.val(SELF_SERVICE_CREATOR).as('created_by_operator'),
+                eb.val(input.accountId).as('created_by_account_id'),
+                eb.val(trialEndsOn).as('trial_ends_on'),
+                eb.val(at).as('created_at'),
+                eb.val(at).as('updated_at'),
+              ])
+              .where((eb) =>
+                eb.not(
+                  eb.exists(
+                    eb
+                      .selectFrom('organizations')
+                      .select('id')
+                      .where('created_by_account_id', '=', input.accountId)
+                      .where('trial_ends_on', 'is not', null),
+                  ),
+                ),
+              ),
+          ),
+      ),
+    ] as const);
+    if (result.changes === 0) return 'trial_limit';
+  } catch (err) {
+    let existing: { id: string } | undefined;
+    try {
+      existing = await common.first(
+        common.statement((q) => q.selectFrom('organizations').select('id').where('slug', '=', input.slug)),
+      );
+    } catch {
+      throw new Error('slug の行を読み直せなかったので、組織を作れたか分からない', { cause: err });
+    }
+    if (existing === undefined) throw err;
+    if (existing.id !== organizationId) return 'slug_taken';
+  }
+  return { organizationId, db: orgDb(env, issueVerifiedOrganization(organizationId)) };
+}
+
+// insertSelfCreatedOrganization が挿入した組織の行を消す補償。最初の管理者を書けなかったときに、管理者のいない組織と
+// お試しの枠が残らないよう戻す。ID と作ったアカウントで絞るので、他の組織の行は消さない。
+// 組織の中の表の行が結んでいれば外部キーが断り、例外を投げる（行は残る）
+export async function deleteSelfCreatedOrganization(
+  env: Env,
+  input: { organizationId: string; accountId: string },
+): Promise<void> {
+  const common = commonDb(env);
+  await common.batch([
+    common.statement((q) =>
+      q
+        .deleteFrom('organizations')
+        .where('id', '=', input.organizationId)
+        .where('created_by_account_id', '=', input.accountId),
+    ),
+  ] as const);
+}
+
 // 言葉づかいの列（vocabulary）には VOCABULARY_COLUMN_VALUE を明示して入れる。
 // 人数と添付ファイルの上限、テーマは列の既定の値で作る。
 // slug が重なったときは 'slug_taken'（同時に作られて UNIQUE に当たった場合を含む）。それ以外の失敗は投げる

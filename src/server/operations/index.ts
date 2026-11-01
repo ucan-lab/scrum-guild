@@ -21,6 +21,7 @@ import {
   organizationSuspendOperation,
   organizationSuspensionUpdateOperation,
 } from './operator-suspension.ts';
+import { createMyOrganizationOperation } from './create-my-organization.ts';
 import { myOrganizationsOperation, organizationInfoOperation } from './organization.ts';
 import { todayOperation } from './today.ts';
 import { firstStepsOperation } from './first-steps.ts';
@@ -112,6 +113,7 @@ const listedOperations: readonly ImplementedOperation[] = [
   organizationAdminReassignOperation,
   organizationQuotaUpdateOperation,
   myOrganizationsOperation,
+  createMyOrganizationOperation,
   organizationInfoOperation,
   meThemeUpdateOperation,
   todayOperation,

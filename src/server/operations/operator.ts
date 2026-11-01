@@ -37,6 +37,7 @@ export const listOrganizationsOperation = implement(listOrganizations, async ({ 
           'id',
           'slug',
           'name',
+          'created_by_account_id',
           'suspended_at',
           'purge_on',
           'created_at',
@@ -55,6 +56,7 @@ export const listOrganizationsOperation = implement(listOrganizations, async ({ 
     organizations: rows.map((row) => ({
       slug: row.slug,
       name: row.name,
+      self_created: row.created_by_account_id !== null,
       suspended_at: row.suspended_at,
       purge_on: row.purge_on,
       purge_due: row.suspended_at !== null && isPurgeDue(row.purge_on, at),

@@ -4,6 +4,7 @@
   import { page } from '$app/state';
   import AccountMenu from '../../lib/components/AccountMenu.svelte';
   import AppShell from '../../lib/components/AppShell.svelte';
+  import CreateMyOrganizationDialog from '../../lib/components/CreateMyOrganizationDialog.svelte';
   import EmptyState from '../../lib/components/EmptyState.svelte';
   import Gate from '../../lib/components/Gate.svelte';
   import GateSheet from '../../lib/components/GateSheet.svelte';
@@ -38,13 +39,12 @@
     if (organization) applyOrganization(organization);
   });
 
-  // 切り替えは、入れる組織が2つ以上あるか、届いた招待があるときに出す（招待は組織の選択の画面で見る）
-  const switcherOrganizations = $derived(
-    data.organizations !== null &&
-      (data.organizations.organizations.length > 1 || data.organizations.invitations.length > 0)
-      ? data.organizations.organizations
-      : null,
-  );
+  // 切り替えは、入れる組織の一覧が読めたときに出す。入れる組織が1つで招待が無い人も、ここから「組織を作る」を開く
+  // （その人は / を開くとこの組織へ移り、組織の選択の画面に届かない）。
+  // ダイアログは、メニューを閉じても残るよう、切り替えの外（枠）に置く
+  const switcherOrganizations = $derived(data.organizations !== null ? data.organizations.organizations : null);
+  let createDialog = $state<ReturnType<typeof CreateMyOrganizationDialog>>();
+  let createDialogOpen = $state(false);
 </script>
 
 <!-- 組織の中の画面は、それぞれの題名を持つ。見つからない画面だけが、ここで題名を決める -->
@@ -68,6 +68,7 @@
         currentSlug={data.slug}
         fallbackName={organization.organization.name}
         invited={(data.organizations?.invitations.length ?? 0) > 0}
+        oncreate={(trigger) => createDialog?.show(trigger)}
       />
     {/if}
   {/snippet}
@@ -101,6 +102,9 @@
   >
     {@render children()}
   </AppShell>
+  {#if switcherOrganizations}
+    <CreateMyOrganizationDialog bind:this={createDialog} bind:open={createDialogOpen} />
+  {/if}
 {:else if notFound}
   <Gate>
     <GateSheet brand title={t('organizationNotFoundTitle')}>

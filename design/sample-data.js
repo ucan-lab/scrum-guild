@@ -332,6 +332,8 @@ Object.assign(window.SQ_DATA, {
       { slug: "aoba", name: "あおば開発", users: 5, limit: 15, wss: 3, tasks: 1284, quota: 30, lastUsed: "2026/10/20 09:12", created: "2026/06/01 09:00", admins: 2 },
       { slug: "hibari", name: "ひばり工房", users: 15, limit: 15, wss: 1, tasks: 212, quota: 30, lastUsed: "2026/10/19 18:40", created: "2026/09/15 10:20", admins: 1, adminPending: true },
       { slug: "tsubame", name: "つばめ商会", users: 1, limit: 15, wss: 0, tasks: 0, quota: 30, lastUsed: null, created: "2026/10/05 14:05", admins: 1, adminExpired: true },
+      // 会員が自分で作った組織（self_created）。名前に「自分で作った組織」の印が付く
+      { slug: "kaze-labo", name: "かぜラボ", users: 1, limit: 15, wss: 0, tasks: 0, quota: 30, lastUsed: "2026/10/21 08:30", created: "2026/10/21 08:20", admins: 1, selfCreated: true },
       { slug: "kumo-lab", name: "くもラボ", users: 38, limit: 50, wss: 4, tasks: 3410, quota: 100, lastUsed: "2026/10/18 11:03", created: "2026/07/10 09:45", admins: 0 },
       { slug: "nagi", name: "なぎ設計", users: 2, limit: 15, wss: 1, tasks: 96, quota: 30, lastUsed: "2026/09/02 15:21", created: "2026/08/01 16:30", admins: 1, suspended: "2026-09-30", purgeOn: "2026-10-30" },
       // 消す予定日を過ぎた解約の組織（purgeDue）。管理者の指名、再開、停止の理由の切り替えを出さず、できない理由を出す

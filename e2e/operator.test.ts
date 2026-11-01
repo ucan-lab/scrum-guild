@@ -38,6 +38,7 @@ const organization = (overrides: Partial<ListedOrganization>): ListedOrganizatio
   task_count: 1284,
   attachment_quota_bytes: 32212254720,
   last_used_at: '2026-10-20T00:12:00.000Z',
+  self_created: false,
   ...overrides,
 });
 

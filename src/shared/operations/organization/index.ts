@@ -1,5 +1,11 @@
 // 組織の選択と組織の枠、組織の管理の画面が使う操作の定義
 import type { AnyOperationDefinition } from '../define.ts';
+import {
+  createMyOrganization,
+  createMyOrganizationConflictReasonOf,
+  createMyOrganizationConflictReasons,
+  type CreateMyOrganizationConflictReason,
+} from './create-my-organization.ts';
 import { firstSteps } from './first-steps.ts';
 import { meThemeUpdate } from './me-theme-update.ts';
 import { myOrganizations } from './my-organizations.ts';
@@ -11,6 +17,10 @@ import { userAdminUpdate, userDisable, userEnable, userList } from './user.ts';
 import { today } from './today.ts';
 
 export {
+  createMyOrganization,
+  createMyOrganizationConflictReasonOf,
+  createMyOrganizationConflictReasons,
+  type CreateMyOrganizationConflictReason,
   firstSteps,
   meThemeUpdate,
   myOrganizations,
@@ -29,6 +39,7 @@ export {
 
 export const organizationOperations: readonly AnyOperationDefinition[] = [
   myOrganizations,
+  createMyOrganization,
   organizationInfo,
   meThemeUpdate,
   organizationHolidayList,
