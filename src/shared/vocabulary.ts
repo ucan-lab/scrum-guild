@@ -1002,6 +1002,13 @@ export const dictionary = defineDictionary({
   consentSubmitHint: '利用規約とプライバシーポリシーを確認し、印を付けてください。',
   consentLoadFailed: '同意の状態を読み込めませんでした。もう一度試してください。',
   consentRecordFailed: '同意を記録できませんでした。もう一度試してください。',
+  // 前の版に同意した人が開いたときの「改めました」の案内（改めた文書の名前は termsTitle、privacyTitle、改定日は legalRevised を使う）。
+  // 履歴へのリンクの読み上げは「改定の履歴を見る （利用規約） 新しいタブで開きます」で、どの文書の履歴かを補う
+  consentRevisedTerms: '利用規約が改められました',
+  consentRevisedPrivacy: 'プライバシーポリシーが改められました',
+  consentRevisedBoth: '利用規約とプライバシーポリシーが改められました',
+  consentRevisedHistory: '改定の履歴を見る',
+  consentRevisedHistoryOf: '（{document}）',
 
   // テーマ
   themeLabel: 'テーマ',

@@ -1463,8 +1463,9 @@ a.choice > div > span, .choice.is-static > div > span { display: block; }
 /* 長い文を読む画面（利用規約とプライバシーポリシー）。日本語の1行が長すぎない 720px までに紙の幅を広げる。狭い画面では画面の幅に収める */
 .gate.is-reading .gate-stack, .gate.is-reading .gate-sheet { width: min(720px, 100%); }
 /* 紙の中に直に置いた Markdown の本文（.doc-box）は、紙が枠なので、自分の枠と余白を外す。条の見出しの前は広く空けて、読む区切りにする */
-.gate-sheet > .doc-box { border: 0; border-radius: 0; padding: 0; font-size: var(--text-md); gap: var(--space-3); }
-.gate-sheet > .doc-box :is(h1, h2, h3, h4, h5, h6):not(:first-child) { margin-top: var(--space-4); }
+/* .doc-section は、id を付けて行き先にする節（利用規約の「改定の履歴」）。中の本文は紙の直下と同じ見た目にする */
+.gate-sheet > .doc-box, .gate-sheet > .doc-section > .doc-box { border: 0; border-radius: 0; padding: 0; font-size: var(--text-md); gap: var(--space-3); }
+.gate-sheet > .doc-box :is(h1, h2, h3, h4, h5, h6):not(:first-child), .gate-sheet > .doc-section > .doc-box :is(h1, h2, h3, h4, h5, h6):not(:first-child) { margin-top: var(--space-4); }
 .btn.is-wide { width: 100%; padding-block: 10px; }
 
 /* ===== 知らせ（トースト） ===== */
