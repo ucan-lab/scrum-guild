@@ -398,11 +398,166 @@ describe('gallery.mjs', () => {
     },
   );
 
+  test(
+    '完了済みの画面: 判定の一覧、件数、結果に入らず、戻すと入り、戻した状態は開き直しても残る',
+    { skip: !existsSync(chromium.executablePath()) && 'Playwright の chromium が無い' },
+    async () => {
+      const files = {
+        'manifest.json': JSON.stringify({
+          judge: true,
+          items: [
+            { issue: 575, title: '済んだもの', video: 'issue-575.mp4', done: true },
+            { issue: 576, title: '済んだが撮れず', failed: '要素が見つからない', done: true },
+            video,
+          ],
+        }),
+        'issue-574.mp4': 'dummy',
+        'issue-575.mp4': 'dummy',
+      };
+      const browser = await chromium.launch();
+      try {
+        await inTempDirAsync(files, async (path) => {
+          const dir = join(path('manifest.json'), '..');
+          assert.equal(run(dir).status, 0);
+          const page = await browser.newPage();
+          const result = () => page.locator('#result').inputValue();
+          const counts = () => page.locator('#counts').textContent();
+          const open = () => page.goto(pathToFileURL(path('index.html')).href);
+          // 判定の対象と完了済みが、別の枠に並ぶ
+          const tabIds = () => page.$$eval('[role=tab]', (tabs) => tabs.map((tab) => tab.id));
+          const rowIds = (list: string) =>
+            page.$$eval(`#${list} [data-goto]`, (rows) => rows.map((row) => row.getAttribute('data-goto')));
+          await open();
+          assert.deepEqual(await tabIds(), ['tab-status', 'tab-574', 'tab-575', 'tab-576']);
+          assert.equal(await page.locator('#tabs-sep').isVisible(), true);
+          assert.equal(await page.locator('#done-heading').isVisible(), true);
+          assert.deepEqual(await rowIds('rows-active'), ['574']);
+          assert.deepEqual(await rowIds('rows-done'), ['575', '576']);
+          // 完了済みは、件数にも結果の文にも入らず、一覧のバッジも出ない
+          assert.equal(await counts(), 'ok 0 件、ng 0 件、未判定 1 件');
+          assert.doesNotMatch(await result(), /#575|#576/);
+          assert.match(await result(), /#574 .*: 未判定/);
+          assert.equal(await page.locator('[data-badge="575"]').evaluate((el) => (el as HTMLElement).hidden), true);
+          // 動画は見直せるが、判定の欄は隠れ、戻すボタンがある
+          await page.click('#tab-575');
+          assert.equal(await page.locator('#panel-575 video').isVisible(), true);
+          assert.equal(await page.locator('#panel-575 .judge').isVisible(), false);
+          assert.equal(await page.locator('#panel-575 [data-return]').isVisible(), true);
+          // 動画の無い完了済みは、note のまま戻すボタンが無い
+          await page.click('#tab-576');
+          assert.match(
+            (await page.locator('#panel-576 .note').first().textContent()) ?? '',
+            /撮れなかった: 要素が見つからない/,
+          );
+          assert.equal(await page.locator('#panel-576 [data-return]').count(), 0);
+          // 戻すと、判定の欄が出て、一覧、件数、結果に入る
+          await page.click('#tab-575');
+          await page.click('#panel-575 [data-return]');
+          assert.equal(await page.locator('#panel-575 .judge').isVisible(), true);
+          assert.equal(await page.locator('#panel-575 [data-return]').isVisible(), false);
+          assert.deepEqual(await rowIds('rows-active'), ['574', '575']);
+          assert.deepEqual(await rowIds('rows-done'), ['576']);
+          assert.deepEqual(await tabIds(), ['tab-status', 'tab-574', 'tab-575', 'tab-576']);
+          assert.equal(await counts(), 'ok 0 件、ng 0 件、未判定 2 件');
+          assert.match(await result(), /#575 済んだもの: 未判定/);
+          assert.doesNotMatch(await result(), /#576/);
+          assert.equal(await page.locator('[data-badge="575"]').evaluate((el) => (el as HTMLElement).hidden), false);
+          await page.click('#panel-575 [data-set=ng]');
+          assert.match(await result(), /ok 0 件、ng 1 件、未判定 1 件/);
+          // 戻した状態と、付けた判定は、開き直しても残る
+          await open();
+          assert.deepEqual(await rowIds('rows-active'), ['574', '575']);
+          assert.deepEqual(await rowIds('rows-done'), ['576']);
+          assert.equal(await counts(), 'ok 0 件、ng 1 件、未判定 1 件');
+          assert.match(await result(), /#575 済んだもの: ng/);
+          await page.click('#tab-575');
+          assert.equal(await page.locator('#panel-575 .judge').isVisible(), true);
+          // 作り直した HTML には、戻した状態を引き継がず、完了済みに戻る
+          assert.equal(run(dir).status, 0);
+          await open();
+          assert.deepEqual(await rowIds('rows-done'), ['575', '576']);
+          assert.equal(await counts(), 'ok 0 件、ng 0 件、未判定 1 件');
+        });
+      } finally {
+        await browser.close();
+      }
+    },
+  );
+
   test('judge は真偽値だけを通す', () => {
     const problems = (judge: unknown): string =>
       (call('validateManifest', { judge, items: [video] }) as string[]).join('\n');
     assert.equal(problems(true), '');
     assert.match(problems('yes'), /judge は true か false/);
+  });
+
+  test('done は真偽値だけを通し、video / skipped / failed の排他とは独立', () => {
+    const problems = (items: unknown[]): string => (call('validateManifest', { items }) as string[]).join('\n');
+    assert.equal(problems([{ ...video, done: true }]), '');
+    assert.equal(problems([{ ...video, done: false }]), '');
+    assert.equal(problems([{ issue: 2, title: 't', skipped: 'r', done: true }]), '');
+    assert.equal(problems([{ issue: 2, title: 't', failed: 'r', done: true }]), '');
+    for (const done of ['true', 1, 0, null, 'yes', []]) {
+      assert.match(problems([{ ...video, done }]), /items\[0\]: done は true か false/, JSON.stringify(done));
+    }
+  });
+
+  test('buildResult は、done の項目を行にも件数にも入れない', () => {
+    const text: string = call('buildResult', [
+      { issue: 574, title: '報酬を変える', status: 'ok', reasons: [], comment: '' },
+      { issue: 575, title: '済んだ', status: '', reasons: [], comment: '', note: '飛ばした: x', done: true },
+      { issue: 576, title: '済んだ ng 扱い', status: 'ng', reasons: ['想定と違う'], comment: 'c', done: true },
+      { issue: 577, title: '未着手', status: '', reasons: [], comment: '', done: false },
+    ]);
+    assert.match(text, /ok 1 件、ng 0 件、未判定 1 件/);
+    assert.deepEqual(
+      text.split('\n').filter((line) => line.startsWith('- #')),
+      ['- #574 報酬を変える: ok', '- #577 未着手: 未判定'],
+    );
+    assert.doesNotMatch(text, /#575|#576|済んだ|想定と違う/);
+  });
+
+  test('完了済みは、判定の対象と別の枠に分かれ、両方があるときだけ見出しとタブの区切りを見せる', () => {
+    const second = { issue: 575, title: '済んだもの', video: 'issue-575.mp4', done: true };
+    const html: string = call('renderGallery', { judge: true, items: [second, video] });
+    // タブも一覧も、判定の対象のあとに完了済みを置く
+    assert.ok(html.indexOf('data-tab="574"') < html.indexOf('id="tabs-sep"'));
+    assert.ok(html.indexOf('id="tabs-sep"') < html.indexOf('data-tab="575"'));
+    assert.ok(html.indexOf('data-goto="574"') < html.indexOf('id="rows-done"'));
+    assert.ok(html.indexOf('id="rows-done"') < html.indexOf('data-goto="575"'));
+    assert.doesNotMatch(html, /id="tabs-sep" role="presentation" hidden/);
+    assert.doesNotMatch(html, /id="done-heading" hidden/);
+    assert.match(html, /<section[^>]*id="panel-575"[^>]*data-done data-was-done hidden>/);
+    assert.doesNotMatch(html, /<section[^>]*id="panel-574"[^>]*data-done/);
+    // 動画の完了済みにだけ戻すボタンが 1 つある
+    assert.equal(html.match(/class="return-btn"/g)?.length, 1);
+    // 判定の対象だけ、完了済みだけのときは、枠を分けない
+    const onlyActive: string = call('renderGallery', { judge: true, items: [video] });
+    assert.doesNotMatch(onlyActive, /id="(tabs-sep|done-heading)"/);
+    const onlyDone: string = call('renderGallery', { judge: true, items: [second] });
+    assert.match(onlyDone, /id="tabs-sep" role="presentation" hidden/);
+    assert.match(onlyDone, /id="done-heading" hidden/);
+  });
+
+  test('judge なしでも done を許し、戻すボタンは出さない。動画の無い完了済みも枠に入り、note の表示は変わらない', () => {
+    const html: string = call('renderGallery', {
+      items: [
+        video,
+        { ...video, issue: 575, video: 'issue-575.mp4', done: true },
+        { issue: 576, title: 's', skipped: '理由', done: true },
+      ],
+    });
+    assert.match(html, /id="tabs-sep" role="presentation">完了済み/);
+    assert.doesNotMatch(html, /class="return-btn"/);
+    assert.match(html, /飛ばした: 理由/);
+    assert.doesNotMatch(html, /動画が無いので、ここでは判定しない/);
+    // 判定ありでも、動画の無い完了済みに戻すボタンは出さない
+    const judged: string = call('renderGallery', {
+      judge: true,
+      items: [video, { issue: 576, title: 's', failed: '理由', done: true }],
+    });
+    assert.doesNotMatch(judged, /class="return-btn"/);
+    assert.doesNotMatch(judged, /動画が無いので、ここでは判定しない/);
   });
 
   test('結果の文は、ok / ng / 未判定の件数と、ng の理由とコメントを含む', () => {

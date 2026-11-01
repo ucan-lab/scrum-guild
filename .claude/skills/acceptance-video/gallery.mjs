@@ -1,9 +1,10 @@
 // 撮った受け入れ動画を、Issue ごとに 1 枚の HTML に並べる。sprint-review で、まとめて撮った動画を見て回るために使う。
 // 使い方: node .claude/skills/acceptance-video/gallery.mjs <動画の置き場所>
 //   <動画の置き場所>/manifest.json を読み、同じ場所に index.html を書いて、開く URL を出す。外のファイルは読み込まない
-// manifest.json: { "title"?: string, "judge"?: boolean, "items": [{ "issue": 番号, "title": Issue の題, "video"?: "issue-番号.mp4", "skipped"?: 理由, "failed"?: 理由, "captions"?: [字幕] }] }
+// manifest.json: { "title"?: string, "judge"?: boolean, "items": [{ "issue": 番号, "title": Issue の題, "video"?: "issue-番号.mp4", "skipped"?: 理由, "failed"?: 理由, "captions"?: [字幕], "done"?: boolean }] }
 //   video、skipped、failed のどれか 1 つだけを持つ。judge が true なら、動画の Issue ごとに ok / ng と理由とコメントを付けられ、結果をプロンプト用の文にしてコピーできる
-//   HTML は Issue ごとのタブと、先頭の「状況」タブ（一覧と判定の進み具合）に分かれる
+//   done が true の Issue は完了済み。判定の一覧、件数、結果の文に入らず、動画は見直せる。judge なら、動画の Issue は「判定の対象に戻す」ボタンで判定の対象へ戻せる
+//   HTML は Issue ごとのタブと、先頭の「状況」タブ（一覧と判定の進み具合）に分かれる。判定の対象と完了済みが両方あれば、一覧もタブも 2 つの枠に分ける
 import { createHash, randomUUID } from 'node:crypto';
 import { existsSync, lstatSync, readFileSync, realpathSync, statSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
@@ -14,7 +15,7 @@ const VIDEO_NAME = /^[A-Za-z0-9._-]+\.mp4$/;
 const MANIFEST_KEYS = ['title', 'judge', 'items'];
 // ng の理由の選択肢。sprint-review の手順 10 の候補の種別（不具合、仕様の穴、要望）に写せる分け方にしてある
 export const NG_REASONS = ['条件を満たさない', '表示が崩れる・動かない', '文言・言葉づかいが違う', '想定と違う', '要望がある'];
-const ITEM_KEYS = ['issue', 'title', 'video', 'skipped', 'failed', 'captions'];
+const ITEM_KEYS = ['issue', 'title', 'video', 'skipped', 'failed', 'captions', 'done'];
 const OUTCOMES = ['video', 'skipped', 'failed'];
 
 const isText = (value) => typeof value === 'string' && value.trim() !== '';
@@ -54,6 +55,7 @@ export function validateManifest(manifest) {
     if (typeof item.video === 'string' && !VIDEO_NAME.test(item.video)) {
       problems.push(`${where}: video は置き場所の直下の .mp4 のファイル名（英数字、ドット、ハイフン、アンダースコア）`);
     }
+    if (item.done !== undefined && typeof item.done !== 'boolean') problems.push(`${where}: done は true か false`);
     if (item.captions !== undefined && !(Array.isArray(item.captions) && item.captions.every(isText))) {
       problems.push(`${where}: captions は空でない文字列の配列`);
     }
@@ -65,10 +67,12 @@ export function validateManifest(manifest) {
 }
 
 /**
- * 判定の結果を、プロンプトに貼る文にする。entries: [{ issue, title, status: 'ok' | 'ng' | '', reasons: [理由], comment, note? }]
+ * 判定の結果を、プロンプトに貼る文にする。entries: [{ issue, title, status: 'ok' | 'ng' | '', reasons: [理由], comment, note?, done? }]
+ * done が true の項目（戻していない完了済み）は、行にも件数にも入れない
  * HTML にそのまま埋め込んで動かすので、外の値を参照しない（toString で写す）。ng でない Issue の理由は出さない
  */
-export function buildResult(entries) {
+export function buildResult(allEntries) {
+  const entries = allEntries.filter((entry) => !entry.done);
   // 題とメモは外の人も書ける。改行を残すと、別の Issue の行を偽れるので、1 行に潰す
   const flat = (text) => String(text).replace(/\s+/g, ' ').trim();
   const count = (status) => entries.filter((entry) => (entry.status || '') === status).length;
@@ -105,47 +109,63 @@ function renderJudge() {
 </div>`;
 }
 
+// 完了済みの Issue に出す帯。戻した後は、パネルの data-done が外れて CSS で隠れる。戻すのは判定できる動画の Issue だけ
+function renderDoneBox(item, judge) {
+  const canReturn = judge && item.video !== undefined;
+  const text = judge ? '完了済み: 判定の一覧、件数、結果の文に入れていない。' : '完了済み。';
+  const back = canReturn
+    ? ' ng を付け直すときは、<button type="button" class="return-btn" data-return>判定の対象に戻す</button>'
+    : '';
+  return `<div class="done-box"><p>${text}${back}</p></div>`;
+}
+
 function renderPanel(item, judge) {
   const heading = `<h2><span class="num">#${item.issue}</span> ${escapeHtml(item.title)}</h2>`;
+  const done = item.done === true;
   let body;
   if (item.video !== undefined) {
     const captions = (item.captions ?? []).map((caption) => `<li>${escapeHtml(caption)}</li>`).join('');
     // 録画の頭は、画面を読み込む前の白い画面なので、再生前のサムネイルを 2 秒目の画面にする
     body = `<video controls preload="metadata" src="${escapeHtml(item.video)}#t=2"></video>${
       captions ? `<ol class="captions">${captions}</ol>` : ''
-    }${judge ? renderJudge() : ''}`;
+    }${done ? renderDoneBox(item, judge) : ''}${judge ? renderJudge() : ''}`;
   } else {
     const kind = kindOf(item);
-    body = `<p class="note ${kind}">${KIND_LABELS[kind]}: ${escapeHtml(item[kind])}</p>${
-      judge ? '<p class="note">動画が無いので、ここでは判定しない。未判定のまま、画面で 1 条件ずつ確かめる。</p>' : ''
+    body = `<p class="note ${kind}">${KIND_LABELS[kind]}: ${escapeHtml(item[kind])}</p>${done ? renderDoneBox(item, judge) : ''}${
+      judge && !done
+        ? '<p class="note">動画が無いので、ここでは判定しない。未判定のまま、画面で 1 条件ずつ確かめる。</p>'
+        : ''
     }`;
   }
   const n = item.issue;
-  return `<section class="card" role="tabpanel" id="panel-${n}" aria-labelledby="tab-${n}" data-issue="${n}" data-title="${escapeHtml(item.title)}" data-note="${escapeHtml(noteOf(item))}" hidden>${heading}${body}</section>`;
+  // data-was-done は、戻した後も残り、戻したことを localStorage に保存する目印になる
+  const doneAttrs = done ? ' data-done data-was-done' : '';
+  return `<section class="card" role="tabpanel" id="panel-${n}" aria-labelledby="tab-${n}" data-issue="${n}" data-title="${escapeHtml(item.title)}" data-note="${escapeHtml(noteOf(item))}"${doneAttrs} hidden>${heading}${body}</section>`;
 }
 
 function renderTab(item) {
   const n = item.issue;
-  return `<button type="button" role="tab" id="tab-${n}" aria-controls="panel-${n}" aria-selected="false" tabindex="-1" data-tab="${n}">#${n}<span class="mark" data-mark="${n}"></span></button>`;
+  return `<button type="button" role="tab" id="tab-${n}"${item.done === true ? ' class="done"' : ''} aria-controls="panel-${n}" aria-selected="false" tabindex="-1" data-tab="${n}">#${n}<span class="mark" data-mark="${n}"></span></button>`;
 }
 
 function renderRow(item, judge) {
   const n = item.issue;
-  const badge = judge ? `<span class="badge" data-badge="${n}">未判定</span>` : '';
+  const badge = judge ? `<span class="badge" data-badge="${n}"${item.done === true ? ' hidden' : ''}>未判定</span>` : '';
   return `<li><button type="button" class="row" data-goto="${n}"><span class="num">#${n}</span><span class="row-title">${escapeHtml(item.title)}</span><span class="kind ${kindOf(item)}">${KIND_LABELS[kindOf(item)]}</span>${badge}</button></li>`;
 }
 
 // タブの切り替え、判定の保存、結果のコピー。データは DOM の data 属性から読む（スクリプトに値を埋め込まない）
 const CLIENT_SCRIPT = String.raw`(function () {
   var judge = document.body.hasAttribute('data-judge');
-  var tabs = [].slice.call(document.querySelectorAll('[role=tab]'));
+  // 判定の対象に戻すとタブの並びが変わるので、タブは使うたびに DOM から取り直す
+  function tabList() { return [].slice.call(document.querySelectorAll('[role=tab]')); }
   var panels = [].slice.call(document.querySelectorAll('[role=tabpanel]'));
   var issuePanels = panels.filter(function (p) { return p.hasAttribute('data-issue'); });
   // 作り直した HTML に、前の判定を引き継がないよう、生成ごとの値をキーに入れる。file:// は同じ origin で共有される
   var storeKey = 'scrum-guild-review:' + location.pathname + ':' + document.body.getAttribute('data-run');
 
   function select(id, focus) {
-    tabs.forEach(function (tab) {
+    tabList().forEach(function (tab) {
       var on = tab.getAttribute('data-tab') === id;
       tab.setAttribute('aria-selected', on ? 'true' : 'false');
       tab.tabIndex = on ? 0 : -1;
@@ -167,8 +187,36 @@ const CLIENT_SCRIPT = String.raw`(function () {
       status: status,
       reasons: [].map.call(panel.querySelectorAll('.reasons input:checked'), function (i) { return i.value; }),
       comment: panel.querySelector('textarea') ? panel.querySelector('textarea').value : '',
-      note: panel.getAttribute('data-note') || ''
+      note: panel.getAttribute('data-note') || '',
+      // done は、戻していない完了済み。returned は、完了済みから判定の対象に戻したもの
+      done: panel.hasAttribute('data-done'),
+      returned: panel.hasAttribute('data-was-done') && !panel.hasAttribute('data-done')
     };
+  }
+
+  // 完了済みの枠と判定の対象の枠のどちらに置くかを、パネルの data-done に合わせる
+  function place(panel) {
+    var n = panel.getAttribute('data-issue');
+    var done = panel.hasAttribute('data-done');
+    var row = document.querySelector('[data-goto="' + n + '"]').parentNode;
+    var tab = document.getElementById('tab-' + n);
+    var sep = document.getElementById('tabs-sep');
+    var doneRows = document.getElementById('rows-done');
+    var activeRows = document.getElementById('rows-active');
+    (done ? doneRows : activeRows).appendChild(row);
+    if (done) tab.parentNode.appendChild(tab);
+    else sep.parentNode.insertBefore(tab, sep);
+    tab.classList.toggle('done', done);
+  }
+
+  // 枠の見出しは、判定の対象と完了済みが両方あるときだけ見せる
+  function layout() {
+    var sep = document.getElementById('tabs-sep');
+    if (!sep) return;
+    var doneCount = issuePanels.filter(function (p) { return p.hasAttribute('data-done'); }).length;
+    var split = doneCount > 0 && doneCount < issuePanels.length;
+    sep.hidden = !split;
+    document.getElementById('done-heading').hidden = !split;
   }
 
   function refresh(save) {
@@ -185,15 +233,21 @@ const CLIENT_SCRIPT = String.raw`(function () {
       var badge = document.querySelector('[data-badge="' + e.issue + '"]');
       badge.textContent = label;
       badge.className = 'badge ' + (e.status || 'none');
+      badge.hidden = e.done;
       var mark = document.querySelector('[data-mark="' + e.issue + '"]');
       mark.textContent = e.status === 'ok' ? ' ✓' : e.status === 'ng' ? ' ✕' : '';
       mark.className = 'mark ' + (e.status || 'none');
     });
-    var n = function (s) { return entries.filter(function (e) { return e.status === s; }).length; };
+    // 戻していない完了済みは、進み具合の件数に入れない（結果の文は buildResult が同じ決まりで外す）
+    var counted = entries.filter(function (e) { return !e.done; });
+    var n = function (s) { return counted.filter(function (e) { return e.status === s; }).length; };
     document.getElementById('counts').textContent = 'ok ' + n('ok') + ' 件、ng ' + n('ng') + ' 件、未判定 ' + n('') + ' 件';
     document.getElementById('result').value = buildResult(entries);
+    layout();
     if (save) {
-      var kept = entries.map(function (e) { return { issue: e.issue, status: e.status, reasons: e.reasons, comment: e.comment }; });
+      var kept = entries.map(function (e) {
+        return { issue: e.issue, status: e.status, reasons: e.reasons, comment: e.comment, returned: e.returned };
+      });
       try { localStorage.setItem(storeKey, JSON.stringify(kept)); } catch (e) {}
     }
   }
@@ -205,6 +259,11 @@ const CLIENT_SCRIPT = String.raw`(function () {
     saved.forEach(function (e) {
       var panel = e && document.getElementById('panel-' + e.issue);
       if (!panel || !panel.hasAttribute('data-issue') || !panel.querySelector('.judge')) return;
+      // 戻した完了済みは、戻した状態で開き直す
+      if (e.returned === true && panel.hasAttribute('data-done')) {
+        panel.removeAttribute('data-done');
+        place(panel);
+      }
       if (e.status === 'ok' || e.status === 'ng') panel.setAttribute('data-status', e.status);
       [].forEach.call(panel.querySelectorAll('.reasons input'), function (i) {
         i.checked = Array.isArray(e.reasons) && e.reasons.indexOf(i.value) >= 0;
@@ -213,13 +272,14 @@ const CLIENT_SCRIPT = String.raw`(function () {
     });
   }
 
-  tabs.forEach(function (tab, i) {
+  tabList().forEach(function (tab) {
     tab.addEventListener('click', function () { select(tab.getAttribute('data-tab')); });
     tab.addEventListener('keydown', function (ev) {
       var step = ev.key === 'ArrowRight' ? 1 : ev.key === 'ArrowLeft' ? -1 : 0;
       if (step) {
         ev.preventDefault();
-        select(tabs[(i + step + tabs.length) % tabs.length].getAttribute('data-tab'), true);
+        var list = tabList();
+        select(list[(list.indexOf(tab) + step + list.length) % list.length].getAttribute('data-tab'), true);
       }
     });
   });
@@ -235,6 +295,14 @@ const CLIENT_SCRIPT = String.raw`(function () {
         // 押し直すと未判定に戻す
         if (panel.getAttribute('data-status') === next) panel.removeAttribute('data-status');
         else panel.setAttribute('data-status', next);
+        refresh(true);
+      });
+    });
+    [].forEach.call(document.querySelectorAll('[data-return]'), function (btn) {
+      btn.addEventListener('click', function () {
+        var panel = btn.closest('[data-issue]');
+        panel.removeAttribute('data-done');
+        place(panel);
         refresh(true);
       });
     });
@@ -260,7 +328,7 @@ const CLIENT_SCRIPT = String.raw`(function () {
   }
 
   var initial = location.hash.slice(1);
-  select(tabs.some(function (t) { return t.getAttribute('data-tab') === initial; }) ? initial : 'status');
+  select(tabList().some(function (t) { return t.getAttribute('data-tab') === initial; }) ? initial : 'status');
 })();`;
 
 /** manifest から、外のファイルを読まない 1 枚の HTML を作る。呼ぶ前に validateManifest を通す */
@@ -272,12 +340,25 @@ export function renderGallery(manifest) {
   // スクリプトは固定で、manifest の値を含まない。本文のハッシュだけを CSP で許し、エスケープの漏れが実行にならないようにする
   const script = `${buildResult.toString()}\n${CLIENT_SCRIPT}`;
   const scriptHash = createHash('sha256').update(script).digest('base64');
+  // 完了済み（done: true）は、判定の対象と別の枠に置く。枠の見出しは、両方があるときだけ見せる
+  const activeItems = manifest.items.filter((item) => item.done !== true);
+  const doneItems = manifest.items.filter((item) => item.done === true);
+  const split = activeItems.length > 0 && doneItems.length > 0;
+  const rows = (items) => items.map((item) => renderRow(item, judge)).join('\n');
+  const doneRows =
+    doneItems.length > 0
+      ? `
+<h3 id="done-heading"${split ? '' : ' hidden'}>完了済み（判定の対象外）</h3>
+<ul class="rows" id="rows-done">
+${rows(doneItems)}
+</ul>`
+      : '';
   const statusPanel = `<section class="card" role="tabpanel" id="panel-status" aria-labelledby="tab-status" hidden>
 <h2>状況</h2>
 <p class="summary">${summary}</p>${judge ? '\n<p class="progress" id="counts"></p>' : ''}
-<ul class="rows">
-${manifest.items.map((item) => renderRow(item, judge)).join('\n')}
-</ul>${
+<ul class="rows" id="rows-active">
+${rows(activeItems)}
+</ul>${doneRows}${
     judge
       ? `
 <h3>結果（プロンプトに貼る）</h3>
@@ -289,7 +370,11 @@ ${manifest.items.map((item) => renderRow(item, judge)).join('\n')}
 </section>`;
   const tabBar = `<div class="tabs" role="tablist" aria-label="Issue">
 <button type="button" role="tab" id="tab-status" aria-controls="panel-status" aria-selected="true" data-tab="status">状況</button>
-${manifest.items.map(renderTab).join('\n')}
+${activeItems.map(renderTab).join('\n')}${
+    doneItems.length > 0
+      ? `\n<span class="tabs-sep" id="tabs-sep" role="presentation"${split ? '' : ' hidden'}>完了済み</span>\n${doneItems.map(renderTab).join('\n')}`
+      : ''
+  }
 </div>`;
   return `<!doctype html>
 <html lang="ja">
@@ -308,6 +393,8 @@ ${manifest.items.map(renderTab).join('\n')}
   .summary { margin: 0 0 20px; color: var(--muted); }
   .tabs { display: flex; flex-wrap: wrap; gap: 4px; margin: 0 0 12px; position: sticky; top: 0; padding: 8px 0; background: var(--bg); z-index: 1; }
   .tabs [role=tab] { font: inherit; padding: 6px 12px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); color: var(--fg); cursor: pointer; font-variant-numeric: tabular-nums; }
+  .tabs-sep { align-self: center; margin: 0 4px 0 12px; color: var(--muted); font-size: 13px; white-space: nowrap; }
+  .tabs [role=tab].done { border-style: dashed; color: var(--muted); }
   .tabs [role=tab][aria-selected=true] { background: var(--accent); border-color: var(--accent); color: var(--on); }
   .card { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 14px 16px; min-width: 0; }
   .card[hidden] { display: none; }
@@ -330,6 +417,12 @@ ${manifest.items.map(renderTab).join('\n')}
   .badge.ok, .mark.ok { color: var(--ok); border-color: var(--ok); }
   .badge.ng, .mark.ng { color: var(--bad); border-color: var(--bad); }
   .tabs .mark { font-weight: 700; }
+  .rows + .rows { margin-top: 6px; }
+  .done-box { margin-top: 14px; padding: 8px 12px; border: 1px dashed var(--line); border-radius: 6px; color: var(--muted); }
+  .done-box p { margin: 0; }
+  .card:not([data-done]) .done-box { display: none; }
+  .card[data-done] .judge { display: none; }
+  .return-btn { font: inherit; padding: 2px 12px; border-radius: 6px; border: 1px solid var(--accent); background: var(--bg); color: var(--accent); cursor: pointer; }
   .judge { margin-top: 14px; display: grid; gap: 12px; }
   .verdict { display: flex; gap: 8px; }
   .verdict-btn { font: inherit; font-weight: 600; min-width: 88px; padding: 6px 16px; border-radius: 6px; border: 1px solid var(--line); background: var(--bg); color: var(--fg); cursor: pointer; }
