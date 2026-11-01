@@ -11,6 +11,7 @@ import {
   userExperienceTotalStatement,
 } from '../src/server/operations/experience.ts';
 import { revokeSameEmailStatements } from '../src/server/operations/invitation.ts';
+import { todayOperation } from '../src/server/operations/today.ts';
 
 const AT = '2026-10-20T00:00:00.000Z';
 const CLAIM_EXPIRES_AT = '2026-11-03T00:00:00.000Z';
@@ -144,6 +145,43 @@ describe('外部キー', () => {
       'USING INDEX tasks_assignee_user (assignee_user_id=? AND deleted_at=? AND completed_at=?)',
     );
     expect(details).not.toMatch(/^SCAN tasks\b/m);
+  });
+
+  // 今日やること（today）は未完了と完了を別の文にして、どちらも tasks_assignee_user の範囲で引く。
+  // memberships、workspaces、tasks を結合する本物の文で、別の索引が選ばれて tasks を全件走査していないこと
+  test('今日やることの未完了と完了の文は、tasks_assignee_user で引き、tasks を SCAN しない', async () => {
+    const db = orgDb(env, verifiedOrganizationForTest(id()));
+    const batch = vi.spyOn(db, 'batch');
+    try {
+      await todayOperation.handler({ db, actor: { userId: id() }, input: {} } as never);
+      const statements = batch.mock.calls[0][0].filter((candidate) =>
+        compiledQueryForTest(candidate).sql.includes('"tasks" as "t"'),
+      );
+      // 未完了と完了の2文。位置でなく、絞り込みの条件で見分ける
+      expect(statements).toHaveLength(2);
+      const open = statements.find((candidate) =>
+        compiledQueryForTest(candidate).sql.includes('"completed_at" is null'),
+      );
+      const completed = statements.find((candidate) =>
+        compiledQueryForTest(candidate).sql.includes('"completed_at" >= ?'),
+      );
+      expect(open).toBeDefined();
+      expect(completed).toBeDefined();
+      for (const statement of [open!, completed!]) {
+        const details = await queryPlanForTest(env, statement);
+        const text = details.join('\n');
+        // 未完了は completed_at=?（IS NULL）、完了は completed_at>?（範囲）まで索引に乗る
+        expect(text).toMatch(
+          /SEARCH t USING INDEX tasks_assignee_user \(assignee_user_id=\? AND deleted_at=\? AND completed_at[=>]\?\)/,
+        );
+        expect(
+          details.filter((detail) => /^SCAN (tasks|t)\b/.test(detail)),
+          text,
+        ).toEqual([]);
+      }
+    } finally {
+      batch.mockRestore();
+    }
   });
 
   // 進行中のスプリントを引く文（activeSprintRowFilter）は、'active' を束縛せず文字のまま書くので、部分索引 sprints_active を使う。
