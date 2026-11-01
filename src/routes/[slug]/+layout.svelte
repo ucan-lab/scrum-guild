@@ -83,6 +83,8 @@
       name={organization.me.name}
       isAdmin={organization.me.is_admin}
       level={organization.me.level}
+      slug={data.slug}
+      invitationCount={data.invitationCount}
     />
   {/snippet}
   {#snippet workspaceSwitcher()}
@@ -96,7 +98,6 @@
     hasWorkspace={organization.workspaces.length > 0}
     isAdmin={organization.me.is_admin}
     workspaceId={openWorkspace?.id}
-    invitationCount={data.invitationCount}
     {organizationSwitcher}
     workspaceSwitcher={openWorkspace ? workspaceSwitcher : undefined}
     {account}

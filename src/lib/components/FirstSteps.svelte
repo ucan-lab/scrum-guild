@@ -151,7 +151,7 @@
   // 主ボタンは、まだ済んでいない最初の手順（押せる操作を持つもの）にだけ付ける
   const nextIndex = $derived(rows.findIndex((row) => !row.done && row.action !== null));
 
-  // 末尾の一言。自分の設定、またはワークスペースの設定へ案内するリンクを文の中に置く
+  // 末尾の一言。マイプロフィール、またはワークスペースの設定へ案内するリンクを文の中に置く
   const hint = $derived.by(() => {
     if (role === 'member') {
       const label = t('pageMe');

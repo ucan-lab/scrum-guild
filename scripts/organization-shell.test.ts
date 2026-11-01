@@ -114,13 +114,16 @@ describe('メニュー', () => {
     }
   });
 
-  test('組織の管理は管理者にだけ出し、一般のユーザーには出さない', () => {
+  test('マイプロフィールと組織の管理は、管理者でも左のメニューに出さない（上の帯のアカウントのメニューから開く）', () => {
     const labels = (isAdmin: boolean) =>
       visibleNav(undefined, { isAdmin }).flatMap((section) => section.items.map((item) => item.label));
-    assert.ok(labels(true).includes('pageOrgAdmin'));
-    assert.ok(!labels(false).includes('pageOrgAdmin'));
-    const admin = navSections.flatMap((section) => section.items).find((item) => item.label === 'pageOrgAdmin');
-    assert.equal(admin?.href, '/[slug]/admin');
+    for (const isAdmin of [true, false]) {
+      assert.ok(!labels(isAdmin).includes('pageOrgAdmin'));
+      assert.ok(!labels(isAdmin).includes('pageMe'));
+    }
+    const labelsInNav = navSections.flatMap((section) => section.items).map((item) => item.label);
+    assert.ok(!labelsInNav.includes('pageOrgAdmin'));
+    assert.ok(!labelsInNav.includes('pageMe'));
   });
 
   test('ワークスペースの経路の項目は、ワークスペースの画面を開いている間（ID があるとき）だけ出す', () => {
