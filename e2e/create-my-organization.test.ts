@@ -42,8 +42,12 @@ test('80 字を超える名前は黙って切られず、名前の欄に理由�
   await dialog.getByLabel('URL の名前（slug）').fill('nagi-long');
   const longName = 'あ'.repeat(81);
   await dialog.getByLabel('組織の名前').fill(longName);
-  // 欄が値を切らない（maxlength が無い）
+  // 欄が値を切らない（maxlength が無い）。上限は、送る前から欄の下のヒントに出ている
+  await expect(dialog.getByLabel('組織の名前')).not.toHaveAttribute('maxlength');
   await expect(dialog.getByLabel('組織の名前')).toHaveValue(longName);
+  await expect(dialog.getByLabel('組織の名前')).toHaveAccessibleDescription(
+    word('createMyOrganizationNameHint', { max: '80' }),
+  );
   await dialog.getByRole('button', { name: '組織を作る' }).click();
   await expect(
     dialog.getByText(word('createMyOrganizationNameLong', { organization: word('organization'), max: '80' })),

@@ -494,6 +494,7 @@ export const dictionary = defineDictionary({
   createMyOrganizationSlugUrl: '{organization}の URL は {url} になります。',
   createMyOrganizationNameLabel: '{organization}の名前',
   createMyOrganizationNameExample: '例: さくら開発',
+  createMyOrganizationNameHint: '{max} 字までです。',
   createMyOrganizationSlugRequired: 'URL の名前を入れてください。',
   createMyOrganizationSlugFormat: '英小文字、数字、ハイフンで2〜40字にしてください。',
   createMyOrganizationSlugReserved: 'この名前はサービスが使うため、{organization}の名前にできません。',

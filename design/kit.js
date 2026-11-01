@@ -1616,7 +1616,7 @@ const looooooooooooooooooooooooooooooooooongLine = "コードの長い1行は、
     createMyOrganization: () => openDialog(`自分の${t("organization")}を作る`,
       `<p>あなたが${t("admin")}になり、30日間のお試しで始めます。お試し中の${t("organization")}は、1つのアカウントにつき1つまでです。</p>
        <div class="field"><label class="field-label" for="d-ms">URL の名前（slug）</label><input class="input mono" id="d-ms" placeholder="例: sakura-dev" autocomplete="off" spellcheck="false" aria-describedby="d-ms-hint d-ms-url"><span class="field-hint" id="d-ms-hint">英小文字、数字、ハイフンで 2〜40 字。あとから変えられません。</span><span class="field-hint" id="d-ms-url">${t("organization")}の URL は scrum-guild.dev/&lt;slug&gt;/ になります。</span></div>
-       <div class="field"><label class="field-label" for="d-mn">${t("organization")}の名前</label><input class="input" id="d-mn" placeholder="例: さくら開発" autocomplete="organization"></div>`,
+       <div class="field"><label class="field-label" for="d-mn">${t("organization")}の名前</label><input class="input" id="d-mn" placeholder="例: さくら開発" autocomplete="organization" aria-describedby="d-mn-hint"><span class="field-hint" id="d-mn-hint">80 字までです。</span></div>`,
       `<button class="btn is-quiet" type="button" data-close-dialog>やめる</button><button class="btn is-primary" type="button" data-close-dialog data-toast="見本のため、${t("organization")}は作りません">${t("organization")}を作る</button>`),
     // 作った後。組織の URL とコピー、管理者になる人に伝えること
     organizationCreated: () => openDialog(`${t("organization")}を作りました`,

@@ -137,13 +137,16 @@
       autocomplete="organization"
       readonly={busy}
       aria-invalid={error?.field === 'name' ? 'true' : undefined}
-      aria-describedby={error?.field === 'name' ? 'create-my-organization-name-error' : undefined}
+      aria-describedby={error?.field === 'name'
+        ? 'create-my-organization-name-error create-my-organization-name-hint'
+        : 'create-my-organization-name-hint'}
       oninput={() => (error = null)}
       onkeydown={submitOnEnter}
     />
     {#if error?.field === 'name'}<span class="field-error" id="create-my-organization-name-error" role="alert"
         ><Icon name="alert" />{t(error.key, words)}</span
       >{/if}
+    <span class="field-hint" id="create-my-organization-name-hint">{t('createMyOrganizationNameHint', words)}</span>
   </div>
   {#if error?.field === 'form'}<div bind:this={formCallout} class="callout is-warn" role="alert" tabindex="-1">
       <Icon name="alert" /><span
