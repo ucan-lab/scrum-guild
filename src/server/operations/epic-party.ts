@@ -30,7 +30,7 @@ import {
 
 type Tables = OrganizationTables;
 
-// 同時の書き込みに負けたときにやり直す回数の上限。超えたら 409 の conflict（task-assign と同じ）
+// 同時の書き込みに負けたときにやり直す回数の上限。超えたら読み直し、終わったエピックなら 409 の epic_finished、そうでなければ 409 の conflict（task-assign と同じ回数）
 const MAX_ATTEMPTS = 3;
 
 type PartyMemberLog = { id: string; name: string; via: EpicJoinedVia };
