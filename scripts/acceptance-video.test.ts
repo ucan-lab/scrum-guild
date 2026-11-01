@@ -629,6 +629,7 @@ console.log(JSON.stringify({ items, ran, results, lines: results.map(p.describeI
       const code = `import { createRequire } from 'node:module';
 import { createServer } from 'node:http';
 import * as p from ${probeUrl};
+import * as plan from ${planUrl};
 const { chromium } = createRequire(process.cwd() + '/package.json')('@playwright/test');
 const server = createServer((req, res) => {
   res.statusCode = req.url === '/missing' ? 404 : 200;
@@ -672,8 +673,9 @@ try {
   const outcome = {};
   // 失敗するものは 5 秒待つので、最初に同時に走らせる。成功するものは、その後に順に実行して状態を確かめる
   const failing = ['clickDisabled', 'selectZ', 'waitVisibleHidden', 'labelPartialExact', 'gotoMissing', 'unknown'];
+  // 失敗の理由は、一覧に出る probeDetail を通した形で見る（Playwright の本物の Call log で確かめる）
   await Promise.all(failing.map(async (k) => {
-    try { await exec(items[k]); outcome[k] = 'ok'; } catch (err) { outcome[k] = 'ng: ' + err.message; }
+    try { await exec(items[k]); outcome[k] = 'ok'; } catch (err) { outcome[k] = 'ng: ' + plan.probeDetail(err.message); }
   }));
   for (const k of Object.keys(items).filter((k) => !failing.includes(k))) {
     try { await exec(items[k]); outcome[k] = 'ok'; } catch (err) { outcome[k] = 'ng: ' + err.message; }
@@ -699,6 +701,8 @@ try {
       for (const ng of ['clickDisabled', 'selectZ', 'waitVisibleHidden', 'labelPartialExact'])
         assert.match(outcome[ng], /^ng: .*Timeout/, ng);
       assert.match(outcome.clickDisabled, /not enabled/);
+      // wait で display:none の要素を visible で待つと、在るのに隠れている理由が添う
+      assert.match(outcome.waitVisibleHidden, /resolved to hidden/);
       assert.match(outcome.gotoMissing, /HTTP 404/);
       assert.match(outcome.unknown, /知らない操作: swim/);
     },
