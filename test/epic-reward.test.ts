@@ -106,6 +106,10 @@ const finishedEpics = {
   中止: { canceled_at: '2026-10-22T00:00:00.000Z' },
 } as const;
 
+function finishedOf(target: Target) {
+  return { completed_at: '2026-10-22T00:00:00.000Z', completed_by: target.admin.userId! };
+}
+
 function finishedOverrides(label: string, target: Target) {
   const overrides = finishedEpics[label as keyof typeof finishedEpics];
   return { ...overrides, [label === 'クリア' ? 'completed_by' : 'canceled_by']: target.admin.userId! };
@@ -247,6 +251,9 @@ describe('epic-reward-update', () => {
     const ids = [
       (await createEpic(foreign.organization, foreign.workspace.id, foreign.admin.userId!)).id,
       (await createEpic(target.organization, target.otherWorkspace.id, target.admin.userId!)).id,
+      // 終わったエピックでも、別の組織・別のワークスペースのものは 409 でなく 404
+      (await createEpic(foreign.organization, foreign.workspace.id, foreign.admin.userId!, finishedOf(foreign))).id,
+      (await createEpic(target.organization, target.otherWorkspace.id, target.admin.userId!, finishedOf(target))).id,
       (await epicOf(target, { deleted_at: '2026-10-21T00:00:00.000Z' })).id,
       '019a0000-0000-7000-8000-00000000ffff',
     ];
@@ -329,6 +336,25 @@ describe('epic-reward-update', () => {
         },
       ),
     ).rejects.toMatchObject({ status: 409, code: 'conflict' });
+    expect(await epicLogsOf(target, epic.id)).toEqual([]);
+  });
+
+  test('2 回負けた後の最後の書き込みの直前にエピックが終わったら、409 の epic_finished（conflict ではない）', async () => {
+    const target = await namedTarget();
+    const epic = await epicOf(target);
+    await expect(
+      runRacing(
+        epicRewardUpdateOperation,
+        target,
+        target.leader,
+        { epic_id: epic.id, reward_tier: 'large' },
+        async (attempt, db) => {
+          if (attempt < 2) await setEpic(db, target, epic.id, { reward_tier: attempt % 2 === 0 ? 'medium' : 'small' });
+          else await setEpic(db, target, epic.id, { completed_at: AT, completed_by: target.admin.userId! });
+        },
+      ),
+    ).rejects.toMatchObject({ status: 409, code: 'epic_finished' });
+    expect((await rowOf(target, epic.id)).reward_tier).toBe('small');
     expect(await epicLogsOf(target, epic.id)).toEqual([]);
   });
 
@@ -532,6 +558,9 @@ describe('epic-requester-update', () => {
     const ids = [
       (await createEpic(foreign.organization, foreign.workspace.id, foreign.admin.userId!)).id,
       (await createEpic(target.organization, target.otherWorkspace.id, target.admin.userId!)).id,
+      // 終わったエピックでも、別の組織・別のワークスペースのものは 409 でなく 404
+      (await createEpic(foreign.organization, foreign.workspace.id, foreign.admin.userId!, finishedOf(foreign))).id,
+      (await createEpic(target.organization, target.otherWorkspace.id, target.admin.userId!, finishedOf(target))).id,
       (await epicOf(target, { deleted_at: '2026-10-21T00:00:00.000Z' })).id,
       '019a0000-0000-7000-8000-00000000ffff',
     ];
@@ -631,6 +660,26 @@ describe('epic-requester-update', () => {
         },
       ),
     ).rejects.toMatchObject({ status: 409, code: 'conflict' });
+    expect(await epicLogsOf(target, epic.id)).toEqual([]);
+  });
+
+  test('2 回負けた後の最後の書き込みの直前にエピックが終わったら、409 の epic_finished（conflict ではない）', async () => {
+    const target = await namedTarget();
+    const epic = await epicOf(target);
+    const others = [target.leader.userId!, target.admin.userId!];
+    await expect(
+      runRacing(
+        epicRequesterUpdateOperation,
+        target,
+        target.leader,
+        { epic_id: epic.id, user_id: target.member.userId! },
+        async (attempt, db) => {
+          if (attempt < 2) await setEpic(db, target, epic.id, { requester_user_id: others[attempt % 2]! });
+          else await setEpic(db, target, epic.id, { completed_at: AT, completed_by: target.admin.userId! });
+        },
+      ),
+    ).rejects.toMatchObject({ status: 409, code: 'epic_finished' });
+    expect((await rowOf(target, epic.id)).requester_user_id).toBe(target.admin.userId);
     expect(await epicLogsOf(target, epic.id)).toEqual([]);
   });
 });
