@@ -30,8 +30,6 @@ test('組織の画面はシェルを返し、CSP の違反が無い', async ({ p
   expect(res?.headers()['content-security-policy']).toContain("frame-ancestors 'none'");
 
   await expect(page.getByRole('heading', { level: 1, name: '今日やること' })).toBeVisible();
-  // 疎通の節は外した（#686）。版は /api/health と画面の build の版を見る下のテストで確かめる
-  await expect(page.getByRole('region', { name: 'API の疎通' })).toHaveCount(0);
   expect(await collect()).toEqual([]);
 });
 
@@ -605,7 +603,7 @@ for (const width of [390, 672]) {
   });
 }
 
-// 画面のシェルが出す版は API から取ったものなので、build に埋めた kit.version.name は SvelteKit が書き出す version.json で見る
+// build に埋めた kit.version.name は SvelteKit が書き出す version.json で見る
 test('画面の build に埋めた版が API の版と同じ', async ({ request }) => {
   const res = await request.get('/_app/version.json');
   expect(res.status()).toBe(200);
