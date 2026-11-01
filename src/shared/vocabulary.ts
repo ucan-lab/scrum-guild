@@ -85,7 +85,7 @@ export const dictionary = defineDictionary({
   sectionToday: '今日やると決めたもの',
   sectionTodayHint: '印を付けた日が過ぎても、完了にするか印を外すまで残ります',
   todayEmptyTitle: '今日やるタスクは、この画面ができたらここに並びます',
-  todayEmptyText: 'いまは API の疎通だけを確かめる仮の画面です。',
+  todayEmptyText: 'いまは今日やるタスクを出す前の、仮の画面です。',
 
   // 今日やることの空の状態（管理者）。{workspace} と {member} は、辞書の言葉を画面が渡す。
   // 組織にワークスペースが1つも無いときは、最初のワークスペースを作る案内。作る画面の行き先は、その画面を作る Issue で決める
@@ -764,19 +764,6 @@ export const dictionary = defineDictionary({
   // 書く前に断られた失敗（回数の上限などの 4xx）。何も書かれていない
   operatorReassignRejected:
     '指名し直せませんでした。何も書かれていません。入力を確かめるか、少し待ってから、もう一度試してください。',
-
-  // API の疎通の表示（仮の画面）
-  apiHeading: 'API の疎通',
-  apiStatus: 'API: {status}（版 {version}）',
-  apiChecking: 'API を確かめています',
-  apiUnreachable: 'API に届きませんでした',
-  apiUnreachableStatus: 'API に届きませんでした（{status}）',
-  apiShowDetail: '詳細を見る',
-  apiRecheck: '確かめ直す',
-  apiRecheckOk: 'API を確かめました',
-  apiRecheckFailed: 'API に届きませんでした',
-  apiDetailTitle: 'API の詳細',
-  apiDetailBody: 'この画面が呼んだ API の応答です。',
 
   // アカウントのメニュー（組織の中の上の帯）とログアウト。{name} はログインしている人の名前
   accountMenuLabel: '{name}。アカウントのメニュー',

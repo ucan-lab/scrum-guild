@@ -1,5 +1,7 @@
-import type { Page } from '@playwright/test';
+import type { Locator, Page } from '@playwright/test';
+import { tokenCreate } from '../src/shared/operations/session/index.ts';
 import { expect, test } from './fixtures.ts';
+import { mockOperation } from './operations.ts';
 import {
   expectFocusReturned,
   expectModalFocus,
@@ -21,14 +23,15 @@ test.beforeEach(async ({ context, baseURL }) => {
   await signIn(context, baseURL, 'member');
 });
 
-test('組織の画面はシェルを返し、API の版を出し、CSP の違反が無い', async ({ page }) => {
+test('組織の画面はシェルを返し、CSP の違反が無い', async ({ page }) => {
   const collect = await watchViolations(page);
   const res = await page.goto(today);
   expect(res?.status()).toBe(200);
   expect(res?.headers()['content-security-policy']).toContain("frame-ancestors 'none'");
 
   await expect(page.getByRole('heading', { level: 1, name: '今日やること' })).toBeVisible();
-  await expect(page.locator('p[role="status"]')).toHaveText(`API: ok（版 ${version}）`);
+  // 疎通の節は外した（#686）。版は /api/health と画面の build の版を見る下のテストで確かめる
+  await expect(page.getByRole('region', { name: 'API の疎通' })).toHaveCount(0);
   expect(await collect()).toEqual([]);
 });
 
@@ -344,131 +347,164 @@ test('覚えた値が壊れていても、落ちずに描く', async ({ page }) 
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'simple');
 });
 
-test('ダイアログをキーボードだけで開閉でき、閉じたら開いたボタンにフォーカスが戻る', async ({ page }) => {
-  const collect = await watchViolations(page);
-  await page.goto(today);
-  const opener = page.getByRole('button', { name: '詳細を見る' });
-  const dialog = page.getByRole('dialog', { name: 'API の詳細' });
-  await expectModalFocus(page, { opener, modal: dialog, press: 'Enter' });
+// ダイアログとトーストの部品の確かめは、自分の設定（/aoba/me）の API トークンの節を使う（#686）。
+// 取り消しの確認のダイアログ（seed のトークンの行から開く。やめるだけで、取り消さない）で開閉とフォーカスを、
+// 発行の直後のダイアログ（発行の応答を差し替えるので、DB には何も書かない）でトーストを確かめる
+const me = '/aoba/me';
+const tokenSection = (page: Page) => page.getByRole('region', { name: 'API トークン', exact: true });
+const revokeOpener = (page: Page) =>
+  tokenSection(page)
+    .getByRole('button', { name: /^API トークン「.+」を取り消す$/ })
+    .first();
+const revokeDialog = (page: Page) => page.getByRole('dialog', { name: /^API トークン「.+」を取り消しますか$/ });
 
-  // 閉じるボタンからも同じく戻る
-  await page.keyboard.press('Enter');
-  await expect(dialog).toBeVisible();
-  await expect(page.getByRole('button', { name: '閉じる' }).last()).toBeFocused();
-  await page.keyboard.press('Enter');
-  await expect(dialog).toBeHidden();
-  await expectFocusReturned(page, opener);
-  expect(await collect()).toEqual([]);
-});
+async function openTokenSection(page: Page): Promise<void> {
+  await page.goto(me);
+  await expect(tokenSection(page).getByRole('table', { name: '発行済みの API トークン' })).toBeVisible();
+}
 
-// Safari と Firefox はクリックしたボタンにフォーカスを移さない。mousedown の既定の動作を止めて同じ状態にし、
-// 画面が開く操作を起こしたボタン（show(trigger)）へフォーカスを戻すことを確かめる
-test('クリックでボタンにフォーカスが乗らなくても、閉じたら開いたボタンにフォーカスが戻る', async ({ page }) => {
-  await page.goto(today);
-  const opener = page.getByRole('button', { name: '詳細を見る' });
-  await opener.evaluate((button) => button.addEventListener('mousedown', (event) => event.preventDefault()));
-  await expectModalFocus(page, { opener, modal: page.getByRole('dialog', { name: 'API の詳細' }) });
-});
-
-test('ダイアログの外側を押すと閉じ、中と外をまたいでドラッグしても閉じない', async ({ page }) => {
-  await page.goto(today);
-  const dialog = page.getByRole('dialog', { name: 'API の詳細' });
-  const open = page.getByRole('button', { name: '詳細を見る' });
-
-  await open.click();
-  await expect(dialog).toBeVisible();
-  const text = await page.getByText('この画面が呼んだ API の応答です。').boundingBox();
-  if (!text) throw new Error('ダイアログの本文の位置が取れない');
-  // 中で押し始めて外で離す（文字の選択など）
-  await page.mouse.move(text.x + 4, text.y + 4);
-  await page.mouse.down();
-  await page.mouse.move(4, 4);
-  await page.mouse.up();
-  await expect(dialog).toBeVisible();
-  // 外で押し始めて中で離す
-  await page.mouse.move(4, 4);
-  await page.mouse.down();
-  await page.mouse.move(text.x + 4, text.y + 4);
-  await page.mouse.up();
-  await expect(dialog).toBeVisible();
-
-  await page.mouse.click(4, 4);
-  await expect(dialog).toBeHidden();
-  await expectFocusReturned(page, open);
-});
-
-// モーダルのダイアログが開くと、その外は inert になる。トーストはダイアログの中の領域に出る
-test('ダイアログを開いたままトーストを出すと、前面に見えて、読み上げの領域が inert でない', async ({ page }) => {
-  await page.goto(today);
-  await page.getByRole('button', { name: '詳細を見る' }).click();
-  const dialog = page.getByRole('dialog', { name: 'API の詳細' });
-  await expect(dialog).toBeVisible();
-  await dialog.getByRole('button', { name: '確かめ直す' }).click();
-
-  const toast = dialog.locator('.toast');
-  await expect(toast).toHaveText('API を確かめました');
-  const state = await toast.evaluate((element) => {
-    const box = element.getBoundingClientRect();
-    const hit = document.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2);
-    const region = element.closest('[aria-live]');
-    return {
-      onTop: hit !== null && element.contains(hit),
-      region: region?.getAttribute('aria-live'),
-      inert: element.closest('[inert]') !== null,
-      regionDisplayed: region !== null && getComputedStyle(region).display !== 'none',
-    };
+// 発行の応答を差し替えて、値のダイアログを開く。トークンの値はコピーの確かめ用の偽の値で、DB には書かれない
+async function openIssuedDialog(page: Page, token = `sgp_${'A'.repeat(43)}`): Promise<Locator> {
+  await mockOperation(page, tokenCreate, {
+    id: '019a0000-0000-7000-8000-00000000f686',
+    name: '確かめ用',
+    scope: 'read',
+    expires_at: '2099-01-01T00:00:00.000Z',
+    token,
   });
-  expect(state).toEqual({ onTop: true, region: 'polite', inert: false, regionDisplayed: true });
+  await openTokenSection(page);
+  const section = tokenSection(page);
+  await section.getByLabel('名前', { exact: true }).fill('確かめ用');
+  await section.getByRole('button', { name: '発行する' }).click();
+  const dialog = page.getByRole('dialog', { name: 'API トークンを発行しました' });
+  await expect(dialog).toBeVisible();
+  return dialog;
+}
 
-  // 外側の領域（画面の最後に置いてある）は隠れ、同じ知らせが二重に読み上げられない。ダイアログを閉じると戻る
-  const outer = page.locator('.toasts').last();
-  await expect(outer).toHaveAttribute('hidden', '');
-  await expect(page.locator('.toasts:visible .toast')).toHaveCount(1);
-
-  await page.keyboard.press('Escape');
-  await expect(outer).not.toHaveAttribute('hidden', '');
-});
-
-// 成功と失敗で文言とアイコンを分け、確かめている間はボタンを押せない
-test('「確かめ直す」は、結果が出てから成功と失敗を分けてトーストを出し、その間は押せない', async ({ page }) => {
-  let mode: 'ok' | 'fail' = 'ok';
-  await page.route('**/api/health', async (route) => {
-    await new Promise((resolve) => setTimeout(resolve, 400));
-    if (mode === 'ok') await route.fulfill({ json: { status: 'ok', database: 'ok', version } });
-    else await route.fulfill({ status: 500, json: { error: { code: 'internal', message: 'x' } } });
+test.describe('ダイアログとトースト（自分の設定の API トークンの節）', () => {
+  test.beforeEach(async ({ context, baseURL }) => {
+    await signIn(context, baseURL, 'admin');
   });
-  await page.goto(today);
-  await expect(page.locator('p[role="status"]')).toHaveText(`API: ok（版 ${version}）`);
 
-  // ダイアログの外の領域に出る（ダイアログが閉じている間は、中の領域は表示されない）
-  const toasts = page.locator('.toasts:visible .toast');
-  const recheck = page.getByRole('button', { name: '確かめ直す' });
-  await recheck.click();
-  await expect(recheck).toBeDisabled();
-  await expect(toasts).toHaveCount(0);
-  await expect(toasts).toHaveText('API を確かめました');
-  await expect(toasts.locator('use')).toHaveAttribute('href', '#i-check');
-  await expect(recheck).toBeEnabled();
+  test('ダイアログをキーボードだけで開閉でき、閉じたら開いたボタンにフォーカスが戻る', async ({ page }) => {
+    const collect = await watchViolations(page);
+    await openTokenSection(page);
+    const opener = revokeOpener(page);
+    const dialog = revokeDialog(page);
+    await expectModalFocus(page, { opener, modal: dialog, press: 'Enter' });
 
-  mode = 'fail';
-  await recheck.click();
-  await expect(recheck).toBeDisabled();
-  await expect(toasts.last()).toHaveText('API に届きませんでした');
-  await expect(toasts.last().locator('use')).toHaveAttribute('href', '#i-alert');
-  await expect(recheck).toBeEnabled();
+    // 閉じるボタン（主ボタンの「やめる」）からも同じく戻る
+    await page.keyboard.press('Enter');
+    await expect(dialog).toBeVisible();
+    await expect(dialog.getByRole('button', { name: 'やめる' })).toBeFocused();
+    await page.keyboard.press('Enter');
+    await expect(dialog).toBeHidden();
+    await expectFocusReturned(page, opener);
+    expect(await collect()).toEqual([]);
+  });
+
+  // Safari と Firefox はクリックしたボタンにフォーカスを移さない。mousedown の既定の動作を止めて同じ状態にし、
+  // 画面が開く操作を起こしたボタン（show(trigger)）へフォーカスを戻すことを確かめる
+  test('クリックでボタンにフォーカスが乗らなくても、閉じたら開いたボタンにフォーカスが戻る', async ({ page }) => {
+    await openTokenSection(page);
+    const opener = revokeOpener(page);
+    await opener.evaluate((button) => button.addEventListener('mousedown', (event) => event.preventDefault()));
+    await expectModalFocus(page, { opener, modal: revokeDialog(page) });
+  });
+
+  test('ダイアログの外側を押すと閉じ、中と外をまたいでドラッグしても閉じない', async ({ page }) => {
+    await openTokenSection(page);
+    const dialog = revokeDialog(page);
+    const open = revokeOpener(page);
+
+    await open.click();
+    await expect(dialog).toBeVisible();
+    const text = await dialog.getByText('取り消すと、このトークンはすぐ使えなくなります。').boundingBox();
+    if (!text) throw new Error('ダイアログの本文の位置が取れない');
+    // 中で押し始めて外で離す（文字の選択など）
+    await page.mouse.move(text.x + 4, text.y + 4);
+    await page.mouse.down();
+    await page.mouse.move(4, 4);
+    await page.mouse.up();
+    await expect(dialog).toBeVisible();
+    // 外で押し始めて中で離す
+    await page.mouse.move(4, 4);
+    await page.mouse.down();
+    await page.mouse.move(text.x + 4, text.y + 4);
+    await page.mouse.up();
+    await expect(dialog).toBeVisible();
+
+    await page.mouse.click(4, 4);
+    await expect(dialog).toBeHidden();
+    await expectFocusReturned(page, open);
+  });
 });
 
-test('トーストは数秒で消え、同時に出るのは3件まで', async ({ page }) => {
-  await page.route('**/api/health', (route) => route.fulfill({ json: { status: 'ok', database: 'ok', version } }));
-  await page.goto(today);
-  const recheck = page.getByRole('button', { name: '確かめ直す' });
-  for (let i = 0; i < 5; i++) {
-    await recheck.click();
-    await expect(recheck).toBeEnabled();
-  }
-  const toasts = page.locator('.toasts:visible .toast');
-  await expect(toasts).toHaveCount(3);
-  await expect(toasts).toHaveCount(0, { timeout: 8000 });
+test.describe('トースト（自分の設定の API トークンの節。発行の応答を差し替える）', () => {
+  test.beforeEach(async ({ context, baseURL }) => {
+    await signIn(context, baseURL, 'admin');
+    await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+  });
+
+  const copyButton = (dialog: Locator) => dialog.getByRole('button', { name: 'コピーする' });
+
+  // モーダルのダイアログが開くと、その外は inert になる。トーストはダイアログの中の領域に出る
+  test('ダイアログを開いたままトーストを出すと、前面に見えて、読み上げの領域が inert でない', async ({ page }) => {
+    const dialog = await openIssuedDialog(page);
+    await copyButton(dialog).click();
+
+    const toast = dialog.locator('.toast');
+    await expect(toast).toHaveText('トークンの値をコピーしました');
+    const state = await toast.evaluate((element) => {
+      const box = element.getBoundingClientRect();
+      const hit = document.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2);
+      const region = element.closest('[aria-live]');
+      return {
+        onTop: hit !== null && element.contains(hit),
+        region: region?.getAttribute('aria-live'),
+        inert: element.closest('[inert]') !== null,
+        regionDisplayed: region !== null && getComputedStyle(region).display !== 'none',
+      };
+    });
+    expect(state).toEqual({ onTop: true, region: 'polite', inert: false, regionDisplayed: true });
+
+    // 外側の領域（画面の最後に置いてある）は隠れ、同じ知らせが二重に読み上げられない。ダイアログを閉じると戻る。
+    // 値のダイアログは Esc では閉じないので、閉じるボタンで閉じる
+    const outer = page.locator('.toasts').last();
+    await expect(outer).toHaveAttribute('hidden', '');
+    await expect(page.locator('.toasts:visible .toast')).toHaveCount(1);
+
+    await dialog.locator('.dialog-foot').getByRole('button', { name: '閉じる' }).click();
+    await expect(dialog).toBeHidden();
+    await expect(outer).not.toHaveAttribute('hidden', '');
+  });
+
+  // 成功と失敗で文言とアイコンを分ける
+  test('「コピーする」は、成功と失敗を分けて文言とアイコンのトーストを出す', async ({ page }) => {
+    const dialog = await openIssuedDialog(page);
+    // ダイアログを開いている間は、トーストはダイアログの中の領域に出る
+    const toasts = page.locator('.toasts:visible .toast');
+    await copyButton(dialog).click();
+    await expect(toasts).toHaveText('トークンの値をコピーしました');
+    await expect(toasts.locator('use')).toHaveAttribute('href', '#i-check');
+
+    // 書き込みを断られたときは、失敗のトースト
+    await page.evaluate(() => {
+      navigator.clipboard.writeText = () => Promise.reject(new Error('denied'));
+    });
+    await copyButton(dialog).click();
+    await expect(toasts).toHaveCount(2);
+    await expect(toasts.last()).toHaveText('コピーできませんでした。値を選んで、手でコピーしてください');
+    await expect(toasts.last().locator('use')).toHaveAttribute('href', '#i-alert');
+  });
+
+  test('トーストは数秒で消え、同時に出るのは3件まで', async ({ page }) => {
+    const dialog = await openIssuedDialog(page);
+    for (let i = 0; i < 5; i++) await copyButton(dialog).click();
+    const toasts = page.locator('.toasts:visible .toast');
+    await expect(toasts).toHaveCount(3);
+    await expect(toasts).toHaveCount(0, { timeout: 8000 });
+  });
 });
 
 // 同じ ID は同じ色。色相は style:--h（CSSOM）で渡すので CSP に止められない
@@ -506,22 +542,18 @@ test('画面の題名は「画面 - Scrum Guild」で、メニューには画面
   expect(emptyGroups).toBe(0);
 });
 
-// 本番の版は40文字の SHA。狭い幅でも横にはみ出さない
-test('320px の幅で、40文字の版とダイアログの JSON が横にはみ出さない', async ({ page }) => {
-  const sha = '9f2c4e7a1b3d5f60718293a4b5c6d7e8f901a2b3';
-  await page.route('**/api/health', (route) => route.fulfill({ json: { status: 'ok', database: 'ok', version: sha } }));
+// 値は空白が無い長い文字列。狭い幅でも、画面とダイアログが横にはみ出さない
+test('320px の幅で、長いトークンの値のダイアログが横にはみ出さない', async ({ context, baseURL, page }) => {
+  await signIn(context, baseURL, 'admin');
   await page.setViewportSize({ width: 320, height: 700 });
-  await page.goto(today);
-  await expect(page.locator('p[role="status"]')).toHaveText(`API: ok（版 ${sha}）`);
+  const dialog = await openIssuedDialog(page, `sgp_${'A'.repeat(120)}`);
 
   const overflow = () =>
     page.evaluate(() => ({ scroll: document.documentElement.scrollWidth, inner: window.innerWidth }));
-  const closed = await overflow();
-  expect(closed.scroll).toBeLessThanOrEqual(closed.inner);
-
-  await page.getByRole('button', { name: '詳細を見る' }).click();
-  await expect(page.getByRole('dialog', { name: 'API の詳細' })).toBeVisible();
-  const dialogBox = await page.locator('.dialog-sheet').evaluate((sheet) => ({
+  const opened = await overflow();
+  expect(opened.scroll).toBeLessThanOrEqual(opened.inner);
+  await expect(dialog).toBeVisible();
+  const dialogBox = await page.locator('.dialog-sheet:visible').evaluate((sheet) => ({
     sheetRight: sheet.getBoundingClientRect().right,
     contentRight: Math.max(
       ...[...sheet.querySelectorAll('.dialog-body *')].map((e) => e.getBoundingClientRect().right),
