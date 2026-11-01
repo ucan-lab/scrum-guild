@@ -75,7 +75,7 @@ describe('signup の値の変種は印にならない', () => {
     ['1.0', '?signup=1.0'],
     ['+1', '?signup=%2B1'],
     ['true を重ねる', '?signup=1&signup=1'],
-  ])('%s（%s）は state の行の signup が 0', async (_label, query) => {
+  ])('%s（%s）は state の行の is_signup が 0', async (_label, query) => {
     const started = await startGithub(newBrowser(), query);
     expect(started.state).not.toBe('');
     expect((await stateRow(started.state))?.is_signup).toBe(0);

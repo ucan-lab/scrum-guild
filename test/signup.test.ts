@@ -1,6 +1,6 @@
 // 会員登録（Issue #640）。ログインと分けた入口で、招待もアカウントも入れる組織も無い人がアカウントを作れること。
 //   - completeLogin の登録の分岐（signup: true）と、印なしのログインが今どおり denied で断ること
-//   - 登録の印（oauth_states.signup）が startOAuthState と consumeOAuthState の往復で保たれ、DB の CHECK が 0/1 以外を断ること
+//   - 登録の印（oauth_states.is_signup）が startOAuthState と consumeOAuthState の往復で保たれ、DB の CHECK が 0/1 以外を断ること
 //   - GET /api/auth/<手段>/start?signup=1 だけが印を付けること（値が 1 のときだけ。招待の URL の POST の開始は付けない）
 //   - 開始から戻り先までの往復（GitHub と Google）
 import { env } from 'cloudflare:workers';
@@ -252,7 +252,7 @@ describe('completeLogin の登録の分岐', () => {
   });
 });
 
-describe('登録の印の往復（oauth_states.signup）', () => {
+describe('登録の印の往復（oauth_states.is_signup）', () => {
   const now = new Date();
 
   test('startOAuthState の既定は印なしで、consumeOAuthState も false で返す', async () => {
@@ -309,7 +309,7 @@ describe('開始のルート（signup の値）', () => {
     ['google', '', 0],
     ['google', '?signup=true', 0],
     ['google', '?signup=1&signup=0', 0],
-  ] as const)('%s の開始 %s は、state の行の signup が %i', async (provider, query, expected) => {
+  ] as const)('%s の開始 %s は、state の行の is_signup が %i', async (provider, query, expected) => {
     const browser = newBrowser(provider);
     const response = await browser.request(`/api/auth/${provider}/start${query}`);
     expect(response.status).toBe(302);
