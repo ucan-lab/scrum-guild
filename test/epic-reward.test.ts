@@ -230,12 +230,12 @@ describe('epic-reward-update', () => {
   });
 
   for (const label of Object.keys(finishedEpics)) {
-    test(`${label}したエピックの段階は変えられない（409 の conflict）`, async () => {
+    test(`${label}したエピックの段階は変えられない（409 の epic_finished）`, async () => {
       const target = await namedTarget();
       const epic = await epicOf(target, finishedOverrides(label, target));
-      await expectError(await reward(target, epic.id, 'large'), 409, 'conflict');
+      await expectError(await reward(target, epic.id, 'large'), 409, 'epic_finished');
       // 同じ段階でも、終わったエピックは 409
-      await expectError(await reward(target, epic.id, 'small'), 409, 'conflict');
+      await expectError(await reward(target, epic.id, 'small'), 409, 'epic_finished');
       expect((await rowOf(target, epic.id)).reward_tier).toBe('small');
       expect(await epicLogsOf(target, epic.id)).toEqual([]);
     });
@@ -364,7 +364,7 @@ describe('epic-reward-update', () => {
             await setEpic(db, target, epic.id, { completed_at: AT, completed_by: target.admin.userId! });
         },
       ),
-    ).rejects.toMatchObject({ status: 409, code: 'conflict' });
+    ).rejects.toMatchObject({ status: 409, code: 'epic_finished' });
     expect((await rowOf(target, epic.id)).reward_tier).toBe('small');
   });
 
@@ -517,10 +517,10 @@ describe('epic-requester-update', () => {
   });
 
   for (const label of Object.keys(finishedEpics)) {
-    test(`${label}したエピックの依頼主は替えられない（409 の conflict）`, async () => {
+    test(`${label}したエピックの依頼主は替えられない（409 の epic_finished）`, async () => {
       const target = await namedTarget();
       const epic = await epicOf(target, finishedOverrides(label, target));
-      await expectError(await requester(target, epic.id, target.member.userId!), 409, 'conflict');
+      await expectError(await requester(target, epic.id, target.member.userId!), 409, 'epic_finished');
       expect((await rowOf(target, epic.id)).requester_user_id).toBe(target.admin.userId);
       expect(await epicLogsOf(target, epic.id)).toEqual([]);
     });

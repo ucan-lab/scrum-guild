@@ -106,7 +106,7 @@ export const epicRewardUpdateOperation = implement(epicRewardUpdate, async ({ db
     if (!leader && epic.requesterUserId !== actorUserId) throw new ApiError(403, 'forbidden');
     if (epic.finished) {
       await throwIfClosed(db, workspaceId);
-      throw new ApiError(409, 'conflict');
+      throw new ApiError(409, 'epic_finished');
     }
     if (epic.rewardTier === next) {
       // 同じ段階なら何も書かない。書くものが無くても、閉じたワークスペースは断る
@@ -169,7 +169,7 @@ export const epicRequesterUpdateOperation = implement(epicRequesterUpdate, async
     }
     if (epic.finished) {
       await throwIfClosed(db, workspaceId);
-      throw new ApiError(409, 'conflict');
+      throw new ApiError(409, 'epic_finished');
     }
     const requester = { id: userId, name: active.name, left: false };
     if (epic.requesterUserId === userId) {

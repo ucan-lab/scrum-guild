@@ -158,7 +158,7 @@ async function addToParty(params: {
     }
     if (state.epic.finished) {
       await throwIfClosed(db, workspaceId);
-      throw new ApiError(409, 'conflict');
+      throw new ApiError(409, 'epic_finished');
     }
     if (state.epic.via !== null) {
       // 既に討伐隊にいれば何も書かない。書くものが無くても、閉じたワークスペースは断る
@@ -234,7 +234,7 @@ export const epicPartyLeaveOperation = implement(epicPartyLeave, async ({ db, ac
     }
     if (state.epic.finished) {
       await throwIfClosed(db, workspaceId);
-      throw new ApiError(409, 'conflict');
+      throw new ApiError(409, 'epic_finished');
     }
     const via = state.epic.via;
     if (via === null) {

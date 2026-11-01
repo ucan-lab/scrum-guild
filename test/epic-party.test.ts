@@ -241,15 +241,15 @@ describe('epic-party-join と epic-party-leave', () => {
   });
 
   for (const [label, overrides] of Object.entries(finishedEpics)) {
-    test(`${label}したエピックには受注できず、抜けられない（409 の conflict）`, async () => {
+    test(`${label}したエピックには受注できず、抜けられない（409 の epic_finished）`, async () => {
       const target = await namedTarget();
       const epic = await epicOf(target, {
         ...overrides,
         [label === 'クリア' ? 'completed_by' : 'canceled_by']: target.admin.userId!,
       });
-      await expectError(await join(target, epic.id), 409, 'conflict');
+      await expectError(await join(target, epic.id), 409, 'epic_finished');
       await createEpicPartyMember(target.organization, epic.id, target.member.userId!);
-      await expectError(await leave(target, epic.id), 409, 'conflict');
+      await expectError(await leave(target, epic.id), 409, 'epic_finished');
       expect(await partyOf(target, epic.id)).toHaveLength(1);
       expect(await epicLogsOf(target, epic.id)).toEqual([]);
     });
@@ -376,13 +376,13 @@ describe('epic-party-assign', () => {
   });
 
   for (const [label, overrides] of Object.entries(finishedEpics)) {
-    test(`${label}したエピックには割り振れない（409 の conflict）`, async () => {
+    test(`${label}したエピックには割り振れない（409 の epic_finished）`, async () => {
       const target = await namedTarget();
       const epic = await epicOf(target, {
         ...overrides,
         [label === 'クリア' ? 'completed_by' : 'canceled_by']: target.admin.userId!,
       });
-      await expectError(await assign(target, epic.id, target.member.userId!), 409, 'conflict');
+      await expectError(await assign(target, epic.id, target.member.userId!), 409, 'epic_finished');
       expect(await partyOf(target, epic.id)).toEqual([]);
     });
   }
