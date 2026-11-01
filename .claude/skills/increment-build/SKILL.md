@@ -115,9 +115,9 @@ Issue に、ブランチ名とセッションの識別をコメントで残す�
 
 1. クラウドのセッション（環境変数 `CLAUDE_CODE_REMOTE` が `true`）は、Codex の判定をせず常に Claude の `implementer`（`.claude/agents/implementer.md`、Sonnet）。クラウドの環境に OpenAI の資格情報を置かないため
 2. 手元では、`command -v codex` と `codex login status` がどちらも成功すれば Codex の `implementer`（`.codex/agents/implementer.toml`）。どちらかが失敗すれば Claude の `implementer`
-3. Codex は次のように呼ぶ。プロンプトに「`implementer` エージェントで実装する」と明示し（Codex は親が明示したときだけエージェントを起こす）、続けて5つを書く。プロンプトはスクラッチのファイルに Write で書き、標準入力から渡す（Issue の本文の `` ` `` や `$(...)` をシェルに展開させないため。引数に直接入れない）。ネットワークは呼び出しで無しに固定する（`-c sandbox_workspace_write.network_access=false`。人の `~/.codex/config.toml` が有効にしていても効かせないため）
+3. Codex は次のように呼ぶ。プロンプトに「`implementer` エージェントで実装する」と明示し（Codex は親が明示したときだけエージェントを起こす）、続けて5つを書く。プロンプトはスクラッチのファイルに Write で書き、標準入力から渡す（Issue の本文の `` ` `` や `$(...)` をシェルに展開させないため。引数に直接入れない）。sandbox は `workspace-write` のまま、ネットワーク全体を有効にする（`-c sandbox_workspace_write.network_access=true`。Issue の本文の取得や依存の導入に使う。2026-11-02 に決めた）。本番の操作と資格情報の読み出しの禁止は `AGENTS.md` に従う
    ```bash
-   codex exec -C <ワークツリーの絶対パス> --sandbox workspace-write -c sandbox_workspace_write.network_access=false --output-last-message <スクラッチの path> - < <プロンプトのファイル>
+   codex exec -C <ワークツリーの絶対パス> --sandbox workspace-write -c sandbox_workspace_write.network_access=true --output-last-message <スクラッチの path> - < <プロンプトのファイル>
    ```
    長く掛かるので `run_in_background` で走らせ、終了の通知で終了コードと出力を読む（前景の Bash は10分で打ち切られ、半端な差分だけが残る）。打ち切られたなど、上限の印の無い非 0 は、上限以外の失敗として止まる。Codex が `implementer` として動いたかは、最後の出力の先頭で名乗らせて確かめる（名乗りが無ければ、PR に「定義が効いたか不明」と書く）
 4. Codex が 0 でない終了コードで終わり、Codex 自身のエラー（標準エラーの終わりの、Codex が出したエラー行。実装が走らせたテストの出力ではない）に利用上限の印（大文字小文字を区別せず `usage limit`、`rate limit`、`quota`、`429`）があれば、Claude の `implementer` に切り替える。ワークツリーの差分は戻さず、`git status --short`（新規のファイルを見落とさないため）、`git diff`、Codex の最後の出力（`--output-last-message` のファイル。無ければ標準出力の末尾）を添えて、続きから実装させる。上限以外の失敗（テストが通らないなど）では切り替えず、止まる条件で止まる（担い手を替えて失敗を隠さないため）
@@ -165,7 +165,7 @@ Issue に、ブランチ名とセッションの識別をコメントで残す�
 
 ### 6. 受け取る
 
-戻ったら（直接実装のときは書き終えたら）、受け入れ条件の検査を自分で走らせ直す。エージェントの報告を検査の結果として扱わない。直接実装でも、検査を前に通したと見なさず、コミットの前にもう一度走らせる（担い手によらない決まり）。Codex が書いた差分を含むとき（Codex 単独と、上限で Claude に引き継いだ場合）は、何かを走らせる前に `git status --short` と `git diff --name-only` を見る。変えてよい範囲の外に、守るファイル（`.githooks/`、`.claude/`、`.codex/`、`AGENTS.md` と `AGENTS.override.md`、`package.json`、`pnpm-lock.yaml`、`.npmrc`、`scripts/`、`*.config.*`、`wrangler*`）の変更が1つでもあれば、`pnpm` も `git commit` も走らせずに止まり、人に確かめる（理由: 呼び出し側は sandbox の外で、ネットワークも資格情報もある。Codex が書き換えた `.githooks/` や `package.json` のスクリプトを、そのまま動かさないため）。範囲の中だけなら、`pnpm format` を走らせてから検査を走らせ直す（Codex の書いたファイルは `format.mjs` を通っていないため）。直接実装だけのときは、Codex の差分の確かめは当てはまらない（Edit と Write で書き、フックを通っているため）。
+戻ったら（直接実装のときは書き終えたら）、受け入れ条件の検査を自分で走らせ直す。エージェントの報告を検査の結果として扱わない。直接実装でも、検査を前に通したと見なさず、コミットの前にもう一度走らせる（担い手によらない決まり）。Codex が書いた差分を含むとき（Codex 単独と、上限で Claude に引き継いだ場合）は、何かを走らせる前に `git status --short` と `git diff --name-only` を見る。変えてよい範囲の外に、守るファイル（`.githooks/`、`.claude/`、`.codex/`、`.agents/`、`AGENTS.md` と `AGENTS.override.md`、`package.json`、`pnpm-lock.yaml`、`.npmrc`、`scripts/`、`*.config.*`、`wrangler*`）の変更が1つでもあれば、`pnpm` も `git commit` も走らせずに止まり、人に確かめる（理由: 呼び出し側は sandbox の外で、ネットワークも資格情報もある。Codex が書き換えた `.githooks/` や `package.json` のスクリプトを、そのまま動かさないため）。範囲の中だけなら、`pnpm format` を走らせてから検査を走らせ直す（Codex の書いたファイルは `format.mjs` を通っていないため）。直接実装だけのときは、Codex の差分の確かめは当てはまらない（Edit と Write で書き、フックを通っているため）。
 `git status --short` に身に覚えのない変更があれば止まり、人に確かめる（直接実装でも確かめる）。
 「テストを先に書く」を行ったときは、`git diff <(2) の SHA> -- <(2) でコミットしたテストのファイル>` に、消えた行と変わった行が無いことを確かめる（足した行は崩す書き手のテストなのでよい）。あれば受け入れ条件に反するので元に戻し、実装の書き手が誤りと見たものとして止まる条件の最後の行へ回す。
 通ったらコミットし、Skill ツールで `done-check` を起動する。レビューと直し方の基準は `done-check` に従う。直す量が多ければ、実装したエージェントに SendMessage でまとめて直させ、戻らなければ自分で直す（Codex で実装したときは、Codex に SendMessage は届かないので、自分で直すか、Claude の `implementer` に差分を添えて渡す。直接実装したときは、送る相手がいないので自分で直す）。

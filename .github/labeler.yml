@@ -53,9 +53,10 @@ needs-human:
           - ".claude/skills/ai-review/**"
           - ".claude/agents/**"
           - ".mcp.json"
-          # Codex の実装専用のエージェントと設定（sandbox とネットワークを変えられる）、Codex が読む決まり
+          # Codex のエージェントと設定（sandbox とネットワークを変えられる）、Codex が読む決まりとスキル
           # （入れ子の AGENTS.md と、AGENTS.md より先に読まれる AGENTS.override.md も含む）
           - "**/.codex/**"
+          - "**/.agents/**"
           - "**/AGENTS.md"
           - "**/AGENTS.override.md"
   # .claude/ の下のファイル（CI が書き込みのトークンを持って走らせるスクリプトを含む。入れ子の .claude/ も）。
