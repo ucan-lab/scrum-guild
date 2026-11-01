@@ -137,6 +137,23 @@ test.describe('本物の API', () => {
     await expect(revised.getByRole('link')).toHaveCount(1);
   });
 
+  test('プライバシーポリシーだけが旧い版の人には、プライバシーポリシーだけを改めたと案内する', async ({
+    page,
+    context,
+    baseURL,
+  }) => {
+    await seedOldAccountConsent('unconsented', { ...OLD_CONSENT, termsVersion: TERMS_VERSION });
+    await signIn(context, baseURL, 'unconsented');
+    await page.goto('/consent');
+    const revised = page.locator('.callout.is-info');
+    await expect(revised).toContainText('プライバシーポリシーが改められました');
+    await expect(revised).not.toContainText('利用規約が改められました');
+    await expect(revised.locator('.mono')).toHaveText([`改定日: ${PRIVACY_VERSION}`]);
+    const history = revised.getByRole('link');
+    await expect(history).toHaveCount(1);
+    await expect(history).toHaveAttribute('href', '/privacy#revision-history');
+  });
+
   test('同意の行が無い人（初めて同意する人）には、改めた案内を出さない', async ({ page, context, baseURL }) => {
     await signIn(context, baseURL, 'unconsented');
     await page.goto('/consent');

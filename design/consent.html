@@ -36,7 +36,7 @@ const revisedDoc = (title, href) => `<br>${title} <span class="mono">${t("legalR
 const revised = (headingKey, docs) => `<div class="callout is-info">${icon("file")}<span><b>${t(headingKey)}</b> ${docs.join(" ")}</span></div>`;
 const revisedTerms = revisedDoc(t("termsTitle"), "terms.html");
 const revisedPrivacy = revisedDoc(t("privacyTitle"), "privacy.html");
-const logout =`<button class="btn is-sm is-quiet" type="button">${t("logout")}</button>`;
+const logout = `<button class="btn is-sm is-quiet" type="button">${t("logout")}</button>`;
 const form = (id, checked, busy = false) => `<label class="choice is-static is-consent"><input type="checkbox"${checked ? " checked" : ""}><span>${t("consentCheckLabel")}</span></label>
 <div class="form-actions">
   <button class="btn is-primary" type="button" aria-disabled="${checked && !busy ? "false" : "true"}"${checked ? "" : ` aria-describedby="${id}"`}>${busy ? t("consentSubmitting") : t("consentSubmit")}</button>

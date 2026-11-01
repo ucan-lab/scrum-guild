@@ -75,6 +75,14 @@ describe('利用規約とプライバシーポリシーの文面', () => {
     expect(source.indexOf(REVISION_HISTORY_HEADING)).toBeLessThan(source.lastIndexOf('改定日: '));
   });
 
+  // 版を上げたのに履歴へ1行足し忘れると、同意の画面の「改定の履歴を見る」が、改めた根拠を示さない履歴を指す
+  test.each(kinds)('%s: 履歴の最も新しい日付が、版と一致する', (kind) => {
+    const { history, version } = legalDocuments[kind];
+    const dates = [...history.matchAll(/^- (\d{4}-\d{2}-\d{2}) /gm)].map((match) => match[1] ?? '');
+    expect(dates.length).toBeGreaterThan(0);
+    expect(dates.toSorted().at(-1)).toBe(version);
+  });
+
   test.each(kinds)('%s: 履歴の節が画面に描ける。見出しは1つで、箇条書きを持つ', (kind) => {
     const blocks = parseMarkdown(legalDocuments[kind].history);
     expect(blocks).not.toBeNull();
