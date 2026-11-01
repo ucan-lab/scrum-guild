@@ -211,9 +211,12 @@ test.describe('高さの低い指で押す画面の左のメニュー', () => {
       const last = page.locator('#app-nav .nav-item').last();
       await last.scrollIntoViewIfNeeded();
       await expect(last).toBeInViewport({ ratio: 1 });
+      const overflow = await inner.evaluate((element) => element.scrollHeight - element.clientHeight);
       if (viewport.overflows) {
-        expect(await inner.evaluate((element) => element.scrollHeight - element.clientHeight)).toBeGreaterThan(0);
+        expect(overflow).toBeGreaterThan(0);
         await expect.poll(() => inner.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
+      } else {
+        expect(overflow).toBeLessThanOrEqual(0);
       }
       const href = await last.getAttribute('href');
       await last.click();
