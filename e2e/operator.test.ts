@@ -39,6 +39,8 @@ const organization = (overrides: Partial<ListedOrganization>): ListedOrganizatio
   attachment_quota_bytes: 32212254720,
   last_used_at: '2026-10-20T00:12:00.000Z',
   self_created: false,
+  trial_ends_on: null,
+  trial_expired: false,
   ...overrides,
 });
 
@@ -91,6 +93,28 @@ test.describe('運用者', () => {
 
   test.beforeEach(async ({ context, baseURL }) => {
     await signIn(context, baseURL, 'operator');
+  });
+
+  test('お試しの期限と期限を過ぎた印を名前の列に出す', async ({ page }) => {
+    await mockList(page, [
+      organization({ self_created: true, trial_ends_on: '2026-11-30' }),
+      organization({
+        slug: 'past',
+        name: '期限を過ぎた組織',
+        self_created: true,
+        trial_ends_on: '2026-10-31',
+        trial_expired: true,
+      }),
+      organization({ slug: 'regular', name: '期限のない組織' }),
+    ]);
+    await page.goto('/operator');
+    const rows = page.locator('.table tbody tr');
+    await expect(rows.filter({ hasText: 'あおば開発' })).toContainText('お試しの期限（UTC）: 2026-11-30');
+    await expect(rows.filter({ hasText: 'あおば開発' })).not.toContainText('お試しの期限を過ぎています');
+    await expect(rows.filter({ hasText: '期限を過ぎた組織' }).locator('.chip.is-danger')).toHaveText(
+      'お試しの期限を過ぎています',
+    );
+    await expect(rows.filter({ hasText: '期限のない組織' })).not.toContainText('お試し');
   });
 
   test('組織の一覧に、名前、slug、停止、管理者の状態の印を出す', async ({ page }) => {

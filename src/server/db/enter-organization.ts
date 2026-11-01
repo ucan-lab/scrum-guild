@@ -24,6 +24,7 @@ export type OrganizationSummary = {
   readonly slug: string;
   readonly name: string;
   readonly theme: Theme;
+  readonly trial_ends_on: string | null;
 };
 
 export type OrganizationEntry = {
@@ -54,7 +55,10 @@ export async function enterOrganization(
   const common = commonDb(env);
   const organization = await common.first(
     common.statement((q) =>
-      q.selectFrom('organizations').select(['id', 'suspended_at', 'slug', 'name', 'theme']).where('slug', '=', slug),
+      q
+        .selectFrom('organizations')
+        .select(['id', 'suspended_at', 'slug', 'name', 'theme', 'trial_ends_on'])
+        .where('slug', '=', slug),
     ),
   );
   if (organization === undefined) return undefined;
@@ -89,6 +93,7 @@ export async function enterOrganization(
             name: organization.name,
             // 列の CHECK が守る値。列挙に無い値が来ても、操作の出力のスキーマ（z.enum）が 500 で止める
             theme: organization.theme as Theme,
+            trial_ends_on: organization.trial_ends_on,
           },
         };
 

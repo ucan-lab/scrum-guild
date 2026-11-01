@@ -214,6 +214,12 @@
                   <td class="is-name">
                     {organization.name}
                     {#if organization.self_created}<span class="chip">{t('operatorSelfCreated')}</span>{/if}
+                    {#if organization.trial_ends_on !== null}
+                      <span class="chip">{t('orgTrialEndsOn', { date: organization.trial_ends_on })}</span>
+                      {#if organization.trial_expired}<span class="chip is-danger"
+                          ><Icon name="alert" />{t('operatorTrialExpired')}</span
+                        >{/if}
+                    {/if}
                     {#if organization.suspended_at}
                       <span class="chip is-warn"
                         >{t('operatorSuspended', { date: formatUtcDate(organization.suspended_at) })}</span

@@ -409,3 +409,24 @@ INSERT INTO api_tokens (token_hash, account_id, name, scope, created_at, last_us
   ('f9aa895ffeb5f4c90ee6b70c4fc962a8cb697dfc459b0ffba700432052e03b03', '019a0000-0000-7000-8000-000000000101', 'seed の書き込み', 'write', '2026-10-20T00:00:00.000Z', NULL, strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '+90 days'), NULL),
   ('b548a85e3132792fe348465b5835363d7dbe5ee39f721f9ddf9ae44a9a734374', '019a0000-0000-7000-8000-000000000102', 'seed の読み取り', 'read', '2026-10-20T00:00:00.000Z', NULL, strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '+90 days'), NULL),
   ('ca334aeefd2f7fe883e099b222f0d0e167e8d93c6653ce1729714c32f005532c', '019a0000-0000-7000-8000-000000000104', 'seed の運用者', 'write', '2026-10-20T00:00:00.000Z', NULL, strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '+90 days'), NULL);
+
+-- 固定の日付で手元の確認が期限切れにならないよう、お試しの期限は seed を流した UTC の日付から数える。
+INSERT INTO accounts (id, last_login_at, created_at, updated_at) VALUES
+  ('019a0000-0000-7000-8000-000000000113', '2026-10-20T00:00:00.000Z', '2026-10-20T00:00:00.000Z', '2026-10-20T00:00:00.000Z'),
+  ('019a0000-0000-7000-8000-000000000114', '2026-10-20T00:00:00.000Z', '2026-10-20T00:00:00.000Z', '2026-10-20T00:00:00.000Z');
+INSERT INTO account_logins (login_provider, login_subject, account_id, login_name, display_name, avatar_url, created_at, updated_at) VALUES
+  ('github', '9000000000000113', '019a0000-0000-7000-8000-000000000113', 'itsuki--seed', 'イツキ', NULL, '2026-10-20T00:00:00.000Z', '2026-10-20T00:00:00.000Z'),
+  ('github', '9000000000000114', '019a0000-0000-7000-8000-000000000114', 'fuuka--seed', 'フウカ', NULL, '2026-10-20T00:00:00.000Z', '2026-10-20T00:00:00.000Z');
+INSERT INTO account_consents (account_id, terms_version, privacy_version, consented_at) VALUES
+  ('019a0000-0000-7000-8000-000000000113', '2026-11-02', '2026-10-31', '2026-10-20T00:00:00.000Z'),
+  ('019a0000-0000-7000-8000-000000000114', '2026-11-02', '2026-10-31', '2026-10-20T00:00:00.000Z');
+INSERT INTO organizations (id, slug, name, vocabulary, created_by_operator, created_by_account_id, trial_ends_on, created_at, updated_at) VALUES
+  ('019a0000-0000-7000-8000-000000000206', 'kaze', 'かぜラボ', 'scrum', 'self-service', '019a0000-0000-7000-8000-000000000113', date('now', '+30 days'), '2026-10-20T00:00:00.000Z', '2026-10-20T00:00:00.000Z');
+INSERT INTO users (id, organization_id, account_id, login_provider, login_subject, name, is_admin, created_at, updated_at) VALUES
+  ('019a0000-0000-7000-8000-000000000314', '019a0000-0000-7000-8000-000000000206', '019a0000-0000-7000-8000-000000000113', 'github', '9000000000000113', 'イツキ', 1, '2026-10-20T00:00:00.000Z', '2026-10-20T00:00:00.000Z'),
+  ('019a0000-0000-7000-8000-000000000315', '019a0000-0000-7000-8000-000000000206', '019a0000-0000-7000-8000-000000000114', 'github', '9000000000000114', 'フウカ', 0, '2026-10-20T00:00:00.000Z', '2026-10-20T00:00:00.000Z');
+INSERT INTO workspaces (id, organization_id, name, timezone, vocabulary, created_by, created_at, updated_at) VALUES
+  ('019a0000-0000-7000-8000-000000000405', '019a0000-0000-7000-8000-000000000206', 'お試しチーム', 'Asia/Tokyo', 'scrum', '019a0000-0000-7000-8000-000000000314', '2026-10-20T00:00:00.000Z', '2026-10-20T00:00:00.000Z');
+INSERT INTO memberships (id, workspace_id, user_id, role, joined_on, joined_at) VALUES
+  ('019a0000-0000-7000-8000-00000000070a', '019a0000-0000-7000-8000-000000000405', '019a0000-0000-7000-8000-000000000314', 'leader', '2026-10-20', '2026-10-20T00:00:00.000Z'),
+  ('019a0000-0000-7000-8000-00000000070b', '019a0000-0000-7000-8000-000000000405', '019a0000-0000-7000-8000-000000000315', 'member', '2026-10-20', '2026-10-20T00:00:00.000Z');

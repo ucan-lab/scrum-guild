@@ -1101,6 +1101,11 @@ export const dictionary = defineDictionary({
   themeNoteModern: '近未来の端末のウィンドウ。暗い地に光る枠',
 
   // 組織の既定のテーマ（組織の管理の画面）
+  orgTrialTitle: 'お試し',
+  orgTrialDesc: '継続して使うには、運用者に問い合わせてください。',
+  orgTrialEndsOn: 'お試しの期限（UTC）: {date}',
+  orgTrialDaysLeft: '残り {days} 日',
+  operatorTrialExpired: 'お試しの期限を過ぎています',
   orgThemeTitle: '既定のテーマ',
   orgThemeDesc: '画面の見た目の既定。自分で選んでいないユーザーに効きます。会社で使うならシンプルが無難です。',
   // 節ごとの「保存する」。選んだ値が今の値と違うときだけ押せる
