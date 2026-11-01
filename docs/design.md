@@ -540,7 +540,7 @@ favicon と同じマーク（下の「favicon」）の横に、名前「Scrum Gu
 | `.callout-actions` | （CSS のみ） | 囲みの中の操作（ボタンと状態の文）。右に寄り、狭い幅では本文の下へ折り返す。見本はカタログの「囲みの知らせ」。読み直しの失敗の囲み（`SectionBoundary`）が使う。狭い幅と指で押す画面では、中の `.btn.is-sm` の押せる範囲を、見た目を変えずに 44px 四方以上へ広げる（`.form-actions` の中も同じ） |
 | `DIALOGS.closeWorkspace` | `src/lib/components/admin/WorkspaceCloseDialog.svelte` | 終了する前の確認。見本は `admin.html` の「終了する」（`data-dialog="closeWorkspace"`）。本文は見本と本番で同じ文 |
 | `setting`（組織の休日の節の中身） | `src/lib/components/admin/HolidaysSetting.svelte`、`src/lib/holiday-paste.ts` | 前の節の「組織の休日の節」。見本は `admin.html` の「組織の休日」。貼り付けの解析は `src/shared/holiday.ts` で、API の検証と同じ決まり |
-| `setting`（お試しの節の中身） | `src/lib/components/admin/TrialSetting.svelte` | `organization` の `trial` を受け取り、期限、残りの日数と運用者への問い合わせの案内を出す。見本は `admin.html` の「お試し」 |
+| `setting`（お試しの節の中身） | `src/lib/components/admin/TrialSetting.svelte` | `organization` の `trial` を受け取り、期限と運用者への問い合わせの案内に加えて、残りの日数（当日は「今日までです」、期限切れは `chip is-danger` と `alert` アイコンの「お試しの期限を過ぎています」）を出す。見本は `admin.html` の「お試し」（`?trial=lastday`、`?trial=expired` で状態を切り替える）。部品のテストは `TrialSetting.test.ts` |
 | `setting`（既定のテーマの節の中身） | `src/lib/components/admin/OrganizationLookSetting.svelte` | 前の節の「既定のテーマの節」。見本は `admin.html` の「既定のテーマ」。テーマの名前と説明は見本の `THEME_LABEL` と `THEME_NOTE` と同じ文（`scripts/design-parity.test.ts` が突き合わせる） |
 | `setting`（変更の履歴の節の中身） | `src/lib/components/admin/HistorySetting.svelte`、`src/lib/organization-history.ts` | 前の節の「変更の履歴の節」。見本は `admin.html` の「変更の履歴」。内容の文とした人の表示名は `organization-history.ts` が種類ごとに辞書から作る。表は `.table.is-stacked`（操作の列は無い）で、内容の列は `td.is-wrap` |
 | `.table td.is-wrap` | （CSS のみ） | 利用者が付けた名前を文の中に含む本文のセル。空白の無い長い名前も途中で折り、12 文字分の最小幅を持つ。見本はカタログの「表」の3つ目。変更の履歴の内容の列が使う |
