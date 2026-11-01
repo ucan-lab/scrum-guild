@@ -16,7 +16,7 @@ test.afterEach(async () => {
 
 async function openDialog(page: Page) {
   await page.goto('/');
-  await expect(page.getByRole('heading', { level: 1, name: '入れる組織がありません' })).toBeVisible();
+  await expect(page.getByText('入れる組織がありません', { exact: true })).toBeVisible();
   await page.getByRole('button', { name: '組織を作る' }).click();
   const dialog = page.getByRole('dialog', { name: word('createMyOrganizationTitle') });
   await expect(dialog).toBeVisible();
