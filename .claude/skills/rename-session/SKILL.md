@@ -17,7 +17,7 @@ description: セッション名を、受け持つ Issue と PR の番号から�
 - Issue の番号（無いこともある）
 - PR の番号（PR を作った後だけ）
 
-渡されない値は、今のブランチ名 `<Issue番号>-<短い名前>` の先頭の数字と、`gh pr list --head <ブランチ> --state all --limit 1 --json number` で引く。
+渡されない値は、今のブランチ名 `<Issue番号>-<短い名前>` の先頭の数字と、`gh api 'repos/{owner}/{repo}/pulls?head={owner}:<ブランチ>&state=all&per_page=1' --jq '.[0].number'` で引く（クラウドのセッションでは GraphQL を使う `gh pr` が 403 になるので REST を使う）。
 
 ## 手順
 

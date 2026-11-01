@@ -28,8 +28,12 @@ describe('rename-line.mjs（偽の gh と pbcopy）', () => {
   stub('gh', [
     'echo "$*" >>"$GH_CALLS"',
     '[ -z "${GH_FAIL:-}" ] || exit 1',
-    'if [ "$1 $2" = "issue view" ]; then echo "$GH_ISSUE_TITLE"; exit 0; fi',
-    'if [ "$1 $2" = "pr view" ]; then echo "$GH_PR_TITLE"; exit 0; fi',
+    '[ "$1" = "api" ] || exit 1',
+    '[ "$3 $4" = "--jq .title" ] || exit 1',
+    'case "$2" in',
+    '  repos/{owner}/{repo}/issues/*) echo "$GH_ISSUE_TITLE"; exit 0;;',
+    '  repos/{owner}/{repo}/pulls/*) echo "$GH_PR_TITLE"; exit 0;;',
+    'esac',
     'exit 1',
   ]);
   stub('pbcopy', ['cat >"$PB_OUT"', 'exit "${PB_EXIT:-0}"']);
@@ -61,7 +65,8 @@ describe('rename-line.mjs（偽の gh と pbcopy）', () => {
     test('--issue と --pr なら PR の後の形で、題は Issue のまま', () => {
       const r = run(['--issue', '661', '--pr', '663']);
       assert.equal(r.stdout, '/rename #661 PR #663 招待する\n');
-      assert.ok(!r.ghCalls.includes('pr view'), 'Issue があるときは PR のタイトルを引かない');
+      assert.ok(!r.ghCalls.includes('/pulls/'), 'Issue があるときは PR のタイトルを引かない');
+      assert.ok(!/\b(issue|pr) view\b/.test(r.ghCalls), 'GraphQL を使う gh issue view と gh pr view を呼ばない');
     });
     test('--pr だけなら Issue の無い PR の形で、PR のタイトルを使う', () => {
       const r = run(['--pr', '663']);
