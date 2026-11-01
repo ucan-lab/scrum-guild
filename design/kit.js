@@ -73,7 +73,7 @@
     consentTitle: "同意の確認", consentLead: "{app} を使うには、利用規約とプライバシーポリシーを確認してください。", consentVersion: "版: {version}",
     consentCheckLabel: "利用規約とプライバシーポリシーを確認し、同意します", consentSubmit: "同意して進む", consentContinue: "進む",
     consentUpdated: "規約が更新されました。内容を確認し直してください。", consentCurrent: "現在の版に同意しています。",
-    consentRecordedAt: "同意した日時:", consentSubmitHint: "利用規約とプライバシーポリシーを確認し、印を付けてください。",
+    consentRecordedAt: "同意した日時:", consentSubmitHint: "利用規約とプライバシーポリシーを確認し、チェックしてください。",
     consentLoadFailed: "同意の状態を読み込めませんでした。もう一度試してください。", consentSubmitting: "同意を記録しています", consentRecordFailed: "同意を記録できませんでした。もう一度試してください。",
     legalRevised: "改定日: {date}", consentRevisedTerms: "利用規約が改められました", consentRevisedPrivacy: "プライバシーポリシーが改められました",
     consentRevisedBoth: "利用規約とプライバシーポリシーが改められました", consentRevisedHistory: "改定の履歴を見る", consentRevisedHistoryOf: "（{document}）",
