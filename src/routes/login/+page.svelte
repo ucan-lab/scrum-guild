@@ -26,8 +26,6 @@
   const returnTo = $derived(safeReturnTo(page.url.searchParams.get('return_to')));
   const githubStartHref = $derived(`/api/auth/github/start?return_to=${encodeURIComponent(returnTo)}`);
   const googleStartHref = $derived(`/api/auth/google/start?return_to=${encodeURIComponent(returnTo)}`);
-  // 会員登録の画面へ引き継ぐ戻り先のクエリ（`/` なら付けない）
-  const signupQuery = $derived(returnTo === '/' ? '' : `?return_to=${encodeURIComponent(returnTo)}`);
   // 自分のキーだけで引く（constructor や __proto__ のような継承したキーで、辞書に無い値を引かない）
   const errorKey = $derived.by(() => {
     const error = page.url.searchParams.get('error') ?? '';
@@ -140,10 +138,10 @@
       </form>
     {/if}
     <p class="gate-note">{t('loginNote', words)}</p>
-    <!-- 会員登録の画面へ。戻り先が `/` でなければ引き継ぐ。ログインのボタンはアカウントを作らないので、作りたい人はここから -->
+    <!-- 会員登録の画面へ。戻り先は引き継がない（組織の画面から来た人は、登録した後に入れない組織の画面でなく `/` に着く）。
+         ログインのボタンはアカウントを作らないので、作りたい人はここから -->
     <div class="form-actions">
-      <!-- eslint-disable-next-line svelte/no-navigation-without-resolve -- 経路は resolve() で解決し、引き継ぐ return_to のクエリだけを足している -->
-      <a class="btn is-sm is-quiet" href={`${resolve('/signup')}${signupQuery}`}>{t('loginSignupLink')}</a>
+      <a class="btn is-sm is-quiet" href={resolve('/signup')}>{t('loginSignupLink')}</a>
     </div>
     <LegalLinks />
   </GateSheet>

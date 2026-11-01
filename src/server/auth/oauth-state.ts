@@ -36,7 +36,7 @@ export type StartedLogin = { state: string; codeChallenge: string; nonce: string
 
 // state の行を入れる。returnTo は検査済みの自分のサイトのパス。withNonce が真の手段（LoginMethod.usesNonce）には nonce も作って入れる。
 // claimTokenHash は招待の URL から始めたログインの、その URL の秘密の SHA-256（秘密そのものは受け取らない）。
-// signup は会員登録の画面から始めた往復の印（oauth_states.signup）。戻り先が読み、アカウントを作ってよいかを決める
+// signup は会員登録の画面から始めた往復の印（oauth_states.is_signup）。戻り先が読み、アカウントを作ってよいかを決める
 export async function startOAuthState(
   env: Env,
   provider: string,
@@ -58,7 +58,7 @@ export async function startOAuthState(
         code_verifier: codeVerifier,
         nonce,
         claim_token_hash: claimTokenHash,
-        signup: signup ? 1 : 0,
+        is_signup: signup ? 1 : 0,
         return_to: returnTo,
         expires_at: new Date(now.getTime() + OAUTH_STATE_LIFETIME_MS).toISOString(),
       }),
@@ -96,7 +96,7 @@ export async function consumeOAuthState(
           'code_verifier',
           'nonce',
           'claim_token_hash',
-          'signup',
+          'is_signup',
           'return_to',
           'expires_at',
         ]),
@@ -109,6 +109,6 @@ export async function consumeOAuthState(
     nonce: row.nonce,
     returnTo: row.return_to,
     claimTokenHash: row.claim_token_hash,
-    signup: row.signup === 1,
+    signup: row.is_signup === 1,
   };
 }

@@ -86,6 +86,13 @@ test('登録の開始は Worker が 302 で答え、画面の fallback を返さ
   expect(res.headers()['cache-control']).toBe('no-store');
 });
 
+test('ログインで断られた理由（denied）に、会員登録への案内が出る。入口は戻り先を引き継がない', async ({ page }) => {
+  await page.goto('/login?error=denied&return_to=%2Faoba%2Fboard');
+  await expect(page.getByRole('alert')).toContainText('会員登録');
+  // 組織の画面から来た人でも、登録の後に入れない組織の画面でなく `/` に着くよう、戻り先は引き継がない
+  await expect(page.locator('a[href^="/signup"]')).toHaveAttribute('href', '/signup');
+});
+
 test('会員登録の画面は、幅 390px で横にはみ出さず、押せる範囲が足り、axe の違反が無い', async ({ page }) => {
   await page.setViewportSize(NARROW_VIEWPORT);
   await page.goto('/signup');

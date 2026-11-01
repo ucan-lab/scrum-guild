@@ -350,7 +350,7 @@ describe('セッションとログインの途中の状態', () => {
 
   const oauthStateWithSignup = (signup: number) =>
     run(
-      `INSERT INTO oauth_states (state, login_provider, code_verifier, expires_at, signup) VALUES (?, 'google', 'v', ?, ?)`,
+      `INSERT INTO oauth_states (state, login_provider, code_verifier, expires_at, is_signup) VALUES (?, 'google', 'v', ?, ?)`,
       id(),
       AT,
       signup,
@@ -371,8 +371,8 @@ describe('セッションとログインの途中の状態', () => {
       state,
       AT,
     );
-    const row = await env.DB.prepare('SELECT signup FROM oauth_states WHERE state = ?').bind(state).first();
-    expect(row).toEqual({ signup: 0 });
+    const row = await env.DB.prepare('SELECT is_signup FROM oauth_states WHERE state = ?').bind(state).first();
+    expect(row).toEqual({ is_signup: 0 });
   });
 
   test.each(['/aoba', '/invite', '/'])('戻り先 %s は通る', async (returnTo) => {

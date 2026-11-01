@@ -1,7 +1,7 @@
 // 本人を確かめた後の分かれ道（docs/requirements.md の「メンバーと権限」、docs/data-model.md の「書き込みの単位」）。
 //   - ログインさせるのは、運用者、アカウントがある人、停止していなければ入れた組織か届いた招待がある人（停止した組織の分も数える）。
 //     アカウントがある人は、入れる組織を失っていても通す。残り（アカウントが無く、組織も招待も無い人）はログインさせず、accounts を作らない。
-//     ただし会員登録の画面から始めた往復（signup。oauth_states.signup の印）は、この残りの人も断らずに、アカウントを作ってログインさせる
+//     ただし会員登録の画面から始めた往復（signup。oauth_states.is_signup の印）は、この残りの人も断らずに、アカウントを作ってログインさせる
 //     （docs/requirements.md の「メンバーと権限」）。すでにアカウントがある人は新しく作らず、指名や招待のある人は通常のログインと同じに結ぶ。
 //     ログインの画面のボタンから始めた往復は、印が無いので今までどおり断る
 //   - 初めてログインできた人は、accounts と account_logins を1回の batch() で作る。運用者は入れる組織が無くても作る
@@ -37,7 +37,7 @@ type LoginInput = {
   requestId: string;
   // 招待の URL から始めたログインの、その URL の秘密の SHA-256（oauth_states.claim_token_hash）。通常のログインは null
   claimTokenHash?: string | null;
-  // 会員登録の画面から始めた往復（oauth_states.signup）。真なら、アカウントも組織も招待も無い人を denied にせずアカウントを作る。通常のログインは偽
+  // 会員登録の画面から始めた往復（oauth_states.is_signup）。真なら、アカウントも組織も招待も無い人を denied にせずアカウントを作る。通常のログインは偽
   signup?: boolean;
 };
 

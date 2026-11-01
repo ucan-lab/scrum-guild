@@ -114,7 +114,7 @@
 | last_login_at | TEXT | | |
 | created_at、updated_at | TEXT | NOT NULL | |
 
-- 初めてログインできたときに、`account_logins` の行と同じバッチで作る。ログインを押しただけでは作らない。入れる組織（停止した組織の分も数える）も届いた招待も無い人の行は、ログインのボタンからは作らない。会員登録の画面（`/signup`）から始めた往復（`oauth_states.signup` が 1）は、この人の行も作る（すでにアカウントがある人には新しく作らない）。ただし運用者（下の一覧に載った人）は、入れる組織が無くても作る。運用者の画面に組織の外から入るため。アカウントができた後は、入れる組織を失っても行は残り、ログインできる。
+- 初めてログインできたときに、`account_logins` の行と同じバッチで作る。ログインを押しただけでは作らない。入れる組織（停止した組織の分も数える）も届いた招待も無い人の行は、ログインのボタンからは作らない。会員登録の画面（`/signup`）から始めた往復（`oauth_states.is_signup` が 1）は、この人の行も作る（すでにアカウントがある人には新しく作らない）。ただし運用者（下の一覧に載った人）は、入れる組織が無くても作る。運用者の画面に組織の外から入るため。アカウントができた後は、入れる組織を失っても行は残り、ログインできる。
 - 運用者かどうかは、この表ではなくシークレットのログインの ID（`github:12345`、`google:<sub>` の形）の一覧で決める。
 
 ### account_logins
@@ -216,7 +216,7 @@
 | code_verifier | TEXT | NOT NULL | |
 | nonce | TEXT | | OpenID Connect の手段（Google）で、ID トークンの `nonce` と比べる値。GitHub では空。Google で空の行は、アプリが拒む |
 | claim_token_hash | TEXT | | 招待の URL から始めたログインで、その URL の秘密の SHA-256。戻ってきたときに、待っている指名か招待を引く |
-| signup | INTEGER | NOT NULL、DEFAULT 0、`CHECK (signup IN (0, 1))` | 会員登録の画面（`/signup`）から始めた往復なら 1。開始の `GET /api/auth/<手段>/start` が、`signup` のクエリがちょうど `1` の1つのときだけ 1 にする（`?signup=1&signup=0` や `?signup=true` は 0）。招待の URL の POST の開始は 0。戻り先が行から読み、1 ならアカウントも組織も招待も無い人のアカウントも作る。クエリの値は書き換えられるので、戻りの URL の値は見ない（`migrations/0015_add_oauth_states_signup.sql`） |
+| is_signup | INTEGER | NOT NULL、DEFAULT 0、`CHECK (is_signup IN (0, 1))` | 会員登録の画面（`/signup`）から始めた往復なら 1。開始の `GET /api/auth/<手段>/start` が、`signup` のクエリがちょうど `1` の1つのときだけ 1 にする（`?signup=1&signup=0` や `?signup=true` は 0）。招待の URL の POST の開始は 0。戻り先が行から読み、1 ならアカウントも組織も招待も無い人のアカウントも作る。クエリの値は書き換えられるので、戻りの URL の値は見ない（`migrations/0015_add_oauth_states_signup.sql`） |
 | return_to | TEXT | `CHECK (return_to GLOB '/*' AND return_to NOT GLOB '//*' AND return_to NOT GLOB '/\*' AND return_to NOT GLOB '*[^ -~]*')` | ログイン後に戻る画面のパス。自分のサイトのパスだけで、`//` や `/\` で始まる別のサイトへの移動は DB でも拒む。印字できる ASCII に限る（ブラウザは URL のタブと改行を取り除くので、`/<タブ>/evil.example` が `//evil.example` になる）。DB の CHECK が拒むのは、この大まかな形だけ。長さ（512文字まで）、`.` と `..` の区間、パスの `\`、`api` と `login` で始まる値などの細かい検査は、アプリ（`src/shared/return-to.ts`）が持ち、合わない値は `/` に直す。長さを絞るのは、未ログインの人が書かせられる1行を小さく保つため |
 | expires_at | TEXT | NOT NULL | 作ってから10分 |
 

@@ -78,17 +78,17 @@ describe('signup の値の変種は印にならない', () => {
   ])('%s（%s）は state の行の signup が 0', async (_label, query) => {
     const started = await startGithub(newBrowser(), query);
     expect(started.state).not.toBe('');
-    expect((await stateRow(started.state))?.signup).toBe(0);
+    expect((await stateRow(started.state))?.is_signup).toBe(0);
   });
 
   test('パーセント符号化した 1（%31）は復号後に 1 なので印になる', async () => {
     const started = await startGithub(newBrowser(), '?signup=%31');
-    expect((await stateRow(started.state))?.signup).toBe(1);
+    expect((await stateRow(started.state))?.is_signup).toBe(1);
   });
 
   test('return_to の中に signup=1 を埋めても印にならない', async () => {
     const started = await startGithub(newBrowser(), '?return_to=%2Faoba%3Fsignup%3D1');
-    expect(await stateRow(started.state)).toMatchObject({ signup: 0 });
+    expect(await stateRow(started.state)).toMatchObject({ is_signup: 0 });
   });
 
   test('印の無いログインとして来た往復は、印の変種でも denied で、アカウントを作らない', async () => {
@@ -177,7 +177,7 @@ describe('印を付けた state の扱い', () => {
     expect((await attacker.callback({ code, state: started.state })).location).toBe('/login?error=retry');
     expect(attacker.sessionToken).toBeUndefined();
     expect(await countAccounts()).toBe(before);
-    expect((await stateRow(started.state))?.signup).toBe(1);
+    expect((await stateRow(started.state))?.is_signup).toBe(1);
 
     expect((await owner.callback({ code, state: started.state })).location).toBe('/');
     expect(await countAccounts()).toBe(before + 1);

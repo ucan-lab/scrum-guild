@@ -257,7 +257,7 @@ describe('登録の印の往復（oauth_states.signup）', () => {
 
   test('startOAuthState の既定は印なしで、consumeOAuthState も false で返す', async () => {
     const started = await startOAuthState(env, 'github', '/', now, false);
-    expect((await stateRow(started.state))?.signup).toBe(0);
+    expect((await stateRow(started.state))?.is_signup).toBe(0);
 
     const consumed = await consumeOAuthState(env, 'github', started.state, now);
     expect(consumed?.signup).toBe(false);
@@ -265,13 +265,13 @@ describe('登録の印の往復（oauth_states.signup）', () => {
 
   test('false を渡すと 0 で入り、false で返る', async () => {
     const started = await startOAuthState(env, 'github', '/', now, false, null, false);
-    expect((await stateRow(started.state))?.signup).toBe(0);
+    expect((await stateRow(started.state))?.is_signup).toBe(0);
     expect((await consumeOAuthState(env, 'github', started.state, now))?.signup).toBe(false);
   });
 
   test('true を渡すと 1 で入り、true で返る', async () => {
     const started = await startOAuthState(env, 'github', '/aoba', now, false, null, true);
-    expect((await stateRow(started.state))?.signup).toBe(1);
+    expect((await stateRow(started.state))?.is_signup).toBe(1);
 
     const consumed = await consumeOAuthState(env, 'github', started.state, now);
     expect(consumed).toMatchObject({ signup: true, returnTo: '/aoba', claimTokenHash: null });
@@ -314,13 +314,13 @@ describe('開始のルート（signup の値）', () => {
     const response = await browser.request(`/api/auth/${provider}/start${query}`);
     expect(response.status).toBe(302);
     const state = new URL(response.headers.get('Location') ?? '', 'https://scrum-guild.test').searchParams.get('state');
-    expect((await stateRow(state ?? ''))?.signup).toBe(expected);
+    expect((await stateRow(state ?? ''))?.is_signup).toBe(expected);
   });
 
   test('return_to は登録の印と別に、今までどおり保たれる', async () => {
     const response = await newBrowser().request('/api/auth/github/start?signup=1&return_to=%2Faoba%2Fboard');
     const state = new URL(response.headers.get('Location') ?? '', 'https://scrum-guild.test').searchParams.get('state');
-    expect(await stateRow(state ?? '')).toMatchObject({ signup: 1, return_to: '/aoba/board' });
+    expect(await stateRow(state ?? '')).toMatchObject({ is_signup: 1, return_to: '/aoba/board' });
   });
 
   test('招待の URL の POST の開始（POST /google/start）は、印を付けない', async () => {
@@ -328,7 +328,7 @@ describe('開始のルート（signup の値）', () => {
     const started = await newBrowser('google').startInvite(claimToken);
     expect(started.response.status).toBe(302);
     expect(started.state).not.toBe('');
-    expect(await stateRow(started.state)).toMatchObject({ signup: 0 });
+    expect(await stateRow(started.state)).toMatchObject({ is_signup: 0 });
   });
 
   test('画面の移動でない読み込み（Sec-Fetch-Mode: no-cors）の ?signup=1 は、行を書かない', async () => {
