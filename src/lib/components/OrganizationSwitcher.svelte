@@ -3,6 +3,7 @@
   import { resolve } from '$app/paths';
   import { t } from '../vocabulary.svelte.ts';
   import Icon from './Icon.svelte';
+  import { SwitcherMenu } from './switcher-menu.svelte.ts';
 
   // kit.js の orgMenuHtml。開閉するメニューで、中は各組織へのリンクと、最後に組織の選択の画面（/）へ戻るリンク。
   // 選ぶと画面が移るので select にしない（矢印キーで選んだだけで移ってしまう）。
@@ -29,9 +30,7 @@
   } = $props();
 
   const listId = $props.id();
-  let open = $state(false);
-  let root = $state<HTMLElement>();
-  let button = $state<HTMLButtonElement>();
+  const menu = new SwitcherMenu();
 
   const currentName = $derived(organizations.find((item) => item.slug === currentSlug)?.name ?? fallbackName);
   // 今の組織から離れる移動（別の組織、組織の選択の画面）の最中
@@ -44,48 +43,26 @@
     t('organizationSwitchLabel', { name: currentName }) + (invited ? `。${t('invitationsBadge')}` : ''),
   );
 
-  function closeMenu(): void {
-    // 隠れる要素にフォーカスがあるなら、ボタンへ戻す
-    if (root?.contains(document.activeElement)) button?.focus();
-    open = false;
-  }
-
   const hasList = $derived(organizations.length > 1 || invited);
 
   function create(): void {
-    closeMenu();
-    oncreate(button ?? null);
-  }
-
-  function onKeydown(event: KeyboardEvent): void {
-    if (!open || event.key !== 'Escape' || event.isComposing || event.keyCode === 229) return;
-    event.stopPropagation();
-    closeMenu();
-  }
-
-  function onClick(event: MouseEvent): void {
-    if (open && root && event.target instanceof Node && !root.contains(event.target)) closeMenu();
-  }
-
-  // Tab などで、フォーカスがメニューの外へ出たら閉じる（出た先へ移ったので、戻さない）
-  function onFocusout(event: FocusEvent): void {
-    const next = event.relatedTarget;
-    if (open && root && next instanceof Node && !root.contains(next)) open = false;
+    menu.close();
+    oncreate(menu.button ?? null);
   }
 </script>
 
-<svelte:window onkeydown={onKeydown} onclick={onClick} />
+<svelte:window onkeydown={menu.onkeydown} onclick={menu.onclick} />
 
-<div class="org-menu" bind:this={root} onfocusout={onFocusout}>
+<div class="org-menu" bind:this={menu.root} onfocusout={menu.onfocusout}>
   <button
     class="org-menu-button"
     type="button"
-    aria-expanded={open}
+    aria-expanded={menu.open}
     aria-controls={listId}
     aria-label={label}
     data-moving={moving ? 'true' : undefined}
-    bind:this={button}
-    onclick={() => (open = !open)}
+    bind:this={menu.button}
+    onclick={menu.toggle}
   >
     <span class="org-menu-label">{t('organization')}</span>
     <b>{shownName}</b>
@@ -101,14 +78,14 @@
   </button>
   <!-- 移っている最中を読み上げに伝える。領域は常に置き、中の文字だけを替える -->
   <span class="visually-hidden" role="status">{moving ? t('organizationMoving') : ''}</span>
-  <ul class="org-menu-list" id={listId} aria-label={t('organizationListLabel')} hidden={!open}>
+  <ul class="org-menu-list" id={listId} aria-label={t('organizationListLabel')} hidden={!menu.open}>
     {#each organizations as organization (organization.slug)}
       {@const current = organization.slug === currentSlug}
       <li>
         <a
           href={resolve('/[slug]', { slug: organization.slug })}
           aria-current={current ? 'page' : undefined}
-          onclick={closeMenu}
+          onclick={menu.close}
         >
           <span class="org-menu-name">{organization.name}</span>
           {#if current}<Icon name="check" />{/if}
@@ -117,7 +94,7 @@
     {/each}
     {#if hasList}
       <li class="is-aside">
-        <a href={resolve('/')} onclick={closeMenu}>
+        <a href={resolve('/')} onclick={menu.close}>
           <span class="org-menu-name">{t('organizationList')}</span>
           {#if invited}<span class="org-menu-note">{t('invitationsReceived')}</span>{/if}
         </a>

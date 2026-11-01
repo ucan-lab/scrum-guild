@@ -70,7 +70,7 @@ test.describe('管理者（あおば開発のミナト）', () => {
     await expect(page.getByRole('heading', { level: 1, name: 'バックログ' })).toBeFocused();
     // 所属しているので、所属していない印は出ない。メニューにワークスペースの節が出る
     await expect(page.getByText(/所属せず/)).toHaveCount(0);
-    await expect(page.locator('.ws-select')).toContainText('保守チーム');
+    await expect(page.locator('.ws-menu > button')).toContainText('保守チーム');
     // 画面のある項目だけを出すので、ワークスペースの節と、メンバーを持つ管理の節
     await expect(page.locator('.nav-group')).toHaveText(['ワークスペース', '管理']);
     // 画面にも起票のダイアログ（中に閉じた読み上げの領域がある）があるので、見える領域だけを role で引く
@@ -427,6 +427,6 @@ test.describe('一般のユーザー（あおば開発のハルカ）', () => {
     await expect(page.getByRole('heading', { level: 1, name: 'バックログ' })).toBeVisible();
     await expect(page.locator('.page-eyebrow')).toHaveText('受託開発チーム');
     await expect(page.getByText(/所属せず/)).toHaveCount(0);
-    await expect(page.locator('.ws-select')).toContainText('受託開発チーム');
+    await expect(page.locator('.ws-menu > button')).toContainText('受託開発チーム');
   });
 });

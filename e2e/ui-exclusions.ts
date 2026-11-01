@@ -46,7 +46,7 @@ export interface UiExclusion {
 // 上の帯の組織とアカウントのボタン。aria-label が見える文字（「組織 あおば開発」、「ミナト 管理者 1」）を
 // 含まず、WCAG 2.5.3（見える名前を読み上げの名前に含める）に当たる。ダイアログか引き出しを開いた状態では、
 // 後ろの画面が読み上げから外れるので axe も見ない。開いていない画面にだけ置く。
-// 直すには辞書の文言（organizationSwitchLabel、accountMenuLabel）と、見える文字の組み方を決め直す
+// 直すには辞書の文言（organizationSwitchLabel、workspaceSwitchLabel、accountMenuLabel）と、見える文字の組み方を決め直す
 const HEADER_MENU_LABEL_ISSUE = 343;
 
 export const uiExclusions: readonly UiExclusion[] = [
@@ -70,6 +70,16 @@ export const uiExclusions: readonly UiExclusion[] = [
       },
     ],
   ),
+  // 左のメニューのワークスペースの切り替え。ワークスペースの画面にだけ出る。組織のボタンと同じく、aria-label が
+  // 見える「ワークスペース」と名前の並びを含まない（workspaceSwitchLabel）
+  ...(['backlog', 'epic', 'plan', 'sprint', 'members', 'workspace-settings'] as const).map((screen): UiExclusion => ({
+    check: 'label-content-name-mismatch',
+    selector: '.ws-menu-button',
+    screen,
+    reason:
+      'ワークスペースを切り替えるボタンの aria-label が、見える「ワークスペース」と名前の並びを含まない。組織のボタンと同じ文言の決め直しが要る',
+    issue: HEADER_MENU_LABEL_ISSUE,
+  })),
 ];
 
 // その画面とその種類の除外

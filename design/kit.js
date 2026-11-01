@@ -51,9 +51,14 @@
       seats: { ...D.seats, used: members.length } };
   }
   if (first) Object.assign(D, freshData(first));
+  try {
+    const selected = new URLSearchParams(location.search).get("workspace");
+    if (selected && Object.hasOwn(D.workspaces, selected)) D.workspace = selected;
+  } catch (e) { /* URL を読めない場合は既定の見本 */ }
 
   // ---- 言葉の辞書（各キーはスクラムの言葉の文字列1つ） ----
   const DICT = {
+    workspaceSwitchLabel: "{name}。{workspace}を切り替える", workspaceSwitchListLabel: "所属する{workspace}",
     workspace: "ワークスペース", inbox: "受信箱", backlog: "バックログ", sprint: "スプリント", plan: "計画", epic: "エピック", story: "ストーリー",
     menuCollapse: "メニューを畳む", menuExpand: "メニューを広げる", organizationMoving: "移っています",
     task: "タスク", archive: "アーカイブ", connection: "接続", sprintGoal: "スプリントゴール", detail: "詳細", ac: "受け入れ基準", due: "期日",
@@ -1991,7 +1996,7 @@ const looooooooooooooooooooooooooooooooooongLine = "コードの長い1行は、
       // 組織の切り替えは、メニューの外（ブランドの下）の orgMenuHtml
       if (p === "organization") return "";
       if (p === "workspace") return `<div class="nav-group"><span class="nav-group-label">${t("workspace")}</span></div>
-        <label class="ws-select" for="ws"><span>${t("workspace")}</span><select id="ws">${Object.values(D.workspaces).map((w) => `<option>${esc(w.name)}</option>`).join("")}</select></label>`;
+        ${["today", "notifications", "me", "admin", "operator"].includes(current) ? "" : `<div id="ws-menu-slot">${workspaceMenuHtml()}</div>`}`;
       if (typeof p === "string") return `<div class="nav-group"><span class="nav-group-label">${p}</span></div>`;
       const [id, ic, label, href, badge] = p;
       // 自分の設定の件数は、届いた招待の数（関数で渡す）。畳んだ列では件数を隠し、点（.nav-item-invite）を項目の角に出す。読み上げには件数を足す
@@ -2034,6 +2039,28 @@ const looooooooooooooooooooooooooooooooooongLine = "コードの長い1行は、
   document.addEventListener("focusout", (ev) => {
     const next = ev.relatedTarget;
     if (orgMenuOpen && next && !next.closest(".org-menu")) setOrgMenu(false);
+  });
+  // ワークスペースの切り替え。組織と同じ開閉と通常のリンクを使い、移動先はバックログ。
+  let workspaceMenuOpen = false;
+  function workspaceMenuHtml({ open = workspaceMenuOpen, id = "ws-menu-list", live = true, workspaces = Object.entries(D.workspaces).map(([id, w]) => ({ id, ...w })), current = { id: D.workspace, ...D.workspaces[D.workspace] } } = {}) {
+    const name = workspaces.find((w) => w.id === current.id)?.name || current.name;
+    const label = t("workspaceSwitchLabel").replace("{name}", name).replace("{workspace}", t("workspace"));
+    const listLabel = t("workspaceSwitchListLabel").replace("{workspace}", t("workspace"));
+    return `<div class="ws-menu"><button class="ws-menu-button" type="button" aria-expanded="${open}" aria-controls="${id}" aria-label="${esc(label)}" ${live ? "data-ws-menu" : ""}><span class="ws-menu-label">${t("workspace")}</span><b>${esc(name)}</b>${icon("chevron")}</button>
+      <ul class="ws-menu-list" id="${id}" aria-label="${esc(listLabel)}" ${open ? "" : "hidden"}>${workspaces.some((w) => w.id === current.id) ? "" : `<li class="ws-menu-current"><span aria-current="page">${esc(current.name)}</span>${icon("check")}</li>`}${workspaces.map((w) => `<li><a href="${firstHref("backlog.html")}${first ? "&" : "?"}workspace=${encodeURIComponent(w.id)}" ${live ? `data-ws-target="${esc(w.id)}"` : ""}${w.id === current.id ? ' aria-current="page"' : ""}><span class="org-menu-name">${esc(w.name)}</span>${w.id === current.id ? icon("check") : ""}</a></li>`).join("")}</ul></div>`;
+  }
+  function setWorkspaceMenu(open, focus) {
+    workspaceMenuOpen = open;
+    const slot = document.getElementById("ws-menu-slot");
+    if (slot) slot.innerHTML = workspaceMenuHtml();
+    if (focus) document.querySelector("[data-ws-menu]")?.focus();
+  }
+  function closeWorkspaceMenu() {
+    setWorkspaceMenu(false, !!document.activeElement?.closest?.(".ws-menu"));
+  }
+  document.addEventListener("focusout", (ev) => {
+    const next = ev.relatedTarget;
+    if (workspaceMenuOpen && next && !next.closest(".ws-menu")) setWorkspaceMenu(false);
   });
   // アカウントのメニュー。上の帯の自分の名前を押すと開き、中は「ログアウト」の1項目（後で「自分の設定」も入る）。
   // 開閉は組織の切り替えと同じ: ボタン、外を押す、Tab で外へ出る、Esc。メニューの中にフォーカスがあるときに閉じたら、ボタンへ戻す。
@@ -2258,9 +2285,18 @@ const looooooooooooooooooooooooooooooooooongLine = "コードの長い1行は、
     const hit = (attr) => ev.target.closest(`[${attr}]`);
     let el;
     // 組織の切り替えを開閉する。外を押したら閉じる（押したものの動きは続ける）
-    if (hit("data-org-menu")) { setOrgMenu(!orgMenuOpen, true); return; }
+    if (hit("data-org-menu")) {
+      if (workspaceMenuOpen) setWorkspaceMenu(false);
+      setOrgMenu(!orgMenuOpen, true);
+      return;
+    }
     if (orgMenuOpen && ev.target.closest(".org-menu-list a, .org-menu-list button")) closeOrgMenu();
     else if (orgMenuOpen && !ev.target.closest(".org-menu")) closeOrgMenu();
+    if (hit("data-ws-menu")) { setWorkspaceMenu(!workspaceMenuOpen, true); return; }
+    if ((el = hit("data-ws-target"))) {
+      D.workspace = el.dataset.wsTarget;
+      closeWorkspaceMenu();
+    } else if (workspaceMenuOpen && !ev.target.closest(".ws-menu")) closeWorkspaceMenu();
     // アカウントのメニューも同じ。ただしログアウトの項目を押しても閉じない（本番は待ちの表示を見せるため）
     if (hit("data-account-menu")) { setAccountMenu(!accountMenuOpen, true); return; }
     if (accountMenuOpen && !ev.target.closest(".account-menu")) closeAccountMenu();
@@ -2475,6 +2511,7 @@ const looooooooooooooooooooooooooooooooooongLine = "コードの長い1行は、
     }
     if (ev.key !== "Escape" || ev.isComposing || ev.keyCode === 229) return;
     if (orgMenuOpen) { ev.stopPropagation(); closeOrgMenu(); return; }
+    if (workspaceMenuOpen) { ev.stopPropagation(); closeWorkspaceMenu(); return; }
     if (accountMenuOpen) { ev.stopPropagation(); closeAccountMenu(); return; }
     if (closeCelebrate()) return;
     if (dialogOnlyButtons && !document.getElementById("dialog")?.hidden) return;
@@ -2571,7 +2608,7 @@ const looooooooooooooooooooooooooooooooooongLine = "コードの長い1行は、
     user, task, tasksWhere, repoTag, categoryTag, sprintTag, repoPicker, sprintLabel, colName, categoryOf, storyPts, epicPts, dueOf,
     avatar, avatarOf, SAMPLE_PHOTO, BROKEN_PHOTO, emblem, pts, dueChip, taskDue, tier, sourceKey, entry, orderActions, book, section, foldedSection, pageHead,
     card, board, treeStory, treeEpic, completedTasks, sprintNotice, raidNotice, progress, levelPanel, teamXp, xpDelta, load, capacityRows,
-    openDialog, closeDialog, toast, celebrate, miniCap, redraw: () => redrawAll(), DIALOGS, loginTarget, orgMenuHtml, accountMenuHtml,
+    openDialog, closeDialog, toast, celebrate, miniCap, redraw: () => redrawAll(), DIALOGS, loginTarget, orgMenuHtml, workspaceMenuHtml, accountMenuHtml,
     filesOf, fileThumb, fileRow, dropzone, attachments, mdBody, markdownSample, meter,
     PROVIDER, ASSIST_KEY, assistMsg, assistBlocked, assistSuggest, openAssist,
     enableAssistOnCatalog: () => { assistOnCatalog = true; },
