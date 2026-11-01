@@ -510,7 +510,8 @@ test.describe('トースト（自分の設定の API トークンの節。発行
 test('アバターの色相が当たり、CSP の違反が無い', async ({ page }) => {
   const collect = await watchViolations(page);
   await page.goto(today);
-  const avatar = page.getByRole('img', { name: 'ハルカ' });
+  // 今日やること（左のメニューと「自分の記録」の列）にも同じ名前のアバターが出るので、最初の1つを確かめる
+  const avatar = page.getByRole('img', { name: 'ハルカ' }).first();
   await expect(avatar).toBeVisible();
   const style = await avatar.evaluate((element) => ({
     hue: getComputedStyle(element).getPropertyValue('--h').trim(),

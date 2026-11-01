@@ -722,6 +722,8 @@ test('作って完了にしたタスクは、その後の読み直しで未完�
   const completed = waitForResponses(page, '/task-complete');
   await page.getByRole('button', { name: '完了にする: 完了して消える依頼', exact: true }).click();
   await completed;
+  // 今押した行の完了の印だけが、判を押す動き（.is-new）を持つ。開いた時点で完了済みの行（今日やることの今日完了）は持たない
+  await expect(taskRow(page, '完了して消える依頼').locator('.hanko')).toHaveClass(/\bis-new\b/);
 
   // 木の読み直しを起こす。読み直した木は未完了のタスクだけを返す
   await addStory(page, '読み直しを起こすストーリー');

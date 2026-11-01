@@ -939,6 +939,7 @@
     {task}
     {clock}
     done={completedIds.includes(task.id)}
+    justDone={completedIds.includes(task.id)}
     pending={pendingIds.includes(task.id)}
     canComplete={canWrite}
     onComplete={complete}
