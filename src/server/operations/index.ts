@@ -11,6 +11,7 @@ import {
   invitationDeclineOperation,
   invitationListOperation,
 } from './invitation-response.ts';
+import { meThemeUpdateOperation } from './me-theme.ts';
 import { membershipLeaveOperation, membershipRoleUpdateOperation } from './membership.ts';
 import { createOrganizationOperation, listOrganizationsOperation, resolveGithubUserOperation } from './operator.ts';
 import { organizationAdminReassignOperation } from './operator-admin.ts';
@@ -109,6 +110,7 @@ const listedOperations: readonly ImplementedOperation[] = [
   organizationQuotaUpdateOperation,
   myOrganizationsOperation,
   organizationInfoOperation,
+  meThemeUpdateOperation,
   organizationHolidayListOperation,
   organizationHolidayAddOperation,
   organizationHolidayDeleteOperation,

@@ -17,6 +17,7 @@
     hasWorkspace,
     isAdmin,
     workspaceId,
+    invitationCount,
     organizationSwitcher,
     workspaceSwitcher,
     assistant,
@@ -28,6 +29,7 @@
     hasWorkspace: boolean;
     isAdmin: boolean;
     workspaceId?: string;
+    invitationCount?: number;
     organizationSwitcher?: Snippet;
     workspaceSwitcher?: Snippet;
     assistant?: Snippet;
@@ -57,7 +59,7 @@
         </button>
       </div>
       {#if organizationSwitcher}{@render organizationSwitcher()}{/if}
-      <NavMenu {current} {slug} {hasWorkspace} {isAdmin} {workspaceId} {workspaceSwitcher} />
+      <NavMenu {current} {slug} {hasWorkspace} {isAdmin} {workspaceId} {workspaceSwitcher} {invitationCount} />
     </div>
   </aside>
   <div class="sheet">

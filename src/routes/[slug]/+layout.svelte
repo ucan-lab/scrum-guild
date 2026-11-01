@@ -94,6 +94,7 @@
     hasWorkspace={organization.workspaces.length > 0}
     isAdmin={organization.me.is_admin}
     workspaceId={openWorkspace?.id}
+    invitationCount={data.invitationCount}
     {organizationSwitcher}
     workspaceSwitcher={openWorkspace ? workspaceSwitcher : undefined}
     {account}

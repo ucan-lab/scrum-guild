@@ -79,6 +79,8 @@ h1, h2, h3 { text-wrap: balance; }
 .nav-item[aria-current="page"] .ico { color: var(--color-accent); }
 .nav-item-label { min-width: 0; }
 .nav-badge { margin-left: auto; font-family: var(--font-mono); font-size: var(--text-xs); color: var(--color-muted); }
+/* 届いた招待の印（自分の設定の項目）。件数は .nav-badge、畳んだ列では件数を隠して、この点を項目の角に出す */
+.nav-item-invite { display: none; }
 .ws-select {
   display: grid; gap: 2px; padding: var(--space-2); border-radius: var(--radius-1);
   border: 1px solid var(--color-line); background: var(--color-surface);
@@ -206,6 +208,10 @@ h1, h2, h3 { text-wrap: balance; }
     display: block; position: absolute; top: 7px; right: 7px; width: 8px; height: 8px;
     border-radius: 50%; border: 1px solid var(--color-stamp); background: var(--color-stamp); box-shadow: 0 0 0 2px var(--color-surface);
   }
+  .app[data-nav-collapsed="true"] .nav-item-invite {
+    display: block; position: absolute; top: 7px; right: 7px; width: 8px; height: 8px;
+    border-radius: 50%; border: 1px solid var(--color-stamp); background: var(--color-stamp); box-shadow: 0 0 0 2px var(--color-surface);
+  }
   .app[data-nav-collapsed="true"] .org-menu-list {
     position: absolute; z-index: 1; top: 0; left: calc(100% + var(--space-3)); width: 15rem; max-width: min(18rem, 70vw);
     box-shadow: var(--shadow-float);
@@ -223,7 +229,8 @@ h1, h2, h3 { text-wrap: balance; }
   .app[data-nav-collapsed="true"] .org-menu-button[data-moving="true"][aria-expanded="false"] .nav-tip { display: grid; }
 }
 @media (min-width: 761px) and (hover: hover) and (forced-colors: active) {
-  .app[data-nav-collapsed="true"] .org-menu-invite { border-color: CanvasText; background: CanvasText; }
+  .app[data-nav-collapsed="true"] .org-menu-invite,
+  .app[data-nav-collapsed="true"] .nav-item-invite { border-color: CanvasText; background: CanvasText; }
 }
 /* アカウントのメニュー。上の帯の自分の名前を押すと開く。リストの見た目は組織の切り替えと同じ（上の .org-menu-list と並べて書く）で、
    帯の下に重ねて出す（帯の高さを変えない）。広い幅ではボタンの右端に合わせて開く。760px 以下は、帯が左に寄って

@@ -6,6 +6,8 @@
   import EmptyState from '../../../lib/components/EmptyState.svelte';
   import Icon from '../../../lib/components/Icon.svelte';
   import LevelPanel from '../../../lib/components/LevelPanel.svelte';
+  import MeInvitations from '../../../lib/components/MeInvitations.svelte';
+  import MeThemeSetting from '../../../lib/components/MeThemeSetting.svelte';
   import PageHead from '../../../lib/components/PageHead.svelte';
   import Section from '../../../lib/components/Section.svelte';
   import { formatDateTime } from '../../../lib/format-datetime.ts';
@@ -22,8 +24,9 @@
   import type { DictionaryKey } from '../../../shared/vocabulary.ts';
   import type { PageProps } from './$types';
 
-  // 自分の設定の画面（me.html）。今は経験値と API トークン（ApiTokensSetting）の節だけの骨組みで、ほかの節（1日の基準、稼働期間、休み、月の基準の上書き、テーマ、
-  // 届いた招待、配分の知らせ、積載量の合計）は #70 で足す（まだ無いことを本文の先頭に1行で知らせる）。
+  // 自分の設定の画面（me.html）。今は「届いた招待」（MeInvitations。本文の先頭に囲みの知らせで）、「テーマ」の節（MeThemeSetting。選んだ瞬間に保存する）、
+  // 経験値、API トークン（ApiTokensSetting）の節で、ほかの節（1日の基準、稼働期間、休み、月の基準の上書き、積載量の合計）は #66 で足す
+  // （まだ無いことを本文の先頭に1行で知らせる）。テーマは組織の枠が読んだ値（自分のテーマと組織の既定）を受け取る。
   // 横（layout-side）にレベルの面（LevelPanel。合計、レベル、次のレベルまで、見込み、ゲージ、ワークスペースごとの内訳）、
   // その下に「経験値の明細」の節（説明を表の上に置き、表は画面の幅いっぱいに出す。5列の表を横の面と並べると、
   // PC の幅でも押しつぶされるため。確定日時、ワークスペース、行動、内容、値。
@@ -60,7 +63,12 @@
   let dataEpoch = 0;
   let grantsEpoch = 0;
 
+  // 組織の枠だけが読み直されたとき（テーマの保存、招待の件数）は、load の値が同じ参照のままなので、読み込み済みの行を捨てない
+  let seenLoad: unknown[] = [];
   $effect.pre(() => {
+    const loaded = [data.summary, data.grants, data.tokens, data.invitations];
+    if (loaded.every((value, index) => value === seenLoad[index])) return;
+    seenLoad = loaded;
     summary = data.summary;
     firstPage = data.grants;
     moreRows = [];
@@ -211,11 +219,23 @@
 
 <PageHead title={t('pageMe')} eyebrow={me?.name} />
 
-<!-- 本文（#70 で設定の節を足す）と横のレベルの面。API トークンと経験値の明細は表を持つので、この下に画面の幅いっぱいに出す
+<!-- 届いた招待（この組織のワークスペースへの承諾待ち）。招待が無ければ何も出さない -->
+<MeInvitations {slug} list={data.invitations} />
+
+<!-- 本文（テーマの節と、まだ無い節の知らせ）と横のレベルの面。API トークンと経験値の明細は表を持つので、この下に画面の幅いっぱいに出す
      （5列の表を横の面と並べると、PC の幅でも押しつぶされるため。.setting は見出しの列も取るので使わず、どちらも Section で出す） -->
 <div class="layout-aside">
   <div class="layout-main">
     <p class="action-note">{t('meOtherSettingsNote')}</p>
+    {#if data.organization}
+      <div class="settings">
+        <MeThemeSetting
+          {slug}
+          theme={data.organization.me.theme}
+          organizationTheme={data.organization.organization.theme}
+        />
+      </div>
+    {/if}
   </div>
   <aside class="layout-side">
     {#if summary !== null}
