@@ -21,6 +21,7 @@ function task(id: string, overrides: Partial<TodayTask> = {}): TodayTask {
     carry_days: 0,
     sprint_active: false,
     is_today_completed: false,
+    reopenable: false,
     assignee: null,
     repository: null,
     sprint: null,

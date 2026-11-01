@@ -14,7 +14,10 @@
 
   // kit.js の entry（台帳の1行）と doneControl。今あるのは、タイトル（`?task=<ID>` へのリンク）、期日の印、ポイント、担当、
   // 完了の操作と完了の印。リンクは詳細の引き出しを開く（/[slug]/w/[id] のレイアウトが `?task=<ID>` を見て置く）。
-  // 先頭の「今日やる」、親は、それぞれの機能の Issue で足す。先頭の枠（.entry の1列目）は、その機能が入るまで空の要素で埋める。
+  // 親は、その機能の Issue で足す。先頭の枠（.entry の1列目）には、onToggleToday を渡すと今日やるの印の太陽のボタン（.sun）を置く。
+  // 押された状態（aria-pressed）が marked で、押すと onToggleToday を呼ぶ。完了にした行と、onToggleToday を渡さない行（書き込めない行）は、枠を空の要素で埋める。
+  // 完了にした行に onReopen を渡すと、完了の印の横に「戻す」（.link-btn。TaskDrawer の完了の帯と同じ）を出す。渡さない行（戻せない行、書き込めない行）には出さない。
+  // pending の間は、太陽、完了、戻すのどれも押しても無視する（aria-disabled）。
   // 期日の印は、API が返したワークスペースの今日の日付と週の始まり（clock）で決める。完了にした行は色を付けない。
   // 完了の操作が押されると、onComplete を呼ぶ（canComplete が偽で操作を出さない行は渡さなくてよい）。完了にした行は、done を真にして完了の印を付ける。
   // 複数のワークスペースの行を並べる画面（今日やること）は、行ごとに workspaceId（タイトルのリンク先）と workspaceName（.entry-meta の先頭に
@@ -40,6 +43,9 @@
     pending = false,
     canComplete = true,
     onComplete,
+    marked = false,
+    onToggleToday,
+    onReopen,
     canMoveUp = false,
     canMoveDown = false,
     onMove,
@@ -59,6 +65,9 @@
     pending?: boolean;
     canComplete?: boolean;
     onComplete?: (task: BacklogTask) => void;
+    marked?: boolean;
+    onToggleToday?: (task: BacklogTask) => void;
+    onReopen?: (task: BacklogTask) => void;
     canMoveUp?: boolean;
     canMoveDown?: boolean;
     onMove?: (task: BacklogTask, delta: -1 | 1) => void;
@@ -133,7 +142,23 @@
       <span class="grip is-off" aria-hidden="true"></span>
     {/if}
   {/if}
-  <span aria-hidden="true"></span>
+  {#if onToggleToday !== undefined && !done}
+    <button
+      class="sun"
+      type="button"
+      aria-pressed={marked}
+      aria-label={t('todayMarkLabel', { mark: t('todayMark'), title: task.title })}
+      title={t('todayMark')}
+      aria-disabled={pending}
+      onclick={() => {
+        if (!pending) onToggleToday(task);
+      }}
+    >
+      <Icon name="sun" />
+    </button>
+  {:else}
+    <span aria-hidden="true"></span>
+  {/if}
   <div class="entry-main">
     <!-- 横と真ん中のときは、押しても、フォーカスとスクロールの位置は動かさない（引き出しが閉じたとき、data-task-id で探してフォーカスを戻す）。ページ全体の既定では taskLinkAttrs が reset を外し、先頭から表示する -->
     <!-- eslint-disable svelte/no-navigation-without-resolve -- href は resolve した経路に ?task=<ID> を足したもの、またはその詳細ページ -->
@@ -226,6 +251,17 @@
       >
         <Icon name="check" /><b>{t('doneStamp')}</b>
       </span>
+      {#if onReopen !== undefined}
+        <button
+          class="link-btn"
+          type="button"
+          aria-label={t('taskReopenLabel', { done: t('done'), title: task.title })}
+          aria-disabled={pending}
+          onclick={() => {
+            if (!pending) onReopen(task);
+          }}>{t('taskReopen')}</button
+        >
+      {/if}
     {:else if canComplete}
       <button
         class="done-btn"

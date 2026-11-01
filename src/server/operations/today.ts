@@ -3,6 +3,7 @@ import { daysBetween, dueStatus } from '../../shared/due.ts';
 import { today, type TodayTask } from '../../shared/operations/organization/today.ts';
 import type { OrganizationTables, QueryCreator } from '../db/index.ts';
 import { implement } from './implement.ts';
+import { reopenBlockOf } from './task-reopen.ts';
 
 // タイムゾーンは UTC−12 時間から +14 時間なので、どのワークスペースの「今日」の始まりも今から 24 時間より前にはならない。
 // 余裕を見て 2 日前より古い完了は SQL で落とす。今日かどうかの厳密な判定はワークスペースのタイムゾーンで行う
@@ -29,6 +30,9 @@ type Row = {
   sprint_start_on: string | null;
   sprint_end_on: string | null;
   sprint_status: string | null;
+  // 完了を戻せるか（reopenable）の判定に使う。削除したスプリントは結ばないので、task_sprint_id があって sprint_status が無ければ削除したスプリント
+  task_sprint_id: string | null;
+  story_completed_at: string | null;
 };
 
 function carryDays(todayDate: string, markedOn: string | null): number {
@@ -70,6 +74,9 @@ function todayTaskQuery(
         .onRef('s.workspace_id', '=', 't.workspace_id')
         .on('s.deleted_at', 'is', null),
     )
+    .leftJoin('stories as st', (join) =>
+      join.onRef('st.id', '=', 't.story_id').onRef('st.workspace_id', '=', 't.workspace_id'),
+    )
     .select([
       't.id',
       't.title',
@@ -91,6 +98,8 @@ function todayTaskQuery(
       's.start_on as sprint_start_on',
       's.end_on as sprint_end_on',
       's.status as sprint_status',
+      't.sprint_id as task_sprint_id',
+      'st.completed_at as story_completed_at',
     ])
     .where('m.user_id', '=', userId)
     .where('m.left_at', 'is', null)
@@ -169,6 +178,16 @@ export const todayOperation = implement(today, async ({ db, actor }) => {
       carry_days: row.completed_at === null ? carryDays(todayDate, row.today_on) : 0,
       sprint_active: row.sprint_status === 'active',
       is_today_completed: completedToday,
+      // 完了を戻せるか。task-reopen と同じ判定（reopenBlockOf）。ワークスペースは閉じていない行だけを読んでいる
+      reopenable:
+        row.completed_at !== null &&
+        reopenBlockOf({
+          tray: 'backlog',
+          completedAt: row.completed_at,
+          sprintId: row.task_sprint_id,
+          sprintActive: row.sprint_status === 'active',
+          parentCompleted: row.story_completed_at !== null,
+        }) === null,
     });
   }
   return {

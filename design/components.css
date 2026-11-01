@@ -470,6 +470,8 @@ button.entry-title { text-align: left; background: transparent; border: 0; paddi
 /* ワークスペース名の印（.tag は折り返さない）は、長い名前だけ折り返して全文を読めるようにする */
 .entry-meta .tag { white-space: normal; overflow-wrap: anywhere; }
 .entry-end { display: flex; align-items: center; gap: var(--space-2); }
+/* 完了の印の横の「戻す」は折り返さず、縮めない */
+.entry-end .link-btn { white-space: nowrap; flex: none; }
 .entry.is-done .entry-title { color: var(--color-muted); font-weight: 400; }
 .book-empty { padding: var(--space-4); color: var(--color-muted); font-size: var(--text-sm); }
 
@@ -481,6 +483,9 @@ button.entry-title { text-align: left; background: transparent; border: 0; paddi
 .sun:hover { color: var(--color-xp); background: var(--color-xp-soft); }
 .sun[aria-pressed="true"] { color: var(--color-xp); }
 .sun[aria-pressed="true"] .ico { fill: currentColor; }
+.sun[aria-disabled="true"] { opacity: 0.45; cursor: not-allowed; }
+.sun[aria-disabled="true"]:hover { color: var(--color-faint); background: none; }
+.sun[aria-disabled="true"][aria-pressed="true"]:hover { color: var(--color-xp); }
 
 /* 完了の操作と判子 */
 .done-btn {
@@ -1182,8 +1187,8 @@ dialog.dialog::backdrop { background: none; }
   .btn:not(.is-sm), .input, .select { min-height: 44px; }
   .segmented span { display: flex; align-items: center; justify-content: center; min-width: 44px; min-height: 44px; }
   .table .btn.is-sm { min-width: 44px; min-height: 44px; }
-  .done-btn { position: relative; }
-  .done-btn::after { content: ""; position: absolute; left: 50%; top: 50%; width: 44px; height: 44px; transform: translate(-50%, -50%); }
+  .done-btn, .sun, .entry-end .link-btn { position: relative; }
+  .done-btn::after, .sun::after, .entry-end .link-btn::after { content: ""; position: absolute; left: 50%; top: 50%; width: max(100%, 44px); height: max(100%, 44px); transform: translate(-50%, -50%); }
   /* 見た目は変えず、押せる範囲だけを 44px 四方以上に広げる部品。木の行のボタン（開閉の caret、題、＋タスク）、操作の並びと
      囲みの中と絞り込みの帯の端の小さいボタン（高さを変えると、横に並ぶヒントの文字が上にずれるため）、バックログの行の押せる題
      （.entry-title）、完了の一覧の「さらに見る」と「もう一度試す」（.completed-status .btn.is-sm）、

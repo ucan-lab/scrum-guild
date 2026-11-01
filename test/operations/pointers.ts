@@ -429,6 +429,17 @@ export const pointers: Pointers = {
     task_id: (await createTask(target.organization, target.workspace.id, target.admin.userId!)).id,
     assignee_user_id: target.member.userId,
   }),
+  // 呼ぶたびに、呼ぶ人が担当する未完了のタスクを作り、印を付ける（印を付けられるのは担当者本人だけ）。
+  // 呼ぶ人が対象の組織の人でなければ（別の組織の対象を指すとき）、対象の組織の管理者が担当するタスクにする
+  'task-today-mark': async (target, caller) => ({
+    workspace_id: target.workspace.id,
+    task_id: (
+      await createTask(target.organization, target.workspace.id, target.admin.userId!, {
+        assignee_user_id: (personOf(target, caller) ?? target.admin).userId,
+      })
+    ).id,
+    marked: true,
+  }),
   'task-history': async (target) => ({
     workspace_id: target.workspace.id,
     task_id: (await createTask(target.organization, target.workspace.id, target.admin.userId!)).id,

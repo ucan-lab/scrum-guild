@@ -6,12 +6,14 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { today } from '../src/shared/operations/organization/index.ts';
 import { createApp } from '../src/server/app.ts';
 import { implementedOperations } from '../src/server/operations/index.ts';
+import { taskReopen } from '../src/shared/operations/task/index.ts';
 import {
   createBoardColumn,
   createMembership,
   createOrganization,
   createRepository,
   createSprint,
+  createStory,
   createTask,
   createUser,
   createWorkspace,
@@ -41,6 +43,7 @@ type TodayTaskView = {
   carry_days: number;
   sprint_active: boolean;
   is_today_completed: boolean;
+  reopenable: boolean;
   assignee: { id: string; name: string } | null;
   repository: { id: string; name: string } | null;
   sprint: { id: string; name: string | null; start_on: string; end_on: string } | null;
@@ -626,6 +629,100 @@ describe('today: 進行中のスプリントのゴール', () => {
     await createSprint(world.organization, never.id, { status: 'active', goal: '入っていない班のゴール' });
 
     expect((await world.read()).sprint_goals.map((goal) => goal.goal)).toEqual(['所属する班のゴール']);
+  });
+});
+
+describe('today: 完了を戻せるか（reopenable）', () => {
+  const FINISHED = { completed_at: '2026-11-01T01:00:00.000Z' };
+
+  function reopen(world: Awaited<ReturnType<typeof createWorld>>, ws: { id: string }, taskId: string) {
+    return post(app, taskReopen, {
+      slug: world.organization.slug,
+      token: world.me.token,
+      body: { workspace_id: ws.id, task_id: taskId },
+    });
+  }
+
+  test('未完了は偽。スプリントの外で今日完了したタスクは真で、task-reopen も通る', async () => {
+    const world = await createWorld();
+    const ws = await world.workspace({ timezone: TOKYO });
+    await world.task(ws, { title: '印だけ', today_on: '2026-11-01' });
+    const finished = await world.task(ws, { title: '今日完了', ...FINISHED });
+
+    const view = await world.read();
+
+    expect(view.tasks.map((task) => [task.title, task.reopenable]).sort()).toEqual([
+      ['今日完了', true],
+      ['印だけ', false],
+    ]);
+    expect((await reopen(world, ws, finished.id)).status).toBe(200);
+  });
+
+  test('進行中のスプリントの中で完了したタスクは真', async () => {
+    const world = await createWorld();
+    const ws = await world.workspace({ timezone: TOKYO });
+    const active = await createSprint(world.organization, ws.id, { status: 'active' });
+    const finished = await world.sprintTask(ws, active.id, { title: '進行中で完了', ...FINISHED });
+
+    const view = await world.read();
+
+    expect(view.tasks).toMatchObject([{ id: finished.id, reopenable: true, sprint_active: true }]);
+  });
+
+  test('終了したか削除したスプリントの中で完了したタスクは偽で、task-reopen も 409 の sprint_closed で断る', async () => {
+    const world = await createWorld();
+    const ws = await world.workspace({ timezone: TOKYO });
+    const closed = await createSprint(world.organization, ws.id, {
+      status: 'closed',
+      start_on: '2026-10-01',
+      end_on: '2026-10-14',
+    });
+    const deleted = await createSprint(world.organization, ws.id, {
+      status: 'planned',
+      start_on: '2026-12-01',
+      end_on: '2026-12-14',
+      deleted_at: '2026-10-20T00:00:00.000Z',
+    });
+    const inClosed = await world.sprintTask(ws, closed.id, { title: '終了したスプリントで完了', ...FINISHED });
+    const inDeleted = await world.sprintTask(ws, deleted.id, { title: '削除したスプリントで完了', ...FINISHED });
+
+    const view = await world.read();
+
+    expect(view.tasks.map((task) => [task.title, task.is_today_completed, task.reopenable]).sort()).toEqual([
+      ['削除したスプリントで完了', true, false],
+      ['終了したスプリントで完了', true, false],
+    ]);
+    for (const task of [inClosed, inDeleted]) {
+      const res = await reopen(world, ws, task.id);
+      expect(res.status).toBe(409);
+      const body = (await res.json()) as { error: { code: string; details: { reason: string } } };
+      expect(body.error.code).toBe('conflict');
+      expect(body.error.details.reason).toBe('sprint_closed');
+    }
+  });
+
+  test('完了したストーリーの下のタスクは偽で、task-reopen も 409 の parent_completed で断る。未完了のストーリーの下は真', async () => {
+    const world = await createWorld();
+    const ws = await world.workspace({ timezone: TOKYO });
+    const doneStory = await createStory(world.organization, ws.id, world.admin.userId!, {
+      completed_at: '2026-11-01T02:00:00.000Z',
+      completed_by: world.admin.userId,
+    });
+    const openStory = await createStory(world.organization, ws.id, world.admin.userId!);
+    const underDone = await world.task(ws, { title: '完了した親の下', story_id: doneStory.id, ...FINISHED });
+    await world.task(ws, { title: '未完了の親の下', story_id: openStory.id, ...FINISHED });
+
+    const view = await world.read();
+
+    expect(view.tasks.map((task) => [task.title, task.reopenable]).sort()).toEqual([
+      ['完了した親の下', false],
+      ['未完了の親の下', true],
+    ]);
+    const res = await reopen(world, ws, underDone.id);
+    expect(res.status).toBe(409);
+    expect(((await res.json()) as { error: { details: { reason: string } } }).error.details.reason).toBe(
+      'parent_completed',
+    );
   });
 });
 

@@ -18,6 +18,7 @@ const todayTaskSchema = z.object({
   carry_days: z.number().int(),
   sprint_active: z.boolean(),
   is_today_completed: z.boolean(),
+  reopenable: z.boolean(),
   assignee: z.object({ id: z.string(), name: z.string() }).nullable(),
   repository: z.object({ id: z.string(), name: z.string() }).nullable(),
   sprint: sprintRefSchema.nullable(),
