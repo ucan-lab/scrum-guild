@@ -127,7 +127,7 @@
 ### 言葉の辞書
 
 - 辞書は `src/shared/vocabulary.ts` に置く。キーごとにスクラムの言葉の文字列を1つ持つ（`task: 'タスク'`）。引くのは `word(key, params?)` で、画面は `src/lib/vocabulary.svelte.ts` の `t(key, params?)` を通す。
-- 語順や記号を含む文は、`{名前}` の置き換えを持つ1項目にする（`pageTitle` の `{page} - {app}`、`apiStatus` など）。`t(key, { 名前: 値 })` で埋め、テンプレートには語順や記号を直に書かない。
+- 語順や記号を含む文は、`{名前}` の置き換えを持つ1項目にする（`pageTitle` の `{page} - {app}`、`accountMenuLabel` の `{name}。アカウントのメニュー` など）。`t(key, { 名前: 値 })` で埋め、テンプレートには語順や記号を直に書かない。
 - 画面は `t(key)` で文言を出す。直に書かず、言葉づかいを選ぶ口も、組織やワークスペースの値も、`localStorage` の記憶も持たない。列と決まった欄に付けた名前は、辞書を通さず、作るときにスクラムの言葉で決めた値を保存する（`src/shared/workspace.ts` の `defaultColumnNames`、`defaultDetailFieldName`）。DB の `vocabulary` の列は使わず、行を作る文が `scrum` を入れる（`src/server/db/vocabulary-column.ts` の `VOCABULARY_COLUMN_VALUE`）。
 - 辞書の型の保証は `src/shared/vocabulary.typecheck.ts` が持つ。文字列でない項目（数、オブジェクト、`{ scope, game, scrum }` の旧形式）が型で落ちることを `@ts-expect-error` で確かめ、落ちなくなると `pnpm check` が落ちる。
 - 見本の `design/kit.js` の `DICT` にあるキーは、本番も同じ中身で持つ。`scripts/design-parity.test.ts` が突き合わせる（`docs/design.md` の「デザインシステムの構成」）。
