@@ -47,6 +47,9 @@ export { hasSeatInvitationOfLogin, personKey, seatHoldersOf, seatHoldersOfWorksp
 // 運用者の道具（operations/operator-tools.ts）だけが import できる（eslint.config.db-entry.js）
 export { appendOperatorChangeLog, type OperatorChangeLog } from './operator-change-log.ts';
 // 運用者の道具（operations/operator-tools.ts）だけが import できる（eslint.config.db-entry.js）
+export { suspendExpiredTrials } from './suspend-expired-trials.ts';
+// 定期処理（src/server/scheduled/）だけが import できる（eslint.config.db-entry.js）
+export { appendScheduledChangeLog } from './scheduled-change-log.ts';
 export {
   reassignOrganizationAdmin,
   type AdminReassignment,
