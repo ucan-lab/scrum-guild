@@ -259,16 +259,23 @@
 
   // 閉じた後の reload で発行できなくなると、フォーカスのあった発行の欄が消えて body に落ちる。
   // 発行できる状態から変わった瞬間にだけ、失われたフォーカスを案内のリンクへ移す（初めの描画では動かさない）
+  // 移すのは、フォームの中にフォーカスがあったときだけ。DOM が替わる前に覚える（読み直しや組織の移動では動かさない）
+  let formElement = $state<HTMLFormElement>();
+  let focusWasInForm = false;
+  $effect.pre(() => {
+    void allowedToCreate;
+    untrack(() => {
+      focusWasInForm = formElement?.contains(document.activeElement) ?? false;
+    });
+  });
   let wasAllowedToCreate = untrack(() => allowedToCreate);
   $effect(() => {
     const allowed = allowedToCreate;
-    const lostFocus = wasAllowedToCreate && !allowed;
+    const lostFocus = wasAllowedToCreate && !allowed && focusWasInForm;
     wasAllowedToCreate = allowed;
     if (!lostFocus) return;
-    void tick().then(() => {
-      const active = document.activeElement;
-      if (active === null || active === document.body) reauthLink?.focus();
-    });
+    focusWasInForm = false;
+    void tick().then(() => reauthLink?.focus());
   });
 
   async function copy(): Promise<void> {
@@ -353,7 +360,7 @@
       </div>
     </div>
   {:else}
-    <form class="form" aria-label={t('apiTokenFormLabel')} onsubmit={create} novalidate>
+    <form class="form" aria-label={t('apiTokenFormLabel')} onsubmit={create} novalidate bind:this={formElement}>
       <div class="form-row is-start">
         <div class="field" class:is-invalid={fieldError?.field === 'name'}>
           <label class="field-label" for={nameId}>{t('apiTokenNameLabel')}</label>
