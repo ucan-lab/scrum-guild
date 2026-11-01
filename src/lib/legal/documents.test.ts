@@ -4,6 +4,7 @@ import { describe, expect, test } from 'vitest';
 import { parseMarkdown, type MarkdownBlock, type MarkdownInline } from '../markdown.ts';
 import {
   bodyOf,
+  latestHistoryDate,
   legalDocuments,
   REVISION_HISTORY_HEADING,
   revisedDateOf,
@@ -78,9 +79,16 @@ describe('利用規約とプライバシーポリシーの文面', () => {
   // 版を上げたのに履歴へ1行足し忘れると、同意の画面の「改定の履歴を見る」が、改めた根拠を示さない履歴を指す
   test.each(kinds)('%s: 履歴の最も新しい日付が、版と一致する', (kind) => {
     const { history, version } = legalDocuments[kind];
-    const dates = [...history.matchAll(/^- (\d{4}-\d{2}-\d{2}) /gm)].map((match) => match[1] ?? '');
-    expect(dates.length).toBeGreaterThan(0);
-    expect(dates.toSorted().at(-1)).toBe(version);
+    expect(latestHistoryDate(history)).toBe(version);
+  });
+
+  test('latestHistoryDate は、履歴の並びによらず最も新しい日付を返し、日付の行が無ければ undefined', () => {
+    const entries = ['- 2026-10-31 制定', '- 2027-02-01 第5条を改めた', '- 2026-12-15 第3条を改めた'];
+    expect(latestHistoryDate(['# 改定の履歴', '', ...entries].join('\n'))).toBe('2027-02-01');
+    expect(latestHistoryDate(['# 改定の履歴', '', ...entries.toReversed()].join('\n'))).toBe('2027-02-01');
+    // 箇条書きの形でない日付（本文中の日付、日付だけの行）は数えない
+    expect(latestHistoryDate('# 改定の履歴\n\n2028-01-01 は予定\n- 2026-10-31')).toBeUndefined();
+    expect(latestHistoryDate('')).toBeUndefined();
   });
 
   test.each(kinds)('%s: 履歴の節が画面に描ける。見出しは1つで、箇条書きを持つ', (kind) => {

@@ -46,6 +46,13 @@ export function splitRevisionHistory(body: string): { body: string; history: str
   };
 }
 
+// 履歴の節の箇条書き（`- YYYY-MM-DD 何を改めたか`）のうち、最も新しい日付。日付の行が無ければ undefined。
+// 並びは問わない（新しい順でも古い順でも同じ結果）。版を上げたのに履歴へ1行足し忘れたことを、テストが見つけるために使う
+export function latestHistoryDate(history: string): string | undefined {
+  const dates = [...history.matchAll(/^- (\d{4}-\d{2}-\d{2}) /gm)].map((match) => match[1] ?? '');
+  return dates.toSorted().at(-1);
+}
+
 function document(source: string, version: string): LegalDocument {
   return { source, ...splitRevisionHistory(bodyOf(source)), version };
 }
