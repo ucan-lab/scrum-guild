@@ -81,7 +81,9 @@ test.describe('組織の中（アカウントのメニュー）', () => {
     test('名前のボタンで開閉し、Esc、外を押す、Tab で外へ出ると閉じる。中にフォーカスがあるときはボタンへ戻る', async ({
       page,
     }) => {
-      await page.goto('/aoba');
+      // Tab の出た先がメニューの外の要素になるよう、本文にフォーカスできる要素のある画面で開く
+      // （今日やること（/aoba）の本文にはフォーカスできる要素が無く、Tab でページの外へ出て relatedTarget が null になる）
+      await page.goto('/aoba/me');
       const button = accountButton(page);
       await expect(button).toContainText('ミナト');
       await expect(button).toHaveAttribute('aria-expanded', 'false');
@@ -116,7 +118,7 @@ test.describe('組織の中（アカウントのメニュー）', () => {
       await expect(logoutItem(page)).toBeFocused();
       await page.keyboard.press('Tab');
       await expect(button).toHaveAttribute('aria-expanded', 'false');
-      await expect(page).toHaveURL(/\/aoba$/);
+      await expect(page).toHaveURL(/\/aoba\/me$/);
     });
 
     test('bfcache から戻った画面（pageshow の persisted）は読み直す', async ({ page }) => {
