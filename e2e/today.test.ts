@@ -111,7 +111,8 @@ test('区分の中は期日の早い順で、今日やると決めたものは�
   // 未完了の 7 行に、太陽（印）と完了のボタンが出る。印が付いた行だけ押された状態
   await expect(page.locator('.entry .sun')).toHaveCount(7);
   await expect(page.locator('.entry .sun[aria-pressed="true"]')).toHaveCount(2);
-  await expect(page.getByRole('button', { name: /^完了にする: / })).toHaveCount(7);
+  // 進行中のスプリントの区分は閉じていて、中のボタンは役割では数えられないので、太陽と同じく CSS で数える
+  await expect(page.locator('.entry .done-btn')).toHaveCount(7);
   // 今日完了した行は、戻せると答えられたときだけ「戻す」を出す（この行は戻せない）
   const done = region(page, '今日の完了').locator('.entry', { hasText: '今日完了した' });
   await expect(done.locator('.sun')).toHaveCount(0);
