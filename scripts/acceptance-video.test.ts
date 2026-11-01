@@ -644,7 +644,7 @@ try {
     <button id="off" disabled>押せない</button>
     <button id="on" onclick="document.title='clicked'">押す</button>
     <div id="hide" style="display:none">隠れている</div>
-    <select id="s"><option>A</option><option>B</option></select>
+    <select id="s"><option value="1">A</option><option value="2">B</option></select>
     <input id="t"><input id="c" type="checkbox">
     <label>延ばす日数 <input id="n"></label>\`);
   const pageExec = p.probeExec(page, base);
@@ -695,7 +695,7 @@ try {
         assert.equal(outcome[ok], 'ok', `${ok}: ${outcome[ok]}`);
       }
       // 録画と同じ操作を実際にしている（取り違えると、状態が変わらない）。label の exact は部分一致を断つ
-      assert.deepEqual(state, { title: 'clicked', select: 'B', text: '3', checked: true, days: '2' });
+      assert.deepEqual(state, { title: 'clicked', select: '2', text: '3', checked: true, days: '2' });
       for (const ng of ['clickDisabled', 'selectZ', 'waitVisibleHidden', 'labelPartialExact'])
         assert.match(outcome[ng], /^ng: .*Timeout/, ng);
       assert.match(outcome.clickDisabled, /not enabled/);
