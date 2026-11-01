@@ -1,7 +1,5 @@
 <script lang="ts">
   import { resolve } from '$app/paths';
-  import { getHealth } from '../../lib/api.ts';
-  import Dialog from '../../lib/components/Dialog.svelte';
   import EmptyState from '../../lib/components/EmptyState.svelte';
   import Icon from '../../lib/components/Icon.svelte';
   import LevelPanel from '../../lib/components/LevelPanel.svelte';
@@ -11,7 +9,6 @@
   import SprintGoalNotice from '../../lib/components/SprintGoalNotice.svelte';
   import TaskEntry from '../../lib/components/TaskEntry.svelte';
   import WorkspaceCreateDialog from '../../lib/components/WorkspaceCreateDialog.svelte';
-  import { showToast } from '../../lib/toast.svelte.ts';
   import { todaySections } from '../../lib/today-sections.ts';
   import { t } from '../../lib/vocabulary.svelte.ts';
   import type { TodayTask } from '../../shared/operations/organization/today.ts';
@@ -37,24 +34,6 @@
     { tone: 'warn', icon: 'clock', label: t('weekDue'), count: sections.week.length },
     { icon: 'check', label: t('doneToday'), count: sections.done.length },
   ]);
-
-  // API の疎通の表示（仮の画面から残した節）。ダイアログとトーストの e2e（e2e/shell.test.ts）が試験台にしている。
-  // 外す作業は、試験台を別の画面へ移す Issue で行う
-  let health = $state(getHealth());
-  let checking = $state(false);
-  let detailOpen = $state(false);
-  let detailDialog = $state<ReturnType<typeof Dialog>>();
-
-  // 結果が出てから、成功と失敗を分けて知らせる。確かめている間は押せない
-  async function recheck(): Promise<void> {
-    checking = true;
-    const next = getHealth();
-    health = next;
-    const result = await next.catch(() => null);
-    checking = false;
-    if (result?.ok) showToast(t('apiRecheckOk'), 'check');
-    else showToast(t('apiRecheckFailed'), 'alert');
-  }
 
   function taskOf(task: TodayTask): BacklogTask {
     return {
@@ -192,41 +171,6 @@
     <!-- 経験値を読めなかったときは右の列ごと省く（列の幅だけ空けない） -->
     <div class="layout-main">{@render main()}</div>
   {/if}
-  <Section id="s-api" title={t('apiHeading')}>
-    <p role="status" class="wrap-anywhere">
-      {#await health}
-        {t('apiChecking')}
-      {:then result}
-        {#if result.ok}
-          {t('apiStatus', { status: result.data.status, version: result.data.version })}
-        {:else}
-          {t('apiUnreachableStatus', { status: result.status })}
-        {/if}
-      {:catch}
-        {t('apiUnreachable')}
-      {/await}
-    </p>
-    <div class="form-actions">
-      <!-- Safari と Firefox はクリックでボタンにフォーカスを移さないので、開く操作を起こしたボタンを渡す -->
-      <button class="btn is-sm" type="button" onclick={(event) => detailDialog?.show(event.currentTarget)}>
-        {t('apiShowDetail')}
-      </button>
-      <button class="btn is-sm" type="button" disabled={checking} onclick={recheck}>{t('apiRecheck')}</button>
-    </div>
-  </Section>
-  <Dialog bind:this={detailDialog} bind:open={detailOpen} title={t('apiDetailTitle')}>
-    <p>{t('apiDetailBody')}</p>
-    <!-- ダイアログは閉じていても中身を描くので、ここでも拒否を受けないと処理されない例外になる -->
-    {#await health then result}
-      <p class="mono wrap-anywhere">{JSON.stringify(result)}</p>
-    {:catch}
-      <p>{t('apiUnreachable')}</p>
-    {/await}
-    {#snippet footer(close)}
-      <button class="btn" type="button" disabled={checking} onclick={recheck}>{t('apiRecheck')}</button>
-      <button class="btn is-primary" type="button" onclick={close}>{t('close')}</button>
-    {/snippet}
-  </Dialog>
   {#if data.organization?.me.is_admin}<WorkspaceCreateDialog
       bind:this={createDialog}
       slug={data.slug}

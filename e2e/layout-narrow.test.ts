@@ -19,13 +19,7 @@ test('今日やること（/aoba）が 390px で横にはみ出さず、押せ�
   await expectNarrowLayout(page, 'today', async (w) => {
     await page.goto('/aoba');
     await expect(page.getByRole('heading', { level: 1, name: w('pageToday') })).toBeVisible();
-    // /api/health を読み終えた後にだけ出る文
-    await expect(
-      page
-        .getByRole('region', { name: 'API の疎通' })
-        .getByRole('status')
-        .filter({ hasText: /^API: / }),
-    ).toBeVisible();
+    await expect(page.getByRole('region', { name: w('sectionToday') })).toBeVisible();
   });
 });
 

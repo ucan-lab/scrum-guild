@@ -781,19 +781,6 @@ export const dictionary = defineDictionary({
   operatorReassignRejected:
     '指名し直せませんでした。何も書かれていません。入力を確かめるか、少し待ってから、もう一度試してください。',
 
-  // API の疎通の表示（仮の画面）
-  apiHeading: 'API の疎通',
-  apiStatus: 'API: {status}（版 {version}）',
-  apiChecking: 'API を確かめています',
-  apiUnreachable: 'API に届きませんでした',
-  apiUnreachableStatus: 'API に届きませんでした（{status}）',
-  apiShowDetail: '詳細を見る',
-  apiRecheck: '確かめ直す',
-  apiRecheckOk: 'API を確かめました',
-  apiRecheckFailed: 'API に届きませんでした',
-  apiDetailTitle: 'API の詳細',
-  apiDetailBody: 'この画面が呼んだ API の応答です。',
-
   // アカウントのメニュー（組織の中の上の帯）とログアウト。{name} はログインしている人の名前
   accountMenuLabel: '{name}。アカウントのメニュー',
   logout: 'ログアウト',
