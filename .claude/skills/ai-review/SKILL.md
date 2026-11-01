@@ -39,7 +39,7 @@ GitHub Actions の中で、1つの PR をレビューして指摘を書き込む
 `<WORKSPACE>/.claude/skills/ai-review/reviewers.md` を Read で読み、変更されたファイルとその差分を表の「呼ぶとき」に当て、`scope.md` の方式に応じて CI（全体／起点から）の列が「呼ぶ」のものをすべて選ぶ。base の版を読むので、PR が表を変えていても、この PR のレビューは base の表で選ぶ。表が読めなければ `code-reviewer` だけを呼び、まとめの「呼ばなかったエージェントとその理由」に表が読めなかったと書く。
 
 `security-reviewer` は使用量を多く食うので、表に当たらないときは呼ばない。
-`falsification-qa` は全体を見るときは呼ばない（使用量。done-check で回しているため）、起点からの差分のときは呼ぶ（done-check の後に積んだ直しを壊す筋書きで見るため）。
+`falsification-qa` は全体を見るときは呼ばない（使用量。done-check で回しているため）、起点からの差分のときは呼ぶ（done-check の後に積んだ直しを壊す筋書きで見るため）。ただし小さい差分では省いてよい。小ささの基準と、省いたときの書き方は `reviewers.md` の表の下の注記に従う。
 
 ## 3. エージェントを呼ぶ
 

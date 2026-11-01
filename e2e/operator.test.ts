@@ -2,9 +2,20 @@
 // e2e の Worker には運用者の一覧（シークレット OPERATOR_LOGIN_IDS）が無く、本物の GitHub へも行かないので、運用者の操作
 // （組織の一覧、ユーザー名の解決、組織の作成）の応答は差し替える。サーバーの処理は test/operator-organizations.test.ts、
 // 運用者でない人の扱い（403、/ への戻し）は本物のサーバーで確かめる
-import type { Page, Route } from '@playwright/test';
+import type { Page } from '@playwright/test';
+import type { ErrorCode } from '../src/shared/errors.ts';
+import type { OutputOf } from '../src/shared/operations/define.ts';
+import { createOrganization } from '../src/shared/operations/operator/create-organization.ts';
+import { listOrganizations } from '../src/shared/operations/operator/list-organizations.ts';
+import { organizationAdminReassign } from '../src/shared/operations/operator/organization-admin-reassign.ts';
+import { organizationQuotaUpdate } from '../src/shared/operations/operator/organization-quota-update.ts';
+import { organizationResume } from '../src/shared/operations/operator/organization-resume.ts';
+import { organizationSuspend } from '../src/shared/operations/operator/organization-suspend.ts';
+import { organizationSuspensionUpdate } from '../src/shared/operations/operator/organization-suspension-update.ts';
+import { resolveGithubUser } from '../src/shared/operations/operator/resolve-github-user.ts';
 import { expect, test } from './fixtures.ts';
 import { expectFocusReturned, signIn, waitForSettled, watchViolations } from './helpers.ts';
+import { failOperation, mockOperation, routeOperation } from './operations.ts';
 
 // 1x1 の PNG
 const PIXEL = Buffer.from(
@@ -12,20 +23,7 @@ const PIXEL = Buffer.from(
   'base64',
 );
 
-type ListedOrganization = {
-  slug: string;
-  name: string;
-  suspended_at: string | null;
-  purge_on: string | null;
-  purge_due: boolean;
-  created_at: string;
-  admin_status: 'none' | 'pending' | 'expired' | 'active';
-  seats: { used: number; limit: number };
-  workspace_count: number;
-  task_count: number;
-  attachment_quota_bytes: number;
-  last_used_at: string | null;
-};
+type ListedOrganization = OutputOf<typeof listOrganizations>['organizations'][number];
 
 const organization = (overrides: Partial<ListedOrganization>): ListedOrganization => ({
   slug: 'aoba',
@@ -43,22 +41,22 @@ const organization = (overrides: Partial<ListedOrganization>): ListedOrganizatio
   ...overrides,
 });
 
-function invalidInput(path: string, code: string) {
-  return {
-    status: 400,
-    json: { error: { code: 'invalid_input', message: 'x', details: [{ path, code, message: 'x' }] } },
-  };
+// API のエラーの応答。failOperation と OperationCall.fail の引数（status、code、options）と同じ並び
+type Failure = [status: number, code: ErrorCode, options?: { details?: unknown }];
+
+function invalidInput(path: string, code: string): Failure {
+  return [400, 'invalid_input', { details: [{ path, code, message: 'x' }] }];
 }
 
+// 配列は渡したまま持つ。テストが後から中身を変えると、次の応答に映る
 async function mockList(page: Page, organizations: ListedOrganization[]) {
-  await page.route('**/api/list-organizations', (route) => route.fulfill({ json: { organizations } }));
+  await mockOperation(page, listOrganizations, { organizations });
 }
 
-async function mockGithubUser(page: Page, user: Record<string, unknown> | { status: number; json: unknown }) {
+async function mockGithubUser(page: Page, user: OutputOf<typeof resolveGithubUser> | Failure) {
   // 後から足した差し替えが先に効く
-  await page.route('**/api/resolve-github-user', (route) =>
-    route.fulfill('status' in user ? { status: user.status as number, json: user.json } : { json: user }),
-  );
+  if (Array.isArray(user)) await failOperation(page, resolveGithubUser, ...user);
+  else await mockOperation(page, resolveGithubUser, user);
 }
 
 // 保留した応答を返し、画面がそれを処理し終えるまで待つ（時間では待たない）。
@@ -320,7 +318,7 @@ test.describe('運用者', () => {
     page,
   }) => {
     const listed = [organization({})];
-    await page.route('**/api/list-organizations', (route) => route.fulfill({ json: { organizations: listed } }));
+    await mockList(page, listed);
     // GitHub のアバターのホストへは出ず、画像を差し替える
     await page.route('https://avatars.githubusercontent.com/**', (route) =>
       route.fulfill({ body: PIXEL, contentType: 'image/png' }),
@@ -332,16 +330,14 @@ test.describe('運用者', () => {
       avatar_url: 'https://avatars.githubusercontent.com/u/5550001',
     });
     let created: unknown;
-    await page.route('**/api/create-organization', async (route) => {
-      created = route.request().postDataJSON();
+    await routeOperation(page, createOrganization, async (call) => {
+      created = call.input;
       listed.push(organization({ slug: 'sakura-dev', name: 'さくら開発', admin_status: 'pending' }));
-      await route.fulfill({
-        json: {
-          slug: 'sakura-dev',
-          name: 'さくら開発',
-          admin_login_name: 'kotone-dev',
-          invite: null,
-        },
+      await call.fulfill({
+        slug: 'sakura-dev',
+        name: 'さくら開発',
+        admin_login_name: 'kotone-dev',
+        invite: null,
       });
     });
 
@@ -415,7 +411,7 @@ test.describe('運用者', () => {
     await expect(dialog.getByRole('alert')).toContainText('そのユーザー名の人が GitHub にいません');
 
     // 届かないときは、入力の誤りと分けて知らせる
-    await mockGithubUser(page, { status: 503, json: { error: { code: 'unavailable', message: 'x' } } });
+    await mockGithubUser(page, [503, 'unavailable']);
     await dialog.getByRole('button', { name: '確かめる' }).click();
     await expect(dialog.getByRole('alert')).toContainText('GitHub に届きませんでした');
   });
@@ -453,9 +449,7 @@ test.describe('運用者', () => {
       display_name: 'リン',
       avatar_url: null,
     });
-    await page.route('**/api/create-organization', (route) =>
-      route.fulfill({ status: 409, json: { error: { code: 'conflict', message: 'x' } } }),
-    );
+    await failOperation(page, createOrganization, 409, 'conflict');
     await page.goto('/operator');
     await page.getByRole('button', { name: '組織を作る' }).click();
     const dialog = page.getByRole('dialog');
@@ -472,9 +466,9 @@ test.describe('運用者', () => {
   }) => {
     await mockList(page, []);
     const alice = deferred<void>();
-    await page.route('**/api/resolve-github-user', async (route) => {
-      if (route.request().postDataJSON().username === 'alice') await alice.promise;
-      await route.fulfill({ json: TOKYO_USER });
+    await routeOperation(page, resolveGithubUser, async (call) => {
+      if (call.input.username === 'alice') await alice.promise;
+      await call.fulfill(TOKYO_USER);
     });
     await page.goto('/operator');
     await page.getByRole('button', { name: '組織を作る' }).click();
@@ -497,9 +491,9 @@ test.describe('運用者', () => {
   test('確かめている最中に閉じて開き直すと、古い応答は新しいダイアログに入らない', async ({ page }) => {
     await mockList(page, []);
     const pending = deferred<void>();
-    await page.route('**/api/resolve-github-user', async (route) => {
+    await routeOperation(page, resolveGithubUser, async (call) => {
       await pending.promise;
-      await route.fulfill({ json: TOKYO_USER });
+      await call.fulfill(TOKYO_USER);
     });
     await page.goto('/operator');
     const open = page.getByRole('button', { name: '組織を作る' });
@@ -524,9 +518,9 @@ test.describe('運用者', () => {
     await mockList(page, []);
     await mockGithubUser(page, TOKYO_USER);
     const pending = deferred<void>();
-    await page.route('**/api/create-organization', async (route) => {
+    await routeOperation(page, createOrganization, async (call) => {
       await pending.promise;
-      await route.fulfill({ json: { slug: 'sakura-dev', name: '工房', admin_login_name: 'alice-dev' } });
+      await call.fulfill({ slug: 'sakura-dev', name: '工房', admin_login_name: 'alice-dev', invite: null });
     });
     await page.goto('/operator');
     await page.getByRole('button', { name: '組織を作る' }).click();
@@ -577,18 +571,16 @@ test.describe('運用者', () => {
 
   async function expectExistingOrganization(page: Page, status: 'active' | 'pending' | 'none', text: string) {
     let created = false;
-    await page.route('**/api/list-organizations', (route) =>
-      route.fulfill({
-        json: {
-          organizations: created ? [organization({ slug: 'sakura-dev', name: '工房', admin_status: status })] : [],
-        },
+    await routeOperation(page, listOrganizations, (call) =>
+      call.fulfill({
+        organizations: created ? [organization({ slug: 'sakura-dev', name: '工房', admin_status: status })] : [],
       }),
     );
     await mockGithubUser(page, TOKYO_USER);
-    await page.route('**/api/create-organization', (route) => {
-      // サーバーでは作られたが、応答が 502 で返る
+    await routeOperation(page, createOrganization, (call) => {
+      // サーバーでは作られたが、応答が 502 で返る（API のエラーの形でない本文なので、route を取り出して返す）
       created = true;
-      return route.fulfill({ status: 502, body: 'bad gateway', contentType: 'text/plain' });
+      return call.route.fulfill({ status: 502, body: 'bad gateway', contentType: 'text/plain' });
     });
     await page.goto('/operator');
     await page.getByRole('button', { name: '組織を作る' }).click();
@@ -619,9 +611,7 @@ test.describe('運用者', () => {
   }) => {
     await mockList(page, [organization({ slug: 'sakura-dev', name: '別の工房', admin_status: 'none' })]);
     await mockGithubUser(page, TOKYO_USER);
-    await page.route('**/api/create-organization', (route) =>
-      route.fulfill({ status: 409, json: { error: { code: 'conflict', message: 'x' } } }),
-    );
+    await failOperation(page, createOrganization, 409, 'conflict');
     await page.goto('/operator');
     await page.getByRole('button', { name: '組織を作る' }).click();
     const dialog = page.getByRole('dialog');
@@ -640,9 +630,9 @@ test.describe('運用者', () => {
   test('読み上げの領域は常にあり、確かめている間と確かめた後で文字だけが替わる', async ({ page }) => {
     await mockList(page, []);
     const pending = deferred<void>();
-    await page.route('**/api/resolve-github-user', async (route) => {
+    await routeOperation(page, resolveGithubUser, async (call) => {
       await pending.promise;
-      await route.fulfill({ json: TOKYO_USER });
+      await call.fulfill(TOKYO_USER);
     });
     await page.goto('/operator');
     await page.getByRole('button', { name: '組織を作る' }).click();
@@ -660,15 +650,16 @@ test.describe('運用者', () => {
 
   test('作った後に一覧の読み直しが失敗しても、完了の表示（組織の URL）は消えない', async ({ page }) => {
     let reads = 0;
-    await page.route('**/api/list-organizations', (route) =>
-      ++reads === 1
-        ? route.fulfill({ json: { organizations: [] } })
-        : route.fulfill({ status: 500, json: { error: { code: 'internal', message: 'x' } } }),
+    await routeOperation(page, listOrganizations, (call) =>
+      ++reads === 1 ? call.fulfill({ organizations: [] }) : call.fail(500, 'internal'),
     );
     await mockGithubUser(page, TOKYO_USER);
-    await page.route('**/api/create-organization', (route) =>
-      route.fulfill({ json: { slug: 'sakura-dev', name: '工房', admin_login_name: 'alice-dev' } }),
-    );
+    await mockOperation(page, createOrganization, {
+      slug: 'sakura-dev',
+      name: '工房',
+      admin_login_name: 'alice-dev',
+      invite: null,
+    });
     await page.goto('/operator');
     await page.getByRole('button', { name: '組織を作る' }).click();
     const dialog = page.getByRole('dialog');
@@ -698,39 +689,28 @@ test.describe('運用者', () => {
     const submit = dialog.getByRole('button', { name: '作る', exact: true });
 
     // 辞書に無い理由の 400 は「届きませんでした」にしない
-    await page.route('**/api/create-organization', (route) =>
-      route.fulfill({
-        status: 400,
-        json: {
-          error: { code: 'invalid_input', message: 'x', details: [{ path: 'x', code: 'unknown_code', message: 'x' }] },
-        },
-      }),
-    );
+    await failOperation(page, createOrganization, ...invalidInput('x', 'unknown_code'));
     await submit.click();
     await expect(dialog.getByRole('alert')).toContainText('入力に誤りがあります');
     await expect(dialog.getByRole('alert')).not.toContainText('届きません');
 
     // 5xx と通信の切れは、サーバーで作られていることがあるので、一覧を確かめるよう伝える
-    await page.route('**/api/create-organization', (route) =>
-      route.fulfill({ status: 500, json: { error: { code: 'internal', message: 'x' } } }),
-    );
+    await failOperation(page, createOrganization, 500, 'internal');
     await submit.click();
     await expect(dialog.getByRole('alert')).toContainText('一覧を確かめてから');
-    await page.route('**/api/create-organization', (route) => route.abort('connectionreset'));
+    await routeOperation(page, createOrganization, (call) => call.route.abort('connectionreset'));
     await submit.click();
     await expect(dialog.getByRole('alert')).toContainText('一覧を確かめてから');
 
     // slug の 409 には、自分が作った組織かもしれないことを添える
-    await page.route('**/api/create-organization', (route) =>
-      route.fulfill({ status: 409, json: { error: { code: 'conflict', message: 'x' } } }),
-    );
+    await failOperation(page, createOrganization, 409, 'conflict');
     await submit.click();
     await expect(dialog.getByRole('alert')).toContainText('今作った組織かもしれない');
   });
 
   test('入力欄の長さの上限と、誤りのある欄へのフォーカス、読み上げとの結び付き', async ({ page }) => {
     await mockList(page, []);
-    await mockGithubUser(page, { status: 400, json: invalidInput('username', 'github_user_not_found').json });
+    await mockGithubUser(page, invalidInput('username', 'github_user_not_found'));
     await page.goto('/operator');
     await page.getByRole('button', { name: '組織を作る' }).click();
     const dialog = page.getByRole('dialog');
@@ -777,7 +757,7 @@ test.describe('運用者', () => {
 
   test('狭い幅でも、確かめるボタンは入力欄の横に残り、ヒントやエラーの横に落ちない', async ({ page }) => {
     await mockList(page, []);
-    await mockGithubUser(page, { status: 400, json: invalidInput('username', 'github_not_a_user').json });
+    await mockGithubUser(page, invalidInput('username', 'github_not_a_user'));
     await page.setViewportSize({ width: 360, height: 800 });
     await page.goto('/operator');
     await page.getByRole('button', { name: '組織を作る' }).click();
@@ -813,19 +793,17 @@ test.describe('運用者', () => {
     page,
   }) => {
     const listed = [organization({})];
-    await page.route('**/api/list-organizations', (route) => route.fulfill({ json: { organizations: listed } }));
+    await mockList(page, listed);
     const inviteUrl = `http://localhost:8787/invite#${'Qm7tX2vLr9aKpE4wZc8hN3bYd6fGs1uJ0oTiRl5eWxA'}`;
     let created: unknown;
-    await page.route('**/api/create-organization', async (route) => {
-      created = route.request().postDataJSON();
+    await routeOperation(page, createOrganization, async (call) => {
+      created = call.input;
       listed.push(organization({ slug: 'sakura-dev', name: 'さくら開発', admin_status: 'pending' }));
-      await route.fulfill({
-        json: {
-          slug: 'sakura-dev',
-          name: 'さくら開発',
-          admin_login_name: 'mio.hoshino@example.com',
-          invite: { url: inviteUrl, expires_at: '2026-11-09T00:00:00.000Z' },
-        },
+      await call.fulfill({
+        slug: 'sakura-dev',
+        name: 'さくら開発',
+        admin_login_name: 'mio.hoshino@example.com',
+        invite: { url: inviteUrl, expires_at: '2026-11-09T00:00:00.000Z' },
       });
     });
     const collect = await watchViolations(page);
@@ -874,9 +852,7 @@ test.describe('運用者', () => {
 
   test('メールアドレスの形が合わないという応答は、メールアドレスの欄の下で知らせる', async ({ page }) => {
     await mockList(page, []);
-    await page.route('**/api/create-organization', (route) =>
-      route.fulfill(invalidInput('admin.email', 'email_invalid')),
-    );
+    await failOperation(page, createOrganization, ...invalidInput('admin.email', 'email_invalid'));
     await page.goto('/operator');
     await page.getByRole('button', { name: '組織を作る' }).click();
     const dialog = page.getByRole('dialog');
@@ -901,19 +877,17 @@ test.describe('運用者', () => {
     page,
   }) => {
     const listed = [organization({}), organization({ slug: 'hibari', name: 'ひばり工房' })];
-    await page.route('**/api/list-organizations', (route) => route.fulfill({ json: { organizations: listed } }));
+    await mockList(page, listed);
     let sent: unknown;
-    await page.route('**/api/organization-suspend', async (route) => {
-      sent = route.request().postDataJSON();
+    await routeOperation(page, organizationSuspend, async (call) => {
+      sent = call.input;
       listed[1] = organization({
         slug: 'hibari',
         name: 'ひばり工房',
         suspended_at: '2026-10-26T00:00:00.000Z',
         purge_on: '2026-11-25',
       });
-      await route.fulfill({
-        json: { slug: 'hibari', suspended_at: '2026-10-26T00:00:00.000Z', purge_on: '2026-11-25' },
-      });
+      await call.fulfill({ slug: 'hibari', suspended_at: '2026-10-26T00:00:00.000Z', purge_on: '2026-11-25' });
     });
     const collect = await watchViolations(page);
     await page.goto('/operator');
@@ -960,12 +934,12 @@ test.describe('運用者', () => {
         purge_on: '2026-11-09',
       }),
     ];
-    await page.route('**/api/list-organizations', (route) => route.fulfill({ json: { organizations: listed } }));
+    await mockList(page, listed);
     let sent: unknown;
-    await page.route('**/api/organization-resume', async (route) => {
-      sent = route.request().postDataJSON();
+    await routeOperation(page, organizationResume, async (call) => {
+      sent = call.input;
       listed[0] = organization({ slug: 'hibari', name: 'ひばり工房' });
-      await route.fulfill({ json: { slug: 'hibari' } });
+      await call.fulfill({ slug: 'hibari' });
     });
     await page.goto('/operator');
     const row = page.locator('.table tbody tr', { hasText: 'ひばり工房' });
@@ -983,14 +957,14 @@ test.describe('運用者', () => {
     page,
   }) => {
     const listed = [organization({ slug: 'hibari', name: 'ひばり工房', suspended_at: '2026-10-10T00:00:00.000Z' })];
-    await page.route('**/api/list-organizations', (route) => route.fulfill({ json: { organizations: listed } }));
+    await mockList(page, listed);
     let requests = 0;
     const gate = deferred<void>();
-    await page.route('**/api/organization-resume', async (route) => {
+    await routeOperation(page, organizationResume, async (call) => {
       requests++;
       await gate.promise;
       listed[0] = organization({ slug: 'hibari', name: 'ひばり工房' });
-      await route.fulfill({ json: { slug: 'hibari' } });
+      await call.fulfill({ slug: 'hibari' });
     });
     await page.goto('/operator');
     const row = page.locator('.table tbody tr', { hasText: 'ひばり工房' });
@@ -1027,17 +1001,17 @@ test.describe('運用者', () => {
         purge_on: '2026-11-10',
       }),
     ];
-    await page.route('**/api/list-organizations', (route) => route.fulfill({ json: { organizations: listed } }));
+    await mockList(page, listed);
     let sent: unknown;
-    await page.route('**/api/organization-suspension-update', async (route) => {
-      sent = route.request().postDataJSON();
+    await routeOperation(page, organizationSuspensionUpdate, async (call) => {
+      sent = call.input;
       listed[0] = organization({
         slug: 'hibari',
         name: 'ひばり工房',
         suspended_at: '2026-10-10T00:00:00.000Z',
         purge_on: '2026-11-25',
       });
-      await route.fulfill({ json: { slug: 'hibari', purge_on: '2026-11-25' } });
+      await call.fulfill({ slug: 'hibari', purge_on: '2026-11-25' });
     });
     await page.goto('/operator');
 
@@ -1181,9 +1155,7 @@ test.describe('運用者', () => {
         purge_on: '2026-10-10',
       }),
     ]);
-    await page.route('**/api/organization-resume', (route) =>
-      route.fulfill({ status: 409, json: { error: { code: 'purge_due', message: 'x' } } }),
-    );
+    await failOperation(page, organizationResume, 409, 'purge_due');
     await page.goto('/operator');
     await page.getByRole('button', { name: '「きり製作所」を再開する' }).click();
     await expect(
@@ -1209,17 +1181,16 @@ test.describe('運用者', () => {
         purge_on: '2026-10-10',
       }),
     ];
-    await page.route('**/api/list-organizations', (route) => route.fulfill({ json: { organizations: listed } }));
-    const purgeDue = { status: 409, json: { error: { code: 'purge_due', message: 'x' } } };
-    await page.route('**/api/organization-resume', (route) => {
+    await mockList(page, listed);
+    await routeOperation(page, organizationResume, (call) => {
       listed[0] = { ...listed[0]!, purge_due: true };
-      return route.fulfill(purgeDue);
+      return call.fail(409, 'purge_due');
     });
     let sent: unknown;
-    await page.route('**/api/organization-suspension-update', (route) => {
-      sent = route.request().postDataJSON();
+    await routeOperation(page, organizationSuspensionUpdate, (call) => {
+      sent = call.input;
       listed[1] = { ...listed[1]!, purge_due: true };
-      return route.fulfill(purgeDue);
+      return call.fail(409, 'purge_due');
     });
     await page.goto('/operator');
 
@@ -1259,12 +1230,12 @@ test.describe('運用者', () => {
         purge_on: '2026-10-10',
       }),
     ];
-    await page.route('**/api/list-organizations', (route) => route.fulfill({ json: { organizations: listed } }));
+    await mockList(page, listed);
     let sent: unknown;
-    await page.route('**/api/organization-admin-reassign', (route) => {
-      sent = route.request().postDataJSON();
+    await routeOperation(page, organizationAdminReassign, (call) => {
+      sent = call.input;
       listed[0] = { ...listed[0]!, purge_due: true };
-      return route.fulfill({ status: 409, json: { error: { code: 'purge_due', message: 'x' } } });
+      return call.fail(409, 'purge_due');
     });
     await page.goto('/operator');
     await page.getByRole('button', { name: '「きり製作所」の管理者を指名' }).click();
@@ -1303,14 +1274,14 @@ test.describe('運用者', () => {
     page,
   }) => {
     const listed = [organization({})];
-    await page.route('**/api/list-organizations', (route) => route.fulfill({ json: { organizations: listed } }));
+    await mockList(page, listed);
     let requests = 0;
     const gate = deferred<void>();
-    await page.route('**/api/organization-suspend', async (route) => {
+    await routeOperation(page, organizationSuspend, async (call) => {
       requests++;
       await gate.promise;
       listed[0] = organization({ suspended_at: '2026-10-26T00:00:00.000Z' });
-      await route.fulfill({ json: { slug: 'aoba', suspended_at: '2026-10-26T00:00:00.000Z', purge_on: null } });
+      await call.fulfill({ slug: 'aoba', suspended_at: '2026-10-26T00:00:00.000Z', purge_on: null });
     });
     await page.goto('/operator');
     await page.getByRole('button', { name: '「あおば開発」を停止する' }).click();
@@ -1335,14 +1306,14 @@ test.describe('運用者', () => {
       organization({}),
       organization({ slug: 'hibari', name: 'ひばり工房', suspended_at: '2026-10-10T00:00:00.000Z' }),
     ];
-    await page.route('**/api/list-organizations', (route) => route.fulfill({ json: { organizations: listed } }));
-    await page.route('**/api/organization-suspend', (route) => {
+    await mockList(page, listed);
+    await routeOperation(page, organizationSuspend, (call) => {
       listed[0] = organization({ suspended_at: '2026-10-25T00:00:00.000Z' });
-      return route.fulfill({ status: 409, json: { error: { code: 'conflict', message: 'x' } } });
+      return call.fail(409, 'conflict');
     });
-    await page.route('**/api/organization-resume', (route) => {
+    await routeOperation(page, organizationResume, (call) => {
       listed[1] = organization({ slug: 'hibari', name: 'ひばり工房' });
-      return route.fulfill({ status: 409, json: { error: { code: 'conflict', message: 'x' } } });
+      return call.fail(409, 'conflict');
     });
     await page.goto('/operator');
 
@@ -1364,11 +1335,8 @@ test.describe('運用者', () => {
   }) => {
     await mockList(page, [organization({})]);
     let status = 500;
-    await page.route('**/api/organization-suspend', (route) =>
-      route.fulfill({
-        status,
-        json: { error: { code: status === 404 ? 'not_found' : 'internal', message: 'x' } },
-      }),
+    await routeOperation(page, organizationSuspend, (call) =>
+      call.fail(status, status === 404 ? 'not_found' : 'internal'),
     );
     await page.goto('/operator');
     await page.getByRole('button', { name: '「あおば開発」を停止する' }).click();
@@ -1391,12 +1359,12 @@ test.describe('運用者', () => {
       page,
     }) => {
       const listed = [organization({}), organization({ slug: 'hibari', name: 'ひばり工房' })];
-      await page.route('**/api/list-organizations', (route) => route.fulfill({ json: { organizations: listed } }));
+      await mockList(page, listed);
       let sent: unknown;
-      await page.route('**/api/organization-quota-update', async (route) => {
-        sent = route.request().postDataJSON();
+      await routeOperation(page, organizationQuotaUpdate, async (call) => {
+        sent = call.input;
         listed[0] = organization({ seats: { used: 5, limit: 50 }, attachment_quota_bytes: 100 * GIB });
-        await route.fulfill({ json: { slug: 'aoba', member_limit: 50, attachment_quota_bytes: 100 * GIB } });
+        await call.fulfill({ slug: 'aoba', member_limit: 50, attachment_quota_bytes: 100 * GIB });
       });
       const collect = await watchViolations(page);
       await page.goto('/operator');
@@ -1470,12 +1438,12 @@ test.describe('運用者', () => {
         organization({ seats: { used: 60, limit: 120 }, attachment_quota_bytes: 250 * GIB }),
         organization({ slug: 'hibari', name: 'ひばり工房', attachment_quota_bytes: 512 * 1024 ** 2 }),
       ];
-      await page.route('**/api/list-organizations', (route) => route.fulfill({ json: { organizations: listed } }));
+      await mockList(page, listed);
       const sent: unknown[] = [];
-      await page.route('**/api/organization-quota-update', async (route) => {
-        sent.push(route.request().postDataJSON());
+      await routeOperation(page, organizationQuotaUpdate, async (call) => {
+        sent.push(call.input);
         listed[0] = organization({ seats: { used: 60, limit: 200 }, attachment_quota_bytes: 300 * GIB });
-        await route.fulfill({ json: { slug: 'aoba', member_limit: 200, attachment_quota_bytes: 300 * GIB } });
+        await call.fulfill({ slug: 'aoba', member_limit: 200, attachment_quota_bytes: 300 * GIB });
       });
       const collect = await watchViolations(page);
       await page.goto('/operator');
@@ -1547,18 +1515,18 @@ test.describe('運用者', () => {
     test('容量が GB の整数でない組織は、容量の欄を触らなければ今のバイト数のまま送る', async ({ page }) => {
       const MIB_512 = 512 * 1024 ** 2;
       const listed = [organization({ slug: 'hibari', name: 'ひばり工房', attachment_quota_bytes: MIB_512 })];
-      await page.route('**/api/list-organizations', (route) => route.fulfill({ json: { organizations: listed } }));
-      const sent: { member_limit: number; attachment_quota_bytes: number }[] = [];
-      await page.route('**/api/organization-quota-update', async (route) => {
-        const body = route.request().postDataJSON() as { member_limit: number; attachment_quota_bytes: number };
-        sent.push(body);
+      await mockList(page, listed);
+      const sent: unknown[] = [];
+      await routeOperation(page, organizationQuotaUpdate, async (call) => {
+        const { member_limit, attachment_quota_bytes } = call.input;
+        sent.push(call.input);
         listed[0] = organization({
           slug: 'hibari',
           name: 'ひばり工房',
-          seats: { used: 5, limit: body.member_limit },
-          attachment_quota_bytes: body.attachment_quota_bytes,
+          seats: { used: 5, limit: member_limit },
+          attachment_quota_bytes,
         });
-        await route.fulfill({ json: { slug: 'hibari', ...body } });
+        await call.fulfill({ slug: 'hibari', member_limit, attachment_quota_bytes });
       });
       await page.goto('/operator');
       const open = page.getByRole('button', { name: '「ひばり工房」の人数と容量の上限を変える' });
@@ -1597,18 +1565,18 @@ test.describe('運用者', () => {
       page,
     }) => {
       const listed = [organization({})];
-      await page.route('**/api/list-organizations', (route) => route.fulfill({ json: { organizations: listed } }));
+      await mockList(page, listed);
       let status = 409;
       const failedText =
         '上限を変えられませんでした。変わっていることもあるので、閉じた後の一覧で確かめてからもう一度試してください。';
-      await page.route('**/api/organization-quota-update', (route) => {
+      await routeOperation(page, organizationQuotaUpdate, (call) => {
         if (status === 409) listed[0] = organization({ seats: { used: 5, limit: 30 } });
         // 書かれたか分からない失敗。サーバーでは書けていた
         if (status === 500)
           listed[0] = organization({ seats: { used: 5, limit: 50 }, attachment_quota_bytes: 100 * GIB });
-        if (status === 0) return route.abort('connectionreset');
+        if (status === 0) return call.route.abort('connectionreset');
         const code = status === 409 ? 'conflict' : status === 404 ? 'not_found' : 'internal';
-        return route.fulfill({ status, json: { error: { code, message: 'x' } } });
+        return call.fail(status, code);
       });
       await page.goto('/operator');
       const open = page.getByRole('button', { name: '「あおば開発」の人数と容量の上限を変える' });
@@ -1654,14 +1622,14 @@ test.describe('運用者', () => {
 
     test('送っている間は「変える」を押しても無視し、ダイアログも閉じられず、1回しか送らない', async ({ page }) => {
       const listed = [organization({})];
-      await page.route('**/api/list-organizations', (route) => route.fulfill({ json: { organizations: listed } }));
+      await mockList(page, listed);
       let requests = 0;
       const gate = deferred<void>();
-      await page.route('**/api/organization-quota-update', async (route) => {
+      await routeOperation(page, organizationQuotaUpdate, async (call) => {
         requests++;
         await gate.promise;
         listed[0] = organization({ seats: { used: 5, limit: 50 }, attachment_quota_bytes: 100 * GIB });
-        await route.fulfill({ json: { slug: 'aoba', member_limit: 50, attachment_quota_bytes: 100 * GIB } });
+        await call.fulfill({ slug: 'aoba', member_limit: 50, attachment_quota_bytes: 100 * GIB });
       });
       await page.goto('/operator');
       await page.getByRole('button', { name: '「あおば開発」の人数と容量の上限を変える' }).click();
@@ -1696,13 +1664,13 @@ test.describe('運用者', () => {
       page,
     }) => {
       const listed = [organization({}), organization({ slug: 'hibari', name: 'ひばり工房', admin_status: 'none' })];
-      await page.route('**/api/list-organizations', (route) => route.fulfill({ json: { organizations: listed } }));
+      await mockList(page, listed);
       await mockGithubUser(page, TOKYO_USER);
       let sent: unknown;
-      await page.route('**/api/organization-admin-reassign', async (route) => {
-        sent = route.request().postDataJSON();
+      await routeOperation(page, organizationAdminReassign, async (call) => {
+        sent = call.input;
         listed[1] = organization({ slug: 'hibari', name: 'ひばり工房', admin_status: 'pending' });
-        await route.fulfill({ json: { slug: 'hibari', admin_login_name: 'alice-dev', invite: null } });
+        await call.fulfill({ slug: 'hibari', admin_login_name: 'alice-dev', invite: null });
       });
       const collect = await watchViolations(page);
       await page.goto('/operator');
@@ -1754,18 +1722,16 @@ test.describe('運用者', () => {
           suspended_at: '2026-10-10T00:00:00.000Z',
         }),
       ];
-      await page.route('**/api/list-organizations', (route) => route.fulfill({ json: { organizations: listed } }));
+      await mockList(page, listed);
       const inviteUrl = `http://localhost:8787/invite#${'Zx8tY2vLr9aKpE4wQc8hN3bYd6fGs1uJ0oTiRl5eWmB'}`;
       let sent: unknown;
-      await page.route('**/api/organization-admin-reassign', async (route) => {
-        sent = route.request().postDataJSON();
+      await routeOperation(page, organizationAdminReassign, async (call) => {
+        sent = call.input;
         listed[0] = { ...listed[0]!, admin_status: 'pending' };
-        await route.fulfill({
-          json: {
-            slug: 'kamome',
-            admin_login_name: 'nagi.kurose@example.com',
-            invite: { url: inviteUrl, expires_at: '2026-11-09T00:00:00.000Z' },
-          },
+        await call.fulfill({
+          slug: 'kamome',
+          admin_login_name: 'nagi.kurose@example.com',
+          invite: { url: inviteUrl, expires_at: '2026-11-09T00:00:00.000Z' },
         });
       });
       const collect = await watchViolations(page);
@@ -1806,14 +1772,14 @@ test.describe('運用者', () => {
       page,
     }) => {
       let lists = 0;
-      await page.route('**/api/list-organizations', (route) => {
+      await routeOperation(page, listOrganizations, (call) => {
         lists++;
-        return route.fulfill({ json: { organizations: [organization({})] } });
+        return call.fulfill({ organizations: [organization({})] });
       });
       let sent = false;
-      await page.route('**/api/organization-admin-reassign', (route) => {
+      await routeOperation(page, organizationAdminReassign, (call) => {
         sent = true;
-        return route.abort();
+        return call.abort();
       });
       await page.goto('/operator');
       await expect(page.locator('.table tbody tr')).toHaveCount(1);
@@ -1831,16 +1797,19 @@ test.describe('運用者', () => {
       page,
     }) => {
       let lists = 0;
-      await page.route('**/api/list-organizations', (route) => {
+      await routeOperation(page, listOrganizations, (call) => {
         lists++;
-        return route.fulfill({ json: { organizations: [organization({ admin_status: 'none' })] } });
+        return call.fulfill({ organizations: [organization({ admin_status: 'none' })] });
       });
       await mockGithubUser(page, TOKYO_USER);
-      type Reply = Parameters<Route['fulfill']>[0] | 'abort';
-      let reply: Reply = {};
-      await page.route('**/api/organization-admin-reassign', (route) =>
-        reply === 'abort' ? route.abort() : route.fulfill(reply),
-      );
+      // 'abort' は通信の切れ、'unreadable' は 2xx でも本文が JSON でない応答
+      type Reply = Failure | 'abort' | 'unreadable';
+      let reply: Reply = 'abort';
+      await routeOperation(page, organizationAdminReassign, (call) => {
+        if (reply === 'abort') return call.abort();
+        if (reply === 'unreadable') return call.route.fulfill({ status: 200, body: '{"slug":' });
+        return call.fail(...reply);
+      });
       await page.goto('/operator');
       const dialog = await openReassign(page, 'あおば開発');
       await dialog.getByLabel('GitHub のユーザー名').fill('alice');
@@ -1849,18 +1818,14 @@ test.describe('運用者', () => {
       await expect(submit).toBeEnabled();
 
       const cases: [Reply, string, boolean][] = [
-        [
-          { status: 409, json: { error: { code: 'conflict', message: 'x' } } },
-          '指名している間に、この組織の人の状態が変わりました',
-          true,
-        ],
-        [{ status: 404, json: { error: { code: 'not_found', message: 'x' } } }, 'この組織が見つかりません', false],
-        [{ status: 503, json: { error: { code: 'unavailable', message: 'x' } } }, 'GitHub に届きませんでした', false],
+        [[409, 'conflict'], '指名している間に、この組織の人の状態が変わりました', true],
+        [[404, 'not_found'], 'この組織が見つかりません', false],
+        [[503, 'unavailable'], 'GitHub に届きませんでした', false],
         // 書く前に断られた 4xx（回数の上限など）は、何も書かれていないと伝え、読み直さない
-        [{ status: 429, json: { error: { code: 'rate_limited', message: 'x' } } }, '何も書かれていません', false],
-        [{ status: 500, json: { error: { code: 'internal', message: 'x' } } }, '指名し直せたか分かりません', true],
+        [[429, 'rate_limited'], '何も書かれていません', false],
+        [[500, 'internal'], '指名し直せたか分かりません', true],
         // 2xx でも本文が読めない応答は、書かれたか分からない
-        [{ status: 200, body: '{"slug":' }, '指名し直せたか分かりません', true],
+        ['unreadable', '指名し直せたか分かりません', true],
         ['abort', '指名し直せたか分かりません', true],
       ];
       for (const [next, text, reloads] of cases) {
@@ -1898,15 +1863,13 @@ test.describe('運用者', () => {
       await mockList(page, [organization({ admin_status: 'none' })]);
       let requests = 0;
       const gate = deferred<void>();
-      await page.route('**/api/organization-admin-reassign', async (route) => {
+      await routeOperation(page, organizationAdminReassign, async (call) => {
         requests++;
         await gate.promise;
-        await route.fulfill({
-          json: {
-            slug: 'aoba',
-            admin_login_name: 'mio.hoshino@example.com',
-            invite: { url: 'http://localhost:8787/invite#x', expires_at: '2026-11-09T00:00:00.000Z' },
-          },
+        await call.fulfill({
+          slug: 'aoba',
+          admin_login_name: 'mio.hoshino@example.com',
+          invite: { url: 'http://localhost:8787/invite#x', expires_at: '2026-11-09T00:00:00.000Z' },
         });
       });
       await page.goto('/operator');
@@ -1934,13 +1897,13 @@ test.describe('運用者', () => {
       page,
     }) => {
       let lists = 0;
-      await page.route('**/api/list-organizations', (route) => {
+      await routeOperation(page, listOrganizations, (call) => {
         lists++;
-        return route.fulfill({ json: { organizations: [organization({ admin_status: 'none' })] } });
+        return call.fulfill({ organizations: [organization({ admin_status: 'none' })] });
       });
       await mockGithubUser(page, TOKYO_USER);
-      let reply: Parameters<Route['fulfill']>[0] = invalidInput('admin.username', 'nominee_is_operator');
-      await page.route('**/api/organization-admin-reassign', (route) => route.fulfill(reply));
+      let reply: Failure = invalidInput('admin.username', 'nominee_is_operator');
+      await routeOperation(page, organizationAdminReassign, (call) => call.fail(...reply));
       await page.goto('/operator');
       const dialog = await openReassign(page, 'あおば開発');
       await dialog.getByLabel('GitHub のユーザー名').fill('alice');
@@ -1952,7 +1915,7 @@ test.describe('運用者', () => {
       // 確かめ直すまで指名できない
       await expect(submit).toBeDisabled();
 
-      reply = { status: 404, json: { error: { code: 'not_found', message: 'x' } } };
+      reply = [404, 'not_found'];
       await dialog.getByRole('button', { name: '確かめる' }).click();
       await submit.click();
       await expect(dialog.locator('.callout.is-danger[role="alert"]')).toContainText('この組織が見つかりません');
@@ -1964,9 +1927,7 @@ test.describe('運用者', () => {
 
     test('ログインが切れていたら、ログインの画面に移る', async ({ page }) => {
       await mockList(page, [organization({ admin_status: 'none' })]);
-      await page.route('**/api/organization-admin-reassign', (route) =>
-        route.fulfill({ status: 401, json: { error: { code: 'unauthenticated', message: 'x' } } }),
-      );
+      await failOperation(page, organizationAdminReassign, 401, 'unauthenticated');
       await page.goto('/operator');
       const dialog = await openReassign(page, 'あおば開発');
       await dialog.getByRole('radio', { name: 'Google' }).check();
