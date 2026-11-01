@@ -139,6 +139,8 @@
     }
     tokens = result.data.tokens;
     allowedToCreate = result.data.can_create;
+    // 発行の欄が消えるとき、前の失敗（上限の 409 など）の囲みも消す。フォームが戻ったときに古い失敗を出さない
+    if (!allowedToCreate) fieldError = null;
     refreshFailed = false;
     return 'ok';
   }
@@ -226,8 +228,6 @@
         // 入力中に猶予を過ぎた。消える送信ボタンから、次の操作へフォーカスを移す。
         loadSeq++;
         allowedToCreate = false;
-        // 前の失敗（上限の 409 など）の囲みを残さない。案内は再ログインの1つだけにする
-        fieldError = null;
         await tick();
         reauthLink?.focus();
         return;
