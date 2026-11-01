@@ -781,19 +781,6 @@ export const dictionary = defineDictionary({
   operatorReassignRejected:
     '指名し直せませんでした。何も書かれていません。入力を確かめるか、少し待ってから、もう一度試してください。',
 
-  // API の疎通の表示（仮の画面）
-  apiHeading: 'API の疎通',
-  apiStatus: 'API: {status}（版 {version}）',
-  apiChecking: 'API を確かめています',
-  apiUnreachable: 'API に届きませんでした',
-  apiUnreachableStatus: 'API に届きませんでした（{status}）',
-  apiShowDetail: '詳細を見る',
-  apiRecheck: '確かめ直す',
-  apiRecheckOk: 'API を確かめました',
-  apiRecheckFailed: 'API に届きませんでした',
-  apiDetailTitle: 'API の詳細',
-  apiDetailBody: 'この画面が呼んだ API の応答です。',
-
   // アカウントのメニュー（組織の中の上の帯）とログアウト。{name} はログインしている人の名前
   accountMenuLabel: '{name}。アカウントのメニュー',
   logout: 'ログアウト',
@@ -1018,6 +1005,13 @@ export const dictionary = defineDictionary({
   consentSubmitHint: '利用規約とプライバシーポリシーを確認し、印を付けてください。',
   consentLoadFailed: '同意の状態を読み込めませんでした。もう一度試してください。',
   consentRecordFailed: '同意を記録できませんでした。もう一度試してください。',
+  // 前の版に同意した人が開いたときの「改めました」の案内（改めた文書の名前は termsTitle、privacyTitle、改定日は legalRevised を使う）。
+  // 履歴へのリンクの読み上げは「改定の履歴を見る （利用規約） 新しいタブで開きます」で、どの文書の履歴かを補う
+  consentRevisedTerms: '利用規約が改められました',
+  consentRevisedPrivacy: 'プライバシーポリシーが改められました',
+  consentRevisedBoth: '利用規約とプライバシーポリシーが改められました',
+  consentRevisedHistory: '改定の履歴を見る',
+  consentRevisedHistoryOf: '（{document}）',
 
   // テーマ
   themeLabel: 'テーマ',
@@ -1708,7 +1702,23 @@ export const dictionary = defineDictionary({
   xpContentHidden: '（今所属していない{workspace}の内容は表示しません）',
   retrySection: 'もう一度試す（{section}）',
   meOtherSettingsNote:
-    '今は経験値と API トークンだけを扱えます。1日の基準、休み、テーマなどの設定は、これから足します。',
+    '今は経験値、API トークン、テーマ、届いた招待を扱えます。1日の基準、稼働期間、休み、月の基準の上書き、積載量の合計は、これから足します。',
+  // 自分のテーマ（自分の設定の節。選んだ瞬間に保存する）。{admin} は管理者、{organization} は組織、{label} はテーマの名前
+  meThemeDesc:
+    '画面の見た目。選ぶとすぐに変わります。自分で選ばなければ、{admin}が決めた{organization}の既定に従います。',
+  meThemeFollow: '{organization}の既定に従う',
+  meThemeFollowNote: '今は{label}',
+  meThemeSaving: 'テーマを保存しています',
+  meThemeChanged: 'テーマを「{label}」に変えました',
+  meThemeFollowed: 'テーマを{organization}の既定に戻しました',
+  meThemeFailed: 'テーマを変えられませんでした。もう一度試してください。',
+  // 自分の設定の「届いた招待」（この組織のワークスペースへの招待。別の組織の招待は組織の切り替えから）。
+  // {organization} は組織の名前、{inviter} は招待した人の名前、{workspace} はワークスペースの名前、{role} はロール、{date} は招待した日
+  meInvitationLine: '{organization}の{inviter}さんから「{workspace}」への招待が届いています（{role}、{date}）。',
+  meInvitationsFailed: '届いた招待を読み込めませんでした',
+  // 左のメニューの「自分の設定」に付ける、届いた招待の件数。{count} は件数
+  navInvitationsBadge: '招待 {count}',
+  navInvitationsLabel: '、届いた招待 {count}件',
   // API トークン（自分の設定の節。docs/development.md の「API トークン」）。組織の外の画面なので、言葉は organization
   apiTokenTitle: 'API トークン',
   apiTokenDesc: 'CLI や MCP に渡す鍵。発行した人と同じ権限の範囲で、画面を通さずに API を呼べます。',

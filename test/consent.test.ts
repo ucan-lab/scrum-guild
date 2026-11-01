@@ -117,6 +117,25 @@ describe('同意の操作', () => {
     expect(await after.json()).toMatchObject({ current: true });
   });
 
+  // 画面の「改めました」は、latest と今の版（terms_version、privacy_version）の食い違いで、改めた文書を決める（src/lib/consent-revision.ts）
+  test.each([
+    ['規約だけが旧版', OLD, PRIVACY_VERSION],
+    ['プライバシーポリシーだけが旧版', TERMS_VERSION, OLD],
+  ])(
+    '片方だけ版が上がった（%s）とき、latest は前の版の組、今の版は両方とも今の版を返し、current は false',
+    async (_name, terms, privacy) => {
+      const person = await createLoginPerson({ consented: false });
+      await seedConsent(person.accountId, terms, privacy, '2026-01-01T00:00:00.000Z');
+      const status = await post(app, consentStatus, { token: person.token });
+      expect(await status.json()).toEqual({
+        terms_version: TERMS_VERSION,
+        privacy_version: PRIVACY_VERSION,
+        latest: { terms_version: terms, privacy_version: privacy, consented_at: '2026-01-01T00:00:00.000Z' },
+        current: false,
+      });
+    },
+  );
+
   test('現在版の行より新しい旧版の行があれば current は false で、record すると新しい行が足されて current になる', async () => {
     const person = await createLoginPerson({ consented: false });
     await seedConsent(person.accountId, TERMS_VERSION, PRIVACY_VERSION, '2026-10-30T00:00:00.000Z');
