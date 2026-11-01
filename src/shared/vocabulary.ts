@@ -94,6 +94,15 @@ export const dictionary = defineDictionary({
   weekDue: '今週が期日',
   dueIsToday: '期日は今日',
   carryDays: '{days}日前に印を付けた',
+  // 今日やるの印（太陽のボタン。task-today-mark）。押された状態で付いていることを示し、読み上げの名前は題を添える
+  todayMark: '今日やる',
+  todayMarkLabel: '{mark}: {title}',
+  todayMarked: '今日やると決めました',
+  todayUnmarked: '今日やるの印を外しました',
+  // 断られた理由（taskTodayMarkConflictReasons）。読み直すと、行は今の区分に移る
+  todayMarkNotAssignee: 'この{task}は、ほかの人が{assignee}しているため、印を付け外しできません。一覧を読み直します',
+  todayMarkDone: 'この{task}は{done}になっているため、印を付け外しできません。一覧を読み直します',
+  todayMarkFailed: '今日やるの印を変えられませんでした。もう一度試してください。',
   sprintInProgress: '進行中のスプリント',
   // 今日やることの右の列（経験値とレベル）の読み上げの名前
   myRecord: '自分の記録',

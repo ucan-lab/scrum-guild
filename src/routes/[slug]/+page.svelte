@@ -1,5 +1,8 @@
 <script lang="ts">
+  import { tick } from 'svelte';
+  import { invalidate } from '$app/navigation';
   import { resolve } from '$app/paths';
+  import { callOperation, type ApiResult } from '../../lib/api.ts';
   import EmptyState from '../../lib/components/EmptyState.svelte';
   import Icon from '../../lib/components/Icon.svelte';
   import LevelPanel from '../../lib/components/LevelPanel.svelte';
@@ -9,10 +12,19 @@
   import SprintGoalNotice from '../../lib/components/SprintGoalNotice.svelte';
   import TaskEntry from '../../lib/components/TaskEntry.svelte';
   import WorkspaceCreateDialog from '../../lib/components/WorkspaceCreateDialog.svelte';
+  import { completedMessage } from '../../lib/sprint-label.ts';
+  import { showToast } from '../../lib/toast.svelte.ts';
   import { todaySections } from '../../lib/today-sections.ts';
   import { t } from '../../lib/vocabulary.svelte.ts';
   import type { TodayTask } from '../../shared/operations/organization/today.ts';
   import type { BacklogTask } from '../../shared/operations/task/backlog-tree.ts';
+  import {
+    taskComplete,
+    taskReopen,
+    taskReopenConflictReasonOf,
+    taskTodayMark,
+    taskTodayMarkConflictReasonOf,
+  } from '../../shared/operations/task/index.ts';
   import type { PageProps } from './$types';
 
   let { data }: PageProps = $props();
@@ -47,15 +59,176 @@
       sprint: task.sprint,
     };
   }
+
+  // 今日やることは、閉じていないワークスペースの、本人が担当するタスクだけを読む。行はどれも本人が書き込める行なので、
+  // 太陽（印の付け外し）、完了、戻すは全部の行に出す（戻すは、サーバーが reopenable と答えた今日完了の行だけ）。
+  // 操作を送っている行（pendingIds）は、ほかの操作も押しても無視する。通ったら今日の読み取りを読み直す（経験値の列も同じ load で読み直す）。
+  // 失敗は理由をトーストで知らせ、断られた（404、409）ときは読み直して今の区分に移す。ログインが切れた（401）ときは、読み直すと load がログインの画面へ移す
+  let pendingIds = $state<string[]>([]);
+  // 今この画面で完了にした行。判を押す動き（.is-new）はこの行だけで再生する
+  let justDoneIds = $state<string[]>([]);
+
+  type Outcome = { message: string; icon: 'check' | 'alert'; reload: boolean; focus: string };
+
+  // 読み直した後、同じ行の操作（selector）へフォーカスを戻す。行が無ければ見出しへ
+  async function focusRow(taskId: string, selector: string): Promise<void> {
+    await tick();
+    const row = [...document.querySelectorAll<HTMLElement>('[data-row-id]')].find((el) => el.dataset.rowId === taskId);
+    (row?.querySelector<HTMLElement>(selector) ?? document.querySelector<HTMLElement>('h1.page-title'))?.focus();
+  }
+
+  // 1つの操作を送る。outcomeOf が null を返すのはログインが切れたとき（読み直して、load にログインの画面へ移してもらう）
+  async function perform<T>(
+    task: TodayTask,
+    call: () => Promise<ApiResult<T>>,
+    outcomeOf: (result: ApiResult<T>) => Outcome | null,
+  ): Promise<void> {
+    if (pendingIds.includes(task.id)) return;
+    pendingIds = [...pendingIds, task.id];
+    try {
+      const result = await call();
+      const outcome = outcomeOf(result);
+      if (outcome === null) {
+        await invalidate('app:today');
+        return;
+      }
+      showToast(outcome.message, outcome.icon);
+      if (outcome.reload) await invalidate('app:today');
+      await focusRow(task.id, outcome.focus);
+    } finally {
+      pendingIds = pendingIds.filter((id) => id !== task.id);
+    }
+  }
+
+  // 404 と、閉じたワークスペースの 409 は、どの操作でも同じ知らせにして読み直す
+  function gone(result: { status: number; error: { code: string } | null }, focus: string): Outcome | null {
+    if (result.status === 404)
+      return { message: t('taskGone', { task: t('task') }), icon: 'alert', reload: true, focus };
+    if (result.status === 409 && result.error?.code === 'workspace_closed') {
+      return {
+        message: t('workspaceClosedReadOnly', { workspace: t('workspace') }),
+        icon: 'alert',
+        reload: true,
+        focus,
+      };
+    }
+    return null;
+  }
+
+  function toggleToday(task: TodayTask): Promise<void> {
+    const marked = task.today_on === null;
+    return perform(
+      task,
+      () =>
+        callOperation(
+          taskTodayMark,
+          { workspace_id: task.workspace_id, task_id: task.id, marked },
+          { slug: data.slug },
+        ),
+      (result) => {
+        const focus = '.sun';
+        if (result.ok) {
+          return { message: t(marked ? 'todayMarked' : 'todayUnmarked'), icon: 'check', reload: true, focus };
+        }
+        if (result.status === 401) return null;
+        const refused = gone(result, focus);
+        if (refused !== null) return refused;
+        if (result.status === 409) {
+          const reason = taskTodayMarkConflictReasonOf(result.error?.details);
+          const message =
+            reason === 'not_assignee'
+              ? t('todayMarkNotAssignee', { task: t('task'), assignee: t('assignee') })
+              : reason === 'completed'
+                ? t('todayMarkDone', { task: t('task'), done: t('done') })
+                : t('todayMarkFailed');
+          return { message, icon: 'alert', reload: true, focus };
+        }
+        return { message: t('todayMarkFailed'), icon: 'alert', reload: false, focus };
+      },
+    );
+  }
+
+  function complete(task: TodayTask): Promise<void> {
+    return perform(
+      task,
+      () => callOperation(taskComplete, { workspace_id: task.workspace_id, task_id: task.id }, { slug: data.slug }),
+      (result) => {
+        // 完了にした行は今日完了の区分に移り、完了の印（tabindex="-1"）にフォーカスを移す
+        const focus = '.hanko';
+        if (result.ok) {
+          if (!justDoneIds.includes(task.id)) justDoneIds = [...justDoneIds, task.id];
+          return { message: completedMessage(result.data.left_sprint, t), icon: 'check', reload: true, focus };
+        }
+        if (result.status === 401) return null;
+        const refused = gone(result, focus);
+        if (refused !== null) return refused;
+        // 別の画面で先に完了にされていた
+        if (result.status === 409 && result.error?.code === 'conflict') {
+          return {
+            message: t('taskAlreadyDone', { task: t('task'), done: t('done') }),
+            icon: 'check',
+            reload: true,
+            focus,
+          };
+        }
+        return { message: t('taskCompleteFailed', { done: t('done') }), icon: 'alert', reload: false, focus };
+      },
+    );
+  }
+
+  // 戻せなかった理由（TaskDrawer の「戻す」と同じ文）
+  function reopenFailureMessage(details: unknown): string {
+    const words = { task: t('task'), done: t('done'), sprint: t('sprint'), story: t('story') };
+    switch (taskReopenConflictReasonOf(details)) {
+      case 'not_completed':
+        return t('taskReopenNotDone', words);
+      case 'sprint_closed':
+        return t('taskReopenSprintClosed', words);
+      case 'parent_completed':
+        return t('taskReopenParentDone', words);
+      default:
+        return t('taskReopenChanged');
+    }
+  }
+
+  function reopen(task: TodayTask): Promise<void> {
+    return perform(
+      task,
+      () => callOperation(taskReopen, { workspace_id: task.workspace_id, task_id: task.id }, { slug: data.slug }),
+      (result) => {
+        // 戻した行は完了の前の区分に移り、完了のボタンにフォーカスを移す。戻せなかったときは、今日完了の区分の完了の印に残す
+        if (result.ok) {
+          justDoneIds = justDoneIds.filter((id) => id !== task.id);
+          return {
+            message: t('taskReopened', { task: t('task'), done: t('done') }),
+            icon: 'check',
+            reload: true,
+            focus: '.done-btn',
+          };
+        }
+        if (result.status === 401) return null;
+        const refused = gone(result, '.hanko');
+        if (refused !== null) return refused;
+        if (result.status === 409) {
+          return { message: reopenFailureMessage(result.error?.details), icon: 'alert', reload: true, focus: '.hanko' };
+        }
+        return { message: t('taskReopenFailed', { done: t('done') }), icon: 'alert', reload: false, focus: '.hanko' };
+      },
+    );
+  }
 </script>
 
-<!-- 完了の操作は、印と完了を足す Issue（3本目）まで出さない（canComplete を偽にする） -->
 {#snippet rows(list: TodayTask[], options: { done?: boolean; markDueToday?: boolean } = {})}
   <div class="book">
     {#each list as task (task.id)}<TaskEntry
         task={taskOf(task)}
         done={options.done ?? false}
-        canComplete={false}
+        justDone={justDoneIds.includes(task.id)}
+        pending={pendingIds.includes(task.id)}
+        onComplete={() => void complete(task)}
+        marked={task.today_on !== null}
+        onToggleToday={() => void toggleToday(task)}
+        onReopen={options.done && task.reopenable ? () => void reopen(task) : undefined}
         clock={{ today: task.today, weekStart: task.week_start }}
         workspaceId={task.workspace_id}
         workspaceName={task.workspace_name}
