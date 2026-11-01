@@ -131,7 +131,7 @@
       <button
         class="btn is-sm"
         type="button"
-        aria-label={t('retrySection', { section: t('invitationsHeading') })}
+        aria-label={retrying ? t('loading') : t('retrySection', { section: t('invitationsHeading') })}
         aria-disabled={retrying}
         onclick={retry}>{retrying ? t('loading') : t('retry')}</button
       >

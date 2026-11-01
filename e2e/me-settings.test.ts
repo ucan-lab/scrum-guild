@@ -93,6 +93,39 @@ test.describe('テーマの節（ハルカ）', () => {
     await expect(section.getByRole('alert')).toHaveText('');
     await expect.poll(() => htmlTheme(page)).toBe('simple_dark');
   });
+
+  test('保存の後の枠の読み直しの間に選び直しても、その値も保存して画面に残す', async ({ page }) => {
+    // 保存は差し替え、ハルカの users.theme を書かない。読み直し（organization-info）は、1回目を止めて間に選び直す
+    const sent: unknown[] = [];
+    await page.route('**/api/aoba/me-theme-update', (route) => {
+      const body = route.request().postDataJSON() as { theme: string | null };
+      sent.push(body);
+      return route.fulfill({ json: { theme: body.theme } });
+    });
+    await page.goto('/aoba/me');
+    const section = themeSection(page);
+    await expect(section.getByRole('radio', { name: /^組織の既定に従う/ })).toBeChecked();
+
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => (release = resolve));
+    let held = false;
+    await page.route('**/api/aoba/organization-info', async (route) => {
+      if (!held) {
+        held = true;
+        await gate;
+      }
+      await route.continue();
+    });
+
+    await section.getByRole('radio', { name: /^中世風/ }).check();
+    await expect.poll(() => held).toBe(true);
+    await section.getByRole('radio', { name: /^現代風/ }).check();
+    release();
+
+    await expect.poll(() => sent).toEqual([{ theme: 'medieval' }, { theme: 'modern' }]);
+    await expect(section.getByRole('radio', { name: /^現代風/ })).toBeChecked();
+    await expect.poll(() => htmlTheme(page)).toBe('modern');
+  });
 });
 
 type InboxInvitation = {

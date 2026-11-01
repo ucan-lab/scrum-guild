@@ -93,7 +93,7 @@ describe('me-theme-update', () => {
     expect((await userRow(target.organization, target.member.userId!)).theme).toBe('simple_dark');
   });
 
-  test('ワークスペースに所属しない管理者も、所属しないでも組織に入れる人も、自分の行を書ける', async () => {
+  test('ワークスペースに所属しない管理者も、別のワークスペースだけに所属する人も、自分の行を書ける', async () => {
     const target = await createTarget();
     expect((await update(target, target.admin, { theme: 'simple_light' })).status).toBe(200);
     expect((await userRow(target.organization, target.admin.userId!)).theme).toBe('simple_light');

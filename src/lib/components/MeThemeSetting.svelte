@@ -17,7 +17,7 @@
   // 値は組織の枠が読んだ自分のテーマ（theme）と組織の既定（organizationTheme）を受け取り、節は自分で読まない。
   // 選ぶと、先に画面へ当て（setTheme。localStorage にも覚える）、me-theme-update を送る。通ったら組織の枠を読み直して、枠の値を今の値にそろえる。
   // 失敗したら選択と画面を送る前の値に戻し、理由を節の中（role="alert"）に出す（401 はログインへ）。
-  // 送っている間にまた選んだら、送り終えてから最後に選んだ値を送る（古い応答で選択が戻らず、同時に2つ送らない）。
+  // 送っている間（枠の読み直しの間を含む）にまた選んだら、送り終えてから最後に選んだ値を送る（古い応答で選択が戻らず、同時に2つ送らない）。
   // 変更の履歴には残らない（API が書かない）
   let { slug, theme, organizationTheme }: { slug: string; theme: Theme | null; organizationTheme: Theme } = $props();
 
@@ -57,30 +57,40 @@
     const sentSlug = slug;
     sending = true;
     try {
-      while (chosen !== saved) {
-        const value = chosen;
-        const result = await callOperation(meThemeUpdate, { theme: value }, { slug: sentSlug });
-        if (sentSlug !== slug) return;
-        if (!result.ok && isUnauthenticated(result)) {
-          window.location.assign(loginUrl(page.url));
-          return;
+      // 枠を読み直している間に選び直されたら、その値も送る（読み直しの後に chosen と saved を見直す）
+      do {
+        while (chosen !== saved) {
+          const value = chosen;
+          const result = await callOperation(meThemeUpdate, { theme: value }, { slug: sentSlug });
+          if (sentSlug !== slug) {
+            // 送っている間に別の組織へ移った。選択を、今の組織の値に合わせ直す
+            saved = theme;
+            chosen = theme;
+            error = null;
+            announcement = '';
+            return;
+          }
+          if (!result.ok && isUnauthenticated(result)) {
+            window.location.assign(loginUrl(page.url));
+            return;
+          }
+          if (!result.ok) {
+            // 選択と画面を、最後に保存できた値へ戻す
+            chosen = saved;
+            setTheme(saved ?? organizationTheme);
+            error = t('meThemeFailed');
+            return;
+          }
+          saved = value;
+          announcement =
+            value === null
+              ? t('meThemeFollowed', { organization: t('organization') })
+              : t('meThemeChanged', { label: t(themeLabelKeys[value]) });
         }
-        if (!result.ok) {
-          // 選択と画面を、最後に保存できた値へ戻す
-          chosen = saved;
-          setTheme(saved ?? organizationTheme);
-          error = t('meThemeFailed');
-          return;
-        }
-        saved = value;
-        announcement =
-          value === null
-            ? t('meThemeFollowed', { organization: t('organization') })
-            : t('meThemeChanged', { label: t(themeLabelKeys[value]) });
-      }
-      // 組織の枠の自分のテーマを読み直す（別の画面から戻ったとき、古い値を見せないため）。この画面の他の節は読み直さない
-      const path = operationPath(organizationInfo, sentSlug);
-      await invalidate((url) => url.pathname === path);
+        // 組織の枠の自分のテーマを読み直す（別の画面から戻ったとき、古い値を見せないため）。この画面の他の節は読み直さない
+        const path = operationPath(organizationInfo, sentSlug);
+        await invalidate((url) => url.pathname === path);
+      } while (sentSlug === slug && chosen !== saved);
     } finally {
       sending = false;
     }
