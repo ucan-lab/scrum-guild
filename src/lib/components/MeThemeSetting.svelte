@@ -53,6 +53,14 @@
     if (!sending) void flush();
   }
 
+  // 送っている間に別の組織へ移った。$effect.pre は送っている間は合わせず、終わった後も再実行されないので、ここで今の組織の値に合わせる
+  function resync(): void {
+    saved = theme;
+    chosen = theme;
+    error = null;
+    announcement = '';
+  }
+
   async function flush(): Promise<void> {
     const sentSlug = slug;
     sending = true;
@@ -63,11 +71,7 @@
           const value = chosen;
           const result = await callOperation(meThemeUpdate, { theme: value }, { slug: sentSlug });
           if (sentSlug !== slug) {
-            // 送っている間に別の組織へ移った。選択を、今の組織の値に合わせ直す
-            saved = theme;
-            chosen = theme;
-            error = null;
-            announcement = '';
+            resync();
             return;
           }
           if (!result.ok && isUnauthenticated(result)) {
@@ -90,7 +94,12 @@
         // 組織の枠の自分のテーマを読み直す（別の画面から戻ったとき、古い値を見せないため）。この画面の他の節は読み直さない
         const path = operationPath(organizationInfo, sentSlug);
         await invalidate((url) => url.pathname === path);
-      } while (sentSlug === slug && chosen !== saved);
+        // 読み直している間に別の組織へ移っていたら、選択を移った先の値に合わせ直す
+        if (sentSlug !== slug) {
+          resync();
+          return;
+        }
+      } while (chosen !== saved);
     } finally {
       sending = false;
     }
