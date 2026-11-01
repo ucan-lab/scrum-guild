@@ -32,6 +32,25 @@ test('組織の無い会員は「組織を作る」から作成後の組織へ�
   await expect(page).toHaveURL(/\/nagi-trial\/?$/);
 });
 
+test('80 字を超える名前は黙って切られず、名前の欄に理由が出て、組織は作られない', async ({
+  context,
+  baseURL,
+  page,
+}) => {
+  await signIn(context, baseURL, 'createOrg');
+  const dialog = await openDialog(page);
+  await dialog.getByLabel('URL の名前（slug）').fill('nagi-long');
+  const longName = 'あ'.repeat(81);
+  await dialog.getByLabel('組織の名前').fill(longName);
+  // 欄が値を切らない（maxlength が無い）
+  await expect(dialog.getByLabel('組織の名前')).toHaveValue(longName);
+  await dialog.getByRole('button', { name: '組織を作る' }).click();
+  await expect(
+    dialog.getByText(word('createMyOrganizationNameLong', { organization: word('organization'), max: '80' })),
+  ).toBeVisible();
+  await expect(page).not.toHaveURL(/\/nagi-long/);
+});
+
 test('すでにある組織の slug を入れると、ダイアログに理由が出て、組織は作られない', async ({
   context,
   baseURL,

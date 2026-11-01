@@ -133,7 +133,6 @@
       class="input"
       id="create-my-organization-name"
       bind:value={name}
-      maxlength={ORGANIZATION_NAME_MAX_LENGTH}
       placeholder={t('createMyOrganizationNameExample')}
       autocomplete="organization"
       readonly={busy}
