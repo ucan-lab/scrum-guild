@@ -98,9 +98,9 @@
     </li>
     {#if isAdmin}
       <li>
-        <a href={adminHref} aria-current={page.url.pathname === adminHref ? 'page' : undefined} onclick={closeMenu}
-          >{t('pageOrgAdmin')}</a
-        >
+        <a href={adminHref} aria-current={page.url.pathname === adminHref ? 'page' : undefined} onclick={closeMenu}>
+          <span class="org-menu-name">{t('pageOrgAdmin')}</span>
+        </a>
       </li>
     {/if}
     <li>

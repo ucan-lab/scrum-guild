@@ -107,10 +107,14 @@ test('畳んだ列では、マウスを載せるかフォーカスすると項�
     await page.keyboard.press('Tab');
   await expect(items.nth(0)).toBeFocused();
   await expect(items.nth(0).locator('.nav-item-label')).toHaveCSS('opacity', '1');
-  await items.nth(1).hover();
-  await expect(items.nth(1).locator('.nav-item-label')).toHaveCSS('opacity', '1');
+  // 組織の画面の左のメニューは「今日やること」の1項目だけ。フォーカスを外し、マウスを載せて名前が出ることを見る
+  await items.nth(0).evaluate((el) => (el as HTMLElement).blur());
+  await page.mouse.move(700, 600);
+  await expect(items.nth(0).locator('.nav-item-label')).toHaveCSS('opacity', '0');
+  await items.nth(0).hover();
+  await expect(items.nth(0).locator('.nav-item-label')).toHaveCSS('opacity', '1');
   // 名前は列の外（右）に浮く
-  const label = await items.nth(1).locator('.nav-item-label').boundingBox();
+  const label = await items.nth(0).locator('.nav-item-label').boundingBox();
   expect(label!.x).toBeGreaterThanOrEqual(64);
 
   // マウスで押した後は、マウスを外せば名前が消える（押したリンクにフォーカスが残っても出し続けない）
