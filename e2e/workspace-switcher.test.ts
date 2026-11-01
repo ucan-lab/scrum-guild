@@ -34,7 +34,7 @@ test('一般のメンバーが別の所属先を選ぶと、終了したワー�
   await expect(page).toHaveURL(/\/aoba\/w\/[0-9a-f-]{36}$/);
   const target = new URL(page.url()).pathname;
 
-  // 所属していない管理者には、今のものは名前だけ、リンクは所属先だけ。
+  // 所属していない管理者には、今のものは押せない現在地の行、リンクは所属先だけ。
   const adminButton = buttonOf(page);
   await adminButton.click();
   await expect(listOf(page).locator('.ws-menu-current')).toHaveText(name);

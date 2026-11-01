@@ -513,7 +513,7 @@ const SECTIONS = [
       <div class="field"><span class="field-label">開いている（今のものにチェック）</span><div style="max-width:240px">${SQ.workspaceMenuHtml({ open: true, id: "cat-ws-open", live: false })}</div></div>
       <div class="field"><span class="field-label">所属が1つ</span><div style="max-width:240px">${SQ.workspaceMenuHtml({ open: true, id: "cat-ws-single", live: false, workspaces: [{ id: D.workspace, ...D.workspaces[D.workspace] }] })}</div></div>
       <div class="field"><span class="field-label">所属が多い（一覧の中でスクロール）</span><div style="max-width:240px">${SQ.workspaceMenuHtml({ open: true, id: "cat-ws-many", live: false, workspaces: Array.from({ length: 16 }, (_, i) => ({ id: i === 0 ? D.workspace : `sample-${i}`, name: i === 0 ? D.workspaces[D.workspace].name : `架空の開発チーム ${i}・長いワークスペースの名前も折り返して表示する` })) })}</div></div>
-      <div class="field"><span class="field-label">所属していない管理者（先頭は名前だけ）</span><div style="max-width:240px">${SQ.workspaceMenuHtml({ open: true, id: "cat-ws-admin", live: false, current: { id: "sample-other", name: "架空の管理対象チーム" } })}</div></div></div>`,
+      <div class="field"><span class="field-label">所属していない管理者（先頭は押せない現在地の行）</span><div style="max-width:240px">${SQ.workspaceMenuHtml({ open: true, id: "cat-ws-admin", live: false, current: { id: "sample-other", name: "架空の管理対象チーム" } })}</div></div></div>`,
     ["ボタンで開き、Tab でリンクを選び、Enter で移る。矢印キーだけでは移らない。", "Esc、外側を押す、Tab で外へ出る、リンクを押すと閉じる。中にフォーカスがあればボタンへ戻す。", "一覧の高さは 40vh まで。組織の切り替えと同じスタイルで、長い名前は折り返す。"],
     ".ws-menu .ws-menu-button .ws-menu-list / SQ.workspaceMenuHtml()")],
   ["nav-collapse", "左のメニューの折りたたみ", () => block("nav-collapse", "左のメニューの折りたたみ", "761px 以上では、ブランド横のボタンで左のメニューを 64px のアイコン列へ畳む。もう一度押すと 240px に戻る。下の見本は、ホバーのできる端末（マウスやトラックパッド）で見る。指だけのタブレットでは畳まないので、広げた列で出る。",

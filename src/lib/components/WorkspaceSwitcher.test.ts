@@ -41,7 +41,7 @@ describe('ワークスペースの切り替え', () => {
     expect(body).not.toContain('disabled');
   });
 
-  test('所属していない管理者の今のものは先頭に名前だけを出し、所属先だけをリンクにする', () => {
+  test('所属していない管理者の今のものは先頭に押せない現在地の行として出し、所属先だけをリンクにする', () => {
     const body = html([other]);
     const rows = list(body);
     expect(rows.indexOf(current.name)).toBeLessThan(rows.indexOf(other.name));
