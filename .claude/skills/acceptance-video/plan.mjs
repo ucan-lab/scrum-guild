@@ -125,6 +125,74 @@ export function validatePlan(plan) {
   return problems;
 }
 
+// 録画の前の試し（record.mjs --probe）で、要素を待つ上限。録画本番の待ち（30 秒）を待たずに、見つからないと分かる長さ
+export const PROBE_TIMEOUT_MS = 5000;
+
+/** 要素の指し方を、報告に出す 1 行にする */
+export function describeLocator(spec) {
+  const parts = [];
+  if (spec.within) parts.push(`${describeLocator(spec.within)} の中の`);
+  if (spec.css) parts.push(`css=${spec.css}`);
+  if (spec.role) parts.push(`role=${spec.role} name=${JSON.stringify(spec.name)}${spec.exact ? ' exact' : ''}`);
+  if (spec.label) parts.push(`label=${JSON.stringify(spec.label)}`);
+  if (spec.nth !== undefined) parts.push(`nth=${spec.nth}`);
+  return parts.join(' ');
+}
+
+/**
+ * 録画せずに通す項目を、録画と同じ順に並べる。場面は 1 から数える。待ち（pause、read、hold）は含めない。
+ * 各項目は { step, kind: goto|mark|click|check|select|fill|wait, action?, spec?, path? }。
+ * mark の spec は枠で示す要素、それ以外は action に手順書の操作がそのまま入る。
+ */
+export function probePlan(plan) {
+  const items = [];
+  plan.steps.forEach((step, i) => {
+    const n = i + 1;
+    if (step.mark) items.push({ step: n, kind: 'mark', spec: step.mark });
+    for (const action of step.actions ?? []) {
+      const kind = VERBS.find((verb) => action[verb] !== undefined);
+      if (kind === 'pause') continue;
+      items.push(
+        kind === 'goto' ? { step: n, kind, path: action.goto } : { step: n, kind, action, spec: action[kind] },
+      );
+    }
+  });
+  return items;
+}
+
+/** 報告に出す、項目の 1 行 */
+export function describeItem(item) {
+  if (item.kind === 'goto') return `goto ${item.path}`;
+  const state = item.kind === 'wait' && item.action.state ? ` state=${item.action.state}` : '';
+  return `${item.kind} ${describeLocator(item.spec)}${state}`;
+}
+
+/**
+ * probePlan の項目を順に exec で実行し、場面ごとの結果を返す。exec は見つからないとき（HTTP のエラーも）投げる。
+ * 項目が見つからなかったら、次の goto までは画面の状態が分からないので、その間の項目は実行せず「試せなかった」にする
+ * （1 つの欠けから後ろの項目が連鎖して落ち、本当の原因が埋もれるのを避ける）。
+ * 結果は { ...item, status: 'found'|'missing'|'skipped', detail?, reason? }
+ */
+export async function runProbe(items, exec) {
+  const results = [];
+  let blockedBy = null;
+  for (const item of items) {
+    if (item.kind === 'goto') blockedBy = null;
+    if (blockedBy) {
+      results.push({ ...item, status: 'skipped', reason: blockedBy });
+      continue;
+    }
+    try {
+      await exec(item);
+      results.push({ ...item, status: 'found' });
+    } catch (err) {
+      results.push({ ...item, status: 'missing', detail: String(err.message).split('\n')[0] });
+      blockedBy = `場面 ${item.step} の ${describeItem(item)} が見つからず、次の goto までは画面の状態が分からない`;
+    }
+  }
+  return results;
+}
+
 /** 待ちと、操作の実時間の目安から見積もった長さ（秒）。読み込みの揺れは含まない */
 export function estimateSeconds(plan) {
   let ms = FINISH_MS;

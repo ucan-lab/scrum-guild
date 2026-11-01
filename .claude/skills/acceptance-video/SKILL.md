@@ -67,7 +67,7 @@ gh api repos/{owner}/{repo}/issues/<番号> --jq '{state, author: .user.login, a
 node .claude/skills/acceptance-video/record.mjs --check <steps.json>
 ```
 
-形の誤りと、見積もりの長さを確かめる。終了コード 0 が、この手順の終わり。
+形の誤りと、見積もりの長さを確かめる。終了コード 0 が、この手順の終わり。要素の指し方が実画面に在るかは `--check` では分からないので、手順 4 の録画の前に `--probe` で試す。
 
 ### 2. 人に手順書を見せる
 
@@ -89,11 +89,17 @@ curl -s -m 3 -o /dev/null -w '%{http_code}' http://localhost:<ポート>/api/hea
 
 録画の操作は seed の行を書き換える（報酬の変更など）。毎回 `pnpm db:seed` から始める。出力のディレクトリは、スクラッチパッドの下に置く（ワークツリーの中に置かない）。
 
+録画の前に、手順書を録画せずに最後まで通して、要素の指し方が実画面に在るかを試す。録画で失敗すると、30 秒待って落ち、撮り直しや動画の欠けになるため。試しは `click`、`fill`、`select`、`check` も実行し（`pause`、`read`、`hold` の待ちは省く）、seed の行を書き換えるので、終わったら `pnpm db:seed` で戻してから録画する。
+
 ```bash
+pnpm db:seed
+node .claude/skills/acceptance-video/record.mjs --probe <steps.json>
 pnpm db:seed
 node .claude/skills/acceptance-video/record.mjs <steps.json> <出力のディレクトリ>
 python3 -I .claude/skills/acceptance-video/compose.py <出力>/recording.webm <出力>/cues.json <出力>/issue-<番号>.mp4
 ```
+
+試しは、場面番号つきで、指し方ごとに「在る」「見つからない」「試せなかった」を一覧にする。見つからないものがあれば終了コード 1 で、手順 1 に戻って指し方を直す（`e2e/<画面>.test.ts` の指し方と、`src/shared/vocabulary.ts` の辞書で引き直す）。「試せなかった」は、見つからなかった指し方の後ろで、次の `goto` までは画面の状態が分からないもの。見つからないものを直すと試せる。試しが通っても、録画の待ちの揺れで落ちることはあり、その場合は録画のログから直す。
 
 `compose.py` の終了コードは、1 が入力の誤り（`cues.json`、録画の大きさ）、2 が環境の問題（`ffmpeg`、Pillow、フォント）、3 が 30 秒超え。3 なら、手順書の待ちを縮めるか場面を減らして、`pnpm db:seed` から撮り直す。
 録画が途中で失敗しても、seed の行は書き換わったままになる。手順 6 は行う。
@@ -124,7 +130,7 @@ mp4 の場所と長さ、手元に残したもの（ワークツリー、書き�
 - 手順 1: 対象の Issue 全部の手順書を書く。書いた人の確認は、Issue ごとに先に行う（まとめた承認に畳まない）
 - 手順 2: 全部の手順書を作者つきの 1 つの一覧にして、承認を 1 回で取る
 - 手順 3: preview を 1 回だけ立て、全部撮り終えるまで止めない
-- 手順 4: 動画の置き場所を 1 つ決め（スクラッチパッドの `acceptance-videos-<日付>/`）、Issue を 1 本ずつ撮る。毎回、seed、録画、合成の順に走らせ、`pnpm db:seed` から始める。録画は `<置き場所>/rec-<番号>/`、mp4 は `<置き場所>/issue-<番号>.mp4` に置く。1 本が失敗しても残りを撮り、失敗の理由を控える
+- 手順 4: 動画の置き場所を 1 つ決め（スクラッチパッドの `acceptance-videos-<日付>/`）、Issue を 1 本ずつ撮る。毎回、seed、試し、seed、録画、合成の順に走らせ、`pnpm db:seed` から始める。試しで見つからない指し方があった Issue は、録画せずに `failed` として理由を控え、残りを撮る。録画は `<置き場所>/rec-<番号>/`、mp4 は `<置き場所>/issue-<番号>.mp4` に置く。1 本が失敗しても残りを撮り、失敗の理由を控える
 - 手順 5 と 6: 全部撮り終えてから、まとめて行う
 
 撮り終えたら、置き場所の `manifest.json` に、Issue ごとの結果を書く。

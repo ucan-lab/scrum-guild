@@ -505,6 +505,114 @@ describe('gallery.mjs', () => {
   });
 });
 
+describe('plan.mjs の試し（record.mjs --probe の中身）', () => {
+  type Item = { step: number; kind: string };
+  type Result = Item & { status: string; detail?: string; reason?: string };
+  // plan.mjs を型の検査に入れないよう、子プロセスで読む。fail に合う項目だけ exec が投げる
+  const planUrl = JSON.stringify(pathToFileURL(join(skillDir, 'plan.mjs')).href);
+  const probe = (plan: unknown, fail: Record<string, unknown> | null = null) => {
+    const code = `import * as p from ${planUrl};
+const { plan, fail } = JSON.parse(process.argv[1]);
+const items = p.probePlan(plan);
+const ran = [];
+const results = await p.runProbe(items, async (item) => {
+  ran.push(item.kind);
+  if (fail && Object.entries(fail).every(([k, v]) => item[k] === v)) throw new Error('Timeout 5000ms exceeded.\\n  詳細');
+});
+console.log(JSON.stringify({ items, ran, results, lines: results.map(p.describeItem) }));`;
+    const result = spawnSync(process.execPath, ['--input-type=module', '-e', code, JSON.stringify({ plan, fail })], {
+      encoding: 'utf8',
+    });
+    assert.equal(result.status, 0, result.stderr);
+    return JSON.parse(result.stdout) as { items: Item[]; ran: string[]; results: Result[]; lines: string[] };
+  };
+  const button = { role: 'button', name: '押す' };
+  const plan = {
+    steps: [
+      { actions: [{ goto: '/a' }, { wait: { css: '.a' } }], hold: 0 },
+      {
+        caption: '押す',
+        mark: button,
+        actions: [{ click: button }, { pause: 500 }, { wait: { css: '.b' }, state: 'hidden' }],
+      },
+      {
+        caption: '入れる',
+        actions: [
+          { fill: { label: '日数' }, text: '3' },
+          { select: { label: '人' }, label: 'ハルカ' },
+        ],
+      },
+      { caption: '別の画面', actions: [{ goto: '/b' }, { wait: { css: '.c' } }] },
+    ],
+  };
+
+  test('手順書を、録画と同じ順の項目にし、pause は入れず、場面は 1 から数える', () => {
+    const { items } = probe(plan);
+    assert.deepEqual(
+      items.map((i) => `${i.step}:${i.kind}`),
+      ['1:goto', '1:wait', '2:mark', '2:click', '2:wait', '3:fill', '3:select', '4:goto', '4:wait'],
+    );
+  });
+
+  test('全部見つかれば、click や fill も含めて全項目を実行する', () => {
+    const { ran, results } = probe(plan);
+    assert.equal(ran.length, 9);
+    assert.ok(results.every((r) => r.status === 'found'));
+  });
+
+  test('見つからない項目は場面番号つきで missing になり、次の goto までは試せなかったになる', () => {
+    const { results, lines } = probe(plan, { step: 2, kind: 'click' });
+    const view = results.map((r) => `${r.step}:${r.kind}:${r.status}`);
+    assert.deepEqual(view, [
+      '1:goto:found',
+      '1:wait:found',
+      '2:mark:found',
+      '2:click:missing',
+      '2:wait:skipped',
+      '3:fill:skipped',
+      '3:select:skipped',
+      '4:goto:found',
+      '4:wait:found',
+    ]);
+    assert.equal(results.find((r) => r.status === 'missing')?.detail, 'Timeout 5000ms exceeded.');
+    assert.match(
+      results.find((r) => r.status === 'skipped')?.reason ?? '',
+      /場面 2 の click role=button name="押す" が見つからず/,
+    );
+    assert.equal(lines[4], 'wait css=.b state=hidden');
+  });
+
+  test('goto が失敗しても、その後ろは試せなかったになり、次の goto からまた試す', () => {
+    const { results } = probe(plan, { kind: 'goto', path: '/a' });
+    const status = results.map((r) => r.status);
+    assert.deepEqual(status, [
+      'missing',
+      'skipped',
+      'skipped',
+      'skipped',
+      'skipped',
+      'skipped',
+      'skipped',
+      'found',
+      'found',
+    ]);
+  });
+
+  test('入れ子の指し方と nth を、報告の 1 行に出す', () => {
+    const nested = { steps: [{ mark: { within: { role: 'dialog', name: '延ばす' }, css: '[data-x]', nth: 1 } }] };
+    assert.deepEqual(probe(nested).lines, ['mark role=dialog name="延ばす" の中の css=[data-x] nth=1']);
+  });
+
+  test('--probe は手順書の形が誤りなら、ブラウザを立てずに理由を出して終了コード 1', () => {
+    inTempDir({ 'steps.json': JSON.stringify({ steps: [{ actions: [{ click: {} }] }] }) }, (path) => {
+      const result = spawnSync(process.execPath, [recordScript, '--probe', path('steps.json')], { encoding: 'utf8' });
+      assert.equal(result.status, 1);
+      assert.match(result.stderr, /css、role、label のどれか1つだけ/);
+      assert.doesNotMatch(result.stdout, /base:/);
+    });
+  });
+});
+
 describe('compose.py --spans', () => {
   const spans = (cues: unknown) =>
     inTempDir({ 'cues.json': typeof cues === 'string' ? cues : JSON.stringify(cues) }, (path) => {
