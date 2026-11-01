@@ -298,7 +298,7 @@ describe('入力を断る', () => {
     },
   );
 
-  test.each(['api', 'login', 'operator', 'consent', 'cdn-cgi', 'invite'])(
+  test.each(['api', 'login', 'operator', 'consent', 'signup', 'cdn-cgi', 'invite'])(
     '予約した名前 %s は 400 の invalid_input（slug_reserved）で、組織を作らない',
     async (slug) => {
       const member = await newMember();

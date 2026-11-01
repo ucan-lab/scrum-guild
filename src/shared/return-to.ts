@@ -10,8 +10,9 @@ export const RETURN_TO_MAX_LENGTH = 512;
 // 印字できる ASCII だけ。ブラウザは URL のタブと改行を取り除くので、`/<タブ>/evil.example` が `//evil.example` になる
 const PRINTABLE_PATH = /^\/[ -~]*$/;
 
-// 戻り先にしない最初の1区分。API の応答（JSON）やログインの画面そのものへ戻すと、ログインが終わらない
-const EXCLUDED_FIRST_SEGMENTS = new Set(['api', 'login']);
+// 戻り先にしない最初の1区分。API の応答（JSON）やログインの画面そのものへ戻すと、ログインが終わらない。
+// 会員登録の画面（signup）も同じで、登録を終えた人にまた登録の画面が出る
+const EXCLUDED_FIRST_SEGMENTS = new Set(['api', 'login', 'signup']);
 
 // `.` と `..`（`%2e` で書いたものを含む）。URL の解決が区間を畳むので、`/.//evil.example` は `//evil.example` になる
 const DOT_SEGMENT = /^(?:\.|%2e){1,2}$/i;
