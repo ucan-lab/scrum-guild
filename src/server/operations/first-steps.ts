@@ -19,7 +19,7 @@ const STEP_ORDER: Record<FirstStepRole, readonly { key: FirstStepKey; optional: 
   ],
   leader: [
     { key: 'became_leader', optional: false },
-    { key: 'invite_members', optional: false },
+    { key: 'invite_members', optional: true },
     { key: 'first_backlog_task', optional: false },
     { key: 'start_sprint', optional: true },
   ],
@@ -126,8 +126,23 @@ export const firstStepsOperation = implement(firstSteps, async ({ db, actor }) =
     done.set('mark_today', markedResult.rows.length > 0);
     for (const key of ['joined_workspace', 'prepare_task', 'mark_today'] as const) target.set(key, firstJoined);
   } else if (role === 'leader') {
-    // どの文も、リーダーのワークスペースのどれかに行が1つあるかだけを LIMIT 1 で引く（タスクが多くても全件を読まない）
-    const [pendingResult, othersResult, backlogResult] = await db.batch([
+    // どの文も、リーダーのワークスペースのどれかに行が1つあるかだけを LIMIT 1 で引く（タスクが多くても全件を読まない）。
+    // 必須は「バックログにタスクがある」だけなので、先にそれだけを読み、済んでいれば面を出さずに返す
+    const [backlogResult] = await db.batch([
+      // バックログにタスクがある（受信箱とアーカイブは数えない）
+      db.statement((q) =>
+        leaderWorkspaces(q, db.organizationId, userId)
+          .innerJoin('tasks as t', 't.workspace_id', 'w.id')
+          .select('w.id as workspace_id')
+          .where('t.tray', '=', 'backlog')
+          .where('t.deleted_at', 'is', null)
+          .limit(1),
+      ),
+    ] as const);
+    const hasBacklogTask = backlogResult.rows.length > 0;
+    if (hasBacklogTask) return empty;
+    // 必須が済んでいないので、任意の手順の文を流す
+    const [pendingResult, othersResult, sprintResult] = await db.batch([
       // 招待を出している（承諾待ちの招待がある）
       db.statement((q) =>
         leaderWorkspaces(q, db.organizationId, userId)
@@ -153,21 +168,7 @@ export const firstStepsOperation = implement(firstSteps, async ({ db, actor }) =
           .where('u.login_subject', 'is not', null)
           .limit(1),
       ),
-      // バックログにタスクがある（受信箱とアーカイブは数えない）
-      db.statement((q) =>
-        leaderWorkspaces(q, db.organizationId, userId)
-          .innerJoin('tasks as t', 't.workspace_id', 'w.id')
-          .select('w.id as workspace_id')
-          .where('t.tray', '=', 'backlog')
-          .where('t.deleted_at', 'is', null)
-          .limit(1),
-      ),
-    ] as const);
-    const invited = pendingResult.rows.length > 0 || othersResult.rows.length > 0;
-    const hasBacklogTask = backlogResult.rows.length > 0;
-    if (invited && hasBacklogTask) return empty;
-    // 始めたことがある（進行中か終了した）スプリントがある
-    const [sprintResult] = await db.batch([
+      // 始めたことがある（進行中か終了した）スプリントがある
       db.statement((q) =>
         leaderWorkspaces(q, db.organizationId, userId)
           .innerJoin('sprints as s', 's.workspace_id', 'w.id')
@@ -179,8 +180,9 @@ export const firstStepsOperation = implement(firstSteps, async ({ db, actor }) =
     ] as const);
     // 複数のワークスペースのリーダーなら、どれか1つで済んでいれば済み。済んでいない手順は、どのワークスペースでも未完なので、
     // 名前順で先頭のワークスペースを指す
-    done.set('invite_members', invited);
-    done.set('first_backlog_task', hasBacklogTask);
+    done.set('invite_members', pendingResult.rows.length > 0 || othersResult.rows.length > 0);
+    // バックログにタスクがあれば上で空を返しているので、ここに届くときの first_backlog_task は常に未完
+    done.set('first_backlog_task', false);
     done.set('start_sprint', sprintResult.rows.length > 0);
     for (const key of ['invite_members', 'first_backlog_task', 'start_sprint'] as const) target.set(key, leaderOf[0]!);
     done.set('became_leader', true);
@@ -221,7 +223,7 @@ export const firstStepsOperation = implement(firstSteps, async ({ db, actor }) =
     workspace: target.get(key) ?? null,
   }));
   // 必須の手順がすべて済んだら出さない（任意の手順は、済んでいなくても消す判定に使わない）。
-  // 一般とリーダーは必須が済めば上で返しているので、ここでの確かめは念のため
+  // 一般とリーダー（必須はバックログの最初のタスクだけ）は必須が済めば上で返しているので、ここでの確かめは念のため
   if (steps.every((step) => step.done || step.optional)) return empty;
   return { role, steps };
 });
