@@ -146,8 +146,8 @@ test.describe('本物の API', () => {
     await signIn(context, baseURL, 'unconsented');
     await page.goto('/consent');
     const revised = page.locator('.callout.is-info');
-    await expect(revised).toContainText('プライバシーポリシーが改められました');
-    await expect(revised).not.toContainText('利用規約が改められました');
+    // 見出しは完全一致で確かめる。部分一致だと、両方改めたときの見出し（「利用規約とプライバシーポリシーが…」）でも通る
+    await expect(revised.locator('b')).toHaveText('プライバシーポリシーが改められました');
     await expect(revised.locator('.mono')).toHaveText([`改定日: ${PRIVACY_VERSION}`]);
     const history = revised.getByRole('link');
     await expect(history).toHaveCount(1);
