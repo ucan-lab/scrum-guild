@@ -7,6 +7,7 @@
   import { afterNavigate } from '$app/navigation';
   import { resolve } from '$app/paths';
   import { legalDocuments, type LegalKind } from '../legal/documents.ts';
+  import { REVISION_HISTORY_ID } from '../legal/revision-history.ts';
   import { parseMarkdown } from '../markdown.ts';
   import { t } from '../vocabulary.svelte.ts';
   import Gate from './Gate.svelte';
@@ -19,6 +20,7 @@
   // 変換できなかったとき（出力の上限。文面を書き換えて超えたときだけ）は文字のまま出す）。
   // 本文の末尾の「改定日: …」の行は描かず（documents.ts の body）、改定日（版）は紙の上に1か所だけ出す。
   // `#` を条の見出しにし、画面の見出し（h1）の次の段（h2）で描く。
+  // 「改定の履歴」の節（documents.ts の history）は、本文の下、ボタンの行の上に、id="revision-history" の節として描く。
   // 2つのページの間の行き来は、Markdown の中でなく、ここで置く
   // （Markdown のリンクは http と https の絶対 URL に限られ、画面の経路を書けないため）。
   // 元の画面への戻り: アプリの中から移ってきたとき（afterNavigate の type が enter でない）は「前の画面に戻る」（履歴を戻る。
@@ -28,6 +30,7 @@
 
   const doc = $derived(legalDocuments[kind]);
   const blocks = $derived(parseMarkdown(doc.body));
+  const historyBlocks = $derived(parseMarkdown(doc.history));
   const title = $derived(t(kind === 'terms' ? 'termsTitle' : 'privacyTitle'));
 
   // SPA の最初の読み込み（type が 'enter'）でも from は null にならず、url の無い入れ物が渡る（SvelteKit の create_navigation）。
@@ -53,6 +56,16 @@
       <MarkdownBlocks {blocks} headingStart={2} />
     {:else}
       <MarkdownPlain source={doc.body} />
+    {/if}
+    {#if doc.history !== ''}
+      <!-- 同意の画面の「改定の履歴を見る」(/terms#revision-history) の行き先。MarkdownBlocks は見出しに id を持たないので、外側の節で受ける -->
+      <section class="doc-section" id={REVISION_HISTORY_ID}>
+        {#if historyBlocks}
+          <MarkdownBlocks blocks={historyBlocks} headingStart={2} />
+        {:else}
+          <MarkdownPlain source={doc.history} />
+        {/if}
+      </section>
     {/if}
     <div class="form-actions" role="group" aria-label={t('legalPageLinksLabel')}>
       {#if kind === 'terms'}

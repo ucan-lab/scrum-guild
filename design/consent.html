@@ -31,6 +31,11 @@ const legalLinks = () => `<div class="choice-list">
   <a class="choice" href="terms.html" target="_blank" rel="noopener noreferrer"><div><b>${t("termsTitle")}</b><span class="mono">${consentVersion(version)}</span></div>${newTab}</a>
   <a class="choice" href="privacy.html" target="_blank" rel="noopener noreferrer"><div><b>${t("privacyTitle")}</b><span class="mono">${consentVersion(version)}</span></div>${newTab}</a>
 </div>`;
+// 前の版に同意した人への「改めました」の案内（.callout.is-info）。改めた文書ごとに、名前、改定日、改定の履歴へのリンク（新しいタブ）を出す
+const revisedDoc = (title, href) => `<br>${title} <span class="mono">${t("legalRevised").replace("{date}", version)}</span> <a href="${href}#revision-history" target="_blank" rel="noopener noreferrer">${t("consentRevisedHistory")}<span class="visually-hidden"> ${t("consentRevisedHistoryOf").replace("{document}", title)} ${t("markdownNewTab")}</span></a>`;
+const revised = (headingKey, docs) => `<div class="callout is-info">${icon("file")}<span><b>${t(headingKey)}</b> ${docs.join(" ")}</span></div>`;
+const revisedTerms = revisedDoc(t("termsTitle"), "terms.html");
+const revisedPrivacy = revisedDoc(t("privacyTitle"), "privacy.html");
 const logout = `<button class="btn is-sm is-quiet" type="button">${t("logout")}</button>`;
 const form = (id, checked, busy = false) => `<label class="choice is-static is-consent"><input type="checkbox"${checked ? " checked" : ""}><span>${t("consentCheckLabel")}</span></label>
 <div class="form-actions">
@@ -49,6 +54,8 @@ document.getElementById("gate").innerHTML = `<div class="gate"><div class="gate-
   ${sheet(`<p>${consentLead}</p>${legalLinks()}${form("consent-submit-hint-unchecked", false)}`, "未同意の人が開いた状態。主文は本文と同じ大きさと色で、印を付けるまで同意のボタンは押せない（aria-disabled）。押せない理由は、ボタンの近くの説明を aria-describedby で結んで読み上げる。チェックボックスのラベルは指さない。")}
   ${sheet(`<p>${consentLead}</p>${legalLinks()}${form("consent-submit-hint-checked", true)}`, "印を付けた状態。ボタンが押せるようになり、aria-describedby は外れ、説明は文を描いたまま隠れる（aria-hidden）。説明の高さは行数によらず残り、紙が動かない。")}
   ${sheet(`<p>${t("consentCurrent")}</p><p class="panel-note">${t("consentRecordedAt")} <span class="mono">2026/10/31&nbsp;09:00</span></p><div class="form-actions"><button class="btn is-primary" type="button">${t("consentContinue")}</button>${logout}</div>`, "同意済みの人が開いた状態。日時の値だけを等幅（.mono）で出し、ラベルは通常の字。")}
+  ${sheet(`${revised("consentRevisedBoth", [revisedTerms, revisedPrivacy])}<p>${consentLead}</p>${legalLinks()}${form("consent-submit-hint-revised-both", false)}`, "前の版に同意した人が、規約もポリシーも改めた後に開いた状態。主文の上に .callout.is-info で「改められました」と、文書ごとの名前、改定日、改定の履歴へのリンク（新しいタブ。読み上げに「新しいタブで開きます」を補う）を出す。初めて同意する人には出さない。")}
+  ${sheet(`${revised("consentRevisedTerms", [revisedTerms])}<p>${consentLead}</p>${legalLinks()}${form("consent-submit-hint-revised-terms", false)}`, "利用規約だけを改めた後に開いた状態。改めた文書だけを挙げる（プライバシーポリシーは前と同じ版なので挙げない）。同意はこれまでどおり、2つの文書への1回の同意で記録する。")}
   ${sheet(`${warn(t("consentUpdated"))}<p>${consentLead}</p>${legalLinks()}${form("consent-submit-hint-updated", false)}`, "同意の記録を断られた（版が上がっていた）状態。更新の知らせを上に出し、印を外す。")}
   ${sheet(`<p>${consentLead}</p>${legalLinks()}${form("consent-submit-hint-busy", true, true)}`, "同意を送っている間。印は付いたままで、ボタンは aria-disabled になり「同意を記録しています」と出る。")}
   ${sheet(`${warn(t("consentRecordFailed"))}<p>${consentLead}</p>${legalLinks()}${form("consent-submit-hint-failed", true)}`, "同意を記録できなかった状態（通信の失敗など）。警告を上に出し、印は付いたままにして、そのままもう一度押せる。")}
