@@ -610,7 +610,7 @@ console.log(JSON.stringify({ items, ran, results, lines: results.map(p.describeI
 
   test('select の項目名と fill の文字列、wait の state を、報告の 1 行に出す', () => {
     const { lines } = probe(plan);
-    assert.deepEqual(lines.slice(5, 7), ['fill label="日数" text="3"', 'select label="人" label="ハルカ"']);
+    assert.deepEqual(lines.slice(5, 7), ['fill label="日数" text="3"', 'select label="人" option="ハルカ"']);
     assert.equal(lines[4], 'wait css=.b state="hidden"');
   });
 

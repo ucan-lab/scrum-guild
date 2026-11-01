@@ -165,8 +165,9 @@ export function probePlan(plan) {
 /** 報告に出す、項目の 1 行 */
 export function describeItem(item) {
   if (item.kind === 'goto') return `goto ${item.path}`;
-  const extra = { wait: 'state', select: 'label', fill: 'text' }[item.kind];
-  const value = extra && item.action[extra] !== undefined ? ` ${extra}=${JSON.stringify(item.action[extra])}` : '';
+  // 手順書のキーと、報告での名前。select の label は指し方の label と紛れるので option と書く
+  const extra = { wait: ['state', 'state'], select: ['label', 'option'], fill: ['text', 'text'] }[item.kind];
+  const value = extra && item.action[extra[0]] !== undefined ? ` ${extra[1]}=${JSON.stringify(item.action[extra[0]])}` : '';
   return `${item.kind} ${describeLocator(item.spec)}${value}`;
 }
 
