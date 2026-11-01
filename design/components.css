@@ -46,7 +46,7 @@ h1, h2, h3 { text-wrap: balance; }
   padding-left: max(var(--space-4), env(safe-area-inset-left, 0px));
   padding-right: var(--space-4);
   display: flex; flex-direction: column; gap: var(--space-5);
-  position: sticky; top: 0; height: 100vh;
+  position: sticky; top: 0; height: 100vh; overflow-y: auto; overscroll-behavior: contain;
 }
 .binding-foot { margin-top: auto; font-size: var(--text-xs); color: var(--color-faint); padding-inline: var(--space-2); }
 
@@ -57,6 +57,7 @@ h1, h2, h3 { text-wrap: balance; }
 .binding-head { display: flex; align-items: center; gap: var(--space-1); }
 .binding-head .brand { flex: 1 1 auto; min-width: 0; }
 .nav-toggle {
+  --nav-tip-half-trigger: 18px;
   position: relative; display: inline-grid; place-items: center; flex: none; width: 36px; height: 36px; padding: 0;
   border: 1px solid transparent; border-radius: var(--radius-1);
   background: transparent; color: var(--color-muted); cursor: pointer;
@@ -125,7 +126,7 @@ h1, h2, h3 { text-wrap: balance; }
 /* 狭い幅と、指で押す画面では、押す所を 44px 以上にする。左のメニューのロゴと項目（狭い幅では上の帯に並ぶ）も同じ */
 @media (max-width: 760px), (pointer: coarse) {
   :is(.org-menu-list, .ws-menu-list) a, :is(.org-menu-list, .ws-menu-list) button, .account-menu-list button, .account-menu-button { min-height: 44px; }
-  .nav-toggle { width: 44px; height: 44px; }
+  .nav-toggle { --nav-tip-half-trigger: 22px; width: 44px; height: 44px; }
   .brand, .nav-item:not(.is-later) { min-height: 44px; }
 }
 
@@ -137,7 +138,9 @@ h1, h2, h3 { text-wrap: balance; }
   .binding-head .brand { padding-right: 0; }
   .nav-toggle:focus-visible .nav-tip { display: grid; }
   .nav-tip {
-    position: absolute; z-index: 1; left: calc(100% + var(--space-3)); top: 50%; transform: translateY(-50%);
+    /* fixed は列のスクロール領域に切られない。flex/grid の中央の static position から、
+       札の半幅とボタンの半幅と余白だけ右へ動かし、元のボタンの右端に揃える。縦は中央のまま。 */
+    position: fixed; z-index: 1; transform: translateX(calc(50% + var(--nav-tip-half-trigger, 22px) + var(--space-3)));
     width: max-content; max-width: 18rem; padding: var(--space-1) var(--space-2); border: 1px solid var(--color-line);
     border-radius: var(--radius-1); background: var(--color-surface); color: var(--color-fg);
     font-size: var(--text-sm); font-weight: 400; text-align: left; box-shadow: var(--shadow-float); pointer-events: none;
@@ -155,7 +158,8 @@ h1, h2, h3 { text-wrap: balance; }
   .app[data-nav-collapsed="true"] .org-menu-button:focus-visible .nav-tip { display: grid; }
   /* 項目の名前の札。開閉のボタンの札（.nav-tip）と同じ見た目 */
   .app[data-nav-collapsed="true"] .nav-item-label {
-    position: absolute; z-index: 1; left: calc(100% + var(--space-3)); top: 50%; transform: translateY(-50%);
+    /* 44px の項目の中央の static position を使い、列の外でも切れずに右端へ揃える。 */
+    position: fixed; z-index: 1; transform: translateX(calc(50% + 22px + var(--space-3)));
     width: max-content; max-width: 18rem; padding: var(--space-1) var(--space-2); border: 1px solid var(--color-line);
     border-radius: var(--radius-1); background: var(--color-surface); color: var(--color-fg);
     font-size: var(--text-sm); font-weight: 400; text-align: left; box-shadow: var(--shadow-float); pointer-events: none;
@@ -182,7 +186,7 @@ h1, h2, h3 { text-wrap: balance; }
   .app[data-nav-collapsed="true"] .nav-group-label {
     position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap;
   }
-  .app[data-nav-collapsed="true"] .nav-toggle { width: 44px; height: 44px; }
+  .app[data-nav-collapsed="true"] .nav-toggle { --nav-tip-half-trigger: 22px; width: 44px; height: 44px; }
   .app[data-nav-collapsed="true"] .nav-item,
   .app[data-nav-collapsed="true"] .org-menu-button { width: 44px; min-height: 44px; justify-content: center; }
   .app[data-nav-collapsed="true"] .nav-item { padding: 0; gap: 0; }
@@ -197,7 +201,6 @@ h1, h2, h3 { text-wrap: balance; }
   .app[data-nav-collapsed="true"] .nav-item-label { opacity: 0; }
   .app[data-nav-collapsed="true"] .nav-item:focus-visible .nav-item-label { opacity: 1; }
   .app[data-nav-collapsed="true"] .nav-group { height: 1px; margin: var(--space-3) 0; padding: 0; border-top: 1px solid var(--color-line); }
-  .app[data-nav-collapsed="true"] .org-menu { position: relative; }
   .app[data-nav-collapsed="true"] .org-menu-button { position: relative; display: flex; align-items: center; padding: 0; }
   .app[data-nav-collapsed="true"] .org-menu-button > .ico:first-of-type { display: block; transform: none; }
   .app[data-nav-collapsed="true"] .org-menu-button > .ico:last-of-type { display: none; }
@@ -211,7 +214,8 @@ h1, h2, h3 { text-wrap: balance; }
     border-radius: 50%; border: 1px solid var(--color-stamp); background: var(--color-stamp); box-shadow: 0 0 0 2px var(--color-surface);
   }
   .app[data-nav-collapsed="true"] .org-menu-list {
-    position: absolute; z-index: 1; top: 0; left: calc(100% + var(--space-3)); width: 15rem; max-width: min(18rem, 70vw);
+    /* grid の static position はボタンの左上。列の外へずらし、スクロール領域に切られずに出す。 */
+    position: fixed; z-index: 1; margin-left: calc(44px + var(--space-3)); width: 15rem; max-width: min(18rem, 70vw);
     box-shadow: var(--shadow-float);
   }
 
@@ -671,7 +675,7 @@ button.entry-title { text-align: left; background: transparent; border: 0; paddi
   .app { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto 1fr; }
   .binding { border-right: 0; border-bottom: var(--rule-double); }
   .binding-inner {
-    position: static; height: auto;
+    position: static; height: auto; overflow: visible; overscroll-behavior: auto;
     flex-direction: row; flex-wrap: wrap; align-items: center; gap: var(--space-3);
     padding-block: var(--space-3);
     padding-left: max(var(--space-4), env(safe-area-inset-left, 0px));

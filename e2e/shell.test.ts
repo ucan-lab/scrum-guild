@@ -143,7 +143,10 @@ test('畳んだ列の名前と組織の一覧は、バックログの行に覆�
   await backlog.hover();
   const label = backlog.locator('.nav-item-label');
   await expect(label).toHaveCSS('opacity', '1');
-  expect((await label.boundingBox())!.x).toBeGreaterThanOrEqual(64);
+  const labelBox = await label.boundingBox();
+  const itemBox = await backlog.boundingBox();
+  expect(labelBox!.x).toBeCloseTo(itemBox!.x + itemBox!.width + 12, 0);
+  expect(labelBox!.y + labelBox!.height / 2).toBeCloseTo(itemBox!.y + itemBox!.height / 2, 0);
   expect(await frontmostAcross(page, '#app-nav .nav-item[aria-current="page"] .nav-item-label')).toEqual([
     true,
     true,
@@ -177,6 +180,122 @@ test.describe('ホバーのできない端末（1024px の指のタブレット�
     expect((await page.locator('.brand-name').boundingBox())!.width).toBeGreaterThan(50);
     await expect(page.locator('#app-nav .nav-item-label').first()).toHaveCSS('opacity', '1');
   });
+});
+
+test.describe('高さの低い指で押す画面の左のメニュー', () => {
+  test.use({ hasTouch: true });
+
+  test.beforeEach(async ({ context, baseURL }) => {
+    await signIn(context, baseURL, 'admin');
+  });
+
+  for (const viewport of [
+    { width: 844, height: 390 },
+    { width: 1024, height: 600 },
+  ]) {
+    for (const collapsed of [false, true]) {
+      test(`${viewport.width}×${viewport.height} の${collapsed ? '畳んだ' : '広げた'}列で下端に届く`, async ({
+        page,
+      }) => {
+        await page.setViewportSize(viewport);
+        // 管理者がワークスペースを開くと、設定を含むすべての項目と切り替えが並ぶ。
+        await page.goto(`/aoba/w/${AOBA_WORKSPACE_ID}`);
+        await expect(page.locator('.tree-row').first()).toBeVisible();
+        expect(await page.evaluate(() => matchMedia('(pointer: coarse)').matches)).toBe(true);
+
+        if (collapsed) {
+          // Chromium の hasTouch は hover:none も当てるため、畳んだ列ではホバー併用の端末を再現する。
+          // CSSOM の hover 条件だけを置換し、coarse の寸法とスクロール/配置の宣言はそのまま検査する。
+          // 通常の hover:none で畳まない扱いは、上のタブレットのテストが確かめる。
+          const changed = await page.evaluate(() => {
+            const counts = { hover: 0, none: 0 };
+            const visit = (rules: CSSRuleList): void => {
+              for (const rule of rules) {
+                if (rule instanceof CSSMediaRule) {
+                  rule.media.mediaText = rule.media.mediaText
+                    .replace(/\(hover:\s*hover\)/g, () => {
+                      counts.hover++;
+                      return '(pointer: coarse)';
+                    })
+                    .replace(/\(hover:\s*none\)/g, () => {
+                      counts.none++;
+                      return '(pointer: none)';
+                    });
+                }
+                if ('cssRules' in rule) visit((rule as CSSGroupingRule).cssRules);
+              }
+            };
+            for (const sheet of document.styleSheets) visit(sheet.cssRules);
+            return counts;
+          });
+          expect(changed.hover).toBeGreaterThan(0);
+          expect(changed.none).toBeGreaterThan(0);
+          await page.getByRole('button', { name: 'メニューを畳む' }).click();
+          await expect(page.locator('.app')).toHaveAttribute('data-nav-collapsed', 'true');
+          await expect(page.locator('.binding')).toHaveJSProperty('offsetWidth', 64);
+        } else {
+          await expect(page.locator('.binding')).toHaveJSProperty('offsetWidth', 240);
+          // 本番の AppShell は foot を出さないので、見本 kit.js と同じ要素で部品の下端も検査する。
+          await page.locator('.binding-inner').evaluate((inner) => {
+            const foot = document.createElement('p');
+            foot.className = 'binding-foot';
+            foot.textContent = 'デザインの見本。データはすべて架空の例です';
+            inner.append(foot);
+          });
+          const foot = page.locator('.binding-foot');
+          await foot.scrollIntoViewIfNeeded();
+          await expect(foot).toBeInViewport({ ratio: 1 });
+          await foot.click({ trial: true });
+        }
+
+        const inner = page.locator('.binding-inner');
+        await expect(inner).toHaveCSS('overflow-y', 'auto');
+        const last = page.locator('#app-nav .nav-item').last();
+        await last.scrollIntoViewIfNeeded();
+        await expect(last).toBeInViewport({ ratio: 1 });
+        await expect.poll(() => inner.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
+        const href = await last.getAttribute('href');
+        await last.click();
+        await expect(page).toHaveURL(href!);
+
+        // 下まで送った後もブランドへ戻れる。
+        const brand = page.getByRole('link', { name: 'Scrum Guild' });
+        await brand.scrollIntoViewIfNeeded();
+        await expect(brand).toBeInViewport({ ratio: 1 });
+        await brand.click({ trial: true });
+
+        if (collapsed) {
+          const org = page.locator('.org-menu-button');
+          await org.scrollIntoViewIfNeeded();
+          await org.click();
+          const list = page.getByRole('list', { name: '入れる組織' });
+          await expect(list).toBeVisible();
+          await expect(list).toHaveCSS('position', 'fixed');
+          const box = await list.boundingBox();
+          const buttonBox = await org.boundingBox();
+          if (!box || !buttonBox) throw new Error('組織の切り替えの位置が取れない');
+          expect(box.x).toBeCloseTo(buttonBox.x + buttonBox.width + 12, 0);
+          expect(box.y).toBeCloseTo(buttonBox.y, 0);
+          expect(box.x).toBeGreaterThanOrEqual(0);
+          expect(box.y).toBeGreaterThanOrEqual(0);
+          expect(box.x + box.width).toBeLessThanOrEqual(viewport.width);
+          expect(box.y + box.height).toBeLessThanOrEqual(viewport.height);
+          const first = list.getByRole('link').first();
+          await expect
+            .poll(() =>
+              first.evaluate((element) => {
+                const r = element.getBoundingClientRect();
+                const hit = document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2);
+                return hit !== null && element.contains(hit);
+              }),
+            )
+            .toBe(true);
+          await first.click();
+          await expect(page).toHaveURL(today);
+        }
+      });
+    }
+  }
 });
 
 test('畳んだ列のまま、全テーマでアクセシビリティの検査と CSP の違反が無い', async ({ page }) => {
