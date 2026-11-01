@@ -562,18 +562,12 @@ const SECTIONS = [
             <h2 class="doc-h1">第2条 アカウントとログイン</h2>
             <ul><li>ログインできる手段は、GitHub と Google のアカウントです。</li><li>ログインに使うアカウントは、本人が責任を持って守ってください。</li></ul>
           </div>
-          <section class="doc-section" id="revision-history">
-            <div class="doc-box">
-              <h2 class="doc-h1">改定の履歴</h2>
-              <ul><li>2026-10-31 制定</li></ul>
-            </div>
-          </section>
           <div class="form-actions" role="group" aria-label="関連するページ"><a class="btn is-sm" href="#">プライバシーポリシー</a><button class="btn is-sm is-quiet" type="button">前の画面に戻る</button></div>
         </section>
       </div>
     </div>`,
-    ["紙の幅は 440px までで、狭い画面では画面の幅に収める。", "表を載せる画面（運用）は、外側の .gate に is-wide を付けて、紙の幅を 1200px までに広げる（本番では Gate の wide）。", "長い文を読む画面（利用規約とプライバシーポリシー）は、外側の .gate に is-reading を付けて、紙の幅を 720px までに広げる（本番では Gate の reading）。紙の直下に Markdown の本文（.doc-box）を置くと、紙が枠なので .doc-box の枠と余白を外し、条の見出し（.doc-h1。画面の見出しの次の段）の前を広く空ける。法文の本体は辞書に入れず、Markdown のファイル（src/lib/legal/）に置く。他の画面から指して移る節（利用規約の「改定の履歴」。id を付ける）は、.doc-section で包み、中の .doc-box を紙の直下と同じ見た目にする。", "枠の外の画面では、テーマを既定（シンプル（自動））に戻す。どの組織の値も持ち越さない。", "本番の Gate は、外側を main にする。"],
-    ".gate .gate-stack .gate-sheet .gate-brand .gate-title .gate-note .gate-divider / .gate.is-wide / .gate.is-reading / .gate-sheet > .doc-box / .gate-sheet > .doc-section")],
+    ["紙の幅は 440px までで、狭い画面では画面の幅に収める。", "表を載せる画面（運用）は、外側の .gate に is-wide を付けて、紙の幅を 1200px までに広げる（本番では Gate の wide）。", "長い文を読む画面（利用規約とプライバシーポリシー）は、外側の .gate に is-reading を付けて、紙の幅を 720px までに広げる（本番では Gate の reading）。紙の直下に Markdown の本文（.doc-box）を置くと、紙が枠なので .doc-box の枠と余白を外し、条の見出し（.doc-h1。画面の見出しの次の段）の前を広く空ける。法文の本体は辞書に入れず、Markdown のファイル（src/lib/legal/）に置く。", "枠の外の画面では、テーマを既定（シンプル（自動））に戻す。どの組織の値も持ち越さない。", "本番の Gate は、外側を main にする。"],
+    ".gate .gate-stack .gate-sheet .gate-brand .gate-title .gate-note .gate-divider / .gate.is-wide / .gate.is-reading / .gate-sheet > .doc-box")],
   ["settings", "設定の節と並べ替え", () => block("settings", "設定の節と並べ替え", "設定の画面は、左に説明、右に入力を置く節を縦に並べる。並べ替えられる一覧は、ドラッグの他に上下のボタンを持つ。",
     `<div class="settings"><section class="setting"><div class="setting-head"><h3 class="setting-title">${t("column")}</h3><p class="setting-desc">名前は付けたままで、訳しません。</p></div><div class="setting-body">
       <ol class="order-list">${D.columns.filter((c) => !c.done).map((c, i, a) => `<li><span class="grip" aria-hidden="true">${icon("grip")}</span><input class="input" value="${c.name}" aria-label="名前"><span class="order-actions"><button class="icon-btn" type="button" aria-label="上へ" ${i === 0 ? "disabled" : ""}>${icon("up")}</button><button class="icon-btn" type="button" aria-label="下へ" ${i === a.length - 1 ? "disabled" : ""}>${icon("down")}</button><button class="icon-btn is-danger" type="button" aria-label="削除">${icon("trash")}</button></span></li>`).join("")}

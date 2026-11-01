@@ -76,7 +76,7 @@
     consentRecordedAt: "同意した日時:", consentSubmitHint: "利用規約とプライバシーポリシーを確認し、印を付けてください。",
     consentLoadFailed: "同意の状態を読み込めませんでした。もう一度試してください。", consentSubmitting: "同意を記録しています", consentRecordFailed: "同意を記録できませんでした。もう一度試してください。",
     legalRevised: "改定日: {date}", consentRevisedTerms: "利用規約が改められました", consentRevisedPrivacy: "プライバシーポリシーが改められました",
-    consentRevisedBoth: "利用規約とプライバシーポリシーが改められました", consentRevisedHistory: "改定の履歴を見る", consentRevisedHistoryOf: "（{document}）",
+    consentRevisedBoth: "利用規約とプライバシーポリシーが改められました",
     markdownTableRegion: "表", teamXpLabel: "チーム全体の経験値", filterLabel: "{backlog}の絞り込み", backlogSearch: "タイトルで探す",
     filterAll: "{label}: すべて", filterMe: "自分", unassigned: "担当なし", leftMember: "（離脱済み）", categoryNone: "{category}なし",
     filterNoRepository: "リポジトリなし", filterNoEpic: "{epic}なし", filterClear: "絞り込みを外す",
