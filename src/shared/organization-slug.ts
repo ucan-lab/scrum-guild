@@ -15,6 +15,7 @@ export const reservedSlugs: readonly string[] = [
   'api',
   'auth',
   'login',
+  'signup',
   'logout',
   'invite',
   'terms',

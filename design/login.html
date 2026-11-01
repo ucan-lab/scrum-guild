@@ -30,8 +30,20 @@ function render() {
       <button class="btn is-wide" type="button">${icon("git")}GitHub でログイン</button>
       <button class="btn is-wide is-google" type="button">${SQ.googleMark}Google でログイン</button>
       <p class="gate-note">GitHub と Google は本人確認だけに使います。入れる${t("organization")}が2つ以上あれば、ログインのあとに選びます。</p>
+      <div class="form-actions"><a class="btn is-sm is-quiet" href="#">アカウントがまだ無い人は会員登録</a></div>
       <div class="form-actions" role="group" aria-label="利用規約とプライバシーポリシー"><a class="btn is-sm is-quiet" href="#">利用規約</a><a class="btn is-sm is-quiet" href="#">プライバシーポリシー</a></div>
     </section>
+    <section class="gate-sheet">
+      <div class="gate-brand">${SQ.brandMark}<span class="brand-name">Scrum Guild</span></div>
+      <h1 class="gate-title">会員登録</h1>
+      <p>GitHub か Google のアカウントで、アカウントを作ります。アカウントだけ作った人は無料で、招待されて入る人も無料です。自分の${t("organization")}を作った場合は、30日間お試しで使い始められます。</p>
+      <button class="btn is-wide" type="button">${icon("git")}GitHub で会員登録</button>
+      <button class="btn is-wide is-google" type="button">${SQ.googleMark}Google で会員登録</button>
+      <p class="gate-note">GitHub と Google は本人確認だけに使います。会員登録のあとに、自分の${t("organization")}を作るか、招待を待つかを選べます。</p>
+      <div class="form-actions"><a class="btn is-sm is-quiet" href="#">アカウントがある人はログイン</a></div>
+      <div class="form-actions" role="group" aria-label="利用規約とプライバシーポリシー"><a class="btn is-sm is-quiet" href="#">利用規約</a><a class="btn is-sm is-quiet" href="#">プライバシーポリシー</a></div>
+    </section>
+    <p class="gate-note">会員登録の画面（/signup）の見本です。パスワードの欄は無く、GitHub と Google のボタンだけを置きます。登録の往復の失敗は、ログインの画面に戻して出します。</p>
     <section class="gate-sheet">
       <h2 class="dialog-title">Scrum Guild への招待</h2>
       <p>招待されたメールアドレスの Google アカウントでログインしてください。</p>
@@ -45,7 +57,7 @@ function render() {
       <p class="gate-note">ログアウトした直後のログインの画面の表示の見本です。見出しの下、ログインのボタンの上に出します。エラーがあるときは、エラーだけを出します。</p>
     </section>
     <section class="gate-sheet">
-      <div class="callout is-warn">${icon("alert")}<span>ログインできませんでした。どの${t("organization")}の${t("workspace")}にも所属しておらず、招待も届いていません。招待された手段（GitHub か Google）と、招待されたアカウントでログインしているか確かめてください。招待がまだなら、${t("leader")}に GitHub のユーザー名か Google のメールアドレスで招待してもらってください。</span></div>
+      <div class="callout is-warn">${icon("alert")}<span>ログインできませんでした。どの${t("organization")}の${t("workspace")}にも所属しておらず、招待も届いていません。招待された手段（GitHub か Google）と、招待されたアカウントでログインしているか確かめてください。招待がまだなら、${t("leader")}に GitHub のユーザー名か Google のメールアドレスで招待してもらってください。アカウントがまだ無い人は、会員登録から始められます。</span></div>
       <p class="gate-note">ログインできないときの表示の見本です。</p>
     </section>
     <section class="gate-sheet">

@@ -132,6 +132,13 @@ describe('ログイン後に戻る画面のパス', () => {
     }
   });
 
+  test('会員登録の画面そのものへも戻さない（登録を終えた人にまた登録の画面が出るため）', () => {
+    for (const value of ['/signup', '/signup?x=1', '/signup/', '/signup#x', '/%73ignup']) {
+      assert.equal(safeReturnTo(value), DEFAULT_RETURN_TO, value);
+    }
+    assert.equal(safeReturnTo('/signups'), '/signups');
+  });
+
   test('長すぎる値は /', () => {
     assert.equal(safeReturnTo(`/${'a'.repeat(RETURN_TO_MAX_LENGTH)}`), DEFAULT_RETURN_TO);
     assert.equal(safeReturnTo(`/${'a'.repeat(RETURN_TO_MAX_LENGTH - 1)}`), `/${'a'.repeat(RETURN_TO_MAX_LENGTH - 1)}`);
