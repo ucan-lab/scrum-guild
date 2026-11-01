@@ -258,6 +258,12 @@ test('今日やることを読めなかったときは、空の一覧にせず�
   await expect(page.getByText('今日やるタスクはまだありません')).toBeVisible();
 });
 
+// 読み取りの行を外す。見つからないときは何も外さない（findIndex の -1 を splice に渡すと最後の行が消える）
+function removeTask(tasks: TodayTask[], id: unknown): void {
+  const index = tasks.findIndex((entry) => entry.id === id);
+  if (index >= 0) tasks.splice(index, 1);
+}
+
 // 印、完了、戻すの操作。今日の読み取りと、3 つの操作を、行の状態を持つ応答に差し替える（操作の後の読み直しで、行が区分を移る）
 async function routeTodayState(page: Page, tasks: TodayTask[]) {
   const calls: { operation: string; input: unknown }[] = [];
@@ -395,10 +401,7 @@ test('行が消えていて印を 404 で断られたら、読み直して行を
   const tasks = [row('消えた行', { due_on: '2026-11-06' }), row('残る行', { due_on: '2026-11-06' })];
   await routeOperation(page, today, { slug: 'aoba' }, (call) => call.fulfill({ tasks, sprint_goals: [] }));
   await routeOperation(page, taskTodayMark, { slug: 'aoba' }, (call) => {
-    tasks.splice(
-      tasks.findIndex((entry) => entry.id === call.input.task_id),
-      1,
-    );
+    removeTask(tasks, call.input.task_id);
     return call.fail(404, 'not_found');
   });
   await page.goto('/aoba');
@@ -429,10 +432,7 @@ test('完了を 409 の conflict で断られたとき、読み直して完了�
     }
     if (call.input.task_id === '読み取りから外れた') {
       // 日付をまたいだ後に別の画面で完了にされ、今日の読み取りに載らなくなった
-      tasks.splice(
-        tasks.findIndex((entry) => entry.id === '読み取りから外れた'),
-        1,
-      );
+      removeTask(tasks, '読み取りから外れた');
     }
     return call.fail(409, 'conflict');
   });
