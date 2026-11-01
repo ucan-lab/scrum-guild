@@ -14,6 +14,9 @@
 //     取り出し（{ name } と、Reflect.get、Reflect.getOwnPropertyDescriptor、Object.getOwnPropertyDescriptor の文字列のキー））。
 //     使えるのは運用者の道具 src/server/operations/operator-tools.ts だけ。
 //     組織の中の表に運用者が書く口と、組織で絞らずに数える口を、処理から直に呼ばせない
+//   - 定期処理の履歴の関数 appendScheduledChangeLog（運用者の道具だけの関数と同じ形で止める）。
+//     使えるのは定期処理 src/server/scheduled/ のファイルだけ。operator-tools.ts や、ほかの場所からは使えない。
+//     運用者の道具だけの関数とは別の集合で、appendOperatorChangeLog は定期処理から使えないまま
 // Reflect と Object のプロパティを読むメソッドは、直に呼ぶ形だけを見る。.call、.apply、取り出した get、カンマ式で呼ぶ形は
 // 止めない。名前空間を Object.values や Object.entries で列挙して取り出す形も止めない
 // （D1 の binding も運用者の道具だけの関数も同じ。差分を読む人が見る。docs/development.md の「入口を守る規則」）。
@@ -35,6 +38,10 @@ const OPERATOR_TOOLS_ONLY = new Set([
   'organizationUsageOf',
 ]);
 const OPERATOR_TOOLS = 'src/server/operations/operator-tools.ts';
+// 定期処理（src/server/scheduled/）だけが使える db/ の関数。
+// appendScheduledChangeLog は、既にある組織の変更の履歴に operator も actor_user_id も空で足す口（組織の中の入口を渡さない）
+const SCHEDULED_ONLY = new Set(['appendScheduledChangeLog']);
+const SCHEDULED_DIR = 'src/server/scheduled/';
 // 第2引数に名前を取って、プロパティを読む関数
 const PROPERTY_READERS = new Set(['get', 'getOwnPropertyDescriptor']);
 
@@ -64,6 +71,8 @@ const rule = {
         'import() の引数は文字列のリテラルにする。式で渡すと、kysely と db/ の内部のファイルの検査を抜けられる',
       operatorToolsOnly:
         '運用者の履歴の関数、管理者の指名し直しの関数、組織をまたいで数える関数は、運用者の道具（src/server/operations/operator-tools.ts）だけが使う。処理には道具が包んだ関数を渡す',
+      scheduledOnly:
+        '定期処理の履歴の関数は、定期処理（src/server/scheduled/）のファイルだけが使う。運用者の道具やほかの処理から、operator も操作した人も空の履歴を足させない',
       createRequire:
         'createRequire と process.getBuiltinModule を使わない。import の検査を抜けて kysely と db/ の内部のファイルを読めてしまう',
       binding: 'D1 の binding（DB）を直に使わない。src/server/db/ の入口（commonDb、orgDb）から問い合わせる',
@@ -77,10 +86,15 @@ const rule = {
 
     const inTest = rel.startsWith('test/');
     const isOperatorTools = rel === OPERATOR_TOOLS;
+    const isScheduled = rel.startsWith(SCHEDULED_DIR);
 
+    // 使える場所を絞った関数の名前（運用者の道具だけの関数と、定期処理だけの関数）を、使えない場所で見つけたら報告する
     function checkOperatorToolsOnly(node, name) {
       if (!isOperatorTools && name !== undefined && OPERATOR_TOOLS_ONLY.has(name)) {
         context.report({ node, messageId: 'operatorToolsOnly' });
+      }
+      if (!isScheduled && name !== undefined && SCHEDULED_ONLY.has(name)) {
+        context.report({ node, messageId: 'scheduledOnly' });
       }
     }
 

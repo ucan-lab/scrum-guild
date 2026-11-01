@@ -31,8 +31,8 @@
     }
   ],
   "workers_dev": true,
-  // 毎分、期限を過ぎた行を消す（src/server/scheduled/）
-  "triggers": { "crons": ["* * * * *"] },
+  // 毎分、期限を過ぎた行を消し、毎時 0 分に、お試しの期限を過ぎた組織を一時停止にする（src/server/scheduled/）
+  "triggers": { "crons": ["* * * * *", "0 * * * *"] },
   // 版ごとのプレビュー URL は本番と同じ D1 につながるので作らない
   "preview_urls": false,
   "observability": {
