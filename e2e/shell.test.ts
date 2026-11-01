@@ -652,7 +652,7 @@ test('4000px の幅でも、組織の管理の欄は 56rem で止まり、表は
   expect((await table.boundingBox())!.width).toBeGreaterThan(FORM_MAX_PX);
 
   const fieldWidths = await page
-    .locator('.setting-body > :not(.table-wrap)')
+    .locator('.setting-body :is(.form, .form-row, .input-row, .field, .order-list)')
     .evaluateAll((els) => els.map((el) => el.getBoundingClientRect().width));
   expect(fieldWidths.length).toBeGreaterThan(0);
   for (const width of fieldWidths) expect(width).toBeLessThanOrEqual(FORM_MAX_PX);

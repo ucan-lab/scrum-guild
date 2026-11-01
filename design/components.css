@@ -1405,8 +1405,8 @@ a.choice > div > span, .choice.is-static > div > span { display: block; }
 /* 欄の下にエラーやヒントが付いても、隣の欄の位置がずれないよう、上でそろえる（ボタンと並べる行は既定の下そろえのまま） */
 .form-row.is-start { align-items: flex-start; }
 /* 本文は画面の幅いっぱいに広がるので、欄は読みやすい幅（56rem）で止める。入力欄が画面の端まで伸びると、ラベルと欄とボタンが遠く離れて目で追えない。
-   `.setting` の右の列は表（.table-wrap）だけ止めずに全幅に使い、`Section` の中のフォームは .form、.form-row、.input-row が止める */
-.form, .form-row, .input-row, .setting-body > :not(.table-wrap) { max-width: 56rem; }
+   止めるのは欄の部品だけで、表（.table-wrap）、callout、空の状態は止めない。`.setting-body` は SectionBoundary で入れ子になるので、親の直下で選ばない */
+.form, .form-row, .input-row, .field, .order-list { max-width: 56rem; }
 .form-actions { display: flex; gap: var(--space-2); flex-wrap: wrap; }
 
 /* ===== 手順（番号は本当の順番） ===== */
