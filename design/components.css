@@ -116,8 +116,9 @@ h1, h2, h3 { text-wrap: balance; }
 :is(.org-menu-list, .ws-menu-list) a[aria-current="page"] { background: var(--color-sunken); font-weight: 700; box-shadow: 0 0 0 1px var(--color-line); }
 :is(.org-menu-list, .ws-menu-list) a .ico { margin-left: auto; color: var(--color-accent); }
 .org-menu-name { min-width: 0; overflow-wrap: anywhere; }
-/* 所属していない管理者が開いているワークスペースの名前は、押せる行と区別する。 */
-.ws-menu-current { padding: 7px var(--space-2); color: var(--color-muted); overflow-wrap: anywhere; }
+/* 所属していない管理者が開いているワークスペースの名前。押せない行だが、現在地は所属先の現在地と同じ形（背景、太字、枠、チェック）で示す。 */
+.ws-menu-current { display: flex; align-items: center; gap: var(--space-2); padding: 7px var(--space-2); background: var(--color-sunken); font-weight: 700; box-shadow: 0 0 0 1px var(--color-line); overflow-wrap: anywhere; }
+.ws-menu-current .ico { margin-left: auto; color: var(--color-accent); }
 .org-menu-note { flex-basis: 100%; font-size: var(--text-xs); color: var(--color-muted); }
 /* 組織ではない行（組織の一覧へ戻るリンクと、押すとダイアログを開く「組織を作る」）は、組織の行より控えめにする */
 :is(.org-menu-list, .ws-menu-list) .is-aside a, :is(.org-menu-list, .ws-menu-list) .is-aside button { color: var(--color-muted); }

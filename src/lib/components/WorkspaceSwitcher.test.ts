@@ -50,7 +50,9 @@ describe('ワークスペースの切り替え', () => {
     expect(rows).toContain('href="/sample/w/two"');
     expect(rows).toContain('<span aria-current="page">架空の開発チーム</span>');
     expect(rows).not.toMatch(/<a [^>]*aria-current/);
-    expect(rows).not.toContain('#i-check');
+    // 現在地は色だけでなく、チェックでも示す。リンクの行（所属先）にはチェックが付かないので、1つだけ。
+    expect(rows.match(/#i-check/g)).toHaveLength(1);
+    expect(rows).toMatch(/<li class="ws-menu-current">.*#i-check/);
   });
 
   test('所属が無い管理者にも今の名前だけを出す', () => {
