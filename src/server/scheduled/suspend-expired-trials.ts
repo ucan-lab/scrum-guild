@@ -4,7 +4,7 @@
 // （共通の表と組織の中の表は1回の batch() に混ぜない）。
 // 履歴の書き込みが失敗しても停止は戻さず、投げずに、ほかの組織の履歴を続ける（運用者の操作と同じく、履歴を書けなくても成功として扱う）
 import { utcDateOf } from '../../shared/operations/operator/index.ts';
-import { appendScheduledChangeLog, suspendExpiredTrials } from '../db/index.ts';
+import { appendScheduledChangeLog, SUSPEND_EXPIRED_TRIALS_LIMIT, suspendExpiredTrials } from '../db/index.ts';
 
 const JOB = 'suspend-expired-trials';
 
@@ -12,7 +12,13 @@ const JOB = 'suspend-expired-trials';
 // 履歴の失敗は、組織の ID、書こうとした changes、時刻、例外の名前だけを error に出す。例外の message は SQL や値が混ざりうるので出さない
 export async function suspendExpiredTrialsJob(env: Env, scheduledTime: Date): Promise<void> {
   const stopped = await suspendExpiredTrials(env, utcDateOf(scheduledTime), scheduledTime);
-  if (stopped.length > 0) console.info(JSON.stringify({ level: 'info', job: JOB, suspended: stopped.length }));
+  if (stopped.length > 0) {
+    // 上限に届いた回は、積み残しがありうる（次の回に回る）ので warn にして印を付ける
+    const limited = stopped.length >= SUSPEND_EXPIRED_TRIALS_LIMIT;
+    const line = JSON.stringify({ level: limited ? 'warn' : 'info', job: JOB, suspended: stopped.length, limited });
+    if (limited) console.warn(line);
+    else console.info(line);
+  }
 
   const at = scheduledTime.toISOString();
   for (const { id } of stopped) {
