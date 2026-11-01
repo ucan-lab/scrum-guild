@@ -78,6 +78,7 @@ import {
   storyUpdateOperation,
 } from './story.ts';
 import { taskAssignOperation, taskDeleteOperation, taskDetailOperation, taskUpdateOperation } from './task-edit.ts';
+import { taskTodayMarkOperation } from './task-today-mark.ts';
 import { taskHistoryOperation } from './task-history.ts';
 import {
   commentCreateOperation,
@@ -170,6 +171,7 @@ const listedOperations: readonly ImplementedOperation[] = [
   taskDetailOperation,
   taskUpdateOperation,
   taskAssignOperation,
+  taskTodayMarkOperation,
   taskDeleteOperation,
   taskMoveOperation,
   taskHistoryOperation,

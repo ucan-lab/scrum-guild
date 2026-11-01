@@ -235,7 +235,7 @@
   function doneControl(x) {
     return x.doneAt
       ? `<span class="hanko ${stamped.has(x.id) ? "is-new" : ""}" role="img" aria-label="${t("done")}">${icon("check")}<b>完</b></span>
-         <button class="link-btn" type="button" data-undo="${x.id}">戻す</button>`
+         <button class="link-btn" type="button" data-undo="${x.id}" aria-label="${t("done")}を戻す: ${esc(x.title)}" aria-disabled="false">戻す</button>`
       : `<button class="done-btn" type="button" data-done="${x.id}" aria-label="${t("complete")}" title="${t("complete")}">${icon("check")}</button>`;
   }
 
@@ -267,7 +267,7 @@
     const showParent = opts.showParent !== false;
     const parent = x.story ? D.stories[x.story].title : null;
     const lead = opts.lead !== undefined ? opts.lead
-      : `<button class="sun" type="button" data-sun="${x.id}" aria-pressed="${x.todayOn === D.today}" aria-label="今日やる" title="今日やる">${icon("sun")}</button>`;
+      : `<button class="sun" type="button" data-sun="${x.id}" aria-pressed="${x.todayOn === D.today}" aria-label="今日やる: ${esc(x.title)}" title="今日やる" aria-disabled="false">${icon("sun")}</button>`;
     const title = opts.noLink ? `<span class="entry-title">${titleOf(x)}</span>` : `<a class="entry-title" href="#" data-task="${x.id}">${titleOf(x)}</a>`;
     const mark = opts.mark || {};
     return `<div class="entry ${x.doneAt ? "is-done" : ""}${opts.order ? " has-grip" : ""}${mark.state ? ` ${mark.state}` : ""}"${dropAttr(mark)}>
@@ -1027,7 +1027,7 @@ const looooooooooooooooooooooooooooooooooongLine = "コードの長い1行は、
           ? `${cat.id ? esc(D.categories[cat.id].name) : `${t("category")}なし`}<span class="props-note">親から引き継ぎ</span>`
           : categorySelect("drawer-cat", cat ? cat.id : null, drawerReadOnly())}</dd></div>
         ${x.src ? "" : `<div><dt>リンク</dt><dd>${drawerLinkHtml(x)}</dd></div>`}
-        <div><dt>今日やる</dt><dd><button class="sun" type="button" data-sun="${x.id}" aria-pressed="${x.todayOn === D.today}" aria-label="今日やる">${icon("sun")}</button>${x.todayOn === D.today ? "今日やる" : ""}</dd></div>
+        <div><dt>今日やる</dt><dd><button class="sun" type="button" data-sun="${x.id}" aria-pressed="${x.todayOn === D.today}" aria-label="今日やる: ${esc(x.title)}" aria-disabled="false">${icon("sun")}</button>${x.todayOn === D.today ? "今日やる" : ""}</dd></div>
       </dl>
       <div class="field">
         <span class="field-label">${icon("pen")} ${t("detail")}・${t("ac")} ${x.unfilled ? `<span class="chip is-todo">未記入</span>` : ""}</span>
@@ -1039,7 +1039,7 @@ const looooooooooooooooooooooooooooooooooongLine = "コードの長い1行は、
         ${attachments(x.id)}
       </div>
       <div class="done-bar">
-        ${x.doneAt ? `<span class="done-bar-done"><span class="hanko" role="img" aria-label="${t("done")}">${icon("check")}<b>完</b></span><span>${t("done")} ${esc(x.doneAt)}</span><button class="link-btn" type="button" data-undo="${x.id}">戻す</button></span>`
+        ${x.doneAt ? `<span class="done-bar-done"><span class="hanko" role="img" aria-label="${t("done")}">${icon("check")}<b>完</b></span><span>${t("done")} ${esc(x.doneAt)}</span><button class="link-btn" type="button" data-undo="${x.id}" aria-label="${t("done")}を戻す: ${esc(x.title)}" aria-disabled="false">戻す</button></span>`
           : `<button class="btn is-primary" type="button" data-done="${x.id}">${icon("check")}${t("complete")}</button>`}
         ${D.definitionOfDone.length ? `<div class="done-bar-dod"><h3 class="done-bar-dod-title" id="drawer-dod">${t("dod")}</h3><div class="done-bar-dod-body" tabindex="0" role="region" aria-labelledby="drawer-dod">${dodDoc()}</div></div>` : ""}
       </div>
