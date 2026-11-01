@@ -263,7 +263,7 @@ const CLIENT_SCRIPT = String.raw`(function () {
     var counted = entries.filter(function (e) { return !e.done; });
     var n = function (s) { return counted.filter(function (e) { return e.status === s; }).length; };
     // 戻した分を反映する。生成時の要約と同じ決まり（buildSummary）で作る
-    document.querySelector('.summary').textContent = buildSummary(entries);
+    document.getElementById('summary').textContent = buildSummary(entries);
     document.getElementById('counts').textContent = 'ok ' + n('ok') + ' 件、ng ' + n('ng') + ' 件、未判定 ' + n('') + ' 件';
     document.getElementById('result').value = buildResult(entries);
     layout();
@@ -380,7 +380,7 @@ ${rows(doneItems)}
       : '';
   const statusPanel = `<section class="card" role="tabpanel" id="panel-status" aria-labelledby="tab-status" hidden>
 <h2>状況</h2>
-<p class="summary">${summary}</p>${judge ? '\n<p class="progress" id="counts"></p>' : ''}
+<p class="summary" id="summary">${summary}</p>${judge ? '\n<p class="progress" id="counts"></p>' : ''}
 <ul class="rows" id="rows-active">
 ${rows(activeItems)}
 </ul>${doneRows}${

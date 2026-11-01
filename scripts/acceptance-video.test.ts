@@ -623,7 +623,8 @@ describe('gallery.mjs', () => {
     await withDoneGallery(items, async (page, open) => {
       await open();
       assert.equal(
-        await page.locator('.summary').textContent(),
+        await page.locator('#summary').textContent(),
+        // 判定の対象の skipped と failed も数える
         '動画 1 本、飛ばした 1 件、撮れなかった 1 件、完了済み 1 件',
       );
     });
@@ -632,7 +633,8 @@ describe('gallery.mjs', () => {
   test('戻すと、状況の要約も判定の対象の数に更新され、開き直しても同じ', chromiumSkip, async () => {
     await withDoneGallery([video, doneVideo(575), doneVideo(576)], async (page, open) => {
       await open();
-      const summary = () => page.locator('.summary').textContent();
+      const summary = () => page.locator('#summary').textContent();
+      // 要約は id で引く（#counts など、ほかの更新先と同じ）
       assert.equal(await summary(), '動画 1 本、飛ばした 0 件、撮れなかった 0 件、完了済み 2 件');
       await page.click('#tab-575');
       await page.click('#panel-575 [data-return]');
@@ -707,7 +709,7 @@ describe('gallery.mjs', () => {
 
   test('状況の要約は判定の対象だけを数え、完了済みがあれば件数を末尾に足す', () => {
     const summary = (items: unknown[]) =>
-      ((call('renderGallery', { items }) as string).match(/<p class="summary">([^<]*)<\/p>/) ?? [])[1];
+      ((call('renderGallery', { items }) as string).match(/<p class="summary" id="summary">([^<]*)<\/p>/) ?? [])[1];
     const skipped = { issue: 575, title: 'API だけ', skipped: '画面が変わらない' };
     assert.equal(summary([video, skipped]), '動画 1 本、飛ばした 1 件、撮れなかった 0 件');
     assert.equal(
