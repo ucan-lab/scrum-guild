@@ -150,7 +150,7 @@ test.describe('自分の設定（ミナト）', () => {
     await expect(rows).toHaveCount(50);
     await page.getByRole('button', { name: '続きを読む' }).click();
     await expect(rows).toHaveCount(52);
-    await expect(page.getByRole('alert')).toHaveText('');
+    await expect(ledgerAlert).toHaveText('');
   });
 
   test('明細が無ければ空の状態を出す', async ({ page }) => {
