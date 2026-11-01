@@ -13,7 +13,7 @@
   // 小、中、大を額つきのラジオで選ぶ（段階の印は EpicTier）。開いたときは、画面が渡す今の段階（tier）を選んでおく。
   // 今の段階のままなら「変える」は押せない（aria-disabled）。押すと epic-reward-update を送る。
   // 変えられたら閉じて、トーストで知らせ、onchanged で画面に読み直させる（別の画面で先に同じ段階になっていたときも、閉じてその旨を知らせる）。
-  // 終わったエピック（409 の conflict）、権限が無い（403）、エピックが消えた（404）は理由を出し、閉じたときに画面を読み直す。
+  // 終わったエピック（409 の epic_finished）、書き込みの競合（409 の conflict）、権限が無い（403）、エピックが消えた（404）は理由を出し、閉じたときに画面を読み直す。
   // 閉じたワークスペース（409 の workspace_closed）は理由を出し、閉じたときに枠ごと読み直す。
   // 送っている間は「変える」を押しても無視し（aria-disabled）、ダイアログも閉じられない。
   // 送り始めた後に開き直した、部品が外れたときは、古い応答で状態を更新しない（generation）
@@ -123,8 +123,11 @@
       if (result.error?.code === 'workspace_closed') {
         submitError = t('workspaceClosedReadOnly', words);
         reloadOnClose = 'workspace';
-      } else if (result.status === 409) {
+      } else if (result.error?.code === 'epic_finished') {
         submitError = t('epicRewardFinished', words);
+        reloadOnClose = 'epic';
+      } else if (result.error?.code === 'conflict') {
+        submitError = t('epicRewardConflict', words);
         reloadOnClose = 'epic';
       } else if (result.status === 403) {
         submitError = t('epicRewardForbidden', words);

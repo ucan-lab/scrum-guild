@@ -30,7 +30,7 @@ import {
 
 type Tables = OrganizationTables;
 
-// 同時の書き込みに負けたときにやり直す回数の上限。超えたら 409 の conflict（task-assign と同じ）
+// 同時の書き込みに負けたときにやり直す回数の上限。超えたら読み直し、終わったエピックなら 409 の epic_finished、そうでなければ 409 の conflict（task-assign と同じ回数）
 const MAX_ATTEMPTS = 3;
 
 type PartyMemberLog = { id: string; name: string; via: EpicJoinedVia };
@@ -87,6 +87,22 @@ async function readPartyState(db: OrganizationDb, workspaceId: string, epicId: s
     activeName: activeResult.rows[0]?.name,
     name: userResult.rows[0]?.name,
   };
+}
+
+// やり直しの回数を使い切ったときに、断る理由を決める。最後の書き込みの直前にエピックが終わっていたら 409 の epic_finished、
+// そうでなければ（書き込みの競合に負け続けた）409 の conflict。最後に読み直すだけで、書かない
+async function throwIfFinishedOrConflict(
+  db: OrganizationDb,
+  workspaceId: string,
+  epicId: string,
+  userId: string,
+): Promise<never> {
+  const state = await readPartyState(db, workspaceId, epicId, userId);
+  if (state.epic?.finished) {
+    await throwIfClosed(db, workspaceId);
+    throw new ApiError(409, 'epic_finished');
+  }
+  throw new ApiError(409, 'conflict');
 }
 
 // 討伐隊の履歴の1行。直前の文が行を変えたときだけ入れる
@@ -158,7 +174,7 @@ async function addToParty(params: {
     }
     if (state.epic.finished) {
       await throwIfClosed(db, workspaceId);
-      throw new ApiError(409, 'conflict');
+      throw new ApiError(409, 'epic_finished');
     }
     if (state.epic.via !== null) {
       // 既に討伐隊にいれば何も書かない。書くものが無くても、閉じたワークスペースは断る
@@ -207,7 +223,7 @@ async function addToParty(params: {
     if ((results[0]?.changes ?? 0) > 0) return { changed: true };
     await throwIfClosed(db, workspaceId);
   }
-  throw new ApiError(409, 'conflict');
+  return throwIfFinishedOrConflict(db, workspaceId, epicId, userId);
 }
 
 export const epicPartyJoinOperation = implement(epicPartyJoin, async ({ db, actor, workspace, input }) =>
@@ -234,7 +250,7 @@ export const epicPartyLeaveOperation = implement(epicPartyLeave, async ({ db, ac
     }
     if (state.epic.finished) {
       await throwIfClosed(db, workspaceId);
-      throw new ApiError(409, 'conflict');
+      throw new ApiError(409, 'epic_finished');
     }
     const via = state.epic.via;
     if (via === null) {
@@ -268,7 +284,7 @@ export const epicPartyLeaveOperation = implement(epicPartyLeave, async ({ db, ac
     if ((results[0]?.changes ?? 0) > 0) return { changed: true };
     await throwIfClosed(db, workspaceId);
   }
-  throw new ApiError(409, 'conflict');
+  return throwIfFinishedOrConflict(db, workspaceId, epicId, actorUserId);
 });
 
 // タスクの親のストーリーの親の、進行中のエピック（ストーリーもエピックも同じワークスペースの削除していないもの）を、
