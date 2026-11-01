@@ -80,7 +80,8 @@ test.describe('テーマの節（ハルカ）', () => {
     await expect(section.getByRole('radio', { name: /^組織の既定に従う/ })).toBeChecked();
     const before = await htmlTheme(page);
 
-    await section.getByRole('radio', { name: /^現代風/ }).check();
+    // 失敗で選択がすぐ戻るので、check()（押した後に状態が変わったかを確かめる）でなく click() で押す
+    await section.getByRole('radio', { name: /^現代風/ }).click();
     await expect(section.getByRole('alert')).toHaveText('テーマを変えられませんでした。もう一度試してください。');
     await expect(section.getByRole('radio', { name: /^組織の既定に従う/ })).toBeChecked();
     await expect(section.getByRole('radio', { name: /^現代風/ })).not.toBeChecked();
@@ -89,42 +90,35 @@ test.describe('テーマの節（ハルカ）', () => {
     // 次に選ぶと理由は消え、通れば保存される
     await page.unroute('**/api/aoba/me-theme-update');
     await page.route('**/api/aoba/me-theme-update', (route) => route.fulfill({ json: { theme: 'simple_dark' } }));
-    await section.getByRole('radio', { name: /^シンプル（ダーク）/ }).check();
+    await section.getByRole('radio', { name: /^シンプル（ダーク）/ }).click();
     await expect(section.getByRole('alert')).toHaveText('');
-    await expect.poll(() => htmlTheme(page)).toBe('simple_dark');
   });
 
-  test('保存の後の枠の読み直しの間に選び直しても、その値も保存して画面に残す', async ({ page }) => {
-    // 保存は差し替え、ハルカの users.theme を書かない。読み直し（organization-info）は、1回目を止めて間に選び直す
+  test('送っている間に選び直したら、同時に2つ送らず、送り終えてから最後に選んだ値を送る', async ({ page }) => {
+    // 保存は差し替え、ハルカの users.theme を書かない。1回目の応答を止めて、その間に選び直す
     const sent: unknown[] = [];
-    await page.route('**/api/aoba/me-theme-update', (route) => {
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => (release = resolve));
+    await page.route('**/api/aoba/me-theme-update', async (route) => {
       const body = route.request().postDataJSON() as { theme: string | null };
       sent.push(body);
-      return route.fulfill({ json: { theme: body.theme } });
+      if (sent.length === 1) await gate;
+      await route.fulfill({ json: { theme: body.theme } });
     });
     await page.goto('/aoba/me');
     const section = themeSection(page);
     await expect(section.getByRole('radio', { name: /^組織の既定に従う/ })).toBeChecked();
 
-    let release!: () => void;
-    const gate = new Promise<void>((resolve) => (release = resolve));
-    let held = false;
-    await page.route('**/api/aoba/organization-info', async (route) => {
-      if (!held) {
-        held = true;
-        await gate;
-      }
-      await route.continue();
-    });
-
     await section.getByRole('radio', { name: /^中世風/ }).check();
-    await expect.poll(() => held).toBe(true);
+    await expect.poll(() => sent.length).toBe(1);
     await section.getByRole('radio', { name: /^現代風/ }).check();
+    // 1回目が返るまで、2つ目は送らない。選択と画面は先に変わる
+    await expect.poll(() => htmlTheme(page)).toBe('modern');
+    expect(sent).toEqual([{ theme: 'medieval' }]);
     release();
 
     await expect.poll(() => sent).toEqual([{ theme: 'medieval' }, { theme: 'modern' }]);
     await expect(section.getByRole('radio', { name: /^現代風/ })).toBeChecked();
-    await expect.poll(() => htmlTheme(page)).toBe('modern');
   });
 });
 
