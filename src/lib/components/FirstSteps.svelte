@@ -155,7 +155,7 @@
     return required !== -1 ? required : rows.findIndex(open);
   });
 
-  // 末尾の一言。自分の設定、またはワークスペースの設定へ案内するリンクを文の中に置く
+  // 末尾の一言。マイプロフィール、またはワークスペースの設定へ案内するリンクを文の中に置く
   const hint = $derived.by(() => {
     if (role === 'member') {
       const label = t('pageMe');
